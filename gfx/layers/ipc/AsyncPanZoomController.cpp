@@ -1195,7 +1195,11 @@ void AsyncPanZoomController::NotifyLayersUpdated(const FrameMetrics& aLayerMetri
     CSSToScreenScale previousResolution = mFrameMetrics.CalculateIntrinsicScale();
     mFrameMetrics.mViewport = aLayerMetrics.mViewport;
     CSSToScreenScale newResolution = mFrameMetrics.CalculateIntrinsicScale();
-    if (previousResolution != newResolution) {
+    if (mFrameMetrics.mViewport.width != aLayerMetrics.mViewport.width) {
+      mFrameMetrics.mDisplayPort = aLayerMetrics.mDisplayPort;
+      mFrameMetrics.mZoom.scale = aLayerMetrics.mZoom.scale;
+      needContentRepaint = true;
+    } else if (previousResolution != newResolution) {
       needContentRepaint = true;
       mFrameMetrics.mZoom.scale *= newResolution.scale / previousResolution.scale;
     }
@@ -1212,6 +1216,9 @@ void AsyncPanZoomController::NotifyLayersUpdated(const FrameMetrics& aLayerMetri
     mState = NOTHING;
   } else if (!mFrameMetrics.mScrollableRect.IsEqualEdges(aLayerMetrics.mScrollableRect)) {
     mFrameMetrics.mScrollableRect = aLayerMetrics.mScrollableRect;
+    mFrameMetrics.mCompositionBounds = aLayerMetrics.mCompositionBounds;
+    mFrameMetrics.mResolution = aLayerMetrics.mResolution;
+    mFrameMetrics.mCumulativeResolution = aLayerMetrics.mCumulativeResolution;
   }
 
   if (needContentRepaint) {
