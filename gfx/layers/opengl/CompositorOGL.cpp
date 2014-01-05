@@ -51,11 +51,20 @@
 #include "GfxInfo.h"
 #endif
 
+#include "GLContext.h"                  // for GLContext
+#include "GLScreenBuffer.h"             // for GLScreenBuffer
+#include "SharedSurfaceEGL.h"           // for SurfaceFactory_EGLImage
+#include "SharedSurfaceGL.h"            // for SurfaceFactory_GLTexture, etc
+#include "SurfaceStream.h"              // for SurfaceStream, etc
+#include "SurfaceTypes.h"               // for SurfaceStreamType
+#include "ClientLayerManager.h"         // for ClientLayerManager, etc
+
 #define BUFFER_OFFSET(i) ((char *)nullptr + (i))
 
 namespace mozilla {
 
 using namespace gfx;
+using namespace gl;
 
 namespace layers {
 
@@ -258,8 +267,24 @@ CompositorOGL::CreateContext()
 {
   nsRefPtr<GLContext> context;
 
+  // If widget has active GL context then we can try to wrap it into Moz GL Context
+  if (mWidget->HasGLContext()) {
+    context = GLContextProvider::CreateForEmbedded(ContextFlagsGlobal);
+    if (!context->Init()) {
+      context = nullptr;
+    }
+  }
+
+  if (!context && !mWidget->GetNativeData(NS_NATIVE_WINDOW)) {
+    SurfaceCaps caps = SurfaceCaps::ForRGB();
+    caps.preserve = false;
+    caps.bpp16 = true;
+    context = GLContextProvider::CreateOffscreen(gfxIntSize(mSurfaceSize.width,
+                                                            mSurfaceSize.height), caps);
+  }
+
 #ifdef XP_WIN
-  if (PR_GetEnv("MOZ_LAYERS_PREFER_EGL")) {
+  if (!context && PR_GetEnv("MOZ_LAYERS_PREFER_EGL")) {
     printf_stderr("Trying GL layers...\n");
     context = gl::GLContextProviderEGL::CreateForWindow(mWidget);
   }
@@ -391,9 +416,31 @@ CompositorOGL::Initialize()
   if (!mGLContext)
     return false;
 
-  mGLContext->SetFlipped(true);
+  if (!mGLContext->IsOffscreen())
+    mGLContext->SetFlipped(true);
 
   MakeCurrent();
+
+  if (mGLContext->IsOffscreen()) {
+    GLScreenBuffer* screen = mGLContext->Screen();
+    if (screen) {
+      SurfaceStreamType streamType =
+        SurfaceStream::ChooseGLStreamType(SurfaceStream::OffMainThread,
+                                          screen->PreserveBuffer());
+      SurfaceFactory_GL* factory = nullptr;
+      if (mGLContext->GetEGLContext() && mGLContext->GetLibraryEGL()->HasKHRImageTexture2D()) {
+        // [Basic/OGL Layers, OMTC] WebGL layer init.
+        factory = SurfaceFactory_EGLImage::Create(mGLContext, screen->Caps());
+      } else {
+        // [Basic Layers, OMTC] WebGL layer init.
+        // Well, this *should* work...
+        factory = new SurfaceFactory_GLTexture(mGLContext, nullptr, screen->Caps());
+      }
+      if (factory) {
+        screen->Morph(factory, streamType);
+      }
+    }
+  }
 
   mHasBGRA =
     mGLContext->IsExtensionSupported(gl::GLContext::EXT_texture_format_BGRA8888) ||
@@ -640,9 +687,11 @@ CompositorOGL::PrepareViewport(const gfx::IntSize& aSize,
   // Matrix to transform (0, 0, aWidth, aHeight) to viewport space (-1.0, 1.0,
   // 2, 2) and flip the contents.
   gfxMatrix viewMatrix;
-  viewMatrix.Translate(-gfxPoint(1.0, -1.0));
+  viewMatrix.Translate(-gfxPoint(1.0, mGLContext->IsOffscreen() ? 1.0 : -1.0));
   viewMatrix.Scale(2.0f / float(aSize.width), 2.0f / float(aSize.height));
-  viewMatrix.Scale(1.0f, -1.0f);
+  if (!mGLContext->IsOffscreen()) {
+    viewMatrix.Scale(1.0f, -1.0f);
+  }
   if (!mTarget) {
     viewMatrix.Translate(gfxPoint(mRenderOffset.x, mRenderOffset.y));
   }
@@ -725,10 +774,29 @@ CompositorOGL::SetRenderTarget(CompositingRenderTarget *aSurface)
   }
 }
 
+void
+CompositorOGL::SetUserRenderTarget(CompositingRenderTarget *aSurface)
+{
+  CompositingRenderTargetOGL* surface
+    = static_cast<CompositingRenderTargetOGL*>(aSurface);
+  if (mUserRenderTarget != surface) {
+    if (surface) {
+        surface->BindRenderTarget();
+    }
+    mUserRenderTarget = surface;
+  }
+}
+
 CompositingRenderTarget*
 CompositorOGL::GetCurrentRenderTarget()
 {
   return mCurrentRenderTarget;
+}
+
+CompositingRenderTarget*
+CompositorOGL::GetUserRenderTarget()
+{
+  return mUserRenderTarget;
 }
 
 static GLenum
@@ -824,10 +892,15 @@ CompositorOGL::BeginFrame(const nsIntRegion& aInvalidRegion,
   TexturePoolOGL::Fill(gl());
 #endif
 
-  mCurrentRenderTarget = CompositingRenderTargetOGL::RenderTargetForWindow(this,
-                            IntSize(width, height),
-                            aTransform);
-  mCurrentRenderTarget->BindRenderTarget();
+  if (mUserRenderTarget) {
+    mCurrentRenderTarget = mUserRenderTarget;
+  } else {
+    mCurrentRenderTarget = CompositingRenderTargetOGL::RenderTargetForWindow(this,
+                              IntSize(width, height),
+                              aTransform);
+    mCurrentRenderTarget->BindRenderTarget();
+  }
+
 #ifdef DEBUG
   mWindowRenderTarget = mCurrentRenderTarget;
 #endif
@@ -854,7 +927,7 @@ CompositorOGL::BeginFrame(const nsIntRegion& aInvalidRegion,
   // If the Android compositor is being used, this clear will be done in
   // DrawWindowUnderlay. Make sure the bits used here match up with those used
   // in mobile/android/base/gfx/LayerRenderer.java
-#ifndef MOZ_ANDROID_OMTC
+#if !defined(MOZ_ANDROID_OMTC) && !defined(USE_ANDROID_OMTC_HACKS)
   mGLContext->fClearColor(0.0, 0.0, 0.0, 0.0);
   mGLContext->fClear(LOCAL_GL_COLOR_BUFFER_BIT | LOCAL_GL_DEPTH_BUFFER_BIT);
 #endif
@@ -1159,7 +1232,7 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
                                             filter);
 
       program->SetTextureUnit(0);
-      program->SetLayerOpacity(aOpacity);
+      program->SetLayerOpacity(aOpacity * mWorldOpacity);
 
       AutoBindTexture bindMask;
       if (maskType != MaskNone) {
@@ -1201,7 +1274,7 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
       mGLContext->ApplyFilterToBoundTexture(filter);
 
       program->SetYCbCrTextureUnits(Y, Cb, Cr);
-      program->SetLayerOpacity(aOpacity);
+      program->SetLayerOpacity(aOpacity * mWorldOpacity);
       program->SetTextureTransform(gfx3DMatrix());
 
       AutoBindTexture bindMask;
@@ -1225,7 +1298,7 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
 
       program->Activate();
       program->SetTextureUnit(0);
-      program->SetLayerOpacity(aOpacity);
+      program->SetLayerOpacity(aOpacity * mWorldOpacity);
       program->SetTextureTransform(gfx3DMatrix());
 
       AutoBindTexture bindMask;
@@ -1283,7 +1356,7 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
         program->Activate();
         program->SetBlackTextureUnit(0);
         program->SetWhiteTextureUnit(1);
-        program->SetLayerOpacity(aOpacity);
+        program->SetLayerOpacity(aOpacity * mWorldOpacity);
         program->SetLayerTransform(aTransform);
         program->SetTextureTransform(gfx3DMatrix());
         program->SetRenderOffset(offset.x, offset.y);

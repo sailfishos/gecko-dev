@@ -68,8 +68,6 @@ static gfxImageFormat sOffscreenFormat = gfxImageFormatRGB24;
 
 gfxQtPlatform::gfxQtPlatform()
 {
-    mPrefFonts.Init(50);
-
     if (!sFontconfigUtils)
         sFontconfigUtils = gfxFontconfigUtils::GetFontconfigUtils();
 
@@ -101,7 +99,8 @@ gfxQtPlatform::gfxQtPlatform()
     // Qt doesn't provide a public API to detect the graphicssystem type. We hack
     // around this by checking what type of graphicssystem a test QPixmap uses.
     QPixmap pixmap(1, 1);
-    if (pixmap.depth() == 16) {
+    if (pixmap.depth() == 16 ||
+        Preferences::GetBool("gfx.qt.rgb16.force", false)) {
         sOffscreenFormat = gfxImageFormatRGB16_565;
     }
     mScreenDepth = pixmap.depth();
@@ -109,6 +108,10 @@ gfxQtPlatform::gfxQtPlatform()
     if (pixmap.paintEngine())
         sDefaultQtPaintEngineType = pixmap.paintEngine()->type();
 #endif
+    uint32_t canvasMask = (1 << BACKEND_CAIRO) | (1 << BACKEND_SKIA);
+    uint32_t contentMask = (1 << BACKEND_CAIRO) | (1 << BACKEND_SKIA);
+    InitBackendPrefs(canvasMask, BACKEND_CAIRO,
+                     contentMask, BACKEND_CAIRO);
 }
 
 gfxQtPlatform::~gfxQtPlatform()
@@ -306,3 +309,8 @@ gfxQtPlatform::GetScreenDepth() const
     return mScreenDepth;
 }
 
+TemporaryRef<ScaledFont>
+gfxQtPlatform::GetScaledFontForFont(DrawTarget* aTarget, gfxFont *aFont)
+{
+    return Factory::GetScaledFontForFontWithCairoSkia(aTarget, aFont->GetCairoScaledFont(), aFont->GetAdjustedSize());
+}
