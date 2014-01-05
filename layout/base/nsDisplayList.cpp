@@ -642,6 +642,7 @@ static void RecordFrameMetrics(nsIFrame* aForFrame,
                                nsRect* aDisplayPort,
                                nsRect* aCriticalDisplayPort,
                                ViewID aScrollId,
+                               bool aIsRoot,
                                const nsDisplayItem::ContainerParameters& aContainerParameters,
                                bool aMayHaveTouchListeners) {
   nsPresContext* presContext = aForFrame->PresContext();
@@ -679,9 +680,10 @@ static void RecordFrameMetrics(nsIFrame* aForFrame,
   }
 
   metrics.mScrollId = aScrollId;
+  metrics.mIsRoot = aIsRoot;
 
   nsIPresShell* presShell = presContext->GetPresShell();
-  if (metrics.mScrollId == FrameMetrics::ROOT_SCROLL_ID) {
+  if (aScrollFrame == presShell->GetRootScrollFrame()) {
     metrics.mResolution = ParentLayerToLayerScale(presShell->GetXResolution(),
                                                   presShell->GetYResolution());
   } else {
@@ -1224,8 +1226,8 @@ void nsDisplayList::PaintForFrame(nsDisplayListBuilder* aBuilder,
   root->SetPostScale(1.0f/containerParameters.mXScale,
                      1.0f/containerParameters.mYScale);
 
-  ViewID id = presContext->IsRootContentDocument() ? FrameMetrics::ROOT_SCROLL_ID
-                                                   : FrameMetrics::NULL_SCROLL_ID;
+  ViewID id = FrameMetrics::NULL_SCROLL_ID;
+  bool isRoot = presContext->IsRootContentDocument();
 
   nsIFrame* rootScrollFrame = presShell->GetRootScrollFrame();
   nsRect displayport, criticalDisplayport;
@@ -1238,11 +1240,9 @@ void nsDisplayList::PaintForFrame(nsDisplayListBuilder* aBuilder,
       usingCriticalDisplayport =
         nsLayoutUtils::GetCriticalDisplayPort(content, &criticalDisplayport);
 
-      if (id == FrameMetrics::ROOT_SCROLL_ID) {
-        // Record the mapping between the root scroll frame's content and
-        // ROOT_SCROLL_ID so that users of nsLayoutUtils::FindIDFor() and
-        // nsLayoutUtils::FindContentFor() don't have to special-case the root.
-        nsLayoutUtils::FindOrCreateIDFor(content, true);
+      // If this is the root content document, we want it to have a scroll id.
+      if (isRoot) {
+        id = nsLayoutUtils::FindOrCreateIDFor(content);
       }
     }
   }
@@ -1262,7 +1262,7 @@ void nsDisplayList::PaintForFrame(nsDisplayListBuilder* aBuilder,
                      root, mVisibleRect, viewport,
                      (usingDisplayport ? &displayport : nullptr),
                      (usingCriticalDisplayport ? &criticalDisplayport : nullptr),
-                     id, containerParameters, mayHaveTouchListeners);
+                     id, isRoot, containerParameters, mayHaveTouchListeners);
   if (usingDisplayport &&
       !(root->GetContentFlags() & Layer::CONTENT_OPAQUE)) {
     // See bug 693938, attachment 567017
@@ -3423,7 +3423,7 @@ nsDisplayScrollLayer::BuildLayer(nsDisplayListBuilder* aBuilder,
                      mVisibleRect, viewport,
                      (usingDisplayport ? &displayport : nullptr),
                      (usingCriticalDisplayport ? &criticalDisplayport : nullptr),
-                     scrollId, aContainerParameters, false);
+                     scrollId, false, aContainerParameters, false);
 
   return layer.forget();
 }

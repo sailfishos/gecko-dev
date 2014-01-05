@@ -296,7 +296,7 @@ ThebesLayerBufferOGL::RenderTo(const nsIntPoint& aOffset,
                   tileRegionRect.MoveBy(-currentTileRect.TopLeft());
               }
 
-#ifdef ANDROID
+#if defined(ANDROID) || defined(USE_ANDROID_OMTC_HACKS)
               // Bug 691354
               // Using the LINEAR filter we get unexplained artifacts.
               // Use NEAREST when no scaling is required.

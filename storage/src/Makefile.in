@@ -11,7 +11,9 @@
 # MOZ_MEMORY" options in db/sqlite3/src/Makefile.in.
 ifdef MOZ_MEMORY
 ifneq ($(OS_TARGET), Android)
-DEFINES += -DMOZ_STORAGE_MEMORY
+# Don't use jemalloc on EmbedLite, because we can't guarantee
+# that Gecko will configure sqlite before it is first used from UI code.
+#DEFINES += -DMOZ_STORAGE_MEMORY
 endif
 endif
 

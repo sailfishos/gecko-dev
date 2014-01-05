@@ -141,6 +141,11 @@ CPP_SOURCES += [
     'WebVTTLoadListener.cpp',
 ]
 
+if CONFIG['HAS_NEMO_RESOURCE']:
+    CPP_SOURCES += [
+        'NemoResourceHandler.cpp',
+    ]
+
 FAIL_ON_WARNINGS = True
 
 if CONFIG['CPU_ARCH'] == 'arm' and CONFIG['BUILD_ARM_NEON']:

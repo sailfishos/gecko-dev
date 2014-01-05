@@ -71,7 +71,8 @@ SharedSurface_EGLImage::SharedSurface_EGLImage(GLContext* gl,
     , mPipeFailed(false)
     , mPipeComplete(false)
     , mPipeActive(false)
-{}
+{
+}
 
 SharedSurface_EGLImage::~SharedSurface_EGLImage()
 {
@@ -106,11 +107,13 @@ SharedSurface_EGLImage::LockProdImpl()
 {
     MutexAutoLock lock(mMutex);
 
-    if (!mPipeComplete)
+    if (!mPipeComplete) {
         return;
+    }
 
-    if (mPipeActive)
+    if (mPipeActive) {
         return;
+    }
 
     mGL->BlitTextureToTexture(mProdTex, mProdTexForPipe, Size(), Size());
     mGL->fDeleteTextures(1, &mProdTex);
@@ -160,6 +163,7 @@ SharedSurface_EGLImage::Fence()
         MOZ_ASSERT(!mPipeComplete);
 
         if (!mPipeFailed) {
+
             if (!CreateTexturePipe(mEGL, mGL, mFormats, Size(),
                                    &mProdTexForPipe, &mImage))
             {
@@ -170,7 +174,7 @@ SharedSurface_EGLImage::Fence()
         if (!mPixels) {
             gfxASurface::gfxImageFormat format =
                   HasAlpha() ? gfxASurface::ImageFormatARGB32
-                             : gfxASurface::ImageFormatRGB24;
+                             : gfxASurface::ImageFormatRGB16_565;
             mPixels = new gfxImageSurface(Size(), format);
         }
 
@@ -245,8 +249,9 @@ SharedSurface_EGLImage::AcquireConsumerTexture(GLContext* consGL)
 {
     MutexAutoLock lock(mMutex);
     MOZ_ASSERT(!mCurConsGL || consGL == mCurConsGL);
-    if (mPipeFailed)
+    if (mPipeFailed) {
         return 0;
+    }
 
     if (mPipeActive) {
         MOZ_ASSERT(mConsTex);
@@ -265,6 +270,7 @@ SharedSurface_EGLImage::AcquireConsumerTexture(GLContext* consGL)
     }
 
     MOZ_ASSERT(consGL == mCurConsGL);
+
     return 0;
 }
 

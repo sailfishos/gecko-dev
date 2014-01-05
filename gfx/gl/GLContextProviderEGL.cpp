@@ -3,8 +3,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "GLContext.h"
-#include "mozilla/Util.h"
 // please add new includes below Qt, otherwise it break Qt build due malloc wrapper conflicts
 
 #if defined(XP_UNIX)
@@ -30,6 +28,9 @@
 #include "mozilla/X11Util.h"
 #include "gfxXlibSurface.h"
 #endif
+
+#include "GLContext.h"
+#include "mozilla/Util.h"
 
 #if defined(ANDROID)
 /* from widget */
@@ -205,7 +206,7 @@ class GLContextEGL : public GLContext
 
     static already_AddRefed<GLContextEGL>
     CreateGLContext(const SurfaceCaps& caps,
-                    GLContextEGL *shareContext,
+                    GLContext *shareContext,
                     bool isOffscreen,
                     EGLConfig config,
                     EGLSurface surface)
@@ -215,7 +216,7 @@ class GLContextEGL : public GLContext
             return nullptr;
         }
 
-        EGLContext eglShareContext = shareContext ? shareContext->mContext
+        EGLContext eglShareContext = shareContext ? shareContext->GetEGLContext()
                                                   : EGL_NO_CONTEXT;
         EGLint* attribs = sEGLLibrary.HasRobustness() ? gContextAttribsRobustness
                                                       : gContextAttribs;
@@ -322,6 +323,10 @@ public:
 
     bool Init()
     {
+        if (mInitialized) {
+            return true;
+        }
+
 #if defined(ANDROID)
         // We can't use LoadApitraceLibrary here because the GLContext
         // expects its own handle to the GL library
@@ -1484,7 +1489,7 @@ public:
             mEGLImage =
                 sEGLLibrary.fCreateImage(EGL_DISPLAY(),
                                          EGL_NO_CONTEXT,
-                                         LOCAL_EGL_NATIVE_PIXMAP,
+                                         LOCAL_EGL_NATIVE_PIXMAP_KHR,
                                          (EGLClientBuffer)xsurface->XDrawable(),
                                          nullptr);
 
@@ -1576,8 +1581,6 @@ GLContextEGL::TileGenFunc(const nsIntSize& aSize,
 
   return teximage.forget();
 }
-
-static nsRefPtr<GLContext> gGlobalContext;
 
 static const EGLint kEGLConfigAttribsOffscreenPBuffer[] = {
     LOCAL_EGL_SURFACE_TYPE,    LOCAL_EGL_PBUFFER_BIT,
@@ -1719,53 +1722,53 @@ CreateSurfaceForWindow(nsIWidget *aWidget, EGLConfig config)
 }
 #endif
 
+static nsRefPtr<GLContext> gGlobalContext;
+
 already_AddRefed<GLContext>
-GLContextProviderEGL::CreateForWindow(nsIWidget *aWidget)
+GLContextProviderEGL::CreateForEmbedded(ContextFlags flags)
 {
     if (!sEGLLibrary.EnsureInitialized()) {
         return nullptr;
     }
 
-    bool doubleBuffered = true;
-
-    bool hasNativeContext = aWidget->HasGLContext();
     EGLContext eglContext = sEGLLibrary.fGetCurrentContext();
-    if (hasNativeContext && eglContext) {
+    if (eglContext) {
         void* platformContext = eglContext;
         SurfaceCaps caps = SurfaceCaps::Any();
-#ifdef MOZ_WIDGET_QT
-        int depth = gfxPlatform::GetPlatform()->GetScreenDepth();
-        QGLContext* context = const_cast<QGLContext*>(QGLContext::currentContext());
-        if (context && context->device()) {
-            depth = context->device()->depth();
-        }
-        const QGLFormat& format = context->format();
-        doubleBuffered = format.doubleBuffer();
-        platformContext = context;
-        caps.bpp16 = depth == 16 ? true : false;
-        caps.alpha = format.rgba();
-        caps.depth = format.depth();
-        caps.stencil = format.stencil();
-#endif
         EGLConfig config = EGL_NO_CONFIG;
         EGLSurface surface = sEGLLibrary.fGetCurrentSurface(LOCAL_EGL_DRAW);
         nsRefPtr<GLContextEGL> glContext =
             new GLContextEGL(caps,
-                             gGlobalContext, false,
+                             nullptr, false,
                              config, surface, eglContext);
 
-        if (!glContext->Init())
-            return nullptr;
-
-        glContext->MakeCurrent();
-        glContext->SetIsDoubleBuffered(doubleBuffered);
+        glContext->SetIsDoubleBuffered(true);
         glContext->SetPlatformContext(platformContext);
+#if !defined(__arm__) // Must not use context sharing on arm (EGLImage should be enough)
 
-        if (!gGlobalContext) {
+        if (flags == ContextFlagsGlobal) {
             gGlobalContext = glContext;
+            gGlobalContext->SetIsGlobalSharedContext(true);
         }
+#endif
 
         return glContext.forget();
+    }
+    return nullptr;
+}
+
+already_AddRefed<GLContext>
+GLContextProviderEGL::CreateForWindow(nsIWidget *aWidget)
+{
+    if (!sEGLLibrary.EnsureInitialized()) {
+        MOZ_CRASH("Failed to load EGL library!\n");
+        return nullptr;
+    }
+
+    bool doubleBuffered = true;
+
+    if (aWidget->HasGLContext()) {
+        return CreateForEmbedded();
     }
 
     EGLConfig config;
@@ -1774,6 +1777,12 @@ GLContextProviderEGL::CreateForWindow(nsIWidget *aWidget)
         return nullptr;
     }
 
+#ifdef MOZ_WIDGET_QT
+    // Make sure we check shell widget availability before call GET_NATIVE_WINDOW
+    if (!aWidget->GetNativeData(NS_NATIVE_SHELLWIDGET)) {
+        return nullptr;
+    }
+#endif
 #ifdef MOZ_ANDROID_OMTC
     mozilla::AndroidBridge::Bridge()->RegisterCompositor();
     EGLSurface surface = mozilla::AndroidBridge::Bridge()->ProvideEGLSurface();
@@ -2052,7 +2061,7 @@ GLContextProviderEGL::GetSharedHandleAsSurface(SharedTextureShareType shareType,
 GLContext *
 GLContextProviderEGL::GetGlobalContext(const ContextFlags)
 {
-    return nullptr;
+    return gGlobalContext.get();
 }
 
 void

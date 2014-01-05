@@ -124,12 +124,6 @@ public:
 
 NS_IMPL_ISUPPORTS1(nsContentView, nsIContentView)
 
-bool
-nsContentView::IsRoot() const
-{
-  return mScrollId == FrameMetrics::ROOT_SCROLL_ID;
-}
-
 nsresult
 nsContentView::Update(const ViewConfig& aConfig)
 {
@@ -2375,7 +2369,7 @@ nsFrameLoader::GetRootContentView(nsIContentView** aContentView)
     return NS_OK;
   }
 
-  nsContentView* view = rfp->GetContentView();
+  nsContentView* view = rfp->GetRootContentView();
   NS_ABORT_IF_FALSE(view, "Should always be able to create root scrollable!");
   nsRefPtr<nsIContentView>(view).forget(aContentView);
 

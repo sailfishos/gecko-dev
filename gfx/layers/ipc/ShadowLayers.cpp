@@ -309,10 +309,12 @@ ShadowLayerForwarder::RepositionChild(ShadowableLayer* aContainer,
 
 void
 ShadowLayerForwarder::PaintedTiledLayerBuffer(CompositableClient* aCompositable,
-                                              const SurfaceDescriptorTiles& aTileLayerDescriptor)
+                                              BasicTiledLayerBuffer* aTiledLayerBuffer)
 {
+  if (XRE_GetProcessType() != GeckoProcessType_Default)
+    NS_RUNTIMEABORT("PaintedTiledLayerBuffer must be made IPC safe (not share pointers)");
   mTxn->AddNoSwapPaint(OpPaintTiledLayerBuffer(nullptr, aCompositable->GetIPDLActor(),
-                                               aTileLayerDescriptor));
+                                               uintptr_t(aTiledLayerBuffer)));
 }
 
 void

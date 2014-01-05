@@ -95,6 +95,9 @@ public:
   virtual void SetRenderTarget(CompositingRenderTarget *aSurface) MOZ_OVERRIDE;
   virtual CompositingRenderTarget* GetCurrentRenderTarget() MOZ_OVERRIDE;
 
+  virtual void SetUserRenderTarget(CompositingRenderTarget *aSurface);
+  virtual CompositingRenderTarget* GetUserRenderTarget();
+
   virtual void DrawQuad(const gfx::Rect& aRect, const gfx::Rect& aClipRect,
                         const EffectChain &aEffectChain,
                         gfx::Float aOpacity, const gfx::Matrix4x4 &aTransform,
@@ -215,6 +218,9 @@ private:
 #ifdef DEBUG
   CompositingRenderTargetOGL* mWindowRenderTarget;
 #endif
+
+  /** Currently bound render target */
+  RefPtr<CompositingRenderTargetOGL> mUserRenderTarget;
 
   /** VBO that has some basics in it for a textured quad,
    *  including vertex coords and texcoords for both

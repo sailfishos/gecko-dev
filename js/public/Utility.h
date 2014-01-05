@@ -311,7 +311,7 @@ static JS_INLINE void js_free(void* p)
 JS_DECLARE_NEW_METHODS(js_new, js_malloc, static JS_ALWAYS_INLINE)
 
 template <class T>
-static JS_ALWAYS_INLINE void
+static void
 js_delete(T *p)
 {
     if (p) {

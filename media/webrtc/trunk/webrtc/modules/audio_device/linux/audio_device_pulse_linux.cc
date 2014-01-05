@@ -352,11 +352,13 @@ int32_t AudioDeviceLinuxPulse::Terminate()
         return -1;
     }
 
+#ifdef MOZ_X11
     if (_XDisplay)
     {
       XCloseDisplay(_XDisplay);
       _XDisplay = NULL;
     }
+#endif
 
     _initialized = false;
     _outputDeviceIsSpecified = false;

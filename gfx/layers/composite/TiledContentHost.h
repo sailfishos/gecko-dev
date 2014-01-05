@@ -6,7 +6,9 @@
 #ifndef GFX_TILEDCONTENTHOST_H
 #define GFX_TILEDCONTENTHOST_H
 
-#include <stdint.h>                     // for uint16_t
+#include "ContentHost.h"
+#include "ClientTiledThebesLayer.h" // for BasicTiledLayerBuffer
+#include "mozilla/layers/TextureHost.h"
 #include <stdio.h>                      // for FILE
 #include <algorithm>                    // for swap
 #include "ContentHost.h"                // for ContentHost
@@ -166,14 +168,8 @@ public:
     : ContentHost(aTextureInfo)
     , mPendingUpload(false)
     , mPendingLowPrecisionUpload(false)
-  {
-    MOZ_COUNT_CTOR(TiledContentHost);
-  }
-
-  ~TiledContentHost()
-  {
-    MOZ_COUNT_DTOR(TiledContentHost);
-  }
+  {}
+  ~TiledContentHost();
 
   virtual LayerRenderState GetRenderState() MOZ_OVERRIDE
   {
@@ -194,8 +190,7 @@ public:
     return mLowPrecisionVideoMemoryTiledBuffer.GetValidRegion();
   }
 
-  void PaintedTiledLayerBuffer(ISurfaceAllocator* aAllocator,
-                               const SurfaceDescriptorTiles& aTiledDescriptor);
+  void PaintedTiledLayerBuffer(const BasicTiledLayerBuffer* mTiledBuffer);
 
   // Renders a single given tile.
   void RenderTile(const TiledTexture& aTile,

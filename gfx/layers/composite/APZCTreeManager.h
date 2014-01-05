@@ -65,7 +65,7 @@ struct ScrollableLayerGuid {
   ScrollableLayerGuid(uint64_t aLayersId)
     : mLayersId(aLayersId)
     , mPresShellId(0)
-    , mScrollId(FrameMetrics::ROOT_SCROLL_ID)
+    , mScrollId(FrameMetrics::START_SCROLL_ID)
   {
     MOZ_COUNT_CTOR(ScrollableLayerGuid);
     // TODO: get rid of this constructor once all callers know their

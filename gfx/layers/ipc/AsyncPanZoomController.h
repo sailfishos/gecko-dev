@@ -235,6 +235,11 @@ public:
   void SendAsyncScrollEvent();
 
   /**
+   * Get Difference between layout scroll offset and AZPC layers temp scroll offset
+   */
+  gfxPoint GetTempScrollOffset();
+
+  /**
    * Handler for events which should not be intercepted by the touch listener.
    * Does the work for ReceiveInputEvent().
    */
@@ -265,17 +270,6 @@ public:
    * animation's responsibility to check this before advancing.
    */
   void CancelAnimation();
-
-  /**
-   * Attempt to scroll in response to a touch-move from |aStartPoint| to
-   * |aEndPoint|, which are in our (transformed) screen coordinates.
-   * Due to overscroll handling, there may not actually have been a touch-move
-   * at these points, but this function will scroll as if there had been.
-   * If this attempt causes overscroll (i.e. the layer cannot be scrolled
-   * by the entire amount requested), the overscroll is passed back to the
-   * tree manager via APZCTreeManager::HandleOverscroll().
-   */
-  void AttemptScroll(const ScreenPoint& aStartPoint, const ScreenPoint& aEndPoint);
 
 protected:
   /**

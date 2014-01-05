@@ -3,7 +3,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 EXPORT_LIBRARY = 1
-ifdef MOZ_ENABLE_QTMOBILITY
+ifdef MOZ_ENABLE_QT5GEOPOSITION
 LOCAL_INCLUDES  += $(MOZ_QT_CFLAGS) \
                    -I$(topsrcdir)/dom/src/geolocation \
                    $(NULL)

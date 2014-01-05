@@ -46,10 +46,13 @@ elif CONFIG['OS_ARCH'] == 'SunOS':
     CPP_SOURCES += [
         'nsWifiScannerSolaris.cpp',
     ]
-
-if CONFIG['NECKO_WIFI_DBUS']:
+elif CONFIG['NECKO_WIFI_DBUS']:
     CPP_SOURCES += [
         'nsWifiScannerDBus.cpp',
+    ]
+else:
+    CPP_SOURCES += [
+        'nsWifiScannerDummy.cpp',
     ]
 
 LIBRARY_NAME = 'neckowifi_s'

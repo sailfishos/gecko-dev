@@ -320,6 +320,8 @@ ifeq (qt,$(MOZ_WIDGET_TOOLKIT))
 COMPONENT_LIBS += widget_qt
 endif
 
+STATIC_LIBS += embedlite
+
 ifdef MOZ_ENABLE_XREMOTE
 COMPONENT_LIBS += remoteservice
 endif
@@ -606,6 +608,14 @@ ifeq (cocoa,$(MOZ_WIDGET_TOOLKIT))
 ifdef MOZ_GSTREAMER
 EXTRA_DSO_LDOPTS += $(GSTREAMER_LIBS)
 endif
+endif
+
+ifdef HAS_NEMO_INTERFACE
+EXTRA_DSO_LDOPTS += $(GSTREAMER_LIBS)
+endif
+
+ifdef HAS_NEMO_RESOURCE
+EXTRA_DSO_LDOPTS += $(NEMO_RESOURCE_LIBS)
 endif
 
 # Generate GDB pretty printer-autoload files only on Linux. OSX's GDB is

@@ -5,83 +5,69 @@
 #ifndef GFXCOWSURFACEWRAPPER
 #define GFXCOWSURFACEWRAPPER
 
-#include "gfxImageSurface.h"
+#include "gfxASurface.h"
 #include "nsISupportsImpl.h"
 #include "nsAutoPtr.h"
+#include "mozilla/Atomics.h"
 
+class gfxImageSurface;
 
 /**
- * Provides an interface to implement a cross thread/process wrapper for a
- * gfxImageSurface that has copy-on-write semantics.
+ * Provides a cross thread wrapper for a gfxImageSurface
+ * that has copy-on-write schemantics.
  *
- * Only the owner thread can write to the surface and acquire
- * read locks. Destroying a gfxReusableSurfaceWrapper releases
- * a read lock.
+ * Only the owner thread can write to the surface and aquire
+ * read locks.
  *
  * OMTC Usage:
  * 1) Content creates a writable copy of this surface
- *    wrapper which will be optimized to the same wrapper if there
+ *    wrapper which be optimized to the same wrapper if there
  *    are no readers.
  * 2) The surface is sent from content to the compositor once
- *    or potentially many times, each increasing a read lock.
- * 3) When the compositor receives the surface, it adopts the
- *    read lock.
- * 4) Once the compositor has processed the surface and uploaded
- *    the content, it then releases the read lock by dereferencing
- *    its wrapper.
+ *    or potentially many time, each increasing a read lock.
+ * 3) When the compositor has processed the surface and uploaded
+ *    the content it then releases the read lock.
  */
 class gfxReusableSurfaceWrapper {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(gfxReusableSurfaceWrapper)
 public:
-  virtual ~gfxReusableSurfaceWrapper() {}
-
   /**
-   * Returns a read-only pointer to the image data.
+   * Pass the gfxASurface to the wrapper.
+   * The wrapper should hold the only strong reference
+   * to the surface and its memebers.
    */
-  virtual const unsigned char* GetReadOnlyData() const = 0;
+  gfxReusableSurfaceWrapper(gfxImageSurface* aSurface);
+
+  ~gfxReusableSurfaceWrapper();
+
+  const unsigned char* GetReadOnlyData() const {
+    NS_ABORT_IF_FALSE(mReadCount > 0, "Should have read lock");
+    return mSurfaceData;
+  }
+
+  const gfxASurface::gfxImageFormat& Format() { return mFormat; }
 
   /**
-   * Returns the image surface format.
-   */
-  virtual gfxASurface::gfxImageFormat Format() = 0;
-
-  /**
-   * Returns a writable copy of the image.
+   * Get a writable copy of the image.
    * If necessary this will copy the wrapper. If there are no contention
-   * the same wrapper will be returned. A ReadLock must be held when
-   * calling this function, and calling it will give up this lock.
+   * the same wrapper will be returned.
    */
-  virtual gfxReusableSurfaceWrapper* GetWritable(gfxImageSurface** aSurface) = 0;
+  gfxReusableSurfaceWrapper* GetWritable(gfxImageSurface** aSurface);
 
   /**
    * A read only lock count is recorded, any attempts to
-   * call GetWritable() while this count is greater than one will
+   * call GetWritable() while this count is positive will
    * create a new surface/wrapper pair.
-   *
-   * When a surface's read count falls to zero, its memory will be
-   * deallocated. It is the responsibility of the user to make sure
-   * that all locks are matched with an equal number of unlocks.
    */
-  virtual void ReadLock() = 0;
-  virtual void ReadUnlock() = 0;
+  void ReadLock();
+  void ReadUnlock();
 
-  /**
-   * Types for each implementation of gfxReusableSurfaceWrapper.
-   */
-  enum Type {
-    TYPE_SHARED_IMAGE,
-    TYPE_IMAGE,
-
-    TYPE_MAX
-  };
-
-  /**
-   * Returns a unique ID for each implementation of gfxReusableSurfaceWrapper.
-   */
-  virtual Type GetType() = 0;
-
-protected:
+private:
   NS_DECL_OWNINGTHREAD
+  nsRefPtr<gfxImageSurface>         mSurface;
+  const gfxASurface::gfxImageFormat mFormat;
+  const unsigned char*              mSurfaceData;
+  mozilla::Atomic<int32_t>                           mReadCount;
 };
 
 #endif // GFXCOWSURFACEWRAPPER

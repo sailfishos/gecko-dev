@@ -205,8 +205,8 @@ CompositableParentManager::ReceiveCompositableUpdate(const CompositableOperation
       TiledLayerComposer* tileComposer = compositable->AsTiledLayerComposer();
       NS_ASSERTION(tileComposer, "compositable is not a tile composer");
 
-      const SurfaceDescriptorTiles& tileDesc = op.tileLayerDescriptor();
-      tileComposer->PaintedTiledLayerBuffer(this, tileDesc);
+      BasicTiledLayerBuffer* p = reinterpret_cast<BasicTiledLayerBuffer*>(op.tiledLayerBuffer());
+      tileComposer->PaintedTiledLayerBuffer(p);
       break;
     }
     case CompositableOperation::TOpUseTexture: {
@@ -256,12 +256,15 @@ CompositableParentManager::ReceiveCompositableUpdate(const CompositableOperation
       CompositableHost* compositable = AsCompositable(op);
 
       RefPtr<TextureHost> texture = compositable->GetTextureHost(op.textureID());
-      MOZ_ASSERT(texture);
+      TextureFlags flags = 0;
+      if (texture) {
+        MOZ_ASSERT(texture);
 
-      TextureFlags flags = texture->GetFlags();
+        flags = texture->GetFlags();
 
-      if (flags & TEXTURE_DEALLOCATE_HOST) {
-        texture->DeallocateSharedData();
+        if (flags & TEXTURE_DEALLOCATE_HOST) {
+          texture->DeallocateSharedData();
+        }
       }
 
       compositable->RemoveTextureHost(op.textureID());
@@ -285,14 +288,15 @@ CompositableParentManager::ReceiveCompositableUpdate(const CompositableOperation
       CompositableHost* compositable = AsCompositable(op);
       MOZ_ASSERT(compositable);
       RefPtr<TextureHost> texture = compositable->GetTextureHost(op.textureID());
-      MOZ_ASSERT(texture);
+      if (texture) {
+        MOZ_ASSERT(texture);
 
-      texture->Updated(op.region().type() == MaybeRegion::TnsIntRegion
-                       ? &op.region().get_nsIntRegion()
-                       : nullptr); // no region means invalidate the entire surface
+        texture->Updated(op.region().type() == MaybeRegion::TnsIntRegion
+                         ? &op.region().get_nsIntRegion()
+                         : nullptr); // no region means invalidate the entire surface
 
-
-      compositable->UseTextureHost(texture);
+        compositable->UseTextureHost(texture);
+      }
 
       break;
     }

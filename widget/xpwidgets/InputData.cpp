@@ -15,7 +15,7 @@ namespace mozilla {
 using namespace dom;
 
 MultiTouchInput::MultiTouchInput(const nsTouchEvent& aTouchEvent)
-  : InputData(MULTITOUCH_INPUT, aTouchEvent.time)
+  : InputData(MULTITOUCH_INPUT, aTouchEvent.time, aTouchEvent.modifiers)
 {
   NS_ABORT_IF_FALSE(NS_IsMainThread(),
                     "Can only copy from nsTouchEvent on main thread");
@@ -73,7 +73,7 @@ MultiTouchInput::MultiTouchInput(const nsTouchEvent& aTouchEvent)
 // SingleTouchData. It also sends garbage for the identifier, radius, force
 // and rotation angle.
 MultiTouchInput::MultiTouchInput(const nsMouseEvent& aMouseEvent)
-  : InputData(MULTITOUCH_INPUT, aMouseEvent.time)
+  : InputData(MULTITOUCH_INPUT, aMouseEvent.time, aMouseEvent.modifiers)
 {
   NS_ABORT_IF_FALSE(NS_IsMainThread(),
                     "Can only copy from nsMouseEvent on main thread");

@@ -66,10 +66,11 @@ public:
   void Destroy();
 
   /**
-   * Helper function for getting a non-owning reference to a scrollable.
+   * Helper functions for getting a non-owning reference to a scrollable.
    * @param aId The ID of the frame.
    */
-  nsContentView* GetContentView(ViewID aId = FrameMetrics::ROOT_SCROLL_ID);
+  nsContentView* GetContentView(ViewID aId);
+  nsContentView* GetRootContentView();
 
   void ContentViewScaleChanged(nsContentView* aView);
 
@@ -102,7 +103,8 @@ public:
 
   void ContentReceivedTouch(bool aPreventDefault);
 
-  void UpdateZoomConstraints(bool aAllowZoom,
+  void UpdateZoomConstraints(bool aIsRoot,
+                             bool aAllowZoom,
                              const CSSToScreenScale& aMinZoom,
                              const CSSToScreenScale& aMaxZoom);
 

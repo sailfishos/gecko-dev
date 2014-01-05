@@ -288,7 +288,7 @@ parent:
      * Updates any zoom constraints on the parent and anything tied to it. This
      * is useful for control logic that resides outside of the remote browser.
      */
-    UpdateZoomConstraints(bool aAllowZoom, CSSToScreenScale aMinZoom, CSSToScreenScale aMaxZoom);
+    UpdateZoomConstraints(bool aIsRoot, bool aAllowZoom, CSSToScreenScale aMinZoom, CSSToScreenScale aMaxZoom);
 
     /**
      * Notifies the parent about a scroll event. The pres shell ID and

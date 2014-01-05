@@ -25,10 +25,11 @@ using ::testing::_;
 class MockContentController : public GeckoContentController {
 public:
   MOCK_METHOD1(RequestContentRepaint, void(const FrameMetrics&));
-  MOCK_METHOD1(HandleDoubleTap, void(const CSSIntPoint&));
-  MOCK_METHOD1(HandleSingleTap, void(const CSSIntPoint&));
-  MOCK_METHOD1(HandleLongTap, void(const CSSIntPoint&));
-  MOCK_METHOD3(SendAsyncScrollDOMEvent, void(FrameMetrics::ViewID aScrollId, const CSSRect &aContentRect, const CSSSize &aScrollableSize));
+  MOCK_METHOD2(HandleDoubleTap, void(const CSSIntPoint&, int32_t));
+  MOCK_METHOD2(HandleSingleTap, void(const CSSIntPoint&, int32_t));
+  MOCK_METHOD2(HandleLongTap, void(const CSSIntPoint&, int32_t));
+  MOCK_METHOD2(ScrollUpdate, void(const CSSPoint& aPosition, const float aResolution));
+  MOCK_METHOD3(SendAsyncScrollDOMEvent, void(bool aIsRoot, const CSSRect &aContentRect, const CSSSize &aScrollableSize));
   MOCK_METHOD2(PostDelayedTask, void(Task* aTask, int aDelayMs));
 };
 
@@ -81,7 +82,7 @@ void ApzcPan(AsyncPanZoomController* apzc, int& aTime, int aTouchStartY, int aTo
   MultiTouchInput mti;
   nsEventStatus status;
 
-  mti = MultiTouchInput(MultiTouchInput::MULTITOUCH_START, aTime);
+  mti = MultiTouchInput(MultiTouchInput::MULTITOUCH_START, aTime, 0);
   aTime += TIME_BETWEEN_TOUCH_EVENT;
   // Make sure the move is large enough to not be handled as a tap
   mti.mTouches.AppendElement(SingleTouchData(0, ScreenIntPoint(10, aTouchStartY+OVERCOME_TOUCH_TOLERANCE), ScreenSize(0, 0), 0, 0));
@@ -89,20 +90,20 @@ void ApzcPan(AsyncPanZoomController* apzc, int& aTime, int aTouchStartY, int aTo
   EXPECT_EQ(status, nsEventStatus_eConsumeNoDefault);
   // APZC should be in TOUCHING state
 
-  mti = MultiTouchInput(MultiTouchInput::MULTITOUCH_MOVE, aTime);
+  mti = MultiTouchInput(MultiTouchInput::MULTITOUCH_MOVE, aTime, 0);
   aTime += TIME_BETWEEN_TOUCH_EVENT;
   mti.mTouches.AppendElement(SingleTouchData(0, ScreenIntPoint(10, aTouchStartY), ScreenSize(0, 0), 0, 0));
   status = apzc->HandleInputEvent(mti);
   EXPECT_EQ(status, nsEventStatus_eConsumeNoDefault);
   // APZC should be in PANNING, otherwise status != ConsumeNoDefault
 
-  mti = MultiTouchInput(MultiTouchInput::MULTITOUCH_MOVE, aTime);
+  mti = MultiTouchInput(MultiTouchInput::MULTITOUCH_MOVE, aTime, 0);
   aTime += TIME_BETWEEN_TOUCH_EVENT;
   mti.mTouches.AppendElement(SingleTouchData(0, ScreenIntPoint(10, aTouchEndY), ScreenSize(0, 0), 0, 0));
   status = apzc->HandleInputEvent(mti);
   EXPECT_EQ(status, nsEventStatus_eConsumeNoDefault);
 
-  mti = MultiTouchInput(MultiTouchInput::MULTITOUCH_END, aTime);
+  mti = MultiTouchInput(MultiTouchInput::MULTITOUCH_END, aTime, 0);
   aTime += TIME_BETWEEN_TOUCH_EVENT;
   mti.mTouches.AppendElement(SingleTouchData(0, ScreenIntPoint(10, aTouchEndY), ScreenSize(0, 0), 0, 0));
   status = apzc->HandleInputEvent(mti);
@@ -181,10 +182,10 @@ TEST(AsyncPanZoomController, ComplexTransform) {
   metrics.mResolution = ParentLayerToLayerScale(2);
   metrics.mZoom = CSSToScreenScale(6);
   metrics.mDevPixelsPerCSSPixel = CSSToLayoutDeviceScale(3);
-  metrics.mScrollId = FrameMetrics::ROOT_SCROLL_ID;
+  metrics.mScrollId = FrameMetrics::START_SCROLL_ID;
 
   FrameMetrics childMetrics = metrics;
-  childMetrics.mScrollId = FrameMetrics::START_SCROLL_ID;
+  childMetrics.mScrollId = FrameMetrics::START_SCROLL_ID + 1;
 
   layers[0]->AsContainerLayer()->SetFrameMetrics(metrics);
   layers[1]->AsContainerLayer()->SetFrameMetrics(childMetrics);
@@ -410,7 +411,7 @@ TEST(APZCTreeManager, GetAPZCAtPoint) {
   EXPECT_EQ(gfx3DMatrix(), transformToScreen);
 
   // Now we have a root APZC that will match the page
-  SetScrollableFrameMetrics(root, FrameMetrics::ROOT_SCROLL_ID, mcc);
+  SetScrollableFrameMetrics(root, FrameMetrics::START_SCROLL_ID, mcc);
   manager->UpdatePanZoomControllerTree(nullptr, root, 0, false);
   hit = GetTargetAPZC(manager, ScreenPoint(15, 15), transformToApzc, transformToScreen);
   EXPECT_EQ(root->AsContainerLayer()->GetAsyncPanZoomController(), hit.get());
@@ -419,7 +420,7 @@ TEST(APZCTreeManager, GetAPZCAtPoint) {
   EXPECT_EQ(gfxPoint(15, 15), transformToScreen.Transform(gfxPoint(15, 15)));
 
   // Now we have a sub APZC with a better fit
-  SetScrollableFrameMetrics(layers[3], FrameMetrics::START_SCROLL_ID, mcc);
+  SetScrollableFrameMetrics(layers[3], FrameMetrics::START_SCROLL_ID + 1, mcc);
   manager->UpdatePanZoomControllerTree(nullptr, root, 0, false);
   EXPECT_NE(root->AsContainerLayer()->GetAsyncPanZoomController(), layers[3]->AsContainerLayer()->GetAsyncPanZoomController());
   hit = GetTargetAPZC(manager, ScreenPoint(15, 15), transformToApzc, transformToScreen);
@@ -431,7 +432,7 @@ TEST(APZCTreeManager, GetAPZCAtPoint) {
   // Now test hit testing when we have two scrollable layers
   hit = GetTargetAPZC(manager, ScreenPoint(15, 15), transformToApzc, transformToScreen);
   EXPECT_EQ(layers[3]->AsContainerLayer()->GetAsyncPanZoomController(), hit.get());
-  SetScrollableFrameMetrics(layers[4], FrameMetrics::START_SCROLL_ID + 1, mcc);
+  SetScrollableFrameMetrics(layers[4], FrameMetrics::START_SCROLL_ID + 2, mcc);
   manager->UpdatePanZoomControllerTree(nullptr, root, 0, false);
   hit = GetTargetAPZC(manager, ScreenPoint(15, 15), transformToApzc, transformToScreen);
   EXPECT_EQ(layers[4]->AsContainerLayer()->GetAsyncPanZoomController(), hit.get());

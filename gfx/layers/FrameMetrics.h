@@ -36,7 +36,6 @@ public:
   // We use IDs to identify frames across processes.
   typedef uint64_t ViewID;
   static const ViewID NULL_SCROLL_ID;   // This container layer does not scroll.
-  static const ViewID ROOT_SCROLL_ID;   // This is the root scroll frame.
   static const ViewID START_SCROLL_ID;  // This is the ID that scrolling subframes
                                         // will begin at.
 
@@ -54,6 +53,7 @@ public:
     , mDevPixelsPerCSSPixel(1)
     , mMayHaveTouchListeners(false)
     , mPresShellId(-1)
+    , mIsRoot(false)
   {}
 
   // Default copy ctor and operator= are fine
@@ -71,7 +71,8 @@ public:
            mCumulativeResolution == aOther.mCumulativeResolution &&
            mDevPixelsPerCSSPixel == aOther.mDevPixelsPerCSSPixel &&
            mMayHaveTouchListeners == aOther.mMayHaveTouchListeners &&
-           mPresShellId == aOther.mPresShellId;
+           mPresShellId == aOther.mPresShellId &&
+           mIsRoot == aOther.mIsRoot;
   }
   bool operator!=(const FrameMetrics& aOther) const
   {
@@ -88,7 +89,7 @@ public:
 
   bool IsRootScrollable() const
   {
-    return mScrollId == ROOT_SCROLL_ID;
+    return mIsRoot;
   }
 
   bool IsScrollable() const
@@ -207,8 +208,7 @@ public:
   // not any parents, regardless of parent transforms.
   CSSPoint mScrollOffset;
 
-  // A unique ID assigned to each scrollable frame (unless this is
-  // ROOT_SCROLL_ID, in which case it is not unique).
+  // A unique ID assigned to each scrollable frame.
   ViewID mScrollId;
 
   // The scrollable bounds of a frame. This is determined by reflow.
@@ -257,6 +257,9 @@ public:
   bool mMayHaveTouchListeners;
 
   uint32_t mPresShellId;
+
+  // Whether or not this is the root scroll frame for the root content document.
+  bool mIsRoot;
 };
 
 }

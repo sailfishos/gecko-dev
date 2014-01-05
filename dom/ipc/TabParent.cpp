@@ -488,21 +488,22 @@ TabParent::UpdateFrame(const FrameMetrics& aFrameMetrics)
   }
 }
 
-void TabParent::HandleDoubleTap(const CSSIntPoint& aPoint)
+void TabParent::HandleDoubleTap(const CSSIntPoint& aPoint, int32_t aModifiers)
 {
   if (!mIsDestroyed) {
     unused << SendHandleDoubleTap(aPoint);
   }
 }
 
-void TabParent::HandleSingleTap(const CSSIntPoint& aPoint)
+void TabParent::HandleSingleTap(const CSSIntPoint& aPoint, int32_t aModifiers)
 {
+  // TODO Send the modifier data to TabChild for use in mouse events.
   if (!mIsDestroyed) {
     unused << SendHandleSingleTap(aPoint);
   }
 }
 
-void TabParent::HandleLongTap(const CSSIntPoint& aPoint)
+void TabParent::HandleLongTap(const CSSIntPoint& aPoint, int32_t aModifiers)
 {
   if (!mIsDestroyed) {
     unused << SendHandleLongTap(aPoint);
@@ -1560,12 +1561,13 @@ TabParent::RecvZoomToRect(const CSSRect& aRect)
 }
 
 bool
-TabParent::RecvUpdateZoomConstraints(const bool& aAllowZoom,
+TabParent::RecvUpdateZoomConstraints(const bool& aIsRoot,
+                                     const bool& aAllowZoom,
                                      const CSSToScreenScale& aMinZoom,
                                      const CSSToScreenScale& aMaxZoom)
 {
   if (RenderFrameParent* rfp = GetRenderFrame()) {
-    rfp->UpdateZoomConstraints(aAllowZoom, aMinZoom, aMaxZoom);
+    rfp->UpdateZoomConstraints(aIsRoot, aAllowZoom, aMinZoom, aMaxZoom);
   }
   return true;
 }

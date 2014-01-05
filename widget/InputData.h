@@ -49,6 +49,8 @@ public:
   // platform-specific but it in the case of B2G and Fennec it is since startup.
   uint32_t mTime;
 
+  uint16_t modifiers;
+
   INPUTDATA_AS_CHILD_TYPE(MultiTouchInput, MULTITOUCH_INPUT)
   INPUTDATA_AS_CHILD_TYPE(PinchGestureInput, PINCHGESTURE_INPUT)
   INPUTDATA_AS_CHILD_TYPE(TapGestureInput, TAPGESTURE_INPUT)
@@ -58,9 +60,10 @@ public:
   }
 
 protected:
-  InputData(InputType aInputType, uint32_t aTime)
+  InputData(InputType aInputType, uint32_t aTime, uint16_t aModifiers)
     : mInputType(aInputType),
-      mTime(aTime)
+      mTime(aTime),
+      modifiers(aModifiers)
   {
 
 
@@ -147,8 +150,8 @@ public:
     MULTITOUCH_CANCEL
   };
 
-  MultiTouchInput(MultiTouchType aType, uint32_t aTime)
-    : InputData(MULTITOUCH_INPUT, aTime),
+  MultiTouchInput(MultiTouchType aType, uint32_t aTime, uint16_t aModifiers)
+    : InputData(MULTITOUCH_INPUT, aTime, aModifiers),
       mType(aType)
   {
 
@@ -192,8 +195,9 @@ public:
                     uint32_t aTime,
                     const ScreenPoint& aFocusPoint,
                     float aCurrentSpan,
-                    float aPreviousSpan)
-    : InputData(PINCHGESTURE_INPUT, aTime),
+                    float aPreviousSpan,
+                    uint16_t aModifiers)
+    : InputData(PINCHGESTURE_INPUT, aTime, aModifiers),
       mType(aType),
       mFocusPoint(aFocusPoint),
       mCurrentSpan(aCurrentSpan),
@@ -240,8 +244,11 @@ public:
     TAPGESTURE_CANCEL
   };
 
-  TapGestureInput(TapGestureType aType, uint32_t aTime, const ScreenIntPoint& aPoint)
-    : InputData(TAPGESTURE_INPUT, aTime),
+  TapGestureInput(TapGestureType aType,
+                  uint32_t aTime,
+                  const ScreenIntPoint& aPoint,
+                  uint16_t aModifiers)
+    : InputData(TAPGESTURE_INPUT, aTime, aModifiers),
       mType(aType),
       mPoint(aPoint)
   {

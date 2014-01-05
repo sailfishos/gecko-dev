@@ -60,6 +60,8 @@ public:
     return mInfo.mHasVideo;
   }
 
+  virtual void Suspend();
+
 private:
 
   void ReadAndPushData(guint aLength);

@@ -9,6 +9,8 @@
 #define GET_NATIVE_WINDOW(aWidget) GDK_WINDOW_XID((GdkWindow *) aWidget->GetNativeData(NS_NATIVE_WINDOW))
 #elif defined(MOZ_WIDGET_QT)
 #include <QWidget>
+#include <QGLContext>
+#define GLboolean_defined 1
 #define GET_NATIVE_WINDOW(aWidget) static_cast<QWidget*>(aWidget->GetNativeData(NS_NATIVE_SHELLWIDGET))->winId()
 #endif
 
@@ -130,6 +132,7 @@ GLXLibrary::EnsureInitialized(LibType libType)
         { (PRFuncPtr*) &xSwapBuffersInternal, { "glXSwapBuffers", nullptr } },
         { (PRFuncPtr*) &xQueryVersionInternal, { "glXQueryVersion", nullptr } },
         { (PRFuncPtr*) &xGetCurrentContextInternal, { "glXGetCurrentContext", nullptr } },
+        { (PRFuncPtr*) &xGetCurrentDrawableInternal, { "glXGetCurrentDrawable", nullptr } },
         { (PRFuncPtr*) &xWaitGLInternal, { "glXWaitGL", nullptr } },
         { (PRFuncPtr*) &xWaitXInternal, { "glXWaitX", nullptr } },
         /* functions introduced in GLX 1.1 */
@@ -549,6 +552,15 @@ GLXLibrary::xGetCurrentContext()
     return result;
 }
 
+GLXDrawable
+GLXLibrary::xGetCurrentDrawable()
+{
+    BEFORE_GLX_CALL;
+    GLXDrawable result = xGetCurrentDrawableInternal();
+    AFTER_GLX_CALL;
+    return result;
+}
+
 /* static */ void* 
 GLXLibrary::xGetProcAddress(const char *procName)
 {
@@ -782,6 +794,7 @@ TRY_AGAIN_NO_SHARING:
         error = false;
 
         GLXContext glxContext = shareContext ? shareContext->mContext : nullptr;
+
         if (glx.HasRobustness()) {
             int attrib_list[] = {
                 LOCAL_GL_CONTEXT_FLAGS_ARB, LOCAL_GL_CONTEXT_ROBUST_ACCESS_BIT_ARB,
@@ -841,6 +854,9 @@ TRY_AGAIN_NO_SHARING:
     {
         MarkDestroyed();
 
+        if (mPlatformContext)
+            return;
+
         // see bug 659842 comment 76
 #ifdef DEBUG
         bool success =
@@ -862,6 +878,10 @@ TRY_AGAIN_NO_SHARING:
 
     bool Init()
     {
+        if (mInitialized) {
+            return true;
+        }
+
         MakeCurrent();
         SetupLookupFunction();
         if (!InitWithPrefix("gl", true)) {
@@ -884,6 +904,13 @@ TRY_AGAIN_NO_SHARING:
         //     "glXGetCurrentContext returns client-side information.
         //      It does not make a round trip to the server."
         // I assume that it's not worth using our own TLS slot here.
+        if (mPlatformContext) {
+#ifdef MOZ_WIDGET_QT
+           static_cast<QGLContext*>(mPlatformContext)->makeCurrent();
+           succeeded = true;
+#endif
+        }
+        else
         if (aForce || mGLX->xGetCurrentContext() != mContext) {
             succeeded = mGLX->xMakeCurrent(mDisplay, mDrawable, mContext);
             NS_ASSERTION(succeeded, "Failed to make GL context current!");
@@ -921,6 +948,11 @@ TRY_AGAIN_NO_SHARING:
         return mDoubleBuffered;
     }
 
+    void SetPlatformContext(void* aContext)
+    {
+        mPlatformContext = aContext;
+    }
+
     bool SupportsRobustness()
     {
         return mGLX->HasRobustness();
@@ -928,7 +960,7 @@ TRY_AGAIN_NO_SHARING:
 
     bool SwapBuffers()
     {
-        if (!mDoubleBuffered)
+        if (!mDoubleBuffered || mPlatformContext)
             return false;
         mGLX->xSwapBuffers(mDisplay, mDrawable);
         mGLX->xWaitGL();
@@ -968,7 +1000,8 @@ private:
           mDoubleBuffered(aDoubleBuffered),
           mLibType(libType),
           mGLX(&sGLXLibrary[libType]),
-          mPixmap(aPixmap)
+          mPixmap(aPixmap),
+          mPlatformContext(nullptr)
     {
         MOZ_ASSERT(mGLX);
         // See 899855
@@ -985,6 +1018,7 @@ private:
     GLXLibrary* mGLX;
 
     nsRefPtr<gfxXlibSurface> mPixmap;
+    void* mPlatformContext;
 };
 
 class TextureImageGLX : public TextureImage
@@ -1185,12 +1219,54 @@ AreCompatibleVisuals(Visual *one, Visual *two)
     return true;
 }
 
+static nsRefPtr<GLContext> gGlobalContext[GLXLibrary::LIBS_MAX];
+
+already_AddRefed<GLContext>
+GLContextProviderGLX::CreateForEmbedded(ContextFlags flags)
+{
+    const LibType libType = GLXLibrary::OPENGL_LIB;
+    if (!sDefGLXLib.EnsureInitialized(libType)) {
+        return nullptr;
+    }
+
+    bool doubleBuffered = true;
+    GLXContext glxContext = sDefGLXLib.xGetCurrentContext();
+    if (glxContext) {
+        void* platformContext = glxContext;
+        SurfaceCaps caps = SurfaceCaps::Any();
+        nsRefPtr<GLContextGLX> glContext =
+            new GLContextGLX(caps,
+                             nullptr, // SharedContext
+                             false, // Offscreen
+                             (Display*)DefaultXDisplay(), // Display
+                             (GLXDrawable)sDefGLXLib.xGetCurrentDrawable(),
+                             glxContext,
+                             false, // aDeleteDrawable,
+                             doubleBuffered,
+                             (gfxXlibSurface*)nullptr, // aPixmap
+                             libType);
+
+        glContext->SetPlatformContext(platformContext);
+        if (flags == ContextFlagsGlobal) {
+            gGlobalContext[libType] = glContext;
+            gGlobalContext[libType]->SetIsGlobalSharedContext(true);
+        }
+
+        return glContext.forget();
+    }
+    return nullptr;
+}
+
 already_AddRefed<GLContext>
 GLContextProviderGLX::CreateForWindow(nsIWidget *aWidget)
 {
     const LibType libType = GLXLibrary::OPENGL_LIB;
     if (!sDefGLXLib.EnsureInitialized(libType)) {
         return nullptr;
+    }
+
+    if (aWidget->HasGLContext()) {
+        return CreateForEmbedded();
     }
 
     // Currently, we take whatever Visual the window already has, and
@@ -1441,7 +1517,6 @@ GLContextProviderGLX::GetSharedHandleAsSurface(SharedTextureShareType shareType,
   return nullptr;
 }
 
-static nsRefPtr<GLContext> gGlobalContext[GLXLibrary::LIBS_MAX];
 // TODO move that out of static initializaion
 static bool gUseContextSharing = getenv("MOZ_DISABLE_CONTEXT_SHARING_GLX") == 0;
 

@@ -34,29 +34,31 @@ public:
    * AsyncPanZoomController::ZoomToRect with the dimensions that we want to zoom
    * to.
    */
-  virtual void HandleDoubleTap(const CSSIntPoint& aPoint) = 0;
+  virtual void HandleDoubleTap(const CSSIntPoint& aPoint, int32_t aModifiers) = 0;
 
   /**
    * Requests handling a single tap. |aPoint| is in CSS pixels, relative to the
    * current scroll offset. This should simulate and send to content a mouse
    * button down, then mouse button up at |aPoint|.
    */
-  virtual void HandleSingleTap(const CSSIntPoint& aPoint) = 0;
+  virtual void HandleSingleTap(const CSSIntPoint& aPoint, int32_t aModifiers) = 0;
 
   /**
    * Requests handling a long tap. |aPoint| is in CSS pixels, relative to the
    * current scroll offset.
    */
-  virtual void HandleLongTap(const CSSIntPoint& aPoint) = 0;
+  virtual void HandleLongTap(const CSSIntPoint& aPoint, int32_t aModifiers) = 0;
 
   /**
    * Requests sending a mozbrowserasyncscroll domevent to embedder.
    * |aContentRect| is in CSS pixels, relative to the current cssPage.
    * |aScrollableSize| is the current content width/height in CSS pixels.
    */
-  virtual void SendAsyncScrollDOMEvent(FrameMetrics::ViewID aScrollId,
+  virtual void SendAsyncScrollDOMEvent(bool aIsRoot,
                                        const CSSRect &aContentRect,
                                        const CSSSize &aScrollableSize) = 0;
+
+  virtual void ScrollUpdate(const CSSPoint& aPosition, const float aResolution) = 0;
 
   /**
    * Schedules a runnable to run on the controller/UI thread at some time

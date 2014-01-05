@@ -88,6 +88,8 @@ using namespace QtMobility;
 #include "nsIDOMSimpleGestureEvent.h" //Gesture support
 #include "nsIDOMWheelEvent.h"
 
+#include "GLContext.h"
+
 #ifdef MOZ_X11
 #include "keysym2ucs.h"
 #endif
@@ -440,7 +442,7 @@ nsWindow::ClearCachedResources()
 {
     if (mLayerManager &&
         mLayerManager->GetBackendType() == mozilla::layers::LAYERS_BASIC) {
-        statimLayerManager->ClearCachedResources();
+        mLayerManager->ClearCachedResources();
     }
     for (nsIWidget* kid = mFirstChild; kid; ) {
         nsIWidget* next = kid->GetNextSibling();

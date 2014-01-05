@@ -54,6 +54,12 @@ public:
   void StartTouch(int32_t aPos);
 
   /**
+   * Mark this Axis as locked, i.e. user's input along this axis gets ignored,
+   * and reset velocity and acceleration for this axis.
+   */
+  void Lock();
+
+  /**
    * Notify this Axis that a touch has ended gracefully. This may perform
    * recalculations of the axis velocity.
    */
@@ -68,14 +74,16 @@ public:
   void CancelTouch();
 
   /**
-   * Takes a requested displacement to the position of this axis, and adjusts
-   * it to account for acceleration  (which might increase the displacement)
-   * and overscroll (which might decrease the displacement; this is to prevent
-   * the viewport from overscrolling the page rect). If overscroll ocurred,
-   * its amount is written to |aOverscrollAmountOut|.
-   * The adjusted displacement is returned.
+   * Gets displacement that should have happened since the previous touch.
+   * Note: Does not reset the displacement. It gets recalculated on the next
+   * UpdateWithTouchAtDevicePoint(), however it is not safe to assume this will
+   * be the same on every call. This also checks for page boundaries and will
+   * return an adjusted displacement to prevent the viewport from overscrolling
+   * the page rect. An example of where this might matter is when you call it,
+   * apply a displacement that takes you to the boundary of the page, then call
+   * it again. The result will be different in this case.
    */
-  float AdjustDisplacement(float aDisplacement, float& aOverscrollAmountOut);
+  float GetDisplacementForDuration(float aScale, const TimeDuration& aDelta);
 
   /**
    * Gets the distance between the starting position of the touch supplied in
@@ -168,8 +176,6 @@ public:
   float GetCompositionEnd();
   float GetPageEnd();
 
-  int32_t GetPos() const { return mPos; }
-
   virtual float GetPointOffset(const CSSPoint& aPoint) = 0;
   virtual float GetRectLength(const CSSRect& aRect) = 0;
   virtual float GetRectOffset(const CSSRect& aRect) = 0;
@@ -184,8 +190,10 @@ protected:
   // they are flinging multiple times in a row very quickly, probably trying to
   // reach one of the extremes of the page.
   int32_t mAcceleration;
+  int32_t mLastPos;
   AsyncPanZoomController* mAsyncPanZoomController;
   nsTArray<float> mVelocityQueue;
+  bool mLocked;
 };
 
 class AxisX : public Axis {

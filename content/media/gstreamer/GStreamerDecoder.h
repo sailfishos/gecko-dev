@@ -12,12 +12,20 @@
 
 namespace mozilla {
 
+class GStreamerReader;
+
 class GStreamerDecoder : public MediaDecoder
 {
 public:
   virtual MediaDecoder* Clone() { return new GStreamerDecoder(); }
   virtual MediaDecoderStateMachine* CreateStateMachine();
   static bool CanHandleMediaType(const nsACString& aMIMEType, const nsAString* aCodecs);
+  virtual nsresult Load(nsIStreamListener** aListener,
+                        MediaDecoder* aCloneDonor) MOZ_OVERRIDE;
+  virtual void ReleaseStateMachine();
+  void Suspend() MOZ_OVERRIDE;
+private:
+  GStreamerReader* mReader;
 };
 
 } // namespace mozilla

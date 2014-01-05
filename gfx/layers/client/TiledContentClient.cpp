@@ -4,6 +4,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/layers/TiledContentClient.h"
+#include "mozilla/gfx/2D.h"
+#include "mozilla/MathAlgorithms.h"
+#include "ClientTiledThebesLayer.h"
 #include <math.h>                       // for ceil, ceilf, floor
 #include "ClientTiledThebesLayer.h"     // for ClientTiledThebesLayer
 #include "GeckoProfiler.h"              // for PROFILER_LABEL
@@ -19,7 +22,6 @@
 #include "nsDebug.h"                    // for NS_ASSERTION
 #include "nsISupportsImpl.h"            // for gfxContext::AddRef, etc
 #include "nsSize.h"                     // for nsIntSize
-#include "gfxReusableSharedImageSurfaceWrapper.h"
 
 #ifdef GFX_TILEDLAYER_DEBUG_OVERLAY
 #include "cairo.h"
@@ -86,16 +88,17 @@ TiledContentClient::TiledContentClient(ClientTiledThebesLayer* aThebesLayer,
 void
 TiledContentClient::LockCopyAndWrite(TiledBufferType aType)
 {
+  // Create a heap copy owned and released by the compositor. This is needed
+  // since we're sending this over an async message and content needs to be
+  // be able to modify the tiled buffer in the next transaction.
+  // TODO: Remove me once Bug 747811 lands.
   BasicTiledLayerBuffer* buffer = aType == LOW_PRECISION_TILED_BUFFER
     ? &mLowPrecisionTiledBuffer
     : &mTiledBuffer;
 
-  // Take an extra ReadLock on behalf of the TiledContentHost. This extra
-  // reference will be adopted when the descriptor is opened by
-  // BasicTiledLayerTile::OpenDescriptor.
+  BasicTiledLayerBuffer* heapCopy = new BasicTiledLayerBuffer(buffer->DeepCopy());
   buffer->ReadLock();
-
-  mForwarder->PaintedTiledLayerBuffer(this, buffer->GetSurfaceDescriptorTiles());
+  mForwarder->PaintedTiledLayerBuffer(this, heapCopy);
   buffer->ClearPaintedRegion();
 }
 
@@ -124,83 +127,6 @@ BasicTiledLayerBuffer::GetContentType() const
   }
 }
 
-
-TileDescriptor
-BasicTiledLayerTile::GetTileDescriptor()
-{
-  gfxReusableSurfaceWrapper* surface = GetSurface();
-  switch (surface->GetType()) {
-  case gfxReusableSurfaceWrapper::TYPE_IMAGE :
-    return BasicTileDescriptor(uintptr_t(surface));
-
-  case gfxReusableSurfaceWrapper::TYPE_SHARED_IMAGE :
-    return BasicShmTileDescriptor(static_cast<gfxReusableSharedImageSurfaceWrapper*>(surface)->GetShmem());
-
-  default :
-    NS_NOTREACHED("Unhandled gfxReusableSurfaceWrapper type");
-    return PlaceholderTileDescriptor();
-  }
-}
-
-
-/* static */ BasicTiledLayerTile
-BasicTiledLayerTile::OpenDescriptor(ISurfaceAllocator *aAllocator, const TileDescriptor& aDesc)
-{
-  switch (aDesc.type()) {
-  case TileDescriptor::TBasicShmTileDescriptor : {
-    nsRefPtr<gfxReusableSurfaceWrapper> surface =
-      gfxReusableSharedImageSurfaceWrapper::Open(
-        aAllocator, aDesc.get_BasicShmTileDescriptor().reusableSurface());
-    return BasicTiledLayerTile(
-      new DeprecatedTextureClientTile(nullptr, TextureInfo(BUFFER_TILED), surface));
-  }
-
-  case TileDescriptor::TBasicTileDescriptor : {
-    nsRefPtr<gfxReusableSurfaceWrapper> surface =
-      reinterpret_cast<gfxReusableSurfaceWrapper*>(
-        aDesc.get_BasicTileDescriptor().reusableSurface());
-    surface->ReadUnlock();
-    return BasicTiledLayerTile(
-      new DeprecatedTextureClientTile(nullptr, TextureInfo(BUFFER_TILED), surface));
-  }
-
-  default :
-    NS_NOTREACHED("Unknown tile descriptor type!");
-    return nullptr;
-  }
-}
-
-SurfaceDescriptorTiles
-BasicTiledLayerBuffer::GetSurfaceDescriptorTiles()
-{
-  InfallibleTArray<TileDescriptor> tiles;
-
-  for (size_t i = 0; i < mRetainedTiles.Length(); i++) {
-    TileDescriptor tileDesc;
-    if (mRetainedTiles.SafeElementAt(i, GetPlaceholderTile()) == GetPlaceholderTile()) {
-      tileDesc = PlaceholderTileDescriptor();
-    } else {
-      tileDesc = mRetainedTiles[i].GetTileDescriptor();
-    }
-    tiles.AppendElement(tileDesc);
-  }
-  return SurfaceDescriptorTiles(mValidRegion, mPaintedRegion,
-                                tiles, mRetainedWidth, mRetainedHeight,
-                                mResolution);
-}
-
-/* static */ BasicTiledLayerBuffer
-BasicTiledLayerBuffer::OpenDescriptor(ISurfaceAllocator *aAllocator,
-                                      const SurfaceDescriptorTiles& aDescriptor)
-{
-  return BasicTiledLayerBuffer(aAllocator,
-                               aDescriptor.validRegion(),
-                               aDescriptor.paintedRegion(),
-                               aDescriptor.tiles(),
-                               aDescriptor.retainedWidth(),
-                               aDescriptor.retainedHeight(),
-                               aDescriptor.resolution());
-}
 
 void
 BasicTiledLayerBuffer::PaintThebes(const nsIntRegion& aNewValidRegion,
@@ -404,7 +330,7 @@ BasicTiledLayerBuffer::ComputeProgressiveUpdateRegion(const nsIntRegion& aInvali
   // first, and see if we should just abort this paint. Aborting is usually
   // caused by there being an incoming, more relevant paint.
   gfx::Rect viewport;
-  float scaleX, scaleY;
+  float scaleX = 1.0, scaleY = 1.0;
   if (mManager->ProgressiveUpdateCallback(!staleRegion.Contains(aInvalidRegion),
                                           viewport,
                                           scaleX, scaleY, !drawingLowPrecision)) {
@@ -551,6 +477,21 @@ BasicTiledLayerBuffer::ProgressiveUpdate(nsIntRegion& aValidRegion,
   // Return false if nothing has been drawn, or give what has been drawn
   // to the shadow layer to upload.
   return isBufferChanged;
+}
+
+BasicTiledLayerBuffer
+BasicTiledLayerBuffer::DeepCopy() const
+{
+  BasicTiledLayerBuffer result = *this;
+
+  for (size_t i = 0; i < result.mRetainedTiles.Length(); i++) {
+    if (result.mRetainedTiles[i].IsPlaceholderTile()) continue;
+
+    result.mRetainedTiles[i].mDeprecatedTextureClient =
+      new DeprecatedTextureClientTile(*result.mRetainedTiles[i].mDeprecatedTextureClient);
+  }
+
+  return result;
 }
 
 }

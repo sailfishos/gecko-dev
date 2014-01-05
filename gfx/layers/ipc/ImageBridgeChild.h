@@ -280,7 +280,7 @@ public:
                           TextureClient* aClient) MOZ_OVERRIDE;
 
   virtual void PaintedTiledLayerBuffer(CompositableClient* aCompositable,
-                                       const SurfaceDescriptorTiles& aTileLayerDescriptor) MOZ_OVERRIDE
+                                       BasicTiledLayerBuffer* aTiledLayerBuffer) MOZ_OVERRIDE
   {
     NS_RUNTIMEABORT("should not be called");
   }

@@ -9,7 +9,7 @@ LOCAL_INCLUDES = \
 		-I$(topsrcdir)/content/events/src \
 		$(NULL)
 
-ifdef MOZ_ENABLE_QTMOBILITY
+ifdef MOZ_ENABLE_QT5GEOPOSITION
 LOCAL_INCLUDES  += $(MOZ_QT_CFLAGS) \
                    -I$(topsrcdir)/dom/system/unix \
                    $(NULL)

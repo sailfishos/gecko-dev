@@ -503,8 +503,6 @@ APZCTreeManager::HandleOverscroll(AsyncPanZoomController* aChild, ScreenPoint aS
   GetInputTransforms(parent, transformToApzc, transformToScreen);
   ApplyTransform(&aStartPoint, transformToApzc);
   ApplyTransform(&aEndPoint, transformToApzc);
-
-  parent->AttemptScroll(aStartPoint, aEndPoint);
 }
 
 already_AddRefed<AsyncPanZoomController>

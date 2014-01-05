@@ -41,6 +41,7 @@
 #include "nsAutoPtr.h"                  // for nsRefPtr
 #include "nsCOMPtr.h"                   // for already_AddRefed
 #include "nsDebug.h"                    // for NS_WARNING
+#include "nsIDOMWindowUtils.h"          // for nsIDOMWindowUtils
 #include "nsEvent.h"
 #include "nsGUIEvent.h"                 // for nsInputEvent, nsTouchEvent, etc
 #include "nsISupportsImpl.h"
@@ -119,6 +120,11 @@ static int gTouchListenerTimeout = 300;
  */
 static int gNumPaintDurationSamples = 3;
 
+/**
+ * Enable kinetic velocity amortization depends on content repaint speed
+ */
+static bool gEnableKineticSpeedAmortization = true;
+
 /** The multiplier we apply to a dimension's length if it is skating. That is,
  * if it's going above sMinSkateSpeed. We prefer to increase the size of the
  * Y axis because it is more natural in the case that a user is reading a page
@@ -135,6 +141,20 @@ static float gYSkateSizeMultiplier = 3.5f;
  */
 static float gXStationarySizeMultiplier = 1.5f;
 static float gYStationarySizeMultiplier = 2.5f;
+
+/** Direction scroll lock ratios.
+ * Since touch events are inaccurate it's difficult to scroll directly up/down
+ * or left/right. These ratios help to lock scroll directions.
+ *
+ * Given a velocity vector is in the first quadrant the vertical scroll
+ * lock ratio equal to 2 means that the velocity angle more than 63 degrees
+ * would lock scrolling to strictly vertical (atan(2) == 63.43 deg).
+ * And the horizontal scroll lock ratio equal to 0.5 means that the velocity
+ * angle less than 26 degrees would lock scrolling to strictly horizontal
+ * (atan(0.5) == 26.57 deg).
+ */
+static float gVerticalScrollLockRatio = 2.0f;
+static float gHorizontalScrollLockRatio = 0.5f;
 
 /**
  * The time period in ms that throttles mozbrowserasyncscroll event.
@@ -189,6 +209,9 @@ AsyncPanZoomController::InitializeGlobalState()
   Preferences::AddFloatVarCache(&gYSkateSizeMultiplier, "gfx.azpc.y_skate_size_multiplier", gYSkateSizeMultiplier);
   Preferences::AddFloatVarCache(&gXStationarySizeMultiplier, "gfx.azpc.x_stationary_size_multiplier", gXStationarySizeMultiplier);
   Preferences::AddFloatVarCache(&gYStationarySizeMultiplier, "gfx.azpc.y_stationary_size_multiplier", gYStationarySizeMultiplier);
+  Preferences::AddBoolVarCache(&gEnableKineticSpeedAmortization, "gfx.azpc.tweak_fling_velocity", gEnableKineticSpeedAmortization);
+  Preferences::AddFloatVarCache(&gVerticalScrollLockRatio, "gfx.azpc.vertical_scroll_lock_ratio", gVerticalScrollLockRatio);
+  Preferences::AddFloatVarCache(&gHorizontalScrollLockRatio, "gfx.azpc.horizontal_scroll_lock_ratio", gHorizontalScrollLockRatio);
   Preferences::AddIntVarCache(&gAsyncScrollThrottleTime, "apzc.asyncscroll.throttle", gAsyncScrollThrottleTime);
   Preferences::AddIntVarCache(&gAsyncScrollTimeout, "apzc.asyncscroll.timeout", gAsyncScrollTimeout);
   Preferences::AddBoolVarCache(&gAsyncZoomDisabled, "apzc.asynczoom.disabled", gAsyncZoomDisabled);
@@ -455,6 +478,13 @@ nsEventStatus AsyncPanZoomController::OnTouchMove(const MultiTouchInput& aEvent)
         return nsEventStatus_eIgnore;
       }
 
+      float ratio(mY.PanDistance() / mX.PanDistance());
+      if (ratio > gVerticalScrollLockRatio) {
+        mX.Lock();
+      } else if (ratio < gHorizontalScrollLockRatio) {
+        mY.Lock();
+      }
+
       StartPanning(aEvent);
 
       return nsEventStatus_eConsumeNoDefault;
@@ -657,7 +687,7 @@ nsEventStatus AsyncPanZoomController::OnLongPress(const TapGestureInput& aEvent)
     ReentrantMonitorAutoEnter lock(mMonitor);
 
     CSSPoint point = WidgetSpaceToCompensatedViewportSpace(aEvent.mPoint, mFrameMetrics.mZoom);
-    controller->HandleLongTap(gfx::RoundedToInt(point));
+    controller->HandleLongTap(gfx::RoundedToInt(point), 0);
     return nsEventStatus_eConsumeNoDefault;
   }
   return nsEventStatus_eIgnore;
@@ -673,7 +703,7 @@ nsEventStatus AsyncPanZoomController::OnSingleTapConfirmed(const TapGestureInput
     ReentrantMonitorAutoEnter lock(mMonitor);
 
     CSSPoint point = WidgetSpaceToCompensatedViewportSpace(aEvent.mPoint, mFrameMetrics.mZoom);
-    controller->HandleSingleTap(gfx::RoundedToInt(point));
+    controller->HandleSingleTap(gfx::RoundedToInt(point), 0);
     return nsEventStatus_eConsumeNoDefault;
   }
   return nsEventStatus_eIgnore;
@@ -686,7 +716,7 @@ nsEventStatus AsyncPanZoomController::OnDoubleTap(const TapGestureInput& aEvent)
 
     if (mAllowZoom) {
       CSSPoint point = WidgetSpaceToCompensatedViewportSpace(aEvent.mPoint, mFrameMetrics.mZoom);
-      controller->HandleDoubleTap(gfx::RoundedToInt(point));
+      controller->HandleDoubleTap(gfx::RoundedToInt(point), 0);
     }
 
     return nsEventStatus_eConsumeNoDefault;
@@ -736,49 +766,7 @@ void AsyncPanZoomController::UpdateWithTouchAtDevicePoint(const MultiTouchInput&
   mY.UpdateWithTouchAtDevicePoint(point.y, timeDelta);
 }
 
-void AsyncPanZoomController::AttemptScroll(const ScreenPoint& aStartPoint,
-                                           const ScreenPoint& aEndPoint) {
-  // "start - end" rather than "end - start" because e.g. moving your finger
-  // down (*positive* direction along y axis) causes the vertical scroll offset
-  // to *decrease* as the page follows your finger.
-  ScreenPoint displacement = aStartPoint - aEndPoint;
-
-  ScreenPoint overscroll;  // will be used outside monitor block
-  {
-    ReentrantMonitorAutoEnter lock(mMonitor);
-
-    CSSToScreenScale zoom = mFrameMetrics.mZoom;
-
-    // Inversely scale the offset by the resolution (when you're zoomed further in,
-    // a larger swipe should move you a shorter distance).
-    CSSPoint cssDisplacement = displacement / zoom;
-
-    CSSPoint cssOverscroll;
-    gfx::Point scrollOffset(mX.AdjustDisplacement(cssDisplacement.x, cssOverscroll.x),
-                            mY.AdjustDisplacement(cssDisplacement.y, cssOverscroll.y));
-    overscroll = cssOverscroll * zoom;
-
-    if (fabs(scrollOffset.x) > EPSILON || fabs(scrollOffset.y) > EPSILON) {
-      ScrollBy(CSSPoint::FromUnknownPoint(scrollOffset));
-      ScheduleComposite();
-
-      TimeDuration timePaintDelta = mPaintThrottler.TimeSinceLastRequest(GetFrameTime());
-      if (timePaintDelta.ToMilliseconds() > gPanRepaintInterval) {
-        RequestContentRepaint();
-      }
-    }
-  }
-
-  if (fabs(overscroll.x) > EPSILON || fabs(overscroll.y) > EPSILON) {
-    // "+ overscroll" rather than "- overscroll" for the same reason as above.
-    mTreeManager->HandleOverscroll(this, aEndPoint + overscroll, aEndPoint);
-  }
-}
-
 void AsyncPanZoomController::TrackTouch(const MultiTouchInput& aEvent) {
-  SingleTouchData& touch = GetFirstSingleTouch(aEvent);
-  ScreenIntPoint prevTouchPoint(mX.GetPos(), mY.GetPos());
-  ScreenIntPoint touchPoint = touch.mScreenPoint;
   TimeDuration timeDelta = TimeDuration().FromMilliseconds(aEvent.mTime - mLastEventTime);
 
   // Probably a duplicate event, just throw it away.
@@ -788,7 +776,32 @@ void AsyncPanZoomController::TrackTouch(const MultiTouchInput& aEvent) {
 
   UpdateWithTouchAtDevicePoint(aEvent);
 
-  AttemptScroll(prevTouchPoint, touchPoint);
+  {
+    ReentrantMonitorAutoEnter lock(mMonitor);
+
+    // We want to inversely scale it because when you're zoomed further in, a
+    // larger swipe should move you a shorter distance.
+    ScreenToCSSScale inverseResolution = mFrameMetrics.mZoom.Inverse();
+
+    if (!gEnableKineticSpeedAmortization) {
+      timeDelta = TimeDuration().FromMilliseconds(0);
+    }
+    gfx::Point displacement(mX.GetDisplacementForDuration(inverseResolution.scale,
+                                                          timeDelta),
+                            mY.GetDisplacementForDuration(inverseResolution.scale,
+                                                          timeDelta));
+    if (fabs(displacement.x) <= EPSILON && fabs(displacement.y) <= EPSILON) {
+      return;
+    }
+
+    ScrollBy(CSSPoint::FromUnknownPoint(displacement));
+    ScheduleComposite();
+
+    TimeDuration timePaintDelta = mPaintThrottler.TimeSinceLastRequest(GetFrameTime());
+    if (timePaintDelta.ToMilliseconds() > gPanRepaintInterval) {
+      RequestContentRepaint();
+    }
+  }
 }
 
 SingleTouchData& AsyncPanZoomController::GetFirstSingleTouch(const MultiTouchInput& aEvent) {
@@ -813,16 +826,13 @@ bool AsyncPanZoomController::DoFling(const TimeDuration& aDelta) {
     return false;
   }
 
-  CSSPoint overscroll; // overscroll is ignored for flings
-  ScreenPoint offset(aDelta.ToMilliseconds() * mX.GetVelocity(),
-                     aDelta.ToMilliseconds() * mY.GetVelocity());
+  // We want to inversely scale it because when you're zoomed further in, a
+  // larger swipe should move you a shorter distance.
+  ScreenToCSSScale inverseResolution = mFrameMetrics.mZoom.Inverse();
 
-  // Inversely scale the offset by the resolution (when you're zoomed further in,
-  // a larger swipe should move you a shorter distance).
-  CSSPoint cssOffset = offset / mFrameMetrics.mZoom;
   ScrollBy(CSSPoint::FromUnknownPoint(gfx::Point(
-    mX.AdjustDisplacement(cssOffset.x, overscroll.x),
-    mY.AdjustDisplacement(cssOffset.y, overscroll.y)
+    mX.GetDisplacementForDuration(inverseResolution.scale, aDelta),
+    mY.GetDisplacementForDuration(inverseResolution.scale, aDelta)
   )));
   TimeDuration timePaintDelta = mPaintThrottler.TimeSinceLastRequest(GetFrameTime());
   if (timePaintDelta.ToMilliseconds() > gFlingRepaintInterval) {
@@ -843,6 +853,10 @@ void AsyncPanZoomController::SetCompositorParent(CompositorParent* aCompositorPa
 
 void AsyncPanZoomController::ScrollBy(const CSSPoint& aOffset) {
   mFrameMetrics.mScrollOffset += aOffset;
+  if (mGeckoContentController) {
+    CSSToScreenScale resolution = mFrameMetrics.mZoom;
+    mGeckoContentController->ScrollUpdate(mFrameMetrics.mScrollOffset, resolution.scale);
+  }
 }
 
 void AsyncPanZoomController::ScaleWithFocus(const CSSToScreenScale& aZoom,
@@ -1064,11 +1078,16 @@ bool AsyncPanZoomController::SampleContentTransformForFrame(const TimeStamp& aSa
     ReentrantMonitorAutoEnter lock(mMonitor);
 
     switch (mState) {
-    case FLING:
+    case FLING: {
       // If a fling is currently happening, apply it now. We can pull
       // the updated metrics afterwards.
-      requestAnimationFrame |= DoFling(aSampleTime - mLastSampleTime);
+      if (gEnableKineticSpeedAmortization) {
+        requestAnimationFrame |= DoFling(aSampleTime - mLastSampleTime);
+      } else {
+        requestAnimationFrame |= DoFling(TimeDuration().FromMilliseconds(16));
+      }
       break;
+    }
     case ANIMATING_ZOOM: {
       double animPosition = (aSampleTime - mAnimationStartTime) / ZOOM_TO_DURATION;
       if (animPosition > 1.0) {
@@ -1421,19 +1440,24 @@ void AsyncPanZoomController::SendAsyncScrollEvent() {
     return;
   }
 
-  FrameMetrics::ViewID scrollId;
+  bool isRoot;
   CSSRect contentRect;
   CSSSize scrollableSize;
+  CSSToScreenScale resolution;
+  CSSPoint scrollOffset;
   {
     ReentrantMonitorAutoEnter lock(mMonitor);
 
-    scrollId = mFrameMetrics.mScrollId;
+    isRoot = mFrameMetrics.mIsRoot;
     scrollableSize = mFrameMetrics.mScrollableRect.Size();
     contentRect = mFrameMetrics.CalculateCompositedRectInCssPixels();
     contentRect.MoveTo(mCurrentAsyncScrollOffset);
+    resolution = mFrameMetrics.mZoom;
+    scrollOffset = mFrameMetrics.mScrollOffset;
   }
 
-  controller->SendAsyncScrollDOMEvent(scrollId, contentRect, scrollableSize);
+  controller->SendAsyncScrollDOMEvent(isRoot, contentRect, scrollableSize);
+  controller->ScrollUpdate(scrollOffset, resolution.scale);
 }
 
 void AsyncPanZoomController::UpdateScrollOffset(const CSSPoint& aScrollOffset)
@@ -1447,6 +1471,17 @@ bool AsyncPanZoomController::Matches(const ScrollableLayerGuid& aGuid)
   // TODO: also check the presShellId, once that is fully propagated
   // everywhere in RenderFrameParent and AndroidJNI.
   return aGuid.mLayersId == mLayersId && aGuid.mScrollId == mFrameMetrics.mScrollId;
+}
+
+gfxPoint
+AsyncPanZoomController::GetTempScrollOffset()
+{
+  CSSPoint diff;
+  {
+    ReentrantMonitorAutoEnter lock(mMonitor);
+    diff = mLastContentPaintMetrics.mScrollOffset - mFrameMetrics.mScrollOffset;
+  }
+  return gfxPoint(diff.x, diff.y);
 }
 
 }
