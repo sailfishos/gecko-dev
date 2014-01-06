@@ -1,4 +1,4 @@
-%define greversion 26.0
+%define greversion 26.0.1
 
 Name:       xulrunner-qt5
 Summary:    XUL runner
@@ -8,6 +8,11 @@ Group:      Applications/Internet
 License:    Mozilla License
 URL:        http://hg.mozilla.org/mozilla-central
 Source0:    %{name}-%{version}.tar.bz2
+Patch0:     add-sailfishos-org-certs.patch
+Patch1:     treat-waiting-pinch-state-as-none-when-single-touch.patch
+Patch2:     avoid-crash-when-mTouches-is-empty.patch
+Patch3:     disable-x11-bits.patch
+Patch4:     tweak-prefs.patch
 BuildRequires:  pkgconfig(Qt5Core)
 BuildRequires:  pkgconfig(Qt5Gui)
 BuildRequires:  pkgconfig(Qt5Network)
@@ -62,6 +67,11 @@ Tests and misc files for xulrunner
 
 %prep
 %setup -q -n %{name}-%{version}
+%patch0 -p1
+%patch1 -p1
+%patch2 -p1
+%patch3 -p1
+%patch4 -p1
 
 %build
 export DONT_POPULATE_VIRTUALENV=1
@@ -94,6 +104,7 @@ echo "ac_add_options --disable-javaxpcom" >> mozconfig
 echo "ac_add_options --disable-crashreporter" >> mozconfig
 echo "ac_add_options --without-x" >> mozconfig
 echo "ac_add_options --with-app-name=%{name}" >> mozconfig
+echo "ac_add_options --disable-webm" >> mozconfig
 export MOZCONFIG=$PWD/mozconfig
 %{__make} -f client.mk build STRIP="/bin/true" %{?jobs:MOZ_MAKE_FLAGS="-j%jobs"}
 

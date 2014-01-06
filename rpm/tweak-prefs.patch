@@ -1,0 +1,28 @@
+diff --git a/embedding/embedlite/embedding.js b/embedding/embedlite/embedding.js
+index dae46f7..d3db202 100644
+--- a/embedding/embedlite/embedding.js
++++ b/embedding/embedlite/embedding.js
+@@ -58,7 +58,7 @@ pref("gfx.azpc.y_skate_size_multiplier", "4.5f");
+ pref("gfx.azpc.y_stationary_size_multiplier", "4.5f");
+ pref("gfx.axis.max_event_acceleration", "12.0f");
+ pref("gfx.axis.acceleration_multiplier", "1.125f");
+-pref("gfx.axis.velocity_multiplier", "0.55f");
++pref("gfx.axis.velocity_multiplier", "1.0f");
+ pref("gfx.axis.fling_friction", "0.00345f");
+ pref("gfx.azpc.min_skate_speed", "10.0f");
+ pref("gfx.azpc.tweak_fling_velocity", false);
+@@ -262,7 +262,7 @@ pref("plugin.default.state", 1);
+ pref("notification.feature.enabled", true);
+ pref("dom.webnotifications.enabled", true);
+ 
+-pref("layers.progressive-paint", true);
++pref("layers.progressive-paint", false);
+ pref("layers.low-precision-buffer", true);
+ pref("layers.low-precision-resolution", 250);
+ 
+@@ -313,3 +313,5 @@ pref("extensions.blocklist.enabled", false);
+ pref("extensions.logging.enabled", true);
+ pref("extensions.strictCompatibility", false);
+ pref("extensions.minCompatibleAppVersion", "11.0");
++
++pref("gfx.axis.fling_stopped_threshold", "0.13f");

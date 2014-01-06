@@ -1,0 +1,13 @@
+diff --git a/gfx/layers/ipc/GestureEventListener.cpp b/gfx/layers/ipc/GestureEventListener.cpp
+index 7e332a2..805f96e 100644
+--- a/gfx/layers/ipc/GestureEventListener.cpp
++++ b/gfx/layers/ipc/GestureEventListener.cpp
+@@ -272,6 +272,8 @@ nsEventStatus GestureEventListener::HandlePinchGestureEvent(const MultiTouchInpu
+     CancelGesture();
+ 
+     rv = nsEventStatus_eConsumeNoDefault;
++  } else if (mState == GESTURE_WAITING_PINCH) {
++    mState = GESTURE_NONE;
+   }
+ 
+   if (aClearTouches) {

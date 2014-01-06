@@ -1,0 +1,14 @@
+diff --git a/gfx/layers/ipc/GestureEventListener.cpp b/gfx/layers/ipc/GestureEventListener.cpp
+index 7e332a2..9a81096 100644
+--- a/gfx/layers/ipc/GestureEventListener.cpp
++++ b/gfx/layers/ipc/GestureEventListener.cpp
+@@ -200,8 +200,7 @@ nsEventStatus GestureEventListener::HandleInputEvent(const InputData& aEvent)
+     // This gets called if there's a touch that has to bail for weird reasons
+     // like pinching and then moving away from the window that the pinch was
+     // started in without letting go of the screen.
+-    HandlePinchGestureEvent(event, true);
+-    break;
++    return HandlePinchGestureEvent(event, true);
+   }
+ 
+   return HandlePinchGestureEvent(event, false);
