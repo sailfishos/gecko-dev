@@ -275,9 +275,6 @@ EmbedLiteViewThreadParent::RecvUpdateScrollOffset(const uint32_t& aPresShellId,
                                   const ViewID& aViewId,
                                   const CSSIntPoint& aScrollOffset)
 {
-  if (mController) {
-    mController->GetManager()->UpdateScrollOffset(ScrollableLayerGuid(mRootLayerTreeId, aPresShellId, 0), aScrollOffset);
-  }
   return true;
 }
 

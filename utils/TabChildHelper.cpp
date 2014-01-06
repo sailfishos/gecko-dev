@@ -293,51 +293,6 @@ TabChildHelper::HandleEvent(nsIDOMEvent* aEvent)
     // This meta data may or may not have been a meta viewport tag. If it was,
     // we should handle it immediately.
     HandlePossibleViewportChange();
-  } else if (eventType.EqualsLiteral("scroll")) {
-    // Handle a scroll event originated from content.
-    nsCOMPtr<nsIDOMEventTarget> target;
-    aEvent->GetTarget(getter_AddRefs(target));
-
-    FrameMetrics::ViewID viewId;
-    uint32_t presShellId;
-
-    nsCOMPtr<nsIContent> content;
-    if (nsCOMPtr<nsIDocument> doc = do_QueryInterface(target))
-      content = doc->GetDocumentElement();
-    else
-      content = do_QueryInterface(target);
-
-    nsCOMPtr<nsIDOMWindowUtils> utils = ::GetDOMWindowUtils(content);
-    utils->GetPresShellId(&presShellId);
-
-    if (!nsLayoutUtils::FindIDFor(content, &viewId))
-      return NS_ERROR_UNEXPECTED;
-
-    nsIScrollableFrame* scrollFrame = nsLayoutUtils::FindScrollableFrameFor(viewId);
-    if (!scrollFrame)
-      return NS_OK;
-
-    CSSIntPoint scrollOffset = scrollFrame->GetScrollPositionCSSPixels();
-
-    if (viewId == mLastMetrics.mScrollId) {
-      // For the root frame, we store the last metrics, including the last
-      // scroll offset, sent by APZC. (This is updated in ProcessUpdateFrame()).
-      // We use this here to avoid sending APZC back a scroll event that
-      // originally came from APZC (besides being unnecessary, the event might
-      // be slightly out of date by the time it reaches APZC).
-      // We should probably do this for subframes, too.
-      if (RoundedToInt(mLastMetrics.mScrollOffset) == scrollOffset) {
-        return NS_OK;
-      }
-
-      // Update the last scroll offset now, otherwise RecvUpdateDimensions()
-      // might trigger a scroll to the old offset before RecvUpdateFrame()
-      // gets a chance to update it.
-      mLastMetrics.mScrollOffset = scrollOffset;
-    }
-
-    // TODO: currently presShellId, viewId are not used in EmbedLiteViewThread
-    mView->SendUpdateScrollOffset(presShellId, viewId, scrollOffset);
   }
 
   return NS_OK;
