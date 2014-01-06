@@ -17,6 +17,8 @@
 #include "mozilla/layers/CompositableForwarder.h"
 #include "mozilla/layers/LayersTypes.h"
 #include "mozilla/layers/TextureClient.h"  // for TextureClient, etc
+#include "mozilla/layers/GrallocTextureClient.h"
+#include "mozilla/layers/TextureClientOGL.h"
 #include "nsAutoPtr.h"                  // for nsRefPtr
 #include "nsDebug.h"                    // for printf_stderr, NS_ASSERTION
 #include "nsXULAppAPI.h"                // for XRE_GetProcessType, etc
@@ -26,12 +28,6 @@
 
 using namespace mozilla::gfx;
 using namespace mozilla::gl;
-
-namespace mozilla {
-namespace gfx {
-class SharedSurface;
-}
-}
 
 namespace mozilla {
 namespace layers {
@@ -44,7 +40,7 @@ CanvasClient::CreateCanvasClient(CanvasClientType aType,
   if (aType == CanvasClientGLContext &&
       aForwarder->GetCompositorBackendType() == LAYERS_OPENGL) {
     aFlags |= TEXTURE_DEALLOCATE_CLIENT;
-    return new DeprecatedCanvasClientSurfaceStream(aForwarder, aFlags);
+    return new CanvasClientSurfaceStream(aForwarder, aFlags);
   }
   if (gfxPlatform::GetPlatform()->UseDeprecatedTextures()) {
     aFlags |= TEXTURE_DEALLOCATE_CLIENT;
@@ -58,7 +54,7 @@ CanvasClient2D::Update(gfx::IntSize aSize, ClientCanvasLayer* aLayer)
 {
   if (mBuffer &&
       (mBuffer->IsImmutable() || mBuffer->GetSize() != aSize)) {
-    RemoveTextureClient(mBuffer);
+    mBuffer->ForceRemove();
     mBuffer = nullptr;
   }
 
@@ -106,12 +102,76 @@ CanvasClient2D::CreateBufferTextureClient(gfx::SurfaceFormat aFormat, TextureFla
                                                        mTextureInfo.mTextureFlags | aFlags);
 }
 
-void
-CanvasClient2D::OnActorDestroy()
+CanvasClientSurfaceStream::CanvasClientSurfaceStream(CompositableForwarder* aLayerForwarder,
+                                                     TextureFlags aFlags)
+  : CanvasClient(aLayerForwarder, aFlags)
 {
-  if (mBuffer) {
-    mBuffer->OnActorDestroy();
+}
+
+void
+CanvasClientSurfaceStream::Update(gfx::IntSize aSize, ClientCanvasLayer* aLayer)
+{
+  GLScreenBuffer* screen = aLayer->mGLContext->Screen();
+  SurfaceStream* stream = screen->Stream();
+
+  bool isCrossProcess = !(XRE_GetProcessType() == GeckoProcessType_Default);
+  bool bufferCreated = false;
+  if (isCrossProcess) {
+#ifdef MOZ_WIDGET_GONK
+    SharedSurface* surf = stream->SwapConsumer();
+    if (!surf) {
+      printf_stderr("surf is null post-SwapConsumer!\n");
+      return;
+    }
+
+    if (surf->Type() != SharedSurfaceType::Gralloc) {
+      printf_stderr("Unexpected non-Gralloc SharedSurface in IPC path!");
+      MOZ_ASSERT(false);
+      return;
+    }
+
+    SharedSurface_Gralloc* grallocSurf = SharedSurface_Gralloc::Cast(surf);
+
+    if (mBuffers.find(surf) == mBuffers.end()) {
+      GrallocTextureClientOGL* grallocTC =
+        new GrallocTextureClientOGL(static_cast<GrallocBufferActor*>(grallocSurf->GetDescriptor().bufferChild()),
+                                                                     grallocSurf->Size(),
+                                                                     mTextureInfo.mTextureFlags);
+
+      mBuffers[surf] = grallocTC;
+      bufferCreated = true;
+    }
+
+    if (bufferCreated && !AddTextureClient(mBuffers[surf])) {
+      mBuffers.erase(surf);
+    }
+
+    if (mBuffers.find(surf) != mBuffers.end()) {
+      GetForwarder()->UseTexture(this, mBuffers[surf]);
+    }
+#else
+    printf_stderr("isCrossProcess, but not MOZ_WIDGET_GONK! Someone needs to write some code!");
+    MOZ_ASSERT(false);
+#endif
+  } else {
+    if (!mBuffer) {
+      StreamTextureClientOGL* textureClient =
+        new StreamTextureClientOGL(mTextureInfo.mTextureFlags);
+      textureClient->InitWith(stream);
+      mBuffer = textureClient;
+      bufferCreated = true;
+    }
+
+    if (bufferCreated && !AddTextureClient(mBuffer)) {
+      mBuffer = nullptr;
+    }
+
+    if (mBuffer) {
+      GetForwarder()->UseTexture(this, mBuffer);
+    }
   }
+
+  aLayer->Painted();
 }
 
 void
@@ -163,14 +223,6 @@ DeprecatedCanvasClient2D::Update(gfx::IntSize aSize, ClientCanvasLayer* aLayer)
   gfxASurface* surface = mDeprecatedTextureClient->LockSurface();
   aLayer->UpdateSurface(surface);
   mDeprecatedTextureClient->Unlock();
-}
-
-void
-DeprecatedCanvasClient2D::OnActorDestroy()
-{
-  if (mDeprecatedTextureClient) {
-    mDeprecatedTextureClient->OnActorDestroy();
-  }
 }
 
 void
@@ -239,14 +291,6 @@ DeprecatedCanvasClientSurfaceStream::Update(gfx::IntSize aSize, ClientCanvasLaye
   }
 
   aLayer->Painted();
-}
-
-void
-DeprecatedCanvasClientSurfaceStream::OnActorDestroy()
-{
-  if (mDeprecatedTextureClient) {
-    mDeprecatedTextureClient->OnActorDestroy();
-  }
 }
 
 }

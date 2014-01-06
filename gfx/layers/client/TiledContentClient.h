@@ -14,7 +14,6 @@
 #include "Units.h"                      // for CSSPoint
 #include "gfx3DMatrix.h"                // for gfx3DMatrix
 #include "gfxTypes.h"
-#include "gfxPoint.h"                   // for gfxSize
 #include "mozilla/Attributes.h"         // for MOZ_OVERRIDE
 #include "mozilla/RefPtr.h"             // for RefPtr
 #include "mozilla/layers/CompositableClient.h"  // for CompositableClient
@@ -252,14 +251,6 @@ public:
   static BasicTiledLayerBuffer OpenDescriptor(ISurfaceAllocator* aAllocator,
                                               const SurfaceDescriptorTiles& aDescriptor);
 
-  void OnActorDestroy()
-  {
-    for (size_t i = 0; i < mRetainedTiles.Length(); i++) {
-      if (mRetainedTiles[i].IsPlaceholderTile()) continue;
-      mRetainedTiles[i].mDeprecatedTextureClient->OnActorDestroy();
-    }
-  }
-
 protected:
   BasicTiledLayerTile ValidateTile(BasicTiledLayerTile aTile,
                                    const nsIntPoint& aTileRect,
@@ -348,12 +339,6 @@ public:
     LOW_PRECISION_TILED_BUFFER
   };
   void LockCopyAndWrite(TiledBufferType aType);
-
-  virtual void OnActorDestroy() MOZ_OVERRIDE
-  {
-    mTiledBuffer.OnActorDestroy();
-    mLowPrecisionTiledBuffer.OnActorDestroy();
-  }
 
 private:
   BasicTiledLayerBuffer mTiledBuffer;

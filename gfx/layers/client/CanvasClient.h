@@ -19,6 +19,12 @@
 #include "mozilla/gfx/Types.h"          // for SurfaceFormat
 
 namespace mozilla {
+namespace gfx {
+class SharedSurface;
+}
+}
+
+namespace mozilla {
 namespace layers {
 
 class ClientCanvasLayer;
@@ -91,9 +97,32 @@ public:
     mBuffer = nullptr;
   }
 
-  virtual void OnActorDestroy() MOZ_OVERRIDE;
+private:
+  RefPtr<TextureClient> mBuffer;
+};
+
+// Used for GL canvases where we don't need to do any readback, i.e., with a
+// GL backend.
+class CanvasClientSurfaceStream : public CanvasClient
+{
+public:
+  CanvasClientSurfaceStream(CompositableForwarder* aLayerForwarder, TextureFlags aFlags);
+
+  TextureInfo GetTextureInfo() const
+  {
+    return TextureInfo(COMPOSITABLE_IMAGE);
+  }
+
+  virtual void Update(gfx::IntSize aSize, ClientCanvasLayer* aLayer) MOZ_OVERRIDE;
+
+  virtual void OnDetach() MOZ_OVERRIDE
+  {
+    mBuffers.clear();
+    mBuffer = nullptr;
+  }
 
 private:
+  std::map<gfx::SharedSurface*, RefPtr<TextureClient> > mBuffers;
   RefPtr<TextureClient> mBuffer;
 };
 
@@ -116,8 +145,6 @@ public:
   {
     mDeprecatedTextureClient->SetDescriptorFromReply(aDescriptor);
   }
-
-  virtual void OnActorDestroy() MOZ_OVERRIDE;
 
 private:
   RefPtr<DeprecatedTextureClient> mDeprecatedTextureClient;
@@ -144,8 +171,6 @@ public:
   {
     mDeprecatedTextureClient->SetDescriptorFromReply(aDescriptor);
   }
-
-  virtual void OnActorDestroy() MOZ_OVERRIDE;
 
 private:
   RefPtr<DeprecatedTextureClient> mDeprecatedTextureClient;
