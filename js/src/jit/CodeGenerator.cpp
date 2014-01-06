@@ -142,8 +142,11 @@ MNewStringObject::templateObj() const {
 }
 
 CodeGenerator::CodeGenerator(MIRGenerator *gen, LIRGraph *graph, MacroAssembler *masm)
-  : CodeGeneratorSpecific(gen, graph, masm),
-    unassociatedScriptCounts_(nullptr)
+  : CodeGeneratorSpecific(gen, graph, masm)
+#ifdef DEBUG
+  , ionScriptLabels_(gen->alloc())
+#endif
+  , unassociatedScriptCounts_(nullptr)
 {
 }
 
@@ -823,11 +826,11 @@ CodeGenerator::emitLambdaInit(const Register &output, const Register &scopeChain
         } s;
         uint32_t word;
     } u;
-    u.s.nargs = info.fun->nargs;
+    u.s.nargs = info.fun->nargs();
     u.s.flags = info.flags & ~JSFunction::EXTENDED;
 
-    JS_STATIC_ASSERT(offsetof(JSFunction, flags) == offsetof(JSFunction, nargs) + 2);
-    masm.store32(Imm32(u.word), Address(output, offsetof(JSFunction, nargs)));
+    JS_ASSERT(JSFunction::offsetOfFlags() == JSFunction::offsetOfNargs() + 2);
+    masm.store32(Imm32(u.word), Address(output, JSFunction::offsetOfNargs()));
     masm.storePtr(ImmGCPtr(info.scriptOrLazyScript),
                   Address(output, JSFunction::offsetOfNativeOrScript()));
     masm.storePtr(scopeChain, Address(output, JSFunction::offsetOfEnvironment()));
@@ -1950,7 +1953,7 @@ CodeGenerator::visitCallGeneric(LCallGeneric *call)
     masm.Push(Imm32(descriptor));
 
     // Check whether the provided arguments satisfy target argc.
-    masm.load16ZeroExtend(Address(calleereg, offsetof(JSFunction, nargs)), nargsreg);
+    masm.load16ZeroExtend(Address(calleereg, JSFunction::offsetOfNargs()), nargsreg);
     masm.cmp32(nargsreg, Imm32(call->numStackArgs()));
     masm.j(Assembler::Above, &thunk);
 
@@ -2042,7 +2045,7 @@ CodeGenerator::visitCallKnown(LCallKnown *call)
     // Native single targets are handled by LCallNative.
     JS_ASSERT(!target->isNative());
     // Missing arguments must have been explicitly appended by the IonBuilder.
-    JS_ASSERT(target->nargs <= call->numStackArgs());
+    JS_ASSERT(target->nargs() <= call->numStackArgs());
 
     JS_ASSERT_IF(call->mir()->isConstructing(), target->isInterpretedConstructor());
 
@@ -2282,11 +2285,11 @@ CodeGenerator::visitApplyArgsGeneric(LApplyArgsGeneric *apply)
 
         // Check whether the provided arguments satisfy target argc.
         if (!apply->hasSingleTarget()) {
-            masm.load16ZeroExtend(Address(calleereg, offsetof(JSFunction, nargs)), copyreg);
+            masm.load16ZeroExtend(Address(calleereg, JSFunction::offsetOfNargs()), copyreg);
             masm.cmp32(argcreg, copyreg);
             masm.j(Assembler::Below, &underflow);
         } else {
-            masm.cmp32(argcreg, Imm32(apply->getSingleTarget()->nargs));
+            masm.cmp32(argcreg, Imm32(apply->getSingleTarget()->nargs()));
             masm.j(Assembler::Below, &underflow);
         }
 
@@ -2878,6 +2881,160 @@ struct ScriptCountBlockState
     }
 };
 
+#ifdef DEBUG
+bool
+CodeGenerator::branchIfInvalidated(Register temp, Label *invalidated)
+{
+    CodeOffsetLabel label = masm.movWithPatch(ImmWord(uintptr_t(-1)), temp);
+    if (!ionScriptLabels_.append(label))
+        return false;
+
+    // If IonScript::refcount != 0, the script has been invalidated.
+    masm.branch32(Assembler::NotEqual,
+                  Address(temp, IonScript::offsetOfRefcount()),
+                  Imm32(0),
+                  invalidated);
+    return true;
+}
+
+bool
+CodeGenerator::emitObjectOrStringResultChecks(LInstruction *lir, MDefinition *mir)
+{
+    if (lir->numDefs() == 0)
+        return true;
+
+    JS_ASSERT(lir->numDefs() == 1);
+    Register output = ToRegister(lir->getDef(0));
+
+    GeneralRegisterSet regs(GeneralRegisterSet::All());
+    regs.take(output);
+
+    Register temp = regs.takeAny();
+    masm.push(temp);
+
+    // Don't check if the script has been invalidated. In that case invalid
+    // types are expected (until we reach the OsiPoint and bailout).
+    Label done;
+    if (!branchIfInvalidated(temp, &done))
+        return false;
+
+    if (mir->type() == MIRType_Object &&
+        mir->resultTypeSet() &&
+        !mir->resultTypeSet()->unknownObject())
+    {
+        // We have a result TypeSet, assert this object is in it.
+        Label miss, ok;
+        if (mir->resultTypeSet()->getObjectCount() > 0)
+            masm.guardObjectType(output, mir->resultTypeSet(), temp, &miss);
+        else
+            masm.jump(&miss);
+        masm.jump(&ok);
+
+        masm.bind(&miss);
+        masm.assumeUnreachable("MIR instruction returned object with unexpected type");
+
+        masm.bind(&ok);
+    }
+
+    // Check that we have a valid GC pointer.
+    if (gen->info().executionMode() != ParallelExecution) {
+        saveVolatile();
+        masm.setupUnalignedABICall(2, temp);
+        masm.loadJSContext(temp);
+        masm.passABIArg(temp);
+        masm.passABIArg(output);
+        masm.callWithABINoProfiling(mir->type() == MIRType_Object
+                                    ? JS_FUNC_TO_DATA_PTR(void *, AssertValidObjectPtr)
+                                    : JS_FUNC_TO_DATA_PTR(void *, AssertValidStringPtr));
+        restoreVolatile();
+    }
+
+    masm.bind(&done);
+    masm.pop(temp);
+    return true;
+}
+
+bool
+CodeGenerator::emitValueResultChecks(LInstruction *lir, MDefinition *mir)
+{
+    if (lir->numDefs() == 0)
+        return true;
+
+    JS_ASSERT(lir->numDefs() == BOX_PIECES);
+    if (!lir->getDef(0)->output()->isRegister())
+        return true;
+
+    ValueOperand output = ToOutValue(lir);
+
+    GeneralRegisterSet regs(GeneralRegisterSet::All());
+    regs.take(output);
+
+    Register temp1 = regs.takeAny();
+    Register temp2 = regs.takeAny();
+    masm.push(temp1);
+    masm.push(temp2);
+
+    // Don't check if the script has been invalidated. In that case invalid
+    // types are expected (until we reach the OsiPoint and bailout).
+    Label done;
+    if (!branchIfInvalidated(temp1, &done))
+        return false;
+
+    if (mir->resultTypeSet() && !mir->resultTypeSet()->unknown()) {
+        // We have a result TypeSet, assert this value is in it.
+        Label miss, ok;
+        masm.guardTypeSet(output, mir->resultTypeSet(), temp1, &miss);
+        masm.jump(&ok);
+
+        masm.bind(&miss);
+        masm.assumeUnreachable("MIR instruction returned value with unexpected type");
+
+        masm.bind(&ok);
+    }
+
+    // Check that we have a valid GC pointer.
+    if (gen->info().executionMode() != ParallelExecution) {
+        saveVolatile();
+
+        masm.pushValue(output);
+        masm.movePtr(StackPointer, temp1);
+
+        masm.setupUnalignedABICall(2, temp2);
+        masm.loadJSContext(temp2);
+        masm.passABIArg(temp2);
+        masm.passABIArg(temp1);
+        masm.callWithABINoProfiling(JS_FUNC_TO_DATA_PTR(void *, AssertValidValue));
+        masm.popValue(output);
+        restoreVolatile();
+    }
+
+    masm.bind(&done);
+    masm.pop(temp2);
+    masm.pop(temp1);
+    return true;
+}
+
+bool
+CodeGenerator::emitDebugResultChecks(LInstruction *ins)
+{
+    // In debug builds, check that LIR instructions return valid values.
+
+    MDefinition *mir = ins->mirRaw();
+    if (!mir)
+        return true;
+
+    switch (mir->type()) {
+      case MIRType_Object:
+      case MIRType_String:
+        return emitObjectOrStringResultChecks(ins, mir);
+      case MIRType_Value:
+        return emitValueResultChecks(ins, mir);
+      default:
+        return true;
+    }
+}
+#endif
+
 bool
 CodeGenerator::generateBody()
 {
@@ -2930,6 +3087,11 @@ CodeGenerator::generateBody()
 
             if (!iter->accept(this))
                 return false;
+
+#ifdef DEBUG
+            if (!emitDebugResultChecks(*iter))
+                return false;
+#endif
         }
         if (masm.oom())
             return false;
@@ -3227,14 +3389,14 @@ CodeGenerator::visitNewCallObject(LNewCallObject *lir)
         ool = oolCallVM(NewCallObjectInfo, lir,
                         (ArgList(), ImmGCPtr(lir->mir()->block()->info().script()),
                                     ImmGCPtr(templateObj->lastProperty()),
-                                    ImmGCPtr(templateObj->hasLazyType() ? nullptr : templateObj->type()),
+                                    ImmGCPtr(templateObj->hasSingletonType() ? nullptr : templateObj->type()),
                                     ToRegister(lir->slots())),
                         StoreRegisterTo(obj));
     } else {
         ool = oolCallVM(NewCallObjectInfo, lir,
                         (ArgList(), ImmGCPtr(lir->mir()->block()->info().script()),
                                     ImmGCPtr(templateObj->lastProperty()),
-                                    ImmGCPtr(templateObj->hasLazyType() ? nullptr : templateObj->type()),
+                                    ImmGCPtr(templateObj->hasSingletonType() ? nullptr : templateObj->type()),
                                     ImmPtr(nullptr)),
                         StoreRegisterTo(obj));
     }
@@ -5903,6 +6065,14 @@ CodeGenerator::link(JSContext *cx, types::CompilerConstraintList *constraints)
         perfSpewer_.writeProfile(script, code, masm);
 #endif
 
+#ifdef DEBUG
+    for (size_t i = 0; i < ionScriptLabels_.length(); i++) {
+        Assembler::patchDataWithValueCheck(CodeLocationLabel(code, ionScriptLabels_[i]),
+                                           ImmPtr(ionScript),
+                                           ImmPtr((void*)-1));
+    }
+#endif
+
     // for generating inline caches during the execution.
     if (runtimeData_.length())
         ionScript->copyRuntimeData(&runtimeData_[0]);
@@ -7239,8 +7409,7 @@ CodeGenerator::emitInstanceOf(LInstruction *ins, JSObject *prototypeObject)
     // out of the loop on Proxy::LazyProto.
 
     // Load the lhs's prototype.
-    masm.loadPtr(Address(objReg, JSObject::offsetOfType()), output);
-    masm.loadPtr(Address(output, offsetof(types::TypeObject, proto)), output);
+    masm.loadObjProto(objReg, output);
 
     Label testLazy;
     {
@@ -7254,14 +7423,13 @@ CodeGenerator::emitInstanceOf(LInstruction *ins, JSObject *prototypeObject)
         masm.jump(&done);
         masm.bind(&notPrototypeObject);
 
-        JS_ASSERT(uintptr_t(Proxy::LazyProto) == 1);
+        JS_ASSERT(uintptr_t(TaggedProto::LazyProto) == 1);
 
         // Test for nullptr or Proxy::LazyProto
         masm.branchPtr(Assembler::BelowOrEqual, output, ImmWord(1), &testLazy);
 
         // Load the current object's prototype.
-        masm.loadPtr(Address(output, JSObject::offsetOfType()), output);
-        masm.loadPtr(Address(output, offsetof(types::TypeObject, proto)), output);
+        masm.loadObjProto(output, output);
 
         masm.jump(&loopPrototypeChain);
     }

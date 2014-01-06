@@ -700,9 +700,7 @@ StartRequest(JSContext *cx)
     } else {
         /* Indicate that a request is running. */
         rt->requestDepth = 1;
-
-        if (rt->activityCallback)
-            rt->activityCallback(rt->activityCallbackArg, true);
+        rt->triggerActivityCallback(true);
     }
 }
 
@@ -718,9 +716,7 @@ StopRequest(JSContext *cx)
     } else {
         rt->conservativeGC.updateForRequestEnd();
         rt->requestDepth = 0;
-
-        if (rt->activityCallback)
-            rt->activityCallback(rt->activityCallbackArg, false);
+        rt->triggerActivityCallback(false);
     }
 }
 #endif /* JS_THREADSAFE */
@@ -4014,7 +4010,7 @@ JS_GetFunctionDisplayId(JSFunction *fun)
 JS_PUBLIC_API(uint16_t)
 JS_GetFunctionArity(JSFunction *fun)
 {
-    return fun->nargs;
+    return fun->nargs();
 }
 
 JS_PUBLIC_API(bool)
@@ -4249,7 +4245,7 @@ struct AutoLastFrameCheck
 # define fast_getc getc
 #endif
 
-typedef Vector<char, 8, TempAllocPolicy> FileContents;
+typedef js::Vector<char, 8, TempAllocPolicy> FileContents;
 
 static bool
 ReadCompleteFile(JSContext *cx, FILE *fp, FileContents &buffer)
@@ -5911,15 +5907,6 @@ JS_ErrorFromException(JSContext *cx, HandleValue value)
     CHECK_REQUEST(cx);
     assertSameCompartment(cx, value);
     return js_ErrorFromException(value);
-}
-
-JS_PUBLIC_API(bool)
-JS_ThrowReportedError(JSContext *cx, const char *message,
-                      JSErrorReport *reportp)
-{
-    AssertHeapIsIdle(cx);
-    return JS_IsRunning(cx) &&
-           js_ErrorToException(cx, message, reportp, nullptr, nullptr);
 }
 
 JS_PUBLIC_API(bool)

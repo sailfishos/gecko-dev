@@ -292,12 +292,12 @@ class MacroAssembler : public MacroAssemblerSpecific
     }
     void loadObjClass(Register objReg, Register dest) {
         loadPtr(Address(objReg, JSObject::offsetOfType()), dest);
-        loadPtr(Address(dest, offsetof(types::TypeObject, clasp)), dest);
+        loadPtr(Address(dest, types::TypeObject::offsetOfClasp()), dest);
     }
     void branchTestObjClass(Condition cond, Register obj, Register scratch, const js::Class *clasp,
                             Label *label) {
         loadPtr(Address(obj, JSObject::offsetOfType()), scratch);
-        branchPtr(cond, Address(scratch, offsetof(types::TypeObject, clasp)), ImmPtr(clasp), label);
+        branchPtr(cond, Address(scratch, types::TypeObject::offsetOfClasp()), ImmPtr(clasp), label);
     }
     void branchTestObjShape(Condition cond, Register obj, const Shape *shape, Label *label) {
         branchPtr(cond, Address(obj, JSObject::offsetOfShape()), ImmGCPtr(shape), label);
@@ -353,7 +353,7 @@ class MacroAssembler : public MacroAssemblerSpecific
 
     void loadObjProto(Register obj, Register dest) {
         loadPtr(Address(obj, JSObject::offsetOfType()), dest);
-        loadPtr(Address(dest, offsetof(types::TypeObject, proto)), dest);
+        loadPtr(Address(dest, types::TypeObject::offsetOfProto()), dest);
     }
 
     void loadStringLength(Register str, Register dest) {
@@ -490,20 +490,20 @@ class MacroAssembler : public MacroAssemblerSpecific
     void branchIfFunctionHasNoScript(Register fun, Label *label) {
         // 16-bit loads are slow and unaligned 32-bit loads may be too so
         // perform an aligned 32-bit load and adjust the bitmask accordingly.
-        JS_STATIC_ASSERT(offsetof(JSFunction, nargs) % sizeof(uint32_t) == 0);
-        JS_STATIC_ASSERT(offsetof(JSFunction, flags) == offsetof(JSFunction, nargs) + 2);
+        JS_ASSERT(JSFunction::offsetOfNargs() % sizeof(uint32_t) == 0);
+        JS_ASSERT(JSFunction::offsetOfFlags() == JSFunction::offsetOfNargs() + 2);
         JS_STATIC_ASSERT(IS_LITTLE_ENDIAN);
-        Address address(fun, offsetof(JSFunction, nargs));
+        Address address(fun, JSFunction::offsetOfNargs());
         uint32_t bit = JSFunction::INTERPRETED << 16;
         branchTest32(Assembler::Zero, address, Imm32(bit), label);
     }
     void branchIfInterpreted(Register fun, Label *label) {
         // 16-bit loads are slow and unaligned 32-bit loads may be too so
         // perform an aligned 32-bit load and adjust the bitmask accordingly.
-        JS_STATIC_ASSERT(offsetof(JSFunction, nargs) % sizeof(uint32_t) == 0);
-        JS_STATIC_ASSERT(offsetof(JSFunction, flags) == offsetof(JSFunction, nargs) + 2);
+        JS_ASSERT(JSFunction::offsetOfNargs() % sizeof(uint32_t) == 0);
+        JS_ASSERT(JSFunction::offsetOfFlags() == JSFunction::offsetOfNargs() + 2);
         JS_STATIC_ASSERT(IS_LITTLE_ENDIAN);
-        Address address(fun, offsetof(JSFunction, nargs));
+        Address address(fun, JSFunction::offsetOfNargs());
         uint32_t bit = JSFunction::INTERPRETED << 16;
         branchTest32(Assembler::NonZero, address, Imm32(bit), label);
     }

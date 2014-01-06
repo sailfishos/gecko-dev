@@ -108,6 +108,7 @@ namespace dom {
 class BarProp;
 class Function;
 class Gamepad;
+class MediaQueryList;
 class Navigator;
 class SpeechSynthesis;
 namespace indexedDB {
@@ -341,7 +342,6 @@ public:
   virtual JSObject *GetGlobalJSObject();
 
   // nsIScriptGlobalObject
-  virtual nsIScriptContext *GetContext();
   JSObject *FastGetGlobalJSObject() const
   {
     return mJSObject;
@@ -528,11 +528,6 @@ public:
   bool ShouldPromptToBlockDialogs();
   // Inner windows only.
   bool DialogsAreBeingAbused();
-
-  // Ask the user if further dialogs should be blocked, if dialogs are currently
-  // being abused. This is used in the cases where we have no modifiable UI to
-  // show, in that case we show a separate dialog to ask this question.
-  bool ConfirmDialogIfNeeded();
 
   // These functions are used for controlling and determining whether dialogs
   // (alert, prompt, confirm) are currently allowed in this window.
@@ -856,8 +851,8 @@ public:
   already_AddRefed<nsICSSDeclaration>
     GetComputedStyle(mozilla::dom::Element& aElt, const nsAString& aPseudoElt,
                      mozilla::ErrorResult& aError);
-  already_AddRefed<nsIDOMMediaQueryList> MatchMedia(const nsAString& aQuery,
-                                                    mozilla::ErrorResult& aError);
+  already_AddRefed<mozilla::dom::MediaQueryList> MatchMedia(const nsAString& aQuery,
+                                                            mozilla::ErrorResult& aError);
   nsScreen* GetScreen(mozilla::ErrorResult& aError);
   void MoveTo(int32_t aXPos, int32_t aYPos, mozilla::ErrorResult& aError);
   void MoveBy(int32_t aXDif, int32_t aYDif, mozilla::ErrorResult& aError);
@@ -1280,9 +1275,6 @@ protected:
   nsresult CloneStorageEvent(const nsAString& aType,
                              nsCOMPtr<nsIDOMStorageEvent>& aEvent);
 
-  // Implements Get{Real,Scriptable}Top.
-  nsresult GetTopImpl(nsIDOMWindow **aWindow, bool aScriptable);
-
   // Outer windows only.
   nsDOMWindowList* GetWindowList();
 
@@ -1320,6 +1312,11 @@ protected:
 
   already_AddRefed<nsIDOMWindow>
     GetContentInternal(mozilla::ErrorResult& aError);
+
+  // Ask the user if further dialogs should be blocked, if dialogs are currently
+  // being abused. This is used in the cases where we have no modifiable UI to
+  // show, in that case we show a separate dialog to ask this question.
+  bool ConfirmDialogIfNeeded();
 
   // When adding new member variables, be careful not to create cycles
   // through JavaScript.  If there is any chance that a member variable

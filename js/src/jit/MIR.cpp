@@ -413,34 +413,41 @@ MDefinition::emptyResultTypeSet() const
 }
 
 MConstant *
-MConstant::New(TempAllocator &alloc, const Value &v)
+MConstant::New(TempAllocator &alloc, const Value &v, types::CompilerConstraintList *constraints)
 {
-    return new(alloc) MConstant(v);
+    return new(alloc) MConstant(v, constraints);
 }
 
 MConstant *
 MConstant::NewAsmJS(TempAllocator &alloc, const Value &v, MIRType type)
 {
-    MConstant *constant = new(alloc) MConstant(v);
+    MConstant *constant = new(alloc) MConstant(v, nullptr);
     constant->setResultType(type);
     return constant;
 }
 
 types::TemporaryTypeSet *
-jit::MakeSingletonTypeSet(JSObject *obj)
+jit::MakeSingletonTypeSet(types::CompilerConstraintList *constraints, JSObject *obj)
 {
-    LifoAlloc *alloc = GetIonContext()->temp->lifoAlloc();
-    return alloc->new_<types::TemporaryTypeSet>(types::Type::ObjectType(obj));
+    // Invalidate when this object's TypeObject gets unknown properties. This
+    // happens for instance when we mutate an object's __proto__, in this case
+    // we want to invalidate and mark this TypeSet as containing AnyObject
+    // (because mutating __proto__ will change an object's TypeObject).
+    JS_ASSERT(constraints);
+    types::TypeObjectKey *objType = types::TypeObjectKey::get(obj);
+    objType->hasFlags(constraints, types::OBJECT_FLAG_UNKNOWN_PROPERTIES);
+
+    return GetIonContext()->temp->lifoAlloc()->new_<types::TemporaryTypeSet>(types::Type::ObjectType(obj));
 }
 
-MConstant::MConstant(const js::Value &vp)
+MConstant::MConstant(const js::Value &vp, types::CompilerConstraintList *constraints)
   : value_(vp)
 {
     setResultType(MIRTypeFromValue(vp));
     if (vp.isObject()) {
         // Create a singleton type set for the object. This isn't necessary for
         // other types as the result type encodes all needed information.
-        setResultTypeSet(MakeSingletonTypeSet(&vp.toObject()));
+        setResultTypeSet(MakeSingletonTypeSet(constraints, &vp.toObject()));
     }
 
     setMovable();
@@ -2922,7 +2929,13 @@ jit::PropertyReadNeedsTypeBarrier(JSContext *propertycx,
     // If this access has never executed, try to add types to the observed set
     // according to any property which exists on the object or its prototype.
     if (updateObserved && observed->empty() && name) {
-        JSObject *obj = object->singleton() ? object->singleton() : object->proto().toObjectOrNull();
+        JSObject *obj;
+        if (object->singleton())
+            obj = object->singleton();
+        else if (object->hasTenuredProto())
+            obj = object->proto().toObjectOrNull();
+        else
+            obj = nullptr;
 
         while (obj) {
             if (!obj->getClass()->isNative())
@@ -2946,6 +2959,8 @@ jit::PropertyReadNeedsTypeBarrier(JSContext *propertycx,
                 }
             }
 
+            if (!obj->hasTenuredProto())
+                break;
             obj = obj->getProto();
         }
     }
@@ -2997,7 +3012,11 @@ jit::PropertyReadOnPrototypeNeedsTypeBarrier(types::CompilerConstraintList *cons
         types::TypeObjectKey *object = types->getObject(i);
         if (!object)
             continue;
-        while (object->proto().isObject()) {
+        while (true) {
+            if (!object->hasTenuredProto())
+                return true;
+            if (!object->proto().isObject())
+                break;
             object = types::TypeObjectKey::get(object->proto().toObject());
             if (PropertyReadNeedsTypeBarrier(constraints, object, name, observed))
                 return true;

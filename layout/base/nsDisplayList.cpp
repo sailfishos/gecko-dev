@@ -630,6 +630,13 @@ static void RecordFrameMetrics(nsIFrame* aForFrame,
     metrics.mScrollableRect = CSSRect::FromAppUnits(contentBounds);
     nsPoint scrollPosition = scrollableFrame->GetScrollPosition();
     metrics.mScrollOffset = CSSPoint::FromAppUnits(scrollPosition);
+
+    // If the frame was scrolled since the last layers update, and by
+    // something other than the APZ code, we want to tell the APZ to update
+    // its scroll offset.
+    nsIAtom* originOfLastScroll = scrollableFrame->OriginOfLastScroll();
+    metrics.mUpdateScrollOffset = (originOfLastScroll && originOfLastScroll != nsGkAtoms::apz);
+    scrollableFrame->ResetOriginOfLastScroll();
   }
   else {
     nsRect contentBounds = aForFrame->GetRect();
@@ -1205,8 +1212,21 @@ void nsDisplayList::PaintForFrame(nsDisplayListBuilder* aBuilder,
   layerManager->SetRoot(root);
   layerBuilder->WillEndTransaction();
   bool temp = aBuilder->SetIsCompositingCheap(layerManager->IsCompositingCheap());
+  LayerManager::EndTransactionFlags flags = LayerManager::END_DEFAULT;
+  if (layerManager->NeedsWidgetInvalidation()) {
+    if (aFlags & PAINT_NO_COMPOSITE) {
+      flags = LayerManager::END_NO_COMPOSITE;
+    }
+  } else {
+    // Client layer managers never composite directly, so
+    // we don't need to worry about END_NO_COMPOSITE.
+    if (aBuilder->WillComputePluginGeometry()) {
+      flags = LayerManager::END_NO_REMOTE_COMPOSITE;
+    }
+  }
+
   layerManager->EndTransaction(FrameLayerBuilder::DrawThebesLayer,
-                               aBuilder, (aFlags & PAINT_NO_COMPOSITE) ? LayerManager::END_NO_COMPOSITE : LayerManager::END_DEFAULT);
+                               aBuilder, flags);
   aBuilder->SetIsCompositingCheap(temp);
   layerBuilder->DidEndTransaction();
 
