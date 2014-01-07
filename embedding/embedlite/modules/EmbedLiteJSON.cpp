@@ -190,11 +190,6 @@ static bool SetPropFromVariant(nsIProperty* aProp, JSContext* aCx, JSObject* aOb
   aProp->GetValue(getter_AddRefs(aVariant));
   aProp->GetName(name);
 
-  XPCCallContext ccx(NATIVE_CALLER, aCx);
-  if (!ccx.IsValid()) {
-    return false;
-  }
-
   if (!xpc_qsVariantToJsval(aCx, aVariant, &rval)) {
     NS_ERROR("Failed to convert nsIVariant to jsval");
     return false;
