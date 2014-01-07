@@ -496,10 +496,6 @@ EmbedLiteViewThreadParent::SetViewSize(int width, int height)
   LOGT("sz[%i,%i]", width, height);
   mViewSize = ScreenIntSize(width, height);
   unused << SendSetViewSize(gfxSize(width, height));
-  if (mController) {
-    const ScreenIntRect r(ScreenIntPoint(), mViewSize);
-    mController->GetManager()->UpdateRootCompositionBounds(mRootLayerTreeId, r);
-  }
 }
 
 bool

@@ -13,3 +13,4 @@ SIMPLE_PROGRAMS += [
     "embedLiteCoreInitTest%s" % (CONFIG['BIN_SUFFIX']),
     "embedLiteViewInitTest%s" % (CONFIG['BIN_SUFFIX']),
 ]
+
