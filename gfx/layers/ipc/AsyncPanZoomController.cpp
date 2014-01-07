@@ -53,6 +53,22 @@
 #include "nsThreadUtils.h"              // for NS_IsMainThread
 #include "nsTraceRefcnt.h"              // for MOZ_COUNT_CTOR, etc
 
+
+#define APZC_LOG(...)
+// #define APZC_LOG(...) printf_stderr("APZC: " __VA_ARGS__)
+#define APZC_LOG_FM(fm, prefix, ...) \
+  APZC_LOG(prefix ":" \
+           " i=(%ld %lld) cb=(%d %d %d %d) dp=(%.3f %.3f %.3f %.3f) v=(%.3f %.3f %.3f %.3f) " \
+           "s=(%.3f %.3f) sr=(%.3f %.3f %.3f %.3f) z=(%.3f %.3f %.3f %.3f)\n", \
+           __VA_ARGS__, \
+           fm.mPresShellId, fm.mScrollId, \
+           fm.mCompositionBounds.x, fm.mCompositionBounds.y, fm.mCompositionBounds.width, fm.mCompositionBounds.height, \
+           fm.mDisplayPort.x, fm.mDisplayPort.y, fm.mDisplayPort.width, fm.mDisplayPort.height, \
+           fm.mViewport.x, fm.mViewport.y, fm.mViewport.width, fm.mViewport.height, \
+           fm.mScrollOffset.x, fm.mScrollOffset.y, \
+           fm.mScrollableRect.x, fm.mScrollableRect.y, fm.mScrollableRect.width, fm.mScrollableRect.height, \
+           fm.mDevPixelsPerCSSPixel.scale, fm.mResolution.scale, fm.mCumulativeResolution.scale, fm.mZoom.scale); \
+
 using namespace mozilla::css;
 
 namespace mozilla {
@@ -1181,6 +1197,9 @@ ViewTransform AsyncPanZoomController::GetCurrentAsyncTransform() {
 void AsyncPanZoomController::NotifyLayersUpdated(const FrameMetrics& aLayerMetrics, bool aIsFirstPaint) {
   ReentrantMonitorAutoEnter lock(mMonitor);
 
+  APZC_LOG_FM(aLayerMetrics, "%p got a NotifyLayersUpdated with aIsFirstPaint=%d aIsDefault=%d", this, aIsFirstPaint, isDefault);
+  APZC_LOG_FM(mFrameMetrics, "%p got a NotifyLayersUpdated current mFrameMetrics", this);
+
   mLastContentPaintMetrics = aLayerMetrics;
 
   bool isDefault = mFrameMetrics.IsDefault();
@@ -1195,7 +1214,11 @@ void AsyncPanZoomController::NotifyLayersUpdated(const FrameMetrics& aLayerMetri
     CSSToScreenScale previousResolution = mFrameMetrics.CalculateIntrinsicScale();
     mFrameMetrics.mViewport = aLayerMetrics.mViewport;
     CSSToScreenScale newResolution = mFrameMetrics.CalculateIntrinsicScale();
-    if (previousResolution != newResolution) {
+    if (mFrameMetrics.mViewport.width != aLayerMetrics.mViewport.width) {
+      mFrameMetrics.mDisplayPort = aLayerMetrics.mDisplayPort;
+      mFrameMetrics.mZoom.scale = aLayerMetrics.mZoom.scale;
+      needContentRepaint = true;
+    } else if (previousResolution != newResolution) {
       needContentRepaint = true;
       mFrameMetrics.mZoom.scale *= newResolution.scale / previousResolution.scale;
     }
@@ -1212,6 +1235,10 @@ void AsyncPanZoomController::NotifyLayersUpdated(const FrameMetrics& aLayerMetri
     mState = NOTHING;
   } else if (!mFrameMetrics.mScrollableRect.IsEqualEdges(aLayerMetrics.mScrollableRect)) {
     mFrameMetrics.mScrollableRect = aLayerMetrics.mScrollableRect;
+    mFrameMetrics.mCompositionBounds = aLayerMetrics.mCompositionBounds;
+    mFrameMetrics.mResolution = aLayerMetrics.mResolution;
+    mFrameMetrics.mCumulativeResolution = aLayerMetrics.mCumulativeResolution;
+    APZC_LOG_FM(mFrameMetrics, "%p NotifyLayersUpdated copy some things into local framemetrics, needContentRepaint=%d\n", this, needContentRepaint);
   }
 
   if (needContentRepaint) {
