@@ -275,6 +275,10 @@ EmbedLiteViewThreadParent::RecvUpdateScrollOffset(const uint32_t& aPresShellId,
                                   const ViewID& aViewId,
                                   const CSSIntPoint& aScrollOffset)
 {
+  if (mController) {
+    // TODO: currently aPresShelId and aViewId aren't used (But they're used in TabChild to dispatch many APZCs).
+    mController->GetManager()->UpdateScrollOffset(ScrollableLayerGuid(mRootLayerTreeId, 0, 0), aScrollOffset);
+  }
   return true;
 }
 
