@@ -620,6 +620,16 @@ APZCTreeManager::UpdateZoomConstraintsRecursively(AsyncPanZoomController* aApzc,
 }
 
 void
+APZCTreeManager::UpdateScrollOffset(const ScrollableLayerGuid& aGuid,
+                                    const CSSPoint& aScrollOffset)
+{
+  nsRefPtr<AsyncPanZoomController> apzc = GetTargetAPZC(aGuid);
+  if (apzc) {
+    apzc->UpdateScrollOffset(aScrollOffset);
+  }
+}
+
+void
 APZCTreeManager::CancelAnimation(const ScrollableLayerGuid &aGuid)
 {
   nsRefPtr<AsyncPanZoomController> apzc = GetTargetAPZC(aGuid);
