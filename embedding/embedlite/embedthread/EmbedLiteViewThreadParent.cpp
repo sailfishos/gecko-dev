@@ -271,14 +271,6 @@ EmbedLiteViewThreadParent::RecvUpdateZoomConstraints(const bool& aAllowZoom, con
 }
 
 bool
-EmbedLiteViewThreadParent::RecvUpdateScrollOffset(const uint32_t& aPresShellId,
-                                  const ViewID& aViewId,
-                                  const CSSIntPoint& aScrollOffset)
-{
-  return true;
-}
-
-bool
 EmbedLiteViewThreadParent::RecvZoomToRect(const CSSRect& aRect)
 {
   if (mController) {

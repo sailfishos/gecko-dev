@@ -80,13 +80,6 @@ parent:
     async OnTitleChanged(nsString aTitle);
     UpdateZoomConstraints(bool aAllowZoom, float aMinZoom, float aMaxZoom);
 
-    /**
-      * Notifies the parent about a scroll event. The pres shell ID and
-      * view ID identify which scrollable (sub-)frame was scrolled, and
-      * the new scroll offset for that frame is sent.
-      */
-    UpdateScrollOffset(uint32_t aPresShellId, ViewID aViewId, CSSIntPoint aScrollOffset);
-
     ZoomToRect(CSSRect aRect);
     async SetBackgroundColor(nscolor color);
     ContentReceivedTouch(bool aPreventDefault);

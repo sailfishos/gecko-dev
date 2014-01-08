@@ -30,6 +30,7 @@
 #include "nsView.h"
 #include "nsLayoutUtils.h"
 #include "nsIDocumentInlines.h"
+#include "APZCCallbackHelper.h"
 
 static const char BEFORE_FIRST_PAINT[] = "before-first-paint";
 static const char CANCEL_DEFAULT_PAN_ZOOM[] = "cancel-default-pan-zoom";
@@ -41,33 +42,11 @@ using namespace mozilla;
 using namespace mozilla::embedlite;
 using namespace mozilla::layers;
 using namespace mozilla::dom;
+using namespace mozilla::widget;
 
 static const CSSSize kDefaultViewportSize(980, 480);
 
 static bool sPostAZPCAsJsonViewport(false);
-
-// Get the DOMWindowUtils for the window corresponding to the given document.
-static already_AddRefed<nsIDOMWindowUtils> GetDOMWindowUtils(nsIDocument* doc)
-{
-  nsCOMPtr<nsIDOMWindowUtils> utils;
-  nsCOMPtr<nsIDOMWindow> window = doc->GetDefaultView();
-  if (window) {
-    utils = do_GetInterface(window);
-  }
-  return utils.forget();
-}
-
-// Get the DOMWindowUtils for the window corresponding to the givent content
-// element. This might be an iframe inside the tab, for instance.
-static already_AddRefed<nsIDOMWindowUtils> GetDOMWindowUtils(nsIContent* content)
-{
-  nsCOMPtr<nsIDOMWindowUtils> utils;
-  nsIDocument* doc = content->GetCurrentDoc();
-  if (doc) {
-    utils = GetDOMWindowUtils(doc);
-  }
-  return utils.forget();
-}
 
 TabChildHelper::TabChildHelper(EmbedLiteViewThreadChild* aView)
   : mView(aView)
@@ -253,21 +232,21 @@ TabChildHelper::Observe(nsISupports* aSubject,
         // Calculate a really simple resolution that we probably won't
         // be keeping, as well as putting the scroll offset back to
         // the top-left of the page.
-        mLastMetrics.mViewport = CSSRect(CSSPoint(), kDefaultViewportSize);
-        mLastMetrics.mCompositionBounds = ScreenIntRect(ScreenIntPoint(), mInnerSize);
-        mLastMetrics.mZoom = mLastMetrics.CalculateIntrinsicScale();
-        mLastMetrics.mDevPixelsPerCSSPixel = CSSToLayoutDeviceScale(mView->mWidget->GetDefaultScale());
+        mLastRootMetrics.mViewport = CSSRect(CSSPoint(), kDefaultViewportSize);
+        mLastRootMetrics.mCompositionBounds = ScreenIntRect(ScreenIntPoint(), mInnerSize);
+        mLastRootMetrics.mZoom = mLastRootMetrics.CalculateIntrinsicScale();
+        mLastRootMetrics.mDevPixelsPerCSSPixel = mView->mWidget->GetDefaultScale();
         // We use ScreenToLayerScale(1) below in order to turn the
         // async zoom amount into the gecko zoom amount.
-        mLastMetrics.mCumulativeResolution =
-          mLastMetrics.mZoom / mLastMetrics.mDevPixelsPerCSSPixel * ScreenToLayerScale(1);
+        mLastRootMetrics.mCumulativeResolution =
+          mLastRootMetrics.mZoom / mLastRootMetrics.mDevPixelsPerCSSPixel * ScreenToLayerScale(1);
         // This is the root layer, so the cumulative resolution is the same
         // as the resolution.
-        mLastMetrics.mResolution = mLastMetrics.mCumulativeResolution / LayoutDeviceToParentLayerScale(1);
-        mLastMetrics.mScrollOffset = CSSPoint(0, 0);
+        mLastRootMetrics.mResolution = mLastRootMetrics.mCumulativeResolution / LayoutDeviceToParentLayerScale(1);
+        mLastRootMetrics.mScrollOffset = CSSPoint(0, 0);
 
-        utils->SetResolution(mLastMetrics.mResolution.scale,
-                             mLastMetrics.mResolution.scale);
+        utils->SetResolution(mLastRootMetrics.mResolution.scale,
+                             mLastRootMetrics.mResolution.scale);
       }
 
       HandlePossibleViewportChange();
@@ -304,12 +283,9 @@ TabChildHelper::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
   MOZ_ASSERT(aFrameMetrics.mScrollId != FrameMetrics::NULL_SCROLL_ID);
 
   if (aFrameMetrics.mIsRoot) {
-    uint32_t presShellId;
     nsCOMPtr<nsIDOMWindowUtils> utils(GetDOMWindowUtils());
-    nsresult rv = utils->GetPresShellId(&presShellId);
-    MOZ_ASSERT(NS_SUCCEEDED(rv));
 
-    if (NS_SUCCEEDED(rv) && aFrameMetrics.mPresShellId == presShellId) {
+    if (APZCCallbackHelper::HasValidPresShellId(utils, aFrameMetrics)) {
       return ProcessUpdateFrame(aFrameMetrics);
     }
   } else {
@@ -318,21 +294,28 @@ TabChildHelper::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
     nsCOMPtr<nsIContent> content = nsLayoutUtils::FindContentFor(
                                       aFrameMetrics.mScrollId);
     if (content) {
-      return ProcessUpdateSubframe(content, aFrameMetrics);
+      FrameMetrics newSubFrameMetrics(aFrameMetrics);
+      APZCCallbackHelper::UpdateSubFrame(content, newSubFrameMetrics);
+      return true;
     }
   }
 
   // We've recieved a message that is out of date and we want to ignore.
   // However we can't reply without painting so we reply by painting the
   // exact same thing as we did before.
-  return ProcessUpdateFrame(mLastMetrics);
+  return ProcessUpdateFrame(mLastRootMetrics);
 }
 
 bool
 TabChildHelper::ProcessUpdateFrame(const FrameMetrics& aFrameMetrics)
 {
   LOGF();
-  mozilla::CSSRect cssCompositedRect = aFrameMetrics.CalculateCompositedRectInCssPixels();
+  nsCOMPtr<nsIDOMWindowUtils> utils(GetDOMWindowUtils());
+  FrameMetrics newMetrics = aFrameMetrics;
+  APZCCallbackHelper::UpdateRootFrame(utils, newMetrics);
+
+  mozilla::CSSRect cssCompositedRect = newMetrics.CalculateCompositedRectInCssPixels();
+
   // The BrowserElementScrolling helper must know about these updated metrics
   // for other functions it performs, such as double tap handling.
   if (sPostAZPCAsJsonViewport) {
@@ -390,70 +373,7 @@ TabChildHelper::ProcessUpdateFrame(const FrameMetrics& aFrameMetrics)
     RecvAsyncMessage(NS_LITERAL_STRING("Viewport:Change"), data);
   }
 
-  nsCOMPtr<nsIDOMWindowUtils> utils(GetDOMWindowUtils());
-  nsCOMPtr<nsIDOMWindow> window = do_GetInterface(mView->mWebNavigation);
-
-  // set the scroll port size, which determines the scroll range
-  utils->SetScrollPositionClampingScrollPortSize(
-    cssCompositedRect.width, cssCompositedRect.height);
-
-  // scroll the window to the desired spot
-  nsIScrollableFrame* sf = static_cast<nsGlobalWindow*>(window.get())->GetScrollFrame();
-  if (sf) {
-      sf->ScrollToCSSPixelsApproximate(aFrameMetrics.mScrollOffset);
-  }
-
-  // set the resolution
-  LayoutDeviceToLayerScale resolution = aFrameMetrics.mZoom
-    / aFrameMetrics.mDevPixelsPerCSSPixel * ScreenToLayerScale(1);
-  utils->SetResolution(resolution.scale, resolution.scale);
-
-  // and set the display port
-  nsCOMPtr<nsIDOMDocument> domDoc;
-  mView->mWebNavigation->GetDocument(getter_AddRefs(domDoc));
-  if (domDoc) {
-    nsCOMPtr<nsIDOMElement> element;
-    domDoc->GetDocumentElement(getter_AddRefs(element));
-    if (element) {
-      utils->SetDisplayPortForElement(
-        aFrameMetrics.mDisplayPort.x, aFrameMetrics.mDisplayPort.y,
-        aFrameMetrics.mDisplayPort.width, aFrameMetrics.mDisplayPort.height,
-        element);
-    }
-  }
-
-  mLastMetrics = aFrameMetrics;
-
-  // ScrollWindowTo() can make some small adjustments to the offset before
-  // actually scrolling the window. To ensure that the scroll offset stored
-  // in mLastMetrics is the same as the offset stored in the window,
-  // re-query the latter.
-  CSSIntPoint actualScrollOffset;
-  utils->GetScrollXY(false, &actualScrollOffset.x, &actualScrollOffset.y);
-  mLastMetrics.mScrollOffset = actualScrollOffset;
-
-  return true;
-}
-
-bool
-TabChildHelper::ProcessUpdateSubframe(nsIContent* aContent,
-                                const FrameMetrics& aMetrics)
-{
-  // scroll the frame to the desired spot
-  nsIScrollableFrame* scrollFrame = nsLayoutUtils::FindScrollableFrameFor(aMetrics.mScrollId);
-  if (scrollFrame) {
-    scrollFrame->ScrollToCSSPixelsApproximate(aMetrics.mScrollOffset);
-  }
-
-  nsCOMPtr<nsIDOMWindowUtils> utils(::GetDOMWindowUtils(aContent));
-  nsCOMPtr<nsIDOMElement> element = do_QueryInterface(aContent);
-  if (utils && element) {
-    // and set the display port
-    utils->SetDisplayPortForElement(
-      aMetrics.mDisplayPort.x, aMetrics.mDisplayPort.y,
-      aMetrics.mDisplayPort.width, aMetrics.mDisplayPort.height,
-      element);
-  }
+  mLastRootMetrics = newMetrics;
 
   return true;
 }
@@ -853,7 +773,7 @@ TabChildHelper::HandlePossibleViewportChange()
   // we have to call SetCSSViewport twice - once to set the width, and the
   // second time to figure out the height based on the layout at that width.
   float oldBrowserWidth = mOldViewportWidth;
-  mLastMetrics.mViewport.SizeTo(viewport);
+  mLastRootMetrics.mViewport.SizeTo(viewport);
   if (!oldBrowserWidth) {
     oldBrowserWidth = kDefaultViewportSize.width;
   }
@@ -875,7 +795,7 @@ TabChildHelper::HandlePossibleViewportChange()
   nsPresContext* presContext = GetPresContext();
   if (presContext) {
     int32_t auPerDevPixel = presContext->AppUnitsPerDevPixel();
-    mLastMetrics.mDevPixelsPerCSSPixel = CSSToLayoutDeviceScale(
+    mLastRootMetrics.mDevPixelsPerCSSPixel = CSSToLayoutDeviceScale(
       (float)nsPresContext::AppUnitsPerCSSPixel() / auPerDevPixel);
   }
 
@@ -913,12 +833,12 @@ TabChildHelper::HandlePossibleViewportChange()
   viewport.height = std::max(viewport.height, screenH / minScale.scale);
   SetCSSViewport(viewport);
 
-  float oldScreenWidth = mLastMetrics.mCompositionBounds.width;
+  float oldScreenWidth = mLastRootMetrics.mCompositionBounds.width;
   if (!oldScreenWidth) {
     oldScreenWidth = mInnerSize.width;
   }
 
-  FrameMetrics metrics(mLastMetrics);
+  FrameMetrics metrics(mLastRootMetrics);
   metrics.mViewport = CSSRect(CSSPoint(), viewport);
   metrics.mScrollableRect = CSSRect(CSSPoint(), pageSize);
   metrics.mCompositionBounds = ScreenIntRect(ScreenIntPoint(), mInnerSize);

@@ -40,9 +40,6 @@ public:
   void ClearRenderFrame();
   virtual void PostDelayedTask(Task* aTask, int aDelayMs) MOZ_OVERRIDE;
 
-  // EXTRA
-  void UpdateScrollOffset(const mozilla::layers::ScrollableLayerGuid& aScrollLayerId, CSSIntPoint& aScrollOffset);
-
   bool HitTestAPZC(mozilla::ScreenIntPoint& aPoint);
   void TransformCoordinateToGecko(const mozilla::ScreenIntPoint& aPoint,
                                   LayoutDeviceIntPoint* aRefPointOut);
