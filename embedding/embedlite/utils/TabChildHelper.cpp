@@ -740,6 +740,31 @@ TabChildHelper::SetCSSViewport(const CSSSize& aSize)
   }
 }
 
+static CSSSize
+GetPageSize(nsCOMPtr<nsIDocument> aDocument, const CSSSize& aViewport)
+{
+  nsCOMPtr<Element> htmlDOMElement = aDocument->GetHtmlElement();
+  HTMLBodyElement* bodyDOMElement = aDocument->GetBodyElement();
+
+  if (!htmlDOMElement && !bodyDOMElement) {
+    // For non-HTML content (e.g. SVG), just assume page size == viewport size.
+    return aViewport;
+  }
+
+  int32_t htmlWidth = 0, htmlHeight = 0;
+  if (htmlDOMElement) {
+    htmlWidth = htmlDOMElement->ScrollWidth();
+    htmlHeight = htmlDOMElement->ScrollHeight();
+  }
+  int32_t bodyWidth = 0, bodyHeight = 0;
+  if (bodyDOMElement) {
+    bodyWidth = bodyDOMElement->ScrollWidth();
+    bodyHeight = bodyDOMElement->ScrollHeight();
+  }
+  return CSSSize(std::max(htmlWidth, bodyWidth),
+                 std::max(htmlHeight, bodyHeight));
+}
+
 void
 TabChildHelper::HandlePossibleViewportChange()
 {
@@ -753,9 +778,15 @@ TabChildHelper::HandlePossibleViewportChange()
   nsCOMPtr<nsIDOMWindowUtils> utils(GetDOMWindowUtils());
 
   nsViewportInfo viewportInfo = nsContentUtils::GetViewportInfo(document, mInnerSize);
-  mView->SendUpdateZoomConstraints(viewportInfo.IsZoomAllowed(),
-                                   viewportInfo.GetMinZoom().scale,
-                                   viewportInfo.GetMaxZoom().scale);
+  uint32_t presShellId;
+  ViewID viewId;
+  if (APZCCallbackHelper::GetScrollIdentifiers(document->GetDocumentElement(),
+                                               &presShellId, &viewId)) {
+    mView->SendUpdateZoomConstraints(viewportInfo.IsZoomAllowed(),
+                                     viewportInfo.GetMinZoom().scale,
+                                     viewportInfo.GetMaxZoom().scale);
+  }
+
 
   float screenW = mInnerSize.width;
   float screenH = mInnerSize.height;
@@ -767,11 +798,6 @@ TabChildHelper::HandlePossibleViewportChange()
     return;
   }
 
-  // Make sure the viewport height is not shorter than the window when the page
-  // is zoomed out to show its full width. Note that before we set the viewport
-  // width, the "full width" of the page isn't properly defined, so that's why
-  // we have to call SetCSSViewport twice - once to set the width, and the
-  // second time to figure out the height based on the layout at that width.
   float oldBrowserWidth = mOldViewportWidth;
   mLastRootMetrics.mViewport.SizeTo(viewport);
   if (!oldBrowserWidth) {
@@ -792,47 +818,6 @@ TabChildHelper::HandlePossibleViewportChange()
     return;
   }
 
-  nsPresContext* presContext = GetPresContext();
-  if (presContext) {
-    int32_t auPerDevPixel = presContext->AppUnitsPerDevPixel();
-    mLastRootMetrics.mDevPixelsPerCSSPixel = CSSToLayoutDeviceScale(
-      (float)nsPresContext::AppUnitsPerCSSPixel() / auPerDevPixel);
-  }
-
-  nsCOMPtr<Element> htmlDOMElement = document->GetHtmlElement();
-  HTMLBodyElement* bodyDOMElement = document->GetBodyElement();
-
-  int32_t htmlWidth = 0, htmlHeight = 0;
-  if (htmlDOMElement) {
-    htmlWidth = htmlDOMElement->ScrollWidth();
-    htmlHeight = htmlDOMElement->ScrollHeight();
-  }
-  int32_t bodyWidth = 0, bodyHeight = 0;
-  if (bodyDOMElement) {
-    bodyWidth = bodyDOMElement->ScrollWidth();
-    bodyHeight = bodyDOMElement->ScrollHeight();
-  }
-
-  CSSSize pageSize;
-  if (htmlDOMElement || bodyDOMElement) {
-    pageSize = CSSSize(std::max(htmlWidth, bodyWidth),
-                       std::max(htmlHeight, bodyHeight));
-  } else {
-    // For non-HTML content (e.g. SVG), just assume page size == viewport size.
-    pageSize = viewport;
-  }
-  if (!pageSize.width) {
-    // Return early rather than divide by 0.
-    return;
-  }
-
-  CSSToScreenScale minScale(mInnerSize.width / pageSize.width);
-  minScale = clamped(minScale, viewportInfo.GetMinZoom(), viewportInfo.GetMaxZoom());
-  NS_ENSURE_TRUE_VOID(minScale.scale); // (return early rather than divide by 0)
-
-  viewport.height = std::max(viewport.height, screenH / minScale.scale);
-  SetCSSViewport(viewport);
-
   float oldScreenWidth = mLastRootMetrics.mCompositionBounds.width;
   if (!oldScreenWidth) {
     oldScreenWidth = mInnerSize.width;
@@ -840,7 +825,6 @@ TabChildHelper::HandlePossibleViewportChange()
 
   FrameMetrics metrics(mLastRootMetrics);
   metrics.mViewport = CSSRect(CSSPoint(), viewport);
-  metrics.mScrollableRect = CSSRect(CSSPoint(), pageSize);
   metrics.mCompositionBounds = ScreenIntRect(ScreenIntPoint(), mInnerSize);
 
   // This change to the zoom accounts for all types of changes I can conceive:
@@ -875,6 +859,8 @@ TabChildHelper::HandlePossibleViewportChange()
     MOZ_ASSERT(viewportInfo.GetMinZoom() <= defaultZoom &&
                defaultZoom <= viewportInfo.GetMaxZoom());
     metrics.mZoom = defaultZoom;
+
+    metrics.mScrollId = viewId;
   }
 
   metrics.mDisplayPort = AsyncPanZoomController::CalculatePendingDisplayPort(
@@ -887,6 +873,20 @@ TabChildHelper::HandlePossibleViewportChange()
   // as the resolution.
   metrics.mResolution = metrics.mCumulativeResolution / LayoutDeviceToParentLayerScale(1);
   utils->SetResolution(metrics.mResolution.scale, metrics.mResolution.scale);
+
+  CSSSize scrollPort = metrics.CalculateCompositedRectInCssPixels().Size();
+  utils->SetScrollPositionClampingScrollPortSize(scrollPort.width, scrollPort.height);
+
+  // The call to GetPageSize forces a resize event to content, so we need to
+  // make sure that we have the right CSS viewport and
+  // scrollPositionClampingScrollPortSize set up before that happens.
+
+  CSSSize pageSize = GetPageSize(document, viewport);
+  if (!pageSize.width) {
+    // Return early rather than divide by 0.
+    return;
+  }
+  metrics.mScrollableRect = CSSRect(CSSPoint(), pageSize);
 
   // Force a repaint with these metrics. This, among other things, sets the
   // displayport, so we start with async painting.

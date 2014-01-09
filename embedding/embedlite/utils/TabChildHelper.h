@@ -30,6 +30,7 @@ class TabChildHelper : public nsIDOMEventListener,
                        public mozilla::dom::ipc::MessageManagerCallback
 {
 public:
+  typedef mozilla::layers::FrameMetrics::ViewID ViewID;
   TabChildHelper(EmbedLiteViewThreadChild* aView);
   virtual ~TabChildHelper();
 
