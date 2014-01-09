@@ -29,6 +29,7 @@
 #include "nsIFrame.h"
 #include "nsView.h"
 #include "nsLayoutUtils.h"
+#include "nsIDocumentInlines.h"
 
 static const char BEFORE_FIRST_PAINT[] = "before-first-paint";
 static const char CANCEL_DEFAULT_PAN_ZOOM[] = "cancel-default-pan-zoom";
