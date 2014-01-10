@@ -25,10 +25,8 @@ typedef uint32_t   u32;
 typedef uint32_t   uint32;
 typedef int32_t    int32;
 typedef int16_t    int16;
-#ifndef __USE_MISC
 typedef unsigned short ushort;
 typedef unsigned long  ulong;
-#endif
 #ifndef __GNUC_STDC_INLINE__
 #define inline
 #endif

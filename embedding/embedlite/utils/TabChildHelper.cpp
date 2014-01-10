@@ -185,7 +185,7 @@ TabChildHelper::InitTabChildGlobal()
 
   nsISupports* scopeSupports = NS_ISUPPORTS_CAST(nsIDOMEventTarget*, scope);
 
-  // Not ure if 
+  // Not sure if
   NS_ENSURE_TRUE(InitTabChildGlobalInternal(scopeSupports, nsCString("intProcessEmbedChildGlobal")), false);
 
   scope->Init();

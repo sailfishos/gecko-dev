@@ -36,7 +36,7 @@ ac_add_options --enable-debug-symbols="-gdwarf-2"
 export MOZILLA_OFFICIAL=1
 mk_add_options PROFILE_GEN_SCRIPT=@TOPSRCDIR@/build/profile_pageloader.pl
 
-export CXXFLAGS="$CXXFLAGS -DFORCE_BASICTILEDTHEBESLAYER=1 -DEGL_HAS_BACKING_SURFACE=1 -DUSE_ANDROID_OMTC_HACKS=1 "
+export CXXFLAGS="$CXXFLAGS -DUSE_ANDROID_OMTC_HACKS=1 "
 
 ac_add_options --disable-elf-hack
 ac_add_options --enable-libjpeg-turbo

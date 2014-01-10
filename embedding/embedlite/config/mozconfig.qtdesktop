@@ -1,6 +1,6 @@
 export ac_cv_have_usable_wchar_option_v2="no"
 
-export CXXFLAGS="-DFORCE_BASICTILEDTHEBESLAYER=1 -DEGL_HAS_BACKING_SURFACE=1 -DUSE_ANDROID_OMTC_HACKS=1 "
+export CXXFLAGS="-DUSE_ANDROID_OMTC_HACKS=1 "
 ac_add_options --enable-application=xulrunner
 ac_add_options --enable-default-toolkit=cairo-qt
 # Would help to get rid of X interactions and use shared image surfaces

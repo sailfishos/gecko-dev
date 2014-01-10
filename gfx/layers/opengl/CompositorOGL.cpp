@@ -785,29 +785,10 @@ CompositorOGL::SetRenderTarget(CompositingRenderTarget *aSurface)
   }
 }
 
-void
-CompositorOGL::SetUserRenderTarget(CompositingRenderTarget *aSurface)
-{
-  CompositingRenderTargetOGL* surface
-    = static_cast<CompositingRenderTargetOGL*>(aSurface);
-  if (mUserRenderTarget != surface) {
-    if (surface) {
-        surface->BindRenderTarget();
-    }
-    mUserRenderTarget = surface;
-  }
-}
-
 CompositingRenderTarget*
 CompositorOGL::GetCurrentRenderTarget()
 {
   return mCurrentRenderTarget;
-}
-
-CompositingRenderTarget*
-CompositorOGL::GetUserRenderTarget()
-{
-  return mUserRenderTarget;
 }
 
 static GLenum
@@ -903,15 +884,10 @@ CompositorOGL::BeginFrame(const nsIntRegion& aInvalidRegion,
   TexturePoolOGL::Fill(gl());
 #endif
 
-  if (mUserRenderTarget) {
-    mCurrentRenderTarget = mUserRenderTarget;
-  } else {
-    mCurrentRenderTarget = CompositingRenderTargetOGL::RenderTargetForWindow(this,
-                              IntSize(width, height),
-                              aTransform);
-    mCurrentRenderTarget->BindRenderTarget();
-  }
-
+  mCurrentRenderTarget = CompositingRenderTargetOGL::RenderTargetForWindow(this,
+                            IntSize(width, height),
+                            aTransform);
+  mCurrentRenderTarget->BindRenderTarget();
 #ifdef DEBUG
   mWindowRenderTarget = mCurrentRenderTarget;
 #endif

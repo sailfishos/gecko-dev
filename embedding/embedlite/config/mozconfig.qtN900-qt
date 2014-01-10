@@ -12,7 +12,7 @@ ac_add_options --enable-debug-symbols="-ggdb"
 export MOZILLA_OFFICIAL=1
 mk_add_options PROFILE_GEN_SCRIPT=@TOPSRCDIR@/build/profile_pageloader.pl
 
-export CXXFLAGS="-mthumb -mtune=cortex-a8 -mcpu=cortex-a8 -fpermissive -DFORCE_BASICTILEDTHEBESLAYER=1 -DEGL_HAS_BACKING_SURFACE=1 -DUSE_ANDROID_OMTC_HACKS=1"
+export CXXFLAGS="-mthumb -mtune=cortex-a8 -mcpu=cortex-a8 -fpermissive -DUSE_ANDROID_OMTC_HACKS=1"
 export CFLAGS="-mthumb -mtune=cortex-a8 -mcpu=cortex-a8"
 
 ac_add_options --enable-optimize="-O2 -Wno-psabi"

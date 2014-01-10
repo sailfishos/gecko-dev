@@ -7,7 +7,7 @@
       border:solid black 1px;
     }
   </style>
-  
+
   <script>
     var ongoingTouches = new Array;
     var offX = 0;
@@ -23,17 +23,17 @@
             do {
                 x += el.offsetLeft - el.scrollLeft;
                 y += el.offsetTop - el.scrollTop;
-            } 
+            }
             while (el = el.offsetParent);
 
             return { "left": x, "top": y }
-        }      
+        }
     }
 
     function colorForTouch(touch) {
       return "#FF00FF";
     }
-    
+
     function ongoingTouchIndexById(idToFind) {
       for (var i=0; i<ongoingTouches.length; i++) {
         var id = ongoingTouches[i].identifier;
@@ -57,7 +57,7 @@
         prevX = evt.clientX;
         prevY = evt.clientY;
     }
- 
+
     function handleMove(evt) {
       evt.preventDefault();
       var el = document.getElementById("canvas");
@@ -95,7 +95,7 @@
       }
     }
 
-  
+
     function startup() {
       var el = document.getElementById("canvas");
       el.addEventListener("mousedown", handleStart, false);

@@ -7,7 +7,7 @@
       border:solid black 1px;
     }
   </style>
-  
+
   <script>
     var ongoingTouches = new Array;
     var offX = 0;
@@ -21,11 +21,11 @@
             do {
                 x += el.offsetLeft - el.scrollLeft;
                 y += el.offsetTop - el.scrollTop;
-            } 
+            }
             while (el = el.offsetParent);
 
             return { "left": x, "top": y }
-        }      
+        }
     }
 
     function colorForTouch(touch) {
@@ -33,18 +33,18 @@
       id = id.toString(16); // make it a hex digit
       return "#" + id + id + id;
     }
-    
+
     function ongoingTouchIndexById(idToFind) {
       for (var i=0; i<ongoingTouches.length; i++) {
         var id = ongoingTouches[i].identifier;
-        
+
         if (id == idToFind) {
           return i;
         }
       }
       return -1;    // not found
     }
-    
+
     function handleStart(evt) {
       evt.preventDefault();
       var el = document.getElementById("canvas");
@@ -53,7 +53,7 @@
       offY = -off.top;
       var ctx = el.getContext("2d");
       var touches = evt.changedTouches;
-            
+
       for (var i=0; i<touches.length; i++) {
         ongoingTouches.push(touches[i]);
         var color = colorForTouch(touches[i]);
@@ -61,15 +61,14 @@
         ctx.fillRect(touches[i].pageX-2 + offX - window.scrollX, touches[i].pageY-2 + offY - window.scrollY, 4, 4);
       }
     }
-  
+
     function handleMove(evt) {
       evt.preventDefault();
       var el = document.getElementById("canvas");
       var ctx = el.getContext("2d");
       var touches = evt.changedTouches;
-      
       ctx.lineWidth = 4;
-            
+
       for (var i=0; i<touches.length; i++) {
         var color = colorForTouch(touches[i]);
         var idx = ongoingTouchIndexById(touches[i].identifier);
@@ -90,13 +89,13 @@
       var el = document.getElementById("canvas");
       var ctx = el.getContext("2d");
       var touches = evt.changedTouches;
-      
+
       ctx.lineWidth = 4;
-            
+
       for (var i=0; i<touches.length; i++) {
         var color = colorForTouch(touches[i]);
         var idx = ongoingTouchIndexById(touches[i].identifier);
-        
+
         ctx.fillStyle = color;
         ctx.beginPath();
         ctx.moveTo(ongoingTouches[i].pageX + offY - window.scrollX, ongoingTouches[i].pageY + offY - window.scrollY);
@@ -104,18 +103,18 @@
         ongoingTouches.splice(i, 1);  // remove it; we're done
       }
     }
-    
+
     function handleCancel(evt) {
       window.dump("handleCancel\n");
       evt.preventDefault();
       var touches = evt.changedTouches;
-      
+
       for (var i=0; i<touches.length; i++) {
         ongoingTouches.splice(i, 1);  // remove it; we're done
       }
     }
 
-  
+
     function startup() {
       var el = document.getElementById("canvas");
       el.addEventListener("touchstart", handleStart, false);

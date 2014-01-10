@@ -511,10 +511,6 @@ int64_t MP3FrameParser::GetDuration()
     return -1;
   }
 
-  if (mSamplesPerSecond == 0) {
-    return -1; // Not a single frame decoded yet
-  }
-
   double frames;
   if (mNumFrames < 0) {
     // Estimate the number of frames in the stream based on the average frame

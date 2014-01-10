@@ -998,7 +998,7 @@ void AsyncPanZoomController::AttemptScroll(const ScreenPoint& aStartPoint,
     }
   }
 
-  if (mTreeManager && (fabs(overscroll.x) > EPSILON || fabs(overscroll.y) > EPSILON)) {
+  if (fabs(overscroll.x) > EPSILON || fabs(overscroll.y) > EPSILON) {
     // "+ overscroll" rather than "- overscroll" because "overscroll" is what's
     // left of "displacement", and "displacement" is "start - end".
     CallDispatchScroll(aEndPoint + overscroll, aEndPoint, aOverscrollHandoffChainIndex + 1);
@@ -1014,8 +1014,6 @@ void AsyncPanZoomController::CallDispatchScroll(const ScreenPoint& aStartPoint, 
   if (treeManagerLocal) {
     treeManagerLocal->DispatchScroll(this, aStartPoint, aEndPoint,
                                      aOverscrollHandoffChainIndex);
-  } else {
-    AttemptScroll(aStartPoint, aEndPoint, aOverscrollHandoffChainIndex);
   }
 }
 

@@ -99,7 +99,7 @@ clean:
 install: build
 	dh_testdir
 	dh_testroot
-	dh_clean -k 
+	dh_clean -k
 	dh_installdirs -s
 
         # Add here commands to install the package into debian/tmp
@@ -124,9 +124,6 @@ install: build
 	rm -f $(CURDIR)/debian/tmp/$(prefix)/lib/xulrunner-devel-$(GREVERSION)/sdk/lib/libxul.so
 	ln -s sdk/lib $(CURDIR)/debian/tmp/$(prefix)/lib/xulrunner-devel-$(GREVERSION)/lib
 	ln -s /$(prefix)/lib/xulrunner-$(GREVERSION)/libxul.so $(CURDIR)/debian/tmp/$(prefix)/lib/xulrunner-devel-$(GREVERSION)/sdk/lib/libxul.so
-	
-#	MOZCONFIG=$(CURDIR)/$(MOZCONFIG_FILE) $(MAKE) -f client.mk install DESTDIR=$(CURDIR)/debian/tmp
-	
 	dh_install --sourcedir=debian/tmp
 
 # Build architecture-independent files here.
@@ -149,4 +146,4 @@ binary-arch: build install
 	dh_builddeb
 
 binary: binary-indep binary-arch
-.PHONY: build clean binary-indep binary-arch binary install 
+.PHONY: build clean binary-indep binary-arch binary install
