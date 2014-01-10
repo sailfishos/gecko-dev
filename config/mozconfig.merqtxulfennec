@@ -9,7 +9,7 @@ mk_add_options PROFILE_GEN_SCRIPT=@TOPSRCDIR@/build/profile_pageloader.pl
 mk_add_options MOZ_MAKE_FLAGS="-j2"
 mk_add_options MOZ_OBJDIR="@TOPSRCDIR@/obj-build-mer-qt-fn"
 
-export CXXFLAGS=" -DFORCE_BASICTILEDTHEBESLAYER=1 -DEGL_HAS_BACKING_SURFACE=1 -DUSE_ANDROID_OMTC_HACKS=1 "
+export CXXFLAGS=" -DUSE_ANDROID_OMTC_HACKS=1 "
 
 ac_add_options --enable-application=mobile/xul
 ac_add_options --enable-update-channel=nightly
