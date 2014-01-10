@@ -5,102 +5,75 @@
 @namespace url("http://www.w3.org/1999/xhtml");
 @namespace xul url("http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul");
 
-@-moz-document url-prefix(about:reader) {
-  @font-face {
-    font-family: 'OpenSansRegular';
-    src: url('chrome://browser/skin/fonts/opensans-regular.ttf') format('truetype');
-    font-weight: normal;
-    font-style: normal;
-  }
-
-  @font-face {
-    font-family: 'OpenSansLight';
-    src: url('chrome://browser/skin/fonts/opensans-light.ttf') format('truetype');
-    font-weight: normal;
-    font-style: normal;
-  }
-}
-
-::-moz-selection {
-  background-color: #febc2b;
-  color: #000;
-}
-
 /* Style the scrollbars */
-html xul|scrollbar {
+xul|window xul|scrollbar {
   display: none;
 }
 
-xul|window xul|scrollbar {
-  display: block;
-}
-
-xul|window xul|scrollbar[orient="vertical"] {
+html xul|scrollbar {
   -moz-appearance: none !important;
-  opacity: 0;
   position: relative;
-  margin-left: -8px;
-  min-width: 8px;
   background-color: transparent !important;
   background-image: none !important;
   border: 0px solid transparent !important;
+  z-index: 2147483647;
+  pointer-events: none;
+  opacity: 1;
 }
 
-xul|window xul|scrollbar[orient="vertical"]:-moz-locale-dir(rtl) {
-  margin-left: 2px;
-  margin-right: -10px;
+xul|scrollbar[orient="vertical"] {
+  -moz-margin-start: -8px;
+  min-width: 8px;
+  max-width: 8px;
 }
 
-xul|window xul|scrollbar[orient="vertical"] xul|thumb {
+xul|scrollbar[orient="vertical"] xul|thumb {
   max-width: 6px !important;
   min-width: 6px !important;
 }
 
-xul|window xul|scrollbar[orient="horizontal"] {
-  -moz-appearance: none !important;
-  opacity: 0;
-  position: relative;
-  min-height: 8px;
+xul|scrollbar[orient="horizontal"] {
   margin-top: -8px;
-  background-color: transparent !important;
-  background-image: none !important;
-  border: 0px solid transparent !important;
+  min-height: 8px;
+  max-height: 8px;
 }
 
-xul|window xul|scrollbar[orient="horizontal"] xul|thumb {
+xul|scrollbar[orient="horizontal"] xul|thumb {
   max-height: 6px !important;
   min-height: 6px !important;
 }
 
-xul|*[panning="true"] xul|scrollbar {
-  opacity: 1;
+xul|scrollbar:not([active="true"]),
+xul|scrollbar[disabled] {
+  opacity: 0;
+  -moz-transition: opacity 1s ease;
 }
 
-xul|window xul|scrollbox {
-  overflow-y: scroll;
-  overflow-x: scroll;
-}
-
-xul|window xul|scrollbarbutton {
+xul|scrollbarbutton {
   min-height: 8px !important;
   min-width: 8px !important;
   -moz-appearance: none !important;
   visibility: hidden;
 }
 
-xul|window xul|scrollbarbutton[sbattr="scrollbar-up-top"],
-xul|window xul|scrollbarbutton[sbattr="scrollbar-bottom-top"] {
+xul|scrollbarbutton[sbattr="scrollbar-up-top"],
+xul|scrollbarbutton[sbattr="scrollbar-bottom-top"] {
   display: none;
 }
 
-xul|window xul|scrollbar xul|thumb {
-  background-color: #9a9a9a !important;
+xul|thumb {
+  background-color: rgba(0, 0, 0, 0.4) !important;
   -moz-border-top-colors: none !important;
   -moz-border-bottom-colors: none !important;
   -moz-border-right-colors: none !important;
   -moz-border-left-colors: none !important;
   border: 1px solid rgba(255, 255, 255, 0.4) !important;
   border-radius: 3px;
+}
+
+/* -moz-touch-enabled? media elements */
+:-moz-any(video, audio) > xul|videocontrols {
+  -moz-binding: url("chrome://global/content/bindings/videocontrols.xml#touchControls");
 }
 
 select:not([size]):not([multiple]) > xul|scrollbar,
@@ -120,7 +93,6 @@ xul|button,
 * > input:not([type="image"]) {
   -moz-appearance: none !important;  /* See bug 598421 for fixing the platform */
   border-radius: 3px;
-  font-size: inherit;
 }
 
 select[size],
@@ -131,7 +103,7 @@ textarea,
   border-style: solid;
   border-color: #7d7d7d;
   color: #414141;
-  background: white -moz-linear-gradient(top, rgba(115,115,115,0.5) 0, rgba(215,215,215,0.5) 3px, rgba(255,255,255,0.2) 16px);
+  background: white linear-gradient(rgba(115,115,115,0.5) 0, rgba(215,215,215,0.5) 3px, rgba(255,255,255,0.2) 16px);
 }
 
 /* Selects are handled by the form helper, see bug 685197 */
@@ -149,15 +121,15 @@ button {
   border-style: solid;
   border-color: #7d7d7d;
   color: #414141;
-  background: white -moz-linear-gradient(top, rgba(255,255,255,0.2) 0, rgba(215,215,215,0.5) 18px, rgba(115,115,115,0.5) 100%);
+  background: white linear-gradient(rgba(255,255,255,0.2) 0, rgba(215,215,215,0.5) 18px, rgba(115,115,115,0.5) 100%);
 }
 
 input[type="checkbox"] {
-  background: white -moz-linear-gradient(top, rgba(115,115,115,0.5) 0, rgba(215,215,215,0.5) 2px, rgba(255,255,255,0.2) 6px);
+  background: white linear-gradient(rgba(115,115,115,0.5) 0, rgba(215,215,215,0.5) 2px, rgba(255,255,255,0.2) 6px);
 }
 
 input[type="radio"] {
-  background: -moz-radial-gradient(6px 6px, cover, rgba(255,255,255,0.2) 3px, rgba(195,195,195,0.5) 5px, rgba(115,115,115,0.5) 100%);
+  background: radial-gradient(at 6px 6px, rgba(255,255,255,0.2) 3px, rgba(195,195,195,0.5) 5px, rgba(115,115,115,0.5) 100%);
 }
 
 select {
@@ -205,13 +177,14 @@ select > button {
   border-radius: 0;
   color: #414141;
 
-  background-size: auto auto, 100% 90%;
+  background-image: radial-gradient(at bottom left, #bbbbbb 40%, #f5f5f5), url(arrow.svg) !important;
   background-color: transparent;
-  background-image: url("chrome://embedlite/skin/images/dropmarker.svg"),
-                    -moz-radial-gradient(bottom left, #bbbbbb 40%, #f5f5f5) !important;
-  background-position: -moz-calc(50% + 1px) center, -15px center !important;
-  background-repeat: no-repeat !important;
+  background-position: -15px center, 4px center !important;
+  background-repeat: no-repeat, no-repeat !important;
+  background-size: 100% 90%, auto auto;
 
+  -moz-binding: none !important;
+  position: relative !important;
   font-size: inherit;
 }
 
@@ -224,7 +197,7 @@ input[type="file"]:focus > input[type="text"],
   outline: 0px !important;
   border-style: solid;
   border-color: rgb(94,128,153);
-  background: white -moz-linear-gradient(top, rgba(27,113,177,0.5) 0, rgba(198,225,246,0.2) 3px, rgba(255,255,255,0.2) 16px);
+  background: white linear-gradient(rgba(27,113,177,0.5) 0, rgba(198,225,246,0.2) 3px, rgba(255,255,255,0.2) 16px);
 }
 
 select:not([size]):not([multiple]):focus,
@@ -237,7 +210,7 @@ button:focus {
   outline: 0px !important;
   border-style: solid;
   border-color: rgb(94,128,153);
-  background: white -moz-linear-gradient(top, rgba(255,255,255,0.2) 0, rgba(198,225,256,0.2) 18px, rgba(27,113,177,0.5) 100%);
+  background: white linear-gradient(rgba(255,255,255,0.2) 0, rgba(198,225,256,0.2) 18px, rgba(27,113,177,0.5) 100%);
 }
 
 input[type="checkbox"]:focus,
@@ -246,11 +219,11 @@ input[type="radio"]:focus {
 }
 
 input[type="checkbox"]:focus {
-  background: white -moz-linear-gradient(top, rgba(27,113,177,0.5) 0, rgba(198,225,246,0.2) 2px, rgba(255,255,255,0.2) 6px);
+  background: white linear-gradient(rgba(27,113,177,0.5) 0, rgba(198,225,246,0.2) 2px, rgba(255,255,255,0.2) 6px);
 }
 
 input[type="radio"]:focus {
-  background: -moz-radial-gradient(6px 6px, cover, rgba(255,255,255,0.2) 3px, rgba(198,225,246,0.2) 5px, rgba(27,113,177,0.5) 100%);
+  background: radial-gradient(at 6px 6px, rgba(255,255,255,0.2) 3px, rgba(198,225,246,0.2) 5px, rgba(27,113,177,0.5) 100%);
 }
 
 /* we need to be specific for selects because the above rules are specific too */
@@ -267,13 +240,13 @@ button[disabled],
   border-color: rgba(125,125,125,0.4);
   border-style: solid;
   border-width: 1px;
-  background: transparent -moz-linear-gradient(top, rgba(185,185,185,0.4) 0, rgba(235,235,235,0.4) 3px, rgba(255,255,255,0.4) 100%);
+  background: transparent linear-gradient(rgba(185,185,185,0.4) 0, rgba(235,235,235,0.4) 3px, rgba(255,255,255,0.4) 100%);
 }
 
 select:not([size]):not([multiple])[disabled],
 select[size="0"][disabled],
 select[size="1"][disabled] {
-  background: transparent -moz-linear-gradient(top, rgba(255,255,255,0.4) 0, rgba(235,235,235,0.4) 3px, rgba(185,185,185,0.4) 100%);
+  background: transparent linear-gradient(rgba(255,255,255,0.4) 0, rgba(235,235,235,0.4) 3px, rgba(185,185,185,0.4) 100%);
 }
 
 input[type="button"][disabled],
@@ -281,7 +254,7 @@ input[type="submit"][disabled],
 input[type="reset"][disabled],
 button[disabled="true"] {
   padding: 0 7px 0 7px;
-  background: transparent -moz-linear-gradient(top, rgba(255,255,255,0.4) 0, rgba(235,235,235,0.4) 3px, rgba(185,185,185,0.4) 100%);
+  background: transparent linear-gradient(rgba(255,255,255,0.4) 0, rgba(235,235,235,0.4) 3px, rgba(185,185,185,0.4) 100%);
 }
 
 input[type="radio"][disabled],
@@ -300,11 +273,6 @@ select[disabled] > button {
   padding: 1px 7px 1px 7px;
 }
 
-/* -moz-touch-enabled? media elements */
-:-moz-any(video, audio) > xul|videocontrols {
-  -moz-binding: url("chrome://global/content/bindings/videocontrols.xml#touchControls");
-}
-
 *:-moz-any-link:active,
 *[role=button]:active,
 button:active,
@@ -313,227 +281,16 @@ option:active,
 select:active,
 label:active,
 textarea:active {
-  background-color: rgba(254, 188, 43, 0.8) !important;
+  background-color: rgba(141, 184, 216, 0.5);
 }
 
-xul|menulist {
-  -moz-binding: url("chrome://browser/content/bindings/menulist.xml#menulist");
-}
-
-/* content scrollbars */
-.scroller {
-  opacity: 0;
-  background-color: rgba(0, 0, 0, 0.4) !important;
-  -moz-border-top-colors: none !important;
-  -moz-border-bottom-colors: none !important;
-  -moz-border-right-colors: none !important;
-  -moz-border-left-colors: none !important;
-  border-radius: 0.21mozmm;
-  border: 0.11mozmm solid rgba(255, 255, 255, 0.4) !important;
-}
-
-.scroller[panning="true"] {
-  opacity: 1;
-}
-
-.scroller[orient="vertical"] {
-  min-width: 0.64mozmm;
-  width: 0.64mozmm;
-  min-height: 1.27mozmm;
-}
-
-.scroller[orient="horizontal"] {
-  min-height: 0.64mozmm;
-  height: 0.64mozmm;
-  min-width: 1.27mozmm;
-}
-
-/* video controls */
-.controlsOverlay {
-  -moz-box-pack: center;
-  -moz-box-align: end;
-  padding: 20px;
-  -moz-box-flex: 1;
-  -moz-box-orient: horizontal;
-}
-
-.controlBar {
-  -moz-box-flex: 1;
-  font-size: 16pt;
-  padding: 10px;
-  background-color: rgba(50,50,50,0.8);
-  border-radius: 8px;
-  width: 100%;
-}
-
-.controlsSpacer {
-  display: none;
-  -moz-box-flex: 0;
-}
-
-.playButton,
-.muteButton {
-  -moz-appearance: none;
-  min-height: 42px;
-  min-width: 42px;
-  border: none !important;
-}
-
-.playButton {
-  -moz-transform: translateX(21px);
-  background: url("chrome://browser/skin/images/pause-hdpi.png") no-repeat center;
-}
-
-.playButton[paused="true"] {
-  background: url("chrome://browser/skin/images/play-hdpi.png") no-repeat center;
-}
-
-.muteButton {
-  background: url("chrome://browser/skin/images/mute-hdpi.png") no-repeat center;
-}
-
-.muteButton[muted="true"] {
-  background: url("chrome://browser/skin/images/unmute-hdpi.png") no-repeat center;
-}
-
-/* This button is hidden until bug 704229 is fixed. */
-.fullscreenButton {
+input[type=number] > div > div, /* work around bug 946184 */
+input[type=number]::-moz-number-spin-box {
   display: none;
 }
 
-/* bars */
-.scrubberStack {
-  width: 100%;
-  min-height: 32px;
-  max-height: 32px;
-  padding: 0px 8px;
-  margin: 0px;
+/* This binding only provide key shortcuts that we can't use on devices */
+input,
+textarea {
+-moz-binding: none !important;
 }
-
-.bufferBar,
-.bufferBar .progress-bar,
-.progressBar,
-.progressBar .progress-bar,
-.scrubber,
-.scrubber .scale-slider,
-.scrubber .scale-thumb {
-  -moz-appearance: none;
-  border: none;
-  padding: 0px;
-  margin: 0px;
-  background-color: transparent;
-}
-
-.bufferBar {
-  border: 1px solid #5e6166;
-}
-
-.bufferBar,
-.progressBar {
-  margin: 11px 0px 9px 0px;
-  height: 8px
-}
-
-.bufferBar .progress-bar {
-  background-color: #5e6166;
-}
-
-.progressBar .progress-bar {
-  background-color: white;
-}
-
-.scrubber {
-  margin-left: -16px;
-  margin-right: -16px;
-}
-
-.scrubber .scale-thumb {
-  display: -moz-box;
-  margin: 0px !important;
-  padding: 0px !important;
-  background: url("chrome://browser/skin/images/scrubber-hdpi.png") no-repeat;
-  background-size: 32px 32px;
-  height: 32px;
-  width: 32px;
-}
-
-.durationBox {
-  -moz-box-orient: horizontal;
-  -moz-box-pack: start;
-  -moz-box-align: center;
-  color: white;
-  font-weight: bold;
-  padding: 0px 8px;
-  margin-top: -6px;
-}
-
-.positionLabel {
-  -moz-box-flex: 1;
-}
-
-.statusOverlay {
-  -moz-box-align: center;
-  -moz-box-pack: center;
-  background-color: rgb(50,50,50);
-}
-
-.statusIcon {
-  margin-bottom: 28px;
-  width: 36px;
-  height: 36px;
-}
-
-.statusIcon[type="throbber"] {
-  background: url(chrome://global/skin/media/throbber.png) no-repeat center;
-}
-
-.statusIcon[type="error"] {
-  background: url(chrome://global/skin/media/error.png) no-repeat center;
-}
-
-/* CSS Transitions */
-.controlBar:not([immediate]) {
-  -moz-transition-property: opacity;
-  -moz-transition-duration: 200ms;
-}
-
-.controlBar[fadeout] {
-  opacity: 0;
-}
-
-.statusOverlay:not([immediate]) {
-  -moz-transition-property: opacity;
-  -moz-transition-duration: 300ms;
-  -moz-transition-delay: 750ms;
-}
-
-.statusOverlay[fadeout] {
-  opacity: 0;
-}
-
-.volumeStack,
-.controlBar[firstshow="true"] .muteButton,
-.controlBar[firstshow="true"] .scrubberStack,
-.controlBar[firstshow="true"] .durationBox,
-.timeLabel {
-  display: none;
-}
-
-.controlBar[firstshow="true"] .playButton {
-  -moz-transform: none;
-}
-
-/* Error description formatting */
-.errorLabel {
-  font-family: Helvetica, Arial, sans-serif;
-  font-size: 11px;
-  color: #bbb;
-  text-shadow:
-    -1px -1px 0 #000,
-    1px -1px 0 #000,
-    -1px 1px 0 #000,
-    1px 1px 0 #000;
-  padding: 0 10px;
-  text-align: center;
-}
-

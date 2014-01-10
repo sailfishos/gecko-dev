@@ -2404,6 +2404,15 @@ ScrollFrameHelper::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
     if (XRE_GetWindowsEnvironment() == WindowsEnvironmentType_Metro) {
       wantSubAPZC = true;
     }
+#else
+    static bool addedLayoutWantSubAPZC = false;
+    static bool layoutWantSubAPZC = false;
+    if (!addedLayoutWantSubAPZC) {
+      Preferences::AddBoolVarCache(&layoutWantSubAPZC,
+                                   "layout.want.subapzc", layoutWantSubAPZC);
+      addedLayoutWantSubAPZC = true;
+    }
+    wantSubAPZC = layoutWantSubAPZC;
 #endif
     shouldBuildLayer =
       wantSubAPZC &&
