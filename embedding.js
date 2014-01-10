@@ -300,3 +300,6 @@ pref("extensions.blocklist.enabled", false);
 pref("extensions.logging.enabled", true);
 pref("extensions.strictCompatibility", false);
 pref("extensions.minCompatibleAppVersion", "11.0");
+
+// Enable sub layers for apzc
+pref("layout.want.subapzc", true);
