@@ -8,6 +8,7 @@
 
 #include "nsISupports.h"
 #include "nsStringGlue.h"
+#include "gfxMatrix.h"
 
 #include "mozilla/RefPtr.h"
 

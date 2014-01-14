@@ -26,7 +26,6 @@
 #include "SurfaceTypes.h"               // for SurfaceStreamType
 #include "ClientLayerManager.h"         // for ClientLayerManager, etc
 #include "GLUploadHelpers.h"
-#include "GLContextUtils.h"             // for GLContextUtils
 #include "gfxPlatform.h"
 
 #include "BasicLayers.h"
@@ -724,7 +723,7 @@ bool EmbedLiteViewThreadParent::GetPendingTexture(EmbedLiteRenderTarget* aContex
   SharedSurface* sharedSurf = context->RequestFrame();
   NS_ENSURE_TRUE(sharedSurf, false);
 
-  gfxImageSurface* toUpload = nullptr;
+  DataSourceSurface* toUpload = nullptr;
   GLint textureHandle = 0;
   if (sharedSurf->Type() == SharedSurfaceType::EGLImageShare) {
     SharedSurface_EGLImage* eglImageSurf = SharedSurface_EGLImage::Cast(sharedSurf);
@@ -746,7 +745,7 @@ bool EmbedLiteViewThreadParent::GetPendingTexture(EmbedLiteRenderTarget* aContex
 
   if (toUpload) {
     // mBounds seems to end up as (0,0,0,0) a lot, so don't use it?
-    nsIntSize size(toUpload->GetSize());
+    nsIntSize size(ThebesIntSize(toUpload->GetSize()));
     nsIntRect rect(nsIntPoint(0,0), size);
     nsIntRegion bounds(rect);
     UploadSurfaceToTexture(consumerContext,
