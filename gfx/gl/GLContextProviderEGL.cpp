@@ -232,7 +232,7 @@ class GLContextEGL : public GLContext
             return nullptr;
         }
 
-        EGLContext eglShareContext = shareContext ? shareContext->GetEGLContext()
+        EGLContext eglShareContext = shareContext ? static_cast<GLContextEGL*>(shareContext)->mContext
                                                   : EGL_NO_CONTEXT;
         EGLint* attribs = sEGLLibrary.HasRobustness() ? gContextAttribsRobustness
                                                       : gContextAttribs;
