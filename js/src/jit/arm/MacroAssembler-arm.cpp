@@ -3533,7 +3533,7 @@ MacroAssemblerARMCompat::passABIArg(const MoveOperand &from, MoveOp::Type type)
         } else {
             // If (and only if) the integer registers have started spilling, do we
             // need to take the register's alignment into account
-            uint32_t disp = GetFloatArgStackDisp(usedIntSlots_, usedFloatSlots_, &padding_);
+            uint32_t disp = GetDoubleArgStackDisp(usedIntSlots_, usedFloatSlots_, &padding_);
             to = MoveOperand(sp, disp);
         }
         usedFloatSlots_++;
