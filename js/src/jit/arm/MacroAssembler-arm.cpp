@@ -74,8 +74,8 @@ MacroAssemblerARM::convertUInt32ToFloat32(const Register &src, const FloatRegist
     as_vcvt(VFPRegister(dest).singleOverlay(), dest.uintOverlay());
 }
 
-void MacroAssemblerARM::convertDoubleToFloat(const FloatRegister &src, const FloatRegister &dest,
-                                             Condition c)
+void MacroAssemblerARM::convertDoubleToFloat32(const FloatRegister &src, const FloatRegister &dest,
+                                               Condition c)
 {
     as_vcvt(VFPRegister(dest).singleOverlay(), VFPRegister(src), false, c);
 }
@@ -156,7 +156,7 @@ MacroAssemblerARM::convertFloat32ToInt32(const FloatRegister &src, const Registe
 }
 
 void
-MacroAssemblerARM::convertFloatToDouble(const FloatRegister &src, const FloatRegister &dest) {
+MacroAssemblerARM::convertFloat32ToDouble(const FloatRegister &src, const FloatRegister &dest) {
     as_vcvt(VFPRegister(dest), VFPRegister(src).singleOverlay());
 }
 
@@ -1417,6 +1417,12 @@ MacroAssemblerARM::ma_vmov(FloatRegister src, FloatRegister dest, Condition cc)
 }
 
 void
+MacroAssemblerARM::ma_vmov_f32(FloatRegister src, FloatRegister dest, Condition cc)
+{
+    as_vmov(VFPRegister(dest).singleOverlay(), VFPRegister(src).singleOverlay(), cc);
+}
+
+void
 MacroAssemblerARM::ma_vneg(FloatRegister src, FloatRegister dest, Condition cc)
 {
     as_vneg(dest, src, cc);
@@ -2183,13 +2189,13 @@ MacroAssemblerARMCompat::loadFloatAsDouble(const BaseIndex &src, const FloatRegi
 }
 
 void
-MacroAssemblerARMCompat::loadFloat(const Address &address, const FloatRegister &dest)
+MacroAssemblerARMCompat::loadFloat32(const Address &address, const FloatRegister &dest)
 {
     ma_vldr(Operand(address), VFPRegister(dest).singleOverlay());
 }
 
 void
-MacroAssemblerARMCompat::loadFloat(const BaseIndex &src, const FloatRegister &dest)
+MacroAssemblerARMCompat::loadFloat32(const BaseIndex &src, const FloatRegister &dest)
 {
     // VFP instructions don't even support register Base + register Index modes, so
     // just add the index, then handle the offset like normal
@@ -2417,7 +2423,7 @@ MacroAssemblerARMCompat::cmpPtr(const Address &lhs, const ImmPtr &rhs)
 void
 MacroAssemblerARMCompat::setStackArg(const Register &reg, uint32_t arg)
 {
-    ma_dataTransferN(IsStore, 32, true, sp, Imm32(arg * STACK_SLOT_SIZE), reg);
+    ma_dataTransferN(IsStore, 32, true, sp, Imm32(arg * sizeof(intptr_t)), reg);
 
 }
 
@@ -3508,13 +3514,13 @@ MacroAssemblerARMCompat::setupUnalignedABICall(uint32_t args, const Register &sc
 }
 #ifdef JS_CPU_ARM_HARDFP
 void
-MacroAssemblerARMCompat::passABIArg(const MoveOperand &from, MoveOp::Kind kind)
+MacroAssemblerARMCompat::passABIArg(const MoveOperand &from, MoveOp::Type type)
 {
     MoveOperand to;
     ++passedArgs_;
     if (!enoughMemory_)
         return;
-    switch (kind) {
+    switch (type) {
       case MoveOp::FLOAT32:
       case MoveOp::DOUBLE: {
         FloatRegister fr;
@@ -3549,21 +3555,21 @@ MacroAssemblerARMCompat::passABIArg(const MoveOperand &from, MoveOp::Kind kind)
         break;
       }
       default:
-        MOZ_ASSUME_UNREACHABLE("Unexpected argument kind");
+        MOZ_ASSUME_UNREACHABLE("Unexpected argument type");
     }
 
-    enoughMemory_ = moveResolver_.addMove(from, to, kind);
+    enoughMemory_ = moveResolver_.addMove(from, to, type);
 }
 
 #else
 void
-MacroAssemblerARMCompat::passABIArg(const MoveOperand &from, MoveOp::Kind kind)
+MacroAssemblerARMCompat::passABIArg(const MoveOperand &from, MoveOp::Type type)
 {
     MoveOperand to;
     uint32_t increment = 1;
     bool useResolver = true;
     ++passedArgs_;
-    switch (kind) {
+    switch (type) {
       case MoveOp::DOUBLE:
         // Double arguments need to be rounded up to the nearest doubleword
         // boundary, even if it is in a register!
@@ -3574,13 +3580,13 @@ MacroAssemblerARMCompat::passABIArg(const MoveOperand &from, MoveOp::Kind kind)
       case MoveOp::GENERAL:
         break;
       default:
-        MOZ_ASSUME_UNREACHABLE("Unexpected argument kind");
+        MOZ_ASSUME_UNREACHABLE("Unexpected argument type");
     }
 
     Register destReg;
     MoveOperand dest;
     if (GetIntArgReg(usedSlots_, 0, &destReg)) {
-        if (kind == MoveOp::DOUBLE || kind == MoveOp::FLOAT32) {
+        if (type == MoveOp::DOUBLE || type == MoveOp::FLOAT32) {
             floatArgsInGPR[destReg.code() >> 1] = from;
             floatArgsInGPRValid[destReg.code() >> 1] = true;
             useResolver = false;
@@ -3596,7 +3602,7 @@ MacroAssemblerARMCompat::passABIArg(const MoveOperand &from, MoveOp::Kind kind)
     }
 
     if (useResolver)
-        enoughMemory_ = enoughMemory_ && moveResolver_.addMove(from, dest, kind);
+        enoughMemory_ = enoughMemory_ && moveResolver_.addMove(from, dest, type);
     usedSlots_ += increment;
 }
 #endif
@@ -3608,9 +3614,9 @@ MacroAssemblerARMCompat::passABIArg(const Register &reg)
 }
 
 void
-MacroAssemblerARMCompat::passABIArg(const FloatRegister &freg, MoveOp::Kind kind)
+MacroAssemblerARMCompat::passABIArg(const FloatRegister &freg, MoveOp::Type type)
 {
-    passABIArg(MoveOperand(freg), kind);
+    passABIArg(MoveOperand(freg), type);
 }
 
 void MacroAssemblerARMCompat::checkStackAlignment()
@@ -3626,16 +3632,16 @@ MacroAssemblerARMCompat::callWithABIPre(uint32_t *stackAdjust)
 {
     JS_ASSERT(inCall_);
 #ifdef JS_CPU_ARM_HARDFP
-    *stackAdjust = ((usedIntSlots_ > NumIntArgRegs) ? usedIntSlots_ - NumIntArgRegs : 0) * STACK_SLOT_SIZE;
-    *stackAdjust += 2*((usedFloatSlots_ > NumFloatArgRegs) ? usedFloatSlots_ - NumFloatArgRegs : 0) * STACK_SLOT_SIZE;
+    *stackAdjust = ((usedIntSlots_ > NumIntArgRegs) ? usedIntSlots_ - NumIntArgRegs : 0) * sizeof(intptr_t);
+    *stackAdjust += 2*((usedFloatSlots_ > NumFloatArgRegs) ? usedFloatSlots_ - NumFloatArgRegs : 0) * sizeof(intptr_t);
 #else
-    *stackAdjust = ((usedSlots_ > NumIntArgRegs) ? usedSlots_ - NumIntArgRegs : 0) * STACK_SLOT_SIZE;
+    *stackAdjust = ((usedSlots_ > NumIntArgRegs) ? usedSlots_ - NumIntArgRegs : 0) * sizeof(intptr_t);
 #endif
     if (!dynamicAlignment_) {
         *stackAdjust += ComputeByteAlignment(framePushed_ + *stackAdjust, StackAlignment);
     } else {
-        // STACK_SLOT_SIZE account for the saved stack pointer pushed by setupUnalignedABICall
-        *stackAdjust += ComputeByteAlignment(*stackAdjust + STACK_SLOT_SIZE, StackAlignment);
+        // sizeof(intptr_t) account for the saved stack pointer pushed by setupUnalignedABICall
+        *stackAdjust += ComputeByteAlignment(*stackAdjust + sizeof(intptr_t), StackAlignment);
     }
 
     reserveStack(*stackAdjust);
@@ -3680,7 +3686,7 @@ MacroAssemblerARMCompat::callWithABIPre(uint32_t *stackAdjust)
 }
 
 void
-MacroAssemblerARMCompat::callWithABIPost(uint32_t stackAdjust, MoveOp::Kind result)
+MacroAssemblerARMCompat::callWithABIPost(uint32_t stackAdjust, MoveOp::Type result)
 {
     if (secondScratchReg_ != lr)
         ma_mov(secondScratchReg_, lr);
@@ -3718,7 +3724,7 @@ MacroAssemblerARMCompat::callWithABIPost(uint32_t stackAdjust, MoveOp::Kind resu
 }
 
 void
-MacroAssemblerARMCompat::callWithABI(void *fun, MoveOp::Kind result)
+MacroAssemblerARMCompat::callWithABI(void *fun, MoveOp::Type result)
 {
     uint32_t stackAdjust;
     callWithABIPre(&stackAdjust);
@@ -3727,7 +3733,7 @@ MacroAssemblerARMCompat::callWithABI(void *fun, MoveOp::Kind result)
 }
 
 void
-MacroAssemblerARMCompat::callWithABI(AsmJSImmPtr imm, MoveOp::Kind result)
+MacroAssemblerARMCompat::callWithABI(AsmJSImmPtr imm, MoveOp::Type result)
 {
     uint32_t stackAdjust;
     callWithABIPre(&stackAdjust);
@@ -3736,7 +3742,7 @@ MacroAssemblerARMCompat::callWithABI(AsmJSImmPtr imm, MoveOp::Kind result)
 }
 
 void
-MacroAssemblerARMCompat::callWithABI(const Address &fun, MoveOp::Kind result)
+MacroAssemblerARMCompat::callWithABI(const Address &fun, MoveOp::Type result)
 {
     // Load the callee in r12, no instruction between the ldr and call
     // should clobber it. Note that we can't use fun.base because it may

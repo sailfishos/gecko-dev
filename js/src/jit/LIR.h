@@ -37,7 +37,7 @@ class MSnapshot;
 
 static const uint32_t VREG_INCREMENT = 1;
 
-static const uint32_t THIS_FRAME_SLOT = 0;
+static const uint32_t THIS_FRAME_ARGSLOT = 0;
 
 #if defined(JS_NUNBOX32)
 # define BOX_PIECES         2
@@ -349,8 +349,7 @@ class LConstantIndex : public LAllocation
     }
 };
 
-// Stack slots are indexes into the stack, given that each slot is size
-// STACK_SLOT_SIZE.
+// Stack slots are indices into the stack. The indices are byte indices.
 class LStackSlot : public LAllocation
 {
   public:
@@ -363,9 +362,7 @@ class LStackSlot : public LAllocation
     }
 };
 
-// Arguments are reverse indexes into the stack, and as opposed to LStackSlot,
-// each index is measured in bytes because we have to index the middle of a
-// Value on 32 bits architectures.
+// Arguments are reverse indices into the stack. The indices are byte indices.
 class LArgument : public LAllocation
 {
   public:
@@ -433,6 +430,7 @@ class LDefinition
 
     enum Type {
         GENERAL,    // Generic, integer or pointer-width data (GPR).
+        INT32,      // int32 data (GPR).
         OBJECT,     // Pointer that may be collected as garbage (GPR).
         SLOTS,      // Slots/elements pointer that may be moved by minor GCs (GPR).
         FLOAT32,    // 32-bit floating-point value (FPU).
@@ -486,6 +484,9 @@ class LDefinition
     Type type() const {
         return (Type)((bits_ >> TYPE_SHIFT) & TYPE_MASK);
     }
+    bool isFloatReg() const {
+        return type() == FLOAT32 || type() == DOUBLE;
+    }
     uint32_t virtualRegister() const {
         return (bits_ >> VREG_SHIFT) & VREG_MASK;
     }
@@ -525,7 +526,10 @@ class LDefinition
         switch (type) {
           case MIRType_Boolean:
           case MIRType_Int32:
-            return LDefinition::GENERAL;
+            // The stack slot allocator doesn't currently support allocating
+            // 1-byte slots, so for now we lower MIRType_Boolean into INT32.
+            static_assert(sizeof(bool) <= sizeof(int32_t), "bool doesn't fit in an int32 slot");
+            return LDefinition::INT32;
           case MIRType_String:
           case MIRType_Object:
             return LDefinition::OBJECT;
@@ -1432,10 +1436,10 @@ class LIRGraph
         // case that's greater, because StackOffsetOfPassedArg rounds argument
         // slots to 8-byte boundaries.
         size_t Alignment = Max(sizeof(StackAlignment), sizeof(Value));
-        return AlignBytes(localSlotCount(), Alignment / STACK_SLOT_SIZE);
+        return AlignBytes(localSlotCount(), Alignment);
     }
     size_t paddedLocalSlotsSize() const {
-        return paddedLocalSlotCount() * STACK_SLOT_SIZE;
+        return paddedLocalSlotCount();
     }
     void setArgumentSlotCount(uint32_t argumentSlotCount) {
         argumentSlotCount_ = argumentSlotCount;
@@ -1444,11 +1448,10 @@ class LIRGraph
         return argumentSlotCount_;
     }
     size_t argumentsSize() const {
-        JS_STATIC_ASSERT(sizeof(Value) >= size_t(STACK_SLOT_SIZE));
         return argumentSlotCount() * sizeof(Value);
     }
     uint32_t totalSlotCount() const {
-        return paddedLocalSlotCount() + (argumentsSize() / STACK_SLOT_SIZE);
+        return paddedLocalSlotCount() + argumentsSize();
     }
     bool addConstantToPool(const Value &v, uint32_t *index);
     size_t numConstants() const {
@@ -1606,8 +1609,8 @@ static inline unsigned
 OffsetOfNunboxSlot(LDefinition::Type type)
 {
     if (type == LDefinition::PAYLOAD)
-        return NUNBOX32_PAYLOAD_OFFSET / STACK_SLOT_SIZE;
-    return NUNBOX32_TYPE_OFFSET / STACK_SLOT_SIZE;
+        return NUNBOX32_PAYLOAD_OFFSET;
+    return NUNBOX32_TYPE_OFFSET;
 }
 
 // Note that stack indexes for LStackSlot are modelled backwards, so a
@@ -1616,8 +1619,8 @@ static inline unsigned
 BaseOfNunboxSlot(LDefinition::Type type, unsigned slot)
 {
     if (type == LDefinition::PAYLOAD)
-        return slot + (NUNBOX32_PAYLOAD_OFFSET / STACK_SLOT_SIZE);
-    return slot + (NUNBOX32_TYPE_OFFSET / STACK_SLOT_SIZE);
+        return slot + NUNBOX32_PAYLOAD_OFFSET;
+    return slot + NUNBOX32_TYPE_OFFSET;
 }
 #endif
 

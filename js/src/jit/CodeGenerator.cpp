@@ -322,7 +322,7 @@ CodeGenerator::visitValueToFloat32(LValueToFloat32 *lir)
 
     masm.bind(&isDouble);
     masm.unboxDouble(operand, output);
-    masm.convertDoubleToFloat(output, output);
+    masm.convertDoubleToFloat32(output, output);
     masm.bind(&done);
 
     return true;
@@ -338,14 +338,14 @@ CodeGenerator::visitInt32ToDouble(LInt32ToDouble *lir)
 bool
 CodeGenerator::visitFloat32ToDouble(LFloat32ToDouble *lir)
 {
-    masm.convertFloatToDouble(ToFloatRegister(lir->input()), ToFloatRegister(lir->output()));
+    masm.convertFloat32ToDouble(ToFloatRegister(lir->input()), ToFloatRegister(lir->output()));
     return true;
 }
 
 bool
 CodeGenerator::visitDoubleToFloat32(LDoubleToFloat32 *lir)
 {
-    masm.convertDoubleToFloat(ToFloatRegister(lir->input()), ToFloatRegister(lir->output()));
+    masm.convertDoubleToFloat32(ToFloatRegister(lir->input()), ToFloatRegister(lir->output()));
     return true;
 }
 
@@ -1194,7 +1194,7 @@ CodeGenerator::visitMoveGroup(LMoveGroup *group)
         JS_ASSERT(*from != *to);
         JS_ASSERT(!from->isConstant());
 
-        MoveOp::Kind kind;
+        MoveOp::Type moveType;
         switch (type) {
           case LDefinition::OBJECT:
           case LDefinition::SLOTS:
@@ -1204,13 +1204,14 @@ CodeGenerator::visitMoveGroup(LMoveGroup *group)
 #else
           case LDefinition::BOX:
 #endif
-          case LDefinition::GENERAL: kind = MoveOp::GENERAL; break;
-          case LDefinition::FLOAT32: kind = MoveOp::FLOAT32; break;
-          case LDefinition::DOUBLE:  kind = MoveOp::DOUBLE;  break;
+          case LDefinition::GENERAL: moveType = MoveOp::GENERAL; break;
+          case LDefinition::INT32:   moveType = MoveOp::INT32;   break;
+          case LDefinition::FLOAT32: moveType = MoveOp::FLOAT32; break;
+          case LDefinition::DOUBLE:  moveType = MoveOp::DOUBLE;  break;
           default: MOZ_ASSUME_UNREACHABLE("Unexpected move type");
         }
 
-        if (!resolver.addMove(toMoveOperand(from), toMoveOperand(to), kind))
+        if (!resolver.addMove(toMoveOperand(from), toMoveOperand(to), moveType))
             return false;
     }
 
@@ -6167,7 +6168,7 @@ CodeGenerator::visitUnboxFloatingPoint(LUnboxFloatingPoint *lir)
     masm.branchTestDouble(Assembler::NotEqual, box, ool->entry());
     masm.unboxDouble(box, resultReg);
     if (lir->type() == MIRType_Float32)
-        masm.convertDoubleToFloat(resultReg, resultReg);
+        masm.convertDoubleToFloat32(resultReg, resultReg);
     masm.bind(ool->rejoin());
     return true;
 }
@@ -8006,9 +8007,9 @@ CodeGenerator::visitAssertRangeF(LAssertRangeF *ins)
     FloatRegister temp = ToFloatRegister(ins->temp());
     const Range *r = ins->range();
 
-    masm.convertFloatToDouble(input, input);
+    masm.convertFloat32ToDouble(input, input);
     bool success = emitAssertRangeD(r, input, temp);
-    masm.convertDoubleToFloat(input, input);
+    masm.convertDoubleToFloat32(input, input);
     return success;
 }
 
