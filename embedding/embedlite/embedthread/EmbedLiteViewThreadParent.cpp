@@ -27,6 +27,7 @@
 #include "ClientLayerManager.h"         // for ClientLayerManager, etc
 #include "GLUploadHelpers.h"
 #include "GLContextUtils.h"             // for GLContextUtils
+#include "gfxPlatform.h"
 
 #include "BasicLayers.h"
 #include "mozilla/layers/LayerManagerComposite.h"
