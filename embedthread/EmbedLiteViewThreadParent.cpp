@@ -434,18 +434,18 @@ EmbedLiteViewThreadParent::RecvSyncMessage(const nsString& aMessage,
   return true;
 }
 
-static inline gfxImageFormat
+static inline SurfaceFormat
 _depth_to_gfxformat(int depth)
 {
   switch (depth) {
     case 32:
-      return gfxImageFormatARGB32;
+      return SurfaceFormat::FORMAT_R8G8B8A8;
     case 24:
-      return gfxImageFormatRGB24;
+      return SurfaceFormat::FORMAT_R8G8B8X8;
     case 16:
-      return gfxImageFormatRGB16_565;
+      return SurfaceFormat::FORMAT_R5G6B5;
     default:
-      return gfxImageFormatUnknown;
+      return SurfaceFormat::FORMAT_UNKNOWN;
   }
 }
 
@@ -454,11 +454,9 @@ EmbedLiteViewThreadParent::RenderToImage(unsigned char* aData, int imgW, int img
 {
   LOGF("d:%p, sz[%i,%i], stride:%i, depth:%i", aData, imgW, imgH, stride, depth);
   if (mCompositor) {
-    nsRefPtr<gfxImageSurface> source =
-      new gfxImageSurface(aData, gfxIntSize(imgW, imgH), stride, _depth_to_gfxformat(depth));
+    RefPtr<DrawTarget> target = gfxPlatform::GetPlatform()->CreateDrawTargetForData(aData, IntSize(imgW, imgH), stride, _depth_to_gfxformat(depth));
     {
-      nsRefPtr<gfxContext> context = new gfxContext(source);
-      return mCompositor->RenderToContext(context);
+      return mCompositor->RenderToContext(target);
     }
   }
   return false;
