@@ -123,12 +123,12 @@ bool LoadEmbedLite(int argc = 0, char** argv = 0)
     }
   }
   if (!IsLibXulInThePath(greHome, xpcomPath)) {
-    printf("libxpcom.so is not found, in %s\n", xpcomPath.c_str());
+    printf("libxul.so is not found, in %s\n", xpcomPath.c_str());
     greHome = getenv("BUILD_GRE_HOME");
   }
 
   if (!IsLibXulInThePath(greHome, xpcomPath)) {
-    printf("libxpcom.so is not found, in %s return fail\n", xpcomPath.c_str());
+    printf("libxul.so is not found, in %s return fail\n", xpcomPath.c_str());
     return false;
   }
 

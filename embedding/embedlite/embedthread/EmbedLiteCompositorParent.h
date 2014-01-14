@@ -29,7 +29,7 @@ public:
                             uint32_t id);
   virtual ~EmbedLiteCompositorParent();
 
-  bool RenderToContext(gfxContext* aContext);
+  bool RenderToContext(gfx::DrawTarget* aTarget);
   bool RenderGL();
   void SetSurfaceSize(int width, int height);
   void SetWorldTransform(gfxMatrix);

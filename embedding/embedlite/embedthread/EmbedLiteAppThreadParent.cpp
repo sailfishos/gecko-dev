@@ -46,6 +46,7 @@ EmbedLiteAppThreadParent::RecvInitialized()
   mApp->SetBoolPref("layers.acceleration.disabled", !accel);
   mApp->SetBoolPref("layers.acceleration.force-enabled", accel);
   mApp->SetBoolPref("layers.async-video.enabled", accel);
+  mApp->SetBoolPref("layers.offmainthreadcomposition.force-basic", !accel);
   return true;
 }
 

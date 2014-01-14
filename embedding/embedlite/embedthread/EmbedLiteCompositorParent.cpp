@@ -79,7 +79,7 @@ EmbedLiteCompositorParent::IsGLBackend()
   return EmbedLiteApp::GetInstance()->IsAccelerated();
 }
 
-bool EmbedLiteCompositorParent::RenderToContext(gfxContext* aContext)
+bool EmbedLiteCompositorParent::RenderToContext(gfx::DrawTarget* aTarget)
 {
   LOGF();
   const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(RootLayerTreeId());
@@ -89,8 +89,7 @@ bool EmbedLiteCompositorParent::RenderToContext(gfxContext* aContext)
     // Nothing to paint yet, just return silently
     return false;
   }
-#warning "Switch me to gfx::DrawTarget"
-  //ComposeToTarget(aContext);
+  ComposeToTarget(aTarget);
   return true;
 }
 
