@@ -108,7 +108,7 @@ BaselineCompiler::compile()
         return Method_Error;
 
     Linker linker(masm);
-    IonCode *code = linker.newCode<CanGC>(cx, JSC::BASELINE_CODE);
+    JitCode *code = linker.newCode<CanGC>(cx, JSC::BASELINE_CODE);
     if (!code)
         return Method_Error;
 
@@ -638,7 +638,8 @@ BaselineCompiler::emitUseCountIncrement()
 
     Label skipCall;
 
-    uint32_t minUses = UsesBeforeIonRecompile(script, pc);
+    const OptimizationInfo *info = js_IonOptimizations.get(js_IonOptimizations.firstLevel());
+    uint32_t minUses = info->usesBeforeCompile(script, pc);
     masm.branch32(Assembler::LessThan, countReg, Imm32(minUses), &skipCall);
 
     masm.branchPtr(Assembler::Equal,
@@ -689,7 +690,7 @@ BaselineCompiler::emitDebugTrap()
     bool enabled = script->stepModeEnabled() || script->hasBreakpointsAt(pc);
 
     // Emit patchable call to debug trap handler.
-    IonCode *handler = cx->runtime()->jitRuntime()->debugTrapHandler(cx);
+    JitCode *handler = cx->runtime()->jitRuntime()->debugTrapHandler(cx);
     mozilla::DebugOnly<CodeOffsetLabel> offset = masm.toggledCall(handler, enabled);
 
 #ifdef DEBUG
@@ -834,12 +835,6 @@ BaselineCompiler::emit_JSOP_NOP()
 
 bool
 BaselineCompiler::emit_JSOP_LABEL()
-{
-    return true;
-}
-
-bool
-BaselineCompiler::emit_JSOP_NOTEARG()
 {
     return true;
 }
@@ -1202,23 +1197,17 @@ BaselineCompiler::emit_JSOP_OBJECT()
     return true;
 }
 
-typedef JSObject *(*CloneRegExpObjectFn)(JSContext *, JSObject *, JSObject *);
+typedef JSObject *(*CloneRegExpObjectFn)(JSContext *, JSObject *);
 static const VMFunction CloneRegExpObjectInfo =
     FunctionInfo<CloneRegExpObjectFn>(CloneRegExpObject);
 
 bool
 BaselineCompiler::emit_JSOP_REGEXP()
 {
-    RootedObject reObj(cx, script->getRegExp(GET_UINT32_INDEX(pc)));
-    RootedObject proto(cx, script->global().getOrCreateRegExpPrototype(cx));
-    if (!proto)
-        return false;
+    RootedObject reObj(cx, script->getRegExp(pc));
 
     prepareVMCall();
-
-    pushArg(ImmGCPtr(proto));
     pushArg(ImmGCPtr(reObj));
-
     if (!callVM(CloneRegExpObjectInfo))
         return false;
 

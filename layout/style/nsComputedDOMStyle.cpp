@@ -244,7 +244,7 @@ nsComputedDOMStyle::nsComputedDOMStyle(dom::Element* aElement,
   mContent = aElement;
 
   if (!DOMStringIsNull(aPseudoElt) && !aPseudoElt.IsEmpty() &&
-      aPseudoElt.First() == PRUnichar(':')) {
+      aPseudoElt.First() == char16_t(':')) {
     // deal with two-colon forms of aPseudoElt
     nsAString::const_iterator start, end;
     aPseudoElt.BeginReading(start);
@@ -252,7 +252,7 @@ nsComputedDOMStyle::nsComputedDOMStyle(dom::Element* aElement,
     NS_ASSERTION(start != end, "aPseudoElt is not empty!");
     ++start;
     bool haveTwoColons = true;
-    if (start == end || *start != PRUnichar(':')) {
+    if (start == end || *start != char16_t(':')) {
       --start;
       haveTwoColons = false;
     }
@@ -415,6 +415,15 @@ nsComputedDOMStyle::GetPropertyValue(const nsAString& aPropertyName,
   }
 
   return NS_OK;
+}
+
+NS_IMETHODIMP
+nsComputedDOMStyle::GetAuthoredPropertyValue(const nsAString& aPropertyName,
+                                             nsAString& aReturn)
+{
+  // Authored style doesn't make sense to return from computed DOM style,
+  // so just return whatever GetPropertyValue() returns.
+  return GetPropertyValue(aPropertyName, aReturn);
 }
 
 /* static */
@@ -1098,7 +1107,7 @@ nsComputedDOMStyle::DoGetContent()
               str);
           }
 
-          str.Append(PRUnichar(')'));
+          str.Append(char16_t(')'));
           val->SetString(str, nsIDOMCSSPrimitiveValue::CSS_COUNTER);
         }
         break;

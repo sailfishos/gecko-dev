@@ -540,17 +540,23 @@ pref("ui.dragThresholdY", 50);
 // prevent tooltips from showing up
 pref("browser.chrome.toolbar_tips", false);
 
+#ifdef NIGHTLY_BUILD
 // Completely disable pdf.js as an option to preview pdfs within firefox.
 // Note: if this is not disabled it does not necessarily mean pdf.js is the pdf
 // handler just that it is an option.
 pref("pdfjs.disabled", true);
 // Used by pdf.js to know the first time firefox is run with it installed so it
 // can become the default pdf viewer.
-pref("pdfjs.firstRun", false);
+pref("pdfjs.firstRun", true);
 // The values of preferredAction and alwaysAskBeforeHandling before pdf.js
 // became the default.
 pref("pdfjs.previousHandler.preferredAction", 0);
 pref("pdfjs.previousHandler.alwaysAskBeforeHandling", false);
+#endif
+
+#ifdef NIGHTLY_BUILD
+pref("shumway.disabled", true);
+#endif
 
 // The maximum amount of decoded image data we'll willingly keep around (we
 // might keep around more than this, but we'll try to get down to this value).

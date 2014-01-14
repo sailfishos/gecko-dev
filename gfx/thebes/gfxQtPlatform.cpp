@@ -57,12 +57,6 @@ using namespace mozilla::gfx;
 
 static QPaintEngine::Type sDefaultQtPaintEngineType = QPaintEngine::Raster;
 gfxFontconfigUtils *gfxQtPlatform::sFontconfigUtils = nullptr;
-static cairo_user_data_key_t cairo_qt_pixmap_key;
-static void do_qt_pixmap_unref (void *data)
-{
-    QPixmap *pmap = (QPixmap*)data;
-    delete pmap;
-}
 
 static gfxImageFormat sOffscreenFormat = gfxImageFormatRGB24;
 
@@ -71,9 +65,6 @@ gfxQtPlatform::gfxQtPlatform()
     if (!sFontconfigUtils)
         sFontconfigUtils = gfxFontconfigUtils::GetFontconfigUtils();
 
-    g_type_init();
-
-    nsresult rv;
     // 0 - default gfxQPainterSurface
     // 1 - gfxImageSurface
     int32_t ival = Preferences::GetInt("mozilla.widget-qt.render-mode", DEFAULT_RENDER_MODE);
@@ -120,14 +111,6 @@ gfxQtPlatform::~gfxQtPlatform()
     sFontconfigUtils = nullptr;
 
     gfxPangoFontGroup::Shutdown();
-
-#if 0
-    // It would be nice to do this (although it might need to be after
-    // the cairo shutdown that happens in ~gfxPlatform).  It even looks
-    // idempotent.  But it has fatal assertions that fire if stuff is
-    // leaked, and we hit them.
-    FcFini();
-#endif
 }
 
 #ifdef MOZ_X11

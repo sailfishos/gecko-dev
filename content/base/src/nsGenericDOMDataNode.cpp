@@ -258,7 +258,7 @@ nsGenericDOMDataNode::ReplaceData(uint32_t aOffset, uint32_t aCount,
 
 nsresult
 nsGenericDOMDataNode::SetTextInternal(uint32_t aOffset, uint32_t aCount,
-                                      const PRUnichar* aBuffer,
+                                      const char16_t* aBuffer,
                                       uint32_t aLength, bool aNotify,
                                       CharacterDataChangeInfo::Details* aDetails)
 {
@@ -313,18 +313,20 @@ nsGenericDOMDataNode::SetTextInternal(uint32_t aOffset, uint32_t aCount,
   if (aOffset == 0 && endOffset == textLength) {
     // Replacing whole text or old text was empty.  Don't bother to check for
     // bidi in this string if the document already has bidi enabled.
-    mText.SetTo(aBuffer, aLength, !document || !document->GetBidiEnabled());
+    bool ok = mText.SetTo(aBuffer, aLength, !document || !document->GetBidiEnabled());
+    NS_ENSURE_TRUE(ok, NS_ERROR_OUT_OF_MEMORY);
   }
   else if (aOffset == textLength) {
     // Appending to existing
-    mText.Append(aBuffer, aLength, !document || !document->GetBidiEnabled());
+    bool ok = mText.Append(aBuffer, aLength, !document || !document->GetBidiEnabled());
+    NS_ENSURE_TRUE(ok, NS_ERROR_OUT_OF_MEMORY);
   }
   else {
     // Merging old and new
 
     // Allocate new buffer
     int32_t newLength = textLength - aCount + aLength;
-    PRUnichar* to = new PRUnichar[newLength];
+    char16_t* to = new char16_t[newLength];
     NS_ENSURE_TRUE(to, NS_ERROR_OUT_OF_MEMORY);
 
     // Copy over appropriate data
@@ -332,16 +334,17 @@ nsGenericDOMDataNode::SetTextInternal(uint32_t aOffset, uint32_t aCount,
       mText.CopyTo(to, 0, aOffset);
     }
     if (aLength) {
-      memcpy(to + aOffset, aBuffer, aLength * sizeof(PRUnichar));
+      memcpy(to + aOffset, aBuffer, aLength * sizeof(char16_t));
     }
     if (endOffset != textLength) {
       mText.CopyTo(to + aOffset + aLength, endOffset, textLength - endOffset);
     }
 
-    // XXX Add OOM checking to this
-    mText.SetTo(to, newLength, !document || !document->GetBidiEnabled());
+    bool ok = mText.SetTo(to, newLength, !document || !document->GetBidiEnabled());
 
     delete [] to;
+
+    NS_ENSURE_TRUE(ok, NS_ERROR_OUT_OF_MEMORY);
   }
 
   UnsetFlags(NS_CACHED_TEXT_IS_ONLY_WHITESPACE);
@@ -391,11 +394,11 @@ nsGenericDOMDataNode::ToCString(nsAString& aBuf, int32_t aOffset,
                                 int32_t aLen) const
 {
   if (mText.Is2b()) {
-    const PRUnichar* cp = mText.Get2b() + aOffset;
-    const PRUnichar* end = cp + aLen;
+    const char16_t* cp = mText.Get2b() + aOffset;
+    const char16_t* end = cp + aLen;
 
     while (cp < end) {
-      PRUnichar ch = *cp++;
+      char16_t ch = *cp++;
       if (ch == '&') {
         aBuf.AppendLiteral("&amp;");
       } else if (ch == '<') {
@@ -415,7 +418,7 @@ nsGenericDOMDataNode::ToCString(nsAString& aBuf, int32_t aOffset,
     const unsigned char* end = cp + aLen;
 
     while (cp < end) {
-      PRUnichar ch = *cp++;
+      char16_t ch = *cp++;
       if (ch == '&') {
         aBuf.AppendLiteral("&amp;");
       } else if (ch == '<') {
@@ -919,7 +922,7 @@ nsGenericDOMDataNode::TextLength() const
 }
 
 nsresult
-nsGenericDOMDataNode::SetText(const PRUnichar* aBuffer,
+nsGenericDOMDataNode::SetText(const char16_t* aBuffer,
                               uint32_t aLength,
                               bool aNotify)
 {
@@ -927,7 +930,7 @@ nsGenericDOMDataNode::SetText(const PRUnichar* aBuffer,
 }
 
 nsresult
-nsGenericDOMDataNode::AppendText(const PRUnichar* aBuffer,
+nsGenericDOMDataNode::AppendText(const char16_t* aBuffer,
                                  uint32_t aLength,
                                  bool aNotify)
 {

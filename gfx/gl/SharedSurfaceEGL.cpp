@@ -4,7 +4,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "SharedSurfaceEGL.h"
-
 #include "GLContext.h"
 #include "GLBlitHelper.h"
 #include "ScopedGLHelpers.h"
@@ -12,6 +11,7 @@
 #include "SurfaceFactory.h"
 #include "GLLibraryEGL.h"
 #include "TextureGarbageBin.h"
+#include "GLReadTexImageHelper.h"
 
 using namespace mozilla::gfx;
 
@@ -21,11 +21,11 @@ namespace gl {
 SharedSurface_EGLImage*
 SharedSurface_EGLImage::Create(GLContext* prodGL,
                                const GLFormats& formats,
-                               const gfxIntSize& size,
+                               const gfx::IntSize& size,
                                bool hasAlpha,
                                EGLContext context)
 {
-    GLLibraryEGL* egl = prodGL->GetLibraryEGL();
+    GLLibraryEGL* egl = &sEGLLibrary;
     MOZ_ASSERT(egl);
 
     if (!HasExtensions(egl, prodGL))
@@ -52,7 +52,7 @@ SharedSurface_EGLImage::HasExtensions(GLLibraryEGL* egl, GLContext* gl)
 
 SharedSurface_EGLImage::SharedSurface_EGLImage(GLContext* gl,
                                                GLLibraryEGL* egl,
-                                               const gfxIntSize& size,
+                                               const gfx::IntSize& size,
                                                bool hasAlpha,
                                                const GLFormats& formats,
                                                GLuint prodTex)
@@ -123,7 +123,7 @@ SharedSurface_EGLImage::LockProdImpl()
 
 static bool
 CreateTexturePipe(GLLibraryEGL* const egl, GLContext* const gl,
-                  const GLFormats& formats, const gfxIntSize& size,
+                  const GLFormats& formats, const gfx::IntSize& size,
                   GLuint* const out_tex, EGLImage* const out_image)
 {
     MOZ_ASSERT(out_tex && out_image);
@@ -134,7 +134,7 @@ CreateTexturePipe(GLLibraryEGL* const egl, GLContext* const gl,
     if (!tex)
         return false;
 
-    EGLContext context = gl->GetEGLContext();
+    EGLContext context = (EGLContext) gl->GetNativeData(GLContext::NativeGLContext);
     MOZ_ASSERT(context);
     EGLClientBuffer buffer = reinterpret_cast<EGLClientBuffer>(tex);
     EGLImage image = egl->fCreateImage(egl->Display(), context,
@@ -170,14 +170,18 @@ SharedSurface_EGLImage::Fence()
         }
 
         if (!mPixels) {
-            gfxImageFormat format =
-                  HasAlpha() ? gfxImageFormatARGB32
-                             : gfxImageFormatRGB24;
-            mPixels = new gfxImageSurface(Size(), format);
+            SurfaceFormat format =
+                  HasAlpha() ? FORMAT_B8G8R8A8
+                             : FORMAT_B8G8R8X8;
+            mPixels = Factory::CreateDataSourceSurface(Size(), format);
         }
 
-        mPixels->Flush();
-        mGL->ReadScreenIntoImageSurface(mPixels);
+        nsRefPtr<gfxImageSurface> wrappedData =
+            new gfxImageSurface(mPixels->GetData(),
+                                ThebesIntSize(mPixels->GetSize()),
+                                mPixels->Stride(),
+                                SurfaceFormatToImageFormat(mPixels->GetFormat()));
+        ReadScreenIntoImageSurface(mGL, wrappedData);
         mPixels->MarkDirty();
         return;
     }
@@ -270,7 +274,7 @@ SharedSurface_EGLImage::AcquireConsumerTexture(GLContext* consGL)
     return 0;
 }
 
-gfxImageSurface*
+DataSourceSurface*
 SharedSurface_EGLImage::GetPixels() const
 {
     MutexAutoLock lock(mMutex);
@@ -283,7 +287,7 @@ SurfaceFactory_EGLImage*
 SurfaceFactory_EGLImage::Create(GLContext* prodGL,
                                         const SurfaceCaps& caps)
 {
-    EGLContext context = prodGL->GetEGLContext();
+    EGLContext context = prodGL->GetNativeData(GLContext::NativeGLContext);
 
     return new SurfaceFactory_EGLImage(prodGL, context, caps);
 }

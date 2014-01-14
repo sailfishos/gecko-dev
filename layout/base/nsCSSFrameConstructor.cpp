@@ -123,7 +123,7 @@ NS_NewSVGAFrame(nsIPresShell* aPresShell, nsStyleContext* aContext);
 nsIFrame*
 NS_NewSVGSwitchFrame(nsIPresShell* aPresShell, nsStyleContext* aContext);
 nsIFrame*
-NS_NewSVGTextFrame2(nsIPresShell* aPresShell, nsStyleContext* aContext);
+NS_NewSVGTextFrame(nsIPresShell* aPresShell, nsStyleContext* aContext);
 nsIFrame*
 NS_NewSVGContainerFrame(nsIPresShell* aPresShell, nsStyleContext* aContext);
 nsIFrame*
@@ -4951,7 +4951,7 @@ nsCSSFrameConstructor::FindSVGData(Element* aElement,
     static const FrameConstructionData sTextData =
       FCDATA_WITH_WRAPPING_BLOCK(FCDATA_DISALLOW_OUT_OF_FLOW |
                                  FCDATA_ALLOW_BLOCK_STYLES,
-                                 NS_NewSVGTextFrame2,
+                                 NS_NewSVGTextFrame,
                                  nsCSSAnonBoxes::mozSVGText);
     return &sTextData;
   } else if (aTag == nsGkAtoms::tspan ||
@@ -5132,7 +5132,7 @@ nsCSSFrameConstructor::AddFrameConstructionItems(nsFrameConstructorState& aState
   }
   if (aParentFrame->GetType() == nsGkAtoms::blockFrame &&
       aParentFrame->GetParent() &&
-      aParentFrame->GetParent()->GetType() == nsGkAtoms::svgTextFrame2) {
+      aParentFrame->GetParent()->GetType() == nsGkAtoms::svgTextFrame) {
     flags |= ITEM_ALLOWS_TEXT_PATH_CHILD;
   }
   AddFrameConstructionItemsInternal(aState, aContent, aParentFrame,
@@ -9414,7 +9414,7 @@ nsCSSFrameConstructor::ProcessChildren(nsFrameConstructorState& aState,
     if (!aFrame->IsGeneratedContentFrame()) {
       nsIContent *badKid = AnyKidsNeedBlockParent(aFrameItems.FirstChild());
       nsDependentAtomString parentTag(aContent->Tag()), kidTag(badKid->Tag());
-      const PRUnichar* params[] = { parentTag.get(), kidTag.get() };
+      const char16_t* params[] = { parentTag.get(), kidTag.get() };
       const nsStyleDisplay *display = frameStyleContext->StyleDisplay();
       const char *message =
         (display->mDisplay == NS_STYLE_DISPLAY_INLINE_BOX)
@@ -9710,7 +9710,7 @@ FirstLetterCount(const nsTextFragment* aFragment)
 
   int32_t i, n = aFragment->GetLength();
   for (i = 0; i < n; i++) {
-    PRUnichar ch = aFragment->CharAt(i);
+    char16_t ch = aFragment->CharAt(i);
     // FIXME: take content language into account when deciding whitespace.
     if (dom::IsSpaceCharacter(ch)) {
       if (firstLetterLength) {

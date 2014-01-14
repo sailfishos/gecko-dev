@@ -607,7 +607,11 @@ public:
      * When set, clipping due to the root scroll frame (and any other viewport-
      * related clipping) is ignored.
      */
-    IGNORE_ROOT_SCROLL_FRAME = 0x02
+    IGNORE_ROOT_SCROLL_FRAME = 0x02,
+    /**
+     * When set, return only content in the same document as aFrame.
+     */
+    IGNORE_CROSS_DOC = 0x04
   };
 
   /**
@@ -833,7 +837,7 @@ public:
    */
   static bool
   BinarySearchForPosition(nsRenderingContext* acx,
-                          const PRUnichar* aText,
+                          const char16_t* aText,
                           int32_t    aBaseWidth,
                           int32_t    aBaseInx,
                           int32_t    aStartInx,
@@ -1166,14 +1170,14 @@ public:
 
   static void DrawString(const nsIFrame*       aFrame,
                          nsRenderingContext*   aContext,
-                         const PRUnichar*      aString,
+                         const char16_t*      aString,
                          int32_t               aLength,
                          nsPoint               aPoint,
                          nsStyleContext*       aStyleContext = nullptr);
 
   static nscoord GetStringWidth(const nsIFrame*      aFrame,
                                 nsRenderingContext* aContext,
-                                const PRUnichar*     aString,
+                                const char16_t*     aString,
                                 int32_t              aLength);
 
   /**

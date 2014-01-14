@@ -392,7 +392,7 @@ nsHtml5StreamParser::SniffBOMlessUTF16BasicLatin(const uint8_t* aFromSegment,
 }
 
 void
-nsHtml5StreamParser::SetEncodingFromExpat(const PRUnichar* aEncoding)
+nsHtml5StreamParser::SetEncodingFromExpat(const char16_t* aEncoding)
 {
   if (aEncoding) {
     nsDependentString utf16(aEncoding);
@@ -432,7 +432,7 @@ HandleXMLDeclaration(void* aUserData,
 {
   UserData* ud = static_cast<UserData*>(aUserData);
   ud->mStreamParser->SetEncodingFromExpat(
-      reinterpret_cast<const PRUnichar*>(aEncoding));
+      reinterpret_cast<const char16_t*>(aEncoding));
   XML_StopParser(ud->mExpat, false);
 }
 
@@ -487,9 +487,9 @@ nsHtml5StreamParser::FinalizeSniffing(const uint8_t* aFromSegment, // can be nul
         moz_free
       };
 
-    static const PRUnichar kExpatSeparator[] = { 0xFFFF, '\0' };
+    static const char16_t kExpatSeparator[] = { 0xFFFF, '\0' };
 
-    static const PRUnichar kISO88591[] =
+    static const char16_t kISO88591[] =
         { 'I', 'S', 'O', '-', '8', '8', '5', '9', '-', '1', '\0' };
 
     UserData ud;
@@ -1203,13 +1203,20 @@ nsHtml5StreamParser::PreferredForInternalEncodingDecl(nsACString& aEncoding)
     return false;
   }
 
-  if (newEncoding.EqualsLiteral("UTF-16") ||
-      newEncoding.EqualsLiteral("UTF-16BE") ||
+  if (newEncoding.EqualsLiteral("UTF-16BE") ||
       newEncoding.EqualsLiteral("UTF-16LE")) {
     mTreeBuilder->MaybeComplainAboutCharset("EncMetaUtf16",
                                             true,
                                             mTokenizer->getLineNumber());
     newEncoding.Assign("UTF-8");
+  }
+
+  if (newEncoding.EqualsLiteral("x-user-defined")) {
+    // WebKit/Blink hack for Indian and Armenian legacy sites
+    mTreeBuilder->MaybeComplainAboutCharset("EncMetaUserDefined",
+                                            true,
+                                            mTokenizer->getLineNumber());
+    newEncoding.Assign("windows-1252");
   }
 
   if (newEncoding.Equals(mCharset)) {

@@ -796,7 +796,7 @@ DocAccessible::ScrollPositionDidChange(nscoord aX, nscoord aY)
 
 NS_IMETHODIMP
 DocAccessible::Observe(nsISupports* aSubject, const char* aTopic,
-                       const PRUnichar* aData)
+                       const char16_t* aData)
 {
   if (!nsCRT::strcmp(aTopic,"obs_documentCreated")) {    
     // State editable will now be set, readonly is now clear
@@ -1803,8 +1803,9 @@ DocAccessible::UpdateTree(Accessible* aContainer, nsIContent* aChildNode,
         Accessible* child = aContainer->ContentChildAt(idx);
 
         // If accessible doesn't have its own content then we assume parent
-        // will handle its update.
-        if (!child->HasOwnContent()) {
+        // will handle its update.  If child is DocAccessible then we don't
+        // handle updating it here either.
+        if (!child->HasOwnContent() || child->IsDoc()) {
           idx++;
           continue;
         }

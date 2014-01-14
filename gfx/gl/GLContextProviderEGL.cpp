@@ -378,15 +378,6 @@ public:
         mIsDoubleBuffered = aIsDB;
     }
 
-    virtual EGLContext GetEGLContext() {
-        return mContext;
-    }
-
-    virtual GLLibraryEGL* GetLibraryEGL() {
-        return &sEGLLibrary;
-    }
-
-
     bool SupportsRobustness()
     {
         return sEGLLibrary.HasRobustness();
@@ -433,7 +424,7 @@ public:
         return true;
     }
 
-    virtual void SetEGLSurfaceOverride(EGLSurface surf) MOZ_OVERRIDE {
+    void SetEGLSurfaceOverride(EGLSurface surf) {
         if (Screen()) {
             /* Blit `draw` to `read` if we need to, before we potentially juggle
              * `read` around. If we don't, we might attach a different `read`,
@@ -560,7 +551,7 @@ public:
 
     bool BindTex2DOffscreen(GLContext *aOffscreen);
     void UnbindTex2DOffscreen(GLContext *aOffscreen);
-    bool ResizeOffscreen(const gfxIntSize& aNewSize);
+    bool ResizeOffscreen(const gfx::IntSize& aNewSize);
     void BindOffscreenFramebuffer();
 
     static already_AddRefed<GLContextEGL>
@@ -635,9 +626,9 @@ protected:
 };
 
 bool
-GLContextEGL::ResizeOffscreen(const gfxIntSize& aNewSize)
+GLContextEGL::ResizeOffscreen(const gfx::IntSize& aNewSize)
 {
-	return ResizeScreenBuffer(aNewSize);
+    return ResizeScreenBuffer(aNewSize);
 }
 
 static const EGLint kEGLConfigAttribsOffscreenPBuffer[] = {
@@ -780,7 +771,6 @@ GLContextProviderEGL::CreateForEmbedded(ContextFlags flags)
 
         if (flags == ContextFlagsGlobal) {
             gGlobalContext = glContext;
-            gGlobalContext->SetIsGlobalSharedContext(true);
         }
 #endif
 
@@ -947,7 +937,7 @@ GLContextProviderEGL::CreateOffscreen(const gfxIntSize& size,
     if (!glContext)
         return nullptr;
 
-    if (!glContext->InitOffscreen(size, caps))
+    if (!glContext->InitOffscreen(ToIntSize(size), caps))
         return nullptr;
 
     return glContext.forget();
@@ -966,6 +956,16 @@ void
 GLContextProviderEGL::Shutdown()
 {
     gGlobalContext = nullptr;
+}
+
+GLContextEGL* DowncastGLContextEGL(GLContext* context)
+{
+    return static_cast<GLContextEGL*>(context);
+}
+
+void SetEGLSurfaceOverride(GLContextEGL* context, EGLSurface surf)
+{
+    context->SetEGLSurfaceOverride(surf);
 }
 
 } /* namespace gl */

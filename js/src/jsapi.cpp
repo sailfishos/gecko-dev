@@ -53,7 +53,10 @@
 #include "builtin/Intl.h"
 #include "builtin/MapObject.h"
 #include "builtin/RegExp.h"
+#ifdef ENABLE_BINARYDATA
+#include "builtin/SIMD.h"
 #include "builtin/TypedObject.h"
+#endif
 #include "frontend/BytecodeCompiler.h"
 #include "frontend/FullParseHandler.h"  // for JS_BufferIsCompileableUnit
 #include "frontend/Parser.h" // for JS_BufferIsCompileableUnit
@@ -1218,6 +1221,10 @@ static const JSStdName builtin_property_names[] = {
     {js_InitStringClass,        EAGER_ATOM(encodeURIComponent), OCLASP(String)},
 #if JS_HAS_UNEVAL
     {js_InitStringClass,        EAGER_ATOM(uneval), OCLASP(String)},
+#endif
+#ifdef ENABLE_BINARYDATA
+    {js_InitSIMDClass,          EAGER_ATOM(SIMD), OCLASP(SIMD)},
+    {js_InitTypedObjectModuleObject, EAGER_ATOM(TypedObject), OCLASP(TypedObjectModule)},
 #endif
 
     {nullptr,                     0, nullptr}
@@ -2680,11 +2687,7 @@ JS_NewObjectForConstructor(JSContext *cx, const JSClass *clasp, const jsval *vp)
 JS_PUBLIC_API(bool)
 JS_IsExtensible(JSContext *cx, HandleObject obj, bool *extensible)
 {
-    bool isExtensible;
-    if (!JSObject::isExtensible(cx, obj, &isExtensible))
-        return false;
-    *extensible = isExtensible;
-    return true;
+    return JSObject::isExtensible(cx, obj, extensible);
 }
 
 JS_PUBLIC_API(bool)
@@ -2809,7 +2812,7 @@ JS_LookupElement(JSContext *cx, JSObject *objArg, uint32_t index, MutableHandleV
     RootedObject obj(cx, objArg);
     CHECK_REQUEST(cx);
     RootedId id(cx);
-    if (!IndexToId(cx, index, id.address()))
+    if (!IndexToId(cx, index, &id))
         return false;
     return JS_LookupPropertyById(cx, obj, id, vp);
 }
@@ -2884,7 +2887,7 @@ JS_HasElement(JSContext *cx, JSObject *objArg, uint32_t index, bool *foundp)
     AssertHeapIsIdle(cx);
     CHECK_REQUEST(cx);
     RootedId id(cx);
-    if (!IndexToId(cx, index, id.address()))
+    if (!IndexToId(cx, index, &id))
         return false;
     return JS_HasPropertyById(cx, obj, id, foundp);
 }
@@ -2940,7 +2943,7 @@ JS_AlreadyHasOwnElement(JSContext *cx, JSObject *objArg, uint32_t index, bool *f
     AssertHeapIsIdle(cx);
     CHECK_REQUEST(cx);
     RootedId id(cx);
-    if (!IndexToId(cx, index, id.address()))
+    if (!IndexToId(cx, index, &id))
         return false;
     return JS_AlreadyHasOwnPropertyById(cx, obj, id, foundp);
 }
@@ -3082,7 +3085,7 @@ JS_DefineElement(JSContext *cx, JSObject *objArg, uint32_t index, jsval valueArg
     AssertHeapIsIdle(cx);
     CHECK_REQUEST(cx);
     RootedId id(cx);
-    if (!IndexToId(cx, index, id.address()))
+    if (!IndexToId(cx, index, &id))
         return false;
     return DefinePropertyById(cx, obj, id, value, GetterWrapper(getter),
                               SetterWrapper(setter), attrs, 0, 0);
@@ -3514,20 +3517,11 @@ JS_DeletePropertyById2(JSContext *cx, JSObject *objArg, jsid id, bool *result)
     assertSameCompartment(cx, obj, id);
     JSAutoResolveFlags rf(cx, 0);
 
-    RootedValue value(cx);
-
-    bool succeeded;
     if (JSID_IS_SPECIAL(id)) {
         Rooted<SpecialId> sid(cx, JSID_TO_SPECIALID(id));
-        if (!JSObject::deleteSpecial(cx, obj, sid, &succeeded))
-            return false;
-    } else {
-        if (!JSObject::deleteByValue(cx, obj, IdToValue(id), &succeeded))
-            return false;
+        return JSObject::deleteSpecial(cx, obj, sid, result);
     }
-
-    *result = !!succeeded;
-    return true;
+    return JSObject::deleteByValue(cx, obj, IdToValue(id), result);
 }
 
 JS_PUBLIC_API(bool)
@@ -3539,12 +3533,7 @@ JS_DeleteElement2(JSContext *cx, JSObject *objArg, uint32_t index, bool *result)
     assertSameCompartment(cx, obj);
     JSAutoResolveFlags rf(cx, 0);
 
-    bool succeeded;
-    if (!JSObject::deleteElement(cx, obj, index, &succeeded))
-        return false;
-
-    *result = !!succeeded;
-    return true;
+    return JSObject::deleteElement(cx, obj, index, result);
 }
 
 JS_PUBLIC_API(bool)
@@ -3558,13 +3547,7 @@ JS_DeleteProperty2(JSContext *cx, JSObject *objArg, const char *name, bool *resu
     JSAtom *atom = Atomize(cx, name, strlen(name));
     if (!atom)
         return false;
-
-    bool succeeded;
-    if (!JSObject::deleteByValue(cx, obj, StringValue(atom), &succeeded))
-        return false;
-
-    *result = !!succeeded;
-    return true;
+    return JSObject::deleteByValue(cx, obj, StringValue(atom), result);
 }
 
 JS_PUBLIC_API(bool)
@@ -3579,13 +3562,7 @@ JS_DeleteUCProperty2(JSContext *cx, JSObject *objArg, const jschar *name, size_t
     JSAtom *atom = AtomizeChars(cx, name, AUTO_NAMELEN(name, namelen));
     if (!atom)
         return false;
-
-    bool succeeded;
-    if (!JSObject::deleteByValue(cx, obj, StringValue(atom), &succeeded))
-        return false;
-
-    *result = !!succeeded;
-    return true;
+    return JSObject::deleteByValue(cx, obj, StringValue(atom), result);
 }
 
 JS_PUBLIC_API(bool)
@@ -4549,7 +4526,7 @@ JS::CompileOffThread(JSContext *cx, Handle<JSObject*> obj, const ReadOnlyCompile
 JS_PUBLIC_API(JSScript *)
 JS::FinishOffThreadScript(JSContext *maybecx, JSRuntime *rt, void *token)
 {
-#ifdef JS_WORKER_THREADS
+#ifdef JS_THREADSAFE
     JS_ASSERT(CurrentThreadCanAccessRuntime(rt));
 
     Maybe<AutoLastFrameCheck> lfc;
@@ -5865,9 +5842,7 @@ JS_GetPendingException(JSContext *cx, MutableHandleValue vp)
     CHECK_REQUEST(cx);
     if (!cx->isExceptionPending())
         return false;
-    vp.set(cx->getPendingException());
-    assertSameCompartment(cx, vp);
-    return true;
+    return cx->getPendingException(vp);
 }
 
 JS_PUBLIC_API(void)
@@ -6023,20 +5998,23 @@ JS_PUBLIC_API(void)
 JS_SetGlobalJitCompilerOption(JSContext *cx, JSJitCompilerOption opt, uint32_t value)
 {
 #ifdef JS_ION
-    jit::IonOptions defaultValues;
 
     switch (opt) {
       case JSJITCOMPILER_BASELINE_USECOUNT_TRIGGER:
-        if (value == uint32_t(-1))
+        if (value == uint32_t(-1)) {
+            jit::JitOptions defaultValues;
             value = defaultValues.baselineUsesBeforeCompile;
-        jit::js_IonOptions.baselineUsesBeforeCompile = value;
+        }
+        jit::js_JitOptions.baselineUsesBeforeCompile = value;
         break;
       case JSJITCOMPILER_ION_USECOUNT_TRIGGER:
-        if (value == uint32_t(-1))
-            value = defaultValues.usesBeforeCompile;
-        jit::js_IonOptions.usesBeforeCompile = value;
+        if (value == uint32_t(-1)) {
+            jit::js_JitOptions.resetUsesBeforeCompile();
+            break;
+        }
+        jit::js_JitOptions.setUsesBeforeCompile(value);
         if (value == 0)
-            jit::js_IonOptions.setEagerCompilation();
+            jit::js_JitOptions.setEagerCompilation();
         break;
       case JSJITCOMPILER_ION_ENABLE:
         if (value == 1) {
@@ -6081,7 +6059,7 @@ BOOL WINAPI DllMain (HINSTANCE hDLL, DWORD dwReason, LPVOID lpReserved)
 JS_PUBLIC_API(bool)
 JS_IndexToId(JSContext *cx, uint32_t index, MutableHandleId id)
 {
-    return IndexToId(cx, index, id.address());
+    return IndexToId(cx, index, id);
 }
 
 JS_PUBLIC_API(bool)

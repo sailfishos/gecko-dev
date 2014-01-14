@@ -7,7 +7,7 @@
 #include "GLContext.h"                  // for GLContext, etc
 #include "GLSharedHandleHelpers.h"
 #include "GLUploadHelpers.h"
-#include "GLContextUtils.h"             // for GLContextUtils
+#include "GLReadTexImageHelper.h"
 #include "SharedSurface.h"              // for SharedSurface
 #include "SharedSurfaceEGL.h"           // for SharedSurface_EGLImage
 #include "SharedSurfaceGL.h"            // for SharedSurface_GLTexture, etc
@@ -16,7 +16,6 @@
 #include "TiledLayerBuffer.h"           // for TILEDLAYERBUFFER_TILE_SIZE
 #include "gfx2DGlue.h"                  // for ContentForFormat, etc
 #include "gfxImageSurface.h"            // for gfxImageSurface
-#include "gfxPoint.h"                   // for gfxIntSize
 #include "gfxReusableSurfaceWrapper.h"  // for gfxReusableSurfaceWrapper
 #include "ipc/AutoOpenSurface.h"        // for AutoOpenSurface
 #include "mozilla/gfx/2D.h"             // for DataSourceSurface
@@ -237,7 +236,7 @@ TextureImageTextureSourceOGL::Update(gfx::DataSourceSurface* aSurface,
   }
   MOZ_ASSERT(aSurface);
 
-  nsIntSize size = ThebesIntSize(aSurface->GetSize());
+  IntSize size = aSurface->GetSize();
   if (!mTexImage ||
       mTexImage->GetSize() != size ||
       mTexImage->GetContentType() != gfx::ContentForFormat(aSurface->GetFormat())) {
@@ -502,15 +501,15 @@ TextureImageDeprecatedTextureHostOGL::EnsureBuffer(const nsIntSize& aSize,
                                          gfxContentType aContentType)
 {
   if (!mTexture ||
-      mTexture->GetSize() != aSize ||
+      mTexture->GetSize() != aSize.ToIntSize() ||
       mTexture->GetContentType() != aContentType) {
     mTexture = CreateTextureImage(mGL,
-                                  aSize,
+                                  aSize.ToIntSize(),
                                   aContentType,
                                   WrapMode(mGL, mFlags & TEXTURE_ALLOW_REPEAT),
                                   FlagsToGLFlags(mFlags));
   }
-  mTexture->Resize(aSize);
+  mTexture->Resize(aSize.ToIntSize());
 }
 
 void
@@ -772,7 +771,7 @@ SurfaceStreamHostOGL::Lock()
 
   mSize = IntSize(sharedSurf->Size().width, sharedSurf->Size().height);
 
-  gfxImageSurface* toUpload = nullptr;
+  DataSourceSurface* toUpload = nullptr;
   switch (sharedSurf->Type()) {
     case SharedSurfaceType::GLTextureShare: {
       SharedSurface_GLTexture* glTexSurf = SharedSurface_GLTexture::Cast(sharedSurf);
@@ -821,7 +820,7 @@ SurfaceStreamHostOGL::Lock()
 
   if (toUpload) {
     // mBounds seems to end up as (0,0,0,0) a lot, so don't use it?
-    nsIntSize size(toUpload->GetSize());
+    nsIntSize size(ThebesIntSize(toUpload->GetSize()));
     nsIntRect rect(nsIntPoint(0,0), size);
     nsIntRegion bounds(rect);
     mFormat = UploadSurfaceToTexture(mGL,
@@ -882,8 +881,8 @@ YCbCrDeprecatedTextureHostOGL::UpdateImpl(const SurfaceDescriptor& aImage,
 
   YCbCrImageDataDeserializer deserializer(aImage.get_YCbCrImage().data().get<uint8_t>());
 
-  gfxIntSize gfxSize = deserializer.GetYSize();
-  gfxIntSize gfxCbCrSize = deserializer.GetCbCrSize();
+  gfx::IntSize gfxSize = deserializer.GetYSize();
+  gfx::IntSize gfxCbCrSize = deserializer.GetCbCrSize();
 
   if (!mYTexture->mTexImage || mYTexture->mTexImage->GetSize() != gfxSize) {
     mYTexture->mTexImage = CreateBasicTextureImage(mGL,
@@ -907,15 +906,21 @@ YCbCrDeprecatedTextureHostOGL::UpdateImpl(const SurfaceDescriptor& aImage,
                                                     FlagsToGLFlags(mFlags));
   }
 
-  RefPtr<gfxImageSurface> tempY = new gfxImageSurface(deserializer.GetYData(),
-                                       gfxSize, deserializer.GetYStride(),
-                                       gfxImageFormatA8);
-  RefPtr<gfxImageSurface> tempCb = new gfxImageSurface(deserializer.GetCbData(),
-                                       gfxCbCrSize, deserializer.GetCbCrStride(),
-                                       gfxImageFormatA8);
-  RefPtr<gfxImageSurface> tempCr = new gfxImageSurface(deserializer.GetCrData(),
-                                       gfxCbCrSize, deserializer.GetCbCrStride(),
-                                       gfxImageFormatA8);
+  RefPtr<gfxImageSurface> tempY =
+    new gfxImageSurface(deserializer.GetYData(),
+                        gfx::ThebesIntSize(gfxSize),
+                        deserializer.GetYStride(),
+                        gfxImageFormatA8);
+  RefPtr<gfxImageSurface> tempCb =
+    new gfxImageSurface(deserializer.GetCbData(),
+                        gfx::ThebesIntSize(gfxCbCrSize),
+                        deserializer.GetCbCrStride(),
+                        gfxImageFormatA8);
+  RefPtr<gfxImageSurface> tempCr =
+    new gfxImageSurface(deserializer.GetCrData(),
+                        gfx::ThebesIntSize(gfxCbCrSize),
+                        deserializer.GetCbCrStride(),
+                        gfxImageFormatA8);
 
   nsIntRegion yRegion(nsIntRect(0, 0, gfxSize.width, gfxSize.height));
   nsIntRegion cbCrRegion(nsIntRect(0, 0, gfxCbCrSize.width, gfxCbCrSize.height));

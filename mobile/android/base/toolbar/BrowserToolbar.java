@@ -128,7 +128,7 @@ public class BrowserToolbar extends GeckoRelativeLayout
 
     private ImageButton mSiteSecurity;
     private PageActionLayout mPageActionLayout;
-    private Animation mProgressSpinner;
+    //private Animation mProgressSpinner;
     private TabCounter mTabsCounter;
     private GeckoImageButton mMenu;
     private GeckoImageView mMenuIcon;
@@ -303,7 +303,7 @@ public class BrowserToolbar extends GeckoRelativeLayout
         mSiteIdentityPopup = new SiteIdentityPopup(mActivity);
         mSiteIdentityPopup.setAnchor(mSiteSecurity);
 
-        mProgressSpinner = AnimationUtils.loadAnimation(mActivity, R.anim.progress_spinner);
+        //mProgressSpinner = AnimationUtils.loadAnimation(mActivity, R.anim.progress_spinner);
 
         mStop = (ImageButton) findViewById(R.id.stop);
         mPageActionLayout = (PageActionLayout) findViewById(R.id.page_action_layout);
@@ -365,10 +365,7 @@ public class BrowserToolbar extends GeckoRelativeLayout
                         menu.findItem(R.id.add_to_launcher).setVisible(false);
                     }
 
-                    if (!tab.hasFeeds()) {
-                        menu.findItem(R.id.subscribe).setVisible(false);
-                    }
-
+                    menu.findItem(R.id.subscribe).setVisible(tab.hasFeeds());
                     menu.findItem(R.id.add_search_engine).setVisible(tab.hasOpenSearch());
                 } else {
                     // if there is no tab, remove anything tab dependent
@@ -788,8 +785,8 @@ public class BrowserToolbar extends GeckoRelativeLayout
             // To stop the glitch caused by multiple start() calls.
             if (!mSpinnerVisible) {
                 setPageActionVisibility(true);
-                mFavicon.setAnimation(mProgressSpinner);
-                mProgressSpinner.start();
+                //mFavicon.setAnimation(mProgressSpinner);
+                //mProgressSpinner.start();
                 mSpinnerVisible = true;
             }
             Log.i(LOGTAG, "zerdatime " + SystemClock.uptimeMillis() + " - Throbber start");
@@ -802,7 +799,7 @@ public class BrowserToolbar extends GeckoRelativeLayout
             if (mSpinnerVisible) {
                 setPageActionVisibility(false);
                 mFavicon.setAnimation(null);
-                mProgressSpinner.cancel();
+                //mProgressSpinner.cancel();
                 mSpinnerVisible = false;
             }
             Log.i(LOGTAG, "zerdatime " + SystemClock.uptimeMillis() + " - Throbber stop");
@@ -960,6 +957,11 @@ public class BrowserToolbar extends GeckoRelativeLayout
         }
 
         setTitle(title);
+    }
+
+    public void showDefaultFavicon() {
+        mFavicon.setImageResource(R.drawable.favicon);
+        mLastFavicon = null;
     }
 
     private void setFavicon(Bitmap image) {

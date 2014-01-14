@@ -7,6 +7,7 @@
 
 #include "mozilla/DebugOnly.h"
 
+#include "mozilla/gfx/Point.h"
 #include "mozilla/layers/PGrallocBufferChild.h"
 #include "mozilla/layers/PGrallocBufferParent.h"
 #include "mozilla/layers/LayerTransactionChild.h"
@@ -23,6 +24,7 @@
 
 #include "gfxImageSurface.h"
 #include "gfxPlatform.h"
+#include "gfx2DGlue.h"
 #include "GLContext.h"
 
 #include "GeckoProfiler.h"
@@ -187,18 +189,14 @@ ContentTypeFromPixelFormat(android::PixelFormat aFormat)
   return gfxASurface::ContentFromFormat(ImageFormatForPixelFormat(aFormat));
 }
 
-class GrallocReporter MOZ_FINAL : public MemoryUniReporter
+class GrallocReporter MOZ_FINAL : public nsIMemoryReporter
 {
   friend class GrallocBufferActor;
 
 public:
+  NS_DECL_ISUPPORTS
+
   GrallocReporter()
-    : MemoryUniReporter("gralloc", KIND_OTHER, UNITS_BYTES,
-"Special RAM that can be shared between processes and directly accessed by "
-"both the CPU and GPU.  Gralloc memory is usually a relatively precious "
-"resource, with much less available than generic RAM.  When it's exhausted, "
-"graphics performance can suffer. This value can be incorrect because of race "
-"conditions.")
   {
 #ifdef DEBUG
     // There must be only one instance of this class, due to |sAmount|
@@ -209,11 +207,23 @@ public:
 #endif
   }
 
-private:
-  int64_t Amount() MOZ_OVERRIDE { return sAmount; }
+  NS_IMETHOD CollectReports(nsIHandleReportCallback* aHandleReport,
+                            nsISupports* aData)
+  {
+    return MOZ_COLLECT_REPORT(
+      "gralloc", KIND_OTHER, UNITS_BYTES, sAmount,
+"Special RAM that can be shared between processes and directly accessed by "
+"both the CPU and GPU. Gralloc memory is usually a relatively precious "
+"resource, with much less available than generic RAM. When it's exhausted, "
+"graphics performance can suffer. This value can be incorrect because of race "
+"conditions.");
+  }
 
+private:
   static int64_t sAmount;
 };
+
+NS_IMPL_ISUPPORTS1(GrallocReporter, nsIMemoryReporter)
 
 int64_t GrallocReporter::sAmount = 0;
 
@@ -239,7 +249,7 @@ GrallocBufferActor::~GrallocBufferActor()
 }
 
 /*static*/ PGrallocBufferParent*
-GrallocBufferActor::Create(const gfxIntSize& aSize,
+GrallocBufferActor::Create(const gfx::IntSize& aSize,
                            const uint32_t& aFormat,
                            const uint32_t& aUsage,
                            MaybeMagicGrallocBufferHandle* aOutHandle)
@@ -346,7 +356,7 @@ GrallocBufferActor::InitFromHandle(const MagicGrallocBufferHandle& aHandle)
 }
 
 PGrallocBufferChild*
-ShadowLayerForwarder::AllocGrallocBuffer(const gfxIntSize& aSize,
+ShadowLayerForwarder::AllocGrallocBuffer(const gfx::IntSize& aSize,
                                          uint32_t aFormat,
                                          uint32_t aUsage,
                                          MaybeMagicGrallocBufferHandle* aHandle)
@@ -355,7 +365,7 @@ ShadowLayerForwarder::AllocGrallocBuffer(const gfxIntSize& aSize,
 }
 
 bool
-ISurfaceAllocator::PlatformAllocSurfaceDescriptor(const gfxIntSize& aSize,
+ISurfaceAllocator::PlatformAllocSurfaceDescriptor(const gfx::IntSize& aSize,
                                                   gfxContentType aContent,
                                                   uint32_t aCaps,
                                                   SurfaceDescriptor* aBuffer)
@@ -479,13 +489,16 @@ ShadowLayerForwarder::PlatformOpenDescriptor(OpenMode aMode,
   // If we fail to lock, we'll just end up aborting anyway.
   MOZ_ASSERT(status == OK);
 
-  gfxIntSize size = aSurface.get_SurfaceDescriptorGralloc().size();
+  gfx::IntSize size = aSurface.get_SurfaceDescriptorGralloc().size();
   gfxImageFormat format = ImageFormatForPixelFormat(buffer->getPixelFormat());
   long pixelStride = buffer->getStride();
   long byteStride = pixelStride * gfxASurface::BytePerPixelFromFormat(format);
 
   nsRefPtr<gfxASurface> surf =
-    new gfxImageSurface((unsigned char*)vaddr, size, byteStride, format);
+    new gfxImageSurface((unsigned char*)vaddr,
+                        gfx::ThebesIntSize(size),
+                        byteStride,
+                        format);
   return surf->CairoStatus() ? nullptr : surf.forget();
 }
 
@@ -508,7 +521,7 @@ ShadowLayerForwarder::PlatformGetDescriptorSurfaceContentType(
 /*static*/ bool
 ShadowLayerForwarder::PlatformGetDescriptorSurfaceSize(
   const SurfaceDescriptor& aDescriptor, OpenMode aMode,
-  gfxIntSize* aSize,
+  gfx::IntSize* aSize,
   gfxASurface** aSurface)
 {
   if (SurfaceDescriptor::TSurfaceDescriptorGralloc != aDescriptor.type()) {

@@ -91,13 +91,12 @@ enum eFontPrefLang {
     eFontPrefLang_Sinhala     = 28,
     eFontPrefLang_Tibetan     = 29,
 
-    eFontPrefLang_LangCount   = 30, // except Others and UserDefined.
+    eFontPrefLang_LangCount   = 30, // except Others.
 
     eFontPrefLang_Others      = 30, // x-unicode
-    eFontPrefLang_UserDefined = 31,
 
-    eFontPrefLang_CJKSet      = 32, // special code for CJK set
-    eFontPrefLang_AllCount    = 33
+    eFontPrefLang_CJKSet      = 31, // special code for CJK set
+    eFontPrefLang_AllCount    = 32
 };
 
 enum eCMSMode {
@@ -297,7 +296,7 @@ public:
      * Font bits
      */
 
-    virtual void SetupClusterBoundaries(gfxTextRun *aTextRun, const PRUnichar *aString);
+    virtual void SetupClusterBoundaries(gfxTextRun *aTextRun, const char16_t *aString);
 
     /**
      * Fill aListOfFonts with the results of querying the list of font names
@@ -518,6 +517,10 @@ public:
     static void DisableBufferRotation();
 
     static bool ComponentAlphaEnabled();
+
+    // Async video is enabled on this platform.
+    // Must only be called from the main thread.
+    static bool AsyncVideoEnabled();
 
     /**
      * Are we going to try color management?

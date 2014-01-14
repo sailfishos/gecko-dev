@@ -8,7 +8,7 @@
 /*****************************************************************************/
 
 #include <stdint.h>
-const PRTime gPreloadListExpirationTime = INT64_C(1397905536640000);
+const PRTime gPreloadListExpirationTime = INT64_C(1399719973983000);
 
 class nsSTSPreload
 {
@@ -28,8 +28,10 @@ static const nsSTSPreload kSTSPreloadList[] = {
   { "bank.simple.com", false },
   { "bassh.net", true },
   { "bccx.com", true },
+  { "bitbucket.org", false },
   { "blog.cyveillance.com", true },
   { "blog.linode.com", false },
+  { "blog.lookout.com", false },
   { "blog.torproject.org", false },
   { "blueseed.co", false },
   { "bugzilla.mozilla.org", true },
@@ -43,7 +45,6 @@ static const nsSTSPreload kSTSPreloadList[] = {
   { "codereview.appspot.com", false },
   { "conformal.com", true },
   { "controlcenter.gigahost.dk", true },
-  { "crate.io", true },
   { "crm.onlime.ch", false },
   { "crypto.cat", false },
   { "cupcake.io", true },
@@ -61,6 +62,7 @@ static const nsSTSPreload kSTSPreloadList[] = {
   { "ecosystem.atlassian.net", true },
   { "eff.org", true },
   { "entropia.de", false },
+  { "epoxate.com", false },
   { "errors.zenpayroll.com", false },
   { "espra.com", true },
   { "factor.cc", false },
@@ -102,6 +104,7 @@ static const nsSTSPreload kSTSPreloadList[] = {
   { "mega.co.nz", false },
   { "members.mayfirst.org", false },
   { "members.nearlyfreespeech.net", false },
+  { "mnsure.org", true },
   { "mudcrab.us", true },
   { "my.onlime.ch", false },
   { "my.xero.com", false },
@@ -135,6 +138,7 @@ static const nsSTSPreload kSTSPreloadList[] = {
   { "surkatty.org", true },
   { "tent.io", true },
   { "therapynotes.com", false },
+  { "torproject.org", false },
   { "twitter.com", false },
   { "ubertt.org", true },
   { "webmail.gigahost.dk", false },

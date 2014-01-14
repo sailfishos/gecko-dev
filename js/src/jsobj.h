@@ -288,6 +288,10 @@ class JSObject : public js::ObjectImpl
     }
 
     bool isBoundFunction() const {
+        // Note: This function can race when it is called during off thread compilation.
+        js::AutoThreadSafeAccess ts0(this);
+        js::AutoThreadSafeAccess ts1(lastProperty());
+        js::AutoThreadSafeAccess ts2(lastProperty()->base());
         return lastProperty()->hasObjectFlag(js::BaseShape::BOUND_FUNCTION);
     }
 
@@ -412,7 +416,7 @@ class JSObject : public js::ObjectImpl
             elements[i].js::HeapSlot::~HeapSlot();
     }
 
-    void rollbackProperties(js::ExclusiveContext *cx, uint32_t slotSpan);
+    bool rollbackProperties(js::ExclusiveContext *cx, uint32_t slotSpan);
 
     void nativeSetSlot(uint32_t slot, const js::Value &value) {
         JS_ASSERT(isNative());
@@ -495,6 +499,9 @@ class JSObject : public js::ObjectImpl
      * to recover this information in the object's type information after it
      * is purged on GC.
      */
+    bool isIteratedSingleton() const {
+        return lastProperty()->hasObjectFlag(js::BaseShape::ITERATED_SINGLETON);
+    }
     bool setIteratedSingleton(js::ExclusiveContext *cx) {
         return setFlag(cx, js::BaseShape::ITERATED_SINGLETON);
     }
@@ -503,6 +510,9 @@ class JSObject : public js::ObjectImpl
      * Mark an object as requiring its default 'new' type to have unknown
      * properties.
      */
+    bool isNewTypeUnknown() const {
+        return lastProperty()->hasObjectFlag(js::BaseShape::NEW_TYPE_UNKNOWN);
+    }
     static bool setNewTypeUnknown(JSContext *cx, const js::Class *clasp, JS::HandleObject obj);
 
     /* Set a new prototype for an object with a singleton type. */

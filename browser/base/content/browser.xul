@@ -245,9 +245,9 @@
     <menupopup id="toolbar-context-menu"
                onpopupshowing="onViewToolbarsPopupShowing(event, document.getElementById('viewToolbarsMenuSeparator'));">
       <menuitem oncommand="gCustomizeMode.addToPanel(document.popupNode)"
-                accesskey="&customizeMenu.addToPanel.accesskey;"
-                label="&customizeMenu.addToPanel.label;"
-                class="customize-context-addToPanel"/>
+                accesskey="&customizeMenu.moveToPanel.accesskey;"
+                label="&customizeMenu.moveToPanel.label;"
+                class="customize-context-moveToPanel"/>
       <menuitem oncommand="gCustomizeMode.removeFromArea(document.popupNode)"
                 accesskey="&customizeMenu.removeFromToolbar.accesskey;"
                 label="&customizeMenu.removeFromToolbar.label;"

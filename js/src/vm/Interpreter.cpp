@@ -501,13 +501,19 @@ js::Invoke(JSContext *cx, const Value &thisv, const Value &fval, unsigned argc, 
         /*
          * We must call the thisObject hook in case we are not called from the
          * interpreter, where a prior bytecode has computed an appropriate
-         * |this| already.
+         * |this| already.  But don't do that if fval is a DOM function.
          */
-        RootedObject thisObj(cx, &args.thisv().toObject());
-        JSObject *thisp = JSObject::thisObject(cx, thisObj);
-        if (!thisp)
-             return false;
-        args.setThis(ObjectValue(*thisp));
+        if (!fval.isObject() || !fval.toObject().is<JSFunction>() ||
+            !fval.toObject().as<JSFunction>().isNative() ||
+            !fval.toObject().as<JSFunction>().jitInfo() ||
+            !fval.toObject().as<JSFunction>().jitInfo()->isDOMJitInfo())
+        {
+            RootedObject thisObj(cx, &args.thisv().toObject());
+            JSObject *thisp = JSObject::thisObject(cx, thisObj);
+            if (!thisp)
+                return false;
+            args.setThis(ObjectValue(*thisp));
+        }
     }
 
     if (!Invoke(cx, args))
@@ -993,6 +999,7 @@ HandleError(JSContext *cx, FrameRegs &regs)
             }
         }
 
+        RootedValue exception(cx);
         for (TryNoteIter tni(cx, regs); !tni.done(); ++tni) {
             JSTryNote *tn = *tni;
 
@@ -1009,14 +1016,10 @@ HandleError(JSContext *cx, FrameRegs &regs)
             switch (tn->kind) {
               case JSTRY_CATCH:
                 /* Catch cannot intercept the closing of a generator. */
-                if (JS_UNLIKELY(cx->getPendingException().isMagic(JS_GENERATOR_CLOSING)))
+                if (!cx->getPendingException(&exception))
+                    return ErrorReturnContinuation;
+                if (exception.isMagic(JS_GENERATOR_CLOSING))
                     break;
-
-                /*
-                 * Don't clear exceptions to save cx->exception from GC
-                 * until it is pushed to the stack via [exception] in the
-                 * catch block.
-                 */
                 return CatchContinuation;
 
               case JSTRY_FINALLY:
@@ -1042,11 +1045,16 @@ HandleError(JSContext *cx, FrameRegs &regs)
          * Propagate the exception or error to the caller unless the exception
          * is an asynchronous return from a generator.
          */
-        if (JS_UNLIKELY(cx->isExceptionPending() &&
-                        cx->getPendingException().isMagic(JS_GENERATOR_CLOSING))) {
-            cx->clearPendingException();
-            ok = true;
-            regs.fp()->clearReturnValue();
+        if (cx->isExceptionPending()) {
+            RootedValue exception(cx);
+            if (!cx->getPendingException(&exception))
+                return ErrorReturnContinuation;
+
+            if (exception.isMagic(JS_GENERATOR_CLOSING)) {
+                cx->clearPendingException();
+                ok = true;
+                regs.fp()->clearReturnValue();
+            }
         }
     } else {
         UnwindForUncatchableException(cx, regs);
@@ -1701,9 +1709,6 @@ CASE(JSOP_LOOPENTRY)
 #endif /* JS_ION */
 
 END_CASE(JSOP_LOOPENTRY)
-
-CASE(JSOP_NOTEARG)
-END_CASE(JSOP_NOTEARG)
 
 CASE(JSOP_LINENO)
 END_CASE(JSOP_LINENO)
@@ -2774,11 +2779,7 @@ CASE(JSOP_REGEXP)
      * Push a regexp object cloned from the regexp literal object mapped by the
      * bytecode at pc.
      */
-    uint32_t index = GET_UINT32_INDEX(REGS.pc);
-    JSObject *proto = REGS.fp()->global().getOrCreateRegExpPrototype(cx);
-    if (!proto)
-        goto error;
-    JSObject *obj = CloneRegExpObject(cx, script->getRegExp(index), proto);
+    JSObject *obj = CloneRegExpObject(cx, script->getRegExp(REGS.pc));
     if (!obj)
         goto error;
     PUSH_OBJECT(*obj);
@@ -3433,8 +3434,13 @@ DEFAULT()
          * Push (true, exception) pair for finally to indicate that [retsub]
          * should rethrow the exception.
          */
+        RootedValue &exception = rootValue0;
+        if (!cx->getPendingException(&exception)) {
+            interpReturnOK = false;
+            goto return_continuation;
+        }
         PUSH_BOOLEAN(true);
-        PUSH_COPY(cx->getPendingException());
+        PUSH_COPY(exception);
         cx->clearPendingException();
         ADVANCE_AND_DISPATCH(0);
     }
@@ -3678,13 +3684,15 @@ js::SetCallOperation(JSContext *cx)
 bool
 js::GetAndClearException(JSContext *cx, MutableHandleValue res)
 {
-    // Check the interrupt flag to allow interrupting deeply nested exception
-    // handling.
-    if (cx->runtime()->interrupt && !js_HandleExecutionInterrupt(cx))
+    bool status = cx->getPendingException(res);
+    cx->clearPendingException();
+    if (!status)
         return false;
 
-    res.set(cx->getPendingException());
-    cx->clearPendingException();
+    // Check the interrupt flag to allow interrupting deeply nested exception
+    // handling.
+    if (cx->runtime()->interrupt)
+        return js_HandleExecutionInterrupt(cx);
     return true;
 }
 

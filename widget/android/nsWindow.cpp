@@ -88,7 +88,7 @@ class ContentCreationNotifier MOZ_FINAL : public nsIObserver
 
     NS_IMETHOD Observe(nsISupports* aSubject,
                        const char* aTopic,
-                       const PRUnichar* aData)
+                       const char16_t* aData)
     {
         if (!strcmp(aTopic, "ipc:content-created")) {
             nsCOMPtr<nsIObserver> cpo = do_QueryInterface(aSubject);
@@ -1263,7 +1263,7 @@ nsWindow::DispatchMotionEvent(WidgetInputEvent &event, AndroidGeckoEvent *ae,
 {
     nsIntPoint offset = WidgetToScreenOffset();
 
-    event.modifiers = 0;
+    event.modifiers = ae->DOMModifiers();
     event.time = ae->Time();
 
     // XXX possibly bound the range of event.refPoint here.
@@ -1575,7 +1575,7 @@ nsWindow::InitKeyEvent(WidgetKeyboardEvent& event, AndroidGeckoEvent& key,
     if (event.mKeyNameIndex == KEY_NAME_INDEX_USE_STRING) {
         int keyValue = key.DOMPrintableKeyValue();
         if (keyValue) {
-            event.mKeyValue = static_cast<PRUnichar>(keyValue);
+            event.mKeyValue = static_cast<char16_t>(keyValue);
         }
     }
     uint32_t domKeyCode = ConvertAndroidKeyCodeToDOMKeyCode(key.KeyCode());
@@ -1609,16 +1609,19 @@ nsWindow::InitKeyEvent(WidgetKeyboardEvent& event, AndroidGeckoEvent& key,
         event.pluginEvent = pluginEvent;
     }
 
-    if (event.message != NS_KEY_PRESS ||
-        !key.UnicodeChar() || !key.BaseUnicodeChar() ||
-        key.UnicodeChar() == key.BaseUnicodeChar()) {
-        // For keypress, if the unicode char already has modifiers applied, we
-        // don't specify extra modifiers. If UnicodeChar() != BaseUnicodeChar()
-        // it means UnicodeChar() already has modifiers applied.
-        event.InitBasicModifiers(gMenu || key.IsCtrlPressed(),
-                                 key.IsAltPressed(),
-                                 key.IsShiftPressed(),
-                                 key.IsMetaPressed());
+    event.modifiers = key.DOMModifiers();
+    if (gMenu) {
+        event.modifiers |= MODIFIER_CONTROL;
+    }
+    // For keypress, if the unicode char already has modifiers applied, we
+    // don't specify extra modifiers. If UnicodeChar() != BaseUnicodeChar()
+    // it means UnicodeChar() already has modifiers applied.
+    // Note that on Android 4.x, Alt modifier isn't set when the key input
+    // causes text input even while right Alt key is pressed.  However, this
+    // is necessary for Android 2.3 compatibility.
+    if (event.message == NS_KEY_PRESS &&
+        key.UnicodeChar() && key.UnicodeChar() != key.BaseUnicodeChar()) {
+        event.modifiers &= ~(MODIFIER_ALT | MODIFIER_CONTROL | MODIFIER_META);
     }
 
     event.mIsRepeat =

@@ -2042,7 +2042,7 @@ RangeAnalysis::analyze()
 bool
 RangeAnalysis::addRangeAssertions()
 {
-    if (!js_IonOptions.checkRangeAnalysis)
+    if (!js_JitOptions.checkRangeAnalysis)
         return true;
 
     // Check the computed range for this instruction, if the option is set. Note
@@ -2067,10 +2067,6 @@ RangeAnalysis::addRangeAssertions()
 
             // Don't insert assertions if there's nothing interesting to assert.
             if (r.isUnknown() || (ins->type() == MIRType_Int32 && r.isUnknownInt32()))
-                continue;
-
-            // Range-checking PassArgs breaks stuff.
-            if (ins->isPassArg())
                 continue;
 
             MAssertRange *guard = MAssertRange::New(alloc(), ins, new(alloc()) Range(r));

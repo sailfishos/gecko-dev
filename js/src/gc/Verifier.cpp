@@ -454,6 +454,15 @@ gc::StartVerifyPreBarriers(JSRuntime *rt)
     if (rt->gcVerifyPreData || rt->gcIncrementalState != NO_INCREMENTAL)
         return;
 
+    /*
+     * The post barrier verifier requires the storebuffer to be enabled, but the
+     * pre barrier verifier disables it as part of disabling GGC.  Don't allow
+     * starting the pre barrier verifier if the post barrier verifier is already
+     * running.
+     */
+    if (rt->gcVerifyPostData)
+        return;
+
     MinorGC(rt, JS::gcreason::EVICT_NURSERY);
 
     AutoPrepareForTracing prep(rt, WithAtoms);
@@ -870,3 +879,12 @@ js::gc::FinishVerifier(JSRuntime *rt)
 }
 
 #endif /* JS_GC_ZEAL */
+
+void
+js::gc::CrashAtUnhandlableOOM(const char *reason)
+{
+    char msgbuf[1024];
+    JS_snprintf(msgbuf, sizeof(msgbuf), "[unhandlable oom] %s", reason);
+    MOZ_ReportAssertionFailure(msgbuf, __FILE__, __LINE__);
+    MOZ_CRASH();
+}

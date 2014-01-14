@@ -663,6 +663,7 @@ pref("editor.resizing.preserve_ratio",       true);
 pref("editor.positioning.offset",            0);
 
 // Scripts & Windows prefs
+pref("dom.disable_beforeunload",            false);
 pref("dom.disable_image_src_set",           false);
 pref("dom.disable_window_flip",             false);
 pref("dom.disable_window_move_resize",      false);
@@ -711,6 +712,8 @@ pref("dom.sysmsg.enabled", false);
 
 // Enable pre-installed applications.
 pref("dom.webapps.useCurrentProfile", false);
+
+pref("dom.cycle_collector.incremental", false);
 
 // Parsing perf prefs. For now just mimic what the old code did.
 #ifndef XP_WIN
@@ -2002,7 +2005,6 @@ pref("font.minimum-size.tr", 0);
 pref("font.minimum-size.x-cans", 0);
 pref("font.minimum-size.x-western", 0);
 pref("font.minimum-size.x-unicode", 0);
-pref("font.minimum-size.x-user-def", 0);
 
 /*
  * A value greater than zero enables font size inflation for
@@ -3025,6 +3027,9 @@ pref("ui.panel.default_level_parent", false);
 
 pref("ui.plugin.cancel_composition_at_input_source_changed", false);
 
+// The min width of composition window for plugins
+pref("ui.plugin.panel.min-width", 500);
+
 pref("mousewheel.system_scroll_override_on_root_content.enabled", false);
 
 // Macbook touchpad two finger pixel scrolling
@@ -3326,10 +3331,6 @@ pref("font.name.serif.x-unicode", "Charis SIL Compact");
 pref("font.name.sans-serif.x-unicode", "Fira Sans OT");
 pref("font.name.monospace.x-unicode", "Fira Mono OT");
 
-pref("font.name.serif.x-user-def", "Charis SIL Compact");
-pref("font.name.sans-serif.x-user-def", "Fira Sans OT");
-pref("font.name.monospace.x-user-def", "Fira Mono OT");
-
 pref("font.name.serif.x-western", "Charis SIL Compact");
 pref("font.name.sans-serif.x-western", "Fira Sans OT");
 pref("font.name.monospace.x-western", "Fira Mono OT");
@@ -3411,12 +3412,6 @@ pref("font.name.monospace.x-unicode", "Droid Sans Mono");
 pref("font.name-list.serif.x-unicode", "Droid Serif");
 pref("font.name-list.sans-serif.x-unicode", "Clear Sans, Roboto, Droid Sans");
 
-pref("font.name.serif.x-user-def", "Charis SIL Compact");
-pref("font.name.sans-serif.x-user-def", "Clear Sans");
-pref("font.name.monospace.x-user-def", "Droid Sans Mono");
-pref("font.name-list.serif.x-user-def", "Droid Serif");
-pref("font.name-list.sans-serif.x-user-def", "Clear Sans, Roboto, Droid Sans");
-
 pref("font.name.serif.x-western", "Charis SIL Compact");
 pref("font.name.sans-serif.x-western", "Clear Sans");
 pref("font.name.monospace.x-western", "Droid Sans Mono");
@@ -3492,10 +3487,6 @@ pref("font.size.fixed.x-cyrillic", 12);
 pref("font.default.x-unicode", "sans-serif");
 pref("font.size.variable.x-unicode", 16);
 pref("font.size.fixed.x-unicode", 12);
-
-pref("font.default.x-user-def", "sans-serif");
-pref("font.size.variable.x-user-def", 16);
-pref("font.size.fixed.x-user-def", 12);
 
 pref("font.default.x-western", "sans-serif");
 pref("font.size.variable.x-western", 16);
@@ -3689,10 +3680,6 @@ pref("font.name.serif.x-unicode", "serif");
 pref("font.name.sans-serif.x-unicode", "sans-serif");
 pref("font.name.monospace.x-unicode", "monospace");
 
-pref("font.name.serif.x-user-def", "serif");
-pref("font.name.sans-serif.x-user-def", "sans-serif");
-pref("font.name.monospace.x-user-def", "monospace");
-
 pref("font.name.serif.x-western", "serif");
 pref("font.name.sans-serif.x-western", "sans-serif");
 pref("font.name.monospace.x-western", "monospace");
@@ -3753,10 +3740,6 @@ pref("font.size.fixed.x-cyrillic", 12);
 pref("font.default.x-unicode", "serif");
 pref("font.size.variable.x-unicode", 16);
 pref("font.size.fixed.x-unicode", 12);
-
-pref("font.default.x-user-def", "serif");
-pref("font.size.variable.x-user-def", 16);
-pref("font.size.fixed.x-user-def", 12);
 
 pref("font.default.x-western", "serif");
 pref("font.size.variable.x-western", 16);
@@ -3897,7 +3880,8 @@ pref("signon.rememberSignons",              true);
 pref("signon.autofillForms",                true);
 pref("signon.autologin.proxy",              false);
 pref("signon.debug",                        false);
-pref("signon.useDOMFormHasPassword",        true);
+// Override autocomplete=false for password manager
+pref("signon.overrideAutocomplete",         false);
 
 // Satchel (Form Manager) prefs
 pref("browser.formfill.debug",            false);
@@ -4097,9 +4081,12 @@ pref("layers.scroll-graph", false);
 pref("layers.offmainthreadcomposition.enabled", false);
 // Whether to use the deprecated texture architecture rather than the new one.
 pref("layers.use-deprecated-textures", true);
+#ifndef XP_WIN
 // Asynchonous video compositing using the ImageBridge IPDL protocol.
 // requires off-main-thread compositing.
+// Never works on Windows, so no point pref'ing it on.
 pref("layers.async-video.enabled",false);
+#endif
 
 #ifdef XP_MACOSX
 pref("layers.offmainthreadcomposition.enabled", true);

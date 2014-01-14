@@ -385,7 +385,7 @@ TabChildHelper::WebNavigation()
 }
 
 bool
-TabChildHelper::DoLoadFrameScript(const nsAString& aURL)
+TabChildHelper::DoLoadFrameScript(const nsAString& aURL, bool aRunInGlobalScope)
 {
   if (!InitTabChildGlobal())
     // This can happen if we're half-destroyed.  It's not a fatal
@@ -394,7 +394,7 @@ TabChildHelper::DoLoadFrameScript(const nsAString& aURL)
     return false;
   }
 
-  LoadFrameScriptInternal(aURL);
+  LoadFrameScriptInternal(aURL, aRunInGlobalScope);
   return true;
 }
 

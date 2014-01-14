@@ -14,7 +14,6 @@
 #include "nsICacheSession.h"
 #include "nsICacheService.h"
 #include "nsIOfflineCacheUpdate.h"
-#include "nsIDOMLoadStatus.h"
 #include "nsAutoPtr.h"
 #include "nsContentUtils.h"
 #include "nsEventDispatcher.h"
@@ -567,7 +566,7 @@ nsDOMOfflineResourceList::SendEvent(const nsAString &aEventName)
 NS_IMETHODIMP
 nsDOMOfflineResourceList::Observe(nsISupports *aSubject,
                                     const char *aTopic,
-                                    const PRUnichar *aData)
+                                    const char16_t *aData)
 {
   if (!strcmp(aTopic, "offline-cache-update-added")) {
     nsCOMPtr<nsIOfflineCacheUpdate> update = do_QueryInterface(aSubject);

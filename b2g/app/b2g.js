@@ -85,6 +85,15 @@ pref("mozilla.widget.use-buffer-pixmap", true);
 pref("mozilla.widget.disable-native-theme", true);
 pref("layout.reflow.synthMouseMove", false);
 pref("layers.enable-tiles", false);
+/*
+   Cross Process Mutex is not supported on Mac OS X so progressive
+   paint can not be enabled for B2G on Mac OS X desktop
+*/
+#ifdef MOZ_WIDGET_COCOA
+pref("layers.progressive-paint", false);
+#else
+pref("layers.progressive-paint", false);
+#endif
 
 /* download manager (don't show the window or alert) */
 pref("browser.download.useDownloadDir", true);
@@ -271,6 +280,7 @@ pref("layers.offmainthreadcomposition.async-animations", true);
 pref("layers.async-video.enabled", true);
 pref("layers.async-pan-zoom.enabled", true);
 pref("gfx.content.azure.backends", "cairo");
+pref("layers.composer2d.enabled", true);
 #endif
 
 // Web Notifications
@@ -853,6 +863,9 @@ pref("media.webspeech.synth.enabled", true);
 // Downloads API
 pref("dom.mozDownloads.enabled", true);
 pref("dom.downloads.max_retention_days", 7);
+
+// Downloads API
+pref("dom.mozDownloads.enabled", true);
 
 // Inactivity time in milliseconds after which we shut down the OS.File worker.
 pref("osfile.reset_worker_delay", 5000);

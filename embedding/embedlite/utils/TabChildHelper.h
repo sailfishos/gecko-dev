@@ -46,7 +46,7 @@ public:
 
   nsIPrincipal* GetPrincipal() { return mPrincipal; }
 
-  virtual bool DoLoadFrameScript(const nsAString& aURL);
+  virtual bool DoLoadFrameScript(const nsAString& aURL, bool aRunInGlobalScope);
   virtual bool DoSendSyncMessage(JSContext* aCx,
                                  const nsAString& aMessage,
                                  const mozilla::dom::StructuredCloneData& aData,

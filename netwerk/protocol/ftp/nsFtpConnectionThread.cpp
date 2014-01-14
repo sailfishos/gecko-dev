@@ -900,8 +900,8 @@ nsFtpState::R_syst() {
             if (NS_FAILED(rv))
                 return FTP_ERROR;
             
-            PRUnichar* ucs2Response = ToNewUnicode(mResponseMsg);
-            const PRUnichar *formatStrings[1] = { ucs2Response };
+            char16_t* ucs2Response = ToNewUnicode(mResponseMsg);
+            const char16_t *formatStrings[1] = { ucs2Response };
             NS_NAMED_LITERAL_STRING(name, "UnsupportedFTPServer");
 
             nsXPIDLString formattedString;
@@ -2225,9 +2225,13 @@ nsFtpState::SaveNetworkStats(bool enforce)
         return rv;
     }
 
-    networkStatsServiceProxy->SaveAppStats(appId, mActiveNetwork,
-                                           PR_Now() / 1000, mCountRecv,
-                                           0, nullptr);
+    networkStatsServiceProxy->SaveAppStats(appId,
+                                           mActiveNetwork,
+                                           PR_Now() / 1000,
+                                           mCountRecv,
+                                           0,
+                                           false,
+                                           nullptr);
 
     // Reset the counters after saving.
     mCountRecv = 0;

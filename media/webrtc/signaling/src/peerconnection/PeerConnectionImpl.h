@@ -246,7 +246,10 @@ public:
   }
 
   // Get the DTLS identity
-  mozilla::RefPtr<DtlsIdentity> const GetIdentity();
+  mozilla::RefPtr<DtlsIdentity> const GetIdentity() const;
+  std::string GetFingerprint() const;
+  std::string GetFingerprintAlgorithm() const;
+  std::string GetFingerprintHexValue() const;
 
   // Create a fake media stream
   nsresult CreateFakeMediaStream(uint32_t hint, nsIDOMMediaStream** retval);
@@ -337,10 +340,14 @@ public:
   }
 
   NS_IMETHODIMP_TO_ERRORRESULT(AddStream, ErrorResult &rv,
-                               DOMMediaStream& aMediaStream)
+                               DOMMediaStream& aMediaStream,
+                               const MediaConstraintsInternal& aConstraints)
   {
-    rv = AddStream(aMediaStream);
+    rv = AddStream(aMediaStream, aConstraints);
   }
+
+  NS_IMETHODIMP AddStream(DOMMediaStream & aMediaStream,
+                          const MediaConstraintsExternal& aConstraints);
 
   NS_IMETHODIMP_TO_ERRORRESULT(RemoveStream, ErrorResult &rv,
                                DOMMediaStream& aMediaStream)
@@ -527,6 +534,10 @@ private:
       mozilla::dom::PCImplIceConnectionState aState);
   nsresult IceGatheringStateChange_m(
       mozilla::dom::PCImplIceGatheringState aState);
+
+  NS_IMETHOD FingerprintSplitHelper(
+      std::string& fingerprint, size_t& spaceIdx) const;
+
 
 #ifdef MOZILLA_INTERNAL_API
   // Fills in an RTCStatsReportInternal. Must be run on STS.

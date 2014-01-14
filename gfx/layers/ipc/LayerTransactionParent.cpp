@@ -269,6 +269,7 @@ LayerTransactionParent::RecvUpdate(const InfallibleTArray<Edit>& cset,
 
       const CommonLayerAttributes& common = attrs.common();
       layer->SetVisibleRegion(common.visibleRegion());
+      layer->SetEventRegions(common.eventRegions());
       layer->SetContentFlags(common.contentFlags());
       layer->SetOpacity(common.opacity());
       layer->SetClipRect(common.useClipRect() ? &common.clipRect() : nullptr);
@@ -550,10 +551,10 @@ LayerTransactionParent::RecvClearCachedResources()
 }
 
 PGrallocBufferParent*
-LayerTransactionParent::AllocPGrallocBufferParent(const gfxIntSize& aSize,
-                                            const uint32_t& aFormat,
-                                            const uint32_t& aUsage,
-                                            MaybeMagicGrallocBufferHandle* aOutHandle)
+LayerTransactionParent::AllocPGrallocBufferParent(const IntSize& aSize,
+                                                  const uint32_t& aFormat,
+                                                  const uint32_t& aUsage,
+                                                  MaybeMagicGrallocBufferHandle* aOutHandle)
 {
 #ifdef MOZ_HAVE_SURFACEDESCRIPTORGRALLOC
   return GrallocBufferActor::Create(aSize, aFormat, aUsage, aOutHandle);

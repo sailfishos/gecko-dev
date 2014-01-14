@@ -307,9 +307,9 @@ nsGlobalWindow::DOMMinTimeoutValue() const {
   PR_BEGIN_MACRO                                                              \
   if (IsInnerWindow()) {                                                      \
     nsGlobalWindow *outer = GetOuterWindowInternal();                         \
-    if (!outer || outer->GetCurrentInnerWindow() != this) {                   \
+    if (!HasActiveDocument()) {                                                \
       NS_WARNING(outer ?                                                      \
-                 "Inner window is not its outer's current inner window." :    \
+                 "Inner window does not have active document." :              \
                  "No outer window available!");                               \
       return err_rval;                                                        \
     }                                                                         \
@@ -321,11 +321,13 @@ nsGlobalWindow::DOMMinTimeoutValue() const {
   PR_BEGIN_MACRO                                                              \
   if (IsInnerWindow()) {                                                      \
     nsGlobalWindow *outer = GetOuterWindowInternal();                         \
-    if (!outer) {                                                             \
-      NS_WARNING("No outer window available!");                               \
-      errorresult.Throw(NS_ERROR_NOT_INITIALIZED);                            \
-    } else if (outer->GetCurrentInnerWindow() != this) {                      \
-      errorresult.Throw(NS_ERROR_XPC_SECURITY_MANAGER_VETO);                  \
+    if (!HasActiveDocument()) {                                               \
+      if (!outer) {                                                           \
+        NS_WARNING("No outer window available!");                             \
+        errorresult.Throw(NS_ERROR_NOT_INITIALIZED);                          \
+      } else {                                                                \
+        errorresult.Throw(NS_ERROR_XPC_SECURITY_MANAGER_VETO);                \
+      }                                                                       \
     } else {                                                                  \
       return outer->method args;                                              \
     }                                                                         \
@@ -337,9 +339,9 @@ nsGlobalWindow::DOMMinTimeoutValue() const {
   PR_BEGIN_MACRO                                                              \
   if (IsInnerWindow()) {                                                      \
     nsGlobalWindow *outer = GetOuterWindowInternal();                         \
-    if (!outer || outer->GetCurrentInnerWindow() != this) {                   \
+    if (!HasActiveDocument()) {                                               \
       NS_WARNING(outer ?                                                      \
-                 "Inner window is not its outer's current inner window." :    \
+                 "Inner window does not have active document." :              \
                  "No outer window available!");                               \
       return;                                                                 \
     }                                                                         \
@@ -352,9 +354,9 @@ nsGlobalWindow::DOMMinTimeoutValue() const {
   PR_BEGIN_MACRO                                                              \
   if (IsInnerWindow()) {                                                      \
     nsGlobalWindow *outer = GetOuterWindowInternal();                         \
-    if (!outer || outer->GetCurrentInnerWindow() != this) {                   \
+    if (!HasActiveDocument()) {                                               \
       NS_WARNING(outer ?                                                      \
-                 "Inner window is not its outer's current inner window." :    \
+                 "Inner window does not have active document." :              \
                  "No outer window available!");                               \
       return err_rval;                                                        \
     }                                                                         \
@@ -377,9 +379,9 @@ nsGlobalWindow::DOMMinTimeoutValue() const {
   PR_BEGIN_MACRO                                                              \
   if (IsInnerWindow()) {                                                      \
     nsGlobalWindow *outer = GetOuterWindowInternal();                         \
-    if (!outer || outer->GetCurrentInnerWindow() != this) {                   \
+    if (!HasActiveDocument()) {                                               \
       NS_WARNING(outer ?                                                      \
-                 "Inner window is not its outer's current inner window." :    \
+                 "Inner window does not have active document." :              \
                  "No outer window available!");                               \
       return err_rval;                                                        \
     }                                                                         \
@@ -471,7 +473,7 @@ class nsGlobalWindowObserver MOZ_FINAL : public nsIObserver,
 public:
   nsGlobalWindowObserver(nsGlobalWindow* aWindow) : mWindow(aWindow) {}
   NS_DECL_ISUPPORTS
-  NS_IMETHOD Observe(nsISupports* aSubject, const char* aTopic, const PRUnichar* aData)
+  NS_IMETHOD Observe(nsISupports* aSubject, const char* aTopic, const char16_t* aData)
   {
     if (!mWindow)
       return NS_OK;
@@ -1266,6 +1268,8 @@ nsGlobalWindow::~nsGlobalWindow()
     while ((w = (nsGlobalWindow *)PR_LIST_HEAD(this)) != this) {
       PR_REMOVE_AND_INIT_LINK(w);
     }
+
+    DropOuterWindowDocs();
   } else {
     Telemetry::Accumulate(Telemetry::INNERWINDOWS_WITH_MUTATION_LISTENERS,
                           mMutationBits ? 1 : 0);
@@ -1286,9 +1290,9 @@ nsGlobalWindow::~nsGlobalWindow()
     if (outer) {
       outer->MaybeClearInnerWindow(this);
     }
-  }
 
-  ClearDelayedEventsAndDropDocument();
+    MOZ_ASSERT_IF(mDoc, !mDoc->EventHandlingSuppressed());
+  }
 
   // Outer windows are always supposed to call CleanUp before letting themselves
   // be destroyed. And while CleanUp generally seems to be intended to clean up
@@ -1360,12 +1364,12 @@ nsGlobalWindow::MaybeForgiveSpamCount()
 }
 
 void
-nsGlobalWindow::ClearDelayedEventsAndDropDocument()
+nsGlobalWindow::DropOuterWindowDocs()
 {
-  if (mDoc && mDoc->EventHandlingSuppressed()) {
-    mDoc->UnsuppressEventHandlingAndFireEvents(false);
-  }
+  MOZ_ASSERT(IsOuterWindow());
+  MOZ_ASSERT_IF(mDoc, !mDoc->EventHandlingSuppressed());
   mDoc = nullptr;
+  mSuspendedDoc = nullptr;
 }
 
 void
@@ -1545,6 +1549,10 @@ nsGlobalWindow::FreeInnerObjects()
     mDocumentPrincipal = mDoc->NodePrincipal();
     mDocumentURI = mDoc->GetDocumentURI();
     mDocBaseURI = mDoc->GetDocBaseURI();
+
+    while (mDoc->EventHandlingSuppressed()) {
+      mDoc->UnsuppressEventHandlingAndFireEvents(false);
+    }
   }
 
   // Remove our reference to the document and the document principal.
@@ -2271,6 +2279,10 @@ nsGlobalWindow::SetNewDocument(nsIDocument* aDocument,
   // document.
   mDoc = aDocument;
 
+  // Take this opportunity to clear mSuspendedDoc. Our old inner window is now
+  // responsible for unsuspending it.
+  mSuspendedDoc = nullptr;
+
 #ifdef DEBUG
   mLastOpenedURI = aDocument->GetDocumentURI();
 #endif
@@ -2766,7 +2778,7 @@ nsGlobalWindow::DetachFromDocShell()
     mDocBaseURI = mDoc->GetDocBaseURI();
 
     // Release our document reference
-    ClearDelayedEventsAndDropDocument();
+    DropOuterWindowDocs();
     mFocusedNode = nullptr;
   }
 
@@ -5865,7 +5877,7 @@ nsGlobalWindow::MakeScriptDialogTitle(nsAString &aOutTitle)
               fixedURI->GetPrePath(prepath);
 
               NS_ConvertUTF8toUTF16 ucsPrePath(prepath);
-              const PRUnichar *formatStrings[] = { ucsPrePath.get() };
+              const char16_t *formatStrings[] = { ucsPrePath.get() };
               nsXPIDLString tempString;
               nsContentUtils::FormatLocalizedString(nsContentUtils::eCOMMON_DIALOG_PROPERTIES,
                                                     "ScriptDlgHeading",
@@ -6160,7 +6172,7 @@ nsGlobalWindow::Prompt(const nsAString& aMessage, const nsAString& aInitial,
     promptBag->SetPropertyAsBool(NS_LITERAL_STRING("allowTabModal"), allowTabModal);
 
   // Pass in the default value, if any.
-  PRUnichar *inoutValue = ToNewUnicode(fixedInitial);
+  char16_t *inoutValue = ToNewUnicode(fixedInitial);
   bool disallowDialog = false;
 
   nsXPIDLString label;
@@ -8170,6 +8182,8 @@ nsGlobalWindow::ReallyCloseWindow()
 void
 nsGlobalWindow::EnterModalState()
 {
+  FORWARD_TO_OUTER_VOID(EnterModalState, ());
+
   // GetScriptableTop, not GetTop, so that EnterModalState works properly with
   // <iframe mozbrowser>.
   nsGlobalWindow* topWin = GetScriptableTop();
@@ -8203,10 +8217,8 @@ nsGlobalWindow::EnterModalState()
     NS_ASSERTION(!mSuspendedDoc, "Shouldn't have mSuspendedDoc here!");
 
     mSuspendedDoc = topWin->GetExtantDoc();
-    if (mSuspendedDoc && mSuspendedDoc->EventHandlingSuppressed()) {
+    if (mSuspendedDoc) {
       mSuspendedDoc->SuppressEventHandling();
-    } else {
-      mSuspendedDoc = nullptr;
     }
   }
   topWin->mModalStateDepth++;
@@ -8285,6 +8297,8 @@ private:
 void
 nsGlobalWindow::LeaveModalState()
 {
+  FORWARD_TO_OUTER_VOID(LeaveModalState, ());
+
   nsGlobalWindow* topWin = GetScriptableTop();
 
   if (!topWin) {
@@ -10546,7 +10560,7 @@ nsGlobalWindow::ShowSlowScriptDialog()
     if (filename) {
       nsXPIDLString scriptLocation;
       NS_ConvertUTF8toUTF16 filenameUTF16(filename);
-      const PRUnichar *formatParams[] = { filenameUTF16.get() };
+      const char16_t *formatParams[] = { filenameUTF16.get() };
       rv = nsContentUtils::FormatLocalizedString(nsContentUtils::eDOM_PROPERTIES,
                                                  "KillScriptLocation",
                                                  formatParams,
@@ -10771,7 +10785,7 @@ nsGlobalWindow::UnregisterIdleObserver(nsIIdleObserver* aIdleObserver)
 
 nsresult
 nsGlobalWindow::Observe(nsISupports* aSubject, const char* aTopic,
-                        const PRUnichar* aData)
+                        const char16_t* aData)
 {
   if (!nsCRT::strcmp(aTopic, NS_IOSERVICE_OFFLINE_STATUS_TOPIC)) {
     if (IsFrozen()) {
@@ -11663,7 +11677,7 @@ nsGlobalWindow::RunTimeoutHandler(nsTimeout* aTimeout,
   nsRefPtr<Function> callback = handler->GetCallback();
   if (!callback) {
     // Evaluate the timeout expression.
-    const PRUnichar* script = handler->GetHandlerText();
+    const char16_t* script = handler->GetHandlerText();
     NS_ASSERTION(script, "timeout has no script nor handler text!");
 
     const char* filename = nullptr;

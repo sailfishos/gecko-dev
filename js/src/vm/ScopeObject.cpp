@@ -99,7 +99,7 @@ js::ScopeCoordinateName(ScopeCoordinateNameCache &cache, JSScript *script, jsbyt
         Shape::Range<NoGC> r(shape);
         while (r.front().slot() != sc.slot)
             r.popFront();
-        id = r.front().propid();
+        id = r.front().propidRaw();
     }
 
     /* Beware nameless destructuring formal. */
@@ -396,7 +396,7 @@ with_LookupElement(JSContext *cx, HandleObject obj, uint32_t index,
                    MutableHandleObject objp, MutableHandleShape propp)
 {
     RootedId id(cx);
-    if (!IndexToId(cx, index, id.address()))
+    if (!IndexToId(cx, index, &id))
         return false;
     return with_LookupGeneric(cx, obj, id, objp, propp);
 }
@@ -405,7 +405,7 @@ static bool
 with_LookupSpecial(JSContext *cx, HandleObject obj, HandleSpecialId sid,
                    MutableHandleObject objp, MutableHandleShape propp)
 {
-    Rooted<jsid> id(cx, SPECIALID_TO_JSID(sid));
+    RootedId id(cx, SPECIALID_TO_JSID(sid));
     return with_LookupGeneric(cx, obj, id, objp, propp);
 }
 
@@ -421,7 +421,7 @@ static bool
 with_GetProperty(JSContext *cx, HandleObject obj, HandleObject receiver, HandlePropertyName name,
                  MutableHandleValue vp)
 {
-    Rooted<jsid> id(cx, NameToId(name));
+    RootedId id(cx, NameToId(name));
     return with_GetGeneric(cx, obj, receiver, id, vp);
 }
 
@@ -430,7 +430,7 @@ with_GetElement(JSContext *cx, HandleObject obj, HandleObject receiver, uint32_t
                 MutableHandleValue vp)
 {
     RootedId id(cx);
-    if (!IndexToId(cx, index, id.address()))
+    if (!IndexToId(cx, index, &id))
         return false;
     return with_GetGeneric(cx, obj, receiver, id, vp);
 }
@@ -439,7 +439,7 @@ static bool
 with_GetSpecial(JSContext *cx, HandleObject obj, HandleObject receiver, HandleSpecialId sid,
                 MutableHandleValue vp)
 {
-    Rooted<jsid> id(cx, SPECIALID_TO_JSID(sid));
+    RootedId id(cx, SPECIALID_TO_JSID(sid));
     return with_GetGeneric(cx, obj, receiver, id, vp);
 }
 
@@ -1692,6 +1692,33 @@ DebugScopes::sweep(JSRuntime *rt)
         }
     }
 }
+
+#if defined(DEBUG) && defined(JSGC_GENERATIONAL)
+void
+DebugScopes::checkHashTablesAfterMovingGC(JSRuntime *runtime)
+{
+    /*
+     * This is called at the end of StoreBuffer::mark() to check that our
+     * postbarriers have worked and that no hashtable keys (or values) are left
+     * pointing into the nursery.
+     */
+    JS::shadow::Runtime *rt = JS::shadow::Runtime::asShadowRuntime(runtime);
+    for (ObjectWeakMap::Range r = proxiedScopes.all(); !r.empty(); r.popFront()) {
+        JS_ASSERT(!IsInsideNursery(rt, r.front().key().get()));
+        JS_ASSERT(!IsInsideNursery(rt, r.front().value().get()));
+    }
+    for (MissingScopeMap::Range r = missingScopes.all(); !r.empty(); r.popFront()) {
+        JS_ASSERT(!IsInsideNursery(rt, r.front().key().cur()));
+        JS_ASSERT(!IsInsideNursery(rt, r.front().key().block()));
+        JS_ASSERT(!IsInsideNursery(rt, r.front().value().get()));
+    }
+    for (LiveScopeMap::Range r = liveScopes.all(); !r.empty(); r.popFront()) {
+        JS_ASSERT(!IsInsideNursery(rt, r.front().key()));
+        JS_ASSERT(!IsInsideNursery(rt, r.front().value().cur_.get()));
+        JS_ASSERT(!IsInsideNursery(rt, r.front().value().block_.get()));
+    }
+}
+#endif
 
 /*
  * Unfortunately, GetDebugScopeForFrame needs to work even outside debug mode

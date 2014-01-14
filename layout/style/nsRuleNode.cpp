@@ -850,7 +850,7 @@ static bool SetColor(const nsCSSValue& aValue, const nscolor aParentColor,
   bool    result = false;
   nsCSSUnit unit = aValue.GetUnit();
 
-  if (eCSSUnit_Color == unit) {
+  if (aValue.IsNumericColorUnit()) {
     aResult = aValue.GetColorValue();
     result = true;
   }
@@ -2047,11 +2047,12 @@ nsRuleNode::ResolveVariableReferences(const nsStyleStructID aSID,
       &aContext->StyleVariables()->mVariables;
     nsCSSValueTokenStream* tokenStream = value->GetTokenStreamValue();
 
+    // XXX Should pass in sheet here (see bug 952338).
     parser.ParsePropertyWithVariableReferences(
         tokenStream->mPropertyID, tokenStream->mShorthandPropertyID,
         tokenStream->mTokenStream, variables, aRuleData,
         tokenStream->mSheetURI, tokenStream->mBaseURI,
-        tokenStream->mSheetPrincipal, tokenStream->mSheet,
+        tokenStream->mSheetPrincipal, nullptr,
         tokenStream->mLineNumber, tokenStream->mLineOffset);
     aRuleData->mCanStoreInRuleTree = false;
     anyTokenStreams = true;
@@ -3295,7 +3296,7 @@ nsRuleNode::SetFont(nsPresContext* aPresContext, nsStyleContext* aContext,
     if (aGenericFontID == kGenericFont_NONE) {
       // only bother appending fallback fonts if this isn't a fallback generic font itself
       if (!aFont->mFont.name.IsEmpty())
-        aFont->mFont.name.Append((PRUnichar)',');
+        aFont->mFont.name.Append((char16_t)',');
       // defaultVariableFont.name should always be "serif" or "sans-serif".
       aFont->mFont.name.Append(defaultVariableFont->name);
     }

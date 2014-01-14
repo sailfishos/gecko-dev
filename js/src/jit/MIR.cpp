@@ -604,6 +604,7 @@ MMathFunction::FunctionName(Function function)
       case Trunc:  return "Trunc";
       case Cbrt:   return "Cbrt";
       case Floor:  return "Floor";
+      case Ceil:   return "Ceil";
       case Round:  return "Round";
       default:
         MOZ_ASSUME_UNREACHABLE("Unknown math function");
@@ -668,9 +669,10 @@ MStringLength::foldsTo(TempAllocator &alloc, bool useValueNumbers)
 {
     if ((type() == MIRType_Int32) && (string()->isConstant())) {
         Value value = string()->toConstant()->value();
-        size_t length = JS_GetStringLength(value.toString());
+        JSAtom *atom = &value.toString()->asAtom();
 
-        return MConstant::New(alloc, Int32Value(length));
+        AutoThreadSafeAccess ts(atom);
+        return MConstant::New(alloc, Int32Value(atom->length()));
     }
 
     return this;
@@ -1014,29 +1016,12 @@ MPhi::addInputSlow(MDefinition *ins, bool *ptypeChange)
     return true;
 }
 
-uint32_t
-MPrepareCall::argc() const
-{
-    JS_ASSERT(hasOneUse());
-    MCall *call = usesBegin()->consumer()->toDefinition()->toCall();
-    return call->numStackArgs();
-}
-
 void
-MPassArg::printOpcode(FILE *fp) const
-{
-    PrintOpcodeName(fp, op());
-    fprintf(fp, " %d ", argnum_);
-    getOperand(0)->printName(fp);
-}
-
-void
-MCall::addArg(size_t argnum, MPassArg *arg)
+MCall::addArg(size_t argnum, MDefinition *arg)
 {
     // The operand vector is initialized in reverse order by the IonBuilder.
     // It cannot be checked for consistency until all arguments are added.
-    arg->setArgnum(argnum);
-    setOperand(argnum + NumNonArgumentOperands, arg->toDefinition());
+    setOperand(argnum + NumNonArgumentOperands, arg);
 }
 
 void
@@ -2108,10 +2093,6 @@ MResumePoint::inherit(MBasicBlock *block)
 {
     for (size_t i = 0; i < stackDepth(); i++) {
         MDefinition *def = block->getSlot(i);
-        // We have to unwrap MPassArg: it's removed when inlining calls
-        // and LStackArg does not define a value.
-        if (def->isPassArg())
-            def = def->toPassArg()->getArgument();
         setOperand(i, def);
     }
 }
@@ -2511,6 +2492,7 @@ MBeta::printOpcode(FILE *fp) const
 bool
 MNewObject::shouldUseVM() const
 {
+    AutoThreadSafeAccess ts(templateObject());
     return templateObject()->hasSingletonType() ||
            templateObject()->hasDynamicSlots();
 }

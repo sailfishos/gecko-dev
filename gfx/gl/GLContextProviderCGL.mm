@@ -188,14 +188,14 @@ public:
       return true;
     }
 
-    bool ResizeOffscreen(const gfxIntSize& aNewSize);
+    bool ResizeOffscreen(const gfx::IntSize& aNewSize);
 
     NSOpenGLContext *mContext;
     GLuint mTempTextureName;
 };
 
 bool
-GLContextCGL::ResizeOffscreen(const gfxIntSize& aNewSize)
+GLContextCGL::ResizeOffscreen(const gfx::IntSize& aNewSize)
 {
     return ResizeScreenBuffer(aNewSize);
 }
@@ -277,7 +277,7 @@ GLContextProviderCGL::CreateOffscreen(const gfxIntSize& size,
     nsRefPtr<GLContextCGL> glContext = CreateOffscreenFBOContext();
     if (glContext &&
         glContext->Init() &&
-        glContext->InitOffscreen(size, caps))
+        glContext->InitOffscreen(ToIntSize(size), caps))
     {
         return glContext.forget();
     }
@@ -306,8 +306,6 @@ GLContextProviderCGL::GetGlobalContext(const ContextFlags)
             gGlobalContext = nullptr;
             return nullptr; 
         }
-
-        gGlobalContext->SetIsGlobalSharedContext(true);
     }
 
     return gGlobalContext;

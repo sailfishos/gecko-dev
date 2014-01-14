@@ -251,7 +251,15 @@ function UpdateBackForwardCommands(aWebNavigation) {
       backBroadcaster.setAttribute("disabled", true);
   }
 
-  if (forwardDisabled == aWebNavigation.canGoForward) {
+  let canGoForward = aWebNavigation.canGoForward;
+  if (forwardDisabled) {
+    // Force the button to either be hidden (if we are already disabled,
+    // and should be), or to show if we're about to un-disable it:
+    // otherwise no transition will occur and it'll never show:
+    CombinedBackForward.setForwardButtonOcclusion(!canGoForward);
+  }
+
+  if (forwardDisabled == canGoForward) {
     if (forwardDisabled)
       forwardBroadcaster.removeAttribute("disabled");
     else
@@ -904,6 +912,7 @@ var gBrowserInit = {
 
     // Misc. inits.
     CombinedStopReload.init();
+    CombinedBackForward.init();
     gPrivateBrowsingUI.init();
     TabsInTitlebar.init();
 
@@ -1047,6 +1056,7 @@ var gBrowserInit = {
     gPrefService.addObserver(gHomeButton.prefDomain, gHomeButton, false);
 
     var homeButton = document.getElementById("home-button");
+    gHomeButton.init();
     gHomeButton.updateTooltip(homeButton);
     gHomeButton.updatePersonalToolbarStyle(homeButton);
 
@@ -1221,6 +1231,7 @@ var gBrowserInit = {
     // uninit methods don't depend on the services having been initialized).
 
     CombinedStopReload.uninit();
+    CombinedBackForward.uninit();
 
     gGestureSupport.init(false);
 
@@ -1237,6 +1248,7 @@ var gBrowserInit = {
     }
 
     BookmarkingUI.uninit();
+    gHomeButton.uninit();
 
     TabsInTitlebar.uninit();
 
@@ -2464,8 +2476,15 @@ function _checkDefaultAndSwitchToMetro() {
     getService(Components.interfaces.nsIAppStartup);
 
     Services.prefs.setBoolPref('browser.sessionstore.resume_session_once', true);
-    appStartup.quit(Components.interfaces.nsIAppStartup.eAttemptQuit |
-                    Components.interfaces.nsIAppStartup.eRestartTouchEnvironment);
+
+    let cancelQuit = Cc["@mozilla.org/supports-PRBool;1"]
+                     .createInstance(Ci.nsISupportsPRBool);
+    Services.obs.notifyObservers(cancelQuit, "quit-application-requested", "restart");
+
+    if (!cancelQuit.data) {
+      appStartup.quit(Components.interfaces.nsIAppStartup.eAttemptQuit |
+                      Components.interfaces.nsIAppStartup.eRestartTouchEnvironment);
+    }
     return true;
   }
   return false;
@@ -2940,13 +2959,11 @@ const BrowserSearch = {
       openSearchPageIfFieldIsNotActive(searchBar);
     };
     if (placement && placement.area == CustomizableUI.AREA_PANEL) {
-      PanelUI.show().then(() => {
-        // The panel is not constructed until the first time it is shown.
-        focusSearchBar();
-      });
+      // The panel is not constructed until the first time it is shown.
+      PanelUI.show().then(focusSearchBar);
       return;
     }
-    if (placement.area == CustomizableUI.AREA_NAVBAR && searchBar &&
+    if (placement && placement.area == CustomizableUI.AREA_NAVBAR && searchBar &&
         searchBar.parentNode.classList.contains("overflowedItem")) {
       let navBar = document.getElementById(CustomizableUI.AREA_NAVBAR);
       navBar.overflowable.show().then(() => {
@@ -3775,6 +3792,7 @@ var XULBrowserWindow = {
   onUpdateCurrentBrowser: function XWB_onUpdateCurrentBrowser(aStateFlags, aStatus, aMessage, aTotalProgress) {
     if (FullZoom.updateBackgroundTabs)
       FullZoom.onLocationChange(gBrowser.currentURI, true);
+    CombinedBackForward.setForwardButtonOcclusion(!gBrowser.webProgress.canGoForward);
     var nsIWebProgressListener = Components.interfaces.nsIWebProgressListener;
     var loadingDone = aStateFlags & nsIWebProgressListener.STATE_STOP;
     // use a pseudo-object instead of a (potentially nonexistent) channel for getting
@@ -3848,6 +3866,43 @@ var LinkTargetDisplay = {
     XULBrowserWindow.updateStatusField();
   }
 };
+
+let CombinedBackForward = {
+  init: function() {
+    this.forwardButton = document.getElementById("forward-button");
+    // Add a transition listener to the url bar to hide the forward button
+    // when necessary
+    if (gURLBar)
+      gURLBar.addEventListener("transitionend", this);
+    // On startup, or if the user customizes, our listener isn't attached,
+    // and no transitions fire anyway, so we need to make sure we've hidden the
+    // button if necessary:
+    if (this.forwardButton && this.forwardButton.hasAttribute("disabled")) {
+      this.setForwardButtonOcclusion(true);
+    }
+  },
+  uninit: function() {
+    if (gURLBar)
+      gURLBar.removeEventListener("transitionend", this);
+  },
+  handleEvent: function(aEvent) {
+    if (aEvent.type == "transitionend" &&
+        (aEvent.propertyName == "margin-left" || aEvent.propertyName == "margin-right") &&
+        this.forwardButton.hasAttribute("disabled")) {
+      this.setForwardButtonOcclusion(true);
+    }
+  },
+  setForwardButtonOcclusion: function(shouldBeOccluded) {
+    if (!this.forwardButton)
+      return;
+
+    let hasAttribute = this.forwardButton.hasAttribute("occluded-by-urlbar");
+    if (shouldBeOccluded && !hasAttribute)
+      this.forwardButton.setAttribute("occluded-by-urlbar", "true");
+    else if (!shouldBeOccluded && hasAttribute)
+      this.forwardButton.removeAttribute("occluded-by-urlbar");
+  }
+}
 
 var CombinedStopReload = {
   init: function () {
@@ -4211,10 +4266,10 @@ function onViewToolbarsPopupShowing(aEvent, aInsertPoint) {
   }
 
 
-  let addToPanel = popup.querySelector(".customize-context-addToPanel");
+  let moveToPanel = popup.querySelector(".customize-context-moveToPanel");
   let removeFromToolbar = popup.querySelector(".customize-context-removeFromToolbar");
-  // View -> Toolbars menu doesn't have the addToPanel or removeFromToolbar items.
-  if (!addToPanel || !removeFromToolbar) {
+  // View -> Toolbars menu doesn't have the moveToPanel or removeFromToolbar items.
+  if (!moveToPanel || !removeFromToolbar) {
     return;
   }
 
@@ -4241,10 +4296,10 @@ function onViewToolbarsPopupShowing(aEvent, aInsertPoint) {
   let movable = toolbarItem && toolbarItem.parentNode &&
                 CustomizableUI.isWidgetRemovable(toolbarItem);
   if (movable) {
-    addToPanel.removeAttribute("disabled");
+    moveToPanel.removeAttribute("disabled");
     removeFromToolbar.removeAttribute("disabled");
   } else {
-    addToPanel.setAttribute("disabled", true);
+    moveToPanel.setAttribute("disabled", true);
     removeFromToolbar.setAttribute("disabled", true);
   }
 }
@@ -4703,6 +4758,16 @@ function fireSidebarFocusedEvent() {
 
 
 var gHomeButton = {
+  init: function() {
+    gNavToolbox.addEventListener("customizationchange",
+                                 this.onCustomizationChange);
+  },
+
+  uninit: function() {
+    gNavToolbox.removeEventListener("customizationchange",
+                                    this.onCustomizationChange);
+  },
+
   prefDomain: "browser.startup.homepage",
   observe: function (aSubject, aTopic, aPrefName)
   {
@@ -4754,7 +4819,11 @@ var gHomeButton = {
                                || homeButton.parentNode.parentNode.id == "PersonalToolbar" ?
                              homeButton.className.replace("toolbarbutton-1", "bookmark-item") :
                              homeButton.className.replace("bookmark-item", "toolbarbutton-1");
-  }
+  },
+
+  onCustomizationChange: function(aEvent) {
+    gHomeButton.updatePersonalToolbarStyle();
+  },
 };
 
 /**
@@ -6409,9 +6478,6 @@ var gIdentityHandler = {
     // If we've already got an active notification, bail out to avoid showing it repeatedly.
     if (PopupNotifications.getNotification("mixed-content-blocked", gBrowser.selectedBrowser))
       return;
-
-    let helplink = document.getElementById("mixed-content-blocked-helplink");
-    helplink.setAttribute("onclick", "openHelpLink('mixed-content');");
 
     let brandBundle = document.getElementById("bundle_brand");
     let brandShortName = brandBundle.getString("brandShortName");

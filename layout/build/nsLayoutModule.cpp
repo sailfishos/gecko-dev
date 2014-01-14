@@ -374,7 +374,7 @@ NS_IMPL_ISUPPORTS1(LayoutShutdownObserver, nsIObserver)
 NS_IMETHODIMP
 LayoutShutdownObserver::Observe(nsISupports *aSubject,
                                 const char *aTopic,
-                                const PRUnichar *someData)
+                                const char16_t *someData)
 {
   if (!strcmp(aTopic, NS_XPCOM_SHUTDOWN_OBSERVER_ID)) {
     Shutdown();
@@ -432,6 +432,10 @@ Initialize()
   } else {
     NS_WARNING("Could not get an observer service.  We will leak on shutdown.");
   }
+
+#ifdef DEBUG
+  nsStyleContext::AssertStyleStructMaxDifferenceValid();
+#endif
 
   return NS_OK;
 }

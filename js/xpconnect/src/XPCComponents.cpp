@@ -70,7 +70,7 @@ xpc::CloneAllAccess()
 }
 
 char *
-xpc::CheckAccessList(const PRUnichar *wideName, const char *const list[])
+xpc::CheckAccessList(const char16_t *wideName, const char *const list[])
 {
     nsAutoCString asciiName;
     CopyUTF16toUTF8(nsDependentString(wideName), asciiName);
@@ -344,7 +344,7 @@ nsXPCComponents_Interfaces::CanCreateWrapper(const nsIID * iid, char **_retval)
 
 /* string canCallMethod (in nsIIDPtr iid, in wstring methodName); */
 NS_IMETHODIMP
-nsXPCComponents_Interfaces::CanCallMethod(const nsIID * iid, const PRUnichar *methodName, char **_retval)
+nsXPCComponents_Interfaces::CanCallMethod(const nsIID * iid, const char16_t *methodName, char **_retval)
 {
     // If you have to ask, then the answer is NO
     *_retval = nullptr;
@@ -353,7 +353,7 @@ nsXPCComponents_Interfaces::CanCallMethod(const nsIID * iid, const PRUnichar *me
 
 /* string canGetProperty (in nsIIDPtr iid, in wstring propertyName); */
 NS_IMETHODIMP
-nsXPCComponents_Interfaces::CanGetProperty(const nsIID * iid, const PRUnichar *propertyName, char **_retval)
+nsXPCComponents_Interfaces::CanGetProperty(const nsIID * iid, const char16_t *propertyName, char **_retval)
 {
     // If you have to ask, then the answer is NO
     *_retval = nullptr;
@@ -362,7 +362,7 @@ nsXPCComponents_Interfaces::CanGetProperty(const nsIID * iid, const PRUnichar *p
 
 /* string canSetProperty (in nsIIDPtr iid, in wstring propertyName); */
 NS_IMETHODIMP
-nsXPCComponents_Interfaces::CanSetProperty(const nsIID * iid, const PRUnichar *propertyName, char **_retval)
+nsXPCComponents_Interfaces::CanSetProperty(const nsIID * iid, const char16_t *propertyName, char **_retval)
 {
     // If you have to ask, then the answer is NO
     *_retval = nullptr;
@@ -637,7 +637,7 @@ nsXPCComponents_InterfacesByID::CanCreateWrapper(const nsIID * iid, char **_retv
 
 /* string canCallMethod (in nsIIDPtr iid, in wstring methodName); */
 NS_IMETHODIMP
-nsXPCComponents_InterfacesByID::CanCallMethod(const nsIID * iid, const PRUnichar *methodName, char **_retval)
+nsXPCComponents_InterfacesByID::CanCallMethod(const nsIID * iid, const char16_t *methodName, char **_retval)
 {
     // If you have to ask, then the answer is NO
     *_retval = nullptr;
@@ -646,7 +646,7 @@ nsXPCComponents_InterfacesByID::CanCallMethod(const nsIID * iid, const PRUnichar
 
 /* string canGetProperty (in nsIIDPtr iid, in wstring propertyName); */
 NS_IMETHODIMP
-nsXPCComponents_InterfacesByID::CanGetProperty(const nsIID * iid, const PRUnichar *propertyName, char **_retval)
+nsXPCComponents_InterfacesByID::CanGetProperty(const nsIID * iid, const char16_t *propertyName, char **_retval)
 {
     // If you have to ask, then the answer is NO
     *_retval = nullptr;
@@ -655,7 +655,7 @@ nsXPCComponents_InterfacesByID::CanGetProperty(const nsIID * iid, const PRUnicha
 
 /* string canSetProperty (in nsIIDPtr iid, in wstring propertyName); */
 NS_IMETHODIMP
-nsXPCComponents_InterfacesByID::CanSetProperty(const nsIID * iid, const PRUnichar *propertyName, char **_retval)
+nsXPCComponents_InterfacesByID::CanSetProperty(const nsIID * iid, const char16_t *propertyName, char **_retval)
 {
     // If you have to ask, then the answer is NO
     *_retval = nullptr;
@@ -2647,10 +2647,10 @@ nsXPCComponents_Utils::ReportError(const Value &errorArg, JSContext *cx)
 
         uint32_t column = err->uctokenptr - err->uclinebuf;
 
-        const PRUnichar* ucmessage =
-            static_cast<const PRUnichar*>(err->ucmessage);
-        const PRUnichar* uclinebuf =
-            static_cast<const PRUnichar*>(err->uclinebuf);
+        const char16_t* ucmessage =
+            static_cast<const char16_t*>(err->ucmessage);
+        const char16_t* uclinebuf =
+            static_cast<const char16_t*>(err->uclinebuf);
 
         nsresult rv = scripterr->InitWithWindowID(
                 ucmessage ? nsDependentString(ucmessage) : EmptyString(),
@@ -2685,7 +2685,7 @@ nsXPCComponents_Utils::ReportError(const Value &errorArg, JSContext *cx)
         return NS_OK;
 
     nsresult rv = scripterr->InitWithWindowID(
-            nsDependentString(static_cast<const PRUnichar *>(msgchars)),
+            nsDependentString(static_cast<const char16_t *>(msgchars)),
             NS_ConvertUTF8toUTF16(fileName),
             EmptyString(), lineNo, 0, 0, "XPConnect JavaScript", innerWindowID);
     NS_ENSURE_SUCCESS(rv, NS_OK);
@@ -3333,7 +3333,7 @@ nsXPCComponents_Utils::CanCreateWrapper(const nsIID * iid, char **_retval)
 
 /* string canCallMethod (in nsIIDPtr iid, in wstring methodName); */
 NS_IMETHODIMP
-nsXPCComponents_Utils::CanCallMethod(const nsIID * iid, const PRUnichar *methodName, char **_retval)
+nsXPCComponents_Utils::CanCallMethod(const nsIID * iid, const char16_t *methodName, char **_retval)
 {
     static const char* const allowed[] = { "evalInSandbox", nullptr };
     *_retval = CheckAccessList(methodName, allowed);
@@ -3342,7 +3342,7 @@ nsXPCComponents_Utils::CanCallMethod(const nsIID * iid, const PRUnichar *methodN
 
 /* string canGetProperty (in nsIIDPtr iid, in wstring propertyName); */
 NS_IMETHODIMP
-nsXPCComponents_Utils::CanGetProperty(const nsIID * iid, const PRUnichar *propertyName, char **_retval)
+nsXPCComponents_Utils::CanGetProperty(const nsIID * iid, const char16_t *propertyName, char **_retval)
 {
     *_retval = nullptr;
     return NS_OK;
@@ -3350,7 +3350,7 @@ nsXPCComponents_Utils::CanGetProperty(const nsIID * iid, const PRUnichar *proper
 
 /* string canSetProperty (in nsIIDPtr iid, in wstring propertyName); */
 NS_IMETHODIMP
-nsXPCComponents_Utils::CanSetProperty(const nsIID * iid, const PRUnichar *propertyName, char **_retval)
+nsXPCComponents_Utils::CanSetProperty(const nsIID * iid, const char16_t *propertyName, char **_retval)
 {
     // If you have to ask, then the answer is NO
     *_retval = nullptr;
@@ -3512,6 +3512,46 @@ nsXPCComponents_Utils::GetIncumbentGlobal(const Value &aCallback,
 
     *aOut = globalVal;
     return NS_OK;
+}
+
+/*
+ * Below is a bunch of awkward junk to allow JS test code to trigger the
+ * creation of an XPCWrappedJS, such that it ends up in the map. We need to
+ * hand the caller some sort of reference to hold onto (to prevent the
+ * refcount from dropping to zero as soon as the function returns), but trying
+ * to return a bonafide XPCWrappedJS to script causes all sorts of trouble. So
+ * we create a benign holder class instead, which acts as an opaque reference
+ * that script can use to keep the XPCWrappedJS alive and in the map.
+ */
+
+class WrappedJSHolder : public nsISupports
+{
+    NS_DECL_ISUPPORTS
+    WrappedJSHolder() {}
+    virtual ~WrappedJSHolder() {}
+
+    nsRefPtr<nsXPCWrappedJS> mWrappedJS;
+};
+NS_IMPL_ISUPPORTS0(WrappedJSHolder);
+
+NS_IMETHODIMP
+nsXPCComponents_Utils::GenerateXPCWrappedJS(const Value &aObj, const Value &aScope,
+                                            JSContext *aCx, nsISupports **aOut)
+{
+    if (!aObj.isObject())
+        return NS_ERROR_INVALID_ARG;
+    RootedObject obj(aCx, &aObj.toObject());
+    RootedObject scope(aCx, aScope.isObject() ? js::UncheckedUnwrap(&aScope.toObject())
+                                              : CurrentGlobalOrNull(aCx));
+    JSAutoCompartment ac(aCx, scope);
+    if (!JS_WrapObject(aCx, &obj))
+        return NS_ERROR_FAILURE;
+
+    nsRefPtr<WrappedJSHolder> holder = new WrappedJSHolder();
+    nsresult rv = nsXPCWrappedJS::GetNewOrUsed(obj, NS_GET_IID(nsISupports),
+                                               getter_AddRefs(holder->mWrappedJS));
+    holder.forget(aOut);
+    return rv;
 }
 
 NS_IMETHODIMP
@@ -3869,7 +3909,7 @@ nsXPCComponents::CanCreateWrapper(const nsIID * iid, char **_retval)
 
 /* string canCallMethod (in nsIIDPtr iid, in wstring methodName); */
 NS_IMETHODIMP
-nsXPCComponents::CanCallMethod(const nsIID * iid, const PRUnichar *methodName, char **_retval)
+nsXPCComponents::CanCallMethod(const nsIID * iid, const char16_t *methodName, char **_retval)
 {
     static const char* const allowed[] = { "isSuccessCode", nullptr };
     *_retval = CheckAccessList(methodName, allowed);
@@ -3878,7 +3918,7 @@ nsXPCComponents::CanCallMethod(const nsIID * iid, const PRUnichar *methodName, c
 
 /* string canGetProperty (in nsIIDPtr iid, in wstring propertyName); */
 NS_IMETHODIMP
-nsXPCComponents::CanGetProperty(const nsIID * iid, const PRUnichar *propertyName, char **_retval)
+nsXPCComponents::CanGetProperty(const nsIID * iid, const char16_t *propertyName, char **_retval)
 {
     static const char* const allowed[] = { "interfaces", "interfacesByID", "results", nullptr};
     *_retval = CheckAccessList(propertyName, allowed);
@@ -3887,7 +3927,7 @@ nsXPCComponents::CanGetProperty(const nsIID * iid, const PRUnichar *propertyName
 
 /* string canSetProperty (in nsIIDPtr iid, in wstring propertyName); */
 NS_IMETHODIMP
-nsXPCComponents::CanSetProperty(const nsIID * iid, const PRUnichar *propertyName, char **_retval)
+nsXPCComponents::CanSetProperty(const nsIID * iid, const char16_t *propertyName, char **_retval)
 {
     // If you have to ask, then the answer is NO
     *_retval = nullptr;

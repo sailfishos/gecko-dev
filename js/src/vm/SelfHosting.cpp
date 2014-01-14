@@ -657,6 +657,8 @@ static const JSFunctionSpec intrinsic_functions[] = {
               JSNativeThreadSafeWrapper<js::Memcpy>,
               &js::MemcpyJitInfo, 5, 0),
     JS_FN("GetTypedObjectModule", js::GetTypedObjectModule, 0, 0),
+    JS_FN("GetFloat32x4TypeObject", js::GetFloat32x4TypeObject, 0, 0),
+    JS_FN("GetInt32x4TypeObject", js::GetInt32x4TypeObject, 0, 0),
 
 #define LOAD_AND_STORE_SCALAR_FN_DECLS(_constant, _type, _name)               \
     JS_FNINFO("Store_" #_name,                                                \
@@ -908,7 +910,7 @@ CloneObject(JSContext *cx, HandleObject srcObj, CloneMemory &clonedObjects)
     }
     if (!clone)
         return nullptr;
-    if (!p.add(clonedObjects, srcObj, clone))
+    if (!p.add(cx, clonedObjects, srcObj, clone))
         return nullptr;
     if (!CloneProperties(cx, srcObj, clone, clonedObjects)) {
         clonedObjects.remove(srcObj);

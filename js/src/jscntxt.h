@@ -390,7 +390,7 @@ class ExclusiveContext : public ThreadSafeContext
         return runtime_->scriptDataTable();
     }
 
-#ifdef JS_WORKER_THREADS
+#ifdef JS_THREADSAFE
     // Since JSRuntime::workerThreadState is necessarily initialized from the
     // main thread before the first worker thread can access it, there is no
     // possibility for a race read/writing it.
@@ -426,7 +426,7 @@ struct JSContext : public js::ExclusiveContext,
   private:
     /* Exception state -- the exception member is a GC root by definition. */
     bool                throwing;            /* is there a pending exception? */
-    js::Value           exception;           /* most-recently-thrown exception */
+    js::Value           unwrappedException_; /* most-recently-thrown exception */
 
     /* Per-context options. */
     JS::ContextOptions  options_;
@@ -467,9 +467,6 @@ struct JSContext : public js::ExclusiveContext,
         JS_ASSERT(!options().noDefaultCompartmentObject());
         return defaultCompartmentObject_;
     }
-
-    /* Wrap cx->exception for the current compartment. */
-    void wrapPendingException();
 
     /* State for object and array toSource conversion. */
     js::ObjectSet       cycleDetectorSet;
@@ -583,16 +580,13 @@ struct JSContext : public js::ExclusiveContext,
         return throwing;
     }
 
-    js::Value getPendingException() {
-        JS_ASSERT(throwing);
-        return exception;
-    }
+    bool getPendingException(JS::MutableHandleValue rval);
 
     void setPendingException(js::Value v);
 
     void clearPendingException() {
         throwing = false;
-        exception.setUndefined();
+        unwrappedException_.setUndefined();
     }
 
 #ifdef DEBUG
@@ -1033,7 +1027,7 @@ bool intrinsic_NewParallelArray(JSContext *cx, unsigned argc, Value *vp);
 
 class AutoLockForExclusiveAccess
 {
-#ifdef JS_WORKER_THREADS
+#ifdef JS_THREADSAFE
     JSRuntime *runtime;
 
     void init(JSRuntime *rt) {
@@ -1069,7 +1063,7 @@ class AutoLockForExclusiveAccess
             runtime->mainThreadHasExclusiveAccess = false;
         }
     }
-#else // JS_WORKER_THREADS
+#else // JS_THREADSAFE
   public:
     AutoLockForExclusiveAccess(ExclusiveContext *cx MOZ_GUARD_OBJECT_NOTIFIER_PARAM) {
         MOZ_GUARD_OBJECT_NOTIFIER_INIT;
@@ -1081,14 +1075,14 @@ class AutoLockForExclusiveAccess
         // An empty destructor is needed to avoid warnings from clang about
         // unused local variables of this type.
     }
-#endif // JS_WORKER_THREADS
+#endif // JS_THREADSAFE
 
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 };
 
 class AutoLockForCompilation
 {
-#ifdef JS_WORKER_THREADS
+#ifdef JS_THREADSAFE
     JSRuntime *runtime;
 
     void init(JSRuntime *rt) {
@@ -1132,7 +1126,7 @@ class AutoLockForCompilation
             }
         }
     }
-#else // JS_WORKER_THREADS
+#else // JS_THREADSAFE
   public:
     AutoLockForCompilation(ExclusiveContext *cx MOZ_GUARD_OBJECT_NOTIFIER_PARAM) {
         MOZ_GUARD_OBJECT_NOTIFIER_INIT;
@@ -1144,7 +1138,7 @@ class AutoLockForCompilation
         // An empty destructor is needed to avoid warnings from clang about
         // unused local variables of this type.
     }
-#endif // JS_WORKER_THREADS
+#endif // JS_THREADSAFE
 
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 };

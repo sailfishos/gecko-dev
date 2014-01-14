@@ -19,8 +19,16 @@ var ignoreIndirectCalls = {
     "nsTraceRefcntImpl.cpp:void (* leakyLogRelease)(void*, int, int)": true,
 };
 
-function indirectCallCannotGC(caller, name)
+function indirectCallCannotGC(fullCaller, fullVariable)
 {
+    var caller = readable(fullCaller);
+
+    // This is usually a simple variable name, but sometimes a full name gets
+    // passed through. And sometimes that name is truncated. Examples:
+    //   _ZL13gAbortHandler|mozalloc_oom.cpp:void (* gAbortHandler)(size_t)
+    //   _ZL14pMutexUnlockFn|umutex.cpp:void (* pMutexUnlockFn)(const void*
+    var name = readable(fullVariable);
+
     if (name in ignoreIndirectCalls)
         return true;
 
@@ -42,8 +50,7 @@ function indirectCallCannotGC(caller, name)
         return true;
 
     // template method called during marking and hence cannot GC
-    if (name == "op" &&
-        /^bool js::WeakMap<Key, Value, HashPolicy>::keyNeedsMark\(JSObject\*\)/.test(caller))
+    if (name == "op" && caller.indexOf("bool js::WeakMap<Key, Value, HashPolicy>::keyNeedsMark(JSObject*)") != -1)
     {
         return true;
     }
@@ -69,17 +76,11 @@ var ignoreCallees = {
     "js::Class.trace" : true,
     "js::Class.finalize" : true,
     "JSRuntime.destroyPrincipals" : true,
-    "nsIGlobalObject.GetGlobalJSObject" : true, // virtual but no implementation can GC
-    "nsAXPCNativeCallContext.GetJSContext" : true,
-    "js::jit::MDefinition.op" : true, // macro generated virtuals just return a constant
-    "js::jit::MDefinition.opName" : true, // macro generated virtuals just return a constant
-    "js::jit::LInstruction.getDef" : true, // virtual but no implementation can GC
-    "js::jit::IonCache.kind" : true, // macro generated virtuals just return a constant
     "icu_50::UObject.__deleting_dtor" : true, // destructors in ICU code can't cause GC
     "mozilla::CycleCollectedJSRuntime.DescribeCustomObjects" : true, // During tracing, cannot GC.
     "mozilla::CycleCollectedJSRuntime.NoteCustomGCThingXPCOMChildren" : true, // During tracing, cannot GC.
-    "nsIThreadManager.GetIsMainThread" : true,
     "PLDHashTableOps.hashKey" : true,
+    "z_stream_s.zfree" : true,
 };
 
 function fieldCallCannotGC(csu, fullfield)
@@ -89,16 +90,6 @@ function fieldCallCannotGC(csu, fullfield)
     if (fullfield in ignoreCallees)
         return true;
     return false;
-}
-
-function shouldSuppressGC(name)
-{
-    // Various dead code that should only be called inside AutoEnterAnalysis.
-    // Functions with no known caller are by default treated as not suppressing GC.
-    return /TypeScript::Purge/.test(name)
-        || /StackTypeSet::addPropagateThis/.test(name)
-        || /ScriptAnalysis::addPushedType/.test(name)
-        || /IonBuilder/.test(name);
 }
 
 function ignoreEdgeUse(edge, variable)
@@ -177,8 +168,11 @@ var ignoreFunctions = {
     "void js::AutoCompartment::AutoCompartment(js::ExclusiveContext*, JSCompartment*)": true,
 };
 
-function ignoreGCFunction(fun)
+function ignoreGCFunction(mangled)
 {
+    assert(mangled in readableNames);
+    var fun = readableNames[mangled][0];
+
     if (fun in ignoreFunctions)
         return true;
 
@@ -239,7 +233,7 @@ function isSuppressConstructor(name)
 // nsISupports subclasses' methods may be scriptable (or overridden
 // via binary XPCOM), and so may GC. But some fields just aren't going
 // to get overridden with something that can GC.
-function isOverridableField(csu, field)
+function isOverridableField(initialCSU, csu, field)
 {
     if (csu != 'nsISupports')
         return false;
@@ -247,5 +241,14 @@ function isOverridableField(csu, field)
         return false;
     if (field == 'IsOnCurrentThread')
         return false;
+    if (field == 'GetNativeContext')
+        return false;
+    if (field == "GetGlobalJSObject")
+        return false;
+    if (field == "GetIsMainThread")
+        return false;
+    if (initialCSU == 'nsIXPConnectJSObjectHolder' && field == 'GetJSObject')
+        return false;
+
     return true;
 }

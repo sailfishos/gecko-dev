@@ -398,10 +398,7 @@ nsDNSSyncRequest::SizeOfIncludingThis(MallocSizeOf mallocSizeOf) const
 //-----------------------------------------------------------------------------
 
 nsDNSService::nsDNSService()
-    : MemoryUniReporter("explicit/network/dns-service",
-                        KIND_HEAP, UNITS_BYTES,
-                        "Memory used for the DNS service.")
-    , mLock("nsDNSServer.mLock")
+    : mLock("nsDNSServer.mLock")
     , mFirstTime(true)
     , mOffline(false)
 {
@@ -411,8 +408,8 @@ nsDNSService::~nsDNSService()
 {
 }
 
-NS_IMPL_ISUPPORTS_INHERITED3(nsDNSService, MemoryUniReporter, nsIDNSService,
-                             nsPIDNSService, nsIObserver)
+NS_IMPL_ISUPPORTS4(nsDNSService, nsIDNSService, nsPIDNSService, nsIObserver,
+                   nsIMemoryReporter)
 
 /******************************************************************************
  * nsDNSService impl:
@@ -802,7 +799,7 @@ nsDNSService::GetMyHostName(nsACString &result)
 }
 
 NS_IMETHODIMP
-nsDNSService::Observe(nsISupports *subject, const char *topic, const PRUnichar *data)
+nsDNSService::Observe(nsISupports *subject, const char *topic, const char16_t *data)
 {
     // we are only getting called if a preference has changed. 
     NS_ASSERTION(strcmp(topic, NS_PREFBRANCH_PREFCHANGE_TOPIC_ID) == 0 ||
@@ -913,3 +910,16 @@ nsDNSService::SizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf) const
                                            mallocSizeOf);
     return n;
 }
+
+MOZ_DEFINE_MALLOC_SIZE_OF(DNSServiceMallocSizeOf)
+
+NS_IMETHODIMP
+nsDNSService::CollectReports(nsIHandleReportCallback* aHandleReport,
+                             nsISupports* aData)
+{
+    return MOZ_COLLECT_REPORT(
+        "explicit/network/dns-service", KIND_HEAP, UNITS_BYTES,
+        SizeOfIncludingThis(DNSServiceMallocSizeOf),
+        "Memory used for the DNS service.");
+}
+

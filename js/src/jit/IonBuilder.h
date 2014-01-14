@@ -13,6 +13,7 @@
 // JSScript.
 
 #include "jit/BytecodeAnalysis.h"
+#include "jit/IonOptimizationLevels.h"
 #include "jit/MIR.h"
 #include "jit/MIRGenerator.h"
 #include "jit/MIRGraph.h"
@@ -211,9 +212,10 @@ class IonBuilder : public MIRGenerator
     static int CmpSuccessors(const void *a, const void *b);
 
   public:
-    IonBuilder(JSContext *analysisContext, CompileCompartment *comp, TempAllocator *temp, MIRGraph *graph,
-               types::CompilerConstraintList *constraints,
-               BaselineInspector *inspector, CompileInfo *info, BaselineFrameInspector *baselineFrame,
+    IonBuilder(JSContext *analysisContext, CompileCompartment *comp, TempAllocator *temp,
+               MIRGraph *graph, types::CompilerConstraintList *constraints,
+               BaselineInspector *inspector, CompileInfo *info,
+               const OptimizationInfo *optimizationInfo, BaselineFrameInspector *baselineFrame,
                size_t inliningDepth = 0, uint32_t loopDepth = 0);
 
     bool build();
@@ -229,10 +231,6 @@ class IonBuilder : public MIRGenerator
     JSAtom *readAtom(jsbytecode *pc);
     bool abort(const char *message, ...);
     void spew(const char *message);
-
-    static bool inliningEnabled() {
-        return js_IonOptions.inlining;
-    }
 
     JSFunction *getSingleCallTarget(types::TemporaryTypeSet *calleeTypes);
     bool getPolyCallTargets(types::TemporaryTypeSet *calleeTypes, bool constructing,
@@ -324,6 +322,8 @@ class IonBuilder : public MIRGenerator
     bool resumeAt(MInstruction *ins, jsbytecode *pc);
     bool resumeAfter(MInstruction *ins);
     bool maybeInsertResume();
+
+    void insertRecompileCheck();
 
     bool initParameters();
     void rewriteParameter(uint32_t slotIdx, MDefinition *param, int32_t argIndex);
@@ -611,6 +611,7 @@ class IonBuilder : public MIRGenerator
     // Math natives.
     InliningStatus inlineMathAbs(CallInfo &callInfo);
     InliningStatus inlineMathFloor(CallInfo &callInfo);
+    InliningStatus inlineMathCeil(CallInfo &callInfo);
     InliningStatus inlineMathRound(CallInfo &callInfo);
     InliningStatus inlineMathSqrt(CallInfo &callInfo);
     InliningStatus inlineMathAtan2(CallInfo &callInfo);
@@ -931,7 +932,7 @@ class CallInfo
         args_[i] = def;
     }
 
-    MDefinition *thisArg() {
+    MDefinition *thisArg() const {
         JS_ASSERT(thisArg_);
         return thisArg_;
     }
@@ -940,7 +941,7 @@ class CallInfo
         thisArg_ = thisArg;
     }
 
-    bool constructing() {
+    bool constructing() const {
         return constructing_;
     }
 
@@ -951,55 +952,18 @@ class CallInfo
         setter_ = true;
     }
 
-    void wrapArgs(TempAllocator &alloc, MBasicBlock *current) {
-        thisArg_ = wrap(alloc, current, thisArg_);
-        for (uint32_t i = 0; i < argc(); i++)
-            args_[i] = wrap(alloc, current, args_[i]);
-    }
-
-    void unwrapArgs() {
-        thisArg_ = unwrap(thisArg_);
-        for (uint32_t i = 0; i < argc(); i++)
-            args_[i] = unwrap(args_[i]);
-    }
-
     MDefinition *fun() const {
         JS_ASSERT(fun_);
         return fun_;
     }
 
     void setFun(MDefinition *fun) {
-        JS_ASSERT(!fun->isPassArg());
         fun_ = fun;
     }
-
-    bool isWrapped() {
-        bool wrapped = thisArg()->isPassArg();
-
-#if DEBUG
+    void setFoldedUnchecked() {
+        thisArg_->setFoldedUnchecked();
         for (uint32_t i = 0; i < argc(); i++)
-            JS_ASSERT(args_[i]->isPassArg() == wrapped);
-#endif
-
-        return wrapped;
-    }
-
-  private:
-    static MDefinition *unwrap(MDefinition *arg) {
-        JS_ASSERT(arg->isPassArg());
-        MPassArg *passArg = arg->toPassArg();
-        MBasicBlock *block = passArg->block();
-        MDefinition *wrapped = passArg->getArgument();
-        wrapped->setFoldedUnchecked();
-        passArg->replaceAllUsesWith(wrapped);
-        block->discard(passArg);
-        return wrapped;
-    }
-    static MDefinition *wrap(TempAllocator &alloc, MBasicBlock *current, MDefinition *arg) {
-        JS_ASSERT(!arg->isPassArg());
-        MPassArg *passArg = MPassArg::New(alloc, arg);
-        current->add(passArg);
-        return passArg;
+            getArg(i)->setFoldedUnchecked();
     }
 };
 

@@ -577,7 +577,7 @@ public:
 
   // nsIObserver implementation.
   NS_IMETHODIMP
-  Observe(nsISupports *aSubject, const char *aTopic, const PRUnichar *data)
+  Observe(nsISupports *aSubject, const char *aTopic, const char16_t *data)
   {
     MOZ_ASSERT(!nsCRT::strcmp(aTopic, TOPIC_WEB_APP_CLEAR_DATA));
 
@@ -717,17 +717,16 @@ nsCookieService::AppClearDataObserverInit()
  * public methods
  ******************************************************************************/
 
-NS_IMPL_ISUPPORTS_INHERITED5(nsCookieService, MemoryUniReporter,
-                             nsICookieService,
-                             nsICookieManager,
-                             nsICookieManager2,
-                             nsIObserver,
-                             nsISupportsWeakReference)
+NS_IMPL_ISUPPORTS6(nsCookieService,
+                   nsICookieService,
+                   nsICookieManager,
+                   nsICookieManager2,
+                   nsIObserver,
+                   nsISupportsWeakReference,
+                   nsIMemoryReporter)
 
 nsCookieService::nsCookieService()
- : MemoryUniReporter("explicit/cookie-service", KIND_HEAP, UNITS_BYTES,
-                     "Memory used by the cookie service.")
- , mDBState(nullptr)
+ : mDBState(nullptr)
  , mCookieBehavior(BEHAVIOR_ACCEPT)
  , mThirdPartySession(false)
  , mMaxNumberOfCookies(kMaxNumberOfCookies)
@@ -1556,7 +1555,7 @@ nsCookieService::~nsCookieService()
 NS_IMETHODIMP
 nsCookieService::Observe(nsISupports     *aSubject,
                          const char      *aTopic,
-                         const PRUnichar *aData)
+                         const char16_t *aData)
 {
   // check the topic
   if (!strcmp(aTopic, "profile-before-change")) {
@@ -1878,7 +1877,7 @@ nsCookieService::NotifyThirdParty(nsIURI *aHostURI, bool aIsAccepted, nsIChannel
 // cookies.
 void
 nsCookieService::NotifyChanged(nsISupports     *aSubject,
-                               const PRUnichar *aData)
+                               const char16_t *aData)
 {
   const char* topic = mDBState == mPrivateDBState ?
       "private-cookie-changed" : "cookie-changed";
@@ -4354,8 +4353,14 @@ nsCookieService::SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const
   return n;
 }
 
-int64_t
-nsCookieService::Amount()
+MOZ_DEFINE_MALLOC_SIZE_OF(CookieServiceMallocSizeOf)
+
+NS_IMETHODIMP
+nsCookieService::CollectReports(nsIHandleReportCallback* aHandleReport,
+                                nsISupports* aData)
 {
-  return SizeOfIncludingThis(MallocSizeOf);
+  return MOZ_COLLECT_REPORT(
+    "explicit/cookie-service", KIND_HEAP, UNITS_BYTES,
+    SizeOfIncludingThis(CookieServiceMallocSizeOf),
+    "Memory used by the cookie service.");
 }

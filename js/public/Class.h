@@ -272,6 +272,12 @@ typedef bool
 (* JSCheckAccessOp)(JSContext *cx, JS::Handle<JSObject*> obj, JS::Handle<jsid> id,
                     JSAccessMode mode, JS::MutableHandle<JS::Value> vp);
 
+// Return whether the first principal subsumes the second. The exact meaning of
+// 'subsumes' is left up to the browser. Subsumption is checked inside the JS
+// engine when determining, e.g., which stack frames to display in a backtrace.
+typedef bool
+(* JSSubsumesOp)(JSPrincipals *first, JSPrincipals *second);
+
 // Check whether v is an instance of obj.  Return false on error or exception,
 // true on success with true in *bp if v is an instance of obj, false in
 // *bp otherwise.
@@ -568,7 +574,7 @@ struct JSClass {
 // with the following flags. Failure to use JSCLASS_GLOBAL_FLAGS was
 // previously allowed, but is now an ES5 violation and thus unsupported.
 //
-#define JSCLASS_GLOBAL_SLOT_COUNT      (3 + JSProto_LIMIT * 3 + 27)
+#define JSCLASS_GLOBAL_SLOT_COUNT      (3 + JSProto_LIMIT * 3 + 29)
 #define JSCLASS_GLOBAL_FLAGS_WITH_SLOTS(n)                                    \
     (JSCLASS_IS_GLOBAL | JSCLASS_HAS_RESERVED_SLOTS(JSCLASS_GLOBAL_SLOT_COUNT + (n)))
 #define JSCLASS_GLOBAL_FLAGS                                                  \

@@ -109,7 +109,6 @@
 #include "nsIDOMCSSPageRule.h"
 #include "nsIDOMCSSStyleRule.h"
 #include "nsIDOMCSSStyleSheet.h"
-#include "nsIDOMDeviceMotionEvent.h" //nsIDOMDeviceAcceleration
 #include "nsIDOMXULCommandDispatcher.h"
 #ifndef MOZ_DISABLE_CRYPTOLEGACY
 #include "nsIDOMCRMFObject.h"
@@ -326,11 +325,6 @@ static nsDOMClassInfoData sClassInfoData[] = {
                            nsIXPCScriptable::DONT_ENUM_QUERY_INTERFACE)
 
   // Misc Core related classes
-
-  NS_DEFINE_CLASSINFO_DATA(DeviceAcceleration, nsDOMGenericSH,
-                           DOM_DEFAULT_SCRIPTABLE_FLAGS)
-  NS_DEFINE_CLASSINFO_DATA(DeviceRotationRate, nsDOMGenericSH,
-                           DOM_DEFAULT_SCRIPTABLE_FLAGS)
 
   // CSS classes
   NS_DEFINE_CLASSINFO_DATA(CSSStyleRule, nsDOMGenericSH,
@@ -995,14 +989,6 @@ nsDOMClassInfo::Init()
 
   DOM_CLASSINFO_MAP_BEGIN(DOMConstructor, nsIDOMDOMConstructor)
     DOM_CLASSINFO_MAP_ENTRY(nsIDOMDOMConstructor)
-  DOM_CLASSINFO_MAP_END
-
-  DOM_CLASSINFO_MAP_BEGIN(DeviceAcceleration, nsIDOMDeviceAcceleration)
-    DOM_CLASSINFO_MAP_ENTRY(nsIDOMDeviceAcceleration)
-  DOM_CLASSINFO_MAP_END
-
-  DOM_CLASSINFO_MAP_BEGIN(DeviceRotationRate, nsIDOMDeviceRotationRate)
-    DOM_CLASSINFO_MAP_ENTRY(nsIDOMDeviceRotationRate)
   DOM_CLASSINFO_MAP_END
 
   DOM_CLASSINFO_MAP_BEGIN(CSSStyleRule, nsIDOMCSSStyleRule)
@@ -1753,7 +1739,7 @@ GetExternalClassInfo(nsScriptNameSpaceManager *aNameSpaceManager,
 
 static nsresult
 ResolvePrototype(nsIXPConnect *aXPConnect, nsGlobalWindow *aWin, JSContext *cx,
-                 JS::Handle<JSObject*> obj, const PRUnichar *name,
+                 JS::Handle<JSObject*> obj, const char16_t *name,
                  const nsDOMClassInfoData *ci_data,
                  const nsGlobalNameStruct *name_struct,
                  nsScriptNameSpaceManager *nameSpaceManager,
@@ -2279,7 +2265,7 @@ DefineInterfaceConstants(JSContext *cx, JS::Handle<JSObject*> obj, const nsIID *
 class nsDOMConstructor MOZ_FINAL : public nsIDOMDOMConstructor
 {
 protected:
-  nsDOMConstructor(const PRUnichar* aName,
+  nsDOMConstructor(const char16_t* aName,
                    bool aIsConstructable,
                    nsPIDOMWindow* aOwner)
     : mClassName(aName),
@@ -2290,7 +2276,7 @@ protected:
 
 public:
 
-  static nsresult Create(const PRUnichar* aName,
+  static nsresult Create(const char16_t* aName,
                          const nsDOMClassInfoData* aData,
                          const nsGlobalNameStruct* aNameStruct,
                          nsPIDOMWindow* aOwner,
@@ -2382,14 +2368,14 @@ private:
       aNameStruct->mType == nsGlobalNameStruct::eTypeExternalConstructorAlias;
   }
 
-  const PRUnichar*   mClassName;
+  const char16_t*   mClassName;
   const bool mConstructable;
   nsWeakPtr          mWeakOwner;
 };
 
 //static
 nsresult
-nsDOMConstructor::Create(const PRUnichar* aName,
+nsDOMConstructor::Create(const char16_t* aName,
                          const nsDOMClassInfoData* aData,
                          const nsGlobalNameStruct* aNameStruct,
                          nsPIDOMWindow* aOwner,
@@ -2675,7 +2661,7 @@ nsDOMConstructor::ToString(nsAString &aResult)
 {
   aResult.AssignLiteral("[object ");
   aResult.Append(mClassName);
-  aResult.Append(PRUnichar(']'));
+  aResult.Append(char16_t(']'));
 
   return NS_OK;
 }
@@ -2740,7 +2726,7 @@ GetXPCProto(nsIXPConnect *aXPConnect, JSContext *cx, nsGlobalWindow *aWin,
 // eTypeClassProto.
 static nsresult
 ResolvePrototype(nsIXPConnect *aXPConnect, nsGlobalWindow *aWin, JSContext *cx,
-                 JS::Handle<JSObject*> obj, const PRUnichar *name,
+                 JS::Handle<JSObject*> obj, const char16_t *name,
                  const nsDOMClassInfoData *ci_data,
                  const nsGlobalNameStruct *name_struct,
                  nsScriptNameSpaceManager *nameSpaceManager,
@@ -2942,7 +2928,7 @@ nsWindowSH::GlobalResolve(nsGlobalWindow *aWin, JSContext *cx,
 
   nsDependentJSString name(id);
 
-  const PRUnichar *class_name = nullptr;
+  const char16_t *class_name = nullptr;
   const nsGlobalNameStruct *name_struct =
     nameSpaceManager->LookupName(name, &class_name);
 

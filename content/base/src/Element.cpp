@@ -753,7 +753,16 @@ Element::CreateShadowRoot(ErrorResult& aError)
 
   nsRefPtr<ShadowRoot> shadowRoot = new ShadowRoot(this, nodeInfo.forget(),
                                                    protoBinding);
+
+  // Replace the old ShadowRoot with the new one and let the old
+  // ShadowRoot know about the younger ShadowRoot because the old
+  // ShadowRoot is projected into the younger ShadowRoot's shadow
+  // insertion point (if it exists).
+  ShadowRoot* olderShadow = GetShadowRoot();
   SetShadowRoot(shadowRoot);
+  if (olderShadow) {
+    olderShadow->SetYoungerShadow(shadowRoot);
+  }
 
   // xblBinding takes ownership of docInfo.
   nsRefPtr<nsXBLBinding> xblBinding = new nsXBLBinding(shadowRoot, protoBinding);
@@ -2084,8 +2093,8 @@ Element::ListAttributes(FILE* out) const
     nsAutoString value;
     mAttrsAndChildren.AttrAt(index)->ToString(value);
     for (int i = value.Length(); i >= 0; --i) {
-      if (value[i] == PRUnichar('"'))
-        value.Insert(PRUnichar('\\'), uint32_t(i));
+      if (value[i] == char16_t('"'))
+        value.Insert(char16_t('\\'), uint32_t(i));
     }
     buffer.Append(value);
     buffer.AppendLiteral("\"");

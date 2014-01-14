@@ -1209,8 +1209,9 @@ class MOZ_STACK_CLASS ModuleCompiler
         unsigned mask() const { return mask_; }
         unsigned globalDataOffset() const { return globalDataOffset_; }
 
-        void initElems(FuncPtrVector &&elems) { elems_ = Move(elems); JS_ASSERT(!elems_.empty()); }
-        unsigned numElems() const { JS_ASSERT(!elems_.empty()); return elems_.length(); }
+        bool initialized() const { return !elems_.empty(); }
+        void initElems(FuncPtrVector &&elems) { elems_ = Move(elems); JS_ASSERT(initialized()); }
+        unsigned numElems() const { JS_ASSERT(initialized()); return elems_.length(); }
         const Func &elem(unsigned i) const { return *elems_[i]; }
     };
 
@@ -1708,9 +1709,9 @@ class MOZ_STACK_CLASS ModuleCompiler
                     return;
             }
         }
-        out->reset(JS_smprintf("total compilation time %dms%s%s",
+        out->reset(JS_smprintf("total compilation time %dms; %s%s",
                                msTotal,
-                               storedInCache ? "; stored in cache" : "",
+                               storedInCache ? "stored in cache" : "not stored in cache",
                                slowFuns ? slowFuns.get() : ""));
 #endif
     }
@@ -1736,7 +1737,7 @@ class MOZ_STACK_CLASS ModuleCompiler
         if (!module_->allocateAndCopyCode(cx_, masm_))
             return false;
 
-        // c.f. IonCode::copyFrom
+        // c.f. JitCode::copyFrom
         JS_ASSERT(masm_.jumpRelocationTableBytes() == 0);
         JS_ASSERT(masm_.dataRelocationTableBytes() == 0);
         JS_ASSERT(masm_.preBarrierTableBytes() == 0);
@@ -1997,7 +1998,9 @@ class FunctionCompiler
 
         graph_  = lifo_.new_<MIRGraph>(alloc_);
         info_   = lifo_.new_<CompileInfo>(locals_.count(), SequentialExecution);
-        mirGen_ = lifo_.new_<MIRGenerator>(CompileCompartment::get(cx()->compartment()), alloc_, graph_, info_);
+        const OptimizationInfo *optimizationInfo = js_IonOptimizations.get(Optimization_AsmJS);
+        mirGen_ = lifo_.new_<MIRGenerator>(CompileCompartment::get(cx()->compartment()), alloc_,
+                                           graph_, info_, optimizationInfo);
 
         if (!newBlock(/* pred = */ nullptr, &curBlock_, fn_))
             return false;
@@ -4086,6 +4089,7 @@ CheckMathBuiltinCall(FunctionCompiler &f, ParseNode *callNode, AsmJSMathBuiltin 
       case AsmJSMathBuiltin_log:    arity = 1; doubleCallee = AsmJSImm_LogD; floatCallee = AsmJSImm_LogF;      break;
       case AsmJSMathBuiltin_pow:    arity = 2; doubleCallee = AsmJSImm_PowD; floatCallee = AsmJSImm_Invalid;   break;
       case AsmJSMathBuiltin_atan2:  arity = 2; doubleCallee = AsmJSImm_ATan2D; floatCallee = AsmJSImm_Invalid; break;
+      default: MOZ_ASSUME_UNREACHABLE("unexpected mathBuiltin");
     }
 
     if (retType == RetType::Float && floatCallee == AsmJSImm_Invalid)
@@ -5330,7 +5334,7 @@ GenerateCode(ModuleCompiler &m, ModuleCompiler::Func &func, MIRGenerator &mir, L
     if (!m.maybeReportCompileTime(func))
         return false;
 
-    // Unlike regular IonMonkey which links and generates a new IonCode for
+    // Unlike regular IonMonkey which links and generates a new JitCode for
     // every function, we accumulate all the functions in the module in a
     // single MacroAssembler and link at end. Linking asm.js doesn't require a
     // CodeGenerator so we can destroy it now.
@@ -5391,7 +5395,7 @@ CheckFunctionsSequential(ModuleCompiler &m)
     return true;
 }
 
-#ifdef JS_WORKER_THREADS
+#ifdef JS_THREADSAFE
 
 // Currently, only one asm.js parallel compilation is allowed at a time.
 // This RAII class attempts to claim this parallel compilation using atomic ops
@@ -5631,7 +5635,7 @@ CheckFunctionsParallel(ModuleCompiler &m)
     }
     return true;
 }
-#endif // JS_WORKER_THREADS
+#endif // JS_THREADSAFE
 
 static bool
 CheckFuncPtrTable(ModuleCompiler &m, ParseNode *var)
@@ -5698,6 +5702,11 @@ CheckFuncPtrTables(ModuleCompiler &m)
             if (!CheckFuncPtrTable(m, var))
                 return false;
         }
+    }
+
+    for (unsigned i = 0; i < m.numFuncPtrTables(); i++) {
+        if (!m.funcPtrTable(i).initialized())
+            return m.fail(nullptr, "expecting function-pointer table");
     }
 
     return true;
@@ -6738,7 +6747,7 @@ CheckModule(ExclusiveContext *cx, AsmJSParser &parser, ParseNode *stmtList,
     if (!CheckModuleGlobals(m))
         return false;
 
-#ifdef JS_WORKER_THREADS
+#ifdef JS_THREADSAFE
     if (!CheckFunctionsParallel(m))
         return false;
 #else
@@ -6802,7 +6811,7 @@ EstablishPreconditions(ExclusiveContext *cx, AsmJSParser &parser)
     if (parser.pc->isGenerator())
         return Warn(parser, JSMSG_USE_ASM_TYPE_FAIL, "Disabled by generator context");
 
-#ifdef JS_WORKER_THREADS
+#ifdef JS_THREADSAFE
     if (ParallelCompilationEnabled(cx)) {
         if (!EnsureWorkerThreadsInitialized(cx))
             return Warn(parser, JSMSG_USE_ASM_TYPE_FAIL, "Failed compilation thread initialization");
@@ -6854,7 +6863,8 @@ js::IsAsmJSCompilationAvailable(JSContext *cx, unsigned argc, Value *vp)
     CallArgs args = CallArgsFromVp(argc, vp);
 
     // See EstablishPreconditions.
-    bool available = JSC::MacroAssembler::supportsFloatingPoint() &&
+    bool available = cx->jitSupportsFloatingPoint() &&
+                     cx->signalHandlersInstalled() &&
                      cx->gcSystemPageSize() == AsmJSPageSize &&
                      !cx->compartment()->debugMode() &&
                      cx->compartment()->options().asmJS(cx);

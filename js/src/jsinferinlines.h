@@ -88,8 +88,9 @@ Type::ObjectType(JSObject *obj)
 /* static */ inline Type
 Type::ObjectType(TypeObject *obj)
 {
-    if (obj->singleton)
-        return Type(uintptr_t(obj->singleton.get()) | 1);
+    AutoThreadSafeAccess ts(obj);
+    if (obj->singleton())
+        return Type(uintptr_t(obj->singleton()) | 1);
     return Type(uintptr_t(obj));
 }
 
@@ -177,8 +178,9 @@ IdToTypeId(jsid id)
      * and overflowing integers.
      */
     if (JSID_IS_STRING(id)) {
-        JSFlatString *str = JSID_TO_FLAT_STRING(id);
-        JS::TwoByteChars cp = str->range();
+        JSAtom *atom = JSID_TO_ATOM(id);
+        js::AutoThreadSafeAccess ts(atom);
+        JS::TwoByteChars cp = atom->range();
         if (cp.length() > 0 && (JS7_ISDEC(cp[0]) || cp[0] == '-')) {
             for (size_t i = 1; i < cp.length(); ++i) {
                 if (!JS7_ISDEC(cp[i]))
@@ -819,17 +821,19 @@ TypeCompartment::compartment()
  * probing.  TODO: replace these with jshashtables.
  */
 const unsigned SET_ARRAY_SIZE = 8;
+const unsigned SET_CAPACITY_OVERFLOW = 1u << 30;
 
 /* Get the capacity of a set with the given element count. */
 static inline unsigned
 HashSetCapacity(unsigned count)
 {
     JS_ASSERT(count >= 2);
+    JS_ASSERT(count < SET_CAPACITY_OVERFLOW);
 
     if (count <= SET_ARRAY_SIZE)
         return SET_ARRAY_SIZE;
 
-    return 1 << (mozilla::FloorLog2(count) + 2);
+    return 1u << (mozilla::FloorLog2(count) + 2);
 }
 
 /* Compute the FNV hash for the low 32 bits of v. */
@@ -866,6 +870,9 @@ HashSetInsertTry(LifoAlloc &alloc, U **&values, unsigned &count, T key)
             insertpos = (insertpos + 1) & (capacity - 1);
         }
     }
+
+    if (count >= SET_CAPACITY_OVERFLOW)
+        return nullptr;
 
     count++;
     unsigned newCapacity = HashSetCapacity(count);
@@ -1085,7 +1092,7 @@ TypeSet::addType(Type type, LifoAlloc *alloc)
 
     if (type.isTypeObject()) {
         TypeObject *nobject = type.typeObject();
-        JS_ASSERT(!nobject->singleton);
+        JS_ASSERT(!nobject->singleton());
         if (nobject->unknownProperties())
             goto unknownObject;
     }
@@ -1316,6 +1323,8 @@ TypeObject::maybeGetProperty(jsid id)
     JS_ASSERT_IF(!JSID_IS_EMPTY(id), id == IdToTypeId(id));
     JS_ASSERT(!unknownProperties());
     JS_ASSERT(CurrentThreadCanReadCompilationData());
+
+    AutoThreadSafeAccess ts(this);
 
     Property *prop = HashSetLookup<jsid,Property,Property>
         (propertySet, basePropertyCount(), id);

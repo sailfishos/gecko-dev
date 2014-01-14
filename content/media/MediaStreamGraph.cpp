@@ -27,6 +27,7 @@
 
 using namespace mozilla::layers;
 using namespace mozilla::dom;
+using namespace mozilla::gfx;
 
 namespace mozilla {
 
@@ -895,7 +896,7 @@ SetImageToBlackPixel(PlanarYCbCrImage* aImage)
   data.mCbChannel = blackPixel + 1;
   data.mCrChannel = blackPixel + 2;
   data.mYStride = data.mCbCrStride = 1;
-  data.mPicSize = data.mYSize = data.mCbCrSize = gfxIntSize(1, 1);
+  data.mPicSize = data.mYSize = data.mCbCrSize = IntSize(1, 1);
   aImage->SetData(data);
 }
 
@@ -2417,7 +2418,7 @@ static bool gShutdownObserverRegistered = false;
 NS_IMETHODIMP
 MediaStreamGraphShutdownObserver::Observe(nsISupports *aSubject,
                                           const char *aTopic,
-                                          const PRUnichar *aData)
+                                          const char16_t *aData)
 {
   if (strcmp(aTopic, NS_XPCOM_SHUTDOWN_OBSERVER_ID) == 0) {
     if (gGraph) {

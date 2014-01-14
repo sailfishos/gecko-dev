@@ -14,7 +14,6 @@
 
 #include "BluetoothCommon.h"
 #include "BluetoothService.h"
-#include "BluetoothServiceBluedroid.h"
 #include "BluetoothSocket.h"
 #include "BluetoothUtils.h"
 
@@ -178,7 +177,7 @@ private:
 NS_IMETHODIMP
 BluetoothA2dpManager::Observe(nsISupports* aSubject,
                               const char* aTopic,
-                              const PRUnichar* aData)
+                              const char16_t* aData)
 {
   MOZ_ASSERT(sBluetoothA2dpManager);
 

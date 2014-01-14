@@ -69,6 +69,7 @@ using namespace js::types;
 using js::frontend::IsIdentifier;
 using mozilla::ArrayLength;
 using mozilla::DebugOnly;
+using mozilla::Maybe;
 using mozilla::RoundUpPow2;
 
 JS_STATIC_ASSERT(int32_t((JSObject::NELEMENTS_LIMIT - 1) * sizeof(Value)) == int64_t((JSObject::NELEMENTS_LIMIT - 1) * sizeof(Value)));
@@ -1451,7 +1452,7 @@ js::NewObjectWithType(JSContext *cx, HandleTypeObject type, JSObject *parent, gc
     JS_ASSERT(parent);
 
     JS_ASSERT(allocKind <= gc::FINALIZE_OBJECT_LAST);
-    if (CanBeFinalizedInBackground(allocKind, &JSObject::class_))
+    if (CanBeFinalizedInBackground(allocKind, type->clasp()))
         allocKind = GetBackgroundAllocKind(allocKind);
 
     NewObjectCache &cache = cx->runtime()->newObjectCache;
@@ -1461,19 +1462,19 @@ js::NewObjectWithType(JSContext *cx, HandleTypeObject type, JSObject *parent, gc
         newKind == GenericObject &&
         !cx->compartment()->hasObjectMetadataCallback())
     {
-        if (cache.lookupType(&JSObject::class_, type, allocKind, &entry)) {
-            JSObject *obj = cache.newObjectFromHit(cx, entry, GetInitialHeap(newKind, &JSObject::class_));
+        if (cache.lookupType(type->clasp(), type, allocKind, &entry)) {
+            JSObject *obj = cache.newObjectFromHit(cx, entry, GetInitialHeap(newKind, type->clasp()));
             if (obj)
                 return obj;
         }
     }
 
-    JSObject *obj = NewObject(cx, &JSObject::class_, type, parent, allocKind, newKind);
+    JSObject *obj = NewObject(cx, type->clasp(), type, parent, allocKind, newKind);
     if (!obj)
         return nullptr;
 
     if (entry != -1 && !obj->hasDynamicSlots())
-        cache.fillType(entry, &JSObject::class_, type, allocKind, obj);
+        cache.fillType(entry, type->clasp(), type, allocKind, obj);
 
     return obj;
 }
@@ -1685,7 +1686,7 @@ JSObject::nonNativeSetElement(JSContext *cx, HandleObject obj,
 {
     if (JS_UNLIKELY(obj->watched())) {
         RootedId id(cx);
-        if (!IndexToId(cx, index, id.address()))
+        if (!IndexToId(cx, index, &id))
             return false;
 
         WatchpointMap *wpmap = cx->compartment()->watchpointMap;
@@ -2528,6 +2529,12 @@ JSObject::growSlots(ThreadSafeContext *cx, HandleObject obj, uint32_t oldCount, 
         }
     }
 
+    // Global slots may be read during off thread compilation, and updates to
+    // their slot pointers need to be synchronized.
+    Maybe<AutoLockForCompilation> lock;
+    if (obj->is<GlobalObject>())
+        lock.construct(cx->asExclusiveContext());
+
     if (!oldCount) {
         obj->slots = AllocateSlots(cx, obj, newCount);
         if (!obj->slots)
@@ -2571,6 +2578,12 @@ JSObject::shrinkSlots(ThreadSafeContext *cx, HandleObject obj, uint32_t oldCount
     }
 
     JS_ASSERT(newCount >= SLOT_CAPACITY_MIN);
+
+    // Global slots may be read during off thread compilation, and updates to
+    // their slot pointers need to be synchronized.
+    Maybe<AutoLockForCompilation> lock;
+    if (obj->is<GlobalObject>())
+        lock.construct(cx->asExclusiveContext());
 
     HeapSlot *newslots = ReallocateSlots(cx, obj, obj->slots, oldCount, newCount);
     if (!newslots)
@@ -3269,7 +3282,7 @@ bool
 baseops::DefineElement(ExclusiveContext *cx, HandleObject obj, uint32_t index, HandleValue value,
                        PropertyOp getter, StrictPropertyOp setter, unsigned attrs)
 {
-    Rooted<jsid> id(cx);
+    RootedId id(cx);
     if (index <= JSID_INT_MAX) {
         id = INT_TO_JSID(index);
         return DefineNativeProperty(cx, obj, id, value, getter, setter, attrs, 0, 0);
@@ -3277,7 +3290,7 @@ baseops::DefineElement(ExclusiveContext *cx, HandleObject obj, uint32_t index, H
 
     AutoRooterGetterSetter gsRoot(cx, attrs, &getter, &setter);
 
-    if (!IndexToId(cx, index, id.address()))
+    if (!IndexToId(cx, index, &id))
         return false;
 
     return DefineNativeProperty(cx, obj, id, value, getter, setter, attrs, 0, 0);
@@ -3867,7 +3880,7 @@ baseops::LookupElement(JSContext *cx, HandleObject obj, uint32_t index,
                        MutableHandleObject objp, MutableHandleShape propp)
 {
     RootedId id(cx);
-    if (!IndexToId(cx, index, id.address()))
+    if (!IndexToId(cx, index, &id))
         return false;
 
     return LookupPropertyWithFlagsInline<CanGC>(cx, obj, id, cx->resolveFlags, objp, propp);
@@ -4200,6 +4213,14 @@ GetPropertyHelperInline(JSContext *cx,
             if (!script || script->warnedAboutUndefinedProp())
                 return true;
 
+            /*
+             * Don't warn in self-hosted code (where the further presence of
+             * JS::ContextOptions::werror() would result in impossible-to-avoid
+             * errors to entirely-innocent client code).
+             */
+            if (script->selfHosted())
+                return true;
+
             /* We may just be checking if that object has an iterator. */
             if (JSID_IS_ATOM(id, cx->names().iteratorIntrinsic))
                 return true;
@@ -4406,11 +4427,9 @@ static bool
 JS_ALWAYS_INLINE
 GetElementPure(ThreadSafeContext *cx, JSObject *obj, uint32_t index, Value *vp)
 {
-    jsid id;
-    if (!IndexToIdPure(index, &id))
-        return false;
-
-    return GetPropertyPure(cx, obj, id, vp);
+    if (index <= JSID_INT_MAX)
+        return GetPropertyPure(cx, obj, INT_TO_JSID(index), vp);
+    return false;
 }
 
 /*
@@ -4442,7 +4461,7 @@ baseops::GetElement(JSContext *cx, HandleObject obj, HandleObject receiver, uint
                     MutableHandleValue vp)
 {
     RootedId id(cx);
-    if (!IndexToId(cx, index, id.address()))
+    if (!IndexToId(cx, index, &id))
         return false;
 
     /* This call site is hot -- use the always-inlined variant of js_GetPropertyHelper(). */
@@ -4823,7 +4842,7 @@ baseops::SetElementHelper(JSContext *cx, HandleObject obj, HandleObject receiver
                           unsigned defineHow, MutableHandleValue vp, bool strict)
 {
     RootedId id(cx);
-    if (!IndexToId(cx, index, id.address()))
+    if (!IndexToId(cx, index, &id))
         return false;
     return baseops::SetPropertyHelper<SequentialExecution>(cx, obj, receiver, id, defineHow, vp,
                                                            strict);
@@ -4928,7 +4947,7 @@ bool
 baseops::DeleteElement(JSContext *cx, HandleObject obj, uint32_t index, bool *succeeded)
 {
     RootedId id(cx);
-    if (!IndexToId(cx, index, id.address()))
+    if (!IndexToId(cx, index, &id))
         return false;
     return baseops::DeleteGeneric(cx, obj, id, succeeded);
 }
@@ -5508,6 +5527,8 @@ DumpProperty(JSObject *obj, Shape &shape)
 bool
 JSObject::uninlinedIsProxy() const
 {
+    AutoThreadSafeAccess ts0(this);
+    AutoThreadSafeAccess ts1(type_);
     return is<ProxyObject>();
 }
 
@@ -5523,6 +5544,13 @@ JSObject::dump()
     if (obj->isDelegate()) fprintf(stderr, " delegate");
     if (!obj->is<ProxyObject>() && !obj->nonProxyIsExtensible()) fprintf(stderr, " not_extensible");
     if (obj->isIndexed()) fprintf(stderr, " indexed");
+    if (obj->isBoundFunction()) fprintf(stderr, " bound_function");
+    if (obj->isVarObj()) fprintf(stderr, " varobj");
+    if (obj->watched()) fprintf(stderr, " watched");
+    if (obj->isIteratedSingleton()) fprintf(stderr, " iterated_singleton");
+    if (obj->isNewTypeUnknown()) fprintf(stderr, " new_type_unknown");
+    if (obj->hasUncacheableProto()) fprintf(stderr, " has_uncacheable_proto");
+    if (obj->hadElementsAccess()) fprintf(stderr, " had_elements_access");
 
     if (obj->isNative()) {
         if (obj->inDictionaryMode())

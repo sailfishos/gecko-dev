@@ -42,15 +42,12 @@
 #include "nsString.h"                   // for nsString, nsAutoCString, etc
 #include "DecomposeIntoNoRepeatTriangles.h"
 #include "ScopedGLHelpers.h"
+#include "GLReadTexImageHelper.h"
 
 #if MOZ_ANDROID_OMTC
 #include "TexturePoolOGL.h"
 #endif
 #include "GeckoProfiler.h"
-
-#ifdef MOZ_WIDGET_ANDROID
-#include "GfxInfo.h"
-#endif
 
 #include "GLContext.h"                  // for GLContext
 #include "GLScreenBuffer.h"             // for GLScreenBuffer
@@ -418,10 +415,6 @@ CompositorOGL::Initialize()
 #ifdef MOZ_WIDGET_ANDROID
   if (!mGLContext)
     NS_RUNTIMEABORT("We need a context on Android");
-
-  // on Android, the compositor's GLContext is used to get GL strings for GfxInfo
-  nsCOMPtr<nsIGfxInfo> gfxInfo = do_GetService("@mozilla.org/gfx/info;1");
-  static_cast<widget::GfxInfo*>(gfxInfo.get())->InitializeGLStrings(mGLContext);
 #endif
 
   if (!mGLContext)
@@ -439,7 +432,7 @@ CompositorOGL::Initialize()
         SurfaceStream::ChooseGLStreamType(SurfaceStream::OffMainThread,
                                           screen->PreserveBuffer());
       SurfaceFactory_GL* factory = nullptr;
-      if (mGLContext->GetEGLContext() && mGLContext->GetLibraryEGL()->HasKHRImageTexture2D()) {
+      if (mGLContext->GetContextType() == ContextTypeEGL && sEGLLibrary.HasKHRImageTexture2D()) {
         // [Basic/OGL Layers, OMTC] WebGL layer init.
         factory = SurfaceFactory_EGLImage::Create(mGLContext, screen->Caps());
       } else {
@@ -1542,8 +1535,16 @@ CompositorOGL::CopyToTarget(DrawTarget *aTarget, const gfxMatrix& aTransform)
     mGLContext->fReadBuffer(LOCAL_GL_BACK);
   }
 
-  RefPtr<SourceSurface> source =
-    mGLContext->ReadPixelsToSourceSurface(IntSize(width, height));
+  RefPtr<DataSourceSurface> source =
+        Factory::CreateDataSourceSurface(rect.Size(), gfx::FORMAT_B8G8R8A8);
+  // XXX we should do this properly one day without using the gfxImageSurface
+  nsRefPtr<gfxImageSurface> surf =
+    new gfxImageSurface(source->GetData(),
+                        gfxIntSize(width, height),
+                        source->Stride(),
+                        gfxImageFormatARGB32);
+  ReadPixelsIntoImageSurface(mGLContext, surf);
+  source->MarkDirty();
 
   // Map from GL space to Cairo space and reverse the world transform.
   Matrix glToCairoTransform = ToMatrix(aTransform);

@@ -1639,7 +1639,8 @@ nsDocument::Release()
   NS_PRECONDITION(0 != mRefCnt, "dup release");
   NS_ASSERT_OWNINGTHREAD(nsDocument);
   nsISupports* base = NS_CYCLE_COLLECTION_CLASSNAME(nsDocument)::Upcast(this);
-  nsrefcnt count = mRefCnt.decr(base);
+  bool shouldDelete = false;
+  nsrefcnt count = mRefCnt.decr(base, &shouldDelete);
   NS_LOG_RELEASE(this, count, "nsDocument");
   if (count == 0) {
     if (mStackRefCnt && !mNeedsReleaseAfterStackRefCntRelease) {
@@ -1647,8 +1648,13 @@ nsDocument::Release()
       NS_ADDREF_THIS();
       return mRefCnt.get();
     }
-    NS_ASSERT_OWNINGTHREAD(nsDocument);
+    mRefCnt.incr(base);
     nsNodeUtils::LastRelease(this);
+    mRefCnt.decr(base);
+    if (shouldDelete) {
+      mRefCnt.stabilizeForDeletion();
+      DeleteCycleCollectable();
+    }
   }
   return count;
 }
@@ -3162,7 +3168,7 @@ nsDocument::ElementFromPointHelper(float aX, float aY,
   }
 
   nsIFrame *ptFrame = nsLayoutUtils::GetFrameForPoint(rootFrame, pt,
-    nsLayoutUtils::IGNORE_PAINT_SUPPRESSION |
+    nsLayoutUtils::IGNORE_PAINT_SUPPRESSION | nsLayoutUtils::IGNORE_CROSS_DOC |
     (aIgnoreRootScrollFrame ? nsLayoutUtils::IGNORE_ROOT_SCROLL_FRAME : 0));
   if (!ptFrame) {
     return nullptr;
@@ -3217,7 +3223,7 @@ nsDocument::NodesFromRectHelper(float aX, float aY,
 
   nsAutoTArray<nsIFrame*,8> outFrames;
   nsLayoutUtils::GetFramesForArea(rootFrame, rect, outFrames,
-    nsLayoutUtils::IGNORE_PAINT_SUPPRESSION |
+    nsLayoutUtils::IGNORE_PAINT_SUPPRESSION | nsLayoutUtils::IGNORE_CROSS_DOC |
     (aIgnoreRootScrollFrame ? nsLayoutUtils::IGNORE_ROOT_SCROLL_FRAME : 0));
 
   // Used to filter out repeated elements in sequence.
@@ -4956,7 +4962,7 @@ bool IsLowercaseASCII(const nsAString& aValue)
 {
   int32_t len = aValue.Length();
   for (int32_t i = 0; i < len; ++i) {
-    PRUnichar c = aValue[i];
+    char16_t c = aValue[i];
     if (!(0x0061 <= (c) && ((c) <= 0x007a))) {
       return false;
     }
@@ -7223,8 +7229,8 @@ nsDocument::FlushExternalResources(mozFlushType aType)
 }
 
 void
-nsDocument::SetXMLDeclaration(const PRUnichar *aVersion,
-                              const PRUnichar *aEncoding,
+nsDocument::SetXMLDeclaration(const char16_t *aVersion,
+                              const char16_t *aEncoding,
                               const int32_t aStandalone)
 {
   if (!aVersion || *aVersion == '\0') {
@@ -8565,11 +8571,17 @@ FireOrClearDelayedEvents(nsTArray<nsCOMPtr<nsIDocument> >& aDocuments,
     return;
 
   for (uint32_t i = 0; i < aDocuments.Length(); ++i) {
+    // NB: Don't bother trying to fire delayed events on documents that were
+    // closed before this event ran.
     if (!aDocuments[i]->EventHandlingSuppressed()) {
       fm->FireDelayedEvents(aDocuments[i]);
       nsCOMPtr<nsIPresShell> shell = aDocuments[i]->GetShell();
       if (shell) {
-        shell->FireOrClearDelayedEvents(aFireEvents);
+        // Only fire events for active documents.
+        bool fire = aFireEvents &&
+                    aDocuments[i]->GetInnerWindow() &&
+                    aDocuments[i]->GetInnerWindow()->IsCurrentInnerWindow();
+        shell->FireOrClearDelayedEvents(fire);
       }
     }
   }
@@ -9453,7 +9465,7 @@ nsIDocument::CaretPositionFromPoint(float aX, float aY)
   }
 
   nsIFrame *ptFrame = nsLayoutUtils::GetFrameForPoint(rootFrame, pt,
-      nsLayoutUtils::IGNORE_PAINT_SUPPRESSION);
+      nsLayoutUtils::IGNORE_PAINT_SUPPRESSION | nsLayoutUtils::IGNORE_CROSS_DOC);
   if (!ptFrame) {
     return nullptr;
   }
@@ -10858,7 +10870,7 @@ nsDocument::SetApprovedForFullscreen(bool aIsApproved)
 nsresult
 nsDocument::Observe(nsISupports *aSubject,
                     const char *aTopic,
-                    const PRUnichar *aData)
+                    const char16_t *aData)
 {
   if (strcmp("fullscreen-approved", aTopic) == 0) {
     nsCOMPtr<nsIDocument> subject(do_QueryInterface(aSubject));

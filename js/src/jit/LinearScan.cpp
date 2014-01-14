@@ -767,7 +767,13 @@ LinearScanAllocator::assign(LAllocation allocation)
         }
     }
 
-    if (reg && allocation.isMemory()) {
+    bool useAsCanonicalSpillSlot = allocation.isMemory();
+    // Only canonically spill argument values when frame arguments are not
+    // modified in the body.
+    if (mir->modifiesFrameArguments())
+        useAsCanonicalSpillSlot = allocation.isStackSlot();
+
+    if (reg && useAsCanonicalSpillSlot) {
         if (reg->canonicalSpill()) {
             JS_ASSERT(allocation == *reg->canonicalSpill());
 
@@ -1150,7 +1156,7 @@ LinearScanAllocator::canCoexist(LiveInterval *a, LiveInterval *b)
 void
 LinearScanAllocator::validateIntervals()
 {
-    if (!js_IonOptions.checkGraphConsistency)
+    if (!js_JitOptions.checkGraphConsistency)
         return;
 
     for (IntervalIterator i(active.begin()); i != active.end(); i++) {
@@ -1196,7 +1202,7 @@ LinearScanAllocator::validateIntervals()
 void
 LinearScanAllocator::validateAllocations()
 {
-    if (!js_IonOptions.checkGraphConsistency)
+    if (!js_JitOptions.checkGraphConsistency)
         return;
 
     for (IntervalIterator i(handled.begin()); i != handled.end(); i++) {

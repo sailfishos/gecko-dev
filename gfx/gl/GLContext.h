@@ -41,6 +41,7 @@
 #include "GLContextSymbols.h"
 #include "mozilla/GenericRefCounted.h"
 #include "mozilla/Scoped.h"
+#include "gfx2DGlue.h"
 
 #ifdef DEBUG
 #define MOZ_ENABLE_GL_TRACKING 1
@@ -69,6 +70,7 @@ namespace mozilla {
         class TextureGarbageBin;
         class GLBlitHelper;
         class GLBlitTextureImageHelper;
+        class GLReadTexImageHelper;
     }
 
     namespace layers {
@@ -2377,7 +2379,6 @@ protected:
 
     typedef class gfx::SharedSurface SharedSurface;
     typedef gfx::SharedSurfaceType SharedSurfaceType;
-    typedef gfxImageFormat ImageFormat;
     typedef gfx::SurfaceFormat SurfaceFormat;
 
 public:
@@ -2437,33 +2438,12 @@ public:
     virtual void *GetNativeData(NativeDataType aType) { return nullptr; }
     GLContext *GetSharedContext() { return mSharedContext; }
 
-    bool IsGlobalSharedContext() { return mIsGlobalSharedContext; }
-    void SetIsGlobalSharedContext(bool aIsOne) { mIsGlobalSharedContext = aIsOne; }
-
     /**
      * Returns true if the thread on which this context was created is the currently
      * executing thread.
      */
     bool IsOwningThreadCurrent();
     void DispatchToOwningThread(nsIRunnable *event);
-
-    virtual EGLContext GetEGLContext() { return nullptr; }
-    virtual GLLibraryEGL* GetLibraryEGL() { return nullptr; }
-
-    /**
-     * Only on EGL.
-     *
-     * If surf is non-null, this sets it to temporarily override this context's
-     * primary surface. This makes this context current against this surface,
-     * and subsequent MakeCurrent calls will continue using this surface as long
-     * as this override is set.
-     *
-     * If surf is null, this removes any previously set override, and makes the
-     * context current again against its primary surface.
-     */
-    virtual void SetEGLSurfaceOverride(EGLSurface surf) {
-        MOZ_CRASH("Must be called against a GLContextEGL.");
-    }
 
     static void PlatformStartup();
 
@@ -2495,7 +2475,7 @@ public:
      *
      * Only valid if IsOffscreen() returns true.
      */
-    virtual bool ResizeOffscreen(const gfxIntSize& size) {
+    virtual bool ResizeOffscreen(const gfx::IntSize& size) {
         return ResizeScreenBuffer(size);
     }
 
@@ -2504,7 +2484,7 @@ public:
      *
      * Only valid if IsOffscreen() returns true.
      */
-    const gfxIntSize& OffscreenSize() const;
+    const gfx::IntSize& OffscreenSize() const;
 
     void BindFB(GLuint fb) {
         fBindFramebuffer(LOCAL_GL_FRAMEBUFFER, fb);
@@ -2586,54 +2566,6 @@ public:
 
     virtual bool RenewSurface() { return false; }
 
-private:
-    /**
-     * Helpers for ReadTextureImage
-     */
-    GLuint TextureImageProgramFor(GLenum aTextureTarget, int aShader);
-    bool ReadBackPixelsIntoSurface(gfxImageSurface* aSurface, const gfxIntSize& aSize);
-
-public:
-    /**
-     * Read the image data contained in aTexture, and return it as an ImageSurface.
-     * If GL_RGBA is given as the format, a gfxImageFormatARGB32 surface is returned.
-     * Not implemented yet:
-     * If GL_RGB is given as the format, a gfxImageFormatRGB24 surface is returned.
-     * If GL_LUMINANCE is given as the format, a gfxImageFormatA8 surface is returned.
-     *
-     * THIS IS EXPENSIVE.  It is ridiculously expensive.  Only do this
-     * if you absolutely positively must, and never in any performance
-     * critical path.
-     *
-     * NOTE: aShaderProgram is really mozilla::layers::ShaderProgramType. It is
-     * passed as int to eliminate including LayerManagerOGLProgram.h in this
-     * hub header.
-     */
-    already_AddRefed<gfxImageSurface> ReadTextureImage(GLuint aTextureId,
-                                                       GLenum aTextureTarget,
-                                                       const gfxIntSize& aSize,
-                               /* ShaderProgramType */ int aShaderProgram,
-                                                       bool aYInvert = false);
-
-    already_AddRefed<gfxImageSurface> GetTexImage(GLuint aTexture,
-                                                  bool aYInvert,
-                                                  SurfaceFormat aFormat);
-
-    /**
-     * Call ReadPixels into an existing gfxImageSurface.
-     * The image surface must be using image format RGBA32 or RGB24,
-     * and must have stride == width*4.
-     * Note that neither ReadPixelsIntoImageSurface nor
-     * ReadScreenIntoImageSurface call dest->Flush/MarkDirty.
-     */
-    void ReadPixelsIntoImageSurface(gfxImageSurface* dest);
-
-    // Similar to ReadPixelsIntoImageSurface, but pulls from the screen
-    // instead of the currently bound framebuffer.
-    void ReadScreenIntoImageSurface(gfxImageSurface* dest);
-
-    TemporaryRef<gfx::SourceSurface> ReadPixelsToSourceSurface(const gfx::IntSize &aSize);
-
     // Shared code for GL extensions and GLX extensions.
     static bool ListHasExtension(const GLubyte *extensions,
                                  const char *extension);
@@ -2694,11 +2626,13 @@ protected:
 
     ScopedDeletePtr<GLBlitHelper> mBlitHelper;
     ScopedDeletePtr<GLBlitTextureImageHelper> mBlitTextureImageHelper;
+    ScopedDeletePtr<GLReadTexImageHelper> mReadTexImageHelper;
 
 public:
 
     GLBlitHelper* BlitHelper();
     GLBlitTextureImageHelper* BlitTextureImageHelper();
+    GLReadTexImageHelper* ReadTexImageHelper();
 
     // Assumes shares are created by all sharing with the same global context.
     bool SharesWith(const GLContext* other) const {
@@ -2716,7 +2650,7 @@ public:
         return thisShared == otherShared;
     }
 
-    bool InitOffscreen(const gfxIntSize& size, const SurfaceCaps& caps) {
+    bool InitOffscreen(const gfx::IntSize& size, const SurfaceCaps& caps) {
         if (!CreateScreenBuffer(size, caps))
             return false;
 
@@ -2737,7 +2671,7 @@ public:
 
 protected:
     // Note that it does -not- clear the resized buffers.
-    bool CreateScreenBuffer(const gfxIntSize& size, const SurfaceCaps& caps) {
+    bool CreateScreenBuffer(const gfx::IntSize& size, const SurfaceCaps& caps) {
         if (!IsOffscreenSizeAllowed(size))
             return false;
 
@@ -2759,11 +2693,11 @@ protected:
         return false;
     }
 
-    bool CreateScreenBufferImpl(const gfxIntSize& size,
+    bool CreateScreenBufferImpl(const gfx::IntSize& size,
                                 const SurfaceCaps& caps);
 
 public:
-    bool ResizeScreenBuffer(const gfxIntSize& size);
+    bool ResizeScreenBuffer(const gfx::IntSize& size);
 
 protected:
     SurfaceCaps mCaps;
@@ -2863,11 +2797,9 @@ public:
 
     void EmptyTexGarbageBin();
 
-    bool IsOffscreenSizeAllowed(const gfxIntSize& aSize) const;
+    bool IsOffscreenSizeAllowed(const gfx::IntSize& aSize) const;
 
 protected:
-    GLuint mReadTextureImagePrograms[4];
-
     bool InitWithPrefix(const char *prefix, bool trygl);
 
     void InitExtensions();

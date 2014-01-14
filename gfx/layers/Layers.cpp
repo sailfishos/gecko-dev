@@ -113,15 +113,15 @@ LayerManager::GetScrollableLayers(nsTArray<Layer*>& aArray)
 }
 
 already_AddRefed<gfxASurface>
-LayerManager::CreateOptimalSurface(const gfxIntSize &aSize,
+LayerManager::CreateOptimalSurface(const gfx::IntSize &aSize,
                                    gfxImageFormat aFormat)
 {
   return gfxPlatform::GetPlatform()->
-    CreateOffscreenSurface(aSize, gfxASurface::ContentFromFormat(aFormat));
+    CreateOffscreenSurface(gfx::ThebesIntSize(aSize), gfxASurface::ContentFromFormat(aFormat));
 }
 
 already_AddRefed<gfxASurface>
-LayerManager::CreateOptimalMaskSurface(const gfxIntSize &aSize)
+LayerManager::CreateOptimalMaskSurface(const gfx::IntSize &aSize)
 {
   return CreateOptimalSurface(aSize, gfxImageFormatA8);
 }
@@ -1260,6 +1260,12 @@ Layer::PrintInfo(nsACString& aTo, const char* aPrefix)
     AppendToString(aTo, mVisibleRegion, " [visible=", "]");
   } else {
     aTo += " [not visible]";
+  }
+  if (!mEventRegions.mHitRegion.IsEmpty()) {
+    AppendToString(aTo, mEventRegions.mHitRegion, " [hitregion=", "]");
+  }
+  if (!mEventRegions.mDispatchToContentHitRegion.IsEmpty()) {
+    AppendToString(aTo, mEventRegions.mDispatchToContentHitRegion, " [dispatchtocontentregion=", "]");
   }
   if (1.0 != mOpacity) {
     aTo.AppendPrintf(" [opacity=%g]", mOpacity);

@@ -12,6 +12,7 @@
 #include "jit/BaselineJIT.h"
 #include "jit/Ion.h"
 #include "jit/IonBuilder.h"
+#include "jit/IonOptimizationLevels.h"
 #include "jit/LIR.h"
 #include "jit/Lowering.h"
 #include "jit/MIRGraph.h"
@@ -108,7 +109,6 @@ jit::EliminateDeadResumePointOperands(MIRGenerator *mir, MIRGraph &graph)
             for (MUseDefIterator uses(*ins); uses; uses++) {
                 if (uses.def()->block() != *block ||
                     uses.def()->isBox() ||
-                    uses.def()->isPassArg() ||
                     uses.def()->isPhi())
                 {
                     maxDefinition = UINT32_MAX;
@@ -972,8 +972,6 @@ TypeAnalyzer::checkFloatCoherency()
         for (MDefinitionIterator def(*block); def; def++) {
             if (def->type() != MIRType_Float32)
                 continue;
-            if (def->isPassArg()) // no check for PassArg as it is broken, see bug 915479
-                continue;
 
             for (MUseDefIterator use(*def); use; use++) {
                 MDefinition *consumer = use.def();
@@ -1355,7 +1353,7 @@ void
 jit::AssertGraphCoherency(MIRGraph &graph)
 {
 #ifdef DEBUG
-    if (!js_IonOptions.checkGraphConsistency)
+    if (!js_JitOptions.checkGraphConsistency)
         return;
     AssertBasicGraphCoherency(graph);
     AssertReversePostOrder(graph);
@@ -1370,7 +1368,7 @@ jit::AssertExtendedGraphCoherency(MIRGraph &graph)
     // are split)
 
 #ifdef DEBUG
-    if (!js_IonOptions.checkGraphConsistency)
+    if (!js_JitOptions.checkGraphConsistency)
         return;
     AssertGraphCoherency(graph);
 
@@ -2043,14 +2041,14 @@ AnalyzePoppedThis(JSContext *cx, types::TypeObject *type,
         if (!definitelyExecuted)
             return true;
 
-        if (!types::AddClearDefiniteGetterSetterForPrototypeChain(cx, type, NameToId(setprop->name()))) {
+        RootedId id(cx, NameToId(setprop->name()));
+        if (!types::AddClearDefiniteGetterSetterForPrototypeChain(cx, type, id)) {
             // The prototype chain already contains a getter/setter for this
             // property, or type information is too imprecise.
             return true;
         }
 
         DebugOnly<unsigned> slotSpan = baseobj->slotSpan();
-        RootedId id(cx, NameToId(setprop->name()));
         RootedValue value(cx, UndefinedValue());
         if (!DefineNativeProperty(cx, baseobj, id, value, nullptr, nullptr,
                                   JSPROP_ENUMERATE, 0, 0))
@@ -2181,16 +2179,20 @@ jit::AnalyzeNewScriptProperties(JSContext *cx, JSFunction *fun,
 
     AutoTempAllocatorRooter root(cx, &temp);
 
+    const OptimizationInfo *optimizationInfo = js_IonOptimizations.get(Optimization_Normal);
+
     types::CompilerConstraintList *constraints = types::NewCompilerConstraintList(temp);
     BaselineInspector inspector(script);
     IonBuilder builder(cx, CompileCompartment::get(cx->compartment()), &temp, &graph, constraints,
-                       &inspector, &info, /* baselineFrame = */ nullptr);
+                       &inspector, &info, optimizationInfo, /* baselineFrame = */ nullptr);
 
     if (!builder.build()) {
         if (builder.abortReason() == AbortReason_Alloc)
             return false;
         return true;
     }
+
+    types::FinishDefinitePropertiesAnalysis(cx, constraints);
 
     if (!SplitCriticalEdges(graph))
         return false;

@@ -400,7 +400,7 @@ bool
 EmbedLiteViewThreadChild::RecvLoadFrameScript(const nsString& uri)
 {
   if (mHelper) {
-    return mHelper->DoLoadFrameScript(uri);
+    return mHelper->DoLoadFrameScript(uri, true);
   }
   return false;
 }

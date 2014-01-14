@@ -17,7 +17,7 @@
 #include "gfxColor.h"                   // for gfxRGBA
 #include "gfxMatrix.h"                  // for gfxMatrix
 #include "GraphicsFilter.h"             // for GraphicsFilter
-#include "gfxPoint.h"                   // for gfxPoint, gfxIntSize
+#include "gfxPoint.h"                   // for gfxPoint
 #include "gfxRect.h"                    // for gfxRect
 #include "mozilla/Assertions.h"         // for MOZ_ASSERT_HELPER2, etc
 #include "mozilla/DebugOnly.h"          // for DebugOnly
@@ -423,7 +423,7 @@ public:
    * manager.
    */
   virtual already_AddRefed<gfxASurface>
-    CreateOptimalSurface(const gfxIntSize &aSize,
+    CreateOptimalSurface(const gfx::IntSize &aSize,
                          gfxImageFormat imageFormat);
 
   /**
@@ -433,7 +433,7 @@ public:
    * is fairly simple.
    */
   virtual already_AddRefed<gfxASurface>
-    CreateOptimalMaskSurface(const gfxIntSize &aSize);
+    CreateOptimalMaskSurface(const gfx::IntSize &aSize);
 
   /**
    * Creates a DrawTarget for use with canvas which is optimized for
@@ -443,7 +443,7 @@ public:
     CreateDrawTarget(const mozilla::gfx::IntSize &aSize,
                      mozilla::gfx::SurfaceFormat aFormat);
 
-  virtual bool CanUseCanvasLayerForSize(const gfxIntSize &aSize) { return true; }
+  virtual bool CanUseCanvasLayerForSize(const gfx::IntSize &aSize) { return true; }
 
   /**
    * returns the maximum texture size on this layer backend, or INT32_MAX
@@ -740,6 +740,38 @@ public:
     }
   }
 
+  /*
+   * Compositor event handling
+   * =========================
+   * When a touch-start event (or similar) is sent to the AsyncPanZoomController,
+   * it needs to decide whether the event should be sent to the main thread.
+   * Each layer has a list of event handling regions. When the compositor needs
+   * to determine how to handle a touch event, it scans the layer tree from top
+   * to bottom in z-order (traversing children before their parents). Points
+   * outside the clip region for a layer cause that layer (and its subtree)
+   * to be ignored. If a layer has a mask layer, and that mask layer's alpha
+   * value is zero at the event point, then the layer and its subtree should
+   * be ignored.
+   * For each layer, if the point is outside its hit region, we ignore the layer
+   * and move onto the next. If the point is inside its hit region but
+   * outside the dispatch-to-content region, we can initiate a gesture without
+   * consulting the content thread. Otherwise we must dispatch the event to
+   * content.
+   */
+  /**
+   * CONSTRUCTION PHASE ONLY
+   * Set the event handling region.
+   */
+  void SetEventRegions(const EventRegions& aRegions)
+  {
+    if (mEventRegions != aRegions) {
+      MOZ_LAYERS_LOG_IF_SHADOWABLE(this, ("Layer::Mutated(%p) eventregions were %s, now %s", this,
+        mEventRegions.ToString().get(), aRegions.ToString().get()));
+      mEventRegions = aRegions;
+      Mutated();
+    }
+  }
+
   /**
    * CONSTRUCTION PHASE ONLY
    * Set the opacity which will be applied to this layer as it
@@ -851,8 +883,6 @@ public:
    * CONSTRUCTION PHASE ONLY
    * Tell this layer what its transform should be. The transformation
    * is applied when compositing the layer into its parent container.
-   * XXX Currently only transformations corresponding to 2D affine transforms
-   * are supported.
    */
   void SetBaseTransform(const gfx3DMatrix& aMatrix)
   {
@@ -1008,6 +1038,7 @@ public:
   const nsIntRect* GetClipRect() { return mUseClipRect ? &mClipRect : nullptr; }
   uint32_t GetContentFlags() { return mContentFlags; }
   const nsIntRegion& GetVisibleRegion() { return mVisibleRegion; }
+  const EventRegions& GetEventRegions() const { return mEventRegions; }
   ContainerLayer* GetParent() { return mParent; }
   Layer* GetNextSibling() { return mNextSibling; }
   const Layer* GetNextSibling() const { return mNextSibling; }
@@ -1371,6 +1402,7 @@ protected:
   nsRefPtr<Layer> mMaskLayer;
   gfx::UserData mUserData;
   nsIntRegion mVisibleRegion;
+  EventRegions mEventRegions;
   gfx3DMatrix mTransform;
   // A mutation of |mTransform| that we've queued to be applied at the
   // end of the next transaction (if nothing else overrides it in the

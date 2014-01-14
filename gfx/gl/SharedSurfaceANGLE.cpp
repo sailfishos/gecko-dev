@@ -12,12 +12,16 @@ using namespace mozilla::gfx;
 namespace mozilla {
 namespace gl {
 
+class GLContextEGL;
+void SetEGLSurfaceOverride(GLContextEGL* context, EGLSurface surf);
+GLContextEGL* DowncastGLContextEGL(GLContext* context);
+
 SurfaceFactory_ANGLEShareHandle*
 SurfaceFactory_ANGLEShareHandle::Create(GLContext* gl,
                                         ID3D10Device1* d3d,
                                         const SurfaceCaps& caps)
 {
-    GLLibraryEGL* egl = gl->GetLibraryEGL();
+    GLLibraryEGL* egl = &sEGLLibrary;
     if (!egl)
         return nullptr;
 
@@ -45,7 +49,7 @@ SharedSurface_ANGLEShareHandle::~SharedSurface_ANGLEShareHandle()
 void
 SharedSurface_ANGLEShareHandle::LockProdImpl()
 {
-    mGL->SetEGLSurfaceOverride(mPBuffer);
+    SetEGLSurfaceOverride(DowncastGLContextEGL(mGL), mPBuffer);
 }
 
 void
@@ -176,7 +180,7 @@ ChooseConfig(GLContext* gl,
 static EGLSurface CreatePBufferSurface(GLLibraryEGL* egl,
                                        EGLDisplay display,
                                        EGLConfig config,
-                                       const gfxIntSize& size)
+                                       const gfx::IntSize& size)
 {
     EGLint attribs[] = {
         LOCAL_EGL_WIDTH, size.width,
@@ -192,9 +196,9 @@ static EGLSurface CreatePBufferSurface(GLLibraryEGL* egl,
 SharedSurface_ANGLEShareHandle*
 SharedSurface_ANGLEShareHandle::Create(GLContext* gl, ID3D10Device1* d3d,
                                        EGLContext context, EGLConfig config,
-                                       const gfxIntSize& size, bool hasAlpha)
+                                       const gfx::IntSize& size, bool hasAlpha)
 {
-    GLLibraryEGL* egl = gl->GetLibraryEGL();
+    GLLibraryEGL* egl = &sEGLLibrary;
     MOZ_ASSERT(egl);
     MOZ_ASSERT(egl->IsExtensionSupported(
                GLLibraryEGL::ANGLE_surface_d3d_texture_2d_share_handle));
@@ -271,7 +275,7 @@ SurfaceFactory_ANGLEShareHandle::SurfaceFactory_ANGLEShareHandle(GLContext* gl,
     , mConsD3D(d3d)
 {
     mConfig = ChooseConfig(mProdGL, mEGL, mReadCaps);
-    mContext = mProdGL->GetEGLContext();
+    mContext = mProdGL->GetNativeData(GLContext::NativeGLContext);
     MOZ_ASSERT(mConfig && mContext);
 }
 

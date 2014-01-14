@@ -395,7 +395,7 @@ public:
                     GraphicsFilter aFilter,
                     uint32_t aFlags = RenderFlagPremultAlpha) MOZ_OVERRIDE;
   NS_IMETHOD GetInputStream(const char* aMimeType,
-                            const PRUnichar* aEncoderOptions,
+                            const char16_t* aEncoderOptions,
                             nsIInputStream **aStream) MOZ_OVERRIDE;
   NS_IMETHOD GetThebesSurface(gfxASurface **surface) MOZ_OVERRIDE;
 
@@ -413,6 +413,7 @@ public:
   // this rect is in canvas device space
   void Redraw(const mozilla::gfx::Rect &r);
   NS_IMETHOD Redraw(const gfxRect &r) MOZ_OVERRIDE { Redraw(ToRect(r)); return NS_OK; }
+  NS_IMETHOD SetContextOptions(JSContext* aCx, JS::Handle<JS::Value> aOptions) MOZ_OVERRIDE;
 
   // this rect is in mTarget's current user space
   void RedrawUser(const gfxRect &r);

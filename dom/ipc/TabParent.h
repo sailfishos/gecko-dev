@@ -221,7 +221,7 @@ public:
     bool SendHandleDoubleTap(const CSSIntPoint& aPoint);
 
     virtual PDocumentRendererParent*
-    AllocPDocumentRendererParent(const nsRect& documentRect, const gfxMatrix& transform,
+    AllocPDocumentRendererParent(const nsRect& documentRect, const gfx::Matrix& transform,
                                  const nsString& bgcolor,
                                  const uint32_t& renderFlags, const bool& flushLayout,
                                  const nsIntSize& renderSize);
@@ -236,6 +236,7 @@ public:
             const URIParams& aDocumentURI,
             const bool& stickDocument) MOZ_OVERRIDE;
     virtual bool DeallocPOfflineCacheUpdateParent(POfflineCacheUpdateParent* actor);
+    virtual bool RecvSetOfflinePermission(const IPC::Principal& principal);
 
     bool GetGlobalJSObject(JSContext* cx, JSObject** globalp);
 

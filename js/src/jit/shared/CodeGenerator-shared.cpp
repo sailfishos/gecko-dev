@@ -140,10 +140,6 @@ CodeGeneratorShared::encodeSlots(LSnapshot *snapshot, MResumePoint *resumePoint,
         uint32_t i = slotno + *startIndex;
         MDefinition *mir = resumePoint->getOperand(slotno);
 
-        if (mir->isPassArg())
-            mir = mir->toPassArg()->getArgument();
-        JS_ASSERT(!mir->isPassArg());
-
         if (mir->isBox())
             mir = mir->toBox()->getOperand(0);
 
@@ -279,6 +275,7 @@ CodeGeneratorShared::encode(LSnapshot *snapshot)
 
 #ifdef DEBUG
         if (GetIonContext()->cx) {
+            AutoThreadSafeAccess ts(script);
             uint32_t stackDepth;
             bool reachablePC;
             if (!ReconstructStackDepth(GetIonContext()->cx, script, bailPC, &stackDepth, &reachablePC))
@@ -602,7 +599,7 @@ CodeGeneratorShared::verifyOsiPointRegs(LSafepoint *safepoint)
 bool
 CodeGeneratorShared::shouldVerifyOsiPointRegs(LSafepoint *safepoint)
 {
-    if (!js_IonOptions.checkOsiPointRegisters)
+    if (!js_JitOptions.checkOsiPointRegisters)
         return false;
 
     if (gen->info().executionMode() != SequentialExecution)
@@ -661,7 +658,7 @@ CodeGeneratorShared::callVM(const VMFunction &fun, LInstruction *ins, const Regi
 #endif
 
     // Get the wrapper of the VM function.
-    IonCode *wrapper = gen->jitRuntime()->getVMWrapper(fun);
+    JitCode *wrapper = gen->jitRuntime()->getVMWrapper(fun);
     if (!wrapper)
         return false;
 

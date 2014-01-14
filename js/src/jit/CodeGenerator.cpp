@@ -1,4 +1,4 @@
-/* -*- Mnde: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*-
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*-
  * vim: set ts=8 sts=4 et sw=4 tw=99:
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -22,6 +22,7 @@
 #include "jit/ExecutionModeInlines.h"
 #include "jit/IonCaches.h"
 #include "jit/IonLinker.h"
+#include "jit/IonOptimizationLevels.h"
 #include "jit/IonSpewer.h"
 #include "jit/MIRGenerator.h"
 #include "jit/MoveEmitter.h"
@@ -752,16 +753,13 @@ CodeGenerator::visitDoubleToString(LDoubleToString *lir)
     return true;
 }
 
-typedef JSObject *(*CloneRegExpObjectFn)(JSContext *, JSObject *, JSObject *);
+typedef JSObject *(*CloneRegExpObjectFn)(JSContext *, JSObject *);
 static const VMFunction CloneRegExpObjectInfo =
     FunctionInfo<CloneRegExpObjectFn>(CloneRegExpObject);
 
 bool
 CodeGenerator::visitRegExp(LRegExp *lir)
 {
-    JSObject *proto = lir->mir()->getRegExpPrototype();
-
-    pushArg(ImmGCPtr(proto));
     pushArg(ImmGCPtr(lir->mir()->source()));
     return callVM(CloneRegExpObjectInfo, lir);
 }
@@ -1140,7 +1138,7 @@ bool
 CodeGenerator::visitStackArgT(LStackArgT *lir)
 {
     const LAllocation *arg = lir->getArgument();
-    MIRType argType = lir->mir()->getArgument()->type();
+    MIRType argType = lir->type();
     uint32_t argslot = lir->argslot();
     JS_ASSERT(argslot - 1u < graph.argumentSlotCount());
 
@@ -1749,23 +1747,18 @@ CodeGenerator::visitCallNative(LCallNative *call)
     switch (executionMode) {
       case SequentialExecution:
         masm.callWithABI(JS_FUNC_TO_DATA_PTR(void *, target->native()));
-
-        // Test for failure.
-        masm.branchIfFalseBool(ReturnReg, masm.failureLabel(executionMode));
         break;
 
       case ParallelExecution:
         masm.callWithABI(JS_FUNC_TO_DATA_PTR(void *, target->parallelNative()));
-
-        // ParallelResult has more nuanced failure, but for now we fail on
-        // anything that's != TP_SUCCESS.
-        masm.branch32(Assembler::NotEqual, ReturnReg, Imm32(TP_SUCCESS),
-                      masm.failureLabel(executionMode));
         break;
 
       default:
         MOZ_ASSUME_UNREACHABLE("No such execution mode");
     }
+
+    // Test for failure.
+    masm.branchIfFalseBool(ReturnReg, masm.failureLabel(executionMode));
 
     // Load the outparam vp[0] into output register(s).
     masm.loadValue(Address(StackPointer, IonNativeExitFrameLayout::offsetOfResult()), JSReturnOperand);
@@ -1937,7 +1930,7 @@ CodeGenerator::visitCallGeneric(LCallGeneric *call)
     JS_ASSERT(!call->hasSingleTarget());
 
     // Generate an ArgumentsRectifier.
-    IonCode *argumentsRectifier = gen->jitRuntime()->getArgumentsRectifier(executionMode);
+    JitCode *argumentsRectifier = gen->jitRuntime()->getArgumentsRectifier(executionMode);
 
     masm.checkStackAlignment();
 
@@ -1979,7 +1972,7 @@ CodeGenerator::visitCallGeneric(LCallGeneric *call)
     {
         JS_ASSERT(ArgumentsRectifierReg != objreg);
         masm.movePtr(ImmGCPtr(argumentsRectifier), objreg); // Necessary for GC marking.
-        masm.loadPtr(Address(objreg, IonCode::offsetOfCode()), objreg);
+        masm.loadPtr(Address(objreg, JitCode::offsetOfCode()), objreg);
         masm.move32(Imm32(call->numStackArgs()), ArgumentsRectifierReg);
     }
 
@@ -2317,11 +2310,11 @@ CodeGenerator::visitApplyArgsGeneric(LApplyArgsGeneric *apply)
             masm.bind(&underflow);
 
             // Hardcode the address of the argumentsRectifier code.
-            IonCode *argumentsRectifier = gen->jitRuntime()->getArgumentsRectifier(executionMode);
+            JitCode *argumentsRectifier = gen->jitRuntime()->getArgumentsRectifier(executionMode);
 
             JS_ASSERT(ArgumentsRectifierReg != objreg);
             masm.movePtr(ImmGCPtr(argumentsRectifier), objreg); // Necessary for GC marking.
-            masm.loadPtr(Address(objreg, IonCode::offsetOfCode()), objreg);
+            masm.loadPtr(Address(objreg, JitCode::offsetOfCode()), objreg);
             masm.movePtr(argcreg, ArgumentsRectifierReg);
         }
 
@@ -3397,6 +3390,7 @@ CodeGenerator::visitNewCallObject(LNewCallObject *lir)
     Register obj = ToRegister(lir->output());
 
     JSObject *templateObj = lir->mir()->templateObject();
+    AutoThreadSafeAccess ts(templateObj);
 
     // If we have a template object, we can inline call object creation.
     OutOfLineCode *ool;
@@ -4103,6 +4097,9 @@ CodeGenerator::visitMathFunctionD(LMathFunctionD *ins)
       case MMathFunction::Floor:
         funptr = JS_FUNC_TO_DATA_PTR(void *, js::math_floor_impl);
         break;
+      case MMathFunction::Ceil:
+        funptr = JS_FUNC_TO_DATA_PTR(void *, js::math_ceil_impl);
+        break;
       case MMathFunction::Round:
         funptr = JS_FUNC_TO_DATA_PTR(void *, js::math_round_impl);
         break;
@@ -4137,6 +4134,7 @@ CodeGenerator::visitMathFunctionF(LMathFunctionF *ins)
       case MMathFunction::ASin:  funptr = JS_FUNC_TO_DATA_PTR(void *, asinf);  break;
       case MMathFunction::ACos:  funptr = JS_FUNC_TO_DATA_PTR(void *, acosf);  break;
       case MMathFunction::Floor: funptr = JS_FUNC_TO_DATA_PTR(void *, floorf); break;
+      case MMathFunction::Ceil:  funptr = JS_FUNC_TO_DATA_PTR(void *, ceilf);  break;
       default:
         MOZ_ASSUME_UNREACHABLE("Unknown or unsupported float32 math function");
     }
@@ -4578,7 +4576,7 @@ CodeGenerator::emitConcat(LInstruction *lir, Register lhs, Register rhs, Registe
         return false;
 
     ExecutionMode mode = gen->info().executionMode();
-    IonCode *stringConcatStub = gen->compartment->jitCompartment()->stringConcatStub(mode);
+    JitCode *stringConcatStub = gen->compartment->jitCompartment()->stringConcatStub(mode);
     masm.call(stringConcatStub);
     masm.branchTestPtr(Assembler::Zero, output, output, ool->entry());
 
@@ -4651,7 +4649,7 @@ CopyStringChars(MacroAssembler &masm, Register to, Register from, Register len, 
     masm.j(Assembler::NonZero, &start);
 }
 
-IonCode *
+JitCode *
 JitCompartment::generateStringConcatStub(JSContext *cx, ExecutionMode mode)
 {
     MacroAssembler masm(cx);
@@ -4795,10 +4793,10 @@ JitCompartment::generateStringConcatStub(JSContext *cx, ExecutionMode mode)
     masm.ret();
 
     Linker linker(masm);
-    IonCode *code = linker.newCode<CanGC>(cx, JSC::OTHER_CODE);
+    JitCode *code = linker.newCode<CanGC>(cx, JSC::OTHER_CODE);
 
 #ifdef JS_ION_PERF
-    writePerfSpewerIonCodeProfile(code, "StringConcatStub");
+    writePerfSpewerJitCodeProfile(code, "StringConcatStub");
 #endif
 
     return code;
@@ -4819,8 +4817,7 @@ CodeGenerator::visitCharCodeAt(LCharCodeAt *lir)
         return false;
 
     Address lengthAndFlagsAddr(str, JSString::offsetOfLengthAndFlags());
-    masm.loadPtr(lengthAndFlagsAddr, output);
-    masm.branchTest32(Assembler::Zero, output, Imm32(JSString::FLAGS_MASK), ool->entry());
+    masm.branchTest32(Assembler::Zero, lengthAndFlagsAddr, Imm32(JSString::FLAGS_MASK), ool->entry());
 
     // getChars
     Address charsAddr(str, JSString::offsetOfChars());
@@ -5013,16 +5010,19 @@ CodeGenerator::visitBoundsCheckRange(LBoundsCheckRange *lir)
             masm.add32(Imm32(min), temp);
             if (!bailoutIf(Assembler::Overflow, lir->snapshot()))
                 return false;
+        }
+
+        masm.cmp32(temp, Imm32(0));
+        if (!bailoutIf(Assembler::LessThan, lir->snapshot()))
+            return false;
+
+        if (min != 0) {
             int32_t diff;
             if (SafeSub(max, min, &diff))
                 max = diff;
             else
                 masm.sub32(Imm32(min), temp);
         }
-
-        masm.cmp32(temp, Imm32(0));
-        if (!bailoutIf(Assembler::LessThan, lir->snapshot()))
-            return false;
     }
 
     // Compute the maximum possible index. No overflow check is needed when
@@ -5970,7 +5970,22 @@ CodeGenerator::link(JSContext *cx, types::CompilerConstraintList *constraints)
 {
     RootedScript script(cx, gen->info().script());
     ExecutionMode executionMode = gen->info().executionMode();
-    JS_ASSERT(!HasIonScript(script, executionMode));
+    OptimizationLevel optimizationLevel = gen->optimizationInfo().level();
+
+    JS_ASSERT_IF(HasIonScript(script, executionMode), executionMode == SequentialExecution);
+
+    // We finished the new IonScript. Invalidate the current active IonScript,
+    // so we can replace it with this new (probably higher optimized) version.
+    if (HasIonScript(script, executionMode)) {
+        JS_ASSERT(GetIonScript(script, executionMode)->isRecompiling());
+        // Do a normal invalidate, except don't cancel offThread compilations,
+        // since that will cancel this compilation too.
+        if (!Invalidate(cx, script, SequentialExecution,
+                        /* resetUses */ false, /* cancelOffThread*/ false))
+        {
+            return false;
+        }
+    }
 
     // Check to make sure we didn't have a mid-build invalidation. If so, we
     // will trickle to jit::Compile() and return Method_Skipped.
@@ -5998,7 +6013,7 @@ CodeGenerator::link(JSContext *cx, types::CompilerConstraintList *constraints)
                      safepointIndices_.length(), osiIndices_.length(),
                      cacheList_.length(), runtimeData_.length(),
                      safepoints_.size(), callTargets.length(),
-                     patchableBackedges_.length());
+                     patchableBackedges_.length(), optimizationLevel);
     if (!ionScript) {
         recompileInfo.compilerOutput(cx->zone()->types)->invalidate();
         return false;
@@ -6018,7 +6033,7 @@ CodeGenerator::link(JSContext *cx, types::CompilerConstraintList *constraints)
     // use the normal executable allocator so that we cannot segv during
     // execution off the main thread.
     Linker linker(masm);
-    IonCode *code = (executionMode == SequentialExecution)
+    JitCode *code = (executionMode == SequentialExecution)
                     ? linker.newCodeForIonScript(cx)
                     : linker.newCode<CanGC>(cx, JSC::ION_CODE);
     if (!code) {
@@ -6035,21 +6050,6 @@ CodeGenerator::link(JSContext *cx, types::CompilerConstraintList *constraints)
     // If SPS is enabled, mark IonScript as having been instrumented with SPS
     if (sps_.enabled())
         ionScript->setHasSPSInstrumentation();
-
-    // We finished the new IonScript. Invalidate the current active IonScript,
-    // so we can replace it with this new (probably higher optimized) version.
-    if (HasIonScript(script, executionMode)) {
-        JS_ASSERT(GetIonScript(script, executionMode)->isRecompiling());
-        // Do a normal invalidate, except don't cancel offThread compilations,
-        // since that will cancel this compilation too.
-        if (!Invalidate(cx, script, SequentialExecution,
-                        /* resetUses */ false, /* cancelOffThread*/ false))
-        {
-            js_free(ionScript);
-            recompileInfo.compilerOutput(cx->zone()->types)->invalidate();
-            return false;
-        }
-    }
 
     SetIonScript(script, executionMode, ionScript);
 
@@ -6082,6 +6082,7 @@ CodeGenerator::link(JSContext *cx, types::CompilerConstraintList *constraints)
 
 #ifdef DEBUG
     for (size_t i = 0; i < ionScriptLabels_.length(); i++) {
+        ionScriptLabels_[i].fixup(&masm);
         Assembler::patchDataWithValueCheck(CodeLocationLabel(code, ionScriptLabels_[i]),
                                            ImmPtr(ionScript),
                                            ImmPtr((void*)-1));
@@ -8044,6 +8045,25 @@ CodeGenerator::visitAssertRangeV(LAssertRangeV *ins)
 
     masm.assumeUnreachable("Incorrect range for Value.");
     masm.bind(&done);
+    return true;
+}
+
+typedef bool (*RecompileFn)(JSContext *);
+static const VMFunction RecompileFnInfo = FunctionInfo<RecompileFn>(Recompile);
+
+bool
+CodeGenerator::visitRecompileCheck(LRecompileCheck *ins)
+{
+    Register useCount = ToRegister(ins->scratch());
+
+    masm.movePtr(ImmPtr(ins->mir()->script()->addressOfUseCount()), useCount);
+    Address ptr(useCount, 0);
+    masm.add32(Imm32(1), ptr);
+
+    OutOfLineCode *ool = oolCallVM(RecompileFnInfo, ins, (ArgList()), StoreRegisterTo(useCount));
+    masm.branch32(Assembler::Above, ptr, Imm32(ins->mir()->useCount()), ool->entry());
+    masm.bind(ool->rejoin());
+
     return true;
 }
 

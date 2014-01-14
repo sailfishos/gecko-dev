@@ -396,6 +396,9 @@ CustomizeMode.prototype = {
       aNode = aNode.firstChild;
     }
     CustomizableUI.addWidgetToArea(aNode.id, CustomizableUI.AREA_NAVBAR);
+    if (!this._customizing) {
+      this.dispatchToolboxEvent("customizationchange");
+    }
   },
 
   addToPanel: function(aNode) {
@@ -404,6 +407,9 @@ CustomizeMode.prototype = {
       aNode = aNode.firstChild;
     }
     CustomizableUI.addWidgetToArea(aNode.id, CustomizableUI.AREA_PANEL);
+    if (!this._customizing) {
+      this.dispatchToolboxEvent("customizationchange");
+    }
   },
 
   removeFromArea: function(aNode) {
@@ -412,6 +418,9 @@ CustomizeMode.prototype = {
       aNode = aNode.firstChild;
     }
     CustomizableUI.removeWidgetFromArea(aNode.id);
+    if (!this._customizing) {
+      this.dispatchToolboxEvent("customizationchange");
+    }
   },
 
   populatePalette: function() {
@@ -527,6 +536,11 @@ CustomizeMode.prototype = {
       aNode.removeAttribute("command");
     }
 
+    if (aNode.hasAttribute("observes")) {
+      wrapper.setAttribute("itemobserves", aNode.getAttribute("observes"));
+      aNode.removeAttribute("observes");
+    }
+
     if (aNode.checked) {
       wrapper.setAttribute("itemchecked", "true");
       aNode.checked = false;
@@ -600,6 +614,10 @@ CustomizeMode.prototype = {
       ERROR("no toolbarItem child for " + aWrapper.tagName + "#" + aWrapper.id);
       aWrapper.remove();
       return null;
+    }
+
+    if (aWrapper.hasAttribute("itemobserves")) {
+      toolbarItem.setAttribute("observes", aWrapper.getAttribute("itemobserves"));
     }
 
     if (aWrapper.hasAttribute("itemchecked")) {

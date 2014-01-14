@@ -60,6 +60,7 @@
 
 #if defined(XP_MACOSX)
 #include <CoreServices/CoreServices.h>
+#include "nsCocoaFeatures.h"
 #endif
 
 #if defined(XP_OS2)
@@ -745,11 +746,9 @@ nsHttpHandler::InitUserAgentComponents()
 #elif defined(__i386__) || defined(__x86_64__)
     mOscpu.AssignLiteral("Intel Mac OS X");
 #endif
-    SInt32 majorVersion, minorVersion;
-    if ((::Gestalt(gestaltSystemVersionMajor, &majorVersion) == noErr) &&
-        (::Gestalt(gestaltSystemVersionMinor, &minorVersion) == noErr)) {
-        mOscpu += nsPrintfCString(" %d.%d", majorVersion, minorVersion);
-    }
+    SInt32 majorVersion = nsCocoaFeatures::OSXVersionMajor();
+    SInt32 minorVersion = nsCocoaFeatures::OSXVersionMinor();
+    mOscpu += nsPrintfCString(" %d.%d", majorVersion, minorVersion);
 #elif defined (XP_UNIX)
     struct utsname name;
 
@@ -1750,7 +1749,7 @@ nsHttpHandler::GetCacheSessionNameForStoragePolicy(
 NS_IMETHODIMP
 nsHttpHandler::Observe(nsISupports *subject,
                        const char *topic,
-                       const PRUnichar *data)
+                       const char16_t *data)
 {
     LOG(("nsHttpHandler::Observe [topic=\"%s\"]\n", topic));
 

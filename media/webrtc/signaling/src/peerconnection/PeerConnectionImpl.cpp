@@ -789,26 +789,9 @@ PeerConnectionImpl::Initialize(PeerConnectionObserver& aObserver,
     return NS_ERROR_FAILURE;
   }
 
-  // Set the fingerprint. Right now assume we only have one
-  // DTLS identity
-  unsigned char fingerprint[DTLS_FINGERPRINT_LENGTH];
-  size_t fingerprint_length;
-  res = mIdentity->ComputeFingerprint("sha-256",
-                                      fingerprint,
-                                      sizeof(fingerprint),
-                                      &fingerprint_length);
-
-  if (NS_FAILED(res)) {
-    CSFLogError(logTag, "%s: ComputeFingerprint failed: %u",
-      __FUNCTION__, static_cast<uint32_t>(res));
-    return res;
-  }
-
-  mFingerprint = "sha-256 " + mIdentity->FormatFingerprint(fingerprint,
-                                                         fingerprint_length);
-  if (NS_FAILED(res)) {
-    CSFLogError(logTag, "%s: do_GetService failed: %u",
-      __FUNCTION__, static_cast<uint32_t>(res));
+  mFingerprint = mIdentity->GetFormattedFingerprint();
+  if (mFingerprint.empty()) {
+    CSFLogError(logTag, "%s: unable to get fingerprint", __FUNCTION__);
     return res;
   }
 
@@ -816,10 +799,55 @@ PeerConnectionImpl::Initialize(PeerConnectionObserver& aObserver,
 }
 
 RefPtr<DtlsIdentity> const
-PeerConnectionImpl::GetIdentity() {
+PeerConnectionImpl::GetIdentity() const
+{
   PC_AUTO_ENTER_API_CALL_NO_CHECK();
   return mIdentity;
 }
+
+std::string
+PeerConnectionImpl::GetFingerprint() const
+{
+  PC_AUTO_ENTER_API_CALL_NO_CHECK();
+  return mFingerprint;
+}
+
+NS_IMETHODIMP
+PeerConnectionImpl::FingerprintSplitHelper(std::string& fingerprint,
+    size_t& spaceIdx) const
+{
+  fingerprint = GetFingerprint();
+  spaceIdx = fingerprint.find_first_of(' ');
+  if (spaceIdx == std::string::npos) {
+    CSFLogError(logTag, "%s: fingerprint is messed up: %s",
+        __FUNCTION__, fingerprint.c_str());
+    return NS_ERROR_FAILURE;
+  }
+  return NS_OK;
+}
+
+std::string
+PeerConnectionImpl::GetFingerprintAlgorithm() const
+{
+  std::string fp;
+  size_t spc;
+  if (NS_SUCCEEDED(FingerprintSplitHelper(fp, spc))) {
+    return fp.substr(0, spc);
+  }
+  return "";
+}
+
+std::string
+PeerConnectionImpl::GetFingerprintHexValue() const
+{
+  std::string fp;
+  size_t spc;
+  if (NS_SUCCEEDED(FingerprintSplitHelper(fp, spc))) {
+    return fp.substr(spc + 1);
+  }
+  return "";
+}
+
 
 nsresult
 PeerConnectionImpl::CreateFakeMediaStream(uint32_t aHint, nsIDOMMediaStream** aRetval)
@@ -977,7 +1005,7 @@ PeerConnectionImpl::CreateDataChannel(const nsAString& aLabel,
 
   if (!mHaveDataStream) {
     // XXX stream_id of 0 might confuse things...
-    mInternal->mCall->addStream(0, 2, DATA);
+    mInternal->mCall->addStream(0, 2, DATA, 0);
     mHaveDataStream = true;
   }
   nsIDOMDataChannel *retval;
@@ -1303,7 +1331,15 @@ PeerConnectionImpl::CloseStreams() {
 }
 
 NS_IMETHODIMP
-PeerConnectionImpl::AddStream(DOMMediaStream& aMediaStream) {
+PeerConnectionImpl::AddStream(DOMMediaStream &aMediaStream,
+                              const MediaConstraintsInternal& aConstraints)
+{
+  return AddStream(aMediaStream, MediaConstraintsExternal(aConstraints));
+}
+
+NS_IMETHODIMP
+PeerConnectionImpl::AddStream(DOMMediaStream& aMediaStream,
+                              const MediaConstraintsExternal& aConstraints) {
   PC_AUTO_ENTER_API_CALL(true);
 
   uint32_t hints = aMediaStream.GetHintContents();
@@ -1335,12 +1371,16 @@ PeerConnectionImpl::AddStream(DOMMediaStream& aMediaStream) {
 
   // TODO(ekr@rtfm.com): these integers should be the track IDs
   if (hints & DOMMediaStream::HINT_CONTENTS_AUDIO) {
-    mInternal->mCall->addStream(stream_id, 0, AUDIO);
+    cc_media_constraints_t* cc_constraints = aConstraints.build();
+    NS_ENSURE_TRUE(cc_constraints, NS_ERROR_UNEXPECTED);
+    mInternal->mCall->addStream(stream_id, 0, AUDIO, cc_constraints);
     mNumAudioStreams++;
   }
 
   if (hints & DOMMediaStream::HINT_CONTENTS_VIDEO) {
-    mInternal->mCall->addStream(stream_id, 1, VIDEO);
+    cc_media_constraints_t* cc_constraints = aConstraints.build();
+    NS_ENSURE_TRUE(cc_constraints, NS_ERROR_UNEXPECTED);
+    mInternal->mCall->addStream(stream_id, 1, VIDEO, cc_constraints);
     mNumVideoStreams++;
   }
 
