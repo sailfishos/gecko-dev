@@ -226,7 +226,6 @@ EmbedLiteViewThreadChild::InitGeckoWindow(const uint32_t& parentId)
     NS_ERROR("Failed to get the web navigation interface.");
   }
   nsCOMPtr<nsIDocShell> docShell = do_GetInterface(mWebBrowser);
-  docShell->SetIsBrowserInsideApp(nsIScriptSecurityManager::NO_APP_ID);
 
   mChrome->SetWebBrowser(mWebBrowser);
 
