@@ -411,10 +411,12 @@ Tooltip.prototype = {
    *        A style class for the text messages.
    * @param {string} containerClass [optional]
    *        A style class for the text messages container.
+   * @param {boolean} isAlertTooltip [optional]
+   *        Pass true to add an alert image for your tooltip.
    */
-  setTextContent: function(messages,
-    messagesClass = "default-tooltip-simple-text-colors",
-    containerClass = "default-tooltip-simple-text-colors") {
+  setTextContent: function({ messages, messagesClass, containerClass, isAlertTooltip }) {
+    messagesClass = messagesClass || "default-tooltip-simple-text-colors";
+    containerClass = containerClass || "default-tooltip-simple-text-colors";
 
     let vbox = this.doc.createElement("vbox");
     vbox.className = "devtools-tooltip-simple-text-container " + containerClass;
@@ -428,7 +430,18 @@ Tooltip.prototype = {
       vbox.appendChild(description);
     }
 
-    this.content = vbox;
+    if (isAlertTooltip) {
+      let hbox = this.doc.createElement("hbox");
+      hbox.setAttribute("align", "start");
+
+      let alertImg = this.doc.createElement("image");
+      alertImg.className = "devtools-tooltip-alert-icon";
+      hbox.appendChild(alertImg);
+      hbox.appendChild(vbox);
+      this.content = hbox;
+    } else {
+      this.content = vbox;
+    }
   },
 
   /**
@@ -469,6 +482,10 @@ Tooltip.prototype = {
       vbox.appendChild(innerbox);
 
       var widget = new VariablesView(innerbox, viewOptions);
+
+      // Analyzing state history isn't useful with transient object inspectors.
+      widget.commitHierarchy = () => {};
+
       for (let e in relayEvents) widget.on(e, relayEvents[e]);
       VariablesViewController.attach(widget, controllerOptions);
 
@@ -507,7 +524,7 @@ Tooltip.prototype = {
   setImageContent: function(imageUrl, options={}) {
     // Main container
     let vbox = this.doc.createElement("vbox");
-    vbox.setAttribute("align", "center")
+    vbox.setAttribute("align", "center");
 
     // Display the image
     let image = this.doc.createElement("image");
@@ -525,7 +542,6 @@ Tooltip.prototype = {
     if (options.naturalWidth && options.naturalHeight) {
       label.textContent = this._getImageDimensionLabel(options.naturalWidth,
         options.naturalHeight);
-      this.setSize(vbox.width, vbox.height);
     } else {
       // If no dimensions were provided, load the image to get them
       label.textContent = l10n.strings.GetStringFromName("previewTooltip.image.brokenImage");
@@ -535,7 +551,6 @@ Tooltip.prototype = {
         imgObj.onload = null;
         label.textContent = this._getImageDimensionLabel(imgObj.naturalWidth,
           imgObj.naturalHeight);
-        this.setSize(vbox.width, vbox.height);
       }
     }
     vbox.appendChild(label);
@@ -634,11 +649,8 @@ Tooltip.prototype = {
         let previewer = new CSSTransformPreviewer(root);
         this.content = root;
         if (!previewer.preview(transform, origin, width, height)) {
-          // If the preview didn't work, reject the promise
           def.reject();
         } else {
-          // Else, make sure the tooltip has the right size and resolve
-          this.setSize(previewer.canvas.width, previewer.canvas.height);
           def.resolve();
         }
       });

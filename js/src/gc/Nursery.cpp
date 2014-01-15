@@ -16,6 +16,9 @@
 
 #include "gc/GCInternals.h"
 #include "gc/Memory.h"
+#ifdef JS_ION
+#include "jit/IonFrames.h"
+#endif
 #include "vm/ArrayObject.h"
 #include "vm/Debugger.h"
 #if defined(DEBUG)
@@ -103,8 +106,10 @@ bool
 js::Nursery::isEmpty() const
 {
     JS_ASSERT(runtime_);
+    if (!isEnabled())
+        return true;
     JS_ASSERT_IF(runtime_->gcZeal_ != ZealGenerationalGCValue, currentStart_ == start());
-    return !isEnabled() || position() == currentStart_;
+    return position() == currentStart_;
 }
 
 void *
@@ -346,6 +351,15 @@ js::Nursery::setElementsForwardingPointer(ObjectElements *oldHeader, ObjectEleme
     *reinterpret_cast<HeapSlot **>(oldHeader->elements()) = newHeader->elements();
 }
 
+#ifdef DEBUG
+static bool IsWriteableAddress(void *ptr)
+{
+    volatile uint64_t *vPtr = reinterpret_cast<volatile uint64_t *>(ptr);
+    *vPtr = *vPtr;
+    return true;
+}
+#endif
+
 void
 js::Nursery::forwardBufferPointer(HeapSlot **pSlotsElems)
 {
@@ -364,6 +378,7 @@ js::Nursery::forwardBufferPointer(HeapSlot **pSlotsElems)
      */
     *pSlotsElems = *reinterpret_cast<HeapSlot **>(old);
     JS_ASSERT(!isInside(*pSlotsElems));
+    JS_ASSERT(IsWriteableAddress(*pSlotsElems));
 }
 
 // Structure for counting how many times objects of a particular type have been
@@ -601,6 +616,8 @@ CheckHashTablesAfterMovingGC(JSRuntime *rt)
     /* Check that internal hash tables no longer have any pointers into the nursery. */
     for (CompartmentsIter c(rt, SkipAtoms); !c.done(); c.next()) {
         c->checkNewTypeObjectTableAfterMovingGC();
+        c->checkInitialShapesTableAfterMovingGC();
+        c->checkWrapperMapAfterMovingGC();
         if (c->debugScopes)
             c->debugScopes->checkHashTablesAfterMovingGC(rt);
     }
@@ -631,10 +648,6 @@ js::Nursery::collect(JSRuntime *rt, JS::gcreason::Reason reason, TypeObjectList 
     CheckHashTablesAfterMovingGC(rt);
     MarkRuntime(&trc);
     Debugger::markAll(&trc);
-    for (CompartmentsIter comp(rt, SkipAtoms); !comp.done(); comp.next()) {
-        comp->markAllCrossCompartmentWrappers(&trc);
-        comp->markAllInitialShapeTableEntries(&trc);
-    }
     rt->newObjectCache.clearNurseryObjects(rt);
 
     /*
@@ -645,6 +658,11 @@ js::Nursery::collect(JSRuntime *rt, JS::gcreason::Reason reason, TypeObjectList 
      */
     TenureCountCache tenureCounts;
     collectToFixedPoint(&trc, tenureCounts);
+
+#ifdef JS_ION
+    /* Update any slot or element pointers whose destination has been tenured. */
+    js::jit::UpdateJitActivationsForMinorGC(rt, &trc);
+#endif
 
     /* Resize the nursery. */
     double promotionRate = trc.tenuredSize / double(allocationEnd() - start());

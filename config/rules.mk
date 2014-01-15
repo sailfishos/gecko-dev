@@ -124,9 +124,6 @@ libs:: $(CPP_UNIT_TEST_BINS) $(call mkdir_deps,$(DIST)/cppunittests)
 	$(NSINSTALL) $(CPP_UNIT_TEST_BINS) $(DIST)/cppunittests
 endif
 
-check::
-	@$(PYTHON) $(topsrcdir)/testing/runcppunittests.py --xre-path=$(DIST)/bin --symbols-path=$(DIST)/crashreporter-symbols $(subst .cpp,$(BIN_SUFFIX),$(CPP_UNIT_TESTS))
-
 cppunittests-remote: DM_TRANS?=adb
 cppunittests-remote:
 	@if [ '${TEST_DEVICE}' != '' -o '$(DM_TRANS)' = 'adb' ]; then \
@@ -365,6 +362,10 @@ ifdef MOZ_UPDATE_XTERM
 # makes the make -s output easier to read.  Echo -n does not work on all
 # platforms, but we can trick printf into doing it.
 UPDATE_TITLE = printf '\033]0;%s in %s\007' $(1) $(relativesrcdir)/$(2) ;
+endif
+
+ifdef BUILDING_JS
+NO_BUILDSTATUS_MESSAGES=1
 endif
 
 ifdef MACH
@@ -1456,9 +1457,9 @@ endif
 # file would be $(DIST)/include/bar/baz/qux.h instead of $(DIST)/include/qux.h
 
 # If we're using binary nsinstall and it's not built yet, fallback to python nsinstall.
-ifneq (,$(filter $(CONFIG_TOOLS)/nsinstall$(HOST_BIN_SUFFIX),$(install_cmd)))
-ifeq (,$(wildcard $(CONFIG_TOOLS)/nsinstall$(HOST_BIN_SUFFIX)))
-nsinstall_is_usable = $(if $(wildcard $(CONFIG_TOOLS)/nsinstall$(HOST_BIN_SUFFIX)),yes)
+ifneq (,$(filter $(DIST)/bin/nsinstall$(HOST_BIN_SUFFIX),$(install_cmd)))
+ifeq (,$(wildcard $(DIST)/bin/nsinstall$(HOST_BIN_SUFFIX)))
+nsinstall_is_usable = $(if $(wildcard $(DIST)/bin/nsinstall$(HOST_BIN_SUFFIX)),yes)
 
 define install_cmd_override
 $(1): install_cmd = $$(if $$(nsinstall_is_usable),$$(INSTALL),$$(NSINSTALL_PY)) $$(1)

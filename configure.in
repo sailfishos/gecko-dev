@@ -71,7 +71,7 @@ GCONF_VERSION=1.2.1
 GIO_VERSION=2.20
 STARTUP_NOTIFICATION_VERSION=0.8
 DBUS_VERSION=0.60
-SQLITE_VERSION=3.8.1
+SQLITE_VERSION=3.8.2
 
 MSMANIFEST_TOOL=
 
@@ -245,6 +245,11 @@ if test -n "$gonkdir" ; then
         MOZ_B2G_CAMERA=1
         MOZ_OMX_DECODER=1
         AC_SUBST(MOZ_OMX_DECODER)
+        ;;
+    19)
+        GONK_INCLUDES="-I$gonkdir/frameworks/native/include"
+        MOZ_NFC=1
+
         ;;
     *)
         AC_MSG_ERROR([Unsupported platform version: $ANDROID_VERSION])
@@ -1523,6 +1528,17 @@ MOZ_ARG_ENABLE_BOOL(profiling,
 [  --enable-profiling      Set compile flags necessary for using sampling profilers (e.g. shark, perf)],
     MOZ_PROFILING=1,
     MOZ_PROFILING= )
+
+dnl ========================================================
+dnl = Turn on systrace for android/b2g.
+dnl ========================================================
+MOZ_ARG_ENABLE_BOOL(systrace,
+[  --enable-systrace       Set compile flags necessary for using sampling profilers (e.g. shark, perf)],
+    MOZ_USE_SYSTRACE=1,
+    MOZ_USE_SYSTRACE= )
+if test -n "$MOZ_USE_SYSTRACE"; then
+    AC_DEFINE(MOZ_USE_SYSTRACE)
+fi
 
 # For profiling builds keep the symbol information
 if test "$MOZ_PROFILING" -a -z "$STRIP_FLAGS"; then
@@ -4040,6 +4056,7 @@ MOZ_USE_NATIVE_POPUP_WINDOWS=
 MOZ_ANDROID_HISTORY=
 MOZ_WEBSMS_BACKEND=
 MOZ_ANDROID_BEAM=
+MOZ_ANDROID_SYNTHAPKS=
 ACCESSIBILITY=1
 MOZ_TIME_MANAGER=
 MOZ_PAY=
@@ -5025,6 +5042,18 @@ if test -n "$MOZ_ANDROID_BEAM"; then
 fi
 
 dnl ========================================================
+dnl = Synthesized Webapp APKs on Android
+dnl ========================================================
+MOZ_ARG_ENABLE_BOOL(android-synthapks,
+[  --enable-android-synthapks       Enable synthesized APKs],
+    MOZ_ANDROID_SYNTHAPKS=1,
+    MOZ_ANDROID_SYNTHAPKS=)
+
+if test -n "$MOZ_ANDROID_SYNTHAPKS"; then
+    AC_DEFINE(MOZ_ANDROID_SYNTHAPKS)
+fi
+
+dnl ========================================================
 dnl = JS Debugger XPCOM component (js/jsd)
 dnl ========================================================
 MOZ_ARG_DISABLE_BOOL(jsd,
@@ -5592,9 +5621,15 @@ dnl = Disable PulseAudio
 dnl ========================================================
 
 dnl If using Linux, ensure that the PA library is available
-if test "$OS_TARGET" = "Linux" -a -z "$MOZ_B2G"; then
-    MOZ_PULSEAUDIO=1
-fi
+case "$OS_TARGET" in
+WINNT|Darwin|Android|OpenBSD)
+    ;;
+*)
+    if test -z "$MOZ_B2G"; then
+        MOZ_PULSEAUDIO=1
+    fi
+    ;;
+esac
 
 MOZ_ARG_DISABLE_BOOL(pulseaudio,
 [  --disable-pulseaudio          Disable PulseAudio support],
@@ -5617,9 +5652,13 @@ AC_SUBST(MOZ_PULSEAUDIO_CFLAGS)
 dnl ========================================================
 dnl = Enable GStreamer
 dnl ========================================================
-if test "$OS_TARGET" = "Linux"; then
-  MOZ_GSTREAMER=1
-fi
+case "$OS_TARGET" in
+WINNT|Darwin|Android)
+    ;;
+*)
+    MOZ_GSTREAMER=1
+    ;;
+esac
 
 MOZ_ARG_ENABLE_BOOL(gstreamer,
 [  --enable-gstreamer           Enable GStreamer support],
@@ -7046,8 +7085,10 @@ dnl We need to wrap dlopen and related functions on Android because we use
 dnl our own linker.
 if test "$OS_TARGET" = Android; then
     WRAP_LDFLAGS="${WRAP_LDFLAGS} -L$_objdir/dist/lib -lmozglue"
-    WRAP_LDFLAGS="${WRAP_LDFLAGS} -Wl,--wrap=getaddrinfo,--wrap=freeaddrinfo,--wrap=gai_strerror"
     WRAP_LDFLAGS="${WRAP_LDFLAGS} -Wl,--wrap=PR_GetEnv,--wrap=PR_SetEnv"
+    if test -z "$gonkdir" -o "$ANDROID_VERSION" -le 18; then
+        WRAP_LDFLAGS="${WRAP_LDFLAGS} -Wl,--wrap=getaddrinfo,--wrap=freeaddrinfo,--wrap=gai_strerror"
+    fi
     if test -z "$gonkdir"; then
         WRAP_LDFLAGS="${WRAP_LDFLAGS} -Wl,--wrap=fork,--wrap=pthread_atfork,--wrap=raise"
         WRAP_LDFLAGS="${WRAP_LDFLAGS} -Wl,--wrap=memccpy,--wrap=memchr,--wrap=memrchr,--wrap=memcmp,--wrap=memcpy,--wrap=memmove,--wrap=memset,--wrap=memmem,--wrap=memswap,--wrap=index,--wrap=strchr,--wrap=strrchr,--wrap=strlen,--wrap=strcmp,--wrap=strcpy,--wrap=strcat,--wrap=strcasecmp,--wrap=strncasecmp,--wrap=strstr,--wrap=strcasestr,--wrap=strtok,--wrap=strtok_r,--wrap=strerror,--wrap=strerror_r,--wrap=strnlen,--wrap=strncat,--wrap=strncmp,--wrap=strncpy,--wrap=strlcat,--wrap=strlcpy,--wrap=strcspn,--wrap=strpbrk,--wrap=strsep,--wrap=strspn,--wrap=strcoll,--wrap=strxfrm"
@@ -7742,6 +7783,12 @@ else
   fi
 fi
 
+dnl Make sure that the build system can handle non-ASCII characters
+dnl in environment variables to prevent it from breking silently on
+dnl non-English systems.
+NONASCII=$'\241\241'
+AC_SUBST(NONASCII)
+
 dnl ========================================================
 dnl =
 dnl = Static Build Options
@@ -7786,7 +7833,7 @@ dnl ========================================================
 
 if test -z "$SKIP_PATH_CHECKS"; then
 if test -z "${GLIB_CFLAGS}" -o -z "${GLIB_LIBS}" ; then
-    if test "$MOZ_ENABLE_GTK2" ; then
+    if test "$MOZ_ENABLE_GTK" ; then
         PKG_CHECK_MODULES(GLIB, glib-2.0 >= 1.3.7 gobject-2.0)
     fi
 fi
@@ -7944,9 +7991,11 @@ if test "$MOZ_TREE_CAIRO"; then
     MOZ_CAIRO_CFLAGS='-I$(LIBXUL_DIST)/include/cairo'
     AC_DEFINE(MOZ_TREE_CAIRO)
 
-    # For now we assume that we will have a uint64_t available through
-    # one of the above headers or mozstdint.h.
-    AC_DEFINE(HAVE_UINT64_T)
+    if test "$OS_ARCH" = "WINNT"; then
+        # For now we assume that we will have a uint64_t available through
+        # one of the above headers or mozstdint.h.
+        AC_DEFINE(HAVE_UINT64_T)
+    fi
 
     # Define macros for cairo-features.h
     TEE_SURFACE_FEATURE="#define CAIRO_HAS_TEE_SURFACE 1"
@@ -8349,6 +8398,7 @@ AC_SUBST(MOZ_METRO)
 AC_SUBST(MOZ_ANDROID_HISTORY)
 AC_SUBST(MOZ_WEBSMS_BACKEND)
 AC_SUBST(MOZ_ANDROID_BEAM)
+AC_SUBST(MOZ_ANDROID_SYNTHAPKS)
 AC_SUBST(MOZ_DISABLE_GECKOVIEW)
 AC_SUBST(ENABLE_STRIP)
 AC_SUBST(PKG_SKIP_STRIP)

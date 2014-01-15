@@ -742,6 +742,11 @@ MetroWidget::WindowProcedure(HWND aWnd, UINT aMsg, WPARAM aWParam, LPARAM aLPara
     return processResult;
   }
 
+  nsTextStore::ProcessMessage(this, aMsg, aWParam, aLParam, msgResult);
+  if (msgResult.mConsumed) {
+    return processResult;
+  }
+
   switch (aMsg) {
     case WM_PAINT:
     {
@@ -862,9 +867,6 @@ MetroWidget::WindowProcedure(HWND aWnd, UINT aMsg, WPARAM aWParam, LPARAM aLPara
 
     default:
     {
-      if (aWParam == WM_USER_TSF_TEXTCHANGE) {
-        nsTextStore::OnTextChangeMsg();
-      }
       break;
     }
   }
@@ -1615,7 +1617,8 @@ MetroWidget::Observe(nsISupports *subject, const char *topic, const char16_t *da
     }
 
     ScrollableLayerGuid guid = ScrollableLayerGuid(mRootLayerTreeId, presShellId, viewId);
-    APZController::sAPZC->UpdateZoomConstraints(guid, false, CSSToScreenScale(1.0f), CSSToScreenScale(1.0f));
+    APZController::sAPZC->UpdateZoomConstraints(guid,
+      ZoomConstraints(false, CSSToScreenScale(1.0f), CSSToScreenScale(1.0f)));
   }
   return NS_OK;
 }

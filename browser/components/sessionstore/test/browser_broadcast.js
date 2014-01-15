@@ -3,7 +3,7 @@
 
 "use strict";
 
-const INITIAL_VALUE = "initial-value-" + Date.now();
+const INITIAL_VALUE = "browser_broadcast.js-initial-value-" + Date.now();
 
 /**
  * This test ensures we won't lose tab data queued in the content script when
@@ -59,12 +59,12 @@ add_task(function flush_on_duplicate() {
     "sessionStorage data has been flushed when duplicating tabs");
 
   yield promiseTabRestored(tab2);
-  let {storage} = JSON.parse(ss.getTabState(tab2));
+  gBrowser.removeTab(tab2)
+  let [{state: {storage}}] = JSON.parse(ss.getClosedTabData(window));
   is(storage["http://example.com"].test, "on-duplicate",
     "sessionStorage data has been flushed when duplicating tabs");
 
   gBrowser.removeTab(tab);
-  gBrowser.removeTab(tab2);
 });
 
 /**

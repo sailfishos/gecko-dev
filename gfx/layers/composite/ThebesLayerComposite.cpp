@@ -14,7 +14,7 @@
 #include "mozilla/gfx/Matrix.h"         // for Matrix4x4
 #include "mozilla/gfx/Point.h"          // for Point
 #include "mozilla/gfx/Rect.h"           // for RoundedToInt, Rect
-#include "mozilla/gfx/Types.h"          // for Filter::FILTER_LINEAR
+#include "mozilla/gfx/Types.h"          // for Filter::Filter::LINEAR
 #include "mozilla/layers/Compositor.h"  // for Compositor
 #include "mozilla/layers/ContentHost.h"  // for ContentHost
 #include "mozilla/layers/Effects.h"     // for EffectChain
@@ -111,14 +111,8 @@ ThebesLayerComposite::RenderLayer(const nsIntRect& aClipRect)
 
 #ifdef MOZ_DUMP_PAINTING
   if (gfxUtils::sDumpPainting) {
-    RefPtr<gfx::DataSourceSurface> dSurf = mBuffer->GetAsSurface();
-    if (dSurf) {
-      gfxPlatform *platform = gfxPlatform::GetPlatform();
-      RefPtr<gfx::DrawTarget> dt = platform->CreateDrawTargetForData(dSurf->GetData(),
-                                                                     dSurf->GetSize(),
-                                                                     dSurf->Stride(),
-                                                                     dSurf->GetFormat());
-      nsRefPtr<gfxASurface> surf = platform->GetThebesSurfaceForDrawTarget(dt);
+    RefPtr<gfx::DataSourceSurface> surf = mBuffer->GetAsSurface();
+    if (surf) {
       WriteSnapshotToDumpFile(this, surf);
     }
   }
@@ -141,7 +135,7 @@ ThebesLayerComposite::RenderLayer(const nsIntRect& aClipRect)
   mBuffer->Composite(effectChain,
                      GetEffectiveOpacity(),
                      transform,
-                     gfx::FILTER_LINEAR,
+                     gfx::Filter::LINEAR,
                      clipRect,
                      &visibleRegion,
                      mRequiresTiledProperties ? &tiledLayerProps

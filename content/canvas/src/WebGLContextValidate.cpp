@@ -490,9 +490,11 @@ uint32_t WebGLContext::GetBitsPerTexel(GLenum format, GLenum type)
             case LOCAL_GL_LUMINANCE_ALPHA:
                 return 2 * multiplier;
             case LOCAL_GL_RGB:
+            case LOCAL_GL_RGB32F:
             case LOCAL_GL_SRGB_EXT:
                 return 3 * multiplier;
             case LOCAL_GL_RGBA:
+            case LOCAL_GL_RGBA32F:
             case LOCAL_GL_SRGB_ALPHA_EXT:
                 return 4 * multiplier;
             case LOCAL_GL_COMPRESSED_RGB_PVRTC_2BPPV1:
@@ -519,7 +521,7 @@ uint32_t WebGLContext::GetBitsPerTexel(GLenum format, GLenum type)
         return 16;
     }
 
-    MOZ_ASSERT(false);
+    MOZ_ASSERT(false, "Unhandled format+type combo.");
     return 0;
 }
 
@@ -978,7 +980,7 @@ WebGLContext::InitAndValidateGL()
 
 #ifdef XP_MACOSX
     if (gl->WorkAroundDriverBugs() &&
-        gl->Vendor() == gl::GLContext::VendorATI) {
+        gl->Vendor() == gl::GLVendor::ATI) {
         // The Mac ATI driver, in all known OSX version up to and including 10.8,
         // renders points sprites upside-down. Apple bug 11778921
         gl->fPointParameterf(LOCAL_GL_POINT_SPRITE_COORD_ORIGIN, LOCAL_GL_LOWER_LEFT);

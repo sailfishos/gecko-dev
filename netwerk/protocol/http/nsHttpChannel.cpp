@@ -2415,8 +2415,8 @@ nsHttpChannel::ContinueProcessFallback(nsresult rv)
         return rv;
 
     if (mLoadFlags & LOAD_INITIAL_DOCUMENT_URI) {
-        mozilla::Telemetry::Accumulate(Telemetry::HTTP_OFFLINE_CACHE_DOCUMENT_LOAD,
-                                       true);
+        Telemetry::Accumulate(Telemetry::HTTP_OFFLINE_CACHE_DOCUMENT_LOAD,
+                              true);
     }
 
     // close down this channel
@@ -3065,8 +3065,8 @@ nsHttpChannel::OnNormalCacheEntryAvailable(nsICacheEntry *aEntry,
         mCacheEntryIsWriteOnly = aNew;
 
         if (mLoadFlags & LOAD_INITIAL_DOCUMENT_URI) {
-            mozilla::Telemetry::Accumulate(Telemetry::HTTP_OFFLINE_CACHE_DOCUMENT_LOAD,
-                                           false);
+            Telemetry::Accumulate(Telemetry::HTTP_OFFLINE_CACHE_DOCUMENT_LOAD,
+                                  false);
         }
     }
 
@@ -3098,8 +3098,8 @@ nsHttpChannel::OnOfflineCacheEntryAvailable(nsICacheEntry *aEntry,
         mCacheEntryIsWriteOnly = false;
 
         if (mLoadFlags & LOAD_INITIAL_DOCUMENT_URI && !mApplicationCacheForWrite) {
-            mozilla::Telemetry::Accumulate(Telemetry::HTTP_OFFLINE_CACHE_DOCUMENT_LOAD,
-                                           true);
+            Telemetry::Accumulate(Telemetry::HTTP_OFFLINE_CACHE_DOCUMENT_LOAD,
+                                  true);
         }
 
         return NS_OK;
@@ -5296,13 +5296,42 @@ nsHttpChannel::OnDataAvailable(nsIRequest *request, nsISupports *ctxt,
         if (!mLogicalOffset)
             MOZ_EVENT_TRACER_EXEC(this, "net::http::channel");
 
+        int64_t offsetBefore = 0;
+        nsCOMPtr<nsISeekableStream> seekable = do_QueryInterface(input);
+        if (seekable && NS_FAILED(seekable->Tell(&offsetBefore))) {
+            seekable = nullptr;
+        }
+
         nsresult rv =  mListener->OnDataAvailable(this,
                                                   mListenerContext,
                                                   input,
                                                   mLogicalOffset,
                                                   count);
-        if (NS_SUCCEEDED(rv))
-            mLogicalOffset = progress;
+        if (NS_SUCCEEDED(rv)) {
+            // by contract mListener must read all of "count" bytes, but
+            // nsInputStreamPump is tolerant to seekable streams that violate that
+            // and it will redeliver incompletely read data. So we need to do
+            // the same thing when updating the progress counter to stay in sync.
+            int64_t offsetAfter, delta;
+            if (seekable && NS_SUCCEEDED(seekable->Tell(&offsetAfter))) {
+                delta = offsetAfter - offsetBefore;
+                if (delta != count) {
+                    count = delta;
+
+                    NS_WARNING("Listener OnDataAvailable contract violation");
+                    nsCOMPtr<nsIConsoleService> consoleService =
+                        do_GetService(NS_CONSOLESERVICE_CONTRACTID);
+                    nsAutoString message
+                        (NS_LITERAL_STRING(
+                        "http channel Listener OnDataAvailable contract violation"));
+                    if (consoleService) {
+                        consoleService->LogStringMessage(message.get());
+                    }
+                }
+            }
+            mLogicalOffset += count;
+        }
+        
         return rv;
     }
 

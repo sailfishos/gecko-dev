@@ -8,7 +8,6 @@
 
 #include <stdint.h>                     // for uint32_t
 #include "gfxASurface.h"                // for gfxASurface, etc
-#include "gfxContext.h"                 // for gfxContext
 #include "mozilla/Assertions.h"         // for MOZ_ASSERT, etc
 #include "mozilla/RefPtr.h"             // for RefPtr, TemporaryRef
 #include "mozilla/gfx/2D.h"             // for DrawTarget, etc
@@ -20,6 +19,7 @@
 #include "nsRect.h"                     // for nsIntRect
 #include "nsRegion.h"                   // for nsIntRegion
 #include "nsTraceRefcnt.h"              // for MOZ_COUNT_CTOR, etc
+#include "Layers.h"                     // for Layer::SurfaceMode
 #include "LayersTypes.h"
 
 struct gfxMatrix;
@@ -34,7 +34,6 @@ namespace layers {
 
 class DeprecatedTextureClient;
 class TextureClient;
-class ThebesLayer;
 
 /**
  * This is a cairo/Thebes surface, but with a literal twist. Scrolling
@@ -76,9 +75,11 @@ public:
     BUFFER_WHITE, // The buffer with white background, only valid with component alpha.
     BUFFER_BOTH // The combined black/white buffers, only valid for writing operations, not reading.
   };
+  // It is the callers repsonsibility to ensure aTarget is flushed after calling
+  // this method.
   void DrawBufferWithRotation(gfx::DrawTarget* aTarget, ContextSource aSource,
                               float aOpacity = 1.0,
-                              gfx::CompositionOp aOperator = gfx::OP_OVER,
+                              gfx::CompositionOp aOperator = gfx::CompositionOp::OP_OVER,
                               gfx::SourceSurface* aMask = nullptr,
                               const gfx::Matrix* aMaskTransform = nullptr) const;
 
@@ -137,11 +138,27 @@ protected:
   bool                  mDidSelfCopy;
 };
 
+// Mixin class for classes which need logic for loaning out a draw target.
+// See comments on BorrowDrawTargetForQuadrantUpdate.
+class BorrowDrawTarget
+{
+protected:
+  void ReturnDrawTarget(gfx::DrawTarget*& aReturned);
+
+  // The draw target loaned by BorrowDrawTargetForQuadrantUpdate. It should not
+  // be used, we just keep a reference to ensure it is kept alive and so we can
+  // correctly restore state when it is returned.
+  RefPtr<gfx::DrawTarget> mLoanedDrawTarget;
+  gfx::Matrix mLoanedTransform;
+};
+
 /**
  * This class encapsulates the buffer used to retain ThebesLayer contents,
  * i.e., the contents of the layer's GetVisibleRegion().
  */
-class RotatedContentBuffer : public RotatedBuffer {
+class RotatedContentBuffer : public RotatedBuffer
+                           , public BorrowDrawTarget
+{
 public:
   typedef gfxContentType ContentType;
 
@@ -187,7 +204,7 @@ public:
   }
 
   /**
-   * This is returned by BeginPaint. The caller should draw into mContext.
+   * This is returned by BeginPaint. The caller should draw into mTarget.
    * mRegionToDraw must be drawn. mRegionToInvalidate has been invalidated
    * by RotatedContentBuffer and must be redrawn on the screen.
    * mRegionToInvalidate is set when the buffer has changed from
@@ -197,14 +214,15 @@ public:
    */
   struct PaintState {
     PaintState()
-      : mDidSelfCopy(false)
+      : mMode(Layer::SURFACE_NONE)
+      , mDidSelfCopy(false)
     {}
 
-    nsRefPtr<gfxContext> mContext;
     nsIntRegion mRegionToDraw;
     nsIntRegion mRegionToInvalidate;
-    bool mDidSelfCopy;
+    Layer::SurfaceMode mMode;
     DrawRegionClip mClip;
+    bool mDidSelfCopy;
   };
 
   enum {
@@ -215,7 +233,7 @@ public:
    * Start a drawing operation. This returns a PaintState describing what
    * needs to be drawn to bring the buffer up to date in the visible region.
    * This queries aLayer to get the currently valid and visible regions.
-   * The returned mContext may be null if mRegionToDraw is empty.
+   * The returned mTarget may be null if mRegionToDraw is empty.
    * Otherwise it must not be null.
    * mRegionToInvalidate will contain mRegionToDraw.
    * @param aFlags when PAINT_WILL_RESAMPLE is passed, this indicates that
@@ -227,8 +245,17 @@ public:
    * invalid pixels outside the visible region, if the visible region doesn't
    * fill the buffer bounds).
    */
-  PaintState BeginPaint(ThebesLayer* aLayer, ContentType aContentType,
+  PaintState BeginPaint(ThebesLayer* aLayer,
                         uint32_t aFlags);
+
+  /**
+   * Fetch a DrawTarget for rendering. The DrawTarget remains owned by
+   * this. See notes on BorrowDrawTargetForQuadrantUpdate.
+   * May return null. If the return value is non-null, it must be
+   * 'un-borrowed' using ReturnDrawTarget.
+   */
+  gfx::DrawTarget* BorrowDrawTargetForPainting(ThebesLayer* aLayer,
+                                               const PaintState& aPaintState);
 
   enum {
     ALLOW_REPEAT = 0x01,
@@ -260,8 +287,12 @@ public:
    * drawn before this is called. The contents of the buffer are drawn
    * to aTarget.
    */
-  void DrawTo(ThebesLayer* aLayer, gfxContext* aTarget, float aOpacity,
-              gfxASurface* aMask, const gfxMatrix* aMaskTransform);
+  void DrawTo(ThebesLayer* aLayer,
+              gfx::DrawTarget* aTarget,
+              float aOpacity,
+              gfx::CompositionOp aOp,
+              gfxASurface* aMask,
+              const gfxMatrix* aMaskTransform);
 
 protected:
   TemporaryRef<gfx::DrawTarget>
@@ -345,15 +376,24 @@ protected:
   }
 
   /**
-   * Get a context at the specified resolution for updating |aBounds|,
+   * Get a draw target at the specified resolution for updating |aBounds|,
    * which must be contained within a single quadrant.
    *
-   * Optionally returns the TopLeft coordinate of the quadrant being drawn to.
+   * The result should only be held temporarily by the caller (it will be kept
+   * alive by this). Once used it should be returned using ReturnDrawTarget.
+   * BorrowDrawTargetForQuadrantUpdate may not be called more than once without
+   * first calling ReturnDrawTarget.
+   *
+   * ReturnDrawTarget will restore the transform on the draw target. But it is
+   * the callers responsibility to restore the clip. The caller should flush the
+   * draw target, if necessary.
    */
-  already_AddRefed<gfxContext>
-  GetContextForQuadrantUpdate(const nsIntRect& aBounds, ContextSource aSource, nsIntPoint* aTopLeft = nullptr);
+  gfx::DrawTarget*
+  BorrowDrawTargetForQuadrantUpdate(const nsIntRect& aBounds,
+                                    ContextSource aSource);
+  void ReturnDrawTarget(gfx::DrawTarget* aReturned);
 
-  static bool IsClippingCheap(gfxContext* aTarget, const nsIntRegion& aRegion);
+  static bool IsClippingCheap(gfx::DrawTarget* aTarget, const nsIntRegion& aRegion);
 
 protected:
   /**
@@ -367,12 +407,25 @@ protected:
    */
   bool EnsureBuffer();
   bool EnsureBufferOnWhite();
+
+  // Flush our buffers if they are mapped.
+  void FlushBuffers();
+
   /**
    * True if we have a buffer where we can get it (but not necessarily
    * mapped currently).
    */
   virtual bool HaveBuffer() const;
   virtual bool HaveBufferOnWhite() const;
+
+  /**
+   * Any actions that should be performed at the last moment before we begin
+   * rendering the next frame. I.e., after we calculate what we will draw,
+   * but before we rotate the buffer and possibly create new buffers.
+   * aRegionToDraw is the region which is guaranteed to be overwritten when
+   * drawing the next frame.
+   */
+  virtual void FinalizeFrame(const nsIntRegion& aRegionToDraw) {}
 
   /**
    * These members are only set transiently.  They're used to map mDTBuffer

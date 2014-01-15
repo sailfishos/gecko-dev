@@ -38,20 +38,13 @@ public:
                    mUseTextureFromPixmap(false), mDebug(false),
                    mHasRobustness(false), mIsATI(false), mIsNVIDIA(false),
                    mClientIsMesa(false), mGLXMajorVersion(0),
-                   mGLXMinorVersion(0), mLibType(OPENGL_LIB),
+                   mGLXMinorVersion(0),
                    mOGLLibrary(nullptr) {}
 
     void xDestroyContext(Display* display, GLXContext context);
     Bool xMakeCurrent(Display* display, 
                       GLXDrawable drawable, 
                       GLXContext context);
-
-    enum LibraryType
-    {
-      OPENGL_LIB = 0,
-      MESA_LLVMPIPE_LIB = 1,
-      LIBS_MAX
-    };
 
     GLXContext xGetCurrentContext();
     GLXDrawable xGetCurrentDrawable();
@@ -106,7 +99,7 @@ public:
                                      Bool direct,
                                      const int* attrib_list);
 
-    bool EnsureInitialized(LibraryType libType);
+    bool EnsureInitialized();
 
     GLXPixmap CreatePixmap(gfxASurface* aSurface);
     void DestroyPixmap(GLXPixmap aPixmap);
@@ -118,7 +111,6 @@ public:
     bool SupportsTextureFromPixmap(gfxASurface* aSurface);
     bool IsATI() { return mIsATI; }
     bool GLXVersionCheck(int aMajor, int aMinor);
-    static LibraryType SelectLibrary(const ContextFlags& aFlags);
 
 private:
     
@@ -227,13 +219,11 @@ private:
     bool mClientIsMesa;
     int mGLXMajorVersion;
     int mGLXMinorVersion;
-    LibraryType mLibType;
     PRLibrary *mOGLLibrary;
 };
 
 // a global GLXLibrary instance
-extern GLXLibrary sGLXLibrary[GLXLibrary::LIBS_MAX];
-extern GLXLibrary& sDefGLXLib;
+extern GLXLibrary sGLXLibrary;
 
 } /* namespace gl */
 } /* namespace mozilla */

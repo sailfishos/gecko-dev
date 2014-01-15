@@ -717,7 +717,7 @@ else
 ifeq ($(HOST_OS_ARCH),WINNT)
 NSINSTALL = $(NSINSTALL_PY)
 else
-NSINSTALL = $(CONFIG_TOOLS)/nsinstall$(HOST_BIN_SUFFIX)
+NSINSTALL = $(DIST)/bin/nsinstall$(HOST_BIN_SUFFIX)
 endif # WINNT
 endif # OS2
 endif # NSINSTALL_BIN
@@ -880,6 +880,10 @@ EXPAND_MOZLIBNAME = $(foreach lib,$(1),$(DIST)/lib/$(LIB_PREFIX)$(lib).$(LIB_SUF
 PLY_INCLUDE = -I$(topsrcdir)/other-licenses/ply
 
 export CL_INCLUDES_PREFIX
+# Make sure that the build system can handle non-ASCII characters
+# in environment variables to prevent it from breking silently on
+# non-English systems.
+export NONASCII
 
 ifdef MOZ_GTK2_CFLAGS
 MOZ_GTK2_CFLAGS := -I$(topsrcdir)/widget/gtk/compat $(MOZ_GTK2_CFLAGS)

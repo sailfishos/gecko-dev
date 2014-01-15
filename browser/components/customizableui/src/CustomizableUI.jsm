@@ -2089,25 +2089,71 @@ let CustomizableUIInternal = {
 Object.freeze(CustomizableUIInternal);
 
 this.CustomizableUI = {
+  /**
+   * Constant reference to the ID of the menu panel.
+   */
   get AREA_PANEL() "PanelUI-contents",
+  /**
+   * Constant reference to the ID of the navigation toolbar.
+   */
   get AREA_NAVBAR() "nav-bar",
+  /**
+   * Constant reference to the ID of the menubar's toolbar.
+   */
   get AREA_MENUBAR() "toolbar-menubar",
+  /**
+   * Constant reference to the ID of the tabstrip toolbar.
+   */
   get AREA_TABSTRIP() "TabsToolbar",
+  /**
+   * Constant reference to the ID of the bookmarks toolbar.
+   */
   get AREA_BOOKMARKS() "PersonalToolbar",
+  /**
+   * Constant reference to the ID of the addon-bar toolbar shim.
+   * Do not use, this will be removed as soon as reasonably possible.
+   * @deprecated
+   */
   get AREA_ADDONBAR() "addon-bar",
-
-  get PROVIDER_XUL() "xul",
-  get PROVIDER_API() "api",
-  get PROVIDER_SPECIAL() "special",
-
-  get SOURCE_BUILTIN() "builtin",
-  get SOURCE_EXTERNAL() "external",
-
-  get TYPE_BUTTON() "button",
+  /**
+   * Constant indicating the area is a menu panel.
+   */
   get TYPE_MENU_PANEL() "menu-panel",
+  /**
+   * Constant indicating the area is a toolbar.
+   */
   get TYPE_TOOLBAR() "toolbar",
 
+  /**
+   * Constant indicating a XUL-type provider.
+   */
+  get PROVIDER_XUL() "xul",
+  /**
+   * Constant indicating an API-type provider.
+   */
+  get PROVIDER_API() "api",
+  /**
+   * Constant indicating dynamic (special) widgets: spring, spacer, and separator.
+   */
+  get PROVIDER_SPECIAL() "special",
+
+  /**
+   * Constant indicating the widget is built-in
+   */
+  get SOURCE_BUILTIN() "builtin",
+  /**
+   * Constant indicating the widget is externally provided
+   * (e.g. by add-ons or other items not part of the builtin widget set).
+   */
+  get SOURCE_EXTERNAL() "external",
+
+  /**
+   * The class used to distinguish items that span the entire menu panel.
+   */
   get WIDE_PANEL_CLASS() "panel-wide-item",
+  /**
+   * The (constant) number of columns in the menu panel.
+   */
   get PANEL_COLUMN_COUNT() 3,
 
   /**
@@ -2460,7 +2506,7 @@ this.CustomizableUI = {
    *                  Firefox or add-on-provided;
    * - disabled:      for API-provided widgets, whether the widget is currently
    *                  disabled. NB: this property is writable, and will toggle
-   *                  all the widgets' disabled state;
+   *                  all the widgets' nodes' disabled states;
    * - label:         for API-provied widgets, the label of the widget;
    * - tooltiptext:   for API-provided widgets, the tooltip of the widget;
    * - showInPrivateBrowsing: for API-provided widgets, whether the widget is
@@ -2674,14 +2720,16 @@ this.CustomizableUI = {
    *
    * @param aWidgetId the widget ID or DOM node you want to move somewhere
    * @param aArea     the area ID you want to move it to.
-   * @return true if this is possible, false if it is not. Same caveats as
+   * @return true if this is possible, false if it is not. The same caveats as
    *              for isWidgetRemovable apply, however, if no windows are open.
    */
   canWidgetMoveToArea: function(aWidgetId, aArea) {
     return CustomizableUIInternal.canWidgetMoveToArea(aWidgetId, aArea);
   },
   /**
-   * Whether we're in a default state.
+   * Whether we're in a default state. Note that non-removable non-default
+   * widgets and non-existing widgets are not taken into account in determining
+   * whether we're in the default state.
    *
    * NB: this is a property with a getter. The getter is NOT cheap, because
    * it does smart things with non-removable non-default items, non-existent
@@ -2730,13 +2778,15 @@ this.CustomizableUI = {
    * Check if a widget is a "special" widget: a spring, spacer or separator.
    *
    * @param aWidgetId the widget ID to check.
+   * @return true if the widget is 'special', false otherwise.
    */
   isSpecialWidget: function(aWidgetId) {
     return CustomizableUIInternal.isSpecialWidget(aWidgetId);
   },
   /**
-   * Add listeners to a panel that will close it. For use from PanelUI and
-   * the overflowable toolbars, unlikely to be useful for consumers.
+   * Add listeners to a panel that will close it. For use from the menu panel
+   * and overflowable toolbar implementations, unlikely to be useful for
+   * consumers.
    *
    * @param aPanel the panel to which listeners should be attached.
    */
@@ -2745,8 +2795,8 @@ this.CustomizableUI = {
   },
   /**
    * Remove close listeners that have been added to a panel with
-   * addPanelCloseListeners. For use from PanelUI and the overflowable
-   * toolbars, unlikely to be useful for consumers.
+   * addPanelCloseListeners. For use from the menu panel and overflowable
+   * toolbar implementations, unlikely to be useful for consumers.
    *
    * @param aPanel the panel from which listeners should be removed.
    */

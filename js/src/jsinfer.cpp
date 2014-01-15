@@ -416,8 +416,11 @@ ConstraintTypeSet::add(JSContext *cx, TypeConstraint *constraint, bool callExist
 void
 TypeSet::print()
 {
-    if (flags & TYPE_FLAG_CONFIGURED_PROPERTY)
-        fprintf(stderr, " [configured]");
+    if (flags & TYPE_FLAG_NON_DATA_PROPERTY)
+        fprintf(stderr, " [non-data]");
+
+    if (flags & TYPE_FLAG_NON_WRITABLE_PROPERTY)
+        fprintf(stderr, " [non-writable]");
 
     if (definiteProperty())
         fprintf(stderr, " [definite:%d]", definiteSlot());
@@ -703,7 +706,7 @@ TypeScript::FreezeTypeSets(CompilerConstraintList *constraints, JSScript *script
     }
 
     *pThisTypes = types + (ThisTypes(script) - existing);
-    *pArgTypes = (script->function() && script->function()->nargs())
+    *pArgTypes = (script->functionNonDelazifying() && script->functionNonDelazifying()->nargs())
                  ? (types + (ArgTypes(script, 0) - existing))
                  : nullptr;
     *pBytecodeTypes = types;
@@ -998,7 +1001,9 @@ types::FinishCompilation(JSContext *cx, HandleScript script, ExecutionMode execu
 
         if (!CheckFrozenTypeSet(cx, entry.thisTypes, types::TypeScript::ThisTypes(entry.script)))
             succeeded = false;
-        unsigned nargs = entry.script->function() ? entry.script->function()->nargs() : 0;
+        unsigned nargs = entry.script->functionNonDelazifying()
+                         ? entry.script->functionNonDelazifying()->nargs()
+                         : 0;
         for (size_t i = 0; i < nargs; i++) {
             if (!CheckFrozenTypeSet(cx, &entry.argTypes[i], types::TypeScript::ArgTypes(entry.script, i)))
                 succeeded = false;
@@ -1038,8 +1043,6 @@ CheckDefinitePropertiesTypeSet(JSContext *cx, TemporaryTypeSet *frozen, StackTyp
     // contents of |frozen| though with new speculative types, and these need
     // to be reflected in |actual| for AddClearDefiniteFunctionUsesInScript
     // to work.
-    JS_ASSERT(actual->isSubset(frozen));
-
     if (!frozen->isSubset(actual)) {
         TypeSet::TypeList list;
         frozen->enumerateTypes(&list);
@@ -1052,16 +1055,44 @@ CheckDefinitePropertiesTypeSet(JSContext *cx, TemporaryTypeSet *frozen, StackTyp
 void
 types::FinishDefinitePropertiesAnalysis(JSContext *cx, CompilerConstraintList *constraints)
 {
+#ifdef DEBUG
+    // Assert no new types have been added to the StackTypeSets. Do this before
+    // calling CheckDefinitePropertiesTypeSet, as it may add new types to the
+    // StackTypeSets and break these invariants if a script is inlined more
+    // than once. See also CheckDefinitePropertiesTypeSet.
     for (size_t i = 0; i < constraints->numFrozenScripts(); i++) {
         const CompilerConstraintList::FrozenScript &entry = constraints->frozenScript(i);
-        JS_ASSERT(entry.script->types);
+        JSScript *script = entry.script;
+        JS_ASSERT(script->types);
 
-        CheckDefinitePropertiesTypeSet(cx, entry.thisTypes, types::TypeScript::ThisTypes(entry.script));
-        unsigned nargs = entry.script->function() ? entry.script->function()->nargs() : 0;
-        for (size_t i = 0; i < nargs; i++)
-            CheckDefinitePropertiesTypeSet(cx, &entry.argTypes[i], types::TypeScript::ArgTypes(entry.script, i));
-        for (size_t i = 0; i < entry.script->nTypeSets(); i++)
-            CheckDefinitePropertiesTypeSet(cx, &entry.bytecodeTypes[i], &entry.script->types->typeArray()[i]);
+        JS_ASSERT(TypeScript::ThisTypes(script)->isSubset(entry.thisTypes));
+
+        unsigned nargs = entry.script->functionNonDelazifying()
+                         ? entry.script->functionNonDelazifying()->nargs()
+                         : 0;
+        for (size_t j = 0; j < nargs; j++)
+            JS_ASSERT(TypeScript::ArgTypes(script, j)->isSubset(&entry.argTypes[j]));
+
+        for (size_t j = 0; j < script->nTypeSets(); j++)
+            JS_ASSERT(script->types->typeArray()[j].isSubset(&entry.bytecodeTypes[j]));
+    }
+#endif
+
+    for (size_t i = 0; i < constraints->numFrozenScripts(); i++) {
+        const CompilerConstraintList::FrozenScript &entry = constraints->frozenScript(i);
+        JSScript *script = entry.script;
+        JS_ASSERT(script->types);
+
+        CheckDefinitePropertiesTypeSet(cx, entry.thisTypes, TypeScript::ThisTypes(script));
+
+        unsigned nargs = script->functionNonDelazifying()
+                         ? script->functionNonDelazifying()->nargs()
+                         : 0;
+        for (size_t j = 0; j < nargs; j++)
+            CheckDefinitePropertiesTypeSet(cx, &entry.argTypes[j], TypeScript::ArgTypes(script, j));
+
+        for (size_t j = 0; j < script->nTypeSets(); j++)
+            CheckDefinitePropertiesTypeSet(cx, &entry.bytecodeTypes[j], &script->types->typeArray()[j]);
     }
 }
 
@@ -1184,7 +1215,7 @@ HeapTypeSetKey::knownTypeTag(CompilerConstraintList *constraints)
 bool
 HeapTypeSetKey::isOwnProperty(CompilerConstraintList *constraints)
 {
-    if (maybeTypes() && (!maybeTypes()->empty() || maybeTypes()->configuredProperty()))
+    if (maybeTypes() && (!maybeTypes()->empty() || maybeTypes()->nonDataProperty()))
         return true;
     if (JSObject *obj = object()->singleton()) {
         if (CanHaveEmptyPropertyTypesForOwnProperty(obj))
@@ -1221,7 +1252,7 @@ HeapTypeSetKey::singleton(CompilerConstraintList *constraints)
 {
     HeapTypeSet *types = maybeTypes();
 
-    if (!types || types->configuredProperty() || types->baseFlags() != 0 || types->getObjectCount() != 1)
+    if (!types || types->nonDataProperty() || types->baseFlags() != 0 || types->getObjectCount() != 1)
         return nullptr;
 
     JSObject *obj = types->getSingleObject(0);
@@ -1505,24 +1536,32 @@ CheckNewScriptProperties(JSContext *cx, TypeObject *type, JSFunction *fun);
 
 namespace {
 
-class ConstraintDataFreezeConfiguredProperty
+class ConstraintDataFreezePropertyState
 {
   public:
-    ConstraintDataFreezeConfiguredProperty()
+    enum Which {
+        NON_DATA,
+        NON_WRITABLE
+    } which;
+
+    ConstraintDataFreezePropertyState(Which which)
+      : which(which)
     {}
 
-    const char *kind() { return "freezeConfiguredProperty"; }
+    const char *kind() { return (which == NON_DATA) ? "freezeNonDataProperty" : "freezeNonWritableProperty"; }
 
     bool invalidateOnNewType(Type type) { return false; }
     bool invalidateOnNewPropertyState(TypeSet *property) {
-        return property->configuredProperty();
+        return (which == NON_DATA)
+               ? property->nonDataProperty()
+               : property->nonWritableProperty();
     }
     bool invalidateOnNewObjectState(TypeObject *object) { return false; }
 
     bool constraintHolds(JSContext *cx,
                          const HeapTypeSetKey &property, TemporaryTypeSet *expected)
     {
-        return !property.maybeTypes()->configuredProperty();
+        return !invalidateOnNewPropertyState(property.maybeTypes());
     }
 
     bool shouldSweep() { return false; }
@@ -1531,16 +1570,30 @@ class ConstraintDataFreezeConfiguredProperty
 } /* anonymous namespace */
 
 bool
-HeapTypeSetKey::configured(CompilerConstraintList *constraints)
+HeapTypeSetKey::nonData(CompilerConstraintList *constraints)
 {
-    if (maybeTypes() && maybeTypes()->configuredProperty())
+    if (maybeTypes() && maybeTypes()->nonDataProperty())
         return true;
 
     LifoAlloc *alloc = constraints->alloc();
 
-    typedef CompilerConstraintInstance<ConstraintDataFreezeConfiguredProperty> T;
+    typedef CompilerConstraintInstance<ConstraintDataFreezePropertyState> T;
     constraints->add(alloc->new_<T>(alloc, *this,
-                                    ConstraintDataFreezeConfiguredProperty()));
+                                    ConstraintDataFreezePropertyState(ConstraintDataFreezePropertyState::NON_DATA)));
+    return false;
+}
+
+bool
+HeapTypeSetKey::nonWritable(CompilerConstraintList *constraints)
+{
+    if (maybeTypes() && maybeTypes()->nonWritableProperty())
+        return true;
+
+    LifoAlloc *alloc = constraints->alloc();
+
+    typedef CompilerConstraintInstance<ConstraintDataFreezePropertyState> T;
+    constraints->add(alloc->new_<T>(alloc, *this,
+                                    ConstraintDataFreezePropertyState(ConstraintDataFreezePropertyState::NON_WRITABLE)));
     return false;
 }
 
@@ -2016,7 +2069,7 @@ types::UseNewTypeForInitializer(JSScript *script, jsbytecode *pc, JSProtoKey key
      * arrays, but not normal arrays.
      */
 
-    if (script->function() && !script->treatAsRunOnce())
+    if (script->functionNonDelazifying() && !script->treatAsRunOnce())
         return GenericObject;
 
     if (key != JSProto_Object && !(key >= JSProto_Int8Array && key <= JSProto_Uint8ClampedArray))
@@ -2071,7 +2124,7 @@ PrototypeHasIndexedProperty(CompilerConstraintList *constraints, JSObject *obj)
         if (type->unknownProperties())
             return true;
         HeapTypeSetKey index = type->property(JSID_VOID);
-        if (index.configured(constraints) || index.isOwnProperty(constraints))
+        if (index.nonData(constraints) || index.isOwnProperty(constraints))
             return true;
         if (!obj->hasTenuredProto())
             return true;
@@ -2232,8 +2285,8 @@ TypeZone::addPendingRecompile(JSContext *cx, JSScript *script)
     // When one script is inlined into another the caller listens to state
     // changes on the callee's script, so trigger these to force recompilation
     // of any such callers.
-    if (script->function() && !script->function()->hasLazyType())
-        ObjectStateChange(cx, script->function()->type(), false);
+    if (script->functionNonDelazifying() && !script->functionNonDelazifying()->hasLazyType())
+        ObjectStateChange(cx, script->functionNonDelazifying()->type(), false);
 }
 
 void
@@ -2739,10 +2792,10 @@ UpdatePropertyType(ExclusiveContext *cx, HeapTypeSet *types, JSObject *obj, Shap
                    bool indexed)
 {
     if (!shape->writable())
-        types->setConfiguredProperty(cx);
+        types->setNonWritableProperty(cx);
 
     if (shape->hasGetterValue() || shape->hasSetterValue()) {
-        types->setConfiguredProperty(cx);
+        types->setNonDataProperty(cx);
         if (!types->TypeSet::addType(Type::UnknownType(), &cx->typeLifoAlloc()))
             cx->compartment()->types.setPendingNukeTypes(cx);
     } else if (shape->hasDefaultGetter() && shape->hasSlot()) {
@@ -2809,10 +2862,10 @@ TypeObject::addProperty(ExclusiveContext *cx, jsid id, Property **pprop)
 
         if (singleton()->watched()) {
             /*
-             * Mark the property as configured, to inhibit optimizations on it
+             * Mark the property as non-data, to inhibit optimizations on it
              * and avoid bypassing the watchpoint handler.
              */
-            base->types.setConfiguredProperty(cx);
+            base->types.setNonDataProperty(cx);
         }
     }
 
@@ -2928,7 +2981,7 @@ TypeObject::addPropertyType(ExclusiveContext *cx, const char *name, const Value 
 }
 
 void
-TypeObject::markPropertyConfigured(ExclusiveContext *cx, jsid id)
+TypeObject::markPropertyNonData(ExclusiveContext *cx, jsid id)
 {
     AutoEnterAnalysis enter(cx);
 
@@ -2936,15 +2989,36 @@ TypeObject::markPropertyConfigured(ExclusiveContext *cx, jsid id)
 
     HeapTypeSet *types = getProperty(cx, id);
     if (types)
-        types->setConfiguredProperty(cx);
+        types->setNonDataProperty(cx);
+}
+
+void
+TypeObject::markPropertyNonWritable(ExclusiveContext *cx, jsid id)
+{
+    AutoEnterAnalysis enter(cx);
+
+    id = IdToTypeId(id);
+
+    HeapTypeSet *types = getProperty(cx, id);
+    if (types)
+        types->setNonWritableProperty(cx);
 }
 
 bool
-TypeObject::isPropertyConfigured(jsid id)
+TypeObject::isPropertyNonData(jsid id)
 {
     TypeSet *types = maybeGetProperty(id);
     if (types)
-        return types->configuredProperty();
+        return types->nonDataProperty();
+    return false;
+}
+
+bool
+TypeObject::isPropertyNonWritable(jsid id)
+{
+    TypeSet *types = maybeGetProperty(id);
+    if (types)
+        return types->nonWritableProperty();
     return false;
 }
 
@@ -3022,7 +3096,7 @@ TypeObject::markUnknown(ExclusiveContext *cx)
         Property *prop = getProperty(i);
         if (prop) {
             prop->types.addType(cx, Type::UnknownType());
-            prop->types.setConfiguredProperty(cx);
+            prop->types.setNonDataProperty(cx);
         }
     }
 }
@@ -3086,7 +3160,7 @@ TypeObject::clearNewScriptAddendum(ExclusiveContext *cx)
         if (!prop)
             continue;
         if (prop->types.definiteProperty())
-            prop->types.setConfiguredProperty(cx);
+            prop->types.setNonDataProperty(cx);
     }
 
     /*
@@ -3163,7 +3237,7 @@ TypeObject::clearNewScriptAddendum(ExclusiveContext *cx)
             }
 
             if (!finished) {
-                if (!obj->rollbackProperties(cx, numProperties))
+                if (!JSObject::rollbackProperties(cx, obj, numProperties))
                     cx->compartment()->types.setPendingNukeTypes(cx);
             }
         }
@@ -3248,11 +3322,13 @@ class TypeConstraintClearDefiniteGetterSetter : public TypeConstraint
         /*
          * Clear out the newScript shape and definite property information from
          * an object if the source type set could be a setter or could be
-         * non-writable, both of which are indicated by the source type set
-         * being marked as configured.
+         * non-writable.
          */
-        if (!(object->flags() & OBJECT_FLAG_ADDENDUM_CLEARED) && source->configuredProperty())
+        if (!(object->flags() & OBJECT_FLAG_ADDENDUM_CLEARED) &&
+            (source->nonDataProperty() || source->nonWritableProperty()))
+        {
             object->clearAddendum(cx);
+        }
     }
 
     void newType(JSContext *cx, TypeSet *source, Type type) {}
@@ -3281,7 +3357,7 @@ types::AddClearDefiniteGetterSetterForPrototypeChain(JSContext *cx, TypeObject *
         if (!parentObject || parentObject->unknownProperties())
             return false;
         HeapTypeSet *parentTypes = parentObject->getProperty(cx, id);
-        if (!parentTypes || parentTypes->configuredProperty())
+        if (!parentTypes || parentTypes->nonDataProperty() || parentTypes->nonWritableProperty())
             return false;
         parentTypes->add(cx, cx->typeLifoAlloc().new_<TypeConstraintClearDefiniteGetterSetter>(type));
         parent = parent->getProto();
@@ -3332,7 +3408,7 @@ types::AddClearDefiniteFunctionUsesInScript(JSContext *cx, TypeObject *type,
     // This ensures that the inlining performed when the definite properties
     // analysis was done is stable.
 
-    TypeObjectKey *calleeKey = Type::ObjectType(calleeScript->function()).objectKey();
+    TypeObjectKey *calleeKey = Type::ObjectType(calleeScript->functionNonDelazifying()).objectKey();
 
     unsigned count = TypeScript::NumTypeSets(script);
     StackTypeSet *typeArray = script->types->typeArray();
@@ -3626,7 +3702,7 @@ JSScript::makeTypes(JSContext *cx)
     InferSpew(ISpewOps, "typeSet: %sT%p%s this #%u",
               InferSpewColor(thisTypes), thisTypes, InferSpewColorReset(),
               id());
-    unsigned nargs = function() ? function()->nargs() : 0;
+    unsigned nargs = functionNonDelazifying() ? functionNonDelazifying()->nargs() : 0;
     for (unsigned i = 0; i < nargs; i++) {
         TypeSet *types = TypeScript::ArgTypes(this, i);
         InferSpew(ISpewOps, "typeSet: %sT%p%s arg%u #%u",
@@ -3910,9 +3986,9 @@ ExclusiveContext::getNewType(const Class *clasp, TaggedProto proto, JSFunction *
     // Canonicalize new functions to use the original one associated with its script.
     if (fun) {
         if (fun->hasScript())
-            fun = fun->nonLazyScript()->function();
+            fun = fun->nonLazyScript()->functionNonDelazifying();
         else if (fun->isInterpretedLazy())
-            fun = fun->lazyScript()->function();
+            fun = fun->lazyScript()->functionNonDelazifying();
         else
             fun = nullptr;
     }
@@ -4500,7 +4576,7 @@ TypeScript::printTypes(JSContext *cx, HandleScript script) const
 
     AutoEnterAnalysis enter(nullptr, script->compartment());
 
-    if (script->function())
+    if (script->functionNonDelazifying())
         fprintf(stderr, "Function");
     else if (script->isForEval())
         fprintf(stderr, "Eval");
@@ -4508,8 +4584,8 @@ TypeScript::printTypes(JSContext *cx, HandleScript script) const
         fprintf(stderr, "Main");
     fprintf(stderr, " #%u %s:%d ", script->id(), script->filename(), (int) script->lineno());
 
-    if (script->function()) {
-        if (js::PropertyName *name = script->function()->name()) {
+    if (script->functionNonDelazifying()) {
+        if (js::PropertyName *name = script->functionNonDelazifying()->name()) {
             const jschar *chars = name->getChars(nullptr);
             JSString::dumpChars(chars, name->length());
         }
@@ -4518,7 +4594,10 @@ TypeScript::printTypes(JSContext *cx, HandleScript script) const
     fprintf(stderr, "\n    this:");
     TypeScript::ThisTypes(script)->print();
 
-    for (unsigned i = 0; script->function() && i < script->function()->nargs(); i++) {
+    for (unsigned i = 0;
+         script->functionNonDelazifying() && i < script->functionNonDelazifying()->nargs();
+         i++)
+    {
         fprintf(stderr, "\n    arg%u:", i);
         TypeScript::ArgTypes(script, i)->print();
     }

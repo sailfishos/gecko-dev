@@ -848,7 +848,7 @@ js::XDRScript(XDRState<mode> *xdr, HandleObject enclosingScope, HandleScript enc
         /* see BytecodeEmitter::tellDebuggerAboutCompiledScript */
         CallNewScriptHook(cx, script, fun);
         if (!fun) {
-            RootedGlobalObject global(cx, script->compileAndGo() ? &script->global() : NULL);
+            RootedGlobalObject global(cx, script->compileAndGo() ? &script->global() : nullptr);
             Debugger::onNewScript(cx, script, global);
         }
     }
@@ -1216,10 +1216,19 @@ ScriptSource::setSourceCopy(ExclusiveContext *cx, const jschar *src, uint32_t le
     length_ = length;
     argumentsNotIncluded_ = argumentsNotIncluded;
 
-    // Don't use background compression if there is only one core since this
-    // will contend with JS execution (which affects benchmarketting). Also,
-    // since this thread is about to perform a blocking wait, require that there
-    // are at least 2 worker threads:
+    // There are several cases where source compression is not a good idea:
+    //  - If the script is enormous, then decompression can take seconds. With
+    //    lazy parsing, decompression is not uncommon, so this can significantly
+    //    increase latency.
+    //  - If there is only one core, then compression will contend with JS
+    //    execution (which hurts benchmarketing).
+    //  - If the source contains a giant string, then parsing will finish much
+    //    faster than compression which increases latency (this case is handled
+    //    in Parser::stringLiteral).
+    //
+    // Lastly, since the parsing thread will eventually perform a blocking wait
+    // on the compresion task's worker thread, require that there are at least 2
+    // worker threads:
     //  - If we are on a worker thread, there must be another worker thread to
     //    execute our compression task.
     //  - If we are on the main thread, there must be at least two worker
@@ -1227,7 +1236,11 @@ ScriptSource::setSourceCopy(ExclusiveContext *cx, const jschar *src, uint32_t le
     //    thread (see WorkerThreadState::canStartParseTask) which would cause a
     //    deadlock if there wasn't a second worker thread that could make
     //    progress on our compression task.
-    if (task && cx->cpuCount() > 1 && cx->workerThreadCount() >= 2) {
+    const size_t HUGE_SCRIPT = 5 * 1024 * 1024;
+    if (length < HUGE_SCRIPT &&
+        cx->cpuCount() > 1 &&
+        cx->workerThreadCount() >= 2)
+    {
         task->ss = this;
         task->chars = src;
         ready_ = false;
@@ -1326,7 +1339,7 @@ ScriptSource::destroy()
     JS_ASSERT(ready());
     adjustDataSize(0);
     js_free(filename_);
-    js_free(sourceURL_);
+    js_free(displayURL_);
     js_free(sourceMapURL_);
     if (originPrincipals_)
         JS_DropPrincipals(TlsPerThreadData.get()->runtimeFromMainThread(), originPrincipals_);
@@ -1417,29 +1430,29 @@ ScriptSource::performXDR(XDRState<mode> *xdr)
         sourceMapURL_[sourceMapURLLen] = '\0';
     }
 
-    uint8_t haveSourceURL = hasSourceURL();
-    if (!xdr->codeUint8(&haveSourceURL))
+    uint8_t haveDisplayURL = hasDisplayURL();
+    if (!xdr->codeUint8(&haveDisplayURL))
         return false;
 
-    if (haveSourceURL) {
-        uint32_t sourceURLLen = (mode == XDR_DECODE) ? 0 : js_strlen(sourceURL_);
-        if (!xdr->codeUint32(&sourceURLLen))
+    if (haveDisplayURL) {
+        uint32_t displayURLLen = (mode == XDR_DECODE) ? 0 : js_strlen(displayURL_);
+        if (!xdr->codeUint32(&displayURLLen))
             return false;
 
         if (mode == XDR_DECODE) {
-            size_t byteLen = (sourceURLLen + 1) * sizeof(jschar);
-            sourceURL_ = static_cast<jschar *>(xdr->cx()->malloc_(byteLen));
-            if (!sourceURL_)
+            size_t byteLen = (displayURLLen + 1) * sizeof(jschar);
+            displayURL_ = static_cast<jschar *>(xdr->cx()->malloc_(byteLen));
+            if (!displayURL_)
                 return false;
         }
-        if (!xdr->codeChars(sourceURL_, sourceURLLen)) {
+        if (!xdr->codeChars(displayURL_, displayURLLen)) {
             if (mode == XDR_DECODE) {
-                js_free(sourceURL_);
-                sourceURL_ = nullptr;
+                js_free(displayURL_);
+                displayURL_ = nullptr;
             }
             return false;
         }
-        sourceURL_[sourceURLLen] = '\0';
+        displayURL_[displayURLLen] = '\0';
     }
 
     uint8_t haveFilename = !!filename_;
@@ -1475,10 +1488,10 @@ ScriptSource::setFilename(ExclusiveContext *cx, const char *filename)
 }
 
 bool
-ScriptSource::setSourceURL(ExclusiveContext *cx, const jschar *sourceURL)
+ScriptSource::setDisplayURL(ExclusiveContext *cx, const jschar *displayURL)
 {
-    JS_ASSERT(sourceURL);
-    if (hasSourceURL()) {
+    JS_ASSERT(displayURL);
+    if (hasDisplayURL()) {
         if (cx->isJSContext() &&
             !JS_ReportErrorFlagsAndNumber(cx->asJSContext(), JSREPORT_WARNING,
                                           js_GetErrorMessage, nullptr,
@@ -1488,20 +1501,20 @@ ScriptSource::setSourceURL(ExclusiveContext *cx, const jschar *sourceURL)
             return false;
         }
     }
-    size_t len = js_strlen(sourceURL) + 1;
+    size_t len = js_strlen(displayURL) + 1;
     if (len == 1)
         return true;
-    sourceURL_ = js_strdup(cx, sourceURL);
-    if (!sourceURL_)
+    displayURL_ = js_strdup(cx, displayURL);
+    if (!displayURL_)
         return false;
     return true;
 }
 
 const jschar *
-ScriptSource::sourceURL()
+ScriptSource::displayURL()
 {
-    JS_ASSERT(hasSourceURL());
-    return sourceURL_;
+    JS_ASSERT(hasDisplayURL());
+    return displayURL_;
 }
 
 bool
@@ -2847,11 +2860,14 @@ JSScript::markChildren(JSTracer *trc)
         MarkObject(trc, &sourceObject_, "sourceObject");
     }
 
-    if (function())
+    if (functionNonDelazifying())
         MarkObject(trc, &function_, "function");
 
     if (enclosingScopeOrOriginalFunction_)
         MarkObject(trc, &enclosingScopeOrOriginalFunction_, "enclosing");
+
+    if (maybeLazyScript())
+        MarkLazyScriptUnbarriered(trc, &lazyScript, "lazyScript");
 
     if (IS_GC_MARKING_TRACER(trc)) {
         compartment()->mark();
@@ -3011,7 +3027,7 @@ js::SetFrameArgumentsObject(JSContext *cx, AbstractFramePtr frame,
 /* static */ bool
 JSScript::argumentsOptimizationFailed(JSContext *cx, HandleScript script)
 {
-    JS_ASSERT(script->function());
+    JS_ASSERT(script->functionNonDelazifying());
     JS_ASSERT(script->analyzedArgsUsage());
     JS_ASSERT(script->argumentsHasVarBinding());
 
@@ -3139,6 +3155,13 @@ LazyScript::initScript(JSScript *script)
 {
     JS_ASSERT(script && !script_);
     script_ = script;
+}
+
+void
+LazyScript::resetScript()
+{
+    JS_ASSERT(script_);
+    script_ = nullptr;
 }
 
 void

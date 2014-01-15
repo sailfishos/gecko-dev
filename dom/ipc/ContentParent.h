@@ -145,6 +145,9 @@ public:
 
     bool IsAlive();
     bool IsForApp();
+#ifdef MOZ_NUWA_PROCESS
+    bool IsNuwaProcess();
+#endif
 
     GeckoChildProcessHost* Process() {
         return mSubprocess;
@@ -384,7 +387,7 @@ private:
 
     virtual PAsmJSCacheEntryParent* AllocPAsmJSCacheEntryParent(
                                  const asmjscache::OpenMode& aOpenMode,
-                                 const int64_t& aSizeToWrite,
+                                 const asmjscache::WriteParams& aWriteParams,
                                  const IPC::Principal& aPrincipal) MOZ_OVERRIDE;
     virtual bool DeallocPAsmJSCacheEntryParent(
                                    PAsmJSCacheEntryParent* aActor) MOZ_OVERRIDE;
@@ -515,6 +518,10 @@ private:
 
     virtual void ProcessingError(Result what) MOZ_OVERRIDE;
 
+    virtual bool RecvGetGraphicsFeatureStatus(const int32_t& aFeature,
+                                              int32_t* aStatus,
+                                              bool* aSuccess);
+
     virtual bool RecvAddIdleObserver(const uint64_t& observerId, const uint32_t& aIdleTimeInS);
     virtual bool RecvRemoveIdleObserver(const uint64_t& observerId, const uint32_t& aIdleTimeInS);
 
@@ -556,6 +563,7 @@ private:
 
     bool mSendPermissionUpdates;
     bool mIsForBrowser;
+    bool mIsNuwaProcess;
 
     // These variables track whether we've called Close(), CloseWithError()
     // and KillHard() on our channel.

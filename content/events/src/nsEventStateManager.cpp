@@ -34,6 +34,7 @@
 #include "nsINameSpaceManager.h"
 #include "nsIBaseWindow.h"
 #include "nsISelection.h"
+#include "nsITextControlElement.h"
 #include "nsFrameSelection.h"
 #include "nsPIDOMWindow.h"
 #include "nsPIWindowRoot.h"
@@ -1489,11 +1490,11 @@ nsEventStateManager::HandleAccessKey(nsPresContext* aPresContext,
                                      ProcessingAccessKeyState aAccessKeyState,
                                      int32_t aModifierMask)
 {
-  nsCOMPtr<nsISupports> pcContainer = aPresContext->GetContainerWeak();
+  nsCOMPtr<nsIDocShell> docShell = aPresContext->GetDocShell();
 
   // Alt or other accesskey modifier is down, we may need to do an accesskey
   if (mAccessKeys.Count() > 0 &&
-      aModifierMask == GetAccessModifierMaskFor(pcContainer)) {
+      aModifierMask == GetAccessModifierMaskFor(docShell)) {
     // Someone registered an accesskey.  Find and activate it.
     nsAutoTArray<uint32_t, 10> accessCharCodes;
     nsContentUtils::GetAccessKeyCandidates(aEvent, accessCharCodes);
@@ -1507,7 +1508,6 @@ nsEventStateManager::HandleAccessKey(nsPresContext* aPresContext,
   if (nsEventStatus_eConsumeNoDefault != *aStatus) {
     // checking all sub docshells
 
-    nsCOMPtr<nsIDocShellTreeNode> docShell(do_QueryInterface(pcContainer));
     if (!docShell) {
       NS_WARNING("no docShellTreeNode for presContext");
       return;
@@ -1551,7 +1551,6 @@ nsEventStateManager::HandleAccessKey(nsPresContext* aPresContext,
 
   // bubble up the process to the parent docshell if necessary
   if (eAccessKeyProcessingDown != aAccessKeyState && nsEventStatus_eConsumeNoDefault != *aStatus) {
-    nsCOMPtr<nsIDocShellTreeItem> docShell(do_QueryInterface(pcContainer));
     if (!docShell) {
       NS_WARNING("no docShellTreeItem for presContext");
       return;
@@ -2793,6 +2792,16 @@ nsEventStateManager::ComputeScrollTarget(nsIFrame* aTargetFrame,
     frameToScroll = scrollFrame->GetScrollTargetFrame();
     if (!frameToScroll) {
       continue;
+    }
+
+    // Don't scroll vertically by mouse-wheel on a single-line text control.
+    if (checkIfScrollableY) {
+      nsIContent* c = scrollFrame->GetContent();
+      nsCOMPtr<nsITextControlElement> ctrl =
+        do_QueryInterface(c->IsInAnonymousSubtree() ? c->GetBindingParent() : c);
+      if (ctrl && ctrl->IsSingleLineTextControl()) {
+        continue;
+      }
     }
 
     if (!checkIfScrollableX && !checkIfScrollableY) {

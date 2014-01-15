@@ -309,6 +309,10 @@ public:
 
   virtual gfx::IntSize GetSize() const { return mSize; }
 
+  virtual bool Lock(OpenMode aMode) MOZ_OVERRIDE;
+
+  virtual void Unlock() MOZ_OVERRIDE;
+
   // TextureClientSurface
 
   virtual TextureClientSurface* AsTextureClientSurface() MOZ_OVERRIDE { return this; }
@@ -347,9 +351,13 @@ public:
   virtual size_t GetBufferSize() const = 0;
 
 protected:
+  RefPtr<gfx::DrawTarget> mDrawTarget;
   CompositableClient* mCompositable;
   gfx::SurfaceFormat mFormat;
   gfx::IntSize mSize;
+  OpenMode mOpenMode;
+  bool mUsingFallbackDrawTarget;
+  bool mLocked;
 };
 
 /**
@@ -489,7 +497,7 @@ public:
   // The type of draw target returned by LockDrawTarget.
   virtual gfx::BackendType BackendType()
   {
-    return gfx::BACKEND_NONE;
+    return gfx::BackendType::NONE;
   }
 
   virtual void ReleaseResources() {}
@@ -582,7 +590,7 @@ public:
   virtual gfx::DrawTarget* LockDrawTarget();
   virtual gfx::BackendType BackendType() MOZ_OVERRIDE
   {
-    return gfx::BACKEND_CAIRO;
+    return gfx::BackendType::CAIRO;
   }
   virtual void Unlock() MOZ_OVERRIDE;
   virtual bool EnsureAllocated(gfx::IntSize aSize, gfxContentType aType) MOZ_OVERRIDE;

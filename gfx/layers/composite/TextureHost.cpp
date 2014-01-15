@@ -146,6 +146,16 @@ TemporaryRef<TextureHost> CreateTextureHostBasic(const SurfaceDescriptor& aDesc,
                                                  ISurfaceAllocator* aDeallocator,
                                                  TextureFlags aFlags);
 
+// implemented in TextureD3D11.cpp
+TemporaryRef<TextureHost> CreateTextureHostD3D11(const SurfaceDescriptor& aDesc,
+                                                 ISurfaceAllocator* aDeallocator,
+                                                 TextureFlags aFlags);
+
+// implemented in TextureD3D9.cpp
+TemporaryRef<TextureHost> CreateTextureHostD3D9(const SurfaceDescriptor& aDesc,
+                                                ISurfaceAllocator* aDeallocator,
+                                                TextureFlags aFlags);
+
 // static
 TemporaryRef<TextureHost>
 TextureHost::Create(const SurfaceDescriptor& aDesc,
@@ -166,8 +176,9 @@ TextureHost::Create(const SurfaceDescriptor& aDesc,
 #endif
 #ifdef XP_WIN
     case LAYERS_D3D11:
+      return CreateTextureHostD3D11(aDesc, aDeallocator, aFlags);
     case LAYERS_D3D9:
-      // XXX - not implemented yet
+      return CreateTextureHostD3D9(aDesc, aDeallocator, aFlags);
 #endif
     default:
       MOZ_CRASH("Couldn't create texture host");
@@ -257,7 +268,7 @@ DeprecatedTextureHost::DeprecatedTextureHost()
   : mFlags(0)
   , mBuffer(nullptr)
   , mDeAllocator(nullptr)
-  , mFormat(gfx::FORMAT_UNKNOWN)
+  , mFormat(gfx::SurfaceFormat::UNKNOWN)
 {
   MOZ_COUNT_CTOR(DeprecatedTextureHost);
 }
@@ -360,7 +371,7 @@ BufferTextureHost::Updated(const nsIntRegion* aRegion)
   }
   if (GetFlags() & TEXTURE_IMMEDIATE_UPLOAD) {
     DebugOnly<bool> result = MaybeUpload(mPartialUpdate ? &mMaybeUpdatedRegion : nullptr);
-    MOZ_ASSERT(result);
+    NS_WARN_IF_FALSE(result, "Failed to upload a texture");
   }
 }
 
@@ -370,7 +381,11 @@ BufferTextureHost::SetCompositor(Compositor* aCompositor)
   if (mCompositor == aCompositor) {
     return;
   }
-  DeallocateDeviceData();
+  RefPtr<NewTextureSource> it = mFirstSource;
+  while (it) {
+    it->SetCompositor(aCompositor);
+    it = it->GetNextSibling();
+  }
   mCompositor = aCompositor;
 }
 
@@ -415,10 +430,10 @@ BufferTextureHost::GetFormat() const
   // Compositor (it is used to choose the effect type).
   // if the compositor does not support YCbCr effects, we give it a RGBX texture
   // instead (see BufferTextureHost::Upload)
-  if (mFormat == gfx::FORMAT_YUV &&
+  if (mFormat == gfx::SurfaceFormat::YUV &&
     mCompositor &&
     !mCompositor->SupportsEffect(EFFECT_YCBCR)) {
-    return gfx::FORMAT_R8G8B8X8;
+    return gfx::SurfaceFormat::R8G8B8X8;
   }
   return mFormat;
 }
@@ -452,10 +467,10 @@ BufferTextureHost::Upload(nsIntRegion *aRegion)
     // we may end up here for the first frame, but this should not happen repeatedly.
     return false;
   }
-  if (mFormat == gfx::FORMAT_UNKNOWN) {
+  if (mFormat == gfx::SurfaceFormat::UNKNOWN) {
     NS_WARNING("BufferTextureHost: unsupported format!");
     return false;
-  } else if (mFormat == gfx::FORMAT_YUV) {
+  } else if (mFormat == gfx::SurfaceFormat::YUV) {
     YCbCrImageDataDeserializer yuvDeserializer(GetBuffer());
     MOZ_ASSERT(yuvDeserializer.IsValid());
 
@@ -464,7 +479,7 @@ BufferTextureHost::Upload(nsIntRegion *aRegion)
       if (!mFirstSource) {
         mFirstSource = mCompositor->CreateDataTextureSource(mFlags);
       }
-      mFirstSource->Update(surf, mFlags, aRegion);
+      mFirstSource->Update(surf, aRegion);
       return true;
     }
 
@@ -496,22 +511,22 @@ BufferTextureHost::Upload(nsIntRegion *aRegion)
       gfx::Factory::CreateWrappingDataSourceSurface(yuvDeserializer.GetYData(),
                                                     yuvDeserializer.GetYStride(),
                                                     yuvDeserializer.GetYSize(),
-                                                    gfx::FORMAT_A8);
+                                                    gfx::SurfaceFormat::A8);
     RefPtr<gfx::DataSourceSurface> tempCb =
       gfx::Factory::CreateWrappingDataSourceSurface(yuvDeserializer.GetCbData(),
                                                     yuvDeserializer.GetCbCrStride(),
                                                     yuvDeserializer.GetCbCrSize(),
-                                                    gfx::FORMAT_A8);
+                                                    gfx::SurfaceFormat::A8);
     RefPtr<gfx::DataSourceSurface> tempCr =
       gfx::Factory::CreateWrappingDataSourceSurface(yuvDeserializer.GetCrData(),
                                                     yuvDeserializer.GetCbCrStride(),
                                                     yuvDeserializer.GetCbCrSize(),
-                                                    gfx::FORMAT_A8);
+                                                    gfx::SurfaceFormat::A8);
     // We don't support partial updates for Y U V textures
     NS_ASSERTION(!aRegion, "Unsupported partial updates for YCbCr textures");
-    if (!srcY->Update(tempY, mFlags) ||
-        !srcU->Update(tempCb, mFlags) ||
-        !srcV->Update(tempCr, mFlags)) {
+    if (!srcY->Update(tempY) ||
+        !srcU->Update(tempCb) ||
+        !srcV->Update(tempCr)) {
       NS_WARNING("failed to update the DataTextureSource");
       return false;
     }
@@ -531,7 +546,7 @@ BufferTextureHost::Upload(nsIntRegion *aRegion)
       return false;
     }
 
-    if (!mFirstSource->Update(surf.get(), mFlags, aRegion)) {
+    if (!mFirstSource->Update(surf.get(), aRegion)) {
       NS_WARNING("failed to update the DataTextureSource");
       return false;
     }
@@ -543,10 +558,10 @@ TemporaryRef<gfx::DataSourceSurface>
 BufferTextureHost::GetAsSurface()
 {
   RefPtr<gfx::DataSourceSurface> result;
-  if (mFormat == gfx::FORMAT_UNKNOWN) {
+  if (mFormat == gfx::SurfaceFormat::UNKNOWN) {
     NS_WARNING("BufferTextureHost: unsupported format!");
     return nullptr;
-  } else if (mFormat == gfx::FORMAT_YUV) {
+  } else if (mFormat == gfx::SurfaceFormat::YUV) {
     YCbCrImageDataDeserializer yuvDeserializer(GetBuffer());
     if (!yuvDeserializer.IsValid()) {
       return nullptr;

@@ -21,10 +21,6 @@
 #include "nsISpeculativeConnect.h"
 #include "nsICache.h"
 
-class nsHttpConnection;
-class nsHttpConnectionInfo;
-class nsHttpHeaderArray;
-class nsHttpTransaction;
 class nsIHttpChannel;
 class nsIPrefBranch;
 class nsICancelable;
@@ -40,8 +36,9 @@ namespace net {
 class ATokenBucketEvent;
 class EventTokenBucket;
 class Tickler;
-}
-}
+class nsHttpConnection;
+class nsHttpConnectionInfo;
+class nsHttpTransaction;
 
 //-----------------------------------------------------------------------------
 // nsHttpHandler - protocol handler for HTTP and HTTPS
@@ -83,6 +80,7 @@ public:
     uint8_t        RedirectionLimit()        { return mRedirectionLimit; }
     PRIntervalTime IdleTimeout()             { return mIdleTimeout; }
     PRIntervalTime SpdyTimeout()             { return mSpdyTimeout; }
+    PRIntervalTime ResponseTimeout()         { return mResponseTimeout; }
     uint16_t       MaxRequestAttempts()      { return mMaxRequestAttempts; }
     const char    *DefaultSocketType()       { return mDefaultSocketType.get(); /* ok to return null */ }
     uint32_t       PhishyUserPassLength()    { return mPhishyUserPassLength; }
@@ -100,6 +98,8 @@ public:
     bool           IsSpdyEnabled() { return mEnableSpdy; }
     bool           IsSpdyV3Enabled() { return mSpdyV3; }
     bool           IsSpdyV31Enabled() { return mSpdyV31; }
+    bool           IsHttp2DraftEnabled() { return mHttp2DraftEnabled; }
+    bool           EnforceHttp2TlsProfile() { return mEnforceHttp2TlsProfile; }
     bool           CoalesceSpdy() { return mCoalesceSpdy; }
     bool           UseSpdyPersistentSettings() { return mSpdyPersistentSettings; }
     uint32_t       SpdySendingChunkSize() { return mSpdySendingChunkSize; }
@@ -107,7 +107,7 @@ public:
     uint32_t       SpdyPushAllowance()       { return mSpdyPushAllowance; }
     PRIntervalTime SpdyPingThreshold() { return mSpdyPingThreshold; }
     PRIntervalTime SpdyPingTimeout() { return mSpdyPingTimeout; }
-    bool           AllowSpdyPush()   { return mAllowSpdyPush; }
+    bool           AllowPush()   { return mAllowPush; }
     uint32_t       ConnectTimeout()  { return mConnectTimeout; }
     uint32_t       ParallelSpeculativeConnectLimit() { return mParallelSpeculativeConnectLimit; }
     bool           CriticalRequestPrioritization() { return mCriticalRequestPrioritization; }
@@ -268,7 +268,7 @@ public:
 
     PRIntervalTime GetPipelineTimeout()   { return mPipelineReadTimeout; }
 
-    mozilla::net::SpdyInformation *SpdyInfo() { return &mSpdyInfo; }
+    SpdyInformation *SpdyInfo() { return &mSpdyInfo; }
 
     // returns true in between Init and Shutdown states
     bool Active() { return mHandlerActive; }
@@ -282,9 +282,9 @@ public:
 
     // When the disk cache is responding slowly its use is suppressed
     // for 1 minute for most requests. Callable from main thread only.
-    mozilla::TimeStamp GetCacheSkippedUntil() { return mCacheSkippedUntil; }
-    void SetCacheSkippedUntil(mozilla::TimeStamp arg) { mCacheSkippedUntil = arg; }
-    void ClearCacheSkippedUntil() { mCacheSkippedUntil = mozilla::TimeStamp(); }
+    TimeStamp GetCacheSkippedUntil() { return mCacheSkippedUntil; }
+    void SetCacheSkippedUntil(TimeStamp arg) { mCacheSkippedUntil = arg; }
+    void ClearCacheSkippedUntil() { mCacheSkippedUntil = TimeStamp(); }
 
 private:
 
@@ -336,6 +336,7 @@ private:
     bool mProxyPipelining;
     PRIntervalTime mIdleTimeout;
     PRIntervalTime mSpdyTimeout;
+    PRIntervalTime mResponseTimeout;
 
     uint16_t mMaxRequestAttempts;
     uint16_t mMaxRequestDelay;
@@ -410,22 +411,26 @@ private:
     uint8_t        mDoNotTrackValue;
 
     // Whether telemetry is reported or not
-    bool           mTelemetryEnabled;
+    uint32_t           mTelemetryEnabled : 1;
 
     // The value of network.allow-experiments
-    bool           mAllowExperiments;
+    uint32_t           mAllowExperiments : 1;
 
     // true in between init and shutdown states
-    bool           mHandlerActive;
+    uint32_t           mHandlerActive : 1;
+
+    uint32_t           mEnableSpdy : 1;
+    uint32_t           mSpdyV3 : 1;
+    uint32_t           mSpdyV31 : 1;
+    uint32_t           mHttp2DraftEnabled : 1;
+    uint32_t           mEnforceHttp2TlsProfile : 1;
+    uint32_t           mCoalesceSpdy : 1;
+    uint32_t           mSpdyPersistentSettings : 1;
+    uint32_t           mAllowPush : 1;
 
     // Try to use SPDY features instead of HTTP/1.1 over SSL
-    mozilla::net::SpdyInformation mSpdyInfo;
-    bool           mEnableSpdy;
-    bool           mSpdyV3;
-    bool           mSpdyV31;
-    bool           mCoalesceSpdy;
-    bool           mSpdyPersistentSettings;
-    bool           mAllowSpdyPush;
+    SpdyInformation    mSpdyInfo;
+
     uint32_t       mSpdySendingChunkSize;
     uint32_t       mSpdySendBufferSize;
     uint32_t       mSpdyPushAllowance;
@@ -457,17 +462,17 @@ private:
 
     // When the disk cache is responding slowly its use is suppressed
     // for 1 minute for most requests.
-    mozilla::TimeStamp                mCacheSkippedUntil;
+    TimeStamp      mCacheSkippedUntil;
 
 private:
     // For Rate Pacing Certain Network Events. Only assign this pointer on
     // socket thread.
     void MakeNewRequestTokenBucket();
-    nsRefPtr<mozilla::net::EventTokenBucket> mRequestTokenBucket;
+    nsRefPtr<EventTokenBucket> mRequestTokenBucket;
 
 public:
     // Socket thread only
-    nsresult SubmitPacedRequest(mozilla::net::ATokenBucketEvent *event,
+    nsresult SubmitPacedRequest(ATokenBucketEvent *event,
                                 nsICancelable **cancel)
     {
         if (!mRequestTokenBucket)
@@ -476,7 +481,7 @@ public:
     }
 
     // Socket thread only
-    void SetRequestTokenBucket(mozilla::net::EventTokenBucket *aTokenBucket)
+    void SetRequestTokenBucket(EventTokenBucket *aTokenBucket)
     {
         mRequestTokenBucket = aTokenBucket;
     }
@@ -490,7 +495,7 @@ private:
     bool     mNetworkTypeKnown;
     bool     mNetworkTypeWasEthernet;
 
-    nsRefPtr<mozilla::net::Tickler> mWifiTickler;
+    nsRefPtr<Tickler> mWifiTickler;
     nsresult GetNetworkEthernetInfo(nsIInterfaceRequestor *cb,
                                     bool *ethernet);
     nsresult GetNetworkEthernetInfoInner(nsIInterfaceRequestor *cb,
@@ -534,5 +539,7 @@ public:
 
     nsresult Init();
 };
+
+}} // namespace mozilla::net
 
 #endif // nsHttpHandler_h__

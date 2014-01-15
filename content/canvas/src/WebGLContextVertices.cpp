@@ -724,12 +724,26 @@ void WebGLContext::Draw_cleanup()
     }
 
     if (gl->WorkAroundDriverBugs()) {
-        if (gl->Renderer() == gl::GLContext::RendererTegra) {
+        if (gl->Renderer() == gl::GLRenderer::Tegra) {
             mDrawCallsSinceLastFlush++;
 
             if (mDrawCallsSinceLastFlush >= MAX_DRAW_CALLS_SINCE_FLUSH) {
                 gl->fFlush();
                 mDrawCallsSinceLastFlush = 0;
+            }
+        }
+    }
+
+    // Let's check the viewport
+    const WebGLRectangleObject* rect = FramebufferRectangleObject();
+    if (rect) {
+        if (mViewportWidth > rect->Width() ||
+            mViewportHeight > rect->Height())
+        {
+            if (!mAlreadyWarnedAboutViewportLargerThanDest) {
+                GenerateWarning("Drawing to a destination rect smaller than the viewport rect. "
+                                "(This warning will only be given once)");
+                mAlreadyWarnedAboutViewportLargerThanDest = true;
             }
         }
     }

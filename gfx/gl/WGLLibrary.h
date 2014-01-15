@@ -4,6 +4,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "GLContextTypes.h"
+#include <windows.h>
+
 struct PRLibrary;
 
 namespace mozilla {
@@ -19,16 +21,8 @@ public:
         mWindow (0),
         mWindowDC(0),
         mWindowGLContext(0),
-        mWindowPixelFormat (0),
-        mLibType(OPENGL_LIB)     
+        mWindowPixelFormat (0)
     {}
-
-    enum LibraryType
-    {
-      OPENGL_LIB = 0,
-      MESA_LLVMPIPE_LIB = 1,
-      LIBS_MAX
-    };
 
     typedef HGLRC (GLAPIENTRY * PFNWGLCREATECONTEXTPROC) (HDC);
     PFNWGLCREATECONTEXTPROC fCreateContext;
@@ -68,7 +62,7 @@ public:
     typedef HGLRC (WINAPI * PFNWGLCREATECONTEXTATTRIBSPROC) (HDC hdc, HGLRC hShareContext, const int *attribList);
     PFNWGLCREATECONTEXTATTRIBSPROC fCreateContextAttribs;
 
-    bool EnsureInitialized(bool aUseMesaLlvmPipe);
+    bool EnsureInitialized();
     HWND CreateDummyWindow(HDC *aWindowDC = nullptr);
 
     bool HasRobustness() const { return mHasRobustness; }
@@ -77,9 +71,6 @@ public:
     HDC GetWindowDC() const {return mWindowDC; }
     HGLRC GetWindowGLContext() const {return mWindowGLContext; }
     int GetWindowPixelFormat() const { return mWindowPixelFormat; }
-    LibraryType GetLibraryType() const { return mLibType; }
-    static LibraryType SelectLibrary(const ContextFlags& aFlags);
-    
     PRLibrary *GetOGLLibrary() { return mOGLLibrary; }
 
 private:
@@ -91,12 +82,11 @@ private:
     HDC mWindowDC;
     HGLRC mWindowGLContext;
     int mWindowPixelFormat;
-    LibraryType mLibType;
 
 };
 
 // a global WGLLibrary instance
-extern WGLLibrary sWGLLibrary[WGLLibrary::LIBS_MAX];
+extern WGLLibrary sWGLLibrary;
 
 } /* namespace gl */
 } /* namespace mozilla */

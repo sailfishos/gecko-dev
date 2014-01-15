@@ -108,12 +108,6 @@ static size_t gMaxStackSize = 2 * 128 * sizeof(size_t) * 1024;
 static size_t gMaxStackSize = 128 * sizeof(size_t) * 1024;
 #endif
 
-#ifdef JS_THREADSAFE
-static unsigned gStackBaseThreadIndex;
-#else
-static uintptr_t gStackBase;
-#endif
-
 /*
  * Limit the timeout to 30 minutes to prevent an overflow on platfoms
  * that represent the time internally in microseconds using 32-bit int.
@@ -862,7 +856,7 @@ Evaluate(JSContext *cx, unsigned argc, jsval *vp)
     RootedObject element(cx);
     RootedString elementProperty(cx);
     JSAutoByteString fileNameBytes;
-    RootedString sourceURL(cx);
+    RootedString displayURL(cx);
     RootedString sourceMapURL(cx);
     unsigned lineNumber = 1;
     RootedObject global(cx, nullptr);
@@ -920,11 +914,11 @@ Evaluate(JSContext *cx, unsigned argc, jsval *vp)
                 return false;
         }
 
-        if (!JS_GetProperty(cx, opts, "sourceURL", &v))
+        if (!JS_GetProperty(cx, opts, "displayURL", &v))
             return false;
         if (!v.isUndefined()) {
-            sourceURL = ToString(cx, v);
-            if (!sourceURL)
+            displayURL = ToString(cx, v);
+            if (!displayURL)
                 return false;
         }
 
@@ -1031,11 +1025,11 @@ Evaluate(JSContext *cx, unsigned argc, jsval *vp)
                 return false;
         }
 
-        if (sourceURL && !script->scriptSource()->hasSourceURL()) {
-            const jschar *surl = JS_GetStringCharsZ(cx, sourceURL);
-            if (!surl)
+        if (displayURL && !script->scriptSource()->hasDisplayURL()) {
+            const jschar *durl = JS_GetStringCharsZ(cx, displayURL);
+            if (!durl)
                 return false;
-            if (!script->scriptSource()->setSourceURL(cx, surl))
+            if (!script->scriptSource()->setDisplayURL(cx, durl))
                 return false;
         }
         if (sourceMapURL && !script->scriptSource()->hasSourceMapURL()) {
@@ -5236,7 +5230,7 @@ ShellCloseAsmJSCacheEntryForWrite(HandleObject global, size_t serializedSize, ui
 }
 
 static bool
-ShellBuildId(js::Vector<char> *buildId)
+ShellBuildId(JS::BuildIdCharVector *buildId)
 {
     // The browser embeds the date into the buildid and the buildid is embedded
     // in the binary, so every 'make' necessarily builds a new firefox binary.
@@ -5721,7 +5715,6 @@ main(int argc, char **argv, char **envp)
     sArgc = argc;
     sArgv = argv;
 
-    int stackDummy;
     JSRuntime *rt;
     JSContext *cx;
     int result;
@@ -5737,15 +5730,6 @@ main(int argc, char **argv, char **envp)
 
 #ifdef HAVE_SETLOCALE
     setlocale(LC_ALL, "");
-#endif
-
-#ifdef JS_THREADSAFE
-    if (PR_FAILURE == PR_NewThreadPrivateIndex(&gStackBaseThreadIndex, nullptr) ||
-        PR_FAILURE == PR_SetThreadPrivate(gStackBaseThreadIndex, &stackDummy)) {
-        return 1;
-    }
-#else
-    gStackBase = (uintptr_t) &stackDummy;
 #endif
 
 #ifdef XP_OS2

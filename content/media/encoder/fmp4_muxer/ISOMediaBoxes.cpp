@@ -324,10 +324,13 @@ MovieFragmentBox::MovieFragmentBox(uint32_t aType, ISOControl* aControl)
   , mTrackType(aType)
 {
   boxes.AppendElement(new MovieFragmentHeaderBox(mTrackType, aControl));
+
+  // Always adds flags_data_offset_present in each TrackFragmentBox, Android
+  // parser requires this flag to calculate the correct bitstream offset.
   if (mTrackType & Audio_Track) {
     boxes.AppendElement(
       new TrackFragmentBox(Audio_Track,
-                           flags_sample_size_present,
+                           flags_sample_size_present | flags_data_offset_present,
                            aControl));
   }
   if (mTrackType & Video_Track) {
@@ -453,7 +456,7 @@ MovieExtendsBox::~MovieExtendsBox()
 nsresult
 ChunkOffsetBox::Generate(uint32_t* aBoxSize)
 {
-  // fragmented, we don't need time to sample table
+  // We don't need time to sample table in fragmented mp4.
   entry_count = 0;
   size += sizeof(entry_count);
   *aBoxSize = size;
@@ -483,7 +486,7 @@ ChunkOffsetBox::~ChunkOffsetBox()
 nsresult
 SampleToChunkBox::Generate(uint32_t* aBoxSize)
 {
-  // fragmented, we don't need time to sample table
+  // We don't need time to sample table in fragmented mp4
   entry_count = 0;
   size += sizeof(entry_count);
   *aBoxSize = size;
@@ -513,7 +516,7 @@ SampleToChunkBox::~SampleToChunkBox()
 nsresult
 TimeToSampleBox::Generate(uint32_t* aBoxSize)
 {
-  // fragmented, we don't need time to sample table
+  // We don't need time to sample table in fragmented mp4.
   entry_count = 0;
   size += sizeof(entry_count);
   *aBoxSize = size;

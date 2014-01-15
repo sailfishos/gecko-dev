@@ -13,6 +13,8 @@
 #include "mozilla/gfx/2D.h"
 #include "gfx2DGlue.h"
 
+using namespace mozilla::gfx;
+
 namespace mozilla {
 namespace gl {
 
@@ -204,14 +206,14 @@ GetActualReadFormats(GLContext* gl, GLenum destFormat, GLenum destType,
     }
 }
 
-static void SwapRAndBComponents(gfxImageSurface* surf)
+static void SwapRAndBComponents(DataSourceSurface* surf)
 {
-  uint8_t *row = surf->Data();
+  uint8_t *row = surf->GetData();
 
-  size_t rowBytes = surf->Width()*4;
+  size_t rowBytes = surf->GetSize().width*4;
   size_t rowHole = surf->Stride() - rowBytes;
 
-  size_t rows = surf->Height();
+  size_t rows = surf->GetSize().height;
 
   while (rows) {
 
@@ -282,19 +284,19 @@ ReadPixelsIntoImageSurface(GLContext* gl, gfxImageSurface* dest) {
         if (gl->DebugMode()) {
             NS_WARNING("Needing intermediary surface for ReadPixels. This will be slow!");
         }
-        gfx::SurfaceFormat readFormatGFX;
+        SurfaceFormat readFormatGFX;
 
         switch (readFormat) {
             case LOCAL_GL_RGBA:
             case LOCAL_GL_BGRA: {
-                readFormatGFX = hasAlpha ? gfx::FORMAT_B8G8R8A8
-                                         : gfx::FORMAT_B8G8R8X8;
+                readFormatGFX = hasAlpha ? SurfaceFormat::B8G8R8A8
+                                         : SurfaceFormat::B8G8R8X8;
                 break;
             }
             case LOCAL_GL_RGB: {
                 MOZ_ASSERT(readPixelSize == 2);
                 MOZ_ASSERT(readType == LOCAL_GL_UNSIGNED_SHORT_5_6_5_REV);
-                readFormatGFX = gfx::FORMAT_R5G6B5;
+                readFormatGFX = SurfaceFormat::R5G6B5;
                 break;
             }
             default: {
@@ -358,7 +360,12 @@ ReadPixelsIntoImageSurface(GLContext* gl, gfxImageSurface* dest) {
         // So we just copied in RGBA in big endian, or le: 0xAABBGGRR.
         // We want 0xAARRGGBB, so swap R and B:
         dest->Flush();
-        SwapRAndBComponents(readSurf);
+        RefPtr<DataSourceSurface> readDSurf =
+            Factory::CreateWrappingDataSourceSurface(readSurf->Data(),
+                                                     readSurf->Stride(),
+                                                     ToIntSize(readSurf->GetSize()),
+                                                     ImageFormatToSurfaceFormat(readSurf->Format()));
+        SwapRAndBComponents(readDSurf);
         dest->MarkDirty();
 
         gfxContext ctx(dest);
@@ -371,7 +378,7 @@ ReadPixelsIntoImageSurface(GLContext* gl, gfxImageSurface* dest) {
     // RGBA reads to RGBA images from no-alpha buffers.
 #ifdef XP_MACOSX
     if (gl->WorkAroundDriverBugs() &&
-        gl->Vendor() == gl::GLContext::VendorNVIDIA &&
+        gl->Vendor() == gl::GLVendor::NVIDIA &&
         dest->Format() == gfxImageFormatARGB32 &&
         width && height)
     {
@@ -397,33 +404,50 @@ ReadPixelsIntoImageSurface(GLContext* gl, gfxImageSurface* dest) {
 #endif
 }
 
-static already_AddRefed<gfxImageSurface> YInvertImageSurface(gfxImageSurface* aSurf)
+static TemporaryRef<DataSourceSurface> YInvertImageSurface(DataSourceSurface* aSurf)
 {
-  gfxIntSize size = aSurf->GetSize();
-  nsRefPtr<gfxImageSurface> temp = new gfxImageSurface(size, aSurf->Format());
-  nsRefPtr<gfxContext> ctx = new gfxContext(temp);
+  RefPtr<DataSourceSurface> temp =
+    Factory::CreateDataSourceSurfaceWithStride(aSurf->GetSize(),
+                                               aSurf->GetFormat(),
+                                               aSurf->Stride());
+  RefPtr<DrawTarget> dt =
+    Factory::CreateDrawTargetForData(BackendType::CAIRO,
+                                     temp->GetData(),
+                                     temp->GetSize(),
+                                     temp->Stride(),
+                                     temp->GetFormat());
+  nsRefPtr<gfxContext> ctx = new gfxContext(dt);
   ctx->SetOperator(gfxContext::OPERATOR_SOURCE);
   ctx->Scale(1.0, -1.0);
-  ctx->Translate(-gfxPoint(0.0, size.height));
-  ctx->SetSource(aSurf);
+  ctx->Translate(-gfxPoint(0.0, aSurf->GetSize().height));
+
+  nsRefPtr<gfxImageSurface> thebesSurf =
+    new gfxImageSurface(aSurf->GetData(),
+                        ThebesIntSize(aSurf->GetSize()),
+                        aSurf->Stride(),
+                        SurfaceFormatToImageFormat(aSurf->GetFormat()));
+  ctx->SetSource(thebesSurf);
   ctx->Paint();
   return temp.forget();
 }
 
-already_AddRefed<gfxImageSurface>
-GetTexImage(GLContext* gl, GLuint aTexture, bool aYInvert, gfx::SurfaceFormat aFormat)
+TemporaryRef<DataSourceSurface>
+ReadBackSurface(GLContext* gl, GLuint aTexture, bool aYInvert, SurfaceFormat aFormat)
 {
     gl->MakeCurrent();
     gl->GuaranteeResolve();
     gl->fActiveTexture(LOCAL_GL_TEXTURE0);
     gl->fBindTexture(LOCAL_GL_TEXTURE_2D, aTexture);
 
-    gfxIntSize size;
+    IntSize size;
     gl->fGetTexLevelParameteriv(LOCAL_GL_TEXTURE_2D, 0, LOCAL_GL_TEXTURE_WIDTH, &size.width);
     gl->fGetTexLevelParameteriv(LOCAL_GL_TEXTURE_2D, 0, LOCAL_GL_TEXTURE_HEIGHT, &size.height);
 
-    nsRefPtr<gfxImageSurface> surf = new gfxImageSurface(size, gfxImageFormatARGB32);
-    if (!surf || surf->CairoStatus()) {
+    RefPtr<DataSourceSurface> surf =
+      Factory::CreateDataSourceSurfaceWithStride(size, SurfaceFormat::B8G8R8A8,
+                                                 GetAlignedStride<4>(size.width * BytesPerPixel(SurfaceFormat::B8G8R8A8)));
+
+    if (!surf) {
         return nullptr;
     }
 
@@ -432,30 +456,17 @@ GetTexImage(GLContext* gl, GLuint aTexture, bool aYInvert, gfx::SurfaceFormat aF
     if (currentPackAlignment != 4) {
         gl->fPixelStorei(LOCAL_GL_PACK_ALIGNMENT, 4);
     }
-    gl->fGetTexImage(LOCAL_GL_TEXTURE_2D, 0, LOCAL_GL_RGBA, LOCAL_GL_UNSIGNED_BYTE, surf->Data());
+    gl->fGetTexImage(LOCAL_GL_TEXTURE_2D, 0, LOCAL_GL_RGBA, LOCAL_GL_UNSIGNED_BYTE, surf->GetData());
     if (currentPackAlignment != 4) {
         gl->fPixelStorei(LOCAL_GL_PACK_ALIGNMENT, currentPackAlignment);
     }
 
-    if (aFormat == gfx::FORMAT_R8G8B8A8 || aFormat == gfx::FORMAT_R8G8B8X8) {
+    if (aFormat == SurfaceFormat::R8G8B8A8 || aFormat == SurfaceFormat::R8G8B8X8) {
       SwapRAndBComponents(surf);
     }
 
     if (aYInvert) {
       surf = YInvertImageSurface(surf);
-    }
-    return surf.forget();
-}
-
-TemporaryRef<gfx::DataSourceSurface>
-ReadBackSurface(GLContext* gl, GLuint aTexture, bool aYInvert, gfx::SurfaceFormat aFormat)
-{
-    nsRefPtr<gfxImageSurface> image = GetTexImage(gl, aTexture, aYInvert, aFormat);
-    RefPtr<gfx::DataSourceSurface> surf =
-        gfx::Factory::CreateDataSourceSurface(gfx::ToIntSize(image->GetSize()), aFormat);
-
-    if (!image->CopyTo(surf)) {
-        return nullptr;
     }
 
     return surf.forget();
@@ -497,15 +508,10 @@ GLReadTexImageHelper::ReadTexImage(GLuint aTextureId,
         return nullptr;
     }
 
-    realGLboolean oldBlend, oldScissor;
     GLint oldrb, oldfb, oldprog, oldTexUnit, oldTex;
     GLuint rb, fb;
 
     do {
-        /* Save current GL state */
-        oldBlend = mGL->fIsEnabled(LOCAL_GL_BLEND);
-        oldScissor = mGL->fIsEnabled(LOCAL_GL_SCISSOR_TEST);
-
         mGL->fGetIntegerv(LOCAL_GL_RENDERBUFFER_BINDING, &oldrb);
         mGL->fGetIntegerv(LOCAL_GL_FRAMEBUFFER_BINDING, &oldfb);
         mGL->fGetIntegerv(LOCAL_GL_CURRENT_PROGRAM, &oldprog);
@@ -525,11 +531,10 @@ GLReadTexImageHelper::ReadTexImage(GLuint aTextureId,
             break;
         }
 
-        /* Set required GL state */
-        mGL->fDisable(LOCAL_GL_BLEND);
-        mGL->fDisable(LOCAL_GL_SCISSOR_TEST);
+        ScopedGLState scopedScissorTestState(mGL, LOCAL_GL_SCISSOR_TEST, false);
+        ScopedGLState scopedBlendState(mGL, LOCAL_GL_BLEND, false);
 
-        mGL->PushViewportRect(nsIntRect(0, 0, aSize.width, aSize.height));
+        ScopedViewportRect(mGL, 0, 0, aSize.width, aSize.height);
 
         /* Setup renderbuffer */
         mGL->fGenRenderbuffers(1, &rb);
@@ -621,19 +626,11 @@ GLReadTexImageHelper::ReadTexImage(GLuint aTextureId,
     mGL->fDeleteRenderbuffers(1, &rb);
     mGL->fDeleteFramebuffers(1, &fb);
 
-    if (oldBlend)
-        mGL->fEnable(LOCAL_GL_BLEND);
-
-    if (oldScissor)
-        mGL->fEnable(LOCAL_GL_SCISSOR_TEST);
-
     if (aTextureId)
         mGL->fBindTexture(aTextureTarget, oldTex);
 
     if (oldTexUnit != LOCAL_GL_TEXTURE0)
         mGL->fActiveTexture(oldTexUnit);
-
-    mGL->PopViewportRect();
 
     return isurf.forget();
 }

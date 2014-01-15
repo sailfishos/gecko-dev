@@ -786,7 +786,11 @@ var AlertsHelper = {
             clicked: (detail.type === "desktop-notification-click"),
             title: listener.title,
             body: listener.text,
-            imageURL: listener.imageURL
+            imageURL: listener.imageURL,
+            lang: listener.lang,
+            dir: listener.dir,
+            id: listener.id,
+            tag: listener.tag
           },
           Services.io.newURI(listener.target, null, null),
           Services.io.newURI(listener.manifestURL, null, null)
@@ -911,7 +915,11 @@ var AlertsHelper = {
       title: data.title,
       text: data.text,
       manifestURL: details.manifestURL,
-      imageURL: data.imageURL
+      imageURL: data.imageURL,
+      lang: details.lang || undefined,
+      id: details.id || undefined,
+      dir: details.dir || undefined,
+      tag: details.tag || undefined
     };
     this.registerAppListener(data.uid, listener);
 
@@ -1031,6 +1039,7 @@ let IndexedDBPromptHelper = {
 let RemoteDebugger = {
   _promptDone: false,
   _promptAnswer: false,
+  _running: false,
 
   prompt: function debugger_prompt() {
     this._promptDone = false;
@@ -1051,16 +1060,29 @@ let RemoteDebugger = {
     this._promptDone = true;
   },
 
+  get isDebugging() {
+    if (!this._running) {
+      return false;
+    }
+
+    return DebuggerServer._connections &&
+           Object.keys(DebuggerServer._connections).length > 0;
+  },
+
   // Start the debugger server.
   start: function debugger_start() {
+    if (this._running) {
+      return;
+    }
+
     if (!DebuggerServer.initialized) {
       // Ask for remote connections.
       DebuggerServer.init(this.prompt.bind(this));
       DebuggerServer.chromeWindowType = "navigator:browser";
       DebuggerServer.addActors("resource://gre/modules/devtools/server/actors/webbrowser.js");
-      // Until we implement unix domain socket, we enable content actors
-      // only on development devices
-      if (Services.prefs.getBoolPref("devtools.debugger.enable-content-actors")) {
+      // Prevent tab actors to be loaded in parent process,
+      // unless we enable certified apps debugging
+      if (!Services.prefs.getBoolPref("devtools.debugger.forbid-certified-apps")) {
         DebuggerServer.addActors("resource://gre/modules/devtools/server/actors/script.js");
         DebuggerServer.addGlobalActor(DebuggerServer.ChromeDebuggerActor, "chromeDebugger");
         DebuggerServer.addActors("resource://gre/modules/devtools/server/actors/webconsole.js");
@@ -1071,7 +1093,6 @@ let RemoteDebugger = {
         DebuggerServer.registerModule("devtools/server/actors/inspector");
         DebuggerServer.registerModule("devtools/server/actors/styleeditor");
         DebuggerServer.registerModule("devtools/server/actors/stylesheets");
-        DebuggerServer.enableWebappsContentActor = true;
       }
       DebuggerServer.addActors('chrome://browser/content/dbg-browser-actors.js');
       DebuggerServer.addActors("resource://gre/modules/devtools/server/actors/webapps.js");
@@ -1088,13 +1109,23 @@ let RemoteDebugger = {
                "/data/local/debugger-socket";
     try {
       DebuggerServer.openListener(path);
+      // Temporary event, until bug 942756 lands and offer a way to know
+      // when the server is up and running
+      Services.obs.notifyObservers(null, 'debugger-server-started', null);
+      this._running = true;
     } catch (e) {
       dump('Unable to start debugger server: ' + e + '\n');
     }
   },
 
   stop: function debugger_stop() {
+    if (!this._running) {
+      return;
+    }
+
     if (!DebuggerServer.initialized) {
+      // Can this really happen if we are running?
+      this._running = false;
       return;
     }
 
@@ -1103,6 +1134,7 @@ let RemoteDebugger = {
     } catch (e) {
       dump('Unable to stop debugger server: ' + e + '\n');
     }
+    this._running = false;
   }
 }
 
@@ -1128,14 +1160,16 @@ window.addEventListener('ContentStart', function ss_onContentStart() {
                                             'canvas');
       var width = window.innerWidth;
       var height = window.innerHeight;
-      canvas.setAttribute('width', width);
-      canvas.setAttribute('height', height);
+      var scale = window.devicePixelRatio;
+      canvas.setAttribute('width', width * scale);
+      canvas.setAttribute('height', height * scale);
 
       var context = canvas.getContext('2d');
       var flags =
         context.DRAWWINDOW_DRAW_CARET |
         context.DRAWWINDOW_DRAW_VIEW |
         context.DRAWWINDOW_USE_WIDGET_LAYERS;
+      context.scale(scale, scale);
       context.drawWindow(window, 0, 0, width, height,
                          'rgb(255,255,255)', flags);
 

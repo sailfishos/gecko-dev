@@ -341,7 +341,7 @@ JS_SetWatchPoint(JSContext *cx, JSObject *obj_, jsid id_,
     if (!JSObject::sparsifyDenseElements(cx, obj))
         return false;
 
-    types::MarkTypePropertyConfigured(cx, obj, propid);
+    types::MarkTypePropertyNonData(cx, obj, propid);
 
     WatchpointMap *wpmap = cx->compartment()->watchpointMap;
     if (!wpmap) {
@@ -544,7 +544,8 @@ JS_GetScriptOriginPrincipals(JSScript *script)
 JS_PUBLIC_API(JSFunction *)
 JS_GetScriptFunction(JSContext *cx, JSScript *script)
 {
-    return script->function();
+    script->ensureNonLazyCanonicalFunction(cx);
+    return script->functionNonDelazifying();
 }
 
 JS_PUBLIC_API(JSObject *)
@@ -934,10 +935,7 @@ JS::DescribeStack(JSContext *cx, unsigned maxFrames)
     Vector<FrameDescription> frames(cx);
 
     for (NonBuiltinScriptFrameIter i(cx); !i.done(); ++i) {
-        FrameDescription desc;
-        desc.script = i.script();
-        desc.lineno = PCToLineNumber(i.script(), i.pc());
-        desc.fun = i.maybeCallee();
+        FrameDescription desc(i.script(), i.maybeCallee(), i.pc());
         if (!frames.append(desc))
             return nullptr;
         if (frames.length() == maxFrames)
@@ -956,7 +954,9 @@ JS::DescribeStack(JSContext *cx, unsigned maxFrames)
 JS_PUBLIC_API(void)
 JS::FreeStackDescription(JSContext *cx, JS::StackDescription *desc)
 {
-    js_delete(desc->frames);
+    for (size_t i = 0; i < desc->nframes; ++i)
+        desc->frames[i].~FrameDescription();
+    js_free(desc->frames);
     js_delete(desc);
 }
 

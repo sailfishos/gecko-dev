@@ -53,7 +53,8 @@ pref("apz.axis_lock_mode", 2);
 pref("apz.cross_slide.enabled", true);
 
 // Enable Microsoft TSF support by default for imes.
-pref("intl.enable_tsf_support", true);
+pref("intl.tsf.enable", true);
+pref("intl.tsf.support_imm", false);
 
 pref("general.autoScroll", true);
 pref("general.smoothScroll", true);
@@ -120,6 +121,9 @@ pref("browser.display.history.maxresults", 100);
 
 /* max items per section of the startui */
 pref("browser.display.startUI.maxresults", 16);
+
+// Number of times to display firstrun instructions on new tab page
+pref("browser.firstrun.count", 3);
 
 // Backspace and Shift+Backspace behavior
 // 0 goes Back/Forward

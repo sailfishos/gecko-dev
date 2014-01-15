@@ -54,9 +54,12 @@ function shouldLoadURI(aURI) {
 
 function resolveURIInternal(aCmdLine, aArgument) {
   var uri = aCmdLine.resolveURI(aArgument);
+  var urifixup = Components.classes["@mozilla.org/docshell/urifixup;1"]
+                           .getService(nsIURIFixup);
 
   if (!(uri instanceof nsIFileURL)) {
-    return uri;
+    return urifixup.createFixupURI(aArgument,
+                                   urifixup.FIXUP_FLAG_FIX_SCHEME_TYPOS);
   }
 
   try {
@@ -71,9 +74,6 @@ function resolveURIInternal(aCmdLine, aArgument) {
   // doesn't exist. Try URI fixup heuristics: see bug 290782.
  
   try {
-    var urifixup = Components.classes["@mozilla.org/docshell/urifixup;1"]
-                             .getService(nsIURIFixup);
-
     uri = urifixup.createFixupURI(aArgument, 0);
   }
   catch (e) {
@@ -582,25 +582,6 @@ nsBrowserContentHandler.prototype = {
               overridePage = getPostUpdateOverridePage(overridePage);
 
             overridePage = overridePage.replace("%OLD_VERSION%", old_mstone);
-            break;
-
-          // Temporary case for Australis whatsnew
-          case OVERRIDE_NEW_BUILD_ID:
-            let locale = "en-US";
-            try {
-              locale = Services.prefs.getCharPref("general.useragent.locale");
-            } catch (e) {}
-
-            let showedAustralisWhatsNew = false;
-            try {
-              showedAustralisWhatsNew = Services.prefs.getBoolPref("browser.showedAustralisWhatsNew");
-            } catch(e) {}
-
-            // Show the Australis whatsnew page for en-US if we haven't yet shown it
-            if (!showedAustralisWhatsNew && locale == "en-US") {
-              Services.prefs.setBoolPref("browser.showedAustralisWhatsNew", true);
-              overridePage = "https://www.mozilla.org/en-US/firefox/29.0a1/whatsnew/";
-            }
             break;
         }
       }

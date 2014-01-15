@@ -11,6 +11,7 @@
 #include "nsNSSComponent.h"
 
 #include "CertVerifier.h"
+#include "mozilla/Telemetry.h"
 #include "nsCertVerificationThread.h"
 #include "nsAppDirectoryServiceDefs.h"
 #include "nsComponentManagerUtils.h"
@@ -994,27 +995,36 @@ CipherSuiteChangeObserver::Observe(nsISupports *aSubject,
 } // anonymous namespace
 
 // Caller must hold a lock on nsNSSComponent::mutex when calling this function
-void nsNSSComponent::setValidationOptions()
+void nsNSSComponent::setValidationOptions(bool isInitialSetting)
 {
   nsNSSShutDownPreventionLock locker;
 
   bool crlDownloading = Preferences::GetBool("security.CRL_download.enabled",
                                              false);
+
+  // This preference controls whether we do OCSP fetching and does not affect
+  // OCSP stapling.
   // 0 = disabled, 1 = enabled
   int32_t ocspEnabled = Preferences::GetInt("security.OCSP.enabled",
                                             OCSP_ENABLED_DEFAULT);
 
-  bool ocspRequired = Preferences::GetBool("security.OCSP.require", false);
+  bool ocspRequired = ocspEnabled &&
+    Preferences::GetBool("security.OCSP.require", false);
+
+  // We measure the setting of the pref at startup only to minimize noise by
+  // addons that may muck with the settings, though it probably doesn't matter.
+  if (isInitialSetting) {
+    Telemetry::Accumulate(Telemetry::CERT_OCSP_ENABLED, ocspEnabled);
+    Telemetry::Accumulate(Telemetry::CERT_OCSP_REQUIRED, ocspRequired);
+  }
+
   bool aiaDownloadEnabled = Preferences::GetBool("security.missing_cert_download.enabled",
                                                  false);
 
   bool ocspStaplingEnabled = Preferences::GetBool("security.ssl.enable_ocsp_stapling",
                                                   true);
-  if (!ocspEnabled) {
-    ocspStaplingEnabled = false;
-  }
-  PublicSSLState()->SetOCSPStaplingEnabled(ocspStaplingEnabled);
-  PrivateSSLState()->SetOCSPStaplingEnabled(ocspStaplingEnabled);
+  PublicSSLState()->SetOCSPOptions(ocspEnabled, ocspStaplingEnabled);
+  PrivateSSLState()->SetOCSPOptions(ocspEnabled, ocspStaplingEnabled);
 
   setNonPkixOcspEnabled(ocspEnabled);
 
@@ -1268,7 +1278,7 @@ nsNSSComponent::InitializeNSS()
     }
 
     // dynamic options from prefs
-    setValidationOptions();
+    setValidationOptions(true);
 
     mHttpForNSS.initTable();
     mHttpForNSS.registerHttpClient();
@@ -1667,7 +1677,7 @@ nsNSSComponent::Observe(nsISupports *aSubject, const char *aTopic,
                || prefName.Equals("security.OCSP.GET.enabled")
                || prefName.Equals("security.ssl.enable_ocsp_stapling")) {
       MutexAutoLock lock(mutex);
-      setValidationOptions();
+      setValidationOptions(false);
     } else if (prefName.Equals("network.ntlm.send-lm-response")) {
       bool sendLM = Preferences::GetBool("network.ntlm.send-lm-response",
                                          SEND_LM_DEFAULT);

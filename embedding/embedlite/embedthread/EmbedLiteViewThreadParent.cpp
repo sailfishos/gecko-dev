@@ -265,7 +265,8 @@ bool
 EmbedLiteViewThreadParent::RecvUpdateZoomConstraints(const bool& aAllowZoom, const float& min, const float& max)
 {
   if (mController) {
-    mController->GetManager()->UpdateZoomConstraints(ScrollableLayerGuid(mRootLayerTreeId, 0, 0), aAllowZoom, CSSToScreenScale(min), CSSToScreenScale(max));
+    ZoomConstraints constraints(aAllowZoom, CSSToScreenScale(min), CSSToScreenScale(max));
+    mController->GetManager()->UpdateZoomConstraints(ScrollableLayerGuid(mRootLayerTreeId, 0, 0), constraints);
   }
   return true;
 }
@@ -365,7 +366,7 @@ EmbedLiteViewThreadParent::LoadFrameScript(const char* aURI)
 }
 
 void
-EmbedLiteViewThreadParent::DoSendAsyncMessage(const PRUnichar* aMessageName, const PRUnichar* aMessage)
+EmbedLiteViewThreadParent::DoSendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage)
 {
   LOGT("msgName:%ls, msg:%ls", aMessageName, aMessage);
   const nsDependentString msgname(aMessageName);
@@ -434,18 +435,18 @@ EmbedLiteViewThreadParent::RecvSyncMessage(const nsString& aMessage,
   return true;
 }
 
-static inline SurfaceFormat
+static inline gfx::SurfaceFormat
 _depth_to_gfxformat(int depth)
 {
   switch (depth) {
     case 32:
-      return SurfaceFormat::FORMAT_R8G8B8A8;
+      return SurfaceFormat::R8G8B8A8;
     case 24:
-      return SurfaceFormat::FORMAT_R8G8B8X8;
+      return SurfaceFormat::R8G8B8X8;
     case 16:
-      return SurfaceFormat::FORMAT_R5G6B5;
+      return SurfaceFormat::R5G6B5;
     default:
-      return SurfaceFormat::FORMAT_UNKNOWN;
+      return SurfaceFormat::UNKNOWN;
   }
 }
 

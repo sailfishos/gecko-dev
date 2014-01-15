@@ -27,7 +27,7 @@ class EmbedLiteViewImplIface
     virtual void StopLoad() {}
     virtual void Reload(bool hardReload) {}
     virtual void LoadFrameScript(const char* aURI) {}
-    virtual void DoSendAsyncMessage(const PRUnichar* aMessageName, const PRUnichar* aMessage) {}
+    virtual void DoSendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage) {}
     virtual void AddMessageListener(const char* aMessageName) {}
     virtual void RemoveMessageListener(const char* aMessageName) {}
     virtual void AddMessageListeners(const nsTArray<nsString>&) {}

@@ -700,6 +700,7 @@ nsEventListenerManager::SetEventHandler(nsIAtom *aName,
                                  NS_ConvertUTF8toUTF16(asciiSpec),
                                  scriptSample,
                                  0,
+                                 EmptyString(),
                                  EmptyString());
       }
 
@@ -719,6 +720,8 @@ nsEventListenerManager::SetEventHandler(nsIAtom *aName,
 
   nsIScriptContext* context = global->GetScriptContext();
   NS_ENSURE_TRUE(context, NS_ERROR_FAILURE);
+
+  NS_ENSURE_STATE(global->GetGlobalJSObject());
 
   JSAutoRequest ar(context->GetNativeContext());
   JS::Rooted<JSObject*> scope(context->GetNativeContext(),

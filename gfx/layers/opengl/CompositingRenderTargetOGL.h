@@ -29,6 +29,9 @@ namespace mozilla {
 namespace gl {
   class BindableTexture;
 }
+namespace gfx {
+  class DataSourceSurface;
+}
 
 namespace layers {
 
@@ -144,7 +147,7 @@ public:
   {
     // XXX - Should it be implemented ? is the above assert true ?
     MOZ_ASSERT(false, "Not implemented");
-    return gfx::FORMAT_UNKNOWN;
+    return gfx::SurfaceFormat::UNKNOWN;
   }
 
   const gfxMatrix& GetTransform() {
@@ -152,7 +155,7 @@ public:
   }
 
 #ifdef MOZ_DUMP_PAINTING
-  virtual already_AddRefed<gfxImageSurface> Dump(Compositor* aCompositor);
+  virtual TemporaryRef<gfx::DataSourceSurface> Dump(Compositor* aCompositor);
 #endif
 
 private:

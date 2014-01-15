@@ -410,10 +410,19 @@ Promise::Resolve(const GlobalObject& aGlobal, JSContext* aCx,
     }
   }
 
-  nsRefPtr<Promise> promise = new Promise(window);
+  return Resolve(window, aCx,
+                 aValue.WasPassed() ? aValue.Value() : JS::UndefinedHandleValue,
+                 aRv);
+}
 
-  promise->MaybeResolveInternal(aCx,
-    aValue.WasPassed() ? aValue.Value() : JS::UndefinedHandleValue);
+/* static */ already_AddRefed<Promise>
+Promise::Resolve(nsPIDOMWindow* aWindow, JSContext* aCx,
+                JS::Handle<JS::Value> aValue, ErrorResult& aRv)
+{
+  // aWindow may be null.
+  nsRefPtr<Promise> promise = new Promise(aWindow);
+
+  promise->MaybeResolveInternal(aCx, aValue);
   return promise.forget();
 }
 
@@ -430,10 +439,19 @@ Promise::Reject(const GlobalObject& aGlobal, JSContext* aCx,
     }
   }
 
-  nsRefPtr<Promise> promise = new Promise(window);
+  return Reject(window, aCx,
+                aValue.WasPassed() ? aValue.Value() : JS::UndefinedHandleValue,
+                aRv);
+}
 
-  promise->MaybeRejectInternal(aCx,
-    aValue.WasPassed() ? aValue.Value() : JS::UndefinedHandleValue);
+/* static */ already_AddRefed<Promise>
+Promise::Reject(nsPIDOMWindow* aWindow, JSContext* aCx,
+                JS::Handle<JS::Value> aValue, ErrorResult& aRv)
+{
+  // aWindow may be null.
+  nsRefPtr<Promise> promise = new Promise(aWindow);
+
+  promise->MaybeRejectInternal(aCx, aValue);
   return promise.forget();
 }
 
@@ -561,12 +579,16 @@ Promise::MaybeReportRejected()
   }
 
   // Now post an event to do the real reporting async
-  NS_DispatchToMainThread(
+  // Since Promises preserve their wrapper, it is essential to nsRefPtr<> the
+  // AsyncErrorReporter, otherwise if the call to DispatchToMainThread fails, it
+  // will leak. See Bug 958684.
+  nsRefPtr<AsyncErrorReporter> r =
     new AsyncErrorReporter(JS_GetObjectRuntime(&mResult.toObject()),
                            report,
                            nullptr,
                            isChromeError,
-                           win));
+                           win);
+  NS_DispatchToMainThread(r);
 }
 
 void

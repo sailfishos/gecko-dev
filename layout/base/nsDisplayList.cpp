@@ -716,7 +716,7 @@ static void RecordFrameMetrics(nsIFrame* aForFrame,
       ScreenIntRect screenBounds = ScreenIntRect::FromUnknownRect(mozilla::gfx::IntRect(
           bounds.x, bounds.y, bounds.width, bounds.height));
       AdjustForScrollBars(screenBounds, scrollableFrame);
-      metrics.mCompositionBounds = screenBounds.ClampRect(metrics.mCompositionBounds);
+      metrics.mCompositionBounds = metrics.mCompositionBounds.ForceInside(screenBounds);
       useWidgetBounds = true;
     }
   }
@@ -4798,15 +4798,20 @@ nsDisplaySVGEffects::BuildLayer(nsDisplayListBuilder* aBuilder,
   bool isOK = true;
   effectProperties.GetClipPathFrame(&isOK);
   effectProperties.GetMaskFrame(&isOK);
-  effectProperties.GetFilterFrame(&isOK);
+  bool hasFilter = effectProperties.GetFilterFrame(&isOK) != nullptr;
 
   if (!isOK) {
     return nullptr;
   }
 
+  ContainerLayerParameters newContainerParameters = aContainerParameters;
+  if (hasFilter) {
+    newContainerParameters.mDisableSubpixelAntialiasingInDescendants = true;
+  }
+
   nsRefPtr<ContainerLayer> container = aManager->GetLayerBuilder()->
     BuildContainerLayerFor(aBuilder, aManager, mFrame, this, mList,
-                           aContainerParameters, nullptr);
+                           newContainerParameters, nullptr);
 
   return container.forget();
 }

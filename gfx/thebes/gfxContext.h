@@ -48,10 +48,19 @@ public:
 
     /**
      * Initialize this context from a DrawTarget.
+     * Strips any transform from aTarget.
+     * aTarget will be flushed in the gfxContext's destructor.
      */
     gfxContext(mozilla::gfx::DrawTarget *aTarget);
 
     ~gfxContext();
+
+    /**
+     * Create a new gfxContext wrapping aTarget and preserving aTarget's
+     * transform. Note that the transform is moved from aTarget to the resulting
+     * gfxContext, aTarget will no longer have its transform.
+     */
+    static already_AddRefed<gfxContext> ContextForDrawTarget(mozilla::gfx::DrawTarget* aTarget);
 
     /**
      * Return the surface that this gfxContext was created with
@@ -722,12 +731,12 @@ private:
   
   struct AzureState {
     AzureState()
-      : op(mozilla::gfx::OP_OVER)
+      : op(mozilla::gfx::CompositionOp::OP_OVER)
       , opIsClear(false)
       , color(0, 0, 0, 1.0f)
       , clipWasReset(false)
-      , fillRule(mozilla::gfx::FILL_WINDING)
-      , aaMode(mozilla::gfx::AA_SUBPIXEL)
+      , fillRule(mozilla::gfx::FillRule::FILL_WINDING)
+      , aaMode(mozilla::gfx::AntialiasMode::SUBPIXEL)
       , patternTransformChanged(false)
     {}
 

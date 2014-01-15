@@ -388,23 +388,19 @@ LayerManagerComposite::Render()
   }
 
   // Allow widget to render a custom background.
-  mCompositor->SaveState();
   mCompositor->GetWidget()->DrawWindowUnderlay(this, nsIntRect(actualBounds.x,
                                                                actualBounds.y,
                                                                actualBounds.width,
                                                                actualBounds.height));
-  mCompositor->RestoreState();
 
   // Render our layers.
   RootLayer()->RenderLayer(clipRect);
 
   // Allow widget to render a custom foreground.
-  mCompositor->SaveState();
   mCompositor->GetWidget()->DrawWindowOverlay(this, nsIntRect(actualBounds.x,
                                                               actualBounds.y,
                                                               actualBounds.width,
                                                               actualBounds.height));
-  mCompositor->RestoreState();
 
   // Debugging
   RenderDebugOverlay(actualBounds);
@@ -754,7 +750,7 @@ LayerManagerComposite::CreateDrawTarget(const IntSize &aSize,
                          aSize.width > 64 && aSize.height > 64 &&
                          gfxPlatformMac::GetPlatform()->UseAcceleratedCanvas();
   if (useAcceleration) {
-    return Factory::CreateDrawTarget(BACKEND_COREGRAPHICS_ACCELERATED,
+    return Factory::CreateDrawTarget(BackendType::COREGRAPHICS_ACCELERATED,
                                      aSize, aFormat);
   }
 #endif

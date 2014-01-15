@@ -591,7 +591,7 @@ JS_Init(void)
         return false;
 #endif
 
-    if (!ForkJoinSlice::InitializeTLS())
+    if (!ForkJoinSlice::initialize())
         return false;
 
 #if EXPOSE_INTL_API
@@ -1114,7 +1114,7 @@ JS_TransplantObject(JSContext *cx, HandleObject origobj, HandleObject target)
         JS_ASSERT(Wrapper::wrappedObject(newIdentityWrapper) == newIdentity);
         if (!JSObject::swap(cx, origobj, newIdentityWrapper))
             MOZ_CRASH();
-        origobj->compartment()->putWrapper(ObjectValue(*newIdentity), origv);
+        origobj->compartment()->putWrapper(cx, ObjectValue(*newIdentity), origv);
     }
 
     // The new identity object might be one of several things. Return it to avoid
@@ -2430,7 +2430,7 @@ JS_SetPrototype(JSContext *cx, JS::Handle<JSObject*> obj, JS::Handle<JSObject*> 
         return false;
 
     if (!succeeded) {
-        JS_ReportErrorNumber(cx, js_GetErrorMessage, NULL, JSMSG_SETPROTOTYPEOF_FAIL);
+        JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr, JSMSG_SETPROTOTYPEOF_FAIL);
         return false;
     }
 
@@ -3289,10 +3289,23 @@ JS_DefineProperties(JSContext *cx, JSObject *objArg, const JSPropertySpec *ps)
     RootedObject obj(cx, objArg);
     bool ok;
     for (ok = true; ps->name; ps++) {
-        if (ps->selfHostedGetter) {
+        if (ps->flags & JSPROP_NATIVE_ACCESSORS) {
+            // If you declare native accessors, then you should have a native
+            // getter.
+            JS_ASSERT(ps->getter.propertyOp.op);
+            // If you do not have a self-hosted getter, you should not have a
+            // self-hosted setter. This is the closest approximation to that
+            // assertion we can have with our setup.
+            JS_ASSERT_IF(ps->setter.propertyOp.info, ps->setter.propertyOp.op);
+
+            ok = DefineProperty(cx, obj, ps->name, UndefinedValue(),
+                                ps->getter.propertyOp, ps->setter.propertyOp,
+                                ps->flags, Shape::HAS_SHORTID, ps->tinyid);
+        } else {
             // If you have self-hosted getter/setter, you can't have a
             // native one.
-            JS_ASSERT(!ps->getter.op && !ps->setter.op);
+            JS_ASSERT(!ps->getter.propertyOp.op && !ps->setter.propertyOp.op);
+            JS_ASSERT(ps->flags & JSPROP_GETTER);
             /*
              * During creation of the self-hosting global, we ignore all
              * self-hosted properties, as that means we're currently setting up
@@ -3304,18 +3317,10 @@ JS_DefineProperties(JSContext *cx, JSObject *objArg, const JSPropertySpec *ps)
                 continue;
 
             ok = DefineSelfHostedProperty(cx, obj, ps->name,
-                                          ps->selfHostedGetter,
-                                          ps->selfHostedSetter,
+                                          ps->getter.selfHosted.funname,
+                                          ps->setter.selfHosted.funname,
                                           ps->flags, Shape::HAS_SHORTID,
                                           ps->tinyid);
-        } else {
-            // If you do not have a self-hosted getter, you should
-            // have a native getter; and you should not have a
-            // self-hosted setter.
-            JS_ASSERT(ps->getter.op && !ps->selfHostedSetter);
-
-            ok = DefineProperty(cx, obj, ps->name, UndefinedValue(), ps->getter, ps->setter,
-                                ps->flags, Shape::HAS_SHORTID, ps->tinyid);
         }
         if (!ok)
             break;
@@ -3984,16 +3989,16 @@ JS_CloneFunctionObject(JSContext *cx, JSObject *funobjArg, JSObject *parentArg)
         return nullptr;
     }
 
-    /*
-     * If a function was compiled to be lexically nested inside some other
-     * script, we cannot clone it without breaking the compiler's assumptions.
-     */
     RootedFunction fun(cx, &funobj->as<JSFunction>());
     if (fun->isInterpretedLazy()) {
         AutoCompartment ac(cx, funobj);
         if (!fun->getOrCreateScript(cx))
             return nullptr;
     }
+    /*
+     * If a function was compiled to be lexically nested inside some other
+     * script, we cannot clone it without breaking the compiler's assumptions.
+     */
     if (fun->isInterpreted() && (fun->nonLazyScript()->enclosingStaticScope() ||
         (fun->nonLazyScript()->compileAndGo() && !parent->is<GlobalObject>())))
     {
@@ -4691,7 +4696,8 @@ JS_DecompileScript(JSContext *cx, JSScript *scriptArg, const char *name, unsigne
     AssertHeapIsIdle(cx);
     CHECK_REQUEST(cx);
     RootedScript script(cx, scriptArg);
-    RootedFunction fun(cx, script->function());
+    script->ensureNonLazyCanonicalFunction(cx);
+    RootedFunction fun(cx, script->functionNonDelazifying());
     if (fun)
         return JS_DecompileFunction(cx, fun, indent);
     bool haveSource = script->scriptSource()->hasSourceData();
@@ -6038,6 +6044,26 @@ JS_SetGlobalJitCompilerOption(JSContext *cx, JSJitCompilerOption opt, uint32_t v
         break;
     }
 #endif
+}
+
+JS_PUBLIC_API(int)
+JS_GetGlobalJitCompilerOption(JSContext *cx, JSJitCompilerOption opt)
+{
+#ifdef JS_ION
+    switch (opt) {
+      case JSJITCOMPILER_BASELINE_USECOUNT_TRIGGER:
+        return jit::js_JitOptions.baselineUsesBeforeCompile;
+      case JSJITCOMPILER_ION_USECOUNT_TRIGGER:
+        return jit::js_JitOptions.forcedDefaultIonUsesBeforeCompile;
+      case JSJITCOMPILER_ION_ENABLE:
+        return JS::ContextOptionsRef(cx).ion();
+      case JSJITCOMPILER_BASELINE_ENABLE:
+        return JS::ContextOptionsRef(cx).baseline();
+      default:
+        break;
+    }
+#endif
+    return 0;
 }
 
 /************************************************************************/

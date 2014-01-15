@@ -500,7 +500,6 @@ public:
     : mUILoop(MessageLoop::current())
     , mRenderFrame(aRenderFrame)
     , mHaveZoomConstraints(false)
-    , mAllowZoom(true)
   { }
 
   virtual void RequestContentRepaint(const FrameMetrics& aFrameMetrics) MOZ_OVERRIDE
@@ -615,24 +614,16 @@ public:
   {
   }
 
-  void SaveZoomConstraints(bool aAllowZoom,
-                           const CSSToScreenScale& aMinZoom,
-                           const CSSToScreenScale& aMaxZoom)
+  void SaveZoomConstraints(const ZoomConstraints& aConstraints)
   {
     mHaveZoomConstraints = true;
-    mAllowZoom = aAllowZoom;
-    mMinZoom = aMinZoom;
-    mMaxZoom = aMaxZoom;
+    mZoomConstraints = aConstraints;
   }
 
-  virtual bool GetRootZoomConstraints(bool* aOutAllowZoom,
-                                      CSSToScreenScale* aOutMinZoom,
-                                      CSSToScreenScale* aOutMaxZoom)
+  virtual bool GetRootZoomConstraints(ZoomConstraints* aOutConstraints)
   {
-    if (mHaveZoomConstraints) {
-      *aOutAllowZoom = mAllowZoom;
-      *aOutMinZoom = mMinZoom;
-      *aOutMaxZoom = mMaxZoom;
+    if (mHaveZoomConstraints && aOutConstraints) {
+      *aOutConstraints = mZoomConstraints;
     }
     return mHaveZoomConstraints;
   }
@@ -680,9 +671,7 @@ private:
   RenderFrameParent* mRenderFrame;
 
   bool mHaveZoomConstraints;
-  bool mAllowZoom;
-  CSSToScreenScale mMinZoom;
-  CSSToScreenScale mMaxZoom;
+  ZoomConstraints mZoomConstraints;
 };
 
 RenderFrameParent::RenderFrameParent(nsFrameLoader* aFrameLoader,
@@ -1097,16 +1086,14 @@ void
 RenderFrameParent::UpdateZoomConstraints(uint32_t aPresShellId,
                                          ViewID aViewId,
                                          bool aIsRoot,
-                                         bool aAllowZoom,
-                                         const CSSToScreenScale& aMinZoom,
-                                         const CSSToScreenScale& aMaxZoom)
+                                         const ZoomConstraints& aConstraints)
 {
   if (mContentController && aIsRoot) {
-    mContentController->SaveZoomConstraints(aAllowZoom, aMinZoom, aMaxZoom);
+    mContentController->SaveZoomConstraints(aConstraints);
   }
   if (GetApzcTreeManager()) {
     GetApzcTreeManager()->UpdateZoomConstraints(ScrollableLayerGuid(mLayersId, aPresShellId, aViewId),
-                                                aAllowZoom, aMinZoom, aMaxZoom);
+                                                aConstraints);
   }
 }
 

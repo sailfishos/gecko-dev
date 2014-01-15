@@ -7,7 +7,7 @@
 let SocialService = Cu.import("resource://gre/modules/SocialService.jsm", {}).SocialService;
 
 const URI_EXTENSION_BLOCKLIST_DIALOG = "chrome://mozapps/content/extensions/blocklist.xul";
-let blocklistURL = "http://test:80/browser/browser/base/content/test/social/blocklist.xml";
+let blocklistURL = "http://example.org/browser/browser/base/content/test/social/blocklist.xml";
 
 let manifest = { // normal provider
   name: "provider ok",
@@ -36,10 +36,10 @@ var tests = {
   testSimpleBlocklist: function(next) {
     // this really just tests adding and clearing our blocklist for later tests
     setAndUpdateBlocklist(blocklistURL, function() {
-      ok(Services.blocklist.isAddonBlocklisted("test1.example.com@services.mozilla.org", "0", "0", "0"), "blocking 'blocked'");
-      ok(!Services.blocklist.isAddonBlocklisted("example.com@services.mozilla.org", "0", "0", "0"), "not blocking 'good'");
+      ok(Services.blocklist.isAddonBlocklisted(SocialService.createWrapper(manifest_bad)), "blocking 'blocked'");
+      ok(!Services.blocklist.isAddonBlocklisted(SocialService.createWrapper(manifest)), "not blocking 'good'");
       resetBlocklist(function() {
-        ok(!Services.blocklist.isAddonBlocklisted("test1.example.com@services.mozilla.org", "0", "0", "0"), "blocklist cleared");
+        ok(!Services.blocklist.isAddonBlocklisted(SocialService.createWrapper(manifest_bad)), "blocklist cleared");
         next();
       });
     });

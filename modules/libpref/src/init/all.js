@@ -161,13 +161,6 @@ pref("browser.helperApps.neverAsk.saveToDisk", "");
 pref("browser.helperApps.neverAsk.openFile", "");
 pref("browser.helperApps.deleteTempFileOnExit", false);
 
-#ifdef XP_WIN
-// By default, security zone information is stored in the Alternate Data Stream
-// of downloaded executable files on Windows.  This preference allows disabling
-// this feature, and thus the associated system-level execution prompts.
-pref("browser.download.saveZoneInformation", true);
-#endif
-
 // xxxbsmedberg: where should prefs for the toolkit go?
 pref("browser.chrome.toolbar_tips",         true);
 // 0 = Pictures Only, 1 = Text Only, 2 = Pictures and Text
@@ -797,11 +790,6 @@ pref("security.fileuri.strict_origin_policy", true);
 // telemetry is also enabled as otherwise there is no way to report
 // the results
 pref("network.allow-experiments", true);
-#if defined(EARLY_BETA_OR_EARLIER)
-pref("network.dns.allow-srv-experiment", true);
-#else
-pref("network.dns.allow-srv-experiment", false);
-#endif
 
 // Transmit UDP busy-work to the LAN when anticipating low latency
 // network reads and on wifi to mitigate 802.11 Power Save Polling delays
@@ -881,6 +869,9 @@ pref("network.http.default-socket-type", "");
 // We set the timeout a little shorter to keep a reserve for cases when
 // the packet is lost or delayed on the route.
 pref("network.http.keep-alive.timeout", 115);
+
+// Timeout connections if an initial response is not received after 10 mins.
+pref("network.http.response.timeout", 300);
 
 // Limit the absolute number of http connections.
 // Note: the socket transport service will clamp the number below 256 if the OS
@@ -1000,6 +991,8 @@ pref("network.http.bypass-cachelock-threshold", 250);
 pref("network.http.spdy.enabled", true);
 pref("network.http.spdy.enabled.v3", true);
 pref("network.http.spdy.enabled.v3-1", true);
+pref("network.http.spdy.enabled.http2draft", false);
+pref("network.http.spdy.enforce-tls-profile", true);
 pref("network.http.spdy.chunk-size", 4096);
 pref("network.http.spdy.timeout", 180);
 pref("network.http.spdy.coalesce-hostnames", true);
@@ -1008,7 +1001,7 @@ pref("network.http.spdy.ping-threshold", 58);
 pref("network.http.spdy.ping-timeout", 8);
 pref("network.http.spdy.send-buffer-size", 131072);
 pref("network.http.spdy.allow-push", true);
-pref("network.http.spdy.push-allowance", 65536);
+pref("network.http.spdy.push-allowance", 131072);
 
 pref("network.http.diagnostics", false);
 
@@ -1408,6 +1401,7 @@ pref("font.language.group",                 "chrome://global/locale/intl.propert
 pref("intl.uidirection.ar", "rtl");
 pref("intl.uidirection.he", "rtl");
 pref("intl.uidirection.fa", "rtl");
+pref("intl.uidirection.ug", "rtl");
 pref("intl.uidirection.ur", "rtl");
 
 // use en-US hyphenation by default for content tagged with plain lang="en"
@@ -2558,7 +2552,10 @@ pref("intl.keyboard.per_window_layout", false);
 
 #ifdef NS_ENABLE_TSF
 // Enable/Disable TSF support
-pref("intl.enable_tsf_support", false);
+pref("intl.tsf.enable", false);
+
+// Support IMEs implemented with IMM in TSF mode.
+pref("intl.tsf.support_imm", true);
 
 // We need to notify the layout change to TSF, but we cannot check the actual
 // change now, therefore, we always notify it by this fequency.

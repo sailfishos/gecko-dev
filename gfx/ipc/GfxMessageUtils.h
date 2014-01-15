@@ -660,9 +660,9 @@ struct ParamTraits<mozilla::layers::CompositableType>
 
 template <>
 struct ParamTraits<mozilla::gfx::SurfaceFormat>
-  : public EnumSerializer<mozilla::gfx::SurfaceFormat,
-                          mozilla::gfx::FORMAT_B8G8R8A8,
-                          mozilla::gfx::FORMAT_UNKNOWN>
+  : public TypedEnumSerializer<mozilla::gfx::SurfaceFormat,
+                               mozilla::gfx::SurfaceFormat::B8G8R8A8,
+                               mozilla::gfx::SurfaceFormat::UNKNOWN>
 {};
 
 template <>
@@ -682,6 +682,26 @@ struct ParamTraits<mozilla::layers::ScrollableLayerGuid>
     return (ReadParam(aMsg, aIter, &aResult->mLayersId) &&
             ReadParam(aMsg, aIter, &aResult->mPresShellId) &&
             ReadParam(aMsg, aIter, &aResult->mScrollId));
+  }
+};
+
+template <>
+struct ParamTraits<mozilla::layers::ZoomConstraints>
+{
+  typedef mozilla::layers::ZoomConstraints paramType;
+
+  static void Write(Message* aMsg, const paramType& aParam)
+  {
+    WriteParam(aMsg, aParam.mAllowZoom);
+    WriteParam(aMsg, aParam.mMinZoom);
+    WriteParam(aMsg, aParam.mMaxZoom);
+  }
+
+  static bool Read(const Message* aMsg, void** aIter, paramType* aResult)
+  {
+    return (ReadParam(aMsg, aIter, &aResult->mAllowZoom) &&
+            ReadParam(aMsg, aIter, &aResult->mMinZoom) &&
+            ReadParam(aMsg, aIter, &aResult->mMaxZoom));
   }
 };
 

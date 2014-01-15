@@ -541,6 +541,14 @@
 @BINPATH@/components/Push.js
 @BINPATH@/components/Push.manifest
 @BINPATH@/components/PushServiceLauncher.js
+
+#ifndef RELEASE_BUILD
+@BINPATH@/components/InterAppComm.manifest
+@BINPATH@/components/InterAppCommService.js
+@BINPATH@/components/InterAppConnection.js
+@BINPATH@/components/InterAppMessagePort.js
+#endif
+
 @BINPATH@/components/TCPSocket.js
 @BINPATH@/components/TCPServerSocket.js
 @BINPATH@/components/TCPSocketParentIntermediary.js
@@ -609,9 +617,9 @@
 @BINPATH@/browser/chrome.manifest
 @BINPATH@/browser/chrome/browser@JAREXT@
 @BINPATH@/browser/chrome/browser.manifest
-#ifdef NIGHTLY_BUILD
 @BINPATH@/browser/chrome/pdfjs.manifest
 @BINPATH@/browser/chrome/pdfjs/*
+#ifdef NIGHTLY_BUILD
 @BINPATH@/browser/chrome/shumway.manifest
 @BINPATH@/browser/chrome/shumway/*
 #endif
@@ -837,9 +845,9 @@ bin/libfreebl_32int64_3.so
 #ifdef NIGHTLY_BUILD
 @BINPATH@/metro/chrome/shumway.manifest
 @BINPATH@/metro/chrome/shumway/*
-#endif
 @BINPATH@/metro/chrome/pdfjs.manifest
 @BINPATH@/metro/chrome/pdfjs/*
+#endif
 @BINPATH@/metro/components
 @BINPATH@/metro/defaults
 @BINPATH@/metro/modules

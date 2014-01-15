@@ -22,13 +22,13 @@
 #include "nsDOMOfflineResourceList.h"
 #include "nsError.h"
 #include "nsIIdleService.h"
-#include "nsIPowerManagerService.h"
 #include "nsISizeOfEventTarget.h"
 #include "nsDOMJSUtils.h"
 #include "nsArrayUtils.h"
 #include "nsIDOMWindowCollection.h"
 #include "nsDOMWindowList.h"
-#include "nsIDOMWakeLock.h"
+#include "mozilla/dom/WakeLock.h"
+#include "mozilla/dom/power/PowerManagerService.h"
 #include "nsIDocShellTreeOwner.h"
 #include "nsIPermissionManager.h"
 #include "nsIScriptContext.h"
@@ -1763,7 +1763,10 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(nsGlobalWindow)
   }
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mLocalStorage)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mSessionStorage)
-  NS_IMPL_CYCLE_COLLECTION_UNLINK(mApplicationCache)
+  if (tmp->mApplicationCache) {
+    static_cast<nsDOMOfflineResourceList*>(tmp->mApplicationCache.get())->Disconnect();
+    NS_IMPL_CYCLE_COLLECTION_UNLINK(mApplicationCache)
+  }
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mDocumentPrincipal)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mDoc)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mIdleService)
@@ -5468,13 +5471,13 @@ nsGlobalWindow::GetLength(uint32_t* aLength)
 already_AddRefed<nsIDOMWindow>
 nsGlobalWindow::GetChildWindow(const nsAString& aName)
 {
-  nsCOMPtr<nsIDocShellTreeNode> dsn(do_QueryInterface(GetDocShell()));
-  NS_ENSURE_TRUE(dsn, nullptr);
+  nsCOMPtr<nsIDocShell> docShell(GetDocShell());
+  NS_ENSURE_TRUE(docShell, nullptr);
 
   nsCOMPtr<nsIDocShellTreeItem> child;
-  dsn->FindChildWithName(PromiseFlatString(aName).get(),
-                         false, true, nullptr, nullptr,
-                         getter_AddRefs(child));
+  docShell->FindChildWithName(PromiseFlatString(aName).get(),
+                              false, true, nullptr, nullptr,
+                              getter_AddRefs(child));
 
   nsCOMPtr<nsIDOMWindow> child_win(do_GetInterface(child));
   return child_win.forget();
@@ -5698,13 +5701,21 @@ nsGlobalWindow::SetFullScreenInternal(bool aFullScreen, bool aRequireTrust)
   }
 
   if (!mWakeLock && mFullScreen) {
-    nsCOMPtr<nsIPowerManagerService> pmService =
-      do_GetService(POWERMANAGERSERVICE_CONTRACTID);
+    nsRefPtr<power::PowerManagerService> pmService =
+      power::PowerManagerService::GetInstance();
     NS_ENSURE_TRUE(pmService, NS_OK);
 
-    pmService->NewWakeLock(NS_LITERAL_STRING("DOM_Fullscreen"), this, getter_AddRefs(mWakeLock));
+    ErrorResult rv;
+    mWakeLock = pmService->NewWakeLock(NS_LITERAL_STRING("DOM_Fullscreen"),
+                                       this, rv);
+    if (rv.Failed()) {
+      return rv.ErrorCode();
+    }
+
   } else if (mWakeLock && !mFullScreen) {
-    mWakeLock->Unlock();
+    ErrorResult rv;
+    mWakeLock->Unlock(rv);
+    NS_WARN_IF_FALSE(!rv.Failed(), "Failed to unlock the wakelock.");
     mWakeLock = nullptr;
   }
 
@@ -7485,14 +7496,14 @@ class PostMessageEvent : public nsRunnable
     PostMessageEvent(nsGlobalWindow* aSource,
                      const nsAString& aCallerOrigin,
                      nsGlobalWindow* aTargetWindow,
-                     nsIURI* aProvidedOrigin,
+                     nsIPrincipal* aProvidedPrincipal,
                      bool aTrustedCaller)
     : mSource(aSource),
       mCallerOrigin(aCallerOrigin),
       mMessage(nullptr),
       mMessageLen(0),
       mTargetWindow(aTargetWindow),
-      mProvidedOrigin(aProvidedOrigin),
+      mProvidedPrincipal(aProvidedPrincipal),
       mTrustedCaller(aTrustedCaller)
     {
       MOZ_COUNT_CTOR(PostMessageEvent);
@@ -7522,7 +7533,7 @@ class PostMessageEvent : public nsRunnable
     uint64_t* mMessage;
     size_t mMessageLen;
     nsRefPtr<nsGlobalWindow> mTargetWindow;
-    nsCOMPtr<nsIURI> mProvidedOrigin;
+    nsCOMPtr<nsIPrincipal> mProvidedPrincipal;
     bool mTrustedCaller;
     nsTArray<nsCOMPtr<nsISupports> > mSupportsArray;
 };
@@ -7553,10 +7564,8 @@ PostMessageReadStructuredClone(JSContext* cx,
       JS::Rooted<JSObject*> global(cx, JS::CurrentGlobalOrNull(cx));
       if (global) {
         JS::Rooted<JS::Value> val(cx);
-        nsCOMPtr<nsIXPConnectJSObjectHolder> wrapper;
         if (NS_SUCCEEDED(nsContentUtils::WrapNative(cx, global, supports,
-                                                    &val,
-                                                    getter_AddRefs(wrapper)))) {
+                                                    &val))) {
           return val.toObjectOrNull();
         }
       }
@@ -7693,32 +7702,22 @@ PostMessageEvent::Run()
   // intercept messages intended for another site by carefully timing navigation
   // of the target window so it changed location after postMessage but before
   // now.
-  if (mProvidedOrigin) {
+  if (mProvidedPrincipal) {
     // Get the target's origin either from its principal or, in the case the
     // principal doesn't carry a URI (e.g. the system principal), the target's
     // document.
     nsIPrincipal* targetPrin = targetWindow->GetPrincipal();
-    if (!targetPrin)
+    if (NS_WARN_IF(!targetPrin))
       return NS_OK;
-    nsCOMPtr<nsIURI> targetURI;
-    if (NS_FAILED(targetPrin->GetURI(getter_AddRefs(targetURI))))
-      return NS_OK;
-    if (!targetURI) {
-      targetURI = targetWindow->mDoc->GetDocumentURI();
-      if (!targetURI)
-        return NS_OK;
-    }
 
     // Note: This is contrary to the spec with respect to file: URLs, which
     //       the spec groups into a single origin, but given we intentionally
     //       don't do that in other places it seems better to hold the line for
     //       now.  Long-term, we want HTML5 to address this so that we can
     //       be compliant while being safer.
-    nsIScriptSecurityManager* ssm = nsContentUtils::GetSecurityManager();
-    nsresult rv =
-      ssm->CheckSameOriginURI(mProvidedOrigin, targetURI, true);
-    if (NS_FAILED(rv))
+    if (!targetPrin->EqualsIgnoringDomain(mProvidedPrincipal)) {
       return NS_OK;
+    }
   }
 
   // Deserialize the structured clone data
@@ -7851,15 +7850,47 @@ nsGlobalWindow::PostMessageMoz(JSContext* aCx, JS::Handle<JS::Value> aMessage,
   }
 
   // Convert the provided origin string into a URI for comparison purposes.
+  nsCOMPtr<nsIPrincipal> providedPrincipal;
+
+  if (aTargetOrigin.EqualsASCII("/")) {
+    providedPrincipal = BrokenGetEntryGlobal()->PrincipalOrNull();
+    if (NS_WARN_IF(!providedPrincipal))
+      return;
+  }
+
   // "*" indicates no specific origin is required.
-  nsCOMPtr<nsIURI> providedOrigin;
-  if (!aTargetOrigin.EqualsASCII("*")) {
-    if (NS_FAILED(NS_NewURI(getter_AddRefs(providedOrigin), aTargetOrigin))) {
+  else if (!aTargetOrigin.EqualsASCII("*")) {
+    nsCOMPtr<nsIURI> originURI;
+    if (NS_FAILED(NS_NewURI(getter_AddRefs(originURI), aTargetOrigin))) {
       aError.Throw(NS_ERROR_DOM_SYNTAX_ERR);
       return;
     }
-    if (NS_FAILED(providedOrigin->SetUserPass(EmptyCString())) ||
-        NS_FAILED(providedOrigin->SetPath(EmptyCString()))) {
+
+    if (NS_FAILED(originURI->SetUserPass(EmptyCString())) ||
+        NS_FAILED(originURI->SetPath(EmptyCString()))) {
+      return;
+    }
+
+    nsCOMPtr<nsIScriptSecurityManager> ssm =
+      nsContentUtils::GetSecurityManager();
+    MOZ_ASSERT(ssm);
+
+    nsCOMPtr<nsIPrincipal> principal = nsContentUtils::GetSubjectPrincipal();
+    MOZ_ASSERT(principal);
+
+    uint32_t appId;
+    if (NS_WARN_IF(NS_FAILED(principal->GetAppId(&appId))))
+      return;
+
+    bool isInBrowser;
+    if (NS_WARN_IF(NS_FAILED(principal->GetIsInBrowserElement(&isInBrowser))))
+      return;
+
+    // Create a nsIPrincipal inheriting the app/browser attributes from the
+    // caller.
+    nsresult rv = ssm->GetAppCodebasePrincipal(originURI, appId, isInBrowser,
+                                             getter_AddRefs(providedPrincipal));
+    if (NS_WARN_IF(NS_FAILED(rv))) {
       return;
     }
   }
@@ -7872,7 +7903,7 @@ nsGlobalWindow::PostMessageMoz(JSContext* aCx, JS::Handle<JS::Value> aMessage,
                          : callerInnerWin->GetOuterWindowInternal(),
                          origin,
                          this,
-                         providedOrigin,
+                         providedPrincipal,
                          nsContentUtils::IsCallerChrome());
 
   // We *must* clone the data here, or the JS::Value could be modified

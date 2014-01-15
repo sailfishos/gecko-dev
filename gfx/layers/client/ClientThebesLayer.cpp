@@ -22,6 +22,7 @@
 #include "nsCOMPtr.h"                   // for already_AddRefed
 #include "nsISupportsImpl.h"            // for Layer::AddRef, etc
 #include "nsRect.h"                     // for nsIntRect
+#include "gfx2DGlue.h"
 
 using namespace mozilla::gfx;
 
@@ -35,17 +36,9 @@ ClientThebesLayer::PaintThebes()
   NS_ASSERTION(ClientManager()->InDrawing(),
                "Can only draw in drawing phase");
   
-  //TODO: This is going to copy back pixels that we might end up
-  // drawing over anyway. It would be nice if we could avoid
-  // this duplication.
-  mContentClient->SyncFrontBufferToBackBuffer();
-
-  bool canUseOpaqueSurface = CanUseOpaqueSurface();
-  ContentType contentType =
-    canUseOpaqueSurface ? GFX_CONTENT_COLOR :
-                          GFX_CONTENT_COLOR_ALPHA;
-
   {
+    mContentClient->PrepareFrame();
+
     uint32_t flags = 0;
 #ifndef MOZ_WIDGET_ANDROID
     if (ClientManager()->CompositorMightResample()) {
@@ -58,24 +51,26 @@ ClientThebesLayer::PaintThebes()
     }
 #endif
     PaintState state =
-      mContentClient->BeginPaintBuffer(this, contentType, flags);
+      mContentClient->BeginPaintBuffer(this, flags);
     mValidRegion.Sub(mValidRegion, state.mRegionToInvalidate);
 
-    if (state.mContext) {
+    if (DrawTarget* target = mContentClient->BorrowDrawTargetForPainting(this, state)) {
       // The area that became invalid and is visible needs to be repainted
       // (this could be the whole visible area if our buffer switched
       // from RGB to RGBA, because we might need to repaint with
       // subpixel AA)
       state.mRegionToInvalidate.And(state.mRegionToInvalidate,
                                     GetEffectiveVisibleRegion());
-      nsIntRegion extendedDrawRegion = state.mRegionToDraw;
-      SetAntialiasingFlags(this, state.mContext);
+      SetAntialiasingFlags(this, target);
 
-      PaintBuffer(state.mContext,
-                  state.mRegionToDraw, extendedDrawRegion, state.mRegionToInvalidate,
+      nsRefPtr<gfxContext> ctx = gfxContext::ContextForDrawTarget(target);
+      PaintBuffer(ctx,
+                  state.mRegionToDraw, state.mRegionToDraw, state.mRegionToInvalidate,
                   state.mDidSelfCopy, state.mClip);
       MOZ_LAYERS_LOG_IF_SHADOWABLE(this, ("Layer::Mutated(%p) PaintThebes", this));
       Mutated();
+      ctx = nullptr;
+      mContentClient->ReturnDrawTarget(target);
     } else {
       // It's possible that state.mRegionToInvalidate is nonempty here,
       // if we are shrinking the valid region to nothing. So use mRegionToDraw

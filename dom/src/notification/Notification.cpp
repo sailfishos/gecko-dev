@@ -404,11 +404,12 @@ NotificationObserver::Observe(nsISupports* aSubject, const char* aTopic,
 
 Notification::Notification(const nsAString& aID, const nsAString& aTitle, const nsAString& aBody,
                            NotificationDirection aDir, const nsAString& aLang,
-                           const nsAString& aTag, const nsAString& aIconUrl)
-  : mID(aID), mTitle(aTitle), mBody(aBody), mDir(aDir), mLang(aLang),
+                           const nsAString& aTag, const nsAString& aIconUrl,
+			   nsPIDOMWindow* aWindow)
+  : nsDOMEventTargetHelper(aWindow),
+    mID(aID), mTitle(aTitle), mBody(aBody), mDir(aDir), mLang(aLang),
     mTag(aTag), mIconUrl(aIconUrl), mIsClosed(false)
 {
-  SetIsDOMBinding();
 }
 
 // static
@@ -492,9 +493,8 @@ Notification::CreateInternal(nsPIDOMWindow* aWindow,
                                                          aOptions.mDir,
                                                          aOptions.mLang,
                                                          aOptions.mTag,
-                                                         aOptions.mIcon);
-
-  notification->BindToOwner(aWindow);
+                                                         aOptions.mIcon,
+							 aWindow);
   return notification.forget();
 }
 
@@ -568,6 +568,7 @@ Notification::ShowInternal()
         ops.mId = alertName;
         ops.mDir = DirectionToString(mDir);
         ops.mLang = mLang;
+        ops.mTag = mTag;
 
         if (!ops.ToObject(cx, JS::NullPtr(), &val)) {
           NS_WARNING("Converting dict to object failed!");

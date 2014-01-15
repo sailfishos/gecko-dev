@@ -11,7 +11,6 @@
 #include "nsITimer.h"
 #include "nsIDocShell.h"
 #include "nsIDocShellTreeItem.h"
-#include "nsIDocShellTreeNode.h"
 #include "nsIBaseWindow.h"
 #include "nsIScrollable.h"
 #include "nsITextScroll.h"
@@ -155,7 +154,6 @@ public:
 
     NS_DECL_NSIDOCSHELL
     NS_DECL_NSIDOCSHELLTREEITEM
-    NS_DECL_NSIDOCSHELLTREENODE
     NS_DECL_NSIWEBNAVIGATION
     NS_DECL_NSIBASEWINDOW
     NS_DECL_NSISCROLLABLE
@@ -637,6 +635,9 @@ protected:
     // Convenience method for getting our parent docshell.  Can return null
     already_AddRefed<nsDocShell> GetParentDocshell();
 protected:
+    nsresult GetCurScrollPos(int32_t scrollOrientation, int32_t * curPos);
+    nsresult SetCurScrollPosEx(int32_t curHorizontalPos, int32_t curVerticalPos);
+
     // Override the parent setter from nsDocLoader
     virtual nsresult SetDocLoaderParent(nsDocLoader * aLoader);
 

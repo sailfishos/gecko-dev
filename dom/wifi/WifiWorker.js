@@ -192,20 +192,24 @@ var WifiManager = (function() {
     });
   }
 
-  function unloadDriver(callback) {
+  function unloadDriver(type, callback) {
     if (!unloadDriverEnabled) {
       // Unloading drivers is generally unnecessary and
       // can trigger bugs in some drivers.
       // On properly written drivers, bringing the interface
       // down powers down the interface.
-      notify("supplicantlost", { success: true });
+      if (type === WIFI_FIRMWARE_STATION) {
+        notify("supplicantlost", { success: true });
+      }
       callback(0);
       return;
     }
 
     wifiCommand.unloadDriver(function(status) {
       driverLoaded = (status < 0);
-      notify("supplicantlost", { success: true });
+      if (type === WIFI_FIRMWARE_STATION) {
+        notify("supplicantlost", { success: true });
+      }
       callback(status);
     });
   }
@@ -869,20 +873,17 @@ var WifiManager = (function() {
             manager.state = "UNINITIALIZED";
             return;
           }
+          // This command is mandatory for Nexus 4. But some devices like
+          // Galaxy S2 don't support it. Continue to start wpa_supplicant
+          // even if we fail to set wifi operation mode to station.
           gNetworkService.setWifiOperationMode(manager.ifname,
                                                WIFI_FIRMWARE_STATION,
                                                function (status) {
-            if (status) {
-              callback(status);
-              manager.state = "UNINITIALIZED";
-              return;
-            }
-
             function doStartSupplicant() {
               cancelWaitForDriverReadyTimer();
               wifiCommand.startSupplicant(function (status) {
                 if (status < 0) {
-                  unloadDriver(function() {
+                  unloadDriver(WIFI_FIRMWARE_STATION, function() {
                     callback(status);
                   });
                   manager.state = "UNINITIALIZED";
@@ -917,7 +918,7 @@ var WifiManager = (function() {
             wifiCommand.closeSupplicantConnection(function () {
               manager.state = "UNINITIALIZED";
               netUtil.disableInterface(manager.ifname, function (ok) {
-                unloadDriver(callback);
+                unloadDriver(WIFI_FIRMWARE_STATION, callback);
               });
             });
           });
@@ -965,7 +966,7 @@ var WifiManager = (function() {
         // Should we fire a dom event if we fail to set wifi tethering  ?
         debug("Disable Wifi tethering result: " + (result ? result : "successfully"));
         // Unload wifi driver even if we fail to control wifi tethering.
-        unloadDriver(function(status) {
+        unloadDriver(WIFI_FIRMWARE_AP, function(status) {
           if (status < 0) {
             debug("Fail to unload wifi driver");
           }
@@ -1155,7 +1156,9 @@ var WifiManager = (function() {
   manager.getHttpProxyNetwork = getHttpProxyNetwork;
   manager.setHttpProxy = setHttpProxy;
   manager.configureHttpProxy = configureHttpProxy;
-  manager.setSuspendOptimizations = wifiCommand.setSuspendOptimizations;
+  manager.setSuspendOptimizations = (sdkVersion >= 16)
+                                   ? wifiCommand.setSuspendOptimizationsJB
+                                   : wifiCommand.setSuspendOptimizationsICS;
   manager.setStaticIpMode = setStaticIpMode;
   manager.getRssiApprox = wifiCommand.getRssiApprox;
   manager.getLinkSpeed = wifiCommand.getLinkSpeed;

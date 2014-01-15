@@ -406,6 +406,7 @@ nsScriptSecurityManager::ContentSecurityPolicyPermitsJSAction(JSContext *cx)
                                  fileName,
                                  scriptSample,
                                  lineNum,
+                                 EmptyString(),
                                  EmptyString());
     }
 
@@ -1271,6 +1272,7 @@ nsScriptSecurityManager::CheckLoadURIStrWithPrincipal(nsIPrincipal* aPrincipal,
 
     uint32_t flags[] = {
         nsIURIFixup::FIXUP_FLAG_NONE,
+        nsIURIFixup::FIXUP_FLAG_FIX_SCHEME_TYPOS,
         nsIURIFixup::FIXUP_FLAG_ALLOW_KEYWORD_LOOKUP,
         nsIURIFixup::FIXUP_FLAGS_MAKE_ALTERNATE_URI,
         nsIURIFixup::FIXUP_FLAG_ALLOW_KEYWORD_LOOKUP |
@@ -1487,14 +1489,14 @@ nsScriptSecurityManager::GetSubjectPrincipal(JSContext *cx,
 }
 
 NS_IMETHODIMP
-nsScriptSecurityManager::GetObjectPrincipal(JSContext *aCx, JSObject *aObj,
+nsScriptSecurityManager::GetObjectPrincipal(const JS::Value &aObjectVal,
+                                            JSContext *aCx,
                                             nsIPrincipal **result)
 {
-    JS::Rooted<JSObject*> obj(aCx, aObj);
-    *result = doGetObjectPrincipal(obj);
-    if (!*result)
-        return NS_ERROR_FAILURE;
-    NS_ADDREF(*result);
+    NS_ENSURE_TRUE(aObjectVal.isObject(), NS_ERROR_FAILURE);
+    JS::RootedObject obj(aCx, &aObjectVal.toObject());
+    nsCOMPtr<nsIPrincipal> principal = doGetObjectPrincipal(obj);
+    principal.forget(result);
     return NS_OK;
 }
 

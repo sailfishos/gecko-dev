@@ -764,6 +764,18 @@ CodeGenerator::visitRegExp(LRegExp *lir)
     return callVM(CloneRegExpObjectInfo, lir);
 }
 
+typedef bool (*RegExpExecRawFn)(JSContext *cx, HandleObject regexp,
+                                HandleString input, Value *vp);
+static const VMFunction RegExpExecRawInfo = FunctionInfo<RegExpExecRawFn>(regexp_exec_raw);
+
+bool
+CodeGenerator::visitRegExpExec(LRegExpExec *lir)
+{
+    pushArg(ToRegister(lir->string()));
+    pushArg(ToRegister(lir->regexp()));
+    return callVM(RegExpExecRawInfo, lir);
+}
+
 typedef bool (*RegExpTestRawFn)(JSContext *cx, HandleObject regexp,
                                 HandleString input, bool *result);
 static const VMFunction RegExpTestRawInfo = FunctionInfo<RegExpTestRawFn>(regexp_test_raw);
@@ -774,6 +786,27 @@ CodeGenerator::visitRegExpTest(LRegExpTest *lir)
     pushArg(ToRegister(lir->string()));
     pushArg(ToRegister(lir->regexp()));
     return callVM(RegExpTestRawInfo, lir);
+}
+
+typedef JSString *(*RegExpReplaceFn)(JSContext *, HandleString, HandleObject, HandleString);
+static const VMFunction RegExpReplaceInfo = FunctionInfo<RegExpReplaceFn>(regexp_replace);
+
+bool
+CodeGenerator::visitRegExpReplace(LRegExpReplace *lir)
+{
+    if (lir->replacement()->isConstant())
+        pushArg(ImmGCPtr(lir->replacement()->toConstant()->toString()));
+    else
+        pushArg(ToRegister(lir->replacement()));
+
+    pushArg(ToRegister(lir->regexp()));
+
+    if (lir->string()->isConstant())
+        pushArg(ImmGCPtr(lir->string()->toConstant()->toString()));
+    else
+        pushArg(ToRegister(lir->string()));
+
+    return callVM(RegExpReplaceInfo, lir);
 }
 
 typedef JSObject *(*LambdaFn)(JSContext *, HandleFunction, HandleObject);
@@ -1781,7 +1814,7 @@ CodeGenerator::visitCallDOMNative(LCallDOMNative *call)
     JS_ASSERT(target);
     JS_ASSERT(target->isNative());
     JS_ASSERT(target->jitInfo());
-    JS_ASSERT(call->mir()->isDOMFunction());
+    JS_ASSERT(call->mir()->isCallDOMNative());
 
     int callargslot = call->argslot();
     int unusedStack = StackOffsetOfPassedArg(callargslot);
@@ -3368,7 +3401,8 @@ CodeGenerator::visitNewDeclEnvObject(LNewDeclEnvObject *lir)
 
     // If we have a template object, we can inline call object creation.
     OutOfLineCode *ool = oolCallVM(NewDeclEnvObjectInfo, lir,
-                                   (ArgList(), ImmGCPtr(info.fun()), Imm32(gc::DefaultHeap)),
+                                   (ArgList(), ImmGCPtr(info.funMaybeLazy()),
+                                    Imm32(gc::DefaultHeap)),
                                    StoreRegisterTo(obj));
     if (!ool)
         return false;
@@ -6378,11 +6412,11 @@ CodeGenerator::visitNameIC(OutOfLineUpdateCache *ool, DataPtr<NameIC> &ic)
 bool
 CodeGenerator::addGetPropertyCache(LInstruction *ins, RegisterSet liveRegs, Register objReg,
                                    PropertyName *name, TypedOrValueRegister output,
-                                   bool allowGetters)
+                                   bool allowGetters, bool monitoredResult)
 {
     switch (gen->info().executionMode()) {
       case SequentialExecution: {
-        GetPropertyIC cache(liveRegs, objReg, name, output, allowGetters);
+        GetPropertyIC cache(liveRegs, objReg, name, output, allowGetters, monitoredResult);
         return addCache(ins, allocateCache(cache));
       }
       case ParallelExecution: {
@@ -6441,9 +6475,10 @@ CodeGenerator::visitGetPropertyCacheV(LGetPropertyCacheV *ins)
     Register objReg = ToRegister(ins->getOperand(0));
     PropertyName *name = ins->mir()->name();
     bool allowGetters = ins->mir()->allowGetters();
+    bool monitoredResult = ins->mir()->monitoredResult();
     TypedOrValueRegister output = TypedOrValueRegister(GetValueOutput(ins));
 
-    return addGetPropertyCache(ins, liveRegs, objReg, name, output, allowGetters);
+    return addGetPropertyCache(ins, liveRegs, objReg, name, output, allowGetters, monitoredResult);
 }
 
 bool
@@ -6453,9 +6488,10 @@ CodeGenerator::visitGetPropertyCacheT(LGetPropertyCacheT *ins)
     Register objReg = ToRegister(ins->getOperand(0));
     PropertyName *name = ins->mir()->name();
     bool allowGetters = ins->mir()->allowGetters();
+    bool monitoredResult = ins->mir()->monitoredResult();
     TypedOrValueRegister output(ins->mir()->type(), ToAnyRegister(ins->getDef(0)));
 
-    return addGetPropertyCache(ins, liveRegs, objReg, name, output, allowGetters);
+    return addGetPropertyCache(ins, liveRegs, objReg, name, output, allowGetters, monitoredResult);
 }
 
 typedef bool (*GetPropertyICFn)(JSContext *, size_t, HandleObject, MutableHandleValue);
@@ -6510,16 +6546,17 @@ CodeGenerator::visitGetPropertyParIC(OutOfLineUpdateCache *ool, DataPtr<GetPrope
 
 bool
 CodeGenerator::addGetElementCache(LInstruction *ins, Register obj, ConstantOrRegister index,
-                                  TypedOrValueRegister output, bool monitoredResult)
+                                  TypedOrValueRegister output, bool monitoredResult,
+                                  bool allowDoubleResult)
 {
     switch (gen->info().executionMode()) {
       case SequentialExecution: {
         RegisterSet liveRegs = ins->safepoint()->liveRegs();
-        GetElementIC cache(liveRegs, obj, index, output, monitoredResult);
+        GetElementIC cache(liveRegs, obj, index, output, monitoredResult, allowDoubleResult);
         return addCache(ins, allocateCache(cache));
       }
       case ParallelExecution: {
-        GetElementParIC cache(obj, index, output, monitoredResult);
+        GetElementParIC cache(obj, index, output, monitoredResult, allowDoubleResult);
         return addCache(ins, allocateCache(cache));
       }
       default:
@@ -6533,8 +6570,9 @@ CodeGenerator::visitGetElementCacheV(LGetElementCacheV *ins)
     Register obj = ToRegister(ins->object());
     ConstantOrRegister index = TypedOrValueRegister(ToValue(ins, LGetElementCacheV::Index));
     TypedOrValueRegister output = TypedOrValueRegister(GetValueOutput(ins));
+    const MGetElementCache *mir = ins->mir();
 
-    return addGetElementCache(ins, obj, index, output, ins->mir()->monitoredResult());
+    return addGetElementCache(ins, obj, index, output, mir->monitoredResult(), mir->allowDoubleResult());
 }
 
 bool
@@ -6543,8 +6581,9 @@ CodeGenerator::visitGetElementCacheT(LGetElementCacheT *ins)
     Register obj = ToRegister(ins->object());
     ConstantOrRegister index = TypedOrValueRegister(MIRType_Int32, ToAnyRegister(ins->index()));
     TypedOrValueRegister output(ins->mir()->type(), ToAnyRegister(ins->output()));
+    const MGetElementCache *mir = ins->mir();
 
-    return addGetElementCache(ins, obj, index, output, ins->mir()->monitoredResult());
+    return addGetElementCache(ins, obj, index, output, mir->monitoredResult(), mir->allowDoubleResult());
 }
 
 typedef bool (*GetElementICFn)(JSContext *, size_t, HandleObject, HandleValue, MutableHandleValue);

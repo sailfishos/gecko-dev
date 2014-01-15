@@ -1105,6 +1105,7 @@ public:
   bool CanUseOpaqueSurface();
 
   enum SurfaceMode {
+    SURFACE_NONE = 0,
     SURFACE_OPAQUE,
     SURFACE_SINGLE_CHANNEL_ALPHA,
     SURFACE_COMPONENT_ALPHA
@@ -2042,12 +2043,12 @@ protected:
   uint64_t mId;
 };
 
-void
-SetAntialiasingFlags(Layer* aLayer, gfxContext* aTarget);
+void SetAntialiasingFlags(Layer* aLayer, gfxContext* aTarget);
+void SetAntialiasingFlags(Layer* aLayer, gfx::DrawTarget* aTarget);
 
 #ifdef MOZ_DUMP_PAINTING
-void WriteSnapshotToDumpFile(Layer* aLayer, gfxASurface* aSurf);
-void WriteSnapshotToDumpFile(LayerManager* aManager, gfxASurface* aSurf);
+void WriteSnapshotToDumpFile(Layer* aLayer, gfx::DataSourceSurface* aSurf);
+void WriteSnapshotToDumpFile(LayerManager* aManager, gfx::DataSourceSurface* aSurf);
 void WriteSnapshotToDumpFile(Compositor* aCompositor, gfx::DrawTarget* aTarget);
 #endif
 

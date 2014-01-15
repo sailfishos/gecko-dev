@@ -56,7 +56,7 @@ GLScreenBuffer::Create(GLContext* gl,
     }
 #endif
 
-    if (gl->GetContextType() == ContextTypeEGL) {
+    if (gl->GetContextType() == GLContextType::EGL) {
         bool isCrossProcess = !(XRE_GetProcessType() == GeckoProcessType_Default);
         if (!isCrossProcess) {
             // [Basic/OGL Layers, OMTC] WebGL layer init.

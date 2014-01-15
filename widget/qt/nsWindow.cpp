@@ -2740,7 +2740,7 @@ nsWindow::imComposeEvent(QInputMethodEvent *event, bool &handled)
     WidgetCompositionEvent start(true, NS_COMPOSITION_START, this);
     DispatchEvent(&start);
 
-    nsAutoString compositionStr((PRUnichar*)event->commitString().utf16());
+    nsAutoString compositionStr((const char16_t*)event->commitString().utf16());
 
     if (!compositionStr.IsEmpty()) {
       WidgetCompositionEvent update(true, NS_COMPOSITION_UPDATE, this);

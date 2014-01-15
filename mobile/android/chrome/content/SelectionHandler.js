@@ -75,13 +75,7 @@ var SelectionHandler = {
   observe: function sh_observe(aSubject, aTopic, aData) {
     switch (aTopic) {
       case "Gesture:SingleTap": {
-        if (this._activeType == this.TYPE_SELECTION) {
-          let data = JSON.parse(aData);
-          if (this._pointInSelection(data.x, data.y))
-            this.copySelection();
-          else
-            this._closeSelection();
-        } else if (this._activeType == this.TYPE_CURSOR) {
+        if (this._activeType == this.TYPE_CURSOR) {
           // attachCaret() is called in the "Gesture:SingleTap" handler in BrowserEventHandler
           // We're guaranteed to call this first, because this observer was added last
           this._deactivate();
@@ -131,23 +125,36 @@ var SelectionHandler = {
           this._ignoreSelectionChanges = true;
           // Check to see if the handles should be reversed.
           let isStartHandle = JSON.parse(aData).handleType == this.HANDLE_TYPE_START;
-          let selectionReversed = this._updateCacheForSelection(isStartHandle);
-          if (selectionReversed) {
-            // Reverse the anchor and focus to correspond to the new start and end handles.
-            let selection = this._getSelection();
-            let anchorNode = selection.anchorNode;
-            let anchorOffset = selection.anchorOffset;
-            selection.collapse(selection.focusNode, selection.focusOffset);
-            selection.extend(anchorNode, anchorOffset);
+
+          try {
+            let selectionReversed = this._updateCacheForSelection(isStartHandle);
+            if (selectionReversed) {
+              // Reverse the anchor and focus to correspond to the new start and end handles.
+              let selection = this._getSelection();
+              let anchorNode = selection.anchorNode;
+              let anchorOffset = selection.anchorOffset;
+              selection.collapse(selection.focusNode, selection.focusOffset);
+              selection.extend(anchorNode, anchorOffset);
+            }
+          } catch (e) {
+            // User finished handle positioning with one end off the screen
+            this._closeSelection();
+            break;
           }
+
           // Act on selectionChange notifications after handle movement ends
           this._ignoreSelectionChanges = false;
+          this._positionHandles();
 
         } else if (this._activeType == this.TYPE_CURSOR) {
           // Act on IMM composition notifications after caret movement ends
           this._ignoreCompositionChanges = false;
+          this._positionHandles();
+
+        } else {
+          Cu.reportError("Ignored \"TextSelection:Position\" message during invalid selection status");
         }
-        this._positionHandles();
+
         break;
       }
 
@@ -239,21 +246,14 @@ var SelectionHandler = {
     // Clear any existing selection from the document
     this._contentWindow.getSelection().removeAllRanges();
 
-    if (aOptions.mode == this.SELECT_ALL) {
-      this._getSelectionController().selectAll();
-    } else if (aOptions.mode == this.SELECT_AT_POINT) {
-      if (!this._domWinUtils.selectAtPoint(aOptions.x, aOptions.y, Ci.nsIDOMWindowUtils.SELECT_WORDNOSPACE)) {
-        this._deactivate();
-        return false;
-      }
-    } else {
-      Services.console.logStringMessage("Invalid selection mode " + aOptions.mode);
+    // Perform the appropriate selection method, if we can't determine method, or it fails, return
+    if (!this._performSelection(aOptions)) {
       this._deactivate();
       return false;
     }
 
+    // Double check results of successful selection operation
     let selection = this._getSelection();
-    // If the range didn't have any text, let's bail
     if (!selection || selection.rangeCount == 0 || selection.getRangeAt(0).collapsed) {
       this._deactivate();
       return false;
@@ -281,6 +281,29 @@ var SelectionHandler = {
     this._positionHandles(positions);
     this._sendMessage("TextSelection:ShowHandles", [this.HANDLE_TYPE_START, this.HANDLE_TYPE_END], aOptions.x, aOptions.y);
     return true;
+  },
+
+  /*
+   * Called to perform a selection operation, given a target element, selection method, starting point etc.
+   */
+  _performSelection: function sh_performSelection(aOptions) {
+    if (aOptions.mode == this.SELECT_ALL) {
+      if (this._targetElement instanceof HTMLPreElement)  {
+        // Use SELECT_PARAGRAPH else we default to entire page including trailing whitespace
+        return this._domWinUtils.selectAtPoint(1, 1, Ci.nsIDOMWindowUtils.SELECT_PARAGRAPH);
+      } else {
+        // Else default to selectALL Document
+        this._getSelectionController().selectAll();
+        return true;
+      }
+    }
+
+    if (aOptions.mode == this.SELECT_AT_POINT) {
+      return this._domWinUtils.selectAtPoint(aOptions.x, aOptions.y, Ci.nsIDOMWindowUtils.SELECT_WORDNOSPACE);
+    }
+
+    Services.console.logStringMessage("Invalid selection mode " + aOptions.mode);
+    return false;
   },
 
   /* Return true if the current selection (given by aPositions) is near to where the coordinates passed in */
@@ -517,14 +540,7 @@ var SelectionHandler = {
   },
 
   selectAll: function sh_selectAll(aElement) {
-    if (this._activeType != this.TYPE_SELECTION) {
-      this.startSelection(aElement, { mode : this.SELECT_ALL });
-    } else {
-      let selectionController = this._getSelectionController();
-      selectionController.selectAll();
-      this._updateCacheForSelection();
-      this._positionHandles();
-    }
+    this.startSelection(aElement, { mode : this.SELECT_ALL });
   },
 
   /*
@@ -538,6 +554,10 @@ var SelectionHandler = {
     // in editable targets. We should factor out the logic that's currently in _sendMouseEvents.
     let viewOffset = this._getViewOffset();
     let caretPos = this._contentWindow.document.caretPositionFromPoint(aX - viewOffset.x, aY - viewOffset.y);
+    if (!caretPos) {
+      // User moves handle offscreen while positioning
+      return;
+    }
 
     // Constrain text selection within editable elements.
     let targetIsEditable = this._targetElement instanceof Ci.nsIDOMNSEditableElement;
@@ -736,8 +756,12 @@ var SelectionHandler = {
   // Returns true if the selection has been reversed. Takes optional aIsStartHandle
   // param to decide whether the selection has been reversed.
   _updateCacheForSelection: function sh_updateCacheForSelection(aIsStartHandle) {
-    let selection = this._getSelection();
-    let rects = selection.getRangeAt(0).getClientRects();
+    let rects = this._getSelection().getRangeAt(0).getClientRects();
+    if (!rects[0]) {
+      // nsISelection object exists, but there's nothing actually selected
+      throw "Failed to update cache for invalid selection";
+    }
+
     let start = { x: this._isRTL ? rects[0].right : rects[0].left, y: rects[0].bottom };
     let end = { x: this._isRTL ? rects[rects.length - 1].left : rects[rects.length - 1].right, y: rects[rects.length - 1].bottom };
 

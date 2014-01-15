@@ -587,9 +587,13 @@ LinearScanAllocator::populateSafepoints()
 
                 // If the payload is an argument, we'll scan that explicitly as
                 // part of the frame. It is therefore safe to not add any
-                // safepoint entry.
-                if (payloadAlloc->isArgument())
+                // safepoint entry, as long as the vreg does not have a stack
+                // slot as canonical spill slot.
+                if (payloadAlloc->isArgument() &&
+                    (!payload->canonicalSpill() || payload->canonicalSpill() == payloadAlloc))
+                {
                     continue;
+                }
 
                 if (isSpilledAt(typeInterval, inputOf(ins)) &&
                     isSpilledAt(payloadInterval, inputOf(ins)))

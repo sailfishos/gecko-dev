@@ -26,8 +26,8 @@
 #include "mozilla/Telemetry.h"
 #include "BatteryManager.h"
 #include "mozilla/dom/PowerManager.h"
-#include "nsIDOMWakeLock.h"
-#include "nsIPowerManagerService.h"
+#include "mozilla/dom/WakeLock.h"
+#include "mozilla/dom/power/PowerManagerService.h"
 #include "mozilla/dom/MobileMessageManager.h"
 #include "mozilla/dom/Telephony.h"
 #include "mozilla/Hal.h"
@@ -1084,8 +1084,8 @@ Navigator::GetBattery(ErrorResult& aRv)
     }
     NS_ENSURE_TRUE(mWindow->GetDocShell(), nullptr);
 
-    mBatteryManager = new battery::BatteryManager();
-    mBatteryManager->Init(mWindow);
+    mBatteryManager = new battery::BatteryManager(mWindow);
+    mBatteryManager->Init();
   }
 
   return mBatteryManager;
@@ -1131,7 +1131,7 @@ Navigator::GetMozPower(ErrorResult& aRv)
   return mPowerManager;
 }
 
-already_AddRefed<nsIDOMMozWakeLock>
+already_AddRefed<WakeLock>
 Navigator::RequestWakeLock(const nsAString &aTopic, ErrorResult& aRv)
 {
   if (!mWindow) {
@@ -1139,15 +1139,14 @@ Navigator::RequestWakeLock(const nsAString &aTopic, ErrorResult& aRv)
     return nullptr;
   }
 
-  nsCOMPtr<nsIPowerManagerService> pmService =
-    do_GetService(POWERMANAGERSERVICE_CONTRACTID);
+  nsRefPtr<power::PowerManagerService> pmService =
+    power::PowerManagerService::GetInstance();
   // Maybe it went away for some reason... Or maybe we're just called
   // from our XPCOM method.
   NS_ENSURE_TRUE(pmService, nullptr);
 
-  nsCOMPtr<nsIDOMMozWakeLock> wakelock;
-  aRv = pmService->NewWakeLock(aTopic, mWindow, getter_AddRefs(wakelock));
-  return wakelock.forget();
+  ErrorResult rv;
+  return pmService->NewWakeLock(aTopic, mWindow, rv);
 }
 
 nsIDOMMozMobileMessageManager*
@@ -1586,9 +1585,7 @@ Navigator::DoNewResolve(JSContext* aCx, JS::Handle<JSObject*> aObject,
   }
 
   if (JSVAL_IS_PRIMITIVE(prop_val) && !JSVAL_IS_NULL(prop_val)) {
-    nsCOMPtr<nsIXPConnectJSObjectHolder> holder;
-    rv = nsContentUtils::WrapNative(aCx, aObject, native, &prop_val,
-                                    getter_AddRefs(holder), true);
+    rv = nsContentUtils::WrapNative(aCx, aObject, native, &prop_val, true);
 
     if (NS_FAILED(rv)) {
       return Throw(aCx, rv);
@@ -1833,8 +1830,9 @@ Navigator::HasTimeSupport(JSContext* /* unused */, JSObject* aGlobal)
 
 #ifdef MOZ_MEDIA_NAVIGATOR
 /* static */
-bool Navigator::HasUserMediaSupport(JSContext* /* unused */,
-                                    JSObject* /* unused */)
+bool
+Navigator::HasUserMediaSupport(JSContext* /* unused */,
+                               JSObject* /* unused */)
 {
   // Make enabling peerconnection enable getUserMedia() as well
   return Preferences::GetBool("media.navigator.enabled", false) ||
@@ -1843,21 +1841,27 @@ bool Navigator::HasUserMediaSupport(JSContext* /* unused */,
 #endif // MOZ_MEDIA_NAVIGATOR
 
 /* static */
-bool Navigator::HasPushNotificationsSupport(JSContext* /* unused */,
-                                            JSObject* aGlobal)
+bool
+Navigator::HasPushNotificationsSupport(JSContext* /* unused */,
+                                       JSObject* aGlobal)
 {
   nsCOMPtr<nsPIDOMWindow> win = GetWindowFromGlobal(aGlobal);
-  return win && Preferences::GetBool("services.push.enabled", false) && CheckPermission(win, "push");
+  return Preferences::GetBool("services.push.enabled", false) &&
+         win && CheckPermission(win, "push");
 }
 
 /* static */
-bool Navigator::HasInputMethodSupport(JSContext* /* unused */,
-                                      JSObject* aGlobal)
+bool
+Navigator::HasInputMethodSupport(JSContext* /* unused */,
+                                 JSObject* aGlobal)
 {
   nsCOMPtr<nsPIDOMWindow> win = GetWindowFromGlobal(aGlobal);
-  return Preferences::GetBool("dom.mozInputMethod.testing", false) ||
-         (Preferences::GetBool("dom.mozInputMethod.enabled", false) &&
-          win && CheckPermission(win, "input"));
+  if (Preferences::GetBool("dom.mozInputMethod.testing", false)) {
+    return true;
+  }
+
+  return Preferences::GetBool("dom.mozInputMethod.enabled", false) &&
+         win && CheckPermission(win, "input");
 }
 
 /* static */

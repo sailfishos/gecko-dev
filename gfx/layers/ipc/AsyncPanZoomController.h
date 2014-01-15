@@ -130,20 +130,14 @@ public:
 
   /**
    * Updates any zoom constraints contained in the <meta name="viewport"> tag.
-   * We try to obey everything it asks us elsewhere, but here we only handle
-   * minimum-scale, maximum-scale, and user-scalable.
    */
-  void UpdateZoomConstraints(bool aAllowZoom,
-                             const CSSToScreenScale& aMinScale,
-                             const CSSToScreenScale& aMaxScale);
+  void UpdateZoomConstraints(const ZoomConstraints& aConstraints);
 
   /**
    * Return the zoom constraints last set for this APZC (in the constructor
    * or in UpdateZoomConstraints()).
    */
-  void GetZoomConstraints(bool* aAllowZoom,
-                          CSSToScreenScale* aMinScale,
-                          CSSToScreenScale* aMaxScale);
+  ZoomConstraints GetZoomConstraints() const;
 
   /**
    * Schedules a runnable to run on the controller/UI thread at some time
@@ -235,7 +229,7 @@ public:
    */
   static const CSSRect CalculatePendingDisplayPort(
     const FrameMetrics& aFrameMetrics,
-    const gfx::Point& aVelocity,
+    const ScreenPoint& aVelocity,
     const gfx::Point& aAcceleration,
     double aEstimatedPaintDuration);
 
@@ -414,7 +408,7 @@ protected:
   /**
    * Gets a vector of the velocities of each axis.
    */
-  const gfx::Point GetVelocityVector();
+  const ScreenPoint GetVelocityVector();
 
   /**
    * Gets a vector of the acceleration factors of each axis.
@@ -444,22 +438,6 @@ protected:
    * Does any panning required due to a new touch event.
    */
   void TrackTouch(const MultiTouchInput& aEvent);
-
-  /**
-   * Attempts to enlarge the displayport along a single axis. Returns whether or
-   * not the displayport was enlarged. This will fail in circumstances where the
-   * velocity along that axis is not high enough to need any changes. The
-   * displayport metrics are expected to be passed into |aDisplayPortOffset| and
-   * |aDisplayPortLength|. If enlarged, these will be updated with the new
-   * metrics.
-   */
-  static bool EnlargeDisplayPortAlongAxis(float aSkateSizeMultiplier,
-                                          double aEstimatedPaintDuration,
-                                          float aCompositionBounds,
-                                          float aVelocity,
-                                          float aAcceleration,
-                                          float* aDisplayPortOffset,
-                                          float* aDisplayPortLength);
 
   /**
    * Utility function to send updated FrameMetrics to Gecko so that it can paint
@@ -609,9 +587,7 @@ private:
   // Most up-to-date constraints on zooming. These should always be reasonable
   // values; for example, allowing a min zoom of 0.0 can cause very bad things
   // to happen.
-  bool mAllowZoom;
-  CSSToScreenScale mMinZoom;
-  CSSToScreenScale mMaxZoom;
+  ZoomConstraints mZoomConstraints;
 
   // The last time the compositor has sampled the content transform for this
   // frame.

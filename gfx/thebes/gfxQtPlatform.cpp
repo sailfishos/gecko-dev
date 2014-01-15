@@ -99,10 +99,10 @@ gfxQtPlatform::gfxQtPlatform()
     if (pixmap.paintEngine())
         sDefaultQtPaintEngineType = pixmap.paintEngine()->type();
 #endif
-    uint32_t canvasMask = (1 << BACKEND_CAIRO) | (1 << BACKEND_SKIA);
-    uint32_t contentMask = (1 << BACKEND_CAIRO) | (1 << BACKEND_SKIA);
-    InitBackendPrefs(canvasMask, BACKEND_CAIRO,
-                     contentMask, BACKEND_CAIRO);
+    uint32_t canvasMask = BackendTypeBit(BackendType::CAIRO) | BackendTypeBit(BackendType::SKIA);
+    uint32_t contentMask = BackendTypeBit(BackendType::CAIRO) | BackendTypeBit(BackendType::SKIA);
+    InitBackendPrefs(canvasMask, BackendType::CAIRO,
+                     contentMask, BackendType::CAIRO);
 }
 
 gfxQtPlatform::~gfxQtPlatform()

@@ -22,8 +22,11 @@ Cu.import("resource:///modules/CustomizableUI.jsm");
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Task.jsm");
 Cu.import("resource://gre/modules/Promise.jsm");
+
 XPCOMUtils.defineLazyModuleGetter(this, "DragPositionManager",
                                   "resource:///modules/DragPositionManager.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "BrowserUITelemetry",
+                                  "resource:///modules/BrowserUITelemetry.jsm");
 
 let gModuleName = "[CustomizeMode]";
 #include logging.js
@@ -129,10 +132,13 @@ CustomizeMode.prototype = {
       window.PanelUI.menuButton.open = true;
       window.PanelUI.beginBatchUpdate();
 
+      // Hide the palette before starting the transition for increased perf.
+      this.visiblePalette.hidden = true;
+
       // Move the mainView in the panel to the holder so that we can see it
       // while customizing.
-      let panelHolder = document.getElementById("customization-panelHolder");
       let mainView = window.PanelUI.mainView;
+      let panelHolder = document.getElementById("customization-panelHolder");
       panelHolder.appendChild(mainView);
 
       let customizeButton = document.getElementById("PanelUI-customize");
@@ -191,6 +197,10 @@ CustomizeMode.prototype = {
       window.PanelUI.endBatchUpdate();
       this._customizing = true;
       this._transitioning = false;
+
+      // Show the palette now that the transition has finished.
+      this.visiblePalette.hidden = false;
+
       this.dispatchToolboxEvent("customizationready");
     }.bind(this)).then(null, function(e) {
       ERROR(e);
@@ -214,11 +224,14 @@ CustomizeMode.prototype = {
 
     this._removePanelCustomizationPlaceholders();
 
-    this._transitioning = true;
-
     let window = this.window;
     let document = this.document;
     let documentElement = document.documentElement;
+
+    // Hide the palette before starting the transition for increased perf.
+    this.visiblePalette.hidden = true;
+
+    this._transitioning = true;
 
     Task.spawn(function() {
       yield this.depopulatePalette();
@@ -541,9 +554,9 @@ CustomizeMode.prototype = {
       aNode.removeAttribute("observes");
     }
 
-    if (aNode.checked) {
+    if (aNode.getAttribute("checked") == "true") {
       wrapper.setAttribute("itemchecked", "true");
-      aNode.checked = false;
+      aNode.removeAttribute("checked");
     }
 
     if (aNode.hasAttribute("id")) {
@@ -721,6 +734,7 @@ CustomizeMode.prototype = {
     this.resetting = true;
     // Disable the reset button temporarily while resetting:
     let btn = this.document.getElementById("customization-reset-button");
+    BrowserUITelemetry.countCustomizationEvent("reset");
     btn.disabled = true;
     return Task.spawn(function() {
       this._removePanelCustomizationPlaceholders();
@@ -1096,6 +1110,11 @@ CustomizeMode.prototype = {
         }
 
         CustomizableUI.removeWidgetFromArea(aDraggedItemId);
+        BrowserUITelemetry.countCustomizationEvent("remove");
+        // Special widgets are removed outright, we can return here:
+        if (CustomizableUI.isSpecialWidget(aDraggedItemId)) {
+          return;
+        }
       }
       draggedItem = draggedItem.parentNode;
 
@@ -1129,6 +1148,7 @@ CustomizeMode.prototype = {
         this.wrapToolbarItem(aTargetNode, place);
       }
       this.wrapToolbarItem(draggedItem, place);
+      BrowserUITelemetry.countCustomizationEvent("move");
       return;
     }
 
@@ -1136,6 +1156,12 @@ CustomizeMode.prototype = {
     // widget to the end of the area.
     if (aTargetNode == aTargetArea.customizationTarget) {
       CustomizableUI.addWidgetToArea(aDraggedItemId, aTargetArea.id);
+      // For the purposes of BrowserUITelemetry, we consider both moving a widget
+      // within the same area, and adding a widget from one area to another area
+      // as a "move". An "add" is only when we move an item from the palette into
+      // an area.
+      let custEventType = aOriginArea.id == kPaletteId ? "add" : "move";
+      BrowserUITelemetry.countCustomizationEvent(custEventType);
       return;
     }
 
@@ -1163,7 +1189,6 @@ CustomizeMode.prototype = {
     }
     let position = placement ? placement.position : null;
 
-
     // Is the target area the same as the origin? Since we've already handled
     // the possibility that the target is the customization palette, we know
     // that the widget is moving within a customizable area.
@@ -1172,6 +1197,12 @@ CustomizeMode.prototype = {
     } else {
       CustomizableUI.addWidgetToArea(aDraggedItemId, aTargetArea.id, position);
     }
+
+    // For BrowserUITelemetry, an "add" is only when we move an item from the palette
+    // into an area. Otherwise, it's a move.
+    let custEventType = aOriginArea.id == kPaletteId ? "add" : "move";
+    BrowserUITelemetry.countCustomizationEvent(custEventType);
+
     // If we dropped onto a skipintoolbarset item, manually correct the drop location:
     if (aTargetNode != itemForPlacement) {
       let draggedWrapper = draggedItem.parentNode;

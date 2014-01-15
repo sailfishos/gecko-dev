@@ -619,7 +619,7 @@ HandleException(ResumeFromException *rfe)
                 // the function has exited, so invoke the probe that a function
                 // is exiting.
                 JSScript *script = frames.script();
-                probes::ExitScript(cx, script, script->function(), popSPSFrame);
+                probes::ExitScript(cx, script, script->functionNonDelazifying(), popSPSFrame);
                 if (!frames.more())
                     break;
                 ++frames;
@@ -638,7 +638,7 @@ HandleException(ResumeFromException *rfe)
 
             // Unwind profiler pseudo-stack
             JSScript *script = iter.script();
-            probes::ExitScript(cx, script, script->function(),
+            probes::ExitScript(cx, script, script->functionNonDelazifying(),
                                iter.baselineFrame()->hasPushedSPSFrame());
             // After this point, any pushed SPS frame would have been popped if it needed
             // to be.  Unset the flag here so that if we call DebugEpilogue below,
@@ -688,7 +688,7 @@ HandleException(ResumeFromException *rfe)
 void
 HandleParallelFailure(ResumeFromException *rfe)
 {
-    ForkJoinSlice *slice = ForkJoinSlice::Current();
+    ForkJoinSlice *slice = ForkJoinSlice::current();
     IonFrameIterator iter(slice->perThreadData->ionTop, ParallelExecution);
 
     parallel::Spew(parallel::SpewBailouts, "Bailing from VM reentry");
@@ -887,27 +887,54 @@ MarkIonJSFrame(JSTracer *trc, const IonFrameIterator &frame)
         }
     }
 #endif
+}
 
 #ifdef JSGC_GENERATIONAL
-    if (trc->runtime->isHeapMinorCollecting()) {
-        // Minor GCs may move slots/elements allocated in the nursery. Update
-        // any slots/elements pointers stored in this frame.
+static void
+UpdateIonJSFrameForMinorGC(JSTracer *trc, const IonFrameIterator &frame)
+{
+    // Minor GCs may move slots/elements allocated in the nursery. Update
+    // any slots/elements pointers stored in this frame.
 
-        GeneralRegisterSet slotsRegs = safepoint.slotsOrElementsSpills();
-        spill = frame.spillBase();
-        for (GeneralRegisterBackwardIterator iter(safepoint.allGprSpills()); iter.more(); iter++) {
-            --spill;
-            if (slotsRegs.has(*iter))
-                trc->runtime->gcNursery.forwardBufferPointer(reinterpret_cast<HeapSlot **>(spill));
-        }
+    IonJSFrameLayout *layout = (IonJSFrameLayout *)frame.fp();
 
-        while (safepoint.getSlotsOrElementsSlot(&slot)) {
-            HeapSlot **slots = reinterpret_cast<HeapSlot **>(layout->slotRef(slot));
-            trc->runtime->gcNursery.forwardBufferPointer(slots);
-        }
+    IonScript *ionScript = nullptr;
+    if (frame.checkInvalidation(&ionScript)) {
+        // This frame has been invalidated, meaning that its IonScript is no
+        // longer reachable through the callee token (JSFunction/JSScript->ion
+        // is now nullptr or recompiled).
+    } else if (CalleeTokenIsFunction(layout->calleeToken())) {
+        ionScript = CalleeTokenToFunction(layout->calleeToken())->nonLazyScript()->ionScript();
+    } else {
+        ionScript = CalleeTokenToScript(layout->calleeToken())->ionScript();
     }
+
+    const SafepointIndex *si = ionScript->getSafepointIndex(frame.returnAddressToFp());
+    SafepointReader safepoint(ionScript, si);
+
+    GeneralRegisterSet slotsRegs = safepoint.slotsOrElementsSpills();
+    uintptr_t *spill = frame.spillBase();
+    for (GeneralRegisterBackwardIterator iter(safepoint.allGprSpills()); iter.more(); iter++) {
+        --spill;
+        if (slotsRegs.has(*iter))
+            trc->runtime->gcNursery.forwardBufferPointer(reinterpret_cast<HeapSlot **>(spill));
+    }
+
+    // Skip to the right place in the safepoint
+    uint32_t slot;
+    while (safepoint.getGcSlot(&slot));
+    while (safepoint.getValueSlot(&slot));
+#ifdef JS_NUNBOX32
+    LAllocation type, payload;
+    while (safepoint.getNunboxSlot(&type, &payload));
 #endif
+
+    while (safepoint.getSlotsOrElementsSlot(&slot)) {
+        HeapSlot **slots = reinterpret_cast<HeapSlot **>(layout->slotRef(slot));
+        trc->runtime->gcNursery.forwardBufferPointer(slots);
+    }
 }
+#endif
 
 static void
 MarkBaselineStubFrame(JSTracer *trc, const IonFrameIterator &frame)
@@ -1103,6 +1130,17 @@ MarkJitExitFrame(JSTracer *trc, const IonFrameIterator &frame)
 }
 
 static void
+MarkRectifierFrame(JSTracer *trc, const IonFrameIterator &frame)
+{
+    // Mark thisv.
+    //
+    // Baseline JIT code generated as part of the ICCall_Fallback stub may use
+    // it if we're calling a constructor that returns a primitive value.
+    IonRectifierFrameLayout *layout = (IonRectifierFrameLayout *)frame.fp();
+    gc::MarkValueRoot(trc, &layout->argv()[0], "ion-thisv");
+}
+
+static void
 MarkJitActivation(JSTracer *trc, const JitActivationIterator &activations)
 {
 #ifdef CHECK_OSIPOINT_REGISTERS
@@ -1132,6 +1170,8 @@ MarkJitActivation(JSTracer *trc, const JitActivationIterator &activations)
           case IonFrame_Unwound_OptimizedJS:
             MOZ_ASSUME_UNREACHABLE("invalid");
           case IonFrame_Rectifier:
+            MarkRectifierFrame(trc, frames);
+            break;
           case IonFrame_Unwound_Rectifier:
             break;
           case IonFrame_Osr:
@@ -1151,6 +1191,20 @@ MarkJitActivations(JSRuntime *rt, JSTracer *trc)
     for (JitActivationIterator activations(rt); !activations.done(); ++activations)
         MarkJitActivation(trc, activations);
 }
+
+#ifdef JSGC_GENERATIONAL
+void
+UpdateJitActivationsForMinorGC(JSRuntime *rt, JSTracer *trc)
+{
+    JS_ASSERT(trc->runtime->isHeapMinorCollecting());
+    for (JitActivationIterator activations(rt); !activations.done(); ++activations) {
+        for (IonFrameIterator frames(activations); !frames.done(); ++frames) {
+            if (frames.type() == IonFrame_OptimizedJS)
+                UpdateIonJSFrameForMinorGC(trc, frames);
+        }
+    }
+}
+#endif
 
 void
 AutoTempAllocatorRooter::trace(JSTracer *trc)

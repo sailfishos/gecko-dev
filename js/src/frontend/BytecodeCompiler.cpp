@@ -41,10 +41,10 @@ CheckLength(ExclusiveContext *cx, size_t length)
 }
 
 static bool
-SetSourceURL(ExclusiveContext *cx, TokenStream &tokenStream, ScriptSource *ss)
+SetDisplayURL(ExclusiveContext *cx, TokenStream &tokenStream, ScriptSource *ss)
 {
-    if (tokenStream.hasSourceURL()) {
-        if (!ss->setSourceURL(cx, tokenStream.sourceURL()))
+    if (tokenStream.hasDisplayURL()) {
+        if (!ss->setDisplayURL(cx, tokenStream.displayURL()))
             return false;
     }
     return true;
@@ -72,7 +72,9 @@ CheckArgumentsWithinEval(JSContext *cx, Parser<FullParseHandler> &parser, Handle
 
     // Force construction of arguments objects for functions that use
     // |arguments| within an eval.
-    RootedScript script(cx, fun->nonLazyScript());
+    RootedScript script(cx, fun->getOrCreateScript(cx));
+    if (!script)
+        return false;
     if (script->argumentsHasVarBinding()) {
         if (!JSScript::argumentsOptimizationFailed(cx, script))
             return false;
@@ -123,7 +125,9 @@ MaybeCheckEvalFreeVariables(ExclusiveContext *cxArg, HandleScript evalCaller, Ha
         RootedObject scope(cx, scopeChain);
         while (scope->is<ScopeObject>() || scope->is<DebugScopeObject>()) {
             if (scope->is<CallObject>() && !scope->as<CallObject>().isForEval()) {
-                RootedScript script(cx, scope->as<CallObject>().callee().nonLazyScript());
+                RootedScript script(cx, scope->as<CallObject>().callee().getOrCreateScript(cx));
+                if (!script)
+                    return false;
                 if (script->argumentsHasVarBinding()) {
                     if (!JSScript::argumentsOptimizationFailed(cx, script))
                         return false;
@@ -235,10 +239,8 @@ frontend::CompileScript(ExclusiveContext *cx, LifoAlloc *alloc, HandleObject sco
     Directives directives(options.strictOption);
     GlobalSharedContext globalsc(cx, scopeChain, directives, options.extraWarningsOption);
 
-    bool savedCallerFun =
-        options.compileAndGo &&
-        evalCaller &&
-        (evalCaller->function() || evalCaller->savedCallerFun());
+    bool savedCallerFun = options.compileAndGo &&
+                          evalCaller && evalCaller->functionOrCallerFunction();
     Rooted<JSScript*> script(cx, JSScript::Create(cx, NullPtr(), savedCallerFun,
                                                   options, staticLevel, sourceObject, 0, length));
     if (!script)
@@ -368,7 +370,7 @@ frontend::CompileScript(ExclusiveContext *cx, LifoAlloc *alloc, HandleObject sco
     if (!MaybeCheckEvalFreeVariables(cx, evalCaller, scopeChain, parser, pc.ref()))
         return nullptr;
 
-    if (!SetSourceURL(cx, parser.tokenStream, ss))
+    if (!SetDisplayURL(cx, parser.tokenStream, ss))
         return nullptr;
 
     if (!SetSourceMap(cx, parser.tokenStream, ss))
@@ -404,7 +406,7 @@ frontend::CompileScript(ExclusiveContext *cx, LifoAlloc *alloc, HandleObject sco
 bool
 frontend::CompileLazyFunction(JSContext *cx, Handle<LazyScript*> lazy, const jschar *chars, size_t length)
 {
-    JS_ASSERT(cx->compartment() == lazy->function()->compartment());
+    JS_ASSERT(cx->compartment() == lazy->functionNonDelazifying()->compartment());
 
     CompileOptions options(cx, lazy->version());
     options.setPrincipals(cx->compartment()->principals)
@@ -427,7 +429,7 @@ frontend::CompileLazyFunction(JSContext *cx, Handle<LazyScript*> lazy, const jsc
 
     uint32_t staticLevel = lazy->staticLevel(cx);
 
-    Rooted<JSFunction*> fun(cx, lazy->function());
+    Rooted<JSFunction*> fun(cx, lazy->functionNonDelazifying());
     JS_ASSERT(!lazy->isLegacyGenerator());
     ParseNode *pn = parser.standaloneLazyFunction(fun, staticLevel, lazy->strict(),
                                                   lazy->generatorKind());
@@ -597,7 +599,7 @@ CompileFunctionBody(JSContext *cx, MutableHandleFunction fun, const ReadOnlyComp
         JS_ASSERT(IsAsmJSModuleNative(fun->native()));
     }
 
-    if (!SetSourceURL(cx, parser.tokenStream, ss))
+    if (!SetDisplayURL(cx, parser.tokenStream, ss))
         return false;
 
     if (!SetSourceMap(cx, parser.tokenStream, ss))

@@ -1126,15 +1126,13 @@
         -   when not in FIND_LINKS mode.
         -->
       <method name="onFindResult">
-        <parameter name="aResult"/>
-        <parameter name="aFindBackwards"/>
-        <parameter name="aLinkURL" />
+        <parameter name="aData"/>
         <body><![CDATA[
-          this._updateStatusUI(aResult, aFindBackwards);
-          this._updateStatusUIBar(aLinkURL);
+          this._updateStatusUI(aData.result, aData.findBackwards);
+          this._updateStatusUIBar(aData.linkURL);
 
-          if (aResult == this.nsITypeAheadFind.FIND_NOTFOUND)
-            this._findFailedString = this.browser.finder.searchString;
+          if (aData.result == this.nsITypeAheadFind.FIND_NOTFOUND)
+            this._findFailedString = aData.searchString;
           else
             this._findFailedString = null;
 
@@ -1169,7 +1167,12 @@
     </implementation>
 
     <handlers>
-      <handler event="keypress" keycode="VK_ESCAPE" phase="capturing" action="this.close();" preventdefault="true"/>
+      <!--
+        - We have to guard against `this.close` being |null| due to an unknown
+        - issue, which is tracked in bug 957999.
+        -->
+      <handler event="keypress" keycode="VK_ESCAPE" phase="capturing"
+               action="if (this.close) this.close();" preventdefault="true"/>
     </handlers>
   </binding>
 </bindings>

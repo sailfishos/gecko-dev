@@ -8,21 +8,40 @@
 #include "mozilla/dom/TextTrackManager.h"
 #include "mozilla/dom/HTMLMediaElement.h"
 #include "mozilla/dom/HTMLTrackElement.h"
+#include "mozilla/dom/TextTrack.h"
+#include "mozilla/dom/TextTrackCue.h"
+#include "mozilla/ClearOnShutdown.h"
+#include "nsComponentManagerUtils.h"
+#include "nsVideoFrame.h"
+#include "nsIFrame.h"
+#include "nsTArrayHelpers.h"
+#include "nsIWebVTTParserWrapper.h"
 
 namespace mozilla {
 namespace dom {
 
-NS_IMPL_CYCLE_COLLECTION_2(TextTrackManager, mTextTracks, mPendingTextTracks)
+NS_IMPL_CYCLE_COLLECTION_3(TextTrackManager, mTextTracks,
+                           mPendingTextTracks, mNewCues)
 NS_IMPL_CYCLE_COLLECTION_ROOT_NATIVE(TextTrackManager, AddRef)
 NS_IMPL_CYCLE_COLLECTION_UNROOT_NATIVE(TextTrackManager, Release)
+
+StaticRefPtr<nsIWebVTTParserWrapper> TextTrackManager::sParserWrapper;
 
 TextTrackManager::TextTrackManager(HTMLMediaElement *aMediaElement)
   : mMediaElement(aMediaElement)
 {
   MOZ_COUNT_CTOR(TextTrackManager);
+  mNewCues = new TextTrackCueList(mMediaElement->OwnerDoc()->GetParentObject());
   mTextTracks = new TextTrackList(mMediaElement->OwnerDoc()->GetParentObject());
   mPendingTextTracks =
     new TextTrackList(mMediaElement->OwnerDoc()->GetParentObject());
+
+  if (!sParserWrapper) {
+    nsCOMPtr<nsIWebVTTParserWrapper> parserWrapper =
+      do_CreateInstance(NS_WEBVTTPARSERWRAPPER_CONTRACTID);
+    sParserWrapper = parserWrapper;
+    ClearOnShutdown(&sParserWrapper);
+  }
 }
 
 TextTrackManager::~TextTrackManager()
@@ -43,6 +62,7 @@ TextTrackManager::AddTextTrack(TextTrackKind aKind, const nsAString& aLabel,
   nsRefPtr<TextTrack> ttrack =
     mTextTracks->AddTextTrack(mMediaElement, aKind, aLabel, aLanguage);
   ttrack->SetReadyState(HTMLTrackElement::LOADED);
+  AddCues(ttrack);
   return ttrack.forget();
 }
 
@@ -50,6 +70,19 @@ void
 TextTrackManager::AddTextTrack(TextTrack* aTextTrack)
 {
   mTextTracks->AddTextTrack(aTextTrack);
+  AddCues(aTextTrack);
+}
+
+void
+TextTrackManager::AddCues(TextTrack* aTextTrack)
+{
+  TextTrackCueList* cueList = aTextTrack->GetCues();
+  if (cueList) {
+    bool dummy;
+    for (uint32_t i = 0; i < cueList->Length(); ++i) {
+      mNewCues->AddCue(*cueList->IndexedGetter(i, dummy));
+    }
+  }
 }
 
 void
@@ -70,9 +103,48 @@ TextTrackManager::DidSeek()
 }
 
 void
-TextTrackManager::Update(double aTime)
+TextTrackManager::UpdateCueDisplay()
 {
-  mTextTracks->Update(aTime);
+  nsIFrame* frame = mMediaElement->GetPrimaryFrame();
+  if (!frame) {
+    return;
+  }
+
+  nsVideoFrame* videoFrame = do_QueryFrame(frame);
+  if (!videoFrame) {
+    return;
+  }
+
+  nsCOMPtr<nsIContent> overlay = videoFrame->GetCaptionOverlay();
+  if (!overlay) {
+    return;
+  }
+
+  nsTArray<nsRefPtr<TextTrackCue> > activeCues;
+  mTextTracks->GetAllActiveCues(activeCues);
+
+  if (activeCues.Length() > 0) {
+    nsCOMPtr<nsIWritableVariant> jsCues =
+      do_CreateInstance("@mozilla.org/variant;1");
+
+    jsCues->SetAsArray(nsIDataType::VTYPE_INTERFACE,
+                       &NS_GET_IID(nsIDOMEventTarget),
+                       activeCues.Length(),
+                       static_cast<void*>(activeCues.Elements()));
+
+    nsPIDOMWindow* window = mMediaElement->OwnerDoc()->GetWindow();
+    if (window) {
+      sParserWrapper->ProcessCues(window, jsCues, overlay);
+    }
+  } else if (overlay->Length() > 0) {
+    nsContentUtils::SetNodeTextContent(overlay, EmptyString(), true);
+  }
+}
+
+void
+TextTrackManager::AddCue(TextTrackCue& aCue)
+{
+  mNewCues->AddCue(aCue);
 }
 
 void
