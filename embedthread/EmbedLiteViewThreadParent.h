@@ -34,7 +34,7 @@ public:
   virtual void SuspendTimeouts();
   virtual void ResumeTimeouts();
   virtual void LoadFrameScript(const char* aURI);
-  virtual void DoSendAsyncMessage(const PRUnichar* aMessageName, const PRUnichar* aMessage);
+  virtual void DoSendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage);
   virtual bool RenderToImage(unsigned char* aData, int imgW, int imgH, int stride, int depth);
   virtual bool RenderGL();
   virtual void SetViewSize(int width, int height);

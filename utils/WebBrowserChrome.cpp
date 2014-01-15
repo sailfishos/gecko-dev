@@ -79,7 +79,7 @@ NS_IMETHODIMP WebBrowserChrome::GetInterface(const nsIID& aIID, void** aInstance
   return QueryInterface(aIID, aInstancePtr);
 }
 
-NS_IMETHODIMP WebBrowserChrome::SetStatus(uint32_t /* statusType*/, const PRUnichar* /*status*/)
+NS_IMETHODIMP WebBrowserChrome::SetStatus(uint32_t /* statusType*/, const char16_t* /*status*/)
 {
   LOGNI();
   return NS_OK;
@@ -303,7 +303,7 @@ NS_IMETHODIMP
 WebBrowserChrome::OnStatusChange(nsIWebProgress* aWebProgress,
                                  nsIRequest* aRequest,
                                  nsresult aStatus,
-                                 const PRUnichar* aMessage)
+                                 const char16_t* aMessage)
 {
   LOGNI();
   return NS_OK;
@@ -538,14 +538,14 @@ NS_IMETHODIMP WebBrowserChrome::SetVisibility(bool aVisibility)
   return NS_OK;
 }
 
-NS_IMETHODIMP WebBrowserChrome::GetTitle(PRUnichar** aTitle)
+NS_IMETHODIMP WebBrowserChrome::GetTitle(char16_t** aTitle)
 {
   NS_ENSURE_ARG_POINTER(aTitle);
   *aTitle = ToNewUnicode(mTitle);
   return NS_OK;
 }
 
-NS_IMETHODIMP WebBrowserChrome::SetTitle(const PRUnichar* aTitle)
+NS_IMETHODIMP WebBrowserChrome::SetTitle(const char16_t* aTitle)
 {
   // Store local title
   mTitle = aTitle;

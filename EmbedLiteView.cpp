@@ -178,7 +178,7 @@ void EmbedLiteView::RemoveMessageListeners(const nsTArray<nsString>& aMessageNam
 }
 
 void
-EmbedLiteView::SendAsyncMessage(const PRUnichar* aMessageName, const PRUnichar* aMessage)
+EmbedLiteView::SendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage)
 {
   NS_ENSURE_TRUE(mViewImpl, );
   mViewImpl->DoSendAsyncMessage(aMessageName, aMessage);

@@ -28,8 +28,8 @@ public:
   virtual void ViewDestroyed() {}
 
   // Messaging interface, allow to receive json messages from content child scripts
-  virtual void RecvAsyncMessage(const PRUnichar* aMessage, const PRUnichar* aData) {}
-  virtual char* RecvSyncMessage(const PRUnichar* aMessage, const PRUnichar* aData) { return NULL; }
+  virtual void RecvAsyncMessage(const char16_t* aMessage, const char16_t* aData) {}
+  virtual char* RecvSyncMessage(const char16_t* aMessage, const char16_t* aData) { return NULL; }
 
   virtual void OnLocationChanged(const char* aLocation, bool aCanGoBack, bool aCanGoForward) {}
   virtual void OnLoadStarted(const char* aLocation) {}
@@ -40,7 +40,7 @@ public:
   virtual void OnFirstPaint(int32_t aX, int32_t aY) {}
   virtual void OnScrolledAreaChanged(unsigned int aWidth, unsigned int aHeight) {}
   virtual void OnScrollChanged(int32_t offSetX, int32_t offSetY) {}
-  virtual void OnTitleChanged(const PRUnichar* aTitle) {}
+  virtual void OnTitleChanged(const char16_t* aTitle) {}
   virtual void SetBackgroundColor(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {}
 
   // Compositor Interface
@@ -55,7 +55,7 @@ public:
                                 float aDisplayResolution, bool aLayersUpdated,
                                 nsIntPoint& aScrollOffset, float& aScaleX, float& aScaleY) {}
   virtual void SetPageRect(const gfxRect& aCssPageRect) {}
-  virtual void IMENotification(int aEnabled, bool aOpen, int aCause, int aFocusChange, const PRUnichar* inputType, const PRUnichar* inputMode) {}
+  virtual void IMENotification(int aEnabled, bool aOpen, int aCause, int aFocusChange, const char16_t* inputType, const char16_t* inputMode) {}
   virtual void GetIMEStatus(int32_t* aIMEEnabled, int32_t* aIMEOpen, intptr_t* aNativeIMEContext) {}
 
   // AZPC Interface, return true in order to prevent default behavior
@@ -146,7 +146,7 @@ public:
   virtual void RemoveMessageListener(const char* aMessageName);
   virtual void AddMessageListeners(const nsTArray<nsString>& aMessageNames);
   virtual void RemoveMessageListeners(const nsTArray<nsString>& aMessageNames);
-  virtual void SendAsyncMessage(const PRUnichar* aMessageName, const PRUnichar* aMessage);
+  virtual void SendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage);
 
   virtual uint32_t GetUniqueID();
   virtual bool GetPendingTexture(EmbedLiteRenderTarget* aContextWrapper, int* textureID, int* width, int* height);

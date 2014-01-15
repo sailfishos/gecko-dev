@@ -203,7 +203,7 @@ TabChildHelper::InitTabChildGlobal()
 NS_IMETHODIMP
 TabChildHelper::Observe(nsISupports* aSubject,
                         const char* aTopic,
-                        const PRUnichar* aData)
+                        const char16_t* aData)
 {
   if (!strcmp(aTopic, BROWSER_ZOOM_TO_RECT)) {
     nsCOMPtr<nsIDocShell> docShell(do_QueryInterface(aSubject));
@@ -402,7 +402,7 @@ static bool
 JSONCreator(const jschar* aBuf, uint32_t aLen, void* aData)
 {
   nsAString* result = static_cast<nsAString*>(aData);
-  result->Append(static_cast<const PRUnichar*>(aBuf),
+  result->Append(static_cast<const char16_t*>(aBuf),
                  static_cast<uint32_t>(aLen));
   return true;
 }
@@ -867,7 +867,7 @@ TabChildHelper::HandlePossibleViewportChange()
     // The page must have been refreshed in some way such as a new document or
     // new CSS viewport, so we know that there's no velocity, acceleration, and
     // we have no idea how long painting will take.
-    metrics, gfx::Point(0.0f, 0.0f), gfx::Point(0.0f, 0.0f), 0.0);
+    metrics, ScreenPoint(0.0f, 0.0f), gfx::Point(0.0f, 0.0f), 0.0);
   metrics.mCumulativeResolution = metrics.mZoom / metrics.mDevPixelsPerCSSPixel * ScreenToLayerScale(1);
   // This is the root layer, so the cumulative resolution is the same
   // as the resolution.

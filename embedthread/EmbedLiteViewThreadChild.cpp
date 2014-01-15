@@ -425,7 +425,7 @@ EmbedLiteViewThreadChild::HasMessageListener(const nsAString& aMessageName)
 }
 
 bool
-EmbedLiteViewThreadChild::DoSendAsyncMessage(const PRUnichar* aMessageName, const PRUnichar* aMessage)
+EmbedLiteViewThreadChild::DoSendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage)
 {
   LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessageName).get(), NS_ConvertUTF16toUTF8(aMessage).get());
   if (mRegisteredMessages.Get(nsDependentString(aMessageName))) {
@@ -435,7 +435,7 @@ EmbedLiteViewThreadChild::DoSendAsyncMessage(const PRUnichar* aMessageName, cons
 }
 
 bool
-EmbedLiteViewThreadChild::DoSendSyncMessage(const PRUnichar* aMessageName, const PRUnichar* aMessage, InfallibleTArray<nsString>* aJSONRetVal)
+EmbedLiteViewThreadChild::DoSendSyncMessage(const char16_t* aMessageName, const char16_t* aMessage, InfallibleTArray<nsString>* aJSONRetVal)
 {
   LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessageName).get(), NS_ConvertUTF16toUTF8(aMessage).get());
   if (mRegisteredMessages.Get(nsDependentString(aMessageName))) {
@@ -895,7 +895,7 @@ EmbedLiteViewThreadChild::OnScrollChanged(int32_t offSetX, int32_t offSetY)
 }
 
 NS_IMETHODIMP
-EmbedLiteViewThreadChild::OnTitleChanged(const PRUnichar* aTitle)
+EmbedLiteViewThreadChild::OnTitleChanged(const char16_t* aTitle)
 {
   return SendOnTitleChanged(nsDependentString(aTitle)) ? NS_OK : NS_ERROR_FAILURE;
 }

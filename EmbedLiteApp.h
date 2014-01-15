@@ -42,7 +42,7 @@ public:
   // App Destroyed, and ready to delete and program exit
   virtual void Destroyed() {}
   // Messaging interface, allow to receive json messages from content child scripts
-  virtual void OnObserve(const char* aMessage, const PRUnichar* aData) {}
+  virtual void OnObserve(const char* aMessage, const char16_t* aData) {}
   // New Window request which is usually coming from WebPage new window request
   virtual uint32_t CreateNewWindowRequested(const uint32_t& chromeFlags,
                                             const char* uri,
@@ -123,7 +123,7 @@ public:
   virtual void LoadGlobalStyleSheet(const char* aUri, bool aEnable);
 
   // Observer interface
-  virtual void SendObserve(const char* aMessageName, const PRUnichar* aMessage);
+  virtual void SendObserve(const char* aMessageName, const char16_t* aMessage);
   virtual void AddObserver(const char* aMessageName);
   virtual void RemoveObserver(const char* aMessageName);
   virtual void AddObservers(nsTArray<nsCString>& observersList);

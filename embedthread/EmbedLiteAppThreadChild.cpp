@@ -63,7 +63,7 @@ EmbedLiteAppThreadChild::~EmbedLiteAppThreadChild()
 NS_IMETHODIMP
 EmbedLiteAppThreadChild::Observe(nsISupports* aSubject,
                                  const char* aTopic,
-                                 const PRUnichar* aData)
+                                 const char16_t* aData)
 {
   LOGF("topic:%s", aTopic);
   unused << SendObserve(nsDependentCString(aTopic), aData ? nsDependentString(aData) : nsString());

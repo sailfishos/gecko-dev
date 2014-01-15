@@ -115,7 +115,7 @@ public:
   virtual void OnScrollChanged(int32_t offSetX, int32_t offSetY) {
     printf("OnScrollChanged: scroll:%i,%i\n", offSetX, offSetY);
   }
-  virtual void OnObserve(const char* aTopic, const PRUnichar* aData) {
+  virtual void OnObserve(const char* aTopic, const char16_t* aData) {
     printf("OnObserve: top:%s, data:%s\n", aTopic, NS_ConvertUTF16toUTF8(aData).get());
   }
 
