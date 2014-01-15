@@ -23,7 +23,7 @@ class GLContextEGL : public GLContext
 
     static already_AddRefed<GLContextEGL>
     CreateGLContext(const SurfaceCaps& caps,
-                    GLContextEGL *shareContext,
+                    GLContext *shareContext,
                     bool isOffscreen,
                     EGLConfig config,
                     EGLSurface surface);

@@ -228,13 +228,13 @@ GLContextEGL::GLContextEGL(
     , mSurface(surface)
     , mSurfaceOverride(EGL_NO_SURFACE)
     , mContext(context)
-    , mPlatformContext(nullptr)
     , mThebesSurface(nullptr)
     , mBound(false)
     , mIsPBuffer(false)
     , mIsDoubleBuffered(false)
     , mCanBindToTexture(false)
     , mShareWithEGLImage(false)
+    , mPlatformContext(nullptr)
 {
     // any EGL contexts will always be GLESv2
     SetProfileVersion(ContextProfile::OpenGLES, 200);
