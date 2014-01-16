@@ -814,7 +814,7 @@ nsWindow::GetNativeData(uint32_t aDataType)
 NS_IMETHODIMP
 nsWindow::SetTitle(const nsAString& aTitle)
 {
-    QString qStr(QString::fromUtf16(aTitle.BeginReading(), aTitle.Length()));
+    QString qStr(QString::fromUtf16((const ushort*)aTitle.BeginReading(), aTitle.Length()));
     if (mIsTopLevel) {
         QWidget *widget = GetViewWidget();
         if (widget)
@@ -2763,7 +2763,7 @@ nsWindow::imComposeEvent(QInputMethodEvent *event, bool &handled)
     nsCompositionEvent start(true, NS_COMPOSITION_START, this);
     DispatchEvent(&start);
 
-    nsAutoString compositionStr(event->commitString().utf16());
+    nsAutoString compositionStr((const char16_t*)event->commitString().utf16());
 
     if (!compositionStr.IsEmpty()) {
       nsCompositionEvent update(true, NS_COMPOSITION_UPDATE, this);

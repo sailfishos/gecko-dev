@@ -10,4 +10,7 @@
 
 #include "js/RequiredDefines.h"
 
+#define __PRUNICHAR__
+#include "mozilla/Char16.h"
+
 #endif /* js_confdefs_h */

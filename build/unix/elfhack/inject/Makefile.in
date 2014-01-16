@@ -30,6 +30,8 @@ $(CSRCS): %.c: ../inject.c
 
 GARBAGE += $(CSRCS)
 
+DEFINES += -DELFHACK_BUILD
+
 DEFINES += -DBITS=$(if $(HAVE_64BIT_OS),64,32)
 CFLAGS := -O2 -fno-stack-protector $(filter -m% -I%,$(CFLAGS))
 $(CPU)-noinit.$(OBJ_SUFFIX): DEFINES += -DNOINIT
