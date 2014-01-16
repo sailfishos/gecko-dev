@@ -298,7 +298,7 @@ void MozQWidget::sendPressReleaseKeyEvent(int key,
 
         nsTextEvent text(true, NS_TEXT_TEXT, mReceiver);
         QString commitString = QString(*letter);
-        text.theText.Assign(commitString.utf16());
+        text.theText.Assign((const char16_t*)commitString.utf16());
         mReceiver->DispatchEvent(&text);
 
         nsCompositionEvent end(true, NS_COMPOSITION_END, mReceiver);
@@ -599,7 +599,7 @@ MozQWidget::NotifyVKB(const QRect& rect)
     if (observerService) {
         QString rect = QString("{\"left\": %1, \"top\": %2, \"right\": %3, \"bottom\": %4}")
                                .arg(bounds.x()).arg(bounds.y()).arg(bounds.width()).arg(bounds.height());
-        observerService->NotifyObservers(nullptr, "softkb-change", rect.utf16());
+        observerService->NotifyObservers(nullptr, "softkb-change", (const char16_t*)rect.utf16());
     }
 }
 

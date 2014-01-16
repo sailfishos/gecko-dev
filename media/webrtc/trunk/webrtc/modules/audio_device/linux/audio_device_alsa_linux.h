@@ -19,7 +19,9 @@
 #include <alsa/asoundlib.h>
 #include <sys/soundcard.h>
 #include <sys/ioctl.h>
+#ifdef MOZ_X11
 #include <X11/Xlib.h>
+#endif
 
 
 namespace webrtc
@@ -251,7 +253,9 @@ private:
     uint16_t _playBufDelayFixed;            // fixed playback delay
 
     char _oldKeyState[32];
+#ifdef MOZ_X11
     Display* _XDisplay;
+#endif
 };
 
 }
