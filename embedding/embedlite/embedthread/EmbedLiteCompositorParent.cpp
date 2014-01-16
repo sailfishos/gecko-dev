@@ -119,11 +119,13 @@ bool EmbedLiteCompositorParent::RenderGL()
   }
   CompositorParent::Composite();
 
-  GLContext* context = static_cast<CompositorOGL*>(mgr->GetCompositor())->gl();
-  if (context && context->IsOffscreen()) {
-    if (!context->PublishFrame()) {
-      NS_ERROR("Failed to publish context frame");
-    }
+  if (mgr && mgr->GetCompositor()) {
+      CompositorOGL* ogl = static_cast<CompositorOGL*>(mgr->GetCompositor());
+      if (ogl->gl() && ogl->gl()->IsOffscreen()) {
+          if (!ogl->gl()->PublishFrame()) {
+              NS_ERROR("Failed to publish context frame");
+          }
+      }
   }
 
   EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(mId);
