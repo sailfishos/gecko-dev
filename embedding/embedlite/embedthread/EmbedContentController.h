@@ -23,6 +23,7 @@ class EmbedContentController : public mozilla::layers::GeckoContentController
 {
   typedef mozilla::layers::FrameMetrics FrameMetrics;
   typedef mozilla::layers::ScrollableLayerGuid ScrollableLayerGuid;
+  typedef mozilla::layers::ZoomConstraints ZoomConstraints;
 
 public:
   EmbedContentController(EmbedLiteViewThreadParent* aRenderFrame, mozilla::layers::CompositorParent* aCompositor, MessageLoop* aUILoop);
@@ -39,7 +40,7 @@ public:
   virtual void ScrollUpdate(const CSSPoint& aPosition, const float aResolution) MOZ_OVERRIDE;
   void ClearRenderFrame();
   virtual void PostDelayedTask(Task* aTask, int aDelayMs) MOZ_OVERRIDE;
-
+  virtual bool GetRootZoomConstraints(ZoomConstraints* aOutConstraints) MOZ_OVERRIDE;
   bool HitTestAPZC(mozilla::ScreenIntPoint& aPoint);
   void TransformCoordinateToGecko(const mozilla::ScreenIntPoint& aPoint,
                                   LayoutDeviceIntPoint* aRefPointOut);
