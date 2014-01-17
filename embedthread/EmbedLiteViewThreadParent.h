@@ -39,7 +39,7 @@ public:
   virtual bool RenderGL();
   virtual void SetViewSize(int width, int height);
   virtual void SetGLViewPortSize(int width, int height);
-  virtual void SetGLViewTransform(gfxMatrix matrix);
+  virtual void SetGLViewTransform(gfx::Matrix matrix);
   virtual void SetViewClipping(const gfxRect& aClipRect);
   virtual void SetViewOpacity(const float aOpacity);
   virtual void SetTransformation(float aScale, nsIntPoint aScrollOffset);

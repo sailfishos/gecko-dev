@@ -774,7 +774,7 @@ EmbedLiteViewThreadChild::RecvMouseEvent(const nsString& aType,
   NS_ENSURE_TRUE(utils, true);
   bool ignored = false;
   utils->SendMouseEvent(aType, aX, aY, aButton, aClickCount, aModifiers,
-                        aIgnoreRootScrollFrame, 0, 0, &ignored);
+                        aIgnoreRootScrollFrame, 0, 0, false, 4, &ignored);
 
   return true;
 }

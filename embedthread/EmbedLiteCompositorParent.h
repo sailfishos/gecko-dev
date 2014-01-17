@@ -32,7 +32,7 @@ public:
   bool RenderToContext(gfx::DrawTarget* aTarget);
   bool RenderGL();
   void SetSurfaceSize(int width, int height);
-  void SetWorldTransform(gfxMatrix);
+  void SetWorldTransform(gfx::Matrix);
   void SetClipping(const gfxRect& aClipRect);
   void SetWorldOpacity(float aOpacity);
 
@@ -64,7 +64,7 @@ protected:
   RefPtr<mozilla::layers::CompositorChild> mChildCompositor;
   MessageLoop* mChildMessageLoop;
   uint32_t mId;
-  gfxMatrix mWorldTransform;
+  gfx::Matrix mWorldTransform;
   nsIntRect mActiveClipping;
   CancelableTask *mCurrentCompositeTask;
   float mWorldOpacity;
