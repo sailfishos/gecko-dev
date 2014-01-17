@@ -103,7 +103,7 @@ ParseObject(JSContext* cx, JSObject* object, nsIWritablePropertyBag2* aBag)
 
     if (JSVAL_IS_PRIMITIVE(propval)) {
       nsCOMPtr<nsIVariant> value;
-      nsContentUtils::XPConnect()->JSValToVariant(cx, propval.address(), getter_AddRefs(value));
+      nsContentUtils::XPConnect()->JSValToVariant(cx, propval, getter_AddRefs(value));
       nsCOMPtr<nsIWritablePropertyBag> bagSimple = do_QueryInterface(aBag);
       bagSimple->SetProperty(pstr, value);
     } else {
@@ -119,7 +119,7 @@ ParseObject(JSContext* cx, JSObject* object, nsIWritablePropertyBag2* aBag)
               continue;
             if (JSVAL_IS_PRIMITIVE(v)) {
               nsCOMPtr<nsIVariant> value;
-              nsContentUtils::XPConnect()->JSValToVariant(cx, v.address(), getter_AddRefs(value));
+              nsContentUtils::XPConnect()->JSValToVariant(cx, v, getter_AddRefs(value));
               childArray.AppendElement(value);
             } else {
               nsCOMPtr<nsIWritableVariant> value = do_CreateInstance("@mozilla.org/variant;1");
@@ -213,7 +213,7 @@ EmbedLiteJSON::CreateJSON(nsIPropertyBag* aRoot, nsAString& outJson)
   JSAutoCompartment ac(cx, global);
 
   JSAutoRequest ar(cx);
-  JSObject* obj = JS_NewObject(cx, NULL, NULL, NULL);
+  JSObject* obj = JS_NewObject(cx, nullptr, JS::NullPtr(), JS::NullPtr());
   if (!obj) {
     return NS_ERROR_FAILURE;
   }

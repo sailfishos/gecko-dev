@@ -862,9 +862,9 @@ XPCWrappedNative::Init(HandleObject parent,
                jsclazz->convert &&
                jsclazz->finalize, "bad class");
 
-    JSObject* protoJSObject = HasProto() ?
-                                GetProto()->GetJSProtoObject() :
-                                JS_GetObjectPrototype(cx, parent);
+    RootedObject protoJSObject(cx, HasProto() ?
+                                   GetProto()->GetJSProtoObject() :
+                                   JS_GetObjectPrototype(cx, parent));
     if (!protoJSObject) {
         return false;
     }
@@ -1212,7 +1212,7 @@ XPCWrappedNative::ReparentWrapperIfFound(XPCWrappedNativeScope* aOldScope,
         {
             AutoClonePrivateGuard cloneGuard(cx, flat, newobj);
 
-            propertyHolder = JS_NewObjectWithGivenProto(cx, nullptr, nullptr,
+            propertyHolder = JS_NewObjectWithGivenProto(cx, nullptr, JS::NullPtr(),
                                                         aNewParent);
             if (!propertyHolder)
                 return NS_ERROR_OUT_OF_MEMORY;
@@ -1669,9 +1669,10 @@ XPCWrappedNative::InitTearOffJSObject(XPCWrappedNativeTearOff* to)
 {
     AutoJSContext cx;
 
+    RootedObject proto(cx, JS_GetObjectPrototype(cx, mFlatJSObject));
+    RootedObject parent(cx, mFlatJSObject);
     JSObject* obj = JS_NewObject(cx, Jsvalify(&XPC_WN_Tearoff_JSClass),
-                                 JS_GetObjectPrototype(cx, mFlatJSObject),
-                                 mFlatJSObject);
+                                 proto, parent);
     if (!obj)
         return false;
 
@@ -1707,10 +1708,6 @@ XPCWrappedNative::GetSameCompartmentSecurityWrapper(JSContext *cx)
     // disallowed.
     if (NeedsSOW() && xpc::AllowXBLScope(js::GetContextCompartment(cx))) {
         wrapper = xpc::WrapperFactory::WrapSOWObject(cx, flat);
-        if (!wrapper)
-            return nullptr;
-    } else if (xpc::WrapperFactory::IsComponentsObject(flat)) {
-        wrapper = xpc::WrapperFactory::WrapComponentsObject(cx, flat);
         if (!wrapper)
             return nullptr;
     }

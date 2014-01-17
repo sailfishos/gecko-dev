@@ -683,6 +683,10 @@ Services.obs.addObserver(function onBluetoothVolumeChange(subject, topic, data) 
   });
 }, 'bluetooth-volume-change', false);
 
+Services.obs.addObserver(function(subject, topic, data) {
+  shell.sendCustomEvent('mozmemorypressure');
+}, 'memory-pressure', false);
+
 var CustomEventManager = {
   init: function custevt_init() {
     window.addEventListener("ContentStart", (function(evt) {
@@ -812,7 +816,7 @@ var AlertsHelper = {
     this._listeners[uid] = listener;
 
     let app = DOMApplicationRegistry.getAppByManifestURL(listener.manifestURL);
-    DOMApplicationRegistry.getManifestFor(app.manifestURL, function(manifest) {
+    DOMApplicationRegistry.getManifestFor(app.manifestURL).then((manifest) => {
       let helper = new ManifestHelper(manifest, app.origin);
       let getNotificationURLFor = function(messages) {
         if (!messages)
@@ -869,7 +873,7 @@ var AlertsHelper = {
     // If we have a manifest URL, get the icon and title from the manifest
     // to prevent spoofing.
     let app = DOMApplicationRegistry.getAppByManifestURL(manifestUrl);
-    DOMApplicationRegistry.getManifestFor(manifestUrl, function(aManifest) {
+    DOMApplicationRegistry.getManifestFor(manifestUrl).then((aManifest) => {
       let helper = new ManifestHelper(aManifest, app.origin);
       send(helper.name, helper.iconURLForSize(128));
     });
@@ -968,7 +972,7 @@ var WebappsHelper = {
 
     switch(topic) {
       case "webapps-launch":
-        DOMApplicationRegistry.getManifestFor(json.manifestURL, function(aManifest) {
+        DOMApplicationRegistry.getManifestFor(json.manifestURL).then((aManifest) => {
           if (!aManifest)
             return;
 

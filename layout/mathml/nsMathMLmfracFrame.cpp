@@ -43,6 +43,17 @@ nsMathMLmfracFrame::GetMathMLFrameType()
   return eMathMLFrameType_Inner;
 }
 
+uint8_t
+nsMathMLmfracFrame::ScriptIncrement(nsIFrame* aFrame)
+{
+  if (!StyleFont()->mMathDisplay &&
+      aFrame && (mFrames.FirstChild() == aFrame ||
+                 mFrames.LastChild() == aFrame)) {
+    return 1;
+  }
+  return 0;
+}
+
 NS_IMETHODIMP
 nsMathMLmfracFrame::TransmitAutomaticData()
 {
@@ -51,6 +62,15 @@ nsMathMLmfracFrame::TransmitAutomaticData()
   UpdatePresentationDataFromChildAt(1,  1,
      NS_MATHML_COMPRESSED,
      NS_MATHML_COMPRESSED);
+
+  // If displaystyle is false, then scriptlevel is incremented, so notify the
+  // children of this.
+  if (!StyleFont()->mMathDisplay) {
+    PropagateFrameFlagFor(mFrames.FirstChild(),
+                          NS_FRAME_MATHML_SCRIPT_DESCENDANT);
+    PropagateFrameFlagFor(mFrames.LastChild(),
+                          NS_FRAME_MATHML_SCRIPT_DESCENDANT);
+  }
 
   // if our numerator is an embellished operator, let its state bubble to us
   GetEmbellishDataFrom(mFrames.FirstChild(), mEmbellishData);
@@ -207,15 +227,12 @@ nsMathMLmfracFrame::PlaceInternal(nsRenderingContext& aRenderingContext,
 
   // see if the linethickness attribute is there 
   nsAutoString value;
-  GetAttribute(mContent, mPresentationData.mstyle, nsGkAtoms::linethickness_,
-               value);
-
+  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::linethickness_, value);
   mLineThickness = CalcLineThickness(presContext, mStyleContext, value,
                                      onePixel, defaultRuleThickness);
 
   // bevelled attribute
-  GetAttribute(mContent, mPresentationData.mstyle, nsGkAtoms::bevelled_,
-               value);
+  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::bevelled_, value);
   mIsBevelled = value.EqualsLiteral("true");
 
   if (!mIsBevelled) {
@@ -314,16 +331,14 @@ nsMathMLmfracFrame::PlaceInternal(nsRenderingContext& aRenderingContext,
     width += leftSpace + rightSpace;
 
     // see if the numalign attribute is there 
-    GetAttribute(mContent, mPresentationData.mstyle, nsGkAtoms::numalign_,
-                 value);
+    mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::numalign_, value);
     if (value.EqualsLiteral("left"))
       dxNum = leftSpace;
     else if (value.EqualsLiteral("right"))
       dxNum = width - rightSpace - sizeNum.Width();
 
     // see if the denomalign attribute is there 
-    GetAttribute(mContent, mPresentationData.mstyle, nsGkAtoms::denomalign_,
-                 value);
+    mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::denomalign_, value);
     if (value.EqualsLiteral("left"))
       dxDen = leftSpace;
     else if (value.EqualsLiteral("right"))
@@ -354,10 +369,10 @@ nsMathMLmfracFrame::PlaceInternal(nsRenderingContext& aRenderingContext,
       nscoord dy;
       // place numerator
       dy = 0;
-      FinishReflowChild(frameNum, presContext, nullptr, sizeNum, dxNum, dy, 0);
+      FinishReflowChild(frameNum, presContext, sizeNum, nullptr, dxNum, dy, 0);
       // place denominator
       dy = aDesiredSize.Height() - sizeDen.Height();
-      FinishReflowChild(frameDen, presContext, nullptr, sizeDen, dxDen, dy, 0);
+      FinishReflowChild(frameDen, presContext, sizeDen, nullptr, dxDen, dy, 0);
       // place the fraction bar - dy is top of bar
       dy = aDesiredSize.TopAscent() - (axisHeight + actualRuleThickness/2);
       mLineRect.SetRect(leftSpace, dy, width - (leftSpace + rightSpace),
@@ -468,7 +483,7 @@ nsMathMLmfracFrame::PlaceInternal(nsRenderingContext& aRenderingContext,
       dx = MirrorIfRTL(aDesiredSize.Width(), sizeNum.Width(),
                        leadingSpace);
       dy = aDesiredSize.TopAscent() - numShift - sizeNum.TopAscent();
-      FinishReflowChild(frameNum, presContext, nullptr, sizeNum, dx, dy, 0);
+      FinishReflowChild(frameNum, presContext, sizeNum, nullptr, dx, dy, 0);
 
       // place the fraction bar
       dx = MirrorIfRTL(aDesiredSize.Width(), mLineRect.width,
@@ -481,7 +496,7 @@ nsMathMLmfracFrame::PlaceInternal(nsRenderingContext& aRenderingContext,
       dx = MirrorIfRTL(aDesiredSize.Width(), sizeDen.Width(),
                        leadingSpace + bmNum.width + mLineRect.width);
       dy = aDesiredSize.TopAscent() + denShift - sizeDen.TopAscent();
-      FinishReflowChild(frameDen, presContext, nullptr, sizeDen, dx, dy, 0);
+      FinishReflowChild(frameDen, presContext, sizeDen, nullptr, dx, dy, 0);
     }
 
   }

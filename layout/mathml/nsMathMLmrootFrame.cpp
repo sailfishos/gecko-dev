@@ -75,6 +75,9 @@ nsMathMLmrootFrame::TransmitAutomaticData()
   UpdatePresentationDataFromChildAt(0, 0,
      NS_MATHML_COMPRESSED, NS_MATHML_COMPRESSED);
 
+  PropagateFrameFlagFor(mFrames.LastChild(),
+                        NS_FRAME_MATHML_SCRIPT_DESCENDANT);
+
   return NS_OK;
 }
 
@@ -324,7 +327,7 @@ nsMathMLmrootFrame::Reflow(nsPresContext*          aPresContext,
   // place the index
   nscoord dx = dxIndex;
   nscoord dy = aDesiredSize.TopAscent() - (indexRaisedAscent + indexSize.TopAscent() - bmIndex.ascent);
-  FinishReflowChild(indexFrame, aPresContext, nullptr, indexSize,
+  FinishReflowChild(indexFrame, aPresContext, indexSize, nullptr,
                     MirrorIfRTL(aDesiredSize.Width(), indexSize.Width(), dx),
                     dy, 0);
 
@@ -339,7 +342,7 @@ nsMathMLmrootFrame::Reflow(nsPresContext*          aPresContext,
 
   // place the base
   dy = aDesiredSize.TopAscent() - baseSize.TopAscent();
-  FinishReflowChild(baseFrame, aPresContext, nullptr, baseSize,
+  FinishReflowChild(baseFrame, aPresContext, baseSize, nullptr,
                     MirrorIfRTL(aDesiredSize.Width(), baseSize.Width(), dx),
                     dy, 0);
 

@@ -290,7 +290,8 @@ BaseProxyHandler::fun_toString(JSContext *cx, HandleObject proxy, unsigned inden
 {
     if (proxy->isCallable())
         return JS_NewStringCopyZ(cx, "function () {\n    [native code]\n}");
-    ReportIsNotFunction(cx, ObjectValue(*proxy));
+    RootedValue v(cx, ObjectValue(*proxy));
+    ReportIsNotFunction(cx, v);
     return nullptr;
 }
 
@@ -354,7 +355,8 @@ BaseProxyHandler::setPrototypeOf(JSContext *cx, HandleObject, HandleObject, bool
     // Disallow sets of protos on proxies with lazy protos, but no hook.
     // This keeps us away from the footgun of having the first proto set opt
     // you out of having dynamic protos altogether.
-    JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr, JSMSG_SETPROTOTYPEOF_FAIL);
+    JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr, JSMSG_SETPROTOTYPEOF_FAIL,
+                         "incompatible Proxy");
     return false;
 }
 
@@ -491,7 +493,7 @@ DirectProxyHandler::hasInstance(JSContext *cx, HandleObject proxy, MutableHandle
     assertEnteredPolicy(cx, proxy, JSID_VOID);
     bool b;
     RootedObject target(cx, proxy->as<ProxyObject>().target());
-    if (!JS_HasInstance(cx, target, v, &b))
+    if (!HasInstance(cx, target, v, &b))
         return false;
     *bp = !!b;
     return true;
@@ -3249,15 +3251,12 @@ proxy(JSContext *cx, unsigned argc, jsval *vp)
     RootedObject handler(cx, NonNullObject(cx, args[1]));
     if (!handler)
         return false;
-    RootedObject proto(cx);
-    if (!JSObject::getProto(cx, target, &proto))
-        return false;
     RootedValue priv(cx, ObjectValue(*target));
     ProxyOptions options;
     options.setCallable(target->isCallable());
     ProxyObject *proxy =
         ProxyObject::New(cx, &ScriptedDirectProxyHandler::singleton,
-                         priv, TaggedProto(proto), cx->global(),
+                         priv, TaggedProto(TaggedProto::LazyProto), cx->global(),
                          options);
     if (!proxy)
         return false;
@@ -3300,27 +3299,28 @@ proxy_create(JSContext *cx, unsigned argc, Value *vp)
 static bool
 proxy_createFunction(JSContext *cx, unsigned argc, Value *vp)
 {
-    if (argc < 2) {
+    CallArgs args = CallArgsFromVp(argc, vp);
+    if (args.length() < 2) {
         JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr, JSMSG_MORE_ARGS_NEEDED,
                              "createFunction", "1", "");
         return false;
     }
-    RootedObject handler(cx, NonNullObject(cx, vp[2]));
+    RootedObject handler(cx, NonNullObject(cx, args[0]));
     if (!handler)
         return false;
     RootedObject proto(cx), parent(cx);
-    parent = vp[0].toObject().getParent();
+    parent = args.callee().getParent();
     proto = parent->global().getOrCreateFunctionPrototype(cx);
     if (!proto)
         return false;
     parent = proto->getParent();
 
-    RootedObject call(cx, ValueToCallable(cx, vp[3], argc - 2));
+    RootedObject call(cx, ValueToCallable(cx, args[1], args.length() - 2));
     if (!call)
         return false;
     RootedObject construct(cx, nullptr);
-    if (argc > 2) {
-        construct = ValueToCallable(cx, vp[4], argc - 3);
+    if (args.length() > 2) {
+        construct = ValueToCallable(cx, args[2], args.length() - 3);
         if (!construct)
             return false;
     } else {
@@ -3330,7 +3330,7 @@ proxy_createFunction(JSContext *cx, unsigned argc, Value *vp)
     // Stash the call and construct traps on a holder object that we can stick
     // in a slot on the proxy.
     RootedObject ccHolder(cx, JS_NewObjectWithGivenProto(cx, Jsvalify(&CallConstructHolder),
-                                                         nullptr, cx->global()));
+                                                         NullPtr(), cx->global()));
     if (!ccHolder)
         return false;
     ccHolder->setReservedSlot(0, ObjectValue(*call));

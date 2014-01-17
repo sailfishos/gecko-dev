@@ -19,6 +19,8 @@
 #include "mozilla/TextEvents.h"
 #include "PuppetWidget.h"
 #include "nsIWidgetListener.h"
+#include "nsIMEStateManager.h"
+#include "TextComposition.h"
 
 using namespace mozilla::dom;
 using namespace mozilla::hal;
@@ -273,24 +275,25 @@ PuppetWidget::DispatchEvent(WidgetGUIEvent* event, nsEventStatus& aStatus)
   if (event->message == NS_COMPOSITION_START) {
     mIMEComposing = true;
   }
+  uint32_t seqno = kLatestSeqno;
   switch (event->eventStructType) {
   case NS_COMPOSITION_EVENT:
-    mIMELastReceivedSeqno = event->AsCompositionEvent()->seqno;
-    if (mIMELastReceivedSeqno < mIMELastBlurSeqno)
-      return NS_OK;
+    seqno = event->AsCompositionEvent()->mSeqno;
     break;
   case NS_TEXT_EVENT:
-    mIMELastReceivedSeqno = event->AsTextEvent()->seqno;
-    if (mIMELastReceivedSeqno < mIMELastBlurSeqno)
-      return NS_OK;
+    seqno = event->AsTextEvent()->mSeqno;
     break;
   case NS_SELECTION_EVENT:
-    mIMELastReceivedSeqno = event->AsSelectionEvent()->seqno;
-    if (mIMELastReceivedSeqno < mIMELastBlurSeqno)
-      return NS_OK;
+    seqno = event->AsSelectionEvent()->mSeqno;
     break;
   default:
     break;
+  }
+  if (seqno != kLatestSeqno) {
+    mIMELastReceivedSeqno = seqno;
+    if (mIMELastReceivedSeqno < mIMELastBlurSeqno) {
+      return NS_OK;
+    }
   }
 
   if (mAttachedWidgetListener) {
@@ -352,7 +355,7 @@ PuppetWidget::IMEEndComposition(bool aCancel)
   nsEventStatus status;
   WidgetTextEvent textEvent(true, NS_TEXT_TEXT, this);
   InitEvent(textEvent, nullptr);
-  textEvent.seqno = mIMELastReceivedSeqno;
+  textEvent.mSeqno = mIMELastReceivedSeqno;
   // SendEndIMEComposition is always called since ResetInputState
   // should always be called even if we aren't composing something.
   if (!mTabChild ||
@@ -367,7 +370,7 @@ PuppetWidget::IMEEndComposition(bool aCancel)
 
   WidgetCompositionEvent compEvent(true, NS_COMPOSITION_END, this);
   InitEvent(compEvent, nullptr);
-  compEvent.seqno = mIMELastReceivedSeqno;
+  compEvent.mSeqno = mIMELastReceivedSeqno;
   DispatchEvent(&compEvent, status);
   return NS_OK;
 }
@@ -387,6 +390,8 @@ PuppetWidget::NotifyIME(NotificationToIME aNotification)
       return NotifyIMEOfFocusChange(false);
     case NOTIFY_IME_OF_SELECTION_CHANGE:
       return NotifyIMEOfSelectionChange();
+    case NOTIFY_IME_OF_COMPOSITION_UPDATE:
+      return NotifyIMEOfUpdateComposition();
     default:
       return NS_ERROR_NOT_IMPLEMENTED;
   }
@@ -473,6 +478,39 @@ PuppetWidget::NotifyIMEOfFocusChange(bool aFocus)
   } else {
     mIMELastBlurSeqno = chromeSeqno;
   }
+  return NS_OK;
+}
+
+nsresult
+PuppetWidget::NotifyIMEOfUpdateComposition()
+{
+#ifndef MOZ_CROSS_PROCESS_IME
+  return NS_OK;
+#endif
+
+  NS_ENSURE_TRUE(mTabChild, NS_ERROR_FAILURE);
+
+  mozilla::TextComposition* textComposition =
+    nsIMEStateManager::GetTextComposition(this);
+  NS_ENSURE_TRUE(textComposition, NS_ERROR_FAILURE);
+
+  nsEventStatus status;
+  uint32_t offset = textComposition->OffsetOfTargetClause();
+  WidgetQueryContentEvent textRect(true, NS_QUERY_TEXT_RECT, this);
+  InitEvent(textRect, nullptr);
+  textRect.InitForQueryTextRect(offset, 1);
+  DispatchEvent(&textRect, status);
+  NS_ENSURE_TRUE(textRect.mSucceeded, NS_ERROR_FAILURE);
+
+  WidgetQueryContentEvent caretRect(true, NS_QUERY_CARET_RECT, this);
+  InitEvent(caretRect, nullptr);
+  caretRect.InitForQueryCaretRect(offset);
+  DispatchEvent(&caretRect, status);
+  NS_ENSURE_TRUE(caretRect.mSucceeded, NS_ERROR_FAILURE);
+
+  mTabChild->SendNotifyIMESelectedCompositionRect(offset,
+                                                  textRect.mReply.mRect,
+                                                  caretRect.mReply.mRect);
   return NS_OK;
 }
 

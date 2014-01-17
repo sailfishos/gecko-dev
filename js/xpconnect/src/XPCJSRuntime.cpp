@@ -77,6 +77,7 @@ const char* const XPCJSRuntime::mStrings[] = {
     "__iterator__",         // IDX_ITERATOR
     "__exposedProps__",     // IDX_EXPOSEDPROPS
     "eval",                 // IDX_EVAL
+    "controllers",           // IDX_CONTROLLERS
 };
 
 /***************************************************************************/
@@ -561,7 +562,8 @@ EnableUniversalXPConnect(JSContext *cx)
     XPCWrappedNativeScope *scope = priv->scope;
     if (!scope)
         return true;
-    return nsXPCComponents::AttachComponentsObject(cx, scope);
+    scope->ForcePrivilegedComponents();
+    return scope->AttachComponentsObject(cx);
 }
 
 JSObject *

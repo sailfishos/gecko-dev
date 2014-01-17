@@ -272,6 +272,12 @@ pref("media.mediasource.enabled", false);
 #ifdef MOZ_WEBSPEECH
 pref("media.webspeech.recognition.enable", false);
 #endif
+#ifdef MOZ_WEBM_ENCODER
+pref("media.encoder.webm.enabled", true);
+#endif
+#ifdef MOZ_OMX_ENCODER
+pref("media.encoder.omx.enabled", true);
+#endif
 
 // Whether to enable Web Audio support
 pref("media.webaudio.enabled", true);
@@ -430,6 +436,7 @@ pref("accessibility.tabfocus_applies_to_xul", true);
 
 // provide ability to turn on support for canvas focus rings
 pref("canvas.focusring.enabled", false);
+pref("canvas.customfocusring.enabled", false);
 
 // We want the ability to forcibly disable platform a11y, because
 // some non-a11y-related components attempt to bring it up.  See bug
@@ -742,7 +749,6 @@ pref("javascript.options.ion.chrome",       false);
 pref("javascript.options.asmjs",            true);
 pref("javascript.options.parallel_parsing", true);
 pref("javascript.options.ion.parallel_compilation", true);
-pref("javascript.options.jit_hardening", true);
 pref("javascript.options.typeinference.content", true);
 pref("javascript.options.typeinference.chrome", false);
 // This preference limits the memory usage of javascript.
@@ -4241,6 +4247,9 @@ pref("dom.w3c_touch_events.enabled", 2);
 // W3C draft pointer events
 pref("dom.w3c_pointer_events.enabled", false);
 
+// W3C touch-action css property (related to touch and pointer events)
+pref("layout.css.touch_action.enabled", false);
+
 // enable JS dump() function.
 pref("browser.dom.window.dump.enabled", false);
 
@@ -4284,6 +4293,9 @@ pref("memory.free_dirty_pages", false);
 #ifdef XP_LINUX
 pref("memory.system_memory_reporter", false);
 #endif
+
+// Number of stack frames to capture in createObjectURL for about:memory.
+pref("memory.blob_report.stack_frames", 0);
 
 pref("social.enabled", false);
 // comma separated list of domain origins (e.g. https://domain.com) for

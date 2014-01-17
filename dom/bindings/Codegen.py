@@ -840,7 +840,9 @@ def UnionTypes(descriptors, dictionaries, callbacks, config):
                     if typeNeedsRooting(f):
                         headers.add("mozilla/dom/RootedDictionary.h")
                 elif f.isEnum():
-                    headers.add(CGHeaders.getDeclarationFilename(f))
+                    # Need to see the actual definition of the enum,
+                    # unfortunately.
+                    headers.add(CGHeaders.getDeclarationFilename(f.inner))
 
     map(addInfoForType, getAllTypes(descriptors, dictionaries, callbacks))
 
@@ -1585,7 +1587,9 @@ class MethodDefiner(PropertyDefiner):
                 selfHostedName = "nullptr";
                 accessor = m.get("nativeName", m["name"])
                 if m.get("methodInfo", True):
-                    jitinfo = ("&%s_methodinfo" % accessor)
+                    # Cast this in case the methodInfo is a
+                    # JSTypedMethodJitInfo.
+                    jitinfo = ("reinterpret_cast<const JSJitInfo*>(&%s_methodinfo)" % accessor)
                     if m.get("allowCrossOriginThis", False):
                         accessor = "genericCrossOriginMethod"
                     else:
@@ -1872,7 +1876,7 @@ class CGCreateInterfaceObjectsMethod(CGAbstractMethod):
 
         if UseHolderForUnforgeable(self.descriptor):
             createUnforgeableHolder = CGGeneric("""JS::Rooted<JSObject*> unforgeableHolder(aCx,
-  JS_NewObjectWithGivenProto(aCx, nullptr, nullptr, nullptr));
+  JS_NewObjectWithGivenProto(aCx, nullptr, JS::NullPtr(), JS::NullPtr()));
 if (!unforgeableHolder) {
   return;
 }""")
@@ -4079,7 +4083,7 @@ def instantiateJSToNativeConversion(info, replacements, checkForValue=False):
 
 def convertConstIDLValueToJSVal(value):
     if isinstance(value, IDLNullValue):
-        return "JSVAL_NULL"
+        return "JS::NullValue()"
     tag = value.type.tag()
     if tag in [IDLType.Tags.int8, IDLType.Tags.uint8, IDLType.Tags.int16,
                IDLType.Tags.uint16, IDLType.Tags.int32]:
@@ -4265,7 +4269,34 @@ def getWrapTemplateForType(type, descriptorProvider, result, successCode,
     # if body.
     exceptionCodeIndented = CGIndenter(CGGeneric(exceptionCode))
 
-    def setValue(value, wrapAsType=None):
+    def setUndefined():
+        return _setValue("", setter="setUndefined")
+
+    def setNull():
+        return _setValue("", setter="setNull")
+
+    def setInt32(value):
+        return _setValue(value, setter="setInt32")
+
+    def setString(value):
+        return _setValue(value, setter="setString")
+
+    def setObject(value, wrapAsType=None):
+        return _setValue(value, wrapAsType=wrapAsType, setter="setObject")
+
+    def setObjectOrNull(value, wrapAsType=None):
+        return _setValue(value, wrapAsType=wrapAsType, setter="setObjectOrNull")
+
+    def setUint32(value):
+        return _setValue(value, setter="setNumber")
+
+    def setDouble(value):
+        return _setValue("JS_NumberValue(%s)" % value)
+
+    def setBoolean(value):
+        return _setValue(value, setter="setBoolean")
+
+    def _setValue(value, wrapAsType=None, setter="set"):
         """
         Returns the code to set the jsval to value.
 
@@ -4281,8 +4312,8 @@ def getWrapTemplateForType(type, descriptorProvider, result, successCode,
                                exceptionCodeIndented.define())) +
                     "}\n" +
                     successCode)
-        return ("${jsvalRef}.set(%s);\n" +
-                tail) % (value)
+        return ("${jsvalRef}.%s(%s);\n" +
+                tail) % (setter, value)
 
     def wrapAndSetPtr(wrapCall, failureCode=None):
         """
@@ -4298,7 +4329,7 @@ def getWrapTemplateForType(type, descriptorProvider, result, successCode,
         return str
 
     if type is None or type.isVoid():
-        return (setValue("JSVAL_VOID"), True)
+        return (setUndefined(), True)
 
     if type.isArray():
         raise TypeError("Can't handle array return values yet")
@@ -4314,7 +4345,7 @@ def getWrapTemplateForType(type, descriptorProvider, result, successCode,
 if (%s.IsNull()) {
 %s
 }
-%s""" % (result, CGIndenter(CGGeneric(setValue("JSVAL_NULL"))).define(), recTemplate), recInfall)
+%s""" % (result, CGIndenter(CGGeneric(setNull())).define(), recTemplate), recInfall)
 
         # Now do non-nullable sequences.  Our success code is just to break to
         # where we set the element in the array.  Note that we bump the
@@ -4361,13 +4392,13 @@ if (!returnArray) {
           index, index, index,
           innerTemplate, index,
           CGIndenter(exceptionCodeIndented, 4).define())) +
-                setValue("JS::ObjectValue(*returnArray)"), False)
+                setObject("*returnArray"), False)
 
     if type.isGeckoInterface() and not type.isCallbackInterface():
         descriptor = descriptorProvider.getDescriptor(type.unroll().inner.identifier.name)
         if type.nullable():
             wrappingCode = ("if (!%s) {\n" % (result) +
-                            CGIndenter(CGGeneric(setValue("JSVAL_NULL"))).define() + "\n" +
+                            CGIndenter(CGGeneric(setNull())).define() + "\n" +
                             "}\n")
         else:
             wrappingCode = ""
@@ -4434,26 +4465,26 @@ if (!returnArray) {
 """ % { "result" : resultLoc,
         "strings" : type.unroll().inner.identifier.name + "Values::" + ENUM_ENTRY_VARIABLE_NAME,
         "exceptionCode" : CGIndenter(exceptionCodeIndented).define() } +
-        CGIndenter(CGGeneric(setValue("JS::StringValue(resultStr)"))).define() +
+        CGIndenter(CGGeneric(setString("resultStr"))).define() +
                       "\n}")
 
         if type.nullable():
             conversion = CGIfElseWrapper(
                 "%s.IsNull()" % result,
-                CGGeneric(setValue("JS::NullValue()")),
+                CGGeneric(setNull()),
                 CGGeneric(conversion)).define()
         return conversion, False
 
     if type.isCallback() or type.isCallbackInterface():
-        wrapCode = setValue(
-            "JS::ObjectValue(*GetCallbackFromCallbackObject(%(result)s))",
+        wrapCode = setObject(
+            "*GetCallbackFromCallbackObject(%(result)s)",
             wrapAsType=type)
         if type.nullable():
             wrapCode = (
                 "if (%(result)s) {\n" +
                 CGIndenter(CGGeneric(wrapCode)).define() + "\n"
                 "} else {\n" +
-                CGIndenter(CGGeneric(setValue("JS::NullValue()"))).define() + "\n"
+                CGIndenter(CGGeneric(setNull())).define() + "\n"
                 "}")
         wrapCode = wrapCode % { "result": result }
         return wrapCode, False
@@ -4461,19 +4492,21 @@ if (!returnArray) {
     if type.isAny():
         # See comments in WrapNewBindingObject explaining why we need
         # to wrap here.
-        # NB: setValue(..., type-that-is-any) calls JS_WrapValue(), so is fallible
-        return (setValue(result, wrapAsType=type), False)
+        # NB: _setValue(..., type-that-is-any) calls JS_WrapValue(), so is fallible
+        return (_setValue(result, wrapAsType=type), False)
 
     if (type.isObject() or (type.isSpiderMonkeyInterface() and
                             not typedArraysAreStructs)):
         # See comments in WrapNewBindingObject explaining why we need
         # to wrap here.
         if type.nullable():
-            toValue = "JS::ObjectOrNullValue(%s)"
+            toValue = "%s"
+            setter = setObjectOrNull
         else:
-            toValue = "JS::ObjectValue(*%s)"
-        # NB: setValue(..., some-object-type) calls JS_WrapValue(), so is fallible
-        return (setValue(toValue % result, wrapAsType=type), False)
+            toValue = "*%s"
+            setter = setObject
+        # NB: setObject{,OrNull}(..., some-object-type) calls JS_WrapValue(), so is fallible
+        return (setter(toValue % result, wrapAsType=type), False)
 
     if not (type.isUnion() or type.isPrimitive() or type.isDictionary() or
             type.isDate() or
@@ -4486,16 +4519,16 @@ if (!returnArray) {
                                                          returnsNewObject, exceptionCode,
                                                          typedArraysAreStructs)
         return ("if (%s.IsNull()) {\n" % result +
-                CGIndenter(CGGeneric(setValue("JSVAL_NULL"))).define() + "\n" +
+                CGIndenter(CGGeneric(setNull())).define() + "\n" +
                 "}\n" + recTemplate, recInfal)
 
     if type.isSpiderMonkeyInterface():
         assert typedArraysAreStructs
         # See comments in WrapNewBindingObject explaining why we need
         # to wrap here.
-        # NB: setValue(..., some-object-type) calls JS_WrapValue(), so is fallible
-        return (setValue("JS::ObjectValue(*%s.Obj())" % result,
-                         wrapAsType=type), False)
+        # NB: setObject(..., some-object-type) calls JS_WrapValue(), so is fallible
+        return (setObject("*%s.Obj()" % result,
+                          wrapAsType=type), False)
 
     if type.isUnion():
         return (wrapAndSetPtr("%s.ToJSVal(cx, ${obj}, ${jsvalHandle})" % result),
@@ -4513,20 +4546,20 @@ if (!returnArray) {
 
     if tag in [IDLType.Tags.int8, IDLType.Tags.uint8, IDLType.Tags.int16,
                IDLType.Tags.uint16, IDLType.Tags.int32]:
-        return (setValue("INT_TO_JSVAL(int32_t(%s))" % result), True)
+        return (setInt32("int32_t(%s)" % result), True)
 
     elif tag in [IDLType.Tags.int64, IDLType.Tags.uint64,
                  IDLType.Tags.unrestricted_float, IDLType.Tags.float,
                  IDLType.Tags.unrestricted_double, IDLType.Tags.double]:
         # XXXbz will cast to double do the "even significand" thing that webidl
         # calls for for 64-bit ints?  Do we care?
-        return (setValue("JS_NumberValue(double(%s))" % result), True)
+        return (setDouble("double(%s)" % result), True)
 
     elif tag == IDLType.Tags.uint32:
-        return (setValue("UINT_TO_JSVAL(%s)" % result), True)
+        return (setUint32(result), True)
 
     elif tag == IDLType.Tags.bool:
-        return (setValue("BOOLEAN_TO_JSVAL(%s)" % result), True)
+        return (setBoolean(result), True)
 
     else:
         raise TypeError("Need to learn to wrap primitive: %s" % type)
@@ -5042,7 +5075,7 @@ class CGPerSignatureCall(CGThing):
             if setter:
                 lenientFloatCode = "return true;"
             elif idlNode.isMethod():
-                lenientFloatCode = ("args.rval().set(JSVAL_VOID);\n"
+                lenientFloatCode = ("args.rval().setUndefined();\n"
                                     "return true;")
 
         argsPre = []
@@ -5906,7 +5939,7 @@ class CGJsonifierMethod(CGSpecializedMethod):
         CGSpecializedMethod.__init__(self, descriptor, method)
 
     def definition_body(self):
-        ret = ('JS::Rooted<JSObject*> result(cx, JS_NewObject(cx, nullptr, nullptr, nullptr));\n'
+        ret = ('JS::Rooted<JSObject*> result(cx, JS_NewObject(cx, nullptr, JS::NullPtr(), JS::NullPtr()));\n'
                'if (!result) {\n'
                '  return false;\n'
                '}\n')
@@ -6317,6 +6350,23 @@ class CGMemberJITInfo(CGThing):
         slotStr = toStringBool(hasSlot)
         returnType = reduce(CGMemberJITInfo.getSingleReturnType, returnTypes,
                             "")
+        def jitInfoInitializer(isTypedMethod):
+            typedMethodStr = toStringBool(isTypedMethod)
+            return ("{\n"
+                    " { %s },\n"
+                    "  %s,\n"
+                    "  %s,\n"
+                    "  JSJitInfo::%s,\n"
+                    "  %s,  /* returnType.  Not relevant for setters. */\n"
+                    "  %s,  /* isInfallible. False in setters. */\n"
+                    "  %s,  /* isMovable.  Not relevant for setters. */\n"
+                    "  %s,  /* isInSlot.  Only relevant for getters. */\n"
+                    "  %s,  /* isTypedMethod.  Only relevant for methods. */\n"
+                    "  %s,  /* Reserved slot index, if we're stored in a slot, else 0. */\n"
+                    "  JSJitInfo::%s  /* aliasSet.  Not relevant for setters. */\n"
+                    "}" % (opName, protoID, depth, opType,
+                           returnType, failstr, movablestr, slotStr,
+                           typedMethodStr, slotIndex, aliasSet))
         if args is not None:
             argTypes = "%s_argTypes" % infoName
             args = [CGMemberJITInfo.getJSArgType(arg.type) for arg in args]
@@ -6324,27 +6374,17 @@ class CGMemberJITInfo(CGThing):
             argTypesDecl = (
                 "static const JSJitInfo::ArgType %s[] = { %s };\n" %
                 (argTypes, ", ".join(args)))
-        else:
-            argTypes = "nullptr"
-            argTypesDecl = ""
+            return ("\n"
+                    "%s"
+                    "static const JSTypedMethodJitInfo %s = {\n"
+                    "  %s,\n"
+                    "  %s\n"
+                    "};\n" % (argTypesDecl, infoName,
+                              jitInfoInitializer(True), argTypes))
+
         return ("\n"
-                "%s"
-                "static const JSJitInfo %s = {\n"
-                "  { %s },\n"
-                "  %s,\n"
-                "  %s,\n"
-                "  JSJitInfo::%s,\n"
-                "  %s,  /* isInfallible. False in setters. */\n"
-                "  %s,  /* isMovable.  Not relevant for setters. */\n"
-                "  JSJitInfo::%s,  /* aliasSet.  Not relevant for setters. */\n"
-                "  %s,  /* hasSlot.  Only relevant for getters. */\n"
-                "  %s,  /* Reserved slot index, if we're stored in a slot, else 0. */\n"
-                "  %s,  /* returnType.  Not relevant for setters. */\n"
-                "  %s,  /* argTypes.  Only relevant for methods */\n"
-                "  nullptr /* parallelNative */\n"
-                "};\n" % (argTypesDecl, infoName, opName, protoID, depth,
-                          opType, failstr, movablestr, aliasSet, slotStr,
-                          slotIndex, returnType, argTypes))
+                "static const JSJitInfo %s = %s;\n"
+                % (infoName, jitInfoInitializer(False)))
 
     def define(self):
         if self.member.isAttr():
@@ -8660,6 +8700,10 @@ class CGDescriptor(CGThing):
                     else:
                         hasMethod = True
             elif m.isAttr():
+                if m.stringifier:
+                    raise TypeError("Stringifier attributes not supported yet. "
+                                    "See bug 824857.\n"
+                                    "%s" % m.location);
                 if m.isStatic():
                     assert descriptor.interface.hasInterfaceObject
                     cgThings.append(CGStaticGetter(descriptor, m))
@@ -8672,6 +8716,12 @@ class CGDescriptor(CGThing):
                     else:
                         hasGetter = True
                 if not m.readonly:
+                    for extAttr in ["PutForwards", "Replaceable"]:
+                        if m.getExtendedAttribute(extAttr):
+                            raise TypeError("Writable attributes should not "
+                                            "have %s specified.\n"
+                                            "%s" %
+                                            (extAttr, m.location))
                     if m.isStatic():
                         assert descriptor.interface.hasInterfaceObject
                         cgThings.append(CGStaticSetter(descriptor, m))
@@ -9048,7 +9098,7 @@ if (!*reinterpret_cast<jsid**>(atomsCache) && !InitIds(cx, atomsCache)) {
                 "\n") % self.makeClassName(self.dictionary.parent)
         else:
             body += (
-                "JS::Rooted<JSObject*> obj(cx, JS_NewObject(cx, nullptr, nullptr, nullptr));\n"
+                "JS::Rooted<JSObject*> obj(cx, JS_NewObject(cx, nullptr, JS::NullPtr(), JS::NullPtr()));\n"
                 "if (!obj) {\n"
                 "  return false;\n"
                 "}\n"
@@ -11456,6 +11506,14 @@ class GlobalGenRoots():
 
         idEnum.append(ifaceChainMacro(1))
 
+        def fieldSizeAssert(amount, jitInfoField, message):
+            maxFieldValue = "(uint64_t(1) << (sizeof(((JSJitInfo*)nullptr)->%s) * 8))" % jitInfoField
+            return CGGeneric(declare="static_assert(%s < %s, \"%s\");\n\n"
+                             % (amount, maxFieldValue, message))
+
+        idEnum.append(fieldSizeAssert("id::_ID_Count", "protoID",
+                                      "Too many prototypes!"));
+
         # Wrap all of that in our namespaces.
         idEnum = CGNamespace.build(['mozilla', 'dom', 'prototypes'],
                                    CGWrapper(idEnum, pre='\n'))
@@ -11464,8 +11522,11 @@ class GlobalGenRoots():
         curr = CGList([idEnum])
 
         # Let things know the maximum length of the prototype chain.
-        maxMacro = CGGeneric(declare="#define MAX_PROTOTYPE_CHAIN_LENGTH " + str(config.maxProtoChainLength))
+        maxMacroName = "MAX_PROTOTYPE_CHAIN_LENGTH"
+        maxMacro = CGGeneric(declare="#define " + maxMacroName + " " + str(config.maxProtoChainLength))
         curr.append(CGWrapper(maxMacro, post='\n\n'))
+        curr.append(fieldSizeAssert(maxMacroName, "depth",
+                                    "Some inheritance chain is too long!"));
 
         # Constructor ID enum.
         constructors = [d.name for d in config.getDescriptors(hasInterfaceObject=True)]

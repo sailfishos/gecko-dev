@@ -507,7 +507,7 @@ EmbedLiteViewThreadParent::SetGLViewPortSize(int width, int height)
 }
 
 void
-EmbedLiteViewThreadParent::SetGLViewTransform(gfxMatrix matrix)
+EmbedLiteViewThreadParent::SetGLViewTransform(gfx::Matrix matrix)
 {
   if (mCompositor) {
     mCompositor->SetWorldTransform(matrix);

@@ -879,7 +879,8 @@ Debugger::newCompletionValue(JSContext *cx, JSTrapStatus status, Value value_,
 }
 
 bool
-Debugger::receiveCompletionValue(Maybe<AutoCompartment> &ac, bool ok, Value val,
+Debugger::receiveCompletionValue(Maybe<AutoCompartment> &ac, bool ok,
+                                 HandleValue val,
                                  MutableHandleValue vp)
 {
     JSContext *cx = ac.ref().context()->asJSContext();
@@ -3428,16 +3429,17 @@ DebuggerScript_getLineOffsets(JSContext *cx, unsigned argc, Value *vp)
     REQUIRE_ARGC("Debugger.Script.getLineOffsets", 1);
 
     /* Parse lineno argument. */
+    RootedValue linenoValue(cx, args[0]);
     size_t lineno;
-    bool ok = false;
-    if (args[0].isNumber()) {
-        double d = args[0].toNumber();
-        lineno = size_t(d);
-        ok = (lineno == d);
-    }
-    if (!ok) {
-        JS_ReportErrorNumber(cx,  js_GetErrorMessage, nullptr, JSMSG_DEBUG_BAD_LINE);
+    if (!ToNumber(cx, &linenoValue))
         return false;
+    {
+        double d = linenoValue.toNumber();
+        lineno = size_t(d);
+        if (lineno != d) {
+            JS_ReportErrorNumber(cx,  js_GetErrorMessage, nullptr, JSMSG_DEBUG_BAD_LINE);
+            return false;
+        }
     }
 
     /*

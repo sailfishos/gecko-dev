@@ -30,6 +30,21 @@ nsMathMLmmultiscriptsFrame::~nsMathMLmmultiscriptsFrame()
 {
 }
 
+uint8_t
+nsMathMLmmultiscriptsFrame::ScriptIncrement(nsIFrame* aFrame)
+{
+  if (!aFrame)
+    return 0;
+  if (mFrames.ContainsFrame(aFrame)) {
+    if (mFrames.FirstChild() == aFrame ||
+        aFrame->GetContent()->Tag() == nsGkAtoms::mprescripts_) {
+      return 0; // No script increment for base frames or prescript markers
+    }
+    return 1;
+  }
+  return 0; //not a child
+}
+
 NS_IMETHODIMP
 nsMathMLmmultiscriptsFrame::TransmitAutomaticData()
 {
@@ -41,11 +56,8 @@ nsMathMLmmultiscriptsFrame::TransmitAutomaticData()
   // while the subscript is compressed. So here we collect subscripts and set
   // the compression flag in them.
 
-  if (mContent->Tag() == nsGkAtoms::msup_)
-    return NS_OK;
-
   int32_t count = 0;
-  bool isSubScript = true;
+  bool isSubScript = mContent->Tag() != nsGkAtoms::msup_;
 
   nsAutoTArray<nsIFrame*, 8> subScriptFrames;
   nsIFrame* childFrame = mFrames.FirstChild();
@@ -62,6 +74,7 @@ nsMathMLmmultiscriptsFrame::TransmitAutomaticData()
       } else {
         // superscript
       }
+      PropagateFrameFlagFor(childFrame, NS_FRAME_MATHML_SCRIPT_DESCENDANT);
       isSubScript = !isSubScript;
     }
     count++;
@@ -98,8 +111,7 @@ nsMathMLmmultiscriptsFrame::Place(nsRenderingContext& aRenderingContext,
   //
   nsAutoString value;
   if (tag != nsGkAtoms::msup_) {
-    GetAttribute(mContent, mPresentationData.mstyle,
-                 nsGkAtoms::subscriptshift_, value);
+    mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::subscriptshift_, value);
     if (!value.IsEmpty()) {
       ParseNumericValue(value, &subScriptShift, 0, PresContext(),
                         mStyleContext);
@@ -117,8 +129,7 @@ nsMathMLmmultiscriptsFrame::Place(nsRenderingContext& aRenderingContext,
   // As a minimum, negative values can be ignored.
   //
   if (tag != nsGkAtoms::msub_) {
-    GetAttribute(mContent, mPresentationData.mstyle,
-                 nsGkAtoms::superscriptshift_, value);
+    mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::superscriptshift_, value);
     if (!value.IsEmpty()) {
       ParseNumericValue(value, &supScriptShift, 0, PresContext(),
                         mStyleContext);
@@ -554,7 +565,7 @@ nsMathMLmmultiscriptsFrame::PlaceMultiScript(nsPresContext*      aPresContext,
         // place the base ...
         childFrame = baseFrame;
         dy = aDesiredSize.TopAscent() - baseSize.TopAscent();
-        FinishReflowChild (baseFrame, aPresContext, nullptr, baseSize,
+        FinishReflowChild (baseFrame, aPresContext, baseSize, nullptr,
                            aFrame->MirrorIfRTL(aDesiredSize.Width(),
                                                baseSize.Width(),
                                                dx),
@@ -587,8 +598,8 @@ nsMathMLmmultiscriptsFrame::PlaceMultiScript(nsPresContext*      aPresContext,
               x += width - subScriptSize.Width();
             dy = aDesiredSize.TopAscent() - subScriptSize.TopAscent() +
               maxSubScriptShift;
-            FinishReflowChild (subScriptFrame, aPresContext, nullptr,
-                               subScriptSize,
+            FinishReflowChild (subScriptFrame, aPresContext, subScriptSize,
+                               nullptr,
                                aFrame->MirrorIfRTL(aDesiredSize.Width(),
                                                    subScriptSize.Width(),
                                                    x),
@@ -601,8 +612,8 @@ nsMathMLmmultiscriptsFrame::PlaceMultiScript(nsPresContext*      aPresContext,
               x += width - supScriptSize.Width();
             dy = aDesiredSize.TopAscent() - supScriptSize.TopAscent() -
               maxSupScriptShift;
-            FinishReflowChild (supScriptFrame, aPresContext, nullptr,
-                               supScriptSize,
+            FinishReflowChild (supScriptFrame, aPresContext, supScriptSize,
+                               nullptr,
                                aFrame->MirrorIfRTL(aDesiredSize.Width(),
                                                    supScriptSize.Width(),
                                                    x),

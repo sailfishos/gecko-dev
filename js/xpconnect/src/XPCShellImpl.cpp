@@ -585,7 +585,7 @@ Blob(JSContext *cx, unsigned argc, jsval *vp)
   JSObject* global = JS::CurrentGlobalOrNull(cx);
   rv = xpc->WrapNativeToJSVal(cx, global, native, nullptr,
                               &NS_GET_IID(nsISupports), true,
-                              args.rval().address());
+                              args.rval());
   if (NS_FAILED(rv)) {
     JS_ReportError(cx, "Could not wrap native object!");
     return false;
@@ -624,7 +624,7 @@ File(JSContext *cx, unsigned argc, jsval *vp)
   JSObject* global = JS::CurrentGlobalOrNull(cx);
   rv = xpc->WrapNativeToJSVal(cx, global, native, nullptr,
                               &NS_GET_IID(nsISupports), true,
-                              args.rval().address());
+                              args.rval());
   if (NS_FAILED(rv)) {
     JS_ReportError(cx, "Could not wrap native object!");
     return false;
@@ -1134,14 +1134,15 @@ ProcessArgs(JSContext *cx, JS::Handle<JSObject*> obj, char **argv, int argc, XPC
             break;
         case 'e':
         {
-            jsval rval;
+            RootedValue rval(cx);
 
             if (++i == argc) {
                 return usage();
             }
 
             JS_EvaluateScriptForPrincipals(cx, obj, gJSPrincipals, argv[i],
-                                           strlen(argv[i]), "-e", 1, &rval);
+                                           strlen(argv[i]), "-e", 1,
+                                           rval.address());
 
             isInteractive = false;
             break;

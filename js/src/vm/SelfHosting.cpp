@@ -266,8 +266,8 @@ intrinsic_Dump(ThreadSafeContext *cx, unsigned argc, Value *vp)
     return true;
 }
 
-const JSJitInfo intrinsic_Dump_jitInfo =
-    JS_JITINFO_NATIVE_PARALLEL(JSParallelNativeThreadSafeWrapper<intrinsic_Dump>);
+JS_JITINFO_NATIVE_PARALLEL_THREADSAFE(intrinsic_Dump_jitInfo, intrinsic_Dump_jitInfo,
+                                      intrinsic_Dump);
 
 bool
 intrinsic_ParallelSpew(ThreadSafeContext *cx, unsigned argc, Value *vp)
@@ -287,8 +287,8 @@ intrinsic_ParallelSpew(ThreadSafeContext *cx, unsigned argc, Value *vp)
     return true;
 }
 
-const JSJitInfo intrinsic_ParallelSpew_jitInfo =
-    JS_JITINFO_NATIVE_PARALLEL(JSParallelNativeThreadSafeWrapper<intrinsic_ParallelSpew>);
+JS_JITINFO_NATIVE_PARALLEL_THREADSAFE(intrinsic_ParallelSpew_jitInfo, intrinsic_ParallelSpew_jitInfo,
+                                      intrinsic_ParallelSpew);
 #endif
 
 /*
@@ -626,6 +626,9 @@ static const JSFunctionSpec intrinsic_functions[] = {
     JS_FN("NewDenseArray",           intrinsic_NewDenseArray,           1,0),
     JS_FN("ShouldForceSequential",   intrinsic_ShouldForceSequential,   0,0),
     JS_FN("ParallelTestsShouldPass", intrinsic_ParallelTestsShouldPass, 0,0),
+    JS_FNINFO("SetForkJoinTargetRegion",
+              intrinsic_SetForkJoinTargetRegion,
+              &intrinsic_SetForkJoinTargetRegionInfo, 2, 0),
 
     // See builtin/TypedObject.h for descriptors of the typedobj functions.
     JS_FN("NewTypedHandle",
@@ -776,14 +779,14 @@ JSRuntime::initSelfHosting(JSContext *cx)
      * and we don't want errors in self-hosted code to be silently swallowed.
      */
     JSErrorReporter oldReporter = JS_SetErrorReporter(cx, selfHosting_ErrorReporter);
-    Value rv;
+    RootedValue rv(cx);
     bool ok = false;
 
     char *filename = getenv("MOZ_SELFHOSTEDJS");
     if (filename) {
         RootedScript script(cx, Compile(cx, shg, options, filename));
         if (script)
-            ok = Execute(cx, script, *shg.get(), &rv);
+            ok = Execute(cx, script, *shg.get(), rv.address());
     } else {
         uint32_t srcLen = GetRawScriptsSize();
 
@@ -800,7 +803,7 @@ JSRuntime::initSelfHosting(JSContext *cx)
         const char *src = rawSources;
 #endif
 
-        ok = Evaluate(cx, shg, options, src, srcLen, &rv);
+        ok = Evaluate(cx, shg, options, src, srcLen, rv.address());
     }
     JS_SetErrorReporter(cx, oldReporter);
     if (receivesDefaultObject)

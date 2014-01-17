@@ -5240,6 +5240,16 @@ nsRuleNode::ComputeDisplayData(void* aStartStruct,
               parentDisplay->mBreakInside,
               NS_STYLE_PAGE_BREAK_AUTO, 0, 0, 0, 0);
 
+  // touch-action: none, auto, enum, inherit, initial
+  SetDiscrete(*aRuleData->ValueForTouchAction(), display->mTouchAction,
+              canStoreInRuleTree,
+              SETDSC_ENUMERATED | SETDSC_AUTO | SETDSC_NONE |
+                SETDSC_UNSET_INITIAL,
+              parentDisplay->mTouchAction,
+              NS_STYLE_TOUCH_ACTION_AUTO,
+              NS_STYLE_TOUCH_ACTION_AUTO,
+              NS_STYLE_TOUCH_ACTION_NONE, 0, 0);
+
   // float: enum, inherit, initial
   SetDiscrete(*aRuleData->ValueForFloat(),
               display->mFloats, canStoreInRuleTree,
@@ -5659,24 +5669,6 @@ nsRuleNode::ComputeColorData(void* aStartStruct,
 }
 
 // information about how to compute values for background-* properties
-template <class SpecifiedValueItem>
-struct InitialInheritLocationFor {
-};
-
-template <>
-struct InitialInheritLocationFor<nsCSSValueList> {
-  static nsCSSValue nsCSSValueList::* Location() {
-    return &nsCSSValueList::mValue;
-  }
-};
-
-template <>
-struct InitialInheritLocationFor<nsCSSValuePairList> {
-  static nsCSSValue nsCSSValuePairList::* Location() {
-    return &nsCSSValuePairList::mXValue;
-  }
-};
-
 template <class SpecifiedValueItem, class ComputedValueItem>
 struct BackgroundItemComputer {
 };
@@ -7858,18 +7850,6 @@ SetSVGOpacity(const nsCSSValue& aValue,
               aParentOpacity, 1.0f, SETFCT_OPACITY);
     aOpacityTypeField = eStyleSVGOpacitySource_Normal;
   }
-}
-
-template <typename FieldT, typename T>
-static bool
-SetTextContextValue(const nsCSSValue& aValue, FieldT& aField, T aFallbackValue)
-{
-  if (aValue.GetUnit() != eCSSUnit_Enumerated ||
-      aValue.GetIntValue() != NS_STYLE_STROKE_PROP_CONTEXT_VALUE) {
-    return false;
-  }
-  aField = aFallbackValue;
-  return true;
 }
 
 const void*

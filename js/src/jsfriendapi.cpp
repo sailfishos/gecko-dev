@@ -1060,7 +1060,7 @@ JS::ObjectPtr::trace(JSTracer *trc, const char *name)
 JS_FRIEND_API(JSObject *)
 js::GetTestingFunctions(JSContext *cx)
 {
-    RootedObject obj(cx, JS_NewObject(cx, nullptr, nullptr, nullptr));
+    RootedObject obj(cx, JS_NewObject(cx, nullptr, NullPtr(), NullPtr()));
     if (!obj)
         return nullptr;
 
@@ -1207,7 +1207,7 @@ js_DefineOwnProperty(JSContext *cx, JSObject *objArg, jsid idArg,
 }
 
 JS_FRIEND_API(bool)
-js_ReportIsNotFunction(JSContext *cx, const JS::Value& v)
+js_ReportIsNotFunction(JSContext *cx, JS::HandleValue v)
 {
     return ReportIsNotFunction(cx, v);
 }

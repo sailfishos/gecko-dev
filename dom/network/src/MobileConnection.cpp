@@ -15,6 +15,7 @@
 #include "nsIDOMClassInfo.h"
 #include "nsIDOMDOMRequest.h"
 #include "nsIPermissionManager.h"
+#include "nsIVariant.h"
 
 #include "nsJSUtils.h"
 #include "nsJSON.h"
@@ -218,6 +219,18 @@ MobileConnection::GetRadioState(nsAString& aRadioState)
      return NS_OK;
   }
   return mProvider->GetRadioState(mClientId, aRadioState);
+}
+
+NS_IMETHODIMP
+MobileConnection::GetSupportedNetworkTypes(nsIVariant** aSupportedNetworkTypes)
+{
+  *aSupportedNetworkTypes = nullptr;
+
+  if (!mProvider || !CheckPermission("mobileconnection")) {
+     return NS_OK;
+  }
+
+  return mProvider->GetSupportedNetworkTypes(mClientId, aSupportedNetworkTypes);
 }
 
 NS_IMETHODIMP
@@ -429,7 +442,7 @@ MobileConnection::SetCallForwardingOption(nsIDOMMozMobileCFInfo* aCFInfo,
 }
 
 NS_IMETHODIMP
-MobileConnection::GetCallBarringOption(const JS::Value& aOption,
+MobileConnection::GetCallBarringOption(JS::Handle<JS::Value> aOption,
                                        nsIDOMDOMRequest** aRequest)
 {
   *aRequest = nullptr;
@@ -446,7 +459,7 @@ MobileConnection::GetCallBarringOption(const JS::Value& aOption,
 }
 
 NS_IMETHODIMP
-MobileConnection::SetCallBarringOption(const JS::Value& aOption,
+MobileConnection::SetCallBarringOption(JS::Handle<JS::Value> aOption,
                                        nsIDOMDOMRequest** aRequest)
 {
   *aRequest = nullptr;
@@ -463,7 +476,7 @@ MobileConnection::SetCallBarringOption(const JS::Value& aOption,
 }
 
 NS_IMETHODIMP
-MobileConnection::ChangeCallBarringPassword(const JS::Value& aInfo,
+MobileConnection::ChangeCallBarringPassword(JS::Handle<JS::Value> aInfo,
                                             nsIDOMDOMRequest** aRequest)
 {
   *aRequest = nullptr;

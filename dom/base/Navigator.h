@@ -195,7 +195,7 @@ public:
                              ErrorResult& aRv);
   nsIDOMMozMobileMessageManager* GetMozMobileMessage();
   Telephony* GetMozTelephony(ErrorResult& aRv);
-  nsIDOMMozConnection* GetMozConnection();
+  network::Connection* GetMozConnection();
   nsDOMCameraManager* GetMozCameras(ErrorResult& aRv);
   void MozSetMessageHandler(const nsAString& aType,
                             systemMessageCallback* aCallback,
@@ -273,6 +273,7 @@ public:
 #endif // MOZ_B2G_FM
 #ifdef MOZ_NFC
   static bool HasNfcSupport(JSContext* /* unused */, JSObject* aGlobal);
+  static bool HasNfcPeerSupport(JSContext* /* unused */, JSObject* aGlobal);
 #endif // MOZ_NFC
 #ifdef MOZ_TIME_MANAGER
   static bool HasTimeSupport(JSContext* /* unused */, JSObject* aGlobal);
