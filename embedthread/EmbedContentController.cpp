@@ -28,58 +28,57 @@ EmbedContentController::EmbedContentController(EmbedLiteViewThreadParent* aRende
 
 void EmbedContentController::RequestContentRepaint(const FrameMetrics& aFrameMetrics)
 {
-    // We always need to post requests into the "UI thread" otherwise the
-    // requests may get processed out of order.
-    LOGT();
-    mUILoop->PostTask(
-        FROM_HERE,
-        NewRunnableMethod(this, &EmbedContentController::DoRequestContentRepaint,
-    aFrameMetrics));
+  // We always need to post requests into the "UI thread" otherwise the
+  // requests may get processed out of order.
+  LOGT();
+  mUILoop->PostTask(
+    FROM_HERE,
+    NewRunnableMethod(this, &EmbedContentController::DoRequestContentRepaint, aFrameMetrics));
 }
 
 void EmbedContentController::HandleDoubleTap(const CSSIntPoint& aPoint, int32_t aModifiers)
 {
-    if (MessageLoop::current() != mUILoop) {
-        // We have to send this message from the "UI thread" (main
-        // thread).
-        mUILoop->PostTask(
-            FROM_HERE,
-            NewRunnableMethod(this, &EmbedContentController::HandleDoubleTap, aPoint, aModifiers));
-        return;
-    }
-    if (!GetListener()->HandleDoubleTap(nsIntPoint(aPoint.x, aPoint.y))) {
-        unused << mRenderFrame->SendHandleDoubleTap(nsIntPoint(aPoint.x, aPoint.y));
-    }
+  if (MessageLoop::current() != mUILoop) {
+    // We have to send this message from the "UI thread" (main
+    // thread).
+    mUILoop->PostTask(
+      FROM_HERE,
+      NewRunnableMethod(this, &EmbedContentController::HandleDoubleTap, aPoint, aModifiers));
+    return;
+  }
+  if (!GetListener()->HandleDoubleTap(nsIntPoint(aPoint.x, aPoint.y))) {
+    unused << mRenderFrame->SendHandleDoubleTap(nsIntPoint(aPoint.x, aPoint.y));
+  }
 }
 
 void EmbedContentController::HandleSingleTap(const CSSIntPoint& aPoint, int32_t aModifiers)
 {
-    if (MessageLoop::current() != mUILoop) {
-        // We have to send this message from the "UI thread" (main
-        // thread).
-        mUILoop->PostTask(
-            FROM_HERE,
-            NewRunnableMethod(this, &EmbedContentController::HandleSingleTap, aPoint, aModifiers));
-        return;
-    }
-    if (!GetListener()->HandleSingleTap(nsIntPoint(aPoint.x, aPoint.y))) {
-        unused << mRenderFrame->SendHandleSingleTap(nsIntPoint(aPoint.x, aPoint.y));
-    }
+  if (MessageLoop::current() != mUILoop) {
+    // We have to send this message from the "UI thread" (main
+    // thread).
+    mUILoop->PostTask(
+      FROM_HERE,
+      NewRunnableMethod(this, &EmbedContentController::HandleSingleTap, aPoint, aModifiers));
+    return;
+  }
+  if (!GetListener()->HandleSingleTap(nsIntPoint(aPoint.x, aPoint.y))) {
+    unused << mRenderFrame->SendHandleSingleTap(nsIntPoint(aPoint.x, aPoint.y));
+  }
 }
 
 void EmbedContentController::HandleLongTap(const CSSIntPoint& aPoint, int32_t aModifiers)
 {
-    if (MessageLoop::current() != mUILoop) {
-        // We have to send this message from the "UI thread" (main
-        // thread).
-        mUILoop->PostTask(
-            FROM_HERE,
-            NewRunnableMethod(this, &EmbedContentController::HandleLongTap, aPoint, aModifiers));
-        return;
-    }
-    if (!GetListener()->HandleLongTap(nsIntPoint(aPoint.x, aPoint.y))) {
-        unused << mRenderFrame->SendHandleLongTap(nsIntPoint(aPoint.x, aPoint.y));
-    }
+  if (MessageLoop::current() != mUILoop) {
+    // We have to send this message from the "UI thread" (main
+    // thread).
+    mUILoop->PostTask(
+      FROM_HERE,
+      NewRunnableMethod(this, &EmbedContentController::HandleLongTap, aPoint, aModifiers));
+    return;
+  }
+  if (!GetListener()->HandleLongTap(nsIntPoint(aPoint.x, aPoint.y))) {
+    unused << mRenderFrame->SendHandleLongTap(nsIntPoint(aPoint.x, aPoint.y));
+  }
 }
 
 void EmbedContentController::HandleLongTapUp(const CSSIntPoint& aPoint, int32_t aModifiers)
@@ -95,42 +94,55 @@ void EmbedContentController::SendAsyncScrollDOMEvent(bool aIsRoot,
                                                      const CSSRect& aContentRect,
                                                      const CSSSize& aScrollableSize)
 {
-    if (MessageLoop::current() != mUILoop) {
-        // We have to send this message from the "UI thread" (main
-        // thread).
-        mUILoop->PostTask(
-            FROM_HERE,
-            NewRunnableMethod(this, &EmbedContentController::SendAsyncScrollDOMEvent,
-                              aIsRoot, aContentRect, aScrollableSize));
-        return;
-    }
-    LOGNI("contentR[%g,%g,%g,%g], scrSize[%g,%g]",
-          aContentRect.x, aContentRect.y, aContentRect.width, aContentRect.height,
-          aScrollableSize.width, aScrollableSize.height);
-    gfxRect rect(aContentRect.x, aContentRect.y, aContentRect.width, aContentRect.height);
-    gfxSize size(aScrollableSize.width, aScrollableSize.height);
-    if (!GetListener()->SendAsyncScrollDOMEvent(rect, size)) {
-        unused << mRenderFrame->SendAsyncScrollDOMEvent(rect, size);
-    }
+  if (MessageLoop::current() != mUILoop) {
+    // We have to send this message from the "UI thread" (main
+    // thread).
+    mUILoop->PostTask(
+      FROM_HERE,
+      NewRunnableMethod(this, &EmbedContentController::SendAsyncScrollDOMEvent,
+                        aIsRoot, aContentRect, aScrollableSize));
+    return;
+  }
+  LOGNI("contentR[%g,%g,%g,%g], scrSize[%g,%g]",
+    aContentRect.x, aContentRect.y, aContentRect.width, aContentRect.height,
+    aScrollableSize.width, aScrollableSize.height);
+  gfxRect rect(aContentRect.x, aContentRect.y, aContentRect.width, aContentRect.height);
+  gfxSize size(aScrollableSize.width, aScrollableSize.height);
+  if (!GetListener()->SendAsyncScrollDOMEvent(rect, size)) {
+    unused << mRenderFrame->SendAsyncScrollDOMEvent(rect, size);
+  }
 }
 
 void EmbedContentController::ScrollUpdate(const CSSPoint& aPosition, const float aResolution)
 {
-    if (MessageLoop::current() != mUILoop) {
-        // We have to send this message from the "UI thread" (main
-        // thread).
-        mUILoop->PostTask(
-            FROM_HERE,
-            NewRunnableMethod(this, &EmbedContentController::ScrollUpdate,
-                              aPosition, aResolution));
-        return;
-    }
-    GetListener()->ScrollUpdate(gfxPoint(aPosition.x, aPosition.y), aResolution);
+  if (MessageLoop::current() != mUILoop) {
+    // We have to send this message from the "UI thread" (main
+    // thread).
+    mUILoop->PostTask(
+      FROM_HERE,
+      NewRunnableMethod(this, &EmbedContentController::ScrollUpdate,
+                        aPosition, aResolution));
+    return;
+  }
+  GetListener()->ScrollUpdate(gfxPoint(aPosition.x, aPosition.y), aResolution);
 }
 
 void EmbedContentController::ClearRenderFrame()
 {
-    mRenderFrame = nullptr;
+  mRenderFrame = nullptr;
+}
+
+bool EmbedContentController::GetRootZoomConstraints(ZoomConstraints* aOutConstraints)
+{
+  if (aOutConstraints) {
+    // Until we support the meta-viewport tag properly allow zooming
+    // from 1/4 to 4x by default.
+    aOutConstraints->mAllowZoom = true;
+    aOutConstraints->mMinZoom = CSSToScreenScale(0.25f);
+    aOutConstraints->mMaxZoom = CSSToScreenScale(4.0f);
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -139,20 +151,20 @@ void EmbedContentController::ClearRenderFrame()
  */
 void EmbedContentController::PostDelayedTask(Task* aTask, int aDelayMs)
 {
-    MessageLoop::current()->PostDelayedTask(FROM_HERE, aTask, aDelayMs);
+  MessageLoop::current()->PostDelayedTask(FROM_HERE, aTask, aDelayMs);
 }
 
 EmbedLiteViewListener* const EmbedContentController::GetListener() const
 {
-    return mRenderFrame && mRenderFrame->mView ?
-           mRenderFrame->mView->GetListener() : &sFakeListener;
+  return mRenderFrame && mRenderFrame->mView ?
+         mRenderFrame->mView->GetListener() : &sFakeListener;
 }
 
 void EmbedContentController::DoRequestContentRepaint(const FrameMetrics& aFrameMetrics)
 {
-    if (!GetListener()->RequestContentRepaint()) {
-        unused << mRenderFrame->SendUpdateFrame(aFrameMetrics);
-    }
+  if (!GetListener()->RequestContentRepaint()) {
+    unused << mRenderFrame->SendUpdateFrame(aFrameMetrics);
+  }
 }
 
 nsEventStatus
