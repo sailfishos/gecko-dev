@@ -780,7 +780,7 @@ EmbedLiteViewThreadChild::RecvMouseEvent(const nsString& aType,
 }
 
 bool
-EmbedLiteViewThreadChild::RecvInputDataTouchEvent(const mozilla::MultiTouchInput& aData)
+EmbedLiteViewThreadChild::RecvInputDataTouchEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput& aData)
 {
   WidgetTouchEvent localEvent;
   if (mHelper->ConvertMutiTouchInputToEvent(aData, localEvent)) {
@@ -789,7 +789,7 @@ EmbedLiteViewThreadChild::RecvInputDataTouchEvent(const mozilla::MultiTouchInput
     nsCOMPtr<nsPIDOMWindow> outerWindow = do_GetInterface(mWebNavigation);
     nsCOMPtr<nsPIDOMWindow> innerWindow = outerWindow->GetCurrentInnerWindow();
     if (innerWindow && innerWindow->HasTouchEventListeners()) {
-      SendContentReceivedTouch(nsIPresShell::gPreventMouseEvents);
+      SendContentReceivedTouch(aGuid, nsIPresShell::gPreventMouseEvents);
     }
     static bool sDispatchMouseEvents;
     static bool sDispatchMouseEventsCached = false;
@@ -815,9 +815,9 @@ EmbedLiteViewThreadChild::RecvInputDataTouchEvent(const mozilla::MultiTouchInput
 }
 
 bool
-EmbedLiteViewThreadChild::RecvInputDataTouchMoveEvent(const mozilla::MultiTouchInput& aData)
+EmbedLiteViewThreadChild::RecvInputDataTouchMoveEvent(const ScrollableLayerGuid& aGuid, const mozilla::MultiTouchInput& aData)
 {
-  return RecvInputDataTouchEvent(aData);
+  return RecvInputDataTouchEvent(aGuid, aData);
 }
 
 NS_IMETHODIMP

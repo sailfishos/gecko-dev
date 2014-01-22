@@ -281,10 +281,10 @@ EmbedLiteViewThreadParent::RecvZoomToRect(const CSSRect& aRect)
 }
 
 bool
-EmbedLiteViewThreadParent::RecvContentReceivedTouch(const bool& aPreventDefault)
+EmbedLiteViewThreadParent::RecvContentReceivedTouch(const ScrollableLayerGuid& aGuid, const bool& aPreventDefault)
 {
   if (mController) {
-    mController->GetManager()->ContentReceivedTouch(ScrollableLayerGuid(mRootLayerTreeId, 0, 0), aPreventDefault);
+    mController->GetManager()->ContentReceivedTouch(aGuid, aPreventDefault);
   }
   return true;
 }
@@ -569,9 +569,9 @@ EmbedLiteViewThreadParent::ReceiveInputEvent(const InputData& aEvent)
         translatedEvent.mTouches.AppendElement(newData);
       }
       if (multiTouchInput.mType == MultiTouchInput::MULTITOUCH_MOVE) {
-        unused << SendInputDataTouchMoveEvent(translatedEvent);
+        unused << SendInputDataTouchMoveEvent(guid, translatedEvent);
       } else {
-        unused << SendInputDataTouchEvent(translatedEvent);
+        unused << SendInputDataTouchEvent(guid, translatedEvent);
       }
     }
   }
