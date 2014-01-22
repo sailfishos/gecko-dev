@@ -32,9 +32,14 @@
 #include "xpcprivate.h"
 #include "nsPIDOMWindow.h"
 #include "mozilla/AutoRestore.h"
+#include "FrameMetrics.h"
 
 using namespace mozilla;
 using namespace mozilla::embedlite;
+
+using namespace mozilla::gfx;
+using namespace mozilla::layers;
+using namespace mozilla::widget;
 
 namespace
 {
@@ -280,7 +285,7 @@ EmbedLiteAppService::ContentReceivedTouch(uint32_t aWinId, bool aPreventDefault)
 {
   EmbedLiteViewThreadChild* view = sGetViewById(aWinId);
   NS_ENSURE_TRUE(view, NS_ERROR_FAILURE);
-  view->SendContentReceivedTouch(aPreventDefault);
+  view->SendContentReceivedTouch(ScrollableLayerGuid(0, 0, 0), aPreventDefault);
   return NS_OK;
 }
 

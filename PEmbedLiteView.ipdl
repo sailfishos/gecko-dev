@@ -15,6 +15,7 @@ using struct nsIntSize from "nsSize.h";
 using struct gfxPoint from "gfxPoint.h";
 using struct nsIntPoint from "nsPoint.h";
 using struct mozilla::layers::FrameMetrics from "FrameMetrics.h";
+using struct mozilla::layers::ScrollableLayerGuid from "FrameMetrics.h";
 using FrameMetrics::ViewID from "FrameMetrics.h";
 using nscolor from "nsColor.h";
 using class mozilla::WidgetKeyboardEvent from "ipc/nsGUIEventIPC.h";
@@ -53,10 +54,10 @@ child:
                int32_t aButton, int32_t aClickCount,
                int32_t aModifiers, bool aIgnoreRootScrollFrame);
 
-    InputDataTouchEvent(MultiTouchInput event);
+    InputDataTouchEvent(ScrollableLayerGuid aGuid, MultiTouchInput event);
     // We use a separate message for touchmove events only to apply
     // compression to them.
-    InputDataTouchMoveEvent(MultiTouchInput event) compress;
+    InputDataTouchMoveEvent(ScrollableLayerGuid aGuid, MultiTouchInput event) compress;
     AddMessageListener(nsCString name);
     RemoveMessageListener(nsCString name);
     AddMessageListeners(nsString [] messageNames);
@@ -82,7 +83,7 @@ parent:
 
     ZoomToRect(CSSRect aRect);
     async SetBackgroundColor(nscolor color);
-    ContentReceivedTouch(bool aPreventDefault);
+    ContentReceivedTouch(ScrollableLayerGuid aGuid, bool aPreventDefault);
     sync GetGLViewSize()
       returns (gfxSize aSize);
 
