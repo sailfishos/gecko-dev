@@ -115,7 +115,7 @@ protected:
   RecvUpdateZoomConstraints(const bool&, const float&, const float&);
   virtual bool RecvZoomToRect(const CSSRect& aRect);
   virtual bool RecvSetBackgroundColor(const nscolor& aColor);
-  virtual bool RecvContentReceivedTouch(const bool& aPreventDefault);
+  virtual bool RecvContentReceivedTouch(const ScrollableLayerGuid& aGuid, const bool& aPreventDefault);
 
   // IME
   virtual bool RecvGetInputContext(int32_t* aIMEEnabled,
