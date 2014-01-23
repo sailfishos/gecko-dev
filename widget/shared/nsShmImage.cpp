@@ -7,6 +7,8 @@
 #if defined(MOZ_WIDGET_GTK)
 #include <gtk/gtk.h>
 #include <gdk/gdkx.h>
+#elif defined(MOZ_WIDGET_QT)
+#include <QWindow>
 #endif
 
 #include "nsShmImage.h"
@@ -163,6 +165,24 @@ nsShmImage::Put(GdkWindow* aWindow, cairo_rectangle_list_t* aRects)
     // XSync is shown to hurt responsiveness, we need to explore the
     // other options.
     XSync(dpy, False);
+}
+
+#elif defined(MOZ_WIDGET_QT)
+void
+nsShmImage::Put(QWindow* aWindow, QRect& aRect)
+{
+    Display* dpy = gfxQtPlatform::GetXDisplay(aWindow);
+    Drawable d = aWindow->winId();
+
+    GC gc = XCreateGC(dpy, d, 0, nullptr);
+    // Avoid out of bounds painting
+    QRect inter = aRect.intersected(aWindow->geometry());
+    XShmPutImage(dpy, d, gc, mImage,
+                 inter.x(), inter.y(),
+                 inter.x(), inter.y(),
+                 inter.width(), inter.height(),
+                 False);
+    XFreeGC(dpy, gc);
 }
 #endif
 

@@ -31,6 +31,7 @@
 #endif
 
 class QRect;
+class QWindow;
 class gfxASurface;
 
 class nsShmImage {
@@ -64,6 +65,8 @@ public:
     void Put(GdkWindow* aWindow, GdkRectangle* aRects, GdkRectangle* aEnd);
 #elif (MOZ_WIDGET_GTK == 3)
     void Put(GdkWindow* aWindow, cairo_rectangle_list_t* aRects);
+#elif defined(MOZ_WIDGET_QT)
+    void Put(QWindow* aWindow, QRect& aRect);
 #endif
 
     gfxIntSize Size() const { return mSize; }
