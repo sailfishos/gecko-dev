@@ -4065,7 +4065,11 @@ pref("layers.acceleration.disabled", false);
 // means a startup crash for everyone.
 pref("layers.acceleration.force-enabled", true);
 #else
+#ifdef MOZ_WIDGET_QT
+pref("layers.acceleration.force-enabled", true);
+#else
 pref("layers.acceleration.force-enabled", false);
+#endif
 #endif
 
 pref("layers.acceleration.draw-fps", false);
@@ -4083,7 +4087,11 @@ pref("layers.max-active", -1);
 pref("layers.scroll-graph", false);
 
 // Set the default values, and then override per-platform as needed
+#ifdef MOZ_WIDGET_QT
+pref("layers.offmainthreadcomposition.enabled", true);
+#else
 pref("layers.offmainthreadcomposition.enabled", false);
+#endif
 // Whether to use the deprecated texture architecture rather than the new one.
 pref("layers.use-deprecated-textures", true);
 #ifndef XP_WIN

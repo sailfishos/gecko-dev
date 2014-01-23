@@ -15,7 +15,7 @@
 #endif
 
 class gfxFontconfigUtils;
-class QWidget;
+class QWindow;
 
 class gfxQtPlatform : public gfxPlatform {
 public:
@@ -40,6 +40,9 @@ public:
 
     already_AddRefed<gfxASurface> CreateOffscreenSurface(const gfxIntSize& size,
                                                          gfxContentType contentType);
+
+    mozilla::TemporaryRef<mozilla::gfx::ScaledFont>
+      GetScaledFontForFont(mozilla::gfx::DrawTarget* aTarget, gfxFont *aFont);
 
     nsresult GetFontList(nsIAtom *aLangGroup,
                          const nsACString& aGenericFamily,
@@ -88,16 +91,31 @@ public:
 
     virtual gfxImageFormat GetOffscreenFormat();
 #ifdef MOZ_X11
-    static Display* GetXDisplay(QWidget* aWindow = 0);
-    static Screen* GetXScreen(QWidget* aWindow = 0);
+    static Display* GetXDisplay(QWindow* aWindow = 0);
+    static Screen* GetXScreen(QWindow* aWindow = 0);
 #endif
 
     virtual int GetScreenDepth() const;
+
+    virtual bool SupportsOffMainThreadCompositing();
 
 protected:
     static gfxFontconfigUtils *sFontconfigUtils;
 
 private:
+
+    bool UseXRender() {
+#if defined(MOZ_X11)
+        if (GetContentBackend() != mozilla::gfx::BackendType::NONE &&
+            GetContentBackend() != mozilla::gfx::BackendType::CAIRO)
+            return false;
+
+        return sUseXRender;
+#else
+        return false;
+#endif
+    }
+
     virtual qcms_profile *GetPlatformCMSOutputProfile();
 
     // TODO: unify this with mPrefFonts (NB: holds families, not fonts) in gfxPlatformFontList
@@ -105,6 +123,9 @@ private:
 
     RenderMode mRenderMode;
     int mScreenDepth;
+#ifdef MOZ_X11
+    static bool sUseXRender;
+#endif
 };
 
 #endif /* GFX_PLATFORM_QT_H */
