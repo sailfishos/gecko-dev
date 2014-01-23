@@ -4,6 +4,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+#include <QWindow>
 #include "nsQtRemoteService.h"
 
 #include "mozilla/ModuleUtils.h"
@@ -13,18 +14,68 @@
 
 #include "nsCOMPtr.h"
 
+/**
+  Helper class which is used to receive notification about property changes
+*/
+class MozQRemoteEventHandlerWidget: public QWindow {
+public:
+  /**
+    Constructor
+    @param aRemoteService remote service, which is notified about atom change
+  */
+  MozQRemoteEventHandlerWidget(nsQtRemoteService &aRemoteService);
+  virtual ~MozQRemoteEventHandlerWidget() {}
+
+protected:
+  /**
+    Event filter, which receives all XEvents
+    @return false which continues event handling
+  */
+  bool x11Event(XEvent *);
+
+private:
+  /**
+    Service which is notified about property change
+  */
+  nsQtRemoteService &mRemoteService;
+};
+
+MozQRemoteEventHandlerWidget::MozQRemoteEventHandlerWidget(nsQtRemoteService &aRemoteService)
+  :mRemoteService(aRemoteService)
+{
+}
+
+bool
+MozQRemoteEventHandlerWidget::x11Event(XEvent *aEvt)
+{
+  if (aEvt->type == PropertyNotify && aEvt->xproperty.state == PropertyNewValue)
+    mRemoteService.PropertyNotifyEvent(aEvt);
+
+  return false;
+}
+
 NS_IMPL_ISUPPORTS2(nsQtRemoteService,
                    nsIRemoteService,
                    nsIObserver)
 
-nsQtRemoteService::nsQtRemoteService()
+nsQtRemoteService::nsQtRemoteService():
+mServerWindow(0)
 {
 }
 
 NS_IMETHODIMP
 nsQtRemoteService::Startup(const char* aAppName, const char* aProfileName)
 {
-  return NS_ERROR_NOT_IMPLEMENTED;
+  if (mServerWindow) return NS_ERROR_ALREADY_INITIALIZED;
+  NS_ASSERTION(aAppName, "Don't pass a null appname!");
+
+  XRemoteBaseStartup(aAppName,aProfileName);
+
+  //Create window, which is not shown.
+  mServerWindow = new MozQRemoteEventHandlerWidget(*this);
+
+  HandleCommandsFor(mServerWindow->winId());
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -36,12 +87,28 @@ nsQtRemoteService::RegisterWindow(nsIDOMWindow* aWindow)
 NS_IMETHODIMP
 nsQtRemoteService::Shutdown()
 {
-  return NS_ERROR_NOT_IMPLEMENTED;
+  if (!mServerWindow)
+    return NS_ERROR_NOT_INITIALIZED;
+
+  delete mServerWindow;
+  mServerWindow = nullptr;
+
+  return NS_OK;
+}
+
+void
+nsQtRemoteService::PropertyNotifyEvent(XEvent *aEvt)
+{
+  HandleNewProperty(aEvt->xproperty.window,
+                    mozilla::DefaultXDisplay(),
+                    aEvt->xproperty.time,
+                    aEvt->xproperty.atom,
+                    0);
 }
 
 void
 nsQtRemoteService::SetDesktopStartupIDOrTimestamp(const nsACString& aDesktopStartupID,
-                                                   uint32_t aTimestamp)
+                                                  uint32_t aTimestamp)
 {
 }
 

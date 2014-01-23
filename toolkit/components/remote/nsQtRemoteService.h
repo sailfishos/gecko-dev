@@ -18,16 +18,19 @@ class nsQtRemoteService : public nsXRemoteService
 public:
   // We will be a static singleton, so don't use the ordinary methods.
   NS_DECL_ISUPPORTS
-  NS_DECL_NSIREMOTESERVICE
+  NS_DECL_NSIREMOTESERVICE  
 
   nsQtRemoteService();
+  virtual ~nsQtRemoteService() { };
 
 private:
-  ~nsQtRemoteService() { };
-
   virtual void SetDesktopStartupIDOrTimestamp(const nsACString& aDesktopStartupID,
                                               uint32_t aTimestamp);
 
+  void PropertyNotifyEvent(XEvent *evt);
+  friend class MozQRemoteEventHandlerWidget;
+
+  QWindow *mServerWindow;
 };
 
 #endif // __nsQtRemoteService_h__
