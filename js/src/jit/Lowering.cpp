@@ -17,6 +17,7 @@
 
 #include "jsinferinlines.h"
 #include "jsobjinlines.h"
+#include "jsopcodeinlines.h"
 
 #include "jit/shared/Lowering-shared-inl.h"
 
@@ -592,7 +593,7 @@ ReorderComparison(JSOp op, MDefinition **lhsp, MDefinition **rhsp)
     if (lhs->isConstant()) {
         *rhsp = lhs;
         *lhsp = rhs;
-        return js::analyze::ReverseCompareOp(op);
+        return ReverseCompareOp(op);
     }
     return op;
 }
@@ -1938,12 +1939,25 @@ LIRGenerator::visitRegExpTest(MRegExpTest *ins)
 bool
 LIRGenerator::visitRegExpReplace(MRegExpReplace *ins)
 {
-    JS_ASSERT(ins->regexp()->type() == MIRType_Object);
+    JS_ASSERT(ins->pattern()->type() == MIRType_Object);
     JS_ASSERT(ins->string()->type() == MIRType_String);
     JS_ASSERT(ins->replacement()->type() == MIRType_String);
 
     LRegExpReplace *lir = new(alloc()) LRegExpReplace(useRegisterOrConstantAtStart(ins->string()),
-                                                      useRegisterAtStart(ins->regexp()),
+                                                      useRegisterAtStart(ins->pattern()),
+                                                      useRegisterOrConstantAtStart(ins->replacement()));
+    return defineReturn(lir, ins) && assignSafepoint(lir, ins);
+}
+
+bool
+LIRGenerator::visitStringReplace(MStringReplace *ins)
+{
+    JS_ASSERT(ins->pattern()->type() == MIRType_String);
+    JS_ASSERT(ins->string()->type() == MIRType_String);
+    JS_ASSERT(ins->replacement()->type() == MIRType_String);
+
+    LStringReplace *lir = new(alloc()) LStringReplace(useRegisterOrConstantAtStart(ins->string()),
+                                                      useRegisterAtStart(ins->pattern()),
                                                       useRegisterOrConstantAtStart(ins->replacement()));
     return defineReturn(lir, ins) && assignSafepoint(lir, ins);
 }

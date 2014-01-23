@@ -2691,7 +2691,7 @@ nsDocument::InitCSP(nsIChannel* aChannel)
   aChannel->GetURI(getter_AddRefs(selfURI));
 
   // Store the request context for violation reports
-  csp->ScanRequestData(httpChannel);
+  csp->ScanRequestData(aChannel);
 
   // ----- if the doc is an app and we want a default CSP, apply it.
   if (applyAppDefaultCSP) {
@@ -4258,10 +4258,7 @@ nsIDocument::SetContainer(nsDocShell* aContainer)
   }
 
   // Get the Docshell
-  int32_t itemType;
-  aContainer->GetItemType(&itemType);
-  // check itemtype
-  if (itemType == nsIDocShellTreeItem::typeContent) {
+  if (aContainer->ItemType() == nsIDocShellTreeItem::typeContent) {
     // check if same type root
     nsCOMPtr<nsIDocShellTreeItem> sameTypeRoot;
     aContainer->GetSameTypeRootTreeItem(getter_AddRefs(sameTypeRoot));
@@ -5386,7 +5383,7 @@ nsDocument::Register(JSContext* aCx, const nsAString& aName,
   // Create constructor to return. Store the name of the custom element as the
   // name of the function.
   JSFunction* constructor = JS_NewFunction(aCx, CustomElementConstructor, 0,
-                                           JSFUN_CONSTRUCTOR, nullptr,
+                                           JSFUN_CONSTRUCTOR, JS::NullPtr(),
                                            NS_ConvertUTF16toUTF8(lcName).get());
   JSObject* constructorObject = JS_GetFunctionObject(constructor);
   return constructorObject;

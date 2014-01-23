@@ -508,8 +508,6 @@ XPCOMUtils.defineLazyGetter(this, "gMessageManager", function() {
 
 XPCOMUtils.defineLazyGetter(this, "gRadioEnabledController", function() {
   return {
-    QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver]),
-
     ril: null,
     pendingMessages: [],  // For queueing "RIL:SetRadioEnabled" messages.
     timer: null,
@@ -518,7 +516,6 @@ XPCOMUtils.defineLazyGetter(this, "gRadioEnabledController", function() {
 
     init: function(ril) {
       this.ril = ril;
-      Services.obs.addObserver(this, kSysMsgListenerReadyObserverTopic, false);
     },
 
     receiveMessage: function(msg) {
@@ -674,27 +671,6 @@ XPCOMUtils.defineLazyGetter(this, "gRadioEnabledController", function() {
       }
       this._processNextMessage();
     },
-
-    /**
-     * nsIObserver interface methods.
-     */
-    observe: function observe(subject, topic, data) {
-      switch (topic) {
-        case kSysMsgListenerReadyObserverTopic:
-          Services.obs.removeObserver(this, kSysMsgListenerReadyObserverTopic);
-
-          let numCards = this._getNumCards();
-          for (let i = 0, N = this.ril.numRadioInterfaces; i < N; ++i) {
-            if (this._isRadioAbleToEnableAtClient(i, numCards)) {
-              let radioInterface = this.ril.getRadioInterface(i);
-              radioInterface.setRadioEnabledInternal({enabled: true}, null);
-            }
-          }
-          break;
-        default:
-          break;
-      }
-    }
   };
 });
 
@@ -3333,6 +3309,15 @@ RadioInterface.prototype = {
   _fragmentText7Bit: function(text, langTable, langShiftTable, segmentSeptets, strict7BitEncoding) {
     let ret = [];
     let body = "", len = 0;
+    // If the message is empty, we only push the empty message to ret.
+    if (text.length === 0) {
+      ret.push({
+        body: text,
+        encodedBodyLength: text.length,
+      });
+      return ret;
+    }
+
     for (let i = 0, inc = 0; i < text.length; i++) {
       let c = text.charAt(i);
       if (strict7BitEncoding) {
@@ -3402,6 +3387,15 @@ RadioInterface.prototype = {
    */
   _fragmentTextUCS2: function(text, segmentChars) {
     let ret = [];
+    // If the message is empty, we only push the empty message to ret.
+    if (text.length === 0) {
+      ret.push({
+        body: text,
+        encodedBodyLength: text.length,
+      });
+      return ret;
+    }
+
     for (let offset = 0; offset < text.length; offset += segmentChars) {
       let str = text.substr(offset, segmentChars);
       ret.push({

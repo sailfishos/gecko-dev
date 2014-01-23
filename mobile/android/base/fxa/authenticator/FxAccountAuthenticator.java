@@ -56,7 +56,7 @@ public class FxAccountAuthenticator extends AbstractAccountAuthenticator {
     userData.putString(JSON_KEY_KA, kA);
     userData.putString(JSON_KEY_KB, kB);
     userData.putString(JSON_KEY_IDP_ENDPOINT, FxAccountConstants.DEFAULT_IDP_ENDPOINT);
-    userData.putString(JSON_KEY_AUTH_ENDPOINT, FxAccountConstants.DEFAULT_AUTH_ENDPOINT);
+    userData.putString(JSON_KEY_AUTH_ENDPOINT, FxAccountConstants.DEFAULT_TOKEN_SERVER_ENDPOINT);
     if (!accountManager.addAccountExplicitly(account, sessionToken, userData)) {
       Logger.warn(LOG_TAG, "Error adding account named " + account.name + " of type " + account.type);
       return null;
@@ -144,5 +144,15 @@ public class FxAccountAuthenticator extends AbstractAccountAuthenticator {
    */
   public static Account[] getFirefoxAccounts(final Context context) {
     return AccountManager.get(context).getAccountsByType(FxAccountConstants.ACCOUNT_TYPE);
+  }
+
+  /**
+   * Return true if at least one Firefox Account exists.
+   *
+   * @param context Android context.
+   * @return true if at least one Firefox Account exists.
+   */
+  public static boolean firefoxAccountsExist(final Context context) {
+    return getFirefoxAccounts(context).length > 0;
   }
 }

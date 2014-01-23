@@ -691,12 +691,9 @@ nsPresContext::GetDocumentColorPreferences()
   bool usePrefColors = true;
   nsCOMPtr<nsIDocShellTreeItem> docShell(mContainer);
   if (docShell) {
-    int32_t docShellType;
-    docShell->GetItemType(&docShellType);
-    if (nsIDocShellTreeItem::typeChrome == docShellType) {
+    if (nsIDocShellTreeItem::typeChrome == docShell->ItemType()) {
       usePrefColors = false;
-    }
-    else {
+    } else {
       useAccessibilityTheme =
         LookAndFeel::GetInt(LookAndFeel::eIntID_UseAccessibilityTheme, 0);
       usePrefColors = !useAccessibilityTheme;
@@ -963,11 +960,8 @@ nsPresContext::UpdateAfterPreferencesChanged()
   mPrefChangedTimer = nullptr;
 
   nsCOMPtr<nsIDocShellTreeItem> docShell(mContainer);
-  if (docShell) {
-    int32_t docShellType;
-    docShell->GetItemType(&docShellType);
-    if (nsIDocShellTreeItem::typeChrome == docShellType)
-      return;
+  if (docShell && nsIDocShellTreeItem::typeChrome == docShell->ItemType()) {
+    return;
   }
 
   // Initialize our state from the user preferences
@@ -1055,7 +1049,8 @@ nsPresContext::Init(nsDeviceContext* aDeviceContext)
 
   // Initialise refresh tick counters for OMTA
   mLastStyleUpdateForAllAnimations =
-    mLastUpdateThrottledStyle = mRefreshDriver->MostRecentRefresh();
+    mLastUpdateThrottledAnimationStyle =
+    mLastUpdateThrottledTransitionStyle = mRefreshDriver->MostRecentRefresh();
 
   mLangService = do_GetService(NS_LANGUAGEATOMSERVICE_CONTRACTID);
 
@@ -1579,15 +1574,29 @@ nsPresContext::GetDocShell() const
 }
 
 bool
-nsPresContext::ThrottledStyleIsUpToDate() const
+nsPresContext::ThrottledTransitionStyleIsUpToDate() const
 {
-  return mLastUpdateThrottledStyle == mRefreshDriver->MostRecentRefresh();
+  return
+    mLastUpdateThrottledTransitionStyle == mRefreshDriver->MostRecentRefresh();
 }
 
 void
-nsPresContext::TickLastUpdateThrottledStyle()
+nsPresContext::TickLastUpdateThrottledTransitionStyle()
 {
-  mLastUpdateThrottledStyle = mRefreshDriver->MostRecentRefresh();
+  mLastUpdateThrottledTransitionStyle = mRefreshDriver->MostRecentRefresh();
+}
+
+bool
+nsPresContext::ThrottledAnimationStyleIsUpToDate() const
+{
+  return
+    mLastUpdateThrottledAnimationStyle == mRefreshDriver->MostRecentRefresh();
+}
+
+void
+nsPresContext::TickLastUpdateThrottledAnimationStyle()
+{
+  mLastUpdateThrottledAnimationStyle = mRefreshDriver->MostRecentRefresh();
 }
 
 bool
@@ -2029,16 +2038,8 @@ nsPresContext::CountReflows(const char * aName, nsIFrame * aFrame)
 bool
 nsPresContext::IsChromeSlow() const
 {
-  bool isChrome = false;
-  nsCOMPtr<nsIDocShellTreeItem> docShell(mContainer);
-  if (docShell) {
-    int32_t docShellType;
-    nsresult result = docShell->GetItemType(&docShellType);
-    if (NS_SUCCEEDED(result)) {
-      isChrome = nsIDocShellTreeItem::typeChrome == docShellType;
-    }
-  }
-  mIsChrome = isChrome;
+  mIsChrome = mContainer &&
+              nsIDocShellTreeItem::typeChrome == mContainer->ItemType();
   mIsChromeIsCached = true;
   return mIsChrome;
 }

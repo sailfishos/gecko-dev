@@ -629,7 +629,7 @@ class IonBuilder : public MIRGenerator
     InliningStatus inlineStrCharCodeAt(CallInfo &callInfo);
     InliningStatus inlineStrFromCharCode(CallInfo &callInfo);
     InliningStatus inlineStrCharAt(CallInfo &callInfo);
-    InliningStatus inlineStrReplaceRegExp(CallInfo &callInfo);
+    InliningStatus inlineStrReplace(CallInfo &callInfo);
 
     // RegExp natives.
     InliningStatus inlineRegExpExec(CallInfo &callInfo);
@@ -964,6 +964,7 @@ class CallInfo
     }
 
     void setImplicitlyUsedUnchecked() {
+        fun_->setImplicitlyUsedUnchecked();
         thisArg_->setImplicitlyUsedUnchecked();
         for (uint32_t i = 0; i < argc(); i++)
             getArg(i)->setImplicitlyUsedUnchecked();

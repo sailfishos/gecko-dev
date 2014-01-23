@@ -2231,6 +2231,30 @@
     "n_buckets": 10,
     "description": "How long it takes from the time Predict() is called to the time we figure out there's nothing to do"
   },
+  "SEER_CLEANUP_DELTA": {
+      "expires_in_version": "never",
+      "kind": "exponential",
+      "high": "60000",
+      "n_buckets": 50,
+      "description": "How long between seer db cleanups, in ms"
+  },
+  "SEER_CLEANUP_SUCCEEDED": {
+      "expires_in_version": "never",
+      "kind": "boolean",
+      "description": "Whether or not the seer cleanup succeeded"
+  },
+  "SEER_CLEANUP_TIME": {
+      "expires_in_version": "never",
+      "kind": "exponential",
+      "high": "5000",
+      "n_buckets": 10,
+      "description": "How long it takes to run the seer cleanup"
+  },
+  "SEER_CLEANUP_SCHEDULED": {
+      "expires_in_version": "never",
+      "kind": "boolean",
+      "description": "Whether or not we actually try the cleanup method when we think about it"
+  },
   "FIND_PLUGINS": {
     "expires_in_version": "never",
     "kind": "exponential",
@@ -5596,5 +5620,29 @@
     "expires_in_version": "never",
     "kind": "boolean",
     "description": "Is OCSP required when the cert has an OCSP URI? (pref security.OCSP.require)"
+  },
+  "OSFILE_WORKER_LAUNCH_MS": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "description": "The duration between the instant the first message is sent to OS.File and the moment the OS.File worker starts executing JavaScript, in milliseconds",
+    "high": "5000",
+    "n_buckets": 10,
+    "extended_statistics_ok": true
+  },
+  "OSFILE_WORKER_READY_MS": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "description": "The duration between the instant the first message is sent to OS.File and the moment the OS.File worker has finished executing its startup JavaScript and is ready to receive requests, in milliseconds",
+    "high": "5000",
+    "n_buckets": 10,
+    "extended_statistics_ok": true
+  },
+  "OSFILE_WRITEATOMIC_JANK_MS": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "description": "The duration during which the main thread is blocked during a call to OS.File.writeAtomic, in milliseconds",
+    "high": "5000",
+    "n_buckets": 10,
+    "extended_statistics_ok": true
   }
 }

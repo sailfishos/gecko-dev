@@ -9,6 +9,7 @@
 
 #include "mozilla/Attributes.h"
 #include "mozilla/GuardObjects.h"
+#include "mozilla/MathAlgorithms.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/TemplateLib.h"
@@ -959,8 +960,6 @@ class Shape : public gc::BarrieredCell<Shape>
         insertIntoDictionary(dictp);
     }
 
-    Shape *getChildBinding(ExclusiveContext *cx, const StackShape &child);
-
     /* Replace the base shape of the last shape in a non-dictionary lineage with base. */
     static Shape *replaceLastProperty(ExclusiveContext *cx, const StackBaseShape &base,
                                       TaggedProto proto, HandleShape shape);
@@ -1147,8 +1146,8 @@ class Shape : public gc::BarrieredCell<Shape>
 
     bool matches(const Shape *other) const {
         return propid_.get() == other->propid_.get() &&
-               matchesParamsAfterId(other->base(), other->maybeSlot(), other->attrs,
-                                    other->flags, other->shortid_);
+               matchesParamsAfterId(other->base(), other->maybeSlot(), other->attrs, other->flags,
+                                    other->shortid_);
     }
 
     inline bool matches(const StackShape &other) const;
@@ -1507,7 +1506,7 @@ struct StackShape
     int16_t          shortid;
 
     explicit StackShape(UnownedBaseShape *base, jsid propid, uint32_t slot,
-                        uint32_t nfixed, unsigned attrs, unsigned flags, int shortid)
+                        unsigned attrs, unsigned flags, int shortid)
       : base(base),
         propid(propid),
         slot_(slot),
@@ -1523,7 +1522,7 @@ struct StackShape
     StackShape(Shape *shape)
       : base(shape->base()->unowned()),
         propid(shape->propidRef()),
-        slot_(shape->slotInfo & Shape::SLOT_MASK),
+        slot_(shape->maybeSlot()),
         attrs(shape->attrs),
         flags(shape->flags),
         shortid(shape->shortid_)
@@ -1549,11 +1548,11 @@ struct StackShape
         HashNumber hash = uintptr_t(base);
 
         /* Accumulate from least to most random so the low bits are most random. */
-        hash = JS_ROTATE_LEFT32(hash, 4) ^ (flags & Shape::PUBLIC_FLAGS);
-        hash = JS_ROTATE_LEFT32(hash, 4) ^ attrs;
-        hash = JS_ROTATE_LEFT32(hash, 4) ^ shortid;
-        hash = JS_ROTATE_LEFT32(hash, 4) ^ slot_;
-        hash = JS_ROTATE_LEFT32(hash, 4) ^ JSID_BITS(propid);
+        hash = mozilla::RotateLeft(hash, 4) ^ (flags & Shape::PUBLIC_FLAGS);
+        hash = mozilla::RotateLeft(hash, 4) ^ attrs;
+        hash = mozilla::RotateLeft(hash, 4) ^ shortid;
+        hash = mozilla::RotateLeft(hash, 4) ^ slot_;
+        hash = mozilla::RotateLeft(hash, 4) ^ JSID_BITS(propid);
         return hash;
     }
 

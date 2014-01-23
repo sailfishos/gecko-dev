@@ -304,8 +304,8 @@ AssertStackDepth(JSScript *script, uint32_t offset, uint32_t stackDepth) {
      *
      *     call js_DumpScriptDepth(cx, script, pc)
      */
-    JS_ASSERT_IF(script->hasAnalysis() && script->analysis()->maybeCode(offset),
-                 script->analysis()->getCode(offset).stackDepth == stackDepth);
+    if (script->hasAnalysis())
+        script->analysis()->assertMatchingStackDepthAtOffset(offset, stackDepth);
 }
 
 namespace {
@@ -875,7 +875,8 @@ ToDisassemblySource(JSContext *cx, HandleValue v, JSAutoByteString *bytes)
         }
 
         if (obj->is<JSFunction>()) {
-            JSString *str = JS_DecompileFunction(cx, &obj->as<JSFunction>(), JS_DONT_PRETTY_PRINT);
+            RootedFunction fun(cx, &obj->as<JSFunction>());
+            JSString *str = JS_DecompileFunction(cx, fun, JS_DONT_PRETTY_PRINT);
             if (!str)
                 return false;
             return bytes->encodeLatin1(cx, str);

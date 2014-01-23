@@ -125,6 +125,8 @@ XPCOMUtils.defineLazyModuleGetter(this, "GlobalState",
   "resource:///modules/sessionstore/GlobalState.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "Messenger",
   "resource:///modules/sessionstore/Messenger.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "PrivacyFilter",
+  "resource:///modules/sessionstore/PrivacyFilter.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "RecentWindow",
   "resource:///modules/RecentWindow.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "ScratchpadManager",
@@ -629,6 +631,30 @@ let SessionStoreInternal = {
         if (this.isCurrentEpoch(browser, aMessage.data.epoch)) {
           // Notify the tabbrowser that the tab chrome has been restored.
           let tab = this._getTabForBrowser(browser);
+          let tabData = browser.__SS_data;
+
+          // wall-paper fix for bug 439675: make sure that the URL to be loaded
+          // is always visible in the address bar
+          let activePageData = tabData.entries[tabData.index - 1] || null;
+          let uri = activePageData ? activePageData.url || null : null;
+          browser.userTypedValue = uri;
+
+          // If the page has a title, set it.
+          if (activePageData) {
+            if (activePageData.title) {
+              tab.label = activePageData.title;
+              tab.crop = "end";
+            } else if (activePageData.url != "about:blank") {
+              tab.label = activePageData.url;
+              tab.crop = "center";
+            }
+          }
+
+          // Restore the tab icon.
+          if ("image" in tabData) {
+            win.gBrowser.setIcon(tab, tabData.image);
+          }
+
           let event = win.document.createEvent("Events");
           event.initEvent("SSTabRestoring", true, false);
           tab.dispatchEvent(event);
@@ -1085,13 +1111,20 @@ let SessionStoreInternal = {
 
       // Save the window if it has multiple tabs or a single saveable tab and
       // it's not private.
-      if (!winData.isPrivate && (winData.tabs.length > 1 ||
-          (winData.tabs.length == 1 && this._shouldSaveTabState(winData.tabs[0])))) {
-        // we don't want to save the busy state
-        delete winData.busy;
+      if (!winData.isPrivate) {
+        // Remove any open private tabs the window may contain.
+        PrivacyFilter.filterPrivateTabs(winData);
 
-        this._closedWindows.unshift(winData);
-        this._capClosedWindows();
+        let hasSingleTabToSave =
+          winData.tabs.length == 1 && this._shouldSaveTabState(winData.tabs[0]);
+
+        if (hasSingleTabToSave || winData.tabs.length > 1) {
+          // we don't want to save the busy state
+          delete winData.busy;
+
+          this._closedWindows.unshift(winData);
+          this._capClosedWindows();
+        }
       }
 
       // clear this window from the list
@@ -1382,7 +1415,8 @@ let SessionStoreInternal = {
     let tabState = TabState.collectSync(aTab);
 
     // Don't save private tabs
-    if (tabState.isPrivate || false) {
+    let isPrivateWindow = PrivateBrowsingUtils.isWindowPrivate(aWindow);
+    if (!isPrivateWindow && tabState.isPrivate) {
       return;
     }
 
@@ -2719,34 +2753,18 @@ let SessionStoreInternal = {
         pageStyle: tabData.pageStyle || null
       });
 
-      browser.messageManager.sendAsyncMessage("SessionStore:restoreHistory",
-                                              {tabData: tabData, epoch: epoch});
-
-      // wall-paper fix for bug 439675: make sure that the URL to be loaded
-      // is always visible in the address bar
+      // In electrolysis, we may need to change the browser's remote
+      // attribute so that it runs in a content process.
       let activePageData = tabData.entries[activeIndex] || null;
       let uri = activePageData ? activePageData.url || null : null;
-      browser.userTypedValue = uri;
+      tabbrowser.updateBrowserRemoteness(browser, uri);
 
-      // If the page has a title, set it.
-      if (activePageData) {
-        if (activePageData.title) {
-          tab.label = activePageData.title;
-          tab.crop = "end";
-        } else if (activePageData.url != "about:blank") {
-          tab.label = activePageData.url;
-          tab.crop = "center";
-        }
-      }
+      browser.messageManager.sendAsyncMessage("SessionStore:restoreHistory",
+                                              {tabData: tabData, epoch: epoch});
 
       // Restore tab attributes.
       if ("attributes" in tabData) {
         TabAttributes.set(tab, tabData.attributes);
-      }
-
-      // Restore the tab icon.
-      if ("image" in tabData) {
-        tabbrowser.setIcon(tab, tabData.image);
       }
 
       // This could cause us to ignore MAX_CONCURRENT_TAB_RESTORES a bit, but

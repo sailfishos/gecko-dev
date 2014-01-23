@@ -85,7 +85,7 @@ ParseObject(JSContext* cx, JSObject* object, nsIWritablePropertyBag2* aBag)
   JS::AutoIdArray props(cx, JS_Enumerate(cx, object));
   for (size_t i = 0; !!props && i < props.length(); ++i) {
     jsid propid = props[i];
-    JS::Value propname;
+    JS::RootedValue propname(cx);
     JS::Rooted<JS::Value> propval(cx);
     if (!JS_IdToValue(cx, propid, &propname) ||
         !JS_GetPropertyById(cx, object, propid, &propval)) {
@@ -107,7 +107,7 @@ ParseObject(JSContext* cx, JSObject* object, nsIWritablePropertyBag2* aBag)
       nsCOMPtr<nsIWritablePropertyBag> bagSimple = do_QueryInterface(aBag);
       bagSimple->SetProperty(pstr, value);
     } else {
-      JSObject* obj = JSVAL_TO_OBJECT(propval);
+      JS::RootedObject obj(cx, &propval.toObject());
       if (JS_IsArrayObject(cx, obj)) {
         nsCOMPtr<nsIWritableVariant> childElements = do_CreateInstance("@mozilla.org/variant;1");
         uint32_t tmp;

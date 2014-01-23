@@ -1865,8 +1865,8 @@ ContainerState::PopThebesLayerData()
 
   uint32_t flags = 0;
   nsIWidget* widget = mContainerReferenceFrame->PresContext()->GetRootWidget();
-  // Disable subpixelAA on hidpi
-  bool hidpi = widget && widget->GetDefaultScale().scale >= 2;
+  // See bug 941095. Not quite ready to disable this.
+  bool hidpi = false && widget && widget->GetDefaultScale().scale >= 2;
   if (hidpi) {
     flags |= Layer::CONTENT_DISABLE_SUBPIXEL_AA;
   }
@@ -3818,8 +3818,9 @@ ContainerState::SetupMaskLayer(Layer *aLayer, const DisplayItemClip& aClip,
     nsRefPtr<Image> image = container->CreateImage(&format, 1);
     NS_ASSERTION(image, "Could not create image container for mask layer.");
     CairoImage::Data data;
-    data.mSurface = surface;
+    data.mDeprecatedSurface = surface;
     data.mSize = surfaceSizeInt;
+    data.mSourceSurface = gfxPlatform::GetPlatform()->GetSourceSurfaceForSurface(nullptr, surface);
     static_cast<CairoImage*>(image.get())->SetData(data);
     container->SetCurrentImageInTransaction(image);
 

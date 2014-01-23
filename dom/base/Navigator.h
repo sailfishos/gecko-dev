@@ -232,7 +232,8 @@ public:
                               ErrorResult& aRv);
 #endif // MOZ_MEDIA_NAVIGATOR
   bool DoNewResolve(JSContext* aCx, JS::Handle<JSObject*> aObject,
-                    JS::Handle<jsid> aId, JS::MutableHandle<JS::Value> aValue);
+                    JS::Handle<jsid> aId,
+                    JS::MutableHandle<JSPropertyDescriptor> aDesc);
   void GetOwnPropertyNames(JSContext* aCx, nsTArray<nsString>& aNames,
                            ErrorResult& aRv);
 
@@ -272,6 +273,7 @@ public:
 #ifdef MOZ_NFC
   static bool HasNfcSupport(JSContext* /* unused */, JSObject* aGlobal);
   static bool HasNfcPeerSupport(JSContext* /* unused */, JSObject* aGlobal);
+  static bool HasNfcManagerSupport(JSContext* /* unused */, JSObject* aGlobal);
 #endif // MOZ_NFC
 #ifdef MOZ_TIME_MANAGER
   static bool HasTimeSupport(JSContext* /* unused */, JSObject* aGlobal);

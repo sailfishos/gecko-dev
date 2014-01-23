@@ -29,7 +29,6 @@
 #include "TreeWalker.h"
 
 #include "nsIDOMElement.h"
-#include "nsIDOMDocument.h"
 #include "nsIDOMNodeFilter.h"
 #include "nsIDOMHTMLElement.h"
 #include "nsIDOMKeyEvent.h"
@@ -83,6 +82,7 @@
 #include "mozilla/unused.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/dom/Element.h"
+#include "mozilla/dom/TreeWalker.h"
 
 using namespace mozilla;
 using namespace mozilla::a11y;
@@ -383,9 +383,8 @@ Accessible::AccessKey() const
     return KeyBinding();
 
   nsresult rv = NS_ERROR_FAILURE;
-  int32_t itemType = 0, modifierMask = 0;
-  treeItem->GetItemType(&itemType);
-  switch (itemType) {
+  int32_t modifierMask = 0;
+  switch (treeItem->ItemType()) {
     case nsIDocShellTreeItem::typeChrome:
       rv = Preferences::GetInt("ui.key.chromeAccess", &modifierMask);
       break;
@@ -2120,10 +2119,9 @@ Accessible::RelationByType(RelationType aType)
           // If the item type is typeContent, we assume we are in browser tab
           // content. Note, this includes content such as about:addons,
           // for consistency.
-          int32_t itemType = 0;
-          root->GetItemType(&itemType);
-          if (itemType == nsIDocShellTreeItem::typeContent)
+          if (root->ItemType() == nsIDocShellTreeItem::typeContent) {
             return Relation(nsAccUtils::GetDocAccessibleFor(root));
+          }
         }
       }
       return  Relation();
@@ -3076,25 +3074,26 @@ Accessible::GetFirstAvailableAccessible(nsINode *aStartNode) const
   if (accessible)
     return accessible;
 
-  nsCOMPtr<nsIDOMDocument> domDoc = do_QueryInterface(aStartNode->OwnerDoc());
-  NS_ENSURE_TRUE(domDoc, nullptr);
+  nsCOMPtr<nsIDocument> doc = aStartNode->OwnerDoc();
 
-  nsCOMPtr<nsIDOMNode> currentNode = do_QueryInterface(aStartNode);
-  nsCOMPtr<nsIDOMNode> rootNode = do_QueryInterface(GetNode());
-  nsCOMPtr<nsIDOMTreeWalker> walker;
-  domDoc->CreateTreeWalker(rootNode,
-                           nsIDOMNodeFilter::SHOW_ELEMENT | nsIDOMNodeFilter::SHOW_TEXT,
-                           nullptr, 1, getter_AddRefs(walker));
+  nsCOMPtr<nsINode> currentNode = aStartNode;
+  ErrorResult rv;
+  nsRefPtr<dom::TreeWalker> walker =
+    doc->CreateTreeWalker(*GetNode(),
+                          nsIDOMNodeFilter::SHOW_ELEMENT | nsIDOMNodeFilter::SHOW_TEXT,
+                          nullptr, rv);
   NS_ENSURE_TRUE(walker, nullptr);
 
-  walker->SetCurrentNode(currentNode);
+  walker->SetCurrentNode(*currentNode, rv);
+  if (rv.Failed())
+    return nullptr;
+
   while (true) {
-    walker->NextNode(getter_AddRefs(currentNode));
-    if (!currentNode)
+    currentNode = walker->NextNode(rv);
+    if (!currentNode || rv.Failed())
       return nullptr;
 
-    nsCOMPtr<nsINode> node(do_QueryInterface(currentNode));
-    Accessible* accessible = mDoc->GetAccessible(node);
+    Accessible* accessible = mDoc->GetAccessible(currentNode);
     if (accessible)
       return accessible;
   }

@@ -203,7 +203,17 @@ APZCTreeManager::UpdatePanZoomControllerTree(CompositorParent* aCompositor,
         apzc->NotifyLayersUpdated(container->GetFrameMetrics(),
                                   aIsFirstPaint && (aLayersId == aFirstPaintLayersId));
 
+        // Use the composition bounds as the hit test region.
+        // Optionally, the GeckoContentController can provide a touch-sensitive
+        // region that constrains all frames associated with the controller.
+        // In this case we intersect the composition bounds with that region.
         ScreenRect visible(container->GetFrameMetrics().mCompositionBounds);
+        CSSRect touchSensitiveRegion;
+        if (state->mController->GetTouchSensitiveRegion(&touchSensitiveRegion)) {
+          visible = visible.Intersect(touchSensitiveRegion
+                                      * container->GetFrameMetrics().LayersPixelsPerCSSPixel()
+                                      * LayerToScreenScale(1.0));
+        }
         apzc->SetLayerHitTestData(visible, aTransform, aLayer->GetTransform());
         APZC_LOG("Setting rect(%f %f %f %f) as visible region for APZC %p\n", visible.x, visible.y,
                                                                               visible.width, visible.height,
@@ -310,7 +320,9 @@ APZCTreeManager::ReceiveInputEvent(const InputData& aEvent,
     case MULTITOUCH_INPUT: {
       const MultiTouchInput& multiTouchInput = aEvent.AsMultiTouchInput();
       if (multiTouchInput.mType == MultiTouchInput::MULTITOUCH_START) {
-        mTouchCount++;
+        // MULTITOUCH_START input contains all active touches of the current
+        // session thus resetting mTouchCount.
+        mTouchCount = multiTouchInput.mTouches.Length();
         mApzcForInputBlock = GetTargetAPZC(ScreenPoint(multiTouchInput.mTouches[0].mScreenPoint));
         if (multiTouchInput.mTouches.Length() == 1) {
           // If we have one touch point, this might be the start of a pan.
@@ -353,6 +365,7 @@ APZCTreeManager::ReceiveInputEvent(const InputData& aEvent,
       if (multiTouchInput.mType == MultiTouchInput::MULTITOUCH_CANCEL ||
           multiTouchInput.mType == MultiTouchInput::MULTITOUCH_END) {
         if (mTouchCount >= multiTouchInput.mTouches.Length()) {
+          // MULTITOUCH_END input contains only released touches thus decrementing.
           mTouchCount -= multiTouchInput.mTouches.Length();
         } else {
           NS_WARNING("Got an unexpected touchend/touchcancel");
@@ -428,7 +441,9 @@ APZCTreeManager::ProcessTouchEvent(const WidgetTouchEvent& aEvent,
     return ret;
   }
   if (aEvent.message == NS_TOUCH_START) {
-    mTouchCount++;
+    // NS_TOUCH_START event contains all active touches of the current
+    // session thus resetting mTouchCount.
+    mTouchCount = aEvent.touches.Length();
     mApzcForInputBlock = GetTouchInputBlockAPZC(aEvent);
     if (mApzcForInputBlock) {
       // Cache apz transform so it can be used for future events in this block.
@@ -467,6 +482,7 @@ APZCTreeManager::ProcessTouchEvent(const WidgetTouchEvent& aEvent,
   if (aEvent.message == NS_TOUCH_CANCEL ||
       aEvent.message == NS_TOUCH_END) {
     if (mTouchCount >= aEvent.touches.Length()) {
+      // NS_TOUCH_END event contains only released touches thus decrementing.
       mTouchCount -= aEvent.touches.Length();
     } else {
       NS_WARNING("Got an unexpected touchend/touchcancel");

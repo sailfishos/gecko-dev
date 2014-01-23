@@ -170,7 +170,7 @@ SandboxImport(JSContext *cx, unsigned argc, Value *vp)
     }
 
     RootedId id(cx);
-    if (!JS_ValueToId(cx, StringValue(funname), id.address()))
+    if (!JS_ValueToId(cx, StringValue(funname), &id))
         return false;
 
     // We need to resolve the this object, because this function is used
@@ -294,7 +294,7 @@ ExportFunction(JSContext *cx, HandleValue vfunction, HandleValue vscope, HandleV
 
             RootedValue vname(cx);
             vname.setString(funName);
-            if (!JS_ValueToId(cx, vname, id.address()))
+            if (!JS_ValueToId(cx, vname, &id))
                 return false;
         }
         MOZ_ASSERT(JSID_IS_STRING(id));
@@ -1447,7 +1447,7 @@ OptionsBase::ParseId(const char *name, MutableHandleId prop)
     if (!found)
         return true;
 
-    return JS_ValueToId(mCx, value, prop.address());
+    return JS_ValueToId(mCx, value, prop);
 }
 
 /*
@@ -1515,7 +1515,7 @@ AssembleSandboxMemoryReporterName(JSContext *cx, nsCString &sandboxName)
     if (frame) {
         nsCString location;
         int32_t lineNumber = 0;
-        frame->GetFilename(getter_Copies(location));
+        frame->GetFilename(location);
         frame->GetLineNumber(&lineNumber);
 
         sandboxName.AppendLiteral(" (from: ");
@@ -1634,7 +1634,7 @@ ContextHolder::~ContextHolder()
 
 nsresult
 xpc::EvalInSandbox(JSContext *cx, HandleObject sandboxArg, const nsAString& source,
-                   const char *filename, int32_t lineNo,
+                   const nsACString& filename, int32_t lineNo,
                    JSVersion jsVersion, bool returnStringOnly, MutableHandleValue rval)
 {
     JS_AbortIfWrongThread(JS_GetRuntime(cx));
@@ -1653,10 +1653,11 @@ xpc::EvalInSandbox(JSContext *cx, HandleObject sandboxArg, const nsAString& sour
     NS_ENSURE_TRUE(prin, NS_ERROR_FAILURE);
 
     nsAutoCString filenameBuf;
-    if (!filename) {
+    if (!filename.IsVoid()) {
+        filenameBuf.Assign(filename);
+    } else {
         // Default to the spec of the principal.
         nsJSPrincipals::get(prin)->GetScriptLocation(filenameBuf);
-        filename = filenameBuf.get();
         lineNo = 1;
     }
 
@@ -1680,7 +1681,7 @@ xpc::EvalInSandbox(JSContext *cx, HandleObject sandboxArg, const nsAString& sour
 
         JS::CompileOptions options(sandcx);
         options.setPrincipals(nsJSPrincipals::get(prin))
-               .setFileAndLine(filename, lineNo);
+               .setFileAndLine(filenameBuf.get(), lineNo);
         if (jsVersion != JSVERSION_DEFAULT)
                options.setVersion(jsVersion);
         JS::RootedObject rootedSandbox(sandcx, sandbox);

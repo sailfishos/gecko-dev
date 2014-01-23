@@ -1044,19 +1044,17 @@ var gBrowserInit = {
     if (!isLoadingBlank || !focusAndSelectUrlBar())
       gBrowser.selectedBrowser.focus();
 
-    gNavToolbox.customizeDone = BrowserToolboxCustomizeDone;
-    gNavToolbox.customizeChange = BrowserToolboxCustomizeChange;
-
     // Set up Sanitize Item
     this._initializeSanitizer();
 
     // Enable/Disable auto-hide tabbar
     gBrowser.tabContainer.updateVisibility();
 
+    BookmarkingUI.init();
+
     gPrefService.addObserver(gHomeButton.prefDomain, gHomeButton, false);
 
     var homeButton = document.getElementById("home-button");
-    gHomeButton.init();
     gHomeButton.updateTooltip(homeButton);
     gHomeButton.updatePersonalToolbarStyle(homeButton);
 
@@ -1151,6 +1149,7 @@ var gBrowserInit = {
     window.addEventListener("dragover", MousePosTracker, false);
 
     gNavToolbox.addEventListener("customizationstarting", CustomizationHandler);
+    gNavToolbox.addEventListener("customizationchange", CustomizationHandler);
     gNavToolbox.addEventListener("customizationending", CustomizationHandler);
 
     // End startup crash tracking after a delay to catch crashes while restoring
@@ -1248,7 +1247,6 @@ var gBrowserInit = {
     }
 
     BookmarkingUI.uninit();
-    gHomeButton.uninit();
 
     TabsInTitlebar.uninit();
 
@@ -2530,8 +2528,7 @@ function getWebNavigation()
 
 function BrowserReloadWithFlags(reloadFlags) {
   let url = gBrowser.currentURI.spec;
-  if (gBrowser._updateBrowserRemoteness(gBrowser.selectedBrowser,
-                                        gBrowser._shouldBrowserBeRemote(url))) {
+  if (gBrowser.updateBrowserRemoteness(gBrowser.selectedBrowser, url)) {
     // If the remoteness has changed, the new browser doesn't have any
     // information of what was loaded before, so we need to load the previous
     // URL again.
@@ -3279,18 +3276,9 @@ function OpenBrowserWindow(options)
   return win;
 }
 
-//XXXunf Are these still useful to keep around?
+// Only here for backwards compat, we should remove this soon
 function BrowserCustomizeToolbar() {
   gCustomizeMode.enter();
-}
-
-function BrowserToolboxCustomizeDone(aToolboxChanged) {
-  gCustomizeMode.exit(aToolboxChanged);
-}
-
-function BrowserToolboxCustomizeChange(aType) {
-  gHomeButton.updatePersonalToolbarStyle();
-  BookmarksMenuButton.customizeChange();
 }
 
 /**
@@ -3710,11 +3698,11 @@ var XULBrowserWindow = {
       // Try not to instantiate gCustomizeMode as much as possible,
       // so don't use CustomizeMode.jsm to check for URI or customizing.
       let customizingURI = "about:customizing";
-      if (location == customizingURI &&
-          !CustomizationHandler.isCustomizing()) {
+      if (location == customizingURI) {
         gCustomizeMode.enter();
       } else if (location != customizingURI &&
-                 CustomizationHandler.isCustomizing()) {
+                 (CustomizationHandler.isEnteringCustomizeMode ||
+                  CustomizationHandler.isCustomizing())) {
         gCustomizeMode.exit();
       }
     }
@@ -4763,16 +4751,6 @@ function fireSidebarFocusedEvent() {
 
 
 var gHomeButton = {
-  init: function() {
-    gNavToolbox.addEventListener("customizationchange",
-                                 this.onCustomizationChange);
-  },
-
-  uninit: function() {
-    gNavToolbox.removeEventListener("customizationchange",
-                                    this.onCustomizationChange);
-  },
-
   prefDomain: "browser.startup.homepage",
   observe: function (aSubject, aTopic, aPrefName)
   {
@@ -4824,10 +4802,6 @@ var gHomeButton = {
                                || homeButton.parentNode.parentNode.id == "PersonalToolbar" ?
                              homeButton.className.replace("toolbarbutton-1", "bookmark-item") :
                              homeButton.className.replace("bookmark-item", "toolbarbutton-1");
-  },
-
-  onCustomizationChange: function(aEvent) {
-    gHomeButton.updatePersonalToolbarStyle();
   },
 };
 

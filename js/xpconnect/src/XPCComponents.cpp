@@ -263,9 +263,11 @@ nsXPCComponents_Interfaces::NewEnumerate(nsIXPConnectWrappedNative *wrapper,
                 JSString* idstr;
                 const char* name;
 
+                JS::Rooted<jsid> id(cx);
                 if (NS_SUCCEEDED(interface->GetNameShared(&name)) && name &&
                         nullptr != (idstr = JS_NewStringCopyZ(cx, name)) &&
-                        JS_ValueToId(cx, STRING_TO_JSVAL(idstr), idp)) {
+                        JS_ValueToId(cx, StringValue(idstr), &id)) {
+                    *idp = id;
                     return NS_OK;
                 }
             }
@@ -512,7 +514,9 @@ nsXPCComponents_InterfacesByID::NewEnumerate(nsIXPConnectWrappedNative *wrapper,
                 if (NS_SUCCEEDED(interface->GetIIDShared(&iid))) {
                     iid->ToProvidedString(idstr);
                     jsstr = JS_NewStringCopyZ(cx, idstr);
-                    if (jsstr && JS_ValueToId(cx, STRING_TO_JSVAL(jsstr), idp)) {
+                    JS::Rooted<jsid> id(cx);
+                    if (jsstr && JS_ValueToId(cx, StringValue(jsstr), &id)) {
+                        *idp = id;
                         return NS_OK;
                     }
                 }
@@ -766,8 +770,10 @@ nsXPCComponents_Classes::NewEnumerate(nsIXPConnectWrappedNative *wrapper,
                     nsAutoCString name;
                     if (NS_SUCCEEDED(holder->GetData(name))) {
                         JSString* idstr = JS_NewStringCopyN(cx, name.get(), name.Length());
+                        JS::Rooted<jsid> id(cx);
                         if (idstr &&
-                            JS_ValueToId(cx, STRING_TO_JSVAL(idstr), idp)) {
+                            JS_ValueToId(cx, StringValue(idstr), &id)) {
+                            *idp = id;
                             return NS_OK;
                         }
                     }
@@ -1006,8 +1012,10 @@ nsXPCComponents_ClassesByID::NewEnumerate(nsIXPConnectWrappedNative *wrapper,
                     if (NS_SUCCEEDED(holder->ToString(&name)) && name) {
                         JSString* idstr = JS_NewStringCopyZ(cx, name);
                         nsMemory::Free(name);
+                        JS::Rooted<jsid> id(cx);
                         if (idstr &&
-                            JS_ValueToId(cx, STRING_TO_JSVAL(idstr), idp)) {
+                            JS_ValueToId(cx, StringValue(idstr), &id)) {
+                            *idp = id;
                             return NS_OK;
                         }
                     }
@@ -1258,8 +1266,11 @@ nsXPCComponents_Results::NewEnumerate(nsIXPConnectWrappedNative *wrapper,
             iter = (const void**) JSVAL_TO_PRIVATE(*statep);
             if (nsXPCException::IterateNSResults(nullptr, &name, nullptr, iter)) {
                 JSString* idstr = JS_NewStringCopyZ(cx, name);
-                if (idstr && JS_ValueToId(cx, STRING_TO_JSVAL(idstr), idp))
+                JS::Rooted<jsid> id(cx);
+                if (idstr && JS_ValueToId(cx, StringValue(idstr), &id)) {
+                    *idp = id;
                     return NS_OK;
+                }
             }
             // else... FALL THROUGH
         }
@@ -1861,8 +1872,10 @@ nsXPCComponents_Exception::CallOrConstruct(nsIXPConnectWrappedNative *wrapper,
     if (!parser.parse(args))
         return ThrowAndFail(NS_ERROR_XPC_BAD_CONVERT_JS, cx, _retval);
 
-    nsCOMPtr<nsIException> e = new Exception(parser.eMsg, parser.eResult,
-                                             nullptr, parser.eStack,
+    nsCOMPtr<nsIException> e = new Exception(nsCString(parser.eMsg),
+                                             parser.eResult,
+                                             EmptyCString(),
+                                             parser.eStack,
                                              parser.eData);
 
     nsCOMPtr<nsIXPConnectJSObjectHolder> holder;
@@ -2399,7 +2412,7 @@ nsXPCComponents_Constructor::CallOrConstruct(nsIXPConnectWrappedNative *wrapper,
 
         RootedString str(cx, ToString(cx, args[1]));
         RootedId id(cx);
-        if (!str || !JS_ValueToId(cx, StringValue(str), id.address()))
+        if (!str || !JS_ValueToId(cx, StringValue(str), &id))
             return ThrowAndFail(NS_ERROR_XPC_BAD_CONVERT_JS, cx, _retval);
 
         RootedValue val(cx);
@@ -2447,7 +2460,7 @@ nsXPCComponents_Constructor::CallOrConstruct(nsIXPConnectWrappedNative *wrapper,
 
         RootedString str(cx, ToString(cx, args[0]));
         RootedId id(cx);
-        if (!str || !JS_ValueToId(cx, StringValue(str), id.address()))
+        if (!str || !JS_ValueToId(cx, StringValue(str), &id))
             return ThrowAndFail(NS_ERROR_XPC_BAD_CONVERT_JS, cx, _retval);
 
         RootedValue val(cx);
@@ -2582,10 +2595,10 @@ nsXPCComponents_Utils::ReportError(HandleValue error, JSContext *cx)
     nsXPConnect *xpc = nsXPConnect::XPConnect();
     xpc->GetCurrentJSStack(getter_AddRefs(frame));
 
-    nsXPIDLCString fileName;
+    nsCString fileName;
     int32_t lineNo = 0;
     if (frame) {
-        frame->GetFilename(getter_Copies(fileName));
+        frame->GetFilename(fileName);
         frame->GetLineNumber(&lineNo);
     }
 
@@ -2595,8 +2608,8 @@ nsXPCComponents_Utils::ReportError(HandleValue error, JSContext *cx)
 
     nsresult rv = scripterr->InitWithWindowID(
             nsDependentString(static_cast<const char16_t *>(msgchars)),
-            NS_ConvertUTF8toUTF16(fileName),
-            EmptyString(), lineNo, 0, 0, "XPConnect JavaScript", innerWindowID);
+            NS_ConvertUTF8toUTF16(fileName), EmptyString(), lineNo, 0, 0,
+            "XPConnect JavaScript", innerWindowID);
     NS_ENSURE_SUCCESS(rv, NS_OK);
 
     console->LogMessage(scripterr);
@@ -2608,7 +2621,7 @@ NS_IMETHODIMP
 nsXPCComponents_Utils::EvalInSandbox(const nsAString& source,
                                      HandleValue sandboxVal,
                                      HandleValue version,
-                                     HandleValue filenameVal,
+                                     const nsACString& filenameArg,
                                      int32_t lineNumber,
                                      JSContext *cx,
                                      uint8_t optionalArgc,
@@ -2642,17 +2655,10 @@ nsXPCComponents_Utils::EvalInSandbox(const nsAString& source,
     }
 
     // Optional fourth and fifth arguments: filename and line number.
-    nsXPIDLCString filename;
     int32_t lineNo = (optionalArgc >= 3) ? lineNumber : 1;
-    if (optionalArgc >= 2) {
-        JSString *filenameStr = ToString(cx, filenameVal);
-        if (!filenameStr)
-            return NS_ERROR_INVALID_ARG;
-
-        JSAutoByteString filenameBytes;
-        if (!filenameBytes.encodeLatin1(cx, filenameStr))
-            return NS_ERROR_INVALID_ARG;
-        filename = filenameBytes.ptr();
+    nsCString filename;
+    if (!filenameArg.IsVoid()) {
+        filename.Assign(filenameArg);
     } else {
         // Get the current source info from xpc.
         nsresult rv;
@@ -2662,12 +2668,12 @@ nsXPCComponents_Utils::EvalInSandbox(const nsAString& source,
         nsCOMPtr<nsIStackFrame> frame;
         xpc->GetCurrentJSStack(getter_AddRefs(frame));
         if (frame) {
-            frame->GetFilename(getter_Copies(filename));
+            frame->GetFilename(filename);
             frame->GetLineNumber(&lineNo);
         }
     }
 
-    return xpc::EvalInSandbox(cx, sandbox, source, filename.get(), lineNo,
+    return xpc::EvalInSandbox(cx, sandbox, source, filename, lineNo,
                               jsVersion, false, retval);
 }
 
