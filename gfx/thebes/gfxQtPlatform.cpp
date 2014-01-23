@@ -223,10 +223,11 @@ gfxQtPlatform::IsFontFormatSupported(nsIURI *aFontURI, uint32_t aFormatFlags)
     return true;
 }
 
-qcms_profile*
-gfxQtPlatform::GetPlatformCMSOutputProfile()
+void
+gfxQtPlatform::GetPlatformCMSOutputProfile(void *&mem, size_t &size)
 {
-    return nullptr;
+    mem = nullptr;
+    size = 0;
 }
 
 int32_t
