@@ -103,23 +103,6 @@ gfxQtPlatform::CreateOffscreenSurface(const gfxIntSize& size,
 
     gfxImageFormat imageFormat = OptimalFormatForContent(contentType);
 
-#ifdef CAIRO_HAS_QT_SURFACE
-    if (mRenderMode == RENDER_QPAINTER) {
-        newSurface = new gfxQPainterSurface(size, imageFormat);
-        return newSurface.forget();
-    }
-#endif
-
-#ifdef MOZ_X11
-    if (UseXRender()) {
-        XRenderPictFormat* xrenderFormat =
-            gfxXlibSurface::FindRenderFormat(GetXDisplay(), imageFormat);
-
-        Screen* screen = GetXScreen();
-        newSurface = gfxXlibSurface::Create(screen, xrenderFormat, size);
-    }
-#endif
-
     if (!newSurface) {
         newSurface = new gfxImageSurface(size, imageFormat);
         return newSurface.forget();
@@ -133,6 +116,20 @@ gfxQtPlatform::CreateOffscreenSurface(const gfxIntSize& size,
 
     return newSurface.forget();
 }
+
+already_AddRefed<gfxASurface>
+gfxQtPlatform::OptimizeImage(gfxImageSurface *aSurface,
+                             gfxImageFormat format)
+{
+    /* Qt have no special offscreen surfaces so we can avoid a copy */
+    if (OptimalFormatForContent(gfxASurface::ContentFromFormat(format)) ==
+        format) {
+        return nullptr;
+    }
+
+    return gfxPlatform::OptimizeImage(aSurface, format);
+}
+
 
 nsresult
 gfxQtPlatform::GetFontList(nsIAtom *aLangGroup,

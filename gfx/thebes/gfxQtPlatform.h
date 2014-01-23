@@ -41,6 +41,10 @@ public:
     already_AddRefed<gfxASurface> CreateOffscreenSurface(const gfxIntSize& size,
                                                          gfxContentType contentType);
 
+    virtual already_AddRefed<gfxASurface>
+    OptimizeImage(gfxImageSurface *aSurface,
+                  gfxImageFormat format) MOZ_OVERRIDE;
+
     mozilla::TemporaryRef<mozilla::gfx::ScaledFont>
       GetScaledFontForFont(mozilla::gfx::DrawTarget* aTarget, gfxFont *aFont);
 
@@ -84,9 +88,6 @@ public:
 
     void ClearPrefFonts() { mPrefFonts.Clear(); }
 
-    RenderMode GetRenderMode() { return mRenderMode; }
-    void SetRenderMode(RenderMode rmode) { mRenderMode = rmode; }
-
     static int32_t GetDPI();
 
     virtual gfxImageFormat GetOffscreenFormat();
@@ -121,7 +122,6 @@ private:
     // TODO: unify this with mPrefFonts (NB: holds families, not fonts) in gfxPlatformFontList
     nsDataHashtable<nsCStringHashKey, nsTArray<nsRefPtr<gfxFontEntry> > > mPrefFonts;
 
-    RenderMode mRenderMode;
     int mScreenDepth;
 #ifdef MOZ_X11
     static bool sUseXRender;
