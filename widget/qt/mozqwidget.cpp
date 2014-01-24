@@ -23,7 +23,7 @@ MozQWidget::~MozQWidget()
 {
 }
 
-void MozQWidget::render(QPainter *painter)
+void MozQWidget::render(QPainter* painter)
 {
     Q_UNUSED(painter);
 }
@@ -36,7 +36,15 @@ void MozQWidget::renderLater()
     }
 }
 
-bool MozQWidget::event(QEvent *event)
+void MozQWidget::renderNow()
+{
+    if (!isExposed())
+        return;
+
+    mReceiver->OnQRender();
+}
+
+bool MozQWidget::event(QEvent* event)
 {
     switch (event->type()) {
     case QEvent::UpdateRequest:
@@ -48,22 +56,102 @@ bool MozQWidget::event(QEvent *event)
     }
 }
 
-void MozQWidget::resizeEvent(QResizeEvent* event)
-{
-}
-
-void MozQWidget::exposeEvent(QExposeEvent *event)
+void MozQWidget::exposeEvent(QExposeEvent* event)
 {
     Q_UNUSED(event);
-    if (isExposed()) {
-        renderNow();
-    }
-}
-
-void MozQWidget::renderNow()
-{
     if (!isExposed())
         return;
 
-    mReceiver->OnQRender();
+    renderNow();
+    LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
+}
+
+void MozQWidget::focusInEvent(QFocusEvent* event)
+{
+    LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
+    QWindow::focusInEvent(event);
+}
+
+void MozQWidget::focusOutEvent(QFocusEvent* event)
+{
+    LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
+    MozQWidget::focusOutEvent(event);
+}
+
+void MozQWidget::hideEvent(QHideEvent* event)
+{
+    LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
+    QWindow::hideEvent(event);
+}
+
+void MozQWidget::keyPressEvent(QKeyEvent* event)
+{
+    LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
+    QWindow::keyPressEvent(event);
+}
+
+void MozQWidget::keyReleaseEvent(QKeyEvent* event)
+{
+    LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
+    QWindow::keyReleaseEvent(event);
+}
+
+void MozQWidget::mouseDoubleClickEvent(QMouseEvent* event)
+{
+    LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
+    QWindow::mouseDoubleClickEvent(event);
+}
+
+void MozQWidget::mouseMoveEvent(QMouseEvent* event)
+{
+    LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
+    QWindow::mouseMoveEvent(event);
+}
+
+void MozQWidget::mousePressEvent(QMouseEvent* event)
+{
+    LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
+    QWindow::mousePressEvent(event);
+}
+
+void MozQWidget::mouseReleaseEvent(QMouseEvent* event)
+{
+    LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
+    QWindow::mouseReleaseEvent(event);
+}
+
+void MozQWidget::moveEvent(QMoveEvent* event)
+{
+    LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
+    QWindow::moveEvent(event);
+}
+
+void MozQWidget::resizeEvent(QResizeEvent* event)
+{
+    LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
+    QWindow::resizeEvent(event);
+}
+
+void MozQWidget::showEvent(QShowEvent* event)
+{
+    LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
+    QWindow::showEvent(event);
+}
+
+void MozQWidget::tabletEvent(QTabletEvent* event)
+{
+    LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
+    QWindow::tabletEvent(event);
+}
+
+void MozQWidget::touchEvent(QTouchEvent* event)
+{
+    LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
+    QWindow::touchEvent(event);
+}
+
+void MozQWidget::wheelEvent(QWheelEvent* event)
+{
+    LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
+    QWindow::wheelEvent(event);
 }

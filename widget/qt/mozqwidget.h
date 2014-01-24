@@ -38,10 +38,23 @@ public Q_SLOTS:
     void renderNow();
 
 protected:
-    bool event(QEvent* event);
-
-    void resizeEvent(QResizeEvent* event);
-    void exposeEvent(QExposeEvent* event);
+    virtual bool event(QEvent* event);
+    virtual void exposeEvent(QExposeEvent* event);
+    virtual void focusInEvent(QFocusEvent* event);
+    virtual void focusOutEvent(QFocusEvent* event);
+    virtual void hideEvent(QHideEvent* event);
+    virtual void keyPressEvent(QKeyEvent* event);
+    virtual void keyReleaseEvent(QKeyEvent* event);
+    virtual void mouseDoubleClickEvent(QMouseEvent* event);
+    virtual void mouseMoveEvent(QMouseEvent* event);
+    virtual void mousePressEvent(QMouseEvent* event);
+    virtual void mouseReleaseEvent(QMouseEvent* event);
+    virtual void moveEvent(QMoveEvent* event);
+    virtual void resizeEvent(QResizeEvent* event);
+    virtual void showEvent(QShowEvent* event);
+    virtual void tabletEvent(QTabletEvent* event);
+    virtual void touchEvent(QTouchEvent* event);
+    virtual void wheelEvent(QWheelEvent* event);
 
 private:
     nsWindow* mReceiver;
