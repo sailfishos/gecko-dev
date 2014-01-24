@@ -75,7 +75,7 @@ void MozQWidget::focusInEvent(QFocusEvent* event)
 void MozQWidget::focusOutEvent(QFocusEvent* event)
 {
     LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
-    MozQWidget::focusOutEvent(event);
+    QWindow::focusOutEvent(event);
 }
 
 void MozQWidget::hideEvent(QHideEvent* event)
