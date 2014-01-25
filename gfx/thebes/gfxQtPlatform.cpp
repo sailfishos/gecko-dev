@@ -58,7 +58,7 @@ using namespace mozilla::gfx;
 static QPaintEngine::Type sDefaultQtPaintEngineType = QPaintEngine::Raster;
 gfxFontconfigUtils *gfxQtPlatform::sFontconfigUtils = nullptr;
 
-static gfxImageFormat sOffscreenFormat = gfxImageFormatRGB24;
+static gfxImageFormat sOffscreenFormat = gfxImageFormat::RGB24;
 
 gfxQtPlatform::gfxQtPlatform()
 {
@@ -90,9 +90,8 @@ gfxQtPlatform::gfxQtPlatform()
     // Qt doesn't provide a public API to detect the graphicssystem type. We hack
     // around this by checking what type of graphicssystem a test QPixmap uses.
     QPixmap pixmap(1, 1);
-    if (pixmap.depth() == 16 ||
-        Preferences::GetBool("gfx.qt.rgb16.force", false)) {
-        sOffscreenFormat = gfxImageFormatRGB16_565;
+    if ((pixmap.depth() == 16) || Preferences::GetBool("gfx.qt.rgb16.force", false)) {
+        sOffscreenFormat = gfxImageFormat::RGB16_565;
     }
     mScreenDepth = pixmap.depth();
 #if (QT_VERSION < QT_VERSION_CHECK(4,8,0))

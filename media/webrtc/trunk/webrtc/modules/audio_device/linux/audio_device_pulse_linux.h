@@ -15,7 +15,7 @@
 #include "webrtc/modules/audio_device/linux/audio_mixer_manager_pulse_linux.h"
 #include "webrtc/system_wrappers/interface/critical_section_wrapper.h"
 
-#ifdef MOZ_X11
+#ifdef USE_X11
 #include <X11/Xlib.h>
 #endif
 #include <pulse/pulseaudio.h>
@@ -383,7 +383,7 @@ private:
     pa_buffer_attr _recBufferAttr;
 
     char _oldKeyState[32];
-#ifdef MOZ_X11
+#ifdef USE_X11
     Display* _XDisplay;
 #endif
 };

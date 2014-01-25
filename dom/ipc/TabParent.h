@@ -17,6 +17,7 @@
 #include "nsIDialogParamBlock.h"
 #include "nsISecureBrowserUI.h"
 #include "nsITabParent.h"
+#include "nsIXULBrowserWindow.h"
 #include "Units.h"
 #include "js/TypeDecls.h"
 
@@ -58,6 +59,9 @@ class TabParent : public PBrowserParent
     typedef mozilla::layout::ScrollingBehavior ScrollingBehavior;
 
 public:
+    // nsITabParent
+    NS_DECL_NSITABPARENT
+
     TabParent(ContentParent* aManager, const TabContext& aContext, uint32_t aChromeFlags);
     virtual ~TabParent();
     Element* GetOwnerElement() const { return mFrameElement; }
@@ -82,6 +86,8 @@ public:
     }
 
     already_AddRefed<nsILoadContext> GetLoadContext();
+
+    nsIXULBrowserWindow* GetXULBrowserWindow();
 
     /**
      * Return the TabParent that has decided it wants to capture an
@@ -166,6 +172,8 @@ public:
     virtual bool RecvSetCursor(const uint32_t& aValue) MOZ_OVERRIDE;
     virtual bool RecvSetBackgroundColor(const nscolor& aValue) MOZ_OVERRIDE;
     virtual bool RecvSetStatus(const uint32_t& aType, const nsString& aStatus) MOZ_OVERRIDE;
+    virtual bool RecvShowTooltip(const uint32_t& aX, const uint32_t& aY, const nsString& aTooltip);
+    virtual bool RecvHideTooltip();
     virtual bool RecvGetDPI(float* aValue) MOZ_OVERRIDE;
     virtual bool RecvGetDefaultScale(double* aValue) MOZ_OVERRIDE;
     virtual bool RecvGetWidgetNativeData(WindowsHandle* aValue) MOZ_OVERRIDE;
