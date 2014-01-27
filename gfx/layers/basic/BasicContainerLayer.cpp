@@ -34,19 +34,19 @@ BasicContainerLayer::~BasicContainerLayer()
 }
 
 void
-BasicContainerLayer::ComputeEffectiveTransforms(const gfx3DMatrix& aTransformToSurface)
+BasicContainerLayer::ComputeEffectiveTransforms(const Matrix4x4& aTransformToSurface)
 {
   // We push groups for container layers if we need to, which always
   // are aligned in device space, so it doesn't really matter how we snap
   // containers.
-  gfxMatrix residual;
-  gfx3DMatrix idealTransform = GetLocalTransform()*aTransformToSurface;
+  Matrix residual;
+  Matrix4x4 idealTransform = GetLocalTransform() * aTransformToSurface;
   idealTransform.ProjectTo2D();
 
   if (!idealTransform.CanDraw2D()) {
     mEffectiveTransform = idealTransform;
-    ComputeEffectiveTransformsForChildren(gfx3DMatrix());
-    ComputeEffectiveTransformForMaskLayer(gfx3DMatrix());
+    ComputeEffectiveTransformsForChildren(Matrix4x4());
+    ComputeEffectiveTransformForMaskLayer(Matrix4x4());
     mUseIntermediateSurface = true;
     return;
   }
@@ -57,7 +57,7 @@ BasicContainerLayer::ComputeEffectiveTransforms(const gfx3DMatrix& aTransformToS
   ComputeEffectiveTransformsForChildren(idealTransform);
 
   ComputeEffectiveTransformForMaskLayer(aTransformToSurface);
-  
+
   Layer* child = GetFirstChild();
   bool hasSingleBlendingChild = false;
   if (!HasMultipleChildren() && child) {
@@ -82,7 +82,9 @@ bool
 BasicContainerLayer::ChildrenPartitionVisibleRegion(const nsIntRect& aInRect)
 {
   gfxMatrix transform;
-  if (!GetEffectiveTransform().CanDraw2D(&transform) ||
+  gfx3DMatrix effectiveTransform;
+  gfx::To3DMatrix(GetEffectiveTransform(), effectiveTransform);
+  if (!effectiveTransform.CanDraw2D(&transform) ||
       transform.HasNonIntegerTranslation())
     return false;
 
@@ -95,7 +97,9 @@ BasicContainerLayer::ChildrenPartitionVisibleRegion(const nsIntRect& aInRect)
       continue;
 
     gfxMatrix childTransform;
-    if (!l->GetEffectiveTransform().CanDraw2D(&childTransform) ||
+    gfx3DMatrix effectiveTransform;
+    gfx::To3DMatrix(l->GetEffectiveTransform(), effectiveTransform);
+    if (!effectiveTransform.CanDraw2D(&childTransform) ||
         childTransform.HasNonIntegerTranslation() ||
         l->GetEffectiveOpacity() != 1.0)
       return false;
