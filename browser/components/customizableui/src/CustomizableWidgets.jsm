@@ -100,8 +100,8 @@ const CustomizableWidgets = [{
 
               let item = doc.createElementNS(kNSXUL, "toolbarbutton");
               item.setAttribute("label", title || uri);
-              item.setAttribute("tabindex", "0");
               item.setAttribute("targetURI", uri);
+              item.setAttribute("class", "subviewbutton");
               item.addEventListener("command", function (aEvent) {
                 onHistoryVisit(uri, aEvent, item);
               });
@@ -152,12 +152,24 @@ const CustomizableWidgets = [{
 
       let tabsFragment = RecentlyClosedTabsAndWindowsMenuUtils.getTabsFragment(doc.defaultView, "toolbarbutton");
       let separator = doc.getElementById("PanelUI-recentlyClosedTabs-separator");
-      separator.hidden = !tabsFragment.childElementCount;
+      let elementCount = tabsFragment.childElementCount;
+      separator.hidden = !elementCount;
+      while (--elementCount >= 0) {
+        if (tabsFragment.children[elementCount].localName != "toolbarbutton")
+          continue;
+        tabsFragment.children[elementCount].setAttribute("class", "subviewbutton");
+      }
       recentlyClosedTabs.appendChild(tabsFragment);
 
       let windowsFragment = RecentlyClosedTabsAndWindowsMenuUtils.getWindowsFragment(doc.defaultView, "toolbarbutton");
       separator = doc.getElementById("PanelUI-recentlyClosedWindows-separator");
-      separator.hidden = !windowsFragment.childElementCount;
+      elementCount = windowsFragment.childElementCount;
+      separator.hidden = !elementCount;
+      while (--elementCount >= 0) {
+        if (windowsFragment.children[elementCount].localName != "toolbarbutton")
+          continue;
+        windowsFragment.children[elementCount].setAttribute("class", "subviewbutton");
+      }
       recentlyClosedWindows.appendChild(windowsFragment);
     },
     onViewHiding: function(aEvent) {
@@ -243,7 +255,7 @@ const CustomizableWidgets = [{
           item = doc.createElementNS(kNSXUL, "menuseparator");
         } else if (node.localName == "menuitem") {
           item = doc.createElementNS(kNSXUL, "toolbarbutton");
-          item.setAttribute("tabindex", "0");
+          item.setAttribute("class", "subviewbutton");
         } else {
           continue;
         }
@@ -353,8 +365,6 @@ const CustomizableWidgets = [{
           node.appendChild(aDocument.createElementNS(kNSXUL, "separator"));
         let btnNode = aDocument.createElementNS(kNSXUL, "toolbarbutton");
         setAttributes(btnNode, aButton);
-        if (inPanel)
-          btnNode.setAttribute("tabindex", "0");
         node.appendChild(btnNode);
       });
 
@@ -715,6 +725,7 @@ const CustomizableWidgets = [{
           elem.setAttribute("current", "true");
         if (disabled)
           elem.setAttribute("disabled", "true");
+        elem.setAttribute("class", "subviewbutton");
         containerElem.appendChild(elem);
       }
     },

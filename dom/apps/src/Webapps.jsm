@@ -241,14 +241,26 @@ this.DOMApplicationRegistry = {
   },
 
   // Notify we are starting with registering apps.
+  _registryStarted: Promise.defer(),
   notifyAppsRegistryStart: function notifyAppsRegistryStart() {
     Services.obs.notifyObservers(this, "webapps-registry-start", null);
+    this._registryStarted.resolve();
+  },
+
+  get registryStarted() {
+    return this._registryStarted.promise;
   },
 
   // Notify we are done with registering apps and save a copy of the registry.
+  _registryReady: Promise.defer(),
   notifyAppsRegistryReady: function notifyAppsRegistryReady() {
+    this._registryReady.resolve();
     Services.obs.notifyObservers(this, "webapps-registry-ready", null);
     this._saveApps();
+  },
+
+  get registryReady() {
+    return this._registryReady.promise;
   },
 
   // Ensure that the .to property in redirects is a relative URL.
@@ -967,9 +979,17 @@ this.DOMApplicationRegistry = {
       channel.contentType = "application/json";
       NetUtil.asyncFetch(channel, function(aStream, aResult) {
         if (!Components.isSuccessCode(aResult)) {
+          deferred.resolve(null);
+
+          if (aResult == Cr.NS_ERROR_FILE_NOT_FOUND) {
+            // We expect this under certain circumstances, like for webapps.json
+            // on firstrun, so we return early without reporting an error.
+            return;
+          }
+
           Cu.reportError("DOMApplicationRegistry: Could not read from json file "
                          + aPath);
-          deferred.resolve(null);
+          return;
         }
 
         try {
@@ -1998,6 +2018,16 @@ this.DOMApplicationRegistry = {
                      ": " + aError);
     }.bind(this);
 
+    if (app.receipts.length > 0) {
+      for (let receipt of app.receipts) {
+        let error = this.isReceipt(receipt);
+        if (error) {
+          sendError(error);
+          return;
+        }
+      }
+    }
+
     // Hosted apps can't be trusted or certified, so just check that the
     // manifest doesn't ask for those.
     function checkAppStatus(aManifest) {
@@ -2106,6 +2136,16 @@ this.DOMApplicationRegistry = {
       Cu.reportError("Error installing packaged app from: " +
                      app.installOrigin + ": " + aError);
     }.bind(this);
+
+    if (app.receipts.length > 0) {
+      for (let receipt of app.receipts) {
+        let error = this.isReceipt(receipt);
+        if (error) {
+          sendError(error);
+          return;
+        }
+      }
+    }
 
     let checkUpdateManifest = (function() {
       let manifest = app.updateManifest;
@@ -2653,7 +2693,7 @@ onInstallSuccessAck: function onInstallSuccessAck(aManifestURL,
 
       AppDownloadManager.remove(aNewApp.manifestURL);
 
-      return [id, newManifest];
+      return [oldApp.id, newManifest];
 
     }).bind(this)).then(
       aOnSuccess,
@@ -3110,7 +3150,8 @@ onInstallSuccessAck: function onInstallSuccessAck(aManifestURL,
     aOldApp.appStatus = AppsUtils.getAppManifestStatus(newManifest);
 
     this._saveEtag(aIsUpdate, aOldApp, aRequestChannel, aHash, newManifest);
-    this._checkOrigin(aIsSigned, aOldApp, newManifest, aIsUpdate);
+    this._checkOrigin(aIsSigned || aIsLocalFileInstall, aOldApp, newManifest,
+                      aIsUpdate);
     this._getIds(aIsSigned, aZipReader, converter, aNewApp, aOldApp, aIsUpdate);
 
     return newManifest;
@@ -3191,7 +3232,7 @@ onInstallSuccessAck: function onInstallSuccessAck(aManifestURL,
 
       if (aIsUpdate) {
         // Changing the origin during an update is not allowed.
-        if (uri.prePath != app.origin) {
+        if (uri.prePath != aOldApp.origin) {
           throw "INVALID_ORIGIN_CHANGE";
         }
         // Nothing else to do for an update... since the
@@ -3199,24 +3240,25 @@ onInstallSuccessAck: function onInstallSuccessAck(aManifestURL,
         // app nor can we have a duplicated origin
       } else {
         debug("Setting origin to " + uri.prePath +
-              " for " + app.manifestURL);
+              " for " + aOldApp.manifestURL);
         let newId = uri.prePath.substring(6); // "app://".length
         if (newId in this.webapps) {
           throw "DUPLICATE_ORIGIN";
         }
         aOldApp.origin = uri.prePath;
         // Update the registry.
+        let oldId = aOldApp.id;
         aOldApp.id = newId;
         this.webapps[newId] = aOldApp;
-        delete this.webapps[aId];
+        delete this.webapps[oldId];
         // Rename the directories where the files are installed.
         [DIRECTORY_NAME, "TmpD"].forEach(function(aDir) {
           let parent = FileUtils.getDir(aDir, ["webapps"], true, true);
-          let dir = FileUtils.getDir(aDir, ["webapps", aId], true, true);
+          let dir = FileUtils.getDir(aDir, ["webapps", oldId], true, true);
           dir.moveTo(parent, newId);
         });
         // Signals that we need to swap the old id with the new app.
-        this.broadcastMessage("Webapps:RemoveApp", { id: aId });
+        this.broadcastMessage("Webapps:RemoveApp", { id: oldId });
         this.broadcastMessage("Webapps:AddApp", { id: newId,
                                                   app: aOldApp });
       }

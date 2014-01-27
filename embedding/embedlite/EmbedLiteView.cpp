@@ -207,7 +207,7 @@ EmbedLiteView::GetImageAsURL(int aWidth, int aHeight)
   // copy from gfxASurface::WriteAsPNG_internal
   NS_ENSURE_TRUE(mViewImpl, nullptr);
   nsRefPtr<gfxImageSurface> img =
-    new gfxImageSurface(gfxIntSize(aWidth, aHeight), gfxImageFormatRGB24);
+    new gfxImageSurface(gfxIntSize(aWidth, aHeight), gfxImageFormat::RGB24);
   mViewImpl->RenderToImage(img->Data(), img->Width(), img->Height(), img->Stride(), 24);
   nsCOMPtr<imgIEncoder> encoder =
     do_CreateInstance("@mozilla.org/image/encoder;2?type=image/png");

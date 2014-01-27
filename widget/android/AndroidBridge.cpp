@@ -1566,8 +1566,16 @@ static void
 JavaThreadDetachFunc(void *arg)
 {
     JNIEnv *env = (JNIEnv*) arg;
+    MOZ_ASSERT(env, "No JNIEnv on Gecko thread");
+    if (!env) {
+        return;
+    }
     JavaVM *vm = nullptr;
     env->GetJavaVM(&vm);
+    MOZ_ASSERT(vm, "No JavaVM on Gecko thread");
+    if (!vm) {
+        return;
+    }
     vm->DetachCurrentThread();
 }
 
@@ -1756,8 +1764,8 @@ nsresult AndroidBridge::CaptureThumbnail(nsIDOMWindow *window, int32_t bufW, int
 
     nsRefPtr<gfxImageSurface> surf =
         new gfxImageSurface(static_cast<unsigned char*>(data), nsIntSize(bufW, bufH), stride,
-                            is24bit ? gfxImageFormatRGB24 :
-                                      gfxImageFormatRGB16_565);
+                            is24bit ? gfxImageFormat::RGB24 :
+                                      gfxImageFormat::RGB16_565);
     if (surf->CairoStatus() != 0) {
         ALOG_BRIDGE("Error creating gfxImageSurface");
         return NS_ERROR_FAILURE;

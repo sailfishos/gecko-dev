@@ -353,6 +353,8 @@ class SourceDataCache
     bool put(ScriptSource *ss, const jschar *chars, const AutoSuppressPurge &asp);
 
     void purge();
+
+    size_t sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf);
 };
 
 class ScriptSource
@@ -497,7 +499,8 @@ class ScriptSourceObject : public JSObject
     void setSource(ScriptSource *source);
 
     JSObject *element() const;
-    const Value &elementProperty() const;
+    void initElement(HandleObject element);
+    const Value &elementAttributeName() const;
 
   private:
     static const uint32_t SOURCE_SLOT = 0;
