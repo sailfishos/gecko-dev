@@ -61,7 +61,7 @@ gfxQtPlatform::gfxQtPlatform()
 
     mScreenDepth = qApp->primaryScreen()->depth();
     if (mScreenDepth == 16) {
-        sOffscreenFormat = gfxImageFormatRGB16_565;
+        sOffscreenFormat = gfxImageFormat::RGB16_565;
     }
 
     uint32_t canvasMask = BackendTypeBit(BackendType::CAIRO) | BackendTypeBit(BackendType::SKIA);
