@@ -50,8 +50,6 @@ EmbedLiteViewThreadParent::EmbedLiteViewThreadParent(const uint32_t& id, const u
   , mView(EmbedLiteApp::GetInstance()->GetViewByID(id))
   , mViewAPIDestroyed(false)
   , mCompositor(nullptr)
-  , mScrollOffset(0, 0)
-  , mLastScale(1.0f)
   , mInTouchProcess(false)
   , mUILoop(MessageLoop::current())
   , mLastIMEState(0)
@@ -470,15 +468,6 @@ EmbedLiteViewThreadParent::RenderGL()
     return mCompositor->RenderGL();
   }
   return false;
-}
-
-bool
-EmbedLiteViewThreadParent::ScrollBy(int aDX, int aDY, bool aDoOverflow)
-{
-  LOGT("d[%i,%i]", aDX, aDY);
-  mScrollOffset.MoveBy(-aDX, -aDY);
-
-  return true;
 }
 
 void
