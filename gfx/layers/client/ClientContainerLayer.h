@@ -55,7 +55,8 @@ public:
       if (GetEffectiveVisibleRegion().GetNumRects() != 1 ||
           !(GetContentFlags() & Layer::CONTENT_OPAQUE))
       {
-        const gfx3DMatrix& transform3D = GetEffectiveTransform();
+        gfx3DMatrix transform3D;
+        gfx::To3DMatrix(GetEffectiveTransform(), transform3D);
         gfxMatrix transform;
         if (HasOpaqueAncestorLayer(this) &&
             transform3D.Is2D(&transform) && 
@@ -120,7 +121,7 @@ public:
   virtual Layer* AsLayer() { return this; }
   virtual ShadowableLayer* AsShadowableLayer() { return this; }
 
-  virtual void ComputeEffectiveTransforms(const gfx3DMatrix& aTransformToSurface)
+  virtual void ComputeEffectiveTransforms(const gfx::Matrix4x4& aTransformToSurface)
   {
     DefaultComputeEffectiveTransforms(aTransformToSurface);
   }
@@ -160,7 +161,7 @@ public:
 
   virtual void RenderLayer() { }
 
-  virtual void ComputeEffectiveTransforms(const gfx3DMatrix& aTransformToSurface)
+  virtual void ComputeEffectiveTransforms(const gfx::Matrix4x4& aTransformToSurface)
   {
     DefaultComputeEffectiveTransforms(aTransformToSurface);
   }

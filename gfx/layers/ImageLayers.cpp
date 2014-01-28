@@ -27,9 +27,9 @@ void ImageLayer::SetContainer(ImageContainer* aContainer)
   mContainer = aContainer;
 }
 
-void ImageLayer::ComputeEffectiveTransforms(const gfx3DMatrix& aTransformToSurface)
+void ImageLayer::ComputeEffectiveTransforms(const gfx::Matrix4x4& aTransformToSurface)
 {
-  gfx3DMatrix local = GetLocalTransform();
+  gfx::Matrix4x4 local = GetLocalTransform();
 
   // Snap image edges to pixel boundaries
   gfxRect sourceRect(0, 0, 0, 0);
