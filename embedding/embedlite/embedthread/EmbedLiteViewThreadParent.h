@@ -45,7 +45,6 @@ public:
   virtual void SetTransformation(float aScale, nsIntPoint aScrollOffset);
   virtual void ScheduleRender();
   virtual void UpdateScrollController();
-  virtual bool ScrollBy(int aDX, int aDY, bool aDoOverflow = false);
   virtual void MousePress(int x, int y, int mstime, unsigned int buttons, unsigned int modifiers);
   virtual void MouseRelease(int x, int y, int mstime, unsigned int buttons, unsigned int modifiers);
   virtual void MouseMove(int x, int y, int mstime, unsigned int buttons, unsigned int modifiers);
@@ -138,8 +137,6 @@ private:
   EmbedLiteView* mView;
   bool mViewAPIDestroyed;
   RefPtr<EmbedLiteCompositorParent> mCompositor;
-  gfx::Point mScrollOffset;
-  float mLastScale;
 
   ScreenIntSize mViewSize;
   gfxSize mGLViewPortSize;
