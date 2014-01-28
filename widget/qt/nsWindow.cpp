@@ -14,6 +14,19 @@
  */
 
 #include <QGuiApplication>
+#include <QScreen>
+#include <QCursor>
+#include <QFocusEvent>
+#include <QHideEvent>
+#include <QKeyEvent>
+#include <QMouseEvent>
+#include <QMoveEvent>
+#include <QResizeEvent>
+#include <QShowEvent>
+#include <QTabletEvent>
+#include <QTouchEvent>
+#include <QWheelEvent>
+#include <qnamespace.h>
 #include "mozqwidget.h"
 #include "mozilla/DebugOnly.h"
 
@@ -43,18 +56,29 @@
 #include "nsThreadUtils.h"
 #include "gfxQtPlatform.h"
 
+#include "mozilla/ArrayUtils.h"
+#include "mozilla/MiscEvents.h"
+#include "mozilla/MouseEvents.h"
+#include "mozilla/TextEvents.h"
+#include "mozilla/TouchEvents.h"
 
 #define IS_TOPLEVEL() (mWindowType == eWindowType_toplevel || mWindowType == eWindowType_dialog)
+#define kWindowPositionSlop 20
+
+static const int WHEEL_DELTA = 120;
 
 using namespace mozilla;
 using namespace mozilla::dom;
 using namespace mozilla::hal;
 using namespace mozilla::gl;
+using namespace mozilla::gfx;
 using namespace mozilla::layers;
 using namespace mozilla::widget;
 
 nsWindow::nsWindow()
   : mWidget(nullptr)
+  , mLastSizeMode(nsSizeMode_Normal)
+  , mEnabled(true)
 {
     LOG(("nsWindow::%s [%p]\n", __FUNCTION__, (void *)this));
 }
@@ -154,6 +178,10 @@ nsWindow::createQWidget(MozQWidget *parent,
     if (mWindowType == eWindowType_invisible) {
         widget->setVisibility(QWindow::Hidden);
     }
+    if (mWindowType == eWindowType_dialog) {
+        widget->setModality(Qt::WindowModal);
+    }
+
     widget->create();
 
     // create a QGraphicsView if this is a new toplevel window
@@ -190,8 +218,7 @@ nsWindow::Show(bool aState)
 bool
 nsWindow::IsVisible() const
 {
-    LOG(("nsWindow::%s [%p]\n", __FUNCTION__, (void *)this));
-    return mVisible;
+    return mWidget->isVisible();
 }
 
 NS_IMETHODIMP
@@ -200,6 +227,31 @@ nsWindow::ConstrainPosition(bool aAllowSlop,
                             int32_t *aY)
 {
     LOG(("nsWindow::%s [%p]\n", __FUNCTION__, (void *)this));
+    if (mWidget) {
+        int32_t screenWidth  = qApp->primaryScreen()->availableSize().width();
+        int32_t screenHeight = qApp->primaryScreen()->availableSize().height();
+
+        if (aAllowSlop) {
+            if (*aX < (kWindowPositionSlop - mBounds.width))
+                *aX = kWindowPositionSlop - mBounds.width;
+            if (*aX > (screenWidth - kWindowPositionSlop))
+                *aX = screenWidth - kWindowPositionSlop;
+            if (*aY < (kWindowPositionSlop - mBounds.height))
+                *aY = kWindowPositionSlop - mBounds.height;
+            if (*aY > (screenHeight - kWindowPositionSlop))
+                *aY = screenHeight - kWindowPositionSlop;
+        } else {
+            if (*aX < 0)
+                *aX = 0;
+            if (*aX > (screenWidth - mBounds.width))
+                *aX = screenWidth - mBounds.width;
+            if (*aY < 0)
+                *aY = 0;
+            if (*aY > (screenHeight - mBounds.height))
+                *aY = screenHeight - mBounds.height;
+        }
+    }
+
     return NS_OK;
 }
 
@@ -275,6 +327,7 @@ NS_IMETHODIMP
 nsWindow::Enable(bool aState)
 {
     LOG(("nsWindow::%s [%p] aState:%i\n", __FUNCTION__, (void *)this, aState));
+    mEnabled = aState;
     return NS_OK;
 }
 
@@ -282,7 +335,7 @@ bool
 nsWindow::IsEnabled() const
 {
     LOG(("nsWindow::%s [%p]\n", __FUNCTION__, (void *)this));
-    return true;
+    return mEnabled;
 }
 
 NS_IMETHODIMP
@@ -293,9 +346,24 @@ nsWindow::SetFocus(bool aRaise)
 }
 
 NS_IMETHODIMP
-nsWindow::ConfigureChildren(const nsTArray<nsIWidget::Configuration>&)
+nsWindow::ConfigureChildren(const nsTArray<nsIWidget::Configuration>& aConfigurations)
 {
     LOG(("nsWindow::%s [%p]\n", __FUNCTION__, (void *)this));
+    for (uint32_t i = 0; i < aConfigurations.Length(); ++i) {
+        const Configuration& configuration = aConfigurations[i];
+
+        nsWindow* w = static_cast<nsWindow*>(configuration.mChild);
+        NS_ASSERTION(w->GetParent() == this,
+                     "Configured widget is not a child");
+
+        if (w->mBounds.Size() != configuration.mBounds.Size()) {
+            w->Resize(configuration.mBounds.x, configuration.mBounds.y,
+                      configuration.mBounds.width, configuration.mBounds.height,
+                      true);
+        } else if (w->mBounds.TopLeft() != configuration.mBounds.TopLeft()) {
+            w->Move(configuration.mBounds.x, configuration.mBounds.y);
+        }
+    }
     return NS_OK;
 }
 
@@ -316,17 +384,13 @@ nsIntPoint
 nsWindow::WidgetToScreenOffset()
 {
     LOG(("nsWindow::%s [%p]\n", __FUNCTION__, (void *)this));
-    nsIntPoint p(0, 0);
-    nsWindow *w = this;
 
-    while (w && w->mParent) {
-        p.x += w->mBounds.x;
-        p.y += w->mBounds.y;
+    NS_ENSURE_TRUE(mWidget, nsIntPoint(0,0));
 
-        w = w->mParent;
-    }
+    QPoint origin(0, 0);
+    origin = mWidget->mapToGlobal(origin);
 
-    return p;
+    return nsIntPoint(origin.x(), origin.y());
 }
 
 void*
@@ -335,9 +399,7 @@ nsWindow::GetNativeData(uint32_t aDataType)
     switch (aDataType) {
     case NS_NATIVE_WINDOW:
     case NS_NATIVE_WIDGET: {
-        LOG(("nsWindow::%s [%p] return mWidget:%p\n", __FUNCTION__, (void *)this, mWidget));
         return mWidget;
-        break;
     }
     case NS_NATIVE_SHAREABLE_WINDOW: {
         return mWidget ? (void*)mWidget->winId() : nullptr;
@@ -348,12 +410,8 @@ nsWindow::GetNativeData(uint32_t aDataType)
 #endif
         break;
     }
-    case NS_NATIVE_PLUGIN_PORT: {
-        break;
-    }
-    case NS_NATIVE_GRAPHIC: {
-        break;
-    }
+    case NS_NATIVE_PLUGIN_PORT:
+    case NS_NATIVE_GRAPHIC:
     case NS_NATIVE_SHELLWIDGET: {
         break;
     }
@@ -369,8 +427,9 @@ NS_IMETHODIMP
 nsWindow::DispatchEvent(WidgetGUIEvent* aEvent, nsEventStatus& aStatus)
 {
     LOG(("nsWindow::%s [%p]\n", __FUNCTION__, (void *)this));
-    if (mWidgetListener)
-      aStatus = mWidgetListener->HandleEvent(aEvent, mUseAttachedEvents);
+    if (mWidgetListener) {
+        aStatus = mWidgetListener->HandleEvent(aEvent, mUseAttachedEvents);
+    }
 
     return NS_OK;
 }
@@ -403,19 +462,78 @@ NS_IMETHODIMP
 nsWindow::MakeFullScreen(bool aFullScreen)
 {
     LOG(("nsWindow::%s [%p]\n", __FUNCTION__, (void *)this));
-    if (mWindowType != eWindowType_toplevel) {
-        // Ignore fullscreen request for non-toplevel windows.
-        NS_WARNING("MakeFullScreen() on a dialog or child widget?");
-        return nsBaseWidget::MakeFullScreen(aFullScreen);
+
+    NS_ENSURE_TRUE(mWidget, NS_ERROR_FAILURE);
+    if (aFullScreen) {
+        if (mSizeMode != nsSizeMode_Fullscreen)
+            mLastSizeMode = mSizeMode;
+
+        mSizeMode = nsSizeMode_Fullscreen;
+        mWidget->showFullScreen();
+    }
+    else {
+        mSizeMode = mLastSizeMode;
+
+        switch (mSizeMode) {
+        case nsSizeMode_Maximized:
+            mWidget->showMaximized();
+            break;
+        case nsSizeMode_Minimized:
+            mWidget->showMinimized();
+            break;
+        case nsSizeMode_Normal:
+            mWidget->show();
+            break;
+        default:
+            mWidget->show();
+            break;
+        }
     }
 
-    return NS_OK;
+    NS_ASSERTION(mLastSizeMode != nsSizeMode_Fullscreen,
+                 "mLastSizeMode should never be fullscreen");
+    return nsBaseWidget::MakeFullScreen(aFullScreen);
+}
+
+static inline gfx::SurfaceFormat
+_gqformat_to_gfxformat(QImage::Format aFormat)
+{
+    switch (aFormat) {
+    case QImage::Format_ARGB32_Premultiplied:
+        return SurfaceFormat::R8G8B8A8;
+    case QImage::Format_RGB32:
+        return SurfaceFormat::R8G8B8X8;
+    case QImage::Format_RGB16:
+        return SurfaceFormat::R5G6B5;
+    default:
+        NS_ERROR("Could not find gfx format for Qt Format");
+        return SurfaceFormat::UNKNOWN;
+    }
 }
 
 void
-nsWindow::OnQRender()
+nsWindow::OnPaint()
 {
     LOGDRAW(("nsWindow::%s [%p]\n", __FUNCTION__, (void *)this));
+    nsIWidgetListener* listener =
+        mAttachedWidgetListener ? mAttachedWidgetListener : mWidgetListener;
+    if (!listener) {
+        return;
+    }
+
+    listener->WillPaintWindow(this);
+
+    switch (GetLayerManager()->GetBackendType()) {
+        case mozilla::layers::LayersBackend::LAYERS_CLIENT: {
+            nsIntRegion region(nsIntRect(0, 0, mWidget->width(), mWidget->height()));
+            listener->PaintWindow(this, region);
+            break;
+        }
+        default:
+            NS_ERROR("Invalid layer manager");
+    }
+
+    listener->DidPaintWindow();
 }
 
 LayerManager*
@@ -424,7 +542,6 @@ nsWindow::GetLayerManager(PLayerTransactionChild* aShadowManager,
                           LayerManagerPersistence aPersistence,
                           bool* aAllowRetaining)
 {
-    LOGDRAW(("nsWindow::%s [%p]\n", __FUNCTION__, (void *)this));
     if (!mLayerManager && eTransparencyTransparent == GetTransparencyMode()) {
         mLayerManager = CreateBasicLayerManager();
     }
@@ -452,9 +569,395 @@ nsWindow::GetGLFrameBufferFormat()
     LOG(("nsWindow::%s [%p]\n", __FUNCTION__, (void *)this));
     if (mLayerManager &&
         mLayerManager->GetBackendType() == mozilla::layers::LayersBackend::LAYERS_OPENGL) {
-        // We directly map the hardware fb on Gonk.  The hardware fb
-        // has RGB format.
         return LOCAL_GL_RGB;
     }
     return LOCAL_GL_NONE;
+}
+
+NS_IMETHODIMP
+nsWindow::SetCursor(nsCursor aCursor)
+{
+/*
+    Qt::CursorShape cursor = Qt::ArrowCursor;
+    switch (aCursor) {
+    case eCursor_standard:
+        cursor = Qt::ArrowCursor;
+        break;
+    case eCursor_wait:
+        cursor = Qt::WaitCursor;
+        break;
+    case eCursor_select:
+        cursor = Qt::IBeamCursor;
+        break;
+    case eCursor_hyperlink:
+        cursor = Qt::PointingHandCursor;
+        break;
+    case eCursor_ew_resize:
+        cursor = Qt::SplitHCursor;
+        break;
+    case eCursor_ns_resize:
+        cursor = Qt::SplitVCursor;
+        break;
+    case eCursor_nw_resize:
+    case eCursor_se_resize:
+        cursor = Qt::SizeBDiagCursor;
+        break;
+    case eCursor_ne_resize:
+    case eCursor_sw_resize:
+        cursor = Qt::SizeFDiagCursor;
+        break;
+    case eCursor_crosshair:
+    case eCursor_move:
+        cursor = Qt::SizeAllCursor;
+        break;
+    case eCursor_help:
+        cursor = Qt::WhatsThisCursor;
+        break;
+    case eCursor_copy:
+    case eCursor_alias:
+        break;
+    case eCursor_context_menu:
+    case eCursor_cell:
+    case eCursor_grab:
+    case eCursor_grabbing:
+    case eCursor_spinning:
+    case eCursor_zoom_in:
+    case eCursor_zoom_out:
+
+    default:
+        break;
+    }
+
+    setCursor(cursor);
+*/
+    return NS_OK;
+}
+
+NS_IMETHODIMP
+nsWindow::SetTitle(const nsAString& aTitle)
+{
+    QString qStr(QString::fromUtf16((const ushort*)aTitle.BeginReading(), aTitle.Length()));
+    if (mWidget) {
+        mWidget->setTitle(qStr);
+    }
+
+    return NS_OK;
+}
+
+///////// EVENTS
+
+nsEventStatus
+nsWindow::moveEvent(QMoveEvent* aEvent)
+{
+    LOG(("configure event [%p] %d %d\n", (void *)this,
+        aEvent->pos().x(),  aEvent->pos().y()));
+
+    // can we shortcut?
+    if (!mWidget || !mWidgetListener)
+        return nsEventStatus_eIgnore;
+
+    if ((mBounds.x == aEvent->pos().x() &&
+         mBounds.y == aEvent->pos().y()))
+    {
+        return nsEventStatus_eIgnore;
+    }
+
+    bool moved = mWidgetListener->WindowMoved(this, aEvent->pos().x(), aEvent->pos().y());
+    return moved ? nsEventStatus_eConsumeNoDefault : nsEventStatus_eIgnore;
+}
+
+nsEventStatus
+nsWindow::resizeEvent(QResizeEvent* aEvent)
+{
+    nsIntRect rect;
+
+    // Generate XPFE resize event
+    GetBounds(rect);
+
+    rect.width = aEvent->size().width();
+    rect.height = aEvent->size().height();
+
+    mBounds.width = rect.width;
+    mBounds.height = rect.height;
+
+    nsEventStatus status = nsEventStatus_eIgnore;
+    if (mWidgetListener &&
+        mWidgetListener->WindowResized(this, rect.width, rect.height)) {
+      status = nsEventStatus_eConsumeNoDefault;
+    }
+
+    return status;
+}
+
+void
+nsWindow::InitButtonEvent(WidgetMouseEvent& aMoveEvent,
+                          QMouseEvent* aEvent,
+                          int aClickCount)
+{
+    aMoveEvent.refPoint.x = nscoord(aEvent->pos().x());
+    aMoveEvent.refPoint.y = nscoord(aEvent->pos().y());
+
+    aMoveEvent.InitBasicModifiers(aEvent->modifiers() & Qt::ControlModifier,
+                                  aEvent->modifiers() & Qt::AltModifier,
+                                  aEvent->modifiers() & Qt::ShiftModifier,
+                                  aEvent->modifiers() & Qt::MetaModifier);
+    aMoveEvent.clickCount      = aClickCount;
+}
+
+nsEventStatus
+nsWindow::DispatchEvent(WidgetGUIEvent* aEvent)
+{
+    nsEventStatus status;
+    DispatchEvent(aEvent, status);
+    return status;
+}
+
+void
+nsWindow::DispatchActivateEvent(void)
+{
+    if (mWidgetListener)
+      mWidgetListener->WindowActivated();
+}
+
+void
+nsWindow::DispatchDeactivateEvent(void)
+{
+    if (mWidgetListener)
+      mWidgetListener->WindowDeactivated();
+}
+
+void
+nsWindow::DispatchActivateEventOnTopLevelWindow(void)
+{
+    nsWindow * topLevelWindow = static_cast<nsWindow*>(GetTopLevelWidget());
+    if (topLevelWindow != nullptr)
+         topLevelWindow->DispatchActivateEvent();
+}
+
+void
+nsWindow::DispatchDeactivateEventOnTopLevelWindow(void)
+{
+    nsWindow * topLevelWindow = static_cast<nsWindow*>(GetTopLevelWidget());
+    if (topLevelWindow != nullptr)
+         topLevelWindow->DispatchDeactivateEvent();
+}
+
+nsEventStatus
+nsWindow::mouseMoveEvent(QMouseEvent* aEvent)
+{
+    return nsEventStatus_eIgnore;
+}
+
+nsEventStatus
+nsWindow::mousePressEvent(QMouseEvent* aEvent)
+{
+    // The user has done something.
+    UserActivity();
+
+    QPoint pos = aEvent->pos();
+
+    // we check against the widgets geometry, so use parent coordinates
+    // for the check
+    if (mWidget) {
+        pos = mWidget->mapToGlobal(pos);
+    }
+
+    uint16_t      domButton;
+    switch (aEvent->button()) {
+    case Qt::MidButton:
+        domButton = WidgetMouseEvent::eMiddleButton;
+        break;
+    case Qt::RightButton:
+        domButton = WidgetMouseEvent::eRightButton;
+        break;
+    default:
+        domButton = WidgetMouseEvent::eLeftButton;
+        break;
+    }
+
+    WidgetMouseEvent event(true, NS_MOUSE_BUTTON_DOWN, this,
+                           WidgetMouseEvent::eReal);
+    event.button = domButton;
+    InitButtonEvent(event, aEvent, 1);
+
+    LOG(("%s [%p] button: %d\n", __PRETTY_FUNCTION__, (void*)this, domButton));
+
+    nsEventStatus status = DispatchEvent(&event);
+
+    // right menu click on linux should also pop up a context menu
+    if (domButton == WidgetMouseEvent::eRightButton) {
+        WidgetMouseEvent contextMenuEvent(true, NS_CONTEXTMENU, this,
+                                          WidgetMouseEvent::eReal);
+        InitButtonEvent(contextMenuEvent, aEvent, 1);
+        DispatchEvent(&contextMenuEvent, status);
+    }
+
+    return status;
+}
+
+nsEventStatus
+nsWindow::mouseReleaseEvent(QMouseEvent* aEvent)
+{
+    // The user has done something.
+    UserActivity();
+
+    uint16_t domButton;
+
+    switch (aEvent->button()) {
+    case Qt::MidButton:
+        domButton = WidgetMouseEvent::eMiddleButton;
+        break;
+    case Qt::RightButton:
+        domButton = WidgetMouseEvent::eRightButton;
+        break;
+    default:
+        domButton = WidgetMouseEvent::eLeftButton;
+        break;
+    }
+
+    LOG(("%s [%p] button: %d\n", __PRETTY_FUNCTION__, (void*)this, domButton));
+
+    WidgetMouseEvent event(true, NS_MOUSE_BUTTON_UP, this,
+                           WidgetMouseEvent::eReal);
+    event.button = domButton;
+    InitButtonEvent(event, aEvent, 1);
+
+    nsEventStatus status = DispatchEvent(&event);
+
+    return status;
+}
+
+nsEventStatus
+nsWindow::mouseDoubleClickEvent(QMouseEvent* aEvent)
+{
+    uint32_t eventType;
+
+    switch (aEvent->button()) {
+    case Qt::MidButton:
+        eventType = WidgetMouseEvent::eMiddleButton;
+        break;
+    case Qt::RightButton:
+        eventType = WidgetMouseEvent::eRightButton;
+        break;
+    default:
+        eventType = WidgetMouseEvent::eLeftButton;
+        break;
+    }
+
+    WidgetMouseEvent event(true, NS_MOUSE_DOUBLECLICK, this,
+                           WidgetMouseEvent::eReal);
+    event.button = eventType;
+
+    InitButtonEvent(event, aEvent, 2);
+    //pressed
+    return DispatchEvent(&event);
+}
+
+nsEventStatus
+nsWindow::focusInEvent(QFocusEvent* aEvent)
+{
+    LOGFOCUS(("OnFocusInEvent [%p]\n", (void *)this));
+
+    if (!mWidget)
+        return nsEventStatus_eIgnore;
+
+    DispatchActivateEventOnTopLevelWindow();
+
+    LOGFOCUS(("Events sent from focus in event [%p]\n", (void *)this));
+    return nsEventStatus_eIgnore;
+}
+
+nsEventStatus
+nsWindow::focusOutEvent(QFocusEvent* aEvent)
+{
+    LOGFOCUS(("OnFocusOutEvent [%p]\n", (void *)this));
+
+    if (!mWidget)
+        return nsEventStatus_eIgnore;
+
+    DispatchDeactivateEventOnTopLevelWindow();
+
+    LOGFOCUS(("Done with container focus out [%p]\n", (void *)this));
+    return nsEventStatus_eIgnore;
+}
+
+
+nsEventStatus
+nsWindow::keyPressEvent(QKeyEvent* aEvent)
+{
+    LOGFOCUS(("OnKeyReleaseEvent [%p]\n", (void *)this));
+    return nsEventStatus_eIgnore;
+}
+
+nsEventStatus
+nsWindow::keyReleaseEvent(QKeyEvent* aEvent)
+{
+    LOGFOCUS(("OnKeyPressEvent [%p]\n", (void *)this));
+    return nsEventStatus_eIgnore;
+}
+
+nsEventStatus
+nsWindow::wheelEvent(QWheelEvent* aEvent)
+{
+    // check to see if we should rollup
+    WidgetWheelEvent wheelEvent(true, NS_WHEEL_WHEEL, this);
+    wheelEvent.deltaMode = nsIDOMWheelEvent::DOM_DELTA_LINE;
+
+    // negative values for aEvent->delta indicate downward scrolling;
+    // this is opposite Gecko usage.
+    // TODO: Store the unused delta values due to fraction round and add it
+    //       to next event.  The stored values should be reset by other
+    //       direction scroll event.
+    int32_t delta = (int)(aEvent->delta() / WHEEL_DELTA) * -3;
+
+    switch (aEvent->orientation()) {
+    case Qt::Vertical:
+        wheelEvent.deltaY = wheelEvent.lineOrPageDeltaY = delta;
+        break;
+    case Qt::Horizontal:
+        wheelEvent.deltaX = wheelEvent.lineOrPageDeltaX = delta;
+        break;
+    default:
+        Q_ASSERT(0);
+        break;
+    }
+
+    wheelEvent.refPoint.x = nscoord(aEvent->pos().x());
+    wheelEvent.refPoint.y = nscoord(aEvent->pos().y());
+
+    wheelEvent.InitBasicModifiers(aEvent->modifiers() & Qt::ControlModifier,
+                                  aEvent->modifiers() & Qt::AltModifier,
+                                  aEvent->modifiers() & Qt::ShiftModifier,
+                                  aEvent->modifiers() & Qt::MetaModifier);
+    wheelEvent.time = 0;
+
+    return DispatchEvent(&wheelEvent);
+}
+
+nsEventStatus
+nsWindow::showEvent(QShowEvent *)
+{
+    LOG(("%s [%p]\n", __PRETTY_FUNCTION__,(void *)this));
+    return nsEventStatus_eConsumeDoDefault;
+}
+
+nsEventStatus
+nsWindow::hideEvent(QHideEvent *)
+{
+    LOG(("%s [%p]\n", __PRETTY_FUNCTION__,(void *)this));
+    return nsEventStatus_eConsumeDoDefault;
+}
+
+nsEventStatus
+nsWindow::tabletEvent(QTabletEvent* aEvent)
+{
+    LOGFOCUS(("nsWindow::%s [%p]\n", __FUNCTION__, (void *)this));
+    return nsEventStatus_eIgnore;
+}
+
+nsEventStatus
+nsWindow::touchEvent(QTouchEvent* aEvent)
+{
+    LOGFOCUS(("nsWindow::%s [%p]\n", __FUNCTION__, (void *)this));
+    return nsEventStatus_eIgnore;
 }

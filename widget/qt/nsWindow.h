@@ -48,6 +48,19 @@ extern PRLogModuleInfo *gWidgetDrawLog;
 
 #endif /* MOZ_LOGGING */
 
+QT_BEGIN_NAMESPACE
+class QFocusEvent;
+class QHideEvent;
+class QKeyEvent;
+class QMouseEvent;
+class QMoveEvent;
+class QResizeEvent;
+class QShowEvent;
+class QTabletEvent;
+class QTouchEvent;
+class QWheelEvent;
+QT_END_NAMESPACE
+
 namespace mozilla {
 namespace gl {
 class GLContext;
@@ -95,7 +108,10 @@ public:
     NS_IMETHOD ConfigureChildren(const nsTArray<nsIWidget::Configuration>&);
     NS_IMETHOD Invalidate(const nsIntRect &aRect);
     virtual void* GetNativeData(uint32_t aDataType);
-    NS_IMETHOD SetTitle(const nsAString& aTitle)
+    NS_IMETHOD SetTitle(const nsAString& aTitle);
+    NS_IMETHOD SetCursor(nsCursor aCursor);
+    NS_IMETHOD SetCursor(imgIContainer* aCursor,
+                         uint32_t aHotspotX, uint32_t aHotspotY)
     {
         return NS_OK;
     }
@@ -123,8 +139,23 @@ public:
 
     virtual uint32_t GetGLFrameBufferFormat() MOZ_OVERRIDE;
 
-    // 
-    void OnQRender();
+    //
+    virtual void OnPaint();
+    virtual nsEventStatus focusInEvent(QFocusEvent* event);
+    virtual nsEventStatus focusOutEvent(QFocusEvent* event);
+    virtual nsEventStatus hideEvent(QHideEvent* event);
+    virtual nsEventStatus keyPressEvent(QKeyEvent* event);
+    virtual nsEventStatus keyReleaseEvent(QKeyEvent* event);
+    virtual nsEventStatus mouseDoubleClickEvent(QMouseEvent* event);
+    virtual nsEventStatus mouseMoveEvent(QMouseEvent* event);
+    virtual nsEventStatus mousePressEvent(QMouseEvent* event);
+    virtual nsEventStatus mouseReleaseEvent(QMouseEvent* event);
+    virtual nsEventStatus moveEvent(QMoveEvent* event);
+    virtual nsEventStatus resizeEvent(QResizeEvent* event);
+    virtual nsEventStatus showEvent(QShowEvent* event);
+    virtual nsEventStatus tabletEvent(QTabletEvent* event);
+    virtual nsEventStatus touchEvent(QTouchEvent* event);
+    virtual nsEventStatus wheelEvent(QWheelEvent* event);
 
 protected:
     nsWindow* mParent;
@@ -135,6 +166,20 @@ protected:
     MozQWidget* mWidget;
 
 private:
+    void InitButtonEvent(mozilla::WidgetMouseEvent& event,
+                         QMouseEvent* aEvent,
+                         int aClickCount = 1);
+    nsEventStatus DispatchEvent(mozilla::WidgetGUIEvent* aEvent);
+    void DispatchActivateEvent(void);
+    void DispatchDeactivateEvent(void);
+    void DispatchActivateEventOnTopLevelWindow(void);
+    void DispatchDeactivateEventOnTopLevelWindow(void);
+
+    // Remember the last sizemode so that we can restore it when
+    // leaving fullscreen
+    nsSizeMode         mLastSizeMode;
+    bool mEnabled;
+
     // Call this function when the users activity is the direct cause of an
     // event (like a keypress or mouse click).
     void UserActivity();

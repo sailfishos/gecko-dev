@@ -15,8 +15,9 @@ using namespace mozilla::widget;
 MozQWidget::MozQWidget(nsWindow* aReceiver, QWindow* aParent)
   : QWindow(aParent)
   , mReceiver(aReceiver)
-  , m_update_pending(false)
+  , mUpdatePending(false)
 {
+    mReceiver->GetWindowType(mWindowType);
 }
 
 MozQWidget::~MozQWidget()
@@ -30,25 +31,30 @@ void MozQWidget::render(QPainter* painter)
 
 void MozQWidget::renderLater()
 {
-    if (!m_update_pending) {
-        m_update_pending = true;
+    if (!isExposed() || eWindowType_child != mWindowType || !isVisible()) {
+        return;
+    }
+
+    if (!mUpdatePending) {
+        mUpdatePending = true;
         QCoreApplication::postEvent(this, new QEvent(QEvent::UpdateRequest));
     }
 }
 
 void MozQWidget::renderNow()
 {
-    if (!isExposed())
+    if (!isExposed() || eWindowType_child != mWindowType || !isVisible()) {
         return;
+    }
 
-    mReceiver->OnQRender();
+    mReceiver->OnPaint();
 }
 
 bool MozQWidget::event(QEvent* event)
 {
     switch (event->type()) {
     case QEvent::UpdateRequest:
-        m_update_pending = false;
+        mUpdatePending = false;
         renderNow();
         return true;
     default:
@@ -59,83 +65,102 @@ bool MozQWidget::event(QEvent* event)
 void MozQWidget::exposeEvent(QExposeEvent* event)
 {
     Q_UNUSED(event);
-    if (!isExposed())
+    if (!isExposed() || eWindowType_child != mWindowType || !isVisible()) {
         return;
-
+    }
+    LOG(("MozQWidget::%s [%p] flags:%x\n", __FUNCTION__, (void *)this, flags()));
     renderNow();
+
+}
+
+void MozQWidget::resizeEvent(QResizeEvent* event)
+{
     LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
+    mReceiver->resizeEvent(event);
+    QWindow::resizeEvent(event);
 }
 
 void MozQWidget::focusInEvent(QFocusEvent* event)
 {
     LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
+    mReceiver->focusInEvent(event);
     QWindow::focusInEvent(event);
 }
 
 void MozQWidget::focusOutEvent(QFocusEvent* event)
 {
     LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
+    mReceiver->focusOutEvent(event);
     QWindow::focusOutEvent(event);
 }
 
 void MozQWidget::hideEvent(QHideEvent* event)
 {
     LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
+    mReceiver->hideEvent(event);
     QWindow::hideEvent(event);
 }
 
 void MozQWidget::keyPressEvent(QKeyEvent* event)
 {
     LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
+    mReceiver->keyPressEvent(event);
     QWindow::keyPressEvent(event);
 }
 
 void MozQWidget::keyReleaseEvent(QKeyEvent* event)
 {
     LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
+    mReceiver->keyReleaseEvent(event);
     QWindow::keyReleaseEvent(event);
 }
 
 void MozQWidget::mouseDoubleClickEvent(QMouseEvent* event)
 {
     LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
+    mReceiver->mouseDoubleClickEvent(event);
     QWindow::mouseDoubleClickEvent(event);
 }
 
 void MozQWidget::mouseMoveEvent(QMouseEvent* event)
 {
-    LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
+    mReceiver->mouseMoveEvent(event);
     QWindow::mouseMoveEvent(event);
 }
 
 void MozQWidget::mousePressEvent(QMouseEvent* event)
 {
     LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
+    mReceiver->mousePressEvent(event);
     QWindow::mousePressEvent(event);
 }
 
 void MozQWidget::mouseReleaseEvent(QMouseEvent* event)
 {
     LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
+    mReceiver->mouseReleaseEvent(event);
     QWindow::mouseReleaseEvent(event);
 }
 
 void MozQWidget::moveEvent(QMoveEvent* event)
 {
     LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
+    mReceiver->moveEvent(event);
     QWindow::moveEvent(event);
-}
-
-void MozQWidget::resizeEvent(QResizeEvent* event)
-{
-    LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
-    QWindow::resizeEvent(event);
 }
 
 void MozQWidget::showEvent(QShowEvent* event)
 {
     LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
+    mReceiver->showEvent(event);
     QWindow::showEvent(event);
+}
+
+void MozQWidget::wheelEvent(QWheelEvent* event)
+{
+    LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
+    mReceiver->wheelEvent(event);
+    QWindow::wheelEvent(event);
 }
 
 void MozQWidget::tabletEvent(QTabletEvent* event)
@@ -148,10 +173,4 @@ void MozQWidget::touchEvent(QTouchEvent* event)
 {
     LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
     QWindow::touchEvent(event);
-}
-
-void MozQWidget::wheelEvent(QWheelEvent* event)
-{
-    LOG(("MozQWidget::%s [%p]\n", __FUNCTION__, (void *)this));
-    QWindow::wheelEvent(event);
 }

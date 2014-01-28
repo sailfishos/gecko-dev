@@ -58,7 +58,8 @@ protected:
 
 private:
     nsWindow* mReceiver;
-    bool m_update_pending;
+    bool mUpdatePending;
+    nsWindowType mWindowType;
 };
 
 } // namespace widget

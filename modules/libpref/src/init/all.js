@@ -4065,11 +4065,7 @@ pref("layers.acceleration.disabled", false);
 // means a startup crash for everyone.
 pref("layers.acceleration.force-enabled", true);
 #else
-#ifdef MOZ_WIDGET_QT
-pref("layers.acceleration.force-enabled", true);
-#else
 pref("layers.acceleration.force-enabled", false);
-#endif
 #endif
 
 pref("layers.acceleration.draw-fps", false);
