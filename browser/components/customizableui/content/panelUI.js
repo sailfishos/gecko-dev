@@ -141,12 +141,6 @@ const PanelUI = {
       let iconAnchor =
         document.getAnonymousElementByAttribute(anchor, "class",
                                                 "toolbarbutton-icon");
-
-      // Only focus the panel if it's opened using the keyboard, so that
-      // cut/copy/paste buttons will work for mouse users.
-      let keyboardOpened = aEvent && aEvent.sourceEvent &&
-                           aEvent.sourceEvent.target.localName == "key";
-      this.panel.setAttribute("noautofocus", !keyboardOpened);
       this.panel.openPopup(iconAnchor || anchor, "bottomcenter topright");
 
       this.panel.addEventListener("popupshown", function onPopupShown() {
@@ -171,6 +165,9 @@ const PanelUI = {
 
   handleEvent: function(aEvent) {
     switch (aEvent.type) {
+      case "command":
+        this.onCommandHandler(aEvent);
+        break;
       case "popupshowing":
         // Fall through
       case "popupshown":
@@ -409,15 +406,16 @@ const PanelUI = {
           continue;
         button.setAttribute(attrName, node.getAttribute(attrName));
       }
+      button.setAttribute("class", "subviewbutton");
       fragment.appendChild(button);
     }
     items.appendChild(fragment);
 
-    this.addEventListener("command", PanelUI.onCommandHandler);
+    this.addEventListener("command", PanelUI);
   },
 
   _onHelpViewHide: function(aEvent) {
-    this.removeEventListener("command", PanelUI.onCommandHandler);
+    this.removeEventListener("command", PanelUI);
   }
 };
 

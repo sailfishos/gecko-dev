@@ -485,7 +485,7 @@ static const JSClass sCTypeProtoClass = {
   JSCLASS_HAS_RESERVED_SLOTS(CTYPEPROTO_SLOTS),
   JS_PropertyStub, JS_DeletePropertyStub, JS_PropertyStub, JS_StrictPropertyStub,
   JS_EnumerateStub, JS_ResolveStub, JS_ConvertStub, nullptr,
-  nullptr, ConstructAbstract, nullptr, ConstructAbstract
+  ConstructAbstract, nullptr, ConstructAbstract
 };
 
 // Class representing ctypes.CData.prototype and the 'prototype' properties
@@ -502,7 +502,7 @@ static const JSClass sCTypeClass = {
   JSCLASS_IMPLEMENTS_BARRIERS | JSCLASS_HAS_RESERVED_SLOTS(CTYPE_SLOTS),
   JS_PropertyStub, JS_DeletePropertyStub, JS_PropertyStub, JS_StrictPropertyStub,
   JS_EnumerateStub, JS_ResolveStub, JS_ConvertStub, CType::Finalize,
-  nullptr, CType::ConstructData, CType::HasInstance, CType::ConstructData,
+  CType::ConstructData, CType::HasInstance, CType::ConstructData,
   CType::Trace
 };
 
@@ -511,7 +511,7 @@ static const JSClass sCDataClass = {
   JSCLASS_HAS_RESERVED_SLOTS(CDATA_SLOTS),
   JS_PropertyStub, JS_DeletePropertyStub, ArrayType::Getter, ArrayType::Setter,
   JS_EnumerateStub, JS_ResolveStub, JS_ConvertStub, CData::Finalize,
-  nullptr, FunctionType::Call, nullptr, FunctionType::Call
+  FunctionType::Call, nullptr, FunctionType::Call
 };
 
 static const JSClass sCClosureClass = {
@@ -519,7 +519,7 @@ static const JSClass sCClosureClass = {
   JSCLASS_IMPLEMENTS_BARRIERS | JSCLASS_HAS_RESERVED_SLOTS(CCLOSURE_SLOTS),
   JS_PropertyStub, JS_DeletePropertyStub, JS_PropertyStub, JS_StrictPropertyStub,
   JS_EnumerateStub, JS_ResolveStub, JS_ConvertStub, CClosure::Finalize,
-  nullptr, nullptr, nullptr, nullptr, CClosure::Trace
+  nullptr, nullptr, nullptr, CClosure::Trace
 };
 
 /*
@@ -577,7 +577,7 @@ static const JSPropertySpec sCTypeProps[] = {
   JS_PSG("prototype",
          (Property<CType::IsCTypeOrProto, CType::PrototypeGetter>::Fun),
          CTYPESACC_FLAGS),
-  { 0, 0, 0, JSOP_NULLWRAPPER, JSOP_NULLWRAPPER }
+  JS_PS_END
 };
 
 static const JSFunctionSpec sCTypeFunctions[] = {
@@ -608,10 +608,6 @@ static const JSFunctionSpec sCDataFunctions[] = {
   JS_FN("toSource", CData::ToSource, 0, CDATAFN_FLAGS),
   JS_FN("toString", CData::ToSource, 0, CDATAFN_FLAGS),
   JS_FS_END
-};
-
-static const JSPropertySpec sCDataFinalizerProps[] = {
-  { 0, 0, 0, JSOP_NULLWRAPPER, JSOP_NULLWRAPPER }
 };
 
 static const JSFunctionSpec sCDataFinalizerFunctions[] = {
@@ -1322,10 +1318,8 @@ using namespace js;
 using namespace js::ctypes;
 
 JS_PUBLIC_API(bool)
-JS_InitCTypesClass(JSContext* cx, JSObject *globalArg)
+JS_InitCTypesClass(JSContext* cx, HandleObject global)
 {
-  RootedObject global(cx, globalArg);
-
   // attach ctypes property to global object
   RootedObject ctypes(cx, JS_NewObject(cx, &sCTypesGlobalClass, NullPtr(), NullPtr()));
   if (!ctypes)
@@ -1353,8 +1347,7 @@ JS_InitCTypesClass(JSContext* cx, JSObject *globalArg)
   if (!prototype)
     return false;
 
-  if (!JS_DefineProperties(cx, prototype, sCDataFinalizerProps) ||
-      !JS_DefineFunctions(cx, prototype, sCDataFinalizerFunctions))
+  if (!JS_DefineFunctions(cx, prototype, sCDataFinalizerFunctions))
     return false;
 
   if (!JS_DefineProperty(cx, ctor, "prototype", OBJECT_TO_JSVAL(prototype),

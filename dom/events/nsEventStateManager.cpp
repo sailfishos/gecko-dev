@@ -1701,10 +1701,8 @@ nsEventStateManager::HandleCrossProcessEvent(WidgetEvent* aEvent,
       aEvent->message == NS_TOUCH_START) {
     // If this event only has one target, and it's remote, add it to
     // the array.
-    nsIContent* target = mCurrentTargetContent;
-    if (!target && aTargetFrame) {
-      target = aTargetFrame->GetContent();
-    }
+    nsIFrame* frame = GetEventTarget();
+    nsIContent* target = frame ? frame->GetContent() : nullptr;
     if (IsRemoteTarget(target)) {
       targets.AppendElement(target);
     }
@@ -2164,6 +2162,15 @@ nsEventStateManager::GenerateDragGesture(nsPresContext* aPresContext,
         nsEventDispatcher::Dispatch(targetContent, aPresContext, &gestureEvent, nullptr,
                                     &status);
         event = &gestureEvent;
+      }
+
+      nsCOMPtr<nsIObserverService> observerService =
+        mozilla::services::GetObserverService();
+      // Emit observer event to allow addons to modify the DataTransfer object.
+      if (observerService) {
+        observerService->NotifyObservers(dataTransfer,
+                                         "on-datatransfer-available",
+                                         nullptr);
       }
 
       // now that the dataTransfer has been updated in the dragstart and

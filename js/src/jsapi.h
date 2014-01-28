@@ -1462,7 +1462,8 @@ class JS_PUBLIC_API(ContextOptions) {
         baseline_(false),
         typeInference_(false),
         ion_(false),
-        asmJS_(false)
+        asmJS_(false),
+        cloneSingletons_(false)
     {
     }
 
@@ -1586,6 +1587,16 @@ class JS_PUBLIC_API(ContextOptions) {
         return *this;
     }
 
+    bool cloneSingletons() const { return cloneSingletons_; }
+    ContextOptions &setCloneSingletons(bool flag) {
+        cloneSingletons_ = flag;
+        return *this;
+    }
+    ContextOptions &toggleCloneSingletons() {
+        cloneSingletons_ = !cloneSingletons_;
+        return *this;
+    }
+
   private:
     bool extraWarnings_ : 1;
     bool werror_ : 1;
@@ -1599,6 +1610,7 @@ class JS_PUBLIC_API(ContextOptions) {
     bool typeInference_ : 1;
     bool ion_ : 1;
     bool asmJS_ : 1;
+    bool cloneSingletons_ : 1;
 };
 
 JS_PUBLIC_API(ContextOptions &)
@@ -1780,21 +1792,21 @@ JS_IdToProtoKey(JSContext *cx, JS::HandleId id);
  * which |forObj| was created.
  */
 extern JS_PUBLIC_API(JSObject *)
-JS_GetFunctionPrototype(JSContext *cx, JSObject *forObj);
+JS_GetFunctionPrototype(JSContext *cx, JS::HandleObject forObj);
 
 /*
  * Returns the original value of |Object.prototype| from the global object in
  * which |forObj| was created.
  */
 extern JS_PUBLIC_API(JSObject *)
-JS_GetObjectPrototype(JSContext *cx, JSObject *forObj);
+JS_GetObjectPrototype(JSContext *cx, JS::HandleObject forObj);
 
 /*
  * Returns the original value of |Array.prototype| from the global object in
  * which |forObj| was created.
  */
 extern JS_PUBLIC_API(JSObject *)
-JS_GetArrayPrototype(JSContext *cx, JSObject *forObj);
+JS_GetArrayPrototype(JSContext *cx, JS::HandleObject forObj);
 
 extern JS_PUBLIC_API(JSObject *)
 JS_GetGlobalForObject(JSContext *cx, JSObject *obj);
@@ -1832,7 +1844,7 @@ JS_GetScriptedGlobal(JSContext *cx);
  * Initialize the 'Reflect' object on a global object.
  */
 extern JS_PUBLIC_API(JSObject *)
-JS_InitReflect(JSContext *cx, JSObject *global);
+JS_InitReflect(JSContext *cx, JS::HandleObject global);
 
 #ifdef JS_HAS_CTYPES
 /*
@@ -1840,7 +1852,7 @@ JS_InitReflect(JSContext *cx, JSObject *global);
  * object will be sealed.
  */
 extern JS_PUBLIC_API(bool)
-JS_InitCTypesClass(JSContext *cx, JSObject *global);
+JS_InitCTypesClass(JSContext *cx, JS::HandleObject global);
 
 /*
  * Convert a unicode string 'source' of length 'slen' to the platform native
@@ -2278,7 +2290,6 @@ class AutoIdArray : private AutoGCRooter
     }
     jsid operator[](size_t i) const {
         JS_ASSERT(idArray);
-        JS_ASSERT(i < length());
         return JS_IdArrayGet(context, idArray, i);
     }
     size_t length() const {
@@ -2611,6 +2622,7 @@ class JS_PUBLIC_API(CompartmentOptions)
       : version_(JSVERSION_UNKNOWN)
       , invisibleToDebugger_(false)
       , mergeable_(false)
+      , singletonsAsTemplates_(true)
     {
         zone_.spec = JS::FreshZone;
     }
@@ -2654,6 +2666,9 @@ class JS_PUBLIC_API(CompartmentOptions)
     bool asmJS(JSContext *cx) const;
     Override &asmJSOverride() { return asmJSOverride_; }
 
+    bool cloneSingletons(JSContext *cx) const;
+    Override &cloneSingletonsOverride() { return cloneSingletonsOverride_; }
+
     void *zonePointer() const {
         JS_ASSERT(uintptr_t(zone_.pointer) > uintptr_t(JS::SystemZone));
         return zone_.pointer;
@@ -2661,6 +2676,13 @@ class JS_PUBLIC_API(CompartmentOptions)
     ZoneSpecifier zoneSpecifier() const { return zone_.spec; }
     CompartmentOptions &setZone(ZoneSpecifier spec);
     CompartmentOptions &setSameZoneAs(JSObject *obj);
+
+    void setSingletonsAsValues() {
+        singletonsAsTemplates_ = false;
+    }
+    bool getSingletonsAsTemplates() const {
+        return singletonsAsTemplates_;
+    };
 
   private:
     JSVersion version_;
@@ -2670,10 +2692,16 @@ class JS_PUBLIC_API(CompartmentOptions)
     Override typeInferenceOverride_;
     Override ionOverride_;
     Override asmJSOverride_;
+    Override cloneSingletonsOverride_;
     union {
         ZoneSpecifier spec;
         void *pointer; // js::Zone* is not exposed in the API.
     } zone_;
+
+    // To XDR singletons, we need to ensure that all singletons are all used as
+    // templates, by making JSOP_OBJECT return a clone of the JSScript
+    // singleton, instead of returning the value which is baked in the JSScript.
+    bool singletonsAsTemplates_;
 };
 
 JS_PUBLIC_API(CompartmentOptions &)
@@ -2801,10 +2829,11 @@ extern JS_PUBLIC_API(bool)
 JS_HasPropertyById(JSContext *cx, JS::HandleObject obj, JS::HandleId id, bool *foundp);
 
 extern JS_PUBLIC_API(bool)
-JS_LookupProperty(JSContext *cx, JSObject *obj, const char *name, JS::MutableHandleValue vp);
+JS_LookupProperty(JSContext *cx, JS::HandleObject obj, const char *name, JS::MutableHandleValue vp);
 
 extern JS_PUBLIC_API(bool)
-JS_LookupPropertyById(JSContext *cx, JSObject *obj, jsid id, JS::MutableHandleValue vp);
+JS_LookupPropertyById(JSContext *cx, JS::HandleObject obj, JS::HandleId id,
+                      JS::MutableHandleValue vp);
 
 extern JS_PUBLIC_API(bool)
 JS_LookupPropertyWithFlags(JSContext *cx, JS::HandleObject obj, const char *name,
@@ -2991,14 +3020,14 @@ extern JS_PUBLIC_API(bool)
 JS_GetPropertyById(JSContext *cx, JSObject *obj, jsid id, JS::MutableHandleValue vp);
 
 extern JS_PUBLIC_API(bool)
-JS_ForwardGetPropertyTo(JSContext *cx, JSObject *obj, jsid id, JSObject *onBehalfOf,
+JS_ForwardGetPropertyTo(JSContext *cx, JS::HandleObject obj, JS::HandleId id, JS::HandleObject onBehalfOf,
                         JS::MutableHandleValue vp);
 
 extern JS_PUBLIC_API(bool)
-JS_SetProperty(JSContext *cx, JSObject *obj, const char *name, JS::HandleValue v);
+JS_SetProperty(JSContext *cx, JS::HandleObject obj, const char *name, JS::HandleValue v);
 
 extern JS_PUBLIC_API(bool)
-JS_SetPropertyById(JSContext *cx, JSObject *obj, jsid id, JS::HandleValue v);
+JS_SetPropertyById(JSContext *cx, JS::HandleObject obj, JS::HandleId id, JS::HandleValue v);
 
 extern JS_PUBLIC_API(bool)
 JS_DeleteProperty(JSContext *cx, JS::HandleObject obj, const char *name);
@@ -3035,7 +3064,7 @@ JS_HasUCProperty(JSContext *cx, JS::HandleObject obj,
                  bool *vp);
 
 extern JS_PUBLIC_API(bool)
-JS_LookupUCProperty(JSContext *cx, JSObject *obj,
+JS_LookupUCProperty(JSContext *cx, JS::HandleObject obj,
                     const jschar *name, size_t namelen,
                     JS::MutableHandleValue vp);
 
@@ -3045,7 +3074,7 @@ JS_GetUCProperty(JSContext *cx, JSObject *obj,
                  JS::MutableHandleValue vp);
 
 extern JS_PUBLIC_API(bool)
-JS_SetUCProperty(JSContext *cx, JSObject *obj,
+JS_SetUCProperty(JSContext *cx, JS::HandleObject obj,
                  const jschar *name, size_t namelen,
                  JS::HandleValue v);
 
@@ -3076,7 +3105,7 @@ extern JS_PUBLIC_API(bool)
 JS_HasElement(JSContext *cx, JS::HandleObject obj, uint32_t index, bool *foundp);
 
 extern JS_PUBLIC_API(bool)
-JS_LookupElement(JSContext *cx, JSObject *obj, uint32_t index, JS::MutableHandleValue vp);
+JS_LookupElement(JSContext *cx, JS::HandleObject obj, uint32_t index, JS::MutableHandleValue vp);
 
 extern JS_PUBLIC_API(bool)
 JS_GetElement(JSContext *cx, JSObject *obj, uint32_t index, JS::MutableHandleValue vp);
@@ -3086,7 +3115,22 @@ JS_ForwardGetElementTo(JSContext *cx, JSObject *obj, uint32_t index, JSObject *o
                        JS::MutableHandleValue vp);
 
 extern JS_PUBLIC_API(bool)
-JS_SetElement(JSContext *cx, JSObject *obj, uint32_t index, JS::MutableHandleValue vp);
+JS_SetElement(JSContext *cx, JS::HandleObject obj, uint32_t index, JS::HandleValue v);
+
+extern JS_PUBLIC_API(bool)
+JS_SetElement(JSContext *cx, JS::HandleObject obj, uint32_t index, JS::HandleObject v);
+
+extern JS_PUBLIC_API(bool)
+JS_SetElement(JSContext *cx, JS::HandleObject obj, uint32_t index, JS::HandleString v);
+
+extern JS_PUBLIC_API(bool)
+JS_SetElement(JSContext *cx, JS::HandleObject obj, uint32_t index, int32_t v);
+
+extern JS_PUBLIC_API(bool)
+JS_SetElement(JSContext *cx, JS::HandleObject obj, uint32_t index, uint32_t v);
+
+extern JS_PUBLIC_API(bool)
+JS_SetElement(JSContext *cx, JS::HandleObject obj, uint32_t index, double v);
 
 extern JS_PUBLIC_API(bool)
 JS_DeleteElement(JSContext *cx, JS::HandleObject obj, uint32_t index);
@@ -3168,10 +3212,6 @@ JS_NewPropertyIterator(JSContext *cx, JS::Handle<JSObject*> obj);
 extern JS_PUBLIC_API(bool)
 JS_NextProperty(JSContext *cx, JS::Handle<JSObject*> iterobj, jsid *idp);
 
-extern JS_PUBLIC_API(bool)
-JS_CheckAccess(JSContext *cx, JS::Handle<JSObject*> obj, JS::Handle<jsid> id, JSAccessMode mode,
-               JS::MutableHandle<JS::Value> vp, unsigned *attrsp);
-
 extern JS_PUBLIC_API(jsval)
 JS_GetReservedSlot(JSObject *obj, uint32_t index);
 
@@ -3216,7 +3256,6 @@ extern JS_PUBLIC_API(void)
 JS_DropPrincipals(JSRuntime *rt, JSPrincipals *principals);
 
 struct JSSecurityCallbacks {
-    JSCheckAccessOp            checkObjectAccess;
     JSCSPEvalChecker           contentSecurityPolicyAllows;
     JSSubsumesOp               subsumes;
 };
@@ -3334,16 +3373,16 @@ extern JS_PUBLIC_API(bool)
 JS_DefineFunctions(JSContext *cx, JS::Handle<JSObject*> obj, const JSFunctionSpec *fs);
 
 extern JS_PUBLIC_API(JSFunction *)
-JS_DefineFunction(JSContext *cx, JSObject *obj, const char *name, JSNative call,
+JS_DefineFunction(JSContext *cx, JS::Handle<JSObject*> obj, const char *name, JSNative call,
                   unsigned nargs, unsigned attrs);
 
 extern JS_PUBLIC_API(JSFunction *)
-JS_DefineUCFunction(JSContext *cx, JSObject *obj,
+JS_DefineUCFunction(JSContext *cx, JS::Handle<JSObject*> obj,
                     const jschar *name, size_t namelen, JSNative call,
                     unsigned nargs, unsigned attrs);
 
 extern JS_PUBLIC_API(JSFunction *)
-JS_DefineFunctionById(JSContext *cx, JSObject *obj, jsid id, JSNative call,
+JS_DefineFunctionById(JSContext *cx, JS::Handle<JSObject*> obj, JS::Handle<jsid> id, JSNative call,
                       unsigned nargs, unsigned attrs);
 
 /*
@@ -3793,24 +3832,24 @@ JS_EvaluateScriptForPrincipalsVersion(JSContext *cx, JSObject *obj,
                                       jsval *rval, JSVersion version);
 
 extern JS_PUBLIC_API(bool)
-JS_EvaluateUCScript(JSContext *cx, JSObject *obj,
+JS_EvaluateUCScript(JSContext *cx, JS::Handle<JSObject*> obj,
                     const jschar *chars, unsigned length,
                     const char *filename, unsigned lineno,
-                    jsval *rval);
+                    JS::MutableHandle<JS::Value> rval);
 
 extern JS_PUBLIC_API(bool)
-JS_EvaluateUCScriptForPrincipals(JSContext *cx, JSObject *obj,
+JS_EvaluateUCScriptForPrincipals(JSContext *cx, JS::Handle<JSObject*> obj,
                                  JSPrincipals *principals,
                                  const jschar *chars, unsigned length,
                                  const char *filename, unsigned lineno,
-                                 jsval *rval);
+                                 JS::MutableHandle<JS::Value> rval);
 
 extern JS_PUBLIC_API(bool)
-JS_EvaluateUCScriptForPrincipalsVersion(JSContext *cx, JSObject *obj,
+JS_EvaluateUCScriptForPrincipalsVersion(JSContext *cx, JS::Handle<JSObject*> obj,
                                         JSPrincipals *principals,
                                         const jschar *chars, unsigned length,
                                         const char *filename, unsigned lineno,
-                                        jsval *rval, JSVersion version);
+                                        JS::MutableHandle<JS::Value> rval, JSVersion version);
 
 /*
  * JSAPI clients may optionally specify the 'originPrincipals' of a script.
@@ -3821,12 +3860,13 @@ JS_EvaluateUCScriptForPrincipalsVersion(JSContext *cx, JSObject *obj,
  * value of principals is used as origin principals for the script.
  */
 extern JS_PUBLIC_API(bool)
-JS_EvaluateUCScriptForPrincipalsVersionOrigin(JSContext *cx, JSObject *obj,
+JS_EvaluateUCScriptForPrincipalsVersionOrigin(JSContext *cx, JS::Handle<JSObject*> obj,
                                               JSPrincipals *principals,
                                               JSPrincipals *originPrincipals,
                                               const jschar *chars, unsigned length,
                                               const char *filename, unsigned lineno,
-                                              jsval *rval, JSVersion version);
+                                              JS::MutableHandle<JS::Value> rval,
+                                              JSVersion version);
 
 namespace JS {
 

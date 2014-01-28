@@ -225,6 +225,7 @@ CompositableDataGonkOGL::DeleteTextureIfPresent()
     if (gl()->MakeCurrent()) {
       gl()->fDeleteTextures(1, &mTexture);
     }
+    mTexture = 0;
   }
 }
 
@@ -377,13 +378,13 @@ SharedTextureSourceOGL::gl() const
   return mCompositor ? mCompositor->gl() : nullptr;
 }
 
-gfx3DMatrix
+gfx::Matrix4x4
 SharedTextureSourceOGL::GetTextureTransform()
 {
   SharedHandleDetails handleDetails;
   if (!GetSharedHandleDetails(gl(), mShareType, mSharedHandle, handleDetails)) {
     NS_WARNING("Could not get shared handle details");
-    return gfx3DMatrix();
+    return gfx::Matrix4x4();
   }
 
   return handleDetails.mTextureTransform;
@@ -750,7 +751,7 @@ TextureImageDeprecatedTextureHostOGL::UpdateImpl(const SurfaceDescriptor& aImage
       (mTexture->GetSize() != size && !aOffset) ||
       mTexture->GetContentType() != surf.ContentType() ||
       (mTexture->GetImageFormat() != format &&
-       mTexture->GetImageFormat() != gfxImageFormatUnknown)) {
+       mTexture->GetImageFormat() != gfxImageFormat::Unknown)) {
 
     mTexture = CreateTextureImage(mGL,
                                   size,
@@ -882,7 +883,7 @@ SharedDeprecatedTextureHostOGL::Unlock()
 }
 
 
-gfx3DMatrix
+gfx::Matrix4x4
 SharedDeprecatedTextureHostOGL::GetTextureTransform()
 {
   SharedHandleDetails handleDetails;
@@ -1079,21 +1080,21 @@ YCbCrDeprecatedTextureHostOGL::UpdateImpl(const SurfaceDescriptor& aImage,
   if (!mYTexture->mTexImage || mYTexture->mTexImage->GetSize() != gfxSize) {
     mYTexture->mTexImage = CreateBasicTextureImage(mGL,
                                                    gfxSize,
-                                                   GFX_CONTENT_ALPHA,
+                                                   gfxContentType::ALPHA,
                                                    WrapMode(mGL, mFlags & TEXTURE_ALLOW_REPEAT),
                                                    FlagsToGLFlags(mFlags));
   }
   if (!mCbTexture->mTexImage || mCbTexture->mTexImage->GetSize() != gfxCbCrSize) {
     mCbTexture->mTexImage = CreateBasicTextureImage(mGL,
                                                     gfxCbCrSize,
-                                                    GFX_CONTENT_ALPHA,
+                                                    gfxContentType::ALPHA,
                                                     WrapMode(mGL, mFlags & TEXTURE_ALLOW_REPEAT),
                                                     FlagsToGLFlags(mFlags));
   }
   if (!mCrTexture->mTexImage || mCrTexture->mTexImage->GetSize() != gfxCbCrSize) {
     mCrTexture->mTexImage = CreateBasicTextureImage(mGL,
                                                     gfxCbCrSize,
-                                                    GFX_CONTENT_ALPHA,
+                                                    gfxContentType::ALPHA,
                                                     WrapMode(mGL, mFlags & TEXTURE_ALLOW_REPEAT),
                                                     FlagsToGLFlags(mFlags));
   }
@@ -1102,17 +1103,17 @@ YCbCrDeprecatedTextureHostOGL::UpdateImpl(const SurfaceDescriptor& aImage,
     new gfxImageSurface(deserializer.GetYData(),
                         gfx::ThebesIntSize(gfxSize),
                         deserializer.GetYStride(),
-                        gfxImageFormatA8);
+                        gfxImageFormat::A8);
   RefPtr<gfxImageSurface> tempCb =
     new gfxImageSurface(deserializer.GetCbData(),
                         gfx::ThebesIntSize(gfxCbCrSize),
                         deserializer.GetCbCrStride(),
-                        gfxImageFormatA8);
+                        gfxImageFormat::A8);
   RefPtr<gfxImageSurface> tempCr =
     new gfxImageSurface(deserializer.GetCrData(),
                         gfx::ThebesIntSize(gfxCbCrSize),
                         deserializer.GetCbCrStride(),
-                        gfxImageFormatA8);
+                        gfxImageFormat::A8);
 
   nsIntRegion yRegion(nsIntRect(0, 0, gfxSize.width, gfxSize.height));
   nsIntRegion cbCrRegion(nsIntRect(0, 0, gfxCbCrSize.width, gfxCbCrSize.height));
@@ -1146,7 +1147,7 @@ GetFormatAndTileForImageFormat(gfxImageFormat aFormat,
                                GLenum& aOutFormat,
                                GLenum& aOutType)
 {
-  if (aFormat == gfxImageFormatRGB16_565) {
+  if (aFormat == gfxImageFormat::RGB16_565) {
     aOutFormat = LOCAL_GL_RGB;
     aOutType = LOCAL_GL_UNSIGNED_SHORT_5_6_5;
   } else {

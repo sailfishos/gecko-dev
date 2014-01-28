@@ -120,6 +120,7 @@ template <typename T>
 void
 StoreBuffer::MonoTypeBuffer<T>::mark(StoreBuffer *owner, JSTracer *trc)
 {
+    JS_ASSERT(owner->isEnabled());
     ReentrancyGuard g(*owner);
     if (!storage_)
         return;
@@ -188,6 +189,7 @@ StoreBuffer::RelocatableMonoTypeBuffer<T>::compact(StoreBuffer *owner)
 void
 StoreBuffer::GenericBuffer::mark(StoreBuffer *owner, JSTracer *trc)
 {
+    JS_ASSERT(owner->isEnabled());
     ReentrancyGuard g(*owner);
     if (!storage_)
         return;
@@ -279,10 +281,8 @@ StoreBuffer::clear()
 }
 
 void
-StoreBuffer::mark(JSTracer *trc)
+StoreBuffer::markAll(JSTracer *trc)
 {
-    JS_ASSERT(isEnabled());
-
     bufferVal.mark(this, trc);
     bufferCell.mark(this, trc);
     bufferSlot.mark(this, trc);
@@ -303,6 +303,19 @@ bool
 StoreBuffer::inParallelSection() const
 {
     return InParallelSection();
+}
+
+void
+StoreBuffer::addSizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf, JS::GCSizes
+*sizes)
+{
+    sizes->storeBufferVals       += bufferVal.sizeOfExcludingThis(mallocSizeOf);
+    sizes->storeBufferCells      += bufferCell.sizeOfExcludingThis(mallocSizeOf);
+    sizes->storeBufferSlots      += bufferSlot.sizeOfExcludingThis(mallocSizeOf);
+    sizes->storeBufferWholeCells += bufferWholeCell.sizeOfExcludingThis(mallocSizeOf);
+    sizes->storeBufferRelocVals  += bufferRelocVal.sizeOfExcludingThis(mallocSizeOf);
+    sizes->storeBufferRelocCells += bufferRelocCell.sizeOfExcludingThis(mallocSizeOf);
+    sizes->storeBufferGenerics   += bufferGeneric.sizeOfExcludingThis(mallocSizeOf);
 }
 
 JS_PUBLIC_API(void)

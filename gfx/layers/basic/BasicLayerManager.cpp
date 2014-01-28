@@ -93,20 +93,20 @@ BasicLayerManager::PushGroupForLayer(gfxContext* aContext, Layer* aLayer,
   if (aLayer->CanUseOpaqueSurface() &&
       ((didCompleteClip && aRegion.GetNumRects() == 1) ||
        !aContext->CurrentMatrix().HasNonIntegerTranslation())) {
-    // If the layer is opaque in its visible region we can push a GFX_CONTENT_COLOR
+    // If the layer is opaque in its visible region we can push a gfxContentType::COLOR
     // group. We need to make sure that only pixels inside the layer's visible
     // region are copied back to the destination. Remember if we've already
     // clipped precisely to the visible region.
     *aNeedsClipToVisibleRegion = !didCompleteClip || aRegion.GetNumRects() > 1;
     MOZ_ASSERT(!aContext->IsCairo());
-    result = PushGroupWithCachedSurface(aContext, GFX_CONTENT_COLOR);
+    result = PushGroupWithCachedSurface(aContext, gfxContentType::COLOR);
   } else {
     *aNeedsClipToVisibleRegion = false;
     result = aContext;
     if (aLayer->GetContentFlags() & Layer::CONTENT_COMPONENT_ALPHA) {
-      aContext->PushGroupAndCopyBackground(GFX_CONTENT_COLOR_ALPHA);
+      aContext->PushGroupAndCopyBackground(gfxContentType::COLOR_ALPHA);
     } else {
-      aContext->PushGroup(GFX_CONTENT_COLOR_ALPHA);
+      aContext->PushGroup(gfxContentType::COLOR_ALPHA);
     }
   }
   return result.forget();
@@ -160,7 +160,8 @@ public:
   // transform.
   bool Setup2DTransform()
   {
-    const gfx3DMatrix& effectiveTransform = mLayer->GetEffectiveTransform();
+    gfx3DMatrix effectiveTransform;
+    To3DMatrix(mLayer->GetEffectiveTransform(), effectiveTransform);
     // Will return an identity matrix for 3d transforms.
     return effectiveTransform.CanDraw2D(&mTransform);
   }
@@ -238,7 +239,7 @@ public:
 BasicLayerManager::BasicLayerManager(nsIWidget* aWidget) :
   mPhase(PHASE_NONE),
   mWidget(aWidget)
-  , mDoubleBuffering(BUFFER_NONE), mUsingDefaultTarget(false)
+  , mDoubleBuffering(BufferMode::BUFFER_NONE), mUsingDefaultTarget(false)
   , mCachedSurfaceInUse(false)
   , mTransactionIncomplete(false)
   , mCompositorMightResample(false)
@@ -250,7 +251,7 @@ BasicLayerManager::BasicLayerManager(nsIWidget* aWidget) :
 BasicLayerManager::BasicLayerManager() :
   mPhase(PHASE_NONE),
   mWidget(nullptr)
-  , mDoubleBuffering(BUFFER_NONE), mUsingDefaultTarget(false)
+  , mDoubleBuffering(BufferMode::BUFFER_NONE), mUsingDefaultTarget(false)
   , mCachedSurfaceInUse(false)
   , mTransactionIncomplete(false)
 {
@@ -403,7 +404,9 @@ MarkLayersHidden(Layer* aLayer, const nsIntRect& aClipRect,
       // global coordinate system.
       if (aLayer->GetParent()) {
         gfxMatrix tr;
-        if (aLayer->GetParent()->GetEffectiveTransform().CanDraw2D(&tr)) {
+        gfx3DMatrix effectiveTransform;
+        gfx::To3DMatrix(aLayer->GetParent()->GetEffectiveTransform(), effectiveTransform);
+        if (effectiveTransform.CanDraw2D(&tr)) {
           // Clip rect is applied after aLayer's transform, i.e., in the coordinate
           // system of aLayer's parent.
           TransformIntRect(cr, tr, ToInsideIntRect);
@@ -422,7 +425,9 @@ MarkLayersHidden(Layer* aLayer, const nsIntRect& aClipRect,
 
   if (!aLayer->AsContainerLayer()) {
     gfxMatrix transform;
-    if (!aLayer->GetEffectiveTransform().CanDraw2D(&transform)) {
+    gfx3DMatrix effectiveTransform;
+    gfx::To3DMatrix(aLayer->GetEffectiveTransform(), effectiveTransform);
+    if (!effectiveTransform.CanDraw2D(&transform)) {
       data->SetHidden(false);
       return;
     }
@@ -483,7 +488,9 @@ ApplyDoubleBuffering(Layer* aLayer, const nsIntRect& aVisibleRect)
       // global coordinate system.
       if (aLayer->GetParent()) {
         gfxMatrix tr;
-        if (aLayer->GetParent()->GetEffectiveTransform().CanDraw2D(&tr)) {
+        gfx3DMatrix effectiveTransform;
+        gfx::To3DMatrix(aLayer->GetParent()->GetEffectiveTransform(), effectiveTransform);
+        if (effectiveTransform.CanDraw2D(&tr)) {
           NS_ASSERTION(!tr.HasNonIntegerTranslation(),
                        "Parent can only have an integer translation");
           cr += nsIntPoint(int32_t(tr.x0), int32_t(tr.y0));
@@ -592,7 +599,7 @@ BasicLayerManager::EndTransactionInternal(DrawThebesLayerCallback aCallback,
     // which depends on correct effective transforms
     mSnapEffectiveTransforms =
       mTarget ? !(mTarget->GetFlags() & gfxContext::FLAG_DISABLE_SNAPPING) : true;
-    mRoot->ComputeEffectiveTransforms(mTarget ? gfx3DMatrix::From2D(mTarget->CurrentMatrix()) : gfx3DMatrix());
+    mRoot->ComputeEffectiveTransforms(mTarget ? Matrix4x4::From2D(ToMatrix(mTarget->CurrentMatrix())) : Matrix4x4());
 
     ToData(mRoot)->Validate(aCallback, aCallbackData);
     if (mRoot->GetMaskLayer()) {
@@ -620,7 +627,7 @@ BasicLayerManager::EndTransactionInternal(DrawThebesLayerCallback aCallback,
     if (IsRetained()) {
       nsIntRegion region;
       MarkLayersHidden(mRoot, clipRect, clipRect, region, ALLOW_OPAQUE);
-      if (mUsingDefaultTarget && mDoubleBuffering != BUFFER_NONE) {
+      if (mUsingDefaultTarget && mDoubleBuffering != BufferMode::BUFFER_NONE) {
         ApplyDoubleBuffering(mRoot, clipRect);
       }
     }
@@ -723,7 +730,7 @@ PixmanTransform(const gfxImageSurface* aDest,
                 gfxPoint aDestOffset)
 {
   IntSize destSize = ToIntSize(aDest->GetSize());
-  pixman_image_t* dest = pixman_image_create_bits(aDest->Format() == gfxImageFormatARGB32 ? PIXMAN_a8r8g8b8 : PIXMAN_x8r8g8b8,
+  pixman_image_t* dest = pixman_image_create_bits(aDest->Format() == gfxImageFormat::ARGB32 ? PIXMAN_a8r8g8b8 : PIXMAN_x8r8g8b8,
                                                   destSize.width,
                                                   destSize.height,
                                                   (uint32_t*)aDest->Data(),
@@ -797,7 +804,7 @@ Transform3D(RefPtr<SourceSurface> aSource,
   nsRefPtr<gfxASurface> dest = aDest->CurrentSurface();
   nsRefPtr<gfxImageSurface> destImage = new gfxImageSurface(gfxIntSize(aDestRect.width,
                                                                        aDestRect.height),
-                                                            gfxImageFormatARGB32);
+                                                            gfxImageFormat::ARGB32);
   gfxPoint offset = aDestRect.TopLeft();
 
   // Include a translation to the correct origin.
@@ -983,7 +990,8 @@ BasicLayerManager::PaintLayer(gfxContext* aTarget,
       temp->Paint();
     }
 #endif
-    const gfx3DMatrix& effectiveTransform = aLayer->GetEffectiveTransform();
+    gfx3DMatrix effectiveTransform;
+    gfx::To3DMatrix(aLayer->GetEffectiveTransform(), effectiveTransform);
     nsRefPtr<gfxASurface> result =
       Transform3D(untransformedDT->Snapshot(), aTarget, bounds,
                   effectiveTransform, destRect);

@@ -18,7 +18,6 @@
 
 #include "jsarray.h"
 #include "jsatom.h"
-#include "jsautooplen.h"
 #include "jscntxt.h"
 #include "jsfun.h"
 #include "jsgc.h"
@@ -39,6 +38,7 @@
 #include "jit/Ion.h"
 #include "js/OldDebugAPI.h"
 #include "vm/Debugger.h"
+#include "vm/Opcodes.h"
 #include "vm/Shape.h"
 
 #include "jsatominlines.h"
@@ -1341,14 +1341,15 @@ Interpret(JSContext *cx, RunState &state)
     // Use addresses instead of offsets to optimize for runtime speed over
     // load-time relocation overhead.
     static const void *const addresses[EnableInterruptsPseudoOpcode + 1] = {
-# define OPDEF(op,v,n,t,l,u,d,f)  LABEL(op),
-# define OPPAD(v)                                                             \
+# define OPCODE_LABEL(op, ...)  LABEL(op),
+        FOR_EACH_OPCODE(OPCODE_LABEL)
+# undef OPCODE_LABEL
+# define TRAILING_LABEL(v)                                                    \
     ((v) == EnableInterruptsPseudoOpcode                                      \
      ? LABEL(EnableInterruptsPseudoOpcode)                                    \
      : LABEL(default)),
-# include "jsopcode.tbl"
-# undef OPDEF
-# undef OPPAD
+        FOR_EACH_TRAILING_UNUSED_OPCODE(TRAILING_LABEL)
+# undef TRAILING_LABEL
     };
 #else
 // Portable switch-based dispatch.
@@ -1658,7 +1659,6 @@ CASE(JSOP_UNUSED189)
 CASE(JSOP_UNUSED190)
 CASE(JSOP_UNUSED191)
 CASE(JSOP_UNUSED192)
-CASE(JSOP_UNUSED194)
 CASE(JSOP_UNUSED196)
 CASE(JSOP_UNUSED201)
 CASE(JSOP_UNUSED205)
@@ -2772,7 +2772,19 @@ CASE(JSOP_STRING)
 END_CASE(JSOP_STRING)
 
 CASE(JSOP_OBJECT)
-    PUSH_OBJECT(*script->getObject(REGS.pc));
+{
+    RootedObject &ref = rootObject0;
+    ref = script->getObject(REGS.pc);
+    if (JS::CompartmentOptionsRef(cx).cloneSingletons(cx)) {
+        JSObject *obj = js::DeepCloneObjectLiteral(cx, ref, js::MaybeSingletonObject);
+        if (!obj)
+            goto error;
+        PUSH_OBJECT(*obj);
+    } else {
+        JS::CompartmentOptionsRef(cx).setSingletonsAsValues();
+        PUSH_OBJECT(*ref);
+    }
+}
 END_CASE(JSOP_OBJECT)
 
 CASE(JSOP_REGEXP)
@@ -3100,6 +3112,28 @@ CASE(JSOP_ENDINIT)
 }
 END_CASE(JSOP_ENDINIT)
 
+CASE(JSOP_MUTATEPROTO)
+{
+    /* Load the new [[Prototype]] value into rval. */
+    MOZ_ASSERT(REGS.stackDepth() >= 2);
+    RootedValue &rval = rootValue0;
+    rval = REGS.sp[-1];
+
+    /* Load the object being initialized into lval/obj. */
+    RootedObject &obj = rootObject0;
+    obj = &REGS.sp[-2].toObject();
+    MOZ_ASSERT(obj->is<JSObject>());
+
+    RootedId &id = rootId0;
+    id = NameToId(cx->names().proto);
+
+    if (!baseops::SetPropertyHelper<SequentialExecution>(cx, obj, obj, id, 0, &rval, false))
+        goto error;
+
+    REGS.sp--;
+}
+END_CASE(JSOP_MUTATEPROTO);
+
 CASE(JSOP_INITPROP)
 {
     /* Load the property's initial value into rval. */
@@ -3117,13 +3151,8 @@ CASE(JSOP_INITPROP)
     RootedId &id = rootId0;
     id = NameToId(name);
 
-    if (JS_UNLIKELY(name == cx->names().proto)
-        ? !baseops::SetPropertyHelper<SequentialExecution>(cx, obj, obj, id, 0, &rval,
-                                                           script->strict())
-        : !DefineNativeProperty(cx, obj, id, rval, nullptr, nullptr,
-                                JSPROP_ENUMERATE, 0, 0, 0)) {
+    if (!DefineNativeProperty(cx, obj, id, rval, nullptr, nullptr, JSPROP_ENUMERATE, 0, 0, 0))
         goto error;
-    }
 
     REGS.sp--;
 }
@@ -3888,19 +3917,9 @@ js::InitGetterSetterOperation(JSContext *cx, jsbytecode *pc, HandleObject obj, H
                               HandleObject val)
 {
     JS_ASSERT(val->isCallable());
-
-    /*
-     * Getters and setters are just like watchpoints from an access control
-     * point of view.
-     */
-    RootedValue scratch(cx, UndefinedValue());
-    unsigned attrs = 0;
-    if (!CheckAccess(cx, obj, id, JSACC_WATCH, &scratch, &attrs))
-        return false;
-
     PropertyOp getter;
     StrictPropertyOp setter;
-    attrs = JSPROP_ENUMERATE | JSPROP_SHARED;
+    unsigned attrs = JSPROP_ENUMERATE | JSPROP_SHARED;
 
     JSOp op = JSOp(*pc);
 
@@ -3915,7 +3934,7 @@ js::InitGetterSetterOperation(JSContext *cx, jsbytecode *pc, HandleObject obj, H
         attrs |= JSPROP_SETTER;
     }
 
-    scratch.setUndefined();
+    RootedValue scratch(cx);
     return JSObject::defineGeneric(cx, obj, id, scratch, getter, setter, attrs);
 }
 

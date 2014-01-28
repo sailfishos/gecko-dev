@@ -71,8 +71,9 @@ GetMaskData(Layer* aMaskLayer, AutoMaskData* aMaskData)
         ->GetAsSurface(getter_AddRefs(surface), &descriptor) &&
         (surface || IsSurfaceDescriptorValid(descriptor))) {
       gfxMatrix transform;
-      DebugOnly<bool> maskIs2D =
-        aMaskLayer->GetEffectiveTransform().CanDraw2D(&transform);
+      gfx3DMatrix effectiveTransform;
+      gfx::To3DMatrix(aMaskLayer->GetEffectiveTransform(), effectiveTransform);
+      DebugOnly<bool> maskIs2D = effectiveTransform.CanDraw2D(&transform);
       NS_ASSERTION(maskIs2D, "How did we end up with a 3D transform here?!");
       if (surface) {
         aMaskData->Construct(transform, surface);
@@ -91,7 +92,7 @@ PaintWithMask(gfxContext* aContext, float aOpacity, Layer* aMaskLayer)
   AutoMaskData mask;
   if (GetMaskData(aMaskLayer, &mask)) {
     if (aOpacity < 1.0) {
-      aContext->PushGroup(GFX_CONTENT_COLOR_ALPHA);
+      aContext->PushGroup(gfxContentType::COLOR_ALPHA);
       aContext->Paint(aOpacity);
       aContext->PopGroupToSource();
     }
@@ -110,7 +111,7 @@ FillWithMask(gfxContext* aContext, float aOpacity, Layer* aMaskLayer)
   AutoMaskData mask;
   if (GetMaskData(aMaskLayer, &mask)) {
     if (aOpacity < 1.0) {
-      aContext->PushGroup(GFX_CONTENT_COLOR_ALPHA);
+      aContext->PushGroup(gfxContentType::COLOR_ALPHA);
       aContext->FillWithOpacity(aOpacity);
       aContext->PopGroupToSource();
       aContext->SetMatrix(mask.GetTransform());

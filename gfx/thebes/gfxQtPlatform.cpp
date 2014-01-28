@@ -49,7 +49,7 @@ gfxFontconfigUtils *gfxQtPlatform::sFontconfigUtils = nullptr;
 bool gfxQtPlatform::sUseXRender = true;
 #endif
 
-static gfxImageFormat sOffscreenFormat = gfxImageFormatRGB24;
+static gfxImageFormat sOffscreenFormat = gfxImageFormat::RGB24;
 
 gfxQtPlatform::gfxQtPlatform()
 {

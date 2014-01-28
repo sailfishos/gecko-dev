@@ -401,6 +401,7 @@ pref("dom.mozBrowserFramesEnabled", true);
 pref("dom.ipc.processCount", 100000);
 
 pref("dom.ipc.browser_frames.oop_by_default", false);
+pref("dom.browser_frames.useAsyncPanZoom", false);
 
 // SMS/MMS
 pref("dom.sms.enabled", true);
@@ -863,9 +864,6 @@ pref("media.webspeech.synth.enabled", true);
 // Downloads API
 pref("dom.mozDownloads.enabled", true);
 pref("dom.downloads.max_retention_days", 7);
-
-// Downloads API
-pref("dom.mozDownloads.enabled", true);
 
 // Inactivity time in milliseconds after which we shut down the OS.File worker.
 pref("osfile.reset_worker_delay", 5000);

@@ -22,6 +22,7 @@
 #include "js/GCAPI.h"
 #include "vm/ObjectImpl.h"
 #include "vm/Shape.h"
+#include "vm/Xdr.h"
 
 namespace JS {
 struct ObjectsExtraSizes;
@@ -1403,6 +1404,9 @@ CreateThis(JSContext *cx, const js::Class *clasp, js::HandleObject callee);
 extern JSObject *
 CloneObject(JSContext *cx, HandleObject obj, Handle<js::TaggedProto> proto, HandleObject parent);
 
+extern JSObject *
+DeepCloneObjectLiteral(JSContext *cx, HandleObject obj, NewObjectKind newKind = GenericObject);
+
 /*
  * Flags for the defineHow parameter of js_DefineNativeProperty.
  */
@@ -1530,10 +1534,6 @@ HasDataProperty(JSContext *cx, JSObject *obj, PropertyName *name, Value *vp)
 }
 
 extern bool
-CheckAccess(JSContext *cx, JSObject *obj, HandleId id, JSAccessMode mode,
-            MutableHandleValue v, unsigned *attrsp);
-
-extern bool
 IsDelegate(JSContext *cx, HandleObject obj, const Value &v, bool *result);
 
 // obj is a JSObject*, but we root it immediately up front. We do it
@@ -1577,6 +1577,10 @@ ToObjectFromStack(JSContext *cx, HandleValue vp)
         return &vp.toObject();
     return ToObjectSlow(cx, vp, true);
 }
+
+template<XDRMode mode>
+bool
+XDRObjectLiteral(XDRState<mode> *xdr, MutableHandleObject obj);
 
 extern JSObject *
 CloneObjectLiteral(JSContext *cx, HandleObject parent, HandleObject srcObj);

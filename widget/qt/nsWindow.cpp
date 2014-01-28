@@ -162,7 +162,6 @@ nsWindow::createQWidget(MozQWidget *parent,
     return widget;
 }
 
-
 NS_IMETHODIMP
 nsWindow::Destroy(void)
 {
@@ -452,7 +451,7 @@ nsWindow::GetGLFrameBufferFormat()
 {
     LOG(("nsWindow::%s [%p]\n", __FUNCTION__, (void *)this));
     if (mLayerManager &&
-        mLayerManager->GetBackendType() == mozilla::layers::LAYERS_OPENGL) {
+        mLayerManager->GetBackendType() == mozilla::layers::LayersBackend::LAYERS_OPENGL) {
         // We directly map the hardware fb on Gonk.  The hardware fb
         // has RGB format.
         return LOCAL_GL_RGB;

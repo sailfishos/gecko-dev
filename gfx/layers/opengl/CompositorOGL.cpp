@@ -253,7 +253,7 @@ CompositorOGL::CompositorOGL(nsIWidget *aWidget, int aSurfaceWidth,
   , mHeight(0)
 {
   MOZ_COUNT_CTOR(CompositorOGL);
-  sBackend = LAYERS_OPENGL;
+  sBackend = LayersBackend::LAYERS_OPENGL;
 }
 
 CompositorOGL::~CompositorOGL()
@@ -1215,7 +1215,8 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
       AutoBindTexture bindSource(mGLContext, source->AsSourceOGL(), LOCAL_GL_TEXTURE0);
 
       GraphicsFilter filter = ThebesFilter(texturedEffect->mFilter);
-      gfx3DMatrix textureTransform = source->AsSourceOGL()->GetTextureTransform();
+      gfx3DMatrix textureTransform;
+      gfx::To3DMatrix(source->AsSourceOGL()->GetTextureTransform(), textureTransform);
 
 #ifdef MOZ_WIDGET_ANDROID
       gfxMatrix textureTransform2D;
@@ -1507,7 +1508,7 @@ CompositorOGL::CopyToTarget(DrawTarget *aTarget, const gfxMatrix& aTransform)
     new gfxImageSurface(map.mData,
                         gfxIntSize(width, height),
                         map.mStride,
-                        gfxImageFormatARGB32);
+                        gfxImageFormat::ARGB32);
   ReadPixelsIntoImageSurface(mGLContext, surf);
   source->Unmap();
 
