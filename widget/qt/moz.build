@@ -12,8 +12,10 @@ GENERATED_SOURCES += [
 SOURCES += [
     'mozqwidget.cpp',
     'nsAppShell.cpp',
+    'nsBidiKeyboard.cpp',
     'nsIdleServiceQt.cpp',
     'nsLookAndFeel.cpp',
+    'nsQtKeyUtils.cpp',
     'nsScreenManagerQt.cpp',
     'nsScreenQt.cpp',
     'nsWidgetFactory.cpp',

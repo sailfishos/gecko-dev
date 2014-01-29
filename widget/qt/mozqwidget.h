@@ -32,6 +32,8 @@ public:
     virtual void render(QPainter* painter);
 
     virtual nsWindow* getReceiver() { return mReceiver; };
+    virtual void dropReceiver() { mReceiver = nullptr; };
+    virtual void SetCursor(nsCursor aCursor);
 
 public Q_SLOTS:
     void renderLater();
