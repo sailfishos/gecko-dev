@@ -3764,34 +3764,6 @@ ThisFilename(JSContext *cx, unsigned argc, Value *vp)
     return true;
 }
 
-/*
- * Internal class for testing hasPrototype easily.
- * Uses passed in prototype instead of target's.
- */
-class WrapperWithProto : public Wrapper
-{
-  public:
-    explicit WrapperWithProto(unsigned flags)
-      : Wrapper(flags, true)
-    { }
-
-    static JSObject *New(JSContext *cx, JSObject *obj, JSObject *proto, JSObject *parent,
-                         Wrapper *handler);
-};
-
-/* static */ JSObject *
-WrapperWithProto::New(JSContext *cx, JSObject *obj, JSObject *proto, JSObject *parent,
-                      Wrapper *handler)
-{
-    JS_ASSERT(parent);
-    AutoMarkInDeadZone amd(cx->zone());
-
-    RootedValue priv(cx, ObjectValue(*obj));
-    ProxyOptions options;
-    options.setCallable(obj->isCallable());
-    return NewProxyObject(cx, handler, priv, proto, parent, options);
-}
-
 static bool
 Wrap(JSContext *cx, unsigned argc, jsval *vp)
 {
@@ -3825,9 +3797,11 @@ WrapWithProto(JSContext *cx, unsigned argc, jsval *vp)
         return false;
     }
 
-    JSObject *wrapped = WrapperWithProto::New(cx, &obj.toObject(), proto.toObjectOrNull(),
-                                              &obj.toObject().global(),
-                                              &Wrapper::singletonWithPrototype);
+    WrapperOptions options(cx);
+    options.setProto(proto.toObjectOrNull());
+    options.selectDefaultClass(obj.toObject().isCallable());
+    JSObject *wrapped = Wrapper::New(cx, &obj.toObject(), &obj.toObject().global(),
+                                     &Wrapper::singletonWithPrototype, &options);
     if (!wrapped)
         return false;
 
@@ -5388,8 +5362,8 @@ NewGlobalObject(JSContext *cx, JS::CompartmentOptions &options)
         };
         SetDOMCallbacks(cx->runtime(), &DOMcallbacks);
 
-        RootedObject domProto(cx, JS_InitClass(cx, glob, nullptr, &dom_class, dom_constructor, 0,
-                                               dom_props, dom_methods, nullptr, nullptr));
+        RootedObject domProto(cx, JS_InitClass(cx, glob, js::NullPtr(), &dom_class, dom_constructor,
+                                               0, dom_props, dom_methods, nullptr, nullptr));
         if (!domProto)
             return nullptr;
 
@@ -5901,12 +5875,12 @@ main(int argc, char **argv, char **envp)
     if (op.getBoolOption('O'))
         OOM_printAllocationCount = true;
 
-#if defined(JS_CPU_X86) && defined(JS_ION)
+#if defined(JS_CODEGEN_X86) && defined(JS_ION)
     if (op.getBoolOption("no-fpu"))
         JSC::MacroAssembler::SetFloatingPointDisabled();
 #endif
 
-#if (defined(JS_CPU_X86) || defined(JS_CPU_X64)) && defined(JS_ION)
+#if (defined(JS_CODEGEN_X86) || defined(JS_CODEGEN_X64)) && defined(JS_ION)
     if (op.getBoolOption("no-sse3")) {
         JSC::MacroAssembler::SetSSE3Disabled();
         PropagateFlagToNestedShells("--no-sse3");

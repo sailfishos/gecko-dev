@@ -587,10 +587,6 @@ class nsOuterWindowProxy : public js::Wrapper
 public:
   nsOuterWindowProxy() : js::Wrapper(0) { }
 
-  virtual bool isOuterWindow() {
-    return true;
-  }
-
   virtual bool finalizeInBackground(JS::Value priv) {
     return false;
   }
@@ -677,6 +673,20 @@ protected:
   bool AppendIndexedPropertyNames(JSContext *cx, JSObject *proxy,
                                   JS::AutoIdVector &props);
 };
+
+const js::Class OuterWindowProxyClass =
+    PROXY_CLASS_WITH_EXT(
+        "Proxy",
+        0, /* additional slots */
+        0, /* additional class flags */
+        nullptr, /* call */
+        nullptr, /* construct */
+        PROXY_MAKE_EXT(
+            nullptr, /* outerObject */
+            js::proxy_innerObject,
+            nullptr, /* iteratorObject */
+            false   /* isWrappedNative */
+        ));
 
 bool
 nsOuterWindowProxy::isExtensible(JSContext *cx, JS::Handle<JSObject*> proxy,
@@ -1024,9 +1034,13 @@ static JSObject*
 NewOuterWindowProxy(JSContext *cx, JS::Handle<JSObject*> parent, bool isChrome)
 {
   JSAutoCompartment ac(cx, parent);
+  js::WrapperOptions options;
+  options.setClass(&OuterWindowProxyClass);
+  options.setSingleton(true);
   JSObject *obj = js::Wrapper::New(cx, parent, parent,
                                    isChrome ? &nsChromeOuterWindowProxy::singleton
-                                            : &nsOuterWindowProxy::singleton);
+                                            : &nsOuterWindowProxy::singleton,
+                                   &options);
 
   NS_ASSERTION(js::GetObjectClass(obj)->ext.innerObject, "bad class");
   return obj;
@@ -8225,10 +8239,20 @@ nsGlobalWindow::EnterModalState()
     }
   }
 
+  // Clear the capturing content if it is under topDoc.
+  // Usually the activeESM check above does that, but there are cases when
+  // we don't have activeESM, or it is for different document.
+  nsIDocument* topDoc = topWin->GetExtantDoc();
+  nsIContent* capturingContent = nsIPresShell::GetCapturingContent();
+  if (capturingContent && topDoc &&
+      nsContentUtils::ContentIsCrossDocDescendantOf(capturingContent, topDoc)) {
+    nsIPresShell::SetCapturingContent(nullptr, 0);
+  }
+
   if (topWin->mModalStateDepth == 0) {
     NS_ASSERTION(!mSuspendedDoc, "Shouldn't have mSuspendedDoc here!");
 
-    mSuspendedDoc = topWin->GetExtantDoc();
+    mSuspendedDoc = topDoc;
     if (mSuspendedDoc) {
       mSuspendedDoc->SuppressEventHandling();
     }

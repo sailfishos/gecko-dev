@@ -1763,6 +1763,9 @@ pref("layout.css.sticky.enabled", false);
 pref("layout.css.sticky.enabled", true);
 #endif
 
+// Is support for CSS "will-change" enabled?
+pref("layout.css.will-change.enabled", false);
+
 // Is support for CSS "text-align: true X" enabled?
 pref("layout.css.text-align-true-value.enabled", false);
 
@@ -3847,6 +3850,12 @@ pref("mousewheel.system_scroll_override_on_root_content.enabled", false);
 
 pref("ui.key.menuAccessKeyFocuses", true);
 
+#if MOZ_WIDGET_GTK == 2
+pref("intl.ime.use_simple_context_on_password_field", true);
+#else
+pref("intl.ime.use_simple_context_on_password_field", false);
+#endif
+
 # XP_UNIX
 #endif
 #endif
@@ -4084,6 +4093,11 @@ pref("layers.scroll-graph", false);
 
 // Set the default values, and then override per-platform as needed
 pref("layers.offmainthreadcomposition.enabled", false);
+// Compositor target frame rate. NOTE: If vsync is enabled the compositor
+// frame rate will still be capped.
+// -1 -> default (match layout.frame_rate or 60 FPS)
+// 0  -> full-tilt mode: Recomposite even if not transaction occured.
+pref("layers.offmainthreadcomposition.frame-rate", -1);
 // Whether to use the deprecated texture architecture rather than the new one.
 pref("layers.use-deprecated-textures", true);
 #ifndef XP_WIN

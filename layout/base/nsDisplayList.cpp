@@ -3709,6 +3709,10 @@ nsDisplayScrollLayer::ShouldFlattenAway(nsDisplayListBuilder* aBuilder)
     PropagateClip(aBuilder, GetClip(), &mList);
     return true;
   }
+  if (mFrame != mScrolledFrame) {
+    mMergedFrames.AppendElement(mFrame);
+    mFrame = mScrolledFrame;
+  }
   return false;
 }
 
@@ -4430,6 +4434,12 @@ nsDisplayTransform::GetLayerState(nsDisplayListBuilder* aBuilder,
       return LAYER_ACTIVE;
     }
   }
+
+  const nsStyleDisplay* disp = mFrame->StyleDisplay();
+  if ((disp->mWillChangeBitField & NS_STYLE_WILL_CHANGE_TRANSFORM)) {
+    return LAYER_ACTIVE;
+  }
+
   return mStoredList.RequiredLayerStateForChildren(aBuilder,
                                                    aManager,
                                                    aParameters,
