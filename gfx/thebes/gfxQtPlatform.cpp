@@ -63,7 +63,6 @@ gfxQtPlatform::gfxQtPlatform()
     if (mScreenDepth == 16) {
         sOffscreenFormat = gfxImageFormat::RGB16_565;
     }
-
     uint32_t canvasMask = BackendTypeBit(BackendType::CAIRO) | BackendTypeBit(BackendType::SKIA);
     uint32_t contentMask = BackendTypeBit(BackendType::CAIRO) | BackendTypeBit(BackendType::SKIA);
     InitBackendPrefs(canvasMask, BackendType::CAIRO,

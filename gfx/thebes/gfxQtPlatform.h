@@ -27,7 +27,7 @@ public:
     }
 
     virtual already_AddRefed<gfxASurface> CreateOffscreenSurface(const gfxIntSize& size,
-                                                         gfxContentType contentType) MOZ_OVERRIDE;
+                                                                 gfxContentType contentType) MOZ_OVERRIDE;
 
     virtual already_AddRefed<gfxASurface>
     OptimizeImage(gfxImageSurface *aSurface,
@@ -36,15 +36,18 @@ public:
     virtual mozilla::TemporaryRef<mozilla::gfx::ScaledFont>
       GetScaledFontForFont(mozilla::gfx::DrawTarget* aTarget, gfxFont *aFont) MOZ_OVERRIDE;
 
+    mozilla::TemporaryRef<mozilla::gfx::ScaledFont>
+      GetScaledFontForFont(mozilla::gfx::DrawTarget* aTarget, gfxFont *aFont);
+
     virtual nsresult GetFontList(nsIAtom *aLangGroup,
-                         const nsACString& aGenericFamily,
-                         nsTArray<nsString>& aListOfFonts) MOZ_OVERRIDE;
+                                 const nsACString& aGenericFamily,
+                                 nsTArray<nsString>& aListOfFonts) MOZ_OVERRIDE;
 
     virtual nsresult UpdateFontList() MOZ_OVERRIDE;
 
     virtual nsresult ResolveFontName(const nsAString& aFontName,
-                             FontResolverCallback aCallback,
-                             void *aClosure, bool& aAborted) MOZ_OVERRIDE;
+                                     FontResolverCallback aCallback,
+                                     void *aClosure, bool& aAborted) MOZ_OVERRIDE;
 
     virtual nsresult GetStandardFamilyName(const nsAString& aFontName, nsAString& aFamilyName) MOZ_OVERRIDE;
 
