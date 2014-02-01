@@ -276,7 +276,7 @@ EmbedLiteAppService::ZoomToRect(uint32_t aWinId, float aX, float aY, float aWidt
 {
   EmbedLiteViewThreadChild* view = sGetViewById(aWinId);
   NS_ENSURE_TRUE(view, NS_ERROR_FAILURE);
-  view->SendZoomToRect(CSSRect(aX, aY, aWidth, aHeight));
+  view->SendZoomToRect(0, 0, CSSRect(aX, aY, aWidth, aHeight));
   return NS_OK;
 }
 

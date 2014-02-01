@@ -211,7 +211,7 @@ TabChildHelper::Observe(nsISupports* aSubject,
     sscanf(NS_ConvertUTF16toUTF8(aData).get(),
            "{\"x\":%f,\"y\":%f,\"w\":%f,\"h\":%f}",
            &rect.x, &rect.y, &rect.width, &rect.height);
-    mView->SendZoomToRect(rect);
+    mView->SendZoomToRect(0, 0, rect);
   } else if (!strcmp(aTopic, BEFORE_FIRST_PAINT)) {
     nsCOMPtr<nsIDocument> subject(do_QueryInterface(aSubject));
     nsCOMPtr<nsIDOMDocument> domDoc;
@@ -778,13 +778,14 @@ TabChildHelper::HandlePossibleViewportChange()
   nsCOMPtr<nsIDOMWindowUtils> utils(GetDOMWindowUtils());
 
   nsViewportInfo viewportInfo = nsContentUtils::GetViewportInfo(document, mInnerSize);
-  uint32_t presShellId;
-  ViewID viewId;
+  uint32_t presShellId = 0;
+  ViewID viewId = 0;
   if (APZCCallbackHelper::GetScrollIdentifiers(document->GetDocumentElement(),
                                                &presShellId, &viewId)) {
-    mView->SendUpdateZoomConstraints(viewportInfo.IsZoomAllowed(),
-                                     viewportInfo.GetMinZoom().scale,
-                                     viewportInfo.GetMaxZoom().scale);
+    ZoomConstraints constraints(viewportInfo.IsZoomAllowed(),
+                                viewportInfo.GetMinZoom(),
+                                viewportInfo.GetMaxZoom());
+    mView->SendUpdateZoomConstraints(0, 0, true, constraints);
   }
 
 
