@@ -260,17 +260,21 @@ EmbedLiteViewThreadParent::RecvOnTitleChanged(const nsString& aTitle)
 }
 
 bool
-EmbedLiteViewThreadParent::RecvUpdateZoomConstraints(const bool& aAllowZoom, const float& min, const float& max)
+EmbedLiteViewThreadParent::RecvUpdateZoomConstraints(const uint32_t& aPresShellId,
+                                                     const ViewID& aViewId,
+                                                     const bool& aIsRoot,
+                                                     const ZoomConstraints& aConstraints)
 {
   if (mController->GetManager()) {
-    ZoomConstraints constraints(aAllowZoom, CSSToScreenScale(min), CSSToScreenScale(max));
-    mController->GetManager()->UpdateZoomConstraints(ScrollableLayerGuid(mRootLayerTreeId, 0, 0), constraints);
+    mController->GetManager()->UpdateZoomConstraints(ScrollableLayerGuid(mRootLayerTreeId, 0, 0), aConstraints);
   }
   return true;
 }
 
 bool
-EmbedLiteViewThreadParent::RecvZoomToRect(const CSSRect& aRect)
+EmbedLiteViewThreadParent::RecvZoomToRect(const uint32_t& aPresShellId,
+                                          const ViewID& aViewId,
+                                          const CSSRect& aRect)
 {
   if (mController->GetManager()) {
     mController->GetManager()->ZoomToRect(ScrollableLayerGuid(mRootLayerTreeId, 0, 0), aRect);
