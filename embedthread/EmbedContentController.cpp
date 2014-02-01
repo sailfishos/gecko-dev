@@ -19,11 +19,15 @@ using namespace mozilla::layers;
 class FakeListener : public EmbedLiteViewListener {};
 static FakeListener sFakeListener;
 
-EmbedContentController::EmbedContentController(EmbedLiteViewThreadParent* aRenderFrame, CompositorParent* aCompositor, MessageLoop* aUILoop)
+EmbedContentController::EmbedContentController(EmbedLiteViewThreadParent* aRenderFrame, MessageLoop* aUILoop)
   : mUILoop(aUILoop)
   , mRenderFrame(aRenderFrame)
 {
-  mAPZC = CompositorParent::GetAPZCTreeManager(aCompositor->RootLayerTreeId());
+}
+
+void EmbedContentController::SetManagerByRootLayerTreeId(uint64_t aRootLayerTreeId)
+{
+  mAPZC = CompositorParent::GetAPZCTreeManager(aRootLayerTreeId);
 }
 
 void EmbedContentController::RequestContentRepaint(const FrameMetrics& aFrameMetrics)

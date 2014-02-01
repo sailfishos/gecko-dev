@@ -145,8 +145,8 @@ private:
   int mLastIMEState;
 
   uint64_t mRootLayerTreeId;
-  nsRefPtr<EmbedContentController> mController;
   GLuint mUploadTexture;
+  nsRefPtr<EmbedContentController> mController;
 
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteViewThreadParent);
 };
