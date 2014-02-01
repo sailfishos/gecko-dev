@@ -33,7 +33,12 @@
 #include "nsHTMLFormatConverter.h"
 #include "nsXULAppAPI.h"
 
-#include "PuppetWidget.h"
+#ifdef NS_PRINTING
+#include "nsDeviceContextSpecQt.h"
+#include "nsPrintSession.h"
+#include "nsPrintOptionsQt.h"
+#include "nsPrintDialogQt.h"
+#endif
 
 #if defined(MOZ_X11)
 #include "GfxInfoX11.h"
@@ -47,6 +52,13 @@ NS_GENERIC_FACTORY_CONSTRUCTOR(nsScreenManagerQt)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsHTMLFormatConverter)
 NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR(nsIdleServiceQt, nsIdleServiceQt::GetInstance)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsTransferable)
+#ifdef NS_PRINTING
+NS_GENERIC_FACTORY_CONSTRUCTOR(nsDeviceContextSpecQt)
+NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsPrintOptionsQt, Init)
+NS_GENERIC_FACTORY_CONSTRUCTOR(nsPrinterEnumeratorQt)
+NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsPrintSession, Init)
+NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsPrintDialogServiceQt, Init)
+#endif
 
 #if defined(MOZ_X11)
 namespace mozilla {
@@ -69,6 +81,13 @@ NS_DEFINE_NAMED_CID(NS_TRANSFERABLE_CID);
 #if defined(MOZ_X11)
 NS_DEFINE_NAMED_CID(NS_GFXINFO_CID);
 #endif
+#ifdef NS_PRINTING
+NS_DEFINE_NAMED_CID(NS_PRINTSETTINGSSERVICE_CID);
+NS_DEFINE_NAMED_CID(NS_PRINTER_ENUMERATOR_CID);
+NS_DEFINE_NAMED_CID(NS_PRINTSESSION_CID);
+NS_DEFINE_NAMED_CID(NS_DEVICE_CONTEXT_SPEC_CID);
+NS_DEFINE_NAMED_CID(NS_PRINTDIALOGSERVICE_CID);
+#endif
 
 static const mozilla::Module::CIDEntry kWidgetCIDs[] = {
     { &kNS_WINDOW_CID, false, nullptr, nsWindowConstructor },
@@ -81,6 +100,13 @@ static const mozilla::Module::CIDEntry kWidgetCIDs[] = {
     { &kNS_TRANSFERABLE_CID, false, nullptr, nsTransferableConstructor },
 #if defined(MOZ_X11)
     { &kNS_GFXINFO_CID, false, nullptr, mozilla::widget::GfxInfoConstructor },
+#endif
+#ifdef NS_PRINTING
+    { &kNS_PRINTSETTINGSSERVICE_CID, false, nullptr, nsPrintOptionsQtConstructor },
+    { &kNS_PRINTER_ENUMERATOR_CID, false, nullptr, nsPrinterEnumeratorQtConstructor },
+    { &kNS_PRINTSESSION_CID, false, nullptr, nsPrintSessionConstructor },
+    { &kNS_DEVICE_CONTEXT_SPEC_CID, false, nullptr, nsDeviceContextSpecQtConstructor },
+    { &kNS_PRINTDIALOGSERVICE_CID, false, nullptr, nsPrintDialogServiceQtConstructor },
 #endif
     { nullptr }
 };
@@ -96,6 +122,13 @@ static const mozilla::Module::ContractIDEntry kWidgetContracts[] = {
     { "@mozilla.org/widget/transferable;1", &kNS_TRANSFERABLE_CID },
 #if defined(MOZ_X11)
     { "@mozilla.org/gfx/info;1", &kNS_GFXINFO_CID },
+#endif
+#ifdef NS_PRINTING
+    { "@mozilla.org/gfx/printsettings-service;1", &kNS_PRINTSETTINGSSERVICE_CID },
+    { "@mozilla.org/gfx/printerenumerator;1", &kNS_PRINTER_ENUMERATOR_CID },
+    { "@mozilla.org/gfx/printsession;1", &kNS_PRINTSESSION_CID },
+    { "@mozilla.org/gfx/devicecontextspec;1", &kNS_DEVICE_CONTEXT_SPEC_CID },
+    { NS_PRINTDIALOGSERVICE_CONTRACTID, &kNS_PRINTDIALOGSERVICE_CID },
 #endif
     { nullptr }
 };
