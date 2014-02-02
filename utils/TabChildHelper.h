@@ -95,7 +95,7 @@ private:
   // viewport data on a document may have changed. If it didn't
   // change, this function doesn't do anything.  However, it should
   // not be called all the time as it is fairly expensive.
-  void HandlePossibleViewportChange();
+  bool HandlePossibleViewportChange();
 
   friend class EmbedLiteViewThreadChild;
   EmbedLiteViewThreadChild* mView;
@@ -105,6 +105,7 @@ private:
   nsRefPtr<EmbedTabChildGlobal> mTabChildGlobal;
   mozilla::layers::FrameMetrics mLastRootMetrics;
   mozilla::layers::FrameMetrics mLastSubFrameMetrics;
+  mozilla::layers::FrameMetrics mFrameMetrics;
 };
 
 }
