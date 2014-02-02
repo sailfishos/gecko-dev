@@ -8,12 +8,9 @@
 #ifndef __nsWindow_h__
 #define __nsWindow_h__
 
-#include <QKeyEvent>
-#include <QWindow>
-#include <QTime>
+#include <QPointF>
 
 #include "nsAutoPtr.h"
-
 #include "nsBaseWidget.h"
 #include "mozilla/EventForwards.h"
 
@@ -67,16 +64,22 @@ extern PRLogModuleInfo *gWidgetDrawLog;
 
 #endif /* MOZ_LOGGING */
 
-class QEvent;
-class QGraphicsView;
-
 class nsIdleService;
+class QCloseEvent;
+class QFocusEvent;
+class QHideEvent;
+class QKeyEvent;
+class QMouseEvent;
+class QMoveEvent;
+class QResizeEvent;
+class QShowEvent;
+class QTabletEvent;
+class QTouchEvent;
+class QWheelEvent;
 
 namespace mozilla {
 namespace widget {
-
 class MozQWidget;
-
 class nsWindow : public nsBaseWidget,
                  public nsSupportsWeakReference
 {
@@ -337,4 +340,3 @@ private:
 }}
 
 #endif /* __nsWindow_h__ */
-

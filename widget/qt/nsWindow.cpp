@@ -28,6 +28,7 @@
 
 #ifdef MOZ_X11
 #include <X11/Xlib.h>
+#include <X11/Xutil.h>
 #endif //MOZ_X11
 
 #include "nsXULAppAPI.h"
@@ -59,10 +60,6 @@
 #include "nsAutoPtr.h"
 
 #include "gfxQtPlatform.h"
-#ifdef MOZ_X11
-#include "gfxXlibSurface.h"
-#endif
-#include "gfxQPainterSurface.h"
 #include "gfxContext.h"
 #include "gfxImageSurface.h"
 
