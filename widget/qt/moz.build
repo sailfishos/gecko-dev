@@ -13,6 +13,7 @@ SOURCES += [
     'mozqwidget.cpp',
     'nsAppShell.cpp',
     'nsBidiKeyboard.cpp',
+    'nsClipboard.cpp',
     'nsIdleServiceQt.cpp',
     'nsLookAndFeel.cpp',
     'nsQtKeyUtils.cpp',
