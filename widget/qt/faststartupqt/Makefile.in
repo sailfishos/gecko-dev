@@ -8,7 +8,9 @@ STL_FLAGS=
 EXPORT_SOURCES = \
 	$(topsrcdir)/widget/qt/moziqwidget.h \
 	$(topsrcdir)/toolkit/xre/nsQAppInstance.h \
-	$(topsrcdir)/widget/qt/mozqglwidgetwrapper.h
+	$(topsrcdir)/toolkit/xre/nsQAppInstance.cpp \
+	$(topsrcdir)/widget/qt/mozqglwidgetwrapper.h \
+	$(topsrcdir)/widget/qt/mozqglwidgetwrapper.cpp
 
 GARBAGE += $(EXPORT_SOURCES)
 export:: $(EXPORT_SOURCES)

@@ -373,7 +373,7 @@ private:
     // event (like a keypress or mouse click).
     void UserActivity();
 
-    void ProcessMotionEvent();
+    inline void ProcessMotionEvent();
 
     void DispatchMotionToMainThread() {
         if (!mTimerStarted) {

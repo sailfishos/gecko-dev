@@ -4,14 +4,12 @@
 
 #include "qdesktopwidget.h"
 #include "qapplication.h"
-#include <QScreen>
 
 #include "nsScreenManagerQt.h"
 #include "nsScreenQt.h"
 
 nsScreenManagerQt::nsScreenManagerQt()
 {
-    mInitialized = false;
     desktop = 0;
     screens = 0;
 }
@@ -26,20 +24,15 @@ NS_IMPL_ISUPPORTS1(nsScreenManagerQt, nsIScreenManager)
 
 void nsScreenManagerQt::init()
 {
-    if (mInitialized)
+    if (desktop)
         return;
 
-#if (QT_VERSION < QT_VERSION_CHECK(5, 0, 0))
     desktop = QApplication::desktop();
     nScreens = desktop->numScreens();
-#else
-    nScreens = QGuiApplication::screens().size();
-#endif
     screens = new nsCOMPtr<nsIScreen>[nScreens];
 
     for (int i = 0; i < nScreens; ++i)
         screens[i] = new nsScreenQt(i);
-    mInitialized = true;
 }
 
 //
@@ -55,18 +48,14 @@ nsScreenManagerQt::ScreenForRect(int32_t inLeft, int32_t inTop,
 				 int32_t inWidth, int32_t inHeight,
 				 nsIScreen **outScreen)
 {
-    if (!mInitialized)
+    if (!desktop)
         init();
 
     QRect r(inLeft, inTop, inWidth, inHeight);
     int best = 0;
     int area = 0;
     for (int i = 0; i < nScreens; ++i) {
-#if (QT_VERSION < QT_VERSION_CHECK(5, 0, 0))
         const QRect& rect = desktop->screenGeometry(i);
-#else
-        const QRect& rect = QGuiApplication::screens()[i]->geometry();
-#endif
         QRect intersection = r&rect;
         int a = intersection.width()*intersection.height();
         if (a > area) {
@@ -106,7 +95,7 @@ nsScreenManagerQt::GetNumberOfScreens(uint32_t *aNumberOfScreens)
     if (!desktop)
         init();
 
-    *aNumberOfScreens = nScreens;
+    *aNumberOfScreens = desktop->numScreens();
     return NS_OK;
 }
 

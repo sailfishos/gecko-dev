@@ -28,7 +28,7 @@
 
 class nsIPrincipal;
 
-#ifdef MOZ_ENABLE_QT5GEOPOSITION
+#ifdef MOZ_ENABLE_QTMOBILITY
 #include "QTMLocationProvider.h"
 #endif
 
@@ -673,7 +673,7 @@ nsresult nsGeolocationService::Init()
   obs->AddObserver(this, "quit-application", false);
   obs->AddObserver(this, "mozsettings-changed", false);
 
-#ifdef MOZ_ENABLE_QT5GEOPOSITION
+#ifdef MOZ_ENABLE_QTMOBILITY
   mProvider = new QTMLocationProvider();
 #endif
 

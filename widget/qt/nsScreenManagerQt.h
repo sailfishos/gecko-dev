@@ -29,7 +29,6 @@ private:
   nsCOMPtr<nsIScreen> *screens;
   QDesktopWidget *desktop;
   int nScreens;
-  bool mInitialized;
 };
 
 #endif  // nsScreenManagerQt_h___

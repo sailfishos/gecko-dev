@@ -4,6 +4,6 @@
 
 include $(topsrcdir)/config/rules.mk
 
-ifdef MOZ_ENABLE_QT5GEOPOSITION
+ifdef MOZ_ENABLE_QTMOBILITY
 CXXFLAGS += $(MOZ_QT_CFLAGS)
 endif
