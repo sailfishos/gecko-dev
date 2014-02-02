@@ -44,6 +44,7 @@ using namespace mozilla;
 using namespace mozilla::unicode;
 using namespace mozilla::gfx;
 
+gfxFontconfigUtils *gfxQtPlatform::sFontconfigUtils = nullptr;
 #ifdef MOZ_X11
 bool gfxQtPlatform::sUseXRender = true;
 #endif
