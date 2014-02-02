@@ -41,6 +41,7 @@
 #endif
 
 #include "nsClipboard.h"
+#include "nsClipboardHelper.h"
 
 #if defined(MOZ_X11)
 #include "GfxInfoX11.h"
