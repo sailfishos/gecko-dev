@@ -9,12 +9,8 @@ License:    Mozilla License
 URL:        http://hg.mozilla.org/mozilla-central
 Source0:    %{name}-%{version}.tar.bz2
 Patch0:     add-sailfishos-org-certs.patch
-BuildRequires:  pkgconfig(Qt5Core)
-BuildRequires:  pkgconfig(Qt5Gui)
+BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
-BuildRequires:  pkgconfig(Qt5OpenGL)
-BuildRequires:  pkgconfig(Qt5Widgets)
-BuildRequires:  pkgconfig(Qt5PrintSupport)
 BuildRequires:  pkgconfig(pango)
 BuildRequires:  pkgconfig(alsa)
 BuildRequires:  pkgconfig(libpulse)
@@ -25,7 +21,6 @@ BuildRequires:  pkgconfig(gstreamer-plugins-base-0.10)
 BuildRequires:  pkgconfig(libresourceqt5)
 %endif
 BuildRequires:  pkgconfig(Qt5Positioning)
-BuildRequires:  pkgconfig(Qt0Feedback)
 BuildRequires:  qt5-qttools
 BuildRequires:  qt5-default
 BuildRequires:  autoconf213
