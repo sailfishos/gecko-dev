@@ -244,7 +244,7 @@ nsComputedDOMStyle::nsComputedDOMStyle(dom::Element* aElement,
   mContent = aElement;
 
   if (!DOMStringIsNull(aPseudoElt) && !aPseudoElt.IsEmpty() &&
-      aPseudoElt.First() == PRUnichar(':')) {
+      aPseudoElt.First() == char16_t(':')) {
     // deal with two-colon forms of aPseudoElt
     nsAString::const_iterator start, end;
     aPseudoElt.BeginReading(start);
@@ -252,7 +252,7 @@ nsComputedDOMStyle::nsComputedDOMStyle(dom::Element* aElement,
     NS_ASSERTION(start != end, "aPseudoElt is not empty!");
     ++start;
     bool haveTwoColons = true;
-    if (start == end || *start != PRUnichar(':')) {
+    if (start == end || *start != char16_t(':')) {
       --start;
       haveTwoColons = false;
     }
@@ -415,6 +415,15 @@ nsComputedDOMStyle::GetPropertyValue(const nsAString& aPropertyName,
   }
 
   return NS_OK;
+}
+
+NS_IMETHODIMP
+nsComputedDOMStyle::GetAuthoredPropertyValue(const nsAString& aPropertyName,
+                                             nsAString& aReturn)
+{
+  // Authored style doesn't make sense to return from computed DOM style,
+  // so just return whatever GetPropertyValue() returns.
+  return GetPropertyValue(aPropertyName, aReturn);
 }
 
 /* static */
@@ -1098,7 +1107,7 @@ nsComputedDOMStyle::DoGetContent()
               str);
           }
 
-          str.Append(PRUnichar(')'));
+          str.Append(char16_t(')'));
           val->SetString(str, nsIDOMCSSPrimitiveValue::CSS_COUNTER);
         }
         break;
@@ -3691,6 +3700,28 @@ nsComputedDOMStyle::DoGetClip()
 }
 
 CSSValue*
+nsComputedDOMStyle::DoGetWillChange()
+{
+  const nsTArray<nsString>& willChange = StyleDisplay()->mWillChange;
+
+  if (willChange.IsEmpty()) {
+    nsROCSSPrimitiveValue *val = new nsROCSSPrimitiveValue;
+    val->SetIdent(eCSSKeyword_auto);
+    return val;
+  }
+
+  nsDOMCSSValueList *valueList = GetROCSSValueList(true);
+  for (size_t i = 0; i < willChange.Length(); i++) {
+    const nsString& willChangeIdentifier = willChange[i];
+    nsROCSSPrimitiveValue* property = new nsROCSSPrimitiveValue;
+    valueList->AppendCSSValue(property);
+    property->SetString(willChangeIdentifier);
+  }
+
+  return valueList;
+}
+
+CSSValue*
 nsComputedDOMStyle::DoGetOverflow()
 {
   const nsStyleDisplay* display = StyleDisplay();
@@ -3775,6 +3806,30 @@ nsComputedDOMStyle::DoGetPageBreakInside()
   nsROCSSPrimitiveValue *val = new nsROCSSPrimitiveValue;
   val->SetIdent(nsCSSProps::ValueToKeywordEnum(StyleDisplay()->mBreakInside,
                                                nsCSSProps::kPageBreakInsideKTable));
+  return val;
+}
+
+CSSValue*
+nsComputedDOMStyle::DoGetTouchAction()
+{
+  nsROCSSPrimitiveValue *val = new nsROCSSPrimitiveValue;
+
+  int32_t intValue = StyleDisplay()->mTouchAction;
+
+  // None and Auto values aren't allowed to be in conjunction with
+  // other values.
+  if (NS_STYLE_TOUCH_ACTION_AUTO == intValue) {
+    val->SetIdent(eCSSKeyword_auto);
+  } else if (NS_STYLE_TOUCH_ACTION_NONE == intValue) {
+    val->SetIdent(eCSSKeyword_none);
+  } else {
+    nsAutoString valueStr;
+    nsStyleUtil::AppendBitmaskCSSValue(eCSSProperty_touch_action,
+      intValue, NS_STYLE_TOUCH_ACTION_PAN_X,
+      NS_STYLE_TOUCH_ACTION_PAN_Y, valueStr);
+    val->SetString(valueStr);
+  }
+
   return val;
 }
 

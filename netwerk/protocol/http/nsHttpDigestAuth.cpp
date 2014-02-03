@@ -19,6 +19,9 @@
 #include "nsCRT.h"
 #include "nsICryptoHash.h"
 
+namespace mozilla {
+namespace net {
+
 //-----------------------------------------------------------------------------
 // nsHttpDigestAuth <public>
 //-----------------------------------------------------------------------------
@@ -158,9 +161,9 @@ NS_IMETHODIMP
 nsHttpDigestAuth::GenerateCredentials(nsIHttpAuthenticableChannel *authChannel,
                                       const char *challenge,
                                       bool isProxyAuth,
-                                      const PRUnichar *userdomain,
-                                      const PRUnichar *username,
-                                      const PRUnichar *password,
+                                      const char16_t *userdomain,
+                                      const char16_t *username,
+                                      const char16_t *password,
                                       nsISupports **sessionState,
                                       nsISupports **continuationState,
                                       uint32_t *aFlags,
@@ -501,9 +504,9 @@ nsHttpDigestAuth::CalculateHA2(const nsAFlatCString & method,
                                const char * bodyDigest,
                                char * result)
 {
-  int16_t methodLen = method.Length();
-  int16_t pathLen = path.Length();
-  int16_t len = methodLen + pathLen + 1;
+  uint16_t methodLen = method.Length();
+  uint32_t pathLen = path.Length();
+  uint32_t len = methodLen + pathLen + 1;
 
   if (qop & QOP_AUTH_INT) {
     len += EXPANDED_DIGEST_LENGTH + 1;
@@ -691,5 +694,8 @@ nsHttpDigestAuth::AppendQuotedString(const nsACString & value,
   aHeaderLine.Append(quoted);
   return NS_OK;
 }
+
+} // namespace mozilla::net
+} // namespace mozilla
 
 // vim: ts=2 sw=2

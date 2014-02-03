@@ -125,13 +125,13 @@ ToClampedIndex(JSContext *cx, HandleValue v, uint32_t length, uint32_t *out)
  * can be created implicitly by constructing a TypedArrayObject with a size.
  */
 
-JS_ALWAYS_INLINE bool
+MOZ_ALWAYS_INLINE bool
 IsArrayBuffer(HandleValue v)
 {
     return v.isObject() && v.toObject().hasClass(&ArrayBufferObject::class_);
 }
 
-JS_ALWAYS_INLINE bool
+MOZ_ALWAYS_INLINE bool
 ArrayBufferObject::byteLengthGetterImpl(JSContext *cx, CallArgs args)
 {
     JS_ASSERT(IsArrayBuffer(args.thisv()));
@@ -151,10 +151,10 @@ ArrayBufferObject::fun_slice_impl(JSContext *cx, CallArgs args)
 {
     JS_ASSERT(IsArrayBuffer(args.thisv()));
 
-    Rooted<JSObject*> thisObj(cx, &args.thisv().toObject());
+    Rooted<ArrayBufferObject*> thisObj(cx, &args.thisv().toObject().as<ArrayBufferObject>());
 
     // these are the default values
-    uint32_t length = thisObj->as<ArrayBufferObject>().byteLength();
+    uint32_t length = thisObj->byteLength();
     uint32_t begin = 0, end = length;
 
     if (args.length() > 0) {
@@ -170,7 +170,7 @@ ArrayBufferObject::fun_slice_impl(JSContext *cx, CallArgs args)
     if (begin > end)
         begin = end;
 
-    JSObject *nobj = createSlice(cx, thisObj->as<ArrayBufferObject>(), begin, end);
+    JSObject *nobj = createSlice(cx, thisObj, begin, end);
     if (!nobj)
         return false;
     args.rval().setObject(*nobj);
@@ -182,6 +182,18 @@ ArrayBufferObject::fun_slice(JSContext *cx, unsigned argc, Value *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
     return CallNonGenericMethod<IsArrayBuffer, fun_slice_impl>(cx, args);
+}
+
+/*
+ * ArrayBuffer.isView(obj); ES6 (Dec 2013 draft) 24.1.3.1
+ */
+bool
+ArrayBufferObject::fun_isView(JSContext *cx, unsigned argc, Value *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    args.rval().setBoolean(args.get(0).isObject() &&
+                           JS_IsArrayBufferViewObject(&args.get(0).toObject()));
+    return true;
 }
 
 /*
@@ -219,7 +231,7 @@ ArrayBufferObject::class_constructor(JSContext *cx, unsigned argc, Value *vp)
  * then realloc.
  */
 static ObjectElements *
-AllocateArrayBufferContents(JSContext *maybecx, uint32_t nbytes, uint8_t *initdata, void *oldptr = nullptr)
+AllocateArrayBufferContents(JSContext *maybecx, uint32_t nbytes, void *oldptr = nullptr)
 {
     uint32_t size = nbytes + sizeof(ObjectElements);
     ObjectElements *newheader;
@@ -242,9 +254,6 @@ AllocateArrayBufferContents(JSContext *maybecx, uint32_t nbytes, uint8_t *initda
         return nullptr;
     }
 
-    if (initdata)
-        memcpy(newheader->elements(), initdata, nbytes);
-
     // we rely on this being correct
     ArrayBufferObject::updateElementsHeader(newheader, nbytes);
 
@@ -252,7 +261,7 @@ AllocateArrayBufferContents(JSContext *maybecx, uint32_t nbytes, uint8_t *initda
 }
 
 bool
-ArrayBufferObject::allocateSlots(JSContext *maybecx, uint32_t bytes, uint8_t *contents)
+ArrayBufferObject::allocateSlots(JSContext *maybecx, uint32_t bytes, bool clear)
 {
     /*
      * ArrayBufferObjects delegate added properties to another JSObject, so
@@ -264,16 +273,19 @@ ArrayBufferObject::allocateSlots(JSContext *maybecx, uint32_t bytes, uint8_t *co
     size_t usableSlots = ARRAYBUFFER_RESERVED_SLOTS - ObjectElements::VALUES_PER_HEADER;
 
     if (bytes > sizeof(Value) * usableSlots) {
-        ObjectElements *header = AllocateArrayBufferContents(maybecx, bytes, contents);
+        ObjectElements *header = AllocateArrayBufferContents(maybecx, bytes);
         if (!header)
             return false;
         elements = header->elements();
+
+#ifdef JSGC_GENERATIONAL
+        JSRuntime *rt = runtimeFromMainThread();
+        rt->gcNursery.notifyNewElements(this, header);
+#endif
     } else {
-        elements = fixedElements();
-        if (contents)
-            memcpy(elements, contents, bytes);
-        else
-            memset(elements, 0, bytes);
+        setFixedElements();
+        if (clear)
+            memset(dataPointer(), 0, bytes);
     }
 
     initElementsHeader(getElementsHeader(), bytes);
@@ -376,7 +388,7 @@ ArrayBufferObject::neuterViews(JSContext *cx, Handle<ArrayBufferObject*> buffer)
 void
 ArrayBufferObject::changeContents(JSContext *maybecx, ObjectElements *newHeader)
 {
-   JS_ASSERT(!isAsmJSArrayBuffer());
+    JS_ASSERT(!isAsmJSArrayBuffer());
 
     // Grab out data before invalidating it.
     uint32_t byteLengthCopy = byteLength();
@@ -398,7 +410,20 @@ ArrayBufferObject::changeContents(JSContext *maybecx, ObjectElements *newHeader)
     // being transferred, so null it out
     SetViewList(this, nullptr);
 
+#ifdef JSGC_GENERATIONAL
+    ObjectElements *oldHeader = ObjectElements::fromElements(elements);
+    JS_ASSERT(oldHeader != newHeader);
+    JSRuntime *rt = runtimeFromMainThread();
+    if (hasDynamicElements())
+        rt->gcNursery.notifyRemovedElements(this, oldHeader);
+#endif
+
     elements = newHeader->elements();
+
+#ifdef JSGC_GENERATIONAL
+    if (hasDynamicElements())
+        rt->gcNursery.notifyNewElements(this, newHeader);
+#endif
 
     initElementsHeader(newHeader, byteLengthCopy);
     InitViewList(this, viewListHead);
@@ -425,10 +450,11 @@ ArrayBufferObject::neuter(JSContext *cx)
 bool
 ArrayBufferObject::copyData(JSContext *maybecx)
 {
-    ObjectElements *newHeader = AllocateArrayBufferContents(maybecx, byteLength(), dataPointer());
+    ObjectElements *newHeader = AllocateArrayBufferContents(maybecx, byteLength());
     if (!newHeader)
         return false;
 
+    memcpy(reinterpret_cast<void*>(newHeader->elements()), dataPointer(), byteLength());
     changeContents(maybecx, newHeader);
     return true;
 }
@@ -454,11 +480,12 @@ ArrayBufferObject::getTransferableContents(JSContext *maybecx, bool *callerOwns)
     }
 
     uint32_t byteLen = byteLength();
-    ObjectElements *newheader = AllocateArrayBufferContents(maybecx, byteLen, dataPointer());
+    ObjectElements *newheader = AllocateArrayBufferContents(maybecx, byteLen);
     if (!newheader)
         return nullptr;
 
     initElementsHeader(newheader, byteLen);
+    memcpy(reinterpret_cast<void*>(newheader->elements()), dataPointer(), byteLen);
     *callerOwns = true;
     return newheader;
 }
@@ -617,10 +644,8 @@ ArrayBufferObject::addView(ArrayBufferViewObject *view)
 }
 
 JSObject *
-ArrayBufferObject::create(JSContext *cx, uint32_t nbytes, uint8_t *contents)
+ArrayBufferObject::create(JSContext *cx, uint32_t nbytes, bool clear /* = true */)
 {
-    SkipRoot skip(cx, &contents);
-
     RootedObject obj(cx, NewBuiltinClassInstance(cx, &class_));
     if (!obj)
         return nullptr;
@@ -638,25 +663,29 @@ ArrayBufferObject::create(JSContext *cx, uint32_t nbytes, uint8_t *contents)
      * The beginning stores an ObjectElements header structure holding the
      * length. The rest of it is a flat data store for the array buffer.
      */
-    if (!obj->as<ArrayBufferObject>().allocateSlots(cx, nbytes, contents))
+    if (!obj->as<ArrayBufferObject>().allocateSlots(cx, nbytes, clear))
         return nullptr;
 
     return obj;
 }
 
 JSObject *
-ArrayBufferObject::createSlice(JSContext *cx, ArrayBufferObject &arrayBuffer,
+ArrayBufferObject::createSlice(JSContext *cx, Handle<ArrayBufferObject*> arrayBuffer,
                                uint32_t begin, uint32_t end)
 {
-    JS_ASSERT(begin <= arrayBuffer.byteLength());
-    JS_ASSERT(end <= arrayBuffer.byteLength());
+    JS_ASSERT(begin <= arrayBuffer->byteLength());
+    JS_ASSERT(end <= arrayBuffer->byteLength());
     JS_ASSERT(begin <= end);
     uint32_t length = end - begin;
 
-    if (arrayBuffer.hasData())
-        return create(cx, length, arrayBuffer.dataPointer() + begin);
+    if (!arrayBuffer->hasData())
+        return create(cx, 0);
 
-    return create(cx, 0);
+    JSObject *slice = create(cx, length, false);
+    if (!slice)
+        return nullptr;
+    memcpy(slice->as<ArrayBufferObject>().dataPointer(), arrayBuffer->dataPointer() + begin, length);
+    return slice;
 }
 
 bool
@@ -2255,7 +2284,7 @@ class TypedArrayObjectTemplate : public TypedArrayObject
     static NativeType
     nativeFromDouble(double d)
     {
-        if (!ArrayTypeIsFloatingPoint() && JS_UNLIKELY(IsNaN(d)))
+        if (!ArrayTypeIsFloatingPoint() && MOZ_UNLIKELY(IsNaN(d)))
             return NativeType(int32_t(0));
         if (TypeIsFloatingPoint<NativeType>())
             return NativeType(d);
@@ -3433,7 +3462,6 @@ const Class ArrayBufferObject::class_ = {
     JS_ResolveStub,
     JS_ConvertStub,
     nullptr,        /* finalize    */
-    nullptr,        /* checkAccess */
     nullptr,        /* call        */
     nullptr,        /* hasInstance */
     nullptr,        /* construct   */
@@ -3473,6 +3501,11 @@ const JSFunctionSpec ArrayBufferObject::jsfuncs[] = {
     JS_FS_END
 };
 
+const JSFunctionSpec ArrayBufferObject::jsstaticfuncs[] = {
+    JS_FN("isView", ArrayBufferObject::fun_isView, 1, 0),
+    JS_FS_END
+};
+
 /*
  * TypedArrayObject boilerplate
  */
@@ -3496,29 +3529,26 @@ const JSFunctionSpec _typedArray##Object::jsfuncs[] = {                         
 }
 #endif
 
-#define IMPL_TYPED_ARRAY_JSAPI_CONSTRUCTORS(Name,NativeType)                                 \
-  JS_FRIEND_API(JSObject *) JS_New ## Name ## Array(JSContext *cx, uint32_t nelements)       \
-  {                                                                                          \
-      return TypedArrayObjectTemplate<NativeType>::fromLength(cx, nelements);                \
-  }                                                                                          \
-  JS_FRIEND_API(JSObject *) JS_New ## Name ## ArrayFromArray(JSContext *cx, JSObject *other_)\
-  {                                                                                          \
-      Rooted<JSObject*> other(cx, other_);                                                   \
-      return TypedArrayObjectTemplate<NativeType>::fromArray(cx, other);                     \
-  }                                                                                          \
-  JS_FRIEND_API(JSObject *) JS_New ## Name ## ArrayWithBuffer(JSContext *cx,                 \
-                               JSObject *arrayBuffer_, uint32_t byteOffset, int32_t length)  \
-  {                                                                                          \
-      Rooted<JSObject*> arrayBuffer(cx, arrayBuffer_);                                       \
-      Rooted<JSObject*> proto(cx, nullptr);                                                  \
-      return TypedArrayObjectTemplate<NativeType>::fromBuffer(cx, arrayBuffer, byteOffset,   \
-                                                              length, proto);                \
-  }                                                                                          \
-  JS_FRIEND_API(bool) JS_Is ## Name ## Array(JSObject *obj)                                  \
-  {                                                                                          \
-      if (!(obj = CheckedUnwrap(obj)))                                                       \
-          return false;                                                                      \
-      const Class *clasp = obj->getClass();                                                  \
+#define IMPL_TYPED_ARRAY_JSAPI_CONSTRUCTORS(Name,NativeType)                                    \
+  JS_FRIEND_API(JSObject *) JS_New ## Name ## Array(JSContext *cx, uint32_t nelements)          \
+  {                                                                                             \
+      return TypedArrayObjectTemplate<NativeType>::fromLength(cx, nelements);                   \
+  }                                                                                             \
+  JS_FRIEND_API(JSObject *) JS_New ## Name ## ArrayFromArray(JSContext *cx, HandleObject other) \
+  {                                                                                             \
+      return TypedArrayObjectTemplate<NativeType>::fromArray(cx, other);                        \
+  }                                                                                             \
+  JS_FRIEND_API(JSObject *) JS_New ## Name ## ArrayWithBuffer(JSContext *cx,                    \
+                               HandleObject arrayBuffer, uint32_t byteOffset, int32_t length)   \
+  {                                                                                             \
+      return TypedArrayObjectTemplate<NativeType>::fromBuffer(cx, arrayBuffer, byteOffset,      \
+                                                              length, js::NullPtr());           \
+  }                                                                                             \
+  JS_FRIEND_API(bool) JS_Is ## Name ## Array(JSObject *obj)                                     \
+  {                                                                                             \
+      if (!(obj = CheckedUnwrap(obj)))                                                          \
+          return false;                                                                         \
+      const Class *clasp = obj->getClass();                                                     \
       return (clasp == &TypedArrayObject::classes[TypedArrayObjectTemplate<NativeType>::ArrayTypeID()]); \
   }
 
@@ -3591,7 +3621,6 @@ IMPL_TYPED_ARRAY_COMBINED_UNWRAPPERS(Float64, double, double)
     JS_ResolveStub,                                                            \
     JS_ConvertStub,                                                            \
     nullptr,                 /* finalize */                                    \
-    nullptr,                 /* checkAccess */                                 \
     nullptr,                 /* call        */                                 \
     nullptr,                 /* hasInstance */                                 \
     nullptr,                 /* construct   */                                 \
@@ -3764,6 +3793,9 @@ InitArrayBufferClass(JSContext *cx)
                               JS_DATA_TO_FUNC_PTR(PropertyOp, getter), nullptr, flags, 0, 0))
         return nullptr;
 
+    if (!JS_DefineFunctions(cx, ctor, ArrayBufferObject::jsstaticfuncs))
+        return nullptr;
+
     if (!JS_DefineFunctions(cx, arrayBufferProto, ArrayBufferObject::jsfuncs))
         return nullptr;
 
@@ -3802,7 +3834,6 @@ const Class DataViewObject::class_ = {
     JS_ResolveStub,
     JS_ConvertStub,
     nullptr,                 /* finalize */
-    nullptr,                 /* checkAccess */
     nullptr,                 /* call        */
     nullptr,                 /* hasInstance */
     nullptr,                 /* construct   */
@@ -3924,11 +3955,12 @@ JSObject *
 js_InitTypedArrayClasses(JSContext *cx, HandleObject obj)
 {
     JS_ASSERT(obj->isNative());
+    assertSameCompartment(cx, obj);
     Rooted<GlobalObject*> global(cx, &obj->as<GlobalObject>());
 
     /* Idempotency required: we initialize several things, possibly lazily. */
     RootedObject stop(cx);
-    if (!js_GetClassObject(cx, global, JSProto_ArrayBuffer, &stop))
+    if (!js_GetClassObject(cx, JSProto_ArrayBuffer, &stop))
         return nullptr;
     if (stop)
         return stop;
@@ -4053,15 +4085,20 @@ JS_NewArrayBufferWithContents(JSContext *cx, void *contents)
     JSObject *obj = ArrayBufferObject::create(cx, 0);
     if (!obj)
         return nullptr;
-    obj->setDynamicElements(reinterpret_cast<js::ObjectElements *>(contents));
+    js::ObjectElements *elements = reinterpret_cast<js::ObjectElements *>(contents);
+    obj->setDynamicElements(elements);
     JS_ASSERT(GetViewList(&obj->as<ArrayBufferObject>()) == nullptr);
+
+#ifdef JSGC_GENERATIONAL
+    cx->runtime()->gcNursery.notifyNewElements(obj, elements);
+#endif
     return obj;
 }
 
 JS_PUBLIC_API(bool)
 JS_AllocateArrayBufferContents(JSContext *cx, uint32_t nbytes, void **contents, uint8_t **data)
 {
-    js::ObjectElements *header = AllocateArrayBufferContents(cx, nbytes, nullptr);
+    js::ObjectElements *header = AllocateArrayBufferContents(cx, nbytes);
     if (!header)
         return false;
 
@@ -4075,7 +4112,7 @@ JS_AllocateArrayBufferContents(JSContext *cx, uint32_t nbytes, void **contents, 
 JS_PUBLIC_API(bool)
 JS_ReallocateArrayBufferContents(JSContext *cx, uint32_t nbytes, void **contents, uint8_t **data)
 {
-    js::ObjectElements *header = AllocateArrayBufferContents(cx, nbytes, nullptr, *contents);
+    js::ObjectElements *header = AllocateArrayBufferContents(cx, nbytes, *contents);
     if (!header)
         return false;
 

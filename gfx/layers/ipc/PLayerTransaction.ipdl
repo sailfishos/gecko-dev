@@ -64,11 +64,11 @@ parent:
    *     - used for GL rendering to a buffer which the compositor
    *       treats as a texture
    */
-  sync PGrallocBuffer(gfxIntSize size, uint32_t format, uint32_t usage)
+  sync PGrallocBuffer(IntSize size, uint32_t format, uint32_t usage)
     returns (MaybeMagicGrallocBufferHandle handle);
   async PLayer();
   async PCompositable(TextureInfo aTextureInfo);
-  async PTexture();
+  async PTexture(SurfaceDescriptor aSharedData, uint32_t aTextureFlags);
 
   // The isFirstPaint flag can be used to indicate that this is the first update
   // for a particular document.

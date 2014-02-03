@@ -143,13 +143,16 @@ WifiGeoPositionProvider.prototype = {
     LOG("onChange called, highAccuracy = " + (this.highAccuracy?"TRUE":"FALSE"));
     this.hasSeenWiFi = true;
 
+    Cc["@mozilla.org/geolocation/service;1"].getService(Ci.nsIGeolocationUpdate)
+        .locationUpdatePending();
+
     let url = Services.urlFormatter.formatURLPref("geo.wifi.uri");
 
     function isPublic(ap) {
         let mask = "_nomap"
-        let result = ap.ssid.indexOf(mask, ap.ssid.length - mask.length) == -1;
+        let result = ap.ssid.indexOf(mask, ap.ssid.length - mask.length);
         if (result != -1) {
-            LOG("Filtering out " + ap.ssid);
+            LOG("Filtering out " + ap.ssid + " " + result);
         }
         return result;
     };

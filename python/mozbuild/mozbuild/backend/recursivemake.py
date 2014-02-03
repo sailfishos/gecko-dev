@@ -32,6 +32,7 @@ from ..frontend.data import (
     HostSimpleProgram,
     InstallationTarget,
     IPDLFile,
+    JARManifest,
     JavaJarData,
     LibraryDefinition,
     LocalInclude,
@@ -372,11 +373,18 @@ class RecursiveMakeBackend(CommonBackend):
             for k, v in sorted(obj.variables.items()):
                 if k in unified_suffixes:
                     if do_unify:
+                        # On Windows, path names have a maximum length of 255 characters,
+                        # so avoid creating extremely long path names.
+                        unified_prefix = backend_file.relobjdir
+                        if len(unified_prefix) > 30:
+                            unified_prefix = unified_prefix[-30:].split('/', 1)[-1]
+                        unified_prefix = unified_prefix.replace('/', '_')
+
                         self._add_unified_build_rules(backend_file, v,
                             backend_file.objdir,
                             unified_prefix='Unified_%s_%s' % (
                                 unified_suffixes[k],
-                                backend_file.relobjdir.replace('/', '_')),
+                                unified_prefix),
                             unified_suffix=unified_suffixes[k],
                             unified_files_makefile_variable=k,
                             include_curdir_build_rules=False,
@@ -404,6 +412,9 @@ class RecursiveMakeBackend(CommonBackend):
 
         elif isinstance(obj, Exports):
             self._process_exports(obj, obj.exports, backend_file)
+
+        elif isinstance(obj, JARManifest):
+            backend_file.write('JAR_MANIFEST := %s\n' % obj.path)
 
         elif isinstance(obj, IPDLFile):
             self._ipdl_sources.add(mozpath.join(obj.srcdir, obj.basename))
@@ -472,6 +483,11 @@ class RecursiveMakeBackend(CommonBackend):
                 return current, [], all_subdirs
             return current, all_subdirs, []
 
+        # build everything in parallel, including static dirs
+        def compile_filter(current, subdirs):
+            current, parallel, sequential = parallel_filter(current, subdirs)
+            return current, subdirs.static + parallel, sequential
+
         # Skip static dirs during export traversal, or build everything in
         # parallel when enabled.
         def export_filter(current, subdirs):
@@ -487,7 +503,7 @@ class RecursiveMakeBackend(CommonBackend):
             if current in self._may_skip[tier]:
                 current = None
             return current, [], subdirs.parallel + \
-                subdirs.static + subdirs.dirs + subdirs.tests
+                subdirs.dirs + subdirs.tests
 
         # Because of bug 925236 and possible other unknown race conditions,
         # don't parallelize the tools tier.
@@ -495,12 +511,12 @@ class RecursiveMakeBackend(CommonBackend):
             if current in self._may_skip[tier]:
                 current = None
             return current, subdirs.parallel, \
-                subdirs.static + subdirs.dirs + subdirs.tests + subdirs.tools
+                subdirs.dirs + subdirs.tests + subdirs.tools
 
         # compile, binaries and tools tiers use the same traversal as export
         filters = {
             'export': export_filter,
-            'compile': parallel_filter,
+            'compile': compile_filter,
             'binaries': parallel_filter,
             'libs': libs_filter,
             'tools': tools_filter,
@@ -538,7 +554,8 @@ class RecursiveMakeBackend(CommonBackend):
                 if dirs:
                     # For build systems without tiers (js/src), output a list
                     # of directories for each tier.
-                    root_mk.add_statement('%s_dirs := %s' % (tier, ' '.join(dirs)))
+                    all_dirs = self._traversal.traverse('', filter)
+                    root_mk.add_statement('%s_dirs := %s' % (tier, ' '.join(all_dirs)))
                     continue
                 if subtiers:
                     # Output the list of filtered subtiers for the given tier.
@@ -682,11 +699,6 @@ class RecursiveMakeBackend(CommonBackend):
                 else:
                     self.log(logging.DEBUG, 'stub_makefile',
                         {'path': makefile}, 'Creating stub Makefile: {path}')
-
-                # Can't skip directories with a jar.mn for the 'libs' tier.
-                if bf.relobjdir in self._may_skip['libs'] and \
-                        os.path.exists(mozpath.join(srcdir, 'jar.mn')):
-                    self._may_skip['libs'].remove(bf.relobjdir)
 
                 obj = self.Substitution()
                 obj.output_path = makefile

@@ -22,7 +22,6 @@
 #include "vm/StringObject.h"
 #include "vm/TypedArrayObject.h"
 
-#include "jsanalyzeinlines.h"
 #include "jscntxtinlines.h"
 
 namespace js {
@@ -88,8 +87,9 @@ Type::ObjectType(JSObject *obj)
 /* static */ inline Type
 Type::ObjectType(TypeObject *obj)
 {
-    if (obj->singleton)
-        return Type(uintptr_t(obj->singleton.get()) | 1);
+    AutoThreadSafeAccess ts(obj);
+    if (obj->singleton())
+        return Type(uintptr_t(obj->singleton()) | 1);
     return Type(uintptr_t(obj));
 }
 
@@ -177,8 +177,9 @@ IdToTypeId(jsid id)
      * and overflowing integers.
      */
     if (JSID_IS_STRING(id)) {
-        JSFlatString *str = JSID_TO_FLAT_STRING(id);
-        JS::TwoByteChars cp = str->range();
+        JSAtom *atom = JSID_TO_ATOM(id);
+        js::AutoThreadSafeAccess ts(atom);
+        JS::TwoByteChars cp = atom->range();
         if (cp.length() > 0 && (JS7_ISDEC(cp[0]) || cp[0] == '-')) {
             for (size_t i = 1; i < cp.length(); ++i) {
                 if (!JS7_ISDEC(cp[i]))
@@ -386,8 +387,10 @@ EnsureTrackPropertyTypes(JSContext *cx, JSObject *obj, jsid id)
             cx->clearPendingException();
             return;
         }
-        if (!obj->type()->unknownProperties())
-            obj->type()->getProperty(cx, id);
+        if (!obj->type()->unknownProperties() && !obj->type()->getProperty(cx, id)) {
+            cx->compartment()->types.setPendingNukeTypes(cx);
+            return;
+        }
     }
 
     JS_ASSERT(obj->type()->unknownProperties() || TrackPropertyTypes(cx, obj, id));
@@ -484,24 +487,36 @@ MarkTypeObjectUnknownProperties(JSContext *cx, TypeObject *obj,
     }
 }
 
-/*
- * Mark any property which has been deleted or configured to be non-writable or
- * have a getter/setter.
- */
 inline void
-MarkTypePropertyConfigured(ExclusiveContext *cx, JSObject *obj, jsid id)
+MarkTypePropertyNonData(ExclusiveContext *cx, JSObject *obj, jsid id)
 {
     if (cx->typeInferenceEnabled()) {
         id = IdToTypeId(id);
         if (TrackPropertyTypes(cx, obj, id))
-            obj->type()->markPropertyConfigured(cx, id);
+            obj->type()->markPropertyNonData(cx, id);
+    }
+}
+
+inline void
+MarkTypePropertyNonWritable(ExclusiveContext *cx, JSObject *obj, jsid id)
+{
+    if (cx->typeInferenceEnabled()) {
+        id = IdToTypeId(id);
+        if (TrackPropertyTypes(cx, obj, id))
+            obj->type()->markPropertyNonWritable(cx, id);
     }
 }
 
 inline bool
-IsTypePropertyIdMarkedConfigured(JSObject *obj, jsid id)
+IsTypePropertyIdMarkedNonData(JSObject *obj, jsid id)
 {
-    return obj->type()->isPropertyConfigured(id);
+    return obj->type()->isPropertyNonData(id);
+}
+
+inline bool
+IsTypePropertyIdMarkedNonWritable(JSObject *obj, jsid id)
+{
+    return obj->type()->isPropertyNonWritable(id);
 }
 
 /* Mark a state change on a particular object. */
@@ -563,7 +578,7 @@ TypeScript::ThisTypes(JSScript *script)
 /* static */ inline StackTypeSet *
 TypeScript::ArgTypes(JSScript *script, unsigned i)
 {
-    JS_ASSERT(i < script->function()->nargs());
+    JS_ASSERT(i < script->functionNonDelazifying()->nargs());
     JS_ASSERT(CurrentThreadCanReadCompilationData());
     return script->types->typeArray() + script->nTypeSets() + analyze::ArgSlot(i);
 }
@@ -819,17 +834,19 @@ TypeCompartment::compartment()
  * probing.  TODO: replace these with jshashtables.
  */
 const unsigned SET_ARRAY_SIZE = 8;
+const unsigned SET_CAPACITY_OVERFLOW = 1u << 30;
 
 /* Get the capacity of a set with the given element count. */
 static inline unsigned
 HashSetCapacity(unsigned count)
 {
     JS_ASSERT(count >= 2);
+    JS_ASSERT(count < SET_CAPACITY_OVERFLOW);
 
     if (count <= SET_ARRAY_SIZE)
         return SET_ARRAY_SIZE;
 
-    return 1 << (mozilla::FloorLog2(count) + 2);
+    return 1u << (mozilla::FloorLog2(count) + 2);
 }
 
 /* Compute the FNV hash for the low 32 bits of v. */
@@ -866,6 +883,9 @@ HashSetInsertTry(LifoAlloc &alloc, U **&values, unsigned &count, T key)
             insertpos = (insertpos + 1) & (capacity - 1);
         }
     }
+
+    if (count >= SET_CAPACITY_OVERFLOW)
+        return nullptr;
 
     count++;
     unsigned newCapacity = HashSetCapacity(count);
@@ -1085,7 +1105,7 @@ TypeSet::addType(Type type, LifoAlloc *alloc)
 
     if (type.isTypeObject()) {
         TypeObject *nobject = type.typeObject();
-        JS_ASSERT(!nobject->singleton);
+        JS_ASSERT(!nobject->singleton());
         if (nobject->unknownProperties())
             goto unknownObject;
     }
@@ -1133,13 +1153,8 @@ ConstraintTypeSet::addType(ExclusiveContext *cxArg, Type type)
 }
 
 inline void
-HeapTypeSet::setConfiguredProperty(ExclusiveContext *cxArg)
+HeapTypeSet::newPropertyState(ExclusiveContext *cxArg)
 {
-    if (flags & TYPE_FLAG_CONFIGURED_PROPERTY)
-        return;
-
-    flags |= TYPE_FLAG_CONFIGURED_PROPERTY;
-
     /* Propagate the change to all constraints. */
     if (JSContext *cx = cxArg->maybeJSContext()) {
         TypeConstraint *constraint = constraintList;
@@ -1150,6 +1165,26 @@ HeapTypeSet::setConfiguredProperty(ExclusiveContext *cxArg)
     } else {
         JS_ASSERT(!constraintList);
     }
+}
+
+inline void
+HeapTypeSet::setNonDataProperty(ExclusiveContext *cx)
+{
+    if (flags & TYPE_FLAG_NON_DATA_PROPERTY)
+        return;
+
+    flags |= TYPE_FLAG_NON_DATA_PROPERTY;
+    newPropertyState(cx);
+}
+
+inline void
+HeapTypeSet::setNonWritableProperty(ExclusiveContext *cx)
+{
+    if (flags & TYPE_FLAG_NON_WRITABLE_PROPERTY)
+        return;
+
+    flags |= TYPE_FLAG_NON_WRITABLE_PROPERTY;
+    newPropertyState(cx);
 }
 
 inline unsigned
@@ -1295,7 +1330,7 @@ TypeObject::getProperty(ExclusiveContext *cx, jsid id)
 
         /*
          * Return an arbitrary property in the object, as all have unknown
-         * type and are treated as configured.
+         * type and are treated as non-data properties.
          */
         unsigned count = getPropertyCount();
         for (unsigned i = 0; i < count; i++) {
@@ -1316,6 +1351,8 @@ TypeObject::maybeGetProperty(jsid id)
     JS_ASSERT_IF(!JSID_IS_EMPTY(id), id == IdToTypeId(id));
     JS_ASSERT(!unknownProperties());
     JS_ASSERT(CurrentThreadCanReadCompilationData());
+
+    AutoThreadSafeAccess ts(this);
 
     Property *prop = HashSetLookup<jsid,Property,Property>
         (propertySet, basePropertyCount(), id);
@@ -1392,7 +1429,7 @@ JSScript::ensureRanAnalysis(JSContext *cx)
         return false;
     if (!hasAnalysis() && !makeAnalysis(cx))
         return false;
-    JS_ASSERT(analysis()->ranBytecode());
+    JS_ASSERT(hasAnalysis());
     return true;
 }
 

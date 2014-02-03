@@ -23,6 +23,7 @@
 #include "mozilla/gfx/2D.h"
 #include "gfx2DGlue.h"
 #include "imgIEncoder.h"
+#include "nsLayoutUtils.h"
 
 class nsGlobalWindow;
 class nsXULElement;
@@ -171,7 +172,7 @@ public:
   void BeginPath();
   void Fill(const CanvasWindingRule& winding);
   void Stroke();
-  void DrawSystemFocusRing(mozilla::dom::Element& element);
+  void DrawFocusIfNeeded(mozilla::dom::Element& element);
   bool DrawCustomFocusRing(mozilla::dom::Element& element);
   void Clip(const CanvasWindingRule& winding);
   bool IsPointInPath(double x, double y, const CanvasWindingRule& winding);
@@ -337,7 +338,7 @@ public:
   void SetMozDash(JSContext* cx, const JS::Value& mozDash,
                   mozilla::ErrorResult& error);
 
-  void SetLineDash(const mozilla::dom::AutoSequence<double>& mSegments);
+  void SetLineDash(const Sequence<double>& mSegments);
   void GetLineDash(nsTArray<double>& mSegments) const;
 
   void SetLineDashOffset(double mOffset);
@@ -395,7 +396,7 @@ public:
                     GraphicsFilter aFilter,
                     uint32_t aFlags = RenderFlagPremultAlpha) MOZ_OVERRIDE;
   NS_IMETHOD GetInputStream(const char* aMimeType,
-                            const PRUnichar* aEncoderOptions,
+                            const char16_t* aEncoderOptions,
                             nsIInputStream **aStream) MOZ_OVERRIDE;
   NS_IMETHOD GetThebesSurface(gfxASurface **surface) MOZ_OVERRIDE;
 
@@ -413,6 +414,7 @@ public:
   // this rect is in canvas device space
   void Redraw(const mozilla::gfx::Rect &r);
   NS_IMETHOD Redraw(const gfxRect &r) MOZ_OVERRIDE { Redraw(ToRect(r)); return NS_OK; }
+  NS_IMETHOD SetContextOptions(JSContext* aCx, JS::Handle<JS::Value> aOptions) MOZ_OVERRIDE;
 
   // this rect is in mTarget's current user space
   void RedrawUser(const gfxRect &r);
@@ -578,6 +580,11 @@ protected:
                  double dx, double dy, double dw, double dh, 
                  uint8_t optional_argc, mozilla::ErrorResult& error);
 
+  void DrawDirectlyToCanvas(const nsLayoutUtils::DirectDrawInfo& image,
+                            mozilla::gfx::Rect* bounds, double dx, double dy,
+                            double dw, double dh, double sx, double sy,
+                            double sw, double sh, gfxIntSize imgSize);
+
   nsString& GetFont()
   {
     /* will initilize the value if not set, else does nothing */
@@ -692,7 +699,7 @@ protected:
   {
     if (NeedToDrawShadow()) {
       // In this case the shadow rendering will use the operator.
-      return mozilla::gfx::OP_OVER;
+      return mozilla::gfx::CompositionOp::OP_OVER;
     }
 
     return CurrentState().op;
@@ -758,10 +765,10 @@ protected:
                      globalAlpha(1.0f),
                      shadowBlur(0.0),
                      dashOffset(0.0f),
-                     op(mozilla::gfx::OP_OVER),
-                     fillRule(mozilla::gfx::FILL_WINDING),
-                     lineCap(mozilla::gfx::CAP_BUTT),
-                     lineJoin(mozilla::gfx::JOIN_MITER_OR_BEVEL),
+                     op(mozilla::gfx::CompositionOp::OP_OVER),
+                     fillRule(mozilla::gfx::FillRule::FILL_WINDING),
+                     lineCap(mozilla::gfx::CapStyle::BUTT),
+                     lineJoin(mozilla::gfx::JoinStyle::MITER_OR_BEVEL),
                      imageSmoothingEnabled(true)
     { }
 

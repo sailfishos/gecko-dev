@@ -17,7 +17,7 @@
 #include "jit/Registers.h"
 #include "jit/RegisterSets.h"
 
-#if defined(JS_CPU_X64) || defined(JS_CPU_ARM)
+#if defined(JS_CODEGEN_X64) || defined(JS_CODEGEN_ARM)
 // JS_SMALL_BRANCH means the range on a branch instruction
 // is smaller than the whole address space
 #    define JS_SMALL_BRANCH
@@ -275,9 +275,9 @@ class Relocation {
         // buffer is relocated and the reference is relative.
         HARDCODED,
 
-        // The target is the start of an IonCode buffer, which must be traced
+        // The target is the start of a JitCode buffer, which must be traced
         // during garbage collection. Relocations and patching may be needed.
-        IONCODE
+        JITCODE
     };
 };
 
@@ -466,7 +466,7 @@ class CodeLabel
     }
 };
 
-// Location of a jump or label in a generated IonCode block, relative to the
+// Location of a jump or label in a generated JitCode block, relative to the
 // start of the block.
 
 class CodeOffsetJump
@@ -515,9 +515,9 @@ class CodeOffsetLabel
 
 };
 
-// Absolute location of a jump or a label in some generated IonCode block.
+// Absolute location of a jump or a label in some generated JitCode block.
 // Can also encode a CodeOffset{Jump,Label}, such that the offset is initially
-// set and the absolute location later filled in after the final IonCode is
+// set and the absolute location later filled in after the final JitCode is
 // allocated.
 
 class CodeLocationJump
@@ -556,7 +556,7 @@ class CodeLocationJump
         jumpTableEntry_ = (uint8_t *) 0xdeadab1e;
 #endif
     }
-    CodeLocationJump(IonCode *code, CodeOffsetJump base) {
+    CodeLocationJump(JitCode *code, CodeOffsetJump base) {
         *this = base;
         repoint(code);
     }
@@ -569,7 +569,7 @@ class CodeLocationJump
 #endif
     }
 
-    void repoint(IonCode *code, MacroAssembler* masm = nullptr);
+    void repoint(JitCode *code, MacroAssembler* masm = nullptr);
 
     uint8_t *raw() const {
         JS_ASSERT(state_ == Absolute);
@@ -617,11 +617,11 @@ class CodeLocationLabel
         raw_ = nullptr;
         setUninitialized();
     }
-    CodeLocationLabel(IonCode *code, CodeOffsetLabel base) {
+    CodeLocationLabel(JitCode *code, CodeOffsetLabel base) {
         *this = base;
         repoint(code);
     }
-    CodeLocationLabel(IonCode *code) {
+    CodeLocationLabel(JitCode *code) {
         raw_ = code->raw();
         setAbsolute();
     }
@@ -638,7 +638,7 @@ class CodeLocationLabel
         return raw_ - other.raw_;
     }
 
-    void repoint(IonCode *code, MacroAssembler *masm = nullptr);
+    void repoint(JitCode *code, MacroAssembler *masm = nullptr);
 
 #ifdef DEBUG
     bool isSet() const {
@@ -685,7 +685,7 @@ enum AsmJSImmKind
     AsmJSImm_ToInt32,
     AsmJSImm_EnableActivationFromAsmJS,
     AsmJSImm_DisableActivationFromAsmJS,
-#if defined(JS_CPU_ARM)
+#if defined(JS_CODEGEN_ARM)
     AsmJSImm_aeabi_idivmod,
     AsmJSImm_aeabi_uidivmod,
 #endif

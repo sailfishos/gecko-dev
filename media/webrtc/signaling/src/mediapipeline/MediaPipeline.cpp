@@ -40,8 +40,10 @@
 #include "gfxImageSurface.h"
 #include "libyuv/convert.h"
 #include "mozilla/gfx/Point.h"
+#include "mozilla/gfx/Types.h"
 
 using namespace mozilla;
+using namespace mozilla::gfx;
 
 // Logging context
 MOZ_MTLOG_MODULE("mediapipeline")
@@ -960,27 +962,25 @@ void MediaPipelineTransmit::PipelineListener::ProcessVideoChunk(
 
     int cb_offset = size.width * size.height;
     int cr_offset = cb_offset + c_size;
-    nsRefPtr<gfxImageSurface> surf = rgb->mSurface->GetAsImageSurface();
+    RefPtr<gfx::SourceSurface> tempSurf = rgb->GetAsSourceSurface();
+    RefPtr<gfx::DataSourceSurface> surf = tempSurf->GetDataSurface();
 
-    switch (surf->Format()) {
-      case gfxImageFormatARGB32:
-      case gfxImageFormatRGB24:
-        libyuv::ARGBToI420(static_cast<uint8*>(surf->Data()), surf->Stride(),
+    switch (surf->GetFormat()) {
+      case gfx::SurfaceFormat::B8G8R8A8:
+      case gfx::SurfaceFormat::B8G8R8X8:
+        libyuv::ARGBToI420(static_cast<uint8*>(surf->GetData()), surf->Stride(),
                            yuv, size.width,
                            yuv + cb_offset, half_width,
                            yuv + cr_offset, half_width,
                            size.width, size.height);
         break;
-      case gfxImageFormatRGB16_565:
-        libyuv::RGB565ToI420(static_cast<uint8*>(surf->Data()), surf->Stride(),
+      case gfx::SurfaceFormat::R5G6B5:
+        libyuv::RGB565ToI420(static_cast<uint8*>(surf->GetData()), surf->Stride(),
                              yuv, size.width,
                              yuv + cb_offset, half_width,
                              yuv + cr_offset, half_width,
                              size.width, size.height);
         break;
-      case gfxImageFormatA1:
-      case gfxImageFormatA8:
-      case gfxImageFormatUnknown:
       default:
         MOZ_MTLOG(ML_ERROR, "Unsupported RGB video format");
         MOZ_ASSERT(PR_FALSE);
@@ -1212,15 +1212,15 @@ void MediaPipelineReceiveVideo::PipelineListener::RenderVideoFrame(
 
   layers::PlanarYCbCrData data;
   data.mYChannel = frame;
-  data.mYSize = gfxIntSize(width_, height_);
+  data.mYSize = IntSize(width_, height_);
   data.mYStride = width_ * lumaBpp/ 8;
   data.mCbCrStride = width_ * chromaBpp / 8;
   data.mCbChannel = frame + height_ * data.mYStride;
   data.mCrChannel = data.mCbChannel + height_ * data.mCbCrStride / 2;
-  data.mCbCrSize = gfxIntSize(width_/ 2, height_/ 2);
+  data.mCbCrSize = IntSize(width_/ 2, height_/ 2);
   data.mPicX = 0;
   data.mPicY = 0;
-  data.mPicSize = gfxIntSize(width_, height_);
+  data.mPicSize = IntSize(width_, height_);
   data.mStereoMode = STEREO_MODE_MONO;
 
   videoImage->SetData(data);

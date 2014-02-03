@@ -208,7 +208,7 @@ assertSameCompartment(ThreadSafeContext *cx,
 #undef START_ASSERT_SAME_COMPARTMENT
 
 STATIC_PRECONDITION_ASSUME(ubound(args.argv_) >= argc)
-JS_ALWAYS_INLINE bool
+MOZ_ALWAYS_INLINE bool
 CallJSNative(JSContext *cx, Native native, const CallArgs &args)
 {
     JS_CHECK_RECURSION(cx, return false);
@@ -226,7 +226,7 @@ CallJSNative(JSContext *cx, Native native, const CallArgs &args)
 }
 
 STATIC_PRECONDITION_ASSUME(ubound(args.argv_) >= argc)
-JS_ALWAYS_INLINE bool
+MOZ_ALWAYS_INLINE bool
 CallNativeImpl(JSContext *cx, NativeImpl impl, const CallArgs &args)
 {
 #ifdef DEBUG
@@ -242,7 +242,7 @@ CallNativeImpl(JSContext *cx, NativeImpl impl, const CallArgs &args)
 }
 
 STATIC_PRECONDITION(ubound(args.argv_) >= argc)
-JS_ALWAYS_INLINE bool
+MOZ_ALWAYS_INLINE bool
 CallJSNativeConstructor(JSContext *cx, Native native, const CallArgs &args)
 {
 #ifdef DEBUG
@@ -282,7 +282,7 @@ CallJSNativeConstructor(JSContext *cx, Native native, const CallArgs &args)
     return true;
 }
 
-JS_ALWAYS_INLINE bool
+MOZ_ALWAYS_INLINE bool
 CallJSPropertyOp(JSContext *cx, PropertyOp op, HandleObject receiver, HandleId id, MutableHandleValue vp)
 {
     JS_CHECK_RECURSION(cx, return false);
@@ -294,7 +294,7 @@ CallJSPropertyOp(JSContext *cx, PropertyOp op, HandleObject receiver, HandleId i
     return ok;
 }
 
-JS_ALWAYS_INLINE bool
+MOZ_ALWAYS_INLINE bool
 CallJSPropertyOpSetter(JSContext *cx, StrictPropertyOp op, HandleObject obj, HandleId id,
                        bool strict, MutableHandleValue vp)
 {
@@ -358,10 +358,11 @@ ExclusiveContext::typeLifoAlloc()
 }  /* namespace js */
 
 inline void
-JSContext::setPendingException(js::Value v) {
+JSContext::setPendingException(js::Value v)
+{
     JS_ASSERT(!IsPoisonedValue(v));
     this->throwing = true;
-    this->exception = v;
+    this->unwrappedException_ = v;
     js::assertSameCompartment(this, v);
 }
 
@@ -388,11 +389,6 @@ js::ExclusiveContext::enterCompartment(JSCompartment *c)
     enterCompartmentDepth_++;
     c->enter();
     setCompartment(c);
-
-    if (JSContext *cx = maybeJSContext()) {
-        if (cx->throwing)
-            cx->wrapPendingException();
-    }
 }
 
 inline void
@@ -406,11 +402,6 @@ js::ExclusiveContext::leaveCompartment(JSCompartment *oldCompartment)
     JSCompartment *startingCompartment = compartment_;
     setCompartment(oldCompartment);
     startingCompartment->leave();
-
-    if (JSContext *cx = maybeJSContext()) {
-        if (cx->throwing && oldCompartment)
-            cx->wrapPendingException();
-    }
 }
 
 inline void

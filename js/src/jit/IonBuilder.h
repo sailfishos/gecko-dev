@@ -13,6 +13,7 @@
 // JSScript.
 
 #include "jit/BytecodeAnalysis.h"
+#include "jit/IonOptimizationLevels.h"
 #include "jit/MIR.h"
 #include "jit/MIRGenerator.h"
 #include "jit/MIRGraph.h"
@@ -211,9 +212,11 @@ class IonBuilder : public MIRGenerator
     static int CmpSuccessors(const void *a, const void *b);
 
   public:
-    IonBuilder(JSContext *analysisContext, CompileCompartment *comp, TempAllocator *temp, MIRGraph *graph,
-               types::CompilerConstraintList *constraints,
-               BaselineInspector *inspector, CompileInfo *info, BaselineFrameInspector *baselineFrame,
+    IonBuilder(JSContext *analysisContext, CompileCompartment *comp,
+               const JitCompileOptions &options, TempAllocator *temp,
+               MIRGraph *graph, types::CompilerConstraintList *constraints,
+               BaselineInspector *inspector, CompileInfo *info,
+               const OptimizationInfo *optimizationInfo, BaselineFrameInspector *baselineFrame,
                size_t inliningDepth = 0, uint32_t loopDepth = 0);
 
     bool build();
@@ -229,10 +232,6 @@ class IonBuilder : public MIRGenerator
     JSAtom *readAtom(jsbytecode *pc);
     bool abort(const char *message, ...);
     void spew(const char *message);
-
-    static bool inliningEnabled() {
-        return js_IonOptions.inlining;
-    }
 
     JSFunction *getSingleCallTarget(types::TemporaryTypeSet *calleeTypes);
     bool getPolyCallTargets(types::TemporaryTypeSet *calleeTypes, bool constructing,
@@ -292,8 +291,8 @@ class IonBuilder : public MIRGenerator
     // linking each break to the new block.
     MBasicBlock *createBreakCatchBlock(DeferredEdge *edge, jsbytecode *pc);
 
-    // Finishes loops that do not actually loop, containing only breaks or
-    // returns.
+    // Finishes loops that do not actually loop, containing only breaks and
+    // returns or a do while loop with a condition that is constant false.
     ControlStatus processBrokenLoop(CFGState &state);
 
     // Computes loop phis, places them in all successors of a loop, then
@@ -324,6 +323,8 @@ class IonBuilder : public MIRGenerator
     bool resumeAt(MInstruction *ins, jsbytecode *pc);
     bool resumeAfter(MInstruction *ins);
     bool maybeInsertResume();
+
+    void insertRecompileCheck();
 
     bool initParameters();
     void rewriteParameter(uint32_t slotIdx, MDefinition *param, int32_t argIndex);
@@ -463,8 +464,10 @@ class IonBuilder : public MIRGenerator
                                        TypeRepresentationSet objTypeReprs);
 
     // jsop_setelem() helpers.
-    bool setElemTryTyped(bool *emitted, MDefinition *object,
+    bool setElemTryTypedArray(bool *emitted, MDefinition *object,
                          MDefinition *index, MDefinition *value);
+    bool setElemTryTypedObject(bool *emitted, MDefinition *obj,
+                               MDefinition *index, MDefinition *value);
     bool setElemTryTypedStatic(bool *emitted, MDefinition *object,
                                MDefinition *index, MDefinition *value);
     bool setElemTryDense(bool *emitted, MDefinition *object,
@@ -473,6 +476,13 @@ class IonBuilder : public MIRGenerator
                              MDefinition *index, MDefinition *value);
     bool setElemTryCache(bool *emitted, MDefinition *object,
                          MDefinition *index, MDefinition *value);
+    bool setElemTryScalarPropOfTypedObject(bool *emitted,
+                                           MDefinition *obj,
+                                           MDefinition *index,
+                                           TypeRepresentationSet objTypeReprs,
+                                           MDefinition *value,
+                                           TypeRepresentationSet elemTypeReprs,
+                                           size_t elemSize);
 
     // jsop_getelem() helpers.
     bool getElemTryDense(bool *emitted, MDefinition *obj, MDefinition *index);
@@ -556,6 +566,7 @@ class IonBuilder : public MIRGenerator
     bool jsop_initelem();
     bool jsop_initelem_array();
     bool jsop_initelem_getter_setter();
+    bool jsop_mutateproto();
     bool jsop_initprop(PropertyName *name);
     bool jsop_initprop_getter_setter(PropertyName *name);
     bool jsop_regexp(RegExpObject *reobj);
@@ -611,6 +622,7 @@ class IonBuilder : public MIRGenerator
     // Math natives.
     InliningStatus inlineMathAbs(CallInfo &callInfo);
     InliningStatus inlineMathFloor(CallInfo &callInfo);
+    InliningStatus inlineMathCeil(CallInfo &callInfo);
     InliningStatus inlineMathRound(CallInfo &callInfo);
     InliningStatus inlineMathSqrt(CallInfo &callInfo);
     InliningStatus inlineMathAtan2(CallInfo &callInfo);
@@ -628,8 +640,10 @@ class IonBuilder : public MIRGenerator
     InliningStatus inlineStrCharCodeAt(CallInfo &callInfo);
     InliningStatus inlineStrFromCharCode(CallInfo &callInfo);
     InliningStatus inlineStrCharAt(CallInfo &callInfo);
+    InliningStatus inlineStrReplace(CallInfo &callInfo);
 
     // RegExp natives.
+    InliningStatus inlineRegExpExec(CallInfo &callInfo);
     InliningStatus inlineRegExpTest(CallInfo &callInfo);
 
     // Array intrinsics.
@@ -931,7 +945,7 @@ class CallInfo
         args_[i] = def;
     }
 
-    MDefinition *thisArg() {
+    MDefinition *thisArg() const {
         JS_ASSERT(thisArg_);
         return thisArg_;
     }
@@ -940,7 +954,7 @@ class CallInfo
         thisArg_ = thisArg;
     }
 
-    bool constructing() {
+    bool constructing() const {
         return constructing_;
     }
 
@@ -951,55 +965,20 @@ class CallInfo
         setter_ = true;
     }
 
-    void wrapArgs(TempAllocator &alloc, MBasicBlock *current) {
-        thisArg_ = wrap(alloc, current, thisArg_);
-        for (uint32_t i = 0; i < argc(); i++)
-            args_[i] = wrap(alloc, current, args_[i]);
-    }
-
-    void unwrapArgs() {
-        thisArg_ = unwrap(thisArg_);
-        for (uint32_t i = 0; i < argc(); i++)
-            args_[i] = unwrap(args_[i]);
-    }
-
     MDefinition *fun() const {
         JS_ASSERT(fun_);
         return fun_;
     }
 
     void setFun(MDefinition *fun) {
-        JS_ASSERT(!fun->isPassArg());
         fun_ = fun;
     }
 
-    bool isWrapped() {
-        bool wrapped = thisArg()->isPassArg();
-
-#if DEBUG
+    void setImplicitlyUsedUnchecked() {
+        fun_->setImplicitlyUsedUnchecked();
+        thisArg_->setImplicitlyUsedUnchecked();
         for (uint32_t i = 0; i < argc(); i++)
-            JS_ASSERT(args_[i]->isPassArg() == wrapped);
-#endif
-
-        return wrapped;
-    }
-
-  private:
-    static MDefinition *unwrap(MDefinition *arg) {
-        JS_ASSERT(arg->isPassArg());
-        MPassArg *passArg = arg->toPassArg();
-        MBasicBlock *block = passArg->block();
-        MDefinition *wrapped = passArg->getArgument();
-        wrapped->setFoldedUnchecked();
-        passArg->replaceAllUsesWith(wrapped);
-        block->discard(passArg);
-        return wrapped;
-    }
-    static MDefinition *wrap(TempAllocator &alloc, MBasicBlock *current, MDefinition *arg) {
-        JS_ASSERT(!arg->isPassArg());
-        MPassArg *passArg = MPassArg::New(alloc, arg);
-        current->add(passArg);
-        return passArg;
+            getArg(i)->setImplicitlyUsedUnchecked();
     }
 };
 

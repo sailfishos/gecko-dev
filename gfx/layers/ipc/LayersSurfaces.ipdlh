@@ -5,7 +5,6 @@
 include protocol PGrallocBuffer;
 
 
-using gfxIntSize from "nsSize.h";
 using struct gfxPoint from "gfxPoint.h";
 using struct nsIntRect from "nsRect.h";
 using nsIntRegion from "nsRegion.h";
@@ -19,6 +18,7 @@ using mozilla::gl::SharedTextureShareType from "GLContextTypes.h";
 using mozilla::gfx::SurfaceStreamHandle from "SurfaceTypes.h";
 using mozilla::gfx::SurfaceFormat from "mozilla/gfx/Types.h";
 using mozilla::gfx::IntSize from "mozilla/gfx/Point.h";
+using gfxImageFormat from "gfxTypes.h";
 
 namespace mozilla {
 namespace layers {
@@ -40,7 +40,7 @@ struct SurfaceDescriptorDIB {
 
 struct SurfaceDescriptorD3D10 {
   WindowsHandle handle;
-  bool hasAlpha;
+  SurfaceFormat format;
 };
 
 struct SurfaceDescriptorMacIOSurface {
@@ -100,7 +100,7 @@ struct SurfaceDescriptorGralloc {
    * that GraphicBuffer's size and actual video's size are different.
    * Extra size member is necessary. See Bug 850566.
    */
-  nsIntSize size;
+  IntSize size;
 
   /**
    * We can have one source producing gralloc buffers and sharing them
@@ -138,15 +138,15 @@ struct YCbCrImage {
 struct RGBImage {
   Shmem data;
   nsIntRect picture;
-  uint32_t rgbFormat;
+  gfxImageFormat rgbFormat;
   uint64_t owner;
 };
 
 struct MemoryImage {
   uintptr_t data;
-  gfxIntSize size;
+  IntSize size;
   uint32_t stride;
-  uint32_t format;
+  gfxImageFormat format;
 };
 
 /**

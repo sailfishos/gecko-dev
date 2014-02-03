@@ -8,7 +8,6 @@ package org.mozilla.gecko;
 import org.mozilla.gecko.SiteIdentity.SecurityMode;
 import org.mozilla.gecko.db.BrowserDB;
 import org.mozilla.gecko.gfx.Layer;
-import org.mozilla.gecko.home.HomePager;
 import org.mozilla.gecko.util.ThreadUtils;
 
 import org.json.JSONException;
@@ -52,7 +51,6 @@ public class Tab {
     private int mHistoryIndex;
     private int mHistorySize;
     private int mParentId;
-    private HomePager.Page mAboutHomePage;
     private boolean mExternal;
     private boolean mBookmark;
     private boolean mReadingListItem;
@@ -71,6 +69,7 @@ public class Tab {
     private Context mAppContext;
     private ErrorType mErrorType = ErrorType.NONE;
     private static final int MAX_HISTORY_LIST_SIZE = 50;
+    private int mLoadProgress;
 
     public static final int STATE_DELAYED = 0;
     public static final int STATE_LOADING = 1;
@@ -95,7 +94,6 @@ public class Tab {
         mUserSearch = "";
         mExternal = external;
         mParentId = parentId;
-        mAboutHomePage = null;
         mTitle = title == null ? "" : title;
         mFavicon = null;
         mFaviconUrl = null;
@@ -145,14 +143,6 @@ public class Tab {
 
     public int getParentId() {
         return mParentId;
-    }
-
-    public HomePager.Page getAboutHomePage() {
-        return mAboutHomePage;
-    }
-
-    private void setAboutHomePage(HomePager.Page page) {
-        mAboutHomePage = page;
     }
 
     // may be null if user-entered query hasn't yet been resolved to a URI
@@ -218,7 +208,7 @@ public class Tab {
             public void run() {
                 if (b != null) {
                     try {
-                        mThumbnail = new BitmapDrawable(b);
+                        mThumbnail = new BitmapDrawable(mAppContext.getResources(), b);
                         if (mState == Tab.STATE_SUCCESS)
                             saveThumbnailToDB();
                     } catch (OutOfMemoryError oom) {
@@ -244,10 +234,6 @@ public class Tab {
 
     public boolean hasOpenSearch() {
         return mHasOpenSearch;
-    }
-
-    public SecurityMode getSecurityMode() {
-        return mSiteIdentity.getSecurityMode();
     }
 
     public SiteIdentity getSiteIdentity() {
@@ -648,6 +634,7 @@ public class Tab {
         clearFavicon();
 
         setHasFeeds(false);
+        setHasOpenSearch(false);
         updateTitle(null);
         updateIdentityData(null);
         setReaderEnabled(false);
@@ -655,13 +642,6 @@ public class Tab {
         setHasTouchListeners(false);
         setBackgroundColor(DEFAULT_BACKGROUND_COLOR);
         setErrorType(ErrorType.NONE);
-
-        final String homePage = message.getString("aboutHomePage");
-        if (!TextUtils.isEmpty(homePage)) {
-            setAboutHomePage(HomePager.Page.valueOf(homePage));
-        } else {
-            setAboutHomePage(null);
-        }
 
         Tabs.getInstance().notifyListeners(this, Tabs.TabEvents.LOCATION_CHANGE, oldUrl);
     }
@@ -784,5 +764,23 @@ public class Tab {
 
     public boolean isPrivate() {
         return false;
+    }
+
+    /**
+     * Sets the tab load progress to the given percentage.
+     *
+     * @param progressPercentage Percentage to set progress to (0-100)
+     */
+    void setLoadProgress(int progressPercentage) {
+        mLoadProgress = progressPercentage;
+    }
+
+    /**
+     * Gets the tab load progress percentage.
+     *
+     * @return Current progress percentage
+     */
+    public int getLoadProgress() {
+        return mLoadProgress;
     }
 }

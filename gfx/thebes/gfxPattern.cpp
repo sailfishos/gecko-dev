@@ -121,8 +121,8 @@ gfxPattern::CacheColorStops(mozilla::gfx::DrawTarget *aDT)
     mStops = gfxGradientCache::GetOrCreateGradientStops(aDT,
                                                         stops,
                                                         (cairo_pattern_get_extend(mPattern) == CAIRO_EXTEND_REPEAT)
-                                                        ? mozilla::gfx::EXTEND_REPEAT
-                                                        : mozilla::gfx::EXTEND_CLAMP);
+                                                        ? mozilla::gfx::ExtendMode::REPEAT
+                                                        : mozilla::gfx::ExtendMode::CLAMP);
   }
 }
 
@@ -179,8 +179,11 @@ gfxPattern::GetPattern(DrawTarget *aTarget, Matrix *aPatternTransform)
   }
 
   if (!mPattern) {
+    Matrix adjustedMatrix = mTransform;
+    if (aPatternTransform)
+      AdjustTransformForPattern(adjustedMatrix, aTarget->GetTransform(), aPatternTransform);
     mGfxPattern = new (mSurfacePattern.addr())
-      SurfacePattern(mSourceSurface, ToExtendMode(mExtend), mTransform, mFilter);
+      SurfacePattern(mSourceSurface, ToExtendMode(mExtend), adjustedMatrix, mFilter);
     return mGfxPattern;
   }
 
@@ -372,7 +375,7 @@ gfxPattern::IsOpaque()
     }
   }
 
-  if (mSourceSurface->GetFormat() == FORMAT_B8G8R8X8) {
+  if (mSourceSurface->GetFormat() == SurfaceFormat::B8G8R8X8) {
     return true;
   }
   return false;

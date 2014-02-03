@@ -280,7 +280,7 @@ public:
     if (numFrames == WEBAUDIO_BLOCK_SIZE) {
       aOutput->SetNull(numFrames);
     } else {
-      if (aOutput->IsNull()) {
+      if (*aOffsetWithinBlock == 0) {
         AllocateAudioBlock(aChannels, aOutput);
       }
       WriteZeroesToAudioBlock(aOutput, *aOffsetWithinBlock, numFrames);
@@ -317,8 +317,7 @@ public:
       *aCurrentPosition += numFrames;
       mPosition += numFrames;
     } else {
-      if (aOutput->IsNull()) {
-        MOZ_ASSERT(*aOffsetWithinBlock == 0);
+      if (*aOffsetWithinBlock == 0) {
         AllocateAudioBlock(aChannels, aOutput);
       }
       if (!ShouldResample(aStream->SampleRate())) {
@@ -392,6 +391,7 @@ public:
                                  bool* aFinished)
   {
     if (!mBuffer || !mDuration) {
+      aOutput->SetNull(WEBAUDIO_BLOCK_SIZE);
       return;
     }
 
@@ -472,8 +472,7 @@ AudioBufferSourceNode::AudioBufferSourceNode(AudioContext* aContext)
               ChannelInterpretation::Speakers)
   , mLoopStart(0.0)
   , mLoopEnd(0.0)
-  , mOffset(0.0)
-  , mDuration(std::numeric_limits<double>::min())
+  // mOffset and mDuration are initialized in Start().
   , mPlaybackRate(new AudioParam(MOZ_THIS_IN_INITIALIZER_LIST(),
                   SendPlaybackRateToStream, 1.0f))
   , mLoop(false)
@@ -521,24 +520,19 @@ AudioBufferSourceNode::Start(double aWhen, double aOffset,
     return;
   }
 
+  // Remember our arguments so that we can use them when we get a new buffer.
+  mOffset = aOffset;
+  mDuration = aDuration.WasPassed() ? aDuration.Value()
+                                    : std::numeric_limits<double>::min();
+  // We can't send these parameters without a buffer because we don't know the
+  // buffer's sample rate or length.
   if (mBuffer) {
-    double duration = aDuration.WasPassed() ?
-                      aDuration.Value() :
-                      std::numeric_limits<double>::min();
-    SendOffsetAndDurationParametersToStream(ns, aOffset, duration);
-  } else {
-    // Remember our arguments so that we can use them once we have a buffer.
-    // We can't send these parameters now because we don't know the buffer
-    // sample rate.
-    mOffset = aOffset;
-    mDuration = aDuration.WasPassed() ?
-                aDuration.Value() :
-                std::numeric_limits<double>::min();
+    SendOffsetAndDurationParametersToStream(ns);
   }
 
   // Don't set parameter unnecessarily
   if (aWhen > 0.0) {
-    ns->SetStreamTimeParameter(START, Context()->DestinationStream(), aWhen);
+    ns->SetStreamTimeParameter(START, Context(), aWhen);
   }
 
   MarkActive();
@@ -558,7 +552,7 @@ AudioBufferSourceNode::SendBufferParameterToStream(JSContext* aCx)
     ns->SetInt32Parameter(SAMPLE_RATE, rate);
 
     if (mStartCalled) {
-      SendOffsetAndDurationParametersToStream(ns, mOffset, mDuration);
+      SendOffsetAndDurationParametersToStream(ns);
     }
   } else {
     ns->SetBuffer(nullptr);
@@ -566,16 +560,14 @@ AudioBufferSourceNode::SendBufferParameterToStream(JSContext* aCx)
 }
 
 void
-AudioBufferSourceNode::SendOffsetAndDurationParametersToStream(AudioNodeStream* aStream,
-                                                               double aOffset,
-                                                               double aDuration)
+AudioBufferSourceNode::SendOffsetAndDurationParametersToStream(AudioNodeStream* aStream)
 {
   NS_ASSERTION(mBuffer && mStartCalled,
                "Only call this when we have a buffer and start() has been called");
 
   float rate = mBuffer->SampleRate();
   int32_t bufferLength = mBuffer->Length();
-  int32_t offsetSamples = std::max(0, NS_lround(aOffset * rate));
+  int32_t offsetSamples = std::max(0, NS_lround(mOffset * rate));
 
   if (offsetSamples >= bufferLength) {
     // The offset falls past the end of the buffer.  In this case, we need to
@@ -593,8 +585,8 @@ AudioBufferSourceNode::SendOffsetAndDurationParametersToStream(AudioNodeStream* 
   }
 
   int32_t playingLength = bufferLength - offsetSamples;
-  if (aDuration != std::numeric_limits<double>::min()) {
-    playingLength = std::min(NS_lround(aDuration * rate), playingLength);
+  if (mDuration != std::numeric_limits<double>::min()) {
+    playingLength = std::min(NS_lround(mDuration * rate), playingLength);
   }
   aStream->SetInt32Parameter(DURATION, playingLength);
 }
@@ -624,8 +616,7 @@ AudioBufferSourceNode::Stop(double aWhen, ErrorResult& aRv)
     return;
   }
 
-  ns->SetStreamTimeParameter(STOP, Context()->DestinationStream(),
-                             std::max(0.0, aWhen));
+  ns->SetStreamTimeParameter(STOP, Context(), std::max(0.0, aWhen));
 }
 
 void

@@ -11,12 +11,12 @@
 #include <sys/un.h>
 #include <netdb.h> // For gethostbyname.
 
-#undef LOG
+#undef CHROMIUM_LOG
 #if defined(MOZ_WIDGET_GONK)
 #include <android/log.h>
-#define LOG(args...)  __android_log_print(ANDROID_LOG_INFO, "Gonk", args)
+#define CHROMIUM_LOG(args...)  __android_log_print(ANDROID_LOG_INFO, "Gonk", args)
 #else
-#define LOG(args...)  printf(args);
+#define CHROMIUM_LOG(args...)  printf(args);
 #endif
 
 #include "jsfriendapi.h"
@@ -141,7 +141,7 @@ ConnectWorkerToRIL::RunTask(JSContext *aCx)
     // communication.
     NS_ASSERTION(!NS_IsMainThread(), "Expecting to be on the worker thread");
     NS_ASSERTION(!JS_IsRunning(aCx), "Are we being called somehow?");
-    JSObject *workerGlobal = JS::CurrentGlobalOrNull(aCx);
+    JS::Rooted<JSObject*> workerGlobal(aCx, JS::CurrentGlobalOrNull(aCx));
 
     return !!JS_DefineFunction(aCx, workerGlobal,
                                "postRILMessage", PostToRIL, 2, 0);
@@ -251,7 +251,7 @@ RilConnector::CreateAddr(bool aIsServer,
     case AF_INET:
         aAddr.in.sin_family = af;
         aAddr.in.sin_port = htons(RIL_TEST_PORT + mClientId);
-        aAddr.in.sin_addr.s_addr = htons(INADDR_LOOPBACK);
+        aAddr.in.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
         aAddrSize = sizeof(sockaddr_in);
         break;
     default:
@@ -361,20 +361,20 @@ void
 RilConsumer::OnConnectSuccess()
 {
     // Nothing to do here.
-    LOG("RIL[%lu]: %s\n", mClientId, __FUNCTION__);
+    CHROMIUM_LOG("RIL[%lu]: %s\n", mClientId, __FUNCTION__);
 }
 
 void
 RilConsumer::OnConnectError()
 {
-    LOG("RIL[%lu]: %s\n", mClientId, __FUNCTION__);
+    CHROMIUM_LOG("RIL[%lu]: %s\n", mClientId, __FUNCTION__);
     CloseSocket();
 }
 
 void
 RilConsumer::OnDisconnect()
 {
-    LOG("RIL[%lu]: %s\n", mClientId, __FUNCTION__);
+    CHROMIUM_LOG("RIL[%lu]: %s\n", mClientId, __FUNCTION__);
     if (!mShutdown) {
         ConnectSocket(new RilConnector(mClientId), mAddress.get(), 1000);
     }

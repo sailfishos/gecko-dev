@@ -76,6 +76,7 @@ EmbedLiteViewThreadChild::EmbedLiteViewThreadChild(const uint32_t& aId, const ui
   : mId(aId)
   , mOuterId(0)
   , mViewSize(0, 0)
+  , mViewResized(false)
   , mDispatchSynthMouseEvents(true)
   , mIMEComposing(false)
 {
@@ -400,7 +401,7 @@ bool
 EmbedLiteViewThreadChild::RecvLoadFrameScript(const nsString& uri)
 {
   if (mHelper) {
-    return mHelper->DoLoadFrameScript(uri);
+    return mHelper->DoLoadFrameScript(uri, true);
   }
   return false;
 }
@@ -425,7 +426,7 @@ EmbedLiteViewThreadChild::HasMessageListener(const nsAString& aMessageName)
 }
 
 bool
-EmbedLiteViewThreadChild::DoSendAsyncMessage(const PRUnichar* aMessageName, const PRUnichar* aMessage)
+EmbedLiteViewThreadChild::DoSendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage)
 {
   LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessageName).get(), NS_ConvertUTF16toUTF8(aMessage).get());
   if (mRegisteredMessages.Get(nsDependentString(aMessageName))) {
@@ -435,7 +436,7 @@ EmbedLiteViewThreadChild::DoSendAsyncMessage(const PRUnichar* aMessageName, cons
 }
 
 bool
-EmbedLiteViewThreadChild::DoSendSyncMessage(const PRUnichar* aMessageName, const PRUnichar* aMessage, InfallibleTArray<nsString>* aJSONRetVal)
+EmbedLiteViewThreadChild::DoSendSyncMessage(const char16_t* aMessageName, const char16_t* aMessage, InfallibleTArray<nsString>* aJSONRetVal)
 {
   LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessageName).get(), NS_ConvertUTF16toUTF8(aMessage).get());
   if (mRegisteredMessages.Get(nsDependentString(aMessageName))) {
@@ -489,6 +490,7 @@ EmbedLiteViewThreadChild::RecvRemoveMessageListeners(const InfallibleTArray<nsSt
 bool
 EmbedLiteViewThreadChild::RecvSetViewSize(const gfxSize& aSize)
 {
+  mViewResized = aSize != mViewSize;
   mViewSize = aSize;
   LOGT("sz[%g,%g]", mViewSize.width, mViewSize.height);
 
@@ -571,13 +573,21 @@ EmbedLiteViewThreadChild::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
     return true;
   }
 
+
+  FrameMetrics metrics(aFrameMetrics);
+  if (mViewResized && mHelper->HandlePossibleViewportChange()) {
+    metrics = mHelper->mFrameMetrics;
+    mViewResized = false;
+  }
+
+
   for (unsigned int i = 0; i < mControllerListeners.Length(); i++) {
-    mControllerListeners[i]->RequestContentRepaint(aFrameMetrics);
+    mControllerListeners[i]->RequestContentRepaint(metrics);
   }
 
   bool ret = true;
   if (sHandleDefaultAZPC.viewport) {
-    ret = mHelper->RecvUpdateFrame(aFrameMetrics);
+    ret = mHelper->RecvUpdateFrame(metrics);
   }
 
   return ret;
@@ -774,7 +784,7 @@ EmbedLiteViewThreadChild::RecvMouseEvent(const nsString& aType,
   NS_ENSURE_TRUE(utils, true);
   bool ignored = false;
   utils->SendMouseEvent(aType, aX, aY, aButton, aClickCount, aModifiers,
-                        aIgnoreRootScrollFrame, 0, 0, &ignored);
+                        aIgnoreRootScrollFrame, 0, 0, false, 4, &ignored);
 
   return true;
 }
@@ -895,7 +905,7 @@ EmbedLiteViewThreadChild::OnScrollChanged(int32_t offSetX, int32_t offSetY)
 }
 
 NS_IMETHODIMP
-EmbedLiteViewThreadChild::OnTitleChanged(const PRUnichar* aTitle)
+EmbedLiteViewThreadChild::OnTitleChanged(const char16_t* aTitle)
 {
   return SendOnTitleChanged(nsDependentString(aTitle)) ? NS_OK : NS_ERROR_FAILURE;
 }

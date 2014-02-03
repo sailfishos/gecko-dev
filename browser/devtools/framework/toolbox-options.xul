@@ -61,6 +61,15 @@
                     tooltiptext="&options.timestampMessages.tooltip;"
                     data-pref="devtools.webconsole.timestampMessages"/>
         </vbox>
+        <label value="&options.styleeditor.label;"/>
+        <vbox id="styleeditor-options" class="options-groupbox">
+          <checkbox label="&options.stylesheetSourceMaps.label;"
+                    tooltiptext="&options.stylesheetSourceMaps.tooltip;"
+                    data-pref="devtools.styleeditor.source-maps-enabled"/>
+          <checkbox label="&options.stylesheetAutocompletion.label;"
+                    tooltiptext="&options.stylesheetAutocompletion.tooltip;"
+                    data-pref="devtools.styleeditor.autocompletion-enabled"/>
+        </vbox>
         <label value="&options.profiler.label;"/>
         <vbox id="profiler-options" class="options-groupbox">
           <checkbox label="&options.showPlatformData.label;"
@@ -69,13 +78,12 @@
         </vbox>
         <label value="&options.context.advancedSettings;"/>
         <vbox id="context-options" class="options-groupbox">
-          <hbox>
-            <checkbox id="devtools-disable-javascript"
-                      label="&options.disableJavaScript.label2;"
-                      tooltiptext="&options.disableJavaScript.tooltip;"/>
-            <label class="options-citation-label theme-comment"
-                   value="(&options.context.triggersPageRefresh2;)"/>
-          </hbox>
+          <checkbox id="devtools-disable-cache"
+                    label="&options.disableCache.label;"
+                    tooltiptext="&options.disableCache.tooltip;"/>
+          <checkbox id="devtools-disable-javascript"
+                    label="&options.disableJavaScript.label;"
+                    tooltiptext="&options.disableJavaScript.tooltip;"/>
           <hbox class="hidden-labels-box">
             <checkbox label="&options.enableChrome.label3;"
                       tooltiptext="&options.enableChrome.tooltip;"
@@ -86,6 +94,8 @@
                       tooltiptext="&options.enableRemote.tooltip;"
                       data-pref="devtools.debugger.remote-enabled"/>
           </hbox>
+          <label class="options-citation-label"
+                 value="&options.context.triggersPageRefresh;"/>
         </vbox>
       </vbox>
     </hbox>

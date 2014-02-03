@@ -70,6 +70,9 @@ typedef struct _nsCocoaWindowList {
   // Shadow
   BOOL mScheduledShadowInvalidation;
 
+  // Invalidation disabling
+  BOOL mDisabledNeedsDisplay;
+
   // DPI cache. Getting the physical screen size (CGDisplayScreenSize)
   // is ridiculously slow, so we cache it in the toplevel window for all
   // descendants to use.
@@ -107,6 +110,9 @@ typedef struct _nsCocoaWindowList {
 
 - (void)setWantsTitleDrawn:(BOOL)aDrawTitle;
 - (BOOL)wantsTitleDrawn;
+
+- (void)disableSetNeedsDisplay;
+- (void)enableSetNeedsDisplay;
 
 @end
 
@@ -284,7 +290,7 @@ public:
     NS_IMETHOD Invalidate(const nsIntRect &aRect);
     virtual nsresult ConfigureChildren(const nsTArray<Configuration>& aConfigurations);
     virtual LayerManager* GetLayerManager(PLayerTransactionChild* aShadowManager = nullptr,
-                                          LayersBackend aBackendHint = mozilla::layers::LAYERS_NONE,
+                                          LayersBackend aBackendHint = mozilla::layers::LayersBackend::LAYERS_NONE,
                                           LayerManagerPersistence aPersistence = LAYER_MANAGER_CURRENT,
                                           bool* aAllowRetaining = nullptr);
     NS_IMETHOD DispatchEvent(mozilla::WidgetGUIEvent* aEvent,
@@ -353,8 +359,7 @@ protected:
                                               nsDeviceContext *aContext);
   void                 DestroyNativeWindow();
   void                 AdjustWindowShadow();
-  void                 SetUpWindowFilter();
-  void                 CleanUpWindowFilter();
+  void                 SetWindowBackgroundBlur();
   void                 UpdateBounds();
 
   nsresult             DoResize(double aX, double aY, double aWidth, double aHeight,
@@ -375,7 +380,6 @@ protected:
   NSWindow*            mSheetWindowParent; // if this is a sheet, this is the NSWindow it's attached to
   nsChildView*         mPopupContentView; // if this is a popup, this is its content widget
   int32_t              mShadowStyle;
-  NSUInteger           mWindowFilter;
 
   CGFloat              mBackingScaleFactor;
 

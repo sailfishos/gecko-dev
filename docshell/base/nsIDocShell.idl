@@ -44,7 +44,7 @@ interface nsIReflowObserver;
 
 typedef unsigned long nsLoadFlags;
 
-[scriptable, builtinclass, uuid(55ca6545-7ce4-49ad-8117-8286ca9c61bb)]
+[scriptable, builtinclass, uuid(af035c67-1690-431b-9c4d-d38e3cc3137a)]
 interface nsIDocShell : nsIDocShellTreeItem
 {
   /**
@@ -111,6 +111,8 @@ interface nsIDocShell : nsIDocShellTreeItem
   // Whether the load should be treated as srcdoc load, rather than a URI one.
   const long INTERNAL_LOAD_FLAGS_IS_SRCDOC               = 0x40;
 
+  const long INTERNAL_LOAD_FLAGS_FIXUP_SCHEME_TYPOS      = 0x80;
+
   /**
    * Loads the given URI.  This method is identical to loadURI(...) except
    * that its parameter list is broken out instead of being packaged inside
@@ -136,6 +138,7 @@ interface nsIDocShell : nsIDocShellTreeItem
    * @param aSrcdoc           When INTERNAL_LOAD_FLAGS_IS_SRCDOC is set, the
    *                          contents of this parameter will be loaded instead
    *                          of aURI.
+   * @param aSourceDocShell - The source browsing context for the navigation.
    */
   [noscript]void internalLoad(in nsIURI aURI,
                               in nsIURI aReferrer,
@@ -150,6 +153,7 @@ interface nsIDocShell : nsIDocShellTreeItem
                               in nsISHEntry aSHEntry,
                               in boolean firstParty,
                               in AString aSrcdoc,
+                              in nsIDocShell aSourceDocShell,
                               out nsIDocShell aDocShell,
                               out nsIRequest aRequest);
 
@@ -782,6 +786,12 @@ interface nsIDocShell : nsIDocShellTreeItem
    * navigated by it.  This is the "one permitted sandboxed navigator".
    */
   attribute nsIDocShell onePermittedSandboxedNavigator;
+
+  /**
+   * Returns true if we are sandboxed from aTargetDocShell.
+   * aTargetDocShell - the browsing context we are attempting to navigate.
+   */
+  [noscript,notxpcom,nostdcall] bool isSandboxedFrom(in nsIDocShell aTargetDocShell);
 
   /**
    * This member variable determines whether a document has Mixed Active Content that

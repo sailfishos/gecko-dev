@@ -15,7 +15,7 @@
 
 #include "gfx3DMatrix.h"
 #include "gfxColor.h"
-#include "gfxMatrix.h"
+#include "mozilla/gfx/Matrix.h"
 #include "GraphicsFilter.h"
 #include "gfxPoint.h"
 #include "gfxRect.h"
@@ -46,28 +46,28 @@ typedef GraphicsFilter::Enum GraphicsFilterType;
 namespace IPC {
 
 template<>
-struct ParamTraits<gfxMatrix>
+struct ParamTraits<mozilla::gfx::Matrix>
 {
-  typedef gfxMatrix paramType;
+  typedef mozilla::gfx::Matrix paramType;
 
   static void Write(Message* aMsg, const paramType& aParam)
   {
-    WriteParam(aMsg, aParam.xx);
-    WriteParam(aMsg, aParam.xy);
-    WriteParam(aMsg, aParam.yx);
-    WriteParam(aMsg, aParam.yy);
-    WriteParam(aMsg, aParam.x0);
-    WriteParam(aMsg, aParam.y0);
+    WriteParam(aMsg, aParam._11);
+    WriteParam(aMsg, aParam._12);
+    WriteParam(aMsg, aParam._21);
+    WriteParam(aMsg, aParam._22);
+    WriteParam(aMsg, aParam._31);
+    WriteParam(aMsg, aParam._32);
   }
 
   static bool Read(const Message* aMsg, void** aIter, paramType* aResult)
   {
-    if (ReadParam(aMsg, aIter, &aResult->xx) &&
-        ReadParam(aMsg, aIter, &aResult->xy) &&
-        ReadParam(aMsg, aIter, &aResult->yx) &&
-        ReadParam(aMsg, aIter, &aResult->yy) &&
-        ReadParam(aMsg, aIter, &aResult->x0) &&
-        ReadParam(aMsg, aIter, &aResult->y0))
+    if (ReadParam(aMsg, aIter, &aResult->_11) &&
+        ReadParam(aMsg, aIter, &aResult->_12) &&
+        ReadParam(aMsg, aIter, &aResult->_21) &&
+        ReadParam(aMsg, aIter, &aResult->_22) &&
+        ReadParam(aMsg, aIter, &aResult->_31) &&
+        ReadParam(aMsg, aIter, &aResult->_32))
       return true;
 
     return false;
@@ -75,8 +75,34 @@ struct ParamTraits<gfxMatrix>
 
   static void Log(const paramType& aParam, std::wstring* aLog)
   {
-    aLog->append(StringPrintf(L"[[%g %g] [%g %g] [%g %g]]", aParam.xx, aParam.xy, aParam.yx, aParam.yy,
-	  						    aParam.x0, aParam.y0));
+    aLog->append(StringPrintf(L"[[%g %g] [%g %g] [%g %g]]", aParam._11, aParam._12, aParam._21, aParam._22,
+                                                            aParam._31, aParam._32));
+  }
+};
+
+template<>
+struct ParamTraits<mozilla::gfx::Matrix4x4>
+{
+  typedef mozilla::gfx::Matrix4x4 paramType;
+
+  static void Write(Message* msg, const paramType& param)
+  {
+#define Wr(_f)  WriteParam(msg, param. _f)
+    Wr(_11); Wr(_12); Wr(_13); Wr(_14);
+    Wr(_21); Wr(_22); Wr(_23); Wr(_24);
+    Wr(_31); Wr(_32); Wr(_33); Wr(_34);
+    Wr(_41); Wr(_42); Wr(_43); Wr(_44);
+#undef Wr
+  }
+
+  static bool Read(const Message* msg, void** iter, paramType* result)
+  {
+#define Rd(_f)  ReadParam(msg, iter, &result-> _f)
+    return (Rd(_11) && Rd(_12) && Rd(_13) && Rd(_14) &&
+            Rd(_21) && Rd(_22) && Rd(_23) && Rd(_24) &&
+            Rd(_31) && Rd(_32) && Rd(_33) && Rd(_34) &&
+            Rd(_41) && Rd(_42) && Rd(_43) && Rd(_44));
+#undef Rd
   }
 };
 
@@ -189,16 +215,16 @@ struct ParamTraits<gfx3DMatrix>
 
 template <>
 struct ParamTraits<gfxContentType>
-  : public EnumSerializer<gfxContentType,
-                          GFX_CONTENT_COLOR,
-                          GFX_CONTENT_SENTINEL>
+  : public TypedEnumSerializer<gfxContentType,
+                               gfxContentType::COLOR,
+                               gfxContentType::SENTINEL>
 {};
 
 template <>
 struct ParamTraits<gfxSurfaceType>
-  : public EnumSerializer<gfxSurfaceType,
-                          gfxSurfaceTypeImage,
-                          gfxSurfaceTypeMax>
+  : public TypedEnumSerializer<gfxSurfaceType,
+                               gfxSurfaceType::Image,
+                               gfxSurfaceType::Max>
 {};
 
 template <>
@@ -210,25 +236,33 @@ struct ParamTraits<mozilla::GraphicsFilterType>
 
 template <>
 struct ParamTraits<mozilla::layers::LayersBackend>
-  : public EnumSerializer<mozilla::layers::LayersBackend,
-                          mozilla::layers::LAYERS_NONE,
-                          mozilla::layers::LAYERS_LAST>
+  : public TypedEnumSerializer<mozilla::layers::LayersBackend,
+                               mozilla::layers::LayersBackend::LAYERS_NONE,
+                               mozilla::layers::LayersBackend::LAYERS_LAST>
 {};
 
 template <>
 struct ParamTraits<mozilla::layers::ScaleMode>
-  : public EnumSerializer<mozilla::layers::ScaleMode,
-                          mozilla::layers::SCALE_NONE,
-                          mozilla::layers::SCALE_SENTINEL>
+  : public TypedEnumSerializer<mozilla::layers::ScaleMode,
+                               mozilla::layers::ScaleMode::SCALE_NONE,
+                               mozilla::layers::ScaleMode::SENTINEL>
 {};
 
 template <>
-struct ParamTraits<mozilla::PixelFormat>
-  : public EnumSerializer<mozilla::PixelFormat,
-                          gfxImageFormatARGB32,
-                          gfxImageFormatUnknown>
+struct ParamTraits<gfxImageFormat>
+  : public TypedEnumSerializer<gfxImageFormat,
+                               gfxImageFormat::ARGB32,
+                               gfxImageFormat::Unknown>
 {};
 
+/*
+template <>
+struct ParamTraits<mozilla::PixelFormat>
+  : public EnumSerializer<mozilla::PixelFormat,
+                          gfxImageFormat::ARGB32,
+                          gfxImageFormat::Unknown>
+{};
+*/
 
 template<>
 struct ParamTraits<gfxRGBA>
@@ -586,6 +620,8 @@ struct ParamTraits<mozilla::layers::FrameMetrics>
     WriteParam(aMsg, aParam.mIsRoot);
     WriteParam(aMsg, aParam.mHasScrollgrab);
     WriteParam(aMsg, aParam.mUpdateScrollOffset);
+    WriteParam(aMsg, aParam.mDisableScrollingX);
+    WriteParam(aMsg, aParam.mDisableScrollingY);
   }
 
   static bool Read(const Message* aMsg, void** aIter, paramType* aResult)
@@ -605,7 +641,9 @@ struct ParamTraits<mozilla::layers::FrameMetrics>
             ReadParam(aMsg, aIter, &aResult->mPresShellId) &&
             ReadParam(aMsg, aIter, &aResult->mIsRoot) &&
             ReadParam(aMsg, aIter, &aResult->mHasScrollgrab) &&
-            ReadParam(aMsg, aIter, &aResult->mUpdateScrollOffset));
+            ReadParam(aMsg, aIter, &aResult->mUpdateScrollOffset) &&
+            ReadParam(aMsg, aIter, &aResult->mDisableScrollingX) &&
+            ReadParam(aMsg, aIter, &aResult->mDisableScrollingY));
   }
 };
 
@@ -660,9 +698,9 @@ struct ParamTraits<mozilla::layers::CompositableType>
 
 template <>
 struct ParamTraits<mozilla::gfx::SurfaceFormat>
-  : public EnumSerializer<mozilla::gfx::SurfaceFormat,
-                          mozilla::gfx::FORMAT_B8G8R8A8,
-                          mozilla::gfx::FORMAT_UNKNOWN>
+  : public TypedEnumSerializer<mozilla::gfx::SurfaceFormat,
+                               mozilla::gfx::SurfaceFormat::B8G8R8A8,
+                               mozilla::gfx::SurfaceFormat::UNKNOWN>
 {};
 
 template <>
@@ -682,6 +720,44 @@ struct ParamTraits<mozilla::layers::ScrollableLayerGuid>
     return (ReadParam(aMsg, aIter, &aResult->mLayersId) &&
             ReadParam(aMsg, aIter, &aResult->mPresShellId) &&
             ReadParam(aMsg, aIter, &aResult->mScrollId));
+  }
+};
+
+template <>
+struct ParamTraits<mozilla::layers::ZoomConstraints>
+{
+  typedef mozilla::layers::ZoomConstraints paramType;
+
+  static void Write(Message* aMsg, const paramType& aParam)
+  {
+    WriteParam(aMsg, aParam.mAllowZoom);
+    WriteParam(aMsg, aParam.mMinZoom);
+    WriteParam(aMsg, aParam.mMaxZoom);
+  }
+
+  static bool Read(const Message* aMsg, void** aIter, paramType* aResult)
+  {
+    return (ReadParam(aMsg, aIter, &aResult->mAllowZoom) &&
+            ReadParam(aMsg, aIter, &aResult->mMinZoom) &&
+            ReadParam(aMsg, aIter, &aResult->mMaxZoom));
+  }
+};
+
+template <>
+struct ParamTraits<mozilla::layers::EventRegions>
+{
+  typedef mozilla::layers::EventRegions paramType;
+
+  static void Write(Message* aMsg, const paramType& aParam)
+  {
+    WriteParam(aMsg, aParam.mHitRegion);
+    WriteParam(aMsg, aParam.mDispatchToContentHitRegion);
+  }
+
+  static bool Read(const Message* aMsg, void** aIter, paramType* aResult)
+  {
+    return (ReadParam(aMsg, aIter, &aResult->mHitRegion) &&
+            ReadParam(aMsg, aIter, &aResult->mDispatchToContentHitRegion));
   }
 };
 

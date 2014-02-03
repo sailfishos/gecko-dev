@@ -63,20 +63,9 @@ nsMathMLmpaddedFrame::ProcessAttributes()
 
   nsAutoString value;
 
-  /* The REC says:
-  There is one exceptional element, <mpadded>, whose attributes cannot be 
-  set with <mstyle>. When the attributes width, height and depth are specified
-  on an <mstyle> element, they apply only to the <mspace/> element. Similarly, 
-  when lspace is set with <mstyle>, it applies only to the <mo> element. To be
-  consistent, the voffset attribute of the mpadded element can not be set on
-  mstyle. 
-  */
-
-  // See if attributes are local, don't access mstyle !
-
   // width
   mWidthSign = NS_MATHML_SIGN_INVALID;
-  GetAttribute(mContent, nullptr, nsGkAtoms::width, value);
+  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::width, value);
   if (!value.IsEmpty()) {
     if (!ParseAttribute(value, mWidthSign, mWidth, mWidthPseudoUnit)) {      
       ReportParseError(nsGkAtoms::width->GetUTF16String(), value.get());
@@ -85,7 +74,7 @@ nsMathMLmpaddedFrame::ProcessAttributes()
 
   // height
   mHeightSign = NS_MATHML_SIGN_INVALID;
-  GetAttribute(mContent, nullptr, nsGkAtoms::height, value);
+  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::height, value);
   if (!value.IsEmpty()) {
     if (!ParseAttribute(value, mHeightSign, mHeight, mHeightPseudoUnit)) {
       ReportParseError(nsGkAtoms::height->GetUTF16String(), value.get());
@@ -94,7 +83,7 @@ nsMathMLmpaddedFrame::ProcessAttributes()
 
   // depth
   mDepthSign = NS_MATHML_SIGN_INVALID;
-  GetAttribute(mContent, nullptr, nsGkAtoms::depth_, value);
+  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::depth_, value);
   if (!value.IsEmpty()) {
     if (!ParseAttribute(value, mDepthSign, mDepth, mDepthPseudoUnit)) {
       ReportParseError(nsGkAtoms::depth_->GetUTF16String(), value.get());
@@ -103,7 +92,7 @@ nsMathMLmpaddedFrame::ProcessAttributes()
 
   // lspace
   mLeadingSpaceSign = NS_MATHML_SIGN_INVALID;
-  GetAttribute(mContent, nullptr, nsGkAtoms::lspace_, value);
+  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::lspace_, value);
   if (!value.IsEmpty()) {
     if (!ParseAttribute(value, mLeadingSpaceSign, mLeadingSpace, 
                         mLeadingSpacePseudoUnit)) {
@@ -113,7 +102,7 @@ nsMathMLmpaddedFrame::ProcessAttributes()
 
   // voffset
   mVerticalOffsetSign = NS_MATHML_SIGN_INVALID;
-  GetAttribute(mContent, nullptr, nsGkAtoms::voffset_, value);
+  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::voffset_, value);
   if (!value.IsEmpty()) {
     if (!ParseAttribute(value, mVerticalOffsetSign, mVerticalOffset,
                         mVerticalOffsetPseudoUnit)) {
@@ -161,7 +150,7 @@ nsMathMLmpaddedFrame::ParseAttribute(nsString&   aString,
   // get the number
   bool gotDot = false, gotPercent = false;
   for (; i < stringLength; i++) {
-    PRUnichar c = aString[i];
+    char16_t c = aString[i];
     if (gotDot && c == '.') {
       // error - two dots encountered
       aSign = NS_MATHML_SIGN_INVALID;
@@ -276,15 +265,15 @@ nsMathMLmpaddedFrame::UpdateValue(int32_t                  aSign,
     if (eCSSUnit_Percent == unit || eCSSUnit_Number == unit) {
       switch(aPseudoUnit) {
         case NS_MATHML_PSEUDO_UNIT_WIDTH:
-             scaler = aDesiredSize.width;
+             scaler = aDesiredSize.Width();
              break;
 
         case NS_MATHML_PSEUDO_UNIT_HEIGHT:
-             scaler = aDesiredSize.ascent;
+             scaler = aDesiredSize.TopAscent();
              break;
 
         case NS_MATHML_PSEUDO_UNIT_DEPTH:
-             scaler = aDesiredSize.height - aDesiredSize.ascent;
+             scaler = aDesiredSize.Height() - aDesiredSize.TopAscent();
              break;
 
         default:
@@ -339,8 +328,8 @@ nsMathMLmpaddedFrame::Place(nsRenderingContext& aRenderingContext,
     return rv;
   }
 
-  nscoord height = aDesiredSize.ascent;
-  nscoord depth  = aDesiredSize.height - aDesiredSize.ascent;
+  nscoord height = aDesiredSize.TopAscent();
+  nscoord depth  = aDesiredSize.Height() - aDesiredSize.TopAscent();
   // The REC says:
   //
   // "The lspace attribute ('leading' space) specifies the horizontal location
@@ -366,7 +355,7 @@ nsMathMLmpaddedFrame::Place(nsRenderingContext& aRenderingContext,
   // refer "to the horizontal distance between the positioning point of the
   // mpadded and the positioning point for the following content".  MathML2
   // doesn't make the distinction.
-  nscoord width  = aDesiredSize.width;
+  nscoord width  = aDesiredSize.Width();
   nscoord voffset = 0;
 
   int32_t pseudoUnit;
@@ -430,19 +419,19 @@ nsMathMLmpaddedFrame::Place(nsRenderingContext& aRenderingContext,
   nscoord dx = (StyleVisibility()->mDirection ?
                 width - initialWidth - lspace : lspace);
     
-  aDesiredSize.ascent = height;
-  aDesiredSize.width = mBoundingMetrics.width;
-  aDesiredSize.height = depth + aDesiredSize.ascent;
+  aDesiredSize.SetTopAscent(height);
+  aDesiredSize.Width() = mBoundingMetrics.width;
+  aDesiredSize.Height() = depth + aDesiredSize.TopAscent();
   mBoundingMetrics.ascent = height;
   mBoundingMetrics.descent = depth;
   aDesiredSize.mBoundingMetrics = mBoundingMetrics;
 
   mReference.x = 0;
-  mReference.y = aDesiredSize.ascent;
+  mReference.y = aDesiredSize.TopAscent();
 
   if (aPlaceOrigin) {
     // Finish reflowing child frames, positioning their origins.
-    PositionRowChildFrames(dx, aDesiredSize.ascent - voffset);
+    PositionRowChildFrames(dx, aDesiredSize.TopAscent() - voffset);
   }
 
   return NS_OK;

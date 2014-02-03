@@ -8,6 +8,8 @@ XPCOMUtils.defineLazyModuleGetter(this, "ScrollbarSampler",
                                   "resource:///modules/ScrollbarSampler.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "Promise",
                                   "resource://gre/modules/Promise.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "ShortcutUtils",
+                                  "resource://gre/modules/ShortcutUtils.jsm");
 /**
  * Maintains the state and dispatches events for the main menu panel.
  */
@@ -141,12 +143,6 @@ const PanelUI = {
       let iconAnchor =
         document.getAnonymousElementByAttribute(anchor, "class",
                                                 "toolbarbutton-icon");
-
-      // Only focus the panel if it's opened using the keyboard, so that
-      // cut/copy/paste buttons will work for mouse users.
-      let keyboardOpened = aEvent && aEvent.sourceEvent &&
-                           aEvent.sourceEvent.target.localName == "key";
-      this.panel.setAttribute("noautofocus", !keyboardOpened);
       this.panel.openPopup(iconAnchor || anchor, "bottomcenter topright");
 
       this.panel.addEventListener("popupshown", function onPopupShown() {
@@ -171,6 +167,9 @@ const PanelUI = {
 
   handleEvent: function(aEvent) {
     switch (aEvent.type) {
+      case "command":
+        this.onCommandHandler(aEvent);
+        break;
       case "popupshowing":
         // Fall through
       case "popupshown":
@@ -207,6 +206,8 @@ const PanelUI = {
       return this._readyPromise;
     }
     this._readyPromise = Task.spawn(function() {
+      this.contents.setAttributeNS("http://www.w3.org/XML/1998/namespace", "lang",
+                                   getLocale());
       if (!this._scrollWidth) {
         // In order to properly center the contents of the panel, while ensuring
         // that we have enough space on either side to show a scrollbar, we have to
@@ -237,6 +238,7 @@ const PanelUI = {
           this.endBatchUpdate();
         }
       }
+      this._updateQuitTooltip();
       this.panel.hidden = false;
     }.bind(this)).then(null, Cu.reportError);
 
@@ -297,16 +299,22 @@ const PanelUI = {
       let tempPanel = document.createElement("panel");
       tempPanel.setAttribute("type", "arrow");
       tempPanel.setAttribute("id", "customizationui-widget-panel");
+      tempPanel.setAttribute("class", "cui-widget-panel");
       tempPanel.setAttribute("level", "top");
       document.getElementById(CustomizableUI.AREA_NAVBAR).appendChild(tempPanel);
+      // If the view has a footer, set a convenience class on the panel.
+      tempPanel.classList.toggle("cui-widget-panelWithFooter",
+                                 viewNode.querySelector(".panel-subview-footer"));
 
       let multiView = document.createElement("panelmultiview");
       tempPanel.appendChild(multiView);
       multiView.setMainView(viewNode);
+      viewNode.classList.add("cui-widget-panelview");
       CustomizableUI.addPanelCloseListeners(tempPanel);
 
       let panelRemover = function() {
         tempPanel.removeEventListener("popuphidden", panelRemover);
+        viewNode.classList.remove("cui-widget-panelview");
         CustomizableUI.removePanelCloseListeners(tempPanel);
         let evt = new CustomEvent("ViewHiding", {detail: viewNode});
         viewNode.dispatchEvent(evt);
@@ -330,9 +338,15 @@ const PanelUI = {
    * so that the panel knows if and when to close itself.
    */
   onCommandHandler: function(aEvent) {
-    if (!aEvent.originalTarget.hasAttribute("noautoclose")) {
-      PanelUI.hide();
+    let closemenu = aEvent.originalTarget.getAttribute("closemenu");
+    if (closemenu == "none") {
+      return;
     }
+    if (closemenu == "single") {
+      this.showMainView();
+      return;
+    }
+    this.hide();
   },
 
   /**
@@ -401,14 +415,56 @@ const PanelUI = {
           continue;
         button.setAttribute(attrName, node.getAttribute(attrName));
       }
+      button.setAttribute("class", "subviewbutton");
       fragment.appendChild(button);
     }
     items.appendChild(fragment);
 
-    this.addEventListener("command", PanelUI.onCommandHandler);
+    this.addEventListener("command", PanelUI);
   },
 
   _onHelpViewHide: function(aEvent) {
-    this.removeEventListener("command", PanelUI.onCommandHandler);
-  }
+    this.removeEventListener("command", PanelUI);
+  },
+
+  _updateQuitTooltip: function() {
+#ifndef XP_WIN
+#ifdef XP_MACOSX
+    let tooltipId = "quit-button.tooltiptext.mac";
+    let brands = Services.strings.createBundle("chrome://branding/locale/brand.properties");
+    let stringArgs = [brands.GetStringFromName("brandShortName")];
+#else
+    let tooltipId = "quit-button.tooltiptext.linux";
+    let stringArgs = [];
+#endif
+
+    let key = document.getElementById("key_quitApplication");
+    stringArgs.push(ShortcutUtils.prettifyShortcut(key));
+    let tooltipString = CustomizableUI.getLocalizedProperty({x: tooltipId}, "x", stringArgs);
+    let quitButton = document.getElementById("PanelUI-quit");
+    quitButton.setAttribute("tooltiptext", tooltipString);
+#endif
+  },
 };
+
+/**
+ * Gets the currently selected locale for display.
+ * @return  the selected locale or "en-US" if none is selected
+ */
+function getLocale() {
+  try {
+    let locale = Services.prefs.getComplexValue(PREF_SELECTED_LOCALE,
+                                                Ci.nsIPrefLocalizedString);
+    if (locale)
+      return locale;
+  }
+  catch (e) { }
+
+  try {
+    return Services.prefs.getCharPref(PREF_SELECTED_LOCALE);
+  }
+  catch (e) { }
+
+  return "en-US";
+}
+

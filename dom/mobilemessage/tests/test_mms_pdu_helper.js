@@ -312,11 +312,11 @@ add_test(function test_ElementDescriptorValue_decode() {
 //// Parameter.decodeParameterName ////
 
 add_test(function test_Parameter_decodeParameterName() {
-  wsp_decode_test_ex(function (data) {
+  wsp_decode_test_ex(function(data) {
       return MMS.Parameter.decodeParameterName(data);
     }, [0x80 | 0x02], "type"
   );
-  wsp_decode_test_ex(function (data) {
+  wsp_decode_test_ex(function(data) {
       return MMS.Parameter.decodeParameterName(data);
     }, strToCharCodeArray("type"), "type"
   );
@@ -339,7 +339,7 @@ add_test(function test_Parameter_decodeMultiple() {
   //        "type" parameters utilies WSP.ConstrainedEncoding, which in turn
   //        utilies WSP.TextString, and TextString is not matual exclusive to
   //        each other.
-  //wsp_decode_test_ex(function (data) {
+  //wsp_decode_test_ex(function(data) {
   //    return MMS.Parameter.decodeMultiple(data, data.array.length);
   //  }, [0x80 | 0x02, 0x80 | 0x00].concat(strToCharCodeArray("good")).concat([0x80 | 0x01]),
   //  {type: 0, good: 1}
@@ -412,6 +412,7 @@ add_test(function test_EncodedStringValue_decode() {
 add_test(function test_EncodedStringValue_encode() {
   // Test for normal TextString
   wsp_encode_test(MMS.EncodedStringValue, "Hello", strToCharCodeArray("Hello"));
+
   // Test for utf-8
   let (entry = MMS.WSP.WSP_WELL_KNOWN_CHARSETS["utf-8"]) {
     // "Mozilla" in full width.
@@ -422,6 +423,16 @@ add_test(function test_EncodedStringValue_encode() {
     conv.charset = entry.converter;
 
     let raw = conv.convertToByteArray(str).concat([0]);
+    wsp_encode_test(MMS.EncodedStringValue, str,
+                    [raw.length + 2, 0x80 | entry.number, 127].concat(raw));
+
+    // MMS.EncodedStringValue encodes non us-ascii characters (128 ~ 255)
+    // (e.g., 'Ñ' or 'ü') by the utf-8 encoding. Otherwise, for us-ascii
+    // characters (0 ~ 127), still use the normal TextString encoding.
+
+    // "Ñü" in full width.
+    str = "\u00d1\u00fc";
+    raw = conv.convertToByteArray(str).concat([0]);
     wsp_encode_test(MMS.EncodedStringValue, str,
                     [raw.length + 2, 0x80 | entry.number, 127].concat(raw));
   }
@@ -524,12 +535,12 @@ add_test(function test_MessageClassValue_decodeClassIdentifier() {
   let (IDs = ["personal", "advertisement", "informational", "auto"]) {
     for (let i = 0; i < 256; i++) {
       if ((i >= 128) && (i <= 131)) {
-        wsp_decode_test_ex(function (data) {
+        wsp_decode_test_ex(function(data) {
             return MMS.MessageClassValue.decodeClassIdentifier(data);
           }, [i], IDs[i - 128]
         );
       } else {
-        wsp_decode_test_ex(function (data) {
+        wsp_decode_test_ex(function(data) {
             return MMS.MessageClassValue.decodeClassIdentifier(data);
           }, [i], null, "CodeError"
         );
@@ -779,7 +790,7 @@ add_test(function test_ReplyChargingValue_encode() {
 
 add_test(function test_ResponseText_decode() {
   // Test for MMS_PDU_TYPE_MBOX_DELETE_CONF & MMS_PDU_TYPE_DELETE_CONF
-  wsp_decode_test_ex(function (data) {
+  wsp_decode_test_ex(function(data) {
       data.array[0] = data.array.length - 1;
 
       let options = {};
@@ -788,7 +799,7 @@ add_test(function test_ResponseText_decode() {
     }, [0, 0x80 | 0x00].concat(strToCharCodeArray("http://no.such.com/path")),
     {statusCount: 0, text: "http://no.such.com/path"}
   );
-  wsp_decode_test_ex(function (data) {
+  wsp_decode_test_ex(function(data) {
       data.array[0] = data.array.length - 1;
 
       let options = {};
@@ -798,7 +809,7 @@ add_test(function test_ResponseText_decode() {
     {statusCount: 0, text: "http://no.such.com/path"}
   );
   // Test for other situations
-  wsp_decode_test_ex(function (data) {
+  wsp_decode_test_ex(function(data) {
       let options = {};
       options["x-mms-message-type"] = MMS_PDU_TYPE_SEND_REQ;
       return MMS.ResponseText.decode(data, options);

@@ -11,19 +11,9 @@ interface nsIChannel;
 interface nsIDocShell;
 interface nsIDomainPolicy;
 
-[scriptable, uuid(2911ae60-1b5f-47e6-941e-1bb7b53a167d)]
+[scriptable, uuid(3b6e408b-e774-4612-89e8-3ef303564392)]
 interface nsIScriptSecurityManager : nsIXPCSecurityManager
 {
-    ///////////////// Security Checks //////////////////
-    /**
-     * Checks whether the running script is allowed to access aProperty.
-     */
-    [noscript] void checkPropertyAccess(in JSContextPtr aJSContext,
-                                        in JSObjectPtr aJSObject,
-                                        in string aClassName,
-                                        in jsid aProperty,
-                                        in uint32_t aAction);
-
     /**
      * Check that the script currently running in context "cx" can load "uri".
      *
@@ -160,12 +150,10 @@ interface nsIScriptSecurityManager : nsIXPCSecurityManager
      */
     [deprecated] nsIPrincipal getCodebasePrincipal(in nsIURI uri);
 
-    ///////////////////////
     /**
      * Return the principal of the specified object in the specified context.
      */
-    [noscript] nsIPrincipal getObjectPrincipal(in JSContextPtr cx,
-                                               in JSObjectPtr obj);
+    [implicit_jscontext] nsIPrincipal getObjectPrincipal(in jsval aObject);
 
     /**
      * Returns true if the principal of the currently running script is the

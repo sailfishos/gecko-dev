@@ -1617,6 +1617,14 @@ nsWindow::Invalidate(const nsIntRect &aRect)
     return NS_OK;
 }
 
+void
+nsWindow::Update()
+{
+    if (!ShouldUseOffMainThreadCompositing() && mGdkWindow) {
+        gdk_window_process_updates(mGdkWindow, true);
+    }
+}
+
 void*
 nsWindow::GetNativeData(uint32_t aDataType)
 {
@@ -2046,7 +2054,7 @@ nsWindow::OnExposeEvent(cairo_t *cr)
     nsIntRegion &region = exposeRegion.mRegion;
 
     ClientLayerManager *clientLayers =
-        (GetLayerManager()->GetBackendType() == LAYERS_CLIENT)
+        (GetLayerManager()->GetBackendType() == LayersBackend::LAYERS_CLIENT)
         ? static_cast<ClientLayerManager*>(GetLayerManager())
         : nullptr;
 
@@ -2131,7 +2139,7 @@ nsWindow::OnExposeEvent(cairo_t *cr)
     }
 
     // If this widget uses OMTC...
-    if (GetLayerManager()->GetBackendType() == LAYERS_CLIENT) {
+    if (GetLayerManager()->GetBackendType() == LayersBackend::LAYERS_CLIENT) {
         listener->PaintWindow(this, region);
         listener->DidPaintWindow();
         return TRUE;
@@ -2146,13 +2154,13 @@ nsWindow::OnExposeEvent(cairo_t *cr)
 
     nsRefPtr<gfxContext> ctx;
     if (gfxPlatform::GetPlatform()->
-            SupportsAzureContentForType(BACKEND_CAIRO)) {
+            SupportsAzureContentForType(BackendType::CAIRO)) {
         IntSize intSize(surf->GetSize().width, surf->GetSize().height);
         ctx = new gfxContext(gfxPlatform::GetPlatform()->
             CreateDrawTargetForSurface(surf, intSize));
     } else if (gfxPlatform::GetPlatform()->
-                   SupportsAzureContentForType(BACKEND_SKIA) &&
-               surf->GetType() != gfxSurfaceTypeImage) {
+                   SupportsAzureContentForType(BackendType::SKIA) &&
+               surf->GetType() != gfxSurfaceType::Image) {
        gfxImageSurface* imgSurf = static_cast<gfxImageSurface*>(surf);
        SurfaceFormat format = ImageFormatToSurfaceFormat(imgSurf->Format());
        IntSize intSize(surf->GetSize().width, surf->GetSize().height);
@@ -2184,16 +2192,16 @@ nsWindow::OnExposeEvent(cairo_t *cr)
         // The double buffering is done here to extract the shape mask.
         // (The shape mask won't be necessary when a visual with an alpha
         // channel is used on compositing window managers.)
-        layerBuffering = mozilla::layers::BUFFER_NONE;
-        ctx->PushGroup(GFX_CONTENT_COLOR_ALPHA);
+        layerBuffering = mozilla::layers::BufferMode::BUFFER_NONE;
+        ctx->PushGroup(gfxContentType::COLOR_ALPHA);
 #ifdef MOZ_HAVE_SHMIMAGE
     } else if (nsShmImage::UseShm()) {
         // We're using an xshm mapping as a back buffer.
-        layerBuffering = mozilla::layers::BUFFER_NONE;
+        layerBuffering = mozilla::layers::BufferMode::BUFFER_NONE;
 #endif // MOZ_HAVE_SHMIMAGE
     } else {
         // Get the layer manager to do double buffering (if necessary).
-        layerBuffering = mozilla::layers::BUFFER_BUFFERED;
+        layerBuffering = mozilla::layers::BufferMode::BUFFERED;
     }
 
 #if 0
@@ -2211,7 +2219,7 @@ nsWindow::OnExposeEvent(cairo_t *cr)
 
     bool painted = false;
     {
-      if (GetLayerManager()->GetBackendType() == LAYERS_BASIC) {
+      if (GetLayerManager()->GetBackendType() == LayersBackend::LAYERS_BASIC) {
         AutoLayerManagerSetup setupLayerManager(this, ctx, layerBuffering);
         painted = listener->PaintWindow(this, region);
       }
@@ -2273,24 +2281,23 @@ nsWindow::UpdateAlpha(gfxPattern* aPattern, nsIntRect aBoundsRect)
   if (gfxPlatform::GetPlatform()->SupportsAzureContent()) {
       // We need to create our own buffer to force the stride to match the
       // expected stride.
-      int32_t stride = GetAlignedStride<4>(BytesPerPixel(FORMAT_A8) *
+      int32_t stride = GetAlignedStride<4>(BytesPerPixel(SurfaceFormat::A8) *
                                            aBoundsRect.width);
       int32_t bufferSize = stride * aBoundsRect.height;
       nsAutoArrayPtr<uint8_t> imageBuffer(new (std::nothrow) uint8_t[bufferSize]);
       RefPtr<DrawTarget> drawTarget = gfxPlatform::GetPlatform()->
           CreateDrawTargetForData(imageBuffer, ToIntSize(aBoundsRect.Size()),
-                                  stride, FORMAT_A8);
+                                  stride, SurfaceFormat::A8);
 
       if (drawTarget) {
           drawTarget->FillRect(Rect(0, 0, aBoundsRect.width, aBoundsRect.height),
                                *aPattern->GetPattern(drawTarget),
-                               DrawOptions(1.0, OP_SOURCE));
+                               DrawOptions(1.0, CompositionOp::OP_SOURCE));
       }
       UpdateTranslucentWindowAlphaInternal(aBoundsRect, imageBuffer, stride);
   } else {
       nsRefPtr<gfxImageSurface> img =
-          new gfxImageSurface(ThebesIntSize(aBoundsRect.Size()),
-                              gfxImageFormatA8);
+          new gfxImageSurface(aBoundsRect.Size(), gfxImageFormat::A8);
       if (img && !img->CairoStatus()) {
           img->SetDeviceOffset(-aBoundsRect.TopLeft());
 
@@ -3055,7 +3062,7 @@ nsWindow::OnKeyPressEvent(GdkEventKey *aEvent)
         }
         else {
             WidgetTextEvent textEvent(true, NS_TEXT_TEXT, this);
-            PRUnichar textString[3];
+            char16_t textString[3];
             textString[0] = H_SURROGATE(event.charCode);
             textString[1] = L_SURROGATE(event.charCode);
             textString[2] = 0;
@@ -5878,6 +5885,9 @@ nsWindow::NotifyIME(NotificationToIME aNotification)
         case NOTIFY_IME_OF_BLUR:
             mIMModule->OnFocusChangeInGecko(false);
             return NS_OK;
+        case NOTIFY_IME_OF_COMPOSITION_UPDATE:
+            mIMModule->OnUpdateComposition();
+            return NS_OK;
         default:
             return NS_ERROR_NOT_IMPLEMENTED;
     }
@@ -6202,7 +6212,7 @@ void
 nsWindow::ClearCachedResources()
 {
     if (mLayerManager &&
-        mLayerManager->GetBackendType() == mozilla::layers::LAYERS_BASIC) {
+        mLayerManager->GetBackendType() == mozilla::layers::LayersBackend::LAYERS_BASIC) {
         mLayerManager->ClearCachedResources();
     }
 

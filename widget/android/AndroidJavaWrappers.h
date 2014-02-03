@@ -67,10 +67,10 @@ private:
 class WrappedJavaObject {
 public:
     WrappedJavaObject() :
-        wrapped_obj(NULL)
+        wrapped_obj(nullptr)
     { }
 
-    WrappedJavaObject(jobject jobj) : wrapped_obj(NULL) {
+    WrappedJavaObject(jobject jobj) : wrapped_obj(nullptr) {
         Init(jobj);
     }
 
@@ -79,7 +79,7 @@ public:
     }
 
     bool isNull() const {
-        return wrapped_obj == NULL;
+        return wrapped_obj == nullptr;
     }
 
     jobject wrappedObject() const {
@@ -93,10 +93,10 @@ protected:
 class AutoGlobalWrappedJavaObject : protected WrappedJavaObject{
 public:
     AutoGlobalWrappedJavaObject() :
-        wrapped_obj(NULL)
+        wrapped_obj(nullptr)
     { }
 
-    AutoGlobalWrappedJavaObject(jobject jobj, JNIEnv* env) : wrapped_obj(NULL) {
+    AutoGlobalWrappedJavaObject(jobject jobj, JNIEnv* env) : wrapped_obj(nullptr) {
         Init(jobj, env);
     }
 
@@ -111,7 +111,7 @@ public:
     }
 
     bool isNull() const {
-        return wrapped_obj == NULL;
+        return wrapped_obj == nullptr;
     }
 
     jobject wrappedObject() const {
@@ -342,12 +342,16 @@ enum {
     AKEYCODE_KANA               = 218,
     AKEYCODE_ASSIST             = 219,
 
+    AMETA_FUNCTION_ON           = 0x00000008,
     AMETA_CTRL_ON               = 0x00001000,
     AMETA_CTRL_LEFT_ON          = 0x00002000,
     AMETA_CTRL_RIGHT_ON         = 0x00004000,
     AMETA_META_ON               = 0x00010000,
     AMETA_META_LEFT_ON          = 0x00020000,
     AMETA_META_RIGHT_ON         = 0x00040000,
+    AMETA_CAPS_LOCK_ON          = 0x00100000,
+    AMETA_NUM_LOCK_ON           = 0x00200000,
+    AMETA_SCROLL_LOCK_ON        = 0x00400000,
 
     AMETA_ALT_MASK              = AMETA_ALT_LEFT_ON   | AMETA_ALT_RIGHT_ON   | AMETA_ALT_ON,
     AMETA_CTRL_MASK             = AMETA_CTRL_LEFT_ON  | AMETA_CTRL_RIGHT_ON  | AMETA_CTRL_ON,
@@ -504,6 +508,7 @@ public:
     int KeyCode() { return mKeyCode; }
     int MetaState() { return mMetaState; }
     uint32_t DomKeyLocation() { return mDomKeyLocation; }
+    Modifiers DOMModifiers() const;
     bool IsAltPressed() const { return (mMetaState & AMETA_ALT_MASK) != 0; }
     bool IsShiftPressed() const { return (mMetaState & AMETA_SHIFT_MASK) != 0; }
     bool IsCtrlPressed() const { return (mMetaState & AMETA_CTRL_MASK) != 0; }

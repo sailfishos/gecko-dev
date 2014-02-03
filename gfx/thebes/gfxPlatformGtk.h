@@ -81,8 +81,8 @@ public:
 
     bool UseXRender() {
 #if defined(MOZ_X11)
-        if (GetContentBackend() != mozilla::gfx::BACKEND_NONE &&
-            GetContentBackend() != mozilla::gfx::BACKEND_CAIRO)
+        if (GetContentBackend() != mozilla::gfx::BackendType::NONE &&
+            GetContentBackend() != mozilla::gfx::BackendType::CAIRO)
             return false;
 
         return sUseXRender;
@@ -99,7 +99,7 @@ protected:
     static gfxFontconfigUtils *sFontconfigUtils;
 
 private:
-    virtual qcms_profile *GetPlatformCMSOutputProfile();
+    virtual void GetPlatformCMSOutputProfile(void *&mem, size_t &size);
 
     virtual bool SupportsOffMainThreadCompositing();
 #ifdef MOZ_X11

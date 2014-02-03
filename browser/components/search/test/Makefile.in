@@ -7,6 +7,7 @@ pp_mochitest_browser_files := \
   browser_google.js \
   browser_google_behavior.js \
   $(NULL)
+  
 pp_mochitest_browser_files_PATH := $(DEPTH)/_tests/testing/mochitest/browser/$(relativesrcdir)
 pp_mochitest_browser_files_FLAGS := -DMOZ_DISTRIBUTION_ID=$(MOZ_DISTRIBUTION_ID)
 PP_TARGETS += pp_mochitest_browser_files

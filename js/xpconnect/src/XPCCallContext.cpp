@@ -17,14 +17,14 @@ using namespace JS;
 #define IS_TEAROFF_CLASS(clazz) ((clazz) == &XPC_WN_Tearoff_JSClass)
 
 XPCCallContext::XPCCallContext(XPCContext::LangType callerLanguage,
-                               JSContext* cx       /* = GetDefaultJSContext() */,
+                               JSContext* cx,
                                HandleObject obj    /* = nullptr               */,
                                HandleObject funobj /* = nullptr               */,
                                HandleId name       /* = JSID_VOID             */,
                                unsigned argc       /* = NO_ARGS               */,
                                jsval *argv         /* = nullptr               */,
                                jsval *rval         /* = nullptr               */)
-    :   mPusher(cx),
+    :   mAr(cx),
         mState(INIT_FAILED),
         mXPC(nsXPConnect::XPConnect()),
         mXPCContext(nullptr),
@@ -36,6 +36,7 @@ XPCCallContext::XPCCallContext(XPCContext::LangType callerLanguage,
         mName(cx)
 {
     MOZ_ASSERT(cx);
+    MOZ_ASSERT(cx == XPCJSRuntime::Get()->GetJSContextStack()->Peek());
 
     if (!mXPC)
         return;
@@ -354,7 +355,10 @@ XPCCallContext::UnwrapThisIfAllowed(HandleObject obj, HandleObject fun, unsigned
     // here, potentially an outer window proxy, and then an XPCWN.
     MOZ_ASSERT(js::IsWrapper(obj));
     RootedObject unwrapped(mJSContext, js::UncheckedUnwrap(obj, /* stopAtOuter = */ false));
-    MOZ_ASSERT(unwrapped == JS_ObjectToInnerObject(mJSContext, js::Wrapper::wrappedObject(obj)));
+#ifdef DEBUG
+    JS::Rooted<JSObject*> wrappedObj(mJSContext, js::Wrapper::wrappedObject(obj));
+    MOZ_ASSERT(unwrapped == JS_ObjectToInnerObject(mJSContext, wrappedObj));
+#endif
 
     // Make sure we have an XPCWN, and grab it.
     if (!IS_WN_REFLECTOR(unwrapped))

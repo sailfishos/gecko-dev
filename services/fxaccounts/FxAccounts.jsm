@@ -111,7 +111,7 @@ InternalMethods.prototype = {
     this.abortExistingFlow();
     this.signedInUser = null; // clear in-memory cache
     return this.signedInUserStorage.set(null).then(() => {
-      this.notifyObservers("fxaccounts:onlogout");
+      this.notifyObservers(ONLOGOUT_NOTIFICATION);
     });
   },
 
@@ -130,7 +130,7 @@ InternalMethods.prototype = {
    *          sessionToken: Session for the FxA server
    *          kA: An encryption key from the FxA server
    *          kB: An encryption key derived from the user's FxA password
-   *          isVerified: email verification status
+   *          verified: email verification status
    *        }
    *        or null if no user is signed in
    */
@@ -144,7 +144,7 @@ InternalMethods.prototype = {
       }
       if (!this.whenKeysReadyPromise) {
         this.whenKeysReadyPromise = Promise.defer();
-        this.fetchAndUnwrapKeys(data.keyFetchToken)
+        return this.fetchAndUnwrapKeys(data.keyFetchToken)
           .then((data) => {
             if (this.whenKeysReadyPromise) {
               this.whenKeysReadyPromise.resolve(data);
@@ -198,7 +198,7 @@ InternalMethods.prototype = {
       // We are now ready for business. This should only be invoked once
       // per setSignedInUser(), regardless of whether we've rebooted since
       // setSignedInUser() was called.
-      internal.notifyObservers("fxaccounts:onlogin");
+      internal.notifyObservers(ONVERIFIED_NOTIFICATION);
       return data;
     }.bind(this));
   },
@@ -305,7 +305,7 @@ InternalMethods.prototype = {
   },
 
   isUserEmailVerified: function isUserEmailVerified(data) {
-    return !!(data && data.isVerified);
+    return !!(data && data.verified);
   },
 
   /**
@@ -327,27 +327,38 @@ InternalMethods.prototype = {
     // that will fire when we are completely ready.
     //
     // Login is truly complete once keys have been fetched, so once getKeys()
-    // obtains and stores kA and kB, it will fire the onlogin observer
+    // obtains and stores kA and kB, it will fire the onverified observer
     // notification.
     return this.whenVerified(data)
       .then((data) => this.getKeys(data));
   },
 
   whenVerified: function(data) {
-    if (data.isVerified) {
+    if (data.verified) {
       log.debug("already verified");
       return Promise.resolve(data);
     }
     if (!this.whenVerifiedPromise) {
-      this.whenVerifiedPromise = Promise.defer();
       log.debug("whenVerified promise starts polling for verified email");
       this.pollEmailStatus(data.sessionToken, "start");
     }
     return this.whenVerifiedPromise.promise;
   },
 
+  /**
+   * Resend the verification email to the logged-in user.
+   *
+   * @return Promise
+   *         fulfilled: json data returned from xhr call
+   *         rejected: error
+   */
+  resendVerificationEmail: function(data) {
+    this.pollEmailStatus(data.sessionToken, "start");
+    return this.fxAccountsClient.resendVerificationEmail(data.sessionToken);
+  },
+
   notifyObservers: function(topic) {
-    log.debug("Notifying observers of user login");
+    log.debug("Notifying observers of " + topic);
     Services.obs.notifyObservers(null, topic, null);
   },
 
@@ -364,12 +375,13 @@ InternalMethods.prototype = {
     let myGenerationCount = this.generationCount;
     log.debug("entering pollEmailStatus: " + why + " " + myGenerationCount);
     if (why == "start") {
-      if (this.currentTimer) {
-        // safety check - this case should have been caught on
-        // entry with setSignedInUser
-        throw new Error("Already polling for email status");
-      }
+      // If we were already polling, stop and start again.  This could happen
+      // if the user requested the verification email to be resent while we
+      // were already polling for receipt of an earlier email.
       this.pollTimeRemaining = this.POLL_SESSION;
+      if (!this.whenVerifiedPromise) {
+        this.whenVerifiedPromise = Promise.defer();
+      }
     }
 
     this.checkEmailStatus(sessionToken)
@@ -388,7 +400,7 @@ InternalMethods.prototype = {
           // off or stop polling altogether
           this.getUserAccountData()
             .then((data) => {
-              data.isVerified = true;
+              data.verified = true;
               return this.setUserAccountData(data);
             })
             .then((data) => {
@@ -456,15 +468,15 @@ this.FxAccounts.prototype = Object.freeze({
 
   // set() makes sure that polling is happening, if necessary.
   // get() does not wait for verification, and returns an object even if
-  // unverified. The caller of get() must check .isVerified .
-  // The "fxaccounts:onlogin" event will fire only when the verified state
-  // goes from false to true, so callers must register their observer
+  // unverified. The caller of get() must check .verified .
+  // The "fxaccounts:onverified" event will fire only when the verified
+  // state goes from false to true, so callers must register their observer
   // and then call get(). In particular, it will not fire when the account
   // was found to be verified in a previous boot: if our stored state says
   // the account is verified, the event will never fire. So callers must do:
   //   register notification observer (go)
   //   userdata = get()
-  //   if (userdata.isVerified()) {go()}
+  //   if (userdata.verified()) {go()}
 
   /**
    * Set the current user signed in to Firefox Accounts.
@@ -477,7 +489,7 @@ this.FxAccounts.prototype = Object.freeze({
    *          uid: The user's unique id
    *          sessionToken: Session for the FxA server
    *          keyFetchToken: an unused keyFetchToken
-   *          isVerified: true/false
+   *          verified: true/false
    *        }
    * @return Promise
    *         The promise resolves to null when the data is saved
@@ -487,7 +499,7 @@ this.FxAccounts.prototype = Object.freeze({
     log.debug("setSignedInUser - aborting any existing flows");
     internal.abortExistingFlow();
 
-    let record = {version: this.version, accountData: credentials };
+    let record = {version: this.version, accountData: credentials};
     // Cache a clone of the credentials object.
     internal.signedInUser = JSON.parse(JSON.stringify(record));
 
@@ -495,6 +507,7 @@ this.FxAccounts.prototype = Object.freeze({
     // We're telling the caller that this is durable now.
     return internal.signedInUserStorage.set(record)
       .then(() => {
+        internal.notifyObservers(ONLOGIN_NOTIFICATION);
         if (!internal.isUserEmailVerified(credentials)) {
           internal.startVerifiedCheck(credentials);
         }
@@ -512,7 +525,7 @@ this.FxAccounts.prototype = Object.freeze({
    *          sessionToken: Session for the FxA server
    *          kA: An encryption key from the FxA server
    *          kB: An encryption key derived from the user's FxA password
-   *          isVerified: email verification status
+   *          verified: email verification status
    *        }
    *        or null if no user is signed in.
    */
@@ -523,12 +536,29 @@ this.FxAccounts.prototype = Object.freeze({
           return null;
         }
         if (!internal.isUserEmailVerified(data)) {
-          // If the email is not verified, start polling for verification and
-          // return the unverified account credentials.
+          // If the email is not verified, start polling for verification,
+          // but return null right away.  We don't want to return a promise
+          // that might not be fulfilled for a long time.
           internal.startVerifiedCheck(data);
         }
         return data;
       });
+  },
+
+  /**
+   * Resend the verification email fot the currently signed-in user.
+   *
+   */
+  resendVerificationEmail: function resendVerificationEmail() {
+    return this.getSignedInUser().then((data) => {
+      // If the caller is asking for verification to be re-sent, and there is
+      // no signed-in user to begin with, this is probably best regarded as an
+      // error.
+      if (data) {
+        return internal.resendVerificationEmail(data);
+      }
+      throw new Error("Cannot resend verification email; no signed-in user");
+    });
   },
 
   /**
@@ -559,6 +589,15 @@ this.FxAccounts.prototype = Object.freeze({
       });
   },
 
+  getKeys: function() {
+    return internal.getKeys();
+  },
+
+  whenVerified: function(userData) {
+    return internal.whenVerified(userData);
+  },
+
+
   /**
    * Sign the current user out.
    *
@@ -571,7 +610,7 @@ this.FxAccounts.prototype = Object.freeze({
 
   // Return the URI of the remote UI flows.
   getAccountsURI: function() {
-    let url = Services.urlFormatter.formatURLPref("firefox.accounts.remoteUrl");
+    let url = Services.urlFormatter.formatURLPref("identity.fxaccounts.remote.uri");
     if (!/^https:/.test(url)) { // Comment to un-break emacs js-mode highlighting
       throw new Error("Firefox Accounts server must use HTTPS");
     }

@@ -239,7 +239,6 @@ class SnapshotIterator : public SnapshotReader
   private:
     bool hasLocation(const SnapshotReader::Location &loc);
     uintptr_t fromLocation(const SnapshotReader::Location &loc);
-    static Value FromTypedPayload(JSValueType type, uintptr_t payload);
 
     Value slotValue(const Slot &slot);
     bool slotReadable(const Slot &slot);
@@ -454,10 +453,8 @@ class InlineFrameIteratorMaybeGC
 
         // scopeChain
         Value v = s.read();
-        if (v.isObject()) {
-            JS_ASSERT_IF(script()->hasAnalysis(), script()->analysis()->usesScopeChain());
+        if (v.isObject())
             return &v.toObject();
-        }
 
         return callee()->environment();
     }

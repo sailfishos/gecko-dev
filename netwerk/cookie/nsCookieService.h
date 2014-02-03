@@ -231,23 +231,22 @@ enum OpenDBResult
  * class declaration
  ******************************************************************************/
 
-class nsCookieService : public mozilla::MemoryUniReporter
-                      , public nsICookieService
+class nsCookieService : public nsICookieService
                       , public nsICookieManager2
                       , public nsIObserver
                       , public nsSupportsWeakReference
+                      , public nsIMemoryReporter
 {
   private:
-    int64_t Amount() MOZ_OVERRIDE;
     size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const;
 
   public:
-    // nsISupports
-    NS_DECL_ISUPPORTS_INHERITED
+    NS_DECL_ISUPPORTS
     NS_DECL_NSIOBSERVER
     NS_DECL_NSICOOKIESERVICE
     NS_DECL_NSICOOKIEMANAGER
     NS_DECL_NSICOOKIEMANAGER2
+    NS_DECL_NSIMEMORYREPORTER
 
     nsCookieService();
     virtual ~nsCookieService();
@@ -304,7 +303,7 @@ class nsCookieService : public mozilla::MemoryUniReporter
     static void                   FindStaleCookie(nsCookieEntry *aEntry, int64_t aCurrentTime, nsListIter &aIter);
     void                          NotifyRejected(nsIURI *aHostURI);
     void                          NotifyThirdParty(nsIURI *aHostURI, bool aAccepted, nsIChannel *aChannel);
-    void                          NotifyChanged(nsISupports *aSubject, const PRUnichar *aData);
+    void                          NotifyChanged(nsISupports *aSubject, const char16_t *aData);
     void                          NotifyPurged(nsICookie2* aCookie);
     already_AddRefed<nsIArray>    CreatePurgeList(nsICookie2* aCookie);
 

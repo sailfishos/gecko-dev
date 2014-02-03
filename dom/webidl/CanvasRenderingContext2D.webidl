@@ -15,6 +15,11 @@ interface HitRegionOptions;
 
 enum CanvasWindingRule { "nonzero", "evenodd" };
 
+dictionary ContextAttributes2D {
+  // whether or not we're planning to do a lot of readback operations
+  boolean willReadFrequently = false;
+};
+
 interface CanvasRenderingContext2D {
 
   // back-reference to the canvas.  Might be null if we're not
@@ -77,9 +82,9 @@ interface CanvasRenderingContext2D {
 // NOT IMPLEMENTED  void fill(Path path);
   void stroke();
 // NOT IMPLEMENTED  void stroke(Path path);
-  [Pref="canvas.focusring.enabled"] void drawSystemFocusRing(Element element);
+  [Pref="canvas.focusring.enabled"] void drawFocusIfNeeded(Element element);
 // NOT IMPLEMENTED  void drawSystemFocusRing(Path path, HTMLElement element);
-  [Pref="canvas.focusring.enabled"] boolean drawCustomFocusRing(Element element);
+  [Pref="canvas.customfocusring.enabled"] boolean drawCustomFocusRing(Element element);
 // NOT IMPLEMENTED  boolean drawCustomFocusRing(Path path, HTMLElement element);
 // NOT IMPLEMENTED  void scrollPathIntoView();
 // NOT IMPLEMENTED  void scrollPathIntoView(Path path);

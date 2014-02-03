@@ -8,7 +8,6 @@
 #include "nsDocShellEnumerator.h"
 
 #include "nsIDocShellTreeItem.h"
-#include "nsIDocShellTreeNode.h"
 
 nsDocShellEnumerator::nsDocShellEnumerator(int32_t inEnumerationDirection)
 : mRootItem(nullptr)
@@ -123,26 +122,22 @@ nsresult nsDocShellEnumerator::BuildDocShellArray(nsTArray<nsWeakPtr>& inItemArr
 nsresult nsDocShellForwardsEnumerator::BuildArrayRecursive(nsIDocShellTreeItem* inItem, nsTArray<nsWeakPtr>& inItemArray)
 {
   nsresult rv;
-  nsCOMPtr<nsIDocShellTreeNode> itemAsNode = do_QueryInterface(inItem, &rv);
-  if (NS_FAILED(rv)) return rv;
 
-  int32_t   itemType;
   // add this item to the array
-  if ((mDocShellType == nsIDocShellTreeItem::typeAll) ||
-      (NS_SUCCEEDED(inItem->GetItemType(&itemType)) && (itemType == mDocShellType)))
-  {
+  if (mDocShellType == nsIDocShellTreeItem::typeAll ||
+      inItem->ItemType() == mDocShellType) {
     if (!inItemArray.AppendElement(do_GetWeakReference(inItem)))
       return NS_ERROR_OUT_OF_MEMORY;
   }
 
   int32_t   numChildren;
-  rv = itemAsNode->GetChildCount(&numChildren);
+  rv = inItem->GetChildCount(&numChildren);
   if (NS_FAILED(rv)) return rv;
   
   for (int32_t i = 0; i < numChildren; ++i)
   {
     nsCOMPtr<nsIDocShellTreeItem> curChild;
-    rv = itemAsNode->GetChildAt(i, getter_AddRefs(curChild));
+    rv = inItem->GetChildAt(i, getter_AddRefs(curChild));
     if (NS_FAILED(rv)) return rv;
       
     rv = BuildArrayRecursive(curChild, inItemArray);
@@ -156,34 +151,27 @@ nsresult nsDocShellForwardsEnumerator::BuildArrayRecursive(nsIDocShellTreeItem* 
 nsresult nsDocShellBackwardsEnumerator::BuildArrayRecursive(nsIDocShellTreeItem* inItem, nsTArray<nsWeakPtr>& inItemArray)
 {
   nsresult rv;
-  nsCOMPtr<nsIDocShellTreeNode> itemAsNode = do_QueryInterface(inItem, &rv);
-  if (NS_FAILED(rv)) return rv;
 
   int32_t   numChildren;
-  rv = itemAsNode->GetChildCount(&numChildren);
+  rv = inItem->GetChildCount(&numChildren);
   if (NS_FAILED(rv)) return rv;
   
   for (int32_t i = numChildren - 1; i >= 0; --i)
   {
     nsCOMPtr<nsIDocShellTreeItem> curChild;
-    rv = itemAsNode->GetChildAt(i, getter_AddRefs(curChild));
+    rv = inItem->GetChildAt(i, getter_AddRefs(curChild));
     if (NS_FAILED(rv)) return rv;
       
     rv = BuildArrayRecursive(curChild, inItemArray);
     if (NS_FAILED(rv)) return rv;
   }
 
-  int32_t   itemType;
   // add this item to the array
-  if ((mDocShellType == nsIDocShellTreeItem::typeAll) ||
-      (NS_SUCCEEDED(inItem->GetItemType(&itemType)) && (itemType == mDocShellType)))
-  {
+  if (mDocShellType == nsIDocShellTreeItem::typeAll ||
+      inItem->ItemType() == mDocShellType) {
     if (!inItemArray.AppendElement(do_GetWeakReference(inItem)))
       return NS_ERROR_OUT_OF_MEMORY;
   }
 
-
   return NS_OK;
 }
-
-

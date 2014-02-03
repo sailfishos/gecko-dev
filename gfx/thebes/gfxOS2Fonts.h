@@ -8,7 +8,6 @@
 
 #include "gfxTypes.h"
 #include "gfxFont.h"
-#include "gfxMatrix.h"
 #include "nsDataHashtable.h"
 
 #define INCL_GPI
@@ -67,7 +66,7 @@ public:
     virtual gfxFontGroup *Copy(const gfxFontStyle *aStyle);
 
     // create and initialize the textRun using FreeType font
-    virtual gfxTextRun *MakeTextRun(const PRUnichar* aString, uint32_t aLength,
+    virtual gfxTextRun *MakeTextRun(const char16_t* aString, uint32_t aLength,
                                     const Parameters* aParams, uint32_t aFlags);
     virtual gfxTextRun *MakeTextRun(const uint8_t* aString, uint32_t aLength,
                                     const Parameters* aParams, uint32_t aFlags);

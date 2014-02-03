@@ -55,8 +55,8 @@ class nsPresState;
 
 // Drop down list event management.
 // The combo box uses the following strategy for managing the drop-down list.
-// If the combo box or it's arrow button is clicked on the drop-down list is displayed
-// If mouse exit's the combo box with the drop-down list displayed the drop-down list
+// If the combo box or its arrow button is clicked on the drop-down list is displayed
+// If mouse exits the combo box with the drop-down list displayed the drop-down list
 // is asked to capture events
 // The drop-down list will capture all events including mouse down and up and will always
 // return with ListWasSelected method call regardless of whether an item in the list was
@@ -410,7 +410,7 @@ nsComboboxControlFrame::ReflowDropdown(nsPresContext*  aPresContext,
   // XXXbz this will, for small-height dropdowns, have extra space on the right
   // edge for the scrollbar we don't show... but that's the best we can do here
   // for now.
-  nsSize availSize(aReflowState.availableWidth, NS_UNCONSTRAINEDSIZE);
+  nsSize availSize(aReflowState.AvailableWidth(), NS_UNCONSTRAINEDSIZE);
   nsHTMLReflowState kidReflowState(aPresContext, aReflowState, mDropdownFrame,
                                    availSize);
 
@@ -418,8 +418,8 @@ nsComboboxControlFrame::ReflowDropdown(nsPresContext*  aPresContext,
   // then expand it out.  We want our border-box width to end up the same as
   // the dropdown's so account for both sets of mComputedBorderPadding.
   nscoord forcedWidth = aReflowState.ComputedWidth() +
-    aReflowState.mComputedBorderPadding.LeftRight() -
-    kidReflowState.mComputedBorderPadding.LeftRight();
+    aReflowState.ComputedPhysicalBorderPadding().LeftRight() -
+    kidReflowState.ComputedPhysicalBorderPadding().LeftRight();
   kidReflowState.SetComputedWidth(std::max(kidReflowState.ComputedWidth(),
                                          forcedWidth));
 
@@ -439,15 +439,15 @@ nsComboboxControlFrame::ReflowDropdown(nsPresContext*  aPresContext,
     flags = 0;
   }
   nsRect rect = mDropdownFrame->GetRect();
-  nsHTMLReflowMetrics desiredSize;
+  nsHTMLReflowMetrics desiredSize(aReflowState.GetWritingMode());
   nsReflowStatus ignoredStatus;
   nsresult rv = ReflowChild(mDropdownFrame, aPresContext, desiredSize,
                             kidReflowState, rect.x, rect.y, flags,
                             ignoredStatus);
 
-   // Set the child's width and height to it's desired size
-  FinishReflowChild(mDropdownFrame, aPresContext, &kidReflowState,
-                    desiredSize, rect.x, rect.y, flags);
+   // Set the child's width and height to its desired size
+  FinishReflowChild(mDropdownFrame, aPresContext, desiredSize,
+                    &kidReflowState, rect.x, rect.y, flags);
   return rv;
 }
 
@@ -866,6 +866,12 @@ nsComboboxControlFrame::Reflow(nsPresContext*          aPresContext,
   buttonRect.width = buttonWidth;
   mButtonFrame->SetRect(buttonRect);
 
+  if (!NS_INLINE_IS_BREAK_BEFORE(aStatus) &&
+      !NS_FRAME_IS_FULLY_COMPLETE(aStatus)) {
+    // This frame didn't fit inside a fragmentation container.  Splitting
+    // a nsComboboxControlFrame makes no sense, so we override the status here.
+    aStatus = NS_FRAME_COMPLETE;
+  }
   return rv;
 }
 
@@ -877,7 +883,7 @@ nsComboboxControlFrame::GetType() const
   return nsGkAtoms::comboboxControlFrame;
 }
 
-#ifdef DEBUG
+#ifdef DEBUG_FRAME_DUMP
 NS_IMETHODIMP
 nsComboboxControlFrame::GetFrameName(nsAString& aResult) const
 {
@@ -1013,7 +1019,7 @@ nsComboboxControlFrame::ActuallyDisplayText(bool aNotify)
   if (mDisplayedOptionText.IsEmpty()) {
     // Have to use a non-breaking space for line-height calculations
     // to be right
-    static const PRUnichar space = 0xA0;
+    static const char16_t space = 0xA0;
     mDisplayContent->SetText(&space, 1, aNotify);
   } else {
     mDisplayContent->SetText(mDisplayedOptionText, aNotify);
@@ -1138,7 +1144,7 @@ nsComboboxControlFrame::CreateAnonymousContent(nsTArray<ContentInfo>& aElements)
 {
   // The frames used to display the combo box and the button used to popup the dropdown list
   // are created through anonymous content. The dropdown list is not created through anonymous
-  // content because it's frame is initialized specifically for the drop-down case and it is placed
+  // content because its frame is initialized specifically for the drop-down case and it is placed
   // a special list referenced through NS_COMBO_FRAME_POPUP_LIST_INDEX to keep separate from the
   // layout of the display and button.
   //
@@ -1255,7 +1261,7 @@ nsComboboxDisplayFrame::Reflow(nsPresContext*           aPresContext,
     state.SetComputedHeight(mComboBox->mListControlFrame->GetHeightOfARow());
   }
   nscoord computedWidth = mComboBox->mDisplayWidth -
-    state.mComputedBorderPadding.LeftRight();
+    state.ComputedPhysicalBorderPadding().LeftRight();
   if (computedWidth < 0) {
     computedWidth = 0;
   }

@@ -13,6 +13,7 @@
               android:targetSdkVersion="16"/>
 
 #include ../services/manifests/AnnouncementsAndroidManifest_permissions.xml.in
+#include ../services/manifests/FxAccountAndroidManifest_permissions.xml.in
 #include ../services/manifests/HealthReportAndroidManifest_permissions.xml.in
 #include ../services/manifests/SyncAndroidManifest_permissions.xml.in
 
@@ -82,6 +83,8 @@
 		 android:debuggable="true">
 #endif
 
+        <!-- If the windowSoftInputMode adjust* flag changes below, the
+             setSoftInputMode call in BrowserSearch#onStop must also be updated. -->
         <activity android:name=".App"
                   android:label="@MOZ_APP_DISPLAYNAME@"
                   android:configChanges="keyboard|keyboardHidden|mcc|mnc|orientation|screenSize"
@@ -155,6 +158,25 @@
             </intent-filter>
         </activity>
 
+#ifdef MOZ_ANDROID_SYNTHAPKS
+        <activity android:name="org.mozilla.gecko.webapp.Dispatcher"
+            android:noHistory="true" >
+            <intent-filter>
+                <!-- catch links from synthetic apks -->
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/webapp" />
+            </intent-filter>
+        </activity>
+
+        <receiver android:name="org.mozilla.gecko.webapp.UninstallListener" >
+          <intent-filter>
+             <action android:name="android.intent.action.PACKAGE_REMOVED" />
+             <data android:scheme="package" />
+          </intent-filter>
+        </receiver>
+#endif
+
         <activity android:name=".WebApp"
                   android:label="@string/webapp_generic_name"
                   android:configChanges="keyboard|keyboardHidden|mcc|mnc|orientation|screenSize"
@@ -177,7 +199,7 @@
              this number in sync with the total number of web apps handled in
              WebAppAllocator. -->
 
-#define FRAGMENT WebAppManifestFragment.xml.frag
+#define FRAGMENT WebAppManifestFragment.xml.frag.in
 #include WebAppFragmentRepeater.inc
 
         <!-- Masquerade as the Resolver so that we can be opened from the Marketplace. -->
@@ -216,6 +238,7 @@
         </activity>
 
 #include ../services/manifests/AnnouncementsAndroidManifest_activities.xml.in
+#include ../services/manifests/FxAccountAndroidManifest_activities.xml.in
 #include ../services/manifests/SyncAndroidManifest_activities.xml.in
 #include ../services/manifests/HealthReportAndroidManifest_activities.xml.in
 
@@ -261,17 +284,24 @@
           Process name is a mangled version to avoid a Talos bug. (Bug 750548.)
           -->
         <provider android:name="org.mozilla.gecko.db.PasswordsProvider"
+                  android:label="@string/sync_configure_engines_title_passwords"
                   android:authorities="@ANDROID_PACKAGE_NAME@.db.passwords"
                   android:permission="@ANDROID_PACKAGE_NAME@.permissions.PASSWORD_PROVIDER"
                   android:process="@MANGLED_ANDROID_PACKAGE_NAME@.PasswordsProvider"/>
 
         <provider android:name="org.mozilla.gecko.db.FormHistoryProvider"
+                  android:label="@string/sync_configure_engines_title_history"
                   android:authorities="@ANDROID_PACKAGE_NAME@.db.formhistory"
                   android:permission="@ANDROID_PACKAGE_NAME@.permissions.FORMHISTORY_PROVIDER"
                   android:protectionLevel="signature"/>
 
         <provider android:name="org.mozilla.gecko.db.TabsProvider"
+                  android:label="@string/sync_configure_engines_title_tabs"
                   android:authorities="@ANDROID_PACKAGE_NAME@.db.tabs"
+                  android:permission="@ANDROID_PACKAGE_NAME@.permissions.BROWSER_PROVIDER"/>
+
+        <provider android:name="org.mozilla.gecko.db.HomeProvider"
+                  android:authorities="@ANDROID_PACKAGE_NAME@.db.home"
                   android:permission="@ANDROID_PACKAGE_NAME@.permissions.BROWSER_PROVIDER"/>
 
         <service
@@ -287,6 +317,7 @@
 
 
 #include ../services/manifests/AnnouncementsAndroidManifest_services.xml.in
+#include ../services/manifests/FxAccountAndroidManifest_services.xml.in
 #include ../services/manifests/HealthReportAndroidManifest_services.xml.in
 #include ../services/manifests/SyncAndroidManifest_services.xml.in
 

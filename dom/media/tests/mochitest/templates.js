@@ -137,6 +137,52 @@ var commandsPeerConnection = [
     }
   ],
   [
+    'PC_LOCAL_WAIT_FOR_ICE_CONNECTED',
+    function (test) {
+      var myTest = test;
+      var myPc = myTest.pcLocal;
+
+      function onIceConnectedSuccess () {
+        ok(true, "pc_local: ICE switched to connected state");
+        myTest.next();
+      };
+      function onIceConnectedFailed () {
+        ok(false, "pc_local: ICE failed to switch to connected");
+        myTest.next();
+      };
+
+      if (myPc.isIceConnected()) {
+        ok(true, "pc_local: ICE is in connected state");
+        myTest.next();
+      } else {
+        myPc.waitForIceConnected(onIceConnectedSuccess, onIceConnectedFailed);
+      }
+    }
+  ],
+  [
+    'PC_REMOTE_WAIT_FOR_ICE_CONNECTED',
+    function (test) {
+      var myTest = test;
+      var myPc = myTest.pcRemote;
+
+      function onIceConnectedSuccess () {
+        ok(true, "pc_remote: ICE switched to connected state");
+        myTest.next();
+      };
+      function onIceConnectedFailed () {
+        ok(false, "pc_remote: ICE failed to switch to connected");
+        myTest.next();
+      };
+
+      if (myPc.isIceConnected()) {
+        ok(true, "pc_remote: ICE is in connected state");
+        myTest.next();
+      } else {
+        myPc.waitForIceConnected(onIceConnectedSuccess, onIceConnectedFailed);
+      }
+    }
+  ],
+  [
     'PC_LOCAL_CHECK_MEDIA_STREAMS',
     function (test) {
       test.pcLocal.checkMediaStreams(test._remote_constraints);
@@ -162,6 +208,24 @@ var commandsPeerConnection = [
     'PC_REMOTE_CHECK_MEDIA_FLOW_PRESENT',
     function (test) {
       test.pcRemote.checkMediaFlowPresent(function () {
+        test.next();
+      });
+    }
+  ],
+  [
+    'PC_LOCAL_CHECK_STATS',
+    function (test) {
+      test.pcLocal.getStats(null, function(stats) {
+        test.pcLocal.checkStats(stats);
+        test.next();
+      });
+    }
+  ],
+  [
+    'PC_REMOTE_CHECK_STATS',
+    function (test) {
+      test.pcRemote.getStats(null, function(stats) {
+        test.pcRemote.checkStats(stats);
         test.next();
       });
     }

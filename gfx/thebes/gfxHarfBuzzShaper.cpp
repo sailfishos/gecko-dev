@@ -646,7 +646,7 @@ HBGetEastAsianWidth(hb_unicode_funcs_t *ufuncs, hb_codepoint_t aCh,
 
 // Hebrew presentation forms with dagesh, for characters 0x05D0..0x05EA;
 // note that some letters do not have a dagesh presForm encoded
-static const PRUnichar sDageshForms[0x05EA - 0x05D0 + 1] = {
+static const char16_t sDageshForms[0x05EA - 0x05D0 + 1] = {
     0xFB30, // ALEF
     0xFB31, // BET
     0xFB32, // GIMEL
@@ -796,10 +796,12 @@ AddOpenTypeFeature(const uint32_t& aTag, uint32_t& aValue, void *aUserArg)
 
 static hb_font_funcs_t * sHBFontFuncs = nullptr;
 static hb_unicode_funcs_t * sHBUnicodeFuncs = nullptr;
+static const hb_script_t sMathScript =
+    hb_ot_tag_to_script(HB_TAG('m','a','t','h'));
 
 bool
 gfxHarfBuzzShaper::ShapeText(gfxContext      *aContext,
-                             const PRUnichar *aText,
+                             const char16_t *aText,
                              uint32_t         aOffset,
                              uint32_t         aLength,
                              int32_t          aScript,
@@ -940,12 +942,17 @@ gfxHarfBuzzShaper::ShapeText(gfxContext      *aContext,
     hb_buffer_set_unicode_funcs(buffer, sHBUnicodeFuncs);
     hb_buffer_set_direction(buffer, isRightToLeft ? HB_DIRECTION_RTL :
                                                     HB_DIRECTION_LTR);
-    // For unresolved "common" or "inherited" runs, default to Latin for now.
-    // (Should we somehow use the language or locale to try and infer
-    // a better default?)
-    hb_script_t scriptTag = (aScript <= MOZ_SCRIPT_INHERITED) ?
-        HB_SCRIPT_LATIN :
-        hb_script_t(GetScriptTagForCode(aScript));
+    hb_script_t scriptTag;
+    if (aShapedText->Flags() & gfxTextRunFactory::TEXT_USE_MATH_SCRIPT) {
+        scriptTag = sMathScript;
+    } else if (aScript <= MOZ_SCRIPT_INHERITED) {
+        // For unresolved "common" or "inherited" runs, default to Latin for
+        // now.  (Should we somehow use the language or locale to try and infer
+        // a better default?)
+        scriptTag = HB_SCRIPT_LATIN;
+    } else {
+        scriptTag = hb_script_t(GetScriptTagForCode(aScript));
+    }
     hb_buffer_set_script(buffer, scriptTag);
 
     hb_language_t language;
@@ -990,7 +997,7 @@ gfxHarfBuzzShaper::SetGlyphsFromRun(gfxContext      *aContext,
                                     gfxShapedText   *aShapedText,
                                     uint32_t         aOffset,
                                     uint32_t         aLength,
-                                    const PRUnichar *aText,
+                                    const char16_t *aText,
                                     hb_buffer_t     *aBuffer)
 {
     uint32_t numGlyphs;

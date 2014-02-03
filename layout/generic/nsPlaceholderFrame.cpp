@@ -132,8 +132,8 @@ nsPlaceholderFrame::Reflow(nsPresContext*           aPresContext,
 
   DO_GLOBAL_REFLOW_COUNT("nsPlaceholderFrame");
   DISPLAY_REFLOW(aPresContext, this, aReflowState, aDesiredSize, aStatus);
-  aDesiredSize.width = 0;
-  aDesiredSize.height = 0;
+  aDesiredSize.Width() = 0;
+  aDesiredSize.Height() = 0;
 
   aStatus = NS_FRAME_COMPLETE;
   NS_FRAME_SET_TRUNCATION(aStatus, aReflowState, aDesiredSize);
@@ -229,7 +229,7 @@ nsPlaceholderFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
 }
 #endif // DEBUG || (MOZ_REFLOW_PERF_DSP && MOZ_REFLOW_PERF)
 
-#ifdef DEBUG
+#ifdef DEBUG_FRAME_DUMP
 NS_IMETHODIMP
 nsPlaceholderFrame::GetFrameName(nsAString& aResult) const
 {
@@ -237,14 +237,15 @@ nsPlaceholderFrame::GetFrameName(nsAString& aResult) const
 }
 
 void
-nsPlaceholderFrame::List(FILE* out, int32_t aIndent, uint32_t aFlags) const
+nsPlaceholderFrame::List(FILE* out, const char* aPrefix, uint32_t aFlags) const
 {
-  ListGeneric(out, aIndent, aFlags);
+  nsCString str;
+  ListGeneric(str, aPrefix, aFlags);
 
   if (mOutOfFlowFrame) {
-    fprintf(out, " outOfFlowFrame=");
-    nsFrame::ListTag(out, mOutOfFlowFrame);
+    str += " outOfFlowFrame=";
+    nsFrame::ListTag(str, mOutOfFlowFrame);
   }
-  fputs("\n", out);
+  fprintf_stderr(out, "%s\n", str.get());
 }
-#endif // DEBUG
+#endif

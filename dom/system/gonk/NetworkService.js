@@ -8,9 +8,15 @@ const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
 
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
+Cu.import("resource://gre/modules/NetUtil.jsm");
+Cu.import("resource://gre/modules/FileUtils.jsm");
 
 const NETWORKSERVICE_CONTRACTID = "@mozilla.org/network/service;1";
 const NETWORKSERVICE_CID = Components.ID("{c14cabaf-bb8e-470d-a2f1-2cb6de6c5e5c}");
+
+XPCOMUtils.defineLazyServiceGetter(this, "gNetworkWorker",
+                                   "@mozilla.org/network/worker;1",
+                                   "nsINetworkWorker");
 
 // 1xx - Requested action is proceeding
 const NETD_COMMAND_PROCEEDING   = 100;
@@ -49,17 +55,23 @@ function debug(msg) {
  */
 function NetworkService() {
   if(DEBUG) debug("Starting net_worker.");
-  this.worker = new ChromeWorker("resource://gre/modules/net_worker.js");
-  this.worker.onmessage = this.handleWorkerMessage.bind(this);
-  this.worker.onerror = function onerror(event) {
-    if(DEBUG) debug("Received error from worker: " + event.filename + 
-                    ":" + event.lineno + ": " + event.message + "\n");
-    // Prevent the event from bubbling any further.
-    event.preventDefault();
-  };
 
+  let self = this;
+
+  if (gNetworkWorker) {
+    let networkListener = {
+      onEvent: function(event) {
+        self.handleWorkerMessage(event);
+      }
+    };
+    this.worker = gNetworkWorker;
+    gNetworkWorker.start(networkListener);
+  }
   // Callbacks to invoke when a reply arrives from the net_worker.
   this.controlCallbacks = Object.create(null);
+
+  this.shutdown = false;
+  Services.obs.addObserver(this, "xpcom-shutdown", false);
 }
 
 NetworkService.prototype = {
@@ -79,20 +91,25 @@ NetworkService.prototype = {
   // Helpers
 
   idgen: 0,
-  controlMessage: function controlMessage(params, callback) {
+  controlMessage: function(params, callback) {
+    if (this.shutdown) {
+      return;
+    }
+
     if (callback) {
       let id = this.idgen++;
       params.id = id;
       this.controlCallbacks[id] = callback;
     }
-    this.worker.postMessage(params);
+    if (gNetworkWorker) {
+      gNetworkWorker.postMessage(params);
+    }
   },
 
-  handleWorkerMessage: function handleWorkerMessage(e) {
-    if(DEBUG) debug("NetworkManager received message from worker: " + JSON.stringify(e.data));
-    let response = e.data;
+  handleWorkerMessage: function(response) {
+    if(DEBUG) debug("NetworkManager received message from worker: " + JSON.stringify(response));
     let id = response.id;
-    if (id === 'broadcast') {
+    if (response.broadcast === true) {
       Services.obs.notifyObservers(null, response.topic, response.reason);
       return;
     }
@@ -105,25 +122,48 @@ NetworkService.prototype = {
 
   // nsINetworkService
 
-  getNetworkInterfaceStats: function getNetworkInterfaceStats(networkName, callback) {
+  getNetworkInterfaceStats: function(networkName, callback) {
     if(DEBUG) debug("getNetworkInterfaceStats for " + networkName);
 
-    let params = {
-      cmd: "getNetworkInterfaceStats",
-      ifname: networkName
-    };
+    if (this.shutdown) {
+      return;
+    }
 
-    params.report = true;
-    params.isAsync = true;
+    let file = new FileUtils.File("/proc/net/dev");
+    if (!file) {
+      callback.networkStatsAvailable(false, -1, -1, new Date());
+      return;
+    }
 
-    this.controlMessage(params, function(result) {
-      let success = !isError(result.resultCode);
-      callback.networkStatsAvailable(success, result.rxBytes,
+    NetUtil.asyncFetch(file, function(inputStream, status) {
+      let result = {
+        success: true,  // netd always return success even interface doesn't exist.
+        rxBytes: 0,
+        txBytes: 0
+      };
+      result.date = new Date();
+
+      if (Components.isSuccessCode(status)) {
+        // Find record for corresponding interface.
+        let statExpr = /(\S+): +(\d+) +\d+ +\d+ +\d+ +\d+ +\d+ +\d+ +\d+ +(\d+) +\d+ +\d+ +\d+ +\d+ +\d+ +\d+ +\d+/;
+        let data = NetUtil.readInputStreamToString(inputStream,
+                    inputStream.available()).split("\n");
+        for (let i = 2; i < data.length; i++) {
+          let parseResult = statExpr.exec(data[i]);
+          if (parseResult && parseResult[1] === networkName) {
+            result.rxBytes = parseInt(parseResult[2], 10);
+            result.txBytes = parseInt(parseResult[3], 10);
+            break;
+          }
+        }
+      }
+
+      callback.networkStatsAvailable(result.success, result.rxBytes,
                                      result.txBytes, result.date);
     });
   },
 
-  setNetworkInterfaceAlarm: function setNetworkInterfaceAlarm(networkName, threshold, callback) {
+  setNetworkInterfaceAlarm: function(networkName, threshold, callback) {
     if (!networkName) {
       callback.networkUsageAlarmResult(-1);
       return;
@@ -137,8 +177,8 @@ NetworkService.prototype = {
     this._setNetworkInterfaceAlarm(networkName, threshold, callback);
   },
 
-  _setNetworkInterfaceAlarm: function _setNetworkInterfaceAlarm(networkName, threshold, callback) {
-    debug("setNetworkInterfaceAlarm for " + networkName + " at " + threshold + "bytes");
+  _setNetworkInterfaceAlarm: function(networkName, threshold, callback) {
+    if(DEBUG) debug("setNetworkInterfaceAlarm for " + networkName + " at " + threshold + "bytes");
 
     let params = {
       cmd: "setNetworkInterfaceAlarm",
@@ -159,8 +199,8 @@ NetworkService.prototype = {
     });
   },
 
-  _enableNetworkInterfaceAlarm: function _enableNetworkInterfaceAlarm(networkName, threshold, callback) {
-    debug("enableNetworkInterfaceAlarm for " + networkName + " at " + threshold + "bytes");
+  _enableNetworkInterfaceAlarm: function(networkName, threshold, callback) {
+    if(DEBUG) debug("enableNetworkInterfaceAlarm for " + networkName + " at " + threshold + "bytes");
 
     let params = {
       cmd: "enableNetworkInterfaceAlarm",
@@ -180,8 +220,8 @@ NetworkService.prototype = {
     });
   },
 
-  _disableNetworkInterfaceAlarm: function _disableNetworkInterfaceAlarm(networkName, callback) {
-    debug("disableNetworkInterfaceAlarm for " + networkName);
+  _disableNetworkInterfaceAlarm: function(networkName, callback) {
+    if(DEBUG) debug("disableNetworkInterfaceAlarm for " + networkName);
 
     let params = {
       cmd: "disableNetworkInterfaceAlarm",
@@ -200,7 +240,7 @@ NetworkService.prototype = {
     });
   },
 
-  setWifiOperationMode: function setWifiOperationMode(interfaceName, mode, callback) {
+  setWifiOperationMode: function(interfaceName, mode, callback) {
     if(DEBUG) debug("setWifiOperationMode on " + interfaceName + " to " + mode);
 
     let params = {
@@ -221,7 +261,7 @@ NetworkService.prototype = {
     });
   },
 
-  resetRoutingTable: function resetRoutingTable(network) {
+  resetRoutingTable: function(network) {
     if (!network.ip || !network.netmask) {
       if(DEBUG) debug("Either ip or netmask is null. Cannot reset routing table.");
       return;
@@ -232,10 +272,10 @@ NetworkService.prototype = {
       ip: network.ip,
       netmask: network.netmask
     };
-    this.worker.postMessage(options);
+    this.controlMessage(options, function() {});
   },
 
-  setDNS: function setDNS(networkInterface) {
+  setDNS: function(networkInterface) {
     if(DEBUG) debug("Going DNS to " + networkInterface.name);
     let options = {
       cmd: "setDNS",
@@ -243,10 +283,10 @@ NetworkService.prototype = {
       dns1_str: networkInterface.dns1,
       dns2_str: networkInterface.dns2
     };
-    this.worker.postMessage(options);
+    this.controlMessage(options, function() {});
   },
 
-  setDefaultRouteAndDNS: function setDefaultRouteAndDNS(network, oldInterface) {
+  setDefaultRouteAndDNS: function(network, oldInterface) {
     if(DEBUG) debug("Going to change route and DNS to " + network.name);
     let options = {
       cmd: "setDefaultRouteAndDNS",
@@ -256,20 +296,20 @@ NetworkService.prototype = {
       dns1_str: network.dns1,
       dns2_str: network.dns2
     };
-    this.worker.postMessage(options);
+    this.controlMessage(options, function() {});
     this.setNetworkProxy(network);
   },
 
-  removeDefaultRoute: function removeDefaultRoute(ifname) {
+  removeDefaultRoute: function(ifname) {
     if(DEBUG) debug("Remove default route for " + ifname);
     let options = {
       cmd: "removeDefaultRoute",
       ifname: ifname
     };
-    this.worker.postMessage(options);
+    this.controlMessage(options, function() {});
   },
 
-  addHostRoute: function addHostRoute(network) {
+  addHostRoute: function(network) {
     if(DEBUG) debug("Going to add host route on " + network.name);
     let options = {
       cmd: "addHostRoute",
@@ -277,10 +317,10 @@ NetworkService.prototype = {
       gateway: network.gateway,
       hostnames: [network.dns1, network.dns2, network.httpProxyHost]
     };
-    this.worker.postMessage(options);
+    this.controlMessage(options, function() {});
   },
 
-  removeHostRoute: function removeHostRoute(network) {
+  removeHostRoute: function(network) {
     if(DEBUG) debug("Going to remove host route on " + network.name);
     let options = {
       cmd: "removeHostRoute",
@@ -288,19 +328,19 @@ NetworkService.prototype = {
       gateway: network.gateway,
       hostnames: [network.dns1, network.dns2, network.httpProxyHost]
     };
-    this.worker.postMessage(options);
+    this.controlMessage(options, function() {});
   },
 
-  removeHostRoutes: function removeHostRoutes(ifname) {
+  removeHostRoutes: function(ifname) {
     if(DEBUG) debug("Going to remove all host routes on " + ifname);
     let options = {
       cmd: "removeHostRoutes",
       ifname: ifname,
     };
-    this.worker.postMessage(options);
+    this.controlMessage(options, function() {});
   },
 
-  addHostRouteWithResolve: function addHostRouteWithResolve(network, hosts) {
+  addHostRouteWithResolve: function(network, hosts) {
     if(DEBUG) debug("Going to add host route after dns resolution on " + network.name);
     let options = {
       cmd: "addHostRoute",
@@ -308,10 +348,10 @@ NetworkService.prototype = {
       gateway: network.gateway,
       hostnames: hosts
     };
-    this.worker.postMessage(options);
+    this.controlMessage(options, function() {});
   },
 
-  removeHostRouteWithResolve: function removeHostRouteWithResolve(network, hosts) {
+  removeHostRouteWithResolve: function(network, hosts) {
     if(DEBUG) debug("Going to remove host route after dns resolution on " + network.name);
     let options = {
       cmd: "removeHostRoute",
@@ -319,10 +359,10 @@ NetworkService.prototype = {
       gateway: network.gateway,
       hostnames: hosts
     };
-    this.worker.postMessage(options);
+    this.controlMessage(options, function() {});
   },
 
-  setNetworkProxy: function setNetworkProxy(network) {
+  setNetworkProxy: function(network) {
     try {
       if (!network.httpProxyHost || network.httpProxyHost === "") {
         // Sets direct connection to internet.
@@ -353,7 +393,7 @@ NetworkService.prototype = {
   },
 
   // Enable/Disable DHCP server.
-  setDhcpServer: function setDhcpServer(enabled, config, callback) {
+  setDhcpServer: function(enabled, config, callback) {
     if (null === config) {
       config = {};
     }
@@ -372,7 +412,7 @@ NetworkService.prototype = {
   },
 
   // Enable/disable WiFi tethering by sending commands to netd.
-  setWifiTethering: function setWifiTethering(enable, config, callback) {
+  setWifiTethering: function(enable, config, callback) {
     // config should've already contained:
     //   .ifname
     //   .internalIfname
@@ -399,7 +439,7 @@ NetworkService.prototype = {
   },
 
   // Enable/disable USB tethering by sending commands to netd.
-  setUSBTethering: function setUSBTethering(enable, config, callback) {
+  setUSBTethering: function(enable, config, callback) {
     config.cmd = "setUSBTethering";
     // The callback function in controlMessage may not be fired immediately.
     config.isAsync = true;
@@ -420,7 +460,7 @@ NetworkService.prototype = {
   },
 
   // Switch usb function by modifying property of persist.sys.usb.config.
-  enableUsbRndis: function enableUsbRndis(enable, callback) {
+  enableUsbRndis: function(enable, callback) {
     if(DEBUG) debug("enableUsbRndis: " + enable);
 
     let params = {
@@ -437,12 +477,12 @@ NetworkService.prototype = {
     // The callback function in controlMessage may not be fired immediately.
     params.isAsync = true;
     //this._usbTetheringAction = TETHERING_STATE_ONGOING;
-    this.controlMessage(params, function (data) {
+    this.controlMessage(params, function(data) {
       callback.enableUsbRndisResult(data.result, data.enable);
     });
   },
 
-  updateUpStream: function updateUpStream(previous, current, callback) {
+  updateUpStream: function(previous, current, callback) {
     let params = {
       cmd: "updateUpStream",
       isAsync: true,
@@ -450,12 +490,24 @@ NetworkService.prototype = {
       current: current
     };
 
-    this.controlMessage(params, function (data) {
+    this.controlMessage(params, function(data) {
       let code = data.resultCode;
       let reason = data.resultReason;
       if(DEBUG) debug("updateUpStream result: Code " + code + " reason " + reason);
       callback.updateUpStreamResult(!isError(code), data.current.externalIfname);
     });
+  },
+
+  shutdown: false,
+
+  observe: function observe(aSubject, aTopic, aData) {
+    switch (aTopic) {
+      case "xpcom-shutdown":
+        debug("NetworkService shutdown");
+        this.shutdown = true;
+        Services.obs.removeObserver(this, "xpcom-shutdown");
+        break;
+    }
   },
 };
 

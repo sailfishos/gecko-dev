@@ -306,13 +306,13 @@ CompileRegExpObject(JSContext *cx, RegExpObjectBuilder &builder, CallArgs args)
     return true;
 }
 
-JS_ALWAYS_INLINE bool
+MOZ_ALWAYS_INLINE bool
 IsRegExp(HandleValue v)
 {
     return v.isObject() && v.toObject().is<RegExpObject>();
 }
 
-JS_ALWAYS_INLINE bool
+MOZ_ALWAYS_INLINE bool
 regexp_compile_impl(JSContext *cx, CallArgs args)
 {
     JS_ASSERT(IsRegExp(args.thisv()));
@@ -351,7 +351,7 @@ regexp_construct(JSContext *cx, unsigned argc, Value *vp)
     return CompileRegExpObject(cx, builder, args);
 }
 
-JS_ALWAYS_INLINE bool
+MOZ_ALWAYS_INLINE bool
 regexp_toString_impl(JSContext *cx, CallArgs args)
 {
     JS_ASSERT(IsRegExp(args.thisv()));
@@ -611,8 +611,8 @@ ExecuteRegExp(JSContext *cx, CallArgs args, MatchConduit &matches)
 
 /* ES5 15.10.6.2. */
 static bool
-regexp_exec_impl(JSContext *cx, CallArgs args, HandleObject regexp, HandleString string,
-                 RegExpStaticsUpdate staticsUpdate)
+regexp_exec_impl(JSContext *cx, HandleObject regexp, HandleString string,
+                 RegExpStaticsUpdate staticsUpdate, MutableHandleValue rval)
 {
     /* Execute regular expression and gather matches. */
     ScopedMatchPairs matches(&cx->tempLifoAlloc());
@@ -624,11 +624,11 @@ regexp_exec_impl(JSContext *cx, CallArgs args, HandleObject regexp, HandleString
         return false;
 
     if (status == RegExpRunStatus_Success_NotFound) {
-        args.rval().setNull();
+        rval.setNull();
         return true;
     }
 
-    return CreateRegExpMatchResult(cx, string, matches, args.rval());
+    return CreateRegExpMatchResult(cx, string, matches, rval);
 }
 
 static bool
@@ -639,7 +639,7 @@ regexp_exec_impl(JSContext *cx, CallArgs args)
     if (!string)
         return false;
 
-    return regexp_exec_impl(cx, args, regexp, string, UpdateRegExpStatics);
+    return regexp_exec_impl(cx, regexp, string, UpdateRegExpStatics, args.rval());
 }
 
 bool
@@ -647,6 +647,14 @@ js::regexp_exec(JSContext *cx, unsigned argc, Value *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
     return CallNonGenericMethod(cx, IsRegExp, regexp_exec_impl, args);
+}
+
+/* Separate interface for use by IonMonkey. */
+bool
+js::regexp_exec_raw(JSContext *cx, HandleObject regexp, HandleString input, Value *vp)
+{
+    MutableHandleValue vpHandle = MutableHandleValue::fromMarkedLocation(vp);
+    return regexp_exec_impl(cx, regexp, input, UpdateRegExpStatics, vpHandle);
 }
 
 bool
@@ -660,7 +668,7 @@ js::regexp_exec_no_statics(JSContext *cx, unsigned argc, Value *vp)
     RootedObject regexp(cx, &args[0].toObject());
     RootedString string(cx, args[1].toString());
 
-    return regexp_exec_impl(cx, args, regexp, string, DontUpdateRegExpStatics);
+    return regexp_exec_impl(cx, regexp, string, DontUpdateRegExpStatics, args.rval());
 }
 
 /* ES5 15.10.6.3. */

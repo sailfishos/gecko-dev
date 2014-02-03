@@ -34,9 +34,9 @@ class Rooted;
 
 class JS_PUBLIC_API(AutoGCRooter);
 
-class JS_PUBLIC_API(CompileOptions);
-class JS_PUBLIC_API(ReadOnlyCompileOptions);
-class JS_PUBLIC_API(OwningCompileOptions);
+class JS_FRIEND_API(CompileOptions);
+class JS_FRIEND_API(ReadOnlyCompileOptions);
+class JS_FRIEND_API(OwningCompileOptions);
 class JS_PUBLIC_API(CompartmentOptions);
 
 struct Zone;
@@ -79,28 +79,6 @@ typedef enum JSProtoKey {
     JSProto_LIMIT
 } JSProtoKey;
 
-/* js_CheckAccess mode enumeration. */
-typedef enum JSAccessMode {
-    JSACC_PROTO  = 0,           /* XXXbe redundant w.r.t. id */
-
-                                /*
-                                 * enum value #1 formerly called JSACC_PARENT,
-                                 * gap preserved for ABI compatibility.
-                                 */
-
-                                /*
-                                 * enum value #2 formerly called JSACC_IMPORT,
-                                 * gap preserved for ABI compatibility.
-                                 */
-
-    JSACC_WATCH  = 3,           /* a watchpoint on object foo for id 'bar' */
-    JSACC_READ   = 4,           /* a "get" of foo.bar */
-    JSACC_WRITE  = 8,           /* a "set" of foo.bar = baz */
-    JSACC_LIMIT
-} JSAccessMode;
-
-#define JSACC_TYPEMASK          (JSACC_WRITE - 1)
-
 /*
  * This enum type is used to control the behavior of a JSObject property
  * iterator function that has type JSNewEnumerate.
@@ -130,7 +108,7 @@ typedef enum {
      * it implements JSTraceCallback.
      */
     JSTRACE_LAZY_SCRIPT,
-    JSTRACE_IONCODE,
+    JSTRACE_JITCODE,
     JSTRACE_SHAPE,
     JSTRACE_BASE_SHAPE,
     JSTRACE_TYPE_OBJECT,
@@ -301,14 +279,16 @@ enum ThingRootKind
     THING_ROOT_BASE_SHAPE,
     THING_ROOT_TYPE_OBJECT,
     THING_ROOT_STRING,
-    THING_ROOT_ION_CODE,
+    THING_ROOT_JIT_CODE,
     THING_ROOT_SCRIPT,
+    THING_ROOT_LAZY_SCRIPT,
     THING_ROOT_ID,
     THING_ROOT_PROPERTY_ID,
     THING_ROOT_VALUE,
     THING_ROOT_TYPE,
     THING_ROOT_BINDINGS,
     THING_ROOT_PROPERTY_DESCRIPTOR,
+    THING_ROOT_CUSTOM,
     THING_ROOT_LIMIT
 };
 

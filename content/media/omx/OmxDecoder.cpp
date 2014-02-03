@@ -38,6 +38,7 @@ PRLogModuleInfo *gOmxDecoderLog;
 
 using namespace MPAPI;
 using namespace mozilla;
+using namespace mozilla::gfx;
 
 namespace mozilla {
 
@@ -200,9 +201,7 @@ VideoGraphicBuffer::VideoGraphicBuffer(const android::wp<android::OmxDecoder> aO
 
 VideoGraphicBuffer::~VideoGraphicBuffer()
 {
-  if (mMediaBuffer) {
-    mMediaBuffer->release();
-  }
+  MOZ_ASSERT(!mMediaBuffer);
 }
 
 void
@@ -501,6 +500,13 @@ bool OmxDecoder::IsWaitingMediaResources()
   return false;
 }
 
+static bool isInEmulator()
+{
+  char propQemu[PROPERTY_VALUE_MAX];
+  property_get("ro.kernel.qemu", propQemu, "");
+  return !strncmp(propQemu, "1", 1);
+}
+
 bool OmxDecoder::AllocateMediaResources()
 {
   // OMXClient::connect() always returns OK and abort's fatally if
@@ -525,9 +531,7 @@ bool OmxDecoder::AllocateMediaResources()
     // up.
     int flags = kHardwareCodecsOnly;
 
-    char propQemu[PROPERTY_VALUE_MAX];
-    property_get("ro.kernel.qemu", propQemu, "");
-    if (!strncmp(propQemu, "1", 1)) {
+    if (isInEmulator()) {
       // If we are in emulator, allow to fall back to software.
       flags = 0;
     }
@@ -828,7 +832,7 @@ bool OmxDecoder::ReadVideo(VideoFrame *aFrame, int64_t aTimeUs,
       // GraphicBuffer's size and actual video size is different.
       // See Bug 850566.
       mozilla::layers::SurfaceDescriptorGralloc newDescriptor = descriptor->get_SurfaceDescriptorGralloc();
-      newDescriptor.size() = nsIntSize(mVideoWidth, mVideoHeight);
+      newDescriptor.size() = IntSize(mVideoWidth, mVideoHeight);
 
       mozilla::layers::SurfaceDescriptor descWrapper(newDescriptor);
       aFrame->mGraphicBuffer = new mozilla::layers::VideoGraphicBuffer(this, mVideoBuffer, descWrapper);
@@ -967,6 +971,16 @@ nsresult OmxDecoder::Play()
 // We need to fix it until it is really happened.
 void OmxDecoder::Pause()
 {
+  /* The implementation of OMXCodec::pause is flawed.
+   * OMXCodec::start will not restore from the paused state and result in
+   * buffer timeout which causes timeouts in mochitests.
+   * Since there is not power consumption problem in emulator, we will just
+   * return when running in emulator to fix timeouts in mochitests.
+   */
+  if (isInEmulator()) {
+    return;
+  }
+
   if (mVideoPaused || mAudioPaused) {
     return;
   }

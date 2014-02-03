@@ -64,7 +64,7 @@
 #include "nsFontFaceList.h"
 #include "nsFontInflationData.h"
 #include "nsSVGUtils.h"
-#include "nsSVGTextFrame2.h"
+#include "SVGTextFrame.h"
 #include "nsStyleStructInlines.h"
 #include "nsStyleTransformMatrix.h"
 #include "nsIFrameInlines.h"
@@ -1203,7 +1203,7 @@ nsLayoutUtils::GetScrollableFrameFor(const nsIFrame *aScrolledFrame)
 /* static */ void
 nsLayoutUtils::SetFixedPositionLayerData(Layer* aLayer,
                                          const nsIFrame* aViewportFrame,
-                                         nsSize aViewportSize,
+                                         const nsRect& aAnchorRect,
                                          const nsIFrame* aFixedPosFrame,
                                          nsPresContext* aPresContext,
                                          const ContainerLayerParameters& aContainerParameters) {
@@ -1211,41 +1211,31 @@ nsLayoutUtils::SetFixedPositionLayerData(Layer* aLayer,
   // This, in conjunction with the container scale, will correspond to the
   // coordinate-space of the built layer.
   float factor = aPresContext->AppUnitsPerDevPixel();
-  nsPoint origin = aViewportFrame->GetOffsetToCrossDoc(aFixedPosFrame);
-  LayerRect anchorRect(NSAppUnitsToFloatPixels(origin.x, factor) *
-                         aContainerParameters.mXScale,
-                       NSAppUnitsToFloatPixels(origin.y, factor) *
-                         aContainerParameters.mYScale,
-                       NSAppUnitsToFloatPixels(aViewportSize.width, factor) *
-                         aContainerParameters.mXScale,
-                       NSAppUnitsToFloatPixels(aViewportSize.height, factor) *
-                         aContainerParameters.mYScale);
+  Rect anchorRect(NSAppUnitsToFloatPixels(aAnchorRect.x, factor) *
+                    aContainerParameters.mXScale,
+                  NSAppUnitsToFloatPixels(aAnchorRect.y, factor) *
+                    aContainerParameters.mYScale,
+                  NSAppUnitsToFloatPixels(aAnchorRect.width, factor) *
+                    aContainerParameters.mXScale,
+                  NSAppUnitsToFloatPixels(aAnchorRect.height, factor) *
+                    aContainerParameters.mYScale);
+  // Need to transform anchorRect from the container layer's coordinate system
+  // into aLayer's coordinate system.
+  Matrix transform2d;
+  if (aLayer->GetTransform().Is2D(&transform2d)) {
+    transform2d.Invert();
+    anchorRect = transform2d.TransformBounds(anchorRect);
+  } else {
+    NS_ERROR("3D transform found between fixedpos content and its viewport (should never happen)");
+    anchorRect = Rect(0,0,0,0);
+  }
 
   // Work out the anchor point for this fixed position layer. We assume that
   // any positioning set (left/top/right/bottom) indicates that the
   // corresponding side of its container should be the anchor point,
   // defaulting to top-left.
-  LayerPoint anchor = anchorRect.TopLeft();
-
-  const nsStylePosition* position = aFixedPosFrame->StylePosition();
-  if (position->mOffset.GetRightUnit() != eStyleUnit_Auto) {
-    if (position->mOffset.GetLeftUnit() != eStyleUnit_Auto) {
-      anchor.x = anchorRect.x + anchorRect.width / 2.f;
-    } else {
-      anchor.x = anchorRect.XMost();
-    }
-  }
-  if (position->mOffset.GetBottomUnit() != eStyleUnit_Auto) {
-    if (position->mOffset.GetTopUnit() != eStyleUnit_Auto) {
-      anchor.y = anchorRect.y + anchorRect.height / 2.f;
-    } else {
-      anchor.y = anchorRect.YMost();
-    }
-  }
-
-  aLayer->SetFixedPositionAnchor(anchor);
-
-  // Also make sure the layer is aware of any fixed position margins that have
+  LayerPoint anchor(anchorRect.x, anchorRect.y);
+  // Make sure the layer is aware of any fixed position margins that have
   // been set.
   nsMargin fixedMargins = aPresContext->PresShell()->GetContentDocumentFixedPositionMargins();
   LayerMargin fixedLayerMargins(NSAppUnitsToFloatPixels(fixedMargins.top, factor) *
@@ -1257,19 +1247,47 @@ nsLayoutUtils::SetFixedPositionLayerData(Layer* aLayer,
                                 NSAppUnitsToFloatPixels(fixedMargins.left, factor) *
                                   aContainerParameters.mXScale);
 
-  // If the frame is auto-positioned on either axis, set the top/left layer
-  // margins to -1, to indicate to the compositor that this layer is
-  // unaffected by fixed margins.
-  if (position->mOffset.GetLeftUnit() == eStyleUnit_Auto &&
-      position->mOffset.GetRightUnit() == eStyleUnit_Auto) {
-    fixedLayerMargins.left = -1;
-  }
-  if (position->mOffset.GetTopUnit() == eStyleUnit_Auto &&
-      position->mOffset.GetBottomUnit() == eStyleUnit_Auto) {
-    fixedLayerMargins.top = -1;
+  if (aFixedPosFrame != aViewportFrame) {
+    const nsStylePosition* position = aFixedPosFrame->StylePosition();
+    if (position->mOffset.GetRightUnit() != eStyleUnit_Auto) {
+      if (position->mOffset.GetLeftUnit() != eStyleUnit_Auto) {
+        anchor.x = anchorRect.x + anchorRect.width / 2.f;
+      } else {
+        anchor.x = anchorRect.XMost();
+      }
+    }
+    if (position->mOffset.GetBottomUnit() != eStyleUnit_Auto) {
+      if (position->mOffset.GetTopUnit() != eStyleUnit_Auto) {
+        anchor.y = anchorRect.y + anchorRect.height / 2.f;
+      } else {
+        anchor.y = anchorRect.YMost();
+      }
+    }
+
+    // If the frame is auto-positioned on either axis, set the top/left layer
+    // margins to -1, to indicate to the compositor that this layer is
+    // unaffected by fixed margins.
+    if (position->mOffset.GetLeftUnit() == eStyleUnit_Auto &&
+        position->mOffset.GetRightUnit() == eStyleUnit_Auto) {
+      fixedLayerMargins.left = -1;
+    }
+    if (position->mOffset.GetTopUnit() == eStyleUnit_Auto &&
+        position->mOffset.GetBottomUnit() == eStyleUnit_Auto) {
+      fixedLayerMargins.top = -1;
+    }
   }
 
+  aLayer->SetFixedPositionAnchor(anchor);
   aLayer->SetFixedPositionMargins(fixedLayerMargins);
+}
+
+bool
+nsLayoutUtils::ViewportHasDisplayPort(nsPresContext* aPresContext, nsRect* aDisplayPort)
+{
+  nsIFrame* rootScrollFrame =
+    aPresContext->PresShell()->GetRootScrollFrame();
+  return rootScrollFrame &&
+    nsLayoutUtils::GetDisplayPort(rootScrollFrame->GetContent(), aDisplayPort);
 }
 
 bool
@@ -1283,12 +1301,7 @@ nsLayoutUtils::IsFixedPosFrameInDisplayPort(const nsIFrame* aFrame, nsRect* aDis
       aFrame->StyleDisplay()->mPosition != NS_STYLE_POSITION_FIXED) {
     return false;
   }
-  nsIFrame* rootScrollFrame =
-    aFrame->PresContext()->PresShell()->GetRootScrollFrame();
-  // Treat a fixed-pos frame as an animated geometry root if it belongs to
-  // a viewport which has a scrollframe and a displayport.
-  return rootScrollFrame &&
-    nsLayoutUtils::GetDisplayPort(rootScrollFrame->GetContent(), aDisplayPort);
+  return ViewportHasDisplayPort(aFrame->PresContext(), aDisplayPort);
 }
 
 nsIFrame*
@@ -1814,7 +1827,7 @@ nsLayoutUtils::GetLayerTransformForFrame(nsIFrame* aFrame,
     new (&builder) nsDisplayTransform(&builder, aFrame, &list);
 
   *aTransform =
-    item->GetTransform(aFrame->PresContext()->AppUnitsPerDevPixel());
+    item->GetTransform();
   item->~nsDisplayTransform();
 
   return true;
@@ -1853,16 +1866,16 @@ TransformGfxRectToAncestor(nsIFrame *aFrame,
   return ctm.TransformBounds(aRect);
 }
 
-static nsSVGTextFrame2*
+static SVGTextFrame*
 GetContainingSVGTextFrame(nsIFrame* aFrame)
 {
   if (!aFrame->IsSVGText()) {
     return nullptr;
   }
 
-  return static_cast<nsSVGTextFrame2*>
+  return static_cast<SVGTextFrame*>
     (nsLayoutUtils::GetClosestFrameOfType(aFrame->GetParent(),
-                                          nsGkAtoms::svgTextFrame2));
+                                          nsGkAtoms::svgTextFrame));
 }
 
 nsPoint
@@ -1870,7 +1883,7 @@ nsLayoutUtils::TransformAncestorPointToFrame(nsIFrame* aFrame,
                                              const nsPoint& aPoint,
                                              nsIFrame* aAncestor)
 {
-    nsSVGTextFrame2* text = GetContainingSVGTextFrame(aFrame);
+    SVGTextFrame* text = GetContainingSVGTextFrame(aFrame);
 
     float factor = aFrame->PresContext()->AppUnitsPerDevPixel();
     gfxPoint result(NSAppUnitsToFloatPixels(aPoint.x, factor),
@@ -1892,7 +1905,7 @@ nsLayoutUtils::TransformAncestorRectToFrame(nsIFrame* aFrame,
                                             const nsRect &aRect,
                                             const nsIFrame* aAncestor)
 {
-    nsSVGTextFrame2* text = GetContainingSVGTextFrame(aFrame);
+    SVGTextFrame* text = GetContainingSVGTextFrame(aFrame);
 
     float srcAppUnitsPerDevPixel = aAncestor->PresContext()->AppUnitsPerDevPixel();
     gfxRect result(NSAppUnitsToFloatPixels(aRect.x, srcAppUnitsPerDevPixel),
@@ -1920,7 +1933,7 @@ nsLayoutUtils::TransformFrameRectToAncestor(nsIFrame* aFrame,
                                             const nsIFrame* aAncestor,
                                             bool* aPreservesAxisAlignedRectangles /* = nullptr */)
 {
-  nsSVGTextFrame2* text = GetContainingSVGTextFrame(aFrame);
+  SVGTextFrame* text = GetContainingSVGTextFrame(aFrame);
 
   float srcAppUnitsPerDevPixel = aFrame->PresContext()->AppUnitsPerDevPixel();
   gfxRect result;
@@ -2089,6 +2102,9 @@ nsLayoutUtils::GetFramesForArea(nsIFrame* aFrame, const nsRect& aRect,
     if (rootScrollFrame) {
       builder.SetIgnoreScrollFrame(rootScrollFrame);
     }
+  }
+  if (aFlags & IGNORE_CROSS_DOC) {
+    builder.SetDescendIntoSubdocuments(false);
   }
 
   builder.EnterPresShell(aFrame, target);
@@ -2332,6 +2348,9 @@ nsLayoutUtils::PaintFrame(nsRenderingContext* aRenderingContext, nsIFrame* aFram
   if (aFlags & PAINT_NO_COMPOSITE) {
     flags |= nsDisplayList::PAINT_NO_COMPOSITE;
   }
+  if (aFlags & PAINT_COMPRESSED) {
+    flags |= nsDisplayList::PAINT_COMPRESSED;
+  }
 
   list.PaintRoot(&builder, aRenderingContext, flags);
 
@@ -2433,7 +2452,7 @@ nsLayoutUtils::GetZIndex(nsIFrame* aFrame) {
  */
 bool
 nsLayoutUtils::BinarySearchForPosition(nsRenderingContext* aRendContext,
-                        const PRUnichar* aText,
+                        const char16_t* aText,
                         int32_t    aBaseWidth,
                         int32_t    aBaseInx,
                         int32_t    aStartInx,
@@ -2596,7 +2615,7 @@ nsLayoutUtils::GetTextShadowRectsUnion(const nsRect& aTextAndDecorationsRect,
                                        uint32_t aFlags)
 {
   const nsStyleText* textStyle = aFrame->StyleText();
-  if (!textStyle->HasTextShadow(aFrame))
+  if (!textStyle->HasTextShadow())
     return aTextAndDecorationsRect;
 
   nsRect resultRect = aTextAndDecorationsRect;
@@ -3758,7 +3777,7 @@ nsLayoutUtils::GetSnappedBaselineY(nsIFrame* aFrame, gfxContext* aContext,
 void
 nsLayoutUtils::DrawString(const nsIFrame*       aFrame,
                           nsRenderingContext*   aContext,
-                          const PRUnichar*      aString,
+                          const char16_t*      aString,
                           int32_t               aLength,
                           nsPoint               aPoint,
                           nsStyleContext*       aStyleContext)
@@ -3785,7 +3804,7 @@ nsLayoutUtils::DrawString(const nsIFrame*       aFrame,
 nscoord
 nsLayoutUtils::GetStringWidth(const nsIFrame*      aFrame,
                               nsRenderingContext* aContext,
-                              const PRUnichar*     aString,
+                              const char16_t*     aString,
                               int32_t              aLength)
 {
 #ifdef IBMBIDI
@@ -3811,7 +3830,7 @@ nsLayoutUtils::PaintTextShadow(const nsIFrame* aFrame,
                                void* aCallbackData)
 {
   const nsStyleText* textStyle = aFrame->StyleText();
-  if (!textStyle->HasTextShadow(aFrame))
+  if (!textStyle->HasTextShadow())
     return;
 
   // Text shadow happens with the last value being painted at the back,
@@ -4343,7 +4362,7 @@ nsLayoutUtils::DrawPixelSnapped(nsRenderingContext* aRenderingContext,
   gfxUtils::DrawPixelSnapped(ctx, aDrawable,
                              drawingParams.mUserSpaceToImageSpace, subimage,
                              sourceRect, imageRect, drawingParams.mFillRect,
-                             gfxImageFormatARGB32, aFilter);
+                             gfxImageFormat::ARGB32, aFilter);
 }
 
 /* static */ nsresult
@@ -4799,11 +4818,6 @@ nsLayoutUtils::SurfaceFromElement(nsIImageLoadingContent* aElement,
   SurfaceFromElementResult result;
   nsresult rv;
 
-  bool wantImageSurface = (aSurfaceFlags & SFE_WANT_IMAGE_SURFACE) != 0;
-  if (aSurfaceFlags & SFE_NO_PREMULTIPLY_ALPHA) {
-    wantImageSurface = true;
-  }
-
   nsCOMPtr<imgIRequest> imgRequest;
   rv = aElement->GetRequest(nsIImageLoadingContent::CURRENT_REQUEST,
                             getter_AddRefs(imgRequest));
@@ -4830,6 +4844,8 @@ nsLayoutUtils::SurfaceFromElement(nsIImageLoadingContent* aElement,
   if (NS_FAILED(rv))
     return result;
 
+  uint32_t noRasterize = aSurfaceFlags & SFE_NO_RASTERIZING_VECTORS;
+
   uint32_t whichFrame = (aSurfaceFlags & SFE_WANT_FIRST_FRAME)
                         ? (uint32_t) imgIContainer::FRAME_FIRST
                         : (uint32_t) imgIContainer::FRAME_CURRENT;
@@ -4838,10 +4854,6 @@ nsLayoutUtils::SurfaceFromElement(nsIImageLoadingContent* aElement,
     frameFlags |= imgIContainer::FLAG_DECODE_NO_COLORSPACE_CONVERSION;
   if (aSurfaceFlags & SFE_NO_PREMULTIPLY_ALPHA)
     frameFlags |= imgIContainer::FLAG_DECODE_NO_PREMULTIPLY_ALPHA;
-  nsRefPtr<gfxASurface> framesurf =
-    imgContainer->GetFrame(whichFrame, frameFlags);
-  if (!framesurf)
-    return result;
 
   int32_t imgWidth, imgHeight;
   rv = imgContainer->GetWidth(&imgWidth);
@@ -4849,23 +4861,38 @@ nsLayoutUtils::SurfaceFromElement(nsIImageLoadingContent* aElement,
   if (NS_FAILED(rv) || NS_FAILED(rv2))
     return result;
 
-  nsRefPtr<gfxASurface> gfxsurf = framesurf;
-  if (wantImageSurface) {
-    IntSize size(imgWidth, imgHeight);
-    RefPtr<DataSourceSurface> output = Factory::CreateDataSourceSurface(size, FORMAT_B8G8R8A8);
-    RefPtr<DrawTarget> dt = Factory::CreateDrawTargetForData(BACKEND_CAIRO,
-                                                             output->GetData(),
-                                                             size,
-                                                             output->Stride(),
-                                                             FORMAT_B8G8R8A8);
-    RefPtr<SourceSurface> source = gfxPlatform::GetPlatform()->GetSourceSurfaceForSurface(dt, gfxsurf);
+  if (!noRasterize || imgContainer->GetType() == imgIContainer::TYPE_RASTER) {
+    bool wantImageSurface = (aSurfaceFlags & SFE_WANT_IMAGE_SURFACE) != 0;
+    if (aSurfaceFlags & SFE_NO_PREMULTIPLY_ALPHA) {
+      wantImageSurface = true;
+    }
+    
+    nsRefPtr<gfxASurface> gfxsurf =
+      imgContainer->GetFrame(whichFrame, frameFlags);
+    if (!gfxsurf)
+      return result;
 
-    dt->CopySurface(source, IntRect(0, 0, imgWidth, imgHeight), IntPoint());
-    dt->Flush();
+    if (wantImageSurface) {
+      IntSize size(imgWidth, imgHeight);
+      RefPtr<DataSourceSurface> output = Factory::CreateDataSourceSurface(size, SurfaceFormat::B8G8R8A8);
+      RefPtr<DrawTarget> dt = Factory::CreateDrawTargetForData(BackendType::CAIRO,
+                                                               output->GetData(),
+                                                               size,
+                                                               output->Stride(),
+                                                               SurfaceFormat::B8G8R8A8);
+      RefPtr<SourceSurface> source = gfxPlatform::GetPlatform()->GetSourceSurfaceForSurface(dt, gfxsurf);
 
-    result.mSourceSurface = output;
+      dt->CopySurface(source, IntRect(0, 0, imgWidth, imgHeight), IntPoint());
+      dt->Flush();
+
+      result.mSourceSurface = output;
+    } else {
+      result.mSourceSurface = gfxPlatform::GetPlatform()->GetSourceSurfaceForSurface(aTarget, gfxsurf);
+    }
   } else {
-    result.mSourceSurface = gfxPlatform::GetPlatform()->GetSourceSurfaceForSurface(aTarget, gfxsurf);
+    result.mDrawInfo.mImgContainer = imgContainer;
+    result.mDrawInfo.mWhichFrame = whichFrame;
+    result.mDrawInfo.mDrawingFlags = frameFlags;
   }
 
   int32_t corsmode;
@@ -4913,10 +4940,10 @@ nsLayoutUtils::SurfaceFromElement(HTMLCanvasElement* aElement,
     RefPtr<DrawTarget> dt;
     if (premultAlpha) {
       if (aTarget) {
-        dt = aTarget->CreateSimilarDrawTarget(IntSize(size.width, size.height), FORMAT_B8G8R8A8);
+        dt = aTarget->CreateSimilarDrawTarget(IntSize(size.width, size.height), SurfaceFormat::B8G8R8A8);
       } else {
         dt = gfxPlatform::GetPlatform()->CreateOffscreenContentDrawTarget(IntSize(size.width, size.height),
-                                                                          FORMAT_B8G8R8A8);
+                                                                          SurfaceFormat::B8G8R8A8);
       }
       if (!dt) {
         return result;
@@ -4926,13 +4953,13 @@ nsLayoutUtils::SurfaceFromElement(HTMLCanvasElement* aElement,
       // TODO: RenderContextsExternal expects to get a gfxImageFormat
       // so that it can un-premultiply.
       RefPtr<DataSourceSurface> data = Factory::CreateDataSourceSurface(IntSize(size.width, size.height),
-                                                                        FORMAT_B8G8R8A8);
+                                                                        SurfaceFormat::B8G8R8A8);
       memset(data->GetData(), 0, data->Stride() * size.height);
       result.mSourceSurface = data;
       nsRefPtr<gfxImageSurface> image = new gfxImageSurface(data->GetData(),
                                                             gfxIntSize(size.width, size.height),
                                                             data->Stride(),
-                                                            gfxImageFormatARGB32);
+                                                            gfxImageFormat::ARGB32);
       ctx = new gfxContext(image);
     }
     // XXX shouldn't use the external interface, but maybe we can layerify this
@@ -4984,7 +5011,7 @@ nsLayoutUtils::SurfaceFromElement(HTMLVideoElement* aElement,
     return result;
 
   mozilla::gfx::IntSize size;
-  nsRefPtr<gfxASurface> surf = container->GetCurrentAsSurface(&size);
+  nsRefPtr<gfxASurface> surf = container->DeprecatedGetCurrentAsSurface(&size);
   if (!surf)
     return result;
 
@@ -5118,6 +5145,31 @@ nsLayoutUtils::AssertTreeOnlyEmptyNextInFlows(nsIFrame *aSubtreeRoot)
 }
 #endif
 
+static void
+GetFontFacesForFramesInner(nsIFrame* aFrame, nsFontFaceList* aFontFaceList)
+{
+  NS_PRECONDITION(aFrame, "NULL frame pointer");
+
+  if (aFrame->GetType() == nsGkAtoms::textFrame) {
+    if (!aFrame->GetPrevContinuation()) {
+      nsLayoutUtils::GetFontFacesForText(aFrame, 0, INT32_MAX, true,
+                                         aFontFaceList);
+    }
+    return;
+  }
+
+  nsIFrame::ChildListID childLists[] = { nsIFrame::kPrincipalList,
+                                         nsIFrame::kPopupList };
+  for (size_t i = 0; i < ArrayLength(childLists); ++i) {
+    nsFrameList children(aFrame->GetChildList(childLists[i]));
+    for (nsFrameList::Enumerator e(children); !e.AtEnd(); e.Next()) {
+      nsIFrame* child = e.get();
+      child = nsPlaceholderFrame::GetRealFrameFor(child);
+      GetFontFacesForFramesInner(child, aFontFaceList);
+    }
+  }
+}
+
 /* static */
 nsresult
 nsLayoutUtils::GetFontFacesForFrames(nsIFrame* aFrame,
@@ -5125,26 +5177,8 @@ nsLayoutUtils::GetFontFacesForFrames(nsIFrame* aFrame,
 {
   NS_PRECONDITION(aFrame, "NULL frame pointer");
 
-  if (aFrame->GetType() == nsGkAtoms::textFrame) {
-    return GetFontFacesForText(aFrame, 0, INT32_MAX, false,
-                               aFontFaceList);
-  }
-
   while (aFrame) {
-    nsIFrame::ChildListID childLists[] = { nsIFrame::kPrincipalList,
-                                           nsIFrame::kPopupList };
-    for (size_t i = 0; i < ArrayLength(childLists); ++i) {
-      nsFrameList children(aFrame->GetChildList(childLists[i]));
-      for (nsFrameList::Enumerator e(children); !e.AtEnd(); e.Next()) {
-        nsIFrame* child = e.get();
-        if (child->GetPrevContinuation()) {
-          continue;
-        }
-        child = nsPlaceholderFrame::GetRealFrameFor(child);
-        nsresult rv = GetFontFacesForFrames(child, aFontFaceList);
-        NS_ENSURE_SUCCESS(rv, rv);
-      }
-    }
+    GetFontFacesForFramesInner(aFrame, aFontFaceList);
     aFrame = GetNextContinuationOrSpecialSibling(aFrame);
   }
 
@@ -5169,22 +5203,31 @@ nsLayoutUtils::GetFontFacesForText(nsIFrame* aFrame,
     int32_t fstart = std::max(curr->GetContentOffset(), aStartOffset);
     int32_t fend = std::min(curr->GetContentEnd(), aEndOffset);
     if (fstart >= fend) {
+      curr = static_cast<nsTextFrame*>(curr->GetNextContinuation());
       continue;
     }
 
-    // overlapping with the offset we want
+    // curr is overlapping with the offset we want
     gfxSkipCharsIterator iter = curr->EnsureTextRun(nsTextFrame::eInflated);
     gfxTextRun* textRun = curr->GetTextRun(nsTextFrame::eInflated);
     NS_ENSURE_TRUE(textRun, NS_ERROR_OUT_OF_MEMORY);
 
+    // include continuations in the range that share the same textrun
+    nsTextFrame* next = nullptr;
+    if (aFollowContinuations && fend < aEndOffset) {
+      next = static_cast<nsTextFrame*>(curr->GetNextContinuation());
+      while (next && next->GetTextRun(nsTextFrame::eInflated) == textRun) {
+        fend = std::min(next->GetContentEnd(), aEndOffset);
+        next = fend < aEndOffset ?
+          static_cast<nsTextFrame*>(next->GetNextContinuation()) : nullptr;
+      }
+    }
+
     uint32_t skipStart = iter.ConvertOriginalToSkipped(fstart);
     uint32_t skipEnd = iter.ConvertOriginalToSkipped(fend);
-    aFontFaceList->AddFontsFromTextRun(textRun,
-                                       skipStart,
-                                       skipEnd - skipStart,
-                                       curr);
-  } while (aFollowContinuations &&
-           (curr = static_cast<nsTextFrame*>(curr->GetNextContinuation())));
+    aFontFaceList->AddFontsFromTextRun(textRun, skipStart, skipEnd - skipStart);
+    curr = next;
+  } while (aFollowContinuations && curr);
 
   return NS_OK;
 }
@@ -5603,12 +5646,12 @@ nsLayoutUtils::FontSizeInflationFor(const nsIFrame *aFrame)
 {
   if (aFrame->IsSVGText()) {
     const nsIFrame* container = aFrame;
-    while (container->GetType() != nsGkAtoms::svgTextFrame2) {
+    while (container->GetType() != nsGkAtoms::svgTextFrame) {
       container = container->GetParent();
     }
-    NS_ASSERTION(container, "expected to find an ancestor nsSVGTextFrame2");
+    NS_ASSERTION(container, "expected to find an ancestor SVGTextFrame");
     return
-      static_cast<const nsSVGTextFrame2*>(container)->GetFontSizeScaleFactor();
+      static_cast<const SVGTextFrame*>(container)->GetFontSizeScaleFactor();
   }
 
   if (!FontSizeInflationEnabled(aFrame->PresContext())) {

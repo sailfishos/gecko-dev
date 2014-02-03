@@ -235,19 +235,11 @@ APZController::RequestContentRepaint(const FrameMetrics& aFrameMetrics)
 void
 APZController::HandleDoubleTap(const CSSIntPoint& aPoint, int32_t aModifiers)
 {
-  NS_ConvertASCIItoUTF16 data(
-      nsPrintfCString("{ \"x\": %d, \"y\": %d, \"modifiers\": %d }",
-      (int32_t)aPoint.x, (int32_t)aPoint.y, aModifiers));
-  MetroUtils::FireObserver("Gesture:DoubleTap", data.get());
 }
 
 void
 APZController::HandleSingleTap(const CSSIntPoint& aPoint, int32_t aModifiers)
 {
-  NS_ConvertASCIItoUTF16 data(
-      nsPrintfCString("{ \"x\": %d, \"y\": %d, \"modifiers\": %d }",
-      (int32_t)aPoint.x, (int32_t)aPoint.y, aModifiers));
-  MetroUtils::FireObserver("Gesture:SingleTap", data.get());
 }
 
 void
@@ -272,6 +264,20 @@ void
 APZController::PostDelayedTask(Task* aTask, int aDelayMs)
 {
   MessageLoop::current()->PostDelayedTask(FROM_HERE, aTask, aDelayMs);
+}
+
+bool
+APZController::GetRootZoomConstraints(ZoomConstraints* aOutConstraints)
+{
+  if (aOutConstraints) {
+    // Until we support the meta-viewport tag properly allow zooming
+    // from 1/4 to 4x by default.
+    aOutConstraints->mAllowZoom = true;
+    aOutConstraints->mMinZoom = CSSToScreenScale(0.25f);
+    aOutConstraints->mMaxZoom = CSSToScreenScale(4.0f);
+    return true;
+  }
+  return false;
 }
 
 // apzc notifications

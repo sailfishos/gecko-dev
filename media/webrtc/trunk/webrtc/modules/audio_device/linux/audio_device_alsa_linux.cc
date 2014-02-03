@@ -190,7 +190,7 @@ int32_t AudioDeviceLinuxALSA::Init()
         return 0;
     }
 
-#ifdef MOZ_X11
+#ifdef USE_X11
     //Get X display handle for typing detection
     _XDisplay = XOpenDisplay(NULL);
     if (!_XDisplay)
@@ -266,7 +266,7 @@ int32_t AudioDeviceLinuxALSA::Terminate()
         _critSect.Enter();
     }
 
-#ifdef MOZ_X11
+#ifdef USE_X11
     if (_XDisplay)
     {
       XCloseDisplay(_XDisplay);
@@ -2374,7 +2374,7 @@ bool AudioDeviceLinuxALSA::KeyPressed() const{
   unsigned int i = 0;
   char state = 0;
 
-#ifdef MOZ_X11
+#ifdef USE_X11
   if (!_XDisplay)
     return false;
 

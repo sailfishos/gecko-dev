@@ -15,6 +15,7 @@
 #ifdef XP_WIN
 #include "mozilla/TimeStamp_windows.h"
 #endif
+#include "mozilla/TypedEnum.h"
 
 #include <stdint.h>
 
@@ -130,6 +131,43 @@ struct EnumSerializer {
       return false;
     }
     *aResult = paramType(value);
+    return true;
+  }
+};
+
+/**
+ * Variant of EnumSerializer for MFBT's typed enums
+ * defined by MOZ_BEGIN_ENUM_CLASS in mfbt/TypedEnum.h
+ *
+ * This is only needed on non-C++11 compilers such as B2G's GCC 4.4,
+ * where MOZ_BEGIN_ENUM_CLASS is implemented using a nested enum, T::Enum,
+ * in a wrapper class T. In this case, the "typed enum" type T cannot be
+ * used as an integer template parameter type. MOZ_TEMPLATE_ENUM_CLASS_ENUM_TYPE(T)
+ * is how we get at the integer enum type.
+ */
+template <typename E,
+          MOZ_TEMPLATE_ENUM_CLASS_ENUM_TYPE(E) smallestLegal,
+          MOZ_TEMPLATE_ENUM_CLASS_ENUM_TYPE(E) highBound>
+struct TypedEnumSerializer {
+  typedef E paramType;
+  typedef MOZ_TEMPLATE_ENUM_CLASS_ENUM_TYPE(E) intParamType;
+
+  static bool IsLegalValue(const paramType &aValue) {
+    return smallestLegal <= intParamType(aValue) && intParamType(aValue) < highBound;
+  }
+
+  static void Write(Message* aMsg, const paramType& aValue) {
+    MOZ_ASSERT(IsLegalValue(aValue));
+    WriteParam(aMsg, int32_t(intParamType(aValue)));
+  }
+
+  static bool Read(const Message* aMsg, void** aIter, paramType* aResult) {
+    int32_t value;
+    if(!ReadParam(aMsg, aIter, &value) ||
+       !IsLegalValue(intParamType(value))) {
+      return false;
+    }
+    *aResult = intParamType(value);
     return true;
   }
 };
@@ -265,7 +303,7 @@ struct ParamTraits<nsAString>
 
     uint32_t length = aParam.Length();
     WriteParam(aMsg, length);
-    aMsg->WriteBytes(aParam.BeginReading(), length * sizeof(PRUnichar));
+    aMsg->WriteBytes(aParam.BeginReading(), length * sizeof(char16_t));
   }
 
   static bool Read(const Message* aMsg, void** aIter, paramType* aResult)
@@ -281,9 +319,9 @@ struct ParamTraits<nsAString>
 
     uint32_t length;
     if (ReadParam(aMsg, aIter, &length)) {
-      const PRUnichar* buf;
+      const char16_t* buf;
       if (aMsg->ReadBytes(aIter, reinterpret_cast<const char**>(&buf),
-                       length * sizeof(PRUnichar))) {
+                       length * sizeof(char16_t))) {
         aResult->Assign(buf, length);
         return true;
       }
@@ -314,6 +352,12 @@ struct ParamTraits<nsCString> : ParamTraits<nsACString>
   typedef nsCString paramType;
 };
 
+template <>
+struct ParamTraits<nsLiteralCString> : ParamTraits<nsACString>
+{
+  typedef nsLiteralCString paramType;
+};
+
 #ifdef MOZILLA_INTERNAL_API
 
 template<>
@@ -328,6 +372,12 @@ template <>
 struct ParamTraits<nsString> : ParamTraits<nsAString>
 {
   typedef nsString paramType;
+};
+
+template <>
+struct ParamTraits<nsLiteralString> : ParamTraits<nsAString>
+{
+  typedef nsLiteralString paramType;
 };
 
 template <typename E>

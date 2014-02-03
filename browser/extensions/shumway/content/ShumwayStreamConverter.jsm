@@ -37,17 +37,23 @@ const MAX_CLIPBOARD_DATA_SIZE = 8000;
 Cu.import('resource://gre/modules/XPCOMUtils.jsm');
 Cu.import('resource://gre/modules/Services.jsm');
 Cu.import('resource://gre/modules/NetUtil.jsm');
+Cu.import('resource://gre/modules/Promise.jsm');
 
 XPCOMUtils.defineLazyModuleGetter(this, 'PrivateBrowsingUtils',
   'resource://gre/modules/PrivateBrowsingUtils.jsm');
 
+XPCOMUtils.defineLazyModuleGetter(this, 'AddonManager',
+  'resource://gre/modules/AddonManager.jsm');
+
 XPCOMUtils.defineLazyModuleGetter(this, 'ShumwayTelemetry',
   'resource://shumway/ShumwayTelemetry.jsm');
 
-let appInfo = Cc['@mozilla.org/xre/app-info;1'].getService(Ci.nsIXULAppInfo);
 let Svc = {};
 XPCOMUtils.defineLazyServiceGetter(Svc, 'mime',
                                    '@mozilla.org/mime;1', 'nsIMIMEService');
+
+let StringInputStream = Cc["@mozilla.org/io/string-input-stream;1"];
+let MimeInputStream = Cc["@mozilla.org/network/mime-input-stream;1"];
 
 function getBoolPref(pref, def) {
   try {
@@ -186,6 +192,42 @@ function isShumwayEnabledFor(actions) {
   }
 
   return true;
+}
+
+function getVersionInfo() {
+  var deferred = Promise.defer();
+  var versionInfo = {
+    geckoMstone : 'unknown',
+    geckoBuildID: 'unknown',
+    shumwayVersion: 'unknown'
+  };
+  try {
+    versionInfo.geckoMstone = Services.prefs.getCharPref('gecko.mstone');
+    versionInfo.geckoBuildID = Services.prefs.getCharPref('gecko.buildID');
+  } catch (e) {
+    log('Error encountered while getting platform version info:', e);
+  }
+  try {
+    var addonId = "shumway@research.mozilla.org";
+    AddonManager.getAddonByID(addonId, function(addon) {
+      versionInfo.shumwayVersion = addon ? addon.version : 'n/a';
+      deferred.resolve(versionInfo);
+    });
+  } catch (e) {
+    log('Error encountered while getting Shumway version info:', e);
+    deferred.resolve(versionInfo);
+  }
+  return deferred.promise;
+}
+
+function fallbackToNativePlugin(window, userAction, activateCTP) {
+  var obj = window.frameElement;
+  var doc = obj.ownerDocument;
+  var e = doc.createEvent("CustomEvent");
+  e.initCustomEvent("MozPlayPlugin", true, true, activateCTP);
+  obj.dispatchEvent(e);
+
+  ShumwayTelemetry.onFallback(userAction);
 }
 
 // All the priviledged actions.
@@ -356,13 +398,8 @@ ChromeActions.prototype = {
     });
   },
   fallback: function(automatic) {
-    var obj = this.window.frameElement;
-    var doc = obj.ownerDocument;
-    var e = doc.createEvent("CustomEvent");
-    e.initCustomEvent("MozPlayPlugin", true, true, null);
-    obj.dispatchEvent(e);
-
-    ShumwayTelemetry.onFallback(!automatic);
+    automatic = !!automatic;
+    fallbackToNativePlugin(this.window, !automatic, automatic);
   },
   setClipboard: function (data) {
     if (typeof data !== 'string' ||
@@ -427,6 +464,28 @@ ChromeActions.prototype = {
       break;
     }
   },
+  reportIssue: function(exceptions) {
+    var base = "http://shumway-issue-reporter.paas.allizom.org/input?";
+    var windowUrl = this.window.parent.wrappedJSObject.location + '';
+    var params = 'url=' + encodeURIComponent(windowUrl);
+    params += '&swf=' + encodeURIComponent(this.url);
+    getVersionInfo().then(function (versions) {
+      params += '&ffbuild=' + encodeURIComponent(versions.geckoMstone + ' (' +
+                                                 versions.geckoBuildID + ')');
+      params += '&shubuild=' + encodeURIComponent(versions.shumwayVersion);
+    }).then(function () {
+      var postDataStream = StringInputStream.
+                           createInstance(Ci.nsIStringInputStream);
+      postDataStream.data = 'exceptions=' + encodeURIComponent(exceptions);
+      var postData = MimeInputStream.createInstance(Ci.nsIMIMEInputStream);
+      postData.addHeader("Content-Type", "application/x-www-form-urlencoded");
+      postData.addContentLength = true;
+      postData.setData(postDataStream);
+      this.window.openDialog('chrome://browser/content', '_blank',
+                             'all,dialog=no', base + params, null, null,
+                             postData);
+    }.bind(this));
+  },
   externalCom: function (data) {
     if (!this.allowScriptAccess)
       return;
@@ -454,6 +513,9 @@ ChromeActions.prototype = {
     case 'unregister':
       return embedTag.__flash__unregisterCallback(data.functionName);
     }
+  },
+  getWindowUrl: function() {
+    return this.window.parent.wrappedJSObject.location + '';
   }
 };
 
@@ -902,7 +964,7 @@ ShumwayStreamConverterBase.prototype = {
                                                     converter.getUrlHint(originalURI));
 
         if (!isShumwayEnabledFor(actions)) {
-          actions.fallback(true);
+          fallbackToNativePlugin(domWindow, false, true);
           return;
         }
 

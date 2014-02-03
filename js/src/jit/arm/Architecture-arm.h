@@ -10,24 +10,20 @@
 #include <limits.h>
 #include <stdint.h>
 
+#include "js/Utility.h"
+
 // gcc appears to use __ARM_PCS_VFP to denote that the target is a hard-float target.
 #ifdef __ARM_PCS_VFP
-#define JS_CPU_ARM_HARDFP
+#define JS_CODEGEN_ARM_HARDFP
 #endif
 namespace js {
 namespace jit {
-
-static const uint32_t STACK_SLOT_SIZE       = 4;
-static const uint32_t DOUBLE_STACK_ALIGNMENT = 2;
 
 // In bytes: slots needed for potential memory->memory move spills.
 //   +8 for cycles
 //   +4 for gpr spills
 //   +8 for double spills
 static const uint32_t ION_FRAME_SLACK_SIZE   = 20;
-
-// An offset that is illegal for a local variable's stack allocation.
-static const int32_t INVALID_STACK_SLOT      = -1;
 
 // These offsets are specific to nunboxing, and capture offsets into the
 // components of a js::Value.
@@ -81,6 +77,12 @@ class Registers
                                               "r8", "r9", "r10", "r11", "r12", "sp", "r14", "pc"};
         return Names[code];
     }
+    static const char *GetName(uint32_t i) {
+        MOZ_ASSERT(i < Total);
+        return GetName(Code(i));
+    }
+
+    static Code FromName(const char *name);
 
     static const Code StackPointer = sp;
     static const Code Invalid = invalid_reg;
@@ -186,6 +188,12 @@ class FloatRegisters
                                               "d8", "d9", "d10", "d11", "d12", "d13", "d14", "d15"};
         return Names[code];
     }
+    static const char *GetName(uint32_t i) {
+        JS_ASSERT(i < Total);
+        return GetName(Code(i));
+    }
+
+    static Code FromName(const char *name);
 
     static const Code Invalid = invalid_freg;
 

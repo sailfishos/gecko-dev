@@ -35,7 +35,6 @@ Cu.import("resource://gre/modules/devtools/DevToolsUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 let wantLogging = Services.prefs.getBoolPref("devtools.debugger.log");
-const promptConnections = Services.prefs.getBoolPref("devtools.debugger.prompt-connection");
 
 Cu.import("resource://gre/modules/jsdebugger.jsm");
 addDebuggerToGlobal(this);
@@ -342,22 +341,17 @@ var DebuggerServer = {
   /**
    * Install Firefox-specific actors.
    */
-  addBrowserActors: function(aWindowType) {
-    this.chromeWindowType = aWindowType ? aWindowType : "navigator:browser";
+  addBrowserActors: function(aWindowType = "navigator:browser", restrictPrivileges = false) {
+    this.chromeWindowType = aWindowType;
     this.addActors("resource://gre/modules/devtools/server/actors/webbrowser.js");
-    this.addActors("resource://gre/modules/devtools/server/actors/script.js");
-    this.addGlobalActor(this.ChromeDebuggerActor, "chromeDebugger");
-    this.addActors("resource://gre/modules/devtools/server/actors/webconsole.js");
-    this.addActors("resource://gre/modules/devtools/server/actors/gcli.js");
-    if ("nsIProfiler" in Ci)
-      this.addActors("resource://gre/modules/devtools/server/actors/profiler.js");
+
+    if (!restrictPrivileges) {
+      this.addTabActors();
+      this.addGlobalActor(this.ChromeDebuggerActor, "chromeDebugger");
+    }
 
     this.addActors("resource://gre/modules/devtools/server/actors/webapps.js");
-    this.registerModule("devtools/server/actors/inspector");
-    this.registerModule("devtools/server/actors/webgl");
-    this.registerModule("devtools/server/actors/tracer");
     this.registerModule("devtools/server/actors/device");
-    this.registerModule("devtools/server/actors/styleeditor");
   },
 
   /**
@@ -369,16 +363,28 @@ var DebuggerServer = {
     // but childtab.js hasn't been loaded yet.
     if (!("BrowserTabActor" in this)) {
       this.addActors("resource://gre/modules/devtools/server/actors/webbrowser.js");
-      this.addActors("resource://gre/modules/devtools/server/actors/script.js");
-      this.addActors("resource://gre/modules/devtools/server/actors/webconsole.js");
-      this.addActors("resource://gre/modules/devtools/server/actors/gcli.js");
-      this.registerModule("devtools/server/actors/inspector");
-      this.registerModule("devtools/server/actors/webgl");
-      this.registerModule("devtools/server/actors/styleeditor");
+      this.addTabActors();
     }
     if (!("ContentAppActor" in DebuggerServer)) {
       this.addActors("resource://gre/modules/devtools/server/actors/childtab.js");
     }
+  },
+
+  /**
+   * Install tab actors.
+   */
+  addTabActors: function() {
+    this.addActors("resource://gre/modules/devtools/server/actors/script.js");
+    this.addActors("resource://gre/modules/devtools/server/actors/webconsole.js");
+    this.addActors("resource://gre/modules/devtools/server/actors/gcli.js");
+    this.registerModule("devtools/server/actors/inspector");
+    this.registerModule("devtools/server/actors/webgl");
+    this.registerModule("devtools/server/actors/stylesheets");
+    this.registerModule("devtools/server/actors/styleeditor");
+    this.registerModule("devtools/server/actors/tracer");
+    this.registerModule("devtools/server/actors/memory");
+    if ("nsIProfiler" in Ci)
+      this.addActors("resource://gre/modules/devtools/server/actors/profiler.js");
   },
 
   /**
@@ -511,7 +517,7 @@ var DebuggerServer = {
 
   onSocketAccepted:
   makeInfallible(function DS_onSocketAccepted(aSocket, aTransport) {
-    if (promptConnections && !this._allowConnection()) {
+    if (Services.prefs.getBoolPref("devtools.debugger.prompt-connection") && !this._allowConnection()) {
       return;
     }
     dumpn("New debugging connection on " + aTransport.host + ":" + aTransport.port);
@@ -1006,8 +1012,12 @@ DebuggerServerConnection.prototype = {
     }
 
     var ret = null;
-    // Dispatch the request to the actor.
-    if (actor.requestTypes && actor.requestTypes[aPacket.type]) {
+
+    // handle "requestTypes" RDP request.
+    if (aPacket.type == "requestTypes") {
+      ret = { from: actor.actorID, requestTypes: Object.keys(actor.requestTypes) };
+    } else if (actor.requestTypes && actor.requestTypes[aPacket.type]) {
+      // Dispatch the request to the actor.
       try {
         this.currentPacket = aPacket;
         ret = actor.requestTypes[aPacket.type].bind(actor)(aPacket, this);

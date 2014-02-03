@@ -63,7 +63,6 @@ var Browser = {
       messageManager.loadFrameScript("chrome://browser/content/library/SelectionPrototype.js", true);
       messageManager.loadFrameScript("chrome://browser/content/contenthandlers/SelectionHandler.js", true);
       messageManager.loadFrameScript("chrome://browser/content/contenthandlers/ContextMenuHandler.js", true);
-      messageManager.loadFrameScript("chrome://browser/content/contenthandlers/FindHandler.js", true);
       messageManager.loadFrameScript("chrome://browser/content/contenthandlers/ConsoleAPIObserver.js", true);
     } catch (e) {
       // XXX whatever is calling startup needs to dump errors!
@@ -173,7 +172,10 @@ var Browser = {
       let self = this;
       function loadStartupURI() {
         if (activationURI) {
-          self.addTab(activationURI, true, null, { flags: Ci.nsIWebNavigation.LOAD_FLAGS_ALLOW_THIRD_PARTY_FIXUP });
+          let webNav = Ci.nsIWebNavigation;
+          let flags = webNav.LOAD_FLAGS_ALLOW_THIRD_PARTY_FIXUP |
+                      webNav.LOAD_FLAGS_FIXUP_SCHEME_TYPOS;
+          self.addTab(activationURI, true, null, { flags: flags });
         } else {
           let uri = commandURL || Browser.getHomePage();
           self.addTab(uri, true);
@@ -181,8 +183,10 @@ var Browser = {
       }
 
       // Should we restore the previous session (crash or some other event)
-      let ss = Cc["@mozilla.org/browser/sessionstore;1"].getService(Ci.nsISessionStore);
-      if (ss.shouldRestore() || Services.prefs.getBoolPref("browser.startup.sessionRestore")) {
+      let ss = Cc["@mozilla.org/browser/sessionstore;1"]
+               .getService(Ci.nsISessionStore);
+      let shouldRestore = ss.shouldRestore();
+      if (shouldRestore) {
         let bringFront = false;
         // First open any commandline URLs, except the homepage
         if (activationURI && activationURI != kStartURI) {
@@ -472,6 +476,7 @@ var Browser = {
    *   is closed, we will return to a parent or "sibling" tab if possible.
    * @param aParams Object (optional) with optional properties:
    *   index: Number specifying where in the tab list to insert the new tab.
+   *   private: If true, the new tab should be have Private Browsing active.
    *   flags, postData, charset, referrerURI: See loadURIWithFlags.
    */
   addTab: function browser_addTab(aURI, aBringFront, aOwner, aParams) {
@@ -1017,7 +1022,7 @@ nsBrowserAccess.prototype = {
   _getOpenAction: function _getOpenAction(aURI, aOpener, aWhere, aContext) {
     let where = aWhere;
     /*
-     * aWhere: 
+     * aWhere:
      * OPEN_DEFAULTWINDOW: default action
      * OPEN_CURRENTWINDOW: current window/tab
      * OPEN_NEWWINDOW: not allowed, converted to newtab below
@@ -1218,16 +1223,17 @@ var SessionHistoryObserver = {
     if (aTopic != "browser:purge-session-history")
       return;
 
-    let back = document.getElementById("cmd_back");
-    back.setAttribute("disabled", "true");
-    let forward = document.getElementById("cmd_forward");
-    forward.setAttribute("disabled", "true");
-
-    let urlbar = document.getElementById("urlbar-edit");
-    if (urlbar) {
-      // Clear undo history of the URL bar
-      urlbar.editor.transactionManager.clear();
+    let newTab = Browser.addTab("about:start", true);
+    let tab = Browser._tabs[0];
+    while(tab != newTab) {
+      Browser.closeTab(tab, { forceClose: true } );
+      tab = Browser._tabs[0];
     }
+
+    PlacesUtils.history.removeAllPages();
+
+    // Clear undo history of the URL bar
+    BrowserUI._edit.editor.transactionManager.clear();
   }
 };
 
@@ -1249,6 +1255,13 @@ function Tab(aURI, aParams, aOwner) {
   this._chromeTab = null;
   this._eventDeferred = null;
   this._updateThumbnailTimeout = null;
+
+  this._private = false;
+  if ("private" in aParams) {
+    this._private = aParams.private;
+  } else if (aOwner) {
+    this._private = aOwner.private;
+  }
 
   this.owner = aOwner || null;
 
@@ -1277,6 +1290,10 @@ Tab.prototype = {
     return this._chromeTab;
   },
 
+  get isPrivate() {
+    return this._private;
+  },
+
   get pageShowPromise() {
     return this._eventDeferred ? this._eventDeferred.promise : null;
   },
@@ -1302,6 +1319,10 @@ Tab.prototype = {
     this._eventDeferred = Promise.defer();
 
     this._chromeTab = Elements.tabList.addTab(aParams.index);
+    if (this.isPrivate) {
+      this._chromeTab.setAttribute("private", "true");
+    }
+
     this._id = Browser.createTabId();
     let browser = this._createBrowser(aURI, null);
 
@@ -1456,6 +1477,11 @@ Tab.prototype = {
      // let the content area manager know about this browser.
     ContentAreaObserver.onBrowserCreated(browser);
 
+    if (this.isPrivate) {
+      let ctx = browser.docShell.QueryInterface(Ci.nsILoadContext);
+      ctx.usePrivateBrowsing = true;
+    }
+
     // stop about:blank from loading
     browser.stop();
 
@@ -1480,7 +1506,9 @@ Tab.prototype = {
   },
 
   updateThumbnail: function updateThumbnail() {
-    PageThumbs.captureToCanvas(this.browser.contentWindow, this._chromeTab.thumbnailCanvas);
+    if (!this.isPrivate) {
+      PageThumbs.captureToCanvas(this.browser.contentWindow, this._chromeTab.thumbnailCanvas);
+    }
   },
 
   updateFavicon: function updateFavicon() {
@@ -1495,12 +1523,14 @@ Tab.prototype = {
     let browser = this._browser;
 
     if (aActive) {
+      notification.classList.add("active-tab-notificationbox");
       browser.setAttribute("type", "content-primary");
       Elements.browsers.selectedPanel = notification;
       browser.active = true;
       Elements.tabList.selectedTab = this._chromeTab;
       browser.focus();
     } else {
+      notification.classList.remove("active-tab-notificationbox");
       browser.messageManager.sendAsyncMessage("Browser:Blur", { });
       browser.setAttribute("type", "content");
       browser.active = false;

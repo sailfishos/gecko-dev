@@ -6,6 +6,7 @@
 
 #include "base/basictypes.h"
 
+#include "gfx2DGlue.h"
 #include "gfxImageSurface.h"
 #include "gfxPattern.h"
 #include "nsPIDOMWindow.h"
@@ -22,7 +23,9 @@
 #include "nsContentUtils.h"
 #include "nsCSSValue.h"
 #include "nsRuleNode.h"
+#include "mozilla/gfx/Matrix.h"
 
+using namespace mozilla;
 using namespace mozilla::ipc;
 
 DocumentRendererChild::DocumentRendererChild()
@@ -34,10 +37,10 @@ DocumentRendererChild::~DocumentRendererChild()
 bool
 DocumentRendererChild::RenderDocument(nsIDOMWindow *window,
                                       const nsRect& documentRect,
-                                      const gfxMatrix& transform,
+                                      const mozilla::gfx::Matrix& transform,
                                       const nsString& aBGColor,
                                       uint32_t renderFlags,
-                                      bool flushLayout, 
+                                      bool flushLayout,
                                       const nsIntSize& renderSize,
                                       nsCString& data)
 {
@@ -73,9 +76,9 @@ DocumentRendererChild::RenderDocument(nsIDOMWindow *window,
         new gfxImageSurface(reinterpret_cast<uint8_t*>(data.BeginWriting()),
                             gfxIntSize(renderSize.width, renderSize.height),
                             4 * renderSize.width,
-                            gfxImageFormatARGB32);
+                            gfxImageFormat::ARGB32);
     nsRefPtr<gfxContext> ctx = new gfxContext(surf);
-    ctx->SetMatrix(transform);
+    ctx->SetMatrix(mozilla::gfx::ThebesMatrix(transform));
 
     nsCOMPtr<nsIPresShell> shell = presContext->PresShell();
     shell->RenderDocument(documentRect, renderFlags, bgColor, ctx);

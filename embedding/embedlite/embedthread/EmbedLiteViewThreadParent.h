@@ -34,18 +34,17 @@ public:
   virtual void SuspendTimeouts();
   virtual void ResumeTimeouts();
   virtual void LoadFrameScript(const char* aURI);
-  virtual void DoSendAsyncMessage(const PRUnichar* aMessageName, const PRUnichar* aMessage);
+  virtual void DoSendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage);
   virtual bool RenderToImage(unsigned char* aData, int imgW, int imgH, int stride, int depth);
   virtual bool RenderGL();
   virtual void SetViewSize(int width, int height);
   virtual void SetGLViewPortSize(int width, int height);
-  virtual void SetGLViewTransform(gfxMatrix matrix);
+  virtual void SetGLViewTransform(gfx::Matrix matrix);
   virtual void SetViewClipping(const gfxRect& aClipRect);
   virtual void SetViewOpacity(const float aOpacity);
   virtual void SetTransformation(float aScale, nsIntPoint aScrollOffset);
   virtual void ScheduleRender();
   virtual void UpdateScrollController();
-  virtual bool ScrollBy(int aDX, int aDY, bool aDoOverflow = false);
   virtual void MousePress(int x, int y, int mstime, unsigned int buttons, unsigned int modifiers);
   virtual void MouseRelease(int x, int y, int mstime, unsigned int buttons, unsigned int modifiers);
   virtual void MouseMove(int x, int y, int mstime, unsigned int buttons, unsigned int modifiers);
@@ -112,8 +111,13 @@ protected:
                                const nsString& aJSON,
                                InfallibleTArray<nsString>* aJSONRetVal);
   virtual bool
-  RecvUpdateZoomConstraints(const bool&, const float&, const float&);
-  virtual bool RecvZoomToRect(const CSSRect& aRect);
+  RecvUpdateZoomConstraints(const uint32_t& aPresShellId,
+                            const ViewID& aViewId,
+                            const bool& aIsRoot,
+                            const ZoomConstraints& aConstraints);
+  virtual bool RecvZoomToRect(const uint32_t& aPresShellId,
+                              const ViewID& aViewId,
+                              const CSSRect& aRect);
   virtual bool RecvSetBackgroundColor(const nscolor& aColor);
   virtual bool RecvContentReceivedTouch(const ScrollableLayerGuid& aGuid, const bool& aPreventDefault);
 
@@ -138,8 +142,6 @@ private:
   EmbedLiteView* mView;
   bool mViewAPIDestroyed;
   RefPtr<EmbedLiteCompositorParent> mCompositor;
-  gfx::Point mScrollOffset;
-  float mLastScale;
 
   ScreenIntSize mViewSize;
   gfxSize mGLViewPortSize;
@@ -148,8 +150,8 @@ private:
   int mLastIMEState;
 
   uint64_t mRootLayerTreeId;
-  nsRefPtr<EmbedContentController> mController;
   GLuint mUploadTexture;
+  nsRefPtr<EmbedContentController> mController;
 
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteViewThreadParent);
 };

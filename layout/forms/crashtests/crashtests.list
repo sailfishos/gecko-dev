@@ -19,7 +19,9 @@ load 366537-1.xhtml
 load 367587-1.html
 load 370703-1.html
 load 370940-1.html
+load 370967.html
 load 373586-1.xhtml
+load 375299.html
 load 378369.html
 asserts(5-10) load 378413-1.xhtml # bug 424225, bug 402850?
 load 380116-1.xhtml
@@ -51,3 +53,6 @@ asserts(0-1) load 669767.html
 load 682684.xhtml
 load 865602.html
 load 944198.html
+load 949891.xhtml
+load 959311.html
+load 960277-2.html

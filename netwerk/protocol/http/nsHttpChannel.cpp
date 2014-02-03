@@ -92,6 +92,12 @@ AccumulateCacheHitTelemetry(CacheDisposition hitOrMiss)
     }
     else {
         Telemetry::Accumulate(Telemetry::HTTP_CACHE_DISPOSITION_2_V2, hitOrMiss);
+
+        int32_t experiment = CacheObserver::HalfLifeExperiment();
+        if (experiment > 0 && hitOrMiss == kCacheMissed) {
+            Telemetry::Accumulate(Telemetry::HTTP_CACHE_MISS_HALFLIFE_EXPERIMENT,
+                                  experiment - 1);
+        }
     }
 }
 
@@ -266,12 +272,12 @@ nsHttpChannel::Connect()
         rv = sss->IsSecureURI(nsISiteSecurityService::HEADER_HSTS, mURI, flags,
                               &isStsHost);
 
-        // if SSS fails, there's no reason to cancel the load, but it's
-        // worrisome.
-        NS_ASSERTION(NS_SUCCEEDED(rv),
-                     "Something is wrong with SSS: IsSecureURI failed.");
+        // if the SSS check fails, it's likely because this load is on a
+        // malformed URI or something else in the setup is wrong, so any error
+        // should be reported.
+        NS_ENSURE_SUCCESS(rv, rv);
 
-        if (NS_SUCCEEDED(rv) && isStsHost) {
+        if (isStsHost) {
             LOG(("nsHttpChannel::Connect() STS permissions found\n"));
             return AsyncCall(&nsHttpChannel::HandleAsyncRedirectChannelToHttps);
         }
@@ -2012,7 +2018,7 @@ nsHttpChannel::MaybeSetupByteRangeRequest(int64_t partialLen, int64_t contentLen
     mIsPartialRequest = false;
 
     if (!IsResumable(partialLen, contentLength))
-      return NS_OK;
+      return NS_ERROR_NOT_RESUMABLE;
 
     // looks like a partial entry we can reuse; add If-Range
     // and Range headers.
@@ -2415,8 +2421,8 @@ nsHttpChannel::ContinueProcessFallback(nsresult rv)
         return rv;
 
     if (mLoadFlags & LOAD_INITIAL_DOCUMENT_URI) {
-        mozilla::Telemetry::Accumulate(Telemetry::HTTP_OFFLINE_CACHE_DOCUMENT_LOAD,
-                                       true);
+        Telemetry::Accumulate(Telemetry::HTTP_OFFLINE_CACHE_DOCUMENT_LOAD,
+                              true);
     }
 
     // close down this channel
@@ -2550,10 +2556,11 @@ nsHttpChannel::OpenCacheEntry(bool usingSSL)
     }
     NS_ENSURE_SUCCESS(rv, rv);
 
-    if (mLoadAsBlocking || mLoadUnblocked ||
-        (mLoadFlags & LOAD_INITIAL_DOCUMENT_URI)) {
+    // Don't consider mLoadUnblocked here, since it's not indication of a demand
+    // to load prioritly. It's mostly used to load XHR requests, but those should
+    // not be considered as influencing the page load performance.
+    if (mLoadAsBlocking || (mLoadFlags & LOAD_INITIAL_DOCUMENT_URI))
         cacheEntryOpenFlags |= nsICacheStorage::OPEN_PRIORITY;
-    }
 
     // Only for backward compatibility with the old cache back end.
     // When removed, remove the flags and related code snippets.
@@ -2751,7 +2758,7 @@ nsHttpChannel::OnCacheEntryCheck(nsICacheEntry* entry, nsIApplicationCache* appC
                  "[content-length=%lld size=%lld]\n", contentLength, size));
 
             rv = MaybeSetupByteRangeRequest(size, contentLength);
-            mCachedContentIsPartial = NS_SUCCEEDED(rv);
+            mCachedContentIsPartial = NS_SUCCEEDED(rv) && mIsPartialRequest;
             if (mCachedContentIsPartial) {
                 rv = OpenCacheInputStream(entry, false);
                 *aResult = ENTRY_NEEDS_REVALIDATION;
@@ -3065,8 +3072,8 @@ nsHttpChannel::OnNormalCacheEntryAvailable(nsICacheEntry *aEntry,
         mCacheEntryIsWriteOnly = aNew;
 
         if (mLoadFlags & LOAD_INITIAL_DOCUMENT_URI) {
-            mozilla::Telemetry::Accumulate(Telemetry::HTTP_OFFLINE_CACHE_DOCUMENT_LOAD,
-                                           false);
+            Telemetry::Accumulate(Telemetry::HTTP_OFFLINE_CACHE_DOCUMENT_LOAD,
+                                  false);
         }
     }
 
@@ -3098,8 +3105,8 @@ nsHttpChannel::OnOfflineCacheEntryAvailable(nsICacheEntry *aEntry,
         mCacheEntryIsWriteOnly = false;
 
         if (mLoadFlags & LOAD_INITIAL_DOCUMENT_URI && !mApplicationCacheForWrite) {
-            mozilla::Telemetry::Accumulate(Telemetry::HTTP_OFFLINE_CACHE_DOCUMENT_LOAD,
-                                           true);
+            Telemetry::Accumulate(Telemetry::HTTP_OFFLINE_CACHE_DOCUMENT_LOAD,
+                                  true);
         }
 
         return NS_OK;
@@ -5296,13 +5303,42 @@ nsHttpChannel::OnDataAvailable(nsIRequest *request, nsISupports *ctxt,
         if (!mLogicalOffset)
             MOZ_EVENT_TRACER_EXEC(this, "net::http::channel");
 
+        int64_t offsetBefore = 0;
+        nsCOMPtr<nsISeekableStream> seekable = do_QueryInterface(input);
+        if (seekable && NS_FAILED(seekable->Tell(&offsetBefore))) {
+            seekable = nullptr;
+        }
+
         nsresult rv =  mListener->OnDataAvailable(this,
                                                   mListenerContext,
                                                   input,
                                                   mLogicalOffset,
                                                   count);
-        if (NS_SUCCEEDED(rv))
-            mLogicalOffset = progress;
+        if (NS_SUCCEEDED(rv)) {
+            // by contract mListener must read all of "count" bytes, but
+            // nsInputStreamPump is tolerant to seekable streams that violate that
+            // and it will redeliver incompletely read data. So we need to do
+            // the same thing when updating the progress counter to stay in sync.
+            int64_t offsetAfter, delta;
+            if (seekable && NS_SUCCEEDED(seekable->Tell(&offsetAfter))) {
+                delta = offsetAfter - offsetBefore;
+                if (delta != count) {
+                    count = delta;
+
+                    NS_WARNING("Listener OnDataAvailable contract violation");
+                    nsCOMPtr<nsIConsoleService> consoleService =
+                        do_GetService(NS_CONSOLESERVICE_CONTRACTID);
+                    nsAutoString message
+                        (NS_LITERAL_STRING(
+                        "http channel Listener OnDataAvailable contract violation"));
+                    if (consoleService) {
+                        consoleService->LogStringMessage(message.get());
+                    }
+                }
+            }
+            mLogicalOffset += count;
+        }
+        
         return rv;
     }
 

@@ -26,7 +26,6 @@
 #include "SurfaceTypes.h"               // for SurfaceStreamType
 #include "ClientLayerManager.h"         // for ClientLayerManager, etc
 #include "GLUploadHelpers.h"
-#include "GLContextUtils.h"             // for GLContextUtils
 #include "gfxPlatform.h"
 
 #include "BasicLayers.h"
@@ -51,12 +50,11 @@ EmbedLiteViewThreadParent::EmbedLiteViewThreadParent(const uint32_t& id, const u
   , mView(EmbedLiteApp::GetInstance()->GetViewByID(id))
   , mViewAPIDestroyed(false)
   , mCompositor(nullptr)
-  , mScrollOffset(0, 0)
-  , mLastScale(1.0f)
   , mInTouchProcess(false)
   , mUILoop(MessageLoop::current())
   , mLastIMEState(0)
   , mUploadTexture(0)
+  , mController(new EmbedContentController(this, mUILoop))
 {
   MOZ_COUNT_CTOR(EmbedLiteViewThreadParent);
   MOZ_ASSERT(mView, "View destroyed during OMTC view construction");
@@ -106,10 +104,9 @@ EmbedLiteViewThreadParent::UpdateScrollController()
 
   NS_ENSURE_TRUE(mView, );
 
-  mController = nullptr;
   if (mCompositor) {
     mRootLayerTreeId = mCompositor->RootLayerTreeId();
-    mController = new EmbedContentController(this, mCompositor, mUILoop);
+    mController->SetManagerByRootLayerTreeId(mRootLayerTreeId);
     CompositorParent::SetControllerForLayerTree(mRootLayerTreeId, mController);
   }
 }
@@ -263,18 +260,23 @@ EmbedLiteViewThreadParent::RecvOnTitleChanged(const nsString& aTitle)
 }
 
 bool
-EmbedLiteViewThreadParent::RecvUpdateZoomConstraints(const bool& aAllowZoom, const float& min, const float& max)
+EmbedLiteViewThreadParent::RecvUpdateZoomConstraints(const uint32_t& aPresShellId,
+                                                     const ViewID& aViewId,
+                                                     const bool& aIsRoot,
+                                                     const ZoomConstraints& aConstraints)
 {
-  if (mController) {
-    mController->GetManager()->UpdateZoomConstraints(ScrollableLayerGuid(mRootLayerTreeId, 0, 0), aAllowZoom, CSSToScreenScale(min), CSSToScreenScale(max));
+  if (mController->GetManager()) {
+    mController->GetManager()->UpdateZoomConstraints(ScrollableLayerGuid(mRootLayerTreeId, 0, 0), aConstraints);
   }
   return true;
 }
 
 bool
-EmbedLiteViewThreadParent::RecvZoomToRect(const CSSRect& aRect)
+EmbedLiteViewThreadParent::RecvZoomToRect(const uint32_t& aPresShellId,
+                                          const ViewID& aViewId,
+                                          const CSSRect& aRect)
 {
-  if (mController) {
+  if (mController->GetManager()) {
     mController->GetManager()->ZoomToRect(ScrollableLayerGuid(mRootLayerTreeId, 0, 0), aRect);
   }
   return true;
@@ -283,7 +285,7 @@ EmbedLiteViewThreadParent::RecvZoomToRect(const CSSRect& aRect)
 bool
 EmbedLiteViewThreadParent::RecvContentReceivedTouch(const ScrollableLayerGuid& aGuid, const bool& aPreventDefault)
 {
-  if (mController) {
+  if (mController->GetManager()) {
     mController->GetManager()->ContentReceivedTouch(aGuid, aPreventDefault);
   }
   return true;
@@ -366,7 +368,7 @@ EmbedLiteViewThreadParent::LoadFrameScript(const char* aURI)
 }
 
 void
-EmbedLiteViewThreadParent::DoSendAsyncMessage(const PRUnichar* aMessageName, const PRUnichar* aMessage)
+EmbedLiteViewThreadParent::DoSendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage)
 {
   LOGT("msgName:%ls, msg:%ls", aMessageName, aMessage);
   const nsDependentString msgname(aMessageName);
@@ -435,18 +437,18 @@ EmbedLiteViewThreadParent::RecvSyncMessage(const nsString& aMessage,
   return true;
 }
 
-static inline SurfaceFormat
+static inline gfx::SurfaceFormat
 _depth_to_gfxformat(int depth)
 {
   switch (depth) {
     case 32:
-      return SurfaceFormat::FORMAT_R8G8B8A8;
+      return SurfaceFormat::R8G8B8A8;
     case 24:
-      return SurfaceFormat::FORMAT_R8G8B8X8;
+      return SurfaceFormat::R8G8B8X8;
     case 16:
-      return SurfaceFormat::FORMAT_R5G6B5;
+      return SurfaceFormat::R5G6B5;
     default:
-      return SurfaceFormat::FORMAT_UNKNOWN;
+      return SurfaceFormat::UNKNOWN;
   }
 }
 
@@ -470,15 +472,6 @@ EmbedLiteViewThreadParent::RenderGL()
     return mCompositor->RenderGL();
   }
   return false;
-}
-
-bool
-EmbedLiteViewThreadParent::ScrollBy(int aDX, int aDY, bool aDoOverflow)
-{
-  LOGT("d[%i,%i]", aDX, aDY);
-  mScrollOffset.MoveBy(-aDX, -aDY);
-
-  return true;
 }
 
 void
@@ -507,7 +500,7 @@ EmbedLiteViewThreadParent::SetGLViewPortSize(int width, int height)
 }
 
 void
-EmbedLiteViewThreadParent::SetGLViewTransform(gfxMatrix matrix)
+EmbedLiteViewThreadParent::SetGLViewTransform(gfx::Matrix matrix)
 {
   if (mCompositor) {
     mCompositor->SetWorldTransform(matrix);
@@ -546,7 +539,7 @@ EmbedLiteViewThreadParent::ScheduleRender()
 void
 EmbedLiteViewThreadParent::ReceiveInputEvent(const InputData& aEvent)
 {
-  if (mController) {
+  if (mController->GetManager()) {
     ScrollableLayerGuid guid;
     mController->ReceiveInputEvent(aEvent, &guid);
     if (aEvent.mInputType == MULTITOUCH_INPUT) {
@@ -614,54 +607,48 @@ void
 EmbedLiteViewThreadParent::MousePress(int x, int y, int mstime, unsigned int buttons, unsigned int modifiers)
 {
   LOGT("pt[%i,%i], t:%i, bt:%u, mod:%u", x, y, mstime, buttons, modifiers);
-  if (mController) {
-    MultiTouchInput event(MultiTouchInput::MULTITOUCH_START, mstime, modifiers);
-    event.mTouches.AppendElement(SingleTouchData(0,
-                                                 mozilla::ScreenIntPoint(x, y),
-                                                 mozilla::ScreenSize(1, 1),
-                                                 180.0f,
-                                                 1.0f));
-    mController->ReceiveInputEvent(event, nullptr);
-    unused << SendMouseEvent(NS_LITERAL_STRING("mousedown"),
-                             x, y, buttons, 1, modifiers,
-                             true);
-  }
+  MultiTouchInput event(MultiTouchInput::MULTITOUCH_START, mstime, modifiers);
+  event.mTouches.AppendElement(SingleTouchData(0,
+                                               mozilla::ScreenIntPoint(x, y),
+                                               mozilla::ScreenSize(1, 1),
+                                               180.0f,
+                                               1.0f));
+  mController->ReceiveInputEvent(event, nullptr);
+  unused << SendMouseEvent(NS_LITERAL_STRING("mousedown"),
+                           x, y, buttons, 1, modifiers,
+                           true);
 }
 
 void
 EmbedLiteViewThreadParent::MouseRelease(int x, int y, int mstime, unsigned int buttons, unsigned int modifiers)
 {
   LOGT("pt[%i,%i], t:%i, bt:%u, mod:%u", x, y, mstime, buttons, modifiers);
-  if (mController) {
-    MultiTouchInput event(MultiTouchInput::MULTITOUCH_END, mstime, modifiers);
-    event.mTouches.AppendElement(SingleTouchData(0,
-                                                 mozilla::ScreenIntPoint(x, y),
-                                                 mozilla::ScreenSize(1, 1),
-                                                 180.0f,
-                                                 1.0f));
-    mController->ReceiveInputEvent(event, nullptr);
-    unused << SendMouseEvent(NS_LITERAL_STRING("mouseup"),
-                             x, y, buttons, 1, modifiers,
-                             true);
-  }
+  MultiTouchInput event(MultiTouchInput::MULTITOUCH_END, mstime, modifiers);
+  event.mTouches.AppendElement(SingleTouchData(0,
+                                               mozilla::ScreenIntPoint(x, y),
+                                               mozilla::ScreenSize(1, 1),
+                                               180.0f,
+                                               1.0f));
+  mController->ReceiveInputEvent(event, nullptr);
+  unused << SendMouseEvent(NS_LITERAL_STRING("mouseup"),
+                           x, y, buttons, 1, modifiers,
+                           true);
 }
 
 void
 EmbedLiteViewThreadParent::MouseMove(int x, int y, int mstime, unsigned int buttons, unsigned int modifiers)
 {
   LOGT("pt[%i,%i], t:%i, bt:%u, mod:%u", x, y, mstime, buttons, modifiers);
-  if (mController) {
-    MultiTouchInput event(MultiTouchInput::MULTITOUCH_MOVE, mstime, modifiers);
-    event.mTouches.AppendElement(SingleTouchData(0,
-                                                 mozilla::ScreenIntPoint(x, y),
-                                                 mozilla::ScreenSize(1, 1),
-                                                 180.0f,
-                                                 1.0f));
-    mController->ReceiveInputEvent(event, nullptr);
-    unused << SendMouseEvent(NS_LITERAL_STRING("mousemove"),
-                             x, y, buttons, 1, modifiers,
-                             true);
-  }
+  MultiTouchInput event(MultiTouchInput::MULTITOUCH_MOVE, mstime, modifiers);
+  event.mTouches.AppendElement(SingleTouchData(0,
+                                               mozilla::ScreenIntPoint(x, y),
+                                               mozilla::ScreenSize(1, 1),
+                                               180.0f,
+                                               1.0f));
+  mController->ReceiveInputEvent(event, nullptr);
+  unused << SendMouseEvent(NS_LITERAL_STRING("mousemove"),
+                           x, y, buttons, 1, modifiers,
+                           true);
 }
 
 bool
@@ -724,7 +711,7 @@ bool EmbedLiteViewThreadParent::GetPendingTexture(EmbedLiteRenderTarget* aContex
   SharedSurface* sharedSurf = context->RequestFrame();
   NS_ENSURE_TRUE(sharedSurf, false);
 
-  gfxImageSurface* toUpload = nullptr;
+  DataSourceSurface* toUpload = nullptr;
   GLint textureHandle = 0;
   if (sharedSurf->Type() == SharedSurfaceType::EGLImageShare) {
     SharedSurface_EGLImage* eglImageSurf = SharedSurface_EGLImage::Cast(sharedSurf);
@@ -746,7 +733,7 @@ bool EmbedLiteViewThreadParent::GetPendingTexture(EmbedLiteRenderTarget* aContex
 
   if (toUpload) {
     // mBounds seems to end up as (0,0,0,0) a lot, so don't use it?
-    nsIntSize size(toUpload->GetSize());
+    nsIntSize size(ThebesIntSize(toUpload->GetSize()));
     nsIntRect rect(nsIntPoint(0,0), size);
     nsIntRegion bounds(rect);
     UploadSurfaceToTexture(consumerContext,

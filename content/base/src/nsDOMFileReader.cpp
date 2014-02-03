@@ -184,12 +184,12 @@ JS::Value
 nsDOMFileReader::GetResult(JSContext* aCx, ErrorResult& aRv)
 {
   JS::Rooted<JS::Value> result(aCx);
-  aRv = GetResult(aCx, result.address());
+  aRv = GetResult(aCx, &result);
   return result;
 }
 
 NS_IMETHODIMP
-nsDOMFileReader::GetResult(JSContext* aCx, JS::Value* aResult)
+nsDOMFileReader::GetResult(JSContext* aCx, JS::MutableHandle<JS::Value> aResult)
 {
   JS::Rooted<JS::Value> result(aCx);
   if (mDataFormat == FILE_AS_ARRAYBUFFER) {
@@ -201,15 +201,14 @@ nsDOMFileReader::GetResult(JSContext* aCx, JS::Value* aResult)
     if (!JS_WrapValue(aCx, &result)) {
       return NS_ERROR_FAILURE;
     }
-    *aResult = result;
+    aResult.set(result);
     return NS_OK;
   }
 
   nsString tmpResult = mResult;
-  if (!xpc::StringToJsval(aCx, tmpResult, &result)) {
+  if (!xpc::StringToJsval(aCx, tmpResult, aResult)) {
     return NS_ERROR_FAILURE;
   }
-  *aResult = result;
   return NS_OK;
 }
 
@@ -296,8 +295,8 @@ ReadFuncBinaryString(nsIInputStream* in,
                      uint32_t count,
                      uint32_t *writeCount)
 {
-  PRUnichar* dest = static_cast<PRUnichar*>(closure) + toOffset;
-  PRUnichar* end = dest + count;
+  char16_t* dest = static_cast<char16_t*>(closure) + toOffset;
+  char16_t* end = dest + count;
   const unsigned char* source = (const unsigned char*)fromRawSegment;
   while (dest != end) {
     *dest = *source;
@@ -324,7 +323,7 @@ nsDOMFileReader::DoOnDataAvailable(nsIRequest *aRequest,
     if (uint64_t(oldLen) + aCount > UINT32_MAX)
       return NS_ERROR_OUT_OF_MEMORY;
 
-    PRUnichar *buf = nullptr;
+    char16_t *buf = nullptr;
     mResult.GetMutableData(&buf, oldLen + aCount, fallible_t());
     NS_ENSURE_TRUE(buf, NS_ERROR_OUT_OF_MEMORY);
 

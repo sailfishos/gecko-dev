@@ -73,6 +73,7 @@
 
 #include "File.h"
 #include "MessagePort.h"
+#include "Navigator.h"
 #include "Principal.h"
 #include "RuntimeService.h"
 #include "ScriptLoader.h"
@@ -1066,8 +1067,8 @@ public:
   : WorkerControlRunnable(aWorkerPrivate, WorkerThreadUnchangedBusyCount),
     mStatus(aStatus)
   {
-    MOZ_ASSERT(aStatus == Terminating || aStatus == Canceling ||
-               aStatus == Killing);
+    MOZ_ASSERT(aStatus == Closing || aStatus == Terminating ||
+               aStatus == Canceling || aStatus == Killing);
   }
 
 private:
@@ -1223,7 +1224,8 @@ public:
           MOZ_ASSERT(target == globalTarget->GetWrapperPreserveColor());
 
           // Icky, we have to fire an InternalScriptErrorEvent...
-          InternalScriptErrorEvent event(true, NS_LOAD_ERROR);
+          MOZ_ASSERT(!NS_IsMainThread());
+          InternalScriptErrorEvent event(true, NS_USER_DEFINED_EVENT);
           event.lineNr = aLineNumber;
           event.errorMsg = aMessage.get();
           event.fileName = aFilename.get();
@@ -1238,6 +1240,7 @@ public:
         }
         else if ((sgo = nsJSUtils::GetStaticScriptGlobal(target))) {
           // Icky, we have to fire an InternalScriptErrorEvent...
+          MOZ_ASSERT(NS_IsMainThread());
           InternalScriptErrorEvent event(true, NS_LOAD_ERROR);
           event.lineNr = aLineNumber;
           event.errorMsg = aMessage.get();
@@ -1617,25 +1620,6 @@ private:
 };
 #endif
 
-class UpdateJITHardeningRunnable MOZ_FINAL : public WorkerControlRunnable
-{
-  bool mJITHardening;
-
-public:
-  UpdateJITHardeningRunnable(WorkerPrivate* aWorkerPrivate, bool aJITHardening)
-  : WorkerControlRunnable(aWorkerPrivate, WorkerThreadUnchangedBusyCount),
-    mJITHardening(aJITHardening)
-  { }
-
-private:
-  virtual bool
-  WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate) MOZ_OVERRIDE
-  {
-    aWorkerPrivate->UpdateJITHardeningInternal(aCx, mJITHardening);
-    return true;
-  }
-};
-
 class GarbageCollectRunnable MOZ_FINAL : public WorkerControlRunnable
 {
   bool mShrinking;
@@ -1689,6 +1673,26 @@ public:
     aWorkerPrivate->CycleCollectInternal(aCx, mCollectChildren);
     return true;
   }
+};
+
+class OfflineStatusChangeRunnable : public WorkerRunnable
+{
+public:
+  OfflineStatusChangeRunnable(WorkerPrivate* aWorkerPrivate, bool aIsOffline)
+    : WorkerRunnable(aWorkerPrivate, WorkerThreadUnchangedBusyCount),
+      mIsOffline(aIsOffline)
+  {
+  }
+
+  bool
+  WorkerRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate)
+  {
+    aWorkerPrivate->OfflineStatusChangeEventInternal(aCx, mIsOffline);
+    return true;
+  }
+
+private:
+  bool mIsOffline;
 };
 
 class WorkerJSRuntimeStats : public JS::RuntimeStats
@@ -2153,7 +2157,7 @@ WorkerPrivateParent<Derived>::WrapObject(JSContext* aCx,
 
   AssertIsOnParentThread();
 
-  JSObject* obj = WorkerBinding::Wrap(aCx, aScope, ParentAsWorkerPrivate());
+  JS::Rooted<JSObject*> obj(aCx, WorkerBinding::Wrap(aCx, aScope, ParentAsWorkerPrivate()));
 
   if (mRooted) {
     PreserveWrapper(this);
@@ -2985,26 +2989,6 @@ WorkerPrivateParent<Derived>::UpdateGCZeal(JSContext* aCx, uint8_t aGCZeal,
 
 template <class Derived>
 void
-WorkerPrivateParent<Derived>::UpdateJITHardening(JSContext* aCx,
-                                                 bool aJITHardening)
-{
-  AssertIsOnParentThread();
-
-  {
-    MutexAutoLock lock(mMutex);
-    mJSSettings.jitHardening = aJITHardening;
-  }
-
-  nsRefPtr<UpdateJITHardeningRunnable> runnable =
-    new UpdateJITHardeningRunnable(ParentAsWorkerPrivate(), aJITHardening);
-  if (!runnable->Dispatch(aCx)) {
-    NS_WARNING("Failed to update worker jit hardening!");
-    JS_ClearPendingException(aCx);
-  }
-}
-
-template <class Derived>
-void
 WorkerPrivateParent<Derived>::GarbageCollect(JSContext* aCx, bool aShrinking)
 {
   AssertIsOnParentThread();
@@ -3031,6 +3015,56 @@ WorkerPrivateParent<Derived>::CycleCollect(JSContext* aCx, bool aDummy)
     NS_WARNING("Failed to CC worker!");
     JS_ClearPendingException(aCx);
   }
+}
+
+template <class Derived>
+void
+WorkerPrivateParent<Derived>::OfflineStatusChangeEvent(JSContext* aCx, bool aIsOffline)
+{
+  AssertIsOnParentThread();
+
+  nsRefPtr<OfflineStatusChangeRunnable> runnable =
+    new OfflineStatusChangeRunnable(ParentAsWorkerPrivate(), aIsOffline);
+  if (!runnable->Dispatch(aCx)) {
+    NS_WARNING("Failed to dispatch offline status change event!");
+    JS_ClearPendingException(aCx);
+  }
+}
+
+void
+WorkerPrivate::OfflineStatusChangeEventInternal(JSContext* aCx, bool aIsOffline)
+{
+  AssertIsOnWorkerThread();
+
+  for (uint32_t index = 0; index < mChildWorkers.Length(); ++index) {
+    mChildWorkers[index]->OfflineStatusChangeEvent(aCx, aIsOffline);
+  }
+
+  mOnLine = !aIsOffline;
+  WorkerGlobalScope* globalScope = GlobalScope();
+  nsRefPtr<WorkerNavigator> nav = globalScope->GetExistingNavigator();
+  if (nav) {
+    nav->SetOnLine(mOnLine);
+  }
+
+  nsString eventType;
+  if (aIsOffline) {
+    eventType.AssignLiteral("offline");
+  } else {
+    eventType.AssignLiteral("online");
+  }
+
+  nsCOMPtr<nsIDOMEvent> event;
+  nsresult rv =
+    NS_NewDOMEvent(getter_AddRefs(event), globalScope, nullptr, nullptr);
+  NS_ENSURE_SUCCESS_VOID(rv);
+
+  rv = event->InitEvent(eventType, false, false);
+  NS_ENSURE_SUCCESS_VOID(rv);
+
+  event->SetTrusted(true);
+
+  globalScope->DispatchDOMEvent(nullptr, event, nullptr, nullptr);
 }
 
 template <class Derived>
@@ -3213,6 +3247,7 @@ WorkerPrivateParent<Derived>::BroadcastErrorToSharedWorkers(
       do_QueryInterface(windowAction.mWindow);
     MOZ_ASSERT(sgo);
 
+    MOZ_ASSERT(NS_IsMainThread());
     InternalScriptErrorEvent event(true, NS_LOAD_ERROR);
     event.lineNr = aLineNumber;
     event.errorMsg = aMessage.BeginReading();
@@ -3540,7 +3575,7 @@ WorkerPrivate::WorkerPrivate(JSContext* aCx,
   mRunningExpiredTimeouts(false), mCloseHandlerStarted(false),
   mCloseHandlerFinished(false), mMemoryReporterRunning(false),
   mBlockedForMemoryReporter(false), mCancelAllPendingRunnables(false),
-  mPeriodicGCTimerRunning(false)
+  mPeriodicGCTimerRunning(false), mIdleGCTimerRunning(false)
 #ifdef DEBUG
   , mPRThread(nullptr)
 #endif
@@ -3551,10 +3586,12 @@ WorkerPrivate::WorkerPrivate(JSContext* aCx,
   if (aParent) {
     aParent->AssertIsOnWorkerThread();
     aParent->GetAllPreferences(mPreferences);
+    mOnLine = aParent->OnLine();
   }
   else {
     AssertIsOnMainThread();
     RuntimeService::GetDefaultPreferences(mPreferences);
+    mOnLine = !NS_IsOffline();
   }
 }
 
@@ -3722,8 +3759,11 @@ WorkerPrivate::GetLoadInfo(JSContext* aCx, nsPIDOMWindow* aWindow,
       return NS_ERROR_FAILURE;
     }
 
+    // StartAssignment() is used instead getter_AddRefs because, getter_AddRefs
+    // does QI in debug build and, if this worker runs in a child process,
+    // HttpChannelChild will crash because it's not thread-safe.
     rv = ChannelFromScriptURLWorkerThread(aCx, aParent, aScriptURL,
-                                          getter_AddRefs(loadInfo.mChannel));
+                                          loadInfo.mChannel.StartAssignment());
     NS_ENSURE_SUCCESS(rv, rv);
 
     // Now that we've spun the loop there's no guarantee that our parent is
@@ -4097,6 +4137,7 @@ WorkerPrivate::InitializeGCTimers()
   mIdleGCTimerTarget = new TimerThreadEventTarget(this, runnable);
 
   mPeriodicGCTimerRunning = false;
+  mIdleGCTimerRunning = false;
 }
 
 void
@@ -4107,13 +4148,15 @@ WorkerPrivate::SetGCTimerMode(GCTimerMode aMode)
   MOZ_ASSERT(mPeriodicGCTimerTarget);
   MOZ_ASSERT(mIdleGCTimerTarget);
 
-  if (aMode == PeriodicTimer && mPeriodicGCTimerRunning) {
+  if ((aMode == PeriodicTimer && mPeriodicGCTimerRunning) ||
+      (aMode == IdleTimer && mIdleGCTimerRunning)) {
     return;
   }
 
   MOZ_ALWAYS_TRUE(NS_SUCCEEDED(mGCTimer->Cancel()));
 
   mPeriodicGCTimerRunning = false;
+  mIdleGCTimerRunning = false;
 
   LOG(("Worker %p canceled GC timer because %s\n", this,
        aMode == PeriodicTimer ?
@@ -4152,6 +4195,7 @@ WorkerPrivate::SetGCTimerMode(GCTimerMode aMode)
   }
   else {
     LOG(("Worker %p scheduled idle GC timer\n", this));
+    mIdleGCTimerRunning = true;
   }
 }
 
@@ -4171,6 +4215,7 @@ WorkerPrivate::ShutdownGCTimers()
   mPeriodicGCTimerTarget = nullptr;
   mIdleGCTimerTarget = nullptr;
   mPeriodicGCTimerRunning = false;
+  mIdleGCTimerRunning = false;
 }
 
 bool
@@ -4776,27 +4821,46 @@ WorkerPrivate::RunCurrentSyncLoop()
 
         ProcessAllControlRunnablesLocked();
 
-        if (normalRunnablesPending) {
+        // NB: If we processed a NotifyRunnable, we might have run non-control
+        // runnables, one of which may have shut down the sync loop.
+        if (normalRunnablesPending || loopInfo->mCompleted) {
           break;
         }
       }
     }
 
-    // Make sure the periodic timer is running before we continue.
-    SetGCTimerMode(PeriodicTimer);
+    if (normalRunnablesPending) {
+      // Make sure the periodic timer is running before we continue.
+      SetGCTimerMode(PeriodicTimer);
 
-    MOZ_ALWAYS_TRUE(NS_ProcessNextEvent(thread, false));
+      MOZ_ALWAYS_TRUE(NS_ProcessNextEvent(thread, false));
 
-    // Now *might* be a good time to GC. Let the JS engine make the decision.
-    JS_MaybeGC(cx);
+      // Now *might* be a good time to GC. Let the JS engine make the decision.
+      JS_MaybeGC(cx);
+    }
   }
 
   // Make sure that the stack didn't change underneath us.
-  MOZ_ASSERT(!mSyncLoopStack.IsEmpty());
-  MOZ_ASSERT(mSyncLoopStack.Length() - 1 == currentLoopIndex);
   MOZ_ASSERT(mSyncLoopStack[currentLoopIndex] == loopInfo);
 
-  // We're about to delete |loop|, stash its event target and result.
+  return DestroySyncLoop(currentLoopIndex);
+}
+
+bool
+WorkerPrivate::DestroySyncLoop(uint32_t aLoopIndex, nsIThreadInternal* aThread)
+{
+  MOZ_ASSERT(!mSyncLoopStack.IsEmpty());
+  MOZ_ASSERT(mSyncLoopStack.Length() - 1 == aLoopIndex);
+
+  if (!aThread) {
+    nsCOMPtr<nsIThreadInternal> thread = do_QueryInterface(mThread);
+    MOZ_ASSERT(thread);
+
+    aThread = thread.get();
+  }
+
+  // We're about to delete the loop, stash its event target and result.
+  SyncLoopInfo* loopInfo = mSyncLoopStack[aLoopIndex];
   nsIEventTarget* nestedEventTarget =
     loopInfo->mEventTarget->GetWeakNestedEventTarget();
   MOZ_ASSERT(nestedEventTarget);
@@ -4810,11 +4874,11 @@ WorkerPrivate::RunCurrentSyncLoop()
     MutexAutoLock lock(mMutex);
 #endif
 
-    // This will delete |loop|!
-    mSyncLoopStack.RemoveElementAt(currentLoopIndex);
+    // This will delete |loopInfo|!
+    mSyncLoopStack.RemoveElementAt(aLoopIndex);
   }
 
-  MOZ_ALWAYS_TRUE(NS_SUCCEEDED(thread->PopEventQueue(nestedEventTarget)));
+  MOZ_ALWAYS_TRUE(NS_SUCCEEDED(aThread->PopEventQueue(nestedEventTarget)));
 
   return result;
 }
@@ -5522,18 +5586,6 @@ WorkerPrivate::UpdateGCZealInternal(JSContext* aCx, uint8_t aGCZeal,
 #endif
 
 void
-WorkerPrivate::UpdateJITHardeningInternal(JSContext* aCx, bool aJITHardening)
-{
-  AssertIsOnWorkerThread();
-
-  JS_SetJitHardening(JS_GetRuntime(aCx), aJITHardening);
-
-  for (uint32_t index = 0; index < mChildWorkers.Length(); index++) {
-    mChildWorkers[index]->UpdateJITHardening(aCx, aJITHardening);
-  }
-}
-
-void
 WorkerPrivate::GarbageCollectInternal(JSContext* aCx, bool aShrinking,
                                       bool aCollectChildren)
 {
@@ -5706,12 +5758,6 @@ WorkerPrivate::ConnectMessagePort(JSContext* aCx, uint64_t aMessagePortSerial)
 
   nsRefPtr<MessagePort> port = new MessagePort(this, aMessagePortSerial);
 
-  JS::Rooted<JS::Value> jsPort(aCx);
-  if (!WrapNewBindingObject(aCx, jsGlobal, port, &jsPort)) {
-    MOZ_ASSERT(JS_IsExceptionPending(aCx));
-    return false;
-  }
-
   GlobalObject globalObject(aCx, jsGlobal);
   if (globalObject.Failed()) {
     return false;
@@ -5720,7 +5766,7 @@ WorkerPrivate::ConnectMessagePort(JSContext* aCx, uint64_t aMessagePortSerial)
   RootedDictionary<MessageEventInit> init(aCx);
   init.mBubbles = false;
   init.mCancelable = false;
-  init.mSource = &jsPort.toObject();
+  init.mSource.SetValue().SetAsMessagePort() = port;
 
   ErrorResult rv;
 

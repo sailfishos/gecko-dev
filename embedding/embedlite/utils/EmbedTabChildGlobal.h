@@ -29,13 +29,14 @@ public:
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(EmbedTabChildGlobal, nsDOMEventTargetHelper)
   NS_FORWARD_SAFE_NSIMESSAGELISTENERMANAGER(mMessageManager)
   NS_FORWARD_SAFE_NSIMESSAGESENDER(mMessageManager)
+
   NS_IMETHOD SendRpcMessage(const nsAString& aMessageName,
-                            const JS::Value& aObject,
-                            const JS::Value& aRemote,
+                            JS::Handle<JS::Value> aObject,
+                            JS::Handle<JS::Value> aRemote,
                             nsIPrincipal* aPrincipal,
                             JSContext* aCx,
                             uint8_t aArgc,
-                            JS::Value* aRetval)
+                            JS::MutableHandle<JS::Value> aRetval)
   {
     return mMessageManager
       ? mMessageManager->SendRpcMessage(aMessageName, aObject, aRemote,
@@ -43,12 +44,12 @@ public:
       : NS_ERROR_NULL_POINTER;
   }
   NS_IMETHOD SendSyncMessage(const nsAString& aMessageName,
-                             const JS::Value& aObject,
-                             const JS::Value& aRemote,
+                             JS::Handle<JS::Value> aObject,
+                             JS::Handle<JS::Value> aRemote,
                              nsIPrincipal* aPrincipal,
                              JSContext* aCx,
                              uint8_t aArgc,
-                             JS::Value* aRetval)
+                             JS::MutableHandle<JS::Value> aRetval)
   {
     return mMessageManager
       ? mMessageManager->SendSyncMessage(aMessageName, aObject, aRemote,

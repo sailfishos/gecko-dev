@@ -50,7 +50,7 @@ static bool
 JSONCreator(const jschar* aBuf, uint32_t aLen, void* aData)
 {
   nsAString* result = static_cast<nsAString*>(aData);
-  result->Append(static_cast<const PRUnichar*>(aBuf),
+  result->Append(static_cast<const char16_t*>(aBuf),
                  static_cast<uint32_t>(aLen));
   return true;
 }
@@ -85,7 +85,7 @@ ParseObject(JSContext* cx, JSObject* object, nsIWritablePropertyBag2* aBag)
   JS::AutoIdArray props(cx, JS_Enumerate(cx, object));
   for (size_t i = 0; !!props && i < props.length(); ++i) {
     jsid propid = props[i];
-    JS::Value propname;
+    JS::RootedValue propname(cx);
     JS::Rooted<JS::Value> propval(cx);
     if (!JS_IdToValue(cx, propid, &propname) ||
         !JS_GetPropertyById(cx, object, propid, &propval)) {
@@ -103,11 +103,11 @@ ParseObject(JSContext* cx, JSObject* object, nsIWritablePropertyBag2* aBag)
 
     if (JSVAL_IS_PRIMITIVE(propval)) {
       nsCOMPtr<nsIVariant> value;
-      nsContentUtils::XPConnect()->JSValToVariant(cx, propval.address(), getter_AddRefs(value));
+      nsContentUtils::XPConnect()->JSValToVariant(cx, propval, getter_AddRefs(value));
       nsCOMPtr<nsIWritablePropertyBag> bagSimple = do_QueryInterface(aBag);
       bagSimple->SetProperty(pstr, value);
     } else {
-      JSObject* obj = JSVAL_TO_OBJECT(propval);
+      JS::RootedObject obj(cx, &propval.toObject());
       if (JS_IsArrayObject(cx, obj)) {
         nsCOMPtr<nsIWritableVariant> childElements = do_CreateInstance("@mozilla.org/variant;1");
         uint32_t tmp;
@@ -119,7 +119,7 @@ ParseObject(JSContext* cx, JSObject* object, nsIWritablePropertyBag2* aBag)
               continue;
             if (JSVAL_IS_PRIMITIVE(v)) {
               nsCOMPtr<nsIVariant> value;
-              nsContentUtils::XPConnect()->JSValToVariant(cx, v.address(), getter_AddRefs(value));
+              nsContentUtils::XPConnect()->JSValToVariant(cx, v, getter_AddRefs(value));
               childArray.AppendElement(value);
             } else {
               nsCOMPtr<nsIWritableVariant> value = do_CreateInstance("@mozilla.org/variant;1");
@@ -184,7 +184,7 @@ EmbedLiteJSON::ParseJSON(nsAString const& aJson, nsIPropertyBag2** aRoot)
 
 static bool SetPropFromVariant(nsIProperty* aProp, JSContext* aCx, JSObject* aObj)
 {
-  JS::Rooted<JS::Value> rval(aCx, JS::NullValue());
+  JS::RootedValue rval(aCx);
   nsString name;
   nsCOMPtr<nsIVariant> aVariant;
   aProp->GetValue(getter_AddRefs(aVariant));
@@ -195,7 +195,8 @@ static bool SetPropFromVariant(nsIProperty* aProp, JSContext* aCx, JSObject* aOb
     return false;
   }
 
-  if (!JS_SetProperty(aCx, aObj, NS_ConvertUTF16toUTF8(name).get(), rval)) {
+  JS::RootedObject obj(aCx, aObj);
+  if (!JS_SetProperty(aCx, obj, NS_ConvertUTF16toUTF8(name).get(), rval)) {
     NS_ERROR("Failed to set js object property");
     return false;
   }
@@ -213,7 +214,7 @@ EmbedLiteJSON::CreateJSON(nsIPropertyBag* aRoot, nsAString& outJson)
   JSAutoCompartment ac(cx, global);
 
   JSAutoRequest ar(cx);
-  JSObject* obj = JS_NewObject(cx, NULL, NULL, NULL);
+  JSObject* obj = JS_NewObject(cx, nullptr, JS::NullPtr(), JS::NullPtr());
   if (!obj) {
     return NS_ERROR_FAILURE;
   }

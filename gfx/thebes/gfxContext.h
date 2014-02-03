@@ -48,10 +48,19 @@ public:
 
     /**
      * Initialize this context from a DrawTarget.
+     * Strips any transform from aTarget.
+     * aTarget will be flushed in the gfxContext's destructor.
      */
     gfxContext(mozilla::gfx::DrawTarget *aTarget);
 
     ~gfxContext();
+
+    /**
+     * Create a new gfxContext wrapping aTarget and preserving aTarget's
+     * transform. Note that the transform is moved from aTarget to the resulting
+     * gfxContext, aTarget will no longer have its transform.
+     */
+    static already_AddRefed<gfxContext> ContextForDrawTarget(mozilla::gfx::DrawTarget* aTarget);
 
     /**
      * Return the surface that this gfxContext was created with
@@ -616,10 +625,10 @@ public:
     /**
      * Groups
      */
-    void PushGroup(gfxContentType content = GFX_CONTENT_COLOR);
+    void PushGroup(gfxContentType content = gfxContentType::COLOR);
     /**
-     * Like PushGroup, but if the current surface is GFX_CONTENT_COLOR and
-     * content is GFX_CONTENT_COLOR_ALPHA, makes the pushed surface GFX_CONTENT_COLOR
+     * Like PushGroup, but if the current surface is gfxContentType::COLOR and
+     * content is gfxContentType::COLOR_ALPHA, makes the pushed surface gfxContentType::COLOR
      * instead and copies the contents of the current surface to the pushed
      * surface. This is good for pushing opacity groups, since blending the
      * group back to the current surface with some alpha applied will give
@@ -628,7 +637,7 @@ public:
      * This API really only makes sense if you do a PopGroupToSource and
      * immediate Paint with OPERATOR_OVER.
      */
-    void PushGroupAndCopyBackground(gfxContentType content = GFX_CONTENT_COLOR);
+    void PushGroupAndCopyBackground(gfxContentType content = gfxContentType::COLOR);
     already_AddRefed<gfxPattern> PopGroup();
     void PopGroupToSource();
 
@@ -722,12 +731,12 @@ private:
   
   struct AzureState {
     AzureState()
-      : op(mozilla::gfx::OP_OVER)
+      : op(mozilla::gfx::CompositionOp::OP_OVER)
       , opIsClear(false)
       , color(0, 0, 0, 1.0f)
       , clipWasReset(false)
-      , fillRule(mozilla::gfx::FILL_WINDING)
-      , aaMode(mozilla::gfx::AA_SUBPIXEL)
+      , fillRule(mozilla::gfx::FillRule::FILL_WINDING)
+      , aaMode(mozilla::gfx::AntialiasMode::SUBPIXEL)
       , patternTransformChanged(false)
     {}
 

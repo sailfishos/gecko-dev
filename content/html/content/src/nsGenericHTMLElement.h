@@ -753,7 +753,6 @@ public:
   static const MappedAttributeEntry sDivAlignAttributeMap[];
   static const MappedAttributeEntry sBackgroundAttributeMap[];
   static const MappedAttributeEntry sBackgroundColorAttributeMap[];
-  static const MappedAttributeEntry sScrollingAttributeMap[];
   
   /**
    * Helper to map the align attribute into a style struct.
@@ -1786,6 +1785,7 @@ NS_DECLARE_NS_NEW_HTML_ELEMENT(Pre)
 NS_DECLARE_NS_NEW_HTML_ELEMENT(Progress)
 NS_DECLARE_NS_NEW_HTML_ELEMENT(Script)
 NS_DECLARE_NS_NEW_HTML_ELEMENT(Select)
+NS_DECLARE_NS_NEW_HTML_ELEMENT(Shadow)
 NS_DECLARE_NS_NEW_HTML_ELEMENT(Source)
 NS_DECLARE_NS_NEW_HTML_ELEMENT(Span)
 NS_DECLARE_NS_NEW_HTML_ELEMENT(Style)

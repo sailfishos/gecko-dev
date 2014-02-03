@@ -334,6 +334,7 @@ body {
   padding: 0;
   list-style: none;
   background-color: #ced7de;
+  -moz-user-select: none;
 }
 
 .toolbar-hidden {
@@ -354,10 +355,6 @@ body {
   background-position: center;
   background-size: 30px 24px;
   background-repeat: no-repeat;
-}
-
-.button:active {
-  background-color: #ff9500;
 }
 
 .dropdown {

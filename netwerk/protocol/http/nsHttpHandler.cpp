@@ -12,7 +12,6 @@
 #include "nsHttpChannel.h"
 #include "nsHttpAuthCache.h"
 #include "nsStandardURL.h"
-#include "nsIDOMConnection.h"
 #include "nsIDOMWindow.h"
 #include "nsIDOMNavigator.h"
 #include "nsIMozNavigatorNetwork.h"
@@ -60,6 +59,7 @@
 
 #if defined(XP_MACOSX)
 #include <CoreServices/CoreServices.h>
+#include "nsCocoaFeatures.h"
 #endif
 
 #if defined(XP_OS2)
@@ -72,8 +72,6 @@
 #endif
 
 //-----------------------------------------------------------------------------
-using namespace mozilla;
-using namespace mozilla::net;
 #include "mozilla/net/HttpChannelChild.h"
 
 
@@ -107,6 +105,9 @@ extern PRThread *gSocketThread;
 #define NS_HTTP_PROTOCOL_FLAGS (URI_STD | ALLOWS_PROXY | ALLOWS_PROXY_HTTP | URI_LOADABLE_BY_ANYONE)
 
 //-----------------------------------------------------------------------------
+
+namespace mozilla {
+namespace net {
 
 static nsresult
 NewURI(const nsACString &aSpec,
@@ -150,6 +151,7 @@ nsHttpHandler::nsHttpHandler()
     , mProxyPipelining(true)
     , mIdleTimeout(PR_SecondsToInterval(10))
     , mSpdyTimeout(PR_SecondsToInterval(180))
+    , mResponseTimeout(PR_SecondsToInterval(600))
     , mMaxRequestAttempts(10)
     , mMaxRequestDelay(10)
     , mIdleSynTimeout(250)
@@ -187,9 +189,11 @@ nsHttpHandler::nsHttpHandler()
     , mEnableSpdy(false)
     , mSpdyV3(true)
     , mSpdyV31(true)
+    , mHttp2DraftEnabled(true)
+    , mEnforceHttp2TlsProfile(true)
     , mCoalesceSpdy(true)
     , mSpdyPersistentSettings(false)
-    , mAllowSpdyPush(true)
+    , mAllowPush(true)
     , mSpdySendingChunkSize(ASpdySession::kSendingChunkSize)
     , mSpdySendBufferSize(ASpdySession::kTCPSendBufferSize)
     , mSpdyPushAllowance(32768)
@@ -371,8 +375,8 @@ nsHttpHandler::MakeNewRequestTokenBucket()
     if (!mConnMgr)
         return;
 
-    nsRefPtr<mozilla::net::EventTokenBucket> tokenBucket =
-        new mozilla::net::EventTokenBucket(RequestTokenBucketHz(),
+    nsRefPtr<EventTokenBucket> tokenBucket =
+        new EventTokenBucket(RequestTokenBucketHz(),
                                            RequestTokenBucketBurst());
     mConnMgr->UpdateRequestTokenBucket(tokenBucket);
 }
@@ -745,11 +749,9 @@ nsHttpHandler::InitUserAgentComponents()
 #elif defined(__i386__) || defined(__x86_64__)
     mOscpu.AssignLiteral("Intel Mac OS X");
 #endif
-    SInt32 majorVersion, minorVersion;
-    if ((::Gestalt(gestaltSystemVersionMajor, &majorVersion) == noErr) &&
-        (::Gestalt(gestaltSystemVersionMinor, &minorVersion) == noErr)) {
-        mOscpu += nsPrintfCString(" %d.%d", majorVersion, minorVersion);
-    }
+    SInt32 majorVersion = nsCocoaFeatures::OSXVersionMajor();
+    SInt32 minorVersion = nsCocoaFeatures::OSXVersionMinor();
+    mOscpu += nsPrintfCString(" %d.%d", majorVersion, minorVersion);
 #elif defined (XP_UNIX)
     struct utsname name;
 
@@ -863,6 +865,12 @@ nsHttpHandler::PrefsChanged(nsIPrefBranch *prefs, const char *pref)
                 mConnMgr->UpdateParam(nsHttpConnectionMgr::MAX_REQUEST_DELAY,
                                       mMaxRequestDelay);
         }
+    }
+
+    if (PREF_CHANGED(HTTP_PREF("response.timeout"))) {
+        rv = prefs->GetIntPref(HTTP_PREF("response.timeout"), &val);
+        if (NS_SUCCEEDED(rv))
+            mResponseTimeout = PR_SecondsToInterval(clamped(val, 0, 0xffff));
     }
 
     if (PREF_CHANGED(HTTP_PREF("max-connections"))) {
@@ -1159,6 +1167,18 @@ nsHttpHandler::PrefsChanged(nsIPrefBranch *prefs, const char *pref)
             mSpdyV31 = cVar;
     }
 
+    if (PREF_CHANGED(HTTP_PREF("spdy.enabled.http2draft"))) {
+        rv = prefs->GetBoolPref(HTTP_PREF("spdy.enabled.http2draft"), &cVar);
+        if (NS_SUCCEEDED(rv))
+            mHttp2DraftEnabled = cVar;
+    }
+
+    if (PREF_CHANGED(HTTP_PREF("spdy.enforce-tls-profile"))) {
+        rv = prefs->GetBoolPref(HTTP_PREF("spdy.enforce-tls-profile"), &cVar);
+        if (NS_SUCCEEDED(rv))
+            mEnforceHttp2TlsProfile = cVar;
+    }
+
     if (PREF_CHANGED(HTTP_PREF("spdy.coalesce-hostnames"))) {
         rv = prefs->GetBoolPref(HTTP_PREF("spdy.coalesce-hostnames"), &cVar);
         if (NS_SUCCEEDED(rv))
@@ -1179,9 +1199,10 @@ nsHttpHandler::PrefsChanged(nsIPrefBranch *prefs, const char *pref)
     }
 
     if (PREF_CHANGED(HTTP_PREF("spdy.chunk-size"))) {
+        // keep this within http/2 ranges of 1 to 2^14-1
         rv = prefs->GetIntPref(HTTP_PREF("spdy.chunk-size"), &val);
         if (NS_SUCCEEDED(rv))
-            mSpdySendingChunkSize = (uint32_t) clamped(val, 1, 0x7fffffff);
+            mSpdySendingChunkSize = (uint32_t) clamped(val, 1, 0x3fff);
     }
 
     // The amount of idle seconds on a spdy connection before initiating a
@@ -1206,7 +1227,7 @@ nsHttpHandler::PrefsChanged(nsIPrefBranch *prefs, const char *pref)
         rv = prefs->GetBoolPref(HTTP_PREF("spdy.allow-push"),
                                 &cVar);
         if (NS_SUCCEEDED(rv))
-            mAllowSpdyPush = cVar;
+            mAllowPush = cVar;
     }
 
     if (PREF_CHANGED(HTTP_PREF("spdy.push-allowance"))) {
@@ -1399,8 +1420,8 @@ nsHttpHandler::PrefsChanged(nsIPrefBranch *prefs, const char *pref)
     }
     if (requestTokenBucketUpdated) {
         mRequestTokenBucket =
-            new mozilla::net::EventTokenBucket(RequestTokenBucketHz(),
-                                               RequestTokenBucketBurst());
+            new EventTokenBucket(RequestTokenBucketHz(),
+                                 RequestTokenBucketBurst());
     }
 
 #undef PREF_CHANGED
@@ -1578,7 +1599,7 @@ nsHttpHandler::NewURI(const nsACString &aSpec,
                       nsIURI *aBaseURI,
                       nsIURI **aURI)
 {
-    return ::NewURI(aSpec, aCharset, aBaseURI, NS_HTTP_DEFAULT_PORT, aURI);
+    return mozilla::net::NewURI(aSpec, aCharset, aBaseURI, NS_HTTP_DEFAULT_PORT, aURI);
 }
 
 NS_IMETHODIMP
@@ -1750,7 +1771,7 @@ nsHttpHandler::GetCacheSessionNameForStoragePolicy(
 NS_IMETHODIMP
 nsHttpHandler::Observe(nsISupports *subject,
                        const char *topic,
-                       const PRUnichar *data)
+                       const char16_t *data)
 {
     LOG(("nsHttpHandler::Observe [topic=\"%s\"]\n", topic));
 
@@ -2032,7 +2053,7 @@ nsHttpHandler::GetNetworkInfoInner(nsIInterfaceRequestor *cb,
     if (!networkNavigator)
         return NS_ERROR_FAILURE;
 
-    nsCOMPtr<nsIDOMMozConnection> mozConnection;
+    nsCOMPtr<nsISupports> mozConnection;
     networkNavigator->GetMozConnection(getter_AddRefs(mozConnection));
     nsCOMPtr<nsINetworkProperties> networkProperties =
         do_QueryInterface(mozConnection);
@@ -2085,7 +2106,7 @@ nsHttpHandler::GetNetworkEthernetInfoInner(nsIInterfaceRequestor *cb,
     if (!networkNavigator)
         return NS_ERROR_FAILURE;
 
-    nsCOMPtr<nsIDOMMozConnection> mozConnection;
+    nsCOMPtr<nsISupports> mozConnection;
     networkNavigator->GetMozConnection(getter_AddRefs(mozConnection));
     nsCOMPtr<nsINetworkProperties> networkProperties =
         do_QueryInterface(mozConnection);
@@ -2164,7 +2185,7 @@ nsHttpsHandler::NewURI(const nsACString &aSpec,
                        nsIURI *aBaseURI,
                        nsIURI **_retval)
 {
-    return ::NewURI(aSpec, aOriginCharset, aBaseURI, NS_HTTPS_DEFAULT_PORT, _retval);
+    return mozilla::net::NewURI(aSpec, aOriginCharset, aBaseURI, NS_HTTPS_DEFAULT_PORT, _retval);
 }
 
 NS_IMETHODIMP
@@ -2183,3 +2204,6 @@ nsHttpsHandler::AllowPort(int32_t aPort, const char *aScheme, bool *_retval)
     *_retval = false;
     return NS_OK;
 }
+
+} // namespace mozilla::net
+} // namespace mozilla

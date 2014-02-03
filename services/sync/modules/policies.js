@@ -12,8 +12,10 @@ const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
 Cu.import("resource://gre/modules/Log.jsm");
 Cu.import("resource://services-sync/constants.js");
 Cu.import("resource://services-sync/engines.js");
-Cu.import("resource://services-sync/status.js");
 Cu.import("resource://services-sync/util.js");
+
+XPCOMUtils.defineLazyModuleGetter(this, "Status",
+                                  "resource://services-sync/status.js");
 
 this.SyncScheduler = function SyncScheduler(service) {
   this.service = service;
@@ -218,7 +220,7 @@ SyncScheduler.prototype = {
         // were just active.)
         this.adjustSyncInterval();
         break;
-      case "back":
+      case "active":
         this._log.trace("Received notification that we're back from idle.");
         this.idle = false;
         Utils.namedTimer(function onBack() {

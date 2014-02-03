@@ -33,7 +33,7 @@ NS_QUERYFRAME_HEAD(nsFirstLetterFrame)
   NS_QUERYFRAME_ENTRY(nsFirstLetterFrame)
 NS_QUERYFRAME_TAIL_INHERITING(nsContainerFrame)
 
-#ifdef DEBUG
+#ifdef DEBUG_FRAME_DUMP
 NS_IMETHODIMP
 nsFirstLetterFrame::GetFrameName(nsAString& aResult) const
 {
@@ -169,8 +169,8 @@ nsFirstLetterFrame::Reflow(nsPresContext*          aPresContext,
   nsIFrame* kid = mFrames.FirstChild();
 
   // Setup reflow state for our child
-  nsSize availSize(aReflowState.availableWidth, aReflowState.availableHeight);
-  const nsMargin& bp = aReflowState.mComputedBorderPadding;
+  nsSize availSize(aReflowState.AvailableWidth(), aReflowState.AvailableHeight());
+  const nsMargin& bp = aReflowState.ComputedPhysicalBorderPadding();
   nscoord lr = bp.left + bp.right;
   nscoord tb = bp.top + bp.bottom;
   NS_ASSERTION(availSize.width != NS_UNCONSTRAINEDSIZE,
@@ -215,7 +215,7 @@ nsFirstLetterFrame::Reflow(nsPresContext*          aPresContext,
 
     // In the floating first-letter case, we need to set this ourselves;
     // nsLineLayout::BeginSpan will set it in the other case
-    mBaseline = aMetrics.ascent;
+    mBaseline = aMetrics.TopAscent();
   }
   else {
     // Pretend we are a span and reflow the child frame
@@ -231,13 +231,13 @@ nsFirstLetterFrame::Reflow(nsPresContext*          aPresContext,
   }
 
   // Place and size the child and update the output metrics
-  kid->SetRect(nsRect(bp.left, bp.top, aMetrics.width, aMetrics.height));
+  kid->SetRect(nsRect(bp.left, bp.top, aMetrics.Width(), aMetrics.Height()));
   kid->FinishAndStoreOverflow(&aMetrics);
   kid->DidReflow(aPresContext, nullptr, nsDidReflowStatus::FINISHED);
 
-  aMetrics.width += lr;
-  aMetrics.height += tb;
-  aMetrics.ascent += bp.top;
+  aMetrics.Width() += lr;
+  aMetrics.Height() += tb;
+  aMetrics.SetTopAscent(aMetrics.TopAscent() + bp.top);
 
   // Ensure that the overflow rect contains the child textframe's overflow rect.
   // Note that if this is floating, the overline/underline drawable area is in
@@ -319,7 +319,7 @@ nsFirstLetterFrame::CreateContinuationForFloatingParent(nsPresContext* aPresCont
   nsIFrame* continuation = presShell->FrameConstructor()->
     CreateContinuingFrame(aPresContext, aChild, parent, aIsFluid);
 
-  // The continuation will have gotten the first letter style from it's
+  // The continuation will have gotten the first letter style from its
   // prev continuation, so we need to repair the style context so it
   // doesn't have the first letter styling.
   nsStyleContext* parentSC = this->StyleContext()->GetParent();
@@ -376,7 +376,9 @@ nsFirstLetterFrame::DrainOverflowFrames(nsPresContext* aPresContext)
     if (kidContent) {
       NS_ASSERTION(kidContent->IsNodeOfType(nsINode::eTEXT),
                    "should contain only text nodes");
-      sc = aPresContext->StyleSet()->ResolveStyleForNonElement(mStyleContext);
+      nsStyleContext* parentSC = prevInFlow ? mStyleContext->GetParent() :
+                                              mStyleContext;
+      sc = aPresContext->StyleSet()->ResolveStyleForNonElement(parentSC);
       kid->SetStyleContext(sc);
     }
   }
@@ -386,4 +388,21 @@ nscoord
 nsFirstLetterFrame::GetBaseline() const
 {
   return mBaseline;
+}
+
+int
+nsFirstLetterFrame::GetSkipSides(const nsHTMLReflowState* aReflowState) const
+{
+  if (GetPrevContinuation()) {
+    // We shouldn't get calls to GetSkipSides for later continuations since
+    // they have separate style contexts with initial values for all the
+    // properties that could trigger a call to GetSkipSides.  Then again,
+    // it's not really an error to call GetSkipSides on any frame, so
+    // that's why we handle it properly.
+    return 1 << NS_SIDE_LEFT |
+           1 << NS_SIDE_RIGHT |
+           1 << NS_SIDE_TOP |
+           1 << NS_SIDE_BOTTOM;
+  }
+  return 0;  // first continuation displays all sides
 }

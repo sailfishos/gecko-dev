@@ -16,6 +16,7 @@ namespace dom {
 struct ThreeDPoint;
 class AudioParamTimeline;
 class DelayNodeEngine;
+class AudioContext;
 }
 
 class ThreadSharedFloatArrayBufferList;
@@ -33,6 +34,8 @@ class AudioNodeEngine;
  */
 class AudioNodeStream : public ProcessedMediaStream {
 public:
+  typedef mozilla::dom::AudioContext AudioContext;
+
   enum { AUDIO_TRACK = 1 };
 
   typedef nsAutoTArray<AudioChunk, 1> OutputChunks;
@@ -66,7 +69,7 @@ public:
    * Sets a parameter that's a time relative to some stream's played time.
    * This time is converted to a time relative to this stream when it's set.
    */
-  void SetStreamTimeParameter(uint32_t aIndex, MediaStream* aRelativeToStream,
+  void SetStreamTimeParameter(uint32_t aIndex, AudioContext* aContext,
                               double aStreamTime);
   void SetDoubleParameter(uint32_t aIndex, double aValue);
   void SetInt32Parameter(uint32_t aIndex, int32_t aValue);
@@ -84,7 +87,7 @@ public:
     mAudioParamStream = true;
   }
 
-  virtual AudioNodeStream* AsAudioNodeStream() { return this; }
+  virtual AudioNodeStream* AsAudioNodeStream() MOZ_OVERRIDE { return this; }
 
   // Graph thread only
   void SetStreamTimeParameterImpl(uint32_t aIndex, MediaStream* aRelativeToStream,
@@ -92,7 +95,7 @@ public:
   void SetChannelMixingParametersImpl(uint32_t aNumberOfChannels,
                                       dom::ChannelCountMode aChannelCountMoe,
                                       dom::ChannelInterpretation aChannelInterpretation);
-  virtual void ProduceOutput(GraphTime aFrom, GraphTime aTo);
+  virtual void ProduceOutput(GraphTime aFrom, GraphTime aTo, uint32_t aFlags) MOZ_OVERRIDE;
   TrackTicks GetCurrentPosition();
   bool IsAudioParamStream() const
   {

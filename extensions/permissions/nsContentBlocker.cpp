@@ -189,13 +189,9 @@ nsContentBlocker::ShouldProcess(uint32_t          aContentType,
   nsCOMPtr<nsIDocShellTreeItem> item =
     do_QueryInterface(NS_CP_GetDocShellFromContext(aRequestingContext));
 
-  if (item) {
-    int32_t type;
-    item->GetItemType(&type);
-    if (type == nsIDocShellTreeItem::typeChrome) {
-      *aDecision = nsIContentPolicy::ACCEPT;
-      return NS_OK;
-    }
+  if (item && item->ItemType() == nsIDocShellTreeItem::typeChrome) {
+    *aDecision = nsIContentPolicy::ACCEPT;
+    return NS_OK;
   }
 
   // For objects, we only check policy in shouldProcess, as the final type isn't
@@ -335,7 +331,7 @@ nsContentBlocker::TestPermission(nsIURI *aCurrentURI,
 NS_IMETHODIMP
 nsContentBlocker::Observe(nsISupports     *aSubject,
                           const char      *aTopic,
-                          const PRUnichar *aData)
+                          const char16_t *aData)
 {
   NS_ASSERTION(!strcmp(NS_PREFBRANCH_PREFCHANGE_TOPIC_ID, aTopic),
                "unexpected topic - we only deal with pref changes!");

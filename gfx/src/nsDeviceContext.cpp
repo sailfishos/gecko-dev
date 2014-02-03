@@ -114,7 +114,7 @@ nsFontCache::Destroy()
 }
 
 NS_IMETHODIMP
-nsFontCache::Observe(nsISupports*, const char* aTopic, const PRUnichar*)
+nsFontCache::Observe(nsISupports*, const char* aTopic, const char16_t*)
 {
     if (!nsCRT::strcmp(aTopic, "memory-pressure"))
         Compact();
@@ -307,14 +307,14 @@ nsDeviceContext::SetDPI()
     // Use a printing DC to determine the other dpi values
     if (mPrintingSurface) {
         switch (mPrintingSurface->GetType()) {
-        case gfxSurfaceTypePDF:
-        case gfxSurfaceTypePS:
-        case gfxSurfaceTypeQuartz:
+        case gfxSurfaceType::PDF:
+        case gfxSurfaceType::PS:
+        case gfxSurfaceType::Quartz:
             dpi = 72.0f;
             break;
 #ifdef XP_WIN
-        case gfxSurfaceTypeWin32:
-        case gfxSurfaceTypeWin32Printing: {
+        case gfxSurfaceType::Win32:
+        case gfxSurfaceType::Win32Printing: {
             HDC dc = reinterpret_cast<gfxWindowsSurface*>(mPrintingSurface.get())->GetDC();
             int32_t OSVal = GetDeviceCaps(dc, LOGPIXELSY);
             dpi = 144.0f;
@@ -323,7 +323,7 @@ nsDeviceContext::SetDPI()
         }
 #endif
 #ifdef XP_OS2
-        case gfxSurfaceTypeOS2: {
+        case gfxSurfaceType::OS2: {
             LONG lDPI;
             HDC dc = GpiQueryDevice(reinterpret_cast<gfxOS2Surface*>(mPrintingSurface.get())->GetPS());
             if (DevQueryCaps(dc, CAPS_VERTICAL_FONT_RES, 1, &lDPI))
@@ -494,11 +494,11 @@ nsDeviceContext::InitForPrinting(nsIDeviceContextSpec *aDevice)
 
 nsresult
 nsDeviceContext::BeginDocument(const nsAString& aTitle,
-                               PRUnichar*       aPrintToFileName,
+                               char16_t*       aPrintToFileName,
                                int32_t          aStartPage,
                                int32_t          aEndPage)
 {
-    static const PRUnichar kEmpty[] = { '\0' };
+    static const char16_t kEmpty[] = { '\0' };
     nsresult rv;
 
     rv = mPrintingSurface->BeginPrinting(aTitle,
@@ -655,35 +655,35 @@ nsDeviceContext::CalcPrintingSize()
 
     gfxSize size(0, 0);
     switch (mPrintingSurface->GetType()) {
-    case gfxSurfaceTypeImage:
+    case gfxSurfaceType::Image:
         inPoints = false;
         size = reinterpret_cast<gfxImageSurface*>(mPrintingSurface.get())->GetSize();
         break;
 
 #if defined(MOZ_PDF_PRINTING)
-    case gfxSurfaceTypePDF:
+    case gfxSurfaceType::PDF:
         inPoints = true;
         size = reinterpret_cast<gfxPDFSurface*>(mPrintingSurface.get())->GetSize();
         break;
 #endif
 
 #ifdef MOZ_WIDGET_GTK
-    case gfxSurfaceTypePS:
+    case gfxSurfaceType::PS:
         inPoints = true;
         size = reinterpret_cast<gfxPSSurface*>(mPrintingSurface.get())->GetSize();
         break;
 #endif
 
 #ifdef XP_MACOSX
-    case gfxSurfaceTypeQuartz:
+    case gfxSurfaceType::Quartz:
         inPoints = true; // this is really only true when we're printing
         size = reinterpret_cast<gfxQuartzSurface*>(mPrintingSurface.get())->GetSize();
         break;
 #endif
 
 #ifdef XP_WIN
-    case gfxSurfaceTypeWin32:
-    case gfxSurfaceTypeWin32Printing:
+    case gfxSurfaceType::Win32:
+    case gfxSurfaceType::Win32Printing:
         {
             inPoints = false;
             HDC dc = reinterpret_cast<gfxWindowsSurface*>(mPrintingSurface.get())->GetDC();
@@ -699,7 +699,7 @@ nsDeviceContext::CalcPrintingSize()
 #endif
 
 #ifdef XP_OS2
-    case gfxSurfaceTypeOS2:
+    case gfxSurfaceType::OS2:
         {
             inPoints = false;
             // we already set the size in the surface constructor we set for

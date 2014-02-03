@@ -19,7 +19,7 @@ IterNext(JSContext *cx, unsigned argc, jsval *vp)
 static JSObject *
 IterHook(JSContext *cx, JS::HandleObject obj, bool keysonly)
 {
-    JS::RootedObject iterObj(cx, JS_NewObject(cx, nullptr, nullptr, nullptr));
+    JS::RootedObject iterObj(cx, JS_NewObject(cx, nullptr, JS::NullPtr(), JS::NullPtr()));
     if (!iterObj)
         return nullptr;
     if (!JS_DefineFunction(cx, iterObj, "next", IterNext, 0, 0))
@@ -38,7 +38,6 @@ const js::Class HasCustomIterClass = {
     JS_ResolveStub,
     JS_ConvertStub,
     nullptr,
-    nullptr, /* checkAccess */
     nullptr, /* call */
     nullptr, /* hasInstance */
     nullptr, /* construct */
@@ -63,7 +62,7 @@ IterClassConstructor(JSContext *cx, unsigned argc, jsval *vp)
 
 BEGIN_TEST(testCustomIterator_bug612523)
 {
-    CHECK(JS_InitClass(cx, global, nullptr, Jsvalify(&HasCustomIterClass),
+    CHECK(JS_InitClass(cx, global, js::NullPtr(), Jsvalify(&HasCustomIterClass),
                        IterClassConstructor, 0, nullptr, nullptr, nullptr, nullptr));
 
     JS::RootedValue result(cx);

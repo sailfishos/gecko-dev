@@ -303,6 +303,8 @@ IPDL_SOURCES = [
     'ipc/PTexture.ipdl',
 ]
 
+FAIL_ON_WARNINGS = True
+
 MSVC_ENABLE_PGO = True
 
 include('/ipc/chromium/chromium-config.mozbuild')
@@ -310,7 +312,7 @@ include('/ipc/chromium/chromium-config.mozbuild')
 FINAL_LIBRARY = 'thebes'
 
 LOCAL_INCLUDES += [
-    '/content/events/src',
+    '/dom/events',
 ]
 
 if CONFIG['MOZ_DEBUG']:

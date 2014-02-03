@@ -22,6 +22,7 @@
 #include "nsSVGUtils.h"
 #include "FrameLayerBuilder.h"
 #include "BasicLayers.h"
+#include "mozilla/gfx/Point.h"
 
 using namespace mozilla;
 using namespace mozilla::layers;
@@ -185,7 +186,7 @@ nsSVGIntegrationUtils::GetContinuationUnionSize(nsIFrame* aNonSVGFrame)
   return nsLayoutUtils::GetAllInFlowRectsUnion(firstFrame, firstFrame).Size();
 }
 
-/* static */ gfxSize
+/* static */ gfx::Size
 nsSVGIntegrationUtils::GetSVGCoordContextForNonSVGFrame(nsIFrame* aNonSVGFrame)
 {
   NS_ASSERTION(!aNonSVGFrame->IsFrameOfType(nsIFrame::eSVG),
@@ -194,8 +195,8 @@ nsSVGIntegrationUtils::GetSVGCoordContextForNonSVGFrame(nsIFrame* aNonSVGFrame)
     nsLayoutUtils::FirstContinuationOrSpecialSibling(aNonSVGFrame);
   nsRect r = nsLayoutUtils::GetAllInFlowRectsUnion(firstFrame, firstFrame);
   nsPresContext* presContext = firstFrame->PresContext();
-  return gfxSize(presContext->AppUnitsToFloatCSSPixels(r.width),
-                 presContext->AppUnitsToFloatCSSPixels(r.height));
+  return gfx::Size(presContext->AppUnitsToFloatCSSPixels(r.width),
+                   presContext->AppUnitsToFloatCSSPixels(r.height));
 }
 
 gfxRect
@@ -500,7 +501,7 @@ nsSVGIntegrationUtils::PaintFramesWithEffects(nsRenderingContext* aCtx,
     gfx->Save();
     aCtx->IntersectClip(aFrame->GetVisualOverflowRectRelativeToSelf() +
                         svgGeomFramePos);
-    gfx->PushGroup(GFX_CONTENT_COLOR_ALPHA);
+    gfx->PushGroup(gfxContentType::COLOR_ALPHA);
   }
 
   /* If this frame has only a trivial clipPath, set up cairo's clipping now so
@@ -540,7 +541,7 @@ nsSVGIntegrationUtils::PaintFramesWithEffects(nsRenderingContext* aCtx,
 
   nsRefPtr<gfxPattern> clipMaskSurface;
   if (clipPathFrame && !isTrivialClip) {
-    gfx->PushGroup(GFX_CONTENT_COLOR_ALPHA);
+    gfx->PushGroup(gfxContentType::COLOR_ALPHA);
 
     nsresult rv = clipPathFrame->ClipPaint(aCtx, aFrame, cssPxToDevPxMatrix);
     clipMaskSurface = gfx->PopGroup();
@@ -548,7 +549,7 @@ nsSVGIntegrationUtils::PaintFramesWithEffects(nsRenderingContext* aCtx,
     if (NS_SUCCEEDED(rv) && clipMaskSurface) {
       // Still more set after clipping, so clip to another surface
       if (maskSurface || opacity != 1.0f) {
-        gfx->PushGroup(GFX_CONTENT_COLOR_ALPHA);
+        gfx->PushGroup(gfxContentType::COLOR_ALPHA);
         gfx->Mask(clipMaskSurface);
         gfx->PopGroupToSource();
       } else {

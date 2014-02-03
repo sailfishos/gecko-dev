@@ -2,8 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "nsNSSComponent.h" // for PIPNSS string bundle calls.
 #include "nsCertTree.h"
+
+#include "insanity/pkixtypes.h"
+#include "nsNSSComponent.h" // for PIPNSS string bundle calls.
 #include "nsITreeColumns.h"
 #include "nsIX509Cert.h"
 #include "nsIX509CertValidity.h"
@@ -20,7 +22,6 @@
 #include "nsXPCOMCID.h"
 #include "nsTHashtable.h"
 #include "nsHashKeys.h"
-#include "ScopedNSSTypes.h"
  
 #include "prlog.h"
 
@@ -313,9 +314,7 @@ nsCertTree::GetDispInfoAtIndex(int32_t index,
       RefPtr<nsCertTreeDispInfo> certdi(mDispInfo.SafeElementAt(certIndex,
                                                                 nullptr));
       if (certdi) {
-        nsCertTreeDispInfo *raw = certdi.get();
-        NS_IF_ADDREF(raw);
-        return raw;
+        return certdi.forget();
       }
       break;
     }
@@ -639,9 +638,10 @@ nsCertTree::GetCertsByType(uint32_t           aType,
 {
   nsNSSShutDownPreventionLock locker;
   nsCOMPtr<nsIInterfaceRequestor> cxt = new PipUIContext();
-  ScopedCERTCertList certList(PK11_ListCerts(PK11CertListUnique, cxt));
-  nsresult rv = GetCertsByTypeFromCertList(certList, aType, aCertCmpFn, aCertCmpFnArg);
-  return rv;
+  insanity::pkix::ScopedCERTCertList certList(
+    PK11_ListCerts(PK11CertListUnique, cxt));
+  return GetCertsByTypeFromCertList(certList.get(), aType, aCertCmpFn,
+                                    aCertCmpFnArg);
 }
 
 nsresult 
@@ -809,7 +809,7 @@ nsCertTree::DeleteEntryObject(uint32_t index)
             // although there are still overrides stored,
             // so, we keep the cert, but remove the trust
 
-            ScopedCERTCertificate nsscert;
+            insanity::pkix::ScopedCERTCertificate nsscert;
 
             nsCOMPtr<nsIX509Cert2> cert2 = do_QueryInterface(cert);
             if (cert2) {
@@ -822,7 +822,8 @@ nsCertTree::DeleteEntryObject(uint32_t index)
             
               SECStatus srv = CERT_DecodeTrustString(&trust, ""); // no override 
               if (srv == SECSuccess) {
-                CERT_ChangeCertTrust(CERT_GetDefaultCertDB(), nsscert, &trust);
+                CERT_ChangeCertTrust(CERT_GetDefaultCertDB(), nsscert.get(),
+                                     &trust);
               }
             }
           }
@@ -1084,7 +1085,7 @@ nsCertTree::GetCellText(int32_t row, nsITreeColumn* col,
   nsresult rv;
   _retval.Truncate();
 
-  const PRUnichar* colID;
+  const char16_t* colID;
   col->GetIdConst(&colID);
 
   treeArrayEl *el = GetThreadDescAtIndex(row);
@@ -1349,14 +1350,14 @@ nsCertTree::SetCellText(int32_t row, nsITreeColumn* col,
 
 /* void performAction (in wstring action); */
 NS_IMETHODIMP 
-nsCertTree::PerformAction(const PRUnichar *action)
+nsCertTree::PerformAction(const char16_t *action)
 {
   return NS_OK;
 }
 
 /* void performActionOnRow (in wstring action, in long row); */
 NS_IMETHODIMP 
-nsCertTree::PerformActionOnRow(const PRUnichar *action, int32_t row)
+nsCertTree::PerformActionOnRow(const char16_t *action, int32_t row)
 {
   return NS_OK;
 }
@@ -1365,7 +1366,7 @@ nsCertTree::PerformActionOnRow(const PRUnichar *action, int32_t row)
  *                           in wstring colID); 
  */
 NS_IMETHODIMP 
-nsCertTree::PerformActionOnCell(const PRUnichar *action, int32_t row, 
+nsCertTree::PerformActionOnCell(const char16_t *action, int32_t row, 
                                 nsITreeColumn* col)
 {
   return NS_OK;
@@ -1390,7 +1391,7 @@ nsCertTree::dumpMap()
     }
     nsCOMPtr<nsIX509Cert> ct = GetCertAtIndex(i);
     if (ct) {
-      PRUnichar *goo;
+      char16_t *goo;
       ct->GetCommonName(&goo);
       nsAutoString doo(goo);
       PR_LOG(gPIPNSSLog, PR_LOG_DEBUG, ("cert [%d]: %s", i, NS_LossyConvertUTF16toASCII(doo).get()));

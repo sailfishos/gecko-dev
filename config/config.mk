@@ -51,6 +51,7 @@ _MOZBUILD_EXTERNAL_VARIABLES := \
   HOST_PROGRAM \
   HOST_SIMPLE_PROGRAMS \
   IS_COMPONENT \
+  JAR_MANIFEST \
   JAVA_JAR_TARGETS \
   JS_MODULES_PATH \
   LIBRARY_NAME \
@@ -716,7 +717,7 @@ else
 ifeq ($(HOST_OS_ARCH),WINNT)
 NSINSTALL = $(NSINSTALL_PY)
 else
-NSINSTALL = $(CONFIG_TOOLS)/nsinstall$(HOST_BIN_SUFFIX)
+NSINSTALL = $(DIST)/bin/nsinstall$(HOST_BIN_SUFFIX)
 endif # WINNT
 endif # OS2
 endif # NSINSTALL_BIN
@@ -829,7 +830,7 @@ EXPAND_MKSHLIB = $(EXPAND_LIBS_EXEC) $(EXPAND_MKSHLIB_ARGS) -- $(MKSHLIB)
 
 ifneq (,$(MOZ_LIBSTDCXX_TARGET_VERSION)$(MOZ_LIBSTDCXX_HOST_VERSION))
 ifneq ($(OS_ARCH),Darwin)
-CHECK_STDCXX = objdump -p $(1) | grep -e 'GLIBCXX_3\.4\.\(9\|[1-9][0-9]\)' > /dev/null && echo 'TEST-UNEXPECTED-FAIL | | We do not want these libstdc++ symbols to be used:' && objdump -T $(1) | grep -e 'GLIBCXX_3\.4\.\(9\|[1-9][0-9]\)' && exit 1 || exit 0
+CHECK_STDCXX = @$(TOOLCHAIN_PREFIX)objdump -p $(1) | grep -e 'GLIBCXX_3\.4\.\(9\|[1-9][0-9]\)' > /dev/null && echo 'TEST-UNEXPECTED-FAIL | check_stdcxx | We do not want these libstdc++ symbols to be used:' && $(TOOLCHAIN_PREFIX)objdump -T $(1) | grep -e 'GLIBCXX_3\.4\.\(9\|[1-9][0-9]\)' && false || true
 endif
 
 ifdef MOZ_LIBSTDCXX_TARGET_VERSION
@@ -839,6 +840,15 @@ ifdef MOZ_LIBSTDCXX_HOST_VERSION
 HOST_EXTRA_LIBS += $(call EXPAND_LIBNAME_PATH,host_stdc++compat,$(DEPTH)/build/unix/stdc++compat)
 endif
 endif
+
+ifeq (,$(filter $(OS_TARGET),WINNT Darwin OS2))
+CHECK_TEXTREL = @$(TOOLCHAIN_PREFIX)readelf -d $(1) | grep TEXTREL > /dev/null && echo 'TEST-UNEXPECTED-FAIL | check_textrel | We do not want text relocations in libraries and programs' || true
+endif
+
+define CHECK_BINARY
+$(call CHECK_STDCXX,$(1))
+$(call CHECK_TEXTREL,$(1))
+endef
 
 # autoconf.mk sets OBJ_SUFFIX to an error to avoid use before including
 # this file
@@ -879,6 +889,10 @@ EXPAND_MOZLIBNAME = $(foreach lib,$(1),$(DIST)/lib/$(LIB_PREFIX)$(lib).$(LIB_SUF
 PLY_INCLUDE = -I$(topsrcdir)/other-licenses/ply
 
 export CL_INCLUDES_PREFIX
+# Make sure that the build system can handle non-ASCII characters
+# in environment variables to prevent it from breking silently on
+# non-English systems.
+export NONASCII
 
 ifdef MOZ_GTK2_CFLAGS
 MOZ_GTK2_CFLAGS := -I$(topsrcdir)/widget/gtk/compat $(MOZ_GTK2_CFLAGS)

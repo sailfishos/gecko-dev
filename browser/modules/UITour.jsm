@@ -22,6 +22,7 @@ XPCOMUtils.defineLazyModuleGetter(this, "CustomizableUI",
 
 const UITOUR_PERMISSION   = "uitour";
 const PREF_PERM_BRANCH    = "browser.uitour.";
+const MAX_BUTTONS         = 4;
 
 
 this.UITour = {
@@ -63,6 +64,18 @@ this.UITour = {
                                                         "searchbar-engine-button");
       },
       widgetName: "search-container",
+    }],
+    ["selectedTabIcon", {
+      query: (aDocument) => {
+        let selectedtab = aDocument.defaultView.gBrowser.selectedTab;
+        let element = aDocument.getAnonymousElementByAttribute(selectedtab,
+                                                               "anonid",
+                                                               "tab-icon-image");
+        if (!element || !_isElementVisible(element)) {
+          return null;
+        }
+        return element;
+      },
     }],
     ["urlbar",      {
       query: "#urlbar",
@@ -125,7 +138,34 @@ this.UITour = {
             Cu.reportError("UITour: Target could not be resolved: " + data.target);
             return;
           }
-          this.showInfo(target, data.title, data.text);
+
+          let iconURL = null;
+          if (typeof data.icon == "string")
+            iconURL = this.resolveURL(contentDocument, data.icon);
+
+          let buttons = [];
+          if (Array.isArray(data.buttons) && data.buttons.length > 0) {
+            for (let buttonData of data.buttons) {
+              if (typeof buttonData == "object" &&
+                  typeof buttonData.label == "string" &&
+                  typeof buttonData.callbackID == "string") {
+                let button = {
+                  label: buttonData.label,
+                  callbackID: buttonData.callbackID,
+                };
+
+                if (typeof buttonData.icon == "string")
+                  button.iconURL = this.resolveURL(contentDocument, buttonData.icon);
+
+                buttons.push(button);
+
+                if (buttons.length == MAX_BUTTONS)
+                  break;
+              }
+            }
+          }
+
+          this.showInfo(contentDocument, target, data.title, data.text, iconURL, buttons);
         }).then(null, Cu.reportError);
         break;
       }
@@ -193,6 +233,15 @@ this.UITour = {
 
       case "endUrlbarCapture": {
         this.endUrlbarCapture(window);
+        break;
+      }
+
+      case "getConfiguration": {
+        if (typeof data.configuration != "string") {
+          return false;
+        }
+
+        this.getConfiguration(contentDocument, data.configuration, data.callbackID);
         break;
       }
     }
@@ -303,16 +352,56 @@ this.UITour = {
     if (uri.schemeIs("chrome"))
       return true;
 
-    let allowedSchemes = new Set(["https"]);
-    if (!Services.prefs.getBoolPref("browser.uitour.requireSecure"))
-      allowedSchemes.add("http");
-
-    if (!allowedSchemes.has(uri.scheme))
+    if (!this.isSafeScheme(uri))
       return false;
 
     this.importPermissions();
     let permission = Services.perms.testPermission(uri, UITOUR_PERMISSION);
     return permission == Services.perms.ALLOW_ACTION;
+  },
+
+  isSafeScheme: function(aURI) {
+    let allowedSchemes = new Set(["https"]);
+    if (!Services.prefs.getBoolPref("browser.uitour.requireSecure"))
+      allowedSchemes.add("http");
+
+    if (!allowedSchemes.has(aURI.scheme))
+      return false;
+
+    return true;
+  },
+
+  resolveURL: function(aDocument, aURL) {
+    try {
+      let uri = Services.io.newURI(aURL, null, aDocument.documentURIObject);
+
+      if (!this.isSafeScheme(uri))
+        return null;
+
+      return uri.spec;
+    } catch (e) {}
+
+    return null;
+  },
+
+  sendPageCallback: function(aDocument, aCallbackID, aData = {}) {
+    let detail = Cu.createObjectIn(aDocument.defaultView);
+    detail.data = Cu.createObjectIn(detail);
+
+    for (let key of Object.keys(aData))
+      detail.data[key] = aData[key];
+
+    Cu.makeObjectPropsNormal(detail.data);
+    Cu.makeObjectPropsNormal(detail);
+
+    detail.callbackID = aCallbackID;
+
+    let event = new aDocument.defaultView.CustomEvent("mozUITourResponse", {
+      bubbles: true,
+      detail: detail
+    });
+
+    aDocument.dispatchEvent(event);
   },
 
   getTarget: function(aWindow, aTargetName, aSticky = false) {
@@ -489,6 +578,10 @@ this.UITour = {
       highlighter.parentElement.openPopup(aTargetEl, "overlap", offsetX, offsetY);
     }
 
+    // Prevent showing a panel at an undefined position.
+    if (!_isElementVisible(aTarget.node))
+      return;
+
     this._setAppMenuStateForAnnotation(aTarget.node.ownerDocument.defaultView, "highlight",
                                        this.targetIsInAppMenu(aTarget),
                                        showHighlightPanel.bind(this, aTarget.node));
@@ -506,7 +599,7 @@ this.UITour = {
     this._setAppMenuStateForAnnotation(aWindow, "highlight", false);
   },
 
-  showInfo: function(aAnchor, aTitle, aDescription) {
+  showInfo: function(aContentDocument, aAnchor, aTitle = "", aDescription = "", aIconURL = "", aButtons = []) {
     function showInfoPanel(aAnchorEl) {
       aAnchorEl.focus();
 
@@ -514,18 +607,46 @@ this.UITour = {
       let tooltip = document.getElementById("UITourTooltip");
       let tooltipTitle = document.getElementById("UITourTooltipTitle");
       let tooltipDesc = document.getElementById("UITourTooltipDescription");
+      let tooltipIcon = document.getElementById("UITourTooltipIcon");
+      let tooltipButtons = document.getElementById("UITourTooltipButtons");
 
       if (tooltip.state == "open") {
         tooltip.hidePopup();
       }
 
-      tooltipTitle.textContent = aTitle;
-      tooltipDesc.textContent = aDescription;
+      tooltipTitle.textContent = aTitle || "";
+      tooltipDesc.textContent = aDescription || "";
+      tooltipIcon.src = aIconURL || "";
+      tooltipIcon.hidden = !aIconURL;
+
+      while (tooltipButtons.firstChild)
+        tooltipButtons.firstChild.remove();
+
+      for (let button of aButtons) {
+        let el = document.createElement("button");
+        el.setAttribute("label", button.label);
+        if (button.iconURL)
+          el.setAttribute("image", button.iconURL);
+
+        let callbackID = button.callbackID;
+        el.addEventListener("command", event => {
+          tooltip.hidePopup();
+          this.sendPageCallback(aContentDocument, callbackID);
+        });
+
+        tooltipButtons.appendChild(el);
+      }
+
+      tooltipButtons.hidden = !aButtons.length;
 
       tooltip.hidden = false;
       let alignment = "bottomcenter topright";
       tooltip.openPopup(aAnchorEl, alignment);
     }
+
+    // Prevent showing a panel at an undefined position.
+    if (!_isElementVisible(aAnchor.node))
+      return;
 
     this._setAppMenuStateForAnnotation(aAnchor.node.ownerDocument.defaultView, "info",
                                        this.targetIsInAppMenu(aAnchor),
@@ -533,9 +654,15 @@ this.UITour = {
   },
 
   hideInfo: function(aWindow) {
-    let tooltip = aWindow.document.getElementById("UITourTooltip");
+    let document = aWindow.document;
+
+    let tooltip = document.getElementById("UITourTooltip");
     tooltip.hidePopup();
     this._setAppMenuStateForAnnotation(aWindow, "info", false);
+
+    let tooltipButtons = document.getElementById("UITourTooltipButtons");
+    while (tooltipButtons.firstChild)
+      tooltipButtons.firstChild.remove();
   },
 
   showMenu: function(aWindow, aMenuName, aOpenCallback = null) {
@@ -614,4 +741,24 @@ this.UITour = {
     });
     aWindow.gBrowser.selectedTab = tab;
   },
+
+  getConfiguration: function(aContentDocument, aConfiguration, aCallbackId) {
+    let config = null;
+    switch (aConfiguration) {
+      case "sync":
+        config = {
+          setup: Services.prefs.prefHasUserValue("services.sync.username"),
+        };
+        break;
+      default:
+        Cu.reportError("getConfiguration: Unknown configuration requested: " + aConfiguration);
+        break;
+    }
+    this.sendPageCallback(aContentDocument, aCallbackId, config);
+  },
 };
+
+function _isElementVisible(aElement) {
+  let targetStyle = aElement.ownerDocument.defaultView.getComputedStyle(aElement);
+  return (targetStyle.display != "none" && targetStyle.visibility == "visible");
+}

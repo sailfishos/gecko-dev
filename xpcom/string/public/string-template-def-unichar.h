@@ -5,7 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 // IWYU pragma: private, include "nsString.h"
 
-#define CharT                               PRUnichar
+#define CharT                               char16_t
 #define CharT_is_PRUnichar                  1
 #define nsTAString_IncompatibleCharT        nsACString
 #define nsTString_CharT                     nsString
@@ -17,6 +17,7 @@
 #define nsTDefaultStringComparator_CharT    nsDefaultStringComparator
 #define nsTDependentString_CharT            nsDependentString
 #define nsTDependentSubstring_CharT         nsDependentSubstring
+#define nsTLiteralString_CharT              nsLiteralString
 #define nsTXPIDLString_CharT                nsXPIDLString
 #define nsTGetterCopies_CharT               nsGetterCopies
 #define nsTAdoptingString_CharT             nsAdoptingString

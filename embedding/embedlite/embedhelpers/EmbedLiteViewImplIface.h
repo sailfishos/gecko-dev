@@ -8,6 +8,7 @@
 
 #include "nsISupports.h"
 #include "nsStringGlue.h"
+#include "gfxMatrix.h"
 
 #include "mozilla/RefPtr.h"
 
@@ -26,7 +27,7 @@ class EmbedLiteViewImplIface
     virtual void StopLoad() {}
     virtual void Reload(bool hardReload) {}
     virtual void LoadFrameScript(const char* aURI) {}
-    virtual void DoSendAsyncMessage(const PRUnichar* aMessageName, const PRUnichar* aMessage) {}
+    virtual void DoSendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage) {}
     virtual void AddMessageListener(const char* aMessageName) {}
     virtual void RemoveMessageListener(const char* aMessageName) {}
     virtual void AddMessageListeners(const nsTArray<nsString>&) {}
@@ -39,13 +40,12 @@ class EmbedLiteViewImplIface
     virtual void ResumeTimeouts() {}
     virtual void SetViewSize(int width, int height) {}
     virtual void SetGLViewPortSize(int width, int height) {}
-    virtual void SetGLViewTransform(gfxMatrix matrix) {}
+    virtual void SetGLViewTransform(gfx::Matrix matrix) {}
     virtual void SetViewClipping(const gfxRect& aClipRect) {}
     virtual void SetViewOpacity(const float aOpacity) {}
     virtual void SetTransformation(float aScale, nsIntPoint aScrollOffset) {}
     virtual void ScheduleRender() {}
     virtual void SetClipping(nsIntRect aClipRect) {}
-    virtual bool ScrollBy(int aDX, int aDY, bool aDoOverflow = false) { return false; }
     virtual void ReceiveInputEvent(const InputData& aEvent) {}
     virtual void TextEvent(const char* composite, const char* preEdit) {}
     virtual void SendKeyPress(int domKeyCode, int gmodifiers, int charCode) {}

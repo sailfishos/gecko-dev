@@ -4,7 +4,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "SharedSurfaceIO.h"
-#include "GLContext.h"
+#include "GLContextCGL.h"
 #include "gfxImageSurface.h"
 #include "mozilla/gfx/MacIOSurface.h"
 #include "mozilla/DebugOnly.h"
@@ -21,7 +21,7 @@ SharedSurface_IOSurface::Create(MacIOSurface* surface, GLContext *gl, bool hasAl
     MOZ_ASSERT(surface);
     MOZ_ASSERT(gl);
 
-    gfxIntSize size(surface->GetWidth(), surface->GetHeight());
+    gfx::IntSize size(surface->GetWidth(), surface->GetHeight());
     return new SharedSurface_IOSurface(surface, gl, size, hasAlpha);
 }
 
@@ -57,7 +57,7 @@ SharedSurface_IOSurface::ReadPixels(GLint x, GLint y, GLsizei width, GLsizei hei
 
 SharedSurface_IOSurface::SharedSurface_IOSurface(MacIOSurface* surface,
                                                  GLContext* gl,
-                                                 const gfxIntSize& size,
+                                                 const gfx::IntSize& size,
                                                  bool hasAlpha)
   : SharedSurface_GL(SharedSurfaceType::IOSurface, AttachmentType::GLTexture, gl, size, hasAlpha)
   , mSurface(surface)
@@ -80,7 +80,7 @@ SharedSurface_IOSurface::SharedSurface_IOSurface(MacIOSurface* surface,
                         LOCAL_GL_TEXTURE_WRAP_T,
                         LOCAL_GL_CLAMP_TO_EDGE);
 
-    CGLContextObj ctx = static_cast<CGLContextObj>(mGL->GetNativeData(GLContext::NativeCGLContext));
+    CGLContextObj ctx = GLContextCGL::Cast(mGL)->GetCGLContext();
     MOZ_ASSERT(ctx);
 
     surface->CGLTexImageIOSurface2D(ctx);
@@ -96,7 +96,7 @@ SharedSurface_IOSurface::~SharedSurface_IOSurface()
 }
 
 SharedSurface*
-SurfaceFactory_IOSurface::CreateShared(const gfxIntSize& size)
+SurfaceFactory_IOSurface::CreateShared(const gfx::IntSize& size)
 {
     bool hasAlpha = mReadCaps.alpha;
     RefPtr<MacIOSurface> surf =

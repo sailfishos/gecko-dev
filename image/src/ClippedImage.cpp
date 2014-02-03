@@ -238,12 +238,12 @@ ClippedImage::GetFrameInternal(const nsIntSize& aViewportSize,
     if (gfxPlatform::GetPlatform()->SupportsAzureContent()) {
       target = gfxPlatform::GetPlatform()->
         CreateOffscreenContentDrawTarget(gfx::IntSize(mClip.width, mClip.height),
-                                        gfx::FORMAT_B8G8R8A8);
+                                        gfx::SurfaceFormat::B8G8R8A8);
       ctx = new gfxContext(target);
     } else {
       target = gfxPlatform::GetPlatform()->
         CreateOffscreenCanvasDrawTarget(gfx::IntSize(mClip.width, mClip.height),
-                                        gfx::FORMAT_B8G8R8A8);
+                                        gfx::SurfaceFormat::B8G8R8A8);
       nsRefPtr<gfxASurface> surface = gfxPlatform::GetPlatform()->
         GetThebesSurfaceForDrawTarget(target);
       ctx = new gfxContext(surface);
@@ -259,7 +259,7 @@ ClippedImage::GetFrameInternal(const nsIntSize& aViewportSize,
     gfxRect imageRect(0, 0, mClip.width, mClip.height);
     gfxUtils::DrawPixelSnapped(ctx, drawable, gfxMatrix(),
                                imageRect, imageRect, imageRect, imageRect,
-                               gfxImageFormatARGB32,
+                               gfxImageFormat::ARGB32,
                                GraphicsFilter::FILTER_FAST);
 
     // Cache the resulting surface.
@@ -344,7 +344,7 @@ ClippedImage::Draw(gfxContext* aContext,
     gfxRect subimage(aSubimage.x, aSubimage.y, aSubimage.width, aSubimage.height);
     gfxUtils::DrawPixelSnapped(aContext, drawable, aUserSpaceToImageSpace,
                                subimage, sourceRect, imageRect, aFill,
-                               gfxImageFormatARGB32, aFilter);
+                               gfxImageFormat::ARGB32, aFilter);
 
     return NS_OK;
   }

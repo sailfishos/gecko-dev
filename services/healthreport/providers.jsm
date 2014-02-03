@@ -50,6 +50,7 @@ XPCOMUtils.defineLazyModuleGetter(this, "PlacesDBUtils",
                                   "resource://gre/modules/PlacesDBUtils.jsm");
 
 
+const LAST_NUMERIC_FIELD = {type: Metrics.Storage.FIELD_LAST_NUMERIC};
 const LAST_TEXT_FIELD = {type: Metrics.Storage.FIELD_LAST_TEXT};
 const DAILY_DISCRETE_NUMERIC_FIELD = {type: Metrics.Storage.FIELD_DAILY_DISCRETE_NUMERIC};
 const DAILY_LAST_NUMERIC_FIELD = {type: Metrics.Storage.FIELD_DAILY_LAST_NUMERIC};
@@ -415,7 +416,7 @@ SysInfoMeasurement.prototype = Object.freeze({
   __proto__: Metrics.Measurement.prototype,
 
   name: "sysinfo",
-  version: 1,
+  version: 2,
 
   fields: {
     cpuCount: {type: Metrics.Storage.FIELD_LAST_NUMERIC},
@@ -426,6 +427,7 @@ SysInfoMeasurement.prototype = Object.freeze({
     name: LAST_TEXT_FIELD,
     version: LAST_TEXT_FIELD,
     architecture: LAST_TEXT_FIELD,
+    isWow64: LAST_NUMERIC_FIELD,
   },
 });
 
@@ -452,6 +454,7 @@ SysInfoProvider.prototype = Object.freeze({
     name: "name",
     version: "version",
     arch: "architecture",
+    isWOW64: "isWow64",
   },
 
   collectConstantData: function () {
@@ -485,9 +488,16 @@ SysInfoProvider.prototype = Object.freeze({
           method = "setLastNumeric";
         }
 
-        // Round memory to mebibytes.
-        if (k == "memsize") {
-          value = Math.round(value / 1048576);
+        switch (k) {
+          case "memsize":
+            // Round memory to mebibytes.
+            value = Math.round(value / 1048576);
+            break;
+          case "isWow64":
+            // Property is only present on Windows. hasKey() skipping from
+            // above ensures undefined or null doesn't creep in here.
+            value = value ? 1 : 0;
+            break;
         }
 
         yield m[method](v, value);
@@ -1357,6 +1367,27 @@ HealthReportSubmissionMeasurement1.prototype = Object.freeze({
   },
 });
 
+function HealthReportSubmissionMeasurement2() {
+  Metrics.Measurement.call(this);
+}
+
+HealthReportSubmissionMeasurement2.prototype = Object.freeze({
+  __proto__: Metrics.Measurement.prototype,
+
+  name: "submissions",
+  version: 2,
+
+  fields: {
+    firstDocumentUploadAttempt: DAILY_COUNTER_FIELD,
+    continuationUploadAttempt: DAILY_COUNTER_FIELD,
+    uploadSuccess: DAILY_COUNTER_FIELD,
+    uploadTransportFailure: DAILY_COUNTER_FIELD,
+    uploadServerFailure: DAILY_COUNTER_FIELD,
+    uploadClientFailure: DAILY_COUNTER_FIELD,
+    uploadAlreadyInProgress: DAILY_COUNTER_FIELD,
+  },
+});
+
 this.HealthReportProvider = function () {
   Metrics.Provider.call(this);
 }
@@ -1366,10 +1397,13 @@ HealthReportProvider.prototype = Object.freeze({
 
   name: "org.mozilla.healthreport",
 
-  measurementTypes: [HealthReportSubmissionMeasurement1],
+  measurementTypes: [
+    HealthReportSubmissionMeasurement1,
+    HealthReportSubmissionMeasurement2,
+  ],
 
   recordEvent: function (event, date=new Date()) {
-    let m = this.getMeasurement("submissions", 1);
+    let m = this.getMeasurement("submissions", 2);
     return this.enqueueStorageOperation(function recordCounter() {
       return m.incrementDailyCounter(event, date);
     });

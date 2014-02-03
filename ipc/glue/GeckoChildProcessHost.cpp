@@ -301,7 +301,12 @@ GeckoChildProcessHost::SyncLaunch(std::vector<std::string> aExtraOpts, int aTime
 
   // We'll receive several notifications, we need to exit when we
   // have either successfully launched or have timed out.
-  while (mProcessState < PROCESS_CONNECTED) {
+  while (mProcessState != PROCESS_CONNECTED) {
+    // If there was an error then return it, don't wait out the timeout.
+    if (mProcessState == PROCESS_ERROR) {
+      break;
+    }
+
     lock.Wait(timeoutTicks);
 
     if (timeoutTicks != PR_INTERVAL_NO_TIMEOUT) {
@@ -679,32 +684,32 @@ GeckoChildProcessHost::PerformAsyncLaunchInternal(std::vector<std::string>& aExt
   kern_return_t err = parent_recv_port.WaitForMessage(&child_message, kTimeoutMs);
   if (err != KERN_SUCCESS) {
     std::string errString = StringPrintf("0x%x %s", err, mach_error_string(err));
-    LOG(ERROR) << "parent WaitForMessage() failed: " << errString;
+    CHROMIUM_LOG(ERROR) << "parent WaitForMessage() failed: " << errString;
     return false;
   }
 
   task_t child_task = child_message.GetTranslatedPort(0);
   if (child_task == MACH_PORT_NULL) {
-    LOG(ERROR) << "parent GetTranslatedPort(0) failed.";
+    CHROMIUM_LOG(ERROR) << "parent GetTranslatedPort(0) failed.";
     return false;
   }
 
   if (child_message.GetTranslatedPort(1) == MACH_PORT_NULL) {
-    LOG(ERROR) << "parent GetTranslatedPort(1) failed.";
+    CHROMIUM_LOG(ERROR) << "parent GetTranslatedPort(1) failed.";
     return false;
   }
   MachPortSender parent_sender(child_message.GetTranslatedPort(1));
 
   MachSendMessage parent_message(/* id= */0);
   if (!parent_message.AddDescriptor(bootstrap_port)) {
-    LOG(ERROR) << "parent AddDescriptor(" << bootstrap_port << ") failed.";
+    CHROMIUM_LOG(ERROR) << "parent AddDescriptor(" << bootstrap_port << ") failed.";
     return false;
   }
 
   err = parent_sender.SendMessage(parent_message, kTimeoutMs);
   if (err != KERN_SUCCESS) {
     std::string errString = StringPrintf("0x%x %s", err, mach_error_string(err));
-    LOG(ERROR) << "parent SendMessage() failed: " << errString;
+    CHROMIUM_LOG(ERROR) << "parent SendMessage() failed: " << errString;
     return false;
   }
 #endif
@@ -843,6 +848,15 @@ GeckoChildProcessHost::OnMessageReceived(const IPC::Message& aMsg)
 void
 GeckoChildProcessHost::OnChannelError()
 {
+  // Update the process state to an error state if we have a channel
+  // error before we're connected. This fixes certain failures,
+  // but does not address the full range of possible issues described
+  // in the FIXME comment below.
+  MonitorAutoLock lock(mMonitor);
+  if (mProcessState < PROCESS_CONNECTED) {
+    mProcessState = PROCESS_ERROR;
+    lock.Notify();
+  }
   // FIXME/bug 773925: save up this error for the next listener.
 }
 

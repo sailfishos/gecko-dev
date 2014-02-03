@@ -19,7 +19,7 @@
 #include "nsRenderingContext.h"
 #include "nsStyleContext.h"
 #include "nsSVGEffects.h"
-#include "nsSVGGeometryFrame.h"
+#include "nsSVGPathGeometryFrame.h"
 #include "mozilla/dom/SVGPatternElement.h"
 #include "nsSVGUtils.h"
 #include "nsSVGAnimatedTransformList.h"
@@ -33,12 +33,14 @@ using namespace mozilla::gfx;
 //----------------------------------------------------------------------
 // Helper classes
 
-class nsSVGPatternFrame::AutoPatternReferencer
+class MOZ_STACK_CLASS nsSVGPatternFrame::AutoPatternReferencer
 {
 public:
-  AutoPatternReferencer(nsSVGPatternFrame *aFrame)
+  AutoPatternReferencer(nsSVGPatternFrame *aFrame
+                        MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
     : mFrame(aFrame)
   {
+    MOZ_GUARD_OBJECT_NOTIFIER_INIT;
     // Reference loops should normally be detected in advance and handled, so
     // we're not expecting to encounter them here
     NS_ABORT_IF_FALSE(!mFrame->mLoopFlag, "Undetected reference loop!");
@@ -49,6 +51,7 @@ public:
   }
 private:
   nsSVGPatternFrame *mFrame;
+  MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 };
 
 //----------------------------------------------------------------------
@@ -362,7 +365,7 @@ nsSVGPatternFrame::PaintPattern(gfxASurface** surface,
 
   nsRefPtr<gfxASurface> tmpSurface =
     gfxPlatform::GetPlatform()->CreateOffscreenSurface(surfaceSize,
-                                                       GFX_CONTENT_COLOR_ALPHA);
+                                                       gfxContentType::COLOR_ALPHA);
   if (!tmpSurface || tmpSurface->CairoStatus())
     return NS_ERROR_FAILURE;
 
@@ -377,7 +380,7 @@ nsSVGPatternFrame::PaintPattern(gfxASurface** surface,
 
   if (aGraphicOpacity != 1.0f) {
     gfx->Save();
-    gfx->PushGroup(GFX_CONTENT_COLOR_ALPHA);
+    gfx->PushGroup(gfxContentType::COLOR_ALPHA);
   }
 
   // OK, now render -- note that we use "firstKid", which
@@ -386,7 +389,7 @@ nsSVGPatternFrame::PaintPattern(gfxASurface** surface,
 
   if (aSource->IsFrameOfType(nsIFrame::eSVGGeometry)) {
     // Set the geometrical parent of the pattern we are rendering
-    patternFrame->mSource = static_cast<nsSVGGeometryFrame*>(aSource);
+    patternFrame->mSource = static_cast<nsSVGPathGeometryFrame*>(aSource);
   }
 
   // Delay checking NS_FRAME_DRAWING_AS_PAINTSERVER bit until here so we can
@@ -676,13 +679,13 @@ nsSVGPatternFrame::ConstructCTM(const nsSVGViewBox& aViewBox,
     return gfxMatrix(0.0, 0.0, 0.0, 0.0, 0.0, 0.0); // singular
   }
 
-  gfxMatrix tm = SVGContentUtils::GetViewBoxTransform(
+  Matrix tm = SVGContentUtils::GetViewBoxTransform(
     viewportWidth, viewportHeight,
     viewBoxRect.x, viewBoxRect.y,
     viewBoxRect.width, viewBoxRect.height,
     GetPreserveAspectRatio());
 
-  return tm * tCTM;
+  return ThebesMatrix(tm) * tCTM;
 }
 
 //----------------------------------------------------------------------

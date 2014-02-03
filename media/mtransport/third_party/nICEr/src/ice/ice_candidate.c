@@ -356,8 +356,20 @@ int nr_ice_candidate_compute_priority(nr_ice_candidate *cand)
         stun_priority=0;
         break;
       case RELAYED:
-        if(r=NR_reg_get_uchar(NR_ICE_REG_PREF_TYPE_RELAYED,&type_preference))
-          ABORT(r);
+        if(cand->base.protocol == IPPROTO_UDP) {
+          if(r=NR_reg_get_uchar(NR_ICE_REG_PREF_TYPE_RELAYED,&type_preference))
+            ABORT(r);
+        }
+        else if(cand->base.protocol == IPPROTO_TCP) {
+          if(r=NR_reg_get_uchar(NR_ICE_REG_PREF_TYPE_RELAYED_TCP,&type_preference))
+            ABORT(r);
+
+        }
+        else {
+          r_log(LOG_ICE,LOG_ERR,"Unknown protocol type %u",
+                (unsigned int)cand->base.protocol);
+          ABORT(R_INTERNAL);
+        }
         stun_priority=255-cand->stun_server->index;
         break;
       case SERVER_REFLEXIVE:
@@ -754,9 +766,6 @@ static void nr_ice_turn_allocated_cb(NR_SOCKET s, int how, void *cb_arg)
         cand->label=label;
         cand->state=NR_ICE_CAND_STATE_INITIALIZED;
 
-        /* Execute the ready callback */
-        cand->done_cb(0,0,cand->cb_arg);
-
         /* We also need to activate the associated STUN candidate */
         if(cand->u.relayed.srvflx_candidate){
           nr_ice_candidate *cand2=cand->u.relayed.srvflx_candidate;
@@ -767,6 +776,10 @@ static void nr_ice_turn_allocated_cb(NR_SOCKET s, int how, void *cb_arg)
           cand2->state=NR_ICE_CAND_STATE_INITIALIZED;
           cand2->done_cb(0,0,cand2->cb_arg);
         }
+
+        /* Execute the ready callback */
+        cand->done_cb(0,0,cand->cb_arg);
+        cand = 0;
 
         break;
 
@@ -786,16 +799,18 @@ static void nr_ice_turn_allocated_cb(NR_SOCKET s, int how, void *cb_arg)
     _status=0;
   abort:
     if(_status){
-      r_log(NR_LOG_TURN, LOG_WARNING,
-            "ICE-CANDIDATE(%s): nr_turn_allocated_cb failed", cand->label);
-      cand->state=NR_ICE_CAND_STATE_FAILED;
-      cand->done_cb(0,0,cand->cb_arg);
+      if (cand) {
+        r_log(NR_LOG_TURN, LOG_WARNING,
+              "ICE-CANDIDATE(%s): nr_turn_allocated_cb failed", cand->label);
+        cand->state=NR_ICE_CAND_STATE_FAILED;
+        cand->done_cb(0,0,cand->cb_arg);
 
-      if(cand->u.relayed.srvflx_candidate){
-        nr_ice_candidate *cand2=cand->u.relayed.srvflx_candidate;
+        if(cand->u.relayed.srvflx_candidate){
+          nr_ice_candidate *cand2=cand->u.relayed.srvflx_candidate;
 
-        cand2->state=NR_ICE_CAND_STATE_FAILED;
-        cand2->done_cb(0,0,cand2->cb_arg);
+          cand2->state=NR_ICE_CAND_STATE_FAILED;
+          cand2->done_cb(0,0,cand2->cb_arg);
+        }
       }
     }
   }

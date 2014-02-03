@@ -123,7 +123,7 @@ public:
    */
   virtual nsIAtom* GetType() const MOZ_OVERRIDE;
 
-#ifdef DEBUG
+#ifdef DEBUG_FRAME_DUMP
   NS_IMETHOD GetFrameName(nsAString& aResult) const MOZ_OVERRIDE;
 #endif
 
@@ -256,8 +256,8 @@ inline nsSize nsTableCellFrame::GetDesiredSize()
 
 inline void nsTableCellFrame::SetDesiredSize(const nsHTMLReflowMetrics & aDesiredSize)
 {
-  mDesiredSize.width = aDesiredSize.width;
-  mDesiredSize.height = aDesiredSize.height;
+  mDesiredSize.width = aDesiredSize.Width();
+  mDesiredSize.height = aDesiredSize.Height();
 }
 
 inline bool nsTableCellFrame::GetContentEmpty()
@@ -316,7 +316,7 @@ public:
 
   virtual nsMargin GetBorderOverflow() MOZ_OVERRIDE;
 
-#ifdef DEBUG
+#ifdef DEBUG_FRAME_DUMP
   NS_IMETHOD GetFrameName(nsAString& aResult) const MOZ_OVERRIDE;
 #endif
 

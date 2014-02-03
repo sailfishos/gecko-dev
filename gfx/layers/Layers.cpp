@@ -22,6 +22,7 @@
 #include "mozilla/TelemetryHistogramEnums.h"
 #include "mozilla/gfx/2D.h"             // for DrawTarget
 #include "mozilla/gfx/BaseSize.h"       // for BaseSize
+#include "mozilla/gfx/Matrix.h"         // for Matrix4x4
 #include "mozilla/layers/AsyncPanZoomController.h"
 #include "mozilla/layers/Compositor.h"  // for Compositor
 #include "mozilla/layers/CompositorTypes.h"
@@ -113,17 +114,17 @@ LayerManager::GetScrollableLayers(nsTArray<Layer*>& aArray)
 }
 
 already_AddRefed<gfxASurface>
-LayerManager::CreateOptimalSurface(const gfxIntSize &aSize,
+LayerManager::CreateOptimalSurface(const gfx::IntSize &aSize,
                                    gfxImageFormat aFormat)
 {
   return gfxPlatform::GetPlatform()->
-    CreateOffscreenSurface(aSize, gfxASurface::ContentFromFormat(aFormat));
+    CreateOffscreenSurface(gfx::ThebesIntSize(aSize), gfxASurface::ContentFromFormat(aFormat));
 }
 
 already_AddRefed<gfxASurface>
-LayerManager::CreateOptimalMaskSurface(const gfxIntSize &aSize)
+LayerManager::CreateOptimalMaskSurface(const gfx::IntSize &aSize)
 {
-  return CreateOptimalSurface(aSize, gfxImageFormatA8);
+  return CreateOptimalSurface(aSize, gfxImageFormat::A8);
 }
 
 TemporaryRef<DrawTarget>
@@ -305,7 +306,7 @@ CreateCSSValueList(const InfallibleTArray<TransformFunction>& aFunctions)
       case TransformFunction::TTransformMatrix:
       {
         arr = nsStyleAnimation::AppendTransformFunction(eCSSKeyword_matrix3d, resultTail);
-        const gfx3DMatrix& matrix = aFunctions[i].get_TransformMatrix().value();
+        const gfx::Matrix4x4& matrix = aFunctions[i].get_TransformMatrix().value();
         arr->Item(1).SetFloatValue(matrix._11, eCSSUnit_Number);
         arr->Item(2).SetFloatValue(matrix._12, eCSSUnit_Number);
         arr->Item(3).SetFloatValue(matrix._13, eCSSUnit_Number);
@@ -466,30 +467,31 @@ Layer::GetEffectiveVisibleRegion()
   return GetVisibleRegion();
 }
 
-gfx3DMatrix
-Layer::SnapTransformTranslation(const gfx3DMatrix& aTransform,
-                                gfxMatrix* aResidualTransform)
+Matrix4x4
+Layer::SnapTransformTranslation(const Matrix4x4& aTransform,
+                                Matrix* aResidualTransform)
 {
   if (aResidualTransform) {
-    *aResidualTransform = gfxMatrix();
+    *aResidualTransform = Matrix();
   }
 
-  gfxMatrix matrix2D;
-  gfx3DMatrix result;
+  Matrix matrix2D;
+  Matrix4x4 result;
   if (mManager->IsSnappingEffectiveTransforms() &&
       aTransform.Is2D(&matrix2D) &&
       !matrix2D.HasNonTranslation() &&
       matrix2D.HasNonIntegerTranslation()) {
-    gfxPoint snappedTranslation(matrix2D.GetTranslation());
-    snappedTranslation.Round();
-    gfxMatrix snappedMatrix = gfxMatrix().Translate(snappedTranslation);
-    result = gfx3DMatrix::From2D(snappedMatrix);
+    IntPoint snappedTranslation = RoundedToInt(matrix2D.GetTranslation());
+    Matrix snappedMatrix = Matrix().Translate(snappedTranslation.x,
+                                              snappedTranslation.y);
+    result = Matrix4x4::From2D(snappedMatrix);
     if (aResidualTransform) {
       // set aResidualTransform so that aResidual * snappedMatrix == matrix2D.
       // (I.e., appying snappedMatrix after aResidualTransform gives the
       // ideal transform.)
       *aResidualTransform =
-        gfxMatrix().Translate(matrix2D.GetTranslation() - snappedTranslation);
+        Matrix().Translate(matrix2D._31 - snappedTranslation.x,
+                           matrix2D._32 - snappedTranslation.y);
     }
   } else {
     result = aTransform;
@@ -497,37 +499,34 @@ Layer::SnapTransformTranslation(const gfx3DMatrix& aTransform,
   return result;
 }
 
-gfx3DMatrix
-Layer::SnapTransform(const gfx3DMatrix& aTransform,
+Matrix4x4
+Layer::SnapTransform(const Matrix4x4& aTransform,
                      const gfxRect& aSnapRect,
-                     gfxMatrix* aResidualTransform)
+                     Matrix* aResidualTransform)
 {
   if (aResidualTransform) {
-    *aResidualTransform = gfxMatrix();
+    *aResidualTransform = Matrix();
   }
 
-  gfxMatrix matrix2D;
-  gfx3DMatrix result;
+  Matrix matrix2D;
+  Matrix4x4 result;
   if (mManager->IsSnappingEffectiveTransforms() &&
       aTransform.Is2D(&matrix2D) &&
       gfx::Size(1.0, 1.0) <= ToSize(aSnapRect.Size()) &&
       matrix2D.PreservesAxisAlignedRectangles()) {
-    gfxPoint transformedTopLeft = matrix2D.Transform(aSnapRect.TopLeft());
-    transformedTopLeft.Round();
-    gfxPoint transformedTopRight = matrix2D.Transform(aSnapRect.TopRight());
-    transformedTopRight.Round();
-    gfxPoint transformedBottomRight = matrix2D.Transform(aSnapRect.BottomRight());
-    transformedBottomRight.Round();
+    IntPoint transformedTopLeft = RoundedToInt(matrix2D * ToPoint(aSnapRect.TopLeft()));
+    IntPoint transformedTopRight = RoundedToInt(matrix2D * ToPoint(aSnapRect.TopRight()));
+    IntPoint transformedBottomRight = RoundedToInt(matrix2D * ToPoint(aSnapRect.BottomRight()));
 
-    gfxMatrix snappedMatrix = gfxUtils::TransformRectToRect(aSnapRect,
+    Matrix snappedMatrix = gfxUtils::TransformRectToRect(aSnapRect,
       transformedTopLeft, transformedTopRight, transformedBottomRight);
 
-    result = gfx3DMatrix::From2D(snappedMatrix);
+    result = Matrix4x4::From2D(snappedMatrix);
     if (aResidualTransform && !snappedMatrix.IsSingular()) {
       // set aResidualTransform so that aResidual * snappedMatrix == matrix2D.
       // (i.e., appying snappedMatrix after aResidualTransform gives the
       // ideal transform.
-      gfxMatrix snappedMatrixInverse = snappedMatrix;
+      Matrix snappedMatrixInverse = snappedMatrix;
       snappedMatrixInverse.Invert();
       *aResidualTransform = matrix2D * snappedMatrixInverse;
     }
@@ -551,15 +550,15 @@ AncestorLayerMayChangeTransform(Layer* aLayer)
 bool
 Layer::MayResample()
 {
-  gfxMatrix transform2d;
+  Matrix transform2d;
   return !GetEffectiveTransform().Is2D(&transform2d) ||
-         transform2d.HasNonIntegerTranslation() ||
+         ThebesMatrix(transform2d).HasNonIntegerTranslation() ||
          AncestorLayerMayChangeTransform(this);
 }
 
 nsIntRect
 Layer::CalculateScissorRect(const nsIntRect& aCurrentScissorRect,
-                            const gfxMatrix* aWorldTransform)
+                            const gfx::Matrix* aWorldTransform)
 {
   ContainerLayer* container = GetParent();
   NS_ASSERTION(container, "This can't be called on the root!");
@@ -585,13 +584,13 @@ Layer::CalculateScissorRect(const nsIntRect& aCurrentScissorRect,
 
   nsIntRect scissor = *clipRect;
   if (!container->UseIntermediateSurface()) {
-    gfxMatrix matrix;
+    gfx::Matrix matrix;
     DebugOnly<bool> is2D = container->GetEffectiveTransform().Is2D(&matrix);
     // See DefaultComputeEffectiveTransforms below
     NS_ASSERTION(is2D && matrix.PreservesAxisAlignedRectangles(),
                  "Non preserves axis aligned transform with clipped child should have forced intermediate surface");
-    gfxRect r(scissor.x, scissor.y, scissor.width, scissor.height);
-    gfxRect trScissor = matrix.TransformBounds(r);
+    gfx::Rect r(scissor.x, scissor.y, scissor.width, scissor.height);
+    gfxRect trScissor = gfx::ThebesRect(matrix.TransformBounds(r));
     trScissor.Round();
     if (!gfxUtils::GfxRectToIntRect(trScissor, &scissor)) {
       return nsIntRect(currentClip.TopLeft(), nsIntSize(0, 0));
@@ -605,30 +604,30 @@ Layer::CalculateScissorRect(const nsIntRect& aCurrentScissorRect,
   if (container) {
     scissor.MoveBy(-container->GetIntermediateSurfaceRect().TopLeft());
   } else if (aWorldTransform) {
-    gfxRect r(scissor.x, scissor.y, scissor.width, scissor.height);
-    gfxRect trScissor = aWorldTransform->TransformBounds(r);
+    gfx::Rect r(scissor.x, scissor.y, scissor.width, scissor.height);
+    gfx::Rect trScissor = aWorldTransform->TransformBounds(r);
     trScissor.Round();
-    if (!gfxUtils::GfxRectToIntRect(trScissor, &scissor))
+    if (!gfxUtils::GfxRectToIntRect(ThebesRect(trScissor), &scissor))
       return nsIntRect(currentClip.TopLeft(), nsIntSize(0, 0));
   }
   return currentClip.Intersect(scissor);
 }
 
-const gfx3DMatrix
+const Matrix4x4
 Layer::GetTransform() const
 {
-  gfx3DMatrix transform = mTransform;
+  Matrix4x4 transform = mTransform;
   if (const ContainerLayer* c = AsContainerLayer()) {
     transform.Scale(c->GetPreXScale(), c->GetPreYScale(), 1.0f);
   }
-  transform.ScalePost(mPostXScale, mPostYScale, 1.0f);
+  transform = transform * Matrix4x4().Scale(mPostXScale, mPostYScale, 1.0f);
   return transform;
 }
 
-const gfx3DMatrix
+const Matrix4x4
 Layer::GetLocalTransform()
 {
-  gfx3DMatrix transform;
+  Matrix4x4 transform;
   if (LayerComposite* shadow = AsLayerComposite())
     transform = shadow->GetShadowTransform();
   else
@@ -636,7 +635,8 @@ Layer::GetLocalTransform()
   if (ContainerLayer* c = AsContainerLayer()) {
     transform.Scale(c->GetPreXScale(), c->GetPreYScale(), 1.0f);
   }
-  transform.ScalePost(mPostXScale, mPostYScale, 1.0f);
+  transform = transform * Matrix4x4().Scale(mPostXScale, mPostYScale, 1.0f);
+
   return transform;
 }
 
@@ -685,17 +685,16 @@ Layer::GetEffectiveMixBlendMode()
 }
 
 void
-Layer::ComputeEffectiveTransformForMaskLayer(const gfx3DMatrix& aTransformToSurface)
+Layer::ComputeEffectiveTransformForMaskLayer(const Matrix4x4& aTransformToSurface)
 {
   if (mMaskLayer) {
     mMaskLayer->mEffectiveTransform = aTransformToSurface;
 
 #ifdef DEBUG
-    gfxMatrix maskTranslation;
-    bool maskIs2D = mMaskLayer->GetTransform().CanDraw2D(&maskTranslation);
+    bool maskIs2D = mMaskLayer->GetTransform().CanDraw2D();
     NS_ASSERTION(maskIs2D, "How did we end up with a 3D transform here?!");
 #endif
-    mMaskLayer->mEffectiveTransform.PreMultiply(mMaskLayer->GetTransform());
+    mMaskLayer->mEffectiveTransform = mMaskLayer->GetTransform() * mMaskLayer->mEffectiveTransform;
   }
 }
 
@@ -797,6 +796,8 @@ ContainerLayer::RepositionChild(Layer* aChild, Layer* aAfter)
                (aAfter->Manager() == Manager() &&
                 aAfter->GetParent() == this),
                "aAfter is not our child");
+  NS_ASSERTION(aChild != aAfter,
+               "aChild cannot be the same as aAfter");
 
   Layer* prev = aChild->GetPrevSibling();
   Layer* next = aChild->GetNextSibling();
@@ -880,10 +881,10 @@ ContainerLayer::SortChildrenBy3DZOrder(nsTArray<Layer*>& aArray)
 }
 
 void
-ContainerLayer::DefaultComputeEffectiveTransforms(const gfx3DMatrix& aTransformToSurface)
+ContainerLayer::DefaultComputeEffectiveTransforms(const Matrix4x4& aTransformToSurface)
 {
-  gfxMatrix residual;
-  gfx3DMatrix idealTransform = GetLocalTransform()*aTransformToSurface;
+  Matrix residual;
+  Matrix4x4 idealTransform = GetLocalTransform() * aTransformToSurface;
   idealTransform.ProjectTo2D();
   mEffectiveTransform = SnapTransformTranslation(idealTransform, &residual);
 
@@ -900,12 +901,12 @@ ContainerLayer::DefaultComputeEffectiveTransforms(const gfx3DMatrix& aTransformT
       useIntermediateSurface = true;
     } else {
       useIntermediateSurface = false;
-      gfxMatrix contTransform;
+      gfx::Matrix contTransform;
       if (!mEffectiveTransform.Is2D(&contTransform) ||
 #ifdef MOZ_GFX_OPTIMIZE_MOBILE
         !contTransform.PreservesAxisAlignedRectangles()) {
 #else
-        contTransform.HasNonIntegerTranslation()) {
+        gfx::ThebesMatrix(contTransform).HasNonIntegerTranslation()) {
 #endif
         for (Layer* child = GetFirstChild(); child; child = child->GetNextSibling()) {
           const nsIntRect *clipRect = child->GetEffectiveClipRect();
@@ -926,7 +927,7 @@ ContainerLayer::DefaultComputeEffectiveTransforms(const gfx3DMatrix& aTransformT
 
   mUseIntermediateSurface = useIntermediateSurface;
   if (useIntermediateSurface) {
-    ComputeEffectiveTransformsForChildren(gfx3DMatrix::From2D(residual));
+    ComputeEffectiveTransformsForChildren(Matrix4x4::From2D(residual));
   } else {
     ComputeEffectiveTransformsForChildren(idealTransform);
   }
@@ -934,12 +935,12 @@ ContainerLayer::DefaultComputeEffectiveTransforms(const gfx3DMatrix& aTransformT
   if (idealTransform.CanDraw2D()) {
     ComputeEffectiveTransformForMaskLayer(aTransformToSurface);
   } else {
-    ComputeEffectiveTransformForMaskLayer(gfx3DMatrix());
+    ComputeEffectiveTransformForMaskLayer(Matrix4x4());
   }
 }
 
 void
-ContainerLayer::ComputeEffectiveTransformsForChildren(const gfx3DMatrix& aTransformToSurface)
+ContainerLayer::ComputeEffectiveTransformsForChildren(const Matrix4x4& aTransformToSurface)
 {
   for (Layer* l = mFirstChild; l; l = l->GetNextSibling()) {
     l->ComputeEffectiveTransforms(aTransformToSurface);
@@ -1115,34 +1116,40 @@ void WriteSnapshotLinkToDumpFile(T* aObj, FILE* aFile)
 }
 
 template <typename T>
-void WriteSnapshotToDumpFile_internal(T* aObj, gfxASurface* aSurf)
+void WriteSnapshotToDumpFile_internal(T* aObj, DataSourceSurface* aSurf)
 {
+  nsRefPtr<gfxImageSurface> deprecatedSurf =
+    new gfxImageSurface(aSurf->GetData(),
+                        ThebesIntSize(aSurf->GetSize()),
+                        aSurf->Stride(),
+                        SurfaceFormatToImageFormat(aSurf->GetFormat()));
   nsCString string(aObj->Name());
   string.Append("-");
   string.AppendInt((uint64_t)aObj);
   if (gfxUtils::sDumpPaintFile) {
     fprintf_stderr(gfxUtils::sDumpPaintFile, "array[\"%s\"]=\"", string.BeginReading());
   }
-  aSurf->DumpAsDataURL(gfxUtils::sDumpPaintFile);
+  deprecatedSurf->DumpAsDataURL(gfxUtils::sDumpPaintFile);
   if (gfxUtils::sDumpPaintFile) {
     fprintf_stderr(gfxUtils::sDumpPaintFile, "\";");
   }
 }
 
-void WriteSnapshotToDumpFile(Layer* aLayer, gfxASurface* aSurf)
+void WriteSnapshotToDumpFile(Layer* aLayer, DataSourceSurface* aSurf)
 {
   WriteSnapshotToDumpFile_internal(aLayer, aSurf);
 }
 
-void WriteSnapshotToDumpFile(LayerManager* aManager, gfxASurface* aSurf)
+void WriteSnapshotToDumpFile(LayerManager* aManager, DataSourceSurface* aSurf)
 {
   WriteSnapshotToDumpFile_internal(aManager, aSurf);
 }
 
 void WriteSnapshotToDumpFile(Compositor* aCompositor, DrawTarget* aTarget)
 {
-  nsRefPtr<gfxASurface> surf = gfxPlatform::GetPlatform()->GetThebesSurfaceForDrawTarget(aTarget);
-  WriteSnapshotToDumpFile_internal(aCompositor, surf);
+  RefPtr<SourceSurface> surf = aTarget->Snapshot();
+  RefPtr<DataSourceSurface> dSurf = surf->GetDataSurface();
+  WriteSnapshotToDumpFile_internal(aCompositor, dSurf);
 }
 #endif
 
@@ -1260,6 +1267,12 @@ Layer::PrintInfo(nsACString& aTo, const char* aPrefix)
     AppendToString(aTo, mVisibleRegion, " [visible=", "]");
   } else {
     aTo += " [not visible]";
+  }
+  if (!mEventRegions.mHitRegion.IsEmpty()) {
+    AppendToString(aTo, mEventRegions.mHitRegion, " [hitregion=", "]");
+  }
+  if (!mEventRegions.mDispatchToContentHitRegion.IsEmpty()) {
+    AppendToString(aTo, mEventRegions.mDispatchToContentHitRegion, " [dispatchtocontentregion=", "]");
   }
   if (1.0 != mOpacity) {
     aTo.AppendPrintf(" [opacity=%g]", mOpacity);
@@ -1492,40 +1505,46 @@ PrintInfo(nsACString& aTo, LayerComposite* aLayerComposite)
 }
 
 void
-SetAntialiasingFlags(Layer* aLayer, gfxContext* aTarget)
+SetAntialiasingFlags(Layer* aLayer, DrawTarget* aTarget)
 {
   bool permitSubpixelAA = !(aLayer->GetContentFlags() & Layer::CONTENT_DISABLE_SUBPIXEL_AA);
-  if (!aTarget->IsCairo()) {
-    RefPtr<DrawTarget> dt = aTarget->GetDrawTarget();
-
-    if (dt->GetFormat() != FORMAT_B8G8R8A8) {
-      dt->SetPermitSubpixelAA(permitSubpixelAA);
-      return;
-    }
-
-    const nsIntRect& bounds = aLayer->GetVisibleRegion().GetBounds();
-    gfx::Rect transformedBounds = dt->GetTransform().TransformBounds(gfx::Rect(Float(bounds.x), Float(bounds.y),
-                                                                     Float(bounds.width), Float(bounds.height)));
-    transformedBounds.RoundOut();
-    IntRect intTransformedBounds;
-    transformedBounds.ToIntRect(&intTransformedBounds);
-    permitSubpixelAA &= !(aLayer->GetContentFlags() & Layer::CONTENT_COMPONENT_ALPHA) ||
-                        dt->GetOpaqueRect().Contains(intTransformedBounds);
-    dt->SetPermitSubpixelAA(permitSubpixelAA);
-  } else {
-    nsRefPtr<gfxASurface> surface = aTarget->CurrentSurface();
-    if (surface->GetContentType() != GFX_CONTENT_COLOR_ALPHA) {
-      // Destination doesn't have alpha channel; no need to set any special flags
-      surface->SetSubpixelAntialiasingEnabled(permitSubpixelAA);
-      return;
-    }
-
-    const nsIntRect& bounds = aLayer->GetVisibleRegion().GetBounds();
-    permitSubpixelAA &= !(aLayer->GetContentFlags() & Layer::CONTENT_COMPONENT_ALPHA) ||
-        surface->GetOpaqueRect().Contains(
-        aTarget->UserToDevice(gfxRect(bounds.x, bounds.y, bounds.width, bounds.height)));
-    surface->SetSubpixelAntialiasingEnabled(permitSubpixelAA);
+  if (aTarget->GetFormat() != SurfaceFormat::B8G8R8A8) {
+    aTarget->SetPermitSubpixelAA(permitSubpixelAA);
+    return;
   }
+
+  const nsIntRect& bounds = aLayer->GetVisibleRegion().GetBounds();
+  gfx::Rect transformedBounds = aTarget->GetTransform().TransformBounds(gfx::Rect(Float(bounds.x), Float(bounds.y),
+                                                                                  Float(bounds.width), Float(bounds.height)));
+  transformedBounds.RoundOut();
+  IntRect intTransformedBounds;
+  transformedBounds.ToIntRect(&intTransformedBounds);
+  permitSubpixelAA &= !(aLayer->GetContentFlags() & Layer::CONTENT_COMPONENT_ALPHA) ||
+                      aTarget->GetOpaqueRect().Contains(intTransformedBounds);
+  aTarget->SetPermitSubpixelAA(permitSubpixelAA);
+}
+
+void
+SetAntialiasingFlags(Layer* aLayer, gfxContext* aTarget)
+{
+  if (!aTarget->IsCairo()) {
+    SetAntialiasingFlags(aLayer, aTarget->GetDrawTarget());
+    return;
+  }
+
+  bool permitSubpixelAA = !(aLayer->GetContentFlags() & Layer::CONTENT_DISABLE_SUBPIXEL_AA);
+  nsRefPtr<gfxASurface> surface = aTarget->CurrentSurface();
+  if (surface->GetContentType() != gfxContentType::COLOR_ALPHA) {
+    // Destination doesn't have alpha channel; no need to set any special flags
+    surface->SetSubpixelAntialiasingEnabled(permitSubpixelAA);
+    return;
+  }
+
+  const nsIntRect& bounds = aLayer->GetVisibleRegion().GetBounds();
+  permitSubpixelAA &= !(aLayer->GetContentFlags() & Layer::CONTENT_COMPONENT_ALPHA) ||
+      surface->GetOpaqueRect().Contains(
+      aTarget->UserToDevice(gfxRect(bounds.x, bounds.y, bounds.width, bounds.height)));
+  surface->SetSubpixelAntialiasingEnabled(permitSubpixelAA);
 }
 
 PRLogModuleInfo* LayerManager::sLog;

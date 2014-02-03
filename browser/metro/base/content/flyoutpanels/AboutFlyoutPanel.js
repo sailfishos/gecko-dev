@@ -454,7 +454,7 @@ appUpdater.prototype =
    * See XPIProvider.jsm
    */
   onUpdateAvailable: function(aAddon, aInstall) {
-    if (!Services.blocklist.isAddonBlocklisted(aAddon.id, aInstall.version,
+    if (!Services.blocklist.isAddonBlocklisted(aAddon,
                                                this.update.appVersion,
                                                this.update.platformVersion)) {
       // Compatibility or new version updates mean the same thing here.
@@ -506,7 +506,7 @@ appUpdater.prototype =
    */
   setupDownloadingUI: function() {
     this.downloadStatus = document.getElementById("downloadStatus");
-    this.downloadStatus.value =
+    this.downloadStatus.textContent =
       DownloadUtils.getTransferTotal(0, this.update.selectedPatch.size);
     this.selectPanel("downloading");
     this.aus.addDownloadListener(this);
@@ -598,7 +598,7 @@ appUpdater.prototype =
    * See nsIProgressEventSink.idl
    */
   onProgress: function(aRequest, aContext, aProgress, aProgressMax) {
-    this.downloadStatus.value =
+    this.downloadStatus.textContent =
       DownloadUtils.getTransferTotal(aProgress, aProgressMax);
   },
 

@@ -178,7 +178,7 @@ void EmbedLiteView::RemoveMessageListeners(const nsTArray<nsString>& aMessageNam
 }
 
 void
-EmbedLiteView::SendAsyncMessage(const PRUnichar* aMessageName, const PRUnichar* aMessage)
+EmbedLiteView::SendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage)
 {
   NS_ENSURE_TRUE(mViewImpl, );
   mViewImpl->DoSendAsyncMessage(aMessageName, aMessage);
@@ -207,7 +207,7 @@ EmbedLiteView::GetImageAsURL(int aWidth, int aHeight)
   // copy from gfxASurface::WriteAsPNG_internal
   NS_ENSURE_TRUE(mViewImpl, nullptr);
   nsRefPtr<gfxImageSurface> img =
-    new gfxImageSurface(gfxIntSize(aWidth, aHeight), gfxImageFormatRGB24);
+    new gfxImageSurface(gfxIntSize(aWidth, aHeight), gfxImageFormat::RGB24);
   mViewImpl->RenderToImage(img->Data(), img->Width(), img->Height(), img->Stride(), 24);
   nsCOMPtr<imgIEncoder> encoder =
     do_CreateInstance("@mozilla.org/image/encoder;2?type=image/png");
@@ -301,7 +301,8 @@ void
 EmbedLiteView::SetGLViewTransform(gfxMatrix matrix)
 {
   NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->SetGLViewTransform(matrix);
+  gfx::Matrix m(matrix.xx, matrix.yx, matrix.xy, matrix.yy, matrix.x0, matrix.y0);
+  mViewImpl->SetGLViewTransform(m);
 }
 
 void
@@ -330,14 +331,6 @@ EmbedLiteView::ScheduleRender()
 {
   NS_ENSURE_TRUE(mViewImpl, );
   mViewImpl->ScheduleRender();
-}
-
-bool
-EmbedLiteView::ScrollBy(int aDX, int aDY, bool aDoOverflow)
-{
-  LOGT();
-  NS_ENSURE_TRUE(mViewImpl, false);
-  return mViewImpl->ScrollBy(aDX, aDY);
 }
 
 void

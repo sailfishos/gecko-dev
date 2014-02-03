@@ -21,7 +21,7 @@ public:
   SourceSurfaceD2D();
   ~SourceSurfaceD2D();
 
-  virtual SurfaceType GetType() const { return SURFACE_D2D1_BITMAP; }
+  virtual SurfaceType GetType() const { return SurfaceType::D2D1_BITMAP; }
   virtual IntSize GetSize() const;
   virtual SurfaceFormat GetFormat() const;
   virtual bool IsValid() const;
@@ -62,6 +62,8 @@ public:
   virtual int32_t Stride();
   virtual IntSize GetSize() const;
   virtual SurfaceFormat GetFormat() const;
+  virtual bool Map(MapType, MappedSurface *aMappedSurface);
+  virtual void Unmap();
 
   bool IsValid()
   {

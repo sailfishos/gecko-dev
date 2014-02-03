@@ -9,9 +9,6 @@
 #include <stdint.h>                     // for int32_t, uint32_t
 #include "GLDefs.h"                     // for GLenum
 #include "Layers.h"
-#include "gfx3DMatrix.h"                // for gfx3DMatrix
-#include "gfxMatrix.h"                  // for gfxMatrix
-#include "gfxPoint.h"                   // for gfxIntSize
 #include "mozilla/Assertions.h"         // for MOZ_ASSERT, etc
 #include "mozilla/Attributes.h"         // for MOZ_OVERRIDE
 #include "mozilla/RefPtr.h"             // for RefPtr, TemporaryRef
@@ -53,7 +50,6 @@ namespace layers {
 
 class CanvasLayerComposite;
 class ColorLayerComposite;
-class Composer2D;
 class CompositableHost;
 class Compositor;
 class ContainerLayerComposite;
@@ -119,7 +115,7 @@ public:
 
   // XXX[nrc]: never called, we should move this logic to ClientLayerManager
   // (bug 946926).
-  virtual bool CanUseCanvasLayerForSize(const gfxIntSize &aSize) MOZ_OVERRIDE;
+  virtual bool CanUseCanvasLayerForSize(const gfx::IntSize &aSize) MOZ_OVERRIDE;
 
   virtual int32_t GetMaxTextureSize() const MOZ_OVERRIDE
   {
@@ -150,7 +146,7 @@ public:
   }
 
   virtual already_AddRefed<gfxASurface>
-    CreateOptimalMaskSurface(const gfxIntSize &aSize) MOZ_OVERRIDE;
+    CreateOptimalMaskSurface(const gfx::IntSize &aSize) MOZ_OVERRIDE;
 
   virtual const char* Name() const MOZ_OVERRIDE { return ""; }
 
@@ -164,8 +160,8 @@ public:
    * Transform will be ignored if it is not PreservesAxisAlignedRectangles
    * or has non integer scale
    */
-  void SetWorldTransform(const gfxMatrix& aMatrix);
-  gfxMatrix& GetWorldTransform(void);
+  void SetWorldTransform(const gfx::Matrix& aMatrix);
+  gfx::Matrix& GetWorldTransform(void);
 
   /**
    * RAII helper class to add a mask effect with the compositable from aMaskLayer
@@ -261,10 +257,7 @@ private:
 
   RefPtr<Compositor> mCompositor;
 
-  /** Our more efficient but less powerful alter ego, if one is available. */
-  nsRefPtr<Composer2D> mComposer2D;
-
-  gfxMatrix mWorldMatrix;
+  gfx::Matrix mWorldMatrix;
 
   bool mInTransaction;
   bool mIsCompositorReady;
@@ -350,7 +343,7 @@ public:
     }
   }
 
-  void SetShadowTransform(const gfx3DMatrix& aMatrix)
+  void SetShadowTransform(const gfx::Matrix4x4& aMatrix)
   {
     mShadowTransform = aMatrix;
   }
@@ -364,16 +357,22 @@ public:
     mLayerComposited = value;
   }
 
+  void SetClearFB(bool value)
+  {
+    mClearFB = value;
+  }
+
   // These getters can be used anytime.
   float GetShadowOpacity() { return mShadowOpacity; }
   const nsIntRect* GetShadowClipRect() { return mUseShadowClipRect ? &mShadowClipRect : nullptr; }
   const nsIntRegion& GetShadowVisibleRegion() { return mShadowVisibleRegion; }
-  const gfx3DMatrix& GetShadowTransform() { return mShadowTransform; }
+  const gfx::Matrix4x4& GetShadowTransform() { return mShadowTransform; }
   bool GetShadowTransformSetByAnimation() { return mShadowTransformSetByAnimation; }
   bool HasLayerBeenComposited() { return mLayerComposited; }
+  bool GetClearFB() { return mClearFB; }
 
 protected:
-  gfx3DMatrix mShadowTransform;
+  gfx::Matrix4x4 mShadowTransform;
   nsIntRegion mShadowVisibleRegion;
   nsIntRect mShadowClipRect;
   LayerManagerComposite* mCompositeManager;
@@ -383,6 +382,7 @@ protected:
   bool mShadowTransformSetByAnimation;
   bool mDestroyed;
   bool mLayerComposited;
+  bool mClearFB;
 };
 
 

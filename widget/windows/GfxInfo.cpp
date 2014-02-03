@@ -513,15 +513,15 @@ GfxInfo::Init()
     // with bad Intel driver installations where the DriverVersion reported
     // by the registry was not the version of the DLL.
     bool is64bitApp = sizeof(void*) == 8;
-    const PRUnichar *dllFileName = is64bitApp
+    const char16_t *dllFileName = is64bitApp
                                  ? MOZ_UTF16("igd10umd64.dll")
                                  : MOZ_UTF16("igd10umd32.dll"),
                     *dllFileName2 = is64bitApp
                                  ? MOZ_UTF16("igd10iumd64.dll")
                                  : MOZ_UTF16("igd10iumd32.dll");
     nsString dllVersion, dllVersion2;
-    gfxWindowsPlatform::GetDLLVersion((PRUnichar*)dllFileName, dllVersion);
-    gfxWindowsPlatform::GetDLLVersion((PRUnichar*)dllFileName2, dllVersion2);
+    gfxWindowsPlatform::GetDLLVersion((char16_t*)dllFileName, dllVersion);
+    gfxWindowsPlatform::GetDLLVersion((char16_t*)dllFileName2, dllVersion2);
 
     uint64_t dllNumericVersion = 0, dllNumericVersion2 = 0,
              driverNumericVersion = 0, knownSafeMismatchVersion = 0;
@@ -930,12 +930,12 @@ GfxInfo::GetGfxDriverInfo()
 
     // StrechRect seems to suffer from precision issues which leads to artifacting
     // during content drawing starting with at least version 6.14.10.5082
-    // and going until 6.14.10.5160. See bug 919454 for more info.
+    // and going until 6.14.10.5218. See bug 919454 and bug 949275 for more info.
     APPEND_TO_DRIVER_BLOCKLIST_RANGE(DRIVER_OS_WINDOWS_XP,
       const_cast<nsAString&>(GfxDriverInfo::GetDeviceVendor(VendorIntel)),
       const_cast<GfxDeviceFamily*>(GfxDriverInfo::GetDeviceFamily(IntelGMAX4500HD)),
       GfxDriverInfo::allFeatures, nsIGfxInfo::FEATURE_BLOCKED_DRIVER_VERSION,
-      DRIVER_BETWEEN_EXCLUSIVE, V(6,14,10,5076), V(6,14,10,5160), "6.14.10.5160");
+      DRIVER_BETWEEN_EXCLUSIVE, V(6,14,10,5076), V(6,14,10,5218), "6.14.10.5218");
 
     IMPLEMENT_INTEL_DRIVER_BLOCKLIST(DRIVER_OS_WINDOWS_VISTA, IntelGMA500,   V(3,0,20,3200));
     IMPLEMENT_INTEL_DRIVER_BLOCKLIST(DRIVER_OS_WINDOWS_VISTA, IntelGMA900,   GfxDriverInfo::allDriverVersions);

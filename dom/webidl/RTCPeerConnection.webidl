@@ -61,6 +61,7 @@ dictionary MediaConstraintSet {
   boolean OfferToReceiveAudio;
   boolean OfferToReceiveVideo;
   boolean MozDontOfferDataChannel;
+  boolean MozBundleOnly;
 };
 
 // MediaConstraint = single-property-subset of MediaConstraintSet
@@ -149,6 +150,9 @@ interface WebrtcGlobalInformation {
     void getCandPairLogs(DOMString candPairId,
                          RTCLogCallback callback,
                          RTCPeerConnectionErrorCallback errorCallback);
+    void getLogs(DOMString pattern,
+                 RTCLogCallback callback,
+                 RTCPeerConnectionErrorCallback errorCallback);
 };
 
 

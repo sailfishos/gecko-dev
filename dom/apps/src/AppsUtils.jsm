@@ -70,6 +70,9 @@ this.AppsUtils = {
       csp: aApp.csp,
       installOrigin: aApp.installOrigin,
       origin: aApp.origin,
+#ifdef MOZ_ANDROID_SYNTHAPKS
+      apkPackageName: aApp.apkPackageName,
+#endif
       receipts: aApp.receipts ? JSON.parse(JSON.stringify(aApp.receipts)) : null,
       installTime: aApp.installTime,
       manifestURL: aApp.manifestURL,
@@ -624,6 +627,25 @@ ManifestHelper.prototype = {
       return this._manifest.permissions;
     }
     return {};
+  },
+
+  get biggestIconURL() {
+    let icons = this._localeProp("icons");
+    if (!icons) {
+      return null;
+    }
+
+    let iconSizes = Object.keys(icons);
+    if (iconSizes.length == 0) {
+      return null;
+    }
+
+    iconSizes.sort((a, b) => a - b);
+    let biggestIconSize = iconSizes.pop();
+    let biggestIcon = icons[biggestIconSize];
+    let biggestIconURL = this._origin.resolve(biggestIcon);
+
+    return biggestIconURL;
   },
 
   iconURLForSize: function(aSize) {

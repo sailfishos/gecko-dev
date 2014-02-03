@@ -8,7 +8,6 @@
 
 #include "BluetoothHfpManager.h"
 #include "BluetoothProfileController.h"
-#include "BluetoothServiceBluedroid.h"
 #include "BluetoothUtils.h"
 
 #include "jsapi.h"
@@ -206,7 +205,7 @@ public:
   NS_DECL_ISUPPORTS
 
   NS_IMETHOD
-  Handle(const nsAString& aName, const JS::Value& aResult)
+  Handle(const nsAString& aName, JS::Handle<JS::Value> aResult)
   {
     MOZ_ASSERT(NS_IsMainThread());
 
@@ -491,7 +490,7 @@ BluetoothHfpManager::Get()
 NS_IMETHODIMP
 BluetoothHfpManager::Observe(nsISupports* aSubject,
                              const char* aTopic,
-                             const PRUnichar* aData)
+                             const char16_t* aData)
 {
   if (!strcmp(aTopic, MOZSETTINGS_CHANGED_ID)) {
     HandleVolumeChanged(nsDependentString(aData));
@@ -571,9 +570,12 @@ BluetoothHfpManager::ProcessVolumeControl(bthf_volume_type_t aType,
   if (aType == BTHF_VOLUME_TYPE_MIC) {
     mCurrentVgm = aVolume;
   } else if (aType == BTHF_VOLUME_TYPE_SPK) {
-    // Adjust volume by headset
     mReceiveVgsFlag = true;
-    NS_ENSURE_TRUE_VOID(aVolume != mCurrentVgs);
+
+    if (aVolume == mCurrentVgs) {
+      // Keep current volume
+      return;
+    }
 
     nsString data;
     data.AppendInt(aVolume);
@@ -850,12 +852,11 @@ BluetoothHfpManager::HandleVoiceConnectionChanged(uint32_t aClientId)
   mService = (regState.EqualsLiteral("registered")) ? 1 : 0;
 
   // Signal
-  JS::Value value;
+  JSContext* cx = nsContentUtils::GetSafeJSContext();
+  NS_ENSURE_TRUE_VOID(cx);
+  JS::Rooted<JS::Value> value(cx);
   voiceInfo->GetRelSignalStrength(&value);
-  if (!value.isNumber()) {
-    BT_WARNING("Failed to get relSignalStrength in BluetoothHfpManager");
-    return;
-  }
+  NS_ENSURE_TRUE_VOID(value.isNumber());
   mSignal = (int)ceil(value.toNumber() / 20.0);
 
   UpdateDeviceCIND();

@@ -24,6 +24,9 @@ public class BrowserContract {
     public static final String TABS_AUTHORITY = AppConstants.ANDROID_PACKAGE_NAME + ".db.tabs";
     public static final Uri TABS_AUTHORITY_URI = Uri.parse("content://" + TABS_AUTHORITY);
 
+    public static final String HOME_AUTHORITY = AppConstants.ANDROID_PACKAGE_NAME + ".db.home";
+    public static final Uri HOME_AUTHORITY_URI = Uri.parse("content://" + HOME_AUTHORITY);
+
     public static final String PARAM_PROFILE = "profile";
     public static final String PARAM_PROFILE_PATH = "profilePath";
     public static final String PARAM_LIMIT = "limit";
@@ -283,5 +286,23 @@ public class BrowserContract {
         // Last modified time for the client's tab record. For remote records, a server
         // timestamp provided by Sync during insertion.
         public static final String LAST_MODIFIED = "last_modified";
+    }
+
+    // Data storage for dynamic panels on about:home
+    @RobocopTarget
+    public static final class HomeItems implements CommonColumns {
+        private HomeItems() {}
+        public static final Uri CONTENT_FAKE_URI = Uri.withAppendedPath(HOME_AUTHORITY_URI, "items/fake");
+        public static final Uri CONTENT_URI = Uri.withAppendedPath(HOME_AUTHORITY_URI, "items");
+
+        public static final String CONTENT_TYPE = "vnd.android.cursor.dir/homeitem";
+        public static final String CONTENT_ITEM_TYPE = "vnd.android.cursor.item/homeitem";
+
+        public static final String DATASET_ID = "dataset_id";
+        public static final String URL = "url";
+        public static final String TITLE = "title";
+        public static final String DESCRIPTION = "description";
+        public static final String IMAGE_URL = "image_url";
+        public static final String CREATED = "created";
     }
 }

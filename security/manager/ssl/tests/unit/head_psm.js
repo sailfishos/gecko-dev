@@ -24,6 +24,7 @@ const SEC_ERROR_BASE = Ci.nsINSSErrorsService.NSS_SEC_ERROR_BASE;
 const SEC_ERROR_REVOKED_CERTIFICATE                     = SEC_ERROR_BASE +  12;
 const SEC_ERROR_BAD_DATABASE                            = SEC_ERROR_BASE +  18;
 const SEC_ERROR_UNTRUSTED_ISSUER                        = SEC_ERROR_BASE +  20;
+const SEC_ERROR_EXTENSION_NOT_FOUND                     = SEC_ERROR_BASE +  35;
 const SEC_ERROR_OCSP_MALFORMED_REQUEST                  = SEC_ERROR_BASE + 120;
 const SEC_ERROR_OCSP_SERVER_ERROR                       = SEC_ERROR_BASE + 121;
 const SEC_ERROR_OCSP_TRY_SERVER_LATER                   = SEC_ERROR_BASE + 122;
@@ -153,11 +154,12 @@ function run_test() {
   do_get_profile();
   add_tls_server_setup("<test-server-name>");
 
-  add_connection_test("<test-name-1>.example.com", Cr.<expected result>,
-                      <ocsp stapling enabled>);
+  add_connection_test("<test-name-1>.example.com",
+                      getXPCOMStatusFromNSS(SEC_ERROR_xxx),
+                      function() { ... },
+                      function(aTransportSecurityInfo) { ... });
   [...]
-  add_connection_test("<test-name-n>.example.com", Cr.<expected result>,
-                      <ocsp stapling enabled>);
+  add_connection_test("<test-name-n>.example.com", Cr.NS_OK);
 
   run_next_test();
 }
@@ -251,14 +253,10 @@ function add_connection_test(aHost, aExpectedResult,
       aBeforeConnect();
     }
     connectTo(aHost).then(function(conn) {
-      dump("hello #0\n");
       do_check_eq(conn.result, aExpectedResult);
-      dump("hello #0.5\n");
       if (aWithSecurityInfo) {
-        dump("hello #1\n");
         aWithSecurityInfo(conn.transport.securityInfo
                               .QueryInterface(Ci.nsITransportSecurityInfo));
-        dump("hello #2\n");
       }
       run_next_test();
     });

@@ -146,7 +146,7 @@ NS_IMETHODIMP imgTools::EncodeScaledImage(imgIContainer *aContainer,
 
   // Create a temporary image surface
   nsRefPtr<gfxImageSurface> dest = new gfxImageSurface(gfxIntSize(aScaledWidth, aScaledHeight),
-                                                       gfxImageFormatARGB32);
+                                                       gfxImageFormat::ARGB32);
   if (gfxPlatform::GetPlatform()->SupportsAzureContent()) {
     RefPtr<DrawTarget> dt =
       gfxPlatform::GetPlatform()->CreateDrawTargetForSurface(dest, IntSize(aScaledWidth, aScaledHeight));
@@ -156,7 +156,7 @@ NS_IMETHODIMP imgTools::EncodeScaledImage(imgIContainer *aContainer,
                     Rect(0, 0, aScaledWidth, aScaledHeight),
                     Rect(0, 0, frameWidth, frameHeight),
                     DrawSurfaceOptions(),
-                    DrawOptions(1.0f, OP_SOURCE));
+                    DrawOptions(1.0f, CompositionOp::OP_SOURCE));
   } else {
     gfxContext ctx(dest);
 
@@ -220,7 +220,7 @@ NS_IMETHODIMP imgTools::EncodeCroppedImage(imgIContainer *aContainer,
 
   // Create a temporary image surface
   nsRefPtr<gfxImageSurface> dest = new gfxImageSurface(gfxIntSize(aWidth, aHeight),
-                                                       gfxImageFormatARGB32);
+                                                       gfxImageFormat::ARGB32);
   gfxContext ctx(dest);
 
   // Set translate

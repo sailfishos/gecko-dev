@@ -143,7 +143,7 @@ void EmbedLiteCompositorParent::SetSurfaceSize(int width, int height)
   CompositorParent::SetEGLSurfaceSize(width, height);
 }
 
-void EmbedLiteCompositorParent::SetWorldTransform(gfxMatrix aMatrix)
+void EmbedLiteCompositorParent::SetWorldTransform(gfx::Matrix aMatrix)
 {
   mWorldTransform = aMatrix;
 }

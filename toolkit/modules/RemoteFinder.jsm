@@ -34,8 +34,7 @@ RemoteFinder.prototype = {
     this._searchString = aMessage.data.searchString;
 
     for (let l of this._listeners) {
-      l.onFindResult(aMessage.data.result, aMessage.data.findBackwards,
-                     aMessage.data.linkURL);
+      l.onFindResult(aMessage.data);
     }
   },
 
@@ -108,10 +107,8 @@ RemoteFinderListener.prototype = {
     "Finder:KeyPress"
   ],
 
-  onFindResult: function (aResult, aFindBackwards, aLinkURL) {
-    let data = { result: aResult, findBackwards: aFindBackwards,
-                 linkURL: aLinkURL, searchString: this._finder.searchString };
-    this._global.sendAsyncMessage("Finder:Result", data);
+  onFindResult: function (aData) {
+    this._global.sendAsyncMessage("Finder:Result", aData);
   },
 
   //XXXmikedeboer-20131016: implement |shouldFocusContent| here to mitigate

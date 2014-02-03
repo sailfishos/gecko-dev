@@ -111,9 +111,9 @@ nsSimplePageSequenceFrame::SetDesiredSize(nsHTMLReflowMetrics& aDesiredSize,
     // can act as a background in print preview but also handle overflow
     // in child page frames correctly.
     // Use availableWidth so we don't cause a needless horizontal scrollbar.
-    aDesiredSize.width = std::max(aReflowState.availableWidth,
+    aDesiredSize.Width() = std::max(aReflowState.AvailableWidth(),
                                 nscoord(aWidth * PresContext()->GetPrintPreviewScale()));
-    aDesiredSize.height = std::max(aReflowState.ComputedHeight(),
+    aDesiredSize.Height() = std::max(aReflowState.ComputedHeight(),
                                  nscoord(aHeight * PresContext()->GetPrintPreviewScale()));
 }
 
@@ -200,7 +200,7 @@ nsSimplePageSequenceFrame::Reflow(nsPresContext*          aPresContext,
   nscoord maxXMost = 0;
 
   // Tile the pages vertically
-  nsHTMLReflowMetrics kidSize;
+  nsHTMLReflowMetrics kidSize(aReflowState.GetWritingMode());
   for (nsIFrame* kidFrame = mFrames.FirstChild(); nullptr != kidFrame; ) {
     // Set the shared data into the page frame before reflow
     nsPageFrame * pf = static_cast<nsPageFrame*>(kidFrame);
@@ -211,11 +211,11 @@ nsSimplePageSequenceFrame::Reflow(nsPresContext*          aPresContext,
                                      pageSize);
     nsReflowStatus  status;
 
-    kidReflowState.SetComputedWidth(kidReflowState.availableWidth);
-    //kidReflowState.SetComputedHeight(kidReflowState.availableHeight);
-    PR_PL(("AV W: %d   H: %d\n", kidReflowState.availableWidth, kidReflowState.availableHeight));
+    kidReflowState.SetComputedWidth(kidReflowState.AvailableWidth());
+    //kidReflowState.SetComputedHeight(kidReflowState.AvailableHeight());
+    PR_PL(("AV W: %d   H: %d\n", kidReflowState.AvailableWidth(), kidReflowState.AvailableHeight()));
 
-    nsMargin pageCSSMargin = kidReflowState.mComputedMargin;
+    nsMargin pageCSSMargin = kidReflowState.ComputedPhysicalMargin();
     y += pageCSSMargin.top;
     const nscoord x = pageCSSMargin.left;
 
@@ -223,11 +223,11 @@ nsSimplePageSequenceFrame::Reflow(nsPresContext*          aPresContext,
     // max width then center it horizontally
     ReflowChild(kidFrame, aPresContext, kidSize, kidReflowState, x, y, 0, status);
 
-    FinishReflowChild(kidFrame, aPresContext, nullptr, kidSize, x, y, 0);
-    y += kidSize.height;
+    FinishReflowChild(kidFrame, aPresContext, kidSize, nullptr, x, y, 0);
+    y += kidSize.Height();
     y += pageCSSMargin.bottom;
 
-    maxXMost = std::max(maxXMost, x + kidSize.width + pageCSSMargin.right);
+    maxXMost = std::max(maxXMost, x + kidSize.Width() + pageCSSMargin.right);
 
     // Is the page complete?
     nsIFrame* kidNextInFlow = kidFrame->GetNextInFlow();
@@ -302,7 +302,7 @@ nsSimplePageSequenceFrame::Reflow(nsPresContext*          aPresContext,
 
 //----------------------------------------------------------------------
 
-#ifdef DEBUG
+#ifdef DEBUG_FRAME_DUMP
 NS_IMETHODIMP
 nsSimplePageSequenceFrame::GetFrameName(nsAString& aResult) const
 {
@@ -605,7 +605,7 @@ nsSimplePageSequenceFrame::PrePrintNextPage(nsITimerCallback* aCallback, bool* a
 
         nsRefPtr<gfxASurface> printSurface = renderingSurface->
            CreateSimilarSurface(
-             GFX_CONTENT_COLOR_ALPHA,
+             gfxContentType::COLOR_ALPHA,
              size
            );
 

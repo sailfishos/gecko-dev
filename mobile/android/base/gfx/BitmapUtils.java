@@ -13,6 +13,7 @@ import android.content.Context;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.BitmapDrawable;
@@ -47,7 +48,7 @@ public final class BitmapUtils {
         }
 
         if (data.startsWith("data")) {
-            BitmapDrawable d = new BitmapDrawable(getBitmapFromDataURI(data));
+            BitmapDrawable d = new BitmapDrawable(context.getResources(), getBitmapFromDataURI(data));
             loader.onBitmapFound(d);
             return;
         }
@@ -117,6 +118,14 @@ public final class BitmapUtils {
     }
 
     public static Bitmap decodeByteArray(byte[] bytes, BitmapFactory.Options options) {
+        return decodeByteArray(bytes, 0, bytes.length, options);
+    }
+
+    public static Bitmap decodeByteArray(byte[] bytes, int offset, int length) {
+        return decodeByteArray(bytes, offset, length, null);
+    }
+
+    public static Bitmap decodeByteArray(byte[] bytes, int offset, int length, BitmapFactory.Options options) {
         if (bytes.length <= 0) {
             throw new IllegalArgumentException("bytes.length " + bytes.length
                                                + " must be a positive number");
@@ -124,7 +133,7 @@ public final class BitmapUtils {
 
         Bitmap bitmap = null;
         try {
-            bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length, options);
+            bitmap = BitmapFactory.decodeByteArray(bytes, offset, length, options);
         } catch (OutOfMemoryError e) {
             Log.e(LOGTAG, "decodeByteArray(bytes.length=" + bytes.length
                           + ", options= " + options + ") OOM!", e);
@@ -233,15 +242,19 @@ public final class BitmapUtils {
       float[] sumHue = new float[36];
       float[] sumSat = new float[36];
       float[] sumVal = new float[36];
+      float[] hsv = new float[3];
 
-      for (int row = 0; row < source.getHeight(); row++) {
-        for (int col = 0; col < source.getWidth(); col++) {
-          int c = source.getPixel(col, row);
+      int height = source.getHeight();
+      int width = source.getWidth();
+      int[] pixels = new int[width * height];
+      source.getPixels(pixels, 0, width, 0, 0, width, height);
+      for (int row = 0; row < height; row++) {
+        for (int col = 0; col < width; col++) {
+          int c = pixels[col + row * width];
           // Ignore pixels with a certain transparency.
           if (Color.alpha(c) < 128)
             continue;
 
-          float[] hsv = new float[3];
           Color.colorToHSV(c, hsv);
 
           // If a threshold is applied, ignore arbitrarily chosen values for "white" and "black".
@@ -270,7 +283,6 @@ public final class BitmapUtils {
         return Color.argb(255,255,255,255);
 
       // Return a color with the average hue/saturation/value of the bin with the most colors.
-      float[] hsv = new float[3];
       hsv[0] = sumHue[maxBin]/colorBins[maxBin];
       hsv[1] = sumSat[maxBin]/colorBins[maxBin];
       hsv[2] = sumVal[maxBin]/colorBins[maxBin];
@@ -292,6 +304,24 @@ public final class BitmapUtils {
             Log.e(LOGTAG, "exception decoding bitmap from data URI: " + dataURI, e);
         }
         return null;
+    }
+
+    public static Bitmap getBitmapFromDrawable(Drawable drawable) {
+        if (drawable instanceof BitmapDrawable) {
+            return ((BitmapDrawable) drawable).getBitmap();
+        }
+
+        int width = drawable.getIntrinsicWidth();
+        width = width > 0 ? width : 1;
+        int height = drawable.getIntrinsicHeight();
+        height = height > 0 ? height : 1;
+
+        Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+        drawable.setBounds(0, 0, canvas.getWidth(), canvas.getHeight());
+        drawable.draw(canvas);
+
+        return bitmap;
     }
 
     public static int getResource(Uri resourceUrl, int defaultIcon) {

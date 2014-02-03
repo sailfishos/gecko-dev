@@ -539,6 +539,12 @@ MConstant::canProduceFloat32() const
     return true;
 }
 
+MCloneLiteral *
+MCloneLiteral::New(TempAllocator &alloc, MDefinition *obj)
+{
+    return new(alloc) MCloneLiteral(obj);
+}
+
 void
 MControlInstruction::printOpcode(FILE *fp) const
 {
@@ -604,6 +610,7 @@ MMathFunction::FunctionName(Function function)
       case Trunc:  return "Trunc";
       case Cbrt:   return "Cbrt";
       case Floor:  return "Floor";
+      case Ceil:   return "Ceil";
       case Round:  return "Round";
       default:
         MOZ_ASSUME_UNREACHABLE("Unknown math function");
@@ -647,13 +654,120 @@ MParameter::congruentTo(MDefinition *ins) const
 
 MCall *
 MCall::New(TempAllocator &alloc, JSFunction *target, size_t maxArgc, size_t numActualArgs,
-           bool construct)
+           bool construct, bool isDOMCall)
 {
     JS_ASSERT(maxArgc >= numActualArgs);
-    MCall *ins = new(alloc) MCall(target, numActualArgs, construct);
+    MCall *ins;
+    if (isDOMCall) {
+        JS_ASSERT(!construct);
+        ins = new(alloc) MCallDOMNative(target, numActualArgs);
+    } else {
+        ins = new(alloc) MCall(target, numActualArgs, construct);
+    }
     if (!ins->init(alloc, maxArgc + NumNonArgumentOperands))
         return nullptr;
     return ins;
+}
+
+AliasSet
+MCallDOMNative::getAliasSet() const
+{
+    JS_ASSERT(getSingleTarget() && getSingleTarget()->isNative());
+
+    const JSJitInfo *jitInfo = getSingleTarget()->jitInfo();
+    JS_ASSERT(jitInfo);
+
+    JS_ASSERT(jitInfo->aliasSet() != JSJitInfo::AliasNone);
+    // If we don't know anything about the types of our arguments, we have to
+    // assume that type-coercions can have side-effects, so we need to alias
+    // everything.
+    if (jitInfo->aliasSet() != JSJitInfo::AliasDOMSets || !jitInfo->isTypedMethodJitInfo())
+        return AliasSet::Store(AliasSet::Any);
+
+    uint32_t argIndex = 0;
+    const JSTypedMethodJitInfo *methodInfo =
+        reinterpret_cast<const JSTypedMethodJitInfo*>(jitInfo);
+    for (const JSJitInfo::ArgType *argType = methodInfo->argTypes;
+         *argType != JSJitInfo::ArgTypeListEnd;
+         ++argType, ++argIndex)
+    {
+        if (argIndex >= numActualArgs()) {
+            // Passing through undefined can't have side-effects
+            continue;
+        }
+        // getArg(0) is "this", so skip it
+        MDefinition *arg = getArg(argIndex+1);
+        MIRType actualType = arg->type();
+        // The only way to reliably avoid side-effects given the informtion we
+        // have here is if we're passing in a known primitive value to an
+        // argument that expects a primitive value.  XXXbz maybe we need to
+        // communicate better information.  For example, a sequence argument
+        // will sort of unavoidably have side effects, while a typed array
+        // argument won't have any, but both are claimed to be
+        // JSJitInfo::Object.
+        if ((actualType == MIRType_Value || actualType == MIRType_Object) ||
+            (*argType & JSJitInfo::Object))
+         {
+             return AliasSet::Store(AliasSet::Any);
+         }
+    }
+
+    // We checked all the args, and they check out.  So we only
+    // alias DOM mutations.
+    return AliasSet::Load(AliasSet::DOMProperty);
+}
+
+void
+MCallDOMNative::computeMovable()
+{
+    // We are movable if the jitinfo says we can be and if we're also not
+    // effectful.  The jitinfo can't check for the latter, since it depends on
+    // the types of our arguments.
+    JS_ASSERT(getSingleTarget() && getSingleTarget()->isNative());
+
+    const JSJitInfo *jitInfo = getSingleTarget()->jitInfo();
+    JS_ASSERT(jitInfo);
+
+    JS_ASSERT_IF(jitInfo->isMovable,
+                 jitInfo->aliasSet() != JSJitInfo::AliasEverything);
+
+    if (jitInfo->isMovable && !isEffectful())
+        setMovable();
+}
+
+bool
+MCallDOMNative::congruentTo(MDefinition *ins) const
+{
+    if (!isMovable())
+        return false;
+
+    if (!ins->isCall())
+        return false;
+
+    MCall *call = ins->toCall();
+
+    if (!call->isCallDOMNative())
+        return false;
+
+    if (getSingleTarget() != call->getSingleTarget())
+        return false;
+
+    if (isConstructing() != call->isConstructing())
+        return false;
+
+    if (numActualArgs() != call->numActualArgs())
+        return false;
+
+    if (needsArgCheck() != call->needsArgCheck())
+        return false;
+
+    if (!congruentIfOperandsEqual(call))
+        return false;
+
+    // The other call had better be movable at this point!
+    JS_ASSERT(call->isMovable());
+
+    return true;
 }
 
 MApplyArgs *
@@ -668,9 +782,10 @@ MStringLength::foldsTo(TempAllocator &alloc, bool useValueNumbers)
 {
     if ((type() == MIRType_Int32) && (string()->isConstant())) {
         Value value = string()->toConstant()->value();
-        size_t length = JS_GetStringLength(value.toString());
+        JSAtom *atom = &value.toString()->asAtom();
 
-        return MConstant::New(alloc, Int32Value(length));
+        AutoThreadSafeAccess ts(atom);
+        return MConstant::New(alloc, Int32Value(atom->length()));
     }
 
     return this;
@@ -1014,29 +1129,12 @@ MPhi::addInputSlow(MDefinition *ins, bool *ptypeChange)
     return true;
 }
 
-uint32_t
-MPrepareCall::argc() const
-{
-    JS_ASSERT(hasOneUse());
-    MCall *call = usesBegin()->consumer()->toDefinition()->toCall();
-    return call->numStackArgs();
-}
-
 void
-MPassArg::printOpcode(FILE *fp) const
-{
-    PrintOpcodeName(fp, op());
-    fprintf(fp, " %d ", argnum_);
-    getOperand(0)->printName(fp);
-}
-
-void
-MCall::addArg(size_t argnum, MPassArg *arg)
+MCall::addArg(size_t argnum, MDefinition *arg)
 {
     // The operand vector is initialized in reverse order by the IonBuilder.
     // It cannot be checked for consistency until all arguments are added.
-    arg->setArgnum(argnum);
-    setOperand(argnum + NumNonArgumentOperands, arg->toDefinition());
+    setOperand(argnum + NumNonArgumentOperands, arg);
 }
 
 void
@@ -1765,11 +1863,11 @@ MBinaryInstruction::tryUseUnsignedOperands()
         if (newlhs->type() != MIRType_Int32 || newrhs->type() != MIRType_Int32)
             return false;
         if (newlhs != getOperand(0)) {
-            getOperand(0)->setFoldedUnchecked();
+            getOperand(0)->setImplicitlyUsedUnchecked();
             replaceOperand(0, newlhs);
         }
         if (newrhs != getOperand(1)) {
-            getOperand(1)->setFoldedUnchecked();
+            getOperand(1)->setImplicitlyUsedUnchecked();
             replaceOperand(1, newrhs);
         }
         return true;
@@ -1822,11 +1920,11 @@ MCompare::infer(BaselineInspector *inspector, jsbytecode *pc)
     }
 
     // Any comparison is allowed except strict eq.
-    if (!strictEq && lhs == MIRType_Double && SafelyCoercesToDouble(getOperand(1))) {
+    if (!strictEq && IsFloatingPointType(lhs) && SafelyCoercesToDouble(getOperand(1))) {
         compareType_ = Compare_DoubleMaybeCoerceRHS;
         return;
     }
-    if (!strictEq && rhs == MIRType_Double && SafelyCoercesToDouble(getOperand(0))) {
+    if (!strictEq && IsFloatingPointType(rhs) && SafelyCoercesToDouble(getOperand(0))) {
         compareType_ = Compare_DoubleMaybeCoerceLHS;
         return;
     }
@@ -2108,10 +2206,6 @@ MResumePoint::inherit(MBasicBlock *block)
 {
     for (size_t i = 0; i < stackDepth(); i++) {
         MDefinition *def = block->getSlot(i);
-        // We have to unwrap MPassArg: it's removed when inlining calls
-        // and LStackArg does not define a value.
-        if (def->isPassArg())
-            def = def->toPassArg()->getArgument();
         setOperand(i, def);
     }
 }
@@ -2443,9 +2537,6 @@ MCompare::trySpecializeFloat32(TempAllocator &alloc)
     MDefinition *lhs = getOperand(0);
     MDefinition *rhs = getOperand(1);
 
-    if (compareType_ == Compare_Float32)
-        return;
-
     if (lhs->canProduceFloat32() && rhs->canProduceFloat32() && compareType_ == Compare_Double) {
         compareType_ = Compare_Float32;
     } else {
@@ -2511,6 +2602,7 @@ MBeta::printOpcode(FILE *fp) const
 bool
 MNewObject::shouldUseVM() const
 {
+    AutoThreadSafeAccess ts(templateObject());
     return templateObject()->hasSingletonType() ||
            templateObject()->hasDynamicSlots();
 }
@@ -2679,6 +2771,15 @@ void *
 MStoreTypedArrayElementStatic::base() const
 {
     return typedArray_->viewData();
+}
+
+bool
+MGetElementCache::allowDoubleResult() const
+{
+    if (!resultTypeSet())
+        return true;
+
+    return resultTypeSet()->hasType(types::Type::DoubleType());
 }
 
 size_t
@@ -3044,7 +3145,7 @@ jit::PropertyReadIsIdempotent(types::CompilerConstraintList *constraints,
 
             // Check if the property has been reconfigured or is a getter.
             types::HeapTypeSetKey property = object->property(NameToId(name));
-            if (property.configured(constraints))
+            if (property.nonData(constraints))
                 return false;
         }
     }

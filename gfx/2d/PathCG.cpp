@@ -233,7 +233,7 @@ PathCG::ContainsPoint(const Point &aPoint, const Matrix &aTransform) const
 
   // The transform parameter of CGPathContainsPoint doesn't seem to work properly on OS X 10.5
   // so we transform aPoint ourselves.
-  return CGPathContainsPoint(mPath, nullptr, point, mFillRule == FILL_EVEN_ODD);
+  return CGPathContainsPoint(mPath, nullptr, point, mFillRule == FillRule::FILL_EVEN_ODD);
 }
 
 static size_t
@@ -297,10 +297,8 @@ PathCG::GetBounds(const Matrix &aTransform) const
 {
   //XXX: are these bounds tight enough
   Rect bounds = CGRectToRect(CGPathGetBoundingBox(mPath));
-  if (!bounds.IsFinite()) {
-    return Rect();
-  }
-  //XXX: curretnly this returns the bounds of the transformed bounds
+
+  //XXX: currently this returns the bounds of the transformed bounds
   // this is strictly looser than the bounds of the transformed path
   return aTransform.TransformBounds(bounds);
 }

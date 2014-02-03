@@ -28,7 +28,6 @@
 #include "nsTArray.h"                   // for nsTArray
 
 class gfxContext;
-struct gfxMatrix;
 class gfxASurface;
 
 namespace mozilla {
@@ -63,16 +62,16 @@ class ThebesLayer;
  * are done painting we unmap the surface/texture client and don't need to keep
  * it alive anymore, so we clear mOldTextures.
  *
- * The sequence for painting is: BeginPaint (lock our texture client into the
- * buffer), Paint the layer which calls SyncFrontBufferToBackBuffer (which gets
- * the surface back from the buffer and puts it back in again with the buffer
- * attributes), call BeginPaint on the buffer, call PaintBuffer on the layer
- * (which does the actual painting via the callback, then calls Updated on the
- * ContentClient, finally calling EndPaint on the ContentClient (which unlocks
- * the surface from the buffer)).
- *
- * Updated() is called when we are done painting and packages up the change in
- * the appropriate way to be passed to the compositor in the layers transation.
+ * The sequence for painting is: call BeginPaint on the content client;
+ * call PrepareFrame on the content client;
+ * call BeginPaintBuffer on the content client. That will initialise the buffer
+ * for painting, by calling RotatedContentBuffer::BeginPaint (usually) which
+ * will call back to ContentClient::FinalizeFrame to finalize update of the
+ * buffers before drawing (i.e., it finalizes the previous frame). Then call
+ * BorrowDrawTargetForPainting to get a DrawTarget to paint into. Then paint.
+ * Then return that DrawTarget using ReturnDrawTarget.
+ * Call EndPaint on the content client;
+ * call OnTransaction on the content client.
  *
  * SwapBuffers is called in response to the transaction reply from the compositor.
  */
@@ -95,14 +94,12 @@ public:
 
   virtual void Clear() = 0;
   virtual RotatedContentBuffer::PaintState BeginPaintBuffer(ThebesLayer* aLayer,
-                                                            RotatedContentBuffer::ContentType aContentType,
                                                             uint32_t aFlags) = 0;
+  virtual gfx::DrawTarget* BorrowDrawTargetForPainting(ThebesLayer* aLayer,
+                                                       const RotatedContentBuffer::PaintState& aPaintState) = 0;
+  virtual void ReturnDrawTargetToBuffer(gfx::DrawTarget*& aReturned) = 0;
 
-  // Sync front/back buffers content
-  // After executing, the new back buffer has the same (interesting) pixels as
-  // the new front buffer, and mValidRegion et al. are correct wrt the new
-  // back buffer (i.e. as they were for the old back buffer)
-  virtual void SyncFrontBufferToBackBuffer() {}
+  virtual void PrepareFrame() {}
 
   // Called as part of the layers transation reply. Conveys data about our
   // buffer(s) from the compositor. If appropriate we should swap references
@@ -140,16 +137,30 @@ public:
   typedef RotatedContentBuffer::ContentType ContentType;
 
   virtual void Clear() { RotatedContentBuffer::Clear(); }
-  PaintState BeginPaintBuffer(ThebesLayer* aLayer, ContentType aContentType,
-                              uint32_t aFlags)
+  virtual PaintState BeginPaintBuffer(ThebesLayer* aLayer,
+                                      uint32_t aFlags) MOZ_OVERRIDE
   {
-    return RotatedContentBuffer::BeginPaint(aLayer, aContentType, aFlags);
+    return RotatedContentBuffer::BeginPaint(aLayer, aFlags);
+  }
+  virtual gfx::DrawTarget* BorrowDrawTargetForPainting(ThebesLayer* aLayer,
+                                                       const PaintState& aPaintState) MOZ_OVERRIDE
+  {
+    return RotatedContentBuffer::BorrowDrawTargetForPainting(aLayer, aPaintState);
+  }
+  virtual void ReturnDrawTargetToBuffer(gfx::DrawTarget*& aReturned) MOZ_OVERRIDE
+  {
+    BorrowDrawTarget::ReturnDrawTarget(aReturned);
   }
 
-  void DrawTo(ThebesLayer* aLayer, gfxContext* aTarget, float aOpacity,
-              gfxASurface* aMask, const gfxMatrix* aMaskTransform)
+  void DrawTo(ThebesLayer* aLayer,
+              gfx::DrawTarget* aTarget,
+              float aOpacity,
+              gfx::CompositionOp aOp,
+              gfxASurface* aMask,
+              const gfx::Matrix* aMaskTransform)
   {
-    RotatedContentBuffer::DrawTo(aLayer, aTarget, aOpacity, aMask, aMaskTransform);
+    RotatedContentBuffer::DrawTo(aLayer, aTarget, aOpacity, aOp,
+                                 aMask, aMaskTransform);
   }
 
   virtual void CreateBuffer(ContentType aType, const nsIntRect& aRect, uint32_t aFlags,
@@ -188,17 +199,27 @@ public:
     , RotatedContentBuffer(ContainsVisibleBounds)
     , mIsNewBuffer(false)
     , mFrontAndBackBufferDiffer(false)
-    , mSurfaceFormat(gfx::FORMAT_B8G8R8A8)
+    , mSurfaceFormat(gfx::SurfaceFormat::B8G8R8A8)
   {}
 
   typedef RotatedContentBuffer::PaintState PaintState;
   typedef RotatedContentBuffer::ContentType ContentType;
 
   virtual void Clear() { RotatedContentBuffer::Clear(); }
-  PaintState BeginPaintBuffer(ThebesLayer* aLayer, ContentType aContentType,
-                              uint32_t aFlags)
+
+  virtual PaintState BeginPaintBuffer(ThebesLayer* aLayer,
+                                      uint32_t aFlags) MOZ_OVERRIDE
   {
-    return RotatedContentBuffer::BeginPaint(aLayer, aContentType, aFlags);
+    return RotatedContentBuffer::BeginPaint(aLayer, aFlags);
+  }
+  virtual gfx::DrawTarget* BorrowDrawTargetForPainting(ThebesLayer* aLayer,
+                                                       const PaintState& aPaintState) MOZ_OVERRIDE
+  {
+    return RotatedContentBuffer::BorrowDrawTargetForPainting(aLayer, aPaintState);
+  }
+  virtual void ReturnDrawTargetToBuffer(gfx::DrawTarget*& aReturned) MOZ_OVERRIDE
+  {
+    BorrowDrawTarget::ReturnDrawTarget(aReturned);
   }
 
   /**
@@ -288,17 +309,27 @@ public:
     , mDeprecatedTextureClient(nullptr)
     , mIsNewBuffer(false)
     , mFrontAndBackBufferDiffer(false)
-    , mContentType(GFX_CONTENT_COLOR_ALPHA)
+    , mContentType(gfxContentType::COLOR_ALPHA)
   {}
 
   typedef RotatedContentBuffer::PaintState PaintState;
   typedef RotatedContentBuffer::ContentType ContentType;
 
   virtual void Clear() { RotatedContentBuffer::Clear(); }
-  PaintState BeginPaintBuffer(ThebesLayer* aLayer, ContentType aContentType,
-                              uint32_t aFlags)
+
+  virtual PaintState BeginPaintBuffer(ThebesLayer* aLayer,
+                                      uint32_t aFlags) MOZ_OVERRIDE
   {
-    return RotatedContentBuffer::BeginPaint(aLayer, aContentType, aFlags);
+    return RotatedContentBuffer::BeginPaint(aLayer, aFlags);
+  }
+  virtual gfx::DrawTarget* BorrowDrawTargetForPainting(ThebesLayer* aLayer,
+                                                       const PaintState& aPaintState) MOZ_OVERRIDE
+  {
+    return RotatedContentBuffer::BorrowDrawTargetForPainting(aLayer, aPaintState);
+  }
+  virtual void ReturnDrawTargetToBuffer(gfx::DrawTarget*& aReturned) MOZ_OVERRIDE
+  {
+    BorrowDrawTarget::ReturnDrawTarget(aReturned);
   }
 
   /**
@@ -394,7 +425,9 @@ public:
 
   virtual void SwapBuffers(const nsIntRegion& aFrontUpdatedRegion) MOZ_OVERRIDE;
 
-  virtual void SyncFrontBufferToBackBuffer() MOZ_OVERRIDE;
+  virtual void PrepareFrame() MOZ_OVERRIDE;
+
+  virtual void FinalizeFrame(const nsIntRegion& aRegionToDraw) MOZ_OVERRIDE;
 
 protected:
   virtual void CreateFrontBuffer(const nsIntRect& aBufferRect) MOZ_OVERRIDE;
@@ -431,7 +464,9 @@ public:
 
   virtual void SwapBuffers(const nsIntRegion& aFrontUpdatedRegion) MOZ_OVERRIDE;
 
-  virtual void SyncFrontBufferToBackBuffer() MOZ_OVERRIDE;
+  virtual void PrepareFrame() MOZ_OVERRIDE;
+
+  virtual void FinalizeFrame(const nsIntRegion& aRegionToDraw) MOZ_OVERRIDE;
 
 protected:
   virtual void CreateFrontBufferAndNotify(const nsIntRect& aBufferRect) MOZ_OVERRIDE;
@@ -467,7 +502,7 @@ public:
   }
   virtual ~ContentClientSingleBuffered() {}
 
-  virtual void SyncFrontBufferToBackBuffer() MOZ_OVERRIDE;
+  virtual void PrepareFrame() MOZ_OVERRIDE;
 
 protected:
   virtual void CreateFrontBuffer(const nsIntRect& aBufferRect) MOZ_OVERRIDE {}
@@ -483,7 +518,7 @@ public:
   }
   ~DeprecatedContentClientSingleBuffered();
 
-  virtual void SyncFrontBufferToBackBuffer() MOZ_OVERRIDE;
+  virtual void PrepareFrame() MOZ_OVERRIDE;
 
 protected:
   virtual void CreateFrontBufferAndNotify(const nsIntRect& aBufferRect) MOZ_OVERRIDE;
@@ -496,11 +531,12 @@ protected:
  * new ones each frame.
  */
 class ContentClientIncremental : public ContentClientRemote
+                               , public BorrowDrawTarget
 {
 public:
   ContentClientIncremental(CompositableForwarder* aFwd)
     : ContentClientRemote(aFwd)
-    , mContentType(GFX_CONTENT_COLOR_ALPHA)
+    , mContentType(gfxContentType::COLOR_ALPHA)
     , mHasBuffer(false)
     , mHasBufferOnWhite(false)
   {
@@ -521,9 +557,15 @@ public:
     mHasBuffer = false;
     mHasBufferOnWhite = false;
   }
-  virtual RotatedContentBuffer::PaintState BeginPaintBuffer(ThebesLayer* aLayer,
-                                                            RotatedContentBuffer::ContentType aContentType,
-                                                            uint32_t aFlags);
+
+  virtual PaintState BeginPaintBuffer(ThebesLayer* aLayer,
+                                      uint32_t aFlags) MOZ_OVERRIDE;
+  virtual gfx::DrawTarget* BorrowDrawTargetForPainting(ThebesLayer* aLayer,
+                                                       const PaintState& aPaintState) MOZ_OVERRIDE;
+  virtual void ReturnDrawTargetToBuffer(gfx::DrawTarget*& aReturned) MOZ_OVERRIDE
+  {
+    BorrowDrawTarget::ReturnDrawTarget(aReturned);
+  }
 
   virtual void Updated(const nsIntRegion& aRegionToDraw,
                        const nsIntRegion& aVisibleRegion,
@@ -557,7 +599,8 @@ private:
 
   }
 
-  already_AddRefed<gfxASurface> GetUpdateSurface(BufferType aType, nsIntRegion& aUpdateRegion);
+  already_AddRefed<gfxASurface> GetUpdateSurface(BufferType aType,
+                                                 const nsIntRegion& aUpdateRegion);
 
   TextureInfo mTextureInfo;
   nsIntRect mBufferRect;

@@ -159,12 +159,15 @@ AndroidBridge::Init(JNIEnv *jEnv)
 {
     ALOG_BRIDGE("AndroidBridge::Init");
     jEnv->GetJavaVM(&mJavaVM);
+    if (!mJavaVM) {
+        MOZ_CRASH(); // Nothing we can do here
+    }
 
     AutoLocalJNIFrame jniFrame(jEnv);
 
     mJNIEnv = nullptr;
     mThread = -1;
-    mGLControllerObj = NULL;
+    mGLControllerObj = nullptr;
     mOpenedGraphicsLibraries = false;
     mHasNativeBitmapAccess = false;
     mHasNativeWindowAccess = false;
@@ -225,7 +228,7 @@ AndroidBridge::SetMainThread(pthread_t thr)
 }
 
 // Raw JNIEnv variants.
-jstring AndroidBridge::NewJavaString(JNIEnv* env, const PRUnichar* string, uint32_t len) {
+jstring AndroidBridge::NewJavaString(JNIEnv* env, const char16_t* string, uint32_t len) {
    jstring ret = env->NewString(reinterpret_cast<const jchar*>(string), len);
    if (env->ExceptionCheck()) {
        ALOG_BRIDGE("Exceptional exit of: %s", __PRETTY_FUNCTION__);
@@ -249,7 +252,7 @@ jstring AndroidBridge::NewJavaString(JNIEnv* env, const nsACString& string) {
 }
 
 // AutoLocalJNIFrame variants..
-jstring AndroidBridge::NewJavaString(AutoLocalJNIFrame* frame, const PRUnichar* string, uint32_t len) {
+jstring AndroidBridge::NewJavaString(AutoLocalJNIFrame* frame, const char16_t* string, uint32_t len) {
     return NewJavaString(frame->GetEnv(), string, len);
 }
 
@@ -269,32 +272,22 @@ extern "C" {
     __attribute__ ((visibility("default")))
     JNIEnv * GetJNIForThread()
     {
-        JNIEnv *jEnv = NULL;
-        JavaVM *jVm  = mozilla::AndroidBridge::GetVM();
-        if (!jVm) {
-            __android_log_print(ANDROID_LOG_INFO, "GetJNIForThread", "Returned a null VM");
-            return NULL;
-        }
-        jEnv = static_cast<JNIEnv*>(PR_GetThreadPrivate(sJavaEnvThreadIndex));
-
-        if (jEnv)
+        JNIEnv *jEnv = static_cast<JNIEnv*>(PR_GetThreadPrivate(sJavaEnvThreadIndex));
+        if (jEnv) {
             return jEnv;
-
-        int status = jVm->GetEnv((void**) &jEnv, JNI_VERSION_1_2);
-        if (status) {
-
-            status = jVm->AttachCurrentThread(&jEnv, NULL);
-            if (status) {
-                __android_log_print(ANDROID_LOG_INFO, "GetJNIForThread",  "Could not attach");
-                return NULL;
-            }
-
+        }
+        JavaVM *jVm  = mozilla::AndroidBridge::GetVM();
+        if (!jVm->GetEnv(reinterpret_cast<void**>(&jEnv), JNI_VERSION_1_2)) {
+            MOZ_ASSERT(jEnv);
+            return jEnv;
+        }
+        if (!jVm->AttachCurrentThread(&jEnv, nullptr)) {
+            MOZ_ASSERT(jEnv);
             PR_SetThreadPrivate(sJavaEnvThreadIndex, jEnv);
+            return jEnv;
         }
-        if (!jEnv) {
-            __android_log_print(ANDROID_LOG_INFO, "GetJNIForThread", "returning NULL");
-        }
-        return jEnv;
+        MOZ_CRASH();
+        return nullptr; // unreachable
     }
 }
 
@@ -304,7 +297,7 @@ void AutoGlobalWrappedJavaObject::Dispose() {
     }
 
     GetJNIForThread()->DeleteGlobalRef(wrapped_obj);
-    wrapped_obj = NULL;
+    wrapped_obj = nullptr;
 }
 
 AutoGlobalWrappedJavaObject::~AutoGlobalWrappedJavaObject() {
@@ -320,6 +313,8 @@ getHandlersFromStringArray(JNIEnv *aJNIEnv, jobjectArray jArr, jsize aLen,
 {
     nsString empty = EmptyString();
     for (jsize i = 0; i < aLen; i+=4) {
+
+        AutoLocalJNIFrame jniFrame(aJNIEnv, 4);
         nsJNIString name(
             static_cast<jstring>(aJNIEnv->GetObjectArrayElement(jArr, i)), aJNIEnv);
         nsJNIString isDefault(
@@ -347,9 +342,8 @@ AndroidBridge::GetHandlersForMimeType(const nsAString& aMimeType,
     ALOG_BRIDGE("AndroidBridge::GetHandlersForMimeType");
 
     JNIEnv *env = GetJNIEnv();
-    if (!env)
-        return false;
 
+    AutoLocalJNIFrame jniFrame(env, 1);
     jobjectArray arr = GeckoAppShell::GetHandlersForMimeTypeWrapper(aMimeType, aAction);
     if (!arr)
         return false;
@@ -362,8 +356,6 @@ AndroidBridge::GetHandlersForMimeType(const nsAString& aMimeType,
     getHandlersFromStringArray(env, arr, len, aHandlersArray,
                                aDefaultApp, aAction,
                                NS_ConvertUTF16toUTF8(aMimeType));
-
-    env->DeleteLocalRef(arr);
     return true;
 }
 
@@ -376,9 +368,8 @@ AndroidBridge::GetHandlersForURL(const nsAString& aURL,
     ALOG_BRIDGE("AndroidBridge::GetHandlersForURL");
 
     JNIEnv *env = GetJNIEnv();
-    if (!env)
-        return false;
 
+    AutoLocalJNIFrame jniFrame(env, 1);
     jobjectArray arr = GeckoAppShell::GetHandlersForURLWrapper(aURL, aAction);
     if (!arr)
         return false;
@@ -390,8 +381,6 @@ AndroidBridge::GetHandlersForURL(const nsAString& aURL,
 
     getHandlersFromStringArray(env, arr, len, aHandlersArray,
                                aDefaultApp, aAction);
-
-    env->DeleteLocalRef(arr);
     return true;
 }
 
@@ -401,17 +390,14 @@ AndroidBridge::GetMimeTypeFromExtensions(const nsACString& aFileExt, nsCString& 
     ALOG_BRIDGE("AndroidBridge::GetMimeTypeFromExtensions");
 
     JNIEnv *env = GetJNIEnv();
-    if (!env)
-        return;
 
+    AutoLocalJNIFrame jniFrame(env, 1);
     jstring jstrType = GeckoAppShell::GetMimeTypeFromExtensionsWrapper(NS_ConvertUTF8toUTF16(aFileExt));
     if (!jstrType) {
         return;
     }
     nsJNIString jniStr(jstrType, env);
     CopyUTF16toUTF8(jniStr.get(), aMimeType);
-
-    env->DeleteLocalRef(jstrType);
 }
 
 void
@@ -420,17 +406,14 @@ AndroidBridge::GetExtensionFromMimeType(const nsACString& aMimeType, nsACString&
     ALOG_BRIDGE("AndroidBridge::GetExtensionFromMimeType");
 
     JNIEnv *env = GetJNIEnv();
-    if (!env)
-        return;
 
+    AutoLocalJNIFrame jniFrame(env, 1);
     jstring jstrExt = GeckoAppShell::GetExtensionFromMimeTypeWrapper(NS_ConvertUTF8toUTF16(aMimeType));
     if (!jstrExt) {
         return;
     }
     nsJNIString jniStr(jstrExt, env);
     CopyUTF16toUTF8(jniStr.get(), aFileExt);
-
-    env->DeleteLocalRef(jstrExt);
 }
 
 bool
@@ -439,17 +422,14 @@ AndroidBridge::GetClipboardText(nsAString& aText)
     ALOG_BRIDGE("AndroidBridge::GetClipboardText");
 
     JNIEnv *env = GetJNIEnv();
-    if (!env)
-        return false;
 
+    AutoLocalJNIFrame jniFrame(env, 1);
     jstring result = Clipboard::GetClipboardTextWrapper();
     if (!result)
         return false;
 
     nsJNIString jniStr(result, env);
     aText.Assign(jniStr);
-
-    env->DeleteLocalRef(result);
     return true;
 }
 
@@ -497,7 +477,9 @@ AndroidBridge::GetScreenDepth()
 
     const int DEFAULT_DEPTH = 16;
 
-    sDepth = GeckoAppShell::GetScreenDepthWrapper();
+    if (HasEnv()) {
+        sDepth = GeckoAppShell::GetScreenDepthWrapper();
+    }
     if (!sDepth)
         return DEFAULT_DEPTH;
 
@@ -508,32 +490,28 @@ void
 AndroidBridge::ShowFilePickerForExtensions(nsAString& aFilePath, const nsAString& aExtensions)
 {
     JNIEnv *env = GetJNIEnv();
-    if (!env)
-        return;
 
+    AutoLocalJNIFrame jniFrame(env, 1);
     jstring jstr = GeckoAppShell::ShowFilePickerForExtensionsWrapper(aExtensions);
     if (jstr == nullptr) {
         return;
     }
 
     aFilePath.Assign(nsJNIString(jstr, env));
-    env->DeleteLocalRef(jstr);
 }
 
 void
 AndroidBridge::ShowFilePickerForMimeType(nsAString& aFilePath, const nsAString& aMimeType)
 {
     JNIEnv *env = GetJNIEnv();
-    if (!env)
-        return;
 
+    AutoLocalJNIFrame jniFrame(env, 1);
     jstring jstr = GeckoAppShell::ShowFilePickerForMimeTypeWrapper(aMimeType);
     if (jstr == nullptr) {
         return;
     }
 
     aFilePath.Assign(nsJNIString(jstr, env));
-    env->DeleteLocalRef(jstr);
 }
 
 void
@@ -555,10 +533,8 @@ AndroidBridge::Vibrate(const nsTArray<uint32_t>& aPattern)
     }
 
     JNIEnv *env = GetJNIEnv();
-    if (!env)
-        return;
 
-    AutoLocalJNIFrame jniFrame(env);
+    AutoLocalJNIFrame jniFrame(env, 1);
 
     // It's clear if this worth special-casing, but it creates less
     // java junk, so dodges the GC.
@@ -606,10 +582,8 @@ AndroidBridge::GetSystemColors(AndroidSystemColors *aColors)
         return;
 
     JNIEnv *env = GetJNIEnv();
-    if (!env)
-        return;
 
-    AutoLocalJNIFrame jniFrame(env);
+    AutoLocalJNIFrame jniFrame(env, 1);
 
     jintArray arr = GeckoAppShell::GetSystemColoursWrapper();
     if (!arr)
@@ -644,10 +618,8 @@ AndroidBridge::GetIconForExtension(const nsACString& aFileExt, uint32_t aIconSiz
         return;
 
     JNIEnv *env = GetJNIEnv();
-    if (!env)
-        return;
 
-    AutoLocalJNIFrame jniFrame(env);
+    AutoLocalJNIFrame jniFrame(env, 1);
 
     jbyteArray arr = GeckoAppShell::GetIconForExtensionWrapper(NS_ConvertUTF8toUTF16(aFileExt), aIconSize);
 
@@ -694,7 +666,7 @@ AndroidBridge::SetLayerClient(JNIEnv* env, jobject jobj)
 void
 AndroidBridge::RegisterCompositor(JNIEnv *env)
 {
-    if (mGLControllerObj != NULL && !mGLControllerObj->isNull()) {
+    if (mGLControllerObj != nullptr && !mGLControllerObj->isNull()) {
         // we already have this set up, no need to do it again
         return;
     }
@@ -716,16 +688,13 @@ AndroidBridge::CreateEGLSurfaceForCompositor()
     MOZ_ASSERT(mGLControllerObj, "AndroidBridge::CreateEGLSurfaceForCompositor called with a null GL controller ref");
 
     JNIEnv* env = GetJNIForThread(); // called on the compositor thread
-    if (!env) {
-        return nullptr;
-    }
 
+    AutoLocalJNIFrame jniFrame(env, 1);
     jobject eglSurface = mGLControllerObj->CreateEGLSurfaceForCompositorWrapper();
     if (!eglSurface)
         return nullptr;
 
     EGLSurface ret = reinterpret_cast<EGLSurface>(env->GetIntField(eglSurface, jEGLSurfacePointerField));
-    env->DeleteLocalRef(eglSurface);
     return ret;
 }
 
@@ -735,9 +704,10 @@ AndroidBridge::GetStaticIntField(const char *className, const char *fieldName, i
     ALOG_BRIDGE("AndroidBridge::GetStaticIntField %s", fieldName);
 
     if (!jEnv) {
-        jEnv = GetJNIEnv();
-        if (!jEnv)
+        if (!HasEnv()) {
             return false;
+        }
+        jEnv = GetJNIEnv();
     }
 
     initInit();
@@ -761,11 +731,13 @@ AndroidBridge::GetStaticStringField(const char *className, const char *fieldName
     ALOG_BRIDGE("AndroidBridge::GetStaticStringField %s", fieldName);
 
     if (!jEnv) {
-        jEnv = GetJNIEnv();
-        if (!jEnv)
+        if (!HasEnv()) {
             return false;
+        }
+        jEnv = GetJNIEnv();
     }
 
+    AutoLocalJNIFrame jniFrame(jEnv, 1);
     initInit();
     getClassGlobalRef(className);
     jfieldID field = getStaticField(fieldName, "Ljava/lang/String;");
@@ -781,7 +753,6 @@ AndroidBridge::GetStaticStringField(const char *className, const char *fieldName
         return false;
 
     result.Assign(nsJNIString(jstr, jEnv));
-    jEnv->DeleteLocalRef(jstr);
     return true;
 }
 
@@ -966,8 +937,6 @@ AndroidBridge::ValidateBitmap(jobject bitmap, int width, int height)
     struct BitmapInfo info = { 0, };
 
     JNIEnv *env = GetJNIEnv();
-    if (!env)
-        return false;
 
     if ((err = AndroidBitmap_getInfo(env, bitmap, &info)) != 0) {
         ALOG_BRIDGE("AndroidBitmap_getInfo failed! (error %d)", err);
@@ -984,10 +953,8 @@ bool
 AndroidBridge::InitCamera(const nsCString& contentType, uint32_t camera, uint32_t *width, uint32_t *height, uint32_t *fps)
 {
     JNIEnv *env = GetJNIEnv();
-    if (!env)
-        return false;
 
-    AutoLocalJNIFrame jniFrame(env);
+    AutoLocalJNIFrame jniFrame(env, 1);
     jintArray arr = GeckoAppShell::InitCameraWrapper(NS_ConvertUTF8toUTF16(contentType), (int32_t) camera, (int32_t) width, (int32_t) height);
 
     if (!arr)
@@ -1012,10 +979,8 @@ AndroidBridge::GetCurrentBatteryInformation(hal::BatteryInformation* aBatteryInf
     ALOG_BRIDGE("AndroidBridge::GetCurrentBatteryInformation");
 
     JNIEnv *env = GetJNIEnv();
-    if (!env)
-        return;
 
-    AutoLocalJNIFrame jniFrame(env);
+    AutoLocalJNIFrame jniFrame(env, 1);
 
     // To prevent calling too many methods through JNI, the Java method returns
     // an array of double even if we actually want a double and a boolean.
@@ -1039,10 +1004,8 @@ AndroidBridge::HandleGeckoMessage(const nsAString &aMessage, nsAString &aRet)
     ALOG_BRIDGE("%s", __PRETTY_FUNCTION__);
 
     JNIEnv *env = GetJNIEnv();
-    if (!env)
-        return;
 
-    AutoLocalJNIFrame jniFrame(env);
+    AutoLocalJNIFrame jniFrame(env, 1);
     jstring returnMessage = GeckoAppShell::HandleGeckoMessageWrapper(aMessage);
 
     if (!returnMessage)
@@ -1069,10 +1032,8 @@ AndroidBridge::GetSegmentInfoForText(const nsAString& aText,
     data.charsAvailableInLastSegment() = 0;
 
     JNIEnv *env = GetJNIEnv();
-    if (!env)
-        return NS_ERROR_FAILURE;
 
-    AutoLocalJNIFrame jniFrame(env);
+    AutoLocalJNIFrame jniFrame(env, 2);
     jstring jText = NewJavaString(&jniFrame, aText);
     jobject obj = env->CallStaticObjectMethod(mAndroidSmsMessageClass,
                                               jCalculateLength, jText, JNI_FALSE);
@@ -1144,14 +1105,12 @@ AndroidBridge::CreateMessageList(const dom::mobilemessage::SmsFilterData& aFilte
     ALOG_BRIDGE("AndroidBridge::CreateMessageList");
 
     JNIEnv *env = GetJNIEnv();
-    if (!env)
-        return;
 
     uint32_t requestId;
     if (!QueueSmsRequest(aRequest, &requestId))
         return;
 
-    AutoLocalJNIFrame jniFrame(env);
+    AutoLocalJNIFrame jniFrame(env, 2);
 
     jobjectArray numbers =
         (jobjectArray)env->NewObjectArray(aFilter.numbers().Length(),
@@ -1159,8 +1118,9 @@ AndroidBridge::CreateMessageList(const dom::mobilemessage::SmsFilterData& aFilte
                                           NewJavaString(&jniFrame, EmptyString()));
 
     for (uint32_t i = 0; i < aFilter.numbers().Length(); ++i) {
-        env->SetObjectArrayElement(numbers, i,
-                                   NewJavaString(&jniFrame, aFilter.numbers()[i]));
+        jstring elem = NewJavaString(&jniFrame, aFilter.numbers()[i]);
+        env->SetObjectArrayElement(numbers, i, elem);
+        env->DeleteLocalRef(elem);
     }
 
     GeckoAppShell::CreateMessageListWrapper(aFilter.startDate(), aFilter.endDate(),
@@ -1221,10 +1181,8 @@ AndroidBridge::GetCurrentNetworkInformation(hal::NetworkInformation* aNetworkInf
     ALOG_BRIDGE("AndroidBridge::GetCurrentNetworkInformation");
 
     JNIEnv *env = GetJNIEnv();
-    if (!env)
-        return;
 
-    AutoLocalJNIFrame jniFrame(env);
+    AutoLocalJNIFrame jniFrame(env, 1);
 
     // To prevent calling too many methods through JNI, the Java method returns
     // an array of double even if we actually want a double, two booleans, and an integer.
@@ -1248,10 +1206,8 @@ void *
 AndroidBridge::LockBitmap(jobject bitmap)
 {
     JNIEnv *env = GetJNIEnv();
-    if (!env)
-        return nullptr;
 
-    AutoLocalJNIFrame jniFrame(env);
+    AutoLocalJNIFrame jniFrame(env, 0);
 
     int err;
     void *buf;
@@ -1268,10 +1224,8 @@ void
 AndroidBridge::UnlockBitmap(jobject bitmap)
 {
     JNIEnv *env = GetJNIEnv();
-    if (!env)
-        return;
 
-    AutoLocalJNIFrame jniFrame(env);
+    AutoLocalJNIFrame jniFrame(env, 0);
 
     int err;
 
@@ -1417,8 +1371,6 @@ jobject
 AndroidBridge::GetGlobalContextRef() {
     if (sGlobalContext == nullptr) {
         JNIEnv *env = GetJNIForThread();
-        if (!env)
-            return 0;
 
         AutoLocalJNIFrame jniFrame(env, 4);
 
@@ -1617,8 +1569,16 @@ static void
 JavaThreadDetachFunc(void *arg)
 {
     JNIEnv *env = (JNIEnv*) arg;
+    MOZ_ASSERT(env, "No JNIEnv on Gecko thread");
+    if (!env) {
+        return;
+    }
     JavaVM *vm = nullptr;
     env->GetJavaVM(&vm);
+    MOZ_ASSERT(vm, "No JavaVM on Gecko thread");
+    if (!vm) {
+        return;
+    }
     vm->DetachCurrentThread();
 }
 
@@ -1648,11 +1608,12 @@ AndroidBridge::GetProxyForURI(const nsACString & aSpec,
                               const int32_t      aPort,
                               nsACString & aResult)
 {
-    JNIEnv* env = GetJNIEnv();
-    if (!env)
+    if (!HasEnv()) {
         return NS_ERROR_FAILURE;
+    }
+    JNIEnv* env = GetJNIEnv();
 
-    AutoLocalJNIFrame jniFrame(env);
+    AutoLocalJNIFrame jniFrame(env, 1);
     jstring jstrRet = GeckoAppShell::GetProxyForURIWrapper(NS_ConvertUTF8toUTF16(aSpec),
                                             NS_ConvertUTF8toUTF16(aScheme),
                                             NS_ConvertUTF8toUTF16(aHost),
@@ -1701,10 +1662,8 @@ bool
 AndroidBridge::GetThreadNameJavaProfiling(uint32_t aThreadId, nsCString & aResult)
 {
     JNIEnv* env = GetJNIForThread();
-    if (!env)
-        return false;
 
-    AutoLocalJNIFrame jniFrame(env);
+    AutoLocalJNIFrame jniFrame(env, 1);
 
     jstring jstrThreadName = GeckoJavaSampler::GetThreadNameJavaProfilingWrapper(aThreadId);
 
@@ -1721,10 +1680,8 @@ AndroidBridge::GetFrameNameJavaProfiling(uint32_t aThreadId, uint32_t aSampleId,
                                           uint32_t aFrameId, nsCString & aResult)
 {
     JNIEnv* env = GetJNIForThread();
-    if (!env)
-        return false;
 
-    AutoLocalJNIFrame jniFrame(env);
+    AutoLocalJNIFrame jniFrame(env, 1);
 
     jstring jstrSampleName = GeckoJavaSampler::GetFrameNameJavaProfilingWrapper(aThreadId, aSampleId, aFrameId);
 
@@ -1733,7 +1690,6 @@ AndroidBridge::GetFrameNameJavaProfiling(uint32_t aThreadId, uint32_t aSampleId,
 
     nsJNIString jniStr(jstrSampleName, env);
     CopyUTF16toUTF8(jniStr.get(), aResult);
-    env->DeleteLocalRef(jstrSampleName);
     return true;
 }
 
@@ -1780,8 +1736,6 @@ nsresult AndroidBridge::CaptureThumbnail(nsIDOMWindow *window, int32_t bufW, int
     }
 
     JNIEnv* env = GetJNIEnv();
-    if (!env)
-        return NS_ERROR_FAILURE;
 
     AutoLocalJNIFrame jniFrame(env, 0);
 
@@ -1813,15 +1767,15 @@ nsresult AndroidBridge::CaptureThumbnail(nsIDOMWindow *window, int32_t bufW, int
 
     nsRefPtr<gfxImageSurface> surf =
         new gfxImageSurface(static_cast<unsigned char*>(data), nsIntSize(bufW, bufH), stride,
-                            is24bit ? gfxImageFormatRGB24 :
-                                      gfxImageFormatRGB16_565);
+                            is24bit ? gfxImageFormat::RGB24 :
+                                      gfxImageFormat::RGB16_565);
     if (surf->CairoStatus() != 0) {
         ALOG_BRIDGE("Error creating gfxImageSurface");
         return NS_ERROR_FAILURE;
     }
 
     nsRefPtr<gfxContext> context;
-    if (gfxPlatform::GetPlatform()->SupportsAzureContentForType(BACKEND_CAIRO)) {
+    if (gfxPlatform::GetPlatform()->SupportsAzureContentForType(BackendType::CAIRO)) {
         RefPtr<DrawTarget> dt =
             gfxPlatform::GetPlatform()->CreateDrawTargetForSurface(surf, IntSize(bufW, bufH));
 
@@ -1850,7 +1804,7 @@ AndroidBridge::GetDisplayPort(bool aPageSizeUpdate, bool aIsBrowserContentDispla
 
     ALOG_BRIDGE("Enter: %s", __PRETTY_FUNCTION__);
     JNIEnv* env = GetJNIEnv();
-    if (!env || !mLayerClient || mLayerClient->isNull()) {
+    if (!mLayerClient || mLayerClient->isNull()) {
 
         ALOG_BRIDGE("Exceptional Exit: %s", __PRETTY_FUNCTION__);
         return;
@@ -1918,8 +1872,7 @@ AndroidBridge::ContentDocumentChanged()
 bool
 AndroidBridge::IsContentDocumentDisplayed()
 {
-    JNIEnv* env = GetJNIEnv();
-    if (!env || !mLayerClient)
+    if (!mLayerClient)
         return false;
 
     return mLayerClient->IsContentDocumentDisplayed();

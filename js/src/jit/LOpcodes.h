@@ -17,6 +17,7 @@
     _(Double)                       \
     _(Float32)                      \
     _(Value)                        \
+    _(CloneLiteral)                 \
     _(Parameter)                    \
     _(Callee)                       \
     _(TableSwitch)                  \
@@ -35,6 +36,7 @@
     _(AbortPar)                     \
     _(InitElem)                     \
     _(InitElemGetterSetter)         \
+    _(MutateProto)                    \
     _(InitProp)                     \
     _(InitPropGetterSetter)         \
     _(CheckOverRecursed)            \
@@ -149,7 +151,10 @@
     _(OsrReturnValue)               \
     _(OsrArgumentsObject)           \
     _(RegExp)                       \
+    _(RegExpExec)                   \
     _(RegExpTest)                   \
+    _(RegExpReplace)                \
+    _(StringReplace)                \
     _(Lambda)                       \
     _(LambdaForSingleton)           \
     _(LambdaPar)                    \
@@ -166,7 +171,7 @@
     _(GuardObjectType)              \
     _(GuardObjectIdentity)          \
     _(GuardClass)                   \
-    _(GuardThreadLocalObject)       \
+    _(GuardThreadExclusive)         \
     _(TypeBarrierV)                 \
     _(TypeBarrierO)                 \
     _(MonitorTypes)                 \
@@ -279,16 +284,17 @@
     _(AsmJSCall)                    \
     _(AsmJSCheckOverRecursed)       \
     _(CheckInterruptPar)            \
+    _(RecompileCheck)               \
     _(AssertRangeI)                 \
     _(AssertRangeD)                 \
     _(AssertRangeF)                 \
     _(AssertRangeV)
 
-#if defined(JS_CPU_X86)
+#if defined(JS_CODEGEN_X86)
 # include "jit/x86/LOpcodes-x86.h"
-#elif defined(JS_CPU_X64)
+#elif defined(JS_CODEGEN_X64)
 # include "jit/x64/LOpcodes-x64.h"
-#elif defined(JS_CPU_ARM)
+#elif defined(JS_CODEGEN_ARM)
 # include "jit/arm/LOpcodes-arm.h"
 #endif
 

@@ -22,7 +22,6 @@ UNIFIED_SOURCES += [
     'nsSVGFilterInstance.cpp',
     'nsSVGForeignObjectFrame.cpp',
     'nsSVGGenericContainerFrame.cpp',
-    'nsSVGGeometryFrame.cpp',
     'nsSVGGFrame.cpp',
     'nsSVGGradientFrame.cpp',
     'nsSVGImageFrame.cpp',
@@ -36,13 +35,13 @@ UNIFIED_SOURCES += [
     'nsSVGPatternFrame.cpp',
     'nsSVGStopFrame.cpp',
     'nsSVGSwitchFrame.cpp',
-    'nsSVGTextFrame2.cpp',
     'nsSVGUseFrame.cpp',
     'nsSVGUtils.cpp',
     'SVGFEContainerFrame.cpp',
     'SVGFEImageFrame.cpp',
     'SVGFELeafFrame.cpp',
     'SVGFEUnstyledLeafFrame.cpp',
+    'SVGTextFrame.cpp',
     'SVGViewFrame.cpp',
 ]
 

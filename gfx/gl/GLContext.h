@@ -41,6 +41,7 @@
 #include "GLContextSymbols.h"
 #include "mozilla/GenericRefCounted.h"
 #include "mozilla/Scoped.h"
+#include "gfx2DGlue.h"
 
 #ifdef DEBUG
 #define MOZ_ENABLE_GL_TRACKING 1
@@ -69,6 +70,7 @@ namespace mozilla {
         class TextureGarbageBin;
         class GLBlitHelper;
         class GLBlitTextureImageHelper;
+        class GLReadTexImageHelper;
     }
 
     namespace layers {
@@ -79,42 +81,37 @@ namespace mozilla {
 namespace mozilla {
 namespace gl {
 
-/** GLFeature::Enum
- * We don't use typed enum to keep the implicit integer conversion.
- * This enum should be sorted by name.
- */
-namespace GLFeature {
-    enum Enum {
-        bind_buffer_offset,
-        blend_minmax,
-        depth_texture,
-        draw_buffers,
-        draw_instanced,
-        element_index_uint,
-        ES2_compatibility,
-        ES3_compatibility,
-        framebuffer_blit,
-        framebuffer_multisample,
-        framebuffer_object,
-        get_query_object_iv,
-        instanced_arrays,
-        instanced_non_arrays,
-        occlusion_query,
-        occlusion_query_boolean,
-        occlusion_query2,
-        packed_depth_stencil,
-        query_objects,
-        robustness,
-        sRGB,
-        standard_derivatives,
-        texture_float,
-        texture_float_linear,
-        texture_non_power_of_two,
-        transform_feedback,
-        vertex_array_object,
-        EnumMax
-    };
-}
+MOZ_BEGIN_ENUM_CLASS(GLFeature)
+    bind_buffer_offset,
+    blend_minmax,
+    depth_texture,
+    draw_buffers,
+    draw_instanced,
+    element_index_uint,
+    ES2_compatibility,
+    ES3_compatibility,
+    framebuffer_blit,
+    framebuffer_multisample,
+    framebuffer_object,
+    get_query_object_iv,
+    instanced_arrays,
+    instanced_non_arrays,
+    occlusion_query,
+    occlusion_query_boolean,
+    occlusion_query2,
+    packed_depth_stencil,
+    query_objects,
+    robustness,
+    sRGB,
+    standard_derivatives,
+    texture_float,
+    texture_float_linear,
+    texture_half_float,
+    texture_non_power_of_two,
+    transform_feedback,
+    vertex_array_object,
+    EnumMax
+MOZ_END_ENUM_CLASS(GLFeature)
 
 MOZ_BEGIN_ENUM_CLASS(ContextProfile, uint8_t)
     Unknown = 0,
@@ -124,6 +121,29 @@ MOZ_BEGIN_ENUM_CLASS(ContextProfile, uint8_t)
     OpenGLES
 MOZ_END_ENUM_CLASS(ContextProfile)
 
+MOZ_BEGIN_ENUM_CLASS(GLVendor)
+    Intel,
+    NVIDIA,
+    ATI,
+    Qualcomm,
+    Imagination,
+    Nouveau,
+    Vivante,
+    Other
+MOZ_END_ENUM_CLASS(GLVendor)
+
+MOZ_BEGIN_ENUM_CLASS(GLRenderer)
+    Adreno200,
+    Adreno205,
+    AdrenoTM205,
+    AdrenoTM320,
+    SGX530,
+    SGX540,
+    Tegra,
+    AndroidEmulator,
+    Other
+MOZ_END_ENUM_CLASS(GLRenderer)
+
 class GLContext
     : public GLLibraryLoader
     , public GenericAtomicRefCounted
@@ -131,29 +151,6 @@ class GLContext
 // -----------------------------------------------------------------------------
 // basic enums
 public:
-
-    enum {
-        VendorIntel,
-        VendorNVIDIA,
-        VendorATI,
-        VendorQualcomm,
-        VendorImagination,
-        VendorNouveau,
-        VendorOther
-    };
-
-    enum {
-        RendererAdreno200,
-        RendererAdreno205,
-        RendererAdrenoTM205,
-        RendererAdrenoTM320,
-        RendererSGX530,
-        RendererSGX540,
-        RendererTegra,
-        RendererAndroidEmulator,
-        RendererOther
-    };
-
 
 // -----------------------------------------------------------------------------
 // basic getters
@@ -259,11 +256,11 @@ public:
         return mVersionString.get();
     }
 
-    int Vendor() const {
+    GLVendor Vendor() const {
         return mVendor;
     }
 
-    int Renderer() const {
+    GLRenderer Renderer() const {
         return mRenderer;
     }
 
@@ -279,7 +276,7 @@ public:
     }
 
     virtual GLContextType GetContextType() {
-        return ContextTypeUnknown;
+        return GLContextType::Unknown;
     }
 
     virtual bool IsCurrent() = 0;
@@ -309,8 +306,8 @@ protected:
     nsCString mVersionString;
     ContextProfile mProfile;
 
-    int32_t mVendor;
-    int32_t mRenderer;
+    GLVendor mVendor;
+    GLRenderer mRenderer;
 
     inline void SetProfileVersion(ContextProfile profile, unsigned int version) {
         MOZ_ASSERT(!mInitialized, "SetProfileVersion can only be called before initialization!");
@@ -362,6 +359,8 @@ public:
         OES_texture_float,
         OES_texture_float_linear,
         ARB_texture_float,
+        OES_texture_half_float,
+        NV_half_float,
         EXT_unpack_subimage,
         OES_standard_derivatives,
         EXT_texture_filter_anisotropic,
@@ -471,15 +470,15 @@ protected:
  * by the context version/profile
  */
 public:
-    bool IsSupported(GLFeature::Enum feature) const {
-        return mAvailableFeatures[feature];
+    bool IsSupported(GLFeature feature) const {
+        return mAvailableFeatures[size_t(feature)];
     }
 
-    static const char* GetFeatureName(GLFeature::Enum feature);
+    static const char* GetFeatureName(GLFeature feature);
 
 
 private:
-    std::bitset<GLFeature::EnumMax> mAvailableFeatures;
+    std::bitset<size_t(GLFeature::EnumMax)> mAvailableFeatures;
 
     /**
      * Init features regarding OpenGL extension and context version and profile
@@ -489,7 +488,7 @@ private:
     /**
      * Mark the feature and associated extensions as unsupported
      */
-    void MarkUnsupported(GLFeature::Enum feature);
+    void MarkUnsupported(GLFeature feature);
 
 // -----------------------------------------------------------------------------
 // Robustness handling
@@ -818,7 +817,7 @@ public:
         // bug 744888
         if (WorkAroundDriverBugs() &&
             !data &&
-            Vendor() == VendorNVIDIA)
+            Vendor() == GLVendor::NVIDIA)
         {
             char c = 0;
             fBufferSubData(target, size-1, 1, &c);
@@ -876,8 +875,6 @@ public:
     }
 
     void fCopyTexImage2D(GLenum target, GLint level, GLenum internalformat, GLint x, GLint y, GLsizei width, GLsizei height, GLint border) {
-        y = FixYValue(y, height);
-
         if (!IsTextureSizeSafeToPassToDriver(target, width, height)) {
             // pass wrong values to cause the GL to generate GL_INVALID_VALUE.
             // See bug 737182 and the comment in IsTextureSizeSafeToPassToDriver.
@@ -894,8 +891,6 @@ public:
     }
 
     void fCopyTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint x, GLint y, GLsizei width, GLsizei height) {
-        y = FixYValue(y, height);
-
         BeforeGLReadCall();
         raw_fCopyTexSubImage2D(target, level, xoffset, yoffset,
                                x, y, width, height);
@@ -1097,6 +1092,18 @@ public:
             case LOCAL_GL_MAX_RENDERBUFFER_SIZE:
                 MOZ_ASSERT(mMaxRenderbufferSize>0);
                 *params = mMaxRenderbufferSize;
+                break;
+
+            case LOCAL_GL_VIEWPORT:
+                for (size_t i = 0; i < 4; i++) {
+                    params[i] = mViewportRect[i];
+                }
+                break;
+
+            case LOCAL_GL_SCISSOR_BOX:
+                for (size_t i = 0; i < 4; i++) {
+                    params[i] = mScissorRect[i];
+                }
                 break;
 
             default:
@@ -1371,14 +1378,12 @@ public:
 private:
     void raw_fReadPixels(GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type, GLvoid *pixels) {
         BEFORE_GL_CALL;
-        mSymbols.fReadPixels(x, FixYValue(y, height), width, height, format, type, pixels);
+        mSymbols.fReadPixels(x, y, width, height, format, type, pixels);
         AFTER_GL_CALL;
     }
 
 public:
     void fReadPixels(GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type, GLvoid *pixels) {
-        y = FixYValue(y, height);
-
         BeforeGLReadCall();
 
         bool didReadPixels = false;
@@ -1400,14 +1405,23 @@ public:
         AFTER_GL_CALL;
     }
 
-private:
-    void raw_fScissor(GLint x, GLint y, GLsizei width, GLsizei height) {
+    void fScissor(GLint x, GLint y, GLsizei width, GLsizei height) {
+        if (mScissorRect[0] == x &&
+            mScissorRect[1] == y &&
+            mScissorRect[2] == width &&
+            mScissorRect[3] == height)
+        {
+            return;
+        }
+        mScissorRect[0] = x;
+        mScissorRect[1] = y;
+        mScissorRect[2] = width;
+        mScissorRect[3] = height;
         BEFORE_GL_CALL;
         mSymbols.fScissor(x, y, width, height);
         AFTER_GL_CALL;
     }
 
-public:
     void fStencilFunc(GLenum func, GLint ref, GLuint mask) {
         BEFORE_GL_CALL;
         mSymbols.fStencilFunc(func, ref, mask);
@@ -2377,7 +2391,6 @@ protected:
 
     typedef class gfx::SharedSurface SharedSurface;
     typedef gfx::SharedSurfaceType SharedSurfaceType;
-    typedef gfxImageFormat ImageFormat;
     typedef gfx::SurfaceFormat SurfaceFormat;
 
 public:
@@ -2426,19 +2439,7 @@ public:
         return mSymbols.fUseProgram == nullptr;
     }
 
-    enum NativeDataType {
-      NativeGLContext,
-      NativeImageSurface,
-      NativeThebesSurface,
-      NativeCGLContext,
-      NativeDataTypeMax
-    };
-
-    virtual void *GetNativeData(NativeDataType aType) { return nullptr; }
     GLContext *GetSharedContext() { return mSharedContext; }
-
-    bool IsGlobalSharedContext() { return mIsGlobalSharedContext; }
-    void SetIsGlobalSharedContext(bool aIsOne) { mIsGlobalSharedContext = aIsOne; }
 
     /**
      * Returns true if the thread on which this context was created is the currently
@@ -2446,24 +2447,6 @@ public:
      */
     bool IsOwningThreadCurrent();
     void DispatchToOwningThread(nsIRunnable *event);
-
-    virtual EGLContext GetEGLContext() { return nullptr; }
-    virtual GLLibraryEGL* GetLibraryEGL() { return nullptr; }
-
-    /**
-     * Only on EGL.
-     *
-     * If surf is non-null, this sets it to temporarily override this context's
-     * primary surface. This makes this context current against this surface,
-     * and subsequent MakeCurrent calls will continue using this surface as long
-     * as this override is set.
-     *
-     * If surf is null, this removes any previously set override, and makes the
-     * context current again against its primary surface.
-     */
-    virtual void SetEGLSurfaceOverride(EGLSurface surf) {
-        MOZ_CRASH("Must be called against a GLContextEGL.");
-    }
 
     static void PlatformStartup();
 
@@ -2495,7 +2478,7 @@ public:
      *
      * Only valid if IsOffscreen() returns true.
      */
-    virtual bool ResizeOffscreen(const gfxIntSize& size) {
+    virtual bool ResizeOffscreen(const gfx::IntSize& size) {
         return ResizeScreenBuffer(size);
     }
 
@@ -2504,7 +2487,7 @@ public:
      *
      * Only valid if IsOffscreen() returns true.
      */
-    const gfxIntSize& OffscreenSize() const;
+    const gfx::IntSize& OffscreenSize() const;
 
     void BindFB(GLuint fb) {
         fBindFramebuffer(LOCAL_GL_FRAMEBUFFER, fb);
@@ -2586,61 +2569,11 @@ public:
 
     virtual bool RenewSurface() { return false; }
 
-private:
-    /**
-     * Helpers for ReadTextureImage
-     */
-    GLuint TextureImageProgramFor(GLenum aTextureTarget, int aShader);
-    bool ReadBackPixelsIntoSurface(gfxImageSurface* aSurface, const gfxIntSize& aSize);
-
-public:
-    /**
-     * Read the image data contained in aTexture, and return it as an ImageSurface.
-     * If GL_RGBA is given as the format, a gfxImageFormatARGB32 surface is returned.
-     * Not implemented yet:
-     * If GL_RGB is given as the format, a gfxImageFormatRGB24 surface is returned.
-     * If GL_LUMINANCE is given as the format, a gfxImageFormatA8 surface is returned.
-     *
-     * THIS IS EXPENSIVE.  It is ridiculously expensive.  Only do this
-     * if you absolutely positively must, and never in any performance
-     * critical path.
-     *
-     * NOTE: aShaderProgram is really mozilla::layers::ShaderProgramType. It is
-     * passed as int to eliminate including LayerManagerOGLProgram.h in this
-     * hub header.
-     */
-    already_AddRefed<gfxImageSurface> ReadTextureImage(GLuint aTextureId,
-                                                       GLenum aTextureTarget,
-                                                       const gfxIntSize& aSize,
-                               /* ShaderProgramType */ int aShaderProgram,
-                                                       bool aYInvert = false);
-
-    already_AddRefed<gfxImageSurface> GetTexImage(GLuint aTexture,
-                                                  bool aYInvert,
-                                                  SurfaceFormat aFormat);
-
-    /**
-     * Call ReadPixels into an existing gfxImageSurface.
-     * The image surface must be using image format RGBA32 or RGB24,
-     * and must have stride == width*4.
-     * Note that neither ReadPixelsIntoImageSurface nor
-     * ReadScreenIntoImageSurface call dest->Flush/MarkDirty.
-     */
-    void ReadPixelsIntoImageSurface(gfxImageSurface* dest);
-
-    // Similar to ReadPixelsIntoImageSurface, but pulls from the screen
-    // instead of the currently bound framebuffer.
-    void ReadScreenIntoImageSurface(gfxImageSurface* dest);
-
-    TemporaryRef<gfx::SourceSurface> ReadPixelsToSourceSurface(const gfx::IntSize &aSize);
-
     // Shared code for GL extensions and GLX extensions.
     static bool ListHasExtension(const GLubyte *extensions,
                                  const char *extension);
 
     GLint GetMaxTextureImageSize() { return mMaxTextureImageSize; }
-    void SetFlipped(bool aFlipped) { mFlipped = aFlipped; }
-
 
 public:
     /**
@@ -2690,15 +2623,16 @@ protected:
     // storage to support DebugMode on an arbitrary thread.
     static unsigned sCurrentGLContextTLS;
 #endif
-    bool mFlipped;
 
     ScopedDeletePtr<GLBlitHelper> mBlitHelper;
     ScopedDeletePtr<GLBlitTextureImageHelper> mBlitTextureImageHelper;
+    ScopedDeletePtr<GLReadTexImageHelper> mReadTexImageHelper;
 
 public:
 
     GLBlitHelper* BlitHelper();
     GLBlitTextureImageHelper* BlitTextureImageHelper();
+    GLReadTexImageHelper* ReadTexImageHelper();
 
     // Assumes shares are created by all sharing with the same global context.
     bool SharesWith(const GLContext* other) const {
@@ -2716,7 +2650,7 @@ public:
         return thisShared == otherShared;
     }
 
-    bool InitOffscreen(const gfxIntSize& size, const SurfaceCaps& caps) {
+    bool InitOffscreen(const gfx::IntSize& size, const SurfaceCaps& caps) {
         if (!CreateScreenBuffer(size, caps))
             return false;
 
@@ -2737,7 +2671,7 @@ public:
 
 protected:
     // Note that it does -not- clear the resized buffers.
-    bool CreateScreenBuffer(const gfxIntSize& size, const SurfaceCaps& caps) {
+    bool CreateScreenBuffer(const gfx::IntSize& size, const SurfaceCaps& caps) {
         if (!IsOffscreenSizeAllowed(size))
             return false;
 
@@ -2759,11 +2693,11 @@ protected:
         return false;
     }
 
-    bool CreateScreenBufferImpl(const gfxIntSize& size,
+    bool CreateScreenBufferImpl(const gfx::IntSize& size,
                                 const SurfaceCaps& caps);
 
 public:
-    bool ResizeScreenBuffer(const gfxIntSize& size);
+    bool ResizeScreenBuffer(const gfx::IntSize& size);
 
 protected:
     SurfaceCaps mCaps;
@@ -2863,17 +2797,15 @@ public:
 
     void EmptyTexGarbageBin();
 
-    bool IsOffscreenSizeAllowed(const gfxIntSize& aSize) const;
+    bool IsOffscreenSizeAllowed(const gfx::IntSize& aSize) const;
 
 protected:
-    GLuint mReadTextureImagePrograms[4];
-
     bool InitWithPrefix(const char *prefix, bool trygl);
 
     void InitExtensions();
 
-    nsTArray<nsIntRect> mViewportStack;
-    nsTArray<nsIntRect> mScissorStack;
+    GLint mViewportRect[4];
+    GLint mScissorRect[4];
 
     GLint mMaxTextureSize;
     GLint mMaxCubeMapTextureSize;
@@ -2902,102 +2834,24 @@ protected:
     }
 
 
-    /*** Scissor functions ***/
-
-protected:
-    GLint FixYValue(GLint y, GLint height)
-    {
-        MOZ_ASSERT( !(mIsOffscreen && mFlipped) );
-        return mFlipped ? ViewportRect().height - (height + y) : y;
-    }
-
 public:
-    void fScissor(GLint x, GLint y, GLsizei width, GLsizei height) {
-        ScissorRect().SetRect(x, y, width, height);
 
-        // GL's coordinate system is flipped compared to the one we use in
-        // OGL Layers (in the Y axis), so we may need to flip our rectangle.
-        y = FixYValue(y, height);
-        raw_fScissor(x, y, width, height);
-    }
-
-    nsIntRect& ScissorRect() {
-        return mScissorStack[mScissorStack.Length()-1];
-    }
-
-    void PushScissorRect() {
-        nsIntRect copy(ScissorRect());
-        mScissorStack.AppendElement(copy);
-    }
-
-    void PushScissorRect(const nsIntRect& aRect) {
-        mScissorStack.AppendElement(aRect);
-        fScissor(aRect.x, aRect.y, aRect.width, aRect.height);
-    }
-
-    void PopScissorRect() {
-        if (mScissorStack.Length() < 2) {
-            NS_WARNING("PopScissorRect with Length < 2!");
+    void fViewport(GLint x, GLint y, GLsizei width, GLsizei height) {
+        if (mViewportRect[0] == x &&
+            mViewportRect[1] == y &&
+            mViewportRect[2] == width &&
+            mViewportRect[3] == height)
+        {
             return;
         }
-
-        nsIntRect thisRect = ScissorRect();
-        mScissorStack.TruncateLength(mScissorStack.Length() - 1);
-        if (!thisRect.IsEqualInterior(ScissorRect())) {
-            fScissor(ScissorRect().x, ScissorRect().y,
-                     ScissorRect().width, ScissorRect().height);
-        }
-    }
-
-    /*** Viewport functions ***/
-
-private:
-    // only does the glViewport call, no ViewportRect business
-    void raw_fViewport(GLint x, GLint y, GLsizei width, GLsizei height) {
+        mViewportRect[0] = x;
+        mViewportRect[1] = y;
+        mViewportRect[2] = width;
+        mViewportRect[3] = height;
         BEFORE_GL_CALL;
-        // XXX: Flipping should really happen using the destination height, but
-        // we use viewport instead and assume viewport size matches the
-        // destination. If we ever try use partial viewports for layers we need
-        // to fix this, and remove the assertion.
-        NS_ASSERTION(!mFlipped || (x == 0 && y == 0), "TODO: Need to flip the viewport rect");
         mSymbols.fViewport(x, y, width, height);
         AFTER_GL_CALL;
     }
-
-public:
-    void fViewport(GLint x, GLint y, GLsizei width, GLsizei height) {
-        ViewportRect().SetRect(x, y, width, height);
-        raw_fViewport(x, y, width, height);
-    }
-
-    nsIntRect& ViewportRect() {
-        return mViewportStack[mViewportStack.Length()-1];
-    }
-
-    void PushViewportRect() {
-        nsIntRect copy(ViewportRect());
-        mViewportStack.AppendElement(copy);
-    }
-
-    void PushViewportRect(const nsIntRect& aRect) {
-        mViewportStack.AppendElement(aRect);
-        raw_fViewport(aRect.x, aRect.y, aRect.width, aRect.height);
-    }
-
-    void PopViewportRect() {
-        if (mViewportStack.Length() < 2) {
-            NS_WARNING("PopViewportRect with Length < 2!");
-            return;
-        }
-
-        nsIntRect thisRect = ViewportRect();
-        mViewportStack.TruncateLength(mViewportStack.Length() - 1);
-        if (!thisRect.IsEqualInterior(ViewportRect())) {
-            raw_fViewport(ViewportRect().x, ViewportRect().y,
-                          ViewportRect().width, ViewportRect().height);
-        }
-    }
-
 
 #undef ASSERT_SYMBOL_PRESENT
 

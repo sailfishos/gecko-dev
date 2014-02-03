@@ -14,6 +14,8 @@
 %brandDTD;
 <!ENTITY % sourceDTD SYSTEM "chrome://global/locale/viewSource.dtd" >
 %sourceDTD;
+<!ENTITY % charsetDTD SYSTEM "chrome://global/locale/charsetMenu.dtd" >
+%charsetDTD;
 ]>
 
 <window id="viewSource"
@@ -192,6 +194,17 @@
               <menuitem id="menu_textReset" command="cmd_textZoomReset"
                         label="&menu_textReset.label;" accesskey="&menu_textReset.accesskey;"
                         key="key_textZoomReset"/>
+            </menupopup>
+          </menu>
+
+          <!-- Charset Menu -->
+          <menu id="charsetMenu"
+                label="&charsetMenu.label;"
+                accesskey="&charsetMenu.accesskey;"
+                oncommand="MultiplexHandler(event);"
+                onpopupshowing="CharsetMenu.build(event.target);"
+                onpopupshown="UpdateMenus();">
+            <menupopup>
             </menupopup>
           </menu>
           <menuseparator/>

@@ -5,12 +5,12 @@
 
 #include "GfxInfo.h"
 #include "GLContext.h"
+#include "GLContextProvider.h"
 #include "nsUnicharUtils.h"
 #include "prenv.h"
 #include "prprf.h"
 #include "nsHashKeys.h"
 #include "nsVersionComparator.h"
-#include "mozilla/Monitor.h"
 #include "AndroidBridge.h"
 #include "nsIWindowWatcher.h"
 #include "nsServiceManagerUtils.h"
@@ -24,36 +24,16 @@
 namespace mozilla {
 namespace widget {
 
-static bool ExpectGLStringsToEverGetInitialized()
-{
-  // In XPCShell, we don't have a compositor, so our GL strings will never get
-  // properly initialized.
-  // We need to know about that in GLStrings::EnsureInitialized to avoid waiting forever.
-  // The way we detect that we won't ever have a compositor, is that the nsWindowWatcher
-  // doesn't have a WindowCreator i.e. we won't create any windows. That is actually
-  // the root difference between xpcshell and real browsers, that causes the former
-  // not to create a window and a compositor.
-  nsCOMPtr<nsIWindowWatcher> wwatch(do_GetService(NS_WINDOWWATCHER_CONTRACTID));
-  if (!wwatch) {
-    return false;
-  }
-  bool hasWindowCreator = false;
-  nsresult rv = wwatch->HasWindowCreator(&hasWindowCreator);
-  return NS_SUCCEEDED(rv) && hasWindowCreator;
-}
-
 class GfxInfo::GLStrings
 {
   nsCString mVendor;
   nsCString mRenderer;
   nsCString mVersion;
   bool mReady;
-  Monitor mMonitor;
 
 public:
   GLStrings()
     : mReady(false)
-    , mMonitor("GfxInfo::mGLStringsMonitor")
   {}
 
   const nsCString& Vendor() {
@@ -87,24 +67,21 @@ public:
   }
 
   void EnsureInitialized() {
-    if (!mReady) {
-      MonitorAutoLock autoLock(mMonitor);
-      // re-check mReady, as it could have changed before we locked.
-      if (!mReady) {
-        if (ExpectGLStringsToEverGetInitialized()) {
-          mMonitor.Wait();
-        } else {
-          // we'll never get notified, so don't wait. Just go on
-          // with empty GL strings.
-          mReady = true;
-        }
-      }
+    if (mReady) {
+      return;
     }
-  }
 
-  void Initialize(gl::GLContext *gl) {
-    MonitorAutoLock autoLock(mMonitor);
-    MOZ_ASSERT(!mReady); // Initialize should be called only once
+    nsRefPtr<gl::GLContext> gl = gl::GLContextProvider::CreateOffscreen(
+      gfxIntSize(16, 16),
+      gfx::SurfaceCaps::ForRGB());
+
+    if (!gl) {
+      // Setting mReady to true here means that we won't retry. Everything will
+      // remain blacklisted forever. Ideally, we would like to update that once
+      // any GLContext is successfully created, like the compositor's GLContext.
+      mReady = true;
+      return;
+    }
 
     gl->MakeCurrent();
 
@@ -125,7 +102,6 @@ public:
         mVersion.Assign((const char*)gl->fGetString(LOCAL_GL_VERSION));
 
     mReady = true;
-    mMonitor.Notify();
   }
 };
 
@@ -165,11 +141,6 @@ NS_IMETHODIMP
 GfxInfo::GetCleartypeParameters(nsAString & aCleartypeParams)
 {
   return NS_ERROR_FAILURE;
-}
-
-void GfxInfo::InitializeGLStrings(gl::GLContext* gl)
-{
-  mGLStrings->Initialize(gl);
 }
 
 void
@@ -403,16 +374,19 @@ GfxInfo::GetFeatureStatusImpl(int32_t aFeature,
     *aOS = os;
 
   // OpenGL layers are never blacklisted on Android.
-  // This early return is not just an optimization, it is actually
-  // important to avoid calling EnsureInitialized() below, as that would
-  // cause waiting for GL strings, which are going to be provided
-  // by the compositor's OpenGL context, so we'd deadlock.
+  // This early return is so we avoid potentially slow
+  // GLStrings initialization on startup when we initialize GL layers.
   if (aFeature == nsIGfxInfo::FEATURE_OPENGL_LAYERS) {
     *aStatus = nsIGfxInfo::FEATURE_NO_INFO;
     return NS_OK;
   }
 
   EnsureInitialized();
+
+  if (mGLStrings->Vendor().IsEmpty() || mGLStrings->Renderer().IsEmpty()) {
+    *aStatus = nsIGfxInfo::FEATURE_BLOCKED_DEVICE;
+    return NS_OK;
+  }
 
   // Don't evaluate special cases when evaluating the downloaded blocklist.
   if (aDriverInfo.IsEmpty()) {

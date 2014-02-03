@@ -30,6 +30,7 @@ import org.mozilla.apache.commons.codec.binary.Base64;
 import org.mozilla.gecko.background.common.log.Logger;
 import org.mozilla.gecko.sync.setup.Constants;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Bundle;
@@ -83,8 +84,16 @@ public class Utils {
    * Helper to convert a byte array to a hex-encoded string
    */
   public static String byte2Hex(final byte[] b) {
-    final StringBuilder hs = new StringBuilder(b.length * 2);
+    return byte2Hex(b, 2 * b.length);
+  }
+
+  public static String byte2Hex(final byte[] b, int hexLength) {
+    final StringBuilder hs = new StringBuilder(Math.max(2*b.length, hexLength));
     String stmp;
+
+    for (int n = 0; n < hexLength - 2*b.length; n++) {
+      hs.append("0");
+    }
 
     for (int n = 0; n < b.length; n++) {
       stmp = Integer.toHexString(b[n] & 0XFF);
@@ -131,10 +140,22 @@ public class Utils {
     return Base64.decodeBase64(base64.getBytes("UTF-8"));
   }
 
+  @SuppressLint("DefaultLocale")
   public static byte[] decodeFriendlyBase32(String base32) {
     Base32 converter = new Base32();
     final String translated = base32.replace('8', 'l').replace('9', 'o');
     return converter.decode(translated.toUpperCase());
+  }
+
+  public static byte[] hex2Byte(String str, int byteLength) {
+    byte[] second = hex2Byte(str);
+    if (second.length >= byteLength) {
+      return second;
+    }
+    // New Java arrays are zeroed:
+    // http://docs.oracle.com/javase/specs/jls/se7/html/jls-4.html#jls-4.12.5
+    byte[] first = new byte[byteLength - second.length];
+    return Utils.concatAll(first, second);
   }
 
   public static byte[] hex2Byte(String str) {
@@ -297,6 +318,7 @@ public class Utils {
    * Takes a URI, extracting URI components.
    * @param scheme the URI scheme on which to match.
    */
+  @SuppressWarnings("deprecation")
   public static Map<String, String> extractURIComponents(String scheme, String uri) {
     if (uri.indexOf(scheme) != 0) {
       throw new IllegalArgumentException("URI scheme does not match: " + scheme);
@@ -328,7 +350,7 @@ public class Utils {
   }
 
   // Because TextUtils.join is not stubbed.
-  public static String toDelimitedString(String delimiter, Collection<String> items) {
+  public static String toDelimitedString(String delimiter, Collection<? extends Object> items) {
     if (items == null || items.size() == 0) {
       return "";
     }
@@ -336,8 +358,8 @@ public class Utils {
     StringBuilder sb = new StringBuilder();
     int i = 0;
     int c = items.size();
-    for (String string : items) {
-      sb.append(string);
+    for (Object object : items) {
+      sb.append(object.toString());
       if (++i < c) {
         sb.append(delimiter);
       }
@@ -345,7 +367,7 @@ public class Utils {
     return sb.toString();
   }
 
-  public static String toCommaSeparatedString(Collection<String> items) {
+  public static String toCommaSeparatedString(Collection<? extends Object> items) {
     return toDelimitedString(", ", items);
   }
 
@@ -540,5 +562,13 @@ public class Utils {
       serverURL = serverURL + "/";
     }
     return serverURL + "user/1.0/" + userPart;
+  }
+
+  public static void throwIfNull(Object... objects) {
+    for (Object object : objects) {
+      if (object == null) {
+        throw new IllegalArgumentException("object must not be null");
+      }
+    }
   }
 }

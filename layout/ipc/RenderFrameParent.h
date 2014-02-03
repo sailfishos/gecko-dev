@@ -49,21 +49,26 @@ class RenderFrameParent : public PRenderFrameParent,
   typedef mozilla::ContainerLayerParameters ContainerLayerParameters;
   typedef mozilla::layers::TextureFactoryIdentifier TextureFactoryIdentifier;
   typedef mozilla::layers::ScrollableLayerGuid ScrollableLayerGuid;
+  typedef mozilla::layers::ZoomConstraints ZoomConstraints;
   typedef FrameMetrics::ViewID ViewID;
 
 public:
   typedef std::map<ViewID, nsRefPtr<nsContentView> > ViewMap;
+
+  /* Init should be called immediately after allocation. */
+  RenderFrameParent();
+  virtual ~RenderFrameParent();
 
   /**
    * Select the desired scrolling behavior.  If ASYNC_PAN_ZOOM is
    * chosen, then RenderFrameParent will watch input events and use
    * them to asynchronously pan and zoom.
    */
-  RenderFrameParent(nsFrameLoader* aFrameLoader,
-                    ScrollingBehavior aScrollingBehavior,
-                    TextureFactoryIdentifier* aTextureFactoryIdentifier,
-                    uint64_t* aId);
-  virtual ~RenderFrameParent();
+  void
+  Init(nsFrameLoader* aFrameLoader,
+       ScrollingBehavior aScrollingBehavior,
+       TextureFactoryIdentifier* aTextureFactoryIdentifier,
+       uint64_t* aId);
 
   void Destroy();
 
@@ -110,8 +115,6 @@ public:
                         ScrollableLayerGuid* aOutTargetGuid,
                         WidgetInputEvent* aOutEvent);
 
-  void NotifyDimensionsChanged(ScreenIntSize size);
-
   void ZoomToRect(uint32_t aPresShellId, ViewID aViewId, const CSSRect& aRect);
 
   void ContentReceivedTouch(const ScrollableLayerGuid& aGuid,
@@ -120,9 +123,7 @@ public:
   void UpdateZoomConstraints(uint32_t aPresShellId,
                              ViewID aViewId,
                              bool aIsRoot,
-                             bool aAllowZoom,
-                             const CSSToScreenScale& aMinZoom,
-                             const CSSToScreenScale& aMaxZoom);
+                             const ZoomConstraints& aConstraints);
 
   bool HitTest(const nsRect& aRect);
 

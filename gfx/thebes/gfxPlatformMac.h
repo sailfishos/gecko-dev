@@ -82,14 +82,13 @@ public:
     virtual already_AddRefed<gfxASurface>
     CreateThebesSurfaceAliasForDrawTarget_hack(mozilla::gfx::DrawTarget *aTarget);
 private:
-    virtual qcms_profile* GetPlatformCMSOutputProfile();
+    virtual void GetPlatformCMSOutputProfile(void* &mem, size_t &size);
 
     virtual bool SupportsOffMainThreadCompositing();
 
     // read in the pref value for the lower threshold on font anti-aliasing
     static uint32_t ReadAntiAliasingThreshold();
 
-    int32_t mOSXVersion;
     uint32_t mFontAntiAliasingThreshold;
 };
 

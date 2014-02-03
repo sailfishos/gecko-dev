@@ -323,6 +323,75 @@ MediaElementChecker.prototype = {
   }
 };
 
+/**
+ * Query function for determining if any IP address is available for
+ * generating SDP.
+ *
+ * @return false if required additional network setup.
+ */
+function isNetworkReady() {
+  // for gonk platform
+  if ("nsINetworkInterfaceListService" in SpecialPowers.Ci) {
+    var listService = SpecialPowers.Cc["@mozilla.org/network/interface-list-service;1"]
+                        .getService(SpecialPowers.Ci.nsINetworkInterfaceListService);
+    var itfList = listService.getDataInterfaceList(
+          SpecialPowers.Ci.nsINetworkInterfaceListService.LIST_NOT_INCLUDE_MMS_INTERFACES |
+          SpecialPowers.Ci.nsINetworkInterfaceListService.LIST_NOT_INCLUDE_SUPL_INTERFACES);
+    var num = itfList.getNumberOfInterface();
+    for (var i = 0; i < num; i++) {
+      if (itfList.getInterface(i).ip) {
+        info("Network interface is ready with address: " + itfList.getInterface(i).ip);
+        return true;
+      }
+    }
+    // ip address is not available
+    info("Network interface is not ready, required additional network setup");
+    return false;
+  }
+  info("Network setup is not required");
+  return true;
+}
+
+/**
+ * Network setup utils for Gonk
+ *
+ * @return {object} providing functions for setup/teardown data connection
+ */
+function getNetworkUtils() {
+  var url = SimpleTest.getTestFileURL("NetworkPreparationChromeScript.js");
+  var script = SpecialPowers.loadChromeScript(url);
+
+  var utils = {
+    /**
+     * Utility for setting up data connection.
+     *
+     * @param aCallback callback after data connection is ready.
+     */
+    prepareNetwork: function(aCallback) {
+      script.addMessageListener('network-ready', function (message) {
+        info("Network interface is ready");
+        aCallback();
+      });
+      info("Setup network interface");
+      script.sendAsyncMessage("prepare-network", true);
+    },
+    /**
+     * Utility for tearing down data connection.
+     *
+     * @param aCallback callback after data connection is closed.
+     */
+    tearDownNetwork: function(aCallback) {
+      script.addMessageListener('network-disabled', function (message) {
+        ok(true, 'network-disabled');
+        script.destroy();
+        aCallback();
+      });
+      script.sendAsyncMessage("network-cleanup", true);
+    }
+  };
+
+  return utils;
+}
 
 /**
  * This class handles tests for peer connections.
@@ -349,6 +418,27 @@ function PeerConnectionTest(options) {
   options.is_local = "is_local" in options ? options.is_local : true;
   options.is_remote = "is_remote" in options ? options.is_remote : true;
 
+  var netTeardownCommand = null;
+  if (!isNetworkReady()) {
+    var utils = getNetworkUtils();
+    // Trigger network setup to obtain IP address before creating any PeerConnection.
+    utils.prepareNetwork(function() {
+      ok(isNetworkReady(),'setup network connection successfully');
+    });
+
+    netTeardownCommand = [
+      [
+        'TEARDOWN_NETWORK',
+        function(test) {
+          utils.tearDownNetwork(function() {
+            info('teardown network connection');
+            test.next();
+          });
+        }
+      ]
+    ];
+  }
+
   if (options.is_local)
     this.pcLocal = new PeerConnectionWrapper('pcLocal', options.config_pc1);
   else
@@ -368,6 +458,11 @@ function PeerConnectionTest(options) {
   }
   if (!options.is_remote) {
     this.chain.filterOut(/^PC_REMOTE/);
+  }
+
+  // Insert network teardown after testcase execution.
+  if (netTeardownCommand) {
+    this.chain.append(netTeardownCommand);
   }
 
   var self = this;
@@ -976,8 +1071,20 @@ function PeerConnectionWrapper(label, configuration) {
   var self = this;
   // This enables tests to validate that the next ice state is the one they expect to happen
   this.next_ice_state = ""; // in most cases, the next state will be "checking", but in some tests "closed"
+  // This allows test to register their own callbacks for ICE connection state changes
+  this.ice_connection_callbacks = [ ];
+
   this._pc.oniceconnectionstatechange = function() {
       ok(self._pc.iceConnectionState != undefined, "iceConnectionState should not be undefined");
+      info(self + ": oniceconnectionstatechange fired, new state is: " + self._pc.iceConnectionState);
+      if (Object.keys(self.ice_connection_callbacks).length >= 1) {
+        var it = Iterator(self.ice_connection_callbacks);
+        var name = "";
+        var callback = "";
+        for ([name, callback] in it) {
+          callback();
+        }
+      }
       if (self.next_ice_state != "") {
         is(self._pc.iceConnectionState, self.next_ice_state, "iceConnectionState changed to '" +
            self.next_ice_state + "'");
@@ -1081,12 +1188,20 @@ PeerConnectionWrapper.prototype = {
   },
 
   /**
-   * Returns the remote signaling state.
+   * Returns the signaling state.
    *
    * @returns {object} The local description
    */
   get signalingState() {
     return this._pc.signalingState;
+  },
+  /**
+   * Returns the ICE connection state.
+   *
+   * @returns {object} The local description
+   */
+  get iceConnectionState() {
+    return this._pc.iceConnectionState;
   },
 
   /**
@@ -1317,6 +1432,63 @@ PeerConnectionWrapper.prototype = {
   },
 
   /**
+   * Returns if the ICE the connection state is "connected".
+   *
+   * @returns {boolean} True is the connection state is "connected", otherwise false.
+   */
+  isIceConnected : function PCW_isIceConnected() {
+    info("iceConnectionState: " + this.iceConnectionState);
+    return this.iceConnectionState === "connected";
+  },
+
+  /**
+   * Returns if the ICE the connection state is "checking".
+   *
+   * @returns {boolean} True is the connection state is "checking", otherwise false.
+   */
+  isIceChecking : function PCW_isIceChecking() {
+    return this.iceConnectionState === "checking";
+  },
+
+  /**
+   * Returns if the ICE the connection state is "new".
+   *
+   * @returns {boolean} True is the connection state is "new", otherwise false.
+   */
+  isIceNew : function PCW_isIceNew() {
+    return this.iceConnectionState === "new";
+  },
+
+  /**
+   * Registers a callback for the ICE connection state change and
+   * reports success (=connected) or failure via the callbacks.
+   * States "new" and "checking" are ignored.
+   *
+   * @param {function} onSuccess
+   *        Callback if ICE connection status is "connected".
+   * @param {function} onFailure
+   *        Callback if ICE connection reaches a different state than
+   *        "new", "checking" or "connected".
+   */
+  waitForIceConnected : function PCW_waitForIceConnected(onSuccess, onFailure) {
+    var self = this;
+    var mySuccess = onSuccess;
+    var myFailure = onFailure;
+
+    function iceConnectedChanged () {
+      if (self.isIceConnected()) {
+        delete self.ice_connection_callbacks["waitForIceConnected"];
+        mySuccess();
+      } else if (! (self.isIceChecking() || self.isIceNew())) {
+        delete self.ice_connection_callbacks["waitForIceConnected"];
+        myFailure();
+      }
+    };
+
+    self.ice_connection_callbacks["waitForIceConnected"] = (function() {iceConnectedChanged()});
+  },
+
+  /**
    * Checks that we are getting the media streams we expect.
    *
    * @param {object} constraintsRemote
@@ -1353,6 +1525,79 @@ PeerConnectionWrapper.prototype = {
     }
 
     _checkMediaFlowPresent(0, onSuccess);
+  },
+
+  /**
+   * Check that stats are present by checking for known stats.
+   *
+   * @param {Function} onSuccess the success callback to return stats to
+   */
+  getStats : function PCW_getStats(selector, onSuccess) {
+    var self = this;
+
+    this._pc.getStats(selector, function(stats) {
+      info(self + ": Got stats: " + JSON.stringify(stats));
+      self._last_stats = stats;
+      onSuccess(stats);
+    }, unexpectedCallbackAndFinish());
+  },
+
+  /**
+   * Checks that we are getting the media streams we expect.
+   *
+   * @param {object} stats
+   *        The stats to check from this PeerConnectionWrapper
+   */
+  checkStats : function PCW_checkStats(stats) {
+    function toNum(obj) {
+      return obj? obj : 0;
+    }
+    function numTracks(streams) {
+      var n = 0;
+      streams.forEach(function(stream) {
+          n += stream.getAudioTracks().length + stream.getVideoTracks().length;
+        });
+      return n;
+    }
+
+    // Use spec way of enumerating stats
+    var counters = {};
+    for (var key in stats) {
+      if (stats.hasOwnProperty(key)) {
+        var res = stats[key];
+        if (!res.isRemote) {
+          counters[res.type] = toNum(counters[res.type]) + 1;
+        }
+      }
+    }
+    // Use MapClass way of enumerating stats
+    var counters2 = {};
+    stats.forEach(function(res) {
+        if (!res.isRemote) {
+          counters2[res.type] = toNum(counters2[res.type]) + 1;
+        }
+      });
+    is(JSON.stringify(counters), JSON.stringify(counters2),
+       "Spec and MapClass variant of RTCStatsReport enumeration agree");
+    var nin = numTracks(this._pc.getRemoteStreams());
+    var nout = numTracks(this._pc.getLocalStreams());
+
+    // TODO(Bug 957145): Restore stronger inboundrtp test once Bug 948249 is fixed
+    //is(toNum(counters["inboundrtp"]), nin, "Have " + nin + " inboundrtp stat(s)");
+    ok(toNum(counters["inboundrtp"]) >= nin, "Have at least " + nin + " inboundrtp stat(s) *");
+
+    is(toNum(counters["outboundrtp"]), nout, "Have " + nout + " outboundrtp stat(s)");
+
+    var numLocalCandidates  = toNum(counters["localcandidate"]);
+    var numRemoteCandidates = toNum(counters["remotecandidate"]);
+    // If there are no tracks, there will be no stats either.
+    if (nin + nout > 0) {
+      ok(numLocalCandidates, "Have localcandidate stat(s)");
+      ok(numRemoteCandidates, "Have remotecandidate stat(s)");
+    } else {
+      is(numLocalCandidates, 0, "Have no localcandidate stats");
+      is(numRemoteCandidates, 0, "Have no remotecandidate stats");
+    }
   },
 
   /**

@@ -57,7 +57,7 @@ enum Phase {
     PHASE_SWEEP_STRING,
     PHASE_SWEEP_SCRIPT,
     PHASE_SWEEP_SHAPE,
-    PHASE_SWEEP_IONCODE,
+    PHASE_SWEEP_JITCODE,
     PHASE_FINALIZE_END,
     PHASE_DESTROY,
     PHASE_GC_END,
@@ -247,6 +247,8 @@ struct AutoSCC
     int64_t start;
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 };
+
+const char *ExplainReason(JS::gcreason::Reason reason);
 
 } /* namespace gcstats */
 } /* namespace js */

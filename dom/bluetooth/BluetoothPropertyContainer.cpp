@@ -12,10 +12,12 @@
 #include "mozilla/dom/bluetooth/BluetoothTypes.h"
 #include "nsServiceManagerUtils.h"
 
+#include "js/Value.h"
+
 USING_BLUETOOTH_NAMESPACE
 
 already_AddRefed<mozilla::dom::DOMRequest>
-BluetoothPropertyContainer::FirePropertyAlreadySet(nsIDOMWindow* aOwner,
+BluetoothPropertyContainer::FirePropertyAlreadySet(nsPIDOMWindow* aOwner,
                                                    ErrorResult& aRv)
 {
   nsCOMPtr<nsIDOMRequestService> rs =
@@ -26,13 +28,13 @@ BluetoothPropertyContainer::FirePropertyAlreadySet(nsIDOMWindow* aOwner,
   }
 
   nsRefPtr<mozilla::dom::DOMRequest> request = new DOMRequest(aOwner);
-  rs->FireSuccess(request, JS::UndefinedValue());
+  rs->FireSuccess(request, JS::UndefinedHandleValue);
 
   return request.forget();
 }
 
 already_AddRefed<mozilla::dom::DOMRequest>
-BluetoothPropertyContainer::SetProperty(nsIDOMWindow* aOwner,
+BluetoothPropertyContainer::SetProperty(nsPIDOMWindow* aOwner,
                                         const BluetoothNamedValue& aProperty,
                                         ErrorResult& aRv)
 {

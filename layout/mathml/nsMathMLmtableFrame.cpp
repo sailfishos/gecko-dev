@@ -67,8 +67,8 @@ ExtractStyleValues(const nsAString& aString, nsIAtom* aAttribute,
 {
   nsTArray<int8_t>* styleArray = nullptr;
 
-  const PRUnichar* start = aString.BeginReading();
-  const PRUnichar* end = aString.EndReading();
+  const char16_t* start = aString.BeginReading();
+  const char16_t* end = aString.EndReading();
 
   int32_t startIndex = 0;
   int32_t count = 0;
@@ -109,12 +109,12 @@ ExtractStyleValues(const nsAString& aString, nsIAtom* aAttribute,
   return styleArray;
 }
 
-static nsresult ReportParseError(nsIFrame* aFrame, const PRUnichar* aAttribute,
-                                 const PRUnichar* aValue)
+static nsresult ReportParseError(nsIFrame* aFrame, const char16_t* aAttribute,
+                                 const char16_t* aValue)
 {
   nsIContent* content = aFrame->GetContent();
 
-  const PRUnichar* params[] =
+  const char16_t* params[] =
     { aValue, aAttribute, content->Tag()->GetUTF16String() };
 
   return nsContentUtils::ReportToConsole(nsIScriptError::errorFlag,
@@ -421,55 +421,6 @@ nsMathMLmtableOuterFrame::~nsMathMLmtableOuterFrame()
 }
 
 NS_IMETHODIMP
-nsMathMLmtableOuterFrame::InheritAutomaticData(nsIFrame* aParent)
-{
-  // XXX the REC says that by default, displaystyle=false in <mtable>
-
-  // let the base class inherit the displaystyle from our parent
-  nsMathMLFrame::InheritAutomaticData(aParent);
-
-  // see if the displaystyle attribute is there and let it override what we inherited
-  if (mContent->Tag() == nsGkAtoms::mtable_)
-    nsMathMLFrame::FindAttrDisplaystyle(mContent, mPresentationData);
-
-  return NS_OK;
-}
-
-// displaystyle is special in mtable...
-// Since UpdatePresentation() and UpdatePresentationDataFromChildAt() can be called
-// by a parent, ensure that the displaystyle attribute of mtable takes precedence
-NS_IMETHODIMP
-nsMathMLmtableOuterFrame::UpdatePresentationData(uint32_t aFlagsValues,
-                                                 uint32_t aWhichFlags)
-{
-  if (NS_MATHML_HAS_EXPLICIT_DISPLAYSTYLE(mPresentationData.flags)) {
-    // our current state takes precedence, disallow updating the displastyle
-    aWhichFlags &= ~NS_MATHML_DISPLAYSTYLE;
-    aFlagsValues &= ~NS_MATHML_DISPLAYSTYLE;
-  }
-
-  return nsMathMLFrame::UpdatePresentationData(aFlagsValues, aWhichFlags);
-}
-
-NS_IMETHODIMP
-nsMathMLmtableOuterFrame::UpdatePresentationDataFromChildAt(int32_t  aFirstIndex,
-                                                            int32_t  aLastIndex,
-                                                            uint32_t aFlagsValues,
-                                                            uint32_t aWhichFlags)
-{
-  if (NS_MATHML_HAS_EXPLICIT_DISPLAYSTYLE(mPresentationData.flags)) {
-    // our current state takes precedence, disallow updating the displastyle
-    aWhichFlags &= ~NS_MATHML_DISPLAYSTYLE;
-    aFlagsValues &= ~NS_MATHML_DISPLAYSTYLE;
-  }
-
-  nsMathMLContainerFrame::PropagatePresentationDataFromChildAt(this,
-    aFirstIndex, aLastIndex, aFlagsValues, aWhichFlags);
-
-  return NS_OK; 
-}
-
-NS_IMETHODIMP
 nsMathMLmtableOuterFrame::AttributeChanged(int32_t  aNameSpaceID,
                                            nsIAtom* aAttribute,
                                            int32_t  aModType)
@@ -480,7 +431,7 @@ nsMathMLmtableOuterFrame::AttributeChanged(int32_t  aNameSpaceID,
   // groupalign    : not yet supported
   // equalrows     : not yet supported 
   // equalcolumns  : not yet supported 
-  // displaystyle  : here 
+  // displaystyle  : here and in mathml.css
   // align         : in reflow 
   // rowalign      : here
   // rowlines      : here 
@@ -592,14 +543,13 @@ nsMathMLmtableOuterFrame::Reflow(nsPresContext*          aPresContext,
 
   rv = nsTableOuterFrame::Reflow(aPresContext, aDesiredSize, aReflowState,
                                  aStatus);
-  NS_ASSERTION(aDesiredSize.height >= 0, "illegal height for mtable");
-  NS_ASSERTION(aDesiredSize.width >= 0, "illegal width for mtable");
+  NS_ASSERTION(aDesiredSize.Height() >= 0, "illegal height for mtable");
+  NS_ASSERTION(aDesiredSize.Width() >= 0, "illegal width for mtable");
 
   // see if the user has set the align attribute on the <mtable>
-  // XXX should we also check <mstyle> ?
   int32_t rowIndex = 0;
   eAlign tableAlign = eAlign_axis;
-  GetAttribute(mContent, nullptr, nsGkAtoms::align, value);
+  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::align, value);
   if (!value.IsEmpty()) {
     ParseAlignAttribute(value, tableAlign, rowIndex);
   }
@@ -609,7 +559,7 @@ nsMathMLmtableOuterFrame::Reflow(nsPresContext*          aPresContext,
   // it is wrapped in a single big fictional row at dy = 0, this way of
   // doing so allows us to have a single code path for all cases).
   nscoord dy = 0;
-  nscoord height = aDesiredSize.height;
+  nscoord height = aDesiredSize.Height();
   nsIFrame* rowFrame = nullptr;
   if (rowIndex) {
     rowFrame = GetRowFrameAt(aPresContext, rowIndex);
@@ -625,25 +575,25 @@ nsMathMLmtableOuterFrame::Reflow(nsPresContext*          aPresContext,
   }
   switch (tableAlign) {
     case eAlign_top:
-      aDesiredSize.ascent = dy;
+      aDesiredSize.SetTopAscent(dy);
       break;
     case eAlign_bottom:
-      aDesiredSize.ascent = dy + height;
+      aDesiredSize.SetTopAscent(dy + height);
       break;
     case eAlign_center:
-      aDesiredSize.ascent = dy + height/2;
+      aDesiredSize.SetTopAscent(dy + height / 2);
       break;
     case eAlign_baseline:
       if (rowFrame) {
         // anchor the table on the baseline of the row of reference
         nscoord rowAscent = ((nsTableRowFrame*)rowFrame)->GetMaxCellAscent();
         if (rowAscent) { // the row has at least one cell with 'vertical-align: baseline'
-          aDesiredSize.ascent = dy + rowAscent;
+          aDesiredSize.SetTopAscent(dy + rowAscent);
           break;
         }
       }
       // in other situations, fallback to center
-      aDesiredSize.ascent = dy + height/2;
+      aDesiredSize.SetTopAscent(dy + height / 2);
       break;
     case eAlign_axis:
     default: {
@@ -661,25 +611,25 @@ nsMathMLmtableOuterFrame::Reflow(nsPresContext*          aPresContext,
         // XXX need to fetch the axis of the row; would need rowalign=axis to work better
         nscoord rowAscent = ((nsTableRowFrame*)rowFrame)->GetMaxCellAscent();
         if (rowAscent) { // the row has at least one cell with 'vertical-align: baseline'
-          aDesiredSize.ascent = dy + rowAscent;
+          aDesiredSize.SetTopAscent(dy + rowAscent);
           break;
         }
       }
       // in other situations, fallback to using half of the height
-      aDesiredSize.ascent = dy + height/2 + axisHeight;
+      aDesiredSize.SetTopAscent(dy + height / 2 + axisHeight);
     }
   }
 
   mReference.x = 0;
-  mReference.y = aDesiredSize.ascent;
+  mReference.y = aDesiredSize.TopAscent();
 
   // just make-up a bounding metrics
   mBoundingMetrics = nsBoundingMetrics();
-  mBoundingMetrics.ascent = aDesiredSize.ascent;
-  mBoundingMetrics.descent = aDesiredSize.height - aDesiredSize.ascent;
-  mBoundingMetrics.width = aDesiredSize.width;
+  mBoundingMetrics.ascent = aDesiredSize.TopAscent();
+  mBoundingMetrics.descent = aDesiredSize.Height() - aDesiredSize.TopAscent();
+  mBoundingMetrics.width = aDesiredSize.Width();
   mBoundingMetrics.leftBearing = 0;
-  mBoundingMetrics.rightBearing = aDesiredSize.width;
+  mBoundingMetrics.rightBearing = aDesiredSize.Width();
 
   aDesiredSize.mBoundingMetrics = mBoundingMetrics;
   NS_FRAME_SET_TRUNCATION(aStatus, aReflowState, aDesiredSize);

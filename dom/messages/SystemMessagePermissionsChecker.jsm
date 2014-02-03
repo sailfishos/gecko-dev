@@ -107,9 +107,13 @@ this.SystemMessagePermissionsTable = {
   "nfc-manager-tech-lost": {
     "nfc-manager": []
   },
+  "nfc-manager-send-file": {
+    "nfc-manager": []
+  },
   "nfc-powerlevel-change": {
     "settings": ["read", "write"]
   },
+  "wifip2p-pairing-request": { },
 };
 
 this.SystemMessagePermissionsChecker = {

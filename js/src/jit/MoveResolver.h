@@ -110,30 +110,44 @@ class MoveOp
   protected:
     MoveOperand from_;
     MoveOperand to_;
-    bool cycle_;
+    bool cycleBegin_;
+    bool cycleEnd_;
 
   public:
-    enum Kind {
+    enum Type {
         GENERAL,
+        INT32,
         FLOAT32,
         DOUBLE
     };
 
   protected:
-    Kind kind_;
+    Type type_;
+
+    // If cycleBegin_ is true, endCycleType_ is the type of the move at the end
+    // of the cycle. For example, given these moves:
+    //       INT32 move a -> b
+    //     GENERAL move b -> a
+    // the move resolver starts by copying b into a temporary location, so that
+    // the last move can read it. This copy needs to use use type GENERAL.
+    Type endCycleType_;
 
   public:
     MoveOp()
     { }
-    MoveOp(const MoveOperand &from, const MoveOperand &to, Kind kind)
+    MoveOp(const MoveOperand &from, const MoveOperand &to, Type type)
       : from_(from),
         to_(to),
-        cycle_(false),
-        kind_(kind)
+        cycleBegin_(false),
+        cycleEnd_(false),
+        type_(type)
     { }
 
-    bool inCycle() const {
-        return cycle_;
+    bool isCycleBegin() const {
+        return cycleBegin_;
+    }
+    bool isCycleEnd() const {
+        return cycleEnd_;
     }
     const MoveOperand &from() const {
         return from_;
@@ -141,8 +155,12 @@ class MoveOp
     const MoveOperand &to() const {
         return to_;
     }
-    Kind kind() const {
-        return kind_;
+    Type type() const {
+        return type_;
+    }
+    Type endCycleType() const {
+        JS_ASSERT(isCycleBegin());
+        return endCycleType_;
     }
 };
 
@@ -156,13 +174,18 @@ class MoveResolver
     {
         PendingMove()
         { }
-        PendingMove(const MoveOperand &from, const MoveOperand &to, Kind kind)
-          : MoveOp(from, to, kind)
+        PendingMove(const MoveOperand &from, const MoveOperand &to, Type type)
+          : MoveOp(from, to, type)
         { }
 
-        void setInCycle() {
-            JS_ASSERT(!inCycle());
-            cycle_ = true;
+        void setCycleBegin(Type endCycleType) {
+            JS_ASSERT(!isCycleBegin() && !isCycleEnd());
+            cycleBegin_ = true;
+            endCycleType_ = endCycleType;
+        }
+        void setCycleEnd() {
+            JS_ASSERT(!isCycleBegin() && !isCycleEnd());
+            cycleEnd_ = true;
         }
     };
 
@@ -193,7 +216,7 @@ class MoveResolver
     //
     // After calling addMove() for each parallel move, resolve() performs the
     // cycle resolution algorithm. Calling addMove() again resets the resolver.
-    bool addMove(const MoveOperand &from, const MoveOperand &to, MoveOp::Kind kind);
+    bool addMove(const MoveOperand &from, const MoveOperand &to, MoveOp::Type type);
     bool resolve();
 
     size_t numMoves() const {

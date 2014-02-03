@@ -7,6 +7,7 @@ Cu.import("resource://services-common/utils.js");
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/FxAccounts.jsm");
 Cu.import("resource://gre/modules/FxAccountsClient.jsm");
+Cu.import("resource://gre/modules/FxAccountsCommon.js");
 Cu.import("resource://gre/modules/Promise.jsm");
 Cu.import("resource://gre/modules/Log.jsm");
 
@@ -63,6 +64,11 @@ function MockFxAccountsClient() {
     return deferred.promise;
   };
 
+  this.resendVerificationEmail = function(sessionToken) {
+    // Return the session token to show that we received it in the first place
+    return Promise.resolve(sessionToken);
+  };
+
   this.signCertificate = function() { throw "no" };
 
   FxAccountsClient.apply(this);
@@ -115,13 +121,13 @@ MockFxAccounts.prototype = {
 
 add_test(function test_non_https_remote_server_uri() {
   Services.prefs.setCharPref(
-    "firefox.accounts.remoteUrl",
+    "identity.fxaccounts.remote.uri",
     "http://example.com/browser/browser/base/content/test/general/accounts_testRemoteCommands.html");
   do_check_throws_message(function () {
     fxAccounts.getAccountsURI();
   }, "Firefox Accounts server must use HTTPS");
 
-  Services.prefs.clearUserPref("firefox.accounts.remoteUrl");
+  Services.prefs.clearUserPref("identity.fxaccounts.remote.uri");
 
   run_next_test();
 });
@@ -138,7 +144,7 @@ add_task(function test_get_signed_in_user_initially_unset() {
     sessionToken: "dead",
     kA: "beef",
     kB: "cafe",
-    isVerified: true
+    verified: true
   };
 
   let result = yield account.getSignedInUser();
@@ -167,9 +173,7 @@ add_task(function test_get_signed_in_user_initially_unset() {
   do_check_eq(result, null);
 });
 
-/*
- * Sanity-check that our mocked client is working correctly
- */
+// Sanity-check that our mocked client is working correctly
 add_test(function test_client_mock() {
   do_test_pending();
 
@@ -187,35 +191,41 @@ add_test(function test_client_mock() {
     });
 });
 
-/*
- * Sign in a user, and after a little while, verify the user's email.
- * Polling should detect that the email is verified, and eventually
- * 'onlogin' should be observed
- */
+// Sign in a user, and after a little while, verify the user's email.
+// Right after signing in the user, we should get the 'onlogin' notification.
+// Polling should detect that the email is verified, and eventually
+// 'onverified' should be observed
 add_test(function test_verification_poll() {
   do_test_pending();
 
   let fxa = new MockFxAccounts();
   let test_user = getTestUser("francine");
+  let login_notification_received = false;
 
-  makeObserver("fxaccounts:onlogin", function() {
-    log.debug("test_verification_poll observed onlogin");
-    // Once email verification is complete, we will observe onlogin
+  makeObserver(ONVERIFIED_NOTIFICATION, function() {
+    log.debug("test_verification_poll observed onverified");
+    // Once email verification is complete, we will observe onverified
     fxa.internal.getUserAccountData().then(user => {
       // And confirm that the user's state has changed
-      do_check_eq(user.isVerified, true);
+      do_check_eq(user.verified, true);
       do_check_eq(user.email, test_user.email);
+      do_check_true(login_notification_received);
       do_test_finished();
       run_next_test();
     });
   });
 
+  makeObserver(ONLOGIN_NOTIFICATION, function() {
+    log.debug("test_verification_poll observer onlogin");
+    login_notification_received = true;
+  });
+
   fxa.setSignedInUser(test_user).then(() => {
     fxa.internal.getUserAccountData().then(user => {
       // The user is signing in, but email has not been verified yet
-      do_check_eq(user.isVerified, false);
+      do_check_eq(user.verified, false);
       do_timeout(200, function() {
-        // Mock email verification ...
+        log.debug("Mocking verification of francine's email");
         fxa.internal.fxAccountsClient._email = test_user.email;
         fxa.internal.fxAccountsClient._verified = true;
       });
@@ -223,23 +233,21 @@ add_test(function test_verification_poll() {
   });
 });
 
-/*
- * Sign in the user, but never verify the email.  The check-email
- * poll should time out.  No login event should be observed, and the
- * internal whenVerified promise should be rejected
- */
+// Sign in the user, but never verify the email.  The check-email
+// poll should time out.  No verifiedlogin event should be observed, and the
+// internal whenVerified promise should be rejected
 add_test(function test_polling_timeout() {
   do_test_pending();
 
-  // This test could be better - the onlogin observer might fire on somebody
-  // else's stack, and we're not making sure that we're not receiving such a
-  // message.  In other words, this tests either failure, or success, but not
-  // both.
+  // This test could be better - the onverified observer might fire on
+  // somebody else's stack, and we're not making sure that we're not receiving
+  // such a message. In other words, this tests either failure, or success, but
+  // not both.
 
   let fxa = new MockFxAccounts();
   let test_user = getTestUser("carol");
 
-  let removeObserver = makeObserver("fxaccounts:onlogin", function() {
+  let removeObserver = makeObserver(ONVERIFIED_NOTIFICATION, function() {
     do_throw("We should not be getting a login event!");
   });
 
@@ -262,38 +270,39 @@ add_test(function test_polling_timeout() {
   });
 });
 
-add_task(function test_getKeys() {
+add_test(function test_getKeys() {
+  do_test_pending();
   let fxa = new MockFxAccounts();
   let user = getTestUser("eusebius");
 
   // Once email has been verified, we will be able to get keys
-  user.isVerified = true;
+  user.verified = true;
 
   fxa.setSignedInUser(user).then(() => {
     fxa.getSignedInUser().then((user) => {
       // Before getKeys, we have no keys
-      do_check_eq(!!data.kA, false);
-      do_check_eq(!!data.kB, false);
+      do_check_eq(!!user.kA, false);
+      do_check_eq(!!user.kB, false);
       // And we still have a key-fetch token to use
-      do_check_eq(!!data.keyFetchToken, true);
+      do_check_eq(!!user.keyFetchToken, true);
 
       fxa.internal.getKeys().then(() => {
         fxa.getSignedInUser().then((user) => {
           // Now we should have keys
-          do_check_eq(fxa.internal.isUserEmailVerified(data), true);
-          do_check_eq(!!data.isVerified, true);
-          do_check_eq(data.kA, expandHex("11"));
-          do_check_eq(data.kB, expandHex("66"));
-          do_check_eq(data.keyFetchToken, undefined);
+          do_check_eq(fxa.internal.isUserEmailVerified(user), true);
+          do_check_eq(!!user.verified, true);
+          do_check_eq(user.kA, expandHex("11"));
+          do_check_eq(user.kB, expandHex("66"));
+          do_check_eq(user.keyFetchToken, undefined);
+          do_test_finished();
+          run_next_test();
         });
       });
     });
   });
 });
 
-/*
- * getKeys with no keyFetchToken should trigger signOut
- */
+// getKeys with no keyFetchToken should trigger signOut
 add_test(function test_getKeys_no_token() {
   do_test_pending();
 
@@ -301,7 +310,7 @@ add_test(function test_getKeys_no_token() {
   let user = getTestUser("lettuce.protheroe");
   delete user.keyFetchToken
 
-  makeObserver("fxaccounts:onlogout", function() {
+  makeObserver(ONLOGOUT_NOTIFICATION, function() {
     log.debug("test_getKeys_no_token observed logout");
     fxa.internal.getUserAccountData().then(user => {
       do_test_finished();
@@ -314,11 +323,9 @@ add_test(function test_getKeys_no_token() {
   });
 });
 
-/*
- * Alice (User A) signs up but never verifies her email.  Then Bob (User B)
- * signs in with a verified email.  Ensure that no sign-in events are triggered
- * on Alice's behalf.  In the end, Bob should be the signed-in user.
- */
+// Alice (User A) signs up but never verifies her email.  Then Bob (User B)
+// signs in with a verified email.  Ensure that no sign-in events are triggered
+// on Alice's behalf.  In the end, Bob should be the signed-in user.
 add_test(function test_overlapping_signins() {
   do_test_pending();
 
@@ -326,12 +333,12 @@ add_test(function test_overlapping_signins() {
   let alice = getTestUser("alice");
   let bob = getTestUser("bob");
 
-  makeObserver("fxaccounts:onlogin", function() {
-    log.debug("test_overlapping_signins observed onlogin");
-    // Once email verification is complete, we will observe onlogin
+  makeObserver(ONVERIFIED_NOTIFICATION, function() {
+    log.debug("test_overlapping_signins observed onverified");
+    // Once email verification is complete, we will observe onverified
     fxa.internal.getUserAccountData().then(user => {
       do_check_eq(user.email, bob.email);
-      do_check_eq(user.isVerified, true);
+      do_check_eq(user.verified, true);
       do_test_finished();
       run_next_test();
     });
@@ -342,7 +349,7 @@ add_test(function test_overlapping_signins() {
     log.debug("Alice signing in ...");
     fxa.internal.getUserAccountData().then(user => {
       do_check_eq(user.email, alice.email);
-      do_check_eq(user.isVerified, false);
+      do_check_eq(user.verified, false);
       log.debug("Alice has not verified her email ...");
 
       // Now Bob signs in instead and actually verifies his email
@@ -369,9 +376,9 @@ add_task(function test_getAssertion() {
     sessionToken: "sessionToken",
     kA: expandHex("11"),
     kB: expandHex("66"),
-    isVerified: true
+    verified: true
   };
-  // By putting kA/kB/isVerified in "creds", we skip ahead
+  // By putting kA/kB/verified in "creds", we skip ahead
   // to the "we're ready" stage.
   yield fxa.setSignedInUser(creds);
 
@@ -445,6 +452,64 @@ add_task(function test_getAssertion() {
   _("----- DONE ----\n");
 });
 
+add_task(function test_resend_email_not_signed_in() {
+  let fxa = new MockFxAccounts();
+
+  try {
+    yield fxa.resendVerificationEmail();
+  } catch(err) {
+    do_check_eq(err.message,
+      "Cannot resend verification email; no signed-in user");
+    do_test_finished();
+    run_next_test();
+    return;
+  }
+  do_throw("Should not be able to resend email when nobody is signed in");
+});
+
+add_task(function test_resend_email() {
+  do_test_pending();
+
+  let fxa = new MockFxAccounts();
+  let alice = getTestUser("alice");
+
+  do_check_eq(fxa.internal.generationCount, 0);
+
+  // Alice is the user signing in; her email is unverified.
+  fxa.setSignedInUser(alice).then(() => {
+    log.debug("Alice signing in");
+
+    // We're polling for the first email
+    do_check_eq(fxa.internal.generationCount, 1);
+
+    // The polling timer is ticking
+    do_check_true(fxa.internal.currentTimer > 0);
+
+    fxa.internal.getUserAccountData().then(user => {
+      do_check_eq(user.email, alice.email);
+      do_check_eq(user.verified, false);
+      log.debug("Alice wants verification email resent");
+
+      fxa.resendVerificationEmail().then((result) => {
+        // Mock server response; ensures that the session token actually was
+        // passed to the client to make the hawk call
+        do_check_eq(result, "alice's session token");
+
+        // Timer was not restarted
+        do_check_eq(fxa.internal.generationCount, 1);
+
+        // Timer is still ticking
+        do_check_true(fxa.internal.currentTimer > 0);
+
+        // Ok abort polling before we go on to the next test
+        fxa.internal.abortExistingFlow();
+        do_test_finished();
+        run_next_test();
+      });
+    });
+  });
+});
+
 /*
  * End of tests.
  * Utility functions follow.
@@ -468,7 +533,7 @@ function getTestUser(name) {
     sessionToken: name + "'s session token",
     keyFetchToken: name + "'s keyfetch token",
     unwrapBKey: expandHex("44"),
-    isVerified: false
+    verified: false
   };
 }
 

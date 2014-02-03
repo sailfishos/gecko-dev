@@ -65,7 +65,7 @@ nsUsageArrayHelper::check(uint32_t previousCheckResult,
                           PRTime time,
                           CertVerifier::Flags flags,
                           uint32_t &aCounter,
-                          PRUnichar **outUsages)
+                          char16_t **outUsages)
 {
   if (!aCertUsage) {
     MOZ_CRASH("caller should have supplied non-zero aCertUsage");
@@ -117,7 +117,7 @@ nsUsageArrayHelper::check(uint32_t previousCheckResult,
     MOZ_CRASH("unknown cert usage passed to check()");
   }
 
-  SECStatus rv = certVerifier->VerifyCert(mCert, aCertUsage,
+  SECStatus rv = certVerifier->VerifyCert(mCert, nullptr, aCertUsage,
                          time, nullptr /*XXX:wincx*/, flags);
 
   if (rv == SECSuccess) {
@@ -188,7 +188,7 @@ nsUsageArrayHelper::GetUsagesArray(const char *suffix,
                       uint32_t outArraySize,
                       uint32_t *_verified,
                       uint32_t *_count,
-                      PRUnichar **outUsages)
+                      char16_t **outUsages)
 {
   nsNSSShutDownPreventionLock locker;
   if (NS_FAILED(m_rv))
@@ -199,12 +199,12 @@ nsUsageArrayHelper::GetUsagesArray(const char *suffix,
   if (outArraySize < max_returned_out_array_size)
     return NS_ERROR_FAILURE;
 
+  RefPtr<SharedCertVerifier> certVerifier(GetDefaultCertVerifier());
+  NS_ENSURE_TRUE(certVerifier, NS_ERROR_UNEXPECTED);
+
   // Bug 860076, this disabling ocsp for all NSS is incorrect.
-#ifndef NSS_NO_LIBPKIX
-  const bool localOSCPDisable = !nsNSSComponent::globalConstFlagUsePKIXVerification && localOnly;
-#else
-  const bool localOSCPDisable = localOnly;
-#endif 
+  const bool localOSCPDisable
+    = certVerifier->mImplementation == CertVerifier::classic;
   if (localOSCPDisable) {
     nsresult rv;
     nssComponent = do_GetService(kNSSComponentCID, &rv);
@@ -218,9 +218,6 @@ nsUsageArrayHelper::GetUsagesArray(const char *suffix,
 
   uint32_t &count = *_count;
   count = 0;
-
-  RefPtr<CertVerifier> certVerifier(GetDefaultCertVerifier());
-  NS_ENSURE_TRUE(certVerifier, NS_ERROR_UNEXPECTED);
 
   PRTime now = PR_Now();
   CertVerifier::Flags flags = localOnly ? CertVerifier::FLAG_LOCAL_ONLY : 0;

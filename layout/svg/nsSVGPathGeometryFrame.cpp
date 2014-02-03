@@ -22,6 +22,7 @@
 #include "SVGGraphicsElement.h"
 
 using namespace mozilla;
+using namespace mozilla::gfx;
 
 //----------------------------------------------------------------------
 // Implementation
@@ -101,6 +102,15 @@ nsDisplaySVGPathGeometry::Paint(nsDisplayListBuilder* aBuilder,
 //----------------------------------------------------------------------
 // nsIFrame methods
 
+void
+nsSVGPathGeometryFrame::Init(nsIContent* aContent,
+                             nsIFrame* aParent,
+                             nsIFrame* aPrevInFlow)
+{
+  AddStateBits(aParent->GetStateBits() & NS_STATE_SVG_CLIPPATH_CHILD);
+  nsSVGPathGeometryFrameBase::Init(aContent, aParent, aPrevInFlow);
+}
+
 NS_IMETHODIMP
 nsSVGPathGeometryFrame::AttributeChanged(int32_t         aNameSpaceID,
                                          nsIAtom*        aAttribute,
@@ -144,8 +154,8 @@ nsSVGPathGeometryFrame::GetType() const
 }
 
 bool
-nsSVGPathGeometryFrame::IsSVGTransformed(gfxMatrix *aOwnTransform,
-                                         gfxMatrix *aFromParentTransform) const
+nsSVGPathGeometryFrame::IsSVGTransformed(gfx::Matrix *aOwnTransform,
+                                         gfx::Matrix *aFromParentTransform) const
 {
   bool foundTransform = false;
 
@@ -163,8 +173,8 @@ nsSVGPathGeometryFrame::IsSVGTransformed(gfxMatrix *aOwnTransform,
   if ((transformList && transformList->HasTransform()) ||
       content->GetAnimateMotionTransform()) {
     if (aOwnTransform) {
-      *aOwnTransform = content->PrependLocalTransformsTo(gfxMatrix(),
-                                  nsSVGElement::eUserSpaceToParent);
+      *aOwnTransform = gfx::ToMatrix(content->PrependLocalTransformsTo(gfxMatrix(),
+                                  nsSVGElement::eUserSpaceToParent));
     }
     foundTransform = true;
   }
@@ -230,7 +240,7 @@ nsSVGPathGeometryFrame::GetFrameForPoint(const nsPoint &aPoint)
   uint16_t fillRule, hitTestFlags;
   if (GetStateBits() & NS_STATE_SVG_CLIPPATH_CHILD) {
     hitTestFlags = SVG_HIT_TEST_FILL;
-    fillRule = GetClipRule();
+    fillRule = StyleSVG()->mClipRule;
   } else {
     hitTestFlags = GetHitTestFlags();
     // XXX once bug 614732 is fixed, aPoint won't need any conversion in order
@@ -248,7 +258,7 @@ nsSVGPathGeometryFrame::GetFrameForPoint(const nsPoint &aPoint)
   nsRefPtr<gfxContext> tmpCtx =
     new gfxContext(gfxPlatform::GetPlatform()->ScreenReferenceSurface());
 
-  GeneratePath(tmpCtx, canvasTM);
+  GeneratePath(tmpCtx, ToMatrix(canvasTM));
   gfxPoint userSpacePoint =
     tmpCtx->DeviceToUser(gfxPoint(PresContext()->AppUnitsToGfxUnits(aPoint.x),
                                   PresContext()->AppUnitsToGfxUnits(aPoint.y)));
@@ -325,7 +335,7 @@ nsSVGPathGeometryFrame::ReflowSVG()
   gfxSize scaleFactors = GetCanvasTM(FOR_OUTERSVG_TM).ScaleFactors(true);
   bool applyScaling = fabs(scaleFactors.width) >= 1e-6 &&
                       fabs(scaleFactors.height) >= 1e-6;
-  gfxMatrix scaling;
+  gfx::Matrix scaling;
   if (applyScaling) {
     scaling.Scale(scaleFactors.width, scaleFactors.height);
   }
@@ -398,7 +408,7 @@ nsSVGPathGeometryFrame::NotifySVGChanged(uint32_t aFlags)
 }
 
 SVGBBox
-nsSVGPathGeometryFrame::GetBBoxContribution(const gfxMatrix &aToBBoxUserspace,
+nsSVGPathGeometryFrame::GetBBoxContribution(const Matrix &aToBBoxUserspace,
                                             uint32_t aFlags)
 {
   SVGBBox bbox;
@@ -455,7 +465,7 @@ nsSVGPathGeometryFrame::GetBBoxContribution(const gfxMatrix &aToBBoxUserspace,
     }
     bbox.UnionEdges(nsSVGUtils::PathExtentsToMaxStrokeExtents(pathExtents,
                                                               this,
-                                                              aToBBoxUserspace));
+                                                              ThebesMatrix(aToBBoxUserspace)));
   }
 
   // Account for markers:
@@ -495,7 +505,7 @@ nsSVGPathGeometryFrame::GetBBoxContribution(const gfxMatrix &aToBBoxUserspace,
 }
 
 //----------------------------------------------------------------------
-// nsSVGGeometryFrame methods:
+// nsSVGPathGeometryFrame methods:
 
 gfxMatrix
 nsSVGPathGeometryFrame::GetCanvasTM(uint32_t aFor, nsIFrame* aTransformRoot)
@@ -516,9 +526,6 @@ nsSVGPathGeometryFrame::GetCanvasTM(uint32_t aFor, nsIFrame* aTransformRoot)
       this == aTransformRoot ? gfxMatrix() :
                                parent->GetCanvasTM(aFor, aTransformRoot));
 }
-
-//----------------------------------------------------------------------
-// nsSVGPathGeometryFrame methods:
 
 nsSVGPathGeometryFrame::MarkerProperties
 nsSVGPathGeometryFrame::GetMarkerProperties(nsSVGPathGeometryFrame *aFrame)
@@ -607,7 +614,7 @@ nsSVGPathGeometryFrame::Render(nsRenderingContext *aContext,
       autoSaveRestore.SetContext(gfx);
     }
 
-    GeneratePath(gfx, GetCanvasTM(FOR_PAINTING, aTransformRoot));
+    GeneratePath(gfx, ToMatrix(GetCanvasTM(FOR_PAINTING, aTransformRoot)));
 
     // We used to call gfx->Restore() here, since for the
     // SVGAutoRenderState::CLIP case it is important to leave the fill rule
@@ -619,7 +626,7 @@ nsSVGPathGeometryFrame::Render(nsRenderingContext *aContext,
 
     gfxContext::FillRule oldFillRull = gfx->CurrentFillRule();
 
-    if (GetClipRule() == NS_STYLE_FILL_RULE_EVENODD)
+    if (StyleSVG()->mClipRule == NS_STYLE_FILL_RULE_EVENODD)
       gfx->SetFillRule(gfxContext::FILL_RULE_EVEN_ODD);
     else
       gfx->SetFillRule(gfxContext::FILL_RULE_WINDING);
@@ -636,7 +643,7 @@ nsSVGPathGeometryFrame::Render(nsRenderingContext *aContext,
 
   gfxContextAutoSaveRestore autoSaveRestore(gfx);
 
-  GeneratePath(gfx, GetCanvasTM(FOR_PAINTING, aTransformRoot));
+  GeneratePath(gfx, ToMatrix(GetCanvasTM(FOR_PAINTING, aTransformRoot)));
 
   gfxTextContextPaint *contextPaint =
     (gfxTextContextPaint*)aContext->GetUserData(&gfxTextContextPaint::sUserDataKey);
@@ -656,7 +663,7 @@ nsSVGPathGeometryFrame::Render(nsRenderingContext *aContext,
 
 void
 nsSVGPathGeometryFrame::GeneratePath(gfxContext* aContext,
-                                     const gfxMatrix &aTransform)
+                                     const Matrix &aTransform)
 {
   if (aTransform.IsSingular()) {
     aContext->IdentityMatrix();
@@ -664,7 +671,7 @@ nsSVGPathGeometryFrame::GeneratePath(gfxContext* aContext,
     return;
   }
 
-  aContext->MultiplyAndNudgeToIntegers(aTransform);
+  aContext->MultiplyAndNudgeToIntegers(ThebesMatrix(aTransform));
 
   // Hack to let SVGPathData::ConstructPath know if we have square caps:
   const nsStyleSVG* style = StyleSVG();
@@ -712,4 +719,10 @@ nsSVGPathGeometryFrame::PaintMarkers(nsRenderingContext* aContext)
       }
     }
   }
+}
+
+uint16_t
+nsSVGPathGeometryFrame::GetHitTestFlags()
+{
+  return nsSVGUtils::GetGeometryHitTestFlags(this);
 }

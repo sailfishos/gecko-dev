@@ -3,19 +3,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-let WebConsoleUtils, gDevTools, TargetFactory, console, promise, require;
+let {gDevTools} = Cu.import("resource:///modules/devtools/gDevTools.jsm", {});
+let {console} = Cu.import("resource://gre/modules/devtools/Console.jsm", {});
+let {Promise: promise} = Cu.import("resource://gre/modules/Promise.jsm", {});
+let {Task} = Cu.import("resource://gre/modules/Task.jsm", {});
+let {devtools} = Cu.import("resource://gre/modules/devtools/Loader.jsm", {});
+let {require, TargetFactory} = devtools;
+let {Utils: WebConsoleUtils} = require("devtools/toolkit/webconsole/utils");
+let {Messages} = require("devtools/webconsole/console-output");
 
-(() => {
-  gDevTools = Cu.import("resource:///modules/devtools/gDevTools.jsm", {}).gDevTools;
-  console = Cu.import("resource://gre/modules/devtools/Console.jsm", {}).console;
-  promise = Cu.import("resource://gre/modules/commonjs/sdk/core/promise.js", {}).Promise;
-
-  let tools = Cu.import("resource://gre/modules/devtools/Loader.jsm", {}).devtools;
-  let utils = tools.require("devtools/toolkit/webconsole/utils");
-  TargetFactory = tools.TargetFactory;
-  WebConsoleUtils = utils.Utils;
-  require = tools.require;
-})();
 // promise._reportErrors = true; // please never leave me.
 
 let gPendingOutputTest = 0;
@@ -65,6 +61,20 @@ function addTab(aURL)
   gBrowser.selectedTab = gBrowser.addTab(aURL);
   tab = gBrowser.selectedTab;
   browser = gBrowser.getBrowserForTab(tab);
+}
+
+function loadTab(url) {
+  let deferred = promise.defer();
+
+  let tab = gBrowser.selectedTab = gBrowser.addTab(url);
+  let browser = gBrowser.getBrowserForTab(tab);
+
+  browser.addEventListener("load", function onLoad() {
+    browser.removeEventListener("load", onLoad, true);
+    deferred.resolve({tab: tab, browser: browser});
+  }, true);
+
+  return deferred.promise;
 }
 
 function afterAllTabsLoaded(callback, win) {
@@ -152,15 +162,20 @@ function findLogEntry(aString)
  * @param function [aCallback]
  *        Optional function to invoke after the Web Console completes
  *        initialization (web-console-created).
+ * @return object
+ *         A promise that is resolved once the web console is open.
  */
 function openConsole(aTab, aCallback = function() { })
 {
+  let deferred = promise.defer();
   let target = TargetFactory.forTab(aTab || tab);
   gDevTools.showToolbox(target, "webconsole").then(function(toolbox) {
     let hud = toolbox.getCurrentPanel().hud;
     hud.jsterm._lazyVariablesView = false;
     aCallback(hud);
+    deferred.resolve(hud);
   });
+  return deferred.promise;
 }
 
 /**
@@ -172,6 +187,8 @@ function openConsole(aTab, aCallback = function() { })
  * @param function [aCallback]
  *        Optional function to invoke after the Web Console completes
  *        closing (web-console-destroyed).
+ * @return object
+ *         A promise that is resolved once the web console is closed.
  */
 function closeConsole(aTab, aCallback = function() { })
 {
@@ -181,15 +198,13 @@ function closeConsole(aTab, aCallback = function() { })
     let panel = toolbox.getPanel("webconsole");
     if (panel) {
       let hudId = panel.hud.hudId;
-      toolbox.destroy().then(aCallback.bind(null, hudId)).then(null, console.debug);
+      return toolbox.destroy().then(aCallback.bind(null, hudId)).then(null, console.debug);
     }
-    else {
-      toolbox.destroy().then(aCallback.bind(null));
-    }
+    return toolbox.destroy().then(aCallback.bind(null));
   }
-  else {
-    aCallback();
-  }
+
+  aCallback();
+  return promise.resolve(null);
 }
 
 /**
@@ -264,7 +279,7 @@ function dumpConsoles()
 function dumpMessageElement(aMessage)
 {
   let text = aMessage.textContent;
-  let repeats = aMessage.querySelector(".repeats");
+  let repeats = aMessage.querySelector(".message-repeats");
   if (repeats) {
     repeats = repeats.getAttribute("value");
   }
@@ -796,7 +811,6 @@ function openDebugger(aOptions = {})
     let panelWin = panel.panelWin;
 
     panel._view.Variables.lazyEmpty = false;
-    panel._view.Variables.lazyAppend = false;
 
     let resolveObject = {
       target: target,
@@ -914,44 +928,44 @@ function waitForMessages(aOptions)
     let elemText = aElement.textContent;
     let trace = aRule.consoleTrace;
 
-    if (!checkText("Stack trace from ", elemText)) {
+    if (!checkText("console.trace():", elemText)) {
       return false;
     }
 
-    let clickable = aElement.querySelector(".body a");
-    if (!clickable) {
-      ok(false, "console.trace() message is missing .hud-clickable");
-      displayErrorContext(aRule, aElement);
-      return false;
-    }
-    aRule.clickableElements = [clickable];
-
-    if (trace.file &&
-        !checkText("from " + trace.file + ", ", elemText)) {
-      ok(false, "console.trace() message is missing the file name: " +
-                trace.file);
-      displayErrorContext(aRule, aElement);
-      return false;
+    let frame = aElement.querySelector(".stacktrace li:first-child");
+    if (trace.file) {
+      let file = frame.querySelector(".message-location").title;
+      if (!checkText(trace.file, file)) {
+        ok(false, "console.trace() message is missing the file name: " +
+                  trace.file);
+        displayErrorContext(aRule, aElement);
+        return false;
+      }
     }
 
-    if (trace.fn &&
-        !checkText(", function " + trace.fn + ", ", elemText)) {
-      ok(false, "console.trace() message is missing the function name: " +
-                trace.fn);
-      displayErrorContext(aRule, aElement);
-      return false;
+    if (trace.fn) {
+      let fn = frame.querySelector(".function").textContent;
+      if (!checkText(trace.fn, fn)) {
+        ok(false, "console.trace() message is missing the function name: " +
+                  trace.fn);
+        displayErrorContext(aRule, aElement);
+        return false;
+      }
     }
 
-    if (trace.line &&
-        !checkText(", line " + trace.line + ".", elemText)) {
-      ok(false, "console.trace() message is missing the line number: " +
-                trace.line);
-      displayErrorContext(aRule, aElement);
-      return false;
+    if (trace.line) {
+      let line = frame.querySelector(".message-location").sourceLine;
+      if (!checkText(trace.line, line)) {
+        ok(false, "console.trace() message is missing the line number: " +
+                  trace.line);
+        displayErrorContext(aRule, aElement);
+        return false;
+      }
     }
 
     aRule.category = CATEGORY_WEBDEV;
     aRule.severity = SEVERITY_LOG;
+    aRule.type = Messages.ConsoleTrace;
 
     return true;
   }
@@ -975,7 +989,7 @@ function waitForMessages(aOptions)
   {
     let elemText = aElement.textContent;
     let time = aRule.consoleTimeEnd;
-    let regex = new RegExp(time + ": -?\\d+ms");
+    let regex = new RegExp(time + ": -?\\d+([,.]\\d+)?ms");
 
     if (!checkText(regex, elemText)) {
       return false;
@@ -1020,7 +1034,7 @@ function waitForMessages(aOptions)
 
   function checkSource(aRule, aElement)
   {
-    let location = aElement.querySelector(".location");
+    let location = aElement.querySelector(".message-location");
     if (!location) {
       return false;
     }
@@ -1072,15 +1086,22 @@ function waitForMessages(aOptions)
       return false;
     }
 
+    let partialMatch = !!(aRule.consoleTrace || aRule.consoleTime ||
+                          aRule.consoleTimeEnd);
+
     // The rule tries to match the newer types of messages, based on their
     // object constructor.
-    if (aRule.type && (!aElement._messageObject ||
-                       !(aElement._messageObject instanceof aRule.type))) {
-      return false;
+    if (aRule.type) {
+      if (!aElement._messageObject ||
+          !(aElement._messageObject instanceof aRule.type)) {
+        if (partialMatch) {
+          ok(false, "message type for rule: " + displayRule(aRule));
+          displayErrorContext(aRule, aElement);
+        }
+        return false;
+      }
+      partialMatch = true;
     }
-
-    let partialMatch = !!(aRule.consoleTrace || aRule.consoleTime ||
-                          aRule.consoleTimeEnd || aRule.type);
 
     if ("category" in aRule && aElement.category != aRule.category) {
       if (partialMatch) {
@@ -1106,7 +1127,7 @@ function waitForMessages(aOptions)
     }
 
     if ("repeats" in aRule) {
-      let repeats = aElement.querySelector(".repeats");
+      let repeats = aElement.querySelector(".message-repeats");
       if (!repeats || repeats.getAttribute("value") != aRule.repeats) {
         return false;
       }
@@ -1162,7 +1183,7 @@ function waitForMessages(aOptions)
   function onMessagesAdded(aEvent, aNewElements)
   {
     for (let elem of aNewElements) {
-      let location = elem.querySelector(".location");
+      let location = elem.querySelector(".message-location");
       if (location) {
         let url = location.title;
         // Prevent recursion with the browser console and any potential
@@ -1259,4 +1280,154 @@ function whenDelayedStartupFinished(aWindow, aCallback)
       executeSoon(aCallback);
     }
   }, "browser-delayed-startup-finished", false);
+}
+
+/**
+ * Check the web console output for the given inputs. Each input is checked for
+ * the expected JS eval result, the result of calling print(), the result of
+ * console.log(). The JS eval result is also checked if it opens the variables
+ * view on click.
+ *
+ * @param object hud
+ *        The web console instance to work with.
+ * @param array inputTests
+ *        An array of input tests. An input test element is an object. Each
+ *        object has the following properties:
+ *        - input: string, JS input value to execute.
+ *
+ *        - output: string|RegExp, expected JS eval result.
+ *
+ *        - inspectable: boolean, when true, the test runner expects the JS eval
+ *        result is an object that can be clicked for inspection.
+ *
+ *        - noClick: boolean, when true, the test runner does not click the JS
+ *        eval result. Some objects, like |window|, have a lot of properties and
+ *        opening vview for them is very slow (they can cause timeouts in debug
+ *        builds).
+ *
+ *        - printOutput: string|RegExp, optional, expected output for
+ *        |print(input)|. If this is not provided, printOutput = output.
+ *
+ *        - variablesViewLabel: string|RegExp, optional, the expected variables
+ *        view label when the object is inspected. If this is not provided, then
+ *        |output| is used.
+ */
+function checkOutputForInputs(hud, inputTests)
+{
+  let eventHandlers = new Set();
+
+  function* runner()
+  {
+    for (let [i, entry] of inputTests.entries()) {
+      info("checkInput(" + i + "): " + entry.input);
+      yield checkInput(entry);
+    }
+
+    for (let fn of eventHandlers) {
+      hud.jsterm.off("variablesview-open", fn);
+    }
+  }
+
+  function* checkInput(entry)
+  {
+    yield checkConsoleLog(entry);
+    yield checkPrintOutput(entry);
+    yield checkJSEval(entry);
+  }
+
+  function checkConsoleLog(entry)
+  {
+    hud.jsterm.clearOutput();
+    hud.jsterm.execute("console.log(" + entry.input + ")");
+
+    return waitForMessages({
+      webconsole: hud,
+      messages: [{
+        name: "console.log() output: " + entry.output,
+        text: entry.output,
+        category: CATEGORY_WEBDEV,
+        severity: SEVERITY_LOG,
+      }],
+    });
+  }
+
+  function checkPrintOutput(entry)
+  {
+    hud.jsterm.clearOutput();
+    hud.jsterm.execute("print(" + entry.input + ")");
+
+    let printOutput = entry.printOutput || entry.output;
+
+    return waitForMessages({
+      webconsole: hud,
+      messages: [{
+        name: "print() output: " + printOutput,
+        text: printOutput,
+        category: CATEGORY_OUTPUT,
+      }],
+    });
+  }
+
+  function* checkJSEval(entry)
+  {
+    hud.jsterm.clearOutput();
+    hud.jsterm.execute(entry.input);
+
+    let [result] = yield waitForMessages({
+      webconsole: hud,
+      messages: [{
+        name: "JS eval output: " + entry.output,
+        text: entry.output,
+        category: CATEGORY_OUTPUT,
+      }],
+    });
+
+    if (!entry.noClick) {
+      let msg = [...result.matched][0];
+      yield checkObjectClick(entry, msg);
+    }
+  }
+
+  function checkObjectClick(entry, msg)
+  {
+    let body = msg.querySelector(".body a") || msg.querySelector(".body");
+    ok(body, "the message body");
+
+    let deferred = promise.defer();
+
+    entry._onVariablesViewOpen = onVariablesViewOpen.bind(null, entry, deferred);
+    hud.jsterm.on("variablesview-open", entry._onVariablesViewOpen);
+    eventHandlers.add(entry._onVariablesViewOpen);
+
+    body.scrollIntoView();
+    EventUtils.synthesizeMouse(body, 2, 2, {}, hud.iframeWindow);
+
+    if (entry.inspectable) {
+      info("message body tagName '" + body.tagName +  "' className '" + body.className + "'");
+      return deferred.promise; // wait for the panel to open if we need to.
+    }
+
+    return promise.resolve(null);
+  }
+
+  function onVariablesViewOpen(entry, deferred, event, view, options)
+  {
+    let label = entry.variablesViewLabel || entry.output;
+    if (typeof label == "string" && options.label != label) {
+      return;
+    }
+    if (label instanceof RegExp && !label.test(options.label)) {
+      return;
+    }
+
+    hud.jsterm.off("variablesview-open", entry._onVariablesViewOpen);
+    eventHandlers.delete(entry._onVariablesViewOpen);
+    entry._onVariablesViewOpen = null;
+
+    ok(entry.inspectable, "variables view was shown");
+
+    deferred.resolve(null);
+  }
+
+  return Task.spawn(runner);
 }

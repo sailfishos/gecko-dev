@@ -34,7 +34,6 @@
 
 class gfx3DMatrix;
 class nsIWidget;
-struct gfxMatrix;
 
 namespace mozilla {
 class TimeStamp;
@@ -76,7 +75,7 @@ public:
 
   virtual TextureFactoryIdentifier GetTextureFactoryIdentifier() MOZ_OVERRIDE
   {
-    return TextureFactoryIdentifier(LAYERS_OPENGL,
+    return TextureFactoryIdentifier(LayersBackend::LAYERS_OPENGL,
                                     XRE_GetProcessType(),
                                     GetMaxTextureSize(),
                                     mFBOTextureTarget == LOCAL_GL_TEXTURE_2D,
@@ -112,7 +111,7 @@ public:
 
 
   virtual void EndFrame() MOZ_OVERRIDE;
-  virtual void EndFrameForExternalComposition(const gfxMatrix& aTransform) MOZ_OVERRIDE;
+  virtual void EndFrameForExternalComposition(const gfx::Matrix& aTransform) MOZ_OVERRIDE;
   virtual void AbortFrame() MOZ_OVERRIDE;
 
   virtual bool SupportsPartialTextureUpdate() MOZ_OVERRIDE;
@@ -145,7 +144,7 @@ public:
   }
 
   virtual void PrepareViewport(const gfx::IntSize& aSize,
-                               const gfxMatrix& aWorldTransform) MOZ_OVERRIDE;
+                               const gfx::Matrix& aWorldTransform) MOZ_OVERRIDE;
 
 
 #ifdef MOZ_DUMP_PAINTING
@@ -165,11 +164,8 @@ public:
            RGBARectLayerProgramType : RGBALayerProgramType;
   }
   gfx::SurfaceFormat GetFBOFormat() const {
-    return gfx::FORMAT_R8G8B8A8;
+    return gfx::SurfaceFormat::R8G8B8A8;
   }
-
-  virtual void SaveState() MOZ_OVERRIDE;
-  virtual void RestoreState() MOZ_OVERRIDE;
 
   /**
    * The compositor provides with temporary textures for use with direct
@@ -255,13 +251,18 @@ private:
    */
   bool mFrameInProgress;
 
+  /*
+   * Clear aRect on FrameBuffer.
+   */
+  virtual void clearFBRect(const gfx::Rect* aRect);
+
   /* Start a new frame. If aClipRectIn is null and aClipRectOut is non-null,
    * sets *aClipRectOut to the screen dimensions.
    */
   virtual void BeginFrame(const nsIntRegion& aInvalidRegion,
                           const gfx::Rect *aClipRectIn,
-                          const gfxMatrix& aTransform,
-                          const gfx::Rect& aRenderBounds, 
+                          const gfx::Matrix& aTransform,
+                          const gfx::Rect& aRenderBounds,
                           gfx::Rect *aClipRectOut = nullptr,
                           gfx::Rect *aRenderBoundsOut = nullptr) MOZ_OVERRIDE;
 
@@ -270,7 +271,7 @@ private:
   /**
    * Updates all layer programs with a new projection matrix.
    */
-  void SetLayerProgramProjectionMatrix(const gfx3DMatrix& aMatrix);
+  void SetLayerProgramProjectionMatrix(const gfx::Matrix4x4& aMatrix);
 
   /**
    * Helper method for Initialize, creates all valid variations of a program
@@ -312,6 +313,7 @@ private:
                        bool aFlipped = false,
                        GLuint aDrawMode = LOCAL_GL_TRIANGLE_STRIP);
   void BindAndDrawQuadWithTextureRect(ShaderProgramOGL *aProg,
+                                      const gfx3DMatrix& aTextureTransform,
                                       const gfx::Rect& aTexCoordRect,
                                       TextureSource *aTexture);
 
@@ -321,12 +323,23 @@ private:
    * Copies the content of our backbuffer to the set transaction target.
    * Does not restore the target FBO, so only call from EndFrame.
    */
-  void CopyToTarget(gfx::DrawTarget* aTarget, const gfxMatrix& aWorldMatrix);
+  void CopyToTarget(gfx::DrawTarget* aTarget, const gfx::Matrix& aWorldMatrix);
 
   /**
    * Records the passed frame timestamp and returns the current estimated FPS.
    */
   double AddFrameAndGetFps(const TimeStamp& timestamp);
+
+  /**
+   * Implements the flipping of the y-axis to convert from layers/compositor
+   * coordinates to OpenGL coordinates.
+   *
+   * Indeed, the only coordinate system that OpenGL knows has the y-axis
+   * pointing upwards, but the layers/compositor coordinate system has the
+   * y-axis pointing downwards, for good reason as Web pages are typically
+   * scrolled downwards. So, some flipping has to take place; FlippedY does it.
+   */
+  GLint FlipY(GLint y) const { return mHeight - y; }
 
   bool mDestroyed;
 
@@ -335,6 +348,12 @@ private:
   // The index of the texture in this array must correspond to the texture unit.
   nsTArray<GLuint> mTextures;
   static bool sDrawFPS;
+
+  /**
+   * Height of the OpenGL context's primary framebuffer in pixels. Used by
+   * FlipY for the y-flipping calculation.
+   */
+  GLint mHeight;
 };
 
 }

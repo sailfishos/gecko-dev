@@ -9,7 +9,6 @@
 #include "mozilla/Attributes.h"
 #include "nsSVGContainerFrame.h"
 #include "nsISVGSVGFrame.h"
-#include "gfxMatrix.h"
 
 class nsRenderingContext;
 
@@ -42,7 +41,7 @@ public:
    */
   virtual nsIAtom* GetType() const MOZ_OVERRIDE;
 
-#ifdef DEBUG
+#ifdef DEBUG_FRAME_DUMP
   NS_IMETHOD GetFrameName(nsAString& aResult) const MOZ_OVERRIDE
   {
     return MakeFrameName(NS_LITERAL_STRING("SVGInnerSVG"), aResult);
@@ -65,7 +64,7 @@ public:
   virtual gfxMatrix GetCanvasTM(uint32_t aFor,
                                 nsIFrame* aTransformRoot = nullptr) MOZ_OVERRIDE;
 
-  virtual bool HasChildrenOnlyTransform(gfxMatrix *aTransform) const MOZ_OVERRIDE;
+  virtual bool HasChildrenOnlyTransform(Matrix *aTransform) const MOZ_OVERRIDE;
 
   // nsISVGSVGFrame interface:
   virtual void NotifyViewportOrTransformChanged(uint32_t aFlags) MOZ_OVERRIDE;

@@ -443,6 +443,10 @@ nsJAR::LoadEntry(const nsACString &aFilename, char** aBuf, uint32_t* aBufLen)
 int32_t
 nsJAR::ReadLine(const char** src)
 {
+  if (!*src) {
+    return 0;
+  }
+
   //--Moves pointer to beginning of next line and returns line length
   //  not including CR/LF.
   int32_t length;
@@ -1310,7 +1314,7 @@ FindFlushableZip(nsHashKey *aKey, void *aData, void* closure)
 NS_IMETHODIMP
 nsZipReaderCache::Observe(nsISupports *aSubject,
                           const char *aTopic, 
-                          const PRUnichar *aSomeData)
+                          const char16_t *aSomeData)
 {
   if (strcmp(aTopic, "memory-pressure") == 0) {
     MutexAutoLock lock(mLock);

@@ -19,7 +19,7 @@ ScopeObject::setAliasedVar(JSContext *cx, ScopeCoordinate sc, PropertyName *name
     JS_ASSERT(is<CallObject>() || is<ClonedBlockObject>());
     JS_STATIC_ASSERT(CallObject::RESERVED_SLOTS == BlockObject::RESERVED_SLOTS);
 
-    setSlot(sc.slot, v);
+    setSlot(sc.slot(), v);
 
     // name may be null if we don't need to track side effects on the object.
     if (hasSingletonType() && !hasLazyType()) {
@@ -75,9 +75,11 @@ StaticScopeIter<allowGC>::scopeShape() const
 {
     JS_ASSERT(hasDynamicScopeObject());
     JS_ASSERT(type() != NAMED_LAMBDA);
-    return type() == BLOCK
-           ? block().lastProperty()
-           : funScript()->bindings.callObjShape();
+    if (type() == BLOCK) {
+        AutoThreadSafeAccess ts(&block());
+        return block().lastProperty();
+    }
+    return funScript()->callObjShape();
 }
 
 template <AllowGC allowGC>

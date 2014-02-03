@@ -65,7 +65,7 @@ public:
   {
     mObservers.RemoveObject(aObserver);
   }
-  
+
   /**
    * Process a script element. This will include both loading the 
    * source of the element if it is not inline and evaluating
@@ -280,9 +280,9 @@ private:
                           const nsAFlatString& aScript,
                           void **aOffThreadToken);
 
-  nsIScriptContext *GetScriptContext(JSObject **aGlobal);
+  already_AddRefed<nsIScriptGlobalObject> GetScriptGlobalObject();
   void FillCompileOptionsForRequest(nsScriptLoadRequest *aRequest,
-                                    JS::Handle<JSObject *> scopeChain,
+                                    JS::Handle<JSObject *> aScopeChain,
                                     JS::CompileOptions *aOptions);
 
   nsresult PrepareLoadedRequest(nsScriptLoadRequest* aRequest,
@@ -338,14 +338,14 @@ public:
       mLoader->SetEnabled(false);
     }
   }
-  
+
   ~nsAutoScriptLoaderDisabler()
   {
     if (mWasEnabled) {
       mLoader->SetEnabled(true);
     }
   }
-  
+
   bool mWasEnabled;
   nsRefPtr<nsScriptLoader> mLoader;
 };

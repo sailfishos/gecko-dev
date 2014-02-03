@@ -32,7 +32,7 @@ XPCVariant::XPCVariant(JSContext* cx, jsval aJSVal)
     : mJSVal(aJSVal), mCCGeneration(0)
 {
     nsVariant::Initialize(&mData);
-    if (!JSVAL_IS_PRIMITIVE(mJSVal)) {
+    if (!mJSVal.isPrimitive()) {
         // XXXbholley - The innerization here was from bug 638026. Blake says
         // the basic problem was that we were storing the C++ inner but the JS
         // outer, which meant that, after navigation, the JS inner could be
@@ -42,8 +42,9 @@ XPCVariant::XPCVariant(JSContext* cx, jsval aJSVal)
         // thing, but I'm saving the cleanup here for another day. Blake thinks
         // that we should just not store the WN if we're creating a variant for
         // an outer window.
-        JSObject *obj = JS_ObjectToInnerObject(cx, JSVAL_TO_OBJECT(mJSVal));
-        mJSVal = OBJECT_TO_JSVAL(obj);
+        JS::RootedObject obj(cx, &mJSVal.toObject());
+        obj = JS_ObjectToInnerObject(cx, obj);
+        mJSVal = JS::ObjectValue(*obj);
 
         JSObject *unwrapped = js::CheckedUnwrap(obj, /* stopAtOuter = */ false);
         mReturnRawObject = !(unwrapped && IS_WN_REFLECTOR(unwrapped));
@@ -365,10 +366,9 @@ bool XPCVariant::InitializeData(JSContext* cx)
 }
 
 NS_IMETHODIMP
-XPCVariant::GetAsJSVal(jsval* result)
+XPCVariant::GetAsJSVal(MutableHandleValue result)
 {
-  NS_PRECONDITION(result, "null result arg.");
-  *result = GetJSVal();
+  result.set(GetJSVal());
   return NS_OK;
 }
 
@@ -384,7 +384,7 @@ XPCVariant::VariantDataToJS(nsIVariant* variant,
 
     AutoJSContext cx;
     RootedValue realVal(cx);
-    nsresult rv = variant->GetAsJSVal(realVal.address());
+    nsresult rv = variant->GetAsJSVal(&realVal);
 
     if (NS_SUCCEEDED(rv) &&
         (JSVAL_IS_PRIMITIVE(realVal) ||
@@ -456,7 +456,7 @@ XPCVariant::VariantDataToJS(nsIVariant* variant,
         }
         case nsIDataType::VTYPE_WCHAR:
         {
-            PRUnichar wc;
+            char16_t wc;
             if (NS_FAILED(variant->GetAsWChar(&wc)))
                 return false;
             return XPCConvert::NativeData2JS(pJSVal, (const void*)&wc, TD_WCHAR, &iid, pErr);
@@ -526,7 +526,7 @@ XPCVariant::VariantDataToJS(nsIVariant* variant,
         }
         case nsIDataType::VTYPE_WCHAR_STR:
         {
-            PRUnichar *pwc;
+            char16_t *pwc;
             if (NS_FAILED(variant->GetAsWString(&pwc)))
                 return false;
             bool success = XPCConvert::NativeData2JS(pJSVal, (const void*)&pwc,
@@ -536,7 +536,7 @@ XPCVariant::VariantDataToJS(nsIVariant* variant,
         }
         case nsIDataType::VTYPE_WSTRING_SIZE_IS:
         {
-            PRUnichar *pwc;
+            char16_t *pwc;
             uint32_t size;
             if (NS_FAILED(variant->GetAsWStringWithSize(&size, &pwc)))
                 return false;
@@ -748,7 +748,7 @@ NS_IMETHODIMP XPCVariant::GetAsChar(char *_retval)
 }
 
 /* wchar getAsWChar (); */
-NS_IMETHODIMP XPCVariant::GetAsWChar(PRUnichar *_retval)
+NS_IMETHODIMP XPCVariant::GetAsWChar(char16_t *_retval)
 {
     return nsVariant::ConvertToWChar(mData, _retval);
 }
@@ -792,7 +792,7 @@ NS_IMETHODIMP XPCVariant::GetAsString(char **_retval)
 }
 
 /* wstring getAsWString (); */
-NS_IMETHODIMP XPCVariant::GetAsWString(PRUnichar **_retval)
+NS_IMETHODIMP XPCVariant::GetAsWString(char16_t **_retval)
 {
     return nsVariant::ConvertToWString(mData, _retval);
 }
@@ -823,7 +823,7 @@ NS_IMETHODIMP XPCVariant::GetAsStringWithSize(uint32_t *size, char **str)
 }
 
 /* void getAsWStringWithSize (out uint32_t size, [size_is (size), retval] out wstring str); */
-NS_IMETHODIMP XPCVariant::GetAsWStringWithSize(uint32_t *size, PRUnichar **str)
+NS_IMETHODIMP XPCVariant::GetAsWStringWithSize(uint32_t *size, char16_t **str)
 {
     return nsVariant::ConvertToWStringWithSize(mData, size, str);
 }

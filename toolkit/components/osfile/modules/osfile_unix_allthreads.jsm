@@ -40,9 +40,9 @@ let Const = SharedAll.Constants.libc;
 
 // Open libc
 let libc;
-let libc_candidates =  [ "libSystem.B.dylib",
-                         "libc.so.6",
-                         "libc.so" ];
+let libc_candidates =  [ "libc.so",
+                         "libSystem.B.dylib",
+                         "a.out" ];
 for (let i = 0; i < libc_candidates.length; ++i) {
   try {
     libc = ctypes.open(libc_candidates[i]);

@@ -146,6 +146,9 @@ function basicNotification() {
         case "removed":
           self.removedCallbackTriggered = true;
           break;
+        case "swapping":
+          self.swappingCallbackTriggered = true;
+          break;
       }
     }
   };
@@ -978,6 +981,93 @@ var tests = [
       triggerMainCommand(popup);
     },
     onHidden: function() { }
+  },
+  { // Test #34 - Moving a tab to a new window should remove non-swappable
+    // notifications.
+    run: function() {
+      gBrowser.selectedTab = gBrowser.addTab("about:blank");
+      let notifyObj = new basicNotification();
+      showNotification(notifyObj);
+      let win = gBrowser.replaceTabWithWindow(gBrowser.selectedTab);
+      whenDelayedStartupFinished(win, function() {
+        let [tab] = win.gBrowser.tabs;
+        let anchor = win.document.getElementById("default-notification-icon");
+        win.PopupNotifications._reshowNotifications(anchor);
+        ok(win.PopupNotifications.panel.childNodes.length == 0,
+           "no notification displayed in new window");
+        ok(notifyObj.swappingCallbackTriggered, "the swapping callback was triggered");
+        ok(notifyObj.removedCallbackTriggered, "the removed callback was triggered");
+        win.close();
+        goNext();
+      });
+    }
+  },
+  { // Test #35 - Moving a tab to a new window should preserve swappable notifications.
+    run: function() {
+      gBrowser.selectedTab = gBrowser.addTab("about:blank");
+      let notifyObj = new basicNotification();
+      let originalCallback = notifyObj.options.eventCallback;
+        notifyObj.options.eventCallback = function (eventName) {
+          originalCallback(eventName);
+          return eventName == "swapping";
+        };
+
+      showNotification(notifyObj);
+      let win = gBrowser.replaceTabWithWindow(gBrowser.selectedTab);
+      whenDelayedStartupFinished(win, function() {
+        let [tab] = win.gBrowser.tabs;
+        let anchor = win.document.getElementById("default-notification-icon");
+        win.PopupNotifications._reshowNotifications(anchor);
+        checkPopup(win.PopupNotifications.panel, notifyObj);
+        ok(notifyObj.swappingCallbackTriggered, "the swapping callback was triggered");
+        win.close();
+        goNext();
+      });
+    }
+  },
+  { // Test #36 - the hideNotNow option
+    run: function () {
+      this.notifyObj = new basicNotification();
+      this.notifyObj.options.hideNotNow = true;
+      this.notifyObj.mainAction.dismiss = true;
+      showNotification(this.notifyObj);
+    },
+    onShown: function (popup) {
+      // checkPopup verifies that the Not Now item is hidden, and that no separator is added.
+      checkPopup(popup, this.notifyObj);
+      triggerMainCommand(popup);
+    },
+    onHidden: function (popup) { }
+  },
+  { // Test #37 - the main action callback can keep the notification.
+    run: function () {
+      this.notifyObj = new basicNotification();
+      this.notifyObj.mainAction.dismiss = true;
+      showNotification(this.notifyObj);
+    },
+    onShown: function (popup) {
+      checkPopup(popup, this.notifyObj);
+      triggerMainCommand(popup);
+    },
+    onHidden: function (popup) {
+      ok(this.notifyObj.dismissalCallbackTriggered, "dismissal callback was triggered");
+      ok(!this.notifyObj.removedCallbackTriggered, "removed callback wasn't triggered");
+    }
+  },
+  { // Test #38 - a secondary action callback can keep the notification.
+    run: function () {
+      this.notifyObj = new basicNotification();
+      this.notifyObj.secondaryActions[0].dismiss = true;
+      showNotification(this.notifyObj);
+    },
+    onShown: function (popup) {
+      checkPopup(popup, this.notifyObj);
+      triggerSecondaryCommand(popup, 0);
+    },
+    onHidden: function (popup) {
+      ok(this.notifyObj.dismissalCallbackTriggered, "dismissal callback was triggered");
+      ok(!this.notifyObj.removedCallbackTriggered, "removed callback wasn't triggered");
+    }
   }
 ];
 
@@ -1017,7 +1107,12 @@ function checkPopup(popup, notificationObj) {
                                             function (child) child.nodeName == "menuitem");
   let secondaryActions = notificationObj.secondaryActions || [];
   let actualSecondaryActionsCount = actualSecondaryActions.length;
-  if (secondaryActions.length) {
+  if (notificationObj.options.hideNotNow) {
+    is(notification.getAttribute("hidenotnow"), "true", "Not Now item hidden");
+    if (secondaryActions.length)
+      is(notification.lastChild.tagName, "menuitem", "no menuseparator");
+  }
+  else if (secondaryActions.length) {
     is(notification.lastChild.tagName, "menuseparator", "menuseparator exists");
   }
   is(actualSecondaryActionsCount, secondaryActions.length, actualSecondaryActions.length + " secondary actions");

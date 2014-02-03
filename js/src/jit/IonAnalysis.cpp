@@ -12,12 +12,14 @@
 #include "jit/BaselineJIT.h"
 #include "jit/Ion.h"
 #include "jit/IonBuilder.h"
+#include "jit/IonOptimizationLevels.h"
 #include "jit/LIR.h"
 #include "jit/Lowering.h"
 #include "jit/MIRGraph.h"
 
 #include "jsinferinlines.h"
 #include "jsobjinlines.h"
+#include "jsopcodeinlines.h"
 
 using namespace js;
 using namespace js::jit;
@@ -96,7 +98,7 @@ jit::EliminateDeadResumePointOperands(MIRGenerator *mir, MIRGraph &graph)
             // If the instruction's behavior has been constant folded into a
             // separate instruction, we can't determine precisely where the
             // instruction becomes dead and can't eliminate its uses.
-            if (ins->isFolded())
+            if (ins->isImplicitlyUsed())
                 continue;
 
             // Check if this instruction's result is only used within the
@@ -108,7 +110,6 @@ jit::EliminateDeadResumePointOperands(MIRGenerator *mir, MIRGraph &graph)
             for (MUseDefIterator uses(*ins); uses; uses++) {
                 if (uses.def()->block() != *block ||
                     uses.def()->isBox() ||
-                    uses.def()->isPassArg() ||
                     uses.def()->isPhi())
                 {
                     maxDefinition = UINT32_MAX;
@@ -186,7 +187,7 @@ IsPhiObservable(MPhi *phi, Observability observe)
 {
     // If the phi has uses which are not reflected in SSA, then behavior in the
     // interpreter may be affected by removing the phi.
-    if (phi->isFolded())
+    if (phi->isImplicitlyUsed())
         return true;
 
     // Check for uses of this phi node outside of other phi nodes.
@@ -216,7 +217,7 @@ IsPhiObservable(MPhi *phi, Observability observe)
 
     uint32_t slot = phi->slot();
     CompileInfo &info = phi->block()->info();
-    JSFunction *fun = info.fun();
+    JSFunction *fun = info.funMaybeLazy();
 
     // If the Phi is of the |this| value, it must always be observable.
     if (fun && slot == info.thisSlot())
@@ -253,9 +254,9 @@ IsPhiRedundant(MPhi *phi)
     if (first == nullptr)
         return nullptr;
 
-    // Propagate the Folded flag if |phi| is replaced with another phi.
-    if (phi->isFolded())
-        first->setFoldedUnchecked();
+    // Propagate the ImplicitlyUsed flag if |phi| is replaced with another phi.
+    if (phi->isImplicitlyUsed())
+        first->setImplicitlyUsedUnchecked();
 
     return first;
 }
@@ -972,8 +973,6 @@ TypeAnalyzer::checkFloatCoherency()
         for (MDefinitionIterator def(*block); def; def++) {
             if (def->type() != MIRType_Float32)
                 continue;
-            if (def->isPassArg()) // no check for PassArg as it is broken, see bug 915479
-                continue;
 
             for (MUseDefIterator use(*def); use; use++) {
                 MDefinition *consumer = use.def();
@@ -1355,7 +1354,7 @@ void
 jit::AssertGraphCoherency(MIRGraph &graph)
 {
 #ifdef DEBUG
-    if (!js_IonOptions.checkGraphConsistency)
+    if (!js_JitOptions.checkGraphConsistency)
         return;
     AssertBasicGraphCoherency(graph);
     AssertReversePostOrder(graph);
@@ -1370,7 +1369,7 @@ jit::AssertExtendedGraphCoherency(MIRGraph &graph)
     // are split)
 
 #ifdef DEBUG
-    if (!js_IonOptions.checkGraphConsistency)
+    if (!js_JitOptions.checkGraphConsistency)
         return;
     AssertGraphCoherency(graph);
 
@@ -1524,7 +1523,7 @@ jit::ExtractLinearInequality(MTest *test, BranchDirection direction,
 
     JSOp jsop = compare->jsop();
     if (direction == FALSE_BRANCH)
-        jsop = analyze::NegateCompareOp(jsop);
+        jsop = NegateCompareOp(jsop);
 
     SimpleLinearSum lsum = ExtractLinearSum(lhs);
     SimpleLinearSum rsum = ExtractLinearSum(rhs);
@@ -2043,14 +2042,14 @@ AnalyzePoppedThis(JSContext *cx, types::TypeObject *type,
         if (!definitelyExecuted)
             return true;
 
-        if (!types::AddClearDefiniteGetterSetterForPrototypeChain(cx, type, NameToId(setprop->name()))) {
+        RootedId id(cx, NameToId(setprop->name()));
+        if (!types::AddClearDefiniteGetterSetterForPrototypeChain(cx, type, id)) {
             // The prototype chain already contains a getter/setter for this
             // property, or type information is too imprecise.
             return true;
         }
 
         DebugOnly<unsigned> slotSpan = baseobj->slotSpan();
-        RootedId id(cx, NameToId(setprop->name()));
         RootedValue value(cx, UndefinedValue());
         if (!DefineNativeProperty(cx, baseobj, id, value, nullptr, nullptr,
                                   JSPROP_ENUMERATE, 0, 0))
@@ -2145,12 +2144,15 @@ jit::AnalyzeNewScriptProperties(JSContext *cx, JSFunction *fun,
     // which will definitely be added to the created object before it has a
     // chance to escape and be accessed elsewhere.
 
-    if (fun->isInterpretedLazy() && !fun->getOrCreateScript(cx))
+    RootedScript script(cx, fun->getOrCreateScript(cx));
+    if (!script)
         return false;
 
-    RootedScript script(cx, fun->nonLazyScript());
-
     if (!script->compileAndGo() || !script->canBaselineCompile())
+        return true;
+
+    static const uint32_t MAX_SCRIPT_SIZE = 2000;
+    if (script->length() > MAX_SCRIPT_SIZE)
         return true;
 
     Vector<PropertyName *> accessedProperties(cx);
@@ -2181,16 +2183,22 @@ jit::AnalyzeNewScriptProperties(JSContext *cx, JSFunction *fun,
 
     AutoTempAllocatorRooter root(cx, &temp);
 
+    const OptimizationInfo *optimizationInfo = js_IonOptimizations.get(Optimization_Normal);
+
     types::CompilerConstraintList *constraints = types::NewCompilerConstraintList(temp);
     BaselineInspector inspector(script);
-    IonBuilder builder(cx, CompileCompartment::get(cx->compartment()), &temp, &graph, constraints,
-                       &inspector, &info, /* baselineFrame = */ nullptr);
+    const JitCompileOptions options(cx);
+
+    IonBuilder builder(cx, CompileCompartment::get(cx->compartment()), options, &temp, &graph, constraints,
+                       &inspector, &info, optimizationInfo, /* baselineFrame = */ nullptr);
 
     if (!builder.build()) {
         if (builder.abortReason() == AbortReason_Alloc)
             return false;
         return true;
     }
+
+    types::FinishDefinitePropertiesAnalysis(cx, constraints);
 
     if (!SplitCriticalEdges(graph))
         return false;

@@ -54,13 +54,6 @@ self.onmessage = function (msg) {
 };
 
 let Agent = {
-  // The initial session string as read from disk.
-  initialState: null,
-
-  // Boolean that tells whether we already wrote
-  // the loadState to disk once after startup.
-  hasWrittenLoadStateOnce: false,
-
   // Boolean that tells whether we already made a
   // call to write(). We will only attempt to move
   // sessionstore.js to sessionstore.bak on the
@@ -83,10 +76,9 @@ let Agent = {
         let durationMs = Date.now();
         let bytes = File.read(path);
         durationMs = Date.now() - durationMs;
-        this.initialState = Decoder.decode(bytes);
 
         return {
-          result: this.initialState,
+          result: Decoder.decode(bytes),
           telemetry: {FX_SESSION_RESTORE_READ_FILE_MS: durationMs,
                       FX_SESSION_RESTORE_FILE_SIZE_BYTES: bytes.byteLength}
         };
@@ -131,34 +123,13 @@ let Agent = {
   },
 
   /**
-   * Writes the session state to disk again but changes session.state to
-   * 'running' before doing so. This is intended to be called only once, shortly
-   * after startup so that we detect crashes on startup correctly.
+   * Extract all sorts of useful statistics from a state string,
+   * for use with Telemetry.
+   *
+   * @return {object}
    */
-  writeLoadStateOnceAfterStartup: function (loadState) {
-    if (this.hasWrittenLoadStateOnce) {
-      throw new Error("writeLoadStateOnceAfterStartup() must only be called once.");
-    }
-
-    if (!this.initialState) {
-      throw new Error("writeLoadStateOnceAfterStartup() must not be called " +
-                      "without a valid session state or before it has been " +
-                      "read from disk.");
-    }
-
-    // Make sure we can't call this function twice.
-    this.hasWrittenLoadStateOnce = true;
-
-    let state;
-    try {
-      state = JSON.parse(this.initialState);
-    } finally {
-      this.initialState = null;
-    }
-
-    state.session = state.session || {};
-    state.session.state = loadState;
-    return this._write(JSON.stringify(state));
+  gatherTelemetry: function (stateString) {
+    return Statistics.collect(stateString);
   },
 
   /**
@@ -236,3 +207,139 @@ let Agent = {
 function isNoSuchFileEx(aReason) {
   return aReason instanceof OS.File.Error && aReason.becauseNoSuchFile;
 }
+
+/**
+ * Estimate the number of bytes that a data structure will use on disk
+ * once serialized.
+ */
+function getByteLength(str) {
+  return Encoder.encode(JSON.stringify(str)).byteLength;
+}
+
+/**
+ * Tools for gathering statistics on a state string.
+ */
+let Statistics = {
+  collect: function(stateString) {
+    let start = Date.now();
+    let TOTAL_PREFIX = "FX_SESSION_RESTORE_TOTAL_";
+    let INDIVIDUAL_PREFIX = "FX_SESSION_RESTORE_INDIVIDUAL_";
+    let SIZE_SUFFIX = "_SIZE_BYTES";
+
+    let state = JSON.parse(stateString);
+
+    // Gather all data
+    let subsets = {};
+    this.gatherSimpleData(state, subsets);
+    this.gatherComplexData(state, subsets);
+
+    // Extract telemetry
+    let telemetry = {};
+    for (let k of Object.keys(subsets)) {
+      let obj = subsets[k];
+      telemetry[TOTAL_PREFIX + k + SIZE_SUFFIX] = getByteLength(obj);
+
+      if (Array.isArray(obj)) {
+        let size = obj.map(getByteLength);
+        telemetry[INDIVIDUAL_PREFIX + k + SIZE_SUFFIX] = size;
+      }
+    }
+
+    let stop = Date.now();
+    telemetry["FX_SESSION_RESTORE_EXTRACTING_STATISTICS_DURATION_MS"] = stop - start;
+    return {
+      telemetry: telemetry
+    };
+  },
+
+  /**
+   * Collect data that doesn't require a recursive walk through the
+   * data structure.
+   */
+  gatherSimpleData: function(state, subsets) {
+    // The subset of sessionstore.js dealing with open windows
+    subsets.OPEN_WINDOWS = state.windows;
+
+    // The subset of sessionstore.js dealing with closed windows
+    subsets.CLOSED_WINDOWS = state._closedWindows;
+
+    // The subset of sessionstore.js dealing with closed tabs
+    // in open windows
+    subsets.CLOSED_TABS_IN_OPEN_WINDOWS = [];
+
+    // The subset of sessionstore.js dealing with cookies
+    // in both open and closed windows
+    subsets.COOKIES = [];
+
+    for (let winData of state.windows) {
+      let closedTabs = winData._closedTabs || [];
+      subsets.CLOSED_TABS_IN_OPEN_WINDOWS.push(...closedTabs);
+
+      let cookies = winData.cookies || [];
+      subsets.COOKIES.push(...cookies);
+    }
+
+    for (let winData of state._closedWindows) {
+      let cookies = winData.cookies || [];
+      subsets.COOKIES.push(...cookies);
+    }
+  },
+
+  /**
+   * Walk through a data structure, recursively.
+   *
+   * @param {object} root The object from which to start walking.
+   * @param {function(key, value)} cb Callback, called for each
+   * item except the root. Returns |true| to walk the subtree rooted
+   * at |value|, |false| otherwise   */
+  walk: function(root, cb) {
+    if (!root || typeof root !== "object") {
+      return;
+    }
+    for (let k of Object.keys(root)) {
+      let obj = root[k];
+      let stepIn = cb(k, obj);
+      if (stepIn) {
+        this.walk(obj, cb);
+      }
+    }
+  },
+
+  /**
+   * Collect data that requires walking through the data structure
+   */
+  gatherComplexData: function(state, subsets) {
+    // The subset of sessionstore.js dealing with DOM storage
+    subsets.DOM_STORAGE = [];
+    // The subset of sessionstore.js storing form data
+    subsets.FORMDATA = [];
+    // The subset of sessionstore.js storing history
+    subsets.HISTORY = [];
+
+
+    this.walk(state, function(k, value) {
+      let dest;
+      switch (k) {
+        case "entries":
+          subsets.HISTORY.push(value);
+          return true;
+        case "storage":
+          subsets.DOM_STORAGE.push(value);
+          // Never visit storage, it's full of weird stuff
+          return false;
+        case "formdata":
+          subsets.FORMDATA.push(value);
+          // Never visit formdata, it's full of weird stuff
+          return false;
+        case "cookies": // Don't visit these places, they are full of weird stuff
+        case "extData":
+          return false;
+        default:
+          return true;
+      }
+    });
+
+    return subsets;
+  },
+
+};

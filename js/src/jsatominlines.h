@@ -31,6 +31,7 @@ namespace js {
 inline jsid
 AtomToId(JSAtom *atom)
 {
+    AutoThreadSafeAccess ts(atom);
     JS_STATIC_ASSERT(JSID_INT_MIN == 0);
 
     uint32_t index;
@@ -105,37 +106,26 @@ BackfillIndexInCharBuffer(uint32_t index, mozilla::RangedPtr<T> end)
 }
 
 bool
-IndexToIdSlow(ExclusiveContext *cx, uint32_t index, jsid *idp);
+IndexToIdSlow(ExclusiveContext *cx, uint32_t index, MutableHandleId idp);
 
 inline bool
-IndexToId(ExclusiveContext *cx, uint32_t index, jsid *idp)
+IndexToId(ExclusiveContext *cx, uint32_t index, MutableHandleId idp)
 {
     if (index <= JSID_INT_MAX) {
-        *idp = INT_TO_JSID(index);
+        idp.set(INT_TO_JSID(index));
         return true;
     }
 
     return IndexToIdSlow(cx, index, idp);
 }
 
-inline bool
-IndexToIdPure(uint32_t index, jsid *idp)
-{
-    if (index <= JSID_INT_MAX) {
-        *idp = INT_TO_JSID(index);
-        return true;
-    }
-
-    return false;
-}
-
-static JS_ALWAYS_INLINE JSFlatString *
+static MOZ_ALWAYS_INLINE JSFlatString *
 IdToString(JSContext *cx, jsid id)
 {
     if (JSID_IS_STRING(id))
         return JSID_TO_ATOM(id);
 
-    if (JS_LIKELY(JSID_IS_INT(id)))
+    if (MOZ_LIKELY(JSID_IS_INT(id)))
         return Int32ToString<CanGC>(cx, JSID_TO_INT(id));
 
     RootedValue idv(cx, IdToValue(id));

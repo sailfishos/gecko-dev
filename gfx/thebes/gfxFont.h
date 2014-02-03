@@ -49,6 +49,7 @@ class gfxShapedText;
 class gfxShapedWord;
 class gfxSVGGlyphs;
 class gfxTextContextPaint;
+class FontInfoData;
 
 class nsILanguageAtomService;
 
@@ -299,7 +300,7 @@ public:
     // ReadCMAP() must *always* set the mCharacterMap pointer to a valid
     // gfxCharacterMap, even if empty, as other code assumes this pointer
     // can be safely dereferenced.
-    virtual nsresult ReadCMAP();
+    virtual nsresult ReadCMAP(FontInfoData *aFontInfoData = nullptr);
 
     bool TryGetSVGData(gfxFont* aFont);
     bool HasSVGGlyph(uint32_t aGlyphId);
@@ -490,6 +491,12 @@ protected:
     // This method assumes aFontData is valid 'sfnt' data; before using this,
     // caller is responsible to do any sanitization/validation necessary.
     hb_blob_t* GetTableFromFontData(const void* aFontData, uint32_t aTableTag);
+
+    // lookup the cmap in cached font data
+    virtual already_AddRefed<gfxCharacterMap>
+    GetCMAPFromFontInfo(FontInfoData *aFontInfoData,
+                        uint32_t& aUVSOffset,
+                        bool& aSymbolFont);
 
     // Font's unitsPerEm from the 'head' table, if available (will be set to
     // kInvalidUPEM for non-sfnt font formats)
@@ -693,6 +700,7 @@ public:
     }
 
     // note that the styles for this family have been added
+    bool HasStyles() { return mHasStyles; }
     void SetHasStyles(bool aHasStyles) { mHasStyles = aHasStyles; }
 
     // choose a specific face to match a style using CSS font matching
@@ -713,6 +721,14 @@ public:
     // read in other family names, if any, and use functor to add each into cache
     virtual void ReadOtherFamilyNames(gfxPlatformFontList *aPlatformFontList);
 
+    // helper method for reading localized family names from the name table
+    // of a single face
+    static void ReadOtherFamilyNamesForFace(const nsAString& aFamilyName,
+                                            const char *aNameData,
+                                            uint32_t aDataLength,
+                                            nsTArray<nsString>& aOtherFamilyNames,
+                                            bool useFullName);
+
     // set when other family names have been read in
     void SetOtherFamilyNamesInitialized() {
         mOtherFamilyNamesInitialized = true;
@@ -721,30 +737,18 @@ public:
     // read in other localized family names, fullnames and Postscript names
     // for all faces and append to lookup tables
     virtual void ReadFaceNames(gfxPlatformFontList *aPlatformFontList,
-                               bool aNeedFullnamePostscriptNames);
+                               bool aNeedFullnamePostscriptNames,
+                               FontInfoData *aFontInfoData = nullptr);
 
     // find faces belonging to this family (platform implementations override this;
     // should be made pure virtual once all subclasses have been updated)
-    virtual void FindStyleVariations() { }
+    virtual void FindStyleVariations(FontInfoData *aFontInfoData = nullptr) { }
 
     // search for a specific face using the Postscript name
     gfxFontEntry* FindFont(const nsAString& aPostscriptName);
 
     // read in cmaps for all the faces
-    void ReadAllCMAPs() {
-        uint32_t i, numFonts = mAvailableFonts.Length();
-        for (i = 0; i < numFonts; i++) {
-            gfxFontEntry *fe = mAvailableFonts[i];
-            // don't try to load cmaps for downloadable fonts not yet loaded
-            if (!fe || fe->mIsProxy) {
-                continue;
-            }
-            fe->ReadCMAP();
-            mFamilyCharacterMap.Union(*(fe->mCharacterMap));
-        }
-        mFamilyCharacterMap.Compact();
-        mFamilyCharacterMapInitialized = true;
-    }
+    void ReadAllCMAPs(FontInfoData *aFontInfoData = nullptr);
 
     bool TestCharacterMap(uint32_t aCh) {
         if (!mFamilyCharacterMapInitialized) {
@@ -1147,7 +1151,10 @@ public:
          */
         TEXT_INCOMING_ARABICCHAR = 0x40000000,
 
-        TEXT_UNUSED_FLAGS = 0x90000000
+        // Set if the textrun should use the OpenType 'math' script.
+        TEXT_USE_MATH_SCRIPT = 0x80000000,
+
+        TEXT_UNUSED_FLAGS = 0x10000000
     };
 
     /**
@@ -1325,7 +1332,7 @@ public:
     // aShapedText. Parameters aOffset/aLength indicate the range of
     // aShapedText to be updated; aLength is also the length of aText.
     virtual bool ShapeText(gfxContext      *aContext,
-                           const PRUnichar *aText,
+                           const char16_t *aText,
                            uint32_t         aOffset,
                            uint32_t         aLength,
                            int32_t          aScript,
@@ -1837,7 +1844,7 @@ protected:
     // Call the appropriate shaper to generate glyphs for aText and store
     // them into aShapedText.
     virtual bool ShapeText(gfxContext      *aContext,
-                           const PRUnichar *aText,
+                           const char16_t *aText,
                            uint32_t         aOffset,
                            uint32_t         aLength,
                            int32_t          aScript,
@@ -1848,7 +1855,7 @@ protected:
     // in the shaped text; implementations of ShapeText should call this
     // after glyph shaping has been completed.
     void PostShapingFixup(gfxContext      *aContext,
-                          const PRUnichar *aText,
+                          const char16_t *aText,
                           uint32_t         aOffset, // position within aShapedText
                           uint32_t         aLength,
                           gfxShapedText   *aShapedText);
@@ -1894,7 +1901,7 @@ protected:
     struct CacheHashKey {
         union {
             const uint8_t   *mSingle;
-            const PRUnichar *mDouble;
+            const char16_t *mDouble;
         }                mText;
         uint32_t         mLength;
         uint32_t         mFlags;
@@ -1920,7 +1927,7 @@ protected:
             mText.mSingle = aText;
         }
 
-        CacheHashKey(const PRUnichar *aText, uint32_t aLength,
+        CacheHashKey(const char16_t *aText, uint32_t aLength,
                      uint32_t aStringHash,
                      int32_t aScriptCode, int32_t aAppUnitsPerDevUnit,
                      uint32_t aFlags)
@@ -2345,7 +2352,7 @@ public:
     // based on the Unicode properties of the text in aString.
     // This is also responsible to set the IsSpace flag for space characters.
     void SetupClusterBoundaries(uint32_t         aOffset,
-                                const PRUnichar *aString,
+                                const char16_t *aString,
                                 uint32_t         aLength);
     // In 8-bit text, there won't actually be any clusters, but we still need
     // the space-marking functionality.
@@ -2510,7 +2517,7 @@ protected:
 
     nsAutoPtr<DetailedGlyphStore>   mDetailedGlyphs;
 
-    // Number of PRUnichar characters and CompressedGlyph glyph records
+    // Number of char16_t characters and CompressedGlyph glyph records
     uint32_t                        mLength;
 
     // Shaping flags (direction, ligature-suppression)
@@ -2560,7 +2567,7 @@ public:
                                            aAppUnitsPerDevUnit, aFlags);
     }
 
-    static gfxShapedWord* Create(const PRUnichar *aText, uint32_t aLength,
+    static gfxShapedWord* Create(const char16_t *aText, uint32_t aLength,
                                  int32_t aRunScript,
                                  int32_t aAppUnitsPerDevUnit,
                                  uint32_t aFlags) {
@@ -2580,7 +2587,7 @@ public:
 
         uint32_t size =
             offsetof(gfxShapedWord, mCharGlyphsStorage) +
-            aLength * (sizeof(CompressedGlyph) + sizeof(PRUnichar));
+            aLength * (sizeof(CompressedGlyph) + sizeof(char16_t));
         void *storage = moz_malloc(size);
         if (!storage) {
             return nullptr;
@@ -2605,15 +2612,15 @@ public:
         return reinterpret_cast<const uint8_t*>(mCharGlyphsStorage + GetLength());
     }
 
-    const PRUnichar* TextUnicode() const {
+    const char16_t* TextUnicode() const {
         NS_ASSERTION(!TextIs8Bit(), "invalid use of TextUnicode()");
-        return reinterpret_cast<const PRUnichar*>(mCharGlyphsStorage + GetLength());
+        return reinterpret_cast<const char16_t*>(mCharGlyphsStorage + GetLength());
     }
 
-    PRUnichar GetCharAt(uint32_t aOffset) const {
+    char16_t GetCharAt(uint32_t aOffset) const {
         NS_ASSERTION(aOffset < GetLength(), "aOffset out of range");
         return TextIs8Bit() ?
-            PRUnichar(Text8Bit()[aOffset]) : TextUnicode()[aOffset];
+            char16_t(Text8Bit()[aOffset]) : TextUnicode()[aOffset];
     }
 
     int32_t Script() const {
@@ -2645,7 +2652,7 @@ private:
         memcpy(text, aText, aLength * sizeof(uint8_t));
     }
 
-    gfxShapedWord(const PRUnichar *aText, uint32_t aLength,
+    gfxShapedWord(const char16_t *aText, uint32_t aLength,
                   int32_t aRunScript, int32_t aAppUnitsPerDevUnit,
                   uint32_t aFlags)
         : gfxShapedText(aLength, aFlags, aAppUnitsPerDevUnit)
@@ -2653,8 +2660,8 @@ private:
         , mAgeCounter(0)
     {
         memset(mCharGlyphsStorage, 0, aLength * sizeof(CompressedGlyph));
-        PRUnichar *text = reinterpret_cast<PRUnichar*>(&mCharGlyphsStorage[aLength]);
-        memcpy(text, aText, aLength * sizeof(PRUnichar));
+        char16_t *text = reinterpret_cast<char16_t*>(&mCharGlyphsStorage[aLength]);
+        memcpy(text, aText, aLength * sizeof(char16_t));
         SetupClusterBoundaries(0, aText, aLength);
     }
 
@@ -3130,7 +3137,7 @@ public:
     // if it returns false, the caller needs to fall back to some other
     // means to create the necessary (detailed) glyph data.
     bool SetSpaceGlyphIfSimple(gfxFont *aFont, gfxContext *aContext,
-                               uint32_t aCharIndex, PRUnichar aSpaceChar);
+                               uint32_t aCharIndex, char16_t aSpaceChar);
 
     // Record the positions of specific characters that layout may need to
     // detect in the textrun, even though it doesn't have an explicit copy
@@ -3397,7 +3404,7 @@ public:
      * when creating textruns.
      */
     static bool IsInvalidChar(uint8_t ch);
-    static bool IsInvalidChar(PRUnichar ch);
+    static bool IsInvalidChar(char16_t ch);
 
     /**
      * Make a textrun for a given string.
@@ -3405,7 +3412,7 @@ public:
      * textrun will copy it.
      * This calls FetchGlyphExtents on the textrun.
      */
-    virtual gfxTextRun *MakeTextRun(const PRUnichar *aString, uint32_t aLength,
+    virtual gfxTextRun *MakeTextRun(const char16_t *aString, uint32_t aLength,
                                     const Parameters *aParams, uint32_t aFlags);
     /**
      * Make a textrun for a given string.
@@ -3511,6 +3518,9 @@ public:
     gfxTextPerfMetrics *GetTextPerfMetrics() { return mTextPerf; }
     void SetTextPerfMetrics(gfxTextPerfMetrics *aTextPerf) { mTextPerf = aTextPerf; }
 
+    // This will call UpdateFontList() if the user font set is changed.
+    void SetUserFontSet(gfxUserFontSet *aUserFontSet);
+
     // If there is a user font set, check to see whether the font list or any
     // caches need updating.
     virtual void UpdateFontList();
@@ -3538,7 +3548,7 @@ protected:
     gfxFloat mUnderlineOffset;
     gfxFloat mHyphenWidth;
 
-    gfxUserFontSet* mUserFontSet;
+    nsRefPtr<gfxUserFontSet> mUserFontSet;
     uint64_t mCurrGeneration;  // track the current user font set generation, rebuild font list if needed
 
     gfxTextPerfMetrics *mTextPerf;
@@ -3566,10 +3576,6 @@ protected:
     gfxTextRun *MakeSpaceTextRun(const Parameters *aParams, uint32_t aFlags);
     gfxTextRun *MakeBlankTextRun(uint32_t aLength,
                                  const Parameters *aParams, uint32_t aFlags);
-
-    // Used for construction/destruction.  Not intended to change the font set
-    // as invalidation of font lists and caches is not considered.
-    void SetUserFontSet(gfxUserFontSet *aUserFontSet);
 
     // Initialize the list of fonts
     void BuildFontList();

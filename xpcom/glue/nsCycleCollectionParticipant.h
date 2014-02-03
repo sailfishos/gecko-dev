@@ -60,6 +60,7 @@ struct TraceCallbacks
     virtual void Trace(JS::Heap<JSObject*>* p, const char* name, void* closure) const = 0;
     virtual void Trace(JS::Heap<JSString*>* p, const char* name, void* closure) const = 0;
     virtual void Trace(JS::Heap<JSScript*>* p, const char* name, void* closure) const = 0;
+    virtual void Trace(JS::Heap<JSFunction*>* p, const char* name, void* closure) const = 0;
 };
 
 /*
@@ -77,6 +78,7 @@ struct TraceCallbackFunc : public TraceCallbacks
     virtual void Trace(JS::Heap<JSObject*>* p, const char* name, void* closure) const MOZ_OVERRIDE;
     virtual void Trace(JS::Heap<JSString*>* p, const char* name, void* closure) const MOZ_OVERRIDE;
     virtual void Trace(JS::Heap<JSScript*>* p, const char* name, void* closure) const MOZ_OVERRIDE;
+    virtual void Trace(JS::Heap<JSFunction*>* p, const char* name, void* closure) const MOZ_OVERRIDE;
 
   private:
     Func mCallback;
@@ -98,6 +100,8 @@ public:
     NS_IMETHOD_(void) Root(void *p) = 0;
     NS_IMETHOD_(void) Unlink(void *p) = 0;
     NS_IMETHOD_(void) Unroot(void *p) = 0;
+
+    NS_IMETHOD_(void) Trace(void *p, const TraceCallbacks &cb, void *closure) {};
 
     // If CanSkip returns true, p is removed from the purple buffer during
     // a call to nsCycleCollector_forgetSkippable().

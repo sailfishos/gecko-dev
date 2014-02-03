@@ -79,7 +79,7 @@ NS_IMPL_ISUPPORTS2(EmbedLiteAppService, nsIObserver, nsIEmbedAppService)
 NS_IMETHODIMP
 EmbedLiteAppService::Observe(nsISupports* aSubject,
                              const char* aTopic,
-                             const PRUnichar* aData)
+                             const char16_t* aData)
 {
   return NS_OK;
 }
@@ -132,7 +132,7 @@ EmbedLiteAppService::GetIDByWindow(nsIDOMWindow* aWin, uint32_t* aId)
 }
 
 NS_IMETHODIMP
-EmbedLiteAppService::SendAsyncMessage(uint32_t aId, const PRUnichar* messageName, const PRUnichar* message)
+EmbedLiteAppService::SendAsyncMessage(uint32_t aId, const char16_t* messageName, const char16_t* message)
 {
   EmbedLiteViewThreadChild* view = sGetViewById(aId);
   NS_ENSURE_TRUE(view, NS_ERROR_FAILURE);
@@ -141,7 +141,7 @@ EmbedLiteAppService::SendAsyncMessage(uint32_t aId, const PRUnichar* messageName
 }
 
 NS_IMETHODIMP
-EmbedLiteAppService::SendSyncMessage(uint32_t aId, const PRUnichar* messageName, const PRUnichar* message, nsAString& retval)
+EmbedLiteAppService::SendSyncMessage(uint32_t aId, const char16_t* messageName, const char16_t* message, nsAString& retval)
 {
   EmbedLiteViewThreadChild* view = sGetViewById(aId);
   NS_ENSURE_TRUE(view, NS_ERROR_FAILURE);
@@ -276,7 +276,7 @@ EmbedLiteAppService::ZoomToRect(uint32_t aWinId, float aX, float aY, float aWidt
 {
   EmbedLiteViewThreadChild* view = sGetViewById(aWinId);
   NS_ENSURE_TRUE(view, NS_ERROR_FAILURE);
-  view->SendZoomToRect(CSSRect(aX, aY, aWidth, aHeight));
+  view->SendZoomToRect(0, 0, CSSRect(aX, aY, aWidth, aHeight));
   return NS_OK;
 }
 
@@ -332,7 +332,7 @@ EmbedLiteAppService::GetCompositedRectInCSS(const mozilla::layers::FrameMetrics&
 }
 
 NS_IMETHODIMP
-EmbedLiteAppService::SendAsyncMessageLocal(uint32_t aId, const PRUnichar* messageName, const PRUnichar* message)
+EmbedLiteAppService::SendAsyncMessageLocal(uint32_t aId, const char16_t* messageName, const char16_t* message)
 {
   EmbedLiteViewThreadChild* view = sGetViewById(aId);
   NS_ENSURE_TRUE(view, NS_ERROR_FAILURE);

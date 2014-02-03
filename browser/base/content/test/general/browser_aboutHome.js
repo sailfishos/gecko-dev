@@ -89,11 +89,15 @@ let gTests = [
   }
 },
 
+// Disabled on Linux for intermittent issues with FHR, see Bug 945667.
 {
   desc: "Check that performing a search fires a search event and records to " +
         "Firefox Health Report.",
   setup: function () { },
   run: function () {
+    // Skip this test on Linux.
+    if (navigator.platform.indexOf("Linux") == 0) { return; }
+
     try {
       let cm = Cc["@mozilla.org/categorymanager;1"].getService(Ci.nsICategoryManager);
       cm.getCategoryEntry("healthreport-js-provider-default", "SearchesProvider");
@@ -325,7 +329,44 @@ let gTests = [
                               Ci.nsISearchEngine.DATA_XML, null, false);
     return deferred.promise;
   }
-}
+},
+
+{
+  desc: "Make sure that a page can't imitate about:home",
+  setup: function () { },
+  run: function (aSnippetsMap)
+  {
+    let deferred = Promise.defer();
+
+    let browser = gBrowser.selectedTab.linkedBrowser;
+    waitForLoad(() => {
+      let button = browser.contentDocument.getElementById("settings");
+      ok(button, "Found settings button in test page");
+      button.click();
+
+      // It may take a few turns of the event loop before the window
+      // is displayed, so we wait.
+      function check(n) {
+        let win = Services.wm.getMostRecentWindow("Browser:Preferences");
+        ok(!win, "Preferences window not showing");
+        if (win) {
+          win.close();
+        }
+
+        if (n > 0) {
+          executeSoon(() => check(n-1));
+        } else {
+          deferred.resolve();
+        }
+      }
+
+      check(5);
+    });
+
+    browser.loadURI("https://example.com/browser/browser/base/content/test/general/test_bug959531.html");
+    return deferred.promise;
+  }
+},
 
 ];
 

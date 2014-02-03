@@ -231,27 +231,27 @@ namespace {
  *        _array's length.
  */
 nsresult
-GetJSArrayFromJSValue(const JS::Value& aValue,
+GetJSArrayFromJSValue(JS::Handle<JS::Value> aValue,
                       JSContext* aCtx,
-                      JSObject** _array,
+                      JS::MutableHandle<JSObject*> _array,
                       uint32_t* _arrayLength) {
   if (aValue.isObjectOrNull()) {
     JS::Rooted<JSObject*> val(aCtx, aValue.toObjectOrNull());
     if (JS_IsArrayObject(aCtx, val)) {
-      *_array = val;
-      (void)JS_GetArrayLength(aCtx, *_array, _arrayLength);
+      _array.set(val);
+      (void)JS_GetArrayLength(aCtx, _array, _arrayLength);
       NS_ENSURE_ARG(*_arrayLength > 0);
       return NS_OK;
     }
   }
-  
+
   // Build a temporary array to store this one item so the code below can
   // just loop.
   *_arrayLength = 1;
-  *_array = JS_NewArrayObject(aCtx, 0, nullptr);
-  NS_ENSURE_TRUE(*_array, NS_ERROR_OUT_OF_MEMORY);
+  _array.set(JS_NewArrayObject(aCtx, 0, nullptr));
+  NS_ENSURE_TRUE(_array, NS_ERROR_OUT_OF_MEMORY);
 
-  bool rc = JS_DefineElement(aCtx, *_array, 0, aValue, nullptr, nullptr, 0);
+  bool rc = JS_DefineElement(aCtx, _array, 0, aValue, nullptr, nullptr, 0);
   NS_ENSURE_TRUE(rc, NS_ERROR_UNEXPECTED);
   return NS_OK;
 }
@@ -333,7 +333,7 @@ GetJSValueAsString(JSContext* aCtx,
     _string.SetIsVoid(true);
     return;
   }
-  _string.Assign(static_cast<const PRUnichar*>(chars), length);
+  _string.Assign(static_cast<const char16_t*>(chars), length);
 }
 
 /**
@@ -413,14 +413,14 @@ GetIntFromJSObject(JSContext* aCtx,
  *        The JSObject to get the object from.
  * @param aIndex
  *        The index to get the object from.
- * @param _object
- *        The JSObject pointer on success.
+ * @param objOut
+ *        Set to the JSObject pointer on success.
  */
 nsresult
 GetJSObjectFromArray(JSContext* aCtx,
-                     JSObject* aArray,
+                     JS::Handle<JSObject*> aArray,
                      uint32_t aIndex,
-                     JSObject** _rooter)
+                     JS::MutableHandle<JSObject*> objOut)
 {
   NS_PRECONDITION(JS_IsArrayObject(aCtx, aArray),
                   "Must provide an object that is an array!");
@@ -428,8 +428,8 @@ GetJSObjectFromArray(JSContext* aCtx,
   JS::Rooted<JS::Value> value(aCtx);
   bool rc = JS_GetElement(aCtx, aArray, aIndex, &value);
   NS_ENSURE_TRUE(rc, NS_ERROR_UNEXPECTED);
-  NS_ENSURE_ARG(!JSVAL_IS_PRIMITIVE(value));
-  *_rooter = JSVAL_TO_OBJECT(value);
+  NS_ENSURE_ARG(!value.isPrimitive());
+  objOut.set(&value.toObject());
   return NS_OK;
 }
 
@@ -1915,11 +1915,7 @@ StoreAndNotifyEmbedVisit(VisitData& aPlace,
 History* History::gService = nullptr;
 
 History::History()
-  : MemoryUniReporter("explicit/history-links-hashtable",
-                      KIND_HEAP, UNITS_BYTES,
-"Memory used by the hashtable that records changes to the visited state of "
-"links.")
-  , mShuttingDown(false)
+  : mShuttingDown(false)
   , mShutdownMutex("History::mShutdownMutex")
   , mObservers(VISIT_OBSERVERS_INITIAL_CACHE_SIZE)
   , mRecentlyVisitedURIsNextIndex(0)
@@ -2221,10 +2217,17 @@ History::SizeOfEntryExcludingThis(KeyClass* aEntry, mozilla::MallocSizeOf aMallo
   return aEntry->array.SizeOfExcludingThis(aMallocSizeOf);
 }
 
-int64_t
-History::Amount()
+MOZ_DEFINE_MALLOC_SIZE_OF(HistoryMallocSizeOf)
+
+NS_IMETHODIMP
+History::CollectReports(nsIHandleReportCallback* aHandleReport,
+                        nsISupports* aData)
 {
-  return SizeOfIncludingThis(MallocSizeOf);
+  return MOZ_COLLECT_REPORT(
+    "explicit/history-links-hashtable", KIND_HEAP, UNITS_BYTES,
+    SizeOfIncludingThis(HistoryMallocSizeOf),
+    "Memory used by the hashtable that records changes to the visited state "
+    "of links.");
 }
 
 size_t
@@ -2674,7 +2677,7 @@ History::RemoveAllDownloads()
 //// mozIAsyncHistory
 
 NS_IMETHODIMP
-History::GetPlacesInfo(const JS::Value& aPlaceIdentifiers,
+History::GetPlacesInfo(JS::Handle<JS::Value> aPlaceIdentifiers,
                        mozIVisitInfoCallback* aCallback,
                        JSContext* aCtx) {
   nsNavHistory* navHistory = nsNavHistory::GetHistoryService();
@@ -2683,7 +2686,7 @@ History::GetPlacesInfo(const JS::Value& aPlaceIdentifiers,
   uint32_t placesIndentifiersLength;
   JS::Rooted<JSObject*> placesIndentifiers(aCtx);
   nsresult rv = GetJSArrayFromJSValue(aPlaceIdentifiers, aCtx,
-                                      placesIndentifiers.address(),
+                                      &placesIndentifiers,
                                       &placesIndentifiersLength);
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -2742,7 +2745,7 @@ History::GetPlacesInfo(const JS::Value& aPlaceIdentifiers,
 }
 
 NS_IMETHODIMP
-History::UpdatePlaces(const JS::Value& aPlaceInfos,
+History::UpdatePlaces(JS::Handle<JS::Value> aPlaceInfos,
                       mozIVisitInfoCallback* aCallback,
                       JSContext* aCtx)
 {
@@ -2751,13 +2754,13 @@ History::UpdatePlaces(const JS::Value& aPlaceInfos,
 
   uint32_t infosLength;
   JS::Rooted<JSObject*> infos(aCtx);
-  nsresult rv = GetJSArrayFromJSValue(aPlaceInfos, aCtx, infos.address(), &infosLength);
+  nsresult rv = GetJSArrayFromJSValue(aPlaceInfos, aCtx, &infos, &infosLength);
   NS_ENSURE_SUCCESS(rv, rv);
 
   nsTArray<VisitData> visitData;
   for (uint32_t i = 0; i < infosLength; i++) {
     JS::Rooted<JSObject*> info(aCtx);
-    nsresult rv = GetJSObjectFromArray(aCtx, infos, i, info.address());
+    nsresult rv = GetJSObjectFromArray(aCtx, infos, i, &info);
     NS_ENSURE_SUCCESS(rv, rv);
 
     nsCOMPtr<nsIURI> uri = GetURIFromJSObject(aCtx, info, "uri");
@@ -2811,7 +2814,7 @@ History::UpdatePlaces(const JS::Value& aPlaceInfos,
     visitData.SetCapacity(visitData.Length() + visitsLength);
     for (uint32_t j = 0; j < visitsLength; j++) {
       JS::Rooted<JSObject*> visit(aCtx);
-      rv = GetJSObjectFromArray(aCtx, visits, j, visit.address());
+      rv = GetJSObjectFromArray(aCtx, visits, j, &visit);
       NS_ENSURE_SUCCESS(rv, rv);
 
       VisitData& data = *visitData.AppendElement(VisitData(uri));
@@ -2897,7 +2900,7 @@ History::IsURIVisited(nsIURI* aURI,
 
 NS_IMETHODIMP
 History::Observe(nsISupports* aSubject, const char* aTopic,
-                 const PRUnichar* aData)
+                 const char16_t* aData)
 {
   if (strcmp(aTopic, TOPIC_PLACES_SHUTDOWN) == 0) {
     Shutdown();
@@ -2914,13 +2917,13 @@ History::Observe(nsISupports* aSubject, const char* aTopic,
 ////////////////////////////////////////////////////////////////////////////////
 //// nsISupports
 
-NS_IMPL_ISUPPORTS_INHERITED4(
+NS_IMPL_ISUPPORTS5(
   History
-, MemoryUniReporter
 , IHistory
 , nsIDownloadHistory
 , mozIAsyncHistory
 , nsIObserver
+, nsIMemoryReporter
 )
 
 } // namespace places

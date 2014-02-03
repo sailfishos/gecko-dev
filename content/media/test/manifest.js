@@ -11,6 +11,7 @@ var gSmallTests = [
   { name:"r11025_s16_c1.wav", type:"audio/x-wav", duration:1.0 },
   { name:"320x240.ogv", type:"video/ogg", width:320, height:240, duration:0.266 },
   { name:"seek.webm", type:"video/webm", width:320, height:240, duration:3.966 },
+  { name:"vp9.webm", type:"video/webm", width:320, height:240, duration:4 },
   { name:"detodos.opus", type:"audio/ogg; codecs=opus", duration:2.9135 },
   { name:"gizmo.mp4", type:"video/mp4", duration:5.56 },
   { name:"bogus.duh", type:"bogus/duh" }
@@ -156,6 +157,10 @@ var gPlayTests = [
   // Test playback of a WebM file with non-zero start time.
   { name:"split.webm", type:"video/webm", duration:1.967 },
 
+  // Test playback of a WebM file with vp9 video
+  //{ name:"vp9.webm", type:"video/webm", duration:4 },
+  { name:"vp9cake.webm", type:"video/webm", duration:7.966 },
+
   // Test playback of a raw file
   { name:"seek.yuv", type:"video/x-raw-yuv", duration:1.833 },
 
@@ -166,6 +171,8 @@ var gPlayTests = [
 
   // Opus data in an ogg container
   { name:"detodos.opus", type:"audio/ogg; codecs=opus", duration:2.9135 },
+  // Opus data in a webm container
+  { name:"detodos.webm", type:"audio/webm; codecs=opus", duration:2.9135 },
 
   // Multichannel Opus in an ogg container
   { name:"test-1-mono.opus", type:"audio/ogg; codecs=opus", duration:1.044 },
@@ -362,6 +369,16 @@ if (navigator.userAgent.indexOf("Windows") == -1 ||
     IsWindows8OrLater()) {
   gUnseekableTests = gUnseekableTests.concat([
     { name:"big-buck-bunny-unseekable.mp4", type:"video/mp4" }
+  ]);
+}
+// Android supports fragmented MP4 playback from 4.3.
+var androidVersion = SpecialPowers.Cc['@mozilla.org/system-info;1']
+                                  .getService(SpecialPowers.Ci.nsIPropertyBag2)
+                                  .getProperty('version');
+// Fragmented MP4.
+if (navigator.userAgent.indexOf("Mobile") != -1 && androidVersion >= 18) {
+  gUnseekableTests = gUnseekableTests.concat([
+    { name:"street.mp4", type:"video/mp4" }
   ]);
 }
 
@@ -570,6 +587,15 @@ function getMajorMimeType(mimetype) {
   }
 }
 
+function removeNodeAndSource(n) {
+  n.remove();
+  // force release of underlying decoder
+  n.src = "";
+  while (n.firstChild) {
+    n.removeChild(n.firstChild);
+  }
+}
+
 // Number of tests to run in parallel. Warning: Each media element requires
 // at least 3 threads (4 on Linux), and on Linux each thread uses 10MB of
 // virtual address space. Beware!
@@ -693,12 +719,12 @@ function MediaTestManager() {
 function mediaTestCleanup() {
     var V = document.getElementsByTagName("video");
     for (i=0; i<V.length; i++) {
-      V[i].parentNode.removeChild(V[i]);
+      removeNodeAndSource(V[i]);
       V[i] = null;
     }
     var A = document.getElementsByTagName("audio");
     for (i=0; i<A.length; i++) {
-      A[i].parentNode.removeChild(A[i]);
+      removeNodeAndSource(A[i]);
       A[i] = null;
     }
     SpecialPowers.forceGC();

@@ -44,7 +44,7 @@ public:
 
   virtual void DestroyFrom(nsIFrame* aDestructRoot) MOZ_OVERRIDE;
   virtual void ContentStatesChanged(nsEventStates aStates);
-  virtual bool IsLeaf() const MOZ_OVERRIDE { return false; }
+  virtual bool IsLeaf() const MOZ_OVERRIDE { return true; }
 
 #ifdef ACCESSIBILITY
   virtual mozilla::a11y::AccType AccessibleType() MOZ_OVERRIDE;
@@ -64,7 +64,7 @@ public:
   virtual void AppendAnonymousContentTo(nsBaseContentList& aElements,
                                         uint32_t aFilter) MOZ_OVERRIDE;
 
-#ifdef NS_DEBUG
+#ifdef DEBUG_FRAME_DUMP
   NS_IMETHOD GetFrameName(nsAString& aResult) const MOZ_OVERRIDE {
     return MakeFrameName(NS_LITERAL_STRING("NumberControl"), aResult);
   }

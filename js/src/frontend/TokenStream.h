@@ -539,7 +539,7 @@ class MOZ_STACK_CLASS TokenStream
     // returns TOK_EOL.  In that case, no token with TOK_EOL is actually
     // created, just a TOK_EOL TokenKind is returned, and currentToken()
     // shouldn't be consulted.  (This is the only place TOK_EOL is produced.)
-    JS_ALWAYS_INLINE TokenKind peekTokenSameLine(Modifier modifier = None) {
+    MOZ_ALWAYS_INLINE TokenKind peekTokenSameLine(Modifier modifier = None) {
        const Token &curr = currentToken();
 
         // If lookahead != 0, we have scanned ahead at least one token, and
@@ -628,12 +628,12 @@ class MOZ_STACK_CLASS TokenStream
         return userbuf.limit();
     }
 
-    bool hasSourceURL() const {
-        return sourceURL_ != nullptr;
+    bool hasDisplayURL() const {
+        return displayURL_ != nullptr;
     }
 
-    jschar *sourceURL() {
-        return sourceURL_;
+    jschar *displayURL() {
+        return displayURL_;
     }
 
     bool hasSourceMapURL() const {
@@ -848,13 +848,13 @@ class MOZ_STACK_CLASS TokenStream
     bool getDirective(bool isMultiline, bool shouldWarnDeprecated,
                       const char *directive, int directiveLength,
                       const char *errorMsgPragma, jschar **destination);
-    bool getSourceURL(bool isMultiline, bool shouldWarnDeprecated);
+    bool getDisplayURL(bool isMultiline, bool shouldWarnDeprecated);
     bool getSourceMappingURL(bool isMultiline, bool shouldWarnDeprecated);
 
     // |expect| cannot be an EOL char.
     bool matchChar(int32_t expect) {
         MOZ_ASSERT(!TokenBuf::isRawEOLChar(expect));
-        return JS_LIKELY(userbuf.hasRawChars()) &&
+        return MOZ_LIKELY(userbuf.hasRawChars()) &&
                userbuf.matchRawChar(expect);
     }
 
@@ -889,7 +889,7 @@ class MOZ_STACK_CLASS TokenStream
     const jschar        *prevLinebase;      // start of previous line;  nullptr if on the first line
     TokenBuf            userbuf;            // user input buffer
     const char          *filename;          // input filename or null
-    jschar              *sourceURL_;        // the user's requested source URL or null
+    jschar              *displayURL_;       // the user's requested source URL or null
     jschar              *sourceMapURL_;     // source map's filename or null
     CharBuffer          tokenbuf;           // current token string buffer
     bool                maybeEOL[256];      // probabilistic EOL lookup table

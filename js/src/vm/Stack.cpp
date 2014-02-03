@@ -8,7 +8,6 @@
 
 #include "mozilla/PodOperations.h"
 
-#include "jsautooplen.h"
 #include "jscntxt.h"
 
 #include "gc/Marking.h"
@@ -16,6 +15,7 @@
 #include "jit/BaselineFrame.h"
 #include "jit/JitCompartment.h"
 #endif
+#include "vm/Opcodes.h"
 
 #include "jit/IonFrameIterator-inl.h"
 #include "vm/Interpreter-inl.h"
@@ -264,7 +264,7 @@ StackFrame::prologue(JSContext *cx)
         functionThis() = ObjectValue(*obj);
     }
 
-    probes::EnterScript(cx, script, script->function(), this);
+    probes::EnterScript(cx, script, script->functionNonDelazifying(), this);
     return true;
 }
 
@@ -274,12 +274,12 @@ StackFrame::epilogue(JSContext *cx)
     JS_ASSERT(!isYielding());
 
     RootedScript script(cx, this->script());
-    probes::ExitScript(cx, script, script->function(), hasPushedSPSFrame());
+    probes::ExitScript(cx, script, script->functionNonDelazifying(), hasPushedSPSFrame());
 
     if (isEvalFrame()) {
         if (isStrictEvalFrame()) {
             JS_ASSERT_IF(hasCallObj(), scopeChain()->as<CallObject>().isForEval());
-            if (JS_UNLIKELY(cx->compartment()->debugMode()))
+            if (MOZ_UNLIKELY(cx->compartment()->debugMode()))
                 DebugScopes::onPopStrictEvalScope(this);
         } else if (isDirectEvalFrame()) {
             if (isDebuggerFrame())
@@ -315,7 +315,7 @@ StackFrame::epilogue(JSContext *cx)
     else
         AssertDynamicScopeMatchesStaticScope(cx, script, scopeChain());
 
-    if (JS_UNLIKELY(cx->compartment()->debugMode()))
+    if (MOZ_UNLIKELY(cx->compartment()->debugMode()))
         DebugScopes::onPopCall(this, cx);
 
     if (isConstructing() && thisValue().isObject() && returnValue().isPrimitive())
@@ -347,7 +347,7 @@ StackFrame::popBlock(JSContext *cx)
 void
 StackFrame::popWith(JSContext *cx)
 {
-    if (JS_UNLIKELY(cx->compartment()->debugMode()))
+    if (MOZ_UNLIKELY(cx->compartment()->debugMode()))
         DebugScopes::onPopWith(this);
 
     JS_ASSERT(scopeChain()->is<WithObject>());
@@ -375,7 +375,7 @@ StackFrame::mark(JSTracer *trc)
     }
     if (IS_GC_MARKING_TRACER(trc))
         script()->compartment()->zone()->active = true;
-    gc::MarkValueUnbarriered(trc, &returnValue(), "rval");
+    gc::MarkValueUnbarriered(trc, returnValue().address(), "rval");
 }
 
 void
@@ -521,6 +521,18 @@ ScriptFrameIter::settleOnActivation()
             continue;
         }
 
+        // If the caller supplied principals, only show activations which are subsumed (of the same
+        // origin or of an origin accessible) by these principals.
+        if (data_.principals_) {
+            if (JSSubsumesOp subsumes = data_.cx_->runtime()->securityCallbacks->subsumes) {
+                JS::AutoAssertNoGC nogc;
+                if (!subsumes(data_.principals_, activation->compartment()->principals)) {
+                    ++data_.activations_;
+                    continue;
+                }
+            }
+        }
+
 #ifdef JS_ION
         if (activation->isJit()) {
             data_.ionFrames_ = jit::IonFrameIterator(data_.activations_);
@@ -565,11 +577,12 @@ ScriptFrameIter::settleOnActivation()
 }
 
 ScriptFrameIter::Data::Data(JSContext *cx, PerThreadData *perThread, SavedOption savedOption,
-                            ContextOption contextOption)
+                            ContextOption contextOption, JSPrincipals *principals)
   : perThread_(perThread),
     cx_(cx),
     savedOption_(savedOption),
     contextOption_(contextOption),
+    principals_(principals),
     pc_(nullptr),
     interpFrames_(nullptr),
     activations_(cx->runtime())
@@ -584,6 +597,7 @@ ScriptFrameIter::Data::Data(const ScriptFrameIter::Data &other)
     cx_(other.cx_),
     savedOption_(other.savedOption_),
     contextOption_(other.contextOption_),
+    principals_(other.principals_),
     state_(other.state_),
     pc_(other.pc_),
     interpFrames_(other.interpFrames_),
@@ -595,7 +609,7 @@ ScriptFrameIter::Data::Data(const ScriptFrameIter::Data &other)
 }
 
 ScriptFrameIter::ScriptFrameIter(JSContext *cx, SavedOption savedOption)
-  : data_(cx, &cx->runtime()->mainThread, savedOption, CURRENT_CONTEXT)
+  : data_(cx, &cx->runtime()->mainThread, savedOption, CURRENT_CONTEXT, nullptr)
 #ifdef JS_ION
     , ionInlineFrames_(cx, (js::jit::IonFrameIterator*) nullptr)
 #endif
@@ -603,8 +617,9 @@ ScriptFrameIter::ScriptFrameIter(JSContext *cx, SavedOption savedOption)
     settleOnActivation();
 }
 
-ScriptFrameIter::ScriptFrameIter(JSContext *cx, ContextOption contextOption, SavedOption savedOption)
-  : data_(cx, &cx->runtime()->mainThread, savedOption, contextOption)
+ScriptFrameIter::ScriptFrameIter(JSContext *cx, ContextOption contextOption,
+                                 SavedOption savedOption, JSPrincipals *principals)
+  : data_(cx, &cx->runtime()->mainThread, savedOption, contextOption, principals)
 #ifdef JS_ION
     , ionInlineFrames_(cx, (js::jit::IonFrameIterator*) nullptr)
 #endif
@@ -785,7 +800,7 @@ ScriptFrameIter::isGlobalFrame() const
         if (data_.ionFrames_.isBaselineJS())
             return data_.ionFrames_.baselineFrame()->isGlobalFrame();
         JS_ASSERT(!script()->isForEval());
-        return !script()->function();
+        return !script()->functionNonDelazifying();
 #else
         break;
 #endif
@@ -1125,7 +1140,7 @@ ScriptFrameIter::returnValue() const
       case JIT:
 #ifdef JS_ION
         if (data_.ionFrames_.isBaselineJS())
-            return *data_.ionFrames_.baselineFrame()->returnValue();
+            return data_.ionFrames_.baselineFrame()->returnValue();
 #endif
         break;
       case SCRIPTED:
@@ -1242,7 +1257,7 @@ AbstractFramePtr::hasPushedSPSFrame() const
 
 #ifdef DEBUG
 void
-js::CheckLocalUnaliased(MaybeCheckAliasing checkAliasing, JSScript *script, unsigned i)
+js::CheckLocalUnaliased(MaybeCheckAliasing checkAliasing, JSScript *script, uint32_t i)
 {
     if (!checkAliasing)
         return;

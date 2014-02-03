@@ -18,7 +18,7 @@
 namespace mozilla {
 namespace net {
 
-NS_IMPL_ISUPPORTS1(Tickler, nsISupportsWeakReference)
+NS_IMPL_ISUPPORTS2(Tickler, nsISupportsWeakReference, Tickler)
 
 Tickler::Tickler()
     : mLock("Tickler::mLock")
@@ -80,7 +80,9 @@ Tickler::Init()
   MOZ_ASSERT(!mThread);
   MOZ_ASSERT(!mFD);
 
-  GeckoAppShell::EnableNetworkNotifications();
+  if (AndroidBridge::HasEnv()) {
+      GeckoAppShell::EnableNetworkNotifications();
+  }
 
   mFD = PR_OpenUDPSocket(PR_AF_INET);
   if (!mFD)

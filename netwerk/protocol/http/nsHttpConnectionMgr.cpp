@@ -23,15 +23,15 @@
 #include "nsITransport.h"
 #include "nsISocketTransportService.h"
 #include <algorithm>
-
-using namespace mozilla;
-using namespace mozilla::net;
+#include "Http2Compression.h"
 
 // defined by the socket transport service while active
 extern PRThread *gSocketThread;
 
-//-----------------------------------------------------------------------------
+namespace mozilla {
+namespace net {
 
+//-----------------------------------------------------------------------------
 
 NS_IMPL_ISUPPORTS1(nsHttpConnectionMgr, nsIObserver)
 
@@ -154,6 +154,7 @@ nsHttpConnectionMgr::Shutdown()
     // wait for shutdown event to complete
     while (!shutdown)
         NS_ProcessNextEvent(NS_GetCurrentThread());
+    Http2CompressionCleanup();
 
     return NS_OK;
 }
@@ -238,7 +239,7 @@ nsHttpConnectionMgr::ConditionallyStopTimeoutTick()
 NS_IMETHODIMP
 nsHttpConnectionMgr::Observe(nsISupports *subject,
                              const char *topic,
-                             const PRUnichar *data)
+                             const char16_t *data)
 {
     LOG(("nsHttpConnectionMgr::Observe [topic=\"%s\"]\n", topic));
 
@@ -340,7 +341,7 @@ public: // intentional!
     // As above, added manually so we can use nsRefPtr without inheriting from
     // nsISupports
 protected:
-    ::mozilla::ThreadSafeAutoRefCnt mRefCnt;
+    ThreadSafeAutoRefCnt mRefCnt;
     NS_DECL_OWNINGTHREAD
 };
 
@@ -2599,7 +2600,8 @@ nsHttpConnectionMgr::OnMsgSpeculativeConnect(int32_t, void *param)
     }
 
     if (mNumHalfOpenConns < parallelSpeculativeConnectLimit &&
-        (ignoreIdle || !ent->mIdleConns.Length()) &&
+        ((ignoreIdle && (ent->mIdleConns.Length() < parallelSpeculativeConnectLimit)) ||
+         !ent->mIdleConns.Length()) &&
         !RestrictConnections(ent, ignorePossibleSpdyConnections) &&
         !AtActiveConnectionLimit(ent, args->mTrans->Caps())) {
         CreateTransport(ent, args->mTrans, args->mTrans->Caps(), true);
@@ -3466,7 +3468,7 @@ nsHttpConnectionMgr::ReadConnectionEntry(const nsACString &key,
 }
 
 bool
-nsHttpConnectionMgr::GetConnectionData(nsTArray<mozilla::net::HttpRetParams> *aArg)
+nsHttpConnectionMgr::GetConnectionData(nsTArray<HttpRetParams> *aArg)
 {
     mCT.Enumerate(ReadConnectionEntry, aArg);
     return true;
@@ -3528,3 +3530,6 @@ nsConnectionEntry::ResetIPFamilyPreference()
   mPreferIPv4 = false;
   mPreferIPv6 = false;
 }
+
+} // namespace mozilla::net
+} // namespace mozilla

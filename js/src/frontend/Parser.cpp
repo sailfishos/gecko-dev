@@ -149,6 +149,10 @@ ParseContext<FullParseHandler>::define(TokenStream &ts,
             return false;
         if (!args_.append(dn))
             return false;
+        if (args_.length() >= ARGNO_LIMIT) {
+            ts.reportError(JSMSG_TOO_MANY_FUN_ARGS);
+            return false;
+        }
         if (name == ts.names().empty)
             break;
         if (!decls_.addUnique(name, dn))
@@ -164,6 +168,10 @@ ParseContext<FullParseHandler>::define(TokenStream &ts,
                 return false;
             if (!vars_.append(dn))
                 return false;
+            if (vars_.length() >= LOCALNO_LIMIT) {
+                ts.reportError(JSMSG_TOO_MANY_LOCALS);
+                return false;
+            }
         }
         if (!decls_.addUnique(name, dn))
             return false;
@@ -195,8 +203,14 @@ ParseContext<SyntaxParseHandler>::define(TokenStream &ts, HandlePropertyName nam
         lexdeps->remove(name);
 
     // Keep track of the number of arguments in args_, for fun->nargs.
-    if (kind == Definition::ARG && !args_.append((Definition *) nullptr))
-        return false;
+    if (kind == Definition::ARG) {
+        if (!args_.append((Definition *) nullptr))
+            return false;
+        if (args_.length() >= ARGNO_LIMIT) {
+            ts.reportError(JSMSG_TOO_MANY_FUN_ARGS);
+            return false;
+        }
+    }
 
     return decls_.addUnique(name, kind);
 }
@@ -228,12 +242,12 @@ ParseContext<ParseHandler>::updateDecl(JSAtom *atom, Node pn)
     JS_ASSERT(!oldDecl->pn_cookie.isFree());
     newDecl->pn_cookie = oldDecl->pn_cookie;
     newDecl->pn_dflags |= PND_BOUND;
-    if (JOF_OPTYPE(oldDecl->getOp()) == JOF_QARG) {
+    if (IsArgOp(oldDecl->getOp())) {
         newDecl->setOp(JSOP_GETARG);
         JS_ASSERT(args_[oldDecl->pn_cookie.slot()] == oldDecl);
         args_[oldDecl->pn_cookie.slot()] = newDecl;
     } else {
-        JS_ASSERT(JOF_OPTYPE(oldDecl->getOp()) == JOF_LOCAL);
+        JS_ASSERT(IsLocalOp(oldDecl->getOp()));
         newDecl->setOp(JSOP_GETLOCAL);
         JS_ASSERT(vars_[oldDecl->pn_cookie.slot()] == oldDecl);
         vars_[oldDecl->pn_cookie.slot()] = newDecl;
@@ -252,7 +266,7 @@ template <typename ParseHandler>
 static void
 AppendPackedBindings(const ParseContext<ParseHandler> *pc, const DeclVector &vec, Binding *dst)
 {
-    for (unsigned i = 0; i < vec.length(); ++i, ++dst) {
+    for (size_t i = 0; i < vec.length(); ++i, ++dst) {
         Definition *dn = vec[i];
         PropertyName *name = dn->name();
 
@@ -287,12 +301,22 @@ AppendPackedBindings(const ParseContext<ParseHandler> *pc, const DeclVector &vec
 
 template <typename ParseHandler>
 bool
-ParseContext<ParseHandler>::generateFunctionBindings(ExclusiveContext *cx, LifoAlloc &alloc,
+ParseContext<ParseHandler>::generateFunctionBindings(ExclusiveContext *cx, TokenStream &ts,
+                                                     LifoAlloc &alloc,
                                                      InternalHandle<Bindings*> bindings) const
 {
     JS_ASSERT(sc->isFunctionBox());
+    JS_ASSERT(args_.length() < ARGNO_LIMIT);
+    JS_ASSERT(vars_.length() < LOCALNO_LIMIT);
 
-    unsigned count = args_.length() + vars_.length();
+    /*
+     * Avoid pathological edge cases by explicitly limiting the total number of
+     * bindings to what will fit in a uint32_t.
+     */
+    if (UINT32_MAX - args_.length() <= vars_.length())
+        return ts.reportError(JSMSG_TOO_MANY_LOCALS);
+
+    uint32_t count = args_.length() + vars_.length();
     Binding *packedBindings = alloc.newArrayUninitialized<Binding>(count);
     if (!packedBindings) {
         js_ReportOutOfMemory(cx);
@@ -309,7 +333,7 @@ ParseContext<ParseHandler>::generateFunctionBindings(ExclusiveContext *cx, LifoA
 template <typename ParseHandler>
 bool
 Parser<ParseHandler>::reportHelper(ParseReportKind kind, bool strict, uint32_t offset,
-                             unsigned errorNumber, va_list args)
+                                   unsigned errorNumber, va_list args)
 {
     bool result = false;
     switch (kind) {
@@ -874,7 +898,7 @@ Parser<FullParseHandler>::standaloneFunctionBody(HandleFunction fun, const AutoN
 
     InternalHandle<Bindings*> funboxBindings =
         InternalHandle<Bindings*>::fromMarkedLocation(&funbox->bindings);
-    if (!funpc.generateFunctionBindings(context, alloc, funboxBindings))
+    if (!funpc.generateFunctionBindings(context, tokenStream, alloc, funboxBindings))
         return null();
 
     JS_ASSERT(fn->pn_body->isKind(PNK_ARGSBODY));
@@ -1278,7 +1302,7 @@ ConvertDefinitionToNamedLambdaUse(TokenStream &ts, ParseContext<FullParseHandler
                                   FunctionBox *funbox, Definition *dn)
 {
     dn->setOp(JSOP_CALLEE);
-    if (!dn->pn_cookie.set(ts, pc->staticLevel, UpvarCookie::CALLEE_SLOT))
+    if (!dn->pn_cookie.set(ts, pc->staticLevel, 0))
         return false;
     dn->pn_dflags |= PND_BOUND;
     JS_ASSERT(dn->kind() == Definition::NAMED_LAMBDA);
@@ -1401,7 +1425,7 @@ Parser<FullParseHandler>::leaveFunction(ParseNode *fn, ParseContext<FullParseHan
 
     InternalHandle<Bindings*> bindings =
         InternalHandle<Bindings*>::fromMarkedLocation(&funbox->bindings);
-    return pc->generateFunctionBindings(context, alloc, bindings);
+    return pc->generateFunctionBindings(context, tokenStream, alloc, bindings);
 }
 
 template <>
@@ -2235,7 +2259,7 @@ Parser<FullParseHandler>::standaloneLazyFunction(HandleFunction fun, unsigned st
 
     InternalHandle<Bindings*> bindings =
         InternalHandle<Bindings*>::fromMarkedLocation(&funbox->bindings);
-    if (!pc->generateFunctionBindings(context, alloc, bindings))
+    if (!pc->generateFunctionBindings(context, tokenStream, alloc, bindings))
         return null();
 
     if (!FoldConstants(context, &pn, this))
@@ -2669,8 +2693,8 @@ Parser<FullParseHandler>::bindLet(BindData<FullParseHandler> *data,
     ExclusiveContext *cx = parser->context;
 
     Rooted<StaticBlockObject *> blockObj(cx, data->let.blockObj);
-    unsigned blockCount = blockObj->slotCount();
-    if (blockCount == JS_BIT(16)) {
+    unsigned index = blockObj->slotCount();
+    if (index >= StaticBlockObject::VAR_INDEX_LIMIT) {
         parser->report(ParseError, false, pn, data->let.overflow);
         return false;
     }
@@ -2682,7 +2706,7 @@ Parser<FullParseHandler>::bindLet(BindData<FullParseHandler> *data,
      * and eval code, js::frontend::CompileScript will adjust the slot
      * again to include script->nfixed.
      */
-    if (!pn->pn_cookie.set(parser->tokenStream, pc->staticLevel, uint16_t(blockCount)))
+    if (!pn->pn_cookie.set(parser->tokenStream, pc->staticLevel, index))
         return false;
 
     /*
@@ -2698,13 +2722,9 @@ Parser<FullParseHandler>::bindLet(BindData<FullParseHandler> *data,
             return false;
     }
 
-    /*
-     * Define the let binding's property before storing pn in the the binding's
-     * slot indexed by blockCount off the class-reserved slot base.
-     */
     bool redeclared;
     RootedId id(cx, NameToId(name));
-    RootedShape shape(cx, StaticBlockObject::addVar(cx, blockObj, id, blockCount, &redeclared));
+    RootedShape shape(cx, StaticBlockObject::addVar(cx, blockObj, id, index, &redeclared));
     if (!shape) {
         if (redeclared)
             parser->reportRedeclaration(pn, false, name);
@@ -2712,7 +2732,7 @@ Parser<FullParseHandler>::bindLet(BindData<FullParseHandler> *data,
     }
 
     /* Store pn in the static block object. */
-    blockObj->setDefinitionParseNode(blockCount, reinterpret_cast<Definition *>(pn));
+    blockObj->setDefinitionParseNode(index, reinterpret_cast<Definition *>(pn));
     return true;
 }
 
@@ -3079,32 +3099,31 @@ Parser<FullParseHandler>::checkDestructuring(BindData<FullParseHandler> *data,
         }
     } else {
         JS_ASSERT(left->isKind(PNK_OBJECT));
-        for (ParseNode *pair = left->pn_head; pair; pair = pair->pn_next) {
-            JS_ASSERT(pair->isKind(PNK_COLON));
-            ParseNode *pn = pair->pn_right;
+        for (ParseNode *member = left->pn_head; member; member = member->pn_next) {
+            MOZ_ASSERT(member->isKind(PNK_COLON));
+            ParseNode *expr = member->pn_right;
 
-            if (pn->isKind(PNK_ARRAY) || pn->isKind(PNK_OBJECT)) {
-                ok = checkDestructuring(data, pn, false);
+            if (expr->isKind(PNK_ARRAY) || expr->isKind(PNK_OBJECT)) {
+                ok = checkDestructuring(data, expr, false);
             } else if (data) {
-                if (!pn->isKind(PNK_NAME)) {
-                    report(ParseError, false, pn, JSMSG_NO_VARIABLE_NAME);
+                if (!expr->isKind(PNK_NAME)) {
+                    report(ParseError, false, expr, JSMSG_NO_VARIABLE_NAME);
                     return false;
                 }
-                ok = bindDestructuringVar(data, pn);
+                ok = bindDestructuringVar(data, expr);
             } else {
                 /*
-                 * If right and left point to the same node, then this is
-                 * destructuring shorthand ({x} = ...). In that case,
-                 * identifierName was not used to parse 'x' so 'x' has not been
-                 * officially linked to its def or registered in lexdeps. Do
-                 * that now.
+                 * If this is a destructuring shorthand ({x} = ...), then
+                 * identifierName wasn't used to parse |x|.  As a result, |x|
+                 * hasn't been officially linked to its def or registered in
+                 * lexdeps.  Do that now.
                  */
-                if (pair->pn_right == pair->pn_left) {
-                    RootedPropertyName name(context, pn->pn_atom->asPropertyName());
-                    if (!noteNameUse(name, pn))
+                if (member->pn_right == member->pn_left) {
+                    RootedPropertyName name(context, expr->pn_atom->asPropertyName());
+                    if (!noteNameUse(name, expr))
                         return false;
                 }
-                ok = checkAndMarkAsAssignmentLhs(pn, KeyedDestructuringAssignment);
+                ok = checkAndMarkAsAssignmentLhs(expr, KeyedDestructuringAssignment);
             }
             if (!ok)
                 return false;
@@ -3639,8 +3658,9 @@ Parser<FullParseHandler>::letStatement()
         JS_ASSERT_IF(pn, pn->isKind(PNK_LET) || pn->isKind(PNK_SEMI));
         JS_ASSERT_IF(pn && pn->isKind(PNK_LET) && pn->pn_expr->getOp() != JSOP_POPNV,
                      pn->pn_expr->isOp(JSOP_POPN));
-    } else 
+    } else {
         pn = letDeclaration();
+    }
     return pn;
 }
 
@@ -5381,7 +5401,7 @@ Precedence(ParseNodeKind pnk) {
 }
 
 template <typename ParseHandler>
-JS_ALWAYS_INLINE typename ParseHandler::Node
+MOZ_ALWAYS_INLINE typename ParseHandler::Node
 Parser<ParseHandler>::orExpr1()
 {
     // Shift-reduce parser for the left-associative binary operator part of
@@ -5447,7 +5467,7 @@ Parser<ParseHandler>::orExpr1()
 }
 
 template <typename ParseHandler>
-JS_ALWAYS_INLINE typename ParseHandler::Node
+MOZ_ALWAYS_INLINE typename ParseHandler::Node
 Parser<ParseHandler>::condExpr1()
 {
     Node condition = orExpr1();

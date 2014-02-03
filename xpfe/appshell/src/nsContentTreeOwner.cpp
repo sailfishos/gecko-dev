@@ -160,7 +160,7 @@ NS_IMETHODIMP nsContentTreeOwner::GetInterface(const nsIID& aIID, void** aSink)
 // nsContentTreeOwner::nsIDocShellTreeOwner
 //*****************************************************************************   
 
-NS_IMETHODIMP nsContentTreeOwner::FindItemWithName(const PRUnichar* aName,
+NS_IMETHODIMP nsContentTreeOwner::FindItemWithName(const char16_t* aName,
    nsIDocShellTreeItem* aRequestor, nsIDocShellTreeItem* aOriginalRequestor,
    nsIDocShellTreeItem** aFoundItem)
 {
@@ -304,7 +304,8 @@ nsContentTreeOwner::GetPrimaryContentShell(nsIDocShellTreeItem** aShell)
 }
 
 NS_IMETHODIMP
-nsContentTreeOwner::GetContentWindow(JSContext* aCx, JS::Value* aVal)
+nsContentTreeOwner::GetContentWindow(JSContext* aCx,
+                                     JS::MutableHandle<JS::Value> aVal)
 {
   NS_ENSURE_STATE(mXULWindow);
   return NS_ERROR_NOT_IMPLEMENTED;
@@ -484,7 +485,7 @@ NS_IMETHODIMP nsContentTreeOwner::SetStatusWithContext(uint32_t aStatusType,
 //*****************************************************************************   
 
 NS_IMETHODIMP nsContentTreeOwner::SetStatus(uint32_t aStatusType,
-                                            const PRUnichar* aStatus)
+                                            const char16_t* aStatus)
 {
   return SetStatusWithContext(aStatusType,
       aStatus ? static_cast<const nsString &>(nsDependentString(aStatus))
@@ -696,7 +697,7 @@ NS_IMETHODIMP nsContentTreeOwner::SetFocus()
    return mXULWindow->SetFocus();
 }
 
-NS_IMETHODIMP nsContentTreeOwner::GetTitle(PRUnichar** aTitle)
+NS_IMETHODIMP nsContentTreeOwner::GetTitle(char16_t** aTitle)
 {
    NS_ENSURE_ARG_POINTER(aTitle);
    NS_ENSURE_STATE(mXULWindow);
@@ -704,7 +705,7 @@ NS_IMETHODIMP nsContentTreeOwner::GetTitle(PRUnichar** aTitle)
    return mXULWindow->GetTitle(aTitle);
 }
 
-NS_IMETHODIMP nsContentTreeOwner::SetTitle(const PRUnichar* aTitle)
+NS_IMETHODIMP nsContentTreeOwner::SetTitle(const char16_t* aTitle)
 {
    // We only allow the title to be set from the primary content shell
   if(!mPrimary || !mContentTitleSetting)
@@ -1159,13 +1160,13 @@ nsSiteWindow::SetVisibility(bool aVisibility)
 }
 
 NS_IMETHODIMP
-nsSiteWindow::GetTitle(PRUnichar * *aTitle)
+nsSiteWindow::GetTitle(char16_t * *aTitle)
 {
   return mAggregator->GetTitle(aTitle);
 }
 
 NS_IMETHODIMP
-nsSiteWindow::SetTitle(const PRUnichar * aTitle)
+nsSiteWindow::SetTitle(const char16_t * aTitle)
 {
   return mAggregator->SetTitle(aTitle);
 }

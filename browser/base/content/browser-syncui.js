@@ -279,13 +279,26 @@ let gSyncUI = {
    */
 
   openSetup: function SUI_openSetup(wizardType) {
-    let win = Services.wm.getMostRecentWindow("Weave:AccountSetup");
-    if (win)
-      win.focus();
-    else {
-      window.openDialog("chrome://browser/content/sync/setup.xul",
-                        "weaveSetup", "centerscreen,chrome,resizable=no",
-                        wizardType);
+    let xps = Components.classes["@mozilla.org/weave/service;1"]
+                                .getService(Components.interfaces.nsISupports)
+                                .wrappedJSObject;
+    if (xps.fxAccountsEnabled) {
+      fxAccounts.getSignedInUser().then(userData => {
+        if (userData) {
+          this.openPrefs();
+        } else {
+          switchToTabHavingURI("about:accounts", true);
+        }
+      });
+    } else {
+      let win = Services.wm.getMostRecentWindow("Weave:AccountSetup");
+      if (win)
+        win.focus();
+      else {
+        window.openDialog("chrome://browser/content/sync/setup.xul",
+                          "weaveSetup", "centerscreen,chrome,resizable=no",
+                          wizardType);
+      }
     }
   },
 

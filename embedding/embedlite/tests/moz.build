@@ -14,3 +14,4 @@ SIMPLE_PROGRAMS += [
     "embedLiteViewInitTest%s" % (CONFIG['BIN_SUFFIX']),
 ]
 
+JAR_MANIFESTS += ['jar.mn']

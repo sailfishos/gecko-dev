@@ -781,11 +781,6 @@ Java_org_mozilla_gecko_GeckoAppShell_onFullScreenPluginHidden(JNIEnv* jenv, jcla
 
       NS_IMETHODIMP Run() {
         JNIEnv* env = AndroidBridge::GetJNIEnv();
-        if (!env) {
-          NS_WARNING("Failed to acquire JNI env, can't exit plugin fullscreen mode");
-          return NS_OK;
-        }
-
         nsPluginInstanceOwner::ExitFullScreen(mView);
         env->DeleteGlobalRef(mView);
         return NS_OK;
@@ -911,7 +906,7 @@ Java_org_mozilla_gecko_gfx_NativePanZoomController_destroy(JNIEnv* env, jobject 
         return;
     }
 
-    NativePanZoomController* oldRef = AndroidBridge::Bridge()->SetNativePanZoomController(NULL);
+    NativePanZoomController* oldRef = AndroidBridge::Bridge()->SetNativePanZoomController(nullptr);
     if (!oldRef || oldRef->isNull()) {
         MOZ_ASSERT(false, "Clearing a non-existent NPZC");
     } else {

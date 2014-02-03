@@ -110,7 +110,7 @@ MozNFCPeer.prototype = {
 
   initialize: function(aWindow, aSessionToken) {
     this._window = aWindow;
-    this.session = aSessionToken;
+    this.setSessionToken(aSessionToken);
   },
 
   // ChromeOnly interface
@@ -125,6 +125,15 @@ MozNFCPeer.prototype = {
   sendNDEF: function sendNDEF(records) {
     // Just forward sendNDEF to writeNDEF
     return this._nfcContentHelper.writeNDEF(this._window, records, this.session);
+  },
+
+  sendFile: function sendFile(blob) {
+    let data = {
+      "blob": blob.slice()
+    };
+    return this._nfcContentHelper.sendFile(this._window,
+                                           ObjectWrapper.wrap(data, this._window),
+                                           this.session);
   },
 
   classID: Components.ID("{c1b2bcf0-35eb-11e3-aa6e-0800200c9a66}"),
@@ -155,23 +164,25 @@ mozNfc.prototype = {
   init: function init(aWindow) {
     debug("mozNfc init called");
     this._window = aWindow;
-    let origin = this._window.document.nodePrincipal.origin;
-    // Only System Process should listen on 'nfc-p2p-user-accept' event
-    if (origin !== 'app://system.gaiamobile.org') {
-      return;
-    }
-    let self = this;
-    this._window.addEventListener("nfc-p2p-user-accept", function (event) {
-      let appID = appsService.getAppLocalIdByManifestURL(event.detail.manifestUrl);
-      // Notify Chrome process of User's acknowledgement
-      self._nfcContentHelper.notifyUserAcceptedP2P(self._window, appID);
-    });
   },
 
+  // Only System Process can call the following interfaces
+  // 'checkP2PRegistration' , 'notifyUserAcceptedP2P' , 'notifySendFileStatus'
   checkP2PRegistration: function checkP2PRegistration(manifestUrl) {
     // Get the AppID and pass it to ContentHelper
     let appID = appsService.getAppLocalIdByManifestURL(manifestUrl);
     return this._nfcContentHelper.checkP2PRegistration(this._window, appID);
+  },
+
+  notifyUserAcceptedP2P: function notifyUserAcceptedP2P(manifestUrl) {
+    let appID = appsService.getAppLocalIdByManifestURL(manifestUrl);
+    // Notify chrome process of user's acknowledgement
+    this._nfcContentHelper.notifyUserAcceptedP2P(this._window, appID);
+  },
+
+  notifySendFileStatus: function notifySendFileStatus(status, requestId) {
+    this._nfcContentHelper.notifySendFileStatus(this._window,
+                                                status, requestId);
   },
 
   getNFCTag: function getNFCTag(sessionToken) {

@@ -6,11 +6,11 @@
 
 #include "gc/Marking.h"
 #include "jit/JitCompartment.h"
-#if defined(JS_CPU_X86)
+#if defined(JS_CODEGEN_X86)
 # include "jit/x86/MacroAssembler-x86.h"
-#elif defined(JS_CPU_X64)
+#elif defined(JS_CODEGEN_X64)
 # include "jit/x64/MacroAssembler-x64.h"
-#elif defined(JS_CPU_ARM)
+#elif defined(JS_CODEGEN_ARM)
 # include "jit/arm/MacroAssembler-arm.h"
 #endif
 
@@ -66,7 +66,7 @@ TraceDataRelocations(JSTracer *trc, uint8_t *buffer, CompactBufferReader &reader
 
 
 void
-AssemblerX86Shared::TraceDataRelocations(JSTracer *trc, IonCode *code, CompactBufferReader &reader)
+AssemblerX86Shared::TraceDataRelocations(JSTracer *trc, JitCode *code, CompactBufferReader &reader)
 {
     ::TraceDataRelocations(trc, code->raw(), reader);
 }
@@ -76,10 +76,10 @@ AssemblerX86Shared::trace(JSTracer *trc)
 {
     for (size_t i = 0; i < jumps_.length(); i++) {
         RelativePatch &rp = jumps_[i];
-        if (rp.kind == Relocation::IONCODE) {
-            IonCode *code = IonCode::FromExecutable((uint8_t *)rp.target);
-            MarkIonCodeUnbarriered(trc, &code, "masmrel32");
-            JS_ASSERT(code == IonCode::FromExecutable((uint8_t *)rp.target));
+        if (rp.kind == Relocation::JITCODE) {
+            JitCode *code = JitCode::FromExecutable((uint8_t *)rp.target);
+            MarkJitCodeUnbarriered(trc, &code, "masmrel32");
+            JS_ASSERT(code == JitCode::FromExecutable((uint8_t *)rp.target));
         }
     }
     if (dataRelocations_.length()) {

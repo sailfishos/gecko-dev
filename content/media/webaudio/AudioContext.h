@@ -19,6 +19,8 @@
 #include "nsHashKeys.h"
 #include "nsTHashtable.h"
 #include "js/TypeDecls.h"
+#include "nsIMemoryReporter.h"
+#include "mozilla/MemoryReporting.h"
 
 // X11 has a #define for CurrentTime. Unbelievable :-(.
 // See content/media/DOMMediaStream.h for more fun!
@@ -62,6 +64,7 @@ class WaveShaperNode;
 class PeriodicWave;
 
 class AudioContext MOZ_FINAL : public nsDOMEventTargetHelper,
+                               public nsIMemoryReporter,
                                public EnableWebAudioCheck
 {
   AudioContext(nsPIDOMWindow* aParentWindow,
@@ -75,6 +78,7 @@ public:
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(AudioContext,
                                            nsDOMEventTargetHelper)
+  MOZ_DEFINE_MALLOC_SIZE_OF(MallocSizeOf)
 
   nsPIDOMWindow* GetParentObject() const
   {
@@ -242,9 +246,29 @@ public:
   AudioChannel MozAudioChannelType() const;
   void SetMozAudioChannelType(AudioChannel aValue, ErrorResult& aRv);
 
+  void UpdateNodeCount(int32_t aDelta);
+
+  double DOMTimeToStreamTime(double aTime) const
+  {
+    return aTime - ExtraCurrentTime();
+  }
+
 private:
+  /**
+   * Returns the amount of extra time added to the current time of the
+   * AudioDestinationNode's MediaStream to get this AudioContext's currentTime.
+   * Must be subtracted from all DOM API parameter times that are on the same
+   * timeline as AudioContext's currentTime to get times we can pass to the
+   * MediaStreamGraph.
+   */
+  double ExtraCurrentTime() const;
+
   void RemoveFromDecodeQueue(WebAudioDecodeJob* aDecodeJob);
   void ShutdownDecoder();
+
+  size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const;
+  NS_IMETHOD CollectReports(nsIHandleReportCallback* aHandleReport,
+                            nsISupports* aData);
 
   friend struct ::mozilla::WebAudioDecodeJob;
 
@@ -264,6 +288,8 @@ private:
   nsTHashtable<nsPtrHashKey<PannerNode> > mPannerNodes;
   // Number of channels passed in the OfflineAudioContext ctor.
   uint32_t mNumberOfChannels;
+  // Number of nodes that currently exist for this AudioContext
+  int32_t mNodeCount;
   bool mIsOffline;
   bool mIsStarted;
   bool mIsShutDown;

@@ -17,6 +17,8 @@
 
 namespace mozilla {
 
+using namespace mozilla::gfx;
+
 typedef mozilla::layers::Image Image;
 typedef mozilla::layers::PlanarYCbCrImage PlanarYCbCrImage;
 
@@ -351,7 +353,7 @@ MediaPluginReader::ImageBufferCallback::operator()(size_t aWidth, size_t aHeight
     case MPAPI::RGB565:
       image = mozilla::layers::CreateSharedRGBImage(mImageContainer,
                                                     nsIntSize(aWidth, aHeight),
-                                                    gfxImageFormatRGB16_565);
+                                                    gfxImageFormat::RGB16_565);
       if (!image) {
         NS_WARNING("Could not create rgb image");
         return nullptr;
@@ -393,8 +395,8 @@ MediaPluginReader::ImageBufferCallback::CreateI420Image(size_t aWidth,
   frameDesc.mCbChannel = buffer + frameSize;
   frameDesc.mCrChannel = buffer + frameSize * 5 / 4;
 
-  frameDesc.mYSize = gfxIntSize(aWidth, aHeight);
-  frameDesc.mCbCrSize = gfxIntSize(aWidth / 2, aHeight / 2);
+  frameDesc.mYSize = IntSize(aWidth, aHeight);
+  frameDesc.mCbCrSize = IntSize(aWidth / 2, aHeight / 2);
 
   frameDesc.mYStride = aWidth;
   frameDesc.mCbCrStride = aWidth / 2;
@@ -405,7 +407,7 @@ MediaPluginReader::ImageBufferCallback::CreateI420Image(size_t aWidth,
 
   frameDesc.mPicX = 0;
   frameDesc.mPicY = 0;
-  frameDesc.mPicSize = gfxIntSize(aWidth, aHeight);
+  frameDesc.mPicSize = IntSize(aWidth, aHeight);
 
   yuvImage->SetDataNoCopy(frameDesc);
 

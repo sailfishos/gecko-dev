@@ -850,7 +850,7 @@ static bool SetColor(const nsCSSValue& aValue, const nscolor aParentColor,
   bool    result = false;
   nsCSSUnit unit = aValue.GetUnit();
 
-  if (eCSSUnit_Color == unit) {
+  if (aValue.IsNumericColorUnit()) {
     aResult = aValue.GetColorValue();
     result = true;
   }
@@ -1861,7 +1861,8 @@ AreAllMathMLPropertiesUndefined(const nsRuleData* aRuleData)
     aRuleData->ValueForScriptLevel()->GetUnit() == eCSSUnit_Null &&
     aRuleData->ValueForScriptSizeMultiplier()->GetUnit() == eCSSUnit_Null &&
     aRuleData->ValueForScriptMinSize()->GetUnit() == eCSSUnit_Null &&
-    aRuleData->ValueForMathVariant()->GetUnit() == eCSSUnit_Null;
+    aRuleData->ValueForMathVariant()->GetUnit() == eCSSUnit_Null &&
+    aRuleData->ValueForMathDisplay()->GetUnit() == eCSSUnit_Null;
 }
 #endif
 
@@ -1911,13 +1912,13 @@ nsRuleNode::CheckSpecifiedProperties(const nsStyleStructID aSID,
   if (inherited == total)
     result = eRuleFullInherited;
   else if (specified == total
-           // MathML defines 4 properties in Font that will never be set when
-           // MathML is not in use. Therefore if all but four
+           // MathML defines 5 properties in Font that will never be set when
+           // MathML is not in use. Therefore if all but five
            // properties have been set, and MathML is not enabled, we can treat
            // this as fully specified. Code in nsMathMLElementFactory will
            // rebuild the rule tree and style data when MathML is first enabled
            // (see nsMathMLElement::BindToTree).
-           || (aSID == eStyleStruct_Font && specified + 4 == total &&
+           || (aSID == eStyleStruct_Font && specified + 5 == total &&
                !mPresContext->Document()->GetMathMLEnabled())
           ) {
     if (inherited == 0)
@@ -2047,11 +2048,12 @@ nsRuleNode::ResolveVariableReferences(const nsStyleStructID aSID,
       &aContext->StyleVariables()->mVariables;
     nsCSSValueTokenStream* tokenStream = value->GetTokenStreamValue();
 
+    // XXX Should pass in sheet here (see bug 952338).
     parser.ParsePropertyWithVariableReferences(
         tokenStream->mPropertyID, tokenStream->mShorthandPropertyID,
         tokenStream->mTokenStream, variables, aRuleData,
         tokenStream->mSheetURI, tokenStream->mBaseURI,
-        tokenStream->mSheetPrincipal, tokenStream->mSheet,
+        tokenStream->mSheetPrincipal, nullptr,
         tokenStream->mLineNumber, tokenStream->mLineOffset);
     aRuleData->mCanStoreInRuleTree = false;
     anyTokenStreams = true;
@@ -3295,7 +3297,7 @@ nsRuleNode::SetFont(nsPresContext* aPresContext, nsStyleContext* aContext,
     if (aGenericFontID == kGenericFont_NONE) {
       // only bother appending fallback fonts if this isn't a fallback generic font itself
       if (!aFont->mFont.name.IsEmpty())
-        aFont->mFont.name.Append((PRUnichar)',');
+        aFont->mFont.name.Append((char16_t)',');
       // defaultVariableFont.name should always be "serif" or "sans-serif".
       aFont->mFont.name.Append(defaultVariableFont->name);
     }
@@ -3336,6 +3338,13 @@ nsRuleNode::SetFont(nsPresContext* aPresContext, nsStyleContext* aContext,
               aCanStoreInRuleTree,
               SETDSC_ENUMERATED | SETDSC_UNSET_INHERIT,
               aParentFont->mMathVariant, NS_MATHML_MATHVARIANT_NONE,
+              0, 0, 0, 0);
+
+  // -moz-math-display: enum, inherit, initial
+  SetDiscrete(*aRuleData->ValueForMathDisplay(), aFont->mMathDisplay,
+              aCanStoreInRuleTree,
+              SETDSC_ENUMERATED | SETDSC_UNSET_INHERIT,
+              aParentFont->mMathDisplay, NS_MATHML_DISPLAYSTYLE_INLINE,
               0, 0, 0, 0);
 
   // font-smoothing: enum, inherit, initial
@@ -3447,11 +3456,19 @@ nsRuleNode::SetFont(nsPresContext* aPresContext, nsStyleContext* aContext,
   const nsCSSValue* scriptLevelValue = aRuleData->ValueForScriptLevel();
   if (eCSSUnit_Integer == scriptLevelValue->GetUnit()) {
     // "relative"
+    aCanStoreInRuleTree = false;
     aFont->mScriptLevel = ClampTo8Bit(aParentFont->mScriptLevel + scriptLevelValue->GetIntValue());
   }
   else if (eCSSUnit_Number == scriptLevelValue->GetUnit()) {
     // "absolute"
     aFont->mScriptLevel = ClampTo8Bit(int32_t(scriptLevelValue->GetFloatValue()));
+  }
+  else if (eCSSUnit_Auto == scriptLevelValue->GetUnit()) {
+    // auto
+    aCanStoreInRuleTree = false;
+    aFont->mScriptLevel = ClampTo8Bit(aParentFont->mScriptLevel +
+                                      (aParentFont->mMathDisplay ==
+                                       NS_MATHML_DISPLAYSTYLE_INLINE ? 1 : 0));
   }
   else if (eCSSUnit_Inherit == scriptLevelValue->GetUnit() ||
            eCSSUnit_Unset == scriptLevelValue->GetUnit()) {
@@ -5223,6 +5240,16 @@ nsRuleNode::ComputeDisplayData(void* aStartStruct,
               parentDisplay->mBreakInside,
               NS_STYLE_PAGE_BREAK_AUTO, 0, 0, 0, 0);
 
+  // touch-action: none, auto, enum, inherit, initial
+  SetDiscrete(*aRuleData->ValueForTouchAction(), display->mTouchAction,
+              canStoreInRuleTree,
+              SETDSC_ENUMERATED | SETDSC_AUTO | SETDSC_NONE |
+                SETDSC_UNSET_INITIAL,
+              parentDisplay->mTouchAction,
+              NS_STYLE_TOUCH_ACTION_AUTO,
+              NS_STYLE_TOUCH_ACTION_AUTO,
+              NS_STYLE_TOUCH_ACTION_NONE, 0, 0);
+
   // float: enum, inherit, initial
   SetDiscrete(*aRuleData->ValueForFloat(),
               display->mFloats, canStoreInRuleTree,
@@ -5428,6 +5455,54 @@ nsRuleNode::ComputeDisplayData(void* aStartStruct,
 
   default:
     NS_ABORT_IF_FALSE(false, "unrecognized transform unit");
+  }
+
+  /* Convert the nsCSSValueList into a will-change bitfield for fast lookup */
+  const nsCSSValue* willChangeValue = aRuleData->ValueForWillChange();
+  switch (willChangeValue->GetUnit()) {
+  case eCSSUnit_Null:
+    break;
+
+  case eCSSUnit_List:
+  case eCSSUnit_ListDep: {
+    display->mWillChange.Clear();
+    display->mWillChangeBitField = 0;
+    for (const nsCSSValueList* item = willChangeValue->GetListValue();
+         item; item = item->mNext)
+    {
+      if (item->mValue.UnitHasStringValue()) {
+        nsAutoString buffer;
+        item->mValue.GetStringValue(buffer);
+        if (buffer.EqualsLiteral("transform")) {
+          display->mWillChangeBitField |= NS_STYLE_WILL_CHANGE_TRANSFORM;
+        }
+        if (buffer.EqualsLiteral("opacity")) {
+          display->mWillChangeBitField |= NS_STYLE_WILL_CHANGE_OPACITY;
+        }
+        if (buffer.EqualsLiteral("scroll-position")) {
+          display->mWillChangeBitField |= NS_STYLE_WILL_CHANGE_SCROLL;
+        }
+        display->mWillChange.AppendElement(buffer);
+      }
+    }
+    break;
+  }
+
+  case eCSSUnit_Inherit:
+    display->mWillChange = parentDisplay->mWillChange;
+    display->mWillChangeBitField = parentDisplay->mWillChangeBitField;
+    canStoreInRuleTree = false;
+    break;
+
+  case eCSSUnit_Initial:
+  case eCSSUnit_Unset:
+  case eCSSUnit_Auto:
+    display->mWillChange.Clear();
+    display->mWillChangeBitField = 0;
+    break;
+
+  default:
+    MOZ_ASSERT(false, "unrecognized will-change unit");
   }
 
   /* Convert -moz-transform-origin. */
@@ -5642,24 +5717,6 @@ nsRuleNode::ComputeColorData(void* aStartStruct,
 }
 
 // information about how to compute values for background-* properties
-template <class SpecifiedValueItem>
-struct InitialInheritLocationFor {
-};
-
-template <>
-struct InitialInheritLocationFor<nsCSSValueList> {
-  static nsCSSValue nsCSSValueList::* Location() {
-    return &nsCSSValueList::mValue;
-  }
-};
-
-template <>
-struct InitialInheritLocationFor<nsCSSValuePairList> {
-  static nsCSSValue nsCSSValuePairList::* Location() {
-    return &nsCSSValuePairList::mXValue;
-  }
-};
-
 template <class SpecifiedValueItem, class ComputedValueItem>
 struct BackgroundItemComputer {
 };
@@ -7841,18 +7898,6 @@ SetSVGOpacity(const nsCSSValue& aValue,
               aParentOpacity, 1.0f, SETFCT_OPACITY);
     aOpacityTypeField = eStyleSVGOpacitySource_Normal;
   }
-}
-
-template <typename FieldT, typename T>
-static bool
-SetTextContextValue(const nsCSSValue& aValue, FieldT& aField, T aFallbackValue)
-{
-  if (aValue.GetUnit() != eCSSUnit_Enumerated ||
-      aValue.GetIntValue() != NS_STYLE_STROKE_PROP_CONTEXT_VALUE) {
-    return false;
-  }
-  aField = aFallbackValue;
-  return true;
 }
 
 const void*

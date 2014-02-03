@@ -15,6 +15,12 @@
 #include "mozilla/layers/TextureClient.h"  // for DeprecatedTextureClient, etc
 
 namespace mozilla {
+namespace gfx {
+class SurfaceStream;
+}
+}
+
+namespace mozilla {
 namespace layers {
 
 class CompositableForwarder;
@@ -33,6 +39,12 @@ public:
   virtual bool IsAllocated() const MOZ_OVERRIDE;
 
   virtual bool ToSurfaceDescriptor(SurfaceDescriptor& aOutDescriptor) MOZ_OVERRIDE;
+
+  virtual bool Lock(OpenMode mode) MOZ_OVERRIDE;
+
+  virtual void Unlock() MOZ_OVERRIDE;
+
+  virtual bool IsLocked() const MOZ_OVERRIDE { return mIsLocked; }
 
   void InitWith(gl::SharedTextureHandle aHandle,
                 gfx::IntSize aSize,
@@ -55,6 +67,38 @@ protected:
   gfx::IntSize mSize;
   gl::SharedTextureShareType mShareType;
   bool mInverted;
+  bool mIsLocked;
+};
+
+/**
+ * A TextureClient implementation to share SurfaceStream.
+ */
+class StreamTextureClientOGL : public TextureClient
+{
+public:
+  StreamTextureClientOGL(TextureFlags aFlags);
+
+  ~StreamTextureClientOGL();
+
+  virtual bool IsAllocated() const MOZ_OVERRIDE;
+
+  virtual bool Lock(OpenMode mode) MOZ_OVERRIDE;
+
+  virtual void Unlock() MOZ_OVERRIDE;
+
+  virtual bool IsLocked() const MOZ_OVERRIDE { return mIsLocked; }
+
+  virtual bool ToSurfaceDescriptor(SurfaceDescriptor& aOutDescriptor) MOZ_OVERRIDE;
+
+  virtual TextureClientData* DropTextureData() MOZ_OVERRIDE { return nullptr; }
+
+  void InitWith(gfx::SurfaceStream* aStream);
+
+  virtual gfx::IntSize GetSize() const { return gfx::IntSize(); }
+
+protected:
+  gfx::SurfaceStream* mStream;
+  bool mIsLocked;
 };
 
 class DeprecatedTextureClientSharedOGL : public DeprecatedTextureClient
@@ -66,7 +110,7 @@ public:
   virtual bool SupportsType(DeprecatedTextureClientType aType) MOZ_OVERRIDE { return aType == TEXTURE_SHARED_GL; }
   virtual bool EnsureAllocated(gfx::IntSize aSize, gfxContentType aType);
   virtual void ReleaseResources();
-  virtual gfxContentType GetContentType() MOZ_OVERRIDE { return GFX_CONTENT_COLOR_ALPHA; }
+  virtual gfxContentType GetContentType() MOZ_OVERRIDE { return gfxContentType::COLOR_ALPHA; }
 
 protected:
   gl::GLContext* mGL;
@@ -98,7 +142,7 @@ public:
   virtual bool SupportsType(DeprecatedTextureClientType aType) MOZ_OVERRIDE { return aType == TEXTURE_STREAM_GL; }
   virtual bool EnsureAllocated(gfx::IntSize aSize, gfxContentType aType) { return true; }
   virtual void ReleaseResources() { mDescriptor = SurfaceDescriptor(); }
-  virtual gfxContentType GetContentType() MOZ_OVERRIDE { return GFX_CONTENT_COLOR_ALPHA; }
+  virtual gfxContentType GetContentType() MOZ_OVERRIDE { return gfxContentType::COLOR_ALPHA; }
 };
 
 } // namespace

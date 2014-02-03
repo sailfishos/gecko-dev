@@ -65,7 +65,7 @@ CompositorD3D11::CompositorD3D11(nsIWidget* aWidget)
   , mHwnd(nullptr)
   , mDisableSequenceForNextFrame(false)
 {
-  sBackend = LAYERS_D3D11;
+  sBackend = LayersBackend::LAYERS_D3D11;
 }
 
 CompositorD3D11::~CompositorD3D11()
@@ -338,13 +338,21 @@ CompositorD3D11::Initialize()
   return true;
 }
 
+TemporaryRef<DataTextureSource>
+CompositorD3D11::CreateDataTextureSource(TextureFlags aFlags)
+{
+  RefPtr<DataTextureSource> result = new DataTextureSourceD3D11(gfx::SurfaceFormat::UNKNOWN,
+                                                                this);
+  return result.forget();
+}
+
 TextureFactoryIdentifier
 CompositorD3D11::GetTextureFactoryIdentifier()
 {
   TextureFactoryIdentifier ident;
   ident.mMaxTextureSize = GetMaxTextureSize();
   ident.mParentProcessId = XRE_GetProcessType();
-  ident.mParentBackend = LAYERS_D3D11;
+  ident.mParentBackend = LayersBackend::LAYERS_D3D11;
   return ident;
 }
 
@@ -420,8 +428,10 @@ CompositorD3D11::CreateRenderTargetFromSource(const gfx::IntRect &aRect,
     srcBox.back = 0;
 
     const IntSize& srcSize = sourceD3D11->GetSize();
-    if (srcBox.right <= srcSize.width &&
-        srcBox.bottom <= srcSize.height) {
+    MOZ_ASSERT(srcSize.width >= 0 && srcSize.height >= 0,
+               "render targets should have nonnegative sizes");
+    if (srcBox.right <= static_cast<uint32_t>(srcSize.width) &&
+        srcBox.bottom <= static_cast<uint32_t>(srcSize.height)) {
       mContext->CopySubresourceRegion(texture, 0,
                                       0, 0, 0,
                                       sourceD3D11->GetD3D11Texture(), 0,
@@ -447,7 +457,7 @@ CompositorD3D11::SetRenderTarget(CompositingRenderTarget* aRenderTarget)
   ID3D11RenderTargetView* view = newRT->mRTView;
   mCurrentRT = newRT;
   mContext->OMSetRenderTargets(1, &view, nullptr);
-  PrepareViewport(newRT->GetSize(), gfxMatrix());
+  PrepareViewport(newRT->GetSize(), gfx::Matrix());
 }
 
 void
@@ -508,6 +518,11 @@ CompositorD3D11::DrawQuad(const gfx::Rect& aRect,
       static_cast<EffectMask*>(aEffectChain.mSecondaryEffects[EFFECT_MASK].get());
     TextureSourceD3D11* source = maskEffect->mMaskTexture->AsSourceD3D11();
 
+    if (!source) {
+      NS_WARNING("Missing texture source!");
+      return;
+    }
+
     RefPtr<ID3D11ShaderResourceView> view;
     mDevice->CreateShaderResourceView(source->GetD3D11Texture(), nullptr, byRef(view));
 
@@ -554,6 +569,11 @@ CompositorD3D11::DrawQuad(const gfx::Rect& aRect,
 
       TextureSourceD3D11* source = texturedEffect->mTexture->AsSourceD3D11();
 
+      if (!source) {
+        NS_WARNING("Missing texture source!");
+        return;
+      }
+
       RefPtr<ID3D11ShaderResourceView> view;
       mDevice->CreateShaderResourceView(source->GetD3D11Texture(), nullptr, byRef(view));
 
@@ -572,17 +592,35 @@ CompositorD3D11::DrawQuad(const gfx::Rect& aRect,
       EffectYCbCr* ycbcrEffect =
         static_cast<EffectYCbCr*>(aEffectChain.mPrimaryEffect.get());
 
-      SetSamplerForFilter(FILTER_LINEAR);
+      SetSamplerForFilter(Filter::LINEAR);
 
       mVSConstants.textureCoords = ycbcrEffect->mTextureCoords;
 
-      TextureSourceD3D11* source = ycbcrEffect->mTexture->AsSourceD3D11();
-      TextureSourceD3D11::YCbCrTextures textures = source->GetYCbCrTextures();
+      const int Y = 0, Cb = 1, Cr = 2;
+      TextureSource* source = ycbcrEffect->mTexture;
+
+      if (!source) {
+        NS_WARNING("No texture to composite");
+        return;
+      }
+
+      if (!source->GetSubSource(Y) || !source->GetSubSource(Cb) || !source->GetSubSource(Cr)) {
+        // This can happen if we failed to upload the textures, most likely
+        // because of unsupported dimensions (we don't tile YCbCr textures).
+        return;
+      }
+
+      TextureSourceD3D11* sourceY  = source->GetSubSource(Y)->AsSourceD3D11();
+      TextureSourceD3D11* sourceCb = source->GetSubSource(Cb)->AsSourceD3D11();
+      TextureSourceD3D11* sourceCr = source->GetSubSource(Cr)->AsSourceD3D11();
 
       RefPtr<ID3D11ShaderResourceView> views[3];
-      mDevice->CreateShaderResourceView(textures.mY, nullptr, byRef(views[0]));
-      mDevice->CreateShaderResourceView(textures.mCb, nullptr, byRef(views[1]));
-      mDevice->CreateShaderResourceView(textures.mCr, nullptr, byRef(views[2]));
+      mDevice->CreateShaderResourceView(sourceY->GetD3D11Texture(),
+                                        nullptr, byRef(views[0]));
+      mDevice->CreateShaderResourceView(sourceCb->GetD3D11Texture(),
+                                        nullptr, byRef(views[1]));
+      mDevice->CreateShaderResourceView(sourceCr->GetD3D11Texture(),
+                                        nullptr, byRef(views[2]));
 
       ID3D11ShaderResourceView* srViews[3] = { views[0], views[1], views[2] };
       mContext->PSSetShaderResources(0, 3, srViews);
@@ -596,6 +634,12 @@ CompositorD3D11::DrawQuad(const gfx::Rect& aRect,
         static_cast<EffectComponentAlpha*>(aEffectChain.mPrimaryEffect.get());
       TextureSourceD3D11* sourceOnWhite = effectComponentAlpha->mOnWhite->AsSourceD3D11();
       TextureSourceD3D11* sourceOnBlack = effectComponentAlpha->mOnBlack->AsSourceD3D11();
+
+      if (!sourceOnWhite || !sourceOnBlack) {
+        NS_WARNING("Missing texture source(s)!");
+        return;
+      }
+
       SetSamplerForFilter(effectComponentAlpha->mFilter);
 
       mVSConstants.textureCoords = effectComponentAlpha->mTextureCoords;
@@ -625,7 +669,7 @@ CompositorD3D11::DrawQuad(const gfx::Rect& aRect,
 void
 CompositorD3D11::BeginFrame(const nsIntRegion& aInvalidRegion,
                             const Rect* aClipRectIn,
-                            const gfxMatrix& aTransform,
+                            const gfx::Matrix& aTransform,
                             const Rect& aRenderBounds,
                             Rect* aClipRectOut,
                             Rect* aRenderBoundsOut)
@@ -641,8 +685,8 @@ CompositorD3D11::BeginFrame(const nsIntRegion& aInvalidRegion,
 
   UpdateRenderTarget();
 
-  // Failed to create a render target.
-  if (!mDefaultRT ||
+  // Failed to create a render target or the view.
+  if (!mDefaultRT || !mDefaultRT->mRTView ||
       mSize.width == 0 || mSize.height == 0) {
     *aRenderBoundsOut = Rect();
     return;
@@ -704,7 +748,7 @@ CompositorD3D11::EndFrame()
 
 void
 CompositorD3D11::PrepareViewport(const gfx::IntSize& aSize,
-                                 const gfxMatrix& aWorldTransform)
+                                 const gfx::Matrix& aWorldTransform)
 {
   D3D11_VIEWPORT viewport;
   viewport.MaxDepth = 1.0f;
@@ -716,14 +760,14 @@ CompositorD3D11::PrepareViewport(const gfx::IntSize& aSize,
 
   mContext->RSSetViewports(1, &viewport);
 
-  gfxMatrix viewMatrix;
-  viewMatrix.Translate(-gfxPoint(1.0, -1.0));
+  Matrix viewMatrix;
+  viewMatrix.Translate(-1.0, 1.0);
   viewMatrix.Scale(2.0f / float(aSize.width), 2.0f / float(aSize.height));
   viewMatrix.Scale(1.0f, -1.0f);
 
   viewMatrix = aWorldTransform * viewMatrix;
 
-  gfx3DMatrix projection = gfx3DMatrix::From2D(viewMatrix);
+  Matrix4x4 projection = Matrix4x4::From2D(viewMatrix);
   projection._33 = 0.0f;
 
   memcpy(&mVSConstants.projection, &projection, sizeof(mVSConstants.projection));
@@ -788,7 +832,7 @@ CompositorD3D11::UpdateRenderTarget()
   }
 
   mDefaultRT = new CompositingRenderTargetD3D11(backBuf, IntPoint(0, 0));
-  mDefaultRT->SetSize(mSize);
+  mDefaultRT->SetSize(mSize.ToIntSize());
 }
 
 bool
@@ -875,10 +919,10 @@ CompositorD3D11::SetSamplerForFilter(Filter aFilter)
   ID3D11SamplerState *sampler;
   switch (aFilter) {
   default:
-  case FILTER_LINEAR:
+  case Filter::LINEAR:
     sampler = mAttachments->mLinearSamplerState;
     break;
-  case FILTER_POINT:
+  case Filter::POINT:
     sampler = mAttachments->mPointSamplerState;
     break;
   }
@@ -913,7 +957,7 @@ CompositorD3D11::PaintToTarget()
     Factory::CreateWrappingDataSourceSurface((uint8_t*)map.pData,
                                              map.RowPitch,
                                              IntSize(bbDesc.Width, bbDesc.Height),
-                                             FORMAT_B8G8R8A8);
+                                             SurfaceFormat::B8G8R8A8);
   mTarget->CopySurface(sourceSurface,
                        IntRect(0, 0, bbDesc.Width, bbDesc.Height),
                        IntPoint());

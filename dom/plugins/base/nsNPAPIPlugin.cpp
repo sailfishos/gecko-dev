@@ -207,7 +207,7 @@ void NS_NotifyPluginCall(PRIntervalTime startTime, NSPluginCallReentry aReentryS
   float runTimeInSeconds = float(endTime) / PR_TicksPerSecond();
   nsAutoString runTimeString;
   runTimeString.AppendFloat(runTimeInSeconds);
-  const PRUnichar* runTime = runTimeString.get();
+  const char16_t* runTime = runTimeString.get();
   notifyUIService->NotifyObservers(nullptr, "experimental-notify-plugin-call",
                                    runTime);
 }
@@ -1506,11 +1506,6 @@ _evaluate(NPP npp, NPObject* npobj, NPString *script, NPVariant *result)
   NS_ABORT_IF_FALSE(obj,
     "JS_ObjectToInnerObject should never return null with non-null input.");
 
-  // Root obj and the rval (below).
-  JS::Value vec[] = { OBJECT_TO_JSVAL(obj), JSVAL_NULL };
-  JS::AutoArrayRooter tvr(cx, ArrayLength(vec), vec);
-  JS::Value *rval = &vec[1];
-
   if (result) {
     // Initialize the out param to void
     VOID_TO_NPVARIANT(*result);
@@ -1563,12 +1558,13 @@ _evaluate(NPP npp, NPObject* npobj, NPString *script, NPVariant *result)
   JS::CompileOptions options(cx);
   options.setFileAndLine(spec, 0)
          .setVersion(JSVERSION_DEFAULT);
+  JS::Rooted<JS::Value> rval(cx);
   nsresult rv = scx->EvaluateString(utf16script, obj, options,
                                     /* aCoerceToString = */ false,
-                                    rval);
+                                    rval.address());
 
   return NS_SUCCEEDED(rv) &&
-         (!result || JSValToNPVariant(npp, cx, *rval, result));
+         (!result || JSValToNPVariant(npp, cx, rval, result));
 }
 
 bool NP_CALLBACK

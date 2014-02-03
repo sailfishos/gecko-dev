@@ -86,13 +86,13 @@ LOCAL_INCLUDES += [
     '../src/storage',
     '/chrome/src',
     '/content/base/src',
-    '/content/events/src',
     '/content/media/webspeech/synth/ipc',
     '/docshell/base',
     '/dom/base',
     '/dom/bluetooth',
     '/dom/bluetooth/ipc',
     '/dom/devicestorage',
+    '/dom/events',
     '/dom/fmradio/ipc',
     '/dom/indexedDB',
     '/dom/indexedDB/ipc',
@@ -116,3 +116,5 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('android', 'gtk2', 'gonk', 'qt'):
 for var in ('MOZ_PERMISSIONS', 'MOZ_CHILD_PERMISSIONS'):
     if CONFIG[var]:
         DEFINES[var] = True
+
+JAR_MANIFESTS += ['jar.mn']

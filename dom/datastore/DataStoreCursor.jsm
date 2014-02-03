@@ -27,20 +27,18 @@ const REVISION_REMOVED = 'removed';
 const REVISION_VOID = 'void';
 const REVISION_SKIP = 'skip'
 
-Cu.import('resource://gre/modules/ObjectWrapper.jsm');
 Cu.import('resource://gre/modules/XPCOMUtils.jsm');
 
 /**
  * legend:
  * - RID = revision ID
  * - R = revision object (with the internalRevisionId that is a number)
- * - X = current object ID. Default value is 0
- * - MX = max known object ID
+ * - X = current object ID.
  * - L = the list of revisions that we have to send
  *
  * State: init: do you have RID ?
  *   YES: state->initRevision; loop
- *   NO: get R; get MX; state->sendAll; send a 'clear'
+ *   NO: get R; X=0; state->sendAll; send a 'clear'
  *
  * State: initRevision. Get R from RID. Done?
  *   YES: state->revisionCheck; loop
@@ -49,12 +47,13 @@ Cu.import('resource://gre/modules/XPCOMUtils.jsm');
  * State: revisionCheck: get all the revisions between R and NOW. Done?
  *   YES and R == NOW: state->done; loop
  *   YES and R != NOW: Store this revisions in L; state->revisionSend; loop
- *   NO: R = NOW; get MX; state->sendAll; send a 'clear';
+ *   NO: R = NOW; X=0; state->sendAll; send a 'clear'
  *
- * State: sendAll: get the first object with id > X. Done?
- *   YES and object.id > MX: state->revisionCheck; loop
- *   YES and object.id <= MX: X = object.id; send 'add'
- *   NO: state->revisionCheck; loop
+ * State: sendAll: is R still the last revision?
+ *   YES get the first object with id > X. Done?
+ *     YES: X = object.id; send 'add'
+ *     NO: state->revisionCheck; loop
+ *   NO: R = NOW; X=0; send a 'clear'
  *
  * State: revisionSend: do you have something from L to send?
  *   YES and L[0] == 'removed': R=L[0]; send 'remove' with ID
@@ -93,7 +92,6 @@ this.DataStoreCursor.prototype = {
   _revision: null,
   _revisionsList: null,
   _objectId: 0,
-  _maxObjectId: 0,
 
   _state: STATE_INIT,
 
@@ -150,12 +148,9 @@ this.DataStoreCursor.prototype = {
     let request = aRevisionStore.openCursor(null, 'prev');
     request.onsuccess = function(aEvent) {
       self._revision = aEvent.target.result.value;
-      self.getMaxObjectId(aStore,
-        function() {
-          self._state = STATE_SEND_ALL;
-          aResolve(ObjectWrapper.wrap({ operation: 'clear' }, self._window));
-        }
-      );
+      self._objectId = 0;
+      self._state = STATE_SEND_ALL;
+      aResolve(Cu.cloneInto({ operation: 'clear' }, self._window));
     }
   },
 
@@ -170,6 +165,7 @@ this.DataStoreCursor.prototype = {
         // This revision doesn't exist.
         if (aInternalRevisionId == undefined) {
           self._revisionId = null;
+          self._objectId = 0;
           self._state = STATE_INIT;
           self.stateMachine(aStore, aRevisionStore, aResolve, aReject);
           return;
@@ -238,13 +234,10 @@ this.DataStoreCursor.prototype = {
               return;
             }
 
-            self.getMaxObjectId(aStore,
-              function() {
-                self._revisionId = null;
-                self._state = STATE_INIT;
-                self.stateMachine(aStore, aRevisionStore, aResolve, aReject);
-              }
-            );
+            self._revisionId = null;
+            self._objectId = 0;
+            self._state = STATE_INIT;
+            self.stateMachine(aStore, aRevisionStore, aResolve, aReject);
             return;
         }
       }
@@ -292,18 +285,28 @@ this.DataStoreCursor.prototype = {
     debug('StateMachineSendAll');
 
     let self = this;
-    let request = aStore.openCursor(self._window.IDBKeyRange.lowerBound(this._objectId, true));
+    let request = aRevisionStore.openCursor(null, 'prev');
     request.onsuccess = function(aEvent) {
-      let cursor = aEvent.target.result;
-      if (!cursor || cursor.key > self._maxObjectId) {
-        self._state = STATE_REVISION_CHECK;
-        self.stateMachine(aStore, aRevisionStore, aResolve, aReject);
+      if (self._revision.revisionId != aEvent.target.result.value.revisionId) {
+        self._revision = aEvent.target.result.value;
+        self._objectId = 0;
+        aResolve(Cu.cloneInto({ operation: 'clear' }, self._window));
         return;
       }
 
-      self._objectId = cursor.key;
-      aResolve(ObjectWrapper.wrap({ operation: 'add', id: self._objectId,
-                                    data: cursor.value }, self._window));
+      let request = aStore.openCursor(self._window.IDBKeyRange.lowerBound(self._objectId, true));
+      request.onsuccess = function(aEvent) {
+        let cursor = aEvent.target.result;
+        if (!cursor) {
+          self._state = STATE_REVISION_CHECK;
+          self.stateMachine(aStore, aRevisionStore, aResolve, aReject);
+          return;
+        }
+
+        self._objectId = cursor.key;
+        aResolve(Cu.cloneInto({ operation: 'add', id: self._objectId,
+                                data: cursor.value }, self._window));
+      };
     };
   },
 
@@ -320,8 +323,8 @@ this.DataStoreCursor.prototype = {
 
     switch (this._revision.operation) {
       case REVISION_REMOVED:
-        aResolve(ObjectWrapper.wrap({ operation: 'remove', id: this._revision.objectId },
-                                    this._window));
+        aResolve(Cu.cloneInto({ operation: 'remove', id: this._revision.objectId },
+                              this._window));
         break;
 
       case REVISION_ADDED: {
@@ -333,8 +336,8 @@ this.DataStoreCursor.prototype = {
             return;
           }
 
-          aResolve(ObjectWrapper.wrap({ operation: 'add', id: self._revision.objectId,
-                                        data: aEvent.target.result }, self._window));
+          aResolve(Cu.cloneInto({ operation: 'add', id: self._revision.objectId,
+                                  data: aEvent.target.result }, self._window));
         }
         break;
       }
@@ -353,8 +356,8 @@ this.DataStoreCursor.prototype = {
             return;
           }
 
-          aResolve(ObjectWrapper.wrap({ operation: 'update', id: self._revision.objectId,
-                                        data: aEvent.target.result }, self._window));
+          aResolve(Cu.cloneInto({ operation: 'update', id: self._revision.objectId,
+                                  data: aEvent.target.result }, self._window));
         }
         break;
       }
@@ -373,19 +376,8 @@ this.DataStoreCursor.prototype = {
 
   stateMachineDone: function(aStore, aRevisionStore, aResolve, aReject) {
     this.close();
-    aResolve(ObjectWrapper.wrap({ revisionId: this._revision.revisionId,
-                                  operation: 'done' }, this._window));
-  },
-
-  getMaxObjectId: function(aStore, aCallback) {
-    let self = this;
-    let request = aStore.openCursor(null, 'prev');
-    request.onsuccess = function(aEvent) {
-      if (aEvent.target.result) {
-        self._maxObjectId = aEvent.target.result.key;
-      }
-      aCallback();
-    }
+    aResolve(Cu.cloneInto({ revisionId: this._revision.revisionId,
+                            operation: 'done' }, this._window));
   },
 
   // public interface

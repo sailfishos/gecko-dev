@@ -71,3 +71,8 @@ pref("services.sync.log.logger.engine.addons", "Debug");
 pref("services.sync.log.logger.engine.apps", "Debug");
 pref("services.sync.log.logger.userapi", "Debug");
 pref("services.sync.log.cryptoDebug", false);
+
+pref("services.sync.tokenServerURI", "https://token.services.mozilla.com/1.0/sync/1.5");
+
+pref("services.sync.fxa.termsURL", "https://accounts.firefox.com/legal/terms");
+pref("services.sync.fxa.privacyURL", "https://accounts.firefox.com/legal/privacy");

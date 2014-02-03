@@ -108,13 +108,13 @@ BaselineCompiler::compile()
         return Method_Error;
 
     Linker linker(masm);
-    IonCode *code = linker.newCode<CanGC>(cx, JSC::BASELINE_CODE);
+    JitCode *code = linker.newCode<CanGC>(cx, JSC::BASELINE_CODE);
     if (!code)
         return Method_Error;
 
     JSObject *templateScope = nullptr;
-    if (script->function()) {
-        RootedFunction fun(cx, script->function());
+    if (script->functionNonDelazifying()) {
+        RootedFunction fun(cx, script->functionNonDelazifying());
         if (fun->isHeavyweight()) {
             templateScope = CallObject::createTemplateObject(cx, script, gc::TenuredHeap);
             if (!templateScope)
@@ -414,7 +414,7 @@ BaselineCompiler::emitOutOfLinePostBarrierSlot()
     regs.take(objReg);
     regs.take(BaselineFrameReg);
     Register scratch = regs.takeAny();
-#if defined(JS_CPU_ARM)
+#if defined(JS_CODEGEN_ARM)
     // On ARM, save the link register before calling.  It contains the return
     // address.  The |masm.ret()| later will pop this into |pc| to return.
     masm.push(lr);
@@ -638,7 +638,8 @@ BaselineCompiler::emitUseCountIncrement()
 
     Label skipCall;
 
-    uint32_t minUses = UsesBeforeIonRecompile(script, pc);
+    const OptimizationInfo *info = js_IonOptimizations.get(js_IonOptimizations.firstLevel());
+    uint32_t minUses = info->usesBeforeCompile(script, pc);
     masm.branch32(Assembler::LessThan, countReg, Imm32(minUses), &skipCall);
 
     masm.branchPtr(Assembler::Equal,
@@ -689,7 +690,7 @@ BaselineCompiler::emitDebugTrap()
     bool enabled = script->stepModeEnabled() || script->hasBreakpointsAt(pc);
 
     // Emit patchable call to debug trap handler.
-    IonCode *handler = cx->runtime()->jitRuntime()->debugTrapHandler(cx);
+    JitCode *handler = cx->runtime()->jitRuntime()->debugTrapHandler(cx);
     mozilla::DebugOnly<CodeOffsetLabel> offset = masm.toggledCall(handler, enabled);
 
 #ifdef DEBUG
@@ -834,12 +835,6 @@ BaselineCompiler::emit_JSOP_NOP()
 
 bool
 BaselineCompiler::emit_JSOP_LABEL()
-{
-    return true;
-}
-
-bool
-BaselineCompiler::emit_JSOP_NOTEARG()
 {
     return true;
 }
@@ -1195,30 +1190,48 @@ BaselineCompiler::emit_JSOP_STRING()
     return true;
 }
 
+typedef JSObject *(*DeepCloneObjectLiteralFn)(JSContext *, HandleObject, NewObjectKind);
+static const VMFunction DeepCloneObjectLiteralInfo =
+    FunctionInfo<DeepCloneObjectLiteralFn>(DeepCloneObjectLiteral);
+
 bool
 BaselineCompiler::emit_JSOP_OBJECT()
 {
+    if (JS::CompartmentOptionsRef(cx).cloneSingletons(cx)) {
+        RootedObject obj(cx, script->getObject(GET_UINT32_INDEX(pc)));
+        if (!obj)
+            return false;
+
+        prepareVMCall();
+
+        pushArg(ImmWord(js::MaybeSingletonObject));
+        pushArg(ImmGCPtr(obj));
+
+        if (!callVM(DeepCloneObjectLiteralInfo))
+            return false;
+
+        // Box and push return value.
+        masm.tagValue(JSVAL_TYPE_OBJECT, ReturnReg, R0);
+        frame.push(R0);
+        return true;
+    }
+
+    JS::CompartmentOptionsRef(cx).setSingletonsAsValues();
     frame.push(ObjectValue(*script->getObject(pc)));
     return true;
 }
 
-typedef JSObject *(*CloneRegExpObjectFn)(JSContext *, JSObject *, JSObject *);
+typedef JSObject *(*CloneRegExpObjectFn)(JSContext *, JSObject *);
 static const VMFunction CloneRegExpObjectInfo =
     FunctionInfo<CloneRegExpObjectFn>(CloneRegExpObject);
 
 bool
 BaselineCompiler::emit_JSOP_REGEXP()
 {
-    RootedObject reObj(cx, script->getRegExp(GET_UINT32_INDEX(pc)));
-    RootedObject proto(cx, script->global().getOrCreateRegExpPrototype(cx));
-    if (!proto)
-        return false;
+    RootedObject reObj(cx, script->getRegExp(pc));
 
     prepareVMCall();
-
-    pushArg(ImmGCPtr(proto));
     pushArg(ImmGCPtr(reObj));
-
     if (!callVM(CloneRegExpObjectInfo))
         return false;
 
@@ -1663,6 +1676,30 @@ BaselineCompiler::emit_JSOP_INITELEM()
     return true;
 }
 
+typedef bool (*MutateProtoFn)(JSContext *cx, HandleObject obj, HandleValue newProto);
+static const VMFunction MutateProtoInfo = FunctionInfo<MutateProtoFn>(MutatePrototype);
+
+bool
+BaselineCompiler::emit_JSOP_MUTATEPROTO()
+{
+    // Keep values on the stack for the decompiler.
+    frame.syncStack(0);
+
+    masm.extractObject(frame.addressOfStackValue(frame.peek(-2)), R0.scratchReg());
+    masm.loadValue(frame.addressOfStackValue(frame.peek(-1)), R1);
+
+    prepareVMCall();
+
+    pushArg(R1);
+    pushArg(R0.scratchReg());
+
+    if (!callVM(MutateProtoInfo))
+        return false;
+
+    frame.pop();
+    return true;
+}
+
 bool
 BaselineCompiler::emit_JSOP_INITPROP()
 {
@@ -1904,7 +1941,7 @@ BaselineCompiler::getScopeCoordinateObject(Register reg)
     ScopeCoordinate sc(pc);
 
     masm.loadPtr(frame.addressOfScopeChain(), reg);
-    for (unsigned i = sc.hops; i; i--)
+    for (unsigned i = sc.hops(); i; i--)
         masm.extractObject(Address(reg, ScopeObject::offsetOfEnclosingScope()), reg);
 }
 
@@ -1915,12 +1952,12 @@ BaselineCompiler::getScopeCoordinateAddressFromObject(Register objReg, Register 
     Shape *shape = ScopeCoordinateToStaticScopeShape(script, pc);
 
     Address addr;
-    if (shape->numFixedSlots() <= sc.slot) {
+    if (shape->numFixedSlots() <= sc.slot()) {
         masm.loadPtr(Address(objReg, JSObject::offsetOfSlots()), reg);
-        return Address(reg, (sc.slot - shape->numFixedSlots()) * sizeof(Value));
+        return Address(reg, (sc.slot() - shape->numFixedSlots()) * sizeof(Value));
     }
 
-    return Address(objReg, JSObject::getFixedSlotOffset(sc.slot));
+    return Address(objReg, JSObject::getFixedSlotOffset(sc.slot()));
 }
 
 Address
@@ -2253,7 +2290,7 @@ BaselineCompiler::emit_JSOP_INITELEM_SETTER()
 bool
 BaselineCompiler::emit_JSOP_GETLOCAL()
 {
-    uint32_t local = GET_SLOTNO(pc);
+    uint32_t local = GET_LOCALNO(pc);
 
     if (local >= frame.nlocals()) {
         // Destructuring assignments may use GETLOCAL to access stack values.
@@ -2280,7 +2317,7 @@ BaselineCompiler::emit_JSOP_SETLOCAL()
     // This also allows us to use R0 as scratch below.
     frame.syncStack(1);
 
-    uint32_t local = GET_SLOTNO(pc);
+    uint32_t local = GET_LOCALNO(pc);
     storeValue(frame.peek(-1), frame.addressOfLocal(local), R0);
     return true;
 }
@@ -2363,7 +2400,7 @@ BaselineCompiler::emitFormalArgAccess(uint32_t arg, bool get)
 bool
 BaselineCompiler::emit_JSOP_GETARG()
 {
-    uint32_t arg = GET_SLOTNO(pc);
+    uint32_t arg = GET_ARGNO(pc);
     return emitFormalArgAccess(arg, /* get = */ true);
 }
 
@@ -2382,7 +2419,7 @@ BaselineCompiler::emit_JSOP_SETARG()
 
     modifiesArguments_ = true;
 
-    uint32_t arg = GET_SLOTNO(pc);
+    uint32_t arg = GET_ARGNO(pc);
     return emitFormalArgAccess(arg, /* get = */ false);
 }
 

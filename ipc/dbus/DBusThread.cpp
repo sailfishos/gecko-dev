@@ -57,13 +57,13 @@
 #include "nsServiceManagerUtils.h"
 #include "nsCOMPtr.h"
 
-#undef LOG
+#undef CHROMIUM_LOG
 #if defined(MOZ_WIDGET_GONK)
 #include <android/log.h>
-#define LOG(args...)  __android_log_print(ANDROID_LOG_INFO, "GonkDBus", args);
+#define CHROMIUM_LOG(args...)  __android_log_print(ANDROID_LOG_INFO, "GonkDBus", args);
 #else
 #define BTDEBUG true
-#define LOG(args...) if (BTDEBUG) printf(args);
+#define CHROMIUM_LOG(args...) if (BTDEBUG) printf(args);
 #endif
 
 namespace mozilla {
@@ -122,18 +122,31 @@ void DBusWatcher::StartWatching()
   int fd = dbus_watch_get_unix_fd(mWatch);
 
   MessageLoopForIO* ioLoop = MessageLoopForIO::current();
-  ioLoop->WatchFileDescriptor(fd, true, MessageLoopForIO::WATCH_READ,
-                              &mReadWatcher, this);
-  ioLoop->WatchFileDescriptor(fd, true, MessageLoopForIO::WATCH_WRITE,
-                              &mWriteWatcher, this);
+
+  unsigned int flags = dbus_watch_get_flags(mWatch);
+
+  if (flags & DBUS_WATCH_READABLE) {
+    ioLoop->WatchFileDescriptor(fd, true, MessageLoopForIO::WATCH_READ,
+                                &mReadWatcher, this);
+  }
+  if (flags & DBUS_WATCH_WRITABLE) {
+    ioLoop->WatchFileDescriptor(fd, true, MessageLoopForIO::WATCH_WRITE,
+                                &mWriteWatcher, this);
+  }
 }
 
 void DBusWatcher::StopWatching()
 {
   MOZ_ASSERT(!NS_IsMainThread());
 
-  mReadWatcher.StopWatchingFileDescriptor();
-  mWriteWatcher.StopWatchingFileDescriptor();
+  unsigned int flags = dbus_watch_get_flags(mWatch);
+
+  if (flags & DBUS_WATCH_READABLE) {
+    mReadWatcher.StopWatchingFileDescriptor();
+  }
+  if (flags & DBUS_WATCH_WRITABLE) {
+    mWriteWatcher.StopWatchingFileDescriptor();
+  }
 }
 
 // DBus utility functions, used as function pointers in DBus setup

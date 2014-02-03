@@ -63,19 +63,19 @@ public:
 
   virtual void BeginFrame(const nsIntRegion& aInvalidRegion,
                           const gfx::Rect *aClipRectIn,
-                          const gfxMatrix& aTransform,
+                          const gfx::Matrix& aTransform,
                           const gfx::Rect& aRenderBounds,
                           gfx::Rect *aClipRectOut = nullptr,
                           gfx::Rect *aRenderBoundsOut = nullptr) MOZ_OVERRIDE;
 
   virtual void EndFrame() MOZ_OVERRIDE;
 
-  virtual void EndFrameForExternalComposition(const gfxMatrix& aTransform) MOZ_OVERRIDE {}
+  virtual void EndFrameForExternalComposition(const gfx::Matrix& aTransform) MOZ_OVERRIDE {}
 
   virtual void AbortFrame() MOZ_OVERRIDE {}
 
   virtual void PrepareViewport(const gfx::IntSize& aSize,
-                               const gfxMatrix& aWorldTransform) MOZ_OVERRIDE;
+                               const gfx::Matrix& aWorldTransform) MOZ_OVERRIDE;
 
   virtual bool SupportsPartialTextureUpdate() MOZ_OVERRIDE{ return true; }
 
@@ -117,8 +117,8 @@ public:
     // If the offset is 0, 0 that's okay.
   }
 
-   virtual TemporaryRef<DataTextureSource>
-     CreateDataTextureSource(TextureFlags aFlags = 0) MOZ_OVERRIDE { return nullptr; } 
+  virtual TemporaryRef<DataTextureSource>
+    CreateDataTextureSource(TextureFlags aFlags = 0) MOZ_OVERRIDE;
 private:
   // ensure mSize is up to date with respect to mWidget
   void EnsureSize();
@@ -159,7 +159,7 @@ private:
   nsIWidget *mWidget;
 
   /*
-   * Context target, NULL when drawing directly to our swap chain.
+   * Context target, nullptr when drawing directly to our swap chain.
    */
   RefPtr<gfx::DrawTarget> mTarget;
 

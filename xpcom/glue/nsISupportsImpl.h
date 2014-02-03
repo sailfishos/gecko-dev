@@ -92,10 +92,23 @@ public:
   {
   }
 
-  MOZ_ALWAYS_INLINE uintptr_t incr()
+  MOZ_ALWAYS_INLINE uintptr_t incr(nsISupports *owner)
+  {
+    return incr(owner, nullptr);
+  }
+
+  MOZ_ALWAYS_INLINE uintptr_t incr(void *owner, nsCycleCollectionParticipant *p)
   {
     mRefCntAndFlags += NS_REFCOUNT_CHANGE;
     mRefCntAndFlags &= ~NS_IS_PURPLE;
+    // For incremental cycle collection, use the purple buffer to track objects
+    // that have been AddRef'd.
+    if (!IsInPurpleBuffer()) {
+      mRefCntAndFlags |= NS_IN_PURPLE_BUFFER;
+      // Refcount isn't zero, so Suspect won't delete anything.
+      MOZ_ASSERT(get() > 0);
+      NS_CycleCollectorSuspect3(owner, p, this, nullptr);
+    }
     return NS_REFCOUNT_VALUE(mRefCntAndFlags);
   }
 
@@ -265,7 +278,9 @@ public:
 #define NS_IMPL_CC_NATIVE_ADDREF_BODY(_class)                                 \
     MOZ_ASSERT(int32_t(mRefCnt) >= 0, "illegal refcnt");                      \
     NS_ASSERT_OWNINGTHREAD(_class);                                           \
-    nsrefcnt count = mRefCnt.incr();                                          \
+    nsrefcnt count =                                                          \
+      mRefCnt.incr(static_cast<void*>(this),                                  \
+                   _class::NS_CYCLE_COLLECTION_INNERCLASS::GetParticipant()); \
     NS_LOG_ADDREF(this, count, #_class, sizeof(*this));                       \
     return count;
 
@@ -296,7 +311,8 @@ NS_METHOD_(nsrefcnt) _class::Release(void)                                      
                    &shouldDelete);                                               \
     NS_LOG_RELEASE(this, count, #_class);                                        \
     if (count == 0) {                                                            \
-        mRefCnt.incr();                                                          \
+        mRefCnt.incr(static_cast<void*>(this),                                   \
+                     _class::NS_CYCLE_COLLECTION_INNERCLASS::GetParticipant());  \
         _last;                                                                   \
         mRefCnt.decr(static_cast<void*>(this),                                   \
                      _class::NS_CYCLE_COLLECTION_INNERCLASS::GetParticipant());  \
@@ -502,7 +518,8 @@ NS_IMETHODIMP_(nsrefcnt) _class::AddRef(void)                                 \
 {                                                                             \
   MOZ_ASSERT(int32_t(mRefCnt) >= 0, "illegal refcnt");                        \
   NS_ASSERT_OWNINGTHREAD(_class);                                             \
-  nsrefcnt count = mRefCnt.incr();                                            \
+  nsISupports *base = NS_CYCLE_COLLECTION_CLASSNAME(_class)::Upcast(this);    \
+  nsrefcnt count = mRefCnt.incr(base);                                        \
   NS_LOG_ADDREF(this, count, #_class, sizeof(*this));                         \
   return count;                                                               \
 }
@@ -537,7 +554,7 @@ NS_IMETHODIMP_(nsrefcnt) _class::Release(void)                                \
   nsrefcnt count = mRefCnt.decr(base, &shouldDelete);                         \
   NS_LOG_RELEASE(this, count, #_class);                                       \
   if (count == 0) {                                                           \
-      mRefCnt.incr();                                                         \
+      mRefCnt.incr(base);                                                     \
       _last;                                                                  \
       mRefCnt.decr(base);                                                     \
       if (shouldDelete) {                                                     \
@@ -576,8 +593,8 @@ struct QITableEntry
 };
 
 NS_COM_GLUE nsresult NS_FASTCALL
-NS_TableDrivenQI(void* aThis, const QITableEntry* entries,
-                 REFNSIID aIID, void **aInstancePtr);
+NS_TableDrivenQI(void* aThis, REFNSIID aIID,
+                 void **aInstancePtr, const QITableEntry* entries);
 
 /**
  * Implement table-driven queryinterface
@@ -619,7 +636,7 @@ NS_IMETHODIMP _class::QueryInterface(REFNSIID aIID, void** aInstancePtr)      \
   { nullptr, 0 } };                                                           \
   static_assert((sizeof(table)/sizeof(table[0])) > 1, "need at least 1 interface"); \
   rv = NS_TableDrivenQI(static_cast<void*>(_ptr),                             \
-                        table, aIID, aInstancePtr);
+                        aIID, aInstancePtr, table);
 
 #define NS_INTERFACE_TABLE_END                                                \
   NS_INTERFACE_TABLE_END_WITH_PTR(this)
@@ -882,6 +899,24 @@ NS_IMETHODIMP _class::QueryInterface(REFNSIID aIID, void** aInstancePtr)      \
     NS_INTERFACE_TABLE_ENTRY_AMBIGUOUS(_class, nsISupports, _i1)              \
   NS_INTERFACE_TABLE_END
 
+#define NS_INTERFACE_TABLE12(_class, _i1, _i2, _i3, _i4, _i5, _i6, _i7,       \
+                             _i8, _i9, _i10, _i11, _i12)                      \
+  NS_INTERFACE_TABLE_BEGIN                                                    \
+    NS_INTERFACE_TABLE_ENTRY(_class, _i1)                                     \
+    NS_INTERFACE_TABLE_ENTRY(_class, _i2)                                     \
+    NS_INTERFACE_TABLE_ENTRY(_class, _i3)                                     \
+    NS_INTERFACE_TABLE_ENTRY(_class, _i4)                                     \
+    NS_INTERFACE_TABLE_ENTRY(_class, _i5)                                     \
+    NS_INTERFACE_TABLE_ENTRY(_class, _i6)                                     \
+    NS_INTERFACE_TABLE_ENTRY(_class, _i7)                                     \
+    NS_INTERFACE_TABLE_ENTRY(_class, _i8)                                     \
+    NS_INTERFACE_TABLE_ENTRY(_class, _i9)                                     \
+    NS_INTERFACE_TABLE_ENTRY(_class, _i10)                                    \
+    NS_INTERFACE_TABLE_ENTRY(_class, _i11)                                    \
+    NS_INTERFACE_TABLE_ENTRY(_class, _i12)                                    \
+    NS_INTERFACE_TABLE_ENTRY_AMBIGUOUS(_class, nsISupports, _i1)              \
+  NS_INTERFACE_TABLE_END
+
 #define NS_IMPL_QUERY_INTERFACE0(_class)                                      \
   NS_INTERFACE_TABLE_HEAD(_class)                                             \
   NS_INTERFACE_TABLE0(_class)                                                 \
@@ -946,6 +981,13 @@ NS_IMETHODIMP _class::QueryInterface(REFNSIID aIID, void** aInstancePtr)      \
   NS_INTERFACE_TABLE_HEAD(_class)                                             \
   NS_INTERFACE_TABLE11(_class, _i1, _i2, _i3, _i4, _i5, _i6, _i7, _i8,        \
                        _i9, _i10, _i11)                                       \
+  NS_INTERFACE_TABLE_TAIL
+
+#define NS_IMPL_QUERY_INTERFACE12(_class, _i1, _i2, _i3, _i4, _i5, _i6,       \
+                                  _i7, _i8, _i9, _i10, _i11, _i12)            \
+  NS_INTERFACE_TABLE_HEAD(_class)                                             \
+  NS_INTERFACE_TABLE12(_class, _i1, _i2, _i3, _i4, _i5, _i6, _i7, _i8,        \
+                       _i9, _i10, _i11, _i12)                                 \
   NS_INTERFACE_TABLE_TAIL
 
 
@@ -1270,6 +1312,13 @@ NS_IMETHODIMP_(nsrefcnt) Class::Release(void)                                 \
   NS_IMPL_RELEASE(_class)                                                     \
   NS_IMPL_QUERY_INTERFACE11(_class, _i1, _i2, _i3, _i4, _i5, _i6, _i7, _i8,   \
                             _i9, _i10, _i11)
+
+#define NS_IMPL_ISUPPORTS12(_class, _i1, _i2, _i3, _i4, _i5, _i6, _i7, _i8,   \
+                            _i9, _i10, _i11, _i12)                            \
+  NS_IMPL_ADDREF(_class)                                                      \
+  NS_IMPL_RELEASE(_class)                                                     \
+  NS_IMPL_QUERY_INTERFACE12(_class, _i1, _i2, _i3, _i4, _i5, _i6, _i7, _i8,   \
+                            _i9, _i10, _i11, _i12)
 
 #define NS_IMPL_ISUPPORTS_INHERITED0(Class, Super)                            \
     NS_IMPL_QUERY_INTERFACE_INHERITED0(Class, Super)                          \

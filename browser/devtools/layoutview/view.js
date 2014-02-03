@@ -7,6 +7,9 @@
 "use strict";
 
 const Cu = Components.utils;
+const Ci = Components.interfaces;
+const Cc = Components.classes;
+
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/devtools/Loader.jsm");
 Cu.import("resource://gre/modules/devtools/Console.jsm");
@@ -34,12 +37,8 @@ LayoutView.prototype = {
     this.update = this.update.bind(this);
     this.onNewNode = this.onNewNode.bind(this);
     this.onNewSelection = this.onNewSelection.bind(this);
-    this.onHighlighterLocked = this.onHighlighterLocked.bind(this);
     this.inspector.selection.on("new-node-front", this.onNewSelection);
     this.inspector.sidebar.on("layoutview-selected", this.onNewNode);
-    if (this.inspector.highlighter) {
-      this.inspector.highlighter.on("locked", this.onHighlighterLocked);
-    }
 
     // Store for the different dimensions of the node.
     // 'selector' refers to the element that holds the value in view.xhtml;
@@ -106,9 +105,6 @@ LayoutView.prototype = {
     if (this.browser) {
       this.browser.removeEventListener("MozAfterPaint", this.update, true);
     }
-    if (this.inspector.highlighter) {
-      this.inspector.highlighter.off("locked", this.onHighlighterLocked);
-    }
     this.sizeHeadingLabel = null;
     this.sizeLabel = null;
     this.inspector = null;
@@ -126,21 +122,12 @@ LayoutView.prototype = {
   onNewNode: function LV_onNewNode() {
     if (this.isActive() &&
         this.inspector.selection.isConnected() &&
-        this.inspector.selection.isElementNode() &&
-        this.inspector.selection.reason != "highlighter") {
+        this.inspector.selection.isElementNode()) {
       this.undim();
     } else {
       this.dim();
     }
     return this.update();
-  },
-
-  /**
-   * Highlighter 'locked' event handler
-   */
-  onHighlighterLocked: function LV_onHighlighterLocked() {
-    this.undim();
-    this.update();
   },
 
   /**
@@ -199,7 +186,7 @@ LayoutView.prototype = {
       // If the view is dimmed, no need to do anything more.
       if (this.dimmed) {
         this.inspector.emit("layoutview-updated");
-        return;
+        return null;
       }
 
       for (let i in this.map) {
@@ -247,8 +234,53 @@ LayoutView.prototype = {
       }
 
       this.inspector.emit("layoutview-updated");
+      return null;
     });
+
     this._lastRequest = lastRequest;
     return this._lastRequest;
   }
+}
+
+let elts;
+let tooltip;
+
+window.setPanel = function(panel) {
+  this.layoutview = new LayoutView(panel, window);
+
+  // Tooltip mechanism
+  elts = document.querySelectorAll("*[tooltip]");
+  tooltip = document.querySelector(".tooltip");
+  for (let i = 0; i < elts.length; i++) {
+    let elt = elts[i];
+    elt.addEventListener("mouseover", onmouseover, true);
+    elt.addEventListener("mouseout", onmouseout, true);
+  }
+
+  // Mark document as RTL or LTR:
+  let chromeReg = Cc["@mozilla.org/chrome/chrome-registry;1"].
+    getService(Ci.nsIXULChromeRegistry);
+  let dir = chromeReg.isLocaleRTL("global");
+  document.body.setAttribute("dir", dir ? "rtl" : "ltr");
+
+  window.parent.postMessage("layoutview-ready", "*");
+};
+
+window.onunload = function() {
+  this.layoutview.destroy();
+  if (elts) {
+    for (let i = 0; i < elts.length; i++) {
+      let elt = elts[i];
+      elt.removeEventListener("mouseover", onmouseover, true);
+      elt.removeEventListener("mouseout", onmouseout, true);
+    }
+  }
+};
+
+function onmouseover(e) {
+  tooltip.textContent = e.target.getAttribute("tooltip");
+}
+
+function onmouseout(e) {
+  tooltip.textContent = "";
 }

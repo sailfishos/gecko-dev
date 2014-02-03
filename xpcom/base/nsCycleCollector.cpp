@@ -71,7 +71,30 @@
 //
 // The second problem is that objects in the graph can be changed, say by
 // being addrefed or released, or by having a field updated, after the object
-// has been added to the graph. This will be addressed in bug 937818.
+// has been added to the graph. The problem is that ICC can miss a newly
+// created reference to an object, and end up unlinking an object that is
+// actually alive.
+//
+// The basic idea of the solution, from "An on-the-fly Reference Counting
+// Garbage Collector for Java" by Levanoni and Petrank, is to notice if an
+// object has had an additional reference to it created during the collection,
+// and if so, don't collect it during the current collection. This avoids having
+// to rerun the scan as in Bacon & Rajan 2001.
+//
+// For cycle collected C++ objects, we modify AddRef to place the object in
+// the purple buffer, in addition to Release. Then, in the CC, we treat any
+// objects in the purple buffer as being alive, after graph building has
+// completed. Because they are in the purple buffer, they will be suspected
+// in the next CC, so there's no danger of leaks. This is imprecise, because
+// we will treat as live an object that has been Released but not AddRefed
+// during graph building, but that's probably rare enough that the additional
+// bookkeeping overhead is not worthwhile.
+//
+// For JS objects, the cycle collector is only looking at gray objects. If a
+// gray object is touched during ICC, it will be made black by UnmarkGray.
+// Thus, if a JS object has become black during the ICC, we treat it as live.
+// Merged JS zones have to be handled specially: we scan all zone globals.
+// If any are black, we treat the zone as being black.
 
 
 // Safety
@@ -132,6 +155,7 @@
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/AutoRestore.h"
 #include "mozilla/CycleCollectedJSRuntime.h"
+#include "mozilla/HoldDropJSObjects.h"
 /* This must occur *after* base/process_util.h to avoid typedefs conflicts. */
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/LinkedList.h"
@@ -1056,7 +1080,7 @@ enum ccPhase {
 };
 
 enum ccType {
-    ScheduledCC, /* Automatically triggered, based on time or the purple buffer. */
+    SliceCC,     /* If a CC is in progress, continue it. Otherwise, start a new one. */
     ManualCC,    /* Explicitly triggered. */
     ShutdownCC   /* Shutdown CC, used for finding leaks. */
 };
@@ -1070,6 +1094,8 @@ enum ccType {
 ////////////////////////////////////////////////////////////////////////
 
 typedef js::SliceBudget SliceBudget;
+
+class JSPurpleBuffer;
 
 class nsCycleCollector : public nsIMemoryReporter
 {
@@ -1103,6 +1129,8 @@ class nsCycleCollector : public nsIMemoryReporter
 
     uint32_t mUnmergedNeeded;
     uint32_t mMergedInARow;
+
+    JSPurpleBuffer* mJSPurpleBuffer;
 
 public:
     nsCycleCollector();
@@ -1146,6 +1174,7 @@ public:
                              size_t *aWeakMapsSize,
                              size_t *aPurpleBufferSize) const;
 
+    JSPurpleBuffer* GetJSPurpleBuffer();
 private:
     void CheckThreadSafety();
     void ShutdownCollect();
@@ -1155,7 +1184,8 @@ private:
 
     void BeginCollection(ccType aCCType, nsICycleCollectorListener *aManualListener);
     void MarkRoots(SliceBudget &aBudget);
-    void ScanRoots();
+    void ScanRoots(bool aFullySynchGraphBuild);
+    void ScanIncrementalRoots();
     void ScanWeakMaps();
 
     // returns whether anything was collected
@@ -2127,6 +2157,122 @@ MayHaveChild(void *o, nsCycleCollectionParticipant* cp)
     return cf.MayHaveChild();
 }
 
+template<class T>
+class SegmentedArrayElement : public LinkedListElement<SegmentedArrayElement<T>>
+                            , public AutoFallibleTArray<T, 60>
+{
+};
+
+template<class T>
+class SegmentedArray
+{
+public:
+    ~SegmentedArray()
+    {
+        MOZ_ASSERT(IsEmpty());
+    }
+
+    void AppendElement(T& aElement)
+    {
+        SegmentedArrayElement<T>* last = mSegments.getLast();
+        if (!last || last->Length() == last->Capacity()) {
+            last = new SegmentedArrayElement<T>();
+            mSegments.insertBack(last);
+        }
+        last->AppendElement(aElement);
+    }
+
+    void Clear()
+    {
+        SegmentedArrayElement<T>* first;
+        while ((first = mSegments.popFirst())) {
+            delete first;
+        }
+    }
+
+    SegmentedArrayElement<T>* GetFirstSegment()
+    {
+        return mSegments.getFirst();
+    }
+
+    bool IsEmpty()
+    {
+        return !GetFirstSegment();
+    }
+
+private:
+    mozilla::LinkedList<SegmentedArrayElement<T>> mSegments;
+};
+
+// JSPurpleBuffer keeps references to GCThings which might affect the
+// next cycle collection. It is owned only by itself and during unlink its
+// self reference is broken down and the object ends up killing itself.
+// If GC happens before CC, references to GCthings and the self reference are
+// removed.
+class JSPurpleBuffer
+{
+public:
+    JSPurpleBuffer(JSPurpleBuffer*& aReferenceToThis)
+      : mReferenceToThis(aReferenceToThis)
+    {
+        mReferenceToThis = this;
+        NS_ADDREF_THIS();
+        mozilla::HoldJSObjects(this);
+    }
+
+    ~JSPurpleBuffer()
+    {
+        MOZ_ASSERT(mValues.IsEmpty());
+        MOZ_ASSERT(mObjects.IsEmpty());
+    }
+
+    void Destroy()
+    {
+        mReferenceToThis = nullptr;
+        mValues.Clear();
+        mObjects.Clear();
+        mozilla::DropJSObjects(this);
+        NS_RELEASE_THIS();
+    }
+
+    NS_INLINE_DECL_CYCLE_COLLECTING_NATIVE_REFCOUNTING(JSPurpleBuffer)
+    NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_NATIVE_CLASS(JSPurpleBuffer)
+
+    JSPurpleBuffer*& mReferenceToThis;
+    SegmentedArray<JS::Heap<JS::Value>> mValues;
+    SegmentedArray<JS::Heap<JSObject*>> mObjects;
+};
+
+NS_IMPL_CYCLE_COLLECTION_CLASS(JSPurpleBuffer)
+
+NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(JSPurpleBuffer)
+    tmp->Destroy();
+NS_IMPL_CYCLE_COLLECTION_UNLINK_END
+
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(JSPurpleBuffer)
+    CycleCollectionNoteChild(cb, tmp, "self");
+    NS_IMPL_CYCLE_COLLECTION_TRAVERSE_SCRIPT_OBJECTS
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
+
+#define NS_TRACE_SEGMENTED_ARRAY(_field)                                       \
+    {                                                                          \
+        auto segment = tmp->_field.GetFirstSegment();                          \
+        while (segment) {                                                      \
+            for (uint32_t i = segment->Length(); i > 0;) {                     \
+                aCallbacks.Trace(&segment->ElementAt(--i), #_field, aClosure); \
+            }                                                                  \
+            segment = segment->getNext();                                      \
+        }                                                                      \
+    }
+
+NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN(JSPurpleBuffer)
+    NS_TRACE_SEGMENTED_ARRAY(mValues)
+    NS_TRACE_SEGMENTED_ARRAY(mObjects)
+NS_IMPL_CYCLE_COLLECTION_TRACE_END
+
+NS_IMPL_CYCLE_COLLECTION_ROOT_NATIVE(JSPurpleBuffer, AddRef)
+NS_IMPL_CYCLE_COLLECTION_UNROOT_NATIVE(JSPurpleBuffer, Release)
+
 struct SnowWhiteObject
 {
   void* mPointer;
@@ -2134,7 +2280,7 @@ struct SnowWhiteObject
   nsCycleCollectingAutoRefCnt* mRefCnt;
 };
 
-class SnowWhiteKiller
+class SnowWhiteKiller : public TraceCallbacks
 {
 public:
     SnowWhiteKiller(nsCycleCollector *aCollector, uint32_t aMaxCount)
@@ -2159,6 +2305,7 @@ public:
             if (!o.mRefCnt->get() && !o.mRefCnt->IsInPurpleBuffer()) {
                 mCollector->RemoveObjectFromGraph(o.mPointer);
                 o.mRefCnt->stabilizeForDeletion();
+                o.mParticipant->Trace(o.mPointer, *this, nullptr);
                 o.mParticipant->DeleteCycleCollectable(o.mPointer);
             }
         }
@@ -2182,6 +2329,43 @@ public:
     bool HasSnowWhiteObjects() const
     {
       return mObjects.Length() > 0;
+    }
+
+    virtual void Trace(JS::Heap<JS::Value>* aValue, const char* aName,
+                       void* aClosure) const
+    {
+        void* thing = JSVAL_TO_TRACEABLE(aValue->get());
+        if (thing && xpc_GCThingIsGrayCCThing(thing)) {
+            mCollector->GetJSPurpleBuffer()->mValues.AppendElement(*aValue);
+        }
+    }
+
+    virtual void Trace(JS::Heap<jsid>* aId, const char* aName,
+                       void* aClosure) const
+    {
+    }
+
+    virtual void Trace(JS::Heap<JSObject*>* aObject, const char* aName,
+                       void* aClosure) const
+    {
+        if (*aObject && xpc_GCThingIsGrayCCThing(*aObject)) {
+            mCollector->GetJSPurpleBuffer()->mObjects.AppendElement(*aObject);
+        }
+    }
+
+    virtual void Trace(JS::Heap<JSString*>* aString, const char* aName,
+                       void* aClosure) const
+    {
+    }
+
+    virtual void Trace(JS::Heap<JSScript*>* aScript, const char* aName,
+                       void* aClosure) const
+    {
+    }
+
+    virtual void Trace(JS::Heap<JSFunction*>* aFunction, const char* aName,
+                       void* aClosure) const
+    {
     }
 
 private:
@@ -2280,6 +2464,11 @@ nsCycleCollector::ForgetSkippable(bool aRemoveChildlessNodes,
                                   bool aAsyncSnowWhiteFreeing)
 {
     CheckThreadSafety();
+
+    // If we remove things from the purple buffer during graph building, we may
+    // lose track of an object that was mutated during graph building.
+    MOZ_ASSERT(mIncrementalPhase == IdlePhase);
+
     if (mJSRuntime) {
         mJSRuntime->PrepareForForgetSkippable();
     }
@@ -2372,8 +2561,9 @@ private:
 
 struct scanVisitor
 {
-    scanVisitor(uint32_t &aWhiteNodeCount, bool &aFailed)
-        : mWhiteNodeCount(aWhiteNodeCount), mFailed(aFailed)
+    scanVisitor(uint32_t &aWhiteNodeCount, bool &aFailed, bool aWasIncremental)
+        : mWhiteNodeCount(aWhiteNodeCount), mFailed(aFailed),
+          mWasIncremental(aWasIncremental)
     {
     }
 
@@ -2384,8 +2574,16 @@ struct scanVisitor
 
     MOZ_NEVER_INLINE void VisitNode(PtrInfo *pi)
     {
-        if (pi->mInternalRefs > pi->mRefCount && pi->mRefCount > 0)
-            Fault("traversed refs exceed refcount", pi);
+        if (pi->mInternalRefs > pi->mRefCount && pi->mRefCount > 0) {
+            // If we found more references to an object than its ref count, then
+            // the object should have already been marked as an incremental
+            // root. Note that this is imprecise, because pi could have been
+            // marked black for other reasons. Always fault if we weren't
+            // incremental, as there were no incremental roots in that case.
+            if (!mWasIncremental || pi->mColor != black) {
+                Fault("traversed refs exceed refcount", pi);
+            }
+        }
 
         if (pi->mInternalRefs == pi->mRefCount || pi->mRefCount == 0) {
             pi->mColor = white;
@@ -2404,6 +2602,7 @@ struct scanVisitor
 private:
     uint32_t &mWhiteNodeCount;
     bool &mFailed;
+    bool mWasIncremental;
 };
 
 // Iterate over the WeakMaps.  If we mark anything while iterating
@@ -2451,28 +2650,139 @@ nsCycleCollector::ScanWeakMaps()
     }
 }
 
+// Flood black from any objects in the purple buffer that are in the CC graph.
+class PurpleScanBlackVisitor
+{
+public:
+    PurpleScanBlackVisitor(GCGraph &aGraph, uint32_t &aCount, bool &aFailed)
+        : mGraph(aGraph), mCount(aCount), mFailed(aFailed)
+    {
+    }
+
+    void
+    Visit(nsPurpleBuffer &aBuffer, nsPurpleBufferEntry *aEntry)
+    {
+        MOZ_ASSERT(aEntry->mObject, "Entries with null mObject shouldn't be in the purple buffer.");
+        MOZ_ASSERT(aEntry->mRefCnt->get() != 0, "Snow-white objects shouldn't be in the purple buffer.");
+
+        void *obj = aEntry->mObject;
+        if (!aEntry->mParticipant) {
+            obj = CanonicalizeXPCOMParticipant(static_cast<nsISupports*>(obj));
+            MOZ_ASSERT(obj, "Don't add objects that don't participate in collection!");
+        }
+
+        PtrInfo *pi = mGraph.FindNode(obj);
+        if (!pi) {
+            return;
+        }
+        MOZ_ASSERT(pi->mParticipant, "No dead objects should be in the purple buffer.");
+        if (pi->mColor == black) {
+            return;
+        }
+        GraphWalker<ScanBlackVisitor>(ScanBlackVisitor(mCount, mFailed)).Walk(pi);
+    }
+
+private:
+    GCGraph &mGraph;
+    uint32_t &mCount;
+    bool &mFailed;
+};
+
+// Objects that have been stored somewhere since the start of incremental graph building must
+// be treated as live for this cycle collection, because we may not have accurate information
+// about who holds references to them.
 void
-nsCycleCollector::ScanRoots()
+nsCycleCollector::ScanIncrementalRoots()
 {
     TimeLog timeLog;
+
+    // Reference counted objects:
+    // We cleared the purple buffer at the start of the current ICC, so if a
+    // refcounted object is purple, it may have been AddRef'd during the current
+    // ICC. (It may also have only been released.) If that is the case, we cannot
+    // be sure that the set of things pointing to the object in the CC graph
+    // is accurate. Therefore, for safety, we treat any purple objects as being
+    // live during the current CC. We don't remove anything from the purple
+    // buffer here, so these objects will be suspected and freed in the next CC
+    // if they are garbage.
+    bool failed = false;
+    PurpleScanBlackVisitor purpleScanBlackVisitor(mGraph, mWhiteNodeCount, failed);
+    mPurpleBuf.VisitEntries(purpleScanBlackVisitor);
+    timeLog.Checkpoint("ScanIncrementalRoots::fix purple");
+
+    // Garbage collected objects:
+    // If a GCed object was added to the graph with a refcount of zero, and is
+    // now marked black by the GC, it was probably gray before and was exposed
+    // to active JS, so it may have been stored somewhere, so it needs to be
+    // treated as live.
+    if (mJSRuntime) {
+        nsCycleCollectionParticipant *jsParticipant = mJSRuntime->GCThingParticipant();
+        nsCycleCollectionParticipant *zoneParticipant = mJSRuntime->ZoneParticipant();
+        NodePool::Enumerator etor(mGraph.mNodes);
+
+        while (!etor.IsDone()) {
+            PtrInfo *pi = etor.GetNext();
+
+            if (pi->mRefCount != 0 || pi->mColor == black) {
+                continue;
+            }
+
+            if (pi->mParticipant == jsParticipant) {
+                if (xpc_GCThingIsGrayCCThing(pi->mPointer)) {
+                    continue;
+                }
+            } else if (pi->mParticipant == zoneParticipant) {
+                JS::Zone *zone = static_cast<JS::Zone*>(pi->mPointer);
+                if (js::ZoneGlobalsAreAllGray(zone)) {
+                    continue;
+                }
+            } else {
+                MOZ_ASSERT(false, "Non-JS thing with 0 refcount? Treating as live.");
+            }
+
+            GraphWalker<ScanBlackVisitor>(ScanBlackVisitor(mWhiteNodeCount, failed)).Walk(pi);
+        }
+
+        timeLog.Checkpoint("ScanIncrementalRoots::fix JS");
+    }
+
+    if (failed) {
+        NS_ASSERTION(false, "Ran out of memory in ScanIncrementalRoots");
+        CC_TELEMETRY(_OOM, true);
+    }
+}
+
+void
+nsCycleCollector::ScanRoots(bool aFullySynchGraphBuild)
+{
     AutoRestore<bool> ar(mScanInProgress);
     MOZ_ASSERT(!mScanInProgress);
     mScanInProgress = true;
     mWhiteNodeCount = 0;
     MOZ_ASSERT(mIncrementalPhase == ScanAndCollectWhitePhase);
 
+    if (!aFullySynchGraphBuild) {
+        ScanIncrementalRoots();
+    }
+
+    TimeLog timeLog;
+
     // On the assumption that most nodes will be black, it's
     // probably faster to use a GraphWalker than a
     // NodePool::Enumerator.
     bool failed = false;
-    GraphWalker<scanVisitor>(scanVisitor(mWhiteNodeCount, failed)).WalkFromRoots(mGraph);
+    scanVisitor sv(mWhiteNodeCount, failed, !aFullySynchGraphBuild);
+    GraphWalker<scanVisitor>(sv).WalkFromRoots(mGraph);
+    timeLog.Checkpoint("ScanRoots::WalkFromRoots");
 
     if (failed) {
         NS_ASSERTION(false, "Ran out of memory in ScanRoots");
         CC_TELEMETRY(_OOM, true);
     }
 
+    // Scanning weak maps must be done last.
     ScanWeakMaps();
+    timeLog.Checkpoint("ScanRoots::ScanWeakMaps");
 
     if (mListener) {
         mListener->BeginResults();
@@ -2503,9 +2813,8 @@ nsCycleCollector::ScanRoots()
 
         mListener->End();
         mListener = nullptr;
+        timeLog.Checkpoint("ScanRoots::listener");
     }
-
-    timeLog.Checkpoint("ScanRoots()");
 }
 
 
@@ -2663,7 +2972,8 @@ nsCycleCollector::nsCycleCollector() :
     mBeforeUnlinkCB(nullptr),
     mForgetSkippableCB(nullptr),
     mUnmergedNeeded(0),
-    mMergedInARow(0)
+    mMergedInARow(0),
+    mJSPurpleBuffer(nullptr)
 {
 }
 
@@ -2818,6 +3128,7 @@ nsCycleCollector::ShutdownCollect()
             break;
         }
     }
+    NS_ASSERTION(i < NORMAL_SHUTDOWN_COLLECTIONS, "Extra shutdown CC");
 }
 
 static void
@@ -2868,7 +3179,7 @@ nsCycleCollector::Collect(ccType aCCType,
             // promoted to a strong reference after ScanRoots has finished.
             // See bug 926533.
             PrintPhase("ScanRoots");
-            ScanRoots();
+            ScanRoots(startedIdle);
             PrintPhase("CollectWhite");
             collectedAny = CollectWhite();
             break;
@@ -2882,7 +3193,7 @@ nsCycleCollector::Collect(ccType aCCType,
 
     mActivelyCollecting = false;
 
-    if (aCCType != ScheduledCC && !startedIdle) {
+    if (aCCType != SliceCC && !startedIdle) {
         // We were in the middle of an incremental CC (using its own listener).
         // Somebody has forced a CC, so after having finished out the current CC,
         // run the CC again using the new listener.
@@ -2892,7 +3203,7 @@ nsCycleCollector::Collect(ccType aCCType,
         }
     }
 
-    MOZ_ASSERT_IF(aCCType != ScheduledCC, mIncrementalPhase == IdlePhase);
+    MOZ_ASSERT_IF(aCCType != SliceCC, mIncrementalPhase == IdlePhase);
 
     return collectedAny;
 }
@@ -2901,17 +3212,22 @@ nsCycleCollector::Collect(ccType aCCType,
 // don't want to abandon the current CC, because the graph contains
 // information about purple roots. So we synchronously finish off
 // the current CC.
-void nsCycleCollector::PrepareForGarbageCollection()
+void
+nsCycleCollector::PrepareForGarbageCollection()
 {
     if (mIncrementalPhase == IdlePhase) {
         MOZ_ASSERT(mGraph.IsEmpty(), "Non-empty graph when idle");
         MOZ_ASSERT(!mBuilder, "Non-null builder when idle");
+        if (mJSPurpleBuffer) {
+            mJSPurpleBuffer->Destroy();
+        }
         return;
     }
 
     SliceBudget unlimitedBudget;
     PrintPhase("PrepareForGarbageCollection");
-    Collect(ScheduledCC, unlimitedBudget, nullptr);
+    // Use SliceCC because we only want to finish the CC in progress.
+    Collect(SliceCC, unlimitedBudget, nullptr);
     MOZ_ASSERT(mIncrementalPhase == IdlePhase);
 }
 
@@ -2941,7 +3257,7 @@ nsCycleCollector::ShouldMergeZones(ccType aCCType)
         return false;
     }
 
-    if (aCCType == ScheduledCC && mJSRuntime->UsefulToMergeZones()) {
+    if (aCCType == SliceCC && mJSRuntime->UsefulToMergeZones()) {
         mMergedInARow++;
         return true;
     } else {
@@ -3005,8 +3321,8 @@ nsCycleCollector::BeginCollection(ccType aCCType,
     mBuilder = new GCGraphBuilder(mGraph, mResults, mJSRuntime, mListener, mergeZones);
 
     if (mJSRuntime) {
-        mJSRuntime->BeginCycleCollection(*mBuilder);
-        timeLog.Checkpoint("mJSRuntime->BeginCycleCollection()");
+        mJSRuntime->TraverseRoots(*mBuilder);
+        timeLog.Checkpoint("mJSRuntime->TraverseRoots()");
     }
 
     AutoRestore<bool> ar(mScanInProgress);
@@ -3078,6 +3394,18 @@ nsCycleCollector::SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf,
     // These fields are deliberately not measured:
     // - mJSRuntime: because it's non-owning and measured by JS reporters.
     // - mParams: because it only contains scalars.
+}
+
+JSPurpleBuffer*
+nsCycleCollector::GetJSPurpleBuffer()
+{
+  if (!mJSPurpleBuffer) {
+    // JSPurpleBuffer keeps itself alive, but we need to create it in such way
+    // that it ends up in the normal purple buffer. That happens when
+    // nsRefPtr goes out of the scope and calls Release.
+    nsRefPtr<JSPurpleBuffer> pb = new JSPurpleBuffer(mJSPurpleBuffer);
+  }
+  return mJSPurpleBuffer;
 }
 
 ////////////////////////////////////////////////////////////////////////
@@ -3396,7 +3724,7 @@ nsCycleCollector_collect(nsICycleCollectorListener *aManualListener)
 }
 
 void
-nsCycleCollector_scheduledCollect()
+nsCycleCollector_collectSlice(int64_t aSliceTime)
 {
     CollectorData *data = sCollectorData.get();
 
@@ -3404,9 +3732,14 @@ nsCycleCollector_scheduledCollect()
     MOZ_ASSERT(data);
     MOZ_ASSERT(data->mCollector);
 
-    PROFILER_LABEL("CC", "nsCycleCollector_scheduledCollect");
-    SliceBudget unlimitedBudget;
-    data->mCollector->Collect(ScheduledCC, unlimitedBudget, nullptr);
+    PROFILER_LABEL("CC", "nsCycleCollector_collectSlice");
+    SliceBudget budget;
+    if (aSliceTime > 0) {
+        budget = SliceBudget::TimeBudget(aSliceTime);
+    } else if (aSliceTime == 0) {
+        budget = SliceBudget::WorkBudget(1);
+    }
+    data->mCollector->Collect(SliceCC, budget, nullptr);
 }
 
 void

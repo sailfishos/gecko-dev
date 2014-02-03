@@ -78,9 +78,23 @@ public:
    * for this layers tree. This function should return false if there are no
    * last known zoom constraints.
    */
-  virtual bool GetRootZoomConstraints(bool* aOutAllowZoom,
-                                      CSSToScreenScale* aOutMinZoom,
-                                      CSSToScreenScale* aOutMaxZoom)
+  virtual bool GetRootZoomConstraints(ZoomConstraints* aOutConstraints)
+  {
+    return false;
+  }
+
+  /**
+   * APZ uses |FrameMetrics::mCompositionBounds| for hit testing. Sometimes,
+   * widget code has knowledge of a touch-sensitive region that should
+   * additionally constrain hit testing for all frames associated with the
+   * controller. This method allows APZ to query the controller for such a
+   * region. A return value of true indicates that the controller has such a
+   * region, and it is returned in |aOutRegion|.
+   * TODO: once bug 928833 is implemented, this should be removed, as
+   * APZ can then get the correct touch-sensitive region for each frame
+   * directly from the layer.
+   */
+  virtual bool GetTouchSensitiveRegion(CSSRect* aOutRegion)
   {
     return false;
   }

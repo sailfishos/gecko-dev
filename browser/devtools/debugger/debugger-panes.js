@@ -3,7 +3,12 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 "use strict";
+
+// Used to detect minification for automatic pretty printing
+const SAMPLE_SIZE = 30; // no of lines
+const INDENT_COUNT_THRESHOLD = 20; // percentage
 
 /**
  * Functions handling the sources UI.
@@ -19,7 +24,6 @@ function SourcesView() {
   this._onEditorUnload = this._onEditorUnload.bind(this);
   this._onEditorCursorActivity = this._onEditorCursorActivity.bind(this);
   this._onSourceSelect = this._onSourceSelect.bind(this);
-  this._onSourceClick = this._onSourceClick.bind(this);
   this._onStopBlackBoxing = this._onStopBlackBoxing.bind(this);
   this._onBreakpointRemoved = this._onBreakpointRemoved.bind(this);
   this._onBreakpointClick = this._onBreakpointClick.bind(this);
@@ -64,7 +68,6 @@ SourcesView.prototype = Heritage.extend(WidgetMethods, {
     window.on(EVENTS.EDITOR_LOADED, this._onEditorLoad, false);
     window.on(EVENTS.EDITOR_UNLOADED, this._onEditorUnload, false);
     this.widget.addEventListener("select", this._onSourceSelect, false);
-    this.widget.addEventListener("click", this._onSourceClick, false);
     this._stopBlackBoxButton.addEventListener("click", this._onStopBlackBoxing, false);
     this._cbPanel.addEventListener("popupshowing", this._onConditionalPopupShowing, false);
     this._cbPanel.addEventListener("popupshown", this._onConditionalPopupShown, false);
@@ -74,8 +77,11 @@ SourcesView.prototype = Heritage.extend(WidgetMethods, {
 
     this.autoFocusOnSelection = false;
 
-    // Show an empty label by default.
-    this.empty();
+    // Sort the contents by the displayed label.
+    this.sortContents((aFirst, aSecond) => {
+      return +(aFirst.attachment.label.toLowerCase() >
+               aSecond.attachment.label.toLowerCase());
+    });
   },
 
   /**
@@ -87,7 +93,6 @@ SourcesView.prototype = Heritage.extend(WidgetMethods, {
     window.off(EVENTS.EDITOR_LOADED, this._onEditorLoad, false);
     window.off(EVENTS.EDITOR_UNLOADED, this._onEditorUnload, false);
     this.widget.removeEventListener("select", this._onSourceSelect, false);
-    this.widget.removeEventListener("click", this._onSourceClick, false);
     this._stopBlackBoxButton.removeEventListener("click", this._onStopBlackBoxing, false);
     this._cbPanel.removeEventListener("popupshowing", this._onConditionalPopupShowing, false);
     this._cbPanel.removeEventListener("popupshowing", this._onConditionalPopupShown, false);
@@ -124,10 +129,18 @@ SourcesView.prototype = Heritage.extend(WidgetMethods, {
     let label = SourceUtils.getSourceLabel(url.split(" -> ").pop());
     let group = SourceUtils.getSourceGroup(url.split(" -> ").pop());
 
+    let contents = document.createElement("label");
+    contents.className = "plain dbg-source-item";
+    contents.setAttribute("value", label);
+    contents.setAttribute("crop", "start");
+    contents.setAttribute("flex", "1");
+
     // Append a source item to this container.
-    this.push([label, url, group], {
+    this.push([contents, url], {
       staged: aOptions.staged, /* stage the item to be appended later? */
       attachment: {
+        label: label,
+        group: group,
         checkboxState: !aSource.isBlackBoxed,
         checkboxTooltip: this._blackBoxCheckboxTooltip,
         source: aSource
@@ -769,8 +782,19 @@ SourcesView.prototype = Heritage.extend(WidgetMethods, {
     if (!sourceItem) {
       return;
     }
+    const { source } = sourceItem.attachment;
+    const sourceClient = gThreadClient.source(source);
+
     // The container is not empty and an actual item was selected.
     DebuggerView.setEditorLocation(sourceItem.value);
+
+    if (Prefs.autoPrettyPrint && !sourceClient.isPrettyPrinted) {
+      DebuggerController.SourceScripts.getText(source).then(([, aText]) => {
+        if (SourceUtils.isMinified(sourceClient, aText)) {
+          this.togglePrettyPrint();
+        }
+      }).then(null, e => DevToolsUtils.reportException("_onSourceSelect", e));
+    }
 
     // Set window title. No need to split the url by " -> " here, because it was
     // already sanitized when the source was added.
@@ -778,14 +802,6 @@ SourcesView.prototype = Heritage.extend(WidgetMethods, {
 
     DebuggerView.maybeShowBlackBoxMessage();
     this.updateToolbarButtonsState();
-  },
-
-  /**
-   * The click listener for the sources container.
-   */
-  _onSourceClick: function() {
-    // Use this container as a filtering target.
-    DebuggerView.Filtering.target = this;
   },
 
   /**
@@ -1057,11 +1073,399 @@ SourcesView.prototype = Heritage.extend(WidgetMethods, {
 });
 
 /**
+ * Functions handling the traces UI.
+ */
+function TracerView() {
+  this._selectedItem = null;
+  this._matchingItems = null;
+  this.widget = null;
+
+  this._highlightItem = this._highlightItem.bind(this);
+  this._isNotSelectedItem = this._isNotSelectedItem.bind(this);
+
+  this._unhighlightMatchingItems =
+    DevToolsUtils.makeInfallible(this._unhighlightMatchingItems.bind(this));
+  this._onToggleTracing =
+    DevToolsUtils.makeInfallible(this._onToggleTracing.bind(this));
+  this._onStartTracing =
+    DevToolsUtils.makeInfallible(this._onStartTracing.bind(this));
+  this._onClear =
+    DevToolsUtils.makeInfallible(this._onClear.bind(this));
+  this._onSelect =
+    DevToolsUtils.makeInfallible(this._onSelect.bind(this));
+  this._onMouseOver =
+    DevToolsUtils.makeInfallible(this._onMouseOver.bind(this));
+  this._onSearch = DevToolsUtils.makeInfallible(this._onSearch.bind(this));
+}
+
+TracerView.MAX_TRACES = 200;
+
+TracerView.prototype = Heritage.extend(WidgetMethods, {
+  /**
+   * Initialization function, called when the debugger is started.
+   */
+  initialize: function() {
+    dumpn("Initializing the TracerView");
+
+    this._traceButton = document.getElementById("trace");
+    this._tracerTab = document.getElementById("tracer-tab");
+
+    // Remove tracer related elements from the dom and tear everything down if
+    // the tracer isn't enabled.
+    if (!Prefs.tracerEnabled) {
+      this._traceButton.remove();
+      this._traceButton = null;
+      this._tracerTab.remove();
+      this._tracerTab = null;
+      return;
+    }
+
+    this.widget = new FastListWidget(document.getElementById("tracer-traces"));
+    this._traceButton.removeAttribute("hidden");
+    this._tracerTab.removeAttribute("hidden");
+
+    this._search = document.getElementById("tracer-search");
+    this._template = document.getElementsByClassName("trace-item-template")[0];
+    this._templateItem = this._template.getElementsByClassName("trace-item")[0];
+    this._templateTypeIcon = this._template.getElementsByClassName("trace-type")[0];
+    this._templateNameNode = this._template.getElementsByClassName("trace-name")[0];
+
+    this.widget.addEventListener("select", this._onSelect, false);
+    this.widget.addEventListener("mouseover", this._onMouseOver, false);
+    this.widget.addEventListener("mouseout", this._unhighlightMatchingItems, false);
+    this._search.addEventListener("input", this._onSearch, false);
+
+    this._startTooltip = L10N.getStr("startTracingTooltip");
+    this._stopTooltip = L10N.getStr("stopTracingTooltip");
+    this._tracingNotStartedString = L10N.getStr("tracingNotStartedText");
+    this._noFunctionCallsString = L10N.getStr("noFunctionCallsText");
+
+    this._traceButton.setAttribute("tooltiptext", this._startTooltip);
+    this.emptyText = this._tracingNotStartedString;
+  },
+
+  /**
+   * Destruction function, called when the debugger is closed.
+   */
+  destroy: function() {
+    dumpn("Destroying the TracerView");
+
+    if (!this.widget) {
+      return;
+    }
+
+    this.widget.removeEventListener("select", this._onSelect, false);
+    this.widget.removeEventListener("mouseover", this._onMouseOver, false);
+    this.widget.removeEventListener("mouseout", this._unhighlightMatchingItems, false);
+    this._search.removeEventListener("input", this._onSearch, false);
+  },
+
+  /**
+   * Function invoked by the "toggleTracing" command to switch the tracer state.
+   */
+  _onToggleTracing: function() {
+    if (DebuggerController.Tracer.tracing) {
+      this._onStopTracing();
+    } else {
+      this._onStartTracing();
+    }
+  },
+
+  /**
+   * Function invoked either by the "startTracing" command or by
+   * _onToggleTracing to start execution tracing in the backend.
+   *
+   * @return object
+   *         A promise resolved once the tracing has successfully started.
+   */
+  _onStartTracing: function() {
+    this._traceButton.setAttribute("checked", true);
+    this._traceButton.setAttribute("tooltiptext", this._stopTooltip);
+
+    this.empty();
+    this.emptyText = this._noFunctionCallsString;
+
+    let deferred = promise.defer();
+    DebuggerController.Tracer.startTracing(deferred.resolve);
+    return deferred.promise;
+  },
+
+  /**
+   * Function invoked by _onToggleTracing to stop execution tracing in the
+   * backend.
+   *
+   * @return object
+   *         A promise resolved once the tracing has successfully stopped.
+   */
+  _onStopTracing: function() {
+    this._traceButton.removeAttribute("checked");
+    this._traceButton.setAttribute("tooltiptext", this._startTooltip);
+
+    this.emptyText = this._tracingNotStartedString;
+
+    let deferred = promise.defer();
+    DebuggerController.Tracer.stopTracing(deferred.resolve);
+    return deferred.promise;
+  },
+
+  /**
+   * Function invoked by the "clearTraces" command to empty the traces pane.
+   */
+  _onClear: function() {
+    this.empty();
+  },
+
+  /**
+   * Populate the given parent scope with the variable with the provided name
+   * and value.
+   *
+   * @param String aName
+   *        The name of the variable.
+   * @param Object aParent
+   *        The parent scope.
+   * @param Object aValue
+   *        The value of the variable.
+   */
+  _populateVariable: function(aName, aParent, aValue) {
+    let item = aParent.addItem(aName, { value: aValue });
+    if (aValue) {
+      let wrappedValue = new DebuggerController.Tracer.WrappedObject(aValue);
+      DebuggerView.Variables.controller.populate(item, wrappedValue);
+      item.expand();
+      item.twisty = false;
+    }
+  },
+
+  /**
+   * Handler for the widget's "select" event. Displays parameters, exception, or
+   * return value depending on whether the selected trace is a call, throw, or
+   * return respectively.
+   *
+   * @param Object traceItem
+   *        The selected trace item.
+   */
+  _onSelect: function _onSelect({ detail: traceItem }) {
+    if (!traceItem) {
+      return;
+    }
+
+    const data = traceItem.attachment.trace;
+    const { location: { url, line } } = data;
+    DebuggerView.setEditorLocation(url, line, { noDebug: true });
+
+    DebuggerView.Variables.empty();
+    const scope = DebuggerView.Variables.addScope();
+
+    if (data.type == "call") {
+      const params = DevToolsUtils.zip(data.parameterNames, data.arguments);
+      for (let [name, val] of params) {
+        if (val === undefined) {
+          scope.addItem(name, { value: "<value not available>" });
+        } else {
+          this._populateVariable(name, scope, val);
+        }
+      }
+    } else {
+      const varName = "<" + (data.type == "throw" ? "exception" : data.type) + ">";
+      this._populateVariable(varName, scope, data.returnVal);
+    }
+
+    scope.expand();
+    DebuggerView.showInstrumentsPane();
+  },
+
+  /**
+   * Add the hover frame enter/exit highlighting to a given item.
+   */
+  _highlightItem: function(aItem) {
+    if (!aItem || !aItem.target) {
+      return;
+    }
+    const trace = aItem.target.querySelector(".trace-item");
+    trace.classList.add("selected-matching");
+  },
+
+  /**
+   * Remove the hover frame enter/exit highlighting to a given item.
+   */
+  _unhighlightItem: function(aItem) {
+    if (!aItem || !aItem.target) {
+      return;
+    }
+    const match = aItem.target.querySelector(".selected-matching");
+    if (match) {
+      match.classList.remove("selected-matching");
+    }
+  },
+
+  /**
+   * Remove the frame enter/exit pair highlighting we do when hovering.
+   */
+  _unhighlightMatchingItems: function() {
+    if (this._matchingItems) {
+      this._matchingItems.forEach(this._unhighlightItem);
+      this._matchingItems = null;
+    }
+  },
+
+  /**
+   * Returns true if the given item is not the selected item.
+   */
+  _isNotSelectedItem: function(aItem) {
+    return aItem !== this.selectedItem;
+  },
+
+  /**
+   * Highlight the frame enter/exit pair of items for the given item.
+   */
+  _highlightMatchingItems: function(aItem) {
+    const frameId = aItem.attachment.trace.frameId;
+    const predicate = e => e.attachment.trace.frameId == frameId;
+
+    this._unhighlightMatchingItems();
+    this._matchingItems = this.items.filter(predicate);
+    this._matchingItems
+      .filter(this._isNotSelectedItem)
+      .forEach(this._highlightItem);
+  },
+
+  /**
+   * Listener for the mouseover event.
+   */
+  _onMouseOver: function({ target }) {
+    const traceItem = this.getItemForElement(target);
+    if (traceItem) {
+      this._highlightMatchingItems(traceItem);
+    }
+  },
+
+  /**
+   * Listener for typing in the search box.
+   */
+  _onSearch: function() {
+    const query = this._search.value.trim().toLowerCase();
+    const predicate = name => name.toLowerCase().contains(query);
+    this.filterContents(item => predicate(item.attachment.trace.name));
+  },
+
+  /**
+   * Select the traces tab in the sidebar.
+   */
+  selectTab: function() {
+    const tabs = this._tracerTab.parentElement;
+    tabs.selectedIndex = Array.indexOf(tabs.children, this._tracerTab);
+  },
+
+  /**
+   * Commit all staged items to the widget. Overridden so that we can call
+   * |FastListWidget.prototype.flush|.
+   */
+  commit: function() {
+    WidgetMethods.commit.call(this);
+    // TODO: Accessing non-standard widget properties. Figure out what's the
+    // best way to expose such things. Bug 895514.
+    this.widget.flush();
+  },
+
+  /**
+   * Adds the trace record provided as an argument to the view.
+   *
+   * @param object aTrace
+   *        The trace record coming from the tracer actor.
+   */
+  addTrace: function(aTrace) {
+    // Create the element node for the trace item.
+    let view = this._createView(aTrace);
+
+    // Append a source item to this container.
+    this.push([view], {
+      staged: true,
+      attachment: {
+        trace: aTrace
+      }
+    });
+  },
+
+  /**
+   * Customization function for creating an item's UI.
+   *
+   * @return nsIDOMNode
+   *         The network request view.
+   */
+  _createView: function(aTrace) {
+    let { type, name, location, depth, frameId } = aTrace;
+    let { parameterNames, returnVal, arguments: args } = aTrace;
+    let fragment = document.createDocumentFragment();
+
+    this._templateItem.setAttribute("tooltiptext", SourceUtils.trimUrl(location.url));
+    this._templateItem.style.MozPaddingStart = depth + "em";
+
+    const TYPES = ["call", "yield", "return", "throw"];
+    for (let t of TYPES) {
+      this._templateTypeIcon.classList.toggle("trace-" + t, t == type);
+    }
+    this._templateTypeIcon.setAttribute("value", {
+      call: "\u2192",
+      yield: "Y",
+      return: "\u2190",
+      throw: "E",
+      terminated: "TERMINATED"
+    }[type]);
+
+    this._templateNameNode.setAttribute("value", name);
+
+    // All extra syntax and parameter nodes added.
+    const addedNodes = [];
+
+    if (parameterNames) {
+      const syntax = (p) => {
+        const el = document.createElement("label");
+        el.setAttribute("value", p);
+        el.classList.add("trace-syntax");
+        el.classList.add("plain");
+        addedNodes.push(el);
+        return el;
+      };
+
+      this._templateItem.appendChild(syntax("("));
+
+      for (let i = 0, n = parameterNames.length; i < n; i++) {
+        let param = document.createElement("label");
+        param.setAttribute("value", parameterNames[i]);
+        param.classList.add("trace-param");
+        param.classList.add("plain");
+        addedNodes.push(param);
+        this._templateItem.appendChild(param);
+
+        if (i + 1 !== n) {
+          this._templateItem.appendChild(syntax(", "));
+        }
+      }
+
+      this._templateItem.appendChild(syntax(")"));
+    }
+
+    // Flatten the DOM by removing one redundant box (the template container).
+    for (let node of this._template.childNodes) {
+      fragment.appendChild(node.cloneNode(true));
+    }
+
+    // Remove any added nodes from the template.
+    for (let node of addedNodes) {
+      this._templateItem.removeChild(node);
+    }
+
+    return fragment;
+  }
+});
+
+/**
  * Utility functions for handling sources.
  */
 let SourceUtils = {
   _labelsCache: new Map(), // Can't use WeakMaps because keys are strings.
   _groupsCache: new Map(),
+  _minifiedCache: new WeakMap(),
 
   /**
    * Returns true if the specified url and/or content type are specific to
@@ -1076,13 +1480,53 @@ let SourceUtils = {
   },
 
   /**
-   * Clears the labels cache, populated by methods like
+   * Determines if the source text is minified by using
+   * the percentage indented of a subset of lines
+   *
+   * @param string aText
+   *        The source text.
+   * @return boolean
+   *        True if source text is minified.
+   */
+  isMinified: function(sourceClient, aText){
+    if (this._minifiedCache.has(sourceClient)) {
+      return this._minifiedCache.get(sourceClient);
+    }
+
+    let isMinified;
+    let lineEndIndex = 0;
+    let lineStartIndex = 0;
+    let lines = 0;
+    let indentCount = 0;
+
+    // Strip comments.
+    aText = aText.replace(/\/\*[\S\s]*?\*\/|\/\/(.+|\n)/g, "");
+
+    while (lines++ < SAMPLE_SIZE) {
+      lineEndIndex = aText.indexOf("\n", lineStartIndex);
+      if (lineEndIndex == -1) {
+         break;
+      }
+      if (/^\s+/.test(aText.slice(lineStartIndex, lineEndIndex))) {
+        indentCount++;
+      }
+      lineStartIndex = lineEndIndex + 1;
+    }
+    isMinified = ((indentCount / lines ) * 100) < INDENT_COUNT_THRESHOLD;
+
+    this._minifiedCache.set(sourceClient, isMinified);
+    return isMinified;
+  },
+
+  /**
+   * Clears the labels, groups and minify cache, populated by methods like
    * SourceUtils.getSourceLabel or Source Utils.getSourceGroup.
    * This should be done every time the content location changes.
    */
   clearCache: function() {
     this._labelsCache.clear();
     this._groupsCache.clear();
+    this._minifiedCache.clear();
   },
 
   /**
@@ -1232,7 +1676,7 @@ let SourceUtils = {
     if (aLabel && aLabel.indexOf("?") != 0) {
       // A page may contain multiple requests to the same url but with different
       // queries. It is *not* redundant to show each one.
-      if (!DebuggerView.Sources.containsLabel(aLabel)) {
+      if (!DebuggerView.Sources.getItemForAttachment(e => e.label == aLabel)) {
         return aLabel;
       }
     }
@@ -1424,13 +1868,18 @@ VariableBubbleView.prototype = {
     if (VariablesView.isPrimitive({ value: objectActor })) {
       let className = VariablesView.getClass(objectActor);
       let textContent = VariablesView.getString(objectActor);
-      this._tooltip.setTextContent([textContent], className, "plain");
+      this._tooltip.setTextContent({
+        messages: [textContent],
+        messagesClass: className,
+        containerClass: "plain"
+      });
     } else {
       this._tooltip.setVariableContent(objectActor, {
         searchPlaceholder: L10N.getStr("emptyPropertiesFilterText"),
         searchEnabled: Prefs.variablesSearchboxVisible,
-        eval: aString => {
-          DebuggerController.StackFrames.evaluate(aString);
+        eval: (variable, value) => {
+          let string = variable.evaluationMacro(variable, value);
+          DebuggerController.StackFrames.evaluate(string);
           DebuggerView.VariableBubble.hideContents();
         }
       }, {
@@ -1448,13 +1897,7 @@ VariableBubbleView.prototype = {
       });
     }
 
-    // Calculate the x, y coordinates for the variable bubble anchor.
-    let identifierCenter = { line: line - 1, ch: column + length / 2 };
-    let anchor = editor.getCoordsFromPosition(identifierCenter);
-
-    this._tooltip.defaultOffsetX = anchor.left + EDITOR_VARIABLE_POPUP_OFFSET_X;
-    this._tooltip.defaultOffsetY = anchor.top + EDITOR_VARIABLE_POPUP_OFFSET_Y;
-    this._tooltip.show(this._editorContainer);
+    this._tooltip.show(this._markedText.anchor);
   },
 
   /**
@@ -1463,6 +1906,16 @@ VariableBubbleView.prototype = {
   hideContents: function() {
     clearNamedTimeout("editor-mouse-move");
     this._tooltip.hide();
+  },
+
+  /**
+   * Checks whether the inspection popup is shown.
+   *
+   * @return boolean
+   *         True if the panel is shown or showing, false otherwise.
+   */
+  contentsShown: function() {
+    return this._tooltip.isShown();
   },
 
   /**
@@ -1557,11 +2010,11 @@ WatchExpressionsView.prototype = Heritage.extend(WidgetMethods, {
   initialize: function() {
     dumpn("Initializing the WatchExpressionsView");
 
-    this.widget = new ListWidget(document.getElementById("expressions"));
-    this.widget.permaText = L10N.getStr("addWatchExpressionText");
-    this.widget.itemFactory = this._createItemView;
+    this.widget = new SimpleListWidget(document.getElementById("expressions"));
     this.widget.setAttribute("context", "debuggerWatchExpressionsContextMenu");
     this.widget.addEventListener("click", this._onClick, false);
+
+    this.headerText = L10N.getStr("addWatchExpressionText");
   },
 
   /**
@@ -1583,19 +2036,22 @@ WatchExpressionsView.prototype = Heritage.extend(WidgetMethods, {
     // Watch expressions are UI elements which benefit from visible panes.
     DebuggerView.showInstrumentsPane();
 
+    // Create the element node for the watch expression item.
+    let itemView = this._createItemView(aExpression);
+
     // Append a watch expression item to this container.
-    let expressionItem = this.push([, aExpression], {
+    let expressionItem = this.push([itemView.container], {
       index: 0, /* specifies on which position should the item be appended */
-      relaxed: true, /* this container should allow dupes & degenerates */
       attachment: {
+        view: itemView,
         initialExpression: aExpression,
-        currentExpression: ""
+        currentExpression: "",
       }
     });
 
     // Automatically focus the new watch expression input.
-    expressionItem.attachment.inputNode.select();
-    expressionItem.attachment.inputNode.focus();
+    expressionItem.attachment.view.inputNode.select();
+    expressionItem.attachment.view.inputNode.focus();
     DebuggerView.Variables.parentNode.scrollTop = 0;
   },
 
@@ -1621,7 +2077,7 @@ WatchExpressionsView.prototype = Heritage.extend(WidgetMethods, {
 
     // Save the watch expression code string.
     expressionItem.attachment.currentExpression = aExpression;
-    expressionItem.attachment.inputNode.value = aExpression;
+    expressionItem.attachment.view.inputNode.value = aExpression;
 
     // Synchronize with the controller's watch expressions store.
     DebuggerController.StackFrames.syncWatchExpressions();
@@ -1671,18 +2127,19 @@ WatchExpressionsView.prototype = Heritage.extend(WidgetMethods, {
   /**
    * Customization function for creating an item's UI.
    *
-   * @param nsIDOMNode aElementNode
-   *        The element associated with the displayed item.
-   * @param any aAttachment
-   *        Some attached primitive/object.
+   * @param string aExpression
+   *        The watch expression string.
    */
-  _createItemView: function(aElementNode, aAttachment) {
-    let arrowNode = document.createElement("box");
+  _createItemView: function(aExpression) {
+    let container = document.createElement("hbox");
+    container.className = "list-widget-item dbg-expression";
+
+    let arrowNode = document.createElement("hbox");
     arrowNode.className = "dbg-expression-arrow";
 
     let inputNode = document.createElement("textbox");
     inputNode.className = "plain dbg-expression-input devtools-monospace";
-    inputNode.setAttribute("value", aAttachment.initialExpression);
+    inputNode.setAttribute("value", aExpression);
     inputNode.setAttribute("flex", "1");
 
     let closeNode = document.createElement("toolbarbutton");
@@ -1692,14 +2149,16 @@ WatchExpressionsView.prototype = Heritage.extend(WidgetMethods, {
     inputNode.addEventListener("blur", this._onBlur, false);
     inputNode.addEventListener("keypress", this._onKeyPress, false);
 
-    aElementNode.className = "dbg-expression";
-    aElementNode.appendChild(arrowNode);
-    aElementNode.appendChild(inputNode);
-    aElementNode.appendChild(closeNode);
+    container.appendChild(arrowNode);
+    container.appendChild(inputNode);
+    container.appendChild(closeNode);
 
-    aAttachment.arrowNode = arrowNode;
-    aAttachment.inputNode = inputNode;
-    aAttachment.closeNode = closeNode;
+    return {
+      container: container,
+      arrowNode: arrowNode,
+      inputNode: inputNode,
+      closeNode: closeNode
+    };
   },
 
   /**
@@ -1811,7 +2270,6 @@ EventListenersView.prototype = Heritage.extend(WidgetMethods, {
     dumpn("Initializing the EventListenersView");
 
     this.widget = new SideMenuWidget(document.getElementById("event-listeners"), {
-      theme: "light",
       showItemCheckboxes: true,
       showGroupCheckboxes: true
     });
@@ -1824,9 +2282,6 @@ EventListenersView.prototype = Heritage.extend(WidgetMethods, {
 
     this.widget.addEventListener("check", this._onCheck, false);
     this.widget.addEventListener("click", this._onClick, false);
-
-    // Show an empty label by default.
-    this.empty();
   },
 
   /**
@@ -1941,13 +2396,14 @@ EventListenersView.prototype = Heritage.extend(WidgetMethods, {
       DebuggerController.Breakpoints.DOM.activeEventNames.indexOf(type) != -1;
 
     // Append an event listener item to this container.
-    this.push([itemView.container, url, group], {
+    this.push([itemView.container], {
       staged: aOptions.staged, /* stage the item to be appended later? */
       attachment: {
         url: url,
         type: type,
         view: itemView,
         selectors: [selector],
+        group: group,
         checkboxState: checkboxState,
         checkboxTooltip: this._eventCheckboxTooltip
       }
@@ -2037,7 +2493,7 @@ EventListenersView.prototype = Heritage.extend(WidgetMethods, {
 
     // Check all the event items in this group.
     this.items
-      .filter(e => e.description == description)
+      .filter(e => e.attachment.group == description)
       .forEach(e => this.callMethod("checkItem", e.target, checked));
   },
 
@@ -2067,7 +2523,6 @@ EventListenersView.prototype = Heritage.extend(WidgetMethods, {
 function GlobalSearchView() {
   dumpn("GlobalSearchView was instantiated");
 
-  this._createItemView = this._createItemView.bind(this);
   this._onHeaderClick = this._onHeaderClick.bind(this);
   this._onLineClick = this._onLineClick.bind(this);
   this._onMatchClick = this._onMatchClick.bind(this);
@@ -2080,11 +2535,10 @@ GlobalSearchView.prototype = Heritage.extend(WidgetMethods, {
   initialize: function() {
     dumpn("Initializing the GlobalSearchView");
 
-    this.widget = new ListWidget(document.getElementById("globalsearch"));
+    this.widget = new SimpleListWidget(document.getElementById("globalsearch"));
     this._splitter = document.querySelector("#globalsearch + .devtools-horizontal-splitter");
 
-    this.widget.emptyText = L10N.getStr("noMatchingStringsText");
-    this.widget.itemFactory = this._createItemView;
+    this.emptyText = L10N.getStr("noMatchingStringsText");
   },
 
   /**
@@ -2291,29 +2745,20 @@ GlobalSearchView.prototype = Heritage.extend(WidgetMethods, {
    *        An object containing all the matched lines for a specific source.
    */
   _createSourceResultsUI: function(aSourceResults) {
-    // Append a source results item to this container.
-    this.push([], {
-      index: -1, /* specifies on which position should the item be appended */
-      relaxed: true, /* this container should allow dupes & degenerates */
-      attachment: {
-        sourceResults: aSourceResults
-      }
-    });
-  },
-
-  /**
-   * Customization function for creating an item's UI.
-   *
-   * @param nsIDOMNode aElementNode
-   *        The element associated with the displayed item.
-   * @param any aAttachment
-   *        Some attached primitive/object.
-   */
-  _createItemView: function(aElementNode, aAttachment) {
-    aAttachment.sourceResults.createView(aElementNode, {
+    // Create the element node for the source results item.
+    let container = document.createElement("hbox");
+    aSourceResults.createView(container, {
       onHeaderClick: this._onHeaderClick,
       onLineClick: this._onLineClick,
       onMatchClick: this._onMatchClick
+    });
+
+    // Append a source results item to this container.
+    let item = this.push([container], {
+      index: -1, /* specifies on which position should the item be appended */
+      attachment: {
+        sourceResults: aSourceResults
+      }
     });
   },
 
@@ -2355,7 +2800,15 @@ GlobalSearchView.prototype = Heritage.extend(WidgetMethods, {
     let line = lineResultsItem.instance.line;
 
     DebuggerView.setEditorLocation(url, line + 1, { noDebug: true });
-    DebuggerView.editor.extendSelection(lineResultsItem.lineData.range);
+
+    let range = lineResultsItem.lineData.range;
+    let cursor = DebuggerView.editor.getOffset({ line: line, ch: 0 });
+    let [ anchor, head ] = DebuggerView.editor.getPosition(
+      cursor + range.start,
+      cursor + range.start + range.length
+    );
+
+    DebuggerView.editor.setSelection(anchor, head);
   },
 
   /**
@@ -2365,10 +2818,7 @@ GlobalSearchView.prototype = Heritage.extend(WidgetMethods, {
    *        The match to scroll into view.
    */
   _scrollMatchIntoViewIfNeeded: function(aMatch) {
-    // TODO: Accessing private widget properties. Figure out what's the best
-    // way to expose such things. Bug 876271.
-    let boxObject = this.widget._parent.boxObject.QueryInterface(Ci.nsIScrollBoxObject);
-    boxObject.ensureElementIsVisible(aMatch);
+    this.widget.ensureElementIsVisible(aMatch);
   },
 
   /**
@@ -2623,7 +3073,7 @@ LineResults.prototype = {
     lineNumberNode.setAttribute("value", this.line + 1);
 
     let lineContentsNode = document.createElement("hbox");
-    lineContentsNode.className = "light list-widget-item dbg-results-line-contents";
+    lineContentsNode.className = "dbg-results-line-contents";
     lineContentsNode.classList.add("devtools-monospace");
     lineContentsNode.setAttribute("flex", "1");
 
@@ -2789,6 +3239,7 @@ LineResults.size = function() {
  */
 DebuggerView.Sources = new SourcesView();
 DebuggerView.VariableBubble = new VariableBubbleView();
+DebuggerView.Tracer = new TracerView();
 DebuggerView.WatchExpressions = new WatchExpressionsView();
 DebuggerView.EventListeners = new EventListenersView();
 DebuggerView.GlobalSearch = new GlobalSearchView();

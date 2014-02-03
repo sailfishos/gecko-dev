@@ -47,6 +47,8 @@ using mozilla::unused;
 #include "mozilla/layers/APZCTreeManager.h"
 #include "GLContext.h"
 #include "GLContextProvider.h"
+#include "ScopedGLHelpers.h"
+#include "mozilla/layers/CompositorOGL.h"
 
 #include "nsTArray.h"
 
@@ -88,7 +90,7 @@ class ContentCreationNotifier MOZ_FINAL : public nsIObserver
 
     NS_IMETHOD Observe(nsISupports* aSubject,
                        const char* aTopic,
-                       const PRUnichar* aData)
+                       const char16_t* aData)
     {
         if (!strcmp(aTopic, "ipc:content-created")) {
             nsCOMPtr<nsIObserver> cpo = do_QueryInterface(aSubject);
@@ -982,21 +984,21 @@ nsWindow::DrawTo(gfxASurface *targetSurface, const nsIntRect &invalidRect)
         mWidgetListener->WillPaintWindow(this);
 
         switch (GetLayerManager(nullptr)->GetBackendType()) {
-            case mozilla::layers::LAYERS_BASIC: {
+            case mozilla::layers::LayersBackend::LAYERS_BASIC: {
 
                 nsRefPtr<gfxContext> ctx = new gfxContext(targetSurface);
 
                 {
                     mozilla::layers::RenderTraceScope trace2("Basic DrawTo", "727272");
                     AutoLayerManagerSetup
-                      setupLayerManager(this, ctx, mozilla::layers::BUFFER_NONE);
+                      setupLayerManager(this, ctx, mozilla::layers::BufferMode::BUFFER_NONE);
 
                     mWidgetListener->PaintWindow(this, region);
                 }
                 break;
             }
 
-            case mozilla::layers::LAYERS_CLIENT: {
+            case mozilla::layers::LayersBackend::LAYERS_CLIENT: {
                 mWidgetListener->PaintWindow(this, region);
                 break;
             }
@@ -1057,9 +1059,6 @@ nsWindow::OnDraw(AndroidGeckoEvent *ae)
 
     nsRefPtr<nsWindow> kungFuDeathGrip(this);
 
-    JNIEnv *env = AndroidBridge::GetJNIEnv();
-    if (!env)
-        return;
     AutoLocalJNIFrame jniFrame;
 
     // We're paused, or we haven't been given a window-size yet, so do nothing
@@ -1068,10 +1067,10 @@ nsWindow::OnDraw(AndroidGeckoEvent *ae)
     }
 
     int bytesPerPixel = 2;
-    gfxImageFormat format = gfxImageFormatRGB16_565;
+    gfxImageFormat format = gfxImageFormat::RGB16_565;
     if (AndroidBridge::Bridge()->GetScreenDepth() == 24) {
         bytesPerPixel = 4;
-        format = gfxImageFormatRGB24;
+        format = gfxImageFormat::RGB24;
     }
 
     layers::renderTraceEventStart("Get surface", "424545");
@@ -1263,7 +1262,7 @@ nsWindow::DispatchMotionEvent(WidgetInputEvent &event, AndroidGeckoEvent *ae,
 {
     nsIntPoint offset = WidgetToScreenOffset();
 
-    event.modifiers = 0;
+    event.modifiers = ae->DOMModifiers();
     event.time = ae->Time();
 
     // XXX possibly bound the range of event.refPoint here.
@@ -1575,7 +1574,7 @@ nsWindow::InitKeyEvent(WidgetKeyboardEvent& event, AndroidGeckoEvent& key,
     if (event.mKeyNameIndex == KEY_NAME_INDEX_USE_STRING) {
         int keyValue = key.DOMPrintableKeyValue();
         if (keyValue) {
-            event.mKeyValue = static_cast<PRUnichar>(keyValue);
+            event.mKeyValue = static_cast<char16_t>(keyValue);
         }
     }
     uint32_t domKeyCode = ConvertAndroidKeyCodeToDOMKeyCode(key.KeyCode());
@@ -1609,16 +1608,19 @@ nsWindow::InitKeyEvent(WidgetKeyboardEvent& event, AndroidGeckoEvent& key,
         event.pluginEvent = pluginEvent;
     }
 
-    if (event.message != NS_KEY_PRESS ||
-        !key.UnicodeChar() || !key.BaseUnicodeChar() ||
-        key.UnicodeChar() == key.BaseUnicodeChar()) {
-        // For keypress, if the unicode char already has modifiers applied, we
-        // don't specify extra modifiers. If UnicodeChar() != BaseUnicodeChar()
-        // it means UnicodeChar() already has modifiers applied.
-        event.InitBasicModifiers(gMenu || key.IsCtrlPressed(),
-                                 key.IsAltPressed(),
-                                 key.IsShiftPressed(),
-                                 key.IsMetaPressed());
+    event.modifiers = key.DOMModifiers();
+    if (gMenu) {
+        event.modifiers |= MODIFIER_CONTROL;
+    }
+    // For keypress, if the unicode char already has modifiers applied, we
+    // don't specify extra modifiers. If UnicodeChar() != BaseUnicodeChar()
+    // it means UnicodeChar() already has modifiers applied.
+    // Note that on Android 4.x, Alt modifier isn't set when the key input
+    // causes text input even while right Alt key is pressed.  However, this
+    // is necessary for Android 2.3 compatibility.
+    if (event.message == NS_KEY_PRESS &&
+        key.UnicodeChar() && key.UnicodeChar() != key.BaseUnicodeChar()) {
+        event.modifiers &= ~(MODIFIER_ALT | MODIFIER_CONTROL | MODIFIER_META);
     }
 
     event.mIsRepeat =
@@ -2346,16 +2348,13 @@ nsWindow::GetIMEUpdatePreference()
 {
     int8_t notifications = (nsIMEUpdatePreference::NOTIFY_SELECTION_CHANGE |
                             nsIMEUpdatePreference::NOTIFY_TEXT_CHANGE);
-    return nsIMEUpdatePreference(notifications, true);
+    return nsIMEUpdatePreference(notifications);
 }
 
 void
 nsWindow::DrawWindowUnderlay(LayerManagerComposite* aManager, nsIntRect aRect)
 {
     JNIEnv *env = GetJNIForThread();
-    NS_ABORT_IF_FALSE(env, "No JNI environment at DrawWindowUnderlay()!");
-    if (!env)
-        return;
 
     AutoLocalJNIFrame jniFrame(env);
 
@@ -2377,6 +2376,10 @@ nsWindow::DrawWindowUnderlay(LayerManagerComposite* aManager, nsIntRect aRect)
         return;
     }
 
+    gl::GLContext* gl = static_cast<CompositorOGL*>(aManager->GetCompositor())->gl();
+    gl::ScopedGLState scopedScissorTestState(gl, LOCAL_GL_SCISSOR_TEST);
+    gl::ScopedScissorRect scopedScissorRectState(gl);
+
     client->ActivateProgram();
     if (!mLayerRendererFrame.BeginDrawing(&jniFrame)) return;
     if (!mLayerRendererFrame.DrawBackground(&jniFrame)) return;
@@ -2388,9 +2391,6 @@ nsWindow::DrawWindowOverlay(LayerManagerComposite* aManager, nsIntRect aRect)
 {
     PROFILER_LABEL("nsWindow", "DrawWindowOverlay");
     JNIEnv *env = GetJNIForThread();
-    NS_ABORT_IF_FALSE(env, "No JNI environment at DrawWindowOverlay()!");
-    if (!env)
-        return;
 
     AutoLocalJNIFrame jniFrame(env);
 
@@ -2398,6 +2398,10 @@ nsWindow::DrawWindowOverlay(LayerManagerComposite* aManager, nsIntRect aRect)
                       "Frame should have been created in DrawWindowUnderlay()!");
 
     GeckoLayerClient* client = AndroidBridge::Bridge()->GetLayerClient();
+
+    gl::GLContext* gl = static_cast<CompositorOGL*>(aManager->GetCompositor())->gl();
+    gl::ScopedGLState scopedScissorTestState(gl, LOCAL_GL_SCISSOR_TEST);
+    gl::ScopedScissorRect scopedScissorRectState(gl);
 
     client->ActivateProgram();
     if (!mLayerRendererFrame.DrawForeground(&jniFrame)) return;

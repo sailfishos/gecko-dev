@@ -12,9 +12,6 @@
 namespace js {
 namespace jit {
 
-static const ptrdiff_t STACK_SLOT_SIZE       = 8;
-static const uint32_t DOUBLE_STACK_ALIGNMENT   = 1;
-
 // In bytes: slots needed for potential memory->memory move spills.
 //   +8 for cycles
 //   +8 for gpr spills
@@ -27,9 +24,6 @@ static const uint32_t ShadowStackSpace = 32;
 static const uint32_t ShadowStackSpace = 0;
 #endif
 
-// An offset that is illegal for a local variable's stack allocation.
-static const int32_t INVALID_STACK_SLOT       = -1;
-
 class Registers {
   public:
     typedef JSC::X86Registers::RegisterID Code;
@@ -40,6 +34,14 @@ class Registers {
                                               "r8",  "r9",  "r10", "r11",
                                               "r12", "r13", "r14", "r15" };
         return Names[code];
+    }
+
+    static Code FromName(const char *name) {
+        for (size_t i = 0; i < Total; i++) {
+            if (strcmp(GetName(Code(i)), name) == 0)
+                return Code(i);
+        }
+        return Invalid;
     }
 
     static const Code StackPointer = JSC::X86Registers::esp;
@@ -120,6 +122,14 @@ class FloatRegisters {
                                               "xmm8",  "xmm9",  "xmm10", "xmm11",
                                               "xmm12", "xmm13", "xmm14", "xmm15" };
         return Names[code];
+    }
+
+    static Code FromName(const char *name) {
+        for (size_t i = 0; i < Total; i++) {
+            if (strcmp(GetName(Code(i)), name) == 0)
+                return Code(i);
+        }
+        return Invalid;
     }
 
     static const Code Invalid = JSC::X86Registers::invalid_xmm;

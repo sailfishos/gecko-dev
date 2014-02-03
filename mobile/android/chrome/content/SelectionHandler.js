@@ -12,6 +12,9 @@ var SelectionHandler = {
   TYPE_CURSOR: 1,
   TYPE_SELECTION: 2,
 
+  SELECT_ALL: 0,
+  SELECT_AT_POINT: 1,
+
   // Keeps track of data about the dimensions of the selection. Coordinates
   // stored here are relative to the _contentWindow window.
   _cache: null,
@@ -72,13 +75,7 @@ var SelectionHandler = {
   observe: function sh_observe(aSubject, aTopic, aData) {
     switch (aTopic) {
       case "Gesture:SingleTap": {
-        if (this._activeType == this.TYPE_SELECTION) {
-          let data = JSON.parse(aData);
-          if (this._pointInSelection(data.x, data.y))
-            this.copySelection();
-          else
-            this._closeSelection();
-        } else if (this._activeType == this.TYPE_CURSOR) {
+        if (this._activeType == this.TYPE_CURSOR) {
           // attachCaret() is called in the "Gesture:SingleTap" handler in BrowserEventHandler
           // We're guaranteed to call this first, because this observer was added last
           this._deactivate();
@@ -128,23 +125,36 @@ var SelectionHandler = {
           this._ignoreSelectionChanges = true;
           // Check to see if the handles should be reversed.
           let isStartHandle = JSON.parse(aData).handleType == this.HANDLE_TYPE_START;
-          let selectionReversed = this._updateCacheForSelection(isStartHandle);
-          if (selectionReversed) {
-            // Reverse the anchor and focus to correspond to the new start and end handles.
-            let selection = this._getSelection();
-            let anchorNode = selection.anchorNode;
-            let anchorOffset = selection.anchorOffset;
-            selection.collapse(selection.focusNode, selection.focusOffset);
-            selection.extend(anchorNode, anchorOffset);
+
+          try {
+            let selectionReversed = this._updateCacheForSelection(isStartHandle);
+            if (selectionReversed) {
+              // Reverse the anchor and focus to correspond to the new start and end handles.
+              let selection = this._getSelection();
+              let anchorNode = selection.anchorNode;
+              let anchorOffset = selection.anchorOffset;
+              selection.collapse(selection.focusNode, selection.focusOffset);
+              selection.extend(anchorNode, anchorOffset);
+            }
+          } catch (e) {
+            // User finished handle positioning with one end off the screen
+            this._closeSelection();
+            break;
           }
+
           // Act on selectionChange notifications after handle movement ends
           this._ignoreSelectionChanges = false;
+          this._positionHandles();
 
         } else if (this._activeType == this.TYPE_CURSOR) {
           // Act on IMM composition notifications after caret movement ends
           this._ignoreCompositionChanges = false;
+          this._positionHandles();
+
+        } else {
+          Cu.reportError("Ignored \"TextSelection:Position\" message during invalid selection status");
         }
-        this._positionHandles();
+
         break;
       }
 
@@ -220,9 +230,14 @@ var SelectionHandler = {
    * the "Select Word" context menu item. Initializes SelectionHandler,
    * starts a selection, and positions the text selection handles.
    *
-   * @param aX, aY tap location in client coordinates.
+   * @param aOptions list of options describing how to start selection
+   *                 Options include:
+   *                   mode - SELECT_ALL to select everything in the target
+   *                          element, or SELECT_AT_POINT to select a word.
+   *                   x    - The x-coordinate for SELECT_AT_POINT.
+   *                   y    - The y-coordinate for SELECT_AT_POINT.
    */
-  startSelection: function sh_startSelection(aElement, aX, aY) {
+  startSelection: function sh_startSelection(aElement, aOptions = { mode: SelectionHandler.SELECT_ALL }) {
     // Clear out any existing active selection
     this._closeSelection();
 
@@ -231,21 +246,14 @@ var SelectionHandler = {
     // Clear any existing selection from the document
     this._contentWindow.getSelection().removeAllRanges();
 
-    // If we didn't have any coordinates to associate with this event (for instance, selectAll is chosen from
-    // the actionMode), set them to a point inside the top left corner of the target
-    if (aX == undefined || aY == undefined) {
-      let rect = this._targetElement.getBoundingClientRect();
-      aX = rect.left + 1;
-      aY = rect.top  + 1;
-    }
-
-    if (!this._domWinUtils.selectAtPoint(aX, aY, Ci.nsIDOMWindowUtils.SELECT_WORDNOSPACE)) {
+    // Perform the appropriate selection method, if we can't determine method, or it fails, return
+    if (!this._performSelection(aOptions)) {
       this._deactivate();
       return false;
     }
 
+    // Double check results of successful selection operation
     let selection = this._getSelection();
-    // If the range didn't have any text, let's bail
     if (!selection || selection.rangeCount == 0 || selection.getRangeAt(0).collapsed) {
       this._deactivate();
       return false;
@@ -262,36 +270,80 @@ var SelectionHandler = {
     let scroll = this._getScrollPos();
     // Figure out the distance between the selection and the click
     let positions = this._getHandlePositions(scroll);
-    let clickX = scroll.X + aX;
-    let clickY = scroll.Y + aY;
-    let distance = 0;
 
-    // Check if the click was in the bounding box of the selection handles
-    if (positions[0].left < clickX && clickX < positions[1].left
-        && positions[0].top < clickY && clickY < positions[1].top) {
-      distance = 0;
-    } else {
-      // If it was outside, check the distance to the center of the selection
-      let selectposX = (positions[0].left + positions[1].left) / 2;
-      let selectposY = (positions[0].top + positions[1].top) / 2;
-
-      let dx = Math.abs(selectposX - clickX);
-      let dy = Math.abs(selectposY - clickY);
-      distance = dx + dy;
-    }
-
-    let maxSelectionDistance = Services.prefs.getIntPref("browser.ui.selection.distance");
-    // Do not select text far away from where the user clicked
-    if (distance > maxSelectionDistance) {
-      this._closeSelection();
-      return false;
+    if (aOptions.mode == this.SELECT_AT_POINT && !this._selectionNearClick(scroll.X + aOptions.x,
+                                                                      scroll.Y + aOptions.y,
+                                                                      positions)) {
+        this._closeSelection();
+        return false;
     }
 
     this._positionHandles(positions);
-    this._sendMessage("TextSelection:ShowHandles", [this.HANDLE_TYPE_START, this.HANDLE_TYPE_END], aX, aY);
+    this._sendMessage("TextSelection:ShowHandles", [this.HANDLE_TYPE_START, this.HANDLE_TYPE_END], aOptions.x, aOptions.y);
     return true;
   },
 
+  /*
+   * Called to perform a selection operation, given a target element, selection method, starting point etc.
+   */
+  _performSelection: function sh_performSelection(aOptions) {
+    if (aOptions.mode == this.SELECT_AT_POINT) {
+      return this._domWinUtils.selectAtPoint(aOptions.x, aOptions.y, Ci.nsIDOMWindowUtils.SELECT_WORDNOSPACE);
+    }
+
+    if (aOptions.mode != this.SELECT_ALL) {
+      Cu.reportError("SelectionHandler.js: _performSelection() Invalid selection mode " + aOptions.mode);
+      return false;
+    }
+
+    // HTMLPreElement is a #text node, SELECT_ALL implies entire paragraph
+    if (this._targetElement instanceof HTMLPreElement)  {
+      return this._domWinUtils.selectAtPoint(1, 1, Ci.nsIDOMWindowUtils.SELECT_PARAGRAPH);
+    }
+
+    // Else default to selectALL Document
+    this._getSelectionController().selectAll();
+
+    // Selection is entire HTMLHtmlElement, remove any trailing document whitespace
+    let selection = this._getSelection();
+    let lastNode = selection.focusNode;
+    while (lastNode && lastNode.lastChild) {
+      lastNode = lastNode.lastChild;
+    }
+
+    if (lastNode instanceof Text) {
+      try {
+        selection.extend(lastNode, lastNode.length);
+      } catch (e) {
+        Cu.reportError("SelectionHandler.js: _performSelection() whitespace trim fails: lastNode[" + lastNode +
+          "] lastNode.length[" + lastNode.length + "]");
+      }
+    }
+
+    return true;
+  },
+
+  /* Return true if the current selection (given by aPositions) is near to where the coordinates passed in */
+  _selectionNearClick: function(aX, aY, aPositions) {
+      let distance = 0;
+
+      // Check if the click was in the bounding box of the selection handles
+      if (aPositions[0].left < aX && aX < aPositions[1].left
+          && aPositions[0].top < aY && aY < aPositions[1].top) {
+        distance = 0;
+      } else {
+        // If it was outside, check the distance to the center of the selection
+        let selectposX = (aPositions[0].left + aPositions[1].left) / 2;
+        let selectposY = (aPositions[0].top + aPositions[1].top) / 2;
+
+        let dx = Math.abs(selectposX - aX);
+        let dy = Math.abs(selectposY - aY);
+        distance = dx + dy;
+      }
+
+      let maxSelectionDistance = Services.prefs.getIntPref("browser.ui.selection.distance");
+      return (distance < maxSelectionDistance);
+  },
 
   /* Reads a value from an action. If the action defines the value as a function, will return the result of calling
      the function. Otherwise, will return the value itself. If the value isn't defined for this action, will return a default */
@@ -334,22 +386,37 @@ var SelectionHandler = {
     this._sendMessage("TextSelection:Update");
   },
 
+  addAction: function(action) {
+    if (!action.id)
+      action.id = uuidgen.generateUUID().toString()
+
+    if (this.actions[action.id])
+      throw "Action with id " + action.id + " already added";
+
+    this.actions[action.id] = action;
+    return action.id;
+  },
+
+  removeAction: function(id) {
+    delete this.actions[id];
+  },
+
   actions: {
     SELECT_ALL: {
       label: Strings.browser.GetStringFromName("contextmenu.selectAll"),
       id: "selectall_action",
-      icon: "drawable://select_all",
+      icon: "drawable://ab_select_all",
       action: function(aElement) {
         SelectionHandler.selectAll(aElement);
       },
       selector: ClipboardHelper.selectAllContext,
-      order: 1,
+      order: 5,
     },
 
     CUT: {
       label: Strings.browser.GetStringFromName("contextmenu.cut"),
       id: "cut_action",
-      icon: "drawable://cut",
+      icon: "drawable://ab_cut",
       action: function(aElement) {
         let start = aElement.selectionStart;
         let end   = aElement.selectionEnd;
@@ -360,31 +427,30 @@ var SelectionHandler = {
         // copySelection closes the selection. Show a caret where we just cut the text.
         SelectionHandler.attachCaret(aElement);
       },
-      order: 1,
+      order: 4,
       selector: ClipboardHelper.cutContext,
     },
 
     COPY: {
       label: Strings.browser.GetStringFromName("contextmenu.copy"),
       id: "copy_action",
-      icon: "drawable://copy",
+      icon: "drawable://ab_copy",
       action: function() {
         SelectionHandler.copySelection();
       },
-      order: 1,
+      order: 3,
       selector: ClipboardHelper.getCopyContext(false)
     },
 
     PASTE: {
       label: Strings.browser.GetStringFromName("contextmenu.paste"),
       id: "paste_action",
-      icon: "drawable://paste",
+      icon: "drawable://ab_paste",
       action: function(aElement) {
         ClipboardHelper.paste(aElement);
-        SelectionHandler._positionHandles();
-        SelectionHandler._updateMenu();
+        SelectionHandler._closeSelection();
       },
-      order: 1,
+      order: 2,
       selector: ClipboardHelper.pasteContext,
     },
 
@@ -403,11 +469,12 @@ var SelectionHandler = {
         return Strings.browser.formatStringFromName("contextmenu.search", [Services.search.defaultEngine.name], 1);
       },
       id: "search_action",
-      icon: "drawable://ic_url_bar_search",
+      icon: "drawable://ab_search",
       action: function() {
         SelectionHandler.searchSelection();
         SelectionHandler._closeSelection();
       },
+      order: 1,
       selector: ClipboardHelper.searchWithContext,
     },
 
@@ -489,14 +556,25 @@ var SelectionHandler = {
     return (this._activeType == this.TYPE_SELECTION);
   },
 
-  selectAll: function sh_selectAll(aElement, aX, aY) {
-    if (this._activeType != this.TYPE_SELECTION)
-      this.startSelection(aElement, aX, aY);
+  selectAll: function sh_selectAll(aElement) {
+    this.startSelection(aElement, { mode : this.SELECT_ALL });
+  },
 
-    let selectionController = this._getSelectionController();
-    selectionController.selectAll();
-    this._updateCacheForSelection();
-    this._positionHandles();
+  /*
+   * Helper function for moving the selection inside an editable element.
+   *
+   * @param aAnchorX the stationary handle's x-coordinate in client coordinates
+   * @param aX the moved handle's x-coordinate in client coordinates
+   * @param aCaretPos the current position of the caret
+   */
+  _moveSelectionInEditable: function sh_moveSelectionInEditable(aAnchorX, aX, aCaretPos) {
+    let anchorOffset = aX < aAnchorX ? this._targetElement.selectionEnd
+                                     : this._targetElement.selectionStart;
+    let newOffset = aCaretPos.offset;
+    let [start, end] = anchorOffset <= newOffset ?
+                       [anchorOffset, newOffset] :
+                       [newOffset, anchorOffset];
+    this._targetElement.setSelectionRange(start, end);
   },
 
   /*
@@ -510,6 +588,10 @@ var SelectionHandler = {
     // in editable targets. We should factor out the logic that's currently in _sendMouseEvents.
     let viewOffset = this._getViewOffset();
     let caretPos = this._contentWindow.document.caretPositionFromPoint(aX - viewOffset.x, aY - viewOffset.y);
+    if (!caretPos) {
+      // User moves handle offscreen while positioning
+      return;
+    }
 
     // Constrain text selection within editable elements.
     let targetIsEditable = this._targetElement instanceof Ci.nsIDOMNSEditableElement;
@@ -532,8 +614,8 @@ var SelectionHandler = {
     // are reversed, so we need to reverse the logic to extend the selection.
     if ((aIsStartHandle && !this._isRTL) || (!aIsStartHandle && this._isRTL)) {
       if (targetIsEditable) {
-        // XXX This will just collapse the selection if the start handle goes past the end handle.
-        this._targetElement.selectionStart = caretPos.offset;
+        let anchorX = this._isRTL ? this._cache.start.x : this._cache.end.x;
+        this._moveSelectionInEditable(anchorX, aX, caretPos);
       } else {
         let focusNode = selection.focusNode;
         let focusOffset = selection.focusOffset;
@@ -542,8 +624,8 @@ var SelectionHandler = {
       }
     } else {
       if (targetIsEditable) {
-        // XXX This will just collapse the selection if the end handle goes past the start handle.
-        this._targetElement.selectionEnd = caretPos.offset;
+        let anchorX = this._isRTL ? this._cache.end.x : this._cache.start.x;
+        this._moveSelectionInEditable(anchorX, aX, caretPos);
       } else {
         selection.extend(caretPos.offsetNode, caretPos.offset);
       }
@@ -708,8 +790,12 @@ var SelectionHandler = {
   // Returns true if the selection has been reversed. Takes optional aIsStartHandle
   // param to decide whether the selection has been reversed.
   _updateCacheForSelection: function sh_updateCacheForSelection(aIsStartHandle) {
-    let selection = this._getSelection();
-    let rects = selection.getRangeAt(0).getClientRects();
+    let rects = this._getSelection().getRangeAt(0).getClientRects();
+    if (!rects[0]) {
+      // nsISelection object exists, but there's nothing actually selected
+      throw "Failed to update cache for invalid selection";
+    }
+
     let start = { x: this._isRTL ? rects[0].right : rects[0].left, y: rects[0].bottom };
     let end = { x: this._isRTL ? rects[rects.length - 1].left : rects[rects.length - 1].right, y: rects[rects.length - 1].bottom };
 

@@ -476,10 +476,15 @@ void RTSPSource::onMessageReceived(const sp<AMessage> &msg) {
 
 void RTSPSource::onConnected(bool isSeekable)
 {
-    CHECK(mAudioTrack == NULL);
-    CHECK(mVideoTrack == NULL);
     CHECK(mHandler != NULL);
     CHECK(mListener != NULL);
+
+    // Clean up audio and video tracks.
+    // In the case of RTSP reconnect, audio/video tracks might be created by
+    // previous onConnected event.
+    mAudioTrack = NULL;
+    mVideoTrack = NULL;
+    mTracks.clear();
 
     size_t numTracks = mHandler->countTracks();
     for (size_t i = 0; i < numTracks; ++i) {
@@ -571,12 +576,11 @@ void RTSPSource::onDisconnected(const sp<AMessage> &msg) {
     status_t err;
     CHECK(msg != NULL);
     CHECK(msg->findInt32("result", &err));
-    CHECK_NE(err, (status_t)OK);
 
-    CHECK(mLooper != NULL);
-    CHECK(mHandler != NULL);
-    mLooper->unregisterHandler(mHandler->id());
-    mHandler.clear();
+    if ((mLooper != NULL) && (mHandler != NULL)) {
+      mLooper->unregisterHandler(mHandler->id());
+      mHandler.clear();
+    }
 
     mState = DISCONNECTED;
     mFinalResult = err;
@@ -585,9 +589,11 @@ void RTSPSource::onDisconnected(const sp<AMessage> &msg) {
         finishDisconnectIfPossible();
     }
     if (mListener) {
-      // err is always set to UNKNOWN_ERROR from
-      // Android right now, rename err to NS_ERROR_NET_TIMEOUT.
-      mListener->OnDisconnected(0, NS_ERROR_NET_TIMEOUT);
+      if (err == OK) {
+        mListener->OnDisconnected(0, NS_OK);
+      } else {
+        mListener->OnDisconnected(0, NS_ERROR_NET_TIMEOUT);
+      }
     }
     mAudioTrack = NULL;
     mVideoTrack = NULL;
@@ -597,7 +603,6 @@ void RTSPSource::onDisconnected(const sp<AMessage> &msg) {
 void RTSPSource::finishDisconnectIfPossible() {
     if (mState != DISCONNECTED) {
         mHandler->disconnect();
-        return;
     }
 
     (new AMessage)->postReply(mDisconnectReplyID);

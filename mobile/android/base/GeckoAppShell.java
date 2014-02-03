@@ -10,16 +10,23 @@ import org.mozilla.gecko.gfx.BitmapUtils;
 import org.mozilla.gecko.gfx.GeckoLayerClient;
 import org.mozilla.gecko.gfx.LayerView;
 import org.mozilla.gecko.gfx.PanZoomController;
-import org.mozilla.gecko.mozglue.JNITarget;
+import org.mozilla.gecko.mozglue.GeckoLoader;
 import org.mozilla.gecko.mozglue.generatorannotations.OptionalGeneratedParameter;
 import org.mozilla.gecko.mozglue.generatorannotations.WrapElementForJNI;
-import org.mozilla.gecko.prompts.PromptService;
-import org.mozilla.gecko.mozglue.GeckoLoader;
+import org.mozilla.gecko.mozglue.JNITarget;
 import org.mozilla.gecko.mozglue.RobocopTarget;
+import org.mozilla.gecko.prompts.PromptService;
+import org.mozilla.gecko.util.ActivityResultHandler;
 import org.mozilla.gecko.util.EventDispatcher;
 import org.mozilla.gecko.util.GeckoEventListener;
 import org.mozilla.gecko.util.HardwareUtils;
+import org.mozilla.gecko.util.ProxySelector;
 import org.mozilla.gecko.util.ThreadUtils;
+import org.mozilla.gecko.webapp.Allocator;
+import org.mozilla.gecko.webapp.InstallListener;
+
+import org.json.JSONException;
+import org.json.JSONObject;
 
 import android.app.Activity;
 import android.app.ActivityManager;
@@ -27,6 +34,7 @@ import android.app.PendingIntent;
 import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.content.pm.ApplicationInfo;
@@ -61,6 +69,7 @@ import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
@@ -68,6 +77,7 @@ import android.os.MessageQueue;
 import android.os.SystemClock;
 import android.os.Vibrator;
 import android.provider.Settings;
+import android.support.v4.util.LruCache;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
 import android.util.Base64;
@@ -95,8 +105,8 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.net.MalformedURLException;
 import java.net.Proxy;
-import java.net.ProxySelector;
 import java.net.URI;
 import java.net.URL;
 import java.nio.ByteBuffer;
@@ -210,34 +220,7 @@ public class GeckoAppShell
         Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
             @Override
             public void uncaughtException(Thread thread, Throwable e) {
-                // If the uncaught exception was rethrown, walk the exception `cause` chain to find
-                // the original exception so Socorro can correctly collate related crash reports.
-                Throwable cause;
-                while ((cause = e.getCause()) != null) {
-                    e = cause;
-                }
-
-                try {
-                    Log.e(LOGTAG, ">>> REPORTING UNCAUGHT EXCEPTION FROM THREAD "
-                                  + thread.getId() + " (\"" + thread.getName() + "\")", e);
-
-                    Thread mainThread = ThreadUtils.getUiThread();
-                    if (mainThread != null && thread != mainThread) {
-                        Log.e(LOGTAG, "Main thread stack:");
-                        for (StackTraceElement ste : mainThread.getStackTrace()) {
-                            Log.e(LOGTAG, ste.toString());
-                        }
-                    }
-
-                    if (e instanceof OutOfMemoryError) {
-                        SharedPreferences prefs = getSharedPreferences();
-                        SharedPreferences.Editor editor = prefs.edit();
-                        editor.putBoolean(GeckoApp.PREFS_OOM_EXCEPTION, true);
-                        editor.commit();
-                    }
-                } finally {
-                    reportJavaCrash(getStackTraceString(e));
-                }
+                handleUncaughtException(thread, e);
             }
         });
     }
@@ -371,6 +354,7 @@ public class GeckoAppShell
             });
 
         // and go
+        Log.d(LOGTAG, "GeckoLoader.nativeRun " + combinedArgs);
         GeckoLoader.nativeRun(combinedArgs);
 
         // Remove pumpMessageLoop() idle handler
@@ -408,6 +392,42 @@ public class GeckoAppShell
     /*
      *  The Gecko-side API: API methods that Gecko calls
      */
+
+    @WrapElementForJNI(allowMultithread = true, generateStatic = true, noThrow = true)
+    public static void handleUncaughtException(Thread thread, Throwable e) {
+        if (thread == null) {
+            thread = Thread.currentThread();
+        }
+        // If the uncaught exception was rethrown, walk the exception `cause` chain to find
+        // the original exception so Socorro can correctly collate related crash reports.
+        Throwable cause;
+        while ((cause = e.getCause()) != null) {
+            e = cause;
+        }
+
+        try {
+            Log.e(LOGTAG, ">>> REPORTING UNCAUGHT EXCEPTION FROM THREAD "
+                          + thread.getId() + " (\"" + thread.getName() + "\")", e);
+
+            Thread mainThread = ThreadUtils.getUiThread();
+            if (mainThread != null && thread != mainThread) {
+                Log.e(LOGTAG, "Main thread stack:");
+                for (StackTraceElement ste : mainThread.getStackTrace()) {
+                    Log.e(LOGTAG, ste.toString());
+                }
+            }
+
+            if (e instanceof OutOfMemoryError) {
+                SharedPreferences prefs = getSharedPreferences();
+                SharedPreferences.Editor editor = prefs.edit();
+                editor.putBoolean(GeckoApp.PREFS_OOM_EXCEPTION, true);
+                editor.commit();
+            }
+        } finally {
+            reportJavaCrash(getStackTraceString(e));
+        }
+    }
+
     @WrapElementForJNI(generateStatic = true)
     public static void notifyIME(int type) {
         if (mEditableListener != null) {
@@ -699,33 +719,38 @@ public class GeckoAppShell
         gRestartScheduled = true;
     }
 
-    public static File preInstallWebApp(String aTitle, String aURI, String aOrigin) {
-        int index = WebAppAllocator.getInstance(getContext()).findAndAllocateIndex(aOrigin, aTitle, (String) null);
-        GeckoProfile profile = GeckoProfile.get(getContext(), "webapp" + index);
-        return profile.getDir();
-    }
-
-    public static void postInstallWebApp(String aTitle, String aURI, String aOrigin, String aIconURL, String aOriginalOrigin) {
-    	WebAppAllocator allocator = WebAppAllocator.getInstance(getContext());
-		int index = allocator.getIndexForApp(aOriginalOrigin);
-    	assert index != -1 && aIconURL != null;
-    	allocator.updateAppAllocation(aOrigin, index, BitmapUtils.getBitmapFromDataURI(aIconURL));
-    	createShortcut(aTitle, aURI, aOrigin, aIconURL, "webapp");
-    }
-
     public static Intent getWebAppIntent(String aURI, String aOrigin, String aTitle, Bitmap aIcon) {
-        int index;
-        if (aIcon != null && !TextUtils.isEmpty(aTitle))
-            index = WebAppAllocator.getInstance(getContext()).findAndAllocateIndex(aOrigin, aTitle, aIcon);
-        else
-            index = WebAppAllocator.getInstance(getContext()).getIndexForApp(aOrigin);
+        Intent intent;
 
-        if (index == -1)
-            return null;
+        if (AppConstants.MOZ_ANDROID_SYNTHAPKS) {
+            Allocator slots = Allocator.getInstance(getContext());
+            int index = slots.getIndexForOrigin(aOrigin);
 
-        return getWebAppIntent(index, aURI);
+            if (index == -1) {
+                return null;
+            }
+            String packageName = slots.getAppForIndex(index);
+            intent = getContext().getPackageManager().getLaunchIntentForPackage(packageName);
+            if (aURI != null) {
+                intent.setData(Uri.parse(aURI));
+            }
+        } else {
+            int index;
+            if (aIcon != null && !TextUtils.isEmpty(aTitle))
+                index = WebAppAllocator.getInstance(getContext()).findAndAllocateIndex(aOrigin, aTitle, aIcon);
+            else
+                index = WebAppAllocator.getInstance(getContext()).getIndexForApp(aOrigin);
+
+            if (index == -1)
+                return null;
+
+            intent = getWebAppIntent(index, aURI);
+        }
+
+        return intent;
     }
 
+    // The old implementation of getWebAppIntent.  Not used by MOZ_ANDROID_SYNTHAPKS.
     public static Intent getWebAppIntent(int aIndex, String aURI) {
         Intent intent = new Intent();
         intent.setAction(GeckoApp.ACTION_WEBAPP_PREFIX + aIndex);
@@ -802,7 +827,6 @@ public class GeckoAppShell
                 // the intent to be launched by the shortcut
                 Intent shortcutIntent;
                 if (aType.equalsIgnoreCase(SHORTCUT_TYPE_WEBAPP)) {
-                    int index = WebAppAllocator.getInstance(getContext()).getIndexForApp(aUniqueURI);
                     shortcutIntent = getWebAppIntent(aURI, aUniqueURI, "", null);
                     if (shortcutIntent == null)
                         return;
@@ -823,40 +847,6 @@ public class GeckoAppShell
 
                 intent.setAction("com.android.launcher.action.UNINSTALL_SHORTCUT");
                 getContext().sendBroadcast(intent);
-            }
-        });
-    }
-
-    public static void uninstallWebApp(final String uniqueURI) {
-        // On uninstall, we need to do a couple of things:
-        //   1. nuke the running app process.
-        //   2. nuke the profile that was assigned to that webapp
-        ThreadUtils.postToBackgroundThread(new Runnable() {
-            @Override
-            public void run() {
-                int index = WebAppAllocator.getInstance(getContext()).releaseIndexForApp(uniqueURI);
-
-                // if -1, nothing to do; we didn't think it was installed anyway
-                if (index == -1)
-                    return;
-
-                // kill the app if it's running
-                String targetProcessName = getContext().getPackageName();
-                targetProcessName = targetProcessName + ":" + targetProcessName + ".WebApp" + index;
-
-                ActivityManager am = (ActivityManager) getContext().getSystemService(Context.ACTIVITY_SERVICE);
-                List<ActivityManager.RunningAppProcessInfo> procs = am.getRunningAppProcesses();
-                if (procs != null) {
-                    for (ActivityManager.RunningAppProcessInfo proc : procs) {
-                        if (proc.processName.equals(targetProcessName)) {
-                            android.os.Process.killProcess(proc.pid);
-                            break;
-                        }
-                    }
-                }
-
-                // then nuke the profile
-                GeckoProfile.removeProfile(getContext(), "webapp" + index);
             }
         });
     }
@@ -1907,7 +1897,8 @@ public class GeckoAppShell
     static String[] getPluginDirectories() {
 
         // An awful hack to detect Tegra devices. Easiest way to do it without spinning up a EGL context.
-        boolean isTegra = (new File("/system/lib/hw/gralloc.tegra.so")).exists();
+        boolean isTegra = (new File("/system/lib/hw/gralloc.tegra.so")).exists() ||
+                          (new File("/system/lib/hw/gralloc.tegra3.so")).exists();
         if (isTegra) {
             // disable Flash on Tegra ICS with CM9 and other custom firmware (bug 736421)
             File vfile = new File("/proc/version");
@@ -1934,6 +1925,12 @@ public class GeckoAppShell
                 } catch (IOException ex) {
                     // nothing
                 }
+            }
+
+            // disable on KitKat (bug 957694)
+            if (Build.VERSION.SDK_INT >= 19) {
+                Log.w(LOGTAG, "Blocking plugins because of Tegra (bug 957694)");
+                return null;
             }
         }
 
@@ -2664,42 +2661,21 @@ public class GeckoAppShell
 
     @WrapElementForJNI(stubName = "GetProxyForURIWrapper")
     public static String getProxyForURI(String spec, String scheme, String host, int port) {
-        URI uri = null;
-        try {
-            uri = new URI(spec);
-        } catch(java.net.URISyntaxException uriEx) {
-            try {
-                uri = new URI(scheme, null, host, port, null, null, null);
-            } catch(java.net.URISyntaxException uriEx2) {
-                Log.d("GeckoProxy", "Failed to create uri from spec", uriEx);
-                Log.d("GeckoProxy", "Failed to create uri from parts", uriEx2);
-            }
+        final ProxySelector ps = new ProxySelector();
+
+        Proxy proxy = ps.select(scheme, host);
+        if (Proxy.NO_PROXY.equals(proxy)) {
+            return "DIRECT";
         }
-        if (uri != null) {
-            ProxySelector ps = ProxySelector.getDefault();
-            if (ps != null) {
-                List<Proxy> proxies = ps.select(uri);
-                if (proxies != null && !proxies.isEmpty()) {
-                    Proxy proxy = proxies.get(0);
-                    if (!Proxy.NO_PROXY.equals(proxy)) {
-                        final String proxyStr;
-                        switch (proxy.type()) {
-                        case HTTP:
-                            proxyStr = "PROXY " + proxy.address().toString();
-                            break;
-                        case SOCKS:
-                            proxyStr = "SOCKS " + proxy.address().toString();
-                            break;
-                        case DIRECT:
-                        default:
-                            proxyStr = "DIRECT";
-                            break;
-                        }
-                        return proxyStr;
-                    }
-                }
-            }
+        
+        switch (proxy.type()) {
+            case HTTP:
+                return "PROXY " + proxy.address().toString();
+            case SOCKS:
+                return "SOCKS " + proxy.address().toString();
         }
+
         return "DIRECT";
     }
+
 }

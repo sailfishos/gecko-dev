@@ -8,6 +8,7 @@
 #include "LayerManagerD3D10.h"
 #include "LayerManagerD3D10Effect.h"
 #include "gfxWindowsPlatform.h"
+#include "gfx2DGlue.h"
 #include "gfxD2DSurface.h"
 #include "gfxFailure.h"
 #include "cairo-win32.h"
@@ -382,7 +383,7 @@ LayerManagerD3D10::EndTransaction(DrawThebesLayerCallback aCallback,
 
     // The results of our drawing always go directly into a pixel buffer,
     // so we don't need to pass any global transform here.
-    mRoot->ComputeEffectiveTransforms(gfx3DMatrix());
+    mRoot->ComputeEffectiveTransforms(Matrix4x4());
 
 #ifdef MOZ_LAYERS_HAVE_LOG
     MOZ_LAYERS_LOG(("  ----- (beginning paint)"));
@@ -450,11 +451,11 @@ static void ReleaseTexture(void *texture)
 }
 
 already_AddRefed<gfxASurface>
-LayerManagerD3D10::CreateOptimalSurface(const gfxIntSize &aSize,
-                                   gfxImageFormat aFormat)
+LayerManagerD3D10::CreateOptimalSurface(const IntSize &aSize,
+                                        gfxImageFormat aFormat)
 {
-  if ((aFormat != gfxImageFormatRGB24 &&
-       aFormat != gfxImageFormatARGB32)) {
+  if ((aFormat != gfxImageFormat::RGB24 &&
+       aFormat != gfxImageFormat::ARGB32)) {
     return LayerManager::CreateOptimalSurface(aSize, aFormat);
   }
 
@@ -472,8 +473,8 @@ LayerManagerD3D10::CreateOptimalSurface(const gfxIntSize &aSize,
   }
 
   nsRefPtr<gfxD2DSurface> surface =
-    new gfxD2DSurface(texture, aFormat == gfxImageFormatRGB24 ?
-      GFX_CONTENT_COLOR : GFX_CONTENT_COLOR_ALPHA);
+    new gfxD2DSurface(texture, aFormat == gfxImageFormat::RGB24 ?
+      gfxContentType::COLOR : gfxContentType::COLOR_ALPHA);
 
   if (!surface || surface->CairoStatus()) {
     return LayerManager::CreateOptimalSurface(aSize, aFormat);
@@ -488,9 +489,9 @@ LayerManagerD3D10::CreateOptimalSurface(const gfxIntSize &aSize,
 
 
 already_AddRefed<gfxASurface>
-LayerManagerD3D10::CreateOptimalMaskSurface(const gfxIntSize &aSize)
+LayerManagerD3D10::CreateOptimalMaskSurface(const IntSize &aSize)
 {
-  return CreateOptimalSurface(aSize, gfxImageFormatARGB32);
+  return CreateOptimalSurface(aSize, gfxImageFormat::ARGB32);
 }
 
 
@@ -498,9 +499,9 @@ TemporaryRef<DrawTarget>
 LayerManagerD3D10::CreateDrawTarget(const IntSize &aSize,
                                     SurfaceFormat aFormat)
 {
-  if ((aFormat != FORMAT_B8G8R8A8 &&
-       aFormat != FORMAT_B8G8R8X8) ||
-       gfxPlatform::GetPlatform()->GetPreferredCanvasBackend() != BACKEND_DIRECT2D) {
+  if ((aFormat != SurfaceFormat::B8G8R8A8 &&
+       aFormat != SurfaceFormat::B8G8R8X8) ||
+       gfxPlatform::GetPlatform()->GetPreferredCanvasBackend() != BackendType::DIRECT2D) {
     return LayerManager::CreateDrawTarget(aSize, aFormat);
   }
 
@@ -771,7 +772,7 @@ LayerManagerD3D10::PaintToTarget()
     new gfxImageSurface((unsigned char*)map.pData,
                         gfxIntSize(bbDesc.Width, bbDesc.Height),
                         map.RowPitch,
-                        gfxImageFormatARGB32);
+                        gfxImageFormat::ARGB32);
 
   mTarget->SetSource(tmpSurface);
   mTarget->SetOperator(gfxContext::OPERATOR_OVER);
@@ -850,7 +851,7 @@ uint8_t
 LayerD3D10::LoadMaskTexture()
 {
   if (Layer* maskLayer = GetLayer()->GetMaskLayer()) {
-    gfxIntSize size;
+    IntSize size;
     nsRefPtr<ID3D10ShaderResourceView> maskSRV =
       static_cast<LayerD3D10*>(maskLayer->ImplData())->GetAsTexture(&size);
   
@@ -858,10 +859,11 @@ LayerD3D10::LoadMaskTexture()
       return SHADER_NO_MASK;
     }
 
-    gfxMatrix maskTransform;
-    bool maskIs2D = maskLayer->GetEffectiveTransform().CanDraw2D(&maskTransform);
+    Matrix maskTransform;
+    Matrix4x4 effectiveTransform = maskLayer->GetEffectiveTransform();
+    bool maskIs2D = effectiveTransform.CanDraw2D(&maskTransform);
     NS_ASSERTION(maskIs2D, "How did we end up with a 3D transform here?!");
-    gfxRect bounds = gfxRect(gfxPoint(), size);
+    Rect bounds = Rect(Point(), Size(size));
     bounds = maskTransform.TransformBounds(bounds);
 
     effect()->GetVariableByName("vMaskQuad")->AsVector()->SetFloatVector(

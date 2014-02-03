@@ -23,6 +23,8 @@
 // solution.
 #include "mozilla/RefPtr.h"
 
+#include "mozilla/DebugOnly.h"
+
 #ifdef MOZ_ENABLE_FREETYPE
 #include <string>
 #endif
@@ -40,7 +42,6 @@ struct ID2D1Device;
 struct IDWriteRenderingParams;
 
 class GrContext;
-class gfxFont;
 struct GrGLInterface;
 
 struct CGContext;
@@ -79,16 +80,16 @@ struct NativeFont {
  */
 struct DrawOptions {
   DrawOptions(Float aAlpha = 1.0f,
-              CompositionOp aCompositionOp = OP_OVER,
-              AntialiasMode aAntialiasMode = AA_DEFAULT)
+              CompositionOp aCompositionOp = CompositionOp::OP_OVER,
+              AntialiasMode aAntialiasMode = AntialiasMode::DEFAULT)
     : mAlpha(aAlpha)
     , mCompositionOp(aCompositionOp)
     , mAntialiasMode(aAntialiasMode)
   {}
 
   Float mAlpha;
-  CompositionOp mCompositionOp : 8;
-  AntialiasMode mAntialiasMode : 3;
+  CompositionOp mCompositionOp;
+  AntialiasMode mAntialiasMode;
 };
 
 /*
@@ -109,8 +110,8 @@ struct DrawOptions {
  */
 struct StrokeOptions {
   StrokeOptions(Float aLineWidth = 1.0f,
-                JoinStyle aLineJoin = JOIN_MITER_OR_BEVEL,
-                CapStyle aLineCap = CAP_BUTT,
+                JoinStyle aLineJoin = JoinStyle::MITER_OR_BEVEL,
+                CapStyle aLineCap = CapStyle::BUTT,
                 Float aMiterLimit = 10.0f,
                 size_t aDashLength = 0,
                 const Float* aDashPattern = 0,
@@ -131,8 +132,8 @@ struct StrokeOptions {
   const Float* mDashPattern;
   size_t mDashLength;
   Float mDashOffset;
-  JoinStyle mLineJoin : 4;
-  CapStyle mLineCap : 3;
+  JoinStyle mLineJoin;
+  CapStyle mLineCap;
 };
 
 /*
@@ -145,14 +146,14 @@ struct StrokeOptions {
  *                   specified in DrawSurface on the surface.
  */
 struct DrawSurfaceOptions {
-  DrawSurfaceOptions(Filter aFilter = FILTER_LINEAR,
-                     SamplingBounds aSamplingBounds = SAMPLING_UNBOUNDED)
+  DrawSurfaceOptions(Filter aFilter = Filter::LINEAR,
+                     SamplingBounds aSamplingBounds = SamplingBounds::UNBOUNDED)
     : mFilter(aFilter)
     , mSamplingBounds(aSamplingBounds)
   { }
 
-  Filter mFilter : 3;
-  SamplingBounds mSamplingBounds : 1;
+  Filter mFilter;
+  SamplingBounds mSamplingBounds;
 };
 
 /*
@@ -195,7 +196,7 @@ public:
     : mColor(aColor)
   {}
 
-  virtual PatternType GetType() const { return PATTERN_COLOR; }
+  virtual PatternType GetType() const { return PatternType::COLOR; }
 
   Color mColor;
 };
@@ -227,7 +228,7 @@ public:
   {
   }
 
-  virtual PatternType GetType() const { return PATTERN_LINEAR_GRADIENT; }
+  virtual PatternType GetType() const { return PatternType::LINEAR_GRADIENT; }
 
   Point mBegin;
   Point mEnd;
@@ -267,7 +268,7 @@ public:
   {
   }
 
-  virtual PatternType GetType() const { return PATTERN_RADIAL_GRADIENT; }
+  virtual PatternType GetType() const { return PatternType::RADIAL_GRADIENT; }
 
   Point mCenter1;
   Point mCenter2;
@@ -292,14 +293,14 @@ public:
    * aFilter Resampling filter used for resampling the image.
    */
   SurfacePattern(SourceSurface *aSourceSurface, ExtendMode aExtendMode,
-                 const Matrix &aMatrix = Matrix(), Filter aFilter = FILTER_GOOD)
+                 const Matrix &aMatrix = Matrix(), Filter aFilter = Filter::GOOD)
     : mSurface(aSourceSurface)
     , mExtendMode(aExtendMode)
     , mFilter(aFilter)
     , mMatrix(aMatrix)
   {}
 
-  virtual PatternType GetType() const { return PATTERN_SURFACE; }
+  virtual PatternType GetType() const { return PatternType::SURFACE; }
 
   RefPtr<SourceSurface> mSurface;
   ExtendMode mExtendMode;
@@ -338,31 +339,57 @@ public:
 class DataSourceSurface : public SourceSurface
 {
 public:
-  virtual SurfaceType GetType() const { return SURFACE_DATA; }
-  /*
+  DataSourceSurface()
+    : mIsMapped(false)
+  {
+  }
+
+  struct MappedSurface {
+    uint8_t *mData;
+    int32_t mStride;
+  };
+
+  enum MapType {
+    READ,
+    WRITE,
+    READ_WRITE
+  };
+
+  virtual SurfaceType GetType() const { return SurfaceType::DATA; }
+  /* [DEPRECATED]
    * Get the raw bitmap data of the surface.
    * Can return null if there was OOM allocating surface data.
    */
   virtual uint8_t *GetData() = 0;
 
-  /*
+  /* [DEPRECATED]
    * Stride of the surface, distance in bytes between the start of the image
    * data belonging to row y and row y+1. This may be negative.
    * Can return 0 if there was OOM allocating surface data.
    */
   virtual int32_t Stride() = 0;
 
-  /*
-   * This function is called after modifying the data on the source surface
-   * directly through the data pointer.
-   */
-  virtual void MarkDirty() {}
+  virtual bool Map(MapType, MappedSurface *aMappedSurface)
+  {
+    aMappedSurface->mData = GetData();
+    aMappedSurface->mStride = Stride();
+    mIsMapped = true;
+    return true;
+  }
+
+  virtual void Unmap()
+  {
+    MOZ_ASSERT(mIsMapped);
+    mIsMapped = false;
+  }
 
   /*
    * Returns a DataSourceSurface with the same data as this one, but
-   * guaranteed to have surface->GetType() == SURFACE_DATA.
+   * guaranteed to have surface->GetType() == SurfaceType::DATA.
    */
   virtual TemporaryRef<DataSourceSurface> GetDataSurface();
+
+  DebugOnly<bool> mIsMapped;
 };
 
 /* This is an abstract object that accepts path segments. */
@@ -414,9 +441,9 @@ public:
   /* This returns a PathBuilder object that contains a copy of the contents of
    * this path and is still writable.
    */
-  virtual TemporaryRef<PathBuilder> CopyToBuilder(FillRule aFillRule = FILL_WINDING) const = 0;
+  virtual TemporaryRef<PathBuilder> CopyToBuilder(FillRule aFillRule = FillRule::FILL_WINDING) const = 0;
   virtual TemporaryRef<PathBuilder> TransformedCopyToBuilder(const Matrix &aTransform,
-                                                             FillRule aFillRule = FILL_WINDING) const = 0;
+                                                             FillRule aFillRule = FillRule::FILL_WINDING) const = 0;
 
   /* This function checks if a point lies within a path. It allows passing a
    * transform that will transform the path to the coordinate space in which
@@ -864,7 +891,7 @@ public:
    * ID2D1SimplifiedGeometrySink requires the fill mode
    * to be set before calling BeginFigure().
    */
-  virtual TemporaryRef<PathBuilder> CreatePathBuilder(FillRule aFillRule = FILL_WINDING) const = 0;
+  virtual TemporaryRef<PathBuilder> CreatePathBuilder(FillRule aFillRule = FillRule::FILL_WINDING) const = 0;
 
   /*
    * Create a GradientStops object that holds information about a set of
@@ -879,7 +906,7 @@ public:
   virtual TemporaryRef<GradientStops>
     CreateGradientStops(GradientStop *aStops,
                         uint32_t aNumStops,
-                        ExtendMode aExtendMode = EXTEND_CLAMP) const = 0;
+                        ExtendMode aExtendMode = ExtendMode::CLAMP) const = 0;
 
   /*
    * Create a FilterNode object that can be used to apply a filter to various
@@ -970,6 +997,12 @@ class GFX2D_API Factory
 public:
   static bool HasSSE2();
 
+  /* Make sure that the given dimensions don't overflow a 32-bit signed int
+   * using 4 bytes per pixel; optionally, make sure that either dimension
+   * doesn't exceed the given limit.
+   */
+  static bool CheckSurfaceSize(const IntSize &sz, int32_t limit = 0);
+
   static TemporaryRef<DrawTarget> CreateDrawTargetForCairoSurface(cairo_surface_t* aSurface, const IntSize& aSize);
 
   static TemporaryRef<SourceSurface>
@@ -1017,6 +1050,15 @@ public:
     CreateDataSourceSurface(const IntSize &aSize, SurfaceFormat aFormat);
 
   /*
+   * This creates a simple data source surface for a certain size with a
+   * specific stride, which must be large enough to fit all pixels.
+   * It allocates new memory for the surface. This memory is freed when
+   * the surface is destroyed.
+   */
+  static TemporaryRef<DataSourceSurface>
+    CreateDataSourceSurfaceWithStride(const IntSize &aSize, SurfaceFormat aFormat, int32_t aStride);
+
+  /*
    * This creates a simple data source surface for some existing data. It will
    * wrap this data and the data for this source surface. The caller is
    * responsible for deallocating the memory only after destruction of the
@@ -1054,9 +1096,6 @@ public:
 #ifdef XP_MACOSX
   static TemporaryRef<DrawTarget> CreateDrawTargetForCairoCGContext(CGContextRef cg, const IntSize& aSize);
 #endif
-
- static TemporaryRef<ScaledFont>
-   GetScaledFontForFontWithCairoSkia(DrawTarget* aTarget, cairo_scaled_font_t* aCairoFont, double aAdjustedSize);
 
 #ifdef WIN32
   static TemporaryRef<DrawTarget> CreateDrawTargetForD3D10Texture(ID3D10Texture2D *aTexture, SurfaceFormat aFormat);

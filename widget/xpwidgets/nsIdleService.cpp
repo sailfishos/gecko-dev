@@ -69,7 +69,7 @@ NS_IMPL_ISUPPORTS2(nsIdleServiceDaily, nsIObserver, nsISupportsWeakReference)
 NS_IMETHODIMP
 nsIdleServiceDaily::Observe(nsISupports *,
                             const char *aTopic,
-                            const PRUnichar *)
+                            const char16_t *)
 {
   PR_LOG(sLog, PR_LOG_DEBUG,
          ("nsIdleServiceDaily: Observe '%s' (%d)",
@@ -578,8 +578,8 @@ nsIdleService::ResetIdleTimeOut(uint32_t idleDeltaInMS)
     return NS_OK;
   }
 
-  // Now send "back" events to all, if any should have timed out allready, then
-  // they will be reawaken by the timer that is already running.
+  // Now send "active" events to all, if any should have timed out already,
+  // then they will be reawaken by the timer that is already running.
 
   // We need a text string to send with any state change events.
   nsAutoString timeStr;

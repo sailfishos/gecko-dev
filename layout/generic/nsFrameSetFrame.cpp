@@ -82,7 +82,7 @@ class nsHTMLFramesetBorderFrame : public nsLeafFrame
 public:
   NS_DECL_FRAMEARENA_HELPERS
 
-#ifdef DEBUG
+#ifdef DEBUG_FRAME_DUMP
   NS_IMETHOD GetFrameName(nsAString& aResult) const;
 #endif
 
@@ -136,7 +136,7 @@ public:
   NS_DECL_QUERYFRAME
   NS_DECL_FRAMEARENA_HELPERS
 
-#ifdef DEBUG
+#ifdef DEBUG_FRAME_DUMP
   NS_IMETHOD GetFrameName(nsAString& aResult) const
   {
     return MakeFrameName(NS_LITERAL_STRING("FramesetBlank"), aResult);
@@ -559,7 +559,7 @@ void nsHTMLFramesetFrame::GenerateRowCol(nsPresContext*        aPresContext,
 
   for (i = 0; i < aNumSpecs; i++) {
     if (!aNewAttr.IsEmpty())
-      aNewAttr.Append(PRUnichar(','));
+      aNewAttr.Append(char16_t(','));
 
     switch (aSpecs[i].mUnit) {
       case eFramesetUnit_Fixed:
@@ -569,7 +569,7 @@ void nsHTMLFramesetFrame::GenerateRowCol(nsPresContext*        aPresContext,
       case eFramesetUnit_Relative:
         // Add 0.5 to the percentage to make rounding work right.
         aNewAttr.AppendInt(uint32_t((100.0*aValues[i])/aSize + 0.5));
-        aNewAttr.Append(PRUnichar('%'));
+        aNewAttr.Append(char16_t('%'));
         break;
     }
   }
@@ -623,19 +623,19 @@ nsHTMLFramesetFrame::GetDesiredSize(nsPresContext*           aPresContext,
   if (nullptr == framesetParent) {
     if (aPresContext->IsPaginated()) {
       // XXX This needs to be changed when framesets paginate properly
-      aDesiredSize.width = aReflowState.availableWidth;
-      aDesiredSize.height = aReflowState.availableHeight;
+      aDesiredSize.Width() = aReflowState.AvailableWidth();
+      aDesiredSize.Height() = aReflowState.AvailableHeight();
     } else {
       nsRect area = aPresContext->GetVisibleArea();
 
-      aDesiredSize.width = area.width;
-      aDesiredSize.height= area.height;
+      aDesiredSize.Width() = area.width;
+      aDesiredSize.Height() = area.height;
     }
   } else {
     nsSize size;
     framesetParent->GetSizeOfChild(this, size);
-    aDesiredSize.width  = size.width;
-    aDesiredSize.height = size.height;
+    aDesiredSize.Width() = size.width;
+    aDesiredSize.Height() = size.height;
   }
 }
 
@@ -737,11 +737,11 @@ nsHTMLFramesetFrame::ReflowPlaceChild(nsIFrame*                aChild,
 {
   // reflow the child
   nsHTMLReflowState reflowState(aPresContext, aReflowState, aChild, aSize);
-  reflowState.SetComputedWidth(std::max(0, aSize.width - reflowState.mComputedBorderPadding.LeftRight()));
-  reflowState.SetComputedHeight(std::max(0, aSize.height - reflowState.mComputedBorderPadding.TopBottom()));
-  nsHTMLReflowMetrics metrics;
-  metrics.width = aSize.width;
-  metrics.height= aSize.height;
+  reflowState.SetComputedWidth(std::max(0, aSize.width - reflowState.ComputedPhysicalBorderPadding().LeftRight()));
+  reflowState.SetComputedHeight(std::max(0, aSize.height - reflowState.ComputedPhysicalBorderPadding().TopBottom()));
+  nsHTMLReflowMetrics metrics(aReflowState.GetWritingMode());
+  metrics.Width() = aSize.width;
+  metrics.Height() = aSize.height;
   nsReflowStatus status;
 
   ReflowChild(aChild, aPresContext, metrics, reflowState, aOffset.x,
@@ -749,9 +749,9 @@ nsHTMLFramesetFrame::ReflowPlaceChild(nsIFrame*                aChild,
   NS_ASSERTION(NS_FRAME_IS_COMPLETE(status), "bad status");
 
   // Place and size the child
-  metrics.width = aSize.width;
-  metrics.height = aSize.height;
-  FinishReflowChild(aChild, aPresContext, nullptr, metrics, aOffset.x, aOffset.y, 0);
+  metrics.Width() = aSize.width;
+  metrics.Height() = aSize.height;
+  FinishReflowChild(aChild, aPresContext, metrics, nullptr, aOffset.x, aOffset.y, 0);
 }
 
 static
@@ -852,14 +852,14 @@ nsHTMLFramesetFrame::Reflow(nsPresContext*           aPresContext,
 
   mParent->AddStateBits(NS_FRAME_CONTAINS_RELATIVE_HEIGHT);
 
-  //printf("FramesetFrame2::Reflow %X (%d,%d) \n", this, aReflowState.availableWidth, aReflowState.availableHeight);
+  //printf("FramesetFrame2::Reflow %X (%d,%d) \n", this, aReflowState.AvailableWidth(), aReflowState.AvailableHeight());
   // Always get the size so that the caller knows how big we are
   GetDesiredSize(aPresContext, aReflowState, aDesiredSize);
 
-  nscoord width  = (aDesiredSize.width <= aReflowState.availableWidth)
-    ? aDesiredSize.width : aReflowState.availableWidth;
-  nscoord height = (aDesiredSize.height <= aReflowState.availableHeight)
-    ? aDesiredSize.height : aReflowState.availableHeight;
+  nscoord width  = (aDesiredSize.Width() <= aReflowState.AvailableWidth())
+    ? aDesiredSize.Width() : aReflowState.AvailableWidth();
+  nscoord height = (aDesiredSize.Height() <= aReflowState.AvailableHeight())
+    ? aDesiredSize.Height() : aReflowState.AvailableHeight();
 
   bool firstTime = (GetStateBits() & NS_FRAME_FIRST_REFLOW) != 0;
   if (firstTime) {
@@ -970,7 +970,7 @@ nsHTMLFramesetFrame::Reflow(nsPresContext*           aPresContext,
         borderFrame->mWidth = borderWidth;
         borderChildX++;
       }
-      nsSize borderSize(aDesiredSize.width, borderWidth);
+      nsSize borderSize(aDesiredSize.Width(), borderWidth);
       ReflowPlaceChild(borderFrame, aPresContext, aReflowState, offset, borderSize);
       borderFrame = nullptr;
       offset.y += borderWidth;
@@ -1000,7 +1000,7 @@ nsHTMLFramesetFrame::Reflow(nsPresContext*           aPresContext,
             borderFrame->mWidth = borderWidth;
             borderChildX++;
           }
-          nsSize borderSize(borderWidth, aDesiredSize.height);
+          nsSize borderSize(borderWidth, aDesiredSize.Height());
           ReflowPlaceChild(borderFrame, aPresContext, aReflowState, offset, borderSize);
           borderFrame = nullptr;
         }
@@ -1148,7 +1148,7 @@ nsHTMLFramesetFrame::GetType() const
   return nsGkAtoms::frameSetFrame;
 }
 
-#ifdef DEBUG
+#ifdef DEBUG_FRAME_DUMP
 NS_IMETHODIMP
 nsHTMLFramesetFrame::GetFrameName(nsAString& aResult) const
 {
@@ -1609,7 +1609,7 @@ nsHTMLFramesetBorderFrame::GetCursor(const nsPoint&    aPoint,
   return NS_OK;
 }
 
-#ifdef DEBUG
+#ifdef DEBUG_FRAME_DUMP
 NS_IMETHODIMP nsHTMLFramesetBorderFrame::GetFrameName(nsAString& aResult) const
 {
   return MakeFrameName(NS_LITERAL_STRING("FramesetBorder"), aResult);

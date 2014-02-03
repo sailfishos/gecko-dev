@@ -269,6 +269,7 @@ LayerTransactionParent::RecvUpdate(const InfallibleTArray<Edit>& cset,
 
       const CommonLayerAttributes& common = attrs.common();
       layer->SetVisibleRegion(common.visibleRegion());
+      layer->SetEventRegions(common.eventRegions());
       layer->SetContentFlags(common.contentFlags());
       layer->SetOpacity(common.opacity());
       layer->SetClipRect(common.useClipRect() ? &common.clipRect() : nullptr);
@@ -488,7 +489,7 @@ LayerTransactionParent::RecvGetTransform(PLayerParent* aParent,
   // from the shadow transform by undoing the translations in
   // AsyncCompositionManager::SampleValue.
   Layer* layer = cast(aParent)->AsLayer();
-  *aTransform = layer->AsLayerComposite()->GetShadowTransform();
+  gfx::To3DMatrix(layer->AsLayerComposite()->GetShadowTransform(), *aTransform);
   if (ContainerLayer* c = layer->AsContainerLayer()) {
     aTransform->ScalePost(1.0f/c->GetInheritedXScale(),
                           1.0f/c->GetInheritedYScale(),
@@ -550,10 +551,10 @@ LayerTransactionParent::RecvClearCachedResources()
 }
 
 PGrallocBufferParent*
-LayerTransactionParent::AllocPGrallocBufferParent(const gfxIntSize& aSize,
-                                            const uint32_t& aFormat,
-                                            const uint32_t& aUsage,
-                                            MaybeMagicGrallocBufferHandle* aOutHandle)
+LayerTransactionParent::AllocPGrallocBufferParent(const IntSize& aSize,
+                                                  const uint32_t& aFormat,
+                                                  const uint32_t& aUsage,
+                                                  MaybeMagicGrallocBufferHandle* aOutHandle)
 {
 #ifdef MOZ_HAVE_SURFACEDESCRIPTORGRALLOC
   return GrallocBufferActor::Create(aSize, aFormat, aUsage, aOutHandle);
@@ -602,9 +603,10 @@ LayerTransactionParent::DeallocPCompositableParent(PCompositableParent* actor)
 }
 
 PTextureParent*
-LayerTransactionParent::AllocPTextureParent()
+LayerTransactionParent::AllocPTextureParent(const SurfaceDescriptor& aSharedData,
+                                            const TextureFlags& aFlags)
 {
-  return TextureHost::CreateIPDLActor(this);
+  return TextureHost::CreateIPDLActor(this, aSharedData, aFlags);
 }
 
 bool

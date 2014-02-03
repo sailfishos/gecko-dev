@@ -86,7 +86,7 @@ public:
   virtual bool RecvResume() MOZ_OVERRIDE;
   virtual bool RecvNotifyChildCreated(const uint64_t& child) MOZ_OVERRIDE;
   virtual bool RecvMakeSnapshot(const SurfaceDescriptor& aInSnapshot,
-                                SurfaceDescriptor* aOutSnapshot);
+                                SurfaceDescriptor* aOutSnapshot) MOZ_OVERRIDE;
   virtual bool RecvFlushRendering() MOZ_OVERRIDE;
   virtual bool RecvForceComposite() MOZ_OVERRIDE;
 
@@ -205,6 +205,10 @@ public:
     nsRefPtr<GeckoContentController> mController;
     CompositorParent* mParent;
     LayerManagerComposite* mLayerManager;
+    // Pointer to the CrossProcessCompositorParent. Used by APZCs to share
+    // their FrameMetrics with the corresponding child process that holds
+    // the PCompositorChild
+    PCompositorParent* mCrossProcessParent;
     TargetConfig mTargetConfig;
   };
 
@@ -235,8 +239,8 @@ protected:
     AllocPLayerTransactionParent(const nsTArray<LayersBackend>& aBackendHints,
                                  const uint64_t& aId,
                                  TextureFactoryIdentifier* aTextureFactoryIdentifier,
-                                 bool* aSuccess);
-  virtual bool DeallocPLayerTransactionParent(PLayerTransactionParent* aLayers);
+                                 bool* aSuccess) MOZ_OVERRIDE;
+  virtual bool DeallocPLayerTransactionParent(PLayerTransactionParent* aLayers) MOZ_OVERRIDE;
   virtual void ScheduleTask(CancelableTask*, int);
   void Composite();
   void CompositeInTransaction();

@@ -15,6 +15,7 @@ loader.lazyImporter(this, "Services", "resource://gre/modules/Services.jsm");
 loader.lazyImporter(this, "ConsoleAPIStorage", "resource://gre/modules/ConsoleAPIStorage.jsm");
 loader.lazyImporter(this, "NetUtil", "resource://gre/modules/NetUtil.jsm");
 loader.lazyImporter(this, "PrivateBrowsingUtils", "resource://gre/modules/PrivateBrowsingUtils.jsm");
+loader.lazyImporter(this, "LayoutHelpers", "resource://gre/modules/devtools/LayoutHelpers.jsm");
 loader.lazyServiceGetter(this, "gActivityDistributor",
                          "@mozilla.org/network/http-activity-distributor;1",
                          "nsIHttpActivityDistributor");
@@ -188,12 +189,18 @@ let WebConsoleUtils = {
    *
    * @param string aSourceURL
    *        The source URL to shorten.
+   * @param object [aOptions]
+   *        Options:
+   *        - onlyCropQuery: boolean that tells if the URL abbreviation function
+   *        should only remove the query parameters and the hash fragment from
+   *        the given URL.
    * @return string
    *         The abbreviated form of the source URL.
    */
-  abbreviateSourceURL: function WCU_abbreviateSourceURL(aSourceURL)
+  abbreviateSourceURL:
+  function WCU_abbreviateSourceURL(aSourceURL, aOptions = {})
   {
-    if (aSourceURL.substr(0, 5) == "data:") {
+    if (!aOptions.onlyCropQuery && aSourceURL.substr(0, 5) == "data:") {
       let commaIndex = aSourceURL.indexOf(",");
       if (commaIndex > -1) {
         aSourceURL = "data:" + aSourceURL.substring(commaIndex + 1);
@@ -214,13 +221,15 @@ let WebConsoleUtils = {
 
     // Remove a trailing "/".
     if (aSourceURL[aSourceURL.length - 1] == "/") {
-      aSourceURL = aSourceURL.substring(0, aSourceURL.length - 1);
+      aSourceURL = aSourceURL.replace(/\/+$/, "");
     }
 
     // Remove all but the last path component.
-    let slashIndex = aSourceURL.lastIndexOf("/");
-    if (slashIndex > -1) {
-      aSourceURL = aSourceURL.substring(slashIndex + 1);
+    if (!aOptions.onlyCropQuery) {
+      let slashIndex = aSourceURL.lastIndexOf("/");
+      if (slashIndex > -1) {
+        aSourceURL = aSourceURL.substring(slashIndex + 1);
+      }
     }
 
     return aSourceURL;
@@ -1064,6 +1073,9 @@ function ConsoleServiceListener(aWindow, aListener)
 {
   this.window = aWindow;
   this.listener = aListener;
+  if (this.window) {
+    this.layoutHelpers = new LayoutHelpers(this.window);
+  }
 }
 exports.ConsoleServiceListener = ConsoleServiceListener;
 
@@ -1113,7 +1125,7 @@ ConsoleServiceListener.prototype =
       }
 
       let errorWindow = Services.wm.getOuterWindowWithId(aMessage.outerWindowID);
-      if (!errorWindow || errorWindow.top != this.window) {
+      if (!errorWindow || !this.layoutHelpers.isIncludedInTopLevelWindow(errorWindow)) {
         return;
       }
     }
@@ -1235,6 +1247,9 @@ function ConsoleAPIListener(aWindow, aOwner)
 {
   this.window = aWindow;
   this.owner = aOwner;
+  if (this.window) {
+    this.layoutHelpers = new LayoutHelpers(this.window);
+  }
 }
 exports.ConsoleAPIListener = ConsoleAPIListener;
 
@@ -1286,7 +1301,7 @@ ConsoleAPIListener.prototype =
     let apiMessage = aMessage.wrappedJSObject;
     if (this.window) {
       let msgWindow = Services.wm.getOuterWindowWithId(apiMessage.ID);
-      if (!msgWindow || msgWindow.top != this.window) {
+      if (!msgWindow || !this.layoutHelpers.isIncludedInTopLevelWindow(msgWindow)) {
         // Not the same window!
         return;
       }
@@ -1435,8 +1450,7 @@ function JSTermHelpers(aOwner)
       }
 
       let toolbox = gDevTools.getToolbox(target);
-      let panel = toolbox ? toolbox.getPanel("inspector") : null;
-      let node = panel ? panel.selection.node : null;
+      let node = toolbox && toolbox.selection ? toolbox.selection.node : null;
 
       return node ? aOwner.makeDebuggeeValue(node) : null;
     },

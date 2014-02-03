@@ -430,7 +430,7 @@ NS_IMETHODIMP
 ProcessPriorityManagerImpl::Observe(
   nsISupports* aSubject,
   const char* aTopic,
-  const PRUnichar* aData)
+  const char16_t* aData)
 {
   nsDependentCString topic(aTopic);
   if (topic.EqualsLiteral("ipc:content-created")) {
@@ -661,7 +661,7 @@ ParticularProcessPriorityManager::Notify(const WakeLockInformation& aInfo)
 NS_IMETHODIMP
 ParticularProcessPriorityManager::Observe(nsISupports* aSubject,
                                           const char* aTopic,
-                                          const PRUnichar* aData)
+                                          const char16_t* aData)
 {
   if (!mContentParent) {
     // We've been shut down.
@@ -807,7 +807,16 @@ ParticularProcessPriorityManager::ResetPriority()
   ProcessPriority processPriority = ComputePriority();
   if (mPriority == PROCESS_PRIORITY_UNKNOWN ||
       mPriority > processPriority) {
-    ScheduleResetPriority("backgroundGracePeriodMS");
+    // Apps set at a perceivable background priority are often playing media.
+    // Most media will have short gaps while changing tracks between songs,
+    // switching videos, etc.  Give these apps a longer grace period so they
+    // can get their next track started, if there is one, before getting
+    // downgraded.
+    if (mPriority == PROCESS_PRIORITY_BACKGROUND_PERCEIVABLE) {
+      ScheduleResetPriority("backgroundPerceivableGracePeriodMS");
+    } else {
+      ScheduleResetPriority("backgroundGracePeriodMS");
+    }
     return;
   }
 
@@ -1156,7 +1165,7 @@ NS_IMETHODIMP
 ProcessPriorityManagerChild::Observe(
   nsISupports* aSubject,
   const char* aTopic,
-  const PRUnichar* aData)
+  const char16_t* aData)
 {
   MOZ_ASSERT(!strcmp(aTopic, "ipc:process-priority-changed"));
 

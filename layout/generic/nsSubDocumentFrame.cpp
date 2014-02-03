@@ -14,6 +14,7 @@
 
 #include "nsCOMPtr.h"
 #include "nsGenericHTMLElement.h"
+#include "nsGenericHTMLFrameElement.h"
 #include "nsAttrValueInlines.h"
 #include "nsIDocShell.h"
 #include "nsIContentViewer.h"
@@ -148,22 +149,6 @@ nsSubDocumentFrame::Init(nsIContent*     aContent,
   nsContentUtils::AddScriptRunner(new AsyncFrameInit(this));
 }
 
-inline int32_t ConvertOverflow(uint8_t aOverflow)
-{
-  switch (aOverflow) {
-    case NS_STYLE_OVERFLOW_VISIBLE:
-    case NS_STYLE_OVERFLOW_AUTO:
-      return nsIScrollable::Scrollbar_Auto;
-    case NS_STYLE_OVERFLOW_HIDDEN:
-    case NS_STYLE_OVERFLOW_CLIP:
-      return nsIScrollable::Scrollbar_Never;
-    case NS_STYLE_OVERFLOW_SCROLL:
-      return nsIScrollable::Scrollbar_Always;
-  }
-  NS_NOTREACHED("invalid overflow value passed to ConvertOverflow");
-  return nsIScrollable::Scrollbar_Auto;
-}
-
 void
 nsSubDocumentFrame::ShowViewer()
 {
@@ -179,14 +164,15 @@ nsSubDocumentFrame::ShowViewer()
     nsRefPtr<nsFrameLoader> frameloader = FrameLoader();
     if (frameloader) {
       nsIntSize margin = GetMarginAttributes();
-      const nsStyleDisplay* disp = StyleDisplay();
       nsWeakFrame weakThis(this);
       mCallingShow = true;
+      const nsAttrValue* attrValue =
+        GetContent()->AsElement()->GetParsedAttr(nsGkAtoms::scrolling);
+      int32_t scrolling =
+        nsGenericHTMLFrameElement::MapScrollingAttribute(attrValue);
       bool didCreateDoc =
         frameloader->Show(margin.width, margin.height,
-                          ConvertOverflow(disp->mOverflowX),
-                          ConvertOverflow(disp->mOverflowY),
-                          this);
+                          scrolling, scrolling, this);
       if (!weakThis.IsAlive()) {
         return;
       }
@@ -242,9 +228,6 @@ nsSubDocumentFrame::GetSubdocumentSize()
 bool
 nsSubDocumentFrame::PassPointerEventsToChildren()
 {
-  if (StyleVisibility()->mPointerEvents != NS_STYLE_POINTER_EVENTS_NONE) {
-    return true;
-  }
   // Limit use of mozpasspointerevents to documents with embedded:apps/chrome
   // permission, because this could be used by the parent document to discover
   // which parts of the subdocument are transparent to events (if subdocument
@@ -269,6 +252,24 @@ nsSubDocumentFrame::PassPointerEventsToChildren()
   return false;
 }
 
+static void
+WrapBackgroundColorInOwnLayer(nsDisplayListBuilder* aBuilder,
+                              nsIFrame* aFrame,
+                              nsDisplayList* aList)
+{
+  nsDisplayList tempItems;
+  nsDisplayItem* item;
+  while ((item = aList->RemoveBottom()) != nullptr) {
+    if (item->GetType() == nsDisplayItem::TYPE_BACKGROUND_COLOR) {
+      nsDisplayList tmpList;
+      tmpList.AppendToTop(item);
+      item = new (aBuilder) nsDisplayOwnLayer(aBuilder, aFrame, &tmpList);
+    }
+    tempItems.AppendToTop(item);
+  }
+  aList->AppendToTop(&tempItems);
+}
+
 void
 nsSubDocumentFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
                                      const nsRect&           aDirtyRect,
@@ -277,27 +278,48 @@ nsSubDocumentFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
   if (!IsVisibleForPainting(aBuilder))
     return;
 
-  // If mozpasspointerevents is set, then we should allow subdocument content
-  // to handle events even if we're pointer-events:none.
-  if (aBuilder->IsForEventDelivery() && !PassPointerEventsToChildren())
-    return;
-
-  // If we are pointer-events:none then we don't need to HitTest background
-  if (!aBuilder->IsForEventDelivery() ||
-      StyleVisibility()->mPointerEvents != NS_STYLE_POINTER_EVENTS_NONE) {
-    DisplayBorderBackgroundOutline(aBuilder, aLists);
+  nsFrameLoader* frameLoader = FrameLoader();
+  RenderFrameParent* rfp = nullptr;
+  if (frameLoader) {
+    rfp = frameLoader->GetCurrentRemoteFrame();
   }
 
-  if (!mInnerView)
-    return;
-
-  nsFrameLoader* frameLoader = FrameLoader();
-  if (frameLoader) {
-    RenderFrameParent* rfp = frameLoader->GetCurrentRemoteFrame();
+  // If we are pointer-events:none then we don't need to HitTest background
+  bool pointerEventsNone = StyleVisibility()->mPointerEvents == NS_STYLE_POINTER_EVENTS_NONE;
+  if (!aBuilder->IsForEventDelivery() || !pointerEventsNone) {
+    nsDisplayListCollection decorations;
+    DisplayBorderBackgroundOutline(aBuilder, decorations);
     if (rfp) {
-      rfp->BuildDisplayList(aBuilder, this, aDirtyRect, aLists);
+      // Wrap background colors of <iframe>s with remote subdocuments in their
+      // own layer so we generate a ColorLayer. This is helpful for optimizing
+      // compositing; we can skip compositing the ColorLayer when the
+      // remote content is opaque.
+      WrapBackgroundColorInOwnLayer(aBuilder, this, decorations.BorderBackground());
+    }
+    decorations.MoveTo(aLists);
+  }
+
+  bool passPointerEventsToChildren = false;
+  if (aBuilder->IsForEventDelivery()) {
+    passPointerEventsToChildren = PassPointerEventsToChildren();
+    // If mozpasspointerevents is set, then we should allow subdocument content
+    // to handle events even if we're pointer-events:none.
+    if (pointerEventsNone && !passPointerEventsToChildren) {
       return;
     }
+  }
+
+  // If we're passing pointer events to children then we have to descend into
+  // subdocuments no matter what, to determine which parts are transparent for
+  // elementFromPoint.
+  if (!mInnerView ||
+      (!aBuilder->GetDescendIntoSubdocuments() && !passPointerEventsToChildren)) {
+    return;
+  }
+
+  if (rfp) {
+    rfp->BuildDisplayList(aBuilder, this, aDirtyRect, aLists);
+    return;
   }
 
   nsView* subdocView = mInnerView->GetFirstChild();
@@ -394,6 +416,7 @@ nsSubDocumentFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
     }
 
     if (subdocRootFrame) {
+      aBuilder->SetAncestorHasTouchEventHandler(false);
       subdocRootFrame->
         BuildDisplayListForStackingContext(aBuilder, dirty, &childItems);
     }
@@ -503,18 +526,21 @@ nsSubDocumentFrame::GetIntrinsicHeight()
   return nsPresContext::CSSPixelsToAppUnits(150);
 }
 
-#ifdef DEBUG
+#ifdef DEBUG_FRAME_DUMP
 void
-nsSubDocumentFrame::List(FILE* out, int32_t aIndent, uint32_t aFlags) const
+nsSubDocumentFrame::List(FILE* out, const char* aPrefix, uint32_t aFlags) const
 {
-  ListGeneric(out, aIndent, aFlags);
-  fputs("\n", out);
+  nsCString str;
+  ListGeneric(str, aPrefix, aFlags);
+  fprintf_stderr(out, "%s\n", str.get());
 
-  nsSubDocumentFrame* f = const_cast<nsSubDocumentFrame*>(this);
   if (aFlags & TRAVERSE_SUBDOCUMENT_FRAMES) {
+    nsSubDocumentFrame* f = const_cast<nsSubDocumentFrame*>(this);
     nsIFrame* subdocRootFrame = f->GetSubdocumentRootFrame();
     if (subdocRootFrame) {
-      subdocRootFrame->List(out, aIndent + 1);
+      nsCString pfx(aPrefix);
+      pfx += "  ";
+      subdocRootFrame->List(out, pfx.get(), aFlags);
     }
   }
 }
@@ -627,10 +653,10 @@ nsSubDocumentFrame::Reflow(nsPresContext*           aPresContext,
 {
   DO_GLOBAL_REFLOW_COUNT("nsSubDocumentFrame");
   DISPLAY_REFLOW(aPresContext, this, aReflowState, aDesiredSize, aStatus);
-  // printf("OuterFrame::Reflow %X (%d,%d) \n", this, aReflowState.availableWidth, aReflowState.availableHeight);
+  // printf("OuterFrame::Reflow %X (%d,%d) \n", this, aReflowState.AvailableWidth(), aReflowState.AvailableHeight());
   NS_FRAME_TRACE(NS_FRAME_TRACE_CALLS,
      ("enter nsSubDocumentFrame::Reflow: maxSize=%d,%d",
-      aReflowState.availableWidth, aReflowState.availableHeight));
+      aReflowState.AvailableWidth(), aReflowState.AvailableHeight()));
 
   aStatus = NS_FRAME_COMPLETE;
 
@@ -644,12 +670,12 @@ nsSubDocumentFrame::Reflow(nsPresContext*           aPresContext,
 
   // "offset" is the offset of our content area from our frame's
   // top-left corner.
-  nsPoint offset = nsPoint(aReflowState.mComputedBorderPadding.left,
-                           aReflowState.mComputedBorderPadding.top);
+  nsPoint offset = nsPoint(aReflowState.ComputedPhysicalBorderPadding().left,
+                           aReflowState.ComputedPhysicalBorderPadding().top);
 
-  nsSize innerSize(aDesiredSize.width, aDesiredSize.height);
-  innerSize.width  -= aReflowState.mComputedBorderPadding.LeftRight();
-  innerSize.height -= aReflowState.mComputedBorderPadding.TopBottom();
+  nsSize innerSize(aDesiredSize.Width(), aDesiredSize.Height());
+  innerSize.width  -= aReflowState.ComputedPhysicalBorderPadding().LeftRight();
+  innerSize.height -= aReflowState.ComputedPhysicalBorderPadding().TopBottom();
 
   if (mInnerView) {
     nsViewManager* vm = mInnerView->GetViewManager();
@@ -673,11 +699,11 @@ nsSubDocumentFrame::Reflow(nsPresContext*           aPresContext,
   }
 
   // printf("OuterFrame::Reflow DONE %X (%d,%d)\n", this,
-  //        aDesiredSize.width, aDesiredSize.height);
+  //        aDesiredSize.Width(), aDesiredSize.Height());
 
   NS_FRAME_TRACE(NS_FRAME_TRACE_CALLS,
      ("exit nsSubDocumentFrame::Reflow: size=%d,%d status=%x",
-      aDesiredSize.width, aDesiredSize.height, aStatus));
+      aDesiredSize.Width(), aDesiredSize.Height(), aStatus));
 
   NS_FRAME_SET_TRUNCATION(aStatus, aReflowState, aDesiredSize);
   return NS_OK;

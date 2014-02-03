@@ -12,7 +12,6 @@
 #include "BluetoothPropertyContainer.h"
 #include "nsCOMPtr.h"
 #include "nsDOMEventTargetHelper.h"
-#include "nsIDOMBluetoothDevice.h"
 
 namespace mozilla {
 namespace dom {
@@ -147,7 +146,6 @@ public:
     SendMediaPlayStatus(const MediaPlayStatus& aMediaPlayStatus, ErrorResult& aRv);
 
   IMPL_EVENT_HANDLER(devicefound);
-  IMPL_EVENT_HANDLER(discoverystatechanged);
   IMPL_EVENT_HANDLER(a2dpstatuschanged);
   IMPL_EVENT_HANDLER(hfpstatuschanged);
   IMPL_EVENT_HANDLER(pairedstatuschanged);

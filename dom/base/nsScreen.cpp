@@ -20,22 +20,6 @@
 using namespace mozilla;
 using namespace mozilla::dom;
 
-namespace {
-
-bool
-IsChromeType(nsIDocShell *aDocShell)
-{
-  if (!aDocShell) {
-    return false;
-  }
-
-  int32_t itemType;
-  aDocShell->GetItemType(&itemType);
-  return itemType == nsIDocShellTreeItem::typeChrome;
-}
-
-} // anonymous namespace
-
 /* static */ already_AddRefed<nsScreen>
 nsScreen::Create(nsPIDOMWindow* aWindow)
 {
@@ -49,8 +33,7 @@ nsScreen::Create(nsPIDOMWindow* aWindow)
     do_QueryInterface(static_cast<nsPIDOMWindow*>(aWindow));
   NS_ENSURE_TRUE(sgo, nullptr);
 
-  nsRefPtr<nsScreen> screen = new nsScreen();
-  screen->BindToOwner(aWindow);
+  nsRefPtr<nsScreen> screen = new nsScreen(aWindow);
 
   hal::RegisterScreenConfigurationObserver(screen);
   hal::ScreenConfiguration config;
@@ -60,10 +43,10 @@ nsScreen::Create(nsPIDOMWindow* aWindow)
   return screen.forget();
 }
 
-nsScreen::nsScreen()
-  : mEventListener(nullptr)
+nsScreen::nsScreen(nsPIDOMWindow* aWindow)
+  : nsDOMEventTargetHelper(aWindow)
+  , mEventListener(nullptr)
 {
-  SetIsDOMBinding();
 }
 
 nsScreen::~nsScreen()
@@ -219,7 +202,8 @@ nsScreen::GetLockOrientationPermission() const
   }
 
   // Chrome can always lock the screen orientation.
-  if (IsChromeType(owner->GetDocShell())) {
+  nsIDocShell* docShell = owner->GetDocShell();
+  if (docShell && docShell->ItemType() == nsIDocShellTreeItem::typeChrome) {
     return LOCK_ALLOWED;
   }
 
@@ -239,11 +223,9 @@ nsScreen::GetLockOrientationPermission() const
 }
 
 NS_IMETHODIMP
-nsScreen::MozLockOrientation(const JS::Value& aOrientation_, JSContext* aCx,
+nsScreen::MozLockOrientation(JS::Handle<JS::Value> aOrientation, JSContext* aCx,
                              bool* aReturn)
 {
-  JS::Rooted<JS::Value> aOrientation(aCx, aOrientation_);
-
   if (aOrientation.isObject()) {
     JS::Rooted<JSObject*> seq(aCx, &aOrientation.toObject());
     if (IsArrayLike(aCx, seq)) {

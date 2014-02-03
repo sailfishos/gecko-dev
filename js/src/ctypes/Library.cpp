@@ -84,7 +84,7 @@ Library::Create(JSContext* cx, jsval path_, JSCTypesCallbacks* callbacks)
 {
   RootedValue path(cx, path_);
   RootedObject libraryObj(cx,
-                          JS_NewObject(cx, &sLibraryClass, nullptr, nullptr));
+                          JS_NewObject(cx, &sLibraryClass, NullPtr(), NullPtr()));
   if (!libraryObj)
     return nullptr;
 
@@ -107,7 +107,7 @@ Library::Create(JSContext* cx, jsval path_, JSCTypesCallbacks* callbacks)
 #ifdef XP_WIN
   // On Windows, converting to native charset may corrupt path string.
   // So, we have to use Unicode path directly.
-  const PRUnichar* pathChars = JS_GetFlatStringChars(pathStr);
+  const char16_t* pathChars = JS_GetFlatStringChars(pathStr);
   if (!pathChars)
     return nullptr;
 

@@ -25,7 +25,6 @@ const MAX_REQUESTS = 25;
 
 Cu.import("resource://gre/modules/DataStoreCursor.jsm");
 Cu.import("resource://gre/modules/DataStoreDB.jsm");
-Cu.import("resource://gre/modules/ObjectWrapper.jsm");
 Cu.import('resource://gre/modules/Services.jsm');
 Cu.import('resource://gre/modules/XPCOMUtils.jsm');
 Cu.importGlobalProperties(["indexedDB"]);
@@ -36,7 +35,7 @@ XPCOMUtils.defineLazyServiceGetter(this, "cpmm",
 
 /* Helper functions */
 function createDOMError(aWindow, aEvent) {
-  return new aWindow.DOMError(aEvent.target.error.name);
+  return new aWindow.DOMError(aEvent);
 }
 
 function throwInvalidArg(aWindow) {
@@ -49,24 +48,14 @@ function throwReadOnly(aWindow) {
     new aWindow.DOMError("ReadOnlyError", "DataStore in readonly mode"));
 }
 
-function parseIds(aId) {
-  function parseId(aId) {
-    aId = parseInt(aId);
-    return (isNaN(aId) || aId <= 0) ? null : aId;
+function validateId(aId) {
+  // If string, it cannot be empty.
+  if (typeof(aId) == 'string') {
+    return aId.length;
   }
 
-  if (!Array.isArray(aId)) {
-    return parseId(aId);
-  }
-
-  for (let i = 0; i < aId.length; ++i) {
-    aId[i] = parseId(aId[i]);
-    if (aId[i] === null) {
-      return null;
-    }
-  }
-
-  return aId;
+  aId = parseInt(aId);
+  return (!isNaN(aId) && aId > 0);
 }
 
 /* DataStore object */
@@ -152,7 +141,7 @@ this.DataStore.prototype = {
 
     function getInternalSuccess(aEvent, aPos) {
       debug("GetInternal success. Record: " + aEvent.target.result);
-      results[aPos] = ObjectWrapper.wrap(aEvent.target.result, self._window);
+      results[aPos] = Cu.cloneInto(aEvent.target.result, self._window);
       if (!--pendingIds) {
         aCallback(results);
         return;
@@ -303,12 +292,14 @@ this.DataStore.prototype = {
 
   sendNotification: function(aId, aOperation, aRevisionId) {
     debug("SendNotification");
-    if (aOperation != REVISION_VOID) {
-      cpmm.sendAsyncMessage("DataStore:Changed",
-                            { store: this.name, owner: this.owner,
-                              message: { revisionId: aRevisionId, id: aId,
-                                         operation: aOperation } } );
+    if (aOperation == REVISION_VOID) {
+      aOperation = "cleared";
     }
+
+    cpmm.sendAsyncMessage("DataStore:Changed",
+                          { store: this.name, owner: this.owner,
+                            message: { revisionId: aRevisionId, id: aId,
+                                       operation: aOperation } } );
   },
 
   receiveMessage: function(aMessage) {
@@ -365,10 +356,12 @@ this.DataStore.prototype = {
     return this._readOnly;
   },
 
-  get: function(aId) {
-    aId = parseIds(aId);
-    if (aId === null) {
-      return throwInvalidArg(this._window);
+  get: function() {
+    let ids = Array.prototype.slice.call(arguments);
+    for (let i = 0; i < ids.length; ++i) {
+      if (!validateId(ids[i])) {
+        return throwInvalidArg(this._window);
+      }
     }
 
     let self = this;
@@ -376,18 +369,16 @@ this.DataStore.prototype = {
     // Promise<Object>
     return this.newDBPromise("readonly",
       function(aResolve, aReject, aTxn, aStore, aRevisionStore) {
-               self.getInternal(aStore,
-                                Array.isArray(aId) ?  aId : [ aId ],
+               self.getInternal(aStore, ids,
                                 function(aResults) {
-          aResolve(Array.isArray(aId) ? aResults : aResults[0]);
+          aResolve(ids.length > 1 ? aResults : aResults[0]);
         });
       }
     );
   },
 
   put: function(aObj, aId) {
-    aId = parseInt(aId);
-    if (isNaN(aId) || aId <= 0) {
+    if (!validateId(aId)) {
       return throwInvalidArg(this._window);
     }
 
@@ -407,8 +398,7 @@ this.DataStore.prototype = {
 
   add: function(aObj, aId) {
     if (aId) {
-      aId = parseInt(aId);
-      if (isNaN(aId) || aId <= 0) {
+      if (!validateId(aId)) {
         return throwInvalidArg(this._window);
       }
     }
@@ -428,8 +418,7 @@ this.DataStore.prototype = {
   },
 
   remove: function(aId) {
-    aId = parseInt(aId);
-    if (isNaN(aId) || aId <= 0) {
+    if (!validateId(aId)) {
       return throwInvalidArg(this._window);
     }
 

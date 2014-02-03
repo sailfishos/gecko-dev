@@ -332,10 +332,10 @@ EmbedLiteApp::LoadGlobalStyleSheet(const char* aUri, bool aEnable)
 }
 
 void
-EmbedLiteApp::SendObserve(const char* aMessageName, const PRUnichar* aMessage)
+EmbedLiteApp::SendObserve(const char* aMessageName, const char16_t* aMessage)
 {
   LOGT("topic:%s", aMessageName);
-  unused << mAppParent->SendObserve(nsDependentCString(aMessageName), aMessage ? nsDependentString(aMessage) : nsString());
+  unused << mAppParent->SendObserve(nsDependentCString(aMessageName), aMessage ? nsDependentString((const char16_t*)aMessage) : nsString());
 }
 
 void

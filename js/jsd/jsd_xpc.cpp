@@ -978,7 +978,7 @@ jsdScript::CreatePPLineMap()
 {
     AutoSafeJSContext cx;
     JSAutoCompartment ac(cx, JSD_GetDefaultGlobal (mCx)); // Just in case.
-    JS::RootedObject obj(cx, JS_NewObject(cx, nullptr, nullptr, nullptr));
+    JS::RootedObject obj(cx, JS_NewObject(cx, nullptr, JS::NullPtr(), JS::NullPtr()));
     if (!obj)
         return nullptr;
     JS::RootedFunction fun(cx, JSD_GetJSFunction (mCx, mScript));
@@ -1213,7 +1213,7 @@ jsdScript::GetFunctionName(nsACString &_rval)
 }
 
 NS_IMETHODIMP
-jsdScript::GetParameterNames(uint32_t* count, PRUnichar*** paramNames)
+jsdScript::GetParameterNames(uint32_t* count, char16_t*** paramNames)
 {
     ASSERT_VALID_EPHEMERAL;
     AutoSafeJSContext cx;
@@ -1234,8 +1234,8 @@ jsdScript::GetParameterNames(uint32_t* count, PRUnichar*** paramNames)
         return NS_OK;
     }
 
-    PRUnichar **ret =
-        static_cast<PRUnichar**>(NS_Alloc(nargs * sizeof(PRUnichar*)));
+    char16_t **ret =
+        static_cast<char16_t**>(NS_Alloc(nargs * sizeof(char16_t*)));
     if (!ret)
         return NS_ERROR_OUT_OF_MEMORY;
 
@@ -2364,16 +2364,14 @@ jsdValue::Refresh()
 }
 
 NS_IMETHODIMP
-jsdValue::GetWrappedValue(JSContext* aCx, JS::Value* aRetval)
+jsdValue::GetWrappedValue(JSContext* aCx, JS::MutableHandle<JS::Value> aRetval)
 {
     ASSERT_VALID_EPHEMERAL;
 
-    JS::RootedValue value(aCx, JSD_GetValueWrappedJSVal(mCx, mValue));
-    if (!JS_WrapValue(aCx, &value)) {
+    aRetval.set(JSD_GetValueWrappedJSVal(mCx, mValue));
+    if (!JS_WrapValue(aCx, aRetval))
         return NS_ERROR_FAILURE;
-    }
 
-    *aRetval = value;
     return NS_OK;
 }
 
@@ -2987,7 +2985,7 @@ jsdService::ClearAllBreakpoints (void)
 }
 
 NS_IMETHODIMP
-jsdService::WrapValue(const JS::Value &value, jsdIValue **_rval)
+jsdService::WrapValue(JS::Handle<JS::Value> value, jsdIValue **_rval)
 {
     ASSERT_VALID_CONTEXT;
     JSDValue *jsdv = JSD_NewValue(mCx, value);
@@ -3329,7 +3327,7 @@ NS_IMPL_ISUPPORTS1(jsdASObserver, nsIObserver)
 
 NS_IMETHODIMP
 jsdASObserver::Observe (nsISupports *aSubject, const char *aTopic,
-                        const PRUnichar *aData)
+                        const char16_t *aData)
 {
     nsresult rv;
 

@@ -43,6 +43,7 @@ MmsMessage::MmsMessage(int32_t                          aId,
                        const nsAString&                 aSender,
                        const nsTArray<nsString>&        aReceivers,
                        uint64_t                         aTimestamp,
+                       uint64_t                         aSentTimestamp,
                        bool                             aRead,
                        const nsAString&                 aSubject,
                        const nsAString&                 aSmil,
@@ -57,6 +58,7 @@ MmsMessage::MmsMessage(int32_t                          aId,
     mSender(aSender),
     mReceivers(aReceivers),
     mTimestamp(aTimestamp),
+    mSentTimestamp(aSentTimestamp),
     mRead(aRead),
     mSubject(aSubject),
     mSmil(aSmil),
@@ -74,6 +76,7 @@ MmsMessage::MmsMessage(const mobilemessage::MmsMessageData& aData)
   , mSender(aData.sender())
   , mReceivers(aData.receivers())
   , mTimestamp(aData.timestamp())
+  , mSentTimestamp(aData.sentTimestamp())
   , mRead(aData.read())
   , mSubject(aData.subject())
   , mSmil(aData.smil())
@@ -173,6 +176,7 @@ MmsMessage::Create(int32_t               aId,
                    const nsAString&      aSender,
                    const JS::Value&      aReceivers,
                    const JS::Value&      aTimestamp,
+                   const JS::Value&      aSentTimestamp,
                    bool                  aRead,
                    const nsAString&      aSubject,
                    const nsAString&      aSmil,
@@ -256,6 +260,11 @@ MmsMessage::Create(int32_t               aId,
   nsresult rv = convertTimeToInt(aCx, aTimestamp, timestamp);
   NS_ENSURE_SUCCESS(rv, rv);
 
+  // Set |sentTimestamp|.
+  uint64_t sentTimestamp;
+  rv = convertTimeToInt(aCx, aSentTimestamp, sentTimestamp);
+  NS_ENSURE_SUCCESS(rv, rv);
+
   // Set |attachments|.
   if (!aAttachments.isObject()) {
     return NS_ERROR_INVALID_ARG;
@@ -294,6 +303,7 @@ MmsMessage::Create(int32_t               aId,
                                                          aSender,
                                                          receivers,
                                                          timestamp,
+                                                         sentTimestamp,
                                                          aRead,
                                                          aSubject,
                                                          aSmil,
@@ -317,6 +327,7 @@ MmsMessage::GetData(ContentParent* aParent,
   aData.sender().Assign(mSender);
   aData.receivers() = mReceivers;
   aData.timestamp() = mTimestamp;
+  aData.sentTimestamp() = mSentTimestamp;
   aData.read() = mRead;
   aData.subject() = mSubject;
   aData.smil() = mSmil;
@@ -460,14 +471,14 @@ MmsMessage::GetDelivery(nsAString& aDelivery)
 }
 
 NS_IMETHODIMP
-MmsMessage::GetDeliveryInfo(JSContext* aCx, JS::Value* aDeliveryInfo)
+MmsMessage::GetDeliveryInfo(JSContext* aCx, JS::MutableHandle<JS::Value> aDeliveryInfo)
 {
   // TODO Bug 850525 It'd be better to depend on the delivery of MmsMessage
   // to return a more correct value. Ex, if .delivery = 'received', we should
   // also make .deliveryInfo = null, since the .deliveryInfo is useless.
   uint32_t length = mDeliveryInfo.Length();
   if (length == 0) {
-    *aDeliveryInfo = JSVAL_NULL;
+    aDeliveryInfo.setNull();
     return NS_OK;
   }
 
@@ -479,7 +490,7 @@ MmsMessage::GetDeliveryInfo(JSContext* aCx, JS::Value* aDeliveryInfo)
     const MmsDeliveryInfo &info = mDeliveryInfo[i];
 
     JS::Rooted<JSObject*> infoJsObj(
-      aCx, JS_NewObject(aCx, nullptr, nullptr, nullptr));
+      aCx, JS_NewObject(aCx, nullptr, JS::NullPtr(), JS::NullPtr()));
     NS_ENSURE_TRUE(infoJsObj, NS_ERROR_OUT_OF_MEMORY);
 
     JS::Rooted<JS::Value> tmpJsVal(aCx);
@@ -535,13 +546,12 @@ MmsMessage::GetDeliveryInfo(JSContext* aCx, JS::Value* aDeliveryInfo)
       return NS_ERROR_FAILURE;
     }
 
-    tmpJsVal = OBJECT_TO_JSVAL(infoJsObj);
-    if (!JS_SetElement(aCx, deliveryInfo, i, &tmpJsVal)) {
+    if (!JS_SetElement(aCx, deliveryInfo, i, infoJsObj)) {
       return NS_ERROR_FAILURE;
     }
   }
 
-  aDeliveryInfo->setObject(*deliveryInfo);
+  aDeliveryInfo.setObject(*deliveryInfo);
   return NS_OK;
 }
 
@@ -553,13 +563,13 @@ MmsMessage::GetSender(nsAString& aSender)
 }
 
 NS_IMETHODIMP
-MmsMessage::GetReceivers(JSContext* aCx, JS::Value* aReceivers)
+MmsMessage::GetReceivers(JSContext* aCx, JS::MutableHandle<JS::Value> aReceivers)
 {
   JS::Rooted<JSObject*> reveiversObj(aCx);
   nsresult rv = nsTArrayToJSArray(aCx, mReceivers, reveiversObj.address());
   NS_ENSURE_SUCCESS(rv, rv);
 
-  aReceivers->setObject(*reveiversObj);
+  aReceivers.setObject(*reveiversObj);
   return NS_OK;
 }
 
@@ -567,6 +577,13 @@ NS_IMETHODIMP
 MmsMessage::GetTimestamp(DOMTimeStamp* aTimestamp)
 {
   *aTimestamp = mTimestamp;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+MmsMessage::GetSentTimestamp(DOMTimeStamp* aSentTimestamp)
+{
+  *aSentTimestamp = mSentTimestamp;
   return NS_OK;
 }
 
@@ -592,7 +609,7 @@ MmsMessage::GetSmil(nsAString& aSmil)
 }
 
 NS_IMETHODIMP
-MmsMessage::GetAttachments(JSContext* aCx, JS::Value* aAttachments)
+MmsMessage::GetAttachments(JSContext* aCx, JS::MutableHandle<JS::Value> aAttachments)
 {
   uint32_t length = mAttachments.Length();
 
@@ -604,7 +621,7 @@ MmsMessage::GetAttachments(JSContext* aCx, JS::Value* aAttachments)
     const MmsAttachment &attachment = mAttachments[i];
 
     JS::Rooted<JSObject*> attachmentObj(
-      aCx, JS_NewObject(aCx, nullptr, nullptr, nullptr));
+      aCx, JS_NewObject(aCx, nullptr, JS::NullPtr(), JS::NullPtr()));
     NS_ENSURE_TRUE(attachmentObj, NS_ERROR_OUT_OF_MEMORY);
 
     JS::Rooted<JS::Value> tmpJsVal(aCx);
@@ -648,13 +665,12 @@ MmsMessage::GetAttachments(JSContext* aCx, JS::Value* aAttachments)
       return NS_ERROR_FAILURE;
     }
 
-    tmpJsVal = OBJECT_TO_JSVAL(attachmentObj);
-    if (!JS_SetElement(aCx, attachments, i, &tmpJsVal)) {
+    if (!JS_SetElement(aCx, attachments, i, attachmentObj)) {
       return NS_ERROR_FAILURE;
     }
   }
 
-  aAttachments->setObject(*attachments);
+  aAttachments.setObject(*attachments);
   return NS_OK;
 }
 

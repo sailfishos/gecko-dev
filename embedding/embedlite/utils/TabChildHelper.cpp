@@ -203,7 +203,7 @@ TabChildHelper::InitTabChildGlobal()
 NS_IMETHODIMP
 TabChildHelper::Observe(nsISupports* aSubject,
                         const char* aTopic,
-                        const PRUnichar* aData)
+                        const char16_t* aData)
 {
   if (!strcmp(aTopic, BROWSER_ZOOM_TO_RECT)) {
     nsCOMPtr<nsIDocShell> docShell(do_QueryInterface(aSubject));
@@ -211,7 +211,7 @@ TabChildHelper::Observe(nsISupports* aSubject,
     sscanf(NS_ConvertUTF16toUTF8(aData).get(),
            "{\"x\":%f,\"y\":%f,\"w\":%f,\"h\":%f}",
            &rect.x, &rect.y, &rect.width, &rect.height);
-    mView->SendZoomToRect(rect);
+    mView->SendZoomToRect(0, 0, rect);
   } else if (!strcmp(aTopic, BEFORE_FIRST_PAINT)) {
     nsCOMPtr<nsIDocument> subject(do_QueryInterface(aSubject));
     nsCOMPtr<nsIDOMDocument> domDoc;
@@ -268,6 +268,7 @@ TabChildHelper::HandleEvent(nsIDOMEvent* aEvent)
 {
   nsAutoString eventType;
   aEvent->GetType(eventType);
+  // Should this also handle "MozScrolledAreaChanged".
   if (eventType.EqualsLiteral("DOMMetaAdded")) {
     // This meta data may or may not have been a meta viewport tag. If it was,
     // we should handle it immediately.
@@ -385,7 +386,7 @@ TabChildHelper::WebNavigation()
 }
 
 bool
-TabChildHelper::DoLoadFrameScript(const nsAString& aURL)
+TabChildHelper::DoLoadFrameScript(const nsAString& aURL, bool aRunInGlobalScope)
 {
   if (!InitTabChildGlobal())
     // This can happen if we're half-destroyed.  It's not a fatal
@@ -394,7 +395,7 @@ TabChildHelper::DoLoadFrameScript(const nsAString& aURL)
     return false;
   }
 
-  LoadFrameScriptInternal(aURL);
+  LoadFrameScriptInternal(aURL, aRunInGlobalScope);
   return true;
 }
 
@@ -402,7 +403,7 @@ static bool
 JSONCreator(const jschar* aBuf, uint32_t aLen, void* aData)
 {
   nsAString* result = static_cast<nsAString*>(aData);
-  result->Append(static_cast<const PRUnichar*>(aBuf),
+  result->Append(static_cast<const char16_t*>(aBuf),
                  static_cast<uint32_t>(aLen));
   return true;
 }
@@ -765,11 +766,11 @@ GetPageSize(nsCOMPtr<nsIDocument> aDocument, const CSSSize& aViewport)
                  std::max(htmlHeight, bodyHeight));
 }
 
-void
+bool
 TabChildHelper::HandlePossibleViewportChange()
 {
   if (sDisableViewportHandler) {
-    return;
+    return false;
   }
   nsCOMPtr<nsIDOMDocument> domDoc;
   mView->mWebNavigation->GetDocument(getter_AddRefs(domDoc));
@@ -778,13 +779,14 @@ TabChildHelper::HandlePossibleViewportChange()
   nsCOMPtr<nsIDOMWindowUtils> utils(GetDOMWindowUtils());
 
   nsViewportInfo viewportInfo = nsContentUtils::GetViewportInfo(document, mInnerSize);
-  uint32_t presShellId;
-  ViewID viewId;
+  uint32_t presShellId = 0;
+  ViewID viewId = 0;
   if (APZCCallbackHelper::GetScrollIdentifiers(document->GetDocumentElement(),
                                                &presShellId, &viewId)) {
-    mView->SendUpdateZoomConstraints(viewportInfo.IsZoomAllowed(),
-                                     viewportInfo.GetMinZoom().scale,
-                                     viewportInfo.GetMaxZoom().scale);
+    ZoomConstraints constraints(viewportInfo.IsZoomAllowed(),
+                                viewportInfo.GetMinZoom(),
+                                viewportInfo.GetMaxZoom());
+    mView->SendUpdateZoomConstraints(0, 0, true, constraints);
   }
 
 
@@ -795,7 +797,7 @@ TabChildHelper::HandlePossibleViewportChange()
   // We're not being displayed in any way; don't bother doing anything because
   // that will just confuse future adjustments.
   if (!screenW || !screenH) {
-    return;
+    return false;
   }
 
   float oldBrowserWidth = mOldViewportWidth;
@@ -815,7 +817,7 @@ TabChildHelper::HandlePossibleViewportChange()
   // window.innerWidth before they are painted have a correct value (bug
   // 771575).
   if (!mContentDocumentIsDisplayed) {
-    return;
+    return false;
   }
 
   float oldScreenWidth = mLastRootMetrics.mCompositionBounds.width;
@@ -867,7 +869,7 @@ TabChildHelper::HandlePossibleViewportChange()
     // The page must have been refreshed in some way such as a new document or
     // new CSS viewport, so we know that there's no velocity, acceleration, and
     // we have no idea how long painting will take.
-    metrics, gfx::Point(0.0f, 0.0f), gfx::Point(0.0f, 0.0f), 0.0);
+    metrics, ScreenPoint(0.0f, 0.0f), gfx::Point(0.0f, 0.0f), 0.0);
   metrics.mCumulativeResolution = metrics.mZoom / metrics.mDevPixelsPerCSSPixel * ScreenToLayerScale(1);
   // This is the root layer, so the cumulative resolution is the same
   // as the resolution.
@@ -884,11 +886,13 @@ TabChildHelper::HandlePossibleViewportChange()
   CSSSize pageSize = GetPageSize(document, viewport);
   if (!pageSize.width) {
     // Return early rather than divide by 0.
-    return;
+    return false;
   }
   metrics.mScrollableRect = CSSRect(CSSPoint(), pageSize);
 
   // Force a repaint with these metrics. This, among other things, sets the
   // displayport, so we start with async painting.
   ProcessUpdateFrame(metrics);
+  mFrameMetrics = metrics;
+  return true;
 }

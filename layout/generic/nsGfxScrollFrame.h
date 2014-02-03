@@ -270,6 +270,7 @@ public:
   bool IsLTR() const;
   bool IsScrollbarOnRight() const;
   bool IsScrollingActive() const { return mScrollingActive || mShouldBuildScrollableLayer; }
+  bool IsProcessingAsyncScroll() const { return mAsyncScroll != nullptr; }
   void ResetScrollPositionForLayerPixelAlignment()
   {
     mScrollPosForLayerPixelAlignment = GetScrollPosition();
@@ -636,6 +637,9 @@ public:
   virtual bool IsScrollingActive() MOZ_OVERRIDE {
     return mHelper.IsScrollingActive();
   }
+  virtual bool IsProcessingAsyncScroll() MOZ_OVERRIDE {
+    return mHelper.IsProcessingAsyncScroll();
+  }
   virtual void ResetScrollPositionForLayerPixelAlignment() MOZ_OVERRIDE {
     mHelper.ResetScrollPositionForLayerPixelAlignment();
   }
@@ -674,7 +678,7 @@ public:
    */
   virtual nsIAtom* GetType() const MOZ_OVERRIDE;
   
-#ifdef DEBUG
+#ifdef DEBUG_FRAME_DUMP
   NS_IMETHOD GetFrameName(nsAString& aResult) const MOZ_OVERRIDE;
 #endif
 
@@ -934,6 +938,9 @@ public:
   virtual bool IsScrollingActive() MOZ_OVERRIDE {
     return mHelper.IsScrollingActive();
   }
+  virtual bool IsProcessingAsyncScroll() MOZ_OVERRIDE {
+    return mHelper.IsProcessingAsyncScroll();
+  }
   virtual void ResetScrollPositionForLayerPixelAlignment() MOZ_OVERRIDE {
     mHelper.ResetScrollPositionForLayerPixelAlignment();
   }
@@ -980,7 +987,7 @@ public:
     return nsBoxFrame::IsFrameOfType(aFlags);
   }
 
-#ifdef DEBUG
+#ifdef DEBUG_FRAME_DUMP
   NS_IMETHOD GetFrameName(nsAString& aResult) const MOZ_OVERRIDE;
 #endif
 

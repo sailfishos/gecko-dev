@@ -47,8 +47,16 @@ NewObjectCache::newObjectFromHit(JSContext *cx, EntryIndex entry_, js::gc::Initi
     Entry *entry = &entries[entry_];
 
     JSObject *templateObj = reinterpret_cast<JSObject *>(&entry->templateObject);
-    if (templateObj->type()->shouldPreTenure())
+
+    // Do an end run around JSObject::type() to avoid doing AutoUnprotectCell
+    // on the templateObj, which is not a GC thing and can't use runtimeFromAnyThread.
+    types::TypeObject *type = templateObj->type_;
+
+    if (type->shouldPreTenure())
         heap = gc::TenuredHeap;
+
+    if (cx->runtime()->upcomingZealousGC())
+        return nullptr;
 
     JSObject *obj = js_NewGCObject<NoGC>(cx, entry->kind, heap);
     if (obj) {

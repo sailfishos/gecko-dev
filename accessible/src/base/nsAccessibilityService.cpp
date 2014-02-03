@@ -162,7 +162,7 @@ NS_IMPL_ISUPPORTS_INHERITED4(nsAccessibilityService,
 
 NS_IMETHODIMP
 nsAccessibilityService::Observe(nsISupports *aSubject, const char *aTopic,
-                         const PRUnichar *aData)
+                         const char16_t *aData)
 {
   if (!nsCRT::strcmp(aTopic, NS_XPCOM_SHUTDOWN_OBSERVER_ID))
     Shutdown();
@@ -1085,7 +1085,7 @@ nsAccessibilityService::Init()
 
   observerService->AddObserver(this, NS_XPCOM_SHUTDOWN_OBSERVER_ID, false);
 
-  static const PRUnichar kInitIndicator[] = { '1', 0 };
+  static const char16_t kInitIndicator[] = { '1', 0 };
   observerService->NotifyObservers(nullptr, "a11y-init-or-shutdown", kInitIndicator);
 
 #ifdef A11Y_LOG
@@ -1123,7 +1123,7 @@ nsAccessibilityService::Shutdown()
   if (observerService) {
     observerService->RemoveObserver(this, NS_XPCOM_SHUTDOWN_OBSERVER_ID);
 
-    static const PRUnichar kShutdownIndicator[] = { '0', 0 };
+    static const char16_t kShutdownIndicator[] = { '0', 0 };
     observerService->NotifyObservers(nullptr, "a11y-init-or-shutdown", kShutdownIndicator);
   }
 
@@ -1544,8 +1544,12 @@ nsAccessibilityService::CreateAccessibleByFrameType(nsIFrame* aFrame,
       // Accessible HTML table cell should be a child of accessible HTML table
       // or its row (CSS HTML tables are polite to the used markup at
       // certain degree).
+      // Otherwise create a generic text accessible to avoid text jamming
+      // when reading by AT.
       if (aContext->IsHTMLTableRow() || aContext->IsHTMLTable())
         newAcc = new HTMLTableCellAccessibleWrap(aContent, document);
+      else
+        newAcc = new HyperTextAccessibleWrap(aContent, document);
       break;
 
     case eHTMLTableRowType: {

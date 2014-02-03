@@ -25,7 +25,9 @@
 #include "nsIDOMNode.h"
 #include "nsIDOMNodeList.h"
 #include "nsTArray.h"
+#include "nsXULAppAPI.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/dom/ContentChild.h"
 
 #if defined(MOZ_CRASHREPORTER)
 #include "nsExceptionHandler.h"
@@ -48,7 +50,7 @@ public:
   NS_DECL_ISUPPORTS
 
   NS_IMETHOD Observe(nsISupports *subject, const char *aTopic,
-                     const PRUnichar *aData)
+                     const char16_t *aData)
   {
     MOZ_ASSERT(strcmp(aTopic, NS_XPCOM_SHUTDOWN_OBSERVER_ID) == 0);
 
@@ -512,7 +514,7 @@ BlacklistEntriesToDriverInfo(nsIDOMHTMLCollection* aBlacklistEntries,
 
 NS_IMETHODIMP
 GfxInfoBase::Observe(nsISupports* aSubject, const char* aTopic,
-                     const PRUnichar* aData)
+                     const char16_t* aData)
 {
   if (strcmp(aTopic, "blocklist-data-gfxItems") == 0) {
     nsCOMPtr<nsIDOMElement> gfxItems = do_QueryInterface(aSubject);
@@ -561,6 +563,14 @@ GfxInfoBase::GetFeatureStatus(int32_t aFeature, int32_t* aStatus)
 {
   if (GetPrefValueForFeature(aFeature, *aStatus))
     return NS_OK;
+
+  if (XRE_GetProcessType() == GeckoProcessType_Content) {
+      // Delegate to the parent process.
+      mozilla::dom::ContentChild* cc = mozilla::dom::ContentChild::GetSingleton();
+      bool success;
+      cc->SendGetGraphicsFeatureStatus(aFeature, aStatus, &success);
+      return success ? NS_OK : NS_ERROR_FAILURE;
+  }
 
   nsString version;
   nsTArray<GfxDriverInfo> driverInfo;
@@ -897,7 +907,7 @@ InitCollectors()
     sCollectors = new nsTArray<GfxInfoCollectorBase*>;
 }
 
-nsresult GfxInfoBase::GetInfo(JSContext* aCx, jsval* aResult)
+nsresult GfxInfoBase::GetInfo(JSContext* aCx, JS::MutableHandle<JS::Value> aResult)
 {
   InitCollectors();
   InfoObject obj(aCx);
@@ -915,7 +925,7 @@ nsresult GfxInfoBase::GetInfo(JSContext* aCx, jsval* aResult)
     return NS_ERROR_FAILURE;
   }
 
-  *aResult = OBJECT_TO_JSVAL(obj.mObj);
+  aResult.setObject(*obj.mObj);
   return NS_OK;
 }
 

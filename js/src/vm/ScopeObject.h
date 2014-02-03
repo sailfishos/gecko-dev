@@ -96,22 +96,34 @@ class StaticScopeIter
  * given lexically-enclosing variable. A scope coordinate has two dimensions:
  *  - hops: the number of scope objects on the scope chain to skip
  *  - slot: the slot on the scope object holding the variable's value
- * Additionally (as described in jsopcode.tbl) there is a 'block' index, but
- * this is only needed for decompilation/inference so it is not included in the
- * main ScopeCoordinate struct: use ScopeCoordinate{BlockChain,Name} instead.
  */
-struct ScopeCoordinate
+class ScopeCoordinate
 {
-    uint16_t hops;
-    uint16_t slot;
+    uint32_t hops_;
+    uint32_t slot_;
 
+    /*
+     * Technically, hops_/slot_ are SCOPECOORD_(HOPS|SLOT)_BITS wide.  Since
+     * ScopeCoordinate is a temporary value, don't bother with a bitfield as
+     * this only adds overhead.
+     */
+    static_assert(SCOPECOORD_HOPS_BITS <= 32, "We have enough bits below");
+    static_assert(SCOPECOORD_SLOT_BITS <= 32, "We have enough bits below");
+
+  public:
     inline ScopeCoordinate(jsbytecode *pc)
-      : hops(GET_UINT16(pc)), slot(GET_UINT16(pc + 2))
+      : hops_(GET_SCOPECOORD_HOPS(pc)), slot_(GET_SCOPECOORD_SLOT(pc + SCOPECOORD_HOPS_LEN))
     {
         JS_ASSERT(JOF_OPTYPE(*pc) == JOF_SCOPECOORD);
     }
 
     inline ScopeCoordinate() {}
+
+    void setHops(uint32_t hops) { JS_ASSERT(hops < SCOPECOORD_HOPS_LIMIT); hops_ = hops; }
+    void setSlot(uint32_t slot) { JS_ASSERT(slot < SCOPECOORD_SLOT_LIMIT); slot_ = slot; }
+
+    uint32_t hops() const { JS_ASSERT(hops_ < SCOPECOORD_HOPS_LIMIT); return hops_; }
+    uint32_t slot() const { JS_ASSERT(slot_ < SCOPECOORD_SLOT_LIMIT); return slot_; }
 };
 
 /*
@@ -181,6 +193,7 @@ class ScopeObject : public JSObject
      * enclosing scope of a ScopeObject is necessarily non-null.
      */
     inline JSObject &enclosingScope() const {
+        AutoThreadSafeAccess ts(this);
         return getFixedSlot(SCOPE_CHAIN_SLOT).toObject();
     }
 
@@ -232,6 +245,7 @@ class CallObject : public ScopeObject
 
     /* True if this is for a strict mode eval frame. */
     bool isForEval() const {
+        AutoThreadSafeAccess ts(this);
         JS_ASSERT(getFixedSlot(CALLEE_SLOT).isObjectOrNull());
         JS_ASSERT_IF(getFixedSlot(CALLEE_SLOT).isObject(),
                      getFixedSlot(CALLEE_SLOT).toObject().is<JSFunction>());
@@ -243,6 +257,7 @@ class CallObject : public ScopeObject
      * only be called if !isForEval.)
      */
     JSFunction &callee() const {
+        AutoThreadSafeAccess ts(this);
         return getFixedSlot(CALLEE_SLOT).toObject().as<JSFunction>();
     }
 
@@ -341,12 +356,12 @@ class BlockObject : public NestedScopeObject
      * range [0, slotCount()) and the return local index is in the range
      * [script->nfixed, script->nfixed + script->nslots).
      */
-    unsigned slotToLocalIndex(const Bindings &bindings, unsigned slot) {
+    uint32_t slotToLocalIndex(const Bindings &bindings, uint32_t slot) {
         JS_ASSERT(slot < RESERVED_SLOTS + slotCount());
         return bindings.numVars() + stackDepth() + (slot - RESERVED_SLOTS);
     }
 
-    unsigned localIndexToSlot(const Bindings &bindings, uint32_t i) {
+    uint32_t localIndexToSlot(const Bindings &bindings, uint32_t i) {
         return RESERVED_SLOTS + (i - (bindings.numVars() + stackDepth()));
     }
 
@@ -368,6 +383,7 @@ class StaticBlockObject : public BlockObject
 
     /* See StaticScopeIter comment. */
     JSObject *enclosingStaticScope() const {
+        AutoThreadSafeAccess ts(this);
         return getFixedSlot(SCOPE_CHAIN_SLOT).toObjectOrNull();
     }
 
@@ -400,6 +416,7 @@ class StaticBlockObject : public BlockObject
     bool needsClone() {
         // The first variable slot will always indicate whether the object has
         // any aliased vars. Bypass slotValue() to allow testing this off thread.
+        AutoThreadSafeAccess ts(this);
         return !getFixedSlot(RESERVED_SLOTS).isFalse();
     }
 
@@ -454,8 +471,16 @@ class StaticBlockObject : public BlockObject
         setReservedSlot(SCOPE_CHAIN_SLOT, UndefinedValue());
     }
 
+    /*
+     * While ScopeCoordinate can generally reference up to 2^24 slots, block objects have an
+     * additional limitation that all slot indices must be storable as uint16_t short-ids in the
+     * associated Shape. If we could remove the block dependencies on shape->shortid, we could
+     * remove INDEX_LIMIT.
+     */
+    static const unsigned VAR_INDEX_LIMIT = JS_BIT(16);
+
     static Shape *addVar(ExclusiveContext *cx, Handle<StaticBlockObject*> block, HandleId id,
-                         int index, bool *redeclared);
+                         unsigned index, bool *redeclared);
 };
 
 class ClonedBlockObject : public BlockObject
@@ -550,10 +575,6 @@ class ScopeIter
     ScopeIter(JSObject &enclosingScope, JSContext *cx
               MOZ_GUARD_OBJECT_NOTIFIER_PARAM);
 
-    /* Like ScopeIter(StackFrame *) except start at 'scope'. */
-    ScopeIter(AbstractFramePtr frame, jsbytecode *pc, ScopeObject &scope, JSContext *cx
-              MOZ_GUARD_OBJECT_NOTIFIER_PARAM);
-
     ScopeIter(const ScopeIterVal &hashVal, JSContext *cx
               MOZ_GUARD_OBJECT_NOTIFIER_PARAM);
 
@@ -618,6 +639,7 @@ class ScopeIterKey
 class ScopeIterVal
 {
     friend class ScopeIter;
+    friend class DebugScopes;
 
     AbstractFramePtr frame_;
     RelocatablePtr<JSObject> cur_;
@@ -703,7 +725,7 @@ class DebugScopes
     /* The map from (non-debug) scopes to debug scopes. */
     typedef WeakMap<EncapsulatedPtrObject, RelocatablePtrObject> ObjectWeakMap;
     ObjectWeakMap proxiedScopes;
-    static JS_ALWAYS_INLINE void proxiedScopesPostWriteBarrier(JSRuntime *rt, ObjectWeakMap *map,
+    static MOZ_ALWAYS_INLINE void proxiedScopesPostWriteBarrier(JSRuntime *rt, ObjectWeakMap *map,
                                                                const EncapsulatedPtrObject &key);
 
     /*
@@ -716,7 +738,7 @@ class DebugScopes
                     RuntimeAllocPolicy> MissingScopeMap;
     MissingScopeMap missingScopes;
     class MissingScopesRef;
-    static JS_ALWAYS_INLINE void missingScopesPostWriteBarrier(JSRuntime *rt, MissingScopeMap *map,
+    static MOZ_ALWAYS_INLINE void missingScopesPostWriteBarrier(JSRuntime *rt, MissingScopeMap *map,
                                                                const ScopeIterKey &key);
 
     /*
@@ -731,7 +753,7 @@ class DebugScopes
                     DefaultHasher<ScopeObject *>,
                     RuntimeAllocPolicy> LiveScopeMap;
     LiveScopeMap liveScopes;
-    static JS_ALWAYS_INLINE void liveScopesPostWriteBarrier(JSRuntime *rt, LiveScopeMap *map,
+    static MOZ_ALWAYS_INLINE void liveScopesPostWriteBarrier(JSRuntime *rt, LiveScopeMap *map,
                                                             ScopeObject *key);
 
   public:
@@ -746,6 +768,9 @@ class DebugScopes
   public:
     void mark(JSTracer *trc);
     void sweep(JSRuntime *rt);
+#if defined(DEBUG) && defined(JSGC_GENERATIONAL)
+    void checkHashTablesAfterMovingGC(JSRuntime *rt);
+#endif
 
     static DebugScopeObject *hasDebugScope(JSContext *cx, ScopeObject &scope);
     static bool addDebugScope(JSContext *cx, ScopeObject &scope, DebugScopeObject &debugScope);
@@ -823,7 +848,7 @@ inline const Value &
 ScopeObject::aliasedVar(ScopeCoordinate sc)
 {
     JS_ASSERT(is<CallObject>() || is<ClonedBlockObject>());
-    return getSlot(sc.slot);
+    return getSlot(sc.slot());
 }
 
 inline StaticBlockObject *

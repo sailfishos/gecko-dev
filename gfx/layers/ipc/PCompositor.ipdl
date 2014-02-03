@@ -13,7 +13,11 @@ include "nsRegion.h";
 
 using struct mozilla::null_t from "ipc/IPCMessageUtils.h";
 using struct mozilla::layers::TextureFactoryIdentifier from "mozilla/layers/CompositorTypes.h";
+using struct mozilla::layers::FrameMetrics from "FrameMetrics.h";
+using mozilla::layers::FrameMetrics::ViewID from "FrameMetrics.h";
 using mozilla::layers::LayersBackend from "mozilla/layers/LayersTypes.h";
+using mozilla::CrossProcessMutexHandle from "mozilla/ipc/CrossProcessMutex.h";
+using mozilla::ipc::SharedMemoryBasic::Handle from "mozilla/ipc/SharedMemoryBasic.h";
 
 namespace mozilla {
 namespace layers {
@@ -74,13 +78,19 @@ parent:
     returns (float[] intervals);
 
   // layersBackendHints is an ordered list of preffered backends where
-  // layersBackendHints[0] is the best backend. If any hints are LAYERS_NONE
+  // layersBackendHints[0] is the best backend. If any hints are LayersBackend::LAYERS_NONE
   // that hint is ignored.
   sync PLayerTransaction(LayersBackend[] layersBackendHints, uint64_t id)
     returns (TextureFactoryIdentifier textureFactoryIdentifier, bool success);
 
   // Notify the compositor that a region of the screen has been invalidated.
   async NotifyRegionInvalidated(nsIntRegion region);
+
+child:
+  // Send back Compositor Frame Metrics from APZCs so tiled layers can
+  // update progressively.
+  async SharedCompositorFrameMetrics(Handle metrics, CrossProcessMutexHandle mutex, uint32_t aAPZCId);
+  async ReleaseSharedCompositorFrameMetrics(ViewID aId, uint32_t aAPZCId);
 };
 
 } // layers

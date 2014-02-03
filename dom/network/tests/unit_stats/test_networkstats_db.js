@@ -22,7 +22,7 @@ function clearStore(store, callback) {
 add_test(function prepareDatabase() {
   // Clear whole database to avoid starting tests with unknown state
   // due to the previous tests.
-  clearStore('net_stats', function() {
+  clearStore('net_stats_store', function() {
     clearStore('net_alarm', function() {
       run_next_test();
     });
@@ -139,6 +139,7 @@ add_test(function test_internalSaveStats_singleSample() {
   var networks = getNetworks();
 
   var stats = { appId:         0,
+                serviceType:   "",
                 network:       [networks[0].id, networks[0].type],
                 timestamp:     Date.now(),
                 rxBytes:       0,
@@ -148,7 +149,7 @@ add_test(function test_internalSaveStats_singleSample() {
                 rxTotalBytes:  1234,
                 txTotalBytes:  1234 };
 
-  netStatsDb.dbNewTxn("net_stats", "readwrite", function(txn, store) {
+  netStatsDb.dbNewTxn("net_stats_store", "readwrite", function(txn, store) {
     netStatsDb._saveStats(txn, store, stats);
   }, function(error, result) {
     do_check_eq(error, null);
@@ -157,6 +158,7 @@ add_test(function test_internalSaveStats_singleSample() {
       do_check_eq(error, null);
       do_check_eq(result.length, 1);
       do_check_eq(result[0].appId, stats.appId);
+      do_check_eq(result[0].serviceType, stats.serviceType);
       do_check_true(compareNetworks(result[0].network, stats.network));
       do_check_eq(result[0].timestamp, stats.timestamp);
       do_check_eq(result[0].rxBytes, stats.rxBytes);
@@ -171,17 +173,15 @@ add_test(function test_internalSaveStats_singleSample() {
 });
 
 add_test(function test_internalSaveStats_arraySamples() {
-  var networks = getNetworks();
-
-  netStatsDb.clearStats(networks, function (error, result) {
-    do_check_eq(error, null);
-
+  clearStore('net_stats_store', function() {
+    var networks = getNetworks();
     var network = [networks[0].id, networks[0].type];
 
     var samples = 2;
     var stats = [];
     for (var i = 0; i < samples; i++) {
       stats.push({ appId:         0,
+                   serviceType:   "",
                    network:       network,
                    timestamp:     Date.now() + (10 * i),
                    rxBytes:       0,
@@ -192,7 +192,7 @@ add_test(function test_internalSaveStats_arraySamples() {
                    txTotalBytes:  1234 });
     }
 
-    netStatsDb.dbNewTxn("net_stats", "readwrite", function(txn, store) {
+    netStatsDb.dbNewTxn("net_stats_store", "readwrite", function(txn, store) {
       netStatsDb._saveStats(txn, store, stats);
     }, function(error, result) {
       do_check_eq(error, null);
@@ -200,13 +200,11 @@ add_test(function test_internalSaveStats_arraySamples() {
       netStatsDb.logAllRecords(function(error, result) {
         do_check_eq(error, null);
 
-        // Result has one sample more than samples because clear inserts
-        // an empty sample to keep totalBytes synchronized with netd counters
-        result.shift();
         do_check_eq(result.length, samples);
         var success = true;
-        for (var i = 1; i < samples; i++) {
+        for (var i = 0; i < samples; i++) {
           if (result[i].appId != stats[i].appId ||
+              result[i].serviceType != stats[i].serviceType ||
               !compareNetworks(result[i].network, stats[i].network) ||
               result[i].timestamp != stats[i].timestamp ||
               result[i].rxBytes != stats[i].rxBytes ||
@@ -227,33 +225,30 @@ add_test(function test_internalSaveStats_arraySamples() {
 });
 
 add_test(function test_internalRemoveOldStats() {
-  var networks = getNetworks();
-
-  netStatsDb.clearStats(networks, function (error, result) {
-    do_check_eq(error, null);
-
+  clearStore('net_stats_store', function() {
+    var networks = getNetworks();
     var network = [networks[0].id, networks[0].type];
     var samples = 10;
     var stats = [];
     for (var i = 0; i < samples - 1; i++) {
-      stats.push({ appId:               0,
+      stats.push({ appId:               0, serviceType: "",
                    network:       network, timestamp:     Date.now() + (10 * i),
                    rxBytes:             0, txBytes:       0,
                    rxSystemBytes:    1234, txSystemBytes: 1234,
                    rxTotalBytes:     1234, txTotalBytes:  1234 });
     }
 
-    stats.push({ appId:               0,
+    stats.push({ appId:               0, serviceType: "",
                  network:       network, timestamp:     Date.now() + (10 * samples),
                  rxBytes:             0, txBytes:       0,
                  rxSystemBytes:    1234, txSystemBytes: 1234,
                  rxTotalBytes:     1234, txTotalBytes:  1234 });
 
-    netStatsDb.dbNewTxn("net_stats", "readwrite", function(txn, store) {
+    netStatsDb.dbNewTxn("net_stats_store", "readwrite", function(txn, store) {
       netStatsDb._saveStats(txn, store, stats);
       var date = stats[stats.length - 1].timestamp
                  + (netStatsDb.sampleRate * netStatsDb.maxStorageSamples - 1) - 1;
-      netStatsDb._removeOldStats(txn, store, 0, network, date);
+      netStatsDb._removeOldStats(txn, store, 0, "", network, date);
     }, function(error, result) {
       do_check_eq(error, null);
 
@@ -268,17 +263,16 @@ add_test(function test_internalRemoveOldStats() {
 });
 
 function processSamplesDiff(networks, lastStat, newStat, callback) {
-  netStatsDb.clearStats(networks, function (error, result){
-    do_check_eq(error, null);
-    netStatsDb.dbNewTxn("net_stats", "readwrite", function(txn, store) {
+  clearStore('net_stats_store', function() {
+    netStatsDb.dbNewTxn("net_stats_store", "readwrite", function(txn, store) {
       netStatsDb._saveStats(txn, store, lastStat);
     }, function(error, result) {
-      netStatsDb.dbNewTxn("net_stats", "readwrite", function(txn, store) {
+      netStatsDb.dbNewTxn("net_stats_store", "readwrite", function(txn, store) {
         let request = store.index("network").openCursor(newStat.network, "prev");
         request.onsuccess = function onsuccess(event) {
           let cursor = event.target.result;
           do_check_neq(cursor, null);
-          netStatsDb._processSamplesDiff(txn, store, cursor, newStat);
+          netStatsDb._processSamplesDiff(txn, store, cursor, newStat, true);
         };
       }, function(error, result) {
         do_check_eq(error, null);
@@ -298,13 +292,13 @@ add_test(function test_processSamplesDiffSameSample() {
   var sampleRate = netStatsDb.sampleRate;
   var date = filterTimestamp(new Date());
 
-  var lastStat = { appId:               0,
+  var lastStat = { appId:               0, serviceType:   "",
                    network:       network, timestamp:     date,
                    rxBytes:             0, txBytes:       0,
                    rxSystemBytes:    1234, txSystemBytes: 1234,
                    rxTotalBytes:     2234, txTotalBytes:  2234 };
 
-  var newStat = { appId:               0,
+  var newStat = { appId:               0, serviceType:   "",
                   network:       network, timestamp:     date,
                   rxBytes:             0, txBytes:       0,
                   rxSystemBytes:    2234, txSystemBytes: 2234,
@@ -313,6 +307,7 @@ add_test(function test_processSamplesDiffSameSample() {
   processSamplesDiff(networks, lastStat, newStat, function(result) {
     do_check_eq(result.length, 1);
     do_check_eq(result[0].appId, newStat.appId);
+    do_check_eq(result[0].serviceType, newStat.serviceType);
     do_check_true(compareNetworks(result[0].network, newStat.network));
     do_check_eq(result[0].timestamp, newStat.timestamp);
     do_check_eq(result[0].rxBytes, newStat.rxSystemBytes - lastStat.rxSystemBytes);
@@ -332,13 +327,13 @@ add_test(function test_processSamplesDiffNextSample() {
   var sampleRate = netStatsDb.sampleRate;
   var date = filterTimestamp(new Date());
 
-  var lastStat = { appId:               0,
+  var lastStat = { appId:               0, serviceType:  "",
                    network:       network, timestamp:     date,
                    rxBytes:             0, txBytes:       0,
                    rxSystemBytes:    1234, txSystemBytes: 1234,
                    rxTotalBytes:     2234, txTotalBytes:  2234 };
 
-  var newStat = { appId:               0,
+  var newStat = { appId:               0, serviceType:  "",
                   network:       network, timestamp:     date + sampleRate,
                   rxBytes:             0, txBytes:       0,
                   rxSystemBytes:    1734, txSystemBytes: 1734,
@@ -347,6 +342,7 @@ add_test(function test_processSamplesDiffNextSample() {
   processSamplesDiff(networks, lastStat, newStat, function(result) {
     do_check_eq(result.length, 2);
     do_check_eq(result[1].appId, newStat.appId);
+    do_check_eq(result[1].serviceType, newStat.serviceType);
     do_check_true(compareNetworks(result[1].network, newStat.network));
     do_check_eq(result[1].timestamp, newStat.timestamp);
     do_check_eq(result[1].rxBytes, newStat.rxSystemBytes - lastStat.rxSystemBytes);
@@ -365,13 +361,13 @@ add_test(function test_processSamplesDiffSamplesLost() {
   var samples = 5;
   var sampleRate = netStatsDb.sampleRate;
   var date = filterTimestamp(new Date());
-  var lastStat = { appId:              0,
+  var lastStat = { appId:              0, serviceType:  "",
                    network:      network, timestamp:     date,
                    rxBytes:            0, txBytes:       0,
                    rxSystemBytes:   1234, txSystemBytes: 1234,
                    rxTotalBytes:    2234, txTotalBytes:  2234};
 
-  var newStat = { appId:               0,
+  var newStat = { appId:               0, serviceType:  "",
                   network:       network, timestamp:     date + (sampleRate * samples),
                   rxBytes:             0, txBytes:       0,
                   rxSystemBytes:    2234, txSystemBytes: 2234,
@@ -380,6 +376,7 @@ add_test(function test_processSamplesDiffSamplesLost() {
   processSamplesDiff(networks, lastStat, newStat, function(result) {
     do_check_eq(result.length, samples + 1);
     do_check_eq(result[0].appId, newStat.appId);
+    do_check_eq(result[0].serviceType, newStat.serviceType);
     do_check_true(compareNetworks(result[samples].network, newStat.network));
     do_check_eq(result[samples].timestamp, newStat.timestamp);
     do_check_eq(result[samples].rxBytes, newStat.rxTotalBytes - lastStat.rxTotalBytes);
@@ -396,20 +393,23 @@ add_test(function test_saveStats() {
   var networks = getNetworks();
   var network = [networks[0].id, networks[0].type];
 
-  var stats = { appId:       0,
-                networkId:   networks[0].id,
-                networkType: networks[0].type,
-                date:        new Date(),
-                rxBytes:     2234,
-                txBytes:     2234};
+  var stats = { appId:          0,
+                serviceType:    "",
+                networkId:      networks[0].id,
+                networkType:    networks[0].type,
+                date:           new Date(),
+                rxBytes:        2234,
+                txBytes:        2234,
+                isAccumulative: true };
 
-  clearStore('net_stats', function() {
+  clearStore('net_stats_store', function() {
     netStatsDb.saveStats(stats, function(error, result) {
       do_check_eq(error, null);
       netStatsDb.logAllRecords(function(error, result) {
         do_check_eq(error, null);
         do_check_eq(result.length, 1);
         do_check_eq(result[0].appId, stats.appId);
+        do_check_eq(result[0].serviceType, stats.serviceType);
         do_check_true(compareNetworks(result[0].network, network));
         let timestamp = filterTimestamp(stats.date);
         do_check_eq(result[0].timestamp, timestamp);
@@ -429,45 +429,77 @@ add_test(function test_saveAppStats() {
   var networks = getNetworks();
   var network = [networks[0].id, networks[0].type];
 
-  var stats = { appId:       1,
-                networkId:   networks[0].id,
-                networkType: networks[0].type,
-                date:        new Date(),
-                rxBytes:     2234,
-                txBytes:     2234};
+  var stats = { appId:          1,
+                serviceType:    "",
+                networkId:      networks[0].id,
+                networkType:    networks[0].type,
+                date:           new Date(),
+                rxBytes:        2234,
+                txBytes:        2234,
+                isAccumulative: false };
 
-  netStatsDb.clearStats(networks, function (error, result) {
-    do_check_eq(error, null);
+  clearStore('net_stats_store', function() {
     netStatsDb.saveStats(stats, function(error, result) {
       do_check_eq(error, null);
       netStatsDb.logAllRecords(function(error, result) {
         do_check_eq(error, null);
-        // The clear function clears all records of the datbase but
-        // inserts a new element for each [appId, connectionId, connectionType]
-        // record to keep the track of rxTotalBytes / txTotalBytes.
-        // So at this point, we have two records, one for the appId 0 used in
-        // past tests and the new one for appId 1
-        do_check_eq(result.length, 2);
-        do_check_eq(result[1].appId, stats.appId);
-        do_check_true(compareNetworks(result[1].network, network));
+        do_check_eq(result.length, 1);
+        do_check_eq(result[0].appId, stats.appId);
+        do_check_eq(result[0].serviceType, stats.serviceType);
+        do_check_true(compareNetworks(result[0].network, network));
         let timestamp = filterTimestamp(stats.date);
-        do_check_eq(result[1].timestamp, timestamp);
-        do_check_eq(result[1].rxBytes, stats.rxBytes);
-        do_check_eq(result[1].txBytes, stats.txBytes);
-        do_check_eq(result[1].rxSystemBytes, 0);
-        do_check_eq(result[1].txSystemBytes, 0);
-        do_check_eq(result[1].rxTotalBytes, 0);
-        do_check_eq(result[1].txTotalBytes, 0);
+        do_check_eq(result[0].timestamp, timestamp);
+        do_check_eq(result[0].rxBytes, stats.rxBytes);
+        do_check_eq(result[0].txBytes, stats.txBytes);
+        do_check_eq(result[0].rxSystemBytes, 0);
+        do_check_eq(result[0].txSystemBytes, 0);
+        do_check_eq(result[0].rxTotalBytes, 0);
+        do_check_eq(result[0].txTotalBytes, 0);
         run_next_test();
       });
     });
   });
 });
 
-function prepareFind(network, stats, callback) {
-  netStatsDb.clearStats(network, function (error, result) {
-    do_check_eq(error, null);
-    netStatsDb.dbNewTxn("net_stats", "readwrite", function(txn, store) {
+add_test(function test_saveServiceStats() {
+  var networks = getNetworks();
+  var network = [networks[0].id, networks[0].type];
+
+  var stats = { appId:          0,
+                serviceType:    "FakeType",
+                networkId:      networks[0].id,
+                networkType:    networks[0].type,
+                date:           new Date(),
+                rxBytes:        2234,
+                txBytes:        2234,
+                isAccumulative: false };
+
+  clearStore('net_stats_store', function() {
+    netStatsDb.saveStats(stats, function(error, result) {
+      do_check_eq(error, null);
+      netStatsDb.logAllRecords(function(error, result) {
+        do_check_eq(error, null);
+        do_check_eq(result.length, 1);
+        do_check_eq(result[0].appId, stats.appId);
+        do_check_eq(result[0].serviceType, stats.serviceType);
+        do_check_true(compareNetworks(result[0].network, network));
+        let timestamp = filterTimestamp(stats.date);
+        do_check_eq(result[0].timestamp, timestamp);
+        do_check_eq(result[0].rxBytes, stats.rxBytes);
+        do_check_eq(result[0].txBytes, stats.txBytes);
+        do_check_eq(result[0].rxSystemBytes, 0);
+        do_check_eq(result[0].txSystemBytes, 0);
+        do_check_eq(result[0].rxTotalBytes, 0);
+        do_check_eq(result[0].txTotalBytes, 0);
+        run_next_test();
+      });
+    });
+  });
+});
+
+function prepareFind(stats, callback) {
+  clearStore('net_stats_store', function() {
+    netStatsDb.dbNewTxn("net_stats_store", "readwrite", function(txn, store) {
       netStatsDb._saveStats(txn, store, stats);
     }, function(error, result) {
         callback(error, result);
@@ -480,6 +512,7 @@ add_test(function test_find () {
   var networkWifi = [networks[0].id, networks[0].type];
   var networkMobile = [networks[1].id, networks[1].type]; // Fake mobile interface
   var appId = 0;
+  var serviceType = "";
 
   var samples = 5;
   var sampleRate = netStatsDb.sampleRate;
@@ -489,24 +522,25 @@ add_test(function test_find () {
   start = new Date(start - sampleRate);
   var stats = [];
   for (var i = 0; i < samples; i++) {
-    stats.push({ appId:               appId,
+    stats.push({ appId:               appId, serviceType:   serviceType,
                  network:       networkWifi, timestamp:     saveDate + (sampleRate * i),
                  rxBytes:                 0, txBytes:       10,
                  rxSystemBytes:           0, txSystemBytes: 0,
-                 rxTotalBytes:            0, txTotalBytes:  0});
+                 rxTotalBytes:            0, txTotalBytes:  0 });
 
 
-    stats.push({ appId:                 appId,
+    stats.push({ appId:                 appId, serviceType:   serviceType,
                  network:       networkMobile, timestamp:     saveDate + (sampleRate * i),
                  rxBytes:                   0, txBytes:       10,
                  rxSystemBytes:             0, txSystemBytes: 0,
-                 rxTotalBytes:              0, txTotalBytes:  0});
+                 rxTotalBytes:              0, txTotalBytes:  0 });
   }
 
-  prepareFind(networks[0], stats, function(error, result) {
+  prepareFind(stats, function(error, result) {
     do_check_eq(error, null);
     netStatsDb.find(function (error, result) {
       do_check_eq(error, null);
+      do_check_eq(result.serviceType, serviceType);
       do_check_eq(result.network.id, networks[0].id);
       do_check_eq(result.network.type, networks[0].type);
       do_check_eq(result.start.getTime(), start.getTime());
@@ -516,7 +550,7 @@ add_test(function test_find () {
       do_check_eq(result.data[1].rxBytes, 0);
       do_check_eq(result.data[samples].rxBytes, 0);
       run_next_test();
-    }, networks[0], start, end, appId);
+    }, appId, serviceType, networks[0], start, end);
   });
 });
 
@@ -524,6 +558,8 @@ add_test(function test_findAppStats () {
   var networks = getNetworks();
   var networkWifi = [networks[0].id, networks[0].type];
   var networkMobile = [networks[1].id, networks[1].type]; // Fake mobile interface
+  var appId = 1;
+  var serviceType = "";
 
   var samples = 5;
   var sampleRate = netStatsDb.sampleRate;
@@ -533,21 +569,22 @@ add_test(function test_findAppStats () {
   start = new Date(start - sampleRate);
   var stats = [];
   for (var i = 0; i < samples; i++) {
-    stats.push({ appId:                  1,
+    stats.push({ appId:              appId, serviceType:  serviceType,
                  network:      networkWifi, timestamp:    saveDate + (sampleRate * i),
                  rxBytes:                0, txBytes:      10,
                  rxTotalBytes:           0, txTotalBytes: 0 });
 
-    stats.push({ appId:                    1,
+    stats.push({ appId:                appId, serviceType:  serviceType,
                  network:      networkMobile, timestamp:    saveDate + (sampleRate * i),
                  rxBytes:                  0, txBytes:      10,
                  rxTotalBytes:             0, txTotalBytes: 0 });
   }
 
-  prepareFind(networks[0], stats, function(error, result) {
+  prepareFind(stats, function(error, result) {
     do_check_eq(error, null);
     netStatsDb.find(function (error, result) {
       do_check_eq(error, null);
+      do_check_eq(result.serviceType, serviceType);
       do_check_eq(result.network.id, networks[0].id);
       do_check_eq(result.network.type, networks[0].type);
       do_check_eq(result.start.getTime(), start.getTime());
@@ -557,7 +594,51 @@ add_test(function test_findAppStats () {
       do_check_eq(result.data[1].rxBytes, 0);
       do_check_eq(result.data[samples].rxBytes, 0);
       run_next_test();
-    }, networks[0], start, end, 1);
+    }, appId, serviceType, networks[0], start, end);
+  });
+});
+
+add_test(function test_findServiceStats () {
+  var networks = getNetworks();
+  var networkWifi = [networks[0].id, networks[0].type];
+  var networkMobile = [networks[1].id, networks[1].type]; // Fake mobile interface
+  var appId = 0;
+  var serviceType = "FakeType";
+
+  var samples = 5;
+  var sampleRate = netStatsDb.sampleRate;
+  var start = Date.now();
+  var saveDate = filterTimestamp(new Date());
+  var end = new Date(start + (sampleRate * (samples - 1)));
+  start = new Date(start - sampleRate);
+  var stats = [];
+  for (var i = 0; i < samples; i++) {
+    stats.push({ appId:              appId, serviceType:  serviceType,
+                 network:      networkWifi, timestamp:    saveDate + (sampleRate * i),
+                 rxBytes:                0, txBytes:      10,
+                 rxTotalBytes:           0, txTotalBytes: 0 });
+
+    stats.push({ appId:                appId, serviceType:  serviceType,
+                 network:      networkMobile, timestamp:    saveDate + (sampleRate * i),
+                 rxBytes:                  0, txBytes:      10,
+                 rxTotalBytes:             0, txTotalBytes: 0 });
+  }
+
+  prepareFind(stats, function(error, result) {
+    do_check_eq(error, null);
+    netStatsDb.find(function (error, result) {
+      do_check_eq(error, null);
+      do_check_eq(result.serviceType, serviceType);
+      do_check_eq(result.network.id, networks[0].id);
+      do_check_eq(result.network.type, networks[0].type);
+      do_check_eq(result.start.getTime(), start.getTime());
+      do_check_eq(result.end.getTime(), end.getTime());
+      do_check_eq(result.data.length, samples + 1);
+      do_check_eq(result.data[0].rxBytes, null);
+      do_check_eq(result.data[1].rxBytes, 0);
+      do_check_eq(result.data[samples].rxBytes, 0);
+      run_next_test();
+    }, appId, serviceType, networks[0], start, end);
   });
 });
 
@@ -568,45 +649,68 @@ add_test(function test_saveMultipleAppStats () {
 
   var saveDate = filterTimestamp(new Date());
   var cached = Object.create(null);
+  var serviceType = "FakeType";
+  var wifiNetId = networkWifi.id + '' + networkWifi.type;
+  var mobileNetId = networkMobile.id + '' + networkMobile.type;
 
-  cached['1wifi'] = { appId:                      1, date:           new Date(),
-                      networkId:     networkWifi.id, networkType: networkWifi.type,
-                      rxBytes:                    0, txBytes:      10 };
+  cached[0 + '' + serviceType + wifiNetId] = {
+    appId:                    0, date:           new Date(),
+    networkId:   networkWifi.id, networkType:    networkWifi.type,
+    rxBytes:                  0, txBytes:        10,
+    serviceType:    serviceType, isAccumulative: false
+  };
 
-  cached['1mobile'] = { appId:                    1, date:           new Date(),
-                        networkId: networkMobile.id, networkType: networkMobile.type,
-                        rxBytes:                  0, txBytes:      10 };
+  cached[0 + '' + serviceType + mobileNetId] = {
+    appId:                    0, date:           new Date(),
+    networkId: networkMobile.id, networkType:    networkMobile.type,
+    rxBytes:                  0, txBytes:        10,
+    serviceType:    serviceType, isAccumulative: false
+  };
 
-  cached['2wifi'] = { appId:                      2, date:           new Date(),
-                      networkId:     networkWifi.id, networkType: networkWifi.type,
-                      rxBytes:                    0, txBytes:      10 };
+  cached[1 + '' + wifiNetId] = {
+    appId:                    1, date:           new Date(),
+    networkId:   networkWifi.id, networkType:    networkWifi.type,
+    rxBytes:                  0, txBytes:        10,
+    serviceType:             "", isAccumulative: false
+  };
 
-  cached['2mobile'] = { appId:                    2, date:           new Date(),
-                        networkId: networkMobile.id, networkType: networkMobile.type,
-                        rxBytes:                  0, txBytes:      10 };
+  cached[1 + '' + mobileNetId] = {
+    appId:                    1, date:           new Date(),
+    networkId: networkMobile.id, networkType:    networkMobile.type,
+    rxBytes:                  0, txBytes:        10,
+    serviceType:             "", isAccumulative: false
+  };
+
+  cached[2 + '' + wifiNetId] = {
+    appId:                    2, date:           new Date(),
+    networkId:   networkWifi.id, networkType:    networkWifi.type,
+    rxBytes:                  0, txBytes:        10,
+    serviceType:             "", isAccumulative: false
+  };
+
+  cached[2 + '' + mobileNetId] = {
+    appId:                    2, date:           new Date(),
+    networkId: networkMobile.id, networkType:    networkMobile.type,
+    rxBytes:                  0, txBytes:        10,
+    serviceType:             "", isAccumulative: false
+  };
 
   let keys = Object.keys(cached);
   let index = 0;
 
   networks.push(networkMobile);
-  netStatsDb.clearStats(networks, function (error, result) {
-    do_check_eq(error, null);
+
+  clearStore('net_stats_store', function() {
     netStatsDb.saveStats(cached[keys[index]],
       function callback(error, result) {
         do_check_eq(error, null);
 
         if (index == keys.length - 1) {
           netStatsDb.logAllRecords(function(error, result) {
-            // Again, result has two samples more than expected samples because
-            // clear inserts one empty sample for each network to keep totalBytes
-            // synchronized with netd counters. so the first two samples have to
-            // be discarted.
-            result.shift();
-            result.shift();
-
             do_check_eq(error, null);
-            do_check_eq(result.length, 4);
-            do_check_eq(result[0].appId, 1);
+            do_check_eq(result.length, 6);
+            do_check_eq(result[0].serviceType, serviceType);
+            do_check_eq(result[3].appId, 1);
             do_check_true(compareNetworks(result[0].network, [networkWifi.id, networkWifi.type]));
             do_check_eq(result[0].rxBytes, 0);
             do_check_eq(result[0].txBytes, 10);

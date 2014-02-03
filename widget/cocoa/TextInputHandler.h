@@ -94,6 +94,12 @@ public:
    *                                3: Swedish-Pro
    *                                4: Dvorak-Qwerty Cmd
    *                                5: Thai
+   *                                6: Arabic
+   *                                7: French
+   *                                8: Hebrew
+   *                                9: Lithuanian
+   *                               10: Norwegian
+   *                               11: Spanish
    * @param aOverrideKeyboard     When testing set to TRUE, otherwise, set to
    *                              FALSE.  When TRUE, we use an ANSI keyboard
    *                              instead of the actual keyboard.
@@ -286,7 +292,7 @@ protected:
    *                              this is a result of ::LMGetKbdType().
    */
   void InitKeyPressEvent(NSEvent *aNativeKeyEvent,
-                         PRUnichar aInsertChar,
+                         char16_t aInsertChar,
                          WidgetKeyboardEvent& aKeyEvent,
                          UInt32 aKbType);
 
@@ -629,7 +635,7 @@ protected:
    *                              if aChar is a non-printable ASCII character,
    *                              FALSE.
    */
-  static bool IsPrintableChar(PRUnichar aChar);
+  static bool IsPrintableChar(char16_t aChar);
 
   /**
    * IsNormalCharInputtingEvent() checks whether aKeyEvent causes text input.

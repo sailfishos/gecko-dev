@@ -72,6 +72,7 @@
 #include "APZCCallbackHelper.h"
 #include "nsILoadContext.h"
 #include "ipc/nsGUIEventIPC.h"
+#include "mozilla/gfx/Matrix.h"
 
 #ifdef DEBUG
 #include "PCOMContentPermissionRequestChild.h"
@@ -223,10 +224,11 @@ TabChild::PreloadSlowThings()
         return;
     }
     // Just load and compile these scripts, but don't run them.
-    tab->TryCacheLoadAndCompileScript(BROWSER_ELEMENT_CHILD_SCRIPT);
+    tab->TryCacheLoadAndCompileScript(BROWSER_ELEMENT_CHILD_SCRIPT, true);
     // Load, compile, and run these scripts.
     tab->RecvLoadRemoteScript(
-        NS_LITERAL_STRING("chrome://global/content/preload.js"));
+        NS_LITERAL_STRING("chrome://global/content/preload.js"),
+        true);
 
     nsCOMPtr<nsIDocShell> docShell = do_GetInterface(tab->mWebNav);
     if (nsIPresShell* presShell = docShell->GetPresShell()) {
@@ -287,6 +289,7 @@ TabChild::TabChild(ContentChild* aManager, const TabContext& aContext, uint32_t 
   , mOrientation(eScreenOrientation_PortraitPrimary)
   , mUpdateHitRegion(false)
   , mContextMenuHandled(false)
+  , mWaitingTouchListeners(false)
 {
 }
 
@@ -307,7 +310,7 @@ TabChild::HandleEvent(nsIDOMEvent* aEvent)
 NS_IMETHODIMP
 TabChild::Observe(nsISupports *aSubject,
                   const char *aTopic,
-                  const PRUnichar *aData)
+                  const char16_t *aData)
 {
   if (!strcmp(aTopic, BROWSER_ZOOM_TO_RECT)) {
     nsCOMPtr<nsIDocShell> docShell(do_QueryInterface(aSubject));
@@ -449,7 +452,7 @@ NS_IMETHODIMP
 TabChild::OnStatusChange(nsIWebProgress* aWebProgress,
                          nsIRequest* aRequest,
                          nsresult aStatus,
-                         const PRUnichar* aMessage)
+                         const char16_t* aMessage)
 {
   NS_NOTREACHED("not implemented in TabChild");
   return NS_OK;
@@ -518,12 +521,14 @@ TabChild::HandlePossibleViewportChange()
   ViewID viewId;
   if (APZCCallbackHelper::GetScrollIdentifiers(document->GetDocumentElement(),
                                                &presShellId, &viewId)) {
+    ZoomConstraints constraints(
+      viewportInfo.IsZoomAllowed(),
+      viewportInfo.GetMinZoom(),
+      viewportInfo.GetMaxZoom());
     SendUpdateZoomConstraints(presShellId,
                               viewId,
                               /* isRoot = */ true,
-                              viewportInfo.IsZoomAllowed(),
-                              viewportInfo.GetMinZoom(),
-                              viewportInfo.GetMaxZoom());
+                              constraints);
   }
 
 
@@ -585,7 +590,6 @@ TabChild::HandlePossibleViewportChange()
   // by AsyncPanZoomController and causes a blurry flash.
   bool isFirstPaint;
   nsresult rv = utils->GetIsFirstPaint(&isFirstPaint);
-  MOZ_ASSERT(NS_SUCCEEDED(rv));
   if (NS_FAILED(rv) || isFirstPaint) {
     // FIXME/bug 799585(?): GetViewportInfo() returns a defaultZoom of
     // 0.0 to mean "did not calculate a zoom".  In that case, we default
@@ -606,7 +610,7 @@ TabChild::HandlePossibleViewportChange()
     // The page must have been refreshed in some way such as a new document or
     // new CSS viewport, so we know that there's no velocity, acceleration, and
     // we have no idea how long painting will take.
-    metrics, gfx::Point(0.0f, 0.0f), gfx::Point(0.0f, 0.0f), 0.0);
+    metrics, ScreenPoint(0.0f, 0.0f), gfx::Point(0.0f, 0.0f), 0.0);
   metrics.mCumulativeResolution = metrics.mZoom / metrics.mDevPixelsPerCSSPixel * ScreenToLayerScale(1);
   // This is the root layer, so the cumulative resolution is the same
   // as the resolution.
@@ -731,13 +735,14 @@ NS_INTERFACE_MAP_BEGIN(TabChild)
   NS_INTERFACE_MAP_ENTRY(nsIDialogCreator)
   NS_INTERFACE_MAP_ENTRY(nsIObserver)
   NS_INTERFACE_MAP_ENTRY(nsSupportsWeakReference)
+  NS_INTERFACE_MAP_ENTRY(nsITooltipListener)
 NS_INTERFACE_MAP_END
 
 NS_IMPL_ADDREF(TabChild)
 NS_IMPL_RELEASE(TabChild)
 
 NS_IMETHODIMP
-TabChild::SetStatus(uint32_t aStatusType, const PRUnichar* aStatus)
+TabChild::SetStatus(uint32_t aStatusType, const char16_t* aStatus)
 {
   return SetStatusWithContext(aStatusType,
       aStatus ? static_cast<const nsString &>(nsDependentString(aStatus))
@@ -879,7 +884,7 @@ TabChild::SetVisibility(bool aVisibility)
 }
 
 NS_IMETHODIMP
-TabChild::GetTitle(PRUnichar** aTitle)
+TabChild::GetTitle(char16_t** aTitle)
 {
   NS_NOTREACHED("TabChild::GetTitle not supported in TabChild");
 
@@ -887,7 +892,7 @@ TabChild::GetTitle(PRUnichar** aTitle)
 }
 
 NS_IMETHODIMP
-TabChild::SetTitle(const PRUnichar* aTitle)
+TabChild::SetTitle(const char16_t* aTitle)
 {
   // JavaScript sends the "DOMTitleChanged" event to the parent
   // via the message manager.
@@ -1619,8 +1624,9 @@ TabChild::RecvHandleLongTap(const CSSIntPoint& aPoint)
     return true;
   }
 
-  DispatchMouseEvent(NS_LITERAL_STRING("contextmenu"), aPoint, 2, 1, 0, false,
-                     nsIDOMMouseEvent::MOZ_SOURCE_TOUCH);
+  mContextMenuHandled =
+      DispatchMouseEvent(NS_LITERAL_STRING("contextmenu"), aPoint, 2, 1, 0, false,
+                         nsIDOMMouseEvent::MOZ_SOURCE_TOUCH);
 
   return true;
 }
@@ -1759,6 +1765,10 @@ TabChild::UpdateTapState(const WidgetTouchEvent& aEvent, nsEventStatus aStatus)
                                 "ui.click_hold_context_menus.delay", 500);
   }
 
+  if (aEvent.touches.Length() == 0) {
+    return;
+  }
+
   bool currentlyTrackingTouch = (mActivePointerId >= 0);
   if (aEvent.message == NS_TOUCH_START) {
     if (currentlyTrackingTouch || aEvent.touches.Length() > 1) {
@@ -1768,11 +1778,12 @@ TabChild::UpdateTapState(const WidgetTouchEvent& aEvent, nsEventStatus aStatus)
       return;
     }
     if (aStatus == nsEventStatus_eConsumeNoDefault ||
-        nsIPresShell::gPreventMouseEvents) {
+        nsIPresShell::gPreventMouseEvents ||
+        aEvent.mFlags.mMultipleActionsPrevented) {
       return;
     }
 
-    Touch* touch = static_cast<Touch*>(aEvent.touches[0].get());
+    Touch* touch = aEvent.touches[0];
     mGestureDownPoint = LayoutDevicePoint(touch->mRefPoint.x, touch->mRefPoint.y);
     mActivePointerId = touch->mIdentifier;
     if (sClickHoldContextMenusEnabled) {
@@ -1866,15 +1877,43 @@ TabChild::RecvRealTouchEvent(const WidgetTouchEvent& aEvent,
   WidgetTouchEvent localEvent(aEvent);
   nsEventStatus status = DispatchWidgetEvent(localEvent);
 
-  if (IsAsyncPanZoomEnabled()) {
-    nsCOMPtr<nsPIDOMWindow> outerWindow = do_GetInterface(mWebNav);
-    nsCOMPtr<nsPIDOMWindow> innerWindow = outerWindow->GetCurrentInnerWindow();
+  if (!IsAsyncPanZoomEnabled()) {
+    UpdateTapState(localEvent, status);
+    return true;
+  }
 
-    if (innerWindow && innerWindow->HasTouchEventListeners()) {
-      SendContentReceivedTouch(aGuid, nsIPresShell::gPreventMouseEvents);
+  nsCOMPtr<nsPIDOMWindow> outerWindow = do_GetInterface(mWebNav);
+  nsCOMPtr<nsPIDOMWindow> innerWindow = outerWindow->GetCurrentInnerWindow();
+
+  if (!innerWindow || !innerWindow->HasTouchEventListeners()) {
+    SendContentReceivedTouch(aGuid, false);
+    return true;
+  }
+
+  bool isTouchPrevented = nsIPresShell::gPreventMouseEvents ||
+                          localEvent.mFlags.mMultipleActionsPrevented;
+  switch (aEvent.message) {
+  case NS_TOUCH_START: {
+    if (isTouchPrevented) {
+      SendContentReceivedTouch(aGuid, isTouchPrevented);
+    } else {
+      mWaitingTouchListeners = true;
     }
-  } else {
-    UpdateTapState(aEvent, status);
+    break;
+  }
+
+  case NS_TOUCH_MOVE:
+  case NS_TOUCH_END:
+  case NS_TOUCH_CANCEL: {
+    if (mWaitingTouchListeners) {
+      SendContentReceivedTouch(aGuid, isTouchPrevented);
+      mWaitingTouchListeners = false;
+    }
+    break;
+  }
+
+  default:
+    NS_WARNING("Unknown touch event type");
   }
 
   return true;
@@ -1950,7 +1989,7 @@ TabChild::DispatchWidgetEvent(WidgetGUIEvent& event)
 
 PDocumentRendererChild*
 TabChild::AllocPDocumentRendererChild(const nsRect& documentRect,
-                                      const gfxMatrix& transform,
+                                      const mozilla::gfx::Matrix& transform,
                                       const nsString& bgcolor,
                                       const uint32_t& renderFlags,
                                       const bool& flushLayout,
@@ -1969,7 +2008,7 @@ TabChild::DeallocPDocumentRendererChild(PDocumentRendererChild* actor)
 bool
 TabChild::RecvPDocumentRendererConstructor(PDocumentRendererChild* actor,
                                            const nsRect& documentRect,
-                                           const gfxMatrix& transform,
+                                           const mozilla::gfx::Matrix& transform,
                                            const nsString& bgcolor,
                                            const uint32_t& renderFlags,
                                            const bool& flushLayout,
@@ -2066,14 +2105,14 @@ TabChild::DeallocPOfflineCacheUpdateChild(POfflineCacheUpdateChild* actor)
 }
 
 bool
-TabChild::RecvLoadRemoteScript(const nsString& aURL)
+TabChild::RecvLoadRemoteScript(const nsString& aURL, const bool& aRunInGlobalScope)
 {
   if (!mGlobal && !InitTabChildGlobal())
     // This can happen if we're half-destroyed.  It's not a fatal
     // error.
     return true;
 
-  LoadFrameScriptInternal(aURL);
+  LoadFrameScriptInternal(aURL, aRunInGlobalScope);
   return true;
 }
 
@@ -2157,9 +2196,7 @@ TabChild::RecvSetUpdateHitRegion(const bool& aEnabled)
 }
 
 PRenderFrameChild*
-TabChild::AllocPRenderFrameChild(ScrollingBehavior* aScrolling,
-                            TextureFactoryIdentifier* aTextureFactoryIdentifier,
-                            uint64_t* aLayersId)
+TabChild::AllocPRenderFrameChild()
 {
     return new RenderFrameChild();
 }
@@ -2203,7 +2240,7 @@ TabChild::InitTabChildGlobal(FrameScriptLoading aScriptLoading)
     // Initialize the child side of the browser element machinery,
     // if appropriate.
     if (IsBrowserOrApp()) {
-      RecvLoadRemoteScript(BROWSER_ELEMENT_CHILD_SCRIPT);
+      RecvLoadRemoteScript(BROWSER_ELEMENT_CHILD_SCRIPT, true);
     }
   }
 
@@ -2216,12 +2253,18 @@ TabChild::InitRenderingState()
     static_cast<PuppetWidget*>(mWidget.get())->InitIMEState();
 
     uint64_t id;
+    bool success;
     RenderFrameChild* remoteFrame =
-        static_cast<RenderFrameChild*>(SendPRenderFrameConstructor(
-                                         &mScrolling, &mTextureFactoryIdentifier, &id));
+        static_cast<RenderFrameChild*>(SendPRenderFrameConstructor());
     if (!remoteFrame) {
-      NS_WARNING("failed to construct RenderFrame");
-      return false;
+        NS_WARNING("failed to construct RenderFrame");
+        return false;
+    }
+    SendInitRenderFrame(remoteFrame, &mScrolling, &mTextureFactoryIdentifier, &id, &success);
+    if (!success) {
+        NS_WARNING("failed to construct RenderFrame");
+        PRenderFrameChild::Send__delete__(remoteFrame);
+        return false;
     }
 
     PLayerTransactionChild* shadowManager = nullptr;
@@ -2323,7 +2366,7 @@ TabChild::NotifyPainted()
     // we need to notify content every change so that it can compute an invalidation
     // region and send that to the widget.
     if (UseDirectCompositor() &&
-        (!mNotified || mTextureFactoryIdentifier.mParentBackend == LAYERS_BASIC)) {
+        (!mNotified || mTextureFactoryIdentifier.mParentBackend == LayersBackend::LAYERS_BASIC)) {
         mRemoteFrame->SendNotifyCompositorTransaction();
         mNotified = true;
     }
@@ -2349,7 +2392,7 @@ TabChild::DispatchMouseEvent(const nsString&       aType,
   
   bool defaultPrevented = false;
   utils->SendMouseEvent(aType, aPoint.x, aPoint.y, aButton, aClickCount, aModifiers,
-                        aIgnoreRootScrollFrame, 0, aInputSourceArg, &defaultPrevented);
+                        aIgnoreRootScrollFrame, 0, aInputSourceArg, false, 4, &defaultPrevented);
   return defaultPrevented;
 }
 
@@ -2470,6 +2513,20 @@ TabChild::GetFrom(nsIPresShell* aPresShell)
   return GetFrom(docShell);
 }
 
+NS_IMETHODIMP
+TabChild::OnShowTooltip(int32_t aXCoords, int32_t aYCoords, const char16_t *aTipText)
+{
+    nsString str(aTipText);
+    SendShowTooltip(aXCoords, aYCoords, str);
+    return NS_OK;
+}
+
+NS_IMETHODIMP
+TabChild::OnHideTooltip()
+{
+    SendHideTooltip();
+    return NS_OK;
+}
 
 TabChildGlobal::TabChildGlobal(TabChild* aTabChild)
 : mTabChild(aTabChild)

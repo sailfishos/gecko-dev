@@ -801,7 +801,7 @@ nsXREDirProvider::DoStartup()
       }
     }
 
-    static const PRUnichar kStartup[] = {'s','t','a','r','t','u','p','\0'};
+    static const char16_t kStartup[] = {'s','t','a','r','t','u','p','\0'};
     obsSvc->NotifyObservers(nullptr, "profile-do-change", kStartup);
     // Init the Extension Manager
     nsCOMPtr<nsIObserver> em = do_GetService("@mozilla.org/addons/integration;1");
@@ -822,7 +822,7 @@ nsXREDirProvider::DoStartup()
                                         "profile-after-change");
 
     if (gSafeMode && safeModeNecessary) {
-      static const PRUnichar kCrashed[] = {'c','r','a','s','h','e','d','\0'};
+      static const char16_t kCrashed[] = {'c','r','a','s','h','e','d','\0'};
       obsSvc->NotifyObservers(nullptr, "safemode-forced", kCrashed);
     }
 
@@ -849,7 +849,7 @@ nsXREDirProvider::DoShutdown()
       mozilla::services::GetObserverService();
     NS_ASSERTION(obsSvc, "No observer service?");
     if (obsSvc) {
-      static const PRUnichar kShutdownPersist[] =
+      static const char16_t kShutdownPersist[] =
         {'s','h','u','t','d','o','w','n','-','p','e','r','s','i','s','t','\0'};
       obsSvc->NotifyObservers(nullptr, "profile-change-net-teardown", kShutdownPersist);
       obsSvc->NotifyObservers(nullptr, "profile-change-teardown", kShutdownPersist);
@@ -1001,15 +1001,17 @@ nsXREDirProvider::GetUpdateRootDir(nsIFile* *aResult)
 
   nsAutoString pathHash;
   bool pathHashResult = false;
+  bool hasVendor = gAppData->vendor && strlen(gAppData->vendor) != 0;
 
   nsAutoString appDirPath;
-  if (gAppData->vendor && !getenv("MOZ_UPDATE_NO_HASH_DIR") &&
-      SUCCEEDED(updRoot->GetPath(appDirPath))) {
+  if (SUCCEEDED(updRoot->GetPath(appDirPath))) {
 
-    // Figure out where we should check for a cached hash value
+    // Figure out where we should check for a cached hash value. If the
+    // application doesn't have the nsXREAppData vendor value defined check
+    // under SOFTWARE\Mozilla.
     wchar_t regPath[1024] = { L'\0' };
     swprintf_s(regPath, mozilla::ArrayLength(regPath), L"SOFTWARE\\%S\\%S\\TaskBarIDs",
-               gAppData->vendor, MOZ_APP_NAME);
+               (hasVendor ? gAppData->vendor : "Mozilla"), MOZ_APP_BASENAME);
 
     // If we pre-computed the hash, grab it from the registry.
     pathHashResult = GetCachedHash(HKEY_LOCAL_MACHINE,
@@ -1028,9 +1030,9 @@ nsXREDirProvider::GetUpdateRootDir(nsIFile* *aResult)
   // shared update directory for different apps run from the same path (like
   // Metro & Desktop).
   nsCOMPtr<nsIFile> localDir;
-  if (pathHashResult && (gAppData->vendor || gAppData->name) &&
+  if (pathHashResult && (hasVendor || gAppData->name) &&
       NS_SUCCEEDED(GetUserDataDirectoryHome(getter_AddRefs(localDir), true)) &&
-      NS_SUCCEEDED(localDir->AppendNative(nsDependentCString(gAppData->vendor ?
+      NS_SUCCEEDED(localDir->AppendNative(nsDependentCString(hasVendor ?
                                           gAppData->vendor : gAppData->name))) &&
       NS_SUCCEEDED(localDir->Append(NS_LITERAL_STRING("updates"))) &&
       NS_SUCCEEDED(localDir->Append(pathHash))) {

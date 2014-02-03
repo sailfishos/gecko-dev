@@ -81,21 +81,25 @@ AudioContext::AudioContext(nsPIDOMWindow* aWindow,
                            uint32_t aNumberOfChannels,
                            uint32_t aLength,
                            float aSampleRate)
-  : mSampleRate(GetSampleRateForAudioContext(aIsOffline, aSampleRate))
+  : nsDOMEventTargetHelper(aWindow)
+  , mSampleRate(GetSampleRateForAudioContext(aIsOffline, aSampleRate))
   , mNumberOfChannels(aNumberOfChannels)
+  , mNodeCount(0)
   , mIsOffline(aIsOffline)
   , mIsStarted(!aIsOffline)
   , mIsShutDown(false)
 {
-  nsDOMEventTargetHelper::BindToOwner(aWindow);
   aWindow->AddAudioContext(this);
-  SetIsDOMBinding();
 
   // Note: AudioDestinationNode needs an AudioContext that must already be
   // bound to the window.
   mDestination = new AudioDestinationNode(this, aIsOffline, aNumberOfChannels,
                                           aLength, aSampleRate);
   mDestination->Stream()->AddAudioOutput(&gWebAudioOutputKey);
+  // We skip calling SetIsOnlyNodeForContext during mDestination's constructor,
+  // because we can only call SetIsOnlyNodeForContext after mDestination has
+  // been set up.
+  mDestination->SetIsOnlyNodeForContext(true);
 }
 
 AudioContext::~AudioContext()
@@ -104,6 +108,8 @@ AudioContext::~AudioContext()
   if (window) {
     window->RemoveAudioContext(this);
   }
+
+  UnregisterWeakMemoryReporter(this);
 }
 
 JSObject*
@@ -127,6 +133,9 @@ AudioContext::Constructor(const GlobalObject& aGlobal,
   }
 
   nsRefPtr<AudioContext> object = new AudioContext(window, false);
+
+  RegisterWeakMemoryReporter(object);
+
   return object.forget();
 }
 
@@ -158,6 +167,9 @@ AudioContext::Constructor(const GlobalObject& aGlobal,
                                                    aNumberOfChannels,
                                                    aLength,
                                                    aSampleRate);
+
+  RegisterWeakMemoryReporter(object);
+
   return object.forget();
 }
 
@@ -536,7 +548,8 @@ AudioContext::DestinationStream() const
 double
 AudioContext::CurrentTime() const
 {
-  return MediaTimeToSeconds(Destination()->Stream()->GetCurrentTime());
+  return MediaTimeToSeconds(Destination()->Stream()->GetCurrentTime()) +
+      ExtraCurrentTime();
 }
 
 void
@@ -544,7 +557,12 @@ AudioContext::Shutdown()
 {
   mIsShutDown = true;
 
-  Suspend();
+  // We mute rather than suspending, because the delay between the ::Shutdown
+  // call and the CC would make us overbuffer in the MediaStreamGraph.
+  // See bug 936784 for details.
+  if (!mIsOffline) {
+    Mute();
+  }
 
   mDecoder.Shutdown();
 
@@ -574,6 +592,18 @@ AudioContext::Resume()
   MediaStream* ds = DestinationStream();
   if (ds) {
     ds->ChangeExplicitBlockerCount(-1);
+  }
+}
+
+void
+AudioContext::UpdateNodeCount(int32_t aDelta)
+{
+  bool firstNode = mNodeCount == 0;
+  mNodeCount += aDelta;
+  MOZ_ASSERT(mNodeCount >= 0);
+  // mDestinationNode may be null when we're destroying nodes unlinked by CC
+  if (!firstNode && mDestination) {
+    mDestination->SetIsOnlyNodeForContext(mNodeCount == 1);
   }
 }
 
@@ -611,14 +641,18 @@ void
 AudioContext::Mute() const
 {
   MOZ_ASSERT(!mIsOffline);
-  mDestination->Mute();
+  if (mDestination) {
+    mDestination->Mute();
+  }
 }
 
 void
 AudioContext::Unmute() const
 {
   MOZ_ASSERT(!mIsOffline);
-  mDestination->Unmute();
+  if (mDestination) {
+    mDestination->Unmute();
+  }
 }
 
 AudioChannel
@@ -631,6 +665,42 @@ void
 AudioContext::SetMozAudioChannelType(AudioChannel aValue, ErrorResult& aRv)
 {
   mDestination->SetMozAudioChannelType(aValue, aRv);
+}
+
+size_t
+AudioContext::SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const
+{
+  // AudioNodes are tracked separately because we do not want the AudioContext
+  // to track all of the AudioNodes it creates, so we wouldn't be able to
+  // traverse them from here.
+
+  size_t amount = aMallocSizeOf(this);
+  if (mListener) {
+    amount += mListener->SizeOfIncludingThis(aMallocSizeOf);
+  }
+  amount += mDecoder.SizeOfExcludingThis(aMallocSizeOf);
+  amount += mDecodeJobs.SizeOfExcludingThis(aMallocSizeOf);
+  for (uint32_t i = 0; i < mDecodeJobs.Length(); ++i) {
+    amount += mDecodeJobs[i]->SizeOfExcludingThis(aMallocSizeOf);
+  }
+  amount += mActiveNodes.SizeOfExcludingThis(nullptr, aMallocSizeOf);
+  amount += mPannerNodes.SizeOfExcludingThis(nullptr, aMallocSizeOf);
+  return amount;
+}
+
+NS_IMETHODIMP
+AudioContext::CollectReports(nsIHandleReportCallback* aHandleReport,
+                             nsISupports* aData)
+{
+  int64_t amount = SizeOfIncludingThis(MallocSizeOf);
+  return MOZ_COLLECT_REPORT("explicit/webaudio/audiocontext", KIND_HEAP, UNITS_BYTES,
+                            amount, "Memory used by AudioContext objects (Web Audio).");
+}
+
+double
+AudioContext::ExtraCurrentTime() const
+{
+  return mDestination->ExtraCurrentTime();
 }
 
 }

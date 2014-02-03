@@ -136,7 +136,6 @@ NS_INTERFACE_MAP_BEGIN(nsWebBrowser)
     NS_INTERFACE_MAP_ENTRY(nsIScrollable)
     NS_INTERFACE_MAP_ENTRY(nsITextScroll)
     NS_INTERFACE_MAP_ENTRY(nsIDocShellTreeItem)
-    NS_INTERFACE_MAP_ENTRY(nsIDocShellTreeNode)
     NS_INTERFACE_MAP_ENTRY(nsIInterfaceRequestor)
     NS_INTERFACE_MAP_ENTRY(nsIWebBrowserSetup)
     NS_INTERFACE_MAP_ENTRY(nsIWebBrowserPersist)
@@ -416,7 +415,7 @@ NS_IMETHODIMP nsWebBrowser::SetName(const nsAString& aName)
    return NS_OK;
 }
 
-NS_IMETHODIMP nsWebBrowser::NameEquals(const PRUnichar *aName, bool *_retval)
+NS_IMETHODIMP nsWebBrowser::NameEquals(const char16_t *aName, bool *_retval)
 {
     NS_ENSURE_ARG_POINTER(aName);
     NS_ENSURE_ARG_POINTER(_retval);
@@ -430,11 +429,17 @@ NS_IMETHODIMP nsWebBrowser::NameEquals(const PRUnichar *aName, bool *_retval)
     return NS_OK;
 }
 
+/* virtual */ int32_t
+nsWebBrowser::ItemType()
+{
+   return mContentType;
+}
+
 NS_IMETHODIMP nsWebBrowser::GetItemType(int32_t* aItemType)
 {
    NS_ENSURE_ARG_POINTER(aItemType);
 
-   *aItemType = mContentType;
+   *aItemType = ItemType();
    return NS_OK;
 }
 
@@ -495,7 +500,7 @@ NS_IMETHODIMP nsWebBrowser::GetSameTypeRootTreeItem(nsIDocShellTreeItem** aRootT
    return NS_OK;
 }
 
-NS_IMETHODIMP nsWebBrowser::FindItemWithName(const PRUnichar *aName, 
+NS_IMETHODIMP nsWebBrowser::FindItemWithName(const char16_t *aName, 
    nsISupports* aRequestor, nsIDocShellTreeItem* aOriginalRequestor,
    nsIDocShellTreeItem **_retval)
 {
@@ -560,7 +565,7 @@ NS_IMETHODIMP nsWebBrowser::GetChildAt(int32_t aIndex,
 }
 
 NS_IMETHODIMP nsWebBrowser::FindChildWithName(
-                                       const PRUnichar * aName,
+                                       const char16_t * aName,
                                        bool aRecurse, bool aSameType,
                                        nsIDocShellTreeItem * aRequestor,
                                        nsIDocShellTreeItem * aOriginalRequestor,
@@ -604,7 +609,7 @@ NS_IMETHODIMP nsWebBrowser::GoForward()
    return mDocShellAsNav->GoForward();
 }
 
-NS_IMETHODIMP nsWebBrowser::LoadURI(const PRUnichar* aURI,
+NS_IMETHODIMP nsWebBrowser::LoadURI(const char16_t* aURI,
                                     uint32_t aLoadFlags,
                                     nsIURI* aReferringURI,
                                     nsIInputStream* aPostDataStream,
@@ -830,7 +835,7 @@ NS_IMETHODIMP nsWebBrowser::OnLocationChange(nsIWebProgress *aWebProgress, nsIRe
 }
 
 /* void onStatusChange (in nsIWebProgress aWebProgress, in nsIRequest aRequest, in nsresult aStatus, in wstring aMessage); */
-NS_IMETHODIMP nsWebBrowser::OnStatusChange(nsIWebProgress *aWebProgress, nsIRequest *aRequest, nsresult aStatus, const PRUnichar *aMessage)
+NS_IMETHODIMP nsWebBrowser::OnStatusChange(nsIWebProgress *aWebProgress, nsIRequest *aRequest, nsresult aStatus, const char16_t *aMessage)
 {
     if (mProgressListener)
     {
@@ -1467,7 +1472,7 @@ NS_IMETHODIMP nsWebBrowser::SetFocus()
   return fm ? fm->SetFocusedWindow(window) : NS_OK;
 }
 
-NS_IMETHODIMP nsWebBrowser::GetTitle(PRUnichar** aTitle)
+NS_IMETHODIMP nsWebBrowser::GetTitle(char16_t** aTitle)
 {
    NS_ENSURE_ARG_POINTER(aTitle);
    NS_ENSURE_STATE(mDocShell);
@@ -1477,7 +1482,7 @@ NS_IMETHODIMP nsWebBrowser::GetTitle(PRUnichar** aTitle)
    return NS_OK;
 }
 
-NS_IMETHODIMP nsWebBrowser::SetTitle(const PRUnichar* aTitle)
+NS_IMETHODIMP nsWebBrowser::SetTitle(const char16_t* aTitle)
 {
    NS_ENSURE_STATE(mDocShell);
 
@@ -1489,58 +1494,6 @@ NS_IMETHODIMP nsWebBrowser::SetTitle(const PRUnichar* aTitle)
 //*****************************************************************************
 // nsWebBrowser::nsIScrollable
 //*****************************************************************************
-
-NS_IMETHODIMP nsWebBrowser::GetCurScrollPos(int32_t aScrollOrientation, 
-   int32_t* aCurPos)
-{
-   NS_ENSURE_STATE(mDocShell);
-
-   return mDocShellAsScrollable->GetCurScrollPos(aScrollOrientation, aCurPos);
-}
-
-NS_IMETHODIMP nsWebBrowser::SetCurScrollPos(int32_t aScrollOrientation, 
-   int32_t aCurPos)
-{
-   NS_ENSURE_STATE(mDocShell);
-
-   return mDocShellAsScrollable->SetCurScrollPos(aScrollOrientation, aCurPos);
-}
-
-NS_IMETHODIMP nsWebBrowser::SetCurScrollPosEx(int32_t aCurHorizontalPos, 
-   int32_t aCurVerticalPos)
-{
-   NS_ENSURE_STATE(mDocShell);
-
-   return mDocShellAsScrollable->SetCurScrollPosEx(aCurHorizontalPos, 
-      aCurVerticalPos);
-}
-
-NS_IMETHODIMP nsWebBrowser::GetScrollRange(int32_t aScrollOrientation,
-   int32_t* aMinPos, int32_t* aMaxPos)
-{
-   NS_ENSURE_STATE(mDocShell);
-
-   return mDocShellAsScrollable->GetScrollRange(aScrollOrientation, aMinPos,
-      aMaxPos);
-}
-
-NS_IMETHODIMP nsWebBrowser::SetScrollRange(int32_t aScrollOrientation,
-   int32_t aMinPos, int32_t aMaxPos)
-{
-   NS_ENSURE_STATE(mDocShell);
-
-   return mDocShellAsScrollable->SetScrollRange(aScrollOrientation, aMinPos,
-      aMaxPos);
-}
-
-NS_IMETHODIMP nsWebBrowser::SetScrollRangeEx(int32_t aMinHorizontalPos,
-   int32_t aMaxHorizontalPos, int32_t aMinVerticalPos, int32_t aMaxVerticalPos)
-{
-   NS_ENSURE_STATE(mDocShell);
-
-   return mDocShellAsScrollable->SetScrollRangeEx(aMinHorizontalPos,
-      aMaxHorizontalPos, aMinVerticalPos, aMaxVerticalPos);
-}
 
 NS_IMETHODIMP nsWebBrowser::GetDefaultScrollbarPreferences(int32_t aScrollOrientation,
    int32_t* aScrollbarPref)

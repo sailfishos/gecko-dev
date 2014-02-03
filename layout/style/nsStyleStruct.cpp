@@ -73,7 +73,7 @@ static bool EqualImages(imgIRequest *aImage1, imgIRequest* aImage2)
 }
 
 // A nullsafe wrapper for strcmp. We depend on null-safety.
-static int safe_strcmp(const PRUnichar* a, const PRUnichar* b)
+static int safe_strcmp(const char16_t* a, const char16_t* b)
 {
   if (!a || !b) {
     return (int)(a - b);
@@ -102,6 +102,7 @@ nsStyleFont::nsStyleFont(const nsStyleFont& aSrc)
   , mGenericID(aSrc.mGenericID)
   , mScriptLevel(aSrc.mScriptLevel)
   , mMathVariant(aSrc.mMathVariant)
+  , mMathDisplay(aSrc.mMathDisplay)
   , mExplicitLanguage(aSrc.mExplicitLanguage)
   , mAllowZoom(aSrc.mAllowZoom)
   , mScriptUnconstrainedSize(aSrc.mScriptUnconstrainedSize)
@@ -133,6 +134,7 @@ nsStyleFont::Init(nsPresContext* aPresContext)
   mScriptLevel = 0;
   mScriptSizeMultiplier = NS_MATHML_DEFAULT_SCRIPT_SIZE_MULTIPLIER;
   mMathVariant = NS_MATHML_MATHVARIANT_NONE;
+  mMathDisplay = NS_MATHML_DISPLAYSTYLE_INLINE;
   mAllowZoom = true;
 
   nsAutoString language;
@@ -142,7 +144,7 @@ nsStyleFont::Init(nsPresContext* aPresContext)
   // Content-Language may be a comma-separated list of language codes,
   // in which case the HTML5 spec says to treat it as unknown
   if (!language.IsEmpty() &&
-      language.FindChar(PRUnichar(',')) == kNotFound) {
+      language.FindChar(char16_t(',')) == kNotFound) {
     mLanguage = do_GetAtom(language);
     // NOTE:  This does *not* count as an explicit language; in other
     // words, it doesn't trigger language-specific hyphenation.
@@ -194,7 +196,8 @@ nsChangeHint nsStyleFont::CalcDifference(const nsStyleFont& aOther) const
   if (mSize != aOther.mSize ||
       mLanguage != aOther.mLanguage ||
       mExplicitLanguage != aOther.mExplicitLanguage ||
-      mMathVariant != aOther.mMathVariant) {
+      mMathVariant != aOther.mMathVariant ||
+      mMathDisplay != aOther.mMathDisplay) {
     return NS_STYLE_HINT_REFLOW;
   }
   return CalcFontDifference(mFont, aOther.mFont);
@@ -1735,7 +1738,7 @@ nsStyleImage::SetGradientData(nsStyleGradient* aGradient)
 }
 
 void
-nsStyleImage::SetElementId(const PRUnichar* aElementId)
+nsStyleImage::SetElementId(const char16_t* aElementId)
 {
   if (mType != eStyleImageType_Null)
     SetNull();
@@ -2305,6 +2308,7 @@ nsAnimation::SetInitialValues()
 }
 
 nsStyleDisplay::nsStyleDisplay()
+  : mWillChangeBitField(0)
 {
   MOZ_COUNT_CTOR(nsStyleDisplay);
   mAppearance = NS_THEME_NONE;
@@ -2334,6 +2338,7 @@ nsStyleDisplay::nsStyleDisplay()
   mTransformStyle = NS_STYLE_TRANSFORM_STYLE_FLAT;
   mOrient = NS_STYLE_ORIENT_AUTO;
   mMixBlendMode = NS_STYLE_BLEND_NORMAL;
+  mTouchAction = NS_STYLE_TOUCH_ACTION_AUTO;
 
   mTransitions.AppendElement();
   NS_ABORT_IF_FALSE(mTransitions.Length() == 1,
@@ -2378,6 +2383,9 @@ nsStyleDisplay::nsStyleDisplay(const nsStyleDisplay& aSource)
   , mClipFlags(aSource.mClipFlags)
   , mOrient(aSource.mOrient)
   , mMixBlendMode(aSource.mMixBlendMode)
+  , mWillChangeBitField(aSource.mWillChangeBitField)
+  , mWillChange(aSource.mWillChange)
+  , mTouchAction(aSource.mTouchAction)
   , mBackfaceVisibility(aSource.mBackfaceVisibility)
   , mTransformStyle(aSource.mTransformStyle)
   , mSpecifiedTransform(aSource.mSpecifiedTransform)
@@ -2502,6 +2510,10 @@ nsChangeHint nsStyleDisplay::CalcDifference(const nsStyleDisplay& aOther) const
 
     if (mBackfaceVisibility != aOther.mBackfaceVisibility)
       NS_UpdateHint(hint, nsChangeHint_RepaintFrame);
+  }
+
+  if (mWillChangeBitField != aOther.mWillChangeBitField) {
+    NS_UpdateHint(hint, nsChangeHint_ReconstructFrame);
   }
 
   // Note:  Our current behavior for handling changes to the
@@ -2857,7 +2869,7 @@ nsStyleQuotes::SetInitial()
   // The initial value for quotes is the en-US typographic convention:
   // outermost are LEFT and RIGHT DOUBLE QUOTATION MARK, alternating
   // with LEFT and RIGHT SINGLE QUOTATION MARK.
-  static const PRUnichar initialQuotes[8] = {
+  static const char16_t initialQuotes[8] = {
     0x201C, 0, 0x201D, 0, 0x2018, 0, 0x2019, 0
   };
   

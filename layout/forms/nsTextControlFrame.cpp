@@ -45,6 +45,7 @@
 #include "nsTextNode.h"
 #include "nsStyleSet.h"
 #include "mozilla/dom/ScriptSettings.h"
+#include "mozilla/MathAlgorithms.h"
 
 #define DEFAULT_COLUMN_WIDTH 20
 
@@ -169,11 +170,10 @@ nsTextControlFrame::CalcIntrinsicSize(nsRenderingContext* aRenderingContext,
 
   // To better match IE, take the maximum character width(in twips) and remove
   // 4 pixels add this on as additional padding(internalPadding). But only do
-  // this if charMaxAdvance != charWidth; if they are equal, this is almost
-  // certainly a fixed-width font.
-  if (charWidth != charMaxAdvance) {
-    nscoord internalPadding = std::max(0, charMaxAdvance -
-                                        nsPresContext::CSSPixelsToAppUnits(4));
+  // this if we think we have a fixed-width font.
+  if (mozilla::Abs(charWidth - charMaxAdvance) > (unsigned)nsPresContext::CSSPixelsToAppUnits(1)) {
+    nscoord internalPadding =
+      std::max(0, charMaxAdvance - nsPresContext::CSSPixelsToAppUnits(4));
     nscoord t = nsPresContext::CSSPixelsToAppUnits(1); 
    // Round to a multiple of t
     nscoord rest = internalPadding % t; 
@@ -189,17 +189,6 @@ nsTextControlFrame::CalcIntrinsicSize(nsRenderingContext* aRenderingContext,
     // in Full Standards mode, see BRFrame::Reflow and bug 228752.
     if (PresContext()->CompatibilityMode() == eCompatibility_FullStandards) {
       aIntrinsicSize.width += 1;
-    }
-
-    // Also add in the padding of our value div child.  Note that it hasn't
-    // been reflowed yet, so we can't get its used padding, but it shouldn't be
-    // using percentage padding anyway.
-    nsMargin childPadding;
-    nsIFrame* firstChild = GetFirstPrincipalChild();
-    if (firstChild && firstChild->StylePadding()->GetPadding(childPadding)) {
-      aIntrinsicSize.width += childPadding.LeftRight();
-    } else {
-      NS_ERROR("Percentage padding on value div?");
     }
   }
 
@@ -488,10 +477,10 @@ nsTextControlFrame::Reflow(nsPresContext*   aPresContext,
   }
 
   // set values of reflow's out parameters
-  aDesiredSize.width = aReflowState.ComputedWidth() +
-                       aReflowState.mComputedBorderPadding.LeftRight();
-  aDesiredSize.height = aReflowState.ComputedHeight() +
-                        aReflowState.mComputedBorderPadding.TopBottom();
+  aDesiredSize.Width() = aReflowState.ComputedWidth() +
+                       aReflowState.ComputedPhysicalBorderPadding().LeftRight();
+  aDesiredSize.Height() = aReflowState.ComputedHeight() +
+                        aReflowState.ComputedPhysicalBorderPadding().TopBottom();
 
   // computation of the ascent wrt the input height
   nscoord lineHeight = aReflowState.ComputedHeight();
@@ -506,9 +495,9 @@ nsTextControlFrame::Reflow(nsPresContext*   aPresContext,
                                                       inflation);
   NS_ENSURE_SUCCESS(rv, rv);
   // now adjust for our borders and padding
-  aDesiredSize.ascent = 
+  aDesiredSize.SetTopAscent( 
         nsLayoutUtils::GetCenteredFontBaseline(fontMet, lineHeight) 
-        + aReflowState.mComputedBorderPadding.top;
+        + aReflowState.ComputedPhysicalBorderPadding().top);
 
   // overflow handling
   aDesiredSize.SetOverflowAreasToDesiredBounds();
@@ -535,41 +524,33 @@ nsTextControlFrame::ReflowTextControlChild(nsIFrame*                aKid,
                                            nsHTMLReflowMetrics& aParentDesiredSize)
 {
   // compute available size and frame offsets for child
-  nsSize availSize(aReflowState.ComputedWidth(), 
-                   aReflowState.ComputedHeight());
-  availSize.width = std::max(availSize.width, 0);
-  availSize.height = std::max(availSize.height, 0);
-  
+  nsSize availSize(aReflowState.ComputedWidth() +
+                   aReflowState.ComputedPhysicalPadding().LeftRight(),
+                   NS_UNCONSTRAINEDSIZE);
+
   nsHTMLReflowState kidReflowState(aPresContext, aReflowState, 
-                                   aKid, availSize);
+                                   aKid, availSize, -1, -1, nsHTMLReflowState::CALLER_WILL_INIT);
+  // Override padding with our computed padding in case we got it from theming or percentage
+  kidReflowState.Init(aPresContext, -1, -1, nullptr, &aReflowState.ComputedPhysicalPadding());
 
   // Set computed width and computed height for the child
-  nscoord width = availSize.width;
-  width -= kidReflowState.mComputedMargin.LeftRight() +
-              kidReflowState.mComputedBorderPadding.LeftRight();
-  width = std::max(width, 0);
-  kidReflowState.SetComputedWidth(width);
+  kidReflowState.SetComputedWidth(aReflowState.ComputedWidth());
+  kidReflowState.SetComputedHeight(aReflowState.ComputedHeight());
 
-  nscoord height = availSize.height;
-  height -= kidReflowState.mComputedMargin.TopBottom() +
-              kidReflowState.mComputedBorderPadding.TopBottom();
-  height = std::max(height, 0);       
-  kidReflowState.SetComputedHeight(height); 
-
-  // compute the offsets
-  nscoord xOffset = aReflowState.mComputedBorderPadding.left
-                      + kidReflowState.mComputedMargin.left;
-  nscoord yOffset = aReflowState.mComputedBorderPadding.top
-                      + kidReflowState.mComputedMargin.top;
+  // Offset the frame by the size of the parent's border
+  nscoord xOffset = aReflowState.ComputedPhysicalBorderPadding().left -
+                    aReflowState.ComputedPhysicalPadding().left;
+  nscoord yOffset = aReflowState.ComputedPhysicalBorderPadding().top -
+                    aReflowState.ComputedPhysicalPadding().top;
 
   // reflow the child
-  nsHTMLReflowMetrics desiredSize;  
+  nsHTMLReflowMetrics desiredSize(aReflowState.GetWritingMode());
   ReflowChild(aKid, aPresContext, desiredSize, kidReflowState, 
               xOffset, yOffset, 0, aStatus);
 
   // place the child
-  FinishReflowChild(aKid, aPresContext, &kidReflowState, 
-                    desiredSize, xOffset, yOffset, 0);
+  FinishReflowChild(aKid, aPresContext, desiredSize,
+                    &kidReflowState, xOffset, yOffset, 0);
 
   // consider the overflow
   aParentDesiredSize.mOverflowAreas.UnionWith(desiredSize.mOverflowAreas);

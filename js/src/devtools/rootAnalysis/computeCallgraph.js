@@ -51,9 +51,9 @@ function processCSU(csuName, csu)
     }
 }
 
-function findVirtualFunctions(csu, field, suppressed)
+function findVirtualFunctions(initialCSU, field, suppressed)
 {
-    var worklist = [csu];
+    var worklist = [initialCSU];
 
     // Virtual call targets on subclasses of nsISupports may be incomplete,
     // if the interface is scriptable. Just treat all indirect calls on
@@ -65,7 +65,7 @@ function findVirtualFunctions(csu, field, suppressed)
             suppressed[0] = true;
             return [];
         }
-        if (isOverridableField(csu, field))
+        if (isOverridableField(initialCSU, csu, field))
             return null;
 
         if (csu in superclasses) {
@@ -123,12 +123,7 @@ function getCallees(edge)
     var callees = [];
     if (callee.Kind == "Var") {
         assert(callee.Variable.Kind == "Func");
-        var origName = callee.Variable.Name[0];
-        var names = [ origName, otherDestructorName(origName) ];
-        for (var name of names) {
-            if (name)
-                callees.push({'kind': 'direct', 'name': name});
-        }
+        callees.push({'kind': 'direct', 'name': callee.Variable.Name[0]});
     } else {
         assert(callee.Kind == "Drf");
         if (callee.Exp[0].Kind == "Fld") {

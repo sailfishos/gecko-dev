@@ -5,9 +5,7 @@
 "use strict";
 
 let { classes: Cc, interfaces: Ci, results: Cr, utils: Cu }  = Components;
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/Geometry.jsm");
 
 function debug(msg) {
   //dump("BrowserElementChild - " + msg + "\n");
@@ -48,11 +46,6 @@ if (!('BrowserElementIsPreloaded' in this)) {
       Services.scriptloader.loadSubScript("chrome://global/content/forms.js");
     } catch (e) {
     }
-  }
-  // Those are produc-specific files that's sometimes unavailable.
-  try {
-    Services.scriptloader.loadSubScript("chrome://browser/content/ErrorPage.js");
-  } catch (e) {
   }
 
   Services.scriptloader.loadSubScript("chrome://global/content/BrowserElementPanning.js");

@@ -677,7 +677,7 @@ VectorImage::GetFrame(uint32_t aWhichFrame,
   gfxIntSize surfaceSize(imageIntSize.width, imageIntSize.height);
 
   nsRefPtr<gfxImageSurface> surface =
-    new gfxImageSurface(surfaceSize, gfxImageFormatARGB32);
+    new gfxImageSurface(surfaceSize, gfxImageFormat::ARGB32);
   nsRefPtr<gfxContext> context = new gfxContext(surface);
 
   // Draw to our surface!
@@ -851,7 +851,7 @@ VectorImage::CreateDrawableAndShow(const SVGDrawingParameters& aParams)
 
   // Try to create an offscreen surface.
   mozilla::RefPtr<mozilla::gfx::DrawTarget> target =
-   gfxPlatform::GetPlatform()->CreateOffscreenContentDrawTarget(aParams.imageRect.Size(), gfx::FORMAT_B8G8R8A8);
+   gfxPlatform::GetPlatform()->CreateOffscreenContentDrawTarget(aParams.imageRect.Size().ToIntSize(), gfx::SurfaceFormat::B8G8R8A8);
 
   // If we couldn't create the draw target, it was probably because it would end
   // up way too big. Generally it also wouldn't fit in the cache, but the prefs
@@ -865,7 +865,7 @@ VectorImage::CreateDrawableAndShow(const SVGDrawingParameters& aParams)
   gfxUtils::DrawPixelSnapped(ctx, svgDrawable, gfxMatrix(),
                              aParams.imageRect, aParams.imageRect,
                              aParams.imageRect, aParams.imageRect,
-                             gfxImageFormatARGB32,
+                             gfxImageFormat::ARGB32,
                              GraphicsFilter::FILTER_NEAREST, aParams.flags);
 
   // Attempt to cache the resulting surface.
@@ -891,7 +891,7 @@ VectorImage::Show(gfxDrawable* aDrawable, const SVGDrawingParameters& aParams)
                              aParams.userSpaceToImageSpace,
                              aParams.subimage, aParams.sourceRect,
                              aParams.imageRect, aParams.fill,
-                             gfxImageFormatARGB32,
+                             gfxImageFormat::ARGB32,
                              aParams.filter, aParams.flags);
 
   MOZ_ASSERT(mRenderingObserver, "Should have a rendering observer by now");

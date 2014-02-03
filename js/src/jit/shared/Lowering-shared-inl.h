@@ -76,7 +76,7 @@ LIRGeneratorShared::defineFixed(LInstructionHelper<1, X, Y> *lir, MDefinition *m
     if (!define(lir, mir, def))
         return false;
 
-    if (js_IonOptions.registerAllocator == RegisterAllocator_LSRA) {
+    if (gen->optimizationInfo().registerAllocator() == RegisterAllocator_LSRA) {
         if (!add(new(alloc()) LNop))
             return false;
     }
@@ -165,7 +165,7 @@ LIRGeneratorShared::defineReturn(LInstruction *lir, MDefinition *mir)
     if (!add(lir))
         return false;
 
-    if (js_IonOptions.registerAllocator == RegisterAllocator_LSRA) {
+    if (gen->optimizationInfo().registerAllocator() == RegisterAllocator_LSRA) {
         if (!add(new(alloc()) LNop))
             return false;
     }
@@ -324,7 +324,7 @@ LIRGeneratorShared::useRegisterOrNonDoubleConstant(MDefinition *mir)
     return useRegister(mir);
 }
 
-#if defined(JS_CPU_ARM)
+#if defined(JS_CODEGEN_ARM)
 LAllocation
 LIRGeneratorShared::useAnyOrConstant(MDefinition *mir)
 {

@@ -101,7 +101,7 @@ public:
       ~(nsIFrame::eReplaced | nsIFrame::eReplacedContainsBlock));
   }
 
-#ifdef DEBUG
+#ifdef DEBUG_FRAME_DUMP
   NS_IMETHOD GetFrameName(nsAString& aResult) const MOZ_OVERRIDE;
 #endif
 
@@ -445,6 +445,27 @@ private:
   // for incremental typing navigation
   static nsAString& GetIncrementalString ();
   static DOMTimeStamp gLastKeyTime;
+
+  class MOZ_STACK_CLASS AutoIncrementalSearchResetter
+  {
+  public:
+    AutoIncrementalSearchResetter() :
+      mCancelled(false)
+    {
+    }
+    ~AutoIncrementalSearchResetter()
+    {
+      if (!mCancelled) {
+        nsListControlFrame::GetIncrementalString().Truncate();
+      }
+    }
+    void Cancel()
+    {
+      mCancelled = true;
+    }
+  private:
+    bool mCancelled;
+  };
 };
 
 #endif /* nsListControlFrame_h___ */

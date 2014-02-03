@@ -32,6 +32,8 @@ this.BrowserToolboxProcess = function BrowserToolboxProcess(aOnClose, aOnRun) {
   this._runCallback = aOnRun;
   this._telemetry = new Telemetry();
 
+  this.close = this.close.bind(this);
+  Services.obs.addObserver(this.close, "quit-application", false);
   this._initServer();
   this._initProfile();
   this._create();
@@ -56,8 +58,10 @@ BrowserToolboxProcess.prototype = {
       // Create a separate loader instance, so that we can be sure to receive a
       // separate instance of the DebuggingServer from the rest of the devtools.
       // This allows us to safely use the tools against even the actors and
-      // DebuggingServer itself.
+      // DebuggingServer itself, especially since we can mark this loader as
+      // invisible to the debugger (unlike the usual loader settings).
       this.loader = new DevToolsLoader();
+      this.loader.invisibleToDebugger = true;
       this.loader.main("devtools/server/main");
       this.debuggerServer = this.loader.DebuggerServer;
       dumpn("Created a separate loader instance for the DebuggerServer.");
@@ -152,19 +156,27 @@ BrowserToolboxProcess.prototype = {
   },
 
   /**
-   * Closes the remote debugger, removing the profile and killing the process.
+   * Closes the remote debugging server and kills the toolbox process.
    */
   close: function() {
+    if (this.closed) {
+      return;
+    }
+
     dumpn("Cleaning up the chrome debugging process.");
+    Services.obs.removeObserver(this.close, "quit-application");
 
     if (this._dbgProcess.isRunning) {
       this._dbgProcess.kill();
     }
 
     this._telemetry.toolClosed("jsbrowserdebugger");
-    this.debuggerServer.destroy();
+    if (this.debuggerServer) {
+      this.debuggerServer.destroy();
+    }
 
     dumpn("Chrome toolbox is now closed...");
+    this.closed = true;
     if (typeof this._closeCallback == "function") {
       this._closeCallback.call({}, this);
     }

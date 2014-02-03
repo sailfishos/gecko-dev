@@ -79,6 +79,12 @@ JS_CallHeapScriptTracer(JSTracer *trc, JS::Heap<JSScript *> *scriptp, const char
 }
 
 JS_PUBLIC_API(void)
+JS_CallHeapFunctionTracer(JSTracer *trc, JS::Heap<JSFunction *> *funp, const char *name)
+{
+    MarkObjectUnbarriered(trc, funp->unsafeGet(), name);
+}
+
+JS_PUBLIC_API(void)
 JS_CallTenuredObjectTracer(JSTracer *trc, JS::TenuredHeap<JSObject *> *objp, const char *name)
 {
     JSObject *obj = objp->getPtr();
@@ -153,8 +159,8 @@ JS_GetTraceThingInfo(char *buf, size_t bufsize, JSTracer *trc, void *thing,
         name = "lazyscript";
         break;
 
-      case JSTRACE_IONCODE:
-        name = "ioncode";
+      case JSTRACE_JITCODE:
+        name = "jitcode";
         break;
 
       case JSTRACE_SHAPE:
@@ -229,7 +235,7 @@ JS_GetTraceThingInfo(char *buf, size_t bufsize, JSTracer *trc, void *thing,
           }
 
           case JSTRACE_LAZY_SCRIPT:
-          case JSTRACE_IONCODE:
+          case JSTRACE_JITCODE:
           case JSTRACE_SHAPE:
           case JSTRACE_BASE_SHAPE:
           case JSTRACE_TYPE_OBJECT:

@@ -5,63 +5,53 @@
 
 package org.mozilla.gecko.home;
 
-import org.mozilla.gecko.home.HomePager.Page;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 import android.content.Context;
 import android.os.Parcel;
 import android.os.Parcelable;
 import android.text.TextUtils;
 
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 
-final class HomeConfig {
-    public static enum PageType implements Parcelable {
-        TOP_SITES("top_sites", TopSitesPage.class),
-        BOOKMARKS("bookmarks", BookmarksPage.class),
-        HISTORY("history", HistoryPage.class),
-        READING_LIST("reading_list", ReadingListPage.class),
-        LIST("list", ListPage.class);
+public final class HomeConfig {
+    /**
+     * Used to determine what type of HomeFragment subclass to use when creating
+     * a given panel. With the exception of DYNAMIC, all of these types correspond
+     * to a default set of built-in panels. The DYNAMIC panel type is used by
+     * third-party services to create panels with varying types of content.
+     */
+    public static enum PanelType implements Parcelable {
+        TOP_SITES("top_sites", TopSitesPanel.class),
+        BOOKMARKS("bookmarks", BookmarksPanel.class),
+        HISTORY("history", HistoryPanel.class),
+        READING_LIST("reading_list", ReadingListPanel.class),
+        DYNAMIC("dynamic", DynamicPanel.class);
 
         private final String mId;
-        private final Class<?> mPageClass;
+        private final Class<?> mPanelClass;
 
-        PageType(String id, Class<?> pageClass) {
+        PanelType(String id, Class<?> panelClass) {
             mId = id;
-            mPageClass = pageClass;
+            mPanelClass = panelClass;
         }
 
-        public static PageType valueOf(Page page) {
-            switch(page) {
-                case TOP_SITES:
-                    return PageType.TOP_SITES;
-
-                case BOOKMARKS:
-                    return PageType.BOOKMARKS;
-
-                case HISTORY:
-                    return PageType.HISTORY;
-
-                case READING_LIST:
-                    return PageType.READING_LIST;
-
-                default:
-                    throw new IllegalArgumentException("Could not convert unrecognized Page");
-            }
-        }
-
-        public static PageType fromId(String id) {
+        public static PanelType fromId(String id) {
             if (id == null) {
-                throw new IllegalArgumentException("Could not convert null String to PageType");
+                throw new IllegalArgumentException("Could not convert null String to PanelType");
             }
 
-            for (PageType page : PageType.values()) {
-                if (TextUtils.equals(page.mId, id.toLowerCase())) {
-                    return page;
+            for (PanelType panelType : PanelType.values()) {
+                if (TextUtils.equals(panelType.mId, id.toLowerCase())) {
+                    return panelType;
                 }
             }
 
-            throw new IllegalArgumentException("Could not convert String id to PageType");
+            throw new IllegalArgumentException("Could not convert String id to PanelType");
         }
 
         @Override
@@ -69,8 +59,8 @@ final class HomeConfig {
             return mId;
         }
 
-        public Class<?> getPageClass() {
-            return mPageClass;
+        public Class<?> getPanelClass() {
+            return mPanelClass;
         }
 
         @Override
@@ -83,72 +73,159 @@ final class HomeConfig {
             dest.writeInt(ordinal());
         }
 
-        public static final Creator<PageType> CREATOR = new Creator<PageType>() {
+        public static final Creator<PanelType> CREATOR = new Creator<PanelType>() {
             @Override
-            public PageType createFromParcel(final Parcel source) {
-                return PageType.values()[source.readInt()];
+            public PanelType createFromParcel(final Parcel source) {
+                return PanelType.values()[source.readInt()];
             }
 
             @Override
-            public PageType[] newArray(final int size) {
-                return new PageType[size];
+            public PanelType[] newArray(final int size) {
+                return new PanelType[size];
             }
         };
     }
 
-    public static class PageEntry implements Parcelable {
-        private final PageType mType;
+    public static class PanelConfig implements Parcelable {
+        private final PanelType mType;
         private final String mTitle;
         private final String mId;
+        private final LayoutType mLayoutType;
+        private final List<ViewConfig> mViews;
         private final EnumSet<Flags> mFlags;
 
+        private static final String JSON_KEY_TYPE = "type";
+        private static final String JSON_KEY_TITLE = "title";
+        private static final String JSON_KEY_ID = "id";
+        private static final String JSON_KEY_LAYOUT = "layout";
+        private static final String JSON_KEY_VIEWS = "views";
+        private static final String JSON_KEY_DEFAULT = "default";
+        private static final String JSON_KEY_DISABLED = "disabled";
+
         public enum Flags {
-            DEFAULT_PAGE
+            DEFAULT_PANEL,
+            DISABLED_PANEL
+        }
+
+        public PanelConfig(JSONObject json) throws JSONException, IllegalArgumentException {
+            mType = PanelType.fromId(json.getString(JSON_KEY_TYPE));
+            mTitle = json.getString(JSON_KEY_TITLE);
+            mId = json.getString(JSON_KEY_ID);
+
+            final String layoutTypeId = json.optString(JSON_KEY_LAYOUT, null);
+            if (layoutTypeId != null) {
+                mLayoutType = LayoutType.fromId(layoutTypeId);
+            } else {
+                mLayoutType = null;
+            }
+
+            final JSONArray jsonViews = json.optJSONArray(JSON_KEY_VIEWS);
+            if (jsonViews != null) {
+                mViews = new ArrayList<ViewConfig>();
+
+                final int viewCount = jsonViews.length();
+                for (int i = 0; i < viewCount; i++) {
+                    final JSONObject jsonViewConfig = (JSONObject) jsonViews.get(i);
+                    final ViewConfig viewConfig = new ViewConfig(jsonViewConfig);
+                    mViews.add(viewConfig);
+                }
+            } else {
+                mViews = null;
+            }
+
+            mFlags = EnumSet.noneOf(Flags.class);
+
+            if (json.optBoolean(JSON_KEY_DEFAULT, false)) {
+                mFlags.add(Flags.DEFAULT_PANEL);
+            }
+
+            if (json.optBoolean(JSON_KEY_DISABLED, false)) {
+                mFlags.add(Flags.DISABLED_PANEL);
+            }
+
+            validate();
         }
 
         @SuppressWarnings("unchecked")
-        public PageEntry(Parcel in) {
-            mType = (PageType) in.readParcelable(getClass().getClassLoader());
+        public PanelConfig(Parcel in) {
+            mType = (PanelType) in.readParcelable(getClass().getClassLoader());
             mTitle = in.readString();
             mId = in.readString();
+            mLayoutType = (LayoutType) in.readParcelable(getClass().getClassLoader());
+
+            mViews = new ArrayList<ViewConfig>();
+            in.readTypedList(mViews, ViewConfig.CREATOR);
+
             mFlags = (EnumSet<Flags>) in.readSerializable();
+
+            validate();
         }
 
-        public PageEntry(PageType type, String title) {
-            this(type, title, EnumSet.noneOf(Flags.class));
+        public PanelConfig(PanelConfig panelConfig) {
+            mType = panelConfig.mType;
+            mTitle = panelConfig.mTitle;
+            mId = panelConfig.mId;
+            mLayoutType = panelConfig.mLayoutType;
+
+            mViews = new ArrayList<ViewConfig>();
+            List<ViewConfig> viewConfigs = panelConfig.mViews;
+            if (viewConfigs != null) {
+                for (ViewConfig viewConfig : viewConfigs) {
+                    mViews.add(new ViewConfig(viewConfig));
+                }
+            }
+            mFlags = panelConfig.mFlags.clone();
+
+            validate();
         }
 
-        public PageEntry(PageType type, String title, EnumSet<Flags> flags) {
-            this(type, title, type.toString(), flags);
-        }
-
-        public PageEntry(PageType type, String title, String id) {
+        public PanelConfig(PanelType type, String title, String id) {
             this(type, title, id, EnumSet.noneOf(Flags.class));
         }
 
-        public PageEntry(PageType type, String title, String id, EnumSet<Flags> flags) {
-            if (type == null) {
-                throw new IllegalArgumentException("Can't create PageEntry with null type");
-            }
-            mType = type;
-
-            if (title == null) {
-                throw new IllegalArgumentException("Can't create PageEntry with null title");
-            }
-            mTitle = title;
-
-            if (id == null) {
-                throw new IllegalArgumentException("Can't create PageEntry with null id");
-            }
-            mId = id;
-
-            if (flags == null) {
-                throw new IllegalArgumentException("Can't create PageEntry with null flags");
-            }
-            mFlags = flags;
+        public PanelConfig(PanelType type, String title, String id, EnumSet<Flags> flags) {
+            this(type, title, id, null, null, flags);
         }
 
-        public PageType getType() {
+        public PanelConfig(PanelType type, String title, String id, LayoutType layoutType,
+                List<ViewConfig> views, EnumSet<Flags> flags) {
+            mType = type;
+            mTitle = title;
+            mId = id;
+            mLayoutType = layoutType;
+            mViews = views;
+            mFlags = flags;
+
+            validate();
+        }
+
+        private void validate() {
+            if (mType == null) {
+                throw new IllegalArgumentException("Can't create PanelConfig with null type");
+            }
+
+            if (TextUtils.isEmpty(mTitle)) {
+                throw new IllegalArgumentException("Can't create PanelConfig with empty title");
+            }
+
+            if (TextUtils.isEmpty(mId)) {
+                throw new IllegalArgumentException("Can't create PanelConfig with empty id");
+            }
+
+            if (mLayoutType == null && mType == PanelType.DYNAMIC) {
+                throw new IllegalArgumentException("Can't create a dynamic PanelConfig with null layout type");
+            }
+
+            if ((mViews == null || mViews.size() == 0) && mType == PanelType.DYNAMIC) {
+                throw new IllegalArgumentException("Can't create a dynamic PanelConfig with no views");
+            }
+
+            if (mFlags == null) {
+                throw new IllegalArgumentException("Can't create PanelConfig with null flags");
+            }
+        }
+
+        public PanelType getType() {
             return mType;
         }
 
@@ -160,8 +237,75 @@ final class HomeConfig {
             return mId;
         }
 
+        public LayoutType getLayoutType() {
+            return mLayoutType;
+        }
+
+        public int getViewCount() {
+            return (mViews != null ? mViews.size() : 0);
+        }
+
+        public ViewConfig getViewAt(int index) {
+            return (mViews != null ? mViews.get(index) : null);
+        }
+
         public boolean isDefault() {
-            return mFlags.contains(Flags.DEFAULT_PAGE);
+            return mFlags.contains(Flags.DEFAULT_PANEL);
+        }
+
+        public void setIsDefault(boolean isDefault) {
+            if (isDefault) {
+                mFlags.add(Flags.DEFAULT_PANEL);
+            } else {
+                mFlags.remove(Flags.DEFAULT_PANEL);
+            }
+        }
+
+        public boolean isDisabled() {
+            return mFlags.contains(Flags.DISABLED_PANEL);
+        }
+
+        public void setIsDisabled(boolean isDisabled) {
+            if (isDisabled) {
+                mFlags.add(Flags.DISABLED_PANEL);
+            } else {
+                mFlags.remove(Flags.DISABLED_PANEL);
+            }
+        }
+
+        public JSONObject toJSON() throws JSONException {
+            final JSONObject json = new JSONObject();
+
+            json.put(JSON_KEY_TYPE, mType.toString());
+            json.put(JSON_KEY_TITLE, mTitle);
+            json.put(JSON_KEY_ID, mId);
+
+            if (mLayoutType != null) {
+                json.put(JSON_KEY_LAYOUT, mLayoutType.toString());
+            }
+
+            if (mViews != null) {
+                final JSONArray jsonViews = new JSONArray();
+
+                final int viewCount = mViews.size();
+                for (int i = 0; i < viewCount; i++) {
+                    final ViewConfig viewConfig = mViews.get(i);
+                    final JSONObject jsonViewConfig = viewConfig.toJSON();
+                    jsonViews.put(jsonViewConfig);
+                }
+
+                json.put(JSON_KEY_VIEWS, jsonViews);
+            }
+
+            if (mFlags.contains(Flags.DEFAULT_PANEL)) {
+                json.put(JSON_KEY_DEFAULT, true);
+            }
+
+            if (mFlags.contains(Flags.DISABLED_PANEL)) {
+                json.put(JSON_KEY_DISABLED, true);
+            }
+
+            return json;
         }
 
         @Override
@@ -174,18 +318,210 @@ final class HomeConfig {
             dest.writeParcelable(mType, 0);
             dest.writeString(mTitle);
             dest.writeString(mId);
+            dest.writeParcelable(mLayoutType, 0);
+            dest.writeTypedList(mViews);
             dest.writeSerializable(mFlags);
         }
 
-        public static final Creator<PageEntry> CREATOR = new Creator<PageEntry>() {
+        public static final Creator<PanelConfig> CREATOR = new Creator<PanelConfig>() {
             @Override
-            public PageEntry createFromParcel(final Parcel in) {
-                return new PageEntry(in);
+            public PanelConfig createFromParcel(final Parcel in) {
+                return new PanelConfig(in);
             }
 
             @Override
-            public PageEntry[] newArray(final int size) {
-                return new PageEntry[size];
+            public PanelConfig[] newArray(final int size) {
+                return new PanelConfig[size];
+            }
+        };
+    }
+
+    public static enum LayoutType implements Parcelable {
+        FRAME("frame");
+
+        private final String mId;
+
+        LayoutType(String id) {
+            mId = id;
+        }
+
+        public static LayoutType fromId(String id) {
+            if (id == null) {
+                throw new IllegalArgumentException("Could not convert null String to LayoutType");
+            }
+
+            for (LayoutType layoutType : LayoutType.values()) {
+                if (TextUtils.equals(layoutType.mId, id.toLowerCase())) {
+                    return layoutType;
+                }
+            }
+
+            throw new IllegalArgumentException("Could not convert String id to LayoutType");
+        }
+
+        @Override
+        public String toString() {
+            return mId;
+        }
+
+        @Override
+        public int describeContents() {
+            return 0;
+        }
+
+        @Override
+        public void writeToParcel(Parcel dest, int flags) {
+            dest.writeInt(ordinal());
+        }
+
+        public static final Creator<LayoutType> CREATOR = new Creator<LayoutType>() {
+            @Override
+            public LayoutType createFromParcel(final Parcel source) {
+                return LayoutType.values()[source.readInt()];
+            }
+
+            @Override
+            public LayoutType[] newArray(final int size) {
+                return new LayoutType[size];
+            }
+        };
+    }
+
+    public static enum ViewType implements Parcelable {
+        LIST("list"),
+        GRID("grid");
+
+        private final String mId;
+
+        ViewType(String id) {
+            mId = id;
+        }
+
+        public static ViewType fromId(String id) {
+            if (id == null) {
+                throw new IllegalArgumentException("Could not convert null String to ViewType");
+            }
+
+            for (ViewType viewType : ViewType.values()) {
+                if (TextUtils.equals(viewType.mId, id.toLowerCase())) {
+                    return viewType;
+                }
+            }
+
+            throw new IllegalArgumentException("Could not convert String id to ViewType");
+        }
+
+        @Override
+        public String toString() {
+            return mId;
+        }
+
+        @Override
+        public int describeContents() {
+            return 0;
+        }
+
+        @Override
+        public void writeToParcel(Parcel dest, int flags) {
+            dest.writeInt(ordinal());
+        }
+
+        public static final Creator<ViewType> CREATOR = new Creator<ViewType>() {
+            @Override
+            public ViewType createFromParcel(final Parcel source) {
+                return ViewType.values()[source.readInt()];
+            }
+
+            @Override
+            public ViewType[] newArray(final int size) {
+                return new ViewType[size];
+            }
+        };
+    }
+
+    public static class ViewConfig implements Parcelable {
+        private final ViewType mType;
+        private final String mDatasetId;
+
+        private static final String JSON_KEY_TYPE = "type";
+        private static final String JSON_KEY_DATASET = "dataset";
+
+        public ViewConfig(JSONObject json) throws JSONException, IllegalArgumentException {
+            mType = ViewType.fromId(json.getString(JSON_KEY_TYPE));
+            mDatasetId = json.getString(JSON_KEY_DATASET);
+
+            validate();
+        }
+
+        @SuppressWarnings("unchecked")
+        public ViewConfig(Parcel in) {
+            mType = (ViewType) in.readParcelable(getClass().getClassLoader());
+            mDatasetId = in.readString();
+
+            validate();
+        }
+
+        public ViewConfig(ViewConfig viewConfig) {
+            mType = viewConfig.mType;
+            mDatasetId = viewConfig.mDatasetId;
+
+            validate();
+        }
+
+        public ViewConfig(ViewType type, String datasetId) {
+            mType = type;
+            mDatasetId = datasetId;
+
+            validate();
+        }
+
+        private void validate() {
+            if (mType == null) {
+                throw new IllegalArgumentException("Can't create ViewConfig with null type");
+            }
+
+            if (TextUtils.isEmpty(mDatasetId)) {
+                throw new IllegalArgumentException("Can't create ViewConfig with empty dataset ID");
+            }
+        }
+
+        public ViewType getType() {
+            return mType;
+        }
+
+        public String getDatasetId() {
+            return mDatasetId;
+        }
+
+        public JSONObject toJSON() throws JSONException {
+            final JSONObject json = new JSONObject();
+
+            json.put(JSON_KEY_TYPE, mType.toString());
+            json.put(JSON_KEY_DATASET, mDatasetId);
+
+            return json;
+        }
+
+        @Override
+        public int describeContents() {
+            return 0;
+        }
+
+        @Override
+        public void writeToParcel(Parcel dest, int flags) {
+            dest.writeParcelable(mType, 0);
+            dest.writeString(mDatasetId);
+        }
+
+        public static final Creator<ViewConfig> CREATOR = new Creator<ViewConfig>() {
+            @Override
+            public ViewConfig createFromParcel(final Parcel in) {
+                return new ViewConfig(in);
+            }
+
+            @Override
+            public ViewConfig[] newArray(final int size) {
+                return new ViewConfig[size];
             }
         };
     }
@@ -195,8 +531,8 @@ final class HomeConfig {
     }
 
     public interface HomeConfigBackend {
-        public List<PageEntry> load();
-        public void save(List<PageEntry> entries);
+        public List<PanelConfig> load();
+        public void save(List<PanelConfig> entries);
         public void setOnChangeListener(OnChangeListener listener);
     }
 
@@ -206,11 +542,11 @@ final class HomeConfig {
         mBackend = backend;
     }
 
-    public List<PageEntry> load() {
+    public List<PanelConfig> load() {
         return mBackend.load();
     }
 
-    public void save(List<PageEntry> entries) {
+    public void save(List<PanelConfig> entries) {
         mBackend.save(entries);
     }
 
@@ -219,6 +555,6 @@ final class HomeConfig {
     }
 
     public static HomeConfig getDefault(Context context) {
-        return new HomeConfig(new HomeConfigMemBackend(context));
+        return new HomeConfig(new HomeConfigPrefsBackend(context));
     }
 }

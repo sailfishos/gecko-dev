@@ -25,7 +25,7 @@ public:
                     DrawTargetD2D1 *aDT = nullptr);
   ~SourceSurfaceD2D1();
 
-  virtual SurfaceType GetType() const { return SURFACE_D2D1_1_IMAGE; }
+  virtual SurfaceType GetType() const { return SurfaceType::D2D1_1_IMAGE; }
   virtual IntSize GetSize() const { return mSize; }
   virtual SurfaceFormat GetFormat() const { return mFormat; }
   virtual TemporaryRef<DataSourceSurface> GetDataSurface();
@@ -65,11 +65,13 @@ public:
   DataSourceSurfaceD2D1(ID2D1Bitmap1 *aMappableBitmap, SurfaceFormat aFormat);
   ~DataSourceSurfaceD2D1();
 
-  virtual SurfaceType GetType() const { return SURFACE_DATA; }
+  virtual SurfaceType GetType() const { return SurfaceType::DATA; }
   virtual IntSize GetSize() const;
   virtual SurfaceFormat GetFormat() const { return mFormat; }
   virtual uint8_t *GetData();
   virtual int32_t Stride();
+  virtual bool Map(MapType, MappedSurface *aMappedSurface);
+  virtual void Unmap();
 
 private:
   friend class SourceSurfaceD2DTarget;

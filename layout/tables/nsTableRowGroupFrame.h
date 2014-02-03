@@ -32,8 +32,8 @@ struct nsRowGroupReflowState {
                         nsTableFrame*            aTableFrame)
       :reflowState(aReflowState), tableFrame(aTableFrame)
   {
-    availSize.width  = reflowState.availableWidth;
-    availSize.height = reflowState.availableHeight;
+    availSize.width  = reflowState.AvailableWidth();
+    availSize.height = reflowState.AvailableHeight();
     y = 0;  
   }
 
@@ -122,7 +122,7 @@ public:
 
   nsTableRowFrame* GetFirstRow();
 
-#ifdef DEBUG
+#ifdef DEBUG_FRAME_DUMP
   NS_IMETHOD GetFrameName(nsAString& aResult) const MOZ_OVERRIDE;
 #endif
 

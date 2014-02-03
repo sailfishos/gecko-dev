@@ -236,7 +236,7 @@ nsDisplayCanvasBackgroundImage::Paint(nsDisplayListBuilder* aBuilder,
         return;
       }
       surf = destSurf->CreateSimilarSurface(
-          GFX_CONTENT_COLOR_ALPHA,
+          gfxContentType::COLOR_ALPHA,
           gfxIntSize(ceil(destRect.width), ceil(destRect.height)));
     } else {
       dt = static_cast<DrawTarget*>(Frame()->Properties().Get(nsIFrame::CachedBackgroundImageDT()));
@@ -245,7 +245,7 @@ nsDisplayCanvasBackgroundImage::Paint(nsDisplayListBuilder* aBuilder,
         BlitSurface(destDT, destRect, dt);
         return;
       }
-      dt = destDT->CreateSimilarDrawTarget(IntSize(ceil(destRect.width), ceil(destRect.height)), FORMAT_B8G8R8A8);
+      dt = destDT->CreateSimilarDrawTarget(IntSize(ceil(destRect.width), ceil(destRect.height)), SurfaceFormat::B8G8R8A8);
     }
     if (surf || dt) {
       if (surf) {
@@ -492,17 +492,17 @@ nsCanvasFrame::Reflow(nsPresContext*           aPresContext,
   // don't need to be reflowed. The normal child is always comes before
   // the fixed-pos placeholders, because we insert it at the start
   // of the child list, above.
-  nsHTMLReflowMetrics kidDesiredSize;
+  nsHTMLReflowMetrics kidDesiredSize(aReflowState.GetWritingMode());
   if (mFrames.IsEmpty()) {
     // We have no child frame, so return an empty size
-    aDesiredSize.width = aDesiredSize.height = 0;
+    aDesiredSize.Width() = aDesiredSize.Height() = 0;
   } else {
     nsIFrame* kidFrame = mFrames.FirstChild();
     bool kidDirty = (kidFrame->GetStateBits() & NS_FRAME_IS_DIRTY) != 0;
 
     nsHTMLReflowState kidReflowState(aPresContext, aReflowState, kidFrame,
-                                     nsSize(aReflowState.availableWidth,
-                                            aReflowState.availableHeight));
+                                     nsSize(aReflowState.AvailableWidth(),
+                                            aReflowState.AvailableHeight()));
 
     if (aReflowState.mFlags.mVResize &&
         (kidFrame->GetStateBits() & NS_FRAME_CONTAINS_RELATIVE_HEIGHT)) {
@@ -511,8 +511,8 @@ nsCanvasFrame::Reflow(nsPresContext*           aPresContext,
       kidReflowState.mFlags.mVResize = true;
     }
 
-    nsPoint kidPt(kidReflowState.mComputedMargin.left,
-                  kidReflowState.mComputedMargin.top);
+    nsPoint kidPt(kidReflowState.ComputedPhysicalMargin().left,
+                  kidReflowState.ComputedPhysicalMargin().top);
 
     kidReflowState.ApplyRelativePositioning(&kidPt);
 
@@ -521,7 +521,7 @@ nsCanvasFrame::Reflow(nsPresContext*           aPresContext,
                 kidPt.x, kidPt.y, 0, aStatus);
 
     // Complete the reflow and position and size the child frame
-    FinishReflowChild(kidFrame, aPresContext, &kidReflowState, kidDesiredSize,
+    FinishReflowChild(kidFrame, aPresContext, kidDesiredSize, &kidReflowState,
                       kidPt.x, kidPt.y, 0);
 
     if (!NS_FRAME_IS_FULLY_COMPLETE(aStatus)) {
@@ -560,12 +560,12 @@ nsCanvasFrame::Reflow(nsPresContext*           aPresContext,
     // Return our desired size. Normally it's what we're told, but
     // sometimes we can be given an unconstrained height (when a window
     // is sizing-to-content), and we should compute our desired height.
-    aDesiredSize.width = aReflowState.ComputedWidth();
+    aDesiredSize.Width() = aReflowState.ComputedWidth();
     if (aReflowState.ComputedHeight() == NS_UNCONSTRAINEDSIZE) {
-      aDesiredSize.height = kidFrame->GetRect().height +
-        kidReflowState.mComputedMargin.TopBottom();
+      aDesiredSize.Height() = kidFrame->GetRect().height +
+        kidReflowState.ComputedPhysicalMargin().TopBottom();
     } else {
-      aDesiredSize.height = aReflowState.ComputedHeight();
+      aDesiredSize.Height() = aReflowState.ComputedHeight();
     }
 
     aDesiredSize.SetOverflowAreasToDesiredBounds();
@@ -610,7 +610,7 @@ nsCanvasFrame::GetContentForEvent(WidgetEvent* aEvent,
   return rv;
 }
 
-#ifdef DEBUG
+#ifdef DEBUG_FRAME_DUMP
 NS_IMETHODIMP
 nsCanvasFrame::GetFrameName(nsAString& aResult) const
 {

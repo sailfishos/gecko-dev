@@ -41,7 +41,7 @@ gfxQuartzNativeDrawing::BeginNativeDrawing()
 
     if (!mContext->IsCairo()) {
       DrawTarget *dt = mContext->GetDrawTarget();
-      if (dt->GetType() == BACKEND_COREGRAPHICS) {
+      if (dt->GetType() == BackendType::COREGRAPHICS) {
         if (dt->IsDualDrawTarget()) {
           IntSize backingSize(NSToIntFloor(mNativeRect.width * mBackingScale),
                               NSToIntFloor(mNativeRect.height * mBackingScale));
@@ -49,7 +49,7 @@ gfxQuartzNativeDrawing::BeginNativeDrawing()
          if (backingSize.IsEmpty())
             return nullptr;
 
-          mDrawTarget = Factory::CreateDrawTarget(BACKEND_COREGRAPHICS, backingSize, FORMAT_B8G8R8A8);
+          mDrawTarget = Factory::CreateDrawTarget(BackendType::COREGRAPHICS, backingSize, SurfaceFormat::B8G8R8A8);
 
           Matrix transform;
           transform.Scale(mBackingScale, mBackingScale);
@@ -74,9 +74,9 @@ gfxQuartzNativeDrawing::BeginNativeDrawing()
     // rendering to our own CGContextRef; in most cases, we are able to
     // use the CGContextRef from the surface directly.  we can extend
     // this to support offscreen drawing fairly easily in the future.
-    if (surf->GetType() == gfxSurfaceTypeQuartz &&
-        (surf->GetContentType() == GFX_CONTENT_COLOR ||
-         (surf->GetContentType() == GFX_CONTENT_COLOR_ALPHA))) {
+    if (surf->GetType() == gfxSurfaceType::Quartz &&
+        (surf->GetContentType() == gfxContentType::COLOR ||
+         (surf->GetContentType() == gfxContentType::COLOR_ALPHA))) {
         mQuartzSurface = static_cast<gfxQuartzSurface*>(surf.get());
         mSurfaceContext = mContext;
 
@@ -113,7 +113,7 @@ gfxQuartzNativeDrawing::BeginNativeDrawing()
         nsIntSize backingSize(NSToIntFloor(mNativeRect.width * mBackingScale),
                               NSToIntFloor(mNativeRect.height * mBackingScale));
         mQuartzSurface = new gfxQuartzSurface(backingSize,
-                                              gfxImageFormatARGB32);
+                                              gfxImageFormat::ARGB32);
         if (mQuartzSurface->CairoStatus())
             return nullptr;
         mSurfaceContext = new gfxContext(mQuartzSurface);

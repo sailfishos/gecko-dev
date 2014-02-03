@@ -54,9 +54,9 @@ CreateSharedRGBImage(ImageContainer *aImageContainer,
                      nsIntSize aSize,
                      gfxImageFormat aImageFormat)
 {
-  NS_ASSERTION(aImageFormat == gfxImageFormatARGB32 ||
-               aImageFormat == gfxImageFormatRGB24 ||
-               aImageFormat == gfxImageFormatRGB16_565,
+  NS_ASSERTION(aImageFormat == gfxImageFormat::ARGB32 ||
+               aImageFormat == gfxImageFormat::RGB24 ||
+               aImageFormat == gfxImageFormat::RGB16_565,
                "RGB formats supported only");
 
   if (!aImageContainer) {
@@ -74,7 +74,7 @@ CreateSharedRGBImage(ImageContainer *aImageContainer,
 
   if (gfxPlatform::GetPlatform()->UseDeprecatedTextures()) {
     nsRefPtr<DeprecatedSharedRGBImage> rgbImageDep = static_cast<DeprecatedSharedRGBImage*>(image.get());
-    rgbImageDep->mSize = gfxIntSize(aSize.width, aSize.height);
+    rgbImageDep->mSize = aSize.ToIntSize();
     rgbImageDep->mImageFormat = aImageFormat;
 
     if (!rgbImageDep->AllocateBuffer(aSize, aImageFormat)) {
@@ -131,7 +131,13 @@ DeprecatedSharedRGBImage::AllocateBuffer(nsIntSize aSize, gfxImageFormat aImageF
 }
 
 already_AddRefed<gfxASurface>
-DeprecatedSharedRGBImage::GetAsSurface()
+DeprecatedSharedRGBImage::DeprecatedGetAsSurface()
+{
+  return nullptr;
+}
+
+TemporaryRef<gfx::SourceSurface>
+DeprecatedSharedRGBImage::GetAsSourceSurface()
 {
   return nullptr;
 }
@@ -218,7 +224,7 @@ SharedRGBImage::GetBuffer()
 gfx::IntSize
 SharedRGBImage::GetSize()
 {
-  return ThebesIntSize(mSize);
+  return mSize;
 }
 
 size_t
@@ -235,7 +241,13 @@ SharedRGBImage::GetTextureClient()
 }
 
 already_AddRefed<gfxASurface>
-SharedRGBImage::GetAsSurface()
+SharedRGBImage::DeprecatedGetAsSurface()
+{
+  return nullptr;
+}
+
+TemporaryRef<gfx::SourceSurface>
+SharedRGBImage::GetAsSourceSurface()
 {
   return nullptr;
 }

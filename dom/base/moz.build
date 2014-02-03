@@ -29,7 +29,6 @@ EXPORTS += [
     'nsIDOMClassInfo.h',
     'nsIDOMScriptObjectFactory.h',
     'nsIGlobalObject.h',
-    'nsIJSEventListener.h',
     'nsIJSNativeInitializer.h',
     'nsIScriptContext.h',
     'nsIScriptExternalNameSet.h',
@@ -84,6 +83,7 @@ UNIFIED_SOURCES += [
     'nsFocusManager.cpp',
     'nsGlobalWindowCommands.cpp',
     'nsHistory.cpp',
+    'nsIGlobalObject.cpp',
     'nsJSTimeoutHandler.cpp',
     'nsJSUtils.cpp',
     'nsLocation.cpp',
@@ -137,19 +137,20 @@ MSVC_ENABLE_PGO = True
 LOCAL_INCLUDES += [
     '../battery',
     '../bluetooth',
+    '../events',
     '../media',
     '../network/src',
     '../src/geolocation',
     '../src/storage',
     '../time',
+    '../xbl',
     '/content/base/src',
-    '/content/events/src',
     '/content/html/document/src',
-    '/content/xbl/src',
     '/content/xul/document/src',
     '/layout/generic',
     '/layout/style',
     '/layout/xul',
+    '/widget/shared',
 ]
 
 if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gonk':

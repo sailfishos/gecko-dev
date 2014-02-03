@@ -17,6 +17,7 @@
 #include "builtin/Intl.h"
 #include "builtin/TypedObject.h"
 #include "gc/Marking.h"
+#include "vm/Compression.h"
 #include "vm/ForkJoin.h"
 #include "vm/Interpreter.h"
 
@@ -225,7 +226,9 @@ intrinsic_SetScriptHints(JSContext *cx, unsigned argc, Value *vp)
     JS_ASSERT(args[1].isObject());
 
     RootedFunction fun(cx, &args[0].toObject().as<JSFunction>());
-    RootedScript funScript(cx, fun->nonLazyScript());
+    RootedScript funScript(cx, fun->getOrCreateScript(cx));
+    if (!funScript)
+        return false;
     RootedObject flags(cx, &args[1].toObject());
 
     RootedId id(cx);
@@ -264,8 +267,8 @@ intrinsic_Dump(ThreadSafeContext *cx, unsigned argc, Value *vp)
     return true;
 }
 
-const JSJitInfo intrinsic_Dump_jitInfo =
-    JS_JITINFO_NATIVE_PARALLEL(JSParallelNativeThreadSafeWrapper<intrinsic_Dump>);
+JS_JITINFO_NATIVE_PARALLEL_THREADSAFE(intrinsic_Dump_jitInfo, intrinsic_Dump_jitInfo,
+                                      intrinsic_Dump);
 
 bool
 intrinsic_ParallelSpew(ThreadSafeContext *cx, unsigned argc, Value *vp)
@@ -285,8 +288,8 @@ intrinsic_ParallelSpew(ThreadSafeContext *cx, unsigned argc, Value *vp)
     return true;
 }
 
-const JSJitInfo intrinsic_ParallelSpew_jitInfo =
-    JS_JITINFO_NATIVE_PARALLEL(JSParallelNativeThreadSafeWrapper<intrinsic_ParallelSpew>);
+JS_JITINFO_NATIVE_PARALLEL_THREADSAFE(intrinsic_ParallelSpew_jitInfo, intrinsic_ParallelSpew_jitInfo,
+                                      intrinsic_ParallelSpew);
 #endif
 
 /*
@@ -302,14 +305,14 @@ intrinsic_ForkJoin(JSContext *cx, unsigned argc, Value *vp)
 }
 
 /*
- * ForkJoinSlices(): Returns the number of parallel slices that will
- * be created by ForkJoin().
+ * ForkJoinWorkerNumWorkers(): Returns the number of workers in the fork join
+ * thread pool, including the main thread.
  */
 static bool
-intrinsic_ForkJoinSlices(JSContext *cx, unsigned argc, Value *vp)
+intrinsic_ForkJoinNumWorkers(JSContext *cx, unsigned argc, Value *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
-    args.rval().setInt32(ForkJoinSlices(cx));
+    args.rval().setInt32(cx->runtime()->threadPool.numWorkers() + 1);
     return true;
 }
 
@@ -620,10 +623,13 @@ static const JSFunctionSpec intrinsic_functions[] = {
     JS_FN("IsStringIterator",        intrinsic_IsStringIterator,        1,0),
 
     JS_FN("ForkJoin",                intrinsic_ForkJoin,                2,0),
-    JS_FN("ForkJoinSlices",          intrinsic_ForkJoinSlices,          0,0),
+    JS_FN("ForkJoinNumWorkers",      intrinsic_ForkJoinNumWorkers,      0,0),
     JS_FN("NewDenseArray",           intrinsic_NewDenseArray,           1,0),
     JS_FN("ShouldForceSequential",   intrinsic_ShouldForceSequential,   0,0),
     JS_FN("ParallelTestsShouldPass", intrinsic_ParallelTestsShouldPass, 0,0),
+    JS_FNINFO("SetForkJoinTargetRegion",
+              intrinsic_SetForkJoinTargetRegion,
+              &intrinsic_SetForkJoinTargetRegionInfo, 2, 0),
 
     // See builtin/TypedObject.h for descriptors of the typedobj functions.
     JS_FN("NewTypedHandle",
@@ -657,6 +663,8 @@ static const JSFunctionSpec intrinsic_functions[] = {
               JSNativeThreadSafeWrapper<js::Memcpy>,
               &js::MemcpyJitInfo, 5, 0),
     JS_FN("GetTypedObjectModule", js::GetTypedObjectModule, 0, 0),
+    JS_FN("GetFloat32x4TypeObject", js::GetFloat32x4TypeObject, 0, 0),
+    JS_FN("GetInt32x4TypeObject", js::GetInt32x4TypeObject, 0, 0),
 
 #define LOAD_AND_STORE_SCALAR_FN_DECLS(_constant, _type, _name)               \
     JS_FNINFO("Store_" #_name,                                                \
@@ -724,6 +732,8 @@ JSRuntime::initSelfHosting(JSContext *cx)
     if (receivesDefaultObject)
         js::SetDefaultObjectForContext(cx, selfHostingGlobal_);
     Rooted<GlobalObject*> shg(cx, &selfHostingGlobal_->as<GlobalObject>());
+    selfHostingGlobal_->compartment()->isSelfHosting = true;
+    selfHostingGlobal_->compartment()->isSystem = true;
     /*
      * During initialization of standard classes for the self-hosting global,
      * all self-hosted functions are ignored. Thus, we don't create cyclic
@@ -770,14 +780,14 @@ JSRuntime::initSelfHosting(JSContext *cx)
      * and we don't want errors in self-hosted code to be silently swallowed.
      */
     JSErrorReporter oldReporter = JS_SetErrorReporter(cx, selfHosting_ErrorReporter);
-    Value rv;
+    RootedValue rv(cx);
     bool ok = false;
 
     char *filename = getenv("MOZ_SELFHOSTEDJS");
     if (filename) {
         RootedScript script(cx, Compile(cx, shg, options, filename));
         if (script)
-            ok = Execute(cx, script, *shg.get(), &rv);
+            ok = Execute(cx, script, *shg.get(), rv.address());
     } else {
         uint32_t srcLen = GetRawScriptsSize();
 
@@ -794,7 +804,7 @@ JSRuntime::initSelfHosting(JSContext *cx)
         const char *src = rawSources;
 #endif
 
-        ok = Evaluate(cx, shg, options, src, srcLen, &rv);
+        ok = Evaluate(cx, shg, options, src, srcLen, rv.address());
     }
     JS_SetErrorReporter(cx, oldReporter);
     if (receivesDefaultObject)
@@ -878,7 +888,15 @@ CloneObject(JSContext *cx, HandleObject srcObj, CloneMemory &clonedObjects)
                 return nullptr;
         } else {
             RootedFunction fun(cx, &srcObj->as<JSFunction>());
-            clone = CloneFunctionObject(cx, fun, cx->global(), fun->getAllocKind(), TenuredObject);
+            bool hasName = fun->atom() != nullptr;
+            js::gc::AllocKind kind = hasName
+                                     ? JSFunction::ExtendedFinalizeKind
+                                     : fun->getAllocKind();
+            clone = CloneFunctionObject(cx, fun, cx->global(), kind, TenuredObject);
+            // To be able to re-lazify the cloned function, its name in the
+            // self-hosting compartment has to be stored on the clone.
+            if (clone && hasName)
+                clone->as<JSFunction>().setExtendedSlot(0, StringValue(fun->atom()));
         }
     } else if (srcObj->is<RegExpObject>()) {
         RegExpObject &reobj = srcObj->as<RegExpObject>();
@@ -908,7 +926,7 @@ CloneObject(JSContext *cx, HandleObject srcObj, CloneMemory &clonedObjects)
     }
     if (!clone)
         return nullptr;
-    if (!p.add(clonedObjects, srcObj, clone))
+    if (!p.add(cx, clonedObjects, srcObj, clone))
         return nullptr;
     if (!CloneProperties(cx, srcObj, clone, clonedObjects)) {
         clonedObjects.remove(srcObj);
@@ -956,7 +974,9 @@ JSRuntime::cloneSelfHostedFunctionScript(JSContext *cx, Handle<PropertyName*> na
     // JSFunction::generatorKind can't handle lazy self-hosted functions, so we make sure there
     // aren't any.
     JS_ASSERT(!sourceFun->isGenerator());
-    RootedScript sourceScript(cx, sourceFun->nonLazyScript());
+    RootedScript sourceScript(cx, sourceFun->getOrCreateScript(cx));
+    if (!sourceScript)
+        return false;
     JS_ASSERT(!sourceScript->enclosingStaticScope());
     JSScript *cscript = CloneScript(cx, NullPtr(), targetFun, sourceScript);
     if (!cscript)
@@ -964,8 +984,11 @@ JSRuntime::cloneSelfHostedFunctionScript(JSContext *cx, Handle<PropertyName*> na
     cscript->setFunction(targetFun);
 
     JS_ASSERT(sourceFun->nargs() == targetFun->nargs());
-    targetFun->setFlags(sourceFun->flags() | JSFunction::EXTENDED);
+    // The target function might have been relazified after it's flags changed.
+    targetFun->setFlags((targetFun->flags() & ~JSFunction::INTERPRETED_LAZY) |
+                        sourceFun->flags() | JSFunction::EXTENDED);
     targetFun->setScript(cscript);
+    JS_ASSERT(targetFun->isExtended());
     return true;
 }
 

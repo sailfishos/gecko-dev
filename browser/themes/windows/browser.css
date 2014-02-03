@@ -24,6 +24,12 @@
   -moz-box-flex: 1; /* make menu items expand to fill toolbar height */
 }
 
+/* Hides the titlebar-placeholder underneath the window caption buttons when we
+   are not autohiding the menubar. */
+#toolbar-menubar:not([autohide="true"]) + #TabsToolbar > .titlebar-placeholder[type="caption-buttons"] {
+  display: none;
+}
+
 /* We want a 4px gap between the TabsToolbar and the toolbar-menubar when the
    toolbar-menu is displayed, and a 16px gap when it is not. 1px is taken care
    of by the (light) outer shadow of the tab, the remaining 3/15 are these margins. */
@@ -305,6 +311,11 @@ toolbarbutton.bookmark-item[open="true"] {
 
 #bookmarks-toolbar-placeholder {
   list-style-image: url("chrome://browser/skin/places/bookmarksToolbar.png") !important;
+}
+
+toolbarpaletteitem[place="palette"] > #personal-bookmarks > #bookmarks-toolbar-placeholder,
+#personal-bookmarks[cui-areatype="menu-panel"] > #bookmarks-toolbar-placeholder {
+  list-style-image: url("chrome://browser/skin/places/bookmarksToolbar-menuPanel.png") !important;
 }
 
 /* ::::: bookmark menus ::::: */
@@ -633,6 +644,10 @@ menuitem.bookmark-item {
   opacity: 0;
 }
 
+@conditionalForwardWithUrlbar@ > #forward-button[occluded-by-urlbar] {
+  visibility: hidden;
+}
+
 #back-button {
   padding-top: 3px !important;
   padding-bottom: 3px !important;
@@ -710,43 +725,18 @@ menuitem.bookmark-item {
   list-style-image: url("chrome://browser/skin/Toolbar-inverted.png");
 }
 
-#sync-button[status="active"] {
-  list-style-image: url("chrome://browser/skin/sync-throbber.png");
+#sync-button[cui-areatype="toolbar"][status="active"] {
+  /* !important because we need to override the glass selectors that trigger
+   * use of the Toolbar-inverted image. Those use a list of all primary toolbar
+   * buttons, so we can't easily fix those selectors. */
+  list-style-image: url("chrome://browser/skin/sync-throbber.png") !important;
   -moz-image-region: rect(0, 18px, 18px, 0);
 }
 
 /* tabview button & menu item */
 
-#tabview-button,
 #menu_tabview {
   list-style-image: url(chrome://browser/skin/tabview/tabview.png);
-}
-
-#tabview-button:-moz-lwtheme-brighttext {
-  list-style-image: url(chrome://browser/skin/tabview/tabview-inverted.png);
-}
-
-#tabview-button {
-  -moz-image-region: rect(0, 90px, 18px, 72px);
-}
-
-#tabview-button[groups="0"] {
-  -moz-image-region: rect(0, 18px, 18px, 0);
-}
-
-#tabview-button[groups="1"] {
-  -moz-image-region: rect(0, 36px, 18px, 18px);
-}
-
-#tabview-button[groups="2"] {
-  -moz-image-region: rect(0, 54px, 18px, 36px);
-}
-
-#tabview-button[groups="3"] {
-  -moz-image-region: rect(0, 72px, 18px, 54px);
-}
-
-#menu_tabview {
   -moz-image-region: rect(1px, 89px, 17px, 73px);
 }
 
@@ -823,7 +813,6 @@ menuitem.bookmark-item {
 }
 
 #urlbar {
-  width: 7em;
   -moz-padding-end: 2px;
 }
 
@@ -846,7 +835,7 @@ menuitem.bookmark-item {
   background-color: rgba(255,255,255,.9);
 }
 
-#urlbar:-moz-lwtheme[focused],
+#urlbar:-moz-lwtheme[focused]:not([readonly]),
 .searchbar-textbox:-moz-lwtheme[focused] {
   background-color: white;
 }
@@ -891,8 +880,10 @@ menuitem.bookmark-item {
   transition-delay: 100s;
 }
 
+@conditionalForwardWithUrlbar@[forwarddisabled][switchingtabs] + #urlbar-container > #urlbar,
 @conditionalForwardWithUrlbar@[forwarddisabled]:not(:hover) > #urlbar-wrapper > #urlbar {
-  /* when not hovered anymore, trigger a new transition to hide the forward button immediately */
+  /* when switching tabs, or when not hovered anymore, trigger a new transition
+   * to hide the forward button immediately */
   margin-left: -@conditionalForwardWithUrlbarWidth@.01px;
 }
 
@@ -1011,11 +1002,13 @@ html|*.urlbar-input:-moz-lwtheme::-moz-placeholder,
   transition-delay: 100s;
 }
 
+@conditionalForwardWithUrlbar@[forwarddisabled][switchingtabs] + #urlbar-container > #urlbar > #notification-popup-box[hidden] + #identity-box:-moz-locale-dir(ltr),
 @conditionalForwardWithUrlbar@[forwarddisabled]:not(:hover) > #urlbar-wrapper > #urlbar > #notification-popup-box[hidden] + #identity-box:-moz-locale-dir(ltr) {
   /* when not hovered anymore, trigger a new non-delayed transition to react to the forward button hiding */
   padding-left: 5.01px;
 }
 
+@conditionalForwardWithUrlbar@[forwarddisabled][switchingtabs] + #urlbar-container > #urlbar > #notification-popup-box[hidden] + #identity-box:-moz-locale-dir(rtl),
 @conditionalForwardWithUrlbar@[forwarddisabled]:not(:hover) > #urlbar-wrapper > #urlbar > #notification-popup-box[hidden] + #identity-box:-moz-locale-dir(rtl) {
   /* when not hovered anymore, trigger a new non-delayed transition to react to the forward button hiding */
   padding-right: 5.01px;
@@ -1301,6 +1294,14 @@ richlistitem[type~="action"][actiontype="switchtab"] > .ac-url-box > .ac-action-
   max-height: 16px;
 }
 
+
+toolbarbutton[type="socialmark"] > .toolbarbutton-icon {
+  width: auto;
+  height: auto;
+  max-width: 32px;
+  max-height: 24px;
+}
+
 /* fixup corners for share panel */
 .social-panel > .social-panel-frame {
   border-radius: inherit;
@@ -1376,7 +1377,7 @@ richlistitem[type~="action"][actiontype="switchtab"] > .ac-url-box > .ac-action-
   -moz-margin-start: 5px;
 }
 
-#bookmarks-menu-button[cui-areatype="toolbar"] > .toolbarbutton-menubutton-dropmarker > .dropmarker-icon {
+#bookmarks-menu-button[cui-areatype="toolbar"]:not(.bookmark-item):not(.overflowedItem) > .toolbarbutton-menubutton-dropmarker > .dropmarker-icon {
   padding-top: 2px;
   padding-bottom: 2px;
 }
@@ -1513,10 +1514,6 @@ richlistitem[type~="action"][actiontype="switchtab"] > .ac-url-box > .ac-action-
 
   #main-window[tabsintitlebar]:not([inFullscreen]) #alltabs-button {
     list-style-image: url("chrome://browser/skin/toolbarbutton-dropdown-arrow-inverted.png");
-  }
-
-  #main-window[tabsintitlebar]:not([inFullscreen]) #TabsToolbar > #tabview-button {
-    list-style-image: url(chrome://browser/skin/tabview/tabview-inverted.png);
   }
 
   #main-window[tabsintitlebar]:not([inFullscreen]) .tab-close-button:not(:-moz-any(:hover,:-moz-lwtheme,[selected="true"])) {
@@ -2145,6 +2142,35 @@ toolbarbutton.bookmark-item[dragover="true"][open="true"] {
   margin-top: .5em;
 }
 
+/* Sync Panel */
+
+.sync-panel {
+  padding: 10px;
+}
+
+.sync-panel-icon {
+  width: 32px;
+  background: url("chrome://browser/content/abouthome/sync.png") top left no-repeat;
+}
+
+.sync-panel-inner {
+  width: 0;
+  padding-left: 10px;
+}
+
+.sync-panel-button-box {
+  margin-top: 1em;
+}
+
+#sync-error-panel-title {
+  font-weight: bold;
+}
+
+#sync-start-panel-subtitle,
+#sync-error-panel-subtitle {
+  margin: 0;
+}
+
 /* Status panel */
 
 .statuspanel-label {
@@ -2410,7 +2436,7 @@ chatbox {
 
 %include ../shared/customizableui/customizeMode.inc.css
 
-#main-window[customizing] {
+#main-window[customize-entered] {
   background-image: url("chrome://browser/skin/customizableui/customizeMode-gridTexture.png");
   background-attachment: fixed;
 }

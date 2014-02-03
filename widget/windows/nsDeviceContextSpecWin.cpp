@@ -174,194 +174,11 @@ nsDeviceContextSpecWin::~nsDeviceContextSpecWin()
 
 //------------------------------------------------------------------
 // helper
-static PRUnichar * GetDefaultPrinterNameFromGlobalPrinters()
+static char16_t * GetDefaultPrinterNameFromGlobalPrinters()
 {
   nsAutoString printerName;
   GlobalPrinters::GetInstance()->GetDefaultPrinterName(printerName);
   return ToNewUnicode(printerName);
-}
-
-//----------------------------------------------------------------
-static nsresult 
-EnumerateNativePrinters(DWORD aWhichPrinters, const wchar_t *aPrinterName, bool& aIsFound, bool& aIsFile)
-{
-  DWORD             dwSizeNeeded = 0;
-  DWORD             dwNumItems   = 0;
-  LPPRINTER_INFO_2W  lpInfo        = nullptr;
-
-  // Get buffer size
-  if (::EnumPrintersW(aWhichPrinters, nullptr, 2, nullptr, 0, &dwSizeNeeded,
-                      &dwNumItems)) {
-    return NS_ERROR_FAILURE;
-  }
-
-  // allocate memory
-  lpInfo = (LPPRINTER_INFO_2W) malloc(dwSizeNeeded);
-  if (!lpInfo) {
-    return NS_ERROR_OUT_OF_MEMORY;
-  }
-
-  if (::EnumPrintersW(PRINTER_ENUM_LOCAL, nullptr, 2, (LPBYTE)lpInfo,
-                      dwSizeNeeded, &dwSizeNeeded, &dwNumItems) == 0) {
-    free(lpInfo);
-    return NS_OK;
-  }
-
-  for (DWORD i = 0; i < dwNumItems; i++ ) {
-    if (wcscmp(lpInfo[i].pPrinterName, aPrinterName) == 0) {
-      aIsFound = true;
-      aIsFile  = wcscmp(lpInfo[i].pPortName, L"FILE:") == 0;
-      break;
-    }
-  }
-
-  free(lpInfo);
-  return NS_OK;
-}
-
-//----------------------------------------------------------------
-static void 
-CheckForPrintToFileWithName(char16ptr_t aPrinterName, bool& aIsFile)
-{
-  bool isFound = false;
-  aIsFile = false;
-  nsresult rv = EnumerateNativePrinters(PRINTER_ENUM_LOCAL, aPrinterName, isFound, aIsFile);
-  if (isFound) return;
-
-  rv = EnumerateNativePrinters(PRINTER_ENUM_NETWORK, aPrinterName, isFound, aIsFile);
-  if (isFound) return;
-
-  rv = EnumerateNativePrinters(PRINTER_ENUM_SHARED, aPrinterName, isFound, aIsFile);
-  if (isFound) return;
-
-  rv = EnumerateNativePrinters(PRINTER_ENUM_REMOTE, aPrinterName, isFound, aIsFile);
-  if (isFound) return;
-}
-
-static nsresult 
-GetFileNameForPrintSettings(nsIPrintSettings* aPS)
-{
-  // for testing
-#ifdef DEBUG_rods
-  return NS_OK;
-#endif
-
-  nsresult rv;
-
-  nsCOMPtr<nsIFilePicker> filePicker = do_CreateInstance("@mozilla.org/filepicker;1", &rv);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  nsCOMPtr<nsIStringBundleService> bundleService =
-    mozilla::services::GetStringBundleService();
-  if (!bundleService)
-    return NS_ERROR_FAILURE;
-  nsCOMPtr<nsIStringBundle> bundle;
-  rv = bundleService->CreateBundle(NS_ERROR_GFX_PRINTER_BUNDLE_URL, getter_AddRefs(bundle));
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  nsXPIDLString title;
-  rv = bundle->GetStringFromName(MOZ_UTF16("PrintToFile"), getter_Copies(title));
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  nsCOMPtr<nsIWindowWatcher> wwatch =
-    (do_GetService(NS_WINDOWWATCHER_CONTRACTID, &rv));
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  nsCOMPtr<nsIDOMWindow> window;
-  wwatch->GetActiveWindow(getter_AddRefs(window));
-
-  rv = filePicker->Init(window, title, nsIFilePicker::modeSave);
-  NS_ENSURE_SUCCESS(rv, rv);
- 
-  rv = filePicker->AppendFilters(nsIFilePicker::filterAll);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  PRUnichar* fileName;
-  aPS->GetToFileName(&fileName);
-
-  if (fileName) {
-    if (*fileName) {
-      nsAutoString leafName;
-      nsCOMPtr<nsIFile> file(do_CreateInstance("@mozilla.org/file/local;1"));
-      if (file) {
-        rv = file->InitWithPath(nsDependentString(fileName));
-        if (NS_SUCCEEDED(rv)) {
-          file->GetLeafName(leafName);
-          filePicker->SetDisplayDirectory(file);
-        }
-      }
-      if (!leafName.IsEmpty()) {
-        rv = filePicker->SetDefaultString(leafName);
-      }
-      NS_ENSURE_SUCCESS(rv, rv);
-    }
-    nsMemory::Free(fileName);
-  }
-
-  int16_t dialogResult;
-  filePicker->Show(&dialogResult);
-
-  if (dialogResult == nsIFilePicker::returnCancel) {
-    return NS_ERROR_ABORT;
-  }
-
-  nsCOMPtr<nsIFile> localFile;
-  rv = filePicker->GetFile(getter_AddRefs(localFile));
-  NS_ENSURE_SUCCESS(rv, rv);
-  
-  if (dialogResult == nsIFilePicker::returnReplace) {
-    // be extra safe and only delete when the file is really a file
-    bool isFile;
-    rv = localFile->IsFile(&isFile);
-    if (NS_SUCCEEDED(rv) && isFile) {
-      rv = localFile->Remove(false /* recursive delete */);
-      NS_ENSURE_SUCCESS(rv, rv);
-    }
-  }
-
-  nsAutoString unicodePath;
-  rv = localFile->GetPath(unicodePath);
-  NS_ENSURE_SUCCESS(rv,rv);
-
-  if (unicodePath.IsEmpty()) {
-    rv = NS_ERROR_ABORT;
-  }
-
-  if (NS_SUCCEEDED(rv)) aPS->SetToFileName(unicodePath.get());
-
-  return rv;
-}
-
-//----------------------------------------------------------------------------------
-static nsresult
-CheckForPrintToFile(nsIPrintSettings* aPS, const PRUnichar* aPrinterName, const PRUnichar* aUPrinterName)
-{
-  nsresult rv = NS_OK;
-
-  if (!aPrinterName && !aUPrinterName) return rv;
-
-  bool toFile;
-  CheckForPrintToFileWithName(aPrinterName?aPrinterName:aUPrinterName, toFile);
-  // Since the driver wasn't a "Print To File" Driver, check to see
-  // if the name of the file has been set to the special "FILE:"
-  if (!toFile) {
-    nsXPIDLString toFileName;
-    aPS->GetToFileName(getter_Copies(toFileName));
-    if (toFileName) {
-      if (*toFileName) {
-        if (toFileName.EqualsLiteral("FILE:")) {
-          // this skips the setting of the "print to file" info below
-          // which we don't want to do.
-          return NS_OK; 
-        }
-      }
-    }
-  }
-  aPS->SetPrintToFile(toFile);
-  if (toFile) {
-    rv = GetFileNameForPrintSettings(aPS);
-  }
-  return rv;
 }
 
 //----------------------------------------------------------------------------------
@@ -375,8 +192,8 @@ NS_IMETHODIMP nsDeviceContextSpecWin::Init(nsIWidget* aWidget,
   if (aPrintSettings) {
     nsCOMPtr<nsIPrintSettingsWin> psWin(do_QueryInterface(aPrintSettings));
     if (psWin) {
-      PRUnichar* deviceName;
-      PRUnichar* driverName;
+      char16_t* deviceName;
+      char16_t* driverName;
       psWin->GetDeviceName(&deviceName); // creates new memory (makes a copy)
       psWin->GetDriverName(&driverName); // creates new memory (makes a copy)
 
@@ -398,15 +215,6 @@ NS_IMETHODIMP nsDeviceContextSpecWin::Init(nsIWidget* aWidget,
         SetDriverName(driverName);
         SetDevMode(devMode);
 
-        if (!aIsPrintPreview) {
-          rv = CheckForPrintToFile(mPrintSettings, deviceName, nullptr);
-          if (NS_FAILED(rv)) {
-            free(deviceName);
-            free(driverName);
-            return NS_ERROR_FAILURE;
-          }
-        }
-
         // clean up
         free(deviceName);
         free(driverName);
@@ -424,7 +232,7 @@ NS_IMETHODIMP nsDeviceContextSpecWin::Init(nsIWidget* aWidget,
   }
 
   // Get the Print Name to be used
-  PRUnichar * printerName = nullptr;
+  char16_t * printerName = nullptr;
   if (mPrintSettings) {
     mPrintSettings->GetPrinterName(&printerName);
   }
@@ -436,10 +244,6 @@ NS_IMETHODIMP nsDeviceContextSpecWin::Init(nsIWidget* aWidget,
 
   NS_ASSERTION(printerName, "We have to have a printer name");
   if (!printerName || !*printerName) return rv;
-
-  if (!aIsPrintPreview) {
-    CheckForPrintToFile(mPrintSettings, nullptr, printerName);
-  }
  
   return GetDataFromPrinter(printerName, mPrintSettings);
 }
@@ -812,7 +616,7 @@ NS_IMPL_ISUPPORTS1(nsPrinterEnumeratorWin, nsIPrinterEnumerator)
 // Return the Default Printer name
 /* readonly attribute wstring defaultPrinterName; */
 NS_IMETHODIMP 
-nsPrinterEnumeratorWin::GetDefaultPrinterName(PRUnichar * *aDefaultPrinterName)
+nsPrinterEnumeratorWin::GetDefaultPrinterName(char16_t * *aDefaultPrinterName)
 {
   NS_ENSURE_ARG_POINTER(aDefaultPrinterName);
 
@@ -823,7 +627,7 @@ nsPrinterEnumeratorWin::GetDefaultPrinterName(PRUnichar * *aDefaultPrinterName)
 
 /* void initPrintSettingsFromPrinter (in wstring aPrinterName, in nsIPrintSettings aPrintSettings); */
 NS_IMETHODIMP 
-nsPrinterEnumeratorWin::InitPrintSettingsFromPrinter(const PRUnichar *aPrinterName, nsIPrintSettings *aPrintSettings)
+nsPrinterEnumeratorWin::InitPrintSettingsFromPrinter(const char16_t *aPrinterName, nsIPrintSettings *aPrintSettings)
 {
   NS_ENSURE_ARG_POINTER(aPrinterName);
   NS_ENSURE_ARG_POINTER(aPrintSettings);
@@ -886,7 +690,7 @@ nsPrinterEnumeratorWin::GetPrinterNameList(nsIStringEnumerator **aPrinterNameLis
 
 //----------------------------------------------------------------------------------
 // Display the AdvancedDocumentProperties for the selected Printer
-NS_IMETHODIMP nsPrinterEnumeratorWin::DisplayPropertiesDlg(const PRUnichar *aPrinterName, nsIPrintSettings* aPrintSettings)
+NS_IMETHODIMP nsPrinterEnumeratorWin::DisplayPropertiesDlg(const char16_t *aPrinterName, nsIPrintSettings* aPrintSettings)
 {
   // Implementation removed because it is unused
   return NS_OK;

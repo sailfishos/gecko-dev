@@ -361,7 +361,9 @@ var SelectionHelperUI = {
         // clears the selection.
         if (this.isActive && this.layerMode == kContentLayer) {
           this._showAfterUpdate = true;
-          this._sendAsyncMessage("Browser:SelectionUpdate", {});
+          this._sendAsyncMessage("Browser:SelectionUpdate", {
+            isInitiatedByAPZC: true
+          });
         }
         break;
       }
@@ -611,6 +613,8 @@ var SelectionHelperUI = {
     Elements.browsers.addEventListener("URLChanged", this, true);
     Elements.browsers.addEventListener("SizeChanged", this, true);
 
+    Elements.tabList.addEventListener("TabSelect", this, true);
+
     Elements.navbar.addEventListener("transitionend", this, true);
     Elements.navbar.addEventListener("MozAppbarDismissing", this, true);
 
@@ -636,6 +640,8 @@ var SelectionHelperUI = {
 
     Elements.browsers.removeEventListener("URLChanged", this, true);
     Elements.browsers.removeEventListener("SizeChanged", this, true);
+
+    Elements.tabList.removeEventListener("TabSelect", this, true);
 
     Elements.navbar.removeEventListener("transitionend", this, true);
     Elements.navbar.removeEventListener("MozAppbarDismissing", this, true);
@@ -969,19 +975,19 @@ var SelectionHelperUI = {
 
     if (json.updateStart) {
       let x = this._msgTarget.btocx(json.start.xPos, true);
-      let y = this._msgTarget.btocx(json.start.yPos, true);
+      let y = this._msgTarget.btocy(json.start.yPos, true);
       this.startMark.position(x, y);
     }
 
     if (json.updateEnd) {
       let x = this._msgTarget.btocx(json.end.xPos, true);
-      let y = this._msgTarget.btocx(json.end.yPos, true);
+      let y = this._msgTarget.btocy(json.end.yPos, true);
       this.endMark.position(x, y);
     }
 
     if (json.updateCaret) {
       let x = this._msgTarget.btocx(json.caret.xPos, true);
-      let y = this._msgTarget.btocx(json.caret.yPos, true);
+      let y = this._msgTarget.btocy(json.caret.yPos, true);
       // If selectionRangeFound is set SelectionHelper found a range we can
       // attach to. If not, there's no text in the control, and hence no caret
       // position information we can use.
@@ -1064,6 +1070,7 @@ var SelectionHelperUI = {
         break;
 
       case "URLChanged":
+      case "TabSelect":
         this._shutdown();
         break;
 

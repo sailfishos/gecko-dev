@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+let Cc = Components.classes;
+let Ci = Components.interfaces;
+
 Components.utils.import("resource:///modules/ContentUtil.jsm");
 
 let Util = {
@@ -80,19 +83,25 @@ let Util = {
             aElement instanceof Ci.nsIDOMHTMLTextAreaElement);
   },
 
+  /**
+   * Checks whether aElement's content can be edited either if it(or any of its
+   * parents) has "contenteditable" attribute set to "true" or aElement's
+   * ownerDocument is in design mode.
+   */
   isEditableContent: function isEditableContent(aElement) {
-    if (!aElement)
-      return false;
-    if (aElement.isContentEditable || aElement.designMode == "on")
-      return true;
-    return false;
+    return !!aElement && (aElement.isContentEditable ||
+                          this.isOwnerDocumentInDesignMode(aElement));
+
   },
 
   isEditable: function isEditable(aElement) {
-    if (!aElement)
+    if (!aElement) {
       return false;
-    if (this.isTextInput(aElement) || this.isEditableContent(aElement))
+    }
+
+    if (this.isTextInput(aElement) || this.isEditableContent(aElement)) {
       return true;
+    }
 
     // If a body element is editable and the body is the child of an
     // iframe or div we can assume this is an advanced HTML editor
@@ -103,7 +112,15 @@ let Util = {
       return true;
     }
 
-    return aElement.ownerDocument && aElement.ownerDocument.designMode == "on";
+    return false;
+  },
+
+  /**
+   * Checks whether aElement's owner document has design mode turned on.
+   */
+  isOwnerDocumentInDesignMode: function(aElement) {
+    return !!aElement && !!aElement.ownerDocument &&
+           aElement.ownerDocument.designMode == "on";
   },
 
   isMultilineInput: function isMultilineInput(aElement) {
@@ -210,7 +227,7 @@ let Util = {
             aURL == "about:empty" ||
             aURL == "about:home" ||
             aURL == "about:newtab" ||
-            aURL == "about:start");
+            aURL.startsWith("about:newtab"));
   },
 
   // Title to use for emptyURL tabs.
@@ -409,3 +426,5 @@ Util.Timeout.prototype = {
       Util[name] = copy;
   }
 }
+
+this.Util = Util;

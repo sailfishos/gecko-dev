@@ -69,15 +69,7 @@ TextTrack::SetDefaultSettings()
   mRegionList = new TextTrackRegionList(mParent);
   mCuePos = 0;
   mDirty = false;
-  mReadyState = HTMLTrackElement::NONE;
-}
-
-void
-TextTrack::Update(double aTime)
-{
-  if (mCueList) {
-    mCueList->Update(aTime);
-  }
+  mReadyState = HTMLTrackElement::READY_STATE_NONE;
 }
 
 JSObject*
@@ -89,13 +81,21 @@ TextTrack::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aScope)
 void
 TextTrack::SetMode(TextTrackMode aValue)
 {
-  mMode = aValue;
+  if (mMode != aValue) {
+    mMode = aValue;
+    if (mMediaElement) {
+      mMediaElement->TextTracks()->CreateAndDispatchChangeEvent();
+    }
+  }
 }
 
 void
 TextTrack::AddCue(TextTrackCue& aCue)
 {
   mCueList->AddCue(aCue);
+  if (mMediaElement) {
+    mMediaElement->AddCue(aCue);
+  }
   SetDirty();
 }
 
@@ -136,11 +136,11 @@ TextTrack::RemoveRegion(const TextTrackRegion& aRegion, ErrorResult& aRv)
   mRegionList->RemoveTextTrackRegion(aRegion);
 }
 
-TextTrackCueList*
-TextTrack::GetActiveCues()
+void
+TextTrack::UpdateActiveCueList()
 {
   if (mMode == TextTrackMode::Disabled || !mMediaElement) {
-    return nullptr;
+    return;
   }
 
   // If we are dirty, i.e. an event happened that may cause the sorted mCueList
@@ -148,30 +148,41 @@ TextTrack::GetActiveCues()
   // the active cue list from scratch.
   if (mDirty) {
     mCuePos = 0;
-    mDirty = true;
+    mDirty = false;
     mActiveCueList->RemoveAll();
   }
 
   double playbackTime = mMediaElement->CurrentTime();
   // Remove all the cues from the active cue list whose end times now occur
-  // earlier then the current playback time. When we reach a cue whose end time
-  // is valid we can safely stop iterating as the list is sorted.
-  for (uint32_t i = 0; i < mActiveCueList->Length() &&
-                       (*mActiveCueList)[i]->EndTime() < playbackTime; i++) {
-    mActiveCueList->RemoveCueAt(i);
+  // earlier then the current playback time.
+  for (uint32_t i = mActiveCueList->Length(); i > 0; i--) {
+    if ((*mActiveCueList)[i - 1]->EndTime() < playbackTime) {
+      mActiveCueList->RemoveCueAt(i - 1);
+    }
   }
   // Add all the cues, starting from the position of the last cue that was
   // added, that have valid start and end times for the current playback time.
   // We can stop iterating safely once we encounter a cue that does not have
-  // valid times for the current playback time as the cue list is sorted.
-  for (; mCuePos < mCueList->Length(); mCuePos++) {
-    TextTrackCue* cue = (*mCueList)[mCuePos];
-    if (cue->StartTime() > playbackTime || cue->EndTime() < playbackTime) {
-      break;
+  // a valid start time as the cue list is sorted.
+  for (; mCuePos < mCueList->Length() &&
+         (*mCueList)[mCuePos]->StartTime() <= playbackTime; mCuePos++) {
+    if ((*mCueList)[mCuePos]->EndTime() >= playbackTime) {
+      mActiveCueList->AddCue(*(*mCueList)[mCuePos]);
     }
-    mActiveCueList->AddCue(*cue);
   }
+}
+
+TextTrackCueList*
+TextTrack::GetActiveCues() {
+  UpdateActiveCueList();
   return mActiveCueList;
+}
+
+void
+TextTrack::GetActiveCueArray(nsTArray<nsRefPtr<TextTrackCue> >& aCues)
+{
+  UpdateActiveCueList();
+  mActiveCueList->GetArray(aCues);
 }
 
 uint16_t
@@ -184,8 +195,8 @@ void
 TextTrack::SetReadyState(uint16_t aState)
 {
   mReadyState = aState;
-  if (mMediaElement && (mReadyState == HTMLTrackElement::LOADED ||
-      mReadyState == HTMLTrackElement::ERROR)) {
+  if (mMediaElement && (mReadyState == HTMLTrackElement::READY_STATE_LOADED ||
+      mReadyState == HTMLTrackElement::READY_STATE_ERROR)) {
     mMediaElement->RemoveTextTrack(this, true);
   }
 }

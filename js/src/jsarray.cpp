@@ -13,7 +13,6 @@
 
 #include "jsapi.h"
 #include "jsatom.h"
-#include "jsautooplen.h"
 #include "jscntxt.h"
 #include "jsfriendapi.h"
 #include "jsfun.h"
@@ -137,7 +136,7 @@ static bool
 ToId(JSContext *cx, double index, MutableHandleId id)
 {
     if (index == uint32_t(index))
-        return IndexToId(cx, uint32_t(index), id.address());
+        return IndexToId(cx, uint32_t(index), id);
 
     Value tmp = DoubleValue(index);
     return ValueToId<CanGC>(cx, HandleValue::fromMarkedLocation(&tmp), id);
@@ -146,7 +145,7 @@ ToId(JSContext *cx, double index, MutableHandleId id)
 static bool
 ToId(JSContext *cx, uint32_t index, MutableHandleId id)
 {
-    return IndexToId(cx, index, id.address());
+    return IndexToId(cx, index, id);
 }
 
 /*
@@ -161,7 +160,6 @@ DoGetElement(JSContext *cx, HandleObject obj, HandleObject receiver,
              IndexType index, bool *hole, MutableHandleValue vp)
 {
     RootedId id(cx);
-
     if (!ToId(cx, index, &id))
         return false;
 
@@ -677,7 +675,6 @@ js::ArraySetLength(typename ExecutionModeTraits<mode>::ContextType cxArg,
         return false;
     }
 
-    RootedValue v(cxArg, NumberValue(newLen));
     if (mode == ParallelExecution) {
         // Overflowing int32 requires changing TI state.
         if (newLen > INT32_MAX)
@@ -718,7 +715,7 @@ js::ArraySetLength(typename ExecutionModeTraits<mode>::ContextType cxArg,
         // returned from the function before step 15 above.
         JSContext *cx = cxArg->asJSContext();
         RootedId elementId(cx);
-        if (!IndexToId(cx, newLen - 1, elementId.address()))
+        if (!IndexToId(cx, newLen - 1, &elementId))
             return false;
         return arr->reportNotConfigurable(cx, elementId);
     }
@@ -843,7 +840,6 @@ const Class ArrayObject::class_ = {
     JS_ResolveStub,
     JS_ConvertStub,
     nullptr,
-    nullptr,        /* checkAccess */
     nullptr,        /* call        */
     nullptr,        /* hasInstance */
     nullptr,        /* construct   */
@@ -875,13 +871,13 @@ AddLengthProperty(ExclusiveContext *cx, HandleObject obj)
 }
 
 #if JS_HAS_TOSOURCE
-JS_ALWAYS_INLINE bool
+MOZ_ALWAYS_INLINE bool
 IsArray(HandleValue v)
 {
     return v.isObject() && v.toObject().is<ArrayObject>();
 }
 
-JS_ALWAYS_INLINE bool
+MOZ_ALWAYS_INLINE bool
 array_toSource_impl(JSContext *cx, CallArgs args)
 {
     JS_ASSERT(IsArray(args.thisv()));
@@ -2006,8 +2002,8 @@ js::array_sort(JSContext *cx, unsigned argc, Value *vp)
     return true;
 }
 
-static JS_ALWAYS_INLINE bool
-NewbornArrayPushImpl(JSContext *cx, HandleObject obj, const Value &v)
+bool
+js::NewbornArrayPush(JSContext *cx, HandleObject obj, const Value &v)
 {
     Rooted<ArrayObject*> arr(cx, &obj->as<ArrayObject>());
 
@@ -2024,12 +2020,6 @@ NewbornArrayPushImpl(JSContext *cx, HandleObject obj, const Value &v)
     arr->setLengthInt32(length + 1);
     arr->initDenseElementWithType(cx, length, v);
     return true;
-}
-
-bool
-js_NewbornArrayPush(JSContext *cx, HandleObject obj, const Value &vp)
-{
-    return NewbornArrayPushImpl(cx, obj, vp);
 }
 
 /* ES5 15.4.4.7 */
@@ -2348,7 +2338,7 @@ CanOptimizeForDenseStorage(HandleObject arr, uint32_t startingIndex, uint32_t co
      * another object is first slowified, for type inference's sake.
      */
     types::TypeObject *arrType = arr->getType(cx);
-    if (JS_UNLIKELY(!arrType || arrType->hasAllFlags(OBJECT_FLAG_ITERATED)))
+    if (MOZ_UNLIKELY(!arrType || arrType->hasAllFlags(OBJECT_FLAG_ITERATED)))
         return false;
 
     /*
@@ -3054,10 +3044,8 @@ js_Array(JSContext *cx, unsigned argc, Value *vp)
      * Allocate dense elements eagerly for small arrays, to avoid reallocating
      * elements when filling the array.
      */
-    static const uint32_t ArrayEagerAllocationMaxLength = 2048;
-
     RootedObject obj(cx);
-    obj = (length <= ArrayEagerAllocationMaxLength)
+    obj = (length <= ArrayObject::EagerAllocationMaxLength)
           ? NewDenseAllocatedArray(cx, length)
           : NewDenseUnallocatedArray(cx, length);
     if (!obj)
@@ -3152,7 +3140,7 @@ EnsureNewArrayElements(ExclusiveContext *cx, JSObject *obj, uint32_t length)
 }
 
 template<bool allocateCapacity>
-static JS_ALWAYS_INLINE ArrayObject *
+static MOZ_ALWAYS_INLINE ArrayObject *
 NewArray(ExclusiveContext *cxArg, uint32_t length,
          JSObject *protoArg, NewObjectKind newKind = GenericObject)
 {

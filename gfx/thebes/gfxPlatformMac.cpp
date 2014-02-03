@@ -22,6 +22,8 @@
 
 #include <dlfcn.h>
 
+#include "nsCocoaFeatures.h"
+
 using namespace mozilla;
 using namespace mozilla::gfx;
 
@@ -60,16 +62,15 @@ DisableFontActivation()
 
 gfxPlatformMac::gfxPlatformMac()
 {
-    mOSXVersion = 0;
-    OSXVersion();
-
     DisableFontActivation();
     mFontAntiAliasingThreshold = ReadAntiAliasingThreshold();
 
-    uint32_t canvasMask = (1 << BACKEND_CAIRO) | (1 << BACKEND_SKIA) | (1 << BACKEND_COREGRAPHICS);
-    uint32_t contentMask = (1 << BACKEND_COREGRAPHICS);
-    InitBackendPrefs(canvasMask, BACKEND_COREGRAPHICS,
-                     contentMask, BACKEND_COREGRAPHICS);
+    uint32_t canvasMask = BackendTypeBit(BackendType::CAIRO) |
+                          BackendTypeBit(BackendType::SKIA) |
+                          BackendTypeBit(BackendType::COREGRAPHICS);
+    uint32_t contentMask = BackendTypeBit(BackendType::COREGRAPHICS);
+    InitBackendPrefs(canvasMask, BackendType::COREGRAPHICS,
+                     contentMask, BackendType::COREGRAPHICS);
 }
 
 gfxPlatformMac::~gfxPlatformMac()
@@ -333,16 +334,7 @@ gfxPlatformMac::GetCommonFallbackFonts(const uint32_t aCh,
 int32_t 
 gfxPlatformMac::OSXVersion()
 {
-    if (!mOSXVersion) {
-        // minor version is not accurate, use gestaltSystemVersionMajor, gestaltSystemVersionMinor, gestaltSystemVersionBugFix for these
-        OSErr err = ::Gestalt(gestaltSystemVersion, reinterpret_cast<SInt32*>(&mOSXVersion));
-        if (err != noErr) {
-            //This should probably be changed when our minimum version changes
-            NS_ERROR("Couldn't determine OS X version, assuming 10.6");
-            mOSXVersion = MAC_OS_X_VERSION_10_6_HEX;
-        }
-    }
-    return mOSXVersion;
+    return nsCocoaFeatures::OSXVersion();
 }
 
 uint32_t
@@ -373,15 +365,15 @@ gfxPlatformMac::ReadAntiAliasingThreshold()
 already_AddRefed<gfxASurface>
 gfxPlatformMac::CreateThebesSurfaceAliasForDrawTarget_hack(mozilla::gfx::DrawTarget *aTarget)
 {
-  if (aTarget->GetType() == BACKEND_COREGRAPHICS) {
-    CGContextRef cg = static_cast<CGContextRef>(aTarget->GetNativeSurface(NATIVE_SURFACE_CGCONTEXT));
+  if (aTarget->GetType() == BackendType::COREGRAPHICS) {
+    CGContextRef cg = static_cast<CGContextRef>(aTarget->GetNativeSurface(NativeSurfaceType::CGCONTEXT));
     unsigned char* data = (unsigned char*)CGBitmapContextGetData(cg);
     size_t bpp = CGBitmapContextGetBitsPerPixel(cg);
     size_t stride = CGBitmapContextGetBytesPerRow(cg);
     gfxIntSize size(aTarget->GetSize().width, aTarget->GetSize().height);
     nsRefPtr<gfxImageSurface> imageSurface = new gfxImageSurface(data, size, stride, bpp == 2
-                                                                                     ? gfxImageFormatRGB16_565
-                                                                                     : gfxImageFormatARGB32);
+                                                                                     ? gfxImageFormat::RGB16_565
+                                                                                     : gfxImageFormat::ARGB32);
     // Here we should return a gfxQuartzImageSurface but quartz will assumes that image surfaces
     // don't change which wont create a proper alias to the draw target, therefore we have to
     // return a plain image surface.
@@ -394,18 +386,18 @@ gfxPlatformMac::CreateThebesSurfaceAliasForDrawTarget_hack(mozilla::gfx::DrawTar
 already_AddRefed<gfxASurface>
 gfxPlatformMac::GetThebesSurfaceForDrawTarget(DrawTarget *aTarget)
 {
-  if (aTarget->GetType() == BACKEND_COREGRAPHICS_ACCELERATED) {
+  if (aTarget->GetType() == BackendType::COREGRAPHICS_ACCELERATED) {
     RefPtr<SourceSurface> source = aTarget->Snapshot();
     RefPtr<DataSourceSurface> sourceData = source->GetDataSurface();
     unsigned char* data = sourceData->GetData();
     nsRefPtr<gfxImageSurface> surf = new gfxImageSurface(data, ThebesIntSize(sourceData->GetSize()), sourceData->Stride(),
-                                                         gfxImageFormatARGB32);
+                                                         gfxImageFormat::ARGB32);
     // We could fix this by telling gfxImageSurface it owns data.
-    nsRefPtr<gfxImageSurface> cpy = new gfxImageSurface(ThebesIntSize(sourceData->GetSize()), gfxImageFormatARGB32);
+    nsRefPtr<gfxImageSurface> cpy = new gfxImageSurface(ThebesIntSize(sourceData->GetSize()), gfxImageFormat::ARGB32);
     cpy->CopyFrom(surf);
     return cpy.forget();
-  } else if (aTarget->GetType() == BACKEND_COREGRAPHICS) {
-    CGContextRef cg = static_cast<CGContextRef>(aTarget->GetNativeSurface(NATIVE_SURFACE_CGCONTEXT));
+  } else if (aTarget->GetType() == BackendType::COREGRAPHICS) {
+    CGContextRef cg = static_cast<CGContextRef>(aTarget->GetNativeSurface(NativeSurfaceType::CGCONTEXT));
 
     //XXX: it would be nice to have an implicit conversion from IntSize to gfxIntSize
     IntSize intSize = aTarget->GetSize();
@@ -433,15 +425,18 @@ gfxPlatformMac::SupportsOffMainThreadCompositing()
   return true;
 }
 
-qcms_profile *
-gfxPlatformMac::GetPlatformCMSOutputProfile()
+void
+gfxPlatformMac::GetPlatformCMSOutputProfile(void* &mem, size_t &size)
 {
+    mem = nullptr;
+    size = 0;
+
     CGColorSpaceRef cspace = ::CGDisplayCopyColorSpace(::CGMainDisplayID());
     if (!cspace) {
         cspace = ::CGColorSpaceCreateDeviceRGB();
     }
     if (!cspace) {
-        return nullptr;
+        return;
     }
 
     CFDataRef iccp = ::CGColorSpaceCopyICCProfile(cspace);
@@ -449,12 +444,20 @@ gfxPlatformMac::GetPlatformCMSOutputProfile()
     ::CFRelease(cspace);
 
     if (!iccp) {
-        return nullptr;
+        return;
     }
 
-    qcms_profile* profile = qcms_profile_from_memory(::CFDataGetBytePtr(iccp), static_cast<size_t>(::CFDataGetLength(iccp)));
+    // copy to external buffer
+    size = static_cast<size_t>(::CFDataGetLength(iccp));
+    if (size > 0) {
+        void *data = malloc(size);
+        if (data) {
+            memcpy(data, ::CFDataGetBytePtr(iccp), size);
+            mem = data;
+        } else {
+            size = 0;
+        }
+    }
 
     ::CFRelease(iccp);
-
-    return profile;
 }

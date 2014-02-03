@@ -34,7 +34,7 @@ public:
 
   void AllocateTexturesYCbCr(PlanarYCbCrImage *aImage);
 
-  virtual already_AddRefed<ID3D10ShaderResourceView> GetAsTexture(gfxIntSize* aSize);
+  virtual already_AddRefed<ID3D10ShaderResourceView> GetAsTexture(gfx::IntSize* aSize);
 
 private:
  ID3D10ShaderResourceView* GetImageSRView(Image* aImage, bool& aHasAlpha, IDXGIKeyedMutex **aMutex = nullptr);
@@ -60,7 +60,8 @@ class RemoteDXGITextureImage : public Image {
 public:
   RemoteDXGITextureImage() : Image(nullptr, REMOTE_IMAGE_DXGI_TEXTURE) {}
 
-  already_AddRefed<gfxASurface> GetAsSurface();
+  already_AddRefed<gfxASurface> DeprecatedGetAsSurface();
+  virtual TemporaryRef<gfx::SourceSurface> GetAsSourceSurface() MOZ_OVERRIDE;
 
   IntSize GetSize() { return mSize; }
 

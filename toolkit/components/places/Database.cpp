@@ -598,7 +598,7 @@ Database::InitSchema(bool* aDatabaseMigrated)
   // Grow places in |growthIncrementKiB| increments to limit fragmentation on disk.
   // By default, it's 10 MB.
   int32_t growthIncrementKiB =
-    Preferences::GetInt(PREF_GROWTH_INCREMENT_KIB, 10 * BYTES_PER_KIBIBYTE * BYTES_PER_KIBIBYTE);
+    Preferences::GetInt(PREF_GROWTH_INCREMENT_KIB, 10 * BYTES_PER_KIBIBYTE);
   if (growthIncrementKiB > 0) {
     (void)mMainConn->SetGrowthIncrement(growthIncrementKiB * BYTES_PER_KIBIBYTE, EmptyCString());
   }
@@ -1951,7 +1951,7 @@ Database::Shutdown()
 NS_IMETHODIMP
 Database::Observe(nsISupports *aSubject,
                   const char *aTopic,
-                  const PRUnichar *aData)
+                  const char16_t *aData)
 {
   MOZ_ASSERT(NS_IsMainThread());
  

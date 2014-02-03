@@ -17,7 +17,7 @@
 
 USING_FILE_NAMESPACE
 
-FileRequest::FileRequest(nsIDOMWindow* aWindow)
+FileRequest::FileRequest(nsPIDOMWindow* aWindow)
   : DOMRequest(aWindow)
 {
   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
@@ -30,7 +30,7 @@ FileRequest::~FileRequest()
 
 // static
 already_AddRefed<FileRequest>
-FileRequest::Create(nsIDOMWindow* aOwner,
+FileRequest::Create(nsPIDOMWindow* aOwner,
                     LockedFile* aLockedFile,
                     bool aIsFileRequest)
 {
@@ -84,7 +84,7 @@ FileRequest::NotifyHelperCompleted(FileHelper* aFileHelper)
 
   JSAutoCompartment ac(cx, global);
 
-  rv = aFileHelper->GetSuccessResult(cx, result.address());
+  rv = aFileHelper->GetSuccessResult(cx, &result);
   if (NS_FAILED(rv)) {
     NS_WARNING("GetSuccessResult failed!");
   }

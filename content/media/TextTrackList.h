@@ -38,8 +38,8 @@ public:
     return mTextTracks.Length();
   }
 
-  // Time is in seconds.
-  void Update(double aTime);
+  // Get all the current active cues.
+  void GetAllActiveCues(nsTArray<nsRefPtr<TextTrackCue> >& aCues);
 
   TextTrack* IndexedGetter(uint32_t aIndex, bool& aFound);
 
@@ -56,8 +56,10 @@ public:
   void RemoveTextTrack(TextTrack* aTrack);
   void DidSeek();
 
-  nsresult DispatchTrackEvent(TrackEvent* aEvent);
+  nsresult DispatchTrackEvent(nsIDOMEvent* aEvent);
+  void CreateAndDispatchChangeEvent();
 
+  IMPL_EVENT_HANDLER(change)
   IMPL_EVENT_HANDLER(addtrack)
   IMPL_EVENT_HANDLER(removetrack)
 

@@ -22,6 +22,8 @@
 
     <style name="Widget.BaseTextView" parent="android:style/Widget.TextView"/>
 
+    <style name="Widget.ProgressBar.Horizontal" parent="android:style/Widget.ProgressBar.Horizontal"/>
+
     <!--
         Application styles. All customizations that are not specific
         to a particular API level can go here.
@@ -74,23 +76,27 @@
         <item name="android:minWidth">@dimen/doorhanger_input_width</item>
     </style>
 
+    <style name="Widget.GeckoMenuListView" parent="Widget.ListView">
+        <item name="android:divider">#FFC9D3DC</item>
+    </style>
+
     <style name="Widget.MenuItemActionBar">
-        <item name="android:padding">@dimen/browser_toolbar_button_padding</item>
+        <item name="android:padding">8dip</item>
         <item name="android:background">@drawable/action_bar_button</item>
         <item name="android:scaleType">fitCenter</item>
+    </style>
+
+    <style name="Widget.MenuItemSecondaryActionBar">
+        <item name="android:padding">8dip</item>
+        <item name="android:background">@drawable/action_bar_button</item>
+        <item name="android:scaleType">centerInside</item>
     </style>
 
     <style name="Widget.MenuItemActionView">
         <item name="android:divider">@drawable/divider_vertical</item>
         <item name="android:showDividers">middle</item>
-        <item name="android:dividerPadding">12dip</item>
+        <item name="android:dividerPadding">0dip</item>
         <item name="android:gravity">left</item>
-    </style>
-
-    <style name="Widget.MenuItemShareActionButton">
-        <item name="android:padding">10dip</item>
-        <item name="android:background">@drawable/action_bar_button</item>
-        <item name="android:scaleType">centerInside</item>
     </style>
 
     <style name="Widget.MenuItemDefault">
@@ -103,32 +109,34 @@
         <item name="android:ellipsize">middle</item>
     </style>
 
-    <style name="Widget.TwoLinePageRow" />
+    <style name="Widget.TwoLineRow" />
 
-    <style name="Widget.TwoLinePageRow.Title">
-        <item name="android:textAppearance">@style/TextAppearance.Widget.TwoLinePageRow.Title</item>
+    <style name="Widget.TwoLineRow.PrimaryText">
+        <item name="android:textAppearance">@style/TextAppearance.Widget.TwoLineRow.PrimaryText</item>
         <item name="android:singleLine">true</item>
         <item name="android:ellipsize">none</item>
     </style>
 
-    <style name="Widget.TwoLinePageRow.Url">
-        <item name="android:textAppearance">@style/TextAppearance.Widget.TwoLinePageRow.Url</item>
+    <style name="Widget.TwoLineRow.SecondaryText">
+        <item name="android:textAppearance">@style/TextAppearance.Widget.TwoLineRow.SecondaryText</item>
         <item name="android:includeFontPadding">false</item>
         <item name="android:singleLine">true</item>
         <item name="android:ellipsize">middle</item>
     </style>
 
-    <style name="Widget.BookmarkFolderView" parent="Widget.TwoLinePageRow.Title">
+    <style name="Widget.BookmarkFolderView" parent="Widget.TwoLineRow.PrimaryText">
         <item name="android:paddingLeft">10dip</item>
         <item name="android:drawablePadding">10dip</item>
         <item name="android:drawableLeft">@drawable/bookmark_folder</item>
     </style>
 
-    <style name="Widget.TopSitesGridView" parent="Widget.GridView">
+    <style name="Widget.HomeGridView" parent="Widget.GridView">
         <item name="android:padding">7dp</item>
         <item name="android:horizontalSpacing">0dp</item>
         <item name="android:verticalSpacing">7dp</item>
     </style>
+
+    <style name="Widget.TopSitesGridView" parent="Widget.HomeGridView" />
 
     <style name="Widget.TopSitesGridItemView">
       <item name="android:layout_width">fill_parent</item>
@@ -137,7 +145,7 @@
       <item name="android:orientation">vertical</item>
     </style>
 
-    <style name="Widget.BookmarkItemView" parent="Widget.TwoLinePageRow"/>
+    <style name="Widget.BookmarkItemView" parent="Widget.TwoLineRow"/>
 
     <style name="Widget.BookmarksListView" parent="Widget.HomeListView"/>
 
@@ -203,14 +211,14 @@
         <item name="android:layout_width">fill_parent</item>
         <item name="android:layout_height">32dp</item>
         <item name="android:textAppearance">@style/TextAppearance.Widget.Home.PageTitle</item>
-        <item name="android:background">@drawable/home_page_title_background</item>
+        <item name="android:background">@drawable/home_panel_title_background</item>
         <item name="android:focusable">false</item>
         <item name="android:gravity">center|left</item>
         <item name="android:paddingLeft">10dip</item>
         <item name="android:paddingRight">10dip</item>
     </style>
 
-    <style name="Widget.Home.HistoryPageTitle" parent="Widget.Home.HistoryTabIndicator"/>
+    <style name="Widget.Home.HistoryPanelTitle" parent="Widget.Home.HistoryTabIndicator"/>
 
     <!--
         TextAppearance
@@ -311,11 +319,11 @@
         <item name="android:textSize">14sp</item>
     </style>
 
-    <style name="TextAppearance.Widget.TwoLinePageRow" />
+    <style name="TextAppearance.Widget.TwoLineRow" />
 
-    <style name="TextAppearance.Widget.TwoLinePageRow.Title" parent="TextAppearance.Medium"/>
+    <style name="TextAppearance.Widget.TwoLineRow.PrimaryText" parent="TextAppearance.Medium"/>
 
-    <style name="TextAppearance.Widget.TwoLinePageRow.Url" parent="TextAppearance.Micro">
+    <style name="TextAppearance.Widget.TwoLineRow.SecondaryText" parent="TextAppearance.Micro">
         <item name="android:textColor">?android:attr/textColorSecondary</item>
     </style>
 

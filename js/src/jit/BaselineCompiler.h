@@ -10,9 +10,9 @@
 #ifdef JS_ION
 
 #include "jit/FixedList.h"
-#if defined(JS_CPU_X86)
+#if defined(JS_CODEGEN_X86)
 # include "jit/x86/BaselineCompiler-x86.h"
-#elif defined(JS_CPU_X64)
+#elif defined(JS_CODEGEN_X64)
 # include "jit/x64/BaselineCompiler-x64.h"
 #else
 # include "jit/arm/BaselineCompiler-arm.h"
@@ -24,7 +24,6 @@ namespace jit {
 #define OPCODE_LIST(_)         \
     _(JSOP_NOP)                \
     _(JSOP_LABEL)              \
-    _(JSOP_NOTEARG)            \
     _(JSOP_POP)                \
     _(JSOP_POPN)               \
     _(JSOP_POPNV)              \
@@ -91,6 +90,7 @@ namespace jit {
     _(JSOP_INITELEM)           \
     _(JSOP_INITELEM_GETTER)    \
     _(JSOP_INITELEM_SETTER)    \
+    _(JSOP_MUTATEPROTO)        \
     _(JSOP_INITPROP)           \
     _(JSOP_INITPROP_GETTER)    \
     _(JSOP_INITPROP_SETTER)    \

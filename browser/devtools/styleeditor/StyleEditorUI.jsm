@@ -16,16 +16,16 @@ Cu.import("resource://gre/modules/PluralForm.jsm");
 Cu.import("resource://gre/modules/NetUtil.jsm");
 let promise = Cu.import("resource://gre/modules/commonjs/sdk/core/promise.js").Promise;
 Cu.import("resource:///modules/devtools/shared/event-emitter.js");
+Cu.import("resource:///modules/devtools/gDevTools.jsm");
 Cu.import("resource:///modules/devtools/StyleEditorUtil.jsm");
 Cu.import("resource:///modules/devtools/SplitView.jsm");
 Cu.import("resource:///modules/devtools/StyleSheetEditor.jsm");
 
+const require = Cu.import("resource://gre/modules/devtools/Loader.jsm", {}).devtools.require;
+const { PrefObserver, PREF_ORIG_SOURCES } = require("devtools/styleeditor/utils");
 
 const LOAD_ERROR = "error-load";
-
 const STYLE_EDITOR_TEMPLATE = "stylesheet";
-
-const PREF_ORIG_SOURCES = "devtools.styleeditor.source-maps-enabled";
 
 /**
  * StyleEditorUI is controls and builds the UI of the Style Editor, including
@@ -55,19 +55,14 @@ function StyleEditorUI(debuggee, target, panelDoc) {
   this.editors = [];
   this.selectedEditor = null;
 
+  this._updateSourcesLabel = this._updateSourcesLabel.bind(this);
   this._onStyleSheetCreated = this._onStyleSheetCreated.bind(this);
   this._onNewDocument = this._onNewDocument.bind(this);
   this._clear = this._clear.bind(this);
   this._onError = this._onError.bind(this);
 
-  this.createUI();
-
-  this._debuggee.getStyleSheets().then((styleSheets) => {
-    this._resetStyleSheetList(styleSheets);
-
-    this._target.on("will-navigate", this._clear);
-    this._target.on("navigate", this._onNewDocument);
-  })
+  this._prefObserver = new PrefObserver("devtools.styleeditor.");
+  this._prefObserver.on(PREF_ORIG_SOURCES, this._onNewDocument);
 }
 
 StyleEditorUI.prototype = {
@@ -76,8 +71,7 @@ StyleEditorUI.prototype = {
    *
    * @return boolean
    */
-  get isDirty()
-  {
+  get isDirty() {
     if (this._markedDirty === true) {
       return true;
     }
@@ -102,6 +96,24 @@ StyleEditorUI.prototype = {
   },
 
   /**
+   * Initiates the style editor ui creation and the inspector front to get
+   * reference to the walker.
+   */
+  initialize: function() {
+    let toolbox = gDevTools.getToolbox(this._target);
+    return toolbox.initInspector().then(() => {
+      this._walker = toolbox.walker;
+    }).then(() => this.createUI())
+      .then(() => this._debuggee.getStyleSheets())
+      .then((styleSheets) => {
+      this._resetStyleSheetList(styleSheets);
+
+      this._target.on("will-navigate", this._clear);
+      this._target.on("navigate", this._onNewDocument);
+    });
+  },
+
+  /**
    * Build the initial UI and wire buttons with event handlers.
    */
   createUI: function() {
@@ -116,6 +128,27 @@ StyleEditorUI.prototype = {
     wire(this._view.rootElement, ".style-editor-importButton", function onImport() {
       this._importFromFile(this._mockImportFile || null, this._window);
     }.bind(this));
+
+    this._contextMenu = this._panelDoc.getElementById("sidebar-context");
+    this._contextMenu.addEventListener("popupshowing",
+                                       this._updateSourcesLabel);
+
+    this._sourcesItem = this._panelDoc.getElementById("context-origsources");
+    this._sourcesItem.addEventListener("command",
+                                       this._toggleOrigSources);
+  },
+
+  /**
+   * Update text of context menu option to reflect whether we're showing
+   * original sources (e.g. Sass files) or not.
+   */
+  _updateSourcesLabel: function() {
+    let string = "showOriginalSources";
+    if (Services.prefs.getBoolPref(PREF_ORIG_SOURCES)) {
+      string = "showCSSSources";
+    }
+    this._sourcesItem.setAttribute("label", _(string + ".label"));
+    this._sourcesItem.setAttribute("accesskey", _(string + ".accesskey"));
   },
 
   /**
@@ -212,7 +245,8 @@ StyleEditorUI.prototype = {
    *         Optional if stylesheet is a new sheet created by user
    */
   _addStyleSheetEditor: function(styleSheet, file, isNew) {
-    let editor = new StyleSheetEditor(styleSheet, this._window, file, isNew);
+    let editor =
+      new StyleSheetEditor(styleSheet, this._window, file, isNew, this._walker);
 
     editor.on("property-change", this._summaryChange.bind(this, editor));
     editor.on("style-applied", this._summaryChange.bind(this, editor));
@@ -234,11 +268,10 @@ StyleEditorUI.prototype = {
    * @param {nsIWindow} parentWindow
    *        Optional parent window for the file picker.
    */
-  _importFromFile: function(file, parentWindow)
-  {
+  _importFromFile: function(file, parentWindow) {
     let onFileSelected = function(file) {
       if (!file) {
-        this.emit("error", LOAD_ERROR);
+        // nothing selected
         return;
       }
       NetUtil.asyncFetch(file, (stream, status) => {
@@ -280,6 +313,14 @@ StyleEditorUI.prototype = {
    */
   _onError: function(event, errorCode, message) {
     this.emit("error", errorCode, message);
+  },
+
+  /**
+   *  Toggle the original sources pref.
+   */
+  _toggleOrigSources: function() {
+    let isEnabled = Services.prefs.getBoolPref(PREF_ORIG_SOURCES);
+    Services.prefs.setBoolPref(PREF_ORIG_SOURCES, !isEnabled);
   },
 
   /**
@@ -378,8 +419,9 @@ StyleEditorUI.prototype = {
           this.switchToSelectedSheet();
         }
 
-        // If this is the first stylesheet, select it
-        if (!this.selectedEditor
+        // If this is the first stylesheet and there is no pending request to
+        // select a particular style sheet, select this sheet.
+        if (!this.selectedEditor && !this._styleSheetBoundToSelect
             && editor.styleSheet.styleSheetIndex == 0) {
           this._selectEditor(editor);
         }
@@ -411,6 +453,11 @@ StyleEditorUI.prototype = {
 
     for each (let editor in this.editors) {
       if (editor.styleSheet.href == sheet.href) {
+        // The _styleSheetBoundToSelect will always hold the latest pending
+        // requested style sheet (with line and column) which is not yet
+        // selected by the source editor. Only after we select that particular
+        // editor and go the required line and column, it will become null.
+        this._styleSheetBoundToSelect = this._styleSheetToSelect;
         this._selectEditor(editor, sheet.line, sheet.col);
         this._styleSheetToSelect = null;
         return;
@@ -434,6 +481,7 @@ StyleEditorUI.prototype = {
 
     editor.getSourceEditor().then(() => {
       editor.sourceEditor.setCursor({line: line, ch: col});
+      this._styleSheetBoundToSelect = null;
     });
 
     this.getEditorSummary(editor).then((summary) => {
@@ -472,32 +520,12 @@ StyleEditorUI.prototype = {
    * @param {Number} [col]
    *        Column to which the caret should be moved (zero-indexed).
    */
-  selectStyleSheet: function(href, line, col)
-  {
-    let alreadyCalled = !!this._styleSheetToSelect;
-    let originalHref;
-
-    if (alreadyCalled) {
-      originalHref = this._styleSheetToSelect.href;
-    }
-
+  selectStyleSheet: function(href, line, col) {
     this._styleSheetToSelect = {
       href: href,
       line: line,
       col: col,
     };
-
-    if (alreadyCalled) {
-      // Just switch to the correct line and columns if the editor is already
-      // selected for the requested stylesheet.
-      for each (let editor in this.editors) {
-        if (editor.styleSheet.href == originalHref) {
-          editor.sourceEditor.setCursor({line: line, ch: col})
-          break;
-        }
-      }
-      return;
-    }
 
     /* Switch to the editor for this sheet, if it exists yet.
        Otherwise each editor will be checked when it's created. */
@@ -554,5 +582,8 @@ StyleEditorUI.prototype = {
 
   destroy: function() {
     this._clearStyleSheetEditors();
+
+    this._prefObserver.off(PREF_ORIG_SOURCES, this._onNewDocument);
+    this._prefObserver.destroy();
   }
 }

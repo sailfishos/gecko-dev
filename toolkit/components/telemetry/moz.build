@@ -8,7 +8,6 @@ TEST_DIRS += ['tests']
 
 XPIDL_SOURCES += [
     'nsITelemetry.idl',
-    'nsITelemetryPing.idl',
 ]
 
 XPIDL_MODULE = 'telemetry'
@@ -24,17 +23,18 @@ SOURCES += [
 ]
 
 EXTRA_COMPONENTS += [
-    'TelemetryPing.manifest',
-]
-
-EXTRA_PP_COMPONENTS += [
-    'TelemetryPing.js',
+    'TelemetryStartup.js',
+    'TelemetryStartup.manifest'
 ]
 
 EXTRA_JS_MODULES += [
     'TelemetryFile.jsm',
     'TelemetryStopwatch.jsm',
     'ThirdPartyCookieProbe.jsm',
+]
+
+EXTRA_PP_JS_MODULES += [
+    'TelemetryPing.jsm',
     'UITelemetry.jsm',
 ]
 

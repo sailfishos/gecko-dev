@@ -20,10 +20,14 @@
 
 #include "ds/LifoAlloc.h"
 #include "gc/Nursery.h"
+#include "js/MemoryMetrics.h"
 #include "js/Tracer.h"
 
 namespace js {
 namespace gc {
+
+extern void
+CrashAtUnhandlableOOM(const char *);
 
 /*
  * BufferableRef represents an abstract reference for use in the generational
@@ -84,16 +88,13 @@ class StoreBuffer
      * type of edge: e.g. Value or Cell*.
      */
     template<typename T>
-    class MonoTypeBuffer
+    struct MonoTypeBuffer
     {
-        friend class StoreBuffer;
-
         LifoAlloc *storage_;
+        size_t usedAtLastCompact_;
 
-        explicit MonoTypeBuffer() : storage_(nullptr) {}
+        explicit MonoTypeBuffer() : storage_(nullptr), usedAtLastCompact_(0) {}
         ~MonoTypeBuffer() { js_delete(storage_); }
-
-        MonoTypeBuffer &operator=(const MonoTypeBuffer& other) MOZ_DELETE;
 
         bool init() {
             if (!storage_)
@@ -107,6 +108,7 @@ class StoreBuffer
                 return;
 
             storage_->used() ? storage_->releaseAll() : storage_->freeAll();
+            usedAtLastCompact_ = 0;
         }
 
         bool isAboutToOverflow() const {
@@ -122,13 +124,16 @@ class StoreBuffer
          */
         virtual void compact(StoreBuffer *owner);
 
+        /* Compacts if any entries have been added since the last compaction. */
+        void maybeCompact(StoreBuffer *owner);
+
         /* Add one item to the buffer. */
         void put(StoreBuffer *owner, const T &t) {
             JS_ASSERT(storage_);
 
             T *tp = storage_->new_<T>(t);
             if (!tp)
-                MOZ_CRASH();
+                CrashAtUnhandlableOOM("Failed to allocate for MonoTypeBuffer::put.");
 
             if (isAboutToOverflow()) {
                 compact(owner);
@@ -139,6 +144,13 @@ class StoreBuffer
 
         /* Mark the source of all edges in the store buffer. */
         void mark(StoreBuffer *owner, JSTracer *trc);
+
+        size_t sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf) {
+            return storage_ ? storage_->sizeOfIncludingThis(mallocSizeOf) : 0;
+        }
+
+      private:
+        MonoTypeBuffer &operator=(const MonoTypeBuffer& other) MOZ_DELETE;
     };
 
     /*
@@ -146,10 +158,8 @@ class StoreBuffer
      * memory outside of the GC's control.
      */
     template <typename T>
-    class RelocatableMonoTypeBuffer : public MonoTypeBuffer<T>
+    struct RelocatableMonoTypeBuffer : public MonoTypeBuffer<T>
     {
-        friend class StoreBuffer;
-
         /* Override compaction to filter out removed items. */
         void compactMoved(StoreBuffer *owner);
         virtual void compact(StoreBuffer *owner) MOZ_OVERRIDE;
@@ -160,16 +170,12 @@ class StoreBuffer
         }
     };
 
-    class GenericBuffer
+    struct GenericBuffer
     {
-        friend class StoreBuffer;
-
         LifoAlloc *storage_;
 
         explicit GenericBuffer() : storage_(nullptr) {}
         ~GenericBuffer() { js_delete(storage_); }
-
-        GenericBuffer &operator=(const GenericBuffer& other) MOZ_DELETE;
 
         bool init() {
             if (!storage_)
@@ -202,24 +208,27 @@ class StoreBuffer
             unsigned size = sizeof(T);
             unsigned *sizep = storage_->newPod<unsigned>();
             if (!sizep)
-                MOZ_CRASH();
+                CrashAtUnhandlableOOM("Failed to allocate for GenericBuffer::put.");
             *sizep = size;
 
             T *tp = storage_->new_<T>(t);
             if (!tp)
-                MOZ_CRASH();
+                CrashAtUnhandlableOOM("Failed to allocate for GenericBuffer::put.");
 
             if (isAboutToOverflow())
                 owner->setAboutToOverflow();
         }
+
+        size_t sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf) {
+            return storage_ ? storage_->sizeOfIncludingThis(mallocSizeOf) : 0;
+        }
+
+      private:
+        GenericBuffer &operator=(const GenericBuffer& other) MOZ_DELETE;
     };
 
-    class CellPtrEdge
+    struct CellPtrEdge
     {
-        friend class StoreBuffer;
-        friend class StoreBuffer::MonoTypeBuffer<CellPtrEdge>;
-        friend class StoreBuffer::RelocatableMonoTypeBuffer<CellPtrEdge>;
-
         Cell **edge;
 
         explicit CellPtrEdge(Cell **v) : edge(v) {}
@@ -243,12 +252,8 @@ class StoreBuffer
         bool isTagged() const { return bool(uintptr_t(edge) & 1); }
     };
 
-    class ValueEdge
+    struct ValueEdge
     {
-        friend class StoreBuffer;
-        friend class StoreBuffer::MonoTypeBuffer<ValueEdge>;
-        friend class StoreBuffer::RelocatableMonoTypeBuffer<ValueEdge>;
-
         JS::Value *edge;
 
         explicit ValueEdge(JS::Value *v) : edge(v) {}
@@ -275,9 +280,6 @@ class StoreBuffer
 
     struct SlotEdge
     {
-        friend class StoreBuffer;
-        friend class StoreBuffer::MonoTypeBuffer<SlotEdge>;
-
         JSObject *object;
         uint32_t offset;
         int kind; // this is really just HeapSlot::Kind, but we can't see that type easily here
@@ -294,21 +296,18 @@ class StoreBuffer
             return object != other.object || offset != other.offset || kind != other.kind;
         }
 
-        JS_ALWAYS_INLINE HeapSlot *slotLocation() const;
+        MOZ_ALWAYS_INLINE HeapSlot *slotLocation() const;
 
-        JS_ALWAYS_INLINE void *deref() const;
-        JS_ALWAYS_INLINE void *location() const;
+        MOZ_ALWAYS_INLINE void *deref() const;
+        MOZ_ALWAYS_INLINE void *location() const;
         bool inRememberedSet(const Nursery &nursery) const;
-        JS_ALWAYS_INLINE bool isNullEdge() const;
+        MOZ_ALWAYS_INLINE bool isNullEdge() const;
 
         void mark(JSTracer *trc);
     };
 
-    class WholeCellEdges
+    struct WholeCellEdges
     {
-        friend class StoreBuffer;
-        friend class StoreBuffer::MonoTypeBuffer<WholeCellEdges>;
-
         Cell *tenured;
 
         WholeCellEdges(Cell *cell) : tenured(cell) {
@@ -328,12 +327,12 @@ class StoreBuffer
         void mark(JSTracer *trc);
     };
 
-    class CallbackRef : public BufferableRef
+    template <typename Key>
+    struct CallbackRef : public BufferableRef
     {
-      public:
-        typedef void (*MarkCallback)(JSTracer *trc, void *key, void *data);
+        typedef void (*MarkCallback)(JSTracer *trc, Key *key, void *data);
 
-        CallbackRef(MarkCallback cb, void *k, void *d) : callback(cb), key(k), data(d) {}
+        CallbackRef(MarkCallback cb, Key *k, void *d) : callback(cb), key(k), data(d) {}
 
         virtual void mark(JSTracer *trc) {
             callback(trc, key, data);
@@ -341,7 +340,7 @@ class StoreBuffer
 
       private:
         MarkCallback callback;
-        void *key;
+        Key *key;
         void *data;
     };
 
@@ -438,19 +437,28 @@ class StoreBuffer
     void putGeneric(const T &t) { put(bufferGeneric, t);}
 
     /* Insert or update a callback entry. */
-    void putCallback(CallbackRef::MarkCallback callback, Cell *key, void *data) {
-        put(bufferGeneric, CallbackRef(callback, key, data));
+    template <typename Key>
+    void putCallback(void (*callback)(JSTracer *trc, Key *key, void *data), Key *key, void *data) {
+        put(bufferGeneric, CallbackRef<Key>(callback, key, data));
     }
 
-    /* Mark the source of all edges in the store buffer. */
-    void mark(JSTracer *trc);
+    /* Methods to mark the source of all edges in the store buffer. */
+    void markAll(JSTracer *trc);
+    void markValues(JSTracer *trc)            { bufferVal.mark(this, trc); }
+    void markCells(JSTracer *trc)             { bufferCell.mark(this, trc); }
+    void markSlots(JSTracer *trc)             { bufferSlot.mark(this, trc); }
+    void markWholeCells(JSTracer *trc)        { bufferWholeCell.mark(this, trc); }
+    void markRelocatableValues(JSTracer *trc) { bufferRelocVal.mark(this, trc); }
+    void markRelocatableCells(JSTracer *trc)  { bufferRelocCell.mark(this, trc); }
+    void markGenericEntries(JSTracer *trc)    { bufferGeneric.mark(this, trc); }
 
     /* We cannot call InParallelSection directly because of a circular dependency. */
     bool inParallelSection() const;
 
     /* For use by our owned buffers and for testing. */
     void setAboutToOverflow();
-    void setOverflowed();
+
+    void addSizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf, JS::GCSizes *sizes);
 };
 
 } /* namespace gc */

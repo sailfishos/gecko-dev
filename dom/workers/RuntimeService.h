@@ -96,14 +96,11 @@ private:
   // Only used on the main thread.
   nsCOMPtr<nsITimer> mIdleThreadTimer;
 
-  nsCString mDetectorName;
-  nsCString mSystemCharset;
-
   static JSSettings sDefaultJSSettings;
   static bool sDefaultPreferences[WORKERPREF_COUNT];
 
 public:
-  struct NavigatorStrings
+  struct NavigatorProperties
   {
     nsString mAppName;
     nsString mAppVersion;
@@ -112,12 +109,12 @@ public:
   };
 
 private:
-  NavigatorStrings mNavigatorStrings;
+  NavigatorProperties mNavigatorProperties;
 
   // True when the observer service holds a reference to this object.
   bool mObserved;
   bool mShuttingDown;
-  bool mNavigatorStringsLoaded;
+  bool mNavigatorPropertiesLoaded;
 
 public:
   NS_DECL_ISUPPORTS
@@ -153,22 +150,10 @@ public:
   void
   ForgetSharedWorker(WorkerPrivate* aWorkerPrivate);
 
-  const nsACString&
-  GetDetectorName() const
+  const NavigatorProperties&
+  GetNavigatorProperties() const
   {
-    return mDetectorName;
-  }
-
-  const nsACString&
-  GetSystemCharset() const
-  {
-    return mSystemCharset;
-  }
-
-  const NavigatorStrings&
-  GetNavigatorStrings() const
-  {
-    return mNavigatorStrings;
+    return mNavigatorProperties;
   }
 
   void
@@ -238,21 +223,14 @@ public:
   UpdateAllWorkerGCZeal();
 #endif
 
-  static void
-  SetDefaultJITHardening(bool aJITHardening)
-  {
-    AssertIsOnMainThread();
-    sDefaultJSSettings.jitHardening = aJITHardening;
-  }
-
-  void
-  UpdateAllWorkerJITHardening(bool aJITHardening);
-
   void
   GarbageCollectAllWorkers(bool aShrinking);
 
   void
   CycleCollectAllWorkers();
+
+  void
+  SendOfflineStatusChangeEventToAllWorkers(bool aIsOffline);
 
 private:
   RuntimeService();

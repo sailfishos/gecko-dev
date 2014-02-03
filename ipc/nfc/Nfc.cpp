@@ -12,12 +12,12 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
-#undef LOG
+#undef CHROMIUM_LOG
 #if (defined(MOZ_WIDGET_GONK) && defined(DEBUG))
 #include <android/log.h>
-#define LOG(args...)  __android_log_print(ANDROID_LOG_INFO, "Gonk", args)
+#define CHROMIUM_LOG(args...)  __android_log_print(ANDROID_LOG_INFO, "Gonk", args)
 #else
-#define LOG(args...)
+#define CHROMIUM_LOG(args...)
 #endif
 
 #include "jsfriendapi.h"
@@ -134,7 +134,7 @@ ConnectWorkerToNFC::RunTask(JSContext* aCx)
     // communication.
     NS_ASSERTION(!NS_IsMainThread(), "Expecting to be on the worker thread");
     NS_ASSERTION(!JS_IsRunning(aCx), "Are we being called somehow?");
-    JSObject* workerGlobal = JS::CurrentGlobalOrNull(aCx);
+    JS::Rooted<JSObject*> workerGlobal(aCx, JS::CurrentGlobalOrNull(aCx));
 
     return !!JS_DefineFunction(aCx, workerGlobal,
                                "postNfcMessage", PostToNFC, 1, 0);
@@ -241,7 +241,7 @@ NfcConnector::CreateAddr(bool aIsServer,
     case AF_INET:
         aAddr.in.sin_family = af;
         aAddr.in.sin_port = htons(NFC_TEST_PORT);
-        aAddr.in.sin_addr.s_addr = htons(INADDR_LOOPBACK);
+        aAddr.in.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
         aAddrSize = sizeof(sockaddr_in);
         break;
     default:
@@ -328,20 +328,20 @@ void
 NfcConsumer::OnConnectSuccess()
 {
     // Nothing to do here.
-    LOG("NFC: %s\n", __FUNCTION__);
+    CHROMIUM_LOG("NFC: %s\n", __FUNCTION__);
 }
 
 void
 NfcConsumer::OnConnectError()
 {
-    LOG("NFC: %s\n", __FUNCTION__);
+    CHROMIUM_LOG("NFC: %s\n", __FUNCTION__);
     CloseSocket();
 }
 
 void
 NfcConsumer::OnDisconnect()
 {
-    LOG("NFC: %s\n", __FUNCTION__);
+    CHROMIUM_LOG("NFC: %s\n", __FUNCTION__);
     if (!mShutdown) {
         ConnectSocket(new NfcConnector(), mAddress.get(), 1000);
     }

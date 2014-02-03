@@ -33,6 +33,9 @@ pref("extensions.strictCompatibility", false);
 // Specifies a minimum maxVersion an addon needs to say it's compatible with
 // for it to be compatible by default.
 pref("extensions.minCompatibleAppVersion", "4.0");
+// Temporary preference to forcibly make themes more safe with Australis even if
+// extensions.checkCompatibility=false has been set.
+pref("extensions.checkCompatibility.temporaryThemeOverride_minAppVersion", "29.0a1");
 
 // Preferences for AMO integration
 pref("extensions.getAddons.cache.enabled", true);
@@ -790,19 +793,18 @@ pref("browser.safebrowsing.enabled", true);
 pref("browser.safebrowsing.malware.enabled", true);
 pref("browser.safebrowsing.debug", false);
 
-pref("browser.safebrowsing.updateURL", "http://safebrowsing.clients.google.com/safebrowsing/downloads?client=SAFEBROWSING_ID&appver=%VERSION%&pver=2.2&apikey=%GOOGLE_API_KEY%");
-pref("browser.safebrowsing.keyURL", "https://sb-ssl.google.com/safebrowsing/newkey?client=SAFEBROWSING_ID&appver=%VERSION%&pver=2.2");
-pref("browser.safebrowsing.gethashURL", "http://safebrowsing.clients.google.com/safebrowsing/gethash?client=SAFEBROWSING_ID&appver=%VERSION%&pver=2.2");
-pref("browser.safebrowsing.reportURL", "http://safebrowsing.clients.google.com/safebrowsing/report?");
+pref("browser.safebrowsing.updateURL", "https://safebrowsing.google.com/safebrowsing/downloads?client=SAFEBROWSING_ID&appver=%VERSION%&pver=2.2&key=%GOOGLE_API_KEY%");
+pref("browser.safebrowsing.gethashURL", "https://safebrowsing.google.com/safebrowsing/gethash?client=SAFEBROWSING_ID&appver=%VERSION%&pver=2.2");
+pref("browser.safebrowsing.reportURL", "https://safebrowsing.google.com/safebrowsing/report?");
 pref("browser.safebrowsing.reportGenericURL", "http://%LOCALE%.phish-generic.mozilla.com/?hl=%LOCALE%");
 pref("browser.safebrowsing.reportErrorURL", "http://%LOCALE%.phish-error.mozilla.com/?hl=%LOCALE%");
 pref("browser.safebrowsing.reportPhishURL", "http://%LOCALE%.phish-report.mozilla.com/?hl=%LOCALE%");
 pref("browser.safebrowsing.reportMalwareURL", "http://%LOCALE%.malware-report.mozilla.com/?hl=%LOCALE%");
 pref("browser.safebrowsing.reportMalwareErrorURL", "http://%LOCALE%.malware-error.mozilla.com/?hl=%LOCALE%");
 
-pref("browser.safebrowsing.malware.reportURL", "http://safebrowsing.clients.google.com/safebrowsing/diagnostic?client=%NAME%&hl=%LOCALE%&site=");
+pref("browser.safebrowsing.malware.reportURL", "https://safebrowsing.google.com/safebrowsing/diagnostic?client=%NAME%&hl=%LOCALE%&site=");
 #ifndef MOZILLA_OFFICIAL
-pref("browser.safebrowsing.appRepURL", "https://sb-ssl.google.com/safebrowsing/clientreport/download&apikey=%GOOGLE_API_KEY%");
+pref("browser.safebrowsing.appRepURL", "https://sb-ssl.google.com/safebrowsing/clientreport/download&key=%GOOGLE_API_KEY%");
 #endif
 
 #ifdef MOZILLA_OFFICIAL
@@ -843,9 +845,6 @@ pref("browser.sessionstore.resume_session_once", false);
 
 // minimal interval between two save operations in milliseconds
 pref("browser.sessionstore.interval", 15000);
-// maximum amount of POSTDATA to be saved in bytes per history entry (-1 = all of it)
-// (NB: POSTDATA will be saved either entirely or not at all)
-pref("browser.sessionstore.postdata", 0);
 // on which sites to save text data, POSTDATA and cookies
 // 0 = everywhere, 1 = unencrypted sites, 2 = nowhere
 pref("browser.sessionstore.privacy_level", 0);
@@ -875,8 +874,6 @@ pref("browser.sessionstore.restore_pinned_tabs_on_demand", false);
 pref("browser.sessionstore.upgradeBackup.latestBuildID", "");
 // End-users should not run sessionstore in debug mode
 pref("browser.sessionstore.debug", false);
-// Enable asynchronous data collection by default.
-pref("browser.sessionstore.async", true);
 
 // allow META refresh by default
 pref("accessibility.blockautorefresh", false);
@@ -1121,6 +1118,8 @@ pref("devtools.debugger.pause-on-exceptions", false);
 pref("devtools.debugger.ignore-caught-exceptions", true);
 pref("devtools.debugger.source-maps-enabled", true);
 pref("devtools.debugger.pretty-print-enabled", true);
+pref("devtools.debugger.auto-pretty-print", true);
+pref("devtools.debugger.tracer", false);
 
 // The default Debugger UI settings
 pref("devtools.debugger.ui.panes-sources-width", 200);
@@ -1148,14 +1147,21 @@ pref("devtools.tilt.enabled", true);
 pref("devtools.tilt.intro_transition", true);
 pref("devtools.tilt.outro_transition", true);
 
-// The maximum number of recently-opened files stored.
-// Setting this preference to 0 will not clear any recent files, but rather hide
-// the 'Open Recent'-menu.
+// Scratchpad settings
+// - recentFileMax: The maximum number of recently-opened files
+//                  stored. Setting this preference to 0 will not
+//                  clear any recent files, but rather hide the
+//                  'Open Recent'-menu.
+// - showTrailingSpace: Whether to highlight trailing space or not.
+// - enableCodeFolding: Whether to enable code folding or not.
 pref("devtools.scratchpad.recentFilesMax", 10);
+pref("devtools.scratchpad.showTrailingSpace", false);
+pref("devtools.scratchpad.enableCodeFolding", true);
 
 // Enable the Style Editor.
 pref("devtools.styleeditor.enabled", true);
 pref("devtools.styleeditor.source-maps-enabled", false);
+pref("devtools.styleeditor.autocompletion-enabled", true);
 
 // Enable the Shader Editor.
 pref("devtools.shadereditor.enabled", false);
@@ -1229,8 +1235,10 @@ pref("devtools.hud.loglimit.console", 200);
 // The developer tools editor configuration:
 // - tabsize: how many spaces to use when a Tab character is displayed.
 // - expandtab: expand Tab characters to spaces.
+// - keymap: which keymap to use (can be 'default', 'emacs' or 'vim')
 pref("devtools.editor.tabsize", 4);
 pref("devtools.editor.expandtab", true);
+pref("devtools.editor.keymap", "default");
 
 // Enable the Font Inspector
 pref("devtools.fontinspector.enabled", true);
@@ -1304,8 +1312,6 @@ pref("social.manifest.facebook", "{\"origin\":\"https://www.facebook.com\",\"nam
 pref("social.sidebar.open", true);
 pref("social.sidebar.unload_timeout_ms", 10000);
 
-pref("social.allowMultipleWorkers", true);
-
 pref("dom.identity.enabled", false);
 
 // Turn on the CSP 1.0 parser for Content Security Policy headers
@@ -1313,7 +1319,6 @@ pref("security.csp.speccompliant", true);
 
 // Block insecure active content on https pages
 pref("security.mixed_content.block_active_content", true);
-
 
 // Override the Gecko-default value of false for Firefox.
 pref("plain_text.wrap_long_lines", true);
@@ -1332,5 +1337,14 @@ pref("network.disable.ipc.security", true);
 // CustomizableUI debug logging.
 pref("browser.uiCustomization.debug", false);
 
+// The URL where remote content that composes the UI for Firefox Accounts should
+// be fetched. Must use HTTPS.
+pref("identity.fxaccounts.remote.uri", "https://accounts.firefox.com/?service=sync&context=fx_desktop_v1");
+
+// The URL we take the user to when they opt to "manage" their Firefox Account.
+// Note that this will always need to be in the same TLD as the
+// "identity.fxaccounts.remote.uri" pref.
+pref("identity.fxaccounts.settings.uri", "https://accounts.firefox.com/settings");
+
 // The URL of the Firefox Accounts auth server backend
-pref("identity.fxaccounts.auth.uri", "https://api-accounts.dev.lcip.org/v1");
+pref("identity.fxaccounts.auth.uri", "https://api.accounts.firefox.com/v1");

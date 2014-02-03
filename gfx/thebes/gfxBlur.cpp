@@ -65,13 +65,13 @@ gfxAlphaBoxBlur::Init(const gfxRect& aRect,
     mozilla::RefPtr<DrawTarget> dt =
         gfxPlatform::GetPlatform()->CreateDrawTargetForData(mData, size,
                                                             mBlur->GetStride(),
-                                                            FORMAT_A8);
+                                                            SurfaceFormat::A8);
     if (!dt) {
         nsRefPtr<gfxImageSurface> image =
             new gfxImageSurface(mData,
                                 gfxIntSize(size.width, size.height),
                                 mBlur->GetStride(),
-                                gfxImageFormatA8);
+                                gfxImageFormat::A8);
         dt = Factory::CreateDrawTargetForCairoSurface(image->CairoSurface(), size);
         if (!dt) {
             return nullptr;
@@ -99,7 +99,7 @@ gfxAlphaBoxBlur::Paint(gfxContext* aDestinationCtx)
 
     DrawTarget *dest = aDestinationCtx->GetDrawTarget();
     if (!dest) {
-      NS_ERROR("Blurring not supported for Thebes contexts!");
+      NS_WARNING("Blurring not supported for Thebes contexts!");
       return;
     }
 
@@ -107,7 +107,7 @@ gfxAlphaBoxBlur::Paint(gfxContext* aDestinationCtx)
       = dest->CreateSourceSurfaceFromData(mData,
                                           mBlur->GetSize(),
                                           mBlur->GetStride(),
-                                          FORMAT_A8);
+                                          SurfaceFormat::A8);
     if (!mask) {
       NS_ERROR("Failed to create mask!");
       return;

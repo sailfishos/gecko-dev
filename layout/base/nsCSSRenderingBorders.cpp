@@ -1073,8 +1073,8 @@ nsCSSBorderRenderer::CreateCornerGradient(mozilla::css::Corner aCorner,
   float gradientOffset;
   
   if (mContext->IsCairo() &&
-      (mContext->OriginalSurface()->GetType() == gfxSurfaceTypeD2D ||
-       mContext->OriginalSurface()->GetType() == gfxSurfaceTypeQuartz))
+      (mContext->OriginalSurface()->GetType() == gfxSurfaceType::D2D ||
+       mContext->OriginalSurface()->GetType() == gfxSurfaceType::Quartz))
   {
     // On quarz this doesn't do exactly the right thing, but it does do what
     // most other browsers do and doing the 'right' thing seems to be
@@ -1142,7 +1142,7 @@ nsCSSBorderRenderer::CreateCornerGradient(mozilla::css::Corner aCorner,
   rawStops[1].color = secondColor;
   rawStops[1].offset = 0.5;
   RefPtr<GradientStops> gs =
-    gfxGradientCache::GetGradientStops(aDT, rawStops, EXTEND_CLAMP);
+    gfxGradientCache::GetGradientStops(aDT, rawStops, ExtendMode::CLAMP);
   if (!gs) {
     // Having two corners, both with reversed color stops is pretty common
     // for certain border types. Let's optimize it!
@@ -1151,7 +1151,7 @@ nsCSSBorderRenderer::CreateCornerGradient(mozilla::css::Corner aCorner,
     Point tmp = aPoint1;
     aPoint1 = aPoint2;
     aPoint2 = tmp;
-    gs = gfxGradientCache::GetOrCreateGradientStops(aDT, rawStops, EXTEND_CLAMP);
+    gs = gfxGradientCache::GetOrCreateGradientStops(aDT, rawStops, ExtendMode::CLAMP);
   }
   return gs;
 }

@@ -134,7 +134,7 @@ TokenStream::SourceCoords::SourceCoords(ExclusiveContext *cx, uint32_t ln)
     lineStartOffsets_.infallibleAppend(maxPtr);
 }
 
-JS_ALWAYS_INLINE void
+MOZ_ALWAYS_INLINE void
 TokenStream::SourceCoords::add(uint32_t lineNum, uint32_t lineStartOffset)
 {
     uint32_t lineIndex = lineNumToIndex(lineNum);
@@ -160,7 +160,7 @@ TokenStream::SourceCoords::add(uint32_t lineNum, uint32_t lineStartOffset)
     }
 }
 
-JS_ALWAYS_INLINE void
+MOZ_ALWAYS_INLINE void
 TokenStream::SourceCoords::fill(const TokenStream::SourceCoords &other)
 {
     JS_ASSERT(lineStartOffsets_.back() == MAX_PTR);
@@ -176,7 +176,7 @@ TokenStream::SourceCoords::fill(const TokenStream::SourceCoords &other)
         (void)lineStartOffsets_.append(other.lineStartOffsets_[i]);
 }
 
-JS_ALWAYS_INLINE uint32_t
+MOZ_ALWAYS_INLINE uint32_t
 TokenStream::SourceCoords::lineIndexOf(uint32_t offset) const
 {
     uint32_t iMin, iMax, iMid;
@@ -273,7 +273,7 @@ TokenStream::TokenStream(ExclusiveContext *cx, const ReadOnlyCompileOptions &opt
     prevLinebase(nullptr),
     userbuf(cx, base - options.column, length + options.column), // See comment below
     filename(options.filename()),
-    sourceURL_(nullptr),
+    displayURL_(nullptr),
     sourceMapURL_(nullptr),
     tokenbuf(cx),
     cx(cx),
@@ -333,7 +333,7 @@ TokenStream::TokenStream(ExclusiveContext *cx, const ReadOnlyCompileOptions &opt
 
 TokenStream::~TokenStream()
 {
-    js_free(sourceURL_);
+    js_free(displayURL_);
     js_free(sourceMapURL_);
 
     JS_ASSERT_IF(originPrincipals, originPrincipals->refcount);
@@ -348,7 +348,7 @@ TokenStream::~TokenStream()
 # define fast_getc getc
 #endif
 
-JS_ALWAYS_INLINE void
+MOZ_ALWAYS_INLINE void
 TokenStream::updateLineInfoForEOL()
 {
     prevLinebase = linebase;
@@ -357,7 +357,7 @@ TokenStream::updateLineInfoForEOL()
     srcCoords.add(lineno, linebase - userbuf.base());
 }
 
-JS_ALWAYS_INLINE void
+MOZ_ALWAYS_INLINE void
 TokenStream::updateFlagsForEOL()
 {
     flags.isDirtyLine = false;
@@ -368,7 +368,7 @@ int32_t
 TokenStream::getChar()
 {
     int32_t c;
-    if (JS_LIKELY(userbuf.hasRawChars())) {
+    if (MOZ_LIKELY(userbuf.hasRawChars())) {
         c = userbuf.getRawChar();
 
         // Normalize the jschar if it was a newline.  We need to detect any of
@@ -384,7 +384,7 @@ TokenStream::getChar()
         // the 13th bit of d into the lookup, but that requires extra shifting
         // and masking and isn't worthwhile.  See TokenStream::TokenStream()
         // for the initialization of the relevant entries in the table.
-        if (JS_UNLIKELY(maybeEOL[c & 0xff])) {
+        if (MOZ_UNLIKELY(maybeEOL[c & 0xff])) {
             if (c == '\n')
                 goto eol;
             if (c == '\r') {
@@ -415,7 +415,7 @@ TokenStream::getChar()
 int32_t
 TokenStream::getCharIgnoreEOL()
 {
-    if (JS_LIKELY(userbuf.hasRawChars()))
+    if (MOZ_LIKELY(userbuf.hasRawChars()))
         return userbuf.getRawChar();
 
     flags.isEOF = true;
@@ -808,7 +808,7 @@ TokenStream::getDirectives(bool isMultiline, bool shouldWarnDeprecated)
     // comment. To avoid potentially expensive lookahead and backtracking, we
     // only check for this case if we encounter a '#' character.
 
-    if (!getSourceURL(isMultiline, shouldWarnDeprecated))
+    if (!getDisplayURL(isMultiline, shouldWarnDeprecated))
         return false;
     if (!getSourceMappingURL(isMultiline, shouldWarnDeprecated))
         return false;
@@ -864,13 +864,18 @@ TokenStream::getDirective(bool isMultiline, bool shouldWarnDeprecated,
 }
 
 bool
-TokenStream::getSourceURL(bool isMultiline, bool shouldWarnDeprecated)
+TokenStream::getDisplayURL(bool isMultiline, bool shouldWarnDeprecated)
 {
     // Match comments of the form "//# sourceURL=<url>" or
     // "/\* //# sourceURL=<url> *\/"
+    //
+    // Note that while these are labeled "sourceURL" in the source text,
+    // internally we refer to it as a "displayURL" to distinguish what the
+    // developer would like to refer to the source as from the source's actual
+    // URL.
 
     return getDirective(isMultiline, shouldWarnDeprecated, " sourceURL=", 11,
-                        "sourceURL", &sourceURL_);
+                        "sourceURL", &displayURL_);
 }
 
 bool
@@ -883,7 +888,7 @@ TokenStream::getSourceMappingURL(bool isMultiline, bool shouldWarnDeprecated)
                         "sourceMappingURL", &sourceMapURL_);
 }
 
-JS_ALWAYS_INLINE Token *
+MOZ_ALWAYS_INLINE Token *
 TokenStream::newToken(ptrdiff_t adjust)
 {
     cursor = (cursor + 1) & ntokensMask;
@@ -896,7 +901,7 @@ TokenStream::newToken(ptrdiff_t adjust)
     return tp;
 }
 
-JS_ALWAYS_INLINE JSAtom *
+MOZ_ALWAYS_INLINE JSAtom *
 TokenStream::atomize(ExclusiveContext *cx, CharBuffer &cb)
 {
     return AtomizeChars(cx, cb.begin(), cb.length());
@@ -1053,7 +1058,7 @@ TokenStream::getTokenInternal(Modifier modifier)
     bool hadUnicodeEscape;
 
   retry:
-    if (JS_UNLIKELY(!userbuf.hasRawChars())) {
+    if (MOZ_UNLIKELY(!userbuf.hasRawChars())) {
         tp = newToken(0);
         tp->type = TOK_EOF;
         flags.isEOF = true;
@@ -1065,7 +1070,7 @@ TokenStream::getTokenInternal(Modifier modifier)
 
     // Chars not in the range 0..127 are rare.  Getting them out of the way
     // early allows subsequent checking to be faster.
-    if (JS_UNLIKELY(c >= 128)) {
+    if (MOZ_UNLIKELY(c >= 128)) {
         if (IsSpaceOrBOM2(c)) {
             if (c == LINE_SEPARATOR || c == PARA_SEPARATOR) {
                 updateLineInfoForEOL();

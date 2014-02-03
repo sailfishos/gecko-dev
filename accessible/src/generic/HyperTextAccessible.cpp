@@ -27,7 +27,9 @@
 #include "nsIPersistentProperties2.h"
 #include "nsIScrollableFrame.h"
 #include "nsIServiceManager.h"
+#include "nsITextControlElement.h"
 #include "nsTextFragment.h"
+#include "mozilla/dom/Element.h"
 #include "mozilla/Selection.h"
 #include "mozilla/MathAlgorithms.h"
 #include "gfxSkipChars.h"
@@ -102,8 +104,7 @@ HyperTextAccessible::NativeState()
 {
   uint64_t states = AccessibleWrap::NativeState();
 
-  nsCOMPtr<nsIEditor> editor = GetEditor();
-  if (editor) {
+  if (mContent->AsElement()->State().HasState(NS_EVENT_STATE_MOZ_READWRITE)) {
     states |= states::EDITABLE;
 
   } else if (mContent->Tag() == nsGkAtoms::article) {
@@ -319,18 +320,16 @@ HyperTextAccessible::DOMPointToHypertextOffset(nsINode* aNode,
       break;
     }
 
-    // This offset no longer applies because the passed-in text object is not a child
-    // of the hypertext. This happens when there are nested hypertexts, e.g.
-    // <div>abc<h1>def</h1>ghi</div>
-    // If the passed-in DOM point was not on a direct child of the hypertext, we will
-    // return the offset for that entire hypertext
-    if (aIsEndOffset) {
-      // Not inclusive, the indicated char comes at index before this offset
-      // If the end offset is after the first character of the passed in object, use 1 for
-    // addTextOffset, to put us after the embedded object char. We'll only treat the offset as
-    // before the embedded object char if we end at the very beginning of the child.
-    addTextOffset = addTextOffset > 0;
-    } else
+    // This offset no longer applies because the passed-in text object is not
+    // a child of the hypertext. This happens when there are nested hypertexts,
+    // e.g. <div>abc<h1>def</h1>ghi</div>. Thus we need to adjust the offset
+    // to make it relative the hypertext.
+    // If the end offset is not supposed to be inclusive and the original point
+    // is not at 0 offset then the returned offset should be after an embedded
+    // character the original point belongs to.
+    if (aIsEndOffset)
+      addTextOffset = (addTextOffset > 0 || descendantAcc->IndexInParent() > 0) ? 1 : 0;
+    else
       addTextOffset = 0;
 
     descendantAcc = parentAcc;
@@ -588,11 +587,6 @@ HyperTextAccessible::TextBeforeOffset(int32_t aOffset,
                                       int32_t* aStartOffset, int32_t* aEndOffset,
                                       nsAString& aText)
 {
-  if (aBoundaryType == BOUNDARY_CHAR) {
-    GetCharAt(aOffset, eGetBefore, aText, aStartOffset, aEndOffset);
-    return;
-  }
-
   *aStartOffset = *aEndOffset = 0;
   aText.Truncate();
 
@@ -608,7 +602,8 @@ HyperTextAccessible::TextBeforeOffset(int32_t aOffset,
 
   switch (aBoundaryType) {
     case BOUNDARY_CHAR:
-      MOZ_ASSUME_UNREACHABLE("Already handled!");
+      if (convertedOffset != 0)
+        CharAt(convertedOffset - 1, aText, aStartOffset, aEndOffset);
       break;
 
     case BOUNDARY_WORD_START: {
@@ -675,7 +670,12 @@ HyperTextAccessible::TextAtOffset(int32_t aOffset,
 
   switch (aBoundaryType) {
     case BOUNDARY_CHAR:
-      GetCharAt(aOffset, eGetAt, aText, aStartOffset, aEndOffset);
+      // Return no char if caret is at the end of wrapped line (case of no line
+      // end character). Returning a next line char is confusing for AT.
+      if (aOffset == nsIAccessibleText::TEXT_OFFSET_CARET && IsCaretAtEndOfLine())
+        *aStartOffset = *aEndOffset = adjustedOffset;
+      else
+        CharAt(adjustedOffset, aText, aStartOffset, aEndOffset);
       break;
 
     case BOUNDARY_WORD_START:
@@ -723,11 +723,6 @@ HyperTextAccessible::TextAfterOffset(int32_t aOffset,
                                      int32_t* aStartOffset, int32_t* aEndOffset,
                                      nsAString& aText)
 {
-  if (aBoundaryType == BOUNDARY_CHAR) {
-    GetCharAt(aOffset, eGetAfter, aText, aStartOffset, aEndOffset);
-    return;
-  }
-
   *aStartOffset = *aEndOffset = 0;
   aText.Truncate();
 
@@ -743,7 +738,12 @@ HyperTextAccessible::TextAfterOffset(int32_t aOffset,
 
   switch (aBoundaryType) {
     case BOUNDARY_CHAR:
-      MOZ_ASSUME_UNREACHABLE("Already handled!");
+      // If caret is at the end of wrapped line (case of no line end character)
+      // then char after the offset is a first char at next line.
+      if (adjustedOffset >= CharacterCount())
+        *aStartOffset = *aEndOffset = CharacterCount();
+      else
+        CharAt(adjustedOffset + 1, aText, aStartOffset, aEndOffset);
       break;
 
     case BOUNDARY_WORD_START:
@@ -1656,28 +1656,9 @@ HyperTextAccessible::RenderedToContentOffset(nsIFrame* aFrame, uint32_t aRendere
 ////////////////////////////////////////////////////////////////////////////////
 // HyperTextAccessible public
 
-bool
-HyperTextAccessible::GetCharAt(int32_t aOffset, EGetTextType aShift,
-                               nsAString& aChar, int32_t* aStartOffset,
-                               int32_t* aEndOffset)
-{
-  aChar.Truncate();
-
-  int32_t offset = ConvertMagicOffset(aOffset) + static_cast<int32_t>(aShift);
-  if (!CharAt(offset, aChar))
-    return false;
-
-  if (aStartOffset)
-    *aStartOffset = offset;
-  if (aEndOffset)
-    *aEndOffset = aChar.IsEmpty() ? offset : offset + 1;
-
-  return true;
-}
-
 int32_t
 HyperTextAccessible::GetChildOffset(uint32_t aChildIndex,
-                                    bool aInvalidateAfter)
+                                    bool aInvalidateAfter) const
 {
   if (aChildIndex == 0) {
     if (aInvalidateAfter)
@@ -1707,7 +1688,7 @@ HyperTextAccessible::GetChildOffset(uint32_t aChildIndex,
 }
 
 int32_t
-HyperTextAccessible::GetChildIndexAtOffset(uint32_t aOffset)
+HyperTextAccessible::GetChildIndexAtOffset(uint32_t aOffset) const
 {
   uint32_t lastOffset = 0;
   uint32_t offsetCount = mOffsets.Length();

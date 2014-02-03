@@ -11,8 +11,8 @@
 #include <sys/socket.h>
 
 #include "base/message_loop.h"
-#include "BluetoothServiceBluedroid.h"
 #include "BluetoothSocketObserver.h"
+#include "BluetoothUtils.h"
 #include "mozilla/FileUtils.h"
 #include "mozilla/RefPtr.h"
 #include "nsThreadUtils.h"
@@ -426,7 +426,7 @@ DroidSocketImpl::ReadMsg(int aFd, void *aBuffer, size_t aLength)
 
   // Extract client fd from message header
   for (struct cmsghdr *cmsgptr = CMSG_FIRSTHDR(&msg);
-       cmsgptr != NULL; cmsgptr = CMSG_NXTHDR(&msg, cmsgptr)) {
+       cmsgptr != nullptr; cmsgptr = CMSG_NXTHDR(&msg, cmsgptr)) {
     if (cmsgptr->cmsg_level != SOL_SOCKET) {
       continue;
     }
@@ -605,10 +605,12 @@ BluetoothSocket::Connect(const nsAString& aDeviceAddress, int aChannel)
   // TODO: uuid as argument
   int fd;
   NS_ENSURE_TRUE(BT_STATUS_SUCCESS ==
-    sBluetoothSocketInterface->connect((bt_bdaddr_t *) &remoteBdAddress,
-                                       (btsock_type_t) BTSOCK_RFCOMM,
+    sBluetoothSocketInterface->connect(&remoteBdAddress,
+                                       BTSOCK_RFCOMM,
                                        UUID_OBEX_OBJECT_PUSH,
-                                       aChannel, &fd, (mAuth << 1) | mEncrypt),
+                                       aChannel,
+                                       &fd,
+                                       (mAuth << 1) | mEncrypt),
     false);
   NS_ENSURE_TRUE(fd >= 0, false);
 
@@ -626,10 +628,12 @@ BluetoothSocket::Listen(int aChannel)
   nsAutoCString serviceName("OBEX Object Push");
   int fd;
   NS_ENSURE_TRUE(BT_STATUS_SUCCESS ==
-    sBluetoothSocketInterface->listen((btsock_type_t) BTSOCK_RFCOMM,
+    sBluetoothSocketInterface->listen(BTSOCK_RFCOMM,
                                       serviceName.get(),
                                       UUID_OBEX_OBJECT_PUSH,
-                                      aChannel, &fd, (mAuth << 1) | mEncrypt),
+                                      aChannel,
+                                      &fd,
+                                      (mAuth << 1) | mEncrypt),
     false);
   NS_ENSURE_TRUE(fd >= 0, false);
 

@@ -19,11 +19,11 @@ let tasks = {
   _tasks: [],
   _nextTaskIndex: 0,
 
-  push: function push(func) {
+  push: function(func) {
     this._tasks.push(func);
   },
 
-  next: function next() {
+  next: function() {
     let index = this._nextTaskIndex++;
     let task = this._tasks[index];
     try {
@@ -37,17 +37,17 @@ let tasks = {
     }
   },
 
-  finish: function finish() {
+  finish: function() {
     this._tasks[this._tasks.length - 1]();
   },
 
-  run: function run() {
+  run: function() {
     this.next();
   }
 };
 
 function addTest(text, segments, charsPerSegment, charsAvailableInLastSegment) {
-  tasks.push(function () {
+  tasks.push(function() {
     log("Testing '" + text + "' ...");
     let domRequest = manager.getSegmentInfoForText(text);
     ok(domRequest, "DOMRequest object returned.");
@@ -78,7 +78,7 @@ function addTest(text, segments, charsPerSegment, charsAvailableInLastSegment) {
 }
 
 function addTestThrows(text) {
-  tasks.push(function () {
+  tasks.push(function() {
     log("Testing '" + text + "' ...");
     try {
       let domRequest = manager.getSegmentInfoForText(text);
@@ -112,7 +112,7 @@ let date = new Date();
 addTest(date, 1, PDU_MAX_USER_DATA_7BIT,
         PDU_MAX_USER_DATA_7BIT - ("" + date).length);
 
-addTest("", 0, PDU_MAX_USER_DATA_7BIT,
+addTest("", 1, PDU_MAX_USER_DATA_7BIT,
         PDU_MAX_USER_DATA_7BIT - "".length);
 
 // WARNING: All tasks should be pushed before this!!!

@@ -49,7 +49,10 @@ if CONFIG['MOZ_OMX_DECODER']:
 
 PARALLEL_DIRS += ['webspeech']
 
-TEST_DIRS += ['test']
+TEST_DIRS += [
+    'test',
+    'gtest',
+]
 
 EXPORTS += [
     'AbstractMediaDecoder.h',
@@ -82,6 +85,7 @@ EXPORTS += [
     'MP3FrameParser.h',
     'RtspMediaResource.h',
     'SharedBuffer.h',
+    'SharedThreadPool.h',
     'StreamBuffer.h',
     'TimeVarying.h',
     'TrackUnionStream.h',
@@ -123,10 +127,12 @@ UNIFIED_SOURCES += [
     'MediaDecoderStateMachine.cpp',
     'MediaRecorder.cpp',
     'MediaResource.cpp',
+    'MediaShutdownManager.cpp',
     'MediaStreamGraph.cpp',
     'MediaStreamTrack.cpp',
     'MP3FrameParser.cpp',
     'RtspMediaResource.cpp',
+    'SharedThreadPool.cpp',
     'StreamBuffer.cpp',
     'TextTrack.cpp',
     'TextTrackCue.cpp',

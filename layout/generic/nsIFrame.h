@@ -30,6 +30,7 @@
 #include "FramePropertyTable.h"
 #include "mozilla/TypedEnum.h"
 #include "nsDirection.h"
+#include "WritingModes.h"
 #include <algorithm>
 #include "nsITheme.h"
 #include "gfx3DMatrix.h"
@@ -91,6 +92,10 @@ struct CharacterDataChangeInfo;
 namespace mozilla {
 namespace layers {
 class Layer;
+}
+
+namespace gfx {
+class Matrix;
 }
 }
 
@@ -251,7 +256,7 @@ typedef uint64_t nsFrameState;
 // split, and this piece is the continuation, or (2) the entire float
 // didn't fit on the page.
 // Note that this bit is also shared by text frames for
-// TEXT_FORCE_TRIM_WHITESPACE.  That's OK because we only check the
+// TEXT_IS_IN_TOKEN_MATHML.  That's OK because we only check the
 // NS_FRAME_IS_PUSHED_FLOAT bit on frames which we already know are
 // out-of-flow.
 #define NS_FRAME_IS_PUSHED_FLOAT                    NS_FRAME_STATE_BIT(32)
@@ -302,7 +307,7 @@ typedef uint64_t nsFrameState;
 // the frames for future reference.
 #define NS_FRAME_NO_COMPONENT_ALPHA                 NS_FRAME_STATE_BIT(45)
 
-// The frame is a descendant of nsSVGTextFrame2 and is thus used for SVG
+// The frame is a descendant of SVGTextFrame and is thus used for SVG
 // text layout.
 #define NS_FRAME_IS_SVG_TEXT                        NS_FRAME_STATE_BIT(47)
 
@@ -332,6 +337,15 @@ typedef uint64_t nsFrameState;
 
 // Frame has a LayerActivityProperty property
 #define NS_FRAME_HAS_LAYER_ACTIVITY_PROPERTY        NS_FRAME_STATE_BIT(54)
+
+// Set for all descendants of MathML sub/supscript elements (other than the
+// base frame) to indicate that the SSTY font feature should be used.
+#define NS_FRAME_MATHML_SCRIPT_DESCENDANT           NS_FRAME_STATE_BIT(58)
+
+// This state bit is set on token MathML elements if the token represents an
+// <mi> tag whose inner HTML consists of a single non-whitespace character
+// to allow special rendering behaviour.
+#define NS_FRAME_IS_IN_SINGLE_CHAR_MI               NS_FRAME_STATE_BIT(59)
 
 // Box layout bits
 #define NS_STATE_IS_HORIZONTAL                      NS_FRAME_STATE_BIT(22)
@@ -613,6 +627,7 @@ public:
   typedef mozilla::layout::FrameChildListIDs ChildListIDs;
   typedef mozilla::layout::FrameChildListIterator ChildListIterator;
   typedef mozilla::layout::FrameChildListArrayIterator ChildListArrayIterator;
+  typedef mozilla::gfx::Matrix Matrix;
 
   NS_DECL_QUERYFRAME_TARGET(nsIFrame)
 
@@ -872,6 +887,13 @@ public:
    * must also be called.
    */
   virtual void SetParent(nsIFrame* aParent) = 0;
+
+  /**
+   * The frame's writing-mode, used for logical layout computations.
+   */
+  mozilla::WritingMode GetWritingMode() const {
+    return mozilla::WritingMode(StyleVisibility());
+  }
 
   /**
    * Bounding rect of the frame. The values are in app units, and the origin is
@@ -1329,8 +1351,8 @@ public:
    * is non-null and the frame has an SVG parent with children-only transforms,
    * then aFromParentTransforms will be set to these transforms.
    */
-  virtual bool IsSVGTransformed(gfxMatrix *aOwnTransforms = nullptr,
-                                gfxMatrix *aFromParentTransforms = nullptr) const;
+  virtual bool IsSVGTransformed(Matrix *aOwnTransforms = nullptr,
+                                Matrix *aFromParentTransforms = nullptr) const;
 
   /**
    * Returns whether this frame will attempt to preserve the 3d transforms of its
@@ -2206,12 +2228,6 @@ public:
   virtual bool IsLeaf() const;
 
   /**
-   * Is this a flex item? (Is the parent a flex container frame?)
-   */
-  bool IsFlexItem() const
-  { return mParent && mParent->GetType() == nsGkAtoms::flexContainerFrame; }
-
-  /**
    * Marks all display items created by this frame as needing a repaint,
    * and calls SchedulePaint() if requested and one is not already pending.
    *
@@ -2312,15 +2328,18 @@ public:
    * do not trigger a reflow should have this called for them by
    * DoApplyRenderingChangeToTree.
    *
-   * @param aFlags PAINT_COMPOSITE_ONLY : No changes have been made
+   * @param aType PAINT_COMPOSITE_ONLY : No changes have been made
    * that require a layer tree update, so only schedule a layer
    * tree composite.
+   * PAINT_DELAYED_COMPRESS : Schedule a paint to be executed after a delay, and
+   * put FrameLayerBuilder in 'compressed' mode that avoids short cut optimizations.
    */
-  enum {
+  enum PaintType {
     PAINT_DEFAULT = 0,
-    PAINT_COMPOSITE_ONLY = 1 << 0
+    PAINT_COMPOSITE_ONLY,
+    PAINT_DELAYED_COMPRESS
   };
-  void SchedulePaint(uint32_t aFlags = PAINT_DEFAULT);
+  void SchedulePaint(PaintType aType = PAINT_DEFAULT);
 
   /**
    * Checks if the layer tree includes a dedicated layer for this 
@@ -2431,7 +2450,7 @@ public:
 
   bool FinishAndStoreOverflow(nsHTMLReflowMetrics* aMetrics) {
     return FinishAndStoreOverflow(aMetrics->mOverflowAreas,
-                                  nsSize(aMetrics->width, aMetrics->height));
+                                  nsSize(aMetrics->Width(), aMetrics->Height()));
   }
 
   /**
@@ -2815,7 +2834,7 @@ NS_PTR_TO_INT32(frame->Properties().Get(nsIFrame::ParagraphDepthProperty()))
    * @return true if this text frame ends with a newline character.  It
    * should return false if this is not a text frame.
    */
-  virtual bool HasTerminalNewline() const;
+  virtual bool HasSignificantTerminalNewline() const;
 
   static bool AddCSSPrefSize(nsIFrame* aBox, nsSize& aSize, bool& aWidth, bool& aHeightSet);
   static bool AddCSSMinSize(nsBoxLayoutState& aState, nsIFrame* aBox,
@@ -2933,7 +2952,7 @@ NS_PTR_TO_INT32(frame->Properties().Get(nsIFrame::ParagraphDepthProperty()))
    * distance beats a closer y distance.
    *
    * Normally, this function will only check the distance between this
-   * frame's rectangle and the specified point.  nsSVGTextFrame2 overrides
+   * frame's rectangle and the specified point.  SVGTextFrame overrides
    * this so that it can manage all of its descendant frames and take
    * into account any SVG text layout.
    *
@@ -2949,6 +2968,11 @@ NS_PTR_TO_INT32(frame->Properties().Get(nsIFrame::ParagraphDepthProperty()))
    */
   virtual void FindCloserFrameForSelection(nsPoint aPoint,
                                            FrameWithDistance* aCurrentBestFrame);
+
+  /**
+   * Is this a flex item? (i.e. a non-abs-pos child of a flex container)
+   */
+  inline bool IsFlexItem() const;
 
   inline bool IsBlockInside() const;
   inline bool IsBlockOutside() const;
@@ -3222,7 +3246,7 @@ private:
   template<bool IsLessThanOrEqual(nsIFrame*, nsIFrame*)>
   static nsIFrame* MergeSort(nsIFrame *aSource);
 
-#ifdef DEBUG
+#ifdef DEBUG_FRAME_DUMP
 public:
   static void IndentBy(FILE* out, int32_t aIndent) {
     while (--aIndent >= 0) fputs("  ", out);
@@ -3231,25 +3255,31 @@ public:
     ListTag(out, this);
   }
   static void ListTag(FILE* out, const nsIFrame* aFrame) {
-    nsAutoString tmp;
-    aFrame->GetFrameName(tmp);
-    fputs(NS_LossyConvertUTF16toASCII(tmp).get(), out);
-    fprintf(out, "@%p", static_cast<const void*>(aFrame));
+    nsAutoCString t;
+    ListTag(t, aFrame);
+    fputs(t.get(), out);
   }
-  void ListGeneric(FILE* out, int32_t aIndent, uint32_t aFlags) const;
+  void ListTag(nsACString& aTo) const;
+  static void ListTag(nsACString& aTo, const nsIFrame* aFrame);
+  void ListGeneric(nsACString& aTo, const char* aPrefix = "", uint32_t aFlags = 0) const;
   enum {
     TRAVERSE_SUBDOCUMENT_FRAMES = 0x01
   };
-  virtual void List(FILE* out, int32_t aIndent, uint32_t aFlags = 0) const;
+  virtual void List(FILE* out = stderr, const char* aPrefix = "", uint32_t aFlags = 0) const;
   /**
    * lists the frames beginning from the root frame
    * - calls root frame's List(...)
    */
   static void RootFrameList(nsPresContext* aPresContext,
-                            FILE* out, int32_t aIndent);
+                            FILE* out = stderr, const char* aPrefix = "");
   virtual void DumpFrameTree();
+  void DumpFrameTreeLimited();
 
   NS_IMETHOD  GetFrameName(nsAString& aResult) const = 0;
+#endif
+
+#ifdef DEBUG
+public:
   NS_IMETHOD_(nsFrameState)  GetDebugStateBits() const = 0;
   NS_IMETHOD  DumpRegressionData(nsPresContext* aPresContext,
                                  FILE* out, int32_t aIndent) = 0;

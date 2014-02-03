@@ -213,11 +213,22 @@ function hideContextUI()
 
 function showNavBar()
 {
-  let promise = waitForEvent(Elements.navbar, "transitionend");
   if (!ContextUI.navbarVisible) {
+    let promise = waitForEvent(Elements.navbar, "transitionend");
     ContextUI.displayNavbar();
     return promise;
   }
+  return Promise.resolve(null);
+}
+
+function hideNavBar()
+{
+  if (ContextUI.navbarVisible) {
+    let promise = waitForEvent(Elements.navbar, "transitionend");
+    ContextUI.dismissNavbar();
+    return promise;
+  }
+  return Promise.resolve(null);
 }
 
 function fireAppBarDisplayEvent()
@@ -556,28 +567,30 @@ function waitForObserver(aObsEvent, aTimeoutMs) {
   }
 }
 
+
+/*=============================================================================
+ * Input mode helpers - these helpers notify observers to metro_precise_input
+ * and metro_imprecise_input respectively, triggering the same behaviour as user touch or mouse input
+ *
+ * Usage: let promise = waitForObservers("metro_imprecise_input");
+ *        notifyImprecise();
+ *        yield promise; // you are now in imprecise mode
+ *===========================================================================*/
+function notifyPrecise()
+{
+  Services.obs.notifyObservers(null, "metro_precise_input", null);
+}
+
+function notifyImprecise()
+{
+  Services.obs.notifyObservers(null, "metro_imprecise_input", null);
+}
+
 /*=============================================================================
  * Native input helpers - these helpers send input directly to the os
  * generating os level input events that get processed by widget and
  * apzc logic.
  *===========================================================================*/
-
-// Keyboard layouts for use with synthesizeNativeKey
-const usEnglish = 0x409;
-const arSpanish = 0x2C0A;
-
-// Modifiers for use with synthesizeNativeKey
-const leftShift = 0x100;
-const rightShift = 0x200;
-const leftControl = 0x400;
-const rightControl = 0x800;
-const leftAlt = 0x1000;
-const rightAlt = 0x2000;
-
-function synthesizeNativeKey(aKbLayout, aVKey, aModifiers) {
-  Browser.windowUtils.sendNativeKeyEvent(aKbLayout, aVKey, aModifiers, '', '');
-}
-
 function synthesizeNativeMouse(aElement, aOffsetX, aOffsetY, aMsg) {
   let x = aOffsetX;
   let y = aOffsetY;
@@ -825,6 +838,14 @@ TouchDragAndHold.prototype = {
     this._native = aValue;
   },
 
+  set stepTimeout(aValue) {
+    this._timeoutStep = aValue;
+  },
+
+  set numSteps(aValue) {
+    this._numSteps = aValue;
+  },
+
   set nativePointerId(aValue) {
     this._pointerId = aValue;
   },
@@ -880,6 +901,8 @@ TouchDragAndHold.prototype = {
     if (this._debug) {
       info("[0] touchstart " + aStartX + " x " + aStartY);
     }
+    // flush layout, bug 914847
+    this._utils.elementFromPoint(aStartX, aStartY, false, true);
     if (this._native) {
       this._utils.sendNativeTouchPoint(this._pointerId, this._dui.TOUCH_CONTACT,
                                        aStartX, aStartY, 1, 90);
@@ -907,7 +930,7 @@ TouchDragAndHold.prototype = {
     return this._defer.promise;
   },
 
-  end: function start() {
+  end: function end() {
     if (this._debug) {
       info("[" + this._step.steps + "] touchend " + this._endPoint.xPos + " x " + this._endPoint.yPos);
       SelectionHelperUI.debugClearDebugPoints();

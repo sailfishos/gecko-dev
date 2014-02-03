@@ -177,6 +177,13 @@ private:
   virtual void
   PostRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate, bool aRunResult)
           MOZ_OVERRIDE;
+
+  NS_DECL_NSICANCELABLERUNNABLE
+
+  void
+  ShutdownScriptLoader(JSContext* aCx,
+                       WorkerPrivate* aWorkerPrivate,
+                       bool aResult);
 };
 
 class ScriptLoaderRunnable MOZ_FINAL : public WorkerFeature,
@@ -740,9 +747,24 @@ ScriptExecutorRunnable::PostRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate,
       }
     }
 
-    aWorkerPrivate->RemoveFeature(aCx, &mScriptLoader);
-    aWorkerPrivate->StopSyncLoop(mSyncLoopTarget, result);
+    ShutdownScriptLoader(aCx, aWorkerPrivate, result);
   }
+}
+
+NS_IMETHODIMP
+ScriptExecutorRunnable::Cancel()
+{
+  ShutdownScriptLoader(mWorkerPrivate->GetJSContext(), mWorkerPrivate, false);
+  return MainThreadWorkerSyncRunnable::Cancel();
+}
+
+void
+ScriptExecutorRunnable::ShutdownScriptLoader(JSContext* aCx,
+                                             WorkerPrivate* aWorkerPrivate,
+                                             bool aResult)
+{
+  aWorkerPrivate->RemoveFeature(aCx, &mScriptLoader);
+  aWorkerPrivate->StopSyncLoop(mSyncLoopTarget, aResult);
 }
 
 bool
@@ -854,8 +876,7 @@ void ReportLoadError(JSContext* aCx, const nsAString& aURL,
       break;
 
     default:
-      JS_ReportError(aCx, "Failed to load script: %s (nsresult = 0x%x)",
-                     url.get(), aLoadResult);
+      JS_ReportError(aCx, "Failed to load script (nsresult = 0x%x)", aLoadResult);
   }
 }
 

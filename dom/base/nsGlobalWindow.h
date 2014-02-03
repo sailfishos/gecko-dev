@@ -82,7 +82,6 @@ class nsICSSDeclaration;
 class nsIDocShellTreeOwner;
 class nsIDOMCrypto;
 class nsIDOMOfflineResourceList;
-class nsIDOMMozWakeLock;
 class nsIScrollableFrame;
 class nsIControllers;
 class nsIScriptContext;
@@ -112,6 +111,7 @@ class Gamepad;
 class MediaQueryList;
 class Navigator;
 class SpeechSynthesis;
+class WakeLock;
 namespace indexedDB {
 class IDBFactory;
 } // namespace indexedDB
@@ -417,7 +417,6 @@ public:
   virtual NS_HIDDEN_(void) ActivateOrDeactivate(bool aActivate);
   virtual NS_HIDDEN_(void) SetActive(bool aActive);
   virtual NS_HIDDEN_(void) SetIsBackground(bool aIsBackground);
-
   virtual NS_HIDDEN_(void) SetChromeEventHandler(mozilla::dom::EventTarget* aChromeEventHandler);
 
   virtual NS_HIDDEN_(void) SetInitialPrincipalToSubject();
@@ -475,6 +474,13 @@ public:
   already_AddRefed<nsIDOMWindow> IndexedGetter(uint32_t aIndex, bool& aFound);
 
   void GetSupportedNames(nsTArray<nsString>& aNames);
+
+  bool DoNewResolve(JSContext* aCx, JS::Handle<JSObject*> aObj,
+                    JS::Handle<jsid> aId,
+                    JS::MutableHandle<JSPropertyDescriptor> aDesc);
+
+  void GetOwnPropertyNames(JSContext* aCx, nsTArray<nsString>& aNames,
+                           mozilla::ErrorResult& aRv);
 
   // Object Management
   nsGlobalWindow(nsGlobalWindow *aOuterWindow);
@@ -548,17 +554,6 @@ public:
     return mContext;
   }
 
-  nsIScriptContext *GetScriptContextInternal(uint32_t aLangID)
-  {
-    NS_ASSERTION(aLangID == nsIProgrammingLanguage::JAVASCRIPT,
-                 "We don't support this language ID");
-    if (mOuterWindow) {
-      return GetOuterWindowInternal()->mContext;
-    }
-
-    return mContext;
-  }
-
   nsGlobalWindow *GetOuterWindowInternal()
   {
     return static_cast<nsGlobalWindow *>(GetOuterWindow());
@@ -589,7 +584,7 @@ public:
   nsIScrollableFrame *GetScrollFrame();
 
   nsresult Observe(nsISupports* aSubject, const char* aTopic,
-                   const PRUnichar* aData);
+                   const char16_t* aData);
 
   // Outer windows only.
   void UnblockScriptedClosing();
@@ -914,10 +909,6 @@ public:
   int64_t GetMozAnimationStartTime(mozilla::ErrorResult& aError);
   void SizeToContent(mozilla::ErrorResult& aError);
   nsIDOMCrypto* GetCrypto(mozilla::ErrorResult& aError);
-  nsIDOMPkcs11* GetPkcs11()
-  {
-    return nullptr;
-  }
   nsIControllers* GetControllers(mozilla::ErrorResult& aError);
   float GetMozInnerScreenX(mozilla::ErrorResult& aError);
   float GetMozInnerScreenY(mozilla::ErrorResult& aError);
@@ -972,7 +963,7 @@ protected:
 
   nsCOMPtr <nsIIdleService> mIdleService;
 
-  nsCOMPtr <nsIDOMMozWakeLock> mWakeLock;
+  nsRefPtr<mozilla::dom::WakeLock> mWakeLock;
 
   static bool sIdleObserversAPIFuzzTimeDisabled;
 
@@ -981,7 +972,7 @@ protected:
 
   // Object Management
   virtual ~nsGlobalWindow();
-  void ClearDelayedEventsAndDropDocument();
+  void DropOuterWindowDocs();
   void CleanUp();
   void ClearControllers();
   nsresult FinalClose();
@@ -1476,6 +1467,12 @@ protected:
 
   nsAutoPtr<nsJSThingHashtable<nsPtrHashKey<nsXBLPrototypeHandler>, JSObject*> > mCachedXBLPrototypeHandlers;
 
+  // mSuspendedDoc is only set on outer windows. It's useful when we get matched
+  // EnterModalState/LeaveModalState calls, in which case the outer window is
+  // responsible for unsuspending events on the document. If we don't (for
+  // example, if the outer window is closed before the LeaveModalState call),
+  // then the inner window whose mDoc is our mSuspendedDoc is responsible for
+  // unsuspending it.
   nsCOMPtr<nsIDocument> mSuspendedDoc;
 
   nsRefPtr<mozilla::dom::indexedDB::IDBFactory> mIndexedDB;

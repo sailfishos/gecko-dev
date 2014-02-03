@@ -39,6 +39,7 @@
 #include "GLContextProvider.h"
 #include "GLContext.h"
 #include "ScopedGLHelpers.h"
+#include "GLReadTexImageHelper.h"
 
 #include "gfxCrashReporterUtils.h"
 
@@ -72,7 +73,7 @@ using namespace mozilla::layers;
 NS_IMETHODIMP
 WebGLMemoryPressureObserver::Observe(nsISupports* aSubject,
                                      const char* aTopic,
-                                     const PRUnichar* aSomeData)
+                                     const char16_t* aSomeData)
 {
     if (strcmp(aTopic, "memory-pressure"))
         return NS_OK;
@@ -155,6 +156,11 @@ WebGLContext::WebGLContext()
     mStencilWriteMaskFront = 0xffffffff;
     mStencilWriteMaskBack  = 0xffffffff;
 
+    mViewportX = 0;
+    mViewportY = 0;
+    mViewportWidth = 0;
+    mViewportHeight = 0;
+
     mScissorTestEnabled = 0;
     mDitherEnabled = 1;
     mRasterizerDiscardEnabled = 0; // OpenGL ES 3.0 spec p244
@@ -192,6 +198,7 @@ WebGLContext::WebGLContext()
 
     mAlreadyGeneratedWarnings = 0;
     mAlreadyWarnedAboutFakeVertexAttrib0 = false;
+    mAlreadyWarnedAboutViewportLargerThanDest = false;
     mMaxWarnings = Preferences::GetInt("webgl.max-warnings-per-context", 32);
     if (mMaxWarnings < -1)
     {
@@ -397,7 +404,7 @@ WebGLContext::SetDimensions(int32_t width, int32_t height)
         PresentScreenBuffer();
 
         // ResizeOffscreen scraps the current prod buffer before making a new one.
-        gl->ResizeOffscreen(gfxIntSize(width, height)); // Doesn't matter if it succeeds (soft-fail)
+        gl->ResizeOffscreen(gfx::IntSize(width, height)); // Doesn't matter if it succeeds (soft-fail)
         // It's unlikely that we'll get a proper-sized context if we recreate if we didn't on resize
 
         // everything's good, we're done here
@@ -432,8 +439,6 @@ WebGLContext::SetDimensions(int32_t width, int32_t height)
 #endif
     bool forceEnabled =
         Preferences::GetBool("webgl.force-enabled", false);
-    bool useMesaLlvmPipe =
-        Preferences::GetBool("gfx.prefer-mesa-llvmpipe", false);
     bool disabled =
         Preferences::GetBool("webgl.disabled", false);
     bool prefer16bit =
@@ -526,7 +531,7 @@ WebGLContext::SetDimensions(int32_t width, int32_t height)
 
 #ifdef XP_WIN
     // allow forcing GL and not EGL/ANGLE
-    if (useMesaLlvmPipe || PR_GetEnv("MOZ_WEBGL_FORCE_OPENGL")) {
+    if (PR_GetEnv("MOZ_WEBGL_FORCE_OPENGL")) {
         preferEGL = false;
         useANGLE = false;
         useOpenGL = true;
@@ -548,13 +553,9 @@ WebGLContext::SetDimensions(int32_t width, int32_t height)
 
     // try the default provider, whatever that is
     if (!gl && useOpenGL) {
-        gl::ContextFlags flag = useMesaLlvmPipe
-                                ? gl::ContextFlagsMesaLLVMPipe
-                                : gl::ContextFlagsNone;
-        gl = gl::GLContextProvider::CreateOffscreen(size, caps, flag);
+        gl = gl::GLContextProvider::CreateOffscreen(size, caps);
         if (gl && !InitAndValidateGL()) {
-            GenerateWarning("Error during %s initialization",
-                            useMesaLlvmPipe ? "Mesa LLVMpipe" : "OpenGL");
+            GenerateWarning("Error during OpenGL initialization");
             return NS_ERROR_FAILURE;
         }
     }
@@ -572,6 +573,8 @@ WebGLContext::SetDimensions(int32_t width, int32_t height)
 
     mWidth = width;
     mHeight = height;
+    mViewportWidth = width;
+    mViewportHeight = height;
     mResetLayer = true;
     mOptionsFrozen = true;
 
@@ -618,12 +621,12 @@ WebGLContext::Render(gfxContext *ctx, GraphicsFilter f, uint32_t aFlags)
         return NS_OK;
 
     nsRefPtr<gfxImageSurface> surf = new gfxImageSurface(gfxIntSize(mWidth, mHeight),
-                                                         gfxImageFormatARGB32);
+                                                         gfxImageFormat::ARGB32);
     if (surf->CairoStatus() != 0)
         return NS_ERROR_FAILURE;
 
     gl->MakeCurrent();
-    gl->ReadScreenIntoImageSurface(surf);
+    ReadScreenIntoImageSurface(gl, surf);
 
     bool srcPremultAlpha = mOptions.premultipliedAlpha;
     bool dstPremultAlpha = aFlags & RenderFlagPremultAlpha;
@@ -746,7 +749,7 @@ WebGLContext::GetImageBuffer(uint8_t** aImageBuffer, int32_t* aFormat)
 
     nsRefPtr<gfxImageSurface> imgsurf =
         new gfxImageSurface(gfxIntSize(mWidth, mHeight),
-                            gfxImageFormatARGB32);
+                            gfxImageFormat::ARGB32);
 
     if (!imgsurf || imgsurf->CairoStatus()) {
         return;
@@ -788,7 +791,7 @@ WebGLContext::GetImageBuffer(uint8_t** aImageBuffer, int32_t* aFormat)
 
 NS_IMETHODIMP
 WebGLContext::GetInputStream(const char* aMimeType,
-                             const PRUnichar* aEncoderOptions,
+                             const char16_t* aEncoderOptions,
                              nsIInputStream **aStream)
 {
     NS_ASSERTION(gl, "GetInputStream on invalid context?");
@@ -1040,50 +1043,55 @@ WebGLContext::ForceClearFramebufferWithDefaultValues(GLbitfield mask, const bool
         // Dither shouldn't matter when we're clearing to {0,0,0,0}.
         MOZ_ASSERT(gl->fIsEnabled(LOCAL_GL_SCISSOR_TEST) == mScissorTestEnabled);
 
-        realGLboolean colorWriteMask[4] = {2, 2, 2, 2};
-        GLfloat colorClearValue[4] = {-1.0f, -1.0f, -1.0f, -1.0f};
+        if (initializeColorBuffer) {
+            realGLboolean colorWriteMask[4] = {2, 2, 2, 2};
+            GLfloat colorClearValue[4] = {-1.0f, -1.0f, -1.0f, -1.0f};
 
-        gl->fGetBooleanv(LOCAL_GL_COLOR_WRITEMASK, colorWriteMask);
-        gl->fGetFloatv(LOCAL_GL_COLOR_CLEAR_VALUE, colorClearValue);
+            gl->fGetBooleanv(LOCAL_GL_COLOR_WRITEMASK, colorWriteMask);
+            gl->fGetFloatv(LOCAL_GL_COLOR_CLEAR_VALUE, colorClearValue);
 
-        MOZ_ASSERT(colorWriteMask[0] == mColorWriteMask[0] &&
-                   colorWriteMask[1] == mColorWriteMask[1] &&
-                   colorWriteMask[2] == mColorWriteMask[2] &&
-                   colorWriteMask[3] == mColorWriteMask[3]);
-        MOZ_ASSERT(IsShadowCorrect(mColorClearValue[0], colorClearValue[0]) &&
-                   IsShadowCorrect(mColorClearValue[1], colorClearValue[1]) &&
-                   IsShadowCorrect(mColorClearValue[2], colorClearValue[2]) &&
-                   IsShadowCorrect(mColorClearValue[3], colorClearValue[3]));
+            MOZ_ASSERT(colorWriteMask[0] == mColorWriteMask[0] &&
+                       colorWriteMask[1] == mColorWriteMask[1] &&
+                       colorWriteMask[2] == mColorWriteMask[2] &&
+                       colorWriteMask[3] == mColorWriteMask[3]);
+            MOZ_ASSERT(IsShadowCorrect(mColorClearValue[0], colorClearValue[0]) &&
+                       IsShadowCorrect(mColorClearValue[1], colorClearValue[1]) &&
+                       IsShadowCorrect(mColorClearValue[2], colorClearValue[2]) &&
+                       IsShadowCorrect(mColorClearValue[3], colorClearValue[3]));
+        }
 
-
-        realGLboolean depthWriteMask = 2;
-        GLfloat depthClearValue = -1.0f;
-
-        gl->fGetBooleanv(LOCAL_GL_DEPTH_WRITEMASK, &depthWriteMask);
-        gl->fGetFloatv(LOCAL_GL_DEPTH_CLEAR_VALUE, &depthClearValue);
-
-        MOZ_ASSERT(depthWriteMask == mDepthWriteMask);
-        MOZ_ASSERT(IsShadowCorrect(mDepthClearValue, depthClearValue));
+        if (initializeDepthBuffer) {
+            realGLboolean depthWriteMask = 2;
+            GLfloat depthClearValue = -1.0f;
 
 
-        GLuint stencilWriteMaskFront = 0xdeadbad1;
-        GLuint stencilWriteMaskBack  = 0xdeadbad1;
-        GLuint stencilClearValue     = 0xdeadbad1;
+            gl->fGetBooleanv(LOCAL_GL_DEPTH_WRITEMASK, &depthWriteMask);
+            gl->fGetFloatv(LOCAL_GL_DEPTH_CLEAR_VALUE, &depthClearValue);
 
-        gl->GetUIntegerv(LOCAL_GL_STENCIL_WRITEMASK,      &stencilWriteMaskFront);
-        gl->GetUIntegerv(LOCAL_GL_STENCIL_BACK_WRITEMASK, &stencilWriteMaskBack);
-        gl->GetUIntegerv(LOCAL_GL_STENCIL_CLEAR_VALUE,    &stencilClearValue);
+            MOZ_ASSERT(depthWriteMask == mDepthWriteMask);
+            MOZ_ASSERT(IsShadowCorrect(mDepthClearValue, depthClearValue));
+        }
 
-        GLuint stencilBits = 0;
-        gl->GetUIntegerv(LOCAL_GL_STENCIL_BITS, &stencilBits);
-        GLuint stencilMask = (GLuint(1) << stencilBits) - 1;
+        if (initializeStencilBuffer) {
+            GLuint stencilWriteMaskFront = 0xdeadbad1;
+            GLuint stencilWriteMaskBack  = 0xdeadbad1;
+            GLuint stencilClearValue     = 0xdeadbad1;
 
-        MOZ_ASSERT( ( stencilWriteMaskFront & stencilMask) ==
-                    (mStencilWriteMaskFront & stencilMask) );
-        MOZ_ASSERT( ( stencilWriteMaskBack & stencilMask) ==
-                    (mStencilWriteMaskBack & stencilMask) );
-        MOZ_ASSERT( ( stencilClearValue & stencilMask) ==
-                    (mStencilClearValue & stencilMask) );
+            gl->GetUIntegerv(LOCAL_GL_STENCIL_WRITEMASK,      &stencilWriteMaskFront);
+            gl->GetUIntegerv(LOCAL_GL_STENCIL_BACK_WRITEMASK, &stencilWriteMaskBack);
+            gl->GetUIntegerv(LOCAL_GL_STENCIL_CLEAR_VALUE,    &stencilClearValue);
+
+            GLuint stencilBits = 0;
+            gl->GetUIntegerv(LOCAL_GL_STENCIL_BITS, &stencilBits);
+            GLuint stencilMask = (GLuint(1) << stencilBits) - 1;
+
+            MOZ_ASSERT( ( stencilWriteMaskFront & stencilMask) ==
+                        (mStencilWriteMaskFront & stencilMask) );
+            MOZ_ASSERT( ( stencilWriteMaskBack & stencilMask) ==
+                        (mStencilWriteMaskBack & stencilMask) );
+            MOZ_ASSERT( ( stencilClearValue & stencilMask) ==
+                        (mStencilClearValue & stencilMask) );
+        }
     }
 #endif
 
@@ -1287,7 +1295,7 @@ WebGLContext::MaybeRestoreContext()
     if (mContextStatus != ContextNotLost || gl == nullptr)
         return;
 
-    bool isEGL = gl->GetContextType() == gl::ContextTypeEGL,
+    bool isEGL = gl->GetContextType() == gl::GLContextType::EGL,
          isANGLE = gl->IsANGLE();
 
     GLContext::ContextResetARB resetStatus = GLContext::CONTEXT_NO_ERROR;

@@ -29,6 +29,7 @@
 #include "nsBlockFrame.h"
 #include "mozilla/AutoRestore.h"
 #include "nsIFrameInlines.h"
+#include "nsPrintfCString.h"
 #include <algorithm>
 
 #ifdef DEBUG
@@ -1034,8 +1035,8 @@ nsContainerFrame::PositionChildViews(nsIFrame* aFrame)
 nsresult
 nsContainerFrame::FinishReflowChild(nsIFrame*                  aKidFrame,
                                     nsPresContext*             aPresContext,
-                                    const nsHTMLReflowState*   aReflowState,
                                     const nsHTMLReflowMetrics& aDesiredSize,
+                                    const nsHTMLReflowState*   aReflowState,
                                     nscoord                    aX,
                                     nscoord                    aY,
                                     uint32_t                   aFlags)
@@ -1043,9 +1044,9 @@ nsContainerFrame::FinishReflowChild(nsIFrame*                  aKidFrame,
   nsPoint curOrigin = aKidFrame->GetPosition();
 
   if (NS_FRAME_NO_MOVE_FRAME != (aFlags & NS_FRAME_NO_MOVE_FRAME)) {
-    aKidFrame->SetRect(nsRect(aX, aY, aDesiredSize.width, aDesiredSize.height));
+    aKidFrame->SetRect(nsRect(aX, aY, aDesiredSize.Width(), aDesiredSize.Height()));
   } else {
-    aKidFrame->SetSize(nsSize(aDesiredSize.width, aDesiredSize.height));
+    aKidFrame->SetSize(nsSize(aDesiredSize.Width(), aDesiredSize.Height()));
   }
 
   if (aKidFrame->HasView()) {
@@ -1146,8 +1147,8 @@ nsContainerFrame::ReflowOverflowContainerChildren(nsPresContext*           aPres
       nsRect prevRect = prevInFlow->GetRect();
 
       // Initialize reflow params
-      nsSize availSpace(prevRect.width, aReflowState.availableHeight);
-      nsHTMLReflowMetrics desiredSize;
+      nsSize availSpace(prevRect.width, aReflowState.AvailableHeight());
+      nsHTMLReflowMetrics desiredSize(aReflowState.GetWritingMode());
       nsHTMLReflowState frameState(aPresContext, aReflowState,
                                    frame, availSpace);
       nsReflowStatus frameStatus;
@@ -1157,8 +1158,8 @@ nsContainerFrame::ReflowOverflowContainerChildren(nsPresContext*           aPres
                        prevRect.x, 0, aFlags, frameStatus, &tracker);
       NS_ENSURE_SUCCESS(rv, rv);
       //XXXfr Do we need to override any shrinkwrap effects here?
-      // e.g. desiredSize.width = prevRect.width;
-      rv = FinishReflowChild(frame, aPresContext, &frameState, desiredSize,
+      // e.g. desiredSize.Width() = prevRect.width;
+      rv = FinishReflowChild(frame, aPresContext, desiredSize, &frameState,
                              prevRect.x, 0, aFlags);
       NS_ENSURE_SUCCESS(rv, rv);
 
@@ -1819,28 +1820,30 @@ nsOverflowContinuationTracker::EndFinish(nsIFrame* aChild)
 /////////////////////////////////////////////////////////////////////////////
 // Debugging
 
-#ifdef DEBUG
+#ifdef DEBUG_FRAME_DUMP
 void
-nsContainerFrame::List(FILE* out, int32_t aIndent, uint32_t aFlags) const
+nsContainerFrame::List(FILE* out, const char* aPrefix, uint32_t aFlags) const
 {
-  ListGeneric(out, aIndent, aFlags);
+  nsCString str;
+  ListGeneric(str, aPrefix, aFlags);
 
   // Output the children
   bool outputOneList = false;
   ChildListIterator lists(this);
   for (; !lists.IsDone(); lists.Next()) {
     if (outputOneList) {
-      IndentBy(out, aIndent);
+      str += aPrefix;
     }
     if (lists.CurrentID() != kPrincipalList) {
       if (!outputOneList) {
-        fputs("\n", out);
-        IndentBy(out, aIndent);
+        str += "\n";
+        str += aPrefix;
       }
-      fputs(mozilla::layout::ChildListName(lists.CurrentID()), out);
-      fprintf(out, " %p ", &GetChildList(lists.CurrentID()));
+      str += nsPrintfCString("%s %p ", mozilla::layout::ChildListName(lists.CurrentID()),
+                             &GetChildList(lists.CurrentID()));
     }
-    fputs("<\n", out);
+    fprintf_stderr(out, "%s<\n", str.get());
+    str = "";
     nsFrameList::Enumerator childFrames(lists.CurrentList());
     for (; !childFrames.AtEnd(); childFrames.Next()) {
       nsIFrame* kid = childFrames.get();
@@ -1848,15 +1851,16 @@ nsContainerFrame::List(FILE* out, int32_t aIndent, uint32_t aFlags) const
       NS_ASSERTION(kid->GetParent() == this, "bad parent frame pointer");
 
       // Have the child frame list
-      kid->List(out, aIndent + 1, aFlags);
+      nsCString pfx(aPrefix);
+      pfx += "  ";
+      kid->List(out, pfx.get(), aFlags);
     }
-    IndentBy(out, aIndent);
-    fputs(">\n", out);
+    fprintf_stderr(out, "%s>\n", aPrefix);
     outputOneList = true;
   }
 
   if (!outputOneList) {
-    fputs("<>\n", out);
+    fprintf_stderr(out, "%s<>\n", str.get());
   }
 }
 #endif

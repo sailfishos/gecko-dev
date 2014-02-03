@@ -8,7 +8,6 @@
 
 #include "GLContextTypes.h"             // for GLContext
 #include "GLDefs.h"                     // for GLenum, LOCAL_GL_FRAMEBUFFER, etc
-#include "gfxMatrix.h"                  // for gfxMatrix
 #include "mozilla/Assertions.h"         // for MOZ_ASSERT, etc
 #include "mozilla/Attributes.h"         // for MOZ_OVERRIDE
 #include "mozilla/RefPtr.h"             // for RefPtr, TemporaryRef
@@ -28,6 +27,9 @@ class gfxImageSurface;
 namespace mozilla {
 namespace gl {
   class BindableTexture;
+}
+namespace gfx {
+  class DataSourceSurface;
 }
 
 namespace layers {
@@ -82,7 +84,7 @@ public:
   static TemporaryRef<CompositingRenderTargetOGL>
   RenderTargetForWindow(CompositorOGL* aCompositor,
                         const gfx::IntSize& aSize,
-                        const gfxMatrix& aTransform)
+                        const gfx::Matrix& aTransform)
   {
     RefPtr<CompositingRenderTargetOGL> result
       = new CompositingRenderTargetOGL(aCompositor, gfx::IntPoint(0, 0), 0, 0);
@@ -144,15 +146,15 @@ public:
   {
     // XXX - Should it be implemented ? is the above assert true ?
     MOZ_ASSERT(false, "Not implemented");
-    return gfx::FORMAT_UNKNOWN;
+    return gfx::SurfaceFormat::UNKNOWN;
   }
 
-  const gfxMatrix& GetTransform() {
+  const gfx::Matrix& GetTransform() {
     return mTransform;
   }
 
 #ifdef MOZ_DUMP_PAINTING
-  virtual already_AddRefed<gfxImageSurface> Dump(Compositor* aCompositor);
+  virtual TemporaryRef<gfx::DataSourceSurface> Dump(Compositor* aCompositor);
 #endif
 
 private:
@@ -163,7 +165,7 @@ private:
   void InitializeImpl();
 
   InitParams mInitParams;
-  gfxMatrix mTransform;
+  gfx::Matrix mTransform;
   CompositorOGL* mCompositor;
   GLContext* mGL;
   GLuint mTextureHandle;

@@ -508,8 +508,8 @@ private:
     {
       MOZ_ASSERT(NS_FAILED(mErrorCode));
 
-        Throw(aCx, mErrorCode);
-      }
+      Throw(aCx, mErrorCode);
+    }
   };
 
 public:
@@ -1070,7 +1070,7 @@ Proxy::HandleEvent(nsIDOMEvent* aEvent)
 
       nsRefPtr<LoadStartDetectionRunnable> runnable =
         new LoadStartDetectionRunnable(this, mXMLHttpRequestPrivate);
-      if (NS_FAILED(NS_DispatchToCurrentThread(runnable))) {
+      if (!runnable->RegisterAndDispatch()) {
         NS_WARNING("Failed to dispatch LoadStartDetectionRunnable!");
       }
     }
@@ -1159,7 +1159,7 @@ EventRunnable::PreDispatch(JSContext* aCx, WorkerPrivate* aWorkerPrivate)
   }
   else {
     JS::Rooted<JS::Value> response(aCx);
-    mResponseResult = xhr->GetResponse(aCx, response.address());
+    mResponseResult = xhr->GetResponse(aCx, &response);
     if (NS_SUCCEEDED(mResponseResult)) {
       if (JSVAL_IS_UNIVERSAL(response)) {
         mResponse = response;
@@ -1459,8 +1459,7 @@ SendRunnable::MainThreadRun()
 
     JS::Rooted<JS::Value> body(cx);
     if (mBody.read(cx, &body, callbacks, &mClonedObjects)) {
-      if (NS_FAILED(xpc->JSValToVariant(cx, body.address(),
-                                        getter_AddRefs(variant)))) {
+      if (NS_FAILED(xpc->JSValToVariant(cx, body, getter_AddRefs(variant)))) {
         rv = NS_ERROR_DOM_INVALID_STATE_ERR;
       }
     }
@@ -1640,6 +1639,7 @@ XMLHttpRequest::MaybePin(ErrorResult& aRv)
   JSContext* cx = GetCurrentThreadJSContext();
 
   if (!mWorkerPrivate->AddFeature(cx, this)) {
+    aRv.Throw(NS_ERROR_FAILURE);
     return;
   }
 
@@ -1804,14 +1804,6 @@ XMLHttpRequest::SendInternal(const nsAString& aStringBody,
   if (!isSyncXHR)  {
     autoUnpin.Clear();
     MOZ_ASSERT(autoSyncLoop.empty());
-    return;
-  }
-
-  // If our sync XHR was canceled during the send call the worker is going
-  // away.  We have no idea how far through the send call we got.  There may
-  // be a ProxyCompleteRunnable in the sync loop, but rather than run the loop
-  // to get it we just let our RAII helpers clean up.
-  if (mCanceled) {
     return;
   }
 
@@ -2045,12 +2037,11 @@ XMLHttpRequest::Send(const nsAString& aBody, ErrorResult& aRv)
 }
 
 void
-XMLHttpRequest::Send(JSObject* aBody, ErrorResult& aRv)
+XMLHttpRequest::Send(JS::Handle<JSObject*> aBody, ErrorResult& aRv)
 {
   JSContext* cx = mWorkerPrivate->GetJSContext();
 
   MOZ_ASSERT(aBody);
-  JS::Rooted<JSObject*> body(cx, aBody);
 
   mWorkerPrivate->AssertIsOnWorkerThread();
 
@@ -2065,12 +2056,12 @@ XMLHttpRequest::Send(JSObject* aBody, ErrorResult& aRv)
   }
 
   JS::Rooted<JS::Value> valToClone(cx);
-  if (JS_IsArrayBufferObject(body) || JS_IsArrayBufferViewObject(body) ||
-      file::GetDOMBlobFromJSObject(body)) {
-    valToClone.setObject(*body);
+  if (JS_IsArrayBufferObject(aBody) || JS_IsArrayBufferViewObject(aBody) ||
+      file::GetDOMBlobFromJSObject(aBody)) {
+    valToClone.setObject(*aBody);
   }
   else {
-    JS::Rooted<JS::Value> obj(cx, JS::ObjectValue(*body));
+    JS::Rooted<JS::Value> obj(cx, JS::ObjectValue(*aBody));
     JSString* bodyStr = JS::ToString(cx, obj);
     if (!bodyStr) {
       aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
@@ -2093,6 +2084,20 @@ XMLHttpRequest::Send(JSObject* aBody, ErrorResult& aRv)
   }
 
   SendInternal(EmptyString(), buffer, clonedObjects, aRv);
+}
+
+void
+XMLHttpRequest::Send(const ArrayBuffer& aBody, ErrorResult& aRv)
+{
+  JS::Rooted<JSObject*> obj(mWorkerPrivate->GetJSContext(), aBody.Obj());
+  return Send(obj, aRv);
+}
+
+void
+XMLHttpRequest::Send(const ArrayBufferView& aBody, ErrorResult& aRv)
+{
+  JS::Rooted<JSObject*> obj(mWorkerPrivate->GetJSContext(), aBody.Obj());
+  return Send(obj, aRv);
 }
 
 void

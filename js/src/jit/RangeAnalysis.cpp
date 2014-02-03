@@ -18,6 +18,8 @@
 #include "jit/MIRGraph.h"
 #include "vm/NumericConversions.h"
 
+#include "jsopcodeinlines.h"
+
 using namespace js;
 using namespace js::jit;
 
@@ -167,7 +169,7 @@ RangeAnalysis::addBetaNodes()
         JSOp jsop = compare->jsop();
 
         if (branch_dir == FALSE_BRANCH) {
-            jsop = analyze::NegateCompareOp(jsop);
+            jsop = NegateCompareOp(jsop);
             conservativeLower = GenericNaN();
             conservativeUpper = GenericNaN();
         }
@@ -175,7 +177,7 @@ RangeAnalysis::addBetaNodes()
         if (left->isConstant() && left->toConstant()->value().isNumber()) {
             bound = left->toConstant()->value().toNumber();
             val = right;
-            jsop = analyze::ReverseCompareOp(jsop);
+            jsop = ReverseCompareOp(jsop);
         } else if (right->isConstant() && right->toConstant()->value().isNumber()) {
             bound = right->toConstant()->value().toNumber();
             val = left;
@@ -2042,7 +2044,7 @@ RangeAnalysis::analyze()
 bool
 RangeAnalysis::addRangeAssertions()
 {
-    if (!js_IonOptions.checkRangeAnalysis)
+    if (!js_JitOptions.checkRangeAnalysis)
         return true;
 
     // Check the computed range for this instruction, if the option is set. Note
@@ -2067,10 +2069,6 @@ RangeAnalysis::addRangeAssertions()
 
             // Don't insert assertions if there's nothing interesting to assert.
             if (r.isUnknown() || (ins->type() == MIRType_Int32 && r.isUnknownInt32()))
-                continue;
-
-            // Range-checking PassArgs breaks stuff.
-            if (ins->isPassArg())
                 continue;
 
             MAssertRange *guard = MAssertRange::New(alloc(), ins, new(alloc()) Range(r));

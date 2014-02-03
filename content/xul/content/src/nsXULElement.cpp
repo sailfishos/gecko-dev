@@ -2614,7 +2614,7 @@ OffThreadScriptReceiverCallback(void *aToken, void *aCallbackData)
 }
 
 nsresult
-nsXULPrototypeScript::Compile(const PRUnichar* aText,
+nsXULPrototypeScript::Compile(const char16_t* aText,
                               int32_t aTextLength,
                               nsIURI* aURI,
                               uint32_t aLineNo,
@@ -2656,7 +2656,7 @@ nsXULPrototypeScript::Compile(const PRUnichar* aText,
       JS::ExposeObjectToActiveJS(scope);
     }
 
-    if (aOffThreadReceiver && JS::CanCompileOffThread(cx, options)) {
+    if (aOffThreadReceiver && JS::CanCompileOffThread(cx, options, aTextLength)) {
         if (!JS::CompileOffThread(cx, scope, options,
                                   static_cast<const jschar*>(aText), aTextLength,
                                   OffThreadScriptReceiverCallback,

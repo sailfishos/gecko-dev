@@ -56,8 +56,6 @@ NS_IMETHODIMP CacheStorage::AsyncOpenURI(nsIURI *aURI,
 
   nsCOMPtr<nsIApplicationCache> appCache;
   if (LookupAppCache()) {
-    MOZ_ASSERT(!truncate);
-
     rv = ChooseApplicationCache(noRefURI, getter_AddRefs(appCache));
     NS_ENSURE_SUCCESS(rv, rv);
   }
@@ -81,7 +79,7 @@ NS_IMETHODIMP CacheStorage::AsyncOpenURI(nsIURI *aURI,
     return NS_OK;
   }
 
-  nsRefPtr<CacheEntry> entry;
+  nsRefPtr<CacheEntryHandle> entry;
   rv = CacheStorageService::Self()->AddStorageEntry(
     this, noRefURI, aIdExtension,
     true, // create always
@@ -90,7 +88,7 @@ NS_IMETHODIMP CacheStorage::AsyncOpenURI(nsIURI *aURI,
   NS_ENSURE_SUCCESS(rv, rv);
 
   // May invoke the callback synchronously
-  entry->AsyncOpen(aCallback, aFlags);
+  entry->Entry()->AsyncOpen(aCallback, aFlags);
 
   return NS_OK;
 }

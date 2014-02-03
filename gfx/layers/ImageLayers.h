@@ -8,13 +8,11 @@
 
 #include "Layers.h"                     // for Layer, etc
 #include "GraphicsFilter.h"             // for GraphicsFilter
-#include "gfxPoint.h"                   // for gfxIntSize
 #include "mozilla/gfx/BaseSize.h"       // for BaseSize
+#include "mozilla/gfx/Point.h"          // for IntSize
 #include "mozilla/layers/LayersTypes.h"
 #include "nsAutoPtr.h"                  // for nsRefPtr
 #include "nscore.h"                     // for nsACString
-
-class gfx3DMatrix;
 
 namespace mozilla {
 namespace layers {
@@ -50,7 +48,7 @@ public:
    * CONSTRUCTION PHASE ONLY
    * Set the size to scale the image to and the mode at which to scale.
    */
-  void SetScaleToSize(const gfxIntSize &aSize, ScaleMode aMode)
+  void SetScaleToSize(const gfx::IntSize &aSize, ScaleMode aMode)
   {
     if (mScaleToSize != aSize || mScaleMode != aMode) {
       mScaleToSize = aSize;
@@ -62,12 +60,12 @@ public:
 
   ImageContainer* GetContainer() { return mContainer; }
   GraphicsFilter GetFilter() { return mFilter; }
-  const gfxIntSize& GetScaleToSize() { return mScaleToSize; }
+  const gfx::IntSize& GetScaleToSize() { return mScaleToSize; }
   ScaleMode GetScaleMode() { return mScaleMode; }
 
   MOZ_LAYER_DECL_NAME("ImageLayer", TYPE_IMAGE)
 
-  virtual void ComputeEffectiveTransforms(const gfx3DMatrix& aTransformToSurface);
+  virtual void ComputeEffectiveTransforms(const gfx::Matrix4x4& aTransformToSurface);
 
   /**
    * if true, the image will only be backed by a single tile texture
@@ -89,7 +87,7 @@ protected:
 
   nsRefPtr<ImageContainer> mContainer;
   GraphicsFilter mFilter;
-  gfxIntSize mScaleToSize;
+  gfx::IntSize mScaleToSize;
   ScaleMode mScaleMode;
   bool mDisallowBigImage;
 };

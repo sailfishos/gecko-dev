@@ -47,7 +47,7 @@ public:
   NS_DECL_NSICLASSINFO
 
   nsresult SetSecurityState(uint32_t aState);
-  nsresult SetShortSecurityDescription(const PRUnichar *aText);
+  nsresult SetShortSecurityDescription(const char16_t *aText);
 
   const nsACString & GetHostName() const { return mHostName; }
   const char * GetHostNameRaw() const { return mHostName.get(); }
@@ -73,13 +73,6 @@ public:
   nsSSLStatus* SSLStatus() { return mSSLStatus; }
   void SetStatusErrorBits(nsIX509Cert & cert, uint32_t collected_errors);
 
-  bool IsCertIssuerBlacklisted() const {
-    return mIsCertIssuerBlacklisted;
-  }
-  void SetCertIssuerBlacklisted() {
-    mIsCertIssuerBlacklisted = true;
-  }
-
 private:
   mutable ::mozilla::Mutex mMutex;
 
@@ -102,7 +95,6 @@ private:
 
   int32_t mPort;
   nsXPIDLCString mHostName;
-  PRErrorCode mIsCertIssuerBlacklisted;
 
   /* SSL Status */
   mozilla::RefPtr<nsSSLStatus> mSSLStatus;

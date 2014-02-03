@@ -128,6 +128,12 @@ public:
 
   virtual nsIScrollableFrame* GetScrollTargetFrame() MOZ_OVERRIDE;
 
+  // Retrieve the element that the menu should be anchored to. By default this is
+  // the menu itself. However, the anchor attribute may refer to the value of an
+  // anonid within the menu's binding, or, if not found, the id of an element in
+  // the document.
+  nsIContent* GetAnchor();
+
   /**
    * NOTE: OpenMenu will open the menu asynchronously.
    */
@@ -187,7 +193,7 @@ public:
   bool IsOnMenu() { return mMenuParent && mMenuParent->IsMenu(); }
   void SetIsMenu(bool aIsMenu) { mIsMenu = aIsMenu; }
 
-#ifdef DEBUG
+#ifdef DEBUG_FRAME_DUMP
   NS_IMETHOD GetFrameName(nsAString& aResult) const MOZ_OVERRIDE
   {
       return MakeFrameName(NS_LITERAL_STRING("Menu"), aResult);

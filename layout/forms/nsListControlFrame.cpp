@@ -551,7 +551,7 @@ nsListControlFrame::ReflowAsDropdown(nsPresContext*           aPresContext,
       mNumDisplayRows = 1;
       mDropdownCanGrow = GetNumberOfRows() > 1;
     } else {
-      nscoord bp = aReflowState.mComputedBorderPadding.TopBottom();
+      nscoord bp = aReflowState.ComputedPhysicalBorderPadding().TopBottom();
       nscoord availableHeight = std::max(above, below) - bp;
       nscoord newHeight;
       uint32_t rows;
@@ -1471,7 +1471,7 @@ nsListControlFrame::GetType() const
   return nsGkAtoms::listControlFrame; 
 }
 
-#ifdef DEBUG
+#ifdef DEBUG_FRAME_DUMP
 NS_IMETHODIMP
 nsListControlFrame::GetFrameName(nsAString& aResult) const
 {
@@ -2075,6 +2075,8 @@ nsListControlFrame::KeyDown(nsIDOMEvent* aKeyEvent)
     return NS_OK;
   }
 
+  AutoIncrementalSearchResetter incrementalSearchResetter;
+
   // Don't check defaultPrevented value because other browsers don't prevent
   // the key navigation of list control even if preventDefault() is called.
 
@@ -2100,11 +2102,19 @@ nsListControlFrame::KeyDown(nsIDOMEvent* aKeyEvent)
   int32_t newIndex = kNothingSelected;
 
   bool isControlOrMeta = (keyEvent->IsControl() || keyEvent->IsMeta());
+  // Don't try to handle multiple-select pgUp/pgDown in single-select lists.
+  if (isControlOrMeta && !GetMultiple() &&
+      (keyEvent->keyCode == NS_VK_PAGE_UP ||
+       keyEvent->keyCode == NS_VK_PAGE_DOWN)) {
+    return NS_OK;
+  }
   if (isControlOrMeta && (keyEvent->keyCode == NS_VK_UP ||
                           keyEvent->keyCode == NS_VK_LEFT ||
                           keyEvent->keyCode == NS_VK_DOWN ||
-                          keyEvent->keyCode == NS_VK_RIGHT)) {
-    // Don't go into multiple select mode unless this list can handle it
+                          keyEvent->keyCode == NS_VK_RIGHT ||
+                          keyEvent->keyCode == NS_VK_HOME ||
+                          keyEvent->keyCode == NS_VK_END)) {
+    // Don't go into multiple-select mode unless this list can handle it.
     isControlOrMeta = mControlSelectMode = GetMultiple();
   } else if (keyEvent->keyCode != NS_VK_SPACE) {
     mControlSelectMode = false;
@@ -2124,41 +2134,45 @@ nsListControlFrame::KeyDown(nsIDOMEvent* aKeyEvent)
                                 1, 1);
       break;
     case NS_VK_RETURN:
-      if (mComboboxFrame) {
-        nsWeakFrame weakFrame(this);
+      if (IsInDropDownMode()) {
+        // If the select element is a dropdown style, Enter key should be
+        // consumed everytime since Enter key may be pressed accidentally after
+        // the dropdown is closed by Enter key press.
+        aKeyEvent->PreventDefault();
+
         if (mComboboxFrame->IsDroppedDown()) {
-          // At closing dropdown, users may not expect there is additional
-          // behavior for this key event.  Therefore, let's consume the event.
-          aKeyEvent->PreventDefault();
+          nsWeakFrame weakFrame(this);
           ComboboxFinish(mEndSelectionIndex);
           if (!weakFrame.IsAlive()) {
             return NS_OK;
           }
         }
+        // XXX This is strange. On other browsers, "change" event is fired
+        //     immediately after the selected item is changed rather than
+        //     Enter key is pressed.
         FireOnChange();
-        if (!weakFrame.IsAlive()) {
-          // If the keydown event causes destroying this, fired keypress on
-          // another element may cause another action which may not be
-          // expected by the user.
-          aKeyEvent->PreventDefault();
-        }
         return NS_OK;
       }
+
+      // If this is single select listbox, Enter key doesn't cause anything.
+      if (!GetMultiple()) {
+        return NS_OK;
+      }
+
       newIndex = mEndSelectionIndex;
       break;
     case NS_VK_ESCAPE: {
-      nsWeakFrame weakFrame(this);
-      // XXX When the Escape keydown causes closing dropdown, it shouldn't
-      //     cause any additonal actions. We should call preventDefault() here.
-      AboutToRollup();
-      if (!weakFrame.IsAlive()) {
-        // If the keydown event causes destroying this, fired keypress on
-        // another element may cause another action which may not be
-        // expected by the user.
-        aKeyEvent->PreventDefault();
+      // If the select element is a listbox style, Escape key causes nothing.
+      if (!IsInDropDownMode()) {
         return NS_OK;
       }
-      break;
+
+      AboutToRollup();
+      // If the select element is a dropdown style, Enter key should be
+      // consumed everytime since Escape key may be pressed accidentally after
+      // the dropdown is closed by Escepe key.
+      aKeyEvent->PreventDefault();
+      return NS_OK;
     }
     case NS_VK_PAGE_UP: {
       int32_t itemsPerPage =
@@ -2189,18 +2203,18 @@ nsListControlFrame::KeyDown(nsIDOMEvent* aKeyEvent)
 
 #if defined(XP_WIN) || defined(XP_OS2)
     case NS_VK_F4:
-      DropDownToggleKey(aKeyEvent);
+      if (!isControlOrMeta) {
+        DropDownToggleKey(aKeyEvent);
+      }
       return NS_OK;
 #endif
 
     default: // printable key will be handled by keypress event.
+      incrementalSearchResetter.Cancel();
       return NS_OK;
   }
 
   aKeyEvent->PreventDefault();
-
-  // Cancel incremental search if it's being performed.
-  GetIncrementalString().Truncate();
 
   // Actually process the new index and let the selection code
   // do the scrolling for us
@@ -2217,6 +2231,8 @@ nsListControlFrame::KeyPress(nsIDOMEvent* aKeyEvent)
   if (eventStates.HasState(NS_EVENT_STATE_DISABLED)) {
     return NS_OK;
   }
+
+  AutoIncrementalSearchResetter incrementalSearchResetter;
 
   const WidgetKeyboardEvent* keyEvent =
     aKeyEvent->GetInternalNSEvent()->AsKeyboardEvent();
@@ -2250,16 +2266,24 @@ nsListControlFrame::KeyPress(nsIDOMEvent* aKeyEvent)
   // NOTE: If keyCode of keypress event is not 0, charCode is always 0.
   //       Therefore, all non-printable keys are not handled after this block.
   if (!keyEvent->charCode) {
-    // Backspace key will delete the last char in the string
-    // XXX Backspace key causes "go back the history" on Windows.  Shouldn't we
-    //     prevent its default action if incremental search is used since
-    //     getting focus?  When I tested this, it worked accidentally.
-    if (keyEvent->keyCode == NS_VK_BACK && !GetIncrementalString().IsEmpty()) {
-      GetIncrementalString().Truncate(GetIncrementalString().Length() - 1);
+    // Backspace key will delete the last char in the string.  Otherwise,
+    // non-printable keypress should reset incremental search.
+    if (keyEvent->keyCode == NS_VK_BACK) {
+      incrementalSearchResetter.Cancel();
+      if (!GetIncrementalString().IsEmpty()) {
+        GetIncrementalString().Truncate(GetIncrementalString().Length() - 1);
+      }
       aKeyEvent->PreventDefault();
+    } else {
+      // XXX When a select element has focus, even if the key causes nothing,
+      //     it might be better to call preventDefault() here because nobody
+      //     should expect one of other elements including chrome handles the
+      //     key event.
     }
     return NS_OK;
   }
+
+  incrementalSearchResetter.Cancel();
 
   // We ate the key if we got this far.
   aKeyEvent->PreventDefault();
@@ -2289,7 +2313,7 @@ nsListControlFrame::KeyPress(nsIDOMEvent* aKeyEvent)
   gLastKeyTime = keyEvent->time;
 
   // Append this keystroke to the search string. 
-  PRUnichar uniChar = ToLowerCase(static_cast<PRUnichar>(keyEvent->charCode));
+  char16_t uniChar = ToLowerCase(static_cast<char16_t>(keyEvent->charCode));
   GetIncrementalString().Append(uniChar);
 
   // See bug 188199, if all letters in incremental string are same, just try to

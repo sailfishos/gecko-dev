@@ -89,6 +89,8 @@ namespace jit {
 class JitRuntime;
 class JitActivation;
 struct PcScriptCache;
+class Simulator;
+class SimulatorRuntime;
 }
 
 /*
@@ -169,7 +171,7 @@ struct ConservativeGCData
 #endif
     }
 
-    JS_NEVER_INLINE void recordStackTop();
+    MOZ_NEVER_INLINE void recordStackTop();
 
 #ifdef JS_THREADSAFE
     void updateForRequestEnd() {
@@ -340,10 +342,8 @@ class NewObjectCache
     inline bool lookupGlobal(const Class *clasp, js::GlobalObject *global, gc::AllocKind kind,
                              EntryIndex *pentry);
 
-    bool lookupType(const Class *clasp, js::types::TypeObject *type, gc::AllocKind kind,
-                    EntryIndex *pentry)
-    {
-        return lookup(clasp, type, kind, pentry);
+    bool lookupType(js::types::TypeObject *type, gc::AllocKind kind, EntryIndex *pentry) {
+        return lookup(type->clasp(), type, kind, pentry);
     }
 
     /*
@@ -359,11 +359,11 @@ class NewObjectCache
     inline void fillGlobal(EntryIndex entry, const Class *clasp, js::GlobalObject *global,
                            gc::AllocKind kind, JSObject *obj);
 
-    void fillType(EntryIndex entry, const Class *clasp, js::types::TypeObject *type, gc::AllocKind kind,
+    void fillType(EntryIndex entry, js::types::TypeObject *type, gc::AllocKind kind,
                   JSObject *obj)
     {
         JS_ASSERT(obj->type() == type);
-        return fill(entry, clasp, type, kind, obj);
+        return fill(entry, type->clasp(), type, kind, obj);
     }
 
     /* Invalidate any entries which might produce an object with shape/proto. */
@@ -548,6 +548,11 @@ class PerThreadData : public PerThreadDataFriendFields,
     /* See AsmJSActivation comment. Protected by rt->operationCallbackLock. */
     js::AsmJSActivation *asmJSActivationStack_;
 
+#ifdef JS_ARM_SIMULATOR
+    js::jit::Simulator *simulator_;
+    uintptr_t simulatorStackLimit_;
+#endif
+
   public:
     js::Activation *const *addressOfActivation() const {
         return &activation_;
@@ -602,6 +607,13 @@ class PerThreadData : public PerThreadDataFriendFields,
     inline bool exclusiveThreadsPresent();
     inline void addActiveCompilation();
     inline void removeActiveCompilation();
+
+#ifdef JS_ARM_SIMULATOR
+    js::jit::Simulator *simulator() const;
+    void setSimulator(js::jit::Simulator *sim);
+    js::jit::SimulatorRuntime *simulatorRuntime() const;
+    uintptr_t *addressOfSimulatorStackLimit();
+#endif
 };
 
 template<class Client>
@@ -611,14 +623,14 @@ struct MallocProvider
         Client *client = static_cast<Client *>(this);
         client->updateMallocCounter(bytes);
         void *p = js_malloc(bytes);
-        return JS_LIKELY(!!p) ? p : client->onOutOfMemory(nullptr, bytes);
+        return MOZ_LIKELY(!!p) ? p : client->onOutOfMemory(nullptr, bytes);
     }
 
     void *calloc_(size_t bytes) {
         Client *client = static_cast<Client *>(this);
         client->updateMallocCounter(bytes);
         void *p = js_calloc(bytes);
-        return JS_LIKELY(!!p) ? p : client->onOutOfMemory(reinterpret_cast<void *>(1), bytes);
+        return MOZ_LIKELY(!!p) ? p : client->onOutOfMemory(reinterpret_cast<void *>(1), bytes);
     }
 
     void *realloc_(void *p, size_t oldBytes, size_t newBytes) {
@@ -630,7 +642,7 @@ struct MallocProvider
         if (newBytes > oldBytes)
             client->updateMallocCounter(newBytes - oldBytes);
         void *p2 = js_realloc(p, newBytes);
-        return JS_LIKELY(!!p2) ? p2 : client->onOutOfMemory(p, newBytes);
+        return MOZ_LIKELY(!!p2) ? p2 : client->onOutOfMemory(p, newBytes);
     }
 
     void *realloc_(void *p, size_t bytes) {
@@ -642,7 +654,7 @@ struct MallocProvider
         if (!p)
             client->updateMallocCounter(bytes);
         void *p2 = js_realloc(p, bytes);
-        return JS_LIKELY(!!p2) ? p2 : client->onOutOfMemory(p, bytes);
+        return MOZ_LIKELY(!!p2) ? p2 : client->onOutOfMemory(p, bytes);
     }
 
     template <class T>
@@ -675,7 +687,7 @@ struct MallocProvider
         return (T *)calloc_(numElems * sizeof(T));
     }
 
-    JS_DECLARE_NEW_METHODS(new_, malloc_, JS_ALWAYS_INLINE)
+    JS_DECLARE_NEW_METHODS(new_, malloc_, MOZ_ALWAYS_INLINE)
 };
 
 namespace gc {
@@ -735,8 +747,8 @@ struct JSRuntime : public JS::shadow::Runtime,
     enum RuntimeLock {
         ExclusiveAccessLock,
         WorkerThreadStateLock,
-        OperationCallbackLock,
         CompilationLock,
+        OperationCallbackLock,
         GCLock
     };
 #ifdef DEBUG
@@ -792,8 +804,7 @@ struct JSRuntime : public JS::shadow::Runtime,
 #endif
     }
 
-#if defined(JS_THREADSAFE) && defined(JS_ION)
-# define JS_WORKER_THREADS
+#ifdef JS_THREADSAFE
 
     js::WorkerThreadState *workerThreadState;
 
@@ -841,11 +852,11 @@ struct JSRuntime : public JS::shadow::Runtime,
     void setUsedByExclusiveThread(JS::Zone *zone);
     void clearUsedByExclusiveThread(JS::Zone *zone);
 
-#endif // JS_THREADSAFE && JS_ION
+#endif // JS_THREADSAFE
 
 #ifdef DEBUG
     bool currentThreadHasExclusiveAccess() {
-#ifdef JS_WORKER_THREADS
+#ifdef JS_THREADSAFE
         return (!numExclusiveThreads && mainThreadHasExclusiveAccess) ||
                exclusiveAccessOwner == PR_GetCurrentThread();
 #else
@@ -855,7 +866,7 @@ struct JSRuntime : public JS::shadow::Runtime,
 #endif // DEBUG
 
     bool exclusiveThreadsPresent() const {
-#ifdef JS_WORKER_THREADS
+#ifdef JS_THREADSAFE
         return numExclusiveThreads > 0;
 #else
         return false;
@@ -863,15 +874,23 @@ struct JSRuntime : public JS::shadow::Runtime,
     }
 
     void addCompilationThread() {
+#ifdef JS_THREADSAFE
         numCompilationThreads++;
+#else
+        MOZ_ASSUME_UNREACHABLE("No threads");
+#endif
     }
     void removeCompilationThread() {
+#ifdef JS_THREADSAFE
         JS_ASSERT(numCompilationThreads);
         numCompilationThreads--;
+#else
+        MOZ_ASSUME_UNREACHABLE("No threads");
+#endif
     }
 
     bool compilationThreadsPresent() const {
-#ifdef JS_WORKER_THREADS
+#ifdef JS_THREADSAFE
         return numCompilationThreads > 0;
 #else
         return false;
@@ -880,7 +899,7 @@ struct JSRuntime : public JS::shadow::Runtime,
 
 #ifdef DEBUG
     bool currentThreadHasCompilationLock() {
-#ifdef JS_WORKER_THREADS
+#ifdef JS_THREADSAFE
         return (!numCompilationThreads && mainThreadHasCompilationLock) ||
                compilationLockOwner == PR_GetCurrentThread();
 #else
@@ -1283,6 +1302,10 @@ struct JSRuntime : public JS::shadow::Runtime,
 
     int gcZeal() { return gcZeal_; }
 
+    bool upcomingZealousGC() {
+        return gcNextScheduled == 1;
+    }
+
     bool needZealousGC() {
         if (gcNextScheduled > 0 && --gcNextScheduled == 0) {
             if (gcZeal() == js::gc::ZealAllocValue ||
@@ -1298,6 +1321,7 @@ struct JSRuntime : public JS::shadow::Runtime,
     }
 #else
     int gcZeal() { return 0; }
+    bool upcomingZealousGC() { return false; }
     bool needZealousGC() { return false; }
 #endif
 
@@ -1326,6 +1350,10 @@ struct JSRuntime : public JS::shadow::Runtime,
      */
     mozilla::Atomic<uint32_t, mozilla::ReleaseAcquire> gcMallocGCTriggered;
 
+#ifdef JS_ARM_SIMULATOR
+    js::jit::SimulatorRuntime *simulatorRuntime_;
+#endif
+
   public:
     void setNeedsBarrier(bool needs) {
         needsBarrier_ = needs;
@@ -1342,6 +1370,11 @@ struct JSRuntime : public JS::shadow::Runtime,
           : op(op), data(data)
         {}
     };
+
+#ifdef JS_ARM_SIMULATOR
+    js::jit::SimulatorRuntime *simulatorRuntime() const;
+    void setSimulatorRuntime(js::jit::SimulatorRuntime *srt);
+#endif
 
     /*
      * The trace operations to trace embedding-specific GC roots. One is for
@@ -1637,16 +1670,11 @@ struct JSRuntime : public JS::shadow::Runtime,
     size_t              noGCOrAllocationCheck;
 #endif
 
-    bool                jitHardening;
-
     bool                jitSupportsFloatingPoint;
 
     // Used to reset stack limit after a signaled interrupt (i.e. ionStackLimit_ = -1)
     // has been noticed by Ion/Baseline.
-    void resetIonStackLimit() {
-        AutoLockForOperationCallback lock(this);
-        mainThread.setIonStackLimit(mainThread.nativeStackLimit[js::StackForUntrustedScript]);
-    }
+    void resetIonStackLimit();
 
     // Cache for jit::GetPcScript().
     js::jit::PcScriptCache *ionPcScriptCache;
@@ -1756,11 +1784,6 @@ struct JSRuntime : public JS::shadow::Runtime,
     };
 
     void triggerOperationCallback(OperationCallbackTrigger trigger);
-
-    void setJitHardening(bool enabled);
-    bool getJitHardening() const {
-        return jitHardening;
-    }
 
     void addSizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf, JS::RuntimeSizes *runtime);
 
@@ -2020,64 +2043,64 @@ PerThreadData::removeActiveCompilation()
 
 /************************************************************************/
 
-static JS_ALWAYS_INLINE void
+static MOZ_ALWAYS_INLINE void
 MakeRangeGCSafe(Value *vec, size_t len)
 {
     mozilla::PodZero(vec, len);
 }
 
-static JS_ALWAYS_INLINE void
+static MOZ_ALWAYS_INLINE void
 MakeRangeGCSafe(Value *beg, Value *end)
 {
     mozilla::PodZero(beg, end - beg);
 }
 
-static JS_ALWAYS_INLINE void
+static MOZ_ALWAYS_INLINE void
 MakeRangeGCSafe(jsid *beg, jsid *end)
 {
     for (jsid *id = beg; id != end; ++id)
         *id = INT_TO_JSID(0);
 }
 
-static JS_ALWAYS_INLINE void
+static MOZ_ALWAYS_INLINE void
 MakeRangeGCSafe(jsid *vec, size_t len)
 {
     MakeRangeGCSafe(vec, vec + len);
 }
 
-static JS_ALWAYS_INLINE void
+static MOZ_ALWAYS_INLINE void
 MakeRangeGCSafe(Shape **beg, Shape **end)
 {
     mozilla::PodZero(beg, end - beg);
 }
 
-static JS_ALWAYS_INLINE void
+static MOZ_ALWAYS_INLINE void
 MakeRangeGCSafe(Shape **vec, size_t len)
 {
     mozilla::PodZero(vec, len);
 }
 
-static JS_ALWAYS_INLINE void
+static MOZ_ALWAYS_INLINE void
 SetValueRangeToUndefined(Value *beg, Value *end)
 {
     for (Value *v = beg; v != end; ++v)
         v->setUndefined();
 }
 
-static JS_ALWAYS_INLINE void
+static MOZ_ALWAYS_INLINE void
 SetValueRangeToUndefined(Value *vec, size_t len)
 {
     SetValueRangeToUndefined(vec, vec + len);
 }
 
-static JS_ALWAYS_INLINE void
+static MOZ_ALWAYS_INLINE void
 SetValueRangeToNull(Value *beg, Value *end)
 {
     for (Value *v = beg; v != end; ++v)
         v->setNull();
 }
 
-static JS_ALWAYS_INLINE void
+static MOZ_ALWAYS_INLINE void
 SetValueRangeToNull(Value *vec, size_t len)
 {
     SetValueRangeToNull(vec, vec + len);
@@ -2132,7 +2155,7 @@ class AutoEnterIonCompilation
 class AutoProtectHeapForIonCompilation
 {
   public:
-#if defined(DEBUG) && !defined(XP_WIN)
+#ifdef JS_CAN_CHECK_THREADSAFE_ACCESSES
     JSRuntime *runtime;
 
     AutoProtectHeapForIonCompilation(JSRuntime *rt MOZ_GUARD_OBJECT_NOTIFIER_PARAM);

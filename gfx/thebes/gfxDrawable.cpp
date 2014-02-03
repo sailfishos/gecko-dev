@@ -7,6 +7,7 @@
 #include "gfxASurface.h"
 #include "gfxContext.h"
 #include "gfxPlatform.h"
+#include "gfxColor.h"
 #ifdef MOZ_X11
 #include "cairo.h"
 #include "gfxXlibSurface.h"
@@ -74,7 +75,7 @@ PreparePatternForUntiledDrawing(gfxPattern* aPattern,
     switch (currentTarget->GetType()) {
 
 #ifdef MOZ_X11
-        case gfxSurfaceTypeXlib:
+        case gfxSurfaceType::Xlib:
         {
             // See bugs 324698, 422179, and 468496.  This is a workaround for
             // XRender's RepeatPad not being implemented correctly on old X
@@ -165,6 +166,9 @@ gfxSurfaceDrawable::Draw(gfxContext* aContext,
     aContext->SetPattern(pattern);
     aContext->Rectangle(aFillRect);
     aContext->Fill();
+    // clear the pattern so that the snapshot is released before the
+    // drawable is destroyed
+    aContext->SetDeviceColor(gfxRGBA(0.0, 0.0, 0.0, 0.0));
     return true;
 }
 
@@ -192,7 +196,7 @@ already_AddRefed<gfxSurfaceDrawable>
 gfxCallbackDrawable::MakeSurfaceDrawable(const GraphicsFilter aFilter)
 {
     nsRefPtr<gfxASurface> surface =
-        gfxPlatform::GetPlatform()->CreateOffscreenSurface(mSize, GFX_CONTENT_COLOR_ALPHA);
+        gfxPlatform::GetPlatform()->CreateOffscreenSurface(mSize, gfxContentType::COLOR_ALPHA);
     if (!surface || surface->CairoStatus() != 0)
         return nullptr;
 

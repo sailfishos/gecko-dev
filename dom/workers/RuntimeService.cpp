@@ -135,7 +135,6 @@ static_assert(MAX_WORKERS_PER_DOMAIN >= 1,
 #define PREF_JS_OPTIONS_PREFIX "javascript.options."
 #define PREF_WORKERS_OPTIONS_PREFIX PREF_WORKERS_PREFIX "options."
 #define PREF_MEM_OPTIONS_PREFIX "mem."
-#define PREF_JIT_HARDENING "jit_hardening"
 #define PREF_GCZEAL "gcZeal"
 
 #if !(defined(DEBUG) || defined(MOZ_ENABLE_JS_DUMP))
@@ -297,9 +296,7 @@ LoadJSContextOptions(const char* aPrefName, void* /* aClosure */)
                                           PREF_MEM_OPTIONS_PREFIX)) ||
       StringBeginsWith(prefName,
                        NS_LITERAL_CSTRING(PREF_WORKERS_OPTIONS_PREFIX
-                                          PREF_MEM_OPTIONS_PREFIX)) ||
-      prefName.EqualsLiteral(PREF_JS_OPTIONS_PREFIX PREF_JIT_HARDENING) ||
-      prefName.EqualsLiteral(PREF_WORKERS_OPTIONS_PREFIX PREF_JIT_HARDENING)) {
+                                          PREF_MEM_OPTIONS_PREFIX))) {
     return;
   }
 
@@ -575,27 +572,6 @@ LoadJSGCMemoryOptions(const char* aPrefName, void* /* aClosure */)
 }
 
 void
-LoadJITHardeningOption(const char* /* aPrefName */, void* /* aClosure */)
-{
-  AssertIsOnMainThread();
-
-  RuntimeService* rts = RuntimeService::GetService();
-
-  if (!rts && !gRuntimeServiceDuringInit) {
-    // May be shutting down, just bail.
-    return;
-  }
-
-  bool value = GetWorkerPref(NS_LITERAL_CSTRING(PREF_JIT_HARDENING), false);
-
-  RuntimeService::SetDefaultJITHardening(value);
-
-  if (rts) {
-    rts->UpdateAllWorkerJITHardening(value);
-  }
-}
-
-void
 ErrorReporter(JSContext* aCx, const char* aMessage, JSErrorReport* aReport)
 {
   WorkerPrivate* worker = GetWorkerPrivateFromContext(aCx);
@@ -791,7 +767,6 @@ CreateJSContextForWorker(WorkerPrivate* aWorkerPrivate, JSRuntime* aRuntime)
 
   // Security policy:
   static JSSecurityCallbacks securityCallbacks = {
-    nullptr,
     ContentSecurityPolicyAllows
   };
   JS_SetSecurityCallbacks(aRuntime, &securityCallbacks);
@@ -832,8 +807,6 @@ CreateJSContextForWorker(WorkerPrivate* aWorkerPrivate, JSRuntime* aRuntime)
   JS::ContextOptionsRef(workerCx) =
     aWorkerPrivate->IsChromeWorker() ? settings.chrome.contextOptions
                                      : settings.content.contextOptions;
-
-  JS_SetJitHardening(aRuntime, settings.jitHardening);
 
 #ifdef JS_GC_ZEAL
   JS_SetGCZeal(workerCx, settings.gcZeal, settings.gcZealFrequency);
@@ -1223,7 +1196,7 @@ bool RuntimeService::sDefaultPreferences[WORKERPREF_COUNT] = { false };
 
 RuntimeService::RuntimeService()
 : mMutex("RuntimeService::mMutex"), mObserved(false),
-  mShuttingDown(false), mNavigatorStringsLoaded(false)
+  mShuttingDown(false), mNavigatorPropertiesLoaded(false)
 {
   AssertIsOnMainThread();
   NS_ASSERTION(!gRuntimeService, "More than one service!");
@@ -1352,17 +1325,17 @@ RuntimeService::RegisterWorker(JSContext* aCx, WorkerPrivate* aWorkerPrivate)
     }
   }
   else {
-    if (!mNavigatorStringsLoaded) {
-      NS_GetNavigatorAppName(mNavigatorStrings.mAppName);
-      if (NS_FAILED(NS_GetNavigatorAppVersion(mNavigatorStrings.mAppVersion)) ||
-          NS_FAILED(NS_GetNavigatorPlatform(mNavigatorStrings.mPlatform)) ||
-          NS_FAILED(NS_GetNavigatorUserAgent(mNavigatorStrings.mUserAgent))) {
+    if (!mNavigatorPropertiesLoaded) {
+      NS_GetNavigatorAppName(mNavigatorProperties.mAppName);
+      if (NS_FAILED(NS_GetNavigatorAppVersion(mNavigatorProperties.mAppVersion)) ||
+          NS_FAILED(NS_GetNavigatorPlatform(mNavigatorProperties.mPlatform)) ||
+          NS_FAILED(NS_GetNavigatorUserAgent(mNavigatorProperties.mUserAgent))) {
         JS_ReportError(aCx, "Failed to load navigator strings!");
         UnregisterWorker(aCx, aWorkerPrivate);
         return false;
       }
 
-      mNavigatorStringsLoaded = true;
+      mNavigatorPropertiesLoaded = true;
     }
 
     nsPIDOMWindow* window = aWorkerPrivate->GetWindow();
@@ -1660,6 +1633,10 @@ RuntimeService::Init()
     NS_WARNING("Failed to register for memory pressure notifications!");
   }
 
+  if (NS_FAILED(obs->AddObserver(this, NS_IOSERVICE_OFFLINE_STATUS_TOPIC, false))) {
+    NS_WARNING("Failed to register for offline notification event!");
+  }
+
   NS_ASSERTION(!gRuntimeServiceDuringInit, "This should be null!");
   gRuntimeServiceDuringInit = this;
 
@@ -1671,14 +1648,6 @@ RuntimeService::Init()
                             LoadJSGCMemoryOptions,
                             PREF_WORKERS_OPTIONS_PREFIX PREF_MEM_OPTIONS_PREFIX,
                             nullptr)) ||
-      NS_FAILED(Preferences::RegisterCallback(
-                                      LoadJITHardeningOption,
-                                      PREF_JS_OPTIONS_PREFIX PREF_JIT_HARDENING,
-                                      nullptr)) ||
-      NS_FAILED(Preferences::RegisterCallbackAndCall(
-                                 LoadJITHardeningOption,
-                                 PREF_WORKERS_OPTIONS_PREFIX PREF_JIT_HARDENING,
-                                 nullptr)) ||
 #ifdef JS_GC_ZEAL
       NS_FAILED(Preferences::RegisterCallback(
                                              LoadGCZealOptions,
@@ -1732,15 +1701,6 @@ RuntimeService::Init()
   int32_t maxPerDomain = Preferences::GetInt(PREF_WORKERS_MAX_PER_DOMAIN,
                                              MAX_WORKERS_PER_DOMAIN);
   gMaxWorkersPerDomain = std::max(0, maxPerDomain);
-
-  mDetectorName = Preferences::GetLocalizedCString("intl.charset.detector");
-
-  nsCOMPtr<nsIPlatformCharset> platformCharset =
-    do_GetService(NS_PLATFORMCHARSET_CONTRACTID, &rv);
-  if (NS_SUCCEEDED(rv)) {
-    rv = platformCharset->GetCharset(kPlatformCharsetSel_PlainTextInFile,
-                                     mSystemCharset);
-  }
 
   rv = InitOSFileConstants();
   if (NS_FAILED(rv)) {
@@ -1894,15 +1854,7 @@ RuntimeService::Cleanup()
         NS_FAILED(Preferences::UnregisterCallback(
                             LoadJSGCMemoryOptions,
                             PREF_WORKERS_OPTIONS_PREFIX PREF_MEM_OPTIONS_PREFIX,
-                            nullptr)) ||
-        NS_FAILED(Preferences::UnregisterCallback(
-                                      LoadJITHardeningOption,
-                                      PREF_JS_OPTIONS_PREFIX PREF_JIT_HARDENING,
-                                      nullptr)) ||
-        NS_FAILED(Preferences::UnregisterCallback(
-                                 LoadJITHardeningOption,
-                                 PREF_WORKERS_OPTIONS_PREFIX PREF_JIT_HARDENING,
-                                 nullptr))) {
+                            nullptr))) {
       NS_WARNING("Failed to unregister pref callbacks!");
     }
 
@@ -1920,6 +1872,10 @@ RuntimeService::Cleanup()
         NS_WARNING("Failed to unregister for memory pressure notifications!");
       }
 
+      if (NS_FAILED(obs->RemoveObserver(this,
+                                        NS_IOSERVICE_OFFLINE_STATUS_TOPIC))) {
+        NS_WARNING("Failed to unregister for offline notification event!");
+      }
       obs->RemoveObserver(this, NS_XPCOM_SHUTDOWN_THREADS_OBSERVER_ID);
       obs->RemoveObserver(this, NS_XPCOM_SHUTDOWN_OBSERVER_ID);
       mObserved = false;
@@ -2280,12 +2236,6 @@ RuntimeService::UpdateAllWorkerGCZeal()
 #endif
 
 void
-RuntimeService::UpdateAllWorkerJITHardening(bool aJITHardening)
-{
-  BROADCAST_ALL_WORKERS(UpdateJITHardening, aJITHardening);
-}
-
-void
 RuntimeService::GarbageCollectAllWorkers(bool aShrinking)
 {
   BROADCAST_ALL_WORKERS(GarbageCollect, aShrinking);
@@ -2297,13 +2247,19 @@ RuntimeService::CycleCollectAllWorkers()
   BROADCAST_ALL_WORKERS(CycleCollect, /* dummy = */ false);
 }
 
+void
+RuntimeService::SendOfflineStatusChangeEventToAllWorkers(bool aIsOffline)
+{
+  BROADCAST_ALL_WORKERS(OfflineStatusChangeEvent, aIsOffline);
+}
+
 // nsISupports
 NS_IMPL_ISUPPORTS1(RuntimeService, nsIObserver)
 
 // nsIObserver
 NS_IMETHODIMP
 RuntimeService::Observe(nsISupports* aSubject, const char* aTopic,
-                        const PRUnichar* aData)
+                        const char16_t* aData)
 {
   AssertIsOnMainThread();
 
@@ -2326,6 +2282,10 @@ RuntimeService::Observe(nsISupports* aSubject, const char* aTopic,
   if (!strcmp(aTopic, MEMORY_PRESSURE_OBSERVER_TOPIC)) {
     GarbageCollectAllWorkers(/* shrinking = */ true);
     CycleCollectAllWorkers();
+    return NS_OK;
+  }
+  if (!strcmp(aTopic, NS_IOSERVICE_OFFLINE_STATUS_TOPIC)) {
+    SendOfflineStatusChangeEventToAllWorkers(NS_IsOffline());
     return NS_OK;
   }
 
@@ -2514,7 +2474,7 @@ LogViolationDetailsRunnable::Run()
     if (mWorkerPrivate->GetReportCSPViolations()) {
       csp->LogViolationDetails(nsIContentSecurityPolicy::VIOLATION_TYPE_EVAL,
                                mFileName, scriptSample, mLineNum,
-                               EmptyString());
+                               EmptyString(), EmptyString());
     }
   }
 

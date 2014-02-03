@@ -34,6 +34,9 @@
 #ifndef MOZ_STATIC_JS
 @BINPATH@/@DLL_PREFIX@mozjs@DLL_SUFFIX@
 #endif
+#ifdef MOZ_DMD
+@BINPATH@/@DLL_PREFIX@dmd@DLL_SUFFIX@
+#endif
 #ifndef MOZ_FOLD_LIBS
 @BINPATH@/@DLL_PREFIX@plc4@DLL_SUFFIX@
 @BINPATH@/@DLL_PREFIX@plds4@DLL_SUFFIX@
@@ -44,6 +47,7 @@
 @BINPATH@/@DLL_PREFIX@omxplugingb@DLL_SUFFIX@
 @BINPATH@/@DLL_PREFIX@omxplugingb235@DLL_SUFFIX@
 @BINPATH@/@DLL_PREFIX@omxpluginhc@DLL_SUFFIX@
+@BINPATH@/@DLL_PREFIX@omxpluginkk@DLL_SUFFIX@
 @BINPATH@/@DLL_PREFIX@omxpluginfroyo@DLL_SUFFIX@
 @BINPATH@/@DLL_PREFIX@xul@DLL_SUFFIX@
 
@@ -83,7 +87,6 @@
 @BINPATH@/res/drawable
 @BINPATH@/res/drawable-hdpi
 @BINPATH@/res/layout
-@BINPATH@/recommended-addons.json
 @BINPATH@/distribution/*
 
 [browser]
@@ -381,8 +384,8 @@
 @BINPATH@/components/nsINIProcessor.js
 @BINPATH@/components/nsPrompter.manifest
 @BINPATH@/components/nsPrompter.js
-@BINPATH@/components/TelemetryPing.js
-@BINPATH@/components/TelemetryPing.manifest
+@BINPATH@/components/TelemetryStartup.js
+@BINPATH@/components/TelemetryStartup.manifest
 @BINPATH@/components/Webapps.js
 @BINPATH@/components/Webapps.manifest
 @BINPATH@/components/AppsService.js
@@ -539,6 +542,8 @@ bin/libfreebl_32int64_3.so
 ; [Crash Reporter]
 ;
 #ifdef MOZ_CRASHREPORTER
+@BINPATH@/components/CrashService.manifest
+@BINPATH@/components/CrashService.js
 @BINPATH@/crashreporter@BIN_SUFFIX@
 @BINPATH@/crashreporter.crt
 @BINPATH@/crashreporter.ini

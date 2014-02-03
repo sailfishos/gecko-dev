@@ -36,6 +36,8 @@ Cu.import("resource://gre/modules/osfile/_PromiseWorker.jsm", this);
 Cu.import("resource://gre/modules/Promise.jsm");
 Cu.import("resource://gre/modules/AsyncShutdown.jsm");
 
+XPCOMUtils.defineLazyModuleGetter(this, "console",
+  "resource://gre/modules/devtools/Console.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "TelemetryStopwatch",
   "resource://gre/modules/TelemetryStopwatch.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "Task",
@@ -57,11 +59,20 @@ this.SessionFile = {
     return SessionFileInternal.write(aData);
   },
   /**
-   * Writes the initial state to disk again only to change the session's load
-   * state. This must only be called once, it will throw an error otherwise.
+   * Gather telemetry statistics.
+   *
+   *
+   * Most of the work is done off the main thread but there is a main
+   * thread cost involved to send data to the worker thread. This method
+   * should therefore be called only when we know that it will not disrupt
+   * the user's experience, e.g. on idle-daily.
+   *
+   * @return {Promise}
+   * @promise {object} An object holding all the information to be submitted
+   * to Telemetry.
    */
-  writeLoadStateOnceAfterStartup: function (aLoadState) {
-    SessionFileInternal.writeLoadStateOnceAfterStartup(aLoadState);
+  gatherTelemetry: function(aData) {
+    return SessionFileInternal.gatherTelemetry(aData);
   },
   /**
    * Create a backup copy, asynchronously.
@@ -90,39 +101,6 @@ Object.freeze(SessionFile);
 /**
  * Utilities for dealing with promises and Task.jsm
  */
-const TaskUtils = {
-  /**
-   * Add logging to a promise.
-   *
-   * @param {Promise} promise
-   * @return {Promise} A promise behaving as |promise|, but with additional
-   * logging in case of uncaught error.
-   */
-  captureErrors: function captureErrors(promise) {
-    return promise.then(
-      null,
-      function onError(reason) {
-        Cu.reportError("Uncaught asynchronous error: " + reason + " at\n" + reason.stack);
-        throw reason;
-      }
-    );
-  },
-  /**
-   * Spawn a new Task from a generator.
-   *
-   * This function behaves as |Task.spawn|, with the exception that it
-   * adds logging in case of uncaught error. For more information, see
-   * the documentation of |Task.jsm|.
-   *
-   * @param {generator} gen Some generator.
-   * @return {Promise} A promise built from |gen|, with the same semantics
-   * as |Task.spawn(gen)|.
-   */
-  spawn: function spawn(gen) {
-    return this.captureErrors(Task.spawn(gen));
-  }
-};
-
 let SessionFileInternal = {
   /**
    * The path to sessionstore.js
@@ -153,6 +131,14 @@ let SessionFileInternal = {
     });
   },
 
+  gatherTelemetry: function(aStateString) {
+    return Task.spawn(function() {
+      let msg = yield SessionWorker.post("gatherTelemetry", [aStateString]);
+      this._recordTelemetry(msg.telemetry);
+      throw new Task.Result(msg.telemetry);
+    }.bind(this));
+  },
+
   write: function (aData) {
     if (this._isClosed) {
       return Promise.reject(new Error("SessionFile is closed"));
@@ -166,7 +152,7 @@ let SessionFileInternal = {
       isFinalWrite = this._isClosed = true;
     }
 
-    return this._latestWrite = TaskUtils.spawn(function task() {
+    return this._latestWrite = Task.spawn(function task() {
       TelemetryStopwatch.start("FX_SESSION_RESTORE_WRITE_FILE_LONGEST_OP_MS", refObj);
 
       try {
@@ -179,21 +165,13 @@ let SessionFileInternal = {
         this._recordTelemetry(msg.telemetry);
       } catch (ex) {
         TelemetryStopwatch.cancel("FX_SESSION_RESTORE_WRITE_FILE_LONGEST_OP_MS", refObj);
-        Cu.reportError("Could not write session state file " + this.path
-                       + ": " + ex);
+        console.error("Could not write session state file ", this.path, ex);
       }
 
       if (isFinalWrite) {
         Services.obs.notifyObservers(null, "sessionstore-final-state-write-complete", "");
       }
     }.bind(this));
-  },
-
-  writeLoadStateOnceAfterStartup: function (aLoadState) {
-    SessionWorker.post("writeLoadStateOnceAfterStartup", [aLoadState]).then(msg => {
-      this._recordTelemetry(msg.telemetry);
-      return msg;
-    }, Cu.reportError);
   },
 
   createBackupCopy: function (ext) {
@@ -209,8 +187,18 @@ let SessionFileInternal = {
   },
 
   _recordTelemetry: function(telemetry) {
-    for (let histogramId in telemetry){
-      Telemetry.getHistogramById(histogramId).add(telemetry[histogramId]);
+    for (let id of Object.keys(telemetry)){
+      let value = telemetry[id];
+      let samples = [];
+      if (Array.isArray(value)) {
+        samples.push(...value);
+      } else {
+        samples.push(value);
+      }
+      let histogram = Telemetry.getHistogramById(id);
+      for (let sample of samples) {
+        histogram.add(sample);
+      }
     }
   }
 };
@@ -228,9 +216,12 @@ let SessionWorker = (function () {
           // Decode any serialized error
           if (error instanceof PromiseWorker.WorkerError) {
             throw OS.File.Error.fromMsg(error.data);
-          } else {
-            throw error;
           }
+          // Extract something meaningful from ErrorEvent
+          if (error instanceof ErrorEvent) {
+            throw new Error(error.message, error.filename, error.lineno);
+          }
+          throw error;
         }
       );
     }

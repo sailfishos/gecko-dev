@@ -14,11 +14,13 @@
 #include "Layers.h"                     // for Layer
 #include "RenderTrace.h"                // for RenderTraceScope
 #include "ShadowLayerChild.h"           // for ShadowLayerChild
+#include "gfx2DGlue.h"                  // for Moz2D transition helpers
 #include "gfxImageSurface.h"            // for gfxImageSurface
 #include "gfxPlatform.h"                // for gfxImageFormat, gfxPlatform
 #include "gfxSharedImageSurface.h"      // for gfxSharedImageSurface
 #include "ipc/IPCMessageUtils.h"        // for gfxContentType, null_t
 #include "mozilla/Assertions.h"         // for MOZ_ASSERT, etc
+#include "mozilla/gfx/Point.h"          // for IntSize
 #include "mozilla/layers/CompositableClient.h"  // for CompositableClient, etc
 #include "mozilla/layers/LayersMessages.h"  // for Edit, etc
 #include "mozilla/layers/LayersSurfaces.h"  // for SurfaceDescriptor, etc
@@ -484,6 +486,7 @@ ShadowLayerForwarder::EndTransaction(InfallibleTArray<EditReply>* aReplies, bool
     LayerAttributes attrs;
     CommonLayerAttributes& common = attrs.common();
     common.visibleRegion() = mutant->GetVisibleRegion();
+    common.eventRegions() = mutant->GetEventRegions();
     common.postXScale() = mutant->GetPostXScale();
     common.postYScale() = mutant->GetPostYScale();
     common.transform() = mutant->GetBaseTransform();
@@ -627,7 +630,7 @@ ShadowLayerForwarder::OpenDescriptor(OpenMode aMode,
     gfxImageFormat format
       = static_cast<gfxImageFormat>(image.format());
     surf = new gfxImageSurface((unsigned char *)image.data(),
-                               image.size(),
+                               gfx::ThebesIntSize(image.size()),
                                image.stride(),
                                format);
     return surf.forget();
@@ -655,19 +658,19 @@ ShadowLayerForwarder::GetDescriptorSurfaceContentType(
   return content;
 }
 
-/*static*/ gfxIntSize
+/*static*/ gfx::IntSize
 ShadowLayerForwarder::GetDescriptorSurfaceSize(
   const SurfaceDescriptor& aDescriptor, OpenMode aMode,
   gfxASurface** aSurface)
 {
-  gfxIntSize size;
+  gfx::IntSize size;
   if (PlatformGetDescriptorSurfaceSize(aDescriptor, aMode, &size, aSurface)) {
     return size;
   }
 
   nsRefPtr<gfxASurface> surface = OpenDescriptor(aMode, aDescriptor);
-  size = surface->GetSize();
-  *aSurface = surface.forget().get();
+  size = surface->GetSize().ToIntSize();
+  surface.forget(aSurface);
   return size;
 }
 
@@ -682,13 +685,13 @@ ShadowLayerForwarder::GetDescriptorSurfaceImageFormat(
   }
 
   nsRefPtr<gfxASurface> surface = OpenDescriptor(aMode, aDescriptor);
-  NS_ENSURE_TRUE(surface, gfxImageFormatUnknown);
+  NS_ENSURE_TRUE(surface, gfxImageFormat::Unknown);
 
   nsRefPtr<gfxImageSurface> img = surface->GetAsImageSurface();
-  NS_ENSURE_TRUE(img, gfxImageFormatUnknown);
+  NS_ENSURE_TRUE(img, gfxImageFormat::Unknown);
 
   format = img->Format();
-  NS_ASSERTION(format != gfxImageFormatUnknown,
+  NS_ASSERTION(format != gfxImageFormat::Unknown,
                "ImageSurface RGB format should be known");
 
   *aSurface = surface.forget().get();
@@ -743,7 +746,7 @@ ShadowLayerForwarder::PlatformGetDescriptorSurfaceContentType(
 ShadowLayerForwarder::PlatformGetDescriptorSurfaceSize(
   const SurfaceDescriptor&,
   OpenMode,
-  gfxIntSize*,
+  gfx::IntSize*,
   gfxASurface**)
 {
   return false;
@@ -811,7 +814,7 @@ AutoOpenSurface::ImageFormat()
     nsRefPtr<gfxImageSurface> img = mSurface->GetAsImageSurface();
     if (img) {
       gfxImageFormat format = img->Format();
-      NS_ASSERTION(format != gfxImageFormatUnknown,
+      NS_ASSERTION(format != gfxImageFormat::Unknown,
                    "ImageSurface RGB format should be known");
 
       return format;
@@ -826,7 +829,7 @@ gfx::IntSize
 AutoOpenSurface::Size()
 {
   if (mSurface) {
-    return mSurface->GetSize();
+    return mSurface->GetSize().ToIntSize();
   }
   return ShadowLayerForwarder::GetDescriptorSurfaceSize(
     mDescriptor, mMode, getter_AddRefs(mSurface));
@@ -960,9 +963,10 @@ void ShadowLayerForwarder::AttachAsyncCompositable(uint64_t aCompositableID,
 }
 
 PTextureChild*
-ShadowLayerForwarder::CreateEmptyTextureChild()
+ShadowLayerForwarder::CreateTexture(const SurfaceDescriptor& aSharedData,
+                                    TextureFlags aFlags)
 {
-  return mShadowManager->SendPTextureConstructor();
+  return mShadowManager->SendPTextureConstructor(aSharedData, aFlags);
 }
 
 

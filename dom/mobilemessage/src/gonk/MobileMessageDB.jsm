@@ -23,7 +23,7 @@ const DEBUG = false;
 const DISABLE_MMS_GROUPING_FOR_RECEIVING = true;
 
 
-const DB_VERSION = 20;
+const DB_VERSION = 21;
 const MESSAGE_STORE_NAME = "sms";
 const THREAD_STORE_NAME = "thread";
 const PARTICIPANT_STORE_NAME = "participant";
@@ -69,7 +69,7 @@ XPCOMUtils.defineLazyServiceGetter(this, "gMMSService",
                                    "@mozilla.org/mms/rilmmsservice;1",
                                    "nsIMmsService");
 
-XPCOMUtils.defineLazyGetter(this, "MMS", function () {
+XPCOMUtils.defineLazyGetter(this, "MMS", function() {
   let MMS = {};
   Cu.import("resource://gre/modules/MmsPduHelper.jsm", MMS);
   return MMS;
@@ -104,7 +104,7 @@ MobileMessageDB.prototype = {
    *
    * @return (via callback) a database ready for use.
    */
-  ensureDB: function ensureDB(callback) {
+  ensureDB: function(callback) {
     if (this.db) {
       if (DEBUG) debug("ensureDB: already have a database, returning early.");
       callback(null, this.db);
@@ -118,11 +118,11 @@ MobileMessageDB.prototype = {
     }
 
     let request = indexedDB.open(this.dbName, this.dbVersion);
-    request.onsuccess = function (event) {
+    request.onsuccess = function(event) {
       if (DEBUG) debug("Opened database:", self.dbName, self.dbVersion);
       gotDB(event.target.result);
     };
-    request.onupgradeneeded = function (event) {
+    request.onupgradeneeded = function(event) {
       if (DEBUG) {
         debug("Database needs upgrade:", self.dbName,
               event.oldVersion, event.newVersion);
@@ -191,7 +191,18 @@ MobileMessageDB.prototype = {
             break;
           case 13:
             if (DEBUG) debug("Upgrade to version 14. Fix the wrong participants.");
-            self.upgradeSchema13(event.target.transaction, next);
+            // A workaround to check if we need to re-upgrade the DB schema 12. We missed this
+            // because we didn't properly uplift that logic to b2g_v1.2 and errors could happen
+            // when migrating b2g_v1.2 to b2g_v1.3. Please see Bug 960741 for details.
+            self.needReUpgradeSchema12(event.target.transaction, function(isNeeded) {
+              if (isNeeded) {
+                self.upgradeSchema12(event.target.transaction, function() {
+                  self.upgradeSchema13(event.target.transaction, next);
+                });
+              } else {
+                self.upgradeSchema13(event.target.transaction, next);
+              }
+            });
             break;
           case 14:
             if (DEBUG) debug("Upgrade to version 15. Add deliveryTimestamp.");
@@ -218,6 +229,10 @@ MobileMessageDB.prototype = {
             self.upgradeSchema19(event.target.transaction, next);
             break;
           case 20:
+            if (DEBUG) debug("Upgrade to version 21. Add sentTimestamp.");
+            self.upgradeSchema20(event.target.transaction, next);
+            break;
+          case 21:
             // This will need to be moved for each new version
             if (DEBUG) debug("Upgrade finished.");
             break;
@@ -230,11 +245,11 @@ MobileMessageDB.prototype = {
 
       update(currentVersion);
     };
-    request.onerror = function (event) {
+    request.onerror = function(event) {
       //TODO look at event.target.Code and change error constant accordingly
       callback("Error opening database!", null);
     };
-    request.onblocked = function (event) {
+    request.onblocked = function(event) {
       callback("Opening database request is blocked.", null);
     };
   },
@@ -250,12 +265,12 @@ MobileMessageDB.prototype = {
    * @param storeNames
    *        Names of the stores to open.
    */
-  newTxn: function newTxn(txn_type, callback, storeNames) {
+  newTxn: function(txn_type, callback, storeNames) {
     if (!storeNames) {
       storeNames = [MESSAGE_STORE_NAME];
     }
     if (DEBUG) debug("Opening transaction for object stores: " + storeNames);
-    this.ensureDB(function (error, db) {
+    this.ensureDB(function(error, db) {
       if (error) {
         if (DEBUG) debug("Could not open database: " + error);
         callback(error);
@@ -300,7 +315,7 @@ MobileMessageDB.prototype = {
    *        or any error occurs.  Should take only one argument -- null when
    *        initialized with success or the error object otherwise.
    */
-  init: function init(aDbName, aDbVersion, aCallback) {
+  init: function(aDbName, aDbVersion, aCallback) {
     this.dbName = aDbName;
     this.dbVersion = aDbVersion || DB_VERSION;
 
@@ -343,7 +358,7 @@ MobileMessageDB.prototype = {
     });
   },
 
-  close: function close() {
+  close: function() {
     if (!this.db) {
       return;
     }
@@ -357,13 +372,12 @@ MobileMessageDB.prototype = {
    * Sometimes user might reboot or remove battery while sending/receiving
    * message. This is function set the status of message records to error.
    */
-  updatePendingTransactionToError:
-    function updatePendingTransactionToError(aError) {
+  updatePendingTransactionToError: function(aError) {
     if (aError) {
       return;
     }
 
-    this.newTxn(READ_WRITE, function (error, txn, messageStore) {
+    this.newTxn(READ_WRITE, function(error, txn, messageStore) {
       if (error) {
         return;
       }
@@ -436,7 +450,7 @@ MobileMessageDB.prototype = {
    * TODO need to worry about number normalization somewhere...
    * TODO full text search on body???
    */
-  createSchema: function createSchema(db, next) {
+  createSchema: function(db, next) {
     // This messageStore holds the main mobile message data.
     let messageStore = db.createObjectStore(MESSAGE_STORE_NAME, { keyPath: "id" });
     messageStore.createIndex("timestamp", "timestamp", { unique: false });
@@ -447,13 +461,13 @@ MobileMessageDB.prototype = {
   /**
    * Upgrade to the corresponding database schema version.
    */
-  upgradeSchema: function upgradeSchema(transaction, next) {
+  upgradeSchema: function(transaction, next) {
     let messageStore = transaction.objectStore(MESSAGE_STORE_NAME);
     messageStore.createIndex("read", "read", { unique: false });
     next();
   },
 
-  upgradeSchema2: function upgradeSchema2(transaction, next) {
+  upgradeSchema2: function(transaction, next) {
     let messageStore = transaction.objectStore(MESSAGE_STORE_NAME);
     messageStore.openCursor().onsuccess = function(event) {
       let cursor = event.target.result;
@@ -470,7 +484,7 @@ MobileMessageDB.prototype = {
     };
   },
 
-  upgradeSchema3: function upgradeSchema3(db, transaction, next) {
+  upgradeSchema3: function(db, transaction, next) {
     // Delete redundant "id" index.
     let messageStore = transaction.objectStore(MESSAGE_STORE_NAME);
     if (messageStore.indexNames.contains("id")) {
@@ -494,7 +508,7 @@ MobileMessageDB.prototype = {
     next();
   },
 
-  upgradeSchema4: function upgradeSchema4(transaction, next) {
+  upgradeSchema4: function(transaction, next) {
     let threads = {};
     let messageStore = transaction.objectStore(MESSAGE_STORE_NAME);
     let mostRecentStore = transaction.objectStore(MOST_RECENT_STORE_NAME);
@@ -535,12 +549,12 @@ MobileMessageDB.prototype = {
     };
   },
 
-  upgradeSchema5: function upgradeSchema5(transaction, next) {
+  upgradeSchema5: function(transaction, next) {
     // Don't perform any upgrade. See Bug 819560.
     next();
   },
 
-  upgradeSchema6: function upgradeSchema6(transaction, next) {
+  upgradeSchema6: function(transaction, next) {
     let messageStore = transaction.objectStore(MESSAGE_STORE_NAME);
 
     // Delete "delivery" index.
@@ -602,7 +616,7 @@ MobileMessageDB.prototype = {
    * Fetching threads list is now simply walking through the thread sotre. The
    * "mostRecentStore" is dropped.
    */
-  upgradeSchema7: function upgradeSchema7(db, transaction, next) {
+  upgradeSchema7: function(db, transaction, next) {
     /**
      * This "participant" object store keeps mappings of multiple phone numbers
      * of the same recipient to an integer participant id. Each entry looks
@@ -667,7 +681,7 @@ MobileMessageDB.prototype = {
       // new record in participantStore.
       let number = mostRecentRecord.senderOrReceiver;
       self.findParticipantRecordByAddress(participantStore, number, true,
-                                          function (participantRecord) {
+                                          function(participantRecord) {
         // Also create a new record in threadStore.
         let threadRecord = {
           participantIds: [participantRecord.id],
@@ -678,13 +692,13 @@ MobileMessageDB.prototype = {
           unreadCount: mostRecentRecord.unreadCount,
         };
         let addThreadRequest = threadStore.add(threadRecord);
-        addThreadRequest.onsuccess = function (event) {
+        addThreadRequest.onsuccess = function(event) {
           threadRecord.id = event.target.result;
 
           let numberRange = IDBKeyRange.bound([number, 0], [number, ""]);
           let messageRequest = messageStore.index("number")
                                            .openCursor(numberRange, NEXT);
-          messageRequest.onsuccess = function (event) {
+          messageRequest.onsuccess = function(event) {
             let messageCursor = event.target.result;
             if (!messageCursor) {
               // No more message records, check next most recent record.
@@ -718,12 +732,12 @@ MobileMessageDB.prototype = {
             // Check next message record.
             messageCursor.continue();
           };
-          messageRequest.onerror = function () {
+          messageRequest.onerror = function() {
             // Error in fetching message records, check next most recent record.
             mostRecentCursor.continue();
           };
         };
-        addThreadRequest.onerror = function () {
+        addThreadRequest.onerror = function() {
           // Error in fetching message records, check next most recent record.
           mostRecentCursor.continue();
         };
@@ -734,7 +748,7 @@ MobileMessageDB.prototype = {
   /**
    * Add transactionId index for MMS.
    */
-  upgradeSchema8: function upgradeSchema8(transaction, next) {
+  upgradeSchema8: function(transaction, next) {
     let messageStore = transaction.objectStore(MESSAGE_STORE_NAME);
 
     // Delete "transactionId" index.
@@ -765,7 +779,7 @@ MobileMessageDB.prototype = {
     };
   },
 
-  upgradeSchema9: function upgradeSchema9(transaction, next) {
+  upgradeSchema9: function(transaction, next) {
     let messageStore = transaction.objectStore(MESSAGE_STORE_NAME);
 
     // Update type attributes.
@@ -785,7 +799,7 @@ MobileMessageDB.prototype = {
     };
   },
 
-  upgradeSchema10: function upgradeSchema10(transaction, next) {
+  upgradeSchema10: function(transaction, next) {
     let threadStore = transaction.objectStore(THREAD_STORE_NAME);
 
     // Add 'lastMessageType' to each thread record.
@@ -833,7 +847,7 @@ MobileMessageDB.prototype = {
   /**
    * Add envelopeId index for MMS.
    */
-  upgradeSchema11: function upgradeSchema11(transaction, next) {
+  upgradeSchema11: function(transaction, next) {
     let messageStore = transaction.objectStore(MESSAGE_STORE_NAME);
 
     // Delete "envelopeId" index.
@@ -865,7 +879,7 @@ MobileMessageDB.prototype = {
   /**
    * Replace deliveryStatus by deliveryInfo.
    */
-  upgradeSchema12: function upgradeSchema12(transaction, next) {
+  upgradeSchema12: function(transaction, next) {
     let messageStore = transaction.objectStore(MESSAGE_STORE_NAME);
 
     messageStore.openCursor().onsuccess = function(event) {
@@ -900,15 +914,38 @@ MobileMessageDB.prototype = {
   },
 
   /**
+   * Check if we need to re-upgrade the DB schema 12.
+   */
+  needReUpgradeSchema12: function(transaction, callback) {
+    let messageStore = transaction.objectStore(MESSAGE_STORE_NAME);
+
+    messageStore.openCursor().onsuccess = function(event) {
+      let cursor = event.target.result;
+      if (!cursor) {
+        callback(false);
+        return;
+      }
+
+      let messageRecord = cursor.value;
+      if (messageRecord.type == "mms" &&
+          messageRecord.deliveryInfo === undefined) {
+        callback(true);
+        return;
+      }
+      cursor.continue();
+    };
+  },
+
+  /**
    * Fix the wrong participants.
    */
-  upgradeSchema13: function upgradeSchema13(transaction, next) {
+  upgradeSchema13: function(transaction, next) {
     let participantStore = transaction.objectStore(PARTICIPANT_STORE_NAME);
     let threadStore = transaction.objectStore(THREAD_STORE_NAME);
     let messageStore = transaction.objectStore(MESSAGE_STORE_NAME);
     let self = this;
 
-    let isInvalid = function (participantRecord) {
+    let isInvalid = function(participantRecord) {
       let entries = [];
       for (let addr of participantRecord.addresses) {
         entries.push({
@@ -1016,7 +1053,7 @@ MobileMessageDB.prototype = {
             }
             self.findThreadRecordByParticipants(threadStore, participantStore,
                                                 threadParticipants, true,
-                                                function (threadRecord,
+                                                function(threadRecord,
                                                           participantIds) {
               if (!participantIds) {
                 debug("participantIds is empty!");
@@ -1064,7 +1101,7 @@ MobileMessageDB.prototype = {
                 unreadCount: messageRecord.read ? 0 : 1,
                 lastMessageType: messageRecord.type
               };
-              threadStore.add(threadRecord).onsuccess = function (event) {
+              threadStore.add(threadRecord).onsuccess = function(event) {
                 let threadId = event.target.result;
                 // Setup threadId & threadIdIndex.
                 messageRecord.threadId = threadId;
@@ -1082,7 +1119,7 @@ MobileMessageDB.prototype = {
   /**
    * Add deliveryTimestamp.
    */
-  upgradeSchema14: function upgradeSchema14(transaction, next) {
+  upgradeSchema14: function(transaction, next) {
     let messageStore = transaction.objectStore(MESSAGE_STORE_NAME);
 
     messageStore.openCursor().onsuccess = function(event) {
@@ -1109,7 +1146,7 @@ MobileMessageDB.prototype = {
   /**
    * Add ICC ID.
    */
-  upgradeSchema15: function upgradeSchema15(transaction, next) {
+  upgradeSchema15: function(transaction, next) {
     let messageStore = transaction.objectStore(MESSAGE_STORE_NAME);
     messageStore.openCursor().onsuccess = function(event) {
       let cursor = event.target.result;
@@ -1128,7 +1165,7 @@ MobileMessageDB.prototype = {
   /**
    * Add isReadReportSent for incoming MMS.
    */
-  upgradeSchema16: function upgradeSchema16(transaction, next) {
+  upgradeSchema16: function(transaction, next) {
     let messageStore = transaction.objectStore(MESSAGE_STORE_NAME);
 
     // Update type attributes.
@@ -1148,7 +1185,7 @@ MobileMessageDB.prototype = {
     };
   },
 
-  upgradeSchema17: function upgradeSchema17(transaction, next) {
+  upgradeSchema17: function(transaction, next) {
     let threadStore = transaction.objectStore(THREAD_STORE_NAME);
     let messageStore = transaction.objectStore(MESSAGE_STORE_NAME);
 
@@ -1189,7 +1226,7 @@ MobileMessageDB.prototype = {
   /**
    * Add pid for incoming SMS.
    */
-  upgradeSchema18: function upgradeSchema18(transaction, next) {
+  upgradeSchema18: function(transaction, next) {
     let messageStore = transaction.objectStore(MESSAGE_STORE_NAME);
 
     messageStore.openCursor().onsuccess = function(event) {
@@ -1211,7 +1248,7 @@ MobileMessageDB.prototype = {
   /**
    * Add readStatus and readTimestamp.
    */
-  upgradeSchema19: function upgradeSchema19(transaction, next) {
+  upgradeSchema19: function(transaction, next) {
     let messageStore = transaction.objectStore(MESSAGE_STORE_NAME);
     messageStore.openCursor().onsuccess = function(event) {
       let cursor = event.target.result;
@@ -1265,8 +1302,33 @@ MobileMessageDB.prototype = {
     };
   },
 
-  matchParsedPhoneNumbers: function matchParsedPhoneNumbers(addr1, parsedAddr1,
-                                                            addr2, parsedAddr2) {
+  /**
+   * Add sentTimestamp.
+   */
+  upgradeSchema20: function(transaction, next) {
+    let messageStore = transaction.objectStore(MESSAGE_STORE_NAME);
+    messageStore.openCursor().onsuccess = function(event) {
+      let cursor = event.target.result;
+      if (!cursor) {
+        next();
+        return;
+      }
+
+      let messageRecord = cursor.value;
+      messageRecord.sentTimestamp = 0;
+
+      // We can still have changes to assign |sentTimestamp| for the existing
+      // MMS message records.
+      if (messageRecord.type == "mms" && messageRecord.headers["date"]) {
+        messageRecord.sentTimestamp = messageRecord.headers["date"].getTime();
+      }
+
+      cursor.update(messageRecord);
+      cursor.continue();
+    };
+  },
+
+  matchParsedPhoneNumbers: function(addr1, parsedAddr1, addr2, parsedAddr2) {
     if ((parsedAddr1.internationalNumber &&
          parsedAddr1.internationalNumber === parsedAddr2.internationalNumber) ||
         (parsedAddr1.nationalNumber &&
@@ -1289,7 +1351,7 @@ MobileMessageDB.prototype = {
            addr1.slice(-val) === addr2.slice(-val);
   },
 
-  matchPhoneNumbers: function matchPhoneNumbers(addr1, parsedAddr1, addr2, parsedAddr2) {
+  matchPhoneNumbers: function(addr1, parsedAddr1, addr2, parsedAddr2) {
     if (parsedAddr1 && parsedAddr2) {
       return this.matchParsedPhoneNumbers(addr1, parsedAddr1, addr2, parsedAddr2);
     }
@@ -1313,7 +1375,7 @@ MobileMessageDB.prototype = {
     return false;
   },
 
-  createDomMessageFromRecord: function createDomMessageFromRecord(aMessageRecord) {
+  createDomMessageFromRecord: function(aMessageRecord) {
     if (DEBUG) {
       debug("createDomMessageFromRecord: " + JSON.stringify(aMessageRecord));
     }
@@ -1328,6 +1390,7 @@ MobileMessageDB.prototype = {
                                                     aMessageRecord.body,
                                                     aMessageRecord.messageClass,
                                                     aMessageRecord.timestamp,
+                                                    aMessageRecord.sentTimestamp,
                                                     aMessageRecord.deliveryTimestamp,
                                                     aMessageRecord.read);
     } else if (aMessageRecord.type == "mms") {
@@ -1383,6 +1446,7 @@ MobileMessageDB.prototype = {
                                                     aMessageRecord.sender,
                                                     aMessageRecord.receivers,
                                                     aMessageRecord.timestamp,
+                                                    aMessageRecord.sentTimestamp,
                                                     aMessageRecord.read,
                                                     subject,
                                                     smil,
@@ -1392,8 +1456,8 @@ MobileMessageDB.prototype = {
     }
   },
 
-  findParticipantRecordByAddress: function findParticipantRecordByAddress(
-      aParticipantStore, aAddress, aCreate, aCallback) {
+  findParticipantRecordByAddress: function(aParticipantStore, aAddress,
+                                           aCreate, aCallback) {
     if (DEBUG) {
       debug("findParticipantRecordByAddress("
             + JSON.stringify(aAddress) + ", " + aCreate + ")");
@@ -1443,7 +1507,7 @@ MobileMessageDB.prototype = {
       }
 
       // 2) Traverse throught all participants and check all alias addresses.
-      aParticipantStore.openCursor().onsuccess = (function (event) {
+      aParticipantStore.openCursor().onsuccess = (function(event) {
         let cursor = event.target.result;
         if (!cursor) {
           // Have traversed whole object store but still in vain.
@@ -1454,7 +1518,7 @@ MobileMessageDB.prototype = {
 
           let participantRecord = { addresses: [normalizedAddress] };
           let addRequest = aParticipantStore.add(participantRecord);
-          addRequest.onsuccess = function (event) {
+          addRequest.onsuccess = function(event) {
             participantRecord.id = event.target.result;
             if (DEBUG) {
               debug("findParticipantRecordByAddress: created "
@@ -1497,8 +1561,8 @@ MobileMessageDB.prototype = {
     }).bind(this);
   },
 
-  findParticipantIdsByAddresses: function findParticipantIdsByAddresses(
-      aParticipantStore, aAddresses, aCreate, aSkipNonexistent, aCallback) {
+  findParticipantIdsByAddresses: function(aParticipantStore, aAddresses,
+                                          aCreate, aSkipNonexistent, aCallback) {
     if (DEBUG) {
       debug("findParticipantIdsByAddresses("
             + JSON.stringify(aAddresses) + ", "
@@ -1515,7 +1579,7 @@ MobileMessageDB.prototype = {
     (function findParticipantId(index, result) {
       if (index >= aAddresses.length) {
         // Sort numerically.
-        result.sort(function (a, b) {
+        result.sort(function(a, b) {
           return a - b;
         });
         if (DEBUG) debug("findParticipantIdsByAddresses: returning " + result);
@@ -1525,7 +1589,7 @@ MobileMessageDB.prototype = {
 
       self.findParticipantRecordByAddress(aParticipantStore,
                                           aAddresses[index++], aCreate,
-                                          function (participantRecord) {
+                                          function(participantRecord) {
         if (!participantRecord) {
           if (!aSkipNonexistent) {
             if (DEBUG) debug("findParticipantIdsByAddresses: returning null");
@@ -1540,16 +1604,16 @@ MobileMessageDB.prototype = {
     }) (0, []);
   },
 
-  findThreadRecordByParticipants: function findThreadRecordByParticipants(
-      aThreadStore, aParticipantStore, aAddresses,
-      aCreateParticipants, aCallback) {
+  findThreadRecordByParticipants: function(aThreadStore, aParticipantStore,
+                                           aAddresses, aCreateParticipants,
+                                           aCallback) {
     if (DEBUG) {
       debug("findThreadRecordByParticipants(" + JSON.stringify(aAddresses)
             + ", " + aCreateParticipants + ")");
     }
     this.findParticipantIdsByAddresses(aParticipantStore, aAddresses,
                                        aCreateParticipants, false,
-                                       function (participantIds) {
+                                       function(participantIds) {
       if (!participantIds) {
         if (DEBUG) debug("findThreadRecordByParticipants: returning null");
         aCallback(null, null);
@@ -1557,7 +1621,7 @@ MobileMessageDB.prototype = {
       }
       // Find record from thread store.
       let request = aThreadStore.index("participantIds").get(participantIds);
-      request.onsuccess = function (event) {
+      request.onsuccess = function(event) {
         let threadRecord = event.target.result;
         if (DEBUG) {
           debug("findThreadRecordByParticipants: return "
@@ -1568,7 +1632,7 @@ MobileMessageDB.prototype = {
     });
   },
 
-  newTxnWithCallback: function newTxnWithCallback(aCallback, aFunc, aStoreNames) {
+  newTxnWithCallback: function(aCallback, aFunc, aStoreNames) {
     let self = this;
     this.newTxn(READ_WRITE, function(aError, aTransaction, aStores) {
       let notifyResult = function(aRv, aMessageRecord) {
@@ -1599,7 +1663,7 @@ MobileMessageDB.prototype = {
     }, aStoreNames);
   },
 
-  saveRecord: function saveRecord(aMessageRecord, aAddresses, aCallback) {
+  saveRecord: function(aMessageRecord, aAddresses, aCallback) {
     if (DEBUG) debug("Going to store " + JSON.stringify(aMessageRecord));
 
     let self = this;
@@ -1638,10 +1702,9 @@ MobileMessageDB.prototype = {
     }, [MESSAGE_STORE_NAME, PARTICIPANT_STORE_NAME, THREAD_STORE_NAME]);
   },
 
-  replaceShortMessageOnSave:
-    function replaceShortMessageOnSave(aTransaction, aMessageStore,
-                                       aParticipantStore, aThreadStore,
-                                       aMessageRecord, aAddresses) {
+  replaceShortMessageOnSave: function(aTransaction, aMessageStore,
+                                      aParticipantStore, aThreadStore,
+                                      aMessageRecord, aAddresses) {
     let isReplaceTypePid = (aMessageRecord.pid) &&
                            ((aMessageRecord.pid >= RIL.PDU_PID_REPLACE_SHORT_MESSAGE_TYPE_1 &&
                              aMessageRecord.pid <= RIL.PDU_PID_REPLACE_SHORT_MESSAGE_TYPE_7) ||
@@ -1702,9 +1765,8 @@ MobileMessageDB.prototype = {
     });
   },
 
-  realSaveRecord: function realSaveRecord(aTransaction, aMessageStore,
-                                          aParticipantStore, aThreadStore,
-                                          aMessageRecord, aAddresses) {
+  realSaveRecord: function(aTransaction, aMessageStore, aParticipantStore,
+                           aThreadStore, aMessageRecord, aAddresses) {
     let self = this;
     this.findThreadRecordByParticipants(aThreadStore, aParticipantStore,
                                         aAddresses, true,
@@ -1805,8 +1867,7 @@ MobileMessageDB.prototype = {
     });
   },
 
-  forEachMatchedMmsDeliveryInfo:
-    function forEachMatchedMmsDeliveryInfo(aDeliveryInfo, aNeedle, aCallback) {
+  forEachMatchedMmsDeliveryInfo: function(aDeliveryInfo, aNeedle, aCallback) {
 
     let typedAddress = {
       type: MMS.Address.resolveType(aNeedle),
@@ -1851,8 +1912,8 @@ MobileMessageDB.prototype = {
     }
   },
 
-  updateMessageDeliveryById: function updateMessageDeliveryById(
-      id, type, receiver, delivery, deliveryStatus, envelopeId, callback) {
+  updateMessageDeliveryById: function(id, type, receiver, delivery,
+                                      deliveryStatus, envelopeId, callback) {
     if (DEBUG) {
       debug("Setting message's delivery by " + type + " = "+ id
             + " receiver: " + receiver
@@ -1884,6 +1945,13 @@ MobileMessageDB.prototype = {
           messageRecord.delivery = delivery;
           messageRecord.deliveryIndex = [delivery, messageRecord.timestamp];
           isRecordUpdated = true;
+
+          // When updating an message's delivey state to 'sent', we also update
+          // its |sentTimestamp| by the current device timestamp to represent
+          // when the message is successfully sent.
+          if (delivery == DELIVERY_SENT) {
+            messageRecord.sentTimestamp = Date.now();
+          }
         }
 
         // Attempt to update |deliveryStatus| and |deliveryTimestamp| of:
@@ -1946,7 +2014,7 @@ MobileMessageDB.prototype = {
     });
   },
 
-  fillReceivedMmsThreadParticipants: function fillReceivedMmsThreadParticipants(aMessage, threadParticipants) {
+  fillReceivedMmsThreadParticipants: function(aMessage, threadParticipants) {
     let receivers = aMessage.receivers;
     // If we don't want to disable the MMS grouping for receiving, we need to
     // add the receivers (excluding the user's own number) to the participants
@@ -1984,11 +2052,8 @@ MobileMessageDB.prototype = {
     threadParticipants = threadParticipants.concat(slicedReceivers);
   },
 
-  updateThreadByMessageChange: function updateThreadByMessageChange(messageStore,
-                                                                    threadStore,
-                                                                    threadId,
-                                                                    messageId,
-                                                                    messageRead) {
+  updateThreadByMessageChange: function(messageStore, threadStore, threadId,
+                                        messageId, messageRead) {
     threadStore.get(threadId).onsuccess = function(event) {
       // This must exist.
       let threadRecord = event.target.result;
@@ -2045,7 +2110,7 @@ MobileMessageDB.prototype = {
    * nsIRilMobileMessageDatabaseService API
    */
 
-  saveReceivedMessage: function saveReceivedMessage(aMessage, aCallback) {
+  saveReceivedMessage: function(aMessage, aCallback) {
     if ((aMessage.type != "sms" && aMessage.type != "mms") ||
         (aMessage.type == "sms" && (aMessage.messageClass == undefined ||
                                     aMessage.sender == undefined)) ||
@@ -2080,6 +2145,11 @@ MobileMessageDB.prototype = {
     aMessage.readIndex = [FILTER_READ_UNREAD, timestamp];
     aMessage.read = FILTER_READ_UNREAD;
 
+    // If |sentTimestamp| is not specified, use 0 as default.
+    if (aMessage.sentTimestamp == undefined) {
+      aMessage.sentTimestamp = 0;
+    }
+
     if (aMessage.type == "mms") {
       aMessage.transactionIdIndex = aMessage.headers["x-mms-transaction-id"];
       aMessage.isReadReportSent = false;
@@ -2112,7 +2182,7 @@ MobileMessageDB.prototype = {
     this.saveRecord(aMessage, threadParticipants, aCallback);
   },
 
-  saveSendingMessage: function saveSendingMessage(aMessage, aCallback) {
+  saveSendingMessage: function(aMessage, aCallback) {
     if ((aMessage.type != "sms" && aMessage.type != "mms") ||
         (aMessage.type == "sms" && aMessage.receiver == undefined) ||
         (aMessage.type == "mms" && !Array.isArray(aMessage.receivers)) ||
@@ -2171,6 +2241,9 @@ MobileMessageDB.prototype = {
     aMessage.messageClass = MESSAGE_CLASS_NORMAL;
     aMessage.read = FILTER_READ_READ;
 
+    // |sentTimestamp| is not available when the message is still sedning.
+    aMessage.sentTimestamp = 0;
+
     let addresses;
     if (aMessage.type == "sms") {
       addresses = [aMessage.receiver];
@@ -2180,24 +2253,22 @@ MobileMessageDB.prototype = {
     this.saveRecord(aMessage, addresses, aCallback);
   },
 
-  setMessageDeliveryByMessageId: function setMessageDeliveryByMessageId(
-      messageId, receiver, delivery, deliveryStatus, envelopeId, callback) {
+  setMessageDeliveryByMessageId: function(messageId, receiver, delivery,
+                                          deliveryStatus, envelopeId, callback) {
     this.updateMessageDeliveryById(messageId, "messageId",
                                    receiver, delivery, deliveryStatus,
                                    envelopeId, callback);
 
   },
 
-  setMessageDeliveryStatusByEnvelopeId:
-    function setMessageDeliveryStatusByEnvelopeId(aEnvelopeId, aReceiver,
-                                                  aDeliveryStatus, aCallback) {
+  setMessageDeliveryStatusByEnvelopeId: function(aEnvelopeId, aReceiver,
+                                                 aDeliveryStatus, aCallback) {
     this.updateMessageDeliveryById(aEnvelopeId, "envelopeId", aReceiver, null,
                                    aDeliveryStatus, null, aCallback);
   },
 
-  setMessageReadStatusByEnvelopeId:
-    function setMessageReadStatusByEnvelopeId(aEnvelopeId, aReceiver,
-                                              aReadStatus, aCallback) {
+  setMessageReadStatusByEnvelopeId: function(aEnvelopeId, aReceiver,
+                                             aReadStatus, aCallback) {
     if (DEBUG) {
       debug("Setting message's read status by envelopeId = " + aEnvelopeId +
             ", receiver: " + aReceiver + ", readStatus: " + aReadStatus);
@@ -2246,10 +2317,10 @@ MobileMessageDB.prototype = {
     });
   },
 
-  getMessageRecordByTransactionId: function getMessageRecordByTransactionId(aTransactionId, aCallback) {
+  getMessageRecordByTransactionId: function(aTransactionId, aCallback) {
     if (DEBUG) debug("Retrieving message with transaction ID " + aTransactionId);
     let self = this;
-    this.newTxn(READ_ONLY, function (error, txn, messageStore) {
+    this.newTxn(READ_ONLY, function(error, txn, messageStore) {
       if (error) {
         if (DEBUG) debug(error);
         aCallback.notify(Ci.nsIMobileMessageCallback.INTERNAL_ERROR, null, null);
@@ -2282,10 +2353,10 @@ MobileMessageDB.prototype = {
     });
   },
 
-  getMessageRecordById: function getMessageRecordById(aMessageId, aCallback) {
+  getMessageRecordById: function(aMessageId, aCallback) {
     if (DEBUG) debug("Retrieving message with ID " + aMessageId);
     let self = this;
-    this.newTxn(READ_ONLY, function (error, txn, messageStore) {
+    this.newTxn(READ_ONLY, function(error, txn, messageStore) {
       if (error) {
         if (DEBUG) debug(error);
         aCallback.notify(Ci.nsIMobileMessageCallback.INTERNAL_ERROR, null, null);
@@ -2334,10 +2405,10 @@ MobileMessageDB.prototype = {
    * nsIMobileMessageDatabaseService API
    */
 
-  getMessage: function getMessage(aMessageId, aRequest) {
+  getMessage: function(aMessageId, aRequest) {
     if (DEBUG) debug("Retrieving message with ID " + aMessageId);
     let notifyCallback = {
-      notify: function notify(aRv, aMessageRecord, aDomMessage) {
+      notify: function(aRv, aMessageRecord, aDomMessage) {
         if (Ci.nsIMobileMessageCallback.SUCCESS_NO_ERROR == aRv) {
           aRequest.notifyMessageGot(aDomMessage);
           return;
@@ -2348,11 +2419,11 @@ MobileMessageDB.prototype = {
     this.getMessageRecordById(aMessageId, notifyCallback);
   },
 
-  deleteMessage: function deleteMessage(messageIds, length, aRequest) {
+  deleteMessage: function(messageIds, length, aRequest) {
     if (DEBUG) debug("deleteMessage: message ids " + JSON.stringify(messageIds));
     let deleted = [];
     let self = this;
-    this.newTxn(READ_WRITE, function (error, txn, stores) {
+    this.newTxn(READ_WRITE, function(error, txn, stores) {
       if (error) {
         if (DEBUG) debug("deleteMessage: failed to open transaction");
         aRequest.notifyDeleteMessageFailed(Ci.nsIMobileMessageCallback.INTERNAL_ERROR);
@@ -2405,7 +2476,7 @@ MobileMessageDB.prototype = {
     }, [MESSAGE_STORE_NAME, THREAD_STORE_NAME]);
   },
 
-  createMessageCursor: function createMessageCursor(filter, reverse, callback) {
+  createMessageCursor: function(filter, reverse, callback) {
     if (DEBUG) {
       debug("Creating a message cursor. Filters:" +
             " startDate: " + filter.startDate +
@@ -2420,7 +2491,7 @@ MobileMessageDB.prototype = {
     let cursor = new GetMessagesCursor(this, callback);
 
     let self = this;
-    self.newTxn(READ_ONLY, function (error, txn, stores) {
+    self.newTxn(READ_ONLY, function(error, txn, stores) {
       let collector = cursor.collector;
       let collect = collector.collect.bind(collector);
       FilterSearcherHelper.transact(self, txn, error, filter, reverse, collect);
@@ -2429,9 +2500,9 @@ MobileMessageDB.prototype = {
     return cursor;
   },
 
-  markMessageRead: function markMessageRead(messageId, value, aSendReadReport, aRequest) {
+  markMessageRead: function(messageId, value, aSendReadReport, aRequest) {
     if (DEBUG) debug("Setting message " + messageId + " read to " + value);
-    this.newTxn(READ_WRITE, function (error, txn, stores) {
+    this.newTxn(READ_WRITE, function(error, txn, stores) {
       if (error) {
         if (DEBUG) debug(error);
         aRequest.notifyMarkMessageReadFailed(Ci.nsIMobileMessageCallback.INTERNAL_ERROR);
@@ -2519,11 +2590,11 @@ MobileMessageDB.prototype = {
     }, [MESSAGE_STORE_NAME, THREAD_STORE_NAME]);
   },
 
-  createThreadCursor: function createThreadCursor(callback) {
+  createThreadCursor: function(callback) {
     if (DEBUG) debug("Getting thread list");
 
     let cursor = new GetThreadsCursor(this, callback);
-    this.newTxn(READ_ONLY, function (error, txn, threadStore) {
+    this.newTxn(READ_ONLY, function(error, txn, threadStore) {
       let collector = cursor.collector;
       if (error) {
         if (DEBUG) debug(error);
@@ -2534,7 +2605,7 @@ MobileMessageDB.prototype = {
         if (DEBUG) debug("Caught error on transaction ", event.target.errorCode);
         collector.collect(null, COLLECT_ID_ERROR, COLLECT_TIMESTAMP_UNUSED);
       };
-      let request = threadStore.index("lastTimestamp").openKeyCursor();
+      let request = threadStore.index("lastTimestamp").openKeyCursor(null, PREV);
       request.onsuccess = function(event) {
         let cursor = event.target.result;
         if (cursor) {
@@ -2566,7 +2637,7 @@ let FilterSearcherHelper = {
    *        Result colletor function. It takes three parameters -- txn, message
    *        id, and message timestamp.
    */
-  filterIndex: function filterIndex(index, range, direction, txn, collect) {
+  filterIndex: function(index, range, direction, txn, collect) {
     let messageStore = txn.objectStore(MESSAGE_STORE_NAME);
     let request = messageStore.index(index).openKeyCursor(range, direction);
     request.onsuccess = function onsuccess(event) {
@@ -2603,8 +2674,7 @@ let FilterSearcherHelper = {
    *        Result colletor function. It takes three parameters -- txn, message
    *        id, and message timestamp.
    */
-  filterTimestamp: function filterTimestamp(startDate, endDate, direction, txn,
-                                            collect) {
+  filterTimestamp: function(startDate, endDate, direction, txn, collect) {
     let range = null;
     if (startDate != null && endDate != null) {
       range = IDBKeyRange.bound(startDate.getTime(), endDate.getTime());
@@ -2634,7 +2704,7 @@ let FilterSearcherHelper = {
    *        Result colletor function. It takes three parameters -- txn, message
    *        id, and message timestamp.
    */
-  transact: function transact(mmdb, txn, error, filter, reverse, collect) {
+  transact: function(mmdb, txn, error, filter, reverse, collect) {
     if (error) {
       //TODO look at event.target.errorCode, pick appropriate error constant.
       if (DEBUG) debug("IDBRequest error " + error.target.errorCode);
@@ -2726,7 +2796,7 @@ let FilterSearcherHelper = {
       let participantStore = txn.objectStore(PARTICIPANT_STORE_NAME);
       mmdb.findParticipantIdsByAddresses(participantStore, filter.numbers,
                                          false, true,
-                                         (function (participantIds) {
+                                         (function(participantIds) {
         if (!participantIds || !participantIds.length) {
           // Oops! No such participant at all.
 
@@ -2780,7 +2850,7 @@ ResultsCollector.prototype = {
    *
    * @return true if expects more. false otherwise.
    */
-  collect: function collect(txn, id, timestamp) {
+  collect: function(txn, id, timestamp) {
     if (this.done) {
       return false;
     }
@@ -2821,7 +2891,7 @@ ResultsCollector.prototype = {
    * @param callback
    *        A callback function that accepts a numeric id.
    */
-  squeeze: function squeeze(callback) {
+  squeeze: function(callback) {
     if (this.requestWaiting) {
       throw new Error("Already waiting for another request!");
     }
@@ -2842,7 +2912,7 @@ ResultsCollector.prototype = {
    * @param callback
    *        A callback function that accepts a numeric id.
    */
-  drip: function drip(txn, callback) {
+  drip: function(txn, callback) {
     if (!this.results.length) {
       if (DEBUG) debug("No messages matching the filter criteria");
       callback(txn, COLLECT_ID_END);
@@ -2876,7 +2946,7 @@ IntersectionResultsCollector.prototype = {
    * Queue up {id, timestamp} pairs, find out intersections and report to
    * |cascadedCollect|. Return true if it is still possible to have another match.
    */
-  collect: function collect(contextIndex, txn, id, timestamp) {
+  collect: function(contextIndex, txn, id, timestamp) {
     if (DEBUG) {
       debug("IntersectionResultsCollector: "
             + contextIndex + ", " + id + ", " + timestamp);
@@ -2966,7 +3036,7 @@ IntersectionResultsCollector.prototype = {
     return this.cascadedCollect(txn, id, timestamp);
   },
 
-  newContext: function newContext() {
+  newContext: function() {
     let contextIndex = this.contexts.length;
     this.contexts.push({
       results: [],
@@ -2991,7 +3061,7 @@ UnionResultsCollector.prototype = {
   cascadedCollect: null,
   contexts: null,
 
-  collect: function collect(contextIndex, txn, id, timestamp) {
+  collect: function(contextIndex, txn, id, timestamp) {
     if (DEBUG) {
       debug("UnionResultsCollector: "
             + contextIndex + ", " + id + ", " + timestamp);
@@ -3027,7 +3097,7 @@ UnionResultsCollector.prototype = {
 
     let tres = contexts[0].results;
     let qres = contexts[1].results;
-    tres = tres.filter(function (element) {
+    tres = tres.filter(function(element) {
       return qres.indexOf(element.id) != -1;
     });
 
@@ -3039,11 +3109,11 @@ UnionResultsCollector.prototype = {
     return false;
   },
 
-  newTimestampContext: function newTimestampContext() {
+  newTimestampContext: function() {
     return this.collect.bind(this, 0);
   },
 
-  newContext: function newContext() {
+  newContext: function() {
     this.contexts[1].processing++;
     return this.collect.bind(this, 1);
   }
@@ -3064,7 +3134,7 @@ GetMessagesCursor.prototype = {
   callback: null,
   collector: null,
 
-  getMessageTxn: function getMessageTxn(messageStore, messageId) {
+  getMessageTxn: function(messageStore, messageId) {
     if (DEBUG) debug ("Fetching message " + messageId);
 
     let getRequest = messageStore.get(messageId);
@@ -3085,7 +3155,7 @@ GetMessagesCursor.prototype = {
     };
   },
 
-  notify: function notify(txn, messageId) {
+  notify: function(txn, messageId) {
     if (!messageId) {
       this.callback.notifyCursorDone();
       return;
@@ -3106,7 +3176,7 @@ GetMessagesCursor.prototype = {
 
     // Or, we have to open another transaction ourselves.
     let self = this;
-    this.mmdb.newTxn(READ_ONLY, function (error, txn, messageStore) {
+    this.mmdb.newTxn(READ_ONLY, function(error, txn, messageStore) {
       if (error) {
         self.callback.notifyCursorError(Ci.nsIMobileMessageCallback.INTERNAL_ERROR);
         return;
@@ -3117,7 +3187,7 @@ GetMessagesCursor.prototype = {
 
   // nsICursorContinueCallback
 
-  handleContinue: function handleContinue() {
+  handleContinue: function() {
     if (DEBUG) debug("Getting next message in list");
     this.collector.squeeze(this.notify.bind(this));
   }
@@ -3138,7 +3208,7 @@ GetThreadsCursor.prototype = {
   callback: null,
   collector: null,
 
-  getThreadTxn: function getThreadTxn(threadStore, threadId) {
+  getThreadTxn: function(threadStore, threadId) {
     if (DEBUG) debug ("Fetching thread " + threadId);
 
     let getRequest = threadStore.get(threadId);
@@ -3166,7 +3236,7 @@ GetThreadsCursor.prototype = {
     };
   },
 
-  notify: function notify(txn, threadId) {
+  notify: function(txn, threadId) {
     if (!threadId) {
       this.callback.notifyCursorDone();
       return;
@@ -3187,7 +3257,7 @@ GetThreadsCursor.prototype = {
 
     // Or, we have to open another transaction ourselves.
     let self = this;
-    this.mmdb.newTxn(READ_ONLY, function (error, txn, threadStore) {
+    this.mmdb.newTxn(READ_ONLY, function(error, txn, threadStore) {
       if (error) {
         self.callback.notifyCursorError(Ci.nsIMobileMessageCallback.INTERNAL_ERROR);
         return;
@@ -3198,7 +3268,7 @@ GetThreadsCursor.prototype = {
 
   // nsICursorContinueCallback
 
-  handleContinue: function handleContinue() {
+  handleContinue: function() {
     if (DEBUG) debug("Getting next thread in list");
     this.collector.squeeze(this.notify.bind(this));
   }

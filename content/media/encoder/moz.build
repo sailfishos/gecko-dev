@@ -4,6 +4,9 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gonk':
+    PARALLEL_DIRS += ['fmp4_muxer']
+
 EXPORTS += [
     'ContainerWriter.h',
     'EncodedFrameContainer.h',
@@ -17,10 +20,24 @@ UNIFIED_SOURCES += [
     'TrackEncoder.cpp',
 ]
 
+if CONFIG['MOZ_OMX_ENCODER']:
+    EXPORTS += ['OmxTrackEncoder.h']
+    UNIFIED_SOURCES += ['OmxTrackEncoder.cpp']
+
 if CONFIG['MOZ_OPUS']:
     EXPORTS += ['OpusTrackEncoder.h']
     UNIFIED_SOURCES += ['OpusTrackEncoder.cpp']
 
+if CONFIG['MOZ_WEBM_ENCODER']:
+    EXPORTS += ['VorbisTrackEncoder.h',
+                'VP8TrackEncoder.h',
+    ]
+    UNIFIED_SOURCES += ['VorbisTrackEncoder.cpp',
+                        'VP8TrackEncoder.cpp',
+    ]
+
 FAIL_ON_WARNINGS = True
 
 FINAL_LIBRARY = 'gklayout'
+
+include('/ipc/chromium/chromium-config.mozbuild')

@@ -239,7 +239,7 @@ skip-if(B2G) == 234964-1.html 234964-1-ref.html
 == 240029-1.html 240029-1-ref.html
 == 240470-1.html 240470-1-ref.html
 skip-if(B2G) == 240933-1.html 240933-1-ref.html
-skip-if(B2G) fails-if(Android) == 240933-2.html 240933-2-ref.html
+skip-if(B2G) == 240933-2.html 240933-2-ref.html
 == 243266-1.html 243266-1-ref.html
 == 243302-1.html 243302-1-ref.html
 skip-if(B2G) == 243519-1.html 243519-1-ref.html
@@ -659,6 +659,9 @@ skip-if(B2G) fails-if(Android) random-if(d2d) == 373381-3.html 373381-3-ref.html
 skip-if(B2G) fails-if(Android) == 373381-4.html 373381-4-ref.html
 == 373383-1.html 373383-1-ref.html
 == 373433-1.html 373433-1-ref.html
+== 373533-1.xhtml about:blank
+== 373533-2.xhtml about:blank
+== 373533-3.xhtml about:blank
 == 374038-1.xul 374038-1-ref.xul
 == 374038-2.xul 374038-2-ref.xul
 random-if(d2d) == 374719-1.xul 374719-1-ref.xul
@@ -1788,3 +1791,8 @@ fuzzy-if(OSX==10.6,2,30) == 933264-1.html 933264-1-ref.html
 == 941940-1.html 941940-1-ref.html
 == 942017.html 942017-ref.html
 == 942672-1.html 942672-1-ref.html
+== 953334-win32-clipping.html 953334-win32-clipping-ref.html
+== 956513-1.svg 956513-1-ref.svg
+== 944291-1.html 944291-1-ref.html
+== 957770-1.svg 957770-1-ref.svg
+== 960277-1.html 960277-1-ref.html

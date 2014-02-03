@@ -9,6 +9,7 @@
 #include "nsISHEntry.h"
 #include "nsIInputStream.h"
 #include "nsIURI.h"
+#include "nsIDocShell.h"
 
 //*****************************************************************************
 //***    nsDocShellLoadInfo: Object Management
@@ -128,7 +129,7 @@ NS_IMETHODIMP nsDocShellLoadInfo::SetSHEntry(nsISHEntry* aSHEntry)
    return NS_OK;
 }
 
-NS_IMETHODIMP nsDocShellLoadInfo::GetTarget(PRUnichar** aTarget)
+NS_IMETHODIMP nsDocShellLoadInfo::GetTarget(char16_t** aTarget)
 {
    NS_ENSURE_ARG_POINTER(aTarget);
 
@@ -137,7 +138,7 @@ NS_IMETHODIMP nsDocShellLoadInfo::GetTarget(PRUnichar** aTarget)
    return NS_OK;
 }
 
-NS_IMETHODIMP nsDocShellLoadInfo::SetTarget(const PRUnichar* aTarget)
+NS_IMETHODIMP nsDocShellLoadInfo::SetTarget(const char16_t* aTarget)
 {
    mTarget.Assign(aTarget);
    return NS_OK;
@@ -210,6 +211,19 @@ NS_IMETHODIMP nsDocShellLoadInfo::SetSrcdocData(const nsAString &aSrcdocData)
    return NS_OK;
 }
 
+NS_IMETHODIMP nsDocShellLoadInfo::GetSourceDocShell(nsIDocShell** aSourceDocShell)
+{
+   MOZ_ASSERT(aSourceDocShell);
+   nsCOMPtr<nsIDocShell> result = mSourceDocShell;
+   result.forget(aSourceDocShell);
+   return NS_OK;
+}
+
+NS_IMETHODIMP nsDocShellLoadInfo::SetSourceDocShell(nsIDocShell* aSourceDocShell)
+{
+   mSourceDocShell = aSourceDocShell;
+   return NS_OK;
+}
 
 //*****************************************************************************
 // nsDocShellLoadInfo: Helpers

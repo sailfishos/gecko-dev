@@ -61,7 +61,7 @@ function needHomepageOverride() {
   if (savedmstone == "ignore")
     return "none";
 
-#expand    let ourmstone = "__MOZ_APP_VERSION__";
+  let ourmstone = Services.appinfo.platformVersion;
 
   if (ourmstone != savedmstone) {
     Services.prefs.setCharPref("browser.startup.homepage_override.mstone", ourmstone);

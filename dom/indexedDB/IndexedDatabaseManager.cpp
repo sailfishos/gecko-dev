@@ -646,7 +646,7 @@ NS_IMPL_QUERY_INTERFACE2(IndexedDatabaseManager, nsIIndexedDatabaseManager,
                                                  nsIObserver)
 
 NS_IMETHODIMP
-IndexedDatabaseManager::InitWindowless(const jsval& aGlobal, JSContext* aCx)
+IndexedDatabaseManager::InitWindowless(JS::Handle<JS::Value> aGlobal, JSContext* aCx)
 {
   NS_ENSURE_TRUE(nsContentUtils::IsCallerChrome(), NS_ERROR_NOT_AVAILABLE);
 
@@ -675,7 +675,7 @@ IndexedDatabaseManager::InitWindowless(const jsval& aGlobal, JSContext* aCx)
 
 NS_IMETHODIMP
 IndexedDatabaseManager::Observe(nsISupports* aSubject, const char* aTopic,
-                                const PRUnichar* aData)
+                                const char16_t* aData)
 {
   NS_ASSERTION(IsMainProcess(), "Wrong process!");
   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");

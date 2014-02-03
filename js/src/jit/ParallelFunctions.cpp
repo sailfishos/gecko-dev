@@ -6,6 +6,8 @@
 
 #include "jit/ParallelFunctions.h"
 
+#include "builtin/TypedObject.h"
+#include "jit/arm/Simulator-arm.h"
 #include "vm/ArrayObject.h"
 
 #include "jsgcinlines.h"
@@ -23,7 +25,7 @@ using parallel::SpewBailoutIR;
 ForkJoinSlice *
 jit::ForkJoinSlicePar()
 {
-    return ForkJoinSlice::Current();
+    return ForkJoinSlice::current();
 }
 
 // NewGCThingPar() is called in place of NewGCThing() when executing
@@ -32,18 +34,89 @@ jit::ForkJoinSlicePar()
 JSObject *
 jit::NewGCThingPar(ForkJoinSlice *slice, gc::AllocKind allocKind)
 {
-    JS_ASSERT(ForkJoinSlice::Current() == slice);
+    JS_ASSERT(ForkJoinSlice::current() == slice);
     uint32_t thingSize = (uint32_t)gc::Arena::thingSize(allocKind);
     return gc::NewGCThing<JSObject, NoGC>(slice, allocKind, thingSize, gc::DefaultHeap);
 }
 
-// Check that the object was created by the current thread
-// (and hence is writable).
 bool
-jit::IsThreadLocalObject(ForkJoinSlice *slice, JSObject *object)
+jit::ParallelWriteGuard(ForkJoinSlice *slice, JSObject *object)
 {
-    JS_ASSERT(ForkJoinSlice::Current() == slice);
+    // Implements the most general form of the write guard, which is
+    // suitable for writes to any object O. There are two cases to
+    // consider and test for:
+    //
+    // 1. Writes to thread-local memory are safe. Thread-local memory
+    //    is defined as memory allocated by the current thread.
+    //    The definition of the PJS API guarantees that such memory
+    //    cannot have escaped to other parallel threads.
+    //
+    // 2. Writes into the output buffer are safe. Some PJS operations
+    //    supply an out pointer into the final target buffer. The design
+    //    of the API ensures that this out pointer is always pointing
+    //    at a fresh region of the buffer that is not accessible to
+    //    other threads. Thus, even though this output buffer has not
+    //    been created by the current thread, it is writable.
+    //
+    // There are some subtleties to consider:
+    //
+    // A. Typed objects and typed arrays are just views onto a base buffer.
+    //    For the purposes of guarding parallel writes, it is not important
+    //    whether the *view* is thread-local -- what matters is whether
+    //    the *underlying buffer* is thread-local.
+    //
+    // B. With regard to the output buffer, we have to be careful
+    //    because of the potential for sequential iterations to be
+    //    intermingled with parallel ones. During a sequential
+    //    iteration, the out pointer could escape into global
+    //    variables and so forth, and thus be used during later
+    //    parallel operations. However, those out pointers must be
+    //    pointing to distinct regions of the final output buffer than
+    //    the ones that are currently being written, so there is no
+    //    harm done in letting them be read (but not written).
+    //
+    //    In order to be able to distinguish escaped out pointers from
+    //    prior iterations and the proper out pointers from the
+    //    current iteration, we always track a *target memory region*
+    //    (which is a span of bytes within the output buffer) and not
+    //    just the output buffer itself.
+
+    JS_ASSERT(ForkJoinSlice::current() == slice);
+
+    if (IsTypedDatum(*object)) {
+        TypedDatum &datum = AsTypedDatum(*object);
+
+        // Note: check target region based on `datum`, not the owner.
+        // This is because `datum` may point to some subregion of the
+        // owner and we only care if that *subregion* is within the
+        // target region, not the entire owner.
+        if (IsInTargetRegion(slice, &datum))
+            return true;
+
+        // Also check whether owner is thread-local.
+        TypedDatum *owner = datum.owner();
+        return owner && slice->isThreadLocal(owner);
+    }
+
+    // For other kinds of writable objects, must be thread-local.
     return slice->isThreadLocal(object);
+}
+
+// Check that |object| (which must be a typed datum) maps
+// to memory in the target region.
+//
+// For efficiency, we assume that all handles which the user has
+// access to are either entirely within the target region or entirely
+// without, but not straddling the target region nor encompassing
+// it. This invariant is maintained by the PJS APIs, where the target
+// region and handles are always elements of the same output array.
+bool
+jit::IsInTargetRegion(ForkJoinSlice *slice, TypedDatum *datum)
+{
+    JS_ASSERT(IsTypedDatum(*datum)); // in case JIT supplies something bogus
+    uint8_t *typedMem = datum->typedMem();
+    return (typedMem >= slice->targetRegionStart &&
+            typedMem <  slice->targetRegionEnd);
 }
 
 #ifdef DEBUG
@@ -87,7 +160,7 @@ jit::TraceLIR(IonLIRTraceData *current)
     if (current->execModeInt == 0)
         cached = &seqTraceData;
     else
-        cached = &ForkJoinSlice::Current()->traceData;
+        cached = &ForkJoinSlice::current()->traceData;
 
     if (current->blockIndex == 0xDEADBEEF) {
         if (current->execModeInt == 0)
@@ -106,7 +179,7 @@ jit::TraceLIR(IonLIRTraceData *current)
 bool
 jit::CheckOverRecursedPar(ForkJoinSlice *slice)
 {
-    JS_ASSERT(ForkJoinSlice::Current() == slice);
+    JS_ASSERT(ForkJoinSlice::current() == slice);
     int stackDummy_;
 
     // When an interrupt is triggered, the main thread stack limit is
@@ -117,6 +190,13 @@ jit::CheckOverRecursedPar(ForkJoinSlice *slice)
     // When not on the main thread, we don't overwrite the stack
     // limit, but we do still call into this routine if the interrupt
     // flag is set, so we still need to double check.
+
+#ifdef JS_ARM_SIMULATOR
+    if (Simulator::Current()->overRecursed()) {
+        slice->bailoutRecord->setCause(ParallelBailoutOverRecursed);
+        return false;
+    }
+#endif
 
     uintptr_t realStackLimit;
     if (slice->isMainThread())
@@ -135,7 +215,7 @@ jit::CheckOverRecursedPar(ForkJoinSlice *slice)
 bool
 jit::CheckInterruptPar(ForkJoinSlice *slice)
 {
-    JS_ASSERT(ForkJoinSlice::Current() == slice);
+    JS_ASSERT(ForkJoinSlice::current() == slice);
     bool result = slice->check();
     if (!result) {
         // Do not set the cause here.  Either it was set by this
@@ -481,7 +561,7 @@ jit::AbortPar(ParallelBailoutCause cause, JSScript *outermostScript, JSScript *c
     JS_ASSERT(currentScript != nullptr);
     JS_ASSERT(outermostScript->hasParallelIonScript());
 
-    ForkJoinSlice *slice = ForkJoinSlice::Current();
+    ForkJoinSlice *slice = ForkJoinSlice::current();
 
     JS_ASSERT(slice->bailoutRecord->depth == 0);
     slice->bailoutRecord->setCause(cause, outermostScript, currentScript, bytecode);
@@ -500,7 +580,7 @@ jit::PropagateAbortPar(JSScript *outermostScript, JSScript *currentScript)
 
     outermostScript->parallelIonScript()->setHasUncompiledCallTarget();
 
-    ForkJoinSlice *slice = ForkJoinSlice::Current();
+    ForkJoinSlice *slice = ForkJoinSlice::current();
     if (currentScript)
         slice->bailoutRecord->addTrace(currentScript, nullptr);
 }

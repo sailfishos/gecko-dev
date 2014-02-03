@@ -156,7 +156,7 @@ nsSpeechTask::Setup(nsISpeechTaskCallback* aCallback,
 }
 
 NS_IMETHODIMP
-nsSpeechTask::SendAudio(const JS::Value& aData, const JS::Value& aLandmarks,
+nsSpeechTask::SendAudio(JS::Handle<JS::Value> aData, JS::Handle<JS::Value> aLandmarks,
                         JSContext* aCx)
 {
   MOZ_ASSERT(XRE_GetProcessType() == GeckoProcessType_Default);
@@ -215,8 +215,7 @@ void
 nsSpeechTask::SendAudioImpl(int16_t* aData, uint32_t aDataLen)
 {
   if (aDataLen == 0) {
-    // XXX: We should end the track too, an undetermined bug does not allow that.
-    mStream->Finish();
+    mStream->EndAllTrackAndFinish();
     return;
   }
 

@@ -58,6 +58,10 @@ static void debug_RegisterPrefCallbacks();
 static int32_t gNumWidgets;
 #endif
 
+#ifdef XP_MACOSX
+#include "nsCocoaFeatures.h"
+#endif
+
 nsIRollupListener* nsBaseWidget::gRollupListener = nullptr;
 
 using namespace mozilla::layers;
@@ -138,7 +142,7 @@ NS_IMPL_ISUPPORTS1(WidgetShutdownObserver, nsIObserver)
 NS_IMETHODIMP
 WidgetShutdownObserver::Observe(nsISupports *aSubject,
                                 const char *aTopic,
-                                const PRUnichar *aData)
+                                const char16_t *aData)
 {
   if (strcmp(aTopic, NS_XPCOM_SHUTDOWN_OBSERVER_ID) == 0 &&
       mWidget) {
@@ -198,7 +202,7 @@ void nsBaseWidget::DestroyCompositor()
 nsBaseWidget::~nsBaseWidget()
 {
   if (mLayerManager &&
-      mLayerManager->GetBackendType() == LAYERS_BASIC) {
+      mLayerManager->GetBackendType() == LayersBackend::LAYERS_BASIC) {
     static_cast<BasicLayerManager*>(mLayerManager.get())->ClearRetainerWidget();
   }
 
@@ -798,7 +802,7 @@ nsBaseWidget::AutoLayerManagerSetup::AutoLayerManagerSetup(
 {
   mLayerManager = static_cast<BasicLayerManager*>(mWidget->GetLayerManager());
   if (mLayerManager) {
-    NS_ASSERTION(mLayerManager->GetBackendType() == LAYERS_BASIC,
+    NS_ASSERTION(mLayerManager->GetBackendType() == LayersBackend::LAYERS_BASIC,
       "AutoLayerManagerSetup instantiated for non-basic layer backend!");
     mLayerManager->SetDefaultTarget(aTarget);
     mLayerManager->SetDefaultTargetConfiguration(aDoubleBuffering, aRotation);
@@ -808,10 +812,10 @@ nsBaseWidget::AutoLayerManagerSetup::AutoLayerManagerSetup(
 nsBaseWidget::AutoLayerManagerSetup::~AutoLayerManagerSetup()
 {
   if (mLayerManager) {
-    NS_ASSERTION(mLayerManager->GetBackendType() == LAYERS_BASIC,
+    NS_ASSERTION(mLayerManager->GetBackendType() == LayersBackend::LAYERS_BASIC,
       "AutoLayerManagerSetup instantiated for non-basic layer backend!");
     mLayerManager->SetDefaultTarget(nullptr);
-    mLayerManager->SetDefaultTargetConfiguration(mozilla::layers::BUFFER_NONE, ROTATION_0);
+    mLayerManager->SetDefaultTargetConfiguration(mozilla::layers::BufferMode::BUFFER_NONE, ROTATION_0);
   }
 }
 
@@ -833,7 +837,7 @@ bool
 nsBaseWidget::ComputeShouldAccelerate(bool aDefault)
 {
 #if defined(XP_WIN) || defined(ANDROID) || \
-    defined(MOZ_GL_PROVIDER) || defined(XP_MACOSX)
+    defined(MOZ_GL_PROVIDER) || defined(XP_MACOSX) || defined(MOZ_WIDGET_QT)
   bool accelerateByDefault = true;
 #else
   bool accelerateByDefault = false;
@@ -845,16 +849,11 @@ nsBaseWidget::ComputeShouldAccelerate(bool aDefault)
   // those versions of the OS.
   // This will still let full-screen video be accelerated on OpenGL, because
   // that XUL widget opts in to acceleration, but that's probably OK.
-  SInt32 major, minor, bugfix;
-  OSErr err1 = ::Gestalt(gestaltSystemVersionMajor, &major);
-  OSErr err2 = ::Gestalt(gestaltSystemVersionMinor, &minor);
-  OSErr err3 = ::Gestalt(gestaltSystemVersionBugFix, &bugfix);
-  if (err1 == noErr && err2 == noErr && err3 == noErr) {
-    if (major == 10 && minor == 6) {
-      if (bugfix <= 2) {
-        accelerateByDefault = false;
-      }
-    }
+  SInt32 major = nsCocoaFeatures::OSXVersionMajor();
+  SInt32 minor = nsCocoaFeatures::OSXVersionMinor();
+  SInt32 bugfix = nsCocoaFeatures::OSXVersionBugFix();
+  if (major == 10 && minor == 6 && bugfix <= 2) {
+    accelerateByDefault = false;
   }
 #endif
 
@@ -896,7 +895,11 @@ nsBaseWidget::ComputeShouldAccelerate(bool aDefault)
     return true;
 
   if (!whitelisted) {
-    NS_WARNING("OpenGL-accelerated layers are not supported on this system");
+    static int tell_me_once = 0;
+    if (!tell_me_once) {
+      NS_WARNING("OpenGL-accelerated layers are not supported on this system");
+      tell_me_once = 1;
+    }
 #ifdef MOZ_ANDROID_OMTC
     NS_RUNTIMEABORT("OpenGL-accelerated layers are a hard requirement on this platform. "
                     "Cannot continue without support for them");
@@ -928,21 +931,21 @@ void
 nsBaseWidget::GetPreferredCompositorBackends(nsTArray<LayersBackend>& aHints)
 {
   if (mUseLayersAcceleration) {
-    aHints.AppendElement(LAYERS_OPENGL);
+    aHints.AppendElement(LayersBackend::LAYERS_OPENGL);
   }
 
-  aHints.AppendElement(LAYERS_BASIC);
+  aHints.AppendElement(LayersBackend::LAYERS_BASIC);
 }
 
 static void
 CheckForBasicBackends(nsTArray<LayersBackend>& aHints)
 {
   for (size_t i = 0; i < aHints.Length(); ++i) {
-    if (aHints[i] == LAYERS_BASIC &&
+    if (aHints[i] == LayersBackend::LAYERS_BASIC &&
         !Preferences::GetBool("layers.offmainthreadcomposition.force-basic", false) &&
         !BrowserTabsRemote()) {
       // basic compositor is not stable enough for regular use
-      aHints[i] = LAYERS_NONE;
+      aHints[i] = LayersBackend::LAYERS_NONE;
     }
   }
 }
@@ -1213,6 +1216,11 @@ nsBaseWidget::SetNonClientMargins(nsIntMargin &margins)
 NS_METHOD nsBaseWidget::EnableDragDrop(bool aEnable)
 {
   return NS_OK;
+}
+
+uint32_t nsBaseWidget::GetMaxTouchPoints() const
+{
+  return 0;
 }
 
 NS_METHOD nsBaseWidget::SetModal(bool aModal)
@@ -1767,7 +1775,7 @@ NS_IMPL_ISUPPORTS1(Debug_PrefObserver, nsIObserver)
 
 NS_IMETHODIMP
 Debug_PrefObserver::Observe(nsISupports* subject, const char* topic,
-                            const PRUnichar* data)
+                            const char16_t* data)
 {
   NS_ConvertUTF16toUTF8 prefName(data);
 

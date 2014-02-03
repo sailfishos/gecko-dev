@@ -210,8 +210,13 @@ nsWinMetroUtils::ShowNativeToast(const nsAString &aTitle,
 
   HSTRING title = HStringReference(aTitle.BeginReading()).Get();
   HSTRING msg = HStringReference(aMessage.BeginReading()).Get();
-  HSTRING imagePath = HStringReference(anImage.BeginReading()).Get();
-  notification_handler->DisplayNotification(title, msg, imagePath, aCookie);
+
+  if (anImage.Length() > 0) {
+    HSTRING imagePath = HStringReference(anImage.BeginReading()).Get();
+    notification_handler->DisplayNotification(title, msg, imagePath, aCookie);
+  } else {
+    notification_handler->DisplayTextNotification(title, msg, aCookie);
+  }
 
   return NS_OK;
 }
@@ -244,6 +249,17 @@ nsWinMetroUtils::GetActivationURI(nsAString &aActivationURI)
     return NS_OK;
   }
   sFrameworkView->GetActivationURI(aActivationURI);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsWinMetroUtils::GetPreviousExecutionState(int32_t *out)
+{
+  if (!sFrameworkView) {
+    NS_WARNING("GetPreviousExecutionState used before view is created!");
+    return NS_OK;
+  }
+  *out = sFrameworkView->GetPreviousExecutionState();
   return NS_OK;
 }
 

@@ -31,6 +31,7 @@ const PREF_APP_UPDATE_CERT_CHECKATTRS     = "app.update.cert.checkAttributes";
 const PREF_APP_UPDATE_CERT_ERRORS         = "app.update.cert.errors";
 const PREF_APP_UPDATE_CERT_MAXERRORS      = "app.update.cert.maxErrors";
 const PREF_APP_UPDATE_CERT_REQUIREBUILTIN = "app.update.cert.requireBuiltIn";
+const PREF_APP_UPDATE_CUSTOM              = "app.update.custom";
 const PREF_APP_UPDATE_ENABLED             = "app.update.enabled";
 const PREF_APP_UPDATE_METRO_ENABLED       = "app.update.metro.enabled";
 const PREF_APP_UPDATE_IDLETIME            = "app.update.idletime";
@@ -40,12 +41,12 @@ const PREF_APP_UPDATE_LASTUPDATETIME      = "app.update.lastUpdateTime.backgroun
 const PREF_APP_UPDATE_LOG                 = "app.update.log";
 const PREF_APP_UPDATE_MODE                = "app.update.mode";
 const PREF_APP_UPDATE_NEVER_BRANCH        = "app.update.never.";
+const PREF_APP_UPDATE_NOTIFIEDUNSUPPORTED = "app.update.notifiedUnsupported";
 const PREF_APP_UPDATE_POSTUPDATE          = "app.update.postupdate";
 const PREF_APP_UPDATE_PROMPTWAITTIME      = "app.update.promptWaitTime";
 const PREF_APP_UPDATE_SHOW_INSTALLED_UI   = "app.update.showInstalledUI";
 const PREF_APP_UPDATE_SILENT              = "app.update.silent";
 const PREF_APP_UPDATE_STAGING_ENABLED     = "app.update.staging.enabled";
-const PREF_APP_UPDATE_NOTIFIEDUNSUPPORTED = "app.update.notifiedUnsupported";
 const PREF_APP_UPDATE_URL                 = "app.update.url";
 const PREF_APP_UPDATE_URL_DETAILS         = "app.update.url.details";
 const PREF_APP_UPDATE_URL_OVERRIDE        = "app.update.url.override";
@@ -195,7 +196,8 @@ const PING_BGUC_INVALID_DEFAULT_URL          = 2;
 const PING_BGUC_INVALID_CUSTOM_URL           = 3;
 // Invalid url for app.update.url.override user preference (no notification)
 const PING_BGUC_INVALID_OVERRIDE_URL         = 4;
-// Unable to check for updates per gCanCheckForUpdates (no notification)
+// Unable to check for updates per gCanCheckForUpdates and hasUpdateMutex()
+// (no notification)
 const PING_BGUC_UNABLE_TO_CHECK              = 5;
 // Already has an active update in progress (no notification)
 const PING_BGUC_HAS_ACTIVEUPDATE             = 6;
@@ -256,15 +258,15 @@ const PING_BGUC_ADDON_UPDATES_FOR_INCOMPAT   = 29;
 // Incompatible add-ons found (update notification)
 const PING_BGUC_ADDON_HAVE_INCOMPAT          = 30;
 
-var gLocale     = null;
+var gLocale = null;
+var gUpdateMutexHandle = null;
 
-#ifdef MOZ_B2G
-var gVolumeMountLock = null;
+#ifdef MOZ_WIDGET_GONK
+var gSDCardMountLock = null;
+
 XPCOMUtils.defineLazyGetter(this, "gExtStorage", function aus_gExtStorage() {
     return Services.env.get("EXTERNAL_STORAGE");
 });
-
-var gSDCardMountLock = null;
 #endif
 
 XPCOMUtils.defineLazyModuleGetter(this, "UpdateChannel",
@@ -483,10 +485,13 @@ function closeHandle(handle) {
 /**
  * Creates a mutex.
  *
- * @param aAllowExisting false if the function should fail if the mutex exists
- * @return The Win32 handle to the mutex
+ * @param  aName
+ *         The name for the mutex.
+ * @param  aAllowExisting
+ *         If false the function will close the handle and return null.
+ * @return The Win32 handle to the mutex.
  */
-function createMutex(name, aAllowExisting) {
+function createMutex(aName, aAllowExisting) {
   if (aAllowExisting === undefined) {
     aAllowExisting = true;
   }
@@ -501,7 +506,7 @@ function createMutex(name, aAllowExisting) {
                                  ctypes.int32_t, /* initial owner */
                                  ctypes.jschar.ptr); /* name */
 
-  var handle = CreateMutexW(null, INITIAL_OWN, name);
+  var handle = CreateMutexW(null, INITIAL_OWN, aName);
   var alreadyExists = ctypes.winLastError == ERROR_ALREADY_EXISTS;
   if (handle && !handle.isNull() && !aAllowExisting && alreadyExists) {
     closeHandle(handle);
@@ -554,11 +559,11 @@ function getPerInstallationMutexName(aGlobal) {
  */
 function hasUpdateMutex() {
 #ifdef XP_WIN
-  if (!this._updateMutexHandle) {
-    this._updateMutexHandle = createMutex(getPerInstallationMutexName(true), false);
+  if (!gUpdateMutexHandle) {
+    gUpdateMutexHandle = createMutex(getPerInstallationMutexName(true), false);
   }
 
-  return !!this._updateMutexHandle;
+  return !!gUpdateMutexHandle;
 #else
   return true;
 #endif // XP_WIN
@@ -668,13 +673,6 @@ XPCOMUtils.defineLazyGetter(this, "gCanApplyUpdates", function aus_gCanApplyUpda
       return false;
     }
   } // if (!useService)
-
-  if (!hasUpdateMutex()) {
-    LOG("gCanApplyUpdates - unable to apply updates because another instance" +
-        "of the application is already handling updates for this " +
-        "installation.");
-    return false;
-  }
 
   LOG("gCanApplyUpdates - able to apply updates");
   submitHasPermissionsTelemetryPing(true);
@@ -792,13 +790,6 @@ XPCOMUtils.defineLazyGetter(this, "gCanCheckForUpdates", function aus_gCanCheckF
   if (!gOSVersion) {
     LOG("gCanCheckForUpdates - unable to check for updates, unknown OS " +
         "version");
-    return false;
-  }
-
-  if (!hasUpdateMutex()) {
-    LOG("gCanCheckForUpdates - unable to apply updates because another " +
-        "instance of the application is already handling updates for this " +
-        "installation.");
     return false;
   }
 
@@ -1222,75 +1213,60 @@ function cleanUpUpdatesDir(aBackgroundUpdate) {
   // Bail out if we don't have appropriate permissions
   try {
     var updateDir = getUpdatesDir();
-  }
-  catch (e) {
+  } catch (e) {
     return;
   }
 
-  var e = updateDir.directoryEntries;
-  while (e.hasMoreElements()) {
-    var f = e.getNext().QueryInterface(Ci.nsIFile);
-    // Preserve the last update log file for debugging purposes
-    if (f.leafName == FILE_UPDATE_LOG) {
-      var dir;
+  // Preserve the last update log file for debugging purposes.
+  let file = updateDir.clone();
+  file.append(FILE_UPDATE_LOG);
+  if (file.exists()) {
+    let dir;
+    if (aBackgroundUpdate && getUpdateDirNoCreate([]).equals(getAppBaseDir())) {
+      dir = getUpdatesDirInApplyToDir();
+    } else {
+      dir = updateDir.parent;
+    }
+    let logFile = dir.clone();
+    logFile.append(FILE_LAST_LOG);
+    if (logFile.exists()) {
       try {
-        // If we don't use the update root directory, the log files are written
-        // inside the application directory.  In that case, we want to write
-        // the log files to the updated directory in the case of background
-        // updates, so that they would be available when we replace that
-        // directory with the application directory later on.
-        if (aBackgroundUpdate && getUpdateDirNoCreate([]).equals(getAppBaseDir())) {
-          dir = getUpdatesDirInApplyToDir();
-        } else {
-          dir = f.parent.parent;
-        }
-        var logFile = dir.clone();
-        logFile.append(FILE_LAST_LOG);
-        if (logFile.exists()) {
-          try {
-            logFile.moveTo(dir, FILE_BACKUP_LOG);
-          }
-          catch (e) {
-            LOG("cleanUpUpdatesDir - failed to rename file " + logFile.path +
-                " to " + FILE_BACKUP_LOG);
-          }
-        }
-        f.moveTo(dir, FILE_LAST_LOG);
-        if (aBackgroundUpdate) {
-          // We're not going to delete any files, so we can just
-          // bail out of the loop right now.
-          break;
-        } else {
-          continue;
-        }
+        logFile.moveTo(dir, FILE_BACKUP_LOG);
+      } catch (e) {
+        LOG("cleanUpUpdatesDir - failed to rename file " + logFile.path +
+            " to " + FILE_BACKUP_LOG);
       }
-      catch (e) {
-        LOG("cleanUpUpdatesDir - failed to move file " + f.path + " to " +
-            dir.path + " and rename it to " + FILE_LAST_LOG);
-      }
-    } else if (aBackgroundUpdate) {
-      // Don't delete any files when an update has been staged, as
-      // we need to keep them around in case we would have to fall
-      // back to applying the update on application restart.
-      continue;
     }
+
+    try {
+      file.moveTo(dir, FILE_LAST_LOG);
+    } catch (e) {
+      LOG("cleanUpUpdatesDir - failed to rename file " + file.path +
+          " to " + FILE_LAST_LOG);
+    }
+  }
+
+  if (!aBackgroundUpdate) {
+    let e = updateDir.directoryEntries;
+    while (e.hasMoreElements()) {
+      let f = e.getNext().QueryInterface(Ci.nsIFile);
 #ifdef MOZ_WIDGET_GONK
-    if (f.leafName == FILE_UPDATE_LINK) {
-      let linkedFile = getFileFromUpdateLink(updateDir);
-      if (linkedFile && linkedFile.exists()) {
-        linkedFile.remove(false);
+      if (f.leafName == FILE_UPDATE_LINK) {
+        let linkedFile = getFileFromUpdateLink(updateDir);
+        if (linkedFile && linkedFile.exists()) {
+          linkedFile.remove(false);
+        }
       }
-    }
 #endif
 
-    // Now, recursively remove this file.  The recursive removal is really
-    // only needed on Mac OSX because this directory will contain a copy of
-    // updater.app, which is itself a directory.
-    try {
-      f.remove(true);
-    }
-    catch (e) {
-      LOG("cleanUpUpdatesDir - failed to remove file " + f.path);
+      // Now, recursively remove this file.  The recursive removal is needed for
+      // Mac OSX because this directory will contain a copy of updater.app,
+      // which is itself a directory.
+      try {
+        f.remove(true);
+      } catch (e) {
+        LOG("cleanUpUpdatesDir - failed to remove file " + f.path);
+      }
     }
   }
   releaseSDCardMountLock();
@@ -1320,7 +1296,7 @@ function getLocale() {
   if (gLocale)
     return gLocale;
 
-  for each (res in ['app', 'gre']) {
+  for (let res of ['app', 'gre']) {
     var channel = Services.io.newChannel("resource://" + res + "/" + FILE_UPDATE_LOCALE, null, null);
     try {
       var inputStream = channel.open();
@@ -1980,7 +1956,7 @@ const UpdateServiceFactory = {
 function UpdateService() {
   LOG("Creating UpdateService");
   Services.obs.addObserver(this, "xpcom-shutdown", false);
-  Services.prefs.addObserver("app.update.log", this, false);
+  Services.prefs.addObserver(PREF_APP_UPDATE_LOG, this, false);
 #ifdef MOZ_WIDGET_GONK
   // PowerManagerService::SyncProfile (which is called for Reboot, PowerOff
   // and Restart) sends the profile-change-net-teardown event. We can then
@@ -2050,7 +2026,7 @@ UpdateService.prototype = {
 #endif
     case "xpcom-shutdown":
       Services.obs.removeObserver(this, topic);
-      Services.prefs.removeObserver("app.update.log", this);
+      Services.prefs.removeObserver(PREF_APP_UPDATE_LOG, this);
 
       if (this._retryTimer) {
         this._retryTimer.cancel();
@@ -2626,7 +2602,7 @@ UpdateService.prototype = {
       else if (!getPref("getBoolPref", PREF_APP_UPDATE_ENABLED, true)) {
         this._backgroundUpdateCheckCodePing(PING_BGUC_PREF_DISABLED);
       }
-      else if (!gCanCheckForUpdates) {
+      else if (!(gCanCheckForUpdates && hasUpdateMutex())) {
         this._backgroundUpdateCheckCodePing(PING_BGUC_UNABLE_TO_CHECK);
       }
       else if (!this.backgroundChecker._enabled) {
@@ -2774,7 +2750,7 @@ UpdateService.prototype = {
       return;
     }
 
-    if (!gCanApplyUpdates) {
+    if (!(gCanApplyUpdates && hasUpdateMutex())) {
       LOG("UpdateService:_selectAndInstallUpdate - the user is unable to " +
           "apply updates... prompting");
       this._showPrompt(update);
@@ -2972,7 +2948,7 @@ UpdateService.prototype = {
     // the add-on will become incompatible.
     let bs = Cc["@mozilla.org/extensions/blocklist;1"].
              getService(Ci.nsIBlocklistService);
-    if (bs.isAddonBlocklisted(addon.id, install.version,
+    if (bs.isAddonBlocklisted(addon,
                               gUpdates.update.appVersion,
                               gUpdates.update.platformVersion))
       return;
@@ -2985,7 +2961,8 @@ UpdateService.prototype = {
     if (--this._updateCheckCount > 0)
       return;
 
-    if (this._incompatibleAddons.length > 0 || !gCanApplyUpdates) {
+    if (this._incompatibleAddons.length > 0 ||
+        !(gCanApplyUpdates && hasUpdateMutex())) {
       LOG("UpdateService:onUpdateEnded - prompting because there are " +
           "incompatible add-ons");
       this._showPrompt(this._update);
@@ -3020,14 +2997,14 @@ UpdateService.prototype = {
    * See nsIUpdateService.idl
    */
   get canCheckForUpdates() {
-    return gCanCheckForUpdates;
+    return gCanCheckForUpdates && hasUpdateMutex();
   },
 
   /**
    * See nsIUpdateService.idl
    */
   get canApplyUpdates() {
-    return gCanApplyUpdates;
+    return gCanApplyUpdates && hasUpdateMutex();
   },
 
   /**
@@ -3595,6 +3572,7 @@ Checker.prototype = {
                       getDistributionPrefValue(PREF_APP_DISTRIBUTION));
     url = url.replace(/%DISTRIBUTION_VERSION%/g,
                       getDistributionPrefValue(PREF_APP_DISTRIBUTION_VERSION));
+    url = url.replace(/%CUSTOM%/g, getPref("getCharPref", PREF_APP_UPDATE_CUSTOM, ""));
     url = url.replace(/\+/g, "%2B");
 
 #ifdef MOZ_WIDGET_GONK
@@ -3812,7 +3790,7 @@ Checker.prototype = {
     }
 
     return getPref("getBoolPref", PREF_APP_UPDATE_ENABLED, true) &&
-           gCanCheckForUpdates && this._enabled;
+           gCanCheckForUpdates && hasUpdateMutex() && this._enabled;
   },
 
   /**

@@ -7,11 +7,11 @@
 #ifndef jit_MoveEmitter_x86_shared_h
 #define jit_MoveEmitter_x86_shared_h
 
-#if defined(JS_CPU_X86)
+#if defined(JS_CODEGEN_X86)
 # include "jit/x86/MacroAssembler-x86.h"
-#elif defined(JS_CPU_X64)
+#elif defined(JS_CODEGEN_X64)
 # include "jit/x64/MacroAssembler-x64.h"
-#elif defined(JS_CPU_ARM)
+#elif defined(JS_CODEGEN_ARM)
 # include "jit/arm/MacroAssembler-arm.h"
 #endif
 #include "jit/MoveResolver.h"
@@ -43,10 +43,12 @@ class MoveEmitterX86
                              bool *allGeneralRegs, bool *allFloatRegs);
     bool maybeEmitOptimizedCycle(const MoveResolver &moves, size_t i,
                                  bool allGeneralRegs, bool allFloatRegs, size_t swapCount);
+    void emitInt32Move(const MoveOperand &from, const MoveOperand &to);
     void emitGeneralMove(const MoveOperand &from, const MoveOperand &to);
+    void emitFloat32Move(const MoveOperand &from, const MoveOperand &to);
     void emitDoubleMove(const MoveOperand &from, const MoveOperand &to);
-    void breakCycle(const MoveOperand &to, MoveOp::Kind kind);
-    void completeCycle(const MoveOperand &to, MoveOp::Kind kind);
+    void breakCycle(const MoveOperand &to, MoveOp::Type type);
+    void completeCycle(const MoveOperand &to, MoveOp::Type type);
 
   public:
     MoveEmitterX86(MacroAssemblerSpecific &masm);

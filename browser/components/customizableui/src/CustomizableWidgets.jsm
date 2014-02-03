@@ -12,11 +12,20 @@ Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
   "resource://gre/modules/PlacesUtils.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "PlacesUIUtils",
+  "resource:///modules/PlacesUIUtils.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "RecentlyClosedTabsAndWindowsMenuUtils",
   "resource:///modules/sessionstore/RecentlyClosedTabsAndWindowsMenuUtils.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "ShortcutUtils",
+  "resource://gre/modules/ShortcutUtils.jsm");
 XPCOMUtils.defineLazyServiceGetter(this, "CharsetManager",
                                    "@mozilla.org/charset-converter-manager;1",
                                    "nsICharsetConverterManager");
+
+XPCOMUtils.defineLazyGetter(this, "CharsetBundle", function() {
+  const kCharsetBundle = "chrome://global/locale/charsetMenu.properties";
+  return Services.strings.createBundle(kCharsetBundle);
+});
 XPCOMUtils.defineLazyGetter(this, "BrandBundle", function() {
   const kBrandBundle = "chrome://branding/locale/brand.properties";
   return Services.strings.createBundle(kBrandBundle);
@@ -30,24 +39,37 @@ let gModuleName = "[CustomizableWidgets]";
 #include logging.js
 
 function setAttributes(aNode, aAttrs) {
+  let doc = aNode.ownerDocument;
   for (let [name, value] of Iterator(aAttrs)) {
     if (!value) {
       if (aNode.hasAttribute(name))
         aNode.removeAttribute(name);
     } else {
-      if (name == "label" || name == "tooltiptext")
-        value = CustomizableUI.getLocalizedProperty({id: aAttrs.id}, name);
+      if (name == "shortcutId") {
+        continue;
+      }
+      if (name == "label" || name == "tooltiptext") {
+        let stringId = (typeof value == "string") ? value : name;
+        let additionalArgs = [];
+        if (aAttrs.shortcutId) {
+          let shortcut = doc.getElementById(aAttrs.shortcutId);
+          if (doc) {
+            additionalArgs.push(ShortcutUtils.prettifyShortcut(shortcut));
+          }
+        }
+        value = CustomizableUI.getLocalizedProperty({id: aAttrs.id}, stringId, additionalArgs);
+      }
       aNode.setAttribute(name, value);
     }
   }
 }
 
-function updateCombinedWidgetStyle(aNode, aArea, aModifyAutoclose) {
+function updateCombinedWidgetStyle(aNode, aArea, aModifyCloseMenu) {
   let inPanel = (aArea == CustomizableUI.AREA_PANEL);
   let cls = inPanel ? "panel-combined-button" : "toolbarbutton-1";
   let attrs = {class: cls};
-  if (aModifyAutoclose) {
-    attrs.noautoclose = inPanel ? true : null;
+  if (aModifyCloseMenu) {
+    attrs.closemenu = inPanel ? "none" : null;
   }
   for (let i = 0, l = aNode.childNodes.length; i < l; ++i) {
     if (aNode.childNodes[i].localName == "separator")
@@ -61,6 +83,7 @@ const CustomizableWidgets = [{
     type: "view",
     viewId: "PanelUI-history",
     shortcutId: "key_gotoHistory",
+    tooltiptext: "history-panelmenu.tooltiptext2",
     defaultArea: CustomizableUI.AREA_PANEL,
     onViewShowing: function(aEvent) {
       // Populate our list of history
@@ -98,7 +121,8 @@ const CustomizableWidgets = [{
 
               let item = doc.createElementNS(kNSXUL, "toolbarbutton");
               item.setAttribute("label", title || uri);
-              item.setAttribute("tabindex", "0");
+              item.setAttribute("targetURI", uri);
+              item.setAttribute("class", "subviewbutton");
               item.addEventListener("command", function (aEvent) {
                 onHistoryVisit(uri, aEvent, item);
               });
@@ -132,18 +156,46 @@ const CustomizableWidgets = [{
         recentlyClosedWindows.removeChild(recentlyClosedWindows.firstChild);
       }
 
-      let tabsFragment = RecentlyClosedTabsAndWindowsMenuUtils.getTabsFragment(doc.defaultView, "toolbarbutton");
+#ifdef MOZ_SERVICES_SYNC
+      let tabsFromOtherComputers = doc.getElementById("sync-tabs-menuitem2");
+      if (PlacesUIUtils.shouldShowTabsFromOtherComputersMenuitem()) {
+        tabsFromOtherComputers.removeAttribute("hidden");
+      } else {
+        tabsFromOtherComputers.setAttribute("hidden", true);
+      }
+
+      if (PlacesUIUtils.shouldEnableTabsFromOtherComputersMenuitem()) {
+        tabsFromOtherComputers.removeAttribute("disabled");
+      } else {
+        tabsFromOtherComputers.setAttribute("disabled", true);
+      }
+#endif
+
+      let utils = RecentlyClosedTabsAndWindowsMenuUtils;
+      let tabsFragment = utils.getTabsFragment(doc.defaultView, "toolbarbutton", true,
+                                               "menuRestoreAllTabsSubview.label");
       let separator = doc.getElementById("PanelUI-recentlyClosedTabs-separator");
-      separator.hidden = !tabsFragment.childElementCount;
+      let elementCount = tabsFragment.childElementCount;
+      separator.hidden = !elementCount;
+      while (--elementCount >= 0) {
+        tabsFragment.children[elementCount].classList.add("subviewbutton");
+      }
       recentlyClosedTabs.appendChild(tabsFragment);
 
-      let windowsFragment = RecentlyClosedTabsAndWindowsMenuUtils.getWindowsFragment(doc.defaultView, "toolbarbutton");
+      let windowsFragment = utils.getWindowsFragment(doc.defaultView, "toolbarbutton", true,
+                                                     "menuRestoreAllWindowsSubview.label");
       separator = doc.getElementById("PanelUI-recentlyClosedWindows-separator");
-      separator.hidden = !windowsFragment.childElementCount;
+      elementCount = windowsFragment.childElementCount;
+      separator.hidden = !elementCount;
+      while (--elementCount >= 0) {
+        windowsFragment.children[elementCount].classList.add("subviewbutton");
+      }
       recentlyClosedWindows.appendChild(windowsFragment);
+      aEvent.target.addEventListener("command", win.PanelUI);
     },
     onViewHiding: function(aEvent) {
       LOG("History view is being hidden!");
+      aEvent.target.removeEventListener("command", win.PanelUI);
     }
   }, {
     id: "privatebrowsing-button",
@@ -160,6 +212,7 @@ const CustomizableWidgets = [{
   }, {
     id: "save-page-button",
     shortcutId: "key_savePage",
+    tooltiptext: "save-page-button.tooltiptext2",
     defaultArea: CustomizableUI.AREA_PANEL,
     onCommand: function(aEvent) {
       let win = aEvent.target &&
@@ -172,6 +225,7 @@ const CustomizableWidgets = [{
   }, {
     id: "find-button",
     shortcutId: "key_find",
+    tooltiptext: "find-button.tooltiptext2",
     defaultArea: CustomizableUI.AREA_PANEL,
     onCommand: function(aEvent) {
       let win = aEvent.target &&
@@ -184,6 +238,7 @@ const CustomizableWidgets = [{
   }, {
     id: "open-file-button",
     shortcutId: "openFileKb",
+    tooltiptext: "open-file-button.tooltiptext2",
     defaultArea: CustomizableUI.AREA_PANEL,
     onCommand: function(aEvent) {
       let win = aEvent.target
@@ -225,7 +280,7 @@ const CustomizableWidgets = [{
           item = doc.createElementNS(kNSXUL, "menuseparator");
         } else if (node.localName == "menuitem") {
           item = doc.createElementNS(kNSXUL, "toolbarbutton");
-          item.setAttribute("tabindex", "0");
+          item.setAttribute("class", "subviewbutton");
         } else {
           continue;
         }
@@ -238,7 +293,7 @@ const CustomizableWidgets = [{
       }
       items.appendChild(fragment);
 
-      aEvent.target.addEventListener("command", win.PanelUI.onCommandHandler);
+      aEvent.target.addEventListener("command", win.PanelUI);
     },
     onViewHiding: function(aEvent) {
       let doc = aEvent.target.ownerDocument;
@@ -254,12 +309,12 @@ const CustomizableWidgets = [{
       }
 
       parent.appendChild(items);
-      aEvent.target.removeEventListener("command",
-                                        win.PanelUI.onCommandHandler);
+      aEvent.target.removeEventListener("command", win.PanelUI);
     }
   }, {
     id: "add-ons-button",
     shortcutId: "key_openAddons",
+    tooltiptext: "add-ons-button.tooltiptext2",
     defaultArea: CustomizableUI.AREA_PANEL,
     onCommand: function(aEvent) {
       let win = aEvent.target &&
@@ -274,7 +329,14 @@ const CustomizableWidgets = [{
     defaultArea: CustomizableUI.AREA_PANEL,
 #ifdef XP_WIN
     label: "preferences-button.labelWin",
-    tooltiptext: "preferences-button.tooltipWin",
+    tooltiptext: "preferences-button.tooltipWin2",
+#else
+#ifdef XP_MACOSX
+    tooltiptext: "preferences-button.tooltiptext.withshortcut",
+    shortcutId: "key_preferencesCmdMac",
+#else
+    tooltiptext: "preferences-button.tooltiptext",
+#endif
 #endif
     onCommand: function(aEvent) {
       let win = aEvent.target &&
@@ -290,8 +352,10 @@ const CustomizableWidgets = [{
     defaultArea: CustomizableUI.AREA_PANEL,
     onBuild: function(aDocument) {
       const kPanelId = "PanelUI-popup";
-      let inPanel = (this.currentArea == CustomizableUI.AREA_PANEL);
-      let noautoclose = inPanel ? "true" : null;
+      let areaType = CustomizableUI.getAreaType(this.currentArea);
+      let inPanel = areaType == CustomizableUI.TYPE_MENU_PANEL;
+      let inToolbar = areaType == CustomizableUI.TYPE_TOOLBAR;
+      let closeMenu = inPanel ? "none" : null;
       let cls = inPanel ? "panel-combined-button" : "toolbarbutton-1";
 
       if (!this.currentArea)
@@ -299,24 +363,27 @@ const CustomizableWidgets = [{
 
       let buttons = [{
         id: "zoom-out-button",
-        noautoclose: noautoclose,
+        closemenu: closeMenu,
         command: "cmd_fullZoomReduce",
         class: cls,
         label: true,
-        tooltiptext: true
+        tooltiptext: "tooltiptext2",
+        shortcutId: "key_fullZoomReduce",
       }, {
         id: "zoom-reset-button",
-        noautoclose: noautoclose,
+        closemenu: closeMenu,
         command: "cmd_fullZoomReset",
         class: cls,
-        tooltiptext: true
+        tooltiptext: "tooltiptext2",
+        shortcutId: "key_fullZoomReset",
       }, {
         id: "zoom-in-button",
-        noautoclose: noautoclose,
+        closemenu: closeMenu,
         command: "cmd_fullZoomEnlarge",
         class: cls,
         label: true,
-        tooltiptext: true
+        tooltiptext: "tooltiptext2",
+        shortcutId: "key_fullZoomEnlarge",
       }];
 
       let node = aDocument.createElementNS(kNSXUL, "toolbaritem");
@@ -333,8 +400,6 @@ const CustomizableWidgets = [{
           node.appendChild(aDocument.createElementNS(kNSXUL, "separator"));
         let btnNode = aDocument.createElementNS(kNSXUL, "toolbarbutton");
         setAttributes(btnNode, aButton);
-        if (inPanel)
-          btnNode.setAttribute("tabindex", "0");
         node.appendChild(btnNode);
       });
 
@@ -345,9 +410,9 @@ const CustomizableWidgets = [{
         //XXXgijs in some tests we get called very early, and there's no docShell on the
         // tabbrowser. This breaks the zoom toolkit code (see bug 897410). Don't let that happen:
         let zoomFactor = 100;
-        if (window.gBrowser.docShell) {
+        try {
           zoomFactor = Math.floor(window.ZoomManager.zoom * 100);
-        }
+        } catch (e) {}
         zoomResetButton.setAttribute("label", CustomizableUI.getLocalizedProperty(
           buttons[1], "label", [zoomFactor]
         ));
@@ -356,11 +421,16 @@ const CustomizableWidgets = [{
       // Register ourselves with the service so we know when the zoom prefs change.
       Services.obs.addObserver(updateZoomResetButton, "browser-fullZoom:zoomChange", false);
       Services.obs.addObserver(updateZoomResetButton, "browser-fullZoom:zoomReset", false);
+      Services.obs.addObserver(updateZoomResetButton, "browser-fullZoom:location-change", false);
 
-      if (inPanel && this.currentArea) {
+      if (inPanel) {
         let panel = aDocument.getElementById(kPanelId);
         panel.addEventListener("popupshowing", updateZoomResetButton);
       } else {
+        if (inToolbar) {
+          let container = window.gBrowser.tabContainer;
+          container.addEventListener("TabSelect", updateZoomResetButton);
+        }
         updateZoomResetButton();
       }
 
@@ -372,9 +442,13 @@ const CustomizableWidgets = [{
           updateCombinedWidgetStyle(node, aArea, true);
           updateZoomResetButton();
 
-          if (aArea == CustomizableUI.AREA_PANEL) {
+          let areaType = CustomizableUI.getAreaType(aArea);
+          if (areaType == CustomizableUI.TYPE_MENU_PANEL) {
             let panel = aDocument.getElementById(kPanelId);
             panel.addEventListener("popupshowing", updateZoomResetButton);
+          } else if (areaType == CustomizableUI.TYPE_TOOLBAR) {
+            let container = window.gBrowser.tabContainer;
+            container.addEventListener("TabSelect", updateZoomResetButton);
           }
         }.bind(this),
 
@@ -382,9 +456,13 @@ const CustomizableWidgets = [{
           if (aWidgetId != this.id)
             return;
 
-          if (aPrevArea == CustomizableUI.AREA_PANEL) {
+          let areaType = CustomizableUI.getAreaType(aPrevArea);
+          if (areaType == CustomizableUI.TYPE_MENU_PANEL) {
             let panel = aDocument.getElementById(kPanelId);
             panel.removeEventListener("popupshowing", updateZoomResetButton);
+          } else if (areaType == CustomizableUI.TYPE_TOOLBAR) {
+            let container = window.gBrowser.tabContainer;
+            container.removeEventListener("TabSelect", updateZoomResetButton);
           }
 
           // When a widget is demoted to the palette ('removed'), it's visual
@@ -414,8 +492,11 @@ const CustomizableWidgets = [{
           CustomizableUI.removeListener(listener);
           Services.obs.removeObserver(updateZoomResetButton, "browser-fullZoom:zoomChange");
           Services.obs.removeObserver(updateZoomResetButton, "browser-fullZoom:zoomReset");
+          Services.obs.removeObserver(updateZoomResetButton, "browser-fullZoom:location-change");
           let panel = aDoc.getElementById(kPanelId);
           panel.removeEventListener("popupshowing", updateZoomResetButton);
+          let container = aDoc.defaultView.gBrowser.tabContainer;
+          container.removeEventListener("TabSelect", updateZoomResetButton);
         }.bind(this),
 
         onWidgetDrag: function(aWidgetId, aArea) {
@@ -445,19 +526,22 @@ const CustomizableWidgets = [{
         command: "cmd_cut",
         class: cls,
         label: true,
-        tooltiptext: true
+        tooltiptext: "tooltiptext2",
+        shortcutId: "key_cut",
       }, {
         id: "copy-button",
         command: "cmd_copy",
         class: cls,
         label: true,
-        tooltiptext: true
+        tooltiptext: "tooltiptext2",
+        shortcutId: "key_copy",
       }, {
         id: "paste-button",
         command: "cmd_paste",
         class: cls,
         label: true,
-        tooltiptext: true
+        tooltiptext: "tooltiptext2",
+        shortcutId: "key_paste",
       }];
 
       let node = aDocument.createElementNS(kNSXUL, "toolbaritem");
@@ -565,6 +649,7 @@ const CustomizableWidgets = [{
     id: "characterencoding-button",
     type: "view",
     viewId: "PanelUI-characterEncodingView",
+    tooltiptext: "characterencoding-button.tooltiptext2",
     defaultArea: CustomizableUI.AREA_PANEL,
     maybeDisableMenu: function(aDocument) {
       let window = aDocument.defaultView;
@@ -679,11 +764,17 @@ const CustomizableWidgets = [{
           elem.setAttribute("current", "true");
         if (disabled)
           elem.setAttribute("disabled", "true");
+        elem.setAttribute("class", "subviewbutton");
         containerElem.appendChild(elem);
       }
     },
     onViewShowing: function(aEvent) {
       let document = aEvent.target.ownerDocument;
+
+      let autoDetectLabelId = "PanelUI-characterEncodingView-autodetect-label";
+      let autoDetectLabel = document.getElementById(autoDetectLabelId);
+      let label = CharsetBundle.GetStringFromName("charsetMenuAutodet");
+      autoDetectLabel.setAttribute("value", label);
 
       this.populateList(document,
                         "PanelUI-characterEncodingView-customlist",
@@ -771,6 +862,7 @@ const CustomizableWidgets = [{
     }
   }, {
     id: "email-link-button",
+    tooltiptext: "email-link-button.tooltiptext2",
     onCommand: function(aEvent) {
       let win = aEvent.view;
       win.MailIntegration.sendLinkForWindow(win.content);

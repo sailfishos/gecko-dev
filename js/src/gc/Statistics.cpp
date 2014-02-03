@@ -239,8 +239,8 @@ class gcstats::StatisticsSerializer
  */
 JS_STATIC_ASSERT(JS::gcreason::NUM_TELEMETRY_REASONS >= JS::gcreason::NUM_REASONS);
 
-static const char *
-ExplainReason(JS::gcreason::Reason reason)
+const char *
+js::gcstats::ExplainReason(JS::gcreason::Reason reason)
 {
     switch (reason) {
 #define SWITCH_REASON(name)                     \
@@ -305,7 +305,7 @@ static const PhaseInfo phases[] = {
     { PHASE_SWEEP_STRING, "Sweep String", PHASE_SWEEP },
     { PHASE_SWEEP_SCRIPT, "Sweep Script", PHASE_SWEEP },
     { PHASE_SWEEP_SHAPE, "Sweep Shape", PHASE_SWEEP },
-    { PHASE_SWEEP_IONCODE, "Sweep Ion code", PHASE_SWEEP },
+    { PHASE_SWEEP_JITCODE, "Sweep JIT code", PHASE_SWEEP },
     { PHASE_FINALIZE_END, "Finalize End Callback", PHASE_SWEEP },
     { PHASE_DESTROY, "Deallocate", PHASE_SWEEP },
     { PHASE_GC_END, "End Callback", PHASE_NO_PARENT },

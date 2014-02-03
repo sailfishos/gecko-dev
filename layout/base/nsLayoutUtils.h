@@ -23,7 +23,6 @@ class nsBlockFrame;
 class gfxASurface;
 class gfxDrawable;
 class nsView;
-class imgIContainer;
 class nsIFrame;
 class nsStyleCoord;
 class nsStyleCorners;
@@ -51,6 +50,7 @@ struct nsOverflowAreas;
 #include "nsStyleConsts.h"
 #include "nsGkAtoms.h"
 #include "nsRuleNode.h"
+#include "imgIContainer.h"
 #include "mozilla/gfx/2D.h"
 
 #include <limits>
@@ -375,11 +375,28 @@ public:
   static bool IsAncestorFrameCrossDoc(const nsIFrame* aAncestorFrame, const nsIFrame* aFrame,
                                         const nsIFrame* aCommonAncestor = nullptr);
 
+  /**
+   * Sets the fixed-pos metadata properties on aLayer.
+   * aAnchorRect is the basic anchor rectangle. If aFixedPosFrame is not a viewport
+   * frame, then we pick a corner of aAnchorRect to as the anchor point for the
+   * fixed-pos layer (i.e. the point to remain stable during zooming), based
+   * on which of the fixed-pos frame's CSS absolute positioning offset
+   * properties (top, left, right, bottom) are auto. aAnchorRect is in the
+   * coordinate space of aLayer's container layer (i.e. relative to the reference
+   * frame of the display item which is building aLayer's container layer).
+   */
   static void SetFixedPositionLayerData(Layer* aLayer, const nsIFrame* aViewportFrame,
-                                        nsSize aViewportSize,
+                                        const nsRect& aAnchorRect,
                                         const nsIFrame* aFixedPosFrame,
                                         nsPresContext* aPresContext,
                                         const ContainerLayerParameters& aContainerParameters);
+
+  /**
+   * Return true if aPresContext's viewport has a displayport.
+   * Fills in aDisplayPort with the displayport rectangle if non-null.
+   */
+  static bool ViewportHasDisplayPort(nsPresContext* aPresContext,
+                                     nsRect* aDisplayPort = nullptr);
 
   /**
    * Return true if aFrame is a fixed-pos frame and is a child of a viewport
@@ -607,7 +624,11 @@ public:
      * When set, clipping due to the root scroll frame (and any other viewport-
      * related clipping) is ignored.
      */
-    IGNORE_ROOT_SCROLL_FRAME = 0x02
+    IGNORE_ROOT_SCROLL_FRAME = 0x02,
+    /**
+     * When set, return only content in the same document as aFrame.
+     */
+    IGNORE_CROSS_DOC = 0x04
   };
 
   /**
@@ -764,7 +785,8 @@ public:
     PAINT_ALL_CONTINUATIONS = 0x40,
     PAINT_TO_WINDOW = 0x80,
     PAINT_EXISTING_TRANSACTION = 0x100,
-    PAINT_NO_COMPOSITE = 0x200
+    PAINT_NO_COMPOSITE = 0x200,
+    PAINT_COMPRESSED = 0x400
   };
 
   /**
@@ -795,6 +817,8 @@ public:
    * If PAINT_EXISTING_TRANSACTION is set, then BeginTransaction() has already
    * been called on aFrame's widget's layer manager and should not be
    * called again.
+   * If PAINT_COMPRESSED is set, the FrameLayerBuilder should be set to compressed mode
+   * to avoid short cut optimizations.
    *
    * So there are three possible behaviours:
    * 1) PAINT_WIDGET_LAYERS is set and aRenderingContext is null; we paint
@@ -833,7 +857,7 @@ public:
    */
   static bool
   BinarySearchForPosition(nsRenderingContext* acx,
-                          const PRUnichar* aText,
+                          const char16_t* aText,
                           int32_t    aBaseWidth,
                           int32_t    aBaseInx,
                           int32_t    aStartInx,
@@ -1166,14 +1190,14 @@ public:
 
   static void DrawString(const nsIFrame*       aFrame,
                          nsRenderingContext*   aContext,
-                         const PRUnichar*      aString,
+                         const char16_t*      aString,
                          int32_t               aLength,
                          nsPoint               aPoint,
                          nsStyleContext*       aStyleContext = nullptr);
 
   static nscoord GetStringWidth(const nsIFrame*      aFrame,
                                 nsRenderingContext* aContext,
-                                const PRUnichar*     aString,
+                                const char16_t*     aString,
                                 int32_t              aLength);
 
   /**
@@ -1564,7 +1588,19 @@ public:
     /* Whether we should skip premultiplication -- the resulting
        image will always be an image surface, and must not be given to
        Thebes for compositing! */
-    SFE_NO_PREMULTIPLY_ALPHA = 1 << 3
+    SFE_NO_PREMULTIPLY_ALPHA = 1 << 3,
+    /* Whether we should skip getting a surface for vector images and
+       return a DirectDrawInfo containing an imgIContainer instead. */
+    SFE_NO_RASTERIZING_VECTORS = 1 << 4
+  };
+
+  struct DirectDrawInfo {
+    /* imgIContainer to directly draw to a context */
+    nsCOMPtr<imgIContainer> mImgContainer;
+    /* which frame to draw */
+    uint32_t mWhichFrame;
+    /* imgIContainer flags to use when drawing */
+    uint32_t mDrawingFlags;
   };
 
   struct SurfaceFromElementResult {
@@ -1573,6 +1609,8 @@ public:
     /* mSurface will contain the resulting surface, or will be nullptr on error */
     nsRefPtr<gfxASurface> mSurface;
     mozilla::RefPtr<SourceSurface> mSourceSurface;
+    /* Contains info for drawing when there is no mSourceSurface. */
+    DirectDrawInfo mDrawInfo;
 
     /* The size of the surface */
     gfxIntSize mSize;

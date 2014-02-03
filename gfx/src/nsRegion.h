@@ -15,7 +15,7 @@
 #include "nsPoint.h"                    // for nsIntPoint, nsPoint
 #include "nsRect.h"                     // for nsIntRect, nsRect
 #include "nsMargin.h"                   // for nsIntMargin
-#include "nsString.h"               // for nsCString
+#include "nsStringGlue.h"               // for nsCString
 #include "xpcom-config.h"               // for CPP_THROW_NEW
 
 class nsIntRegion;
@@ -57,6 +57,13 @@ public:
   bool operator==(const nsRegion& aRgn) const
   {
     return IsEqual(aRgn);
+  }
+
+  void Swap(nsRegion* aOther)
+  {
+    pixman_region32_t tmp = mImpl;
+    mImpl = aOther->mImpl;
+    aOther->mImpl = tmp;
   }
 
   static
@@ -259,7 +266,7 @@ private:
     // pixman needs to distinguish between an empty region and a region
     // with one rect so that it can return a different number of rectangles.
     // Empty rect: data = empty_box
-    //     1 rect: data = NULL
+    //     1 rect: data = null
     //    >1 rect: data = rects
     if (aRect.IsEmpty()) {
       pixman_region32_clear(&mImpl);
@@ -356,6 +363,11 @@ public:
   bool operator==(const nsIntRegion& aRgn) const
   {
     return IsEqual(aRgn);
+  }
+
+  void Swap(nsIntRegion* aOther)
+  {
+    mImpl.Swap(&aOther->mImpl);
   }
 
   nsIntRegion& And  (const nsIntRegion& aRgn1,   const nsIntRegion& aRgn2)

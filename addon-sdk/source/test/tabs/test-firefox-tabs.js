@@ -9,7 +9,6 @@ const timer = require('sdk/timers');
 const { getOwnerWindow } = require('sdk/private-browsing/window/utils');
 const { windows, onFocus, getMostRecentBrowserWindow } = require('sdk/window/utils');
 const { open, focus, close } = require('sdk/window/helpers');
-const { StringBundle } = require('sdk/deprecated/app-strings');
 const tabs = require('sdk/tabs');
 const { browserWindows } = require('sdk/windows');
 const { set: setPref } = require("sdk/preferences/service");
@@ -19,13 +18,17 @@ const base64png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAA
 
 // Bug 682681 - tab.title should never be empty
 exports.testBug682681_aboutURI = function(assert, done) {
-  let tabStrings = StringBundle('chrome://browser/locale/tabbrowser.properties');
+  let url = 'chrome://browser/locale/tabbrowser.properties';
+  let stringBundle = Cc["@mozilla.org/intl/stringbundle;1"].
+                        getService(Ci.nsIStringBundleService).
+                        createBundle(url);
+  let emptyTabTitle = stringBundle.GetStringFromName('tabs.emptyTabTitle');
 
   tabs.on('ready', function onReady(tab) {
     tabs.removeListener('ready', onReady);
 
     assert.equal(tab.title,
-                     tabStrings.get('tabs.emptyTabTitle'),
+                     emptyTabTitle,
                      "title of about: tab is not blank");
 
     tab.close(done);
@@ -91,6 +94,17 @@ exports.testAutomaticDestroy = function(assert, done) {
 };
 
 exports.testTabPropertiesInNewWindow = function(assert, done) {
+  let warning = "DEPRECATED: tab.favicon is deprecated, please use require(\"sdk/places/favicon\").getFavicon instead.\n"
+  const { LoaderWithFilteredConsole } = require("sdk/test/loader");
+  let loader = LoaderWithFilteredConsole(module, function(type, message) {
+    if (type == "error" && message.substring(0, warning.length) == warning)
+      return false;
+    return true;
+  });
+
+  let tabs = loader.require('sdk/tabs');
+  let { getOwnerWindow } = loader.require('sdk/private-browsing/window/utils');
+
   let count = 0;
   function onReadyOrLoad (tab) {
     if (count++) {
@@ -128,6 +142,16 @@ exports.testTabPropertiesInNewWindow = function(assert, done) {
 };
 
 exports.testTabPropertiesInSameWindow = function(assert, done) {
+  let warning = "DEPRECATED: tab.favicon is deprecated, please use require(\"sdk/places/favicon\").getFavicon instead.\n"
+  const { LoaderWithFilteredConsole } = require("sdk/test/loader");
+  let loader = LoaderWithFilteredConsole(module, function(type, message) {
+    if (type == "error" && message.substring(0, warning.length) == warning)
+      return false;
+    return true;
+  });
+
+  let tabs = loader.require('sdk/tabs');
+
   // Get current count of tabs so we know the index of the
   // new tab, bug 893846
   let tabCount = tabs.length;

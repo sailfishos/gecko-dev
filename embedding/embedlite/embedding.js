@@ -303,3 +303,8 @@ pref("extensions.minCompatibleAppVersion", "11.0");
 
 // Enable sub layers for apzc
 pref("layout.want.subapzc", true);
+
+// Temporary, until bug 957504 fixed
+pref("javascript.options.baselinejit.content", false);
+pref("javascript.options.baselinejit.chrome",  false);
+

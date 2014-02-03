@@ -52,8 +52,8 @@ add_task(function() {
   ok(!navbar.hasAttribute("overflowing"), "Should start with a non-overflowing toolbar.");
   ok(CustomizableUI.inDefaultState, "Should start in default state.");
 
-  window.resizeTo(480, window.outerHeight);
-  yield waitForCondition(() => navbar.hasAttribute("overflowing"));
+  window.resizeTo(360, window.outerHeight);
+  yield waitForCondition(() => navbar.getAttribute("overflowing") == "true");
   ok(!navbar.querySelector("#search-container"), "Search container should be overflowing");
   let searchbar = document.getElementById("searchbar");
 
@@ -84,6 +84,30 @@ add_task(function() {
   sendWebSearchKeyCommand();
   logActiveElement();
   is(document.activeElement, searchbar.textbox.inputField, "The searchbar should be focused");
+});
+
+// Ctrl+K should open the search page if the search bar has been customized out.
+add_task(function() {
+  this.originalOpenUILinkIn = openUILinkIn;
+  try {
+    CustomizableUI.removeWidgetFromArea("search-container");
+    let placement = CustomizableUI.getPlacementOfWidget("search-container");
+    is(placement, null, "Search container should be in palette");
+
+    let openUILinkInCalled = false;
+    openUILinkIn = (aUrl, aWhichTab) => {
+      is(aUrl, Services.search.defaultEngine.searchForm, "Search page should be requested to open.");
+      is(aWhichTab, "current", "Should use the current tab for the search page.");
+      openUILinkInCalled = true;
+    };
+    sendWebSearchKeyCommand();
+    yield waitForCondition(function() openUILinkInCalled);
+    ok(openUILinkInCalled, "The search page should have been opened.")
+  } catch (e) {
+    ok(false, e);
+  }
+  openUILinkIn = this.originalOpenUILinkIn;
+  CustomizableUI.reset();
 });
 
 function sendWebSearchKeyCommand() {

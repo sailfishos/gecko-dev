@@ -29,6 +29,7 @@ namespace net {
 class CacheStorageService;
 class CacheStorage;
 class CacheEntry;
+class CacheEntryHandle;
 class CacheEntryTable;
 
 class CacheMemoryConsumer
@@ -54,9 +55,9 @@ public:
 
   static CacheStorageService* Self() { return sSelf; }
   nsresult Dispatch(nsIRunnable* aEvent);
-  static bool IsOnManagementThread() { return sSelf && NS_GetCurrentThread() == sSelf->mThread; }
   static bool IsRunning() { return sSelf && !sSelf->mShutdown; }
-  nsIEventTarget* Thread() const { return mThread; }
+  static bool IsOnManagementThread();
+  already_AddRefed<nsIEventTarget> Thread() const;
   mozilla::Mutex& Lock() { return mLock; }
 
 private:
@@ -86,7 +87,7 @@ private:
   /**
    * Removes the entry from the related entry hash table, if still present.
    */
-  void RemoveEntry(CacheEntry* aEntry);
+  bool RemoveEntry(CacheEntry* aEntry, bool aOnlyUnreferenced = false);
 
   /**
    * Tells the storage service whether this entry is only to be stored in
@@ -109,7 +110,7 @@ private:
                            const nsACString & aIdExtension,
                            bool aCreateIfNotExist,
                            bool aReplace,
-                           CacheEntry** aResult);
+                           CacheEntryHandle** aResult);
 
   /**
    * Removes the entry from the related entry hash table, if still present
@@ -180,16 +181,13 @@ private:
                            bool aWriteToDisk,
                            bool aCreateIfNotExist,
                            bool aReplace,
-                           CacheEntry** aResult);
+                           CacheEntryHandle** aResult);
 
   static CacheStorageService* sSelf;
 
   mozilla::Mutex mLock;
 
   bool mShutdown;
-
-  // The service thread
-  nsCOMPtr<nsIThread> mThread;
 
   // Accessible only on the service thread
   nsTArray<nsRefPtr<CacheEntry> > mFrecencyArray;

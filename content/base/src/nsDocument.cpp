@@ -1639,7 +1639,8 @@ nsDocument::Release()
   NS_PRECONDITION(0 != mRefCnt, "dup release");
   NS_ASSERT_OWNINGTHREAD(nsDocument);
   nsISupports* base = NS_CYCLE_COLLECTION_CLASSNAME(nsDocument)::Upcast(this);
-  nsrefcnt count = mRefCnt.decr(base);
+  bool shouldDelete = false;
+  nsrefcnt count = mRefCnt.decr(base, &shouldDelete);
   NS_LOG_RELEASE(this, count, "nsDocument");
   if (count == 0) {
     if (mStackRefCnt && !mNeedsReleaseAfterStackRefCntRelease) {
@@ -1647,8 +1648,13 @@ nsDocument::Release()
       NS_ADDREF_THIS();
       return mRefCnt.get();
     }
-    NS_ASSERT_OWNINGTHREAD(nsDocument);
+    mRefCnt.incr(base);
     nsNodeUtils::LastRelease(this);
+    mRefCnt.decr(base);
+    if (shouldDelete) {
+      mRefCnt.stabilizeForDeletion();
+      DeleteCycleCollectable();
+    }
   }
   return count;
 }
@@ -2585,15 +2591,16 @@ nsDocument::InitCSP(nsIChannel* aChannel)
     cspROHeaderValue.Truncate();
   }
 
-  // If the old header is present, warn that it will be deprecated.
-  if (!cspOldHeaderValue.IsEmpty() || !cspOldROHeaderValue.IsEmpty()) {
-    mCSPWebConsoleErrorQueue.Add("OldCSPHeaderDeprecated");
+  // If both the new header AND the old header are present, warn that
+  // the old header will be ignored. Otherwise, if the old header is
+  // present, warn that it will be deprecated.
+  bool oldHeaderIsPresent = !cspOldHeaderValue.IsEmpty() || !cspOldROHeaderValue.IsEmpty();
+  bool newHeaderIsPresent = !cspHeaderValue.IsEmpty() || !cspROHeaderValue.IsEmpty();
 
-    // Also, if the new headers AND the old headers were present, warn
-    // that the old headers will be ignored.
-    if (!cspHeaderValue.IsEmpty() || !cspROHeaderValue.IsEmpty()) {
-      mCSPWebConsoleErrorQueue.Add("BothCSPHeadersPresent");
-    }
+  if (oldHeaderIsPresent && newHeaderIsPresent) {
+    mCSPWebConsoleErrorQueue.Add("BothCSPHeadersPresent");
+  } else if (oldHeaderIsPresent) {
+    mCSPWebConsoleErrorQueue.Add("OldCSPHeaderDeprecated");
   }
 
   // Figure out if we need to apply an app default CSP or a CSP from an app manifest
@@ -2684,7 +2691,7 @@ nsDocument::InitCSP(nsIChannel* aChannel)
   aChannel->GetURI(getter_AddRefs(selfURI));
 
   // Store the request context for violation reports
-  csp->ScanRequestData(httpChannel);
+  csp->SetRequestContext(nullptr, nullptr, nullptr, aChannel);
 
   // ----- if the doc is an app and we want a default CSP, apply it.
   if (applyAppDefaultCSP) {
@@ -3162,7 +3169,7 @@ nsDocument::ElementFromPointHelper(float aX, float aY,
   }
 
   nsIFrame *ptFrame = nsLayoutUtils::GetFrameForPoint(rootFrame, pt,
-    nsLayoutUtils::IGNORE_PAINT_SUPPRESSION |
+    nsLayoutUtils::IGNORE_PAINT_SUPPRESSION | nsLayoutUtils::IGNORE_CROSS_DOC |
     (aIgnoreRootScrollFrame ? nsLayoutUtils::IGNORE_ROOT_SCROLL_FRAME : 0));
   if (!ptFrame) {
     return nullptr;
@@ -3217,7 +3224,7 @@ nsDocument::NodesFromRectHelper(float aX, float aY,
 
   nsAutoTArray<nsIFrame*,8> outFrames;
   nsLayoutUtils::GetFramesForArea(rootFrame, rect, outFrames,
-    nsLayoutUtils::IGNORE_PAINT_SUPPRESSION |
+    nsLayoutUtils::IGNORE_PAINT_SUPPRESSION | nsLayoutUtils::IGNORE_CROSS_DOC |
     (aIgnoreRootScrollFrame ? nsLayoutUtils::IGNORE_ROOT_SCROLL_FRAME : 0));
 
   // Used to filter out repeated elements in sequence.
@@ -4251,10 +4258,7 @@ nsIDocument::SetContainer(nsDocShell* aContainer)
   }
 
   // Get the Docshell
-  int32_t itemType;
-  aContainer->GetItemType(&itemType);
-  // check itemtype
-  if (itemType == nsIDocShellTreeItem::typeContent) {
+  if (aContainer->ItemType() == nsIDocShellTreeItem::typeContent) {
     // check if same type root
     nsCOMPtr<nsIDocShellTreeItem> sameTypeRoot;
     aContainer->GetSameTypeRootTreeItem(getter_AddRefs(sameTypeRoot));
@@ -4956,7 +4960,7 @@ bool IsLowercaseASCII(const nsAString& aValue)
 {
   int32_t len = aValue.Length();
   for (int32_t i = 0; i < len; ++i) {
-    PRUnichar c = aValue[i];
+    char16_t c = aValue[i];
     if (!(0x0061 <= (c) && ((c) <= 0x007a))) {
       return false;
     }
@@ -5280,7 +5284,7 @@ nsDocument::Register(JSContext* aCx, const nsAString& aName,
 
   JS::Rooted<JSObject*> protoObject(aCx);
   if (!aOptions.mPrototype) {
-    protoObject = JS_NewObject(aCx, nullptr, htmlProto, nullptr);
+    protoObject = JS_NewObject(aCx, nullptr, htmlProto, JS::NullPtr());
     if (!protoObject) {
       rv.Throw(NS_ERROR_UNEXPECTED);
       return nullptr;
@@ -5379,7 +5383,7 @@ nsDocument::Register(JSContext* aCx, const nsAString& aName,
   // Create constructor to return. Store the name of the custom element as the
   // name of the function.
   JSFunction* constructor = JS_NewFunction(aCx, CustomElementConstructor, 0,
-                                           JSFUN_CONSTRUCTOR, nullptr,
+                                           JSFUN_CONSTRUCTOR, JS::NullPtr(),
                                            NS_ConvertUTF16toUTF8(lcName).get());
   JSObject* constructorObject = JS_GetFunctionObject(constructor);
   return constructorObject;
@@ -6702,10 +6706,7 @@ nsIDocument::AdoptNode(nsINode& aAdoptedNode, ErrorResult& rv)
       // Remove from ownerElement.
       nsRefPtr<Attr> adoptedAttr = static_cast<Attr*>(adoptedNode);
 
-      nsCOMPtr<Element> ownerElement = adoptedAttr->GetOwnerElement(rv);
-      if (rv.Failed()) {
-        return nullptr;
-      }
+      nsCOMPtr<Element> ownerElement = adoptedAttr->GetElement();
 
       if (ownerElement) {
         nsRefPtr<Attr> newAttr =
@@ -6799,7 +6800,7 @@ nsIDocument::AdoptNode(nsINode& aAdoptedNode, ErrorResult& rv)
 
       JS::Rooted<JS::Value> v(cx);
       rv = nsContentUtils::WrapNative(cx, global, this, this, &v,
-                                      nullptr, /* aAllowWrapping = */ false);
+                                      /* aAllowWrapping = */ false);
       if (rv.Failed())
         return nullptr;
       newScope = &v.toObject();
@@ -7223,8 +7224,8 @@ nsDocument::FlushExternalResources(mozFlushType aType)
 }
 
 void
-nsDocument::SetXMLDeclaration(const PRUnichar *aVersion,
-                              const PRUnichar *aEncoding,
+nsDocument::SetXMLDeclaration(const char16_t *aVersion,
+                              const char16_t *aEncoding,
                               const int32_t aStandalone)
 {
   if (!aVersion || *aVersion == '\0') {
@@ -8565,11 +8566,17 @@ FireOrClearDelayedEvents(nsTArray<nsCOMPtr<nsIDocument> >& aDocuments,
     return;
 
   for (uint32_t i = 0; i < aDocuments.Length(); ++i) {
+    // NB: Don't bother trying to fire delayed events on documents that were
+    // closed before this event ran.
     if (!aDocuments[i]->EventHandlingSuppressed()) {
       fm->FireDelayedEvents(aDocuments[i]);
       nsCOMPtr<nsIPresShell> shell = aDocuments[i]->GetShell();
       if (shell) {
-        shell->FireOrClearDelayedEvents(aFireEvents);
+        // Only fire events for active documents.
+        bool fire = aFireEvents &&
+                    aDocuments[i]->GetInnerWindow() &&
+                    aDocuments[i]->GetInnerWindow()->IsCurrentInnerWindow();
+        shell->FireOrClearDelayedEvents(fire);
       }
     }
   }
@@ -8809,6 +8816,10 @@ void
 nsDocument::ScrollToRef()
 {
   if (mScrolledToRefAlready) {
+    nsCOMPtr<nsIPresShell> shell = GetShell();
+    if (shell) {
+      shell->ScrollToAnchor();
+    }
     return;
   }
 
@@ -9453,7 +9464,7 @@ nsIDocument::CaretPositionFromPoint(float aX, float aY)
   }
 
   nsIFrame *ptFrame = nsLayoutUtils::GetFrameForPoint(rootFrame, pt,
-      nsLayoutUtils::IGNORE_PAINT_SUPPRESSION);
+      nsLayoutUtils::IGNORE_PAINT_SUPPRESSION | nsLayoutUtils::IGNORE_CROSS_DOC);
   if (!ptFrame) {
     return nullptr;
   }
@@ -10858,7 +10869,7 @@ nsDocument::SetApprovedForFullscreen(bool aIsApproved)
 nsresult
 nsDocument::Observe(nsISupports *aSubject,
                     const char *aTopic,
-                    const PRUnichar *aData)
+                    const char16_t *aData)
 {
   if (strcmp("fullscreen-approved", aTopic) == 0) {
     nsCOMPtr<nsIDocument> subject(do_QueryInterface(aSubject));
@@ -11457,11 +11468,9 @@ nsIDocument::WrapObject(JSContext *aCx, JS::Handle<JSObject*> aScope)
   JSAutoCompartment ac(aCx, obj);
 
   JS::Rooted<JS::Value> winVal(aCx);
-  nsCOMPtr<nsIXPConnectJSObjectHolder> holder;
   nsresult rv = nsContentUtils::WrapNative(aCx, obj, win,
                                            &NS_GET_IID(nsIDOMWindow),
                                            &winVal,
-                                           getter_AddRefs(holder),
                                            false);
   if (NS_FAILED(rv)) {
     Throw(aCx, rv);

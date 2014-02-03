@@ -19,11 +19,12 @@ include URIParams;
 
 
 using class IPC::Principal from "mozilla/dom/PermissionMessageUtils.h";
-using struct gfxMatrix from "gfxMatrix.h";
+using struct mozilla::gfx::Matrix from "mozilla/gfx/Matrix.h";
 using struct gfxSize from "gfxPoint.h";
 using CSSRect from "Units.h";
 using struct mozilla::layers::FrameMetrics from "FrameMetrics.h";
 using struct mozilla::layers::ScrollableLayerGuid from "FrameMetrics.h";
+using struct mozilla::layers::ZoomConstraints from "FrameMetrics.h";
 using FrameMetrics::ViewID from "FrameMetrics.h";
 using mozilla::layout::ScrollingBehavior from "mozilla/layout/RenderFrameUtils.h";
 using struct mozilla::void_t from "ipc/IPCMessageUtils.h";
@@ -131,6 +132,15 @@ parent:
     NotifyIMETextChange(uint32_t offset, uint32_t end, uint32_t newEnd);
 
     /**
+     * Notifies chrome that there is a IME compostion rect updated
+     *
+     *  offset       The starting offset of this rect
+     *  rect         The rect of first character of selected IME composition
+     *  caretRect    The rect of IME caret
+     */
+    NotifyIMESelectedCompositionRect(uint32_t offset, nsIntRect rect, nsIntRect caretRect);
+
+    /**
      * Notifies chrome that there has been a change in selection
      * Only called when NotifyIMEFocus returns PR_TRUE for mWantUpdates
      *
@@ -142,7 +152,6 @@ parent:
 
     /**
      * Notifies chrome to refresh its text cache 
-     * Only called when NotifyIMEFocus returns PR_TRUE for mWantHints
      *
      *  text         The entire content of the text field
      */
@@ -203,6 +212,13 @@ parent:
     SetStatus(uint32_t type, nsString status);
 
     /**
+     * Show/hide a tooltip when the mouse hovers over an element in the content
+     * document.
+     */
+    ShowTooltip(uint32_t x, uint32_t y, nsString tooltip);
+    HideTooltip();
+
+    /**
      * Initiates an asynchronous request for permission for the
      * provided principal.
      *
@@ -226,9 +242,12 @@ parent:
      * Create a layout frame (encapsulating a remote layer tree) for
      * the page that is currently loaded in the <browser>.
      */
-    sync PRenderFrame()
+    sync PRenderFrame();
+
+    sync InitRenderFrame(PRenderFrame aFrame)
         returns (ScrollingBehavior scrolling,
-                 TextureFactoryIdentifier textureFactoryIdentifier, uint64_t layersId);
+                 TextureFactoryIdentifier textureFactoryIdentifier, uint64_t layersId,
+                 bool success);
 
     /** 
      * Starts an offline application cache update.
@@ -254,6 +273,13 @@ parent:
      */
     POfflineCacheUpdate(URIParams manifestURI, URIParams documentURI,
                         bool stickDocument);
+
+    /**
+     * Sets "offline-app" permission for the principal.  Called when we hit
+     * a web app with the manifest attribute in <html> and
+     * offline-apps.allow_by_default is set to true.
+     */
+    SetOfflinePermission(Principal principal);
 
     sync PIndexedDB(nsCString group, nsCString asciiOrigin)
         returns (bool allowed);
@@ -294,7 +320,7 @@ parent:
      * have up-to-date zoom constraints.
      */
     UpdateZoomConstraints(uint32_t aPresShellId, ViewID aViewId, bool aIsRoot,
-                          bool aAllowZoom, CSSToScreenScale aMinZoom, CSSToScreenScale aMaxZoom);
+                          ZoomConstraints aConstraints);
 
     __delete__();
 
@@ -401,7 +427,7 @@ child:
      */
     ActivateFrameEvent(nsString aType, bool capture);
 
-    LoadRemoteScript(nsString aURL);
+    LoadRemoteScript(nsString aURL, bool aRunInGlobalScope);
 
     /**
      * Create a asynchronous request to render whatever document is
@@ -416,7 +442,7 @@ child:
      * and if true, |flushLayout| will do just that before rendering
      * the document.  The rendered image will be of size |renderSize|.
      */
-    PDocumentRenderer(nsRect documentRect, gfxMatrix transform,
+    PDocumentRenderer(nsRect documentRect, Matrix transform,
                       nsString bgcolor,
                       uint32_t renderFlags, bool flushLayout,
                       nsIntSize renderSize);

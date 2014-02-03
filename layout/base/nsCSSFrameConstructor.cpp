@@ -68,6 +68,7 @@
 #include "nsPageContentFrame.h"
 #include "RestyleManager.h"
 #include "StickyScrollContainer.h"
+#include "nsFieldSetFrame.h"
 
 #ifdef MOZ_XUL
 #include "nsIRootBox.h"
@@ -123,7 +124,7 @@ NS_NewSVGAFrame(nsIPresShell* aPresShell, nsStyleContext* aContext);
 nsIFrame*
 NS_NewSVGSwitchFrame(nsIPresShell* aPresShell, nsStyleContext* aContext);
 nsIFrame*
-NS_NewSVGTextFrame2(nsIPresShell* aPresShell, nsStyleContext* aContext);
+NS_NewSVGTextFrame(nsIPresShell* aPresShell, nsStyleContext* aContext);
 nsIFrame*
 NS_NewSVGContainerFrame(nsIPresShell* aPresShell, nsStyleContext* aContext);
 nsIFrame*
@@ -2653,16 +2654,6 @@ nsCSSFrameConstructor::SetUpDocElementContainingBlock(nsIContent* aDocElement)
   // will act as the scrolling mechanism for the viewport. 
   // XXX Do we even need a viewport when printing to a printer?
 
-  // As long as the docshell doesn't prohibit it, and the device supports
-  // it, create a scroll frame that will act as the scolling mechanism for
-  // the viewport.
-  //
-  // Threre are three possible values stored in the docshell:
-  //  1) nsIScrollable::Scrollbar_Never = no scrollbars
-  //  2) nsIScrollable::Scrollbar_Auto = scrollbars appear if needed
-  //  3) nsIScrollable::Scrollbar_Always = scrollbars always
-  // Only need to create a scroll frame/view for cases 2 and 3.
-
   bool isHTML = aDocElement->IsHTML();
   bool isXUL = false;
 
@@ -3668,7 +3659,7 @@ nsCSSFrameConstructor::ConstructFrameFromItemInternal(FrameConstructionItem& aIt
            (maybeAbsoluteContainingBlockDisplay->HasTransformStyle() &&
             cb->IsFrameOfType(nsIFrame::eSupportsCSSTransforms))) &&
           !cb->IsSVGText()) {
-        aState.PushAbsoluteContainingBlock(cb, primaryFrame, absoluteSaveState);
+        aState.PushAbsoluteContainingBlock(cb, cb, absoluteSaveState);
       }
     }
 
@@ -4096,18 +4087,14 @@ nsCSSFrameConstructor::FindXULMenubarData(Element* aElement,
 {
   nsCOMPtr<nsIDocShell> treeItem =
     aStyleContext->PresContext()->GetDocShell();
-  if (treeItem) {
-    int32_t type;
-    treeItem->GetItemType(&type);
-    if (nsIDocShellTreeItem::typeChrome == type) {
-      nsCOMPtr<nsIDocShellTreeItem> parent;
-      treeItem->GetParent(getter_AddRefs(parent));
-      if (!parent) {
-        // This is the root.  Suppress the menubar, since on Mac
-        // window menus are not attached to the window.
-        static const FrameConstructionData sSuppressData = SUPPRESS_FCDATA();
-        return &sSuppressData;
-      }
+  if (treeItem && nsIDocShellTreeItem::typeChrome == treeItem->ItemType()) {
+    nsCOMPtr<nsIDocShellTreeItem> parent;
+    treeItem->GetParent(getter_AddRefs(parent));
+    if (!parent) {
+      // This is the root.  Suppress the menubar, since on Mac
+      // window menus are not attached to the window.
+      static const FrameConstructionData sSuppressData = SUPPRESS_FCDATA();
+      return &sSuppressData;
     }
   }
 
@@ -4682,7 +4669,7 @@ nsCSSFrameConstructor::FindMathMLData(Element* aElement,
     SIMPLE_MATHML_CREATE(mprescripts_, NS_NewMathMLmspaceFrame),
     SIMPLE_MATHML_CREATE(mfenced_, NS_NewMathMLmfencedFrame),
     SIMPLE_MATHML_CREATE(mmultiscripts_, NS_NewMathMLmmultiscriptsFrame),
-    SIMPLE_MATHML_CREATE(mstyle_, NS_NewMathMLmstyleFrame),
+    SIMPLE_MATHML_CREATE(mstyle_, NS_NewMathMLmrowFrame),
     SIMPLE_MATHML_CREATE(msqrt_, NS_NewMathMLmsqrtFrame),
     SIMPLE_MATHML_CREATE(mroot_, NS_NewMathMLmrootFrame),
     SIMPLE_MATHML_CREATE(maction_, NS_NewMathMLmactionFrame),
@@ -4951,7 +4938,7 @@ nsCSSFrameConstructor::FindSVGData(Element* aElement,
     static const FrameConstructionData sTextData =
       FCDATA_WITH_WRAPPING_BLOCK(FCDATA_DISALLOW_OUT_OF_FLOW |
                                  FCDATA_ALLOW_BLOCK_STYLES,
-                                 NS_NewSVGTextFrame2,
+                                 NS_NewSVGTextFrame,
                                  nsCSSAnonBoxes::mozSVGText);
     return &sTextData;
   } else if (aTag == nsGkAtoms::tspan ||
@@ -5132,7 +5119,7 @@ nsCSSFrameConstructor::AddFrameConstructionItems(nsFrameConstructorState& aState
   }
   if (aParentFrame->GetType() == nsGkAtoms::blockFrame &&
       aParentFrame->GetParent() &&
-      aParentFrame->GetParent()->GetType() == nsGkAtoms::svgTextFrame2) {
+      aParentFrame->GetParent()->GetType() == nsGkAtoms::svgTextFrame) {
     flags |= ITEM_ALLOWS_TEXT_PATH_CHILD;
   }
   AddFrameConstructionItemsInternal(aState, aContent, aParentFrame,
@@ -5660,21 +5647,32 @@ nsCSSFrameConstructor::GetAbsoluteContainingBlock(nsIFrame* aFrame,
         (aType == FIXED_POS && !frame->StyleDisplay()->HasTransform(frame))) {
       continue;
     }
-    nsIFrame* absPosCBCandidate = nullptr;
-    if (frame->GetType() == nsGkAtoms::scrollFrame) {
-      nsIScrollableFrame* scrollFrame = do_QueryFrame(frame);
-      absPosCBCandidate = scrollFrame->GetScrolledFrame();
-    } else {
-      // Only first continuations can be containing blocks.
-      absPosCBCandidate = frame->FirstContinuation();
+    nsIFrame* absPosCBCandidate = frame;
+    nsIAtom* type = absPosCBCandidate->GetType();
+    if (type == nsGkAtoms::fieldSetFrame) {
+      absPosCBCandidate = static_cast<nsFieldSetFrame*>(absPosCBCandidate)->GetInner();
+      if (!absPosCBCandidate) {
+        continue;
+      }
+      type = absPosCBCandidate->GetType();
     }
+    if (type == nsGkAtoms::scrollFrame) {
+      nsIScrollableFrame* scrollFrame = do_QueryFrame(absPosCBCandidate);
+      absPosCBCandidate = scrollFrame->GetScrolledFrame();
+      if (!absPosCBCandidate) {
+        continue;
+      }
+      type = absPosCBCandidate->GetType();
+    }
+    // Only first continuations can be containing blocks.
+    absPosCBCandidate = absPosCBCandidate->FirstContinuation();
     // Is the frame really an absolute container?
-    if (!absPosCBCandidate || !absPosCBCandidate->IsAbsoluteContainer()) {
+    if (!absPosCBCandidate->IsAbsoluteContainer()) {
       continue;
     }
 
     // For tables, skip the inner frame and consider the outer table frame.
-    if (absPosCBCandidate->GetType() == nsGkAtoms::tableFrame) {
+    if (type == nsGkAtoms::tableFrame) {
       continue;
     }
     // For outer table frames, we can just return absPosCBCandidate.
@@ -9414,7 +9412,7 @@ nsCSSFrameConstructor::ProcessChildren(nsFrameConstructorState& aState,
     if (!aFrame->IsGeneratedContentFrame()) {
       nsIContent *badKid = AnyKidsNeedBlockParent(aFrameItems.FirstChild());
       nsDependentAtomString parentTag(aContent->Tag()), kidTag(badKid->Tag());
-      const PRUnichar* params[] = { parentTag.get(), kidTag.get() };
+      const char16_t* params[] = { parentTag.get(), kidTag.get() };
       const nsStyleDisplay *display = frameStyleContext->StyleDisplay();
       const char *message =
         (display->mDisplay == NS_STYLE_DISPLAY_INLINE_BOX)
@@ -9710,7 +9708,7 @@ FirstLetterCount(const nsTextFragment* aFragment)
 
   int32_t i, n = aFragment->GetLength();
   for (i = 0; i < n; i++) {
-    PRUnichar ch = aFragment->CharAt(i);
+    char16_t ch = aFragment->CharAt(i);
     // FIXME: take content language into account when deciding whitespace.
     if (dom::IsSpaceCharacter(ch)) {
       if (firstLetterLength) {

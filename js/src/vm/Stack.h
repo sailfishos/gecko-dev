@@ -75,7 +75,7 @@ enum MaybeCheckAliasing { CHECK_ALIASING = true, DONT_CHECK_ALIASING = false };
 
 #ifdef DEBUG
 extern void
-CheckLocalUnaliased(MaybeCheckAliasing checkAliasing, JSScript *script, unsigned i);
+CheckLocalUnaliased(MaybeCheckAliasing checkAliasing, JSScript *script, uint32_t i);
 #endif
 
 namespace jit {
@@ -211,8 +211,8 @@ class AbstractFramePtr
 
     inline bool copyRawFrameSlots(AutoValueVector *vec) const;
 
-    inline Value &unaliasedVar(unsigned i, MaybeCheckAliasing checkAliasing = CHECK_ALIASING);
-    inline Value &unaliasedLocal(unsigned i, MaybeCheckAliasing checkAliasing = CHECK_ALIASING);
+    inline Value &unaliasedVar(uint32_t i, MaybeCheckAliasing checkAliasing = CHECK_ALIASING);
+    inline Value &unaliasedLocal(uint32_t i, MaybeCheckAliasing checkAliasing = CHECK_ALIASING);
     inline Value &unaliasedFormal(unsigned i, MaybeCheckAliasing checkAliasing = CHECK_ALIASING);
     inline Value &unaliasedActual(unsigned i, MaybeCheckAliasing checkAliasing = CHECK_ALIASING);
 
@@ -223,7 +223,7 @@ class AbstractFramePtr
 
     inline void *maybeHookData() const;
     inline void setHookData(void *data) const;
-    inline Value returnValue() const;
+    inline HandleValue returnValue() const;
     inline void setReturnValue(const Value &rval) const;
 
     bool hasPushedSPSFrame() const;
@@ -524,8 +524,8 @@ class StackFrame
      * unaliased. For more about canonical values locations.
      */
 
-    inline Value &unaliasedVar(unsigned i, MaybeCheckAliasing = CHECK_ALIASING);
-    inline Value &unaliasedLocal(unsigned i, MaybeCheckAliasing = CHECK_ALIASING);
+    inline Value &unaliasedVar(uint32_t i, MaybeCheckAliasing = CHECK_ALIASING);
+    inline Value &unaliasedLocal(uint32_t i, MaybeCheckAliasing = CHECK_ALIASING);
 
     bool hasArgs() const { return isNonEvalFunctionFrame(); }
     inline Value &unaliasedFormal(unsigned i, MaybeCheckAliasing = CHECK_ALIASING);
@@ -773,10 +773,10 @@ class StackFrame
         return !!(flags_ & HAS_RVAL);
     }
 
-    Value &returnValue() {
+    MutableHandleValue returnValue() {
         if (!(flags_ & HAS_RVAL))
             rval_.setUndefined();
-        return rval_;
+        return MutableHandleValue::fromMarkedLocation(&rval_);
     }
 
     void markReturnValue() {
@@ -1449,14 +1449,15 @@ class ScriptFrameIter
      */
     struct Data
     {
-        PerThreadData *perThread_;
-        JSContext    *cx_;
-        SavedOption  savedOption_;
-        ContextOption contextOption_;
+        PerThreadData * perThread_;
+        JSContext *     cx_;
+        SavedOption     savedOption_;
+        ContextOption   contextOption_;
+        JSPrincipals *  principals_;
 
-        State        state_;
+        State           state_;
 
-        jsbytecode   *pc_;
+        jsbytecode *    pc_;
 
         InterpreterFrameIterator interpFrames_;
         ActivationIterator activations_;
@@ -1466,7 +1467,7 @@ class ScriptFrameIter
 #endif
 
         Data(JSContext *cx, PerThreadData *perThread, SavedOption savedOption,
-             ContextOption contextOption);
+             ContextOption contextOption, JSPrincipals *principals);
         Data(const Data &other);
     };
 
@@ -1487,7 +1488,7 @@ class ScriptFrameIter
 
   public:
     ScriptFrameIter(JSContext *cx, SavedOption = STOP_AT_SAVED);
-    ScriptFrameIter(JSContext *cx, ContextOption, SavedOption);
+    ScriptFrameIter(JSContext *cx, ContextOption, SavedOption, JSPrincipals* = nullptr);
     ScriptFrameIter(const ScriptFrameIter &iter);
     ScriptFrameIter(const Data &data);
     ScriptFrameIter(AbstractFramePtr frame);
@@ -1563,7 +1564,7 @@ class ScriptFrameIter
     JSFunction *callee() const;
     Value       calleev() const;
     unsigned    numActualArgs() const;
-    unsigned    numFormalArgs() const { return script()->function()->nargs(); }
+    unsigned    numFormalArgs() const { return script()->functionNonDelazifying()->nargs(); }
     Value       unaliasedActual(unsigned i, MaybeCheckAliasing = CHECK_ALIASING) const;
 
     JSObject   *scopeChain() const;
@@ -1611,6 +1612,12 @@ class NonBuiltinScriptFrameIter : public ScriptFrameIter
   public:
     NonBuiltinScriptFrameIter(JSContext *cx, ScriptFrameIter::SavedOption opt = ScriptFrameIter::STOP_AT_SAVED)
       : ScriptFrameIter(cx, opt) { settle(); }
+
+    NonBuiltinScriptFrameIter(JSContext *cx,
+                              ScriptFrameIter::ContextOption contextOption,
+                              ScriptFrameIter::SavedOption savedOption,
+                              JSPrincipals *principals = nullptr)
+      : ScriptFrameIter(cx, contextOption, savedOption, principals) { settle(); }
 
     NonBuiltinScriptFrameIter(const ScriptFrameIter::Data &data)
       : ScriptFrameIter(data)

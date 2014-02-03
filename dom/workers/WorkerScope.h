@@ -20,12 +20,14 @@ class Function;
 BEGIN_WORKERS_NAMESPACE
 
 class WorkerPrivate;
+class WorkerConsole;
 class WorkerLocation;
 class WorkerNavigator;
 
 class WorkerGlobalScope : public nsDOMEventTargetHelper,
                           public nsIGlobalObject
 {
+  nsRefPtr<WorkerConsole> mConsole;
   nsRefPtr<WorkerLocation> mLocation;
   nsRefPtr<WorkerNavigator> mNavigator;
 
@@ -58,10 +60,18 @@ public:
     return nsRefPtr<WorkerGlobalScope>(this).forget();
   }
 
+  WorkerConsole*
+  Console();
+
   already_AddRefed<WorkerLocation>
   Location();
+
   already_AddRefed<WorkerNavigator>
   Navigator();
+
+  already_AddRefed<WorkerNavigator>
+  GetExistingNavigator() const;
+
   void
   Close(JSContext* aCx);
 
@@ -97,6 +107,8 @@ public:
   void
   Btoa(const nsAString& aBtoa, nsAString& aOutput, ErrorResult& aRv) const;
 
+  IMPL_EVENT_HANDLER(online)
+  IMPL_EVENT_HANDLER(offline)
   IMPL_EVENT_HANDLER(close)
 
   void

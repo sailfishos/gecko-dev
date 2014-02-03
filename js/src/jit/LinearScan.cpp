@@ -519,6 +519,7 @@ LinearScanAllocator::populateSafepoints()
                 DebugOnly<LDefinition*> def = reg->def();
                 JS_ASSERT_IF(def->policy() == LDefinition::MUST_REUSE_INPUT,
                              def->type() == LDefinition::GENERAL ||
+                             def->type() == LDefinition::INT32 ||
                              def->type() == LDefinition::FLOAT32 ||
                              def->type() == LDefinition::DOUBLE);
                 continue;
@@ -586,9 +587,13 @@ LinearScanAllocator::populateSafepoints()
 
                 // If the payload is an argument, we'll scan that explicitly as
                 // part of the frame. It is therefore safe to not add any
-                // safepoint entry.
-                if (payloadAlloc->isArgument())
+                // safepoint entry, as long as the vreg does not have a stack
+                // slot as canonical spill slot.
+                if (payloadAlloc->isArgument() &&
+                    (!payload->canonicalSpill() || payload->canonicalSpill() == payloadAlloc))
+                {
                     continue;
+                }
 
                 if (isSpilledAt(typeInterval, inputOf(ins)) &&
                     isSpilledAt(payloadInterval, inputOf(ins)))
@@ -766,7 +771,13 @@ LinearScanAllocator::assign(LAllocation allocation)
         }
     }
 
-    if (reg && allocation.isMemory()) {
+    bool useAsCanonicalSpillSlot = allocation.isMemory();
+    // Only canonically spill argument values when frame arguments are not
+    // modified in the body.
+    if (mir->modifiesFrameArguments())
+        useAsCanonicalSpillSlot = allocation.isStackSlot();
+
+    if (reg && useAsCanonicalSpillSlot) {
         if (reg->canonicalSpill()) {
             JS_ASSERT(allocation == *reg->canonicalSpill());
 
@@ -797,8 +808,18 @@ LinearScanAllocator::allocateSlotFor(const LiveInterval *interval)
     LinearScanVirtualRegister *reg = &vregs[interval->vreg()];
 
     SlotList *freed;
-    if (reg->type() == LDefinition::DOUBLE || reg->type() == LDefinition::FLOAT32)
+    if (reg->type() == LDefinition::DOUBLE)
         freed = &finishedDoubleSlots_;
+#if JS_BITS_PER_WORD == 64
+    else if (reg->type() == LDefinition::GENERAL ||
+             reg->type() == LDefinition::OBJECT ||
+             reg->type() == LDefinition::SLOTS)
+        freed = &finishedDoubleSlots_;
+#endif
+#ifdef JS_PUNBOX64
+    else if (reg->type() == LDefinition::BOX)
+        freed = &finishedDoubleSlots_;
+#endif
 #ifdef JS_NUNBOX32
     else if (IsNunbox(reg))
         freed = &finishedNunboxSlots_;
@@ -828,11 +849,7 @@ LinearScanAllocator::allocateSlotFor(const LiveInterval *interval)
         }
     }
 
-    if (IsNunbox(reg))
-        return stackSlotAllocator.allocateValueSlot();
-    if (reg->isDouble())
-        return stackSlotAllocator.allocateDoubleSlot();
-    return stackSlotAllocator.allocateSlot();
+    return stackSlotAllocator.allocateSlot(reg->type());
 }
 
 bool
@@ -875,7 +892,7 @@ LinearScanAllocator::spill()
     }
     JS_ASSERT(stackSlot <= stackSlotAllocator.stackHeight());
 
-    return assign(LStackSlot(stackSlot, reg->isDouble()));
+    return assign(LStackSlot(stackSlot));
 }
 
 void
@@ -884,8 +901,18 @@ LinearScanAllocator::freeAllocation(LiveInterval *interval, LAllocation *alloc)
     LinearScanVirtualRegister *mine = &vregs[interval->vreg()];
     if (!IsNunbox(mine)) {
         if (alloc->isStackSlot()) {
-            if (alloc->toStackSlot()->isDouble())
+            if (mine->type() == LDefinition::DOUBLE)
                 finishedDoubleSlots_.append(interval);
+#if JS_BITS_PER_WORD == 64
+            else if (mine->type() == LDefinition::GENERAL ||
+                     mine->type() == LDefinition::OBJECT ||
+                     mine->type() == LDefinition::SLOTS)
+                finishedDoubleSlots_.append(interval);
+#endif
+#ifdef JS_PUNBOX64
+            else if (mine->type() == LDefinition::BOX)
+                finishedDoubleSlots_.append(interval);
+#endif
             else
                 finishedSlots_.append(interval);
         }
@@ -948,7 +975,7 @@ LinearScanAllocator::findBestFreeRegister(CodePosition *freeUntil)
 
     // Compute free-until positions for all registers
     CodePosition freeUntilPos[AnyRegister::Total];
-    bool needFloat = vregs[current->vreg()].isDouble();
+    bool needFloat = vregs[current->vreg()].isFloatReg();
     for (RegisterSet regs(allRegisters_); !regs.empty(needFloat); ) {
         AnyRegister reg = regs.takeAny(needFloat);
         freeUntilPos[reg.code()] = CodePosition::MAX;
@@ -1043,7 +1070,7 @@ LinearScanAllocator::findBestBlockedRegister(CodePosition *nextUsed)
 
     // Compute next-used positions for all registers
     CodePosition nextUsePos[AnyRegister::Total];
-    bool needFloat = vregs[current->vreg()].isDouble();
+    bool needFloat = vregs[current->vreg()].isFloatReg();
     for (RegisterSet regs(allRegisters_); !regs.empty(needFloat); ) {
         AnyRegister reg = regs.takeAny(needFloat);
         nextUsePos[reg.code()] = CodePosition::MAX;
@@ -1133,7 +1160,7 @@ LinearScanAllocator::canCoexist(LiveInterval *a, LiveInterval *b)
 void
 LinearScanAllocator::validateIntervals()
 {
-    if (!js_IonOptions.checkGraphConsistency)
+    if (!js_JitOptions.checkGraphConsistency)
         return;
 
     for (IntervalIterator i(active.begin()); i != active.end(); i++) {
@@ -1179,7 +1206,7 @@ LinearScanAllocator::validateIntervals()
 void
 LinearScanAllocator::validateAllocations()
 {
-    if (!js_IonOptions.checkGraphConsistency)
+    if (!js_JitOptions.checkGraphConsistency)
         return;
 
     for (IntervalIterator i(handled.begin()); i != handled.end(); i++) {

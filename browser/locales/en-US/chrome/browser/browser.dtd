@@ -15,7 +15,7 @@
                                                                 inside the private browsing mode -->
 <!ENTITY mainWindow.titlePrivateBrowsingSuffix "(Private Browsing)">
 
-<!ENTITY appmenu.title                       "Customize and Control &brandFullName;">
+<!ENTITY appmenu.tooltip                     "Open menu">
 <!ENTITY navbarOverflow.label                "More tools…">
 
 <!-- Tab context menu -->
@@ -57,8 +57,6 @@ can reach it easily. -->
 <!ENTITY tabCmd.label "New Tab">
 <!ENTITY tabCmd.accesskey "T">
 <!ENTITY tabCmd.commandkey "t">
-<!ENTITY openLocationCmd.label "Open Location…">
-<!ENTITY openLocationCmd.accesskey "L">
 <!ENTITY openFileCmd.label "Open File…">
 <!ENTITY openFileCmd.accesskey "O">
 <!ENTITY openFileCmd.commandkey "o">
@@ -98,6 +96,20 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY showAllTabsCmd.label "Show All Tabs">
 <!ENTITY showAllTabsCmd.accesskey "A">
 
+<!ENTITY fxaSignIn.label "Sign in to &syncBrand.shortName.label;">
+<!ENTITY syncStartPanel.title "&brandShortName; is now syncing.">
+<!ENTITY syncStartPanel.subTitle "You can manage &syncBrand.shortName.label; in Options.">
+<!ENTITY syncStartPanel.subTitleUnix "You can manage &syncBrand.shortName.label; in Preferences.">
+<!ENTITY syncErrorPanel.title "Cannot connect to &syncBrand.shortName.label;">
+<!ENTITY syncErrorPanel.subTitle "Please sign in to resume syncing.">
+<!ENTITY syncErrorPanel.prefButton.label "Options">
+<!ENTITY syncErrorPanel.prefButton.accesskey "O">
+<!ENTITY syncErrorPanel.prefButtonUnix.label "Preferences">
+<!ENTITY syncErrorPanel.prefButtonUnix.accesskey "P">
+<!ENTITY syncErrorPanel.signInButton.label "Sign In">
+<!ENTITY syncErrorPanel.signInButton.accesskey "S">
+
+
 <!ENTITY fullScreenMinimize.tooltip "Minimize">
 <!ENTITY fullScreenRestore.tooltip "Restore">
 <!ENTITY fullScreenClose.tooltip "Close">
@@ -131,6 +143,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY shareSelectCmd.accesskey "s">
 <!ENTITY shareVideoCmd.label "Share This Video">
 <!ENTITY shareVideoCmd.accesskey "s">
+<!ENTITY feedsMenu.label "Subscribe">
 <!ENTITY subscribeToPageMenupopup.label "Subscribe to This Page">
 <!ENTITY subscribeToPageMenuitem.label "Subscribe to This Page…">
 <!ENTITY addCurPagesCmd.label "Bookmark All Tabs…">
@@ -323,16 +336,29 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY showAllHistoryCmd.commandkey "H">
 
 <!ENTITY appMenuCustomize.label "Customize">
+<!ENTITY appMenuCustomize.tooltip "Customize the Menu and Toolbars">
 <!ENTITY appMenuCustomizeExit.label "Exit Customize">
+<!ENTITY appMenuCustomizeExit.tooltip "Finish Customizing">
 <!ENTITY appMenuHistory.label "History">
 <!ENTITY appMenuHistory.showAll.label "Show All History">
 <!ENTITY appMenuHistory.clearRecent.label "Clear Recent History…">
 <!ENTITY appMenuHistory.restoreSession.label "Restore Previous Session">
+<!ENTITY appMenuHistory.viewSidebar.label "View History Sidebar">
+<!ENTITY appMenuHelp.tooltip "Open Help Menu">
 
 <!ENTITY customizeMenu.addToToolbar.label "Add to Toolbar">
 <!ENTITY customizeMenu.addToToolbar.accesskey "A">
 <!ENTITY customizeMenu.addToPanel.label "Add to Menu">
 <!ENTITY customizeMenu.addToPanel.accesskey "M">
+<!ENTITY customizeMenu.moveToToolbar.label "Move to Toolbar">
+<!ENTITY customizeMenu.moveToToolbar.accesskey "o">
+<!-- LOCALIZATION NOTE (customizeMenu.moveToPanel.accesskey) can appear on the
+     same context menu as menubarCmd and personalbarCmd, so they should have
+     different access keys. customizeMenu.moveToToolbar and 
+     customizeMenu.moveToPanel are mutually exclusive, so can share access
+     keys.  -->
+<!ENTITY customizeMenu.moveToPanel.label "Move to Menu">
+<!ENTITY customizeMenu.moveToPanel.accesskey "o">
 <!ENTITY customizeMenu.removeFromToolbar.label "Remove from Toolbar">
 <!ENTITY customizeMenu.removeFromToolbar.accesskey "R">
 <!ENTITY customizeMenu.removeFromMenu.label "Remove from Menu">
@@ -344,12 +370,6 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY urlbar.placeholder2          "Search or enter address">
 <!ENTITY urlbar.accesskey             "d">
 <!ENTITY urlbar.switchToTab.label     "Switch to tab:">
-
-<!-- LOCALIZATION NOTE (toggleMenuPanelMac.key) ideally this should be the same as
-     toggleMenuPanel. However, the modifier is different on mac (cmd+shift rather than ctrl)
-     and so you may need to pick a different key to avoid conflicts with other shortcuts. -->
-<!ENTITY toggleMenuPanel.key          "m">
-<!ENTITY toggleMenuPanelMac.key       "m">
 
 <!-- 
   Comment duplicated from browser-sets.inc:
@@ -668,8 +688,12 @@ just addresses the organization to follow, e.g. "This site is run by " -->
 
 <!ENTITY customizeMode.tabTitle "Customize &brandShortName;">
 <!ENTITY customizeMode.menuAndToolbars.label "Menu and toolbars">
-<!ENTITY customizeMode.menuAndToolbars.header "More Tools to Add to the Menu and Toolbar">
+<!ENTITY customizeMode.menuAndToolbars.header2 "Additional Tools and Features">
+<!ENTITY customizeMode.menuAndToolbars.empty "Want more tools?">
+<!ENTITY customizeMode.menuAndToolbars.emptyLink "Choose from thousands of add-ons">
 <!ENTITY customizeMode.restoreDefaults "Restore Defaults">
+<!ENTITY customizeMode.toolbars "Show / Hide Toolbars">
+<!ENTITY customizeMode.titlebar "Title Bar">
 
 <!ENTITY social.chatBar.commandkey "c">
 <!ENTITY social.chatBar.label "Focus chats">

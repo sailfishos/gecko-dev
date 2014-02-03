@@ -393,7 +393,7 @@ CreateTempXlibSurface (cairo_surface_t* cairoTarget,
             supportsAlternateScreen ? target_screen : screen;
         Visual *argbVisual =
             gfxXlibSurface::FindVisual(visualScreen,
-                                       gfxImageFormatARGB32);
+                                       gfxImageFormat::ARGB32);
         if (argbVisual) {
             visual = argbVisual;
             screen = visualScreen;
@@ -403,7 +403,7 @@ CreateTempXlibSurface (cairo_surface_t* cairoTarget,
             // No advantage in using the target screen.
             Visual *rgb24Visual =
                 gfxXlibSurface::FindVisual(screen,
-                                           gfxImageFormatRGB24);
+                                           gfxImageFormat::RGB24);
             if (rgb24Visual) {
                 visual = rgb24Visual;
             }
@@ -540,7 +540,7 @@ gfxXlibNativeRenderer::Draw(gfxContext* ctx, nsIntSize size,
         Matrix dtTransform = drawTarget->GetTransform();
         deviceTranslation = gfxPoint(dtTransform._31, dtTransform._32);
         cairoTarget = static_cast<cairo_surface_t*>
-            (drawTarget->GetNativeSurface(NATIVE_SURFACE_CAIRO_SURFACE));
+            (drawTarget->GetNativeSurface(NativeSurfaceType::CAIRO_SURFACE));
     }
 
     cairo_surface_t* tempXlibSurface =
@@ -578,7 +578,7 @@ gfxXlibNativeRenderer::Draw(gfxContext* ctx, nsIntSize size,
   
     SurfaceFormat moz2DFormat =
         cairo_surface_get_content(tempXlibSurface) == CAIRO_CONTENT_COLOR ?
-            FORMAT_B8G8R8A8 : FORMAT_B8G8R8X8;
+            SurfaceFormat::B8G8R8A8 : SurfaceFormat::B8G8R8X8;
     if (method != eAlphaExtraction) {
         if (drawTarget) {
             // It doesn't matter if moz2DFormat doesn't exactly match the format
@@ -602,7 +602,7 @@ gfxXlibNativeRenderer::Draw(gfxContext* ctx, nsIntSize size,
     }
     
     nsRefPtr<gfxImageSurface> blackImage =
-        CopyXlibSurfaceToImage(tempXlibSurface, size, gfxImageFormatARGB32);
+        CopyXlibSurfaceToImage(tempXlibSurface, size, gfxImageFormat::ARGB32);
     
     cairo_t* tmpCtx = cairo_create(tempXlibSurface);
     cairo_set_source_rgba(tmpCtx, 1.0, 1.0, 1.0, 1.0);
@@ -611,7 +611,7 @@ gfxXlibNativeRenderer::Draw(gfxContext* ctx, nsIntSize size,
     cairo_destroy(tmpCtx);
     DrawOntoTempSurface(tempXlibSurface, -drawingRect.TopLeft());
     nsRefPtr<gfxImageSurface> whiteImage =
-        CopyXlibSurfaceToImage(tempXlibSurface, size, gfxImageFormatRGB24);
+        CopyXlibSurfaceToImage(tempXlibSurface, size, gfxImageFormat::RGB24);
   
     if (blackImage->CairoStatus() == CAIRO_STATUS_SUCCESS &&
         whiteImage->CairoStatus() == CAIRO_STATUS_SUCCESS) {

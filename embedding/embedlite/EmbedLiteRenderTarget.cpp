@@ -15,7 +15,7 @@ using namespace mozilla::embedlite;
 
 EmbedLiteRenderTarget::EmbedLiteRenderTarget()
 {
-  nsRefPtr<GLContext> ctx = GLContextProvider::CreateForEmbedded(ContextFlagsGlobal);
+  nsRefPtr<GLContext> ctx = GLContextProvider::CreateForEmbedded();
 
   MOZ_ASSERT(ctx);
   mGLContext = ctx;

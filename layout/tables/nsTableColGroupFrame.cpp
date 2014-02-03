@@ -371,17 +371,17 @@ NS_METHOD nsTableColGroupFrame::Reflow(nsPresContext*          aPresContext,
   for (nsIFrame *kidFrame = mFrames.FirstChild(); kidFrame;
        kidFrame = kidFrame->GetNextSibling()) {
     // Give the child frame a chance to reflow, even though we know it'll have 0 size
-    nsHTMLReflowMetrics kidSize;
+    nsHTMLReflowMetrics kidSize(aReflowState.GetWritingMode());
     nsHTMLReflowState kidReflowState(aPresContext, aReflowState, kidFrame,
                                      nsSize(0,0));
 
     nsReflowStatus status;
     ReflowChild(kidFrame, aPresContext, kidSize, kidReflowState, 0, 0, 0, status);
-    FinishReflowChild(kidFrame, aPresContext, nullptr, kidSize, 0, 0, 0);
+    FinishReflowChild(kidFrame, aPresContext, kidSize, nullptr, 0, 0, 0);
   }
 
-  aDesiredSize.width=0;
-  aDesiredSize.height=0;
+  aDesiredSize.Width() = 0;
+  aDesiredSize.Height() = 0;
   aStatus = NS_FRAME_COMPLETE;
   NS_FRAME_SET_TRUNCATION(aStatus, aReflowState, aDesiredSize);
   return rv;
@@ -480,7 +480,7 @@ nsTableColGroupFrame::InvalidateFrameWithRect(const nsRect& aRect, uint32_t aDis
   GetParent()->InvalidateFrameWithRect(aRect + GetPosition(), aDisplayItemKey);
 }
 
-#ifdef DEBUG
+#ifdef DEBUG_FRAME_DUMP
 NS_IMETHODIMP
 nsTableColGroupFrame::GetFrameName(nsAString& aResult) const
 {

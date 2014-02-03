@@ -19,6 +19,7 @@ NS_IMPL_CYCLE_COLLECTION_CLASS(AudioNode)
 
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(AudioNode, nsDOMEventTargetHelper)
   tmp->DisconnectFromGraph();
+  tmp->mContext->UpdateNodeCount(-1);
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mContext)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mOutputNodes)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mOutputParams)
@@ -51,7 +52,8 @@ AudioNode::AudioNode(AudioContext* aContext,
                      uint32_t aChannelCount,
                      ChannelCountMode aChannelCountMode,
                      ChannelInterpretation aChannelInterpretation)
-  : mContext(aContext)
+  : nsDOMEventTargetHelper(aContext->GetParentObject())
+  , mContext(aContext)
   , mChannelCount(aChannelCount)
   , mChannelCountMode(aChannelCountMode)
   , mChannelInterpretation(aChannelInterpretation)
@@ -59,6 +61,7 @@ AudioNode::AudioNode(AudioContext* aContext,
   MOZ_ASSERT(aContext);
   nsDOMEventTargetHelper::BindToOwner(aContext->GetParentObject());
   SetIsDOMBinding();
+  aContext->UpdateNodeCount(1);
 }
 
 AudioNode::~AudioNode()
@@ -66,6 +69,9 @@ AudioNode::~AudioNode()
   MOZ_ASSERT(mInputNodes.IsEmpty());
   MOZ_ASSERT(mOutputNodes.IsEmpty());
   MOZ_ASSERT(mOutputParams.IsEmpty());
+  if (mContext) {
+    mContext->UpdateNodeCount(-1);
+  }
 }
 
 template <class InputNode>

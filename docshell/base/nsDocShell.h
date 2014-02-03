@@ -11,7 +11,6 @@
 #include "nsITimer.h"
 #include "nsIDocShell.h"
 #include "nsIDocShellTreeItem.h"
-#include "nsIDocShellTreeNode.h"
 #include "nsIBaseWindow.h"
 #include "nsIScrollable.h"
 #include "nsITextScroll.h"
@@ -155,7 +154,6 @@ public:
 
     NS_DECL_NSIDOCSHELL
     NS_DECL_NSIDOCSHELLTREEITEM
-    NS_DECL_NSIDOCSHELLTREENODE
     NS_DECL_NSIWEBNAVIGATION
     NS_DECL_NSIBASEWINDOW
     NS_DECL_NSISCROLLABLE
@@ -184,14 +182,14 @@ public:
     // nsILinkHandler
     NS_IMETHOD OnLinkClick(nsIContent* aContent,
         nsIURI* aURI,
-        const PRUnichar* aTargetSpec,
+        const char16_t* aTargetSpec,
         const nsAString& aFileName,
         nsIInputStream* aPostDataStream,
         nsIInputStream* aHeadersDataStream,
         bool aIsTrusted);
     NS_IMETHOD OnLinkClickSync(nsIContent* aContent,
         nsIURI* aURI,
-        const PRUnichar* aTargetSpec,
+        const char16_t* aTargetSpec,
         const nsAString& aFileName,
         nsIInputStream* aPostDataStream = 0,
         nsIInputStream* aHeadersDataStream = 0,
@@ -199,7 +197,7 @@ public:
         nsIRequest** aRequest = 0);
     NS_IMETHOD OnOverLink(nsIContent* aContent,
         nsIURI* aURI,
-        const PRUnichar* aTargetSpec);
+        const char16_t* aTargetSpec);
     NS_IMETHOD OnLeaveLink();
 
     nsDocShellInfoLoadType ConvertLoadTypeToDocShellLoadInfo(uint32_t aLoadType);
@@ -503,10 +501,10 @@ protected:
     nsresult   EnsureTransferableHookData();
     NS_IMETHOD EnsureFind();
     nsresult   RefreshURIFromQueue();
-    NS_IMETHOD LoadErrorPage(nsIURI *aURI, const PRUnichar *aURL,
+    NS_IMETHOD LoadErrorPage(nsIURI *aURI, const char16_t *aURL,
                              const char *aErrorPage,
-                             const PRUnichar *aErrorType,
-                             const PRUnichar *aDescription,
+                             const char16_t *aErrorType,
+                             const char16_t *aDescription,
                              const char *aCSSClass,
                              nsIChannel* aFailedChannel);
     bool IsNavigationAllowed(bool aDisplayPrintErrorDialog = true);
@@ -637,6 +635,9 @@ protected:
     // Convenience method for getting our parent docshell.  Can return null
     already_AddRefed<nsDocShell> GetParentDocshell();
 protected:
+    nsresult GetCurScrollPos(int32_t scrollOrientation, int32_t * curPos);
+    nsresult SetCurScrollPosEx(int32_t curHorizontalPos, int32_t curVerticalPos);
+
     // Override the parent setter from nsDocLoader
     virtual nsresult SetDocLoaderParent(nsDocLoader * aLoader);
 
@@ -883,14 +884,10 @@ private:
 
     // Separate function to do the actual name (i.e. not _top, _self etc.)
     // searching for FindItemWithName.
-    nsresult DoFindItemWithName(const PRUnichar* aName,
+    nsresult DoFindItemWithName(const char16_t* aName,
                                 nsISupports* aRequestor,
                                 nsIDocShellTreeItem* aOriginalRequestor,
                                 nsIDocShellTreeItem** _retval);
-
-    // Check whether accessing item is sandboxed from the target item.
-    static bool IsSandboxedFrom(nsIDocShellTreeItem* aTargetItem,
-                                nsIDocShellTreeItem* aAccessingItem);
 
 #ifdef DEBUG
     // We're counting the number of |nsDocShells| to help find leaks

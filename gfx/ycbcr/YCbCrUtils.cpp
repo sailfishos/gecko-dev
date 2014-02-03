@@ -28,7 +28,7 @@ GetYCbCrToRGBDestFormatAndSize(const layers::PlanarYCbCrData& aData,
   bool prescale = aSuggestedSize.width > 0 && aSuggestedSize.height > 0 &&
                   aSuggestedSize != aData.mPicSize;
 
-  if (aSuggestedFormat == FORMAT_R5G6B5) {
+  if (aSuggestedFormat == SurfaceFormat::R5G6B5) {
 #if defined(HAVE_YCBCR_TO_RGB565)
     if (prescale &&
         !IsScaleYCbCrToRGB565Fast(aData.mPicX,
@@ -48,14 +48,14 @@ GetYCbCrToRGBDestFormatAndSize(const layers::PlanarYCbCrData& aData,
     }
 #else
     // yuv2rgb16 function not available
-    aSuggestedFormat = FORMAT_B8G8R8X8;
+    aSuggestedFormat = SurfaceFormat::B8G8R8X8;
 #endif
   }
-  else if (aSuggestedFormat != FORMAT_B8G8R8X8) {
+  else if (aSuggestedFormat != SurfaceFormat::B8G8R8X8) {
     // No other formats are currently supported.
-    aSuggestedFormat = FORMAT_B8G8R8X8;
+    aSuggestedFormat = SurfaceFormat::B8G8R8X8;
   }
-  if (aSuggestedFormat == FORMAT_B8G8R8X8) {
+  if (aSuggestedFormat == SurfaceFormat::B8G8R8X8) {
     /* ScaleYCbCrToRGB32 does not support a picture offset, nor 4:4:4 data.
      See bugs 639415 and 640073. */
     if (aData.mPicX != 0 || aData.mPicY != 0 || yuvtype == YV24)
@@ -86,9 +86,9 @@ ConvertYCbCrToRGB(const layers::PlanarYCbCrData& aData,
                  aData.mCbCrSize.height);
 
   // Convert from YCbCr to RGB now, scaling the image if needed.
-  if (aDestSize != ToIntSize(aData.mPicSize)) {
+  if (aDestSize != aData.mPicSize) {
 #if defined(HAVE_YCBCR_TO_RGB565)
-    if (aDestFormat == FORMAT_R5G6B5) {
+    if (aDestFormat == SurfaceFormat::R5G6B5) {
       ScaleYCbCrToRGB565(aData.mYChannel,
                          aData.mCbChannel,
                          aData.mCrChannel,
@@ -122,7 +122,7 @@ ConvertYCbCrToRGB(const layers::PlanarYCbCrData& aData,
                         FILTER_BILINEAR);
   } else { // no prescale
 #if defined(HAVE_YCBCR_TO_RGB565)
-    if (aDestFormat == FORMAT_R5G6B5) {
+    if (aDestFormat == SurfaceFormat::R5G6B5) {
       ConvertYCbCrToRGB565(aData.mYChannel,
                            aData.mCbChannel,
                            aData.mCrChannel,
@@ -135,7 +135,7 @@ ConvertYCbCrToRGB(const layers::PlanarYCbCrData& aData,
                            aData.mCbCrStride,
                            aStride,
                            yuvtype);
-    } else // aDestFormat != gfxImageFormatRGB16_565
+    } else // aDestFormat != gfxImageFormat::RGB16_565
 #endif
       ConvertYCbCrToRGB32(aData.mYChannel, //
                           aData.mCbChannel,

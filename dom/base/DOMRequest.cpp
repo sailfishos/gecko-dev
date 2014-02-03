@@ -17,29 +17,12 @@ using mozilla::dom::DOMRequestService;
 using mozilla::dom::DOMCursor;
 using mozilla::AutoSafeJSContext;
 
-DOMRequest::DOMRequest(nsIDOMWindow* aWindow)
-  : mResult(JSVAL_VOID)
+DOMRequest::DOMRequest(nsPIDOMWindow* aWindow)
+  : nsDOMEventTargetHelper(aWindow->IsInnerWindow() ?
+                             aWindow : aWindow->GetCurrentInnerWindow())
+  , mResult(JSVAL_VOID)
   , mDone(false)
 {
-  SetIsDOMBinding();
-  Init(aWindow);
-}
-
-// We need this constructor for dom::Activity that inherits from DOMRequest
-// but has no window available from the constructor.
-DOMRequest::DOMRequest()
-  : mResult(JSVAL_VOID)
-  , mDone(false)
-{
-  SetIsDOMBinding();
-}
-
-void
-DOMRequest::Init(nsIDOMWindow* aWindow)
-{
-  nsCOMPtr<nsPIDOMWindow> window = do_QueryInterface(aWindow);
-  BindToOwner(window->IsInnerWindow() ? window.get() :
-                                        window->GetCurrentInnerWindow());
 }
 
 NS_IMPL_CYCLE_COLLECTION_CLASS(DOMRequest)
@@ -97,9 +80,9 @@ DOMRequest::GetReadyState(nsAString& aReadyState)
 }
 
 NS_IMETHODIMP
-DOMRequest::GetResult(JS::Value* aResult)
+DOMRequest::GetResult(JS::MutableHandle<JS::Value> aResult)
 {
-  *aResult = Result();
+  aResult.set(Result());
   return NS_OK;
 }
 
@@ -198,8 +181,9 @@ NS_IMETHODIMP
 DOMRequestService::CreateRequest(nsIDOMWindow* aWindow,
                                  nsIDOMDOMRequest** aRequest)
 {
-  NS_ENSURE_STATE(aWindow);
-  NS_ADDREF(*aRequest = new DOMRequest(aWindow));
+  nsCOMPtr<nsPIDOMWindow> win(do_QueryInterface(aWindow));
+  NS_ENSURE_STATE(win);
+  NS_ADDREF(*aRequest = new DOMRequest(win));
 
   return NS_OK;
 }
@@ -207,19 +191,21 @@ DOMRequestService::CreateRequest(nsIDOMWindow* aWindow,
 NS_IMETHODIMP
 DOMRequestService::CreateCursor(nsIDOMWindow* aWindow,
                                 nsICursorContinueCallback* aCallback,
-                                nsIDOMDOMCursor** aCursor) {
-  NS_ADDREF(*aCursor = new DOMCursor(aWindow, aCallback));
+                                nsIDOMDOMCursor** aCursor)
+{
+  nsCOMPtr<nsPIDOMWindow> win(do_QueryInterface(aWindow));
+  NS_ENSURE_STATE(win);
+  NS_ADDREF(*aCursor = new DOMCursor(win, aCallback));
 
   return NS_OK;
 }
 
 NS_IMETHODIMP
 DOMRequestService::FireSuccess(nsIDOMDOMRequest* aRequest,
-                               const JS::Value& aResult)
+                               JS::Handle<JS::Value> aResult)
 {
   NS_ENSURE_STATE(aRequest);
-  static_cast<DOMRequest*>(aRequest)->
-    FireSuccess(JS::Handle<JS::Value>::fromMarkedLocation(&aResult));
+  static_cast<DOMRequest*>(aRequest)->FireSuccess(aResult);
 
   return NS_OK;
 }
@@ -329,7 +315,7 @@ private:
 
 NS_IMETHODIMP
 DOMRequestService::FireSuccessAsync(nsIDOMDOMRequest* aRequest,
-                                    const JS::Value& aResult)
+                                    JS::Handle<JS::Value> aResult)
 {
   NS_ENSURE_STATE(aRequest);
   return FireSuccessAsyncTask::Dispatch(static_cast<DOMRequest*>(aRequest), aResult);

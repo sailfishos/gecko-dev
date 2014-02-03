@@ -18,6 +18,8 @@
 #include "nsIPrefService.h"
 namespace mozilla {
 
+using namespace mozilla::gfx;
+
 NS_IMPL_ISUPPORTS1(MediaEngineTabVideoSource, MediaEngineVideoSource)
 
 MediaEngineTabVideoSource::MediaEngineTabVideoSource()
@@ -171,7 +173,7 @@ NotifyPull(MediaStreamGraph*, SourceMediaStream* aSource, mozilla::TrackID aID, 
 void
 MediaEngineTabVideoSource::Draw() {
 
-  nsIntSize size(mBufW, mBufH);
+  IntSize size(mBufW, mBufH);
 
   nsresult rv;
   float scale = 1.0;
@@ -236,13 +238,13 @@ MediaEngineTabVideoSource::Draw() {
            nsPresContext::CSSPixelsToAppUnits(srcW / scale),
            nsPresContext::CSSPixelsToAppUnits(srcH / scale));
 
-  gfxImageFormat format = gfxImageFormatRGB24;
+  gfxImageFormat format = gfxImageFormat::RGB24;
   uint32_t stride = gfxASurface::FormatStrideForWidth(format, size.width);
 
   nsRefPtr<layers::ImageContainer> container = layers::LayerManager::CreateImageContainer();
   nsRefPtr<gfxASurface> surf;
-  surf = new gfxImageSurface(static_cast<unsigned char*>(mData), size,
-                             stride, format);
+  surf = new gfxImageSurface(static_cast<unsigned char*>(mData),
+                             ThebesIntSize(size), stride, format);
   if (surf->CairoStatus() != 0) {
     return;
   }
@@ -255,8 +257,9 @@ MediaEngineTabVideoSource::Draw() {
   NS_ENSURE_SUCCESS_VOID(rv);
 
   layers::CairoImage::Data cairoData;
-  cairoData.mSurface = surf;
+  cairoData.mDeprecatedSurface = surf;
   cairoData.mSize = size;
+  cairoData.mSourceSurface = gfxPlatform::GetPlatform()->GetSourceSurfaceForSurface(nullptr, surf);
 
   nsRefPtr<layers::CairoImage> image = new layers::CairoImage();
 

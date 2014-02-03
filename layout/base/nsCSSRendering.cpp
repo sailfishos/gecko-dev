@@ -1735,6 +1735,12 @@ nsCSSRendering::DetermineBackgroundColor(nsPresContext* aPresContext,
                                          bool& aDrawBackgroundImage,
                                          bool& aDrawBackgroundColor)
 {
+  if (aFrame->IsThemed()) {
+    aDrawBackgroundColor = false;
+    aDrawBackgroundImage = false;
+    return NS_RGBA(0,0,0,0);
+  }
+
   aDrawBackgroundImage = true;
   aDrawBackgroundColor = true;
 
@@ -1768,7 +1774,8 @@ nsCSSRendering::DetermineBackgroundColor(nsPresContext* aPresContext,
   if (aDrawBackgroundColor &&
       bg->BottomLayer().mRepeat.mXRepeat == NS_STYLE_BG_REPEAT_REPEAT &&
       bg->BottomLayer().mRepeat.mYRepeat == NS_STYLE_BG_REPEAT_REPEAT &&
-      bg->BottomLayer().mImage.IsOpaque()) {
+      bg->BottomLayer().mImage.IsOpaque() &&
+      bg->BottomLayer().mBlendMode == NS_STYLE_BLEND_NORMAL) {
     aDrawBackgroundColor = false;
   }
 
@@ -2281,7 +2288,7 @@ nsCSSRendering::PaintGradient(nsPresContext* aPresContext,
     mozilla::RefPtr<mozilla::gfx::GradientStops> gs =
       gfxGradientCache::GetOrCreateGradientStops(ctx->GetDrawTarget(),
                                                  rawStops,
-                                                 isRepeat ? gfx::EXTEND_REPEAT : gfx::EXTEND_CLAMP);
+                                                 isRepeat ? gfx::ExtendMode::REPEAT : gfx::ExtendMode::CLAMP);
     gradientPattern->SetColorStops(gs);
   } else {
     for (uint32_t i = 0; i < stops.Length(); i++) {
@@ -2614,14 +2621,17 @@ nsCSSRendering::PaintBackgroundColorWithSC(nsPresContext* aPresContext,
   // background colors.
   bool drawBackgroundImage;
   bool drawBackgroundColor;
-
   nscolor bgColor = DetermineBackgroundColor(aPresContext,
                                              aBackgroundSC,
                                              aForFrame,
                                              drawBackgroundImage,
                                              drawBackgroundColor);
 
-  NS_ASSERTION(drawBackgroundColor, "Should not be trying to paint a background color if we don't have one");
+  NS_ASSERTION(drawBackgroundImage || drawBackgroundColor,
+               "Should not be trying to paint a background if we don't have one");
+  if (!drawBackgroundColor) {
+    return;
+  }
 
   // Compute the outermost boundary of the area that might be painted.
   gfxContext *ctx = aRenderingContext.ThebesContext();
@@ -4350,12 +4360,12 @@ CSSSizeOrRatio::ComputeConcreteSize() const
       mWidth,
       double(mRatio.height) / mRatio.width);
     return nsSize(mWidth, height);
-  } 
+  }
 
   MOZ_ASSERT(mHasHeight);
   nscoord width = NSCoordSaturatingNonnegativeMultiply(
     mHeight,
-    double(mRatio.width) / mRatio.height);      
+    double(mRatio.width) / mRatio.height);
   return nsSize(width, mHeight);
 }
 
@@ -4862,6 +4872,8 @@ nsContextBoxBlur::BlurRectangle(gfxContext* aDestinationCtx,
     scaleX = transform.xx;
     scaleY = transform.yy;
     aDestinationCtx->IdentityMatrix();
+  } else {
+    transform = gfxMatrix();
   }
 
   gfxPoint blurStdDev = ComputeBlurStdDev(aBlurRadius, aAppUnitsPerDevPixel, scaleX, scaleY);

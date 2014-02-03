@@ -235,7 +235,7 @@ ImageEncoder::GetInputStream(int32_t aWidth,
                              uint8_t* aImageBuffer,
                              int32_t aFormat,
                              imgIEncoder* aEncoder,
-                             const PRUnichar* aEncoderOptions,
+                             const char16_t* aEncoderOptions,
                              nsIInputStream** aStream)
 {
   nsresult rv =
@@ -284,7 +284,7 @@ ImageEncoder::ExtractDataInternal(const nsAString& aType,
     // dimensions.
     nsRefPtr<gfxImageSurface> emptyCanvas =
       new gfxImageSurface(gfxIntSize(aSize.width, aSize.height),
-                          gfxImageFormatARGB32);
+                          gfxImageFormat::ARGB32);
     if (emptyCanvas->CairoStatus()) {
       return NS_ERROR_INVALID_ARG;
     }

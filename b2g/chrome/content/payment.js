@@ -30,6 +30,10 @@ function LOG(s) {
   dump("== Payment flow == " + s + "\n");
 }
 
+function LOGE(s) {
+  dump("== Payment flow ERROR == " + s + "\n");
+}
+
 if (_debug) {
   LOG("Frame script injected");
 }
@@ -43,6 +47,12 @@ XPCOMUtils.defineLazyServiceGetter(this, "uuidgen",
                                    "nsIUUIDGenerator");
 
 #ifdef MOZ_B2G_RIL
+Cu.import('resource://gre/modules/ObjectWrapper.jsm');
+
+XPCOMUtils.defineLazyServiceGetter(this, "gRil",
+                                   "@mozilla.org/ril;1",
+                                   "nsIRadioInterfaceLayer");
+
 XPCOMUtils.defineLazyServiceGetter(this, "iccProvider",
                                    "@mozilla.org/ril/content-helper;1",
                                    "nsIIccProvider");
@@ -51,7 +61,15 @@ XPCOMUtils.defineLazyServiceGetter(this, "smsService",
                                    "@mozilla.org/sms/smsservice;1",
                                    "nsISmsService");
 
+XPCOMUtils.defineLazyServiceGetter(this, "gSettingsService",
+                                   "@mozilla.org/settingsService;1",
+                                   "nsISettingsService");
+
 const kSilentSmsReceivedTopic = "silent-sms-received";
+const kMozSettingsChangedObserverTopic = "mozsettings-changed";
+
+const kRilDefaultDataServiceId = "ril.data.defaultServiceId";
+const kRilDefaultPaymentServiceId = "ril.payment.defaultServiceId";
 
 const MOBILEMESSAGECALLBACK_CID =
   Components.ID("{b484d8c9-6be4-4f94-ab60-c9c7ebcc853d}");
@@ -61,10 +79,11 @@ const MOBILEMESSAGECALLBACK_CID =
 // from JS.
 function SilentSmsRequest() {
 }
+
 SilentSmsRequest.prototype = {
   __exposedProps__: {
-    onsuccess: 'rw',
-    onerror: 'rw'
+    onsuccess: "rw",
+    onerror: "rw"
   },
 
   QueryInterface: XPCOMUtils.generateQI([Ci.nsIMobileMessageCallback]),
@@ -80,17 +99,98 @@ SilentSmsRequest.prototype = {
   },
 
   notifyMessageSent: function notifyMessageSent(aMessage) {
-    if (_DEBUG) {
-      _debug("Silent message successfully sent");
+    if (_debug) {
+      LOG("Silent message successfully sent");
     }
     this._onsuccess(aMessage);
   },
 
   notifySendMessageFailed: function notifySendMessageFailed(aError) {
-    if (_DEBUG) {
-      _debug("Error sending silent message " + aError);
-    }
+    LOGE("Error sending silent message " + aError);
     this._onerror(aError);
+  }
+};
+
+function PaymentSettings() {
+  Services.obs.addObserver(this, kMozSettingsChangedObserverTopic, false);
+
+  [kRilDefaultDataServiceId, kRilDefaultPaymentServiceId].forEach(setting => {
+    gSettingsService.createLock().get(setting, this);
+  });
+}
+
+PaymentSettings.prototype = {
+  QueryInterface: XPCOMUtils.generateQI([Ci.nsISettingsServiceCallback,
+                                         Ci.nsIObserver]),
+
+  dataServiceId: 0,
+  _paymentServiceId: 0,
+
+  get paymentServiceId() {
+    return this._paymentServiceId;
+  },
+
+  set paymentServiceId(serviceId) {
+    // We allow the payment provider to set the service ID that will be used
+    // for the payment process.
+    // This service ID will be the one used by the silent SMS flow.
+    // If the payment is done with an external SIM, the service ID must be set
+    // to null.
+    if (serviceId != null && serviceId >= gRil.numRadioInterfaces) {
+      LOGE("Invalid service ID " + serviceId);
+      return;
+    }
+
+    gSettingsService.createLock().set(kRilDefaultPaymentServiceId,
+                                      serviceId, null);
+    this._paymentServiceId = serviceId;
+  },
+
+  setServiceId: function(aName, aValue) {
+    switch (aName) {
+      case kRilDefaultDataServiceId:
+        this.dataServiceId = aValue;
+        if (_debug) {
+          LOG("dataServiceId " + this.dataServiceId);
+        }
+        break;
+      case kRilDefaultPaymentServiceId:
+        this._paymentServiceId = aValue;
+        if (_debug) {
+          LOG("paymentServiceId " + this._paymentServiceId);
+        }
+        break;
+    }
+  },
+
+  handle: function(aName, aValue) {
+    if (aName != kRilDefaultDataServiceId) {
+      return;
+    }
+
+    this.setServiceId(aName, aValue);
+  },
+
+  observe: function(aSubject, aTopic, aData) {
+    if (aTopic != kMozSettingsChangedObserverTopic) {
+      return;
+    }
+
+    try {
+      let setting = JSON.parse(aData);
+      if (!setting.key ||
+          (setting.key !== kRilDefaultDataServiceId &&
+           setting.key !== kRilDefaultPaymentServiceId)) {
+        return;
+      }
+      this.setServiceId(setting.key, setting.value);
+    } catch (e) {
+      LOGE(e);
+    }
+  },
+
+  cleanup: function() {
+    Services.obs.removeObserver(this, kMozSettingsChangedObserverTopic);
   }
 };
 #endif
@@ -104,21 +204,26 @@ let gBrowser = Services.wm.getMostRecentWindow("navigator:browser");
 let PaymentProvider = {
 #ifdef MOZ_B2G_RIL
   __exposedProps__: {
-    paymentSuccess: 'r',
-    paymentFailed: 'r',
-    iccIds: 'r',
-    mcc: 'r',
-    mnc: 'r',
-    sendSilentSms: 'r',
-    observeSilentSms: 'r',
-    removeSilentSmsObserver: 'r'
+    paymentSuccess: "r",
+    paymentFailed: "r",
+    paymentServiceId: "rw",
+    iccInfo: "r",
+    sendSilentSms: "r",
+    observeSilentSms: "r",
+    removeSilentSmsObserver: "r"
   },
 #else
   __exposedProps__: {
-    paymentSuccess: 'r',
-    paymentFailed: 'r'
+    paymentSuccess: "r",
+    paymentFailed: "r"
   },
 #endif
+
+  _init: function _init() {
+#ifdef MOZ_B2G_RIL
+    this._settings = new PaymentSettings();
+#endif
+  },
 
   _closePaymentFlowDialog: function _closePaymentFlowDialog(aCallback) {
     // After receiving the payment provider confirmation about the
@@ -177,9 +282,7 @@ let PaymentProvider = {
   },
 
   paymentFailed: function paymentFailed(aErrorMsg) {
-    if (_debug) {
-      LOG("paymentFailed " + aErrorMsg);
-    }
+    LOGE("paymentFailed " + aErrorMsg);
 
     PaymentProvider._closePaymentFlowDialog(function notifyError() {
       if (!gRequestId) {
@@ -191,22 +294,45 @@ let PaymentProvider = {
   },
 
 #ifdef MOZ_B2G_RIL
-  // Bug 938993. Support Multi-SIM for Payments.
+  get paymentServiceId() {
+    return this._settings.paymentServiceId;
+  },
+
+  set paymentServiceId(serviceId) {
+    this._settings.paymentServiceId = serviceId;
+  },
+
+  // We expose to the payment provider the information of all the SIMs
+  // available in the device. iccInfo is an object of this form:
+  //  {
+  //    "serviceId1": {
+  //       mcc: <string>,
+  //       mnc: <string>,
+  //       iccId: <string>,
+  //       dataPrimary: <boolean>
+  //     },
+  //    "serviceIdN": {...}
+  //  }
   get iccInfo() {
-    delete this.iccInfo;
-    return this.iccInfo = iccProvider.getIccInfo(0);
-  },
+    if (!this._iccInfo) {
+      this._iccInfo = {};
+      for (let i = 0; i < gRil.numRadioInterfaces; i++) {
+        let info = iccProvider.getIccInfo(i);
+        if (!info) {
+          LOGE("Tried to get the ICC info for an invalid service ID " + i);
+          continue;
+        }
 
-  get iccIds() {
-    return [this.iccInfo.iccid];
-  },
+        this._iccInfo[i] = {
+          iccId: info.iccid,
+          mcc: info.mcc,
+          mnc: info.mnc,
+          dataPrimary: i == this._settings.dataServiceId
+        };
+      }
+    }
 
-  get mcc() {
-    return [this.iccInfo.mcc];
-  },
-
-  get mnc() {
-    return [this.iccInfo.mnc];
+    return ObjectWrapper.wrap(this._iccInfo, content);
   },
 
   _silentNumbers: null,
@@ -218,7 +344,21 @@ let PaymentProvider = {
     }
 
     let request = new SilentSmsRequest();
-    smsService.send(aNumber, aMessage, true, request);
+
+    if (this._settings.paymentServiceId === null) {
+      LOGE("No payment service ID set. Cannot send silent SMS");
+      let runnable = {
+        run: function run() {
+          request.notifySendMessageFailed("NO_PAYMENT_SERVICE_ID");
+        }
+      };
+      Services.tm.currentThread.dispatch(runnable,
+                                         Ci.nsIThread.DISPATCH_NORMAL);
+      return request;
+    }
+
+    smsService.send(this._settings.paymentServiceId, aNumber, aMessage, true,
+                    request);
     return request;
   },
 
@@ -284,6 +424,21 @@ let PaymentProvider = {
       return;
     }
 
+    // If the service ID is null it means that the payment provider asked the
+    // user for her MSISDN, so we are in a MT only SMS auth flow. In this case
+    // we manually set the service ID to the one corresponding with the SIM
+    // that received the SMS.
+    if (this._settings.paymentServiceId === null) {
+      let i = 0;
+      while(i < gRil.numRadioInterfaces) {
+        if (this.iccInfo[i].iccId === aSubject.iccId) {
+          this._settings.paymentServiceId = i;
+          break;
+        }
+        i++;
+      }
+    }
+
     this._silentSmsObservers[number].forEach(function(callback) {
       callback(aSubject);
     });
@@ -304,6 +459,7 @@ let PaymentProvider = {
     }
     this._silentNumbers = null;
     this._silentSmsObservers = null;
+    this._settings.cleanup();
     Services.obs.removeObserver(this._onSilentSms, kSilentSmsReceivedTopic);
   }
 #endif
@@ -313,6 +469,7 @@ let PaymentProvider = {
 // of the payment flow to the appropriate content process.
 addMessageListener("Payment:LoadShim", function receiveMessage(aMessage) {
   gRequestId = aMessage.json.requestId;
+  PaymentProvider._init();
 });
 
 addEventListener("DOMWindowCreated", function(e) {

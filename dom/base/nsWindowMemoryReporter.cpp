@@ -172,6 +172,46 @@ MOZ_DEFINE_MALLOC_SIZE_OF(WindowsMallocSizeOf)
 typedef nsDataHashtable<nsUint64HashKey, nsCString> WindowPaths;
 
 static nsresult
+ReportAmount(const nsCString& aBasePath, const char* aPathTail,
+             size_t aAmount, const nsCString& aDescription,
+             uint32_t aKind, uint32_t aUnits,
+             nsIMemoryReporterCallback* aCb,
+             nsISupports* aClosure)
+{
+  if (aAmount == 0) {
+    return NS_OK;
+  }
+
+  nsAutoCString path(aBasePath);
+  path += aPathTail;
+
+  return aCb->Callback(EmptyCString(), path, aKind, aUnits,
+                       aAmount, aDescription, aClosure);
+}
+
+static nsresult
+ReportSize(const nsCString& aBasePath, const char* aPathTail,
+           size_t aAmount, const nsCString& aDescription,
+           nsIMemoryReporterCallback* aCb,
+           nsISupports* aClosure)
+{
+  return ReportAmount(aBasePath, aPathTail, aAmount, aDescription,
+                      nsIMemoryReporter::KIND_HEAP,
+                      nsIMemoryReporter::UNITS_BYTES, aCb, aClosure);
+}
+
+static nsresult
+ReportCount(const nsCString& aBasePath, const char* aPathTail,
+            size_t aAmount, const nsCString& aDescription,
+            nsIMemoryReporterCallback* aCb,
+            nsISupports* aClosure)
+{
+  return ReportAmount(aBasePath, aPathTail, aAmount, aDescription,
+                      nsIMemoryReporter::KIND_OTHER,
+                      nsIMemoryReporter::UNITS_COUNT, aCb, aClosure);
+}
+
+static nsresult
 CollectWindowReports(nsGlobalWindow *aWindow,
                      amIAddonManager *addonManager,
                      nsWindowSizes *aWindowTotalSizes,
@@ -181,7 +221,7 @@ CollectWindowReports(nsGlobalWindow *aWindow,
                      nsIMemoryReporterCallback *aCb,
                      nsISupports *aClosure)
 {
-  nsAutoCString windowPath;
+  nsAutoCString windowPath("explicit/");
 
   // Avoid calling aWindow->GetTop() if there's no outer window.  It will work
   // just fine, but will spew a lot of warnings.
@@ -233,40 +273,25 @@ CollectWindowReports(nsGlobalWindow *aWindow,
   AppendWindowURI(aWindow, windowPath);
   windowPath += NS_LITERAL_CSTRING(")");
 
-  nsCString explicitWindowPath("explicit/");
-  explicitWindowPath += windowPath;
-
-  // XXXkhuey 
-  nsCString censusWindowPath("event-counts/");
-  censusWindowPath += windowPath;
+  // Use |windowPath|, but replace "explicit/" with "event-counts/".
+  nsCString censusWindowPath(windowPath);
+  censusWindowPath.Replace(0, strlen("explicit"), "event-counts");
 
   // Remember the path for later.
-  aWindowPaths->Put(aWindow->WindowID(), explicitWindowPath);
+  aWindowPaths->Put(aWindow->WindowID(), windowPath);
 
 #define REPORT_SIZE(_pathTail, _amount, _desc)                                \
   do {                                                                        \
-    if (_amount > 0) {                                                        \
-      nsAutoCString path(explicitWindowPath);                                 \
-      path += _pathTail;                                                      \
-      nsresult rv;                                                            \
-      rv = aCb->Callback(EmptyCString(), path, nsIMemoryReporter::KIND_HEAP,  \
-                    nsIMemoryReporter::UNITS_BYTES, _amount,                  \
-                    NS_LITERAL_CSTRING(_desc), aClosure);                     \
-      NS_ENSURE_SUCCESS(rv, rv);                                              \
-    }                                                                         \
+    nsresult rv = ReportSize(windowPath, _pathTail, _amount,                  \
+                             NS_LITERAL_CSTRING(_desc), aCb, aClosure);       \
+    NS_ENSURE_SUCCESS(rv, rv);                                                \
   } while (0)
 
 #define REPORT_COUNT(_pathTail, _amount, _desc)                               \
   do {                                                                        \
-    if (_amount > 0) {                                                        \
-      nsAutoCString path(censusWindowPath);                                   \
-      path += _pathTail;                                                      \
-      nsresult rv;                                                            \
-      rv = aCb->Callback(EmptyCString(), path, nsIMemoryReporter::KIND_OTHER, \
-                    nsIMemoryReporter::UNITS_COUNT, _amount,                  \
-                    NS_LITERAL_CSTRING(_desc), aClosure);                     \
-      NS_ENSURE_SUCCESS(rv, rv);                                              \
-    }                                                                         \
+    nsresult rv = ReportCount(censusWindowPath, _pathTail, _amount,           \
+                              NS_LITERAL_CSTRING(_desc), aCb, aClosure);      \
+    NS_ENSURE_SUCCESS(rv, rv);                                                \
   } while (0)
 
   nsWindowSizes windowSizes(WindowsMallocSizeOf);
@@ -500,8 +525,7 @@ nsWindowMemoryReporter::CollectReports(nsIMemoryReporterCallback* aCb,
   do {                                                                        \
     nsresult rv;                                                              \
     rv = aCb->Callback(EmptyCString(), NS_LITERAL_CSTRING(_path),             \
-                       nsIMemoryReporter::KIND_OTHER,                         \
-                       nsIMemoryReporter::UNITS_BYTES, _amount,               \
+                       KIND_OTHER, UNITS_BYTES, _amount,                      \
                        NS_LITERAL_CSTRING(_desc), aClosure);                  \
     NS_ENSURE_SUCCESS(rv, rv);                                                \
   } while (0)
@@ -578,7 +602,7 @@ nsWindowMemoryReporter::GetGhostTimeout()
 
 NS_IMETHODIMP
 nsWindowMemoryReporter::Observe(nsISupports *aSubject, const char *aTopic,
-                                const PRUnichar *aData)
+                                const char16_t *aData)
 {
   if (!strcmp(aTopic, DOM_WINDOW_DESTROYED_TOPIC)) {
     ObserveDOMWindowDetached(aSubject);
@@ -800,6 +824,9 @@ nsWindowMemoryReporter::CheckForGhostWindows(
   mDetachedWindows.Enumerate(CheckForGhostWindowsEnumerator,
                              &ghostEnumData);
 }
+
+NS_IMPL_ISUPPORTS1(nsWindowMemoryReporter::GhostWindowsReporter,
+                   nsIMemoryReporter)
 
 /* static */ int64_t
 nsWindowMemoryReporter::GhostWindowsReporter::DistinguishedAmount()

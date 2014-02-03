@@ -18,13 +18,13 @@
 #include "mozilla/gfx/Point.h"          // for IntSize
 #include "mozilla/gfx/Types.h"          // for SurfaceFormat
 #include "mozilla/ipc/Shmem.h"          // for Shmem
+#include "mozilla/layers/AtomicRefCountedWithFinalize.h"
 #include "mozilla/layers/CompositorTypes.h"  // for TextureFlags, etc
 #include "mozilla/layers/LayersSurfaces.h"  // for SurfaceDescriptor
 #include "mozilla/mozalloc.h"           // for operator delete
 #include "nsAutoPtr.h"                  // for nsRefPtr
 #include "nsCOMPtr.h"                   // for already_AddRefed
 #include "nsISupportsImpl.h"            // for TextureImage::AddRef, etc
-#include "mozilla/layers/AtomicRefCountedWithFinalize.h"
 
 class gfxReusableSurfaceWrapper;
 class gfxASurface;
@@ -172,6 +172,8 @@ public:
 
   virtual void Unlock() {}
 
+  virtual bool IsLocked() const = 0;
+
   /**
    * Returns true if this texture has a lock/unlock mechanism.
    * Textures that do not implement locking should be immutable or should
@@ -277,7 +279,7 @@ protected:
     mFlags |= aFlags;
   }
 
-  TextureChild* mActor;
+  RefPtr<TextureChild> mActor;
   TextureFlags mFlags;
   bool mShared;
   bool mValid;
@@ -308,6 +310,12 @@ public:
   virtual uint8_t* GetBuffer() const = 0;
 
   virtual gfx::IntSize GetSize() const { return mSize; }
+
+  virtual bool Lock(OpenMode aMode) MOZ_OVERRIDE;
+
+  virtual void Unlock() MOZ_OVERRIDE;
+
+  virtual bool IsLocked() const MOZ_OVERRIDE { return mLocked; }
 
   // TextureClientSurface
 
@@ -347,9 +355,13 @@ public:
   virtual size_t GetBufferSize() const = 0;
 
 protected:
+  RefPtr<gfx::DrawTarget> mDrawTarget;
   CompositableClient* mCompositable;
   gfx::SurfaceFormat mFormat;
   gfx::IntSize mSize;
+  OpenMode mOpenMode;
+  bool mUsingFallbackDrawTarget;
+  bool mLocked;
 };
 
 /**
@@ -378,10 +390,10 @@ public:
 
   ISurfaceAllocator* GetAllocator() const;
 
-  ipc::Shmem& GetShmem() { return mShmem; }
+  mozilla::ipc::Shmem& GetShmem() { return mShmem; }
 
 protected:
-  ipc::Shmem mShmem;
+  mozilla::ipc::Shmem mShmem;
   RefPtr<ISurfaceAllocator> mAllocator;
   bool mAllocated;
 };
@@ -489,7 +501,7 @@ public:
   // The type of draw target returned by LockDrawTarget.
   virtual gfx::BackendType BackendType()
   {
-    return gfx::BACKEND_NONE;
+    return gfx::BackendType::NONE;
   }
 
   virtual void ReleaseResources() {}
@@ -582,7 +594,7 @@ public:
   virtual gfx::DrawTarget* LockDrawTarget();
   virtual gfx::BackendType BackendType() MOZ_OVERRIDE
   {
-    return gfx::BACKEND_CAIRO;
+    return gfx::BackendType::CAIRO;
   }
   virtual void Unlock() MOZ_OVERRIDE;
   virtual bool EnsureAllocated(gfx::IntSize aSize, gfxContentType aType) MOZ_OVERRIDE;
@@ -617,7 +629,7 @@ public:
   virtual void SetDescriptorFromReply(const SurfaceDescriptor& aDescriptor) MOZ_OVERRIDE;
   virtual void SetDescriptor(const SurfaceDescriptor& aDescriptor) MOZ_OVERRIDE;
   virtual void ReleaseResources();
-  virtual gfxContentType GetContentType() MOZ_OVERRIDE { return GFX_CONTENT_COLOR_ALPHA; }
+  virtual gfxContentType GetContentType() MOZ_OVERRIDE { return gfxContentType::COLOR_ALPHA; }
 };
 
 class DeprecatedTextureClientTile : public DeprecatedTextureClient

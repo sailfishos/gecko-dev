@@ -45,7 +45,7 @@ public:
     TEXT_HAS_TRAILING_BREAK  = 0x4000000,
 
     // This is set if the textrun was created for a textframe whose
-    // TEXT_IS_IN_SINGLE_CHAR_MI flag is set.  This occurs if the textframe
+    // NS_FRAME_IS_IN_SINGLE_CHAR_MI flag is set.  This occurs if the textframe
     // belongs to a MathML <mi> element whose embedded text consists of a
     // single character.
     TEXT_IS_SINGLE_CHAR_MI   = 0x8000000
@@ -54,6 +54,9 @@ public:
     // so that it also has access to the _INCOMING flag
     // TEXT_TRAILING_ARABICCHAR
     // TEXT_INCOMING_ARABICCHAR
+
+    // This is defined in gfxTextRunFactory to allow access in gfxFont.
+    // TEXT_USE_MATH_SCRIPT
   };
 
   // These constants are used in TransformText to represent context information
@@ -71,7 +74,7 @@ public:
    * is what Uniscribe assumes.)
    */
   static bool
-  IsSpaceCombiningSequenceTail(const PRUnichar* aChars, int32_t aLength) {
+  IsSpaceCombiningSequenceTail(const char16_t* aChars, int32_t aLength) {
     return aLength > 0 && aChars[0] == 0x200D; // ZWJ
   }
 
@@ -96,18 +99,18 @@ public:
    * or an Arabic character preceding this text. We set it to indicate if
    * there's an Arabic character or whitespace preceding the end of this text.
    */
-  static PRUnichar* TransformText(const PRUnichar* aText, uint32_t aLength,
-                                  PRUnichar* aOutput,
+  static char16_t* TransformText(const char16_t* aText, uint32_t aLength,
+                                  char16_t* aOutput,
                                   CompressionMode aCompression,
                                   uint8_t * aIncomingFlags,
-                                  gfxSkipCharsBuilder* aSkipChars,
+                                  gfxSkipChars* aSkipChars,
                                   uint32_t* aAnalysisFlags);
 
   static uint8_t* TransformText(const uint8_t* aText, uint32_t aLength,
                                 uint8_t* aOutput,
                                 CompressionMode aCompression,
                                 uint8_t * aIncomingFlags,
-                                gfxSkipCharsBuilder* aSkipChars,
+                                gfxSkipChars* aSkipChars,
                                 uint32_t* aAnalysisFlags);
 
   static void

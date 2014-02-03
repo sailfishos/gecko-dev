@@ -42,6 +42,11 @@
                    showcommentcolumn="true"
                    tabscrolling="true"
                    xbl:inherits="disabled,disableautocomplete,searchengine,src,newlines">
+        <!--
+        Empty <box> to properly position the icon within the autocomplete
+        binding's anonymous children (the autocomplete binding positions <box>
+        children differently)
+        -->
         <xul:box>
           <xul:button class="searchbar-engine-button"
                       type="menu"
@@ -79,9 +84,13 @@
                          .getService(Components.interfaces.nsIObserverService);
         os.addObserver(this, "browser-search-engine-modified", false);
 
-        this._addedObserver = true;
+        this._initialized = true;
 
         this.searchService.init((function search_init_cb(aStatus) {
+          // Bail out if the binding's been destroyed
+          if (!this._initialized)
+            return;
+
           if (Components.isSuccessCode(aStatus)) {
             // Refresh the display (updating icon, etc)
             this.updateDisplay();
@@ -92,11 +101,12 @@
       ]]></constructor>
 
       <destructor><![CDATA[
-        if (this._addedObserver) {
+        if (this._initialized) {
+          this._initialized = false;
+
           var os = Components.classes["@mozilla.org/observer-service;1"]
                              .getService(Components.interfaces.nsIObserverService);
           os.removeObserver(this, "browser-search-engine-modified");
-          this._addedObserver = false;
         }
 
         // Make sure to break the cycle from _textbox to us. Otherwise we leak

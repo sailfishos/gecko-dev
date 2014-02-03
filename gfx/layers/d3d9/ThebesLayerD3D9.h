@@ -51,7 +51,7 @@ private:
 
   bool HaveTextures(SurfaceMode aMode)
   {
-    return mTexture && (aMode != SURFACE_COMPONENT_ALPHA || mTextureOnWhite);
+    return mTexture && (aMode != SurfaceMode::SURFACE_COMPONENT_ALPHA || mTextureOnWhite);
   }
 
   /* Checks if our surface has the right content type */
@@ -73,7 +73,7 @@ private:
                   const nsTArray<ReadbackProcessor::Update>& aReadbackUpdates);
 
   /* Create a new texture */
-  void CreateNewTextures(const gfxIntSize &aSize, SurfaceMode aMode);
+  void CreateNewTextures(const gfx::IntSize &aSize, SurfaceMode aMode);
 
   void CopyRegion(IDirect3DTexture9* aSrc, const nsIntPoint &aSrcOffset,
                   IDirect3DTexture9* aDest, const nsIntPoint &aDestOffset,

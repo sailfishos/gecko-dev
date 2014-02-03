@@ -10,7 +10,9 @@
 #include "mozilla/unused.h"
 #include "nsOfflineCacheUpdate.h"
 #include "nsIApplicationCache.h"
+#include "nsIScriptSecurityManager.h"
 #include "nsNetUtil.h"
+#include "nsContentUtils.h"
 
 using namespace mozilla::ipc;
 using mozilla::dom::TabParent;
@@ -56,10 +58,7 @@ OfflineCacheUpdateParent::OfflineCacheUpdateParent(uint32_t aAppId,
     , mAppId(aAppId)
 {
     // Make sure the service has been initialized
-    nsOfflineCacheUpdateService* service =
-        nsOfflineCacheUpdateService::EnsureService();
-    if (!service)
-        return;
+    nsOfflineCacheUpdateService::EnsureService();
 
     LOG(("OfflineCacheUpdateParent::OfflineCacheUpdateParent [%p]", this));
 }
@@ -93,8 +92,14 @@ OfflineCacheUpdateParent::Schedule(const URIParams& aManifestURI,
         return NS_ERROR_FAILURE;
 
     bool offlinePermissionAllowed = false;
-    nsresult rv = service->OfflineAppAllowedForURI(
-        manifestURI, nullptr, &offlinePermissionAllowed);
+
+    nsCOMPtr<nsIPrincipal> principal;
+    nsContentUtils::GetSecurityManager()->
+        GetAppCodebasePrincipal(manifestURI, mAppId, mIsInBrowserElement,
+                                getter_AddRefs(principal));
+
+    nsresult rv = service->OfflineAppAllowed(
+        principal, nullptr, &offlinePermissionAllowed);
     NS_ENSURE_SUCCESS(rv, rv);
 
     if (!offlinePermissionAllowed)

@@ -38,7 +38,7 @@ parent:
   // buffer directly. The format is a enum defined in
   // system/graphics.h and the usage is the GraphicBuffer usage
   // flag. See GraphicBuffer.h and gralloc.h.
-  sync PGrallocBuffer(gfxIntSize size, uint32_t format, uint32_t usage)
+  sync PGrallocBuffer(IntSize size, uint32_t format, uint32_t usage)
     returns (MaybeMagicGrallocBufferHandle handle);
 
   // First step of the destruction sequence. This puts all the ImageContainerParents
@@ -51,7 +51,7 @@ parent:
   sync Stop();
 
   sync PCompositable(TextureInfo aInfo) returns (uint64_t id);
-  async PTexture();
+  async PTexture(SurfaceDescriptor aSharedData, uint32_t aTextureFlags);
 };
 
 

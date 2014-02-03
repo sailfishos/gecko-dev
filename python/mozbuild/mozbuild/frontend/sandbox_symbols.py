@@ -440,6 +440,14 @@ VARIABLES = {
         distributed/shipped with the produced build.
         """, None),
 
+    'JAR_MANIFESTS': (StrictOrderingOnAppendList, list,
+        """JAR manifest files that should be processed as part of the build.
+
+        JAR manifests are files in the tree that define how to package files
+        into JARs and how chrome registration is performed. For more info,
+        see :ref:`jar_manifests`.
+        """, 'libs'),
+
     # IDL Generation.
     'XPIDL_SOURCES': (StrictOrderingOnAppendList, list,
         """XPCOM Interface Definition Files (xpidl).
@@ -573,6 +581,7 @@ VARIABLES = {
             'variables': dict,
             'input': unicode,
             'sandbox_vars': dict,
+            'non_unified_sources': StrictOrderingOnAppendList,
         }), list,
         """Defines a list of object directories handled by gyp configurations.
 
@@ -587,6 +596,9 @@ VARIABLES = {
             - sandbox_vars, a dictionary containing variables and values to
               pass to the mozbuild processor on top of those derived from gyp
               configuration.
+            - non_unified_sources, a list containing sources files, relative to
+              the current moz.build, that should be excluded from source file
+              unification.
 
         Typical use looks like:
             GYP_DIRS += ['foo', 'bar']

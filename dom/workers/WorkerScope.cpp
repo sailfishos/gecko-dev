@@ -15,6 +15,7 @@
 #include <android/log.h>
 #endif
 
+#include "Console.h"
 #include "Location.h"
 #include "Navigator.h"
 #include "Principal.h"
@@ -77,6 +78,19 @@ WorkerGlobalScope::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aScope)
   MOZ_CRASH("We should never get here!");
 }
 
+WorkerConsole*
+WorkerGlobalScope::Console()
+{
+  mWorkerPrivate->AssertIsOnWorkerThread();
+
+  if (!mConsole) {
+    mConsole = WorkerConsole::Create();
+    MOZ_ASSERT(mConsole);
+  }
+
+  return mConsole;
+}
+
 already_AddRefed<WorkerLocation>
 WorkerGlobalScope::Location()
 {
@@ -99,9 +113,18 @@ WorkerGlobalScope::Navigator()
   mWorkerPrivate->AssertIsOnWorkerThread();
 
   if (!mNavigator) {
-    mNavigator = WorkerNavigator::Create();
+    mNavigator = WorkerNavigator::Create(mWorkerPrivate->OnLine());
     MOZ_ASSERT(mNavigator);
   }
+
+  nsRefPtr<WorkerNavigator> navigator = mNavigator;
+  return navigator.forget();
+}
+
+already_AddRefed<WorkerNavigator>
+WorkerGlobalScope::GetExistingNavigator() const
+{
+  mWorkerPrivate->AssertIsOnWorkerThread();
 
   nsRefPtr<WorkerNavigator> navigator = mNavigator;
   return navigator.forget();

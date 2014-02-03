@@ -77,6 +77,7 @@ const char* const XPCJSRuntime::mStrings[] = {
     "__iterator__",         // IDX_ITERATOR
     "__exposedProps__",     // IDX_EXPOSEDPROPS
     "eval",                 // IDX_EVAL
+    "controllers",           // IDX_CONTROLLERS
 };
 
 /***************************************************************************/
@@ -561,7 +562,8 @@ EnableUniversalXPConnect(JSContext *cx)
     XPCWrappedNativeScope *scope = priv->scope;
     if (!scope)
         return true;
-    return nsXPCComponents::AttachComponentsObject(cx, scope);
+    scope->ForcePrivilegedComponents();
+    return scope->AttachComponentsObject(cx);
 }
 
 JSObject *
@@ -1139,7 +1141,7 @@ class WatchdogManager : public nsIObserver
     }
 
     NS_IMETHOD Observe(nsISupports* aSubject, const char* aTopic,
-                       const PRUnichar* aData)
+                       const char16_t* aData)
     {
         RefreshWatchdog();
         return NS_OK;
@@ -1414,7 +1416,7 @@ XPCJSRuntime::SizeOfIncludingThis(MallocSizeOf mallocSizeOf)
 }
 
 XPCReadableJSStringWrapper *
-XPCJSRuntime::NewStringWrapper(const PRUnichar *str, uint32_t len)
+XPCJSRuntime::NewStringWrapper(const char16_t *str, uint32_t len)
 {
     for (uint32_t i = 0; i < XPCCCX_STRING_CACHE_SIZE; ++i) {
         StringWrapperEntry& ent = mScratchStrings[i];
@@ -1629,21 +1631,24 @@ JSMainRuntimeCompartmentsUserDistinguishedAmount()
     return JS::UserCompartmentCount(rt);
 }
 
-class JSMainRuntimeTemporaryPeakReporter MOZ_FINAL : public MemoryUniReporter
+class JSMainRuntimeTemporaryPeakReporter MOZ_FINAL : public nsIMemoryReporter
 {
-public:
-    JSMainRuntimeTemporaryPeakReporter()
-      : MemoryUniReporter("js-main-runtime-temporary-peak",
-                           KIND_OTHER, UNITS_BYTES,
-"The peak size of the transient storage in the main JSRuntime (the current "
-"size of which is reported as 'explicit/js-non-window/runtime/temporary').")
-    {}
-private:
-    int64_t Amount() MOZ_OVERRIDE
+  public:
+    NS_DECL_ISUPPORTS
+
+    NS_IMETHOD CollectReports(nsIHandleReportCallback* aHandleReport,
+                              nsISupports* aData)
     {
-        return JSMainRuntimeTemporaryPeakDistinguishedAmount();
+        return MOZ_COLLECT_REPORT(
+            "js-main-runtime-temporary-peak", KIND_OTHER, UNITS_BYTES,
+            JSMainRuntimeTemporaryPeakDistinguishedAmount(),
+            "The peak size of the transient storage in the main JSRuntime "
+            "(the current size of which is reported as "
+            "'explicit/js-non-window/runtime/temporary').");
     }
 };
+
+NS_IMPL_ISUPPORTS1(JSMainRuntimeTemporaryPeakReporter, nsIMemoryReporter)
 
 // The REPORT* macros do an unconditional report.  The ZCREPORT* macros are for
 // compartments and zones; they aggregate any entries smaller than
@@ -1792,11 +1797,11 @@ ReportZoneStats(const JS::ZoneStats &zStats,
                    "Memory holding miscellaneous additional information associated with lazy "
                    "scripts.  This memory is allocated on the malloc heap.");
 
-    ZCREPORT_GC_BYTES(pathPrefix + NS_LITERAL_CSTRING("ion-codes-gc-heap"),
-                      zStats.ionCodesGCHeap,
+    ZCREPORT_GC_BYTES(pathPrefix + NS_LITERAL_CSTRING("jit-codes-gc-heap"),
+                      zStats.jitCodesGCHeap,
                       "Memory on the garbage-collected JavaScript "
                       "heap that holds references to executable code pools "
-                      "used by the IonMonkey JIT.");
+                      "used by the JITs.");
 
     ZCREPORT_GC_BYTES(pathPrefix + NS_LITERAL_CSTRING("type-objects/gc-heap"),
                       zStats.typeObjectsGCHeap,
@@ -2259,13 +2264,14 @@ ReportJSRuntimeExplicitTreeStats(const JS::RuntimeStats &rtStats,
                   KIND_HEAP, rtStats.runtime.interpreterStack,
                   "Memory used for JS interpreter frames.");
 
-    RREPORT_BYTES(rtPath + NS_LITERAL_CSTRING("runtime/gc-marker"),
-                  KIND_HEAP, rtStats.runtime.gcMarker,
-                  "Memory used for the GC mark stack and gray roots.");
-
     RREPORT_BYTES(rtPath + NS_LITERAL_CSTRING("runtime/math-cache"),
                   KIND_HEAP, rtStats.runtime.mathCache,
                   "Memory used for the math cache.");
+
+    RREPORT_BYTES(rtPath + NS_LITERAL_CSTRING("runtime/source-data-cache"),
+                  KIND_HEAP, rtStats.runtime.sourceDataCache,
+                  "Memory used for the source data cache, which holds "
+                  "decompressed script source code.");
 
     RREPORT_BYTES(rtPath + NS_LITERAL_CSTRING("runtime/script-data"),
                   KIND_HEAP, rtStats.runtime.scriptData,
@@ -2297,6 +2303,42 @@ ReportJSRuntimeExplicitTreeStats(const JS::RuntimeStats &rtStats,
                   KIND_NONHEAP, rtStats.runtime.code.unused,
                   "Memory allocated by one of the JITs to hold code, "
                   "but which is currently unused.");
+
+    RREPORT_BYTES(rtPath + NS_LITERAL_CSTRING("runtime/gc/marker"),
+                  KIND_HEAP, rtStats.runtime.gc.marker,
+                  "Memory used for the GC mark stack and gray roots.");
+
+    RREPORT_BYTES(rtPath + NS_LITERAL_CSTRING("runtime/gc/nursery"),
+                  KIND_NONHEAP, rtStats.runtime.gc.nursery,
+                  "Memory used for the GC nursery.");
+
+    RREPORT_BYTES(rtPath + NS_LITERAL_CSTRING("runtime/gc/store-buffer/vals"),
+                  KIND_HEAP, rtStats.runtime.gc.storeBufferVals,
+                  "Memory used for values in the store buffer.");
+
+    RREPORT_BYTES(rtPath + NS_LITERAL_CSTRING("runtime/gc/store-buffer/cells"),
+                  KIND_HEAP, rtStats.runtime.gc.storeBufferCells,
+                  "Memory used for cells in the store buffer.");
+
+    RREPORT_BYTES(rtPath + NS_LITERAL_CSTRING("runtime/gc/store-buffer/slots"),
+                  KIND_HEAP, rtStats.runtime.gc.storeBufferSlots,
+                  "Memory used for slots in the store buffer.");
+
+    RREPORT_BYTES(rtPath + NS_LITERAL_CSTRING("runtime/gc/store-buffer/whole-cells"),
+                  KIND_HEAP, rtStats.runtime.gc.storeBufferWholeCells,
+                  "Memory used for whole cells in the store buffer.");
+
+    RREPORT_BYTES(rtPath + NS_LITERAL_CSTRING("runtime/gc/store-buffer/reloc-vals"),
+                  KIND_HEAP, rtStats.runtime.gc.storeBufferRelocVals,
+                  "Memory used for relocatable values in the store buffer.");
+
+    RREPORT_BYTES(rtPath + NS_LITERAL_CSTRING("runtime/gc/store-buffer/reloc-cells"),
+                  KIND_HEAP, rtStats.runtime.gc.storeBufferRelocCells,
+                  "Memory used for relocatable cells in the store buffer.");
+
+    RREPORT_BYTES(rtPath + NS_LITERAL_CSTRING("runtime/gc/store-buffer/generics"),
+                  KIND_HEAP, rtStats.runtime.gc.storeBufferGenerics,
+                  "Memory used for generic things in the store buffer.");
 
     if (rtTotalOut)
         *rtTotalOut = rtTotal;
@@ -2447,6 +2489,15 @@ class OrphanReporter : public JS::ObjectPrivateVisitor
     nsTHashtable <nsISupportsHashKey> mAlreadyMeasuredOrphanTrees;
 };
 
+#ifdef DEBUG
+static bool
+StartsWithExplicit(nsACString& s)
+{
+    const char* e = "explicit/";
+    return Substring(s, 0, strlen(e)).Equals(e);
+}
+#endif
+
 class XPCJSRuntimeStats : public JS::RuntimeStats
 {
     WindowPaths *mWindowPaths;
@@ -2494,6 +2545,8 @@ class XPCJSRuntimeStats : public JS::RuntimeStats
         }
 
         extras->pathPrefix += nsPrintfCString("zone(0x%p)/", (void *)zone);
+
+        MOZ_ASSERT(StartsWithExplicit(extras->pathPrefix));
 
         zStats->extra = extras;
     }
@@ -2562,6 +2615,9 @@ class XPCJSRuntimeStats : public JS::RuntimeStats
         // "explicit/dom/<something>?!/" otherwise (in which case it shouldn't
         // be used, because non-nsGlobalWindow compartments shouldn't have
         // orphan DOM nodes).
+
+        MOZ_ASSERT(StartsWithExplicit(extras->jsPathPrefix));
+        MOZ_ASSERT(StartsWithExplicit(extras->domPathPrefix));
 
         cstats->extra = extras;
     }

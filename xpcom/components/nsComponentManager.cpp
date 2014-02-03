@@ -96,43 +96,15 @@ extern mozilla::Module const *const *const kPStaticModules[];
 #define BIG_REGISTRY_BUFLEN   (512*1024)
 
 // Common Key Names
-const char classIDKeyName[]="classID";
-const char classesKeyName[]="contractID";
-const char componentsKeyName[]="components";
 const char xpcomComponentsKeyName[]="software/mozilla/XPCOM/components";
 const char xpcomKeyName[]="software/mozilla/XPCOM";
 
 // Common Value Names
-const char classIDValueName[]="ClassID";
-const char classNameValueName[]="ClassName";
-const char componentCountValueName[]="ComponentsCount";
-const char componentTypeValueName[]="ComponentType";
-const char contractIDValueName[]="ContractID";
 const char fileSizeValueName[]="FileSize";
-const char inprocServerValueName[]="InprocServer";
 const char lastModValueName[]="LastModTimeStamp";
 const char nativeComponentType[]="application/x-mozilla-native";
 const char staticComponentType[]="application/x-mozilla-static";
-const char jarComponentType[]="application/x-mozilla-jarjs";
-const char versionValueName[]="VersionString";
 
-const static char XPCOM_ABSCOMPONENT_PREFIX[] = "abs:";
-const static char XPCOM_RELCOMPONENT_PREFIX[] = "rel:";
-const static char XPCOM_GRECOMPONENT_PREFIX[] = "gre:";
-
-static const char gIDFormat[] =
-  "{%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x}";
-
-
-#define NS_EMPTY_IID                                 \
-{                                                    \
-    0x00000000,                                      \
-    0x0000,                                          \
-    0x0000,                                          \
-    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00} \
-}
-
-NS_DEFINE_CID(kEmptyCID, NS_EMPTY_IID);
 NS_DEFINE_CID(kCategoryManagerCID, NS_CATEGORYMANAGER_CID);
 
 #define UID_STRING_LENGTH 39
@@ -297,10 +269,7 @@ nsComponentManagerImpl::Create(nsISupports* aOuter, REFNSIID aIID, void** aResul
 static const int CONTRACTID_HASHTABLE_INITIAL_SIZE = 2048;
 
 nsComponentManagerImpl::nsComponentManagerImpl()
-    : MemoryUniReporter("explicit/xpcom/component-manager",
-                        KIND_HEAP, UNITS_BYTES,
-                        "Memory used for the XPCOM component manager.")
-    , mFactories(CONTRACTID_HASHTABLE_INITIAL_SIZE)
+    : mFactories(CONTRACTID_HASHTABLE_INITIAL_SIZE)
     , mContractIDs(CONTRACTID_HASHTABLE_INITIAL_SIZE)
     , mLock("nsComponentManagerImpl.mLock")
     , mStatus(NOT_INITIALIZED)
@@ -818,14 +787,14 @@ nsComponentManagerImpl::~nsComponentManagerImpl()
     PR_LOG(nsComponentManagerLog, PR_LOG_DEBUG, ("nsComponentManager: Destroyed."));
 }
 
-NS_IMPL_ISUPPORTS_INHERITED5(
+NS_IMPL_ISUPPORTS6(
     nsComponentManagerImpl,
-    MemoryUniReporter,
     nsIComponentManager,
     nsIServiceManager,
     nsIComponentRegistrar,
     nsISupportsWeakReference,
-    nsIInterfaceRequestor)
+    nsIInterfaceRequestor,
+    nsIMemoryReporter)
 
 nsresult
 nsComponentManagerImpl::GetInterface(const nsIID & uuid, void **result)
@@ -1690,10 +1659,16 @@ SizeOfContractIDsEntryExcludingThis(nsCStringHashKey::KeyType aKey,
     return aKey.SizeOfExcludingThisMustBeUnshared(aMallocSizeOf);
 }
 
-int64_t
-nsComponentManagerImpl::Amount()
+MOZ_DEFINE_MALLOC_SIZE_OF(ComponentManagerMallocSizeOf)
+
+NS_IMETHODIMP
+nsComponentManagerImpl::CollectReports(nsIHandleReportCallback* aHandleReport,
+                                       nsISupports* aData)
 {
-    return SizeOfIncludingThis(MallocSizeOf);
+    return MOZ_COLLECT_REPORT(
+        "explicit/xpcom/component-manager", KIND_HEAP, UNITS_BYTES,
+        SizeOfIncludingThis(ComponentManagerMallocSizeOf),
+        "Memory used for the XPCOM component manager.");
 }
 
 size_t

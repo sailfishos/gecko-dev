@@ -98,7 +98,7 @@ class JSFunction : public JSObject
             return false;
 
         // Note: this should be kept in sync with FunctionBox::isHeavyweight().
-        return nonLazyScript()->bindings.hasAnyAliasedBindings() ||
+        return nonLazyScript()->hasAnyAliasedBindings() ||
                nonLazyScript()->funHasExtensibleScope() ||
                nonLazyScript()->funNeedsDeclEnvObject() ||
                isGenerator();
@@ -176,10 +176,10 @@ class JSFunction : public JSObject
                (!isSelfHostedBuiltin() || isSelfHostedConstructor());
     }
     bool isNamedLambda() const {
-        return isLambda() && atom_ && !hasGuessedAtom();
+        return isLambda() && displayAtom() && !hasGuessedAtom();
     }
     bool hasParallelNative() const {
-        return isNative() && jitInfo() && !!jitInfo()->parallelNative;
+        return isNative() && jitInfo() && jitInfo()->hasParallelNative();
     }
 
     bool isBuiltinFunctionConstructor();
@@ -236,7 +236,11 @@ class JSFunction : public JSObject
     JSAtom *atom() const { return hasGuessedAtom() ? nullptr : atom_.get(); }
     js::PropertyName *name() const { return hasGuessedAtom() || !atom_ ? nullptr : atom_->asPropertyName(); }
     void initAtom(JSAtom *atom) { atom_.init(atom); }
-    JSAtom *displayAtom() const { return atom_; }
+
+    JSAtom *displayAtom() const {
+        js::AutoThreadSafeAccess ts(this);
+        return atom_;
+    }
 
     void setGuessedAtom(JSAtom *atom) {
         JS_ASSERT(atom_ == nullptr);
@@ -254,6 +258,7 @@ class JSFunction : public JSObject
      * activations (stack frames) of the function.
      */
     JSObject *environment() const {
+        js::AutoThreadSafeAccess ts(this);
         JS_ASSERT(isInterpreted());
         return u.i.env_;
     }
@@ -274,6 +279,7 @@ class JSFunction : public JSObject
     static inline size_t offsetOfAtom() { return offsetof(JSFunction, atom_); }
 
     static bool createScriptForLazilyInterpretedFunction(JSContext *cx, js::HandleFunction fun);
+    void relazify(JSTracer *trc);
 
     // Function Scripts
     //
@@ -303,11 +309,9 @@ class JSFunction : public JSObject
             JS::RootedFunction self(cx, this);
             if (!createScriptForLazilyInterpretedFunction(cx, self))
                 return nullptr;
-            JS_ASSERT(self->hasScript());
-            return self->u.i.s.script_;
+            return self->nonLazyScript();
         }
-        JS_ASSERT(hasScript());
-        return u.i.s.script_;
+        return nonLazyScript();
     }
 
     JSScript *existingScript() {
@@ -324,13 +328,14 @@ class JSFunction : public JSObject
             flags_ |= INTERPRETED;
             initScript(script);
         }
-        JS_ASSERT(hasScript());
-        return u.i.s.script_;
+        return nonLazyScript();
     }
 
     JSScript *nonLazyScript() const {
-        JS_ASSERT(hasScript());
+        js::AutoThreadSafeAccess ts(this);
         JS_ASSERT(js::CurrentThreadCanReadCompilationData());
+        JS_ASSERT(hasScript());
+        JS_ASSERT(u.i.s.script_);
         return u.i.s.script_;
     }
 
@@ -340,12 +345,14 @@ class JSFunction : public JSObject
     }
 
     js::LazyScript *lazyScript() const {
+        js::AutoThreadSafeAccess ts(this);
         JS_ASSERT(isInterpretedLazy() && u.i.s.lazy_);
         JS_ASSERT(js::CurrentThreadCanReadCompilationData());
         return u.i.s.lazy_;
     }
 
     js::LazyScript *lazyScriptOrNull() const {
+        js::AutoThreadSafeAccess ts(this);
         JS_ASSERT(isInterpretedLazy());
         JS_ASSERT(js::CurrentThreadCanReadCompilationData());
         return u.i.s.lazy_;
@@ -383,6 +390,8 @@ class JSFunction : public JSObject
         // lazy script before it is overwritten here.
         JS_ASSERT(js::CurrentThreadCanWriteCompilationData());
         JS_ASSERT(isInterpretedLazy());
+        if (!lazyScript()->maybeScript())
+            lazyScript()->initScript(script);
         flags_ &= ~INTERPRETED_LAZY;
         flags_ |= INTERPRETED;
         initScript(script);
@@ -396,6 +405,7 @@ class JSFunction : public JSObject
     }
 
     JSNative native() const {
+        js::AutoThreadSafeAccess ts(this);
         JS_ASSERT(isNative());
         return u.n.native;
     }
@@ -420,6 +430,7 @@ class JSFunction : public JSObject
     }
 
     const JSJitInfo *jitInfo() const {
+        js::AutoThreadSafeAccess ts(this);
         JS_ASSERT(isNative());
         return u.n.jitinfo;
     }

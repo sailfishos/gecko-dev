@@ -292,6 +292,24 @@ static const FeatureInfo sFeatureInfoArr[] = {
         }
     },
     {
+        "texture_half_float",
+        310, // OpenGL version
+        300, // OpenGL ES version
+        {
+            GLContext::ARB_texture_float,
+            GLContext::NV_half_float,
+            GLContext::Extensions_End
+        }
+        /**
+         * We are not including OES_texture_half_float in this feature, because:
+         *   GL_HALF_FLOAT     = 0x140B
+         *   GL_HALF_FLOAT_ARB = 0x140B == GL_HALF_FLOAT
+         *   GL_HALF_FLOAT_NV  = 0x140B == GL_HALF_FLOAT
+         *   GL_HALF_FLOAT_OES = 0x8D61 != GL_HALF_FLOAT
+         * WebGL handles this specifically with an OES_texture_half_float check.
+         */
+    },
+    {
         "texture_non_power_of_two",
         200, // OpenGL version
         300, // OpenGL ES version
@@ -325,7 +343,7 @@ static const FeatureInfo sFeatureInfoArr[] = {
 };
 
 static inline const FeatureInfo&
-GetFeatureInfo(GLFeature::Enum feature)
+GetFeatureInfo(GLFeature feature)
 {
     static_assert(MOZ_ARRAY_LENGTH(sFeatureInfoArr) == size_t(GLFeature::EnumMax),
                   "Mismatched lengths for sFeatureInfoInfos and GLFeature enums");
@@ -333,11 +351,11 @@ GetFeatureInfo(GLFeature::Enum feature)
     MOZ_ASSERT(feature < GLFeature::EnumMax,
                "GLContext::GetFeatureInfoInfo : unknown <feature>");
 
-    return sFeatureInfoArr[feature];
+    return sFeatureInfoArr[size_t(feature)];
 }
 
 static inline uint32_t
-ProfileVersionForFeature(GLFeature::Enum feature, ContextProfile profile)
+ProfileVersionForFeature(GLFeature feature, ContextProfile profile)
 {
     MOZ_ASSERT(profile != ContextProfile::Unknown,
                "GLContext::ProfileVersionForFeature : unknown <profile>");
@@ -352,7 +370,7 @@ ProfileVersionForFeature(GLFeature::Enum feature, ContextProfile profile)
 }
 
 static inline bool
-IsFeatureIsPartOfProfileVersion(GLFeature::Enum feature,
+IsFeatureIsPartOfProfileVersion(GLFeature feature,
                                 ContextProfile profile, unsigned int version)
 {
     unsigned int profileVersion = ProfileVersionForFeature(feature, profile);
@@ -365,7 +383,7 @@ IsFeatureIsPartOfProfileVersion(GLFeature::Enum feature,
 }
 
 const char*
-GLContext::GetFeatureName(GLFeature::Enum feature)
+GLContext::GetFeatureName(GLFeature feature)
 {
     return GetFeatureInfo(feature).mName;
 }
@@ -391,16 +409,16 @@ CanReadSRGBFromFBOTexture(GLContext* gl)
 void
 GLContext::InitFeatures()
 {
-    for (size_t i = 0; i < GLFeature::EnumMax; i++)
+    for (size_t feature_index = 0; feature_index < size_t(GLFeature::EnumMax); feature_index++)
     {
-        GLFeature::Enum feature = GLFeature::Enum(i);
+        GLFeature feature = GLFeature(feature_index);
 
         if (IsFeatureIsPartOfProfileVersion(feature, mProfile, mVersion)) {
-            mAvailableFeatures[feature] = true;
+            mAvailableFeatures[feature_index] = true;
             continue;
         }
 
-        mAvailableFeatures[feature] = false;
+        mAvailableFeatures[feature_index] = false;
 
         const FeatureInfo& featureInfo = GetFeatureInfo(feature);
 
@@ -413,7 +431,7 @@ GLContext::InitFeatures()
             }
 
             if (IsExtensionSupported(featureInfo.mExtensions[j])) {
-                mAvailableFeatures[feature] = true;
+                mAvailableFeatures[feature_index] = true;
                 break;
             }
         }
@@ -427,15 +445,15 @@ GLContext::InitFeatures()
         (IsExtensionSupported(ARB_framebuffer_sRGB) ||
          IsExtensionSupported(EXT_framebuffer_sRGB));
 
-    mAvailableFeatures[GLFeature::sRGB] =
+    mAvailableFeatures[size_t(GLFeature::sRGB)] =
         aresRGBExtensionsAvailable &&
         CanReadSRGBFromFBOTexture(this);
 }
 
 void
-GLContext::MarkUnsupported(GLFeature::Enum feature)
+GLContext::MarkUnsupported(GLFeature feature)
 {
-    mAvailableFeatures[feature] = false;
+    mAvailableFeatures[size_t(feature)] = false;
 
     const FeatureInfo& featureInfo = GetFeatureInfo(feature);
 

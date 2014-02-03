@@ -113,11 +113,8 @@ include('/ipc/chromium/chromium-config.mozbuild')
 
 LOCAL_INCLUDES += [
     '../../content/base/src',
-    '../../content/events/src',
     '../../content/html/content/src',
     '../../content/svg/content/src',
-    '../../content/xbl/src',
-    '../../dom/base',
     '../../view/src',
     '../forms',
     '../generic',
@@ -129,6 +126,9 @@ LOCAL_INCLUDES += [
     '../xul',
     '../xul/tree/',
     '/docshell/base',
+    '/dom/base',
+    '/dom/events',
+    '/dom/xbl',
     '/xpcom/ds',
 ]
 

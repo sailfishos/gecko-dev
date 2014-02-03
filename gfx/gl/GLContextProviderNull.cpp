@@ -15,7 +15,7 @@ GLContextProviderNull::CreateForWindow(nsIWidget*)
 }
 
 already_AddRefed<GLContext>
-GLContextProviderNull::CreateForEmbedded(ContextFlags flags)
+GLContextProviderNull::CreateForEmbedded()
 {
     return nullptr;
 }

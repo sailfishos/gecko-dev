@@ -24,13 +24,11 @@ struct DOMPoint {
   int32_t idx;
 };
 
-enum EGetTextType { eGetBefore=-1, eGetAt=0, eGetAfter=1 };
-
 // This character marks where in the text returned via nsIAccessibleText(),
 // that embedded object characters exist
-const PRUnichar kEmbeddedObjectChar = 0xfffc;
-const PRUnichar kImaginaryEmbeddedObjectChar = ' ';
-const PRUnichar kForcedNewLineChar = '\n';
+const char16_t kEmbeddedObjectChar = 0xfffc;
+const char16_t kImaginaryEmbeddedObjectChar = ' ';
+const char16_t kForcedNewLineChar = '\n';
 
 /**
   * Special Accessible that knows how contain both text and embedded objects
@@ -162,54 +160,50 @@ public:
   /**
    * Return character count within the hypertext accessible.
    */
-  uint32_t CharacterCount()
-  {
-    return GetChildOffset(ChildCount());
-  }
+  uint32_t CharacterCount() const
+    { return GetChildOffset(ChildCount()); }
 
   /**
    * Get a character at the given offset (don't support magic offsets).
    */
-  bool CharAt(int32_t aOffset, nsAString& aChar)
+  bool CharAt(int32_t aOffset, nsAString& aChar,
+              int32_t* aStartOffset = nullptr, int32_t* aEndOffset = nullptr)
   {
+    NS_ASSERTION(!aStartOffset == !aEndOffset,
+                 "Offsets should be both defined or both undefined!");
+
     int32_t childIdx = GetChildIndexAtOffset(aOffset);
     if (childIdx == -1)
       return false;
 
     Accessible* child = GetChildAt(childIdx);
     child->AppendTextTo(aChar, aOffset - GetChildOffset(childIdx), 1);
+
+    if (aStartOffset && aEndOffset) {
+      *aStartOffset = aOffset;
+      *aEndOffset = aOffset + aChar.Length();
+    }
     return true;
+  }
+
+  char16_t CharAt(int32_t aOffset)
+  {
+    nsAutoString charAtOffset;
+    CharAt(aOffset, charAtOffset);
+    return charAtOffset.CharAt(0);
   }
 
   /**
    * Return true if char at the given offset equals to given char.
    */
-  bool IsCharAt(int32_t aOffset, char aChar)
-  {
-    nsAutoString charAtOffset;
-    CharAt(aOffset, charAtOffset);
-    return charAtOffset.CharAt(0) == aChar;
-  }
+  bool IsCharAt(int32_t aOffset, char16_t aChar)
+    { return CharAt(aOffset) == aChar; }
 
   /**
    * Return true if terminal char is at the given offset.
    */
   bool IsLineEndCharAt(int32_t aOffset)
     { return IsCharAt(aOffset, '\n'); }
-
-  /**
-   * Get a character before/at/after the given offset.
-   *
-   * @param aOffset       [in] the given offset
-   * @param aShift        [in] specifies whether to get a char before/at/after
-   *                        offset
-   * @param aChar         [out] the character
-   * @param aStartOffset  [out, optional] the start offset of the character
-   * @param aEndOffset    [out, optional] the end offset of the character
-   * @return               false if offset at the given shift is out of range
-   */
-  bool GetCharAt(int32_t aOffset, EGetTextType aShift, nsAString& aChar,
-                 int32_t* aStartOffset = nullptr, int32_t* aEndOffset = nullptr);
 
   /**
    * Return text between given offsets.
@@ -251,7 +245,7 @@ public:
    *                           cached offsets for next siblings of the child
    */
   int32_t GetChildOffset(Accessible* aChild,
-                         bool aInvalidateAfter = false)
+                         bool aInvalidateAfter = false) const
   {
     int32_t index = GetIndexOf(aChild);
     return index == -1 ? -1 : GetChildOffset(index, aInvalidateAfter);
@@ -261,21 +255,21 @@ public:
    * Return text offset for the child accessible index.
    */
   int32_t GetChildOffset(uint32_t aChildIndex,
-                         bool aInvalidateAfter = false);
+                         bool aInvalidateAfter = false) const;
 
   /**
    * Return child accessible at the given text offset.
    *
    * @param  aOffset  [in] the given text offset
    */
-  int32_t GetChildIndexAtOffset(uint32_t aOffset);
+  int32_t GetChildIndexAtOffset(uint32_t aOffset) const;
 
   /**
    * Return child accessible at the given text offset.
    *
    * @param  aOffset  [in] the given text offset
    */
-  Accessible* GetChildAtOffset(uint32_t aOffset)
+  Accessible* GetChildAtOffset(uint32_t aOffset) const
   {
     return GetChildAt(GetChildIndexAtOffset(aOffset));
   }
@@ -402,6 +396,11 @@ protected:
   int32_t AdjustCaretOffset(int32_t aOffset) const;
 
   /**
+   * Return true if caret is at end of line.
+   */
+  bool IsCaretAtEndOfLine() const;
+
+  /**
    * Return true if the given offset points to terminal empty line if any.
    */
   bool IsEmptyLastLineOffset(int32_t aOffset)
@@ -517,7 +516,7 @@ private:
   /**
    * End text offsets array.
    */
-  nsTArray<uint32_t> mOffsets;
+  mutable nsTArray<uint32_t> mOffsets;
 };
 
 

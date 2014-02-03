@@ -15,11 +15,14 @@
  * limitations under the License.
  */
 
+#include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/android_alarm.h>
 #include <math.h>
+#include <regex.h>
 #include <stdio.h>
+#include <sys/klog.h>
 #include <sys/syscall.h>
 #include <sys/resource.h>
 #include <time.h>
@@ -190,7 +193,7 @@ VibratorRunnable::Run()
 
 NS_IMETHODIMP
 VibratorRunnable::Observe(nsISupports *subject, const char *topic,
-                          const PRUnichar *data)
+                          const char16_t *data)
 {
   MOZ_ASSERT(strcmp(topic, NS_XPCOM_SHUTDOWN_OBSERVER_ID) == 0);
   MonitorAutoLock lock(mMonitor);
@@ -756,10 +759,38 @@ GetTimezoneOffset()
   return -(offset / 60);
 }
 
+static int32_t sKernelTimezoneOffset = 0;
+
+static void
+UpdateKernelTimezone(int32_t timezoneOffset)
+{
+  if (sKernelTimezoneOffset == timezoneOffset) {
+    return;
+  }
+
+  // Tell the kernel about the new time zone as well, so that FAT filesystems
+  // will get local timestamps rather than UTC timestamps.
+  //
+  // We assume that /init.rc has a sysclktz entry so that settimeofday has
+  // already been called once before we call it (there is a side-effect in
+  // the kernel the very first time settimeofday is called where it does some
+  // special processing if you only set the timezone).
+  struct timezone tz;
+  memset(&tz, 0, sizeof(tz));
+  tz.tz_minuteswest = timezoneOffset;
+  settimeofday(nullptr, &tz);
+  sKernelTimezoneOffset = timezoneOffset;
+}
+
 void
 SetTimezone(const nsCString& aTimezoneSpec)
 {
   if (aTimezoneSpec.Equals(GetTimezone())) {
+    // Even though the timezone hasn't changed, we still need to tell the
+    // kernel what the current timezone is. The timezone is persisted in
+    // a property and doesn't change across reboots, but the kernel still
+    // needs to be updated on every boot.
+    UpdateKernelTimezone(GetTimezoneOffset());
     return;
   }
 
@@ -769,6 +800,7 @@ SetTimezone(const nsCString& aTimezoneSpec)
   // functions that depend on the timezone. To be safe, we call it manually.
   tzset();
   int32_t newTimezoneOffsetMinutes = GetTimezoneOffset();
+  UpdateKernelTimezone(newTimezoneOffsetMinutes);
   hal::NotifySystemTimezoneChange(
     hal::SystemTimezoneChangeInformation(
       oldTimezoneOffsetMinutes, newTimezoneOffsetMinutes));
@@ -1038,6 +1070,131 @@ RoundOomScoreAdjUpWithBackroundLRU(int& aOomScoreAdj, uint32_t aBackgroundLRU)
     ceil(((float)OOM_SCORE_ADJ_MAX / OOM_ADJUST_MAX) * aBackgroundLRU);
 }
 
+#define OOM_LOG(level, args...) __android_log_print(level, "OomLogger", ##args)
+class OomVictimLogger MOZ_FINAL
+  : public nsIObserver
+{
+public:
+  OomVictimLogger()
+    : mLastLineChecked(-1.0),
+      mRegexes(nullptr)
+  {
+    // Enable timestamps in kernel's printk
+    WriteToFile("/sys/module/printk/parameters/time", "Y");
+  }
+
+  NS_DECL_ISUPPORTS
+  NS_DECL_NSIOBSERVER
+private:
+  double mLastLineChecked;
+  ScopedFreePtr<regex_t> mRegexes;
+};
+NS_IMPL_ISUPPORTS1(OomVictimLogger, nsIObserver);
+
+NS_IMETHODIMP
+OomVictimLogger::Observe(
+  nsISupports* aSubject,
+  const char* aTopic,
+  const char16_t* aData)
+{
+  nsDependentCString event_type(aTopic);
+  if (!event_type.EqualsLiteral("ipc:content-shutdown")) {
+    return NS_OK;
+  }
+
+  // OOM message finding regexes
+  const char* const regexes_raw[] = {
+    ".*select.*to kill.*",
+    ".*send sigkill to.*",
+    ".*lowmem_shrink.*, return",
+    ".*lowmem_shrink.*, ofree.*"};
+  const size_t regex_count = NS_ARRAY_LENGTH(regexes_raw);
+
+  // Compile our regex just in time
+  if (!mRegexes) {
+    mRegexes = static_cast<regex_t*>(malloc(sizeof(regex_t) * regex_count));
+    for (size_t i = 0; i < regex_count; i++) {
+      int compilation_err = regcomp(&(mRegexes[i]), regexes_raw[i], REG_NOSUB);
+      if (compilation_err) {
+        OOM_LOG(ANDROID_LOG_ERROR, "Cannot compile regex \"%s\"\n", regexes_raw[i]);
+        return NS_OK;
+      }
+    }
+  }
+
+#ifndef KLOG_SIZE_BUFFER
+  // Upstream bionic in commit
+  // e249b059637b49a285ed9f58a2a18bfd054e5d95
+  // deprecated the old klog defs.
+  // Our current bionic does not hit this
+  // change yet so handle the future change.
+  #define KLOG_SIZE_BUFFER KLOG_WRITE
+#else
+  // Once the change hits our bionic this ifndef
+  // can be removed.
+  #warning "Please remove KLOG_UNREAD_SIZE compatability def"
+#endif
+  // Retreive kernel log
+  int msg_buf_size = klogctl(KLOG_SIZE_BUFFER, NULL, 0);
+  ScopedFreePtr<char> msg_buf(static_cast<char *>(malloc(msg_buf_size + 1)));
+  int read_size = klogctl(KLOG_READ_ALL, msg_buf.rwget(), msg_buf_size);
+
+  // Turn buffer into cstring
+  read_size = read_size > msg_buf_size ? msg_buf_size : read_size;
+  msg_buf.rwget()[read_size] = '\0';
+
+  // Foreach line
+  char* line_end;
+  char* line_begin = msg_buf.rwget();
+  for (; (line_end = strchr(line_begin, '\n')); line_begin = line_end + 1) {
+    // make line into cstring
+    *line_end = '\0';
+
+    // Note: Kernel messages look like:
+    // <5>[63648.286409] sd 35:0:0:0: Attached scsi generic sg1 type 0
+    // 5 is the loging level
+    // [*] is the time timestamp, seconds since boot
+    // last comes the logged message
+
+    // Since the logging level can be a string we must
+    // skip it since scanf lacks wildcard matching
+    char*  timestamp_begin = strchr(line_begin, '[');
+    char   after_float;
+    double lineTimestamp = -1;
+    bool   lineTimestampFound = false;
+    if (timestamp_begin &&
+         // Note: scanf treats a ' ' as [ ]*
+         // Note: scanf treats [ %lf] as [ %lf thus we must check
+         // for the closing bracket outselves.
+         2 == sscanf(timestamp_begin, "[ %lf%c", &lineTimestamp, &after_float) &&
+         after_float == ']') {
+      if (lineTimestamp <= mLastLineChecked) {
+        continue;
+      }
+
+      lineTimestampFound = true;
+      mLastLineChecked = lineTimestamp;
+    }
+      
+
+    // Log interesting lines
+    for (size_t i = 0; i < regex_count; i++) {
+      int matching = !regexec(&(mRegexes[i]), line_begin, 0, NULL, 0);
+      if (matching) {
+        // Log content of kernel message
+        line_begin = strchr(line_begin, ']') + 2;
+        if (!lineTimestampFound) {
+          OOM_LOG(ANDROID_LOG_WARN, "following kill message may be a duplicate");
+        }
+        OOM_LOG(ANDROID_LOG_ERROR, "[Kill]: %s\n", line_begin);
+        break;
+      }
+    }
+  }
+
+  return NS_OK;
+}
+
 static void
 EnsureKernelLowMemKillerParamsSet()
 {
@@ -1130,6 +1287,13 @@ EnsureKernelLowMemKillerParamsSet()
     // notify_trigger is in pages.
     WriteToFile("/sys/module/lowmemorykiller/parameters/notify_trigger",
       nsPrintfCString("%d", lowMemNotifyThresholdMB * 1024 * 1024 / PAGE_SIZE).get());
+  }
+
+  // Ensure OOM events appear in logcat
+  nsRefPtr<OomVictimLogger> oomLogger = new OomVictimLogger();
+  nsCOMPtr<nsIObserverService> os = services::GetObserverService();
+  if (os) {
+    os->AddObserver(oomLogger, "ipc:content-shutdown", false);
   }
 }
 

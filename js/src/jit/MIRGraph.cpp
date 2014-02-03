@@ -16,10 +16,12 @@
 using namespace js;
 using namespace js::jit;
 
-MIRGenerator::MIRGenerator(CompileCompartment *compartment,
-                           TempAllocator *alloc, MIRGraph *graph, CompileInfo *info)
+MIRGenerator::MIRGenerator(CompileCompartment *compartment, const JitCompileOptions &options,
+                           TempAllocator *alloc, MIRGraph *graph, CompileInfo *info,
+                           const OptimizationInfo *optimizationInfo)
   : compartment(compartment),
     info_(info),
+    optimizationInfo_(optimizationInfo),
     alloc_(alloc),
     graph_(graph),
     error_(false),
@@ -28,7 +30,9 @@ MIRGenerator::MIRGenerator(CompileCompartment *compartment,
     performsAsmJSCall_(false),
     asmJSHeapAccesses_(*alloc),
     asmJSGlobalAccesses_(*alloc),
-    minAsmJSHeapLength_(AsmJSAllocationGranularity)
+    minAsmJSHeapLength_(AsmJSAllocationGranularity),
+    modifiesFrameArguments_(false),
+    options(options)
 { }
 
 bool
@@ -251,11 +255,18 @@ MBasicBlock::NewAsmJS(MIRGraph &graph, CompileInfo &info, MBasicBlock *pred, Kin
         block->stackPosition_ = pred->stackPosition_;
 
         if (block->kind_ == PENDING_LOOP_HEADER) {
-            for (size_t i = 0; i < block->stackPosition_; i++) {
+            size_t nphis = block->stackPosition_;
+
+            TempAllocator &alloc = graph.alloc();
+            MPhi *phis = (MPhi*)alloc.allocateArray<sizeof(MPhi)>(nphis);
+            if (!phis)
+                return nullptr;
+
+            for (size_t i = 0; i < nphis; i++) {
                 MDefinition *predSlot = pred->getSlot(i);
 
                 JS_ASSERT(predSlot->type() != MIRType_Value);
-                MPhi *phi = MPhi::New(graph.alloc(), i, predSlot->type());
+                MPhi *phi = new(phis + i) MPhi(alloc, i, predSlot->type());
 
                 JS_ALWAYS_TRUE(phi->reserveLength(2));
                 phi->addInput(predSlot);

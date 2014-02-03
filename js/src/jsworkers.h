@@ -31,7 +31,7 @@ namespace jit {
   class IonBuilder;
 }
 
-#ifdef JS_WORKER_THREADS
+#ifdef JS_THREADSAFE
 
 /* Per-runtime state for off thread work items. */
 class WorkerThreadState
@@ -199,13 +199,15 @@ struct WorkerThread
     void threadLoop();
 };
 
-#endif /* JS_WORKER_THREADS */
+#endif /* JS_THREADSAFE */
 
 /* Methods for interacting with worker threads. */
 
 /* Initialize worker threads unless already initialized. */
 bool
 EnsureWorkerThreadsInitialized(ExclusiveContext *cx);
+
+#ifdef JS_ION
 
 /* Perform MIR optimization and LIR generation on a single function. */
 bool
@@ -217,6 +219,8 @@ StartOffThreadAsmJSCompile(ExclusiveContext *cx, AsmJSParallelTask *asmData);
  */
 bool
 StartOffThreadIonCompile(JSContext *cx, jit::IonBuilder *builder);
+
+#endif // JS_ION
 
 /*
  * Cancel a scheduled or in progress Ion compilation for script. If script is
@@ -253,7 +257,7 @@ class AutoLockWorkerThreadState
 {
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 
-#ifdef JS_WORKER_THREADS
+#ifdef JS_THREADSAFE
     WorkerThreadState &state;
 
   public:
@@ -290,7 +294,7 @@ class AutoUnlockWorkerThreadState
       : rt(rt)
     {
         MOZ_GUARD_OBJECT_NOTIFIER_INIT;
-#ifdef JS_WORKER_THREADS
+#ifdef JS_THREADSAFE
         JS_ASSERT(rt->workerThreadState);
         rt->workerThreadState->unlock();
 #else
@@ -300,7 +304,7 @@ class AutoUnlockWorkerThreadState
 
     ~AutoUnlockWorkerThreadState()
     {
-#ifdef JS_WORKER_THREADS
+#ifdef JS_THREADSAFE
         rt->workerThreadState->lock();
 #endif
     }
@@ -338,10 +342,17 @@ struct ParseTask
     // Rooted pointer to the scope in the target compartment which the
     // resulting script will be merged into. This is not safe to use off the
     // main thread.
-    JSObject *scopeChain;
+    PersistentRootedObject scopeChain;
 
     // Rooted pointer to the global object used by 'cx'.
-    JSObject *exclusiveContextGlobal;
+    PersistentRootedObject exclusiveContextGlobal;
+
+    // Saved GC-managed CompileOptions fields that will populate slots in
+    // the ScriptSourceObject. We create the ScriptSourceObject in the
+    // compilation's temporary compartment, so storing these values there
+    // at that point would create cross-compartment references. Instead we
+    // hold them here, and install them after merging the compartments.
+    PersistentRootedObject optionsElement;
 
     // Callback invoked off the main thread when the parse finishes.
     JS::OffThreadCompileCallback callback;
@@ -363,9 +374,17 @@ struct ParseTask
     bool init(JSContext *cx, const ReadOnlyCompileOptions &options);
 
     void activate(JSRuntime *rt);
+    void finish();
 
     ~ParseTask();
 };
+
+#ifdef JS_THREADSAFE
+// Return whether, if a new parse task was started, it would need to wait for
+// an in-progress GC to complete before starting.
+extern bool
+OffThreadParsingMustWaitForGC(JSRuntime *rt);
+#endif
 
 // Compression tasks are allocated on the stack by their triggering thread,
 // which will block on the compression completing as the task goes out of scope
@@ -374,7 +393,7 @@ struct SourceCompressionTask
 {
     friend class ScriptSource;
 
-#ifdef JS_WORKER_THREADS
+#ifdef JS_THREADSAFE
     // Thread performing the compression.
     WorkerThread *workerThread;
 #endif
@@ -399,7 +418,7 @@ struct SourceCompressionTask
     explicit SourceCompressionTask(ExclusiveContext *cx)
       : cx(cx), ss(nullptr), chars(nullptr), oom(false), abort_(0)
     {
-#ifdef JS_WORKER_THREADS
+#ifdef JS_THREADSAFE
         workerThread = nullptr;
 #endif
     }
@@ -409,7 +428,7 @@ struct SourceCompressionTask
         complete();
     }
 
-    bool compress();
+    bool work();
     bool complete();
     void abort() { abort_ = 1; }
     bool active() const { return !!ss; }

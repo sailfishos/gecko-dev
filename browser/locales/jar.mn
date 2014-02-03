@@ -6,6 +6,7 @@
 
 @AB_CD@.jar:
 % locale browser @AB_CD@ %locale/browser/
+    locale/browser/aboutAccounts.dtd               (%chrome/browser/aboutAccounts.dtd)
     locale/browser/aboutCertError.dtd              (%chrome/browser/aboutCertError.dtd)
     locale/browser/aboutDialog.dtd                 (%chrome/browser/aboutDialog.dtd)
     locale/browser/aboutPrivateBrowsing.dtd        (%chrome/browser/aboutPrivateBrowsing.dtd)
@@ -17,13 +18,12 @@
     locale/browser/aboutSessionRestore.dtd         (%chrome/browser/aboutSessionRestore.dtd)
 #ifdef MOZ_SERVICES_SYNC
     locale/browser/syncProgress.dtd                (%chrome/browser/syncProgress.dtd)
+    locale/browser/syncCustomize.dtd               (%chrome/browser/syncCustomize.dtd)
     locale/browser/aboutSyncTabs.dtd               (%chrome/browser/aboutSyncTabs.dtd)
 #endif
     locale/browser/browser.dtd                     (%chrome/browser/browser.dtd)
     locale/browser/baseMenuOverlay.dtd             (%chrome/browser/baseMenuOverlay.dtd)
     locale/browser/browser.properties              (%chrome/browser/browser.properties)
-    locale/browser/charsetMenu.properties          (%chrome/browser/charsetMenu.properties)
-    locale/browser/charsetMenu.dtd                 (%chrome/browser/charsetMenu.dtd)
     locale/browser/customizableui/customizableWidgets.properties (%chrome/browser/customizableui/customizableWidgets.properties)
     locale/browser/devtools/appcacheutils.properties  (%chrome/browser/devtools/appcacheutils.properties)
     locale/browser/devtools/debugger.dtd              (%chrome/browser/devtools/debugger.dtd)
@@ -60,8 +60,6 @@
     locale/browser/devtools/app-manager.properties (%chrome/browser/devtools/app-manager.properties)
     locale/browser/newTab.dtd                      (%chrome/browser/newTab.dtd)
     locale/browser/newTab.properties               (%chrome/browser/newTab.properties)
-    locale/browser/openLocation.dtd                (%chrome/browser/openLocation.dtd)
-    locale/browser/openLocation.properties         (%chrome/browser/openLocation.properties)
     locale/browser/pageInfo.dtd                    (%chrome/browser/pageInfo.dtd)
     locale/browser/pageInfo.properties             (%chrome/browser/pageInfo.properties)
     locale/browser/quitDialog.properties           (%chrome/browser/quitDialog.properties)
