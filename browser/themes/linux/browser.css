@@ -1682,10 +1682,6 @@ toolbarbutton.chevron > .toolbarbutton-icon {
 
 /* Sync Panel */
 
-.sync-panel {
-  padding: 10px;
-}
-
 .sync-panel-icon {
   width: 32px;
   background: url("chrome://browser/content/abouthome/sync.png") top left no-repeat;
@@ -1700,7 +1696,8 @@ toolbarbutton.chevron > .toolbarbutton-icon {
   margin-top: 1em;
 }
 
-#sync-error-panel-title {
+#sync-error-panel-title,
+#sync-start-panel-title {
   font-weight: bold;
 }
 
@@ -1921,10 +1918,6 @@ chatbox {
   background-attachment: fixed;
 }
 
-#main-window:-moz-any([customize-entering],[customize-entered]) #tab-view-deck {
-  padding: 0 2em 2em;
-}
-
 #main-window[customize-entered] #navigator-toolbox > toolbar:not(#toolbar-menubar):not(#TabsToolbar),
 #main-window[customize-entered] #customization-container {
   border: 3px solid hsla(0,0%,0%,.1);
@@ -1947,6 +1940,11 @@ chatbox {
   border-left: 3px solid transparent;
 }
 
+#main-window[customizing] #TabsToolbar::after {
+  margin-left: 2em;
+  margin-right: 2em;
+}
+
 /* End customization mode */
 
 
@@ -1958,3 +1956,20 @@ chatbox {
 }
 
 %include ../shared/UITour.inc.css
+
+#UITourTooltipDescription {
+  font-size: 1.05rem;
+}
+
+#UITourTooltipClose {
+  -moz-appearance: toolbarbutton;
+  list-style-image: url("moz-icon://stock/gtk-close?size=menu");
+}
+
+#UITourTooltipClose > .toolbarbutton-icon {
+  margin: -4px;
+}
+
+#UITourTooltipButtons {
+  margin-bottom: 0;
+}

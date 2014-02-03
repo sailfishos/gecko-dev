@@ -2155,9 +2155,13 @@ nsXPCConstructor::CallOrConstruct(nsIXPConnectWrappedNative *wrapper,JSContext *
         return ThrowAndFail(NS_ERROR_XPC_CANT_CREATE_WN, cx, _retval);
     }
 
-    Value argv[1] = {ObjectValue(*iidObj)};
+    JS::AutoValueVector argv(cx);
+    MOZ_ALWAYS_TRUE(argv.resize(1));
+    argv[0].setObject(*iidObj);
+
     RootedValue rval(cx);
-    if (!JS_CallFunctionName(cx, cidObj, "createInstance", 1, argv, rval.address()) ||
+    if (!JS_CallFunctionName(cx, cidObj, "createInstance", 1, argv.begin(),
+                             rval.address()) ||
         rval.isPrimitive()) {
         // createInstance will have thrown an exception
         *_retval = false;
@@ -2565,7 +2569,8 @@ nsXPCComponents_Utils::ReportError(HandleValue error, JSContext *cx)
 
     const uint64_t innerWindowID = nsJSUtils::GetCurrentlyRunningCodeInnerWindowID(cx);
 
-    JSErrorReport *err = JS_ErrorFromException(cx, error);
+    RootedObject errorObj(cx, error.isObject() ? &error.toObject() : nullptr);
+    JSErrorReport *err = errorObj ? JS_ErrorFromException(cx, errorObj) : nullptr;
     if (err) {
         // It's a proper JS Error
         nsAutoString fileUni;

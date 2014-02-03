@@ -136,7 +136,6 @@ nsXPCWrappedJSClass::nsXPCWrappedJSClass(JSContext* cx, REFNSIID aIID,
       mIID(aIID),
       mDescriptors(nullptr)
 {
-    NS_ADDREF(mInfo);
     NS_ADDREF_THIS();
 
     mRuntime->GetWrappedJSClassMap()->Add(this);
@@ -177,7 +176,6 @@ nsXPCWrappedJSClass::~nsXPCWrappedJSClass()
 
     if (mName)
         nsMemory::Free(mName);
-    NS_IF_RELEASE(mInfo);
 }
 
 JSObject*
@@ -190,7 +188,6 @@ nsXPCWrappedJSClass::CallQueryInterfaceOnJSObject(JSContext* cx,
     RootedValue retval(cx);
     RootedObject retObj(cx);
     bool success = false;
-    jsid funid;
     RootedValue fun(cx);
 
     // Don't call the actual function on a content object. We'll determine
@@ -210,7 +207,7 @@ nsXPCWrappedJSClass::CallQueryInterfaceOnJSObject(JSContext* cx,
         return nullptr;
 
     // check upfront for the existence of the function property
-    funid = mRuntime->GetStringID(XPCJSRuntime::IDX_QUERY_INTERFACE);
+    HandleId funid = mRuntime->GetStringID(XPCJSRuntime::IDX_QUERY_INTERFACE);
     if (!JS_GetPropertyById(cx, jsobj, funid, &fun) || JSVAL_IS_PRIMITIVE(fun))
         return nullptr;
 
@@ -240,8 +237,11 @@ nsXPCWrappedJSClass::CallQueryInterfaceOnJSObject(JSContext* cx,
         {
             AutoSaveContextOptions asco(cx);
             ContextOptionsRef(cx).setDontReportUncaught(true);
-            jsval args[1] = {OBJECT_TO_JSVAL(id)};
-            success = JS_CallFunctionValue(cx, jsobj, fun, 1, args, retval.address());
+            JS::AutoValueVector argv(cx);
+            MOZ_ALWAYS_TRUE(argv.resize(1));
+            argv[0].setObject(*id);
+            success = JS_CallFunctionValue(cx, jsobj, fun, 1, argv.begin(),
+                                           retval.address());
         }
 
         if (!success && JS_IsExceptionPending(cx)) {
@@ -294,8 +294,8 @@ nsXPCWrappedJSClass::CallQueryInterfaceOnJSObject(JSContext* cx,
 
 static bool
 GetNamedPropertyAsVariantRaw(XPCCallContext& ccx,
-                             JSObject* aJSObj,
-                             jsid aName,
+                             HandleObject aJSObj,
+                             HandleId aName,
                              nsIVariant** aResult,
                              nsresult* pErr)
 {
@@ -1359,11 +1359,15 @@ pre_call_clean_up:
 
         if (param.IsRetval())
             val = rval;
-        else if (JSVAL_IS_PRIMITIVE(argv[i]) ||
-                 !JS_GetPropertyById(cx, JSVAL_TO_OBJECT(argv[i]),
-                                     mRuntime->GetStringID(XPCJSRuntime::IDX_VALUE),
-                                     &val))
+        else if (argv[i].isPrimitive())
             break;
+        else {
+            RootedObject obj(cx, &argv[i].toObject());
+            if (!JS_GetPropertyById(cx, obj,
+                                    mRuntime->GetStringID(XPCJSRuntime::IDX_VALUE),
+                                    &val))
+                break;
+        }
 
         // setup allocator and/or iid
 
@@ -1404,10 +1408,13 @@ pre_call_clean_up:
 
             if (param.IsRetval())
                 val = rval;
-            else if (!JS_GetPropertyById(cx, JSVAL_TO_OBJECT(argv[i]),
-                                         mRuntime->GetStringID(XPCJSRuntime::IDX_VALUE),
-                                         &val))
-                break;
+            else {
+                RootedObject obj(cx, &argv[i].toObject());
+                if (!JS_GetPropertyById(cx, obj,
+                                        mRuntime->GetStringID(XPCJSRuntime::IDX_VALUE),
+                                        &val))
+                    break;
+            }
 
             // setup allocator and/or iid
 
@@ -1556,7 +1563,7 @@ nsXPCWrappedJSClass::DebugDump(int16_t depth)
         XPC_LOG_ALWAYS(("IID number is %s", iid ? iid : "invalid"));
         if (iid)
             NS_Free(iid);
-        XPC_LOG_ALWAYS(("InterfaceInfo @ %x", mInfo));
+        XPC_LOG_ALWAYS(("InterfaceInfo @ %x", mInfo.get()));
         uint16_t methodCount = 0;
         if (depth) {
             uint16_t i;

@@ -1471,10 +1471,9 @@ nsFlexContainerFrame::SanityCheckAnonymousFlexItems() const
 // Based on the sign of aTotalViolation, this function freezes a subset of our
 // flexible sizes, and restores the remaining ones to their initial pref sizes.
 static void
-FreezeOrRestoreEachFlexibleSize(
-  const nscoord aTotalViolation,
-  nsTArray<FlexItem>& aItems,
-  bool aFinalIteration)
+FreezeOrRestoreEachFlexibleSize(const nscoord aTotalViolation,
+                                nsTArray<FlexItem>& aItems,
+                                bool aFinalIteration)
 {
   enum FreezeType {
     eFreezeEverything,
@@ -2456,7 +2455,7 @@ ClampFlexContainerMainSize(const nsHTMLReflowState& aReflowState,
     // that's larger; but of course not more than our own computed height).
     // XXXdholbert For now, we don't support pushing children to our next
     // continuation or splitting children, so "amount of height required by
-    // our children" is just the sum of our children's heights.
+    // our children" is just the main-size (height) of our longest flex line.
     NS_FRAME_SET_INCOMPLETE(aStatus);
     nscoord largestLineOuterSize = GetLargestLineMainSize(aLines);
 

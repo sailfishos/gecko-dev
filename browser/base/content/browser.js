@@ -15,6 +15,8 @@ XPCOMUtils.defineLazyModuleGetter(this, "Task",
                                   "resource://gre/modules/Task.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "CharsetMenu",
                                   "resource://gre/modules/CharsetMenu.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "ShortcutUtils",
+                                  "resource://gre/modules/ShortcutUtils.jsm");
 
 const nsIWebNavigation = Ci.nsIWebNavigation;
 
@@ -3731,6 +3733,22 @@ var XULBrowserWindow = {
       setTimeout(function () { XULBrowserWindow.asyncUpdateUI(); }, 0);
     else
       this.asyncUpdateUI();
+
+#ifdef MOZ_CRASHREPORTER
+    if (aLocationURI) {
+      let uri = aLocationURI.clone();
+      try {
+        // If the current URI contains a username/password, remove it.
+        uri.userPass = "";
+      } catch (ex) { /* Ignore failures on about: URIs. */ }
+
+      try {
+        gCrashReporter.annotateCrashReport("URL", uri.spec);
+      } catch (ex if ex.result == Components.results.NS_ERROR_NOT_INITIALIZED) {
+        // Don't make noise when the crash reporter is built but not enabled.
+      }
+    }
+#endif
   },
 
   asyncUpdateUI: function () {
@@ -3990,15 +4008,6 @@ var CombinedStopReload = {
 
 var TabsProgressListener = {
   onStateChange: function (aBrowser, aWebProgress, aRequest, aStateFlags, aStatus) {
-#ifdef MOZ_CRASHREPORTER
-    if (aRequest instanceof Ci.nsIChannel &&
-        aStateFlags & Ci.nsIWebProgressListener.STATE_START &&
-        aStateFlags & Ci.nsIWebProgressListener.STATE_IS_DOCUMENT &&
-        gCrashReporter.enabled) {
-      gCrashReporter.annotateCrashReport("URL", aRequest.URI.spec);
-    }
-#endif
-
     // Collect telemetry data about tab load times.
     if (aWebProgress.isTopLevel) {
       if (aStateFlags & Ci.nsIWebProgressListener.STATE_IS_WINDOW) {
@@ -4359,8 +4368,6 @@ var TabsInTitlebar = {
     this._menuObserver = new MutationObserver(this._onMenuMutate);
     this._menuObserver.observe(menu, {attributes: true});
 
-    gNavToolbox.addEventListener("customization-transitionend", this);
-
     this.onAreaReset = function(aArea) {
       if (aArea == CustomizableUI.AREA_TABSTRIP || aArea == CustomizableUI.AREA_MENUBAR)
         this._update(true);
@@ -4405,12 +4412,6 @@ var TabsInTitlebar = {
   observe: function (subject, topic, data) {
     if (topic == "nsPref:changed")
       this._readPref();
-  },
-
-  handleEvent: function(ev) {
-    if (ev.type == "customization-transitionend") {
-      this._update(true);
-    }
   },
 
   _onMenuMutate: function (aMutations) {
@@ -4819,6 +4820,44 @@ var gHomeButton = {
                              homeButton.className.replace("bookmark-item", "toolbarbutton-1");
   },
 };
+
+const nodeToTooltipMap = {
+  "bookmarks-menu-button": "bookmarksMenuButton.tooltip",
+#ifdef XP_MACOSX
+  "print-button": "printButton.tooltip",
+#endif
+  "new-window-button": "newWindowButton.tooltip",
+  "fullscreen-button": "fullscreenButton.tooltip",
+  "tabview-button": "tabviewButton.tooltip",
+};
+const nodeToShortcutMap = {
+  "bookmarks-menu-button": "manBookmarkKb",
+#ifdef XP_MACOSX
+  "print-button": "printKb",
+#endif
+  "new-window-button": "key_newNavigator",
+  "fullscreen-button": "key_fullScreen",
+  "tabview-button": "key_tabview",
+};
+const gDynamicTooltipCache = new Map();
+function UpdateDynamicShortcutTooltipText(popupTriggerNode) {
+  let label = document.getElementById("dynamic-shortcut-tooltip-label");
+  let nodeId = popupTriggerNode.id;
+  if (!gDynamicTooltipCache.has(nodeId) && nodeId in nodeToTooltipMap) {
+    let strId = nodeToTooltipMap[nodeId];
+    let args = [];
+    if (nodeId in nodeToShortcutMap) {
+      let shortcutId = nodeToShortcutMap[nodeId];
+      let shortcut = document.getElementById(shortcutId);
+      if (shortcut) {
+        args.push(ShortcutUtils.prettifyShortcut(shortcut));
+      }
+    }
+    gDynamicTooltipCache.set(nodeId, gNavigatorBundle.getFormattedString(strId, args));
+  }
+  let desiredLabel = gDynamicTooltipCache.get(nodeId);
+  label.setAttribute("value", desiredLabel);
+}
 
 /**
  * Gets the selected text in the active browser. Leading and trailing
