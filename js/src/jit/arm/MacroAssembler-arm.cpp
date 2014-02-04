@@ -3529,6 +3529,12 @@ MacroAssemblerARMCompat::passABIArg(const MoveOperand &from, MoveOp::Type type)
         FloatRegister fr;
         if (GetFloatArgReg(usedIntSlots_, usedFloatSlots_, &fr)) {
             if (from.isFloatReg() && from.floatReg() == fr) {
+                usedFloatSlots_++;
+                if (type == MoveOp::FLOAT32)
+                    passedArgTypes_ = (passedArgTypes_ << ArgType_Shift) | ArgType_Float32;
+                else
+                    passedArgTypes_ = (passedArgTypes_ << ArgType_Shift) | ArgType_Double;
+                break;
                 // Nothing to do; the value is in the right register already
                 return;
             }
