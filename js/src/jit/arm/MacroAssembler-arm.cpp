@@ -3536,7 +3536,11 @@ MacroAssemblerARMCompat::passABIArg(const MoveOperand &from, MoveOp::Type type)
         } else {
             // If (and only if) the integer registers have started spilling, do we
             // need to take the register's alignment into account
-            uint32_t disp = GetDoubleArgStackDisp(usedIntSlots_, usedFloatSlots_, &padding_);
+            uint32_t disp;
+            if (type == MoveOp::FLOAT32)
+                disp = GetFloat32ArgStackDisp(usedIntSlots_, usedFloatSlots_, &padding_);
+            else
+                disp = GetDoubleArgStackDisp(usedIntSlots_, usedFloatSlots_, &padding_);
             to = MoveOperand(sp, disp);
         }
         usedFloatSlots_++;
@@ -3550,7 +3554,10 @@ MacroAssemblerARMCompat::passABIArg(const MoveOperand &from, MoveOp::Type type)
         Register r;
         if (GetIntArgReg(usedIntSlots_, usedFloatSlots_, &r)) {
             if (from.isGeneralReg() && from.reg() == r) {
-                // Nothing to do; the value is in the right register already
+                // Almost nothing to do; the value is in the right register already
+                usedIntSlots_++;
+                passedArgTypes_ = (passedArgTypes_ << ArgType_Shift) | ArgType_General;
+
                 return;
             }
             to = MoveOperand(r);
