@@ -775,23 +775,24 @@ TabChildHelper::HandlePossibleViewportChange()
   if (sDisableViewportHandler) {
     return false;
   }
-  nsCOMPtr<nsIDOMDocument> domDoc;
-  mView->mWebNavigation->GetDocument(getter_AddRefs(domDoc));
-  nsCOMPtr<nsIDocument> document(do_QueryInterface(domDoc));
 
+  nsCOMPtr<nsIDocument> document(GetDocument());
   nsCOMPtr<nsIDOMWindowUtils> utils(GetDOMWindowUtils());
 
   nsViewportInfo viewportInfo = nsContentUtils::GetViewportInfo(document, mInnerSize);
-  uint32_t presShellId = 0;
-  ViewID viewId = 0;
-  if (APZCCallbackHelper::GetScrollIdentifiers(document->GetDocumentElement(),
-                                               &presShellId, &viewId)) {
-    ZoomConstraints constraints(viewportInfo.IsZoomAllowed(),
-                                viewportInfo.GetMinZoom(),
-                                viewportInfo.GetMaxZoom());
-    mView->SendUpdateZoomConstraints(presShellId, viewId, /* isRoot = */ true, constraints);
-  }
 
+  nsIContent* content = document->GetDocumentElement();
+  ViewID viewId = 0;
+  if (content) {
+    uint32_t presShellId = 0;
+    viewId = nsLayoutUtils::FindOrCreateIDFor(content);
+    if (utils && (utils->GetPresShellId(&presShellId) == NS_OK)) {
+      ZoomConstraints constraints(viewportInfo.IsZoomAllowed(),
+                                  viewportInfo.GetMinZoom(),
+                                  viewportInfo.GetMaxZoom());
+      mView->SendUpdateZoomConstraints(presShellId, viewId, /* isRoot = */ true, constraints);
+    }
+  }
 
   float screenW = mInnerSize.width;
   float screenH = mInnerSize.height;
