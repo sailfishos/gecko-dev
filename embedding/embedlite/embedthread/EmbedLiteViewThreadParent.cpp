@@ -265,8 +265,12 @@ EmbedLiteViewThreadParent::RecvUpdateZoomConstraints(const uint32_t& aPresShellI
                                                      const bool& aIsRoot,
                                                      const ZoomConstraints& aConstraints)
 {
+  if (aIsRoot) {
+    mController->SaveZoomConstraints(aConstraints);
+  }
+
   if (mController->GetManager()) {
-    mController->GetManager()->UpdateZoomConstraints(ScrollableLayerGuid(mRootLayerTreeId, 0, 0), aConstraints);
+    mController->GetManager()->UpdateZoomConstraints(ScrollableLayerGuid(mRootLayerTreeId, aPresShellId, aViewId), aConstraints);
   }
   return true;
 }
@@ -277,7 +281,7 @@ EmbedLiteViewThreadParent::RecvZoomToRect(const uint32_t& aPresShellId,
                                           const CSSRect& aRect)
 {
   if (mController->GetManager()) {
-    mController->GetManager()->ZoomToRect(ScrollableLayerGuid(mRootLayerTreeId, 0, 0), aRect);
+    mController->GetManager()->ZoomToRect(ScrollableLayerGuid(mRootLayerTreeId, aPresShellId, aViewId), aRect);
   }
   return true;
 }
