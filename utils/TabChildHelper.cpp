@@ -214,9 +214,7 @@ TabChildHelper::Observe(nsISupports* aSubject,
     mView->SendZoomToRect(0, 0, rect);
   } else if (!strcmp(aTopic, BEFORE_FIRST_PAINT)) {
     nsCOMPtr<nsIDocument> subject(do_QueryInterface(aSubject));
-    nsCOMPtr<nsIDOMDocument> domDoc;
-    mView->mWebNavigation->GetDocument(getter_AddRefs(domDoc));
-    nsCOMPtr<nsIDocument> doc(do_QueryInterface(domDoc));
+    nsCOMPtr<nsIDocument> doc(GetDocument());
 
     if (SameCOMIdentity(subject, doc)) {
       nsCOMPtr<nsIDOMWindowUtils> utils(GetDOMWindowUtils());
@@ -895,4 +893,13 @@ TabChildHelper::HandlePossibleViewportChange()
   ProcessUpdateFrame(metrics);
   mFrameMetrics = metrics;
   return true;
+}
+
+already_AddRefed<nsIDocument>
+TabChildHelper::GetDocument()
+{
+  nsCOMPtr<nsIDOMDocument> domDoc;
+  mView->mWebNavigation->GetDocument(getter_AddRefs(domDoc));
+  nsCOMPtr<nsIDocument> doc(do_QueryInterface(domDoc));
+  return doc.forget();
 }
