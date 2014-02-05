@@ -22,6 +22,7 @@ static FakeListener sFakeListener;
 EmbedContentController::EmbedContentController(EmbedLiteViewThreadParent* aRenderFrame, MessageLoop* aUILoop)
   : mUILoop(aUILoop)
   , mRenderFrame(aRenderFrame)
+  , mHaveZoomConstraints(false)
 {
 }
 
@@ -139,11 +140,16 @@ void EmbedContentController::ClearRenderFrame()
 bool EmbedContentController::GetRootZoomConstraints(ZoomConstraints* aOutConstraints)
 {
   if (aOutConstraints) {
-    // Until we support the meta-viewport tag properly allow zooming
-    // from 1/4 to 4x by default.
-    aOutConstraints->mAllowZoom = true;
-    aOutConstraints->mMinZoom = CSSToScreenScale(0.25f);
-    aOutConstraints->mMaxZoom = CSSToScreenScale(4.0f);
+    if (mHaveZoomConstraints) {
+      *aOutConstraints = mZoomConstraints;
+    } else {
+      NS_WARNING("Apply default zoom constraints");
+      // Until we support the meta-viewport tag properly allow zooming
+      // from 1/4 to 4x by default.
+      aOutConstraints->mAllowZoom = true;
+      aOutConstraints->mMinZoom = CSSToScreenScale(0.25f);
+      aOutConstraints->mMaxZoom = CSSToScreenScale(4.0f);
+    }
     return true;
   }
   return false;
@@ -180,4 +186,11 @@ EmbedContentController::ReceiveInputEvent(const InputData& aEvent,
   }
 
   return mAPZC->ReceiveInputEvent(aEvent, aOutTargetGuid);
+}
+
+void
+EmbedContentController::SaveZoomConstraints(const ZoomConstraints& aConstraints)
+{
+  mHaveZoomConstraints = true;
+  mZoomConstraints = aConstraints;
 }

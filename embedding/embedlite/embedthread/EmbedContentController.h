@@ -13,7 +13,6 @@
 namespace mozilla {
 namespace layers {
 class APZCTreeManager;
-class CompositorParent;
 }
 namespace embedlite {
 class EmbedLiteViewListener;
@@ -52,12 +51,20 @@ public:
                                   ScrollableLayerGuid* aOutTargetGuid);
 
   mozilla::layers::APZCTreeManager* GetManager() { return mAPZC; }
+
+  // Methods used by EmbedLiteViewThreadParent to set fields stored here.
+
+  void SaveZoomConstraints(const ZoomConstraints& aConstraints);
+
 private:
   EmbedLiteViewListener* const GetListener() const;
   void DoRequestContentRepaint(const FrameMetrics& aFrameMetrics);
 
   MessageLoop* mUILoop;
   EmbedLiteViewThreadParent* mRenderFrame;
+
+  bool mHaveZoomConstraints;
+  ZoomConstraints mZoomConstraints;
 
   // Extra
   ScrollableLayerGuid mLastScrollLayerGuid;

@@ -242,12 +242,13 @@ GetPropertyOperation(JSContext *cx, StackFrame *fp, HandleScript script, jsbytec
             return true;
     }
 
+    Rooted<GlobalObject*> global(cx, &fp->global());
     RootedId id(cx, NameToId(script->getName(pc)));
     RootedObject obj(cx);
 
     /* Optimize (.1).toString(). */
     if (lval.isNumber() && id == NameToId(cx->names().toString)) {
-        JSObject *proto = fp->global().getOrCreateNumberPrototype(cx);
+        JSObject *proto = GlobalObject::getOrCreateNumberPrototype(cx, global);
         if (!proto)
             return false;
         if (ClassMethodIsNative(cx, proto, &NumberObject::class_, id, js_num_toString))
@@ -3115,21 +3116,21 @@ END_CASE(JSOP_ENDINIT)
 
 CASE(JSOP_MUTATEPROTO)
 {
-    /* Load the new [[Prototype]] value into rval. */
     MOZ_ASSERT(REGS.stackDepth() >= 2);
-    RootedValue &rval = rootValue0;
-    rval = REGS.sp[-1];
 
-    /* Load the object being initialized into lval/obj. */
-    RootedObject &obj = rootObject0;
-    obj = &REGS.sp[-2].toObject();
-    MOZ_ASSERT(obj->is<JSObject>());
+    if (REGS.sp[-1].isObjectOrNull()) {
+        RootedObject &newProto = rootObject1;
+        rootObject1 = REGS.sp[-1].toObjectOrNull();
 
-    RootedId &id = rootId0;
-    id = NameToId(cx->names().proto);
+        RootedObject &obj = rootObject0;
+        obj = &REGS.sp[-2].toObject();
+        MOZ_ASSERT(obj->is<JSObject>());
 
-    if (!baseops::SetPropertyHelper<SequentialExecution>(cx, obj, obj, id, 0, &rval, false))
-        goto error;
+        bool succeeded;
+        if (!JSObject::setProto(cx, obj, newProto, &succeeded))
+            goto error;
+        MOZ_ASSERT(succeeded);
+    }
 
     REGS.sp--;
 }

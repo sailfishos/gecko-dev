@@ -179,8 +179,6 @@ abstract public class BrowserApp extends GeckoApp
 
     private OrderedBroadcastHelper mOrderedBroadcastHelper;
 
-    private FirefoxAccountsHelper mFirefoxAccountsHelper;
-
     private BrowserHealthReporter mBrowserHealthReporter;
 
     // The tab to be selected on editing mode exit.
@@ -546,7 +544,6 @@ abstract public class BrowserApp extends GeckoApp
         JavaAddonManager.getInstance().init(getApplicationContext());
         mSharedPreferencesHelper = new SharedPreferencesHelper(getApplicationContext());
         mOrderedBroadcastHelper = new OrderedBroadcastHelper(getApplicationContext());
-        mFirefoxAccountsHelper = new FirefoxAccountsHelper(getApplicationContext());
         mBrowserHealthReporter = new BrowserHealthReporter();
 
         if (AppConstants.MOZ_ANDROID_BEAM && Build.VERSION.SDK_INT >= 14) {
@@ -841,11 +838,6 @@ abstract public class BrowserApp extends GeckoApp
         if (mOrderedBroadcastHelper != null) {
             mOrderedBroadcastHelper.uninit();
             mOrderedBroadcastHelper = null;
-        }
-
-        if (mFirefoxAccountsHelper != null) {
-            mFirefoxAccountsHelper.uninit();
-            mFirefoxAccountsHelper = null;
         }
 
         if (mBrowserHealthReporter != null) {
@@ -1657,7 +1649,7 @@ abstract public class BrowserApp extends GeckoApp
 
         if (mHomePager == null) {
             final ViewStub homePagerStub = (ViewStub) findViewById(R.id.home_pager_stub);
-            mHomePager = (HomePager) homePagerStub.inflate().findViewById(R.id.home_pager);
+            mHomePager = (HomePager) homePagerStub.inflate();
         }
 
         mHomePager.show(getSupportLoaderManager(),
@@ -2481,7 +2473,11 @@ abstract public class BrowserApp extends GeckoApp
     // HomePager.OnUrlOpenListener
     @Override
     public void onUrlOpen(String url, EnumSet<OnUrlOpenListener.Flags> flags) {
-        if (!maybeSwitchToTab(url, flags)) {
+        if (flags.contains(OnUrlOpenListener.Flags.OPEN_WITH_INTENT)) {
+            Intent intent = new Intent(Intent.ACTION_VIEW);
+            intent.setData(Uri.parse(url));
+            startActivity(intent);
+        } else if (!maybeSwitchToTab(url, flags)) {
             openUrlAndStopEditing(url);
         }
     }

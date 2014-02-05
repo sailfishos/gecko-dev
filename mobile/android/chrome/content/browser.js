@@ -95,17 +95,6 @@ XPCOMUtils.defineLazyModuleGetter(this, "WebappManager",
   });
 });
 
-// Lazily-loaded browser scripts that use observer notifcations:
-var LazyNotificationGetter = {
-  observers: [],
-  shutdown: function lng_shutdown() {
-    this.observers.forEach(function(o) {
-      Services.obs.removeObserver(o, o.notification);
-    });
-    this.observers = [];
-  }
-};
-
 [
 #ifdef MOZ_WEBRTC
   ["WebrtcUI", ["getUserMedia:request", "recording-device-events"], "chrome://browser/content/WebrtcUI.js"],
@@ -125,14 +114,9 @@ var LazyNotificationGetter = {
     return sandbox[name];
   });
   notifications.forEach(function (aNotification) {
-    let o = {
-      notification: aNotification,
-      observe: function(s, t, d) {
-        window[name].observe(s, t, d);
-      }
-    };
-    Services.obs.addObserver(o, aNotification, false);
-    LazyNotificationGetter.observers.push(o);
+    Services.obs.addObserver(function(s, t, d) {
+        window[name].observe(s, t, d)
+    }, aNotification, false);
   });
 });
 
@@ -143,12 +127,9 @@ var LazyNotificationGetter = {
   let [name, notifications, resource] = module;
   XPCOMUtils.defineLazyModuleGetter(this, name, resource);
   notifications.forEach(notification => {
-    let o = {
-      notification: notification,
-      observe: (s, t, d) => this[name].observe(s, t, d)
-    };
-    Services.obs.addObserver(o, notification, false);
-    LazyNotificationGetter.observers.push(o);
+    Services.obs.addObserver((s,t,d) => {
+      this[name].observe(s,t,d)
+    }, notification, false);
   });
 });
 
@@ -306,6 +287,14 @@ var BrowserApp = {
     dump("zerdatime " + Date.now() + " - browser chrome startup finished.");
 
     this.deck = document.getElementById("browsers");
+    this.deck.addEventListener("DOMContentLoaded", function BrowserApp_delayedStartup() {
+      try {
+        BrowserApp.deck.removeEventListener("DOMContentLoaded", BrowserApp_delayedStartup, false);
+        Services.obs.notifyObservers(window, "browser-delayed-startup-finished", "");
+        sendMessageToJava({ type: "Gecko:DelayedStartup" });
+      } catch(ex) { console.log(ex); }
+    }, false);
+
     BrowserEventHandler.init();
     ViewportHandler.init();
 
@@ -434,6 +423,8 @@ var BrowserApp = {
     event.initEvent("UIReady", true, false);
     window.dispatchEvent(event);
 
+    Services.obs.addObserver(this, "browser-delayed-startup-finished", false);
+
     if (this._startupStatus)
       this.onAppUpdated();
 
@@ -488,6 +479,7 @@ var BrowserApp = {
       NativeWindow.contextmenus.linkOpenableNonPrivateContext,
       function(aTarget) {
         let url = NativeWindow.contextmenus._getLinkURL(aTarget);
+        ContentAreaUtils.urlSecurityCheck(url, aTarget.ownerDocument.nodePrincipal);
         BrowserApp.addTab(url, { selected: false, parentId: BrowserApp.selectedTab.id });
 
         let newtabStrings = Strings.browser.GetStringFromName("newtabpopup.opened");
@@ -499,6 +491,7 @@ var BrowserApp = {
       NativeWindow.contextmenus.linkOpenableContext,
       function(aTarget) {
         let url = NativeWindow.contextmenus._getLinkURL(aTarget);
+        ContentAreaUtils.urlSecurityCheck(url, aTarget.ownerDocument.nodePrincipal);
         BrowserApp.addTab(url, { selected: false, parentId: BrowserApp.selectedTab.id, isPrivate: true });
 
         let newtabStrings = Strings.browser.GetStringFromName("newprivatetabpopup.opened");
@@ -703,10 +696,6 @@ var BrowserApp = {
   },
 
   onAppUpdated: function() {
-    // initialize the form history and passwords databases on upgrades
-    Services.obs.notifyObservers(null, "FormHistory:Init", "");
-    Services.obs.notifyObservers(null, "Passwords:Init", "");
-
     // Migrate user-set "plugins.click_to_play" pref. See bug 884694.
     // Because the default value is true, a user-set pref means that the pref was set to false.
     if (Services.prefs.prefHasUserValue("plugins.click_to_play")) {
@@ -1623,10 +1612,22 @@ var BrowserApp = {
         Services.prefs.setCharPref("general.useragent.locale", aData);
         break;
 
+      case "browser-delayed-startup-finished":
+        this._delayedStartup();
+        break;
+
       default:
         dump('BrowserApp.observe: unexpected topic "' + aTopic + '"\n');
         break;
 
+    }
+  },
+
+  _delayedStartup: function() {
+    // initialize the form history and passwords databases on upgrades
+    if (this._startupStatus) {
+      Services.obs.notifyObservers(null, "FormHistory:Init", "");
+      Services.obs.notifyObservers(null, "Passwords:Init", "");
     }
   },
 
