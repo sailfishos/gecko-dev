@@ -1,0 +1,27 @@
+From 37164d749f0d3f228a10301de70d964db57c1c52 Mon Sep 17 00:00:00 2001
+From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
+Date: Wed, 5 Feb 2014 17:11:57 +0200
+Subject: Update zoom scale in APZC upon orientation change
+
+---
+ gfx/layers/ipc/AsyncPanZoomController.cpp | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/gfx/layers/ipc/AsyncPanZoomController.cpp b/gfx/layers/ipc/AsyncPanZoomController.cpp
+index 50baf02..37535ce 100644
+--- a/gfx/layers/ipc/AsyncPanZoomController.cpp
++++ b/gfx/layers/ipc/AsyncPanZoomController.cpp
+@@ -1565,6 +1565,10 @@ void AsyncPanZoomController::NotifyLayersUpdated(const FrameMetrics& aLayerMetri
+       needContentRepaint = true;
+     }
+     mFrameMetrics.mViewport = aLayerMetrics.mViewport;
++  } else {
++    if (mFrameMetrics.mCompositionBounds.width != aLayerMetrics.mCompositionBounds.width) {
++      mFrameMetrics.mZoom.scale = aLayerMetrics.mZoom.scale;
++    }
+   }
+ 
+   if (aIsFirstPaint || isDefault) {
+-- 
+1.8.5.3
+
