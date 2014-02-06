@@ -31,6 +31,9 @@
 #include "EmbedLiteAppService.h"
 #include "nsIWidgetListener.h"
 
+#include "APZCCallbackHelper.h"
+#include "mozilla/dom/Element.h"
+
 using namespace mozilla::layers;
 using namespace mozilla::widget;
 
@@ -918,6 +921,15 @@ EmbedLiteViewThreadChild::OnUpdateDisplayPort()
 {
   LOGNI();
   return NS_OK;
+}
+
+bool
+EmbedLiteViewThreadChild::GetScrollIdentifiers(uint32_t *aPresShellIdOut, mozilla::layers::FrameMetrics::ViewID *aViewIdOut)
+{
+  nsCOMPtr<nsIDOMDocument> domDoc;
+  mWebNavigation->GetDocument(getter_AddRefs(domDoc));
+  nsCOMPtr<nsIDocument> doc(do_QueryInterface(domDoc));
+  return APZCCallbackHelper::GetScrollIdentifiers(doc->GetDocumentElement(), aPresShellIdOut, aViewIdOut);
 }
 
 } // namespace embedlite
