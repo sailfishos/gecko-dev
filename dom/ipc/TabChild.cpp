@@ -610,7 +610,7 @@ TabChild::HandlePossibleViewportChange()
     // The page must have been refreshed in some way such as a new document or
     // new CSS viewport, so we know that there's no velocity, acceleration, and
     // we have no idea how long painting will take.
-    metrics, ScreenPoint(0.0f, 0.0f), gfx::Point(0.0f, 0.0f), 0.0);
+    metrics, ScreenPoint(0.0f, 0.0f), 0.0);
   metrics.mCumulativeResolution = metrics.mZoom / metrics.mDevPixelsPerCSSPixel * ScreenToLayerScale(1);
   // This is the root layer, so the cumulative resolution is the same
   // as the resolution.
@@ -1515,6 +1515,14 @@ TabChild::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
   // However we can't reply without painting so we reply by painting the
   // exact same thing as we did before.
   return ProcessUpdateFrame(mLastRootMetrics);
+}
+
+bool
+TabChild::RecvAcknowledgeScrollUpdate(const ViewID& aScrollId,
+                                      const uint32_t& aScrollGeneration)
+{
+  APZCCallbackHelper::AcknowledgeScrollUpdate(aScrollId, aScrollGeneration);
+  return true;
 }
 
 bool
