@@ -1,4 +1,4 @@
-%define greversion 29.0a1
+%define greversion 29.0a2
 
 Name:       xulrunner-qt5
 Summary:    XUL runner
@@ -8,6 +8,8 @@ Group:      Applications/Internet
 License:    Mozilla License
 URL:        http://hg.mozilla.org/mozilla-central
 Source0:    %{name}-%{version}.tar.bz2
+Patch0:     add-sailfishos-org-certs.patch
+Patch1:     update-zoom-scale-in-APZC-upon-orientation-change.patch
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
@@ -57,6 +59,8 @@ Tests and misc files for xulrunner
 
 %prep
 %setup -q -n %{name}-%{version}
+%patch0 -p1
+%patch1 -p1
 
 %build
 export DONT_POPULATE_VIRTUALENV=1
