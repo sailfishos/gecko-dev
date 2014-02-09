@@ -3530,11 +3530,17 @@ MacroAssemblerARMCompat::passABIArg(const MoveOperand &from, MoveOp::Type type)
         if (GetFloatArgReg(usedIntSlots_, usedFloatSlots_, &fr)) {
             if (from.isFloatReg() && from.floatReg() == fr) {
                 usedFloatSlots_++;
-                if (type == MoveOp::FLOAT32)
+                if (type == MoveOp::FLOAT32) {
+                    // The compiler current only supports float32 registers packed into
+                    // the lower half of double registers whereas the ARM ABI requires
+                    // packing float32 registers into consecutive float registers.
+                    // Passing a single float32 argument works and this is the only case
+                    // that is currently required so just assert this for now.
+                    JS_ASSERT(passedArgTypes_ == 0);
                     passedArgTypes_ = (passedArgTypes_ << ArgType_Shift) | ArgType_Float32;
-                else
+                } else {
                     passedArgTypes_ = (passedArgTypes_ << ArgType_Shift) | ArgType_Double;
-                break;
+                }
                 // Nothing to do; the value is in the right register already
                 return;
             }
