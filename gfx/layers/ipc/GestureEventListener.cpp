@@ -274,16 +274,6 @@ nsEventStatus GestureEventListener::HandlePinchGestureEvent(const MultiTouchInpu
 
     mState = GESTURE_NONE;
 
-    // If the user left a finger on the screen, spoof a touch start event and
-    // send it to APZC so that they can continue panning from that point.
-    if (mTouches.Length() == 1) {
-      MultiTouchInput touchEvent(MultiTouchInput::MULTITOUCH_START,
-                                 aEvent.mTime,
-                                 aEvent.modifiers);
-      touchEvent.mTouches.AppendElement(mTouches[0]);
-      mAsyncPanZoomController->HandleInputEvent(touchEvent);
-    }
-
     rv = nsEventStatus_eConsumeNoDefault;
   } else if (mState == GESTURE_WAITING_PINCH) {
     mState = GESTURE_NONE;
