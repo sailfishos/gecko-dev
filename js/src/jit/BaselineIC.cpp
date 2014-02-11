@@ -1925,7 +1925,6 @@ ICCompare_Fallback::Compiler::generateStubCode(MacroAssembler &masm)
     masm.pushValue(R0);
     masm.push(BaselineStubReg);
     masm.pushBaselineFramePtr(BaselineFrameReg, R0.scratchReg());
-
     return tailCallVM(DoCompareFallbackInfo, masm);
 }
 
