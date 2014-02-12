@@ -1931,7 +1931,9 @@ AndroidBridge::RequestContentRepaint(const mozilla::layers::FrameMetrics& aFrame
 }
 
 void
-AndroidBridge::HandleDoubleTap(const CSSIntPoint& aPoint, int32_t aModifiers)
+AndroidBridge::HandleDoubleTap(const CSSIntPoint& aPoint,
+                               int32_t aModifiers,
+                               const mozilla::layers::ScrollableLayerGuid& aGuid)
 {
     nsCString data = nsPrintfCString("{ \"x\": %d, \"y\": %d }", aPoint.x, aPoint.y);
     nsAppShell::gAppShell->PostEvent(AndroidGeckoEvent::MakeBroadcastEvent(
@@ -1939,7 +1941,9 @@ AndroidBridge::HandleDoubleTap(const CSSIntPoint& aPoint, int32_t aModifiers)
 }
 
 void
-AndroidBridge::HandleSingleTap(const CSSIntPoint& aPoint, int32_t aModifiers)
+AndroidBridge::HandleSingleTap(const CSSIntPoint& aPoint,
+                               int32_t aModifiers,
+                               const mozilla::layers::ScrollableLayerGuid& aGuid)
 {
     // TODO Send the modifier data to Gecko for use in mouse events.
     nsCString data = nsPrintfCString("{ \"x\": %d, \"y\": %d }", aPoint.x, aPoint.y);
@@ -1948,7 +1952,9 @@ AndroidBridge::HandleSingleTap(const CSSIntPoint& aPoint, int32_t aModifiers)
 }
 
 void
-AndroidBridge::HandleLongTap(const CSSIntPoint& aPoint, int32_t aModifiers)
+AndroidBridge::HandleLongTap(const CSSIntPoint& aPoint,
+                             int32_t aModifiers,
+                             const mozilla::layers::ScrollableLayerGuid& aGuid)
 {
     nsCString data = nsPrintfCString("{ \"x\": %d, \"y\": %d }", aPoint.x, aPoint.y);
     nsAppShell::gAppShell->PostEvent(AndroidGeckoEvent::MakeBroadcastEvent(
@@ -1956,7 +1962,9 @@ AndroidBridge::HandleLongTap(const CSSIntPoint& aPoint, int32_t aModifiers)
 }
 
 void
-AndroidBridge::HandleLongTapUp(const CSSIntPoint& aPoint, int32_t aModifiers)
+AndroidBridge::HandleLongTapUp(const CSSIntPoint& aPoint,
+                               int32_t aModifiers,
+                               const mozilla::layers::ScrollableLayerGuid& aGuid)
 {
 }
 
