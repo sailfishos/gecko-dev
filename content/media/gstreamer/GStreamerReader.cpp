@@ -157,6 +157,13 @@ GStreamerReader::~GStreamerReader()
   }
 }
 
+void GStreamerReader::Suspend()
+{
+#ifdef HAS_NEMO_RESOURCE
+  ResetIfCurrentDecoderActive(this);
+#endif
+}
+
 nsresult GStreamerReader::Init(MediaDecoderReader* aCloneDonor)
 {
   GStreamerFormatHelper::Instance();

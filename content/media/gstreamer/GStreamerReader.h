@@ -68,6 +68,8 @@ public:
 
   layers::ImageContainer* GetImageContainer() { return mDecoder->GetImageContainer(); }
 
+  void Suspend();
+
 private:
 
   void ReadAndPushData(guint aLength);
