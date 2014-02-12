@@ -16,6 +16,7 @@
 #include "nsSVGEffects.h"
 #include "nsSVGElement.h"
 #include "nsSVGFilterFrame.h"
+#include "nsSVGFilterInstance.h"
 #include "nsSVGFilterPaintCallback.h"
 #include "nsSVGMaskFrame.h"
 #include "nsSVGPaintServerFrame.h"
@@ -76,14 +77,14 @@ private:
       return *r;
     }
     // Despite the fact that we're invoked for frames with SVG effects applied,
-    // we can actually get here. All continuations and special siblings of a
+    // we can actually get here. All continuations and IB split siblings of a
     // frame with SVG effects applied will have the PreEffectsBBoxProperty
     // property set on them. Therefore, the frames that are passed to us will
     // always have that property set...well, with one exception. If the frames
     // for an element with SVG effects applied have been subject to an "IB
     // split", then the block frame(s) that caused the split will have been
     // wrapped in anonymous, inline-block, nsBlockFrames of pseudo-type
-    // nsCSSAnonBoxes::mozAnonymousBlock. These "special sibling" anonymous
+    // nsCSSAnonBoxes::mozAnonymousBlock. These "IB split sibling" anonymous
     // blocks will have the PreEffectsBBoxProperty property set on them, but
     // they will never be passed to us. Instead, we'll be passed the block
     // children that they wrap, which don't have the PreEffectsBBoxProperty
@@ -182,7 +183,7 @@ nsSVGIntegrationUtils::GetContinuationUnionSize(nsIFrame* aNonSVGFrame)
   NS_ASSERTION(!aNonSVGFrame->IsFrameOfType(nsIFrame::eSVG),
                "SVG frames should not get here");
   nsIFrame* firstFrame =
-    nsLayoutUtils::FirstContinuationOrSpecialSibling(aNonSVGFrame);
+    nsLayoutUtils::FirstContinuationOrIBSplitSibling(aNonSVGFrame);
   return nsLayoutUtils::GetAllInFlowRectsUnion(firstFrame, firstFrame).Size();
 }
 
@@ -192,7 +193,7 @@ nsSVGIntegrationUtils::GetSVGCoordContextForNonSVGFrame(nsIFrame* aNonSVGFrame)
   NS_ASSERTION(!aNonSVGFrame->IsFrameOfType(nsIFrame::eSVG),
                "SVG frames should not get here");
   nsIFrame* firstFrame =
-    nsLayoutUtils::FirstContinuationOrSpecialSibling(aNonSVGFrame);
+    nsLayoutUtils::FirstContinuationOrIBSplitSibling(aNonSVGFrame);
   nsRect r = nsLayoutUtils::GetAllInFlowRectsUnion(firstFrame, firstFrame);
   nsPresContext* presContext = firstFrame->PresContext();
   return gfx::Size(presContext->AppUnitsToFloatCSSPixels(r.width),
@@ -205,7 +206,7 @@ nsSVGIntegrationUtils::GetSVGBBoxForNonSVGFrame(nsIFrame* aNonSVGFrame)
   NS_ASSERTION(!aNonSVGFrame->IsFrameOfType(nsIFrame::eSVG),
                "SVG frames should not get here");
   nsIFrame* firstFrame =
-    nsLayoutUtils::FirstContinuationOrSpecialSibling(aNonSVGFrame);
+    nsLayoutUtils::FirstContinuationOrIBSplitSibling(aNonSVGFrame);
   // 'r' is in "user space":
   nsRect r = GetPreEffectsVisualOverflowUnion(firstFrame, nullptr, nsRect(),
                                               GetOffsetToUserSpace(firstFrame));
@@ -254,7 +255,7 @@ nsRect
                  "Don't call this on SVG child frames");
 
   nsIFrame* firstFrame =
-    nsLayoutUtils::FirstContinuationOrSpecialSibling(aFrame);
+    nsLayoutUtils::FirstContinuationOrIBSplitSibling(aFrame);
   nsSVGEffects::EffectProperties effectProperties =
     nsSVGEffects::GetEffectProperties(firstFrame);
   nsSVGFilterFrame *filterFrame = effectProperties.mFilter ?
@@ -276,7 +277,7 @@ nsRect
   overrideBBox.RoundOut();
 
   nsRect overflowRect =
-    filterFrame->GetPostFilterBounds(firstFrame, &overrideBBox);
+    nsSVGFilterInstance::GetPostFilterBounds(filterFrame, firstFrame, &overrideBBox);
 
   // Return overflowRect relative to aFrame, rather than "user space":
   return overflowRect - (aFrame->GetOffsetTo(firstFrame) + firstFrameToUserSpace);
@@ -294,7 +295,7 @@ nsSVGIntegrationUtils::AdjustInvalidAreaForSVGEffects(nsIFrame* aFrame,
   // Don't bother calling GetEffectProperties; the filter property should
   // already have been set up during reflow/ComputeFrameEffectsRect
   nsIFrame* firstFrame =
-    nsLayoutUtils::FirstContinuationOrSpecialSibling(aFrame);
+    nsLayoutUtils::FirstContinuationOrIBSplitSibling(aFrame);
   nsSVGEffects::EffectProperties effectProperties =
     nsSVGEffects::GetEffectProperties(firstFrame);
   if (!effectProperties.mFilter)
@@ -327,8 +328,8 @@ nsSVGIntegrationUtils::AdjustInvalidAreaForSVGEffects(nsIFrame* aFrame,
 
   // Adjust the dirty area for effects, and shift it back to being relative to
   // the reference frame.
-  nsRect result = filterFrame->GetPostFilterDirtyArea(firstFrame, preEffectsRect) -
-           toUserSpace;
+  nsRect result = nsSVGFilterInstance::GetPostFilterDirtyArea(filterFrame,
+    firstFrame, preEffectsRect) - toUserSpace;
   // Return the result, in pixels relative to the reference frame.
   return result.ToOutsidePixels(appUnitsPerDevPixel);
 }
@@ -340,7 +341,7 @@ nsSVGIntegrationUtils::GetRequiredSourceForInvalidArea(nsIFrame* aFrame,
   // Don't bother calling GetEffectProperties; the filter property should
   // already have been set up during reflow/ComputeFrameEffectsRect
   nsIFrame* firstFrame =
-    nsLayoutUtils::FirstContinuationOrSpecialSibling(aFrame);
+    nsLayoutUtils::FirstContinuationOrIBSplitSibling(aFrame);
   nsSVGFilterFrame* filterFrame =
     nsSVGEffects::GetFilterFrame(firstFrame);
   if (!filterFrame)
@@ -352,15 +353,15 @@ nsSVGIntegrationUtils::GetRequiredSourceForInvalidArea(nsIFrame* aFrame,
   nsRect postEffectsRect = aDirtyRect + toUserSpace;
 
   // Return ther result, relative to aFrame, not in user space:
-  return filterFrame->GetPreFilterNeededArea(firstFrame, postEffectsRect) -
-           toUserSpace;
+  return nsSVGFilterInstance::GetPreFilterNeededArea(filterFrame, firstFrame,
+    postEffectsRect) - toUserSpace;
 }
 
 bool
 nsSVGIntegrationUtils::HitTestFrameForEffects(nsIFrame* aFrame, const nsPoint& aPt)
 {
   nsIFrame* firstFrame =
-    nsLayoutUtils::FirstContinuationOrSpecialSibling(aFrame);
+    nsLayoutUtils::FirstContinuationOrIBSplitSibling(aFrame);
   // Convert aPt to user space:
   nsPoint toUserSpace;
   if (aFrame->GetStateBits() & NS_FRAME_SVG_LAYOUT) {
@@ -450,7 +451,7 @@ nsSVGIntegrationUtils::PaintFramesWithEffects(nsRenderingContext* aCtx,
   /* Properties are added lazily and may have been removed by a restyle,
      so make sure all applicable ones are set again. */
   nsIFrame* firstFrame =
-    nsLayoutUtils::FirstContinuationOrSpecialSibling(aFrame);
+    nsLayoutUtils::FirstContinuationOrIBSplitSibling(aFrame);
   nsSVGEffects::EffectProperties effectProperties =
     nsSVGEffects::GetEffectProperties(firstFrame);
 
@@ -517,7 +518,8 @@ nsSVGIntegrationUtils::PaintFramesWithEffects(nsRenderingContext* aCtx,
     RegularFramePaintCallback callback(aBuilder, aLayerManager,
                                        offsetWithoutSVGGeomFramePos);
     nsRect dirtyRect = aDirtyRect - offset;
-    filterFrame->PaintFilteredFrame(aCtx, aFrame, &callback, &dirtyRect, nullptr);
+    nsSVGFilterInstance::PaintFilteredFrame(filterFrame, aCtx, aFrame,
+                                            &callback, &dirtyRect);
   } else {
     gfx->SetMatrix(matrixAutoSaveRestore.Matrix());
     aLayerManager->EndTransaction(FrameLayerBuilder::DrawThebesLayer, aBuilder);

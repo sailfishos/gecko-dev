@@ -43,6 +43,8 @@ public:
 
   virtual bool IsLocked() const MOZ_OVERRIDE { return mIsLocked; }
 
+  virtual bool ImplementsLocking() const MOZ_OVERRIDE { return true; }
+
   virtual bool ToSurfaceDescriptor(SurfaceDescriptor& aOutDescriptor) MOZ_OVERRIDE;
 
   virtual gfx::IntSize GetSize() const MOZ_OVERRIDE { return mSize; }
@@ -98,7 +100,8 @@ class DataTextureSourceD3D11 : public DataTextureSource
                              , public TileIterator
 {
 public:
-  DataTextureSourceD3D11(gfx::SurfaceFormat aFormat, CompositorD3D11* aCompositor);
+  DataTextureSourceD3D11(gfx::SurfaceFormat aFormat, CompositorD3D11* aCompositor,
+                         TextureFlags aFlags);
 
   DataTextureSourceD3D11(gfx::SurfaceFormat aFormat, CompositorD3D11* aCompositor,
                          ID3D11Texture2D* aTexture);

@@ -232,10 +232,6 @@ class nsIScriptTimeoutHandler;
 #endif // check
 #include "AccessCheck.h"
 
-#ifdef ANDROID
-#include <android/log.h>
-#endif
-
 #ifdef PR_LOGGING
 static PRLogModuleInfo* gDOMLeakPRLog;
 #endif
@@ -559,6 +555,7 @@ nsPIDOMWindow::nsPIDOMWindow(nsPIDOMWindow *aOuterWindow)
   mIsHandlingResizeEvent(false), mIsInnerWindow(aOuterWindow != nullptr),
   mMayHavePaintEventListener(false), mMayHaveTouchEventListener(false),
   mMayHaveMouseEnterLeaveEventListener(false),
+  mMayHavePointerEnterLeaveEventListener(false),
   mIsModalContentWindow(false),
   mIsActive(false), mIsBackground(false),
   mInnerWindow(nullptr), mOuterWindow(aOuterWindow),
@@ -1305,8 +1302,6 @@ nsGlobalWindow::~nsGlobalWindow()
     if (outer) {
       outer->MaybeClearInnerWindow(this);
     }
-
-    MOZ_ASSERT_IF(mDoc, !mDoc->EventHandlingSuppressed());
   }
 
   // Outer windows are always supposed to call CleanUp before letting themselves
@@ -2181,6 +2176,7 @@ CreateNativeGlobalForInner(JSContext* aCx,
   bool needComponents = nsContentUtils::IsSystemPrincipal(aPrincipal) ||
                         TreatAsRemoteXUL(aPrincipal);
   uint32_t flags = needComponents ? 0 : nsIXPConnect::OMIT_COMPONENTS_OBJECT;
+  flags |= nsIXPConnect::DONT_FIRE_ONNEWGLOBALHOOK;
 
   nsRefPtr<nsIXPConnectJSObjectHolder> jsholder;
   nsresult rv = xpc->InitClassesWithNewWrappedGlobal(
@@ -2593,6 +2589,13 @@ nsGlobalWindow::SetNewDocument(nsIDocument* aDocument,
 
   mContext->GC(JS::gcreason::SET_NEW_DOCUMENT);
   mContext->DidInitializeContext();
+
+  // We wait to fire the debugger hook until the window is all set up and hooked
+  // up with the outer. See bug 969156.
+  if (createdInnerWindow) {
+    JS::Rooted<JSObject*> global(cx, newInnerWindow->mJSObject);
+    JS_FireOnNewGlobalObject(cx, global);
+  }
 
   if (newInnerWindow && !newInnerWindow->mHasNotifiedGlobalCreated && mDoc) {
     // We should probably notify. However if this is the, arguably bad,
@@ -3571,7 +3574,7 @@ nsGlobalWindow::GetSpeechSynthesis(nsISupports** aSpeechSynthesis)
 {
   ErrorResult rv;
   nsCOMPtr<nsISupports> speechSynthesis;
-  if (SpeechSynthesis::PrefEnabled()) {
+  if (Preferences::GetBool("media.webspeech.synth.enabled")) {
     speechSynthesis = GetSpeechSynthesis(rv);
   }
   speechSynthesis.forget(aSpeechSynthesis);
@@ -5806,31 +5809,7 @@ nsGlobalWindow::Dump(const nsAString& aStr)
     return NS_OK;
   }
 
-  char *cstr = ToNewUTF8String(aStr);
-
-#if defined(XP_MACOSX)
-  // have to convert \r to \n so that printing to the console works
-  char *c = cstr, *cEnd = cstr + strlen(cstr);
-  while (c < cEnd) {
-    if (*c == '\r')
-      *c = '\n';
-    c++;
-  }
-#endif
-
-  if (cstr) {
-#ifdef XP_WIN
-    PrintToDebugger(cstr);
-#endif
-#ifdef ANDROID
-    __android_log_write(ANDROID_LOG_INFO, "GeckoDump", cstr);
-#endif
-    FILE *fp = gDumpFile ? gDumpFile : stdout;
-    fputs(cstr, fp);
-    fflush(fp);
-    nsMemory::Free(cstr);
-  }
-
+  PrintToDebugger(aStr, gDumpFile ? gDumpFile : stdout);
   return NS_OK;
 }
 
@@ -7005,7 +6984,7 @@ NS_IMETHODIMP
 nsGlobalWindow::ClearInterval(int32_t aHandle)
 {
   ErrorResult rv;
-  ClearTimeoutOrInterval(aHandle, rv);
+  ClearInterval(aHandle, rv);
 
   return rv.ErrorCode();
 }
@@ -7031,7 +7010,7 @@ nsGlobalWindow::SetResizable(bool aResizable)
 }
 
 NS_IMETHODIMP
-nsGlobalWindow::CaptureEvents(int32_t aEventFlags)
+nsGlobalWindow::CaptureEvents()
 {
   if (mDoc) {
     mDoc->WarnOnceAbout(nsIDocument::eUseOfCaptureEvents);
@@ -7041,7 +7020,7 @@ nsGlobalWindow::CaptureEvents(int32_t aEventFlags)
 }
 
 NS_IMETHODIMP
-nsGlobalWindow::ReleaseEvents(int32_t aEventFlags)
+nsGlobalWindow::ReleaseEvents()
 {
   if (mDoc) {
     mDoc->WarnOnceAbout(nsIDocument::eUseOfReleaseEvents);

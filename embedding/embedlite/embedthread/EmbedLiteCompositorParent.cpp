@@ -89,7 +89,7 @@ bool EmbedLiteCompositorParent::RenderToContext(gfx::DrawTarget* aTarget)
     // Nothing to paint yet, just return silently
     return false;
   }
-  ComposeToTarget(aTarget);
+  CompositeToTarget(aTarget);
   return true;
 }
 

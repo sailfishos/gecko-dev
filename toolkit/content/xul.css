@@ -18,12 +18,13 @@
   -moz-user-focus: ignore;
   -moz-user-select: none;
   display: -moz-box;
-  -moz-box-sizing: border-box;
+  box-sizing: border-box;
 }
 
 :root {
   text-rendering: optimizeLegibility;
   -moz-binding: url("chrome://global/content/bindings/general.xml#root-element");
+  -moz-control-character-visibility: visible;
 }
 
 :root:-moz-locale-dir(rtl) {

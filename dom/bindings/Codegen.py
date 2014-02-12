@@ -64,6 +64,49 @@ class CGThing():
         """Produce the deps for a pp file"""
         assert(False) # Override me!
 
+class CGStringTable(CGThing):
+    """
+    Generate a string table for the given strings with a function accessor:
+
+    const char *accessorName(unsigned int index) {
+      static const char table[] = "...";
+      static const uint16_t indices = { ... };
+      return &table[indices[index]];
+    }
+
+    This is more efficient than the more natural:
+
+    const char *table[] = {
+      ...
+    };
+
+    The uint16_t indices are smaller than the pointer equivalents, and the
+    string table requires no runtime relocations.
+    """
+    def __init__(self, accessorName, strings):
+        CGThing.__init__(self)
+        self.accessorName = accessorName
+        self.strings = strings
+
+    def declare(self):
+        return "extern const char *%s(unsigned int aIndex);\n" % self.accessorName
+
+    def define(self):
+        table = ' "\\0" '.join('"%s"' % s for s in self.strings)
+        indices = []
+        currentIndex = 0
+        for s in self.strings:
+            indices.append(currentIndex)
+            currentIndex += len(s) + 1 # for the null terminator
+        return """const char *%s(unsigned int aIndex)
+{
+  static const char table[] = %s;
+  static const uint16_t indices[] = { %s };
+  static_assert(%d <= UINT16_MAX, "string table overflow!");
+  return &table[indices[aIndex]];
+}
+""" % (self.accessorName, table, ", ".join("%d" % index for index in indices), currentIndex)
+
 class CGNativePropertyHooks(CGThing):
     """
     Generate a NativePropertyHooks for a given descriptor
@@ -303,7 +346,7 @@ class CGPrototypeJSClass(CGThing):
         slotCount = "DOM_INTERFACE_PROTO_SLOTS_BASE"
         if UseHolderForUnforgeable(self.descriptor):
             slotCount += " + 1 /* slot for the JSObject holding the unforgeable properties */"
-        return """static DOMIfaceAndProtoJSClass PrototypeClass = {
+        return """static const DOMIfaceAndProtoJSClass PrototypeClass = {
   {
     "%sPrototype",
     JSCLASS_IS_DOMIFACEANDPROTOJSCLASS | JSCLASS_HAS_RESERVED_SLOTS(%s),
@@ -360,7 +403,7 @@ class CGInterfaceObjectJSClass(CGThing):
             slotCount += (" + %i /* slots for the named constructors */" %
                           len(self.descriptor.interface.namedConstructors))
         return """
-static DOMIfaceAndProtoJSClass InterfaceObjectClass = {
+static const DOMIfaceAndProtoJSClass InterfaceObjectClass = {
   {
     "Function",
     JSCLASS_IS_DOMIFACEANDPROTOJSCLASS | JSCLASS_HAS_RESERVED_SLOTS(%s),
@@ -1477,7 +1520,7 @@ class PropertyDefiner:
                    ',\n'.join(prefableSpecs) + "\n" +
                    "};\n\n") % (specType, name, specType, name))
         if doIdArrays:
-            arrays += ("static jsid %s_ids[%i] = { JSID_VOID };\n\n" %
+            arrays += ("static jsid %s_ids[%i];\n\n" %
                        (name, len(specs)))
         return arrays
 
@@ -1633,8 +1676,10 @@ class MethodDefiner(PropertyDefiner):
                     jitinfo = ("reinterpret_cast<const JSJitInfo*>(&%s_methodinfo)" % accessor)
                     if m.get("allowCrossOriginThis", False):
                         accessor = "genericCrossOriginMethod"
-                    else:
+                    elif self.descriptor.needsSpecialGenericOps():
                         accessor = "genericMethod"
+                    else:
+                        accessor = "GenericBindingMethod"
                 else:
                     jitinfo = "nullptr"
 
@@ -1691,8 +1736,10 @@ class AttrDefiner(PropertyDefiner):
                     accessor = "genericLenientGetter"
                 elif attr.getExtendedAttribute("CrossOriginReadable"):
                     accessor = "genericCrossOriginGetter"
-                else:
+                elif self.descriptor.needsSpecialGenericOps():
                     accessor = "genericGetter"
+                else:
+                    accessor = "GenericBindingGetter"
                 jitinfo = "&%s_getterinfo" % attr.identifier.name
             return "{ { JS_CAST_NATIVE_TO(%s, JSPropertyOp), %s } }" % \
                    (accessor, jitinfo)
@@ -1710,8 +1757,10 @@ class AttrDefiner(PropertyDefiner):
                     accessor = "genericLenientSetter"
                 elif attr.getExtendedAttribute("CrossOriginWritable"):
                     accessor = "genericCrossOriginSetter"
-                else:
+                elif self.descriptor.needsSpecialGenericOps():
                     accessor = "genericSetter"
+                else:
+                    accessor = "GenericBindingSetter"
                 jitinfo = "&%s_setterinfo" % attr.identifier.name
             return "{ { JS_CAST_NATIVE_TO(%s, JSStrictPropertyOp), %s } }" % \
                    (accessor, jitinfo)
@@ -1879,23 +1928,17 @@ class CGCreateInterfaceObjectsMethod(CGAbstractMethod):
                 if props.hasNonChromeOnly():
                     idsToInit.append(props.variableName(False))
         if len(idsToInit) > 0:
-            initIds = CGList(
-                [CGGeneric("!InitIds(aCx, %s, %s_ids)" % (varname, varname)) for
-                 varname in idsToInit], ' ||\n')
-            if len(idsToInit) > 1:
-                initIds = CGWrapper(initIds, pre="(", post=")", reindent=True)
-            initIds = CGList(
-                [CGGeneric("%s_ids[0] == JSID_VOID &&" % idsToInit[0]),
-                 CGGeneric("NS_IsMainThread() &&"),
-                 initIds],
-                "\n")
-            initIds = CGWrapper(initIds, pre="if (", post=") {", reindent=True)
-            initIds = CGList(
-                [initIds,
-                 CGGeneric(("  %s_ids[0] = JSID_VOID;\n"
-                            "  return;") % idsToInit[0]),
-                 CGGeneric("}")],
-                "\n")
+            initIdCalls = ["!InitIds(aCx, %s, %s_ids)" % (varname, varname)
+                           for varname in idsToInit]
+            idsInitedFlag = CGGeneric("static bool sIdsInited = false;")
+            setFlag = CGGeneric("sIdsInited = true;")
+            initIdConditionals = [CGIfWrapper(CGGeneric("return;"), call)
+                                  for call in initIdCalls]
+            initIds = CGList([idsInitedFlag,
+                              CGIfWrapper(CGList(initIdConditionals + [setFlag],
+                                                 "\n"),
+                                          "!sIdsInited && NS_IsMainThread()")],
+                             "\n")
         else:
             initIds = None
 
@@ -2139,8 +2182,6 @@ class CGConstructorEnabled(CGAbstractMethod):
         if func:
             assert isinstance(func, list) and len(func) == 1
             conditions.append("%s(aCx, aObj)" % func[0])
-        if iface.getExtendedAttribute("PrefControlled"):
-            conditions.append("%s::PrefEnabled()" % self.descriptor.nativeType)
         availableIn = getAvailableInTestFunc(iface)
         if availableIn:
             conditions.append("%s(aCx, aObj)" % availableIn)
@@ -5236,6 +5277,7 @@ if (!${obj}) {
                                  'jsvalHandle': 'args.rval()',
                                  'returnsNewObject': returnsNewObject,
                                  'successCode': successCode,
+                                 'obj' : "reflector" if setSlot else "obj",
                                  }
         try:
             wrapCode = CGGeneric(wrapForType(self.returnType, self.descriptor,
@@ -8740,7 +8782,7 @@ class CGDescriptor(CGThing):
                 continue
             if (m.isMethod() and m == descriptor.operations['Jsonifier']):
                 hasJsonifier = True
-                hasMethod = True
+                hasMethod = descriptor.needsSpecialGenericOps()
                 jsonifierMethod = m
             elif (m.isMethod() and
                   (not m.isIdentifierLess() or m == descriptor.operations['Stringifier'])):
@@ -8752,7 +8794,7 @@ class CGDescriptor(CGThing):
                     cgThings.append(CGMemberJITInfo(descriptor, m))
                     if m.getExtendedAttribute("CrossOriginCallable"):
                         crossOriginMethods.add(m.identifier.name)
-                    else:
+                    elif descriptor.needsSpecialGenericOps():
                         hasMethod = True
             elif m.isAttr():
                 if m.stringifier:
@@ -8768,7 +8810,7 @@ class CGDescriptor(CGThing):
                         hasLenientGetter = True
                     elif m.getExtendedAttribute("CrossOriginReadable"):
                         crossOriginGetters.add(m.identifier.name)
-                    else:
+                    elif descriptor.needsSpecialGenericOps():
                         hasGetter = True
                 if not m.readonly:
                     for extAttr in ["PutForwards", "Replaceable"]:
@@ -8786,17 +8828,18 @@ class CGDescriptor(CGThing):
                             hasLenientSetter = True
                         elif m.getExtendedAttribute("CrossOriginWritable"):
                             crossOriginSetters.add(m.identifier.name)
-                        else:
+                        elif descriptor.needsSpecialGenericOps():
                             hasSetter = True
                 elif m.getExtendedAttribute("PutForwards"):
                     cgThings.append(CGSpecializedForwardingSetter(descriptor, m))
                     if m.getExtendedAttribute("CrossOriginWritable"):
                         crossOriginSetters.add(m.identifier.name)
-                    else:
+                    elif descriptor.needsSpecialGenericOps():
                         hasSetter = True
                 elif m.getExtendedAttribute("Replaceable"):
                     cgThings.append(CGSpecializedReplaceableSetter(descriptor, m))
-                    hasSetter = True
+                    if descriptor.needsSpecialGenericOps():
+                        hasSetter = True
                 if (not m.isStatic() and
                     descriptor.interface.hasInterfacePrototypeObject()):
                     cgThings.append(CGMemberJITInfo(descriptor, m))
@@ -9000,7 +9043,7 @@ class CGNamespacedEnum(CGThing):
     def declare(self):
         return self.node.declare()
     def define(self):
-        assert False # Only for headers.
+        return ""
 
 class CGDictionary(CGThing):
     def __init__(self, dictionary, descriptorProvider):
@@ -9047,7 +9090,7 @@ class CGDictionary(CGThing):
     def base(self):
         if self.dictionary.parent:
             return self.makeClassName(self.dictionary.parent)
-        return "MainThreadDictionaryBase"
+        return "DictionaryBase"
 
     def initMethod(self):
         body = (
@@ -11294,14 +11337,12 @@ class CallbackMethod(CallbackMember):
             "callGuard": self.getCallGuard()
             }
         if self.argCount > 0:
-            replacements["argv"] = "argv.begin()"
-            replacements["argc"] = "argc"
+            replacements["args"] = "JS::HandleValueArray::subarray(argv, 0, argc)"
         else:
-            replacements["argv"] = "nullptr"
-            replacements["argc"] = "0"
+            replacements["args"] = "JS::EmptyValueArray"
         return string.Template("${getCallable}"
                 "if (${callGuard}!JS::Call(cx, ${thisVal}, callable,\n"
-                "              ${argc}, ${argv}, &rval)) {\n"
+                "              ${args}, &rval)) {\n"
                 "  aRv.Throw(NS_ERROR_UNEXPECTED);\n"
                 "  return${errorReturn};\n"
                 "}\n").substitute(replacements)
@@ -11541,11 +11582,14 @@ class GlobalGenRoots():
             remaining = [CGGeneric(declare="prototypes::id::_ID_Count")] * (config.maxProtoChainLength - ifaceCount)
             macro = CGWrapper(CGList(supplied, ", "),
                               pre="#define INTERFACE_CHAIN_" + str(ifaceCount) + "(",
-                              post=") \\\n")
+                              post=") \\\n",
+                              declareOnly=True)
             macroContent = CGIndenter(CGList(supplied + remaining, ", \\\n"))
             macroContent = CGIndenter(CGWrapper(macroContent, pre="{ \\\n",
-                                                post=" \\\n}"))
-            return CGWrapper(CGList([macro, macroContent]), post="\n\n")
+                                                post=" \\\n}",
+                                                declareOnly=True))
+            return CGWrapper(CGList([macro, macroContent]), post="\n\n",
+                             declareOnly=True)
 
         idEnum.append(ifaceChainMacro(1))
 
@@ -11562,7 +11606,8 @@ class GlobalGenRoots():
                                    CGWrapper(idEnum, pre='\n'))
         idEnum = CGWrapper(idEnum, post='\n')
 
-        curr = CGList([idEnum])
+        curr = CGList([CGGeneric(define="#include <stdint.h>\n\n"),
+                       idEnum])
 
         # Let things know the maximum length of the prototype chain.
         maxMacroName = "MAX_PROTOTYPE_CHAIN_LENGTH"
@@ -11588,6 +11633,11 @@ template <prototypes::ID PrototypeID>
 struct PrototypeTraits;
 """)]
         traitsDecls.extend(CGPrototypeTraitsClass(d) for d in descriptorsWithPrototype)
+
+        ifaceNamesWithProto = [d.interface.identifier.name
+                               for d in descriptorsWithPrototype]
+        traitsDecls.append(CGStringTable("NamesOfInterfacesWithProtos",
+                                         ifaceNamesWithProto))
 
         traitsDecl = CGNamespace.build(['mozilla', 'dom'],
                                         CGList(traitsDecls, "\n"))

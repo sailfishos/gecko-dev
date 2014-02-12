@@ -680,13 +680,18 @@ struct JSRuntime : public JS::shadow::Runtime,
     js::PerThreadData mainThread;
 
     /*
-     * If non-zero, we were been asked to call the operation callback as soon
-     * as possible.
+     * If true, we've been asked to call the operation callback as soon as
+     * possible.
      */
-#ifdef JS_THREADSAFE
-    mozilla::Atomic<int32_t, mozilla::Relaxed> interrupt;
-#else
-    int32_t interrupt;
+    mozilla::Atomic<bool, mozilla::Relaxed> interrupt;
+
+#if defined(JS_THREADSAFE) && defined(JS_ION)
+    /*
+     * If non-zero, ForkJoin should service an interrupt. This is a separate
+     * flag from |interrupt| because we cannot use the mprotect trick with PJS
+     * code and ignore the TriggerCallbackAnyThreadDontStopIon trigger.
+     */
+    mozilla::Atomic<bool, mozilla::Relaxed> interruptPar;
 #endif
 
     /* Set when handling a signal for a thread associated with this runtime. */
@@ -1007,6 +1012,9 @@ struct JSRuntime : public JS::shadow::Runtime,
 
     /* Garbage collector state, used by jsgc.c. */
 
+    /* Garbase collector state has been sucessfully initialized. */
+    bool                gcInitialized;
+
     /*
      * Set of all GC chunks with at least one allocated thing. The
      * conservative GC uses it to quickly check if a possible GC thing points
@@ -1286,11 +1294,8 @@ struct JSRuntime : public JS::shadow::Runtime,
     /*
      * Whether a GC has been triggered as a result of gcMallocBytes falling
      * below zero.
-     *
-     * This should be a bool, but Atomic only supports 32-bit and pointer-sized
-     * types.
      */
-    mozilla::Atomic<uint32_t, mozilla::ReleaseAcquire> gcMallocGCTriggered;
+    mozilla::Atomic<bool, mozilla::ReleaseAcquire> gcMallocGCTriggered;
 
 #ifdef JS_ARM_SIMULATOR
     js::jit::SimulatorRuntime *simulatorRuntime_;
@@ -1627,9 +1632,9 @@ struct JSRuntime : public JS::shadow::Runtime,
 
     js::CTypesActivityCallback  ctypesActivityCallback;
 
-    // Non-zero if this is a parallel warmup execution.  See
-    // js::parallel::Do() for more information.
-    uint32_t parallelWarmup;
+    // Non-zero if this is a ForkJoin warmup execution.  See
+    // js::ForkJoin() for more information.
+    uint32_t forkJoinWarmup;
 
   private:
     // In certain cases, we want to optimize certain opcodes to typed instructions,
@@ -1722,7 +1727,8 @@ struct JSRuntime : public JS::shadow::Runtime,
     enum OperationCallbackTrigger {
         TriggerCallbackMainThread,
         TriggerCallbackAnyThread,
-        TriggerCallbackAnyThreadDontStopIon
+        TriggerCallbackAnyThreadDontStopIon,
+        TriggerCallbackAnyThreadForkJoin
     };
 
     void triggerOperationCallback(OperationCallbackTrigger trigger);

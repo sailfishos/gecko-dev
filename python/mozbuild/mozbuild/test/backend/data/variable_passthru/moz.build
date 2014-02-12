@@ -33,3 +33,11 @@ FAIL_ON_WARNINGS = True
 LIBXUL_LIBRARY = True
 MSVC_ENABLE_PGO = True
 NO_VISIBILITY_FLAGS = True
+
+DELAYLOAD_DLLS = ['foo.dll', 'bar.dll']
+
+RCFILE = 'foo.rc'
+RESFILE = 'bar.res'
+DEFFILE = 'baz.def'
+
+USE_STATIC_LIBS = True

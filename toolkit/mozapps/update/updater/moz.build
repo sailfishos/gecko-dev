@@ -22,6 +22,7 @@ if CONFIG['OS_ARCH'] == 'WINNT':
     ]
     DEFINES['UNICODE'] = True
     DEFINES['_UNICODE'] = True
+    USE_STATIC_LIBS = True
 
 if CONFIG['MOZ_ENABLE_GTK']:
     have_progressui = 1
@@ -52,3 +53,9 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
 DEFINES['NS_NO_XPCOM'] = True
 for var in ('MAR_CHANNEL_ID', 'MOZ_APP_VERSION'):
     DEFINES[var] = '"%s"' % CONFIG[var]
+
+DELAYLOAD_DLLS += [
+    'crypt32.dll',
+    'userenv.dll',
+    'wsock32.dll',
+]

@@ -2677,7 +2677,7 @@ public:
       DBUS_TYPE_OBJECT_PATH, &deviceAgentPath,
       DBUS_TYPE_STRING, &capabilities,
       DBUS_TYPE_INVALID);
-    NS_ENSURE_SUCCESS_VOID(success);
+    NS_ENSURE_TRUE_VOID(success);
 
     mRunnable.forget();
 
@@ -3413,6 +3413,26 @@ BluetoothDBusService::SendFile(const nsAString& aDeviceAddress,
   BluetoothOppManager* opp = BluetoothOppManager::Get();
   nsAutoString errorStr;
   if (!opp || !opp->SendFile(aDeviceAddress, aBlobParent)) {
+    errorStr.AssignLiteral("Calling SendFile() failed");
+  }
+
+  DispatchBluetoothReply(aRunnable, BluetoothValue(true), errorStr);
+}
+
+void
+BluetoothDBusService::SendFile(const nsAString& aDeviceAddress,
+                               nsIDOMBlob* aBlob,
+                               BluetoothReplyRunnable* aRunnable)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+
+  // Currently we only support one device sending one file at a time,
+  // so we don't need aDeviceAddress here because the target device
+  // has been determined when calling 'Connect()'. Nevertheless, keep
+  // it for future use.
+  BluetoothOppManager* opp = BluetoothOppManager::Get();
+  nsAutoString errorStr;
+  if (!opp || !opp->SendFile(aDeviceAddress, aBlob)) {
     errorStr.AssignLiteral("Calling SendFile() failed");
   }
 

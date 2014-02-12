@@ -17,7 +17,7 @@
 #endif
 #include <errno.h>
 #include <fcntl.h>
-#if defined(XP_OS2) || defined(XP_WIN)
+#if defined(XP_WIN)
 # include <io.h>     /* for isatty() */
 #endif
 #include <locale.h>
@@ -128,7 +128,7 @@ static bool printTiming = false;
 static const char *jsCacheDir = nullptr;
 static const char *jsCacheAsmJSPath = nullptr;
 static bool jsCachingEnabled = true;
-mozilla::Atomic<int32_t> jsCacheOpened(false);
+mozilla::Atomic<bool> jsCacheOpened(false);
 
 static bool
 SetTimeoutValue(JSContext *cx, double t);
@@ -323,7 +323,7 @@ ShellOperationCallback(JSContext *cx)
     if (!gTimeoutFunc.isNull()) {
         JSAutoCompartment ac(cx, &gTimeoutFunc.toObject());
         RootedValue returnedValue(cx);
-        if (!JS_CallFunctionValue(cx, nullptr, gTimeoutFunc, 0, nullptr, returnedValue.address()))
+        if (!JS_CallFunctionValue(cx, nullptr, gTimeoutFunc, JS::EmptyValueArray, returnedValue.address()))
             return false;
         if (returnedValue.isBoolean())
             result = returnedValue.toBoolean();
@@ -1364,7 +1364,7 @@ Quit(JSContext *cx, unsigned argc, jsval *vp)
 #endif
 
     CallArgs args = CallArgsFromVp(argc, vp);
-    JS_ConvertArguments(cx, args.length(), args.array(), "/ i", &gExitCode);
+    JS_ConvertArguments(cx, args, "/ i", &gExitCode);
 
     gQuitting = true;
     return false;
@@ -2227,7 +2227,7 @@ DumpObject(JSContext *cx, unsigned argc, jsval *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
     RootedObject arg0(cx);
-    if (!JS_ConvertArguments(cx, args.length(), args.array(), "o", arg0.address()))
+    if (!JS_ConvertArguments(cx, args, "o", arg0.address()))
         return false;
 
     js_DumpObject(arg0);
@@ -2480,9 +2480,11 @@ NewSandbox(JSContext *cx, bool lazy)
 static bool
 EvalInContext(JSContext *cx, unsigned argc, jsval *vp)
 {
+    CallArgs args = CallArgsFromVp(argc, vp);
+
     RootedString str(cx);
     RootedObject sobj(cx);
-    if (!JS_ConvertArguments(cx, argc, JS_ARGV(cx, vp), "S / o", str.address(), sobj.address()))
+    if (!JS_ConvertArguments(cx, args, "S / o", str.address(), sobj.address()))
         return false;
 
     size_t srclen;
@@ -2507,7 +2509,7 @@ EvalInContext(JSContext *cx, unsigned argc, jsval *vp)
     }
 
     if (srclen == 0) {
-        JS_SET_RVAL(cx, vp, OBJECT_TO_JSVAL(sobj));
+        args.rval().setObject(*sobj);
         return true;
     }
 
@@ -2515,7 +2517,6 @@ EvalInContext(JSContext *cx, unsigned argc, jsval *vp)
     unsigned lineno;
 
     JS_DescribeScriptedCaller(cx, &script, &lineno);
-    RootedValue rval(cx);
     {
         Maybe<JSAutoCompartment> ac;
         unsigned flags;
@@ -2535,15 +2536,14 @@ EvalInContext(JSContext *cx, unsigned argc, jsval *vp)
         if (!JS_EvaluateUCScript(cx, sobj, src, srclen,
                                  script->filename(),
                                  lineno,
-                                 &rval)) {
+                                 args.rval())) {
             return false;
         }
     }
 
-    if (!cx->compartment()->wrap(cx, &rval))
+    if (!cx->compartment()->wrap(cx, args.rval()))
         return false;
 
-    JS_SET_RVAL(cx, vp, rval);
     return true;
 }
 
@@ -3944,8 +3944,7 @@ class ShellSourceHook: public SourceHook {
         RootedValue filenameValue(cx, StringValue(str));
 
         RootedValue result(cx);
-        if (!Call(cx, UndefinedValue(), &fun->as<JSFunction>(),
-                  1, filenameValue.address(), &result))
+        if (!Call(cx, UndefinedValue(), &fun->as<JSFunction>(), filenameValue, &result))
             return false;
 
         str = JS::ToString(cx, result);
@@ -3991,7 +3990,7 @@ WithSourceHook(JSContext *cx, unsigned argc, jsval *vp)
 
     SourceHook *savedHook = js::ForgetSourceHook(cx->runtime());
     js::SetSourceHook(cx->runtime(), hook);
-    bool result = Call(cx, UndefinedValue(), &args[1].toObject(), 0, nullptr, args.rval());
+    bool result = Call(cx, UndefinedValue(), &args[1].toObject(), JS::EmptyValueArray, args.rval());
     js::SetSourceHook(cx->runtime(), savedHook);
     return result;
 }
@@ -4701,7 +4700,7 @@ static bool
 env_setProperty(JSContext *cx, HandleObject obj, HandleId id, bool strict, MutableHandleValue vp)
 {
 /* XXX porting may be easy, but these don't seem to supply setenv by default */
-#if !defined XP_OS2 && !defined SOLARIS
+#if !defined SOLARIS
     int rv;
 
     RootedValue idvalue(cx, IdToValue(id));
@@ -4744,7 +4743,7 @@ env_setProperty(JSContext *cx, HandleObject obj, HandleId id, bool strict, Mutab
         return false;
     }
     vp.set(StringValue(value));
-#endif /* !defined XP_OS2 && !defined SOLARIS */
+#endif /* !defined SOLARIS */
     return true;
 }
 
@@ -5743,13 +5742,6 @@ main(int argc, char **argv, char **envp)
 
 #ifdef HAVE_SETLOCALE
     setlocale(LC_ALL, "");
-#endif
-
-#ifdef XP_OS2
-   /* these streams are normally line buffered on OS/2 and need a \n, *
-    * so we need to unbuffer then to get a reasonable prompt          */
-    setbuf(stdout,0);
-    setbuf(stderr,0);
 #endif
 
     MaybeOverrideOutFileFromEnv("JS_STDERR", stderr, &gErrFile);

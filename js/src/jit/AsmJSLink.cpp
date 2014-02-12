@@ -166,6 +166,8 @@ ValidateMathBuiltinFunction(JSContext *cx, AsmJSModule::Global &global, HandleVa
       case AsmJSMathBuiltin_log: native = math_log; break;
       case AsmJSMathBuiltin_pow: native = js_math_pow; break;
       case AsmJSMathBuiltin_sqrt: native = js_math_sqrt; break;
+      case AsmJSMathBuiltin_min: native = js_math_min; break;
+      case AsmJSMathBuiltin_max: native = js_math_max; break;
       case AsmJSMathBuiltin_abs: native = js_math_abs; break;
       case AsmJSMathBuiltin_atan2: native = math_atan2; break;
       case AsmJSMathBuiltin_imul: native = math_imul; break;
@@ -216,15 +218,15 @@ DynamicallyLinkModule(JSContext *cx, CallArgs args, AsmJSModule &module)
                             "Function constructor).");
     module.setIsLinked();
 
-    RootedValue globalVal(cx, UndefinedValue());
+    RootedValue globalVal(cx);
     if (args.length() > 0)
         globalVal = args[0];
 
-    RootedValue importVal(cx, UndefinedValue());
+    RootedValue importVal(cx);
     if (args.length() > 1)
         importVal = args[1];
 
-    RootedValue bufferVal(cx, UndefinedValue());
+    RootedValue bufferVal(cx);
     if (args.length() > 2)
         bufferVal = args[2];
 
@@ -236,17 +238,25 @@ DynamicallyLinkModule(JSContext *cx, CallArgs args, AsmJSModule &module)
         heap = &bufferVal.toObject().as<ArrayBufferObject>();
 
         if (!IsValidAsmJSHeapLength(heap->byteLength())) {
-            return LinkFail(cx, JS_smprintf("ArrayBuffer byteLength 0x%x is not a valid heap length. The next valid length is 0x%x",
-                                            heap->byteLength(),
-                                            RoundUpToNextValidAsmJSHeapLength(heap->byteLength())));
+            ScopedJSFreePtr<char> msg(
+                JS_smprintf("ArrayBuffer byteLength 0x%x is not a valid heap length. The next "
+                            "valid length is 0x%x",
+                            heap->byteLength(),
+                            RoundUpToNextValidAsmJSHeapLength(heap->byteLength())));
+            return LinkFail(cx, msg.get());
         }
 
         // This check is sufficient without considering the size of the loaded datum because heap
         // loads and stores start on an aligned boundary and the heap byteLength has larger alignment.
         JS_ASSERT((module.minHeapLength() - 1) <= INT32_MAX);
         if (heap->byteLength() < module.minHeapLength()) {
-            return LinkFail(cx, JS_smprintf("ArrayBuffer byteLength of 0x%x is less than 0x%x (which is the largest constant heap access offset rounded up to the next valid heap size).",
-                                            heap->byteLength(), module.minHeapLength()));
+            ScopedJSFreePtr<char> msg(
+                JS_smprintf("ArrayBuffer byteLength of 0x%x is less than 0x%x (which is the"
+                            "largest constant heap access offset rounded up to the next valid "
+                            "heap size).",
+                            heap->byteLength(),
+                            module.minHeapLength()));
+            return LinkFail(cx, msg.get());
         }
 
         if (!ArrayBufferObject::prepareForAsmJS(cx, heap))

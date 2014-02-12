@@ -871,6 +871,7 @@ NS_ShutdownNativeCharsetUtils()
 #elif defined(XP_WIN)
 
 #include <windows.h>
+#include "nsString.h"
 #include "nsAString.h"
 #include "nsReadableUtils.h"
 
@@ -901,7 +902,7 @@ NS_CopyNativeToUnicode(const nsACString &input, nsAString &output)
 
         char16_t *result = out_iter.get();
 
-        ::MultiByteToWideChar(CP_ACP, 0, buf, inputLen, result, resultLen);
+        ::MultiByteToWideChar(CP_ACP, 0, buf, inputLen, wwc(result), resultLen);
     }
     return NS_OK;
 }
@@ -947,7 +948,7 @@ NS_CopyUnicodeToNative(const nsAString  &input, nsACString &output)
 int32_t 
 NS_ConvertAtoW(const char *aStrInA, int aBufferSize, char16_t *aStrOutW)
 {
-    return MultiByteToWideChar(CP_ACP, 0, aStrInA, -1, aStrOutW, aBufferSize);
+    return MultiByteToWideChar(CP_ACP, 0, aStrInA, -1, wwc(aStrOutW), aBufferSize);
 }
 
 int32_t 
@@ -977,133 +978,6 @@ NS_ConvertWtoA(const char16_t *aStrInW, int aBufferSizeOut,
     }
 
     return numCharsConverted;
-}
-
-//-----------------------------------------------------------------------------
-// XP_OS2
-//-----------------------------------------------------------------------------
-#elif defined(XP_OS2)
-
-#define INCL_DOS
-#include <os2.h>
-#include <uconv.h>
-#include "nsAString.h"
-#include "nsReadableUtils.h"
-#include <ulserrno.h>
-#include "nsNativeCharsetUtils.h"
-
-using namespace mozilla;
-
-static UconvObject UnicodeConverter = nullptr;
-
-nsresult
-NS_CopyNativeToUnicode(const nsACString &input, nsAString  &output)
-{
-    uint32_t inputLen = input.Length();
-
-    nsACString::const_iterator iter;
-    input.BeginReading(iter);
-    const char *inputStr = iter.get();
-
-    // determine length of result
-    uint32_t resultLen = inputLen;
-    if (!output.SetLength(resultLen, fallible_t()))
-        return NS_ERROR_OUT_OF_MEMORY;
-
-    nsAString::iterator out_iter;
-    output.BeginWriting(out_iter);
-    UniChar *result = (UniChar*)out_iter.get();
-
-    size_t cSubs = 0;
-    size_t resultLeft = resultLen;
-
-    if (!UnicodeConverter)
-      NS_StartupNativeCharsetUtils();
-
-    int unirc = ::UniUconvToUcs(UnicodeConverter, (void**)&inputStr, &inputLen,
-                                &result, &resultLeft, &cSubs);
-
-    NS_ASSERTION(unirc != UCONV_E2BIG, "Path too big");
-
-    if (unirc != ULS_SUCCESS) {
-        output.Truncate();
-        return NS_ERROR_FAILURE;
-    }
-
-    // Need to update string length to reflect how many bytes were actually
-    // written.
-    output.Truncate(resultLen - resultLeft);
-    return NS_OK;
-}
-
-nsresult
-NS_CopyUnicodeToNative(const nsAString &input, nsACString &output)
-{
-    size_t inputLen = input.Length();
-
-    nsAString::const_iterator iter;
-    input.BeginReading(iter);
-    UniChar* inputStr = (UniChar*) const_cast<char16_t*>(iter.get());
-
-    // maximum length of unicode string of length x converted to native
-    // codepage is x*2
-    size_t resultLen = inputLen * 2;
-    if (!output.SetLength(resultLen, fallible_t()))
-        return NS_ERROR_OUT_OF_MEMORY;
-
-    nsACString::iterator out_iter;
-    output.BeginWriting(out_iter);
-    char *result = out_iter.get();
-
-    size_t cSubs = 0;
-    size_t resultLeft = resultLen;
-
-    if (!UnicodeConverter)
-      NS_StartupNativeCharsetUtils();
-  
-    int unirc = ::UniUconvFromUcs(UnicodeConverter, &inputStr, &inputLen,
-                                  (void**)&result, &resultLeft, &cSubs);
-
-    NS_ASSERTION(unirc != UCONV_E2BIG, "Path too big");
-  
-    if (unirc != ULS_SUCCESS) {
-        output.Truncate();
-        return NS_ERROR_FAILURE;
-    }
-
-    // Need to update string length to reflect how many bytes were actually
-    // written.
-    output.Truncate(resultLen - resultLeft);
-    return NS_OK;
-}
-
-void
-NS_StartupNativeCharsetUtils()
-{
-    ULONG ulLength;
-    ULONG ulCodePage;
-    DosQueryCp(sizeof(ULONG), &ulCodePage, &ulLength);
-
-    UniChar codepage[20];
-    int unirc = ::UniMapCpToUcsCp(ulCodePage, codepage, 20);
-    if (unirc == ULS_SUCCESS) {
-        unirc = ::UniCreateUconvObject(codepage, &UnicodeConverter);
-        if (unirc == ULS_SUCCESS) {
-            uconv_attribute_t attr;
-            ::UniQueryUconvObject(UnicodeConverter, &attr, sizeof(uconv_attribute_t), 
-                                  nullptr, nullptr, nullptr);
-            attr.options = UCONV_OPTION_SUBSTITUTE_BOTH;
-            attr.subchar_len=1;
-            attr.subchar[0]='_';
-            ::UniSetUconvObject(UnicodeConverter, &attr);
-        }
-    }
-}
-
-void
-NS_ShutdownNativeCharsetUtils()
-{
-    ::UniFreeUconvObject(UnicodeConverter);
 }
 
 #else

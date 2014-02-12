@@ -115,6 +115,8 @@ using js::frontend::Parser;
 JS_STATIC_ASSERT((jschar)-1 > 0);
 JS_STATIC_ASSERT(sizeof(jschar) == 2);
 
+const JS::HandleValueArray JS::EmptyValueArray;
+
 JS_PUBLIC_API(int64_t)
 JS_Now()
 {
@@ -191,7 +193,7 @@ AssertHeapIsIdleOrStringIsFlat(JSContext *cx, JSString *str)
 }
 
 JS_PUBLIC_API(bool)
-JS_ConvertArguments(JSContext *cx, unsigned argc, jsval *argv, const char *format, ...)
+JS_ConvertArguments(JSContext *cx, const CallArgs &args, const char *format, ...)
 {
     va_list ap;
     bool ok;
@@ -199,15 +201,15 @@ JS_ConvertArguments(JSContext *cx, unsigned argc, jsval *argv, const char *forma
     AssertHeapIsIdle(cx);
 
     va_start(ap, format);
-    ok = JS_ConvertArgumentsVA(cx, argc, argv, format, ap);
+    ok = JS_ConvertArgumentsVA(cx, args, format, ap);
     va_end(ap);
     return ok;
 }
 
 JS_PUBLIC_API(bool)
-JS_ConvertArgumentsVA(JSContext *cx, unsigned argc, jsval *argv, const char *format, va_list ap)
+JS_ConvertArgumentsVA(JSContext *cx, const CallArgs &args, const char *format, va_list ap)
 {
-    jsval *sp;
+    unsigned index = 0;
     bool required;
     char c;
     double d;
@@ -217,8 +219,7 @@ JS_ConvertArgumentsVA(JSContext *cx, unsigned argc, jsval *argv, const char *for
 
     AssertHeapIsIdle(cx);
     CHECK_REQUEST(cx);
-    assertSameCompartment(cx, JSValueArray(argv - 2, argc + 2));
-    sp = argv;
+    assertSameCompartment(cx, args);
     required = true;
     while ((c = *format++) != '\0') {
         if (isspace(c))
@@ -227,24 +228,23 @@ JS_ConvertArgumentsVA(JSContext *cx, unsigned argc, jsval *argv, const char *for
             required = false;
             continue;
         }
-        if (sp == argv + argc) {
+        if (index == args.length()) {
             if (required) {
-                HandleValue callee = HandleValue::fromMarkedLocation(&argv[-2]);
-                if (JSFunction *fun = ReportIfNotFunction(cx, callee)) {
+                if (JSFunction *fun = ReportIfNotFunction(cx, args.calleev())) {
                     char numBuf[12];
-                    JS_snprintf(numBuf, sizeof numBuf, "%u", argc);
+                    JS_snprintf(numBuf, sizeof numBuf, "%u", args.length());
                     JSAutoByteString funNameBytes;
                     if (const char *name = GetFunctionNameBytes(cx, fun, &funNameBytes)) {
                         JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr,
                                              JSMSG_MORE_ARGS_NEEDED,
-                                             name, numBuf, (argc == 1) ? "" : "s");
+                                             name, numBuf, (args.length() == 1) ? "" : "s");
                     }
                 }
                 return false;
             }
             break;
         }
-        RootedValue arg(cx, *sp);
+        MutableHandleValue arg = args[index++];
         switch (c) {
           case 'b':
             *va_arg(ap, bool *) = ToBoolean(arg);
@@ -273,11 +273,10 @@ JS_ConvertArgumentsVA(JSContext *cx, unsigned argc, jsval *argv, const char *for
             break;
           case 'S':
           case 'W':
-            val = *sp;
-            str = ToString<CanGC>(cx, val);
+            str = ToString<CanGC>(cx, arg);
             if (!str)
                 return false;
-            *sp = STRING_TO_JSVAL(str);
+            arg.setString(str);
             if (c == 'W') {
                 JSFlatString *flat = str->ensureFlat(cx);
                 if (!flat)
@@ -288,26 +287,25 @@ JS_ConvertArgumentsVA(JSContext *cx, unsigned argc, jsval *argv, const char *for
             }
             break;
           case 'o':
-            if (sp->isNullOrUndefined()) {
+            if (arg.isNullOrUndefined()) {
                 obj = nullptr;
             } else {
-                RootedValue v(cx, *sp);
-                obj = ToObject(cx, v);
+                obj = ToObject(cx, arg);
                 if (!obj)
                     return false;
             }
-            *sp = ObjectOrNullValue(obj);
+            arg.setObjectOrNull(obj);
             *va_arg(ap, JSObject **) = obj;
             break;
           case 'f':
-              obj = ReportIfNotFunction(cx, HandleValue::fromMarkedLocation(sp));
+            obj = ReportIfNotFunction(cx, arg);
             if (!obj)
                 return false;
-            *sp = OBJECT_TO_JSVAL(obj);
+            arg.setObject(*obj);
             *va_arg(ap, JSFunction **) = &obj->as<JSFunction>();
             break;
           case 'v':
-            *va_arg(ap, jsval *) = *sp;
+            *va_arg(ap, jsval *) = arg;
             break;
           case '*':
             break;
@@ -315,7 +313,6 @@ JS_ConvertArgumentsVA(JSContext *cx, unsigned argc, jsval *argv, const char *for
             JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr, JSMSG_BAD_CHAR, format);
             return false;
         }
-        sp++;
     }
     return true;
 }
@@ -615,7 +612,9 @@ JS_ShutDown(void)
     }
 #endif
 
+#ifdef JS_THREADSAFE
     WorkerThreadState().finish();
+#endif
 
     PRMJ_NowShutdown();
 
@@ -1269,9 +1268,8 @@ JS_ResolveStandardClass(JSContext *cx, HandleObject obj, HandleId id, bool *reso
     JSAtom *undefinedAtom = rt->atomState.undefined;
     if (idstr == undefinedAtom) {
         *resolved = true;
-        RootedValue undefinedValue(cx, UndefinedValue());
         return JSObject::defineProperty(cx, obj, undefinedAtom->asPropertyName(),
-                                        undefinedValue,
+                                        UndefinedHandleValue,
                                         JS_PropertyStub, JS_StrictPropertyStub,
                                         JSPROP_PERMANENT | JSPROP_READONLY);
     }
@@ -4312,7 +4310,7 @@ JS::ReadOnlyCompileOptions::copyPODOptions(const ReadOnlyCompileOptions &rhs)
     werrorOption = rhs.werrorOption;
     asmJSOption = rhs.asmJSOption;
     sourcePolicy = rhs.sourcePolicy;
-    introducer = rhs.introducer;
+    introductionType = rhs.introductionType;
     introductionLineno = rhs.introductionLineno;
     introductionOffset = rhs.introductionOffset;
     hasIntroductionInfo = rhs.hasIntroductionInfo;
@@ -4353,6 +4351,7 @@ JS::OwningCompileOptions::copy(JSContext *cx, const ReadOnlyCompileOptions &rhs)
     setPrincipals(rhs.principals());
     setOriginPrincipals(rhs.originPrincipals());
     setElement(rhs.element());
+    setElementAttributeName(rhs.elementAttributeName());
 
     return (setFileAndLine(cx, rhs.filename(), rhs.lineno) &&
             setSourceMapURL(cx, rhs.sourceMapURL()) &&
@@ -4957,32 +4956,32 @@ JS_EvaluateScript(JSContext *cx, JSObject *objArg, const char *bytes, unsigned n
 }
 
 JS_PUBLIC_API(bool)
-JS_CallFunction(JSContext *cx, JSObject *objArg, JSFunction *fun, unsigned argc, jsval *argv,
+JS_CallFunction(JSContext *cx, JSObject *objArg, JSFunction *fun, const JS::HandleValueArray& args,
                 jsval *rval)
 {
     RootedObject obj(cx, objArg);
     JS_ASSERT(!cx->runtime()->isAtomsCompartment(cx->compartment()));
     AssertHeapIsIdle(cx);
     CHECK_REQUEST(cx);
-    assertSameCompartment(cx, obj, fun, JSValueArray(argv, argc));
+    assertSameCompartment(cx, obj, fun, args);
     AutoLastFrameCheck lfc(cx);
 
     RootedValue rv(cx);
-    if (!Invoke(cx, ObjectOrNullValue(obj), ObjectValue(*fun), argc, argv, &rv))
+    if (!Invoke(cx, ObjectOrNullValue(obj), ObjectValue(*fun), args.length(), args.begin(), &rv))
         return false;
     *rval = rv;
     return true;
 }
 
 JS_PUBLIC_API(bool)
-JS_CallFunctionName(JSContext *cx, JSObject *objArg, const char *name, unsigned argc, jsval *argv,
-                    jsval *rval)
+JS_CallFunctionName(JSContext *cx, JSObject *objArg, const char *name,
+                    const JS::HandleValueArray& args, jsval *rval)
 {
     RootedObject obj(cx, objArg);
     JS_ASSERT(!cx->runtime()->isAtomsCompartment(cx->compartment()));
     AssertHeapIsIdle(cx);
     CHECK_REQUEST(cx);
-    assertSameCompartment(cx, obj, JSValueArray(argv, argc));
+    assertSameCompartment(cx, obj, args);
     AutoLastFrameCheck lfc(cx);
 
     JSAtom *atom = Atomize(cx, name, strlen(name));
@@ -4995,40 +4994,40 @@ JS_CallFunctionName(JSContext *cx, JSObject *objArg, const char *name, unsigned 
         return false;
 
     RootedValue rv(cx);
-    if (!Invoke(cx, ObjectOrNullValue(obj), v, argc, argv, &rv))
+    if (!Invoke(cx, ObjectOrNullValue(obj), v, args.length(), args.begin(), &rv))
         return false;
     *rval = rv;
     return true;
 }
 
 JS_PUBLIC_API(bool)
-JS_CallFunctionValue(JSContext *cx, JSObject *objArg, jsval fval, unsigned argc, jsval *argv,
+JS_CallFunctionValue(JSContext *cx, JSObject *objArg, jsval fval, const JS::HandleValueArray& args,
                      jsval *rval)
 {
     RootedObject obj(cx, objArg);
     JS_ASSERT(!cx->runtime()->isAtomsCompartment(cx->compartment()));
     AssertHeapIsIdle(cx);
     CHECK_REQUEST(cx);
-    assertSameCompartment(cx, obj, fval, JSValueArray(argv, argc));
+    assertSameCompartment(cx, obj, fval, args);
     AutoLastFrameCheck lfc(cx);
 
     RootedValue rv(cx);
-    if (!Invoke(cx, ObjectOrNullValue(obj), fval, argc, argv, &rv))
+    if (!Invoke(cx, ObjectOrNullValue(obj), fval, args.length(), args.begin(), &rv))
         return false;
     *rval = rv;
     return true;
 }
 
 JS_PUBLIC_API(bool)
-JS::Call(JSContext *cx, jsval thisv, jsval fval, unsigned argc, jsval *argv,
+JS::Call(JSContext *cx, jsval thisv, jsval fval, const JS::HandleValueArray& args,
          MutableHandleValue rval)
 {
     AssertHeapIsIdle(cx);
     CHECK_REQUEST(cx);
-    assertSameCompartment(cx, thisv, fval, JSValueArray(argv, argc));
+    assertSameCompartment(cx, thisv, fval, args);
     AutoLastFrameCheck lfc(cx);
 
-    return Invoke(cx, thisv, fval, argc, argv, rval);
+    return Invoke(cx, thisv, fval, args.length(), args.begin(), rval);
 }
 
 JS_PUBLIC_API(JSObject *)

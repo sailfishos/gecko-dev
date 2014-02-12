@@ -118,8 +118,8 @@ fun_getProperty(JSContext *cx, HandleObject obj_, HandleId id, MutableHandleValu
 
         /* Callsite clones should never escape to script. */
         JSObject &maybeClone = iter.calleev().toObject();
-        if (maybeClone.is<JSFunction>() && maybeClone.as<JSFunction>().nonLazyScript()->isCallsiteClone())
-            vp.setObject(*maybeClone.as<JSFunction>().nonLazyScript()->originalFunction());
+        if (maybeClone.is<JSFunction>())
+            vp.setObject(*maybeClone.as<JSFunction>().originalFunction());
         else
             vp.set(iter.calleev());
 
@@ -339,8 +339,7 @@ js::fun_resolve(JSContext *cx, HandleObject obj, HandleId id, unsigned flags,
                 setter = JS_StrictPropertyStub;
             }
 
-            RootedValue value(cx, UndefinedValue());
-            if (!DefineNativeProperty(cx, fun, id, value, getter, setter,
+            if (!DefineNativeProperty(cx, fun, id, UndefinedHandleValue, getter, setter,
                                       attrs, 0, 0)) {
                 return false;
             }
@@ -1486,9 +1485,9 @@ FunctionConstructor(JSContext *cx, unsigned argc, Value *vp, GeneratorKind gener
     CurrentScriptFileLineOrigin(cx, &script, &filename, &lineno, &pcOffset, &originPrincipals);
     JSPrincipals *principals = PrincipalsForCompiledCode(args, cx);
 
-    const char *introducer = "Function";
+    const char *introductionType = "Function";
     if (generatorKind != NotGenerator)
-        introducer = "GeneratorFunction";
+        introductionType = "GeneratorFunction";
 
     const char *introducerFilename = filename;
     if (script && script->scriptSource()->introducerFilename())
@@ -1500,7 +1499,7 @@ FunctionConstructor(JSContext *cx, unsigned argc, Value *vp, GeneratorKind gener
            .setFileAndLine(filename, 1)
            .setNoScriptRval(false)
            .setCompileAndGo(true)
-           .setIntroductionInfo(introducerFilename, introducer, lineno, pcOffset);
+           .setIntroductionInfo(introducerFilename, introductionType, lineno, pcOffset);
 
     unsigned n = args.length() ? args.length() - 1 : 0;
     if (n > 0) {

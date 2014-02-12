@@ -1092,8 +1092,13 @@
             // Focus is suppressed in the event that the main browser window is minimized - focusing a tab would restore the window
             if (!this._previewMode) {
               // We've selected the new tab, so go ahead and notify listeners.
-              let event = document.createEvent("Events");
-              event.initEvent("TabSelect", true, false);
+              let event = new CustomEvent("TabSelect", {
+                bubbles: true,
+                cancelable: false,
+                detail: {
+                  previousTab: oldTab
+                }
+              });
               this.mCurrentTab.dispatchEvent(event);
 
               this._tabAttrModified(oldTab);
@@ -1905,9 +1910,12 @@
               // the fast path.
               if (closeWindow &&
                   aCloseWindowFastpath &&
-                  this._removingTabs.length == 0 &&
-                  (this._windowIsClosing = window.closeWindow(true, window.warnAboutClosingWindow)))
+                  this._removingTabs.length == 0) {
+                // This call actually closes the window, unless the user
+                // cancels the operation.  We are finished here in both cases.
+                this._windowIsClosing = window.closeWindow(true, window.warnAboutClosingWindow);
                 return null;
+              }
 
               newTab = true;
             }

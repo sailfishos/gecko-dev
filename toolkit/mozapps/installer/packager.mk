@@ -10,7 +10,7 @@ ifndef MOZ_PKG_FORMAT
 ifeq (cocoa,$(MOZ_WIDGET_TOOLKIT))
 MOZ_PKG_FORMAT  = DMG
 else
-ifeq (,$(filter-out OS2 WINNT, $(OS_ARCH)))
+ifeq (,$(filter-out WINNT, $(OS_ARCH)))
 MOZ_PKG_FORMAT  = ZIP
 else
 ifeq (,$(filter-out SunOS, $(OS_ARCH)))
@@ -133,7 +133,7 @@ JSSHELL_BINS += \
 endif # Darwin
 endif # WINNT
 endif # MOZ_STATIC_JS
-MAKE_JSSHELL  = $(ZIP) -9j $(PKG_JSSHELL) $(JSSHELL_BINS)
+MAKE_JSSHELL  = $(PYTHON) $(topsrcdir)/toolkit/mozapps/installer/dozip.py $(PKG_JSSHELL) $(abspath $(JSSHELL_BINS))
 endif # LIBXUL_SDK
 
 _ABS_DIST = $(abspath $(DIST))

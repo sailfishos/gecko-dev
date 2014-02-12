@@ -39,3 +39,11 @@ FORCE_SHARED_LIB = True
 EXPORT_LIBRARY = True
 IS_COMPONENT = True
 NO_VISIBILITY_FLAGS = True
+
+DELAYLOAD_DLLS = ['foo.dll', 'bar.dll']
+
+RCFILE = 'foo.rc'
+RESFILE = 'bar.res'
+DEFFILE = 'baz.def'
+
+USE_STATIC_LIBS = True

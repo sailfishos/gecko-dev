@@ -526,6 +526,8 @@ nsFrameLoader::ReallyStartLoadingInternal()
     rv = NS_NewURI(getter_AddRefs(referrer), referrerStr);
 
     loadInfo->SetSrcdocData(srcdoc);
+    nsCOMPtr<nsIURI> baseURI = mOwnerContent->GetBaseURI();
+    loadInfo->SetBaseURI(baseURI);
   }
   else {
     rv = mOwnerContent->NodePrincipal()->GetURI(getter_AddRefs(referrer));
@@ -1778,8 +1780,21 @@ nsFrameLoader::CheckForRecursiveLoad(nsIURI* aURI)
     temp.swap(parentAsItem);
     temp->GetSameTypeParent(getter_AddRefs(parentAsItem));
   }
-  
-  // Bug 136580: Check for recursive frame loading
+
+  // Bug 136580: Check for recursive frame loading excluding about:srcdoc URIs.
+  // srcdoc URIs require their contents to be specified inline, so it isn't
+  // possible for undesirable recursion to occur without the aid of a
+  // non-srcdoc URI,  which this method will block normally.
+  // Besides, URI is not enough to guarantee uniqueness of srcdoc documents.
+  nsAutoCString buffer;
+  rv = aURI->GetScheme(buffer);
+  if (NS_SUCCEEDED(rv) && buffer.EqualsLiteral("about")) {
+    rv = aURI->GetPath(buffer);
+    if (NS_SUCCEEDED(rv) && buffer.EqualsLiteral("srcdoc")) {
+      // Duplicates allowed up to depth limits
+      return NS_OK;
+    }
+  }
   int32_t matchCount = 0;
   mDocShell->GetSameTypeParent(getter_AddRefs(parentAsItem));
   while (parentAsItem) {

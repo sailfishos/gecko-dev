@@ -161,8 +161,11 @@ TextureClient::DestroyIPDLActor(PTextureChild* actor)
 bool
 TextureClient::InitIPDLActor(CompositableForwarder* aForwarder)
 {
-  MOZ_ASSERT(!mActor);
   MOZ_ASSERT(aForwarder);
+  if (mActor && mActor->GetForwarder() == aForwarder) {
+    return true;
+  }
+  MOZ_ASSERT(!mActor, "Cannot use a texture on several IPC channels.");
 
   SurfaceDescriptor desc;
   if (!ToSurfaceDescriptor(desc)) {
@@ -219,7 +222,7 @@ public:
   ~MemoryTextureClientData()
   {
     MOZ_ASSERT(!mBuffer, "Forgot to deallocate the shared texture data?");
-    MOZ_COUNT_CTOR(MemoryTextureClientData);
+    MOZ_COUNT_DTOR(MemoryTextureClientData);
   }
 
   virtual void DeallocateSharedData(ISurfaceAllocator*)

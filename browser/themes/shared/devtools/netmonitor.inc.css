@@ -181,28 +181,48 @@ box.requests-menu-status {
   background-color: rgba(44, 187, 15, 1); /* green */
 }
 
+/* 3xx are triangles */
 .theme-dark box.requests-menu-status[code^="3"] {
-  background-color: rgba(94, 136, 176, 1); /* grey */
+  background-color: transparent;
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 10px solid rgba(217, 155, 40, 1); /* light orange */
+  border-radius: 0;
 }
 
 .theme-light box.requests-menu-status[code^="3"] {
-  background-color: rgba(95, 136, 176, 1); /* blue grey */
+  background-color: transparent;
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 10px solid rgba(217, 126, 0, 1); /* light orange */
+  border-radius: 0;
 }
 
+/* 4xx and 5xx are squares - error codes */
 .theme-dark box.requests-menu-status[code^="4"] {
   background-color: rgba(235, 83, 104, 1); /* red */
+  border-radius: 0; /* squares */
 }
 
 .theme-light box.requests-menu-status[code^="4"] {
   background-color: rgba(237, 38, 85, 1); /* red */
+  border-radius: 0; /* squares */
 }
 
 .theme-dark box.requests-menu-status[code^="5"] {
   background-color: rgba(223, 128, 255, 1); /* pink? */
+  border-radius: 0;
+  transform: rotate(45deg);
 }
 
 .theme-light box.requests-menu-status[code^="5"] {
   background-color: rgba(184, 46, 229, 1); /* pink! */
+  border-radius: 0;
+  transform: rotate(45deg);
 }
 
 /* Network requests table: waterfall header */
@@ -355,10 +375,6 @@ box.requests-menu-status {
 
 /* Network request details */
 
-#details-pane {
-  max-width: 500px;
-}
-
 #details-pane-toggle {
   background: none;
   box-shadow: none;
@@ -482,12 +498,20 @@ box.requests-menu-status {
   border-top: solid 1px hsla(210,5%,5%,.3);
 }
 
+.theme-dark #requests-menu-footer {
+  background: url(background-noise-toolbar.png), #343c45; /* Toolbars */
+}
+
+.theme-light #requests-menu-footer {
+  background: url(background-noise-toolbar.png), #f0f1f2; /* Toolbars */
+}
+
 .requests-menu-footer-button,
 .requests-menu-footer-label {
   min-width: 1em;
   margin: 0;
   border: none;
-  padding: 2px 0.75vw;
+  padding: 2px 1vw;
 }
 
 .theme-dark .requests-menu-footer-button,
@@ -720,13 +744,7 @@ box.requests-menu-status {
     min-height: 20px;
   }
 
-  .requests-menu-footer-button,
-  .requests-menu-footer-label {
-    padding: 2px 1vw;
-  }
-
   #details-pane {
-    max-width: none;
     margin: 0 !important;
     /* To prevent all the margin hacks to hide the sidebar. */
   }
