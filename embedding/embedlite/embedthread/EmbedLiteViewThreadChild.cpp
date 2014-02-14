@@ -627,6 +627,8 @@ EmbedLiteViewThreadChild::RecvAcknowledgeScrollUpdate(const FrameMetrics::ViewID
     return true;
   }
 
+  APZCCallbackHelper::AcknowledgeScrollUpdate(aScrollId, aScrollGeneration);
+
   return true;
 }
 
