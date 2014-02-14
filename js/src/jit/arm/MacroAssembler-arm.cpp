@@ -3484,6 +3484,7 @@ MacroAssemblerARMCompat::setupABICall(uint32_t args)
 #ifdef JS_CODEGEN_ARM_HARDFP
     usedIntSlots_ = 0;
     usedFloatSlots_ = 0;
+    usedFloat32_ = false;
     padding_ = 0;
 #else
     usedSlots_ = 0;
@@ -3526,31 +3527,27 @@ MacroAssemblerARMCompat::passABIArg(const MoveOperand &from, MoveOp::Type type)
     switch (type) {
       case MoveOp::FLOAT32:
       case MoveOp::DOUBLE: {
+          JS_ASSERT(!usedFloat32_);
+          if (type == MoveOp::FLOAT32)
+              usedFloat32_ = true;
         FloatRegister fr;
         if (GetFloatArgReg(usedIntSlots_, usedFloatSlots_, &fr)) {
             if (from.isFloatReg() && from.floatReg() == fr) {
-                usedFloatSlots_++;
-                if (type == MoveOp::FLOAT32) {
-                    // The compiler current only supports float32 registers packed into
-                    // the lower half of double registers whereas the ARM ABI requires
-                    // packing float32 registers into consecutive float registers.
-                    // Passing a single float32 argument works and this is the only case
-                    // that is currently required so just assert this for now.
-                    JS_ASSERT(passedArgTypes_ == 0);
-                    passedArgTypes_ = (passedArgTypes_ << ArgType_Shift) | ArgType_Float32;
-                } else {
-                    passedArgTypes_ = (passedArgTypes_ << ArgType_Shift) | ArgType_Double;
-                }
                 // Nothing to do; the value is in the right register already
+                usedFloatSlots_++;
+                if (type == MoveOp::FLOAT32)
+                    passedArgTypes_ = (passedArgTypes_ << ArgType_Shift) | ArgType_Float32;
+                else
+                    passedArgTypes_ = (passedArgTypes_ << ArgType_Shift) | ArgType_Double;
                 return;
             }
             to = MoveOperand(fr);
         } else {
             // If (and only if) the integer registers have started spilling, do we
             // need to take the register's alignment into account
-            uint32_t disp;
+            uint32_t disp = INT_MAX;
             if (type == MoveOp::FLOAT32)
-                disp = GetFloat32ArgStackDisp(usedIntSlots_, usedFloatSlots_, &padding_);
+                 disp = GetFloat32ArgStackDisp(usedIntSlots_, usedFloatSlots_, &padding_);
             else
                 disp = GetDoubleArgStackDisp(usedIntSlots_, usedFloatSlots_, &padding_);
             to = MoveOperand(sp, disp);
@@ -3566,10 +3563,9 @@ MacroAssemblerARMCompat::passABIArg(const MoveOperand &from, MoveOp::Type type)
         Register r;
         if (GetIntArgReg(usedIntSlots_, usedFloatSlots_, &r)) {
             if (from.isGeneralReg() && from.reg() == r) {
-                // Almost nothing to do; the value is in the right register already
+                // Nothing to do; the value is in the right register already
                 usedIntSlots_++;
                 passedArgTypes_ = (passedArgTypes_ << ArgType_Shift) | ArgType_General;
-
                 return;
             }
             to = MoveOperand(r);

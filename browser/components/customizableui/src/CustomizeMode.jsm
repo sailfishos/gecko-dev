@@ -189,6 +189,11 @@ CustomizeMode.prototype = {
       // Hide the palette before starting the transition for increased perf.
       this.visiblePalette.hidden = true;
 
+      // Disable the button-text fade-out mask
+      // during the transition for increased perf.
+      let panelContents = window.PanelUI.contents;
+      panelContents.setAttribute("customize-transitioning", "true");
+
       // Move the mainView in the panel to the holder so that we can see it
       // while customizing.
       let mainView = window.PanelUI.mainView;
@@ -234,6 +239,7 @@ CustomizeMode.prototype = {
       document.getElementById("PanelUI-quit").setAttribute("disabled", true);
 
       this._updateResetButton();
+      this._updateUndoResetButton();
 
       this._skipSourceNodeCheck = Services.prefs.getPrefType(kSkipSourceNodePref) == Ci.nsIPrefBranch.PREF_BOOL &&
                                   Services.prefs.getBoolPref(kSkipSourceNodePref);
@@ -253,6 +259,8 @@ CustomizeMode.prototype = {
       this._updateEmptyPaletteNotice();
 
       this._handler.isEnteringCustomizeMode = false;
+      panelContents.removeAttribute("customize-transitioning");
+
       this.dispatchToolboxEvent("customizationready");
       if (!this._wantToBeInCustomizeMode) {
         this.exit();
@@ -299,6 +307,11 @@ CustomizeMode.prototype = {
     this.paletteSpacer.hidden = false;
     this.visiblePalette.hidden = true;
     this.paletteEmptyNotice.hidden = true;
+
+    // Disable the button-text fade-out mask
+    // during the transition for increased perf.
+    let panelContents = window.PanelUI.contents;
+    panelContents.setAttribute("customize-transitioning", "true");
 
     this._transitioning = true;
 
@@ -352,6 +365,8 @@ CustomizeMode.prototype = {
       // now we'd be setting an expando, which breaks the XBL property.
       document.getElementById("PanelUI-help").removeAttribute("disabled");
       document.getElementById("PanelUI-quit").removeAttribute("disabled");
+
+      panelContents.removeAttribute("customize-transitioning");
 
       // We need to set this._customizing to false before removing the tab
       // or the TabSelect event handler will think that we are exiting
@@ -660,6 +675,9 @@ CustomizeMode.prototype = {
       wrapper.setAttribute("flex", aNode.getAttribute("flex"));
     }
 
+    let removable = aPlace == "palette" || CustomizableUI.isWidgetRemovable(aNode);
+    wrapper.setAttribute("removable", removable);
+
     let contextMenuAttrName = aNode.getAttribute("context") ? "context" :
                                 aNode.getAttribute("contextmenu") ? "contextmenu" : "";
     let currentContextMenu = aNode.getAttribute(contextMenuAttrName);
@@ -837,18 +855,43 @@ CustomizeMode.prototype = {
       this.persistCurrentSets(true);
 
       this._updateResetButton();
+      this._updateUndoResetButton();
+      this._updateEmptyPaletteNotice();
       this._showPanelCustomizationPlaceholders();
+      this.resetting = false;
+    }.bind(this)).then(null, ERROR);
+  },
+
+  undoReset: function() {
+    this.resetting = true;
+
+    return Task.spawn(function() {
+      this._removePanelCustomizationPlaceholders();
+      yield this.depopulatePalette();
+      yield this._unwrapToolbarItems();
+
+      CustomizableUI.undoReset();
+
+      yield this._wrapToolbarItems();
+      yield this.populatePalette();
+
+      this.persistCurrentSets(true);
+
+      this._updateResetButton();
+      this._updateUndoResetButton();
+      this._updateEmptyPaletteNotice();
       this.resetting = false;
     }.bind(this)).then(null, ERROR);
   },
 
   _onToolbarVisibilityChange: function(aEvent) {
     let toolbar = aEvent.target;
-    if (aEvent.detail.visible) {
+    if (aEvent.detail.visible && toolbar.getAttribute("customizable") == "true") {
       toolbar.setAttribute("customizing", "true");
     } else {
       toolbar.removeAttribute("customizing");
     }
+    this._onUIChange();
   },
 
   onWidgetMoved: function(aWidgetId, aArea, aOldPosition, aNewPosition) {
@@ -937,8 +980,11 @@ CustomizeMode.prototype = {
 
   _onUIChange: function() {
     this._changed = true;
-    this._updateResetButton();
-    this._updateEmptyPaletteNotice();
+    if (!this.resetting) {
+      this._updateResetButton();
+      this._updateUndoResetButton();
+      this._updateEmptyPaletteNotice();
+    }
     this.dispatchToolboxEvent("customizationchange");
   },
 
@@ -950,6 +996,11 @@ CustomizeMode.prototype = {
   _updateResetButton: function() {
     let btn = this.document.getElementById("customization-reset-button");
     btn.disabled = CustomizableUI.inDefaultState;
+  },
+
+  _updateUndoResetButton: function() {
+    let undoReset =  this.document.getElementById("customization-undo-reset");
+    undoReset.hidden = !CustomizableUI.canUndoReset;
   },
 
   handleEvent: function(aEvent) {
@@ -1036,14 +1087,17 @@ CustomizeMode.prototype = {
       item = item.parentNode;
     }
 
-    if (item.classList.contains(kPlaceholderClass)) {
+    let draggedItem = item.firstChild;
+    let placeForItem = CustomizableUI.getPlaceForItem(item);
+    let isRemovable = placeForItem == "palette" ||
+                      CustomizableUI.isWidgetRemovable(draggedItem);
+    if (item.classList.contains(kPlaceholderClass) || !isRemovable) {
       return;
     }
 
     let dt = aEvent.dataTransfer;
     let documentId = aEvent.target.ownerDocument.documentElement.id;
-    let draggedItem = item.firstChild;
-    let isInToolbar = CustomizableUI.getPlaceForItem(item) == "toolbar";
+    let isInToolbar = placeForItem == "toolbar";
 
     dt.mozSetDataAt(kDragDataTypePrefix + documentId, draggedItem.id, 0);
     dt.effectAllowed = "move";
@@ -1618,7 +1672,8 @@ CustomizeMode.prototype = {
     let doc = aEvent.target.ownerDocument;
     doc.documentElement.setAttribute("customizing-movingItem", true);
     let item = this._getWrapper(aEvent.target);
-    if (item && !item.classList.contains(kPlaceholderClass)) {
+    if (item && !item.classList.contains(kPlaceholderClass) &&
+        item.getAttribute("removable") == "true") {
       item.setAttribute("mousedown", "true");
     }
   },

@@ -85,8 +85,6 @@ class MUse;
 class MIRGraph;
 class MResumePoint;
 
-static inline bool isOSRLikeValue (MDefinition *def);
-
 // Represents a use of a node.
 class MUse : public TempObject, public InlineListNode<MUse>
 {
@@ -1954,11 +1952,20 @@ class MCallDOMNative : public MCall
     MCallDOMNative(JSFunction *target, uint32_t numActualArgs)
         : MCall(target, numActualArgs, false)
     {
+        // If our jitinfo is not marked movable, that means that our C++
+        // implementation is fallible or that we have no hope of ever doing the
+        // sort of argument analysis that would allow us to detemine that we're
+        // side-effect-free.  In the latter case we wouldn't get DCEd no matter
+        // what, but for the former case we have to explicitly say that we can't
+        // be DCEd.
+        if (!getJitInfo()->isMovable)
+            setGuard();
     }
 
     friend MCall *MCall::New(TempAllocator &alloc, JSFunction *target, size_t maxArgc,
                              size_t numActualArgs, bool construct, bool isDOMCall);
 
+    const JSJitInfo *getJitInfo() const;
   public:
     virtual AliasSet getAliasSet() const MOZ_OVERRIDE;
 
@@ -8032,6 +8039,11 @@ class MGetDOMProperty
         if (isDomMovable()) {
             JS_ASSERT(jitinfo->aliasSet() != JSJitInfo::AliasEverything);
             setMovable();
+        } else {
+            // If we're not movable, that means we shouldn't be DCEd either,
+            // because we might throw an exception when called, and getting rid
+            // of that is observable.
+            setGuard();
         }
 
         setResultType(MIRType_Value);
@@ -9725,17 +9737,6 @@ MInstruction *MDefinition::toInstruction()
 {
     JS_ASSERT(!isPhi());
     return (MInstruction *)this;
-}
-
-static inline bool isOSRLikeValue (MDefinition *def) {
-    if (def->isOsrValue())
-        return true;
-
-    if (def->isUnbox())
-        if (def->getOperand(0)->isOsrValue())
-            return true;
-
-    return false;
 }
 
 typedef Vector<MDefinition *, 8, IonAllocPolicy> MDefinitionVector;
