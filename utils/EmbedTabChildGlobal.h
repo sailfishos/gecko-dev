@@ -19,6 +19,7 @@ class TabChildHelper;
 class EmbedTabChildGlobal : public nsDOMEventTargetHelper,
                             public nsIContentFrameMessageManager,
                             public nsIScriptObjectPrincipal,
+                            public nsIGlobalObject,
                             public nsITabChild
 {
 public:
@@ -100,6 +101,7 @@ public:
   }
   virtual JSContext* GetJSContextForEventHandlers() MOZ_OVERRIDE;
   virtual nsIPrincipal* GetPrincipal() MOZ_OVERRIDE;
+  virtual JSObject* GetGlobalJSObject() MOZ_OVERRIDE;
 
   TabChildHelper* mTabChild;
   nsRefPtr<nsFrameMessageManager> mMessageManager;
