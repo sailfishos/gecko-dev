@@ -42,6 +42,7 @@ NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(EmbedTabChildGlobal)
   NS_INTERFACE_MAP_ENTRY(nsISyncMessageSender)
   NS_INTERFACE_MAP_ENTRY(nsIContentFrameMessageManager)
   NS_INTERFACE_MAP_ENTRY(nsIScriptObjectPrincipal)
+  NS_INTERFACE_MAP_ENTRY(nsIGlobalObject)
   NS_INTERFACE_MAP_ENTRY(nsITabChild)
   NS_DOM_INTERFACE_MAP_ENTRY_CLASSINFO(ContentFrameMessageManager)
 NS_INTERFACE_MAP_END_INHERITING(nsDOMEventTargetHelper)
@@ -116,6 +117,15 @@ EmbedTabChildGlobal::GetPrincipal()
     return nullptr;
   }
   return mTabChild->GetPrincipal();
+}
+
+JSObject*
+EmbedTabChildGlobal::GetGlobalJSObject()
+{
+  NS_ENSURE_TRUE(mTabChild, nullptr);
+  nsCOMPtr<nsIXPConnectJSObjectHolder> ref = mTabChild->GetGlobal();
+  NS_ENSURE_TRUE(ref, nullptr);
+  return ref->GetJSObject();
 }
 
 NS_IMETHODIMP
