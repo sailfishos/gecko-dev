@@ -8,7 +8,6 @@
 #include "jsfriendapi.h"
 #include "jsprf.h"
 #include "js/OldDebugAPI.h"
-#include "mozilla/Debug.h"
 #include "nsServiceManagerUtils.h"
 #include "nsComponentManagerUtils.h"
 #include "nsIXPConnect.h"
@@ -33,6 +32,10 @@
 #include "nsIScriptSecurityManager.h"
 #include "nsIPrincipal.h"
 
+#ifdef ANDROID
+#include <android/log.h>
+#endif
+
 #ifdef XP_WIN
 #include <windows.h>
 #endif
@@ -48,6 +51,7 @@
 #endif
 
 #ifdef MOZ_CRASHREPORTER
+#include "nsExceptionHandler.h"
 #include "nsICrashReporter.h"
 #endif
 
@@ -65,7 +69,7 @@ public:
     ~XPCShellDirProvider() { }
 
     // The platform resource folder
-    bool SetGREDir(const char *dir);
+    void SetGREDir(nsIFile *greDir);
     void ClearGREDir() { mGREDir = nullptr; }
     // The application resource folder
     void SetAppDir(nsIFile *appFile);
@@ -297,9 +301,18 @@ Dump(JSContext *cx, unsigned argc, jsval *vp)
     if (!chars)
         return false;
 
-    nsDependentSubstring ustr(reinterpret_cast<const char16_t*>(chars),
-                              length);
-    PrintToDebugger(ustr, gOutFile);
+    NS_ConvertUTF16toUTF8 utf8str(reinterpret_cast<const char16_t*>(chars),
+                                  length);
+#ifdef ANDROID
+    __android_log_print(ANDROID_LOG_INFO, "Gecko", "%s", utf8str.get());
+#endif
+#ifdef XP_WIN
+    if (IsDebuggerPresent()) {
+      OutputDebugStringW(reinterpret_cast<const wchar_t*>(chars));
+    }
+#endif
+    fputs(utf8str.get(), gOutFile);
+    fflush(gOutFile);
     return true;
 }
 
@@ -651,8 +664,9 @@ XPCShellOperationCallback(JSContext *cx)
 
     JSAutoCompartment ac(cx, &sScriptedOperationCallback.toObject());
     RootedValue rv(cx);
-    if (!JS_CallFunctionValue(cx, nullptr, sScriptedOperationCallback,
-                              JS::EmptyValueArray, rv.address()) || !rv.isBoolean())
+    RootedValue callback(cx, sScriptedOperationCallback);
+    if (!JS_CallFunctionValue(cx, JS::NullPtr(), callback, JS::EmptyValueArray, &rv) ||
+        !rv.isBoolean())
     {
         NS_WARNING("Scripted operation callback failed! Terminating script.");
         JS_ClearPendingException(cx);
@@ -1081,7 +1095,7 @@ ProcessArgs(JSContext *cx, JS::Handle<JSObject*> obj, char **argv, int argc, XPC
      * Create arguments early and define it to root it, so it's safe from any
      * GC calls nested below, and so it is available to -f <file> arguments.
      */
-    argsObj = JS_NewArrayObject(cx, 0, nullptr);
+    argsObj = JS_NewArrayObject(cx, 0);
     if (!argsObj)
         return 1;
     if (!JS_DefineProperty(cx, obj, "arguments", OBJECT_TO_JSVAL(argsObj),
@@ -1352,16 +1366,32 @@ XRE_XPCShellMain(int argc, char **argv, char **envp)
 
     dirprovider.SetAppFile(appFile);
 
+    nsCOMPtr<nsIFile> greDir;
     if (argc > 1 && !strcmp(argv[1], "-g")) {
         if (argc < 3)
             return usage();
 
-        if (!dirprovider.SetGREDir(argv[2])) {
-            printf("SetGREDir failed.\n");
+        rv = XRE_GetFileFromPath(argv[2], getter_AddRefs(greDir));
+        if (NS_FAILED(rv)) {
+            printf("Couldn't use given GRE dir.\n");
             return 1;
         }
+
+        dirprovider.SetGREDir(greDir);
+
         argc -= 2;
         argv += 2;
+    } else {
+        nsAutoString workingDir;
+        if (!GetCurrentWorkingDirectory(workingDir)) {
+            printf("GetCurrentWorkingDirectory failed.\n");
+            return 1;
+        }
+        rv = NS_NewLocalFile(workingDir, true, getter_AddRefs(greDir));
+        if (NS_FAILED(rv)) {
+            printf("NS_NewLocalFile failed.\n");
+            return 1;
+        }
     }
 
     if (argc > 1 && !strcmp(argv[1], "-a")) {
@@ -1399,10 +1429,15 @@ XRE_XPCShellMain(int argc, char **argv, char **envp)
     }
 
 #ifdef MOZ_CRASHREPORTER
-    // This is needed during startup and also shutdown, so keep it out
-    // of the nested scope.
-    // Special exception: will remain usable after NS_ShutdownXPCOM
-    nsCOMPtr<nsICrashReporter> crashReporter;
+    const char *val = getenv("MOZ_CRASHREPORTER");
+    if (val && *val) {
+        rv = CrashReporter::SetExceptionHandler(greDir, true);
+        if (NS_FAILED(rv)) {
+            printf("CrashReporter::SetExceptionHandler failed!\n");
+            return 1;
+        }
+        MOZ_ASSERT(CrashReporter::GetEnabled());
+    }
 #endif
 
     {
@@ -1429,14 +1464,6 @@ XRE_XPCShellMain(int argc, char **argv, char **envp)
             printf("NS_InitXPCOM2 failed!\n");
             return 1;
         }
-
-#ifdef MOZ_CRASHREPORTER
-        const char *val = getenv("MOZ_CRASHREPORTER");
-        crashReporter = do_GetService("@mozilla.org/toolkit/crash-reporter;1");
-        if (val && *val) {
-            crashReporter->SetEnabled(true);
-        }
-#endif
 
         nsCOMPtr<nsIJSRuntimeService> rtsvc = do_GetService("@mozilla.org/js/xpc/RuntimeService;1");
         // get the JSRuntime from the runtime svc
@@ -1606,10 +1633,8 @@ XRE_XPCShellMain(int argc, char **argv, char **envp)
 
 #ifdef MOZ_CRASHREPORTER
     // Shut down the crashreporter service to prevent leaking some strings it holds.
-    if (crashReporter) {
-        crashReporter->SetEnabled(false);
-        crashReporter = nullptr;
-    }
+    if (CrashReporter::GetEnabled())
+        CrashReporter::UnsetExceptionHandler();
 #endif
 
     NS_LogTerm();
@@ -1617,11 +1642,10 @@ XRE_XPCShellMain(int argc, char **argv, char **envp)
     return result;
 }
 
-bool
-XPCShellDirProvider::SetGREDir(const char *dir)
+void
+XPCShellDirProvider::SetGREDir(nsIFile* greDir)
 {
-    nsresult rv = XRE_GetFileFromPath(dir, getter_AddRefs(mGREDir));
-    return NS_SUCCEEDED(rv);
+    mGREDir = greDir;
 }
 
 void

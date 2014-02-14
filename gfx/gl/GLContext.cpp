@@ -76,6 +76,7 @@ static const char *sExtensionNames[] = {
     "GL_IMG_read_format",
     "GL_EXT_read_format_bgra",
     "GL_APPLE_client_storage",
+    "GL_APPLE_texture_range",
     "GL_ARB_texture_non_power_of_two",
     "GL_ARB_pixel_buffer_object",
     "GL_ARB_ES2_compatibility",
@@ -84,6 +85,7 @@ static const char *sExtensionNames[] = {
     "GL_OES_texture_float_linear",
     "GL_ARB_texture_float",
     "GL_OES_texture_half_float",
+    "GL_OES_texture_half_float_linear",
     "GL_NV_half_float",
     "GL_EXT_unpack_subimage",
     "GL_OES_standard_derivatives",
@@ -753,6 +755,17 @@ GLContext::InitWithPrefix(const char *prefix, bool trygl)
                 MarkExtensionUnsupported(OES_EGL_image);
                 mSymbols.fEGLImageTargetTexture2D = nullptr;
                 mSymbols.fEGLImageTargetRenderbufferStorage = nullptr;
+            }
+        }
+
+        if (IsExtensionSupported(APPLE_texture_range)) {
+            SymLoadStruct vaoSymbols[] = {
+                { (PRFuncPtr*) &mSymbols.fTextureRangeAPPLE, { "TextureRangeAPPLE", nullptr } },
+                { nullptr, { nullptr } },
+            };
+
+            if (!LoadSymbols(&vaoSymbols[0], trygl, prefix)) {
+                mSymbols.fTextureRangeAPPLE = nullptr;
             }
         }
 

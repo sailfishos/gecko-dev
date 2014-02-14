@@ -76,6 +76,18 @@ public:
     DECL_WEBGL_EXTENSION_GOOP
 };
 
+class WebGLExtensionDebugShaders
+    : public WebGLExtensionBase
+{
+public:
+    WebGLExtensionDebugShaders(WebGLContext*);
+    virtual ~WebGLExtensionDebugShaders();
+
+    void GetTranslatedShaderSource(WebGLShader* shader, nsAString& retval);
+
+    DECL_WEBGL_EXTENSION_GOOP
+};
+
 class WebGLExtensionDepthTexture
     : public WebGLExtensionBase
 {
@@ -167,6 +179,16 @@ class WebGLExtensionTextureHalfFloat
 public:
     WebGLExtensionTextureHalfFloat(WebGLContext*);
     virtual ~WebGLExtensionTextureHalfFloat();
+
+    DECL_WEBGL_EXTENSION_GOOP
+};
+
+class WebGLExtensionTextureHalfFloatLinear
+    : public WebGLExtensionBase
+{
+public:
+    WebGLExtensionTextureHalfFloatLinear(WebGLContext*);
+    virtual ~WebGLExtensionTextureHalfFloatLinear();
 
     DECL_WEBGL_EXTENSION_GOOP
 };

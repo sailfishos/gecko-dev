@@ -163,6 +163,18 @@ let HomePanels = Object.freeze({
     GRID: "grid"
   }),
 
+  // Valid actions for a panel.
+  Action: Object.freeze({
+    INSTALL: "install",
+    REFRESH: "refresh"
+  }),
+
+  // Valid item handlers for a panel view.
+  ItemHandler: Object.freeze({
+    BROWSER: "browser",
+    INTENT: "intent"
+  }),
+
   // Holds the currrent set of registered panels.
   _panels: {},
 
@@ -202,8 +214,11 @@ let HomePanels = Object.freeze({
       throw "Home.panels: Can't create a home panel without an id and title!";
     }
 
-    // Bail if the panel already exists
-    if (panel.id in this._panels) {
+    let action = options.action;
+
+    // Bail if the panel already exists, except when we're refreshing
+    // an existing panel instance.
+    if (panel.id in this._panels && action != this.Action.REFRESH) {
       throw "Home.panels: Panel already exists: id = " + panel.id;
     }
 
@@ -216,6 +231,13 @@ let HomePanels = Object.freeze({
         throw "Home.panels: Invalid view type: panel.id = " + panel.id + ", view.type = " + view.type;
       }
 
+      if (!view.itemHandler) {
+        // Use BROWSER item handler by default
+        view.itemHandler = this.ItemHandler.BROWSER;
+      } else if (!this._valueExists(this.ItemHandler, view.itemHandler)) {
+        throw "Home.panels: Invalid item handler: panel.id = " + panel.id + ", view.itemHandler = " + view.itemHandler;
+      }
+
       if (!view.dataset) {
         throw "Home.panels: No dataset provided for view: panel.id = " + panel.id + ", view.type = " + view.type;
       }
@@ -223,9 +245,24 @@ let HomePanels = Object.freeze({
 
     this._panels[panel.id] = panel;
 
-    if (options.autoInstall) {
+    if (action) {
+      let messageType;
+
+      switch(action) {
+        case this.Action.INSTALL:
+          messageType = "HomePanels:Install";
+          break;
+
+        case this.Action.REFRESH:
+          messageType = "HomePanels:Refresh";
+          break;
+
+        default:
+          throw "Home.panels: Invalid action for panel: panel.id = " + panel.id + ", action = " + action;
+      }
+
       sendMessageToJava({
-        type: "HomePanels:Install",
+        type: messageType,
         panel: this._panelToJSON(panel)
       });
     }

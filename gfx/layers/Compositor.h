@@ -471,8 +471,12 @@ protected:
 
   bool ShouldDrawDiagnostics(DiagnosticFlags);
 
+  /**
+   * Set the global Compositor backend, checking that one isn't already set.
+   */
+  static void SetBackend(LayersBackend backend);
+
   uint32_t mCompositorID;
-  static LayersBackend sBackend;
   DiagnosticTypes mDiagnosticTypes;
   PCompositorParent* mParent;
 
@@ -484,6 +488,9 @@ protected:
   size_t mPixelsPerFrame;
   size_t mPixelsFilled;
   gfx::Float mWorldOpacity;
+
+private:
+  static LayersBackend sBackend;
 };
 
 } // namespace layers

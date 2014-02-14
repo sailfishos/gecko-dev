@@ -125,7 +125,16 @@ bool
 ImageClientSingle::UpdateImage(ImageContainer* aContainer,
                                uint32_t aContentFlags)
 {
+  bool isSwapped = false;
+  return UpdateImageInternal(aContainer, aContentFlags, &isSwapped);
+}
+
+bool
+ImageClientSingle::UpdateImageInternal(ImageContainer* aContainer,
+                                       uint32_t aContentFlags, bool* aIsSwapped)
+{
   AutoLockImage autoLock(aContainer);
+  *aIsSwapped = false;
 
   Image *image = autoLock.GetImage();
   if (!image) {
@@ -216,10 +225,10 @@ ImageClientSingle::UpdateImage(ImageContainer* aContainer,
 
     GetForwarder()->UseTexture(this, mFrontBuffer);
   } else {
-    nsRefPtr<gfxASurface> surface = image->DeprecatedGetAsSurface();
+    RefPtr<gfx::SourceSurface> surface = image->GetAsSourceSurface();
     MOZ_ASSERT(surface);
 
-    gfx::IntSize size = gfx::IntSize(image->GetSize().width, image->GetSize().height);
+    gfx::IntSize size = image->GetSize();
 
     if (mFrontBuffer &&
         (mFrontBuffer->IsImmutable() || mFrontBuffer->GetSize() != size)) {
@@ -230,7 +239,7 @@ ImageClientSingle::UpdateImage(ImageContainer* aContainer,
     bool bufferCreated = false;
     if (!mFrontBuffer) {
       gfxImageFormat format
-        = gfxPlatform::GetPlatform()->OptimalFormatForContent(surface->GetContentType());
+        = gfxPlatform::GetPlatform()->OptimalFormatForContent(gfx::ContentForFormat(surface->GetFormat()));
       mFrontBuffer = CreateTextureClientForDrawing(gfx::ImageFormatToSurfaceFormat(format),
                                                    mTextureFlags);
       MOZ_ASSERT(mFrontBuffer->AsTextureClientDrawTarget());
@@ -249,9 +258,8 @@ ImageClientSingle::UpdateImage(ImageContainer* aContainer,
     {
       // We must not keep a reference to the DrawTarget after it has been unlocked.
       RefPtr<DrawTarget> dt = mFrontBuffer->AsTextureClientDrawTarget()->GetAsDrawTarget();
-      RefPtr<SourceSurface> source = gfxPlatform::GetPlatform()->GetSourceSurfaceForSurface(dt, surface);
-      MOZ_ASSERT(source.get());
-      dt->CopySurface(source, IntRect(IntPoint(), source->GetSize()), IntPoint());
+      MOZ_ASSERT(surface.get());
+      dt->CopySurface(surface, IntRect(IntPoint(), surface->GetSize()), IntPoint());
     }
 
     mFrontBuffer->Unlock();
@@ -271,6 +279,7 @@ ImageClientSingle::UpdateImage(ImageContainer* aContainer,
 
   mLastPaintedImageSerial = image->GetSerial();
   aContainer->NotifyPaintedImage(image);
+  *aIsSwapped = true;
   return true;
 }
 
@@ -281,7 +290,17 @@ ImageClientBuffered::UpdateImage(ImageContainer* aContainer,
   RefPtr<TextureClient> temp = mFrontBuffer;
   mFrontBuffer = mBackBuffer;
   mBackBuffer = temp;
-  return ImageClientSingle::UpdateImage(aContainer, aContentFlags);
+
+  bool isSwapped = false;
+  bool ret = ImageClientSingle::UpdateImageInternal(aContainer, aContentFlags, &isSwapped);
+
+  if (!isSwapped) {
+    // If buffer swap did not happen at Host side, swap back the buffers.
+    RefPtr<TextureClient> temp = mFrontBuffer;
+    mFrontBuffer = mBackBuffer;
+    mBackBuffer = temp;
+  }
+  return ret;
 }
 
 bool

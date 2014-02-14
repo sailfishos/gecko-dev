@@ -3536,9 +3536,13 @@ MacroAssemblerARMCompat::passABIArg(const MoveOperand &from, MoveOp::Type type)
     switch (type) {
       case MoveOp::FLOAT32:
       case MoveOp::DOUBLE: {
-          JS_ASSERT(!usedFloat32_);
-          if (type == MoveOp::FLOAT32)
-              usedFloat32_ = true;
+        // N.B. this isn't a limitation of the ABI, it is a limitation of the compiler right now.
+        // There isn't a good way to handle odd numbered single registers, so everything goes to hell
+        // when we try.  Current fix is to never use more than one float in a function call.
+        // Fix coming along with complete float32 support in bug 957504.
+        JS_ASSERT(!usedFloat32_);
+        if (type == MoveOp::FLOAT32)
+            usedFloat32_ = true;
         FloatRegister fr;
         if (GetFloatArgReg(usedIntSlots_, usedFloatSlots_, &fr)) {
             if (from.isFloatReg() && from.floatReg() == fr) {
@@ -3556,7 +3560,7 @@ MacroAssemblerARMCompat::passABIArg(const MoveOperand &from, MoveOp::Type type)
             // need to take the register's alignment into account
             uint32_t disp = INT_MAX;
             if (type == MoveOp::FLOAT32)
-                 disp = GetFloat32ArgStackDisp(usedIntSlots_, usedFloatSlots_, &padding_);
+                disp = GetFloat32ArgStackDisp(usedIntSlots_, usedFloatSlots_, &padding_);
             else
                 disp = GetDoubleArgStackDisp(usedIntSlots_, usedFloatSlots_, &padding_);
             to = MoveOperand(sp, disp);

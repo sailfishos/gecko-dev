@@ -27,7 +27,9 @@ CONFIGURE_SUBST_FILES += [
     'js.pc',
 ]
 
-if not CONFIG['JS_STANDALONE']:
+if CONFIG['JS_STANDALONE']:
+    DEFINES['IMPL_MFBT'] = True
+else:
     CONFIGURE_SUBST_FILES += [
         '../../config/autoconf-js.mk',
         '../../config/emptyvars-js.mk',
@@ -167,6 +169,7 @@ UNIFIED_SOURCES += [
     'vm/Monitor.cpp',
     'vm/ObjectImpl.cpp',
     'vm/OldDebugAPI.cpp',
+    'vm/PIC.cpp',
     'vm/Probes.cpp',
     'vm/PropertyKey.cpp',
     'vm/ProxyObject.cpp',
@@ -280,8 +283,8 @@ if CONFIG['ENABLE_ION']:
         'jit/shared/Lowering-shared.cpp',
         'jit/Snapshots.cpp',
         'jit/StupidAllocator.cpp',
+        'jit/TypeDescrSet.cpp',
         'jit/TypePolicy.cpp',
-        'jit/TypeRepresentationSet.cpp',
         'jit/UnreachableCodeElimination.cpp',
         'jit/ValueNumbering.cpp',
         'jit/VMFunctions.cpp',

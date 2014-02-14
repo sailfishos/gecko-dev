@@ -549,6 +549,12 @@ ScriptFrameIter::settleOnActivation()
             data_.state_ = JIT;
             return;
         }
+
+        // ForkJoin activations don't contain iterable frames, so skip them.
+        if (activation->isForkJoin()) {
+            ++data_.activations_;
+            continue;
+        }
 #endif
 
         JS_ASSERT(activation->isInterpreter());
@@ -1222,10 +1228,17 @@ ScriptFrameIter::frameSlotValue(size_t index) const
 #endif
 
 #ifdef DEBUG
-/* static */
-bool NonBuiltinScriptFrameIter::includeSelfhostedFrames() {
-    static char* env = getenv("MOZ_SHOW_ALL_JS_FRAMES");
-    return (bool)env;
+bool
+js::SelfHostedFramesVisible()
+{
+    static bool checked = false;
+    static bool visible = false;
+    if (!checked) {
+        checked = true;
+        char *env = getenv("MOZ_SHOW_ALL_JS_FRAMES");
+        visible = !!env;
+    }
+    return visible;
 }
 #endif
 

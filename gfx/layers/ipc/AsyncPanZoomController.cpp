@@ -1682,13 +1682,16 @@ void AsyncPanZoomController::NotifyLayersUpdated(const FrameMetrics& aLayerMetri
     // in some things into our local mFrameMetrics because these things are
     // determined by Gecko and our copy in mFrameMetrics may be stale.
 
-    if (mFrameMetrics.mCompositionBounds.width == aLayerMetrics.mCompositionBounds.width) {
+    if (mFrameMetrics.mCompositionBounds.width == aLayerMetrics.mCompositionBounds.width &&
+        mFrameMetrics.mDevPixelsPerCSSPixel == aLayerMetrics.mDevPixelsPerCSSPixel) {
       float parentResolutionChange = aLayerMetrics.GetParentResolution().scale
                                    / mFrameMetrics.GetParentResolution().scale;
       mFrameMetrics.mZoom.scale *= parentResolutionChange;
     } else {
-      // Take the new zoom as composition width got changed (i.e. due to orientation change)
+      // Take the new zoom as either device scale or composition width or both
+      // got changed (e.g. due to orientation change).
       mFrameMetrics.mZoom.scale = aLayerMetrics.mZoom.scale;
+      mFrameMetrics.mDevPixelsPerCSSPixel.scale = aLayerMetrics.mDevPixelsPerCSSPixel.scale;
     }
     mFrameMetrics.mScrollableRect = aLayerMetrics.mScrollableRect;
     mFrameMetrics.mCompositionBounds = aLayerMetrics.mCompositionBounds;
@@ -1711,6 +1714,12 @@ void AsyncPanZoomController::NotifyLayersUpdated(const FrameMetrics& aLayerMetri
       // scroll offset updates from APZ until we acknowledge the update it sent.
       // This prevents APZ updates from clobbering scroll updates from other
       // more "legitimate" sources like content scripts.
+      // Furthermore, any inflight paint requests we have already dispatched are
+      // going to be ignored by layout, and so mLastDispatchedPaintMetrics
+      // becomes incorrect for the purposes of calculating the LD transform. To
+      // correct this we need to update mLastDispatchedPaintMetrics to be the
+      // last thing we know was painted by Gecko.
+      mLastDispatchedPaintMetrics = aLayerMetrics;
       nsRefPtr<GeckoContentController> controller = GetGeckoContentController();
       if (controller) {
         controller->AcknowledgeScrollUpdate(aLayerMetrics.mScrollId,

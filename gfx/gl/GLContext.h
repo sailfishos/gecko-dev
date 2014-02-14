@@ -107,6 +107,7 @@ MOZ_BEGIN_ENUM_CLASS(GLFeature)
     texture_float,
     texture_float_linear,
     texture_half_float,
+    texture_half_float_linear,
     texture_non_power_of_two,
     transform_feedback,
     vertex_array_object,
@@ -352,6 +353,7 @@ public:
         IMG_read_format,
         EXT_read_format_bgra,
         APPLE_client_storage,
+        APPLE_texture_range,
         ARB_texture_non_power_of_two,
         ARB_pixel_buffer_object,
         ARB_ES2_compatibility,
@@ -360,6 +362,7 @@ public:
         OES_texture_float_linear,
         ARB_texture_float,
         OES_texture_half_float,
+        OES_texture_half_float_linear,
         NV_half_float,
         EXT_unpack_subimage,
         OES_standard_derivatives,
@@ -1341,6 +1344,12 @@ public:
     void fPixelStorei(GLenum pname, GLint param) {
         BEFORE_GL_CALL;
         mSymbols.fPixelStorei(pname, param);
+        AFTER_GL_CALL;
+    }
+
+    void fTextureRangeAPPLE(GLenum target, GLsizei length, GLvoid *pointer) {
+        BEFORE_GL_CALL;
+        mSymbols.fTextureRangeAPPLE(target, length, pointer);
         AFTER_GL_CALL;
     }
 
