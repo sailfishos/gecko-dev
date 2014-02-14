@@ -42,7 +42,7 @@ pref("webgl.force-enabled", true);
 pref("browser.dom.window.dump.enabled", true);
 pref("layers.acceleration.draw-fps", false);
 pref("layers.use-deprecated-textures", false);
-pref("layers.force-tiles", true);
+pref("layers.enable-tiles", true);
 pref("font.size.inflation.disabledInMasterProcess", true);
 pref("apz.pan_repaint_interval", 5050);
 pref("apz.fling_repaint_interval", 150);
