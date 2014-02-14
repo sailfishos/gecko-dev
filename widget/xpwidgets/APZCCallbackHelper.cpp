@@ -249,6 +249,12 @@ public:
 
     NS_IMETHOD Run() {
         MOZ_ASSERT(NS_IsMainThread());
+
+        nsIScrollableFrame* sf = nsLayoutUtils::FindScrollableFrameFor(mScrollId);
+        if (sf) {
+            sf->ResetOriginIfScrollAtGeneration(mScrollGeneration);
+        }
+
         return NS_OK;
     }
 
