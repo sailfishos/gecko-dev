@@ -167,27 +167,34 @@ TextureHost::Create(const SurfaceDescriptor& aDesc,
                     ISurfaceAllocator* aDeallocator,
                     TextureFlags aFlags)
 {
-  switch (Compositor::GetBackend()) {
-    case LayersBackend::LAYERS_OPENGL:
+  switch (aDesc.type()) {
+    case SurfaceDescriptor::TSurfaceDescriptorShmem:
+    case SurfaceDescriptor::TSurfaceDescriptorMemory:
+      return CreateBackendIndependentTextureHost(aDesc, aDeallocator, aFlags);
+    case SurfaceDescriptor::TSharedTextureDescriptor:
+    case SurfaceDescriptor::TSurfaceDescriptorGralloc:
+    case SurfaceDescriptor::TNewSurfaceDescriptorGralloc:
+    case SurfaceDescriptor::TSurfaceStreamDescriptor:
       return CreateTextureHostOGL(aDesc, aDeallocator, aFlags);
-    case LayersBackend::LAYERS_BASIC:
+    case SurfaceDescriptor::TSurfaceDescriptorMacIOSurface:
+      if (Compositor::GetBackend() == LayersBackend::LAYERS_OPENGL) {
+        return CreateTextureHostOGL(aDesc, aDeallocator, aFlags);
+      } else {
+        return CreateTextureHostBasic(aDesc, aDeallocator, aFlags);
+      }
+#ifdef MOZ_X11
+    case SurfaceDescriptor::TSurfaceDescriptorX11:
       return CreateTextureHostBasic(aDesc, aDeallocator, aFlags);
-#ifdef MOZ_WIDGET_GONK
-    case LayersBackend::LAYERS_NONE:
-      // Power on video reqests to allocate TextureHost,
-      // when Compositor is still not present. This is a very hacky workaround.
-      // See Bug 944420.
-      return CreateTextureHostOGL(aDesc, aDeallocator, aFlags);
 #endif
 #ifdef XP_WIN
-    case LayersBackend::LAYERS_D3D11:
-      return CreateTextureHostD3D11(aDesc, aDeallocator, aFlags);
-    case LayersBackend::LAYERS_D3D9:
+    case SurfaceDescriptor::TSurfaceDescriptorD3D9:
+    case SurfaceDescriptor::TSurfaceDescriptorDIB:
       return CreateTextureHostD3D9(aDesc, aDeallocator, aFlags);
+    case SurfaceDescriptor::TSurfaceDescriptorD3D10:
+      return CreateTextureHostD3D11(aDesc, aDeallocator, aFlags);
 #endif
     default:
-      MOZ_CRASH("Couldn't create texture host");
-      return nullptr;
+      MOZ_CRASH("Unsupported Surface type");
   }
 }
 
@@ -237,8 +244,7 @@ TextureHost::~TextureHost()
 
 void TextureHost::Finalize()
 {
-  if (GetFlags() & TEXTURE_DEALLOCATE_DEFERRED) {
-    MOZ_ASSERT(!(GetFlags() & TEXTURE_DEALLOCATE_CLIENT));
+  if (!(GetFlags() & TEXTURE_DEALLOCATE_CLIENT)) {
     DeallocateSharedData();
     DeallocateDeviceData();
   }
@@ -719,27 +725,17 @@ TextureParent::ActorDestroy(ActorDestroyReason why)
     return;
   }
 
-  bool isDeffered = mTextureHost->GetFlags() & TEXTURE_DEALLOCATE_DEFERRED;
   switch (why) {
   case AncestorDeletion:
-    NS_WARNING("PTexture deleted after ancestor");
-    // fall-through to deletion path
   case Deletion:
-    if (!(mTextureHost->GetFlags() & TEXTURE_DEALLOCATE_CLIENT) && !isDeffered) {
-      mTextureHost->DeallocateSharedData();
-    }
-    break;
-
   case NormalShutdown:
   case AbnormalShutdown:
-    mTextureHost->OnShutdown();
     break;
-
   case FailedConstructor:
     NS_RUNTIMEABORT("FailedConstructor isn't possible in PTexture");
   }
 
-  if (!isDeffered) {
+  if (mTextureHost->GetFlags() & TEXTURE_DEALLOCATE_CLIENT) {
     mTextureHost->ForgetSharedData();
   }
   mTextureHost = nullptr;

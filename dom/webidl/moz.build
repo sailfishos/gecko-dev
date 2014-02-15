@@ -326,6 +326,7 @@ WEBIDL_FILES = [
     'SVGFEDiffuseLightingElement.webidl',
     'SVGFEDisplacementMapElement.webidl',
     'SVGFEDistantLightElement.webidl',
+    'SVGFEDropShadowElement.webidl',
     'SVGFEFloodElement.webidl',
     'SVGFEFuncAElement.webidl',
     'SVGFEFuncBElement.webidl',
@@ -529,7 +530,7 @@ if CONFIG['MOZ_B2G_RIL']:
 
 if CONFIG['MOZ_NFC']:
     WEBIDL_FILES += [
-         'MozNdefRecord.webidl',
+         'MozNDEFRecord.webidl',
          'MozNfc.webidl',
          'MozNFCPeer.webidl',
          'MozNFCTag.webidl',

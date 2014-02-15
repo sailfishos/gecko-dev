@@ -9,6 +9,7 @@ const Cu = Components.utils;
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/FileUtils.jsm");
+Cu.import("resource://gre/modules/Promise.jsm");
 Cu.import("resource://services-sync/util.js");
 
 const SYNC_PREFS_BRANCH = "services.sync.";
@@ -25,12 +26,24 @@ const SYNC_PREFS_BRANCH = "services.sync.";
  *
  * If Sync is not configured, no extra Sync code is loaded. If an
  * external component (say the UI) needs to interact with Sync, it
- * should do something like the following:
+ * should use the promise-base function whenLoaded() - something like the
+ * following:
  *
  * // 1. Grab a handle to the Sync XPCOM service.
  * let service = Cc["@mozilla.org/weave/service;1"]
  *                 .getService(Components.interfaces.nsISupports)
  *                 .wrappedJSObject;
+ *
+ * // 2. Use the .then method of the promise.
+ * service.whenLoaded().then(() => {
+ *   // You are free to interact with "Weave." objects.
+ *   return;
+ * });
+ *
+ * And that's it!  However, if you really want to avoid promises and do it
+ * old-school, then
+ *
+ * // 1. Get a reference to the service as done in (1) above.
  *
  * // 2. Check if the service has been initialized.
  * if (service.ready) {
@@ -65,6 +78,25 @@ WeaveService.prototype = {
     Weave.Service;
   },
 
+  whenLoaded: function() {
+    if (this.ready) {
+      return Promise.resolve();
+    }
+    let deferred = Promise.defer();
+
+    Services.obs.addObserver(function onReady() {
+      Services.obs.removeObserver(onReady, "weave:service:ready");
+      deferred.resolve();
+    }, "weave:service:ready", false);
+    this.ensureLoaded();
+    return deferred.promise;
+  },
+
+  /**
+   * Whether Firefox Accounts is enabled.
+   *
+   * @return bool
+   */
   get fxAccountsEnabled() {
     // work out what identity manager to use.  This is stored in a preference;
     // if the preference exists, we trust it.
@@ -79,10 +111,25 @@ WeaveService.prototype = {
       fxAccountsEnabled = !prefs.prefHasUserValue("username");
       Services.prefs.setBoolPref("services.sync.fxaccounts.enabled", fxAccountsEnabled);
     }
-    // Currently we don't support toggling this pref after initialization, so
-    // inject the pref value as a regular boolean.
-    delete this.fxAccountsEnabled;
-    return this.fxAccountsEnabled = fxAccountsEnabled;
+    // Currently we don't support toggling this pref after initialization -
+    // except when sync is reset - but this 1 exception is enough that we can't
+    // cache the value.
+    return fxAccountsEnabled;
+  },
+
+  /**
+   * Whether Sync appears to be enabled.
+   *
+   * This returns true if all the Sync preferences for storing account
+   * and server configuration are populated.
+   *
+   * It does *not* perform a robust check to see if the client is working.
+   * For that, you'll want to check Weave.Status.checkSetup().
+   */
+  get enabled() {
+    let prefs = Services.prefs.getBranch(SYNC_PREFS_BRANCH);
+    return prefs.prefHasUserValue("username") &&
+           prefs.prefHasUserValue("clusterURL");
   },
 
   observe: function (subject, topic, data) {

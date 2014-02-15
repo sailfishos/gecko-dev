@@ -398,10 +398,10 @@ function Nfc() {
 
   Services.obs.addObserver(this, NFC.TOPIC_MOZSETTINGS_CHANGED, false);
   Services.obs.addObserver(this, NFC.TOPIC_XPCOM_SHUTDOWN, false);
+  Services.obs.addObserver(this, NFC.TOPIC_HARDWARE_STATE, false);
 
   gMessageManager.init(this);
   let lock = gSettingsService.createLock();
-  lock.get(NFC.SETTING_NFC_POWER_LEVEL, this);
   lock.get(NFC.SETTING_NFC_ENABLED, this);
   // Maps sessionId (that are generated from nfcd) with a unique guid : 'SessionToken'
   this.sessionTokenMap = {};
@@ -522,8 +522,6 @@ Nfc.prototype = {
   // nsINfcWorker
   worker: null,
 
-  powerLevel: NFC.NFC_POWER_LEVEL_DISABLED,
-
   sessionTokenMap: null,
 
   /**
@@ -622,15 +620,6 @@ Nfc.prototype = {
       case NFC.SETTING_NFC_ENABLED:
         debug("'nfc.enabled' is now " + aResult);
         this._enabled = aResult;
-        // General power setting
-        let powerLevel = this._enabled ? NFC.NFC_POWER_LEVEL_ENABLED :
-                                         NFC.NFC_POWER_LEVEL_DISABLED;
-        // Only if the value changes, set the power config and persist
-        if (powerLevel !== this.powerLevel) {
-          debug("New Power Level " + powerLevel);
-          this.setConfig({powerLevel: powerLevel});
-          this.powerLevel = powerLevel;
-        }
         break;
     }
   },
@@ -655,11 +644,28 @@ Nfc.prototype = {
           this.handle(setting.key, setting.value);
         }
         break;
+      case NFC.TOPIC_HARDWARE_STATE:
+        let state = JSON.parse(data);
+        if (state) {
+          let level = this.hardwareStateToPowerlevel(state.nfcHardwareState);
+          this.setConfig({ powerLevel: level });
+        }
+        break;
     }
   },
 
   setConfig: function setConfig(prop) {
     this.sendToWorker("config", prop);
+  },
+
+  hardwareStateToPowerlevel: function hardwareStateToPowerlevel(state) {
+    switch (state) {
+      case 0:   return NFC.NFC_POWER_LEVEL_DISABLED;
+      case 1:   return NFC.NFC_POWER_LEVEL_ENABLED;
+      case 2:   return NFC.NFC_POWER_LEVEL_ENABLED;
+      case 3:   return NFC.NFC_POWER_LEVEL_LOW;
+      default:  return NFC.NFC_POWER_LEVEL_UNKNOWN;
+    }
   }
 };
 

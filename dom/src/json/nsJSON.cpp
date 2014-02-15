@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "jsapi.h"
+#include "js/CharacterEncoding.h"
 #include "js/OldDebugAPI.h"
 #include "nsJSON.h"
 #include "nsIXPConnect.h"
@@ -219,7 +220,7 @@ nsJSON::EncodeInternal(JSContext* cx, const JS::Value& aValue,
       toJSON.isObject() &&
       JS_ObjectIsCallable(cx, &toJSON.toObject())) {
     // If toJSON is implemented, it must not throw
-    if (!JS_CallFunctionValue(cx, obj, toJSON, 0, nullptr, val.address())) {
+    if (!JS_CallFunctionValue(cx, obj, toJSON, JS::EmptyValueArray, &val)) {
       if (JS_IsExceptionPending(cx))
         // passing NS_OK will throw the pending exception
         return NS_OK;
@@ -524,8 +525,8 @@ nsJSONListener::OnStopRequest(nsIRequest *aRequest, nsISupports *aContext,
 
   JS::Rooted<JS::Value> reviver(mCx, JS::NullValue()), value(mCx);
 
-  JS::StableCharPtr chars(reinterpret_cast<const jschar*>(mBufferedChars.Elements()),
-                          mBufferedChars.Length());
+  JS::ConstTwoByteChars chars(reinterpret_cast<const jschar*>(mBufferedChars.Elements()),
+                              mBufferedChars.Length());
   bool ok = JS_ParseJSONWithReviver(mCx, chars.get(),
                                       uint32_t(mBufferedChars.Length()),
                                       reviver, &value);

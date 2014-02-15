@@ -213,6 +213,8 @@ public:
     NS_IMETHOD GetUsePrivateBrowsing(bool*);
     NS_IMETHOD SetUsePrivateBrowsing(bool);
     NS_IMETHOD SetPrivateBrowsing(bool);
+    NS_IMETHOD GetUseRemoteTabs(bool*);
+    NS_IMETHOD SetRemoteTabs(bool);
 
     // Restores a cached presentation from history (mLSHE).
     // This method swaps out the content viewer and simulates loads for
@@ -287,7 +289,8 @@ protected:
                                bool aIsNewWindowTarget,
                                bool aBypassClassifier,
                                bool aForceAllowCookies,
-                               const nsAString &aSrcdoc);
+                               const nsAString &aSrcdoc,
+                               nsIURI * baseURI);
     NS_IMETHOD AddHeadersToChannel(nsIInputStream * aHeadersData, 
                                   nsIChannel * aChannel);
     virtual nsresult DoChannelLoad(nsIChannel * aChannel,
@@ -829,6 +832,7 @@ protected:
     bool                       mIsAppTab;
     bool                       mUseGlobalHistory;
     bool                       mInPrivateBrowsing;
+    bool                       mUseRemoteTabs;
     bool                       mDeviceSizeIsPageSize;
 
     // Because scriptability depends on the mAllowJavascript values of our

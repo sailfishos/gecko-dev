@@ -22,10 +22,12 @@ const CYRILLIC_URL = EXAMPLE_URL + "html_cyrillic-test-page.html";
 const STATUS_CODES_URL = EXAMPLE_URL + "html_status-codes-test-page.html";
 const POST_DATA_URL = EXAMPLE_URL + "html_post-data-test-page.html";
 const POST_RAW_URL = EXAMPLE_URL + "html_post-raw-test-page.html";
+const PARAMS_URL = EXAMPLE_URL + "html_params-test-page.html";
 const JSONP_URL = EXAMPLE_URL + "html_jsonp-test-page.html";
 const JSON_LONG_URL = EXAMPLE_URL + "html_json-long-test-page.html";
 const JSON_MALFORMED_URL = EXAMPLE_URL + "html_json-malformed-test-page.html";
 const JSON_CUSTOM_MIME_URL = EXAMPLE_URL + "html_json-custom-mime-test-page.html";
+const JSON_TEXT_MIME_URL = EXAMPLE_URL + "html_json-text-mime-test-page.html";
 const SORTING_URL = EXAMPLE_URL + "html_sorting-test-page.html";
 const FILTERING_URL = EXAMPLE_URL + "html_filter-test-page.html";
 const INFINITE_GET_URL = EXAMPLE_URL + "html_infinite-get-page.html";
@@ -43,12 +45,16 @@ const TEST_IMAGE = EXAMPLE_URL + "test-image.png";
 waitForExplicitFinish();
 
 // Enable logging for all the relevant tests.
-let gEnableLogging = Services.prefs.getBoolPref("devtools.debugger.log");
+const gEnableLogging = Services.prefs.getBoolPref("devtools.debugger.log");
 Services.prefs.setBoolPref("devtools.debugger.log", true);
+
+// Always reset some prefs to their original values after the test finishes.
+const gDefaultFilters = Services.prefs.getCharPref("devtools.netmonitor.filters");
 
 registerCleanupFunction(() => {
   info("finish() was called, cleaning up...");
   Services.prefs.setBoolPref("devtools.debugger.log", gEnableLogging);
+  Services.prefs.setCharPref("devtools.netmonitor.filters", gDefaultFilters);
 });
 
 function addTab(aUrl, aWindow) {
@@ -301,4 +307,43 @@ function waitFor (subject, eventName) {
   let deferred = promise.defer();
   subject.once(eventName, deferred.resolve);
   return deferred.promise;
+}
+
+/**
+ * Tests if a button for a filter of given type is the only one checked.
+ *
+ * @param string aFilterType
+ *        The type of the filter that should be the only one checked.
+ */
+function testFilterButtons(aMonitor, aFilterType) {
+  let doc = aMonitor.panelWin.document;
+  let target = doc.querySelector("#requests-menu-filter-" + aFilterType + "-button");
+  let buttons = doc.querySelectorAll(".requests-menu-footer-button");
+
+  // Only target should be checked.
+  let checkStatus = [(button == target) ? 1 : 0 for (button of buttons)]
+  testFilterButtonsCustom(aMonitor, checkStatus);
+}
+
+/**
+ * Tests if filter buttons have 'checked' attributes set correctly.
+ *
+ * @param array aIsChecked
+ *        An array specifying if a button at given index should have a
+ *        'checked' attribute. For example, if the third item of the array
+ *        evaluates to true, the third button should be checked.
+ */
+function testFilterButtonsCustom(aMonitor, aIsChecked) {
+  let doc = aMonitor.panelWin.document;
+  let buttons = doc.querySelectorAll(".requests-menu-footer-button");
+  for (let i = 0; i < aIsChecked.length; i++) {
+    let button = buttons[i];
+    if (aIsChecked[i]) {
+      is(button.hasAttribute("checked"), true,
+        "The " + button.id + " button should have a 'checked' attribute.");
+    } else {
+      is(button.hasAttribute("checked"), false,
+        "The " + button.id + " button should not have a 'checked' attribute.");
+    }
+  }
 }

@@ -278,8 +278,8 @@ class ParallelSafetyVisitor : public MInstructionVisitor
     UNSAFE_OP(SetDOMProperty)
     UNSAFE_OP(NewStringObject)
     UNSAFE_OP(Random)
-    UNSAFE_OP(Pow)
-    UNSAFE_OP(PowHalf)
+    SAFE_OP(Pow)
+    SAFE_OP(PowHalf)
     UNSAFE_OP(RegExpTest)
     UNSAFE_OP(RegExpExec)
     UNSAFE_OP(RegExpReplace)
@@ -291,7 +291,7 @@ class ParallelSafetyVisitor : public MInstructionVisitor
     UNSAFE_OP(In)
     UNSAFE_OP(InArray)
     SAFE_OP(GuardThreadExclusive)
-    SAFE_OP(CheckInterruptPar)
+    SAFE_OP(InterruptCheckPar)
     SAFE_OP(CheckOverRecursedPar)
     SAFE_OP(FunctionDispatch)
     SAFE_OP(TypeObjectDispatch)
@@ -746,7 +746,7 @@ ParallelSafetyVisitor::visitCheckOverRecursed(MCheckOverRecursed *ins)
 bool
 ParallelSafetyVisitor::visitInterruptCheck(MInterruptCheck *ins)
 {
-    return replace(ins, MCheckInterruptPar::New(alloc(), ForkJoinContext()));
+    return replace(ins, MInterruptCheckPar::New(alloc(), ForkJoinContext()));
 }
 
 /////////////////////////////////////////////////////////////////////////////

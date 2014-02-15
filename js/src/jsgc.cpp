@@ -1150,23 +1150,28 @@ js_FinishGC(JSRuntime *rt)
 #endif
 
     /* Delete all remaining zones. */
-    for (ZonesIter zone(rt, WithAtoms); !zone.done(); zone.next()) {
-        for (CompartmentsInZoneIter comp(zone); !comp.done(); comp.next())
-            js_delete(comp.get());
-        js_delete(zone.get());
+    if (rt->gcInitialized) {
+        for (ZonesIter zone(rt, WithAtoms); !zone.done(); zone.next()) {
+            for (CompartmentsInZoneIter comp(zone); !comp.done(); comp.next())
+                js_delete(comp.get());
+            js_delete(zone.get());
+        }
     }
 
     rt->zones.clear();
 
     rt->gcSystemAvailableChunkListHead = nullptr;
     rt->gcUserAvailableChunkListHead = nullptr;
-    for (GCChunkSet::Range r(rt->gcChunkSet.all()); !r.empty(); r.popFront())
-        Chunk::release(rt, r.front());
-    rt->gcChunkSet.clear();
+    if (rt->gcChunkSet.initialized()) {
+        for (GCChunkSet::Range r(rt->gcChunkSet.all()); !r.empty(); r.popFront())
+            Chunk::release(rt, r.front());
+        rt->gcChunkSet.clear();
+    }
 
     rt->gcChunkPool.expireAndFree(rt, true);
 
-    rt->gcRootsHash.clear();
+    if (rt->gcRootsHash.initialized())
+        rt->gcRootsHash.clear();
 
     rt->functionPersistentRooteds.clear();
     rt->idPersistentRooteds.clear();
@@ -1713,9 +1718,9 @@ ArenaLists::refillFreeList(ThreadSafeContext *cx, AllocKind thingKind)
             mozilla::Maybe<AutoLockWorkerThreadState> lock;
             JSRuntime *rt = zone->runtimeFromAnyThread();
             if (rt->exclusiveThreadsPresent()) {
-                lock.construct<WorkerThreadState &>(*rt->workerThreadState);
+                lock.construct();
                 while (rt->isHeapBusy())
-                    rt->workerThreadState->wait(WorkerThreadState::PRODUCER);
+                    WorkerThreadState().wait(GlobalWorkerThreadState::PRODUCER);
             }
 
             void *thing = cx->allocator()->arenas.allocateFromArenaInline(zone, thingKind);
@@ -2088,6 +2093,7 @@ void
 js::SetMarkStackLimit(JSRuntime *rt, size_t limit)
 {
     JS_ASSERT(!rt->isHeapBusy());
+    AutoStopVerifyingBarriers pauseVerification(rt, false);
     rt->gcMarker.setMaxCapacity(limit);
 }
 
@@ -4300,7 +4306,7 @@ AutoTraceSession::AutoTraceSession(JSRuntime *rt, js::HeapState heapState)
         // Lock the worker thread state when changing the heap state in the
         // presence of exclusive threads, to avoid racing with refillFreeList.
 #ifdef JS_THREADSAFE
-        AutoLockWorkerThreadState lock(*rt->workerThreadState);
+        AutoLockWorkerThreadState lock;
         rt->heapState = heapState;
 #else
         MOZ_CRASH();
@@ -4316,11 +4322,11 @@ AutoTraceSession::~AutoTraceSession()
 
     if (runtime->exclusiveThreadsPresent()) {
 #ifdef JS_THREADSAFE
-        AutoLockWorkerThreadState lock(*runtime->workerThreadState);
+        AutoLockWorkerThreadState lock;
         runtime->heapState = prevState;
 
         // Notify any worker threads waiting for the trace session to end.
-        runtime->workerThreadState->notifyAll(WorkerThreadState::PRODUCER);
+        WorkerThreadState().notifyAll(GlobalWorkerThreadState::PRODUCER);
 #else
         MOZ_CRASH();
 #endif
@@ -5049,6 +5055,24 @@ js::MinorGC(JSContext *cx, JS::gcreason::Reason reason)
             pretenureTypes[i]->setShouldPreTenure(cx);
     }
 #endif
+}
+
+void
+js::gc::GCIfNeeded(JSContext *cx)
+{
+    JSRuntime *rt = cx->runtime();
+
+#ifdef JSGC_GENERATIONAL
+    /*
+     * In case of store buffer overflow perform minor GC first so that the
+     * correct reason is seen in the logs.
+     */
+    if (rt->gcStoreBuffer.isAboutToOverflow())
+        MinorGC(cx, JS::gcreason::FULL_STORE_BUFFER);
+#endif
+
+    if (rt->gcIsNeeded)
+        GCSlice(rt, GC_NORMAL, rt->gcTriggerReason);
 }
 
 void

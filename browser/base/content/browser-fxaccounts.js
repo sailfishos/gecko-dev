@@ -195,8 +195,12 @@ let gFxAccounts = {
   },
 
   onMenuPanelCommand: function (event) {
-    if (event.originalTarget.hasAttribute("signedin")) {
+    let button = event.originalTarget;
+
+    if (button.hasAttribute("signedin")) {
       this.openPreferences();
+    } else if (button.hasAttribute("failed")) {
+      this.openSignInAgainPage();
     } else {
       this.openAccountsPage();
     }
@@ -213,7 +217,6 @@ let gFxAccounts = {
   },
 
   openSignInAgainPage: function () {
-    // FIXME: This should actually show the pre-filled username version of about:accounts?
-    switchToTabHavingURI("about:accounts?signin=true", true);
+    switchToTabHavingURI("about:accounts?action=reauth", true);
   }
 };

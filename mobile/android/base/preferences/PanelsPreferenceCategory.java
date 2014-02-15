@@ -24,7 +24,7 @@ public class PanelsPreferenceCategory extends CustomListCategory {
     public static final String LOGTAG = "PanelsPrefCategory";
 
     protected HomeConfig mHomeConfig;
-    protected final List<PanelConfig> mPanelConfigs = new ArrayList<PanelConfig>();
+    protected List<PanelConfig> mPanelConfigs;
 
     protected UiAsyncTask<Void, Void, List<PanelConfig>> mLoadTask;
     protected UiAsyncTask<Void, Void, Void> mSaveTask;
@@ -67,17 +67,15 @@ public class PanelsPreferenceCategory extends CustomListCategory {
 
             @Override
             public void onPostExecute(List<PanelConfig> panelConfigs) {
-                displayPanelConfig(panelConfigs);
+                mPanelConfigs = panelConfigs;
+                displayHomeConfig();
             }
         };
         mLoadTask.execute();
     }
 
-    private void displayPanelConfig(List<PanelConfig> panelConfigs) {
-        for (PanelConfig panelConfig: panelConfigs) {
-            // Populate our local copy of the panels.
-            mPanelConfigs.add(panelConfig);
-
+    private void displayHomeConfig() {
+        for (PanelConfig panelConfig : mPanelConfigs) {
             // Create and add the pref.
             final PanelsPreference pref = new PanelsPreference(getContext(), PanelsPreferenceCategory.this);
             pref.setTitle(panelConfig.getTitle());
@@ -102,6 +100,10 @@ public class PanelsPreferenceCategory extends CustomListCategory {
      * @param panelConfigs Configuration to be saved
      */
     private void saveHomeConfig() {
+        if (mPanelConfigs == null) {
+            return;
+        }
+
         final List<PanelConfig> panelConfigs = makeConfigListDeepCopy();
         mSaveTask = new UiAsyncTask<Void, Void, Void>(ThreadUtils.getBackgroundHandler()) {
             @Override
@@ -143,13 +145,13 @@ public class PanelsPreferenceCategory extends CustomListCategory {
      * Update the local HomeConfig default state from mDefaultReference.
      */
     private void updateConfigDefault() {
-        String mId = null;
+        String id = null;
         if (mDefaultReference != null) {
-            mId = mDefaultReference.getKey();
+            id = mDefaultReference.getKey();
         }
 
         for (PanelConfig panelConfig : mPanelConfigs) {
-            if (TextUtils.equals(panelConfig.getId(), mId)) {
+            if (TextUtils.equals(panelConfig.getId(), id)) {
                 panelConfig.setIsDefault(true);
                 panelConfig.setIsDisabled(false);
             } else {
@@ -164,10 +166,10 @@ public class PanelsPreferenceCategory extends CustomListCategory {
         // This could change the default, so update the local version of the config.
         updateConfigDefault();
 
-        final String mId = pref.getKey();
+        final String id = pref.getKey();
         PanelConfig toRemove = null;
         for (PanelConfig panelConfig : mPanelConfigs) {
-            if (TextUtils.equals(panelConfig.getId(), mId)) {
+            if (TextUtils.equals(panelConfig.getId(), id)) {
                 toRemove = panelConfig;
                 break;
             }
@@ -188,9 +190,9 @@ public class PanelsPreferenceCategory extends CustomListCategory {
         pref.setHidden(toHide);
         ensureDefaultForHide(pref, toHide);
 
-        final String mId = pref.getKey();
+        final String id = pref.getKey();
         for (PanelConfig panelConfig : mPanelConfigs) {
-            if (TextUtils.equals(panelConfig.getId(), mId)) {
+            if (TextUtils.equals(panelConfig.getId(), id)) {
                 panelConfig.setIsDisabled(toHide);
                 break;
             }

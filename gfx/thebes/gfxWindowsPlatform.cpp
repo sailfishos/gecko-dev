@@ -64,11 +64,13 @@
 #include <winternl.h>
 #include "d3dkmtQueryStatistics.h"
 
+#include "SurfaceCache.h"
 
 using namespace mozilla;
 using namespace mozilla::gfx;
 using namespace mozilla::layers;
 using namespace mozilla::widget;
+using namespace mozilla::image;
 
 #ifdef CAIRO_HAS_D2D_SURFACE
 
@@ -555,6 +557,10 @@ gfxWindowsPlatform::VerifyD2DDevice(bool aAttemptForce)
             return;
         }
         mD2DDevice = nullptr;
+
+        // Surface cache needs to be invalidated since it may contain vector
+        // images rendered with our old, broken D2D device.
+        SurfaceCache::DiscardAll();
     }
 
     mozilla::ScopedGfxFeatureReporter reporter("D2D", aAttemptForce);
@@ -620,7 +626,9 @@ gfxWindowsPlatform::CreatePlatformFontList()
     mUsingGDIFonts = false;
     gfxPlatformFontList *pfl;
 #ifdef CAIRO_HAS_DWRITE_FONT
-    if (GetDWriteFactory()) {
+    // bug 630201 - older pre-RTM versions of Direct2D/DirectWrite cause odd
+    // crashers so blacklist them altogether
+    if (IsNotWin7PreRTM() && GetDWriteFactory()) {
         pfl = new gfxDWriteFontList();
         if (NS_SUCCEEDED(pfl->InitFontList())) {
             return pfl;
@@ -644,23 +652,26 @@ gfxWindowsPlatform::CreatePlatformFontList()
 }
 
 already_AddRefed<gfxASurface>
-gfxWindowsPlatform::CreateOffscreenSurface(const gfxIntSize& size,
+gfxWindowsPlatform::CreateOffscreenSurface(const IntSize& size,
                                            gfxContentType contentType)
 {
     nsRefPtr<gfxASurface> surf = nullptr;
 
 #ifdef CAIRO_HAS_WIN32_SURFACE
     if (mRenderMode == RENDER_GDI)
-        surf = new gfxWindowsSurface(size, OptimalFormatForContent(contentType));
+        surf = new gfxWindowsSurface(ThebesIntSize(size),
+                                     OptimalFormatForContent(contentType));
 #endif
 
 #ifdef CAIRO_HAS_D2D_SURFACE
     if (mRenderMode == RENDER_DIRECT2D)
-        surf = new gfxD2DSurface(size, OptimalFormatForContent(contentType));
+        surf = new gfxD2DSurface(ThebesIntSize(size),
+                                 OptimalFormatForContent(contentType));
 #endif
 
     if (!surf || surf->CairoStatus()) {
-        surf = new gfxImageSurface(size, OptimalFormatForContent(contentType));
+        surf = new gfxImageSurface(ThebesIntSize(size),
+                                   OptimalFormatForContent(contentType));
     }
 
     return surf.forget();
@@ -678,7 +689,8 @@ gfxWindowsPlatform::CreateOffscreenImageSurface(const gfxIntSize& aSize,
     }
 #endif
 
-    nsRefPtr<gfxASurface> surface = CreateOffscreenSurface(aSize, aContentType);
+    nsRefPtr<gfxASurface> surface = CreateOffscreenSurface(aSize.ToIntSize(),
+                                                           aContentType);
 #ifdef DEBUG
     nsRefPtr<gfxImageSurface> imageSurface = surface->GetAsImageSurface();
     NS_ASSERTION(imageSurface, "Surface cannot be converted to a gfxImageSurface");

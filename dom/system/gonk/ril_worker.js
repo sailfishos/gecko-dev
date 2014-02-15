@@ -1344,9 +1344,11 @@ let RIL = {
    *        Integer doing something XXX TODO
    */
   dial: function(options) {
-    let onerror = (function onerror(errorMsg) {
-      this._sendCallError(-1, errorMsg);
-    }).bind(this);
+    let onerror = (function onerror(options, errorMsg) {
+      options.success = false;
+      options.errorMsg = errorMsg;
+      this.sendChromeMessage(options);
+    }).bind(this, options);
 
     if (this._isEmergencyNumber(options.number)) {
       this.dialEmergencyNumber(options, onerror);
@@ -1410,7 +1412,7 @@ let RIL = {
   },
 
   sendDialRequest: function(options) {
-    Buf.newParcel(options.request);
+    Buf.newParcel(options.request, options);
     Buf.writeString(options.number);
     Buf.writeInt32(options.clirMode || 0);
     Buf.writeInt32(options.uusInfo || 0);
@@ -1418,6 +1420,15 @@ let RIL = {
     // match the format of the binary message.
     Buf.writeInt32(0);
     Buf.sendParcel();
+  },
+
+  /**
+   * Hang up all calls
+   */
+  hangUpAll: function() {
+    for (let callIndex in this.currentCalls) {
+      this.hangUp({callIndex: callIndex});
+    }
   },
 
   /**
@@ -1917,8 +1928,8 @@ let RIL = {
   /**
    * Get failure casue code for the most recently failed PDP context.
    */
-  getFailCauseCode: function(options) {
-    Buf.simpleRequest(REQUEST_LAST_CALL_FAIL_CAUSE, options);
+  getFailCauseCode: function(callback) {
+    Buf.simpleRequest(REQUEST_LAST_CALL_FAIL_CAUSE, {callback: callback});
   },
 
   /**
@@ -3473,7 +3484,10 @@ let RIL = {
           this._handleDisconnectedCall(currentCall);
         } else {
           delete this.currentCalls[currentCall.callIndex];
-          this.getFailCauseCode(currentCall);
+          this.getFailCauseCode((function(call, failCause) {
+            call.failCause = failCause;
+            this._handleDisconnectedCall(call);
+          }).bind(this, currentCall));
         }
         continue;
       }
@@ -3655,12 +3669,6 @@ let RIL = {
     this.sendChromeMessage(message);
   },
 
-  _sendCallError: function(callIndex, errorMsg) {
-    this.sendChromeMessage({rilMessageType: "callError",
-                            callIndex: callIndex,
-                            errorMsg: errorMsg});
-  },
-
   _sendDataCallError: function(message, errorCode) {
     // Should not include token for unsolicited response.
     delete message.rilMessageToken;
@@ -3811,37 +3819,39 @@ let RIL = {
       debug("handle supp svc notification: " + JSON.stringify(info));
     }
 
+    if (info.notificationType !== 1) {
+      // We haven't supported MO intermediate result code, i.e.
+      // info.notificationType === 0, which refers to code1 defined in 3GPP
+      // 27.007 7.17. We only support partial MT unsolicited result code,
+      // referring to code2, for now.
+      return;
+    }
+
     let notification = null;
     let callIndex = -1;
 
-    if (info.notificationType === 0) {
-      // MO intermediate result code. Refer to code1 defined in 3GPP 27.007
-      // 7.17.
-    } else if (info.notificationType === 1) {
-      // MT unsolicited result code. Refer to code2 defined in 3GPP 27.007 7.17.
-      switch (info.code) {
-        case SUPP_SVC_NOTIFICATION_CODE2_PUT_ON_HOLD:
-        case SUPP_SVC_NOTIFICATION_CODE2_RETRIEVED:
-          notification = GECKO_SUPP_SVC_NOTIFICATION_FROM_CODE2[info.code];
-          break;
-        default:
-          // Notification type not supported.
-          return;
-      }
+    switch (info.code) {
+      case SUPP_SVC_NOTIFICATION_CODE2_PUT_ON_HOLD:
+      case SUPP_SVC_NOTIFICATION_CODE2_RETRIEVED:
+        notification = GECKO_SUPP_SVC_NOTIFICATION_FROM_CODE2[info.code];
+        break;
+      default:
+        // Notification type not supported.
+        return;
+    }
 
-      // Get the target call object for this notification.
-      let currentCallIndexes = Object.keys(this.currentCalls);
-      if (currentCallIndexes.length === 1) {
-        // Only one call exists. This should be the target.
-        callIndex = currentCallIndexes[0];
-      } else {
-        // Find the call in |currentCalls| by the given number.
-        if (info.number) {
-          for each (let currentCall in this.currentCalls) {
-            if (currentCall.number == info.number) {
-              callIndex = currentCall.callIndex;
-              break;
-            }
+    // Get the target call object for this notification.
+    let currentCallIndexes = Object.keys(this.currentCalls);
+    if (currentCallIndexes.length === 1) {
+      // Only one call exists. This should be the target.
+      callIndex = currentCallIndexes[0];
+    } else {
+      // Find the call in |currentCalls| by the given number.
+      if (info.number) {
+        for each (let currentCall in this.currentCalls) {
+          if (currentCall.number == info.number) {
+            callIndex = currentCall.callIndex;
+            break;
           }
         }
       }
@@ -5092,10 +5102,14 @@ RIL[REQUEST_GET_CURRENT_CALLS] = function REQUEST_GET_CURRENT_CALLS(length, opti
   this._processCalls(calls);
 };
 RIL[REQUEST_DIAL] = function REQUEST_DIAL(length, options) {
-  if (options.rilRequestError) {
-    // The connection is not established yet.
-    options.callIndex = -1;
-    this.getFailCauseCode(options);
+  options.success = (options.rilRequestError === 0);
+  if (options.success) {
+    this.sendChromeMessage(options);
+  } else {
+    this.getFailCauseCode((function(options, failCause) {
+      options.errorMsg = failCause;
+      this.sendChromeMessage(options);
+    }).bind(this, options));
   }
 };
 RIL[REQUEST_GET_IMSI] = function REQUEST_GET_IMSI(length, options) {
@@ -5162,20 +5176,11 @@ RIL[REQUEST_CONFERENCE] = function REQUEST_CONFERENCE(length, options) {
 };
 RIL[REQUEST_UDUB] = null;
 RIL[REQUEST_LAST_CALL_FAIL_CAUSE] = function REQUEST_LAST_CALL_FAIL_CAUSE(length, options) {
-  let num = 0;
-  if (length) {
-    num = Buf.readInt32();
+  let num = length ? Buf.readInt32() : 0;
+  let failCause = num ? RIL_CALL_FAILCAUSE_TO_GECKO_CALL_ERROR[Buf.readInt32()] : null;
+  if (options.callback) {
+    options.callback(failCause);
   }
-  if (!num) {
-    // No response of REQUEST_LAST_CALL_FAIL_CAUSE. Change the call state into
-    // 'disconnected' directly.
-    this._handleDisconnectedCall(options);
-    return;
-  }
-
-  let failCause = Buf.readInt32();
-  options.failCause = RIL_CALL_FAILCAUSE_TO_GECKO_CALL_ERROR[failCause];
-  this._handleDisconnectedCall(options);
 };
 RIL[REQUEST_SIGNAL_STRENGTH] = function REQUEST_SIGNAL_STRENGTH(length, options) {
   this._receivedNetworkInfo(NETWORK_INFO_SIGNAL);

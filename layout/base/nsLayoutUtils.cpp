@@ -1838,22 +1838,21 @@ nsLayoutUtils::GetLayerTransformForFrame(nsIFrame* aFrame,
   return true;
 }
 
-static gfxPoint
+static bool
 TransformGfxPointFromAncestor(nsIFrame *aFrame,
                               const gfxPoint &aPoint,
-                              nsIFrame *aAncestor)
+                              nsIFrame *aAncestor,
+                              gfxPoint* aOut)
 {
   gfx3DMatrix ctm = nsLayoutUtils::GetTransformToAncestor(aFrame, aAncestor);
-  return ctm.Inverse().ProjectPoint(aPoint);
-}
 
-static gfxRect
-TransformGfxRectFromAncestor(nsIFrame *aFrame,
-                             const gfxRect &aRect,
-                             const nsIFrame *aAncestor)
-{
-  gfx3DMatrix ctm = nsLayoutUtils::GetTransformToAncestor(aFrame, aAncestor);
-  return ctm.Inverse().ProjectRectBounds(aRect);
+  float factor = aFrame->PresContext()->AppUnitsPerDevPixel();
+  nsRect childBounds = aFrame->GetVisualOverflowRectRelativeToSelf();
+  gfxRect childGfxBounds(NSAppUnitsToFloatPixels(childBounds.x, factor),
+                         NSAppUnitsToFloatPixels(childBounds.y, factor),
+                         NSAppUnitsToFloatPixels(childBounds.width, factor),
+                         NSAppUnitsToFloatPixels(childBounds.height, factor));
+  return ctm.UntransformPoint(aPoint, childGfxBounds, aOut);
 }
 
 static gfxRect
@@ -1895,41 +1894,18 @@ nsLayoutUtils::TransformAncestorPointToFrame(nsIFrame* aFrame,
                     NSAppUnitsToFloatPixels(aPoint.y, factor));
 
     if (text) {
-        result = TransformGfxPointFromAncestor(text, result, aAncestor);
+        if (!TransformGfxPointFromAncestor(text, result, aAncestor, &result)) {
+            return nsPoint(NS_UNCONSTRAINEDSIZE, NS_UNCONSTRAINEDSIZE);
+        }
         result = text->TransformFramePointToTextChild(result, aFrame);
     } else {
-        result = TransformGfxPointFromAncestor(aFrame, result, nullptr);
+        if (!TransformGfxPointFromAncestor(aFrame, result, nullptr, &result)) {
+            return nsPoint(NS_UNCONSTRAINEDSIZE, NS_UNCONSTRAINEDSIZE);
+        }
     }
 
     return nsPoint(NSFloatPixelsToAppUnits(float(result.x), factor),
                    NSFloatPixelsToAppUnits(float(result.y), factor));
-}
-
-nsRect 
-nsLayoutUtils::TransformAncestorRectToFrame(nsIFrame* aFrame,
-                                            const nsRect &aRect,
-                                            const nsIFrame* aAncestor)
-{
-    SVGTextFrame* text = GetContainingSVGTextFrame(aFrame);
-
-    float srcAppUnitsPerDevPixel = aAncestor->PresContext()->AppUnitsPerDevPixel();
-    gfxRect result(NSAppUnitsToFloatPixels(aRect.x, srcAppUnitsPerDevPixel),
-                   NSAppUnitsToFloatPixels(aRect.y, srcAppUnitsPerDevPixel),
-                   NSAppUnitsToFloatPixels(aRect.width, srcAppUnitsPerDevPixel),
-                   NSAppUnitsToFloatPixels(aRect.height, srcAppUnitsPerDevPixel));
-
-    if (text) {
-      result = TransformGfxRectFromAncestor(text, result, aAncestor);
-      result = text->TransformFrameRectToTextChild(result, aFrame);
-    } else {
-      result = TransformGfxRectFromAncestor(aFrame, result, aAncestor);
-    }
-
-    float destAppUnitsPerDevPixel = aFrame->PresContext()->AppUnitsPerDevPixel();
-    return nsRect(NSFloatPixelsToAppUnits(float(result.x), destAppUnitsPerDevPixel),
-                  NSFloatPixelsToAppUnits(float(result.y), destAppUnitsPerDevPixel),
-                  NSFloatPixelsToAppUnits(float(result.width), destAppUnitsPerDevPixel),
-                  NSFloatPixelsToAppUnits(float(result.height), destAppUnitsPerDevPixel));
 }
 
 nsRect
@@ -2529,7 +2505,7 @@ nsLayoutUtils::GetAllInFlowBoxes(nsIFrame* aFrame, BoxCallback* aCallback)
 {
   while (aFrame) {
     AddBoxesForFrame(aFrame, aCallback);
-    aFrame = nsLayoutUtils::GetNextContinuationOrSpecialSibling(aFrame);
+    aFrame = nsLayoutUtils::GetNextContinuationOrIBSplitSibling(aFrame);
   }
 }
 
@@ -2745,18 +2721,18 @@ nsLayoutUtils::GetParentOrPlaceholderForCrossDoc(nsIFrame* aFrame)
 }
 
 nsIFrame*
-nsLayoutUtils::GetNextContinuationOrSpecialSibling(nsIFrame *aFrame)
+nsLayoutUtils::GetNextContinuationOrIBSplitSibling(nsIFrame *aFrame)
 {
   nsIFrame *result = aFrame->GetNextContinuation();
   if (result)
     return result;
 
-  if ((aFrame->GetStateBits() & NS_FRAME_IS_SPECIAL) != 0) {
-    // We only store the "special sibling" annotation with the first
+  if ((aFrame->GetStateBits() & NS_FRAME_PART_OF_IBSPLIT) != 0) {
+    // We only store the ib-split sibling annotation with the first
     // frame in the continuation chain. Walk back to find that frame now.
     aFrame = aFrame->FirstContinuation();
 
-    void* value = aFrame->Properties().Get(nsIFrame::IBSplitSpecialSibling());
+    void* value = aFrame->Properties().Get(nsIFrame::IBSplitSibling());
     return static_cast<nsIFrame*>(value);
   }
 
@@ -2764,13 +2740,13 @@ nsLayoutUtils::GetNextContinuationOrSpecialSibling(nsIFrame *aFrame)
 }
 
 nsIFrame*
-nsLayoutUtils::FirstContinuationOrSpecialSibling(nsIFrame *aFrame)
+nsLayoutUtils::FirstContinuationOrIBSplitSibling(nsIFrame *aFrame)
 {
   nsIFrame *result = aFrame->FirstContinuation();
-  if (result->GetStateBits() & NS_FRAME_IS_SPECIAL) {
+  if (result->GetStateBits() & NS_FRAME_PART_OF_IBSPLIT) {
     while (true) {
       nsIFrame *f = static_cast<nsIFrame*>
-        (result->Properties().Get(nsIFrame::IBSplitSpecialPrevSibling()));
+        (result->Properties().Get(nsIFrame::IBSplitPrevSibling()));
       if (!f)
         break;
       result = f;
@@ -2781,13 +2757,13 @@ nsLayoutUtils::FirstContinuationOrSpecialSibling(nsIFrame *aFrame)
 }
 
 bool
-nsLayoutUtils::IsFirstContinuationOrSpecialSibling(nsIFrame *aFrame)
+nsLayoutUtils::IsFirstContinuationOrIBSplitSibling(nsIFrame *aFrame)
 {
   if (aFrame->GetPrevContinuation()) {
     return false;
   }
-  if ((aFrame->GetStateBits() & NS_FRAME_IS_SPECIAL) &&
-      aFrame->Properties().Get(nsIFrame::IBSplitSpecialPrevSibling())) {
+  if ((aFrame->GetStateBits() & NS_FRAME_PART_OF_IBSPLIT) &&
+      aFrame->Properties().Get(nsIFrame::IBSplitPrevSibling())) {
     return false;
   }
 
@@ -3054,7 +3030,7 @@ nsLayoutUtils::IntrinsicForContainer(nsRenderingContext *aRenderingContext,
     // -moz-fit-content and -moz-available enumerated widths compute intrinsic
     // widths just like auto.
     // For -moz-max-content and -moz-min-content, we handle them like
-    // specified widths, but ignore -moz-box-sizing.
+    // specified widths, but ignore box-sizing.
     boxSizing = NS_STYLE_BOX_SIZING_CONTENT;
   } else if (!styleWidth.ConvertsToLength() &&
              !(haveFixedMinWidth && haveFixedMaxWidth && maxw <= minw)) {
@@ -4724,11 +4700,15 @@ nsLayoutUtils::GetDisplayRootFrame(nsIFrame* aFrame)
 /* static */ uint32_t
 nsLayoutUtils::GetTextRunFlagsForStyle(nsStyleContext* aStyleContext,
                                        const nsStyleFont* aStyleFont,
+                                       const nsStyleText* aStyleText,
                                        nscoord aLetterSpacing)
 {
   uint32_t result = 0;
   if (aLetterSpacing != 0) {
     result |= gfxTextRunFactory::TEXT_DISABLE_OPTIONAL_LIGATURES;
+  }
+  if (aStyleText->mControlCharacterVisibility == NS_STYLE_CONTROL_CHARACTER_VISIBILITY_HIDDEN) {
+    result |= gfxTextRunFactory::TEXT_HIDE_CONTROL_CHARACTERS;
   }
   switch (aStyleContext->StyleSVG()->mTextRendering) {
   case NS_STYLE_TEXT_RENDERING_OPTIMIZESPEED:
@@ -5184,7 +5164,7 @@ nsLayoutUtils::GetFontFacesForFrames(nsIFrame* aFrame,
 
   while (aFrame) {
     GetFontFacesForFramesInner(aFrame, aFontFaceList);
-    aFrame = GetNextContinuationOrSpecialSibling(aFrame);
+    aFrame = GetNextContinuationOrIBSplitSibling(aFrame);
   }
 
   return NS_OK;

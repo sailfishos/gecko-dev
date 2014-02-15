@@ -17,6 +17,13 @@
 #include "gfxWindowsPlatform.h"
 #include "gfx2DGlue.h"
 #endif
+#ifdef MOZ_X11
+#include "mozilla/layers/TextureClientX11.h"
+#endif
+#ifdef MOZ_WIDGET_GONK
+#include <cutils/properties.h>
+#include "mozilla/layers/GrallocTextureClient.h"
+#endif
 
 using namespace mozilla::gfx;
 
@@ -102,26 +109,16 @@ CompositableClient::CreateDeprecatedTextureClient(DeprecatedTextureClientType aD
 
   switch (aDeprecatedTextureClientType) {
   case TEXTURE_SHARED_GL:
-    if (parentBackend == LayersBackend::LAYERS_OPENGL) {
-      result = new DeprecatedTextureClientSharedOGL(GetForwarder(), GetTextureInfo());
-    }
-     break;
   case TEXTURE_SHARED_GL_EXTERNAL:
-    if (parentBackend == LayersBackend::LAYERS_OPENGL) {
-      result = new DeprecatedTextureClientSharedOGLExternal(GetForwarder(), GetTextureInfo());
-    }
-    break;
   case TEXTURE_STREAM_GL:
-    if (parentBackend == LayersBackend::LAYERS_OPENGL) {
-      result = new DeprecatedTextureClientStreamOGL(GetForwarder(), GetTextureInfo());
-    }
-    break;
+    MOZ_CRASH("Unsupported. this should not be reached");
   case TEXTURE_YCBCR:
-    if (parentBackend == LayersBackend::LAYERS_OPENGL ||
-        parentBackend == LayersBackend::LAYERS_D3D9 ||
+    if (parentBackend == LayersBackend::LAYERS_D3D9 ||
         parentBackend == LayersBackend::LAYERS_D3D11 ||
         parentBackend == LayersBackend::LAYERS_BASIC) {
       result = new DeprecatedTextureClientShmemYCbCr(GetForwarder(), GetTextureInfo());
+    } else {
+      MOZ_CRASH("Unsupported. this should not be reached");
     }
     break;
   case TEXTURE_CONTENT:
@@ -199,6 +196,39 @@ CompositableClient::CreateBufferTextureClient(SurfaceFormat aFormat,
   return result.forget();
 }
 
+#ifdef MOZ_WIDGET_GONK
+static bool
+DisableGralloc(SurfaceFormat aFormat)
+{
+  if (aFormat == gfx::SurfaceFormat::A8) {
+    return true;
+  }
+#if ANDROID_VERSION <= 15
+  static bool checkedDevice = false;
+  static bool disableGralloc = false;
+
+  if (!checkedDevice) {
+    char propValue[PROPERTY_VALUE_MAX];
+    property_get("ro.product.device", propValue, "None");
+
+    if (strcmp("crespo",propValue) == 0) {
+      NS_WARNING("Nexus S has issues with gralloc, falling back to shmem");
+      disableGralloc = true;
+    }
+
+    checkedDevice = true;
+  }
+
+  if (disableGralloc) {
+    return true;
+  }
+  return false;
+#else
+  return false;
+#endif
+}
+#endif
+
 TemporaryRef<TextureClient>
 CompositableClient::CreateTextureClientForDrawing(SurfaceFormat aFormat,
                                                   TextureFlags aTextureFlags)
@@ -214,14 +244,30 @@ CompositableClient::CreateTextureClientForDrawing(SurfaceFormat aFormat,
   if (parentBackend == LayersBackend::LAYERS_D3D9 &&
       !GetForwarder()->ForwardsToDifferentProcess() &&
       !(aTextureFlags & TEXTURE_ALLOC_FALLBACK)) {
-    // non-DIB textures don't work with alpha, see notes in TextureD3D9.
-    if (ContentForFormat(aFormat) != gfxContentType::COLOR) {
+    if (!gfxWindowsPlatform::GetPlatform()->GetD3D9Device()) {
       result = new DIBTextureClientD3D9(aFormat, aTextureFlags);
     } else {
       result = new CairoTextureClientD3D9(aFormat, aTextureFlags);
     }
   }
 #endif
+
+#ifdef MOZ_X11
+  LayersBackend parentBackend = GetForwarder()->GetCompositorBackendType();
+  if (parentBackend == LayersBackend::LAYERS_BASIC &&
+      gfxPlatform::GetPlatform()->ScreenReferenceSurface()->GetType() == gfxSurfaceType::Xlib &&
+      !(aTextureFlags & TEXTURE_ALLOC_FALLBACK))
+  {
+    result = new TextureClientX11(aFormat, aTextureFlags);
+  }
+#endif
+
+#ifdef MOZ_WIDGET_GONK
+  if (!DisableGralloc(aFormat)) {
+    result = new GrallocTextureClientOGL(this, aFormat, aTextureFlags);
+  }
+#endif
+
   // Can't do any better than a buffer texture client.
   if (!result) {
     result = CreateBufferTextureClient(aFormat, aTextureFlags);

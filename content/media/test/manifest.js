@@ -233,6 +233,7 @@ var gInvalidTests = [
   { name:"invalid-cmap-s0c0.opus", type:"audio/ogg; codecs=opus"},
   { name:"invalid-cmap-s0c2.opus", type:"audio/ogg; codecs=opus"},
   { name:"invalid-cmap-s1c2.opus", type:"audio/ogg; codecs=opus"},
+  { name:"invalid-preskip.webm", type:"audio/webm; codecs=opus"},
 ];
 
 // Converts a path/filename to a file:// URI which we can load from disk.
@@ -364,9 +365,9 @@ var gUnseekableTests = [
   { name:"bogus.duh", type:"bogus/duh"}
 ];
 // Unfortunately big-buck-bunny-unseekable.mp4 is doesn't play on Windows 7, so
-// only include it in the unseekable tests if we're on later versions of Windows.
-if (navigator.userAgent.indexOf("Windows") == -1 ||
-    IsWindows8OrLater()) {
+// only include it in the unseekable tests if we're on later versions of Windows. 
+// This test actually only passes on win8 at the moment.
+if (navigator.userAgent.indexOf("Windows") != -1 && IsWindows8OrLater()) {
   gUnseekableTests = gUnseekableTests.concat([
     { name:"big-buck-bunny-unseekable.mp4", type:"video/mp4" }
   ]);

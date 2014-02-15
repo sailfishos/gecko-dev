@@ -445,7 +445,7 @@ pref("browser.ui.touch.bottom", 16);
 pref("browser.ui.touch.weight.visited", 120); // percentage
 
 // The percentage of the screen that needs to be scrolled before margins are exposed.
-pref("browser.ui.show-margins-threshold", 20);
+pref("browser.ui.show-margins-threshold", 10);
 
 // Maximum distance from the point where the user pressed where we still
 // look for text to select
@@ -817,11 +817,27 @@ pref("browser.snippets.geoUrl", "https://geo.mozilla.org/country.json");
 pref("browser.snippets.statsUrl", "https://snippets-stats.mozilla.org/mobile");
 
 // These prefs require a restart to take effect.
-pref("browser.snippets.enabled", true);
+pref("browser.snippets.enabled", false);
 pref("browser.snippets.syncPromo.enabled", false);
 
 #ifdef MOZ_ANDROID_SYNTHAPKS
 // The URL of the APK factory from which we obtain APKs for webapps.
 // This currently points to the development server.
 pref("browser.webapps.apkFactoryUrl", "http://dapk.net/application.apk");
+
+// How frequently to check for webapp updates, in seconds (86400 is daily).
+pref("browser.webapps.updateInterval", 86400);
+
+// The URL of the service that checks for updates.
+// This currently points to the development server.
+// To test updates, set this to http://apk-update-checker.paas.allizom.org,
+// which is a test server that always reports all apps as having updates.
+pref("browser.webapps.updateCheckUrl", "http://dapk.net/app_updates");
+
 #endif
+
+// Whether or not to only sync home provider data when the user is on wifi.
+pref("home.sync.wifiOnly", false);
+
+// How frequently to check if we should sync home provider data.
+pref("home.sync.checkIntervalSecs", 3600);

@@ -2851,7 +2851,7 @@ CodeGenerator::visitCheckOverRecursedPar(LCheckOverRecursedPar *lir)
     if (!addOutOfLineCode(ool))
         return false;
     masm.branchPtr(Assembler::BelowOrEqual, StackPointer, tempReg, ool->entry());
-    masm.checkInterruptFlagsPar(tempReg, ool->entry());
+    masm.checkInterruptFlagPar(tempReg, ool->entry());
     masm.bind(ool->rejoin());
 
     return true;
@@ -2886,41 +2886,36 @@ CodeGenerator::visitCheckOverRecursedFailurePar(CheckOverRecursedFailurePar *ool
 }
 
 // Out-of-line path to report over-recursed error and fail.
-class OutOfLineCheckInterruptPar : public OutOfLineCodeBase<CodeGenerator>
+class OutOfLineInterruptCheckPar : public OutOfLineCodeBase<CodeGenerator>
 {
   public:
-    LCheckInterruptPar *const lir;
+    LInterruptCheckPar *const lir;
 
-    OutOfLineCheckInterruptPar(LCheckInterruptPar *lir)
+    OutOfLineInterruptCheckPar(LInterruptCheckPar *lir)
       : lir(lir)
     { }
 
     bool accept(CodeGenerator *codegen) {
-        return codegen->visitOutOfLineCheckInterruptPar(this);
+        return codegen->visitOutOfLineInterruptCheckPar(this);
     }
 };
 
 bool
-CodeGenerator::visitCheckInterruptPar(LCheckInterruptPar *lir)
+CodeGenerator::visitInterruptCheckPar(LInterruptCheckPar *lir)
 {
     // First check for cx->shared->interrupt_.
-    OutOfLineCheckInterruptPar *ool = new(alloc()) OutOfLineCheckInterruptPar(lir);
+    OutOfLineInterruptCheckPar *ool = new(alloc()) OutOfLineInterruptCheckPar(lir);
     if (!addOutOfLineCode(ool))
         return false;
 
-    // We must check two flags:
-    // - runtime->interrupt
-    // - runtime->parallelAbort
-    // See vm/ForkJoin.h for discussion on why we use this design.
-
     Register tempReg = ToRegister(lir->getTempReg());
-    masm.checkInterruptFlagsPar(tempReg, ool->entry());
+    masm.checkInterruptFlagPar(tempReg, ool->entry());
     masm.bind(ool->rejoin());
     return true;
 }
 
 bool
-CodeGenerator::visitOutOfLineCheckInterruptPar(OutOfLineCheckInterruptPar *ool)
+CodeGenerator::visitOutOfLineInterruptCheckPar(OutOfLineInterruptCheckPar *ool)
 {
     OutOfLinePropagateAbortPar *bail = oolPropagateAbortPar(ool->lir);
     if (!bail)
@@ -2929,7 +2924,7 @@ CodeGenerator::visitOutOfLineCheckInterruptPar(OutOfLineCheckInterruptPar *ool)
     // Avoid saving/restoring the temp register since we will put the
     // ReturnReg into it below and we don't want to clobber that
     // during PopRegsInMask():
-    LCheckInterruptPar *lir = ool->lir;
+    LInterruptCheckPar *lir = ool->lir;
     Register tempReg = ToRegister(lir->getTempReg());
     RegisterSet saveSet(lir->safepoint()->liveRegs());
     saveSet.takeUnchecked(tempReg);
@@ -2938,7 +2933,7 @@ CodeGenerator::visitOutOfLineCheckInterruptPar(OutOfLineCheckInterruptPar *ool)
     masm.movePtr(ToRegister(ool->lir->forkJoinContext()), CallTempReg0);
     masm.setupUnalignedABICall(1, CallTempReg1);
     masm.passABIArg(CallTempReg0);
-    masm.callWithABI(JS_FUNC_TO_DATA_PTR(void *, CheckInterruptPar));
+    masm.callWithABI(JS_FUNC_TO_DATA_PTR(void *, InterruptCheckPar));
     masm.movePtr(ReturnReg, tempReg);
     masm.PopRegsInMask(saveSet);
     masm.branchIfFalseBool(tempReg, bail->entry());
@@ -6575,11 +6570,11 @@ CodeGenerator::visitNameIC(OutOfLineUpdateCache *ool, DataPtr<NameIC> &ic)
 bool
 CodeGenerator::addGetPropertyCache(LInstruction *ins, RegisterSet liveRegs, Register objReg,
                                    PropertyName *name, TypedOrValueRegister output,
-                                   bool allowGetters, bool monitoredResult)
+                                   bool monitoredResult)
 {
     switch (gen->info().executionMode()) {
       case SequentialExecution: {
-        GetPropertyIC cache(liveRegs, objReg, name, output, allowGetters, monitoredResult);
+        GetPropertyIC cache(liveRegs, objReg, name, output, monitoredResult);
         return addCache(ins, allocateCache(cache));
       }
       case ParallelExecution: {
@@ -6637,11 +6632,10 @@ CodeGenerator::visitGetPropertyCacheV(LGetPropertyCacheV *ins)
     RegisterSet liveRegs = ins->safepoint()->liveRegs();
     Register objReg = ToRegister(ins->getOperand(0));
     PropertyName *name = ins->mir()->name();
-    bool allowGetters = ins->mir()->allowGetters();
     bool monitoredResult = ins->mir()->monitoredResult();
     TypedOrValueRegister output = TypedOrValueRegister(GetValueOutput(ins));
 
-    return addGetPropertyCache(ins, liveRegs, objReg, name, output, allowGetters, monitoredResult);
+    return addGetPropertyCache(ins, liveRegs, objReg, name, output, monitoredResult);
 }
 
 bool
@@ -6650,11 +6644,10 @@ CodeGenerator::visitGetPropertyCacheT(LGetPropertyCacheT *ins)
     RegisterSet liveRegs = ins->safepoint()->liveRegs();
     Register objReg = ToRegister(ins->getOperand(0));
     PropertyName *name = ins->mir()->name();
-    bool allowGetters = ins->mir()->allowGetters();
     bool monitoredResult = ins->mir()->monitoredResult();
     TypedOrValueRegister output(ins->mir()->type(), ToAnyRegister(ins->getDef(0)));
 
-    return addGetPropertyCache(ins, liveRegs, objReg, name, output, allowGetters, monitoredResult);
+    return addGetPropertyCache(ins, liveRegs, objReg, name, output, monitoredResult);
 }
 
 typedef bool (*GetPropertyICFn)(JSContext *, size_t, HandleObject, MutableHandleValue);
@@ -7371,8 +7364,8 @@ template <typename T>
 static inline void
 StoreToTypedArray(MacroAssembler &masm, int arrayType, const LAllocation *value, const T &dest)
 {
-    if (arrayType == ScalarTypeRepresentation::TYPE_FLOAT32 ||
-        arrayType == ScalarTypeRepresentation::TYPE_FLOAT64)
+    if (arrayType == ScalarTypeDescr::TYPE_FLOAT32 ||
+        arrayType == ScalarTypeDescr::TYPE_FLOAT64)
     {
         masm.storeToTypedFloatArray(arrayType, ToFloatRegister(value), dest);
     } else {

@@ -334,8 +334,7 @@ nsXPCWrappedJS::GetNewOrUsed(JS::HandleObject jsObj,
         return NS_ERROR_FAILURE;
     }
 
-    nsRefPtr<nsXPCWrappedJSClass> clasp;
-    nsXPCWrappedJSClass::GetNewOrUsed(cx, aIID, getter_AddRefs(clasp));
+    nsRefPtr<nsXPCWrappedJSClass> clasp = nsXPCWrappedJSClass::GetNewOrUsed(cx, aIID);
     if (!clasp)
         return NS_ERROR_FAILURE;
 
@@ -355,9 +354,7 @@ nsXPCWrappedJS::GetNewOrUsed(JS::HandleObject jsObj,
         // Make a new root wrapper, because there is no existing
         // root wrapper, and the wrapper we are trying to make isn't
         // a root.
-        nsRefPtr<nsXPCWrappedJSClass> rootClasp;
-        nsXPCWrappedJSClass::GetNewOrUsed(cx, NS_GET_IID(nsISupports),
-                                          getter_AddRefs(rootClasp));
+        nsRefPtr<nsXPCWrappedJSClass> rootClasp = nsXPCWrappedJSClass::GetNewOrUsed(cx, NS_GET_IID(nsISupports));
         if (!rootClasp)
             return NS_ERROR_FAILURE;
 
@@ -491,7 +488,7 @@ nsXPCWrappedJS::FindInherited(REFNSIID aIID)
 }
 
 NS_IMETHODIMP
-nsXPCWrappedJS::GetInterfaceInfo(nsIInterfaceInfo** info)
+nsXPCWrappedJS::GetInterfaceInfo(nsIInterfaceInfo** infoResult)
 {
     MOZ_ASSERT(GetClass(), "wrapper without class");
     MOZ_ASSERT(GetClass()->GetInterfaceInfo(), "wrapper class without interface");
@@ -499,9 +496,10 @@ nsXPCWrappedJS::GetInterfaceInfo(nsIInterfaceInfo** info)
     // Since failing to get this info will crash some platforms(!), we keep
     // mClass valid at shutdown time.
 
-    if (!(*info = GetClass()->GetInterfaceInfo()))
+    nsCOMPtr<nsIInterfaceInfo> info = GetClass()->GetInterfaceInfo();
+    if (!info)
         return NS_ERROR_UNEXPECTED;
-    NS_ADDREF(*info);
+    info.forget(infoResult);
     return NS_OK;
 }
 

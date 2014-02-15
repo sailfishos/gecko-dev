@@ -42,10 +42,10 @@ pref("webgl.force-enabled", true);
 pref("browser.dom.window.dump.enabled", true);
 pref("layers.acceleration.draw-fps", false);
 pref("layers.use-deprecated-textures", false);
-pref("layers.force-tiles", true);
+pref("layers.enable-tiles", true);
 pref("font.size.inflation.disabledInMasterProcess", true);
-pref("apz.pan_repaint_interval", 50);
-pref("apz.fling_repaint_interval", 75);
+pref("apz.pan_repaint_interval", 5050);
+pref("apz.fling_repaint_interval", 150);
 pref("apz.y_skate_size_multiplier", "4.5f");
 pref("apz.y_stationary_size_multiplier", "4.5f");
 pref("apz.max_event_acceleration", "12.0f");
@@ -303,8 +303,3 @@ pref("extensions.minCompatibleAppVersion", "11.0");
 
 // Enable sub layers for apzc
 pref("layout.want.subapzc", true);
-
-// Temporary, until bug 957504 fixed
-pref("javascript.options.baselinejit.content", false);
-pref("javascript.options.baselinejit.chrome",  false);
-

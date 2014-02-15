@@ -113,6 +113,7 @@
 #include "mozilla/Assertions.h"
 #include "mozilla/Mutex.h"
 #include "mozilla/Telemetry.h"
+#include "mozilla/unused.h"
 #include "nsIThreadPool.h"
 #include "nsNetUtil.h"
 #include "nsXPCOMCIDInternal.h"
@@ -296,6 +297,9 @@ CertErrorRunnable::CheckCertOverrides()
 {
   PR_LOG(gPIPNSSLog, PR_LOG_DEBUG, ("[%p][%p] top of CheckCertOverrides\n",
                                     mFdForLogging, this));
+  // "Use" mFdForLogging in non-PR_LOGGING builds, too, to suppress
+  // clang's -Wunused-private-field build warning for this variable:
+  unused << mFdForLogging;
 
   if (!NS_IsMainThread()) {
     NS_ERROR("CertErrorRunnable::CheckCertOverrides called off main thread");
@@ -502,8 +506,6 @@ CreateCertErrorRunnable(CertVerifier& certVerifier,
     return nullptr;
   }
 
-  SECStatus srv;
-
   PLArenaPool* log_arena = PORT_NewArena(DER_DEFAULT_CHUNKSIZE);
   PLArenaPoolCleanerFalseParam log_arena_cleaner(log_arena);
   if (!log_arena) {
@@ -519,17 +521,17 @@ CreateCertErrorRunnable(CertVerifier& certVerifier,
   CERTVerifyLogContentsCleaner verify_log_cleaner(verify_log);
   verify_log->arena = log_arena;
 
-  // XXX TODO: convert to VerifySSLServerCert
-  // XXX TODO: get rid of error log
-  srv = certVerifier.VerifyCert(cert, stapledOCSPResponse,
-                                certificateUsageSSLServer, now,
-                                infoObject, 0, nullptr, nullptr, verify_log);
 
-  // We ignore the result code of the cert verification.
+  // We ignore the result code of the cert verification (i.e. VerifyCert's rv)
   // Either it is a failure, which is expected, and we'll process the
   //                         verify log below.
   // Or it is a success, then a domain mismatch is the only
   //                     possible failure.
+  // XXX TODO: convert to VerifySSLServerCert
+  // XXX TODO: get rid of error log
+  certVerifier.VerifyCert(cert, stapledOCSPResponse,
+                          certificateUsageSSLServer, now,
+                          infoObject, 0, nullptr, nullptr, verify_log);
 
   PRErrorCode errorCodeMismatch = 0;
   PRErrorCode errorCodeTrust = 0;
@@ -742,6 +744,8 @@ AuthCertificate(CertVerifier& certVerifier, TransportSecurityInfo* infoObject,
 
   SECStatus rv;
 
+  // TODO: Remove this after we switch to insanity::pkix as the
+  // only option
   if (stapledOCSPResponse) {
     CERTCertDBHandle* handle = CERT_GetDefaultCertDB();
     rv = CERT_CacheOCSPResponseFromSideChannel(handle, cert, PR_Now(),
@@ -918,6 +922,12 @@ SSLServerCertVerificationJob::Run()
           = Telemetry::SSL_SUCCESFUL_CERT_VALIDATION_TIME_CLASSIC;
         failureTelemetry
           = Telemetry::SSL_INITIAL_FAILED_CERT_VALIDATION_TIME_CLASSIC;
+        break;
+      case CertVerifier::insanity:
+        successTelemetry
+          = Telemetry::SSL_SUCCESFUL_CERT_VALIDATION_TIME_INSANITY;
+        failureTelemetry
+          = Telemetry::SSL_INITIAL_FAILED_CERT_VALIDATION_TIME_INSANITY;
         break;
 #ifndef NSS_NO_LIBPKIX
       case CertVerifier::libpkix:

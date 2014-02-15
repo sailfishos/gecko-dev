@@ -6,15 +6,12 @@ import java.io.IOException;
 import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 public abstract class SessionTest extends BaseTest {
-    private File mSessionDir;
     protected Navigation mNavigation;
 
     @Override
@@ -378,6 +375,10 @@ public abstract class SessionTest extends BaseTest {
     }
 
     private String readFile(File target) throws IOException {
+        if (!target.exists()) {
+            return null;
+        }
+
         FileReader fr = new FileReader(target);
         try {
             StringBuffer sb = new StringBuffer();

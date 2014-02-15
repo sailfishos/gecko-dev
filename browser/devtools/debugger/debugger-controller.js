@@ -29,6 +29,9 @@ const EVENTS = {
   SOURCE_SHOWN: "Debugger:EditorSourceShown",
   SOURCE_ERROR_SHOWN: "Debugger:EditorSourceErrorShown",
 
+  // When the editor has shown a source and set the line / column position
+  EDITOR_LOCATION_SET: "Debugger:EditorLocationSet",
+
   // When scopes, variables, properties and watch expressions are fetched and
   // displayed in the variables view.
   FETCHED_SCOPES: "Debugger:FetchedScopes",
@@ -237,7 +240,11 @@ let DebuggerController = {
       } else {
         this._startDebuggingTab(startedDebugging.resolve);
         const startedTracing = promise.defer();
-        this._startTracingTab(traceActor, startedTracing.resolve);
+        if (Prefs.tracerEnabled && traceActor) {
+          this._startTracingTab(traceActor, startedTracing.resolve);
+        } else {
+          startedTracing.resolve();
+        }
 
         return promise.all([startedDebugging.promise, startedTracing.promise]);
       }
@@ -1188,6 +1195,12 @@ SourceScripts.prototype = {
       return;
     }
 
+    if (aResponse.sources.length === 0) {
+      DebuggerView.Sources.emptyText = L10N.getStr("noSourcesText");
+      window.emit(EVENTS.SOURCES_ADDED);
+      return;
+    }
+
     // Add all the sources in the debugger view sources container.
     for (let source of aResponse.sources) {
       // Ignore bogus scripts, e.g. generated from 'clientEvaluate' packets.
@@ -1294,7 +1307,7 @@ SourceScripts.prototype = {
     deferred.promise.pretty = wantPretty;
     this._cache.set(aSource.url, deferred.promise);
 
-    const afterToggle = ({ error, message, source: text }) => {
+    const afterToggle = ({ error, message, source: text, contentType }) => {
       if (error) {
         // Revert the rejected promise from the cache, so that the original
         // source's text may be shown when the source is selected.
@@ -1302,7 +1315,7 @@ SourceScripts.prototype = {
         deferred.reject([aSource, message || error]);
         return;
       }
-      deferred.resolve([aSource, text]);
+      deferred.resolve([aSource, text, contentType]);
     };
 
     if (wantPretty) {
@@ -1354,14 +1367,15 @@ SourceScripts.prototype = {
     }
 
     // Get the source text from the active thread.
-    this.activeThread.source(aSource).source(({ error, message, source: text }) => {
+    this.activeThread.source(aSource)
+        .source(({ error, message, source: text, contentType }) => {
       if (aOnTimeout) {
         window.clearTimeout(fetchTimeout);
       }
       if (error) {
         deferred.reject([aSource, message || error]);
       } else {
-        deferred.resolve([aSource, text]);
+        deferred.resolve([aSource, text, contentType]);
       }
     });
 
@@ -1400,13 +1414,13 @@ SourceScripts.prototype = {
     }
 
     /* Called if fetching a source finishes successfully. */
-    function onFetch([aSource, aText]) {
+    function onFetch([aSource, aText, aContentType]) {
       // If fetching the source has previously timed out, discard it this time.
       if (!pending.has(aSource.url)) {
         return;
       }
       pending.delete(aSource.url);
-      fetched.push([aSource.url, aText]);
+      fetched.push([aSource.url, aText, aContentType]);
       maybeFinish();
     }
 
@@ -1690,11 +1704,10 @@ EventListeners.prototype = {
           if (aResponse.error) {
             const msg = "Error getting function definition site: " + aResponse.message;
             DevToolsUtils.reportException("scheduleEventListenersFetch", msg);
-            deferred.reject(msg);
-            return;
+          } else {
+            aListener.function.url = aResponse.url;
           }
 
-          aListener.function.url = aResponse.url;
           deferred.resolve(aListener);
         });
 

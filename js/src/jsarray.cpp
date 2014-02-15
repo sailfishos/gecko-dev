@@ -843,13 +843,7 @@ const Class ArrayObject::class_ = {
     nullptr,        /* call        */
     nullptr,        /* hasInstance */
     nullptr,        /* construct   */
-    nullptr,        /* trace       */
-    {
-        nullptr,    /* outerObject */
-        nullptr,    /* innerObject */
-        nullptr,    /* iteratorObject  */
-        false,      /* isWrappedNative */
-    }
+    nullptr         /* trace       */
 };
 
 static bool
@@ -1988,8 +1982,7 @@ js::array_sort(JSContext *cx, unsigned argc, Value *vp)
     /* Set undefs that sorted after the rest of elements. */
     while (undefs != 0) {
         --undefs;
-        RootedValue undefinedValue(cx);
-        if (!JS_CHECK_OPERATION_LIMIT(cx) || !SetArrayElement(cx, obj, n++, undefinedValue))
+        if (!JS_CHECK_OPERATION_LIMIT(cx) || !SetArrayElement(cx, obj, n++, UndefinedHandleValue))
             return false;
     }
 

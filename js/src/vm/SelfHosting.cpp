@@ -20,6 +20,7 @@
 #include "vm/Compression.h"
 #include "vm/ForkJoin.h"
 #include "vm/Interpreter.h"
+#include "vm/String.h"
 
 #include "jsfuninlines.h"
 #include "jsscriptinlines.h"
@@ -317,6 +318,46 @@ intrinsic_ForkJoinNumWorkers(JSContext *cx, unsigned argc, Value *vp)
 }
 
 /*
+ * ForkJoinGetSlice(id): Returns the id of the next slice to be worked
+ * on.
+ *
+ * Acts as the identity function when called from outside of a ForkJoin
+ * thread. This odd API is because intrinsics must be called during the
+ * parallel warm up phase to populate observed type sets, so we must call it
+ * even during sequential execution. But since there is no thread pool during
+ * sequential execution, the selfhosted code is responsible for computing the
+ * next sequential slice id and passing it in itself.
+ */
+bool
+js::intrinsic_ForkJoinGetSlice(JSContext *cx, unsigned argc, Value *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    MOZ_ASSERT(args.length() == 1);
+    MOZ_ASSERT(args[0].isInt32());
+    args.rval().set(args[0]);
+    return true;
+}
+
+static bool
+intrinsic_ForkJoinGetSlicePar(ForkJoinContext *cx, unsigned argc, Value *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    MOZ_ASSERT(args.length() == 1);
+    MOZ_ASSERT(args[0].isInt32());
+
+    uint16_t sliceId;
+    if (cx->getSlice(&sliceId))
+        args.rval().setInt32(sliceId);
+    else
+        args.rval().setInt32(-1);
+
+    return true;
+}
+
+JS_JITINFO_NATIVE_PARALLEL(intrinsic_ForkJoinGetSlice_jitInfo,
+                           intrinsic_ForkJoinGetSlicePar);
+
+/*
  * NewDenseArray(length): Allocates and returns a new dense array with
  * the given length where all values are initialized to holes.
  */
@@ -565,13 +606,32 @@ js::intrinsic_ShouldForceSequential(JSContext *cx, unsigned argc, Value *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
 #ifdef JS_THREADSAFE
-    args.rval().setBoolean(cx->runtime()->parallelWarmup ||
+    args.rval().setBoolean(cx->runtime()->forkJoinWarmup ||
                            InParallelSection());
 #else
     args.rval().setBoolean(true);
 #endif
     return true;
 }
+
+bool
+js::intrinsic_InParallelSection(JSContext *cx, unsigned argc, Value *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    args.rval().setBoolean(false);
+    return true;
+}
+
+static bool
+intrinsic_InParallelSectionPar(ForkJoinContext *cx, unsigned argc, Value *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    args.rval().setBoolean(true);
+    return true;
+}
+
+JS_JITINFO_NATIVE_PARALLEL(intrinsic_InParallelSection_jitInfo,
+                           intrinsic_InParallelSectionPar);
 
 /**
  * Returns the default locale as a well-formed, but not necessarily canonicalized,
@@ -630,6 +690,12 @@ static const JSFunctionSpec intrinsic_functions[] = {
     JS_FNINFO("SetForkJoinTargetRegion",
               intrinsic_SetForkJoinTargetRegion,
               &intrinsic_SetForkJoinTargetRegionInfo, 2, 0),
+    JS_FNINFO("ForkJoinGetSlice",
+              intrinsic_ForkJoinGetSlice,
+              &intrinsic_ForkJoinGetSlice_jitInfo, 1, 0),
+    JS_FNINFO("InParallelSection",
+              intrinsic_InParallelSection,
+              &intrinsic_InParallelSection_jitInfo, 0, 0),
 
     // See builtin/TypedObject.h for descriptors of the typedobj functions.
     JS_FN("NewTypedHandle",
@@ -641,9 +707,9 @@ static const JSFunctionSpec intrinsic_functions[] = {
     JS_FNINFO("AttachHandle",
               JSNativeThreadSafeWrapper<js::AttachHandle>,
               &js::AttachHandleJitInfo, 5, 0),
-    JS_FNINFO("ObjectIsTypeObject",
-              JSNativeThreadSafeWrapper<js::ObjectIsTypeObject>,
-              &js::ObjectIsTypeObjectJitInfo, 5, 0),
+    JS_FNINFO("ObjectIsTypeDescr",
+              JSNativeThreadSafeWrapper<js::ObjectIsTypeDescr>,
+              &js::ObjectIsTypeDescrJitInfo, 5, 0),
     JS_FNINFO("ObjectIsTypeRepresentation",
               JSNativeThreadSafeWrapper<js::ObjectIsTypeRepresentation>,
               &js::ObjectIsTypeRepresentationJitInfo, 5, 0),
@@ -663,8 +729,8 @@ static const JSFunctionSpec intrinsic_functions[] = {
               JSNativeThreadSafeWrapper<js::Memcpy>,
               &js::MemcpyJitInfo, 5, 0),
     JS_FN("GetTypedObjectModule", js::GetTypedObjectModule, 0, 0),
-    JS_FN("GetFloat32x4TypeObject", js::GetFloat32x4TypeObject, 0, 0),
-    JS_FN("GetInt32x4TypeObject", js::GetInt32x4TypeObject, 0, 0),
+    JS_FN("GetFloat32x4TypeDescr", js::GetFloat32x4TypeDescr, 0, 0),
+    JS_FN("GetInt32x4TypeDescr", js::GetInt32x4TypeDescr, 0, 0),
 
 #define LOAD_AND_STORE_SCALAR_FN_DECLS(_constant, _type, _name)               \
     JS_FNINFO("Store_" #_name,                                                \
@@ -909,10 +975,10 @@ CloneObject(JSContext *cx, HandleObject srcObj, CloneMemory &clonedObjects)
     } else if (srcObj->is<NumberObject>()) {
         clone = NumberObject::create(cx, srcObj->as<NumberObject>().unbox());
     } else if (srcObj->is<StringObject>()) {
-        Rooted<JSStableString*> str(cx, srcObj->as<StringObject>().unbox()->ensureStable(cx));
+        Rooted<JSFlatString*> str(cx, srcObj->as<StringObject>().unbox()->ensureFlat(cx));
         if (!str)
             return nullptr;
-        str = js_NewStringCopyN<CanGC>(cx, str->chars().get(), str->length())->ensureStable(cx);
+        str = js_NewStringCopyN<CanGC>(cx, str->chars(), str->length());
         if (!str)
             return nullptr;
         clone = StringObject::create(cx, str);
@@ -947,10 +1013,10 @@ CloneValue(JSContext *cx, MutableHandleValue vp, CloneMemory &clonedObjects)
     } else if (vp.isBoolean() || vp.isNumber() || vp.isNullOrUndefined()) {
         // Nothing to do here: these are represented inline in the value
     } else if (vp.isString()) {
-        Rooted<JSStableString*> str(cx, vp.toString()->ensureStable(cx));
+        Rooted<JSFlatString*> str(cx, vp.toString()->ensureFlat(cx));
         if (!str)
             return false;
-        RootedString clone(cx, js_NewStringCopyN<CanGC>(cx, str->chars().get(), str->length()));
+        RootedString clone(cx, js_NewStringCopyN<CanGC>(cx, str->chars(), str->length()));
         if (!clone)
             return false;
         vp.setString(clone);
@@ -1100,4 +1166,10 @@ js::SelfHostedFunction(JSContext *cx, HandlePropertyName propName)
     JS_ASSERT(func.isObject());
     JS_ASSERT(func.toObject().is<JSFunction>());
     return &func.toObject().as<JSFunction>();
+}
+
+bool
+js::IsSelfHostedFunctionWithName(JSFunction *fun, JSAtom *name)
+{
+    return fun->isSelfHostedBuiltin() && fun->getExtendedSlot(0).toString() == name;
 }

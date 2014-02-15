@@ -13,7 +13,7 @@
 #include <math.h>
 #include <stdint.h>
 
-#if defined(XP_WIN) || defined(XP_OS2)
+#if defined(XP_WIN)
 #include <float.h>
 #endif
 
@@ -31,10 +31,12 @@
 #include <windows.h>
 #endif
 
+#include "jscntxt.h"
+#include "jsfun.h"
 #include "jsnum.h"
 #include "jsprf.h"
 
-#include "builtin/TypeRepresentation.h"
+#include "builtin/TypedObject.h"
 #include "ctypes/Library.h"
 
 using namespace std;
@@ -2183,29 +2185,29 @@ bool CanConvertTypedArrayItemTo(JSObject *baseType, JSObject *valObj, JSContext 
   }
   TypeCode elementTypeCode;
   switch (JS_GetArrayBufferViewType(valObj)) {
-  case ScalarTypeRepresentation::TYPE_INT8:
+  case ScalarTypeDescr::TYPE_INT8:
     elementTypeCode = TYPE_int8_t;
     break;
-  case ScalarTypeRepresentation::TYPE_UINT8:
-  case ScalarTypeRepresentation::TYPE_UINT8_CLAMPED:
+  case ScalarTypeDescr::TYPE_UINT8:
+  case ScalarTypeDescr::TYPE_UINT8_CLAMPED:
     elementTypeCode = TYPE_uint8_t;
     break;
-  case ScalarTypeRepresentation::TYPE_INT16:
+  case ScalarTypeDescr::TYPE_INT16:
     elementTypeCode = TYPE_int16_t;
     break;
-  case ScalarTypeRepresentation::TYPE_UINT16:
+  case ScalarTypeDescr::TYPE_UINT16:
     elementTypeCode = TYPE_uint16_t;
     break;
-  case ScalarTypeRepresentation::TYPE_INT32:
+  case ScalarTypeDescr::TYPE_INT32:
     elementTypeCode = TYPE_int32_t;
     break;
-  case ScalarTypeRepresentation::TYPE_UINT32:
+  case ScalarTypeDescr::TYPE_UINT32:
     elementTypeCode = TYPE_uint32_t;
     break;
-  case ScalarTypeRepresentation::TYPE_FLOAT32:
+  case ScalarTypeDescr::TYPE_FLOAT32:
     elementTypeCode = TYPE_float32_t;
     break;
-  case ScalarTypeRepresentation::TYPE_FLOAT64:
+  case ScalarTypeDescr::TYPE_FLOAT64:
     elementTypeCode = TYPE_float64_t;
     break;
   default:
@@ -4820,10 +4822,7 @@ StructType::DefineInternal(JSContext* cx, JSObject* typeObj_, JSObject* fieldsOb
         return false;
 
       RootedObject fieldType(cx, nullptr);
-      JSFlatString* flat = ExtractStructField(cx, item, fieldType.address());
-      if (!flat)
-        return false;
-      Rooted<JSStableString*> name(cx, flat->ensureStable(cx));
+      Rooted<JSFlatString*> name(cx, ExtractStructField(cx, item, fieldType.address()));
       if (!name)
         return false;
       fieldRoots[i] = JS::ObjectValue(*fieldType);
@@ -4837,7 +4836,7 @@ StructType::DefineInternal(JSContext* cx, JSObject* typeObj_, JSObject* fieldsOb
 
       // Add the field to the StructType's 'prototype' property.
       if (!JS_DefineUCProperty(cx, prototype,
-             name->chars().get(), name->length(), JSVAL_VOID,
+             name->chars(), name->length(), JSVAL_VOID,
              StructType::FieldGetter, StructType::FieldSetter,
              JSPROP_SHARED | JSPROP_ENUMERATE | JSPROP_PERMANENT))
         return false;
@@ -5139,7 +5138,7 @@ StructType::BuildFieldsArray(JSContext* cx, JSObject* obj)
       return nullptr;
   }
 
-  RootedObject fieldsProp(cx, JS_NewArrayObject(cx, len, fieldsVec.begin()));
+  RootedObject fieldsProp(cx, JS_NewArrayObject(cx, fieldsVec));
   if (!fieldsProp)
     return nullptr;
 
@@ -5947,7 +5946,7 @@ FunctionType::ArgTypesGetter(JSContext* cx, JS::CallArgs args)
       for (size_t i = 0; i < len; ++i)
         vec[i] = JS::ObjectValue(*fninfo->mArgTypes[i]);
 
-      argTypes = JS_NewArrayObject(cx, len, vec.begin());
+      argTypes = JS_NewArrayObject(cx, vec);
       if (!argTypes)
         return false;
   }
@@ -6135,12 +6134,12 @@ CClosure::ClosureStub(ffi_cif* cif, void* result, void** args, void* userData)
 
   RootedObject typeObj(cx, cinfo->typeObj);
   RootedObject thisObj(cx, cinfo->thisObj);
-  RootedObject jsfnObj(cx, cinfo->jsfnObj);
+  RootedValue jsfnVal(cx, ObjectValue(*cinfo->jsfnObj));
 
   JS_AbortIfWrongThread(JS_GetRuntime(cx));
 
   JSAutoRequest ar(cx);
-  JSAutoCompartment ac(cx, jsfnObj);
+  JSAutoCompartment ac(cx, cinfo->jsfnObj);
 
   // Assert that our CIFs agree.
   FunctionInfo* fninfo = FunctionType::GetFunctionInfo(typeObj);
@@ -6188,8 +6187,7 @@ CClosure::ClosureStub(ffi_cif* cif, void* result, void** args, void* userData)
   // Call the JS function. 'thisObj' may be nullptr, in which case the JS
   // engine will find an appropriate object to use.
   RootedValue rval(cx);
-  bool success = JS_CallFunctionValue(cx, thisObj, OBJECT_TO_JSVAL(jsfnObj),
-                                        cif->nargs, argv.begin(), rval.address());
+  bool success = JS_CallFunctionValue(cx, thisObj, jsfnVal, argv, &rval);
 
   // Convert the result. Note that we pass 'isArgument = false', such that
   // ImplicitConvert will *not* autoconvert a JS string into a pointer-to-char

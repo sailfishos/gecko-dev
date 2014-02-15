@@ -57,6 +57,9 @@ const EVENTS = {
   // When the response body is displayed in the UI.
   RESPONSE_BODY_DISPLAYED: "NetMonitor:ResponseBodyAvailable",
 
+  // When the html response preview is displayed in the UI.
+  RESPONSE_HTML_PREVIEW_DISPLAYED: "NetMonitor:ResponseHtmlPreviewAvailable",
+
   // When `onTabSelect` is fired and subsequently rendered.
   TAB_UPDATED: "NetMonitor:TabUpdated",
 
@@ -412,8 +415,7 @@ TargetEventsHandler.prototype = {
       case "will-navigate": {
         // Reset UI.
         NetMonitorView.RequestsMenu.reset();
-        NetMonitorView.Sidebar.reset();
-        NetMonitorView.NetworkDetails.reset();
+        NetMonitorView.Sidebar.toggle(false);
 
         // Switch to the default network traffic inspector view.
         if (NetMonitorController.getCurrentActivity() == ACTIVITY_TYPE.NONE) {
@@ -691,7 +693,8 @@ let L10N = new ViewHelpers.L10N(NET_STRINGS_URI);
 let Prefs = new ViewHelpers.Prefs("devtools.netmonitor", {
   networkDetailsWidth: ["Int", "panes-network-details-width"],
   networkDetailsHeight: ["Int", "panes-network-details-height"],
-  statistics: ["Bool", "statistics"]
+  statistics: ["Bool", "statistics"],
+  filters: ["Json", "filters"]
 });
 
 /**

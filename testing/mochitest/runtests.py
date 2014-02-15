@@ -582,6 +582,7 @@ class Mochitest(MochitestUtilsMixin):
     if options.browserChrome and options.timeout:
       options.extraPrefs.append("testing.browserTestHarness.timeout=%d" % options.timeout)
     options.extraPrefs.append("browser.tabs.remote=%s" % ('true' if options.e10s else 'false'))
+    options.extraPrefs.append("browser.tabs.remote.autostart=%s" % ('true' if options.e10s else 'false'))
 
     # get extensions to install
     extensions = self.getExtensionsToInstall(options)
@@ -668,6 +669,9 @@ class Mochitest(MochitestUtilsMixin):
 
       browserEnv["NSPR_LOG_FILE"] = "%s/nspr.log" % tempfile.gettempdir()
       browserEnv["GECKO_SEPARATE_NSPR_LOGS"] = "1"
+
+    if debugger and not options.slowscript:
+      browserEnv["JS_DISABLE_SLOW_SCRIPT_SIGNALS"] = "1"
 
     return browserEnv
 

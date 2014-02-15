@@ -6,6 +6,7 @@
 package org.mozilla.gecko;
 
 import org.mozilla.gecko.favicons.OnFaviconLoadedListener;
+import org.mozilla.gecko.favicons.decoders.FaviconDecoder;
 import org.mozilla.gecko.gfx.BitmapUtils;
 import org.mozilla.gecko.gfx.GeckoLayerClient;
 import org.mozilla.gecko.gfx.LayerView;
@@ -719,7 +720,7 @@ public class GeckoAppShell
         gRestartScheduled = true;
     }
 
-    public static Intent getWebAppIntent(String aURI, String aOrigin, String aTitle, Bitmap aIcon) {
+    public static Intent getWebappIntent(String aURI, String aOrigin, String aTitle, Bitmap aIcon) {
         Intent intent;
 
         if (AppConstants.MOZ_ANDROID_SYNTHAPKS) {
@@ -737,21 +738,21 @@ public class GeckoAppShell
         } else {
             int index;
             if (aIcon != null && !TextUtils.isEmpty(aTitle))
-                index = WebAppAllocator.getInstance(getContext()).findAndAllocateIndex(aOrigin, aTitle, aIcon);
+                index = WebappAllocator.getInstance(getContext()).findAndAllocateIndex(aOrigin, aTitle, aIcon);
             else
-                index = WebAppAllocator.getInstance(getContext()).getIndexForApp(aOrigin);
+                index = WebappAllocator.getInstance(getContext()).getIndexForApp(aOrigin);
 
             if (index == -1)
                 return null;
 
-            intent = getWebAppIntent(index, aURI);
+            intent = getWebappIntent(index, aURI);
         }
 
         return intent;
     }
 
-    // The old implementation of getWebAppIntent.  Not used by MOZ_ANDROID_SYNTHAPKS.
-    public static Intent getWebAppIntent(int aIndex, String aURI) {
+    // The old implementation of getWebappIntent.  Not used by MOZ_ANDROID_SYNTHAPKS.
+    public static Intent getWebappIntent(int aIndex, String aURI) {
         Intent intent = new Intent();
         intent.setAction(GeckoApp.ACTION_WEBAPP_PREFIX + aIndex);
         intent.setData(Uri.parse(aURI));
@@ -771,49 +772,65 @@ public class GeckoAppShell
         createShortcut(aTitle, aURI, aURI, aIconData, aType);
     }
 
-    // for non-webapps
+    // For non-webapps.
     public static void createShortcut(String aTitle, String aURI, Bitmap aBitmap, String aType) {
         createShortcut(aTitle, aURI, aURI, aBitmap, aType);
     }
 
-    // internal, for webapps
-    static void createShortcut(String aTitle, String aURI, String aUniqueURI, String aIconData, String aType) {
-        createShortcut(aTitle, aURI, aUniqueURI, BitmapUtils.getBitmapFromDataURI(aIconData), aType);
-    }
-
-    public static void createShortcut(final String aTitle, final String aURI, final String aUniqueURI,
-                                      final Bitmap aIcon, final String aType)
-    {
+    // Internal, for webapps.
+    static void createShortcut(final String aTitle, final String aURI, final String aUniqueURI, final String aIconData, final String aType) {
         ThreadUtils.postToBackgroundThread(new Runnable() {
             @Override
             public void run() {
-                // the intent to be launched by the shortcut
-                Intent shortcutIntent;
-                if (aType.equalsIgnoreCase(SHORTCUT_TYPE_WEBAPP)) {
-                    shortcutIntent = getWebAppIntent(aURI, aUniqueURI, aTitle, aIcon);
-                } else {
-                    shortcutIntent = new Intent();
-                    shortcutIntent.setAction(GeckoApp.ACTION_BOOKMARK);
-                    shortcutIntent.setData(Uri.parse(aURI));
-                    shortcutIntent.setClassName(AppConstants.ANDROID_PACKAGE_NAME,
-                                                AppConstants.BROWSER_INTENT_CLASS);
-                }
-        
-                Intent intent = new Intent();
-                intent.putExtra(Intent.EXTRA_SHORTCUT_INTENT, shortcutIntent);
-                if (aTitle != null)
-                    intent.putExtra(Intent.EXTRA_SHORTCUT_NAME, aTitle);
-                else
-                    intent.putExtra(Intent.EXTRA_SHORTCUT_NAME, aURI);
-                intent.putExtra(Intent.EXTRA_SHORTCUT_ICON, getLauncherIcon(aIcon, aType));
-
-                // Do not allow duplicate items
-                intent.putExtra("duplicate", false);
-
-                intent.setAction("com.android.launcher.action.INSTALL_SHORTCUT");
-                getContext().sendBroadcast(intent);
+                // TODO: use the cache. Bug 961600.
+                Bitmap icon = FaviconDecoder.getMostSuitableBitmapFromDataURI(aIconData, getPreferredIconSize());
+                GeckoAppShell.doCreateShortcut(aTitle, aURI, aURI, icon, aType);
             }
         });
+    }
+
+    public static void createShortcut(final String aTitle, final String aURI, final String aUniqueURI,
+                                      final Bitmap aIcon, final String aType) {
+        ThreadUtils.postToBackgroundThread(new Runnable() {
+            @Override
+            public void run() {
+                GeckoAppShell.doCreateShortcut(aTitle, aURI, aUniqueURI, aIcon, aType);
+            }
+        });
+    }
+
+    /**
+     * Call this method only on the background thread.
+     */
+    private static void doCreateShortcut(final String aTitle, final String aURI, final String aUniqueURI,
+                                         final Bitmap aIcon, final String aType) {
+        // The intent to be launched by the shortcut.
+        Intent shortcutIntent;
+        if (aType.equalsIgnoreCase(SHORTCUT_TYPE_WEBAPP)) {
+            shortcutIntent = getWebappIntent(aURI, aUniqueURI, aTitle, aIcon);
+        } else {
+            shortcutIntent = new Intent();
+            shortcutIntent.setAction(GeckoApp.ACTION_BOOKMARK);
+            shortcutIntent.setData(Uri.parse(aURI));
+            shortcutIntent.setClassName(AppConstants.ANDROID_PACKAGE_NAME,
+                                        AppConstants.BROWSER_INTENT_CLASS);
+        }
+
+        Intent intent = new Intent();
+        intent.putExtra(Intent.EXTRA_SHORTCUT_INTENT, shortcutIntent);
+        intent.putExtra(Intent.EXTRA_SHORTCUT_ICON, getLauncherIcon(aIcon, aType));
+
+        if (aTitle != null) {
+            intent.putExtra(Intent.EXTRA_SHORTCUT_NAME, aTitle);
+        } else {
+            intent.putExtra(Intent.EXTRA_SHORTCUT_NAME, aURI);
+        }
+
+        // Do not allow duplicate items.
+        intent.putExtra("duplicate", false);
+
+        intent.setAction("com.android.launcher.action.INSTALL_SHORTCUT");
+        getContext().sendBroadcast(intent);
     }
 
     public static void removeShortcut(final String aTitle, final String aURI, final String aType) {
@@ -827,7 +844,7 @@ public class GeckoAppShell
                 // the intent to be launched by the shortcut
                 Intent shortcutIntent;
                 if (aType.equalsIgnoreCase(SHORTCUT_TYPE_WEBAPP)) {
-                    shortcutIntent = getWebAppIntent(aURI, aUniqueURI, "", null);
+                    shortcutIntent = getWebappIntent(aURI, aUniqueURI, "", null);
                     if (shortcutIntent == null)
                         return;
                 } else {

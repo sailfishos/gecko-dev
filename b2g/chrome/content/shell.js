@@ -751,6 +751,10 @@ var CustomEventManager = {
       case 'inputmethod-update-layouts':
         KeyboardHelper.handleEvent(detail);
         break;
+      case 'nfc-hardware-state-change':
+        Services.obs.notifyObservers(null, 'nfc-hardware-state-change',
+          JSON.stringify({ nfcHardwareState: detail.nfcHardwareState }));
+        break;
     }
   }
 }
@@ -1092,7 +1096,7 @@ let RemoteDebugger = {
       // the parent process, unless we enable certified apps debugging.
       let restrictPrivileges = Services.prefs.getBoolPref("devtools.debugger.forbid-certified-apps");
       DebuggerServer.addBrowserActors("navigator:browser", restrictPrivileges);
-      DebuggerServer.addActors('chrome://browser/content/dbg-browser-actors.js');
+      DebuggerServer.addActors('chrome://b2g/content/dbg-browser-actors.js');
 
 #ifdef MOZ_WIDGET_GONK
       DebuggerServer.onConnectionChange = function(what) {

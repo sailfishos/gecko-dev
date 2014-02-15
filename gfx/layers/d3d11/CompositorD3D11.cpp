@@ -65,7 +65,7 @@ CompositorD3D11::CompositorD3D11(nsIWidget* aWidget)
   , mHwnd(nullptr)
   , mDisableSequenceForNextFrame(false)
 {
-  sBackend = LayersBackend::LAYERS_D3D11;
+  SetBackend(LayersBackend::LAYERS_D3D11);
 }
 
 CompositorD3D11::~CompositorD3D11()
@@ -342,7 +342,7 @@ TemporaryRef<DataTextureSource>
 CompositorD3D11::CreateDataTextureSource(TextureFlags aFlags)
 {
   RefPtr<DataTextureSource> result = new DataTextureSourceD3D11(gfx::SurfaceFormat::UNKNOWN,
-                                                                this);
+                                                                this, aFlags);
   return result.forget();
 }
 

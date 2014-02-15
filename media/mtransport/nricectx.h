@@ -81,8 +81,8 @@ namespace mozilla {
 
 class NrIceMediaStream;
 
-const std::string kNrIceTransportUdp("udp");
-const std::string kNrIceTransportTcp("tcp");
+extern const char kNrIceTransportUdp[];
+extern const char kNrIceTransportTcp[];
 
 class NrIceStunServer {
  public:
@@ -102,8 +102,8 @@ class NrIceStunServer {
     return server.forget();
   }
 
-  nsresult ToNicerStunStruct(nr_ice_stun_server *server,
-                             const std::string transport =
+  nsresult ToNicerStunStruct(nr_ice_stun_server* server,
+                             const std::string& transport =
                              kNrIceTransportUdp) const;
 
  protected:
@@ -140,7 +140,7 @@ class NrIceTurnServer : public NrIceStunServer {
   static NrIceTurnServer *Create(const std::string& addr, uint16_t port,
                                  const std::string& username,
                                  const std::vector<unsigned char>& password,
-                                 const std::string& transport = kNrIceTransportUdp) {
+                                 const char *transport = kNrIceTransportUdp) {
     ScopedDeletePtr<NrIceTurnServer> server(
         new NrIceTurnServer(username, password, transport));
 
@@ -156,7 +156,7 @@ class NrIceTurnServer : public NrIceStunServer {
  private:
   NrIceTurnServer(const std::string& username,
                   const std::vector<unsigned char>& password,
-                  const std::string& transport) :
+                  const char *transport) :
       username_(username), password_(password), transport_(transport) {}
 
   std::string username_;

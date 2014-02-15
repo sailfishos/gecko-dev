@@ -9,6 +9,7 @@
 #include "RawDecoder.h"
 #include "VideoUtils.h"
 #include "nsISeekableStream.h"
+#include "gfx2DGlue.h"
 
 using namespace mozilla;
 
@@ -70,7 +71,7 @@ nsresult RawReader::ReadMetadata(MediaInfo* aInfo,
   ScaleDisplayByAspectRatio(display, pixelAspectRatio);
   mPicture = nsIntRect(0, 0, mMetadata.frameWidth, mMetadata.frameHeight);
   nsIntSize frameSize(mMetadata.frameWidth, mMetadata.frameHeight);
-  if (!VideoInfo::ValidateVideoRegion(frameSize, mPicture, display)) {
+  if (!IsValidVideoRegion(frameSize, mPicture, display)) {
     // Video track's frame sizes will overflow. Fail.
     return NS_ERROR_FAILURE;
   }
@@ -215,7 +216,7 @@ bool RawReader::DecodeVideoFrame(bool &aKeyframeSkip,
                                    b,
                                    1, // In raw video every frame is a keyframe
                                    -1,
-                                   mPicture);
+                                   ToIntRect(mPicture));
   if (!v)
     return false;
 

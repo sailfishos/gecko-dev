@@ -13,6 +13,7 @@
 #include <map>
 #include "FilterProcessing.h"
 #include "mozilla/PodOperations.h"
+#include "mozilla/DebugOnly.h"
 
 // #define DEBUG_DUMP_SURFACES
 
@@ -235,7 +236,9 @@ CloneAligned(DataSourceSurface* aSource)
 {
   RefPtr<DataSourceSurface> copy =
     Factory::CreateDataSourceSurface(aSource->GetSize(), aSource->GetFormat());
-  CopyRect(aSource, copy, IntRect(IntPoint(), aSource->GetSize()), IntPoint());
+  if (copy) {
+    CopyRect(aSource, copy, IntRect(IntPoint(), aSource->GetSize()), IntPoint());
+  }
   return copy;
 }
 
@@ -730,17 +733,18 @@ FilterNodeSoftware::GetInputDataSourceSurface(uint32_t aInputEnumIndex,
   RefPtr<DataSourceSurface> result =
     GetDataSurfaceInRect(surface, surfaceRect, aRect, aEdgeMode);
 
+  if (result &&
+      (result->Stride() != GetAlignedStride<16>(result->Stride()) ||
+       reinterpret_cast<uintptr_t>(result->GetData()) % 16 != 0)) {
+    // Align unaligned surface.
+    result = CloneAligned(result);
+  }
+
   if (!result) {
 #ifdef DEBUG_DUMP_SURFACES
     printf(" -- no input --</section>\n\n");
 #endif
     return nullptr;
-  }
-
-  if (result->Stride() != GetAlignedStride<16>(result->Stride()) ||
-      reinterpret_cast<uintptr_t>(result->GetData()) % 16 != 0) {
-    // Align unaligned surface.
-    result = CloneAligned(result);
   }
 
   SurfaceFormat currentFormat = result->GetFormat();
@@ -2048,15 +2052,51 @@ FilterNodeConvolveMatrixSoftware::SetAttribute(uint32_t aIndex,
   Invalidate();
 }
 
+#ifdef DEBUG
+static bool sColorSamplingAccessControlEnabled = false;
+static uint8_t* sColorSamplingAccessControlStart = nullptr;
+static uint8_t* sColorSamplingAccessControlEnd = nullptr;
+
+struct DebugOnlyAutoColorSamplingAccessControl
+{
+  DebugOnlyAutoColorSamplingAccessControl(DataSourceSurface* aSurface)
+  {
+    sColorSamplingAccessControlStart = aSurface->GetData();
+    sColorSamplingAccessControlEnd = sColorSamplingAccessControlStart +
+      aSurface->Stride() * aSurface->GetSize().height;
+    sColorSamplingAccessControlEnabled = true;
+  }
+
+  ~DebugOnlyAutoColorSamplingAccessControl()
+  {
+    sColorSamplingAccessControlEnabled = false;
+  }
+};
+
+static inline void
+DebugOnlyCheckColorSamplingAccess(const uint8_t* aSampleAddress)
+{
+  if (sColorSamplingAccessControlEnabled) {
+    MOZ_ASSERT(aSampleAddress >= sColorSamplingAccessControlStart, "accessing before start");
+    MOZ_ASSERT(aSampleAddress < sColorSamplingAccessControlEnd, "accessing after end");
+  }
+}
+#else
+typedef DebugOnly<DataSourceSurface*> DebugOnlyAutoColorSamplingAccessControl;
+#define DebugOnlyCheckColorSamplingAccess(address)
+#endif
+
 static inline uint8_t
 ColorComponentAtPoint(const uint8_t *aData, int32_t aStride, int32_t x, int32_t y, size_t bpp, ptrdiff_t c)
 {
+  DebugOnlyCheckColorSamplingAccess(&aData[y * aStride + bpp * x + c]);
   return aData[y * aStride + bpp * x + c];
 }
 
 static inline int32_t
 ColorAtPoint(const uint8_t *aData, int32_t aStride, int32_t x, int32_t y)
 {
+  DebugOnlyCheckColorSamplingAccess(aData + y * aStride + 4 * x);
   return *(uint32_t*)(aData + y * aStride + 4 * x);
 }
 
@@ -2220,11 +2260,23 @@ FilterNodeConvolveMatrixSoftware::DoRender(const IntRect& aRect,
   }
 
   IntRect srcRect = InflatedSourceRect(aRect);
+
+  // Inflate the source rect by another pixel because the bilinear filtering in
+  // ColorComponentAtPoint may want to access the margins.
+  srcRect.Inflate(1);
+
   RefPtr<DataSourceSurface> input =
     GetInputDataSourceSurface(IN_CONVOLVE_MATRIX_IN, srcRect, NEED_COLOR_CHANNELS, mEdgeMode, &mSourceRect);
+
+  if (!input) {
+    return nullptr;
+  }
+
+  DebugOnlyAutoColorSamplingAccessControl accessControl(input);
+
   RefPtr<DataSourceSurface> target =
     Factory::CreateDataSourceSurface(aRect.Size(), SurfaceFormat::B8G8R8A8);
-  if (!input || !target) {
+  if (!target) {
     return nullptr;
   }
   ClearDataSourceSurface(target);
@@ -3213,6 +3265,11 @@ FilterNodeLightingSoftware<LightType, LightingType>::DoRender(const IntRect& aRe
   IntSize size = aRect.Size();
   srcRect.Inflate(ceil(float(aKernelUnitLengthX)),
                   ceil(float(aKernelUnitLengthY)));
+
+  // Inflate the source rect by another pixel because the bilinear filtering in
+  // ColorComponentAtPoint may want to access the margins.
+  srcRect.Inflate(1);
+
   RefPtr<DataSourceSurface> input =
     GetInputDataSourceSurface(IN_LIGHTING_IN, srcRect, CAN_HANDLE_A8,
                               EDGE_MODE_DUPLICATE);
@@ -3224,6 +3281,8 @@ FilterNodeLightingSoftware<LightType, LightingType>::DoRender(const IntRect& aRe
   if (input->GetFormat() != SurfaceFormat::A8) {
     input = FilterProcessing::ExtractAlpha(input);
   }
+
+  DebugOnlyAutoColorSamplingAccessControl accessControl(input);
 
   RefPtr<DataSourceSurface> target =
     Factory::CreateDataSourceSurface(size, SurfaceFormat::B8G8R8A8);

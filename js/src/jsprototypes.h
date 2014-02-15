@@ -34,7 +34,7 @@
 
 #define CLASP(name)                 (&name##Class)
 #define OCLASP(name)                (&name##Object::class_)
-#define TYPED_ARRAY_CLASP(type)     (&TypedArrayObject::classes[ScalarTypeRepresentation::type])
+#define TYPED_ARRAY_CLASP(type)     (&TypedArrayObject::classes[ScalarTypeDescr::type])
 
 #ifdef ENABLE_PARALLEL_JS
 #define IF_PJS(real,imaginary) real
@@ -61,7 +61,7 @@
     real(Array,                  3,     js_InitArrayClass,         OCLASP(Array)) \
     real(Boolean,                4,     js_InitBooleanClass,       OCLASP(Boolean)) \
     real(JSON,                   5,     js_InitJSONClass,          CLASP(JSON)) \
-    real(Date,                   6,     js_InitDateClass,          OCLASP(Date)) \
+    real(Date,                   6,     js_InitViaClassSpec,       OCLASP(Date)) \
     real(Math,                   7,     js_InitMathClass,          CLASP(Math)) \
     real(Number,                 8,     js_InitNumberClass,        OCLASP(Number)) \
     real(String,                 9,     js_InitStringClass,        OCLASP(String)) \

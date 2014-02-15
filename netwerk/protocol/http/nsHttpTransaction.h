@@ -147,9 +147,7 @@ private:
 
     bool TimingEnabled() const { return mCaps & NS_HTTP_TIMING_ENABLED; }
 
-    bool ResponseTimeoutEnabled() const MOZ_OVERRIDE MOZ_FINAL {
-      return mResponseTimeoutEnabled;
-    }
+    bool ResponseTimeoutEnabled() const MOZ_FINAL;
 
 private:
     class UpdateSecurityCallbacks : public nsRunnable
@@ -187,10 +185,11 @@ private:
     nsCOMPtr<nsIInputStream>        mRequestStream;
     uint64_t                        mRequestSize;
 
-    nsAHttpConnection              *mConnection;      // hard ref
-    nsHttpConnectionInfo           *mConnInfo;        // hard ref
+    nsRefPtr<nsHttpConnectionInfo>  mConnInfo;
+    nsRefPtr<nsAHttpConnection>     mConnection;
+
     nsHttpRequestHead              *mRequestHead;     // weak ref
-    nsHttpResponseHead             *mResponseHead;    // hard ref
+    nsHttpResponseHead             *mResponseHead;    // owning ref
 
     nsAHttpSegmentReader           *mReader;
     nsAHttpSegmentWriter           *mWriter;

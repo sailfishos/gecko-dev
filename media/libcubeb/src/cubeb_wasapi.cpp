@@ -95,7 +95,6 @@ struct cubeb
   revert_mm_thread_characteristics_function revert_mm_thread_characteristics;
 };
 
-
 struct cubeb_stream
 {
   cubeb * context;
@@ -688,8 +687,9 @@ handle_channel_layout(cubeb_stream * stm,  WAVEFORMATEX ** mix_format, const cub
     CoTaskMemFree(*mix_format);
     *mix_format = closest;
   } else if (hr == AUDCLNT_E_UNSUPPORTED_FORMAT) {
-    /* Not supported, no suggestion, there is a bug somewhere. */
-    assert(false && "Format not supported, and no suggestion from WASAPI.");
+    /* Not supported, no suggestion. This should not happen, but it does in the
+     * field with some sound cards. We simply bail out and let the rest of the
+     * code figure out the right conversion path. */
   } else if (hr == S_OK) {
     LOG("Requested format accepted by WASAPI.");
   }
@@ -731,7 +731,6 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
     wasapi_stream_destroy(stm);
     return CUBEB_ERROR;
   }
-
 
   if (!stm->refill_event) {
     SafeRelease(stm->shutdown_event);
@@ -779,7 +778,6 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
 
   float resampling_rate = static_cast<float>(stm->stream_params.rate) /
                           stm->mix_params.rate;
-
 
   if (resampling_rate != 1.0) {
     /* If we are playing a mono stream, we only resample one channel,
@@ -913,7 +911,7 @@ int wasapi_stream_start(cubeb_stream * stm)
 
   assert(stm);
 
-  stm->thread = (HANDLE) _beginthreadex(NULL, 64 * 1024, wasapi_stream_render_loop, stm, 0, NULL);
+  stm->thread = (HANDLE) _beginthreadex(NULL, 64 * 1024, wasapi_stream_render_loop, stm, STACK_SIZE_PARAM_IS_A_RESERVATION, NULL);
   if (stm->thread == NULL) {
     LOG("could not create WASAPI render thread.");
     return CUBEB_ERROR;

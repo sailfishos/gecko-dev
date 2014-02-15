@@ -55,8 +55,7 @@ const GENERIC_VARIABLES_VIEW_SETTINGS = {
   editableNameTooltip: "",
   preventDisableOnChange: true,
   preventDescriptorModifiers: true,
-  eval: () => {},
-  switch: () => {}
+  eval: () => {}
 };
 const NETWORK_ANALYSIS_PIE_CHART_DIAMETER = 200; // px
 
@@ -338,8 +337,11 @@ RequestsMenuView.prototype = Heritage.extend(WidgetMethods, {
     this._summary = $("#requests-menu-network-summary-label");
     this._summary.setAttribute("value", L10N.getStr("networkMenu.empty"));
 
+    Prefs.filters.forEach(type => this.filterOn(type));
+    this.sortContents(this._byTiming);
+
     this.allowFocusOnRightClick = true;
-    this.widget.maintainSelectionVisible = false;
+    this.maintainSelectionVisible = true;
     this.widget.autoscrollWithAppendedItems = true;
 
     this.widget.addEventListener("select", this._onSelect, false);
@@ -385,6 +387,8 @@ RequestsMenuView.prototype = Heritage.extend(WidgetMethods, {
   destroy: function() {
     dumpn("Destroying the SourcesView");
 
+    Prefs.filters = this._activeFilters;
+
     this.widget.removeEventListener("select", this._onSelect, false);
     this._splitter.removeEventListener("mousemove", this._onResize, false);
     window.removeEventListener("resize", this._onResize, false);
@@ -413,7 +417,6 @@ RequestsMenuView.prototype = Heritage.extend(WidgetMethods, {
    */
   reset: function() {
     this.empty();
-    this.filterOn("all");
     this._firstRequestStartedMillis = -1;
     this._lastRequestEndedMillis = -1;
   },
@@ -472,27 +475,6 @@ RequestsMenuView.prototype = Heritage.extend(WidgetMethods, {
   },
 
   /**
-   * Create a new custom request form populated with the data from
-   * the currently selected request.
-   */
-  cloneSelectedRequest: function() {
-    let selected = this.selectedItem.attachment;
-
-    // Create the element node for the network request item.
-    let menuView = this._createMenuView(selected.method, selected.url);
-
-    // Append a network request item to this container.
-    let newItem = this.push([menuView], {
-      attachment: Object.create(selected, {
-        isCustom: { value: true }
-      })
-    });
-
-    // Immediately switch to new request pane.
-    this.selectedItem = newItem;
-  },
-
-  /**
    * Opens selected item in a new tab.
    */
   openRequestInTab: function() {
@@ -522,15 +504,36 @@ RequestsMenuView.prototype = Heritage.extend(WidgetMethods, {
   },
 
   /**
+   * Create a new custom request form populated with the data from
+   * the currently selected request.
+   */
+  cloneSelectedRequest: function() {
+    let selected = this.selectedItem.attachment;
+
+    // Create the element node for the network request item.
+    let menuView = this._createMenuView(selected.method, selected.url);
+
+    // Append a network request item to this container.
+    let newItem = this.push([menuView], {
+      attachment: Object.create(selected, {
+        isCustom: { value: true }
+      })
+    });
+
+    // Immediately switch to new request pane.
+    this.selectedItem = newItem;
+  },
+
+  /**
    * Send a new HTTP request using the data in the custom request form.
    */
   sendCustomRequest: function() {
     let selected = this.selectedItem.attachment;
+    let data = Object.create(selected);
 
-    let data = Object.create(selected, {
-      headers: { value: selected.requestHeaders.headers }
-    });
-
+    if (selected.requestHeaders) {
+      data.headers = selected.requestHeaders.headers;
+    }
     if (selected.requestPostData) {
       data.body = selected.requestPostData.postData.text;
     }
@@ -548,9 +551,8 @@ RequestsMenuView.prototype = Heritage.extend(WidgetMethods, {
    */
   closeCustomRequest: function() {
     this.remove(this.selectedItem);
-
     NetMonitorView.Sidebar.toggle(false);
-   },
+  },
 
   /**
    * Filters all network requests in this container by a specified type.
@@ -560,53 +562,117 @@ RequestsMenuView.prototype = Heritage.extend(WidgetMethods, {
    *        "flash" or "other".
    */
   filterOn: function(aType = "all") {
-    let target = $("#requests-menu-filter-" + aType + "-button");
-    let buttons = document.querySelectorAll(".requests-menu-footer-button");
-
-    for (let button of buttons) {
-      if (button != target) {
-        button.removeAttribute("checked");
-      } else {
-        button.setAttribute("checked", "true");
+    if (aType === "all") {
+      // The filter "all" is special as it doesn't toggle.
+      // - If some filters are selected and 'all' is clicked, the previously
+      //   selected filters will be disabled and 'all' is the only active one.
+      // - If 'all' is already selected, do nothing.
+      if (this._activeFilters.indexOf("all") !== -1) {
+        return;
       }
+
+      // Uncheck all other filters and select 'all'. Must create a copy as
+      // _disableFilter removes the filters from the list while it's being
+      // iterated. 'all' will be enabled automatically by _disableFilter once
+      // the last filter is disabled.
+      this._activeFilters.slice().forEach(this._disableFilter, this);
+    }
+    else if (this._activeFilters.indexOf(aType) === -1) {
+      this._enableFilter(aType);
+    }
+    else {
+      this._disableFilter(aType);
     }
 
-    // Filter on whatever was requested.
-    switch (aType) {
-      case "all":
-        this.filterContents(() => true);
-        break;
-      case "html":
-        this.filterContents(e => this.isHtml(e));
-        break;
-      case "css":
-        this.filterContents(e => this.isCss(e));
-        break;
-      case "js":
-        this.filterContents(e => this.isJs(e));
-        break;
-      case "xhr":
-        this.filterContents(e => this.isXHR(e));
-        break;
-      case "fonts":
-        this.filterContents(e => this.isFont(e));
-        break;
-      case "images":
-        this.filterContents(e => this.isImage(e));
-        break;
-      case "media":
-        this.filterContents(e => this.isMedia(e));
-        break;
-      case "flash":
-        this.filterContents(e => this.isFlash(e));
-        break;
-      case "other":
-        this.filterContents(e => this.isOther(e));
-        break;
-    }
-
+    this.filterContents(this._filterPredicate);
     this.refreshSummary();
     this.refreshZebra();
+  },
+
+  /**
+   * Same as `filterOn`, except that it only allows a single type exclusively.
+   *
+   * @param string aType
+   *        @see RequestsMenuView.prototype.fitlerOn
+   */
+  filterOnlyOn: function(aType = "all") {
+    this._activeFilters.slice().forEach(this._disableFilter, this);
+    this.filterOn(aType);
+  },
+
+  /**
+   * Disables the given filter, its button and toggles 'all' on if the filter to
+   * be disabled is the last one active.
+   *
+   * @param string aType
+   *        Either "all", "html", "css", "js", "xhr", "fonts", "images", "media"
+   *        "flash" or "other".
+   */
+  _disableFilter: function (aType) {
+    // Remove the filter from list of active filters.
+    this._activeFilters.splice(this._activeFilters.indexOf(aType), 1);
+
+    // Remove the checked status from the filter.
+    let target = $("#requests-menu-filter-" + aType + "-button");
+    target.removeAttribute("checked");
+
+    // Check if the filter disabled was the last one. If so, toggle all on.
+    if (this._activeFilters.length === 0) {
+      this._enableFilter("all");
+    }
+  },
+
+  /**
+   * Enables the given filter, its button and toggles 'all' off if the filter to
+   * be enabled is the first one active.
+   *
+   * @param string aType
+   *        Either "all", "html", "css", "js", "xhr", "fonts", "images", "media"
+   *        "flash" or "other".
+   */
+  _enableFilter: function (aType) {
+    // Add the filter to the list of active filters.
+    this._activeFilters.push(aType);
+
+    // Add the checked status to the filter button.
+    let target = $("#requests-menu-filter-" + aType + "-button");
+    target.setAttribute("checked", true);
+
+    // Check if 'all' was selected before. If so, disable it.
+    if (aType !== "all" && this._activeFilters.indexOf("all") !== -1) {
+      this._disableFilter("all");
+    }
+  },
+
+  /**
+   * Returns a predicate that can be used to test if a request matches any of
+   * the active filters.
+   */
+  get _filterPredicate() {
+    let filterPredicates = {
+      "all": () => true,
+      "html": this.isHtml,
+      "css": this.isCss,
+      "js": this.isJs,
+      "xhr": this.isXHR,
+      "fonts": this.isFont,
+      "images": this.isImage,
+      "media": this.isMedia,
+      "flash": this.isFlash,
+      "other": this.isOther
+    };
+
+     if (this._activeFilters.length === 1) {
+       // The simplest case: only one filter active.
+       return filterPredicates[this._activeFilters[0]].bind(this);
+     } else {
+       // Multiple filters active.
+       return requestItem => {
+         return this._activeFilters.some(filterName => {
+           return filterPredicates[filterName].call(this, requestItem);
+         });
+       };
+     }
   },
 
   /**
@@ -984,6 +1050,9 @@ RequestsMenuView.prototype = Heritage.extend(WidgetMethods, {
     this.filterContents();
     this.refreshSummary();
     this.refreshZebra();
+
+    // Rescale all the waterfalls so that everything is visible at once.
+    this._flushWaterfallViews();
   },
 
   /**
@@ -1103,9 +1172,7 @@ RequestsMenuView.prototype = Heritage.extend(WidgetMethods, {
     // Skipping "blocked" because it doesn't work yet.
 
     let timingsNode = $(".requests-menu-timings", target);
-    let startCapNode = $(".requests-menu-timings-cap.start", timingsNode);
-    let endCapNode = $(".requests-menu-timings-cap.end", timingsNode);
-    let firstBox;
+    let timingsTotal = $(".requests-menu-timings-total", timingsNode);
 
     // Add a set of boxes representing timing information.
     for (let key of sections) {
@@ -1117,30 +1184,9 @@ RequestsMenuView.prototype = Heritage.extend(WidgetMethods, {
         let timingBox = document.createElement("hbox");
         timingBox.className = "requests-menu-timings-box " + key;
         timingBox.setAttribute("width", width);
-        timingsNode.insertBefore(timingBox, endCapNode);
-
-        // Make the start cap inherit the aspect of the first timing box.
-        if (!firstBox) {
-          firstBox = timingBox;
-          startCapNode.classList.add(key);
-        }
-        // Same goes for the end cap, inherit the aspect of the last timing box.
-        endCapNode.classList.add(key);
+        timingsNode.insertBefore(timingBox, timingsTotal);
       }
     }
-
-    // Since at least one timing box should've been rendered, unhide the
-    // start and end timing cap nodes.
-    startCapNode.hidden = false;
-    endCapNode.hidden = false;
-
-    // Don't paint things while the waterfall view isn't even visible.
-    if (NetMonitorView.currentFrontendMode != "network-inspector-view") {
-      return;
-    }
-
-    // Rescale all the waterfalls so that everything is visible at once.
-    this._flushWaterfallViews();
   },
 
   /**
@@ -1150,6 +1196,12 @@ RequestsMenuView.prototype = Heritage.extend(WidgetMethods, {
    *        True if this container's width was changed.
    */
   _flushWaterfallViews: function(aReset) {
+    // Don't paint things while the waterfall view isn't even visible,
+    // or there are no items added to this container.
+    if (NetMonitorView.currentFrontendMode != "network-inspector-view" || !this.itemCount) {
+      return;
+    }
+
     // To avoid expensive operations like getBoundingClientRect() and
     // rebuilding the waterfall background each time a new request comes in,
     // stuff is cached. However, in certain scenarios like when the window
@@ -1174,8 +1226,6 @@ RequestsMenuView.prototype = Heritage.extend(WidgetMethods, {
     // accurately translate and resize as needed.
     for (let { target, attachment } of this) {
       let timingsNode = $(".requests-menu-timings", target);
-      let startCapNode = $(".requests-menu-timings-cap.start", target);
-      let endCapNode = $(".requests-menu-timings-cap.end", target);
       let totalNode = $(".requests-menu-timings-total", target);
       let direction = window.isRTL ? -1 : 1;
 
@@ -1192,8 +1242,6 @@ RequestsMenuView.prototype = Heritage.extend(WidgetMethods, {
       let revScaleX = "scaleX(" + (1 / scale) + ")";
 
       timingsNode.style.transform = scaleX + " " + translateX;
-      startCapNode.style.transform = revScaleX + " translateX(" + (direction * 0.5) + "px)";
-      endCapNode.style.transform = revScaleX + " translateX(" + (direction * -0.5) + "px)";
       totalNode.style.transform = revScaleX;
     }
   },
@@ -1381,11 +1429,6 @@ RequestsMenuView.prototype = Heritage.extend(WidgetMethods, {
    * The resize listener for this container's window.
    */
   _onResize: function(e) {
-    // Don't paint things while the waterfall view isn't even visible.
-    if (NetMonitorView.currentFrontendMode != "network-inspector-view") {
-      return;
-    }
-
     // Allow requests to settle down first.
     setNamedTimeout(
       "resize-events", RESIZE_REFRESH_RATE, () => this._flushWaterfallViews(true));
@@ -1545,7 +1588,8 @@ RequestsMenuView.prototype = Heritage.extend(WidgetMethods, {
   _lastRequestEndedMillis: -1,
   _updateQueue: [],
   _updateTimeout: null,
-  _resizeTimeout: null
+  _resizeTimeout: null,
+  _activeFilters: ["all"]
 });
 
 /**
@@ -1585,13 +1629,6 @@ SidebarView.prototype = {
       $("#details-pane").selectedIndex = isCustom ? 0 : 1
       window.emit(EVENTS.SIDEBAR_POPULATED);
     });
-  },
-
-  /**
-   * Hides this container.
-   */
-  reset: function() {
-    this.toggle(false);
   }
 }
 
@@ -1789,13 +1826,6 @@ NetworkDetailsView.prototype = {
   },
 
   /**
-   * Resets this container (removes all the networking information).
-   */
-  reset: function() {
-    this._dataSrc = null;
-  },
-
-  /**
    * Populates this view with the specified data.
    *
    * @param object aData
@@ -1811,6 +1841,18 @@ NetworkDetailsView.prototype = {
     $("#response-content-json-box").hidden = true;
     $("#response-content-textarea-box").hidden = true;
     $("#response-content-image-box").hidden = true;
+
+    let isHtml = RequestsMenuView.prototype.isHtml({ attachment: aData });
+
+    // Show the "Preview" tabpanel only for plain HTML responses.
+    $("#preview-tab").hidden = !isHtml;
+    $("#preview-tabpanel").hidden = !isHtml;
+
+    // Switch to the "Headers" tabpanel if the "Preview" previously selected
+    // and this is not an HTML response.
+    if (!isHtml && this.widget.selectedIndex == 5) {
+      this.widget.selectedIndex = 0;
+    }
 
     this._headers.empty();
     this._cookies.empty();
@@ -1857,6 +1899,9 @@ NetworkDetailsView.prototype = {
           break;
         case 4: // "Timings"
           yield view._setTimingsInformation(src.eventTimings);
+          break;
+        case 5: // "Preview"
+          yield view._setHtmlPreview(src.responseContent);
           break;
       }
       populated[tab] = true;
@@ -2055,32 +2100,45 @@ NetworkDetailsView.prototype = {
     if (!aHeadersResponse || !aPostDataResponse) {
       return promise.resolve();
     }
-    return gNetwork.getString(aPostDataResponse.postData.text).then(aString => {
-      // Handle query strings (poor man's forms, e.g. "?foo=bar&baz=42").
-      let cType = aHeadersResponse.headers.filter(({ name }) => name == "Content-Type")[0];
-      let cString = cType ? cType.value : "";
-      if (cString.contains("x-www-form-urlencoded") ||
-          aString.contains("x-www-form-urlencoded")) {
-        let formDataGroups = aString.split(/\r\n|\n|\r/);
-        for (let group of formDataGroups) {
-          this._addParams(this._paramsFormData, group);
-        }
-      }
-      // Handle actual forms ("multipart/form-data" content type).
-      else {
-        // This is really awkward, but hey, it works. Let's show an empty
-        // scope in the params view and place the source editor containing
-        // the raw post data directly underneath.
-        $("#request-params-box").removeAttribute("flex");
-        let paramsScope = this._params.addScope(this._paramsPostPayload);
-        paramsScope.expanded = true;
-        paramsScope.locked = true;
+    return gNetwork.getString(aPostDataResponse.postData.text).then(aPostData => {
+      let contentTypeHeader = aHeadersResponse.headers.filter(({ name }) => name == "Content-Type")[0];
+      let contentTypeLongString = contentTypeHeader ? contentTypeHeader.value : "";
 
-        $("#request-post-data-textarea-box").hidden = false;
-        return NetMonitorView.editor("#request-post-data-textarea").then(aEditor => {
-          aEditor.setText(aString);
-        });
-      }
+      return gNetwork.getString(contentTypeLongString).then(aContentType => {
+        let urlencoded = "x-www-form-urlencoded";
+
+        // Handle query strings (poor man's forms, e.g. "?foo=bar&baz=42").
+        if (aContentType.contains(urlencoded)) {
+          let formDataGroups = aPostData.split(/\r\n|\r|\n/);
+          for (let group of formDataGroups) {
+            this._addParams(this._paramsFormData, group);
+          }
+        }
+        // Handle actual forms ("multipart/form-data" content type).
+        else {
+          // This is really awkward, but hey, it works. Let's show an empty
+          // scope in the params view and place the source editor containing
+          // the raw post data directly underneath.
+          $("#request-params-box").removeAttribute("flex");
+          let paramsScope = this._params.addScope(this._paramsPostPayload);
+          paramsScope.expanded = true;
+          paramsScope.locked = true;
+
+          $("#request-post-data-textarea-box").hidden = false;
+          return NetMonitorView.editor("#request-post-data-textarea").then(aEditor => {
+            // Most POST bodies are usually JSON, so they can be neatly
+            // syntax highlighted as JS. Otheriwse, fall back to plain text.
+            try {
+              JSON.parse(aPostData);
+              aEditor.setMode(Editor.modes.js);
+            } catch (e) {
+              aEditor.setMode(Editor.modes.text);
+            } finally {
+              aEditor.setText(aPostData);
+            }
+          });
+        }
+      });
     }).then(() => window.emit(EVENTS.REQUEST_POST_PARAMS_DISPLAYED));
   },
 
@@ -2101,8 +2159,8 @@ NetworkDetailsView.prototype = {
     paramsScope.expanded = true;
 
     for (let param of paramsArray) {
-      let headerVar = paramsScope.addItem(param.name, {}, true);
-      headerVar.setGrip(param.value);
+      let paramVar = paramsScope.addItem(param.name, {}, true);
+      paramVar.setGrip(param.value);
     }
   },
 
@@ -2126,26 +2184,41 @@ NetworkDetailsView.prototype = {
       // Handle json, which we tentatively identify by checking the MIME type
       // for "json" after any word boundary. This works for the standard
       // "application/json", and also for custom types like "x-bigcorp-json".
-      // This should be marginally more reliable than just looking for "json".
-      if (/\bjson/.test(mimeType)) {
-        let jsonpRegex = /^[a-zA-Z0-9_$]+\(|\)$/g; // JSONP with callback.
-        let sanitizedJSON = aString.replace(jsonpRegex, "");
-        let callbackPadding = aString.match(jsonpRegex);
+      // Additionally, we also directly parse the response text content to
+      // verify whether it's json or not, to handle responses incorrectly
+      // labeled as text/plain instead.
+      let jsonMimeType, jsonObject, jsonObjectParseError;
+      try {
+        // Test the mime type *and* parse the string, because "JSONP" responses
+        // (json with callback) aren't actually valid json.
+        jsonMimeType = /\bjson/.test(mimeType);
+        jsonObject = JSON.parse(aString);
+      } catch (e) {
+        jsonObjectParseError = e;
+      }
+      if (jsonMimeType || jsonObject) {
+        // Extract the actual json substring in case this might be a "JSONP".
+        // This regex basically parses a function call and captures the
+        // function name and arguments in two separate groups.
+        let jsonpRegex = /^\s*([\w$]+)\s*\(\s*([^]*)\s*\)\s*;?\s*$/;
+        let [_, callbackPadding, jsonpString] = aString.match(jsonpRegex) || [];
 
         // Make sure this is a valid JSON object first. If so, nicely display
         // the parsing results in a variables view. Otherwise, simply show
         // the contents as plain text.
-        try {
-          var jsonObject = JSON.parse(sanitizedJSON);
-        } catch (e) {
-          var parsingError = e;
+        if (callbackPadding && jsonpString) {
+          try {
+            jsonObject = JSON.parse(jsonpString);
+          } catch (e) {
+            jsonObjectParseError = e;
+          }
         }
 
-        // Valid JSON.
+        // Valid JSON or JSONP.
         if (jsonObject) {
           $("#response-content-json-box").hidden = false;
           let jsonScopeName = callbackPadding
-            ? L10N.getFormatStr("jsonpScopeName", callbackPadding[0].slice(0, -1))
+            ? L10N.getFormatStr("jsonpScopeName", callbackPadding)
             : L10N.getStr("jsonScopeName");
 
           return this._json.controller.setSingleVariable({
@@ -2157,8 +2230,8 @@ NetworkDetailsView.prototype = {
         else {
           $("#response-content-textarea-box").hidden = false;
           let infoHeader = $("#response-content-info-header");
-          infoHeader.setAttribute("value", parsingError);
-          infoHeader.setAttribute("tooltiptext", parsingError);
+          infoHeader.setAttribute("value", jsonObjectParseError);
+          infoHeader.setAttribute("tooltiptext", jsonObjectParseError);
           infoHeader.hidden = false;
           return NetMonitorView.editor("#response-content-textarea").then(aEditor => {
             aEditor.setMode(Editor.modes.js);
@@ -2281,6 +2354,30 @@ NetworkDetailsView.prototype = {
       .style.transform = "translateX(" + (scale * (blocked + dns + connect + send + wait)) + "px)";
   },
 
+  /**
+   * Sets the preview for HTML responses shown in this view.
+   *
+   * @param object aResponse
+   *        The message received from the server.
+   * @return object
+   *        A promise that is resolved when the response body is set
+   */
+  _setHtmlPreview: function(aResponse) {
+    if (!aResponse) {
+      return promise.resolve();
+    }
+    let { text } = aResponse.content;
+    let iframe = $("#response-preview");
+
+    return gNetwork.getString(text).then(aString => {
+      // Always disable JS when previewing HTML responses.
+      iframe.contentDocument.docShell.allowJavascript = false;
+      iframe.contentDocument.documentElement.innerHTML = aString;
+
+      window.emit(EVENTS.RESPONSE_HTML_PREVIEW_DISPLAYED);
+    });
+  },
+
   _dataSrc: null,
   _headers: null,
   _cookies: null,
@@ -2328,13 +2425,9 @@ PerformanceStatisticsView.prototype = {
       id: "#primed-cache-chart",
       title: "charts.cacheEnabled",
       data: this._sanitizeChartDataSource(aItems),
-      sorted: true,
-      totals: {
-        size: L10N.getStr("charts.totalSize"),
-        time: L10N.getStr("charts.totalTime2"),
-        cached: L10N.getStr("charts.totalCached"),
-        count: L10N.getStr("charts.totalCount")
-      }
+      strings: this._commonChartStrings,
+      totals: this._commonChartTotals,
+      sorted: true
     });
     window.emit(EVENTS.PRIMED_CACHE_CHART_DISPLAYED);
   },
@@ -2350,15 +2443,43 @@ PerformanceStatisticsView.prototype = {
       id: "#empty-cache-chart",
       title: "charts.cacheDisabled",
       data: this._sanitizeChartDataSource(aItems, true),
-      sorted: true,
-      totals: {
-        size: L10N.getStr("charts.totalSize"),
-        time: L10N.getStr("charts.totalTime2"),
-        cached: L10N.getStr("charts.totalCached"),
-        count: L10N.getStr("charts.totalCount")
-      }
+      strings: this._commonChartStrings,
+      totals: this._commonChartTotals,
+      sorted: true
     });
     window.emit(EVENTS.EMPTY_CACHE_CHART_DISPLAYED);
+  },
+
+  /**
+   * Common stringifier predicates used for items and totals in both the
+   * "primed" and "empty" cache charts.
+   */
+  _commonChartStrings: {
+    size: value => {
+      let string = L10N.numberWithDecimals(value / 1024, CONTENT_SIZE_DECIMALS);
+      return L10N.getFormatStr("charts.sizeKB", string);
+    },
+    time: value => {
+      let string = L10N.numberWithDecimals(value / 1000, REQUEST_TIME_DECIMALS);
+      return L10N.getFormatStr("charts.totalS", string);
+    }
+  },
+  _commonChartTotals: {
+    size: total => {
+      let string = L10N.numberWithDecimals(total / 1024, CONTENT_SIZE_DECIMALS);
+      return L10N.getFormatStr("charts.totalSize", string);
+    },
+    time: total => {
+      let seconds = total / 1000;
+      let string = L10N.numberWithDecimals(seconds, REQUEST_TIME_DECIMALS);
+      return PluralForm.get(seconds, L10N.getStr("charts.totalSeconds")).replace("#1", string);
+    },
+    cached: total => {
+      return L10N.getFormatStr("charts.totalCached", total);
+    },
+    count: total => {
+      return L10N.getFormatStr("charts.totalCount", total);
+    }
   },
 
   /**
@@ -2367,9 +2488,9 @@ PerformanceStatisticsView.prototype = {
    * @param object
    *        An object containing all or some the following properties:
    *          - id: either "#primed-cache-chart" or "#empty-cache-chart"
-   *          - title/data/sorted/totals: @see Chart.jsm for details
+   *          - title/data/strings/totals/sorted: @see Chart.jsm for details
    */
-  _createChart: function({ id, title, data, sorted, totals }) {
+  _createChart: function({ id, title, data, strings, totals, sorted }) {
     let container = $(id);
 
     // Nuke all existing charts of the specified type.
@@ -2382,12 +2503,13 @@ PerformanceStatisticsView.prototype = {
       diameter: NETWORK_ANALYSIS_PIE_CHART_DIAMETER,
       title: L10N.getStr(title),
       data: data,
-      sorted: sorted,
-      totals: totals
+      strings: strings,
+      totals: totals,
+      sorted: sorted
     });
 
     chart.on("click", (_, item) => {
-      NetMonitorView.RequestsMenu.filterOn(item.label);
+      NetMonitorView.RequestsMenu.filterOnlyOn(item.label);
       NetMonitorView.showNetworkInspectorView();
     });
 
@@ -2448,13 +2570,6 @@ PerformanceStatisticsView.prototype = {
       data[type].count++;
     }
 
-    for (let chartItem of data) {
-      let size = L10N.numberWithDecimals(chartItem.size / 1024, CONTENT_SIZE_DECIMALS);
-      let time = L10N.numberWithDecimals(chartItem.time / 1000, REQUEST_TIME_DECIMALS);
-      chartItem.size = L10N.getFormatStr("charts.sizeKB", size);
-      chartItem.time = L10N.getFormatStr("charts.totalS", time);
-    }
-
     return data.filter(e => e.count > 0);
   },
 };
@@ -2488,14 +2603,16 @@ nsIURL.store = new Map();
  */
 function parseQueryString(aQueryString) {
   // Make sure there's at least one param available.
-  if (!aQueryString || !aQueryString.contains("=")) {
+  // Be careful here, params don't necessarily need to have values, so
+  // no need to verify the existence of a "=".
+  if (!aQueryString) {
     return;
   }
   // Turn the params string into an array containing { name: value } tuples.
   let paramsArray = aQueryString.replace(/^[?&]/, "").split("&").map(e =>
     let (param = e.split("=")) {
-      name: NetworkHelper.convertToUnicode(unescape(param[0])),
-      value: NetworkHelper.convertToUnicode(unescape(param[1]))
+      name: param[0] ? NetworkHelper.convertToUnicode(unescape(param[0])) : "",
+      value: param[1] ? NetworkHelper.convertToUnicode(unescape(param[1])) : ""
     });
   return paramsArray;
 }

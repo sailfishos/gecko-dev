@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 4 -*-
+/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 2 -*-
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -26,7 +26,7 @@ CompositorD3D9::CompositorD3D9(PCompositorParent* aParent, nsIWidget *aWidget)
   , mWidget(aWidget)
   , mDeviceResetCount(0)
 {
-  sBackend = LayersBackend::LAYERS_D3D9;
+  Compositor::SetBackend(LayersBackend::LAYERS_D3D9);
 }
 
 CompositorD3D9::~CompositorD3D9()
@@ -89,8 +89,7 @@ CompositorD3D9::GetMaxTextureSize() const
 TemporaryRef<DataTextureSource>
 CompositorD3D9::CreateDataTextureSource(TextureFlags aFlags)
 {
-  return new DataTextureSourceD3D9(SurfaceFormat::UNKNOWN, this,
-                                   !(aFlags & TEXTURE_DISALLOW_BIGIMAGE));
+  return new DataTextureSourceD3D9(SurfaceFormat::UNKNOWN, this, aFlags);
 }
 
 TemporaryRef<CompositingRenderTarget>

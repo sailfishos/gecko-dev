@@ -16,7 +16,6 @@ endif
 
 ifdef MOZ_CONTENT_SANDBOX
 ifeq ($(OS_ARCH),WINNT)
-  LOCAL_INCLUDES += -I$(srcdir)/../sandboxbroker
   SHARED_LIBRARY_LIBS += ../../security/sandbox/win/src/sandboxbroker/$(LIB_PREFIX)sandboxbroker.$(LIB_SUFFIX)
 endif
 endif
@@ -29,17 +28,6 @@ SHARED_LIBRARY_LIBS += \
 
 ifeq ($(OS_ARCH)_$(GNU_CC),WINNT_)
 RCINCLUDE = xulrunner.rc
-
-LOCAL_INCLUDES += -I$(topsrcdir)/widget/windows
-LOCAL_INCLUDES += -I$(topsrcdir)/xpcom/base
-endif
-
-ifeq ($(OS_ARCH),OS2)
-RESFILE = xulrunos2.res
-RCFLAGS += -i $(topsrcdir)/widget/os2
-
-LOCAL_INCLUDES += -I$(topsrcdir)/widget/os2
-LOCAL_INCLUDES += -I$(topsrcdir)/xpcom/base
 endif
 
 # dependent libraries
@@ -64,50 +52,6 @@ symverscript: symverscript.in
 
 EXTRA_DEPS += symverscript
 endif
-endif
-
-# component libraries
-ifdef MOZ_JSDEBUGGER
-DEFINES += -DMOZ_JSDEBUGGER
-endif
-
-ifdef MOZ_PREF_EXTENSIONS
-DEFINES += -DMOZ_PREF_EXTENSIONS
-endif
-
-ifdef MOZ_AUTH_EXTENSION
-DEFINES += -DMOZ_AUTH_EXTENSION
-endif
-
-ifdef MOZ_PERMISSIONS
-DEFINES += -DMOZ_PERMISSIONS
-endif
-
-ifdef MOZ_UNIVERSALCHARDET
-DEFINES += -DMOZ_UNIVERSALCHARDET
-endif
-
-ifeq (,$(filter android gonk qt os2 cocoa windows,$(MOZ_WIDGET_TOOLKIT)))
-ifdef MOZ_XUL
-DEFINES += -DMOZ_FILEVIEW
-endif
-endif
-
-# Platform-specific icon channel stuff - supported mostly-everywhere
-ifneq (,$(filter windows os2 mac cocoa gtk2 gtk3 qt android,$(MOZ_WIDGET_TOOLKIT)))
-DEFINES += -DICON_DECODER
-endif
-
-ifdef MOZ_SPELLCHECK
-DEFINES += -DMOZ_SPELLCHECK
-endif
-
-ifdef MOZ_ZIPWRITER
-DEFINES += -DMOZ_ZIPWRITER
-endif
-
-ifdef MOZ_GIO_COMPONENT
-DEFINES += -DMOZ_GIO_COMPONENT
 endif
 
 ifdef MOZ_APP_COMPONENT_LIBS
@@ -220,7 +164,7 @@ ifdef MOZ_DIRECTSHOW
 OS_LIBS += $(call EXPAND_LIBNAME,dmoguids wmcodecdspuuid strmiids msdmo)
 endif
 
-ifneq (,$(filter OS2 WINNT,$(OS_ARCH)))
+ifneq (,$(filter WINNT,$(OS_ARCH)))
 SDK_LIBRARY = $(IMPORT_LIBRARY)
 else
 SDK_LIBRARY = $(SHARED_LIBRARY)
@@ -291,44 +235,12 @@ OS_LIBS += $(call EXPAND_LIBNAME,util)
 endif
 
 ifeq ($(OS_ARCH),WINNT)
-OS_LIBS += $(call EXPAND_LIBNAME,shell32 ole32 version winspool comdlg32 imm32 msimg32 shlwapi psapi ws2_32 dbghelp rasapi32 rasdlg iphlpapi uxtheme setupapi secur32 sensorsapi portabledeviceguids windowscodecs wininet wbemuuid)
+OS_LIBS += $(call EXPAND_LIBNAME,shell32 ole32 version winspool comdlg32 imm32 msimg32 shlwapi psapi ws2_32 dbghelp rasapi32 rasdlg iphlpapi uxtheme setupapi secur32 sensorsapi portabledeviceguids windowscodecs wininet wbemuuid wintrust)
 ifdef ACCESSIBILITY
 OS_LIBS += $(call EXPAND_LIBNAME,oleacc)
 endif
 ifdef MOZ_METRO
 OS_LIBS += $(call EXPAND_LIBNAME,uiautomationcore runtimeobject)
-endif
-ifdef _MSC_VER
-OS_LIBS += $(call EXPAND_LIBNAME,delayimp)
-EXTRA_DSO_LDOPTS += \
-  -DELAYLOAD:psapi.dll \
-  -DELAYLOAD:dbghelp.dll \
-  -DELAYLOAD:rasapi32.dll \
-  -DELAYLOAD:rasdlg.dll \
-  -DELAYLOAD:comdlg32.dll \
-  -DELAYLOAD:winspool.drv \
-  -DELAYLOAD:secur32.dll \
-  -DELAYLOAD:wininet.dll \
-  $(NULL)
-
-# See nsDllMain for an explanation
-ifdef MOZ_METRO
-ifdef MOZ_DEBUG
-EXTRA_DSO_LDOPTS += -DELAYLOAD:VCCORLIB$(CRTDLLVERSION)D.DLL
-else
-EXTRA_DSO_LDOPTS += -DELAYLOAD:VCCORLIB$(CRTDLLVERSION).DLL
-endif
-EXTRA_DSO_LDOPTS += -DELAYLOAD:API-MS-WIN-CORE-WINRT-L$(CRTEXPDLLVERSION).DLL
-EXTRA_DSO_LDOPTS += -DELAYLOAD:API-MS-WIN-CORE-WINRT-STRING-L$(CRTEXPDLLVERSION).DLL
-EXTRA_DSO_LDOPTS += -DELAYLOAD:uiautomationcore.dll
-endif
-
-ifdef ACCESSIBILITY
-EXTRA_DSO_LDOPTS += -DELAYLOAD:oleacc.dll
-endif
-ifdef MOZ_WEBRTC
-EXTRA_DSO_LDOPTS += -DELAYLOAD:msdmo.dll
-endif
 endif
 ifdef MOZ_GAMEPAD
 ifndef GNU_CC
@@ -385,22 +297,10 @@ EXTRA_MDDEPEND_FILES = $(GTEST_LIB).pp
 
 include $(topsrcdir)/config/rules.mk
 
-# need widget/windows for resource.h (included from widget.rc)
-LOCAL_INCLUDES += \
-  -I$(topsrcdir)/config \
-  -I$(topsrcdir)/widget/windows \
-  $(NULL)
-
 OS_LIBS += $(LIBICONV)
 
 ifeq ($(MOZ_WIDGET_TOOLKIT),windows)
 OS_LIBS += $(call EXPAND_LIBNAME,usp10 oleaut32)
-endif
-
-ifdef MOZ_DEBUG
-ifdef ENABLE_TESTS
-DEFINES += -DENABLE_LAYOUTDEBUG
-endif
 endif
 
 ifeq (WINNT_1,$(OS_TARGET)_$(MOZ_PROFILE_USE))

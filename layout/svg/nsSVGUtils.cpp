@@ -36,6 +36,7 @@
 #include "nsSVGContainerFrame.h"
 #include "nsSVGEffects.h"
 #include "nsSVGFilterFrame.h"
+#include "nsSVGFilterInstance.h"
 #include "nsSVGFilterPaintCallback.h"
 #include "nsSVGForeignObjectFrame.h"
 #include "gfxSVGGlyphs.h"
@@ -159,12 +160,13 @@ nsSVGUtils::GetPostFilterVisualOverflowRect(nsIFrame *aFrame,
   NS_ABORT_IF_FALSE(aFrame->GetStateBits() & NS_FRAME_SVG_LAYOUT,
                     "Called on invalid frame type");
 
-  nsSVGFilterFrame *filter = nsSVGEffects::GetFilterFrame(aFrame);
-  if (!filter) {
+  nsSVGFilterFrame *filterFrame = nsSVGEffects::GetFilterFrame(aFrame);
+  if (!filterFrame) {
     return aPreFilterRect;
   }
 
-  return filter->GetPostFilterBounds(aFrame, nullptr, &aPreFilterRect);
+  return nsSVGFilterInstance::GetPostFilterBounds(filterFrame, aFrame, nullptr,
+                                                  &aPreFilterRect);
 }
 
 bool
@@ -621,7 +623,9 @@ nsSVGUtils::PaintFrameWithEffects(nsRenderingContext *aContext,
       dirtyRect = &tmpDirtyRect;
     }
     SVGPaintCallback paintCallback;
-    filterFrame->PaintFilteredFrame(aContext, aFrame, &paintCallback, dirtyRect, aTransformRoot);
+    nsSVGFilterInstance::PaintFilteredFrame(filterFrame, aContext, aFrame,
+                                            &paintCallback, dirtyRect,
+                                            aTransformRoot);
   } else {
     svgChildFrame->PaintSVG(aContext, aDirtyRect, aTransformRoot);
   }
@@ -926,7 +930,7 @@ nsSVGUtils::CanOptimizeOpacity(nsIFrame *aFrame)
       type != nsGkAtoms::svgPathGeometryFrame) {
     return false;
   }
-  if (aFrame->StyleSVGReset()->SingleFilter()) {
+  if (aFrame->StyleSVGReset()->HasFilters()) {
     return false;
   }
   // XXX The SVG WG is intending to allow fill, stroke and markers on <image>

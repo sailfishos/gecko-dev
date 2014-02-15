@@ -99,33 +99,29 @@ bool xpc_IsReportableErrorCode(nsresult code)
 }
 
 // static
-nsresult
-nsXPCWrappedJSClass::GetNewOrUsed(JSContext* cx, REFNSIID aIID,
-                                  nsXPCWrappedJSClass** resultClazz)
+already_AddRefed<nsXPCWrappedJSClass>
+nsXPCWrappedJSClass::GetNewOrUsed(JSContext* cx, REFNSIID aIID)
 {
-    nsXPCWrappedJSClass* clazz = nullptr;
     XPCJSRuntime* rt = nsXPConnect::GetRuntimeInstance();
-
     IID2WrappedJSClassMap* map = rt->GetWrappedJSClassMap();
-    clazz = map->Find(aIID);
-    NS_IF_ADDREF(clazz);
+    nsRefPtr<nsXPCWrappedJSClass> clasp = map->Find(aIID);
 
-    if (!clazz) {
+    if (!clasp) {
         nsCOMPtr<nsIInterfaceInfo> info;
         nsXPConnect::XPConnect()->GetInfoForIID(&aIID, getter_AddRefs(info));
         if (info) {
             bool canScript, isBuiltin;
             if (NS_SUCCEEDED(info->IsScriptable(&canScript)) && canScript &&
                 NS_SUCCEEDED(info->IsBuiltinClass(&isBuiltin)) && !isBuiltin &&
-                nsXPConnect::IsISupportsDescendant(info)) {
-                clazz = new nsXPCWrappedJSClass(cx, aIID, info);
-                if (clazz && !clazz->mDescriptors)
-                    NS_RELEASE(clazz);  // sets clazz to nullptr
+                nsXPConnect::IsISupportsDescendant(info))
+            {
+                clasp = new nsXPCWrappedJSClass(cx, aIID, info);
+                if (!clasp->mDescriptors)
+                    clasp = nullptr;
             }
         }
     }
-    *resultClazz = clazz;
-    return NS_OK;
+    return clasp.forget();
 }
 
 nsXPCWrappedJSClass::nsXPCWrappedJSClass(JSContext* cx, REFNSIID aIID,
@@ -136,8 +132,6 @@ nsXPCWrappedJSClass::nsXPCWrappedJSClass(JSContext* cx, REFNSIID aIID,
       mIID(aIID),
       mDescriptors(nullptr)
 {
-    NS_ADDREF_THIS();
-
     mRuntime->GetWrappedJSClassMap()->Add(this);
 
     uint16_t methodCount;
@@ -237,11 +231,8 @@ nsXPCWrappedJSClass::CallQueryInterfaceOnJSObject(JSContext* cx,
         {
             AutoSaveContextOptions asco(cx);
             ContextOptionsRef(cx).setDontReportUncaught(true);
-            JS::AutoValueVector argv(cx);
-            MOZ_ALWAYS_TRUE(argv.resize(1));
-            argv[0].setObject(*id);
-            success = JS_CallFunctionValue(cx, jsobj, fun, 1, argv.begin(),
-                                           retval.address());
+            RootedValue arg(cx, JS::ObjectValue(*id));
+            success = JS_CallFunctionValue(cx, jsobj, fun, arg, &retval);
         }
 
         if (!success && JS_IsExceptionPending(cx)) {
@@ -420,7 +411,8 @@ NS_IMETHODIMP xpcProperty::GetName(nsAString & aName)
 /* readonly attribute nsIVariant value; */
 NS_IMETHODIMP xpcProperty::GetValue(nsIVariant * *aValue)
 {
-    NS_ADDREF(*aValue = mValue);
+    nsCOMPtr<nsIVariant> rval = mValue;
+    rval.forget(aValue);
     return NS_OK;
 }
 
@@ -1290,7 +1282,7 @@ pre_call_clean_up:
             AutoSaveContextOptions asco(cx);
             ContextOptionsRef(cx).setDontReportUncaught(true);
 
-            success = JS_CallFunctionValue(cx, thisObj, fval, argc, argv, rval.address());
+            success = JS_CallFunctionValue(cx, thisObj, fval, args, &rval);
         } else {
             // The property was not an object so can't be a function.
             // Let's build and 'throw' an exception.

@@ -271,6 +271,12 @@ public:
    */
   virtual void UseTexture(CompositableClient* aCompositable,
                           TextureClient* aClient) MOZ_OVERRIDE;
+  virtual void UseComponentAlphaTextures(CompositableClient* aCompositable,
+                                         TextureClient* aClientOnBlack,
+                                         TextureClient* aClientOnWhite) MOZ_OVERRIDE;
+
+  virtual void RemoveTextureFromCompositable(CompositableClient* aCompositable,
+                                             TextureClient* aTexture) MOZ_OVERRIDE;
 
   virtual void RemoveTexture(TextureClient* aTexture) MOZ_OVERRIDE;
 

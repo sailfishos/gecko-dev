@@ -152,14 +152,7 @@ var FeedHandler = {
     }
   },
 
-  addFeed: function(link, targetDoc) {
-    // find which tab this is for, and set the attribute on the browser
-    var browserForLink = gBrowser.getBrowserForDocument(targetDoc);
-    if (!browserForLink) {
-      // ignore feeds loaded in subframes (see bug 305472)
-      return;
-    }
-
+  addFeed: function(link, browserForLink) {
     if (!browserForLink.feeds)
       browserForLink.feeds = [];
 

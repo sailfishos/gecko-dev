@@ -217,6 +217,8 @@
 #include "mozilla/dom/XPathEvaluator.h"
 #include "nsIDocumentEncoder.h"
 #include "nsIStructuredCloneContainer.h"
+#include "nsIMutableArray.h"
+#include "nsContentPermissionHelper.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -240,9 +242,6 @@ nsIdentifierMapEntry::Traverse(nsCycleCollectionTraversalCallback* aCallback)
   NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(*aCallback,
                                      "mIdentifierMap mNameContentList");
   aCallback->NoteXPCOMChild(static_cast<nsIDOMNodeList*>(mNameContentList));
-
-  NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(*aCallback, "mIdentifierMap mDocAllList");
-  aCallback->NoteXPCOMChild(static_cast<nsIDOMNodeList*>(mDocAllList));
 
   if (mImageElement) {
     NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(*aCallback,
@@ -6915,6 +6914,14 @@ nsDocument::GetViewportInfo(const ScreenIntSize& aDisplaySize)
       // app that does not use it.
       nsCOMPtr<nsIDocShell> docShell(mDocumentContainer);
       if (docShell && docShell->GetIsApp()) {
+        nsString uri;
+        GetDocumentURI(uri);
+        if (!uri.EqualsLiteral("about:blank")) {
+          nsContentUtils::ReportToConsole(nsIScriptError::warningFlag,
+                                          NS_LITERAL_CSTRING("DOM"), this,
+                                          nsContentUtils::eDOM_PROPERTIES,
+                                          "ImplicitMetaViewportTagFallback");
+        }
         mViewportType = DisplayWidthHeightNoZoom;
         return nsViewportInfo(aDisplaySize, /* allowZoom */ false);
       }
@@ -10766,17 +10773,11 @@ NS_IMPL_ISUPPORTS_INHERITED1(nsPointerLockPermissionRequest,
                              nsIContentPermissionRequest)
 
 NS_IMETHODIMP
-nsPointerLockPermissionRequest::GetType(nsACString& aType)
+nsPointerLockPermissionRequest::GetTypes(nsIArray** aTypes)
 {
-  aType = "pointerLock";
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsPointerLockPermissionRequest::GetAccess(nsACString& aAccess)
-{
-  aAccess = "unused";
-  return NS_OK;
+  return CreatePermissionArray(NS_LITERAL_CSTRING("pointerLock"),
+                               NS_LITERAL_CSTRING("unused"),
+                               aTypes);
 }
 
 NS_IMETHODIMP
@@ -11446,7 +11447,7 @@ nsDocument::Evaluate(const nsAString& aExpression, nsIDOMNode* aContextNode,
 {
   return XPathEvaluator()->Evaluate(aExpression, aContextNode, aResolver, aType,
                                     aInResult, aResult);
-} 
+}
 
 // This is just a hack around the fact that window.document is not
 // [Unforgeable] yet.
@@ -11476,12 +11477,14 @@ nsIDocument::WrapObject(JSContext *aCx, JS::Handle<JSObject*> aScope)
   JS::Rooted<JS::Value> winVal(aCx);
   nsresult rv = nsContentUtils::WrapNative(aCx, obj, win,
                                            &NS_GET_IID(nsIDOMWindow),
-                                           &winVal,
-                                           false);
+                                           &winVal);
   if (NS_FAILED(rv)) {
     Throw(aCx, rv);
     return nullptr;
   }
+
+  MOZ_ASSERT(&winVal.toObject() == js::UncheckedUnwrap(&winVal.toObject()),
+             "WrapNative shouldn't create a cross-compartment wrapper");
 
   NS_NAMED_LITERAL_STRING(doc_str, "document");
 

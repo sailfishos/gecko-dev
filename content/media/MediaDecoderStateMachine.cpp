@@ -31,18 +31,28 @@
 
 #include "prenv.h"
 #include "mozilla/Preferences.h"
+#include "gfx2DGlue.h"
+
 #include <algorithm>
 
 namespace mozilla {
 
 using namespace mozilla::layers;
 using namespace mozilla::dom;
+using namespace mozilla::gfx;
 
 #ifdef PR_LOGGING
 extern PRLogModuleInfo* gMediaDecoderLog;
 #define DECODER_LOG(type, msg) PR_LOG(gMediaDecoderLog, type, msg)
 #else
 #define DECODER_LOG(type, msg)
+#endif
+
+// GetCurrentTime is defined in winbase.h as zero argument macro forwarding to
+// GetTickCount() and conflicts with MediaDecoderStateMachine::GetCurrentTime
+// implementation.  With unified builds, putting this in headers is not enough.
+#ifdef GetCurrentTime
+#undef GetCurrentTime
 #endif
 
 // Wait this number of seconds when buffering, then leave and play
@@ -605,7 +615,8 @@ void MediaDecoderStateMachine::SendStreamAudio(AudioData* aAudio,
 }
 
 static void WriteVideoToMediaStream(layers::Image* aImage,
-                                    int64_t aDuration, const gfxIntSize& aIntrinsicSize,
+                                    int64_t aDuration,
+                                    const IntSize& aIntrinsicSize,
                                     VideoSegment* aOutput)
 {
   nsRefPtr<layers::Image> image = aImage;
@@ -2415,7 +2426,8 @@ void MediaDecoderStateMachine::RenderVideoFrame(VideoData* aData,
 
   VideoFrameContainer* container = mDecoder->GetVideoFrameContainer();
   if (container) {
-    container->SetCurrentFrame(aData->mDisplay, aData->mImage, aTarget);
+    container->SetCurrentFrame(ThebesIntSize(aData->mDisplay), aData->mImage,
+                               aTarget);
   }
 }
 

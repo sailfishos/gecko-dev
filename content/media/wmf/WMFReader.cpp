@@ -24,7 +24,9 @@
 
 #include "MediaDecoder.h"
 #include "VideoUtils.h"
+#include "gfx2DGlue.h"
 
+using namespace mozilla::gfx;
 using mozilla::layers::Image;
 using mozilla::layers::LayerManager;
 using mozilla::layers::LayersBackend;
@@ -314,7 +316,7 @@ WMFReader::ConfigureVideoFrameGeometry(IMFMediaType* aMediaType)
   nsIntSize frameSize = nsIntSize(width, height);
   nsIntSize displaySize = nsIntSize(pictureRegion.width, pictureRegion.height);
   ScaleDisplayByAspectRatio(displaySize, float(aspectNum) / float(aspectDenom));
-  if (!VideoInfo::ValidateVideoRegion(frameSize, pictureRegion, displaySize)) {
+  if (!IsValidVideoRegion(frameSize, pictureRegion, displaySize)) {
     // Video track's frame sizes will overflow. Ignore the video track.
     return E_FAIL;
   }
@@ -730,7 +732,7 @@ WMFReader::CreateBasicVideoFrame(IMFSample* aSample,
                                    b,
                                    false,
                                    -1,
-                                   mPictureRegion);
+                                   ToIntRect(mPictureRegion));
   if (twoDBuffer) {
     twoDBuffer->Unlock2D();
   } else {
@@ -773,7 +775,7 @@ WMFReader::CreateD3DVideoFrame(IMFSample* aSample,
                                             image.forget(),
                                             false,
                                             -1,
-                                            mPictureRegion);
+                                            ToIntRect(mPictureRegion));
 
   NS_ENSURE_TRUE(v, E_FAIL);
   *aOutVideoData = v;

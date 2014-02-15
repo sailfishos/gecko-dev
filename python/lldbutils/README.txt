@@ -84,6 +84,19 @@ called with a smart pointer like nsRefPtr or nsCOMPtr.
   11
 
 
+* pstate EXPR
+
+  Shows the frame state bits (using their symbolic names) of a given frame.
+  EXPR is an expression that is evaluated, and must be an nsIFrame*.
+
+  (lldb) p this
+  (nsTextFrame *) $1 = 0x000000011f470b10
+  (lldb) p/x mState
+  (nsFrameState) $2 = 0x0000004080604000
+  (lldb) pstate this
+  TEXT_HAS_NONCOLLAPSED_CHARACTERS | TEXT_END_OF_LINE | TEXT_START_OF_LINE | NS_FRAME_PAINTED_THEBES | NS_FRAME_INDEPENDENT_SELECTION
+
+
 * ptag EXPR
 
   Shows the DOM tag name of a node.  EXPR is an expression that is
@@ -112,7 +125,9 @@ For objects that do have synthetic children defined for them, like nsTArray,
 the "expr -R -- EXPR" command can be used to show its actual member variables.
 
 
-* nsAString, nsACString
+* nsAString, nsACString,
+  nsFixedString, nsFixedCString,
+  nsAutoString, nsAutoCString
 
   Strings have a type summary that shows the actual string.
 
@@ -126,6 +141,23 @@ the "expr -R -- EXPR" command can be used to show its actual member variables.
   (lldb) p mContentType
   (nsCString) $19 = {
     nsACString_internal = "text/html"
+  }
+
+* nscolor
+
+  nscolors (32-bit RGBA colors) have a type summary that shows the color as
+  one of the CSS 2.1 color keywords, a six digit hex color, an rgba() color,
+  or the "transparent" keyword.
+
+  (lldb) p this
+  (nsTextFrame *) $0 = 0x00000001168245e0
+  (lldb) p *this->StyleColor()
+  (const nsStyleColor) $1 = {
+    mColor = lime
+  }
+  (lldb) expr -R -- *this->StyleColor()
+  (const nsStyleColor) $2 = {
+    mColor = 4278255360
   }
 
 * nsIAtom

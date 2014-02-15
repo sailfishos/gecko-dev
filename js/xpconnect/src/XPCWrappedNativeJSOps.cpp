@@ -155,9 +155,12 @@ XPC_WN_DoubleWrappedGetter(JSContext *cx, unsigned argc, jsval *vp)
         return true;
     }
 
-    // It is a double wrapped object. This should never appear in content these
-    // days, but let's be safe here.
-    MOZ_RELEASE_ASSERT(nsContentUtils::IsCallerChrome());
+    // It is a double wrapped object. This should really never appear in
+    // content these days, but addons still do it - see bug 965921.
+    if (MOZ_UNLIKELY(!nsContentUtils::IsCallerChrome())) {
+        JS_ReportError(cx, "Attempt to use .wrappedJSObject in untrusted code");
+        return false;
+    }
     args.rval().setObject(*realObject);
     return JS_WrapValue(cx, args.rval());
 }
@@ -674,6 +677,7 @@ const XPCWrappedNativeJSClass XPC_WN_NoHelper_JSClass = {
     nullptr,                         // construct
     nullptr,                         // hasInstance
     XPC_WN_NoHelper_Trace,          // trace
+    JS_NULL_CLASS_SPEC,
 
     // ClassExtension
     {
@@ -1427,6 +1431,7 @@ const js::Class XPC_WN_ModsAllowed_WithCall_Proto_JSClass = {
     nullptr,                         // hasInstance;
     XPC_WN_Shared_Proto_Trace,      // trace;
 
+    JS_NULL_CLASS_SPEC,
     JS_NULL_CLASS_EXT,
     XPC_WN_WithCall_ObjectOps
 };
@@ -1451,6 +1456,7 @@ const js::Class XPC_WN_ModsAllowed_NoCall_Proto_JSClass = {
     nullptr,                         // hasInstance;
     XPC_WN_Shared_Proto_Trace,      // trace;
 
+    JS_NULL_CLASS_SPEC,
     JS_NULL_CLASS_EXT,
     XPC_WN_NoCall_ObjectOps
 };
@@ -1537,6 +1543,7 @@ const js::Class XPC_WN_NoMods_WithCall_Proto_JSClass = {
     nullptr,                         // hasInstance;
     XPC_WN_Shared_Proto_Trace,      // trace;
 
+    JS_NULL_CLASS_SPEC,
     JS_NULL_CLASS_EXT,
     XPC_WN_WithCall_ObjectOps
 };
@@ -1561,6 +1568,7 @@ const js::Class XPC_WN_NoMods_NoCall_Proto_JSClass = {
     nullptr,                         // hasInstance;
     XPC_WN_Shared_Proto_Trace,      // trace;
 
+    JS_NULL_CLASS_SPEC,
     JS_NULL_CLASS_EXT,
     XPC_WN_NoCall_ObjectOps
 };

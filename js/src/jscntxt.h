@@ -282,8 +282,6 @@ struct ThreadSafeContext : ContextFriendFields,
     PropertyName *emptyString() { return runtime_->emptyString; }
     FreeOp *defaultFreeOp() { return runtime_->defaultFreeOp(); }
     bool useHelperThreads() { return runtime_->useHelperThreads(); }
-    unsigned cpuCount() { return runtime_->cpuCount(); }
-    size_t workerThreadCount() { return runtime_->workerThreadCount(); }
     void *runtimeAddressForJit() { return runtime_; }
     void *stackLimitAddress(StackKind kind) { return &runtime_->mainThread.nativeStackLimit[kind]; }
     void *stackLimitAddressForJitCode(StackKind kind);
@@ -389,15 +387,6 @@ class ExclusiveContext : public ThreadSafeContext
     ScriptDataTable &scriptDataTable() {
         return runtime_->scriptDataTable();
     }
-
-#ifdef JS_THREADSAFE
-    // Since JSRuntime::workerThreadState is necessarily initialized from the
-    // main thread before the first worker thread can access it, there is no
-    // possibility for a race read/writing it.
-    WorkerThreadState *workerThreadState() {
-        return runtime_->workerThreadState;
-    }
-#endif
 
     // Methods specific to any WorkerThread for the context.
     frontend::CompileError &addPendingCompileError();
@@ -902,43 +891,6 @@ class AutoShapeVector : public AutoVectorRooter<Shape *>
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 };
 
-class AutoValueArray : public AutoGCRooter
-{
-    Value *start_;
-    unsigned length_;
-    SkipRoot skip;
-
-  public:
-    AutoValueArray(JSContext *cx, Value *start, unsigned length
-                   MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
-      : AutoGCRooter(cx, VALARRAY), start_(start), length_(length), skip(cx, start, length)
-    {
-        MOZ_GUARD_OBJECT_NOTIFIER_INIT;
-    }
-
-    Value *start() { return start_; }
-    unsigned length() const { return length_; }
-
-    MutableHandleValue handleAt(unsigned i) {
-        JS_ASSERT(i < length_);
-        return MutableHandleValue::fromMarkedLocation(&start_[i]);
-    }
-    HandleValue handleAt(unsigned i) const {
-        JS_ASSERT(i < length_);
-        return HandleValue::fromMarkedLocation(&start_[i]);
-    }
-    MutableHandleValue operator[](unsigned i) {
-        JS_ASSERT(i < length_);
-        return MutableHandleValue::fromMarkedLocation(&start_[i]);
-    }
-    HandleValue operator[](unsigned i) const {
-        JS_ASSERT(i < length_);
-        return HandleValue::fromMarkedLocation(&start_[i]);
-    }
-
-    MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
-};
-
 class AutoObjectObjectHashMap : public AutoHashMapRooter<JSObject *, JSObject *>
 {
   public:
@@ -975,6 +927,62 @@ class AutoObjectHashSet : public AutoHashSetRooter<JSObject *>
         MOZ_GUARD_OBJECT_NOTIFIER_INIT;
     }
 
+    MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
+};
+
+/* AutoArrayRooter roots an external array of Values. */
+class AutoArrayRooter : private AutoGCRooter
+{
+  public:
+    AutoArrayRooter(JSContext *cx, size_t len, Value *vec
+                    MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
+      : AutoGCRooter(cx, len), array(vec), skip(cx, array, len)
+    {
+        MOZ_GUARD_OBJECT_NOTIFIER_INIT;
+        JS_ASSERT(tag_ >= 0);
+    }
+
+    void changeLength(size_t newLength) {
+        tag_ = ptrdiff_t(newLength);
+        JS_ASSERT(tag_ >= 0);
+    }
+
+    void changeArray(Value *newArray, size_t newLength) {
+        changeLength(newLength);
+        array = newArray;
+    }
+
+    Value *start() {
+        return array;
+    }
+
+    size_t length() {
+        JS_ASSERT(tag_ >= 0);
+        return size_t(tag_);
+    }
+
+    MutableHandleValue handleAt(size_t i) {
+        JS_ASSERT(i < size_t(tag_));
+        return MutableHandleValue::fromMarkedLocation(&array[i]);
+    }
+    HandleValue handleAt(size_t i) const {
+        JS_ASSERT(i < size_t(tag_));
+        return HandleValue::fromMarkedLocation(&array[i]);
+    }
+    MutableHandleValue operator[](size_t i) {
+        JS_ASSERT(i < size_t(tag_));
+        return MutableHandleValue::fromMarkedLocation(&array[i]);
+    }
+    HandleValue operator[](size_t i) const {
+        JS_ASSERT(i < size_t(tag_));
+        return HandleValue::fromMarkedLocation(&array[i]);
+    }
+
+    friend void AutoGCRooter::trace(JSTracer *trc);
+
+  private:
+    Value *array;
+    js::SkipRoot skip;
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 };
 
@@ -1031,6 +1039,8 @@ bool intrinsic_IsPackedArray(JSContext *cx, unsigned argc, Value *vp);
 
 bool intrinsic_ShouldForceSequential(JSContext *cx, unsigned argc, Value *vp);
 bool intrinsic_NewParallelArray(JSContext *cx, unsigned argc, Value *vp);
+bool intrinsic_ForkJoinGetSlice(JSContext *cx, unsigned argc, Value *vp);
+bool intrinsic_InParallelSection(JSContext *cx, unsigned argc, Value *vp);
 
 class AutoLockForExclusiveAccess
 {
@@ -1040,7 +1050,7 @@ class AutoLockForExclusiveAccess
     void init(JSRuntime *rt) {
         runtime = rt;
         if (runtime->numExclusiveThreads) {
-            runtime->assertCanLock(JSRuntime::ExclusiveAccessLock);
+            runtime->assertCanLock(ExclusiveAccessLock);
             PR_Lock(runtime->exclusiveAccessLock);
 #ifdef DEBUG
             runtime->exclusiveAccessOwner = PR_GetCurrentThread();
@@ -1095,7 +1105,7 @@ class AutoLockForCompilation
     void init(JSRuntime *rt) {
         runtime = rt;
         if (runtime->numCompilationThreads) {
-            runtime->assertCanLock(JSRuntime::CompilationLock);
+            runtime->assertCanLock(CompilationLock);
             PR_Lock(runtime->compilationLock);
 #ifdef DEBUG
             runtime->compilationLockOwner = PR_GetCurrentThread();

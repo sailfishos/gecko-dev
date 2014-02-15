@@ -218,7 +218,7 @@ jit::BaselineCompile(JSContext *cx, HandleScript script)
 {
     JS_ASSERT(!script->hasBaselineScript());
     JS_ASSERT(script->canBaselineCompile());
-
+    JS_ASSERT(IsBaselineEnabled(cx));
     LifoAlloc alloc(BASELINE_LIFO_ALLOC_PRIMARY_CHUNK_SIZE);
 
     script->ensureNonLazyCanonicalFunction(cx);
@@ -275,7 +275,7 @@ CanEnterBaselineJIT(JSContext *cx, HandleScript script, bool osr)
     // parallel execution. We want to avoid the situation of OSRing during
     // warmup and only gathering type information for the loop, and not the
     // rest of the function.
-    if (IsJSDEnabled(cx) || cx->runtime()->parallelWarmup > 0) {
+    if (IsJSDEnabled(cx) || cx->runtime()->forkJoinWarmup > 0) {
         if (osr)
             return Method_Skipped;
     } else if (script->incUseCount() <= js_JitOptions.baselineUsesBeforeCompile) {
@@ -285,7 +285,7 @@ CanEnterBaselineJIT(JSContext *cx, HandleScript script, bool osr)
     if (script->isCallsiteClone()) {
         // Ensure the original function is compiled too, so that bailouts from
         // Ion code have a BaselineScript to resume into.
-        RootedScript original(cx, script->originalFunction()->nonLazyScript());
+        RootedScript original(cx, script->donorFunction()->nonLazyScript());
         JS_ASSERT(original != script);
 
         if (!original->canBaselineCompile())

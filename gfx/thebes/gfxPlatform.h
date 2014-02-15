@@ -22,10 +22,6 @@
 
 #include "mozilla/layers/CompositorTypes.h"
 
-#ifdef XP_OS2
-#undef OS2EMX_PLAIN_CHAR
-#endif
-
 class gfxASurface;
 class gfxImageSurface;
 class gfxFont;
@@ -158,6 +154,8 @@ GetBackendName(mozilla::gfx::BackendType aBackend)
 
 class gfxPlatform {
 public:
+    typedef mozilla::gfx::IntSize IntSize;
+
     /**
      * Return a pointer to the current active platform.
      * This is a singleton; it contains mostly convenience
@@ -176,8 +174,9 @@ public:
      * Create an offscreen surface of the given dimensions
      * and image format.
      */
-    virtual already_AddRefed<gfxASurface> CreateOffscreenSurface(const gfxIntSize& size,
-                                                                 gfxContentType contentType) = 0;
+    virtual already_AddRefed<gfxASurface>
+      CreateOffscreenSurface(const IntSize& size,
+                             gfxContentType contentType) = 0;
 
     /**
      * Create an offscreen surface of the given dimensions and image format which
@@ -514,6 +513,7 @@ public:
     static bool GetPrefLayersDump();
     static bool GetPrefLayersScrollGraph();
     static bool GetPrefLayersEnableTiles();
+    static bool GetPrefLayersDrawFPS();
 
     static bool OffMainThreadCompositionRequired();
 

@@ -25,9 +25,6 @@
 #include <windows.h>
 #undef CreateFile
 #undef CREATE_NEW
-#elif defined(XP_OS2)
-#define INCL_DOSERRORS
-#include <os2.h>
 #else
 // XXX add necessary include file for ftruncate (or equivalent)
 #endif
@@ -1611,6 +1608,19 @@ CacheFileIOManager::EnumerateEntryFiles(EEnumerateMode aMode,
   return NS_OK;
 }
 
+// static
+void CacheFileIOManager::GetCacheDirectory(nsIFile** result)
+{
+  *result = nullptr;
+
+  nsRefPtr<CacheFileIOManager> ioMan = gInstance;
+  if (!ioMan)
+    return;
+
+  nsCOMPtr<nsIFile> file = ioMan->mCacheDirectory;
+  file.forget(result);
+}
+
 static nsresult
 TruncFile(PRFileDesc *aFD, uint32_t aEOF)
 {
@@ -1625,11 +1635,6 @@ TruncFile(PRFileDesc *aFD, uint32_t aEOF)
     return NS_ERROR_FAILURE;
   if (!SetEndOfFile((HANDLE) PR_FileDesc2NativeHandle(aFD))) {
     NS_ERROR("SetEndOfFile failed");
-    return NS_ERROR_FAILURE;
-  }
-#elif defined(XP_OS2)
-  if (DosSetFileSize((HFILE) PR_FileDesc2NativeHandle(aFD), aEOF) != NO_ERROR) {
-    NS_ERROR("DosSetFileSize failed");
     return NS_ERROR_FAILURE;
   }
 #else

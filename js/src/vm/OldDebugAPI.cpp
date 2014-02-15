@@ -919,14 +919,21 @@ js_CallContextDebugHandler(JSContext *cx)
     }
 }
 
+/*
+ * A contructor that crates a FrameDescription from a ScriptFrameIter, to avoid
+ * constructing a FrameDescription on the stack just to append it to a vector.
+ * FrameDescription contains Heap<T> fields that should not live on the stack.
+ */
+JS::FrameDescription::FrameDescription(const ScriptFrameIter& iter)
+  : script_(iter.script()), fun_(iter.maybeCallee()), pc_(iter.pc()), linenoComputed(false) {}
+
 JS_PUBLIC_API(JS::StackDescription *)
 JS::DescribeStack(JSContext *cx, unsigned maxFrames)
 {
     Vector<FrameDescription> frames(cx);
 
     for (NonBuiltinScriptFrameIter i(cx); !i.done(); ++i) {
-        FrameDescription desc(i.script(), i.maybeCallee(), i.pc());
-        if (!frames.append(desc))
+        if (!frames.append(i))
             return nullptr;
         if (frames.length() == maxFrames)
             break;
@@ -1301,7 +1308,7 @@ JSAbstractFramePtr::evaluateUCInStackFrame(JSContext *cx,
     RootedValue thisv(cx, frame.thisValue());
 
     js::AutoCompartment ac(cx, env);
-    return EvaluateInEnv(cx, env, thisv, frame, StableCharPtr(chars, length), length,
+    return EvaluateInEnv(cx, env, thisv, frame, ConstTwoByteChars(chars, length), length,
                          filename, lineno, rval);
 }
 

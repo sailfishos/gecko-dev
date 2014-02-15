@@ -321,6 +321,25 @@ class TestRecursiveMakeBackend(BackendTester):
             'VISIBILITY_FLAGS': [
                 'VISIBILITY_FLAGS :=',
             ],
+            'DELAYLOAD_LDFLAGS': [
+                'DELAYLOAD_LDFLAGS += -DELAYLOAD:foo.dll',
+                'DELAYLOAD_LDFLAGS += -DELAYLOAD:bar.dll',
+            ],
+            'USE_DELAYIMP': [
+                'USE_DELAYIMP := 1',
+            ],
+            'RCFILE': [
+                'RCFILE := foo.rc',
+            ],
+            'RESFILE': [
+                'RESFILE := bar.res',
+            ],
+            'DEFFILE': [
+                'DEFFILE := baz.def',
+            ],
+            'USE_STATIC_LIBS': [
+                'USE_STATIC_LIBS := 1',
+            ],
         }
 
         for var, val in expected.items():
@@ -339,6 +358,22 @@ class TestRecursiveMakeBackend(BackendTester):
         self.assertIn('foo.h', m)
         self.assertIn('mozilla/mozilla1.h', m)
         self.assertIn('mozilla/dom/dom2.h', m)
+
+    def test_resources(self):
+        """Ensure RESOURCE_FILES is handled properly."""
+        env = self._consume('resources', RecursiveMakeBackend)
+
+        # RESOURCE_FILES should appear in the dist_bin install manifest.
+        m = InstallManifest(path=os.path.join(env.topobjdir,
+            '_build_manifests', 'install', 'dist_bin'))
+        self.assertEqual(len(m), 10)
+        self.assertIn('res/foo.res', m)
+        self.assertIn('res/fonts/font1.ttf', m)
+        self.assertIn('res/fonts/desktop/desktop2.ttf', m)
+
+        self.assertIn('res/bar.res', m)
+        self.assertIn('res/tests/test.manifest', m)
+        self.assertIn('res/tests/extra.manifest', m)
 
     def test_test_manifests_files_written(self):
         """Ensure test manifests get turned into files."""

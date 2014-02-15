@@ -48,6 +48,7 @@ let Elements = {};
   ["contentViewport",    "content-viewport"],
   ["progress",           "progress-control"],
   ["progressContainer",  "progress-container"],
+  ["feedbackLabel",  "feedback-label"],
 ].forEach(function (aElementGlobal) {
   let [name, id] = aElementGlobal;
   XPCOMUtils.defineLazyGetter(Elements, name, function() {
@@ -105,6 +106,8 @@ var BrowserUI = {
 
     window.addEventListener("MozPrecisePointer", this, true);
     window.addEventListener("MozImprecisePointer", this, true);
+
+    window.addEventListener("AppCommand", this, true);
 
     Services.prefs.addObserver("browser.cache.disk_cache_ssl", this, false);
 
@@ -781,6 +784,9 @@ var BrowserUI = {
       case "MozImprecisePointer":
         this._onImpreciseInput();
         break;
+      case "AppCommand":
+        this.handleAppCommandEvent(aEvent);
+        break;
     }
   },
 
@@ -1140,11 +1146,52 @@ var BrowserUI = {
     }
   },
 
+  handleAppCommandEvent: function (aEvent) {
+    switch (aEvent.command) {
+      case "Back":
+        this.doCommand("cmd_back");
+        break;
+      case "Forward":
+        this.doCommand("cmd_forward");
+        break;
+      case "Reload":
+        this.doCommand("cmd_reload");
+        break;
+      case "Stop":
+        this.doCommand("cmd_stop");
+        break;
+      case "Home":
+        this.doCommand("cmd_home");
+        break;
+      case "New":
+        this.doCommand("cmd_newTab");
+        break;
+      case "Close":
+        this.doCommand("cmd_closeTab");
+        break;
+      case "Find":
+        FindHelperUI.show();
+        break;
+      case "Open":
+        this.doCommand("cmd_openFile");
+        break;
+      case "Save":
+        this.doCommand("cmd_savePage");
+        break;
+      case "Search":
+        this.doCommand("cmd_openLocation");
+        break;
+      default:
+        return;
+    }
+    aEvent.stopPropagation();
+    aEvent.preventDefault();
+  },
+
   confirmSanitizeDialog: function () {
     let bundle = Services.strings.createBundle("chrome://browser/locale/browser.properties");
     let title = bundle.GetStringFromName("clearPrivateData.title2");
-    let options = bundle.GetStringFromName("optionsCharm");
-    let message = bundle.GetStringFromName("clearPrivateData.message2").replace("#1", options);
+    let message = bundle.GetStringFromName("clearPrivateData.message3");
     let clearbutton = bundle.GetStringFromName("clearPrivateData.clearButton");
 
     let prefsClearButton = document.getElementById("prefs-clear-data");

@@ -505,6 +505,10 @@ menuitem.bookmark-item {
   margin-top: -3px;
 }
 
+#nav-bar .toolbarbutton-1 > menupopup.cui-widget-panel {
+  margin-top: -8px;
+}
+
 #nav-bar .toolbarbutton-1 > .toolbarbutton-menubutton-button {
   -moz-padding-end: 0;
 }
@@ -535,6 +539,16 @@ menuitem.bookmark-item {
 #nav-bar .toolbarbutton-1:not(:-moz-any(@primaryToolbarButtons@)) > .toolbarbutton-badge-container,
 #nav-bar .toolbarbutton-1:not(:-moz-any(@primaryToolbarButtons@)) > .toolbarbutton-menubutton-button > .toolbarbutton-icon {
   padding: 3px 7px;
+}
+
+/* Help SDK icons fit: */
+toolbarbutton[sdk-button="true"][cui-areatype="toolbar"] > .toolbarbutton-icon {
+  width: 16px;
+}
+
+#nav-bar toolbarbutton[sdk-button="true"][cui-areatype="toolbar"] > .toolbarbutton-icon {
+  /* XXXgijs box models strike again: this is 16px + 2 * 7px padding + 2 * 1px border (from the rules above) */
+  width: 32px;
 }
 
 #nav-bar .toolbarbutton-1[type=menu]:not(#back-button):not(#forward-button):not(#feed-button):not(#social-provider-button):not(#PanelUI-menu-button) > .toolbarbutton-icon,
@@ -1575,10 +1589,6 @@ toolbarbutton[type="socialmark"] > .toolbarbutton-icon {
 
 .tab-close-button:not(:hover):not([selected="true"]):-moz-lwtheme-brighttext {
   -moz-image-region: rect(0, 64px, 16px, 48px) !important;
-}
-
-#main-window[tabsintitlebar]:not([inFullscreen]) .tabbrowser-tab:not([selected]):not(:-moz-lwtheme) {
-  color: CaptionText;
 }
 
 /* tabbrowser-tab focus ring */

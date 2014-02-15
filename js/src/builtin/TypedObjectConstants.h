@@ -13,29 +13,31 @@
 // Slots for type objects
 //
 // Some slots apply to all type objects and some are specific to
-// particular kinds of type objects. Because all type objects, at
-// least for now, have a distinct class, we can assign them distinct
-// numbers of slots depending on their kind.
+// particular kinds of type objects. For simplicity we use the same
+// number of slots no matter what kind of type descriptor we are
+// working with, even though this is mildly wasteful.
 
 // Slots on all type objects
-#define JS_TYPEOBJ_SLOT_TYPE_REPR          0  // Associated Type Representation
+#define JS_DESCR_SLOT_TYPE_REPR          0  // Associated Type Representation
+#define JS_DESCR_SLOT_SIZE               1  // Size in bytes, if sized
+#define JS_DESCR_SLOT_ALIGNMENT          2  // Alignment in bytes, if sized
 
-// Slots on scalars
-#define JS_TYPEOBJ_SCALAR_SLOTS            1  // Maximum number
+// Slots on scalars, references, and x4s
+#define JS_DESCR_SLOT_TYPE               3  // Type code
 
-// Slots on references
-#define JS_TYPEOBJ_REFERENCE_SLOTS         1  // Maximum number
+// Slots on all array descriptors
+#define JS_DESCR_SLOT_ARRAY_ELEM_TYPE    3
 
-// Slots on x4s
-#define JS_TYPEOBJ_X4_SLOTS                1  // Maximum number
+// Slots on sized array descriptors
+#define JS_DESCR_SLOT_SIZED_ARRAY_LENGTH 4
 
-// Slots on array type objects
-#define JS_TYPEOBJ_SLOT_ARRAY_ELEM_TYPE    1
-#define JS_TYPEOBJ_ARRAY_SLOTS             3  // Maximum number
+// Slots on struct type objects
+#define JS_DESCR_SLOT_STRUCT_FIELD_NAMES 3
+#define JS_DESCR_SLOT_STRUCT_FIELD_TYPES 4
+#define JS_DESCR_SLOT_STRUCT_FIELD_OFFSETS 5
 
-// Slots on structs
-#define JS_TYPEOBJ_SLOT_STRUCT_FIELD_TYPES 1
-#define JS_TYPEOBJ_STRUCT_SLOTS            2  // Maximum number
+// Maximum number of slots for any descriptor
+#define JS_DESCR_SLOTS                   6
 
 ///////////////////////////////////////////////////////////////////////////
 // Slots for type representation objects
@@ -103,10 +105,10 @@
 ///////////////////////////////////////////////////////////////////////////
 // Slots for typed objects (actually, any TypedContents objects)
 
-#define JS_DATUM_SLOT_TYPE_OBJ 0  // Type object for a given typed object
-#define JS_DATUM_SLOT_OWNER    1  // Owner of data (if null, this is owner)
-#define JS_DATUM_SLOT_LENGTH   2  // Length of array (see (*) below)
-#define JS_DATUM_SLOTS         3  // Number of slots for typed objs
+#define JS_DATUM_SLOT_TYPE_DESCR 0  // Type descr for a given typed object
+#define JS_DATUM_SLOT_OWNER      1  // Owner of data (if null, this is owner)
+#define JS_DATUM_SLOT_LENGTH     2  // Length of array (see (*) below)
+#define JS_DATUM_SLOTS           3  // Number of slots for typed objs
 
 // (*) The JS_DATUM_SLOT_LENGTH slot stores the length for datums of
 // sized and unsized array type. The slot contains 0 for non-arrays.

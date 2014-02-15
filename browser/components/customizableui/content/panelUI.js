@@ -295,7 +295,7 @@ const PanelUI = {
       tempPanel.setAttribute("type", "arrow");
       tempPanel.setAttribute("id", "customizationui-widget-panel");
       tempPanel.setAttribute("class", "cui-widget-panel");
-      tempPanel.setAttribute("level", "top");
+      tempPanel.setAttribute("context", "");
       document.getElementById(CustomizableUI.AREA_NAVBAR).appendChild(tempPanel);
       // If the view has a footer, set a convenience class on the panel.
       tempPanel.classList.toggle("cui-widget-panelWithFooter",
@@ -303,6 +303,7 @@ const PanelUI = {
 
       let multiView = document.createElement("panelmultiview");
       tempPanel.appendChild(multiView);
+      multiView.setAttribute("mainViewIsSubView", "true");
       multiView.setMainView(viewNode);
       viewNode.classList.add("cui-widget-panelview");
       CustomizableUI.addPanelCloseListeners(tempPanel);
@@ -326,22 +327,6 @@ const PanelUI = {
 
       tempPanel.openPopup(iconAnchor || aAnchor, "bottomcenter topright");
     }
-  },
-
-  /**
-   * This function can be used as a command event listener for subviews
-   * so that the panel knows if and when to close itself.
-   */
-  onCommandHandler: function(aEvent) {
-    let closemenu = aEvent.originalTarget.getAttribute("closemenu");
-    if (closemenu == "none") {
-      return;
-    }
-    if (closemenu == "single") {
-      this.showMainView();
-      return;
-    }
-    this.hide();
   },
 
   /**

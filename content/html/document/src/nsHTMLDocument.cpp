@@ -436,6 +436,66 @@ nsHTMLDocument::TryParentCharset(nsIDocShell*  aDocShell,
 }
 
 void
+nsHTMLDocument::TryTLD(int32_t& aCharsetSource, nsACString& aCharset)
+{
+  if (aCharsetSource >= kCharsetFromTopLevelDomain) {
+    return;
+  }
+  if (!FallbackEncoding::sGuessFallbackFromTopLevelDomain) {
+    return;
+  }
+  if (!mDocumentURI) {
+    return;
+  }
+  nsAutoCString host;
+  mDocumentURI->GetAsciiHost(host);
+  if (host.IsEmpty()) {
+    return;
+  }
+  // First let's see if the host is DNS-absolute and ends with a dot and
+  // get rid of that one.
+  if (host.Last() == '.') {
+    host.SetLength(host.Length() - 1);
+    if (host.IsEmpty()) {
+      return;
+    }
+  }
+  // If we still have a dot, the host is weird, so let's continue only
+  // if we have something other than a dot now.
+  if (host.Last() == '.') {
+    return;
+  }
+  int32_t index = host.RFindChar('.');
+  if (index == kNotFound) {
+    // We have an intranet host, Gecko-internal URL or an IPv6 address.
+    return;
+  }
+  // Since the string didn't end with a dot and we found a dot,
+  // there is at least one character between the dot and the end of
+  // the string, so taking the substring below is safe.
+  nsAutoCString tld;
+  ToLowerCase(Substring(host, index + 1, host.Length() - (index + 1)), tld);
+  // Reject generic TLDs and country TLDs that need more research
+  if (!FallbackEncoding::IsParticipatingTopLevelDomain(tld)) {
+    return;
+  }
+  // Check if we have an IPv4 address
+  bool seenNonDigit = false;
+  for (size_t i = 0; i < tld.Length(); ++i) {
+    char c = tld.CharAt(i);
+    if (c < '0' || c > '9') {
+      seenNonDigit = true;
+      break;
+    }
+  }
+  if (!seenNonDigit) {
+    return;
+  }
+  aCharsetSource = kCharsetFromTopLevelDomain;
+  FallbackEncoding::FromTopLevelDomain(tld, aCharset);
+}
+
+void
 nsHTMLDocument::TryFallback(int32_t& aCharsetSource, nsACString& aCharset)
 {
   if (kCharsetFromFallback <= aCharsetSource)
@@ -661,6 +721,7 @@ nsHTMLDocument::StartDocumentLoad(const char* aCommand,
       TryCacheCharset(cachingChan, charsetSource, charset);
     }
 
+    TryTLD(charsetSource, charset);
     TryFallback(charsetSource, charset);
 
     if (wyciwygChannel) {
@@ -1578,7 +1639,7 @@ nsHTMLDocument::Open(JSContext* cx,
   nsCOMPtr<nsIContentViewer> cv;
   shell->GetContentViewer(getter_AddRefs(cv));
   if (cv) {
-    cv->LoadStart(static_cast<nsIHTMLDocument *>(this));
+    cv->LoadStart(this);
   }
 
   // Add a wyciwyg channel request into the document load group
@@ -2117,14 +2178,14 @@ nsHTMLDocument::GetSelection(ErrorResult& rv)
 }
 
 NS_IMETHODIMP
-nsHTMLDocument::CaptureEvents(int32_t aEventFlags)
+nsHTMLDocument::CaptureEvents()
 {
   WarnOnceAbout(nsIDocument::eUseOfCaptureEvents);
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsHTMLDocument::ReleaseEvents(int32_t aEventFlags)
+nsHTMLDocument::ReleaseEvents()
 {
   WarnOnceAbout(nsIDocument::eUseOfReleaseEvents);
   return NS_OK;
@@ -2494,95 +2555,19 @@ nsHTMLDocument::DeferredContentEditableCountChange(nsIContent *aElement)
   }
 }
 
-static bool
-DocAllResultMatch(nsIContent* aContent, int32_t aNamespaceID, nsIAtom* aAtom,
-                  void* aData)
+HTMLAllCollection*
+nsHTMLDocument::All()
 {
-  if (aContent->GetID() == aAtom) {
-    return true;
+  if (!mAll) {
+    mAll = new HTMLAllCollection(this);
   }
-
-  nsGenericHTMLElement* elm = nsGenericHTMLElement::FromContent(aContent);
-  if (!elm) {
-    return false;
-  }
-
-  nsIAtom* tag = elm->Tag();
-  if (tag != nsGkAtoms::a &&
-      tag != nsGkAtoms::applet &&
-      tag != nsGkAtoms::button &&
-      tag != nsGkAtoms::embed &&
-      tag != nsGkAtoms::form &&
-      tag != nsGkAtoms::iframe &&
-      tag != nsGkAtoms::img &&
-      tag != nsGkAtoms::input &&
-      tag != nsGkAtoms::map &&
-      tag != nsGkAtoms::meta &&
-      tag != nsGkAtoms::object &&
-      tag != nsGkAtoms::select &&
-      tag != nsGkAtoms::textarea) {
-    return false;
-  }
-
-  const nsAttrValue* val = elm->GetParsedAttr(nsGkAtoms::name);
-  return val && val->Type() == nsAttrValue::eAtom &&
-         val->GetAtomValue() == aAtom;
-}
-
-
-nsISupports*
-nsHTMLDocument::GetDocumentAllResult(const nsAString& aID,
-                                     nsWrapperCache** aCache,
-                                     nsresult *aResult)
-{
-  *aCache = nullptr;
-  *aResult = NS_OK;
-
-  nsIdentifierMapEntry *entry = mIdentifierMap.PutEntry(aID);
-  if (!entry) {
-    *aResult = NS_ERROR_OUT_OF_MEMORY;
-
-    return nullptr;
-  }
-
-  Element* root = GetRootElement();
-  if (!root) {
-    return nullptr;
-  }
-
-  nsRefPtr<nsContentList> docAllList = entry->GetDocAllList();
-  if (!docAllList) {
-    nsCOMPtr<nsIAtom> id = do_GetAtom(aID);
-
-    docAllList = new nsContentList(root, DocAllResultMatch,
-                                   nullptr, nullptr, true, id);
-    entry->SetDocAllList(docAllList);
-  }
-
-  // Check if there are more than 1 entries. Do this by getting the second one
-  // rather than the length since getting the length always requires walking
-  // the entire document.
-
-  nsIContent* cont = docAllList->Item(1, true);
-  if (cont) {
-    *aCache = docAllList;
-    return static_cast<nsINodeList*>(docAllList);
-  }
-
-  // There's only 0 or 1 items. Return the first one or null.
-  *aCache = cont = docAllList->Item(0, true);
-
-  return cont;
+  return mAll;
 }
 
 JSObject*
 nsHTMLDocument::GetAll(JSContext* aCx, ErrorResult& aRv)
 {
-  if (!mAll) {
-    mAll = new HTMLAllCollection(this);
-  }
-
-  return mAll->GetObject(aCx, aRv);
+  return All()->GetObject(aCx, aRv);
 }
 
 static void

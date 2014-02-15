@@ -262,6 +262,7 @@ namespace js {
         js::proxy_HasInstance,   /* hasInstance */                                      \
         constructOp,             /* construct   */                                      \
         js::proxy_Trace,         /* trace       */                                      \
+        JS_NULL_CLASS_SPEC,                                                             \
         ext,                                                                            \
         {                                                                               \
             js::proxy_LookupGeneric,                                                    \
@@ -1989,13 +1990,6 @@ class JS_FRIEND_API(AutoCTypesActivityCallback) {
         }
     }
 };
-
-#ifdef JS_DEBUG
-extern JS_FRIEND_API(void)
-assertEnteredPolicy(JSContext *cx, JSObject *obj, jsid id);
-#else
-inline void assertEnteredPolicy(JSContext *cx, JSObject *obj, jsid id) {};
-#endif
 
 typedef bool
 (* ObjectMetadataCallback)(JSContext *cx, JSObject **pmetadata);

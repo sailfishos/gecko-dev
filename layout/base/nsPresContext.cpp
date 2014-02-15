@@ -1550,7 +1550,7 @@ nsPresContext::SetContainer(nsIDocShell* aDocShell)
   } else {
     mContainer = WeakPtr<nsDocShell>();
   }
-  InvalidateIsChromeCache();
+  UpdateIsChrome();
   if (mContainer) {
     GetDocumentColorPreferences();
   }
@@ -1572,6 +1572,13 @@ nsIDocShell*
 nsPresContext::GetDocShell() const
 {
   return mContainer;
+}
+
+/* virtual */ void
+nsPresContext::Detach()
+{
+  SetContainer(nullptr);
+  SetLinkHandler(nullptr);
 }
 
 bool
@@ -2036,19 +2043,11 @@ nsPresContext::CountReflows(const char * aName, nsIFrame * aFrame)
 }
 #endif
 
-bool
-nsPresContext::IsChromeSlow() const
+void
+nsPresContext::UpdateIsChrome()
 {
   mIsChrome = mContainer &&
               nsIDocShellTreeItem::typeChrome == mContainer->ItemType();
-  mIsChromeIsCached = true;
-  return mIsChrome;
-}
-
-void
-nsPresContext::InvalidateIsChromeCacheExternal()
-{
-  InvalidateIsChromeCacheInternal();
 }
 
 /* virtual */ bool
@@ -2355,6 +2354,8 @@ nsPresContext::NotifyInvalidation(const nsIntRect& aRect, uint32_t aFlags)
 void
 nsPresContext::NotifyInvalidation(const nsRect& aRect, uint32_t aFlags)
 {
+  MOZ_ASSERT(GetContainerWeak(), "Invalidation in detached pres context");
+
   // If there is no paint event listener, then we don't need to fire
   // the asynchronous event. We don't even need to record invalidation.
   // MayHavePaintEventListener is pretty cheap and we could make it
@@ -2454,11 +2455,17 @@ public:
                            nsInvalidateRequestList* aList)
     : mPresContext(aPresContext)
   {
+    MOZ_ASSERT(mPresContext->GetContainerWeak(),
+               "DOMPaintEvent requested for a detached pres context");
     mList.TakeFrom(aList);
   }
   NS_IMETHOD Run()
   {
-    mPresContext->FireDOMPaintEvent(&mList);
+    // The pres context might have been detached during the delay -
+    // that's fine, just don't fire the event.
+    if (mPresContext->GetContainerWeak()) {
+      mPresContext->FireDOMPaintEvent(&mList);
+    }
     return NS_OK;
   }
 
@@ -2793,6 +2800,14 @@ nsRootPresContext::~nsRootPresContext()
                "All plugins should have been unregistered");
   CancelDidPaintTimer();
   CancelApplyPluginGeometryTimer();
+}
+
+/* virtual */ void
+nsRootPresContext::Detach()
+{
+  CancelDidPaintTimer();
+  // XXXmats maybe also CancelApplyPluginGeometryTimer(); ?
+  nsPresContext::Detach();
 }
 
 void

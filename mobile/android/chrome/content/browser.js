@@ -56,6 +56,9 @@ XPCOMUtils.defineLazyModuleGetter(this, "Prompt",
 XPCOMUtils.defineLazyModuleGetter(this, "HelperApps",
                                   "resource://gre/modules/HelperApps.jsm");
 
+XPCOMUtils.defineLazyModuleGetter(this, "SSLExceptions",
+                                  "resource://gre/modules/SSLExceptions.jsm");
+
 XPCOMUtils.defineLazyModuleGetter(this, "FormHistory",
                                   "resource://gre/modules/FormHistory.jsm");
 
@@ -240,7 +243,9 @@ function resolveGeckoURI(aURI) {
 }
 
 function shouldShowProgress(url) {
-  return (url != "about:home" && !url.startsWith("about:reader"));
+  return (url != "about:home" &&
+          url != "about:privatebrowsing" &&
+          !url.startsWith("about:reader"));
 }
 
 /**
@@ -423,8 +428,6 @@ var BrowserApp = {
     event.initEvent("UIReady", true, false);
     window.dispatchEvent(event);
 
-    Services.obs.addObserver(this, "browser-delayed-startup-finished", false);
-
     if (this._startupStatus)
       this.onAppUpdated();
 
@@ -468,9 +471,9 @@ var BrowserApp = {
 
   _initRuntime: function(status, url, callback) {
     let sandbox = {};
-    Services.scriptloader.loadSubScript("chrome://browser/content/WebAppRT.js", sandbox);
-    window.WebAppRT = sandbox.WebAppRT;
-    WebAppRT.init(status, url, callback);
+    Services.scriptloader.loadSubScript("chrome://browser/content/WebappRT.js", sandbox);
+    window.WebappRT = sandbox.WebappRT;
+    WebappRT.init(status, url, callback);
   },
 
   initContextMenu: function ba_initContextMenu() {
@@ -696,6 +699,10 @@ var BrowserApp = {
   },
 
   onAppUpdated: function() {
+    // initialize the form history and passwords databases on upgrades
+    Services.obs.notifyObservers(null, "FormHistory:Init", "");
+    Services.obs.notifyObservers(null, "Passwords:Init", "");
+
     // Migrate user-set "plugins.click_to_play" pref. See bug 884694.
     // Because the default value is true, a user-set pref means that the pref was set to false.
     if (Services.prefs.prefHasUserValue("plugins.click_to_play")) {
@@ -1612,22 +1619,10 @@ var BrowserApp = {
         Services.prefs.setCharPref("general.useragent.locale", aData);
         break;
 
-      case "browser-delayed-startup-finished":
-        this._delayedStartup();
-        break;
-
       default:
         dump('BrowserApp.observe: unexpected topic "' + aTopic + '"\n');
         break;
 
-    }
-  },
-
-  _delayedStartup: function() {
-    // initialize the form history and passwords databases on upgrades
-    if (this._startupStatus) {
-      Services.obs.notifyObservers(null, "FormHistory:Init", "");
-      Services.obs.notifyObservers(null, "Passwords:Init", "");
     }
   },
 
@@ -3806,8 +3801,9 @@ Tab.prototype = {
         }
 
         // Show page actions for helper apps.
-        if (BrowserApp.selectedTab == this)
-          ExternalApps.updatePageAction(this.browser.currentURI);
+        let uri = this.browser.currentURI;
+        if (BrowserApp.selectedTab == this && ExternalApps.shouldCheckUri(uri))
+          ExternalApps.updatePageAction(uri);
 
         if (!Reader.isEnabledForParseOnLoad)
           return;
@@ -3816,7 +3812,7 @@ Tab.prototype = {
         Reader.parseDocumentFromTab(this.id, function (article) {
           // Do nothing if there's no article or the page in this tab has
           // changed
-          let tabURL = this.browser.currentURI.specIgnoringRef;
+          let tabURL = uri.specIgnoringRef;
           if (article == null || (article.url != tabURL)) {
             // Don't clear the article for about:reader pages since we want to
             // use the article from the previous page
@@ -7132,7 +7128,7 @@ var WebappsUI = {
         break;
       case "webapps-uninstall":
         sendMessageToJava({
-          type: "WebApps:Uninstall",
+          type: "Webapps:Uninstall",
           origin: data.origin
         });
         break;
@@ -7148,7 +7144,7 @@ var WebappsUI = {
       // Get a profile for the app to be installed in. We'll download everything before creating the icons.
       let origin = aData.app.origin;
       let profilePath = sendMessageToJava({
-        type: "WebApps:PreInstall",
+        type: "Webapps:Preinstall",
         name: manifest.name,
         manifestURL: aData.app.manifestURL,
         origin: origin
@@ -7180,7 +7176,7 @@ var WebappsUI = {
 
                   // aData.app.origin may now point to the app: url that hosts this app
                   sendMessageToJava({
-                    type: "WebApps:PostInstall",
+                    type: "Webapps:Postinstall",
                     name: localeManifest.name,
                     manifestURL: aData.app.manifestURL,
                     originalOrigin: origin,
@@ -7248,7 +7244,7 @@ var WebappsUI = {
 
   openURL: function openURL(aManifestURL, aOrigin) {
     sendMessageToJava({
-      type: "WebApps:Open",
+      type: "Webapps:Open",
       manifestURL: aManifestURL,
       origin: aOrigin
     });
@@ -8018,6 +8014,14 @@ var ExternalApps = {
   openExternal: function(aElement) {
     let uri = ExternalApps._getMediaLink(aElement);
     HelperApps.launchUri(uri);
+  },
+
+  shouldCheckUri: function(uri) {
+    if (!(uri.schemeIs("http") || uri.schemeIs("https") || uri.schemeIs("file"))) {
+      return false;
+    }
+
+    return true;
   },
 
   updatePageAction: function updatePageAction(uri) {

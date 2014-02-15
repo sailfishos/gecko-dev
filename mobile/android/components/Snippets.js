@@ -136,9 +136,8 @@ function cacheSnippets(response) {
 function loadSnippetsFromCache() {
   let promise = OS.File.read(gSnippetsPath);
   promise.then(array => updateBanner(gDecoder.decode(array)), e => {
-    // If snippets.json doesn't exist, update data from the server.
     if (e instanceof OS.File.Error && e.becauseNoSuchFile) {
-      update();
+      Cu.reportError("Couldn't show snippets because cache does not exist yet.");
     } else {
       Cu.reportError("Error loading snippets from cache: " + e);
     }
@@ -178,7 +177,8 @@ function updateBanner(response) {
       text: message.text,
       icon: message.icon,
       onclick: function() {
-        gChromeWin.BrowserApp.addTab(message.url);
+        let parentId = gChromeWin.BrowserApp.selectedTab.id;
+        gChromeWin.BrowserApp.addTab(message.url, { parentId: parentId });
       },
       onshown: function() {
         // 10% of the time, record the snippet id and a timestamp
@@ -322,10 +322,6 @@ Snippets.prototype = {
   observe: function(subject, topic, data) {
     switch(topic) {
       case "profile-after-change":
-        Services.obs.addObserver(this, "browser-delayed-startup-finished", false);
-        break;
-      case "browser-delayed-startup-finished":
-        Services.obs.removeObserver(this, "browser-delayed-startup-finished", false);
         if (Services.prefs.getBoolPref("browser.snippets.syncPromo.enabled")) {
           loadSyncPromoBanner();
         }

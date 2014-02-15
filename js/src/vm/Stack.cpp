@@ -182,17 +182,14 @@ AssertDynamicScopeMatchesStaticScope(JSContext *cx, JSScript *script, JSObject *
     RootedObject enclosingScope(cx, script->enclosingStaticScope());
     for (StaticScopeIter<NoGC> i(enclosingScope); !i.done(); i++) {
         if (i.hasDynamicScopeObject()) {
-            /*
-             * 'with' does not participate in the static scope of the script,
-             * but it does in the dynamic scope, so skip them here.
-             */
-            while (scope->is<WithObject>())
-                scope = &scope->as<WithObject>().enclosingScope();
-
             switch (i.type()) {
               case StaticScopeIter<NoGC>::BLOCK:
-                JS_ASSERT(i.block() == scope->as<ClonedBlockObject>().staticBlock());
+                JS_ASSERT(&i.block() == scope->as<ClonedBlockObject>().staticScope());
                 scope = &scope->as<ClonedBlockObject>().enclosingScope();
+                break;
+              case StaticScopeIter<NoGC>::WITH:
+                JS_ASSERT(&i.staticWith() == scope->as<DynamicWithObject>().staticScope());
+                scope = &scope->as<DynamicWithObject>().enclosingScope();
                 break;
               case StaticScopeIter<NoGC>::FUNCTION:
                 JS_ASSERT(scope->as<CallObject>().callee().nonLazyScript() == i.funScript());
@@ -350,7 +347,7 @@ StackFrame::popWith(JSContext *cx)
     if (MOZ_UNLIKELY(cx->compartment()->debugMode()))
         DebugScopes::onPopWith(this);
 
-    JS_ASSERT(scopeChain()->is<WithObject>());
+    JS_ASSERT(scopeChain()->is<DynamicWithObject>());
     popOffScopeChain();
 }
 
@@ -551,6 +548,12 @@ ScriptFrameIter::settleOnActivation()
             nextJitFrame();
             data_.state_ = JIT;
             return;
+        }
+
+        // ForkJoin activations don't contain iterable frames, so skip them.
+        if (activation->isForkJoin()) {
+            ++data_.activations_;
+            continue;
         }
 #endif
 
@@ -1176,10 +1179,12 @@ ScriptFrameIter::numFrameSlots() const
     switch (data_.state_) {
       case DONE:
         break;
-     case JIT: {
+      case JIT: {
 #ifdef JS_ION
-        if (data_.ionFrames_.isOptimizedJS())
-            return ionInlineFrames_.snapshotIterator().slots() - ionInlineFrames_.script()->nfixed();
+        if (data_.ionFrames_.isOptimizedJS()) {
+            return ionInlineFrames_.snapshotIterator().allocations() -
+                ionInlineFrames_.script()->nfixed();
+        }
         jit::BaselineFrame *frame = data_.ionFrames_.baselineFrame();
         return frame->numValueSlots() - data_.ionFrames_.script()->nfixed();
 #else
@@ -1204,7 +1209,7 @@ ScriptFrameIter::frameSlotValue(size_t index) const
         if (data_.ionFrames_.isOptimizedJS()) {
             jit::SnapshotIterator si(ionInlineFrames_.snapshotIterator());
             index += ionInlineFrames_.script()->nfixed();
-            return si.maybeReadSlotByIndex(index);
+            return si.maybeReadAllocByIndex(index);
         }
 
         index += data_.ionFrames_.script()->nfixed();
@@ -1223,10 +1228,17 @@ ScriptFrameIter::frameSlotValue(size_t index) const
 #endif
 
 #ifdef DEBUG
-/* static */
-bool NonBuiltinScriptFrameIter::includeSelfhostedFrames() {
-    static char* env = getenv("MOZ_SHOW_ALL_JS_FRAMES");
-    return (bool)env;
+bool
+js::SelfHostedFramesVisible()
+{
+    static bool checked = false;
+    static bool visible = false;
+    if (!checked) {
+        checked = true;
+        char *env = getenv("MOZ_SHOW_ALL_JS_FRAMES");
+        visible = !!env;
+    }
+    return visible;
 }
 #endif
 

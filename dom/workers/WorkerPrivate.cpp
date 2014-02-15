@@ -2092,13 +2092,13 @@ typename WorkerPrivateParent<Derived>::cycleCollection
 
 template <class Derived>
 WorkerPrivateParent<Derived>::WorkerPrivateParent(
-                                             JSContext* aCx,
-                                             WorkerPrivate* aParent,
-                                             const nsAString& aScriptURL,
-                                             bool aIsChromeWorker,
-                                             WorkerType aWorkerType,
-                                             const nsAString& aSharedWorkerName,
-                                             LoadInfo& aLoadInfo)
+                                           JSContext* aCx,
+                                           WorkerPrivate* aParent,
+                                           const nsAString& aScriptURL,
+                                           bool aIsChromeWorker,
+                                           WorkerType aWorkerType,
+                                           const nsACString& aSharedWorkerName,
+                                           LoadInfo& aLoadInfo)
 : mMutex("WorkerPrivateParent Mutex"),
   mCondVar(mMutex, "WorkerPrivateParent CondVar"),
   mMemoryReportCondVar(mMutex, "WorkerPrivateParent Memory Report CondVar"),
@@ -2707,9 +2707,15 @@ WorkerPrivateParent<Derived>::PostMessageInternal(
   JS::Rooted<JS::Value> transferable(aCx, JS::UndefinedValue());
   if (aTransferable.WasPassed()) {
     const Sequence<JS::Value>& realTransferable = aTransferable.Value();
+
+    // The input sequence only comes from the generated bindings code, which
+    // ensures it is rooted.
+    JS::HandleValueArray elements =
+      JS::HandleValueArray::fromMarkedLocation(realTransferable.Length(),
+                                               realTransferable.Elements());
+
     JSObject* array =
-      JS_NewArrayObject(aCx, realTransferable.Length(),
-                        const_cast<JS::Value*>(realTransferable.Elements()));
+      JS_NewArrayObject(aCx, elements);
     if (!array) {
       aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
       return;
@@ -3396,6 +3402,11 @@ WorkerPrivateParent<Derived>::SetPrincipal(nsIPrincipal* aPrincipal)
 
   mLoadInfo.mPrincipal = aPrincipal;
   mLoadInfo.mPrincipalIsSystem = nsContentUtils::IsSystemPrincipal(aPrincipal);
+  uint16_t appStatus = aPrincipal->GetAppStatus();
+  mLoadInfo.mIsInPrivilegedApp =
+    (appStatus == nsIPrincipal::APP_STATUS_CERTIFIED ||
+     appStatus == nsIPrincipal::APP_STATUS_PRIVILEGED);
+  mLoadInfo.mIsInCertifiedApp = (appStatus == nsIPrincipal::APP_STATUS_CERTIFIED);
 }
 
 template <class Derived>
@@ -3518,7 +3529,7 @@ WorkerPrivate::WorkerPrivate(JSContext* aCx,
                              WorkerPrivate* aParent,
                              const nsAString& aScriptURL,
                              bool aIsChromeWorker, WorkerType aWorkerType,
-                             const nsAString& aSharedWorkerName,
+                             const nsACString& aSharedWorkerName,
                              LoadInfo& aLoadInfo)
 : WorkerPrivateParent<WorkerPrivate>(aCx, aParent, aScriptURL,
                                      aIsChromeWorker, aWorkerType,
@@ -3558,8 +3569,9 @@ WorkerPrivate::Constructor(const GlobalObject& aGlobal,
                            const nsAString& aScriptURL,
                            ErrorResult& aRv)
 {
-  return WorkerPrivate::Constructor(aGlobal, aScriptURL, false, WorkerTypeDedicated,
-                                    EmptyString(), nullptr, aRv);
+  return WorkerPrivate::Constructor(aGlobal, aScriptURL, false,
+                                    WorkerTypeDedicated, EmptyCString(),
+                                    nullptr, aRv);
 }
 
 // static
@@ -3586,8 +3598,10 @@ ChromeWorkerPrivate::Constructor(const GlobalObject& aGlobal,
                                  const nsAString& aScriptURL,
                                  ErrorResult& aRv)
 {
-  return WorkerPrivate::Constructor(aGlobal, aScriptURL, true, WorkerTypeDedicated,
-                                    EmptyString(), nullptr, aRv).downcast<ChromeWorkerPrivate>();
+  return WorkerPrivate::Constructor(aGlobal, aScriptURL, true,
+                                    WorkerTypeDedicated, EmptyCString(),
+                                    nullptr, aRv)
+                                    .downcast<ChromeWorkerPrivate>();
 }
 
 // static
@@ -3604,7 +3618,7 @@ already_AddRefed<WorkerPrivate>
 WorkerPrivate::Constructor(const GlobalObject& aGlobal,
                            const nsAString& aScriptURL,
                            bool aIsChromeWorker, WorkerType aWorkerType,
-                           const nsAString& aSharedWorkerName,
+                           const nsACString& aSharedWorkerName,
                            LoadInfo* aLoadInfo, ErrorResult& aRv)
 {
   WorkerPrivate* parent = NS_IsMainThread() ?
@@ -4915,9 +4929,14 @@ WorkerPrivate::PostMessageToParentInternal(
   JS::Rooted<JS::Value> transferable(aCx, JS::UndefinedValue());
   if (aTransferable.WasPassed()) {
     const Sequence<JS::Value>& realTransferable = aTransferable.Value();
-    JSObject* array =
-      JS_NewArrayObject(aCx, realTransferable.Length(),
-                        const_cast<jsval*>(realTransferable.Elements()));
+
+    // The input sequence only comes from the generated bindings code, which
+    // ensures it is rooted.
+    JS::HandleValueArray elements =
+      JS::HandleValueArray::fromMarkedLocation(realTransferable.Length(),
+                                               realTransferable.Elements());
+
+    JSObject* array = JS_NewArrayObject(aCx, elements);
     if (!array) {
       aRv = NS_ERROR_OUT_OF_MEMORY;
       return;
@@ -5376,14 +5395,11 @@ WorkerPrivate::RunExpiredTimeouts(JSContext* aCx)
 
     if (!info->mTimeoutCallable.isUndefined()) {
       JS::Rooted<JS::Value> rval(aCx);
-      /*
-       * unsafeGet() is needed below because the argument is a not a const
-       * pointer, even though values are not modified.
-       */
-      if (!JS_CallFunctionValue(aCx, global, info->mTimeoutCallable,
-                                info->mExtraArgVals.Length(),
-                                info->mExtraArgVals.Elements()->unsafeGet(),
-                                rval.address()) &&
+      JS::HandleValueArray args =
+        JS::HandleValueArray::fromMarkedLocation(info->mExtraArgVals.Length(),
+                                                 info->mExtraArgVals.Elements()->address());
+      JS::Rooted<JS::Value> callable(aCx, info->mTimeoutCallable);
+      if (!JS_CallFunctionValue(aCx, global, callable, args, &rval) &&
           !JS_ReportPendingException(aCx)) {
         retval = false;
         break;

@@ -483,10 +483,39 @@ class Descriptor(DescriptorProvider):
         static methods or attributes.
         """
         return (self.interface.isExternal() or self.concrete or
-            self.interface.getExtendedAttribute("PrefControlled") or
             self.interface.hasInterfacePrototypeObject() or
             any((m.isAttr() or m.isMethod()) and m.isStatic() for m
                 in self.interface.members))
+
+    def isExposedConditionally(self):
+        return (self.interface.getExtendedAttribute("Pref") or
+                self.interface.getExtendedAttribute("ChromeOnly") or
+                self.interface.getExtendedAttribute("Func") or
+                self.interface.getExtendedAttribute("AvailableIn"))
+
+    def needsXrayResolveHooks(self):
+        """
+        Generally, any interface with NeedNewResolve needs Xray
+        resolveOwnProperty and enumerateOwnProperties hooks.  But for
+        the special case of plugin-loading elements, we do NOT want
+        those, because we don't want to instantiate plug-ins simply
+        due to chrome touching them and that's all those hooks do on
+        those elements.  So we special-case those here.
+        """
+        return (self.interface.getExtendedAttribute("NeedNewResolve") and
+                self.interface.identifier.name not in ["HTMLObjectElement",
+                                                       "HTMLEmbedElement",
+                                                       "HTMLAppletElement"])
+
+    def needsSpecialGenericOps(self):
+        """
+        Returns true if this descriptor requires generic ops other than
+        GenericBindingMethod/GenericBindingGetter/GenericBindingSetter.
+
+        In practice we need to do this if our this value might be an XPConnect
+        object or if we need to coerce null/undefined to the global.
+        """
+        return self.hasXPConnectImpls or self.interface.isOnGlobalProtoChain()
 
 # Some utility methods
 def getTypesFromDescriptor(descriptor):

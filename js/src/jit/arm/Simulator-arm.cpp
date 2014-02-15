@@ -247,6 +247,8 @@ class SimInstruction {
 
     // Decoding the double immediate in the vmov instruction.
     double doubleImmedVmov() const;
+    // Decoding the float32 immediate in the vmov.f32 instruction.
+    float float32ImmedVmov() const;
 
   private:
     // Join split register codes, depending on single or double precision.
@@ -282,6 +284,24 @@ SimInstruction::doubleImmedVmov() const
 
     uint64_t imm = high16 << 48;
     return mozilla::BitwiseCast<double>(imm);
+}
+
+float
+SimInstruction::float32ImmedVmov() const
+{
+    // Reconstruct a float32 from the immediate encoded in the vmov instruction.
+    //
+    //   instruction: [xxxxxxxx,xxxxabcd,xxxxxxxx,xxxxefgh]
+    //   float32: [aBbbbbbc, defgh000, 00000000, 00000000]
+    //
+    // where B = ~b. Only the high 16 bits are affected.
+    uint32_t imm;
+    imm  = (bits(17, 16) << 23) | (bits(3, 0) << 19); // xxxxxxxc,defgh000.0.0
+    imm |= (0x1f * bit(18)) << 25;                    // xxbbbbbx,xxxxxxxx.0.0
+    imm |= (bit(18) ^ 1) << 30;                       // xBxxxxxx,xxxxxxxx.0.0
+    imm |= bit(19) << 31;                             // axxxxxxx,xxxxxxxx.0.0
+
+    return mozilla::BitwiseCast<float>(imm);
 }
 
 class CachePage
@@ -404,7 +424,7 @@ class AutoLockSimulatorRuntime
 
 bool Simulator::ICacheCheckingEnabled = false;
 
-int Simulator::StopSimAt = -1;
+int64_t Simulator::StopSimAt = -1L;
 
 SimulatorRuntime *
 CreateSimulatorRuntime()
@@ -422,9 +442,11 @@ CreateSimulatorRuntime()
         Simulator::ICacheCheckingEnabled = true;
 
     char *stopAtStr = getenv("ARM_SIM_STOP_AT");
-    int32_t stopAt;
-    if (stopAtStr && sscanf(stopAtStr, "%d", &stopAt) == 1)
+    int64_t stopAt;
+    if (stopAtStr && sscanf(stopAtStr, "%lld", &stopAt) == 1) {
+        fprintf(stderr, "\nStopping simulation at icount %lld\n", stopAt);
         Simulator::StopSimAt = stopAt;
+    }
 
     return srt;
 }
@@ -630,7 +652,8 @@ DisassembleInstruction(uint32_t pc)
     char llvmcmd[1024];
     sprintf(llvmcmd, "bash -c \"echo -n '%p'; echo '%s' | "
             "llvm-mc -disassemble -arch=arm -mcpu=cortex-a9 | "
-            "grep -v pure_instructions\"", reinterpret_cast<void*>(pc), hexbytes);
+            "grep -v pure_instructions | grep -v .text\"",
+            reinterpret_cast<void*>(pc), hexbytes);
     system(llvmcmd);
 }
 
@@ -968,6 +991,8 @@ AllOnOnePage(uintptr_t start, int size)
 static CachePage *
 GetCachePage(SimulatorRuntime::ICacheMap &i_cache, void *page)
 {
+    MOZ_ASSERT(Simulator::ICacheCheckingEnabled);
+
     SimulatorRuntime::ICacheMap::AddPtr p = i_cache.lookupForAdd(page);
     if (p)
         return p->value();
@@ -1062,6 +1087,8 @@ Simulator::setLastDebuggerInput(char *input)
 void
 Simulator::FlushICache(void *start_addr, size_t size)
 {
+    if (!Simulator::ICacheCheckingEnabled)
+        return;
     SimulatorRuntime *srt = Simulator::Current()->srt_;
     AutoLockSimulatorRuntime alsr(srt);
     js::jit::FlushICache(srt->icache(), start_addr, size);
@@ -1087,7 +1114,7 @@ Simulator::Simulator(SimulatorRuntime *srt)
         MOZ_CRASH();
     }
     pc_modified_ = false;
-    icount_ = 0;
+    icount_ = 0L;
     resume_pc_ = 0;
     break_pc_ = nullptr;
     break_instr_ = 0;
@@ -1150,7 +1177,8 @@ class Redirection
         Simulator *sim = Simulator::Current();
         SimulatorRuntime *srt = sim->srt_;
         next_ = srt->redirection();
-        FlushICache(srt->icache(), addressOfSwiInstruction(), SimInstruction::kInstrSize);
+        if (Simulator::ICacheCheckingEnabled)
+            FlushICache(srt->icache(), addressOfSwiInstruction(), SimInstruction::kInstrSize);
         srt->setRedirection(this);
     }
 
@@ -2021,6 +2049,35 @@ typedef double (*Prototype_Double_IntDouble)(int32_t arg0, double arg1);
 typedef double (*Prototype_Double_DoubleDouble)(double arg0, double arg1);
 typedef int32_t (*Prototype_Int_IntDouble)(int32_t arg0, double arg1);
 
+
+// Fill the volatile registers with scratch values.
+//
+// Some of the ABI calls assume that the float registers are not scratched, even
+// though the ABI defines them as volatile - a performance optimization.  These are
+// all calls passing operands in integer registers, so for now the simulator does not
+// scratch any float registers for these calls.  Should try to narrow it further in
+// future.
+//
+void
+Simulator::scratchVolatileRegisters(bool scratchFloat)
+{
+    int32_t scratch_value = 0xa5a5a5a5 ^ uint32_t(icount_);
+    set_register(r0, scratch_value);
+    set_register(r1, scratch_value);
+    set_register(r2, scratch_value);
+    set_register(r3, scratch_value);
+    set_register(r12, scratch_value); // Intra-Procedure-call scratch register
+    set_register(r14, scratch_value); // Link register
+
+    if (scratchFloat) {
+        uint64_t scratch_value_d = 0x5a5a5a5a5a5a5a5aLU ^ uint64_t(icount_) ^ (uint64_t(icount_) << 30);
+        for (uint32_t i = d0; i < d8; i++)
+            set_d_register(i, &scratch_value_d);
+        for (uint32_t i = d16; i < FloatRegisters::Total; i++)
+            set_d_register(i, &scratch_value_d);
+    }
+}
+
 // Software interrupt instructions are used by the simulator to call into C++.
 void
 Simulator::softwareInterrupt(SimInstruction *instr)
@@ -2050,42 +2107,53 @@ Simulator::softwareInterrupt(SimInstruction *instr)
           case Args_General0: {
             Prototype_General0 target = reinterpret_cast<Prototype_General0>(external);
             int64_t result = target();
+            scratchVolatileRegisters(/* scratchFloat = true */);
             setCallResult(result);
             break;
           }
           case Args_General1: {
             Prototype_General1 target = reinterpret_cast<Prototype_General1>(external);
             int64_t result = target(arg0);
+            scratchVolatileRegisters(/* scratchFloat = true */);
             setCallResult(result);
             break;
           }
           case Args_General2: {
             Prototype_General2 target = reinterpret_cast<Prototype_General2>(external);
             int64_t result = target(arg0, arg1);
+            // The ARM backend makes calls to __aeabi_idivmod and __aeabi_uidivmod assuming
+            // that the float registers are non-volatile as a performance optimization, so the
+            // float registers must not be scratch when calling these.
+            bool scratchFloat = target != __aeabi_idivmod && target != __aeabi_uidivmod;
+            scratchVolatileRegisters(/* scratchFloat = */ scratchFloat);
             setCallResult(result);
             break;
           }
           case Args_General3: {
             Prototype_General3 target = reinterpret_cast<Prototype_General3>(external);
             int64_t result = target(arg0, arg1, arg2);
+            scratchVolatileRegisters(/* scratchFloat = true*/);
             setCallResult(result);
             break;
           }
           case Args_General4: {
             Prototype_General4 target = reinterpret_cast<Prototype_General4>(external);
             int64_t result = target(arg0, arg1, arg2, arg3);
+            scratchVolatileRegisters(/* scratchFloat = true*/);
             setCallResult(result);
             break;
           }
           case Args_General5: {
             Prototype_General5 target = reinterpret_cast<Prototype_General5>(external);
             int64_t result = target(arg0, arg1, arg2, arg3, arg4);
+            scratchVolatileRegisters(/* scratchFloat = true */);
             setCallResult(result);
             break;
           }
           case Args_General6: {
             Prototype_General6 target = reinterpret_cast<Prototype_General6>(external);
             int64_t result = target(arg0, arg1, arg2, arg3, arg4, arg5);
+            scratchVolatileRegisters(/* scratchFloat = true */);
             setCallResult(result);
             break;
           }
@@ -2093,6 +2161,7 @@ Simulator::softwareInterrupt(SimInstruction *instr)
             Prototype_General7 target = reinterpret_cast<Prototype_General7>(external);
             int32_t arg6 = stack_pointer[2];
             int64_t result = target(arg0, arg1, arg2, arg3, arg4, arg5, arg6);
+            scratchVolatileRegisters(/* scratchFloat = true */);
             setCallResult(result);
             break;
           }
@@ -2101,12 +2170,14 @@ Simulator::softwareInterrupt(SimInstruction *instr)
             int32_t arg6 = stack_pointer[2];
             int32_t arg7 = stack_pointer[3];
             int64_t result = target(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7);
+            scratchVolatileRegisters(/* scratchFloat = true */);
             setCallResult(result);
             break;
           }
           case Args_Double_None: {
             Prototype_Double_None target = reinterpret_cast<Prototype_Double_None>(external);
             double dresult = target();
+            scratchVolatileRegisters(/* scratchFloat = true */);
             setCallResultDouble(dresult);
             break;
           }
@@ -2116,6 +2187,7 @@ Simulator::softwareInterrupt(SimInstruction *instr)
             getFpArgs(&dval0, &dval1, &ival);
             Prototype_Int_Double target = reinterpret_cast<Prototype_Int_Double>(external);
             int32_t res = target(dval0);
+            scratchVolatileRegisters(/* scratchFloat = true */);
             set_register(r0, res);
             break;
           }
@@ -2125,6 +2197,7 @@ Simulator::softwareInterrupt(SimInstruction *instr)
             getFpArgs(&dval0, &dval1, &ival);
             Prototype_Double_Double target = reinterpret_cast<Prototype_Double_Double>(external);
             double dresult = target(dval0);
+            scratchVolatileRegisters(/* scratchFloat = true */);
             setCallResultDouble(dresult);
             break;
           }
@@ -2132,12 +2205,14 @@ Simulator::softwareInterrupt(SimInstruction *instr)
             float fval0 = mozilla::BitwiseCast<float>(arg0);
             Prototype_Float32_Float32 target = reinterpret_cast<Prototype_Float32_Float32>(external);
             float fresult = target(fval0);
+            scratchVolatileRegisters(/* scratchFloat = true */);
             setCallResultFloat(fresult);
             break;
           }
           case Args_Double_Int: {
             Prototype_Double_Int target = reinterpret_cast<Prototype_Double_Int>(external);
             double dresult = target(arg0);
+            scratchVolatileRegisters(/* scratchFloat = true */);
             setCallResultDouble(dresult);
             break;
           }
@@ -2147,6 +2222,7 @@ Simulator::softwareInterrupt(SimInstruction *instr)
             getFpArgs(&dval0, &dval1, &ival);
             Prototype_DoubleInt target = reinterpret_cast<Prototype_DoubleInt>(external);
             double dresult = target(dval0, ival);
+            scratchVolatileRegisters(/* scratchFloat = true */);
             setCallResultDouble(dresult);
             break;
           }
@@ -2156,6 +2232,7 @@ Simulator::softwareInterrupt(SimInstruction *instr)
             getFpArgs(&dval0, &dval1, &ival);
             Prototype_Double_DoubleDouble target = reinterpret_cast<Prototype_Double_DoubleDouble>(external);
             double dresult = target(dval0, dval1);
+            scratchVolatileRegisters(/* scratchFloat = true */);
             setCallResultDouble(dresult);
             break;
           }
@@ -2165,6 +2242,7 @@ Simulator::softwareInterrupt(SimInstruction *instr)
             double dval0 = get_double_from_register_pair(2);
             Prototype_Double_IntDouble target = reinterpret_cast<Prototype_Double_IntDouble>(external);
             double dresult = target(ival, dval0);
+            scratchVolatileRegisters(/* scratchFloat = true */);
             setCallResultDouble(dresult);
             break;
           }
@@ -2174,6 +2252,7 @@ Simulator::softwareInterrupt(SimInstruction *instr)
             double dval0 = get_double_from_register_pair(2);
             Prototype_Int_IntDouble target = reinterpret_cast<Prototype_Int_IntDouble>(external);
             int32_t result = target(ival, dval0);
+            scratchVolatileRegisters(/* scratchFloat = true */);
             set_register(r0, result);
             break;
           }
@@ -2929,23 +3008,33 @@ Simulator::decodeType3(SimInstruction *instr)
         break;
       }
       case db_x: { // sudiv
-        if (!instr->hasW()) {
-            if (instr->bits(5, 4) == 0x1) {
-                if ((instr->bit(22) == 0x0) && (instr->bit(20) == 0x1)) {
-                    // sdiv (in V8 notation matching ARM ISA format) rn = rm/rs
-                    int rm = instr->rmValue();
-                    int32_t rm_val = get_register(rm);
-                    int rs = instr->rsValue();
-                    int32_t rs_val = get_register(rs);
-                    int32_t ret_val = 0;
-                    MOZ_ASSERT(rs_val != 0);
-                    if ((rm_val == INT32_MIN) && (rs_val == -1))
-                        ret_val = INT32_MIN;
-                    else
-                        ret_val = rm_val / rs_val;
-                    set_register(rn, ret_val);
-                    return;
-                }
+        if (instr->bit(22) == 0x0 && instr->bit(20) == 0x1 &&
+            instr->bits(15,12) == 0x0f && instr->bits(7, 4) == 0x1) {
+            if (!instr->hasW()) {
+                // sdiv (in V8 notation matching ARM ISA format) rn = rm/rs
+                int rm = instr->rmValue();
+                int32_t rm_val = get_register(rm);
+                int rs = instr->rsValue();
+                int32_t rs_val = get_register(rs);
+                int32_t ret_val = 0;
+                MOZ_ASSERT(rs_val != 0);
+                if ((rm_val == INT32_MIN) && (rs_val == -1))
+                    ret_val = INT32_MIN;
+                else
+                    ret_val = rm_val / rs_val;
+                set_register(rn, ret_val);
+                return;
+            } else {
+                // udiv (in V8 notation matching ARM ISA format) rn = rm/rs
+                int rm = instr->rmValue();
+                uint32_t rm_val = get_register(rm);
+                int rs = instr->rsValue();
+                uint32_t rs_val = get_register(rs);
+                uint32_t ret_val = 0;
+                MOZ_ASSERT(rs_val != 0);
+                ret_val = rm_val / rs_val;
+                set_register(rn, ret_val);
+                return;
             }
         }
 
@@ -3119,7 +3208,7 @@ Simulator::decodeTypeVFP(SimInstruction *instr)
             } else if ((instr->opc2Value() == 0xA) && (instr->opc3Value() == 0x3) &&
                        (instr->bit(8) == 1)) {
                 // vcvt.f64.s32 Dd, Dd, #<fbits>
-                int fraction_bits = 32 - ((instr->bit(5) << 4) | instr->bits(3, 0));
+                int fraction_bits = 32 - ((instr->bits(3, 0) << 1) | instr->bit(5));
                 int fixed_value = get_sinteger_from_s_register(vd * 2);
                 double divide = 1 << fraction_bits;
                 set_d_register_from_double(vd, fixed_value / divide);
@@ -3147,10 +3236,11 @@ Simulator::decodeTypeVFP(SimInstruction *instr)
                 if (instr->szValue() == 0x1) {
                     set_d_register_from_double(vd, instr->doubleImmedVmov());
                 } else {
-                    MOZ_ASSUME_UNREACHABLE();  // Not used by v8.
+                    // vmov.f32 immediate
+                    set_s_register_from_float(vd, instr->float32ImmedVmov());
                 }
             } else {
-                MOZ_ASSUME_UNREACHABLE();  // Not used by V8.
+                decodeVCVTBetweenFloatingPointAndIntegerFrac(instr);
             }
         } else if (instr->opc1Value() == 0x3) {
             if (instr->szValue() != 0x1) {
@@ -3551,6 +3641,73 @@ Simulator::decodeVCVTBetweenFloatingPointAndInteger(SimInstruction *instr)
     }
 }
 
+// A VFPv3 specific instruction.
+void
+Simulator::decodeVCVTBetweenFloatingPointAndIntegerFrac(SimInstruction *instr)
+{
+    MOZ_ASSERT(instr->bits(27, 24) == 0xE && instr->opc1Value() == 0x7 && instr->bit(19) == 1 &&
+               instr->bit(17) == 1 && instr->bits(11,9) == 0x5 && instr->bit(6) == 1 &&
+               instr->bit(4) == 0);
+
+    int size = (instr->bit(7) == 1) ? 32 : 16;
+
+    int fraction_bits = size - ((instr->bits(3, 0) << 1) | instr->bit(5));
+    double mult = 1 << fraction_bits;
+
+    MOZ_ASSERT(size == 32); // Only handling size == 32 for now.
+
+    // Conversion between floating-point and integer.
+    bool to_fixed = (instr->bit(18) == 1);
+
+    VFPRegPrecision precision = (instr->szValue() == 1) ? kDoublePrecision : kSinglePrecision;
+
+    if (to_fixed) {
+        // We are playing with code close to the C++ standard's limits below,
+        // hence the very simple code and heavy checks.
+        //
+        // Note: C++ defines default type casting from floating point to integer as
+        // (close to) rounding toward zero ("fractional part discarded").
+
+        int dst = instr->VFPDRegValue(precision);
+
+        bool unsigned_integer = (instr->bit(16) == 1);
+        bool double_precision = (precision == kDoublePrecision);
+
+        double val = double_precision
+                     ? get_double_from_d_register(dst)
+                     : get_float_from_s_register(dst);
+
+        // Scale value by specified number of fraction bits.
+        val *= mult;
+
+        // Rounding down towards zero.  No need to account for the rounding error as this
+        // instruction always rounds down towards zero.  See SimRZ below.
+        int temp = unsigned_integer ? static_cast<uint32_t>(val) : static_cast<int32_t>(val);
+
+        inv_op_vfp_flag_ = get_inv_op_vfp_flag(SimRZ, val, unsigned_integer);
+
+        double abs_diff = unsigned_integer
+                          ? std::fabs(val - static_cast<uint32_t>(temp))
+                          : std::fabs(val - temp);
+
+        inexact_vfp_flag_ = (abs_diff != 0);
+
+        if (inv_op_vfp_flag_)
+            temp = VFPConversionSaturate(val, unsigned_integer);
+
+        // Update the destination register.
+        if (double_precision) {
+            uint32_t dbl[2];
+            dbl[0] = temp; dbl[1] = 0;
+            set_d_register(dst, dbl);
+        } else {
+            set_s_register_from_sinteger(dst, temp);
+        }
+    } else {
+        MOZ_ASSUME_UNREACHABLE();  // Not implemented, fixed to float.
+    }
+}
+
 void
 Simulator::decodeType6CoprocessorIns(SimInstruction *instr)
 {
@@ -3871,6 +4028,7 @@ Simulator::execute()
 
     while (program_counter != end_sim_pc) {
         if (EnableStopSimAt && (icount_ == Simulator::StopSimAt)) {
+            fprintf(stderr, "\nStopped simulation at icount %lld\n", icount_);
             ArmDebugger dbg(this);
             dbg.debug();
         } else {
@@ -3913,9 +4071,27 @@ Simulator::callInternal(uint8_t *entry)
     int32_t r10_val = get_register(r10);
     int32_t r11_val = get_register(r11);
 
+    // Remember d8 to d15 which are callee-saved.
+    uint64_t d8_val;
+    get_d_register(d8, &d8_val);
+    uint64_t d9_val;
+    get_d_register(d9, &d9_val);
+    uint64_t d10_val;
+    get_d_register(d10, &d10_val);
+    uint64_t d11_val;
+    get_d_register(d11, &d11_val);
+    uint64_t d12_val;
+    get_d_register(d12, &d12_val);
+    uint64_t d13_val;
+    get_d_register(d13, &d13_val);
+    uint64_t d14_val;
+    get_d_register(d14, &d14_val);
+    uint64_t d15_val;
+    get_d_register(d15, &d15_val);
+
     // Set up the callee-saved registers with a known value. To be able to check
     // that they are preserved properly across JS execution.
-    int32_t callee_saved_value = icount_;
+    int32_t callee_saved_value = uint32_t(icount_);
     set_register(r4, callee_saved_value);
     set_register(r5, callee_saved_value);
     set_register(r6, callee_saved_value);
@@ -3925,8 +4101,18 @@ Simulator::callInternal(uint8_t *entry)
     set_register(r10, callee_saved_value);
     set_register(r11, callee_saved_value);
 
+    uint64_t callee_saved_value_d = uint64_t(icount_);
+    set_d_register(d8, &callee_saved_value_d);
+    set_d_register(d9, &callee_saved_value_d);
+    set_d_register(d10, &callee_saved_value_d);
+    set_d_register(d11, &callee_saved_value_d);
+    set_d_register(d12, &callee_saved_value_d);
+    set_d_register(d13, &callee_saved_value_d);
+    set_d_register(d14, &callee_saved_value_d);
+    set_d_register(d15, &callee_saved_value_d);
+
     // Start the simulation
-    if (Simulator::StopSimAt != -1)
+    if (Simulator::StopSimAt != -1L)
         execute<true>();
     else
         execute<false>();
@@ -3941,6 +4127,24 @@ Simulator::callInternal(uint8_t *entry)
     MOZ_ASSERT(callee_saved_value == get_register(r10));
     MOZ_ASSERT(callee_saved_value == get_register(r11));
 
+    uint64_t value;
+    get_d_register(d8, &value);
+    MOZ_ASSERT(callee_saved_value_d == value);
+    get_d_register(d9, &value);
+    MOZ_ASSERT(callee_saved_value_d == value);
+    get_d_register(d10, &value);
+    MOZ_ASSERT(callee_saved_value_d == value);
+    get_d_register(d11, &value);
+    MOZ_ASSERT(callee_saved_value_d == value);
+    get_d_register(d12, &value);
+    MOZ_ASSERT(callee_saved_value_d == value);
+    get_d_register(d13, &value);
+    MOZ_ASSERT(callee_saved_value_d == value);
+    get_d_register(d14, &value);
+    MOZ_ASSERT(callee_saved_value_d == value);
+    get_d_register(d15, &value);
+    MOZ_ASSERT(callee_saved_value_d == value);
+
     // Restore callee-saved registers with the original value.
     set_register(r4, r4_val);
     set_register(r5, r5_val);
@@ -3950,6 +4154,15 @@ Simulator::callInternal(uint8_t *entry)
     set_register(r9, r9_val);
     set_register(r10, r10_val);
     set_register(r11, r11_val);
+
+    set_d_register(d8, &d8_val);
+    set_d_register(d9, &d9_val);
+    set_d_register(d10, &d10_val);
+    set_d_register(d11, &d11_val);
+    set_d_register(d12, &d12_val);
+    set_d_register(d13, &d13_val);
+    set_d_register(d14, &d14_val);
+    set_d_register(d15, &d15_val);
 }
 
 int64_t

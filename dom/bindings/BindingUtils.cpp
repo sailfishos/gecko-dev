@@ -18,7 +18,9 @@
 #include "AccessCheck.h"
 #include "jsfriendapi.h"
 #include "js/OldDebugAPI.h"
+#include "nsContentUtils.h"
 #include "nsIDOMGlobalPropertyInitializer.h"
+#include "nsIPrincipal.h"
 #include "nsIXPConnect.h"
 #include "WrapperFactory.h"
 #include "xpcprivate.h"
@@ -85,6 +87,23 @@ ThrowInvalidThis(JSContext* aCx, const JS::CallArgs& aArgs,
                          JS_GetStringCharsZ(aCx, funcName),
                          ifaceName.get());
   return false;
+}
+
+bool
+ThrowInvalidThis(JSContext* aCx, const JS::CallArgs& aArgs,
+                 const ErrNum aErrorNumber,
+                 prototypes::ID aProtoId)
+{
+  return ThrowInvalidThis(aCx, aArgs, aErrorNumber,
+                          NamesOfInterfacesWithProtos(aProtoId));
+}
+
+bool
+ThrowNoSetterArg(JSContext* aCx, prototypes::ID aProtoId)
+{
+  nsPrintfCString errorMessage("%s attribute setter",
+                               NamesOfInterfacesWithProtos(aProtoId));
+  return ThrowErrorMessage(aCx, MSG_MISSING_ARGUMENTS, errorMessage.get());
 }
 
 } // namespace dom
@@ -1527,9 +1546,9 @@ SetXrayExpandoChain(JSObject* obj, JSObject* chain)
 }
 
 bool
-MainThreadDictionaryBase::ParseJSON(JSContext *aCx,
-                                    const nsAString& aJSON,
-                                    JS::MutableHandle<JS::Value> aVal)
+DictionaryBase::ParseJSON(JSContext* aCx,
+                          const nsAString& aJSON,
+                          JS::MutableHandle<JS::Value> aVal)
 {
   if (aJSON.IsEmpty()) {
     return true;
@@ -1589,8 +1608,7 @@ NativeToString(JSContext* cx, JS::Handle<JSObject*> wrapper,
       }
       MOZ_ASSERT(JS_ObjectIsCallable(cx, &toString.toObject()));
       JS::Rooted<JS::Value> toStringResult(cx);
-      if (JS_CallFunctionValue(cx, obj, toString, 0, nullptr,
-                               toStringResult.address())) {
+      if (JS_CallFunctionValue(cx, obj, toString, JS::EmptyValueArray, &toStringResult)) {
         str = toStringResult.toString();
       } else {
         str = nullptr;
@@ -1886,7 +1904,7 @@ InterfaceHasInstance(JSContext* cx, JS::Handle<JSObject*> obj,
   JS::Rooted<JSObject*> unwrapped(cx, js::CheckedUnwrap(instance, true));
   if (unwrapped && jsipc::JavaScriptParent::IsCPOW(unwrapped)) {
     bool boolp = false;
-    if (!jsipc::JavaScriptParent::DOMInstanceOf(unwrapped, clasp->mPrototypeID,
+    if (!jsipc::JavaScriptParent::DOMInstanceOf(cx, unwrapped, clasp->mPrototypeID,
                                                 clasp->mDepth, &boolp)) {
       return false;
     }
@@ -2141,11 +2159,29 @@ ConvertJSValueToByteString(JSContext* cx, JS::Handle<JS::Value> v,
 }
 
 bool
-ThreadsafeCheckIsChrome(JSContext* aCx, JSObject* aObj)
+IsInPrivilegedApp(JSContext* aCx, JSObject* aObj)
 {
   using mozilla::dom::workers::GetWorkerPrivateFromContext;
-  return NS_IsMainThread() ? xpc::AccessCheck::isChrome(aObj):
-                             GetWorkerPrivateFromContext(aCx)->UsesSystemPrincipal();
+  if (!NS_IsMainThread()) {
+    return GetWorkerPrivateFromContext(aCx)->IsInPrivilegedApp();
+  }
+
+  nsIPrincipal* principal = nsContentUtils::GetObjectPrincipal(aObj);
+  uint16_t appStatus = principal->GetAppStatus();
+  return (appStatus == nsIPrincipal::APP_STATUS_CERTIFIED ||
+          appStatus == nsIPrincipal::APP_STATUS_PRIVILEGED);
+}
+
+bool
+IsInCertifiedApp(JSContext* aCx, JSObject* aObj)
+{
+  using mozilla::dom::workers::GetWorkerPrivateFromContext;
+  if (!NS_IsMainThread()) {
+    return GetWorkerPrivateFromContext(aCx)->IsInCertifiedApp();
+  }
+
+  nsIPrincipal* principal = nsContentUtils::GetObjectPrincipal(aObj);
+  return principal->GetAppStatus() == nsIPrincipal::APP_STATUS_CERTIFIED;
 }
 
 void
@@ -2180,6 +2216,95 @@ bool
 EnumerateGlobal(JSContext* aCx, JS::Handle<JSObject*> aObj)
 {
   return JS_EnumerateStandardClasses(aCx, aObj);
+}
+
+bool
+GenericBindingGetter(JSContext* cx, unsigned argc, JS::Value* vp)
+{
+  JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
+  const JSJitInfo *info = FUNCTION_VALUE_TO_JITINFO(args.calleev());
+  prototypes::ID protoID = static_cast<prototypes::ID>(info->protoID);
+  if (!args.thisv().isObject()) {
+    return ThrowInvalidThis(cx, args,
+                            MSG_GETTER_THIS_DOES_NOT_IMPLEMENT_INTERFACE,
+                            protoID);
+  }
+  JS::Rooted<JSObject*> obj(cx, &args.thisv().toObject());
+
+  void* self;
+  {
+    nsresult rv = UnwrapObject<void>(obj, self, protoID, info->depth);
+    if (NS_FAILED(rv)) {
+      return ThrowInvalidThis(cx, args,
+                              GetInvalidThisErrorForGetter(rv == NS_ERROR_XPC_SECURITY_MANAGER_VETO),
+                              protoID);
+    }
+  }
+
+  MOZ_ASSERT(info->type() == JSJitInfo::Getter);
+  JSJitGetterOp getter = info->getter;
+  return getter(cx, obj, self, JSJitGetterCallArgs(args));
+}
+
+bool
+GenericBindingSetter(JSContext* cx, unsigned argc, JS::Value* vp)
+{
+  JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
+  const JSJitInfo *info = FUNCTION_VALUE_TO_JITINFO(args.calleev());
+  prototypes::ID protoID = static_cast<prototypes::ID>(info->protoID);
+  if (!args.thisv().isObject()) {
+    return ThrowInvalidThis(cx, args,
+                            MSG_SETTER_THIS_DOES_NOT_IMPLEMENT_INTERFACE,
+                            protoID);
+  }
+  JS::Rooted<JSObject*> obj(cx, &args.thisv().toObject());
+
+  void* self;
+  {
+    nsresult rv = UnwrapObject<void>(obj, self, protoID, info->depth);
+    if (NS_FAILED(rv)) {
+      return ThrowInvalidThis(cx, args,
+                              GetInvalidThisErrorForSetter(rv == NS_ERROR_XPC_SECURITY_MANAGER_VETO),
+                              protoID);
+    }
+  }
+  if (args.length() == 0) {
+    return ThrowNoSetterArg(cx, protoID);
+  }
+  MOZ_ASSERT(info->type() == JSJitInfo::Setter);
+  JSJitSetterOp setter = info->setter;
+  if (!setter(cx, obj, self, JSJitSetterCallArgs(args))) {
+    return false;
+  }
+  args.rval().set(JSVAL_VOID);
+  return true;
+}
+
+bool
+GenericBindingMethod(JSContext* cx, unsigned argc, JS::Value* vp)
+{
+  JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
+  const JSJitInfo *info = FUNCTION_VALUE_TO_JITINFO(args.calleev());
+  prototypes::ID protoID = static_cast<prototypes::ID>(info->protoID);
+  if (!args.thisv().isObject()) {
+    return ThrowInvalidThis(cx, args,
+                            MSG_METHOD_THIS_DOES_NOT_IMPLEMENT_INTERFACE,
+                            protoID);
+  }
+  JS::Rooted<JSObject*> obj(cx, &args.thisv().toObject());
+
+  void* self;
+  {
+    nsresult rv = UnwrapObject<void>(obj, self, protoID, info->depth);
+    if (NS_FAILED(rv)) {
+      return ThrowInvalidThis(cx, args,
+                              GetInvalidThisErrorForMethod(rv == NS_ERROR_XPC_SECURITY_MANAGER_VETO),
+                              protoID);
+    }
+  }
+  MOZ_ASSERT(info->type() == JSJitInfo::Method);
+  JSJitMethodOp method = info->method;
+  return method(cx, obj, self, JSJitMethodCallArgs(args));
 }
 
 } // namespace dom

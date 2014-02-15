@@ -13,7 +13,8 @@ namespace mozilla {
 
 MediaDecoderStateMachine* GStreamerDecoder::CreateStateMachine()
 {
-  return new MediaDecoderStateMachine(this, new GStreamerReader(this));
+  mLastReader = new GStreamerReader(this);
+  return new MediaDecoderStateMachine(this, mLastReader);
 }
 
 bool
@@ -22,6 +23,14 @@ GStreamerDecoder::CanHandleMediaType(const nsACString& aMIMEType,
 {
   return MediaDecoder::IsGStreamerEnabled() &&
     GStreamerFormatHelper::Instance()->CanHandleMediaType(aMIMEType, aCodecs);
+}
+
+void
+GStreamerDecoder::Suspend()
+{
+  if (mLastReader) {
+    mLastReader->Suspend();
+  }
 }
 
 } // namespace mozilla

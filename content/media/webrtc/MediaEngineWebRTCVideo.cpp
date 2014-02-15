@@ -143,9 +143,9 @@ MediaEngineWebRTCVideoSource::NotifyPull(MediaStreamGraph* aGraph,
   if (delta > 0) {
     // nullptr images are allowed
     if (image) {
-      segment.AppendFrame(image.forget(), delta, gfxIntSize(mWidth, mHeight));
+      segment.AppendFrame(image.forget(), delta, IntSize(mWidth, mHeight));
     } else {
-      segment.AppendFrame(nullptr, delta, gfxIntSize(0,0));
+      segment.AppendFrame(nullptr, delta, IntSize(0, 0));
     }
     // This can fail if either a) we haven't added the track yet, or b)
     // we've removed or finished the track.
@@ -602,6 +602,9 @@ MediaEngineWebRTCVideoSource::HandleEvent(const nsAString& error) {
 void
 MediaEngineWebRTCVideoSource::OnNewFrame(const gfxIntSize& aIntrinsicSize, layers::Image* aImage) {
   MonitorAutoLock enter(mMonitor);
+  if (mState == kStopped) {
+    return;
+  }
   mImage = aImage;
   if (mWidth != aIntrinsicSize.width || mHeight != aIntrinsicSize.height) {
     mWidth = aIntrinsicSize.width;

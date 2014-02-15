@@ -203,66 +203,13 @@ static void DestroyGlyphObserverList(void* aPropertyValue)
  */
 NS_DECLARE_FRAME_PROPERTY(TextFrameGlyphObservers, DestroyGlyphObserverList);
 
-// The following flags are set during reflow
-
-// This bit is set on the first frame in a continuation indicating
-// that it was chopped short because of :first-letter style.
-#define TEXT_FIRST_LETTER    NS_FRAME_STATE_BIT(20)
-// This bit is set on frames that are logically adjacent to the start of the
-// line (i.e. no prior frame on line with actual displayed in-flow content).
-#define TEXT_START_OF_LINE   NS_FRAME_STATE_BIT(21)
-// This bit is set on frames that are logically adjacent to the end of the
-// line (i.e. no following on line with actual displayed in-flow content).
-#define TEXT_END_OF_LINE     NS_FRAME_STATE_BIT(22)
-// This bit is set on frames that end with a hyphenated break.
-#define TEXT_HYPHEN_BREAK    NS_FRAME_STATE_BIT(23)
-// This bit is set on frames that trimmed trailing whitespace characters when
-// calculating their width during reflow.
-#define TEXT_TRIMMED_TRAILING_WHITESPACE NS_FRAME_STATE_BIT(24)
-// This bit is set on frames that have justification enabled. We record
-// this in a state bit because we don't always have the containing block
-// easily available to check text-align on.
-#define TEXT_JUSTIFICATION_ENABLED       NS_FRAME_STATE_BIT(25)
-// Set this bit if the textframe has overflow area for IME/spellcheck underline.
-#define TEXT_SELECTION_UNDERLINE_OVERFLOWED NS_FRAME_STATE_BIT(26)
-
 #define TEXT_REFLOW_FLAGS    \
   (TEXT_FIRST_LETTER|TEXT_START_OF_LINE|TEXT_END_OF_LINE|TEXT_HYPHEN_BREAK| \
    TEXT_TRIMMED_TRAILING_WHITESPACE|TEXT_JUSTIFICATION_ENABLED| \
    TEXT_HAS_NONCOLLAPSED_CHARACTERS|TEXT_SELECTION_UNDERLINE_OVERFLOWED)
 
-// Cache bits for IsEmpty().
-// Set this bit if the textframe is known to be only collapsible whitespace.
-#define TEXT_IS_ONLY_WHITESPACE    NS_FRAME_STATE_BIT(27)
-// Set this bit if the textframe is known to be not only collapsible whitespace.
-#define TEXT_ISNOT_ONLY_WHITESPACE NS_FRAME_STATE_BIT(28)
-
 #define TEXT_WHITESPACE_FLAGS      (TEXT_IS_ONLY_WHITESPACE | \
                                     TEXT_ISNOT_ONLY_WHITESPACE)
-
-// Set when this text frame is mentioned in the userdata for mTextRun
-#define TEXT_IN_TEXTRUN_USER_DATA  NS_FRAME_STATE_BIT(29)
-
-// nsTextFrame.h has
-// #define TEXT_HAS_NONCOLLAPSED_CHARACTERS NS_FRAME_STATE_BIT(31)
-
-// nsTextFrame.h has
-// #define TEXT_IS_IN_TOKEN_MATHML          NS_FRAME_STATE_BIT(32)
-
-// Set when this text frame is mentioned in the userdata for the
-// uninflated textrun property
-#define TEXT_IN_UNINFLATED_TEXTRUN_USER_DATA NS_FRAME_STATE_BIT(60)
-
-// nsTextFrame.h has
-// #define TEXT_HAS_FONT_INFLATION          NS_FRAME_STATE_BIT(61)
-
-// If true, then this frame is being removed due to a SetLength() on a
-// previous continuation and the style context of that previous
-// continuation is the same as this frame's
-#define TEXT_STYLE_MATCHES_PREV_CONTINUATION NS_FRAME_STATE_BIT(62)
-
-// Whether this frame is cached in the Offset Frame Cache (OffsetToFrameProperty)
-#define TEXT_IN_OFFSET_CACHE       NS_FRAME_STATE_BIT(63)
 
 /*
  * Some general notes
@@ -566,7 +513,7 @@ GlyphObserver::NotifyGlyphsChanged()
 {
   nsIPresShell* shell = mFrame->PresContext()->PresShell();
   for (nsIFrame* f = mFrame; f;
-       f = nsLayoutUtils::GetNextContinuationOrSpecialSibling(f)) {
+       f = nsLayoutUtils::GetNextContinuationOrIBSplitSibling(f)) {
     if (f != mFrame && f->HasAnyStateBits(TEXT_IN_TEXTRUN_USER_DATA)) {
       // f will have its own GlyphObserver (if needed) so we can stop here.
       break;
@@ -1703,8 +1650,8 @@ BuildTextRunsScanner::ContinueTextRunAcrossFrames(nsTextFrame* aFrame1, nsTextFr
   return fontStyle1->mFont.BaseEquals(fontStyle2->mFont) &&
     sc1->StyleFont()->mLanguage == sc2->StyleFont()->mLanguage &&
     textStyle1->mTextTransform == textStyle2->mTextTransform &&
-    nsLayoutUtils::GetTextRunFlagsForStyle(sc1, fontStyle1, letterSpacing1) ==
-      nsLayoutUtils::GetTextRunFlagsForStyle(sc2, fontStyle2, letterSpacing2);
+    nsLayoutUtils::GetTextRunFlagsForStyle(sc1, fontStyle1, textStyle1, letterSpacing1) ==
+      nsLayoutUtils::GetTextRunFlagsForStyle(sc2, fontStyle2, textStyle2, letterSpacing2);
 }
 
 void BuildTextRunsScanner::ScanFrame(nsIFrame* aFrame)
@@ -2119,7 +2066,7 @@ BuildTextRunsScanner::BuildTextRunForFrames(void* aTextBuffer)
   // frame's style is used, so we use a mixture of the first frame and
   // last frame's style
   textFlags |= nsLayoutUtils::GetTextRunFlagsForStyle(lastStyleContext,
-      fontStyle, LetterSpacing(firstFrame, textStyle));
+      fontStyle, textStyle, LetterSpacing(firstFrame, textStyle));
   // XXX this is a bit of a hack. For performance reasons, if we're favouring
   // performance over quality, don't try to get accurate glyph extents.
   if (!(textFlags & gfxTextRunFactory::TEXT_OPTIMIZE_SPEED)) {
@@ -2943,7 +2890,7 @@ public:
   const gfxSkipCharsIterator& GetEndHint() { return mTempIterator; }
 
 protected:
-  void SetupJustificationSpacing();
+  void SetupJustificationSpacing(bool aPostReflow);
 
   void InitFontGroupAndFontMetrics() {
     float inflation = (mWhichTextRun == nsTextFrame::eInflated)
@@ -3327,7 +3274,7 @@ PropertyProvider::InitializeForDisplay(bool aTrimAfter)
     mFrame->GetTrimmedOffsets(mFrag, aTrimAfter);
   mStart.SetOriginalOffset(trimmed.mStart);
   mLength = trimmed.mLength;
-  SetupJustificationSpacing();
+  SetupJustificationSpacing(true);
 }
 
 void
@@ -3337,7 +3284,7 @@ PropertyProvider::InitializeForMeasure()
     mFrame->GetTrimmedOffsets(mFrag, true, false);
   mStart.SetOriginalOffset(trimmed.mStart);
   mLength = trimmed.mLength;
-  SetupJustificationSpacing();
+  SetupJustificationSpacing(false);
 }
 
 
@@ -3379,7 +3326,7 @@ PropertyProvider::FindJustificationRange(gfxSkipCharsIterator* aStart,
 }
 
 void
-PropertyProvider::SetupJustificationSpacing()
+PropertyProvider::SetupJustificationSpacing(bool aPostReflow)
 {
   NS_PRECONDITION(mLength != INT32_MAX, "Can't call this with undefined length");
 
@@ -3391,7 +3338,7 @@ PropertyProvider::SetupJustificationSpacing()
   // called with false for aTrimAfter, we still shouldn't be assigning
   // justification space to any trailing whitespace.
   nsTextFrame::TrimmedOffsets trimmed =
-    mFrame->GetTrimmedOffsets(mFrag, true);
+    mFrame->GetTrimmedOffsets(mFrag, true, aPostReflow);
   end.AdvanceOriginal(trimmed.mLength);
   gfxSkipCharsIterator realEnd(end);
   FindJustificationRange(&start, &end);

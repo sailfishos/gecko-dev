@@ -48,7 +48,7 @@ function BannerMessage(options) {
     this.onclick = options.onclick;
 }
 
-let HomeBanner = {
+let HomeBanner = Object.freeze({
   // Holds the messages that will rotate through the banner.
   _messages: {},
 
@@ -135,7 +135,7 @@ let HomeBanner = {
       Services.obs.removeObserver(this, "HomeBanner:Click");
     }
   }
-};
+});
 
 function Panel(options) {
   if ("id" in options)
@@ -151,31 +151,54 @@ function Panel(options) {
     this.views = options.views;
 }
 
-let HomePanels = {
+let HomePanels = Object.freeze({
   // Valid layouts for a panel.
-  Layout: {
+  Layout: Object.freeze({
     FRAME: "frame"
-  },
+  }),
 
   // Valid types of views for a dataset.
-  View: {
+  View: Object.freeze({
     LIST: "list",
     GRID: "grid"
-  },
+  }),
+
+  // Valid actions for a panel.
+  Action: Object.freeze({
+    INSTALL: "install",
+    REFRESH: "refresh"
+  }),
+
+  // Valid item handlers for a panel view.
+  ItemHandler: Object.freeze({
+    BROWSER: "browser",
+    INTENT: "intent"
+  }),
 
   // Holds the currrent set of registered panels.
   _panels: {},
 
-  _handleGet: function(requestId) {
+  _panelToJSON : function(panel) {
+    return {
+      id: panel.id,
+      title: panel.title,
+      layout: panel.layout,
+      views: panel.views
+    };
+  },
+
+  _handleGet: function(data) {
+    let requestId = data.requestId;
+    let ids = data.ids || null;
+
     let panels = [];
     for (let id in this._panels) {
       let panel = this._panels[id];
-      panels.push({
-        id: panel.id,
-        title: panel.title,
-        layout: panel.layout,
-        views: panel.views
-      });
+
+      // Null ids means we want to fetch all available panels
+      if (ids == null || ids.indexOf(panel.id) >= 0) {
+        panels.push(this._panelToJSON(panel));
+      }
     }
 
     sendMessageToJava({
@@ -191,8 +214,11 @@ let HomePanels = {
       throw "Home.panels: Can't create a home panel without an id and title!";
     }
 
-    // Bail if the panel already exists
-    if (panel.id in this._panels) {
+    let action = options.action;
+
+    // Bail if the panel already exists, except when we're refreshing
+    // an existing panel instance.
+    if (panel.id in this._panels && action != this.Action.REFRESH) {
       throw "Home.panels: Panel already exists: id = " + panel.id;
     }
 
@@ -205,20 +231,54 @@ let HomePanels = {
         throw "Home.panels: Invalid view type: panel.id = " + panel.id + ", view.type = " + view.type;
       }
 
+      if (!view.itemHandler) {
+        // Use BROWSER item handler by default
+        view.itemHandler = this.ItemHandler.BROWSER;
+      } else if (!this._valueExists(this.ItemHandler, view.itemHandler)) {
+        throw "Home.panels: Invalid item handler: panel.id = " + panel.id + ", view.itemHandler = " + view.itemHandler;
+      }
+
       if (!view.dataset) {
         throw "Home.panels: No dataset provided for view: panel.id = " + panel.id + ", view.type = " + view.type;
       }
     }
 
     this._panels[panel.id] = panel;
+
+    if (action) {
+      let messageType;
+
+      switch(action) {
+        case this.Action.INSTALL:
+          messageType = "HomePanels:Install";
+          break;
+
+        case this.Action.REFRESH:
+          messageType = "HomePanels:Refresh";
+          break;
+
+        default:
+          throw "Home.panels: Invalid action for panel: panel.id = " + panel.id + ", action = " + action;
+      }
+
+      sendMessageToJava({
+        type: messageType,
+        panel: this._panelToJSON(panel)
+      });
+    }
   },
 
   remove: function(id) {
+    if (!(id in this._panels)) {
+      throw "Home.panels: Panel doesn't exist: id = " + id;
+    }
+
+    let panel = this._panels[id];
     delete this._panels[id];
 
     sendMessageToJava({
       type: "HomePanels:Remove",
-      id: id
+      panel: this._panelToJSON(panel)
     });
   },
 
@@ -231,10 +291,10 @@ let HomePanels = {
     }
     return false;
   }
-};
+});
 
 // Public API
-this.Home = {
+this.Home = Object.freeze({
   banner: HomeBanner,
   panels: HomePanels,
 
@@ -242,8 +302,8 @@ this.Home = {
   observe: function(subject, topic, data) {
     switch(topic) {
       case "HomePanels:Get":
-        HomePanels._handleGet(data);
+        HomePanels._handleGet(JSON.parse(data));
         break;
     }
   }
-}
+});

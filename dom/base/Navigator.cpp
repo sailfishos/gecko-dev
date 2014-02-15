@@ -1602,7 +1602,7 @@ Navigator::DoNewResolve(JSContext* aCx, JS::Handle<JSObject*> aObject,
   }
 
   if (JSVAL_IS_PRIMITIVE(prop_val) && !JSVAL_IS_NULL(prop_val)) {
-    rv = nsContentUtils::WrapNative(aCx, aObject, native, &prop_val, true);
+    rv = nsContentUtils::WrapNative(aCx, aObject, native, &prop_val);
 
     if (NS_FAILED(rv)) {
       return Throw(aCx, rv);
@@ -1799,6 +1799,7 @@ Navigator::HasIccManagerSupport(JSContext* /* unused */,
   nsCOMPtr<nsPIDOMWindow> win = GetWindowFromGlobal(aGlobal);
   return win && CheckPermission(win, "mobileconnection");
 }
+#endif // MOZ_B2G_RIL
 
 /* static */
 bool
@@ -1819,7 +1820,6 @@ Navigator::HasWifiManagerSupport(JSContext* /* unused */,
   permMgr->TestPermissionFromPrincipal(principal, "wifi-manage", &permission);
   return nsIPermissionManager::ALLOW_ACTION == permission;
 }
-#endif // MOZ_B2G_RIL
 
 #ifdef MOZ_B2G_BT
 /* static */
@@ -1960,17 +1960,7 @@ Navigator::HasDataStoreSupport(JSContext* cx, JSObject* aGlobal)
 bool
 Navigator::HasDownloadsSupport(JSContext* aCx, JSObject* aGlobal)
 {
-  // We'll need a rooted object so that GC doesn't make it go away while
-  // we're calling CheckIsChrome.
-  JS::Rooted<JSObject*> global(aCx, aGlobal);
-
-  // Because of the way this API must be implemented, it will interact with
-  // objects attached to a chrome window. We always want to allow this.
-  if (ThreadsafeCheckIsChrome(aCx, global)) {
-    return true;
-  }
-
-  nsCOMPtr<nsPIDOMWindow> win = GetWindowFromGlobal(global);
+  nsCOMPtr<nsPIDOMWindow> win = GetWindowFromGlobal(aGlobal);
 
   return win &&
          CheckPermission(win, "downloads")  &&
@@ -2037,8 +2027,6 @@ NS_GetNavigatorPlatform(nsAString& aPlatform)
   aPlatform.AssignLiteral("MacIntel");
 #elif defined(XP_MACOSX) && defined(__x86_64__)
   aPlatform.AssignLiteral("MacIntel");
-#elif defined(XP_OS2)
-  aPlatform.AssignLiteral("OS/2");
 #else
   // XXX Communicator uses compiled-in build-time string defines
   // to indicate the platform it was compiled *for*, not what it is

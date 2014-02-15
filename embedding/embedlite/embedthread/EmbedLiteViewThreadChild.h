@@ -56,6 +56,11 @@ public:
   uint32_t GetID() { return mId; }
   gfxSize GetGLViewSize();
 
+  /**
+   * This method is used by EmbedLiteAppService::ZoomToRect() only.
+   */
+  bool GetScrollIdentifiers(uint32_t *aPresShellId, mozilla::layers::FrameMetrics::ViewID *aViewId);
+
   virtual bool RecvAsyncMessage(const nsString& aMessage,
                                 const nsString& aData);
 
@@ -81,6 +86,7 @@ protected:
   virtual bool RecvHandleDoubleTap(const nsIntPoint& aPoint);
   virtual bool RecvHandleSingleTap(const nsIntPoint& aPoint);
   virtual bool RecvHandleLongTap(const nsIntPoint& aPoint);
+  virtual bool RecvAcknowledgeScrollUpdate(const FrameMetrics::ViewID& aScrollId, const uint32_t& aScrollGeneration);
   virtual bool RecvMouseEvent(const nsString& aType,
                               const float&    aX,
                               const float&    aY,

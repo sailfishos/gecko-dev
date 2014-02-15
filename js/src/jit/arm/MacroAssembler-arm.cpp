@@ -1528,10 +1528,19 @@ MacroAssemblerARM::ma_vimm_f32(float value, FloatRegister dest, Condition cc)
             return;
         }
 
-        VFPImm enc(DoubleHighWord(double(value)));
-        if (enc.isValid()) {
-            as_vimm(vd, enc, cc);
-            return;
+        // Note that the vimm immediate float32 instruction encoding differs from the
+        // vimm immediate double encoding, but this difference matches the difference
+        // in the floating point formats, so it is possible to convert the float32 to
+        // a double and then use the double encoding paths.  It is still necessary to
+        // firstly check that the double low word is zero because some float32
+        // numbers set these bits and this can not be ignored.
+        double doubleValue = value;
+        if (DoubleLowWord(value) == 0) {
+            VFPImm enc(DoubleHighWord(doubleValue));
+            if (enc.isValid()) {
+                as_vimm(vd, enc, cc);
+                return;
+            }
         }
     }
     // Fall back to putting the value in a pool.
@@ -3484,6 +3493,7 @@ MacroAssemblerARMCompat::setupABICall(uint32_t args)
 #ifdef JS_CODEGEN_ARM_HARDFP
     usedIntSlots_ = 0;
     usedFloatSlots_ = 0;
+    usedFloat32_ = false;
     padding_ = 0;
 #else
     usedSlots_ = 0;
@@ -3526,23 +3536,29 @@ MacroAssemblerARMCompat::passABIArg(const MoveOperand &from, MoveOp::Type type)
     switch (type) {
       case MoveOp::FLOAT32:
       case MoveOp::DOUBLE: {
+        // N.B. this isn't a limitation of the ABI, it is a limitation of the compiler right now.
+        // There isn't a good way to handle odd numbered single registers, so everything goes to hell
+        // when we try.  Current fix is to never use more than one float in a function call.
+        // Fix coming along with complete float32 support in bug 957504.
+        JS_ASSERT(!usedFloat32_);
+        if (type == MoveOp::FLOAT32)
+            usedFloat32_ = true;
         FloatRegister fr;
         if (GetFloatArgReg(usedIntSlots_, usedFloatSlots_, &fr)) {
             if (from.isFloatReg() && from.floatReg() == fr) {
+                // Nothing to do; the value is in the right register already
                 usedFloatSlots_++;
                 if (type == MoveOp::FLOAT32)
                     passedArgTypes_ = (passedArgTypes_ << ArgType_Shift) | ArgType_Float32;
                 else
                     passedArgTypes_ = (passedArgTypes_ << ArgType_Shift) | ArgType_Double;
-                break;
-                // Nothing to do; the value is in the right register already
                 return;
             }
             to = MoveOperand(fr);
         } else {
             // If (and only if) the integer registers have started spilling, do we
             // need to take the register's alignment into account
-            uint32_t disp;
+            uint32_t disp = INT_MAX;
             if (type == MoveOp::FLOAT32)
                 disp = GetFloat32ArgStackDisp(usedIntSlots_, usedFloatSlots_, &padding_);
             else
@@ -3560,10 +3576,9 @@ MacroAssemblerARMCompat::passABIArg(const MoveOperand &from, MoveOp::Type type)
         Register r;
         if (GetIntArgReg(usedIntSlots_, usedFloatSlots_, &r)) {
             if (from.isGeneralReg() && from.reg() == r) {
-                // Almost nothing to do; the value is in the right register already
+                // Nothing to do; the value is in the right register already
                 usedIntSlots_++;
                 passedArgTypes_ = (passedArgTypes_ << ArgType_Shift) | ArgType_General;
-
                 return;
             }
             to = MoveOperand(r);
@@ -3790,7 +3805,9 @@ MacroAssemblerARMCompat::callWithABI(void *fun, MoveOp::Type result)
       case MoveOp::FLOAT32: passedArgTypes_ |= ArgType_Float32; break;
       default: MOZ_ASSUME_UNREACHABLE("Invalid return type");
     }
+#ifdef DEBUG
     AssertValidABIFunctionType(passedArgTypes_);
+#endif
     ABIFunctionType type = ABIFunctionType(passedArgTypes_);
     fun = Simulator::RedirectNativeFunction(fun, type);
 #endif

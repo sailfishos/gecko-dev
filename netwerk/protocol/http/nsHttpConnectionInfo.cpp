@@ -7,6 +7,12 @@
 // HttpLog.h should generally be included first
 #include "HttpLog.h"
 
+// Log on level :5, instead of default :4.
+#undef LOG
+#define LOG(args) LOG5(args)
+#undef LOG_ENABLED
+#define LOG_ENABLED() LOG5_ENABLED()
+
 #include "nsHttpConnectionInfo.h"
 #include "mozilla/net/DNS.h"
 #include "prnetdb.h"
@@ -21,7 +27,7 @@ nsHttpConnectionInfo::nsHttpConnectionInfo(const nsACString &host, int32_t port,
     , mUsingSSL(usingSSL)
     , mUsingConnect(false)
 {
-    LOG(("Creating nsHttpConnectionInfo @%x\n", this));
+    LOG(("Creating nsHttpConnectionInfo @%p\n", this));
 
     mUsingHttpProxy = (proxyInfo && proxyInfo->IsHTTP());
 

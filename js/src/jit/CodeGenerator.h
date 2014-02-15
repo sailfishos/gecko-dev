@@ -30,7 +30,7 @@ class OutOfLineNewArray;
 class OutOfLineNewObject;
 class CheckOverRecursedFailure;
 class CheckOverRecursedFailurePar;
-class OutOfLineCheckInterruptPar;
+class OutOfLineInterruptCheckPar;
 class OutOfLineInterruptCheckImplicit;
 class OutOfLineUnboxFloatingPoint;
 class OutOfLineStoreElementHole;
@@ -291,8 +291,8 @@ class CodeGenerator : public CodeGeneratorSpecific
     bool visitCheckOverRecursedPar(LCheckOverRecursedPar *lir);
     bool visitCheckOverRecursedFailurePar(CheckOverRecursedFailurePar *ool);
 
-    bool visitCheckInterruptPar(LCheckInterruptPar *lir);
-    bool visitOutOfLineCheckInterruptPar(OutOfLineCheckInterruptPar *ool);
+    bool visitInterruptCheckPar(LInterruptCheckPar *lir);
+    bool visitOutOfLineInterruptCheckPar(OutOfLineInterruptCheckPar *ool);
 
     bool visitInterruptCheckImplicit(LInterruptCheckImplicit *ins);
     bool visitOutOfLineInterruptCheckImplicit(OutOfLineInterruptCheckImplicit *ins);
@@ -351,7 +351,7 @@ class CodeGenerator : public CodeGeneratorSpecific
   private:
     bool addGetPropertyCache(LInstruction *ins, RegisterSet liveRegs, Register objReg,
                              PropertyName *name, TypedOrValueRegister output,
-                             bool allowGetters, bool monitoredResult);
+                             bool monitoredResult);
     bool addGetElementCache(LInstruction *ins, Register obj, ConstantOrRegister index,
                             TypedOrValueRegister output, bool monitoredResult,
                             bool allowDoubleResult);

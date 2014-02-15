@@ -441,13 +441,35 @@
      File.makeDir = function makeDir(path, options = {}) {
        let security = options.winSecurity || null;
        let result = WinFile.CreateDirectory(path, security);
-       if (!result) {
-         if ((!("ignoreExisting" in options) || options.ignoreExisting) &&
-             ctypes.winLastError == Const.ERROR_ALREADY_EXISTS) {
-           return;
-         }
+
+       if (result) {
+         return;
+       }
+
+       if (("ignoreExisting" in options) && !options.ignoreExisting) {
          throw new File.Error("makeDir");
        }
+
+       if (ctypes.winLastError == Const.ERROR_ALREADY_EXISTS) {
+         return;
+       }
+
+       // If the user has no access, but it's a root directory, no error should be thrown
+       let splitPath = OS.Path.split(path);
+       // Removing last component if it's empty
+       // An empty last component is caused by trailing slashes in path
+       // This is always the case with root directories
+       if( splitPath.components[splitPath.components.length - 1].length === 0 ) {
+         splitPath.components.pop();
+       }
+       // One component and an absolute path implies a directory root.
+       if (ctypes.winLastError == Const.ERROR_ACCESS_DENIED &&
+           splitPath.absolute &&
+           splitPath.components.length === 1 ) {
+         return;
+       }
+
+       throw new File.Error("makeDir");
      };
 
      /**
@@ -547,6 +569,26 @@
        if (!sd.isNull()) {
            WinFile.LocalFree(Type.HLOCAL.cast(sd));
        }
+     };
+
+     /**
+      * Gets the number of bytes available on disk to the current user.
+      *
+      * @param {string} sourcePath Platform-specific path to a directory on 
+      * the disk to query for free available bytes.
+      *
+      * @return {number} The number of bytes available for the current user.
+      * @throws {OS.File.Error} In case of any error.
+      */
+     File.getAvailableFreeSpace = function Win_getAvailableFreeSpace(sourcePath) {
+       let freeBytesAvailableToUser = new Type.uint64_t.implementation(0);
+       let freeBytesAvailableToUserPtr = freeBytesAvailableToUser.address();
+
+       throw_on_zero("getAvailableFreeSpace",
+         WinFile.GetDiskFreeSpaceEx(sourcePath, freeBytesAvailableToUserPtr, null, null)
+       );
+
+       return freeBytesAvailableToUser.value;
      };
 
      /**

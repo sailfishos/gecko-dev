@@ -16,6 +16,7 @@ namespace js {
 
 class DeclEnvObject;
 class ForkJoinContext;
+class StaticWithObject;
 
 namespace jit {
 
@@ -273,6 +274,7 @@ template <> struct TypeToDataType<HandleObject> { static const DataType result =
 template <> struct TypeToDataType<HandleString> { static const DataType result = Type_Handle; };
 template <> struct TypeToDataType<HandlePropertyName> { static const DataType result = Type_Handle; };
 template <> struct TypeToDataType<HandleFunction> { static const DataType result = Type_Handle; };
+template <> struct TypeToDataType<Handle<StaticWithObject *> > { static const DataType result = Type_Handle; };
 template <> struct TypeToDataType<Handle<StaticBlockObject *> > { static const DataType result = Type_Handle; };
 template <> struct TypeToDataType<HandleScript> { static const DataType result = Type_Handle; };
 template <> struct TypeToDataType<HandleValue> { static const DataType result = Type_Handle; };
@@ -297,6 +299,9 @@ template <> struct TypeToArgProperties<HandlePropertyName> {
 };
 template <> struct TypeToArgProperties<HandleFunction> {
     static const uint32_t result = TypeToArgProperties<JSFunction *>::result | VMFunction::ByRef;
+};
+template <> struct TypeToArgProperties<Handle<StaticWithObject *> > {
+    static const uint32_t result = TypeToArgProperties<StaticWithObject *>::result | VMFunction::ByRef;
 };
 template <> struct TypeToArgProperties<Handle<StaticBlockObject *> > {
     static const uint32_t result = TypeToArgProperties<StaticBlockObject *>::result | VMFunction::ByRef;
@@ -652,6 +657,10 @@ JSObject *InitRestParameter(JSContext *cx, uint32_t length, Value *rest, HandleO
 bool HandleDebugTrap(JSContext *cx, BaselineFrame *frame, uint8_t *retAddr, bool *mustReturn);
 bool OnDebuggerStatement(JSContext *cx, BaselineFrame *frame, jsbytecode *pc, bool *mustReturn);
 
+bool EnterWith(JSContext *cx, BaselineFrame *frame, HandleValue val,
+               Handle<StaticWithObject *> templ);
+bool LeaveWith(JSContext *cx, BaselineFrame *frame);
+
 bool PushBlockScope(JSContext *cx, BaselineFrame *frame, Handle<StaticBlockObject *> block);
 bool PopBlockScope(JSContext *cx, BaselineFrame *frame);
 bool DebugLeaveBlock(JSContext *cx, BaselineFrame *frame, jsbytecode *pc);
@@ -659,7 +668,7 @@ bool DebugLeaveBlock(JSContext *cx, BaselineFrame *frame, jsbytecode *pc);
 bool InitBaselineFrameForOsr(BaselineFrame *frame, StackFrame *interpFrame,
                              uint32_t numStackValues);
 
-JSObject *CreateDerivedTypedObj(JSContext *cx, HandleObject type,
+JSObject *CreateDerivedTypedObj(JSContext *cx, HandleObject descr,
                                 HandleObject owner, int32_t offset);
 
 bool Recompile(JSContext *cx);

@@ -62,11 +62,6 @@
 #include "nsCocoaFeatures.h"
 #endif
 
-#if defined(XP_OS2)
-#define INCL_DOSMISC
-#include <os2.h>
-#endif
-
 #if defined(MOZ_WIDGET_GONK)
 #include "nsINetworkManager.h"
 #endif
@@ -116,19 +111,14 @@ NewURI(const nsACString &aSpec,
        int32_t aDefaultPort,
        nsIURI **aURI)
 {
-    nsStandardURL *url = new nsStandardURL();
-    if (!url)
-        return NS_ERROR_OUT_OF_MEMORY;
-    NS_ADDREF(url);
+    nsRefPtr<nsStandardURL> url = new nsStandardURL();
 
     nsresult rv = url->Init(nsIStandardURL::URLTYPE_AUTHORITY,
                             aDefaultPort, aSpec, aCharset, aBaseURI);
     if (NS_FAILED(rv)) {
-        NS_RELEASE(url);
         return rv;
     }
-
-    *aURI = url; // no QI needed
+    url.forget(aURI);
     return NS_OK;
 }
 
@@ -139,8 +129,7 @@ NewURI(const nsACString &aSpec,
 nsHttpHandler *gHttpHandler = nullptr;
 
 nsHttpHandler::nsHttpHandler()
-    : mConnMgr(nullptr)
-    , mHttpVersion(NS_HTTP_VERSION_1_1)
+    : mHttpVersion(NS_HTTP_VERSION_1_1)
     , mProxyHttpVersion(NS_HTTP_VERSION_1_1)
     , mCapabilities(NS_HTTP_ALLOW_KEEPALIVE)
     , mReferrerLevel(0xff) // by default we always send a referrer
@@ -207,6 +196,11 @@ nsHttpHandler::nsHttpHandler()
     , mRequestTokenBucketHz(100)
     , mRequestTokenBucketBurst(32)
     , mCriticalRequestPrioritization(true)
+    , mTCPKeepaliveShortLivedEnabled(false)
+    , mTCPKeepaliveShortLivedTimeS(60)
+    , mTCPKeepaliveShortLivedIdleTimeS(10)
+    , mTCPKeepaliveLongLivedEnabled(false)
+    , mTCPKeepaliveLongLivedIdleTimeS(600)
     , mEthernetBytesRead(0)
     , mEthernetBytesWritten(0)
     , mCellBytesRead(0)
@@ -231,7 +225,7 @@ nsHttpHandler::~nsHttpHandler()
     // make sure the connection manager is shutdown
     if (mConnMgr) {
         mConnMgr->Shutdown();
-        NS_RELEASE(mConnMgr);
+        mConnMgr = nullptr;
     }
 
     // Note: don't call NeckoChild::DestroyNeckoChild() here, as it's too late
@@ -286,7 +280,8 @@ nsHttpHandler::Init()
         prefBranch->AddObserver(DONOTTRACK_HEADER_ENABLED, this, true);
         prefBranch->AddObserver(DONOTTRACK_HEADER_VALUE, this, true);
         prefBranch->AddObserver(TELEMETRY_ENABLED, this, true);
-
+        prefBranch->AddObserver(HTTP_PREF("tcp_keepalive.short_lived_connections"), this, true);
+        prefBranch->AddObserver(HTTP_PREF("tcp_keepalive.long_lived_connections"), this, true);
         PrefsChanged(prefBranch, nullptr);
     }
 
@@ -388,9 +383,6 @@ nsHttpHandler::InitConnectionMgr()
 
     if (!mConnMgr) {
         mConnMgr = new nsHttpConnectionMgr();
-        if (!mConnMgr)
-            return NS_ERROR_OUT_OF_MEMORY;
-        NS_ADDREF(mConnMgr);
     }
 
     rv = mConnMgr->Init(mMaxConnections,
@@ -674,8 +666,6 @@ nsHttpHandler::InitUserAgentComponents()
     mPlatform.AssignLiteral(
 #if defined(ANDROID)
     "Android"
-#elif defined(XP_OS2)
-    "OS/2"
 #elif defined(XP_WIN)
     "Windows"
 #elif defined(XP_MACOSX)
@@ -702,20 +692,7 @@ nsHttpHandler::InitUserAgentComponents()
 
 #ifndef MOZ_UA_OS_AGNOSTIC
     // Gather OS/CPU.
-#if defined(XP_OS2)
-    ULONG os2ver = 0;
-    DosQuerySysInfo(QSV_VERSION_MINOR, QSV_VERSION_MINOR,
-                    &os2ver, sizeof(os2ver));
-    if (os2ver == 11)
-        mOscpu.AssignLiteral("2.11");
-    else if (os2ver == 30)
-        mOscpu.AssignLiteral("Warp 3");
-    else if (os2ver == 40)
-        mOscpu.AssignLiteral("Warp 4");
-    else if (os2ver == 45)
-        mOscpu.AssignLiteral("Warp 4.5");
-
-#elif defined(XP_WIN)
+#if defined(XP_WIN)
     OSVERSIONINFO info = { sizeof(OSVERSIONINFO) };
 #pragma warning(push)
 #pragma warning(disable:4996)
@@ -1422,6 +1399,47 @@ nsHttpHandler::PrefsChanged(nsIPrefBranch *prefs, const char *pref)
         mRequestTokenBucket =
             new EventTokenBucket(RequestTokenBucketHz(),
                                  RequestTokenBucketBurst());
+    }
+
+    // Keepalive values for initial and idle connections.
+    if (PREF_CHANGED(HTTP_PREF("tcp_keepalive.short_lived_connections"))) {
+        rv = prefs->GetBoolPref(
+            HTTP_PREF("tcp_keepalive.short_lived_connections"), &cVar);
+        if (NS_SUCCEEDED(rv) && cVar != mTCPKeepaliveShortLivedEnabled) {
+            mTCPKeepaliveShortLivedEnabled = cVar;
+        }
+    }
+
+    if (PREF_CHANGED(HTTP_PREF("tcp_keepalive.short_lived_time"))) {
+        rv = prefs->GetIntPref(
+            HTTP_PREF("tcp_keepalive.short_lived_time"), &val);
+        if (NS_SUCCEEDED(rv) && val > 0)
+            mTCPKeepaliveShortLivedTimeS = clamped(val, 1, 300); // Max 5 mins.
+    }
+
+    if (PREF_CHANGED(HTTP_PREF("tcp_keepalive.short_lived_idle_time"))) {
+        rv = prefs->GetIntPref(
+            HTTP_PREF("tcp_keepalive.short_lived_idle_time"), &val);
+        if (NS_SUCCEEDED(rv) && val > 0)
+            mTCPKeepaliveShortLivedIdleTimeS = clamped(val,
+                                                       1, kMaxTCPKeepIdle);
+    }
+
+    // Keepalive values for Long-lived Connections.
+    if (PREF_CHANGED(HTTP_PREF("tcp_keepalive.long_lived_connections"))) {
+        rv = prefs->GetBoolPref(
+            HTTP_PREF("tcp_keepalive.long_lived_connections"), &cVar);
+        if (NS_SUCCEEDED(rv) && cVar != mTCPKeepaliveLongLivedEnabled) {
+            mTCPKeepaliveLongLivedEnabled = cVar;
+        }
+    }
+
+    if (PREF_CHANGED(HTTP_PREF("tcp_keepalive.long_lived_idle_time"))) {
+        rv = prefs->GetIntPref(
+            HTTP_PREF("tcp_keepalive.long_lived_idle_time"), &val);
+        if (NS_SUCCEEDED(rv) && val > 0)
+            mTCPKeepaliveLongLivedIdleTimeS = clamped(val,
+                                                      1, kMaxTCPKeepIdle);
     }
 
 #undef PREF_CHANGED

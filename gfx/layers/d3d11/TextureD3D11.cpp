@@ -62,10 +62,11 @@ GetTileRectD3D11(uint32_t aID, IntSize aSize, uint32_t aMaxSize)
 }
 
 DataTextureSourceD3D11::DataTextureSourceD3D11(SurfaceFormat aFormat,
-                                               CompositorD3D11* aCompositor)
+                                               CompositorD3D11* aCompositor,
+                                               TextureFlags aFlags)
   : mCompositor(aCompositor)
   , mFormat(aFormat)
-  , mFlags(0)
+  , mFlags(aFlags)
   , mCurrentTile(0)
   , mIsTiled(false)
   , mIterating(false)
@@ -150,23 +151,35 @@ TextureClientD3D11::TextureClientD3D11(gfx::SurfaceFormat aFormat, TextureFlags 
 {}
 
 TextureClientD3D11::~TextureClientD3D11()
-{}
+{
+#ifdef DEBUG
+  // An Azure DrawTarget needs to be locked when it gets nullptr'ed as this is
+  // when it calls EndDraw. This EndDraw should not execute anything so it
+  // shouldn't -really- need the lock but the debug layer chokes on this.
+  if (mDrawTarget) {
+    MOZ_ASSERT(!mIsLocked);
+    MOZ_ASSERT(mTexture);
+    MOZ_ASSERT(mDrawTarget->refCount() == 1);
+    LockD3DTexture(mTexture.get());
+    mDrawTarget = nullptr;
+    UnlockD3DTexture(mTexture.get());
+  }
+#endif
+}
 
 bool
 TextureClientD3D11::Lock(OpenMode aMode)
 {
-  if (!IsValid() || !IsAllocated()) {
-    return false;
-  }
   MOZ_ASSERT(!mIsLocked, "The Texture is already locked!");
   LockD3DTexture(mTexture.get());
+  mIsLocked = true;
 
   if (mNeedsClear) {
+    mDrawTarget = GetAsDrawTarget();
     mDrawTarget->ClearRect(Rect(0, 0, GetSize().width, GetSize().height));
     mNeedsClear = false;
   }
 
-  mIsLocked = true;
   return true;
 }
 
@@ -175,8 +188,12 @@ TextureClientD3D11::Unlock()
 {
   MOZ_ASSERT(mIsLocked, "Unlocked called while the texture is not locked!");
   if (mDrawTarget) {
+    MOZ_ASSERT(mDrawTarget->refCount() == 1);
     mDrawTarget->Flush();
   }
+
+  // The DrawTarget is created only once, and is only usable between calls
+  // to Lock and Unlock.
   UnlockD3DTexture(mTexture.get());
   mIsLocked = false;
 }
@@ -190,8 +207,6 @@ TextureClientD3D11::GetAsDrawTarget()
     return mDrawTarget;
   }
 
-  // The DrawTarget is created only once, and is only usable between calls
-  // to Lock and Unlock.
   mDrawTarget = Factory::CreateDrawTargetForD3D10Texture(mTexture, mFormat);
   return mDrawTarget;
 }
@@ -407,7 +422,7 @@ void
 DataTextureSourceD3D11::SetCompositor(Compositor* aCompositor)
 {
   CompositorD3D11* d3dCompositor = static_cast<CompositorD3D11*>(aCompositor);
-  if (mCompositor != d3dCompositor) {
+  if (mCompositor && mCompositor != d3dCompositor) {
     Reset();
   }
   mCompositor = d3dCompositor;
@@ -891,9 +906,9 @@ DeprecatedTextureHostYCbCrD3D11::UpdateImpl(const SurfaceDescriptor& aImage,
   RefPtr<DataTextureSource> srcCb;
   RefPtr<DataTextureSource> srcCr;
   if (!mFirstSource) {
-    srcY  = new DataTextureSourceD3D11(SurfaceFormat::A8, mCompositor);
-    srcCb = new DataTextureSourceD3D11(SurfaceFormat::A8, mCompositor);
-    srcCr = new DataTextureSourceD3D11(SurfaceFormat::A8, mCompositor);
+    srcY  = new DataTextureSourceD3D11(SurfaceFormat::A8, mCompositor, TEXTURE_DISALLOW_BIGIMAGE);
+    srcCb = new DataTextureSourceD3D11(SurfaceFormat::A8, mCompositor, TEXTURE_DISALLOW_BIGIMAGE);
+    srcCr = new DataTextureSourceD3D11(SurfaceFormat::A8, mCompositor, TEXTURE_DISALLOW_BIGIMAGE);
     mFirstSource = srcY;
     srcY->SetNextSibling(srcCb);
     srcCb->SetNextSibling(srcCr);
