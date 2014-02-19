@@ -15,6 +15,7 @@
     "dom/plugins": "tests that use plugins",
     "dom/tests/mochitest/general/test_focusrings.xul":"",
     "layout/base/tests/test_bug465448.xul":"",
+    "layout/forms/test/test_bug287446.html": "bug 947789",
 
     "layout/forms/test/test_bug478219.xhtml":"window.closed not working, bug 907795",
     "content/media/test":"bug 918299",
@@ -85,7 +86,7 @@
     "dom/events/test/test_bug667919-2.html":"bug 900969, 5 tests",
 
     "content/html/content/test/test_bug561636.html":"observerservice not working",
-    "content/base/test/test_bug548193.html":"observerservice issue",
+    "content/base/test/csp/test_csp_report.html":"observerservice issue",
     "content/base/test/test_x-frame-options.html":"observerservice issue",
 
     "content/base/test/test_XHRSendData.html":"seems to stall",
@@ -173,7 +174,6 @@
 
     "content/html/content/test/forms/test_input_file_picker.html":"5 failures out of 139 and timing out, bug 901581",
     "content/html/content/test/forms/test_validation.html":"374 total, bug 901848, no keygen support",
-    "content/html/content/test/forms/test_input_sanitization.html":"times out",
 
     "content/html/content/test/test_bug430351.html":"13 failing out of 700, not focusable iframes? bug 902207",
 
@@ -224,11 +224,11 @@
     "content/base/test/test_bug466409.html":"",
     "content/base/test/test_bug482935.html":"",
     "content/base/test/test_bug498433.html":"",
-    "content/base/test/test_bug650386_redirect_301.html":"",
-    "content/base/test/test_bug650386_redirect_302.html":"",
-    "content/base/test/test_bug650386_redirect_303.html":"",
-    "content/base/test/test_bug650386_redirect_307.html":"",
-    "content/base/test/test_bug717511.html":"",
+    "content/base/test/csp/test_301_redirect.html":"",
+    "content/base/test/csp/test_302_redirect.html":"",
+    "content/base/test/csp/test_303_redirect.html":"",
+    "content/base/test/csp/test_307_redirect.html":"",
+    "content/base/test/csp/test_multi_policy_injection_bypass.html":"",
     "content/base/test/test_copypaste.xhtml":"bug 904183",
     "content/base/test/test_copypaste.xul":"bug 904183",
     "content/base/test/csp/test_csp_redirects.html":"",
@@ -471,7 +471,6 @@
 
     "content/html/content/test/test_bug209275.xhtml":"timed out, 47 tests, bug 870262, :visited support",
     "content/html/content/test/test_bug481335.xhtml":"timed out, bug 870262, :visited support",
-    "layout/style/test/test_transitions.html":"times out",
     "layout/style/test/test_visited_image_loading.html":"bug 870262, :visited support",
     "layout/style/test/test_visited_image_loading_empty.html":"bug 870262, :visited support",
     "layout/style/test/test_visited_lying.html" : "bug 870262, :visited support",

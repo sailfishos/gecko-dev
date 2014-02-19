@@ -4427,7 +4427,6 @@ then
     fi
     QT_VERSION=`$HOST_QMAKE -v | grep 'Using Qt version' | egrep -o '[[0-9]]+\.[[0-9]]+\.[[0-9]]+'`
 
-
     if test -z "$QTDIR"; then
         case $QT_VERSION in
         5.*)
@@ -5052,6 +5051,8 @@ dnl enable once PeerConnection lands
     MOZ_SRTP=1
     AC_DEFINE(MOZ_SCTP)
     AC_DEFINE(MOZ_SRTP)
+else
+    MOZ_SYNTH_PICO=
 fi
 
 AC_SUBST(MOZ_WEBRTC)

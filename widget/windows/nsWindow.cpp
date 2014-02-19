@@ -6131,7 +6131,7 @@ bool nsWindow::OnGesture(WPARAM wParam, LPARAM lParam)
   }
 
   // Other gestures translate into simple gesture events:
-  WidgetSimpleGestureEvent event(true, 0, this, 0, 0.0);
+  WidgetSimpleGestureEvent event(true, 0, this);
   if ( !mGesture.ProcessGestureMessage(mWnd, wParam, lParam, event) ) {
     return false; // fall through to DefWndProc
   }
@@ -6614,9 +6614,9 @@ nsWindow::OnSysColorChanged()
  **************************************************************/
 
 NS_IMETHODIMP
-nsWindow::NotifyIME(NotificationToIME aNotification)
+nsWindow::NotifyIME(const IMENotification& aIMENotification)
 {
-  return IMEHandler::NotifyIME(this, aNotification);
+  return IMEHandler::NotifyIME(this, aIMENotification);
 }
 
 NS_IMETHODIMP_(void)
@@ -6649,14 +6649,6 @@ nsWindow::GetToggledKeyState(uint32_t aKeyCode, bool* aLEDState)
   NS_ENSURE_ARG_POINTER(aLEDState);
   *aLEDState = (::GetKeyState(aKeyCode) & 1) != 0;
   return NS_OK;
-}
-
-NS_IMETHODIMP
-nsWindow::NotifyIMEOfTextChange(uint32_t aStart,
-                                uint32_t aOldEnd,
-                                uint32_t aNewEnd)
-{
-  return IMEHandler::NotifyIMEOfTextChange(aStart, aOldEnd, aNewEnd);
 }
 
 nsIMEUpdatePreference

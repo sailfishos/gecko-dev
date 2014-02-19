@@ -13,6 +13,7 @@
 #include "MacIOSurface.h"
 #include "FilterNodeSoftware.h"
 #include "mozilla/Assertions.h"
+#include "mozilla/FloatingPoint.h"
 
 using namespace std;
 
@@ -413,6 +414,8 @@ UpdateLinearParametersToIncludePoint(double *min_t, double *max_t,
                                      double dx, double dy,
                                      double x, double y)
 {
+  MOZ_ASSERT(IsFinite(x) && IsFinite(y));
+
   /**
    * Compute a parameter t such that a line perpendicular to the (dx,dy)
    * vector, passing through (start->x + dx*t, start->y + dy*t), also
@@ -609,6 +612,10 @@ DrawRadialRepeatingGradient(CGContextRef cg, const RadialGradientPattern &aPatte
 static void
 DrawGradient(CGContextRef cg, const Pattern &aPattern, const CGRect &aExtents)
 {
+  if (CGRectIsEmpty(aExtents)) {
+    return;
+  }
+
   if (aPattern.GetType() == PatternType::LINEAR_GRADIENT) {
     const LinearGradientPattern& pat = static_cast<const LinearGradientPattern&>(aPattern);
     GradientStopsCG *stops = static_cast<GradientStopsCG*>(pat.mStops.get());
@@ -1127,8 +1134,7 @@ DrawTargetCG::FillGlyphs(ScaledFont *aFont, const GlyphBuffer &aBuffer, const Pa
   positions.resize(aBuffer.mNumGlyphs);
 
   // Handle the flip
-  CGAffineTransform matrix = CGAffineTransformMakeScale(1, -1);
-  CGContextConcatCTM(cg, matrix);
+  CGContextScaleCTM(cg, 1, -1);
   // CGContextSetTextMatrix works differently with kCGTextClip && kCGTextFill
   // It seems that it transforms the positions with TextFill and not with TextClip
   // Therefore we'll avoid it. See also:
@@ -1164,6 +1170,7 @@ DrawTargetCG::FillGlyphs(ScaledFont *aFont, const GlyphBuffer &aBuffer, const Pa
                                      aBuffer.mNumGlyphs);
       delete bboxes;
     }
+    CGContextScaleCTM(cg, 1, -1);
     DrawGradient(cg, aPattern, extents);
   } else {
     //XXX: with CoreGraphics we can stroke text directly instead of going

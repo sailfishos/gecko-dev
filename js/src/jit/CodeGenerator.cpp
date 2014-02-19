@@ -3568,7 +3568,6 @@ CodeGenerator::visitNewCallObject(LNewCallObject *lir)
     Register obj = ToRegister(lir->output());
 
     JSObject *templateObj = lir->mir()->templateObject();
-    AutoThreadSafeAccess ts(templateObj);
 
     // If we have a template object, we can inline call object creation.
     OutOfLineCode *ool;
@@ -8004,8 +8003,8 @@ CodeGenerator::visitAsmJSCall(LAsmJSCall *ins)
 {
     MAsmJSCall *mir = ins->mir();
 
-#if defined(JS_CODEGEN_ARM) && !defined(JS_CODEGEN_ARM_HARDFP)
-    if (mir->callee().which() == MAsmJSCall::Callee::Builtin) {
+#if defined(JS_CODEGEN_ARM)
+    if (!useHardFpABI() && mir->callee().which() == MAsmJSCall::Callee::Builtin) {
         for (unsigned i = 0, e = ins->numOperands(); i < e; i++) {
             LAllocation *a = ins->getOperand(i);
             if (a->isFloatReg()) {

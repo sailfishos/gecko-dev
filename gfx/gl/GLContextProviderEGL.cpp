@@ -205,9 +205,7 @@ CreateSurfaceForWindow(nsIWidget* widget, const EGLConfig& config) {
         }
     #else
         MOZ_ASSERT(widget != nullptr);
-
         newSurface = sEGLLibrary.fCreateWindowSurface(EGL_DISPLAY(), config, GET_NATIVE_WINDOW(widget), 0);
-
         #ifdef MOZ_WIDGET_GONK
             gScreenBounds.x = 0;
             gScreenBounds.y = 0;
