@@ -220,6 +220,15 @@ CompositableParentManager::ReceiveCompositableUpdate(const CompositableOperation
       tileComposer->PaintedTiledLayerBuffer(this, tileDesc);
       break;
     }
+    case CompositableOperation::TOpRemoveTexture: {
+      const OpRemoveTexture& op = aEdit.get_OpRemoveTexture();
+      CompositableHost* compositable = AsCompositable(op);
+      RefPtr<TextureHost> tex = TextureHost::AsTextureHost(op.textureParent());
+
+      MOZ_ASSERT(tex.get());
+      compositable->RemoveTextureHost(tex);
+      break;
+    }
     case CompositableOperation::TOpUseTexture: {
       const OpUseTexture& op = aEdit.get_OpUseTexture();
       CompositableHost* compositable = AsCompositable(op);
@@ -227,6 +236,20 @@ CompositableParentManager::ReceiveCompositableUpdate(const CompositableOperation
 
       MOZ_ASSERT(tex.get());
       compositable->UseTextureHost(tex);
+
+      if (IsAsync()) {
+        ScheduleComposition(op);
+      }
+      break;
+    }
+    case CompositableOperation::TOpUseComponentAlphaTextures: {
+      const OpUseComponentAlphaTextures& op = aEdit.get_OpUseComponentAlphaTextures();
+      CompositableHost* compositable = AsCompositable(op);
+      RefPtr<TextureHost> texOnBlack = TextureHost::AsTextureHost(op.textureOnBlackParent());
+      RefPtr<TextureHost> texOnWhite = TextureHost::AsTextureHost(op.textureOnWhiteParent());
+
+      MOZ_ASSERT(texOnBlack && texOnWhite);
+      compositable->UseComponentAlphaTextures(texOnBlack, texOnWhite);
 
       if (IsAsync()) {
         ScheduleComposition(op);
