@@ -2015,7 +2015,9 @@ void AsyncPanZoomController::SendAsyncScrollEvent() {
   }
 
   controller->SendAsyncScrollDOMEvent(isRoot, contentRect, scrollableSize);
-  controller->ScrollUpdate(scrollOffset, resolution.scale);
+  if (isRoot) {
+    controller->ScrollUpdate(scrollOffset, resolution.scale);
+  }
 }
 
 bool AsyncPanZoomController::Matches(const ScrollableLayerGuid& aGuid)
