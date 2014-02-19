@@ -34,6 +34,7 @@
 #include "nsTArray.h"
 #ifdef MOZ_X11
 #include "gfxXlibSurface.h"
+#include "prenv.h"
 #endif
 
 #include "qcms.h"
@@ -98,9 +99,11 @@ already_AddRefed<gfxASurface>
 gfxQtPlatform::CreateOffscreenSurface(const IntSize& size,
                                       gfxContentType contentType)
 {
-    nsRefPtr<gfxASurface> newSurface = nullptr;
     gfxImageFormat imageFormat = OptimalFormatForContent(contentType);
-    newSurface = new gfxImageSurface(gfxIntSize(size.width, size.height), imageFormat);
+
+    nsRefPtr<gfxASurface> newSurface =
+        new gfxImageSurface(gfxIntSize(size.width, size.height), imageFormat);
+
     return newSurface.forget();
 }
 
