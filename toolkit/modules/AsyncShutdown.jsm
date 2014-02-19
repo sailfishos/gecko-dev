@@ -5,11 +5,6 @@
 /**
  * Managing safe shutdown of asynchronous services.
  *
- *     THIS API IS EXPERIMENTAL AND SUBJECT TO CHANGE WITHOUT PRIOR NOTICE
- *        IF YOUR CODE USES IT, IT MAY HAVE STOPPED WORKING ALREADY
- *                          YOU HAVE BEEN WARNED
- *
- *
  * Firefox shutdown is composed of phases that take place
  * sequentially. Typically, each shutdown phase removes some
  * capabilities from the application. For instance, at the end of
@@ -116,11 +111,12 @@ function safeGetState(state) {
   if (!state) {
     return "(none)";
   }
+  let data, string;
   try {
     // Evaluate state(), normalize the result into something that we can
     // safely stringify or upload.
-    let string = JSON.stringify(state());
-    let data = JSON.parse(string);
+    string = JSON.stringify(state());
+    data = JSON.parse(string);
     // Simplify the rest of the code by ensuring that we can simply
     // concatenate the result to a message.
     if (data && typeof data == "object") {
@@ -130,6 +126,9 @@ function safeGetState(state) {
     }
     return data;
   } catch (ex) {
+    if (string) {
+      return string;
+    }
     try {
       return "Error getting state: " + ex + " at " + ex.stack;
     } catch (ex2) {

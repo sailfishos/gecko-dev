@@ -390,6 +390,7 @@ public:
   virtual const char* Name() const = 0;
 #endif // MOZ_DUMP_PAINTING
 
+  virtual LayersBackend GetBackendType() const = 0;
 
   /**
    * Each Compositor has a unique ID.

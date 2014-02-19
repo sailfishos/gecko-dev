@@ -2415,6 +2415,12 @@ nsCSSFrameConstructor::ConstructDocElementFrame(Element*                 aDocEle
                                      frameItems);
     newFrame = frameItems.FirstChild();
     NS_ASSERTION(frameItems.OnlyChild(), "multiple root element frames");
+  } else if (display->mDisplay == NS_STYLE_DISPLAY_FLEX) {
+    contentFrame = NS_NewFlexContainerFrame(mPresShell, styleContext);
+    InitAndRestoreFrame(state, aDocElement, mDocElementContainingBlock,
+                        contentFrame);
+    newFrame = contentFrame;
+    processChildren = true;
   } else if (display->mDisplay == NS_STYLE_DISPLAY_TABLE) {
     // We're going to call the right function ourselves, so no need to give a
     // function to this FrameConstructionData.
@@ -2438,6 +2444,8 @@ nsCSSFrameConstructor::ConstructDocElementFrame(Element*                 aDocEle
     newFrame = frameItems.FirstChild();
     NS_ASSERTION(frameItems.OnlyChild(), "multiple root element frames");
   } else {
+    MOZ_ASSERT(display->mDisplay == NS_STYLE_DISPLAY_BLOCK,
+               "Unhandled display type for root element");
     contentFrame = NS_NewBlockFormattingContext(mPresShell, styleContext);
     nsFrameItems frameItems;
     // Use a null PendingBinding, since our binding is not in fact pending.
@@ -10094,13 +10102,19 @@ nsCSSFrameConstructor::RemoveFloatingFirstLetterFrames(
   textContent->SetPrimaryFrame(newTextFrame);
 
   // Wallpaper bug 822910.
-  if (prevSibling && prevSibling->GetType() == nsGkAtoms::textFrame) {
-    prevSibling->AddStateBits(NS_FRAME_IS_DIRTY);
+  bool offsetsNeedFixing =
+    prevSibling && prevSibling->GetType() == nsGkAtoms::textFrame;
+  if (offsetsNeedFixing) {
+    prevSibling->AddStateBits(TEXT_OFFSETS_NEED_FIXING);
   }
 
   // Insert text frame in its place
   nsFrameList textList(newTextFrame, newTextFrame);
   InsertFrames(parentFrame, kPrincipalList, prevSibling, textList);
+
+  if (offsetsNeedFixing) {
+    prevSibling->RemoveStateBits(TEXT_OFFSETS_NEED_FIXING);
+  }
 
   return NS_OK;
 }
@@ -10145,13 +10159,19 @@ nsCSSFrameConstructor::RemoveFirstLetterFrames(nsPresContext* aPresContext,
       textContent->SetPrimaryFrame(textFrame);
 
       // Wallpaper bug 822910.
-      if (prevSibling && prevSibling->GetType() == nsGkAtoms::textFrame) {
-        prevSibling->AddStateBits(NS_FRAME_IS_DIRTY);
+      bool offsetsNeedFixing =
+        prevSibling && prevSibling->GetType() == nsGkAtoms::textFrame;
+      if (offsetsNeedFixing) {
+        prevSibling->AddStateBits(TEXT_OFFSETS_NEED_FIXING);
       }
 
       // Insert text frame in its place
       nsFrameList textList(textFrame, textFrame);
       InsertFrames(aFrame, kPrincipalList, prevSibling, textList);
+
+      if (offsetsNeedFixing) {
+        prevSibling->RemoveStateBits(TEXT_OFFSETS_NEED_FIXING);
+      }
 
       *aStopLooking = true;
       NS_ASSERTION(!aBlockFrame->GetPrevContinuation(),

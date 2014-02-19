@@ -1816,18 +1816,6 @@ CurrentGlobalOrNull(JSContext *cx);
 }
 
 /*
- * This method returns the global corresponding to the most recent scripted
- * frame, which may not match the cx's current compartment. This is extremely
- * dangerous, because it can bypass compartment security invariants in subtle
- * ways. To use it safely, the caller must perform a subsequent security
- * check. There is currently only one consumer of this function in Gecko, and
- * it should probably stay that way. If you'd like to use it, please consult
- * the XPConnect module owner first.
- */
-extern JS_PUBLIC_API(JSObject *)
-JS_GetScriptedGlobal(JSContext *cx);
-
-/*
  * Initialize the 'Reflect' object on a global object.
  */
 extern JS_PUBLIC_API(JSObject *)
@@ -3173,9 +3161,9 @@ JS_StealArrayBufferContents(JSContext *cx, JS::HandleObject obj, void **contents
  * the number of payload bytes required. The pointer to pass to
  * JS_NewArrayBufferWithContents is returned in |contents|. The pointer to the
  * |nbytes| of usable memory is returned in |data|. (*|contents| will contain a
- * header before |data|.) The only legal operations on *|contents| is to free
- * it, or pass it to JS_NewArrayBufferWithContents or
- * JS_ReallocateArrayBufferContents.
+ * header before |data|.) The only legal operations on *|contents| are to pass
+ * it to either JS_NewArrayBufferWithContents or
+ * JS_ReallocateArrayBufferContents, or free it with js_free or JS_free.
  */
 extern JS_PUBLIC_API(bool)
 JS_AllocateArrayBufferContents(JSContext *maybecx, uint32_t nbytes, void **contents, uint8_t **data);
@@ -4918,6 +4906,20 @@ class MOZ_STACK_CLASS JS_PUBLIC_API(ForOfIterator) {
     inline bool nextFromOptimizedArray(MutableHandleValue val, bool *done);
     bool materializeArrayIterator();
 };
+
+
+/*
+ * If a large allocation fails, the JS engine may call the large-allocation-
+ * failure callback, if set, to allow the embedding to flush caches, possibly
+ * perform shrinking GCs, etc. to make some room so that the allocation will
+ * succeed if retried.
+ */
+
+typedef void
+(* LargeAllocationFailureCallback)();
+
+extern JS_PUBLIC_API(void)
+SetLargeAllocationFailureCallback(JSRuntime *rt, LargeAllocationFailureCallback afc);
 
 } /* namespace JS */
 

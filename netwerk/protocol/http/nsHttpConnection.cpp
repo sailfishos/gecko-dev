@@ -80,12 +80,12 @@ nsHttpConnection::nsHttpConnection()
     , mResponseTimeoutEnabled(false)
     , mTCPKeepaliveConfig(kTCPKeepaliveDisabled)
 {
-    LOG(("Creating nsHttpConnection @%p\n", this));
+    LOG(("Creating nsHttpConnection @%x\n", this));
 }
 
 nsHttpConnection::~nsHttpConnection()
 {
-    LOG(("Destroying nsHttpConnection @%p\n", this));
+    LOG(("Destroying nsHttpConnection @%x\n", this));
 
     ReportDataUsage(false);
     if (!mEverUsedSpdy) {
@@ -313,7 +313,7 @@ nsHttpConnection::Activate(nsAHttpTransaction *trans, uint32_t caps, int32_t pri
     nsresult rv;
 
     MOZ_ASSERT(PR_GetCurrentThread() == gSocketThread);
-    LOG(("nsHttpConnection::Activate [this=%p trans=%p caps=%x]\n",
+    LOG(("nsHttpConnection::Activate [this=%p trans=%x caps=%x]\n",
          this, trans, caps));
 
     if (!trans->IsNullTransaction())
@@ -364,16 +364,16 @@ nsHttpConnection::Activate(nsAHttpTransaction *trans, uint32_t caps, int32_t pri
     mResponseTimeoutEnabled = mTransaction->ResponseTimeout() > 0 &&
                               mTransaction->ResponseTimeoutEnabled();
 
-    rv = OnOutputStreamReady(mSocketOut);
-
     if (NS_SUCCEEDED(rv)) {
         nsresult rv2 = StartShortLivedTCPKeepalives();
         if (NS_WARN_IF(NS_FAILED(rv2))) {
             LOG(("nsHttpConnection::Activate [%p] "
                  "StartShortLivedTCPKeepalives failed rv2[0x%x]",
-                 this, rv));
+                 this, rv2));
         }
     }
+
+    rv = OnOutputStreamReady(mSocketOut);
 
 failed_activation:
     if (NS_FAILED(rv)) {
@@ -1247,7 +1247,7 @@ nsHttpConnection::EndIdleMonitoring()
 void
 nsHttpConnection::CloseTransaction(nsAHttpTransaction *trans, nsresult reason)
 {
-    LOG(("nsHttpConnection::CloseTransaction[this=%p trans=%p reason=%x]\n",
+    LOG(("nsHttpConnection::CloseTransaction[this=%p trans=%x reason=%x]\n",
         this, trans, reason));
 
     MOZ_ASSERT(trans == mTransaction, "wrong transaction");
@@ -1638,8 +1638,7 @@ nsHttpConnection::ReportDataUsage(bool allowDefer)
 nsresult
 nsHttpConnection::StartShortLivedTCPKeepalives()
 {
-    MOZ_ASSERT(!mUsingSpdyVersion, "Don't use TCP Keepalive with SPDY!");
-    if (NS_WARN_IF(mUsingSpdyVersion)) {
+    if (mUsingSpdyVersion) {
         return NS_OK;
     }
     MOZ_ASSERT(mSocketTransport);
@@ -1810,7 +1809,6 @@ nsHttpConnection::OnInputStreamReady(nsIAsyncInputStream *in)
 
         if (!CanReuse()) {
             LOG(("Server initiated close of idle conn %p\n", this));
-            // CloseIdleConnection may delete "this" - return immediately
             gHttpHandler->ConnMgr()->CloseIdleConnection(this);
             return NS_OK;
         }
