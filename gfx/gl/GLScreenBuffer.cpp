@@ -71,7 +71,7 @@ GLScreenBuffer::Create(GLContext* gl,
     }
 
     SurfaceStream* stream = SurfaceStream::CreateForType(
-        SurfaceStream::ChooseGLStreamType(SurfaceStream::OffMainThread,
+        SurfaceStream::ChooseGLStreamType(SurfaceStream::MainThread,
                                           caps.preserve),
         gl,
         nullptr);
