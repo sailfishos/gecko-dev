@@ -24,7 +24,7 @@ function pref(name, value) {
   }
 }
 
-let WebAppRT = {
+let WebappRT = {
   DEFAULT_PREFS_FILENAME: "default-prefs.js",
 
   prefs: [
@@ -67,7 +67,9 @@ let WebAppRT = {
 
 #ifdef MOZ_ANDROID_SYNTHAPKS
     // If the app is in debug mode, configure and enable the remote debugger.
-    if (sendMessageToJava({ type: "NativeApp:IsDebuggable" })) {
+    // sendMessageToJava can only return string values, so it returns the string
+    // "true" rather than boolean true if the app is in debug mode.
+    if (sendMessageToJava({ type: "NativeApp:IsDebuggable" }) === "true") {
       this._enableRemoteDebugger(aUrl);
     }
 #endif

@@ -1001,8 +1001,13 @@ var gBrowserInit = {
       }
       // Note: loadOneOrMoreURIs *must not* be called if window.arguments.length >= 3.
       // Such callers expect that window.arguments[0] is handled as a single URI.
-      else
+      else {
+        if (uriToLoad == "about:newtab" &&
+            Services.prefs.getBoolPref("browser.newtabpage.enabled")) {
+          Services.telemetry.getHistogramById("NEWTAB_PAGE_SHOWN").add(true);
+        }
         loadOneOrMoreURIs(uriToLoad);
+      }
     }
 
 #ifdef MOZ_SAFE_BROWSING
@@ -4306,6 +4311,7 @@ function onViewToolbarsPopupShowing(aEvent, aInsertPoint) {
     while (toolbarItem && toolbarItem.parentNode) {
       let parent = toolbarItem.parentNode;
       if ((parent.classList && parent.classList.contains("customization-target")) ||
+          parent.getAttribute("overflowfortoolbar") || // Needs to work in the overflow list as well.
           parent.localName == "toolbarpaletteitem" ||
           parent.localName == "toolbar")
         break;

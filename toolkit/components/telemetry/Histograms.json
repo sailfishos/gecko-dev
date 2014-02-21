@@ -2844,6 +2844,30 @@
     "extended_statistics_ok": true,
     "description": "PLACES: Number of keywords"
   },
+  "PLACES_BACKUPS_DAYSFROMLAST": {
+    "expires_in_version": "never",
+    "kind": "enumerated",
+    "n_values": 15,
+    "description": "PLACES: Days from last backup"
+  },
+  "PLACES_BACKUPS_BOOKMARKSTREE_MS": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "low": 50,
+    "high": 2000,
+    "n_buckets": 10,
+    "extended_statistics_ok": true,
+    "description": "PLACES: Time to build the bookmarks tree"
+  },
+  "PLACES_BACKUPS_TOJSON_MS": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "low": 50,
+    "high": 2000,
+    "n_buckets": 10,
+    "extended_statistics_ok": true,
+    "description": "PLACES: Time to convert and write the backup"
+  },
   "FENNEC_FAVICONS_COUNT": {
     "expires_in_version": "never",
     "kind": "exponential",
@@ -3990,6 +4014,11 @@
     "extended_statistics_ok": true,
     "description": "Number of sites blocked from the new tab page."
   },
+  "NEWTAB_PAGE_SHOWN": {
+    "expires_in_version": "35",
+    "kind": "boolean",
+    "description": "Number of times about:newtab was shown from opening a new tab or window."
+  },
   "PANORAMA_INITIALIZATION_TIME_MS": {
     "expires_in_version": "never",
     "kind": "exponential",
@@ -4218,7 +4247,15 @@
     "extended_statistics_ok": true,
     "description": "Time spent on a successful cert  verification in classic mode (ms)"
   },
-  "SSL_INITIAL_FAILED_CERT_VALIDATION_TIME_LIBPKIX": {
+  "SSL_SUCCESFUL_CERT_VALIDATION_TIME_INSANITY" : {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": "60000",
+    "n_buckets": 50,
+    "extended_statistics_ok": true,
+    "description": "Time spent on a successful cert verification in insanity mode (ms)"
+  },
+  "SSL_INITIAL_FAILED_CERT_VALIDATION_TIME_LIBPKIX" : {
     "expires_in_version": "never",
     "kind": "exponential",
     "high": "60000",
@@ -4233,6 +4270,14 @@
     "n_buckets": 50,
     "extended_statistics_ok": true,
     "description": "Time spent on an initially failed cert  verification in classic mode (ms)"
+  },
+  "SSL_INITIAL_FAILED_CERT_VALIDATION_TIME_INSANITY" : {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": "60000",
+    "n_buckets": 50,
+    "extended_statistics_ok": true,
+    "description": "Time spent on an initially failed cert verification in insanity mode (ms)"
   },
   "HEALTHREPORT_DB_OPEN_FIRSTRUN_MS": {
     "expires_in_version": "never",

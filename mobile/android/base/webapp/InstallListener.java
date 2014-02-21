@@ -24,7 +24,7 @@ import android.util.Log;
 
 public class InstallListener extends BroadcastReceiver {
 
-    private static String LOGTAG = "GeckoWebAppInstallListener";
+    private static String LOGTAG = "GeckoWebappInstallListener";
     private JSONObject mData = null;
     private String mManifestUrl;
 
@@ -56,8 +56,11 @@ public class InstallListener extends BroadcastReceiver {
             Log.i(LOGTAG, "No manifest URL present in metadata");
             return;
         } else if (!isCorrectManifest(manifestUrl)) {
-            Log.i(LOGTAG, "Waiting to finish installing " + mManifestUrl + " but this is " +manifestUrl);
-            //return;
+            // This happens when the updater triggers installation of multiple
+            // APK updates simultaneously.  If we're the receiver for another
+            // update, then simply ignore this intent by returning early.
+            Log.i(LOGTAG, "Manifest URL is for a different install; ignoring");
+            return;
         }
 
         if (GeckoThread.checkLaunchState(GeckoThread.LaunchState.GeckoRunning)) {
