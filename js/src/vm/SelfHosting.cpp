@@ -92,27 +92,25 @@ js::intrinsic_ThrowError(JSContext *cx, unsigned argc, Value *vp)
     JS_ASSERT(efs->argCount == args.length() - 1);
 #endif
 
-    char *errorArgs[3] = {nullptr, nullptr, nullptr};
+    JSAutoByteString errorArgs[3];
     for (unsigned i = 1; i < 4 && i < args.length(); i++) {
         RootedValue val(cx, args[i]);
         if (val.isInt32()) {
             JSString *str = ToString<CanGC>(cx, val);
             if (!str)
                 return false;
-            errorArgs[i - 1] = JS_EncodeString(cx, str);
+            errorArgs[i - 1].encodeLatin1(cx, str);
         } else if (val.isString()) {
-            errorArgs[i - 1] = JS_EncodeString(cx, ToString<CanGC>(cx, val));
+            errorArgs[i - 1].encodeLatin1(cx, val.toString());
         } else {
-            errorArgs[i - 1] = DecompileValueGenerator(cx, JSDVG_SEARCH_STACK, val, NullPtr());
+            errorArgs[i - 1].initBytes(DecompileValueGenerator(cx, JSDVG_SEARCH_STACK, val, NullPtr()));
         }
         if (!errorArgs[i - 1])
             return false;
     }
 
     JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr, errorNumber,
-                         errorArgs[0], errorArgs[1], errorArgs[2]);
-    for (unsigned i = 0; i < 3; i++)
-        js_free(errorArgs[i]);
+                         errorArgs[0].ptr(), errorArgs[1].ptr(), errorArgs[2].ptr());
     return false;
 }
 
@@ -698,30 +696,27 @@ static const JSFunctionSpec intrinsic_functions[] = {
               &intrinsic_InParallelSection_jitInfo, 0, 0),
 
     // See builtin/TypedObject.h for descriptors of the typedobj functions.
-    JS_FN("NewTypedHandle",
-          js::NewTypedHandle,
+    JS_FN("NewOpaqueTypedObject",
+          js::NewOpaqueTypedObject,
           1, 0),
-    JS_FN("NewDerivedTypedDatum",
-          js::NewDerivedTypedDatum,
+    JS_FN("NewDerivedTypedObject",
+          js::NewDerivedTypedObject,
           3, 0),
-    JS_FNINFO("AttachHandle",
-              JSNativeThreadSafeWrapper<js::AttachHandle>,
-              &js::AttachHandleJitInfo, 5, 0),
+    JS_FNINFO("AttachTypedObject",
+              JSNativeThreadSafeWrapper<js::AttachTypedObject>,
+              &js::AttachTypedObjectJitInfo, 5, 0),
     JS_FNINFO("ObjectIsTypeDescr",
               JSNativeThreadSafeWrapper<js::ObjectIsTypeDescr>,
               &js::ObjectIsTypeDescrJitInfo, 5, 0),
-    JS_FNINFO("ObjectIsTypeRepresentation",
-              JSNativeThreadSafeWrapper<js::ObjectIsTypeRepresentation>,
-              &js::ObjectIsTypeRepresentationJitInfo, 5, 0),
-    JS_FNINFO("ObjectIsTypedObject",
-              JSNativeThreadSafeWrapper<js::ObjectIsTypedObject>,
-              &js::ObjectIsTypedObjectJitInfo, 5, 0),
-    JS_FNINFO("ObjectIsTypedHandle",
-              JSNativeThreadSafeWrapper<js::ObjectIsTypedHandle>,
-              &js::ObjectIsTypedHandleJitInfo, 5, 0),
-    JS_FN("NewHandle",
-          js::NewTypedHandle,
-          1, 0),
+    JS_FNINFO("ObjectIsTransparentTypedObject",
+              JSNativeThreadSafeWrapper<js::ObjectIsTransparentTypedObject>,
+              &js::ObjectIsTransparentTypedObjectJitInfo, 5, 0),
+    JS_FNINFO("TypedObjectIsAttached",
+              JSNativeThreadSafeWrapper<js::TypedObjectIsAttached>,
+              &js::TypedObjectIsAttachedJitInfo, 1, 0),
+    JS_FNINFO("ObjectIsOpaqueTypedObject",
+              JSNativeThreadSafeWrapper<js::ObjectIsOpaqueTypedObject>,
+              &js::ObjectIsOpaqueTypedObjectJitInfo, 5, 0),
     JS_FNINFO("ClampToUint8",
               JSNativeThreadSafeWrapper<js::ClampToUint8>,
               &js::ClampToUint8JitInfo, 1, 0),

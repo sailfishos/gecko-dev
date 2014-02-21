@@ -3197,7 +3197,12 @@ function OpenBrowserWindow(options)
   }
 
   if (options && options.remote) {
-    extraFeatures += ",remote";
+    let omtcEnabled = gPrefService.getBoolPref("layers.offmainthreadcomposition.enabled");
+    if (!omtcEnabled) {
+      alert("To use out-of-process tabs, you must set the layers.offmainthreadcomposition.enabled preference and restart. Opening a normal window instead.");
+    } else {
+      extraFeatures += ",remote";
+    }
   } else if (options && options.remote === false) {
     extraFeatures += ",non-remote";
   }
@@ -6503,6 +6508,7 @@ var gIdentityHandler = {
     ];
     let options = {
       dismissed: true,
+      learnMoreURL: Services.urlFormatter.formatURLPref("app.support.baseURL") + "mixed-content",
     };
     PopupNotifications.show(gBrowser.selectedBrowser, "mixed-content-blocked",
                             messageString, "mixed-content-blocked-notification-icon",

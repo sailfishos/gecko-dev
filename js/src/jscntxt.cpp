@@ -194,11 +194,12 @@ js::NewContext(JSRuntime *rt, size_t stackChunkSize)
 #ifdef JS_THREADSAFE
         JS_BeginRequest(cx);
 #endif
-        bool ok = rt->staticStrings.init(cx);
-        if (ok)
-            ok = InitCommonNames(cx);
+        bool ok = rt->initializeAtoms(cx);
         if (ok)
             ok = rt->initSelfHosting(cx);
+
+        if (ok && !rt->parentRuntime)
+            ok = rt->transformToPermanentAtoms();
 
 #ifdef JS_THREADSAFE
         JS_EndRequest(cx);
@@ -207,6 +208,7 @@ js::NewContext(JSRuntime *rt, size_t stackChunkSize)
             DestroyContext(cx, DCM_NEW_FAILED);
             return nullptr;
         }
+
         rt->haveCreatedContext = true;
     }
 
@@ -368,9 +370,15 @@ js_ReportOutOfMemory(ThreadSafeContext *cxArg)
 
     if (!cxArg->isJSContext())
         return;
-    JSContext *cx = cxArg->asJSContext();
 
+    JSContext *cx = cxArg->asJSContext();
     cx->runtime()->hadOutOfMemory = true;
+
+    /* Report the oom. */
+    if (JS::OutOfMemoryCallback oomCallback = cx->runtime()->oomCallback) {
+        AutoSuppressGC suppressGC(cx);
+        oomCallback(cx);
+    }
 
     if (JS_IsRunning(cx)) {
         cx->setPendingException(StringValue(cx->names().outOfMemory));

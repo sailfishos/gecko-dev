@@ -459,7 +459,7 @@ StringFromCharCode(JSContext *cx, int32_t code)
     jschar c = jschar(code);
 
     if (StaticStrings::hasUnit(c))
-        return cx->runtime()->staticStrings.getUnit(c);
+        return cx->staticStrings().getUnit(c);
 
     return js_NewStringCopyN<CanGC>(cx, &c, 1);
 }
@@ -956,13 +956,14 @@ InitBaselineFrameForOsr(BaselineFrame *frame, StackFrame *interpFrame, uint32_t 
     return frame->initForOsr(interpFrame, numStackValues);
 }
 
-JSObject *CreateDerivedTypedObj(JSContext *cx, HandleObject descr,
-                                HandleObject owner, int32_t offset)
+JSObject *
+CreateDerivedTypedObj(JSContext *cx, HandleObject descr,
+                      HandleObject owner, int32_t offset)
 {
     JS_ASSERT(descr->is<SizedTypeDescr>());
-    JS_ASSERT(owner->is<TypedDatum>());
+    JS_ASSERT(owner->is<TypedObject>());
     Rooted<SizedTypeDescr*> descr1(cx, &descr->as<SizedTypeDescr>());
-    Rooted<TypedDatum*> owner1(cx, &owner->as<TypedDatum>());
+    Rooted<TypedObject*> owner1(cx, &owner->as<TypedObject>());
     return TypedObject::createDerived(cx, descr1, owner1, offset);
 }
 
@@ -1040,6 +1041,12 @@ AssertValidObjectPtr(JSContext *cx, JSObject *obj)
 void
 AssertValidStringPtr(JSContext *cx, JSString *str)
 {
+    // We can't closely inspect strings from another runtime.
+    if (str->runtimeFromAnyThread() != cx->runtime()) {
+        JS_ASSERT(str->isPermanentAtom());
+        return;
+    }
+
     if (str->isAtom())
         JS_ASSERT(cx->runtime()->isAtomsZone(str->tenuredZone()));
     else

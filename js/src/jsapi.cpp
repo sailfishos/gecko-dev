@@ -636,12 +636,18 @@ JS_FRIEND_API(bool) JS::isGCEnabled() { return true; }
 #endif
 
 JS_PUBLIC_API(JSRuntime *)
-JS_NewRuntime(uint32_t maxbytes, JSUseHelperThreads useHelperThreads)
+JS_NewRuntime(uint32_t maxbytes, JSUseHelperThreads useHelperThreads, JSRuntime *parentRuntime)
 {
     MOZ_ASSERT(jsInitState == Running,
                "must call JS_Init prior to creating any JSRuntimes");
 
-    JSRuntime *rt = js_new<JSRuntime>(useHelperThreads);
+    // Any parent runtime should be the topmost parent. This assert
+    // isn't required for correctness, but ensuring that the parent
+    // runtime is not destroyed before this one is more easily done
+    // for the main runtime in the process.
+    JS_ASSERT_IF(parentRuntime, !parentRuntime->parentRuntime);
+
+    JSRuntime *rt = js_new<JSRuntime>(parentRuntime, useHelperThreads);
     if (!rt)
         return nullptr;
 
@@ -805,6 +811,13 @@ JS_PUBLIC_API(JSRuntime *)
 JS_GetRuntime(JSContext *cx)
 {
     return cx->runtime();
+}
+
+JS_PUBLIC_API(JSRuntime *)
+JS_GetParentRuntime(JSContext *cx)
+{
+    JSRuntime *rt = cx->runtime();
+    return rt->parentRuntime ? rt->parentRuntime : nullptr;
 }
 
 JS_PUBLIC_API(JSContext *)
@@ -1160,7 +1173,7 @@ LookupStdName(JSRuntime *rt, HandleString name, const JSStdName *table)
     for (unsigned i = 0; !table[i].isSentinel(); i++) {
         if (table[i].isDummy())
             continue;
-        JSAtom *atom = AtomStateOffsetToName(rt->atomState, table[i].atomOffset);
+        JSAtom *atom = AtomStateOffsetToName(*rt->commonNames, table[i].atomOffset);
         MOZ_ASSERT(atom);
         if (name == atom)
             return &table[i];
@@ -1265,7 +1278,7 @@ JS_ResolveStandardClass(JSContext *cx, HandleObject obj, HandleId id, bool *reso
     RootedString idstr(cx, JSID_TO_STRING(id));
 
     /* Check whether we're resolving 'undefined', and define it if so. */
-    JSAtom *undefinedAtom = rt->atomState.undefined;
+    JSAtom *undefinedAtom = cx->names().undefined;
     if (idstr == undefinedAtom) {
         *resolved = true;
         return JSObject::defineProperty(cx, obj, undefinedAtom->asPropertyName(),
@@ -3100,16 +3113,6 @@ JS_DefineProperty(JSContext *cx, JSObject *objArg, const char *name, jsval value
                           SetterWrapper(setter), attrs, 0, 0);
 }
 
-JS_PUBLIC_API(bool)
-JS_DefinePropertyWithTinyId(JSContext *cx, JSObject *objArg, const char *name, int8_t tinyid,
-                            jsval valueArg, PropertyOp getter, JSStrictPropertyOp setter, unsigned attrs)
-{
-    RootedObject obj(cx, objArg);
-    RootedValue value(cx, valueArg);
-    return DefineProperty(cx, obj, name, value, GetterWrapper(getter),
-                          SetterWrapper(setter), attrs, Shape::HAS_SHORTID, tinyid);
-}
-
 static bool
 DefineUCProperty(JSContext *cx, HandleObject obj, const jschar *name, size_t namelen,
                  const Value &value_, PropertyOp getter, StrictPropertyOp setter, unsigned attrs,
@@ -3132,17 +3135,6 @@ JS_DefineUCProperty(JSContext *cx, JSObject *objArg, const jschar *name, size_t 
     RootedObject obj(cx, objArg);
     RootedValue value(cx, valueArg);
     return DefineUCProperty(cx, obj, name, namelen, value, getter, setter, attrs, 0, 0);
-}
-
-JS_PUBLIC_API(bool)
-JS_DefineUCPropertyWithTinyId(JSContext *cx, JSObject *objArg, const jschar *name, size_t namelen,
-                              int8_t tinyid, jsval valueArg,
-                              JSPropertyOp getter, JSStrictPropertyOp setter, unsigned attrs)
-{
-    RootedObject obj(cx, objArg);
-    RootedValue value(cx, valueArg);
-    return DefineUCProperty(cx, obj, name, namelen, value, getter, setter, attrs,
-                            Shape::HAS_SHORTID, tinyid);
 }
 
 JS_PUBLIC_API(bool)
@@ -6298,3 +6290,10 @@ JS::SetLargeAllocationFailureCallback(JSRuntime *rt, JS::LargeAllocationFailureC
 {
     rt->largeAllocationFailureCallback = lafc;
 }
+
+JS_PUBLIC_API(void)
+JS::SetOutOfMemoryCallback(JSRuntime *rt, OutOfMemoryCallback cb)
+{
+    rt->oomCallback = cb;
+}
+

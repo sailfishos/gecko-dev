@@ -47,10 +47,18 @@ ImageLayerComposite::~ImageLayerComposite()
   CleanupResources();
 }
 
-void
+bool
 ImageLayerComposite::SetCompositableHost(CompositableHost* aHost)
 {
-  mImageHost = aHost;
+  switch (aHost->GetType()) {
+    case BUFFER_IMAGE_SINGLE:
+    case BUFFER_IMAGE_BUFFERED:
+    case COMPOSITABLE_IMAGE:
+      mImageHost = aHost;
+      return true;
+    default:
+      return false;
+  }
 }
 
 void

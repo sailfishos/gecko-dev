@@ -33,9 +33,7 @@
 #include "nptest_platform.h"
 #include "npapi.h"
 
-struct _PlatformData {
-};
- using namespace std;
+using namespace std;
 
 bool
 pluginSupportsWindowMode()

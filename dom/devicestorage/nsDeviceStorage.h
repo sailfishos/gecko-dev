@@ -52,6 +52,7 @@ enum DeviceStorageRequestType {
     DEVICE_STORAGE_REQUEST_FREE_SPACE,
     DEVICE_STORAGE_REQUEST_USED_SPACE,
     DEVICE_STORAGE_REQUEST_AVAILABLE,
+    DEVICE_STORAGE_REQUEST_STATUS,
     DEVICE_STORAGE_REQUEST_FORMAT,
     DEVICE_STORAGE_REQUEST_CREATEFD
 };
@@ -120,6 +121,7 @@ private:
   class CacheEntry : public mozilla::RefCounted<CacheEntry> 
   {
   public:
+    MOZ_DECLARE_REFCOUNTED_TYPENAME(DeviceStorageUsedSpaceCache::CacheEntry)
     bool mDirty;
     nsString mStorageName;
     int64_t  mFreeBytes;

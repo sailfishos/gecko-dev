@@ -40,9 +40,19 @@ CanvasLayerComposite::~CanvasLayerComposite()
   CleanupResources();
 }
 
-void
-CanvasLayerComposite::SetCompositableHost(CompositableHost* aHost) {
-  mImageHost = aHost;
+bool
+CanvasLayerComposite::SetCompositableHost(CompositableHost* aHost)
+{
+  switch (aHost->GetType()) {
+    case BUFFER_IMAGE_SINGLE:
+    case BUFFER_IMAGE_BUFFERED:
+    case COMPOSITABLE_IMAGE:
+      mImageHost = aHost;
+      return true;
+    default:
+      return false;
+  }
+
 }
 
 Layer*
