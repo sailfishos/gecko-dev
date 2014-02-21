@@ -734,7 +734,7 @@ if CONFIG['MOZ_WIDGET_GTK']:
         'trunk/src/ports/SkTLS_pthread.cpp',
         'trunk/src/utils/SkThreadUtils_pthread.cpp',
     ]
-if CONFIG['MOZ_WIDGET_QT']:
+if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'qt':
     SOURCES += [
         'trunk/src/ports/SkDebug_stdio.cpp',
         'trunk/src/ports/SkFontHost_cairo.cpp',
@@ -744,7 +744,6 @@ if CONFIG['MOZ_WIDGET_QT']:
         'trunk/src/ports/SkTime_Unix.cpp',
         'trunk/src/ports/SkTLS_pthread.cpp',
         'trunk/src/utils/SkThreadUtils_pthread.cpp',
-        'trunk/src/utils/SkThreadUtils_pthread_linux.cpp',
     ]
 if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
     SOURCES += [
@@ -848,7 +847,7 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('android', 'gtk2', 'gtk3', 'qt', 'gonk', 'co
 if CONFIG['INTEL_ARCHITECTURE'] and CONFIG['HAVE_TOOLCHAIN_SUPPORT_MSSSE3']:
     DEFINES['SK_BUILD_SSSE3'] = 1
 
-if (CONFIG['MOZ_WIDGET_TOOLKIT'] == 'android') or (CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gonk') or    (CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa') or    CONFIG['MOZ_WIDGET_GTK'] or    CONFIG['MOZ_WIDGET_QT']:
+if (CONFIG['MOZ_WIDGET_TOOLKIT'] == 'android') or (CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gonk') or    (CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa') or    CONFIG['MOZ_WIDGET_GTK'] or    (CONFIG['MOZ_WIDGET_TOOLKIT'] == 'qt'):
     DEFINES['SK_FONTHOST_DOES_NOT_USE_FONTMGR'] = 1
 
 if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
