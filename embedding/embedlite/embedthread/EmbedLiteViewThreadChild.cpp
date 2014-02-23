@@ -721,6 +721,7 @@ EmbedLiteViewThreadChild::RecvHandleTextEvent(const nsString& commit, const nsSt
   if (StartComposite || UpdateComposite) {
     WidgetCompositionEvent event(true, NS_COMPOSITION_UPDATE, widget);
     mHelper->InitEvent(event, nullptr);
+    event.data = pushStr;
     mHelper->DispatchWidgetEvent(event);
   }
 
