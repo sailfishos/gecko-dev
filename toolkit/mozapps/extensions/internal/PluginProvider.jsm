@@ -18,7 +18,7 @@ const LIST_UPDATED_TOPIC     = "plugins-list-updated";
 
 for (let name of ["LOG", "WARN", "ERROR"]) {
   this.__defineGetter__(name, function() {
-    Components.utils.import("resource://gre/modules/AddonLogging.jsm");
+    Components.utils.import("resource://gre/modules/addons/AddonLogging.jsm");
 
     LogManager.getLogger("addons.plugins", this);
     return this[name];
@@ -420,10 +420,8 @@ function PluginWrapper(aId, aName, aDescription, aTags) {
 
   this.__defineGetter__("installDate", function() {
     let date = 0;
-    let file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
     for (let tag of aTags) {
-      file.initWithPath(tag.fullpath);
-      date = Math.max(date, file.lastModifiedTime);
+      date = Math.max(date, tag.lastModifiedTime);
     }
     return new Date(date);
   });
