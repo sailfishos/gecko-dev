@@ -136,10 +136,7 @@ ICStubIterator::unlink(JSContext *cx)
     JS_ASSERT(currentStub_ != fallbackStub_);
     JS_ASSERT(!unlinked_);
 
-    {
-        AutoLockForCompilation lock(cx);
-        fallbackStub_->unlinkStub(cx->zone(), previousStub_, currentStub_);
-    }
+    fallbackStub_->unlinkStub(cx->zone(), previousStub_, currentStub_);
 
     // Mark the current iterator position as unlinked, so operator++ works properly.
     unlinked_ = true;
@@ -1066,7 +1063,7 @@ DoProfilerFallback(JSContext *cx, BaselineFrame *frame, ICProfiler_Fallback *stu
     ICStub *optStub = compiler.getStub(compiler.getStubSpace(script));
     if (!optStub)
         return false;
-    stub->addNewStub(cx, optStub);
+    stub->addNewStub(optStub);
 
     return true;
 }
@@ -1796,7 +1793,7 @@ DoCompareFallback(JSContext *cx, BaselineFrame *frame, ICCompare_Fallback *stub,
         if (!int32Stub)
             return false;
 
-        stub->addNewStub(cx, int32Stub);
+        stub->addNewStub(int32Stub);
         return true;
     }
 
@@ -1814,7 +1811,7 @@ DoCompareFallback(JSContext *cx, BaselineFrame *frame, ICCompare_Fallback *stub,
         if (!doubleStub)
             return false;
 
-        stub->addNewStub(cx, doubleStub);
+        stub->addNewStub(doubleStub);
         return true;
     }
 
@@ -1829,7 +1826,7 @@ DoCompareFallback(JSContext *cx, BaselineFrame *frame, ICCompare_Fallback *stub,
         if (!doubleStub)
             return false;
 
-        stub->addNewStub(cx, doubleStub);
+        stub->addNewStub(doubleStub);
         return true;
     }
 
@@ -1840,7 +1837,7 @@ DoCompareFallback(JSContext *cx, BaselineFrame *frame, ICCompare_Fallback *stub,
         if (!booleanStub)
             return false;
 
-        stub->addNewStub(cx, booleanStub);
+        stub->addNewStub(booleanStub);
         return true;
     }
 
@@ -1853,7 +1850,7 @@ DoCompareFallback(JSContext *cx, BaselineFrame *frame, ICCompare_Fallback *stub,
         if (!optStub)
             return false;
 
-        stub->addNewStub(cx, optStub);
+        stub->addNewStub(optStub);
         return true;
     }
 
@@ -1865,7 +1862,7 @@ DoCompareFallback(JSContext *cx, BaselineFrame *frame, ICCompare_Fallback *stub,
             if (!stringStub)
                 return false;
 
-            stub->addNewStub(cx, stringStub);
+            stub->addNewStub(stringStub);
             return true;
         }
 
@@ -1877,7 +1874,7 @@ DoCompareFallback(JSContext *cx, BaselineFrame *frame, ICCompare_Fallback *stub,
             if (!objectStub)
                 return false;
 
-            stub->addNewStub(cx, objectStub);
+            stub->addNewStub(objectStub);
             return true;
         }
 
@@ -1895,7 +1892,7 @@ DoCompareFallback(JSContext *cx, BaselineFrame *frame, ICCompare_Fallback *stub,
             if (!objectStub)
                 return false;
 
-            stub->addNewStub(cx, objectStub);
+            stub->addNewStub(objectStub);
             return true;
         }
     }
@@ -2206,7 +2203,7 @@ DoToBoolFallback(JSContext *cx, BaselineFrame *frame, ICToBool_Fallback *stub, H
         if (!int32Stub)
             return false;
 
-        stub->addNewStub(cx, int32Stub);
+        stub->addNewStub(int32Stub);
         return true;
     }
 
@@ -2217,7 +2214,7 @@ DoToBoolFallback(JSContext *cx, BaselineFrame *frame, ICToBool_Fallback *stub, H
         if (!doubleStub)
             return false;
 
-        stub->addNewStub(cx, doubleStub);
+        stub->addNewStub(doubleStub);
         return true;
     }
 
@@ -2228,7 +2225,7 @@ DoToBoolFallback(JSContext *cx, BaselineFrame *frame, ICToBool_Fallback *stub, H
         if (!stringStub)
             return false;
 
-        stub->addNewStub(cx, stringStub);
+        stub->addNewStub(stringStub);
         return true;
     }
 
@@ -2238,7 +2235,7 @@ DoToBoolFallback(JSContext *cx, BaselineFrame *frame, ICToBool_Fallback *stub, H
         if (!nilStub)
             return false;
 
-        stub->addNewStub(cx, nilStub);
+        stub->addNewStub(nilStub);
         return true;
     }
 
@@ -2249,7 +2246,7 @@ DoToBoolFallback(JSContext *cx, BaselineFrame *frame, ICToBool_Fallback *stub, H
         if (!objStub)
             return false;
 
-        stub->addNewStub(cx, objStub);
+        stub->addNewStub(objStub);
         return true;
     }
 
@@ -2541,11 +2538,11 @@ DoBinaryArithFallback(JSContext *cx, BaselineFrame *frame, ICBinaryArith_Fallbac
     }
 
     if (ret.isDouble())
-        stub->setSawDoubleResult(cx);
+        stub->setSawDoubleResult();
 
     // Check to see if a new stub should be generated.
     if (stub->numOptimizedStubs() >= ICBinaryArith_Fallback::MAX_OPTIMIZED_STUBS) {
-        stub->noteUnoptimizableOperands(cx);
+        stub->noteUnoptimizableOperands();
         return true;
     }
 
@@ -2558,7 +2555,7 @@ DoBinaryArithFallback(JSContext *cx, BaselineFrame *frame, ICBinaryArith_Fallbac
             ICStub *strcatStub = compiler.getStub(compiler.getStubSpace(script));
             if (!strcatStub)
                 return false;
-            stub->addNewStub(cx, strcatStub);
+            stub->addNewStub(strcatStub);
             return true;
         }
 
@@ -2571,7 +2568,7 @@ DoBinaryArithFallback(JSContext *cx, BaselineFrame *frame, ICBinaryArith_Fallbac
             ICStub *strcatStub = compiler.getStub(compiler.getStubSpace(script));
             if (!strcatStub)
                 return false;
-            stub->addNewStub(cx, strcatStub);
+            stub->addNewStub(strcatStub);
             return true;
         }
     }
@@ -2587,13 +2584,13 @@ DoBinaryArithFallback(JSContext *cx, BaselineFrame *frame, ICBinaryArith_Fallbac
         ICStub *arithStub = compiler.getStub(compiler.getStubSpace(script));
         if (!arithStub)
             return false;
-        stub->addNewStub(cx, arithStub);
+        stub->addNewStub(arithStub);
         return true;
     }
 
     // Handle only int32 or double.
     if (!lhs.isNumber() || !rhs.isNumber()) {
-        stub->noteUnoptimizableOperands(cx);
+        stub->noteUnoptimizableOperands();
         return true;
     }
 
@@ -2617,7 +2614,7 @@ DoBinaryArithFallback(JSContext *cx, BaselineFrame *frame, ICBinaryArith_Fallbac
             ICStub *doubleStub = compiler.getStub(compiler.getStubSpace(script));
             if (!doubleStub)
                 return false;
-            stub->addNewStub(cx, doubleStub);
+            stub->addNewStub(doubleStub);
             return true;
           }
           default:
@@ -2635,7 +2632,7 @@ DoBinaryArithFallback(JSContext *cx, BaselineFrame *frame, ICBinaryArith_Fallbac
         ICStub *int32Stub = compilerInt32.getStub(compilerInt32.getStubSpace(script));
         if (!int32Stub)
             return false;
-        stub->addNewStub(cx, int32Stub);
+        stub->addNewStub(int32Stub);
         return true;
     }
 
@@ -2654,7 +2651,7 @@ DoBinaryArithFallback(JSContext *cx, BaselineFrame *frame, ICBinaryArith_Fallbac
             ICStub *optStub = compiler.getStub(compiler.getStubSpace(script));
             if (!optStub)
                 return false;
-            stub->addNewStub(cx, optStub);
+            stub->addNewStub(optStub);
             return true;
           }
           default:
@@ -2662,7 +2659,7 @@ DoBinaryArithFallback(JSContext *cx, BaselineFrame *frame, ICBinaryArith_Fallbac
         }
     }
 
-    stub->noteUnoptimizableOperands(cx);
+    stub->noteUnoptimizableOperands();
     return true;
 }
 #if defined(_MSC_VER)
@@ -3057,7 +3054,7 @@ DoUnaryArithFallback(JSContext *cx, BaselineFrame *frame, ICUnaryArith_Fallback 
         ICStub *int32Stub = compiler.getStub(compiler.getStubSpace(script));
         if (!int32Stub)
             return false;
-        stub->addNewStub(cx, int32Stub);
+        stub->addNewStub(int32Stub);
         return true;
     }
 
@@ -3071,7 +3068,7 @@ DoUnaryArithFallback(JSContext *cx, BaselineFrame *frame, ICUnaryArith_Fallback 
         ICStub *doubleStub = compiler.getStub(compiler.getStubSpace(script));
         if (!doubleStub)
             return false;
-        stub->addNewStub(cx, doubleStub);
+        stub->addNewStub(doubleStub);
         return true;
     }
 
@@ -3756,7 +3753,7 @@ static bool TryAttachNativeGetElemStub(JSContext *cx, HandleScript script, jsbyt
         if (!newStub)
             return false;
 
-        stub->addNewStub(cx, newStub);
+        stub->addNewStub(newStub);
         return true;
     }
 
@@ -3808,7 +3805,7 @@ static bool TryAttachNativeGetElemStub(JSContext *cx, HandleScript script, jsbyt
         if (!newStub)
             return false;
 
-        stub->addNewStub(cx, newStub);
+        stub->addNewStub(newStub);
         return true;
     }
 
@@ -3842,7 +3839,7 @@ TryAttachGetElemStub(JSContext *cx, JSScript *script, jsbytecode *pc, ICGetElem_
         if (!stringStub)
             return false;
 
-        stub->addNewStub(cx, stringStub);
+        stub->addNewStub(stringStub);
         return true;
     }
 
@@ -3860,7 +3857,7 @@ TryAttachGetElemStub(JSContext *cx, JSScript *script, jsbytecode *pc, ICGetElem_
         if (!argsStub)
             return false;
 
-        stub->addNewStub(cx, argsStub);
+        stub->addNewStub(argsStub);
         return true;
     }
 
@@ -3882,7 +3879,7 @@ TryAttachGetElemStub(JSContext *cx, JSScript *script, jsbytecode *pc, ICGetElem_
             if (!argsStub)
                 return false;
 
-            stub->addNewStub(cx, argsStub);
+            stub->addNewStub(argsStub);
             return true;
         }
     }
@@ -3897,7 +3894,7 @@ TryAttachGetElemStub(JSContext *cx, JSScript *script, jsbytecode *pc, ICGetElem_
             if (!denseStub)
                 return false;
 
-            stub->addNewStub(cx, denseStub);
+            stub->addNewStub(denseStub);
             return true;
         }
 
@@ -3933,7 +3930,7 @@ TryAttachGetElemStub(JSContext *cx, JSScript *script, jsbytecode *pc, ICGetElem_
         if (!typedArrayStub)
             return false;
 
-        stub->addNewStub(cx, typedArrayStub);
+        stub->addNewStub(typedArrayStub);
         return true;
     }
 
@@ -3941,13 +3938,13 @@ TryAttachGetElemStub(JSContext *cx, JSScript *script, jsbytecode *pc, ICGetElem_
     // be cached by either Baseline or Ion. Indicate this in the cache so that
     // Ion does not generate a cache for this op.
     if (!obj->isNative() && !obj->is<TypedArrayObject>())
-        stub->noteNonNativeAccess(cx);
+        stub->noteNonNativeAccess();
 
     // GetElem operations which could access negative indexes generally can't
     // be optimized without the potential for bailouts, as we can't statically
     // determine that an object has no properties on such indexes.
     if (rhs.isNumber() && rhs.toNumber() < 0)
-        stub->noteNegativeIndex(cx);
+        stub->noteNegativeIndex();
 
     return true;
 }
@@ -5013,7 +5010,7 @@ DoSetElemFallback(JSContext *cx, BaselineFrame *frame, ICSetElem_Fallback *stub,
                 if (!denseStub->addUpdateStubForValue(cx, script, obj, JSID_VOIDHANDLE, rhs))
                     return false;
 
-                stub->addNewStub(cx, denseStub);
+                stub->addNewStub(denseStub);
             } else if (!addingCase &&
                        !DenseSetElemStubExists(cx, ICStub::SetElem_Dense, stub, obj))
             {
@@ -5027,7 +5024,7 @@ DoSetElemFallback(JSContext *cx, BaselineFrame *frame, ICSetElem_Fallback *stub,
                 if (!denseStub->addUpdateStubForValue(cx, script, obj, JSID_VOIDHANDLE, rhs))
                     return false;
 
-                stub->addNewStub(cx, denseStub);
+                stub->addNewStub(denseStub);
             }
         }
 
@@ -5060,7 +5057,7 @@ DoSetElemFallback(JSContext *cx, BaselineFrame *frame, ICSetElem_Fallback *stub,
             if (!typedArrayStub)
                 return false;
 
-            stub->addNewStub(cx, typedArrayStub);
+            stub->addNewStub(typedArrayStub);
             return true;
         }
     }
@@ -5110,13 +5107,13 @@ ICSetElem_Fallback::Compiler::generateStubCode(MacroAssembler &masm)
 }
 
 void
-BaselineScript::noteArrayWriteHole(JSContext *cx, uint32_t pcOffset)
+BaselineScript::noteArrayWriteHole(uint32_t pcOffset)
 {
     ICEntry &entry = icEntryFromPCOffset(pcOffset);
     ICFallbackStub *stub = entry.fallbackStub();
 
     if (stub->isSetElem_Fallback())
-        stub->toSetElem_Fallback()->noteArrayWriteHole(cx);
+        stub->toSetElem_Fallback()->noteArrayWriteHole();
 }
 
 //
@@ -5638,7 +5635,7 @@ TryAttachGlobalNameStub(JSContext *cx, HandleScript script, ICGetName_Fallback *
     if (!newStub)
         return false;
 
-    stub->addNewStub(cx, newStub);
+    stub->addNewStub(newStub);
     return true;
 }
 
@@ -5728,7 +5725,7 @@ TryAttachScopeNameStub(JSContext *cx, HandleScript script, ICGetName_Fallback *s
     if (!newStub)
         return false;
 
-    stub->addNewStub(cx, newStub);
+    stub->addNewStub(newStub);
     return true;
 }
 
@@ -5935,7 +5932,7 @@ DoGetIntrinsicFallback(JSContext *cx, BaselineFrame *frame, ICGetIntrinsic_Fallb
     if (!newStub)
         return false;
 
-    stub->addNewStub(cx, newStub);
+    stub->addNewStub(newStub);
     return true;
 }
 
@@ -5983,7 +5980,7 @@ TryAttachLengthStub(JSContext *cx, JSScript *script, ICGetProp_Fallback *stub, H
             return false;
 
         *attached = true;
-        stub->addNewStub(cx, newStub);
+        stub->addNewStub(newStub);
         return true;
     }
 
@@ -5995,7 +5992,7 @@ TryAttachLengthStub(JSContext *cx, JSScript *script, ICGetProp_Fallback *stub, H
             return false;
 
         *attached = true;
-        stub->addNewStub(cx, newStub);
+        stub->addNewStub(newStub);
         return true;
     }
 
@@ -6012,7 +6009,7 @@ TryAttachLengthStub(JSContext *cx, JSScript *script, ICGetProp_Fallback *stub, H
             return false;
 
         *attached = true;
-        stub->addNewStub(cx, newStub);
+        stub->addNewStub(newStub);
         return true;
     }
     if (obj->is<TypedArrayObject>()) {
@@ -6024,7 +6021,7 @@ TryAttachLengthStub(JSContext *cx, JSScript *script, ICGetProp_Fallback *stub, H
             return false;
 
         *attached = true;
-        stub->addNewStub(cx, newStub);
+        stub->addNewStub(newStub);
         return true;
     }
 
@@ -6040,7 +6037,7 @@ TryAttachLengthStub(JSContext *cx, JSScript *script, ICGetProp_Fallback *stub, H
             return false;
 
         *attached = true;
-        stub->addNewStub(cx, newStub);
+        stub->addNewStub(newStub);
         return true;
     }
 
@@ -6123,7 +6120,7 @@ TryAttachNativeGetPropStub(JSContext *cx, HandleScript script, jsbytecode *pc,
         if (!newStub)
             return false;
 
-        stub->addNewStub(cx, newStub);
+        stub->addNewStub(newStub);
         *attached = true;
         return true;
     }
@@ -6154,7 +6151,7 @@ TryAttachNativeGetPropStub(JSContext *cx, HandleScript script, jsbytecode *pc,
         if (!newStub)
             return false;
 
-        stub->addNewStub(cx, newStub);
+        stub->addNewStub(newStub);
         *attached = true;
         return true;
     }
@@ -6201,7 +6198,7 @@ TryAttachNativeGetPropStub(JSContext *cx, HandleScript script, jsbytecode *pc,
         }
         if (!newStub)
             return false;
-        stub->addNewStub(cx, newStub);
+        stub->addNewStub(newStub);
         *attached = true;
         return true;
     }
@@ -6221,7 +6218,7 @@ TryAttachNativeGetPropStub(JSContext *cx, HandleScript script, jsbytecode *pc,
         ICStub *newStub = compiler.getStub(compiler.getStubSpace(script));
         if (!newStub)
             return false;
-        stub->addNewStub(cx, newStub);
+        stub->addNewStub(newStub);
         *attached = true;
         return true;
     }
@@ -6276,7 +6273,7 @@ TryAttachPrimitiveGetPropStub(JSContext *cx, HandleScript script, jsbytecode *pc
     if (!newStub)
         return false;
 
-    stub->addNewStub(cx, newStub);
+    stub->addNewStub(newStub);
     *attached = true;
     return true;
 }
@@ -6363,7 +6360,7 @@ DoGetPropFallback(JSContext *cx, BaselineFrame *frame, ICGetProp_Fallback *stub,
     }
 
     JS_ASSERT(!attached);
-    stub->noteUnoptimizableAccess(cx);
+    stub->noteUnoptimizableAccess();
 
     return true;
 }
@@ -7108,13 +7105,13 @@ ICGetProp_ArgumentsLength::Compiler::generateStubCode(MacroAssembler &masm)
 }
 
 void
-BaselineScript::noteAccessedGetter(JSContext *cx, uint32_t pcOffset)
+BaselineScript::noteAccessedGetter(uint32_t pcOffset)
 {
     ICEntry &entry = icEntryFromPCOffset(pcOffset);
     ICFallbackStub *stub = entry.fallbackStub();
 
     if (stub->isGetProp_Fallback())
-        stub->toGetProp_Fallback()->noteAccessedGetter(cx);
+        stub->toGetProp_Fallback()->noteAccessedGetter();
 }
 
 //
@@ -7155,7 +7152,7 @@ TryAttachSetPropStub(JSContext *cx, HandleScript script, jsbytecode *pc, ICSetPr
         if (!newStub->addUpdateStubForValue(cx, script, obj, id, rhs))
             return false;
 
-        stub->addNewStub(cx, newStub);
+        stub->addNewStub(newStub);
         *attached = true;
         return true;
     }
@@ -7173,7 +7170,7 @@ TryAttachSetPropStub(JSContext *cx, HandleScript script, jsbytecode *pc, ICSetPr
         if (!newStub->addUpdateStubForValue(cx, script, obj, id, rhs))
             return false;
 
-        stub->addNewStub(cx, newStub);
+        stub->addNewStub(newStub);
         *attached = true;
         return true;
     }
@@ -7195,7 +7192,7 @@ TryAttachSetPropStub(JSContext *cx, HandleScript script, jsbytecode *pc, ICSetPr
         if (!newStub)
             return false;
 
-        stub->addNewStub(cx, newStub);
+        stub->addNewStub(newStub);
         *attached = true;
         return true;
     }
@@ -7214,7 +7211,7 @@ TryAttachSetPropStub(JSContext *cx, HandleScript script, jsbytecode *pc, ICSetPr
         if (!newStub)
             return false;
 
-        stub->addNewStub(cx, newStub);
+        stub->addNewStub(newStub);
         *attached = true;
         return true;
     }
@@ -7289,7 +7286,7 @@ DoSetPropFallback(JSContext *cx, BaselineFrame *frame, ICSetProp_Fallback *stub,
         return true;
 
     JS_ASSERT(!attached);
-    stub->noteUnoptimizableAccess(cx);
+    stub->noteUnoptimizableAccess();
 
     return true;
 }
@@ -7793,7 +7790,7 @@ TryAttachFunApplyStub(JSContext *cx, ICCall_Fallback *stub, HandleScript script,
             if (!newStub)
                 return false;
 
-            stub->addNewStub(cx, newStub);
+            stub->addNewStub(newStub);
             return true;
         }
 
@@ -7810,7 +7807,7 @@ TryAttachFunApplyStub(JSContext *cx, ICCall_Fallback *stub, HandleScript script,
             if (!newStub)
                 return false;
 
-            stub->addNewStub(cx, newStub);
+            stub->addNewStub(newStub);
             return true;
         }
     }
@@ -7954,7 +7951,7 @@ TryAttachCallStub(JSContext *cx, ICCall_Fallback *stub, HandleScript script, jsb
             stub->unlinkStubsWithKind(cx, ICStub::Call_Scripted);
 
             // Add new generalized stub.
-            stub->addNewStub(cx, newStub);
+            stub->addNewStub(newStub);
             return true;
         }
 
@@ -7983,7 +7980,7 @@ TryAttachCallStub(JSContext *cx, ICCall_Fallback *stub, HandleScript script, jsb
         if (!newStub)
             return false;
 
-        stub->addNewStub(cx, newStub);
+        stub->addNewStub(newStub);
         return true;
     }
 
@@ -8020,7 +8017,7 @@ TryAttachCallStub(JSContext *cx, ICCall_Fallback *stub, HandleScript script, jsb
         if (!newStub)
             return false;
 
-        stub->addNewStub(cx, newStub);
+        stub->addNewStub(newStub);
         return true;
     }
 
@@ -9152,7 +9149,7 @@ DoIteratorMoreFallback(JSContext *cx, BaselineFrame *frame, ICIteratorMore_Fallb
         ICStub *newStub = compiler.getStub(compiler.getStubSpace(frame->script()));
         if (!newStub)
             return false;
-        stub->addNewStub(cx, newStub);
+        stub->addNewStub(newStub);
     }
 
     return true;
@@ -9226,7 +9223,7 @@ DoIteratorNextFallback(JSContext *cx, BaselineFrame *frame, ICIteratorNext_Fallb
         return false;
 
     if (!res.isString() && !stub->hasNonStringResult())
-        stub->setHasNonStringResult(cx);
+        stub->setHasNonStringResult();
 
     if (iteratorObject->is<PropertyIteratorObject>() &&
         !stub->hasStub(ICStub::IteratorNext_Native))
@@ -9235,7 +9232,7 @@ DoIteratorNextFallback(JSContext *cx, BaselineFrame *frame, ICIteratorNext_Fallb
         ICStub *newStub = compiler.getStub(compiler.getStubSpace(frame->script()));
         if (!newStub)
             return false;
-        stub->addNewStub(cx, newStub);
+        stub->addNewStub(newStub);
     }
 
     return true;
@@ -9399,7 +9396,7 @@ DoTypeOfFallback(JSContext *cx, BaselineFrame *frame, ICTypeOf_Fallback *stub, H
         ICStub *typeOfStub = compiler.getStub(compiler.getStubSpace(frame->script()));
         if (!typeOfStub)
             return false;
-        stub->addNewStub(cx, typeOfStub);
+        stub->addNewStub(typeOfStub);
     }
 
     return true;
@@ -9486,7 +9483,7 @@ DoRetSubFallback(JSContext *cx, BaselineFrame *frame, ICRetSub_Fallback *stub,
     if (!optStub)
         return false;
 
-    stub->addNewStub(cx, optStub);
+    stub->addNewStub(optStub);
     return true;
 }
 

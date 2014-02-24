@@ -60,6 +60,42 @@ nsNumberControlFrame::DestroyFrom(nsIFrame* aDestructRoot)
   nsContainerFrame::DestroyFrom(aDestructRoot);
 }
 
+nscoord
+nsNumberControlFrame::GetMinWidth(nsRenderingContext* aRenderingContext)
+{
+  nscoord result;
+  DISPLAY_MIN_WIDTH(this, result);
+
+  nsIFrame* kid = mFrames.FirstChild();
+  if (kid) { // display:none?
+    result = nsLayoutUtils::IntrinsicForContainer(aRenderingContext,
+                                                  kid,
+                                                  nsLayoutUtils::MIN_WIDTH);
+  } else {
+    result = 0;
+  }
+
+  return result;
+}
+
+nscoord
+nsNumberControlFrame::GetPrefWidth(nsRenderingContext* aRenderingContext)
+{
+  nscoord result;
+  DISPLAY_PREF_WIDTH(this, result);
+
+  nsIFrame* kid = mFrames.FirstChild();
+  if (kid) { // display:none?
+    result = nsLayoutUtils::IntrinsicForContainer(aRenderingContext,
+                                                  kid,
+                                                  nsLayoutUtils::PREF_WIDTH);
+  } else {
+    result = 0;
+  }
+
+  return result;
+}
+
 NS_IMETHODIMP
 nsNumberControlFrame::Reflow(nsPresContext* aPresContext,
                              nsHTMLReflowMetrics& aDesiredSize,
@@ -83,33 +119,84 @@ nsNumberControlFrame::Reflow(nsPresContext* aPresContext,
     nsFormControlFrame::RegUnRegAccessKey(this, true);
   }
 
-  nsHTMLReflowMetrics wrappersDesiredSize(aReflowState.GetWritingMode());
+  // The width of our content box, which is the available width
+  // for our anonymous content:
+  const nscoord contentBoxWidth = aReflowState.ComputedWidth();
+  nscoord contentBoxHeight = aReflowState.ComputedHeight();
+
   nsIFrame* outerWrapperFrame = mOuterWrapper->GetPrimaryFrame();
-  if (outerWrapperFrame) { // display:none?
+
+  if (!outerWrapperFrame) { // display:none?
+    if (contentBoxHeight == NS_INTRINSICSIZE) {
+      contentBoxHeight = 0;
+    }
+  } else {
     NS_ASSERTION(outerWrapperFrame == mFrames.FirstChild(), "huh?");
-    nsresult rv =
-      ReflowAnonymousContent(aPresContext, wrappersDesiredSize,
-                             aReflowState, outerWrapperFrame);
+
+    nsHTMLReflowMetrics wrappersDesiredSize(aReflowState.GetWritingMode());
+
+    nsHTMLReflowState wrapperReflowState(aPresContext, aReflowState,
+                                         outerWrapperFrame,
+                                         nsSize(contentBoxWidth,
+                                                NS_UNCONSTRAINEDSIZE));
+
+    // offsets of wrapper frame
+    nscoord xoffset = aReflowState.ComputedPhysicalBorderPadding().left +
+                        wrapperReflowState.ComputedPhysicalMargin().left;
+    nscoord yoffset = aReflowState.ComputedPhysicalBorderPadding().top +
+                        wrapperReflowState.ComputedPhysicalMargin().top;
+
+    nsReflowStatus childStatus;
+    nsresult rv = ReflowChild(outerWrapperFrame, aPresContext,
+                              wrappersDesiredSize, wrapperReflowState,
+                              xoffset, yoffset, 0, childStatus);
     NS_ENSURE_SUCCESS(rv, rv);
-    ConsiderChildOverflow(aDesiredSize.mOverflowAreas, outerWrapperFrame);
+    MOZ_ASSERT(NS_FRAME_IS_FULLY_COMPLETE(childStatus),
+               "We gave our child unconstrained height, so it should be complete");
+
+    nscoord wrappersMarginBoxHeight = wrappersDesiredSize.Height() +
+      wrapperReflowState.ComputedPhysicalMargin().TopBottom();
+
+    if (contentBoxHeight == NS_INTRINSICSIZE) {
+      // We are intrinsically sized -- we should shrinkwrap the outer wrapper's
+      // height:
+      contentBoxHeight = wrappersMarginBoxHeight;
+
+      // Make sure we obey min/max-height in the case when we're doing intrinsic
+      // sizing (we get it for free when we have a non-intrinsic
+      // aReflowState.ComputedHeight()).  Note that we do this before
+      // adjusting for borderpadding, since mComputedMaxHeight and
+      // mComputedMinHeight are content heights.
+      contentBoxHeight =
+        NS_CSS_MINMAX(contentBoxHeight,
+                      aReflowState.ComputedMinHeight(),
+                      aReflowState.ComputedMaxHeight());
+    }
+
+    // Center child vertically
+    nscoord extraSpace = contentBoxHeight - wrappersMarginBoxHeight;
+    yoffset += std::max(0, extraSpace / 2);
+
+    // Place the child
+    rv = FinishReflowChild(outerWrapperFrame, aPresContext,
+                           wrappersDesiredSize, &wrapperReflowState,
+                           xoffset, yoffset, 0);
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    aDesiredSize.SetTopAscent(wrappersDesiredSize.TopAscent() +
+                              outerWrapperFrame->GetPosition().y);
   }
 
-  nscoord computedHeight = aReflowState.ComputedHeight();
-  if (computedHeight == NS_AUTOHEIGHT) {
-    computedHeight =
-      outerWrapperFrame ? outerWrapperFrame->GetSize().height : 0;
-  }
-  aDesiredSize.Width() = aReflowState.ComputedWidth() +
+  aDesiredSize.Width() = contentBoxWidth +
                          aReflowState.ComputedPhysicalBorderPadding().LeftRight();
-  aDesiredSize.Height() = computedHeight +
+  aDesiredSize.Height() = contentBoxHeight +
                           aReflowState.ComputedPhysicalBorderPadding().TopBottom();
 
-  if (outerWrapperFrame) {
-    aDesiredSize.SetTopAscent(wrappersDesiredSize.TopAscent() +
-                            outerWrapperFrame->GetPosition().y);
-  }
-
   aDesiredSize.SetOverflowAreasToDesiredBounds();
+
+  if (outerWrapperFrame) {
+    ConsiderChildOverflow(aDesiredSize.mOverflowAreas, outerWrapperFrame);
+  }
 
   FinishAndStoreOverflow(&aDesiredSize);
 
@@ -118,41 +205,6 @@ nsNumberControlFrame::Reflow(nsPresContext* aPresContext,
   NS_FRAME_SET_TRUNCATION(aStatus, aReflowState, aDesiredSize);
 
   return NS_OK;
-}
-
-nsresult
-nsNumberControlFrame::
-  ReflowAnonymousContent(nsPresContext* aPresContext,
-                         nsHTMLReflowMetrics& aWrappersDesiredSize,
-                         const nsHTMLReflowState& aParentReflowState,
-                         nsIFrame* aOuterWrapperFrame)
-{
-  MOZ_ASSERT(aOuterWrapperFrame);
-
-  // The width of our content box, which is the available width
-  // for our anonymous content:
-  nscoord inputFrameContentBoxWidth = aParentReflowState.ComputedWidth();
-
-  nsHTMLReflowState wrapperReflowState(aPresContext, aParentReflowState,
-                                       aOuterWrapperFrame,
-                                       nsSize(inputFrameContentBoxWidth,
-                                              NS_UNCONSTRAINEDSIZE));
-
-  nscoord xoffset = aParentReflowState.ComputedPhysicalBorderPadding().left +
-                      wrapperReflowState.ComputedPhysicalMargin().left;
-  nscoord yoffset = aParentReflowState.ComputedPhysicalBorderPadding().top +
-                      wrapperReflowState.ComputedPhysicalMargin().top;
-
-  nsReflowStatus childStatus;
-  nsresult rv = ReflowChild(aOuterWrapperFrame, aPresContext,
-                            aWrappersDesiredSize, wrapperReflowState,
-                            xoffset, yoffset, 0, childStatus);
-  NS_ENSURE_SUCCESS(rv, rv);
-  MOZ_ASSERT(NS_FRAME_IS_FULLY_COMPLETE(childStatus),
-             "We gave our child unconstrained height, so it should be complete");
-  return FinishReflowChild(aOuterWrapperFrame, aPresContext,
-                           aWrappersDesiredSize, &wrapperReflowState,
-                           xoffset, yoffset, 0);
 }
 
 void
@@ -575,24 +627,53 @@ nsNumberControlFrame::GetValueOfAnonTextControl(nsAString& aValue)
   HTMLInputElement::FromContent(mTextField)->GetValue(aValue);
 
 #ifdef ENABLE_INTL_API
-  // Here we check if the text field's value is a localized serialization of a
-  // number. If it is we set aValue to the de-localize value, but only if the
-  // localized value isn't also a valid floating-point number according to the
-  // HTML 5 spec:
+  // Here we need to de-localize any number typed in by the user. That is, we
+  // need to convert it from the number format of the user's language, region,
+  // etc. to the format that the HTML 5 spec defines to be a "valid
+  // floating-point number":
   //
   //   http://www.whatwg.org/specs/web-apps/current-work/multipage/common-microsyntaxes.html#floating-point-numbers
   //
-  // This is because content (and tests) expect us to avoid "normalizing" the
-  // number that the user types in if it's not necessary. (E.g. if the user
-  // types "2e2" then inputElement.value should be "2e2" and not "100".
+  // so that it can be parsed by functions like HTMLInputElement::
+  // StringToDecimal (the HTML-5-conforming parsing function) which don't know
+  // how to handle numbers that are formatted differently (for example, with
+  // non-ASCII digits, with grouping separator characters or with a decimal
+  // separator character other than '.').
+  //
+  // We need to be careful to avoid normalizing numbers that are already
+  // formatted for a locale that matches the format of HTML 5's "valid
+  // floating-point number" and have no grouping separator characters. (In
+  // other words we want to return the number as specified by the user, not the
+  // de-localized serialization, since the latter will normalize the value.)
+  // For example, if the user's locale is English and the user types in "2e2"
+  // then inputElement.value should be "2e2" and not "100". This is because
+  // content (and tests) expect us to avoid "normalizing" the number that the
+  // user types in if it's not necessary in order to make sure it conforms to
+  // HTML 5's "valid floating-point number" format.
+  //
+  // Note that we also need to be careful when trying to avoid normalization.
+  // For example, just because "1.234" _looks_ like a valid floating-point
+  // number according to the spec does not mean that it should be returned
+  // as-is. If the user's locale is German, then this represents the value
+  // 1234, not 1.234, so it still needs to be de-localized. Alternatively, if
+  // the user's locale is English and they type in "1,234" we _do_ need to
+  // normalize the number to "1234" because HTML 5's valid floating-point
+  // number format does not allow the ',' grouping separator. We can detect all
+  // the cases where we need to convert by seeing if the locale-specific
+  // parsing function understands the user input to mean the same thing as the
+  // HTML-5-conforming parsing function. If so, then we should return the value
+  // as-is to avoid normalization. Otherwise, we return the de-localized
+  // serialization.
   ICUUtils::LanguageTagIterForContent langTagIter(mContent);
   double value = ICUUtils::ParseNumber(aValue, langTagIter);
   if (NS_finite(value) &&
-      !HTMLInputElement::StringToDecimal(aValue).isFinite()) {
+      value != HTMLInputElement::StringToDecimal(aValue).toDouble()) {
     aValue.Truncate();
     aValue.AppendFloat(value);
   }
 #endif
+  // else, we return whatever FromContent put into aValue (the number as typed
+  // in by the user)
 }
 
 bool
