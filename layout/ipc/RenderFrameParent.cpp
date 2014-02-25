@@ -641,10 +641,6 @@ public:
     MessageLoop::current()->PostDelayedTask(FROM_HERE, aTask, aDelayMs);
   }
 
-  virtual void ScrollUpdate(const CSSPoint& aPosition, const float aResolution)
-  {
-  }
-
   virtual bool GetRootZoomConstraints(ZoomConstraints* aOutConstraints)
   {
     if (mHaveZoomConstraints && aOutConstraints) {

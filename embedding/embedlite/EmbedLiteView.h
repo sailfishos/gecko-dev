@@ -66,7 +66,6 @@ public:
   virtual bool AcknowledgeScrollUpdate(const uint32_t& aViewID, const uint32_t& aScrollGeneration) { return false; }
   virtual bool SendAsyncScrollDOMEvent(const gfxRect& aContentRect,
                                        const gfxSize& aScrollableSize) { return false; }
-  virtual bool ScrollUpdate(const gfxPoint& aPosition, const float aResolution) { return false; }
   // Some GL Context implementations require Platform GL context to be active and valid
   virtual bool RequestCurrentGLContext() { return false; }
 };
