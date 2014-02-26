@@ -75,6 +75,8 @@
 #include "ipc/nsGUIEventIPC.h"
 #include "mozilla/gfx/Matrix.h"
 
+#include "nsColorPickerProxy.h"
+
 #ifdef DEBUG
 #include "PCOMContentPermissionRequestChild.h"
 #endif /* DEBUG */
@@ -544,10 +546,12 @@ TabChild::HandlePossibleViewportChange()
   nsViewportInfo viewportInfo = nsContentUtils::GetViewportInfo(document, mInnerSize);
   uint32_t presShellId;
   ViewID viewId;
-  if (APZCCallbackHelper::GetScrollIdentifiers(document->GetDocumentElement(),
-                                               &presShellId, &viewId)) {
+  bool scrollIdentifiersValid = APZCCallbackHelper::GetScrollIdentifiers(
+        document->GetDocumentElement(), &presShellId, &viewId);
+  if (scrollIdentifiersValid) {
     ZoomConstraints constraints(
       viewportInfo.IsZoomAllowed(),
+      viewportInfo.IsDoubleTapZoomAllowed(),
       viewportInfo.GetMinZoom(),
       viewportInfo.GetMaxZoom());
     SendUpdateZoomConstraints(presShellId,
@@ -555,7 +559,6 @@ TabChild::HandlePossibleViewportChange()
                               /* isRoot = */ true,
                               constraints);
   }
-
 
   float screenW = mInnerSize.width;
   float screenH = mInnerSize.height;
@@ -659,6 +662,25 @@ TabChild::HandlePossibleViewportChange()
   // Force a repaint with these metrics. This, among other things, sets the
   // displayport, so we start with async painting.
   ProcessUpdateFrame(metrics);
+
+  if (viewportInfo.IsZoomAllowed() && scrollIdentifiersValid) {
+    // If the CSS viewport is narrower than the screen (i.e. width <= device-width)
+    // then we disable double-tap-to-zoom behaviour.
+    bool allowDoubleTapZoom = (viewport.width > screenW / metrics.mDevPixelsPerCSSPixel.scale);
+    if (allowDoubleTapZoom != viewportInfo.IsDoubleTapZoomAllowed()) {
+      viewportInfo.SetAllowDoubleTapZoom(allowDoubleTapZoom);
+
+      ZoomConstraints constraints(
+        viewportInfo.IsZoomAllowed(),
+        viewportInfo.IsDoubleTapZoomAllowed(),
+        viewportInfo.GetMinZoom(),
+        viewportInfo.GetMaxZoom());
+      SendUpdateZoomConstraints(presShellId,
+                                viewId,
+                                /* isRoot = */ true,
+                                constraints);
+    }
+  }
 }
 
 nsresult
@@ -2093,6 +2115,21 @@ TabChild::RecvPDocumentRendererConstructor(PDocumentRendererChild* actor,
     return PDocumentRendererChild::Send__delete__(actor, renderSize, data);
 }
 
+PColorPickerChild*
+TabChild::AllocPColorPickerChild(const nsString&, const nsString&)
+{
+  NS_RUNTIMEABORT("unused");
+  return nullptr;
+}
+
+bool
+TabChild::DeallocPColorPickerChild(PColorPickerChild* aColorPicker)
+{
+  nsColorPickerProxy* picker = static_cast<nsColorPickerProxy*>(aColorPicker);
+  NS_RELEASE(picker);
+  return true;
+}
+
 PContentDialogChild*
 TabChild::AllocPContentDialogChild(const uint32_t&,
                                    const nsCString&,
@@ -2543,12 +2580,12 @@ TabChild::DoSendBlockingMessage(JSContext* aCx,
     }
   }
   if (aIsSync) {
-    return SendSyncMessage(nsString(aMessage), data, cpows, aPrincipal,
-                           aJSONRetVal);
+    return SendSyncMessage(PromiseFlatString(aMessage), data, cpows,
+                           aPrincipal, aJSONRetVal);
   }
 
-  return CallRpcMessage(nsString(aMessage), data, cpows, aPrincipal,
-                        aJSONRetVal);
+  return CallRpcMessage(PromiseFlatString(aMessage), data, cpows,
+                        aPrincipal, aJSONRetVal);
 }
 
 bool
@@ -2569,7 +2606,7 @@ TabChild::DoSendAsyncMessage(JSContext* aCx,
       return false;
     }
   }
-  return SendAsyncMessage(nsString(aMessage), data, cpows,
+  return SendAsyncMessage(PromiseFlatString(aMessage), data, cpows,
                           aPrincipal);
 }
 

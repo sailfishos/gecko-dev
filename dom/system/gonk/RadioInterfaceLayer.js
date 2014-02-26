@@ -686,7 +686,7 @@ XPCOMUtils.defineLazyGetter(this, "gRadioEnabledController", function() {
     },
 
     _createTimer: function() {
-      if (_timer) {
+      if (!_timer) {
         _timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
       }
       _timer.initWithCallback(this._executeRequest.bind(this),
@@ -2799,6 +2799,7 @@ RadioInterface.prototype = {
     // because the system message mechamism will rewrap the object
     // based on the content window, which needs to know the properties.
     gSystemMessenger.broadcastMessage(aName, {
+      iccId:             aDomMessage.iccId,
       type:              aDomMessage.type,
       id:                aDomMessage.id,
       threadId:          aDomMessage.threadId,

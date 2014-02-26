@@ -50,7 +50,7 @@ template<typename T> OutParamRef<T> byRef(RefPtr<T>&);
  */
 namespace detail {
 #ifdef DEBUG
-static const MozRefCountType DEAD = 0xffffdead;
+const MozRefCountType DEAD = 0xffffdead;
 #endif
 
 // This is used WeakPtr.h as well as this file.
@@ -103,6 +103,9 @@ class RefCounted
 
 #define MOZ_DECLARE_REFCOUNTED_TYPENAME(T) \
   const char* typeName() const { return #T; }
+
+#define MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(T) \
+  virtual const char* typeName() const { return #T; }
 
 }
 

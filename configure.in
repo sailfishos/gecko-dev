@@ -51,7 +51,7 @@ _SUBDIR_CONFIG_ARGS="$ac_configure_args"
 dnl Set the version number of the libs included with mozilla
 dnl ========================================================
 MOZJPEG=62
-MOZPNG=10607
+MOZPNG=10609
 NSPR_VERSION=4
 NSS_VERSION=3
 
@@ -366,6 +366,8 @@ fi
 
 MOZ_TOOL_VARIABLES
 
+MOZ_CHECK_COMPILER_WRAPPER
+
 if test -n "$GNU_CC" -a -z "$CLANG_CC" ; then
     if test "$GCC_MAJOR_VERSION" -eq 4 -a "$GCC_MINOR_VERSION" -lt 4 ||
        test "$GCC_MAJOR_VERSION" -lt 4; then
@@ -643,6 +645,10 @@ case "$target" in
                 ;;
             esac
         fi
+
+        # strsafe.h on mingw uses macros for function deprecation that pollutes namespace
+        # causing problems with local implementations with the same name.
+        AC_DEFINE(STRSAFE_NO_DEPRECATE)
 
         MOZ_WINSDK_MAXVER=0x06020000
     fi # !GNU_CC
@@ -7092,7 +7098,6 @@ if test -n "$JSGC_ROOT_ANALYSIS"; then
 fi
 
 MOZ_CHECK_CCACHE
-MOZ_CHECK_COMPILER_WRAPPER
 
 dnl ========================================================
 dnl = Enable static checking using gcc-dehydra

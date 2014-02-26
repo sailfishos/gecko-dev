@@ -276,8 +276,8 @@ ShadowLayerForwarder::InsertAfter(ShadowableLayer* aContainer,
                                 nullptr, Shadow(aChild),
                                 nullptr, Shadow(aAfter)));
   else
-    mTxn->AddEdit(OpAppendChild(nullptr, Shadow(aContainer),
-                                nullptr, Shadow(aChild)));
+    mTxn->AddEdit(OpPrependChild(nullptr, Shadow(aContainer),
+                                 nullptr, Shadow(aChild)));
 }
 void
 ShadowLayerForwarder::RemoveChild(ShadowableLayer* aContainer,
@@ -621,6 +621,12 @@ bool
 ShadowLayerForwarder::IPCOpen() const
 {
   return mShadowManager->IPCOpen();
+}
+
+bool
+ShadowLayerForwarder::IsSameProcess() const
+{
+  return mShadowManager->OtherProcess() == kInvalidProcessHandle;
 }
 
 /*static*/ already_AddRefed<gfxASurface>

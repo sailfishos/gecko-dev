@@ -1426,6 +1426,8 @@ TypedObject::attach(ArrayBufferObject &buffer, int32_t offset)
 void
 TypedObject::attach(TypedObject &typedObj, int32_t offset)
 {
+    JS_ASSERT(typedObj.typedMem() != NULL);
+
     attach(typedObj.owner(), typedObj.offset() + offset);
 }
 
@@ -1453,8 +1455,9 @@ TypedObjLengthFromType(TypeDescr &descr)
 
 /*static*/ TypedObject *
 TypedObject::createDerived(JSContext *cx, HandleSizedTypeDescr type,
-                          HandleTypedObject typedObj, size_t offset)
+                           HandleTypedObject typedObj, size_t offset)
 {
+    JS_ASSERT(typedObj->typedMem() != NULL);
     JS_ASSERT(offset <= typedObj->size());
     JS_ASSERT(offset + type->size() <= typedObj->size());
 
@@ -2427,6 +2430,11 @@ TypedObject::constructUnsized(JSContext *cx, unsigned int argc, Value *vp)
     // Length constructor.
     if (args[0].isInt32()) {
         int32_t length = args[0].toInt32();
+        if (length < 0) {
+            JS_ReportErrorNumber(cx, js_GetErrorMessage,
+                                 nullptr, JSMSG_TYPEDOBJECT_BAD_ARGS);
+            return nullptr;
+        }
         Rooted<TypedObject*> obj(cx, createZeroed(cx, callee, length));
         if (!obj)
             return false;
@@ -2659,6 +2667,28 @@ js::AttachTypedObject(ThreadSafeContext *, unsigned argc, Value *vp)
 JS_JITINFO_NATIVE_PARALLEL_THREADSAFE(js::AttachTypedObjectJitInfo,
                                       AttachTypedObjectJitInfo,
                                       js::AttachTypedObject);
+
+bool
+js::SetTypedObjectOffset(ThreadSafeContext *, unsigned argc, Value *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    JS_ASSERT(argc == 2);
+    JS_ASSERT(args[0].isObject() && args[0].toObject().is<TypedObject>());
+    JS_ASSERT(args[1].isInt32());
+
+    TypedObject &typedObj = args[0].toObject().as<TypedObject>();
+    int32_t offset = args[1].toInt32();
+
+    JS_ASSERT(typedObj.typedMem() != nullptr); // must be attached already
+
+    typedObj.setPrivate(typedObj.owner().dataPointer() + offset);
+    typedObj.setReservedSlot(JS_TYPEDOBJ_SLOT_BYTEOFFSET, Int32Value(offset));
+    return true;
+}
+
+JS_JITINFO_NATIVE_PARALLEL_THREADSAFE(js::SetTypedObjectOffsetJitInfo,
+                                      SetTypedObjectJitInfo,
+                                      js::SetTypedObjectOffset);
 
 bool
 js::ObjectIsTypeDescr(ThreadSafeContext *, unsigned argc, Value *vp)

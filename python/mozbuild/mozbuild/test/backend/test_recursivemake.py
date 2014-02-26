@@ -351,7 +351,10 @@ class TestRecursiveMakeBackend(BackendTester):
             'LDFLAGS': [
                 'LDFLAGS += -framework Foo',
                 'LDFLAGS += -x',
-            ]
+            ],
+            'WIN32_EXE_LDFLAGS': [
+                'WIN32_EXE_LDFLAGS += -subsystem:console',
+            ],
         }
 
         for var, val in expected.items():
@@ -521,7 +524,7 @@ class TestRecursiveMakeBackend(BackendTester):
         var = 'DEFINES'
         defines = [val for val in lines if val.startswith(var)]
 
-        expected = ['DEFINES += -DFOO -DBAZ=\'"ab\'\\\'\'cd"\' -DBAR=7 -DVALUE=\'xyz\'']
+        expected = ['DEFINES += -DFOO -DBAZ=\'"ab\'\\\'\'cd"\' -UQUX -DBAR=7 -DVALUE=\'xyz\'']
         self.assertEqual(defines, expected)
 
     def test_local_includes(self):

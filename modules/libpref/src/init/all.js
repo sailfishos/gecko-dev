@@ -432,6 +432,7 @@ pref("accessibility.tabfocus_applies_to_xul", true);
 // provide ability to turn on support for canvas focus rings
 pref("canvas.focusring.enabled", false);
 pref("canvas.customfocusring.enabled", false);
+pref("canvas.hitregions.enabled", false);
 
 // We want the ability to forcibly disable platform a11y, because
 // some non-a11y-related components attempt to bring it up.  See bug
@@ -992,7 +993,7 @@ pref("network.http.spdy.enabled.v3", true);
 pref("network.http.spdy.enabled.v3-1", true);
 pref("network.http.spdy.enabled.http2draft", false);
 pref("network.http.spdy.enforce-tls-profile", true);
-pref("network.http.spdy.chunk-size", 4096);
+pref("network.http.spdy.chunk-size", 16000);
 pref("network.http.spdy.timeout", 180);
 pref("network.http.spdy.coalesce-hostnames", true);
 pref("network.http.spdy.persistent-settings", false);
@@ -3653,8 +3654,6 @@ pref("print.postscript.print_command", "lpr ${MOZ_PRINTER_NAME:+-P\"$MOZ_PRINTER
 pref("ui.panel.default_level_parent", true);
 
 pref("mousewheel.system_scroll_override_on_root_content.enabled", false);
-
-pref("ui.key.menuAccessKeyFocuses", true);
 
 #if MOZ_WIDGET_GTK == 2
 pref("intl.ime.use_simple_context_on_password_field", true);

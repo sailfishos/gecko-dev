@@ -93,14 +93,6 @@ nsNSSCertificateDB::FindCertByNickname(nsISupports *aToken,
   NS_ConvertUTF16toUTF8 aUtf8Nickname(nickname);
   asciiname = const_cast<char*>(aUtf8Nickname.get());
   PR_LOG(gPIPNSSLog, PR_LOG_DEBUG, ("Getting \"%s\"\n", asciiname));
-#if 0
-  // what it should be, but for now...
-  if (aToken) {
-    cert = PK11_FindCertFromNickname(asciiname, nullptr);
-  } else {
-    cert = CERT_FindCertByNickname(CERT_GetDefaultCertDB(), asciiname);
-  }
-#endif
   cert = PK11_FindCertFromNickname(asciiname, nullptr);
   if (!cert) {
     cert = CERT_FindCertByNickname(CERT_GetDefaultCertDB(), asciiname);
@@ -187,16 +179,7 @@ nsNSSCertificateDB::FindCertNicknames(nsISupports *aToken,
    * obtain the cert list from NSS
    */
   insanity::pkix::ScopedCERTCertList certList;
-  PK11CertListType pk11type;
-#if 0
-  // this would seem right, but it didn't work...
-  // oh, I know why - bonks out on internal slot certs
-  if (aType == nsIX509Cert::USER_CERT)
-    pk11type = PK11CertListUser;
-  else 
-#endif
-    pk11type = PK11CertListUnique;
-  certList = PK11_ListCerts(pk11type, nullptr);
+  certList = PK11_ListCerts(PK11CertListUnique, nullptr);
   if (!certList)
     goto cleanup;
   /*
@@ -1647,15 +1630,30 @@ nsNSSCertificateDB::AddCert(const nsACString & aCertDER, const char *aTrust,
   return AddCertFromBase64(base64.get(), aTrust, aName);
 }
 
+NS_IMETHODIMP
+nsNSSCertificateDB::SetCertTrustFromString(nsIX509Cert3* cert,
+                                           const char* trustString)
+{
+  CERTCertTrust trust;
+
+  // need to calculate the trust bits from the aTrust string.
+  SECStatus srv = CERT_DecodeTrustString(&trust,
+                                         const_cast<char *>(trustString));
+  if (srv != SECSuccess) {
+    return MapSECStatus(SECFailure);
+  }
+  insanity::pkix::ScopedCERTCertificate nssCert(cert->GetCert());
+  srv = CERT_ChangeCertTrust(CERT_GetDefaultCertDB(), nssCert.get(), &trust);
+  return MapSECStatus(srv);
+}
+
 NS_IMETHODIMP 
 nsNSSCertificateDB::GetCerts(nsIX509CertList **_retval)
 {
   nsNSSShutDownPreventionLock locker;
   if (isAlreadyShutDown()) {
     return NS_ERROR_NOT_AVAILABLE;
-  }
-
-  
+  }  
 
   nsCOMPtr<nsIInterfaceRequestor> ctx = new PipUIContext();
   nsCOMPtr<nsIX509CertList> nssCertList;

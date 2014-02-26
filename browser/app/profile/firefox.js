@@ -657,6 +657,8 @@ pref("plugins.update.notifyUser", false);
 
 pref("plugins.click_to_play", true);
 
+pref("plugins.hideMissingPluginsNotification", false);
+
 #ifdef RELEASE_BUILD
 // For now, plugins other than Java and Flash are enabled in beta/release
 // and click-to-activate in earlier channels.
@@ -951,6 +953,9 @@ pref("toolkit.crashreporter.infoURL",
 
 // base URL for web-based support pages
 pref("app.support.baseURL", "https://support.mozilla.org/1/firefox/%VERSION%/%OS%/%LOCALE%/");
+
+// base url for web-based feedback pages
+pref("app.feedback.baseURL", "https://input.mozilla.org/%LOCALE%/feedback/%APP%/%VERSION%/");
 
 // Name of alternate about: page for certificate errors (when undefined, defaults to about:neterror)
 pref("security.alternate_certificate_error_page", "certerror");
@@ -1381,6 +1386,11 @@ pref("identity.fxaccounts.settings.uri", "https://accounts.firefox.com/settings"
 // The URL of the Firefox Accounts auth server backend
 pref("identity.fxaccounts.auth.uri", "https://api.accounts.firefox.com/v1");
 
+// On GTK, we now default to showing the menubar only when alt is pressed:
+#ifdef MOZ_WIDGET_GTK
+pref("ui.key.menuAccessKeyFocuses", true);
+#endif
 
-// Temporarily turn the new http cache v2 on for Desktop Firefox only
-pref("browser.cache.use_new_backend_temp", true);
+
+// Delete HTTP cache v2 data of users that didn't opt-in manually
+pref("browser.cache.auto_delete_cache_version", 1);

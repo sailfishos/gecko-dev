@@ -592,6 +592,9 @@
                      cui-areatype="toolbar"
                      tooltiptext="&closeTab.label;"/>
 
+#ifdef XP_WIN
+      <hbox id="private-browsing-indicator" skipintoolbarset="true" ordinal="1000"/>
+#endif
 #ifdef CAN_DRAW_IN_TITLEBAR
       <hbox class="titlebar-placeholder" type="caption-buttons"
             id="titlebar-placeholder-on-TabsToolbar-for-captions-buttons" persist="width"
@@ -712,9 +715,6 @@
                        hidden="true"
                        tooltiptext="&pageReportIcon.tooltip;"
                        onclick="gPopupBlockerObserver.onReportButtonClick(event);"/>
-                <image id="star-button"
-                       class="urlbar-icon"
-                       onclick="if (event.button === 0) BookmarkingUI.onCommand(event);"/>
               </hbox>
               <toolbarbutton id="urlbar-go-button"
                              class="chromeclass-toolbar-additional"
