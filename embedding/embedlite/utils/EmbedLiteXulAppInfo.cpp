@@ -145,3 +145,35 @@ NS_IMETHODIMP EmbedLiteXulAppInfo::GetBrowserTabsRemote(bool* aResult)
   *aResult = false;
   return NS_OK;
 }
+
+NS_IMETHODIMP EmbedLiteXulAppInfo::GetIsReleaseBuild(bool* aResult)
+{
+#ifdef RELEASE_BUILD
+  *aResult = true;
+#else
+  *aResult = false;
+#endif
+  return NS_OK;
+}
+
+NS_IMETHODIMP EmbedLiteXulAppInfo::GetIsOfficialBranding(bool* aResult)
+{
+#ifdef MOZ_OFFICIAL_BRANDING
+  *aResult = true;
+#else
+  *aResult = false;
+#endif
+  return NS_OK;
+}
+
+NS_IMETHODIMP EmbedLiteXulAppInfo::GetDefaultUpdateChannel(nsACString& aResult)
+{
+  aResult.AssignLiteral(NS_STRINGIFY(MOZ_UPDATE_CHANNEL));
+  return NS_OK;
+}
+
+NS_IMETHODIMP EmbedLiteXulAppInfo::GetDistributionID(nsACString& aResult)
+{
+  aResult.AssignLiteral(MOZ_DISTRIBUTION_ID);
+  return NS_OK;
+}

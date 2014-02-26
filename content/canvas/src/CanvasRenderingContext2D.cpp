@@ -615,15 +615,14 @@ CanvasRenderingContext2D::ParseColor(const nsAString& aString,
   return true;
 }
 
+#ifdef ACCESSIBILITY
 PLDHashOperator
 CanvasRenderingContext2D::RemoveHitRegionProperty(RegionInfo* aEntry, void*)
 {
-#ifdef ACCESSIBILITY
   aEntry->mElement->DeleteProperty(nsGkAtoms::hitregion);
-#endif
   return PL_DHASH_NEXT;
 }
-
+#endif
 
 nsresult
 CanvasRenderingContext2D::Reset()
@@ -641,7 +640,9 @@ CanvasRenderingContext2D::Reset()
   mTarget = nullptr;
 
   // reset hit regions
+#ifdef ACCESSIBILITY
   mHitRegionsOptions.EnumerateEntries(RemoveHitRegionProperty, nullptr);
+#endif
   mHitRegionsOptions.Clear();
 
   // Since the target changes the backing texture will change, and this will
@@ -2369,6 +2370,7 @@ CanvasRenderingContext2D::MeasureText(const nsAString& rawText,
   return new TextMetrics(width);
 }
 
+#ifdef ACCESSIBILITY
 // Callback function, for freeing hit regions bounds values stored in property table
 static void
 ReleaseBBoxPropertyValue(void*    aObject,       /* unused */
@@ -2380,6 +2382,7 @@ ReleaseBBoxPropertyValue(void*    aObject,       /* unused */
     static_cast<nsRect*>(aPropertyValue);
   delete valPtr;
 }
+#endif
 
 void
 CanvasRenderingContext2D::AddHitRegion(const HitRegionOptions& options, ErrorResult& error)
@@ -2415,16 +2418,16 @@ CanvasRenderingContext2D::AddHitRegion(const HitRegionOptions& options, ErrorRes
     return;
   }
 
+#ifdef ACCESSIBILITY
   if (isDescendant) {
     nsRect* nsBounds = new nsRect();
     gfxRect rect(bounds.x, bounds.y, bounds.width, bounds.height);
     *nsBounds = nsLayoutUtils::RoundGfxRectToAppRect(rect, AppUnitsPerCSSPixel());
-#ifdef ACCESSIBILITY
     options.mControl->DeleteProperty(nsGkAtoms::hitregion);
     options.mControl->SetProperty(nsGkAtoms::hitregion, nsBounds,
                                   ReleaseBBoxPropertyValue);
-#endif
   }
+#endif
 
   // finally, add the region to the list if it has an ID
   if (options.mId.Length() != 0) {
