@@ -787,10 +787,11 @@ TabChildHelper::HandlePossibleViewportChange()
     uint32_t presShellId = 0;
     viewId = nsLayoutUtils::FindOrCreateIDFor(content);
     if (utils && (utils->GetPresShellId(&presShellId) == NS_OK)) {
-      ZoomConstraints constraints(viewportInfo.IsZoomAllowed(),
-                                  viewportInfo.GetMinZoom(),
-                                  viewportInfo.GetMaxZoom());
-      mView->SendUpdateZoomConstraints(presShellId, viewId, /* isRoot = */ true, constraints);
+      mView->SendUpdateZoomConstraints(presShellId, viewId, /* isRoot = */ true,
+                                       ZoomConstraints(viewportInfo.IsZoomAllowed(),
+                                                       viewportInfo.IsDoubleTapZoomAllowed(),
+                                                       viewportInfo.GetMinZoom(),
+                                                       viewportInfo.GetMaxZoom()));
     }
   }
 
