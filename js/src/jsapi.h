@@ -852,7 +852,7 @@ JS_NumberValue(double d)
 {
     int32_t i;
     d = JS::CanonicalizeNaN(d);
-    if (mozilla::DoubleIsInt32(d, &i))
+    if (mozilla::NumberIsInt32(d, &i))
         return INT_TO_JSVAL(i);
     return DOUBLE_TO_JSVAL(d);
 }
@@ -4580,17 +4580,60 @@ JS_ClearPendingException(JSContext *cx);
 extern JS_PUBLIC_API(bool)
 JS_ReportPendingException(JSContext *cx);
 
+namespace JS {
+
 /*
- * Save the current exception state.  This takes a snapshot of cx's current
- * exception state without making any change to that state.
+ * Save and later restore the current exception state of a given JSContext.
+ * This is useful for implementing behavior in C++ that's like try/catch
+ * or try/finally in JS.
  *
- * The returned state pointer MUST be passed later to JS_RestoreExceptionState
- * (to restore that saved state, overriding any more recent state) or else to
- * JS_DropExceptionState (to free the state struct in case it is not correct
- * or desirable to restore it).  Both Restore and Drop free the state struct,
- * so callers must stop using the pointer returned from Save after calling the
- * Release or Drop API.
+ * Typical usage:
+ *
+ *     bool ok = JS_EvaluateScript(cx, ...);
+ *     AutoSaveExceptionState savedExc(cx);
+ *     ... cleanup that might re-enter JS ...
+ *     return ok;
  */
+class JS_PUBLIC_API(AutoSaveExceptionState)
+{
+  private:
+    JSContext *context;
+    bool wasThrowing;
+    RootedValue exceptionValue;
+
+  public:
+    /*
+     * Take a snapshot of cx's current exception state. Then clear any current
+     * pending exception in cx.
+     */
+    explicit AutoSaveExceptionState(JSContext *cx);
+
+    /*
+     * If neither drop() nor restore() was called, restore the exception
+     * state only if no exception is currently pending on cx.
+     */
+    ~AutoSaveExceptionState();
+
+    /*
+     * Discard any stored exception state.
+     * If this is called, the destructor is a no-op.
+     */
+    void drop() {
+        wasThrowing = false;
+        exceptionValue.setUndefined();
+    }
+
+    /*
+     * Replace cx's exception state with the stored exception state. Then
+     * discard the stored exception state. If this is called, the
+     * destructor is a no-op.
+     */
+    void restore();
+};
+
+} /* namespace JS */
+
+/* Deprecated API. Use AutoSaveExceptionState instead. */
 extern JS_PUBLIC_API(JSExceptionState *)
 JS_SaveExceptionState(JSContext *cx);
 
@@ -4744,8 +4787,8 @@ GetScriptedCallerGlobal(JSContext *cx);
  * Informs the JS engine that the scripted caller should be hidden. This can be
  * used by the embedding to maintain an override of the scripted caller in its
  * calculations, by hiding the scripted caller in the JS engine and pushing data
- * onto a separate stack, which it inspects when JS_DescribeScriptedCaller
- * returns null.
+ * onto a separate stack, which it inspects when DescribeScriptedCaller returns
+ * null.
  *
  * We maintain a counter on each activation record. Add() increments the counter
  * of the topmost activation, and Remove() decrements it. The count may never

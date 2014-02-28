@@ -65,15 +65,17 @@ typedef Handle<NestedScopeObject*> HandleNestedScopeObject;
         }                                                                                   \
     JS_END_MACRO
 
+static const unsigned BlockIdLimit = 1 << ParseNode::NumBlockIdBits;
+
 template <typename ParseHandler>
 bool
 GenerateBlockId(TokenStream &ts, ParseContext<ParseHandler> *pc, uint32_t &blockid)
 {
-    if (pc->blockidGen == JS_BIT(20)) {
+    if (pc->blockidGen == BlockIdLimit) {
         ts.reportError(JSMSG_NEED_DIET, "program");
         return false;
     }
-    JS_ASSERT(pc->blockidGen < JS_BIT(20));
+    JS_ASSERT(pc->blockidGen < BlockIdLimit);
     blockid = pc->blockidGen++;
     return true;
 }
@@ -5825,7 +5827,7 @@ static bool
 AdjustBlockId(TokenStream &ts, ParseNode *pn, unsigned adjust, ParseContext<ParseHandler> *pc)
 {
     JS_ASSERT(pn->isArity(PN_LIST) || pn->isArity(PN_CODE) || pn->isArity(PN_NAME));
-    if (JS_BIT(20) - pn->pn_blockid <= adjust + 1) {
+    if (BlockIdLimit - pn->pn_blockid <= adjust + 1) {
         ts.reportError(JSMSG_NEED_DIET, "program");
         return false;
     }
@@ -6429,8 +6431,10 @@ template <typename ParseHandler>
 bool
 Parser<ParseHandler>::argumentList(Node listNode, bool *isSpread)
 {
-    if (tokenStream.matchToken(TOK_RP, TokenStream::Operand))
+    if (tokenStream.matchToken(TOK_RP, TokenStream::Operand)) {
+        handler.setEndPosition(listNode, pos().end);
         return true;
+    }
 
     uint32_t startYieldOffset = pc->lastYieldOffset;
     bool arg0 = true;
@@ -6483,6 +6487,7 @@ Parser<ParseHandler>::argumentList(Node listNode, bool *isSpread)
         report(ParseError, false, null(), JSMSG_PAREN_AFTER_ARGS);
         return false;
     }
+    handler.setEndPosition(listNode, pos().end);
     return true;
 }
 

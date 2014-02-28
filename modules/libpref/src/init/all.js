@@ -4327,3 +4327,6 @@ pref("snav.enabled", false);
 
 // Wakelock is disabled by default.
 pref("dom.wakelock.enabled", false);
+
+// The URL of the Firefox Accounts auth server backend
+pref("identity.fxaccounts.auth.uri", "https://api.accounts.firefox.com/v1");

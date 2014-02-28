@@ -37,7 +37,6 @@
 #include "nsMathUtils.h"                // for NS_round
 #include "nsPoint.h"                    // for nsPoint
 #include "nsTArray.h"                   // for nsTArray, nsTArray_Impl, etc
-#include "nsTraceRefcnt.h"              // for MOZ_COUNT_CTOR, etc
 #include "GeckoProfiler.h"
 #include "mozilla/layers/TextureHost.h"
 #include "mozilla/layers/AsyncCompositionManager.h"
@@ -210,7 +209,7 @@ LayerTransactionParent::RecvUpdate(const InfallibleTArray<Edit>& cset,
   EditReplyVector replyv;
 
   {
-    AutoResolveRefLayers resolve(mShadowLayersManager->GetCompositionManager());
+    AutoResolveRefLayers resolve(mShadowLayersManager->GetCompositionManager(this));
     layer_manager()->BeginTransaction();
   }
 
@@ -397,7 +396,11 @@ LayerTransactionParent::RecvUpdate(const InfallibleTArray<Edit>& cset,
       MOZ_LAYERS_LOG(("[ParentSide] SetRoot"));
 
       Layer* newRoot = AsLayerComposite(edit.get_OpSetRoot())->AsLayer();
+      if (!newRoot) {
+        return false;
+      }
       if (newRoot->GetParent()) {
+        // newRoot is not a root!
         return false;
       }
       mRoot = newRoot;
@@ -513,7 +516,7 @@ LayerTransactionParent::RecvUpdate(const InfallibleTArray<Edit>& cset,
   }
 
   {
-    AutoResolveRefLayers resolve(mShadowLayersManager->GetCompositionManager());
+    AutoResolveRefLayers resolve(mShadowLayersManager->GetCompositionManager(this));
     layer_manager()->EndTransaction(nullptr, nullptr, LayerManager::END_NO_IMMEDIATE_REDRAW);
   }
 

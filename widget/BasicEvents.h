@@ -11,9 +11,9 @@
 #include "mozilla/dom/EventTarget.h"
 #include "nsCOMPtr.h"
 #include "nsIAtom.h"
+#include "nsISupportsImpl.h"
 #include "nsIWidget.h"
 #include "nsString.h"
-#include "nsTraceRefcnt.h"
 #include "Units.h"
 
 /******************************************************************************
@@ -62,7 +62,7 @@ enum nsEventStructType
   NS_CONTENT_COMMAND_EVENT,          // WidgetContentCommandEvent
   NS_PLUGIN_EVENT,                   // WidgetPluginEvent
 
-  // MutationEvent.h (dom/events)
+  // InternalMutationEvent.h (dom/events)
   NS_MUTATION_EVENT,                 // InternalMutationEvent
 
   // Follwoing struct type values are ugly.  They indicate other struct type
