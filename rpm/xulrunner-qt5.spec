@@ -10,6 +10,7 @@ URL:        http://hg.mozilla.org/mozilla-central
 Source0:    %{name}-%{version}.tar.bz2
 Patch0:     add-sailfishos-org-certs.patch
 Patch1:     update-zoom-scale-upon-viewport-change.patch
+Patch2:     workaround-for-bug-977015.patch
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
@@ -61,6 +62,7 @@ Tests and misc files for xulrunner
 %setup -q -n %{name}-%{version}
 %patch0 -p1
 %patch1 -p1
+%patch2 -p1
 
 %build
 export DONT_POPULATE_VIRTUALENV=1
