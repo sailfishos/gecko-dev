@@ -1,0 +1,15 @@
+diff --git a/layout/generic/nsGfxScrollFrame.cpp b/layout/generic/nsGfxScrollFrame.cpp
+index 5e6f48a..2c18c89 100644
+--- a/layout/generic/nsGfxScrollFrame.cpp
++++ b/layout/generic/nsGfxScrollFrame.cpp
+@@ -2543,8 +2543,8 @@ ScrollFrameHelper::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
+     // The check for scroll bars was added in bug 825692 to prevent layerization
+     // of text inputs for performance reasons. However, if a text input is
+     // focused we want to layerize it so we can async scroll it (bug 946408).
+-    bool wantLayerV = isVScrollable && (mVScrollbarBox || isFocused);
+-    bool wantLayerH = isHScrollable && (mHScrollbarBox || isFocused);
++    bool wantLayerV = isVScrollable;
++    bool wantLayerH = isHScrollable;
+     // TODO Turn this on for inprocess OMTC on all platforms
+     bool wantSubAPZC = (XRE_GetProcessType() == GeckoProcessType_Content);
+ #ifdef XP_WIN
