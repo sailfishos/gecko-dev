@@ -188,23 +188,22 @@ struct SuppressErrorsGuard
 {
     JSContext *cx;
     JSErrorReporter prevReporter;
-    JSExceptionState *prevState;
+    JS::AutoSaveExceptionState prevState;
 
     SuppressErrorsGuard(JSContext *cx)
       : cx(cx),
         prevReporter(JS_SetErrorReporter(cx, nullptr)),
-        prevState(JS_SaveExceptionState(cx))
+        prevState(cx)
     {}
 
     ~SuppressErrorsGuard()
     {
-        JS_RestoreExceptionState(cx, prevState);
         JS_SetErrorReporter(cx, prevReporter);
     }
 };
 
-static JSString *
-ComputeStackString(JSContext *cx)
+JSString *
+js::ComputeStackString(JSContext *cx)
 {
     StringBuffer sb(cx);
 
@@ -237,9 +236,15 @@ ComputeStackString(JSContext *cx)
             if (!sb.appendInflated(cfilename, strlen(cfilename)))
                 return nullptr;
 
-            /* Finally, : followed by the line number and a newline. */
-            uint32_t line = PCToLineNumber(script, i.pc());
-            if (!sb.append(':') || !NumberValueToStringBuffer(cx, NumberValue(line), sb) ||
+            uint32_t column = 0;
+            uint32_t line = PCToLineNumber(script, i.pc(), &column);
+            // Now the line number
+            if (!sb.append(':') || !NumberValueToStringBuffer(cx, NumberValue(line), sb))
+                return nullptr;
+
+            // Finally, : followed by the column number (1-based, as in other browsers)
+            // and a newline.
+            if (!sb.append(':') || !NumberValueToStringBuffer(cx, NumberValue(column + 1), sb) ||
                 !sb.append('\n'))
             {
                 return nullptr;

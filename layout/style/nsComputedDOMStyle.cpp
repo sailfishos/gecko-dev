@@ -1233,12 +1233,7 @@ CSSValue*
 nsComputedDOMStyle::DoGetPerspective()
 {
     nsROCSSPrimitiveValue* val = new nsROCSSPrimitiveValue;
-    if (StyleDisplay()->mChildPerspective.GetUnit() == eStyleUnit_Coord &&
-        StyleDisplay()->mChildPerspective.GetCoordValue() == 0.0) {
-        val->SetIdent(eCSSKeyword_none);
-    } else {
-        SetValueToCoord(val, StyleDisplay()->mChildPerspective, false);
-    }
+    SetValueToCoord(val, StyleDisplay()->mChildPerspective, false);
     return val;
 }
 
@@ -3749,6 +3744,16 @@ nsComputedDOMStyle::DoGetOverflowY()
   val->SetIdent(
     nsCSSProps::ValueToKeywordEnum(StyleDisplay()->mOverflowY,
                                    nsCSSProps::kOverflowSubKTable));
+  return val;
+}
+
+CSSValue*
+nsComputedDOMStyle::DoGetOverflowClipBox()
+{
+  nsROCSSPrimitiveValue* val = new nsROCSSPrimitiveValue;
+  val->SetIdent(
+    nsCSSProps::ValueToKeywordEnum(StyleDisplay()->mOverflowClipBox,
+                                   nsCSSProps::kOverflowClipBoxKTable));
   return val;
 }
 

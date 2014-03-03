@@ -176,9 +176,10 @@ class TestEmitterBasic(unittest.TestCase):
             RESFILE='bar.res',
             DEFFILE='baz.def',
             USE_STATIC_LIBS=True,
-            CFLAGS=['-fno-exceptions', '-w'],
-            CXXFLAGS=['-fcxx-exceptions', '-include foo.h'],
-            LDFLAGS=['-framework Foo', '-x'],
+            MOZBUILD_CFLAGS=['-fno-exceptions', '-w'],
+            MOZBUILD_CXXFLAGS=['-fcxx-exceptions', '-include foo.h'],
+            MOZBUILD_LDFLAGS=['-framework Foo', '-x'],
+            WIN32_EXE_LDFLAGS=['-subsystem:console'],
         )
 
         variables = objs[0].variables
@@ -329,6 +330,21 @@ class TestEmitterBasic(unittest.TestCase):
         self.assertEqual(len(o.installs), 2)
         paths = sorted([k[len(o.directory)+1:] for k in o.installs.keys()])
         self.assertEqual(paths, ["foo.txt", "support-disabled-tests.ini"])
+
+    def test_test_manifest_absolute_support_files(self):
+        """Support files starting with '/' are placed relative to the install root"""
+        reader = self.reader('test-manifest-absolute-support')
+
+        objs = self.read_topsrcdir(reader)
+        self.assertEqual(len(objs), 1)
+        o = objs[0]
+        self.assertEqual(len(o.installs), 2)
+        expected = [
+            mozpath.normpath(mozpath.join(o.install_prefix, "../.well-known/foo.txt")),
+            mozpath.join(o.install_prefix, "absolute-support.ini"),
+        ]
+        paths = sorted([v[0] for v in o.installs.values()])
+        self.assertEqual(paths, expected)
 
     def test_test_manifest_keys_extracted(self):
         """Ensure all metadata from test manifests is extracted."""
@@ -516,6 +532,7 @@ class TestEmitterBasic(unittest.TestCase):
             'BAZ': '"abcd"',
             'FOO': True,
             'VALUE': 'xyz',
+            'QUX': False,
         }
 
         self.assertEqual(defines, expected)

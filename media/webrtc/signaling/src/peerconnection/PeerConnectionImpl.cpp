@@ -205,7 +205,7 @@ public:
         mCode(static_cast<PeerConnectionImpl::Error>(aInfo->getStatusCode())),
         mReason(aInfo->getStatus()),
         mSdpStr(),
-	mCandidateStr(),
+        mCandidateStr(),
         mCallState(aInfo->getCallState()),
         mFsmState(aInfo->getFsmState()),
         mStateStr(aInfo->callStateToString(mCallState)),
@@ -216,9 +216,9 @@ public:
       mRemoteStream = mPC->media()->GetRemoteStream(streams->media_stream_id);
       MOZ_ASSERT(mRemoteStream);
     } else if (mCallState == FOUNDICECANDIDATE) {
-	mCandidateStr = aInfo->getCandidate();
+        mCandidateStr = aInfo->getCandidate();
     } else if ((mCallState == CREATEOFFERSUCCESS) ||
-	       (mCallState == CREATEANSWERSUCCESS)) {
+               (mCallState == CREATEANSWERSUCCESS)) {
         mSdpStr = aInfo->getSDP();
     }
   }
@@ -728,22 +728,26 @@ PeerConnectionImpl::Initialize(PeerConnectionObserver& aObserver,
   char temp[128];
 
 #ifdef MOZILLA_INTERNAL_API
-  nsIDOMLocation* location = nullptr;
-  mWindow->GetLocation(&location);
-  MOZ_ASSERT(location);
-  nsString locationAStr;
-  location->ToString(locationAStr);
-  location->Release();
+  nsAutoCString locationCStr;
+  nsIDOMLocation* location;
+  res = mWindow->GetLocation(&location);
 
-  nsCString locationCStr;
-  CopyUTF16toUTF8(locationAStr, locationCStr);
-  MOZ_ASSERT(mWindow);
-  PR_snprintf(temp,
-              sizeof(temp),
-              "%llu (id=%u url=%s)",
-              (unsigned long long)timestamp,
-              (unsigned)mWindow->WindowID(),
-              locationCStr.get() ? locationCStr.get() : "NULL");
+  if (location && NS_SUCCEEDED(res)) {
+    nsAutoString locationAStr;
+    location->ToString(locationAStr);
+    location->Release();
+
+    CopyUTF16toUTF8(locationAStr, locationCStr);
+  }
+
+  PR_snprintf(
+      temp,
+      sizeof(temp),
+      "%llu (id=%llu url=%s)",
+      static_cast<unsigned long long>(timestamp),
+      static_cast<unsigned long long>(mWindow ? mWindow->WindowID() : 0),
+      locationCStr.get() ? locationCStr.get() : "NULL");
+
 #else
   PR_snprintf(temp, sizeof(temp), "%llu", (unsigned long long)timestamp);
 #endif // MOZILLA_INTERNAL_API
@@ -1603,10 +1607,14 @@ PeerConnectionImpl::CheckApiState(bool assert_ice_ready) const
   MOZ_ASSERT(mTrickle || !assert_ice_ready ||
              (mIceGatheringState == PCImplIceGatheringState::Complete));
 
-  if (mReadyState == PCImplReadyState::Closed)
+  if (mReadyState == PCImplReadyState::Closed) {
+    CSFLogError(logTag, "%s: called API while closed", __FUNCTION__);
     return NS_ERROR_FAILURE;
-  if (!mMedia)
+  }
+  if (!mMedia) {
+    CSFLogError(logTag, "%s: called API with disposed mMedia", __FUNCTION__);
     return NS_ERROR_FAILURE;
+  }
   return NS_OK;
 }
 

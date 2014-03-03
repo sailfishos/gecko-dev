@@ -39,7 +39,6 @@ public:
   virtual void SendAsyncScrollDOMEvent(bool aIsRoot,
                                        const CSSRect& aContentRect,
                                        const CSSSize& aScrollableSize) MOZ_OVERRIDE;
-  virtual void ScrollUpdate(const CSSPoint& aPosition, const float aResolution) MOZ_OVERRIDE;
   virtual void AcknowledgeScrollUpdate(const FrameMetrics::ViewID&, const uint32_t&) MOZ_OVERRIDE;
   void ClearRenderFrame();
   virtual void PostDelayedTask(Task* aTask, int aDelayMs) MOZ_OVERRIDE;

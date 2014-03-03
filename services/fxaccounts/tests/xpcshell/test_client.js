@@ -102,6 +102,53 @@ add_task(function test_500_error() {
   yield deferredStop(server);
 });
 
+add_task(function test_backoffError() {
+  let method = "GET";
+  let server = httpd_setup({
+    "/retryDelay": function(request, response) {
+      response.setHeader("Retry-After", "30");
+      response.setStatusLine(request.httpVersion, 429, "Client has sent too many requests");
+      let message = "<h1>Ooops!</h1>";
+      response.bodyOutputStream.write(message, message.length);
+    },
+    "/duringDelayIShouldNotBeCalled": function(request, response) {
+      response.setStatusLine(request.httpVersion, 200, "OK");
+      let jsonMessage = "{\"working\": \"yes\"}";
+      response.bodyOutputStream.write(jsonMessage, jsonMessage.length);
+    },
+  });
+
+  let client = new FxAccountsClient(server.baseURI);
+
+  // Retry-After header sets client.backoffError
+  do_check_eq(client.backoffError, null);
+  try {
+    yield client._request("/retryDelay", method);
+  } catch (e) {
+    do_check_eq(429, e.code);
+    do_check_eq(30, e.retryAfter);
+    do_check_neq(typeof(client.fxaBackoffTimer), "undefined");
+    do_check_neq(client.backoffError, null);
+  }
+  // While delay is in effect, client short-circuits any requests
+  // and re-rejects with previous error.
+  try {
+    yield client._request("/duringDelayIShouldNotBeCalled", method);
+    throw new Error("I should not be reached");
+  } catch (e) {
+    do_check_eq(e.retryAfter, 30);
+    do_check_eq(e.message, "Client has sent too many requests");
+    do_check_neq(client.backoffError, null);
+  }
+  // Once timer fires, client nulls error out and HTTP calls work again.
+  client._clearBackoff();
+  let result = yield client._request("/duringDelayIShouldNotBeCalled", method);
+  do_check_eq(client.backoffError, null);
+  do_check_eq(result.working, "yes");
+
+  yield deferredStop(server);
+});
+
 add_task(function test_signUp() {
   let creationMessage = JSON.stringify({
     uid: "uid",
@@ -395,7 +442,7 @@ add_task(function test_signCertificate() {
 
       // Second attempt, trigger error
       response.setStatusLine(request.httpVersion, 400, "Bad request");
-      response.bodyOutputStream.write(errorMessage, errorMessage.length);
+      return response.bodyOutputStream.write(errorMessage, errorMessage.length);
     },
   });
 
@@ -479,6 +526,59 @@ add_task(function test_accountExists() {
   } catch(unexpectedError) {
     do_check_eq(unexpectedError.code, 500);
   }
+
+  yield deferredStop(server);
+});
+
+add_task(function test_email_case() {
+  let canonicalEmail = "greta.garbo@gmail.com";
+  let clientEmail = "Greta.Garbo@gmail.COM";
+  let attempts = 0;
+
+  function writeResp(response, msg) {
+    if (typeof msg === "object") {
+      msg = JSON.stringify(msg);
+    }
+    response.bodyOutputStream.write(msg, msg.length);
+  }
+
+  let server = httpd_setup(
+    {
+      "/account/login": function(request, response) {
+        response.setHeader("Content-Type", "application/json; charset=utf-8");
+        attempts += 1;
+        if (attempts > 2) {
+          response.setStatusLine(request.httpVersion, 429, "Sorry, you had your chance");
+          return writeResp(response, "");
+        }
+
+        let body = CommonUtils.readBytesFromInputStream(request.bodyInputStream);
+        let jsonBody = JSON.parse(body);
+        let email = jsonBody.email;
+
+        // If the client has the wrong case on the email, we return a 400, with
+        // the capitalization of the email as saved in the accounts database.
+        if (email == canonicalEmail) {
+          response.setStatusLine(request.httpVersion, 200, "Yay");
+          return writeResp(response, {areWeHappy: "yes"});
+        }
+
+        response.setStatusLine(request.httpVersion, 400, "Incorrect email case");
+        return writeResp(response, {
+          code: 400,
+          errno: 120,
+          error: "Incorrect email case",
+          email: canonicalEmail
+        });
+      },
+    }
+  );
+
+  let client = new FxAccountsClient(server.baseURI);
+
+  let result = yield client.signIn(clientEmail, "123456");
+  do_check_eq(result.areWeHappy, "yes");
+  do_check_eq(attempts, 2);
 
   yield deferredStop(server);
 });

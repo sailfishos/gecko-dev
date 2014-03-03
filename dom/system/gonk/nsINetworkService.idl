@@ -104,7 +104,7 @@ interface nsIUpdateUpStreamCallback : nsISupports
 /**
  * Provide network services.
  */
-[scriptable, uuid(c14cabaf-bb8e-470d-a2f1-2cb6de6c5e5c)]
+[scriptable, uuid(f96461fa-e844-45d2-a6c3-8cd23ab0916b)]
 interface nsINetworkService : nsISupports
 {
   /**
@@ -246,10 +246,10 @@ interface nsINetworkService : nsISupports
   /**
    * Remove default route.
    *
-   * @param interfaceName
+   * @param networkInterface
    *        The network interface we want remove from the default route.
    */
-  void removeDefaultRoute(in DOMString interfaceName);
+  void removeDefaultRoute(in nsINetworkInterface networkInterface);
 
   /**
    * Add host route.
@@ -294,6 +294,32 @@ interface nsINetworkService : nsISupports
    *        The array of host names we want to remove.
    */
   void removeHostRouteWithResolve(in nsINetworkInterface network, in jsval hosts);
+
+  /**
+   * Add route to secondary routing table.
+   *
+   * @param interfaceName
+   *        The network interface for this route.
+   * @param route
+   *        The route info should have the following fields:
+   *        .ip: destination ip address
+   *        .prefix: destination prefix
+   *        .gateway: gateway ip address
+   */
+  void addSecondaryRoute(in DOMString interfaceName, in jsval route);
+
+  /**
+   * Remove route from secondary routing table.
+   *
+   * @param interfaceName
+   *        The network interface for the route we want to remove.
+   * @param route
+   *        The route info should have the following fields:
+   *        .ip: destination ip address
+   *        .prefix: destination prefix
+   *        .gateway: gateway ip address
+   */
+  void removeSecondaryRoute(in DOMString interfaceName, in jsval route);
 
   /**
    * Enable or disable usb rndis.

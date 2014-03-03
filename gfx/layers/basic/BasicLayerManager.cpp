@@ -24,6 +24,7 @@
 #include "gfxImageSurface.h"            // for gfxImageSurface
 #include "gfxMatrix.h"                  // for gfxMatrix
 #include "gfxPlatform.h"                // for gfxPlatform
+#include "gfxPrefs.h"                   // for gfxPrefs
 #include "gfxPoint.h"                   // for gfxIntSize, gfxPoint
 #include "gfxRect.h"                    // for gfxRect
 #include "gfxUtils.h"                   // for gfxUtils
@@ -45,7 +46,6 @@
 #include "nsRect.h"                     // for nsIntRect
 #include "nsRegion.h"                   // for nsIntRegion, etc
 #include "nsTArray.h"                   // for nsAutoTArray
-#include "nsTraceRefcnt.h"              // for MOZ_COUNT_CTOR, etc
 #define PIXMAN_DONT_DEFINE_STDINT
 #include "pixman.h"                     // for pixman_f_transform, etc
 
@@ -543,7 +543,7 @@ static uint16_t sFrameCount = 0;
 void
 BasicLayerManager::RenderDebugOverlay()
 {
-  if (!gfxPlatform::DrawFrameCounter()) {
+  if (!gfxPrefs::DrawFrameCounter()) {
     return;
   }
 
@@ -664,7 +664,7 @@ BasicLayerManager::EndTransactionInternal(DrawThebesLayerCallback aCallback,
 void
 BasicLayerManager::FlashWidgetUpdateArea(gfxContext *aContext)
 {
-  if (gfxPlatform::GetPlatform()->WidgetUpdateFlashing()) {
+  if (gfxPrefs::WidgetUpdateFlashing()) {
     float r = float(rand()) / RAND_MAX;
     float g = float(rand()) / RAND_MAX;
     float b = float(rand()) / RAND_MAX;
@@ -861,9 +861,10 @@ BasicLayerManager::FlushGroup(PaintLayerContext& aPaintContext, bool aNeedsClipT
       gfxUtils::ClipToRegion(aPaintContext.mTarget,
                              aPaintContext.mLayer->GetEffectiveVisibleRegion());
     }
-    BasicContainerLayer* container = static_cast<BasicContainerLayer*>(aPaintContext.mLayer);
-    AutoSetOperator setOperator(aPaintContext.mTarget,
-                                ThebesOp(container->GetOperator()));
+
+    CompositionOp op = GetEffectiveOperator(aPaintContext.mLayer);
+    AutoSetOperator setOperator(aPaintContext.mTarget, ThebesOp(op));
+
     PaintWithMask(aPaintContext.mTarget, aPaintContext.mLayer->GetEffectiveOpacity(),
                   aPaintContext.mLayer->GetMaskLayer());
   }
@@ -960,8 +961,8 @@ BasicLayerManager::PaintLayer(gfxContext* aTarget,
       return;
     }
 
-    nsRefPtr<gfxContext> groupTarget = new gfxContext(untransformedDT);
-    groupTarget->Translate(gfxPoint(-bounds.x, -bounds.y));
+    nsRefPtr<gfxContext> groupTarget = new gfxContext(untransformedDT,
+                                                      Point(bounds.x, bounds.y));
 
     PaintSelfOrChildren(paintLayerContext, groupTarget);
 
@@ -977,8 +978,7 @@ BasicLayerManager::PaintLayer(gfxContext* aTarget,
                      (aLayer->GetDebugColorIndex() & 4) ? 1.0 : 0.0,
                      1.0);
 
-      nsRefPtr<gfxContext> temp = new gfxContext(untransformedDT);
-      temp->Translate(gfxPoint(-bounds.x, -bounds.y));
+      nsRefPtr<gfxContext> temp = new gfxContext(untransformedDT, Point(bounds.x, bounds.y));
       temp->SetColor(color);
       temp->Paint();
     }

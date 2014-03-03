@@ -68,7 +68,7 @@ class nsIInterfaceRequestor;
 class nsIIOService;
 class nsIJSRuntimeService;
 class nsILineBreaker;
-class nsINameSpaceManager;
+class nsNameSpaceManager;
 class nsINodeInfo;
 class nsIObserver;
 class nsIParser;
@@ -451,7 +451,7 @@ public:
 
   static nsIParserService* GetParserService();
 
-  static nsINameSpaceManager* NameSpaceManager()
+  static nsNameSpaceManager* NameSpaceManager()
   {
     return sNameSpaceManager;
   }
@@ -526,6 +526,12 @@ public:
    */
   static bool CheckForBOM(const unsigned char* aBuffer, uint32_t aLength,
                           nsACString& aCharset);
+
+  /**
+   * Returns true if |aName| is a valid name to be registered via
+   * document.registerElement.
+   */
+  static bool IsCustomElementName(nsIAtom* aName);
 
   static nsresult CheckQName(const nsAString& aQualifiedName,
                              bool aNamespaceAware = true,
@@ -2149,7 +2155,7 @@ private:
 
   static nsIParserService *sParserService;
 
-  static nsINameSpaceManager *sNameSpaceManager;
+  static nsNameSpaceManager *sNameSpaceManager;
 
   static nsIIOService *sIOService;
 

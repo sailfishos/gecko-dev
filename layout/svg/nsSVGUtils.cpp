@@ -20,12 +20,12 @@
 #include "mozilla/Preferences.h"
 #include "nsCSSFrameConstructor.h"
 #include "nsDisplayList.h"
+#include "nsFilterInstance.h"
 #include "nsFrameList.h"
 #include "nsGkAtoms.h"
 #include "nsIContent.h"
 #include "nsIDocument.h"
 #include "nsIFrame.h"
-#include "nsINameSpaceManager.h"
 #include "nsIPresShell.h"
 #include "nsISVGChildFrame.h"
 #include "nsPresContext.h"
@@ -35,8 +35,6 @@
 #include "nsSVGClipPathFrame.h"
 #include "nsSVGContainerFrame.h"
 #include "nsSVGEffects.h"
-#include "nsSVGFilterFrame.h"
-#include "nsSVGFilterInstance.h"
 #include "nsSVGFilterPaintCallback.h"
 #include "nsSVGForeignObjectFrame.h"
 #include "gfxSVGGlyphs.h"
@@ -160,13 +158,12 @@ nsSVGUtils::GetPostFilterVisualOverflowRect(nsIFrame *aFrame,
   NS_ABORT_IF_FALSE(aFrame->GetStateBits() & NS_FRAME_SVG_LAYOUT,
                     "Called on invalid frame type");
 
-  nsSVGFilterFrame *filterFrame = nsSVGEffects::GetFilterFrame(aFrame);
-  if (!filterFrame) {
+  nsSVGFilterProperty *property = nsSVGEffects::GetFilterProperty(aFrame);
+  if (!property || !property->ReferencesValidResources()) {
     return aPreFilterRect;
   }
 
-  return nsSVGFilterInstance::GetPostFilterBounds(filterFrame, aFrame, nullptr,
-                                                  &aPreFilterRect);
+  return nsFilterInstance::GetPostFilterBounds(aFrame, nullptr, &aPreFilterRect);
 }
 
 bool
@@ -438,7 +435,8 @@ class SVGPaintCallback : public nsSVGFilterPaintCallback
 {
 public:
   virtual void Paint(nsRenderingContext *aContext, nsIFrame *aTarget,
-                     const nsIntRect* aDirtyRect, nsIFrame* aTransformRoot)
+                     const nsIntRect* aDirtyRect,
+                     nsIFrame* aTransformRoot) MOZ_OVERRIDE
   {
     nsISVGChildFrame *svgChildFrame = do_QueryFrame(aTarget);
     NS_ASSERTION(svgChildFrame, "Expected SVG frame here");
@@ -498,8 +496,7 @@ nsSVGUtils::PaintFrameWithEffects(nsRenderingContext *aContext,
   nsSVGEffects::EffectProperties effectProperties =
     nsSVGEffects::GetEffectProperties(aFrame);
 
-  bool isOK = true;
-  nsSVGFilterFrame *filterFrame = effectProperties.GetFilterFrame(&isOK);
+  bool isOK = effectProperties.HasNoFilterOrHasValidFilter();
 
   if (aDirtyRect &&
       !(aFrame->GetStateBits() & NS_FRAME_IS_NONDISPLAY)) {
@@ -600,7 +597,7 @@ nsSVGUtils::PaintFrameWithEffects(nsRenderingContext *aContext,
   }
 
   /* Paint the child */
-  if (filterFrame) {
+  if (effectProperties.HasValidFilter()) {
     nsRect* dirtyRect = nullptr;
     nsRect tmpDirtyRect;
     if (aDirtyRect) {
@@ -623,9 +620,8 @@ nsSVGUtils::PaintFrameWithEffects(nsRenderingContext *aContext,
       dirtyRect = &tmpDirtyRect;
     }
     SVGPaintCallback paintCallback;
-    nsSVGFilterInstance::PaintFilteredFrame(filterFrame, aContext, aFrame,
-                                            &paintCallback, dirtyRect,
-                                            aTransformRoot);
+    nsFilterInstance::PaintFilteredFrame(aContext, aFrame, &paintCallback,
+                                         dirtyRect, aTransformRoot);
   } else {
     svgChildFrame->PaintSVG(aContext, aDirtyRect, aTransformRoot);
   }
@@ -682,10 +678,14 @@ nsSVGUtils::HitTestClip(nsIFrame *aFrame, const nsPoint &aPoint)
 
   bool isOK = true;
   nsSVGClipPathFrame *clipPathFrame = props.GetClipPathFrame(&isOK);
-  if (!clipPathFrame || !isOK) {
+  if (!isOK) {
     // clipPath is not a valid resource, so nothing gets painted, so
     // hit-testing must fail.
     return false;
+  }
+  if (!clipPathFrame) {
+    // clipPath doesn't exist, ignore it.
+    return true;
   }
 
   return clipPathFrame->ClipHitTest(aFrame, GetCanvasTM(aFrame,

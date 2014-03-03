@@ -9,12 +9,12 @@
 #include <stdint.h>                     // for uint32_t
 #include "ClientLayerManager.h"         // for ClientLayerManager, etc
 #include "Layers.h"                     // for Layer, ContainerLayer, etc
-#include "gfxPlatform.h"                // for gfxPlatform
+#include "gfxPrefs.h"                   // for gfxPrefs
 #include "nsDebug.h"                    // for NS_ASSERTION
+#include "nsISupportsImpl.h"            // for MOZ_COUNT_CTOR, etc
 #include "nsISupportsUtils.h"           // for NS_ADDREF, NS_RELEASE
 #include "nsRegion.h"                   // for nsIntRegion
 #include "nsTArray.h"                   // for nsAutoTArray
-#include "nsTraceRefcnt.h"              // for MOZ_COUNT_CTOR, etc
 
 namespace mozilla {
 namespace layers {
@@ -58,7 +58,7 @@ public:
             GetEffectiveTransform().Is2D(&transform) &&
             !gfx::ThebesMatrix(transform).HasNonIntegerTranslation()) {
           SetSupportsComponentAlphaChildren(
-            gfxPlatform::ComponentAlphaEnabled());
+            gfxPrefs::ComponentAlphaEnabled());
         }
       }
     } else {
@@ -90,33 +90,51 @@ public:
                  "Can only set properties in construction phase");
     ContainerLayer::SetVisibleRegion(aRegion);
   }
-  virtual void InsertAfter(Layer* aChild, Layer* aAfter) MOZ_OVERRIDE
+  virtual bool InsertAfter(Layer* aChild, Layer* aAfter) MOZ_OVERRIDE
   {
-    NS_ASSERTION(ClientManager()->InConstruction(),
-                 "Can only set properties in construction phase");
+    if(!ClientManager()->InConstruction()) {
+      NS_ERROR("Can only set properties in construction phase");
+      return false;
+    }
+
+    if (!ContainerLayer::InsertAfter(aChild, aAfter)) {
+      return false;
+    }
+
     ClientManager()->AsShadowForwarder()->InsertAfter(ClientManager()->Hold(this),
                                                       ClientManager()->Hold(aChild),
                                                       aAfter ? ClientManager()->Hold(aAfter) : nullptr);
-    ContainerLayer::InsertAfter(aChild, aAfter);
+    return true;
   }
 
-  virtual void RemoveChild(Layer* aChild) MOZ_OVERRIDE
-  { 
-    NS_ASSERTION(ClientManager()->InConstruction(),
-                 "Can only set properties in construction phase");
-    ClientManager()->AsShadowForwarder()->RemoveChild(ClientManager()->Hold(this),
-                                                      ClientManager()->Hold(aChild));
-    ContainerLayer::RemoveChild(aChild);
-  }
-
-  virtual void RepositionChild(Layer* aChild, Layer* aAfter) MOZ_OVERRIDE
+  virtual bool RemoveChild(Layer* aChild) MOZ_OVERRIDE
   {
-    NS_ASSERTION(ClientManager()->InConstruction(),
-                 "Can only set properties in construction phase");
+    if (!ClientManager()->InConstruction()) {
+      NS_ERROR("Can only set properties in construction phase");
+      return false;
+    }
+    // hold on to aChild before we remove it!
+    ShadowableLayer *heldChild = ClientManager()->Hold(aChild);
+    if (!ContainerLayer::RemoveChild(aChild)) {
+      return false;
+    }
+    ClientManager()->AsShadowForwarder()->RemoveChild(ClientManager()->Hold(this), heldChild);
+    return true;
+  }
+
+  virtual bool RepositionChild(Layer* aChild, Layer* aAfter) MOZ_OVERRIDE
+  {
+    if (!ClientManager()->InConstruction()) {
+      NS_ERROR("Can only set properties in construction phase");
+      return false;
+    }
+    if (!ContainerLayer::RepositionChild(aChild, aAfter)) {
+      return false;
+    }
     ClientManager()->AsShadowForwarder()->RepositionChild(ClientManager()->Hold(this),
                                                           ClientManager()->Hold(aChild),
                                                           aAfter ? ClientManager()->Hold(aAfter) : nullptr);
-    ContainerLayer::RepositionChild(aChild, aAfter);
+    return true;
   }
 
   virtual Layer* AsLayer() { return this; }

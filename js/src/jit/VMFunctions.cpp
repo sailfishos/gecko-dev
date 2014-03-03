@@ -109,14 +109,14 @@ bool
 CheckOverRecursed(JSContext *cx)
 {
     // IonMonkey's stackLimit is equal to nativeStackLimit by default. When we
-    // want to trigger an operation callback, we set the ionStackLimit to nullptr,
+    // want to trigger an operation callback, we set the jitStackLimit to nullptr,
     // which causes the stack limit check to fail.
     //
     // There are two states we're concerned about here:
     //   (1) The interrupt bit is set, and we need to fire the interrupt callback.
     //   (2) The stack limit has been exceeded, and we need to throw an error.
     //
-    // Note that we can reach here if ionStackLimit is MAXADDR, but interrupt
+    // Note that we can reach here if jitStackLimit is MAXADDR, but interrupt
     // has not yet been set to 1. That's okay; it will be set to 1 very shortly,
     // and in the interim we might just fire a few useless calls to
     // CheckOverRecursed.
@@ -226,7 +226,7 @@ InitProp(JSContext *cx, HandleObject obj, HandlePropertyName name, HandleValue v
 
     MOZ_ASSERT(name != cx->names().proto,
                "__proto__ should have been handled by JSOP_MUTATEPROTO");
-    return DefineNativeProperty(cx, obj, id, rval, nullptr, nullptr, JSPROP_ENUMERATE, 0, 0, 0);
+    return DefineNativeProperty(cx, obj, id, rval, nullptr, nullptr, JSPROP_ENUMERATE, 0, 0);
 }
 
 template<bool Equal>
@@ -459,7 +459,7 @@ StringFromCharCode(JSContext *cx, int32_t code)
     jschar c = jschar(code);
 
     if (StaticStrings::hasUnit(c))
-        return cx->runtime()->staticStrings.getUnit(c);
+        return cx->staticStrings().getUnit(c);
 
     return js_NewStringCopyN<CanGC>(cx, &c, 1);
 }
@@ -956,13 +956,14 @@ InitBaselineFrameForOsr(BaselineFrame *frame, StackFrame *interpFrame, uint32_t 
     return frame->initForOsr(interpFrame, numStackValues);
 }
 
-JSObject *CreateDerivedTypedObj(JSContext *cx, HandleObject descr,
-                                HandleObject owner, int32_t offset)
+JSObject *
+CreateDerivedTypedObj(JSContext *cx, HandleObject descr,
+                      HandleObject owner, int32_t offset)
 {
     JS_ASSERT(descr->is<SizedTypeDescr>());
-    JS_ASSERT(owner->is<TypedDatum>());
+    JS_ASSERT(owner->is<TypedObject>());
     Rooted<SizedTypeDescr*> descr1(cx, &descr->as<SizedTypeDescr>());
-    Rooted<TypedDatum*> owner1(cx, &owner->as<TypedDatum>());
+    Rooted<TypedObject*> owner1(cx, &owner->as<TypedObject>());
     return TypedObject::createDerived(cx, descr1, owner1, offset);
 }
 
@@ -1040,6 +1041,12 @@ AssertValidObjectPtr(JSContext *cx, JSObject *obj)
 void
 AssertValidStringPtr(JSContext *cx, JSString *str)
 {
+    // We can't closely inspect strings from another runtime.
+    if (str->runtimeFromAnyThread() != cx->runtime()) {
+        JS_ASSERT(str->isPermanentAtom());
+        return;
+    }
+
     if (str->isAtom())
         JS_ASSERT(cx->runtime()->isAtomsZone(str->tenuredZone()));
     else

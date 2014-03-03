@@ -15,7 +15,7 @@
 #include "mozilla/layers/CompositorTypes.h"
 #include "mozilla/layers/LayersTypes.h"  // for LayersBackend
 #include "mozilla/layers/PCompositableChild.h"  // for PCompositableChild
-#include "nsTraceRefcnt.h"              // for MOZ_COUNT_CTOR, etc
+#include "nsISupportsImpl.h"            // for MOZ_COUNT_CTOR, etc
 #include "gfxASurface.h"                // for gfxContentType
 
 namespace mozilla {
@@ -72,6 +72,7 @@ class TextureClientData;
 class CompositableClient : public AtomicRefCounted<CompositableClient>
 {
 public:
+  MOZ_DECLARE_REFCOUNTED_TYPENAME(CompositableClient)
   CompositableClient(CompositableForwarder* aForwarder);
 
   virtual ~CompositableClient();

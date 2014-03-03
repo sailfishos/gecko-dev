@@ -23,6 +23,7 @@
 #include "mozilla/dom/PCrashReporterChild.h"
 #include "mozilla/dom/DOMStorageIPC.h"
 #include "mozilla/hal_sandbox/PHalChild.h"
+#include "mozilla/ipc/BackgroundChild.h"
 #include "mozilla/ipc/GeckoChildProcessHost.h"
 #include "mozilla/ipc/TestShellChild.h"
 #include "mozilla/layers/CompositorChild.h"
@@ -31,18 +32,18 @@
 #include "mozilla/net/NeckoChild.h"
 #include "mozilla/Preferences.h"
 
-#if defined(MOZ_CONTENT_SANDBOX)
-#if defined(XP_WIN)
+#if defined(MOZ_CONTENT_SANDBOX) && defined(XP_WIN)
 #define TARGET_SANDBOX_EXPORTS
 #include "mozilla/sandboxTarget.h"
-#elif defined(XP_UNIX) && !defined(XP_MACOSX)
-#include "mozilla/Sandbox.h"
 #endif
+#if defined(XP_LINUX)
+#include "mozilla/Sandbox.h"
 #endif
 
 #include "mozilla/unused.h"
 
 #include "nsIConsoleListener.h"
+#include "nsIIPCBackgroundChildCreateCallback.h"
 #include "nsIInterfaceRequestorUtils.h"
 #include "nsIMemoryReporter.h"
 #include "nsIMemoryInfoDumper.h"
@@ -310,6 +311,34 @@ SystemMessageHandledObserver::Observe(nsISupports* aSubject,
 
 NS_IMPL_ISUPPORTS1(SystemMessageHandledObserver, nsIObserver)
 
+class BackgroundChildPrimer MOZ_FINAL :
+  public nsIIPCBackgroundChildCreateCallback
+{
+public:
+    BackgroundChildPrimer()
+    { }
+
+    NS_DECL_ISUPPORTS
+
+private:
+    ~BackgroundChildPrimer()
+    { }
+
+    virtual void
+    ActorCreated(PBackgroundChild* aActor) MOZ_OVERRIDE
+    {
+        MOZ_ASSERT(aActor, "Failed to create a PBackgroundChild actor!");
+    }
+
+    virtual void
+    ActorFailed() MOZ_OVERRIDE
+    {
+        MOZ_CRASH("Failed to create a PBackgroundChild actor!");
+    }
+};
+
+NS_IMPL_ISUPPORTS1(BackgroundChildPrimer, nsIIPCBackgroundChildCreateCallback)
+
 ContentChild* ContentChild::sSingleton;
 
 // Performs initialization that is not fork-safe, i.e. that must be done after
@@ -451,6 +480,16 @@ ContentChild::AppendProcessId(nsACString& aName)
 void
 ContentChild::InitXPCOM()
 {
+    // Do this as early as possible to get the parent process to initialize the
+    // background thread since we'll likely need database information very soon.
+    BackgroundChild::Startup();
+
+    nsCOMPtr<nsIIPCBackgroundChildCreateCallback> callback =
+        new BackgroundChildPrimer();
+    if (!BackgroundChild::GetOrCreateForCurrentThread(callback)) {
+        MOZ_CRASH("Failed to create PBackgroundChild!");
+    }
+
     nsCOMPtr<nsIConsoleService> svc(do_GetService(NS_CONSOLESERVICE_CONTRACTID));
     if (!svc) {
         NS_WARNING("Couldn't acquire console service");
@@ -606,25 +645,31 @@ ContentChild::AllocPImageBridgeChild(mozilla::ipc::Transport* aTransport,
     return ImageBridgeChild::StartUpInChildProcess(aTransport, aOtherProcess);
 }
 
+PBackgroundChild*
+ContentChild::AllocPBackgroundChild(Transport* aTransport,
+                                    ProcessId aOtherProcess)
+{
+    return BackgroundChild::Alloc(aTransport, aOtherProcess);
+}
+
 bool
 ContentChild::RecvSetProcessPrivileges(const ChildPrivileges& aPrivs)
 {
   ChildPrivileges privs = (aPrivs == PRIVILEGES_DEFAULT) ?
                           GeckoChildProcessHost::DefaultChildPrivileges() :
                           aPrivs;
+#if defined(XP_LINUX)
+  // SetCurrentProcessSandbox includes SetCurrentProcessPrivileges.
+  // But we may want to move the sandbox initialization somewhere else
+  // at some point; see bug 880808.
+  SetCurrentProcessSandbox(privs);
+#else
   // If this fails, we die.
   SetCurrentProcessPrivileges(privs);
-
-#if defined(MOZ_CONTENT_SANDBOX)
-#if defined(XP_WIN)
-  mozilla::SandboxTarget::Instance()->StartSandbox();
-#else if defined(XP_UNIX) && !defined(XP_MACOSX)
-  // SetCurrentProcessSandbox should be moved close to process initialization
-  // time if/when possible. SetCurrentProcessPrivileges should probably be
-  // moved as well. Right now this is set ONLY if we receive the
-  // RecvSetProcessPrivileges message. See bug 880808.
-  SetCurrentProcessSandbox();
 #endif
+
+#if defined(MOZ_CONTENT_SANDBOX) && defined(XP_WIN)
+  mozilla::SandboxTarget::Instance()->StartSandbox();
 #endif
   return true;
 }
@@ -1514,31 +1559,7 @@ ContentChild::RecvMinimizeMemoryUsage()
         do_GetService("@mozilla.org/memory-reporter-manager;1");
     NS_ENSURE_TRUE(mgr, true);
 
-    nsCOMPtr<nsICancelableRunnable> runnable =
-        do_QueryReferent(mMemoryMinimizerRunnable);
-
-    // Cancel the previous task if it's still pending.
-    if (runnable) {
-        runnable->Cancel();
-        runnable = nullptr;
-    }
-
-    mgr->MinimizeMemoryUsage(/* callback = */ nullptr,
-                             getter_AddRefs(runnable));
-    mMemoryMinimizerRunnable = do_GetWeakReference(runnable);
-    return true;
-}
-
-bool
-ContentChild::RecvCancelMinimizeMemoryUsage()
-{
-    nsCOMPtr<nsICancelableRunnable> runnable =
-        do_QueryReferent(mMemoryMinimizerRunnable);
-    if (runnable) {
-        runnable->Cancel();
-        mMemoryMinimizerRunnable = nullptr;
-    }
-
+    mgr->MinimizeMemoryUsage(/* callback = */ nullptr);
     return true;
 }
 
@@ -1685,6 +1706,20 @@ ContentChild::RecvNuwaFork()
         return true;
     }
     sNuwaForking = true;
+
+    // We want to ensure that the PBackground actor gets cloned in the Nuwa
+    // process before we freeze. Also, we have to do this to avoid deadlock.
+    // Protocols that are "opened" (e.g. PBackground, PCompositor) block the
+    // main thread to wait for the IPC thread during the open operation.
+    // NuwaSpawnWait() blocks the IPC thread to wait for the main thread when
+    // the Nuwa process is forked. Unless we ensure that the two cannot happen
+    // at the same time then we risk deadlock. Spinning the event loop here
+    // guarantees the ordering is safe for PBackground.
+    while (!BackgroundChild::GetForCurrentThread()) {
+        if (NS_WARN_IF(!NS_ProcessNextEvent())) {
+            return false;
+        }
+    }
 
     MessageLoop* ioloop = XRE_GetIOMessageLoop();
     ioloop->PostTask(FROM_HERE, NewRunnableFunction(RunNuwaFork));

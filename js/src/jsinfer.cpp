@@ -1698,6 +1698,37 @@ TemporaryTypeSet::getKnownClass()
     return clasp;
 }
 
+TemporaryTypeSet::ForAllResult
+TemporaryTypeSet::forAllClasses(bool (*func)(const Class* clasp))
+{
+    if (unknownObject())
+        return ForAllResult::MIXED;
+
+    unsigned count = getObjectCount();
+    if (count == 0)
+        return ForAllResult::EMPTY;
+
+    bool true_results = false;
+    bool false_results = false;
+    for (unsigned i = 0; i < count; i++) {
+        const Class *clasp = getObjectClass(i);
+        if (!clasp)
+            return ForAllResult::MIXED;
+        if (func(clasp)) {
+            true_results = true;
+            if (false_results) return ForAllResult::MIXED;
+        }
+        else {
+            false_results = true;
+            if (true_results) return ForAllResult::MIXED;
+        }
+    }
+
+    JS_ASSERT(true_results != false_results);
+
+    return true_results ? ForAllResult::ALL_TRUE : ForAllResult::ALL_FALSE;
+}
+
 int
 TemporaryTypeSet::getTypedArrayType()
 {
@@ -1831,7 +1862,7 @@ void
 TypeZone::init(JSContext *cx)
 {
     if (!cx ||
-        !cx->options().typeInference() ||
+        !cx->runtime()->options().typeInference() ||
         !cx->runtime()->jitSupportsFloatingPoint)
     {
         return;
@@ -2603,7 +2634,12 @@ TypeCompartment::fixObjectType(ExclusiveContext *cx, JSObject *obj)
      */
     JS_ASSERT(obj->is<JSObject>());
 
-    if (obj->slotSpan() == 0 || obj->inDictionaryMode() || !obj->hasEmptyElements())
+    /*
+     * Exclude some objects we can't readily associate common types for based on their
+     * shape. Objects with metadata are excluded so that the metadata does not need to
+     * be included in the table lookup (the metadata object might be in the nursery).
+     */
+    if (obj->slotSpan() == 0 || obj->inDictionaryMode() || !obj->hasEmptyElements() || obj->getMetadata())
         return;
 
     Vector<IdValuePair> properties(cx);

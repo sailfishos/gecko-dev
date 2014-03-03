@@ -4,6 +4,7 @@
 
 const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
 
+Cu.import("resource://gre/modules/Accounts.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 
@@ -28,6 +29,9 @@ const SNIPPETS_GEO_LAST_UPDATE_PREF = "browser.snippets.geoLastUpdate";
 
 // Pref where we'll cache the user's country.
 const SNIPPETS_COUNTRY_CODE_PREF = "browser.snippets.countryCode";
+
+// Pref where we store an array IDs of snippets that should not be shown again
+const SNIPPETS_REMOVED_IDS_PREF = "browser.snippets.removedIds";
 
 // How frequently we update the user's country code from the server (30 days).
 const SNIPPETS_GEO_UPDATE_INTERVAL_MS = 86400000*30;
@@ -114,8 +118,15 @@ function updateCountryCode(callback) {
  */
 function updateSnippets() {
   _httpGetRequest(gSnippetsURL, function(responseText) {
-    cacheSnippets(responseText);
-    updateBanner(responseText);
+    try {
+      let messages = JSON.parse(responseText);
+      updateBanner(messages);
+
+      // Only cache the response if it is valid JSON.
+      cacheSnippets(responseText);
+    } catch (e) {
+      Cu.reportError("Error parsing snippets responseText: " + e);
+    }
   });
 }
 
@@ -135,7 +146,10 @@ function cacheSnippets(response) {
  */
 function loadSnippetsFromCache() {
   let promise = OS.File.read(gSnippetsPath);
-  promise.then(array => updateBanner(gDecoder.decode(array)), e => {
+  promise.then(array => {
+    let messages = JSON.parse(gDecoder.decode(array));
+    updateBanner(messages);
+  }, e => {
     if (e instanceof OS.File.Error && e.becauseNoSuchFile) {
       Cu.reportError("Couldn't show snippets because cache does not exist yet.");
     } else {
@@ -151,8 +165,7 @@ var gMessageIds = [];
 /**
  * Updates set of snippets in the home banner message rotation.
  *
- * @param response responseText returned from snippets server.
- *   This should be a JSON array of message data JSON objects.
+ * @param messages JSON array of message data JSON objects.
  *   Each message object should have the following properties:
  *     - id (?): Unique identifier for this snippets message
  *     - text (string): Text to show as banner message
@@ -160,14 +173,23 @@ var gMessageIds = [];
  *     - icon (data URI): Icon to appear in banner
  *     - target_geo (string): Country code for where this message should be shown (e.g. "US")
  */
-function updateBanner(response) {
+function updateBanner(messages) {
   // Remove the current messages, if there are any.
   gMessageIds.forEach(function(id) {
     Home.banner.remove(id);
   })
   gMessageIds = [];
 
-  let messages = JSON.parse(response);
+  try {
+    let removedSnippetIds = JSON.parse(Services.prefs.getCharPref(SNIPPETS_REMOVED_IDS_PREF));
+    messages = messages.filter(function(message) {
+      // Only include the snippet if it has not been previously removed.
+      return removedSnippetIds.indexOf(message.id) === -1;
+    });
+  } catch (e) {
+    // If the pref doesn't exist, there aren't any snippets to filter out.
+  }
+
   messages.forEach(function(message) {
     // Don't add this message to the banner if it's not supposed to be shown in this country.
     if ("target_geo" in message && message.target_geo != gCountryCode) {
@@ -180,6 +202,11 @@ function updateBanner(response) {
         let parentId = gChromeWin.BrowserApp.selectedTab.id;
         gChromeWin.BrowserApp.addTab(message.url, { parentId: parentId });
       },
+      ondismiss: function() {
+        // Remove this snippet from the banner, and store its id so we'll never show it again.
+        Home.banner.remove(id);
+        removeSnippet(message.id);
+      },
       onshown: function() {
         // 10% of the time, record the snippet id and a timestamp
         if (Math.random() < .1) {
@@ -190,6 +217,23 @@ function updateBanner(response) {
     // Keep track of the message we added so that we can remove it later.
     gMessageIds.push(id);
   });
+}
+
+/**
+ * Appends snippet id to the end of `snippets-removed.txt`
+ *
+ * @param snippetId unique id for snippet, sent from snippets server
+ */
+function removeSnippet(snippetId) {
+  let removedSnippetIds;
+  try {
+    removedSnippetIds = JSON.parse(Services.prefs.getCharPref(SNIPPETS_REMOVED_IDS_PREF));
+  } catch (e) {
+    removedSnippetIds = [];
+  }
+
+  removedSnippetIds.push(snippetId);
+  Services.prefs.setCharPref(SNIPPETS_REMOVED_IDS_PREF, JSON.stringify(removedSnippetIds));
 }
 
 /**
@@ -292,25 +336,34 @@ function _httpGetRequest(url, callback) {
 }
 
 function loadSyncPromoBanner() {
-  // XXX: Use Accounts.jsm to check if a sync account exists (bug 917942).
-  let syncAccountExists = false;
-  if (syncAccountExists) {
-    // Don't show the promo banner if a sync account already exists.
-    return;
-  }
+  Accounts.anySyncAccountsExist().then(
+    (exist) => {
+      // Don't show the banner if sync accounts exist.
+      if (exist) {
+        return;
+      }
 
-  let stringBundle = Services.strings.createBundle("chrome://browser/locale/sync.properties");
-  let text = stringBundle.GetStringFromName("promoBanner.message.text");
-  let link = stringBundle.GetStringFromName("promoBanner.message.link");
+      let stringBundle = Services.strings.createBundle("chrome://browser/locale/sync.properties");
+      let text = stringBundle.GetStringFromName("promoBanner.message.text");
+      let link = stringBundle.GetStringFromName("promoBanner.message.link");
 
-  Home.banner.add({
-    text: text + "<a href=\"#\">" + link + "</a>",
-    icon: "drawable://sync_promo",
-    onclick: function() {
-      // XXX: Use Accounts.jsm to launch sync set-up activity (bug 917942).
-      gChromeWin.alert("Launch sync set-up activity!");
+      let id = Home.banner.add({
+        text: text + "<a href=\"#\">" + link + "</a>",
+        icon: "drawable://sync_promo",
+        onclick: function() {
+          Accounts.launchSetup();
+        },
+        ondismiss: function() {
+          // Remove the sync promo message from the banner and never try to show it again.
+          Home.banner.remove(id);
+          Services.prefs.setBoolPref("browser.snippets.syncPromo.enabled", false);
+        }
+      });
+    },
+    (err) => {
+      Cu.reportError("Error checking whether sync account exists: " + err);
     }
-  });
+  );
 }
 
 function Snippets() {}

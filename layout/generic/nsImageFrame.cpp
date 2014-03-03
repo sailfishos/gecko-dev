@@ -32,7 +32,7 @@
 #include "nsNetUtil.h"
 #include "nsCSSRendering.h"
 #include "nsIDOMHTMLAnchorElement.h"
-#include "nsINameSpaceManager.h"
+#include "nsNameSpaceManager.h"
 #include <algorithm>
 #ifdef ACCESSIBILITY
 #include "nsAccessibilityService.h"
@@ -1072,13 +1072,15 @@ public:
   nsDisplayAltFeedback(nsDisplayListBuilder* aBuilder, nsIFrame* aFrame)
     : nsDisplayItem(aBuilder, aFrame) {}
 
-  virtual nsRect GetBounds(nsDisplayListBuilder* aBuilder, bool* aSnap)
+  virtual nsRect GetBounds(nsDisplayListBuilder* aBuilder,
+                           bool* aSnap) MOZ_OVERRIDE
   {
     *aSnap = false;
     return mFrame->GetVisualOverflowRectRelativeToSelf() + ToReferenceFrame();
   }
 
-  virtual void Paint(nsDisplayListBuilder* aBuilder, nsRenderingContext* aCtx)
+  virtual void Paint(nsDisplayListBuilder* aBuilder,
+                     nsRenderingContext* aCtx) MOZ_OVERRIDE
   {
     nsImageFrame* f = static_cast<nsImageFrame*>(mFrame);
     nsEventStates state = f->GetContent()->AsElement()->State();

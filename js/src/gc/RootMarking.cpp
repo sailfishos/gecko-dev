@@ -247,6 +247,7 @@ MarkIfGCThingWord(JSTracer *trc, uintptr_t w)
     return CGCT_VALID;
 }
 
+#ifndef JSGC_USE_EXACT_ROOTING
 static void
 MarkWordConservatively(JSTracer *trc, uintptr_t w)
 {
@@ -272,7 +273,6 @@ MarkRangeConservatively(JSTracer *trc, const uintptr_t *begin, const uintptr_t *
         MarkWordConservatively(trc, *i);
 }
 
-#ifndef JSGC_USE_EXACT_ROOTING
 static void
 MarkRangeConservativelyAndSkipIon(JSTracer *trc, JSRuntime *rt, const uintptr_t *begin, const uintptr_t *end)
 {
@@ -343,8 +343,6 @@ MarkConservativeStackRoots(JSTracer *trc, bool useSavedRoots)
                             ArrayEnd(cgcd->registerSnapshot.words));
 }
 
-#endif /* JSGC_USE_EXACT_ROOTING */
-
 void
 js::MarkStackRangeConservatively(JSTracer *trc, Value *beginv, Value *endv)
 {
@@ -362,6 +360,8 @@ js::MarkStackRangeConservatively(JSTracer *trc, Value *beginv, Value *endv)
     MarkRangeConservatively(trc, begin, end);
 #endif
 }
+
+#endif /* JSGC_USE_EXACT_ROOTING */
 
 MOZ_NEVER_INLINE void
 ConservativeGCData::recordStackTop()
@@ -736,8 +736,8 @@ js::gc::MarkRuntime(JSTracer *trc, bool useSavedRoots)
 
     if (!rt->isBeingDestroyed() && !trc->runtime->isHeapMinorCollecting()) {
         if (!IS_GC_MARKING_TRACER(trc) || rt->atomsCompartment()->zone()->isCollecting()) {
+            MarkPermanentAtoms(trc);
             MarkAtoms(trc);
-            rt->staticStrings.trace(trc);
 #ifdef JS_ION
             jit::JitRuntime::Mark(trc);
 #endif

@@ -11,7 +11,7 @@
 
 #include "nsCOMPtr.h"
 #include "nsPresContext.h"
-#include "nsINameSpaceManager.h"
+#include "nsNameSpaceManager.h"
 
 #include "nsTreeBodyFrame.h"
 #include "nsTreeSelection.h"
@@ -4654,7 +4654,7 @@ class nsOverflowChecker : public nsRunnable
 {
 public:
   nsOverflowChecker(nsTreeBodyFrame* aFrame) : mFrame(aFrame) {}
-  NS_IMETHOD Run()
+  NS_IMETHOD Run() MOZ_OVERRIDE
   {
     if (mFrame.IsAlive()) {
       nsTreeBodyFrame* tree = static_cast<nsTreeBodyFrame*>(mFrame.GetFrame());

@@ -50,6 +50,9 @@ XPCOMUtils.defineLazyModuleGetter(this, "NewTabUtils",
 XPCOMUtils.defineLazyModuleGetter(this, "BrowserNewTabPreloader",
                                   "resource:///modules/BrowserNewTabPreloader.jsm");
 
+XPCOMUtils.defineLazyModuleGetter(this, "CustomizationTabPreloader",
+                                  "resource:///modules/CustomizationTabPreloader.jsm");
+
 XPCOMUtils.defineLazyModuleGetter(this, "PdfJs",
                                   "resource://pdf.js/PdfJs.jsm");
 
@@ -83,7 +86,7 @@ XPCOMUtils.defineLazyModuleGetter(this, "BrowserUITelemetry",
                                   "resource:///modules/BrowserUITelemetry.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "AsyncShutdown",
-                                  "resource:///modules/AsyncShutdown.jsm");
+                                  "resource://gre/modules/AsyncShutdown.jsm");
 
 const PREF_PLUGINS_NOTIFYUSER = "plugins.update.notifyUser";
 const PREF_PLUGINS_UPDATEURL  = "plugins.update.url";
@@ -469,6 +472,7 @@ BrowserGlue.prototype = {
     PageThumbs.init();
     NewTabUtils.init();
     BrowserNewTabPreloader.init();
+    CustomizationTabPreloader.init();
     SignInToWebsiteUX.init();
     PdfJs.init();
 #ifdef NIGHTLY_BUILD
@@ -638,6 +642,9 @@ BrowserGlue.prototype = {
     // This pref must be set here because SessionStore will use its value
     // on quit-application.
     this._setPrefToSaveSession();
+
+    // Call trackStartupCrashEnd here in case the delayed call on startup hasn't
+    // yet occurred (see trackStartupCrashEnd caller in browser.js).
     try {
       let appStartup = Cc["@mozilla.org/toolkit/app-startup;1"]
                          .getService(Ci.nsIAppStartup);
@@ -647,6 +654,7 @@ BrowserGlue.prototype = {
     }
 
     BrowserNewTabPreloader.uninit();
+    CustomizationTabPreloader.uninit();
     webappsUI.uninit();
     SignInToWebsiteUX.uninit();
     webrtcUI.uninit();
@@ -1294,7 +1302,7 @@ BrowserGlue.prototype = {
   },
 
   _migrateUI: function BG__migrateUI() {
-    const UI_VERSION = 19;
+    const UI_VERSION = 20;
     const BROWSER_DOCURL = "chrome://browser/content/browser.xul#";
     let currentUIVersion = 0;
     try {
@@ -1557,6 +1565,15 @@ BrowserGlue.prototype = {
       }
     }
 
+    if (currentUIVersion < 20) {
+      // Remove persisted collapsed state from TabsToolbar.
+      let resource = this._rdf.GetResource("collapsed");
+      let toolbar = this._rdf.GetResource(BROWSER_DOCURL + "TabsToolbar");
+      if (this._getPersist(toolbar, resource)) {
+        this._setPersist(toolbar, resource);
+      }
+    }
+
     if (this._dirty)
       this._dataSource.QueryInterface(Ci.nsIRDFRemoteDataSource).Flush();
 
@@ -1680,7 +1697,7 @@ BrowserGlue.prototype = {
           },
         };
 
-        if (Services.sysinfo.getProperty("hasWindowsTouchInterface")) {
+        if (Services.metro && Services.metro.supported) {
           smartBookmarks.Windows8Touch = {
             title: bundle.GetStringFromName("windows8TouchTitle"),
             uri: NetUtil.newURI("place:folder=" +
@@ -1914,17 +1931,20 @@ ContentPermissionPrompt.prototype = {
     if (perm.type == "pointerLock") {
       // If there's no mainAction, this is the autoAllow warning prompt.
       let autoAllow = !mainAction;
-      aOptions = {
-        removeOnDismissal: autoAllow,
-        eventCallback: type => {
-          if (type == "removed") {
-            browser.removeEventListener("mozfullscreenchange", onFullScreen, true);
-            if (autoAllow) {
-              aRequest.allow();
-            }
+
+      if (!aOptions)
+        aOptions = {};
+
+      aOptions.removeOnDismissal = autoAllow;
+      aOptions.eventCallback = type => {
+        if (type == "removed") {
+          browser.removeEventListener("mozfullscreenchange", onFullScreen, true);
+          if (autoAllow) {
+            aRequest.allow();
           }
-        },
-      };
+        }
+      }
+
     }
 
     var popup = chromeWin.PopupNotifications.show(browser, aNotificationId, aMessage, aAnchorId,
@@ -1982,15 +2002,14 @@ ContentPermissionPrompt.prototype = {
       });
     }
 
-    var chromeWin = this._getBrowserForRequest(aRequest).ownerDocument.defaultView;
-    var link = chromeWin.document.getElementById("geolocation-learnmore-link");
-    link.value = browserBundle.GetStringFromName("geolocation.learnMore");
-    link.href = Services.urlFormatter.formatURLPref("browser.geolocation.warning.infoURL");
+    var options = {
+                    learnMoreURL: Services.urlFormatter.formatURLPref("browser.geolocation.warning.infoURL"),
+                  };
 
     secHistogram.add(Ci.nsISecurityUITelemetry.WARNING_GEOLOCATION_REQUEST);
 
     this._showPrompt(aRequest, message, "geo", actions, "geolocation",
-                     "geo-notification-icon", null);
+                     "geo-notification-icon", options);
   },
 
   _promptWebNotifications : function(aRequest) {

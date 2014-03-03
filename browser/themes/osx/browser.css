@@ -678,6 +678,10 @@ toolbar .toolbarbutton-1:not([type="menu-button"]),
     -moz-image-region: rect(18px, 666px, 36px, 648px);
   }
 
+  #sidebar-button@toolbarButtonPressed@ {
+    -moz-image-region: rect(18px, 684px, 36px, 666px);
+  }
+
   /**
    * OSX has a unique set of icons when fullscreen is in the checked state.
    */
@@ -1001,6 +1005,14 @@ toolbar .toolbarbutton-1:not([type="menu-button"]),
     -moz-image-region: rect(36px, 1332px, 72px, 1296px);
   }
 
+  #sidebar-button[cui-areatype="toolbar"] {
+    -moz-image-region: rect(0, 1368px, 36px, 1332px);
+  }
+
+  #sidebar-button[cui-areatype="toolbar"]:hover:active:not([disabled="true"]) {
+    -moz-image-region: rect(36px, 1368px, 72px, 1332px);
+  }
+
   :-moz-any(@primaryToolbarButtons@) > .toolbarbutton-icon,
   :-moz-any(@primaryToolbarButtons@) > .toolbarbutton-menubutton-button > .toolbarbutton-icon {
     width: 18px;
@@ -1132,6 +1144,11 @@ toolbar .toolbarbutton-1:not([type="menu-button"]),
   #email-link-button[cui-areatype="menu-panel"],
   toolbarpaletteitem[place="palette"] > #email-link-button {
     -moz-image-region: rect(0px, 1600px, 64px, 1536px);
+  }
+
+  #sidebar-button[cui-areatype="menu-panel"],
+  toolbarpaletteitem[place="palette"] > #sidebar-button {
+    -moz-image-region: rect(0px, 1664px, 64px, 1600px);
   }
 
   /* Footer and wide panel control icons */
@@ -1730,7 +1747,6 @@ toolbarbutton[sdk-button="true"][cui-areatype="toolbar"] > .toolbarbutton-icon {
 .urlbar-input-box {
   -moz-margin-start: 0;
   padding: 3px 0 2px;
-  min-width: 4em;
 }
 
 .urlbar-history-dropmarker {
@@ -2578,7 +2594,7 @@ toolbarbutton.chevron > .toolbarbutton-menu-dropmarker {
 
 @media (min-resolution: 2dppx) {
   /* image preloading hack from shared/tabs.inc.css */
-  #TabsToolbar::before {
+  #tabbrowser-tabs::before {
     background-image:
       url(chrome://browser/skin/tabbrowser/tab-background-end@2x.png),
       url(chrome://browser/skin/tabbrowser/tab-background-middle@2x.png),
@@ -3304,10 +3320,6 @@ toolbarbutton.chevron > .toolbarbutton-menu-dropmarker {
   }
 }
 
-#geolocation-learnmore-link {
-  -moz-margin-start: 0; /* override default label margin to match description margin */
-}
-
 .indexedDB-notification-icon,
 #indexedDB-notification-icon {
   list-style-image: url(chrome://global/skin/icons/question-16.png);
@@ -3458,6 +3470,28 @@ toolbarbutton.chevron > .toolbarbutton-menu-dropmarker {
   }
 }
 
+.webRTC-shareMicrophone-notification-icon,
+#webRTC-shareMicrophone-notification-icon {
+  list-style-image: url(chrome://browser/skin/webRTC-shareMicrophone-16.png);
+}
+@media (min-resolution: 2dppx) {
+  .webRTC-shareMicrophone-notification-icon,
+  #webRTC-shareMicrophone-notification-icon {
+    list-style-image: url(chrome://browser/skin/webRTC-shareMicrophone-16@2x.png);
+  }
+}
+
+.webRTC-sharingMicrophone-notification-icon,
+#webRTC-sharingMicrophone-notification-icon {
+  list-style-image: url(chrome://browser/skin/webRTC-sharingMicrophone-16.png);
+}
+@media (min-resolution: 2dppx) {
+  .webRTC-sharingMicrophone-notification-icon,
+  #webRTC-sharingMicrophone-notification-icon {
+    list-style-image: url(chrome://browser/skin/webRTC-sharingMicrophone-16@2x.png);
+  }
+}
+
 .web-notifications-notification-icon,
 #web-notifications-notification-icon {
   list-style-image: url(chrome://browser/skin/notification-16.png);
@@ -3600,10 +3634,6 @@ toolbarbutton.chevron > .toolbarbutton-menu-dropmarker {
 }
 
 
-#mixed-content-blocked-helplink {
-  margin: 0px;
-}
-
 .popup-notification-icon[popupid="webRTC-sharingDevices"],
 .popup-notification-icon[popupid="webRTC-shareDevices"] {
   list-style-image: url(chrome://browser/skin/webRTC-shareDevice-64.png);
@@ -3612,6 +3642,17 @@ toolbarbutton.chevron > .toolbarbutton-menu-dropmarker {
   .popup-notification-icon[popupid="webRTC-sharingDevices"],
   .popup-notification-icon[popupid="webRTC-shareDevices"] {
     list-style-image: url(chrome://browser/skin/webRTC-shareDevice-64@2x.png);
+  }
+}
+
+.popup-notification-icon[popupid="webRTC-sharingMicrophone"],
+.popup-notification-icon[popupid="webRTC-shareMicrophone"] {
+  list-style-image: url(chrome://browser/skin/webRTC-shareMicrophone-64.png);
+}
+@media (min-resolution: 2dppx) {
+  .popup-notification-icon[popupid="webRTC-sharingMicrophone"],
+  .popup-notification-icon[popupid="webRTC-shareMicrophone"] {
+    list-style-image: url(chrome://browser/skin/webRTC-shareMicrophone-64@2x.png);
   }
 }
 
@@ -3970,8 +4011,7 @@ toolbar[mode="icons"] > *|* > .toolbarbutton-badge[badge]:not([badge=""]):-moz-l
   }
 }
 
-#social-undoactivation-button,
-#servicesInstall-learnmore-link {
+#social-undoactivation-button {
   -moz-margin-start: 0; /* override default label margin to match description margin */
 }
 
@@ -4142,7 +4182,7 @@ window > chatbox {
 #main-window[customize-entered] #tab-view-deck {
   background-image: url("chrome://browser/skin/customizableui/customizeMode-gridTexture.png"),
                     url("chrome://browser/skin/customizableui/background-noise-toolbar.png"),
-                    linear-gradient(to bottom, rgb(233,233,233), rgb(178,178,178) 21px);
+                    linear-gradient(to bottom, rgb(233,233,233), rgb(178,178,178) 40px);
   background-attachment: fixed;
 }
 
@@ -4162,7 +4202,7 @@ window > chatbox {
 }
 
 #main-window[tabsintitlebar][customize-entered] #TabsToolbar {
-  margin-top: 9px;
+  margin-top: 8px;
 }
 
 #main-window[customize-entered] #TabsToolbar {
@@ -4184,11 +4224,6 @@ window > chatbox {
   #customization-titlebar-visibility-button > .button-box > .button-icon {
     width: 24px;
   }
-}
-
-#main-window[customizing] #navigator-toolbox::after {
-  margin-left: 2em;
-  margin-right: 2em;
 }
 
 /* End customization mode */

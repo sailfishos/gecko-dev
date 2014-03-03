@@ -14,7 +14,7 @@
 #include "mozilla/gfx/Types.h"          // for Float
 #include "mozilla/layers/CompositorTypes.h"  // for DiagnosticTypes, etc
 #include "mozilla/layers/LayersTypes.h"  // for LayersBackend
-#include "nsTraceRefcnt.h"              // for MOZ_COUNT_CTOR, etc
+#include "nsISupportsImpl.h"            // for MOZ_COUNT_CTOR, etc
 #include "nsRegion.h"
 #include <vector>
 
@@ -179,6 +179,7 @@ enum SurfaceInitMode
 class Compositor : public RefCounted<Compositor>
 {
 public:
+  MOZ_DECLARE_REFCOUNTED_TYPENAME(Compositor)
   Compositor(PCompositorParent* aParent = nullptr)
     : mCompositorID(0)
     , mDiagnosticTypes(DIAGNOSTIC_NONE)

@@ -448,6 +448,13 @@ nsClipboard::SupportsSelectionClipboard(bool *_retval)
     return NS_OK;
 }
 
+NS_IMETHODIMP
+nsClipboard::SupportsFindClipboard(bool* _retval)
+{
+  *_retval = false;
+  return NS_OK;
+}
+
 /* static */
 GdkAtom
 nsClipboard::GetSelectionAtom(int32_t aWhichClipboard)
@@ -871,6 +878,7 @@ static GtkSelectionData* CopyRetrievedData(GtkSelectionData *aData)
 
 class RetrievalContext : public RefCounted<RetrievalContext> {
 public:
+    MOZ_DECLARE_REFCOUNTED_TYPENAME(RetrievalContext)
     enum State { INITIAL, COMPLETED, TIMED_OUT };
 
     RetrievalContext() : mState(INITIAL), mData(nullptr) {}

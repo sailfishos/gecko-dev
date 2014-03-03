@@ -555,6 +555,7 @@ MarionetteServerConnection.prototype = {
     let caps = {
       // Mandated capabilities
       "browserName": appName,
+      "browserVersion": Services.appinfo.version,
       "platformName": platformName,
       "platformVersion": Services.appinfo.platformVersion,
 
@@ -585,33 +586,6 @@ MarionetteServerConnection.prototype = {
       caps.b2g = true;
 
     this.sendResponse(caps, this.command_id);
-  },
-
-  getStatus: function MDA_getStatus(){
-    this.command_id = this.getCommandId();
-
-    let arch;
-    try {
-      arch = (Services.appinfo.XPCOMABI || 'unknown').split('-')[0]
-    }
-    catch (ignored) {
-      arch = 'unknown'
-    };
-
-    let value = {
-          'os': {
-            'arch': arch,
-            'name': Services.appinfo.OS,
-            'version': 'unknown'
-          },
-          'build': {
-            'revision': 'unknown',
-            'time': Services.appinfo.platformBuildID,
-            'version': Services.appinfo.version
-          }
-    };
-
-    this.sendResponse(value, this.command_id);
   },
 
   /**
@@ -2432,7 +2406,6 @@ MarionetteServerConnection.prototype.requestTypes = {
   "sayHello": MarionetteServerConnection.prototype.sayHello,
   "newSession": MarionetteServerConnection.prototype.newSession,
   "getSessionCapabilities": MarionetteServerConnection.prototype.getSessionCapabilities,
-  "getStatus": MarionetteServerConnection.prototype.getStatus,
   "log": MarionetteServerConnection.prototype.log,
   "getLogs": MarionetteServerConnection.prototype.getLogs,
   "setContext": MarionetteServerConnection.prototype.setContext,
@@ -2490,6 +2463,7 @@ MarionetteServerConnection.prototype.requestTypes = {
   "setTestName": MarionetteServerConnection.prototype.setTestName,
   "takeScreenshot": MarionetteServerConnection.prototype.takeScreenshot,
   "screenShot": MarionetteServerConnection.prototype.takeScreenshot,  // deprecated
+  "screenshot": MarionetteServerConnection.prototype.takeScreenshot,  // Selenium 2 compat
   "addCookie": MarionetteServerConnection.prototype.addCookie,
   "getCookies": MarionetteServerConnection.prototype.getCookies,
   "getAllCookies": MarionetteServerConnection.prototype.getCookies,  // deprecated

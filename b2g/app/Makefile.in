@@ -26,7 +26,6 @@ LIBS += \
   -lsuspend \
   $(NULL)
 endif
-OS_LDFLAGS += -Wl,--export-dynamic
 endif
 
 STL_FLAGS=
@@ -46,12 +45,6 @@ endif
 
 ifeq ($(OS_ARCH),WINNT)
 OS_LIBS += $(call EXPAND_LIBNAME,version)
-endif
-
-ifdef _MSC_VER
-# Always enter a Windows program through wmain, whether or not we're
-# a console application.
-WIN32_EXE_LDFLAGS += -ENTRY:wmainCRTStartup
 endif
 endif #LIBXUL_SDK
 

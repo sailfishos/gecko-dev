@@ -5,7 +5,7 @@
 # Setup for build cache
 
 bucket=
-if test -f "$topsrcdir/sccache/sccache.py"; then
+if test -z "$SCCACHE_DISABLE" -a -f "$topsrcdir/sccache/sccache.py"; then
     case `hostname` in
     try*spot*.use1.mozilla.com|try*ec2*.use1.mozilla.com)
         bucket=mozilla-releng-s3-cache-us-east-1-try
@@ -21,6 +21,5 @@ if test -z "$bucket"; then
 else
     mk_add_options "export SCCACHE_BUCKET=$bucket"
     mk_add_options "export SCCACHE_NAMESERVER=169.254.169.253"
-    export CC="python2.7 $topsrcdir/sccache/sccache.py $CC"
-    export CXX="python2.7 $topsrcdir/sccache/sccache.py $CXX"
+    ac_add_options "--with-compiler-wrapper=python2.7 $topsrcdir/sccache/sccache.py"
 fi

@@ -25,7 +25,7 @@
 #include "nsNSSCertHelper.h"
 #include "nsNSSCleaner.h"
 
-#ifndef NSS_NO_LIBPKIX
+#ifndef MOZ_NO_EV_CERTS
 #include "nsIDocShell.h"
 #include "nsIDocShellTreeItem.h"
 #include "nsISecureBrowserUI.h"
@@ -121,7 +121,6 @@ nsNSSSocketInfo::nsNSSSocketInfo(SharedSSLState& aState, uint32_t providerFlags)
     mSharedState(aState),
     mForSTARTTLS(false),
     mHandshakePending(true),
-    mHasCleartextPhase(false),
     mRememberClientAuthCertificate(false),
     mPreliminaryHandshakeDone(false),
     mNPNCompleted(false),
@@ -197,18 +196,6 @@ nsNSSSocketInfo::SetRememberClientAuthCertificate(bool aRemember)
   return NS_OK;
 }
 
-void
-nsNSSSocketInfo::SetHasCleartextPhase(bool aHasCleartextPhase)
-{
-  mHasCleartextPhase = aHasCleartextPhase;
-}
-
-bool
-nsNSSSocketInfo::GetHasCleartextPhase()
-{
-  return mHasCleartextPhase;
-}
-
 NS_IMETHODIMP
 nsNSSSocketInfo::GetNotificationCallbacks(nsIInterfaceRequestor** aCallbacks)
 {
@@ -230,7 +217,7 @@ nsNSSSocketInfo::SetNotificationCallbacks(nsIInterfaceRequestor* aCallbacks)
   return NS_OK;
 }
 
-#ifndef NSS_NO_LIBPKIX
+#ifndef MOZ_NO_EV_CERTS
 static void
 getSecureBrowserUI(nsIInterfaceRequestor* callbacks,
                    nsISecureBrowserUI** result)
@@ -407,18 +394,16 @@ nsNSSSocketInfo::JoinConnection(const nsACString& npnProtocol,
   return NS_OK;
 }
 
-nsresult
-nsNSSSocketInfo::GetForSTARTTLS(bool* aForSTARTTLS)
+bool
+nsNSSSocketInfo::GetForSTARTTLS()
 {
-  *aForSTARTTLS = mForSTARTTLS;
-  return NS_OK;
+  return mForSTARTTLS;
 }
 
-nsresult
+void
 nsNSSSocketInfo::SetForSTARTTLS(bool aForSTARTTLS)
 {
   mForSTARTTLS = aForSTARTTLS;
-  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -494,7 +479,7 @@ nsNSSSocketInfo::SetFileDescPtr(PRFileDesc* aFilePtr)
   return NS_OK;
 }
 
-#ifndef NSS_NO_LIBPKIX
+#ifndef MOZ_NO_EV_CERTS
 class PreviousCertRunnable : public SyncRunnableBase
 {
 public:
@@ -529,7 +514,7 @@ nsNSSSocketInfo::GetPreviousCert(nsIX509Cert** _result)
   NS_ASSERTION(_result, "_result parameter to GetPreviousCert is null");
   *_result = nullptr;
 
-#ifndef NSS_NO_LIBPKIX
+#ifndef MOZ_NO_EV_CERTS
   RefPtr<PreviousCertRunnable> runnable(new PreviousCertRunnable(mCallbacks));
   DebugOnly<nsresult> rv = runnable->DispatchToMainThreadAndWait();
   NS_ASSERTION(NS_SUCCEEDED(rv), "runnable->DispatchToMainThreadAndWait() failed");
@@ -1005,7 +990,7 @@ retryDueToTLSIntolerance(PRErrorCode err, nsNSSSocketInfo* socketInfo)
     conditional:
       if ((err == PR_CONNECT_RESET_ERROR &&
            range.max <= SSL_LIBRARY_VERSION_TLS_1_0) ||
-          socketInfo->GetHasCleartextPhase()) {
+          socketInfo->GetForSTARTTLS()) {
         return false;
       }
       break;
@@ -2301,7 +2286,6 @@ nsSSLIOLayerSetOptions(PRFileDesc* fd, bool forSTARTTLS,
     if (SECSuccess != SSL_OptionSet(fd, SSL_SECURITY, false)) {
       return NS_ERROR_FAILURE;
     }
-    infoObject->SetHasCleartextPhase(true);
   }
 
   // Let's see if we're trying to connect to a site we know is

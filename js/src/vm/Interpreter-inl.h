@@ -439,7 +439,7 @@ GetElementOperation(JSContext *cx, JSOp op, MutableHandleValue lref, HandleValue
     if (lref.isString() && IsDefinitelyIndex(rref, &index)) {
         JSString *str = lref.toString();
         if (index < str->length()) {
-            str = cx->runtime()->staticStrings.getUnitStringForElement(cx, str, index);
+            str = cx->staticStrings().getUnitStringForElement(cx, str, index);
             if (!str)
                 return false;
             res.setString(str);
@@ -458,14 +458,14 @@ static MOZ_ALWAYS_INLINE JSString *
 TypeOfOperation(const Value &v, JSRuntime *rt)
 {
     JSType type = js::TypeOfValue(v);
-    return TypeName(type, rt->atomState);
+    return TypeName(type, *rt->commonNames);
 }
 
 static inline JSString *
 TypeOfObjectOperation(JSObject *obj, JSRuntime *rt)
 {
     JSType type = js::TypeOfObject(obj);
-    return TypeName(type, rt->atomState);
+    return TypeName(type, *rt->commonNames);
 }
 
 static MOZ_ALWAYS_INLINE bool
@@ -622,14 +622,14 @@ BitRsh(JSContext *cx, HandleValue lhs, HandleValue rhs, int *out)
 }
 
 static MOZ_ALWAYS_INLINE bool
-UrshOperation(JSContext *cx, HandleValue lhs, HandleValue rhs, Value *out)
+UrshOperation(JSContext *cx, HandleValue lhs, HandleValue rhs, MutableHandleValue out)
 {
     uint32_t left;
     int32_t  right;
     if (!ToUint32(cx, lhs, &left) || !ToInt32(cx, rhs, &right))
         return false;
     left >>= right & 31;
-    out->setNumber(uint32_t(left));
+    out.setNumber(uint32_t(left));
     return true;
 }
 
@@ -659,7 +659,6 @@ class FastInvokeGuard
 #ifdef JS_ION
     // Constructing an IonContext is pretty expensive due to the TLS access,
     // so only do this if we have to.
-    mozilla::Maybe<jit::IonContext> ictx_;
     bool useIon_;
 #endif
 
@@ -696,8 +695,6 @@ class FastInvokeGuard
                 if (!script_)
                     return false;
             }
-            if (ictx_.empty())
-                ictx_.construct(cx, (js::jit::TempAllocator *)nullptr);
             JS_ASSERT(fun_->nonLazyScript() == script_);
 
             jit::MethodStatus status = jit::CanEnterUsingFastInvoke(cx, script_, args_.length());

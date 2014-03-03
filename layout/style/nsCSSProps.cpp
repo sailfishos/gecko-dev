@@ -387,23 +387,25 @@ nsCSSProps::LookupProperty(const nsACString& aProperty,
   }
 
   nsCSSProperty res = nsCSSProperty(gPropertyTable->Lookup(aProperty));
-  // Check eCSSAliasCount against 0 to make it easy for the
-  // compiler to optimize away the 0-aliases case.
-  if (eCSSAliasCount != 0 && res >= eCSSProperty_COUNT) {
-    static_assert(eCSSProperty_UNKNOWN < eCSSProperty_COUNT,
-                  "assuming eCSSProperty_UNKNOWN doesn't hit this code");
-    if (IsEnabled(res) || aEnabled == eAny) {
-      res = gAliases[res - eCSSProperty_COUNT];
-      NS_ABORT_IF_FALSE(0 <= res && res < eCSSProperty_COUNT,
-                        "aliases must not point to other aliases");
-    } else {
+  if (MOZ_LIKELY(res < eCSSProperty_COUNT)) {
+    if (res != eCSSProperty_UNKNOWN && !IsEnabled(res, aEnabled)) {
       res = eCSSProperty_UNKNOWN;
     }
+    return res;
   }
-  if (res != eCSSProperty_UNKNOWN && aEnabled == eEnabled && !IsEnabled(res)) {
-    res = eCSSProperty_UNKNOWN;
+  MOZ_ASSERT(eCSSAliasCount != 0,
+             "'res' must be an alias at this point so we better have some!");
+  // We intentionally don't support eEnabledInUASheets for aliases yet
+  // because it's unlikely there will be a need for it.
+  if (IsEnabled(res) || aEnabled == eAny) {
+    res = gAliases[res - eCSSProperty_COUNT];
+    NS_ABORT_IF_FALSE(0 <= res && res < eCSSProperty_COUNT,
+                      "aliases must not point to other aliases");
+    if (IsEnabled(res) || aEnabled == eAny) {
+      return res;
+    }
   }
-  return res;
+  return eCSSProperty_UNKNOWN;
 }
 
 nsCSSProperty
@@ -419,23 +421,25 @@ nsCSSProps::LookupProperty(const nsAString& aProperty, EnabledState aEnabled)
   // converting and avoid a PromiseFlatCString() call.
   NS_ABORT_IF_FALSE(gPropertyTable, "no lookup table, needs addref");
   nsCSSProperty res = nsCSSProperty(gPropertyTable->Lookup(aProperty));
-  // Check eCSSAliasCount against 0 to make it easy for the
-  // compiler to optimize away the 0-aliases case.
-  if (eCSSAliasCount != 0 && res >= eCSSProperty_COUNT) {
-    static_assert(eCSSProperty_UNKNOWN < eCSSProperty_COUNT,
-                  "assuming eCSSProperty_UNKNOWN doesn't hit this code");
-    if (IsEnabled(res) || aEnabled == eAny) {
-      res = gAliases[res - eCSSProperty_COUNT];
-      NS_ABORT_IF_FALSE(0 <= res && res < eCSSProperty_COUNT,
-                        "aliases must not point to other aliases");
-    } else {
+  if (MOZ_LIKELY(res < eCSSProperty_COUNT)) {
+    if (res != eCSSProperty_UNKNOWN && !IsEnabled(res, aEnabled)) {
       res = eCSSProperty_UNKNOWN;
     }
+    return res;
   }
-  if (res != eCSSProperty_UNKNOWN && aEnabled == eEnabled && !IsEnabled(res)) {
-    res = eCSSProperty_UNKNOWN;
+  MOZ_ASSERT(eCSSAliasCount != 0,
+             "'res' must be an alias at this point so we better have some!");
+  // We intentionally don't support eEnabledInUASheets for aliases yet
+  // because it's unlikely there will be a need for it.
+  if (IsEnabled(res) || aEnabled == eAny) {
+    res = gAliases[res - eCSSProperty_COUNT];
+    NS_ABORT_IF_FALSE(0 <= res && res < eCSSProperty_COUNT,
+                      "aliases must not point to other aliases");
+    if (IsEnabled(res) || aEnabled == eAny) {
+      return res;
+    }
   }
-  return res;
+  return eCSSProperty_UNKNOWN;
 }
 
 nsCSSFontDesc
@@ -650,6 +654,7 @@ const KTableValue nsCSSProps::kAppearanceKTable[] = {
   eCSSKeyword__moz_win_borderless_glass,      NS_THEME_WIN_BORDERLESS_GLASS,
   eCSSKeyword__moz_mac_unified_toolbar,       NS_THEME_MOZ_MAC_UNIFIED_TOOLBAR,
   eCSSKeyword__moz_mac_fullscreen_button,     NS_THEME_MOZ_MAC_FULLSCREEN_BUTTON,
+  eCSSKeyword__moz_mac_help_button,           NS_THEME_MOZ_MAC_HELP_BUTTON,
   eCSSKeyword__moz_window_titlebar,           NS_THEME_WINDOW_TITLEBAR,
   eCSSKeyword__moz_window_titlebar_maximized, NS_THEME_WINDOW_TITLEBAR_MAXIMIZED,
   eCSSKeyword__moz_window_frame_left,         NS_THEME_WINDOW_FRAME_LEFT,
@@ -974,7 +979,7 @@ const KTableValue nsCSSProps::kDirectionKTable[] = {
   eCSSKeyword_UNKNOWN,-1
 };
 
-const KTableValue nsCSSProps::kDisplayKTable[] = {
+KTableValue nsCSSProps::kDisplayKTable[] = {
   eCSSKeyword_none,               NS_STYLE_DISPLAY_NONE,
   eCSSKeyword_inline,             NS_STYLE_DISPLAY_INLINE,
   eCSSKeyword_block,              NS_STYLE_DISPLAY_BLOCK,
@@ -995,10 +1000,10 @@ const KTableValue nsCSSProps::kDisplayKTable[] = {
   eCSSKeyword__moz_box,           NS_STYLE_DISPLAY_BOX,
   eCSSKeyword__moz_inline_box,    NS_STYLE_DISPLAY_INLINE_BOX,
 #ifdef MOZ_XUL
-  eCSSKeyword__moz_grid,          NS_STYLE_DISPLAY_GRID,
-  eCSSKeyword__moz_inline_grid,   NS_STYLE_DISPLAY_INLINE_GRID,
-  eCSSKeyword__moz_grid_group,    NS_STYLE_DISPLAY_GRID_GROUP,
-  eCSSKeyword__moz_grid_line,     NS_STYLE_DISPLAY_GRID_LINE,
+  eCSSKeyword__moz_grid,          NS_STYLE_DISPLAY_XUL_GRID,
+  eCSSKeyword__moz_inline_grid,   NS_STYLE_DISPLAY_INLINE_XUL_GRID,
+  eCSSKeyword__moz_grid_group,    NS_STYLE_DISPLAY_XUL_GRID_GROUP,
+  eCSSKeyword__moz_grid_line,     NS_STYLE_DISPLAY_XUL_GRID_LINE,
   eCSSKeyword__moz_stack,         NS_STYLE_DISPLAY_STACK,
   eCSSKeyword__moz_inline_stack,  NS_STYLE_DISPLAY_INLINE_STACK,
   eCSSKeyword__moz_deck,          NS_STYLE_DISPLAY_DECK,
@@ -1007,6 +1012,9 @@ const KTableValue nsCSSProps::kDisplayKTable[] = {
 #endif
   eCSSKeyword_flex,               NS_STYLE_DISPLAY_FLEX,
   eCSSKeyword_inline_flex,        NS_STYLE_DISPLAY_INLINE_FLEX,
+  // The next two entries are controlled by the layout.css.grid.enabled pref.
+  eCSSKeyword_grid,               NS_STYLE_DISPLAY_GRID,
+  eCSSKeyword_inline_grid,        NS_STYLE_DISPLAY_INLINE_GRID,
   eCSSKeyword_UNKNOWN,-1
 };
 
@@ -1419,6 +1427,12 @@ const KTableValue nsCSSProps::kOverflowKTable[] = {
   eCSSKeyword__moz_scrollbars_horizontal, NS_STYLE_OVERFLOW_SCROLLBARS_HORIZONTAL,
   eCSSKeyword__moz_scrollbars_vertical, NS_STYLE_OVERFLOW_SCROLLBARS_VERTICAL,
   eCSSKeyword__moz_hidden_unscrollable, NS_STYLE_OVERFLOW_CLIP,
+  eCSSKeyword_UNKNOWN,-1
+};
+
+const KTableValue nsCSSProps::kOverflowClipBoxKTable[] = {
+  eCSSKeyword_padding_box, NS_STYLE_OVERFLOW_CLIP_BOX_PADDING_BOX,
+  eCSSKeyword_content_box, NS_STYLE_OVERFLOW_CLIP_BOX_CONTENT_BOX,
   eCSSKeyword_UNKNOWN,-1
 };
 

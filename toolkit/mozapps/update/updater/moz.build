@@ -64,9 +64,16 @@ LOCAL_INCLUDES += [
     '/xpcom/glue',
 ]
 
-
 DELAYLOAD_DLLS += [
     'crypt32.dll',
     'userenv.dll',
     'wsock32.dll',
 ]
+
+if CONFIG['_MSC_VER']:
+    WIN32_EXE_LDFLAGS += ['-ENTRY:wmainCRTStartup']
+
+if CONFIG['MOZ_UPDATE_CHANNEL'] in ('beta', 'release', 'esr'):
+    DEFINES['MAR_SIGNING_RELEASE_BETA'] = '1'
+elif CONFIG['MOZ_UPDATE_CHANNEL'] in ('nightly', 'aurora', 'nightly-elm', 'nightly-profiling', 'nightly-oak'):
+    DEFINES['MAR_SIGNING_AURORA_NIGHTLY'] = '1'

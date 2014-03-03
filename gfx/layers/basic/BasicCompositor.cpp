@@ -16,6 +16,7 @@
 #include "YCbCrUtils.h"
 #include <algorithm>
 #include "ImageContainer.h"
+#include "gfxPrefs.h"
 #define PIXMAN_DONT_DEFINE_STDINT
 #include "pixman.h"                     // for pixman_f_transform, etc
 
@@ -180,7 +181,8 @@ public:
 
   bool ConvertImageToRGB(const SurfaceDescriptor& aImage)
   {
-    YCbCrImageDataDeserializer deserializer(aImage.get_YCbCrImage().data().get<uint8_t>());
+    YCbCrImageDataDeserializer deserializer(aImage.get_YCbCrImage().data().get<uint8_t>(),
+                                            aImage.get_YCbCrImage().data().Size<uint8_t>());
     PlanarYCbCrData data;
     DeserializerToPlanarYCbCrImageData(deserializer, data);
 
@@ -595,7 +597,7 @@ BasicCompositor::BeginFrame(const nsIntRegion& aInvalidRegion,
   transform.Translate(-invalidRect.x, -invalidRect.y);
   mRenderTarget->mDrawTarget->SetTransform(transform);
 
-  gfxUtils::ClipToRegion(mRenderTarget->mDrawTarget, aInvalidRegion);
+  gfxUtils::ClipToRegion(mRenderTarget->mDrawTarget, invalidRegionSafe);
 
   if (aRenderBoundsOut) {
     *aRenderBoundsOut = rect;
@@ -617,7 +619,7 @@ BasicCompositor::EndFrame()
   // Pop aClipRectIn/bounds rect
   mRenderTarget->mDrawTarget->PopClip();
 
-  if (gfxPlatform::GetPlatform()->WidgetUpdateFlashing()) {
+  if (gfxPrefs::WidgetUpdateFlashing()) {
     float r = float(rand()) / RAND_MAX;
     float g = float(rand()) / RAND_MAX;
     float b = float(rand()) / RAND_MAX;

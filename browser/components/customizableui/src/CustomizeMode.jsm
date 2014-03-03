@@ -170,7 +170,7 @@ CustomizeMode.prototype = {
       if (this.document.documentElement._lightweightTheme)
         this.document.documentElement._lightweightTheme.disable();
 
-      this.dispatchToolboxEvent("beforecustomization");
+      CustomizableUI.dispatchToolboxEvent("beforecustomization", {}, window);
       CustomizableUI.notifyStartCustomizing(this.window);
 
       // Add a keypress listener to the document so that we can quickly exit
@@ -220,7 +220,7 @@ CustomizeMode.prototype = {
       yield this._doTransition(true);
 
       // Let everybody in this window know that we're about to customize.
-      this.dispatchToolboxEvent("customizationstarting");
+      CustomizableUI.dispatchToolboxEvent("customizationstarting", {}, window);
 
       this._mainViewContext = mainView.getAttribute("context");
       if (this._mainViewContext) {
@@ -266,7 +266,7 @@ CustomizeMode.prototype = {
       this._handler.isEnteringCustomizeMode = false;
       panelContents.removeAttribute("customize-transitioning");
 
-      this.dispatchToolboxEvent("customizationready");
+      CustomizableUI.dispatchToolboxEvent("customizationready", {}, window);
       if (!this._wantToBeInCustomizeMode) {
         this.exit();
       }
@@ -289,6 +289,12 @@ CustomizeMode.prototype = {
     if (this._handler.isEnteringCustomizeMode) {
       LOG("Attempted to exit while we're in the middle of entering. " +
           "We'll exit after we've entered");
+      return;
+    }
+
+    if (this.resetting) {
+      LOG("Attempted to exit while we're resetting. " +
+          "We'll exit after resetting has finished.");
       return;
     }
 
@@ -359,7 +365,7 @@ CustomizeMode.prototype = {
 
       // Let everybody in this window know that we're starting to
       // exit customization mode.
-      this.dispatchToolboxEvent("customizationending");
+      CustomizableUI.dispatchToolboxEvent("customizationending", {}, window);
 
       window.PanelUI.setMainView(window.PanelUI.mainView);
       window.PanelUI.menuButton.disabled = false;
@@ -424,8 +430,8 @@ CustomizeMode.prototype = {
       this._changed = false;
       this._transitioning = false;
       this._handler.isExitingCustomizeMode = false;
-      this.dispatchToolboxEvent("aftercustomization");
-      CustomizableUI.notifyEndCustomizing(this.window);
+      CustomizableUI.dispatchToolboxEvent("aftercustomization", {}, window);
+      CustomizableUI.notifyEndCustomizing(window);
 
       if (this._wantToBeInCustomizeMode) {
         this.enter();
@@ -477,7 +483,7 @@ CustomizeMode.prototype = {
           this.document.documentElement.setAttribute("customize-entered", true);
           this.document.documentElement.removeAttribute("customize-entering");
         }
-        this.dispatchToolboxEvent("customization-transitionend", aEntering);
+        CustomizableUI.dispatchToolboxEvent("customization-transitionend", aEntering, this.window);
 
         deferred.resolve();
       }.bind(this), 0);
@@ -485,7 +491,7 @@ CustomizeMode.prototype = {
     deck.addEventListener("transitionend", customizeTransitionEnd);
 
     if (gDisableAnimation) {
-      deck.setAttribute("fastcustomizeanimation", true);
+      this.document.getElementById("tab-view-deck").setAttribute("fastcustomizeanimation", true);
     }
     if (aEntering) {
       this.document.documentElement.setAttribute("customizing", true);
@@ -498,12 +504,6 @@ CustomizeMode.prototype = {
     let catchAll = () => customizeTransitionEnd("timedout");
     let catchAllTimeout = this.window.setTimeout(catchAll, kMaxTransitionDurationMs);
     return deferred.promise;
-  },
-
-  dispatchToolboxEvent: function(aEventType, aDetails={}) {
-    let evt = this.document.createEvent("CustomEvent");
-    evt.initCustomEvent(aEventType, true, true, {changed: this._changed});
-    let result = this.window.gNavToolbox.dispatchEvent(evt);
   },
 
   _getCustomizableChildForNode: function(aNode) {
@@ -544,7 +544,7 @@ CustomizeMode.prototype = {
     }
     CustomizableUI.addWidgetToArea(aNode.id, CustomizableUI.AREA_NAVBAR);
     if (!this._customizing) {
-      this.dispatchToolboxEvent("customizationchange");
+      CustomizableUI.dispatchToolboxEvent("customizationchange");
     }
   },
 
@@ -555,7 +555,7 @@ CustomizeMode.prototype = {
     }
     CustomizableUI.addWidgetToArea(aNode.id, CustomizableUI.AREA_PANEL);
     if (!this._customizing) {
-      this.dispatchToolboxEvent("customizationchange");
+      CustomizableUI.dispatchToolboxEvent("customizationchange");
     }
   },
 
@@ -566,7 +566,7 @@ CustomizeMode.prototype = {
     }
     CustomizableUI.removeWidgetFromArea(aNode.id);
     if (!this._customizing) {
-      this.dispatchToolboxEvent("customizationchange");
+      CustomizableUI.dispatchToolboxEvent("customizationchange");
     }
   },
 
@@ -697,10 +697,10 @@ CustomizeMode.prototype = {
       wrapper.setAttribute("id", "wrapper-" + aNode.getAttribute("id"));
     }
 
-    if (aNode.hasAttribute("title")) {
-      wrapper.setAttribute("title", aNode.getAttribute("title"));
-    } else if (aNode.hasAttribute("label")) {
+    if (aNode.hasAttribute("label")) {
       wrapper.setAttribute("title", aNode.getAttribute("label"));
+    } else if (aNode.hasAttribute("title")) {
+      wrapper.setAttribute("title", aNode.getAttribute("title"));
     }
 
     if (aNode.hasAttribute("flex")) {
@@ -891,6 +891,9 @@ CustomizeMode.prototype = {
       this._updateEmptyPaletteNotice();
       this._showPanelCustomizationPlaceholders();
       this.resetting = false;
+      if (!this._wantToBeInCustomizeMode) {
+        this.exit();
+      }
     }.bind(this)).then(null, ERROR);
   },
 
@@ -1017,7 +1020,7 @@ CustomizeMode.prototype = {
       this._updateUndoResetButton();
       this._updateEmptyPaletteNotice();
     }
-    this.dispatchToolboxEvent("customizationchange");
+    CustomizableUI.dispatchToolboxEvent("customizationchange");
   },
 
   _updateEmptyPaletteNotice: function() {
@@ -1481,6 +1484,7 @@ CustomizeMode.prototype = {
       this._cancelDragActive(this._dragOverItem);
       this._dragOverItem = null;
     }
+    this._updateToolbarCustomizationOutline(this.window);
     this._showPanelCustomizationPlaceholders();
   },
 
@@ -1517,6 +1521,7 @@ CustomizeMode.prototype = {
         this._setGridDragActive(aItem, draggedItem, aValue);
       } else {
         let targetArea = this._getCustomizableParent(aItem);
+        this._updateToolbarCustomizationOutline(window, targetArea);
         let makeSpaceImmediately = false;
         if (!gDraggingInToolbars.has(targetArea.id)) {
           gDraggingInToolbars.add(targetArea.id);
@@ -1551,6 +1556,7 @@ CustomizeMode.prototype = {
     }
   },
   _cancelDragActive: function(aItem, aNextItem, aNoTransition) {
+    this._updateToolbarCustomizationOutline(aItem.ownerDocument.defaultView);
     let currentArea = this._getCustomizableParent(aItem);
     if (!currentArea) {
       return;
@@ -1682,7 +1688,15 @@ CustomizeMode.prototype = {
     let dragY = aEvent.clientY - this._dragOffset.y;
 
     // Ensure this is within the container
-    let bounds = expectedParent.getBoundingClientRect();
+    let boundsContainer = expectedParent;
+    // NB: because the panel UI itself is inside a scrolling container, we need
+    // to use the parent bounds (otherwise, if the panel UI is scrolled down,
+    // the numbers we get are in window coordinates which leads to various kinds
+    // of weirdness)
+    if (boundsContainer == this.panelUIContents) {
+      boundsContainer = boundsContainer.parentNode;
+    }
+    let bounds = boundsContainer.getBoundingClientRect();
     dragX = Math.min(bounds.right, Math.max(dragX, bounds.left));
     dragY = Math.min(bounds.bottom, Math.max(dragY, bounds.top));
 
@@ -1694,6 +1708,16 @@ CustomizeMode.prototype = {
       }
     } else {
       let positionManager = DragPositionManager.getManagerForArea(aAreaElement);
+      // Make it relative to the container:
+      dragX -= bounds.left;
+      // NB: but if we're in the panel UI, we need to use the actual panel
+      // contents instead of the scrolling container to determine our origin
+      // offset against:
+      if (expectedParent == this.panelUIContents) {
+        dragY -= this.panelUIContents.getBoundingClientRect().top;
+      } else {
+        dragY -= bounds.top;
+      }
       // Find the closest node:
       targetNode = positionManager.find(aAreaElement, dragX, dragY, aDraggedItemId);
     }
@@ -1777,7 +1801,36 @@ CustomizeMode.prototype = {
     while (oldPlaceholders.length) {
       contents.removeChild(oldPlaceholders[0]);
     }
-  }
+  },
+
+  /**
+   * Update toolbar customization targets during drag events to add or remove
+   * outlines to indicate that an area is customizable.
+   *
+   * @param aWindow                       The XUL window in which outlines should be updated.
+   * @param {Element} [aToolbarArea=null] The element of the customizable toolbar area to add the
+   *                                      outline to. If aToolbarArea is falsy, the outline will be
+   *                                      removed from all toolbar areas.
+   */
+  _updateToolbarCustomizationOutline: function(aWindow, aToolbarArea = null) {
+    // Remove the attribute from existing customization targets
+    for (let area of CustomizableUI.areas) {
+      if (CustomizableUI.getAreaType(area) != CustomizableUI.TYPE_TOOLBAR) {
+        continue;
+      }
+      let target = CustomizableUI.getCustomizeTargetForArea(area, aWindow);
+      target.removeAttribute("customizing-dragovertarget");
+    }
+
+    // Now set the attribute on the desired target
+    if (aToolbarArea) {
+      if (CustomizableUI.getAreaType(aToolbarArea.id) != CustomizableUI.TYPE_TOOLBAR)
+        return;
+      let target = CustomizableUI.getCustomizeTargetForArea(aToolbarArea.id, aWindow);
+      target.setAttribute("customizing-dragovertarget", true);
+    }
+  },
+
 };
 
 function __dumpDragData(aEvent, caller) {

@@ -339,15 +339,15 @@ nsHtml5TreeOpExecutor::UpdateStyleSheet(nsIContent* aElement)
     aElement->GetAttr(kNameSpaceID_None, nsGkAtoms::rel, relVal);
     if (!relVal.IsEmpty()) {
       uint32_t linkTypes = nsStyleLinkElement::ParseLinkTypes(relVal);
-      bool hasPrefetch = linkTypes & PREFETCH;
-      if (hasPrefetch || (linkTypes & NEXT)) {
+      bool hasPrefetch = linkTypes & nsStyleLinkElement::ePREFETCH;
+      if (hasPrefetch || (linkTypes & nsStyleLinkElement::eNEXT)) {
         nsAutoString hrefVal;
         aElement->GetAttr(kNameSpaceID_None, nsGkAtoms::href, hrefVal);
         if (!hrefVal.IsEmpty()) {
           PrefetchHref(hrefVal, aElement, hasPrefetch);
         }
       }
-      if (linkTypes & DNS_PREFETCH) {
+      if (linkTypes & nsStyleLinkElement::eDNS_PREFETCH) {
         nsAutoString hrefVal;
         aElement->GetAttr(kNameSpaceID_None, nsGkAtoms::href, hrefVal);
         if (!hrefVal.IsEmpty()) {
@@ -932,21 +932,15 @@ nsHtml5TreeOpExecutor::GetViewSourceBaseURI()
 {
   if (!mViewSourceBaseURI) {
 
-    // We query the channel for the baseURI of srcdoc view-source loads as it
-    // cannot be otherwise determined.  If any step in this process fails, fall
-    // back to the standard method.
+    // We query the channel for the baseURI because in certain situations it
+    // cannot otherwise be determined. If this process fails, fall back to the
+    // standard method.
     nsCOMPtr<nsIViewSourceChannel> vsc;
     vsc = do_QueryInterface(mDocument->GetChannel());
     if (vsc) {
-      bool isSrcdocChannel;
-      // Note that the channel is a srcdoc channel, but mDocument is not a
-      // srcdoc document.
-      nsresult rv = vsc->GetIsSrcdocChannel(&isSrcdocChannel);
-      if (NS_SUCCEEDED(rv) && isSrcdocChannel) {
-        rv =  vsc->GetBaseURI(getter_AddRefs(mViewSourceBaseURI));
-        if (NS_SUCCEEDED(rv) && mViewSourceBaseURI) {
-          return mViewSourceBaseURI;
-        }
+      nsresult rv =  vsc->GetBaseURI(getter_AddRefs(mViewSourceBaseURI));
+      if (NS_SUCCEEDED(rv) && mViewSourceBaseURI) {
+        return mViewSourceBaseURI;
       }
     }
 

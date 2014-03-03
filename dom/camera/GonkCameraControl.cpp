@@ -77,90 +77,50 @@ nsGonkCameraControl::nsGonkCameraControl(uint32_t aCameraId)
 }
 
 nsresult
-nsGonkCameraControl::Init(const Configuration* aInitialConfig)
+nsGonkCameraControl::StartImpl(const Configuration* aInitialConfig)
 {
-  class InitGonkCameraControl : public nsRunnable
-  {
-  public:
-    InitGonkCameraControl(nsGonkCameraControl* aCameraControl,
-                          const Configuration* aConfig)
-      : mCameraControl(aCameraControl)
-      , mHaveInitialConfig(false)
-    {
-      DOM_CAMERA_LOGT("%s:%d : this=%p\n", __func__, __LINE__, this);
-      if (aConfig) {
-        mConfig = *aConfig;
-        mHaveInitialConfig = true;
-      }
+  /**
+   * For initialization, we try to return the camera control to the upper
+   * upper layer (i.e. the DOM) as quickly as possible. To do this, the
+   * camera is initialized in the following stages:
+   *
+   *  0. Initialize() initializes the hardware;
+   *  1. SetConfigurationInternal() does the minimal configuration
+   *     required so that we can start the preview -and- report a valid
+   *     configuration to the upper layer;
+   *  2. OnHardwareStateChange() reports that the hardware is ready,
+   *     which the upper (e.g. DOM) layer can (and does) use to return
+   *     the camera control object;
+   *  3. StartPreviewImpl() starts the flow of preview frames from the
+   *     camera hardware.
+   *
+   * The intent of the above flow is to let the Main Thread do as much work
+   * up-front as possible without waiting for blocking Camera Thread calls
+   * to complete.
+   */
+  MOZ_ASSERT(NS_GetCurrentThread() == mCameraThread);
+
+  nsresult rv = Initialize();
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  if (aInitialConfig) {
+    rv = SetConfigurationInternal(*aInitialConfig);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      // The initial configuration failed, close up the hardware
+      StopImpl();
+      return rv;
     }
+  }
 
-    ~InitGonkCameraControl()
-    {
-      DOM_CAMERA_LOGT("%s:%d : this=%p\n", __func__, __LINE__, this);
-    }
-
-    /**
-     * For initialization, we try to return the camera control to the upper
-     * upper layer (i.e. the DOM) as quickly as possible. To do this, the
-     * camera is initialized in the following stages:
-     *
-     *  0. InitImpl() initializes the hardware;
-     *  1. SetConfigurationInternal() does the minimal configuration
-     *     required so that we can start the preview -and- report a valid
-     *     configuration to the upper layer;
-     *  2. OnHardwareStateChange() reports that the hardware is ready,
-     *     which the upper layer can (and does) use to return the camera
-     *     control object;
-     *  3. StartPreviewImpl() starts the flow of preview frames from the
-     *     camera hardware.
-     *
-     * The intent of the above flow is to let the Main Thread do as much work
-     * up-front as possible without waiting for blocking Camera Thread calls
-     * to complete.
-     */
-    NS_IMETHODIMP
-    Run() MOZ_OVERRIDE
-    {
-      nsresult rv = mCameraControl->InitImpl();
-      if (NS_FAILED(rv)) {
-        mCameraControl->OnError(CameraControlListener::kInGetCamera,
-                                CameraControlListener::kErrorInitFailed);
-        // The hardware failed to initialize, so close it up
-        mCameraControl->ReleaseHardware();
-        return rv;
-      }
-
-      if (mHaveInitialConfig) {
-        rv = mCameraControl->SetConfigurationInternal(mConfig);
-        if (NS_FAILED(rv)) {
-          mCameraControl->OnError(CameraControlListener::kInGetCamera,
-                                  CameraControlListener::kErrorInvalidConfiguration);
-          // The initial configuration failed, close up the hardware
-          mCameraControl->ReleaseHardware();
-          return rv;
-        }
-      }
-
-      mCameraControl->OnHardwareStateChange(CameraControlListener::kHardwareOpen);
-      return mCameraControl->StartPreviewImpl();
-    }
-
-  protected:
-    nsRefPtr<nsGonkCameraControl> mCameraControl;
-    Configuration mConfig;
-    bool mHaveInitialConfig;
-  };
-
-  // Initialization is carried out on the camera thread.
-  return mCameraThread->Dispatch(
-    new InitGonkCameraControl(this, aInitialConfig), NS_DISPATCH_NORMAL);
+  OnHardwareStateChange(CameraControlListener::kHardwareOpen);
+  return StartPreviewImpl();
 }
 
 nsresult
-nsGonkCameraControl::InitImpl()
+nsGonkCameraControl::Initialize()
 {
-  MOZ_ASSERT(NS_GetCurrentThread() == mCameraThread);
-
   mCameraHw = GonkCameraHardware::Connect(this, mCameraId);
   if (!mCameraHw.get()) {
     DOM_CAMERA_LOGE("Failed to connect to camera %d (this=%p)\n", mCameraId, this);
@@ -211,7 +171,7 @@ nsGonkCameraControl::~nsGonkCameraControl()
 {
   DOM_CAMERA_LOGT("%s:%d : this=%p, mCameraHw = %p\n", __func__, __LINE__, this, mCameraHw.get());
 
-  ReleaseHardwareImpl();
+  StopImpl();
   DOM_CAMERA_LOGT("%s:%d\n", __func__, __LINE__);
 }
 
@@ -255,11 +215,18 @@ nsGonkCameraControl::SetConfigurationImpl(const Configuration& aConfig)
   MOZ_ASSERT(NS_GetCurrentThread() == mCameraThread);
 
   // Stop any currently running preview
-  StopPreviewImpl();
+  nsresult rv = PausePreview();
+  if (NS_FAILED(rv)) {
+    // warn, but plow ahead
+    NS_WARNING("PausePreview() in SetConfigurationImpl() failed");
+  }
 
   DOM_CAMERA_LOGT("%s:%d\n", __func__, __LINE__);
-  nsresult rv = SetConfigurationInternal(aConfig);
-  NS_ENSURE_SUCCESS(rv, rv);
+  rv = SetConfigurationInternal(aConfig);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    StopPreviewImpl();
+    return rv;
+  }
 
   // Restart the preview
   DOM_CAMERA_LOGT("%s:%d\n", __func__, __LINE__);
@@ -488,6 +455,7 @@ nsresult
 nsGonkCameraControl::Set(uint32_t aKey, int aValue)
 {
   if (aKey == CAMERA_PARAM_PICTURE_ROTATION) {
+    RETURN_IF_NO_CAMERA_HW();
     aValue = RationalizeRotation(aValue + mCameraHw->GetSensorOrientation());
   }
   return SetAndPush(aKey, aValue);
@@ -497,9 +465,7 @@ nsresult
 nsGonkCameraControl::Get(uint32_t aKey, int& aRet)
 {
   if (aKey == CAMERA_PARAM_SENSORANGLE) {
-    if (!mCameraHw.get()) {
-      return NS_ERROR_NOT_AVAILABLE;
-    }
+    RETURN_IF_NO_CAMERA_HW();
     aRet = mCameraHw->GetSensorOrientation();
     return NS_OK;
   }
@@ -546,8 +512,19 @@ nsGonkCameraControl::StopPreviewImpl()
   DOM_CAMERA_LOGI("Stopping preview (this=%p)\n", this);
 
   mCameraHw->StopPreview();
-
   OnPreviewStateChange(CameraControlListener::kPreviewStopped);
+  return NS_OK;
+}
+
+nsresult
+nsGonkCameraControl::PausePreview()
+{
+  RETURN_IF_NO_CAMERA_HW();
+
+  DOM_CAMERA_LOGI("Pausing preview (this=%p)\n", this);
+
+  mCameraHw->StopPreview();
+  OnPreviewStateChange(CameraControlListener::kPreviewPaused);
   return NS_OK;
 }
 
@@ -619,13 +596,16 @@ nsGonkCameraControl::SetThumbnailSizeImpl(const Size& aSize)
   }
 
   if (smallestDeltaIndex == UINT32_MAX) {
-    DOM_CAMERA_LOGW("Unable to find a thumbnail size close to %ux%u\n",
+    DOM_CAMERA_LOGW("Unable to find a thumbnail size close to %ux%u, disabling thumbnail\n",
       aSize.width, aSize.height);
-    return NS_ERROR_INVALID_ARG;
+    // If we are unable to find a thumbnail size with a suitable aspect ratio,
+    // just disable the thumbnail altogether.
+    Size size = { 0, 0 };
+    return SetAndPush(CAMERA_PARAM_THUMBNAILSIZE, size);
   }
 
   Size size = supportedSizes[smallestDeltaIndex];
-  DOM_CAMERA_LOGI("camera-param set picture-size = %ux%u (requested %ux%u)\n",
+  DOM_CAMERA_LOGI("camera-param set thumbnail-size = %ux%u (requested %ux%u)\n",
     size.width, size.height, aSize.width, aSize.height);
   if (size.width > INT32_MAX || size.height > INT32_MAX) {
     DOM_CAMERA_LOGE("Supported thumbnail size is too big, no change\n");
@@ -892,7 +872,7 @@ nsGonkCameraControl::StartRecordingImpl(DeviceStorageFileDescriptor* aFileDescri
     return NS_ERROR_FAILURE;
   }
 
-  OnRecorderStateChange(CameraControlListener::kRecorderStarted, -1, -1);
+  OnRecorderStateChange(CameraControlListener::kRecorderStarted);
   return NS_OK;
 }
 
@@ -929,7 +909,7 @@ nsGonkCameraControl::StopRecordingImpl()
 
   mRecorder->stop();
   mRecorder = nullptr;
-  OnRecorderStateChange(CameraControlListener::kRecorderStopped, -1, -1);
+  OnRecorderStateChange(CameraControlListener::kRecorderStopped);
 
   // notify DeviceStorage that the new video file is closed and ready
   return NS_DispatchToMainThread(new RecordingComplete(mVideoFile), NS_DISPATCH_NORMAL);
@@ -1059,27 +1039,13 @@ nsGonkCameraControl::SetPreviewSize(const Size& aSize)
     }
   }
 
-  {
-    ICameraControlParameterSetAutoEnter set(this);
-
-    // Some camera drivers will ignore our preview size if it's larger
-    // that the currently set video recording size, so we need to set
-    // both here just in case.
-    rv = SetAndPush(CAMERA_PARAM_PREVIEWSIZE, best);
-    if (NS_FAILED(rv)) {
-      DOM_CAMERA_LOGE("Failed to set picture mode preview size (0x%x)\n", rv);
-      return rv;
-    }
-
-    rv = SetAndPush(CAMERA_PARAM_VIDEOSIZE, best);
-    if (NS_FAILED(rv)) {
-      DOM_CAMERA_LOGE("Failed to bump up picture mode video size (0x%x)\n", rv);
-      return rv;
-    }
-  }
-
+  // Some camera drivers will ignore our preview size if it's larger
+  // that the currently set video recording size, so we need to set
+  // both here just in case.
+  mParams.Set(CAMERA_PARAM_PREVIEWSIZE, best);
+  mParams.Set(CAMERA_PARAM_VIDEOSIZE, best);
   mCurrentConfiguration.mPreviewSize = best;
-  return NS_OK;
+  return PushParameters();
 }
 
 nsresult
@@ -1339,15 +1305,16 @@ nsGonkCameraControl::SetupRecording(int aFd, int aRotation, int64_t aMaxFileSize
 }
 
 nsresult
-nsGonkCameraControl::ReleaseHardwareImpl()
+nsGonkCameraControl::StopImpl()
 {
   DOM_CAMERA_LOGT("%s:%d : this=%p\n", __func__, __LINE__, this);
 
   // if we're recording, stop recording
   if (mRecorder) {
-    DOM_CAMERA_LOGI("shutting down existing video recorder\n");
+    DOM_CAMERA_LOGI("Stopping existing video recorder\n");
     mRecorder->stop();
     mRecorder = nullptr;
+    OnRecorderStateChange(CameraControlListener::kRecorderStopped);
   }
 
   // stop the preview

@@ -75,6 +75,7 @@ public:
     PLayerTransactionParent::DeallocShmem(aShmem);
   }
 
+  virtual bool IsSameProcess() const MOZ_OVERRIDE;
 
 protected:
   virtual bool RecvUpdate(const EditArray& cset,
@@ -111,7 +112,7 @@ protected:
                                               const TextureFlags& aFlags) MOZ_OVERRIDE;
   virtual bool DeallocPTextureParent(PTextureParent* actor) MOZ_OVERRIDE;
 
-  void Attach(ShadowLayerParent* aLayerParent,
+  bool Attach(ShadowLayerParent* aLayerParent,
               CompositableParent* aCompositable,
               bool aIsAsyncVideo);
 

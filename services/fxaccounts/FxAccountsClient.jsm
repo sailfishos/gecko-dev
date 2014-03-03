@@ -10,23 +10,23 @@ Cu.import("resource://gre/modules/Log.jsm");
 Cu.import("resource://gre/modules/Promise.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://services-common/utils.js");
-Cu.import("resource://services-common/hawk.js");
+Cu.import("resource://services-common/hawkclient.js");
 Cu.import("resource://services-crypto/utils.js");
 Cu.import("resource://gre/modules/FxAccountsCommon.js");
 Cu.import("resource://gre/modules/Credentials.jsm");
 
-let _host = "https://api.accounts.firefox.com/v1"
-try {
-  _host = Services.prefs.getCharPref("identity.fxaccounts.auth.uri");
-} catch(keepDefault) {}
+const HOST = Services.prefs.getCharPref("identity.fxaccounts.auth.uri");
 
-const HOST = _host;
 this.FxAccountsClient = function(host = HOST) {
   this.host = host;
 
   // The FxA auth server expects requests to certain endpoints to be authorized
   // using Hawk.
   this.hawk = new HawkClient(host);
+
+  // Manage server backoff state. C.f.
+  // https://github.com/mozilla/fxa-auth-server/blob/master/docs/api.md#backoff-protocol
+  this.backoffError = null;
 };
 
 this.FxAccountsClient.prototype = {
@@ -95,13 +95,42 @@ this.FxAccountsClient.prototype = {
    *          verified: flag indicating verification status of the email
    *        }
    */
-  signIn: function signIn(email, password) {
+  signIn: function signIn(email, password, retryOK=true) {
     return Credentials.setup(email, password).then((creds) => {
       let data = {
         email: creds.emailUTF8,
         authPW: CommonUtils.bytesAsHex(creds.authPW),
       };
-      return this._request("/account/login", "POST", null, data);
+      return this._request("/account/login", "POST", null, data).then(
+        // Include the canonical capitalization of the email in the response so
+        // the caller can set its signed-in user state accordingly.
+        result => {
+          result.email = data.email;
+          return result;
+        },
+        error => {
+          log.debug("signIn error: " + JSON.stringify(error));
+          // If the user entered an email with different capitalization from
+          // what's stored in the database (e.g., Greta.Garbo@gmail.COM as
+          // opposed to greta.garbo@gmail.com), the server will respond with a
+          // errno 120 (code 400) and the expected capitalization of the email.
+          // We retry with this email exactly once.  If successful, we use the
+          // server's version of the email as the signed-in-user's email. This
+          // is necessary because the email also serves as salt; so we must be
+          // in agreement with the server on capitalization.
+          //
+          // API reference:
+          // https://github.com/mozilla/fxa-auth-server/blob/master/docs/api.md
+          if (ERRNO_INCORRECT_EMAIL_CASE === error.errno && retryOK) {
+            if (!error.email) {
+              log.error("Server returned errno 120 but did not provide email");
+              throw error;
+            }
+            return this.signIn(error.email, password, false);
+          }
+          throw error;
+        }
+      );
     });
   },
 
@@ -150,7 +179,7 @@ this.FxAccountsClient.prototype = {
    *        Returns a promise that resolves to an object:
    *        {
    *          kA: an encryption key for recevorable data (bytes)
-   *          wrapKB: an encryption key that requires knowledge of the 
+   *          wrapKB: an encryption key that requires knowledge of the
    *                  user's password (bytes)
    *        }
    */
@@ -277,6 +306,10 @@ this.FxAccountsClient.prototype = {
     };
   },
 
+  _clearBackoff: function() {
+      this.backoffError = null;
+  },
+
   /**
    * A general method for sending raw API calls to the FxA auth server.
    * All request bodies and responses are JSON.
@@ -303,6 +336,13 @@ this.FxAccountsClient.prototype = {
   _request: function hawkRequest(path, method, credentials, jsonPayload) {
     let deferred = Promise.defer();
 
+    // We were asked to back off.
+    if (this.backoffError) {
+      log.debug("Received new request during backoff, re-rejecting.");
+      deferred.reject(this.backoffError);
+      return deferred.promise;
+    }
+
     this.hawk.request(path, method, credentials, jsonPayload).then(
       (responseText) => {
         try {
@@ -315,7 +355,18 @@ this.FxAccountsClient.prototype = {
       },
 
       (error) => {
-        log.error("request error: " + JSON.stringify(error));
+        log.error("error " + method + "ing " + path + ": " + JSON.stringify(error));
+        if (error.retryAfter) {
+          log.debug("Received backoff response; caching error as flag.");
+          this.backoffError = error;
+          // Schedule clearing of cached-error-as-flag.
+          CommonUtils.namedTimer(
+            this._clearBackoff,
+            error.retryAfter * 1000,
+            this,
+            "fxaBackoffTimer"
+           );
+	}
         deferred.reject(error);
       }
     );

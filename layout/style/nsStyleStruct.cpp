@@ -2278,6 +2278,7 @@ nsStyleDisplay::nsStyleDisplay()
   mBreakAfter = false;
   mOverflowX = NS_STYLE_OVERFLOW_VISIBLE;
   mOverflowY = NS_STYLE_OVERFLOW_VISIBLE;
+  mOverflowClipBox = NS_STYLE_OVERFLOW_CLIP_BOX_PADDING_BOX;
   mResize = NS_STYLE_RESIZE_NONE;
   mClipFlags = NS_STYLE_CLIP_AUTO;
   mClip.SetRect(0,0,0,0);
@@ -2288,7 +2289,7 @@ nsStyleDisplay::nsStyleDisplay()
   mTransformOrigin[2].SetCoordValue(0);
   mPerspectiveOrigin[0].SetPercentValue(0.5f);
   mPerspectiveOrigin[1].SetPercentValue(0.5f);
-  mChildPerspective.SetCoordValue(0);
+  mChildPerspective.SetNoneValue();
   mBackfaceVisibility = NS_STYLE_BACKFACE_VISIBILITY_VISIBLE;
   mTransformStyle = NS_STYLE_TRANSFORM_STYLE_FLAT;
   mOrient = NS_STYLE_ORIENT_AUTO;
@@ -2334,6 +2335,7 @@ nsStyleDisplay::nsStyleDisplay(const nsStyleDisplay& aSource)
   , mBreakAfter(aSource.mBreakAfter)
   , mOverflowX(aSource.mOverflowX)
   , mOverflowY(aSource.mOverflowY)
+  , mOverflowClipBox(aSource.mOverflowClipBox)
   , mResize(aSource.mResize)
   , mClipFlags(aSource.mClipFlags)
   , mOrient(aSource.mOrient)
@@ -2412,6 +2414,7 @@ nsChangeHint nsStyleDisplay::CalcDifference(const nsStyleDisplay& aOther) const
       || mBreakAfter != aOther.mBreakAfter
       || mAppearance != aOther.mAppearance
       || mOrient != aOther.mOrient
+      || mOverflowClipBox != aOther.mOverflowClipBox
       || mClipFlags != aOther.mClipFlags || !mClip.IsEqualInterior(aOther.mClip))
     NS_UpdateHint(hint, NS_CombineHint(nsChangeHint_AllReflowHints,
                                        nsChangeHint_RepaintFrame));
@@ -2467,7 +2470,13 @@ nsChangeHint nsStyleDisplay::CalcDifference(const nsStyleDisplay& aOther) const
       NS_UpdateHint(hint, nsChangeHint_RepaintFrame);
   }
 
-  if (mWillChangeBitField != aOther.mWillChangeBitField) {
+  uint8_t willChangeBitsChanged =
+    mWillChangeBitField ^ aOther.mWillChangeBitField;
+  if (willChangeBitsChanged & NS_STYLE_WILL_CHANGE_STACKING_CONTEXT) {
+    NS_UpdateHint(hint, nsChangeHint_RepaintFrame);
+  }
+  if (willChangeBitsChanged & ~uint8_t(NS_STYLE_WILL_CHANGE_STACKING_CONTEXT)) {
+    // FIXME (Bug 974125): Don't reconstruct the frame
     NS_UpdateHint(hint, nsChangeHint_ReconstructFrame);
   }
 

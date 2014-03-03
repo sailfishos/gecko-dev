@@ -309,9 +309,11 @@ public:
 
   virtual void RenderLayer(const nsIntRect& aClipRect) = 0;
 
-  virtual void SetCompositableHost(CompositableHost* aHost)
+  virtual bool SetCompositableHost(CompositableHost*)
   {
-    MOZ_ASSERT(false, "called SetCompositableHost for a layer without a compositable host");
+    // We must handle this gracefully, see bug 967824
+    NS_WARNING("called SetCompositableHost for a layer type not accepting a compositable");
+    return false;
   }
   virtual CompositableHost* GetCompositableHost() = 0;
 
@@ -361,9 +363,9 @@ public:
     mLayerComposited = value;
   }
 
-  void SetClearFB(bool value)
+  void SetClearRect(const nsIntRect& aRect)
   {
-    mClearFB = value;
+    mClearRect = aRect;
   }
 
   // These getters can be used anytime.
@@ -373,7 +375,7 @@ public:
   const gfx::Matrix4x4& GetShadowTransform() { return mShadowTransform; }
   bool GetShadowTransformSetByAnimation() { return mShadowTransformSetByAnimation; }
   bool HasLayerBeenComposited() { return mLayerComposited; }
-  bool GetClearFB() { return mClearFB; }
+  nsIntRect GetClearRect() { return mClearRect; }
 
 protected:
   gfx::Matrix4x4 mShadowTransform;
@@ -386,7 +388,7 @@ protected:
   bool mShadowTransformSetByAnimation;
   bool mDestroyed;
   bool mLayerComposited;
-  bool mClearFB;
+  nsIntRect mClearRect;
 };
 
 

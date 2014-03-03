@@ -93,10 +93,10 @@ public:
     // Last bit 1 = Don't copy, Last bit 0 = Copy.
     if (copy) {
       setStackAddress(reinterpret_cast<void*>(
-                        reinterpret_cast<uintptr_t>(sparg) & ~0x1));
+                        reinterpret_cast<uintptr_t>(sparg) & ~NoCopyBit));
     } else {
       setStackAddress(reinterpret_cast<void*>(
-                        reinterpret_cast<uintptr_t>(sparg) | 0x1));
+                        reinterpret_cast<uintptr_t>(sparg) | NoCopyBit));
     }
   }
 };
@@ -111,7 +111,8 @@ class ProfilerMarker {
   friend class ProfilerLinkedList<ProfilerMarker>;
 public:
   ProfilerMarker(const char* aMarkerName,
-         ProfilerMarkerPayload* aPayload = nullptr);
+         ProfilerMarkerPayload* aPayload = nullptr,
+         float aTime = 0);
 
   ~ProfilerMarker();
 
@@ -128,10 +129,13 @@ public:
     return mGenID + 2 <= aGenID;
   }
 
+  float GetTime();
+
 private:
   char* mMarkerName;
   ProfilerMarkerPayload* mPayload;
   ProfilerMarker* mNext;
+  float mTime;
   int mGenID;
 };
 
@@ -320,9 +324,9 @@ public:
     return mPendingUWTBuffers.getLinkedUWTBuffers();
   }
 
-  void addMarker(const char *aMarkerStr, ProfilerMarkerPayload *aPayload)
+  void addMarker(const char *aMarkerStr, ProfilerMarkerPayload *aPayload, float aTime)
   {
-    ProfilerMarker* marker = new ProfilerMarker(aMarkerStr, aPayload);
+    ProfilerMarker* marker = new ProfilerMarker(aMarkerStr, aPayload, aTime);
     mPendingMarkers.addMarker(marker);
   }
 
@@ -382,7 +386,8 @@ public:
       return;
     }
 
-    JS_STATIC_ASSERT(sizeof(mStack[0]) == sizeof(js::ProfileEntry));
+    static_assert(sizeof(mStack[0]) == sizeof(js::ProfileEntry),
+                  "mStack must be binary compatible with js::ProfileEntry.");
     js::SetRuntimeProfilingStack(runtime,
                                  (js::ProfileEntry*) mStack,
                                  (uint32_t*) &mStackPointer,

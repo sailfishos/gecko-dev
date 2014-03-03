@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 include protocol PAsmJSCacheEntry;
+include protocol PBackground;
 include protocol PBlob;
 include protocol PBluetooth;
 include protocol PBrowser;
@@ -80,6 +81,12 @@ struct DeviceStorageAvailableParams
   nsString storageName;
 };
 
+struct DeviceStorageStatusParams
+{
+  nsString type;
+  nsString storageName;
+};
+
 struct DeviceStorageFormatParams
 {
   nsString type;
@@ -134,6 +141,7 @@ union DeviceStorageParams
   DeviceStorageFreeSpaceParams;
   DeviceStorageUsedSpaceParams;
   DeviceStorageAvailableParams;
+  DeviceStorageStatusParams;
   DeviceStorageFormatParams;
 };
 
@@ -192,6 +200,7 @@ intr protocol PContent
 {
     parent opens PCompositor;
     parent opens PImageBridge;
+    child opens PBackground;
 
     manages PAsmJSCacheEntry;
     manages PBlob;
@@ -325,7 +334,6 @@ child:
 
     NotifyProcessPriorityChanged(ProcessPriority priority);
     MinimizeMemoryUsage();
-    CancelMinimizeMemoryUsage();
 
     /**
      * Used to manage nsIStyleSheetService across processes.

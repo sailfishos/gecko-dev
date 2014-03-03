@@ -4,7 +4,6 @@
 
 from b2ginstance import B2GInstance
 import datetime
-from errors import *
 from mozdevice import devicemanagerADB, DMError
 from mozprocess import ProcessHandlerMixin
 import os
@@ -21,18 +20,33 @@ import traceback
 from emulator_battery import EmulatorBattery
 from emulator_geo import EmulatorGeo
 from emulator_screen import EmulatorScreen
+from decorators import uses_marionette
+
+from errors import (
+    InstallGeckoError,
+    InvalidResponseException,
+    MarionetteException,
+    ScriptTimeoutException,
+    TimeoutException
+)
 
 
-class LogcatProc(ProcessHandlerMixin):
-    """Process handler for logcat which saves all output to a logfile.
+class LogOutputProc(ProcessHandlerMixin):
+    """
+    Process handler for processes which save all output to a logfile.
+    If no logfile is specified, output will still be consumed to prevent
+    the output pipe's from overflowing.
     """
 
-    def __init__(self, logfile, cmd, **kwargs):
+    def __init__(self, cmd, logfile=None,  **kwargs):
         self.logfile = logfile
         kwargs.setdefault('processOutputLine', []).append(self.log_output)
         ProcessHandlerMixin.__init__(self, cmd, **kwargs)
 
     def log_output(self, line):
+        if not self.logfile:
+            return
+
         f = open(self.logfile, 'a')
         f.write(line + "\n")
         f.flush()
@@ -45,6 +59,9 @@ class Emulator(object):
     prefs = {'app.update.enabled': False,
              'app.update.staging.enabled': False,
              'app.update.service.enabled': False}
+    env = {'MOZ_CRASHREPORTER': '1',
+           'MOZ_CRASHREPORTER_NO_REPORT': '1',
+           'MOZ_CRASHREPORTER_SHUTDOWN': '1'}
 
     def __init__(self, homedir=None, noWindow=False, logcat_dir=None,
                  arch="x86", emulatorBinary=None, res=None, sdcard=None,
@@ -210,8 +227,7 @@ class Emulator(object):
 
     def close(self):
         if self.is_running and self._emulator_launched:
-            self.proc.terminate()
-            self.proc.wait()
+            self.proc.kill()
         if self._adb_started:
             self._run_adb(['kill-server'])
             self._adb_started = False
@@ -251,9 +267,8 @@ class Emulator(object):
         else:
             self._adb_started = False
 
+    @uses_marionette
     def wait_for_system_message(self, marionette):
-        marionette.start_session()
-        marionette.set_context(marionette.CONTEXT_CHROME)
         marionette.set_script_timeout(45000)
         # Telephony API's won't be available immediately upon emulator
         # boot; we have to wait for the syste-message-listener-ready
@@ -277,9 +292,7 @@ waitFor(
         except InvalidResponseException:
             self.check_for_minidumps()
             raise
-        print 'done'
-        marionette.set_context(marionette.CONTEXT_CONTENT)
-        marionette.delete_session()
+        print '...done'
 
     def connect(self):
         self.adb = B2GInstance.check_adb(self.homedir, emulator=True)
@@ -317,9 +330,14 @@ waitFor(
 
         original_online, original_offline = self._get_adb_devices()
 
-        self.proc = subprocess.Popen(qemu_args,
-                                     stdout=subprocess.PIPE,
-                                     stderr=subprocess.PIPE)
+        filename = None
+        if self.logcat_dir:
+            filename = os.path.join(self.logcat_dir, 'qemu.log')
+            if os.path.isfile(filename):
+                self.rotate_log(filename)
+
+        self.proc = LogOutputProc(qemu_args, filename)
+        self.proc.run()
 
         online, offline = self._get_adb_devices()
         now = datetime.datetime.now()
@@ -345,13 +363,9 @@ waitFor(
         # setup DNS fix for networking
         self._run_adb(['shell', 'setprop', 'net.dns1', '10.0.2.3'])
 
+    @uses_marionette
     def wait_for_homescreen(self, marionette):
         print 'waiting for homescreen...'
-
-        created_session = False
-        if not marionette.session:
-            marionette.start_session()
-            created_session = True
 
         marionette.set_context(marionette.CONTEXT_CONTENT)
         marionette.execute_async_script("""
@@ -364,10 +378,9 @@ window.addEventListener('mozbrowserloadend', function loaded(aEvent) {
   }
 });""", script_timeout=120000)
         print '...done'
-        if created_session:
-            marionette.delete_session()
 
     def setup(self, marionette, gecko_path=None, busybox=None):
+        self.set_environment(marionette)
         if busybox:
             self.install_busybox(busybox)
 
@@ -377,9 +390,17 @@ window.addEventListener('mozbrowserloadend', function loaded(aEvent) {
         self.wait_for_system_message(marionette)
         self.set_prefs(marionette)
 
+    @uses_marionette
+    def set_environment(self, marionette):
+        for k, v in self.env.iteritems():
+            marionette.execute_script("""
+            let env = Cc["@mozilla.org/process/environment;1"].
+                      getService(Ci.nsIEnvironment);
+            env.set("%s", "%s");
+            """ % (k, v))
+
+    @uses_marionette
     def set_prefs(self, marionette):
-        marionette.start_session()
-        marionette.set_context(marionette.CONTEXT_CHROME)
         for pref in self.prefs:
             marionette.execute_script("""
             Components.utils.import("resource://gre/modules/Services.jsm");
@@ -395,7 +416,6 @@ window.addEventListener('mozbrowserloadend', function loaded(aEvent) {
                     Services.prefs.setCharPref(arguments[0], arguments[1]);
             }
             """, [pref, self.prefs[pref]])
-        marionette.delete_session()
 
     def restart_b2g(self):
         print 'restarting B2G'
@@ -463,8 +483,14 @@ window.addEventListener('mozbrowserloadend', function loaded(aEvent) {
         """ Rotate a logfile, by recursively rotating logs further in the sequence,
             deleting the last file if necessary.
         """
-        destlog = os.path.join(self.logcat_dir, 'emulator-%d.%d.log' % (self.port, index))
-        if os.access(destlog, os.F_OK):
+        basename = os.path.basename(srclog)
+        basename = basename[:-len('.log')]
+        if index > 1:
+            basename = basename[:-len('.1')]
+        basename = '%s.%d.log' % (basename, index)
+
+        destlog = os.path.join(self.logcat_dir, basename)
+        if os.path.isfile(destlog):
             if index == 3:
                 os.remove(destlog)
             else:
@@ -475,11 +501,11 @@ window.addEventListener('mozbrowserloadend', function loaded(aEvent) {
         """ Save the output of logcat to a file.
         """
         filename = os.path.join(self.logcat_dir, "emulator-%d.log" % self.port)
-        if os.access(filename, os.F_OK):
+        if os.path.isfile(filename):
             self.rotate_log(filename)
         cmd = [self.adb, '-s', 'emulator-%d' % self.port, 'logcat', '-v', 'threadtime']
 
-        self.logcat_proc = LogcatProc(filename, cmd)
+        self.logcat_proc = LogOutputProc(cmd, filename)
         self.logcat_proc.run()
 
     def setup_port_forwarding(self, remote_port):

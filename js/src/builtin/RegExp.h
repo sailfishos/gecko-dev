@@ -41,15 +41,11 @@ ExecuteRegExpLegacy(JSContext *cx, RegExpStatics *res, RegExpObject &reobj,
 
 /* Translation from MatchPairs to a JS array in regexp_exec()'s output format. */
 bool
-CreateRegExpMatchResult(JSContext *cx, HandleString string, MatchPairs &matches,
+CreateRegExpMatchResult(JSContext *cx, HandleString input, const MatchPairs &matches,
                         MutableHandleValue rval);
 
-bool
-CreateRegExpMatchResult(JSContext *cx, HandleString input, const jschar *chars, size_t length,
-                        MatchPairs &matches, MutableHandleValue rval);
-
 extern bool
-regexp_exec_raw(JSContext *cx, HandleObject regexp, HandleString input, Value *vp);
+regexp_exec_raw(JSContext *cx, HandleObject regexp, HandleString input, MutableHandleValue output);
 
 extern bool
 regexp_exec(JSContext *cx, unsigned argc, Value *vp);

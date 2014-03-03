@@ -10,7 +10,7 @@
 #include "gfx2DGlue.h"                  // for ToMatrix4x4
 #include "gfx3DMatrix.h"                // for gfx3DMatrix
 #include "gfxImageSurface.h"            // for gfxImageSurface
-#include "gfxPlatform.h"                // for gfxPlatform
+#include "gfxPrefs.h"                   // for gfxPrefs
 #include "gfxUtils.h"                   // for gfxUtils, etc
 #include "mozilla/Assertions.h"         // for MOZ_ASSERT, etc
 #include "mozilla/RefPtr.h"             // for RefPtr
@@ -25,12 +25,12 @@
 #include "mozilla/mozalloc.h"           // for operator delete, etc
 #include "nsAutoPtr.h"                  // for nsRefPtr
 #include "nsDebug.h"                    // for NS_ASSERTION
+#include "nsISupportsImpl.h"            // for MOZ_COUNT_CTOR, etc
 #include "nsISupportsUtils.h"           // for NS_ADDREF, NS_RELEASE
 #include "nsPoint.h"                    // for nsIntPoint
 #include "nsRect.h"                     // for nsIntRect
 #include "nsRegion.h"                   // for nsIntRegion
 #include "nsTArray.h"                   // for nsAutoTArray
-#include "nsTraceRefcnt.h"              // for MOZ_COUNT_CTOR, etc
 #include <vector>
 
 namespace mozilla {
@@ -55,12 +55,16 @@ static nsIntRect
 GetOpaqueRect(Layer* aLayer)
 {
   nsIntRect result;
+  gfx::Matrix matrix;
+  bool is2D = aLayer->GetBaseTransform().Is2D(&matrix);
+
   // Just bail if there's anything difficult to handle.
-  if (!aLayer->GetEffectiveTransform().IsIdentity() ||
-      aLayer->GetEffectiveOpacity() != 1.0f ||
-      aLayer->GetMaskLayer()) {
+  if (!is2D || aLayer->GetMaskLayer() ||
+    aLayer->GetEffectiveOpacity() != 1.0f ||
+    matrix.HasNonIntegerTranslation()) {
     return result;
   }
+
   if (aLayer->GetContentFlags() & Layer::CONTENT_OPAQUE) {
     result = aLayer->GetEffectiveVisibleRegion().GetLargestRectangle();
   } else {
@@ -72,10 +76,16 @@ GetOpaqueRect(Layer* aLayer)
       result = GetOpaqueRect(refLayer->GetFirstChild());
     }
   }
+
+  // Translate our opaque region to cover the child
+  gfx::Point point = matrix.GetTranslation();
+  result.MoveBy(static_cast<int>(point.x), static_cast<int>(point.y));
+
   const nsIntRect* clipRect = aLayer->GetEffectiveClipRect();
   if (clipRect) {
     result.IntersectRect(result, *clipRect);
   }
+
   return result;
 }
 
@@ -261,11 +271,11 @@ ContainerRender(ContainerT* aContainer,
       // not safe.
       if (HasOpaqueAncestorLayer(aContainer) &&
           transform3D.Is2D(&transform) && !ThebesMatrix(transform).HasNonIntegerTranslation()) {
-        surfaceCopyNeeded = gfxPlatform::ComponentAlphaEnabled();
+        surfaceCopyNeeded = gfxPrefs::ComponentAlphaEnabled();
         sourcePoint.x += transform._31;
         sourcePoint.y += transform._32;
         aContainer->mSupportsComponentAlphaChildren
-          = gfxPlatform::ComponentAlphaEnabled();
+          = gfxPrefs::ComponentAlphaEnabled();
       }
     }
 
@@ -328,17 +338,18 @@ ContainerRender(ContainerT* aContainer,
       // Composer2D will compose this layer so skip GPU composition
       // this time & reset composition flag for next composition phase
       layerToRender->SetLayerComposited(false);
-      if (layerToRender->GetClearFB()) {
+      nsIntRect clearRect = layerToRender->GetClearRect();
+      if (!clearRect.IsEmpty()) {
         // Clear layer's visible rect on FrameBuffer with transparent pixels
-        gfx::Rect aRect(clipRect.x, clipRect.y, clipRect.width, clipRect.height);
-        compositor->clearFBRect(&aRect);
-        layerToRender->SetClearFB(false);
+        gfx::Rect fbRect(clearRect.x, clearRect.y, clearRect.width, clearRect.height);
+        compositor->clearFBRect(&fbRect);
+        layerToRender->SetClearRect(nsIntRect(0, 0, 0, 0));
       }
     } else {
       layerToRender->RenderLayer(clipRect);
     }
 
-    if (gfxPlatform::GetPrefLayersScrollGraph()) {
+    if (gfxPrefs::LayersScrollGraph()) {
       DrawVelGraph(clipRect, aManager, layerToRender->GetLayer());
     }
     // invariant: our GL context should be current here, I don't think we can

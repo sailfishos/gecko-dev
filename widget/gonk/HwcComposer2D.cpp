@@ -19,16 +19,18 @@
 
 #include "libdisplay/GonkDisplay.h"
 #include "Framebuffer.h"
+#include "GLContext.h"                  // for GLContext
 #include "HwcUtils.h"
 #include "HwcComposer2D.h"
 #include "mozilla/layers/LayerManagerComposite.h"
 #include "mozilla/layers/PLayerTransaction.h"
 #include "mozilla/layers/ShadowLayerUtilsGralloc.h"
+#include "mozilla/layers/TextureHostOGL.h"  // for TextureHostOGL
 #include "mozilla/StaticPtr.h"
 #include "cutils/properties.h"
 #include "gfx2DGlue.h"
 
-#if ANDROID_VERSION >= 18
+#if ANDROID_VERSION >= 17
 #include "libdisplay/FramebufferSurface.h"
 #ifndef HWC_BLIT
 #define HWC_BLIT (HWC_FRAMEBUFFER_TARGET + 1)
@@ -67,7 +69,10 @@ HwcComposer2D::HwcComposer2D()
     , mHwc(nullptr)
     , mColorFill(false)
     , mRBSwapSupport(false)
-    , mPrevRetireFence(-1)
+#if ANDROID_VERSION >= 17
+    , mPrevRetireFence(Fence::NO_FENCE)
+    , mPrevDisplayFence(Fence::NO_FENCE)
+#endif
     , mPrepared(false)
 {
 }
@@ -92,13 +97,19 @@ HwcComposer2D::Init(hwc_display_t dpy, hwc_surface_t sur)
     mozilla::Framebuffer::GetSize(&screenSize);
     mScreenRect  = nsIntRect(nsIntPoint(0, 0), screenSize);
 
-#if ANDROID_VERSION >= 18
+#if ANDROID_VERSION >= 17
     int supported = 0;
-    if (mHwc->query(mHwc, HwcUtils::HWC_COLOR_FILL, &supported) == NO_ERROR) {
-        mColorFill = supported ? true : false;
-    }
-    if (mHwc->query(mHwc, HwcUtils::HWC_FORMAT_RB_SWAP, &supported) == NO_ERROR) {
-        mRBSwapSupport = supported ? true : false;
+
+    if (mHwc->query) {
+        if (mHwc->query(mHwc, HwcUtils::HWC_COLOR_FILL, &supported) == NO_ERROR) {
+            mColorFill = !!supported;
+        }
+        if (mHwc->query(mHwc, HwcUtils::HWC_FORMAT_RB_SWAP, &supported) == NO_ERROR) {
+            mRBSwapSupport = !!supported;
+        }
+    } else {
+        mColorFill = false;
+        mRBSwapSupport = false;
     }
 #else
     char propValue[PROPERTY_VALUE_MAX];
@@ -287,6 +298,7 @@ HwcComposer2D::PrepareLayerList(Layer* aLayer,
                           transform * aGLWorldTransform,
                           clip,
                           bufferRect,
+                          state.YFlipped(),
                           &(sourceCrop),
                           &(hwcLayer.displayFrame)))
     {
@@ -303,12 +315,14 @@ HwcComposer2D::PrepareLayerList(Layer* aLayer,
     if ((opacity == 0xFF) && (aLayer->GetContentFlags() & Layer::CONTENT_OPAQUE)) {
         hwcLayer.blending = HWC_BLENDING_NONE;
     }
-#if ANDROID_VERSION >= 18
+#if ANDROID_VERSION >= 17
     hwcLayer.compositionType = HWC_FRAMEBUFFER;
 
     hwcLayer.acquireFenceFd = -1;
     hwcLayer.releaseFenceFd = -1;
+#if ANDROID_VERSION >= 18
     hwcLayer.planeAlpha = opacity;
+#endif
 #else
     hwcLayer.compositionType = HwcUtils::HWC_USE_COPYBIT;
 #endif
@@ -472,7 +486,7 @@ HwcComposer2D::PrepareLayerList(Layer* aLayer,
 }
 
 
-#if ANDROID_VERSION >= 18
+#if ANDROID_VERSION >= 17
 bool
 HwcComposer2D::TryHwComposition()
 {
@@ -533,7 +547,10 @@ HwcComposer2D::TryHwComposition()
                         // Clear visible rect on FB with transparent pixels.
                         // Never clear the 1st layer since we're guaranteed
                         // that FB is already cleared.
-                        mHwcLayerMap[k]->SetClearFB(true);
+                        hwc_rect_t r = mList->hwLayers[k].displayFrame;
+                        mHwcLayerMap[k]->SetClearRect(nsIntRect(r.left, r.top,
+                                                                r.right - r.left,
+                                                                r.bottom - r.top));
                     }
                     break;
                 default:
@@ -628,8 +645,9 @@ HwcComposer2D::Prepare(buffer_handle_t fbHandle, int fence)
     mList->hwLayers[idx].visibleRegionScreen.rects = &mList->hwLayers[idx].displayFrame;
     mList->hwLayers[idx].acquireFenceFd = fence;
     mList->hwLayers[idx].releaseFenceFd = -1;
+#if ANDROID_VERSION >= 18
     mList->hwLayers[idx].planeAlpha = 0xFF;
-
+#endif
     if (mPrepared) {
         LOGE("Multiple hwc prepare calls!");
     }
@@ -645,36 +663,29 @@ HwcComposer2D::Commit()
 
     int err = mHwc->set(mHwc, HWC_NUM_DISPLAY_TYPES, displays);
 
-    // To avoid tearing, workaround for missing releaseFenceFd
-    // waits in Gecko layers, see Bug 925444.
-    if (!mPrevReleaseFds.IsEmpty()) {
-        // Wait for previous retire Fence to signal.
-        // Denotes contents on display have been replaced.
-        // For buffer-sync, framework should not over-write
-        // prev buffers until we close prev releaseFenceFds
-        sp<Fence> fence = new Fence(mPrevRetireFence);
-        if (fence->wait(1000) == -ETIME) {
-            LOGE("Wait timed-out for retireFenceFd %d", mPrevRetireFence);
-        }
-        for (int i = 0; i < mPrevReleaseFds.Length(); i++) {
-            close(mPrevReleaseFds[i]);
-        }
-        close(mPrevRetireFence);
-        mPrevReleaseFds.Clear();
-    }
+    mPrevDisplayFence = mPrevRetireFence;
+    mPrevRetireFence = Fence::NO_FENCE;
 
     for (uint32_t j=0; j < (mList->numHwLayers - 1); j++) {
         if (mList->hwLayers[j].releaseFenceFd >= 0) {
-            mPrevReleaseFds.AppendElement(mList->hwLayers[j].releaseFenceFd);
-        }
-    }
+            int fd = mList->hwLayers[j].releaseFenceFd;
+            mList->hwLayers[j].releaseFenceFd = -1;
+            sp<Fence> fence = new Fence(fd);
+
+            LayerRenderState state = mHwcLayerMap[j]->GetLayer()->GetRenderState();
+            if (!state.mTexture) {
+                continue;
+            }
+            TextureHostOGL* texture = state.mTexture->AsHostOGL();
+            if (!texture) {
+                continue;
+            }
+            texture->SetReleaseFence(fence);
+       }
+   }
 
     if (mList->retireFenceFd >= 0) {
-        if (!mPrevReleaseFds.IsEmpty()) {
-            mPrevRetireFence = mList->retireFenceFd;
-        } else { // GPU Composition
-            close(mList->retireFenceFd);
-        }
+        mPrevRetireFence = new Fence(mList->retireFenceFd);
     }
 
     mPrepared = false;

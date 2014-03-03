@@ -436,7 +436,8 @@ NoteJSChildGrayWrapperShim(void* aData, void* aThing)
 // CycleCollectedJSRuntime. It should never be used directly.
 static const JSZoneParticipant sJSZoneCycleCollectorGlobal;
 
-CycleCollectedJSRuntime::CycleCollectedJSRuntime(uint32_t aMaxbytes,
+CycleCollectedJSRuntime::CycleCollectedJSRuntime(JSRuntime* aParentRuntime,
+                                                 uint32_t aMaxbytes,
                                                  JSUseHelperThreads aUseHelperThreads)
   : mGCThingCycleCollectorGlobal(sGCThingCycleCollectorGlobal),
     mJSZoneCycleCollectorGlobal(sJSZoneCycleCollectorGlobal),
@@ -445,7 +446,7 @@ CycleCollectedJSRuntime::CycleCollectedJSRuntime(uint32_t aMaxbytes,
 {
   mozilla::dom::InitScriptSettings();
 
-  mJSRuntime = JS_NewRuntime(aMaxbytes, aUseHelperThreads);
+  mJSRuntime = JS_NewRuntime(aMaxbytes, aUseHelperThreads, aParentRuntime);
   if (!mJSRuntime) {
     MOZ_CRASH();
   }
@@ -548,7 +549,8 @@ CycleCollectedJSRuntime::DescribeGCThing(bool aIsMarked, void* aThing,
       "BaseShape",
       "TypeObject",
     };
-    JS_STATIC_ASSERT(MOZ_ARRAY_LENGTH(trace_types) == JSTRACE_LAST + 1);
+    static_assert(MOZ_ARRAY_LENGTH(trace_types) == JSTRACE_LAST + 1,
+                  "JSTRACE_LAST enum must match trace_types count.");
     JS_snprintf(name, sizeof(name), "JS %s", trace_types[aTraceKind]);
   }
 
@@ -875,16 +877,6 @@ CycleCollectedJSRuntime::ZoneParticipant()
 nsresult
 CycleCollectedJSRuntime::TraverseRoots(nsCycleCollectionNoteRootCallback &aCb)
 {
-  static bool gcHasRun = false;
-  if (!gcHasRun) {
-    uint32_t gcNumber = JS_GetGCParameter(mJSRuntime, JSGC_NUMBER);
-    if (!gcNumber) {
-      // Cannot cycle collect if GC has not run first!
-      MOZ_CRASH();
-    }
-    gcHasRun = true;
-  }
-
   TraverseNativeRoots(aCb);
 
   NoteWeakMapsTracer trc(mJSRuntime, TraceWeakMapping, aCb);

@@ -641,10 +641,6 @@ public:
     MessageLoop::current()->PostDelayedTask(FROM_HERE, aTask, aDelayMs);
   }
 
-  virtual void ScrollUpdate(const CSSPoint& aPosition, const float aResolution)
-  {
-  }
-
   virtual bool GetRootZoomConstraints(ZoomConstraints* aOutConstraints)
   {
     if (mHaveZoomConstraints && aOutConstraints) {
@@ -1137,6 +1133,11 @@ void
 RenderFrameParent::ContentReceivedTouch(const ScrollableLayerGuid& aGuid,
                                         bool aPreventDefault)
 {
+  if (aGuid.mLayersId != mLayersId) {
+    // Guard against bad data from hijacked child processes
+    NS_ERROR("Unexpected layers id in ContentReceivedTouch; dropping message...");
+    return;
+  }
   if (GetApzcTreeManager()) {
     GetApzcTreeManager()->ContentReceivedTouch(aGuid, aPreventDefault);
   }

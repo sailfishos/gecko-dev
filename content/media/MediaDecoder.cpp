@@ -1748,7 +1748,6 @@ MediaDecoder::IsRawEnabled()
 }
 #endif
 
-#ifdef MOZ_OGG
 bool
 MediaDecoder::IsOpusEnabled()
 {
@@ -1764,7 +1763,6 @@ MediaDecoder::IsOggEnabled()
 {
   return Preferences::GetBool("media.ogg.enabled");
 }
-#endif
 
 #ifdef MOZ_WAVE
 bool

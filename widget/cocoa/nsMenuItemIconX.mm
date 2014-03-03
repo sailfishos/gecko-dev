@@ -23,7 +23,7 @@
 #include "nsObjCExceptions.h"
 #include "nsIContent.h"
 #include "nsIDocument.h"
-#include "nsINameSpaceManager.h"
+#include "nsNameSpaceManager.h"
 #include "nsGkAtoms.h"
 #include "nsIDOMElement.h"
 #include "nsIDOMCSSStyleDeclaration.h"
@@ -41,6 +41,7 @@
 #include "nsCocoaUtils.h"
 #include "nsContentUtils.h"
 
+using mozilla::RefPtr;
 static const uint32_t kIconWidth = 16;
 static const uint32_t kIconHeight = 16;
 static const uint32_t kIconBitsPerComponent = 8;

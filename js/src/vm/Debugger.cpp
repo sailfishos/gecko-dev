@@ -872,7 +872,7 @@ Debugger::newCompletionValue(JSContext *cx, JSTrapStatus status, Value value_,
     if (!obj ||
         !wrapDebuggeeValue(cx, &value) ||
         !DefineNativeProperty(cx, obj, key, value, JS_PropertyStub, JS_StrictPropertyStub,
-                              JSPROP_ENUMERATE, 0, 0))
+                              JSPROP_ENUMERATE, 0))
     {
         return false;
     }
@@ -3370,7 +3370,7 @@ DebuggerScript_getAllOffsets(JSContext *cx, unsigned argc, Value *vp)
             RootedId id(cx, INT_TO_JSID(lineno));
 
             bool found;
-            if (!JSObject::hasProperty(cx, result, id, &found))
+            if (!js::HasOwnProperty(cx, result, id, &found))
                 return false;
             if (found && !JSObject::getGeneric(cx, result, result, id, &offsetsv))
                 return false;
@@ -3921,12 +3921,32 @@ DebuggerSource_getElementProperty(JSContext *cx, unsigned argc, Value *vp)
 }
 
 static bool
+DebuggerSource_getIntroductionScript(JSContext *cx, unsigned argc, Value *vp)
+{
+    THIS_DEBUGSOURCE_REFERENT(cx, argc, vp, "(get introductionScript)", args, obj, sourceObject);
+
+    RootedScript script(cx, sourceObject->introductionScript());
+    if (script) {
+        RootedObject scriptDO(cx, Debugger::fromChildJSObject(obj)->wrapScript(cx, script));
+        if (!scriptDO)
+            return false;
+        args.rval().setObject(*scriptDO);
+    } else {
+        args.rval().setUndefined();
+    }
+    return true;
+}
+
+static bool
 DebuggerSource_getIntroductionOffset(JSContext *cx, unsigned argc, Value *vp)
 {
     THIS_DEBUGSOURCE_REFERENT(cx, argc, vp, "(get introductionOffset)", args, obj, sourceObject);
 
+    // Regardless of what's recorded in the ScriptSourceObject and
+    // ScriptSource, only hand out the introduction offset if we also have
+    // the script within which it applies.
     ScriptSource *ss = sourceObject->source();
-    if (ss->hasIntroductionOffset())
+    if (ss->hasIntroductionOffset() && sourceObject->introductionScript())
         args.rval().setInt32(ss->introductionOffset());
     else
         args.rval().setUndefined();
@@ -3936,7 +3956,7 @@ DebuggerSource_getIntroductionOffset(JSContext *cx, unsigned argc, Value *vp)
 static bool
 DebuggerSource_getIntroductionType(JSContext *cx, unsigned argc, Value *vp)
 {
-    THIS_DEBUGSOURCE_REFERENT(cx, argc, vp, "(get introductionOffset)", args, obj, sourceObject);
+    THIS_DEBUGSOURCE_REFERENT(cx, argc, vp, "(get introductionType)", args, obj, sourceObject);
 
     ScriptSource *ss = sourceObject->source();
     if (ss->hasIntroductionType()) {
@@ -3955,6 +3975,7 @@ static const JSPropertySpec DebuggerSource_properties[] = {
     JS_PSG("url", DebuggerSource_getUrl, 0),
     JS_PSG("element", DebuggerSource_getElement, 0),
     JS_PSG("displayURL", DebuggerSource_getDisplayURL, 0),
+    JS_PSG("introductionScript", DebuggerSource_getIntroductionScript, 0),
     JS_PSG("introductionOffset", DebuggerSource_getIntroductionOffset, 0),
     JS_PSG("introductionType", DebuggerSource_getIntroductionType, 0),
     JS_PSG("elementAttributeName", DebuggerSource_getElementProperty, 0),
@@ -4268,7 +4289,7 @@ DebuggerFrame_getArguments(JSContext *cx, unsigned argc, Value *vp)
         RootedValue fargcVal(cx, Int32Value(fargc));
         if (!DefineNativeProperty(cx, argsobj, cx->names().length,
                                   fargcVal, nullptr, nullptr,
-                                  JSPROP_PERMANENT | JSPROP_READONLY, 0, 0))
+                                  JSPROP_PERMANENT | JSPROP_READONLY, 0))
         {
             return false;
         }
@@ -4285,7 +4306,7 @@ DebuggerFrame_getArguments(JSContext *cx, unsigned argc, Value *vp)
             if (!getobj ||
                 !DefineNativeProperty(cx, argsobj, id, UndefinedHandleValue,
                                       JS_DATA_TO_FUNC_PTR(PropertyOp, getobj.get()), nullptr,
-                                      JSPROP_ENUMERATE | JSPROP_SHARED | JSPROP_GETTER, 0, 0))
+                                      JSPROP_ENUMERATE | JSPROP_SHARED | JSPROP_GETTER, 0))
             {
                 return false;
             }
@@ -4452,7 +4473,8 @@ js::EvaluateInEnv(JSContext *cx, Handle<Env*> env, HandleValue thisv, AbstractFr
            .setForEval(true)
            .setNoScriptRval(false)
            .setFileAndLine(filename, lineno)
-           .setCanLazilyParse(false);
+           .setCanLazilyParse(false)
+           .setIntroductionType("debugger eval");
     RootedScript callerScript(cx, frame ? frame.script() : nullptr);
     RootedScript script(cx, frontend::CompileScript(cx, &cx->tempLifoAlloc(), env, callerScript,
                                                     options, chars.get(), length,
@@ -4514,6 +4536,7 @@ DebuggerGenericEval(JSContext *cx, const char *fullMethodName, const Value &code
     }
 
     /* Set options from object if provided. */
+    JSAutoByteString url_bytes;
     char *url = nullptr;
     unsigned lineNumber = 1;
 
@@ -4527,7 +4550,9 @@ DebuggerGenericEval(JSContext *cx, const char *fullMethodName, const Value &code
             RootedString url_str(cx, ToString<CanGC>(cx, v));
             if (!url_str)
                 return false;
-            url = JS_EncodeString(cx, url_str);
+            url = url_bytes.encodeLatin1(cx, url_str);
+            if (!url)
+                return false;
         }
 
         if (!JS_GetProperty(cx, opts, "lineNumber", &v))
@@ -4580,7 +4605,7 @@ DebuggerGenericEval(JSContext *cx, const char *fullMethodName, const Value &code
             id = keys[i];
             MutableHandleValue val = values.handleAt(i);
             if (!cx->compartment()->wrap(cx, val) ||
-                !DefineNativeProperty(cx, env, id, val, nullptr, nullptr, 0, 0, 0))
+                !DefineNativeProperty(cx, env, id, val, nullptr, nullptr, 0, 0))
             {
                 return false;
             }
@@ -4594,8 +4619,6 @@ DebuggerGenericEval(JSContext *cx, const char *fullMethodName, const Value &code
     bool ok = EvaluateInEnv(cx, env, thisv, frame,
                             ConstTwoByteChars(flat->chars(), flat->length()),
                             flat->length(), url ? url : "debugger eval code", lineNumber, &rval);
-    if (url)
-        JS_free(cx, url);
     return dbg->receiveCompletionValue(ac, ok, rval, vp);
 }
 

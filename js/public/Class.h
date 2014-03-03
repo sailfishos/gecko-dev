@@ -76,8 +76,8 @@ class SpecialId
     SpecialId(JSObject &obj)
       : bits_(uintptr_t(&obj) | TYPE_OBJECT)
     {
-        JS_ASSERT(&obj != nullptr);
-        JS_ASSERT((uintptr_t(&obj) & TYPE_MASK) == 0);
+        MOZ_ASSERT(&obj != nullptr);
+        MOZ_ASSERT((uintptr_t(&obj) & TYPE_MASK) == 0);
     }
 
     bool isObject() const {
@@ -85,7 +85,7 @@ class SpecialId
     }
 
     JSObject *toObject() const {
-        JS_ASSERT(isObject());
+        MOZ_ASSERT(isObject());
         return reinterpret_cast<JSObject *>(bits_ & ~TYPE_MASK);
     }
 
@@ -93,7 +93,7 @@ class SpecialId
 
     static SpecialId empty() {
         SpecialId sid(TYPE_OBJECT);
-        JS_ASSERT(sid.isEmpty());
+        MOZ_ASSERT(sid.isEmpty());
         return sid;
     }
 
@@ -105,7 +105,7 @@ class SpecialId
 
     static SpecialId voidId() {
         SpecialId sid(TYPE_VOID);
-        JS_ASSERT(sid.isVoid());
+        MOZ_ASSERT(sid.isVoid());
         return sid;
     }
 
@@ -119,9 +119,9 @@ SPECIALID_TO_JSID(const SpecialId &sid)
 {
     jsid id;
     JSID_BITS(id) = sid.bits_;
-    JS_ASSERT_IF(sid.isObject(), JSID_IS_OBJECT(id) && JSID_TO_OBJECT(id) == sid.toObject());
-    JS_ASSERT_IF(sid.isVoid(), JSID_IS_VOID(id));
-    JS_ASSERT_IF(sid.isEmpty(), JSID_IS_EMPTY(id));
+    MOZ_ASSERT_IF(sid.isObject(), JSID_IS_OBJECT(id) && JSID_TO_OBJECT(id) == sid.toObject());
+    MOZ_ASSERT_IF(sid.isVoid(), JSID_IS_VOID(id));
+    MOZ_ASSERT_IF(sid.isEmpty(), JSID_IS_EMPTY(id));
     return id;
 }
 
@@ -134,12 +134,12 @@ JSID_IS_SPECIAL(jsid id)
 static MOZ_ALWAYS_INLINE SpecialId
 JSID_TO_SPECIALID(jsid id)
 {
-    JS_ASSERT(JSID_IS_SPECIAL(id));
+    MOZ_ASSERT(JSID_IS_SPECIAL(id));
     if (JSID_IS_OBJECT(id))
         return SpecialId(*JSID_TO_OBJECT(id));
     if (JSID_IS_EMPTY(id))
         return SpecialId::empty();
-    JS_ASSERT(JSID_IS_VOID(id));
+    MOZ_ASSERT(JSID_IS_VOID(id));
     return SpecialId::voidId();
 }
 
@@ -388,7 +388,7 @@ typedef JSObject *
 typedef void
 (* FinalizeOp)(FreeOp *fop, JSObject *obj);
 
-#define JS_CLASS_MEMBERS                                                      \
+#define JS_CLASS_MEMBERS(FinalizeOpType)                                      \
     const char          *name;                                                \
     uint32_t            flags;                                                \
                                                                               \
@@ -402,20 +402,11 @@ typedef void
     JSConvertOp         convert;                                              \
                                                                               \
     /* Optional members (may be null). */                                     \
-    FinalizeOp          finalize;                                             \
+    FinalizeOpType      finalize;                                             \
     JSNative            call;                                                 \
     JSHasInstanceOp     hasInstance;                                          \
     JSNative            construct;                                            \
     JSTraceOp           trace
-
-/*
- * The helper struct to measure the size of JS_CLASS_MEMBERS to know how much
- * we have to pad js::Class to match the size of JSClass.
- */
-struct ClassSizeMeasurement
-{
-    JS_CLASS_MEMBERS;
-};
 
 // Callback for the creation of constructor and prototype objects.
 typedef JSObject *(*ClassObjectCreationOp)(JSContext *cx, JSProtoKey key);
@@ -506,26 +497,9 @@ struct ObjectOps
 typedef void (*JSClassInternal)();
 
 struct JSClass {
-    const char          *name;
-    uint32_t            flags;
+    JS_CLASS_MEMBERS(JSFinalizeOp);
 
-    // Mandatory function pointer members.
-    JSPropertyOp        addProperty;
-    JSDeletePropertyOp  delProperty;
-    JSPropertyOp        getProperty;
-    JSStrictPropertyOp  setProperty;
-    JSEnumerateOp       enumerate;
-    JSResolveOp         resolve;
-    JSConvertOp         convert;
-
-    // Optional members (may be null).
-    JSFinalizeOp        finalize;
-    JSNative            call;
-    JSHasInstanceOp     hasInstance;
-    JSNative            construct;
-    JSTraceOp           trace;
-
-    void                *reserved[42];
+    void                *reserved[36];
 };
 
 #define JSCLASS_HAS_PRIVATE             (1<<0)  // objects have private slot
@@ -610,13 +584,10 @@ namespace js {
 
 struct Class
 {
-    JS_CLASS_MEMBERS;
+    JS_CLASS_MEMBERS(FinalizeOp);
     ClassSpec          spec;
     ClassExtension      ext;
     ObjectOps           ops;
-    uint8_t             pad[sizeof(JSClass) - sizeof(ClassSizeMeasurement) -
-                            sizeof(ClassSpec) -
-                            sizeof(ClassExtension) - sizeof(ObjectOps)];
 
     /* Class is not native and its map is not a scope. */
     static const uint32_t NON_NATIVE = JSCLASS_INTERNAL_FLAG2;

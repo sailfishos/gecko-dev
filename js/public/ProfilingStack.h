@@ -51,16 +51,16 @@ class ProfileEntry
     // were marked as volatile as well.
 
     bool js() const volatile {
-        JS_ASSERT_IF(sp == nullptr, script_ != nullptr);
+        MOZ_ASSERT_IF(sp == nullptr, script_ != nullptr);
         return sp == nullptr;
     }
 
-    uint32_t line() const volatile { JS_ASSERT(!js()); return idx; }
-    JSScript *script() const volatile { JS_ASSERT(js()); return script_; }
+    uint32_t line() const volatile { MOZ_ASSERT(!js()); return idx; }
+    JSScript *script() const volatile { MOZ_ASSERT(js()); return script_; }
     void *stackAddress() const volatile { return sp; }
     const char *label() const volatile { return string; }
 
-    void setLine(uint32_t aLine) volatile { JS_ASSERT(!js()); idx = aLine; }
+    void setLine(uint32_t aLine) volatile { MOZ_ASSERT(!js()); idx = aLine; }
     void setLabel(const char *aString) volatile { string = aString; }
     void setStackAddress(void *aSp) volatile { sp = aSp; }
     void setScript(JSScript *aScript) volatile { script_ = aScript; }
@@ -78,6 +78,10 @@ class ProfileEntry
     // a pc into a script's code. To signify a nullptr pc, use a -1 index. This
     // is checked against in pc() and setPC() to set/get the right pc.
     static const int32_t NullPCIndex = -1;
+
+    // This bit is added to the stack address to indicate that copying the
+    // frame label is not necessary when taking a sample of the pseudostack.
+    static const uintptr_t NoCopyBit = 1;
 };
 
 JS_FRIEND_API(void)

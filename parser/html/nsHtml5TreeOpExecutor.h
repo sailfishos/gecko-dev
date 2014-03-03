@@ -6,10 +6,10 @@
 #define nsHtml5TreeOpExecutor_h
 
 #include "nsIAtom.h"
-#include "nsINameSpaceManager.h"
+#include "nsNameSpaceManager.h"
 #include "nsIContent.h"
 #include "nsIDocument.h"
-#include "nsTraceRefcnt.h"
+#include "nsISupportsImpl.h"
 #include "nsHtml5TreeOperation.h"
 #include "nsHtml5SpeculativeLoad.h"
 #include "nsHtml5PendingNotification.h"

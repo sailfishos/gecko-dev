@@ -21,7 +21,6 @@
 #include "nsISupportsImpl.h"            // for Layer::Release, etc
 #include "nsRect.h"                     // for nsIntRect
 #include "nsTArray.h"                   // for nsTArray
-#include "nsTraceRefcnt.h"              // for MOZ_COUNT_CTOR
 #include "nscore.h"                     // for nsAString
 
 class nsIWidget;
@@ -139,8 +138,8 @@ public:
                                  CSSToScreenScale& aZoom,
                                  bool aDrawingCritical);
 
-#ifdef DEBUG
   bool InConstruction() { return mPhase == PHASE_CONSTRUCTION; }
+#ifdef DEBUG
   bool InDrawing() { return mPhase == PHASE_DRAWING; }
   bool InForward() { return mPhase == PHASE_FORWARD; }
 #endif

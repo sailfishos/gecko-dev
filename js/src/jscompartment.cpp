@@ -22,7 +22,6 @@
 #include "jit/JitCompartment.h"
 #endif
 #include "js/RootingAPI.h"
-#include "vm/SelfHosting.h"
 #include "vm/StopIterationObject.h"
 #include "vm/WrapperObject.h"
 
@@ -57,6 +56,7 @@ JSCompartment::JSCompartment(Zone *zone, const JS::CompartmentOptions &options =
     typeReprs(runtime_),
     globalWriteBarriered(false),
     propertyTree(thisForCtor()),
+    selfHostingScriptSource(nullptr),
     gcIncomingGrayPointers(nullptr),
     gcLiveArrayBuffers(nullptr),
     gcWeakMapList(nullptr),
@@ -365,12 +365,10 @@ JSCompartment::wrap(JSContext *cx, MutableHandleObject obj, HandleObject existin
     JS_ASSERT(global);
     JS_ASSERT(objGlobal);
 
-    const JSWrapObjectCallbacks *cb;
+    JS_ASSERT(!cx->runtime()->isSelfHostingGlobal(global) &&
+              !cx->runtime()->isSelfHostingGlobal(objGlobal));
 
-    if (cx->runtime()->isSelfHostingGlobal(global) || cx->runtime()->isSelfHostingGlobal(objGlobal))
-        cb = &SelfHostingWrapObjectCallbacks;
-    else
-        cb = cx->runtime()->wrapObjectCallbacks;
+    const JSWrapObjectCallbacks *cb = cx->runtime()->wrapObjectCallbacks;
 
     if (obj->compartment() == this)
         return WrapForSameCompartment(cx, obj, cb);
@@ -580,6 +578,12 @@ JSCompartment::sweep(FreeOp *fop, bool releaseTypes)
 
         if (global_ && IsObjectAboutToBeFinalized(global_.unsafeGet()))
             global_ = nullptr;
+
+        if (selfHostingScriptSource &&
+            IsObjectAboutToBeFinalized((JSObject **) selfHostingScriptSource.unsafeGet()))
+        {
+            selfHostingScriptSource = nullptr;
+        }
 
 #ifdef JS_ION
         if (jitCompartment_)
@@ -908,7 +912,7 @@ JSCompartment::addSizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf,
                                       size_t *tiArrayTypeTables,
                                       size_t *tiObjectTypeTables,
                                       size_t *compartmentObject,
-                                      size_t *shapesCompartmentTables,
+                                      size_t *compartmentTables,
                                       size_t *crossCompartmentWrappersArg,
                                       size_t *regexpCompartment,
                                       size_t *debuggeesSet,
@@ -917,10 +921,10 @@ JSCompartment::addSizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf,
     *compartmentObject += mallocSizeOf(this);
     types.addSizeOfExcludingThis(mallocSizeOf, tiAllocationSiteTables,
                                  tiArrayTypeTables, tiObjectTypeTables);
-    *shapesCompartmentTables += baseShapes.sizeOfExcludingThis(mallocSizeOf)
-                              + initialShapes.sizeOfExcludingThis(mallocSizeOf)
-                              + newTypeObjects.sizeOfExcludingThis(mallocSizeOf)
-                              + lazyTypeObjects.sizeOfExcludingThis(mallocSizeOf);
+    *compartmentTables += baseShapes.sizeOfExcludingThis(mallocSizeOf)
+                        + initialShapes.sizeOfExcludingThis(mallocSizeOf)
+                        + newTypeObjects.sizeOfExcludingThis(mallocSizeOf)
+                        + lazyTypeObjects.sizeOfExcludingThis(mallocSizeOf);
     *crossCompartmentWrappersArg += crossCompartmentWrappers.sizeOfExcludingThis(mallocSizeOf);
     *regexpCompartment += regExps.sizeOfExcludingThis(mallocSizeOf);
     *debuggeesSet += debuggees.sizeOfExcludingThis(mallocSizeOf);

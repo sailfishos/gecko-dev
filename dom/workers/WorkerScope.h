@@ -12,6 +12,7 @@
 namespace mozilla {
 namespace dom {
 
+class Console;
 class Function;
 
 } // namespace dom
@@ -20,14 +21,13 @@ class Function;
 BEGIN_WORKERS_NAMESPACE
 
 class WorkerPrivate;
-class WorkerConsole;
 class WorkerLocation;
 class WorkerNavigator;
 
 class WorkerGlobalScope : public nsDOMEventTargetHelper,
                           public nsIGlobalObject
 {
-  nsRefPtr<WorkerConsole> mConsole;
+  nsRefPtr<Console> mConsole;
   nsRefPtr<WorkerLocation> mLocation;
   nsRefPtr<WorkerNavigator> mNavigator;
 
@@ -60,8 +60,8 @@ public:
     return nsRefPtr<WorkerGlobalScope>(this).forget();
   }
 
-  WorkerConsole*
-  Console();
+  already_AddRefed<Console>
+  GetConsole();
 
   already_AddRefed<WorkerLocation>
   Location();
@@ -88,7 +88,8 @@ public:
   SetTimeout(JSContext* aCx, Function& aHandler, const int32_t aTimeout,
              const Sequence<JS::Value>& aArguments, ErrorResult& aRv);
   int32_t
-  SetTimeout(const nsAString& aHandler, const int32_t aTimeout,
+  SetTimeout(JSContext* /* unused */, const nsAString& aHandler,
+             const int32_t aTimeout, const Sequence<JS::Value>& /* unused */,
              ErrorResult& aRv);
   void
   ClearTimeout(int32_t aHandle, ErrorResult& aRv);
@@ -97,8 +98,9 @@ public:
               const Optional<int32_t>& aTimeout,
               const Sequence<JS::Value>& aArguments, ErrorResult& aRv);
   int32_t
-  SetInterval(const nsAString& aHandler, const Optional<int32_t>& aTimeout,
-              ErrorResult& aRv);
+  SetInterval(JSContext* /* unused */, const nsAString& aHandler,
+              const Optional<int32_t>& aTimeout,
+              const Sequence<JS::Value>& /* unused */, ErrorResult& aRv);
   void
   ClearInterval(int32_t aHandle, ErrorResult& aRv);
 

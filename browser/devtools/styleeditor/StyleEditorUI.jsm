@@ -16,7 +16,7 @@ Cu.import("resource://gre/modules/PluralForm.jsm");
 Cu.import("resource://gre/modules/NetUtil.jsm");
 Cu.import("resource://gre/modules/osfile.jsm");
 let promise = Cu.import("resource://gre/modules/commonjs/sdk/core/promise.js").Promise;
-Cu.import("resource:///modules/devtools/shared/event-emitter.js");
+Cu.import("resource://gre/modules/devtools/event-emitter.js");
 Cu.import("resource:///modules/devtools/gDevTools.jsm");
 Cu.import("resource:///modules/devtools/StyleEditorUtil.jsm");
 Cu.import("resource:///modules/devtools/SplitView.jsm");
@@ -613,6 +613,9 @@ StyleEditorUI.prototype = {
 
     let label = summary.querySelector(".stylesheet-name > label");
     label.setAttribute("value", editor.friendlyName);
+    if (editor.styleSheet.href) {
+      label.setAttribute("tooltiptext", editor.styleSheet.href);
+    }
 
     let linkedCSSFile = "";
     if (editor.linkedCSSFile) {

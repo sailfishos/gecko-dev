@@ -14,14 +14,14 @@
 #include "nsIDocument.h"
 #include "nsINode.h"
 #include "nsPIDOMWindow.h"
-#include "nsDOMTouchEvent.h"
 #include "GeckoProfiler.h"
 #include "GeneratedEvents.h"
 #include "mozilla/ContentEvents.h"
 #include "mozilla/dom/EventTarget.h"
+#include "mozilla/dom/TouchEvent.h"
+#include "mozilla/InternalMutationEvent.h"
 #include "mozilla/MiscEvents.h"
 #include "mozilla/MouseEvents.h"
-#include "mozilla/MutationEvent.h"
 #include "mozilla/TextEvents.h"
 #include "mozilla/TouchEvents.h"
 #include "mozilla/unused.h"
@@ -818,7 +818,7 @@ nsEventDispatcher::CreateEvent(mozilla::dom::EventTarget* aOwner,
   if (aEventType.LowerCaseEqualsLiteral("closeevent"))
     return NS_NewDOMCloseEvent(aDOMEvent, aOwner, aPresContext, nullptr);
   if (aEventType.LowerCaseEqualsLiteral("touchevent") &&
-      nsDOMTouchEvent::PrefEnabled())
+      TouchEvent::PrefEnabled())
     return NS_NewDOMTouchEvent(aDOMEvent, aOwner, aPresContext, nullptr);
   if (aEventType.LowerCaseEqualsLiteral("hashchangeevent"))
     return NS_NewDOMHashChangeEvent(aDOMEvent, aOwner, aPresContext, nullptr);

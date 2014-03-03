@@ -60,6 +60,7 @@ function test() {
   registerCleanupFunction(function() {
     clearAllPluginPermissions();
     Services.prefs.clearUserPref("extensions.blocklist.suppressUI");
+    Services.prefs.clearUserPref("plugins.hideMissingPluginsNotification");
   });
   Services.prefs.setBoolPref("extensions.blocklist.suppressUI", true);
 
@@ -70,7 +71,7 @@ function test() {
   gBrowser.selectedTab = newTab;
   gTestBrowser = gBrowser.selectedBrowser;
   gTestBrowser.addEventListener("load", pageLoad, true);
-  prepareTest(runAfterPluginBindingAttached(test1), gTestRoot + "plugin_unknown.html");
+  prepareTest(runAfterPluginBindingAttached(test1a), gTestRoot + "plugin_unknown.html");
 }
 
 function finishTest() {
@@ -109,19 +110,29 @@ function runAfterPluginBindingAttached(func) {
 }
 
 // Tests a page with an unknown plugin in it.
-function test1() {
-  ok(PopupNotifications.getNotification("plugins-not-found", gTestBrowser), "Test 1, Should have displayed the missing plugin notification");
-  ok(gTestBrowser.missingPlugins, "Test 1, Should be a missing plugin list");
-  ok(gTestBrowser.missingPlugins.has("application/x-unknown"), "Test 1, Should know about application/x-unknown");
-  ok(!gTestBrowser.missingPlugins.has("application/x-test"), "Test 1, Should not know about application/x-test");
+function test1a() {
+  ok(PopupNotifications.getNotification("plugins-not-found", gTestBrowser), "Test 1a, Should have displayed the missing plugin notification");
+  ok(gTestBrowser.missingPlugins, "Test 1a, Should be a missing plugin list");
+  ok(gTestBrowser.missingPlugins.has("application/x-unknown"), "Test 1a, Should know about application/x-unknown");
+  ok(!gTestBrowser.missingPlugins.has("application/x-test"), "Test 1a, Should not know about application/x-test");
 
   var pluginNode = gTestBrowser.contentDocument.getElementById("unknown");
-  ok(pluginNode, "Test 1, Found plugin in page");
+  ok(pluginNode, "Test 1a, Found plugin in page");
   var objLoadingContent = pluginNode.QueryInterface(Ci.nsIObjectLoadingContent);
-  is(objLoadingContent.pluginFallbackType, Ci.nsIObjectLoadingContent.PLUGIN_UNSUPPORTED, "Test 1, plugin fallback type should be PLUGIN_UNSUPPORTED");
+  is(objLoadingContent.pluginFallbackType, Ci.nsIObjectLoadingContent.PLUGIN_UNSUPPORTED, "Test 1a, plugin fallback type should be PLUGIN_UNSUPPORTED");
+
+  Services.prefs.setBoolPref("plugins.hideMissingPluginsNotification", true);
+  prepareTest(runAfterPluginBindingAttached(test1b), gTestRoot + "plugin_unknown.html");
+}
+
+
+function test1b() {
+  ok(!PopupNotifications.getNotification("plugins-not-found", gTestBrowser), "Test 1b, Should not have displayed the missing plugin notification");
+  ok(!gTestBrowser.missingPlugins, "Test 1b, Should not be a missing plugin list");
+  Services.prefs.clearUserPref("plugins.hideMissingPluginsNotification");
 
   var plugin = getTestPlugin();
-  ok(plugin, "Should have a test plugin");
+  ok(plugin, "Test 1b, Should have a test plugin");
   plugin.enabledState = Ci.nsIPluginTag.STATE_ENABLED;
   prepareTest(runAfterPluginBindingAttached(test2), gTestRoot + "plugin_test.html");
 }
@@ -179,7 +190,7 @@ function test5() {
   ok(notification.dismissed, "Test 5: The plugin notification should be dismissed by default");
 
   notification.reshow();
-  is(notification.options.centerActions.size, 1, "Test 5: Only the blocked plugin should be present in the notification");
+  is(notification.options.pluginData.size, 1, "Test 5: Only the blocked plugin should be present in the notification");
   ok(PopupNotifications.panel.firstChild._buttonContainer.hidden, "Part 5: The blocked plugins notification should not have any buttons visible.");
 
   ok(!gTestBrowser.missingPlugins, "Test 5, Should not be a missing plugin list");
@@ -604,10 +615,10 @@ function test21a() {
 
   // we have to actually show the panel to get the bindings to instantiate
   notification.reshow();
-  is(notification.options.centerActions.size, 2, "Test 21a, Should have two types of plugin in the notification");
+  is(notification.options.pluginData.size, 2, "Test 21a, Should have two types of plugin in the notification");
 
   var centerAction = null;
-  for (var action of notification.options.centerActions.values()) {
+  for (var action of notification.options.pluginData.values()) {
     if (action.pluginName == "Test") {
       centerAction = action;
       break;
@@ -641,7 +652,7 @@ function test21c() {
   ok(notification, "Test 21c, Should have a click-to-play notification");
 
   notification.reshow();
-  ok(notification.options.centerActions.size == 2, "Test 21c, Should have one type of plugin in the notification");
+  ok(notification.options.pluginData.size == 2, "Test 21c, Should have one type of plugin in the notification");
 
   var doc = gTestBrowser.contentDocument;
   var plugin = doc.getElementById("test");
@@ -662,7 +673,7 @@ function test21c() {
   }
 
   var centerAction = null;
-  for (var action of notification.options.centerActions.values()) {
+  for (var action of notification.options.pluginData.values()) {
     if (action.pluginName == "Second Test") {
       centerAction = action;
       break;

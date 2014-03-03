@@ -88,6 +88,7 @@ EXPORTS.js += [
     '../public/Utility.h',
     '../public/Value.h',
     '../public/Vector.h',
+    '../public/WeakMapPtr.h',
 ]
 
 UNIFIED_SOURCES += [
@@ -155,6 +156,7 @@ UNIFIED_SOURCES += [
     'perf/jsperf.cpp',
     'prmjtime.cpp',
     'vm/ArgumentsObject.cpp',
+    'vm/ArrayBufferObject.cpp',
     'vm/CallNonGenericMethod.cpp',
     'vm/CharacterEncoding.cpp',
     'vm/Compression.cpp',
@@ -179,6 +181,7 @@ UNIFIED_SOURCES += [
     'vm/ScopeObject.cpp',
     'vm/SelfHosting.cpp',
     'vm/Shape.cpp',
+    'vm/SharedArrayObject.cpp',
     'vm/SPSProfiler.cpp',
     'vm/Stack.cpp',
     'vm/String.cpp',
@@ -188,6 +191,7 @@ UNIFIED_SOURCES += [
     'vm/TypedArrayObject.cpp',
     'vm/Unicode.cpp',
     'vm/Value.cpp',
+    'vm/WeakMapPtr.cpp',
     'vm/Xdr.cpp',
     'yarr/PageBlock.cpp',
     'yarr/YarrCanonicalizeUCS2.cpp',
@@ -343,6 +347,8 @@ if CONFIG['OS_ARCH'] == 'WINNT':
         'assembler/jit/ExecutableAllocatorWin.cpp',
         'yarr/OSAllocatorWin.cpp',
     ]
+    # _CRT_RAND_S must be #defined before #including stdlib.h to get rand_s()
+    DEFINES['_CRT_RAND_S'] = True
 else:
     SOURCES += [
         'assembler/jit/ExecutableAllocatorPosix.cpp',
@@ -422,6 +428,7 @@ if CONFIG['MOZ_ETW']:
 if CONFIG['NIGHTLY_BUILD']:
     DEFINES['ENABLE_PARALLEL_JS'] = True
     DEFINES['ENABLE_BINARYDATA'] = True
+    DEFINES['ENABLE_SHARED_ARRAY_BUFFER'] = True
 
 DEFINES['EXPORT_JS_API'] = True
 

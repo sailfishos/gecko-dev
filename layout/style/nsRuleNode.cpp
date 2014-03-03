@@ -151,6 +151,7 @@ nsRuleNode::EnsureBlockDisplay(uint8_t& display,
   case NS_STYLE_DISPLAY_TABLE :
   case NS_STYLE_DISPLAY_BLOCK :
   case NS_STYLE_DISPLAY_FLEX :
+  case NS_STYLE_DISPLAY_GRID :
     // do not muck with these at all - already blocks
     // This is equivalent to nsStyleDisplay::IsBlockOutside.  (XXX Maybe we
     // should just call that?)
@@ -166,6 +167,11 @@ nsRuleNode::EnsureBlockDisplay(uint8_t& display,
   case NS_STYLE_DISPLAY_INLINE_FLEX:
     // make inline flex containers into flex containers
     display = NS_STYLE_DISPLAY_FLEX;
+    break;
+
+  case NS_STYLE_DISPLAY_INLINE_GRID:
+    // make inline grid containers into grid containers
+    display = NS_STYLE_DISPLAY_GRID;
     break;
 
   default :
@@ -5107,7 +5113,7 @@ nsRuleNode::ComputeDisplayData(void* aStartStruct,
                animIterationCount.unit == eCSSUnit_Unset) {
       animation->SetIterationCount(1.0f);
     } else if (animIterationCount.list) {
-      switch(animIterationCount.list->mValue.GetUnit()) {
+      switch (animIterationCount.list->mValue.GetUnit()) {
         case eCSSUnit_Enumerated:
           NS_ABORT_IF_FALSE(animIterationCount.list->mValue.GetIntValue() ==
                               NS_STYLE_ANIMATION_ITERATION_COUNT_INFINITE,
@@ -5304,6 +5310,12 @@ nsRuleNode::ComputeDisplayData(void* aStartStruct,
       display->mOverflowY = NS_STYLE_OVERFLOW_AUTO;
   }
 
+  SetDiscrete(*aRuleData->ValueForOverflowClipBox(), display->mOverflowClipBox,
+              canStoreInRuleTree,
+              SETDSC_ENUMERATED | SETDSC_UNSET_INITIAL,
+              parentDisplay->mOverflowClipBox,
+              NS_STYLE_OVERFLOW_CLIP_BOX_PADDING_BOX, 0, 0, 0, 0);
+
   SetDiscrete(*aRuleData->ValueForResize(), display->mResize, canStoreInRuleTree,
               SETDSC_ENUMERATED | SETDSC_UNSET_INITIAL,
               parentDisplay->mResize,
@@ -5477,6 +5489,8 @@ nsRuleNode::ComputeDisplayData(void* aStartStruct,
       if (item->mValue.UnitHasStringValue()) {
         nsAutoString buffer;
         item->mValue.GetStringValue(buffer);
+        display->mWillChange.AppendElement(buffer);
+
         if (buffer.EqualsLiteral("transform")) {
           display->mWillChangeBitField |= NS_STYLE_WILL_CHANGE_TRANSFORM;
         }
@@ -5486,7 +5500,15 @@ nsRuleNode::ComputeDisplayData(void* aStartStruct,
         if (buffer.EqualsLiteral("scroll-position")) {
           display->mWillChangeBitField |= NS_STYLE_WILL_CHANGE_SCROLL;
         }
-        display->mWillChange.AppendElement(buffer);
+
+        nsCSSProperty prop =
+          nsCSSProps::LookupProperty(buffer, nsCSSProps::eEnabled);
+        if (prop != eCSSProperty_UNKNOWN &&
+            nsCSSProps::PropHasFlags(prop,
+                                     CSS_PROPERTY_CREATES_STACKING_CONTEXT))
+        {
+          display->mWillChangeBitField |= NS_STYLE_WILL_CHANGE_STACKING_CONTEXT;
+        }
       }
     }
     break;
@@ -5575,7 +5597,7 @@ nsRuleNode::ComputeDisplayData(void* aStartStruct,
 
   SetCoord(*aRuleData->ValueForPerspective(), 
            display->mChildPerspective, parentDisplay->mChildPerspective,
-           SETCOORD_LAH | SETCOORD_INITIAL_ZERO | SETCOORD_NONE |
+           SETCOORD_LAH | SETCOORD_INITIAL_NONE | SETCOORD_NONE |
              SETCOORD_UNSET_INITIAL,
            aContext, mPresContext, canStoreInRuleTree);
 
@@ -8359,7 +8381,7 @@ nsRuleNode::ComputeSVGResetData(void* aStartStruct,
     case eCSSUnit_ListDep: {
       svgReset->mFilters.Clear();
       const nsCSSValueList* cur = filterValue->GetListValue();
-      while(cur) {
+      while (cur) {
         nsStyleFilter styleFilter;
         if (!SetStyleFilterToCSSValue(&styleFilter, cur->mValue, aContext,
                                       mPresContext, canStoreInRuleTree)) {

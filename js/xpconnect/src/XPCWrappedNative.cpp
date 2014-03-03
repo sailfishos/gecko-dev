@@ -378,10 +378,16 @@ XPCWrappedNative::GetNewOrUsed(xpcObjectHelper& helper,
         if (parent != plannedParent) {
             XPCWrappedNativeScope* betterScope = GetObjectScope(parent);
             if (MOZ_UNLIKELY(!betterScope)) {
-                printf("Uh oh, hit an object without a scope! Crashing shortly.\n");
-                printf("Object class: %s\n", js::GetObjectClass(parent)->name);
-                printf("Global class: %s\n", js::GetObjectClass(js::GetGlobalForObjectCrossCompartment(parent))->name);
-                printf("IsMainThread: %u\n", (uint32_t) NS_IsMainThread());
+                printf_stderr("Uh oh, hit an object without a scope! Crashing shortly.\n");
+                printf_stderr("IsMainThread: %u\n", (uint32_t) NS_IsMainThread());
+                char* className = nullptr;
+                sciWrapper.GetCallback()->GetClassName(&className);
+                printf_stderr("SH Class Name: %s\n", className);
+                nsMemory::Free(className);
+                printf_stderr("plannedParent object class: %s\n", js::GetObjectClass(plannedParent)->name);
+                printf_stderr("plannedParent Global class: %s\n", js::GetObjectClass(js::GetGlobalForObjectCrossCompartment(plannedParent))->name);
+                printf_stderr("parent Object class: %s\n", js::GetObjectClass(parent)->name);
+                printf_stderr("parent Global class: %s\n", js::GetObjectClass(js::GetGlobalForObjectCrossCompartment(parent))->name);
                 MOZ_CRASH();
             }
             if (betterScope != Scope)
@@ -853,10 +859,6 @@ XPCWrappedNative::FinishInit()
 {
     AutoJSContext cx;
 
-    // For all WNs, we want to make sure that the expando chain slot starts out
-    // as null.
-    JS_SetReservedSlot(mFlatJSObject, WN_XRAYEXPANDOCHAIN_SLOT, JSVAL_NULL);
-
     // This reference will be released when mFlatJSObject is finalized.
     // Since this reference will push the refcount to 2 it will also root
     // mFlatJSObject;
@@ -1180,7 +1182,6 @@ XPCWrappedNative::ReparentWrapperIfFound(XPCWrappedNativeScope* aOldScope,
 
             // Expandos from other compartments are attached to the target JS object.
             // Copy them over, and let the old ones die a natural death.
-            SetWNExpandoChain(newobj, nullptr);
             if (!XrayUtils::CloneExpandoChain(cx, newobj, flat))
                 return NS_ERROR_FAILURE;
 

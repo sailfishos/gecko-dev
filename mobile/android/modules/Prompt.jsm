@@ -12,7 +12,7 @@ Components.utils.import("resource://gre/modules/Messaging.jsm");
 this.EXPORTED_SYMBOLS = ["Prompt"];
 
 function log(msg) {
-  //Services.console.logStringMessage(msg);
+  Services.console.logStringMessage(msg);
 }
 
 function Prompt(aOptions) {
@@ -179,12 +179,11 @@ Prompt.prototype = {
       if (item.disabled)
         obj.disabled = true;
 
-      if (item.selected || hasSelected || this.msg.multiple) {
-        if (!this.msg.selected) {
-          this.msg.selected = new Array(this.msg.listitems.length);
-          hasSelected = true;
+      if (item.selected) {
+        if (!this.msg.choiceMode) {
+          this.msg.choiceMode = "single";
         }
-        this.msg.selected[this.msg.listitems.length] = item.selected;
+        obj.selected = item.selected;
       }
 
       if (item.header)
@@ -207,7 +206,7 @@ Prompt.prototype = {
   },
 
   setMultiChoiceItems: function(aItems) {
-    this.msg.multiple = true;
+    this.msg.choiceMode = "multiple";
     return this._setListItems(aItems);
   },
 

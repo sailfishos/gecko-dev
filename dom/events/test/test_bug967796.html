@@ -134,6 +134,25 @@ function runTests() {
   sendPointerEvent("pointermove", outside);
   is(pointerleavecount, 7, "Unexpected pointerleave event count!");
 
+  // pointerdown must produce pointerenter event
+  expectedRelatedEnter = outside;
+  expectedRelatedLeave = iframe;
+  // Move pointer inside the iframe.
+  synthesizePointer(iframe.contentDocument.body, r.width / 2, r.height / 4, {type: "pointerdown"},
+                    iframe.contentWindow);
+  synthesizePointer(iframe.contentDocument.body, r.width / 2, r.height - (r.height / 4), {type: "pointerdown"},
+                    iframe.contentWindow);
+  is(pointerentercount, 10, "Unexpected pointerenter event count!");
+
+  // pointerdown + pointermove must produce single pointerenter event
+  expectedRelatedEnter = outside;
+  expectedRelatedLeave = iframe;
+  synthesizePointer(iframe.contentDocument.body, r.width / 2, r.height / 4, {type: "pointerdown"},
+                    iframe.contentWindow);
+  synthesizePointer(iframe.contentDocument.body, r.width / 2 + 1, r.height / 4 + 1, {type: "pointermove"},
+                    iframe.contentWindow);
+  is(pointerentercount, 11, "Unexpected pointerenter event count!");
+
   SpecialPowers.clearUserPref("dom.w3c_pointer_events.enabled");      // Disable Pointer Events
 
   SimpleTest.finish();
@@ -147,7 +166,7 @@ function penter(evt) {
     is(evt.target.id, t, "Wrong event target!");
   }
   is(evt.bubbles, false, evt.type + " should not bubble!");
-  is(evt.cancelable, true, evt.type + " is cancelable!");
+  is(evt.cancelable, false, evt.type + " is cancelable!");
   is(evt.target, evt.currentTarget, "Wrong event target!");
   ok(!evt.relatedTarget || evt.target.ownerDocument == evt.relatedTarget.ownerDocument,
      "Leaking nodes to another document?");
@@ -164,7 +183,7 @@ function pleave(evt) {
     is(evt.target.id, t, "Wrong event target!");
   }
   is(evt.bubbles, false, evt.type + " should not bubble!");
-  is(evt.cancelable, true, evt.type + " is cancelable!");
+  is(evt.cancelable, false, evt.type + " is cancelable!");
   is(evt.target, evt.currentTarget, "Wrong event target!");
   ok(!evt.relatedTarget || evt.target.ownerDocument == evt.relatedTarget.ownerDocument,
      "Leaking nodes to another document?");

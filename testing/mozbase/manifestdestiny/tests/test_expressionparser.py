@@ -64,6 +64,7 @@ class ExpressionParserTest(unittest.TestCase):
         self.assertTrue(parse("true && (true || false)"))
         self.assertTrue(parse("(true && false) || (true && (true || false))"))
 
+
     def test_comments(self):
         # comments in expressions work accidentally, via an implementation
         # detail - the '#' character doesn't match any of the regular
@@ -76,6 +77,19 @@ class ExpressionParserTest(unittest.TestCase):
         self.assertTrue(parse("false != true # it doesnt"))
         self.assertTrue(parse('"string with #" == "string with #" # really, it does'))
         self.assertTrue(parse('"string with #" != "string with # but not the same" # no match!'))
+
+    def test_not(self):
+        """
+        Test the ! operator.
+        """
+        self.assertTrue(parse("!false"))
+        self.assertTrue(parse("!(false)"))
+        self.assertFalse(parse("!true"))
+        self.assertFalse(parse("!(true)"))
+        self.assertTrue(parse("!true || true)"))
+        self.assertTrue(parse("true || !true)"))
+        self.assertFalse(parse("!true && true"))
+        self.assertFalse(parse("true && !true"))
 
 if __name__ == '__main__':
     unittest.main()

@@ -785,6 +785,15 @@ toolbarbutton[sdk-button="true"][cui-areatype="toolbar"] > .toolbarbutton-icon {
 #home-button.bookmark-item {
   list-style-image: url("chrome://browser/skin/Toolbar.png");
 }
+
+%ifndef WINDOWS_AERO
+@media (-moz-windows-theme: luna-silver) {
+  #home-button.bookmark-item {
+    list-style-image: url("chrome://browser/skin/Toolbar-lunaSilver.png");
+  }
+}
+%endif
+
 #home-button.bookmark-item:-moz-lwtheme-brighttext {
   list-style-image: url("chrome://browser/skin/Toolbar-inverted.png");
 }
@@ -973,7 +982,6 @@ html|*.urlbar-input:-moz-lwtheme::-moz-placeholder,
 
 .urlbar-input-box {
   -moz-margin-start: 0;
-  min-width: 4em;
 }
 
 #urlbar-icons {
@@ -1974,6 +1982,11 @@ toolbarbutton.bookmark-item[dragover="true"][open="true"] {
   list-style-image: url(chrome://browser/skin/webRTC-shareDevice-64.png);
 }
 
+.popup-notification-icon[popupid="webRTC-sharingMicrophone"],
+.popup-notification-icon[popupid="webRTC-shareMicrophone"] {
+  list-style-image: url(chrome://browser/skin/webRTC-shareMicrophone-64.png);
+}
+
 .popup-notification-icon[popupid="pointerLock"] {
   list-style-image: url(chrome://browser/skin/pointerLock-64.png);
 }
@@ -2103,6 +2116,16 @@ toolbarbutton.bookmark-item[dragover="true"][open="true"] {
 .webRTC-sharingDevices-notification-icon,
 #webRTC-sharingDevices-notification-icon {
   list-style-image: url(chrome://browser/skin/webRTC-sharingDevice-16.png);
+}
+
+.webRTC-shareMicrophone-notification-icon,
+#webRTC-shareMicrophone-notification-icon {
+  list-style-image: url(chrome://browser/skin/webRTC-shareMicrophone-16.png);
+}
+
+.webRTC-sharingMicrophone-notification-icon,
+#webRTC-sharingMicrophone-notification-icon {
+  list-style-image: url(chrome://browser/skin/webRTC-sharingMicrophone-16.png);
 }
 
 .web-notifications-notification-icon,
@@ -2385,8 +2408,7 @@ toolbarpaletteitem[place="palette"] > #switch-to-metro-button {
 #servicesInstall-notification-icon {
   list-style-image: url(chrome://browser/skin/social/services-16.png);
 }
-#social-undoactivation-button,
-#servicesInstall-learnmore-link {
+#social-undoactivation-button {
   -moz-margin-start: 0; /* override default label margin to match description margin */
 }
 
@@ -2493,6 +2515,16 @@ chatbox {
 
 %include ../shared/customizableui/customizeMode.inc.css
 
+/**
+ * This next rule is a hack to disable subpixel anti-aliasing on all
+ * labels during the customize mode transition. Subpixel anti-aliasing
+ * on Windows with Direct2D layers acceleration is particularly slow to
+ * paint, so this hack is how we sidestep that performance bottleneck.
+ */
+#main-window:-moz-any([customize-entering],[customize-exiting]) label {
+  transform: perspective(0.01px);
+}
+
 #main-window[customize-entered] {
   background-image: url("chrome://browser/skin/customizableui/customizeMode-gridTexture.png");
   background-attachment: fixed;
@@ -2504,16 +2536,9 @@ chatbox {
   background-clip: padding-box;
 }
 
-#main-window[customizing] #navigator-toolbox::after {
-  margin-left: 2em;
-  margin-right: 2em;
-}
-
 /* End customization mode */
 
-#main-window[privatebrowsingmode=temporary] #TabsToolbar::after {
-  content: "";
-  display: -moz-box;
+#main-window[privatebrowsingmode=temporary] #private-browsing-indicator {
   width: 40px;
   background: url("chrome://browser/skin/privatebrowsing-indicator.png") no-repeat center center;
 }

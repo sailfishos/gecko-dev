@@ -248,28 +248,16 @@ AddressOf(AsmJSImmKind kind, ExclusiveContext *cx)
         return RedirectCall(FuncCast(NumberMod), Args_Double_DoubleDouble);
       case AsmJSImm_SinD:
         return RedirectCall(FuncCast<double (double)>(sin), Args_Double_Double);
-      case AsmJSImm_SinF:
-        return RedirectCall(FuncCast<float (float)>(sinf), Args_Float32_Float32);
       case AsmJSImm_CosD:
         return RedirectCall(FuncCast<double (double)>(cos), Args_Double_Double);
-      case AsmJSImm_CosF:
-        return RedirectCall(FuncCast<float (float)>(cosf), Args_Float32_Float32);
       case AsmJSImm_TanD:
         return RedirectCall(FuncCast<double (double)>(tan), Args_Double_Double);
-      case AsmJSImm_TanF:
-        return RedirectCall(FuncCast<float (float)>(tanf), Args_Float32_Float32);
       case AsmJSImm_ASinD:
         return RedirectCall(FuncCast<double (double)>(asin), Args_Double_Double);
-      case AsmJSImm_ASinF:
-        return RedirectCall(FuncCast<float (float)>(asinf), Args_Float32_Float32);
       case AsmJSImm_ACosD:
         return RedirectCall(FuncCast<double (double)>(acos), Args_Double_Double);
-      case AsmJSImm_ACosF:
-        return RedirectCall(FuncCast<float (float)>(acosf), Args_Float32_Float32);
       case AsmJSImm_ATanD:
         return RedirectCall(FuncCast<double (double)>(atan), Args_Double_Double);
-      case AsmJSImm_ATanF:
-        return RedirectCall(FuncCast<float (float)>(atanf), Args_Float32_Float32);
       case AsmJSImm_CeilD:
         return RedirectCall(FuncCast<double (double)>(ceil), Args_Double_Double);
       case AsmJSImm_CeilF:
@@ -280,12 +268,8 @@ AddressOf(AsmJSImmKind kind, ExclusiveContext *cx)
         return RedirectCall(FuncCast<float (float)>(floorf), Args_Float32_Float32);
       case AsmJSImm_ExpD:
         return RedirectCall(FuncCast<double (double)>(exp), Args_Double_Double);
-      case AsmJSImm_ExpF:
-        return RedirectCall(FuncCast<float (float)>(expf), Args_Float32_Float32);
       case AsmJSImm_LogD:
         return RedirectCall(FuncCast<double (double)>(log), Args_Double_Double);
-      case AsmJSImm_LogF:
-        return RedirectCall(FuncCast<float (float)>(logf), Args_Float32_Float32);
       case AsmJSImm_PowD:
         return RedirectCall(FuncCast(ecmaPow), Args_Double_DoubleDouble);
       case AsmJSImm_ATan2D:
@@ -833,9 +817,40 @@ AsmJSModule::deserialize(ExclusiveContext *cx, const uint8_t *cursor)
     return cursor;
 }
 
-bool
-AsmJSModule::clone(ExclusiveContext *cx, ScopedJSDeletePtr<AsmJSModule> *moduleOut) const
+// When a module is cloned, we memcpy its executable code. If, right before or
+// during the clone, another thread calls AsmJSModule::protectCode() then the
+// executable code will become inaccessible. In theory, we could take away only
+// PROT_EXEC, but this seems to break emulators.
+class AutoUnprotectCodeForClone
 {
+    JSRuntime *rt_;
+    JSRuntime::AutoLockForOperationCallback lock_;
+    const AsmJSModule &module_;
+    const bool protectedBefore_;
+
+  public:
+    AutoUnprotectCodeForClone(JSContext *cx, const AsmJSModule &module)
+      : rt_(cx->runtime()),
+        lock_(rt_),
+        module_(module),
+        protectedBefore_(module_.codeIsProtected(rt_))
+    {
+        if (protectedBefore_)
+            module_.unprotectCode(rt_);
+    }
+
+    ~AutoUnprotectCodeForClone()
+    {
+        if (protectedBefore_)
+            module_.protectCode(rt_);
+    }
+};
+
+bool
+AsmJSModule::clone(JSContext *cx, ScopedJSDeletePtr<AsmJSModule> *moduleOut) const
+{
+    AutoUnprotectCodeForClone cloneGuard(cx, *this);
+
     *moduleOut = cx->new_<AsmJSModule>(scriptSource_, charsBegin_);
     if (!*moduleOut)
         return false;
@@ -869,6 +884,56 @@ AsmJSModule::clone(ExclusiveContext *cx, ScopedJSDeletePtr<AsmJSModule> *moduleO
 
     out.restoreToInitialState(maybeHeap_, cx);
     return true;
+}
+
+void
+AsmJSModule::protectCode(JSRuntime *rt) const
+{
+    JS_ASSERT(rt->currentThreadOwnsOperationCallbackLock());
+
+    codeIsProtected_ = true;
+
+    if (!pod.functionBytes_)
+        return;
+
+    // Technically, we should be able to only take away the execute permissions,
+    // however this seems to break our emulators which don't always check
+    // execute permissions while executing code.
+#if defined(XP_WIN)
+    DWORD oldProtect;
+    if (!VirtualProtect(codeBase(), functionBytes(), PAGE_NOACCESS, &oldProtect))
+        MOZ_CRASH();
+#else  // assume Unix
+    if (mprotect(codeBase(), functionBytes(), PROT_NONE))
+        MOZ_CRASH();
+#endif
+}
+
+void
+AsmJSModule::unprotectCode(JSRuntime *rt) const
+{
+    JS_ASSERT(rt->currentThreadOwnsOperationCallbackLock());
+
+    codeIsProtected_ = false;
+
+    if (!pod.functionBytes_)
+        return;
+
+#if defined(XP_WIN)
+    DWORD oldProtect;
+    if (!VirtualProtect(codeBase(), functionBytes(), PAGE_EXECUTE_READWRITE, &oldProtect))
+        MOZ_CRASH();
+#else  // assume Unix
+    if (mprotect(codeBase(), functionBytes(), PROT_READ | PROT_WRITE | PROT_EXEC))
+        MOZ_CRASH();
+#endif
+}
+
+bool
+AsmJSModule::codeIsProtected(JSRuntime *rt) const
+{
+    JS_ASSERT(rt->currentThreadOwnsOperationCallbackLock());
+    return codeIsProtected_;
 }
 
 static bool

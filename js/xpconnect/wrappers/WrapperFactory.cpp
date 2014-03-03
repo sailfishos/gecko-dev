@@ -174,7 +174,7 @@ WrapperFactory::PrepareForWrapping(JSContext *cx, HandleObject scope,
         JSProtoKey key = JSProto_Null;
         {
             JSAutoCompartment ac(cx, obj);
-            key = JS_IdentifyClassPrototype(obj);
+            key = IdentifyStandardPrototype(obj);
         }
         if (key != JSProto_Null) {
             RootedObject homeProto(cx);
@@ -374,7 +374,7 @@ WrapperFactory::Rewrap(JSContext *cx, HandleObject existing, HandleObject obj,
                GetProxyHandler(obj) == &XrayWaiver ||
                js::GetObjectClass(obj)->ext.innerObject,
                "wrapped object passed to rewrap");
-    MOZ_ASSERT(JS_GetClass(obj) != &XrayUtils::HolderClass, "trying to wrap a holder");
+    MOZ_ASSERT(!XrayUtils::IsXPCWNHolderClass(JS_GetClass(obj)), "trying to wrap a holder");
     MOZ_ASSERT(!js::IsInnerObject(obj));
     // We sometimes end up here after nsContentUtils has been shut down but before
     // XPConnect has been shut down, so check the context stack the roundabout way.
@@ -459,13 +459,13 @@ WrapperFactory::Rewrap(JSContext *cx, HandleObject existing, HandleObject obj,
         wrapper = SelectWrapper(securityWrapper, wantXrays, xrayType, waiveXrays);
     }
 
-    if (wrapper == &ChromeObjectWrapper::singleton) {
-        // This shouldn't happen, but do a quick check to make some dumb addon
-        // doesn't expose chrome eval or Function().
+    if (!targetSubsumesOrigin) {
+        // Do a belt-and-suspenders check against exposing eval()/Function() to
+        // non-subsuming content.
         JSFunction *fun = JS_GetObjectFunction(obj);
         if (fun) {
             if (JS_IsBuiltinEvalFunction(fun) || JS_IsBuiltinFunctionConstructor(fun)) {
-                JS_ReportError(cx, "Not allowed to access chrome eval or Function from content");
+                JS_ReportError(cx, "Permission denied to expose eval or Function to non-subsuming content");
                 return nullptr;
             }
         }

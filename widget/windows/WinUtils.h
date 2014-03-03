@@ -95,19 +95,6 @@ public:
                           UINT aLastMessage, UINT aOption);
   static bool GetMessage(LPMSG aMsg, HWND aWnd, UINT aFirstMessage,
                          UINT aLastMessage);
-
-  /**
-   * Wait until a message is ready to be processed.
-   * Prefer using this method to directly calling ::WaitMessage since
-   * ::WaitMessage will wait if there is an unread message in the queue.
-   * That can cause freezes until another message enters the queue if the
-   * message is marked read by a call to PeekMessage which the caller is
-   * not aware of (e.g., from a different thread).
-   * Note that this method may cause sync dispatch of sent (as opposed to
-   * posted) messages.
-   */
-  static void WaitForMessage();
-
   /**
    * Gets the value of a string-typed registry value.
    *
@@ -249,6 +236,8 @@ public:
    * mouse message handling.
    */
   static uint16_t GetMouseInputSource();
+
+  static bool GetIsMouseFromTouch(uint32_t aEventType);
 
   /**
    * SHCreateItemFromParsingName() calls native SHCreateItemFromParsingName()

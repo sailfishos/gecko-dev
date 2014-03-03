@@ -12,7 +12,6 @@ Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 
 loader.lazyGetter(this, "NetworkHelper", () => require("devtools/toolkit/webconsole/network-helper"));
 loader.lazyImporter(this, "Services", "resource://gre/modules/Services.jsm");
-loader.lazyImporter(this, "ConsoleAPIStorage", "resource://gre/modules/ConsoleAPIStorage.jsm");
 loader.lazyImporter(this, "NetUtil", "resource://gre/modules/NetUtil.jsm");
 loader.lazyImporter(this, "PrivateBrowsingUtils", "resource://gre/modules/PrivateBrowsingUtils.jsm");
 loader.lazyImporter(this, "LayoutHelpers", "resource://gre/modules/devtools/LayoutHelpers.jsm");
@@ -1043,7 +1042,12 @@ let DebuggerEnvironmentSupport = {
   getProperty: function(aObj, aName)
   {
     // TODO: we should use getVariableDescriptor() here - bug 725815.
-    let result = aObj.getVariable(aName);
+    let result = undefined;
+    try {
+      result = aObj.getVariable(aName);
+    } catch (ex) {
+      // getVariable() throws for invalid identifiers.
+    }
     return result === undefined ? null : { value: result };
   },
 };
@@ -1322,6 +1326,8 @@ ConsoleAPIListener.prototype =
   getCachedMessages: function CAL_getCachedMessages(aIncludePrivate = false)
   {
     let messages = [];
+    let ConsoleAPIStorage = Cc["@mozilla.org/consoleAPI-storage;1"]
+                              .getService(Ci.nsIConsoleAPIStorage);
 
     // if !this.window, we're in a browser console. Retrieve all events
     // for filtering based on privacy.
@@ -1505,6 +1511,40 @@ function JSTermHelpers(aOwner)
   aOwner.sandbox.help = function JSTH_help()
   {
     aOwner.helperResult = { type: "help" };
+  };
+
+  /**
+   * Change the JS evaluation scope.
+   *
+   * @param DOMElement|string|window aWindow
+   *        The window object to use for eval scope. This can be a string that
+   *        is used to perform document.querySelector(), to find the iframe that
+   *        you want to cd() to. A DOMElement can be given as well, the
+   *        .contentWindow property is used. Lastly, you can directly pass
+   *        a window object. If you call cd() with no arguments, the current
+   *        eval scope is cleared back to its default (the top window).
+   */
+  aOwner.sandbox.cd = function JSTH_cd(aWindow)
+  {
+    if (!aWindow) {
+      aOwner.consoleActor.evalWindow = null;
+      aOwner.helperResult = { type: "cd" };
+      return;
+    }
+
+    if (typeof aWindow == "string") {
+      aWindow = aOwner.window.document.querySelector(aWindow);
+    }
+    if (aWindow instanceof Ci.nsIDOMElement && aWindow.contentWindow) {
+      aWindow = aWindow.contentWindow;
+    }
+    if (!(aWindow instanceof Ci.nsIDOMWindow)) {
+      aOwner.helperResult = { type: "error", message: "cdFunctionInvalidArgument" };
+      return;
+    }
+
+    aOwner.consoleActor.evalWindow = aWindow;
+    aOwner.helperResult = { type: "cd" };
   };
 
   /**

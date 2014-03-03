@@ -3,13 +3,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "mozilla/layers/CompositorParent.h"
+#include "nsDOMWindowUtils.h"
+
+#include "mozilla/layers/CompositorChild.h"
 #include "mozilla/layers/LayerTransactionChild.h"
 #include "nsPresContext.h"
 #include "nsDOMClassInfoID.h"
 #include "nsError.h"
 #include "nsIDOMEvent.h"
-#include "nsDOMWindowUtils.h"
 #include "nsQueryContentEventResult.h"
 #include "CompositionStringSynthesizer.h"
 #include "nsGlobalWindow.h"
@@ -64,12 +65,13 @@
 #include "mozilla/layers/ShadowLayers.h"
 
 #include "mozilla/dom/Element.h"
+#include "mozilla/dom/file/FileHandle.h"
+#include "mozilla/dom/FileHandleBinding.h"
 #include "mozilla/dom/IDBFactoryBinding.h"
 #include "mozilla/dom/indexedDB/IndexedDatabaseManager.h"
 #include "mozilla/dom/quota/PersistenceType.h"
 #include "mozilla/dom/quota/QuotaManager.h"
 #include "nsDOMBlobBuilder.h"
-#include "nsIDOMFileHandle.h"
 #include "nsPrintfCString.h"
 #include "nsViewportInfo.h"
 #include "nsIFormControl.h"
@@ -1681,9 +1683,9 @@ nsDOMWindowUtils::SuppressEventHandling(bool aSuppress)
   NS_ENSURE_TRUE(doc, NS_ERROR_FAILURE);
 
   if (aSuppress) {
-    doc->SuppressEventHandling();
+    doc->SuppressEventHandling(nsIDocument::eEvents);
   } else {
-    doc->UnsuppressEventHandlingAndFireEvents(true);
+    doc->UnsuppressEventHandlingAndFireEvents(nsIDocument::eEvents, true);
   }
 
   return NS_OK;
@@ -2548,7 +2550,14 @@ nsDOMWindowUtils::AdvanceTimeAndRefresh(int64_t aMilliseconds)
 
   nsRefreshDriver* driver = GetPresContext()->RefreshDriver();
   driver->AdvanceTimeAndRefresh(aMilliseconds);
-  CompositorParent::SetTimeAndSampleAnimations(driver->MostRecentRefresh(), true);
+
+  nsIWidget* widget = GetWidget();
+  if (widget) {
+    CompositorChild* compositor = widget->GetRemoteRenderer();
+    if (compositor) {
+      compositor->SendSetTestSampleTime(driver->MostRecentRefresh());
+    }
+  }
 
   return NS_OK;
 }
@@ -2560,9 +2569,19 @@ nsDOMWindowUtils::RestoreNormalRefresh()
     return NS_ERROR_DOM_SECURITY_ERR;
   }
 
+  // Kick the compositor out of test mode before the refresh driver, so that
+  // the refresh driver doesn't send an update that gets ignored by the
+  // compositor.
+  nsIWidget* widget = GetWidget();
+  if (widget) {
+    CompositorChild* compositor = widget->GetRemoteRenderer();
+    if (compositor) {
+      compositor->SendLeaveTestMode();
+    }
+  }
+
   nsRefreshDriver* driver = GetPresContext()->RefreshDriver();
   driver->RestoreNormalRefresh();
-  CompositorParent::SetTimeAndSampleAnimations(driver->MostRecentRefresh(), false);
 
   return NS_OK;
 }
@@ -3005,18 +3024,18 @@ nsDOMWindowUtils::GetFileId(JS::Handle<JS::Value> aFile, JSContext* aCx,
   if (!JSVAL_IS_PRIMITIVE(aFile)) {
     JSObject* obj = JSVAL_TO_OBJECT(aFile);
 
+    file::FileHandle* fileHandle;
+    if (NS_SUCCEEDED(UNWRAP_OBJECT(FileHandle, obj, fileHandle))) {
+      *aResult = fileHandle->GetFileId();
+      return NS_OK;
+    }
+
     nsISupports* nativeObj =
       nsContentUtils::XPConnect()->GetNativeOfWrapper(aCx, obj);
 
     nsCOMPtr<nsIDOMBlob> blob = do_QueryInterface(nativeObj);
     if (blob) {
       *aResult = blob->GetFileId();
-      return NS_OK;
-    }
-
-    nsCOMPtr<nsIDOMFileHandle> fileHandle = do_QueryInterface(nativeObj);
-    if (fileHandle) {
-      *aResult = fileHandle->GetFileId();
       return NS_OK;
     }
   }

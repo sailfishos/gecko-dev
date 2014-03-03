@@ -377,6 +377,10 @@ class MacroAssembler : public MacroAssemblerSpecific
         rshiftPtr(Imm32(JSString::LENGTH_SHIFT), dest);
     }
 
+    void loadSliceBounds(Register worker, Register dest) {
+        loadPtr(Address(worker, ThreadPoolWorker::offsetOfSliceBounds()), dest);
+    }
+
     void loadJSContext(const Register &dest) {
         loadPtr(AbsoluteAddress(GetIonContext()->runtime->addressOfJSContext()), dest);
     }
@@ -833,6 +837,12 @@ class MacroAssembler : public MacroAssemblerSpecific
         Push(ImmPtr(nullptr));
     }
 
+    void loadThreadPool(Register pool) {
+        // JitRuntimes are tied to JSRuntimes and there is one ThreadPool per
+        // JSRuntime, so we can hardcode the ThreadPool address here.
+        movePtr(ImmPtr(GetIonContext()->runtime->addressOfThreadPool()), pool);
+    }
+
     void loadForkJoinContext(Register cx, Register scratch);
     void loadContext(Register cxReg, Register scratch, ExecutionMode executionMode);
 
@@ -1192,6 +1202,7 @@ class MacroAssembler : public MacroAssemblerSpecific
 
     enum IntConversionInputKind {
         IntConversion_NumbersOnly,
+        IntConversion_NumbersOrBoolsOnly,
         IntConversion_Any
     };
 

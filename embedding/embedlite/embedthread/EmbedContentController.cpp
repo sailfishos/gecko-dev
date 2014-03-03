@@ -118,20 +118,6 @@ void EmbedContentController::SendAsyncScrollDOMEvent(bool aIsRoot,
   }
 }
 
-void EmbedContentController::ScrollUpdate(const CSSPoint& aPosition, const float aResolution)
-{
-  if (MessageLoop::current() != mUILoop) {
-    // We have to send this message from the "UI thread" (main
-    // thread).
-    mUILoop->PostTask(
-      FROM_HERE,
-      NewRunnableMethod(this, &EmbedContentController::ScrollUpdate,
-                        aPosition, aResolution));
-    return;
-  }
-  GetListener()->ScrollUpdate(gfxPoint(aPosition.x, aPosition.y), aResolution);
-}
-
 void EmbedContentController::AcknowledgeScrollUpdate(const FrameMetrics::ViewID& aScrollId, const uint32_t& aScrollGeneration)
 {
  if (MessageLoop::current() != mUILoop) {

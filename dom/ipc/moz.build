@@ -40,6 +40,7 @@ EXPORTS.mozilla += [
 
 UNIFIED_SOURCES += [
     'AppProcessChecker.cpp',
+    'ColorPickerParent.cpp',
     'ContentChild.cpp',
     'ContentParent.cpp',
     'ContentProcess.cpp',
@@ -68,6 +69,7 @@ IPDL_SOURCES += [
     'PBlob.ipdl',
     'PBlobStream.ipdl',
     'PBrowser.ipdl',
+    'PColorPicker.ipdl',
     'PContent.ipdl',
     'PContentDialog.ipdl',
     'PContentPermission.ipdlh',
@@ -122,4 +124,8 @@ for var in ('MOZ_PERMISSIONS', 'MOZ_CHILD_PERMISSIONS'):
     if CONFIG[var]:
         DEFINES[var] = True
 
+if CONFIG['ENABLE_TESTS']:
+    DEFINES['ENABLE_TESTS'] = 1
+
 JAR_MANIFESTS += ['jar.mn']
+

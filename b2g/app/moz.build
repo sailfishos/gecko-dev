@@ -12,6 +12,10 @@ if not CONFIG['LIBXUL_SDK']:
     SOURCES += [
         'nsBrowserApp.cpp',
     ]
+    if CONFIG['_MSC_VER']:
+        # Always enter a Windows program through wmain, whether or not we're
+        # a console application.
+        WIN32_EXE_LDFLAGS += ['-ENTRY:wmainCRTStartup']
 
 if CONFIG['ENABLE_MARIONETTE']:
     DEFINES['ENABLE_MARIONETTE'] = 1
@@ -35,3 +39,5 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gonk':
     LOCAL_INCLUDES += [
         '/widget/gonk/libdisplay',
     ]
+
+    LDFLAGS += ['-Wl,--export-dynamic']

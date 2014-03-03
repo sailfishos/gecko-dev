@@ -20,13 +20,13 @@
 #include "nsPIDOMWindow.h"
 #include "nsIJSEventListener.h"
 #include "nsIScriptGlobalObject.h"
-#include "nsINameSpaceManager.h"
+#include "nsNameSpaceManager.h"
 #include "nsIContent.h"
 #include "mozilla/MemoryReporting.h"
 #include "nsCOMPtr.h"
 #include "nsError.h"
 #include "nsIDocument.h"
-#include "mozilla/MutationEvent.h"
+#include "mozilla/InternalMutationEvent.h"
 #include "nsIXPConnect.h"
 #include "nsDOMCID.h"
 #include "nsContentUtils.h"
@@ -869,7 +869,8 @@ nsEventListenerManager::CompileEventHandlerInternal(nsListenerStruct *aListenerS
 
     JSAutoCompartment ac(cx, context->GetWindowProxy());
     JS::CompileOptions options(cx);
-    options.setFileAndLine(url.get(), lineNo)
+    options.setIntroductionType("eventHandler")
+           .setFileAndLine(url.get(), lineNo)
            .setVersion(SCRIPTVERSION_DEFAULT);
 
     JS::Rooted<JS::Value> targetVal(cx);

@@ -354,9 +354,9 @@ ExportFunction(JSContext *cx, unsigned argc, jsval *vp)
 static bool
 GetFilenameAndLineNumber(JSContext *cx, nsACString &filename, unsigned &lineno)
 {
-    JS::RootedScript script(cx);
-    if (JS_DescribeScriptedCaller(cx, &script, &lineno)) {
-        if (const char *cfilename = JS_GetScriptFilename(cx, script)) {
+    JS::AutoFilename scriptFilename;
+    if (JS::DescribeScriptedCaller(cx, &scriptFilename, &lineno)) {
+        if (const char *cfilename = scriptFilename.get()) {
             filename.Assign(nsDependentCString(cfilename));
             return true;
         }
@@ -392,8 +392,8 @@ CloneNonReflectorsRead(JSContext *cx, JSStructuredCloneReader *reader, uint32_t 
 
             if (!JS_WrapObject(cx, &reflector))
                 return nullptr;
-            JS_ASSERT(WrapperFactory::IsXrayWrapper(reflector) ||
-                      IsReflector(reflector));
+            MOZ_ASSERT(WrapperFactory::IsXrayWrapper(reflector) ||
+                       IsReflector(reflector));
 
             return reflector;
         }

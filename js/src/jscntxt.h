@@ -276,8 +276,9 @@ struct ThreadSafeContext : ContextFriendFields,
     }
 
     // Accessors for immutable runtime data.
-    JSAtomState &names() { return runtime_->atomState; }
-    StaticStrings &staticStrings() { return runtime_->staticStrings; }
+    JSAtomState &names() { return *runtime_->commonNames; }
+    StaticStrings &staticStrings() { return *runtime_->staticStrings; }
+    AtomSet &permanentAtoms() { return *runtime_->permanentAtoms; }
     const JS::AsmJSCacheOps &asmJSCacheOps() { return runtime_->asmJSCacheOps; }
     PropertyName *emptyString() { return runtime_->emptyString; }
     FreeOp *defaultFreeOp() { return runtime_->defaultFreeOp(); }
@@ -411,6 +412,7 @@ struct JSContext : public js::ExclusiveContext,
     js::PerThreadData &mainThread() const { return runtime()->mainThread; }
 
     friend class js::ExclusiveContext;
+    friend class JS::AutoSaveExceptionState;
 
   private:
     /* Exception state -- the exception member is a GC root by definition. */
@@ -1031,6 +1033,10 @@ bool intrinsic_ShouldForceSequential(JSContext *cx, unsigned argc, Value *vp);
 bool intrinsic_NewParallelArray(JSContext *cx, unsigned argc, Value *vp);
 bool intrinsic_ForkJoinGetSlice(JSContext *cx, unsigned argc, Value *vp);
 bool intrinsic_InParallelSection(JSContext *cx, unsigned argc, Value *vp);
+
+bool intrinsic_ObjectIsTransparentTypedObject(JSContext *cx, unsigned argc, Value *vp);
+bool intrinsic_ObjectIsOpaqueTypedObject(JSContext *cx, unsigned argc, Value *vp);
+bool intrinsic_ObjectIsTypeDescr(JSContext *cx, unsigned argc, Value *vp);
 
 class AutoLockForExclusiveAccess
 {

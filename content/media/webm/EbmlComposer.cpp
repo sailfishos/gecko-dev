@@ -41,7 +41,8 @@ void EbmlComposer::GenerateHeader()
           // Video
           if (mWidth > 0 && mHeight > 0) {
             writeVideoTrack(&ebml, 0x1, 0, "V_VP8",
-                            mWidth, mHeight, mFrameRate);
+                            mWidth, mHeight,
+                            mDisplayWidth, mDisplayHeight, mFrameRate);
           }
           // Audio
           if (mCodecPrivateData.Length() > 0) {
@@ -86,7 +87,7 @@ EbmlComposer::WriteSimpleBlock(EncodedFrame* aFrame)
   EbmlGlobal ebml;
   ebml.offset = 0;
 
-  if (aFrame->GetFrameType() == EncodedFrame::FrameType::I_FRAME && mClusterHeaderIndex > 0) {
+  if (aFrame->GetFrameType() == EncodedFrame::FrameType::VP8_I_FRAME && mClusterHeaderIndex > 0) {
     FinishCluster();
   }
 
@@ -94,21 +95,21 @@ EbmlComposer::WriteSimpleBlock(EncodedFrame* aFrame)
   mClusterBuffs.LastElement().SetLength(aFrame->GetFrameData().Length() + DEFAULT_HEADER_SIZE);
   ebml.buf = mClusterBuffs.LastElement().Elements();
 
-  if (aFrame->GetFrameType() == EncodedFrame::FrameType::I_FRAME) {
+  if (aFrame->GetFrameType() == EncodedFrame::FrameType::VP8_I_FRAME) {
     EbmlLoc ebmlLoc;
     Ebml_StartSubElement(&ebml, &ebmlLoc, Cluster);
     mClusterHeaderIndex = mClusterBuffs.Length() - 1; // current cluster header array index
     mClusterLengthLoc = ebmlLoc.offset;
-    if (aFrame->GetFrameType() != EncodedFrame::FrameType::AUDIO_FRAME) {
+    if (aFrame->GetFrameType() != EncodedFrame::FrameType::VORBIS_AUDIO_FRAME) {
       mClusterTimecode = aFrame->GetTimeStamp() / PR_USEC_PER_MSEC;
     }
     Ebml_SerializeUnsigned(&ebml, Timecode, mClusterTimecode);
   }
 
-  if (aFrame->GetFrameType() != EncodedFrame::FrameType::AUDIO_FRAME) {
+  if (aFrame->GetFrameType() != EncodedFrame::FrameType::VORBIS_AUDIO_FRAME) {
     short timeCode = aFrame->GetTimeStamp() / PR_USEC_PER_MSEC - mClusterTimecode;
     writeSimpleBlock(&ebml, 0x1, timeCode, aFrame->GetFrameType() ==
-                     EncodedFrame::FrameType::I_FRAME,
+                     EncodedFrame::FrameType::VP8_I_FRAME,
                      0, 0, (unsigned char*)aFrame->GetFrameData().Elements(),
                      aFrame->GetFrameData().Length());
   } else {
@@ -123,13 +124,18 @@ EbmlComposer::WriteSimpleBlock(EncodedFrame* aFrame)
 
 void
 EbmlComposer::SetVideoConfig(uint32_t aWidth, uint32_t aHeight,
+                             uint32_t aDisplayWidth, uint32_t aDisplayHeight,
                              float aFrameRate)
 {
   MOZ_ASSERT(aWidth > 0, "Width should > 0");
   MOZ_ASSERT(aHeight > 0, "Height should > 0");
+  MOZ_ASSERT(aDisplayWidth > 0, "DisplayWidth should > 0");
+  MOZ_ASSERT(aDisplayHeight > 0, "DisplayHeight should > 0");
   MOZ_ASSERT(aFrameRate > 0, "FrameRate should > 0");
   mWidth = aWidth;
   mHeight = aHeight;
+  mDisplayWidth = aDisplayWidth;
+  mDisplayHeight = aDisplayHeight;
   mFrameRate = aFrameRate;
 }
 

@@ -30,7 +30,7 @@ class BaselineFrameInspector;
 // Records information about a baseline frame for compilation that is stable
 // when later used off thread.
 BaselineFrameInspector *
-NewBaselineFrameInspector(TempAllocator *temp, BaselineFrame *frame);
+NewBaselineFrameInspector(TempAllocator *temp, BaselineFrame *frame, CompileInfo *info);
 
 class IonBuilder : public MIRGenerator
 {
@@ -442,11 +442,13 @@ class IonBuilder : public MIRGenerator
     MDefinition *loadTypedObjectType(MDefinition *value);
     void loadTypedObjectData(MDefinition *typedObj,
                              MDefinition *offset,
+                             bool canBeNeutered,
                              MDefinition **owner,
                              MDefinition **ownerOffset);
     void loadTypedObjectElements(MDefinition *typedObj,
                                  MDefinition *offset,
                                  int32_t unit,
+                                 bool canBeNeutered,
                                  MDefinition **ownerElements,
                                  MDefinition **ownerScaledOffset);
     MDefinition *typeObjectForElementFromArrayStructType(MDefinition *typedObj);
@@ -455,21 +457,26 @@ class IonBuilder : public MIRGenerator
     bool storeScalarTypedObjectValue(MDefinition *typedObj,
                                      MDefinition *offset,
                                      ScalarTypeDescr::Type type,
+                                     bool canBeNeutered,
                                      MDefinition *value);
     bool checkTypedObjectIndexInBounds(size_t elemSize,
                                        MDefinition *obj,
                                        MDefinition *index,
+                                       TypeDescrSet objTypeDescrs,
                                        MDefinition **indexAsByteOffset,
-                                       TypeDescrSet objTypeDescrs);
+                                       bool *canBeNeutered);
     bool pushDerivedTypedObject(bool *emitted,
                                 MDefinition *obj,
                                 MDefinition *offset,
                                 TypeDescrSet derivedTypeDescrs,
-                                MDefinition *derivedTypeObj);
+                                MDefinition *derivedTypeObj,
+                                bool canBeNeutered);
     bool pushScalarLoadFromTypedObject(bool *emitted,
                                        MDefinition *obj,
                                        MDefinition *offset,
-                                       ScalarTypeDescr::Type type);
+                                       ScalarTypeDescr::Type type,
+                                       bool canBeNeutered);
+    MDefinition *neuterCheck(MDefinition *obj);
 
     // jsop_setelem() helpers.
     bool setElemTryTypedArray(bool *emitted, MDefinition *object,
@@ -484,7 +491,7 @@ class IonBuilder : public MIRGenerator
                              MDefinition *index, MDefinition *value);
     bool setElemTryCache(bool *emitted, MDefinition *object,
                          MDefinition *index, MDefinition *value);
-    bool setElemTryScalarPropOfTypedObject(bool *emitted,
+    bool setElemTryScalarElemOfTypedObject(bool *emitted,
                                            MDefinition *obj,
                                            MDefinition *index,
                                            TypeDescrSet objTypeReprs,
@@ -667,11 +674,18 @@ class IonBuilder : public MIRGenerator
     InliningStatus inlineUnsafeSetReservedSlot(CallInfo &callInfo);
     InliningStatus inlineUnsafeGetReservedSlot(CallInfo &callInfo);
 
+    // ForkJoin intrinsics
+    InliningStatus inlineForkJoinGetSlice(CallInfo &callInfo);
+
+    // TypedObject intrinsics.
+    InliningStatus inlineObjectIsTypeDescr(CallInfo &callInfo);
+
     // Utility intrinsics.
     InliningStatus inlineIsCallable(CallInfo &callInfo);
     InliningStatus inlineHaveSameClass(CallInfo &callInfo);
     InliningStatus inlineToObject(CallInfo &callInfo);
     InliningStatus inlineDump(CallInfo &callInfo);
+    InliningStatus inlineHasClass(CallInfo &callInfo, const Class *clasp);
 
     // Testing functions.
     InliningStatus inlineForceSequentialOrInParallelSection(CallInfo &callInfo);

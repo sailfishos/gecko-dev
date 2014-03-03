@@ -297,9 +297,9 @@ this.DataStore.prototype = {
     }
 
     cpmm.sendAsyncMessage("DataStore:Changed",
-                          { store: this.name, owner: this.owner,
+                          { store: this.name, owner: this._owner,
                             message: { revisionId: aRevisionId, id: aId,
-                                       operation: aOperation } } );
+                                       operation: aOperation, owner: this._owner } } );
   },
 
   receiveMessage: function(aMessage) {
@@ -307,6 +307,12 @@ this.DataStore.prototype = {
 
     if (aMessage.name != "DataStore:Changed:Return:OK") {
       debug("Wrong message: " + aMessage.name);
+      return;
+    }
+
+    // If this message is not for this DataStore, let's ignore it.
+    if (aMessage.data.owner != this._owner ||
+        aMessage.data.store != this._name) {
       return;
     }
 
@@ -319,7 +325,8 @@ this.DataStore.prototype = {
           return;
         }
 
-        let event = new self._window.DataStoreChangeEvent('change', aMessage.data);
+        let event = new self._window.DataStoreChangeEvent('change',
+                                                          aMessage.data.message);
         self.__DOM_IMPL__.dispatchEvent(event);
       }
     );

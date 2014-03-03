@@ -80,7 +80,7 @@ double
 MediaSource::Duration()
 {
   if (mReadyState == MediaSourceReadyState::Closed) {
-    return UnspecifiedNaN();
+    return UnspecifiedNaN<double>();
   }
   return mDuration;
 }
@@ -197,7 +197,7 @@ MediaSource::Detach()
   MOZ_ASSERT(mDecoder);
   mDecoder->DetachMediaSource();
   mDecoder = nullptr;
-  mDuration = UnspecifiedNaN();
+  mDuration = UnspecifiedNaN<double>();
   mActiveSourceBuffers->Clear();
   mSourceBuffers->Clear();
   SetReadyState(MediaSourceReadyState::Closed);
@@ -205,7 +205,7 @@ MediaSource::Detach()
 
 MediaSource::MediaSource(nsPIDOMWindow* aWindow)
   : nsDOMEventTargetHelper(aWindow)
-  , mDuration(UnspecifiedNaN())
+  , mDuration(UnspecifiedNaN<double>())
   , mDecoder(nullptr)
   , mReadyState(MediaSourceReadyState::Closed)
 {
@@ -369,6 +369,14 @@ JSObject*
 MediaSource::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aScope)
 {
   return MediaSourceBinding::Wrap(aCx, aScope, this);
+}
+
+void
+MediaSource::NotifyEvicted(double aStart, double aEnd)
+{
+  // Cycle through all SourceBuffers and tell them to evict data in
+  // the given range.
+  mSourceBuffers->Evict(aStart, aEnd);
 }
 
 NS_IMPL_CYCLE_COLLECTION_INHERITED_2(MediaSource, nsDOMEventTargetHelper,

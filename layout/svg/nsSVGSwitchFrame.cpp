@@ -38,10 +38,10 @@ public:
    *
    * @see nsGkAtoms::svgSwitchFrame
    */
-  virtual nsIAtom* GetType() const;
+  virtual nsIAtom* GetType() const MOZ_OVERRIDE;
 
 #ifdef DEBUG_FRAME_DUMP
-  virtual nsresult GetFrameName(nsAString& aResult) const
+  virtual nsresult GetFrameName(nsAString& aResult) const MOZ_OVERRIDE
   {
     return MakeFrameName(NS_LITERAL_STRING("SVGSwitch"), aResult);
   }
@@ -52,14 +52,14 @@ public:
                                 const nsDisplayListSet& aLists) MOZ_OVERRIDE;
 
   // nsISVGChildFrame interface:
-  NS_IMETHOD PaintSVG(nsRenderingContext* aContext,
-                      const nsIntRect *aDirtyRect,
-                      nsIFrame* aTransformRoot) MOZ_OVERRIDE;
-  NS_IMETHODIMP_(nsIFrame*) GetFrameForPoint(const nsPoint &aPoint);
-  NS_IMETHODIMP_(nsRect) GetCoveredRegion();
-  virtual void ReflowSVG();
+  virtual nsresult PaintSVG(nsRenderingContext* aContext,
+                            const nsIntRect *aDirtyRect,
+                            nsIFrame* aTransformRoot) MOZ_OVERRIDE;
+  nsIFrame* GetFrameForPoint(const nsPoint &aPoint) MOZ_OVERRIDE;
+  nsRect GetCoveredRegion() MOZ_OVERRIDE;
+  virtual void ReflowSVG() MOZ_OVERRIDE;
   virtual SVGBBox GetBBoxContribution(const Matrix &aToBBoxUserspace,
-                                      uint32_t aFlags);
+                                      uint32_t aFlags) MOZ_OVERRIDE;
 
 private:
   nsIFrame *GetActiveChildFrame();
@@ -106,7 +106,7 @@ nsSVGSwitchFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
   }
 }
 
-NS_IMETHODIMP
+nsresult
 nsSVGSwitchFrame::PaintSVG(nsRenderingContext* aContext,
                            const nsIntRect *aDirtyRect,
                            nsIFrame* aTransformRoot)
@@ -127,7 +127,7 @@ nsSVGSwitchFrame::PaintSVG(nsRenderingContext* aContext,
 }
 
 
-NS_IMETHODIMP_(nsIFrame*)
+nsIFrame*
 nsSVGSwitchFrame::GetFrameForPoint(const nsPoint &aPoint)
 {
   NS_ASSERTION(!NS_SVGDisplayListHitTestingEnabled() ||
@@ -146,7 +146,7 @@ nsSVGSwitchFrame::GetFrameForPoint(const nsPoint &aPoint)
   return nullptr;
 }
 
-NS_IMETHODIMP_(nsRect)
+nsRect
 nsSVGSwitchFrame::GetCoveredRegion()
 {
   nsRect rect;

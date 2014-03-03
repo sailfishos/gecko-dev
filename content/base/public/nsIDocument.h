@@ -32,7 +32,6 @@ class nsCSSStyleSheet;
 class nsIDocShell;
 class nsDocShell;
 class nsDOMNavigationTiming;
-class nsDOMTouchList;
 class nsEventStates;
 class nsFrameLoader;
 class nsHTMLCSSStyleSheet;
@@ -96,20 +95,24 @@ namespace dom {
 class Attr;
 class CDATASection;
 class Comment;
+struct CustomElementDefinition;
 class DocumentFragment;
 class DocumentType;
 class DOMImplementation;
+class DOMStringList;
 class Element;
 struct ElementRegistrationOptions;
 class EventTarget;
 class FrameRequestCallback;
 class HTMLBodyElement;
+struct LifecycleCallbackArgs;
 class Link;
 class GlobalObject;
 class NodeFilter;
 class NodeIterator;
 class ProcessingInstruction;
 class Touch;
+class TouchList;
 class TreeWalker;
 class UndoManager;
 class XPathEvaluator;
@@ -122,8 +125,8 @@ typedef CallbackObjectHolder<NodeFilter, nsIDOMNodeFilter> NodeFilterHolder;
 } // namespace mozilla
 
 #define NS_IDOCUMENT_IID \
-{ 0x56a350f4, 0xc286, 0x440c, \
-  { 0x85, 0xb1, 0xb6, 0x55, 0x77, 0xeb, 0x63, 0xfd } }
+{ 0x94629cb0, 0xfe8a, 0x4627, \
+  { 0x8e, 0x59, 0xab, 0x1a, 0xaf, 0xdc, 0x99, 0x56 } }
 
 // Flag for AddStyleSheet().
 #define NS_STYLESHEET_FROM_CATALOG                (1 << 0)
@@ -1641,20 +1644,31 @@ public:
   // owning Documents needs it to animate; otherwise it can suspend.
   virtual void SetImagesNeedAnimating(bool aAnimating) = 0;
 
+  enum SuppressionType {
+    eAnimationsOnly = 0x1,
+
+    // Note that suppressing events also suppresses animation frames, so
+    // there's no need to split out events in its own bitmask.
+    eEvents = 0x3,
+  };
+
   /**
    * Prevents user initiated events from being dispatched to the document and
    * subdocuments.
    */
-  virtual void SuppressEventHandling(uint32_t aIncrease = 1) = 0;
+  virtual void SuppressEventHandling(SuppressionType aWhat,
+                                     uint32_t aIncrease = 1) = 0;
 
   /**
    * Unsuppress event handling.
    * @param aFireEvents If true, delayed events (focus/blur) will be fired
    *                    asynchronously.
    */
-  virtual void UnsuppressEventHandlingAndFireEvents(bool aFireEvents) = 0;
+  virtual void UnsuppressEventHandlingAndFireEvents(SuppressionType aWhat,
+                                                    bool aFireEvents) = 0;
 
   uint32_t EventHandlingSuppressed() const { return mEventsSuppressed; }
+  uint32_t AnimationsPaused() const { return mAnimationsPaused; }
 
   bool IsEventHandlingEnabled() {
     return !EventHandlingSuppressed() && mScriptGlobalObject;
@@ -1986,10 +2000,36 @@ public:
   {
     return GetRootElement();
   }
+
+  enum ElementCallbackType {
+    eCreated,
+    eEnteredView,
+    eLeftView,
+    eAttributeChanged
+  };
+
+  /**
+   * Registers an unresolved custom element that is a candidate for
+   * upgrade when the definition is registered via registerElement.
+   * |aTypeName| is the name of the custom element type, if it is not
+   * provided, then element name is used. |aTypeName| should be provided
+   * when registering a custom element that extends an existing
+   * element. e.g. <button is="x-button">.
+   */
+  virtual nsresult RegisterUnresolvedElement(Element* aElement,
+                                             nsIAtom* aTypeName = nullptr) = 0;
+  virtual void EnqueueLifecycleCallback(ElementCallbackType aType,
+                                        Element* aCustomElement,
+                                        mozilla::dom::LifecycleCallbackArgs* aArgs = nullptr,
+                                        mozilla::dom::CustomElementDefinition* aDefinition = nullptr) = 0;
+  virtual void SwizzleCustomElement(Element* aElement,
+                                    const nsAString& aTypeExtension,
+                                    uint32_t aNamespaceID,
+                                    mozilla::ErrorResult& rv) = 0;
   virtual JSObject*
-  Register(JSContext* aCx, const nsAString& aName,
-           const mozilla::dom::ElementRegistrationOptions& aOptions,
-           mozilla::ErrorResult& rv) = 0;
+    RegisterElement(JSContext* aCx, const nsAString& aName,
+                    const mozilla::dom::ElementRegistrationOptions& aOptions,
+                    mozilla::ErrorResult& rv) = 0;
   already_AddRefed<nsContentList>
   GetElementsByTagName(const nsAString& aTagName)
   {
@@ -2007,6 +2047,13 @@ public:
   already_AddRefed<Element> CreateElementNS(const nsAString& aNamespaceURI,
                                             const nsAString& aQualifiedName,
                                             mozilla::ErrorResult& rv);
+  virtual already_AddRefed<Element> CreateElement(const nsAString& aTagName,
+                                                  const nsAString& aTypeExtension,
+                                                  mozilla::ErrorResult& rv) = 0;
+  virtual already_AddRefed<Element> CreateElementNS(const nsAString& aNamespaceURI,
+                                                    const nsAString& aQualifiedName,
+                                                    const nsAString& aTypeExtension,
+                                                    mozilla::ErrorResult& rv) = 0;
   already_AddRefed<mozilla::dom::DocumentFragment>
     CreateDocumentFragment() const;
   already_AddRefed<nsTextNode> CreateTextNode(const nsAString& aData) const;
@@ -2113,7 +2160,7 @@ public:
   virtual void SetSelectedStyleSheetSet(const nsAString& aSheetSet) = 0;
   virtual void GetLastStyleSheetSet(nsString& aSheetSet) = 0;
   void GetPreferredStyleSheetSet(nsAString& aSheetSet);
-  virtual nsIDOMDOMStringList* StyleSheetSets() = 0;
+  virtual mozilla::dom::DOMStringList* StyleSheetSets() = 0;
   virtual void EnableStyleSheetsForSet(const nsAString& aSheetSet) = 0;
   Element* ElementFromPoint(float aX, float aY);
 
@@ -2153,11 +2200,11 @@ public:
                 int32_t aScreenX, int32_t aScreenY, int32_t aClientX,
                 int32_t aClientY, int32_t aRadiusX, int32_t aRadiusY,
                 float aRotationAngle, float aForce);
-  already_AddRefed<nsDOMTouchList> CreateTouchList();
-  already_AddRefed<nsDOMTouchList>
+  already_AddRefed<mozilla::dom::TouchList> CreateTouchList();
+  already_AddRefed<mozilla::dom::TouchList>
     CreateTouchList(mozilla::dom::Touch& aTouch,
                     const mozilla::dom::Sequence<mozilla::dom::OwningNonNull<mozilla::dom::Touch> >& aTouches);
-  already_AddRefed<nsDOMTouchList>
+  already_AddRefed<mozilla::dom::TouchList>
     CreateTouchList(const mozilla::dom::Sequence<mozilla::dom::OwningNonNull<mozilla::dom::Touch> >& aTouches);
 
   void SetStyleSheetChangeEventsEnabled(bool aValue)
@@ -2451,6 +2498,8 @@ protected:
   nsCOMPtr<nsIDocument> mDisplayDocument;
 
   uint32_t mEventsSuppressed;
+
+  uint32_t mAnimationsPaused;
 
   /**
    * The number number of external scripts (ones with the src attribute) that

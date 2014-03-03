@@ -246,12 +246,18 @@ function migrateSettings() {
         defaultManifest = Services.prefs.getDefaultBranch(null)
                         .getComplexValue(prefname, Ci.nsISupportsString).data;
         defaultManifest = JSON.parse(defaultManifest);
+      } catch(e) {
+        // not a built-in, continue
+      }
+      if (defaultManifest) {
         if (defaultManifest.shareURL && !manifest.shareURL) {
           manifest.shareURL = defaultManifest.shareURL;
           needsUpdate = true;
         }
-      } catch(e) {
-        // not a built-in, continue
+        if (defaultManifest.version && (!manifest.version || defaultManifest.version > manifest.version)) {
+          manifest = defaultManifest;
+          needsUpdate = true;
+        }
       }
       if (needsUpdate) {
         // the provider was installed with an older build, so we will update the
@@ -574,14 +580,13 @@ this.SocialService = {
       },
     };
 
-    let link = chromeWin.document.getElementById("servicesInstall-learnmore-link");
-    link.value = browserBundle.GetStringFromName("service.install.learnmore");
-    link.href = Services.urlFormatter.formatURLPref("app.support.baseURL") + "social-api";
-
+    let options = {
+                    learnMoreURL: Services.urlFormatter.formatURLPref("app.support.baseURL") + "social-api",
+                  };
     let anchor = "servicesInstall-notification-icon";
     let notificationid = "servicesInstall";
     chromeWin.PopupNotifications.show(browser, notificationid, message, anchor,
-                                      action, [], {});
+                                      action, [], options);
   },
 
   installProvider: function(aDOMDocument, data, installCallback) {

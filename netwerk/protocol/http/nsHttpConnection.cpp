@@ -54,8 +54,6 @@ nsHttpConnection::nsHttpConnection()
     , mMaxBytesRead(0)
     , mTotalBytesRead(0)
     , mTotalBytesWritten(0)
-    , mUnreportedBytesRead(0)
-    , mUnreportedBytesWritten(0)
     , mKeepAlive(true) // assume to keep-alive by default
     , mKeepAliveMask(true)
     , mDontReuse(false)
@@ -87,7 +85,6 @@ nsHttpConnection::~nsHttpConnection()
 {
     LOG(("Destroying nsHttpConnection @%x\n", this));
 
-    ReportDataUsage(false);
     if (!mEverUsedSpdy) {
         LOG(("nsHttpConnection %p performed %d HTTP/1.x transactions\n",
              this, mHttp1xTransactionCount));
@@ -310,8 +307,6 @@ npnComplete:
 nsresult
 nsHttpConnection::Activate(nsAHttpTransaction *trans, uint32_t caps, int32_t pri)
 {
-    nsresult rv;
-
     MOZ_ASSERT(PR_GetCurrentThread() == gSocketThread);
     LOG(("nsHttpConnection::Activate [this=%p trans=%x caps=%x]\n",
          this, trans, caps));
@@ -348,6 +343,7 @@ nsHttpConnection::Activate(nsAHttpTransaction *trans, uint32_t caps, int32_t pri
 
     // need to handle HTTP CONNECT tunnels if this is the first time if
     // we are tunneling through a proxy
+    nsresult rv = NS_OK;
     if (mConnInfo->UsingConnect() && !mCompletedProxyConnect) {
         rv = SetupProxyConnect();
         if (NS_FAILED(rv))
@@ -364,13 +360,11 @@ nsHttpConnection::Activate(nsAHttpTransaction *trans, uint32_t caps, int32_t pri
     mResponseTimeoutEnabled = mTransaction->ResponseTimeout() > 0 &&
                               mTransaction->ResponseTimeoutEnabled();
 
-    if (NS_SUCCEEDED(rv)) {
-        nsresult rv2 = StartShortLivedTCPKeepalives();
-        if (NS_WARN_IF(NS_FAILED(rv2))) {
-            LOG(("nsHttpConnection::Activate [%p] "
-                 "StartShortLivedTCPKeepalives failed rv2[0x%x]",
-                 this, rv2));
-        }
+    rv = StartShortLivedTCPKeepalives();
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+        LOG(("nsHttpConnection::Activate [%p] "
+             "StartShortLivedTCPKeepalives failed rv[0x%x]",
+             this, rv));
     }
 
     rv = OnOutputStreamReady(mSocketOut);
@@ -1279,8 +1273,6 @@ nsHttpConnection::CloseTransaction(nsAHttpTransaction *trans, nsresult reason)
         mCallbacks = nullptr;
     }
 
-    ReportDataUsage(false);
-
     if (NS_FAILED(reason))
         Close(reason);
 
@@ -1323,11 +1315,8 @@ nsHttpConnection::OnReadSegment(const char *buf,
     else {
         mLastWriteTime = PR_IntervalNow();
         mSocketOutCondition = NS_OK; // reset condition
-        if (!mProxyConnectInProgress) {
+        if (!mProxyConnectInProgress)
             mTotalBytesWritten += *countRead;
-            mUnreportedBytesWritten += *countRead;
-            ReportDataUsage(true);
-        }
     }
 
     return mSocketOutCondition;
@@ -1548,8 +1537,6 @@ nsHttpConnection::OnSocketReadable()
         else {
             mCurrentBytesRead += n;
             mTotalBytesRead += n;
-            mUnreportedBytesRead += n;
-            ReportDataUsage(true);
             if (NS_FAILED(mSocketInCondition)) {
                 // continue waiting for the socket if necessary...
                 if (mSocketInCondition == NS_BASE_STREAM_WOULD_BLOCK)
@@ -1612,27 +1599,6 @@ nsHttpConnection::SetupProxyConnect()
     buf.AppendLiteral("\r\n");
 
     return NS_NewCStringInputStream(getter_AddRefs(mProxyConnectStream), buf);
-}
-
-void
-nsHttpConnection::ReportDataUsage(bool allowDefer)
-{
-    static const uint64_t kDeferThreshold = 128000;
-
-    if (!mUnreportedBytesRead && !mUnreportedBytesWritten)
-        return;
-
-    if (!gHttpHandler->IsTelemetryEnabled())
-        return;
-
-    if (allowDefer &&
-        (mUnreportedBytesRead + mUnreportedBytesWritten) < kDeferThreshold) {
-        return;
-    }
-
-    gHttpHandler->UpdateDataUsage(mCallbacks,
-                                  mUnreportedBytesRead, mUnreportedBytesWritten);
-    mUnreportedBytesRead = mUnreportedBytesWritten = 0;
 }
 
 nsresult

@@ -307,22 +307,23 @@ WasIncrementalGC(JSRuntime *rt);
 /*
  * Generational GC:
  *
- * Note: Generational GC is not yet enabled by default. The following functions
- *       are non-functional unless SpiderMonkey was configured with
+ * Note: Generational GC is not yet enabled by default. The following class
+ *       is non-functional unless SpiderMonkey was configured with
  *       --enable-gcgenerational.
  */
 
-/*
- * Generational GC is enabled by default. Use this method to disable it.
- */
-extern JS_FRIEND_API(void)
-DisableGenerationalGC(JSRuntime *rt);
+/* Ensure that generational GC is disabled within some scope. */
+class JS_FRIEND_API(AutoDisableGenerationalGC)
+{
+    JSRuntime *runtime;
+#ifdef JS_GC_ZEAL
+    bool restartVerifier;
+#endif
 
-/*
- * Generational GC may be re-enabled at runtime.
- */
-extern JS_FRIEND_API(void)
-EnableGenerationalGC(JSRuntime *rt);
+  public:
+    AutoDisableGenerationalGC(JSRuntime *rt);
+    ~AutoDisableGenerationalGC();
+};
 
 /*
  * Returns true if generational allocation and collection is currently enabled
@@ -388,7 +389,7 @@ class JS_PUBLIC_API(ObjectPtr)
     ObjectPtr(JSObject *obj) : value(obj) {}
 
     /* Always call finalize before the destructor. */
-    ~ObjectPtr() { JS_ASSERT(!value); }
+    ~ObjectPtr() { MOZ_ASSERT(!value); }
 
     void finalize(JSRuntime *rt) {
         if (IsIncrementalBarrierNeeded(rt))
@@ -435,7 +436,7 @@ UnmarkGrayGCThingRecursively(void *thing, JSGCTraceKind kind);
 static MOZ_ALWAYS_INLINE void
 ExposeGCThingToActiveJS(void *thing, JSGCTraceKind kind)
 {
-    JS_ASSERT(kind != JSTRACE_SHAPE);
+    MOZ_ASSERT(kind != JSTRACE_SHAPE);
 
     shadow::Runtime *rt = js::gc::GetGCThingRuntime(thing);
 #ifdef JSGC_GENERATIONAL

@@ -414,7 +414,7 @@ MSG_DEF(JSMSG_TOO_MANY_FUN_SPREADARGS, 360, 0, JSEXN_RANGEERR, "too many functio
 MSG_DEF(JSMSG_DEBUG_NOT_DEBUGGEE,     361, 2, JSEXN_ERR, "{0} is not a debuggee {1}")
 MSG_DEF(JSMSG_TYPEDOBJECT_NOT_TYPED_OBJECT, 362, 0, JSEXN_ERR, "Expected a typed object")
 MSG_DEF(JSMSG_TYPEDOBJECT_NO_SUCH_PROP, 363, 1, JSEXN_TYPEERR, "No such property: {0}")
-MSG_DEF(JSMSG_TYPEDOBJECT_HANDLE_BAD_ARGS, 364, 2, JSEXN_TYPEERR, "argument {0} invalid: expected {1}")
+MSG_DEF(JSMSG_TYPEDOBJECT_BAD_ARGS, 364, 0, JSEXN_TYPEERR, "invalid arguments")
 MSG_DEF(JSMSG_TYPEDOBJECT_HANDLE_UNATTACHED, 365, 0, JSEXN_TYPEERR, "handle unattached")
 MSG_DEF(JSMSG_TYPEDOBJECT_HANDLE_BAD_TYPE, 366, 0, JSEXN_TYPEERR, "handle moved to destination of incorrect type")
 
@@ -435,3 +435,4 @@ MSG_DEF(JSMSG_INVALID_PROTOTYPE,        380, 0, JSEXN_TYPEERR, "prototype field 
 MSG_DEF(JSMSG_TYPEDOBJECT_HANDLE_TO_UNSIZED, 381, 0, JSEXN_TYPEERR, "cannot create a handle to an unsized type")
 MSG_DEF(JSMSG_SETPROTOTYPEOF_FAIL,      382, 1, JSEXN_TYPEERR, "[[SetPrototypeOf]] failed on {0}")
 MSG_DEF(JSMSG_INVALID_ARG_TYPE,         383, 3, JSEXN_TYPEERR, "Invalid type: {0} can't be a{1} {2}")
+MSG_DEF(JSMSG_TERMINATED,               384, 1, JSEXN_ERR, "Script terminated by timeout at:\n{0}")

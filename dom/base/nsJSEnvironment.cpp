@@ -52,6 +52,8 @@
 #include "nsGlobalWindow.h"
 #include "nsScriptNameSpaceManager.h"
 #include "StructuredCloneTags.h"
+#include "mozilla/AutoRestore.h"
+#include "mozilla/dom/ErrorEvent.h"
 #include "mozilla/dom/ImageData.h"
 #include "mozilla/dom/ImageDataBinding.h"
 #include "nsAXPCNativeCallContext.h"
@@ -312,7 +314,7 @@ private:
 // XXXmarkh - This function is mis-placed!
 bool
 NS_HandleScriptError(nsIScriptGlobalObject *aScriptGlobal,
-                     InternalScriptErrorEvent *aErrorEvent,
+                     const ErrorEventInit &aErrorEventInit,
                      nsEventStatus *aStatus)
 {
   bool called = false;
@@ -325,11 +327,17 @@ NS_HandleScriptError(nsIScriptGlobalObject *aScriptGlobal,
     static int32_t errorDepth; // Recursion prevention
     ++errorDepth;
 
-    if (presContext && errorDepth < 2) {
+    if (errorDepth < 2) {
       // Dispatch() must be synchronous for the recursion block
       // (errorDepth) to work.
-      nsEventDispatcher::Dispatch(win, presContext, aErrorEvent, nullptr,
-                                  aStatus);
+      nsRefPtr<ErrorEvent> event =
+        ErrorEvent::Constructor(static_cast<nsGlobalWindow*>(win.get()),
+                                NS_LITERAL_STRING("error"),
+                                aErrorEventInit);
+      event->SetTrusted(true);
+
+      nsEventDispatcher::DispatchDOMEvent(win, nullptr, event, presContext,
+                                          aStatus);
       called = true;
     }
     --errorDepth;
@@ -444,44 +452,47 @@ public:
       if (docShell &&
           !JSREPORT_IS_WARNING(mFlags) &&
           !sHandlingScriptError) {
-        sHandlingScriptError = true; // Recursion prevention
+        AutoRestore<bool> recursionGuard(sHandlingScriptError);
+        sHandlingScriptError = true;
 
         nsRefPtr<nsPresContext> presContext;
         docShell->GetPresContext(getter_AddRefs(presContext));
 
-        if (presContext) {
-          InternalScriptErrorEvent errorevent(true, NS_LOAD_ERROR);
+        ErrorEventInit init;
+        init.mCancelable = true;
+        init.mFilename = mFileName;
+        init.mBubbles = true;
 
-          errorevent.fileName = mFileName.get();
+        nsCOMPtr<nsIScriptObjectPrincipal> sop(do_QueryInterface(win));
+        NS_ENSURE_STATE(sop);
+        nsIPrincipal* p = sop->GetPrincipal();
+        NS_ENSURE_STATE(p);
 
-          nsCOMPtr<nsIScriptObjectPrincipal> sop(do_QueryInterface(win));
-          NS_ENSURE_STATE(sop);
-          nsIPrincipal* p = sop->GetPrincipal();
-          NS_ENSURE_STATE(p);
+        bool sameOrigin = !mOriginPrincipal;
 
-          bool sameOrigin = !mOriginPrincipal;
-
-          if (p && !sameOrigin) {
-            if (NS_FAILED(p->Subsumes(mOriginPrincipal, &sameOrigin))) {
-              sameOrigin = false;
-            }
+        if (p && !sameOrigin) {
+          if (NS_FAILED(p->Subsumes(mOriginPrincipal, &sameOrigin))) {
+            sameOrigin = false;
           }
-
-          NS_NAMED_LITERAL_STRING(xoriginMsg, "Script error.");
-          if (sameOrigin) {
-            errorevent.errorMsg = mErrorMsg.get();
-            errorevent.lineNr = mLineNumber;
-          } else {
-            NS_WARNING("Not same origin error!");
-            errorevent.errorMsg = xoriginMsg.get();
-            errorevent.lineNr = 0;
-          }
-
-          nsEventDispatcher::Dispatch(win, presContext, &errorevent, nullptr,
-                                      &status);
         }
 
-        sHandlingScriptError = false;
+        NS_NAMED_LITERAL_STRING(xoriginMsg, "Script error.");
+        if (sameOrigin) {
+          init.mMessage = mErrorMsg;
+          init.mLineno = mLineNumber;
+        } else {
+          NS_WARNING("Not same origin error!");
+          init.mMessage = xoriginMsg;
+          init.mLineno = 0;
+        }
+
+        nsRefPtr<ErrorEvent> event =
+          ErrorEvent::Constructor(static_cast<nsGlobalWindow*>(win.get()),
+                                  NS_LITERAL_STRING("error"), init);
+        event->SetTrusted(true);
+
+        nsEventDispatcher::DispatchDOMEvent(win, nullptr, event, presContext,
+                                            &status);
       }
     }
 
@@ -515,8 +526,7 @@ NS_ScriptErrorReporter(JSContext *cx,
   // absence of werror are swallowed whole, so report those now.
   if (!JSREPORT_IS_WARNING(report->flags)) {
     nsIXPConnect* xpc = nsContentUtils::XPConnect();
-    JS::Rooted<JSScript*> script(cx);
-    if (JS_DescribeScriptedCaller(cx, &script, nullptr)) {
+    if (JS::DescribeScriptedCaller(cx)) {
       xpc->MarkErrorUnreported(cx);
       return;
     }
@@ -711,19 +721,8 @@ static const char js_werror_option_str[] = JS_OPTIONS_DOT_STR "werror";
 static const char js_zeal_option_str[]        = JS_OPTIONS_DOT_STR "gczeal";
 static const char js_zeal_frequency_str[]     = JS_OPTIONS_DOT_STR "gczeal.frequency";
 #endif
-static const char js_typeinfer_content_str[]  = JS_OPTIONS_DOT_STR "typeinference.content";
-static const char js_typeinfer_chrome_str[]   = JS_OPTIONS_DOT_STR "typeinference.chrome";
 static const char js_memlog_option_str[]      = JS_OPTIONS_DOT_STR "mem.log";
 static const char js_memnotify_option_str[]   = JS_OPTIONS_DOT_STR "mem.notify";
-static const char js_asmjs_content_str[]      = JS_OPTIONS_DOT_STR "asmjs";
-static const char js_baselinejit_content_str[] = JS_OPTIONS_DOT_STR "baselinejit.content";
-static const char js_baselinejit_chrome_str[]  = JS_OPTIONS_DOT_STR "baselinejit.chrome";
-static const char js_baselinejit_eager_str[]  = JS_OPTIONS_DOT_STR "baselinejit.unsafe_eager_compilation";
-static const char js_ion_content_str[]        = JS_OPTIONS_DOT_STR "ion.content";
-static const char js_ion_chrome_str[]         = JS_OPTIONS_DOT_STR "ion.chrome";
-static const char js_ion_eager_str[]          = JS_OPTIONS_DOT_STR "ion.unsafe_eager_compilation";
-static const char js_parallel_parsing_str[]   = JS_OPTIONS_DOT_STR "parallel_parsing";
-static const char js_ion_parallel_compilation_str[] = JS_OPTIONS_DOT_STR "ion.parallel_compilation";
 
 void
 nsJSContext::JSOptionChangedCallback(const char *pref, void *data)
@@ -746,39 +745,6 @@ nsJSContext::JSOptionChangedCallback(const char *pref, void *data)
   nsCOMPtr<nsIDOMWindow> contentWindow(do_QueryInterface(global));
   nsCOMPtr<nsIDOMChromeWindow> chromeWindow(do_QueryInterface(global));
 
-  bool useTypeInference = Preferences::GetBool((chromeWindow || !contentWindow) ?
-                                               js_typeinfer_chrome_str :
-                                               js_typeinfer_content_str);
-  bool useBaselineJIT = Preferences::GetBool((chromeWindow || !contentWindow) ?
-                                               js_baselinejit_chrome_str :
-                                               js_baselinejit_content_str);
-  bool useBaselineJITEager = Preferences::GetBool(js_baselinejit_eager_str);
-  bool useIon = Preferences::GetBool((chromeWindow || !contentWindow) ?
-                                               js_ion_chrome_str :
-                                               js_ion_content_str);
-  bool useIonEager = Preferences::GetBool(js_ion_eager_str);
-  bool useAsmJS = Preferences::GetBool(js_asmjs_content_str);
-  bool parallelParsing = Preferences::GetBool(js_parallel_parsing_str);
-  bool parallelIonCompilation = Preferences::GetBool(js_ion_parallel_compilation_str);
-  nsCOMPtr<nsIXULRuntime> xr = do_GetService(XULRUNTIME_SERVICE_CONTRACTID);
-  if (xr) {
-    bool safeMode = false;
-    xr->GetInSafeMode(&safeMode);
-    if (safeMode) {
-      useTypeInference = false;
-      useBaselineJIT = false;
-      useBaselineJITEager = false;
-      useIon = false;
-      useIonEager = false;
-      useAsmJS = false;
-    }
-  }
-
-  JS::ContextOptionsRef(cx).setTypeInference(useTypeInference)
-                           .setBaseline(useBaselineJIT)
-                           .setIon(useIon)
-                           .setAsmJS(useAsmJS);
-
 #ifdef DEBUG
   // In debug builds, warnings are enabled in chrome context if
   // javascript.options.strict.debug is true
@@ -789,15 +755,6 @@ nsJSContext::JSOptionChangedCallback(const char *pref, void *data)
 #endif
 
   JS::ContextOptionsRef(cx).setWerror(Preferences::GetBool(js_werror_option_str));
-
-  ::JS_SetParallelParsingEnabled(context->mContext, parallelParsing);
-  ::JS_SetParallelIonCompilationEnabled(context->mContext, parallelIonCompilation);
-
-  ::JS_SetGlobalJitCompilerOption(context->mContext, JSJITCOMPILER_BASELINE_USECOUNT_TRIGGER,
-                                  (useBaselineJITEager ? 0 : -1));
-
-  ::JS_SetGlobalJitCompilerOption(context->mContext, JSJITCOMPILER_ION_USECOUNT_TRIGGER,
-                                  (useIonEager ? 0 : -1));
 
 #ifdef JS_GC_ZEAL
   int32_t zeal = Preferences::GetInt(js_zeal_option_str, -1);

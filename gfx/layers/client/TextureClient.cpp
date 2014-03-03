@@ -20,9 +20,8 @@
 #include "mozilla/layers/ShadowLayers.h"  // for ShadowLayerForwarder
 #include "mozilla/layers/SharedPlanarYCbCrImage.h"
 #include "mozilla/layers/YCbCrImageDataSerializer.h"
-#include "mozilla/layers/PTextureChild.h"
 #include "nsDebug.h"                    // for NS_ASSERTION, NS_WARNING, etc
-#include "nsTraceRefcnt.h"              // for MOZ_COUNT_CTOR, etc
+#include "nsISupportsImpl.h"            // for MOZ_COUNT_CTOR, etc
 #include "ImageContainer.h"             // for PlanarYCbCrImage, etc
 #include "mozilla/gfx/2D.h"
 
@@ -55,6 +54,7 @@ class TextureChild : public PTextureChild
                    , public AtomicRefCounted<TextureChild>
 {
 public:
+  MOZ_DECLARE_REFCOUNTED_TYPENAME(TextureChild)
   TextureChild()
   : mForwarder(nullptr)
   , mTextureData(nullptr)
@@ -108,7 +108,7 @@ private:
     Release();
   }
 
-  CompositableForwarder* mForwarder;
+  RefPtr<CompositableForwarder> mForwarder;
   TextureClientData* mTextureData;
   TextureClient* mTextureClient;
   bool mIPCOpen;
@@ -156,6 +156,13 @@ TextureClient::DestroyIPDLActor(PTextureChild* actor)
 {
   static_cast<TextureChild*>(actor)->ReleaseIPDLReference();
   return true;
+}
+
+// static
+TextureClient*
+TextureClient::AsTextureClient(PTextureChild* actor)
+{
+  return actor? static_cast<TextureChild*>(actor)->mTextureClient : nullptr;
 }
 
 bool
@@ -298,8 +305,9 @@ TextureClient::Finalize()
 
   if (actor) {
     // this will call ForceRemove in the right thread, using a sync proxy if needed
-    actor->GetForwarder()->RemoveTexture(this);
-
+    if (actor->GetForwarder()) {
+      actor->GetForwarder()->RemoveTexture(this);
+    }
     // The actor has a raw pointer to us, actor->mTextureClient. Null it before we die.
     actor->mTextureClient = nullptr;
   }
@@ -450,7 +458,7 @@ BufferTextureClient::UpdateSurface(gfxASurface* aSurface)
   MOZ_ASSERT(!IsImmutable());
   MOZ_ASSERT(IsValid());
 
-  ImageDataSerializer serializer(GetBuffer());
+  ImageDataSerializer serializer(GetBuffer(), GetBufferSize());
   if (!serializer.IsValid()) {
     return false;
   }
@@ -488,7 +496,7 @@ BufferTextureClient::GetAsSurface()
 {
   MOZ_ASSERT(IsValid());
 
-  ImageDataSerializer serializer(GetBuffer());
+  ImageDataSerializer serializer(GetBuffer(), GetBufferSize());
   if (!serializer.IsValid()) {
     return nullptr;
   }
@@ -515,7 +523,7 @@ BufferTextureClient::AllocateForSurface(gfx::IntSize aSize, TextureAllocationFla
     memset(GetBuffer(), 0, bufSize);
   }
 
-  ImageDataSerializer serializer(GetBuffer());
+  ImageDataSerializer serializer(GetBuffer(), GetBufferSize());
   serializer.InitializeBufferInfo(aSize, mFormat);
   mSize = aSize;
   return true;
@@ -532,7 +540,7 @@ BufferTextureClient::GetAsDrawTarget()
     return mDrawTarget;
   }
 
-  ImageDataSerializer serializer(GetBuffer());
+  ImageDataSerializer serializer(GetBuffer(), GetBufferSize());
   if (!serializer.IsValid()) {
     return nullptr;
   }
@@ -589,7 +597,7 @@ BufferTextureClient::Unlock()
     // memory.
     RefPtr<SourceSurface> snapshot = mDrawTarget->Snapshot();
     RefPtr<DataSourceSurface> surface = snapshot->GetDataSurface();
-    ImageDataSerializer serializer(GetBuffer());
+    ImageDataSerializer serializer(GetBuffer(), GetBufferSize());
     if (!serializer.IsValid() || serializer.GetSize() != surface->GetSize()) {
       NS_WARNING("Could not write the data back into the texture.");
       mDrawTarget = nullptr;
@@ -617,7 +625,7 @@ BufferTextureClient::UpdateYCbCr(const PlanarYCbCrData& aData)
   MOZ_ASSERT(IsValid());
   MOZ_ASSERT(aData.mCbSkip == aData.mCrSkip);
 
-  YCbCrImageDataSerializer serializer(GetBuffer());
+  YCbCrImageDataSerializer serializer(GetBuffer(), GetBufferSize());
   MOZ_ASSERT(serializer.IsValid());
   if (!serializer.CopyData(aData.mYChannel, aData.mCbChannel, aData.mCrChannel,
                            aData.mYSize, aData.mYStride,
@@ -647,7 +655,7 @@ BufferTextureClient::AllocateForYCbCr(gfx::IntSize aYSize,
   if (!Allocate(bufSize)) {
     return false;
   }
-  YCbCrImageDataSerializer serializer(GetBuffer());
+  YCbCrImageDataSerializer serializer(GetBuffer(), GetBufferSize());
   serializer.InitializeBufferInfo(aYSize,
                                   aCbCrSize,
                                   aStereoMode);
@@ -970,7 +978,7 @@ AutoLockYCbCrClient::Update(PlanarYCbCrImage* aImage)
 
   ipc::Shmem& shmem = mDescriptor->get_YCbCrImage().data();
 
-  YCbCrImageDataSerializer serializer(shmem.get<uint8_t>());
+  YCbCrImageDataSerializer serializer(shmem.get<uint8_t>(), shmem.Size<uint8_t>());
   if (!serializer.CopyData(data->mYChannel, data->mCbChannel, data->mCrChannel,
                            data->mYSize, data->mYStride,
                            data->mCbCrSize, data->mCbCrStride,
@@ -999,7 +1007,7 @@ bool AutoLockYCbCrClient::EnsureDeprecatedTextureClient(PlanarYCbCrImage* aImage
     needsAllocation = true;
   } else {
     ipc::Shmem& shmem = mDescriptor->get_YCbCrImage().data();
-    YCbCrImageDataSerializer serializer(shmem.get<uint8_t>());
+    YCbCrImageDataSerializer serializer(shmem.get<uint8_t>(), shmem.Size<uint8_t>());
     if (serializer.GetYSize() != data->mYSize ||
         serializer.GetCbCrSize() != data->mCbCrSize) {
       needsAllocation = true;
@@ -1020,7 +1028,7 @@ bool AutoLockYCbCrClient::EnsureDeprecatedTextureClient(PlanarYCbCrImage* aImage
     return false;
   }
 
-  YCbCrImageDataSerializer serializer(shmem.get<uint8_t>());
+  YCbCrImageDataSerializer serializer(shmem.get<uint8_t>(), shmem.Size<uint8_t>());
   serializer.InitializeBufferInfo(data->mYSize,
                                   data->mCbCrSize,
                                   data->mStereoMode);

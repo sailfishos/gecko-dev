@@ -17,9 +17,6 @@ let devtools = Cu.import("resource://gre/modules/devtools/Loader.jsm", {}).devto
 XPCOMUtils.defineLazyModuleGetter(this, "Services",
                                   "resource://gre/modules/Services.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "ConsoleAPIStorage",
-                                  "resource://gre/modules/ConsoleAPIStorage.jsm");
-
 for (let name of ["WebConsoleUtils", "ConsoleServiceListener",
                   "ConsoleAPIListener", "ConsoleProgressListener",
                   "JSTermHelpers", "JSPropertyProvider", "NetworkMonitor",
@@ -59,10 +56,10 @@ function WebConsoleActor(aConnection, aParentActor)
 
   this.dbg = new Debugger();
 
-  this._protoChains = new Map();
   this._netEvents = new Map();
   this._gripDepth = 0;
 
+  this._onWillNavigate = this._onWillNavigate.bind(this);
   this._onObserverNotification = this._onObserverNotification.bind(this);
   if (this.parentActor.isRootActor) {
     Services.obs.addObserver(this._onObserverNotification,
@@ -111,16 +108,6 @@ WebConsoleActor.prototype =
    * @type Map
    */
   _netEvents: null,
-
-  /**
-   * A cache of prototype chains for objects that have received a
-   * prototypeAndProperties request.
-   *
-   * @private
-   * @type Map
-   * @see dbg-script-actors.js, ThreadActor._protoChains
-   */
-  _protoChains: null,
 
   /**
    * The debugger server connection instance.
@@ -209,6 +196,31 @@ WebConsoleActor.prototype =
    */
   _lastChromeWindow: null,
 
+  // The evalWindow is used at the scope for JS evaluation.
+  _evalWindow: null,
+  get evalWindow() {
+    return this._evalWindow || this.window;
+  },
+
+  set evalWindow(aWindow) {
+    this._evalWindow = aWindow;
+
+    if (!this._progressListenerActive && this.parentActor._progressListener) {
+      this.parentActor._progressListener.once("will-navigate", this._onWillNavigate);
+      this._progressListenerActive = true;
+    }
+  },
+
+  /**
+   * Flag used to track if we are listening for events from the progress
+   * listener of the tab actor. We use the progress listener to clear
+   * this.evalWindow on page navigation.
+   *
+   * @private
+   * @type boolean
+   */
+  _progressListenerActive: false,
+
   /**
    * The ConsoleServiceListener instance.
    * @type object
@@ -295,8 +307,9 @@ WebConsoleActor.prototype =
     }
     this._actorPool = null;
 
+    this._jstermHelpersCache = null;
+    this._evalWindow = null;
     this._netEvents.clear();
-    this._protoChains.clear();
     this.dbg.enabled = false;
     this.dbg = null;
     this.conn = null;
@@ -725,7 +738,7 @@ WebConsoleActor.prototype =
     }
     // This is the general case (non-paused debugger)
     else {
-      dbgObject = this.dbg.makeGlobalObjectReference(this.window);
+      dbgObject = this.dbg.makeGlobalObjectReference(this.evalWindow);
     }
 
     let result = JSPropertyProvider(dbgObject, environment, aRequest.text,
@@ -762,7 +775,10 @@ WebConsoleActor.prototype =
     // TODO: Bug 717611 - Web Console clear button does not clear cached errors
     let windowId = !this.parentActor.isRootActor ?
                    WebConsoleUtils.getInnerWindowId(this.window) : null;
+    let ConsoleAPIStorage = Cc["@mozilla.org/consoleAPI-storage;1"]
+                              .getService(Ci.nsIConsoleAPIStorage);
     ConsoleAPIStorage.clearEvents(windowId);
+
     if (this.parentActor.isRootActor) {
       Services.console.logStringMessage(null); // for the Error Console
       Services.console.reset();
@@ -822,12 +838,13 @@ WebConsoleActor.prototype =
   _getJSTermHelpers: function WCA__getJSTermHelpers(aDebuggerGlobal)
   {
     let helpers = {
-      window: this.window,
+      window: this.evalWindow,
       chromeWindow: this.chromeWindow.bind(this),
       makeDebuggeeValue: aDebuggerGlobal.makeDebuggeeValue.bind(aDebuggerGlobal),
       createValueGrip: this.createValueGrip.bind(this),
       sandbox: Object.create(null),
       helperResult: null,
+      consoleActor: this,
     };
     JSTermHelpers(helpers);
 
@@ -924,12 +941,12 @@ WebConsoleActor.prototype =
     // as ordinary objects, not as references to be followed, so mixing
     // debuggers causes strange behaviors.)
     let dbg = frame ? frameActor.threadActor.dbg : this.dbg;
-    let dbgWindow = dbg.makeGlobalObjectReference(this.window);
+    let dbgWindow = dbg.makeGlobalObjectReference(this.evalWindow);
 
     // If we have an object to bind to |_self|, create a Debugger.Object
     // referring to that object, belonging to dbg.
     let bindSelf = null;
-    let dbgWindow = dbg.makeGlobalObjectReference(this.window);
+    let dbgWindow = dbg.makeGlobalObjectReference(this.evalWindow);
     if (aOptions.bindObjectActor) {
       let objActor = this.getActorByID(aOptions.bindObjectActor);
       if (objActor) {
@@ -1289,7 +1306,17 @@ WebConsoleActor.prototype =
         });
         break;
     }
-  }
+  },
+
+  /**
+   * The "will-navigate" progress listener. This is used to clear the current
+   * eval scope.
+   */
+  _onWillNavigate: function WCA__onWillNavigate()
+  {
+    this._evalWindow = null;
+    this._progressListenerActive = false;
+  },
 };
 
 WebConsoleActor.prototype.requestTypes =

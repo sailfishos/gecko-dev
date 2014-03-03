@@ -20,6 +20,7 @@
 #include "base/tracked.h"               // for FROM_HERE
 #include "gfxContext.h"                 // for gfxContext
 #include "gfxPlatform.h"                // for gfxPlatform
+#include "gfxPrefs.h"                   // for gfxPrefs
 #include "ipc/ShadowLayersManager.h"    // for ShadowLayersManager
 #include "mozilla/AutoRestore.h"        // for AutoRestore
 #include "mozilla/DebugOnly.h"          // for DebugOnly
@@ -38,11 +39,11 @@
 #include "mozilla/mozalloc.h"           // for operator new, etc
 #include "nsCOMPtr.h"                   // for already_AddRefed
 #include "nsDebug.h"                    // for NS_ABORT_IF_FALSE, etc
+#include "nsISupportsImpl.h"            // for MOZ_COUNT_CTOR, etc
 #include "nsIWidget.h"                  // for nsIWidget
 #include "nsRect.h"                     // for nsIntRect
 #include "nsTArray.h"                   // for nsTArray
 #include "nsThreadUtils.h"              // for NS_IsMainThread
-#include "nsTraceRefcnt.h"              // for MOZ_COUNT_CTOR, etc
 #include "nsXULAppAPI.h"                // for XRE_GetIOMessageLoop
 #ifdef XP_WIN
 #include "mozilla/layers/CompositorD3D11.h"
@@ -330,6 +331,7 @@ CompositorParent::RecvFlushRendering()
   // and do it immediately instead.
   if (mCurrentCompositeTask) {
     mCurrentCompositeTask->Cancel();
+    mCurrentCompositeTask = nullptr;
     ForceComposeToTarget(nullptr);
   }
   return true;
@@ -369,6 +371,28 @@ CompositorParent::RecvStopFrameTimeRecording(const uint32_t& aStartIndex,
   if (mLayerManager) {
     mLayerManager->StopFrameTimeRecording(aStartIndex, *intervals);
   }
+  return true;
+}
+
+bool
+CompositorParent::RecvSetTestSampleTime(const TimeStamp& aTime)
+{
+  if (aTime.IsNull()) {
+    return false;
+  }
+
+  mIsTesting = true;
+  mTestTime = aTime;
+  if (mCompositionManager) {
+    mCompositionManager->TransformShadowTree(aTime);
+  }
+  return true;
+}
+
+bool
+CompositorParent::RecvLeaveTestMode()
+{
+  mIsTesting = false;
   return true;
 }
 
@@ -529,10 +553,10 @@ static const int32_t kDefaultFrameRate = 60;
 static int32_t
 CalculateCompositionFrameRate()
 {
-  int32_t compositionFrameRatePref = gfxPlatform::GetPrefLayersCompositionFrameRate();
+  int32_t compositionFrameRatePref = gfxPrefs::LayersCompositionFrameRate();
   if (compositionFrameRatePref < 0) {
     // Use the same frame rate for composition as for layout.
-    int32_t layoutFrameRatePref = gfxPlatform::GetPrefLayoutFrameRate();
+    int32_t layoutFrameRatePref = gfxPrefs::LayoutFrameRate();
     if (layoutFrameRatePref < 0) {
       // TODO: The main thread frame scheduling code consults the actual
       // monitor refresh rate in this case. We should do the same.
@@ -648,7 +672,7 @@ CompositorParent::CompositeToTarget(DrawTarget* aTarget)
 #endif
 
   // 0 -> Full-tilt composite
-  if (gfxPlatform::GetPrefLayersCompositionFrameRate() == 0) {
+  if (gfxPrefs::LayersCompositionFrameRate() == 0) {
     // Special full-tilt composite mode for performance testing
     ScheduleComposition();
   }
@@ -705,7 +729,7 @@ CompositorParent::ShadowLayersUpdated(LayerTransactionParent* aLayerTree,
       mForceCompositionTask->Cancel();
     }
     mForceCompositionTask = NewRunnableMethod(this, &CompositorParent::ForceComposition);
-    ScheduleTask(mForceCompositionTask, gfxPlatform::GetPlatform()->GetOrientationSyncMillis());
+    ScheduleTask(mForceCompositionTask, gfxPrefs::OrientationSyncMillis());
   }
 
   // Instruct the LayerManager to update its render bounds now. Since all the orientation
@@ -862,21 +886,6 @@ CompositorParent* CompositorParent::RemoveCompositor(uint64_t id)
   return retval;
 }
 
-/* static */ void
-CompositorParent::SetTimeAndSampleAnimations(TimeStamp aTime, bool aIsTesting)
-{
-  if (!sCompositorMap) {
-    return;
-  }
-  for (CompositorMap::iterator it = sCompositorMap->begin(); it != sCompositorMap->end(); ++it) {
-    it->second->mIsTesting = aIsTesting;
-    it->second->mTestTime = aTime;
-    if (it->second->mCompositionManager) {
-      it->second->mCompositionManager->TransformShadowTree(aTime);
-    }
-  }
-}
-
 bool
 CompositorParent::RecvNotifyChildCreated(const uint64_t& child)
 {
@@ -1012,6 +1021,8 @@ public:
   virtual bool RecvNotifyRegionInvalidated(const nsIntRegion& aRegion) { return true; }
   virtual bool RecvStartFrameTimeRecording(const int32_t& aBufferSize, uint32_t* aOutStartIndex) MOZ_OVERRIDE { return true; }
   virtual bool RecvStopFrameTimeRecording(const uint32_t& aStartIndex, InfallibleTArray<float>* intervals) MOZ_OVERRIDE  { return true; }
+  virtual bool RecvSetTestSampleTime(const TimeStamp& aTime) MOZ_OVERRIDE { return true; }
+  virtual bool RecvLeaveTestMode() MOZ_OVERRIDE { return true; }
 
   virtual PLayerTransactionParent*
     AllocPLayerTransactionParent(const nsTArray<LayersBackend>& aBackendHints,
@@ -1025,6 +1036,8 @@ public:
                                    const TargetConfig& aTargetConfig,
                                    bool aIsFirstPaint,
                                    bool aScheduleComposite) MOZ_OVERRIDE;
+
+  virtual AsyncCompositionManager* GetCompositionManager(LayerTransactionParent* aParent) MOZ_OVERRIDE;
 
 private:
   void DeferredDestroy();
@@ -1173,6 +1186,13 @@ CrossProcessCompositorParent::ShadowLayersUpdated(
   UpdateIndirectTree(id, shadowRoot, aTargetConfig);
 
   sIndirectLayerTrees[id].mParent->NotifyShadowTreeTransaction(id, aIsFirstPaint, aScheduleComposite);
+}
+
+AsyncCompositionManager*
+CrossProcessCompositorParent::GetCompositionManager(LayerTransactionParent* aLayerTree)
+{
+  uint64_t id = aLayerTree->GetId();
+  return sIndirectLayerTrees[id].mParent->GetCompositionManager(aLayerTree);
 }
 
 void

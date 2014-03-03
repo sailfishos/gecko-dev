@@ -225,7 +225,7 @@ let CustomizableUIInternal = {
         "alltabs-button",
         "tabs-closebutton",
       ],
-      defaultCollapsed: false,
+      defaultCollapsed: null,
     }, true);
     this.registerArea(CustomizableUI.AREA_BOOKMARKS, {
       legacy: true,
@@ -794,6 +794,10 @@ let CustomizableUIInternal = {
     }
 
     gBuildAreas.get(aArea).add(aNode);
+
+    // Give a class to all customize targets to be used for styling in Customize Mode
+    let customizableNode = this.getCustomizeTargetForArea(aArea, window);
+    customizableNode.classList.add("customization-target");
   },
 
   registerBuildWindow: function(aWindow) {
@@ -1758,6 +1762,24 @@ let CustomizableUIInternal = {
     }
   },
 
+  _dispatchToolboxEventToWindow: function(aEventType, aDetails, aWindow) {
+    let evt = new aWindow.CustomEvent(aEventType, {
+      bubbles: true,
+      cancelable: true,
+      detail: aDetails
+    });
+    aWindow.gNavToolbox.dispatchEvent(evt);
+  },
+
+  dispatchToolboxEvent: function(aEventType, aDetails={}, aWindow=null) {
+    if (aWindow) {
+      return this._dispatchToolboxEventToWindow(aEventType, aDetails, aWindow);
+    }
+    for (let [win, ] of gBuildWindows) {
+      this._dispatchToolboxEventToWindow(aEventType, aDetails, win);
+    }
+  },
+
   createWidget: function(aProperties) {
     let widget = this.normalizeWidget(aProperties, CustomizableUI.SOURCE_EXTERNAL);
     //XXXunf This should probably throw.
@@ -2109,7 +2131,9 @@ let CustomizableUIInternal = {
         if (area.get("type") == CustomizableUI.TYPE_TOOLBAR) {
           let defaultCollapsed = area.get("defaultCollapsed");
           let win = areaNode.ownerDocument.defaultView;
-          win.setToolbarVisibility(areaNode, !defaultCollapsed);
+          if (defaultCollapsed !== null) {
+            win.setToolbarVisibility(areaNode, !defaultCollapsed);
+          }
         }
       }
     }
@@ -2133,11 +2157,15 @@ let CustomizableUIInternal = {
     Services.prefs.setCharPref(kPrefCustomizationState, uiCustomizationState);
     Services.prefs.setBoolPref(kPrefDrawInTitlebar, drawInTitlebar);
     this.loadSavedState();
-    for (let areaId of Object.keys(gSavedState.placements)) {
-      let placements = gSavedState.placements[areaId];
-      gPlacements.set(areaId, placements);
+    // If the user just customizes toolbar/titlebar visibility, gSavedState will be null
+    // and we don't need to do anything else here:
+    if (gSavedState) {
+      for (let areaId of Object.keys(gSavedState.placements)) {
+        let placements = gSavedState.placements[areaId];
+        gPlacements.set(areaId, placements);
+      }
+      this._rebuildRegisteredAreas();
     }
-    this._rebuildRegisteredAreas();
   },
 
   _clearPreviousUIState: function() {
@@ -2268,7 +2296,7 @@ let CustomizableUIInternal = {
           let attribute = container.getAttribute("type") == "menubar" ? "autohide" : "collapsed";
           let collapsed = container.getAttribute(attribute) == "true";
           let defaultCollapsed = props.get("defaultCollapsed");
-          if (collapsed != defaultCollapsed) {
+          if (defaultCollapsed !== null && collapsed != defaultCollapsed) {
             LOG("Found " + areaId + " had non-default toolbar visibility (expected " + defaultCollapsed + ", was " + collapsed + ")");
             return false;
           }
@@ -2476,7 +2504,9 @@ this.CustomizableUI = {
    *                - defaultPlacements: an array of widget IDs making up the
    *                                     default contents of the area
    *                - defaultCollapsed: (INTERNAL ONLY) applies if the type is TYPE_TOOLBAR, specifies
-   *                                    if toolbar is collapsed by default (default to true)
+   *                                    if toolbar is collapsed by default (default to true).
+   *                                    Specify null to ensure that reset/inDefaultArea don't care
+   *                                    about a toolbar's collapsed state
    */
   registerArea: function(aName, aProperties) {
     CustomizableUIInternal.registerArea(aName, aProperties);
@@ -2859,7 +2889,8 @@ this.CustomizableUI = {
    * Check if a toolbar is collapsed by default.
    *
    * @param aArea the ID of the area whose default-collapsed state you want to know.
-   * @return `true` or `false` depending on the area, null if the area is unknown.
+   * @return `true` or `false` depending on the area, null if the area is unknown,
+   *         or its collapsed state cannot normally be controlled by the user
    */
   isToolbarDefaultCollapsed: function(aArea) {
     let area = gAreas.get(aArea);
@@ -3080,6 +3111,19 @@ this.CustomizableUI = {
   notifyEndCustomizing: function(aWindow) {
     CustomizableUIInternal.notifyListeners("onCustomizeEnd", aWindow);
   },
+
+  /**
+   * Notify toolbox(es) of a particular event. If you don't pass aWindow,
+   * all toolboxes will be notified. For use from Customize Mode only,
+   * do not use otherwise.
+   * @param aEvent the name of the event to send.
+   * @param aDetails optional, the details of the event.
+   * @param aWindow optional, the window in which to send the event.
+   */
+  dispatchToolboxEvent: function(aEvent, aDetails={}, aWindow=null) {
+    CustomizableUIInternal.dispatchToolboxEvent(aEvent, aDetails, aWindow);
+  },
+
   /**
    * Check whether an area is overflowable.
    *
@@ -3447,8 +3491,10 @@ OverflowableToolbar.prototype = {
     }
     let doc = this._panel.ownerDocument;
     this._panel.hidden = false;
+    let contextMenu = doc.getElementById(this._panel.getAttribute("context"));
+    gELS.addSystemEventListener(contextMenu, 'command', this, true);
     let anchor = doc.getAnonymousElementByAttribute(this._chevron, "class", "toolbarbutton-icon");
-    this._panel.openPopup(anchor || this._chevron, "bottomcenter topright");
+    this._panel.openPopup(anchor || this._chevron);
     this._chevron.open = true;
 
     this._panel.addEventListener("popupshown", function onPopupShown() {
@@ -3462,15 +3508,10 @@ OverflowableToolbar.prototype = {
   _onClickChevron: function(aEvent) {
     if (this._chevron.open) {
       this._panel.hidePopup();
+      this._chevron.open = false;
     } else {
-      let doc = aEvent.target.ownerDocument;
-      this._panel.hidden = false;
-      let contextMenu = doc.getElementById(this._panel.getAttribute("context"));
-      gELS.addSystemEventListener(contextMenu, 'command', this, true);
-      let anchor = doc.getAnonymousElementByAttribute(this._chevron, "class", "toolbarbutton-icon");
-      this._panel.openPopup(anchor || this._chevron, "bottomcenter topright");
+      this.show();
     }
-    this._chevron.open = !this._chevron.open;
   },
 
   _onPanelHiding: function(aEvent) {

@@ -654,14 +654,13 @@ MacroAssembler::newGCThing(const Register &result, gc::AllocKind allocKind, Labe
         jump(fail);
 
 #ifdef JSGC_GENERATIONAL
-    const Nursery &nursery = GetIonContext()->runtime->gcNursery();
-    if (nursery.isEnabled() &&
-        allocKind <= gc::FINALIZE_OBJECT_LAST &&
-        initialHeap != gc::TenuredHeap)
-    {
+    // Always use nursery allocation if it is possible to do so. The jit
+    // assumes a nursery pointer is returned to avoid barriers.
+    if (allocKind <= gc::FINALIZE_OBJECT_LAST && initialHeap != gc::TenuredHeap) {
         // Inline Nursery::allocate. No explicit check for nursery.isEnabled()
         // is needed, as the comparison with the nursery's end will always fail
         // in such cases.
+        const Nursery &nursery = GetIonContext()->runtime->gcNursery();
         loadPtr(AbsoluteAddress(nursery.addressOfPosition()), result);
         addPtr(Imm32(thingSize), result);
         branchPtr(Assembler::BelowOrEqual, AbsoluteAddress(nursery.addressOfCurrentEnd()), result, fail);
@@ -1584,7 +1583,7 @@ MacroAssembler::convertValueToInt(ValueOperand value, MDefinition *maybeInput,
     Label done, isInt32, isBool, isDouble, isNull, isString;
 
     branchEqualTypeIfNeeded(MIRType_Int32, maybeInput, tag, &isInt32);
-    if (conversion == IntConversion_Any)
+    if (conversion == IntConversion_Any || conversion == IntConversion_NumbersOrBoolsOnly)
         branchEqualTypeIfNeeded(MIRType_Boolean, maybeInput, tag, &isBool);
     branchEqualTypeIfNeeded(MIRType_Double, maybeInput, tag, &isDouble);
 
@@ -1676,7 +1675,7 @@ MacroAssembler::convertValueToInt(JSContext *cx, const Value &v, Register output
           case IntConversion_NegativeZeroCheck: {
             // -0 is checked anyways if we have a constant value.
             int i;
-            if (mozilla::DoubleIsInt32(d, &i))
+            if (mozilla::NumberIsInt32(d, &i))
                 move32(Imm32(i), output);
             else
                 jump(fail);

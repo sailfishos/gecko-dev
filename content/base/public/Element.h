@@ -635,7 +635,7 @@ public:
     }
   }
   void MozRequestFullScreen();
-  inline void MozRequestPointerLock();
+  void MozRequestPointerLock();
   Attr* GetAttributeNode(const nsAString& aName);
   already_AddRefed<Attr> SetAttributeNode(Attr& aNewAttr,
                                           ErrorResult& aError);
@@ -959,7 +959,8 @@ protected:
    * @param aAttribute    local-name of attribute
    * @param aPrefix       aPrefix of attribute
    * @param aOldValue     previous value of attribute. Only needed if
-   *                      aFireMutation is true.
+   *                      aFireMutation is true or if the element is a
+   *                      custom element (in web components).
    * @param aParsedValue  parsed new value of attribute
    * @param aModType      nsIDOMMutationEvent::MODIFICATION or ADDITION.  Only
    *                      needed if aFireMutation or aNotify is true.

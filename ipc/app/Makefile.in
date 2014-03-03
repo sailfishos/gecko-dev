@@ -36,15 +36,7 @@ NSDISTMODE = copy
 
 include $(topsrcdir)/config/config.mk
 
-ifdef _MSC_VER
-# Always enter a Windows program through wmain, whether or not we're
-# a console application.
-WIN32_EXE_LDFLAGS += -ENTRY:wmainCRTStartup
-endif
-
 include $(topsrcdir)/config/rules.mk
-
-LDFLAGS += $(MOZ_ALLOW_HEAP_EXECUTE_FLAGS)
 
 ifeq ($(OS_ARCH),WINNT) #{
 
@@ -56,19 +48,6 @@ endif
 # Note the manifest file exists in the tree, so we use the explicit filename
 # here.
 EXTRA_DEPS += plugin-container.exe.manifest
-#
-# Control the default heap size.
-# This is the heap returned by GetProcessHeap().
-# As we use the CRT heap, the default size is too large and wastes VM.
-#
-# The default heap size is 1MB on Win32.
-# The heap will grow if need be.
-#
-# Set it to 256k.  See bug 127069.
-#
-ifndef GNU_CC #{
-LDFLAGS += /HEAP:0x40000
-endif #}
 endif #}
 
 ifeq (cocoa,$(MOZ_WIDGET_TOOLKIT)) #{

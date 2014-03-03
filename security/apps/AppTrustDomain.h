@@ -21,6 +21,7 @@ public:
   SECStatus SetTrustedRoot(AppTrustedRoot trustedRoot);
 
   SECStatus GetCertTrust(insanity::pkix::EndEntityOrCA endEntityOrCA,
+                         SECOidTag policy,
                          const CERTCertificate* candidateCert,
                  /*out*/ TrustLevel* trustLevel) MOZ_OVERRIDE;
   SECStatus FindPotentialIssuers(const SECItem* encodedIssuerName,
@@ -29,7 +30,11 @@ public:
                                  MOZ_OVERRIDE;
   SECStatus VerifySignedData(const CERTSignedData* signedData,
                              const CERTCertificate* cert) MOZ_OVERRIDE;
-
+  SECStatus CheckRevocation(insanity::pkix::EndEntityOrCA endEntityOrCA,
+                            const CERTCertificate* cert,
+                            /*const*/ CERTCertificate* issuerCertToDup,
+                            PRTime time,
+                            /*optional*/ const SECItem* stapledOCSPresponse);
 private:
   void* mPinArg; // non-owning!
   insanity::pkix::ScopedCERTCertificate mTrustedRoot;

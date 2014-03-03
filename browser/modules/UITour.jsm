@@ -26,6 +26,7 @@ XPCOMUtils.defineLazyModuleGetter(this, "BrowserUITelemetry",
 
 const UITOUR_PERMISSION   = "uitour";
 const PREF_PERM_BRANCH    = "browser.uitour.";
+const PREF_SEENPAGEIDS    = "browser.uitour.seenPageIDs";
 const MAX_BUTTONS         = 4;
 
 const BUCKET_NAME         = "UITour";
@@ -36,16 +37,24 @@ const BUCKET_TIMESTEPS    = [
   60 * 60 * 1000, // Until 1 hour after tab is closed/inactive.
 ];
 
+// Time after which seen Page IDs expire.
+const SEENPAGEID_EXPIRY  = 2 * 7 * 24 * 60 * 60 * 1000; // 2 weeks.
 
 
 this.UITour = {
-  seenPageIDs: new Set(),
+  seenPageIDs: null,
   pageIDSourceTabs: new WeakMap(),
   pageIDSourceWindows: new WeakMap(),
+  /* Map from browser windows to a set of tabs in which a tour is open */
   originTabs: new WeakMap(),
+  /* Map from browser windows to a set of pinned tabs opened by (a) tour(s) */
   pinnedTabs: new WeakMap(),
   urlbarCapture: new WeakMap(),
   appMenuOpenForAnnotation: new Set(),
+
+  _detachingTab: false,
+  _queuedEvents: [],
+  _pendingDoc: null,
 
   highlightEffects: ["random", "wobble", "zoom", "color"],
   targets: new Map([
@@ -109,8 +118,70 @@ this.UITour = {
   ]),
 
   init: function() {
+    // Lazy getter is initialized here so it can be replicated any time
+    // in a test.
+    delete this.seenPageIDs;
+    Object.defineProperty(this, "seenPageIDs", {
+      get: this.restoreSeenPageIDs.bind(this),
+      configurable: true,
+    });
+
     UITelemetry.addSimpleMeasureFunction("UITour",
                                          this.getTelemetry.bind(this));
+  },
+
+  restoreSeenPageIDs: function() {
+    delete this.seenPageIDs;
+
+    if (UITelemetry.enabled) {
+      let dateThreshold = Date.now() - SEENPAGEID_EXPIRY;
+
+      try {
+        let data = Services.prefs.getCharPref(PREF_SEENPAGEIDS);
+        data = new Map(JSON.parse(data));
+
+        for (let [pageID, details] of data) {
+
+          if (typeof pageID != "string" ||
+              typeof details != "object" ||
+              typeof details.lastSeen != "number" ||
+              details.lastSeen < dateThreshold) {
+
+            data.delete(pageID);
+          }
+        }
+
+        this.seenPageIDs = data;
+      } catch (e) {}
+    }
+
+    if (!this.seenPageIDs)
+      this.seenPageIDs = new Map();
+
+    this.persistSeenIDs();
+
+    return this.seenPageIDs;
+  },
+
+  addSeenPageID: function(aPageID) {
+    if (!UITelemetry.enabled)
+      return;
+
+    this.seenPageIDs.set(aPageID, {
+      lastSeen: Date.now(),
+    });
+
+    this.persistSeenIDs();
+  },
+
+  persistSeenIDs: function() {
+    if (this.seenPageIDs.size === 0) {
+      Services.prefs.clearUserPref(PREF_SEENPAGEIDS);
+      return;
+    }
+
+    Services.prefs.setCharPref(PREF_SEENPAGEIDS,
+                               JSON.stringify([...this.seenPageIDs]));
   },
 
   onPageEvent: function(aEvent) {
@@ -138,15 +209,32 @@ this.UITour = {
       return false;
 
     let window = this.getChromeWindow(contentDocument);
+    // Do this before bailing if there's no tab, so later we can pick up the pieces:
+    window.gBrowser.tabContainer.addEventListener("TabSelect", this);
     let tab = window.gBrowser._getTabForContentWindow(contentDocument.defaultView);
+    if (!tab) {
+      // This should only happen while detaching a tab:
+      if (this._detachingTab) {
+        this._queuedEvents.push(aEvent);
+        this._pendingDoc = Cu.getWeakReference(contentDocument);
+        return;
+      }
+      Cu.reportError("Discarding tabless UITour event (" + action + ") while not detaching a tab." +
+                     "This shouldn't happen!");
+      return;
+    }
 
     switch (action) {
       case "registerPageID": {
+        // This is only relevant if Telemtry is enabled.
+        if (!UITelemetry.enabled)
+          break;
+
         // We don't want to allow BrowserUITelemetry.BUCKET_SEPARATOR in the
         // pageID, as it could make parsing the telemetry bucket name difficult.
         if (typeof data.pageID == "string" &&
             !data.pageID.contains(BrowserUITelemetry.BUCKET_SEPARATOR)) {
-          this.seenPageIDs.add(data.pageID);
+          this.addSeenPageID(data.pageID);
 
           // Store tabs and windows separately so we don't need to loop over all
           // tabs when a window is closed.
@@ -299,10 +387,10 @@ this.UITour = {
 
     if (!this.originTabs.has(window))
       this.originTabs.set(window, new Set());
-    this.originTabs.get(window).add(tab);
 
+    this.originTabs.get(window).add(tab);
     tab.addEventListener("TabClose", this);
-    window.gBrowser.tabContainer.addEventListener("TabSelect", this);
+    tab.addEventListener("TabBecomingWindow", this);
     window.addEventListener("SSWindowClosing", this);
 
     return true;
@@ -316,6 +404,9 @@ this.UITour = {
         break;
       }
 
+      case "TabBecomingWindow":
+        this._detachingTab = true;
+        // Fall through
       case "TabClose": {
         let tab = aEvent.target;
         if (this.pageIDSourceTabs.has(tab)) {
@@ -346,12 +437,33 @@ this.UITour = {
         }
 
         let window = aEvent.target.ownerDocument.defaultView;
+        let selectedTab = window.gBrowser.selectedTab;
         let pinnedTab = this.pinnedTabs.get(window);
-        if (pinnedTab && pinnedTab.tab == window.gBrowser.selectedTab)
+        if (pinnedTab && pinnedTab.tab == selectedTab)
           break;
         let originTabs = this.originTabs.get(window);
-        if (originTabs && originTabs.has(window.gBrowser.selectedTab))
+        if (originTabs && originTabs.has(selectedTab))
           break;
+
+        let pendingDoc;
+        if (this._detachingTab && this._pendingDoc && (pendingDoc = this._pendingDoc.get())) {
+          if (selectedTab.linkedBrowser.contentDocument == pendingDoc) {
+            if (!this.originTabs.get(window)) {
+              this.originTabs.set(window, new Set());
+            }
+            this.originTabs.get(window).add(selectedTab);
+            this.pendingDoc = null;
+            this._detachingTab = false;
+            while (this._queuedEvents.length) {
+              try {
+                this.onPageEvent(this._queuedEvents.shift());
+              } catch (ex) {
+                Cu.reportError(ex);
+              }
+            }
+            break;
+          }
+        }
 
         this.teardownTour(window);
         break;
@@ -401,7 +513,7 @@ this.UITour = {
 
   getTelemetry: function() {
     return {
-      seenPageIDs: [...this.seenPageIDs],
+      seenPageIDs: [...this.seenPageIDs.keys()],
     };
   },
 
@@ -413,8 +525,10 @@ this.UITour = {
 
     let originTabs = this.originTabs.get(aWindow);
     if (originTabs) {
-      for (let tab of originTabs)
+      for (let tab of originTabs) {
         tab.removeEventListener("TabClose", this);
+        tab.removeEventListener("TabBecomingWindow", this);
+      }
     }
     this.originTabs.delete(aWindow);
 
@@ -882,6 +996,12 @@ this.UITour = {
   recreatePopup: function(aPanel) {
     // After changing popup attributes that relate to how the native widget is created
     // (e.g. @noautohide) we need to re-create the frame/widget for it to take effect.
+    if (aPanel.hidden) {
+      // If the panel is already hidden, we don't need to recreate it but flush
+      // in case someone just hid it.
+      aPanel.clientWidth; // flush
+      return;
+    }
     aPanel.hidden = true;
     aPanel.clientWidth; // flush
     aPanel.hidden = false;

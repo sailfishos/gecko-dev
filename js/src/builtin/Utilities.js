@@ -90,6 +90,64 @@ var std_Set_iterator = Set.prototype[std_iterator];
 var std_Map_iterator_next = Object.getPrototypeOf(Map()[std_iterator]()).next;
 var std_Set_iterator_next = Object.getPrototypeOf(Set()[std_iterator]()).next;
 
+/* Safe versions of ARRAY.push(ELEMENT) */
+#define ARRAY_PUSH(ARRAY, ELEMENT) \
+  callFunction(std_Array_push, ARRAY, ELEMENT);
+#define ARRAY_SLICE(ARRAY, ELEMENT) \
+  callFunction(std_Array_slice, ARRAY, ELEMENT);
+
+/********** Parallel JavaScript macros and so on **********/
+
+#ifdef ENABLE_PARALLEL_JS
+
+/* The mode asserts options object. */
+#define TRY_PARALLEL(MODE) \
+  ((!MODE || MODE.mode !== "seq"))
+#define ASSERT_SEQUENTIAL_IS_OK(MODE) \
+  do { if (MODE) AssertSequentialIsOK(MODE) } while(false)
+
+/**
+ * The ParallelSpew intrinsic is only defined in debug mode, so define a dummy
+ * if debug is not on.
+ */
+#ifndef DEBUG
+#define ParallelSpew(args)
+#endif
+
+#define MAX_SLICE_SHIFT 6
+#define MAX_SLICE_SIZE 64
+#define MAX_SLICES_PER_WORKER 8
+
+/**
+ * Macros to help compute the start and end indices of slices based on id. Use
+ * with the object returned by ComputeSliceInfo.
+ */
+#define SLICE_START(info, id) \
+    (id << info.shift)
+#define SLICE_END(info, start, length) \
+    std_Math_min(start + (1 << info.shift), length)
+#define SLICE_COUNT(info) \
+    info.statuses.length
+
+/**
+ * ForkJoinGetSlice acts as identity when we are not in a parallel section, so
+ * pass in the next sequential value when we are in sequential mode. The
+ * reason for this odd API is because intrinsics *need* to be called during
+ * ForkJoin's warmup to fill the TI info.
+ */
+#define GET_SLICE(info, id) \
+    ((id = ForkJoinGetSlice(InParallelSection() ? -1 : NextSequentialSliceId(info, -1))) >= 0)
+
+#define SLICE_STATUS_DONE 1
+
+/**
+ * Macro to mark a slice as completed in the info object.
+ */
+#define MARK_SLICE_DONE(info, id) \
+    UnsafePutElements(info.statuses, id, SLICE_STATUS_DONE)
+
+#endif // ENABLE_PARALLEL_JS
+
 /********** List specification type **********/
 
 
@@ -167,39 +225,6 @@ function IsObject(v) {
 
 
 /********** Testing code **********/
-
-// This code enables testing of the custom allow-nothing wrappers used for
-// objects and functions crossing the self-hosting compartment boundaries.
-// Functions marked as wrappable won't be cloned into content compartments;
-// they're called inside the self-hosting compartment itself. Calling is the
-// only valid operation on them. In turn, the only valid way they can use their
-// object arguments is as keys in maps. Doing anything else with them throws.
-var wrappersTestMap = new WeakMap();
-function testWrappersAllowUseAsKey(o) {
-  wrappersTestMap.set(o, o);
-  var mappedO = wrappersTestMap.get(o);
-  wrappersTestMap.clear();
-  return mappedO;
-}
-function testWrappersForbidAccess(o, operation) {
-  try {
-    switch (operation) {
-      case 'get': var result = o.prop; break;
-      case 'set': o.prop2 = 'value'; break;
-      case 'call': o(); break;
-      case '__proto__':
-        Object.getOwnPropertyDescriptor(Object.prototype, '__proto__').set.call(o, new Object());
-        break;
-    }
-  } catch (e) {
-    // Got the expected exception.
-    return /denied/.test(e);
-  }
-  return false;
-}
-
-MakeWrappable(testWrappersAllowUseAsKey);
-MakeWrappable(testWrappersForbidAccess);
 
 #ifdef ENABLE_PARALLEL_JS
 

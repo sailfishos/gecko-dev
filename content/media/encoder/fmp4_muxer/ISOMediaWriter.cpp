@@ -23,7 +23,7 @@ namespace mozilla {
 
 const static uint32_t FRAG_DURATION = 2 * USECS_PER_S;    // microsecond per unit
 
-ISOMediaWriter::ISOMediaWriter(uint32_t aType)
+ISOMediaWriter::ISOMediaWriter(uint32_t aType, uint32_t aHint)
   : ContainerWriter()
   , mState(MUXING_HEAD)
   , mBlobReady(false)
@@ -35,7 +35,7 @@ ISOMediaWriter::ISOMediaWriter(uint32_t aType)
   if (aType & CREATE_VIDEO_TRACK) {
     mType |= Video_Track;
   }
-  mControl = new ISOControl();
+  mControl = new ISOControl(aHint);
   MOZ_COUNT_CTOR(ISOMediaWriter);
 }
 
@@ -98,12 +98,12 @@ ISOMediaWriter::WriteEncodedTrack(const EncodedFrameContainer& aData,
   for (uint32_t i = 0; i < len; i++) {
     nsRefPtr<EncodedFrame> frame(aData.GetEncodedFrames()[i]);
     EncodedFrame::FrameType type = frame->GetFrameType();
-    if (type == EncodedFrame::AUDIO_FRAME ||
+    if (type == EncodedFrame::AAC_AUDIO_FRAME ||
         type == EncodedFrame::AAC_CSD) {
       frag = mAudioFragmentBuffer;
-    } else if (type == EncodedFrame::I_FRAME ||
-               type == EncodedFrame::P_FRAME ||
-               type == EncodedFrame::B_FRAME ||
+    } else if (type == EncodedFrame::AVC_I_FRAME ||
+               type == EncodedFrame::AVC_P_FRAME ||
+               type == EncodedFrame::AVC_B_FRAME ||
                type == EncodedFrame::AVC_CSD) {
       frag = mVideoFragmentBuffer;
     } else {

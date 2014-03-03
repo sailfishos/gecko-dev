@@ -194,11 +194,12 @@ js::NewContext(JSRuntime *rt, size_t stackChunkSize)
 #ifdef JS_THREADSAFE
         JS_BeginRequest(cx);
 #endif
-        bool ok = rt->staticStrings.init(cx);
-        if (ok)
-            ok = InitCommonNames(cx);
+        bool ok = rt->initializeAtoms(cx);
         if (ok)
             ok = rt->initSelfHosting(cx);
+
+        if (ok && !rt->parentRuntime)
+            ok = rt->transformToPermanentAtoms();
 
 #ifdef JS_THREADSAFE
         JS_EndRequest(cx);
@@ -207,6 +208,7 @@ js::NewContext(JSRuntime *rt, size_t stackChunkSize)
             DestroyContext(cx, DCM_NEW_FAILED);
             return nullptr;
         }
+
         rt->haveCreatedContext = true;
     }
 
@@ -368,9 +370,15 @@ js_ReportOutOfMemory(ThreadSafeContext *cxArg)
 
     if (!cxArg->isJSContext())
         return;
-    JSContext *cx = cxArg->asJSContext();
 
+    JSContext *cx = cxArg->asJSContext();
     cx->runtime()->hadOutOfMemory = true;
+
+    /* Report the oom. */
+    if (JS::OutOfMemoryCallback oomCallback = cx->runtime()->oomCallback) {
+        AutoSuppressGC suppressGC(cx);
+        oomCallback(cx);
+    }
 
     if (JS_IsRunning(cx)) {
         cx->setPendingException(StringValue(cx->names().outOfMemory));
@@ -1000,18 +1008,14 @@ js_InvokeOperationCallback(JSContext *cx)
     JSRuntime *rt = cx->runtime();
     JS_ASSERT(rt->interrupt);
 
-    /*
-     * Reset the callback counter first, then run GC and yield. If another
-     * thread is racing us here we will accumulate another callback request
-     * which will be serviced at the next opportunity.
-     */
+    // Reset the callback counter first, then run GC and yield. If another
+    // thread is racing us here we will accumulate another callback request
+    // which will be serviced at the next opportunity.
     rt->interrupt = false;
 
-    /*
-     * IonMonkey sets its stack limit to UINTPTR_MAX to trigger operation
-     * callbacks.
-     */
-    rt->resetIonStackLimit();
+    // IonMonkey sets its stack limit to UINTPTR_MAX to trigger operation
+    // callbacks.
+    rt->resetJitStackLimit();
 
     js::gc::GCIfNeeded(cx);
 
@@ -1020,20 +1024,28 @@ js_InvokeOperationCallback(JSContext *cx)
     rt->interruptPar = false;
 #endif
 
-    /*
-     * A worker thread may have set the callback after finishing an Ion
-     * compilation.
-     */
+    // A worker thread may have set the callback after finishing an Ion
+    // compilation.
     jit::AttachFinishedCompilations(cx);
 #endif
 
-    /*
-     * Important: Additional callbacks can occur inside the callback handler
-     * if it re-enters the JS engine. The embedding must ensure that the
-     * callback is disconnected before attempting such re-entry.
-     */
+    // Important: Additional callbacks can occur inside the callback handler
+    // if it re-enters the JS engine. The embedding must ensure that the
+    // callback is disconnected before attempting such re-entry.
     JSOperationCallback cb = cx->runtime()->operationCallback;
-    return !cb || cb(cx);
+    if (!cb || cb(cx))
+        return true;
+
+    // No need to set aside any pending exception here: ComputeStackString
+    // already does that.
+    Rooted<JSString*> stack(cx, ComputeStackString(cx));
+    const jschar *chars = stack ? stack->getCharsZ(cx) : nullptr;
+    if (!chars)
+        chars = MOZ_UTF16("(stack not available)");
+    JS_ReportErrorFlagsAndNumberUC(cx, JSREPORT_WARNING, js_GetErrorMessage, nullptr,
+                                   JSMSG_TERMINATED, chars);
+
+    return false;
 }
 
 bool

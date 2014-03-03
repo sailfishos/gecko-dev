@@ -9,7 +9,10 @@
 #include "mozilla/DebugOnly.h"
 #include "mozilla/MathAlgorithms.h"
 
+#include "jsmath.h"
+
 #include "jit/IonFrames.h"
+#include "jit/IonLinker.h"
 #include "jit/JitCompartment.h"
 #include "jit/RangeAnalysis.h"
 
@@ -18,12 +21,10 @@
 using namespace js;
 using namespace js::jit;
 
-using mozilla::DoubleSignificandBits;
-using mozilla::FloatSignificandBits;
+using mozilla::FloatingPoint;
 using mozilla::FloorLog2;
 using mozilla::NegativeInfinity;
 using mozilla::SpecificNaN;
-using mozilla::SpecificFloatNaN;
 
 namespace js {
 namespace jit {
@@ -509,7 +510,8 @@ CodeGeneratorX86Shared::visitAbsD(LAbsD *ins)
     FloatRegister input = ToFloatRegister(ins->input());
     JS_ASSERT(input == ToFloatRegister(ins->output()));
     // Load a value which is all ones except for the sign bit.
-    masm.loadConstantDouble(SpecificNaN(0, DoubleSignificandBits), ScratchFloatReg);
+    masm.loadConstantDouble(SpecificNaN<double>(0, FloatingPoint<double>::SignificandBits),
+                            ScratchFloatReg);
     masm.andpd(ScratchFloatReg, input);
     return true;
 }
@@ -520,7 +522,8 @@ CodeGeneratorX86Shared::visitAbsF(LAbsF *ins)
     FloatRegister input = ToFloatRegister(ins->input());
     JS_ASSERT(input == ToFloatRegister(ins->output()));
     // Same trick as visitAbsD above.
-    masm.loadConstantFloat32(SpecificFloatNaN(0, FloatSignificandBits), ScratchFloatReg);
+    masm.loadConstantFloat32(SpecificNaN<float>(0, FloatingPoint<float>::SignificandBits),
+                             ScratchFloatReg);
     masm.andps(ScratchFloatReg, input);
     return true;
 }
@@ -553,7 +556,7 @@ CodeGeneratorX86Shared::visitPowHalfD(LPowHalfD *ins)
 
     if (!ins->mir()->operandIsNeverNegativeInfinity()) {
         // Branch if not -Infinity.
-        masm.loadConstantDouble(NegativeInfinity(), ScratchFloatReg);
+        masm.loadConstantDouble(NegativeInfinity<double>(), ScratchFloatReg);
 
         Assembler::DoubleCondition cond = Assembler::DoubleNotEqualOrUnordered;
         if (ins->mir()->operandIsNeverNaN())
@@ -788,13 +791,19 @@ CodeGeneratorX86Shared::visitReturnZero(ReturnZero *ool)
 bool
 CodeGeneratorX86Shared::visitUDivOrMod(LUDivOrMod *ins)
 {
-    JS_ASSERT(ToRegister(ins->lhs()) == eax);
+    Register lhs = ToRegister(ins->lhs());
     Register rhs = ToRegister(ins->rhs());
     Register output = ToRegister(ins->output());
 
+    JS_ASSERT_IF(lhs != rhs, rhs != eax);
+    JS_ASSERT(rhs != edx);
     JS_ASSERT_IF(output == eax, ToRegister(ins->remainder()) == edx);
 
     ReturnZero *ool = nullptr;
+
+    // Put the lhs in eax.
+    if (lhs != eax)
+        masm.mov(lhs, eax);
 
     // Prevent divide by zero.
     if (ins->canBeDivideByZero()) {
@@ -809,6 +818,7 @@ CodeGeneratorX86Shared::visitUDivOrMod(LUDivOrMod *ins)
         }
     }
 
+    // Zero extend the lhs into edx to make (edx:eax), since udiv is 64-bit.
     masm.mov(ImmWord(0), edx);
     masm.udiv(rhs);
 
@@ -893,28 +903,6 @@ CodeGeneratorX86Shared::visitDivPowTwoI(LDivPowTwoI *ins)
 }
 
 bool
-CodeGeneratorX86Shared::visitDivSelfI(LDivSelfI *ins)
-{
-    Register op = ToRegister(ins->op());
-    Register output = ToRegister(ins->output());
-    MDiv *mir = ins->mir();
-
-    // If we can't divide by zero, lowering should have just used a constant one.
-    JS_ASSERT(mir->canBeDivideByZero());
-
-    masm.testl(op, op);
-    if (mir->isTruncated()) {
-        masm.emitSet(Assembler::NonZero, output);
-    } else {
-       if (!bailoutIf(Assembler::Zero, ins->snapshot()))
-           return false;
-        masm.mov(ImmWord(1), output);
-    }
-
-    return true;
-}
-
-bool
 CodeGeneratorX86Shared::visitDivI(LDivI *ins)
 {
     Register remainder = ToRegister(ins->remainder());
@@ -924,12 +912,18 @@ CodeGeneratorX86Shared::visitDivI(LDivI *ins)
 
     MDiv *mir = ins->mir();
 
+    JS_ASSERT_IF(lhs != rhs, rhs != eax);
+    JS_ASSERT(rhs != edx);
     JS_ASSERT(remainder == edx);
-    JS_ASSERT(lhs == eax);
     JS_ASSERT(output == eax);
 
     Label done;
     ReturnZero *ool = nullptr;
+
+    // Put the lhs in eax, for either the negative overflow case or the regular
+    // divide case.
+    if (lhs != eax)
+        masm.mov(lhs, eax);
 
     // Handle divide by zero.
     if (mir->canBeDivideByZero()) {
@@ -975,7 +969,9 @@ CodeGeneratorX86Shared::visitDivI(LDivI *ins)
         masm.bind(&nonzero);
     }
 
-    // Sign extend eax into edx to make (edx:eax), since idiv is 64-bit.
+    // Sign extend the lhs into edx to make (edx:eax), since idiv is 64-bit.
+    if (lhs != eax)
+        masm.mov(lhs, eax);
     masm.cdq();
     masm.idiv(rhs);
 
@@ -993,39 +989,6 @@ CodeGeneratorX86Shared::visitDivI(LDivI *ins)
             return false;
         masm.bind(ool->rejoin());
     }
-
-    return true;
-}
-
-bool
-CodeGeneratorX86Shared::visitModSelfI(LModSelfI *ins)
-{
-    Register op = ToRegister(ins->op());
-    Register output = ToRegister(ins->output());
-    MMod *mir = ins->mir();
-
-    // If we're not fallible, lowering should have just used a constant zero.
-    JS_ASSERT(mir->fallible());
-    JS_ASSERT(mir->canBeDivideByZero() || (!mir->isUnsigned() && mir->canBeNegativeDividend()));
-
-    masm.testl(op, op);
-
-    // For a negative operand, we need to return negative zero. We can't
-    // represent that as an int32, so bail if that happens.
-    if (!mir->isUnsigned() && mir->canBeNegativeDividend()) {
-        if (!bailoutIf(Assembler::Signed, ins->snapshot()))
-             return false;
-    }
-
-    // For a zero operand, we need to return NaN. We can't
-    // represent that as an int32, so bail if that happens.
-    if (mir->canBeDivideByZero()) {
-        if (!bailoutIf(Assembler::Zero, ins->snapshot()))
-            return false;
-    }
-
-    // For any other value, return 0.
-    masm.mov(ImmWord(0), output);
 
     return true;
 }
@@ -1114,13 +1077,18 @@ CodeGeneratorX86Shared::visitModI(LModI *ins)
     Register rhs = ToRegister(ins->rhs());
 
     // Required to use idiv.
-    JS_ASSERT(lhs == eax);
+    JS_ASSERT_IF(lhs != rhs, rhs != eax);
+    JS_ASSERT(rhs != edx);
     JS_ASSERT(remainder == edx);
     JS_ASSERT(ToRegister(ins->getTemp(0)) == eax);
 
     Label done;
     ReturnZero *ool = nullptr;
     ModOverflowCheck *overflow = nullptr;
+
+    // Set up eax in preparation for doing a div.
+    if (lhs != eax)
+        masm.mov(lhs, eax);
 
     // Prevent divide by zero.
     if (ins->mir()->canBeDivideByZero()) {
@@ -1699,6 +1667,93 @@ CodeGeneratorX86Shared::visitRound(LRound *lir)
 }
 
 bool
+CodeGeneratorX86Shared::visitRoundF(LRoundF *lir)
+{
+    FloatRegister input = ToFloatRegister(lir->input());
+    FloatRegister temp = ToFloatRegister(lir->temp());
+    FloatRegister scratch = ScratchFloatReg;
+    Register output = ToRegister(lir->output());
+
+    Label negative, end;
+
+    // Load 0.5 in the temp register.
+    masm.loadConstantFloat32(0.5f, temp);
+
+    // Branch to a slow path for negative inputs. Doesn't catch NaN or -0.
+    masm.xorps(scratch, scratch);
+    masm.branchFloat(Assembler::DoubleLessThan, input, scratch, &negative);
+
+    // Bail on negative-zero.
+    Assembler::Condition bailCond = masm.testNegativeZeroFloat32(input, output);
+    if (!bailoutIf(bailCond, lir->snapshot()))
+        return false;
+
+    // Input is non-negative. Add 0.5 and truncate, rounding down. Note that we
+    // have to add the input to the temp register (which contains 0.5) because
+    // we're not allowed to modify the input register.
+    masm.addss(input, temp);
+
+    masm.cvttss2si(temp, output);
+    masm.cmp32(output, Imm32(INT_MIN));
+    if (!bailoutIf(Assembler::Equal, lir->snapshot()))
+        return false;
+
+    masm.jump(&end);
+
+
+    // Input is negative, but isn't -0.
+    masm.bind(&negative);
+
+    if (AssemblerX86Shared::HasSSE41()) {
+        // Add 0.5 and round toward -Infinity. The result is stored in the temp
+        // register (currently contains 0.5).
+        masm.addss(input, temp);
+        masm.roundss(temp, scratch, JSC::X86Assembler::RoundDown);
+
+        // Truncate.
+        masm.cvttss2si(scratch, output);
+        masm.cmp32(output, Imm32(INT_MIN));
+        if (!bailoutIf(Assembler::Equal, lir->snapshot()))
+            return false;
+
+        // If the result is positive zero, then the actual result is -0. Bail.
+        // Otherwise, the truncation will have produced the correct negative integer.
+        masm.testl(output, output);
+        if (!bailoutIf(Assembler::Zero, lir->snapshot()))
+            return false;
+
+    } else {
+        masm.addss(input, temp);
+        // Round toward -Infinity without the benefit of ROUNDSS.
+        {
+            // If input + 0.5 >= 0, input is a negative number >= -0.5 and the result is -0.
+            masm.compareFloat(Assembler::DoubleGreaterThanOrEqual, temp, scratch);
+            if (!bailoutIf(Assembler::DoubleGreaterThanOrEqual, lir->snapshot()))
+                return false;
+
+            // Truncate and round toward zero.
+            // This is off-by-one for everything but integer-valued inputs.
+            masm.cvttss2si(temp, output);
+            masm.cmp32(output, Imm32(INT_MIN));
+            if (!bailoutIf(Assembler::Equal, lir->snapshot()))
+                return false;
+
+            // Test whether the truncated double was integer-valued.
+            masm.convertInt32ToFloat32(output, scratch);
+            masm.branchFloat(Assembler::DoubleEqualOrUnordered, temp, scratch, &end);
+
+            // Input is not integer-valued, so we rounded off-by-one in the
+            // wrong direction. Correct by subtraction.
+            masm.subl(Imm32(1), output);
+            // Cannot overflow: output was already checked against INT_MIN.
+        }
+    }
+
+    masm.bind(&end);
+    return true;
+}
+
+bool
 CodeGeneratorX86Shared::visitGuardShape(LGuardShape *guard)
 {
     Register obj = ToRegister(guard->input());
@@ -1803,6 +1858,177 @@ CodeGeneratorX86Shared::visitNegF(LNegF *ins)
     return true;
 }
 
+bool
+CodeGeneratorX86Shared::visitForkJoinGetSlice(LForkJoinGetSlice *ins)
+{
+    MOZ_ASSERT(gen->info().executionMode() == ParallelExecution);
+    MOZ_ASSERT(ToRegister(ins->forkJoinContext()) == ForkJoinGetSliceReg_cx);
+    MOZ_ASSERT(ToRegister(ins->temp1()) == eax);
+    MOZ_ASSERT(ToRegister(ins->temp2()) == edx);
+    MOZ_ASSERT(ToRegister(ins->temp3()) == ForkJoinGetSliceReg_temp0);
+    MOZ_ASSERT(ToRegister(ins->temp4()) == ForkJoinGetSliceReg_temp1);
+    MOZ_ASSERT(ToRegister(ins->output()) == ForkJoinGetSliceReg_output);
+
+    masm.call(gen->jitRuntime()->forkJoinGetSliceStub());
+    return true;
+}
+
+JitCode *
+JitRuntime::generateForkJoinGetSliceStub(JSContext *cx)
+{
+#ifdef JS_THREADSAFE
+    MacroAssembler masm(cx);
+
+    // We need two fixed temps. We need to fix eax for cmpxchg, and edx for
+    // div.
+    Register cxReg = ForkJoinGetSliceReg_cx, worker = cxReg;
+    Register pool = ForkJoinGetSliceReg_temp0;
+    Register bounds = ForkJoinGetSliceReg_temp1;
+    Register output = ForkJoinGetSliceReg_output;
+
+    MOZ_ASSERT(worker != eax && worker != edx);
+    MOZ_ASSERT(pool != eax && pool != edx);
+    MOZ_ASSERT(bounds != eax && bounds != edx);
+    MOZ_ASSERT(output != eax && output != edx);
+
+    Label stealWork, noMoreWork, gotSlice;
+    Operand workerSliceBounds(Address(worker, ThreadPoolWorker::offsetOfSliceBounds()));
+
+    // Clobber cx to load the worker.
+    masm.push(cxReg);
+    masm.loadPtr(Address(cxReg, ForkJoinContext::offsetOfWorker()), worker);
+
+    // Load the thread pool, which is used in all cases below.
+    masm.loadThreadPool(pool);
+
+    {
+        // Try to get a slice from the current thread.
+        Label getOwnSliceLoopHead;
+        masm.bind(&getOwnSliceLoopHead);
+
+        // Load the slice bounds for the current thread.
+        masm.loadSliceBounds(worker, bounds);
+
+        // The slice bounds is a uint32 composed from two uint16s:
+        // [ from          , to           ]
+        //   ^~~~            ^~
+        //   upper 16 bits | lower 16 bits
+        masm.move32(bounds, output);
+        masm.shrl(Imm32(16), output);
+
+        // If we don't have any slices left ourselves, move on to stealing.
+        masm.branch16(Assembler::Equal, output, bounds, &stealWork);
+
+        // If we still have work, try to CAS [ from+1, to ].
+        masm.move32(bounds, edx);
+        masm.add32(Imm32(0x10000), edx);
+        masm.move32(bounds, eax);
+        masm.atomic_cmpxchg32(edx, workerSliceBounds, eax);
+        masm.j(Assembler::NonZero, &getOwnSliceLoopHead);
+
+        // If the CAS succeeded, return |from| in output.
+        masm.jump(&gotSlice);
+    }
+
+    // Try to steal work.
+    masm.bind(&stealWork);
+
+    // It's not technically correct to test whether work-stealing is turned on
+    // only during stub-generation time, but it's a DEBUG only thing.
+    if (cx->runtime()->threadPool.workStealing()) {
+        Label stealWorkLoopHead;
+        masm.bind(&stealWorkLoopHead);
+
+        // Check if we have work.
+        masm.branch32(Assembler::Equal,
+                      Address(pool, ThreadPool::offsetOfPendingSlices()),
+                      Imm32(0), &noMoreWork);
+
+        // Get an id at random. The following is an inline of
+        // the 32-bit xorshift in ThreadPoolWorker::randomWorker().
+        {
+            // Reload the current worker.
+            masm.loadPtr(Address(StackPointer, 0), cxReg);
+            masm.loadPtr(Address(cxReg, ForkJoinContext::offsetOfWorker()), worker);
+
+            // Perform the xorshift to get a random number in eax, using edx
+            // as a temp.
+            Address rngState(worker, ThreadPoolWorker::offsetOfSchedulerRNGState());
+            masm.load32(rngState, eax);
+            masm.move32(eax, edx);
+            masm.shll(Imm32(ThreadPoolWorker::XORSHIFT_A), eax);
+            masm.xor32(edx, eax);
+            masm.move32(eax, edx);
+            masm.shrl(Imm32(ThreadPoolWorker::XORSHIFT_B), eax);
+            masm.xor32(edx, eax);
+            masm.move32(eax, edx);
+            masm.shll(Imm32(ThreadPoolWorker::XORSHIFT_C), eax);
+            masm.xor32(edx, eax);
+            masm.store32(eax, rngState);
+
+            // Compute the random worker id by computing % numWorkers. Reuse
+            // output as a temp.
+            masm.move32(Imm32(0), edx);
+            masm.move32(Imm32(cx->runtime()->threadPool.numWorkers()), output);
+            masm.udiv(output);
+        }
+
+        // Load the worker from the workers array.
+        masm.loadPtr(Address(pool, ThreadPool::offsetOfWorkers()), worker);
+        masm.loadPtr(BaseIndex(worker, edx, ScalePointer), worker);
+
+        // Try to get a slice from the designated victim worker.
+        Label stealSliceFromWorkerLoopHead;
+        masm.bind(&stealSliceFromWorkerLoopHead);
+
+        // Load the slice bounds and decompose for the victim worker.
+        masm.loadSliceBounds(worker, bounds);
+        masm.move32(bounds, eax);
+        masm.shrl(Imm32(16), eax);
+
+        // If the victim worker has no more slices left, find another worker.
+        masm.branch16(Assembler::Equal, eax, bounds, &stealWorkLoopHead);
+
+        // If the victim worker still has work, try to CAS [ from, to-1 ].
+        masm.move32(bounds, output);
+        masm.sub32(Imm32(1), output);
+        masm.move32(bounds, eax);
+        masm.atomic_cmpxchg32(output, workerSliceBounds, eax);
+        masm.j(Assembler::NonZero, &stealSliceFromWorkerLoopHead);
+
+        // If the CAS succeeded, return |to-1| in output.
+#ifdef DEBUG
+        masm.atomic_inc32(Operand(Address(pool, ThreadPool::offsetOfStolenSlices())));
+#endif
+        // Copies lower 16 bits only.
+        masm.movzwl(output, output);
+    }
+
+    // If we successfully got a slice, decrement pool->pendingSlices_ and
+    // return the slice.
+    masm.bind(&gotSlice);
+    masm.atomic_dec32(Operand(Address(pool, ThreadPool::offsetOfPendingSlices())));
+    masm.pop(cxReg);
+    masm.ret();
+
+    // There's no more slices to give out, return -1.
+    masm.bind(&noMoreWork);
+    masm.move32(Imm32(-1), output);
+    masm.pop(cxReg);
+    masm.ret();
+
+    Linker linker(masm);
+    JitCode *code = linker.newCode<NoGC>(cx, JSC::OTHER_CODE);
+
+#ifdef JS_ION_PERF
+    writePerfSpewerJitCodeProfile(code, "ForkJoinGetSliceStub");
+#endif
+
+    return code;
+#else
+    return nullptr;
+#endif // JS_THREADSAFE
+}
 
 } // namespace jit
 } // namespace js

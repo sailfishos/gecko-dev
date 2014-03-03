@@ -104,7 +104,7 @@ js::ScopeCoordinateName(ScopeCoordinateNameCache &cache, JSScript *script, jsbyt
 
     /* Beware nameless destructuring formal. */
     if (!JSID_IS_ATOM(id))
-        return script->runtimeFromAnyThread()->atomState.empty;
+        return script->runtimeFromAnyThread()->commonNames->empty;
     return JSID_TO_ATOM(id)->asPropertyName();
 }
 
@@ -325,8 +325,7 @@ DeclEnvObject::createTemplateObject(JSContext *cx, HandleFunction fun, gc::Initi
     const Class *clasp = obj->getClass();
     unsigned attrs = JSPROP_ENUMERATE | JSPROP_PERMANENT | JSPROP_READONLY;
     if (!JSObject::putProperty<SequentialExecution>(cx, obj, id, clasp->getProperty,
-                                                    clasp->setProperty, lambdaSlot(), attrs, 0, 0))
-    {
+                                                    clasp->setProperty, lambdaSlot(), attrs, 0)) {
         return nullptr;
     }
 
@@ -664,20 +663,20 @@ ClonedBlockObject::create(JSContext *cx, Handle<StaticBlockObject *> block, Abst
     }
 
     JS_ASSERT(!obj->inDictionaryMode());
-    JS_ASSERT(obj->slotSpan() >= block->slotCount() + RESERVED_SLOTS);
+    JS_ASSERT(obj->slotSpan() >= block->numVariables() + RESERVED_SLOTS);
 
     obj->setReservedSlot(SCOPE_CHAIN_SLOT, ObjectValue(*frame.scopeChain()));
-    obj->setReservedSlot(DEPTH_SLOT, PrivateUint32Value(block->stackDepth()));
 
     /*
      * Copy in the closed-over locals. Closed-over locals don't need
      * any fixup since the initial value is 'undefined'.
      */
-    unsigned nslots = block->slotCount();
-    unsigned base = frame.script()->nfixed() + block->stackDepth();
-    for (unsigned i = 0; i < nslots; ++i) {
-        if (block->isAliased(i))
-            obj->as<ClonedBlockObject>().setVar(i, frame.unaliasedLocal(base + i));
+    unsigned nvars = block->numVariables();
+    for (unsigned i = 0; i < nvars; ++i) {
+        if (block->isAliased(i)) {
+            Value &val = frame.unaliasedLocal(block->blockIndexToLocalIndex(i));
+            obj->as<ClonedBlockObject>().setVar(i, val);
+        }
     }
 
     JS_ASSERT(obj->isDelegate());
@@ -689,10 +688,11 @@ void
 ClonedBlockObject::copyUnaliasedValues(AbstractFramePtr frame)
 {
     StaticBlockObject &block = staticBlock();
-    unsigned base = frame.script()->nfixed() + block.stackDepth();
-    for (unsigned i = 0; i < slotCount(); ++i) {
-        if (!block.isAliased(i))
-            setVar(i, frame.unaliasedLocal(base + i), DONT_CHECK_ALIASING);
+    for (unsigned i = 0; i < numVariables(); ++i) {
+        if (!block.isAliased(i)) {
+            Value &val = frame.unaliasedLocal(block.blockIndexToLocalIndex(i));
+            setVar(i, val, DONT_CHECK_ALIASING);
+        }
     }
 }
 
@@ -720,8 +720,8 @@ StaticBlockObject::create(ExclusiveContext *cx)
 StaticBlockObject::addVar(ExclusiveContext *cx, Handle<StaticBlockObject*> block, HandleId id,
                           unsigned index, bool *redeclared)
 {
-    JS_ASSERT(JSID_IS_ATOM(id) || (JSID_IS_INT(id) && JSID_TO_INT(id) == (int)index));
-    JS_ASSERT(index < VAR_INDEX_LIMIT);
+    JS_ASSERT(JSID_IS_ATOM(id));
+    JS_ASSERT(index < LOCAL_INDEX_LIMIT);
 
     *redeclared = false;
 
@@ -737,12 +737,14 @@ StaticBlockObject::addVar(ExclusiveContext *cx, Handle<StaticBlockObject*> block
      * block's shape later.
      */
     uint32_t slot = JSSLOT_FREE(&BlockObject::class_) + index;
-    return JSObject::addPropertyInternal<SequentialExecution>(
-        cx, block, id,
-        /* getter = */ nullptr, /* setter = */ nullptr,
-        slot, JSPROP_ENUMERATE | JSPROP_PERMANENT,
-        Shape::HAS_SHORTID, index, spp,
-        /* allowDictionary = */ false);
+    return JSObject::addPropertyInternal<SequentialExecution>(cx, block, id,
+                                                              /* getter = */ nullptr,
+                                                              /* setter = */ nullptr,
+                                                              slot,
+                                                              JSPROP_ENUMERATE | JSPROP_PERMANENT,
+                                                              /* attrs = */ 0,
+                                                              spp,
+                                                              /* allowDictionary = */ false);
 }
 
 const Class BlockObject::class_ = {
@@ -769,16 +771,12 @@ js::XDRStaticBlockObject(XDRState<mode> *xdr, HandleObject enclosingScope,
     JSContext *cx = xdr->cx();
 
     Rooted<StaticBlockObject*> obj(cx);
-    uint32_t count = 0;
-    uint32_t depthAndCount = 0;
+    uint32_t count = 0, offset = 0;
 
     if (mode == XDR_ENCODE) {
         obj = *objp;
-        uint32_t depth = obj->stackDepth();
-        JS_ASSERT(depth <= UINT16_MAX);
-        count = obj->slotCount();
-        JS_ASSERT(count <= UINT16_MAX);
-        depthAndCount = (depth << 16) | uint16_t(count);
+        count = obj->numVariables();
+        offset = obj->localOffset();
     }
 
     if (mode == XDR_DECODE) {
@@ -789,13 +787,13 @@ js::XDRStaticBlockObject(XDRState<mode> *xdr, HandleObject enclosingScope,
         *objp = obj;
     }
 
-    if (!xdr->codeUint32(&depthAndCount))
+    if (!xdr->codeUint32(&count))
+        return false;
+    if (!xdr->codeUint32(&offset))
         return false;
 
     if (mode == XDR_DECODE) {
-        uint32_t depth = uint16_t(depthAndCount >> 16);
-        count = uint16_t(depthAndCount);
-        obj->setStackDepth(depth);
+        obj->setLocalOffset(offset);
 
         /*
          * XDR the block object's properties. We know that there are 'count'
@@ -829,10 +827,8 @@ js::XDRStaticBlockObject(XDRState<mode> *xdr, HandleObject enclosingScope,
         if (!shapes.growBy(count))
             return false;
 
-        for (Shape::Range<NoGC> r(obj->lastProperty()); !r.empty(); r.popFront()) {
-            Shape *shape = &r.front();
-            shapes[shape->shortid()] = shape;
-        }
+        for (Shape::Range<NoGC> r(obj->lastProperty()); !r.empty(); r.popFront())
+            shapes[obj->shapeToIndex(r.front())] = &r.front();
 
         /*
          * XDR the block object's properties. We know that there are 'count'
@@ -844,7 +840,7 @@ js::XDRStaticBlockObject(XDRState<mode> *xdr, HandleObject enclosingScope,
         for (unsigned i = 0; i < count; i++) {
             shape = shapes[i];
             JS_ASSERT(shape->hasDefaultGetter());
-            JS_ASSERT(unsigned(shape->shortid()) == i);
+            JS_ASSERT(obj->shapeToIndex(*shape) == i);
 
             propid = shape->propid();
             JS_ASSERT(JSID_IS_ATOM(propid) || JSID_IS_INT(propid));
@@ -880,18 +876,19 @@ CloneStaticBlockObject(JSContext *cx, HandleObject enclosingScope, Handle<Static
         return nullptr;
 
     clone->initEnclosingNestedScope(enclosingScope);
-    clone->setStackDepth(srcBlock->stackDepth());
+    clone->setLocalOffset(srcBlock->localOffset());
 
     /* Shape::Range is reverse order, so build a list in forward order. */
     AutoShapeVector shapes(cx);
-    if (!shapes.growBy(srcBlock->slotCount()))
+    if (!shapes.growBy(srcBlock->numVariables()))
         return nullptr;
+
     for (Shape::Range<NoGC> r(srcBlock->lastProperty()); !r.empty(); r.popFront())
-        shapes[r.front().shortid()] = &r.front();
+        shapes[srcBlock->shapeToIndex(r.front())] = &r.front();
 
     for (Shape **p = shapes.begin(); p != shapes.end(); ++p) {
         RootedId id(cx, (*p)->propid());
-        unsigned i = (*p)->shortid();
+        unsigned i = srcBlock->shapeToIndex(**p);
 
         bool redeclared;
         if (!StaticBlockObject::addVar(cx, clone, id, i, &redeclared)) {
@@ -1194,7 +1191,7 @@ class DebugScopeProxy : public BaseProxyHandler
             if (!bi)
                 return false;
 
-            if (bi->kind() == VARIABLE || bi->kind() == CONSTANT) {
+            if (bi->kind() == Binding::VARIABLE || bi->kind() == Binding::CONSTANT) {
                 uint32_t i = bi.frameIndex();
                 if (script->varIsAliased(i))
                     return false;
@@ -1216,7 +1213,7 @@ class DebugScopeProxy : public BaseProxyHandler
                         vp.set(UndefinedValue());
                 }
             } else {
-                JS_ASSERT(bi->kind() == ARGUMENT);
+                JS_ASSERT(bi->kind() == Binding::ARGUMENT);
                 unsigned i = bi.frameIndex();
                 if (script->formalIsAliased(i))
                     return false;
@@ -1259,19 +1256,18 @@ class DebugScopeProxy : public BaseProxyHandler
             if (!shape)
                 return false;
 
-            unsigned i = shape->shortid();
+            unsigned i = block->staticBlock().shapeToIndex(*shape);
             if (block->staticBlock().isAliased(i))
                 return false;
 
             if (maybeLiveScope) {
                 AbstractFramePtr frame = maybeLiveScope->frame();
-                JSScript *script = frame.script();
-                uint32_t local = block->slotToLocalIndex(script->bindings, shape->slot());
+                uint32_t local = block->staticBlock().blockIndexToLocalIndex(i);
+                JS_ASSERT(local < frame.script()->nfixed());
                 if (action == GET)
                     vp.set(frame.unaliasedLocal(local));
                 else
                     frame.unaliasedLocal(local) = vp;
-                JS_ASSERT(analyze::LocalSlot(script, local) >= analyze::TotalSlots(script));
             } else {
                 if (action == GET)
                     vp.set(block->var(i, DONT_CHECK_ALIASING));
@@ -1381,7 +1377,6 @@ class DebugScopeProxy : public BaseProxyHandler
             desc.object().set(debugScope);
             desc.setAttributes(JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT);
             desc.value().setObject(*maybeArgsObj);
-            desc.setShortId(0);
             desc.setGetter(nullptr);
             desc.setSetter(nullptr);
             return true;
@@ -1392,7 +1387,6 @@ class DebugScopeProxy : public BaseProxyHandler
             desc.object().set(debugScope);
             desc.setAttributes(JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT);
             desc.value().set(v);
-            desc.setShortId(0);
             desc.setGetter(nullptr);
             desc.setSetter(nullptr);
             return true;

@@ -1004,6 +1004,31 @@ TreatAsOpaque(nsDisplayItem* aItem, nsDisplayListBuilder* aBuilder)
   return opaqueClipped;
 }
 
+/* Checks if aPotentialScrollItem is a scroll layer item and aPotentialScrollbarItem
+ * is an overlay scrollbar item for the same scroll frame.
+ */
+static bool
+IsScrollLayerItemAndOverlayScrollbarForScrollFrame(
+  nsDisplayItem* aPotentialScrollItem, nsDisplayItem* aPotentialScrollbarItem)
+{
+  if (aPotentialScrollItem->GetType() == nsDisplayItem::TYPE_SCROLL_LAYER &&
+      aPotentialScrollbarItem &&
+      aPotentialScrollbarItem->GetType() == nsDisplayItem::TYPE_OWN_LAYER &&
+      LookAndFeel::GetInt(LookAndFeel::eIntID_UseOverlayScrollbars)) {
+    nsDisplayScrollLayer* scrollItem =
+      static_cast<nsDisplayScrollLayer*>(aPotentialScrollItem);
+    nsDisplayOwnLayer* layerItem =
+      static_cast<nsDisplayOwnLayer*>(aPotentialScrollbarItem);
+    if ((layerItem->GetFlags() &
+         (nsDisplayOwnLayer::VERTICAL_SCROLLBAR |
+          nsDisplayOwnLayer::HORIZONTAL_SCROLLBAR)) &&
+        layerItem->Frame()->GetParent() == scrollItem->GetScrollFrame()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool
 nsDisplayList::ComputeVisibilityForSublist(nsDisplayListBuilder* aBuilder,
                                            nsRegion* aVisibleRegion,
@@ -1033,6 +1058,17 @@ nsDisplayList::ComputeVisibilityForSublist(nsDisplayListBuilder* aBuilder,
       if (belowItem && item->TryMerge(aBuilder, belowItem)) {
         belowItem->~nsDisplayItem();
         elements.ReplaceElementsAt(i - 1, 1, item);
+        continue;
+      }
+
+      // If an overlay scrollbar item is between a scroll layer item and the
+      // other scroll layer items that we need to merge with just move the
+      // scrollbar item up, that way it will be on top of the scrolled content
+      // and we can try to merge all the scroll layer items.
+      if (IsScrollLayerItemAndOverlayScrollbarForScrollFrame(item, belowItem)) {
+        elements[i] = belowItem;
+        elements[i-1] = item;
+        i++;
         continue;
       }
 
@@ -1151,7 +1187,7 @@ void nsDisplayList::PaintForFrame(nsDisplayListBuilder* aBuilder,
   NotifySubDocInvalidationFunc computeInvalidFunc =
     presContext->MayHavePaintEventListenerInSubDocument() ? nsPresContext::NotifySubDocInvalidation : 0;
   bool computeInvalidRect = (computeInvalidFunc ||
-                             !layerManager->IsCompositingCheap()) &&
+                             (!layerManager->IsCompositingCheap() && layerManager->NeedsWidgetInvalidation())) &&
                             widgetTransaction;
 
   nsAutoPtr<LayerProperties> props(computeInvalidRect ? 
@@ -1208,17 +1244,21 @@ void nsDisplayList::PaintForFrame(nsDisplayListBuilder* aBuilder,
 
   nsRect viewport(aBuilder->ToReferenceFrame(aForFrame), aForFrame->GetSize());
 
-  RecordFrameMetrics(aForFrame, rootScrollFrame,
-                     aBuilder->FindReferenceFrameFor(aForFrame),
-                     root, mVisibleRect, viewport,
-                     (usingDisplayport ? &displayport : nullptr),
-                     (usingCriticalDisplayport ? &criticalDisplayport : nullptr),
-                     id, isRoot, containerParameters);
+  // If we are ignoring the root scroll frame we make the RecordFrameMetrics
+  // call for it. Otherwise nsGfxScrollFrame will create scroll layer(s) that
+  // will do that.
+  if (aBuilder->GetIgnoreScrollFrame() == rootScrollFrame) {
+    RecordFrameMetrics(aForFrame, rootScrollFrame,
+                       aBuilder->FindReferenceFrameFor(aForFrame),
+                       root, mVisibleRect, viewport,
+                       (usingDisplayport ? &displayport : nullptr),
+                       (usingCriticalDisplayport ? &criticalDisplayport : nullptr),
+                       id, isRoot, containerParameters);
+  }
   if (usingDisplayport &&
       !(root->GetContentFlags() & Layer::CONTENT_OPAQUE)) {
     // See bug 693938, attachment 567017
-    NS_WARNING("We don't support transparent content with displayports, force it to be opqaue");
-    root->SetContentFlags(Layer::CONTENT_OPAQUE);
+    NS_WARNING("Transparent content with displayports can be expensive.");
   }
 
   layerManager->SetRoot(root);
@@ -3388,10 +3428,146 @@ nsDisplayOwnLayer::BuildLayer(nsDisplayListBuilder* aBuilder,
   return layer.forget();
 }
 
+nsDisplaySubDocument::nsDisplaySubDocument(nsDisplayListBuilder* aBuilder,
+                                           nsIFrame* aFrame, nsDisplayList* aList,
+                                           uint32_t aFlags)
+    : nsDisplayOwnLayer(aBuilder, aFrame, aList, aFlags) {
+  MOZ_COUNT_CTOR(nsDisplaySubDocument);
+}
+
+#ifdef NS_BUILD_REFCNT_LOGGING
+nsDisplaySubDocument::~nsDisplaySubDocument() {
+  MOZ_COUNT_DTOR(nsDisplaySubDocument);
+}
+#endif
+
+already_AddRefed<Layer>
+nsDisplaySubDocument::BuildLayer(nsDisplayListBuilder* aBuilder,
+                                 LayerManager* aManager,
+                                 const ContainerLayerParameters& aContainerParameters) {
+  nsRefPtr<Layer> layer = nsDisplayOwnLayer::BuildLayer(
+    aBuilder, aManager, aContainerParameters);
+
+  if (!(mFlags & GENERATE_SCROLLABLE_LAYER)) {
+    return layer.forget();
+  }
+
+  NS_ASSERTION(layer->AsContainerLayer(), "nsDisplayOwnLayer should have made a ContainerLayer");
+  if (ContainerLayer* container = layer->AsContainerLayer()) {
+    nsPresContext* presContext = mFrame->PresContext();
+    nsIFrame* rootScrollFrame = presContext->PresShell()->GetRootScrollFrame();
+    bool isRootContentDocument = presContext->IsRootContentDocument();
+
+    bool usingDisplayport = false;
+    bool usingCriticalDisplayport = false;
+    nsRect displayport, criticalDisplayport;
+    ViewID scrollId = FrameMetrics::NULL_SCROLL_ID;
+    if (rootScrollFrame) {
+      nsIContent* content = rootScrollFrame->GetContent();
+      if (content) {
+        usingDisplayport = nsLayoutUtils::GetDisplayPort(content, &displayport);
+        usingCriticalDisplayport =
+          nsLayoutUtils::GetCriticalDisplayPort(content, &criticalDisplayport);
+
+        if (isRootContentDocument) {
+          scrollId = nsLayoutUtils::FindOrCreateIDFor(content);
+        } else {
+          nsLayoutUtils::FindIDFor(content, &scrollId);
+        }
+      }
+    }
+
+    nsRect viewport = mFrame->GetRect() -
+                      mFrame->GetPosition() +
+                      mFrame->GetOffsetToCrossDoc(ReferenceFrame());
+
+    RecordFrameMetrics(mFrame, rootScrollFrame, ReferenceFrame(),
+                       container, mVisibleRect, viewport,
+                       (usingDisplayport ? &displayport : nullptr),
+                       (usingCriticalDisplayport ? &criticalDisplayport : nullptr),
+                       scrollId, isRootContentDocument, aContainerParameters);
+  }
+
+  return layer.forget();
+}
+
+nsRect
+nsDisplaySubDocument::GetBounds(nsDisplayListBuilder* aBuilder, bool* aSnap)
+{
+  bool usingDisplayPort =
+    nsLayoutUtils::ViewportHasDisplayPort(mFrame->PresContext());
+
+  if ((mFlags & GENERATE_SCROLLABLE_LAYER) && usingDisplayPort) {
+    *aSnap = false;
+    return mFrame->GetRect() + aBuilder->ToReferenceFrame(mFrame);
+  }
+
+  return nsDisplayOwnLayer::GetBounds(aBuilder, aSnap);
+}
+
+bool
+nsDisplaySubDocument::ComputeVisibility(nsDisplayListBuilder* aBuilder,
+                                        nsRegion* aVisibleRegion,
+                                        const nsRect& aAllowVisibleRegionExpansion)
+{
+  nsRect displayport;
+  bool usingDisplayPort =
+    nsLayoutUtils::ViewportHasDisplayPort(mFrame->PresContext(), &displayport);
+
+  if (!(mFlags & GENERATE_SCROLLABLE_LAYER) || !usingDisplayPort) {
+    return nsDisplayWrapList::ComputeVisibility(aBuilder, aVisibleRegion,
+                                                aAllowVisibleRegionExpansion);
+  }
+
+  nsRegion childVisibleRegion;
+  // The visible region for the children may be much bigger than the hole we
+  // are viewing the children from, so that the compositor process has enough
+  // content to asynchronously pan while content is being refreshed.
+  childVisibleRegion = displayport + mFrame->GetOffsetToCrossDoc(ReferenceFrame());
+
+  nsRect boundedRect =
+    childVisibleRegion.GetBounds().Intersect(mList.GetBounds(aBuilder));
+  nsRect allowExpansion = boundedRect.Intersect(aAllowVisibleRegionExpansion);
+  bool visible = mList.ComputeVisibilityForSublist(
+    aBuilder, &childVisibleRegion, boundedRect, allowExpansion);
+  // We don't allow this computation to influence aVisibleRegion, on the
+  // assumption that the layer can be asynchronously scrolled so we'll
+  // definitely need all the content under it.
+
+  return visible;
+}
+
+bool
+nsDisplaySubDocument::ShouldBuildLayerEvenIfInvisible(nsDisplayListBuilder* aBuilder)
+{
+  bool usingDisplayPort =
+    nsLayoutUtils::ViewportHasDisplayPort(mFrame->PresContext());
+
+  if ((mFlags & GENERATE_SCROLLABLE_LAYER) && usingDisplayPort) {
+    return true;
+  }
+
+  return nsDisplayOwnLayer::ShouldBuildLayerEvenIfInvisible(aBuilder);
+}
+
+nsRegion
+nsDisplaySubDocument::GetOpaqueRegion(nsDisplayListBuilder* aBuilder, bool* aSnap)
+{
+  bool usingDisplayPort =
+    nsLayoutUtils::ViewportHasDisplayPort(mFrame->PresContext());
+
+  if ((mFlags & GENERATE_SCROLLABLE_LAYER) && usingDisplayPort) {
+    *aSnap = false;
+    return nsRegion();
+  }
+
+  return nsDisplayOwnLayer::GetOpaqueRegion(aBuilder, aSnap);
+}
+
 nsDisplayResolution::nsDisplayResolution(nsDisplayListBuilder* aBuilder,
                                          nsIFrame* aFrame, nsDisplayList* aList,
                                          uint32_t aFlags)
-    : nsDisplayOwnLayer(aBuilder, aFrame, aList, aFlags) {
+    : nsDisplaySubDocument(aBuilder, aFrame, aList, aFlags) {
   MOZ_COUNT_CTOR(nsDisplayResolution);
 }
 
@@ -3410,7 +3586,7 @@ nsDisplayResolution::BuildLayer(nsDisplayListBuilder* aBuilder,
     presShell->GetXResolution(), presShell->GetYResolution(), nsIntPoint(),
     aContainerParameters);
 
-  nsRefPtr<Layer> layer = nsDisplayOwnLayer::BuildLayer(
+  nsRefPtr<Layer> layer = nsDisplaySubDocument::BuildLayer(
     aBuilder, aManager, containerParameters);
   layer->SetPostScale(1.0f / presShell->GetXResolution(),
                       1.0f / presShell->GetYResolution());
@@ -3835,7 +4011,7 @@ nsDisplayZoom::nsDisplayZoom(nsDisplayListBuilder* aBuilder,
                              nsIFrame* aFrame, nsDisplayList* aList,
                              int32_t aAPD, int32_t aParentAPD,
                              uint32_t aFlags)
-    : nsDisplayOwnLayer(aBuilder, aFrame, aList, aFlags)
+    : nsDisplaySubDocument(aBuilder, aFrame, aList, aFlags)
     , mAPD(aAPD), mParentAPD(aParentAPD) {
   MOZ_COUNT_CTOR(nsDisplayZoom);
 }
@@ -4009,6 +4185,21 @@ nsDisplayTransform::nsDisplayTransform(nsDisplayListBuilder* aBuilder, nsIFrame 
   mStoredList.SetClip(aBuilder, DisplayItemClip::NoClip());
 }
 
+nsDisplayTransform::nsDisplayTransform(nsDisplayListBuilder* aBuilder, nsIFrame *aFrame,
+                                       nsDisplayItem *aItem, uint32_t aIndex)
+  : nsDisplayItem(aBuilder, aFrame)
+  , mStoredList(aBuilder, aFrame, aItem)
+  , mTransformGetter(nullptr)
+  , mIndex(aIndex)
+{
+  MOZ_COUNT_CTOR(nsDisplayTransform);
+  NS_ABORT_IF_FALSE(aFrame, "Must have a frame!");
+  mReferenceFrame =
+    aBuilder->FindReferenceFrameFor(GetTransformRootFrame(aFrame));
+  mToReferenceFrame = aFrame->GetOffsetToCrossDoc(mReferenceFrame);
+  mStoredList.SetClip(aBuilder, DisplayItemClip::NoClip());
+}
+
 /* Returns the delta specified by the -moz-transform-origin property.
  * This is a positive delta, meaning that it indicates the direction to move
  * to get from (0, 0) of the frame to the transform origin.  This function is
@@ -4020,8 +4211,12 @@ nsDisplayTransform::GetDeltaToTransformOrigin(const nsIFrame* aFrame,
                                               const nsRect* aBoundsOverride)
 {
   NS_PRECONDITION(aFrame, "Can't get delta for a null frame!");
-  NS_PRECONDITION(aFrame->IsTransformed(),
+  NS_PRECONDITION(aFrame->IsTransformed() || aFrame->StyleDisplay()->BackfaceIsHidden(),
                   "Shouldn't get a delta for an untransformed frame!");
+
+  if (!aFrame->IsTransformed()) {
+    return gfxPoint3D();
+  }
 
   /* For both of the coordinates, if the value of -moz-transform is a
    * percentage, it's relative to the size of the frame.  Otherwise, if it's
@@ -4085,8 +4280,12 @@ nsDisplayTransform::GetDeltaToPerspectiveOrigin(const nsIFrame* aFrame,
                                                 float aAppUnitsPerPixel)
 {
   NS_PRECONDITION(aFrame, "Can't get delta for a null frame!");
-  NS_PRECONDITION(aFrame->IsTransformed(),
+  NS_PRECONDITION(aFrame->IsTransformed() || aFrame->StyleDisplay()->BackfaceIsHidden(),
                   "Shouldn't get a delta for an untransformed frame!");
+
+  if (!aFrame->IsTransformed()) {
+    return gfxPoint3D();
+  }
 
   /* For both of the coordinates, if the value of -moz-perspective-origin is a
    * percentage, it's relative to the size of the frame.  Otherwise, if it's
@@ -4894,17 +5093,16 @@ nsDisplaySVGEffects::BuildLayer(nsDisplayListBuilder* aBuilder,
   nsSVGEffects::EffectProperties effectProperties =
     nsSVGEffects::GetEffectProperties(firstFrame);
 
-  bool isOK = true;
+  bool isOK = effectProperties.HasNoFilterOrHasValidFilter();
   effectProperties.GetClipPathFrame(&isOK);
   effectProperties.GetMaskFrame(&isOK);
-  bool hasFilter = effectProperties.GetFilterFrame(&isOK) != nullptr;
 
   if (!isOK) {
     return nullptr;
   }
 
   ContainerLayerParameters newContainerParameters = aContainerParameters;
-  if (hasFilter) {
+  if (effectProperties.HasValidFilter()) {
     newContainerParameters.mDisableSubpixelAntialiasingInDescendants = true;
   }
 
@@ -4973,7 +5171,7 @@ nsDisplaySVGEffects::PrintEffects(nsACString& aTo)
     aTo += nsPrintfCString("clip(%s)", clipPathFrame->IsTrivial() ? "trivial" : "non-trivial");
     first = false;
   }
-  if (effectProperties.GetFilterFrame(&isOK)) {
+  if (effectProperties.HasValidFilter()) {
     if (!first) {
       aTo += ", ";
     }

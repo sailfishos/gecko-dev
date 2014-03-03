@@ -146,6 +146,8 @@ IonBuilder::inlineNativeCall(CallInfo &callInfo, JSNative native)
     if (native == intrinsic_ShouldForceSequential ||
         native == intrinsic_InParallelSection)
         return inlineForceSequentialOrInParallelSection(callInfo);
+    if (native == intrinsic_ForkJoinGetSlice)
+        return inlineForkJoinGetSlice(callInfo);
 
     // Utility intrinsics.
     if (native == intrinsic_IsCallable)
@@ -154,6 +156,14 @@ IonBuilder::inlineNativeCall(CallInfo &callInfo, JSNative native)
         return inlineHaveSameClass(callInfo);
     if (native == intrinsic_ToObject)
         return inlineToObject(callInfo);
+
+    // TypedObject intrinsics.
+    if (native == intrinsic_ObjectIsTransparentTypedObject)
+        return inlineHasClass(callInfo, &TransparentTypedObject::class_);
+    if (native == intrinsic_ObjectIsOpaqueTypedObject)
+        return inlineHasClass(callInfo, &OpaqueTypedObject::class_);
+    if (native == intrinsic_ObjectIsTypeDescr)
+        return inlineObjectIsTypeDescr(callInfo);
 
     // Testing Functions
     if (native == testingFunc_inParallelSection)
@@ -665,7 +675,7 @@ IonBuilder::inlineMathRound(CallInfo &callInfo)
         return InliningStatus_Inlined;
     }
 
-    if (argType == MIRType_Double && returnType == MIRType_Int32) {
+    if (IsFloatingPointType(argType) && returnType == MIRType_Int32) {
         callInfo.setImplicitlyUsedUnchecked();
         MRound *ins = MRound::New(alloc(), callInfo.getArg(0));
         current->add(ins);
@@ -673,7 +683,7 @@ IonBuilder::inlineMathRound(CallInfo &callInfo)
         return InliningStatus_Inlined;
     }
 
-    if (argType == MIRType_Double && returnType == MIRType_Double) {
+    if (IsFloatingPointType(argType) && returnType == MIRType_Double) {
         callInfo.setImplicitlyUsedUnchecked();
         MMathFunction *ins = MMathFunction::New(alloc(), callInfo.getArg(0), MMathFunction::Round, nullptr);
         current->add(ins);
@@ -775,9 +785,9 @@ IonBuilder::inlineMathPow(CallInfo &callInfo)
 
     if (outputType != MIRType_Int32 && outputType != MIRType_Double)
         return InliningStatus_NotInlined;
-    if (baseType != MIRType_Int32 && baseType != MIRType_Double)
+    if (!IsNumberType(baseType))
         return InliningStatus_NotInlined;
-    if (powerType != MIRType_Int32 && powerType != MIRType_Double)
+    if (!IsNumberType(powerType))
         return InliningStatus_NotInlined;
 
     callInfo.setImplicitlyUsedUnchecked();
@@ -842,6 +852,8 @@ IonBuilder::inlineMathPow(CallInfo &callInfo)
 
     // Use MPow for other powers
     if (!output) {
+        if (powerType == MIRType_Float32)
+            powerType = MIRType_Double;
         MPow *pow = MPow::New(alloc(), base, power, powerType);
         current->add(pow);
         output = pow;
@@ -1382,6 +1394,40 @@ IonBuilder::inlineForceSequentialOrInParallelSection(CallInfo &callInfo)
 }
 
 IonBuilder::InliningStatus
+IonBuilder::inlineForkJoinGetSlice(CallInfo &callInfo)
+{
+    if (info().executionMode() != ParallelExecution)
+        return InliningStatus_NotInlined;
+
+    // Assert the way the function is used instead of testing, as it is a
+    // self-hosted function which must be used in a particular fashion.
+    MOZ_ASSERT(callInfo.argc() == 1 && !callInfo.constructing());
+    MOZ_ASSERT(callInfo.getArg(0)->type() == MIRType_Int32);
+    MOZ_ASSERT(getInlineReturnType() == MIRType_Int32);
+
+    callInfo.setImplicitlyUsedUnchecked();
+
+    switch (info().executionMode()) {
+      case SequentialExecution:
+      case DefinitePropertiesAnalysis:
+        // ForkJoinGetSlice acts as identity for sequential execution.
+        current->push(callInfo.getArg(0));
+        return InliningStatus_Inlined;
+      case ParallelExecution:
+        if (LIRGenerator::allowInlineForkJoinGetSlice()) {
+            MForkJoinGetSlice *getSlice = MForkJoinGetSlice::New(alloc(),
+                                                                 graph().forkJoinContext());
+            current->add(getSlice);
+            current->push(getSlice);
+            return InliningStatus_Inlined;
+        }
+        return InliningStatus_NotInlined;
+    }
+
+    MOZ_ASSUME_UNREACHABLE("Invalid execution mode");
+}
+
+IonBuilder::InliningStatus
 IonBuilder::inlineNewDenseArray(CallInfo &callInfo)
 {
     if (callInfo.constructing() || callInfo.argc() != 1)
@@ -1436,6 +1482,68 @@ IonBuilder::inlineNewDenseArrayForParallelExecution(CallInfo &callInfo)
     current->add(newObject);
     current->push(newObject);
 
+    return InliningStatus_Inlined;
+}
+
+IonBuilder::InliningStatus
+IonBuilder::inlineHasClass(CallInfo &callInfo, const Class *clasp)
+{
+    if (callInfo.constructing() || callInfo.argc() != 1)
+        return InliningStatus_NotInlined;
+
+    if (callInfo.getArg(0)->type() != MIRType_Object)
+        return InliningStatus_NotInlined;
+    if (getInlineReturnType() != MIRType_Boolean)
+        return InliningStatus_NotInlined;
+
+    types::TemporaryTypeSet *types = callInfo.getArg(0)->resultTypeSet();
+    const Class *knownClass = types ? types->getKnownClass() : nullptr;
+    if (knownClass) {
+        pushConstant(BooleanValue(knownClass == clasp));
+    } else {
+        MHasClass *hasClass = MHasClass::New(alloc(), callInfo.getArg(0), clasp);
+        current->add(hasClass);
+        current->push(hasClass);
+    }
+
+    callInfo.setImplicitlyUsedUnchecked();
+    return InliningStatus_Inlined;
+}
+
+IonBuilder::InliningStatus
+IonBuilder::inlineObjectIsTypeDescr(CallInfo &callInfo)
+{
+    if (callInfo.constructing() || callInfo.argc() != 1)
+        return InliningStatus_NotInlined;
+
+    if (callInfo.getArg(0)->type() != MIRType_Object)
+        return InliningStatus_NotInlined;
+    if (getInlineReturnType() != MIRType_Boolean)
+        return InliningStatus_NotInlined;
+
+    // The test is elaborate: in-line only if there is exact
+    // information.
+
+    types::TemporaryTypeSet *types = callInfo.getArg(0)->resultTypeSet();
+    if (!types)
+        return InliningStatus_NotInlined;
+
+    bool result = false;
+    switch (types->forAllClasses(IsTypeDescrClass)) {
+    case types::TemporaryTypeSet::ForAllResult::ALL_FALSE:
+    case types::TemporaryTypeSet::ForAllResult::EMPTY:
+        result = false;
+        break;
+    case types::TemporaryTypeSet::ForAllResult::ALL_TRUE:
+        result = true;
+        break;
+    case types::TemporaryTypeSet::ForAllResult::MIXED:
+        return InliningStatus_NotInlined;
+    }
+
+    pushConstant(BooleanValue(result));
+
+    callInfo.setImplicitlyUsedUnchecked();
     return InliningStatus_Inlined;
 }
 

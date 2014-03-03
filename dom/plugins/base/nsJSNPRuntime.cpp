@@ -1589,7 +1589,7 @@ NPObjWrapper_NewResolve(JSContext *cx, JS::Handle<JSObject*> obj, JS::Handle<jsi
 static bool
 NPObjWrapper_Convert(JSContext *cx, JS::Handle<JSObject*> obj, JSType hint, JS::MutableHandle<JS::Value> vp)
 {
-  JS_ASSERT(hint == JSTYPE_NUMBER || hint == JSTYPE_STRING || hint == JSTYPE_VOID);
+  MOZ_ASSERT(hint == JSTYPE_NUMBER || hint == JSTYPE_STRING || hint == JSTYPE_VOID);
 
   // Plugins do not simply use JS_ConvertStub, and the default [[DefaultValue]]
   // behavior, because that behavior involves calling toString or valueOf on
@@ -1730,13 +1730,8 @@ nsNPObjWrapper::GetNewOrUsed(NPP npp, JSContext *cx, NPObject *npobj)
 
   if (!sNPObjWrappers.ops) {
     // No hash yet (or any more), initialize it.
-
-    if (!PL_DHashTableInit(&sNPObjWrappers, PL_DHashGetStubOps(), nullptr,
-                           sizeof(NPObjWrapperHashEntry), 16)) {
-      NS_ERROR("Error initializing PLDHashTable!");
-
-      return nullptr;
-    }
+    PL_DHashTableInit(&sNPObjWrappers, PL_DHashGetStubOps(), nullptr,
+                      sizeof(NPObjWrapperHashEntry), 16);
   }
 
   NPObjWrapperHashEntry *entry = static_cast<NPObjWrapperHashEntry *>

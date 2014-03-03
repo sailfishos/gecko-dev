@@ -1285,7 +1285,7 @@ nsMathMLChar::StretchInternal(nsPresContext*           aPresContext,
   uint32_t len = uint32_t(mData.Length());
   nsAutoPtr<gfxTextRun> textRun;
   textRun = fm->GetThebesFontGroup()->
-    MakeTextRun(mData.get(), len, aThebesContext,
+    MakeTextRun(static_cast<const char16_t*>(mData.get()), len, aThebesContext,
                 aPresContext->AppUnitsPerDevPixel(), 0);
   aDesiredStretchSize = MeasureTextRun(aThebesContext, textRun);
   mGlyphs[0] = textRun;
@@ -1851,9 +1851,12 @@ nsMathMLChar::PaintForeground(nsPresContext* aPresContext,
     case DRAW_NORMAL:
     case DRAW_VARIANT:
       // draw a single glyph (base size or size variant)
-      mGlyphs[0]->Draw(thebesContext, gfxPoint(0.0, mUnscaledAscent),
-                       DrawMode::GLYPH_FILL, 0, mGlyphs[0]->GetLength(),
-                       nullptr, nullptr, nullptr);
+      // XXXfredw verify if mGlyphs[0] is non-null to workaround bug 973322.
+      if (mGlyphs[0]) {
+        mGlyphs[0]->Draw(thebesContext, gfxPoint(0.0, mUnscaledAscent),
+                         DrawMode::GLYPH_FILL, 0, mGlyphs[0]->GetLength(),
+                         nullptr, nullptr, nullptr);
+      }
       break;
     case DRAW_PARTS: {
       // paint by parts

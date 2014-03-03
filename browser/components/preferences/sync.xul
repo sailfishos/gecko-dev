@@ -186,18 +186,17 @@
         </vbox>
 
         <vbox id="noFxaAccount">
-          <description>&welcome.description;</description>
+          <label value="&welcome.description;"/>
           <label class="text-link"
                  onclick="gSyncPane.signUp(); return false;"
                  value="&welcome.createAccount.label;"/>
           <label class="text-link"
                  onclick="gSyncPane.signIn(); return false;"
                  value="&welcome.signIn.label;"/>
-          <spacer flex="1"/>
+          <separator/>
           <label class="text-link"
                  onclick="gSyncPane.openOldSyncSupportPage(); return false;"
                  value="&welcome.useOldSync.label;"/>
-          <spacer flex="10"/>
         </vbox>
 
         <vbox id="hasFxaAccount">
@@ -209,13 +208,16 @@
               <!-- logged in and verified and all is good -->
               <hbox>
                 <label id="fxaEmailAddress1"/>
-                <label class="text-link"
-                       onclick="gSyncPane.manageFirefoxAccount();"
-                       value="&manage.label;"/>
+                <vbox>
+                  <label class="text-link"
+                         onclick="gSyncPane.manageFirefoxAccount();"
+                         value="&manage.label;"/>
+                </vbox>
                 <spacer flex="1"/>
-                <vbox align="end">
-                  <button oncommand="gSyncPane.unlinkFirefoxAccount(true);"
-                          label="&disconnect.label;" />
+                <vbox>
+                  <button id="fxaUnlinkButton"
+                          oncommand="gSyncPane.unlinkFirefoxAccount(true);"
+                          label="&disconnect.label;"/>
                 </vbox>
               </hbox>
 
@@ -294,18 +296,20 @@
               </richlistbox>
             </vbox>
           </groupbox>
-          <vbox>
+          <hbox align="center">
             <label value="&syncDeviceName.label;"
                    accesskey="&syncDeviceName.accesskey;"
                    control="syncComputerName"/>
             <textbox id="fxaSyncComputerName"
+                     flex="1"
                      onchange="gSyncUtils.changeName(this)"/>
-          </vbox>
+          </hbox>
+          <spacer flex="1"/>
           <hbox id="tosPP" pack="center">
-            <label class="text-link"
+            <label class="text-link small"
                    onclick="event.stopPropagation();gSyncUtils.openToS();"
                    value="&prefs.tosLink.label;"/>
-            <label class="text-link"
+            <label class="text-link small"
                    onclick="event.stopPropagation();gSyncUtils.openPrivacyPolicy();"
                    value="&fxaPrivacyNotice.link.label;"/>
           </hbox>

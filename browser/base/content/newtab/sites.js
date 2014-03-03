@@ -60,7 +60,7 @@ Site.prototype = {
   },
 
   /**
-   * Unpins the site and calls the given callback when done.
+   * Unpins the site.
    */
   unpin: function Site_unpin() {
     if (this.isPinned()) {
@@ -79,8 +79,7 @@ Site.prototype = {
   },
 
   /**
-   * Blocks the site (removes it from the grid) and calls the given callback
-   * when done.
+   * Blocks the site (removes it from the grid).
    */
   block: function Site_block() {
     if (!gBlockedLinks.isBlocked(this._link)) {
@@ -164,10 +163,7 @@ Site.prototype = {
     this._node.addEventListener("dragstart", this, false);
     this._node.addEventListener("dragend", this, false);
     this._node.addEventListener("mouseover", this, false);
-
-    let controls = this.node.querySelectorAll(".newtab-control");
-    for (let i = 0; i < controls.length; i++)
-      controls[i].addEventListener("click", this, false);
+    this._node.addEventListener("click", this, false);
   },
 
   /**
@@ -180,18 +176,47 @@ Site.prototype = {
   },
 
   /**
+   * Record interaction with site using telemetry.
+   */
+  _recordSiteClicked: function Site_recordSiteClicked(aIndex) {
+    if (Services.prefs.prefHasUserValue("browser.newtabpage.rows") ||
+        Services.prefs.prefHasUserValue("browser.newtabpage.columns") ||
+        aIndex > 8) {
+      // We only want to get indices for the default configuration, everything
+      // else goes in the same bucket.
+      aIndex = 9;
+    }
+    Services.telemetry.getHistogramById("NEWTAB_PAGE_SITE_CLICKED")
+                      .add(aIndex);
+  },
+
+  /**
+   * Handles site click events.
+   */
+  _onClick: function Site_onClick(aEvent) {
+    let target = aEvent.target;
+    if (target.classList.contains("newtab-link") ||
+        target.parentElement.classList.contains("newtab-link")) {
+      this._recordSiteClicked(this.cell.index);
+      return;
+    }
+
+    aEvent.preventDefault();
+    if (aEvent.target.classList.contains("newtab-control-block"))
+      this.block();
+    else if (this.isPinned())
+      this.unpin();
+    else
+      this.pin();
+  },
+
+  /**
    * Handles all site events.
    */
   handleEvent: function Site_handleEvent(aEvent) {
     switch (aEvent.type) {
       case "click":
-        aEvent.preventDefault();
-        if (aEvent.target.classList.contains("newtab-control-block"))
-          this.block();
-        else if (this.isPinned())
-          this.unpin();
-        else
-          this.pin();
+        this._onClick(aEvent);
         break;
       case "mouseover":
         this._node.removeEventListener("mouseover", this, false);

@@ -25,14 +25,21 @@ SPSProfiler::SPSProfiler(JSRuntime *rt)
     size_(nullptr),
     max_(0),
     slowAssertions(false),
-    enabled_(false)
+    enabled_(false),
+    lock_(nullptr)
 {
     JS_ASSERT(rt != nullptr);
+}
+
+bool
+SPSProfiler::init()
+{
 #ifdef JS_THREADSAFE
     lock_ = PR_NewLock();
     if (lock_ == nullptr)
-        MOZ_CRASH("Couldn't allocate lock!");
+        return false;
 #endif
+    return true;
 }
 
 SPSProfiler::~SPSProfiler()
@@ -42,7 +49,8 @@ SPSProfiler::~SPSProfiler()
             js_free(const_cast<char *>(e.front().value()));
     }
 #ifdef JS_THREADSAFE
-    PR_DestroyLock(lock_);
+    if (lock_)
+        PR_DestroyLock(lock_);
 #endif
 }
 
@@ -204,7 +212,7 @@ SPSProfiler::push(const char *string, void *sp, JSScript *script, jsbytecode *pc
     volatile uint32_t *size = size_;
     uint32_t current = *size;
 
-    JS_ASSERT(enabled());
+    JS_ASSERT(installed());
     if (current < max_) {
         stack[current].setLabel(string);
         stack[current].setStackAddress(sp);
@@ -283,12 +291,12 @@ SPSEntryMarker::SPSEntryMarker(JSRuntime *rt
     : profiler(&rt->spsProfiler)
 {
     MOZ_GUARD_OBJECT_NOTIFIER_INIT;
-    if (!profiler->enabled()) {
+    if (!profiler->installed()) {
         profiler = nullptr;
         return;
     }
     size_before = *profiler->size_;
-    profiler->push("js::RunScript", this, nullptr, nullptr);
+    profiler->pushNoCopy("js::RunScript", this, nullptr, nullptr);
 }
 
 SPSEntryMarker::~SPSEntryMarker()

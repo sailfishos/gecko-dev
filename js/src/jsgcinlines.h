@@ -97,7 +97,7 @@ GetGCThingTraceKind(const void *thing)
     JS_ASSERT(thing);
     const Cell *cell = static_cast<const Cell *>(thing);
 #ifdef JSGC_GENERATIONAL
-    if (IsInsideNursery(cell->runtimeFromMainThread(), cell))
+    if (IsInsideNursery(cell->runtimeFromAnyThread(), cell))
         return JSTRACE_OBJECT;
 #endif
     return MapAllocToTraceKind(cell->tenuredGetAllocKind());
@@ -523,6 +523,43 @@ AllocateNonObject(ThreadSafeContext *cx)
 
     CheckIncrementalZoneState(cx, t);
     return t;
+}
+
+/*
+ * When allocating for initialization from a cached object copy, we will
+ * potentially destroy the cache entry we want to copy if we allow GC. On the
+ * other hand, since these allocations are extremely common, we don't want to
+ * delay GC from these allocation sites. Instead we allow the GC, but still
+ * fail the allocation, forcing the non-cached path.
+ */
+template <AllowGC allowGC>
+inline JSObject *
+AllocateObjectForCacheHit(JSContext *cx, AllocKind kind, InitialHeap heap)
+{
+#ifdef JSGC_GENERATIONAL
+    if (ShouldNurseryAllocate(cx->nursery(), kind, heap)) {
+        size_t thingSize = Arena::thingSize(kind);
+
+        JS_ASSERT(thingSize == Arena::thingSize(kind));
+        if (!CheckAllocatorState<NoGC>(cx, kind))
+            return nullptr;
+
+        JSObject *obj = TryNewNurseryObject<NoGC>(cx, thingSize, 0);
+        if (!obj && allowGC) {
+            MinorGC(cx, JS::gcreason::OUT_OF_NURSERY);
+            return nullptr;
+        }
+        return obj;
+    }
+#endif
+
+    JSObject *obj = AllocateObject<NoGC>(cx, kind, 0, heap);
+    if (!obj && allowGC) {
+        MaybeGC(cx);
+        return nullptr;
+    }
+
+    return obj;
 }
 
 } /* namespace gc */

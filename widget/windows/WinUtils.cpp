@@ -264,28 +264,6 @@ WinUtils::GetMessage(LPMSG aMsg, HWND aWnd, UINT aFirstMessage,
 }
 
 /* static */
-void
-WinUtils::WaitForMessage()
-{
-  DWORD result = ::MsgWaitForMultipleObjectsEx(0, nullptr, INFINITE, QS_ALLINPUT,
-                                               MWMO_INPUTAVAILABLE);
-  NS_WARN_IF_FALSE(result != WAIT_FAILED, "Wait failed");
-
-  // This idiom is taken from the Chromium ipc code, see
-  // ipc/chromium/src/base/message+puimp_win.cpp:270.
-  // The intent is to avoid a busy wait when MsgWaitForMultipleObjectsEx
-  // returns quickly but PeekMessage would not return a message.
-  if (result == WAIT_OBJECT_0) {
-    MSG msg = {0};
-    DWORD queue_status = ::GetQueueStatus(QS_MOUSE);
-    if (HIWORD(queue_status) & QS_MOUSE &&
-        !PeekMessage(&msg, nullptr, WM_MOUSEFIRST, WM_MOUSELAST, PM_NOREMOVE)) {
-      ::WaitMessage();
-    }
-  }
-}
-
-/* static */
 bool
 WinUtils::GetRegistryKey(HKEY aRoot,
                          char16ptr_t aKeyName,
@@ -578,6 +556,16 @@ WinUtils::GetMouseInputSource()
       nsIDOMMouseEvent::MOZ_SOURCE_TOUCH : nsIDOMMouseEvent::MOZ_SOURCE_PEN;
   }
   return static_cast<uint16_t>(inputSource);
+}
+
+bool
+WinUtils::GetIsMouseFromTouch(uint32_t aEventType)
+{
+#define MOUSEEVENTF_FROMTOUCH 0xFF515700
+  return (aEventType == NS_MOUSE_BUTTON_DOWN ||
+          aEventType == NS_MOUSE_BUTTON_UP ||
+          aEventType == NS_MOUSE_MOVE) &&
+          (GetMessageExtraInfo() & MOUSEEVENTF_FROMTOUCH);
 }
 
 /* static */

@@ -12,14 +12,14 @@
 
 namespace js {
 
-class TypedDatum; // subclass of JSObject* defined in builtin/TypedObject.h
+class TypedObject; // subclass of JSObject* defined in builtin/TypedObject.h
 
 namespace jit {
 
 ForkJoinContext *ForkJoinContextPar();
 JSObject *NewGCThingPar(ForkJoinContext *cx, gc::AllocKind allocKind);
 bool ParallelWriteGuard(ForkJoinContext *cx, JSObject *object);
-bool IsInTargetRegion(ForkJoinContext *cx, TypedDatum *object);
+bool IsInTargetRegion(ForkJoinContext *cx, TypedObject *object);
 bool CheckOverRecursedPar(ForkJoinContext *cx);
 bool InterruptCheckPar(ForkJoinContext *cx);
 
@@ -63,7 +63,7 @@ bool BitAndPar(ForkJoinContext *cx, HandleValue lhs, HandleValue rhs, int32_t *o
 bool BitLshPar(ForkJoinContext *cx, HandleValue lhs, HandleValue rhs, int32_t *out);
 bool BitRshPar(ForkJoinContext *cx, HandleValue lhs, HandleValue rhs, int32_t *out);
 
-bool UrshValuesPar(ForkJoinContext *cx, HandleValue lhs, HandleValue rhs, Value *out);
+bool UrshValuesPar(ForkJoinContext *cx, HandleValue lhs, HandleValue rhs, MutableHandleValue out);
 
 // Make a new rest parameter in parallel.
 JSObject *InitRestParameterPar(ForkJoinContext *cx, uint32_t length, Value *rest,

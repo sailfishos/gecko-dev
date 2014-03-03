@@ -106,6 +106,7 @@ namespace mozilla {
 class Selection;
 namespace dom {
 class BarProp;
+class Console;
 class Function;
 class Gamepad;
 class MediaQueryList;
@@ -604,6 +605,12 @@ public:
   NS_DECL_CYCLE_COLLECTION_SKIPPABLE_SCRIPT_HOLDER_CLASS_AMBIGUOUS(nsGlobalWindow,
                                                                    nsIDOMEventTarget)
 
+#ifdef DEBUG
+  // Call Unlink on this window. This may cause bad things to happen, so use
+  // with caution.
+  void RiskyUnlink();
+#endif
+
   virtual NS_HIDDEN_(JSObject*)
     GetCachedXBLPrototypeHandler(nsXBLPrototypeHandler* aKey);
 
@@ -814,6 +821,8 @@ public:
   mozilla::dom::Navigator* GetNavigator(mozilla::ErrorResult& aError);
   nsIDOMOfflineResourceList* GetApplicationCache(mozilla::ErrorResult& aError);
 
+  mozilla::dom::Console* GetConsole(mozilla::ErrorResult& aRv);
+
 protected:
   bool AlertOrConfirm(bool aAlert, const nsAString& aMessage,
                       mozilla::ErrorResult& aError);
@@ -824,7 +833,7 @@ public:
   void Prompt(const nsAString& aMessage, const nsAString& aInitial,
               nsAString& aReturn, mozilla::ErrorResult& aError);
   void Print(mozilla::ErrorResult& aError);
-  JS::Value ShowModalDialog(JSContext* aCx, const nsAString& aUrl, const mozilla::dom::Optional<JS::Handle<JS::Value> >& aArgument, const nsAString& aOptions, mozilla::ErrorResult& aError);
+  JS::Value ShowModalDialog(JSContext* aCx, const nsAString& aUrl, JS::Handle<JS::Value> aArgument, const nsAString& aOptions, mozilla::ErrorResult& aError);
   void PostMessageMoz(JSContext* aCx, JS::Handle<JS::Value> aMessage,
                       const nsAString& aTargetOrigin,
                       const mozilla::dom::Optional<mozilla::dom::Sequence<JS::Value > >& aTransfer,
@@ -834,7 +843,9 @@ public:
                      const mozilla::dom::Sequence<JS::Value>& aArguments,
                      mozilla::ErrorResult& aError);
   int32_t SetTimeout(JSContext* aCx, const nsAString& aHandler,
-                     int32_t aTimeout, mozilla::ErrorResult& aError);
+                     int32_t aTimeout,
+                     const mozilla::dom::Sequence<JS::Value>& /* unused */,
+                     mozilla::ErrorResult& aError);
   void ClearTimeout(int32_t aHandle, mozilla::ErrorResult& aError);
   int32_t SetInterval(JSContext* aCx, mozilla::dom::Function& aFunction,
                       const mozilla::dom::Optional<int32_t>& aTimeout,
@@ -842,6 +853,7 @@ public:
                       mozilla::ErrorResult& aError);
   int32_t SetInterval(JSContext* aCx, const nsAString& aHandler,
                       const mozilla::dom::Optional<int32_t>& aTimeout,
+                      const mozilla::dom::Sequence<JS::Value>& /* unused */,
                       mozilla::ErrorResult& aError);
   void ClearInterval(int32_t aHandle, mozilla::ErrorResult& aError);
   void Atob(const nsAString& aAsciiBase64String, nsAString& aBinaryData,
@@ -1404,6 +1416,10 @@ protected:
   // should be displayed.
   bool                   mFocusByKeyOccurred : 1;
 
+  // Ensure that a call to ResumeTimeouts() after FreeInnerObjects() does nothing.
+  // This member is only used by inner windows.
+  bool                   mInnerObjectsFreed : 1;
+
   // Indicates whether this window wants gamepad input events
   bool                   mHasGamepad : 1;
 #ifdef MOZ_GAMEPAD
@@ -1441,6 +1457,7 @@ protected:
   nsString                      mDefaultStatus;
   nsGlobalWindowObserver*       mObserver; // Inner windows only.
   nsCOMPtr<nsIDOMCrypto>        mCrypto;
+  nsRefPtr<mozilla::dom::Console> mConsole;
 
   nsCOMPtr<nsIDOMStorage>      mLocalStorage;
   nsCOMPtr<nsIDOMStorage>      mSessionStorage;

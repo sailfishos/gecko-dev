@@ -7,7 +7,7 @@
 
 function test()
 {
-  let storage = Cu.import("resource://gre/modules/ConsoleAPIStorage.jsm", {}).ConsoleAPIStorage;
+  let storage = Cc["@mozilla.org/consoleAPI-storage;1"].getService(Ci.nsIConsoleAPIStorage);
   storage.clearEvents();
 
   let console = Cu.import("resource://gre/modules/devtools/Console.jsm", {}).console;
@@ -91,7 +91,7 @@ function test()
         },
         {
           name: "console.dir output",
-          consoleDir: "XULDocument {",
+          consoleDir: /XULDocument .+ chrome:\/\/.+\/browser\.xul/,
         },
         {
           name: "console.time output",

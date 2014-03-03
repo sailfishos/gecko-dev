@@ -312,10 +312,10 @@ public:
   }
 };
 
-class TeardownRunnable : public nsRunnable
+class TeardownURLRunnable : public nsRunnable
 {
 public:
-  TeardownRunnable(URLProxy* aURLProxy)
+  TeardownURLRunnable(URLProxy* aURLProxy)
     : mURLProxy(aURLProxy)
   {
   }
@@ -576,7 +576,8 @@ URL::~URL()
   MOZ_COUNT_DTOR(workers::URL);
 
   if (mURLProxy) {
-    nsRefPtr<TeardownRunnable> runnable = new TeardownRunnable(mURLProxy);
+    nsRefPtr<TeardownURLRunnable> runnable =
+      new TeardownURLRunnable(mURLProxy);
     mURLProxy = nullptr;
 
     if (NS_FAILED(NS_DispatchToMainThread(runnable))) {
@@ -614,7 +615,9 @@ URL::SetHref(const nsAString& aHref, ErrorResult& aRv)
     JS_ReportPendingException(mWorkerPrivate->GetJSContext());
   }
 
-  UpdateURLSearchParams();
+  if (mSearchParams) {
+    mSearchParams->Invalidate();
+  }
 }
 
 void
@@ -820,7 +823,10 @@ void
 URL::SetSearch(const nsAString& aSearch)
 {
   SetSearchInternal(aSearch);
-  UpdateURLSearchParams();
+
+  if (mSearchParams) {
+    mSearchParams->Invalidate();
+  }
 }
 
 void
@@ -850,12 +856,16 @@ URL::SetSearchParams(URLSearchParams* aSearchParams)
     return;
   }
 
-  if (mSearchParams) {
-    mSearchParams->RemoveObserver(this);
+  if (!aSearchParams->HasURLAssociated()) {
+    MOZ_ASSERT(aSearchParams->IsValid());
+
+    mSearchParams = aSearchParams;
+    mSearchParams->SetObserver(this);
+  } else {
+    CreateSearchParamsIfNeeded();
+    mSearchParams->CopyFromURLSearchParams(*aSearchParams);
   }
 
-  mSearchParams = aSearchParams;
-  mSearchParams->AddObserver(this);
 
   nsString search;
   mSearchParams->Serialize(search);
@@ -941,7 +951,7 @@ URL::RevokeObjectURL(const GlobalObject& aGlobal, const nsAString& aUrl)
 void
 URL::URLSearchParamsUpdated()
 {
-  MOZ_ASSERT(mSearchParams);
+  MOZ_ASSERT(mSearchParams && mSearchParams->IsValid());
 
   nsString search;
   mSearchParams->Serialize(search);
@@ -949,13 +959,13 @@ URL::URLSearchParamsUpdated()
 }
 
 void
-URL::UpdateURLSearchParams()
+URL::URLSearchParamsNeedsUpdates()
 {
-  if (mSearchParams) {
-    nsString search;
-    GetSearch(search);
-    mSearchParams->ParseInput(NS_ConvertUTF16toUTF8(Substring(search, 1)), this);
-  }
+  MOZ_ASSERT(mSearchParams);
+
+  nsString search;
+  GetSearch(search);
+  mSearchParams->ParseInput(NS_ConvertUTF16toUTF8(Substring(search, 1)));
 }
 
 void
@@ -963,8 +973,8 @@ URL::CreateSearchParamsIfNeeded()
 {
   if (!mSearchParams) {
     mSearchParams = new URLSearchParams();
-    mSearchParams->AddObserver(this);
-    UpdateURLSearchParams();
+    mSearchParams->SetObserver(this);
+    mSearchParams->Invalidate();
   }
 }
 
