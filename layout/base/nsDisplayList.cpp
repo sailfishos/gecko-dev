@@ -540,10 +540,18 @@ void nsDisplayListBuilder::MarkOutOfFlowFrameForDisplay(nsIFrame* aDirtyFrame,
                                                         const nsRect& aDirtyRect)
 {
   nsRect dirtyRectRelativeToDirtyFrame = aDirtyRect;
-  nsRect displayPort;
-  if (nsLayoutUtils::IsFixedPosFrameInDisplayPort(aFrame, &displayPort)) {
+  if (nsLayoutUtils::IsFixedPosFrameInDisplayPort(aFrame)) {
     NS_ASSERTION(aDirtyFrame == aFrame->GetParent(), "Dirty frame should be viewport frame");
-    dirtyRectRelativeToDirtyFrame = displayPort;
+    // position: fixed items are reflowed into and only drawn inside the
+    // viewport, or the scroll position clamping scrollport size, if one is
+    // set.
+    nsIPresShell* ps = aFrame->PresContext()->PresShell();
+    dirtyRectRelativeToDirtyFrame.MoveTo(0, 0);
+    if (ps->IsScrollPositionClampingScrollPortSizeSet()) {
+      dirtyRectRelativeToDirtyFrame.SizeTo(ps->GetScrollPositionClampingScrollPortSize());
+    } else {
+      dirtyRectRelativeToDirtyFrame.SizeTo(aDirtyFrame->GetSize());
+    }
   }
 
   nsRect dirty = dirtyRectRelativeToDirtyFrame - aFrame->GetOffsetTo(aDirtyFrame);
@@ -590,6 +598,17 @@ static void AdjustForScrollBars(ScreenIntRect& aToAdjust, nsIScrollableFrame* aS
     ScreenIntMargin boundMargins = RoundedToInt(CSSMargin::FromAppUnits(sizes) * CSSToScreenScale(1.0f));
     aToAdjust.Deflate(boundMargins);
   }
+}
+
+static bool gPrintApzcTree = false;
+
+static bool GetApzcTreePrintPref() {
+  static bool initialized = false;
+  if (!initialized) {
+    Preferences::AddBoolVarCache(&gPrintApzcTree, "apz.printtree", gPrintApzcTree);
+    initialized = true;
+  }
+  return gPrintApzcTree;
 }
 
 static void RecordFrameMetrics(nsIFrame* aForFrame,
@@ -731,6 +750,14 @@ static void RecordFrameMetrics(nsIFrame* aForFrame,
   // this adjustment was already made to the widget bounds.
   if (!useWidgetBounds) {
     AdjustForScrollBars(metrics.mCompositionBounds, scrollableFrame);
+  }
+
+  if (GetApzcTreePrintPref()) {
+    if (nsIContent* content = frameForCompositionBoundsCalculation->GetContent()) {
+      nsAutoString contentDescription;
+      content->Describe(contentDescription);
+      metrics.SetContentDescription(NS_LossyConvertUTF16toASCII(contentDescription).get());
+    }
   }
 
   metrics.mPresShellId = presShell->GetPresShellId();
@@ -1104,7 +1131,7 @@ nsDisplayList::ComputeVisibilityForSublist(nsDisplayListBuilder* aBuilder,
 
   mIsOpaque = !aVisibleRegion->Intersects(mVisibleRect);
   mForceTransparentSurface = forceTransparentSurface;
-#ifdef DEBUG
+#if defined(DEBUG) || defined(MOZ_DUMP_PAINTING)
   mDidComputeVisibility = true;
 #endif
   return anyVisible;
@@ -1244,17 +1271,12 @@ void nsDisplayList::PaintForFrame(nsDisplayListBuilder* aBuilder,
 
   nsRect viewport(aBuilder->ToReferenceFrame(aForFrame), aForFrame->GetSize());
 
-  // If we are ignoring the root scroll frame we make the RecordFrameMetrics
-  // call for it. Otherwise nsGfxScrollFrame will create scroll layer(s) that
-  // will do that.
-  if (aBuilder->GetIgnoreScrollFrame() == rootScrollFrame) {
-    RecordFrameMetrics(aForFrame, rootScrollFrame,
-                       aBuilder->FindReferenceFrameFor(aForFrame),
-                       root, mVisibleRect, viewport,
-                       (usingDisplayport ? &displayport : nullptr),
-                       (usingCriticalDisplayport ? &criticalDisplayport : nullptr),
-                       id, isRoot, containerParameters);
-  }
+  RecordFrameMetrics(aForFrame, rootScrollFrame,
+                     aBuilder->FindReferenceFrameFor(aForFrame),
+                     root, mVisibleRect, viewport,
+                     (usingDisplayport ? &displayport : nullptr),
+                     (usingCriticalDisplayport ? &criticalDisplayport : nullptr),
+                     id, isRoot, containerParameters);
   if (usingDisplayport &&
       !(root->GetContentFlags() & Layer::CONTENT_OPAQUE)) {
     // See bug 693938, attachment 567017
@@ -2676,13 +2698,18 @@ nsRect
 nsDisplayBorder::GetBounds(nsDisplayListBuilder* aBuilder, bool* aSnap)
 {
   *aSnap = true;
-  const nsStyleBorder *styleBorder = mFrame->StyleBorder();
+  return CalculateBounds(*mFrame->StyleBorder());
+}
+
+nsRect
+nsDisplayBorder::CalculateBounds(const nsStyleBorder& aStyleBorder)
+{
   nsRect borderBounds(ToReferenceFrame(), mFrame->GetSize());
-  if (styleBorder->IsBorderImageLoaded()) {
-    borderBounds.Inflate(mFrame->StyleBorder()->GetImageOutset());
+  if (aStyleBorder.IsBorderImageLoaded()) {
+    borderBounds.Inflate(aStyleBorder.GetImageOutset());
     return borderBounds;
   } else {
-    nsMargin border = styleBorder->GetComputedBorder();
+    nsMargin border = aStyleBorder.GetComputedBorder();
     nsRect result;
     if (border.top > 0) {
       result = nsRect(borderBounds.X(), borderBounds.Y(), borderBounds.Width(), border.top);
