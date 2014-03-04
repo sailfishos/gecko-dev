@@ -902,7 +902,7 @@ GLContextGLX::SetupLookupFunction()
 }
 
 bool
-GLContextGLX::IsDoubleBuffered()
+GLContextGLX::IsDoubleBuffered() const
 {
     return mDoubleBuffered;
 }
@@ -914,7 +914,7 @@ GLContextGLX::SetPlatformContext(void* aContext)
 }
 
 bool
-GLContextGLX::SupportsRobustness()
+GLContextGLX::SupportsRobustness() const
 {
     return mGLX->HasRobustness();
 }
