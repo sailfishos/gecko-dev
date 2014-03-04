@@ -1061,6 +1061,16 @@ let BookmarkingUI = {
     if (event.target != event.currentTarget)
       return;
 
+    // Ideally this code would never be reached, but if you click the outer
+    // button's border, some cpp code for the menu button's so-called XBL binding
+    // decides to open the popup even though the dropmarker is invisible.
+    if (this._currentAreaType == CustomizableUI.TYPE_MENU_PANEL) {
+      this._showSubview();
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
     let widget = CustomizableUI.getWidget("bookmarks-menu-button")
                                .forWindow(window);
     if (widget.overflowed) {
@@ -1153,22 +1163,52 @@ let BookmarkingUI = {
       this.button._placesView.uninit();
   },
 
-  customizeStart: function BUI_customizeStart() {
-    this._uninitView();
+  onCustomizeStart: function BUI_customizeStart(aWindow) {
+    if (aWindow == window) {
+      this._uninitView();
+      this._isCustomizing = true;
+    }
   },
 
-  customizeChange: function BUI_customizeChange() {
+  onWidgetAdded: function BUI_widgetAdded(aWidgetId) {
+    if (aWidgetId != "bookmarks-menu-button") {
+      return;
+    }
+
     let usedToUpdateStarState = this._shouldUpdateStarState();
     this._updateCustomizationState();
-    if (usedToUpdateStarState != this._shouldUpdateStarState()) {
+    if (!usedToUpdateStarState && this._shouldUpdateStarState()) {
       this.updateStarState();
+    } else if (usedToUpdateStarState && !this._shouldUpdateStarState()) {
+      this._updateStar();
+    }
+    // If we're moved outside of customize mode, we need to uninit
+    // our view so it gets reconstructed.
+    if (!this._isCustomizing) {
+      this._uninitView();
     }
     this._updateToolbarStyle();
   },
 
-  customizeDone: function BUI_customizeDone() {
-    this.onToolbarVisibilityChange();
+  onWidgetRemoved: function BUI_widgetRemoved(aWidgetId) {
+    if (aWidgetId != "bookmarks-menu-button") {
+      return;
+    }
+    // If we're moved outside of customize mode, we need to uninit
+    // our view so it gets reconstructed.
+    if (!this._isCustomizing) {
+      this._uninitView();
+    }
+    this._updateCustomizationState();
     this._updateToolbarStyle();
+  },
+
+  onCustomizeEnd: function BUI_customizeEnd(aWindow) {
+    if (aWindow == window) {
+      this._isCustomizing = false;
+      this.onToolbarVisibilityChange();
+      this._updateToolbarStyle();
+    }
   },
 
   init: function() {
@@ -1194,11 +1234,14 @@ let BookmarkingUI = {
     }
   },
 
-  updateStarState: function BUI_updateStarState() {
+  onLocationChange: function BUI_onLocationChange() {
     if (this._uri && gBrowser.currentURI.equals(this._uri)) {
       return;
     }
+    this.updateStarState();
+  },
 
+  updateStarState: function BUI_updateStarState() {
     // Reset tracked values.
     this._uri = gBrowser.currentURI;
     this._itemIds = [];
@@ -1313,25 +1356,30 @@ let BookmarkingUI = {
     }, 1000);
   },
 
+  _showSubview: function() {
+    let view = document.getElementById("PanelUI-bookmarks");
+    view.addEventListener("ViewShowing", this);
+    view.addEventListener("ViewHiding", this);
+    let anchor = document.getElementById("bookmarks-menu-button");
+    anchor.setAttribute("closemenu", "none");
+    PanelUI.showSubView("PanelUI-bookmarks", anchor,
+                        CustomizableUI.AREA_PANEL);
+  },
+
   onCommand: function BUI_onCommand(aEvent) {
     if (aEvent.target != aEvent.currentTarget) {
       return;
     }
 
     // Handle special case when the button is in the panel.
-    let widget = CustomizableUI.getWidget("bookmarks-menu-button")
-                               .forWindow(window);
     let isBookmarked = this._itemIds.length > 0;
 
     if (this._currentAreaType == CustomizableUI.TYPE_MENU_PANEL) {
-      let view = document.getElementById("PanelUI-bookmarks");
-      view.addEventListener("ViewShowing", this);
-      view.addEventListener("ViewHiding", this);
-      widget.node.setAttribute("closemenu", "none");
-      PanelUI.showSubView("PanelUI-bookmarks", widget.node,
-                          CustomizableUI.AREA_PANEL);
+      this._showSubview();
       return;
     }
+    let widget = CustomizableUI.getWidget("bookmarks-menu-button")
+                               .forWindow(window);
     if (widget.overflowed) {
       // Allow to close the panel if the page is already bookmarked, cause
       // we are going to open the edit bookmark panel.
@@ -1487,10 +1535,9 @@ let BookmarkingUI = {
     if (aNode.id != "bookmarks-menu-button" || win != window)
       return;
 
-    // If the button hasn't been in the overflow panel before, we may ignore
-    // this event.
-    if (!this._starButtonLabel)
-      return;
+    // The view gets broken by being removed and reinserted. Uninit
+    // here so popupshowing will generate a new one:
+    this._uninitView();
 
     if (aNode.getAttribute("label") != this._starButtonLabel)
       aNode.setAttribute("label", this._starButtonLabel);

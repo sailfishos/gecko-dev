@@ -90,6 +90,7 @@ public:
   BackCert(CERTCertificate* nssCert, BackCert* childCert,
            ConstrainedNameOptions cnOptions)
     : encodedBasicConstraints(nullptr)
+    , encodedCertificatePolicies(nullptr)
     , encodedExtendedKeyUsage(nullptr)
     , encodedKeyUsage(nullptr)
     , encodedNameConstraints(nullptr)
@@ -103,13 +104,19 @@ public:
   Result Init();
 
   const SECItem* encodedBasicConstraints;
+  const SECItem* encodedCertificatePolicies;
   const SECItem* encodedExtendedKeyUsage;
   const SECItem* encodedKeyUsage;
   const SECItem* encodedNameConstraints;
 
   BackCert* const childCert;
 
-  const CERTCertificate* GetNSSCert() const { return nssCert; }
+  // Only non-const so that we can pass this to TrustDomain::IsRevoked,
+  // which only takes a non-const pointer because VerifyEncodedOCSPResponse
+  // requires it, and that is only because the implementation of
+  // VerifyEncodedOCSPResponse does a CERT_DupCertificate. TODO: get rid
+  // of that CERT_DupCertificate so that we can make all these things const.
+  /*const*/ CERTCertificate* GetNSSCert() const { return nssCert; }
 
   // Returns the names that should be considered when evaluating name
   // constraints. The list is constructed lazily and cached. The result is a

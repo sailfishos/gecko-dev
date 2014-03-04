@@ -1299,6 +1299,8 @@ GetMessageName(UINT aMessage)
     case WM_SYSCHAR:     return "WM_SYSCHAR";
     case WM_SYSDEADCHAR: return "WM_SYSDEADCHAR";
     case WM_UNICHAR:     return "WM_UNICHAR";
+    case WM_QUIT:        return "WM_QUIT";
+    case WM_NULL:        return "WM_NULL";
     default:             return "Unknown";
   }
 }
@@ -1348,16 +1350,49 @@ NativeKey::GetFollowingCharMessage(MSG& aCharMsg) const
                                PM_REMOVE | PM_NOYIELD)) {
 #ifdef MOZ_CRASHREPORTER
       nsPrintfCString info("\nHandling message: %s (0x%08X), wParam: 0x%08X, "
-                           "lParam: 0x%08X, InSendMessageEx()=%s, \n"
+                           "lParam: 0x%08X, hwnd=0x%p, InSendMessageEx()=%s, \n"
                            "Found message: %s (0x%08X), wParam: 0x%08X, "
-                           "lParam: 0x%08X",
+                           "lParam: 0x%08X, \nWM_NULL has been removed: %d, ",
                            GetMessageName(mMsg.message),
                            mMsg.message, mMsg.wParam, mMsg.lParam,
+                           nextKeyMsg.hwnd,
                            GetResultOfInSendMessageEx().get(),
                            GetMessageName(nextKeyMsg.message),
                            nextKeyMsg.message, nextKeyMsg.wParam,
-                           nextKeyMsg.lParam);
+                           nextKeyMsg.lParam, i);
       CrashReporter::AppendAppNotesToCrashReport(info);
+      MSG nextKeyMsgInAllWindows;
+      if (WinUtils::PeekMessage(&nextKeyMsgInAllWindows, 0,
+                                WM_KEYFIRST, WM_KEYLAST,
+                                PM_NOREMOVE | PM_NOYIELD)) {
+        nsPrintfCString info("\nNext key message in all windows: %s (0x%08X), "
+                             "wParam: 0x%08X, lParam: 0x%08X, hwnd=0x%p, "
+                             "time=%d, ",
+                             GetMessageName(nextKeyMsgInAllWindows.message),
+                             nextKeyMsgInAllWindows.message,
+                             nextKeyMsgInAllWindows.wParam,
+                             nextKeyMsgInAllWindows.lParam,
+                             nextKeyMsgInAllWindows.hwnd,
+                             nextKeyMsgInAllWindows.time);
+        CrashReporter::AppendAppNotesToCrashReport(info);
+      } else {
+        CrashReporter::AppendAppNotesToCrashReport(
+          NS_LITERAL_CSTRING("\nThere is no key message in any window, "));
+      }
+      MSG nextMsg;
+      if (WinUtils::PeekMessage(&nextMsg, 0, 0, 0,
+                                PM_NOREMOVE | PM_NOYIELD)) {
+        nsPrintfCString info("\nNext message in all windows: %s (0x%08X), "
+                             "wParam: 0x%08X, lParam: 0x%08X, hwnd=0x%p, "
+                             "time=%d",
+                             GetMessageName(nextMsg.message),
+                             nextMsg.message, nextMsg.wParam, nextMsg.lParam,
+                             nextMsg.hwnd, nextMsg.time);
+        CrashReporter::AppendAppNotesToCrashReport(info);
+      } else {
+        CrashReporter::AppendAppNotesToCrashReport(
+          NS_LITERAL_CSTRING("\nThere is no message in any window"));
+      }
 #endif // #ifdef MOZ_CRASHREPORTER
       MOZ_CRASH("We lost the following char message");
     }
@@ -1367,9 +1402,14 @@ NativeKey::GetFollowingCharMessage(MSG& aCharMsg) const
       continue;
     }
 
+    // NOTE: Although, we don't know when this case occurs, the scan code value
+    //       in lParam may be changed from 0 to something.  The changed value
+    //       is different from the scan code of handling keydown message.
+    static const LPARAM kScanCodeMask = 0x00FF0000;
     if (removedMsg.message != nextKeyMsg.message ||
         removedMsg.wParam != nextKeyMsg.wParam ||
-        removedMsg.lParam != nextKeyMsg.lParam) {
+        (removedMsg.lParam & ~kScanCodeMask) !=
+          (nextKeyMsg.lParam & ~kScanCodeMask)) {
 #ifdef MOZ_CRASHREPORTER
       nsPrintfCString info("\nHandling message: %s (0x%08X), wParam: 0x%08X, "
                            "lParam: 0x%08X, InSendMessageEx()=%s, \n"

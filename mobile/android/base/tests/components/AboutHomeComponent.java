@@ -17,6 +17,7 @@ import com.jayway.android.robotium.solo.Solo;
 import android.support.v4.view.PagerAdapter;
 import android.support.v4.view.ViewPager;
 import android.view.View;
+import android.widget.TextView;
 
 /**
  * A class representing any interactions that take place on the Awesomescreen.
@@ -58,8 +59,16 @@ public class AboutHomeComponent extends BaseComponent {
         super(testContext);
     }
 
+    private View getHomePagerContainer() {
+        return mSolo.getView(R.id.home_pager_container);
+    }
+
     private ViewPager getHomePagerView() {
         return (ViewPager) mSolo.getView(R.id.home_pager);
+    }
+
+    private View getHomeBannerView() {
+        return mSolo.getView(R.id.home_banner);
     }
 
     public AboutHomeComponent assertCurrentPanel(final PanelType expectedPanel) {
@@ -72,14 +81,57 @@ public class AboutHomeComponent extends BaseComponent {
     }
 
     public AboutHomeComponent assertNotVisible() {
-        assertFalse("The HomePager is not visible",
-                    getHomePagerView().getVisibility() == View.VISIBLE);
+        assertTrue("The HomePager is not visible",
+                    getHomePagerContainer().getVisibility() != View.VISIBLE ||
+                    getHomePagerView().getVisibility() != View.VISIBLE);
         return this;
     }
 
     public AboutHomeComponent assertVisible() {
-        assertEquals("The HomePager is visible",
-                     View.VISIBLE, getHomePagerView().getVisibility());
+        assertTrue("The HomePager is visible",
+                    getHomePagerContainer().getVisibility() == View.VISIBLE &&
+                    getHomePagerView().getVisibility() == View.VISIBLE);
+        return this;
+    }
+
+    public AboutHomeComponent assertBannerNotVisible() {
+        View banner = getHomeBannerView();
+        assertTrue("The HomeBanner is not visible",
+                    getHomePagerContainer().getVisibility() != View.VISIBLE ||
+                    banner.getVisibility() != View.VISIBLE ||
+                    banner.getTranslationY() == banner.getHeight());
+        return this;
+    }
+
+    public AboutHomeComponent assertBannerVisible() {
+        assertTrue("The HomeBanner is visible",
+                    getHomePagerContainer().getVisibility() == View.VISIBLE &&
+                    getHomeBannerView().getVisibility() == View.VISIBLE);
+        return this;
+    }
+
+    public AboutHomeComponent assertBannerText(String text) {
+        assertBannerVisible();
+
+        final TextView textView = (TextView) getHomeBannerView().findViewById(R.id.text);
+        assertEquals("The correct HomeBanner text is shown",
+                     text, textView.getText().toString());
+        return this;
+    }
+
+    public AboutHomeComponent clickOnBanner() {
+        assertBannerVisible();
+
+        mTestContext.dumpLog(LOGTAG, "Clicking on HomeBanner.");
+        mSolo.clickOnView(getHomeBannerView());
+        return this;
+    }
+
+    public AboutHomeComponent dismissBanner() {
+        assertBannerVisible();
+
+        mTestContext.dumpLog(LOGTAG, "Clicking on HomeBanner close button.");
+        mSolo.clickOnView(getHomeBannerView().findViewById(R.id.close));
         return this;
     }
 

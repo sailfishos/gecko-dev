@@ -1594,6 +1594,8 @@
                 !PrivateBrowsingUtils.isWindowPrivate(window) &&
                 !gMultiProcessBrowser) {
               docShellsSwapped = gBrowserNewTabPreloader.newTab(t);
+            } else if (aURI == "about:customizing") {
+              docShellsSwapped = gCustomizationTabPreloader.newTab(t);
             }
 
             // Dispatch a new tab notification.  We do this once we're
@@ -2491,6 +2493,15 @@
           <![CDATA[
             if (this.tabs.length == 1)
               return null;
+
+            let event = new CustomEvent("TabBecomingWindow", {
+              bubbles: true,
+              cancelable: true
+            });
+            aTab.dispatchEvent(event);
+            if (event.defaultPrevented) {
+              return null;
+            }
 
             var options = "chrome,dialog=no,all";
             for (var name in aOptions)

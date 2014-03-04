@@ -1469,6 +1469,11 @@ richlistitem[type~="action"][actiontype="switchtab"] > .ac-url-box > .ac-action-
   margin-bottom: -16px;
 }
 
+#nav-bar .toolbarbutton-1 > menupopup[side="top"].cui-widget-panel,
+#nav-bar .toolbarbutton-1 > menupopup[side="bottom"].cui-widget-panel {
+  margin-top: -4px;
+}
+
 /* Bookmarking panel */
 #editBookmarkPanelStarIcon {
   list-style-image: url("chrome://browser/skin/places/starred48.png");
@@ -1565,10 +1570,6 @@ richlistitem[type~="action"][actiontype="switchtab"] > .ac-url-box > .ac-action-
 #toolbar-menubar:not([autohide="true"]):not(:-moz-lwtheme):-moz-system-metric(menubar-drag),
 #TabsToolbar:not(:-moz-lwtheme):-moz-system-metric(menubar-drag) {
   -moz-binding: url("chrome://browser/content/customizableui/toolbar.xml#toolbar-drag");
-}
-
-#TabsToolbar:not(:-moz-lwtheme) > #tabbrowser-tabs > .tabbrowser-tab:not([selected]) {
-  color: -moz-menubartext;
 }
 
 .tabbrowser-tab:focus > .tab-stack > .tab-content > .tab-label {

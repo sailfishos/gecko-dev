@@ -1280,6 +1280,10 @@ toolbarbutton[sdk-button="true"][cui-areatype="toolbar"] > .toolbarbutton-icon {
   margin-top: 1px;
 }
 
+.toolbarbutton-1 > menupopup.cui-widget-panel {
+  margin-top: -5px;
+}
+
 /* Common back and forward button styles */
 
 #back-button,
@@ -2639,12 +2643,13 @@ toolbarbutton.chevron > .toolbarbutton-menu-dropmarker {
   border: none;
 }
 
-.tabbrowser-tab:not(:-moz-lwtheme) {
-  color: #333;
-  text-shadow: @loweredShadow@;
+.tabbrowser-tab[selected=true]:not(:-moz-lwtheme) {
+  /* overriding tabbox.css */
+  color: inherit;
 }
 
-.tabbrowser-tab[selected=true]:-moz-lwtheme {
+.tabbrowser-tab[selected=true] {
+  /* overriding tabbox.css */
   text-shadow: inherit;
 }
 
@@ -2686,6 +2691,11 @@ toolbarbutton.chevron > .toolbarbutton-menu-dropmarker {
   position: relative;
   -moz-appearance: none;
   background-repeat: repeat-x;
+}
+
+#TabsToolbar:not(:-moz-lwtheme) {
+  color: #333;
+  text-shadow: @loweredShadow@;
 }
 
 /*
@@ -4131,7 +4141,7 @@ window > chatbox {
 #main-window[customize-entered] #tab-view-deck {
   background-image: url("chrome://browser/skin/customizableui/customizeMode-gridTexture.png"),
                     url("chrome://browser/skin/customizableui/background-noise-toolbar.png"),
-                    linear-gradient(to bottom, rgb(233,233,233), rgb(178,178,178) 21px);
+                    linear-gradient(to bottom, rgb(233,233,233), rgb(178,178,178) 40px);
   background-attachment: fixed;
 }
 
@@ -4151,7 +4161,7 @@ window > chatbox {
 }
 
 #main-window[tabsintitlebar][customize-entered] #TabsToolbar {
-  margin-top: 9px;
+  margin-top: 8px;
 }
 
 #main-window[customize-entered] #TabsToolbar {
