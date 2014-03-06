@@ -37,6 +37,7 @@
 #include "mozilla/dom/devicestorage/DeviceStorageRequestParent.h"
 #include "mozilla/dom/GeolocationBinding.h"
 #include "mozilla/dom/telephony/TelephonyParent.h"
+#include "mozilla/dom/FileSystemRequestParent.h"
 #include "SmsParent.h"
 #include "mozilla/hal_sandbox/PHalParent.h"
 #include "mozilla/ipc/BackgroundChild.h"
@@ -2040,10 +2041,28 @@ ContentParent::Observe(nsISupports* aSubject,
             return NS_ERROR_NOT_AVAILABLE;
     }
     else if (!strcmp(aTopic, "child-memory-reporter-request")) {
+        bool isNuwa = false;
 #ifdef MOZ_NUWA_PROCESS
-        if (!IsNuwaProcess())
+        isNuwa = IsNuwaProcess();
 #endif
-            unused << SendPMemoryReportRequestConstructor((uint32_t)(uintptr_t)aData);
+        if (!isNuwa) {
+            unsigned generation;
+            int minimize, identOffset = -1;
+            nsDependentString msg(aData);
+            NS_ConvertUTF16toUTF8 cmsg(msg);
+
+            if (sscanf(cmsg.get(),
+                       "generation=%x minimize=%d DMDident=%n",
+                       &generation, &minimize, &identOffset) < 2
+                || identOffset < 0) {
+                return NS_ERROR_INVALID_ARG;
+            }
+            // The pre-%n part of the string should be all ASCII, so the byte
+            // offset in identOffset should be correct as a char offset.
+            MOZ_ASSERT(cmsg[identOffset - 1] == '=');
+            unused << SendPMemoryReportRequestConstructor(
+              generation, minimize, nsString(Substring(msg, identOffset)));
+        }
     }
     else if (!strcmp(aTopic, "child-gc-request")){
         unused << SendGarbageCollect();
@@ -2238,6 +2257,24 @@ bool
 ContentParent::DeallocPDeviceStorageRequestParent(PDeviceStorageRequestParent* doomed)
 {
   DeviceStorageRequestParent *parent = static_cast<DeviceStorageRequestParent*>(doomed);
+  NS_RELEASE(parent);
+  return true;
+}
+
+PFileSystemRequestParent*
+ContentParent::AllocPFileSystemRequestParent(const FileSystemParams& aParams)
+{
+  nsRefPtr<FileSystemRequestParent> result = new FileSystemRequestParent();
+  if (!result->Dispatch(this, aParams)) {
+    return nullptr;
+  }
+  return result.forget().get();
+}
+
+bool
+ContentParent::DeallocPFileSystemRequestParent(PFileSystemRequestParent* doomed)
+{
+  FileSystemRequestParent* parent = static_cast<FileSystemRequestParent*>(doomed);
   NS_RELEASE(parent);
   return true;
 }
@@ -2504,7 +2541,9 @@ ContentParent::RecvPIndexedDBConstructor(PIndexedDBParent* aActor)
 }
 
 PMemoryReportRequestParent*
-ContentParent::AllocPMemoryReportRequestParent(const uint32_t& generation)
+ContentParent::AllocPMemoryReportRequestParent(const uint32_t& generation,
+                                               const bool &minimizeMemoryUsage,
+                                               const nsString &aDMDDumpIdent)
 {
   MemoryReportRequestParent* parent = new MemoryReportRequestParent();
   return parent;

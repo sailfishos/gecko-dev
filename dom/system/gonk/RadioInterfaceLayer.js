@@ -2293,7 +2293,7 @@ RadioInterface.prototype = {
   getIccId: function() {
     let iccInfo = this.rilContext.iccInfo;
 
-    if (!iccInfo || !(iccInfo instanceof GsmIccInfo)) {
+    if (!iccInfo) {
       return null;
     }
 
@@ -3933,7 +3933,14 @@ RadioInterface.prototype = {
     }
 
     let notifyResult = (function notifyResult(rv, domMessage) {
-      // TODO bug 832140 handle !Components.isSuccessCode(rv)
+      if (!Components.isSuccessCode(rv)) {
+        if (DEBUG) this.debug("Error! Fail to save sending message! rv = " + rv);
+        request.notifySendMessageFailed(
+          gMobileMessageDatabaseService.translateCrErrorToMessageCallbackError(rv));
+        Services.obs.notifyObservers(domMessage, kSmsFailedObserverTopic, null);
+        return;
+      }
+
       if (!silent) {
         Services.obs.notifyObservers(domMessage, kSmsSendingObserverTopic, null);
       }
@@ -4518,12 +4525,22 @@ RILNetworkInterface.prototype = {
       }
       authType = RIL.RIL_DATACALL_AUTH_TO_GECKO.indexOf(RIL.GECKO_DATACALL_AUTH_DEFAULT);
     }
+    let pdptype = !radioInterface.rilContext.data.roaming
+                ? this.apnSetting.protocol
+                : this.apnSetting.roaming_protocol;
+    if (RIL.RIL_DATACALL_PDP_TYPES.indexOf(pdptype) < 0) {
+      if (DEBUG) {
+        this.debug("Invalid pdptype '" + pdptype + "', using '" +
+                   RIL.GECKO_DATACALL_PDP_TYPE_DEFAULT + "'");
+      }
+      pdptype = RIL.GECKO_DATACALL_PDP_TYPE_DEFAULT;
+    }
     radioInterface.setupDataCall(radioTechnology,
                                  this.apnSetting.apn,
                                  this.apnSetting.user,
                                  this.apnSetting.password,
                                  authType,
-                                 "IP");
+                                 pdptype);
     this.connecting = true;
   },
 

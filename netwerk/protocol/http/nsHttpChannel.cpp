@@ -147,7 +147,16 @@ WillRedirect(const nsHttpResponseHead * response)
 class AutoRedirectVetoNotifier
 {
 public:
-    AutoRedirectVetoNotifier(nsHttpChannel* channel) : mChannel(channel) {}
+    AutoRedirectVetoNotifier(nsHttpChannel* channel) : mChannel(channel)
+    {
+      if (mChannel->mHasAutoRedirectVetoNotifier) {
+        MOZ_CRASH("Nested AutoRedirectVetoNotifier on the stack");
+        mChannel = nullptr;
+        return;
+      }
+
+      mChannel->mHasAutoRedirectVetoNotifier = true;
+    }
     ~AutoRedirectVetoNotifier() {ReportRedirectResult(false);}
     void RedirectSucceeded() {ReportRedirectResult(true);}
 
@@ -169,12 +178,14 @@ AutoRedirectVetoNotifier::ReportRedirectResult(bool succeeded)
                                   NS_GET_IID(nsIRedirectResultListener),
                                   getter_AddRefs(vetoHook));
 
-#ifdef MOZ_VISUAL_EVENT_TRACER
     nsHttpChannel* channel = mChannel;
-#endif
     mChannel = nullptr;
+
     if (vetoHook)
         vetoHook->OnRedirectResult(succeeded);
+
+    // Drop after the notification
+    channel->mHasAutoRedirectVetoNotifier = false;
 
     MOZ_EVENT_TRACER_DONE(channel, "net::http::redirect-callbacks");
 }
@@ -207,6 +218,7 @@ nsHttpChannel::nsHttpChannel()
     , mHasQueryString(0)
     , mConcurentCacheAccess(0)
     , mIsPartialRequest(0)
+    , mHasAutoRedirectVetoNotifier(0)
     , mDidReval(false)
 {
     LOG(("Creating nsHttpChannel [this=%p]\n", this));
@@ -5726,6 +5738,13 @@ nsHttpChannel::DoAuthRetry(nsAHttpConnection *conn)
     // get rid of the old response headers
     mResponseHead = nullptr;
 
+    // rewind the upload stream
+    if (mUploadStream) {
+        nsCOMPtr<nsISeekableStream> seekable = do_QueryInterface(mUploadStream);
+        if (seekable)
+            seekable->Seek(nsISeekableStream::NS_SEEK_SET, 0);
+    }
+
     // set sticky connection flag and disable pipelining.
     mCaps |=  NS_HTTP_STICKY_CONNECTION;
     mCaps &= ~NS_HTTP_ALLOW_PIPELINING;
@@ -5737,13 +5756,6 @@ nsHttpChannel::DoAuthRetry(nsAHttpConnection *conn)
     // transfer ownership of connection to transaction
     if (conn)
         mTransaction->SetConnection(conn);
-
-    // rewind the upload stream
-    if (mUploadStream) {
-        nsCOMPtr<nsISeekableStream> seekable = do_QueryInterface(mUploadStream);
-        if (seekable)
-            seekable->Seek(nsISeekableStream::NS_SEEK_SET, 0);
-    }
 
     rv = gHttpHandler->InitiateTransaction(mTransaction, mPriority);
     if (NS_FAILED(rv)) return rv;

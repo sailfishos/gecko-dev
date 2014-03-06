@@ -40,20 +40,6 @@ class TypedArrayObject : public ArrayBufferViewObject
     static const Class classes[ScalarTypeDescr::TYPE_MAX];
     static const Class protoClasses[ScalarTypeDescr::TYPE_MAX];
 
-    static bool obj_lookupGeneric(JSContext *cx, HandleObject obj, HandleId id,
-                                  MutableHandleObject objp, MutableHandleShape propp);
-    static bool obj_lookupProperty(JSContext *cx, HandleObject obj, HandlePropertyName name,
-                                   MutableHandleObject objp, MutableHandleShape propp);
-    static bool obj_lookupElement(JSContext *cx, HandleObject obj, uint32_t index,
-                                  MutableHandleObject objp, MutableHandleShape propp);
-    static bool obj_lookupSpecial(JSContext *cx, HandleObject obj, HandleSpecialId sid,
-                                  MutableHandleObject objp, MutableHandleShape propp);
-
-    static bool obj_getGenericAttributes(JSContext *cx, HandleObject obj,
-                                         HandleId id, unsigned *attrsp);
-    static bool obj_setGenericAttributes(JSContext *cx, HandleObject obj,
-                                         HandleId id, unsigned *attrsp);
-
     static Value bufferValue(TypedArrayObject *tarr) {
         return tarr->getFixedSlot(BUFFER_SLOT);
     }
@@ -92,7 +78,8 @@ class TypedArrayObject : public ArrayBufferViewObject
     }
 
     inline bool isArrayIndex(jsid id, uint32_t *ip = nullptr);
-    void copyTypedArrayElement(uint32_t index, MutableHandleValue vp);
+    Value getElement(uint32_t index);
+    bool setElement(ThreadSafeContext *cx, uint32_t index, const Value &value);
 
     void neuter(JSContext *cx);
 
@@ -152,6 +139,34 @@ IsTypedArrayBuffer(HandleValue v);
 
 ArrayBufferObject &
 AsTypedArrayBuffer(HandleValue v);
+
+// Return value is whether the string is some integer. If the string is an
+// integer which is not representable as a uint64_t, the return value is true
+// and the resulting index is UINT64_MAX.
+bool
+StringIsTypedArrayIndex(JSLinearString *str, uint64_t *indexp);
+
+inline bool
+IsTypedArrayIndex(jsid id, uint64_t *indexp)
+{
+    if (JSID_IS_INT(id)) {
+        int32_t i = JSID_TO_INT(id);
+        JS_ASSERT(i >= 0);
+        *indexp = (double)i;
+        return true;
+    }
+
+    if (MOZ_UNLIKELY(!JSID_IS_STRING(id)))
+        return false;
+
+    JSAtom *atom = JSID_TO_ATOM(id);
+
+    jschar c = atom->chars()[0];
+    if (!JS7_ISDEC(c) && c != '-')
+        return false;
+
+    return StringIsTypedArrayIndex(atom, indexp);
+}
 
 static inline unsigned
 TypedArrayShift(ArrayBufferView::ViewType viewType)
@@ -321,8 +336,6 @@ ClampIntForUint8Array(int32_t x)
         return 255;
     return x;
 }
-
-bool ToDoubleForTypedArray(JSContext *cx, JS::HandleValue vp, double *d);
 
 extern js::ArrayBufferObject * const UNSET_BUFFER_LINK;
 
