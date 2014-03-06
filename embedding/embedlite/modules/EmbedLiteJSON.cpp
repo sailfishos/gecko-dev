@@ -208,15 +208,8 @@ static bool SetPropFromVariant(nsIProperty* aProp, JSContext* aCx, JSObject* aOb
 NS_IMETHODIMP
 EmbedLiteJSON::CreateJSON(nsIPropertyBag* aRoot, nsAString& outJson)
 {
-  XPCJSContextStack* stack = XPCJSRuntime::Get()->GetJSContextStack();
-  JSContext* cx = stack->GetSafeJSContext();
-  NS_ENSURE_TRUE(cx, NS_ERROR_FAILURE);
-
-  JSObject* global = GetDefaultScopeFromJSContext(cx);
-  JSAutoCompartment ac(cx, global);
-
-  JSAutoRequest ar(cx);
-  JSObject* obj = JS_NewObject(cx, nullptr, JS::NullPtr(), JS::NullPtr());
+  AutoSafeJSContext cx;
+  JS::Rooted<JSObject*> obj(cx, JS_NewObject(cx, nullptr, JS::NullPtr(), JS::NullPtr()));
   if (!obj) {
     return NS_ERROR_FAILURE;
   }
