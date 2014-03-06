@@ -869,6 +869,12 @@ EmbedLiteViewThreadChild::OnLoadFinished()
 }
 
 NS_IMETHODIMP
+EmbedLiteViewThreadChild::OnWindowCloseRequested()
+{
+  return SendOnWindowCloseRequested() ? NS_OK : NS_ERROR_FAILURE;
+}
+
+NS_IMETHODIMP
 EmbedLiteViewThreadChild::OnLoadRedirect()
 {
   return SendOnLoadRedirect() ? NS_OK : NS_ERROR_FAILURE;

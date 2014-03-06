@@ -30,6 +30,7 @@
 #include "nsIDOMScrollAreaEvent.h"
 #include "nsISerializable.h"
 #include "nsIEmbedBrowserChromeListener.h"
+#include "nsIBaseWindow.h"
 
 #define MOZ_AFTER_PAINT_LITERAL "MozAfterPaint"
 #define MOZ_scroll "scroll"
@@ -114,11 +115,15 @@ NS_IMETHODIMP WebBrowserChrome::SetChromeFlags(uint32_t aChromeFlags)
 
 NS_IMETHODIMP WebBrowserChrome::DestroyBrowserWindow()
 {
-  LOGNI();
+  LOGT();
+
   if (mIsModal) {
     ExitModalEventLoop(NS_OK);
   }
-  return NS_ERROR_NOT_IMPLEMENTED;
+
+  mListener->OnWindowCloseRequested();
+
+  return NS_OK;
 }
 
 NS_IMETHODIMP WebBrowserChrome::SizeBrowserTo(int32_t aCX, int32_t aCY)

@@ -167,6 +167,19 @@ EmbedLiteViewThreadParent::RecvOnLoadFinished()
 }
 
 bool
+EmbedLiteViewThreadParent::RecvOnWindowCloseRequested()
+{
+  LOGNI();
+  if (mViewAPIDestroyed) {
+    return true;
+  }
+
+  NS_ENSURE_TRUE(mView, false);
+  mView->GetListener()->OnWindowCloseRequested();
+  return true;
+}
+
+bool
 EmbedLiteViewThreadParent::RecvOnLoadRedirect()
 {
   LOGNI();
