@@ -18,6 +18,7 @@
 #include "nsIScreenManager.h"
 #include "nsILocaleService.h"
 #include "nsServiceManagerUtils.h"
+#include "AndroidBridge.h"
 
 #include "cairo.h"
 
@@ -415,4 +416,15 @@ int
 gfxAndroidPlatform::GetScreenDepth() const
 {
     return mScreenDepth;
+}
+
+bool
+gfxAndroidPlatform::UseAcceleratedSkiaCanvas()
+{
+    if (AndroidBridge::Bridge()->GetAPIVersion() < 11) {
+        // It's slower than software due to not having a compositing fast path
+        return false;
+    }
+
+    return gfxPlatform::UseAcceleratedSkiaCanvas();
 }
