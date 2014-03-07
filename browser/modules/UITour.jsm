@@ -26,6 +26,7 @@ XPCOMUtils.defineLazyModuleGetter(this, "BrowserUITelemetry",
 
 const UITOUR_PERMISSION   = "uitour";
 const PREF_PERM_BRANCH    = "browser.uitour.";
+const PREF_SEENPAGEIDS    = "browser.uitour.seenPageIDs";
 const MAX_BUTTONS         = 4;
 
 const BUCKET_NAME         = "UITour";
@@ -36,10 +37,12 @@ const BUCKET_TIMESTEPS    = [
   60 * 60 * 1000, // Until 1 hour after tab is closed/inactive.
 ];
 
+// Time after which seen Page IDs expire.
+const SEENPAGEID_EXPIRY  = 2 * 7 * 24 * 60 * 60 * 1000; // 2 weeks.
 
 
 this.UITour = {
-  seenPageIDs: new Set(),
+  seenPageIDs: null,
   pageIDSourceTabs: new WeakMap(),
   pageIDSourceWindows: new WeakMap(),
   /* Map from browser windows to a set of tabs in which a tour is open */
@@ -48,6 +51,7 @@ this.UITour = {
   pinnedTabs: new WeakMap(),
   urlbarCapture: new WeakMap(),
   appMenuOpenForAnnotation: new Set(),
+  availableTargetsCache: new WeakMap(),
 
   _detachingTab: false,
   _queuedEvents: [],
@@ -102,7 +106,7 @@ this.UITour = {
         let element = aDocument.getAnonymousElementByAttribute(selectedtab,
                                                                "anonid",
                                                                "tab-icon-image");
-        if (!element || !this.isElementVisible(element)) {
+        if (!element || !UITour.isElementVisible(element)) {
           return null;
         }
         return element;
@@ -115,8 +119,83 @@ this.UITour = {
   ]),
 
   init: function() {
+    // Lazy getter is initialized here so it can be replicated any time
+    // in a test.
+    delete this.seenPageIDs;
+    Object.defineProperty(this, "seenPageIDs", {
+      get: this.restoreSeenPageIDs.bind(this),
+      configurable: true,
+    });
+
     UITelemetry.addSimpleMeasureFunction("UITour",
                                          this.getTelemetry.bind(this));
+
+    // Clear the availableTargetsCache on widget changes.
+    let listenerMethods = [
+      "onWidgetAdded",
+      "onWidgetMoved",
+      "onWidgetRemoved",
+      "onWidgetReset",
+      "onAreaReset",
+    ];
+    CustomizableUI.addListener(listenerMethods.reduce((listener, method) => {
+      listener[method] = () => this.availableTargetsCache.clear();
+      return listener;
+    }, {}));
+  },
+
+  restoreSeenPageIDs: function() {
+    delete this.seenPageIDs;
+
+    if (UITelemetry.enabled) {
+      let dateThreshold = Date.now() - SEENPAGEID_EXPIRY;
+
+      try {
+        let data = Services.prefs.getCharPref(PREF_SEENPAGEIDS);
+        data = new Map(JSON.parse(data));
+
+        for (let [pageID, details] of data) {
+
+          if (typeof pageID != "string" ||
+              typeof details != "object" ||
+              typeof details.lastSeen != "number" ||
+              details.lastSeen < dateThreshold) {
+
+            data.delete(pageID);
+          }
+        }
+
+        this.seenPageIDs = data;
+      } catch (e) {}
+    }
+
+    if (!this.seenPageIDs)
+      this.seenPageIDs = new Map();
+
+    this.persistSeenIDs();
+
+    return this.seenPageIDs;
+  },
+
+  addSeenPageID: function(aPageID) {
+    if (!UITelemetry.enabled)
+      return;
+
+    this.seenPageIDs.set(aPageID, {
+      lastSeen: Date.now(),
+    });
+
+    this.persistSeenIDs();
+  },
+
+  persistSeenIDs: function() {
+    if (this.seenPageIDs.size === 0) {
+      Services.prefs.clearUserPref(PREF_SEENPAGEIDS);
+      return;
+    }
+
+    Services.prefs.setCharPref(PREF_SEENPAGEIDS,
+                               JSON.stringify([...this.seenPageIDs]));
   },
 
   onPageEvent: function(aEvent) {
@@ -161,11 +240,15 @@ this.UITour = {
 
     switch (action) {
       case "registerPageID": {
+        // This is only relevant if Telemtry is enabled.
+        if (!UITelemetry.enabled)
+          break;
+
         // We don't want to allow BrowserUITelemetry.BUCKET_SEPARATOR in the
         // pageID, as it could make parsing the telemetry bucket name difficult.
         if (typeof data.pageID == "string" &&
             !data.pageID.contains(BrowserUITelemetry.BUCKET_SEPARATOR)) {
-          this.seenPageIDs.add(data.pageID);
+          this.addSeenPageID(data.pageID);
 
           // Store tabs and windows separately so we don't need to loop over all
           // tabs when a window is closed.
@@ -444,7 +527,7 @@ this.UITour = {
 
   getTelemetry: function() {
     return {
-      seenPageIDs: [...this.seenPageIDs],
+      seenPageIDs: [...this.seenPageIDs.keys()],
     };
   },
 
@@ -851,8 +934,8 @@ this.UITour = {
   },
 
   showMenu: function(aWindow, aMenuName, aOpenCallback = null) {
-    function openMenuButton(aId) {
-      let menuBtn = aWindow.document.getElementById(aId);
+    function openMenuButton(aID) {
+      let menuBtn = aWindow.document.getElementById(aID);
       if (!menuBtn || !menuBtn.boxObject) {
         aOpenCallback();
         return;
@@ -884,8 +967,8 @@ this.UITour = {
   },
 
   hideMenu: function(aWindow, aMenuName) {
-    function closeMenuButton(aId) {
-      let menuBtn = aWindow.document.getElementById(aId);
+    function closeMenuButton(aID) {
+      let menuBtn = aWindow.document.getElementById(aID);
       if (menuBtn && menuBtn.boxObject)
         menuBtn.boxObject.QueryInterface(Ci.nsIMenuBoxObject).openMenu(false);
     }
@@ -973,19 +1056,53 @@ this.UITour = {
     aWindow.gBrowser.selectedTab = tab;
   },
 
-  getConfiguration: function(aContentDocument, aConfiguration, aCallbackId) {
-    let config = null;
+  getConfiguration: function(aContentDocument, aConfiguration, aCallbackID) {
     switch (aConfiguration) {
+      case "availableTargets":
+        this.getAvailableTargets(aContentDocument, aCallbackID);
+        break;
       case "sync":
-        config = {
+        this.sendPageCallback(aContentDocument, aCallbackID, {
           setup: Services.prefs.prefHasUserValue("services.sync.username"),
-        };
+        });
         break;
       default:
         Cu.reportError("getConfiguration: Unknown configuration requested: " + aConfiguration);
         break;
     }
-    this.sendPageCallback(aContentDocument, aCallbackId, config);
+  },
+
+  getAvailableTargets: function(aContentDocument, aCallbackID) {
+    let window = this.getChromeWindow(aContentDocument);
+    let data = this.availableTargetsCache.get(window);
+    if (data) {
+      this.sendPageCallback(aContentDocument, aCallbackID, data);
+      return;
+    }
+
+    let promises = [];
+    for (let targetName of this.targets.keys()) {
+      promises.push(this.getTarget(window, targetName));
+    }
+    Promise.all(promises).then((targetObjects) => {
+      let targetNames = [
+        "pinnedTab",
+      ];
+      for (let targetObject of targetObjects) {
+        if (targetObject.node)
+          targetNames.push(targetObject.targetName);
+      }
+      let data = {
+        targets: targetNames,
+      };
+      this.availableTargetsCache.set(window, data);
+      this.sendPageCallback(aContentDocument, aCallbackID, data);
+    }, (err) => {
+      Cu.reportError(err);
+      this.sendPageCallback(aContentDocument, aCallbackID, {
+        targets: [],
+      });
+    });
   },
 };
 
