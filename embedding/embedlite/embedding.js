@@ -317,3 +317,6 @@ pref("full-screen-api.content-only", true);
 // the window, the window size doesn't change. This pref has no effect when
 // running in actual Metro mode, as the widget will already be fullscreen then.
 pref("full-screen-api.ignore-widgets", true);
+
+pref("dom.allow_scripts_to_close_windows", false);
+pref("dom.disable_window_open_feature.close", false);
