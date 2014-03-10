@@ -86,6 +86,9 @@ static const char *sExtensionNames[] = {
     "GL_OES_texture_half_float",
     "GL_OES_texture_half_float_linear",
     "GL_NV_half_float",
+    "GL_EXT_color_buffer_float",
+    "GL_EXT_color_buffer_half_float",
+    "GL_ARB_color_buffer_float",
     "GL_EXT_unpack_subimage",
     "GL_OES_standard_derivatives",
     "GL_EXT_texture_filter_anisotropic",
@@ -626,6 +629,12 @@ GLContext::InitWithPrefix(const char *prefix, bool trygl)
             if (Vendor() == GLVendor::Vivante) {
                 // bug 958256
                 MarkUnsupported(GLFeature::standard_derivatives);
+            }
+
+            if (Vendor() == GLVendor::Imagination &&
+                Renderer() == GLRenderer::SGX540) {
+                // Bug 980048
+                MarkExtensionUnsupported(OES_EGL_sync);
             }
 
 #ifdef XP_MACOSX

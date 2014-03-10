@@ -519,7 +519,7 @@ struct JSContext : public js::ExclusiveContext,
     js::StackFrame *interpreterFrame() const {
         return mainThread().activation()->asInterpreter()->current();
     }
-    js::FrameRegs &interpreterRegs() const {
+    js::InterpreterRegs &interpreterRegs() const {
         return mainThread().activation()->asInterpreter()->regs();
     }
 
@@ -1092,6 +1092,9 @@ class AutoLockForExclusiveAccess
 
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 };
+
+void
+CrashAtUnhandlableOOM(const char *reason);
 
 } /* namespace js */
 

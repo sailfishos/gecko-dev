@@ -2798,6 +2798,7 @@ HTMLInputElement::SetValueInternal(const nsAString& aValue,
           UpdateAllValidityStates(mParserCreating);
         }
       } else {
+        nsMemory::Free(mInputData.mValue);
         mInputData.mValue = ToNewUnicode(value);
         if (aSetValueChanged) {
           SetValueChanged(true);
@@ -6117,7 +6118,7 @@ HTMLInputElement::GetValueMode() const
 bool
 HTMLInputElement::IsMutable() const
 {
-  return !IsDisabled() && GetCurrentDoc() &&
+  return !IsDisabled() &&
          !(DoesReadOnlyApply() &&
            HasAttr(kNameSpaceID_None, nsGkAtoms::readonly));
 }

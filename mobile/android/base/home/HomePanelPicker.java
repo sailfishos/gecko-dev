@@ -123,6 +123,11 @@ public class HomePanelPicker extends FragmentActivity {
             }
         }
 
+        if (availablePanels.isEmpty()) {
+            setContentView(R.layout.home_panel_picker_empty);
+            return;
+        }
+
         final PickerAdapter adapter = (PickerAdapter) mListView.getAdapter();
         adapter.updateFromPanelInfos(availablePanels);
     }
@@ -219,17 +224,17 @@ public class HomePanelPicker extends FragmentActivity {
     /**
      * Fetch installed Home panels and update the adapter for this activity.
      */
-    private class ConfigLoaderCallbacks implements LoaderCallbacks<List<PanelConfig>> {
+    private class ConfigLoaderCallbacks implements LoaderCallbacks<HomeConfig.State> {
         @Override
-        public Loader<List<PanelConfig>> onCreateLoader(int id, Bundle args) {
+        public Loader<HomeConfig.State> onCreateLoader(int id, Bundle args) {
             final HomeConfig homeConfig = HomeConfig.getDefault(HomePanelPicker.this);
             return new HomeConfigLoader(HomePanelPicker.this, homeConfig);
         }
 
         @Override
-        public void onLoadFinished(Loader<List<PanelConfig>> loader, List<PanelConfig> panelConfigs) {
+        public void onLoadFinished(Loader<HomeConfig.State> loader, HomeConfig.State configState) {
             mCurrentPanelsIds = new ArrayList<String>();
-            for (PanelConfig panelConfig : panelConfigs) {
+            for (PanelConfig panelConfig : configState) {
                 mCurrentPanelsIds.add(panelConfig.getId());
             }
 
@@ -237,6 +242,6 @@ public class HomePanelPicker extends FragmentActivity {
         }
 
         @Override
-        public void onLoaderReset(Loader<List<PanelConfig>> loader) {}
+        public void onLoaderReset(Loader<HomeConfig.State> loader) {}
     }
 }

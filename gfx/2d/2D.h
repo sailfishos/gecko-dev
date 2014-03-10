@@ -347,6 +347,13 @@ public:
   {
   }
 
+#ifdef DEBUG
+  virtual ~DataSourceSurface()
+  {
+    MOZ_ASSERT(!mIsMapped, "Someone forgot to call Unmap()");
+  }
+#endif
+
   struct MappedSurface {
     uint8_t *mData;
     int32_t mStride;
@@ -971,15 +978,10 @@ public:
     return mPermitSubpixelAA;
   }
 
-  virtual GenericRefCountedBase* GetGLContext() const {
-    return nullptr;
-  }
-
 #ifdef USE_SKIA_GPU
-  virtual void InitWithGLContextAndGrGLInterface(GenericRefCountedBase* aGLContext,
-                                            GrGLInterface* aGrGLInterface,
-                                            const IntSize &aSize,
-                                            SurfaceFormat aFormat)
+  virtual void InitWithGrContext(GrContext* aGrContext,
+                                 const IntSize &aSize,
+                                 SurfaceFormat aFormat)
   {
     MOZ_CRASH();
   }
@@ -1085,13 +1087,9 @@ public:
 
 #ifdef USE_SKIA_GPU
   static TemporaryRef<DrawTarget>
-    CreateDrawTargetSkiaWithGLContextAndGrGLInterface(GenericRefCountedBase* aGLContext,
-                                                      GrGLInterface* aGrGLInterface,
-                                                      const IntSize &aSize,
-                                                      SurfaceFormat aFormat);
-
-  static void
-    SetGlobalSkiaCacheLimits(int aCount, int aSizeInBytes);
+    CreateDrawTargetSkiaWithGrContext(GrContext* aGrContext,
+                                      const IntSize &aSize,
+                                      SurfaceFormat aFormat);
 #endif
 
   static void PurgeAllCaches();

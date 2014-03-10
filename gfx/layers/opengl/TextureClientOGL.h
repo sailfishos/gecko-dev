@@ -46,6 +46,8 @@ public:
 
   virtual bool IsLocked() const MOZ_OVERRIDE { return mIsLocked; }
 
+  virtual bool HasInternalBuffer() const MOZ_OVERRIDE { return false; }
+
   void InitWith(gl::SharedTextureHandle aHandle,
                 gfx::IntSize aSize,
                 gl::SharedTextureShareType aShareType,
@@ -92,13 +94,16 @@ public:
 
   virtual TextureClientData* DropTextureData() MOZ_OVERRIDE { return nullptr; }
 
+  virtual bool HasInternalBuffer() const MOZ_OVERRIDE { return false; }
+
   void InitWith(gfx::SurfaceStream* aStream);
 
   virtual gfx::IntSize GetSize() const { return gfx::IntSize(); }
 
 protected:
-  gfx::SurfaceStream* mStream;
   bool mIsLocked;
+  RefPtr<gfx::SurfaceStream> mStream;
+  RefPtr<gl::GLContext> mGL;
 };
 
 } // namespace

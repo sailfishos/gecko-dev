@@ -338,8 +338,7 @@ Load(JSContext *cx, unsigned argc, jsval *vp)
         }
         JS::CompileOptions options(cx);
         options.setUTF8(true)
-               .setFileAndLine(filename.ptr(), 1)
-               .setPrincipals(gJSPrincipals);
+               .setFileAndLine(filename.ptr(), 1);
         JS::RootedObject rootedObj(cx, obj);
         JSScript *script = JS::Compile(cx, rootedObj, options, file);
         fclose(file);
@@ -924,8 +923,7 @@ ProcessFile(JSContext *cx, JS::Handle<JSObject*> obj, const char *filename, FILE
 
         JS::CompileOptions options(cx);
         options.setUTF8(true)
-               .setFileAndLine(filename, 1)
-               .setPrincipals(gJSPrincipals);
+               .setFileAndLine(filename, 1);
         script = JS::Compile(cx, obj, options, file);
         if (script && !compileOnly)
             (void)JS_ExecuteScript(cx, obj, script, result.address());
@@ -961,8 +959,7 @@ ProcessFile(JSContext *cx, JS::Handle<JSObject*> obj, const char *filename, FILE
         /* Clear any pending exception from previous failed compiles.  */
         JS_ClearPendingException(cx);
         JS::CompileOptions options(cx);
-        options.setFileAndLine("typein", startline)
-               .setPrincipals(gJSPrincipals);
+        options.setFileAndLine("typein", startline);
         script = JS_CompileScript(cx, obj, buffer, strlen(buffer), options);
         if (script) {
             JSErrorReporter older;
@@ -1039,11 +1036,11 @@ ProcessArgsForCompartment(JSContext *cx, char **argv, int argc)
             ContextOptionsRef(cx).toggleExtraWarnings();
             break;
         case 'I':
-            ContextOptionsRef(cx).toggleIon()
+            RuntimeOptionsRef(cx).toggleIon()
                                  .toggleAsmJS();
             break;
         case 'n':
-            ContextOptionsRef(cx).toggleTypeInference();
+            RuntimeOptionsRef(cx).toggleTypeInference();
             break;
         }
     }
@@ -1158,9 +1155,8 @@ ProcessArgs(JSContext *cx, JS::Handle<JSObject*> obj, char **argv, int argc, XPC
                 return usage();
             }
 
-            JS_EvaluateScriptForPrincipals(cx, obj, gJSPrincipals, argv[i],
-                                           strlen(argv[i]), "-e", 1,
-                                           rval.address());
+            JS_EvaluateScript(cx, obj, argv[i], strlen(argv[i]), "-e", 1,
+                              rval.address());
 
             isInteractive = false;
             break;
@@ -1486,9 +1482,6 @@ XRE_XPCShellMain(int argc, char **argv, char **envp)
             printf("JS_NewContext failed!\n");
             return 1;
         }
-
-        // Ion not enabled yet here because of bug 931861.
-        JS::ContextOptionsRef(cx).setBaseline(true);
 
         argc--;
         argv++;

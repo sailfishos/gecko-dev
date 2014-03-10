@@ -13,7 +13,6 @@
 #include "jslibmath.h"
 #include "jsstr.h"
 
-#include "builtin/SIMD.h"
 #include "jit/BaselineInspector.h"
 #include "jit/IonBuilder.h"
 #include "jit/IonSpewer.h"
@@ -625,116 +624,6 @@ MMathFunction::printOpcode(FILE *fp) const
     fprintf(fp, " %s", FunctionName(function()));
 }
 
-const char *MSIMDNullaryFunction::Names[] = {
-#define MSIMD_NULLARY_FUNCTION_NAME_TYPE(Id, Name, ReturnType) "SIMD." Name,
-        MSIMD_NULLARY_FUNCTION_LIST(MSIMD_NULLARY_FUNCTION_NAME_TYPE)
-#undef MSIMD_NULLARY_FUNCTION_NAME_TYPE
-        ""
-};
-
-MIRType MSIMDNullaryFunction::ReturnTypes[] = {
-#define MSIMD_NULLARY_FUNCTION_RETURN_TYPE(Id, Name, ReturnType) ReturnType,
-        MSIMD_NULLARY_FUNCTION_LIST(MSIMD_NULLARY_FUNCTION_RETURN_TYPE)
-#undef MSIMD_NULLARY_FUNCTION_RETURN_TYPE
-        MIRType_None
-};
-
-const char *MSIMDUnaryFunction::Names[] = {
-#define MSIMD_UNARY_FUNCTION_NAME_TYPE(Id, Name, ReturnType, ArgumentType)    \
-        "SIMD." Name,
-        MSIMD_UNARY_FUNCTION_LIST(MSIMD_UNARY_FUNCTION_NAME_TYPE)
-#undef MSIMD_UNARY_FUNCTION_NAME_TYPE
-        ""
-};
-
-MIRType MSIMDUnaryFunction::ReturnTypes[] = {
-#define MSIMD_UNARY_FUNCTION_RETURN_TYPE(Id, Name, ReturnType, ArgumentType)    \
-        ReturnType,
-        MSIMD_UNARY_FUNCTION_LIST(MSIMD_UNARY_FUNCTION_RETURN_TYPE)
-#undef MSIMD_UNARY_FUNCTION_RETURN_TYPE
-        MIRType_None
-};
-
-MIRType MSIMDUnaryFunction::ArgumentTypes[] = {
-#define MSIMD_UNARY_FUNCTION_ARGUMENT_TYPE(Id, Name, ReturnType, ArgumentType)  \
-        ArgumentType,
-        MSIMD_UNARY_FUNCTION_LIST(MSIMD_UNARY_FUNCTION_ARGUMENT_TYPE)
-#undef MSIMD_UNARY_FUNCTION_ARGUMENT_TYPE
-        MIRType_None
-};
-
-const char *MSIMDBinaryFunction::Names[] = {
-#define MSIMD_BINARY_FUNCTION_NAME_TYPE(Id, Name, ReturnType, Argument1Type, Argument2Type)       \
-        "SIMD." Name,
-        MSIMD_BINARY_FUNCTION_LIST(MSIMD_BINARY_FUNCTION_NAME_TYPE)
-#undef MSIMD_BINARY_FUNCTION_NAME_TYPE
-        ""
-};
-
-MIRType MSIMDBinaryFunction::ReturnTypes[] = {
-#define MSIMD_BINARY_FUNCTION_RETURN_TYPE(Id, Name, ReturnType, Argument1Type, Argument2Type)       \
-        ReturnType,
-        MSIMD_BINARY_FUNCTION_LIST(MSIMD_BINARY_FUNCTION_RETURN_TYPE)
-#undef MSIMD_BINARY_FUNCTION_RETURN_TYPE
-        MIRType_None
-};
-
-MIRType MSIMDBinaryFunction::ArgumentTypes[][2] = {
-#define MSIMD_BINARY_FUNCTION_ARGUMENTS_TYPE(Id, Name, ReturnType, Argument1Type, Argument2Type)    \
-        {Argument1Type, Argument2Type},
-        MSIMD_BINARY_FUNCTION_LIST(MSIMD_BINARY_FUNCTION_ARGUMENTS_TYPE)
-#undef MSIMD_BINARY_FUNCTION_ARGUMENTS_TYPE
-        {MIRType_None, MIRType_None}
-};
-
-const char *MSIMDTernaryFunction::Names[] = {
-#define MSIMD_TERNARY_FUNCTION_NAME_TYPE(Id, Name, ReturnType, Argument1Type, Argument2Type, Argument3Type)       \
-        "SIMD." Name,
-        MSIMD_TERNARY_FUNCTION_LIST(MSIMD_TERNARY_FUNCTION_NAME_TYPE)
-#undef MSIMD_TERNARY_FUNCTION_NAME_TYPE
-        ""
-};
-
-MIRType MSIMDTernaryFunction::ReturnTypes[] = {
-#define MSIMD_TERNARY_FUNCTION_RETURN_TYPE(Id, Name, ReturnType, Argument1Type, Argument2Type, Argument3Type)       \
-        ReturnType,
-        MSIMD_TERNARY_FUNCTION_LIST(MSIMD_TERNARY_FUNCTION_RETURN_TYPE)
-#undef MSIMD_TERNARY_FUNCTION_RETURN_TYPE
-        MIRType_None
-};
-
-MIRType MSIMDTernaryFunction::ArgumentTypes[][3] = {
-#define MSIMD_TERNARY_FUNCTION_ARGUMENTS_TYPE(Id, Name, ReturnType, Argument1Type, Argument2Type, Argument3Type)    \
-        {Argument1Type, Argument2Type, Argument3Type},
-        MSIMD_TERNARY_FUNCTION_LIST(MSIMD_TERNARY_FUNCTION_ARGUMENTS_TYPE)
-#undef MSIMD_TERNARY_FUNCTION_ARGUMENTS_TYPE
-        {MIRType_None, MIRType_None, MIRType_None}
-};
-
-const char *MSIMDQuarternaryFunction::Names[] = {
-#define MSIMD_QUARTERNARY_FUNCTION_NAME_TYPE(Id, Name, ReturnType, Argument1Type, Argument2Type, Argument3Type, Argument4Type)       \
-        "SIMD." Name,
-        MSIMD_QUARTERNARY_FUNCTION_LIST(MSIMD_QUARTERNARY_FUNCTION_NAME_TYPE)
-#undef MSIMD_QUARTERNARY_FUNCTION_NAME_TYPE
-        ""
-};
-
-MIRType MSIMDQuarternaryFunction::ReturnTypes[] = {
-#define MSIMD_QUARTERNARY_FUNCTION_RETURN_TYPE(Id, Name, ReturnType, Argument1Type, Argument2Type, Argument3Type, Argument4Type)       \
-        ReturnType,
-        MSIMD_QUARTERNARY_FUNCTION_LIST(MSIMD_QUARTERNARY_FUNCTION_RETURN_TYPE)
-#undef MSIMD_QUARTERNARY_FUNCTION_RETURN_TYPE
-        MIRType_None
-};
-
-MIRType MSIMDQuarternaryFunction::ArgumentTypes[][4] = {
-#define MSIMD_QUARTERNARY_FUNCTION_ARGUMENTS_TYPE(Id, Name, ReturnType, Argument1Type, Argument2Type, Argument3Type, Argument4Type)    \
-        {Argument1Type, Argument2Type, Argument3Type, Argument4Type},
-        MSIMD_QUARTERNARY_FUNCTION_LIST(MSIMD_QUARTERNARY_FUNCTION_ARGUMENTS_TYPE)
-#undef MSIMD_QUARTERNARY_FUNCTION_ARGUMENTS_TYPE
-        {MIRType_None, MIRType_None, MIRType_None, MIRType_None}
-};
-
 MParameter *
 MParameter::New(TempAllocator &alloc, int32_t index, types::TemporaryTypeSet *types)
 {
@@ -1007,7 +896,7 @@ MTypeBarrier::printOpcode(FILE *fp) const
     fprintf(fp, " ");
     getOperand(0)->printName(fp);
 }
-
+ 
 void
 MPhi::removeOperand(size_t index)
 {
@@ -2555,7 +2444,7 @@ MCompare::evaluateConstantOperands(bool *result)
         int32_t comp = 0; // Default to equal.
         if (left != right)
             comp = CompareAtoms(&lhs.toString()->asAtom(), &rhs.toString()->asAtom());
-
+        
         switch (jsop_) {
           case JSOP_LT:
             *result = (comp < 0);
@@ -2876,10 +2765,8 @@ InlinePropertyTable::buildTypeSetForFunction(JSFunction *func) const
     if (!types)
         return nullptr;
     for (size_t i = 0; i < numEntries(); i++) {
-        if (entries_[i]->func == func) {
-            if (!types->addType(types::Type::ObjectType(entries_[i]->typeObj), alloc))
-                return nullptr;
-        }
+        if (entries_[i]->func == func)
+            types->addType(types::Type::ObjectType(entries_[i]->typeObj), alloc);
     }
     return types;
 }
@@ -3283,7 +3170,7 @@ jit::PropertyReadIsIdempotent(types::CompilerConstraintList *constraints,
     return true;
 }
 
-bool
+void
 jit::AddObjectsForPropertyRead(MDefinition *obj, PropertyName *name,
                                types::TemporaryTypeSet *observed)
 {
@@ -3293,16 +3180,20 @@ jit::AddObjectsForPropertyRead(MDefinition *obj, PropertyName *name,
     LifoAlloc *alloc = GetIonContext()->temp->lifoAlloc();
 
     types::TemporaryTypeSet *types = obj->resultTypeSet();
-    if (!types || types->unknownObject())
-        return observed->addType(types::Type::AnyObjectType(), alloc);
+    if (!types || types->unknownObject()) {
+        observed->addType(types::Type::AnyObjectType(), alloc);
+        return;
+    }
 
     for (size_t i = 0; i < types->getObjectCount(); i++) {
         types::TypeObjectKey *object = types->getObject(i);
         if (!object)
             continue;
 
-        if (object->unknownProperties())
-            return observed->addType(types::Type::AnyObjectType(), alloc);
+        if (object->unknownProperties()) {
+            observed->addType(types::Type::AnyObjectType(), alloc);
+            return;
+        }
 
         jsid id = name ? NameToId(name) : JSID_VOID;
         types::HeapTypeSetKey property = object->property(id);
@@ -3310,17 +3201,17 @@ jit::AddObjectsForPropertyRead(MDefinition *obj, PropertyName *name,
         if (!types)
             continue;
 
-        if (types->unknownObject())
-            return observed->addType(types::Type::AnyObjectType(), alloc);
+        if (types->unknownObject()) {
+            observed->addType(types::Type::AnyObjectType(), alloc);
+            return;
+        }
 
         for (size_t i = 0; i < types->getObjectCount(); i++) {
             types::TypeObjectKey *object = types->getObject(i);
-            if (object && !observed->addType(types::Type::ObjectType(object), alloc))
-                return false;
+            if (object)
+                observed->addType(types::Type::ObjectType(object), alloc);
         }
     }
-
-    return true;
 }
 
 static bool

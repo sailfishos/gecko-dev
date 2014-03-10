@@ -679,16 +679,18 @@ static void RecordFrameMetrics(nsIFrame* aForFrame,
 
   if (scrollableFrame) {
     nsRect contentBounds = scrollableFrame->GetScrollRange();
+    nsPoint scrollPosition = scrollableFrame->GetScrollPosition();
     if (scrollableFrame->GetScrollbarStyles().mVertical == NS_STYLE_OVERFLOW_HIDDEN) {
-      metrics.SetDisableScrollingY(true);
+      contentBounds.y = scrollPosition.y;
+      contentBounds.height = 0;
     }
     if (scrollableFrame->GetScrollbarStyles().mHorizontal == NS_STYLE_OVERFLOW_HIDDEN) {
-      metrics.SetDisableScrollingX(true);
+      contentBounds.x = scrollPosition.x;
+      contentBounds.width = 0;
     }
     contentBounds.width += scrollableFrame->GetScrollPortRect().width;
     contentBounds.height += scrollableFrame->GetScrollPortRect().height;
     metrics.mScrollableRect = CSSRect::FromAppUnits(contentBounds);
-    nsPoint scrollPosition = scrollableFrame->GetScrollPosition();
     metrics.mScrollOffset = CSSPoint::FromAppUnits(scrollPosition);
 
     // If the frame was scrolled since the last layers update, and by
@@ -3535,7 +3537,7 @@ nsDisplaySubDocument::BuildLayer(nsDisplayListBuilder* aBuilder,
                       mFrame->GetOffsetToCrossDoc(ReferenceFrame());
 
     RecordFrameMetrics(mFrame, rootScrollFrame, ReferenceFrame(),
-                       container, mVisibleRect, viewport,
+                       container, mList.GetVisibleRect(), viewport,
                        (usingDisplayport ? &displayport : nullptr),
                        (usingCriticalDisplayport ? &criticalDisplayport : nullptr),
                        scrollId, isRootContentDocument, aContainerParameters);
@@ -4077,7 +4079,7 @@ nsDisplayZoom::~nsDisplayZoom() {
 
 nsRect nsDisplayZoom::GetBounds(nsDisplayListBuilder* aBuilder, bool* aSnap)
 {
-  nsRect bounds = nsDisplayWrapList::GetBounds(aBuilder, aSnap);
+  nsRect bounds = nsDisplaySubDocument::GetBounds(aBuilder, aSnap);
   *aSnap = false;
   return bounds.ConvertAppUnitsRoundOut(mAPD, mParentAPD);
 }
@@ -4120,10 +4122,22 @@ bool nsDisplayZoom::ComputeVisibility(nsDisplayListBuilder *aBuilder,
     mVisibleRect.ConvertAppUnitsRoundOut(mParentAPD, mAPD);
   nsRect allowExpansion =
     aAllowVisibleRegionExpansion.ConvertAppUnitsRoundIn(mParentAPD, mAPD);
-  bool retval =
-    mList.ComputeVisibilityForSublist(aBuilder, &visibleRegion,
-                                      transformedVisibleRect,
-                                      allowExpansion);
+  bool retval;
+  // If we are to generate a scrollable layer we call
+  // nsDisplaySubDocument::ComputeVisibility to make the necessary adjustments
+  // for ComputeVisibility, it does all it's calculations in the child APD.
+  bool usingDisplayPort =
+    nsLayoutUtils::ViewportHasDisplayPort(mFrame->PresContext());
+  if (!(mFlags & GENERATE_SCROLLABLE_LAYER) || !usingDisplayPort) {
+    retval =
+      mList.ComputeVisibilityForSublist(aBuilder, &visibleRegion,
+                                        transformedVisibleRect,
+                                        allowExpansion);
+  } else {
+    retval =
+      nsDisplaySubDocument::ComputeVisibility(aBuilder, &visibleRegion,
+                                              allowExpansion);
+  }
 
   nsRegion removed;
   // removed = originalVisibleRegion - visibleRegion

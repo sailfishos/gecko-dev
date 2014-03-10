@@ -24,6 +24,7 @@
 #include "prlog.h"
 
 #include "mozilla/ArrayUtils.h"
+#include "mozilla/IMEStateManager.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/dom/TabChild.h"
 #include "mozilla/Likely.h"
@@ -73,7 +74,6 @@
 #include "nsIDOMHTMLDocument.h"
 #include "nsFrameManager.h"
 #include "nsEventStateManager.h"
-#include "nsIMEStateManager.h"
 #include "nsXPCOM.h"
 #include "nsILayoutHistoryState.h"
 #include "nsILineIterator.h" // for ScrollContentIntoView
@@ -5858,6 +5858,8 @@ PresShell::Paint(nsView*        aViewToPaint,
     mIsFirstPaint = false;
   }
 
+  layerManager->BeginTransaction();
+
   if (frame && isRetainingManager) {
     // Try to do an empty transaction, if the frame tree does not
     // need to be updated. Do not try to do an empty transaction on
@@ -5865,14 +5867,12 @@ PresShell::Paint(nsView*        aViewToPaint,
     // draws the window title bar on Mac), because a) it won't work
     // and b) below we don't want to clear NS_FRAME_UPDATE_LAYER_TREE,
     // that will cause us to forget to update the real layer manager!
+
     if (!(aFlags & PAINT_LAYERS)) {
-      layerManager->BeginTransaction();
       if (layerManager->EndEmptyTransaction()) {
         return;
       }
       NS_WARNING("Must complete empty transaction when compositing!");
-    } else {
-      layerManager->BeginTransaction();
     }
 
     if (!(frame->GetStateBits() & NS_FRAME_UPDATE_LAYER_TREE) &&
@@ -5915,8 +5915,6 @@ PresShell::Paint(nsView*        aViewToPaint,
       }
     }
     frame->RemoveStateBits(NS_FRAME_UPDATE_LAYER_TREE);
-  } else {
-    layerManager->BeginTransaction();
   }
   if (frame) {
     frame->ClearPresShellsFromLastPaint();
@@ -7259,7 +7257,7 @@ PresShell::HandleEventInternal(WidgetEvent* aEvent, nsEventStatus* aStatus)
           if (eventTarget) {
             if (aEvent->eventStructType == NS_COMPOSITION_EVENT ||
                 aEvent->eventStructType == NS_TEXT_EVENT) {
-              nsIMEStateManager::DispatchCompositionEvent(eventTarget,
+              IMEStateManager::DispatchCompositionEvent(eventTarget,
                 mPresContext, aEvent, aStatus, eventCBPtr);
             } else {
               nsEventDispatcher::Dispatch(eventTarget, mPresContext,
@@ -8282,7 +8280,7 @@ PresShell::DoReflow(nsIFrame* target, bool aInterruptible)
   mIsReflowing = true;
 
   nsReflowStatus status;
-  nsHTMLReflowMetrics desiredSize(reflowState.GetWritingMode());
+  nsHTMLReflowMetrics desiredSize(reflowState);
   target->Reflow(mPresContext, desiredSize, reflowState, status);
 
   // If an incremental reflow is initiated at a frame other than the

@@ -205,18 +205,6 @@
               accesskey="&customizeMenu.addMoreItems.accesskey;"
               label="&customizeMenu.addMoreItems.label;"/>
   </menupopup>
-  <svg:svg height="0">
-    <svg:defs>
-      <svg:linearGradient gradientUnits="objectBoundingBox" id="menuPanelButtonTextFadeOut" x2="0" y2="1">
-        <svg:stop stop-color="white" offset=".66"/>
-        <svg:stop stop-color="rgb(128,128,128)" offset=".72"/>
-        <svg:stop stop-color="black" offset=".9"/>
-      </svg:linearGradient>
-      <svg:mask id="menuPanelButtonTextFadeOutMask" maskUnits="objectBoundingBox" maskContentUnits="objectBoundingBox" x="0" y="0" width="100%" height="100%">
-        <svg:rect width="1" height="1" fill="url(#menuPanelButtonTextFadeOut)"/>
-      </svg:mask>
-    </svg:defs>
-  </svg:svg>
 </panel>
 
 <panel id="widget-overflow"
@@ -230,4 +218,23 @@
     <vbox id="widget-overflow-list" class="widget-overflow-list"
           overflowfortoolbar="nav-bar"/>
   </vbox>
+</panel>
+
+<panel id="customization-tipPanel"
+       type="arrow"
+       flip="none"
+       side="left"
+       position="leftcenter topright"
+       noautohide="true"
+       hidden="true">
+  <hbox class="customization-tipPanel-wrapper">
+    <vbox class="customization-tipPanel-infoBox"/>
+    <vbox class="customization-tipPanel-content" flex="1">
+      <description class="customization-tipPanel-contentMessage"/>
+      <image class="customization-tipPanel-contentImage"/>
+    </vbox>
+    <vbox pack="start" align="end" class="customization-tipPanel-closeBox">
+      <toolbarbutton oncommand="gCustomizeMode.hideTip()" class="close-icon"/>
+    </vbox>
+  </hbox>
 </panel>

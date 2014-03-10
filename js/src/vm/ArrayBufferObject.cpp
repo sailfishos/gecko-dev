@@ -44,11 +44,6 @@
 
 #include "vm/Shape-inl.h"
 
-#if JS_USE_NEW_OBJECT_REPRESENTATION
-// See the comment above OldObjectRepresentationHack.
-#  error "TypedArray support for new object representation unimplemented."
-#endif
-
 using namespace js;
 using namespace js::gc;
 using namespace js::types;
@@ -626,7 +621,7 @@ ArrayBufferObject::neuterAsmJSArrayBuffer(JSContext *cx, ArrayBufferObject &buff
     JS_ASSERT(!buffer.isSharedArrayBuffer());
 #ifdef JS_ION
     AsmJSActivation *act = cx->mainThread().asmJSActivationStackFromOwnerThread();
-    for (; act; act = act->prev()) {
+    for (; act; act = act->prevAsmJS()) {
         if (act->module().maybeHeapBufferObject() == &buffer)
             break;
     }

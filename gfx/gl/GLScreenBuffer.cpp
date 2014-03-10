@@ -44,6 +44,7 @@ GLScreenBuffer::Create(GLContext* gl,
 #ifdef MOZ_WIDGET_GONK
     /* On B2G, we want a Gralloc factory, and we want one right at the start */
     if (!factory &&
+        caps.surfaceAllocator &&
         XRE_GetProcessType() != GeckoProcessType_Default)
     {
         factory = new SurfaceFactory_Gralloc(gl, caps);
@@ -83,7 +84,6 @@ GLScreenBuffer::Create(GLContext* gl,
 
 GLScreenBuffer::~GLScreenBuffer()
 {
-    delete mStream;
     delete mDraw;
     delete mRead;
 
@@ -391,7 +391,6 @@ GLScreenBuffer::Morph(SurfaceFactory_GL* newFactory, SurfaceStreamType streamTyp
     SurfaceStream* newStream = SurfaceStream::CreateForType(streamType, mGL, mStream);
     MOZ_ASSERT(newStream);
 
-    delete mStream;
     mStream = newStream;
 }
 
@@ -504,6 +503,7 @@ GLScreenBuffer::Readback(SharedSurface_GL* src, DataSourceSurface* dest)
                         ms.mStride,
                         SurfaceFormatToImageFormat(dest->GetFormat()));
   DeprecatedReadback(src, wrappedDest);
+  dest->Unmap();
 }
 
 void

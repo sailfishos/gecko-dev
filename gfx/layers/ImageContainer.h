@@ -26,6 +26,7 @@
 #include "nsSize.h"                     // for nsIntSize
 #include "nsTArray.h"                   // for nsTArray
 #include "mozilla/Atomics.h"
+#include "mozilla/WeakPtr.h"
 #include "nsThreadUtils.h"
 #include "mozilla/gfx/2D.h"
 #include "nsDataHashtable.h"
@@ -380,9 +381,10 @@ struct RemoteImageData {
  * updates the shared state to point to the new image and the old image
  * is immediately released (not true in Normal or Asynchronous modes).
  */
-class ImageContainer {
+class ImageContainer : public SupportsWeakPtr<ImageContainer> {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(ImageContainer)
 public:
+  MOZ_DECLARE_REFCOUNTED_TYPENAME(ImageContainer)
 
   enum { DISABLE_ASYNC = 0x0, ENABLE_ASYNC = 0x01 };
 

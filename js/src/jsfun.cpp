@@ -568,7 +568,6 @@ JSFunction::trace(JSTracer *trc)
             // - their compartment isn't currently executing scripts or being
             //   debugged
             // - they are not in the self-hosting compartment
-            // - their 'arguments' object can't escape
             // - they aren't generators
             // - they don't have JIT code attached
             // - they don't have child functions
@@ -1005,13 +1004,6 @@ js_fun_apply(JSContext *cx, unsigned argc, Value *vp)
         args2.setCallee(fval);
         args2.setThis(args[0]);
 
-        // Make sure the function is delazified before querying its arguments.
-        if (args2.callee().is<JSFunction>()) {
-            JSFunction *fun = &args2.callee().as<JSFunction>();
-            if (fun->isInterpreted() && !fun->getOrCreateScript(cx))
-                return false;
-        }
-
         // Steps 7-8.
         if (!GetElements(cx, aobj, length, args2.array()))
             return false;
@@ -1424,29 +1416,28 @@ FunctionConstructor(JSContext *cx, unsigned argc, Value *vp, GeneratorKind gener
     bool isStarGenerator = generatorKind == StarGenerator;
     JS_ASSERT(generatorKind != LegacyGenerator);
 
-    JSScript *script = nullptr;
+    JSScript *maybeScript = nullptr;
     const char *filename;
     unsigned lineno;
     JSPrincipals *originPrincipals;
     uint32_t pcOffset;
-    CurrentScriptFileLineOrigin(cx, &script, &filename, &lineno, &pcOffset, &originPrincipals);
-    JSPrincipals *principals = PrincipalsForCompiledCode(args, cx);
+    DescribeScriptedCallerForCompilation(cx, &maybeScript, &filename, &lineno, &pcOffset,
+                                         &originPrincipals);
 
     const char *introductionType = "Function";
     if (generatorKind != NotGenerator)
         introductionType = "GeneratorFunction";
 
     const char *introducerFilename = filename;
-    if (script && script->scriptSource()->introducerFilename())
-        introducerFilename = script->scriptSource()->introducerFilename();
+    if (maybeScript && maybeScript->scriptSource()->introducerFilename())
+        introducerFilename = maybeScript->scriptSource()->introducerFilename();
 
     CompileOptions options(cx);
-    options.setPrincipals(principals)
-           .setOriginPrincipals(originPrincipals)
+    options.setOriginPrincipals(originPrincipals)
            .setFileAndLine(filename, 1)
            .setNoScriptRval(false)
            .setCompileAndGo(true)
-           .setIntroductionInfo(introducerFilename, introductionType, lineno, script, pcOffset);
+           .setIntroductionInfo(introducerFilename, introductionType, lineno, maybeScript, pcOffset);
 
     unsigned n = args.length() ? args.length() - 1 : 0;
     if (n > 0) {
