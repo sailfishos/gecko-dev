@@ -302,4 +302,3 @@ pref("extensions.minCompatibleAppVersion", "11.0");
 
 // Enable sub layers for apzc
 pref("layout.want.subapzc", true);
-pref("dom.allow_scripts_to_close_windows", true);
