@@ -97,6 +97,56 @@ CheckKeyUsage(EndEntityOrCA endEntityOrCA,
   return Success;
 }
 
+// RFC5820 4.2.1.4. Certificate Policies
+//
+// "The user-initial-policy-set contains the special value any-policy if the
+// user is not concerned about certificate policy."
+Result
+CheckCertificatePolicies(BackCert& cert, EndEntityOrCA endEntityOrCA,
+                         bool isTrustAnchor, SECOidTag requiredPolicy)
+{
+  if (requiredPolicy == SEC_OID_X509_ANY_POLICY) {
+    return Success;
+  }
+
+  // It is likely some callers will pass SEC_OID_UNKNOWN when they don't care,
+  // instead of passing SEC_OID_X509_ANY_POLICY. Help them out by failing hard.
+  if (requiredPolicy == SEC_OID_UNKNOWN) {
+    PR_SetError(SEC_ERROR_INVALID_ARGS, 0);
+    return FatalError;
+  }
+
+  // The root CA certificate may omit the policies that it has been
+  // trusted for, so we cannot require the policies to be present in those
+  // certificates. Instead, the determination of which roots are trusted for
+  // which policies is made by the TrustDomain's GetCertTrust method.
+  if (isTrustAnchor && endEntityOrCA == MustBeCA) {
+    return Success;
+  }
+
+  if (!cert.encodedCertificatePolicies) {
+    PR_SetError(SEC_ERROR_POLICY_VALIDATION_FAILED, 0);
+    return RecoverableError;
+  }
+
+  ScopedPtr<CERTCertificatePolicies, CERT_DestroyCertificatePoliciesExtension>
+    policies(CERT_DecodeCertificatePoliciesExtension(
+                cert.encodedCertificatePolicies));
+  if (!policies) {
+    return MapSECStatus(SECFailure);
+  }
+
+  for (const CERTPolicyInfo* const* policyInfos = policies->policyInfos;
+       *policyInfos; ++policyInfos) {
+    if ((*policyInfos)->oid == requiredPolicy) {
+      return Success;
+    }
+  }
+
+  PR_SetError(SEC_ERROR_POLICY_VALIDATION_FAILED, 0);
+  return RecoverableError;
+}
+
 // RFC5280 4.2.1.9. Basic Constraints (id-ce-basicConstraints)
 Result
 CheckBasicConstraints(const BackCert& cert,
@@ -231,9 +281,13 @@ CheckNameConstraints(BackCert& cert)
     PORT_Assert(names);
     CERTGeneralName* currentName = const_cast<CERTGeneralName*>(names);
     do {
-      rv = MapSECStatus(CERT_CheckNameSpace(arena, constraints, currentName));
-      if (rv != Success) {
-        return rv;
+      if (CERT_CheckNameSpace(arena, constraints, currentName) != SECSuccess) {
+        // XXX: It seems like CERT_CheckNameSpace doesn't always call
+        // PR_SetError when it fails. We set the error code here, though this
+        // may be papering over some fatal errors. NSS's
+        // cert_VerifyCertChainOld does something similar.
+        PR_SetError(SEC_ERROR_CERT_NOT_IN_NAME_SPACE, 0);
+        return RecoverableError;
       }
       currentName = CERT_GetNextGeneralName(currentName);
     } while (currentName != names);
@@ -318,28 +372,54 @@ CheckExtendedKeyUsage(EndEntityOrCA endEntityOrCA, const SECItem* encodedEKUs,
   return Success;
 }
 
-// Checks extensions that apply to both EE and intermediate certs,
-// except for AIA, CRL, and AKI/SKI, which are handled elsewhere.
 Result
-CheckExtensions(BackCert& cert,
-                EndEntityOrCA endEntityOrCA,
-                bool isTrustAnchor,
-                KeyUsages requiredKeyUsagesIfPresent,
-                SECOidTag requiredEKUIfPresent,
-                unsigned int subCACount)
+CheckIssuerIndependentProperties(TrustDomain& trustDomain,
+                                 BackCert& cert,
+                                 PRTime time,
+                                 EndEntityOrCA endEntityOrCA,
+                                 KeyUsages requiredKeyUsagesIfPresent,
+                                 SECOidTag requiredEKUIfPresent,
+                                 SECOidTag requiredPolicy,
+                                 unsigned int subCACount,
+                /*optional out*/ TrustDomain::TrustLevel* trustLevelOut)
 {
-  // 4.2.1.1. Authority Key Identifier dealt with as part of path building
-  // 4.2.1.2. Subject Key Identifier dealt with as part of path building
+  Result rv;
+
+  TrustDomain::TrustLevel trustLevel;
+  rv = MapSECStatus(trustDomain.GetCertTrust(endEntityOrCA,
+                                             requiredPolicy,
+                                             cert.GetNSSCert(),
+                                             &trustLevel));
+  if (rv != Success) {
+    return rv;
+  }
+  if (trustLevel == TrustDomain::ActivelyDistrusted) {
+    PORT_SetError(SEC_ERROR_UNTRUSTED_CERT);
+    return RecoverableError;
+  }
+  if (trustLevel != TrustDomain::TrustAnchor &&
+      trustLevel != TrustDomain::InheritsTrust) {
+    // The TrustDomain returned a trust level that we weren't expecting.
+    PORT_SetError(PR_INVALID_STATE_ERROR);
+    return FatalError;
+  }
+  if (trustLevelOut) {
+    *trustLevelOut = trustLevel;
+  }
+
+  bool isTrustAnchor = endEntityOrCA == MustBeCA &&
+                       trustLevel == TrustDomain::TrustAnchor;
 
   PLArenaPool* arena = cert.GetArena();
   if (!arena) {
     return FatalError;
   }
 
-  Result rv;
+  // 4.2.1.1. Authority Key Identifier is ignored (see bug 965136).
+
+  // 4.2.1.2. Subject Key Identifier is ignored (see bug 965136).
 
   // 4.2.1.3. Key Usage
-
   rv = CheckKeyUsage(endEntityOrCA, isTrustAnchor, cert.encodedKeyUsage,
                      requiredKeyUsagesIfPresent, arena);
   if (rv != Success) {
@@ -347,21 +427,33 @@ CheckExtensions(BackCert& cert,
   }
 
   // 4.2.1.4. Certificate Policies
-  // 4.2.1.5. Policy Mappings are rejected in BackCert::Init()
-  // 4.2.1.6. Subject Alternative Name dealt with elsewhere
-  // 4.2.1.7. Issuer Alternative Name is not something that needs checking
-  // 4.2.1.8. Subject Directory Attributes is not something that needs checking
+  rv = CheckCertificatePolicies(cert, endEntityOrCA, isTrustAnchor,
+                                requiredPolicy);
+  if (rv != Success) {
+    return rv;
+  }
 
-  // 4.2.1.9. Basic Constraints. We check basic constraints before other
-  // properties that take endEntityOrCA so that those checks can use
-  // endEntityOrCA as a proxy for the isCA bit from the basic constraints.
+  // 4.2.1.5. Policy Mappings are not supported; see the documentation about
+  //          policy enforcement in pkix.h.
+
+  // 4.2.1.6. Subject Alternative Name dealt with during name constraint
+  //          checking and during name verification (CERT_VerifyCertName).
+
+  // 4.2.1.7. Issuer Alternative Name is not something that needs checking.
+
+  // 4.2.1.8. Subject Directory Attributes is not something that needs
+  //          checking.
+
+  // 4.2.1.9. Basic Constraints.
   rv = CheckBasicConstraints(cert, endEntityOrCA, isTrustAnchor, subCACount);
   if (rv != Success) {
     return rv;
   }
 
-  // 4.2.1.10. Name Constraints
-  // 4.2.1.11. Policy Constraints
+  // 4.2.1.10. Name Constraints is dealt with in during path building.
+
+  // 4.2.1.11. Policy Constraints are implicitly supported; see the
+  //           documentation about policy enforcement in pkix.h.
 
   // 4.2.1.12. Extended Key Usage
   rv = CheckExtendedKeyUsage(endEntityOrCA, cert.encodedExtendedKeyUsage,
@@ -370,8 +462,19 @@ CheckExtensions(BackCert& cert,
     return rv;
   }
 
-  // 4.2.1.13. CRL Distribution Points will be dealt with elsewhere
-  // 4.2.1.14. Inhibit anyPolicy
+  // 4.2.1.13. CRL Distribution Points is not supported, though the
+  //           TrustDomain's CheckRevocation method may parse it and process it
+  //           on its own.
+
+  // 4.2.1.14. Inhibit anyPolicy is implicitly supported; see the documentation
+  //           about policy enforcement in pkix.h.
+
+  // IMPORTANT: This check must come after the other checks in order for error
+  // ranking to work correctly.
+  rv = CheckTimes(cert.GetNSSCert(), time);
+  if (rv != Success) {
+    return rv;
+  }
 
   return Success;
 }

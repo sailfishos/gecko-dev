@@ -20,6 +20,10 @@
     url(chrome://browser/skin/tabbrowser/tab-background-start.png);
 }
 
+#tabbrowser-tabs {
+  min-height: @tabHeight@;
+}
+
 .tabbrowser-tab,
 .tabs-newtab-button {
   -moz-appearance: none;
@@ -119,6 +123,7 @@
   width: @tabCurveWidth@;
 }
 
+.tabbrowser-tab:not([selected=true]),
 .tabbrowser-tab:-moz-lwtheme {
   color: inherit;
 }

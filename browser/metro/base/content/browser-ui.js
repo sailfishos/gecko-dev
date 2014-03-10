@@ -32,6 +32,7 @@ let Elements = {};
   ["urlbarState",        "bcast_urlbarState"],
   ["loadingState",       "bcast_loadingState"],
   ["windowState",        "bcast_windowState"],
+  ["chromeState",        "bcast_chromeState"],
   ["mainKeyset",         "mainKeyset"],
   ["stack",              "stack"],
   ["tabList",            "tabs"],
@@ -258,7 +259,6 @@ var BrowserUI = {
   },
 
   showContent: function showContent(aURI) {
-    this.updateStartURIAttributes(aURI);
     ContextUI.dismissTabs();
     ContextUI.dismissContextAppbar();
     FlyoutPanelsUI.hide();

@@ -1821,6 +1821,9 @@ pref("layout.css.variables.enabled", false);
 pref("layout.css.variables.enabled", true);
 #endif
 
+// Is support for CSS overflow-clip-box enabled for non-UA sheets?
+pref("layout.css.overflow-clip-box.enabled", false);
+
 // pref for which side vertical scrollbars should be on
 // 0 = end-side in UI direction
 // 1 = end-side in document/content direction
@@ -3838,8 +3841,6 @@ pref("ui.panel.default_level_parent", true);
 
 pref("mousewheel.system_scroll_override_on_root_content.enabled", false);
 
-pref("ui.key.menuAccessKeyFocuses", true);
-
 #if MOZ_WIDGET_GTK == 2
 pref("intl.ime.use_simple_context_on_password_field", true);
 #else
@@ -4316,9 +4317,9 @@ pref("social.enabled", false);
 // providers that can install from their own website without user warnings.
 // entries are
 pref("social.whitelist", "https://mozsocial.cliqz.com,https://now.msn.com,https://mixi.jp");
-// omma separated list of domain origins (e.g. https://domain.com) for directory
-// websites (e.g. AMO) that can install providers for other sites
-pref("social.directories", "https://addons.mozilla.org");
+// comma separated list of domain origins (e.g. https://domain.com) for
+// directory websites (e.g. AMO) that can install providers for other sites
+pref("social.directories", "https://activations.mozilla.org");
 // remote-install allows any website to activate a provider, with extended UI
 // notifying user of installation. we can later pref off remote install if
 // necessary. This does not affect whitelisted and directory installs.

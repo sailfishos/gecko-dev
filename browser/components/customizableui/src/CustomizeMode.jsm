@@ -136,6 +136,11 @@ CustomizeMode.prototype = {
 
     this._handler.isEnteringCustomizeMode = true;
 
+    // Always disable the reset button at the start of customize mode, it'll be re-enabled
+    // if necessary when we finish entering:
+    let resetButton = this.document.getElementById("customization-reset-button");
+    resetButton.setAttribute("disabled", "true");
+
     Task.spawn(function() {
       // We shouldn't start customize mode until after browser-delayed-startup has finished:
       if (!this.window.gBrowserInit.delayedStartupFinished) {
@@ -165,7 +170,7 @@ CustomizeMode.prototype = {
       if (this.document.documentElement._lightweightTheme)
         this.document.documentElement._lightweightTheme.disable();
 
-      this.dispatchToolboxEvent("beforecustomization");
+      CustomizableUI.dispatchToolboxEvent("beforecustomization", {}, window);
       CustomizableUI.notifyStartCustomizing(this.window);
 
       // Add a keypress listener to the document so that we can quickly exit
@@ -215,7 +220,7 @@ CustomizeMode.prototype = {
       yield this._doTransition(true);
 
       // Let everybody in this window know that we're about to customize.
-      this.dispatchToolboxEvent("customizationstarting");
+      CustomizableUI.dispatchToolboxEvent("customizationstarting", {}, window);
 
       this._mainViewContext = mainView.getAttribute("context");
       if (this._mainViewContext) {
@@ -261,7 +266,7 @@ CustomizeMode.prototype = {
       this._handler.isEnteringCustomizeMode = false;
       panelContents.removeAttribute("customize-transitioning");
 
-      this.dispatchToolboxEvent("customizationready");
+      CustomizableUI.dispatchToolboxEvent("customizationready", {}, window);
       if (!this._wantToBeInCustomizeMode) {
         this.exit();
       }
@@ -287,7 +292,15 @@ CustomizeMode.prototype = {
       return;
     }
 
+    if (this.resetting) {
+      LOG("Attempted to exit while we're resetting. " +
+          "We'll exit after resetting has finished.");
+      return;
+    }
+
     this._handler.isExitingCustomizeMode = true;
+
+    this._removeExtraToolbarsIfEmpty();
 
     CustomizableUI.removeListener(this);
 
@@ -312,6 +325,11 @@ CustomizeMode.prototype = {
     // during the transition for increased perf.
     let panelContents = window.PanelUI.contents;
     panelContents.setAttribute("customize-transitioning", "true");
+
+    // Disable the reset and undo reset buttons while transitioning:
+    let resetButton = this.document.getElementById("customization-reset-button");
+    let undoResetButton = this.document.getElementById("customization-undo-reset-button");
+    undoResetButton.hidden = resetButton.disabled = true;
 
     this._transitioning = true;
 
@@ -349,7 +367,7 @@ CustomizeMode.prototype = {
 
       // Let everybody in this window know that we're starting to
       // exit customization mode.
-      this.dispatchToolboxEvent("customizationending");
+      CustomizableUI.dispatchToolboxEvent("customizationending", {}, window);
 
       window.PanelUI.setMainView(window.PanelUI.mainView);
       window.PanelUI.menuButton.disabled = false;
@@ -414,8 +432,8 @@ CustomizeMode.prototype = {
       this._changed = false;
       this._transitioning = false;
       this._handler.isExitingCustomizeMode = false;
-      this.dispatchToolboxEvent("aftercustomization");
-      CustomizableUI.notifyEndCustomizing(this.window);
+      CustomizableUI.dispatchToolboxEvent("aftercustomization", {}, window);
+      CustomizableUI.notifyEndCustomizing(window);
 
       if (this._wantToBeInCustomizeMode) {
         this.enter();
@@ -467,7 +485,7 @@ CustomizeMode.prototype = {
           this.document.documentElement.setAttribute("customize-entered", true);
           this.document.documentElement.removeAttribute("customize-entering");
         }
-        this.dispatchToolboxEvent("customization-transitionend", aEntering);
+        CustomizableUI.dispatchToolboxEvent("customization-transitionend", aEntering, this.window);
 
         deferred.resolve();
       }.bind(this), 0);
@@ -475,7 +493,7 @@ CustomizeMode.prototype = {
     deck.addEventListener("transitionend", customizeTransitionEnd);
 
     if (gDisableAnimation) {
-      deck.setAttribute("fastcustomizeanimation", true);
+      this.document.getElementById("tab-view-deck").setAttribute("fastcustomizeanimation", true);
     }
     if (aEntering) {
       this.document.documentElement.setAttribute("customizing", true);
@@ -488,12 +506,6 @@ CustomizeMode.prototype = {
     let catchAll = () => customizeTransitionEnd("timedout");
     let catchAllTimeout = this.window.setTimeout(catchAll, kMaxTransitionDurationMs);
     return deferred.promise;
-  },
-
-  dispatchToolboxEvent: function(aEventType, aDetails={}) {
-    let evt = this.document.createEvent("CustomEvent");
-    evt.initCustomEvent(aEventType, true, true, {changed: this._changed});
-    let result = this.window.gNavToolbox.dispatchEvent(evt);
   },
 
   _getCustomizableChildForNode: function(aNode) {
@@ -534,7 +546,7 @@ CustomizeMode.prototype = {
     }
     CustomizableUI.addWidgetToArea(aNode.id, CustomizableUI.AREA_NAVBAR);
     if (!this._customizing) {
-      this.dispatchToolboxEvent("customizationchange");
+      CustomizableUI.dispatchToolboxEvent("customizationchange");
     }
   },
 
@@ -545,7 +557,7 @@ CustomizeMode.prototype = {
     }
     CustomizableUI.addWidgetToArea(aNode.id, CustomizableUI.AREA_PANEL);
     if (!this._customizing) {
-      this.dispatchToolboxEvent("customizationchange");
+      CustomizableUI.dispatchToolboxEvent("customizationchange");
     }
   },
 
@@ -556,7 +568,7 @@ CustomizeMode.prototype = {
     }
     CustomizableUI.removeWidgetFromArea(aNode.id);
     if (!this._customizing) {
-      this.dispatchToolboxEvent("customizationchange");
+      CustomizableUI.dispatchToolboxEvent("customizationchange");
     }
   },
 
@@ -687,10 +699,10 @@ CustomizeMode.prototype = {
       wrapper.setAttribute("id", "wrapper-" + aNode.getAttribute("id"));
     }
 
-    if (aNode.hasAttribute("title")) {
-      wrapper.setAttribute("title", aNode.getAttribute("title"));
-    } else if (aNode.hasAttribute("label")) {
+    if (aNode.hasAttribute("label")) {
       wrapper.setAttribute("title", aNode.getAttribute("label"));
+    } else if (aNode.hasAttribute("title")) {
+      wrapper.setAttribute("title", aNode.getAttribute("title"));
     }
 
     if (aNode.hasAttribute("flex")) {
@@ -845,6 +857,18 @@ CustomizeMode.prototype = {
     }.bind(this)).then(null, ERROR);
   },
 
+  _removeExtraToolbarsIfEmpty: function() {
+    let toolbox = this.window.gNavToolbox;
+    for (let child of toolbox.children) {
+      if (child.hasAttribute("customindex")) {
+        let placements = CustomizableUI.getWidgetIdsInArea(child.id);
+        if (!placements.length) {
+          CustomizableUI.removeExtraToolbar(child.id);
+        }
+      }
+    }
+  },
+
   persistCurrentSets: function(aSetBeforePersisting)  {
     let document = this.document;
     let toolbars = document.querySelectorAll("toolbar[customizable='true'][currentset]");
@@ -881,6 +905,9 @@ CustomizeMode.prototype = {
       this._updateEmptyPaletteNotice();
       this._showPanelCustomizationPlaceholders();
       this.resetting = false;
+      if (!this._wantToBeInCustomizeMode) {
+        this.exit();
+      }
     }.bind(this)).then(null, ERROR);
   },
 
@@ -1007,7 +1034,7 @@ CustomizeMode.prototype = {
       this._updateUndoResetButton();
       this._updateEmptyPaletteNotice();
     }
-    this.dispatchToolboxEvent("customizationchange");
+    CustomizableUI.dispatchToolboxEvent("customizationchange");
   },
 
   _updateEmptyPaletteNotice: function() {
@@ -1021,8 +1048,8 @@ CustomizeMode.prototype = {
   },
 
   _updateUndoResetButton: function() {
-    let undoReset =  this.document.getElementById("customization-undo-reset");
-    undoReset.hidden = !CustomizableUI.canUndoReset;
+    let undoResetButton =  this.document.getElementById("customization-undo-reset-button");
+    undoResetButton.hidden = !CustomizableUI.canUndoReset;
   },
 
   handleEvent: function(aEvent) {
@@ -1074,7 +1101,9 @@ CustomizeMode.prototype = {
   observe: function(aSubject, aTopic, aData) {
     switch (aTopic) {
       case "nsPref:changed":
+        this._updateResetButton();
         this._updateTitlebarButton();
+        this._updateUndoResetButton();
         break;
     }
   },
@@ -1670,7 +1699,15 @@ CustomizeMode.prototype = {
     let dragY = aEvent.clientY - this._dragOffset.y;
 
     // Ensure this is within the container
-    let bounds = expectedParent.getBoundingClientRect();
+    let boundsContainer = expectedParent;
+    // NB: because the panel UI itself is inside a scrolling container, we need
+    // to use the parent bounds (otherwise, if the panel UI is scrolled down,
+    // the numbers we get are in window coordinates which leads to various kinds
+    // of weirdness)
+    if (boundsContainer == this.panelUIContents) {
+      boundsContainer = boundsContainer.parentNode;
+    }
+    let bounds = boundsContainer.getBoundingClientRect();
     dragX = Math.min(bounds.right, Math.max(dragX, bounds.left));
     dragY = Math.min(bounds.bottom, Math.max(dragY, bounds.top));
 
@@ -1682,6 +1719,16 @@ CustomizeMode.prototype = {
       }
     } else {
       let positionManager = DragPositionManager.getManagerForArea(aAreaElement);
+      // Make it relative to the container:
+      dragX -= bounds.left;
+      // NB: but if we're in the panel UI, we need to use the actual panel
+      // contents instead of the scrolling container to determine our origin
+      // offset against:
+      if (expectedParent == this.panelUIContents) {
+        dragY -= this.panelUIContents.getBoundingClientRect().top;
+      } else {
+        dragY -= bounds.top;
+      }
       // Find the closest node:
       targetNode = positionManager.find(aAreaElement, dragX, dragY, aDraggedItemId);
     }

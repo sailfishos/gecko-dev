@@ -396,7 +396,7 @@
 
     <!-- Sync Panel -->
     <panel id="sync-start-panel" class="sync-panel" type="arrow" hidden="true"
-           noautofocus="true" level="top" onclick="this.hidePopup();"
+           noautofocus="true" onclick="this.hidePopup();"
            flip="slide">
       <hbox class="sync-panel-outer">
         <image class="sync-panel-icon"/>
@@ -416,7 +416,7 @@
 
     <!-- Sync Error Panel -->
     <panel id="sync-error-panel" class="sync-panel" type="arrow" hidden="true"
-           noautofocus="true" level="top" onclick="this.hidePopup();"
+           noautofocus="true" onclick="this.hidePopup();"
            flip="slide">
       <hbox class="sync-panel-outer">
         <image class="sync-panel-icon"/>
@@ -476,9 +476,7 @@
     </hbox>
 
     <tooltip id="dynamic-shortcut-tooltip"
-             onpopupshowing="UpdateDynamicShortcutTooltipText(this.triggerNode)">
-      <label id="dynamic-shortcut-tooltip-label"/>
-    </tooltip>
+             onpopupshowing="UpdateDynamicShortcutTooltipText(this);"/>
   </popupset>
 
 #ifdef CAN_DRAW_IN_TITLEBAR
@@ -502,7 +500,7 @@
 <deck flex="1" id="tab-view-deck">
 <vbox flex="1" id="browser-panel">
 
-  <toolbox id="navigator-toolbox">
+  <toolbox id="navigator-toolbox" mode="icons">
     <!-- Menu -->
     <toolbar type="menubar" id="toolbar-menubar" class="chromeclass-menubar" customizable="true"
              defaultset="menubar-items"
@@ -592,6 +590,9 @@
                      cui-areatype="toolbar"
                      tooltiptext="&closeTab.label;"/>
 
+#ifdef XP_WIN
+      <hbox id="private-browsing-indicator" skipintoolbarset="true" ordinal="1000"/>
+#endif
 #ifdef CAN_DRAW_IN_TITLEBAR
       <hbox class="titlebar-placeholder" type="caption-buttons"
             id="titlebar-placeholder-on-TabsToolbar-for-captions-buttons" persist="width"
@@ -712,9 +713,6 @@
                        hidden="true"
                        tooltiptext="&pageReportIcon.tooltip;"
                        onclick="gPopupBlockerObserver.onReportButtonClick(event);"/>
-                <image id="star-button"
-                       class="urlbar-icon"
-                       onclick="if (event.button === 0) BookmarkingUI.onCommand(event);"/>
               </hbox>
               <toolbarbutton id="urlbar-go-button"
                              class="chromeclass-toolbar-additional"
@@ -968,7 +966,8 @@
     </toolbar>
 
     <!-- This is a shim which will go away ASAP. See bug 749804 for details -->
-    <toolbar id="addon-bar" toolbar-delegate="nav-bar" mode="icons" iconsize="small">
+    <toolbar id="addon-bar" toolbar-delegate="nav-bar" mode="icons" iconsize="small"
+             customizable="true">
       <hbox id="addonbar-closebutton"/>
       <statusbar id="status-bar"/>
     </toolbar>

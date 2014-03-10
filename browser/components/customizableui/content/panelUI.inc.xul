@@ -7,6 +7,7 @@
        type="arrow"
        hidden="true"
        flip="slide"
+       position="bottomcenter topright"
        noautofocus="true">
   <panelmultiview id="PanelUI-multiView" mainViewId="PanelUI-mainView">
     <panelview id="PanelUI-mainView" context="customizationPanelContextMenu">
@@ -221,8 +222,9 @@
 <panel id="widget-overflow"
        role="group"
        type="arrow"
-       level="top"
+       noautofocus="true"
        context="toolbar-context-menu"
+       position="bottomcenter topright"
        hidden="true">
   <vbox id="widget-overflow-scroller">
     <vbox id="widget-overflow-list" class="widget-overflow-list"

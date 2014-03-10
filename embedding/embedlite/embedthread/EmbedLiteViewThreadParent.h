@@ -77,6 +77,9 @@ protected:
   RecvOnLoadFinished();
 
   virtual bool
+  RecvOnWindowCloseRequested();
+
+  virtual bool
   RecvOnLoadRedirect();
 
   virtual bool

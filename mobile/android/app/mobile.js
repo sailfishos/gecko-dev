@@ -168,9 +168,6 @@ pref("layout.spellcheckDefault", 0);
 /* new html5 forms */
 pref("dom.experimental_forms", true);
 pref("dom.forms.number", true);
-// Don't enable <input type=color> yet as we don't have a color picker
-// implemented for Android (bug 875750)
-pref("dom.forms.color", true);
 
 /* extension manager and xpinstall */
 pref("xpinstall.whitelist.add", "addons.mozilla.org");
@@ -818,7 +815,7 @@ pref("browser.snippets.statsUrl", "https://snippets-stats.mozilla.org/mobile");
 
 // These prefs require a restart to take effect.
 pref("browser.snippets.enabled", true);
-pref("browser.snippets.syncPromo.enabled", false);
+pref("browser.snippets.syncPromo.enabled", true);
 
 #ifdef MOZ_ANDROID_SYNTHAPKS
 // The URL of the APK factory from which we obtain APKs for webapps.

@@ -11,6 +11,7 @@ import org.mozilla.gecko.Tabs;
 import org.mozilla.gecko.animation.PropertyAnimator;
 import org.mozilla.gecko.animation.PropertyAnimator.Property;
 import org.mozilla.gecko.animation.ViewHelper;
+import org.mozilla.gecko.db.BrowserContract.Combined;
 import org.mozilla.gecko.db.BrowserContract.Thumbnails;
 import org.mozilla.gecko.db.BrowserDB;
 import org.mozilla.gecko.db.BrowserDB.URLColumns;
@@ -81,19 +82,10 @@ public class TopSitesPanel extends HomeFragment {
     private TopSitesGridAdapter mGridAdapter;
 
     // List of top sites
-    private ListView mList;
+    private HomeListView mList;
 
     // Grid of top sites
     private TopSitesGridView mGrid;
-
-    // Banner to show snippets.
-    private HomeBanner mBanner;
-
-    // Raw Y value of the last event that happened on the list view.
-    private float mListTouchY = -1;
-
-    // Scrolling direction of the banner.
-    private boolean mSnapBannerToTop;
 
     // Callbacks used for the search and favicon cursor loaders
     private CursorLoaderCallbacks mCursorLoaderCallbacks;
@@ -201,20 +193,30 @@ public class TopSitesPanel extends HomeFragment {
             }
         });
 
+        mList.setContextMenuInfoFactory(new HomeListView.ContextMenuInfoFactory() {
+            @Override
+            public HomeContextMenuInfo makeInfoForCursor(View view, int position, long id, Cursor cursor) {
+                final HomeContextMenuInfo info = new HomeContextMenuInfo(view, position, id);
+                info.url = cursor.getString(cursor.getColumnIndexOrThrow(Combined.URL));
+                info.title = cursor.getString(cursor.getColumnIndexOrThrow(Combined.TITLE));
+                info.historyId = cursor.getInt(cursor.getColumnIndexOrThrow(Combined.HISTORY_ID));
+                final int bookmarkIdCol = cursor.getColumnIndexOrThrow(Combined.BOOKMARK_ID);
+                if (cursor.isNull(bookmarkIdCol)) {
+                    // If this is a combined cursor, we may get a history item without a
+                    // bookmark, in which case the bookmarks ID column value will be null.
+                    info.bookmarkId =  -1;
+                } else {
+                    info.bookmarkId = cursor.getInt(bookmarkIdCol);
+                }
+                return info;
+            }
+        });
+
         mGrid.setOnUrlOpenListener(mUrlOpenListener);
         mGrid.setOnEditPinnedSiteListener(mEditPinnedSiteListener);
 
         registerForContextMenu(mList);
         registerForContextMenu(mGrid);
-
-        mBanner = (HomeBanner) view.findViewById(R.id.home_banner);
-        mList.setOnTouchListener(new OnTouchListener() {
-            @Override
-            public boolean onTouch(View v, MotionEvent event) {
-                TopSitesPanel.this.handleListTouchEvent(event);
-                return false;
-            }
-        });
     }
 
     @Override
@@ -453,60 +455,6 @@ public class TopSitesPanel extends HomeFragment {
         }
     }
 
-    private void handleListTouchEvent(MotionEvent event) {
-        // Ignore the event if the banner is hidden for this session.
-        if (mBanner.isDismissed()) {
-            return;
-        }
-
-        switch (event.getActionMasked()) {
-            case MotionEvent.ACTION_DOWN: {
-                mListTouchY = event.getRawY();
-                break;
-            }
-
-            case MotionEvent.ACTION_MOVE: {
-                // There is a chance that we won't receive ACTION_DOWN, if the touch event
-                // actually started on the Grid instead of the List. Treat this as first event.
-                if (mListTouchY == -1) {
-                    mListTouchY = event.getRawY();
-                    return;
-                }
-
-                final float curY = event.getRawY();
-                final float delta = mListTouchY - curY;
-                mSnapBannerToTop = (delta > 0.0f) ? false : true;
-
-                final float height = mBanner.getHeight();
-                float newTranslationY = ViewHelper.getTranslationY(mBanner) + delta;
-
-                // Clamp the values to be between 0 and height.
-                if (newTranslationY < 0.0f) {
-                    newTranslationY = 0.0f;
-                } else if (newTranslationY > height) {
-                    newTranslationY = height;
-                }
-
-                ViewHelper.setTranslationY(mBanner, newTranslationY);
-                mListTouchY = curY;
-                break;
-            }
-
-            case MotionEvent.ACTION_UP:
-            case MotionEvent.ACTION_CANCEL: {
-                mListTouchY = -1;
-                final float y = ViewHelper.getTranslationY(mBanner);
-                final float height = mBanner.getHeight();
-                if (y > 0.0f && y < height) {
-                    final PropertyAnimator animator = new PropertyAnimator(100);
-                    animator.attach(mBanner, Property.TRANSLATION_Y, mSnapBannerToTop ? 0 : height);
-                    animator.start();
-                }
-                break;
-            }
-        }
-    }
-
     private void updateUiFromCursor(Cursor c) {
         mList.setHeaderDividersEnabled(c != null && c.getCount() > mMaxGridEntries);
     }
@@ -722,7 +670,7 @@ public class TopSitesPanel extends HomeFragment {
             if (!c.moveToFirst()) {
                 return;
             }
-            
+
             final ArrayList<String> urls = new ArrayList<String>();
             int i = 1;
             do {

@@ -191,6 +191,19 @@ const CustomizableWidgets = [{
       }
       recentlyClosedWindows.appendChild(windowsFragment);
     },
+    onCreated: function(aNode) {
+      // Middle clicking recently closed items won't close the panel - cope:
+      let onRecentlyClosedClick = function(aEvent) {
+        if (aEvent.button == 1) {
+          CustomizableUI.hidePanelForNode(this);
+        }
+      };
+      let doc = aNode.ownerDocument;
+      let recentlyClosedTabs = doc.getElementById("PanelUI-recentlyClosedTabs");
+      let recentlyClosedWindows = doc.getElementById("PanelUI-recentlyClosedWindows");
+      recentlyClosedTabs.addEventListener("click", onRecentlyClosedClick);
+      recentlyClosedWindows.addEventListener("click", onRecentlyClosedClick);
+    },
     onViewHiding: function(aEvent) {
       LOG("History view is being hidden!");
     }
@@ -383,6 +396,7 @@ const CustomizableWidgets = [{
 
       let node = aDocument.createElementNS(kNSXUL, "toolbaritem");
       node.setAttribute("id", "zoom-controls");
+      node.setAttribute("label", CustomizableUI.getLocalizedProperty(this, "label"));
       node.setAttribute("title", CustomizableUI.getLocalizedProperty(this, "tooltiptext"));
       // Set this as an attribute in addition to the property to make sure we can style correctly.
       node.setAttribute("removable", "true");
@@ -541,6 +555,7 @@ const CustomizableWidgets = [{
 
       let node = aDocument.createElementNS(kNSXUL, "toolbaritem");
       node.setAttribute("id", "edit-controls");
+      node.setAttribute("label", CustomizableUI.getLocalizedProperty(this, "label"));
       node.setAttribute("title", CustomizableUI.getLocalizedProperty(this, "tooltiptext"));
       // Set this as an attribute in addition to the property to make sure we can style correctly.
       node.setAttribute("removable", "true");

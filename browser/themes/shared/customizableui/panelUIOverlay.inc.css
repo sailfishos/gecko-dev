@@ -26,6 +26,10 @@
   background-repeat: no-repeat;
 }
 
+#PanelUI-button:-moz-locale-dir(rtl) {
+  background-position: 100% 0, calc(100% - 1px) 0, calc(100% - 2px) 0;
+}
+
 .panel-subviews {
   padding: 4px;
   background-color: hsla(0,0%,100%,.97);
@@ -117,7 +121,6 @@
 
 .panelUI-grid .toolbarbutton-menubutton-button > .toolbarbutton-multiline-text,
 .panelUI-grid .toolbarbutton-1 > .toolbarbutton-multiline-text {
-  text-align: center;
   -moz-hyphens: auto;
   min-height: 3.5em;
 }
@@ -127,11 +130,14 @@
   mask: url(chrome://browser/content/browser.xul#menuPanelButtonTextFadeOutMask);
 }
 
+.panelUI-grid .toolbarbutton-1 > .toolbarbutton-text,
 .panelUI-grid .toolbarbutton-1 > .toolbarbutton-multiline-text {
+  text-align: center;
   margin: 2px 0 0;
 }
 
 .panelUI-grid .toolbarbutton-menubutton-button > .toolbarbutton-multiline-text {
+  text-align: center;
   margin: -1px 0 0;
 }
 
@@ -141,6 +147,7 @@
 }
 
 #PanelUI-contents,
+#BMB_bookmarksPopup,
 .panel-mainview:not([panelid="PanelUI-popup"]) {
   max-width: @menuPanelWidth@;
 }
@@ -250,18 +257,30 @@ toolbaritem[cui-areatype="menu-panel"][sdkstylewidget="true"]:not(.panel-wide-it
   opacity: .5;
 }
 
-toolbaritem[cui-areatype="menu-panel"][sdkstylewidget="true"] {
+toolbaritem[cui-areatype="menu-panel"][sdkstylewidget="true"]:not(.panel-wide-item) {
   width: calc(@menuPanelButtonWidth@);
   margin: 0 !important;
 }
 
-toolbaritem[cui-areatype="menu-panel"][sdkstylewidget="true"]:not(.panel-wide-widget) {
+toolbaritem[cui-areatype="menu-panel"][sdkstylewidget="true"]:not(.panel-wide-item) {
   -moz-box-align: center;
   -moz-box-pack: center;
 }
 
 toolbaritem[cui-areatype="menu-panel"][sdkstylewidget="true"] > iframe {
   margin: 4px auto;
+}
+
+/*
+ * XXXgijs: this is a workaround for a layout issue that was caused by these iframes,
+ * which was affecting subview display. Because of this, we're hiding the iframe *only*
+ * when displaying a subview. The discerning user might notice this, but it's not nearly
+ * as bad as the brokenness.
+ * This hack should be removed once https://bugzilla.mozilla.org/show_bug.cgi?id=975375
+ * is addressed.
+ */
+#PanelUI-multiView[viewtype="subview"] toolbaritem[cui-areatype="menu-panel"][sdkstylewidget="true"]:not(.panel-wide-item) > iframe {
+  visibility: hidden;
 }
 
 toolbaritem[cui-areatype="menu-panel"][sdkstylewidget="true"]:not(.panel-wide-item) > .toolbarbutton-text {
@@ -358,10 +377,6 @@ toolbarpaletteitem[place="palette"] > toolbaritem > toolbarbutton {
 
 #PanelUI-fxa-status > .toolbarbutton-text {
   width: 0; /* Fancy cropping solution for flexbox. */
-}
-
-#PanelUI-fxa-status[signedin] {
-  font-weight: bold;
 }
 
 #PanelUI-help,
@@ -714,15 +729,21 @@ toolbarpaletteitem[place="palette"] > #search-container {
   padding: .5em;
   margin: 0;
   -moz-box-flex: 1;
-  /* reduce the width with 2px for each button to compensate for two separators
-     of 3px. */
-  min-width: calc(@menuPanelButtonWidth@ - 2px);
-  max-width: calc(@menuPanelButtonWidth@ - 2px);
+  min-width: calc(@menuPanelButtonWidth@);
+  max-width: calc(@menuPanelButtonWidth@);
   /* We'd prefer to use height: auto here but it leads to layout bugs in the panel. Cope:
      1.2em for line height + 2 * .5em padding + margin on the label (2 * 2px) */
   height: calc(2.2em + 4px);
   max-height: none;
   -moz-box-orient: horizontal;
+}
+
+#edit-controls@inAnyPanel@ > #copy-button,
+#zoom-controls@inAnyPanel@ > #zoom-reset-button {
+  /* reduce the width with 2px for this button to compensate for two separators
+     of 1px. */
+  min-width: calc(@menuPanelButtonWidth@ - 2px);
+  max-width: calc(@menuPanelButtonWidth@ - 2px);
 }
 
 #edit-controls@inAnyPanel@ > toolbarbutton[disabled] > .toolbarbutton-icon,
@@ -754,8 +775,7 @@ toolbarpaletteitem[place="palette"] > #search-container {
   border-bottom-left-radius: 0;
 }
 
-#edit-controls > separator,
-#zoom-controls > separator {
+.toolbaritem-combined-buttons > separator {
   -moz-appearance: none;
   width: 3px;
   -moz-box-align: stretch;
@@ -765,6 +785,19 @@ toolbarpaletteitem[place="palette"] > #search-container {
   background-size: 1px, 1px, 1px;
   background-position: 0 0, 1px 0, 2px 0;
   background-repeat: no-repeat;
+}
+
+.toolbaritem-combined-buttons@inAnyPanel@ > separator {
+  margin: .5em 0;
+  width: 1px;
+  background: hsla(210,4%,10%,.15);
+  transition-property: margin;
+  transition-duration: 10ms;
+  transition-timing-function: ease;
+}
+
+.toolbaritem-combined-buttons@inAnyPanel@:hover > separator {
+  margin: 0;
 }
 
 #widget-overflow > .panel-arrowcontainer > .panel-arrowcontent {
