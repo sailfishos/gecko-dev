@@ -15,6 +15,7 @@
 #include "nsDataHashtable.h"
 #include "nsIDOMEventListener.h"
 #include "nsIDocument.h"
+#include "TabChild.h"
 
 class CancelableTask;
 class nsPresContext;
@@ -23,12 +24,10 @@ class nsIDOMWindowUtils;
 namespace mozilla {
 namespace embedlite {
 
-class EmbedTabChildGlobal;
 class EmbedLiteViewThreadChild;
 class TabChildHelper : public nsIDOMEventListener,
                        public nsIObserver,
-                       public nsFrameScriptExecutor,
-                       public mozilla::dom::ipc::MessageManagerCallback
+                       public mozilla::dom::TabChildBase
 {
 public:
   typedef mozilla::layers::FrameMetrics::ViewID ViewID;
@@ -43,9 +42,7 @@ public:
 
   JSContext* GetJSContext();
 
-  nsIWebNavigation* WebNavigation();
-
-  nsIPrincipal* GetPrincipal() { return mPrincipal; }
+  virtual nsIWebNavigation* WebNavigation() MOZ_OVERRIDE;
 
   virtual bool DoLoadFrameScript(const nsAString& aURL, bool aRunInGlobalScope);
   virtual bool DoSendSyncMessage(JSContext* aCx,
@@ -105,7 +102,7 @@ private:
   bool mContentDocumentIsDisplayed;
   ScreenIntSize mInnerSize;
   float mOldViewportWidth;
-  nsRefPtr<EmbedTabChildGlobal> mTabChildGlobal;
+  nsRefPtr<mozilla::dom::TabChildGlobal> mTabChildGlobal;
   mozilla::layers::FrameMetrics mLastRootMetrics;
   mozilla::layers::FrameMetrics mLastSubFrameMetrics;
   mozilla::layers::FrameMetrics mFrameMetrics;

@@ -48,6 +48,7 @@ namespace dom {
 class TabChild;
 class PContentDialogChild;
 class ClonedMessageData;
+class TabChildBase;
 
 class TabChildGlobal : public nsDOMEventTargetHelper,
                        public nsIContentFrameMessageManager,
@@ -55,7 +56,7 @@ class TabChildGlobal : public nsDOMEventTargetHelper,
                        public nsIGlobalObject
 {
 public:
-  TabChildGlobal(TabChild* aTabChild);
+  TabChildGlobal(TabChildBase* aTabChild);
   void Init();
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(TabChildGlobal, nsDOMEventTargetHelper)
@@ -131,7 +132,7 @@ public:
   virtual JSObject* GetGlobalJSObject() MOZ_OVERRIDE;
 
   nsCOMPtr<nsIContentFrameMessageManager> mMessageManager;
-  TabChild* mTabChild;
+  TabChildBase* mTabChild;
 };
 
 class ContentListener MOZ_FINAL : public nsIDOMEventListener
@@ -144,8 +145,15 @@ protected:
   TabChild* mTabChild;
 };
 
+class TabChildBase : public nsFrameScriptExecutor,
+                     public ipc::MessageManagerCallback
+{
+public:
+  virtual nsIWebNavigation* WebNavigation() = 0;
+  nsIPrincipal* GetPrincipal() { return mPrincipal; }
+};
+
 class TabChild : public PBrowserChild,
-                 public nsFrameScriptExecutor,
                  public nsIWebBrowserChrome2,
                  public nsIEmbeddingSiteWindow,
                  public nsIWebBrowserChromeFocus,
@@ -157,9 +165,9 @@ class TabChild : public PBrowserChild,
                  public nsIDialogCreator,
                  public nsITabChild,
                  public nsIObserver,
-                 public ipc::MessageManagerCallback,
                  public TabContext,
-                 public nsITooltipListener
+                 public nsITooltipListener,
+                 public TabChildBase
 {
     typedef mozilla::dom::ClonedMessageData ClonedMessageData;
     typedef mozilla::layout::RenderFrameChild RenderFrameChild;
@@ -323,9 +331,7 @@ public:
     virtual bool
     DeallocPOfflineCacheUpdateChild(POfflineCacheUpdateChild* offlineCacheUpdate) MOZ_OVERRIDE;
 
-    nsIWebNavigation* WebNavigation() { return mWebNav; }
-
-    nsIPrincipal* GetPrincipal() { return mPrincipal; }
+    virtual nsIWebNavigation* WebNavigation() MOZ_OVERRIDE { return mWebNav; }
 
     /** Return the DPI of the widget this TabChild draws to. */
     void GetDPI(float* aDPI);
