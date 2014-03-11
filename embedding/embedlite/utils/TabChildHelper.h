@@ -40,25 +40,22 @@ public:
 
   bool RecvUpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics);
 
-  JSContext* GetJSContext();
-
   virtual nsIWebNavigation* WebNavigation() MOZ_OVERRIDE;
 
   virtual bool DoLoadFrameScript(const nsAString& aURL, bool aRunInGlobalScope);
-  virtual bool DoSendSyncMessage(JSContext* aCx,
-                                 const nsAString& aMessage,
-                                 const mozilla::dom::StructuredCloneData& aData,
-                                 JS::Handle<JSObject *> aCpows,
-                                 InfallibleTArray<nsString>* aJSONRetVal);
+  virtual bool DoSendBlockingMessage(JSContext* aCx,
+                                     const nsAString& aMessage,
+                                     const mozilla::dom::StructuredCloneData& aData,
+                                     JS::Handle<JSObject *> aCpows,
+                                     nsIPrincipal* aPrincipal,
+                                     InfallibleTArray<nsString>* aJSONRetVal,
+                                     bool aIsSync) MOZ_OVERRIDE;
   virtual bool DoSendAsyncMessage(JSContext* aCx,
                                   const nsAString& aMessage,
                                   const mozilla::dom::StructuredCloneData& aData,
                                   JS::Handle<JSObject *> aCpows,
                                   nsIPrincipal* aPrincipal) MOZ_OVERRIDE;
-  virtual bool CheckPermission(const nsAString& aPermission);
-
-  bool RecvAsyncMessage(const nsAString& aMessage,
-                        const nsAString& aData);
+  virtual bool CheckPermission(const nsAString& aPermission) MOZ_OVERRIDE;
 
 protected:
   nsIWidget* GetWidget(nsPoint* aOffset);
@@ -79,16 +76,6 @@ private:
   void Disconnect();
   void Unload();
   bool ProcessUpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics);
-  bool ProcessUpdateSubframe(nsIContent* aContent, const mozilla::layers::FrameMetrics& aMetrics);
-
-  // Get the DOMWindowUtils for the top-level window in this tab.
-  already_AddRefed<nsIDOMWindowUtils> GetDOMWindowUtils();
-  // Get the Document for the top-level window in this tab.
-  already_AddRefed<nsIDocument> GetDocument();
-
-  // Wrapper for nsIDOMWindowUtils.setCSSViewport(). This updates some state
-  // variables local to this class before setting it.
-  void SetCSSViewport(const CSSSize& aSize);
 
   // Recalculates the display state, including the CSS
   // viewport. This should be called whenever we believe the
@@ -99,10 +86,7 @@ private:
 
   friend class EmbedLiteViewThreadChild;
   EmbedLiteViewThreadChild* mView;
-  bool mContentDocumentIsDisplayed;
   ScreenIntSize mInnerSize;
-  float mOldViewportWidth;
-  nsRefPtr<mozilla::dom::TabChildGlobal> mTabChildGlobal;
   mozilla::layers::FrameMetrics mLastRootMetrics;
   mozilla::layers::FrameMetrics mLastSubFrameMetrics;
   mozilla::layers::FrameMetrics mFrameMetrics;

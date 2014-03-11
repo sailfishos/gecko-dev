@@ -245,14 +245,6 @@ NS_IMETHODIMP EmbedLiteAppService::LeaveSecureJSContext()
   return NS_OK;
 }
 
-JSContext*
-EmbedLiteAppService::GetAnyJSContext(uint32_t aWinId)
-{
-  EmbedLiteViewThreadChild* view = sGetViewById(aWinId);
-  NS_ENSURE_TRUE(view, nullptr);
-  return view->GetJSContext();
-}
-
 NS_IMETHODIMP
 EmbedLiteAppService::AddContentListener(uint32_t aWinId, mozilla::layers::GeckoContentController* listener)
 {

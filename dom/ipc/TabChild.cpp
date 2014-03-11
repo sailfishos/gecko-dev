@@ -217,6 +217,13 @@ private:
 
 StaticRefPtr<TabChild> sPreallocatedTab;
 
+TabChildBase::TabChildBase()
+  : mOldViewportWidth(0.0f)
+  , mContentDocumentIsDisplayed(false)
+  , mTabChildGlobal(nullptr)
+{
+}
+
 /*static*/ void
 TabChild::PreloadSlowThings()
 {
@@ -278,18 +285,15 @@ TabChild::TabChild(ContentChild* aManager, const TabContext& aContext, uint32_t 
   : TabContext(aContext)
   , mRemoteFrame(nullptr)
   , mManager(aManager)
-  , mTabChildGlobal(nullptr)
   , mChromeFlags(aChromeFlags)
   , mOuterRect(0, 0, 0, 0)
   , mInnerSize(0, 0)
   , mActivePointerId(-1)
   , mTapHoldTimer(nullptr)
   , mAppPackageFileDescriptorRecved(false)
-  , mOldViewportWidth(0.0f)
   , mLastBackgroundColor(NS_RGB(255, 255, 255))
   , mDidFakeShow(false)
   , mNotified(false)
-  , mContentDocumentIsDisplayed(false)
   , mTriedBrowserInit(false)
   , mOrientation(eScreenOrientation_PortraitPrimary)
   , mUpdateHitRegion(false)
@@ -495,7 +499,7 @@ TabChild::OnSecurityChange(nsIWebProgress* aWebProgress,
 }
 
 void
-TabChild::SetCSSViewport(const CSSSize& aSize)
+TabChildBase::SetCSSViewport(const CSSSize& aSize)
 {
   mOldViewportWidth = aSize.width;
 
@@ -505,8 +509,8 @@ TabChild::SetCSSViewport(const CSSSize& aSize)
   }
 }
 
-static CSSSize
-GetPageSize(nsCOMPtr<nsIDocument> aDocument, const CSSSize& aViewport)
+CSSSize
+TabChildBase::GetPageSize(nsCOMPtr<nsIDocument> aDocument, const CSSSize& aViewport)
 {
   nsCOMPtr<Element> htmlDOMElement = aDocument->GetHtmlElement();
   HTMLBodyElement* bodyDOMElement = aDocument->GetBodyElement();
@@ -1083,7 +1087,7 @@ TabChild::BrowserFrameProvideWindow(nsIDOMWindow* aOpener,
 }
 
 already_AddRefed<nsIDOMWindowUtils>
-TabChild::GetDOMWindowUtils()
+TabChildBase::GetDOMWindowUtils()
 {
   nsCOMPtr<nsPIDOMWindow> window = do_GetInterface(WebNavigation());
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
@@ -1091,7 +1095,7 @@ TabChild::GetDOMWindowUtils()
 }
 
 already_AddRefed<nsIDocument>
-TabChild::GetDocument()
+TabChildBase::GetDocument()
 {
   nsCOMPtr<nsIDOMDocument> domDoc;
   WebNavigation()->GetDocument(getter_AddRefs(domDoc));
@@ -1526,15 +1530,15 @@ TabChild::RecvUpdateDimensions(const nsRect& rect, const nsIntSize& size, const 
 }
 
 void
-TabChild::DispatchMessageManagerMessage(const nsAString& aMessageName,
-                                        const nsACString& aJSONData)
+TabChildBase::DispatchMessageManagerMessage(const nsAString& aMessageName,
+                                            const nsAString& aJSONData)
 {
     AutoSafeJSContext cx;
     JS::Rooted<JS::Value> json(cx, JSVAL_NULL);
     StructuredCloneData cloneData;
     JSAutoStructuredCloneBuffer buffer;
     if (JS_ParseJSON(cx,
-                      static_cast<const jschar*>(NS_ConvertUTF8toUTF16(aJSONData).get()),
+                      static_cast<const jschar*>(aJSONData.BeginReading()),
                       aJSONData.Length(),
                       &json)) {
         WriteStructuredClone(cx, json, buffer, cloneData.mClosure);
@@ -1603,7 +1607,7 @@ TabChild::ProcessUpdateFrame(const FrameMetrics& aFrameMetrics)
     // The BrowserElementScrolling helper must know about these updated metrics
     // for other functions it performs, such as double tap handling.
     // Note, %f must not be used because it is locale specific!
-    nsCString data;
+    nsString data;
     data.AppendPrintf("{ \"x\" : %d", NS_lround(newMetrics.mScrollOffset.x));
     data.AppendPrintf(", \"y\" : %d", NS_lround(newMetrics.mScrollOffset.y));
     data.AppendLiteral(", \"viewport\" : ");
@@ -1660,10 +1664,8 @@ TabChild::RecvHandleDoubleTap(const CSSIntPoint& aPoint, const ScrollableLayerGu
         return true;
     }
 
-    nsCString data;
-    data += nsPrintfCString("{ \"x\" : %d", aPoint.x);
-    data += nsPrintfCString(", \"y\" : %d", aPoint.y);
-    data += nsPrintfCString(" }");
+    nsString data;
+    data.AppendPrintf("{ \"x\" : %d, \"y\" : %d }", aPoint.x, aPoint.y);
 
     DispatchMessageManagerMessage(NS_LITERAL_STRING("Gesture:DoubleTap"), data);
 

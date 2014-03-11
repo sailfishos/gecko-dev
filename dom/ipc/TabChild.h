@@ -149,8 +149,35 @@ class TabChildBase : public nsFrameScriptExecutor,
                      public ipc::MessageManagerCallback
 {
 public:
-  virtual nsIWebNavigation* WebNavigation() = 0;
-  nsIPrincipal* GetPrincipal() { return mPrincipal; }
+    TabChildBase();
+
+    virtual nsIWebNavigation* WebNavigation() = 0;
+    nsIPrincipal* GetPrincipal() { return mPrincipal; }
+
+protected:
+    CSSSize GetPageSize(nsCOMPtr<nsIDocument> aDocument, const CSSSize& aViewport);
+
+    // Get the DOMWindowUtils for the top-level window in this tab.
+    already_AddRefed<nsIDOMWindowUtils> GetDOMWindowUtils();
+    // Get the Document for the top-level window in this tab.
+    already_AddRefed<nsIDocument> GetDocument();
+
+    // Wrapper for nsIDOMWindowUtils.setCSSViewport(). This updates some state
+    // variables local to this class before setting it.
+    void SetCSSViewport(const CSSSize& aSize);
+
+    // Wraps up a JSON object as a structured clone and sends it to the browser
+    // chrome script.
+    //
+    // XXX/bug 780335: Do the work the browser chrome script does in C++ instead
+    // so we don't need things like this.
+    void DispatchMessageManagerMessage(const nsAString& aMessageName,
+                                       const nsAString& aJSONData);
+
+protected:
+    float mOldViewportWidth;
+    bool mContentDocumentIsDisplayed;
+    nsRefPtr<TabChildGlobal> mTabChildGlobal;
 };
 
 class TabChild : public PBrowserChild,
@@ -448,24 +475,12 @@ private:
     // Call RecvShow(nsIntSize(0, 0)) and block future calls to RecvShow().
     void DoFakeShow();
 
-    // Wrapper for nsIDOMWindowUtils.setCSSViewport(). This updates some state
-    // variables local to this class before setting it.
-    void SetCSSViewport(const CSSSize& aSize);
-
     // Recalculates the display state, including the CSS
     // viewport. This should be called whenever we believe the
     // viewport data on a document may have changed. If it didn't
     // change, this function doesn't do anything.  However, it should
     // not be called all the time as it is fairly expensive.
     void HandlePossibleViewportChange();
-
-    // Wraps up a JSON object as a structured clone and sends it to the browser
-    // chrome script.
-    //
-    // XXX/bug 780335: Do the work the browser chrome script does in C++ instead
-    // so we don't need things like this.
-    void DispatchMessageManagerMessage(const nsAString& aMessageName,
-                                       const nsACString& aJSONData);
 
     void DispatchSynthesizedMouseEvent(uint32_t aMsg, uint64_t aTime,
                                        const LayoutDevicePoint& aRefPoint);
@@ -488,11 +503,6 @@ private:
                               bool* aWindowIsNew,
                               nsIDOMWindow** aReturn);
 
-    // Get the DOMWindowUtils for the top-level window in this tab.
-    already_AddRefed<nsIDOMWindowUtils> GetDOMWindowUtils();
-    // Get the Document for the top-level window in this tab.
-    already_AddRefed<nsIDocument> GetDocument();
-
     class CachedFileDescriptorInfo;
     class CachedFileDescriptorCallbackRunnable;
 
@@ -503,7 +513,6 @@ private:
     FrameMetrics mLastRootMetrics;
     RenderFrameChild* mRemoteFrame;
     nsRefPtr<ContentChild> mManager;
-    nsRefPtr<TabChildGlobal> mTabChildGlobal;
     uint32_t mChromeFlags;
     nsIntRect mOuterRect;
     ScreenIntSize mInnerSize;
@@ -521,12 +530,10 @@ private:
     // At present only 1 of these is really expected.
     nsAutoTArray<nsAutoPtr<CachedFileDescriptorInfo>, 1>
         mCachedFileDescriptorInfos;
-    float mOldViewportWidth;
     nscolor mLastBackgroundColor;
     ScrollingBehavior mScrolling;
     bool mDidFakeShow;
     bool mNotified;
-    bool mContentDocumentIsDisplayed;
     bool mTriedBrowserInit;
     ScreenOrientation mOrientation;
     bool mUpdateHitRegion;
