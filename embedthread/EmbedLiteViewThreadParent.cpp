@@ -454,6 +454,14 @@ EmbedLiteViewThreadParent::RecvSyncMessage(const nsString& aMessage,
   return true;
 }
 
+bool
+EmbedLiteViewThreadParent::AnswerRpcMessage(const nsString& aMessage,
+                                            const nsString& aJSON,
+                                            InfallibleTArray<nsString>* aJSONRetVal)
+{
+  return RecvSyncMessage(aMessage, aJSON, aJSONRetVal);
+}
+
 static inline gfx::SurfaceFormat
 _depth_to_gfxformat(int depth)
 {

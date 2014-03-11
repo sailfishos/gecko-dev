@@ -39,14 +39,13 @@ public:
   }
   void ResetInputState();
 
-  JSContext* GetJSContext() {
-    return mHelper ? mHelper->GetJSContext() : nullptr;
-  }
-
   virtual bool DoSendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage);
   virtual bool DoSendSyncMessage(const char16_t* aMessageName,
                                  const char16_t* aMessage,
                                  InfallibleTArray<nsString>* aJSONRetVal);
+  virtual bool DoCallRpcMessage(const char16_t* aMessageName,
+                                const char16_t* aMessage,
+                                InfallibleTArray<nsString>* aJSONRetVal);
   bool HasMessageListener(const nsAString& aMessageName);
   void AddGeckoContentListener(mozilla::layers::GeckoContentController* listener);
   void RemoveGeckoContentListener(mozilla::layers::GeckoContentController* listener);

@@ -50,9 +50,7 @@ static bool sPostAZPCAsJsonViewport(false);
 
 TabChildHelper::TabChildHelper(EmbedLiteViewThreadChild* aView)
   : mView(aView)
-  , mContentDocumentIsDisplayed(false)
   , mInnerSize(0, 0)
-  , mTabChildGlobal(nullptr)
 {
   LOGT();
 
@@ -374,7 +372,7 @@ TabChildHelper::ProcessUpdateFrame(const FrameMetrics& aFrameMetrics)
         data.AppendPrintf(" }");
     data.AppendPrintf(" }");
 
-    RecvAsyncMessage(NS_LITERAL_STRING("Viewport:Change"), data);
+    DispatchMessageManagerMessage(NS_LITERAL_STRING("Viewport:Change"), data);
   }
 
   mLastRootMetrics = newMetrics;
@@ -412,11 +410,13 @@ JSONCreator(const jschar* aBuf, uint32_t aLen, void* aData)
 }
 
 bool
-TabChildHelper::DoSendSyncMessage(JSContext* aCx,
-                                  const nsAString& aMessage,
-                                  const mozilla::dom::StructuredCloneData& aData,
-                                  JS::Handle<JSObject *> aCpows,
-                                  InfallibleTArray<nsString>* aJSONRetVal)
+TabChildHelper::DoSendBlockingMessage(JSContext* aCx,
+                                      const nsAString& aMessage,
+                                      const StructuredCloneData& aData,
+                                      JS::Handle<JSObject *> aCpows,
+                                      nsIPrincipal* aPrincipal,
+                                      InfallibleTArray<nsString>* aJSONRetVal,
+                                      bool aIsSync)
 {
   if (!mView->HasMessageListener(aMessage)) {
     LOGE("Message not registered msg:%s\n", NS_ConvertUTF16toUTF8(aMessage).get());
@@ -424,7 +424,7 @@ TabChildHelper::DoSendSyncMessage(JSContext* aCx,
   }
 
   NS_ENSURE_TRUE(InitTabChildGlobal(), false);
-  JSContext* cx = GetJSContext();
+  JSContext* cx = mTabChildGlobal->GetJSContextForEventHandlers();
   JSAutoRequest ar(cx);
 
   // FIXME: Need callback interface for simple JSON to avoid useless conversion here
@@ -439,7 +439,11 @@ TabChildHelper::DoSendSyncMessage(JSContext* aCx,
   NS_ENSURE_TRUE(JS_Stringify(cx, &rval, JS::NullPtr(), JS::NullHandleValue, JSONCreator, &json), false);
   NS_ENSURE_TRUE(!json.IsEmpty(), false);
 
-  return mView->DoSendSyncMessage(nsString(aMessage).get(), json.get(), aJSONRetVal);
+  if (aIsSync) {
+    return mView->DoSendSyncMessage(nsString(aMessage).get(), json.get(), aJSONRetVal);
+  }
+
+  return mView->DoCallRpcMessage(nsString(aMessage).get(), json.get(), aJSONRetVal);
 }
 
 bool
@@ -455,7 +459,7 @@ TabChildHelper::DoSendAsyncMessage(JSContext* aCx,
   }
 
   NS_ENSURE_TRUE(InitTabChildGlobal(), false);
-  JSContext* cx = GetJSContext();
+  JSContext* cx = mTabChildGlobal->GetJSContextForEventHandlers();
   JSAutoRequest ar(cx);
 
   // FIXME: Need callback interface for simple JSON to avoid useless conversion here
@@ -478,33 +482,6 @@ TabChildHelper::CheckPermission(const nsAString& aPermission)
 {
   LOGNI("perm: %s", NS_ConvertUTF16toUTF8(aPermission).get());
   return false;
-}
-
-bool
-TabChildHelper::RecvAsyncMessage(const nsAString& aMessage,
-                                 const nsAString& aJSONData)
-{
-  NS_ENSURE_TRUE(InitTabChildGlobal(), false);
-  MOZ_ASSERT(NS_IsMainThread());
-  AutoSafeJSContext cx;
-  JS::Rooted<JS::Value> json(cx, JSVAL_NULL);
-  StructuredCloneData cloneData;
-  JSAutoStructuredCloneBuffer buffer;
-  if (JS_ParseJSON(cx,
-                   static_cast<const jschar*>(aJSONData.BeginReading()),
-                   aJSONData.Length(),
-                   &json)) {
-    WriteStructuredClone(GetJSContext(), json, buffer, cloneData.mClosure);
-    cloneData.mData = buffer.data();
-    cloneData.mDataLength = buffer.nbytes();
-  }
-
-  nsRefPtr<nsFrameMessageManager> mm =
-    static_cast<nsFrameMessageManager*>(mTabChildGlobal->mMessageManager.get());
-  mm->ReceiveMessage(static_cast<EventTarget*>(mTabChildGlobal),
-                     aMessage, false, &cloneData, nullptr, nullptr, nullptr);
-
-  return true;
 }
 
 static nsIntPoint
@@ -719,56 +696,6 @@ TabChildHelper::DispatchSynthesizedMouseEvent(uint32_t aMsg, uint64_t aTime,
   DispatchWidgetEvent(event);
 }
 
-JSContext*
-TabChildHelper::GetJSContext()
-{
-  return nsContentUtils::GetSafeJSContext();
-}
-
-already_AddRefed<nsIDOMWindowUtils>
-TabChildHelper::GetDOMWindowUtils()
-{
-  nsCOMPtr<nsPIDOMWindow> window = do_GetInterface(mView->mWebNavigation);
-  nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
-  return utils.forget();
-}
-
-void
-TabChildHelper::SetCSSViewport(const CSSSize& aSize)
-{
-  mOldViewportWidth = aSize.width;
-
-  if (mContentDocumentIsDisplayed) {
-    nsCOMPtr<nsIDOMWindowUtils> utils(GetDOMWindowUtils());
-    utils->SetCSSViewport(aSize.width, aSize.height);
-  }
-}
-
-static CSSSize
-GetPageSize(nsCOMPtr<nsIDocument> aDocument, const CSSSize& aViewport)
-{
-  nsCOMPtr<Element> htmlDOMElement = aDocument->GetHtmlElement();
-  HTMLBodyElement* bodyDOMElement = aDocument->GetBodyElement();
-
-  if (!htmlDOMElement && !bodyDOMElement) {
-    // For non-HTML content (e.g. SVG), just assume page size == viewport size.
-    return aViewport;
-  }
-
-  int32_t htmlWidth = 0, htmlHeight = 0;
-  if (htmlDOMElement) {
-    htmlWidth = htmlDOMElement->ScrollWidth();
-    htmlHeight = htmlDOMElement->ScrollHeight();
-  }
-  int32_t bodyWidth = 0, bodyHeight = 0;
-  if (bodyDOMElement) {
-    bodyWidth = bodyDOMElement->ScrollWidth();
-    bodyHeight = bodyDOMElement->ScrollHeight();
-  }
-  return CSSSize(std::max(htmlWidth, bodyWidth),
-                 std::max(htmlHeight, bodyHeight));
-}
-
 bool
 TabChildHelper::HandlePossibleViewportChange()
 {
@@ -900,13 +827,4 @@ TabChildHelper::HandlePossibleViewportChange()
   ProcessUpdateFrame(metrics);
   mFrameMetrics = metrics;
   return true;
-}
-
-already_AddRefed<nsIDocument>
-TabChildHelper::GetDocument()
-{
-  nsCOMPtr<nsIDOMDocument> domDoc;
-  mView->mWebNavigation->GetDocument(getter_AddRefs(domDoc));
-  nsCOMPtr<nsIDocument> doc(do_QueryInterface(domDoc));
-  return doc.forget();
 }
