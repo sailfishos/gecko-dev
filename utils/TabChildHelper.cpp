@@ -9,7 +9,7 @@
 #include "TabChildHelper.h"
 #include "nsIWidget.h"
 
-#include "EmbedTabChildGlobal.h"
+#include "TabChild.h"
 #include "EmbedLiteViewThreadChild.h"
 #include "mozilla/layers/AsyncPanZoomController.h"
 #include "nsIDOMDocument.h"
@@ -115,7 +115,7 @@ TabChildHelper::Disconnect()
 class EmbedUnloadScriptEvent : public nsRunnable
 {
 public:
-  EmbedUnloadScriptEvent(TabChildHelper* aTabChild, EmbedTabChildGlobal* aTabChildGlobal)
+  EmbedUnloadScriptEvent(TabChildHelper* aTabChild, TabChildGlobal* aTabChildGlobal)
     : mTabChild(aTabChild), mTabChildGlobal(aTabChildGlobal)
   { }
 
@@ -135,7 +135,7 @@ public:
   }
 
   nsRefPtr<TabChildHelper> mTabChild;
-  EmbedTabChildGlobal* mTabChildGlobal;
+  TabChildGlobal* mTabChildGlobal;
 };
 
 void
@@ -178,7 +178,7 @@ TabChildHelper::InitTabChildGlobal()
     do_QueryInterface(window->GetChromeEventHandler());
   NS_ENSURE_TRUE(chromeHandler, false);
 
-  nsRefPtr<EmbedTabChildGlobal> scope = new EmbedTabChildGlobal(this);
+  nsRefPtr<TabChildGlobal> scope = new TabChildGlobal(this);
   NS_ENSURE_TRUE(scope, false);
 
   mTabChildGlobal = scope;
