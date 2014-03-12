@@ -77,6 +77,9 @@ protected:
   RecvOnLoadFinished();
 
   virtual bool
+  RecvOnWindowCloseRequested();
+
+  virtual bool
   RecvOnLoadRedirect();
 
   virtual bool
@@ -106,10 +109,13 @@ protected:
   RecvOnTitleChanged(const nsString& aTitle);
 
   virtual bool RecvAsyncMessage(const nsString& aMessage,
-                                const nsString& aData);
+                                const nsString& aData) MOZ_OVERRIDE;
   virtual bool RecvSyncMessage(const nsString& aMessage,
                                const nsString& aJSON,
-                               InfallibleTArray<nsString>* aJSONRetVal);
+                               InfallibleTArray<nsString>* aJSONRetVal) MOZ_OVERRIDE;
+  virtual bool AnswerRpcMessage(const nsString& aMessage,
+                                const nsString& aJSON,
+                                InfallibleTArray<nsString>* aJSONRetVal) MOZ_OVERRIDE;
   virtual bool
   RecvUpdateZoomConstraints(const uint32_t& aPresShellId,
                             const ViewID& aViewId,

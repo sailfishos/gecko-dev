@@ -60,6 +60,35 @@ WebGLFramebuffer::Attachment::HasAlpha() const
     return FormatHasAlpha(format);
 }
 
+bool
+WebGLFramebuffer::Attachment::IsReadableFloat() const
+{
+    if (Texture() && Texture()->HasImageInfoAt(mTexImageTarget, mTexImageLevel)) {
+        GLenum type = Texture()->ImageInfoAt(mTexImageTarget, mTexImageLevel).Type();
+        switch (type) {
+        case LOCAL_GL_FLOAT:
+        case LOCAL_GL_HALF_FLOAT_OES:
+            return true;
+        }
+        return false;
+    }
+
+    if (Renderbuffer()) {
+        GLenum format = Renderbuffer()->InternalFormat();
+        switch (format) {
+        case LOCAL_GL_RGB16F:
+        case LOCAL_GL_RGBA16F:
+        case LOCAL_GL_RGB32F:
+        case LOCAL_GL_RGBA32F:
+            return true;
+        }
+        return false;
+    }
+
+    MOZ_ASSERT(false, "Should not get here.");
+    return false;
+}
+
 void
 WebGLFramebuffer::Attachment::SetTexImage(WebGLTexture* tex, GLenum target, GLint level)
 {
@@ -630,6 +659,31 @@ WebGLFramebuffer::CheckFramebufferStatus() const
     return mContext->gl->fCheckFramebufferStatus(LOCAL_GL_FRAMEBUFFER);
 }
 
+bool
+WebGLFramebuffer::HasCompletePlanes(GLbitfield mask)
+{
+    if (CheckFramebufferStatus() != LOCAL_GL_FRAMEBUFFER_COMPLETE)
+        return false;
+
+    MOZ_ASSERT(mContext->mBoundFramebuffer == this);
+    bool hasPlanes = true;
+    if (mask & LOCAL_GL_COLOR_BUFFER_BIT) {
+        hasPlanes &= ColorAttachmentCount() &&
+                     ColorAttachment(0).IsDefined();
+    }
+
+    if (mask & LOCAL_GL_DEPTH_BUFFER_BIT) {
+        hasPlanes &= DepthAttachment().IsDefined() ||
+                     DepthStencilAttachment().IsDefined();
+    }
+
+    if (mask & LOCAL_GL_STENCIL_BUFFER_BIT) {
+        hasPlanes &= StencilAttachment().IsDefined() ||
+                     DepthStencilAttachment().IsDefined();
+    }
+
+    return hasPlanes;
+}
 
 bool
 WebGLFramebuffer::CheckAndInitializeAttachments()

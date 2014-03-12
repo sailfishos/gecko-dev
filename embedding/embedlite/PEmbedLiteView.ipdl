@@ -81,6 +81,7 @@ parent:
     async OnScrolledAreaChanged(uint32_t aWidth, uint32_t aHeight);
     async OnScrollChanged(int32_t offSetX, int32_t offSetY);
     async OnTitleChanged(nsString aTitle);
+    async OnWindowCloseRequested();
 
     /**
      * Updates the zoom constraints for a scrollable frame in this tab.
@@ -101,6 +102,9 @@ parent:
       returns (gfxSize aSize);
 
     sync SyncMessage(nsString aMessage, nsString aJSON)
+      returns (nsString[] retval);
+
+    rpc RpcMessage(nsString aMessage, nsString aJSON)
       returns (nsString[] retval);
 
     // IME

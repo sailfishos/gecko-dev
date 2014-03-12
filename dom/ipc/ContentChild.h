@@ -99,6 +99,9 @@ public:
     virtual PDeviceStorageRequestChild* AllocPDeviceStorageRequestChild(const DeviceStorageParams&);
     virtual bool DeallocPDeviceStorageRequestChild(PDeviceStorageRequestChild*);
 
+    virtual PFileSystemRequestChild* AllocPFileSystemRequestChild(const FileSystemParams&);
+    virtual bool DeallocPFileSystemRequestChild(PFileSystemRequestChild*);
+
     virtual PBlobChild* AllocPBlobChild(const BlobConstructorParams& aParams);
     virtual bool DeallocPBlobChild(PBlobChild*);
 
@@ -115,22 +118,21 @@ public:
     virtual bool DeallocPIndexedDBChild(PIndexedDBChild* aActor) MOZ_OVERRIDE;
 
     virtual PMemoryReportRequestChild*
-    AllocPMemoryReportRequestChild(const uint32_t& generation) MOZ_OVERRIDE;
-
+    AllocPMemoryReportRequestChild(const uint32_t& generation,
+                                   const bool &minimizeMemoryUsage,
+                                   const nsString &aDMDDumpIdent) MOZ_OVERRIDE;
     virtual bool
     DeallocPMemoryReportRequestChild(PMemoryReportRequestChild* actor) MOZ_OVERRIDE;
 
     virtual bool
     RecvPMemoryReportRequestConstructor(PMemoryReportRequestChild* child,
-                                        const uint32_t& generation) MOZ_OVERRIDE;
+                                        const uint32_t& generation,
+                                        const bool &minimizeMemoryUsage,
+                                        const nsString &aDMDDumpIdent) MOZ_OVERRIDE;
 
     virtual bool
     RecvAudioChannelNotify() MOZ_OVERRIDE;
 
-    virtual bool
-    RecvDumpMemoryInfoToTempDir(const nsString& aIdentifier,
-                                const bool& aMinimizeMemoryUsage,
-                                const bool& aDumpChildProcesses) MOZ_OVERRIDE;
     virtual bool
     RecvDumpGCAndCCLogsToFile(const nsString& aIdentifier,
                               const bool& aDumpAllTraces,

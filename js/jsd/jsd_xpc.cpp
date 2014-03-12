@@ -20,6 +20,7 @@
 #include "nsICategoryManager.h"
 #include "nsIJSRuntimeService.h"
 #include "nsIThreadInternal.h"
+#include "nsIScriptError.h"
 #include "nsTArray.h"
 #include "nsThreadUtils.h"
 #include "nsMemory.h"
@@ -2451,11 +2452,30 @@ jsdService::AsyncOn (jsdIActivationCallback *activationCallback)
 {
     nsresult  rv;
 
+    // Warn that JSD is deprecated, unless the caller has told us
+    // that they know already.
+    if (mDeprecationAcknowledged) {
+        mDeprecationAcknowledged = false;
+    } else if (!mWarnedAboutDeprecation) {
+        // In any case, warn only once.
+        mWarnedAboutDeprecation = true;
+
+        // Ignore errors: simply being unable to print the message
+        // shouldn't (effectively) disable JSD.
+        nsContentUtils::ReportToConsoleNonLocalized(
+            NS_LITERAL_STRING("\
+The jsdIDebuggerService and its associated interfaces are deprecated. \
+Please use Debugger, via IJSDebugger, instead."),
+            nsIScriptError::warningFlag,
+            NS_LITERAL_CSTRING("JSD"),
+            nullptr);
+    }
+
     nsCOMPtr<nsIXPConnect> xpc = do_GetService(nsIXPConnect::GetCID(), &rv);
     if (NS_FAILED(rv)) return rv;
 
     mActivationCallback = activationCallback;
-    
+
     return xpc->SetDebugModeWhenPossible(true, true);
 }
 
@@ -3026,6 +3046,13 @@ jsdService::ExitNestedEventLoop (uint32_t *_rval)
     *_rval = mNestedLoopLevel;    
     return NS_OK;
 }    
+
+NS_IMETHODIMP
+jsdService::AcknowledgeDeprecation()
+{
+    mDeprecationAcknowledged = true;
+    return NS_OK;
+}
 
 /* hook attribute get/set functions */
 

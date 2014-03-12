@@ -21,6 +21,7 @@ interface nsIEmbedBrowserChromeListener
     void onLoadStarted(in string aLocation);
     void onLoadFinished();
     void onLoadRedirect();
+    void onWindowCloseRequested();
     void onLoadProgress(in int32_t aProgress, in int32_t aCurTotal, in int32_t aMaxTotal);
     void onSecurityChanged(in string aStatus, in uint32_t aState);
     void onFirstPaint(in int32_t aX, in int32_t aY);

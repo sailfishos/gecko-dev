@@ -2531,14 +2531,6 @@ MacroAssemblerARMCompat::branchFloat(DoubleCondition cond, const FloatRegister &
     ma_b(label, ConditionFromDoubleCondition(cond));
 }
 
-// higher level tag testing code
-Operand ToPayload(Operand base) {
-    return Operand(Register::FromCode(base.base()), base.disp());
-}
-Operand ToType(Operand base) {
-    return Operand(Register::FromCode(base.base()), base.disp() + sizeof(void *));
-}
-
 Assembler::Condition
 MacroAssemblerARMCompat::testInt32(Assembler::Condition cond, const ValueOperand &value)
 {
@@ -4212,7 +4204,6 @@ MacroAssemblerARMCompat::jumpWithPatch(RepatchLabel *label, Condition cond)
 {
     ARMBuffer::PoolEntry pe;
     BufferOffset bo = as_BranchPool(0xdeadbeef, label, &pe, cond);
-
     // Fill in a new CodeOffset with both the load and the
     // pool entry that the instruction loads from.
     CodeOffsetJump ret(bo.getOffset(), pe.encode());

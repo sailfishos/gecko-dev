@@ -167,6 +167,19 @@ EmbedLiteViewThreadParent::RecvOnLoadFinished()
 }
 
 bool
+EmbedLiteViewThreadParent::RecvOnWindowCloseRequested()
+{
+  LOGNI();
+  if (mViewAPIDestroyed) {
+    return true;
+  }
+
+  NS_ENSURE_TRUE(mView, false);
+  mView->GetListener()->OnWindowCloseRequested();
+  return true;
+}
+
+bool
 EmbedLiteViewThreadParent::RecvOnLoadRedirect()
 {
   LOGNI();
@@ -439,6 +452,14 @@ EmbedLiteViewThreadParent::RecvSyncMessage(const nsString& aMessage,
     delete retval;
   }
   return true;
+}
+
+bool
+EmbedLiteViewThreadParent::AnswerRpcMessage(const nsString& aMessage,
+                                            const nsString& aJSON,
+                                            InfallibleTArray<nsString>* aJSONRetVal)
+{
+  return RecvSyncMessage(aMessage, aJSON, aJSONRetVal);
 }
 
 static inline gfx::SurfaceFormat
@@ -716,13 +737,13 @@ bool EmbedLiteViewThreadParent::GetPendingTexture(EmbedLiteRenderTarget* aContex
   NS_ENSURE_TRUE(sharedSurf, false);
 
   DataSourceSurface* toUpload = nullptr;
-  GLint textureHandle = 0;
+  GLuint textureHandle = 0;
+  GLuint textureTarget = 0;
   if (sharedSurf->Type() == SharedSurfaceType::EGLImageShare) {
     SharedSurface_EGLImage* eglImageSurf = SharedSurface_EGLImage::Cast(sharedSurf);
-    textureHandle = eglImageSurf->AcquireConsumerTexture(consumerContext);
+    eglImageSurf->AcquireConsumerTexture(consumerContext, &textureHandle, &textureTarget);
     if (!textureHandle) {
       NS_WARNING("Failed to get texture handle, fallback to pixels?");
-      toUpload = eglImageSurf->GetPixels();
     }
   } else if (sharedSurf->Type() == SharedSurfaceType::GLTextureShare) {
     SharedSurface_GLTexture* glTexSurf = SharedSurface_GLTexture::Cast(sharedSurf);

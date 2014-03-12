@@ -49,7 +49,6 @@ SOURCES += [
     'utils/DirProvider.cpp',
     'utils/EmbedLiteXulAppInfo.cpp',
     'utils/EmbedLog.cpp',
-    'utils/EmbedTabChildGlobal.cpp',
     'utils/GeckoLoader.cpp',
     'utils/TabChildHelper.cpp',
     'utils/WebBrowserChrome.cpp',

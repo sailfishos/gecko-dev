@@ -63,6 +63,7 @@ class GLContext;
 
 namespace gfx {
 class DrawTarget;
+class SurfaceStream;
 }
 
 namespace css {
@@ -942,16 +943,20 @@ public:
   }
 
   // Call AddAnimation to add a new animation to this layer from layout code.
-  // Caller must add segments to the returned animation.
-  // aStart represents the time at the *end* of the delay.
-  Animation* AddAnimation(mozilla::TimeStamp aStart, mozilla::TimeDuration aDuration,
-                          float aIterations, int aDirection,
-                          nsCSSProperty aProperty, const AnimationData& aData);
+  // Caller must fill in all the properties of the returned animation.
+  Animation* AddAnimation();
   // ClearAnimations clears animations on this layer.
   void ClearAnimations();
   // This is only called when the layer tree is updated. Do not call this from
   // layout code.  To add an animation to this layer, use AddAnimation.
   void SetAnimations(const AnimationArray& aAnimations);
+
+  // These are a parallel to AddAnimation and clearAnimations, except
+  // they add pending animations that apply only when the next
+  // transaction is begun.  (See also
+  // SetBaseTransformForNextTransaction.)
+  Animation* AddAnimationForNextTransaction();
+  void ClearAnimationsForNextTransaction();
 
   /**
    * CONSTRUCTION PHASE ONLY
@@ -1413,6 +1418,8 @@ protected:
   float mPostYScale;
   gfx::Matrix4x4 mEffectiveTransform;
   AnimationArray mAnimations;
+  // See mPendingTransform above.
+  nsAutoPtr<AnimationArray> mPendingAnimations;
   InfallibleTArray<AnimData> mAnimationData;
   float mOpacity;
   gfx::CompositionOp mMixBlendMode;
@@ -1790,6 +1797,8 @@ public:
     Data()
       : mDrawTarget(nullptr)
       , mGLContext(nullptr)
+      , mStream(nullptr)
+      , mTexID(0)
       , mSize(0,0)
       , mIsGLAlphaPremult(false)
     { }
@@ -1797,6 +1806,12 @@ public:
     // One of these two must be specified for Canvas2D, but never both
     mozilla::gfx::DrawTarget *mDrawTarget; // a DrawTarget for the canvas contents
     mozilla::gl::GLContext* mGLContext; // or this, for GL.
+
+    // Canvas/SkiaGL uses this
+    mozilla::gfx::SurfaceStream* mStream;
+
+    // ID of the texture backing the canvas layer (defaults to 0)
+    uint32_t mTexID;
 
     // The size of the canvas content
     nsIntSize mSize;

@@ -86,6 +86,9 @@ static const char *sExtensionNames[] = {
     "GL_OES_texture_half_float",
     "GL_OES_texture_half_float_linear",
     "GL_NV_half_float",
+    "GL_EXT_color_buffer_float",
+    "GL_EXT_color_buffer_half_float",
+    "GL_ARB_color_buffer_float",
     "GL_EXT_unpack_subimage",
     "GL_OES_standard_derivatives",
     "GL_EXT_texture_filter_anisotropic",
@@ -538,7 +541,8 @@ GLContext::InitWithPrefix(const char *prefix, bool trygl)
                 "Qualcomm",
                 "Imagination",
                 "nouveau",
-                "Vivante"
+                "Vivante",
+                "VMware, Inc."
         };
 
         mVendor = GLVendor::Other;
@@ -563,7 +567,8 @@ GLContext::InitWithPrefix(const char *prefix, bool trygl)
                 "PowerVR SGX 530",
                 "PowerVR SGX 540",
                 "NVIDIA Tegra",
-                "Android Emulator"
+                "Android Emulator",
+                "Gallium 0.4 on llvmpipe"
         };
 
         mRenderer = GLRenderer::Other;
@@ -624,6 +629,12 @@ GLContext::InitWithPrefix(const char *prefix, bool trygl)
             if (Vendor() == GLVendor::Vivante) {
                 // bug 958256
                 MarkUnsupported(GLFeature::standard_derivatives);
+            }
+
+            if (Vendor() == GLVendor::Imagination &&
+                Renderer() == GLRenderer::SGX540) {
+                // Bug 980048
+                MarkExtensionUnsupported(OES_EGL_sync);
             }
 
 #ifdef XP_MACOSX
@@ -1097,7 +1108,7 @@ GLContext::InitWithPrefix(const char *prefix, bool trygl)
                     mMaxTextureSize = std::min(mMaxTextureSize, 4096);
                     mMaxRenderbufferSize = std::min(mMaxRenderbufferSize, 4096);
                 }
-                
+
                 // Part of the bug 879656, but it also doesn't hurt the 877949
                 mNeedsTextureSizeChecks = true;
             }
@@ -1176,6 +1187,19 @@ GLContext::InitExtensions()
         // doesn't expose the OES_rgb8_rgba8 extension, but it seems to
         // support it (tautologically, as it only runs on desktop GL).
         MarkExtensionSupported(OES_rgb8_rgba8);
+    }
+
+    if (WorkAroundDriverBugs() &&
+        Vendor() == GLVendor::VMware &&
+        Renderer() == GLRenderer::GalliumLlvmpipe)
+    {
+        // The llvmpipe driver that is used on linux try servers appears to have
+        // buggy support for s3tc/dxt1 compressed textures.
+        // See Bug 975824.
+        MarkExtensionUnsupported(EXT_texture_compression_s3tc);
+        MarkExtensionUnsupported(EXT_texture_compression_dxt1);
+        MarkExtensionUnsupported(ANGLE_texture_compression_dxt3);
+        MarkExtensionUnsupported(ANGLE_texture_compression_dxt5);
     }
 
 #ifdef DEBUG

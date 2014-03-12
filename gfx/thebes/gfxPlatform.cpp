@@ -76,6 +76,9 @@
 #ifdef USE_SKIA
 #include "mozilla/Hal.h"
 #include "skia/SkGraphics.h"
+
+#include "SkiaGLGlue.h"
+
 #endif
 
 #include "mozilla/Preferences.h"
@@ -104,10 +107,12 @@ static qcms_transform *gCMSRGBATransform = nullptr;
 
 static bool gCMSInitialized = false;
 static eCMSMode gCMSMode = eCMSMode_Off;
-static int gCMSIntent = -2;
+
+static bool gCMSIntentInitialized = false;
+static int gCMSIntent = QCMS_INTENT_DEFAULT;
+
 
 static void ShutdownCMS();
-static void MigratePrefs();
 
 #include "mozilla/gfx/2D.h"
 using namespace mozilla::gfx;
@@ -139,12 +144,7 @@ NS_IMPL_ISUPPORTS2(SRGBOverrideObserver, nsIObserver, nsISupportsWeakReference)
 
 #define BIDI_NUMERAL_PREF "bidi.numeral"
 
-#define GFX_PREF_CMS_RENDERING_INTENT "gfx.color_management.rendering_intent"
-#define GFX_PREF_CMS_DISPLAY_PROFILE "gfx.color_management.display_profile"
-#define GFX_PREF_CMS_ENABLED_OBSOLETE "gfx.color_management.enabled"
 #define GFX_PREF_CMS_FORCE_SRGB "gfx.color_management.force_srgb"
-#define GFX_PREF_CMS_ENABLEV4 "gfx.color_management.enablev4"
-#define GFX_PREF_CMS_MODE "gfx.color_management.mode"
 
 NS_IMETHODIMP
 SRGBOverrideObserver::Observe(nsISupports *aSubject,
@@ -205,6 +205,8 @@ MemoryPressureObserver::Observe(nsISupports *aSubject,
 {
     NS_ASSERTION(strcmp(aTopic, "memory-pressure") == 0, "unexpected event topic");
     Factory::PurgeAllCaches();
+
+    gfxPlatform::GetPlatform()->PurgeSkiaCache();
     return NS_OK;
 }
 
@@ -269,6 +271,8 @@ gfxPlatform::gfxPlatform()
     mLayersUseDeprecated = false;
 #endif
 
+    mSkiaGlue = nullptr;
+
     uint32_t canvasMask = BackendTypeBit(BackendType::CAIRO) | BackendTypeBit(BackendType::SKIA);
     uint32_t contentMask = BackendTypeBit(BackendType::CAIRO);
     InitBackendPrefs(canvasMask, BackendType::CAIRO,
@@ -324,12 +328,8 @@ gfxPlatform::Init()
     }
     gEverInitialized = true;
 
-    /* Pref migration hook. */
-    MigratePrefs();
-
-    // Initialize the preferences by creating the singleton.  This should
-    // be done after the preference migration using MigratePrefs().
-    gfxPrefs::One();
+    // Initialize the preferences by creating the singleton.
+    gfxPrefs::GetSingleton();
 
     gGfxPlatformPrefsLock = new Mutex("gfxPlatform::gGfxPlatformPrefsLock");
 
@@ -429,10 +429,6 @@ gfxPlatform::Init()
 
     CreateCMSOutputProfile();
 
-#ifdef USE_SKIA
-    gPlatform->InitializeSkiaCaches();
-#endif
-
     // Listen to memory pressure event so we can purge DrawTarget caches
     nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
     if (obs) {
@@ -506,7 +502,7 @@ gfxPlatform::Shutdown()
 
     delete gGfxPlatformPrefsLock;
 
-    gfxPrefs::Destroy();
+    gfxPrefs::DestroySingleton();
 
     delete gPlatform;
     gPlatform = nullptr;
@@ -533,14 +529,6 @@ gfxPlatform::~gfxPlatform()
 #if MOZ_TREE_CAIRO
     cairo_debug_reset_static_data();
 #endif
-#endif
-
-#if 0
-    // It would be nice to do this (although it might need to be after
-    // the cairo shutdown that happens in ~gfxPlatform).  It even looks
-    // idempotent.  But it has fatal assertions that fire if stuff is
-    // leaked, and we hit them.
-    FcFini();
 #endif
 }
 
@@ -840,9 +828,8 @@ gfxPlatform::UseAcceleratedSkiaCanvas()
 }
 
 void
-gfxPlatform::InitializeSkiaCaches()
+gfxPlatform::InitializeSkiaCacheLimits()
 {
-#ifdef USE_SKIA_GPU
   if (UseAcceleratedSkiaCanvas()) {
     bool usingDynamicCache = gfxPrefs::CanvasSkiaGLDynamicCache();
     int cacheItemLimit = gfxPrefs::CanvasSkiaGLCacheItems();
@@ -862,12 +849,47 @@ gfxPlatform::InitializeSkiaCaches()
       }
     }
 
-#ifdef DEBUG
+  #ifdef DEBUG
     printf_stderr("Determined SkiaGL cache limits: Size %i, Items: %i\n", cacheSizeLimit, cacheItemLimit);
+  #endif
+
+    mSkiaGlue->GetGrContext()->setTextureCacheLimits(cacheItemLimit, cacheSizeLimit);
+  }
+}
+
+mozilla::gl::SkiaGLGlue*
+gfxPlatform::GetSkiaGLGlue()
+{
+#ifdef USE_SKIA_GPU
+  if (!mSkiaGlue) {
+    /* Dummy context. We always draw into a FBO.
+     *
+     * FIXME: This should be stored in TLS or something, since there needs to be one for each thread using it. As it
+     * stands, this only works on the main thread.
+     */
+    mozilla::gfx::SurfaceCaps caps = mozilla::gfx::SurfaceCaps::ForRGBA();
+    nsRefPtr<mozilla::gl::GLContext> glContext = mozilla::gl::GLContextProvider::CreateOffscreen(gfxIntSize(16, 16), caps);
+    if (!glContext) {
+      printf_stderr("Failed to create GLContext for SkiaGL!\n");
+      return nullptr;
+    }
+    mSkiaGlue = new mozilla::gl::SkiaGLGlue(glContext);
+    MOZ_ASSERT(mSkiaGlue->GetGrContext(), "No GrContext");
+    InitializeSkiaCacheLimits();
+  }
 #endif
 
-    Factory::SetGlobalSkiaCacheLimits(cacheItemLimit, cacheSizeLimit);
-  }
+  return mSkiaGlue;
+}
+
+void
+gfxPlatform::PurgeSkiaCache()
+{
+#ifdef USE_SKIA_GPU
+  if (!mSkiaGlue)
+      return;
+
+  mSkiaGlue->GetGrContext()->freeGpuResources();
 #endif
 }
 
@@ -1513,17 +1535,14 @@ gfxPlatform::GetCMSMode()
 {
     if (gCMSInitialized == false) {
         gCMSInitialized = true;
-        nsresult rv;
 
-        int32_t mode;
-        rv = Preferences::GetInt(GFX_PREF_CMS_MODE, &mode);
-        if (NS_SUCCEEDED(rv) && (mode >= 0) && (mode < eCMSMode_AllCount)) {
+        int32_t mode = gfxPrefs::CMSMode();
+        if (mode >= 0 && mode < eCMSMode_AllCount) {
             gCMSMode = static_cast<eCMSMode>(mode);
         }
 
-        bool enableV4;
-        rv = Preferences::GetBool(GFX_PREF_CMS_ENABLEV4, &enableV4);
-        if (NS_SUCCEEDED(rv) && enableV4) {
+        bool enableV4 = gfxPrefs::CMSEnableV4();
+        if (enableV4) {
             qcms_enable_iccv4();
         }
     }
@@ -1533,23 +1552,22 @@ gfxPlatform::GetCMSMode()
 int
 gfxPlatform::GetRenderingIntent()
 {
-    if (gCMSIntent == -2) {
+    if (!gCMSIntentInitialized) {
+        gCMSIntentInitialized = true;
+
+        // gfxPrefs.h is using 0 as the default for the rendering
+        // intent preference, based on that being the value for
+        // QCMS_INTENT_DEFAULT.  Assert here to catch if that ever
+        // changes and we can then figure out what to do about it.
+        MOZ_ASSERT(QCMS_INTENT_DEFAULT == 0);
 
         /* Try to query the pref system for a rendering intent. */
-        int32_t pIntent;
-        if (NS_SUCCEEDED(Preferences::GetInt(GFX_PREF_CMS_RENDERING_INTENT, &pIntent))) {
-            /* If the pref is within range, use it as an override. */
-            if ((pIntent >= QCMS_INTENT_MIN) && (pIntent <= QCMS_INTENT_MAX)) {
-                gCMSIntent = pIntent;
-            }
+        int32_t pIntent = gfxPrefs::CMSRenderingIntent();
+        if ((pIntent >= QCMS_INTENT_MIN) && (pIntent <= QCMS_INTENT_MAX)) {
+            gCMSIntent = pIntent;
+        } else {
             /* If the pref is out of range, use embedded profile. */
-            else {
-                gCMSIntent = -1;
-            }
-        }
-        /* If we didn't get a valid intent from prefs, use the default. */
-        else {
-            gCMSIntent = QCMS_INTENT_DEFAULT;
+            gCMSIntent = -1;
         }
     }
     return gCMSIntent;
@@ -1755,21 +1773,6 @@ static void ShutdownCMS()
     gCMSIntent = -2;
     gCMSMode = eCMSMode_Off;
     gCMSInitialized = false;
-}
-
-static void MigratePrefs()
-{
-    /* Migrate from the boolean color_management.enabled pref - we now use
-       color_management.mode.  These calls should be made before gfxPrefs
-       is initialized, otherwise we may not pick up the correct values
-       with the gfxPrefs functions.
-    */
-    if (Preferences::HasUserValue(GFX_PREF_CMS_ENABLED_OBSOLETE)) {
-        if (Preferences::GetBool(GFX_PREF_CMS_ENABLED_OBSOLETE, false)) {
-            Preferences::SetInt(GFX_PREF_CMS_MODE, static_cast<int32_t>(eCMSMode_All));
-        }
-        Preferences::ClearUser(GFX_PREF_CMS_ENABLED_OBSOLETE);
-    }
 }
 
 // default SetupClusterBoundaries, based on Unicode properties;

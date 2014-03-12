@@ -35,9 +35,12 @@
 #include "android_ucontext.h"
 #include <android/log.h>
 #endif
-#include "seccomp_filter.h"
 
+#if defined(MOZ_CONTENT_SANDBOX)
+#include "seccomp_filter.h"
 #include "linux_seccomp.h"
+#endif
+
 #ifdef MOZ_LOGGING
 #define FORCE_PR_LOG 1
 #endif
@@ -221,6 +224,15 @@ InstallSyscallReporter(void)
 static int
 InstallSyscallFilter(void)
 {
+#ifdef MOZ_DMD
+  char* e = PR_GetEnv("DMD");
+  if (e && strcmp(e, "") != 0 && strcmp(e, "0") != 0) {
+    LOG_ERROR("SANDBOX DISABLED FOR DMD!  See bug 956961.");
+    // Must treat this as "failure" in order to prevent infinite loop;
+    // cf. the PR_GET_SECCOMP check below.
+    return 1;
+  }
+#endif
   if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)) {
     return 1;
   }

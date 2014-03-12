@@ -346,6 +346,12 @@ private:
     AllocPDeviceStorageRequestParent(const DeviceStorageParams&) MOZ_OVERRIDE;
     virtual bool DeallocPDeviceStorageRequestParent(PDeviceStorageRequestParent*) MOZ_OVERRIDE;
 
+    virtual PFileSystemRequestParent*
+    AllocPFileSystemRequestParent(const FileSystemParams&) MOZ_OVERRIDE;
+
+    virtual bool
+    DeallocPFileSystemRequestParent(PFileSystemRequestParent*) MOZ_OVERRIDE;
+
     virtual PBlobParent* AllocPBlobParent(const BlobConstructorParams& aParams) MOZ_OVERRIDE;
     virtual bool DeallocPBlobParent(PBlobParent*) MOZ_OVERRIDE;
 
@@ -359,7 +365,9 @@ private:
     virtual bool DeallocPIndexedDBParent(PIndexedDBParent* aActor) MOZ_OVERRIDE;
 
     virtual PMemoryReportRequestParent*
-    AllocPMemoryReportRequestParent(const uint32_t& generation) MOZ_OVERRIDE;
+    AllocPMemoryReportRequestParent(const uint32_t& generation,
+                                    const bool &minimizeMemoryUsage,
+                                    const nsString &aDMDDumpIdent) MOZ_OVERRIDE;
     virtual bool DeallocPMemoryReportRequestParent(PMemoryReportRequestParent* actor) MOZ_OVERRIDE;
 
     virtual PTestShellParent* AllocPTestShellParent() MOZ_OVERRIDE;

@@ -364,6 +364,7 @@ BluetoothHfpManager::Reset()
   mDialingRequestProcessed = true;
 
   mConnectionState = BTHF_CONNECTION_STATE_DISCONNECTED;
+  mPrevConnectionState = BTHF_CONNECTION_STATE_DISCONNECTED;
   mAudioState = BTHF_AUDIO_STATE_DISCONNECTED;
 
   // Phone & Device CIND
@@ -519,6 +520,7 @@ BluetoothHfpManager::ProcessConnectionState(bthf_connection_state_t aState,
 {
   BT_LOGR("state %d", aState);
 
+  mPrevConnectionState = mConnectionState;
   mConnectionState = aState;
 
   if (aState == BTHF_CONNECTION_STATE_CONNECTED) {
@@ -753,8 +755,15 @@ BluetoothHfpManager::NotifyConnectionStateChanged(const nsAString& aType)
       OnConnect(EmptyString());
     } else if (mConnectionState == BTHF_CONNECTION_STATE_DISCONNECTED) {
       mDeviceAddress.AssignLiteral(BLUETOOTH_ADDRESS_NONE);
-      OnDisconnect(EmptyString());
-
+      if (mPrevConnectionState == BTHF_CONNECTION_STATE_DISCONNECTED) {
+        // Bug 979160: This implies the outgoing connection failure.
+        // When the outgoing hfp connection fails, state changes to disconnected
+        // state. Since bluedroid would not report connecting state, but only
+        // report connected/disconnected.
+        OnConnect(NS_LITERAL_STRING("SocketConnectionError"));
+      } else {
+        OnDisconnect(EmptyString());
+      }
       Reset();
     }
   }
@@ -1227,16 +1236,25 @@ BluetoothHfpManager::Connect(const nsAString& aDeviceAddress,
   MOZ_ASSERT(aController && !mController);
 
   if (sInShutdown) {
-    aController->OnConnect(NS_LITERAL_STRING(ERR_NO_AVAILABLE_RESOURCE));
+    aController->NotifyCompletion(NS_LITERAL_STRING(ERR_NO_AVAILABLE_RESOURCE));
     return;
   }
 
-  NS_ENSURE_TRUE_VOID(sBluetoothHfpInterface);
+  if (!sBluetoothHfpInterface) {
+    BT_LOGR("sBluetoothHfpInterface is null");
+    aController->NotifyCompletion(NS_LITERAL_STRING(ERR_NO_AVAILABLE_RESOURCE));
+    return;
+  }
 
   bt_bdaddr_t deviceBdAddress;
   StringToBdAddressType(aDeviceAddress, &deviceBdAddress);
-  NS_ENSURE_TRUE_VOID(BT_STATUS_SUCCESS ==
-    sBluetoothHfpInterface->connect(&deviceBdAddress));
+
+  bt_status_t result = sBluetoothHfpInterface->connect(&deviceBdAddress);
+  if (BT_STATUS_SUCCESS != result) {
+    BT_LOGR("Failed to connect: %x", result);
+    aController->NotifyCompletion(NS_LITERAL_STRING(ERR_CONNECTION_FAILED));
+    return;
+  }
 
   mDeviceAddress = aDeviceAddress;
   mController = aController;
@@ -1246,15 +1264,24 @@ void
 BluetoothHfpManager::Disconnect(BluetoothProfileController* aController)
 {
   MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(!mController);
 
-  NS_ENSURE_TRUE_VOID(sBluetoothHfpInterface);
+  if (!sBluetoothHfpInterface) {
+    BT_LOGR("sBluetoothHfpInterface is null");
+    aController->NotifyCompletion(NS_LITERAL_STRING(ERR_NO_AVAILABLE_RESOURCE));
+    return;
+  }
 
   bt_bdaddr_t deviceBdAddress;
   StringToBdAddressType(mDeviceAddress, &deviceBdAddress);
-  NS_ENSURE_TRUE_VOID(BT_STATUS_SUCCESS ==
-    sBluetoothHfpInterface->disconnect(&deviceBdAddress));
 
-  MOZ_ASSERT(!mController);
+  bt_status_t result = sBluetoothHfpInterface->disconnect(&deviceBdAddress);
+  if (BT_STATUS_SUCCESS != result) {
+    BT_LOGR("Failed to disconnect: %x", result);
+    aController->NotifyCompletion(NS_LITERAL_STRING(ERR_DISCONNECTION_FAILED));
+    return;
+  }
+
   mController = aController;
 }
 
@@ -1269,7 +1296,7 @@ BluetoothHfpManager::OnConnect(const nsAString& aErrorStr)
    */
   NS_ENSURE_TRUE_VOID(mController);
 
-  mController->OnConnect(aErrorStr);
+  mController->NotifyCompletion(aErrorStr);
   mController = nullptr;
 }
 
@@ -1284,7 +1311,7 @@ BluetoothHfpManager::OnDisconnect(const nsAString& aErrorStr)
    */
   NS_ENSURE_TRUE_VOID(mController);
 
-  mController->OnDisconnect(aErrorStr);
+  mController->NotifyCompletion(aErrorStr);
   mController = nullptr;
 }
 

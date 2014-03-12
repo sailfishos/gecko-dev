@@ -134,7 +134,6 @@ private:
   bool Init();
   bool InitHfpInterface();
   void DeinitHfpInterface();
-  void Reset();
 
   void HandleShutdown();
   void HandleVolumeChanged(const nsAString& aData);
@@ -156,6 +155,7 @@ private:
   void SendResponse(bthf_at_response_t aResponseCode);
 
   int mConnectionState;
+  int mPrevConnectionState;
   int mAudioState;
   // Phone CIND
   int mCallSetupState;

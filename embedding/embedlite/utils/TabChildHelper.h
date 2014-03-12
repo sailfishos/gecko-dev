@@ -15,6 +15,7 @@
 #include "nsDataHashtable.h"
 #include "nsIDOMEventListener.h"
 #include "nsIDocument.h"
+#include "TabChild.h"
 
 class CancelableTask;
 class nsPresContext;
@@ -23,12 +24,10 @@ class nsIDOMWindowUtils;
 namespace mozilla {
 namespace embedlite {
 
-class EmbedTabChildGlobal;
 class EmbedLiteViewThreadChild;
 class TabChildHelper : public nsIDOMEventListener,
                        public nsIObserver,
-                       public nsFrameScriptExecutor,
-                       public mozilla::dom::ipc::MessageManagerCallback
+                       public mozilla::dom::TabChildBase
 {
 public:
   typedef mozilla::layers::FrameMetrics::ViewID ViewID;
@@ -41,38 +40,35 @@ public:
 
   bool RecvUpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics);
 
-  JSContext* GetJSContext();
+  virtual nsIWebNavigation* WebNavigation() MOZ_OVERRIDE;
+  virtual nsIWidget* WebWidget() MOZ_OVERRIDE;
 
-  nsIWebNavigation* WebNavigation();
-
-  nsIPrincipal* GetPrincipal() { return mPrincipal; }
-
-  virtual bool DoLoadFrameScript(const nsAString& aURL, bool aRunInGlobalScope);
-  virtual bool DoSendSyncMessage(JSContext* aCx,
-                                 const nsAString& aMessage,
-                                 const mozilla::dom::StructuredCloneData& aData,
-                                 JS::Handle<JSObject *> aCpows,
-                                 InfallibleTArray<nsString>* aJSONRetVal);
+  virtual bool DoLoadFrameScript(const nsAString& aURL, bool aRunInGlobalScope) MOZ_OVERRIDE;
+  virtual bool DoSendBlockingMessage(JSContext* aCx,
+                                     const nsAString& aMessage,
+                                     const mozilla::dom::StructuredCloneData& aData,
+                                     JS::Handle<JSObject *> aCpows,
+                                     nsIPrincipal* aPrincipal,
+                                     InfallibleTArray<nsString>* aJSONRetVal,
+                                     bool aIsSync) MOZ_OVERRIDE;
   virtual bool DoSendAsyncMessage(JSContext* aCx,
                                   const nsAString& aMessage,
                                   const mozilla::dom::StructuredCloneData& aData,
                                   JS::Handle<JSObject *> aCpows,
                                   nsIPrincipal* aPrincipal) MOZ_OVERRIDE;
-  virtual bool CheckPermission(const nsAString& aPermission);
-
-  bool RecvAsyncMessage(const nsAString& aMessage,
-                        const nsAString& aData);
+  virtual bool CheckPermission(const nsAString& aPermission) MOZ_OVERRIDE;
+  virtual bool DoUpdateZoomConstraints(const uint32_t& aPresShellId,
+                                       const mozilla::layers::FrameMetrics::ViewID& aViewId,
+                                       const bool& aIsRoot,
+                                       const mozilla::layers::ZoomConstraints& aConstraints) MOZ_OVERRIDE;
 
 protected:
   nsIWidget* GetWidget(nsPoint* aOffset);
   nsPresContext* GetPresContext();
   void InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint = nullptr);
-  nsEventStatus DispatchWidgetEvent(WidgetGUIEvent& event);
   // Sends a simulated mouse event from a touch event for compatibility.
   bool ConvertMutiTouchInputToEvent(const mozilla::MultiTouchInput& aData,
                                     WidgetTouchEvent& aEvent);
-  void DispatchSynthesizedMouseEvent(uint32_t aMsg, uint64_t aTime,
-                                     const nsIntPoint& aRefPoint);
   nsEventStatus DispatchSynthesizedMouseEvent(const WidgetTouchEvent& aEvent);
 
   void CancelTapTracking();
@@ -81,34 +77,10 @@ private:
   bool InitTabChildGlobal();
   void Disconnect();
   void Unload();
-  bool ProcessUpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics);
-  bool ProcessUpdateSubframe(nsIContent* aContent, const mozilla::layers::FrameMetrics& aMetrics);
-
-  // Get the DOMWindowUtils for the top-level window in this tab.
-  already_AddRefed<nsIDOMWindowUtils> GetDOMWindowUtils();
-  // Get the Document for the top-level window in this tab.
-  already_AddRefed<nsIDocument> GetDocument();
-
-  // Wrapper for nsIDOMWindowUtils.setCSSViewport(). This updates some state
-  // variables local to this class before setting it.
-  void SetCSSViewport(const CSSSize& aSize);
-
-  // Recalculates the display state, including the CSS
-  // viewport. This should be called whenever we believe the
-  // viewport data on a document may have changed. If it didn't
-  // change, this function doesn't do anything.  However, it should
-  // not be called all the time as it is fairly expensive.
-  bool HandlePossibleViewportChange();
 
   friend class EmbedLiteViewThreadChild;
   EmbedLiteViewThreadChild* mView;
-  bool mContentDocumentIsDisplayed;
-  ScreenIntSize mInnerSize;
-  float mOldViewportWidth;
-  nsRefPtr<EmbedTabChildGlobal> mTabChildGlobal;
-  mozilla::layers::FrameMetrics mLastRootMetrics;
   mozilla::layers::FrameMetrics mLastSubFrameMetrics;
-  mozilla::layers::FrameMetrics mFrameMetrics;
 };
 
 }

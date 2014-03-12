@@ -141,7 +141,7 @@ struct ElementAnimations MOZ_FINAL
   // This function returns -1 for the position if the animation should not be
   // run (because it is not currently active and has no fill behavior), but
   // only does so if aAnimation is non-null; with a null aAnimation it is an
-  // error to give aCurrentTime < aStartTime, and fill-forwards is assumed.
+  // error to give aElapsedDuration < 0, and fill-forwards is assumed.
   // After calling GetPositionInIteration with non-null aAnimation and aEa, be
   // sure to call CheckNeedsRefresh on the animation manager afterwards.
   static double GetPositionInIteration(TimeDuration aElapsedDuration,
@@ -174,8 +174,21 @@ struct ElementAnimations MOZ_FINAL
     aPresContext->PresShell()->RestyleForAnimation(mElement, styleHint);
   }
 
-  // True if this animation can be performed on the compositor thread.
+  // If aFlags contains CanAnimate_AllowPartial, returns whether the
+  // state of this element's animations at the current refresh driver
+  // time contains animation data that can be done on the compositor
+  // thread.  (This is useful for determining whether a layer should be
+  // active, or whether to send data to the layer.)
+  // If aFlags does not contain CanAnimate_AllowPartial, returns whether
+  // the state of this element's animations at the current refresh driver
+  // time can be fully represented by data sent to the compositor.
+  // (This is useful for determining whether throttle the animation
+  // (suppress main-thread style updates).)
+  // Note that when CanPerformOnCompositorThread returns true, it also,
+  // as a side-effect, notifies the ActiveLayerTracker.  FIXME:  This
+  // should probably move to the relevant callers.
   virtual bool CanPerformOnCompositorThread(CanAnimateFlags aFlags) const MOZ_OVERRIDE;
+
   virtual bool HasAnimationOfProperty(nsCSSProperty aProperty) const MOZ_OVERRIDE;
 
   // False when we know that our current style rule is valid

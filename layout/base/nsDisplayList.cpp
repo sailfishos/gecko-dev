@@ -61,6 +61,12 @@ using namespace mozilla::layers;
 using namespace mozilla::dom;
 typedef FrameMetrics::ViewID ViewID;
 
+static inline nsIFrame*
+GetTransformRootFrame(nsIFrame* aFrame)
+{
+  return nsLayoutUtils::GetTransformRootFrame(aFrame);
+}
+
 static void AddTransformFunctions(nsCSSValueList* aList,
                                   nsStyleContext* aContext,
                                   nsPresContext* aPresContext,
@@ -308,7 +314,7 @@ ToTimingFunction(css::ComputedTimingFunction& aCTF)
 static void
 AddAnimationsForProperty(nsIFrame* aFrame, nsCSSProperty aProperty,
                          ElementAnimation* ea, Layer* aLayer,
-                         AnimationData& aData)
+                         AnimationData& aData, bool aPending)
 {
   NS_ASSERTION(aLayer->AsContainerLayer(), "Should only animate ContainerLayer");
   nsStyleContext* styleContext = aFrame->StyleContext();
@@ -317,15 +323,16 @@ AddAnimationsForProperty(nsIFrame* aFrame, nsCSSProperty aProperty,
   // all data passed directly to the compositor should be in css pixels
   float scale = nsDeviceContext::AppUnitsPerCSSPixel();
 
-  TimeStamp startTime = ea->mStartTime + ea->mDelay;
-  TimeDuration duration = ea->mIterationDuration;
-  float iterations = ea->mIterationCount != NS_IEEEPositiveInfinity()
-                     ? ea->mIterationCount : -1;
-  int direction = ea->mDirection;
+  Animation* animation = aPending ? aLayer->AddAnimationForNextTransaction()
+                                  : aLayer->AddAnimation();
 
-  Animation* animation = aLayer->AddAnimation(startTime, duration,
-                                              iterations, direction,
-                                              aProperty, aData);
+  animation->startTime() = ea->mStartTime + ea->mDelay;
+  animation->duration() = ea->mIterationDuration;
+  animation->numIterations() =
+    ea->mIterationCount != NS_IEEEPositiveInfinity() ? ea->mIterationCount : -1;
+  animation->direction() = ea->mDirection;
+  animation->property() = aProperty;
+  animation->data() = aData;
 
   for (uint32_t propIdx = 0; propIdx < ea->mProperties.Length(); propIdx++) {
     AnimationProperty* property = &ea->mProperties[propIdx];
@@ -361,15 +368,31 @@ AddAnimationsForProperty(nsIFrame* aFrame, nsCSSProperty aProperty,
   }
 }
 
-static void
-AddAnimationsAndTransitionsToLayer(Layer* aLayer, nsDisplayListBuilder* aBuilder,
-                                   nsDisplayItem* aItem, nsCSSProperty aProperty)
+/* static */ void
+nsDisplayListBuilder::AddAnimationsAndTransitionsToLayer(Layer* aLayer,
+                                                         nsDisplayListBuilder* aBuilder,
+                                                         nsDisplayItem* aItem,
+                                                         nsIFrame* aFrame,
+                                                         nsCSSProperty aProperty)
 {
-  aLayer->ClearAnimations();
+  // This function can be called in two ways:  from
+  // nsDisplay*::BuildLayer while constructing a layer (with all
+  // pointers non-null), or from RestyleManager's handling of
+  // UpdateOpacityLayer/UpdateTransformLayer hints.
+  MOZ_ASSERT(!aBuilder == !aItem,
+             "should only be called in two configurations, with both "
+             "aBuilder and aItem, or with neither");
+  MOZ_ASSERT(!aItem || aFrame == aItem->Frame(), "frame mismatch");
 
-  nsIFrame* frame = aItem->Frame();
+  bool pending = !aBuilder;
 
-  nsIContent* content = frame->GetContent();
+  if (pending) {
+    aLayer->ClearAnimationsForNextTransaction();
+  } else {
+    aLayer->ClearAnimations();
+  }
+
+  nsIContent* content = aFrame->GetContent();
   if (!content) {
     return;
   }
@@ -384,43 +407,54 @@ AddAnimationsAndTransitionsToLayer(Layer* aLayer, nsDisplayListBuilder* aBuilder
   }
 
   // If the frame is not prerendered, bail out.
-  if (!aItem->CanUseAsyncAnimations(aBuilder)) {
+  // Do this check only during layer construction; during updating the
+  // caller is required to check it appropriately.
+  if (aItem && !aItem->CanUseAsyncAnimations(aBuilder)) {
     // AnimationManager or TransitionManager need to know that we refused to
     // run this animation asynchronously so that they will not throttle the
     // main thread animation.
-    frame->Properties().Set(nsIFrame::RefusedAsyncAnimation(),
+    aFrame->Properties().Set(nsIFrame::RefusedAsyncAnimation(),
                             reinterpret_cast<void*>(intptr_t(true)));
 
     // We need to schedule another refresh driver run so that AnimationManager
     // or TransitionManager get a chance to unthrottle the animation.
-    frame->SchedulePaint();
+    aFrame->SchedulePaint();
     return;
   }
 
   mozilla::TimeStamp currentTime =
-    frame->PresContext()->RefreshDriver()->MostRecentRefresh();
+    aFrame->PresContext()->RefreshDriver()->MostRecentRefresh();
   AnimationData data;
   if (aProperty == eCSSProperty_transform) {
-    nsRect bounds = nsDisplayTransform::GetFrameBoundsForTransform(frame);
+    nsRect bounds = nsDisplayTransform::GetFrameBoundsForTransform(aFrame);
     // all data passed directly to the compositor should be in css pixels
     float scale = nsDeviceContext::AppUnitsPerCSSPixel();
     gfxPoint3D offsetToTransformOrigin =
-      nsDisplayTransform::GetDeltaToTransformOrigin(frame, scale, &bounds);
+      nsDisplayTransform::GetDeltaToTransformOrigin(aFrame, scale, &bounds);
     gfxPoint3D offsetToPerspectiveOrigin =
-      nsDisplayTransform::GetDeltaToPerspectiveOrigin(frame, scale);
+      nsDisplayTransform::GetDeltaToPerspectiveOrigin(aFrame, scale);
     nscoord perspective = 0.0;
-    nsStyleContext* parentStyleContext = frame->StyleContext()->GetParent();
+    nsStyleContext* parentStyleContext = aFrame->StyleContext()->GetParent();
     if (parentStyleContext) {
       const nsStyleDisplay* disp = parentStyleContext->StyleDisplay();
       if (disp && disp->mChildPerspective.GetUnit() == eStyleUnit_Coord) {
         perspective = disp->mChildPerspective.GetCoordValue();
       }
     }
-    nsPoint origin = aItem->ToReferenceFrame();
+    nsPoint origin;
+    if (aItem) {
+      origin = aItem->ToReferenceFrame();
+    } else {
+      // transform display items used a reference frame computed from
+      // their GetTransformRootFrame().
+      nsIFrame* referenceFrame =
+        nsLayoutUtils::GetReferenceFrame(GetTransformRootFrame(aFrame));
+      origin = aFrame->GetOffsetToCrossDoc(referenceFrame);
+    }
 
     data = TransformData(origin, offsetToTransformOrigin,
                          offsetToPerspectiveOrigin, bounds, perspective,
-                         frame->PresContext()->AppUnitsPerDevPixel());
+                         aFrame->PresContext()->AppUnitsPerDevPixel());
   } else if (aProperty == eCSSProperty_opacity) {
     data = null_t();
   }
@@ -452,8 +486,8 @@ AddAnimationsAndTransitionsToLayer(Layer* aLayer, nsDisplayListBuilder* aBuilder
       segment.mToValue = pt->mEndValue;
       segment.mTimingFunction = pt->mTimingFunction;
 
-      AddAnimationsForProperty(frame, aProperty, &anim,
-                               aLayer, data);
+      AddAnimationsForProperty(aFrame, aProperty, &anim,
+                               aLayer, data, pending);
 
       pt->mIsRunningOnCompositor = true;
     }
@@ -467,8 +501,8 @@ AddAnimationsAndTransitionsToLayer(Layer* aLayer, nsDisplayListBuilder* aBuilder
             anim->IsRunningAt(currentTime))) {
         continue;
       }
-      AddAnimationsForProperty(frame, aProperty, anim,
-                               aLayer, data);
+      AddAnimationsForProperty(aFrame, aProperty, anim,
+                               aLayer, data, pending);
     }
     aLayer->SetAnimationGeneration(ea->mAnimationGeneration);
   }
@@ -540,10 +574,18 @@ void nsDisplayListBuilder::MarkOutOfFlowFrameForDisplay(nsIFrame* aDirtyFrame,
                                                         const nsRect& aDirtyRect)
 {
   nsRect dirtyRectRelativeToDirtyFrame = aDirtyRect;
-  nsRect displayPort;
-  if (nsLayoutUtils::IsFixedPosFrameInDisplayPort(aFrame, &displayPort)) {
+  if (nsLayoutUtils::IsFixedPosFrameInDisplayPort(aFrame)) {
     NS_ASSERTION(aDirtyFrame == aFrame->GetParent(), "Dirty frame should be viewport frame");
-    dirtyRectRelativeToDirtyFrame = displayPort;
+    // position: fixed items are reflowed into and only drawn inside the
+    // viewport, or the scroll position clamping scrollport size, if one is
+    // set.
+    nsIPresShell* ps = aFrame->PresContext()->PresShell();
+    dirtyRectRelativeToDirtyFrame.MoveTo(0, 0);
+    if (ps->IsScrollPositionClampingScrollPortSizeSet()) {
+      dirtyRectRelativeToDirtyFrame.SizeTo(ps->GetScrollPositionClampingScrollPortSize());
+    } else {
+      dirtyRectRelativeToDirtyFrame.SizeTo(aDirtyFrame->GetSize());
+    }
   }
 
   nsRect dirty = dirtyRectRelativeToDirtyFrame - aFrame->GetOffsetTo(aDirtyFrame);
@@ -592,6 +634,17 @@ static void AdjustForScrollBars(ScreenIntRect& aToAdjust, nsIScrollableFrame* aS
   }
 }
 
+static bool gPrintApzcTree = false;
+
+static bool GetApzcTreePrintPref() {
+  static bool initialized = false;
+  if (!initialized) {
+    Preferences::AddBoolVarCache(&gPrintApzcTree, "apz.printtree", gPrintApzcTree);
+    initialized = true;
+  }
+  return gPrintApzcTree;
+}
+
 static void RecordFrameMetrics(nsIFrame* aForFrame,
                                nsIFrame* aScrollFrame,
                                const nsIFrame* aReferenceFrame,
@@ -626,16 +679,18 @@ static void RecordFrameMetrics(nsIFrame* aForFrame,
 
   if (scrollableFrame) {
     nsRect contentBounds = scrollableFrame->GetScrollRange();
+    nsPoint scrollPosition = scrollableFrame->GetScrollPosition();
     if (scrollableFrame->GetScrollbarStyles().mVertical == NS_STYLE_OVERFLOW_HIDDEN) {
-      metrics.SetDisableScrollingY(true);
+      contentBounds.y = scrollPosition.y;
+      contentBounds.height = 0;
     }
     if (scrollableFrame->GetScrollbarStyles().mHorizontal == NS_STYLE_OVERFLOW_HIDDEN) {
-      metrics.SetDisableScrollingX(true);
+      contentBounds.x = scrollPosition.x;
+      contentBounds.width = 0;
     }
     contentBounds.width += scrollableFrame->GetScrollPortRect().width;
     contentBounds.height += scrollableFrame->GetScrollPortRect().height;
     metrics.mScrollableRect = CSSRect::FromAppUnits(contentBounds);
-    nsPoint scrollPosition = scrollableFrame->GetScrollPosition();
     metrics.mScrollOffset = CSSPoint::FromAppUnits(scrollPosition);
 
     // If the frame was scrolled since the last layers update, and by
@@ -731,6 +786,14 @@ static void RecordFrameMetrics(nsIFrame* aForFrame,
   // this adjustment was already made to the widget bounds.
   if (!useWidgetBounds) {
     AdjustForScrollBars(metrics.mCompositionBounds, scrollableFrame);
+  }
+
+  if (GetApzcTreePrintPref()) {
+    if (nsIContent* content = frameForCompositionBoundsCalculation->GetContent()) {
+      nsAutoString contentDescription;
+      content->Describe(contentDescription);
+      metrics.SetContentDescription(NS_LossyConvertUTF16toASCII(contentDescription).get());
+    }
   }
 
   metrics.mPresShellId = presShell->GetPresShellId();
@@ -1104,7 +1167,7 @@ nsDisplayList::ComputeVisibilityForSublist(nsDisplayListBuilder* aBuilder,
 
   mIsOpaque = !aVisibleRegion->Intersects(mVisibleRect);
   mForceTransparentSurface = forceTransparentSurface;
-#ifdef DEBUG
+#if defined(DEBUG) || defined(MOZ_DUMP_PAINTING)
   mDidComputeVisibility = true;
 #endif
   return anyVisible;
@@ -1244,17 +1307,12 @@ void nsDisplayList::PaintForFrame(nsDisplayListBuilder* aBuilder,
 
   nsRect viewport(aBuilder->ToReferenceFrame(aForFrame), aForFrame->GetSize());
 
-  // If we are ignoring the root scroll frame we make the RecordFrameMetrics
-  // call for it. Otherwise nsGfxScrollFrame will create scroll layer(s) that
-  // will do that.
-  if (aBuilder->GetIgnoreScrollFrame() == rootScrollFrame) {
-    RecordFrameMetrics(aForFrame, rootScrollFrame,
-                       aBuilder->FindReferenceFrameFor(aForFrame),
-                       root, mVisibleRect, viewport,
-                       (usingDisplayport ? &displayport : nullptr),
-                       (usingCriticalDisplayport ? &criticalDisplayport : nullptr),
-                       id, isRoot, containerParameters);
-  }
+  RecordFrameMetrics(aForFrame, rootScrollFrame,
+                     aBuilder->FindReferenceFrameFor(aForFrame),
+                     root, mVisibleRect, viewport,
+                     (usingDisplayport ? &displayport : nullptr),
+                     (usingCriticalDisplayport ? &criticalDisplayport : nullptr),
+                     id, isRoot, containerParameters);
   if (usingDisplayport &&
       !(root->GetContentFlags() & Layer::CONTENT_OPAQUE)) {
     // See bug 693938, attachment 567017
@@ -2676,13 +2734,18 @@ nsRect
 nsDisplayBorder::GetBounds(nsDisplayListBuilder* aBuilder, bool* aSnap)
 {
   *aSnap = true;
-  const nsStyleBorder *styleBorder = mFrame->StyleBorder();
+  return CalculateBounds(*mFrame->StyleBorder());
+}
+
+nsRect
+nsDisplayBorder::CalculateBounds(const nsStyleBorder& aStyleBorder)
+{
   nsRect borderBounds(ToReferenceFrame(), mFrame->GetSize());
-  if (styleBorder->IsBorderImageLoaded()) {
-    borderBounds.Inflate(mFrame->StyleBorder()->GetImageOutset());
+  if (aStyleBorder.IsBorderImageLoaded()) {
+    borderBounds.Inflate(aStyleBorder.GetImageOutset());
     return borderBounds;
   } else {
-    nsMargin border = styleBorder->GetComputedBorder();
+    nsMargin border = aStyleBorder.GetComputedBorder();
     nsRect result;
     if (border.top > 0) {
       result = nsRect(borderBounds.X(), borderBounds.Y(), borderBounds.Width(), border.top);
@@ -2849,15 +2912,6 @@ nsDisplayBoxShadowInner::ComputeVisibility(nsDisplayListBuilder* aBuilder,
   // Store the actual visible region
   mVisibleRegion.And(*aVisibleRegion, mVisibleRect);
   return true;
-}
-
-nsIFrame *GetTransformRootFrame(nsIFrame* aFrame)
-{
-  nsIFrame *parent = nsLayoutUtils::GetCrossDocParentFrame(aFrame);
-  while (parent && parent->Preserves3DChildren()) {
-    parent = nsLayoutUtils::GetCrossDocParentFrame(parent);
-  }
-  return parent;
 }
 
 nsDisplayWrapList::nsDisplayWrapList(nsDisplayListBuilder* aBuilder,
@@ -3171,8 +3225,9 @@ nsDisplayOpacity::BuildLayer(nsDisplayListBuilder* aBuilder,
     return nullptr;
 
   container->SetOpacity(mFrame->StyleDisplay()->mOpacity);
-  AddAnimationsAndTransitionsToLayer(container, aBuilder,
-                                     this, eCSSProperty_opacity);
+  nsDisplayListBuilder::AddAnimationsAndTransitionsToLayer(container, aBuilder,
+                                                           this, mFrame,
+                                                           eCSSProperty_opacity);
   return container.forget();
 }
 
@@ -3482,7 +3537,7 @@ nsDisplaySubDocument::BuildLayer(nsDisplayListBuilder* aBuilder,
                       mFrame->GetOffsetToCrossDoc(ReferenceFrame());
 
     RecordFrameMetrics(mFrame, rootScrollFrame, ReferenceFrame(),
-                       container, mVisibleRect, viewport,
+                       container, mList.GetVisibleRect(), viewport,
                        (usingDisplayport ? &displayport : nullptr),
                        (usingCriticalDisplayport ? &criticalDisplayport : nullptr),
                        scrollId, isRootContentDocument, aContainerParameters);
@@ -4024,7 +4079,7 @@ nsDisplayZoom::~nsDisplayZoom() {
 
 nsRect nsDisplayZoom::GetBounds(nsDisplayListBuilder* aBuilder, bool* aSnap)
 {
-  nsRect bounds = nsDisplayWrapList::GetBounds(aBuilder, aSnap);
+  nsRect bounds = nsDisplaySubDocument::GetBounds(aBuilder, aSnap);
   *aSnap = false;
   return bounds.ConvertAppUnitsRoundOut(mAPD, mParentAPD);
 }
@@ -4067,10 +4122,22 @@ bool nsDisplayZoom::ComputeVisibility(nsDisplayListBuilder *aBuilder,
     mVisibleRect.ConvertAppUnitsRoundOut(mParentAPD, mAPD);
   nsRect allowExpansion =
     aAllowVisibleRegionExpansion.ConvertAppUnitsRoundIn(mParentAPD, mAPD);
-  bool retval =
-    mList.ComputeVisibilityForSublist(aBuilder, &visibleRegion,
-                                      transformedVisibleRect,
-                                      allowExpansion);
+  bool retval;
+  // If we are to generate a scrollable layer we call
+  // nsDisplaySubDocument::ComputeVisibility to make the necessary adjustments
+  // for ComputeVisibility, it does all it's calculations in the child APD.
+  bool usingDisplayPort =
+    nsLayoutUtils::ViewportHasDisplayPort(mFrame->PresContext());
+  if (!(mFlags & GENERATE_SCROLLABLE_LAYER) || !usingDisplayPort) {
+    retval =
+      mList.ComputeVisibilityForSublist(aBuilder, &visibleRegion,
+                                        transformedVisibleRect,
+                                        allowExpansion);
+  } else {
+    retval =
+      nsDisplaySubDocument::ComputeVisibility(aBuilder, &visibleRegion,
+                                              allowExpansion);
+  }
 
   nsRegion removed;
   // removed = originalVisibleRegion - visibleRegion
@@ -4638,8 +4705,9 @@ already_AddRefed<Layer> nsDisplayTransform::BuildLayer(nsDisplayListBuilder *aBu
     container->SetContentFlags(container->GetContentFlags() & ~Layer::CONTENT_PRESERVE_3D);
   }
 
-  AddAnimationsAndTransitionsToLayer(container, aBuilder,
-                                     this, eCSSProperty_transform);
+  nsDisplayListBuilder::AddAnimationsAndTransitionsToLayer(container, aBuilder,
+                                                           this, mFrame,
+                                                           eCSSProperty_transform);
   if (ShouldPrerenderTransformedContent(aBuilder, mFrame, false)) {
     container->SetUserData(nsIFrame::LayerIsPrerenderedDataKey(),
                            /*the value is irrelevant*/nullptr);

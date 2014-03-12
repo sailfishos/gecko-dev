@@ -19,8 +19,11 @@
 #include "VectorImage.h"
 #include "Image.h"
 #include "nsMediaFragmentURIParser.h"
+#include "nsContentUtils.h"
+#include "nsIScriptSecurityManager.h"
 
 #include "ImageFactory.h"
+#include "gfxPrefs.h"
 
 namespace mozilla {
 namespace image {
@@ -29,14 +32,18 @@ namespace image {
 static bool gInitializedPrefCaches = false;
 static bool gDecodeOnDraw = false;
 static bool gDiscardable = false;
+static bool gEnableMozSampleSize = false;
 
 /*static*/ void
 ImageFactory::Initialize()
 {
   MOZ_ASSERT(NS_IsMainThread());
   if (!gInitializedPrefCaches) {
+    // Initialize the graphics preferences
+    gfxPrefs::GetSingleton();
     Preferences::AddBoolVarCache(&gDiscardable, "image.mem.discardable");
     Preferences::AddBoolVarCache(&gDecodeOnDraw, "image.mem.decodeondraw");
+    Preferences::AddBoolVarCache(&gEnableMozSampleSize, "image.mozsamplesize.enabled");
     gInitializedPrefCaches = true;
   }
 }
@@ -210,6 +217,22 @@ ImageFactory::CreateRasterImage(nsIRequest* aRequest,
   mozilla::net::nsMediaFragmentURIParser parser(ref);
   if (parser.HasResolution()) {
     newImage->SetRequestedResolution(parser.GetResolution());
+  }
+
+  if (parser.HasSampleSize()) {
+      /* Get our principal */
+      nsCOMPtr<nsIChannel> chan(do_QueryInterface(aRequest));
+      nsCOMPtr<nsIPrincipal> principal;
+      if (chan) {
+        nsContentUtils::GetSecurityManager()->GetChannelPrincipal(chan,
+                                                                  getter_AddRefs(principal));
+      }
+
+      if ((principal &&
+           principal->GetAppStatus() == nsIPrincipal::APP_STATUS_CERTIFIED) ||
+          gEnableMozSampleSize) {
+        newImage->SetRequestedSampleSize(parser.GetSampleSize());
+      }
   }
 
   return newImage.forget();

@@ -56,6 +56,7 @@ function CustomizeMode(aWindow) {
   this.visiblePalette = this.document.getElementById(kPaletteId);
   this.paletteEmptyNotice = this.document.getElementById("customization-empty");
   this.paletteSpacer = this.document.getElementById("customization-spacer");
+  this.tipPanel = this.document.getElementById("customization-tipPanel");
 #ifdef CAN_DRAW_IN_TITLEBAR
   this._updateTitlebarButton();
   Services.prefs.addObserver(kDrawInTitlebarPref, this, false);
@@ -127,7 +128,9 @@ CustomizeMode.prototype = {
     // We don't need to switch to kAboutURI, or open a new tab at
     // kAboutURI if we're already on it.
     if (this.browser.selectedBrowser.currentURI.spec != kAboutURI) {
-      this.window.switchToTabHavingURI(kAboutURI, true);
+      this.window.switchToTabHavingURI(kAboutURI, true, {
+        skipTabAnimation: true,
+      });
       return;
     }
 
@@ -193,6 +196,7 @@ CustomizeMode.prototype = {
 
       // Hide the palette before starting the transition for increased perf.
       this.visiblePalette.hidden = true;
+      this.visiblePalette.removeAttribute("showing");
 
       // Disable the button-text fade-out mask
       // during the transition for increased perf.
@@ -210,6 +214,8 @@ CustomizeMode.prototype = {
       customizeButton.setAttribute("label", customizeButton.getAttribute("exitLabel"));
       customizeButton.setAttribute("enterTooltiptext", customizeButton.getAttribute("tooltiptext"));
       customizeButton.setAttribute("tooltiptext", customizeButton.getAttribute("exitTooltiptext"));
+      document.getElementById("PanelUI-help").setAttribute("disabled", true);
+      document.getElementById("PanelUI-quit").setAttribute("disabled", true);
 
       this._transitioning = true;
 
@@ -240,9 +246,6 @@ CustomizeMode.prototype = {
 
       window.gNavToolbox.addEventListener("toolbarvisibilitychange", this);
 
-      document.getElementById("PanelUI-help").setAttribute("disabled", true);
-      document.getElementById("PanelUI-quit").setAttribute("disabled", true);
-
       this._updateResetButton();
       this._updateUndoResetButton();
 
@@ -260,13 +263,31 @@ CustomizeMode.prototype = {
 
       // Show the palette now that the transition has finished.
       this.visiblePalette.hidden = false;
+      window.setTimeout(() => {
+        // Force layout reflow to ensure the animation runs,
+        // and make it async so it doesn't affect the timing.
+        this.visiblePalette.clientTop;
+        this.visiblePalette.setAttribute("showing", "true");
+      }, 0);
       this.paletteSpacer.hidden = true;
       this._updateEmptyPaletteNotice();
+
+      this.maybeShowTip(panelHolder);
 
       this._handler.isEnteringCustomizeMode = false;
       panelContents.removeAttribute("customize-transitioning");
 
       CustomizableUI.dispatchToolboxEvent("customizationready", {}, window);
+      this._enableOutlinesTimeout = window.setTimeout(() => {
+        this.document.getElementById("nav-bar").setAttribute("showoutline", "true");
+        this.panelUIContents.setAttribute("showoutline", "true");
+        delete this._enableOutlinesTimeout;
+      }, 0);
+
+      // It's possible that we didn't enter customize mode via the menu panel,
+      // meaning we didn't kick off about:customizing preloading. If that's
+      // the case, let's kick it off for the next time we load this mode.
+      window.gCustomizationTabPreloader.ensurePreloading();
       if (!this._wantToBeInCustomizeMode) {
         this.exit();
       }
@@ -298,7 +319,18 @@ CustomizeMode.prototype = {
       return;
     }
 
+    this.hideTip();
+
     this._handler.isExitingCustomizeMode = true;
+
+    if (this._enableOutlinesTimeout) {
+      this.window.clearTimeout(this._enableOutlinesTimeout);
+    } else {
+      this.document.getElementById("nav-bar").removeAttribute("showoutline");
+      this.panelUIContents.removeAttribute("showoutline");
+    }
+
+    this._removeExtraToolbarsIfEmpty();
 
     CustomizableUI.removeListener(this);
 
@@ -317,6 +349,7 @@ CustomizeMode.prototype = {
     // Hide the palette before starting the transition for increased perf.
     this.paletteSpacer.hidden = false;
     this.visiblePalette.hidden = true;
+    this.visiblePalette.removeAttribute("showing");
     this.paletteEmptyNotice.hidden = true;
 
     // Disable the button-text fade-out mask
@@ -336,10 +369,34 @@ CustomizeMode.prototype = {
 
       yield this._doTransition(false);
 
+      let browser = document.getElementById("browser");
+      if (this.browser.selectedBrowser.currentURI.spec == kAboutURI) {
+        let custBrowser = this.browser.selectedBrowser;
+        if (custBrowser.canGoBack) {
+          // If there's history to this tab, just go back.
+          // Note that this throws an exception if the previous document has a
+          // problematic URL (e.g. about:idontexist)
+          try {
+            custBrowser.goBack();
+          } catch (ex) {
+            ERROR(ex);
+          }
+        } else {
+          // If we can't go back, we're removing the about:customization tab.
+          // We only do this if we're the top window for this window (so not
+          // a dialog window, for example).
+          if (window.getTopWin(true) == window) {
+            let customizationTab = this.browser.selectedTab;
+            if (this.browser.browsers.length == 1) {
+              window.BrowserOpenTab();
+            }
+            this.browser.removeTab(customizationTab);
+          }
+        }
+      }
+      browser.parentNode.selectedPanel = browser;
       let customizer = document.getElementById("customization-container");
       customizer.hidden = true;
-      let browser = document.getElementById("browser");
-      browser.parentNode.selectedPanel = browser;
 
       window.gNavToolbox.removeEventListener("toolbarvisibilitychange", this);
 
@@ -392,31 +449,6 @@ CustomizeMode.prototype = {
       let mainView = window.PanelUI.mainView;
       if (this._mainViewContext) {
         mainView.setAttribute("context", this._mainViewContext);
-      }
-
-      if (this.browser.selectedBrowser.currentURI.spec == kAboutURI) {
-        let custBrowser = this.browser.selectedBrowser;
-        if (custBrowser.canGoBack) {
-          // If there's history to this tab, just go back.
-          // Note that this throws an exception if the previous document has a
-          // problematic URL (e.g. about:idontexist)
-          try {
-            custBrowser.goBack();
-          } catch (ex) {
-            ERROR(ex);
-          }
-        } else {
-          // If we can't go back, we're removing the about:customization tab.
-          // We only do this if we're the top window for this window (so not
-          // a dialog window, for example).
-          if (window.getTopWin(true) == window) {
-            let customizationTab = this.browser.selectedTab;
-            if (this.browser.browsers.length == 1) {
-              window.BrowserOpenTab();
-            }
-            this.browser.removeTab(customizationTab);
-          }
-        }
       }
 
       if (this.document.documentElement._lightweightTheme)
@@ -504,6 +536,46 @@ CustomizeMode.prototype = {
     let catchAll = () => customizeTransitionEnd("timedout");
     let catchAllTimeout = this.window.setTimeout(catchAll, kMaxTransitionDurationMs);
     return deferred.promise;
+  },
+
+  maybeShowTip: function(aAnchor) {
+    let shown = false;
+    const kShownPref = "browser.customizemode.tip0.shown";
+    try {
+      shown = Services.prefs.getBoolPref(kShownPref);
+    } catch (ex) {}
+    if (shown)
+      return;
+
+    let anchorNode = aAnchor || this.document.getElementById("customization-panelHolder");
+    let messageNode = this.tipPanel.querySelector(".customization-tipPanel-contentMessage");
+    if (!messageNode.childElementCount) {
+      // Put the tip contents in the popup.
+      let bundle = this.document.getElementById("bundle_browser");
+      const kLabelClass = "customization-tipPanel-link";
+      messageNode.innerHTML = bundle.getFormattedString("customizeTips.tip0", [
+        "<label class=\"customization-tipPanel-em\" value=\"" +
+          bundle.getString("customizeTips.tip0.hint") + "\"/>",
+        this.document.getElementById("bundle_brand").getString("brandShortName"),
+        "<label class=\"" + kLabelClass + " text-link\" value=\"" +
+        bundle.getString("customizeTips.tip0.learnMore") + "\"/>"
+      ]);
+
+      messageNode.querySelector("." + kLabelClass).addEventListener("click", () => {
+        let url = Services.urlFormatter.formatURLPref("browser.customizemode.tip0.learnMoreUrl");
+        let browser = this.browser;
+        browser.selectedTab = browser.addTab(url);
+        this.hideTip();
+      });
+    }
+
+    this.tipPanel.hidden = false;
+    this.tipPanel.openPopup(anchorNode);
+    Services.prefs.setBoolPref(kShownPref, true);
+  },
+
+  hideTip: function() {
+    this.tipPanel.hidePopup();
   },
 
   _getCustomizableChildForNode: function(aNode) {
@@ -853,6 +925,18 @@ CustomizeMode.prototype = {
         target.removeEventListener("dragend", this, true);
       }
     }.bind(this)).then(null, ERROR);
+  },
+
+  _removeExtraToolbarsIfEmpty: function() {
+    let toolbox = this.window.gNavToolbox;
+    for (let child of toolbox.children) {
+      if (child.hasAttribute("customindex")) {
+        let placements = CustomizableUI.getWidgetIdsInArea(child.id);
+        if (!placements.length) {
+          CustomizableUI.removeExtraToolbar(child.id);
+        }
+      }
+    }
   },
 
   persistCurrentSets: function(aSetBeforePersisting)  {
@@ -1219,20 +1303,22 @@ CustomizeMode.prototype = {
     if (targetNode == targetArea.customizationTarget) {
       // We'll assume if the user is dragging directly over the target, that
       // they're attempting to append a child to that target.
-      dragOverItem = targetNode.lastChild || targetNode;
+      dragOverItem = (targetIsToolbar ? this._findVisiblePreviousSiblingNode(targetNode.lastChild) :
+                                        targetNode.lastChild) || targetNode;
       dragValue = "after";
     } else {
       let targetParent = targetNode.parentNode;
       let position = Array.indexOf(targetParent.children, targetNode);
       if (position == -1) {
-        dragOverItem = targetParent.lastChild;
+        dragOverItem = targetIsToolbar ? this._findVisiblePreviousSiblingNode(targetNode.lastChild) :
+                                         targetParent.lastChild;
         dragValue = "after";
       } else {
         dragOverItem = targetParent.children[position];
         if (!targetIsToolbar) {
           dragValue = "before";
-          dragOverItem = position == -1 ? targetParent.firstChild : targetParent.children[position];
         } else {
+          dragOverItem = this._findVisiblePreviousSiblingNode(targetParent.children[position]);
           // Check if the aDraggedItem is hovered past the first half of dragOverItem
           let window = dragOverItem.ownerDocument.defaultView;
           let direction = window.getComputedStyle(dragOverItem, null).direction;
@@ -1354,6 +1440,10 @@ CustomizeMode.prototype = {
         // The items in the palette are wrapped, so we need the target node's parent here:
         this.visiblePalette.insertBefore(draggedItem, aTargetNode.parentNode);
       }
+      if (aOriginArea.id !== kPaletteId) {
+        // The dragend event already fires when the item moves within the palette.
+        this._onDragEnd(aEvent);
+      }
       return;
     }
 
@@ -1391,6 +1481,7 @@ CustomizeMode.prototype = {
       // an area.
       let custEventType = aOriginArea.id == kPaletteId ? "add" : "move";
       BrowserUITelemetry.countCustomizationEvent(custEventType);
+      this._onDragEnd(aEvent);
       return;
     }
 
@@ -1427,6 +1518,8 @@ CustomizeMode.prototype = {
       CustomizableUI.addWidgetToArea(aDraggedItemId, aTargetArea.id, position);
     }
 
+    this._onDragEnd(aEvent);
+
     // For BrowserUITelemetry, an "add" is only when we move an item from the palette
     // into an area. Otherwise, it's a move.
     let custEventType = aOriginArea.id == kPaletteId ? "add" : "move";
@@ -1458,14 +1551,17 @@ CustomizeMode.prototype = {
     }
   },
 
+  /**
+   * To workaround bug 460801 we manually forward the drop event here when dragend wouldn't be fired.
+   */
   _onDragEnd: function(aEvent) {
     if (this._isUnwantedDragDrop(aEvent)) {
       return;
     }
     this._initializeDragAfterMove = null;
     this.window.clearTimeout(this._dragInitializeTimeout);
+    __dumpDragData(aEvent, "_onDragEnd");
 
-    __dumpDragData(aEvent);
     let document = aEvent.target.ownerDocument;
     document.documentElement.removeAttribute("customizing-movingItem");
 
@@ -1831,13 +1927,21 @@ CustomizeMode.prototype = {
     }
   },
 
+  _findVisiblePreviousSiblingNode: function(aReferenceNode) {
+    while (aReferenceNode &&
+           aReferenceNode.localName == "toolbarpaletteitem" &&
+           aReferenceNode.firstChild.hidden) {
+      aReferenceNode = aReferenceNode.previousSibling;
+    }
+    return aReferenceNode;
+  },
 };
 
 function __dumpDragData(aEvent, caller) {
   if (!gDebug) {
     return;
   }
-  let str = "Dumping drag data (CustomizeMode.jsm) {\n";
+  let str = "Dumping drag data (" + (caller ? caller + " in " : "") + "CustomizeMode.jsm) {\n";
   str += "  type: " + aEvent["type"] + "\n";
   for (let el of ["target", "currentTarget", "relatedTarget"]) {
     if (aEvent[el]) {

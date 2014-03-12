@@ -62,7 +62,7 @@ var PlacesOrganizer = {
       for (let container of hierarchy) {
         switch (typeof container) {
           case "number":
-            this._places.selectItems([container]);
+            this._places.selectItems([container], false);
             break;
           case "string":
             if (container.substr(0, 6) == "place:")
@@ -327,7 +327,7 @@ var PlacesOrganizer = {
 
   openFlatContainer: function PO_openFlatContainerFlatContainer(aContainer) {
     if (aContainer.itemId != -1)
-      this._places.selectItems([aContainer.itemId]);
+      this._places.selectItems([aContainer.itemId], false);
     else if (PlacesUtils.nodeIsQuery(aContainer))
       this._places.selectPlaceURI(aContainer.uri);
   },
@@ -383,7 +383,7 @@ var PlacesOrganizer = {
     let fpCallback = function fpCallback_done(aResult) {
       if (aResult != Ci.nsIFilePicker.returnCancel) {
         Components.utils.import("resource://gre/modules/BookmarkHTMLUtils.jsm");
-        BookmarkHTMLUtils.exportToFile(fp.file)
+        BookmarkHTMLUtils.exportToFile(fp.file.path)
                          .then(null, Components.utils.reportError);
       }
     };
@@ -461,7 +461,7 @@ var PlacesOrganizer = {
       let backupFilePaths = yield PlacesBackups.getBackupFiles();
       for (let backupFilePath of backupFilePaths) {
         if (OS.Path.basename(backupFilePath) == backupName) {
-          PlacesOrganizer.restoreBookmarksFromFile(new FileUtils.File(backupFilePath));
+          PlacesOrganizer.restoreBookmarksFromFile(backupFilePath);
           break;
         }
       }
@@ -479,7 +479,7 @@ var PlacesOrganizer = {
     let fp = Cc["@mozilla.org/filepicker;1"].createInstance(Ci.nsIFilePicker);
     let fpCallback = function fpCallback_done(aResult) {
       if (aResult != Ci.nsIFilePicker.returnCancel) {
-        this.restoreBookmarksFromFile(fp.file);
+        this.restoreBookmarksFromFile(fp.file.path);
       }
     }.bind(this);
 
@@ -495,9 +495,9 @@ var PlacesOrganizer = {
   /**
    * Restores bookmarks from a JSON file.
    */
-  restoreBookmarksFromFile: function PO_restoreBookmarksFromFile(aFile) {
+  restoreBookmarksFromFile: function PO_restoreBookmarksFromFile(aFilePath) {
     // check file extension
-    if (!aFile.leafName.match(/\.json$/)) {
+    if (!aFilePath.endsWith("json")) {
       this._showErrorAlert(PlacesUIUtils.getString("bookmarksRestoreFormatError"));
       return;
     }
@@ -512,7 +512,7 @@ var PlacesOrganizer = {
 
     Task.spawn(function() {
       try {
-        yield BookmarkJSONUtils.importFromFile(aFile, true);
+        yield BookmarkJSONUtils.importFromFile(aFilePath, true);
       } catch(ex) {
         PlacesOrganizer._showErrorAlert(PlacesUIUtils.getString("bookmarksRestoreParseError"));
       }

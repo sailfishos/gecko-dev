@@ -53,6 +53,7 @@ public:
         bool IsDeleteRequested() const;
 
         bool HasAlpha() const;
+        bool IsReadableFloat() const;
 
         void SetTexImage(WebGLTexture* tex, GLenum target, GLint level);
         void SetRenderbuffer(WebGLRenderbuffer* rb) {
@@ -165,6 +166,9 @@ public:
 
     NS_INLINE_DECL_CYCLE_COLLECTING_NATIVE_REFCOUNTING(WebGLFramebuffer)
     NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_NATIVE_CLASS(WebGLFramebuffer)
+
+    // mask mirrors glClear.
+    bool HasCompletePlanes(GLbitfield mask);
 
     bool CheckAndInitializeAttachments();
 

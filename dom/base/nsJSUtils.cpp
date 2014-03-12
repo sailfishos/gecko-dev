@@ -105,6 +105,17 @@ nsJSUtils::ReportPendingException(JSContext *aContext)
   if (JS_IsExceptionPending(aContext)) {
     bool saved = JS_SaveFrameChain(aContext);
     {
+      // JS_SaveFrameChain set the compartment of aContext to null, so we need
+      // to enter a compartment.  The question is, which one? We don't want to
+      // enter the original compartment of aContext (or the compartment of the
+      // current exception on aContext, for that matter) because when we
+      // JS_ReportPendingException the JS engine can try to duck-type the
+      // exception and produce a JSErrorReport.  It will then pass that
+      // JSErrorReport to the error reporter on aContext, which might expose
+      // information from it to script via onerror handlers.  So it's very
+      // important that the duck typing happen in the same compartment as the
+      // onerror handler.  In practice, that's the compartment of the window (or
+      // otherwise default global) of aContext, so use that here.
       nsIScriptContext* scx = GetScriptContextFromJSContext(aContext);
       JS::Rooted<JSObject*> scope(aContext);
       scope = scx ? scx->GetWindowProxy()
@@ -133,12 +144,6 @@ nsJSUtils::CompileFunction(JSContext* aCx,
   MOZ_ASSERT_IF(aOptions.versionSet, aOptions.version != JSVERSION_UNKNOWN);
   mozilla::DebugOnly<nsIScriptContext*> ctx = GetScriptContextFromJSContext(aCx);
   MOZ_ASSERT_IF(ctx, ctx->IsContextInitialized());
-
-  // Since aTarget and aCx are same-compartment, there should be no distinction
-  // between the object principal and the cx principal.
-  // However, aTarget may be null in the wacky aShared case. So use the cx.
-  JSPrincipals* p = JS_GetCompartmentPrincipals(js::GetContextCompartment(aCx));
-  aOptions.setPrincipals(p);
 
   // Do the junk Gecko is supposed to do before calling into JSAPI.
   if (aTarget) {
@@ -187,9 +192,6 @@ nsJSUtils::EvaluateString(JSContext* aCx,
   JS::ExposeObjectToActiveJS(aScopeObject);
   nsAutoMicroTask mt;
   nsresult rv = NS_OK;
-
-  JSPrincipals* p = JS_GetCompartmentPrincipals(js::GetObjectCompartment(aScopeObject));
-  aCompileOptions.setPrincipals(p);
 
   bool ok = false;
   nsIScriptSecurityManager* ssm = nsContentUtils::GetSecurityManager();

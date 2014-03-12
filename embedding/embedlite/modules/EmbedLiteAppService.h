@@ -32,7 +32,6 @@ public:
 
 private:
   friend class EmbedLiteJSON;
-  JSContext* GetAnyJSContext(uint32_t aWinID);
   std::map<uint64_t, uint32_t> mIDMap;
   typedef nsClassHashtable<nsCStringHashKey, nsTArray<nsCOMPtr<nsIEmbedMessageListener> > > MsgListenersArray;
   MsgListenersArray mMessageListeners;

@@ -4,6 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "jsprf.h"
 #include "jit/arm/Simulator-arm.h"
 #include "jit/BaselineIC.h"
 #include "jit/BaselineJIT.h"
@@ -975,14 +976,34 @@ InitFromBailout(JSContext *cx, HandleScript caller, jsbytecode *callerPC,
             IonSpew(IonSpew_BaselineBailouts, "      Set resumeAddr=%p", opReturnAddr);
         }
 
-        if (cx->runtime()->spsProfiler.enabled() && blFrame->hasPushedSPSFrame()) {
-            // Set PC index to 0 for the innermost frame to match what the
-            // interpreter and Baseline do: they update the SPS pc for
-            // JSOP_CALL ops but set it to 0 when running other ops. Ion code
-            // can set the pc to NullPCIndex and this will confuse SPS when
-            // Baseline calls into the VM at non-CALL ops and re-enters JS.
-            IonSpew(IonSpew_BaselineBailouts, "      Setting PCidx for last frame to 0");
-            cx->runtime()->spsProfiler.updatePC(script, script->code());
+        if (cx->runtime()->spsProfiler.enabled()) {
+            if (blFrame->hasPushedSPSFrame()) {
+                // Set PC index to 0 for the innermost frame to match what the
+                // interpreter and Baseline do: they update the SPS pc for
+                // JSOP_CALL ops but set it to 0 when running other ops. Ion code
+                // can set the pc to NullPCIndex and this will confuse SPS when
+                // Baseline calls into the VM at non-CALL ops and re-enters JS.
+                IonSpew(IonSpew_BaselineBailouts, "      Setting PCidx for last frame to 0");
+                cx->runtime()->spsProfiler.updatePC(script, script->code());
+            }
+
+            // Register bailout with profiler.
+            const char *filename = script->filename();
+            if (filename == nullptr)
+                filename = "<unknown>";
+            unsigned len = strlen(filename) + 200;
+            char *buf = js_pod_malloc<char>(len);
+            if (buf == nullptr)
+                return false;
+            JS_snprintf(buf, len, "%s %s %s on line %d of %s:%d",
+                                  BailoutKindString(bailoutKind),
+                                  resumeAfter ? "after" : "at",
+                                  js_CodeName[op],
+                                  int(PCToLineNumber(script, pc)),
+                                  filename,
+                                  int(script->lineno()));
+            cx->runtime()->spsProfiler.markEvent(buf);
+            js_free(buf);
         }
 
         return true;
@@ -1340,12 +1361,9 @@ jit::BailoutIonToBaseline(JSContext *cx, JitActivation *activation, IonBailoutIt
         mozilla::PodCopy(argv, startFrameFormals.begin(), startFrameFormals.length());
     }
 
-    // Take the reconstructed baseline stack so it doesn't get freed when builder destructs.
-    BaselineBailoutInfo *info = builder.takeBuffer();
-    info->numFrames = frameNo + 1;
-
     // Do stack check.
     bool overRecursed = false;
+    BaselineBailoutInfo *info = builder.info();
     uint8_t *newsp = info->incomingStack - (info->copyStackTop - info->copyStackBottom);
 #ifdef JS_ARM_SIMULATOR
     if (Simulator::Current()->overRecursed(uintptr_t(newsp)))
@@ -1358,6 +1376,9 @@ jit::BailoutIonToBaseline(JSContext *cx, JitActivation *activation, IonBailoutIt
         return BAILOUT_RETURN_OVERRECURSED;
     }
 
+    // Take the reconstructed baseline stack so it doesn't get freed when builder destructs.
+    info = builder.takeBuffer();
+    info->numFrames = frameNo + 1;
     info->bailoutKind = bailoutKind;
     *bailoutInfo = info;
     return BAILOUT_RETURN_OK;

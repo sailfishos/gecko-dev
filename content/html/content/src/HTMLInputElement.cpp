@@ -20,6 +20,7 @@
 #include "nsIControllers.h"
 #include "nsIStringBundle.h"
 #include "nsFocusManager.h"
+#include "nsColorControlFrame.h"
 #include "nsNumberControlFrame.h"
 #include "nsPIDOMWindow.h"
 #include "nsRepeatService.h"
@@ -2139,7 +2140,15 @@ HTMLInputElement::GetValueIfStepped(int32_t aStep,
     return NS_OK;
   }
 
-  if (GetValidityState(VALIDITY_STATE_STEP_MISMATCH) &&
+  // If the current value isn't aligned on a step, then shift the value to the
+  // nearest step that will cause the addition of aStep steps (further below)
+  // to |value| to hit the required value.
+  // (Instead of using GetValidityState(VALIDITY_STATE_STEP_MISMATCH) we have
+  // to check HasStepMismatch and pass true as its aUseZeroIfValueNaN argument
+  // since we need to treat the value "" as zero for stepping purposes even
+  // though we don't suffer from a step mismatch when our value is the empty
+  // string.)
+  if (HasStepMismatch(true) &&
       value != minimum && value != maximum) {
     if (aStep > 0) {
       value -= NS_floorModulo(value - GetStepBase(), step);
@@ -2777,7 +2786,7 @@ HTMLInputElement::SetValueInternal(const nsAString& aValue,
       if (!mParserCreating) {
         SanitizeValue(value);
       }
-      // else SanitizeValue will be called by DoneCreatingElement
+      // else DoneCreatingElement calls us again once mParserCreating is false
 
       if (aSetValueChanged) {
         SetValueChanged(true);
@@ -2789,6 +2798,7 @@ HTMLInputElement::SetValueInternal(const nsAString& aValue,
           UpdateAllValidityStates(mParserCreating);
         }
       } else {
+        nsMemory::Free(mInputData.mValue);
         mInputData.mValue = ToNewUnicode(value);
         if (aSetValueChanged) {
           SetValueChanged(true);
@@ -2802,15 +2812,18 @@ HTMLInputElement::SetValueInternal(const nsAString& aValue,
             numberControlFrame->SetValueOfAnonTextControl(value);
           }
         }
-        OnValueChanged(!mParserCreating);
+        if (!mParserCreating) {
+          OnValueChanged(true);
+        }
+        // else DoneCreatingElement calls us again once mParserCreating is false
       }
 
-      // Call parent's SetAttr for color input so its control frame is notified
-      // and updated
       if (mType == NS_FORM_INPUT_COLOR) {
-        return nsGenericHTMLFormElement::SetAttr(kNameSpaceID_None,
-                                                 nsGkAtoms::value, aValue,
-                                                 true);
+        // Update color frame, to reflect color changes
+        nsColorControlFrame* colorControlFrame = do_QueryFrame(GetPrimaryFrame());
+        if (colorControlFrame) {
+          colorControlFrame->UpdateColor();
+        }
       }
 
       return NS_OK;
@@ -3640,12 +3653,20 @@ HTMLInputElement::StepNumberControlForUserEvent(int32_t aDirection)
     // want to wipe out what they typed if they try to increment/decrement the
     // value. Better is to highlight the value as being invalid so that they
     // can correct what they typed.
-    // We pass 'true' for UpdateValidityUIBits' aIsFocused argument regardless
-    // because we need the UI to update _now_ or the user will wonder why the
-    // step behavior isn't functioning.
-    UpdateValidityUIBits(true);
-    UpdateState(true);
-    return;
+    // We only do this if there actually is a value typed in by/displayed to
+    // the user. (IsValid() can return false if the 'required' attribute is
+    // set and the value is the empty string.)
+    nsNumberControlFrame* numberControlFrame =
+      do_QueryFrame(GetPrimaryFrame());
+    if (numberControlFrame &&
+        !numberControlFrame->AnonTextControlIsEmpty()) {
+      // We pass 'true' for UpdateValidityUIBits' aIsFocused argument
+      // regardless because we need the UI to update _now_ or the user will
+      // wonder why the step behavior isn't functioning.
+      UpdateValidityUIBits(true);
+      UpdateState(true);
+      return;
+    }
   }
 
   Decimal newValue = Decimal::nan(); // unchanged if value will not change
@@ -6097,7 +6118,7 @@ HTMLInputElement::GetValueMode() const
 bool
 HTMLInputElement::IsMutable() const
 {
-  return !IsDisabled() && GetCurrentDoc() &&
+  return !IsDisabled() &&
          !(DoesReadOnlyApply() &&
            HasAttr(kNameSpaceID_None, nsGkAtoms::readonly));
 }
@@ -6432,7 +6453,7 @@ HTMLInputElement::IsRangeUnderflow() const
 }
 
 bool
-HTMLInputElement::HasStepMismatch() const
+HTMLInputElement::HasStepMismatch(bool aUseZeroIfValueNaN) const
 {
   if (!DoesStepApply()) {
     return false;
@@ -6440,8 +6461,12 @@ HTMLInputElement::HasStepMismatch() const
 
   Decimal value = GetValueAsDecimal();
   if (value.isNaN()) {
-    // The element can't suffer from step mismatch if it's value isn't a number.
-    return false;
+    if (aUseZeroIfValueNaN) {
+      value = 0;
+    } else {
+      // The element can't suffer from step mismatch if it's value isn't a number.
+      return false;
+    }
   }
 
   Decimal step = GetStep();

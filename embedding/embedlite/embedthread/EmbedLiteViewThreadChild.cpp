@@ -30,6 +30,7 @@
 #include "mozilla/Preferences.h"
 #include "EmbedLiteAppService.h"
 #include "nsIWidgetListener.h"
+#include "gfxPrefs.h"
 
 #include "APZCCallbackHelper.h"
 #include "mozilla/dom/Element.h"
@@ -154,7 +155,7 @@ EmbedLiteViewThreadChild::InitGeckoWindow(const uint32_t& parentId)
     return;
   }
 
-
+  gfxPrefs::GetSingleton();
   nsCOMPtr<nsIBaseWindow> baseWindow = do_QueryInterface(mWebBrowser, &rv);
   if (NS_FAILED(rv)) {
     return;
@@ -415,7 +416,7 @@ EmbedLiteViewThreadChild::RecvAsyncMessage(const nsString& aMessage,
 {
   LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessage).get(), NS_ConvertUTF16toUTF8(aData).get());
   AppChild()->AppService()->HandleAsyncMessage(NS_ConvertUTF16toUTF8(aMessage).get(), aData);
-  mHelper->RecvAsyncMessage(aMessage, aData);
+  mHelper->DispatchMessageManagerMessage(aMessage, aData);
   return true;
 }
 
@@ -448,12 +449,22 @@ EmbedLiteViewThreadChild::DoSendSyncMessage(const char16_t* aMessageName, const 
   return true;
 }
 
+bool
+EmbedLiteViewThreadChild::DoCallRpcMessage(const char16_t* aMessageName, const char16_t* aMessage, InfallibleTArray<nsString>* aJSONRetVal)
+{
+  LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessageName).get(), NS_ConvertUTF16toUTF8(aMessage).get());
+  if (mRegisteredMessages.Get(nsDependentString(aMessageName))) {
+    CallRpcMessage(nsDependentString(aMessageName), nsDependentString(aMessage), aJSONRetVal);
+  }
+  return true;
+}
+
 void
 EmbedLiteViewThreadChild::RecvAsyncMessage(const nsAString& aMessage,
                                            const nsAString& aData)
 {
   LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessage).get(), NS_ConvertUTF16toUTF8(aData).get());
-  mHelper->RecvAsyncMessage(aMessage, aData);
+  mHelper->DispatchMessageManagerMessage(aMessage, aData);
 }
 
 bool
@@ -566,7 +577,7 @@ EmbedLiteViewThreadChild::RecvAsyncScrollDOMEvent(const gfxRect& contentRect,
     data.AppendPrintf(", \"height\" : ");
     data.AppendFloat(scrollSize.height);
     data.AppendPrintf(" }}");
-    mHelper->RecvAsyncMessage(NS_LITERAL_STRING("AZPC:ScrollDOMEvent"), data);
+    mHelper->DispatchMessageManagerMessage(NS_LITERAL_STRING("AZPC:ScrollDOMEvent"), data);
   }
 
   return true;
@@ -582,7 +593,7 @@ EmbedLiteViewThreadChild::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
 
   FrameMetrics metrics(aFrameMetrics);
   if (mViewResized && mHelper->HandlePossibleViewportChange()) {
-    metrics = mHelper->mFrameMetrics;
+    metrics = mHelper->mLastRootMetrics;
     mViewResized = false;
   }
 
@@ -613,7 +624,7 @@ EmbedLiteViewThreadChild::RecvHandleDoubleTap(const nsIntPoint& aPoint)
   if (sPostAZPCAsJson.doubleTap) {
     nsString data;
     data.AppendPrintf("{ \"x\" : %d, \"y\" : %d }", aPoint.x, aPoint.y);
-    mHelper->RecvAsyncMessage(NS_LITERAL_STRING("Gesture:DoubleTap"), data);
+    mHelper->DispatchMessageManagerMessage(NS_LITERAL_STRING("Gesture:DoubleTap"), data);
   }
 
   return true;
@@ -653,7 +664,7 @@ EmbedLiteViewThreadChild::RecvHandleSingleTap(const nsIntPoint& aPoint)
   if (sPostAZPCAsJson.singleTap) {
     nsString data;
     data.AppendPrintf("{ \"x\" : %d, \"y\" : %d }", aPoint.x, aPoint.y);
-    mHelper->RecvAsyncMessage(NS_LITERAL_STRING("Gesture:SingleTap"), data);
+    mHelper->DispatchMessageManagerMessage(NS_LITERAL_STRING("Gesture:SingleTap"), data);
   }
 
   if (sHandleDefaultAZPC.singleTap) {
@@ -675,7 +686,7 @@ EmbedLiteViewThreadChild::RecvHandleLongTap(const nsIntPoint& aPoint)
   if (sPostAZPCAsJson.longTap) {
     nsString data;
     data.AppendPrintf("{ \"x\" : %d, \"y\" : %d }", aPoint.x, aPoint.y);
-    mHelper->RecvAsyncMessage(NS_LITERAL_STRING("Gesture:LongTap"), data);
+    mHelper->DispatchMessageManagerMessage(NS_LITERAL_STRING("Gesture:LongTap"), data);
   }
 
   if (sHandleDefaultAZPC.longTap) {
@@ -866,6 +877,12 @@ NS_IMETHODIMP
 EmbedLiteViewThreadChild::OnLoadFinished()
 {
   return SendOnLoadFinished() ? NS_OK : NS_ERROR_FAILURE;
+}
+
+NS_IMETHODIMP
+EmbedLiteViewThreadChild::OnWindowCloseRequested()
+{
+  return SendOnWindowCloseRequested() ? NS_OK : NS_ERROR_FAILURE;
 }
 
 NS_IMETHODIMP

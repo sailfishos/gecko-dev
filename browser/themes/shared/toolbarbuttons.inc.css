@@ -68,10 +68,6 @@
   -moz-image-region: rect(0, 666px, 18px, 648px);
 }
 
-#sidebar-button[cui-areatype="toolbar"] {
-  -moz-image-region: rect(0, 684px, 18px, 666px);
-}
-
 #characterencoding-button[cui-areatype="toolbar"]{
   -moz-image-region: rect(0, 324px, 18px, 306px);
 }
@@ -138,6 +134,10 @@
 
 #nav-bar-overflow-button {
   -moz-image-region: rect(0, 612px, 18px, 594px);
+}
+
+#nav-bar-overflow-button:-moz-locale-dir(rtl) > .toolbarbutton-icon {
+  transform: scaleX(-1);
 }
 
 #tabview-button {

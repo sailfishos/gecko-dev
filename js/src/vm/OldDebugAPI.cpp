@@ -318,7 +318,7 @@ JS_SetWatchPoint(JSContext *cx, JSObject *obj_, jsid id_,
             return false;
     }
 
-    if (!obj->isNative()) {
+    if (!obj->isNative() || obj->is<TypedArrayObject>()) {
         JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr, JSMSG_CANT_WATCH,
                              obj->getClass()->name);
         return false;
@@ -900,8 +900,17 @@ CallContextDebugHandler(JSContext *cx, JSScript *script, jsbytecode *bc, Value *
 JS_FRIEND_API(bool)
 js_CallContextDebugHandler(JSContext *cx)
 {
-    NonBuiltinScriptFrameIter iter(cx);
-    JS_ASSERT(!iter.done());
+    NonBuiltinFrameIter iter(cx);
+
+    // If there is no script to debug, then abort execution even if the user
+    // clicks 'Debug' in the slow-script dialog.
+    if (!iter.hasScript())
+        return false;
+
+    // Even if script was running during the operation callback, it's possible
+    // it was a builtin which 'iter' will have skipped over.
+    if (iter.done())
+        return false;
 
     RootedValue rval(cx);
     RootedScript script(cx, iter.script());
@@ -939,7 +948,10 @@ JS::DescribeStack(JSContext *cx, unsigned maxFrames)
 {
     Vector<FrameDescription> frames(cx);
 
-    for (NonBuiltinScriptFrameIter i(cx); !i.done(); ++i) {
+    NonBuiltinScriptFrameIter i(cx, ScriptFrameIter::ALL_CONTEXTS,
+                                ScriptFrameIter::GO_THROUGH_SAVED,
+                                cx->compartment()->principals);
+    for ( ; !i.done(); ++i) {
         if (!frames.append(i))
             return nullptr;
         if (frames.length() == maxFrames)

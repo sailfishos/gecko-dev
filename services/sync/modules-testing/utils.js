@@ -114,20 +114,23 @@ this.makeIdentityConfig = function(overrides) {
 // config (or the default config if not specified).
 this.configureFxAccountIdentity = function(authService,
                                            config = makeIdentityConfig()) {
-  let MockInternal = {
-    signedInUser: {
-      version: DATA_FORMAT_VERSION,
-      accountData: config.fxaccount.user
-    },
-    getCertificate: function(data, keyPair, mustBeValidUntil) {
-      this.cert = {
-        validUntil: Date.now() + CERT_LIFETIME,
-        cert: "certificate",
-      };
-      return Promise.resolve(this.cert.cert);
-    },
-  };
+  let MockInternal = {};
   let fxa = new FxAccounts(MockInternal);
+
+  // until we get better test infrastructure for bid_identity, we set the
+  // signedin user's "email" to the username, simply as many tests rely on this.
+  config.fxaccount.user.email = config.username;
+  fxa.internal.currentAccountState.signedInUser = {
+    version: DATA_FORMAT_VERSION,
+    accountData: config.fxaccount.user
+  };
+  fxa.internal.currentAccountState.getCertificate = function(data, keyPair, mustBeValidUntil) {
+    this.cert = {
+      validUntil: fxa.internal.now() + CERT_LIFETIME,
+      cert: "certificate",
+    };
+    return Promise.resolve(this.cert.cert);
+  };
 
   let mockTSC = { // TokenServerClient
     getTokenFromBrowserIDAssertion: function(uri, assertion, cb) {
@@ -139,6 +142,7 @@ this.configureFxAccountIdentity = function(authService,
   authService._tokenServerClient = mockTSC;
   // Set the "account" of the browserId manager to be the "email" of the
   // logged in user of the mockFXA service.
+  authService._signedInUser = fxa.internal.currentAccountState.signedInUser.accountData;
   authService._account = config.fxaccount.user.email;
 }
 

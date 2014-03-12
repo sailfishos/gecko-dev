@@ -920,8 +920,13 @@ public:
   void
   UpdateJSWorkerMemoryParameterInternal(JSContext* aCx, JSGCParamKey key, uint32_t aValue);
 
+  enum WorkerRanOrNot {
+    WorkerNeverRan = 0,
+    WorkerRan
+  };
+
   void
-  ScheduleDeletion();
+  ScheduleDeletion(WorkerRanOrNot aRanOrNot);
 
   bool
   BlockAndCollectRuntimeStats(JS::RuntimeStats* aRtStats);
@@ -1052,7 +1057,7 @@ private:
                 LoadInfo& aLoadInfo);
 
   void
-  ClearMainEventQueue();
+  ClearMainEventQueue(WorkerRanOrNot aRanOrNot);
 
   bool
   MayContinueRunning()

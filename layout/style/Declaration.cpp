@@ -959,7 +959,8 @@ Declaration::GetValue(nsCSSProperty aProperty, nsAString& aValue,
 bool
 Declaration::GetValueIsImportant(const nsAString& aProperty) const
 {
-  nsCSSProperty propID = nsCSSProps::LookupProperty(aProperty, nsCSSProps::eAny);
+  nsCSSProperty propID =
+    nsCSSProps::LookupProperty(aProperty, nsCSSProps::eIgnoreEnabledState);
   if (propID == eCSSProperty_UNKNOWN) {
     return false;
   }
@@ -1341,7 +1342,7 @@ Declaration::AddVariableDeclaration(const nsAString& aName,
       break;
 
     default:
-      MOZ_ASSERT("unexpected aType value");
+      MOZ_ASSERT(false, "unexpected aType value");
   }
 
   uint32_t propertyIndex = index + eCSSProperty_COUNT;

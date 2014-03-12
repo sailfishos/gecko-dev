@@ -147,7 +147,16 @@ WillRedirect(const nsHttpResponseHead * response)
 class AutoRedirectVetoNotifier
 {
 public:
-    AutoRedirectVetoNotifier(nsHttpChannel* channel) : mChannel(channel) {}
+    AutoRedirectVetoNotifier(nsHttpChannel* channel) : mChannel(channel)
+    {
+      if (mChannel->mHasAutoRedirectVetoNotifier) {
+        MOZ_CRASH("Nested AutoRedirectVetoNotifier on the stack");
+        mChannel = nullptr;
+        return;
+      }
+
+      mChannel->mHasAutoRedirectVetoNotifier = true;
+    }
     ~AutoRedirectVetoNotifier() {ReportRedirectResult(false);}
     void RedirectSucceeded() {ReportRedirectResult(true);}
 
@@ -169,12 +178,14 @@ AutoRedirectVetoNotifier::ReportRedirectResult(bool succeeded)
                                   NS_GET_IID(nsIRedirectResultListener),
                                   getter_AddRefs(vetoHook));
 
-#ifdef MOZ_VISUAL_EVENT_TRACER
     nsHttpChannel* channel = mChannel;
-#endif
     mChannel = nullptr;
+
     if (vetoHook)
         vetoHook->OnRedirectResult(succeeded);
+
+    // Drop after the notification
+    channel->mHasAutoRedirectVetoNotifier = false;
 
     MOZ_EVENT_TRACER_DONE(channel, "net::http::redirect-callbacks");
 }
@@ -207,6 +218,7 @@ nsHttpChannel::nsHttpChannel()
     , mHasQueryString(0)
     , mConcurentCacheAccess(0)
     , mIsPartialRequest(0)
+    , mHasAutoRedirectVetoNotifier(0)
     , mDidReval(false)
 {
     LOG(("Creating nsHttpChannel [this=%p]\n", this));
@@ -2819,7 +2831,6 @@ nsHttpChannel::OnCacheEntryCheck(nsICacheEntry* entry, nsIApplicationCache* appC
         LOG(("Validating based on MustValidate() returning TRUE\n"));
         doValidation = true;
     }
-
     else if (MustValidateBasedOnQueryUrl()) {
         LOG(("Validating based on RFC 2616 section 13.9 "
              "(query-url w/o explicit expiration-time)\n"));
@@ -2930,21 +2941,37 @@ nsHttpChannel::OnCacheEntryCheck(nsICacheEntry* entry, nsIApplicationCache* appC
             (mRequestHead.Method() == nsHttp::Get ||
              mRequestHead.Method() == nsHttp::Head) &&
              !mCustomConditionalRequest) {
-            const char *val;
-            // Add If-Modified-Since header if a Last-Modified was given
-            // and we are allowed to do this (see bugs 510359 and 269303)
-            if (canAddImsHeader) {
-                val = mCachedResponseHead->PeekHeader(nsHttp::Last_Modified);
+
+            if (mConcurentCacheAccess) {
+                // In case of concurrent read and also validation request we
+                // must wait for the current writer to close the output stream
+                // first.  Otherwise, when the writer's job would have been interrupted
+                // before all the data were downloaded, we'd have to do a range request
+                // which would be a second request in line during this channel's
+                // life-time.  nsHttpChannel is not designed to do that, so rather
+                // turn off concurrent read and wait for entry's completion.
+                // Then only re-validation or range-re-validation request will go out.
+                mConcurentCacheAccess = 0;
+                // This will cause that OnCacheEntryCheck is called again with the same
+                // entry after the writer is done.
+                wantCompleteEntry = true;
+            } else {
+                const char *val;
+                // Add If-Modified-Since header if a Last-Modified was given
+                // and we are allowed to do this (see bugs 510359 and 269303)
+                if (canAddImsHeader) {
+                    val = mCachedResponseHead->PeekHeader(nsHttp::Last_Modified);
+                    if (val)
+                        mRequestHead.SetHeader(nsHttp::If_Modified_Since,
+                                               nsDependentCString(val));
+                }
+                // Add If-None-Match header if an ETag was given in the response
+                val = mCachedResponseHead->PeekHeader(nsHttp::ETag);
                 if (val)
-                    mRequestHead.SetHeader(nsHttp::If_Modified_Since,
+                    mRequestHead.SetHeader(nsHttp::If_None_Match,
                                            nsDependentCString(val));
+                mDidReval = true;
             }
-            // Add If-None-Match header if an ETag was given in the response
-            val = mCachedResponseHead->PeekHeader(nsHttp::ETag);
-            if (val)
-                mRequestHead.SetHeader(nsHttp::If_None_Match,
-                                       nsDependentCString(val));
-            mDidReval = true;
         }
     }
 
@@ -5726,6 +5753,13 @@ nsHttpChannel::DoAuthRetry(nsAHttpConnection *conn)
     // get rid of the old response headers
     mResponseHead = nullptr;
 
+    // rewind the upload stream
+    if (mUploadStream) {
+        nsCOMPtr<nsISeekableStream> seekable = do_QueryInterface(mUploadStream);
+        if (seekable)
+            seekable->Seek(nsISeekableStream::NS_SEEK_SET, 0);
+    }
+
     // set sticky connection flag and disable pipelining.
     mCaps |=  NS_HTTP_STICKY_CONNECTION;
     mCaps &= ~NS_HTTP_ALLOW_PIPELINING;
@@ -5737,13 +5771,6 @@ nsHttpChannel::DoAuthRetry(nsAHttpConnection *conn)
     // transfer ownership of connection to transaction
     if (conn)
         mTransaction->SetConnection(conn);
-
-    // rewind the upload stream
-    if (mUploadStream) {
-        nsCOMPtr<nsISeekableStream> seekable = do_QueryInterface(mUploadStream);
-        if (seekable)
-            seekable->Seek(nsISeekableStream::NS_SEEK_SET, 0);
-    }
 
     rv = gHttpHandler->InitiateTransaction(mTransaction, mPriority);
     if (NS_FAILED(rv)) return rv;

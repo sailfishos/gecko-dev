@@ -285,9 +285,7 @@ IonBuilder::inlineArray(CallInfo &callInfo)
 
         // Store all values, no need to initialize the length after each as
         // jsop_initelem_array is doing because we do not expect to bailout
-        // because the memory is supposed to be allocated by now. There is no
-        // need for a post barrier on these writes, as as the MNewAray will use
-        // the nursery if possible, triggering a minor collection if it can't.
+        // because the memory is supposed to be allocated by now.
         MConstant *id = nullptr;
         for (uint32_t i = 0; i < initLength; i++) {
             id = MConstant::New(alloc(), Int32Value(i));
@@ -299,6 +297,12 @@ IonBuilder::inlineArray(CallInfo &callInfo)
                 current->add(valueDouble);
                 value = valueDouble;
             }
+
+            // There is normally no need for a post barrier on these writes
+            // because the new array will be in the nursery. However, this
+            // assumption is volated if we specifically requested pre-tenuring.
+            if (ins->initialHeap() == gc::TenuredHeap)
+                current->add(MPostWriteBarrier::New(alloc(), ins, value));
 
             MStoreElement *store = MStoreElement::New(alloc(), elements, id, value,
                                                       /* needsHoleCheck = */ false);
@@ -936,8 +940,7 @@ IonBuilder::inlineMathFRound(CallInfo &callInfo)
     if (returned->empty()) {
         // As there's only one possible returned type, just add it to the observed
         // returned typeset
-        if (!returned->addType(types::Type::DoubleType(), alloc_->lifoAlloc()))
-            return InliningStatus_Error;
+        returned->addType(types::Type::DoubleType(), alloc_->lifoAlloc());
     } else {
         MIRType returnType = getInlineReturnType();
         if (!IsNumberType(returnType))

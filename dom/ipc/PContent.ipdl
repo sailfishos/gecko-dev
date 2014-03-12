@@ -14,6 +14,7 @@ include protocol PCrashReporter;
 include protocol PExternalHelperApp;
 include protocol PDeviceStorageRequest;
 include protocol PFMRadio;
+include protocol PFileSystemRequest;
 include protocol PHal;
 include protocol PImageBridge;
 include protocol PIndexedDB;
@@ -93,6 +94,18 @@ struct DeviceStorageFormatParams
   nsString storageName;
 };
 
+struct DeviceStorageMountParams
+{
+  nsString type;
+  nsString storageName;
+};
+
+struct DeviceStorageUnmountParams
+{
+  nsString type;
+  nsString storageName;
+};
+
 struct DeviceStorageAddParams
 {
   nsString type;
@@ -143,6 +156,8 @@ union DeviceStorageParams
   DeviceStorageAvailableParams;
   DeviceStorageStatusParams;
   DeviceStorageFormatParams;
+  DeviceStorageMountParams;
+  DeviceStorageUnmountParams;
 };
 
 struct FMRadioRequestEnableParams
@@ -179,6 +194,24 @@ union FMRadioRequestParams
   FMRadioRequestCancelSeekParams;
 };
 
+struct FileSystemCreateDirectoryParams
+{
+  nsString filesystem;
+  nsString realPath;
+};
+
+struct FileSystemGetFileOrDirectoryParams
+{
+  nsString filesystem;
+  nsString realPath;
+};
+
+union FileSystemParams
+{
+  FileSystemCreateDirectoryParams;
+  FileSystemGetFileOrDirectoryParams;
+};
+
 union PrefValue {
   nsCString;
   int32_t;
@@ -208,6 +241,7 @@ intr protocol PContent
     manages PBrowser;
     manages PCrashReporter;
     manages PDeviceStorageRequest;
+    manages PFileSystemRequest;
     manages PExternalHelperApp;
     manages PFMRadio;
     manages PHal;
@@ -259,7 +293,7 @@ child:
      */
     async SetProcessPrivileges(ChildPrivileges privs);
 
-    PMemoryReportRequest(uint32_t generation);
+    PMemoryReportRequest(uint32_t generation, bool minimizeMemoryUsage, nsString DMDDumpIdent);
 
     /**
      * Notify the AudioChannelService in the child processes.
@@ -269,19 +303,10 @@ child:
     async SpeakerManagerNotify();
 
     /**
-     * Do a memory info dump to a file in our temp directory.
-     *
-     * For documentation on the args, see
-     * MemoryInfoDumper::dumpMemoryInfoToTempDir.
-     */
-    async DumpMemoryInfoToTempDir(nsString identifier,
-                                  bool minimizeMemoryUsage,
-                                  bool dumpChildProcesses);
-    /**
      * Dump this process's GC and CC logs.
      *
-     * For documentation on the args, see
-     * MemoryInfoDumper::dumpGCAndCCLogsToFile.
+     * For documentation on the args, see dumpGCAndCCLogsToFile in
+     * nsIMemoryInfoDumper.idl
      */
     async DumpGCAndCCLogsToFile(nsString identifier,
                                 bool dumpAllTraces,
@@ -365,6 +390,8 @@ parent:
         returns (bool isOffline);
 
     PDeviceStorageRequest(DeviceStorageParams params);
+
+    PFileSystemRequest(FileSystemParams params);
 
     sync PCrashReporter(NativeThreadId tid, uint32_t processType);
 

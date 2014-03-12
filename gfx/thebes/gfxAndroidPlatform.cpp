@@ -19,8 +19,12 @@
 #include "nsIScreenManager.h"
 #include "nsILocaleService.h"
 #include "nsServiceManagerUtils.h"
-
+#include "gfxPrefs.h"
 #include "cairo.h"
+
+#ifdef MOZ_WIDGET_ANDROID
+#include "AndroidBridge.h"
+#endif
 
 #include "ft2build.h"
 #include FT_FREETYPE_H
@@ -121,7 +125,7 @@ gfxAndroidPlatform::gfxAndroidPlatform()
                        ? gfxImageFormat::RGB16_565
                        : gfxImageFormat::RGB24;
 
-    if (Preferences::GetBool("gfx.android.rgb16.force", false)) {
+    if (gfxPrefs::AndroidRGB16Force()) {
         mOffscreenFormat = gfxImageFormat::RGB16_565;
     }
 
@@ -417,4 +421,17 @@ int
 gfxAndroidPlatform::GetScreenDepth() const
 {
     return mScreenDepth;
+}
+
+bool
+gfxAndroidPlatform::UseAcceleratedSkiaCanvas()
+{
+#ifdef MOZ_WIDGET_ANDROID
+    if (AndroidBridge::Bridge()->GetAPIVersion() < 11) {
+        // It's slower than software due to not having a compositing fast path
+        return false;
+    }
+#endif
+
+    return gfxPlatform::UseAcceleratedSkiaCanvas();
 }

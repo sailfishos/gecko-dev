@@ -535,18 +535,32 @@ public:
 
   /**
    * Get the minimum font size for the specified language. If aLanguage
-   * is nullptr, then the document's language is used.
+   * is nullptr, then the document's language is used.  This combines
+   * the language-specific global preference with the per-presentation
+   * base minimum font size.
    */
   int32_t MinFontSize(nsIAtom *aLanguage) const {
     const LangGroupFontPrefs *prefs = GetFontPrefsForLang(aLanguage);
-    return std::max(mMinFontSize, prefs->mMinimumFontSize);
+    return std::max(mBaseMinFontSize, prefs->mMinimumFontSize);
   }
-
-  void SetMinFontSize(int32_t aMinFontSize) {
-    if (aMinFontSize == mMinFontSize)
+  
+  /**
+   * Get the per-presentation base minimum font size.  This size is
+   * independent of the language-specific global preference.
+   */
+  int32_t BaseMinFontSize() const {
+    return mBaseMinFontSize;
+  }
+  
+  /**
+   * Set the per-presentation base minimum font size.  This size is
+   * independent of the language-specific global preference.
+   */
+  void SetBaseMinFontSize(int32_t aMinFontSize) {
+    if (aMinFontSize == mBaseMinFontSize)
       return;
 
-    mMinFontSize = aMinFontSize;
+    mBaseMinFontSize = aMinFontSize;
     if (HasCachedStyleData()) {
       // Media queries could have changed, since we changed the meaning
       // of 'em' units in them.
@@ -814,6 +828,7 @@ public:
 
   // Is this presentation in a chrome docshell?
   bool IsChrome() const { return mIsChrome; }
+  bool IsChromeOriginImage() const { return mIsChromeOriginImage; }
   void UpdateIsChrome();
 
   // Public API for native theme code to get style internals.
@@ -821,7 +836,7 @@ public:
 
   // Is it OK to let the page specify colors and backgrounds?
   bool UseDocumentColors() const {
-    return GetCachedBoolPref(kPresContext_UseDocumentColors) || IsChrome();
+    return GetCachedBoolPref(kPresContext_UseDocumentColors) || IsChrome() || IsChromeOriginImage();
   }
 
   // Explicitly enable and disable paint flashing.
@@ -1179,7 +1194,8 @@ protected:
 
   PRCList               mDOMMediaQueryLists;
 
-  int32_t               mMinFontSize;   // Min font size, defaults to 0
+  // Base minimum font size, independent of the language-specific global preference. Defaults to 0
+  int32_t               mBaseMinFontSize;
   float                 mTextZoom;      // Text zoom, defaults to 1.0
   float                 mFullZoom;      // Page zoom, defaults to 1.0
 
@@ -1303,6 +1319,7 @@ protected:
   unsigned              mFireAfterPaintEvents : 1;
 
   unsigned              mIsChrome : 1;
+  unsigned              mIsChromeOriginImage : 1;
 
   // Should we paint flash in this context? Do not use this variable directly.
   // Use GetPaintFlashing() method instead.

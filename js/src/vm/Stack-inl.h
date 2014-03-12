@@ -134,10 +134,11 @@ StackFrame::unaliasedActual(unsigned i, MaybeCheckAliasing checkAliasing)
 
 template <class Op>
 inline void
-StackFrame::forEachUnaliasedActual(Op op)
+StackFrame::unaliasedForEachActual(Op op)
 {
-    JS_ASSERT(!script()->funHasAnyAliasedFormal());
-    JS_ASSERT(!script()->needsArgsObj());
+    // Don't assert !script()->funHasAnyAliasedFormal() since this function is
+    // called from ArgumentsObject::createUnexpected() which can access aliased
+    // slots.
 
     const Value *argsEnd = argv() + numActualArgs();
     for (const Value *p = argv(); p < argsEnd; ++p)
@@ -282,7 +283,7 @@ InterpreterStack::getCallFrame(JSContext *cx, const CallArgs &args, HandleScript
 }
 
 MOZ_ALWAYS_INLINE bool
-InterpreterStack::pushInlineFrame(JSContext *cx, FrameRegs &regs, const CallArgs &args,
+InterpreterStack::pushInlineFrame(JSContext *cx, InterpreterRegs &regs, const CallArgs &args,
                                   HandleScript script, InitialFrameFlags initial)
 {
     RootedFunction callee(cx, &args.callee().as<JSFunction>());
@@ -314,7 +315,7 @@ InterpreterStack::pushInlineFrame(JSContext *cx, FrameRegs &regs, const CallArgs
 }
 
 MOZ_ALWAYS_INLINE void
-InterpreterStack::popInlineFrame(FrameRegs &regs)
+InterpreterStack::popInlineFrame(InterpreterRegs &regs)
 {
     StackFrame *fp = regs.fp();
     regs.popInlineFrame();
@@ -325,17 +326,29 @@ InterpreterStack::popInlineFrame(FrameRegs &regs)
 
 template <class Op>
 inline void
-ScriptFrameIter::ionForEachCanonicalActualArg(JSContext *cx, Op op)
+FrameIter::unaliasedForEachActual(JSContext *cx, Op op)
 {
-    JS_ASSERT(isJit());
+    switch (data_.state_) {
+      case DONE:
+      case ASMJS:
+        break;
+      case INTERP:
+        interpFrame()->unaliasedForEachActual(op);
+        return;
+      case JIT:
 #ifdef JS_ION
-    if (data_.ionFrames_.isOptimizedJS()) {
-        ionInlineFrames_.forEachCanonicalActualArg(cx, op, 0, -1);
-    } else {
-        JS_ASSERT(data_.ionFrames_.isBaselineJS());
-        data_.ionFrames_.forEachCanonicalActualArg(op, 0, -1);
-    }
+        if (data_.ionFrames_.isOptimizedJS()) {
+            ionInlineFrames_.unaliasedForEachActual(cx, op, jit::ReadFrame_Actuals);
+        } else {
+            JS_ASSERT(data_.ionFrames_.isBaselineJS());
+            data_.ionFrames_.unaliasedForEachActual(op, jit::ReadFrame_Actuals);
+        }
+        return;
+#else
+        break;
 #endif
+    }
+    MOZ_ASSUME_UNREACHABLE("Unexpected state");
 }
 
 inline void *

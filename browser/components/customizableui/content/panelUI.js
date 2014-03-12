@@ -47,6 +47,8 @@ const PanelUI = {
 
     this.menuButton.addEventListener("mousedown", this);
     this.menuButton.addEventListener("keypress", this);
+    this._overlayScrollListenerBoundFn = this._overlayScrollListener.bind(this);
+    window.matchMedia("(-moz-overlay-scrollbars)").addListener(this._overlayScrollListenerBoundFn);
     this._initialized = true;
   },
 
@@ -77,6 +79,8 @@ const PanelUI = {
     this.helpView.removeEventListener("ViewShowing", this._onHelpViewShow);
     this.menuButton.removeEventListener("mousedown", this);
     this.menuButton.removeEventListener("keypress", this);
+    window.matchMedia("(-moz-overlay-scrollbars)").removeListener(this._overlayScrollListenerBoundFn);
+    this._overlayScrollListenerBoundFn = null;
   },
 
   /**
@@ -121,16 +125,23 @@ const PanelUI = {
    */
   show: function(aEvent) {
     let deferred = Promise.defer();
-    if (this.panel.state == "open" ||
-        document.documentElement.hasAttribute("customizing")) {
-      deferred.resolve();
-      return deferred.promise;
-    }
 
     this.ensureReady().then(() => {
+      if (this.panel.state == "open" ||
+          document.documentElement.hasAttribute("customizing")) {
+        deferred.resolve();
+        return;
+      }
+
       let editControlPlacement = CustomizableUI.getPlacementOfWidget("edit-controls");
       if (editControlPlacement && editControlPlacement.area == CustomizableUI.AREA_PANEL) {
         updateEditUIVisibility();
+      }
+
+      let personalBookmarksPlacement = CustomizableUI.getPlacementOfWidget("personal-bookmarks");
+      if (personalBookmarksPlacement &&
+          personalBookmarksPlacement.area == CustomizableUI.AREA_PANEL) {
+        PlacesToolbarHelper.customizeChange();
       }
 
       let anchor;
@@ -147,6 +158,10 @@ const PanelUI = {
 
       this.panel.addEventListener("popupshown", function onPopupShown() {
         this.removeEventListener("popupshown", onPopupShown);
+        // As an optimization for the customize mode transition, we preload
+        // about:customizing in the background once the menu panel is first
+        // shown.
+        gCustomizationTabPreloader.ensurePreloading();
         deferred.resolve();
       });
     });
@@ -431,6 +446,12 @@ const PanelUI = {
     let quitButton = document.getElementById("PanelUI-quit");
     quitButton.setAttribute("tooltiptext", tooltipString);
 #endif
+  },
+
+  _overlayScrollListenerBoundFn: null,
+  _overlayScrollListener: function(aMQL) {
+    ScrollbarSampler.resetSystemScrollbarWidth();
+    this._scrollWidth = null;
   },
 };
 

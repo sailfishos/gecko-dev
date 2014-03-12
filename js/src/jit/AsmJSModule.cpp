@@ -347,7 +347,8 @@ AsmJSModule::AsmJSModule(ScriptSource *scriptSource, uint32_t charsBegin)
     dynamicallyLinked_(false),
     loadedFromCache_(false),
     charsBegin_(charsBegin),
-    scriptSource_(scriptSource)
+    scriptSource_(scriptSource),
+    codeIsProtected_(false)
 {
     mozilla::PodZero(&pod);
     scriptSource_->incref();
@@ -1215,10 +1216,13 @@ js::StoreAsmJSModuleInCache(AsmJSParser &parser,
 
     const jschar *begin = parser.tokenStream.rawBase() + ModuleChars::beginOffset(parser);
     const jschar *end = parser.tokenStream.rawBase() + ModuleChars::endOffset(parser);
+    bool installed = parser.options().installedFile;
 
     ScopedCacheEntryOpenedForWrite entry(cx, serializedSize);
-    if (!open(cx->global(), begin, end, entry.serializedSize, &entry.memory, &entry.handle))
+    if (!open(cx->global(), installed, begin, end, entry.serializedSize,
+              &entry.memory, &entry.handle)) {
         return false;
+    }
 
     uint8_t *cursor = entry.memory;
     cursor = machineId.serialize(cursor);

@@ -52,24 +52,23 @@ let HomeBanner = (function () {
   // Holds the messages that will rotate through the banner.
   let _messages = {};
 
-  // A queue used to keep track of which message to show next.
-  let _queue = [];
-
 
   let _handleGet = function() {
-    // Get the message from the front of the queue, then add it back
-    // to the end of the queue to show it again later.
-    let id = _queue.shift();
-    _queue.push(id);
+    // Choose a message at random.
+    let keys = Object.keys(_messages);
+    let randomId = keys[Math.floor(Math.random() * keys.length)];
+    let message = _messages[randomId];
 
-    let message = _messages[id];
     sendMessageToJava({
       type: "HomeBanner:Data",
       id: message.id,
       text: message.text,
       iconURI: message.iconURI
     });
+  };
 
+  let _handleShown = function(id) {
+    let message = _messages[id];
     if (message.onshown)
       message.onshown();
   };
@@ -93,13 +92,17 @@ let HomeBanner = (function () {
           _handleGet();
           break;
 
+        case "HomeBanner:Shown":
+          _handleShown(data);
+          break;
+
         case "HomeBanner:Click":
           _handleClick(data);
           break;
 
         case "HomeBanner:Dismiss":
           _handleDismiss(data);
-          break; 
+          break;
       }
     },
 
@@ -112,13 +115,11 @@ let HomeBanner = (function () {
       let message = new BannerMessage(options);
       _messages[message.id] = message;
 
-      // Add the new message to the end of the queue.
-      _queue.push(message.id);
-
       // If this is the first message we're adding, add
       // observers to listen for requests from the Java UI.
       if (Object.keys(_messages).length == 1) {
         Services.obs.addObserver(this, "HomeBanner:Get", false);
+        Services.obs.addObserver(this, "HomeBanner:Shown", false);
         Services.obs.addObserver(this, "HomeBanner:Click", false);
         Services.obs.addObserver(this, "HomeBanner:Dismiss", false);
 
@@ -142,13 +143,10 @@ let HomeBanner = (function () {
 
       delete _messages[id];
 
-      // Remove the message from the queue.
-      let index = _queue.indexOf(id);
-      _queue.splice(index, 1);
-
       // If there are no more messages, remove the observers.
       if (Object.keys(_messages).length == 0) {
         Services.obs.removeObserver(this, "HomeBanner:Get");
+        Services.obs.removeObserver(this, "HomeBanner:Shown");
         Services.obs.removeObserver(this, "HomeBanner:Click");
         Services.obs.removeObserver(this, "HomeBanner:Dismiss");
       }
