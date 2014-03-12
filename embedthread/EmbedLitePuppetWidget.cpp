@@ -5,7 +5,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#define LOG_COMPONENT "EmbedLitePuppetWidget"
 #include "EmbedLog.h"
 
 #include "base/basictypes.h"
@@ -25,7 +24,6 @@
 #include "Layers.h"
 #include "BasicLayers.h"
 #include "ClientLayerManager.h"
-#include "GLContext.h"
 #include "GLContextProvider.h"
 #include "EmbedLiteCompositorParent.h"
 #include "mozilla/Preferences.h"
@@ -45,7 +43,6 @@ const size_t EmbedLitePuppetWidget::kMaxDimension = 4000;
 
 static nsTArray<EmbedLitePuppetWidget*> gTopLevelWindows;
 static bool sFailedToCreateGLContext = false;
-static nsRefPtr<gl::GLContext> sGLContext;
 
 NS_IMPL_ISUPPORTS_INHERITED1(EmbedLitePuppetWidget, nsBaseWidget,
                              nsISupportsWeakReference)

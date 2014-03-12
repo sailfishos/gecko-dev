@@ -30,20 +30,17 @@ EXPORTS.mozilla.embedlite += [
 
 EXPORTS.ipc = ['embedhelpers/InputDataIPC.h']
 
-SOURCES += [
+UNIFIED_SOURCES += [
     'embedhelpers/EmbedLiteSubThread.cpp',
     'embedhelpers/EmbedLiteUILoop.cpp',
     'EmbedLiteApp.cpp',
     'EmbedLiteMessagePump.cpp',
-    'EmbedLiteRenderTarget.cpp',
     'EmbedLiteView.cpp',
     'embedthread/EmbedContentController.cpp',
     'embedthread/EmbedLiteAppThreadChild.cpp',
     'embedthread/EmbedLiteAppThreadParent.cpp',
-    'embedthread/EmbedLiteCompositorParent.cpp',
     'embedthread/EmbedLitePuppetWidget.cpp',
     'embedthread/EmbedLiteViewThreadChild.cpp',
-    'embedthread/EmbedLiteViewThreadParent.cpp',
     'modules/EmbedLiteAppService.cpp',
     'modules/EmbedLiteJSON.cpp',
     'utils/DirProvider.cpp',
@@ -53,6 +50,12 @@ SOURCES += [
     'utils/TabChildHelper.cpp',
     'utils/WebBrowserChrome.cpp',
     'utils/WindowCreator.cpp',
+]
+
+SOURCES += [
+    'EmbedLiteRenderTarget.cpp',
+    'embedthread/EmbedLiteCompositorParent.cpp',
+    'embedthread/EmbedLiteViewThreadParent.cpp',
 ]
 
 IPDL_SOURCES += [

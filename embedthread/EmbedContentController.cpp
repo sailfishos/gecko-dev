@@ -17,7 +17,6 @@ using namespace mozilla::gfx;
 using namespace mozilla::layers;
 
 class FakeListener : public EmbedLiteViewListener {};
-static FakeListener sFakeListener;
 
 EmbedContentController::EmbedContentController(EmbedLiteViewThreadParent* aRenderFrame, MessageLoop* aUILoop)
   : mUILoop(aUILoop)
@@ -167,6 +166,7 @@ void EmbedContentController::PostDelayedTask(Task* aTask, int aDelayMs)
 
 EmbedLiteViewListener* const EmbedContentController::GetListener() const
 {
+  static FakeListener sFakeListener;
   return mRenderFrame && mRenderFrame->mView ?
          mRenderFrame->mView->GetListener() : &sFakeListener;
 }
