@@ -534,11 +534,11 @@ TabChildBase::GetPageSize(nsCOMPtr<nsIDocument> aDocument, const CSSSize& aViewp
                  std::max(htmlHeight, bodyHeight));
 }
 
-void
-TabChild::HandlePossibleViewportChange()
+bool
+TabChildBase::HandlePossibleViewportChange()
 {
   if (!IsAsyncPanZoomEnabled()) {
-    return;
+    return false;
   }
 
   nsCOMPtr<nsIDocument> document(GetDocument());
@@ -546,7 +546,7 @@ TabChild::HandlePossibleViewportChange()
 
   nsViewportInfo viewportInfo = nsContentUtils::GetViewportInfo(document, mInnerSize);
   uint32_t presShellId;
-  ViewID viewId;
+  mozilla::layers::FrameMetrics::ViewID viewId;
   bool scrollIdentifiersValid = APZCCallbackHelper::GetScrollIdentifiers(
         document->GetDocumentElement(), &presShellId, &viewId);
   if (scrollIdentifiersValid) {
@@ -555,10 +555,10 @@ TabChild::HandlePossibleViewportChange()
       viewportInfo.IsDoubleTapZoomAllowed(),
       viewportInfo.GetMinZoom(),
       viewportInfo.GetMaxZoom());
-    SendUpdateZoomConstraints(presShellId,
-                              viewId,
-                              /* isRoot = */ true,
-                              constraints);
+    DoUpdateZoomConstraints(presShellId,
+                            viewId,
+                            /* isRoot = */ true,
+                            constraints);
   }
 
   float screenW = mInnerSize.width;
@@ -568,7 +568,7 @@ TabChild::HandlePossibleViewportChange()
   // We're not being displayed in any way; don't bother doing anything because
   // that will just confuse future adjustments.
   if (!screenW || !screenH) {
-    return;
+    return false;
   }
 
   float oldBrowserWidth = mOldViewportWidth;
@@ -588,7 +588,7 @@ TabChild::HandlePossibleViewportChange()
   // window.innerWidth before they are painted have a correct value (bug
   // 771575).
   if (!mContentDocumentIsDisplayed) {
-    return;
+    return false;
   }
 
   float oldScreenWidth = mLastRootMetrics.mCompositionBounds.width;
@@ -651,7 +651,7 @@ TabChild::HandlePossibleViewportChange()
   CSSSize pageSize = GetPageSize(document, viewport);
   if (!pageSize.width) {
     // Return early rather than divide by 0.
-    return;
+    return false;
   }
   metrics.mScrollableRect = CSSRect(CSSPoint(), pageSize);
 
@@ -679,12 +679,26 @@ TabChild::HandlePossibleViewportChange()
         viewportInfo.IsDoubleTapZoomAllowed(),
         viewportInfo.GetMinZoom(),
         viewportInfo.GetMaxZoom());
-      SendUpdateZoomConstraints(presShellId,
-                                viewId,
-                                /* isRoot = */ true,
-                                constraints);
+      DoUpdateZoomConstraints(presShellId,
+                              viewId,
+                              /* isRoot = */ true,
+                              constraints);
     }
   }
+
+  return true;
+}
+
+bool
+TabChild::DoUpdateZoomConstraints(const uint32_t& aPresShellId,
+                                  const ViewID& aViewId,
+                                  const bool& aIsRoot,
+                                  const ZoomConstraints& aConstraints)
+{
+  return SendUpdateZoomConstraints(aPresShellId,
+                                   aViewId,
+                                   aIsRoot,
+                                   aConstraints);
 }
 
 nsresult
@@ -1589,7 +1603,7 @@ TabChild::RecvAcknowledgeScrollUpdate(const ViewID& aScrollId,
 }
 
 bool
-TabChild::ProcessUpdateFrame(const FrameMetrics& aFrameMetrics)
+TabChildBase::ProcessUpdateFrame(const FrameMetrics& aFrameMetrics)
   {
     if (!mGlobal || !mTabChildGlobal) {
         return true;
@@ -1639,6 +1653,10 @@ TabChild::ProcessUpdateFrame(const FrameMetrics& aFrameMetrics)
         data.AppendLiteral(", \"height\" : ");
         data.AppendFloat(newMetrics.mScrollableRect.height);
         data.AppendLiteral(" }");
+        data.AppendPrintf(", \"resolution\" : "); // TODO: check if it's actually used?
+        data.AppendPrintf("{ \"width\" : ");
+            data.AppendFloat(aFrameMetrics.mZoom.scale);
+        data.AppendPrintf(" }");
     data.AppendLiteral(", \"cssCompositedRect\" : ");
         data.AppendLiteral("{ \"width\" : ");
         data.AppendFloat(cssCompositedRect.width);

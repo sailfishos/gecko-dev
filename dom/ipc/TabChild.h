@@ -155,6 +155,16 @@ public:
     virtual nsIWidget* WebWidget() = 0;
     nsIPrincipal* GetPrincipal() { return mPrincipal; }
     bool IsAsyncPanZoomEnabled();
+    // Recalculates the display state, including the CSS
+    // viewport. This should be called whenever we believe the
+    // viewport data on a document may have changed. If it didn't
+    // change, this function doesn't do anything.  However, it should
+    // not be called all the time as it is fairly expensive.
+    bool HandlePossibleViewportChange();
+    virtual bool DoUpdateZoomConstraints(const uint32_t& aPresShellId,
+                                         const mozilla::layers::FrameMetrics::ViewID& aViewId,
+                                         const bool& aIsRoot,
+                                         const mozilla::layers::ZoomConstraints& aConstraints) = 0;
 
 protected:
     CSSSize GetPageSize(nsCOMPtr<nsIDocument> aDocument, const CSSSize& aViewport);
@@ -184,6 +194,8 @@ protected:
 
     bool HasValidInnerSize();
     void InitializeRootMetrics();
+
+    bool ProcessUpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics);
 
 protected:
     float mOldViewportWidth;
@@ -259,7 +271,10 @@ public:
                                     const mozilla::dom::StructuredCloneData& aData,
                                     JS::Handle<JSObject *> aCpows,
                                     nsIPrincipal* aPrincipal) MOZ_OVERRIDE;
-
+    virtual bool DoUpdateZoomConstraints(const uint32_t& aPresShellId,
+                                         const ViewID& aViewId,
+                                         const bool& aIsRoot,
+                                         const ZoomConstraints& aConstraints) MOZ_OVERRIDE;
     virtual bool RecvLoadURL(const nsCString& uri) MOZ_OVERRIDE;
     virtual bool RecvCacheFileDescriptor(const nsString& aPath,
                                          const FileDescriptor& aFileDescriptor)
@@ -480,17 +495,10 @@ private:
     bool InitRenderingState();
     void DestroyWindow();
     void SetProcessNameToAppName();
-    bool ProcessUpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics);
+
 
     // Call RecvShow(nsIntSize(0, 0)) and block future calls to RecvShow().
     void DoFakeShow();
-
-    // Recalculates the display state, including the CSS
-    // viewport. This should be called whenever we believe the
-    // viewport data on a document may have changed. If it didn't
-    // change, this function doesn't do anything.  However, it should
-    // not be called all the time as it is fairly expensive.
-    void HandlePossibleViewportChange();
 
     // These methods are used for tracking synthetic mouse events
     // dispatched for compatibility.  On each touch event, we
