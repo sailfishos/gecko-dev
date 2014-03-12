@@ -1692,9 +1692,9 @@ void
 TabChild::FireSingleTapEvent(LayoutDevicePoint aPoint)
 {
   int time = 0;
-  DispatchSynthesizedMouseEvent(NS_MOUSE_MOVE, time, aPoint);
-  DispatchSynthesizedMouseEvent(NS_MOUSE_BUTTON_DOWN, time, aPoint);
-  DispatchSynthesizedMouseEvent(NS_MOUSE_BUTTON_UP, time, aPoint);
+  DispatchSynthesizedMouseEvent(NS_MOUSE_MOVE, time, aPoint, mWidget);
+  DispatchSynthesizedMouseEvent(NS_MOUSE_BUTTON_DOWN, time, aPoint, mWidget);
+  DispatchSynthesizedMouseEvent(NS_MOUSE_BUTTON_UP, time, aPoint, mWidget);
 }
 
 bool
@@ -1784,6 +1784,7 @@ bool
 TabChild::RecvRealMouseEvent(const WidgetMouseEvent& event)
 {
   WidgetMouseEvent localEvent(event);
+  localEvent.widget = mWidget;
   DispatchWidgetEvent(localEvent);
   return true;
 }
@@ -1792,13 +1793,15 @@ bool
 TabChild::RecvMouseWheelEvent(const WidgetWheelEvent& event)
 {
   WidgetWheelEvent localEvent(event);
+  localEvent.widget = mWidget;
   DispatchWidgetEvent(localEvent);
   return true;
 }
 
 void
-TabChild::DispatchSynthesizedMouseEvent(uint32_t aMsg, uint64_t aTime,
-                                        const LayoutDevicePoint& aRefPoint)
+TabChildBase::DispatchSynthesizedMouseEvent(uint32_t aMsg, uint64_t aTime,
+                                            const LayoutDevicePoint& aRefPoint,
+                                            nsIWidget* aWidget)
 {
   MOZ_ASSERT(aMsg == NS_MOUSE_MOVE || aMsg == NS_MOUSE_BUTTON_DOWN ||
              aMsg == NS_MOUSE_BUTTON_UP);
@@ -1812,6 +1815,7 @@ TabChild::DispatchSynthesizedMouseEvent(uint32_t aMsg, uint64_t aTime,
   if (aMsg != NS_MOUSE_MOVE) {
     event.clickCount = 1;
   }
+  event.widget = aWidget;
 
   DispatchWidgetEvent(event);
 }
@@ -1900,9 +1904,9 @@ TabChild::UpdateTapState(const WidgetTouchEvent& aEvent, nsEventStatus aStatus)
 
   case NS_TOUCH_END:
     if (!nsIPresShell::gPreventMouseEvents) {
-      DispatchSynthesizedMouseEvent(NS_MOUSE_MOVE, time, currentPoint);
-      DispatchSynthesizedMouseEvent(NS_MOUSE_BUTTON_DOWN, time, currentPoint);
-      DispatchSynthesizedMouseEvent(NS_MOUSE_BUTTON_UP, time, currentPoint);
+      DispatchSynthesizedMouseEvent(NS_MOUSE_MOVE, time, currentPoint, mWidget);
+      DispatchSynthesizedMouseEvent(NS_MOUSE_BUTTON_DOWN, time, currentPoint, mWidget);
+      DispatchSynthesizedMouseEvent(NS_MOUSE_BUTTON_UP, time, currentPoint, mWidget);
     }
     // fall through
   case NS_TOUCH_CANCEL:
@@ -1957,6 +1961,7 @@ TabChild::RecvRealTouchEvent(const WidgetTouchEvent& aEvent,
                              const ScrollableLayerGuid& aGuid)
 {
   WidgetTouchEvent localEvent(aEvent);
+  localEvent.widget = mWidget;
   nsEventStatus status = DispatchWidgetEvent(localEvent);
 
   if (!IsAsyncPanZoomEnabled()) {
@@ -2012,6 +2017,7 @@ bool
 TabChild::RecvRealKeyEvent(const WidgetKeyboardEvent& event)
 {
   WidgetKeyboardEvent localEvent(event);
+  localEvent.widget = mWidget;
   DispatchWidgetEvent(localEvent);
   return true;
 }
@@ -2035,6 +2041,7 @@ bool
 TabChild::RecvCompositionEvent(const WidgetCompositionEvent& event)
 {
   WidgetCompositionEvent localEvent(event);
+  localEvent.widget = mWidget;
   DispatchWidgetEvent(localEvent);
   return true;
 }
@@ -2043,6 +2050,7 @@ bool
 TabChild::RecvTextEvent(const WidgetTextEvent& event)
 {
   WidgetTextEvent localEvent(event);
+  localEvent.widget = mWidget;
   DispatchWidgetEvent(localEvent);
   return true;
 }
@@ -2051,19 +2059,19 @@ bool
 TabChild::RecvSelectionEvent(const WidgetSelectionEvent& event)
 {
   WidgetSelectionEvent localEvent(event);
+  localEvent.widget = mWidget;
   DispatchWidgetEvent(localEvent);
   return true;
 }
 
 nsEventStatus
-TabChild::DispatchWidgetEvent(WidgetGUIEvent& event)
+TabChildBase::DispatchWidgetEvent(WidgetGUIEvent& event)
 {
-  if (!mWidget)
+  if (!event.widget)
     return nsEventStatus_eConsumeNoDefault;
 
   nsEventStatus status;
-  event.widget = mWidget;
-  NS_ENSURE_SUCCESS(mWidget->DispatchEvent(&event, status),
+  NS_ENSURE_SUCCESS(event.widget->DispatchEvent(&event, status),
                     nsEventStatus_eConsumeNoDefault);
   return status;
 }

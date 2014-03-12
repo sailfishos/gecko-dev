@@ -174,6 +174,12 @@ protected:
     void DispatchMessageManagerMessage(const nsAString& aMessageName,
                                        const nsAString& aJSONData);
 
+    void DispatchSynthesizedMouseEvent(uint32_t aMsg, uint64_t aTime,
+                                       const LayoutDevicePoint& aRefPoint,
+                                       nsIWidget* aWidget);
+
+    nsEventStatus DispatchWidgetEvent(WidgetGUIEvent& event);
+
 protected:
     float mOldViewportWidth;
     bool mContentDocumentIsDisplayed;
@@ -430,8 +436,6 @@ protected:
     virtual bool RecvSetUpdateHitRegion(const bool& aEnabled) MOZ_OVERRIDE;
     virtual bool RecvSetIsDocShellActive(const bool& aIsActive) MOZ_OVERRIDE;
 
-    nsEventStatus DispatchWidgetEvent(WidgetGUIEvent& event);
-
     virtual PIndexedDBChild* AllocPIndexedDBChild(const nsCString& aGroup,
                                                   const nsCString& aASCIIOrigin,
                                                   bool* /* aAllowed */) MOZ_OVERRIDE;
@@ -481,9 +485,6 @@ private:
     // change, this function doesn't do anything.  However, it should
     // not be called all the time as it is fairly expensive.
     void HandlePossibleViewportChange();
-
-    void DispatchSynthesizedMouseEvent(uint32_t aMsg, uint64_t aTime,
-                                       const LayoutDevicePoint& aRefPoint);
 
     // These methods are used for tracking synthetic mouse events
     // dispatched for compatibility.  On each touch event, we

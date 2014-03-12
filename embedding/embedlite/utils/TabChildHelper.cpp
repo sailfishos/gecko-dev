@@ -603,21 +603,6 @@ TabChildHelper::InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint)
 }
 
 nsEventStatus
-TabChildHelper::DispatchWidgetEvent(WidgetGUIEvent& event)
-{
-  if (!mView->mWidget || !event.widget) {
-    return nsEventStatus_eConsumeNoDefault;
-  }
-
-  event.mFlags.mIsBeingDispatched = false;
-
-  nsEventStatus status;
-  NS_ENSURE_SUCCESS(event.widget->DispatchEvent(&event, status),
-                    nsEventStatus_eConsumeNoDefault);
-  return status;
-}
-
-nsEventStatus
 TabChildHelper::DispatchSynthesizedMouseEvent(const WidgetTouchEvent& aEvent)
 {
   // Synthesize a phony mouse event.
@@ -673,27 +658,6 @@ TabChildHelper::DispatchSynthesizedMouseEvent(const WidgetTouchEvent& aEvent)
     return status;
   }
   return nsEventStatus_eIgnore;
-}
-
-void
-TabChildHelper::DispatchSynthesizedMouseEvent(uint32_t aMsg, uint64_t aTime,
-                                              const nsIntPoint& aRefPoint)
-{
-  // Synthesize a phony mouse event.
-  MOZ_ASSERT(aMsg == NS_MOUSE_MOVE || aMsg == NS_MOUSE_BUTTON_DOWN ||
-             aMsg == NS_MOUSE_BUTTON_UP);
-
-  WidgetMouseEvent event(true, aMsg, NULL,
-                     WidgetMouseEvent::eReal, WidgetMouseEvent::eNormal);
-  event.refPoint.x = aRefPoint.x;
-  event.refPoint.y = aRefPoint.y;
-  event.time = aTime;
-  event.button = WidgetMouseEvent::eLeftButton;
-  if (aMsg != NS_MOUSE_MOVE) {
-    event.clickCount = 1;
-  }
-
-  DispatchWidgetEvent(event);
 }
 
 bool
