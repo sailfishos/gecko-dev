@@ -541,10 +541,7 @@ TabChild::HandlePossibleViewportChange()
     return;
   }
 
-  nsCOMPtr<nsIDOMDocument> domDoc;
-  WebNavigation()->GetDocument(getter_AddRefs(domDoc));
-  nsCOMPtr<nsIDocument> document(do_QueryInterface(domDoc));
-
+  nsCOMPtr<nsIDocument> document(GetDocument());
   nsCOMPtr<nsIDOMWindowUtils> utils(GetDOMWindowUtils());
 
   nsViewportInfo viewportInfo = nsContentUtils::GetViewportInfo(document, mInnerSize);
@@ -2499,7 +2496,7 @@ TabChild::NotifyPainted()
 }
 
 bool
-TabChild::IsAsyncPanZoomEnabled()
+TabChildBase::IsAsyncPanZoomEnabled()
 {
     return mScrolling == ASYNC_PAN_ZOOM;
 }

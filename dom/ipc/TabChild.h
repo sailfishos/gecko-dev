@@ -152,8 +152,9 @@ public:
     TabChildBase();
 
     virtual nsIWebNavigation* WebNavigation() = 0;
-    nsIPrincipal* GetPrincipal() { return mPrincipal; }
     virtual nsIWidget* WebWidget() = 0;
+    nsIPrincipal* GetPrincipal() { return mPrincipal; }
+    bool IsAsyncPanZoomEnabled();
 
 protected:
     CSSSize GetPageSize(nsCOMPtr<nsIDocument> aDocument, const CSSSize& aViewport);
@@ -384,7 +385,6 @@ public:
 
     void NotifyPainted();
 
-    bool IsAsyncPanZoomEnabled();
 
     /** Return a boolean indicating if the page has called preventDefault on
      *  the event.

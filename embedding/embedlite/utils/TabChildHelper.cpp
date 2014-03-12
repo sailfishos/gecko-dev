@@ -41,6 +41,7 @@ static bool sDisableViewportHandler = getenv("NO_VIEWPORT") != 0;
 using namespace mozilla;
 using namespace mozilla::embedlite;
 using namespace mozilla::layers;
+using namespace mozilla::layout;
 using namespace mozilla::dom;
 using namespace mozilla::widget;
 
@@ -53,7 +54,7 @@ TabChildHelper::TabChildHelper(EmbedLiteViewThreadChild* aView)
 {
   LOGT();
 
-  mScrolling = mozilla::layout::ASYNC_PAN_ZOOM;
+  mScrolling = sDisableViewportHandler == false ? ASYNC_PAN_ZOOM : DEFAULT_SCROLLING;
 
   // Init default prefs
   static bool sPrefInitialized = false;
@@ -660,7 +661,7 @@ TabChildHelper::DispatchSynthesizedMouseEvent(const WidgetTouchEvent& aEvent)
 bool
 TabChildHelper::HandlePossibleViewportChange()
 {
-  if (sDisableViewportHandler) {
+  if (!IsAsyncPanZoomEnabled()) {
     return false;
   }
 
@@ -668,19 +669,21 @@ TabChildHelper::HandlePossibleViewportChange()
   nsCOMPtr<nsIDOMWindowUtils> utils(GetDOMWindowUtils());
 
   nsViewportInfo viewportInfo = nsContentUtils::GetViewportInfo(document, mInnerSize);
-
-  nsIContent* content = document->GetDocumentElement();
-  ViewID viewId = 0;
-  if (content) {
-    uint32_t presShellId = 0;
-    viewId = nsLayoutUtils::FindOrCreateIDFor(content);
-    if (utils && (utils->GetPresShellId(&presShellId) == NS_OK)) {
-      mView->SendUpdateZoomConstraints(presShellId, viewId, /* isRoot = */ true,
-                                       ZoomConstraints(viewportInfo.IsZoomAllowed(),
-                                                       viewportInfo.IsDoubleTapZoomAllowed(),
-                                                       viewportInfo.GetMinZoom(),
-                                                       viewportInfo.GetMaxZoom()));
-    }
+  uint32_t presShellId;
+  ViewID viewId;
+  viewId = nsLayoutUtils::FindOrCreateIDFor(document->GetDocumentElement());
+  bool scrollIdentifiersValid = APZCCallbackHelper::GetScrollIdentifiers(
+        document->GetDocumentElement(), &presShellId, &viewId);
+  if (scrollIdentifiersValid) {
+    ZoomConstraints constraints(
+      viewportInfo.IsZoomAllowed(),
+      viewportInfo.IsDoubleTapZoomAllowed(),
+      viewportInfo.GetMinZoom(),
+      viewportInfo.GetMaxZoom());
+    mView->SendUpdateZoomConstraints(presShellId,
+                                     viewId,
+                                     /* isRoot = */ true,
+                                     constraints);
   }
 
   float screenW = mInnerSize.width;
@@ -758,11 +761,6 @@ TabChildHelper::HandlePossibleViewportChange()
     metrics.mScrollId = viewId;
   }
 
-  metrics.mDisplayPort = AsyncPanZoomController::CalculatePendingDisplayPort(
-    // The page must have been refreshed in some way such as a new document or
-    // new CSS viewport, so we know that there's no velocity, acceleration, and
-    // we have no idea how long painting will take.
-    metrics, ScreenPoint(0.0f, 0.0f), 0.0);
   metrics.mCumulativeResolution = metrics.mZoom / metrics.mDevPixelsPerCSSPixel * ScreenToLayerScale(1);
   // This is the root layer, so the cumulative resolution is the same
   // as the resolution.
@@ -783,9 +781,36 @@ TabChildHelper::HandlePossibleViewportChange()
   }
   metrics.mScrollableRect = CSSRect(CSSPoint(), pageSize);
 
+  // Calculate a display port _after_ having a scrollable rect because the
+  // display port is clamped to the scrollable rect.
+  metrics.mDisplayPort = AsyncPanZoomController::CalculatePendingDisplayPort(
+    // The page must have been refreshed in some way such as a new document or
+    // new CSS viewport, so we know that there's no velocity, acceleration, and
+    // we have no idea how long painting will take.
+    metrics, ScreenPoint(0.0f, 0.0f), 0.0);
+
   // Force a repaint with these metrics. This, among other things, sets the
   // displayport, so we start with async painting.
   ProcessUpdateFrame(metrics);
+
+  if (viewportInfo.IsZoomAllowed() && scrollIdentifiersValid) {
+    // If the CSS viewport is narrower than the screen (i.e. width <= device-width)
+    // then we disable double-tap-to-zoom behaviour.
+    bool allowDoubleTapZoom = (viewport.width > screenW / metrics.mDevPixelsPerCSSPixel.scale);
+    if (allowDoubleTapZoom != viewportInfo.IsDoubleTapZoomAllowed()) {
+      viewportInfo.SetAllowDoubleTapZoom(allowDoubleTapZoom);
+
+      ZoomConstraints constraints(
+        viewportInfo.IsZoomAllowed(),
+        viewportInfo.IsDoubleTapZoomAllowed(),
+        viewportInfo.GetMinZoom(),
+        viewportInfo.GetMaxZoom());
+      mView->SendUpdateZoomConstraints(presShellId, viewId, /* isRoot = */ true,
+                                       constraints);
+    }
+  }
+
   mFrameMetrics = metrics;
+
   return true;
 }
