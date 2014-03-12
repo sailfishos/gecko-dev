@@ -221,6 +221,7 @@ TabChildBase::TabChildBase()
   : mOldViewportWidth(0.0f)
   , mContentDocumentIsDisplayed(false)
   , mTabChildGlobal(nullptr)
+  , mInnerSize(0, 0)
 {
 }
 
@@ -287,7 +288,6 @@ TabChild::TabChild(ContentChild* aManager, const TabContext& aContext, uint32_t 
   , mManager(aManager)
   , mChromeFlags(aChromeFlags)
   , mOuterRect(0, 0, 0, 0)
-  , mInnerSize(0, 0)
   , mActivePointerId(-1)
   , mTapHoldTimer(nullptr)
   , mAppPackageFileDescriptorRecved(false)
@@ -323,7 +323,7 @@ TabChild::HandleEvent(nsIDOMEvent* aEvent)
 }
 
 void
-TabChild::InitializeRootMetrics()
+TabChildBase::InitializeRootMetrics()
 {
   // Calculate a really simple resolution that we probably won't
   // be keeping, as well as putting the scroll offset back to
@@ -331,7 +331,7 @@ TabChild::InitializeRootMetrics()
   mLastRootMetrics.mViewport = CSSRect(CSSPoint(), kDefaultViewportSize);
   mLastRootMetrics.mCompositionBounds = ScreenIntRect(ScreenIntPoint(), mInnerSize);
   mLastRootMetrics.mZoom = mLastRootMetrics.CalculateIntrinsicScale();
-  mLastRootMetrics.mDevPixelsPerCSSPixel = mWidget->GetDefaultScale();
+  mLastRootMetrics.mDevPixelsPerCSSPixel = WebWidget()->GetDefaultScale();
   // We use ScreenToLayerScale(1) below in order to turn the
   // async zoom amount into the gecko zoom amount.
   mLastRootMetrics.mCumulativeResolution =
@@ -343,7 +343,7 @@ TabChild::InitializeRootMetrics()
 }
 
 bool
-TabChild::HasValidInnerSize()
+TabChildBase::HasValidInnerSize()
 {
   return (mInnerSize.width != 0) && (mInnerSize.height != 0);
 }

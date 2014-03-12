@@ -153,6 +153,7 @@ public:
 
     virtual nsIWebNavigation* WebNavigation() = 0;
     nsIPrincipal* GetPrincipal() { return mPrincipal; }
+    virtual nsIWidget* WebWidget() = 0;
 
 protected:
     CSSSize GetPageSize(nsCOMPtr<nsIDocument> aDocument, const CSSSize& aViewport);
@@ -180,10 +181,15 @@ protected:
 
     nsEventStatus DispatchWidgetEvent(WidgetGUIEvent& event);
 
+    bool HasValidInnerSize();
+    void InitializeRootMetrics();
+
 protected:
     float mOldViewportWidth;
     bool mContentDocumentIsDisplayed;
     nsRefPtr<TabChildGlobal> mTabChildGlobal;
+    ScreenIntSize mInnerSize;
+    mozilla::layers::FrameMetrics mLastRootMetrics;
 };
 
 class TabChild : public PBrowserChild,
@@ -365,6 +371,7 @@ public:
     DeallocPOfflineCacheUpdateChild(POfflineCacheUpdateChild* offlineCacheUpdate) MOZ_OVERRIDE;
 
     virtual nsIWebNavigation* WebNavigation() MOZ_OVERRIDE { return mWebNav; }
+    virtual nsIWidget* WebWidget() MOZ_OVERRIDE { return mWidget; }
 
     /** Return the DPI of the widget this TabChild draws to. */
     void GetDPI(float* aDPI);
@@ -455,8 +462,6 @@ private:
 
     nsresult Init();
 
-    void InitializeRootMetrics();
-    bool HasValidInnerSize();
 
     // Notify others that our TabContext has been updated.  (At the moment, this
     // sets the appropriate app-id and is-browser flags on our docshell.)
@@ -511,12 +516,10 @@ private:
     nsCOMPtr<nsIWebNavigation> mWebNav;
     nsCOMPtr<nsIWidget> mWidget;
     nsCOMPtr<nsIURI> mLastURI;
-    FrameMetrics mLastRootMetrics;
     RenderFrameChild* mRemoteFrame;
     nsRefPtr<ContentChild> mManager;
     uint32_t mChromeFlags;
     nsIntRect mOuterRect;
-    ScreenIntSize mInnerSize;
     // When we're tracking a possible tap gesture, this is the "down"
     // point of the touchstart.
     LayoutDevicePoint mGestureDownPoint;
