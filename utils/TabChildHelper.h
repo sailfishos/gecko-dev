@@ -57,6 +57,10 @@ public:
                                   JS::Handle<JSObject *> aCpows,
                                   nsIPrincipal* aPrincipal) MOZ_OVERRIDE;
   virtual bool CheckPermission(const nsAString& aPermission) MOZ_OVERRIDE;
+  virtual bool DoUpdateZoomConstraints(const uint32_t& aPresShellId,
+                                       const mozilla::layers::FrameMetrics::ViewID& aViewId,
+                                       const bool& aIsRoot,
+                                       const mozilla::layers::ZoomConstraints& aConstraints) MOZ_OVERRIDE;
 
 protected:
   nsIWidget* GetWidget(nsPoint* aOffset);
@@ -73,14 +77,6 @@ private:
   bool InitTabChildGlobal();
   void Disconnect();
   void Unload();
-  bool ProcessUpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics);
-
-  // Recalculates the display state, including the CSS
-  // viewport. This should be called whenever we believe the
-  // viewport data on a document may have changed. If it didn't
-  // change, this function doesn't do anything.  However, it should
-  // not be called all the time as it is fairly expensive.
-  bool HandlePossibleViewportChange();
 
   friend class EmbedLiteViewThreadChild;
   EmbedLiteViewThreadChild* mView;
