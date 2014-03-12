@@ -593,7 +593,7 @@ EmbedLiteViewThreadChild::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
 
   FrameMetrics metrics(aFrameMetrics);
   if (mViewResized && mHelper->HandlePossibleViewportChange()) {
-    metrics = mHelper->mFrameMetrics;
+    metrics = mHelper->mLastRootMetrics;
     mViewResized = false;
   }
 
