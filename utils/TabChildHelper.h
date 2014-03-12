@@ -42,7 +42,7 @@ public:
 
   virtual nsIWebNavigation* WebNavigation() MOZ_OVERRIDE;
 
-  virtual bool DoLoadFrameScript(const nsAString& aURL, bool aRunInGlobalScope);
+  virtual bool DoLoadFrameScript(const nsAString& aURL, bool aRunInGlobalScope) MOZ_OVERRIDE;
   virtual bool DoSendBlockingMessage(JSContext* aCx,
                                      const nsAString& aMessage,
                                      const mozilla::dom::StructuredCloneData& aData,
@@ -61,12 +61,9 @@ protected:
   nsIWidget* GetWidget(nsPoint* aOffset);
   nsPresContext* GetPresContext();
   void InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint = nullptr);
-  nsEventStatus DispatchWidgetEvent(WidgetGUIEvent& event);
   // Sends a simulated mouse event from a touch event for compatibility.
   bool ConvertMutiTouchInputToEvent(const mozilla::MultiTouchInput& aData,
                                     WidgetTouchEvent& aEvent);
-  void DispatchSynthesizedMouseEvent(uint32_t aMsg, uint64_t aTime,
-                                     const nsIntPoint& aRefPoint);
   nsEventStatus DispatchSynthesizedMouseEvent(const WidgetTouchEvent& aEvent);
 
   void CancelTapTracking();
