@@ -3,7 +3,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#define LOG_COMPONENT "EmbedLiteViewThreadParent"
 #include "EmbedLog.h"
 
 #include "EmbedLiteViewThreadParent.h"
@@ -18,7 +17,7 @@
 #include "mozilla/layers/APZCTreeManager.h"
 #include "EmbedLiteRenderTarget.h"
 
-#include "GLContext.h"                  // for GLContext
+//#include "GLContext.h"                  // for GLContext
 #include "GLScreenBuffer.h"             // for GLScreenBuffer
 #include "SharedSurfaceEGL.h"           // for SurfaceFactory_EGLImage
 #include "SharedSurfaceGL.h"            // for SurfaceFactory_GLTexture, etc
