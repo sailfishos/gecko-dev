@@ -53,6 +53,8 @@ TabChildHelper::TabChildHelper(EmbedLiteViewThreadChild* aView)
 {
   LOGT();
 
+  mScrolling = mozilla::layout::ASYNC_PAN_ZOOM;
+
   // Init default prefs
   static bool sPrefInitialized = false;
   if (!sPrefInitialized) {

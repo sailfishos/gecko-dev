@@ -190,6 +190,7 @@ protected:
     nsRefPtr<TabChildGlobal> mTabChildGlobal;
     ScreenIntSize mInnerSize;
     mozilla::layers::FrameMetrics mLastRootMetrics;
+    mozilla::layout::ScrollingBehavior mScrolling;
 };
 
 class TabChild : public PBrowserChild,
@@ -535,7 +536,6 @@ private:
     nsAutoTArray<nsAutoPtr<CachedFileDescriptorInfo>, 1>
         mCachedFileDescriptorInfos;
     nscolor mLastBackgroundColor;
-    ScrollingBehavior mScrolling;
     bool mDidFakeShow;
     bool mNotified;
     bool mTriedBrowserInit;
