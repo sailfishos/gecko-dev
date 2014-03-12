@@ -41,6 +41,7 @@ public:
   bool RecvUpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics);
 
   virtual nsIWebNavigation* WebNavigation() MOZ_OVERRIDE;
+  virtual nsIWidget* WebWidget() MOZ_OVERRIDE;
 
   virtual bool DoLoadFrameScript(const nsAString& aURL, bool aRunInGlobalScope) MOZ_OVERRIDE;
   virtual bool DoSendBlockingMessage(JSContext* aCx,
@@ -83,8 +84,6 @@ private:
 
   friend class EmbedLiteViewThreadChild;
   EmbedLiteViewThreadChild* mView;
-  ScreenIntSize mInnerSize;
-  mozilla::layers::FrameMetrics mLastRootMetrics;
   mozilla::layers::FrameMetrics mLastSubFrameMetrics;
   mozilla::layers::FrameMetrics mFrameMetrics;
 };
