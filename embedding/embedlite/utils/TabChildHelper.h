@@ -85,7 +85,6 @@ private:
   friend class EmbedLiteViewThreadChild;
   EmbedLiteViewThreadChild* mView;
   mozilla::layers::FrameMetrics mLastSubFrameMetrics;
-  mozilla::layers::FrameMetrics mFrameMetrics;
 };
 
 }

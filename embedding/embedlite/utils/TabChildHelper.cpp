@@ -810,7 +810,5 @@ TabChildHelper::HandlePossibleViewportChange()
     }
   }
 
-  mFrameMetrics = metrics;
-
   return true;
 }
