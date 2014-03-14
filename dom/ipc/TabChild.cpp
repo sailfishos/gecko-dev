@@ -1561,7 +1561,7 @@ TabChildBase::ProcessUpdateFrame(const FrameMetrics& aFrameMetrics)
         data.AppendLiteral(" }");
         data.AppendPrintf(", \"resolution\" : "); // TODO: check if it's actually used?
         data.AppendPrintf("{ \"width\" : ");
-            data.AppendFloat(aFrameMetrics.mZoom.scale);
+        data.AppendFloat(newMetrics.CalculateIntrinsicScale().scale);
         data.AppendPrintf(" }");
     data.AppendLiteral(", \"cssCompositedRect\" : ");
         data.AppendLiteral("{ \"width\" : ");
@@ -1584,9 +1584,11 @@ TabChild::RecvHandleDoubleTap(const CSSPoint& aPoint, const ScrollableLayerGuid&
 
     CSSPoint point = APZCCallbackHelper::ApplyCallbackTransform(aPoint, aGuid);
     nsString data;
-    data += nsPrintfCString("{ \"x\" : %f", point.x);
-    data += nsPrintfCString(", \"y\" : %f", point.y);
-    data += nsPrintfCString(" }");
+    data.AppendLiteral("{ \"x\" : ");
+    data.AppendFloat(point.x);
+    data.AppendLiteral(", \"y\" : ");
+    data.AppendFloat(point.y);
+    data.AppendLiteral(" }");
 
     DispatchMessageManagerMessage(NS_LITERAL_STRING("Gesture:DoubleTap"), data);
 

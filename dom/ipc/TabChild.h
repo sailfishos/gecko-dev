@@ -193,7 +193,7 @@ protected:
     bool HasValidInnerSize();
     void InitializeRootMetrics();
 
-    bool ProcessUpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics);
+    mozilla::layers::FrameMetrics ProcessUpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics);
 
 protected:
     float mOldViewportWidth;
@@ -475,7 +475,6 @@ private:
     bool InitRenderingState();
     void DestroyWindow();
     void SetProcessNameToAppName();
-    FrameMetrics ProcessUpdateFrame(const FrameMetrics& aFrameMetrics);
 
     // Call RecvShow(nsIntSize(0, 0)) and block future calls to RecvShow().
     void DoFakeShow();
