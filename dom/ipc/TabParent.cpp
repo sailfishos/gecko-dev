@@ -514,7 +514,7 @@ TabParent::AcknowledgeScrollUpdate(const ViewID& aScrollId, const uint32_t& aScr
   }
 }
 
-void TabParent::HandleDoubleTap(const CSSIntPoint& aPoint,
+void TabParent::HandleDoubleTap(const CSSPoint& aPoint,
                                 int32_t aModifiers,
                                 const ScrollableLayerGuid &aGuid)
 {
@@ -523,7 +523,7 @@ void TabParent::HandleDoubleTap(const CSSIntPoint& aPoint,
   }
 }
  
-void TabParent::HandleSingleTap(const CSSIntPoint& aPoint,
+void TabParent::HandleSingleTap(const CSSPoint& aPoint,
                                 int32_t aModifiers,
                                 const ScrollableLayerGuid &aGuid)
 {
@@ -533,7 +533,7 @@ void TabParent::HandleSingleTap(const CSSIntPoint& aPoint,
   }
 }
  
-void TabParent::HandleLongTap(const CSSIntPoint& aPoint,
+void TabParent::HandleLongTap(const CSSPoint& aPoint,
                               int32_t aModifiers,
                               const ScrollableLayerGuid &aGuid)
 {
@@ -542,7 +542,7 @@ void TabParent::HandleLongTap(const CSSIntPoint& aPoint,
   }
 }
  
-void TabParent::HandleLongTapUp(const CSSIntPoint& aPoint,
+void TabParent::HandleLongTapUp(const CSSPoint& aPoint,
                                 int32_t aModifiers,
                                 const ScrollableLayerGuid &aGuid)
 {
@@ -706,7 +706,7 @@ bool TabParent::SendRealMouseEvent(WidgetMouseEvent& event)
   return PBrowserParent::SendRealMouseEvent(outEvent);
 }
 
-CSSIntPoint TabParent::AdjustTapToChildWidget(const CSSIntPoint& aPoint)
+CSSIntPoint TabParent::AdjustTapToChildWidget(const CSSPoint& aPoint)
 {
   nsCOMPtr<nsIContent> content = do_QueryInterface(mFrameElement);
 
@@ -720,12 +720,12 @@ CSSIntPoint TabParent::AdjustTapToChildWidget(const CSSIntPoint& aPoint)
   }
   nsPresContext* presContext = doc->GetShell()->GetPresContext();
 
-  return CSSIntPoint(
-    aPoint.x + presContext->DevPixelsToIntCSSPixels(mChildProcessOffsetAtTouchStart.x),
-    aPoint.y + presContext->DevPixelsToIntCSSPixels(mChildProcessOffsetAtTouchStart.y));
+  return aPoint + CSSPoint(
+    presContext->DevPixelsToFloatCSSPixels(mChildProcessOffsetAtTouchStart.x),
+    presContext->DevPixelsToFloatCSSPixels(mChildProcessOffsetAtTouchStart.y));
 }
 
-bool TabParent::SendHandleSingleTap(const CSSIntPoint& aPoint, const ScrollableLayerGuid& aGuid)
+bool TabParent::SendHandleSingleTap(const CSSPoint& aPoint, const ScrollableLayerGuid& aGuid)
 {
   if (mIsDestroyed) {
     return false;
@@ -734,7 +734,7 @@ bool TabParent::SendHandleSingleTap(const CSSIntPoint& aPoint, const ScrollableL
   return PBrowserParent::SendHandleSingleTap(AdjustTapToChildWidget(aPoint), aGuid);
 }
 
-bool TabParent::SendHandleLongTap(const CSSIntPoint& aPoint, const ScrollableLayerGuid& aGuid)
+bool TabParent::SendHandleLongTap(const CSSPoint& aPoint, const ScrollableLayerGuid& aGuid)
 {
   if (mIsDestroyed) {
     return false;
@@ -743,7 +743,7 @@ bool TabParent::SendHandleLongTap(const CSSIntPoint& aPoint, const ScrollableLay
   return PBrowserParent::SendHandleLongTap(AdjustTapToChildWidget(aPoint), aGuid);
 }
 
-bool TabParent::SendHandleLongTapUp(const CSSIntPoint& aPoint, const ScrollableLayerGuid& aGuid)
+bool TabParent::SendHandleLongTapUp(const CSSPoint& aPoint, const ScrollableLayerGuid& aGuid)
 {
   if (mIsDestroyed) {
     return false;
@@ -752,7 +752,7 @@ bool TabParent::SendHandleLongTapUp(const CSSIntPoint& aPoint, const ScrollableL
   return PBrowserParent::SendHandleLongTapUp(AdjustTapToChildWidget(aPoint), aGuid);
 }
 
-bool TabParent::SendHandleDoubleTap(const CSSIntPoint& aPoint, const ScrollableLayerGuid& aGuid)
+bool TabParent::SendHandleDoubleTap(const CSSPoint& aPoint, const ScrollableLayerGuid& aGuid)
 {
   if (mIsDestroyed) {
     return false;
