@@ -254,6 +254,10 @@ float Axis::GetVelocity() {
   return mAxisLocked ? 0 : mVelocity;
 }
 
+void Axis::SetVelocity(float aVelocity) {
+  mVelocity = aVelocity;
+}
+
 float Axis::GetCompositionEnd() {
   return GetOrigin() + GetCompositionLength();
 }
@@ -263,13 +267,13 @@ float Axis::GetPageEnd() {
 }
 
 float Axis::GetOrigin() {
-  CSSPoint origin = mAsyncPanZoomController->GetFrameMetrics().mScrollOffset;
+  CSSPoint origin = mAsyncPanZoomController->GetFrameMetrics().GetScrollOffset();
   return GetPointOffset(origin);
 }
 
 float Axis::GetCompositionLength() {
   const FrameMetrics& metrics = mAsyncPanZoomController->GetFrameMetrics();
-  CSSRect cssCompositedRect = metrics.CalculateCompositedRectInCssPixels();
+  CSSRect cssCompositedRect = CSSRect(metrics.CalculateCompositedRectInCssPixels());
   return GetRectLength(cssCompositedRect);
 }
 
@@ -286,7 +290,7 @@ float Axis::GetPageLength() {
 bool Axis::ScaleWillOverscrollBothSides(float aScale) {
   const FrameMetrics& metrics = mAsyncPanZoomController->GetFrameMetrics();
 
-  CSSToScreenScale scale(metrics.mZoom.scale * aScale);
+  CSSToParentLayerScale scale(metrics.GetZoomToParent().scale * aScale);
   CSSRect cssCompositionBounds = metrics.mCompositionBounds / scale;
 
   return GetRectLength(metrics.mScrollableRect) < GetRectLength(cssCompositionBounds);

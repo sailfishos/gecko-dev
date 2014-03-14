@@ -52,6 +52,12 @@
 #  include "gfxSharedImageSurface.h"
 #endif
 
+#if 0
+#define RECYCLE_LOG(...) printf_stderr(__VA_ARGS__)
+#else
+#define RECYCLE_LOG(...) do { } while (0)
+#endif
+
 using namespace mozilla::gl;
 using namespace mozilla::gfx;
 
@@ -89,6 +95,20 @@ public:
   }
 
   bool Recv__delete__() MOZ_OVERRIDE;
+
+  bool RecvCompositorRecycle()
+  {
+    RECYCLE_LOG("Receive recycle %p (%p)\n", mTextureClient, mWaitForRecycle.get());
+    mWaitForRecycle = nullptr;
+    return true;
+  }
+
+  void WaitForCompositorRecycle()
+  {
+    mWaitForRecycle = mTextureClient;
+    RECYCLE_LOG("Wait for recycle %p\n", mWaitForRecycle.get());
+    SendClientRecycle();
+  }
 
   /**
    * Only used during the deallocation phase iff we need synchronization between
@@ -128,6 +148,7 @@ private:
   }
 
   RefPtr<CompositableForwarder> mForwarder;
+  RefPtr<TextureClient> mWaitForRecycle;
   TextureClientData* mTextureData;
   TextureClient* mTextureClient;
   bool mIPCOpen;
@@ -138,6 +159,7 @@ private:
 void
 TextureChild::DeleteTextureData()
 {
+  mWaitForRecycle = nullptr;
   if (mTextureData) {
     mTextureData->DeallocateSharedData(GetAllocator());
     delete mTextureData;
@@ -158,6 +180,7 @@ TextureChild::ActorDestroy(ActorDestroyReason why)
   if (mTextureClient) {
     mTextureClient->mActor = nullptr;
   }
+  mWaitForRecycle = nullptr;
 }
 
 // static
@@ -181,7 +204,13 @@ TextureClient::DestroyIPDLActor(PTextureChild* actor)
 TextureClient*
 TextureClient::AsTextureClient(PTextureChild* actor)
 {
-  return actor? static_cast<TextureChild*>(actor)->mTextureClient : nullptr;
+  return actor ? static_cast<TextureChild*>(actor)->mTextureClient : nullptr;
+}
+
+void
+TextureClient::WaitForCompositorRecycle()
+{
+  mActor->WaitForCompositorRecycle();
 }
 
 bool
@@ -249,7 +278,8 @@ DisableGralloc(SurfaceFormat aFormat)
 TemporaryRef<TextureClient>
 TextureClient::CreateTextureClientForDrawing(ISurfaceAllocator* aAllocator,
                                              SurfaceFormat aFormat,
-                                             TextureFlags aTextureFlags)
+                                             TextureFlags aTextureFlags,
+                                             const gfx::IntSize& aSizeHint)
 {
   RefPtr<TextureClient> result;
 
@@ -282,6 +312,8 @@ TextureClient::CreateTextureClientForDrawing(ISurfaceAllocator* aAllocator,
     result = new TextureClientX11(aFormat, aTextureFlags);
   }
 #ifdef GL_PROVIDER_GLX
+#if 0
+  // Bug 977963: Disabled for black layers
   if (parentBackend == LayersBackend::LAYERS_OPENGL &&
       type == gfxSurfaceType::Xlib &&
       !(aTextureFlags & TEXTURE_ALLOC_FALLBACK) &&
@@ -292,10 +324,16 @@ TextureClient::CreateTextureClientForDrawing(ISurfaceAllocator* aAllocator,
   }
 #endif
 #endif
+#endif
 
 #ifdef MOZ_WIDGET_GONK
   if (!DisableGralloc(aFormat)) {
-    result = new GrallocTextureClientOGL(aAllocator, aFormat, aTextureFlags);
+    // Don't allow Gralloc texture clients to exceed the maximum texture size.
+    // BufferTextureClients have code to handle tiling the surface client-side.
+    int32_t maxTextureSize = aAllocator->GetMaxTextureSize();
+    if (aSizeHint.width <= maxTextureSize && aSizeHint.height <= maxTextureSize) {
+      result = new GrallocTextureClientOGL(aAllocator, aFormat, aTextureFlags);
+    }
   }
 #endif
 

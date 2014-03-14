@@ -88,32 +88,49 @@ let gSyncUI = {
   _wasDelayed: false,
 
   _needsSetup: function SUI__needsSetup() {
+    // We want to treat "account needs verification" as "needs setup". So
+    // "reach in" to Weave.Status._authManager to check whether we the signed-in
+    // user is verified.
+    // Referencing Weave.Status spins a nested event loop to initialize the
+    // authManager, so this should always return a value directly.
+    // This only applies to fxAccounts-based Sync.
+    if (Weave.Status._authManager._signedInUser) {
+      // If we have a signed in user already, and that user is not verified,
+      // revert to the "needs setup" state.
+      if (!Weave.Status._authManager._signedInUser.verified) {
+        return true;
+      }
+    }
+
     let firstSync = "";
     try {
       firstSync = Services.prefs.getCharPref("services.sync.firstSync");
     } catch (e) { }
+
     return Weave.Status.checkSetup() == Weave.CLIENT_NOT_CONFIGURED ||
            firstSync == "notReady";
   },
 
   _loginFailed: function () {
-    // Referencing Weave.Service will implicitly initialize sync, and we don't
-    // want to force that - so first check if it is ready.
-    let service = Cc["@mozilla.org/weave/service;1"]
-                  .getService(Components.interfaces.nsISupports)
-                  .wrappedJSObject;
-    if (!service.ready) {
-      return false;
-    }
     return Weave.Status.login == Weave.LOGIN_FAILED_LOGIN_REJECTED;
   },
 
   updateUI: function SUI_updateUI() {
     let needsSetup = this._needsSetup();
     let loginFailed = this._loginFailed();
-    document.getElementById("sync-setup-state").hidden = loginFailed || !needsSetup;
-    document.getElementById("sync-syncnow-state").hidden = loginFailed || needsSetup;
-    document.getElementById("sync-reauth-state").hidden = !loginFailed;
+
+    // Start off with a clean slate
+    document.getElementById("sync-reauth-state").hidden = true;
+    document.getElementById("sync-setup-state").hidden = true;
+    document.getElementById("sync-syncnow-state").hidden = true;
+
+    if (loginFailed) {
+      document.getElementById("sync-reauth-state").hidden = false;
+    } else if (needsSetup) {
+      document.getElementById("sync-setup-state").hidden = false;
+    } else {
+      document.getElementById("sync-syncnow-state").hidden = false;
+    }
 
     if (!gBrowser)
       return;

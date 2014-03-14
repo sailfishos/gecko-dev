@@ -3,7 +3,6 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
 "use strict";
 
 let TYPED_ARRAY_CLASSES = ["Uint8Array", "Uint8ClampedArray", "Uint16Array",
@@ -636,22 +635,49 @@ ThreadActor.prototype = {
    */
   globalManager: {
     findGlobals: function () {
+      const { gDevToolsExtensions: {
+        getContentGlobals
+      } } = Cu.import("resource://gre/modules/devtools/DevToolsExtensions.jsm", {});
+
       this.globalDebugObject = this._addDebuggees(this.global);
+
+      // global may not be a window
+      try {
+        getContentGlobals({
+          'inner-window-id': getInnerId(this.global)
+        }).forEach(this.addDebuggee.bind(this));
+      }
+      catch(e) {}
     },
 
     /**
-     * A function that the engine calls when a new global object has been
-     * created.
+     * A function that the engine calls when a new global object
+     * (for example a sandbox) has been created.
      *
      * @param aGlobal Debugger.Object
      *        The new global object that was created.
      */
     onNewGlobal: function (aGlobal) {
+      let useGlobal = (aGlobal.hostAnnotations &&
+                       aGlobal.hostAnnotations.type == "document" &&
+                       aGlobal.hostAnnotations.element === this.global);
+
+      // check if the global is a sdk page-mod sandbox
+      if (!useGlobal) {
+        let metadata = {};
+        let id = "";
+        try {
+          id = getInnerId(this.global);
+          metadata = Cu.getSandboxMetadata(aGlobal.unsafeDereference());
+        }
+        catch (e) {}
+
+        useGlobal = (metadata['inner-window-id'] && metadata['inner-window-id'] == id);
+      }
+
       // Content debugging only cares about new globals in the contant window,
       // like iframe children.
-      if (aGlobal.hostAnnotations &&
-          aGlobal.hostAnnotations.type == "document" &&
-          aGlobal.hostAnnotations.element === this.global) {
+      if (useGlobal) {
         this.addDebuggee(aGlobal);
         // Notify the client.
         this.conn.send({
@@ -4562,6 +4588,96 @@ update(ChromeDebuggerActor.prototype, {
   }
 });
 
+/**
+ * Creates an actor for handling add-on debugging. AddonThreadActor is
+ * a thin wrapper over ThreadActor.
+ *
+ * @param aConnection object
+ *        The DebuggerServerConnection with which this AddonThreadActor
+ *        is associated. (Currently unused, but required to make this
+ *        constructor usable with addGlobalActor.)
+ *
+ * @param aHooks object
+ *        An object with preNest and postNest methods for calling
+ *        when entering and exiting a nested event loops.
+ *
+ * @param aAddonID string
+ *        ID of the add-on this actor will debug. It will be used to
+ *        filter out globals marked for debugging.
+ */
+
+function AddonThreadActor(aConnect, aHooks, aAddonID) {
+  this.addonID = aAddonID;
+  ThreadActor.call(this, aHooks);
+}
+
+AddonThreadActor.prototype = Object.create(ThreadActor.prototype);
+
+update(AddonThreadActor.prototype, {
+  constructor: AddonThreadActor,
+
+  // A constant prefix that will be used to form the actor ID by the server.
+  actorPrefix: "addonThread",
+
+  /**
+   * Override the eligibility check for scripts and sources to make
+   * sure every script and source with a URL is stored when debugging
+   * add-ons.
+   */
+  _allowSource: (aSourceURL) => !!aSourceURL,
+
+  /**
+   * An object that will be used by ThreadActors to tailor their
+   * behaviour depending on the debugging context being required (chrome,
+   * addon or content). The methods that this object provides must
+   * be bound to the ThreadActor before use.
+   */
+  globalManager: {
+    findGlobals: function ADA_findGlobals() {
+      for (let global of this.dbg.findAllGlobals()) {
+        if (this._checkGlobal(global)) {
+          this.dbg.addDebuggee(global);
+        }
+      }
+    },
+
+    /**
+     * A function that the engine calls when a new global object
+     * has been created.
+     *
+     * @param aGlobal Debugger.Object
+     *        The new global object that was created.
+     */
+    onNewGlobal: function ADA_onNewGlobal(aGlobal) {
+      if (this._checkGlobal(aGlobal)) {
+        this.addDebuggee(aGlobal);
+        // Notify the client.
+        this.conn.send({
+          from: this.actorID,
+          type: "newGlobal",
+          // TODO: after bug 801084 lands see if we need to JSONify this.
+          hostAnnotations: aGlobal.hostAnnotations
+        });
+      }
+    }
+  },
+
+  /**
+   * Checks if the provided global belongs to the debugged add-on.
+   *
+   * @param aGlobal Debugger.Object
+   */
+  _checkGlobal: function ADA_checkGlobal(aGlobal) {
+    let metadata;
+    try {
+      // This will fail for non-Sandbox objects, hence the try-catch block.
+      metadata = Cu.getSandboxMetadata(aGlobal.unsafeDereference());
+    } catch (e) {
+    }
+
+    return metadata && metadata.addonID === this.addonID;
+  }
+});
 
 /**
  * Manages the sources for a thread. Handles source maps, locations in the
@@ -5235,3 +5351,8 @@ function makeDebuggeeValueIfNeeded(obj, value) {
   }
   return value;
 }
+
+function getInnerId(window) {
+  return window.QueryInterface(Ci.nsIInterfaceRequestor).
+                getInterface(Ci.nsIDOMWindowUtils).currentInnerWindowID;
+};

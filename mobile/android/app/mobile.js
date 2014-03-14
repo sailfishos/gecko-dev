@@ -574,6 +574,14 @@ pref("dom.indexedDB.warningQuota", 5);
 pref("media.preload.default", 1); // default to preload none
 pref("media.preload.auto", 2);    // preload metadata if preload=auto
 
+// Number of video frames we buffer while decoding video.
+// On Android this is decided by a similar value which varies for
+// each OMX decoder |OMX_PARAM_PORTDEFINITIONTYPE::nBufferCountMin|. This
+// number must be less than the OMX equivalent or gecko will think it is
+// chronically starved of video frames. All decoders seen so far have a value
+// of at least 4.
+pref("media.video-queue.default-size", 3);
+
 // optimize images memory usage
 pref("image.mem.decodeondraw", true);
 pref("image.mem.min_discard_timeout_ms", 10000);
@@ -819,17 +827,15 @@ pref("browser.snippets.syncPromo.enabled", true);
 
 #ifdef MOZ_ANDROID_SYNTHAPKS
 // The URL of the APK factory from which we obtain APKs for webapps.
-// This currently points to the development server.
-pref("browser.webapps.apkFactoryUrl", "http://dapk.net/application.apk");
+pref("browser.webapps.apkFactoryUrl", "https://controller.apk.firefox.com/application.apk");
 
 // How frequently to check for webapp updates, in seconds (86400 is daily).
 pref("browser.webapps.updateInterval", 86400);
 
 // The URL of the service that checks for updates.
-// This currently points to the development server.
 // To test updates, set this to http://apk-update-checker.paas.allizom.org,
 // which is a test server that always reports all apps as having updates.
-pref("browser.webapps.updateCheckUrl", "http://dapk.net/app_updates");
+pref("browser.webapps.updateCheckUrl", "https://controller.apk.firefox.com/app_updates");
 
 #endif
 

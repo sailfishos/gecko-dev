@@ -60,6 +60,7 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/Debug.h"
 #include "mozilla/MouseEvents.h"
+#include "AudioChannelService.h"
 
 // Interfaces Needed
 #include "nsIFrame.h"
@@ -564,6 +565,7 @@ nsPIDOMWindow::nsPIDOMWindow(nsPIDOMWindow *aOuterWindow)
   mMayHavePointerEnterLeaveEventListener(false),
   mIsModalContentWindow(false),
   mIsActive(false), mIsBackground(false),
+  mAudioMuted(false), mAudioVolume(1.0),
   mInnerWindow(nullptr), mOuterWindow(aOuterWindow),
   // Make sure no actual window ends up with mWindowID == 0
   mWindowID(++gNextWindowID), mHasNotifiedGlobalCreated(false),
@@ -3579,6 +3581,100 @@ nsPIDOMWindow::CreatePerformanceObjectIfNeeded()
   }
   if (timing) {
     mPerformance = new nsPerformance(this, timing, timedChannel);
+  }
+}
+
+bool
+nsPIDOMWindow::GetAudioMuted() const
+{
+  if (!IsInnerWindow()) {
+    return mInnerWindow->GetAudioMuted();
+  }
+
+  return mAudioMuted;
+}
+
+void
+nsPIDOMWindow::SetAudioMuted(bool aMuted)
+{
+  if (!IsInnerWindow()) {
+    mInnerWindow->SetAudioMuted(aMuted);
+    return;
+  }
+
+  if (mAudioMuted == aMuted) {
+    return;
+  }
+
+  mAudioMuted = aMuted;
+  RefreshMediaElements();
+}
+
+float
+nsPIDOMWindow::GetAudioVolume() const
+{
+  if (!IsInnerWindow()) {
+    return mInnerWindow->GetAudioVolume();
+  }
+
+  return mAudioVolume;
+}
+
+nsresult
+nsPIDOMWindow::SetAudioVolume(float aVolume)
+{
+  if (!IsInnerWindow()) {
+    return mInnerWindow->SetAudioVolume(aVolume);
+  }
+
+  if (aVolume < 0.0) {
+    return NS_ERROR_DOM_INDEX_SIZE_ERR;
+  }
+
+  if (mAudioVolume == aVolume) {
+    return NS_OK;
+  }
+
+  mAudioVolume = aVolume;
+  RefreshMediaElements();
+  return NS_OK;
+}
+
+float
+nsPIDOMWindow::GetAudioGlobalVolume()
+{
+  float globalVolume = 1.0;
+  nsCOMPtr<nsPIDOMWindow> window = this;
+
+  do {
+    if (window->GetAudioMuted()) {
+      return 0;
+    }
+
+    globalVolume *= window->GetAudioVolume();
+
+    nsCOMPtr<nsIDOMWindow> win;
+    window->GetParent(getter_AddRefs(win));
+    if (window == win) {
+      break;
+    }
+
+    window = do_QueryInterface(win);
+
+    // If there is not parent, or we are the toplevel or the volume is
+    // already 0.0, we don't continue.
+  } while (window && window != this && globalVolume);
+
+  return globalVolume;
+}
+
+void
+nsPIDOMWindow::RefreshMediaElements()
+{
+  nsRefPtr<AudioChannelService> service =
+    AudioChannelService::GetAudioChannelService();
+  if (service) {
+    service->RefreshAgentsVolume(this);
   }
 }
 
@@ -10652,14 +10748,14 @@ nsGlobalWindow::ShowSlowScriptDialog()
 
   // Null out the operation callback while we're re-entering JS here.
   JSRuntime* rt = JS_GetRuntime(cx);
-  JSOperationCallback old = JS_SetOperationCallback(rt, nullptr);
+  JSInterruptCallback old = JS_SetInterruptCallback(rt, nullptr);
 
   // Open the dialog.
   rv = prompt->ConfirmEx(title, msg, buttonFlags, waitButton, stopButton,
                          debugButton, neverShowDlg, &neverShowDlgChk,
                          &buttonPressed);
 
-  JS_SetOperationCallback(rt, old);
+  JS_SetInterruptCallback(rt, old);
 
   if (NS_SUCCEEDED(rv) && (buttonPressed == 0)) {
     return neverShowDlgChk ? AlwaysContinueSlowScript : ContinueSlowScript;
@@ -12304,14 +12400,12 @@ nsGlobalWindow::GetScrollFrame()
 
 nsresult
 nsGlobalWindow::BuildURIfromBase(const char *aURL, nsIURI **aBuiltURI,
-                                 bool *aFreeSecurityPass,
                                  JSContext **aCXused)
 {
   nsIScriptContext *scx = GetContextInternal();
   JSContext *cx = nullptr;
 
   *aBuiltURI = nullptr;
-  *aFreeSecurityPass = false;
   if (aCXused)
     *aCXused = nullptr;
 
@@ -12352,15 +12446,12 @@ nsGlobalWindow::BuildURIfromBase(const char *aURL, nsIURI **aBuiltURI,
 
   if (!sourceWindow) {
     sourceWindow = this;
-    *aFreeSecurityPass = true;
   }
 
-  if (sourceWindow) {
-    nsCOMPtr<nsIDocument> doc = sourceWindow->GetDoc();
-    if (doc) {
-      baseURI = doc->GetDocBaseURI();
-      charset = doc->GetDocumentCharacterSet();
-    }
+  nsCOMPtr<nsIDocument> doc = sourceWindow->GetDoc();
+  if (doc) {
+    baseURI = doc->GetDocBaseURI();
+    charset = doc->GetDocumentCharacterSet();
   }
 
   if (aCXused)
@@ -12372,17 +12463,22 @@ nsresult
 nsGlobalWindow::SecurityCheckURL(const char *aURL)
 {
   JSContext       *cxUsed;
-  bool             freePass;
   nsCOMPtr<nsIURI> uri;
 
-  if (NS_FAILED(BuildURIfromBase(aURL, getter_AddRefs(uri), &freePass, &cxUsed)))
+  if (NS_FAILED(BuildURIfromBase(aURL, getter_AddRefs(uri), &cxUsed))) {
     return NS_ERROR_FAILURE;
+  }
+
+  if (!cxUsed) {
+    return NS_OK;
+  }
 
   AutoPushJSContext cx(cxUsed);
 
-  if (!freePass && NS_FAILED(nsContentUtils::GetSecurityManager()->
-        CheckLoadURIFromScript(cx, uri)))
+  if (NS_FAILED(nsContentUtils::GetSecurityManager()->
+        CheckLoadURIFromScript(cx, uri))) {
     return NS_ERROR_FAILURE;
+  }
 
   return NS_OK;
 }

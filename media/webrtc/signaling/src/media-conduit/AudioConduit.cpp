@@ -127,6 +127,15 @@ bool WebrtcAudioConduit::GetRemoteSSRC(unsigned int* ssrc) {
   return !mPtrRTP->GetRemoteSSRC(mChannel, *ssrc);
 }
 
+bool WebrtcAudioConduit::GetAVStats(int32_t* jitterBufferDelayMs,
+                                    int32_t* playoutBufferDelayMs,
+                                    int32_t* avSyncOffsetMs) {
+  return !mPtrVoEVideoSync->GetDelayEstimate(mChannel,
+                                             jitterBufferDelayMs,
+                                             playoutBufferDelayMs,
+                                             avSyncOffsetMs);
+}
+
 bool WebrtcAudioConduit::GetRTPStats(unsigned int* jitterMs,
                                      unsigned int* cumulativeLost) {
   unsigned int maxJitterMs = 0;
@@ -438,7 +447,8 @@ WebrtcAudioConduit::ConfigureSendMediaCodec(const AudioCodecConfig* codecConfig)
                                               codecConfig->mFreq,
                                               codecConfig->mPacSize,
                                               codecConfig->mChannels,
-                                              codecConfig->mRate);
+                                              codecConfig->mRate,
+                                              codecConfig->mLoadManager);
 
   mEngineTransmitting = true;
   return kMediaConduitNoError;
@@ -687,6 +697,21 @@ WebrtcAudioConduit::GetAudioFrame(int16_t speechData[],
     return kMediaConduitUnknownError;
   }
 
+  // Not #ifdef DEBUG or on a log module so we can use it for about:webrtc/etc
+  mSamples += lengthSamples;
+  if (mSamples >= mLastSyncLog + samplingFreqHz) {
+    int jitter_buffer_delay_ms = 0;
+    int playout_buffer_delay_ms = 0;
+    int avsync_offset_ms = 0;
+    GetAVStats(&jitter_buffer_delay_ms,
+               &playout_buffer_delay_ms,
+               &avsync_offset_ms); // ignore errors
+    CSFLogError(logTag,
+                "A/V sync: sync delta: %dms, audio jitter delay %dms, playout delay %dms",
+                avsync_offset_ms, jitter_buffer_delay_ms, playout_buffer_delay_ms);
+    mLastSyncLog = mSamples;
+  }
+
 #ifdef MOZILLA_INTERNAL_API
   if (PR_LOG_TEST(GetLatencyLog(), PR_LOG_DEBUG)) {
     if (mProcessing.Length() > 0) {
@@ -903,7 +928,8 @@ WebrtcAudioConduit::CopyCodecToDB(const AudioCodecConfig* codecInfo)
                                                      codecInfo->mFreq,
                                                      codecInfo->mPacSize,
                                                      codecInfo->mChannels,
-                                                     codecInfo->mRate);
+                                                     codecInfo->mRate,
+                                                     codecInfo->mLoadManager);
   mRecvCodecList.push_back(cdcConfig);
   return true;
 }

@@ -51,7 +51,7 @@
  */
 
 const {Cc, Ci, Cu, Cr} = require("chrome");
-
+const Services = require("Services");
 const protocol = require("devtools/server/protocol");
 const {Arg, Option, method, RetVal, types} = protocol;
 const {LongStringActor, ShortLongString} = require("devtools/server/actors/string");
@@ -103,7 +103,6 @@ const PSEUDO_SELECTORS = [
 let HELPER_SHEET = ".__fx-devtools-hide-shortcut__ { visibility: hidden !important } ";
 HELPER_SHEET += ":-moz-devtools-highlighted { outline: 2px dashed #F06!important; outline-offset: -2px!important } ";
 
-Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/devtools/LayoutHelpers.jsm");
 
 loader.lazyGetter(this, "DOMParser", function() {
@@ -983,7 +982,7 @@ var WalkerActor = protocol.ActorClass({
     let node = actor.rawNode;
     // Create the observer on the node's actor.  The node will make sure
     // the observer is cleaned up when the actor is released.
-    actor.observer = actor.rawNode.defaultView.MutationObserver(this.onMutations);
+    actor.observer = new actor.rawNode.defaultView.MutationObserver(this.onMutations);
     actor.observer.observe(node, {
       attributes: true,
       characterData: true,
@@ -2051,12 +2050,52 @@ var WalkerActor = protocol.ActorClass({
   },
 
   /**
+   * Check if a node is attached to the DOM tree of the current page.
+   * @param {nsIDomNode} rawNode
+   * @return {Boolean} false if the node is removed from the tree or within a
+   * document fragment
+   */
+  _isInDOMTree: function(rawNode) {
+    let walker = documentWalker(rawNode, this.rootWin);
+    let current = walker.currentNode;
+
+    // Reaching the top of tree
+    while (walker.parentNode()) {
+      current = walker.currentNode;
+    }
+
+    // The top of the tree is a fragment or is not rootDoc, hence rawNode isn't
+    // attached
+    if (current.nodeType === Ci.nsIDOMNode.DOCUMENT_FRAGMENT_NODE ||
+        current !== this.rootDoc) {
+      return false;
+    }
+
+    // Otherwise the top of the tree is rootDoc, hence rawNode is in rootDoc
+    return true;
+  },
+
+  /**
+   * @see _isInDomTree
+   */
+  isInDOMTree: method(function(node) {
+    return node ? this._isInDOMTree(node.rawNode) : false;
+  }, {
+    request: { node: Arg(0, "domnode") },
+    response: { attached: RetVal("boolean") }
+  }),
+
+  /**
    * Given an ObjectActor (identified by its ID), commonly used in the debugger,
    * webconsole and variablesView, return the corresponding inspector's NodeActor
    */
   getNodeActorFromObjectActor: method(function(objectActorID) {
-    let debuggerObject = this.conn.poolFor(objectActorID).get(objectActorID).obj;
+    let debuggerObject = this.conn.getActor(objectActorID).obj;
     let rawNode = debuggerObject.unsafeDereference();
+
+    if (!this._isInDOMTree(rawNode)) {
+      return null;
+    }
 
     // This is a special case for the document object whereby it is considered
     // as document.documentElement (the <html> node)
@@ -2070,7 +2109,7 @@ var WalkerActor = protocol.ActorClass({
       objectActorID: Arg(0, "string")
     },
     response: {
-      nodeFront: RetVal("disconnectedNode")
+      nodeFront: RetVal("nullable:disconnectedNode")
     }
   }),
 });
@@ -2208,7 +2247,7 @@ var WalkerFront = exports.WalkerFront = protocol.FrontClass(WalkerActor, {
 
   getNodeActorFromObjectActor: protocol.custom(function(objectActorID) {
     return this._getNodeActorFromObjectActor(objectActorID).then(response => {
-      return response.node;
+      return response ? response.node : null;
     });
   }, {
     impl: "_getNodeActorFromObjectActor"

@@ -24,9 +24,10 @@ let gFxAccounts = {
     // Do all this dance to lazy-load FxAccountsCommon.
     delete this.topics;
     return this.topics = [
+      "weave:service:ready",
       "weave:service:sync:start",
       "weave:service:login:error",
-      FxAccountsCommon.ONLOGIN_NOTIFICATION,
+      "weave:service:setup-complete",
       FxAccountsCommon.ONVERIFIED_NOTIFICATION,
       FxAccountsCommon.ONLOGOUT_NOTIFICATION
     ];

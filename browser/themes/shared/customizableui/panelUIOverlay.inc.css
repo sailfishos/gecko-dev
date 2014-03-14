@@ -217,8 +217,12 @@ toolbarbutton[sdk-button="true"][cui-areatype="menu-panel"] > .toolbarbutton-ico
   -moz-box-orient: vertical;
   width: calc(@menuPanelButtonWidth@ - 2px);
   height: calc(49px + 2.2em);
-  margin-top: 3px; /* Hack needed to get type=menu-button to properly align vertically. */
   border: 0;
+}
+
+.panelUI-grid .toolbarbutton-1 > .toolbarbutton-menubutton-button > .toolbarbutton-text,
+.panelUI-grid .toolbarbutton-1 > .toolbarbutton-menubutton-button > .toolbarbutton-multiline-text {
+  margin-top: 2px; /* Hack needed to get the label of type=menu-button aligned with other buttons */
 }
 
 .panel-customization-placeholder-child {
@@ -295,6 +299,7 @@ toolbaritem[cui-areatype="menu-panel"][sdkstylewidget="true"]:not(.panel-wide-it
 
 .panelUI-grid .toolbarbutton-1 > .toolbarbutton-menubutton-button > .toolbarbutton-icon,
 .panelUI-grid .toolbarbutton-1 > .toolbarbutton-icon,
+.panelUI-grid .toolbarbutton-1 > .toolbarbutton-badge-container,
 .customization-palette .toolbarbutton-1 > .toolbarbutton-menubutton-button > .toolbarbutton-icon,
 .customization-palette .toolbarbutton-1 > .toolbarbutton-icon,
 .panelUI-grid #bookmarks-toolbar-placeholder > .toolbarbutton-icon,
@@ -315,6 +320,16 @@ toolbaritem[cui-areatype="menu-panel"][sdkstylewidget="true"]:not(.panel-wide-it
        which means each horizontal margin should be the half the button's width - (46/2) px.
   */
   margin: 4px calc(@menuPanelButtonWidth@ / 2 - 23px);
+}
+
+/* above we treat the container as the icon for the margins, that is so the
+/* badge itself is positioned correctly. Here we make sure that the icon itself
+/* has the minum size we want, but no padding/margin. */
+.panelUI-grid .toolbarbutton-1 > .toolbarbutton-badge-container > .toolbarbutton-icon {
+  min-width: 32px;
+  min-height: 32px;
+  margin: 0;
+  padding: 0;
 }
 
 toolbarpaletteitem[place="palette"] > toolbaritem > toolbarbutton {
@@ -625,20 +640,34 @@ menuitem.subviewbutton@menuStateActive@,
   box-shadow: 0 1px 0 hsla(210,4%,10%,.05) inset;
 }
 
-#BMB_bookmarksPopup > .subviewbutton {
+#BMB_bookmarksPopup .subviewbutton {
   font: inherit;
   font-weight: normal;
 }
 
-#BMB_bookmarksPopup > .subviewbutton:not([disabled="true"]) {
+#BMB_bookmarksPopup .subviewbutton:not([disabled="true"]) {
   color: inherit;
 }
 
-#BMB_bookmarksPopup > .panel-arrowcontainer > .panel-arrowcontent > .popup-internal-box > .autorepeatbutton-up,
-#BMB_bookmarksPopup > .panel-arrowcontainer > .panel-arrowcontent > .popup-internal-box > .autorepeatbutton-down {
+#BMB_bookmarksPopup .panel-arrowcontainer > .panel-arrowcontent > .popup-internal-box > .autorepeatbutton-up,
+#BMB_bookmarksPopup .panel-arrowcontainer > .panel-arrowcontent > .popup-internal-box > .autorepeatbutton-down {
   -moz-appearance: none;
   margin-top: 0;
   margin-bottom: 0;
+}
+
+/* Remove padding on xul:arrowscrollbox to avoid extra padding on footer */
+#BMB_bookmarksPopup arrowscrollbox {
+  padding-bottom: 0px;
+}
+
+#BMB_bookmarksPopup menupopup {
+  padding-top: 2px;
+}
+
+#BMB_bookmarksPopup menupopup > .bookmarks-actions-menuseparator {
+  /* Hide bottom separator as the styled footer includes a top border serving the same purpose */
+  display: none;
 }
 
 .PanelUI-subView menuseparator,
@@ -881,15 +910,14 @@ toolbaritem[overflowedItem=true],
 }
 
 .subviewbutton[checked="true"] {
-  background: url("chrome://global/skin/menu/menu-check.png") top 7px left 7px / 11px 11px no-repeat transparent;
+  background: url("chrome://global/skin/menu/shared-menu-check.png") top 7px left 7px / 11px 11px no-repeat transparent;
 }
 
-.PanelUI-subView > menu > .menu-iconic-left,
-.PanelUI-subView > menuitem > .menu-iconic-left {
+.PanelUI-subView .menu-iconic-left {
   -moz-appearance: none;
   -moz-margin-end: 3px;
 }
 
-.PanelUI-subView > menuitem[checked="true"] > .menu-iconic-left {
+.PanelUI-subView menuitem[checked="true"] > .menu-iconic-left {
   visibility: hidden;
 }

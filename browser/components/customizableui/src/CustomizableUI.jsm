@@ -884,15 +884,14 @@ let CustomizableUIInternal = {
       return;
     }
 
-    let nextNodeId = placements[aPosition + 1];
     // Go through each of the nodes associated with this area and move the
     // widget to the requested location.
     for (let areaNode of areaNodes) {
-      this.insertNodeInWindow(aWidgetId, areaNode, nextNodeId, isNew);
+      this.insertNodeInWindow(aWidgetId, areaNode, isNew);
     }
   },
 
-  insertNodeInWindow: function(aWidgetId, aAreaNode, aNextNodeId, isNew) {
+  insertNodeInWindow: function(aWidgetId, aAreaNode, isNew) {
     let window = aAreaNode.ownerDocument.defaultView;
     let showInPrivateBrowsing = gPalette.has(aWidgetId)
                               ? gPalette.get(aWidgetId).showInPrivateBrowsing
@@ -916,8 +915,7 @@ let CustomizableUIInternal = {
       }
     }
 
-    let container = aAreaNode.customizationTarget;
-    let [insertionContainer, nextNode] = this.findInsertionPoints(widgetNode, aNextNodeId, aAreaNode);
+    let [insertionContainer, nextNode] = this.findInsertionPoints(widgetNode, aAreaNode);
     this.insertWidgetBefore(widgetNode, nextNode, insertionContainer, areaId);
 
     if (gAreas.get(areaId).get("type") == CustomizableUI.TYPE_TOOLBAR) {
@@ -925,17 +923,29 @@ let CustomizableUIInternal = {
     }
   },
 
-  findInsertionPoints: function(aNode, aNextNodeId, aAreaNode) {
-    let props = gAreas.get(aAreaNode.id);
-    if (props.get("type") == CustomizableUI.TYPE_TOOLBAR && props.get("overflowable") &&
-        aAreaNode.getAttribute("overflowing") == "true") {
-      return aAreaNode.overflowable.getOverflowedInsertionPoints(aNode, aNextNodeId);
+  findInsertionPoints: function(aNode, aAreaNode) {
+    let areaId = aAreaNode.id;
+    let props = gAreas.get(areaId);
+
+    // For overflowable toolbars, rely on them (because the work is more complicated):
+    if (props.get("type") == CustomizableUI.TYPE_TOOLBAR && props.get("overflowable")) {
+      return aAreaNode.overflowable.findOverflowedInsertionPoints(aNode);
     }
-    let nextNode = null;
-    if (aNextNodeId) {
-      nextNode = aAreaNode.customizationTarget.getElementsByAttribute("id", aNextNodeId)[0];
+
+    let container = aAreaNode.customizationTarget;
+    let placements = gPlacements.get(areaId);
+    let nodeIndex = placements.indexOf(aNode.id);
+
+    while (++nodeIndex < placements.length) {
+      let nextNodeId = placements[nodeIndex];
+      let nextNode = container.getElementsByAttribute("id", nextNodeId).item(0);
+
+      if (nextNode) {
+        return [container, nextNode];
+      }
     }
-    return [aAreaNode.customizationTarget, nextNode];
+
+    return [container, null];
   },
 
   insertWidgetBefore: function(aNode, aNextNode, aContainer, aArea) {
@@ -1082,16 +1092,15 @@ let CustomizableUIInternal = {
     let node;
     if (aWidget.type == "custom") {
       if (aWidget.onBuild) {
-        try {
-          node = aWidget.onBuild(aDocument);
-        } catch (ex) {
-          ERROR("Custom widget with id " + aWidget.id + " threw an error: " + ex.message);
-        }
+        node = aWidget.onBuild(aDocument);
       }
       if (!node || !(node instanceof aDocument.defaultView.XULElement))
         ERROR("Custom widget with id " + aWidget.id + " does not return a valid node");
     }
     else {
+      if (aWidget.onBeforeCreated) {
+        aWidget.onBeforeCreated(aDocument);
+      }
       node = aDocument.createElementNS(kNSXUL, "toolbarbutton");
 
       node.setAttribute("id", aWidget.id);
@@ -1971,6 +1980,7 @@ let CustomizableUIInternal = {
 
     widget.disabled = aData.disabled === true;
 
+    this.wrapWidgetEventHandler("onBeforeCreated", widget);
     this.wrapWidgetEventHandler("onClick", widget);
     this.wrapWidgetEventHandler("onCreated", widget);
 
@@ -2284,9 +2294,7 @@ let CustomizableUIInternal = {
       return true;
     }
 
-    let placementAry = gPlacements.get(placement.area);
-    let nextNodeId = placementAry[placement.position + 1];
-    this.insertNodeInWindow(aWidgetId, container[0], nextNodeId, true);
+    this.insertNodeInWindow(aWidgetId, container[0], true);
     return true;
   },
 
@@ -2728,6 +2736,12 @@ this.CustomizableUI = {
    *                  function that will be invoked with the document in which
    *                  to build a widget. Should return the DOM node that has
    *                  been constructed.
+   * - onBeforeCreated(aDoc): Attached to all non-custom widgets; a function
+   *                  that will be invoked before the widget gets a DOM node
+   *                  constructed, passing the document in which that will happen.
+   *                  This is useful especially for 'view' type widgets that need
+   *                  to construct their views on the fly (e.g. from bootstrapped
+   *                  add-ons)
    * - onCreated(aNode): Attached to all widgets; a function that will be invoked
    *                  whenever the widget has a DOM node constructed, passing the
    *                  constructed node as an argument.
@@ -3449,7 +3463,12 @@ function OverflowableToolbar(aToolbarNode) {
   this._list.toolbox = this._toolbar.toolbox;
   this._list.customizationTarget = this._list;
 
-  Services.obs.addObserver(this, "browser-delayed-startup-finished", false);
+  let window = this._toolbar.ownerDocument.defaultView;
+  if (window.gBrowserInit.delayedStartupFinished) {
+    this.init();
+  } else {
+    Services.obs.addObserver(this, "browser-delayed-startup-finished", false);
+  }
 }
 
 OverflowableToolbar.prototype = {
@@ -3475,7 +3494,8 @@ OverflowableToolbar.prototype = {
     this._chevron = doc.getElementById(chevronId);
     this._chevron.addEventListener("command", this);
 
-    this._panel = doc.getElementById("widget-overflow");
+    let panelId = this._toolbar.getAttribute("overflowpanel");
+    this._panel = doc.getElementById(panelId);
     this._panel.addEventListener("popuphiding", this);
     CustomizableUIInternal.addPanelCloseListeners(this._panel);
 
@@ -3760,23 +3780,37 @@ OverflowableToolbar.prototype = {
     }
   },
 
-  getOverflowedInsertionPoints: function(aNode, aNextNodeId) {
-    if (aNode.getAttribute("overflows") == "false") {
-      return [this._target, null];
-    }
-    // Inserting at the end means we're in the overflow list by definition:
-    if (!aNextNodeId) {
-      return [this._list, null];
+  findOverflowedInsertionPoints: function(aNode) {
+    let newNodeCanOverflow = aNode.getAttribute("overflows") != "false";
+    let areaId = this._toolbar.id;
+    let placements = gPlacements.get(areaId);
+    let nodeIndex = placements.indexOf(aNode.id);
+    let nodeBeforeNewNodeIsOverflown = false;
+
+    let loopIndex = -1;
+    while (++loopIndex < placements.length) {
+      let nextNodeId = placements[loopIndex];
+      if (loopIndex > nodeIndex) {
+        if (newNodeCanOverflow && this._collapsed.has(nextNodeId)) {
+          let nextNode = this._list.getElementsByAttribute("id", nextNodeId).item(0);
+          if (nextNode) {
+            return [this._list, nextNode];
+          }
+        }
+        if (!nodeBeforeNewNodeIsOverflown || !newNodeCanOverflow) {
+          let nextNode = this._target.getElementsByAttribute("id", nextNodeId).item(0);
+          if (nextNode) {
+            return [this._target, nextNode];
+          }
+        }
+      } else if (loopIndex < nodeIndex && this._collapsed.has(nextNodeId)) {
+        nodeBeforeNewNodeIsOverflown = true;
+      }
     }
 
-    let nextNode = this._list.getElementsByAttribute("id", aNextNodeId)[0];
-    // If this is the first item, we can actually just append the node
-    // to the end of the toolbar.  If it results in an overflow event, we'll move
-    // the new node to the overflow target.
-    if (!nextNode.previousSibling) {
-      return [this._target, null];
-    }
-    return [this._list, nextNode];
+    let containerForAppending = (this._collapsed.size && newNodeCanOverflow) ?
+                                this._list : this._target;
+    return [containerForAppending, null];
   },
 
   getContainerFor: function(aNode) {

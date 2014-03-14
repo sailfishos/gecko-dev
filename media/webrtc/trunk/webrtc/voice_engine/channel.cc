@@ -1003,6 +1003,7 @@ Channel::Channel(int32_t channelId,
     least_required_delay_ms_(0),
     _previousTimestamp(0),
     _recPacketDelayMs(20),
+    _current_sync_offset(0),
     _RxVadDetection(false),
     _rxApmIsEnabled(false),
     _rxAgcIsEnabled(false),
@@ -2195,11 +2196,12 @@ int32_t Channel::ReceivedRTPPacket(const int8_t* data, int32_t length) {
       rtp_payload_registry_->GetPayloadTypeFrequency(header.payloadType);
   if (header.payload_type_frequency < 0)
     return -1;
+  // MUST call before IncomingPacket() or will always return false
+  bool in_order = IsPacketInOrder(header);
   rtp_receive_statistics_->IncomingPacket(header, length,
-                                          IsPacketRetransmitted(header));
+      IsPacketRetransmitted(header, in_order));
   rtp_payload_registry_->SetIncomingPayloadType(header);
-  return ReceivePacket(received_packet, length, header,
-                       IsPacketInOrder(header)) ? 0 : -1;
+  return ReceivePacket(received_packet, length, header, in_order) ? 0 : -1;
 }
 
 bool Channel::ReceivePacket(const uint8_t* packet,
@@ -2259,7 +2261,8 @@ bool Channel::IsPacketInOrder(const RTPHeader& header) const {
   return statistician->IsPacketInOrder(header.sequenceNumber);
 }
 
-bool Channel::IsPacketRetransmitted(const RTPHeader& header) const {
+bool Channel::IsPacketRetransmitted(const RTPHeader& header,
+                                    bool in_order) const {
   // Retransmissions are handled separately if RTX is enabled.
   if (rtp_payload_registry_->RtxEnabled())
     return false;
@@ -2270,7 +2273,7 @@ bool Channel::IsPacketRetransmitted(const RTPHeader& header) const {
   // Check if this is a retransmission.
   uint16_t min_rtt = 0;
   _rtpRtcpModule->RTT(rtp_receiver_->SSRC(), NULL, NULL, &min_rtt, NULL);
-  return !IsPacketInOrder(header) &&
+  return !in_order &&
       statistician->IsRetransmitOfOldPacket(header, min_rtt);
 }
 
@@ -4718,7 +4721,8 @@ Channel::GetNetworkStatistics(NetworkStatistics& stats)
 }
 
 bool Channel::GetDelayEstimate(int* jitter_buffer_delay_ms,
-                               int* playout_buffer_delay_ms) const {
+                               int* playout_buffer_delay_ms,
+                               int* avsync_offset_ms) const {
   if (_average_jitter_buffer_delay_us == 0) {
     WEBRTC_TRACE(kTraceInfo, kTraceVoice, VoEId(_instanceId,_channelId),
                  "Channel::GetDelayEstimate() no valid estimate.");
@@ -4727,6 +4731,7 @@ bool Channel::GetDelayEstimate(int* jitter_buffer_delay_ms,
   *jitter_buffer_delay_ms = (_average_jitter_buffer_delay_us + 500) / 1000 +
       _recPacketDelayMs;
   *playout_buffer_delay_ms = playout_delay_ms_;
+  *avsync_offset_ms = _current_sync_offset;
   WEBRTC_TRACE(kTraceInfo, kTraceVoice, VoEId(_instanceId,_channelId),
                "Channel::GetDelayEstimate()");
   return true;

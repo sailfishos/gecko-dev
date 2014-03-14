@@ -10,6 +10,7 @@
  * debugging global.
  */
 let DevToolsUtils = require("devtools/toolkit/DevToolsUtils.js");
+let Services = require("Services");
 
 // Until all Debugger server code is converted to SDK modules,
 // imports Components.* alias from chrome module.
@@ -23,6 +24,7 @@ this.CC = CC;
 this.Cu = Cu;
 this.Cr = Cr;
 this.DevToolsUtils = DevToolsUtils;
+this.Services = Services;
 
 // Overload `Components` to prevent SDK loader exception on Components
 // object usage
@@ -34,10 +36,10 @@ const DBG_STRINGS_URI = "chrome://global/locale/devtools/debugger.properties";
 
 const nsFile = CC("@mozilla.org/file/local;1", "nsIFile", "initWithPath");
 Cu.import("resource://gre/modules/reflect.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 let wantLogging = Services.prefs.getBoolPref("devtools.debugger.log");
 
+Cu.import("resource://gre/modules/commonjs/sdk/core/promise.js");
 Cu.import("resource://gre/modules/jsdebugger.jsm");
 addDebuggerToGlobal(this);
 
@@ -359,6 +361,7 @@ var DebuggerServer = {
 
     this.addActors("resource://gre/modules/devtools/server/actors/webapps.js");
     this.registerModule("devtools/server/actors/device");
+    this.registerModule("devtools/server/actors/preference");
   },
 
   /**
@@ -375,7 +378,7 @@ var DebuggerServer = {
     if (!("BrowserTabActor" in this)) {
       this.addActors("resource://gre/modules/devtools/server/actors/webbrowser.js");
     }
-    if (!("ContentAppActor" in this)) {
+    if (!("ContentActor" in this)) {
       this.addActors("resource://gre/modules/devtools/server/actors/childtab.js");
     }
   },
@@ -390,6 +393,7 @@ var DebuggerServer = {
     this.registerModule("devtools/server/actors/webgl");
     this.registerModule("devtools/server/actors/stylesheets");
     this.registerModule("devtools/server/actors/styleeditor");
+    this.registerModule("devtools/server/actors/storage");
     this.registerModule("devtools/server/actors/gcli");
     this.registerModule("devtools/server/actors/tracer");
     this.registerModule("devtools/server/actors/memory");
@@ -522,6 +526,71 @@ var DebuggerServer = {
 
     let transport = new ChildDebuggerTransport(aMessageManager, aPrefix);
     return this._onConnection(transport, aPrefix, true);
+  },
+
+  connectToChild: function(aConnection, aMessageManager, aOnDisconnect) {
+    let deferred = Promise.defer();
+
+    let mm = aMessageManager;
+    mm.loadFrameScript("resource://gre/modules/devtools/server/child.js", false);
+
+    let actor, childTransport;
+    let prefix = aConnection.allocID("child");
+
+    let onActorCreated = DevToolsUtils.makeInfallible(function (msg) {
+      mm.removeMessageListener("debug:actor", onActorCreated);
+
+      // Pipe Debugger message from/to parent/child via the message manager
+      childTransport = new ChildDebuggerTransport(mm, prefix);
+      childTransport.hooks = {
+        onPacket: aConnection.send.bind(aConnection),
+        onClosed: function () {}
+      };
+      childTransport.ready();
+
+      aConnection.setForwarding(prefix, childTransport);
+
+      dumpn("establishing forwarding for app with prefix " + prefix);
+
+      actor = msg.json.actor;
+
+      deferred.resolve(actor);
+    }).bind(this);
+    mm.addMessageListener("debug:actor", onActorCreated);
+
+    let onMessageManagerDisconnect = DevToolsUtils.makeInfallible(function (subject, topic, data) {
+      if (subject == mm) {
+        Services.obs.removeObserver(onMessageManagerDisconnect, topic);
+        if (childTransport) {
+          // If we have a child transport, the actor has already
+          // been created. We need to stop using this message manager.
+          childTransport.close();
+          aConnection.cancelForwarding(prefix);
+        } else {
+          // Otherwise, the app has been closed before the actor
+          // had a chance to be created, so we are not able to create
+          // the actor.
+          deferred.resolve(null);
+        }
+        if (actor) {
+          // The ContentActor within the child process doesn't necessary
+          // have to time to uninitialize itself when the app is closed/killed.
+          // So ensure telling the client that the related actor is detached.
+          aConnection.send({ from: actor.actor, type: "tabDetached" });
+          actor = null;
+        }
+
+        if (aOnDisconnect) {
+          aOnDisconnect(mm);
+        }
+      }
+    }).bind(this);
+    Services.obs.addObserver(onMessageManagerDisconnect,
+                             "message-manager-disconnect", false);
+
+    mm.sendAsyncMessage("debug:connect", { prefix: prefix });
+
+    return deferred.promise;
   },
 
   // nsIServerSocketListener implementation

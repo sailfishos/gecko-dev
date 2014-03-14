@@ -22,6 +22,7 @@ const SEC_ERROR_BASE = Ci.nsINSSErrorsService.NSS_SEC_ERROR_BASE;
 const SSL_ERROR_BASE = Ci.nsINSSErrorsService.NSS_SSL_ERROR_BASE;
 
 // Sort in numerical order
+const SEC_ERROR_BAD_DER                                 = SEC_ERROR_BASE +   9;
 const SEC_ERROR_EXPIRED_CERTIFICATE                     = SEC_ERROR_BASE +  11;
 const SEC_ERROR_REVOKED_CERTIFICATE                     = SEC_ERROR_BASE +  12; // -8180
 const SEC_ERROR_UNKNOWN_ISSUER                          = SEC_ERROR_BASE +  13;
@@ -44,6 +45,7 @@ const SEC_ERROR_OCSP_UNAUTHORIZED_RESPONSE              = SEC_ERROR_BASE + 130;
 const SEC_ERROR_OCSP_OLD_RESPONSE                       = SEC_ERROR_BASE + 132;
 const SEC_ERROR_OCSP_INVALID_SIGNING_CERT               = SEC_ERROR_BASE + 144;
 const SEC_ERROR_POLICY_VALIDATION_FAILED                = SEC_ERROR_BASE + 160; // -8032
+const SEC_ERROR_OCSP_BAD_SIGNATURE                      = SEC_ERROR_BASE + 157;
 const SEC_ERROR_CERT_SIGNATURE_ALGORITHM_DISABLED       = SEC_ERROR_BASE + 176;
 
 const SSL_ERROR_BAD_CERT_DOMAIN                         = SSL_ERROR_BASE +  12;
@@ -117,11 +119,9 @@ function _getLibraryFunctionWithNoArguments(functionName, libraryName) {
 }
 
 function clearOCSPCache() {
-  let CERT_ClearOCSPCache =
-    _getLibraryFunctionWithNoArguments("CERT_ClearOCSPCache", "nss3");
-  if (CERT_ClearOCSPCache() != 0) {
-    throw "Failed to clear OCSP cache";
-  }
+  let certdb = Cc["@mozilla.org/security/x509certdb;1"]
+                 .getService(Ci.nsIX509CertDB);
+  certdb.clearOCSPCache();
 }
 
 function clearSessionCache() {
