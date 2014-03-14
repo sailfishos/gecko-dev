@@ -706,7 +706,7 @@ bool TabParent::SendRealMouseEvent(WidgetMouseEvent& event)
   return PBrowserParent::SendRealMouseEvent(outEvent);
 }
 
-CSSIntPoint TabParent::AdjustTapToChildWidget(const CSSPoint& aPoint)
+CSSPoint TabParent::AdjustTapToChildWidget(const CSSPoint& aPoint)
 {
   nsCOMPtr<nsIContent> content = do_QueryInterface(mFrameElement);
 
