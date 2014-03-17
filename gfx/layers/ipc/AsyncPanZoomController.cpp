@@ -862,7 +862,7 @@ nsEventStatus AsyncPanZoomController::OnScaleEnd(const PinchGestureInput& aEvent
 }
 
 bool
-AsyncPanZoomController::ConvertToGecko(const ScreenPoint& aPoint, CSSIntPoint* aOut)
+AsyncPanZoomController::ConvertToGecko(const ScreenPoint& aPoint, CSSPoint* aOut)
 {
   APZCTreeManager* treeManagerLocal = mTreeManager;
   if (treeManagerLocal) {
@@ -875,8 +875,7 @@ AsyncPanZoomController::ConvertToGecko(const ScreenPoint& aPoint, CSSIntPoint* a
     LayoutDevicePoint layoutPoint = LayoutDevicePoint(result.x, result.y);
     { // scoped lock to access mFrameMetrics
       ReentrantMonitorAutoEnter lock(mMonitor);
-      CSSPoint cssPoint = layoutPoint / mFrameMetrics.mDevPixelsPerCSSPixel;
-      *aOut = gfx::RoundedToInt(cssPoint);
+      *aOut = layoutPoint / mFrameMetrics.mDevPixelsPerCSSPixel;
     }
     return true;
   }
@@ -888,7 +887,7 @@ nsEventStatus AsyncPanZoomController::OnLongPress(const TapGestureInput& aEvent)
   nsRefPtr<GeckoContentController> controller = GetGeckoContentController();
   if (controller) {
     int32_t modifiers = WidgetModifiersToDOMModifiers(aEvent.modifiers);
-    CSSIntPoint geckoScreenPoint;
+    CSSPoint geckoScreenPoint;
     if (ConvertToGecko(aEvent.mPoint, &geckoScreenPoint)) {
       SetState(WAITING_CONTENT_RESPONSE);
       SetContentResponseTimer();
@@ -904,7 +903,7 @@ nsEventStatus AsyncPanZoomController::OnLongPressUp(const TapGestureInput& aEven
   nsRefPtr<GeckoContentController> controller = GetGeckoContentController();
   if (controller) {
     int32_t modifiers = WidgetModifiersToDOMModifiers(aEvent.modifiers);
-    CSSIntPoint geckoScreenPoint;
+    CSSPoint geckoScreenPoint;
     if (ConvertToGecko(aEvent.mPoint, &geckoScreenPoint)) {
       controller->HandleLongTapUp(geckoScreenPoint, modifiers, GetGuid());
       return nsEventStatus_eConsumeNoDefault;
@@ -920,7 +919,7 @@ nsEventStatus AsyncPanZoomController::OnSingleTapUp(const TapGestureInput& aEven
   // sending event to content
   if (controller && !AllowZoom()) {
     int32_t modifiers = WidgetModifiersToDOMModifiers(aEvent.modifiers);
-    CSSIntPoint geckoScreenPoint;
+    CSSPoint geckoScreenPoint;
     if (ConvertToGecko(aEvent.mPoint, &geckoScreenPoint)) {
       // Because this may be being running as part of APZCTreeManager::ReceiveInputEvent,
       // calling controller->HandleSingleTap directly might mean that content receives
@@ -942,7 +941,7 @@ nsEventStatus AsyncPanZoomController::OnSingleTapConfirmed(const TapGestureInput
   nsRefPtr<GeckoContentController> controller = GetGeckoContentController();
   if (controller) {
     int32_t modifiers = WidgetModifiersToDOMModifiers(aEvent.modifiers);
-    CSSIntPoint geckoScreenPoint;
+    CSSPoint geckoScreenPoint;
     if (ConvertToGecko(aEvent.mPoint, &geckoScreenPoint)) {
       // See comment in OnSingleTapUp as to why we do this in PostDelayedTask.
       controller->PostDelayedTask(
@@ -961,7 +960,7 @@ nsEventStatus AsyncPanZoomController::OnDoubleTap(const TapGestureInput& aEvent)
   if (controller) {
     if (AllowZoom()) {
       int32_t modifiers = WidgetModifiersToDOMModifiers(aEvent.modifiers);
-      CSSIntPoint geckoScreenPoint;
+      CSSPoint geckoScreenPoint;
       if (ConvertToGecko(aEvent.mPoint, &geckoScreenPoint)) {
         controller->HandleDoubleTap(geckoScreenPoint, modifiers, GetGuid());
       }

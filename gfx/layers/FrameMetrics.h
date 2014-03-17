@@ -118,7 +118,7 @@ public:
 
   LayerPoint GetScrollOffsetInLayerPixels() const
   {
-    return mScrollOffset * LayersPixelsPerCSSPixel();
+    return GetScrollOffset() * LayersPixelsPerCSSPixel();
   }
 
   LayoutDeviceToParentLayerScale GetParentResolution() const
@@ -163,6 +163,16 @@ public:
   CSSRect CalculateCompositedRectInCssPixels() const
   {
     return CSSRect(gfx::RoundedIn(mCompositionBounds / mZoom));
+  }
+
+  void ScrollBy(const CSSPoint& aPoint)
+  {
+    mScrollOffset += aPoint;
+  }
+
+  void ZoomBy(float aFactor)
+  {
+    mZoom.scale *= aFactor;
   }
 
   // ---------------------------------------------------------------------------
@@ -300,6 +310,26 @@ public:
   bool mHasScrollgrab;
 
 public:
+  void SetScrollOffset(const CSSPoint& aScrollOffset)
+  {
+    mScrollOffset = aScrollOffset;
+  }
+
+  const CSSPoint& GetScrollOffset() const
+  {
+    return mScrollOffset;
+  }
+
+  void SetZoom(const CSSToScreenScale& aZoom)
+  {
+    mZoom = aZoom;
+  }
+
+  CSSToScreenScale GetZoom() const
+  {
+    return mZoom;
+  }
+
   bool GetDisableScrollingX() const
   {
     return mDisableScrollingX;
