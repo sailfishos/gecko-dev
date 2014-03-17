@@ -46,7 +46,7 @@ XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
                                   "resource://gre/modules/PlacesUtils.jsm");
 #endif
 XPCOMUtils.defineLazyModuleGetter(this, "Promise",
-                                  "resource://gre/modules/commonjs/sdk/core/promise.js");
+                                  "resource://gre/modules/Promise.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "Services",
                                   "resource://gre/modules/Services.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "Task",
@@ -513,7 +513,7 @@ this.DownloadIntegration = {
     let sigInfo;
     try {
       hash = aDownload.saver.getSha256Hash();
-       sigInfo = aDownload.saver.getSignatureInfo();
+      sigInfo = aDownload.saver.getSignatureInfo();
     } catch (ex) {
       // Bail if DownloadSaver doesn't have a hash.
       return Promise.resolve(false);
@@ -522,8 +522,13 @@ this.DownloadIntegration = {
       return Promise.resolve(false);
     }
     let deferred = Promise.defer();
+    let aReferrer = null;
+    if (aDownload.source.referrer) {
+      aReferrer: NetUtil.newURI(aDownload.source.referrer);
+    }
     gApplicationReputationService.queryReputation({
       sourceURI: NetUtil.newURI(aDownload.source.url),
+      referrerURI: aReferrer,
       fileSize: aDownload.currentBytes,
       sha256Hash: hash,
       signatureInfo: sigInfo },

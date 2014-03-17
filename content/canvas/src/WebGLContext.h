@@ -178,6 +178,7 @@ public:
     mozilla::TemporaryRef<mozilla::gfx::SourceSurface> GetSurfaceSnapshot() MOZ_OVERRIDE;
 
     NS_IMETHOD SetIsOpaque(bool b) MOZ_OVERRIDE { return NS_OK; };
+    bool GetIsOpaque() MOZ_OVERRIDE { return false; }
     NS_IMETHOD SetContextOptions(JSContext* aCx,
                                  JS::Handle<JS::Value> aOptions) MOZ_OVERRIDE;
 
@@ -786,7 +787,8 @@ private:
 
     bool DrawArrays_check(GLint first, GLsizei count, GLsizei primcount, const char* info);
     bool DrawElements_check(GLsizei count, GLenum type, WebGLintptr byteOffset,
-                            GLsizei primcount, const char* info);
+                            GLsizei primcount, const char* info,
+                            GLuint* out_upperBound = nullptr);
     bool DrawInstanced_check(const char* info);
     void Draw_cleanup();
 

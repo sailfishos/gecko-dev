@@ -50,6 +50,7 @@ class nsXPCClassInfo;
 class nsDOMMutationObserver;
 
 namespace mozilla {
+class EventListenerManager;
 namespace dom {
 /**
  * @return true if aChar is what the DOM spec defines as 'space character'.
@@ -319,7 +320,7 @@ public:
   friend class nsAttrAndChildArray;
 
 #ifdef MOZILLA_INTERNAL_API
-  nsINode(already_AddRefed<nsINodeInfo> aNodeInfo)
+  nsINode(already_AddRefed<nsINodeInfo>& aNodeInfo)
   : mNodeInfo(aNodeInfo),
     mParent(nullptr),
     mBoolFlags(0),
@@ -805,10 +806,10 @@ public:
    */
   NS_DECL_NSIDOMEVENTTARGET
 
-  virtual nsEventListenerManager*
-  GetExistingListenerManager() const MOZ_OVERRIDE;
-  virtual nsEventListenerManager*
-  GetOrCreateListenerManager() MOZ_OVERRIDE;
+  virtual mozilla::EventListenerManager*
+    GetExistingListenerManager() const MOZ_OVERRIDE;
+  virtual mozilla::EventListenerManager*
+    GetOrCreateListenerManager() MOZ_OVERRIDE;
 
   using mozilla::dom::EventTarget::RemoveEventListener;
   using nsIDOMEventTarget::AddEventListener;
@@ -1882,7 +1883,7 @@ ToCanonicalSupports(nsINode* aPointer)
     if (rv.Failed()) { \
       return rv.ErrorCode(); \
     } \
-    *aResult = clone.forget().get()->AsDOMNode(); \
+    *aResult = clone.forget().take()->AsDOMNode(); \
     return NS_OK; \
   } \
   NS_IMETHOD Normalize() __VA_ARGS__ \

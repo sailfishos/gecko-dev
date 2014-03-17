@@ -17,6 +17,7 @@
 #include "nsContentList.h"
 #include "nsView.h"
 #include "nsViewManager.h"
+#include "nsIDOMEventListener.h"
 #include "nsIDOMNode.h"
 #include "nsISelectControlFrame.h"
 #include "nsContentUtils.h"
@@ -31,13 +32,14 @@
 #include "nsLayoutUtils.h"
 #include "nsDisplayList.h"
 #include "nsITheme.h"
-#include "nsAsyncDOMEvent.h"
 #include "nsRenderingContext.h"
 #include "mozilla/Likely.h"
 #include <algorithm>
 #include "nsTextNode.h"
+#include "mozilla/AsyncEventDispatcher.h"
 #include "mozilla/LookAndFeel.h"
 #include "mozilla/MouseEvents.h"
+#include "mozilla/unused.h"
 
 using namespace mozilla;
 
@@ -803,7 +805,7 @@ nsComboboxControlFrame::Reflow(nsPresContext*          aPresContext,
   if (NS_SUCCEEDED(aPresContext->PresShell()->PostReflowCallback(resize))) {
     // The reflow callback queue doesn't AddRef so we keep it alive until
     // it's released in its ReflowFinished / ReflowCallbackCanceled.
-    resize.forget();
+    unused << resize.forget();
   }
 
   // Get the width of the vertical scrollbar.  That will be the width of the
@@ -1550,8 +1552,8 @@ void nsComboboxControlFrame::FireValueChangeEvent()
 {
   // Fire ValueChange event to indicate data value of combo box has changed
   nsContentUtils::AddScriptRunner(
-    new nsAsyncDOMEvent(mContent, NS_LITERAL_STRING("ValueChange"), true,
-                        false));
+    new AsyncEventDispatcher(mContent, NS_LITERAL_STRING("ValueChange"), true,
+                             false));
 }
 
 void

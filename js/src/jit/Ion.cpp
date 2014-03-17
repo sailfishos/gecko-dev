@@ -268,6 +268,16 @@ JitRuntime::initialize(JSContext *cx)
     if (!shapePreBarrier_)
         return false;
 
+    IonSpew(IonSpew_Codegen, "# Emitting malloc stub");
+    mallocStub_ = generateMallocStub(cx);
+    if (!mallocStub_)
+        return false;
+
+    IonSpew(IonSpew_Codegen, "# Emitting free stub");
+    freeStub_ = generateFreeStub(cx);
+    if (!freeStub_)
+        return false;
+
     IonSpew(IonSpew_Codegen, "# Emitting VM function wrappers");
     for (VMFunction *fun = VMFunction::functions; fun; fun = fun->next) {
         if (!generateVMWrapper(cx, *fun))
@@ -455,9 +465,8 @@ jit::RequestInterruptForIonCode(JSRuntime *rt, JSRuntime::InterruptMode mode)
     }
 }
 
-JitCompartment::JitCompartment(JitRuntime *rt)
-  : rt(rt),
-    stubCodes_(nullptr),
+JitCompartment::JitCompartment()
+  : stubCodes_(nullptr),
     baselineCallReturnAddr_(nullptr),
     baselineGetPropReturnAddr_(nullptr),
     baselineSetPropReturnAddr_(nullptr),
@@ -562,7 +571,7 @@ JitCompartment::mark(JSTracer *trc, JSCompartment *compartment)
     FinishAllOffThreadCompilations(compartment);
 
     // Free temporary OSR buffer.
-    rt->freeOsrTempData();
+    trc->runtime->jitRuntime()->freeOsrTempData();
 }
 
 void
@@ -606,25 +615,28 @@ JitRuntime::getVMWrapper(const VMFunction &f) const
 
 template <AllowGC allowGC>
 JitCode *
-JitCode::New(JSContext *cx, uint8_t *code, uint32_t bufferSize, JSC::ExecutablePool *pool)
+JitCode::New(JSContext *cx, uint8_t *code, uint32_t bufferSize, uint32_t headerSize,
+             JSC::ExecutablePool *pool, JSC::CodeKind kind)
 {
     JitCode *codeObj = js::NewJitCode<allowGC>(cx);
     if (!codeObj) {
-        pool->release();
+        pool->release(headerSize + bufferSize, kind);
         return nullptr;
     }
 
-    new (codeObj) JitCode(code, bufferSize, pool);
+    new (codeObj) JitCode(code, bufferSize, headerSize, pool, kind);
     return codeObj;
 }
 
 template
 JitCode *
-JitCode::New<CanGC>(JSContext *cx, uint8_t *code, uint32_t bufferSize, JSC::ExecutablePool *pool);
+JitCode::New<CanGC>(JSContext *cx, uint8_t *code, uint32_t bufferSize, uint32_t headerSize,
+                    JSC::ExecutablePool *pool, JSC::CodeKind kind);
 
 template
 JitCode *
-JitCode::New<NoGC>(JSContext *cx, uint8_t *code, uint32_t bufferSize, JSC::ExecutablePool *pool);
+JitCode::New<NoGC>(JSContext *cx, uint8_t *code, uint32_t bufferSize, uint32_t headerSize,
+                   JSC::ExecutablePool *pool, JSC::CodeKind kind);
 
 void
 JitCode::copyFrom(MacroAssembler &masm)
@@ -687,7 +699,7 @@ JitCode::finalize(FreeOp *fop)
         // Horrible hack: if we are using perf integration, we don't
         // want to reuse code addresses, so we just leak the memory instead.
         if (!PerfEnabled())
-            pool_->release();
+            pool_->release(headerSize_ + bufferSize_, JSC::CodeKind(kind_));
         pool_ = nullptr;
     }
 }
@@ -2702,14 +2714,6 @@ jit::FinishInvalidation(FreeOp *fop, JSScript *script)
 }
 
 void
-jit::FinishDiscardJitCode(FreeOp *fop, JSCompartment *comp)
-{
-    // Free optimized baseline stubs.
-    if (comp->jitCompartment())
-        comp->jitCompartment()->optimizedStubSpace()->free();
-}
-
-void
 jit::MarkValueFromIon(JSRuntime *rt, Value *vp)
 {
     gc::MarkValueUnbarriered(&rt->gcMarker, vp, "write barrier");
@@ -2916,15 +2920,6 @@ AutoDebugModeInvalidation::~AutoDebugModeInvalidation()
             script->resetUseCount();
         } else if (script->hasBaselineScript()) {
             script->baselineScript()->resetActive();
-        }
-    }
-
-    if (comp_) {
-        FinishDiscardJitCode(fop, comp_);
-    } else {
-        for (CompartmentsInZoneIter comp(zone_); !comp.done(); comp.next()) {
-            if (comp->principals)
-                FinishDiscardJitCode(fop, comp);
         }
     }
 }

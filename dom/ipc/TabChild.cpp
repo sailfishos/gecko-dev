@@ -13,6 +13,7 @@
 #include "IndexedDBChild.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/ClearOnShutdown.h"
+#include "mozilla/EventListenerManager.h"
 #include "mozilla/IntentionalCrash.h"
 #include "mozilla/docshell/OfflineCacheUpdateChild.h"
 #include "mozilla/ipc/DocumentRendererChild.h"
@@ -32,7 +33,6 @@
 #include "nsContentUtils.h"
 #include "nsCxPusher.h"
 #include "nsEmbedCID.h"
-#include "nsEventListenerManager.h"
 #include <algorithm>
 #ifdef MOZ_CRASHREPORTER
 #include "nsExceptionHandler.h"
@@ -1066,7 +1066,7 @@ TabChild::BrowserFrameProvideWindow(nsIDOMWindow* aOpener,
 
   unused << Manager()->SendPBrowserConstructor(
       // We release this ref in DeallocPBrowserChild
-      nsRefPtr<TabChild>(newChild).forget().get(),
+      nsRefPtr<TabChild>(newChild).forget().take(),
       IPCTabContext(context, mScrolling), /* chromeFlags */ 0);
 
   nsAutoCString spec;
@@ -1172,7 +1172,7 @@ TabChild::~TabChild()
     mGlobal = nullptr;
 
     if (mTabChildGlobal) {
-      nsEventListenerManager* elm = mTabChildGlobal->GetExistingListenerManager();
+      EventListenerManager* elm = mTabChildGlobal->GetExistingListenerManager();
       if (elm) {
         elm->Disconnect();
       }

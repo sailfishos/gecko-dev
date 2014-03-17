@@ -14,6 +14,7 @@
 
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/IOInterposer.h"
 #include "mozilla/Likely.h"
 #include "mozilla/Poison.h"
 #include "mozilla/Preferences.h"
@@ -1976,9 +1977,10 @@ SetCurrentProfileAsDefault(nsIToolkitProfileService* aProfileSvc,
     return rv;
 
   bool foundMatchingProfile = false;
-  nsCOMPtr<nsIToolkitProfile> profile;
-  rv = profiles->GetNext(getter_AddRefs(profile));
+  nsCOMPtr<nsISupports> supports;
+  rv = profiles->GetNext(getter_AddRefs(supports));
   while (NS_SUCCEEDED(rv)) {
+    nsCOMPtr<nsIToolkitProfile> profile = do_QueryInterface(supports);
     nsCOMPtr<nsIFile> profileRoot;
     profile->GetRootDir(getter_AddRefs(profileRoot));
     profileRoot->Equals(aCurrentProfileRoot, &foundMatchingProfile);
@@ -1988,7 +1990,7 @@ SetCurrentProfileAsDefault(nsIToolkitProfileService* aProfileSvc,
         rv = aProfileSvc->Flush();
       return rv;
     }
-    rv = profiles->GetNext(getter_AddRefs(profile));
+    rv = profiles->GetNext(getter_AddRefs(supports));
   }
   return rv;
 }
@@ -4025,6 +4027,8 @@ XREMain::XRE_main(int argc, char* argv[], const nsXREAppData* aAppData)
   GeckoProfilerInitRAII profilerGuard(&aLocal);
   PROFILER_LABEL("Startup", "XRE_Main");
 
+  mozilla::IOInterposerInit ioInterposerGuard;
+
   nsresult rv = NS_OK;
 
   gArgc = argc;
@@ -4227,6 +4231,8 @@ XRE_mainMetro(int argc, char* argv[], const nsXREAppData* aAppData)
   char aLocal;
   GeckoProfilerInitRAII profilerGuard(&aLocal);
   PROFILER_LABEL("Startup", "XRE_Main");
+
+  mozilla::IOInterposerInit ioInterposerGuard;
 
   nsresult rv = NS_OK;
 

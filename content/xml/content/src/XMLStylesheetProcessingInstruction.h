@@ -8,6 +8,7 @@
 
 #include "mozilla/Attributes.h"
 #include "mozilla/dom/ProcessingInstruction.h"
+#include "nsIURI.h"
 #include "nsStyleLinkElement.h"
 
 namespace mozilla {
@@ -18,9 +19,9 @@ class XMLStylesheetProcessingInstruction MOZ_FINAL
 , public nsStyleLinkElement
 {
 public:
-  XMLStylesheetProcessingInstruction(already_AddRefed<nsINodeInfo> aNodeInfo,
+  XMLStylesheetProcessingInstruction(already_AddRefed<nsINodeInfo>&& aNodeInfo,
                                      const nsAString& aData)
-    : ProcessingInstruction(aNodeInfo, aData)
+    : ProcessingInstruction(Move(aNodeInfo), aData)
   {
   }
 

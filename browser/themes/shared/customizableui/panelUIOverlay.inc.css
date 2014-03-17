@@ -5,6 +5,7 @@
 %filter substitution
 
 %define menuPanelWidth 22.35em
+%define standaloneSubviewWidth 30em
 % XXXgijs This is the ugliest bit of code I think I've ever written for Mozilla.
 % Basically, the 0.1px is there to avoid CSS rounding errors causing buttons to wrap.
 % For gory details, refer to https://bugzilla.mozilla.org/show_bug.cgi?id=963365#c11
@@ -18,6 +19,44 @@
 %define menuStateActive :not([disabled])[_moz-menuactive]:active
 
 %include ../browser.inc
+
+#PanelUI-popup #PanelUI-contents:empty {
+    height: 128px;
+}
+
+#PanelUI-popup #PanelUI-contents:empty::before {
+  content: "";
+  background-image: url(chrome://browser/skin/customizableui/whimsy-bw.png);
+  display: block;
+  width: 64px;
+  height: 64px;
+  position: absolute;
+  animation: moveX 3.05s linear 0s infinite alternate,
+             moveY 3.4s linear 0s infinite alternate;
+}
+
+#PanelUI-popup #PanelUI-contents:empty:hover::before {
+  background-image: url(chrome://browser/skin/customizableui/whimsy.png);
+}
+
+@media (min-resolution: 2dppx) {
+  #PanelUI-popup #PanelUI-contents:empty::before {
+    background-image: url(chrome://browser/skin/customizableui/whimsy-bw@2x.png);
+    background-size: 64px 64px;
+  }
+  #PanelUI-popup #PanelUI-contents:empty:hover::before {
+    background-image: url(chrome://browser/skin/customizableui/whimsy@2x.png);
+  }
+}
+
+@keyframes moveX {
+  /* These values are adjusted for the padding on the panel. */
+  from { margin-left: -15px; } to { margin-left: calc(100% - 49px); }
+}
+@keyframes moveY {
+  /* These values are adjusted for the padding and height of the panel. */
+  from { margin-top: -6px; } to { margin-top: 58px; }
+}
 
 #PanelUI-button {
   background-image: linear-gradient(to bottom, hsla(0,0%,100%,0), hsla(0,0%,100%,.3) 30%, hsla(0,0%,100%,.3) 70%, hsla(0,0%,100%,0)),
@@ -51,6 +90,10 @@
   transform: translateX(-@menuPanelWidth@);
 }
 
+panelmultiview[nosubviews=true] > .panel-viewcontainer > .panel-viewstack > .panel-subviews {
+  display: none;
+}
+
 .panel-viewstack:not([viewtype="main"]) > .panel-mainview > #PanelUI-mainView {
   -moz-box-flex: 1;
 }
@@ -63,7 +106,7 @@
 
 #PanelUI-popup .panel-subview-body {
   margin: -4px;
-  padding: 2px 4px;
+  padding: 4px 4px;
 }
 
 .panel-subview-header,
@@ -134,7 +177,8 @@
 .panelUI-grid .toolbarbutton-1 > .toolbarbutton-text,
 .panelUI-grid .toolbarbutton-1 > .toolbarbutton-multiline-text {
   text-align: center;
-  margin: 2px 0 0;
+  /* Need to override toolkit theming which sets margin: 0 !important; */
+  margin: 2px 0 0 !important;
 }
 
 .panelUI-grid .toolbarbutton-1 > .toolbarbutton-menubutton-button > .toolbarbutton-multiline-text {
@@ -147,10 +191,13 @@
   -moz-margin-start: 0;
 }
 
-#PanelUI-contents,
+#PanelUI-contents {
+  max-width: @menuPanelWidth@;
+}
+
 #BMB_bookmarksPopup,
 .panel-mainview:not([panelid="PanelUI-popup"]) {
-  max-width: @menuPanelWidth@;
+  max-width: @standaloneSubviewWidth@;
 }
 
 panelview:not([mainview]) .toolbarbutton-text,
@@ -547,13 +594,11 @@ panelview .toolbarbutton-1,
 .panelUI-grid .toolbarbutton-1 > .toolbarbutton-menubutton-button,
 .toolbaritem-combined-buttons@inAnyPanel@ > toolbarbutton {
   -moz-appearance: none;
-  padding: 2px 6px;
+  padding: 0 6px;
   background-color: hsla(210,4%,10%,0);
   border-radius: 2px;
   border-style: solid;
   border-color: hsla(210,4%,10%,0);
-  transition-property: background-color, border-color;
-  transition-duration: 150ms;
 }
 
 panelview .toolbarbutton-1,
@@ -576,14 +621,20 @@ panelview .toolbarbutton-1,
 }
 
 .subviewbutton:not(.panel-subview-footer) {
-  margin: 2px 0;
+  margin: 0;
 }
 
 .subviewbutton:not(.panel-subview-footer) > .toolbarbutton-text,
 /* Bookmark items need a more specific selector. */
 .PanelUI-subView .subviewbutton:not(.panel-subview-footer) > .menu-text,
 .PanelUI-subView .subviewbutton:not(.panel-subview-footer) > .menu-iconic-text {
-  font-size: 1.1em;
+  font: menu;
+}
+
+/* This is a <label> but it should fit in with the menu font- and colorwise. */
+#PanelUI-characterEncodingView-autodetect-label {
+  font: menu;
+  color: inherit;
 }
 
 .cui-widget-panelview .subviewbutton:not(.panel-subview-footer) {
@@ -641,7 +692,7 @@ menuitem.subviewbutton@menuStateActive@,
 }
 
 #BMB_bookmarksPopup .subviewbutton {
-  font: inherit;
+  font: menu;
   font-weight: normal;
 }
 
@@ -661,13 +712,23 @@ menuitem.subviewbutton@menuStateActive@,
   padding-bottom: 0px;
 }
 
-#BMB_bookmarksPopup menupopup {
-  padding-top: 2px;
-}
-
 #BMB_bookmarksPopup menupopup > .bookmarks-actions-menuseparator {
   /* Hide bottom separator as the styled footer includes a top border serving the same purpose */
   display: none;
+}
+
+/* Popups with only one item don't have a footer */
+menupopup[placespopup=true][singleitempopup=true] > hbox > .popup-internal-box > .arrowscrollbox-scrollbox > .scrollbox-innerbox,
+/* These popups never have a footer */
+#BMB_bookmarksToolbarPopup > hbox > .popup-internal-box > .arrowscrollbox-scrollbox > .scrollbox-innerbox,
+#BMB_unsortedBookmarksPopup > hbox > .popup-internal-box > .arrowscrollbox-scrollbox > .scrollbox-innerbox {
+  /* And so they need some bottom padding: */
+  padding-bottom: 4px;
+}
+
+/* Disabled (empty) item is always alone and never has an icon, so fix its left padding */
+#BMB_bookmarksPopup menupopup[emptyplacesresult] .bookmark-item.subviewbutton {
+  padding-left: 6px;
 }
 
 .PanelUI-subView menuseparator,
@@ -676,7 +737,7 @@ menuitem.subviewbutton@menuStateActive@,
   -moz-appearance: none;
   min-height: 0;
   border-top: 1px solid hsla(210,4%,10%,.15);
-  margin: 2px 0;
+  margin: 6px 0;
   padding: 0;
 }
 
@@ -910,14 +971,14 @@ toolbaritem[overflowedItem=true],
 }
 
 .subviewbutton[checked="true"] {
-  background: url("chrome://global/skin/menu/shared-menu-check.png") top 7px left 7px / 11px 11px no-repeat transparent;
+  background: url("chrome://global/skin/menu/shared-menu-check.png") center left 7px / 11px 11px no-repeat transparent;
 }
 
-.PanelUI-subView .menu-iconic-left {
+.subviewbutton > .menu-iconic-left {
   -moz-appearance: none;
   -moz-margin-end: 3px;
 }
 
-.PanelUI-subView menuitem[checked="true"] > .menu-iconic-left {
+menuitem[checked="true"].subviewbutton > .menu-iconic-left {
   visibility: hidden;
 }

@@ -4016,6 +4016,7 @@ ScrollFrameHelper::UpdateOverflow()
     mSkippedScrollbarLayout = true;
     return false;  // reflowing will update overflow
   }
+  PostOverflowEvent();
   return mOuter->nsContainerFrame::UpdateOverflow();
 }
 

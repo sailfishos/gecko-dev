@@ -51,12 +51,15 @@ sync_engine_modules := \
 
 sync_stage_modules := \
   cluster.js \
+  declined.js \
   enginesync.js \
   $(NULL)
 
 sync_testing_modules := \
   fakeservices.js \
   rotaryengine.js \
+  utils.js \
+  fxa_utils.js \
   $(NULL)
 
 PREF_JS_EXPORTS := $(srcdir)/services-sync.js

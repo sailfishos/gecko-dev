@@ -26,7 +26,6 @@
 #include "imgRequestProxy.h"
 #include "nsThreadUtils.h"
 #include "nsNetUtil.h"
-#include "nsAsyncDOMEvent.h"
 #include "nsImageFrame.h"
 
 #include "nsIPresShell.h"
@@ -45,6 +44,7 @@
 #include "nsSVGEffects.h"
 
 #include "mozAutoDocUpdate.h"
+#include "mozilla/AsyncEventDispatcher.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/ScriptSettings.h"
 
@@ -425,7 +425,7 @@ nsImageLoadingContent::GetRequest(int32_t aRequestType,
   NS_ENSURE_ARG_POINTER(aRequest);
 
   ErrorResult result;
-  *aRequest = GetRequest(aRequestType, result).get();
+  *aRequest = GetRequest(aRequestType, result).take();
 
   return result.ErrorCode();
 }
@@ -539,7 +539,7 @@ nsImageLoadingContent::GetCurrentURI(nsIURI** aURI)
   NS_ENSURE_ARG_POINTER(aURI);
 
   ErrorResult result;
-  *aURI = GetCurrentURI(result).get();
+  *aURI = GetCurrentURI(result).take();
   return result.ErrorCode();
 }
 
@@ -594,7 +594,7 @@ nsImageLoadingContent::LoadImageWithChannel(nsIChannel* aChannel,
   NS_ENSURE_ARG_POINTER(aListener);
 
   ErrorResult result;
-  *aListener = LoadImageWithChannel(aChannel, result).get();
+  *aListener = LoadImageWithChannel(aChannel, result).take();
   return result.ErrorCode();
 }
 
@@ -1039,10 +1039,10 @@ nsImageLoadingContent::FireEvent(const nsAString& aEventType)
 
   nsCOMPtr<nsINode> thisNode = do_QueryInterface(static_cast<nsIImageLoadingContent*>(this));
 
-  nsRefPtr<nsAsyncDOMEvent> event =
-    new nsLoadBlockingAsyncDOMEvent(thisNode, aEventType, false, false);
-  event->PostDOMEvent();
-  
+  nsRefPtr<AsyncEventDispatcher> loadBlockingAsyncDispatcher =
+    new LoadBlockingAsyncEventDispatcher(thisNode, aEventType, false, false);
+  loadBlockingAsyncDispatcher->PostDOMEvent();
+
   return NS_OK;
 }
 

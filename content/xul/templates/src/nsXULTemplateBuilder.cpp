@@ -37,6 +37,7 @@
 #include "nsIXULBuilderListener.h"
 #include "nsIRDFRemoteDataSource.h"
 #include "nsIRDFService.h"
+#include "nsIScriptContext.h"
 #include "nsIScriptGlobalObject.h"
 #include "nsIServiceManager.h"
 #include "nsISimpleEnumerator.h"
@@ -2118,7 +2119,7 @@ nsXULTemplateBuilder::DetermineRDFQueryRef(nsIContent* aQueryElement, nsIAtom** 
         content->GetAttr(kNameSpaceID_None, nsGkAtoms::tag, tag);
 
         if (!tag.IsEmpty())
-            *aTag = NS_NewAtom(tag).get();
+            *aTag = NS_NewAtom(tag).take();
     }
 }
 

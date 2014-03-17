@@ -6,10 +6,10 @@
 
 #include "mozilla/dom/HTMLLinkElement.h"
 
+#include "mozilla/AsyncEventDispatcher.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/dom/HTMLLinkElementBinding.h"
 #include "mozilla/MemoryReporting.h"
-#include "nsAsyncDOMEvent.h"
 #include "nsContentUtils.h"
 #include "nsGenericHTMLElement.h"
 #include "nsGkAtoms.h"
@@ -31,7 +31,7 @@ NS_IMPL_NS_NEW_HTML_ELEMENT(Link)
 namespace mozilla {
 namespace dom {
 
-HTMLLinkElement::HTMLLinkElement(already_AddRefed<nsINodeInfo> aNodeInfo)
+HTMLLinkElement::HTMLLinkElement(already_AddRefed<nsINodeInfo>& aNodeInfo)
   : nsGenericHTMLElement(aNodeInfo)
   , Link(MOZ_THIS_IN_INITIALIZER_LIST())
 {
@@ -226,11 +226,11 @@ HTMLLinkElement::CreateAndDispatchEvent(nsIDocument* aDoc,
                       strings, eIgnoreCase) != ATTR_VALUE_NO_MATCH)
     return;
 
-  nsRefPtr<nsAsyncDOMEvent> event = new nsAsyncDOMEvent(this, aEventName, true,
-                                                        true);
+  nsRefPtr<AsyncEventDispatcher> asyncDispatcher =
+    new AsyncEventDispatcher(this, aEventName, true, true);
   // Always run async in order to avoid running script when the content
   // sink isn't expecting it.
-  event->PostDOMEvent();
+  asyncDispatcher->PostDOMEvent();
 }
 
 nsresult

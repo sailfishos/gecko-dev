@@ -2549,7 +2549,7 @@ DefineConstructorAndPrototype(JSContext *cx, HandleObject obj, JSProtoKey key, H
          * (FIXME: remove this dependency on the exact identity of the parent,
          * perhaps as part of bug 638316.)
          */
-        RootedFunction fun(cx, NewFunction(cx, NullPtr(), constructor, nargs,
+        RootedFunction fun(cx, NewFunction(cx, js::NullPtr(), constructor, nargs,
                                            JSFunction::NATIVE_CTOR, obj, atom, ctorKind));
         if (!fun)
             goto bad;
@@ -5908,8 +5908,6 @@ JSObject::addSizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf, JS::Objects
 #else
             sizes->mallocHeapElementsAsmJS += mallocSizeOf(elements);
 #endif
-        } else if (MOZ_UNLIKELY(elements->isMappedArrayBuffer())) {
-            sizes->nonHeapElementsMapped += as<ArrayBufferObject>().byteLength();
         } else {
             sizes->mallocHeapElementsNonAsmJS += mallocSizeOf(elements);
         }

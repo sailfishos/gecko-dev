@@ -8,11 +8,11 @@ Cu.import("resource://services-sync/util.js");
 Cu.import("resource://services-common/utils.js");
 Cu.import("resource://services-crypto/utils.js");
 Cu.import("resource://testing-common/services/sync/utils.js");
+Cu.import("resource://testing-common/services/sync/fxa_utils.js");
 Cu.import("resource://services-common/hawkclient.js");
 Cu.import("resource://gre/modules/FxAccounts.jsm");
 Cu.import("resource://gre/modules/FxAccountsClient.jsm");
 Cu.import("resource://gre/modules/FxAccountsCommon.js");
-Cu.import("resource://services-common/tokenserverclient.js");
 Cu.import("resource://services-sync/service.js");
 Cu.import("resource://services-sync/status.js");
 Cu.import("resource://services-sync/constants.js");
@@ -254,20 +254,13 @@ add_task(function test_ensureLoggedIn() {
   Assert.ok(!browseridManager._shouldHaveSyncKeyBundle,
             "_shouldHaveSyncKeyBundle should be false so we know we are testing what we think we are.");
   Status.login = LOGIN_FAILED_NO_USERNAME;
-  try {
-    yield browseridManager.ensureLoggedIn();
-    Assert.ok(false, "promise should have been rejected.")
-  } catch(_) {
-  }
+  yield Assert_rejects(browseridManager.ensureLoggedIn(), "expecting rejection due to no user");
   Assert.ok(browseridManager._shouldHaveSyncKeyBundle,
             "_shouldHaveSyncKeyBundle should always be true after ensureLogin completes.");
   fxa.internal.currentAccountState.signedInUser = signedInUser;
   Status.login = LOGIN_FAILED_LOGIN_REJECTED;
-  try {
-    yield browseridManager.ensureLoggedIn();
-    Assert.ok(false, "LOGIN_FAILED_LOGIN_REJECTED should have caused immediate rejection");
-  } catch (_) {
-  }
+  yield Assert_rejects(browseridManager.ensureLoggedIn(),
+                       "LOGIN_FAILED_LOGIN_REJECTED should have caused immediate rejection");
   Assert.equal(Status.login, LOGIN_FAILED_LOGIN_REJECTED,
                "status should remain LOGIN_FAILED_LOGIN_REJECTED");
   Status.login = LOGIN_FAILED_NETWORK_ERROR;
@@ -344,11 +337,16 @@ add_task(function test_getTokenErrors() {
   _("BrowserIDManager correctly handles various failures to get a token.");
 
   _("Arrange for a 401 - Sync should reflect an auth error.");
-  yield initializeIdentityWithTokenServerFailure({
+  initializeIdentityWithTokenServerResponse({
     status: 401,
     headers: {"content-type": "application/json"},
     body: JSON.stringify({}),
   });
+  let browseridManager = Service.identity;
+
+  yield browseridManager.initializeWithCurrentIdentity();
+  yield Assert_rejects(browseridManager.whenReadyToAuthenticate.promise,
+                       "should reject due to 401");
   Assert.equal(Status.login, LOGIN_FAILED_LOGIN_REJECTED, "login was rejected");
 
   // XXX - other interesting responses to return?
@@ -356,11 +354,15 @@ add_task(function test_getTokenErrors() {
   // And for good measure, some totally "unexpected" errors - we generally
   // assume these problems are going to magically go away at some point.
   _("Arrange for an empty body with a 200 response - should reflect a network error.");
-  yield initializeIdentityWithTokenServerFailure({
+  initializeIdentityWithTokenServerResponse({
     status: 200,
     headers: [],
     body: "",
   });
+  browseridManager = Service.identity;
+  yield browseridManager.initializeWithCurrentIdentity();
+  yield Assert_rejects(browseridManager.whenReadyToAuthenticate.promise,
+                       "should reject due to non-JSON response");
   Assert.equal(Status.login, LOGIN_FAILED_NETWORK_ERROR, "login state is LOGIN_FAILED_NETWORK_ERROR");
 });
 
@@ -371,12 +373,18 @@ add_task(function test_getTokenErrorWithRetry() {
   // it should reflect the value we sent.
   Status.backoffInterval = 0;
   _("Arrange for a 503 with a Retry-After header.");
-  yield initializeIdentityWithTokenServerFailure({
+  initializeIdentityWithTokenServerResponse({
     status: 503,
     headers: {"content-type": "application/json",
               "retry-after": "100"},
     body: JSON.stringify({}),
   });
+  let browseridManager = Service.identity;
+
+  yield browseridManager.initializeWithCurrentIdentity();
+  yield Assert_rejects(browseridManager.whenReadyToAuthenticate.promise,
+                       "should reject due to 503");
+
   // The observer should have fired - check it got the value in the response.
   Assert.equal(Status.login, LOGIN_FAILED_NETWORK_ERROR, "login was rejected");
   // Sync will have the value in ms with some slop - so check it is at least that.
@@ -384,12 +392,18 @@ add_task(function test_getTokenErrorWithRetry() {
 
   _("Arrange for a 200 with an X-Backoff header.");
   Status.backoffInterval = 0;
-  yield initializeIdentityWithTokenServerFailure({
+  initializeIdentityWithTokenServerResponse({
     status: 503,
     headers: {"content-type": "application/json",
               "x-backoff": "200"},
     body: JSON.stringify({}),
   });
+  browseridManager = Service.identity;
+
+  yield browseridManager.initializeWithCurrentIdentity();
+  yield Assert_rejects(browseridManager.whenReadyToAuthenticate.promise,
+                       "should reject due to no token in response");
+
   // The observer should have fired - check it got the value in the response.
   Assert.ok(Status.backoffInterval >= 200000);
 });
@@ -418,49 +432,54 @@ add_task(function test_getHAWKErrors() {
   Assert.equal(Status.login, LOGIN_FAILED_NETWORK_ERROR, "login state is LOGIN_FAILED_NETWORK_ERROR");
 });
 
-// End of tests
-// Utility functions follow
+add_task(function test_getKeysError() {
+  _("BrowserIDManager correctly handles getKeys failures.");
 
-// Create a new browserid_identity object and initialize it with a
-// mocked TokenServerClient which always gets the specified response.
-function* initializeIdentityWithTokenServerFailure(response) {
-  // First create a mock "request" object that well' hack into the token server.
-  // A log for it
-  let requestLog = Log.repository.getLogger("testing.mock-rest");
-  if (!requestLog.appenders.length) { // might as well see what it says :)
-    requestLog.addAppender(new Log.DumpAppender());
-    requestLog.level = Log.Level.Trace;
-  }
+  let browseridManager = new BrowserIDManager();
+  let identityConfig = makeIdentityConfig();
+  // our mock identity config already has kA and kB - remove them or we never
+  // try and fetch them.
+  delete identityConfig.fxaccount.user.kA;
+  delete identityConfig.fxaccount.user.kB;
 
-  // A mock request object.
-  function MockRESTRequest(url) {};
-  MockRESTRequest.prototype = {
-    _log: requestLog,
-    setHeader: function() {},
-    get: function(callback) {
-      this.response = response;
-      callback.call(this);
-    }
-  }
-  // The mocked TokenServer client which will get the response.
-  function MockTSC() { }
-  MockTSC.prototype = new TokenServerClient();
-  MockTSC.prototype.constructor = MockTSC;
-  MockTSC.prototype.newRESTRequest = function(url) {
-    return new MockRESTRequest(url);
-  }
-  // tie it all together.
-  let mockTSC = new MockTSC()
-  configureFxAccountIdentity(browseridManager);
-  browseridManager._tokenServerClient = mockTSC;
+  configureFxAccountIdentity(browseridManager, identityConfig);
+
+  // Mock a fxAccounts object that returns no keys
+  let fxa = new FxAccounts({
+    fetchAndUnwrapKeys: function () {
+      return Promise.resolve({});
+    },
+    fxAccountsClient: new MockFxAccountsClient()
+  });
+
+  // Add a mock to the currentAccountState object.
+  fxa.internal.currentAccountState.getCertificate = function(data, keyPair, mustBeValidUntil) {
+    this.cert = {
+      validUntil: fxa.internal.now() + CERT_LIFETIME,
+      cert: "certificate",
+    };
+    return Promise.resolve(this.cert.cert);
+  };
+
+  // Ensure the new FxAccounts mock has a signed-in user.
+  fxa.internal.currentAccountState.signedInUser = browseridManager._fxaService.internal.currentAccountState.signedInUser;
+
+  browseridManager._fxaService = fxa;
 
   yield browseridManager.initializeWithCurrentIdentity();
+
+  let ex;
   try {
     yield browseridManager.whenReadyToAuthenticate.promise;
-    Assert.ok(false, "expecting this promise to resolve with an error");
-  } catch (ex) {}
-}
+  } catch (e) {
+    ex = e;
+  }
 
+  Assert.ok(ex.message.indexOf("missing kA or kB") >= 0);
+});
+
+// End of tests
+// Utility functions follow
 
 // Create a new browserid_identity object and initialize it with a
 // hawk mock that simulates a failure.
@@ -500,10 +519,8 @@ function* initializeIdentityWithHAWKFailure(response) {
   browseridManager._fxaService = fxa;
   browseridManager._signedInUser = null;
   yield browseridManager.initializeWithCurrentIdentity();
-  try {
-    yield browseridManager.whenReadyToAuthenticate.promise;
-    Assert.ok(false, "expecting this promise to resolve with an error");
-  } catch (ex) {}
+  yield Assert_rejects(browseridManager.whenReadyToAuthenticate.promise,
+                       "expecting rejection due to hawk error");
 }
 
 

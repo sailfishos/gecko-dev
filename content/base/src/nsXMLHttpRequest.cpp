@@ -8,6 +8,7 @@
 
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/dom/XMLHttpRequestUploadBinding.h"
+#include "mozilla/EventListenerManager.h"
 #include "mozilla/MemoryReporting.h"
 #include "nsDOMBlobBuilder.h"
 #include "nsIDOMDocument.h"
@@ -2157,11 +2158,11 @@ nsXMLHttpRequest::OnStopRequest(nsIRequest *request, nsISupports *ctxt, nsresult
     NS_ASSERTION(!(mState & XML_HTTP_REQUEST_SYNCLOOPING),
       "We weren't supposed to support HTML parsing with XHR!");
     nsCOMPtr<EventTarget> eventTarget = do_QueryInterface(mResponseXML);
-    nsEventListenerManager* manager =
+    EventListenerManager* manager =
       eventTarget->GetOrCreateListenerManager();
     manager->AddEventListenerByType(new nsXHRParseEndListener(this),
                                     NS_LITERAL_STRING("DOMContentLoaded"),
-                                    dom::TrustedEventsAtSystemGroupBubble());
+                                    TrustedEventsAtSystemGroupBubble());
     return NS_OK;
   }
   // We might have been sent non-XML data. If that was the case,
@@ -3516,11 +3517,11 @@ nsXMLHttpRequest::GetInterface(const nsIID & aIID, void **aResult)
   // need to see these notifications for proper functioning.
   if (aIID.Equals(NS_GET_IID(nsIChannelEventSink))) {
     mChannelEventSink = do_GetInterface(mNotificationCallbacks);
-    *aResult = static_cast<nsIChannelEventSink*>(EnsureXPCOMifier().get());
+    *aResult = static_cast<nsIChannelEventSink*>(EnsureXPCOMifier().take());
     return NS_OK;
   } else if (aIID.Equals(NS_GET_IID(nsIProgressEventSink))) {
     mProgressEventSink = do_GetInterface(mNotificationCallbacks);
-    *aResult = static_cast<nsIProgressEventSink*>(EnsureXPCOMifier().get());
+    *aResult = static_cast<nsIProgressEventSink*>(EnsureXPCOMifier().take());
     return NS_OK;
   }
 
@@ -3619,15 +3620,15 @@ nsXMLHttpRequest::GetInterface(const nsIID & aIID, void **aResult)
   // nsIProgressEventSink and nsIChannelEventSink which we already
   // handled above.
   else if (aIID.Equals(NS_GET_IID(nsIStreamListener))) {
-    *aResult = static_cast<nsIStreamListener*>(EnsureXPCOMifier().get());
+    *aResult = static_cast<nsIStreamListener*>(EnsureXPCOMifier().take());
     return NS_OK;
   }
   else if (aIID.Equals(NS_GET_IID(nsIRequestObserver))) {
-    *aResult = static_cast<nsIRequestObserver*>(EnsureXPCOMifier().get());
+    *aResult = static_cast<nsIRequestObserver*>(EnsureXPCOMifier().take());
     return NS_OK;
   }
   else if (aIID.Equals(NS_GET_IID(nsITimerCallback))) {
-    *aResult = static_cast<nsITimerCallback*>(EnsureXPCOMifier().get());
+    *aResult = static_cast<nsITimerCallback*>(EnsureXPCOMifier().take());
     return NS_OK;
   }
 

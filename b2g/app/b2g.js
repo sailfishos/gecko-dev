@@ -676,6 +676,19 @@ pref("hal.processPriorityManager.gonk.BACKGROUND.Nice", 18);
 // Processes get this niceness when they have low CPU priority.
 pref("hal.processPriorityManager.gonk.LowCPUNice", 18);
 
+// By default the compositor thread on gonk runs without real-time priority.  RT
+// priority can be enabled by setting this pref to a value between 1 and 99.
+// Note that audio processing currently runs at RT priority 2 or 3 at most.
+//
+// If RT priority is disabled, then the compositor nice value is used.  The
+// code will default to ANDROID_PRIORITY_URGENT_DISPLAY which is -8.  Per gfx
+// request we are keeping the compositor at nice level 0 until we can complete
+// the investigation in bug 982972.
+//
+// Do not change these values without gfx team review.
+pref("hal.gonk.compositor.rt_priority", 0);
+pref("hal.gonk.compositor.nice", 0);
+
 // Fire a memory pressure event when the system has less than Xmb of memory
 // remaining.  You should probably set this just above Y.KillUnderKB for
 // the highest priority class Y that you want to make an effort to keep alive.
@@ -860,6 +873,15 @@ pref("media.webspeech.synth.enabled", true);
 pref("dom.mozDownloads.enabled", true);
 pref("dom.downloads.max_retention_days", 7);
 
+// External Helper Application Handling
+//
+// All external helper application handling can require the docshell to be
+// active before allowing the external helper app service to handle content.
+//
+// To prevent SD card DoS attacks via downloads we disable background handling.
+//
+pref("security.exthelperapp.disable_background_handling", true);
+
 // Inactivity time in milliseconds after which we shut down the OS.File worker.
 pref("osfile.reset_worker_delay", 5000);
 
@@ -870,9 +892,9 @@ pref("osfile.reset_worker_delay", 5000);
 pref("apz.asyncscroll.throttle", 40);
 pref("apz.pan_repaint_interval", 16);
 
-// Maximum fling velocity in px/ms.  Slower devices may need to reduce this
+// Maximum fling velocity in inches/ms.  Slower devices may need to reduce this
 // to avoid checkerboarding.  Note, float value must be set as a string.
-pref("apz.max_velocity_pixels_per_ms", "6.0");
+pref("apz.max_velocity_inches_per_ms", "0.0375");
 
 // Tweak default displayport values to reduce the risk of running out of
 // memory when zooming in

@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/ArrayUtils.h"
+#include "mozilla/EventListenerManager.h"
 #include "mozilla/MouseEvents.h"
 #include "mozilla/Likely.h"
 
@@ -26,7 +27,6 @@
 #include "nsIDOMElementCSSInlineStyle.h"
 #include "nsIDOMWindow.h"
 #include "nsIDOMDocument.h"
-#include "nsEventListenerManager.h"
 #include "nsMappedAttributes.h"
 #include "nsHTMLStyleSheet.h"
 #include "nsIHTMLDocument.h"
@@ -83,7 +83,6 @@
 #include "mozilla/dom/Element.h"
 #include "HTMLFieldSetElement.h"
 #include "HTMLMenuElement.h"
-#include "nsAsyncDOMEvent.h"
 #include "nsDOMMutationObserver.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/dom/FromParser.h"
@@ -322,7 +321,7 @@ nsGenericHTMLElement::Dataset()
 NS_IMETHODIMP
 nsGenericHTMLElement::GetDataset(nsISupports** aDataset)
 {
-  *aDataset = Dataset().get();
+  *aDataset = Dataset().take();
   return NS_OK;
 }
 
@@ -745,7 +744,7 @@ nsGenericHTMLElement::IsHTMLLink(nsIURI** aURI) const
 {
   NS_PRECONDITION(aURI, "Must provide aURI out param");
 
-  *aURI = GetHrefURIForAnchors().get();
+  *aURI = GetHrefURIForAnchors().take();
   // We promise out param is non-null if we return true, so base rv on it
   return *aURI != nullptr;
 }
@@ -811,7 +810,7 @@ nsGenericHTMLElement::AfterSetAttr(int32_t aNamespaceID, nsIAtom* aName,
                                                 aValue, aNotify);
 }
 
-nsEventListenerManager*
+EventListenerManager*
 nsGenericHTMLElement::GetEventListenerManagerForAttr(nsIAtom* aAttrName,
                                                      bool* aDefer)
 {
@@ -1010,7 +1009,7 @@ nsGenericHTMLElement::UnsetAttr(int32_t aNameSpaceID, nsIAtom* aAttribute,
       UnsetFlags(NODE_HAS_ACCESSKEY);
     }
     else if (IsEventAttributeName(aAttribute)) {
-      if (nsEventListenerManager* manager = GetExistingListenerManager()) {
+      if (EventListenerManager* manager = GetExistingListenerManager()) {
         manager->RemoveEventHandler(aAttribute, EmptyString());
       }
     }
@@ -1961,7 +1960,7 @@ nsGenericHTMLElement::TouchEventsEnabled(JSContext* /* unused */, JSObject* /* u
 
 //----------------------------------------------------------------------
 
-nsGenericHTMLFormElement::nsGenericHTMLFormElement(already_AddRefed<nsINodeInfo> aNodeInfo)
+nsGenericHTMLFormElement::nsGenericHTMLFormElement(already_AddRefed<nsINodeInfo>& aNodeInfo)
   : nsGenericHTMLElement(aNodeInfo)
   , mForm(nullptr)
   , mFieldSet(nullptr)
@@ -2980,7 +2979,7 @@ nsGenericHTMLElement::ChangeEditableState(int32_t aChange)
 //----------------------------------------------------------------------
 
 nsGenericHTMLFormElementWithState::nsGenericHTMLFormElementWithState(
-    already_AddRefed<nsINodeInfo> aNodeInfo
+    already_AddRefed<nsINodeInfo>& aNodeInfo
   )
   : nsGenericHTMLFormElement(aNodeInfo)
 {

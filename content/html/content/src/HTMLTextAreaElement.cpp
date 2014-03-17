@@ -7,6 +7,7 @@
 #include "mozilla/dom/HTMLTextAreaElement.h"
 
 #include "mozAutoDocUpdate.h"
+#include "mozilla/AsyncEventDispatcher.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/dom/HTMLTextAreaElementBinding.h"
 #include "mozilla/MouseEvents.h"
@@ -48,7 +49,7 @@ NS_IMPL_NS_NEW_HTML_ELEMENT_CHECK_PARSER(TextArea)
 namespace mozilla {
 namespace dom {
 
-HTMLTextAreaElement::HTMLTextAreaElement(already_AddRefed<nsINodeInfo> aNodeInfo,
+HTMLTextAreaElement::HTMLTextAreaElement(already_AddRefed<nsINodeInfo>& aNodeInfo,
                                          FromParser aFromParser)
   : nsGenericHTMLFormElementWithState(aNodeInfo),
     mValueChanged(false),
@@ -887,9 +888,10 @@ HTMLTextAreaElement::SetSelectionRange(uint32_t aSelectionStart,
       rv = textControlFrame->SetSelectionRange(aSelectionStart, aSelectionEnd, dir);
       if (NS_SUCCEEDED(rv)) {
         rv = textControlFrame->ScrollSelectionIntoView();
-        nsRefPtr<nsAsyncDOMEvent> event =
-          new nsAsyncDOMEvent(this, NS_LITERAL_STRING("select"), true, false);
-        event->PostDOMEvent();
+        nsRefPtr<AsyncEventDispatcher> asyncDispatcher =
+          new AsyncEventDispatcher(this, NS_LITERAL_STRING("select"),
+                                   true, false);
+        asyncDispatcher->PostDOMEvent();
       }
     }
   }

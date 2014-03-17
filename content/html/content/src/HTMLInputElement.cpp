@@ -6,9 +6,9 @@
 #include "mozilla/dom/HTMLInputElement.h"
 
 #include "mozilla/ArrayUtils.h"
+#include "mozilla/AsyncEventDispatcher.h"
 #include "mozilla/DebugOnly.h"
 #include "mozilla/dom/Date.h"
-#include "nsAsyncDOMEvent.h"
 #include "nsAttrValueInlines.h"
 
 #include "nsIDOMHTMLInputElement.h"
@@ -65,7 +65,6 @@
 #include "mozilla/InternalMutationEvent.h"
 #include "mozilla/TextEvents.h"
 #include "mozilla/TouchEvents.h"
-#include "nsEventListenerManager.h"
 
 #include "nsRuleData.h"
 #include <algorithm>
@@ -399,7 +398,7 @@ public:
       // Note that we leave the trailing "/" on the path.
       domFile->SetPath(Substring(path, 0, uint32_t(length)));
     }
-    *aResult = static_cast<nsIDOMFile*>(domFile.forget().get());
+    *aResult = domFile.forget().downcast<nsIDOMFile>().take();
     LookupAndCacheNext();
     return NS_OK;
   }
@@ -1109,7 +1108,7 @@ static nsresult FireEventForAccessibility(nsIDOMHTMLInputElement* aTarget,
 // construction, destruction
 //
 
-HTMLInputElement::HTMLInputElement(already_AddRefed<nsINodeInfo> aNodeInfo,
+HTMLInputElement::HTMLInputElement(already_AddRefed<nsINodeInfo>& aNodeInfo,
                                    FromParser aFromParser)
   : nsGenericHTMLFormElementWithState(aNodeInfo)
   , mType(kInputDefaultType->value)
@@ -1245,9 +1244,8 @@ HTMLInputElement::Clone(nsINodeInfo* aNodeInfo, nsINode** aResult) const
 {
   *aResult = nullptr;
 
-  nsCOMPtr<nsINodeInfo> ni = aNodeInfo;
-  nsRefPtr<HTMLInputElement> it =
-    new HTMLInputElement(ni.forget(), NOT_FROM_PARSER);
+  already_AddRefed<nsINodeInfo> ni = nsCOMPtr<nsINodeInfo>(aNodeInfo).forget();
+  nsRefPtr<HTMLInputElement> it = new HTMLInputElement(ni, NOT_FROM_PARSER);
 
   nsresult rv = const_cast<HTMLInputElement*>(this)->CopyInnerTo(it);
   NS_ENSURE_SUCCESS(rv, rv);
@@ -3578,9 +3576,9 @@ HTMLInputElement::CancelRangeThumbDrag(bool aIsForUserEvent)
     if (frame) {
       frame->UpdateForValueChange();
     }
-    nsRefPtr<nsAsyncDOMEvent> event =
-      new nsAsyncDOMEvent(this, NS_LITERAL_STRING("input"), true, false);
-    event->RunDOMEventWhenSafe();
+    nsRefPtr<AsyncEventDispatcher> asyncDispatcher =
+      new AsyncEventDispatcher(this, NS_LITERAL_STRING("input"), true, false);
+    asyncDispatcher->RunDOMEventWhenSafe();
   }
 }
 
@@ -5079,9 +5077,10 @@ HTMLInputElement::SetSelectionRange(int32_t aSelectionStart,
       aRv = textControlFrame->SetSelectionRange(aSelectionStart, aSelectionEnd, dir);
       if (!aRv.Failed()) {
         aRv = textControlFrame->ScrollSelectionIntoView();
-        nsRefPtr<nsAsyncDOMEvent> event =
-          new nsAsyncDOMEvent(this, NS_LITERAL_STRING("select"), true, false);
-        event->PostDOMEvent();
+        nsRefPtr<AsyncEventDispatcher> asyncDispatcher =
+          new AsyncEventDispatcher(this, NS_LITERAL_STRING("select"),
+                                   true, false);
+        asyncDispatcher->PostDOMEvent();
       }
     }
   }

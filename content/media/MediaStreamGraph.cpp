@@ -5,6 +5,7 @@
 
 #include "MediaStreamGraphImpl.h"
 #include "mozilla/LinkedList.h"
+#include "mozilla/unused.h"
 
 #include "AudioSegment.h"
 #include "VideoSegment.h"
@@ -24,6 +25,7 @@
 #include <algorithm>
 #include "DOMMediaStream.h"
 #include "GeckoProfiler.h"
+#include "mozilla/unused.h"
 
 using namespace mozilla::layers;
 using namespace mozilla::dom;
@@ -1219,6 +1221,16 @@ MediaStreamGraphImpl::RunThread()
       }
     }
 
+    // The loop is woken up so soon that mCurrentTime barely advances and we
+    // end up having endBlockingDecisions == mStateComputedTime.
+    // Since stream blocking is computed in the interval of
+    // [mStateComputedTime, endBlockingDecisions), it won't be computed at all.
+    // We should ensure next iteration so that pending blocking changes will be
+    // computed in next loop.
+    if (endBlockingDecisions == mStateComputedTime) {
+      ensureNextIteration = true;
+    }
+
     // Figure out which streams are blocked and when.
     GraphTime prevComputedTime = mStateComputedTime;
     RecomputeBlocking(endBlockingDecisions);
@@ -2387,7 +2399,7 @@ ProcessedMediaStream::AllocateInputPort(MediaStream* aStream, uint32_t aFlags,
       mPort->Init();
       // The graph holds its reference implicitly
       mPort->GraphImpl()->SetStreamOrderDirty();
-      mPort.forget();
+      unused << mPort.forget();
     }
     virtual void RunDuringShutdown()
     {
