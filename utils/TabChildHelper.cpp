@@ -12,9 +12,9 @@
 #include "EmbedLiteViewThreadChild.h"
 #include "mozilla/layers/AsyncPanZoomController.h"
 #include "nsIDOMDocument.h"
+#include "mozilla/EventListenerManager.h"
 
 #include "nsNetUtil.h"
-#include "nsEventListenerManager.h"
 #include "nsIDOMWindowUtils.h"
 #include "mozilla/dom/Element.h"
 #include "nsIDOMHTMLBodyElement.h"
@@ -90,7 +90,7 @@ TabChildHelper::~TabChildHelper()
   mGlobal = nullptr;
 
   if (mTabChildGlobal) {
-    nsEventListenerManager* elm = mTabChildGlobal->GetExistingListenerManager();
+    EventListenerManager* elm = mTabChildGlobal->GetExistingListenerManager();
     if (elm) {
       elm->Disconnect();
     }

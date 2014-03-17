@@ -6,6 +6,7 @@
 
 #include "EmbedLiteJSON.h"
 #include "nsHashPropertyBag.h"
+#include "nsIProperty.h"
 #include "EmbedLiteAppService.h"
 #include "nsServiceManagerUtils.h"
 #include "jsapi.h"
@@ -35,7 +36,7 @@ CreateObjectStatic(nsIWritablePropertyBag2 * *aObject)
     return NS_ERROR_OUT_OF_MEMORY;
   }
 
-  *aObject = hpb.forget().get();
+  *aObject = hpb.forget().take();
   return NS_OK;
 }
 
@@ -180,7 +181,7 @@ EmbedLiteJSON::ParseJSON(nsAString const& aJson, nsIPropertyBag2** aRoot)
     ParseObject(cx, obj, contextProps);
   }
 
-  *aRoot = contextProps.forget().get();
+  *aRoot = contextProps.forget().take();
   return NS_OK;
 }
 
@@ -219,8 +220,10 @@ EmbedLiteJSON::CreateJSON(nsIPropertyBag* aRoot, nsAString& outJson)
   bool more;
   windowEnumerator->HasMoreElements(&more);
   while (more) {
+    nsCOMPtr<nsISupports> isupp;
     nsCOMPtr<nsIProperty> prop;
-    windowEnumerator->GetNext(getter_AddRefs(prop));
+    windowEnumerator->GetNext(getter_AddRefs(isupp));
+    prop = do_QueryInterface(isupp);
     if (prop) {
       SetPropFromVariant(prop, cx, obj);
     }
