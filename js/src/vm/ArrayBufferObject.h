@@ -18,6 +18,13 @@ namespace js {
 
 class ArrayBufferViewObject;
 
+// Header for mapped array buffer
+struct MappingInfoHeader
+{
+    uint32_t fd;
+    uint32_t offset;
+};
+
 // The inheritance hierarchy for the various classes relating to typed arrays
 // is as follows.
 //
@@ -90,8 +97,6 @@ class ArrayBufferObject : public JSObject
                                    MutableHandleObject objp, MutableHandleShape propp);
     static bool obj_lookupElement(JSContext *cx, HandleObject obj, uint32_t index,
                                   MutableHandleObject objp, MutableHandleShape propp);
-    static bool obj_lookupSpecial(JSContext *cx, HandleObject obj, HandleSpecialId sid,
-                                  MutableHandleObject objp, MutableHandleShape propp);
 
     static bool obj_defineGeneric(JSContext *cx, HandleObject obj, HandleId id, HandleValue v,
                                   PropertyOp getter, StrictPropertyOp setter, unsigned attrs);
@@ -100,21 +105,13 @@ class ArrayBufferObject : public JSObject
                                    PropertyOp getter, StrictPropertyOp setter, unsigned attrs);
     static bool obj_defineElement(JSContext *cx, HandleObject obj, uint32_t index, HandleValue v,
                                   PropertyOp getter, StrictPropertyOp setter, unsigned attrs);
-    static bool obj_defineSpecial(JSContext *cx, HandleObject obj,
-                                  HandleSpecialId sid, HandleValue v,
-                                  PropertyOp getter, StrictPropertyOp setter, unsigned attrs);
 
     static bool obj_getGeneric(JSContext *cx, HandleObject obj, HandleObject receiver,
                                HandleId id, MutableHandleValue vp);
-
     static bool obj_getProperty(JSContext *cx, HandleObject obj, HandleObject receiver,
                                 HandlePropertyName name, MutableHandleValue vp);
-
     static bool obj_getElement(JSContext *cx, HandleObject obj, HandleObject receiver,
                                uint32_t index, MutableHandleValue vp);
-
-    static bool obj_getSpecial(JSContext *cx, HandleObject obj, HandleObject receiver,
-                               HandleSpecialId sid, MutableHandleValue vp);
 
     static bool obj_setGeneric(JSContext *cx, HandleObject obj, HandleId id,
                                MutableHandleValue vp, bool strict);
@@ -122,8 +119,6 @@ class ArrayBufferObject : public JSObject
                                 MutableHandleValue vp, bool strict);
     static bool obj_setElement(JSContext *cx, HandleObject obj, uint32_t index,
                                MutableHandleValue vp, bool strict);
-    static bool obj_setSpecial(JSContext *cx, HandleObject obj,
-                               HandleSpecialId sid, MutableHandleValue vp, bool strict);
 
     static bool obj_getGenericAttributes(JSContext *cx, HandleObject obj,
                                          HandleId id, unsigned *attrsp);
@@ -133,8 +128,6 @@ class ArrayBufferObject : public JSObject
     static bool obj_deleteProperty(JSContext *cx, HandleObject obj, HandlePropertyName name,
                                    bool *succeeded);
     static bool obj_deleteElement(JSContext *cx, HandleObject obj, uint32_t index,
-                                  bool *succeeded);
-    static bool obj_deleteSpecial(JSContext *cx, HandleObject obj, HandleSpecialId sid,
                                   bool *succeeded);
 
     static bool obj_enumerate(JSContext *cx, HandleObject obj, JSIterateOp enum_op,
@@ -162,6 +155,33 @@ class ArrayBufferObject : public JSObject
     static void initElementsHeader(js::ObjectElements *header, uint32_t bytes) {
         header->flags = 0;
         updateElementsHeader(header, bytes);
+    }
+
+    static void initMappedElementsHeader(js::ObjectElements *header, uint32_t fd,
+                                         uint32_t offset, uint32_t bytes) {
+        initElementsHeader(header, bytes);
+        header->setIsMappedArrayBuffer();
+        MappingInfoHeader *mh = getMappingInfoHeader(header);
+        mh->fd = fd;
+        mh->offset = offset;
+    }
+
+    static MappingInfoHeader *getMappingInfoHeader(js::ObjectElements *header) {
+        MOZ_ASSERT(header->isMappedArrayBuffer());
+        return reinterpret_cast<MappingInfoHeader *>(uintptr_t(header) -
+                                                     sizeof(MappingInfoHeader));
+    }
+
+    uint32_t getMappingFD() {
+        MOZ_ASSERT(getElementsHeader()->isMappedArrayBuffer());
+        MappingInfoHeader *mh = getMappingInfoHeader(getElementsHeader());
+        return mh->fd;
+    }
+
+    uint32_t getMappingOffset() const {
+        MOZ_ASSERT(getElementsHeader()->isMappedArrayBuffer());
+        MappingInfoHeader *mh = getMappingInfoHeader(getElementsHeader());
+        return mh->offset;
     }
 
     static uint32_t headerInitializedLength(const js::ObjectElements *header) {
@@ -216,6 +236,15 @@ class ArrayBufferObject : public JSObject
     static bool prepareForAsmJS(JSContext *cx, Handle<ArrayBufferObject*> buffer);
     static bool neuterAsmJSArrayBuffer(JSContext *cx, ArrayBufferObject &buffer);
     static void releaseAsmJSArrayBuffer(FreeOp *fop, JSObject *obj);
+
+    bool isMappedArrayBuffer() const {
+        return getElementsHeader()->isMappedArrayBuffer();
+    }
+    void setIsMappedArrayBuffer() {
+        getElementsHeader()->setIsMappedArrayBuffer();
+    }
+    static void *createMappedArrayBuffer(int fd, int *new_fd, size_t offset, size_t length);
+    static void releaseMappedArrayBuffer(FreeOp *fop, JSObject *obj);
 };
 
 /*

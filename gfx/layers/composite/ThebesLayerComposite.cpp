@@ -26,6 +26,7 @@
 #include "nsRect.h"                     // for nsIntRect
 #include "nsSize.h"                     // for nsIntSize
 #include "nsString.h"                   // for nsAutoCString
+#include "TextRenderer.h"
 #include "GeckoProfiler.h"
 
 namespace mozilla {
@@ -182,7 +183,7 @@ ThebesLayerComposite::GetEffectiveResolution()
   for (ContainerLayer* parent = GetParent(); parent; parent = parent->GetParent()) {
     const FrameMetrics& metrics = parent->GetFrameMetrics();
     if (metrics.mScrollId != FrameMetrics::NULL_SCROLL_ID) {
-      return metrics.mZoom;
+      return metrics.GetZoom();
     }
   }
 

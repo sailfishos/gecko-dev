@@ -5,6 +5,7 @@
 "use strict";
 
 const {Cu, Cc, Ci} = require("chrome");
+const Services = require("Services");
 const protocol = require("devtools/server/protocol");
 const {Arg, Option, method} = protocol;
 const events = require("sdk/event/core");
@@ -13,7 +14,6 @@ require("devtools/server/actors/inspector");
 
 Cu.import("resource://gre/modules/devtools/LayoutHelpers.jsm");
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
 
 // FIXME: add ":visited" and ":link" after bug 713106 is fixed
 const PSEUDO_CLASSES = [":hover", ":active", ":focus"];
@@ -83,7 +83,7 @@ let HighlighterActor = protocol.ActorClass({
    * outline highlighter for instance does not scrollIntoView
    */
   showBoxModel: method(function(node, options={}) {
-    if (this._isNodeValidForHighlighting(node.rawNode)) {
+    if (node && this._isNodeValidForHighlighting(node.rawNode)) {
       this._boxModelHighlighter.show(node.rawNode, options);
     } else {
       this._boxModelHighlighter.hide();
@@ -187,7 +187,7 @@ let HighlighterActor = protocol.ActorClass({
    * - On a firefox desktop content page: tabActor is a BrowserTabActor from
    *   which the browser property will give us a target we can use to listen to
    *   events, even in nested iframes.
-   * - On B2G: tabActor is a ContentAppActor which doesn't have a browser but
+   * - On B2G: tabActor is a ContentActor which doesn't have a browser but
    *   since it overrides BrowserTabActor, it does get a browser property
    *   anyway, which points to its window object.
    * - When using the Browser Toolbox (to inspect firefox desktop): tabActor is
@@ -196,7 +196,7 @@ let HighlighterActor = protocol.ActorClass({
    */
   _getPickerListenerTarget: function() {
     let actor = this._tabActor;
-    return actor.isRootActor ? actor.window : actor.browser;
+    return actor.isRootActor ? actor.window : actor.chromeEventHandler;
   },
 
   _startPickerListeners: function() {
@@ -411,7 +411,7 @@ BoxModelHighlighter.prototype = {
   _trackMutations: function() {
     if (this.currentNode) {
       let win = this.currentNode.ownerDocument.defaultView;
-      this.currentNodeObserver = win.MutationObserver(this._update);
+      this.currentNodeObserver = new win.MutationObserver(this._update);
       this.currentNodeObserver.observe(this.currentNode, {attributes: true});
     }
   },

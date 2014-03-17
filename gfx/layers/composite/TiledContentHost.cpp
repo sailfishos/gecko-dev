@@ -34,6 +34,7 @@ TiledLayerBufferComposite::TiledLayerBufferComposite()
 TiledLayerBufferComposite::TiledLayerBufferComposite(ISurfaceAllocator* aAllocator,
                                                      const SurfaceDescriptorTiles& aDescriptor,
                                                      const nsIntRegion& aOldPaintedRegion)
+  : mFrameResolution(1.0)
 {
   mUninitialized = false;
   mHasDoubleBufferedTiles = false;
@@ -57,17 +58,17 @@ TiledLayerBufferComposite::TiledLayerBufferComposite(ISurfaceAllocator* aAllocat
         texture = TextureHost::AsTextureHost(tileDesc.get_TexturedTileDescriptor().textureParent());
         const TileLock& ipcLock = tileDesc.get_TexturedTileDescriptor().sharedLock();
         nsRefPtr<gfxSharedReadLock> sharedLock;
-        if (ipcLock.type() == TileLock::TShmem) {
-          sharedLock = gfxShmSharedReadLock::Open(aAllocator, ipcLock.get_Shmem());
+        if (ipcLock.type() == TileLock::TShmemSection) {
+          sharedLock = gfxShmSharedReadLock::Open(aAllocator, ipcLock.get_ShmemSection());
         } else {
           sharedLock = reinterpret_cast<gfxMemorySharedReadLock*>(ipcLock.get_uintptr_t());
-          // The corresponding AddRef is in TiledClient::GetTileDescriptor
-          sharedLock->Release();
+          if (sharedLock) {
+            // The corresponding AddRef is in TiledClient::GetTileDescriptor
+            sharedLock->Release();
+          }
         }
-        MOZ_ASSERT(sharedLock);
-        if (sharedLock) {
-          mRetainedTiles.AppendElement(TileHost(sharedLock, texture));
-        }
+
+        mRetainedTiles.AppendElement(TileHost(sharedLock, texture));
         break;
       }
       default:
@@ -321,7 +322,7 @@ TiledContentHost::RenderTile(const TileHost& aTile,
   Rect quad(screenBounds.x, screenBounds.y, screenBounds.width, screenBounds.height);
   quad = mat.TransformBounds(quad);
 
-  if (!quad.Intersects(aClipRect)) {
+  if (!quad.Intersects(mCompositor->ClipRectInLayersCoordinates(aClipRect))) {
     return;
   }
 

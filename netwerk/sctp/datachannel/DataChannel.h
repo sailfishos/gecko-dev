@@ -123,9 +123,6 @@ public:
 
   bool Init(unsigned short aPort, uint16_t aNumStreams, bool aUsingDtls);
   void Destroy(); // So we can spawn refs tied to runnables in shutdown
-  // Finish Destroy on STS to avoid SCTP race condition with ABORT from far end
-  void DestroyOnSTS(struct socket *aMasterSocket,
-                    struct socket *aSocket);
 
 #ifdef ALLOW_DIRECT_SCTP_LISTEN_CONNECT
   // These block; they require something to decide on listener/connector
@@ -191,6 +188,8 @@ public:
   Mutex  mLock;
 
   void ReadBlob(already_AddRefed<DataChannelConnection> aThis, uint16_t aStream, nsIInputStream* aBlob);
+
+  void GetStreamIds(std::vector<uint16_t>* aStreamList);
 
 protected:
   friend class DataChannelOnMessageAvailable;

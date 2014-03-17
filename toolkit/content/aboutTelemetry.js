@@ -378,7 +378,7 @@ function SymbolicationRequest_fetchSymbols() {
                  "version" : 3};
   let requestJSON = JSON.stringify(request);
 
-  this.symbolRequest = XMLHttpRequest();
+  this.symbolRequest = new XMLHttpRequest();
   this.symbolRequest.open("POST", symbolServerURI, true);
   this.symbolRequest.setRequestHeader("Content-type", "application/json");
   this.symbolRequest.setRequestHeader("Content-length",
@@ -772,7 +772,8 @@ let KeyValueTable = {
    */
   renderBody: function KeyValueTable_renderBody(aTable, aMeasurements) {
     for (let [key, value] of Iterator(aMeasurements)) {
-      if (typeof value == "object") {
+      // use .valueOf() to unbox Number, String, etc. objects
+      if ((typeof value == "object") && (typeof value.valueOf() == "object")) {
         value = RenderObject(value);
       }
 

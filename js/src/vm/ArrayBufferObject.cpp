@@ -30,6 +30,7 @@
 
 #include "gc/Barrier.h"
 #include "gc/Marking.h"
+#include "gc/Memory.h"
 #include "jit/AsmJS.h"
 #include "jit/AsmJSModule.h"
 #include "vm/GlobalObject.h"
@@ -132,24 +133,19 @@ const Class ArrayBufferObject::class_ = {
         ArrayBufferObject::obj_lookupGeneric,
         ArrayBufferObject::obj_lookupProperty,
         ArrayBufferObject::obj_lookupElement,
-        ArrayBufferObject::obj_lookupSpecial,
         ArrayBufferObject::obj_defineGeneric,
         ArrayBufferObject::obj_defineProperty,
         ArrayBufferObject::obj_defineElement,
-        ArrayBufferObject::obj_defineSpecial,
         ArrayBufferObject::obj_getGeneric,
         ArrayBufferObject::obj_getProperty,
         ArrayBufferObject::obj_getElement,
-        ArrayBufferObject::obj_getSpecial,
         ArrayBufferObject::obj_setGeneric,
         ArrayBufferObject::obj_setProperty,
         ArrayBufferObject::obj_setElement,
-        ArrayBufferObject::obj_setSpecial,
         ArrayBufferObject::obj_getGenericAttributes,
         ArrayBufferObject::obj_setGenericAttributes,
         ArrayBufferObject::obj_deleteProperty,
         ArrayBufferObject::obj_deleteElement,
-        ArrayBufferObject::obj_deleteSpecial,
         nullptr, nullptr, /* watch/unwatch */
         nullptr,          /* slice */
         ArrayBufferObject::obj_enumerate,
@@ -483,7 +479,10 @@ ArrayBufferObject::neuter(JSContext *cx)
     JS_ASSERT(!isSharedArrayBuffer());
 
     JS_ASSERT(cx);
-    if (hasDynamicElements() && !isAsmJSArrayBuffer()) {
+    if (isMappedArrayBuffer()) {
+        releaseMappedArrayBuffer(nullptr, this);
+        setFixedElements();
+    } else if (hasDynamicElements() && !isAsmJSArrayBuffer()) {
         ObjectElements *oldHeader = getElementsHeader();
         changeContents(cx, ObjectElements::fromElements(fixedElements()));
 
@@ -633,6 +632,33 @@ ArrayBufferObject::neuterAsmJSArrayBuffer(JSContext *cx, ArrayBufferObject &buff
 #else
     return true;
 #endif
+}
+
+void *
+ArrayBufferObject::createMappedArrayBuffer(int fd, int *new_fd, size_t offset, size_t length)
+{
+    void *ptr = AllocateMappedObject(fd, new_fd, offset, length, 8,
+                                     sizeof(MappingInfoHeader) + sizeof(ObjectElements));
+    if (!ptr)
+        return nullptr;
+
+    ptr = reinterpret_cast<void *>(uintptr_t(ptr) + sizeof(MappingInfoHeader));
+    ObjectElements *header = reinterpret_cast<ObjectElements *>(ptr);
+    initMappedElementsHeader(header, *new_fd, offset, length);
+
+    return ptr;
+}
+
+void
+ArrayBufferObject::releaseMappedArrayBuffer(FreeOp *fop, JSObject *obj)
+{
+    ArrayBufferObject &buffer = obj->as<ArrayBufferObject>();
+    if(!buffer.isMappedArrayBuffer() || buffer.isNeutered())
+        return;
+
+    ObjectElements *header = buffer.getElementsHeader();
+    if (header)
+        DeallocateMappedObject(buffer.getMappingFD(), header, header->initializedLength);
 }
 
 void
@@ -1031,14 +1057,6 @@ ArrayBufferObject::obj_lookupElement(JSContext *cx, HandleObject obj, uint32_t i
 }
 
 bool
-ArrayBufferObject::obj_lookupSpecial(JSContext *cx, HandleObject obj, HandleSpecialId sid,
-                                     MutableHandleObject objp, MutableHandleShape propp)
-{
-    Rooted<jsid> id(cx, SPECIALID_TO_JSID(sid));
-    return obj_lookupGeneric(cx, obj, id, objp, propp);
-}
-
-bool
 ArrayBufferObject::obj_defineGeneric(JSContext *cx, HandleObject obj, HandleId id, HandleValue v,
                                      PropertyOp getter, StrictPropertyOp setter, unsigned attrs)
 {
@@ -1069,14 +1087,6 @@ ArrayBufferObject::obj_defineElement(JSContext *cx, HandleObject obj, uint32_t i
     if (!delegate)
         return false;
     return baseops::DefineElement(cx, delegate, index, v, getter, setter, attrs);
-}
-
-bool
-ArrayBufferObject::obj_defineSpecial(JSContext *cx, HandleObject obj, HandleSpecialId sid, HandleValue v,
-                                     PropertyOp getter, StrictPropertyOp setter, unsigned attrs)
-{
-    Rooted<jsid> id(cx, SPECIALID_TO_JSID(sid));
-    return obj_defineGeneric(cx, obj, id, v, getter, setter, attrs);
 }
 
 bool
@@ -1111,15 +1121,6 @@ ArrayBufferObject::obj_getElement(JSContext *cx, HandleObject obj,
 }
 
 bool
-ArrayBufferObject::obj_getSpecial(JSContext *cx, HandleObject obj,
-                                  HandleObject receiver, HandleSpecialId sid,
-                                  MutableHandleValue vp)
-{
-    Rooted<jsid> id(cx, SPECIALID_TO_JSID(sid));
-    return obj_getGeneric(cx, obj, receiver, id, vp);
-}
-
-bool
 ArrayBufferObject::obj_setGeneric(JSContext *cx, HandleObject obj, HandleId id,
                                   MutableHandleValue vp, bool strict)
 {
@@ -1147,14 +1148,6 @@ ArrayBufferObject::obj_setElement(JSContext *cx, HandleObject obj,
         return false;
 
     return baseops::SetElementHelper(cx, delegate, obj, index, 0, vp, strict);
-}
-
-bool
-ArrayBufferObject::obj_setSpecial(JSContext *cx, HandleObject obj,
-                                  HandleSpecialId sid, MutableHandleValue vp, bool strict)
-{
-    Rooted<jsid> id(cx, SPECIALID_TO_JSID(sid));
-    return obj_setGeneric(cx, obj, id, vp, strict);
 }
 
 bool
@@ -1195,16 +1188,6 @@ ArrayBufferObject::obj_deleteElement(JSContext *cx, HandleObject obj, uint32_t i
     if (!delegate)
         return false;
     return baseops::DeleteElement(cx, delegate, index, succeeded);
-}
-
-bool
-ArrayBufferObject::obj_deleteSpecial(JSContext *cx, HandleObject obj, HandleSpecialId sid,
-                                     bool *succeeded)
-{
-    RootedObject delegate(cx, ArrayBufferDelegate(cx, obj));
-    if (!delegate)
-        return false;
-    return baseops::DeleteSpecial(cx, delegate, sid, succeeded);
 }
 
 bool
@@ -1405,6 +1388,21 @@ JS_StealArrayBufferContents(JSContext *cx, HandleObject objArg, void **contents,
         return false;
 
     return true;
+}
+
+JS_PUBLIC_API(bool)
+JS_CreateMappedArrayBufferContents(int fd, int *new_fd, size_t offset,
+                                   size_t length, void **contents)
+{
+    *contents = ArrayBufferObject::createMappedArrayBuffer(fd, new_fd, offset, length);
+
+    return *contents;
+}
+
+JS_PUBLIC_API(void)
+JS_ReleaseMappedArrayBufferContents(int fd, void *contents, size_t length)
+{
+    DeallocateMappedObject(fd, contents, length);
 }
 
 JS_FRIEND_API(void *)

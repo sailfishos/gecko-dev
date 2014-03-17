@@ -673,6 +673,15 @@ public:
   }
 
   /**
+   * Get the writing mode of this frame, but if it is styled with
+   * unicode-bidi: plaintext, reset the direction to the resolved paragraph
+   * level of the given subframe (typically the first frame on the line),
+   * not this frame's writing mode, because the container frame could be split
+   * by hard line breaks into multiple paragraphs with different base direction.
+   */
+  mozilla::WritingMode GetWritingMode(nsIFrame* aSubFrame) const;
+
+  /**
    * Bounding rect of the frame. The values are in app units, and the origin is
    * relative to the upper-left of the geometric parent. The size includes the
    * content area, borders, and padding.
@@ -925,6 +934,8 @@ public:
    */
   void ApplySkipSides(nsMargin& aMargin,
                       const nsHTMLReflowState* aReflowState = nullptr) const;
+  void ApplyLogicalSkipSides(mozilla::LogicalMargin& aMargin,
+                             const nsHTMLReflowState* aReflowState = nullptr) const;
 
   /**
    * Like the frame's rect (see |GetRect|), which is the border rect,
@@ -2281,6 +2292,15 @@ public:
   nsOverflowAreas GetOverflowAreas() const;
 
   /**
+   * Same as GetOverflowAreas, except in this frame's coordinate
+   * system (before transforms are applied).
+   *
+   * @return the overflow areas relative to this frame, before any CSS transforms have
+   * been applied, i.e. in this frame's coordinate system
+   */
+  nsOverflowAreas GetOverflowAreasRelativeToSelf() const;
+
+  /**
    * Same as GetScrollableOverflowRect, except relative to the parent
    * frame.
    *
@@ -2288,6 +2308,15 @@ public:
    * coordinate system
    */
   nsRect GetScrollableOverflowRectRelativeToParent() const;
+
+  /**
+   * Same as GetScrollableOverflowRect, except in this frame's coordinate
+   * system (before transforms are applied).
+   *
+   * @return the rect relative to this frame, before any CSS transforms have
+   * been applied, i.e. in this frame's coordinate system
+   */
+  nsRect GetScrollableOverflowRectRelativeToSelf() const;
 
   /**
    * Like GetVisualOverflowRect, except in this frame's
@@ -2345,7 +2374,19 @@ public:
    *       passed in, indicating that it should be used to determine if sides
    *       should be skipped during reflow.
    */
-  virtual int GetSkipSides(const nsHTMLReflowState* aReflowState = nullptr) const { return 0; }
+#define LOGICAL_SIDE_B_START 1
+#define LOGICAL_SIDE_I_START 2
+#define LOGICAL_SIDE_B_END   4
+#define LOGICAL_SIDE_I_END   8
+#define LOGICAL_SIDES_I_BOTH (LOGICAL_SIDE_I_START | LOGICAL_SIDE_I_END)
+#define LOGICAL_SIDES_B_BOTH (LOGICAL_SIDE_B_START | LOGICAL_SIDE_B_END)
+#define LOGICAL_SIDES_ALL (LOGICAL_SIDE_I_START | LOGICAL_SIDE_I_END | \
+                           LOGICAL_SIDE_B_START | LOGICAL_SIDE_B_END)
+  int GetSkipSides(const nsHTMLReflowState* aReflowState = nullptr) const;
+  virtual int
+  GetLogicalSkipSides(const nsHTMLReflowState* aReflowState = nullptr) const {
+    return 0;
+  }
 
   /**
    * @returns true if this frame is selected.
