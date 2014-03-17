@@ -35,7 +35,7 @@ CreateObjectStatic(nsIWritablePropertyBag2 * *aObject)
     return NS_ERROR_OUT_OF_MEMORY;
   }
 
-  *aObject = hpb.forget().get();
+  *aObject = hpb.forget().take();
   return NS_OK;
 }
 
@@ -180,7 +180,7 @@ EmbedLiteJSON::ParseJSON(nsAString const& aJson, nsIPropertyBag2** aRoot)
     ParseObject(cx, obj, contextProps);
   }
 
-  *aRoot = contextProps.forget().get();
+  *aRoot = contextProps.forget().take();
   return NS_OK;
 }
 
