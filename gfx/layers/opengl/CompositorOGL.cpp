@@ -1321,15 +1321,17 @@ CompositorOGL::EndFrame()
   mGLContext->fBindBuffer(LOCAL_GL_ARRAY_BUFFER, 0);
 
   // Unbind all textures
-  mGLContext->fActiveTexture(LOCAL_GL_TEXTURE0);
-  mGLContext->fBindTexture(LOCAL_GL_TEXTURE_2D, 0);
-  mGLContext->fBindTexture(LOCAL_GL_TEXTURE_RECTANGLE_ARB, 0);
-  mGLContext->fActiveTexture(LOCAL_GL_TEXTURE1);
-  mGLContext->fBindTexture(LOCAL_GL_TEXTURE_2D, 0);
-  mGLContext->fBindTexture(LOCAL_GL_TEXTURE_RECTANGLE_ARB, 0);
-  mGLContext->fActiveTexture(LOCAL_GL_TEXTURE2);
-  mGLContext->fBindTexture(LOCAL_GL_TEXTURE_2D, 0);
-  mGLContext->fBindTexture(LOCAL_GL_TEXTURE_RECTANGLE_ARB, 0);
+  if (!mWidget->HasGLContext()) {
+    mGLContext->fActiveTexture(LOCAL_GL_TEXTURE0);
+    mGLContext->fBindTexture(LOCAL_GL_TEXTURE_2D, 0);
+    mGLContext->fBindTexture(LOCAL_GL_TEXTURE_RECTANGLE_ARB, 0);
+    mGLContext->fActiveTexture(LOCAL_GL_TEXTURE1);
+    mGLContext->fBindTexture(LOCAL_GL_TEXTURE_2D, 0);
+    mGLContext->fBindTexture(LOCAL_GL_TEXTURE_RECTANGLE_ARB, 0);
+    mGLContext->fActiveTexture(LOCAL_GL_TEXTURE2);
+    mGLContext->fBindTexture(LOCAL_GL_TEXTURE_2D, 0);
+    mGLContext->fBindTexture(LOCAL_GL_TEXTURE_RECTANGLE_ARB, 0);
+  }
 }
 
 void
