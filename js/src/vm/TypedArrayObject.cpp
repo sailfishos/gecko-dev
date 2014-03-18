@@ -430,21 +430,28 @@ ArrayBufferObject::changeContents(JSContext *maybecx, ObjectElements *newHeader)
 }
 
 void
-ArrayBufferObject::neuter(JSContext *cx)
+ArrayBufferObject::neuter(ObjectElements *newHeader, JSContext *cx)
 {
-    JS_ASSERT(cx);
-    if (hasDynamicElements() && !isAsmJSArrayBuffer()) {
+    MOZ_ASSERT(cx);
+
+    if (hasStealableContents()) {
+        MOZ_ASSERT(newHeader);
+
         ObjectElements *oldHeader = getElementsHeader();
-        changeContents(cx, ObjectElements::fromElements(fixedElements()));
+        MOZ_ASSERT(newHeader != oldHeader);
+
+        changeContents(cx, newHeader);
 
         FreeOp fop(cx->runtime(), false);
         fop.free_(oldHeader);
+    } else {
+        elements = newHeader->elements();
     }
 
     uint32_t byteLen = 0;
-    updateElementsHeader(getElementsHeader(), byteLen);
+    updateElementsHeader(newHeader, byteLen);
 
-    getElementsHeader()->setIsNeuteredBuffer();
+    newHeader->setIsNeuteredBuffer();
 }
 
 bool
@@ -465,29 +472,6 @@ ArrayBufferObject::ensureNonInline(JSContext *maybecx)
     if (hasDynamicElements())
         return true;
     return copyData(maybecx);
-}
-
-// If the ArrayBuffer already contains dynamic contents, hand them back.
-// Otherwise, allocate some new contents and copy the data over, but in no case
-// modify the original ArrayBuffer. (Also, any allocated contents will have no
-// views linked to in its header.)
-ObjectElements *
-ArrayBufferObject::getTransferableContents(JSContext *maybecx, bool *callerOwns)
-{
-    if (hasDynamicElements() && !isAsmJSArrayBuffer()) {
-        *callerOwns = false;
-        return getElementsHeader();
-    }
-
-    uint32_t byteLen = byteLength();
-    ObjectElements *newheader = AllocateArrayBufferContents(maybecx, byteLen);
-    if (!newheader)
-        return nullptr;
-
-    initElementsHeader(newheader, byteLen);
-    memcpy(reinterpret_cast<void*>(newheader->elements()), dataPointer(), byteLen);
-    *callerOwns = true;
-    return newheader;
 }
 
 #if defined(JS_ION) && defined(JS_CPU_X64)
@@ -719,31 +703,52 @@ ArrayBufferObject::createDataViewForThis(JSContext *cx, unsigned argc, Value *vp
     return CallNonGenericMethod<IsArrayBuffer, createDataViewForThisImpl>(cx, args);
 }
 
-bool
+/* static */ bool
 ArrayBufferObject::stealContents(JSContext *cx, Handle<ArrayBufferObject*> buffer, void **contents,
                                  uint8_t **data)
 {
-    // Make the data stealable
-    bool own;
-    ObjectElements *header = reinterpret_cast<ObjectElements*>(buffer->getTransferableContents(cx, &own));
-    if (!header)
-        return false;
-    JS_ASSERT(!IsInsideNursery(cx->runtime(), header));
-    *contents = header;
-    *data = reinterpret_cast<uint8_t *>(header + 1);
+    uint32_t byteLen = buffer->byteLength();
+
+    // If the ArrayBuffer's elements are transferrable, transfer ownership
+    // directly.  Otherwise we have to copy the data into new elements.
+    ObjectElements *transferableHeader;
+    ObjectElements *newHeader;
+    bool stolen = buffer->hasStealableContents();
+    if (stolen) {
+        transferableHeader = buffer->getElementsHeader();
+
+        newHeader = AllocateArrayBufferContents(cx, byteLen);
+        if (!newHeader)
+            return false;
+    } else {
+        transferableHeader = AllocateArrayBufferContents(cx, byteLen);
+        if (!transferableHeader)
+            return false;
+
+        initElementsHeader(transferableHeader, byteLen);
+        void *headerDataPointer = reinterpret_cast<void*>(transferableHeader->elements());
+        memcpy(headerDataPointer, buffer->dataPointer(), byteLen);
+
+        // Keep using the current elements.
+        newHeader = buffer->getElementsHeader();
+    }
+
+    JS_ASSERT(!IsInsideNursery(cx->runtime(), transferableHeader));
+    *contents = transferableHeader;
+    *data = reinterpret_cast<uint8_t *>(transferableHeader + 1);
 
     // Neuter the views, which may also mprotect(PROT_NONE) the buffer. So do
     // it after copying out the data.
     if (!ArrayBufferObject::neuterViews(cx, buffer))
         return false;
 
-    if (!own) {
-        // If header has dynamically allocated elements, revert it back to
-        // fixed-element storage before neutering it.
+    // If the elements were transferrable, revert the buffer back to using
+    // inline storage so it doesn't attempt to free the stolen elements when
+    // finalized.
+    if (stolen)
         buffer->changeContents(cx, ObjectElements::fromElements(buffer->fixedElements()));
-    }
-    buffer->neuter(cx);
 
+    buffer->neuter(newHeader, cx);
     return true;
 }
 
@@ -2328,14 +2333,20 @@ class TypedArrayObjectTemplate : public TypedArrayObject
     copyFromArray(JSContext *cx, HandleObject thisTypedArrayObj,
                   HandleObject ar, uint32_t len, uint32_t offset = 0)
     {
+        // Exit early if nothing to copy, to simplify loop conditions below.
+        if (len == 0)
+            return true;
+
         Rooted<TypedArrayObject*> thisTypedArray(cx, &thisTypedArrayObj->as<TypedArrayObject>());
         JS_ASSERT(offset <= thisTypedArray->length());
         JS_ASSERT(len <= thisTypedArray->length() - offset);
         if (ar->is<TypedArrayObject>())
             return copyFromTypedArray(cx, thisTypedArray, ar, offset);
 
+#ifdef DEBUG
         JSRuntime *runtime = cx->runtime();
         uint64_t gcNumber = runtime->gcNumber;
+#endif
 
         NativeType *dest = static_cast<NativeType*>(thisTypedArray->viewData()) + offset;
         SkipRoot skipDest(cx, &dest);
@@ -2350,33 +2361,33 @@ class TypedArrayObjectTemplate : public TypedArrayObject
              */
             const Value *src = ar->getDenseElements();
             SkipRoot skipSrc(cx, &src);
-            for (uint32_t i = 0; i < len; ++i) {
+            uint32_t i = 0;
+            do {
                 NativeType n;
                 if (!nativeFromValue(cx, src[i], &n))
                     return false;
                 dest[i] = n;
-            }
+            } while (++i < len);
             JS_ASSERT(runtime->gcNumber == gcNumber);
         } else {
             RootedValue v(cx);
 
-            for (uint32_t i = 0; i < len; ++i) {
+            uint32_t i = 0;
+            do {
                 if (!JSObject::getElement(cx, ar, ar, i, &v))
                     return false;
                 NativeType n;
                 if (!nativeFromValue(cx, v, &n))
                     return false;
 
-                /*
-                 * Detect when a GC has occurred so we can update the dest
-                 * pointers in case it has been moved.
-                 */
-                if (runtime->gcNumber != gcNumber) {
-                    dest = static_cast<NativeType*>(thisTypedArray->viewData()) + offset;
-                    gcNumber = runtime->gcNumber;
-                }
+                len = Min(len, thisTypedArray->length());
+                if (i >= len)
+                    break;
+
+                // Compute every iteration in case getElement acts wacky.
+                dest = static_cast<NativeType*>(thisTypedArray->viewData()) + offset;
                 dest[i] = n;
-            }
+            } while (++i < len);
         }
 
         return true;
@@ -4063,9 +4074,33 @@ JS_NeuterArrayBuffer(JSContext *cx, HandleObject obj)
     }
 
     Rooted<ArrayBufferObject*> buffer(cx, &obj->as<ArrayBufferObject>());
-    if (!ArrayBufferObject::neuterViews(cx, buffer))
+
+    ObjectElements *newHeader;
+    if (buffer->hasStealableContents()) {
+        // If we're "disposing" with the buffer contents, allocate zeroed
+        // memory of equal size and swap that in as contents.  This ensures
+        // that stale indexes that assume the original length, won't index out
+        // of bounds.  This is a temporary hack: when we're confident we've
+        // eradicated all stale accesses, we'll stop doing this.
+        newHeader = AllocateArrayBufferContents(cx, buffer->byteLength());
+        if (!newHeader)
+            return false;
+    } else {
+        // This case neuters out the existing elements in-place, so use the
+        // old header as new.
+        newHeader = buffer->getElementsHeader();
+    }
+
+    // Mark all views of the ArrayBuffer as neutered.
+    if (!ArrayBufferObject::neuterViews(cx, buffer)) {
+        if (buffer->hasStealableContents()) {
+            FreeOp fop(cx->runtime(), false);
+            fop.free_(newHeader);
+        }
         return false;
-    buffer->neuter(cx);
+    }
+
+    buffer->neuter(newHeader, cx);
     return true;
 }
 

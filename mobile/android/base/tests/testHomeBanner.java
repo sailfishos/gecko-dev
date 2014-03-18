@@ -22,6 +22,10 @@ public class testHomeBanner extends UITest {
 
         // These test methods depend on being run in this order.
         addBannerTest();
+
+        // Make sure the banner hides when the user starts interacting with the url bar.
+        hideOnToolbarFocusTest();
+
         // TODO: API doesn't actually support this but it used to work due to how the banner was
         // part of TopSitesPanel's lifecycle
         // removeBannerTest();
@@ -38,13 +42,11 @@ public class testHomeBanner extends UITest {
      * Note: This test does not remove the message after it is done.
      */
     private void addBannerTest() {
-        addBannerMessage();
-
-        // Load about:home again, and make sure the onshown handler is called.
+        // Load about:home and make sure the onshown handler is called.
         Actions.EventExpecter eventExpecter = getActions().expectGeckoEvent("TestHomeBanner:MessageShown");
+        addBannerMessage();
         NavigationHelper.enterAndLoadUrl("about:home");
-        // TODO: Add shown event passing from Java: bug 974723
-        // eventExpecter.blockForEvent();
+        eventExpecter.blockForEvent();
 
         // Verify that the banner is visible with the correct text.
         mAboutHome.assertBannerText(TEXT);
@@ -94,6 +96,18 @@ public class testHomeBanner extends UITest {
         eventExpecter.blockForEvent();
 
         mAboutHome.assertBannerNotVisible();
+    }
+
+    private void hideOnToolbarFocusTest() {
+        NavigationHelper.enterAndLoadUrl("about:home");
+        mAboutHome.assertVisible()
+                  .assertBannerVisible();
+
+        mToolbar.enterEditingMode();
+        mAboutHome.assertBannerNotVisible();
+
+        mToolbar.dismissEditingMode();
+        mAboutHome.assertBannerVisible();
     }
 
     /**
