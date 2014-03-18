@@ -32,7 +32,7 @@
 #include "nsIAtom.h"
 #include "nsContentUtils.h"
 #include "nsCxPusher.h"
-#include "nsEventDispatcher.h"
+#include "mozilla/EventDispatcher.h"
 #include "nsIContent.h"
 #include "nsCycleCollector.h"
 #include "nsNetUtil.h"
@@ -336,8 +336,8 @@ NS_HandleScriptError(nsIScriptGlobalObject *aScriptGlobal,
                                 aErrorEventInit);
       event->SetTrusted(true);
 
-      nsEventDispatcher::DispatchDOMEvent(win, nullptr, event, presContext,
-                                          aStatus);
+      EventDispatcher::DispatchDOMEvent(win, nullptr, event, presContext,
+                                        aStatus);
       called = true;
     }
     --errorDepth;
@@ -491,8 +491,8 @@ public:
                                   NS_LITERAL_STRING("error"), init);
         event->SetTrusted(true);
 
-        nsEventDispatcher::DispatchDOMEvent(win, nullptr, event, presContext,
-                                            &status);
+        EventDispatcher::DispatchDOMEvent(win, nullptr, event, presContext,
+                                          &status);
       }
     }
 
@@ -631,24 +631,9 @@ NS_ScriptErrorReporter(JSContext *cx,
 #ifdef DEBUG
 // A couple of useful functions to call when you're debugging.
 nsGlobalWindow *
-JSObject2Win(JSContext *cx, JSObject *obj)
+JSObject2Win(JSObject *obj)
 {
-  nsIXPConnect *xpc = nsContentUtils::XPConnect();
-  if (!xpc) {
-    return nullptr;
-  }
-
-  nsCOMPtr<nsIXPConnectWrappedNative> wrapper;
-  xpc->GetWrappedNativeOfJSObject(cx, obj, getter_AddRefs(wrapper));
-  if (wrapper) {
-    nsCOMPtr<nsPIDOMWindow> win = do_QueryWrappedNative(wrapper);
-    if (win) {
-      return static_cast<nsGlobalWindow *>
-                        (static_cast<nsPIDOMWindow *>(win));
-    }
-  }
-
-  return nullptr;
+  return xpc::WindowOrNull(obj);
 }
 
 void
@@ -1044,28 +1029,27 @@ nsJSContext::GetGlobalObject()
 
   const JSClass *c = JS_GetClass(global);
 
-  // Whenever we end up with globals that are JSCLASS_IS_DOMJSCLASS
-  // and have an nsISupports DOM object, we will need to modify this
-  // check here.
-  MOZ_ASSERT(!(c->flags & JSCLASS_IS_DOMJSCLASS));
-  if ((~c->flags) & (JSCLASS_HAS_PRIVATE |
-                     JSCLASS_PRIVATE_IS_NSISUPPORTS)) {
-    return nullptr;
-  }
-  
-  nsISupports *priv = static_cast<nsISupports*>(js::GetObjectPrivate(global));
-
-  nsCOMPtr<nsIXPConnectWrappedNative> wrapped_native =
-    do_QueryInterface(priv);
-
   nsCOMPtr<nsIScriptGlobalObject> sgo;
-  if (wrapped_native) {
-    // The global object is a XPConnect wrapped native, the native in
-    // the wrapper might be the nsIScriptGlobalObject
-
-    sgo = do_QueryWrappedNative(wrapped_native);
+  if (IsDOMClass(c)) {
+    sgo = do_QueryInterface(UnwrapDOMObjectToISupports(global));
   } else {
-    sgo = do_QueryInterface(priv);
+    if ((~c->flags) & (JSCLASS_HAS_PRIVATE |
+                       JSCLASS_PRIVATE_IS_NSISUPPORTS)) {
+      return nullptr;
+    }
+
+    nsISupports *priv = static_cast<nsISupports*>(js::GetObjectPrivate(global));
+
+    nsCOMPtr<nsIXPConnectWrappedNative> wrapped_native =
+      do_QueryInterface(priv);
+    if (wrapped_native) {
+      // The global object is a XPConnect wrapped native, the native in
+      // the wrapper might be the nsIScriptGlobalObject
+
+      sgo = do_QueryWrappedNative(wrapped_native);
+    } else {
+      sgo = do_QueryInterface(priv);
+    }
   }
 
   // This'll return a pointer to something we're about to release, but

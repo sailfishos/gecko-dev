@@ -330,10 +330,8 @@ class TypedArrayObjectTemplate : public TypedArrayObject
         Rooted<TypedArrayObject*> obj(cx);
         if (proto)
             obj = makeProtoInstance(cx, proto);
-        else if (cx->typeInferenceEnabled())
-            obj = makeTypedInstance(cx, len);
         else
-            obj = &NewBuiltinClassInstance(cx, fastClass())->as<TypedArrayObject>();
+            obj = makeTypedInstance(cx, len);
         if (!obj)
             return nullptr;
         JS_ASSERT_IF(obj->isTenured(),
@@ -349,7 +347,6 @@ class TypedArrayObjectTemplate : public TypedArrayObject
         obj->setSlot(BYTEOFFSET_SLOT, Int32Value(byteOffset));
         obj->setSlot(BYTELENGTH_SLOT, Int32Value(len * sizeof(NativeType)));
         obj->setSlot(NEXT_VIEW_SLOT, PrivateValue(nullptr));
-        obj->setSlot(NEXT_BUFFER_SLOT, PrivateValue(UNSET_BUFFER_LINK));
 
         js::Shape *empty = EmptyShape::getInitialShape(cx, fastClass(),
                                                        obj->getProto(), obj->getParent(), obj->getMetadata(),
@@ -1326,16 +1323,14 @@ DataViewObject::create(JSContext *cx, uint32_t byteOffset, uint32_t byteLength,
         if (!type)
             return nullptr;
         obj->setType(type);
-    } else if (cx->typeInferenceEnabled()) {
-        if (byteLength >= TypedArrayObject::SINGLETON_TYPE_BYTE_LENGTH) {
-            JS_ASSERT(obj->hasSingletonType());
-        } else {
-            jsbytecode *pc;
-            RootedScript script(cx, cx->currentScript(&pc));
-            if (script) {
-                if (!types::SetInitializerObjectType(cx, script, pc, obj, newKind))
-                    return nullptr;
-            }
+    } else if (byteLength >= TypedArrayObject::SINGLETON_TYPE_BYTE_LENGTH) {
+        JS_ASSERT(obj->hasSingletonType());
+    } else {
+        jsbytecode *pc;
+        RootedScript script(cx, cx->currentScript(&pc));
+        if (script) {
+            if (!types::SetInitializerObjectType(cx, script, pc, obj, newKind))
+                return nullptr;
         }
     }
 
@@ -1344,7 +1339,6 @@ DataViewObject::create(JSContext *cx, uint32_t byteOffset, uint32_t byteLength,
     dvobj.setFixedSlot(BYTELENGTH_SLOT, Int32Value(byteLength));
     dvobj.setFixedSlot(BUFFER_SLOT, ObjectValue(*arrayBuffer));
     dvobj.setFixedSlot(NEXT_VIEW_SLOT, PrivateValue(nullptr));
-    dvobj.setFixedSlot(NEXT_BUFFER_SLOT, PrivateValue(UNSET_BUFFER_LINK));
     InitArrayBufferViewDataPointer(&dvobj, arrayBuffer, byteOffset);
     JS_ASSERT(byteOffset + byteLength <= arrayBuffer->byteLength());
 

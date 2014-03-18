@@ -713,8 +713,6 @@ Options(JSContext *cx, unsigned argc, jsval *vp)
 
         if (strcmp(opt.ptr(), "strict") == 0)
             JS::ContextOptionsRef(cx).toggleExtraWarnings();
-        else if (strcmp(opt.ptr(), "typeinfer") == 0)
-            JS::RuntimeOptionsRef(cx).toggleTypeInference();
         else if (strcmp(opt.ptr(), "werror") == 0)
             JS::ContextOptionsRef(cx).toggleWerror();
         else if (strcmp(opt.ptr(), "strict_mode") == 0)
@@ -723,7 +721,7 @@ Options(JSContext *cx, unsigned argc, jsval *vp)
             char* msg = JS_sprintf_append(nullptr,
                                           "unknown option name '%s'."
                                           " The valid names are strict,"
-                                          " typeinfer, werror, and strict_mode.",
+                                          " werror, and strict_mode.",
                                           opt.ptr());
             if (!msg) {
                 JS_ReportOutOfMemory(cx);
@@ -740,10 +738,6 @@ Options(JSContext *cx, unsigned argc, jsval *vp)
     bool found = false;
     if (!names && oldContextOptions.extraWarnings()) {
         names = JS_sprintf_append(names, "%s%s", found ? "," : "", "strict");
-        found = true;
-    }
-    if (!names && oldRuntimeOptions.typeInference()) {
-        names = JS_sprintf_append(names, "%s%s", found ? "," : "", "typeinfer");
         found = true;
     }
     if (!names && oldContextOptions.werror()) {
@@ -1025,7 +1019,6 @@ CacheEntry_setBytecode(JSContext *cx, HandleObject cache, uint8_t *buffer, uint3
     if (!arrayBuffer || !ArrayBufferObject::ensureNonInline(cx, arrayBuffer))
         return false;
 
-    memcpy(arrayBuffer->dataPointer(), buffer, length);
     SetReservedSlot(cache, CacheEntry_BYTECODE, OBJECT_TO_JSVAL(arrayBuffer));
     return true;
 }
@@ -1284,6 +1277,8 @@ Evaluate(JSContext *cx, unsigned argc, jsval *vp)
 
         if (!CacheEntry_setBytecode(cx, cacheEntry, saveBuffer, saveLength))
             return false;
+
+        saveBuffer.forget();
     }
 
     return JS_WrapValue(cx, args.rval());
@@ -2887,8 +2882,8 @@ WorkerMain(void *arg)
         options.setFileAndLine("<string>", 1)
                .setCompileAndGo(true);
 
-        JSScript *script = JS::Compile(cx, global, options,
-                                       input->chars, input->length);
+        RootedScript script(cx, JS::Compile(cx, global, options,
+                                            input->chars, input->length));
         if (!script)
             break;
         RootedValue result(cx);
@@ -5750,12 +5745,10 @@ SetRuntimeOptions(JSRuntime *rt, const OptionParser &op)
 #if defined(JS_ION)
     bool enableBaseline = !op.getBoolOption("no-baseline");
     bool enableIon = !op.getBoolOption("no-ion");
-    bool enableTypeInference = !op.getBoolOption("no-ti");
     bool enableAsmJS = !op.getBoolOption("no-asmjs");
 
     JS::RuntimeOptionsRef(rt).setBaseline(enableBaseline)
                              .setIon(enableIon)
-                             .setTypeInference(enableTypeInference)
                              .setAsmJS(enableAsmJS);
 
     if (const char *str = op.getStringOption("ion-gvn")) {
@@ -6008,8 +6001,6 @@ main(int argc, char **argv, char **envp)
         || !op.addBoolOption('i', "shell", "Enter prompt after running code")
         || !op.addBoolOption('m', "jm", "No-op (still used by fuzzers)")
         || !op.addBoolOption('\0', "no-jm", "No-op (still used by fuzzers)")
-        || !op.addBoolOption('n', "ti", "Enable type inference (default)")
-        || !op.addBoolOption('\0', "no-ti", "Disable type inference")
         || !op.addBoolOption('c', "compileonly", "Only compile, don't run (syntax checking mode)")
         || !op.addBoolOption('w', "warnings", "Emit warnings")
         || !op.addBoolOption('W', "nowarnings", "Don't emit warnings")
@@ -6218,6 +6209,11 @@ main(int argc, char **argv, char **envp)
 #ifdef JS_THREADSAFE
     for (size_t i = 0; i < workerThreads.length(); i++)
         PR_JoinThread(workerThreads[i]);
+#endif
+
+#ifdef JSGC_GENERATIONAL
+    if (!noggc.empty())
+        noggc.destroy();
 #endif
 
     JS_DestroyRuntime(rt);
