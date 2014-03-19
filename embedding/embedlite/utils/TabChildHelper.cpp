@@ -273,33 +273,7 @@ TabChildHelper::HandleEvent(nsIDOMEvent* aEvent)
 bool
 TabChildHelper::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
 {
-  MOZ_ASSERT(aFrameMetrics.mScrollId != FrameMetrics::NULL_SCROLL_ID);
-
-  if (aFrameMetrics.mIsRoot) {
-    nsCOMPtr<nsIDOMWindowUtils> utils(GetDOMWindowUtils());
-    if (APZCCallbackHelper::HasValidPresShellId(utils, aFrameMetrics)) {
-      mLastRootMetrics = ProcessUpdateFrame(aFrameMetrics);
-      APZCCallbackHelper::UpdateCallbackTransform(aFrameMetrics, mLastRootMetrics);
-      return true;
-    }
-  } else {
-    // aFrameMetrics.mIsRoot is false, so we are trying to update a subframe.
-    // This requires special handling.
-    nsCOMPtr<nsIContent> content = nsLayoutUtils::FindContentFor(
-                                      aFrameMetrics.mScrollId);
-    if (content) {
-      FrameMetrics newSubFrameMetrics(aFrameMetrics);
-      APZCCallbackHelper::UpdateSubFrame(content, newSubFrameMetrics);
-      APZCCallbackHelper::UpdateCallbackTransform(aFrameMetrics, newSubFrameMetrics);
-      return true;
-    }
-  }
-
-  // We've recieved a message that is out of date and we want to ignore.
-  // However we can't reply without painting so we reply by painting the
-  // exact same thing as we did before.
-  mLastRootMetrics = ProcessUpdateFrame(mLastRootMetrics);
-  return true;
+  return TabChildBase::UpdateFrameHandler(aFrameMetrics);
 }
 
 nsIWebNavigation*
@@ -412,16 +386,6 @@ TabChildHelper::CheckPermission(const nsAString& aPermission)
   return false;
 }
 
-static nsIntPoint
-ToWidgetPoint(float aX, float aY, const nsPoint& aOffset,
-              nsPresContext* aPresContext)
-{
-  double appPerDev = aPresContext->AppUnitsPerDevPixel();
-  nscoord appPerCSS = nsPresContext::AppUnitsPerCSSPixel();
-  return nsIntPoint(NSToIntRound((aX * appPerCSS + aOffset.x) / appPerDev),
-                    NSToIntRound((aY * appPerCSS + aOffset.y) / appPerDev));
-}
-
 bool
 TabChildHelper::ConvertMutiTouchInputToEvent(const mozilla::MultiTouchInput& aData,
                                              WidgetTouchEvent& aEvent)
@@ -514,78 +478,6 @@ TabChildHelper::GetPresContext()
   nsRefPtr<nsPresContext> presContext;
   docShell->GetPresContext(getter_AddRefs(presContext));
   return presContext;
-}
-
-void
-TabChildHelper::InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint)
-{
-  if (aPoint) {
-    event.refPoint.x = aPoint->x;
-    event.refPoint.y = aPoint->y;
-  } else {
-    event.refPoint.x = 0;
-    event.refPoint.y = 0;
-  }
-
-  event.time = PR_Now() / 1000;
-}
-
-nsEventStatus
-TabChildHelper::DispatchSynthesizedMouseEvent(const WidgetTouchEvent& aEvent)
-{
-  // Synthesize a phony mouse event.
-  uint32_t msg;
-  switch (aEvent.message) {
-    case NS_TOUCH_START:
-      msg = NS_MOUSE_BUTTON_DOWN;
-      break;
-    case NS_TOUCH_MOVE:
-      msg = NS_MOUSE_MOVE;
-      break;
-    case NS_TOUCH_END:
-    case NS_TOUCH_CANCEL:
-      msg = NS_MOUSE_BUTTON_UP;
-      break;
-    default:
-      NS_ERROR("Unknown touch event message");
-      return nsEventStatus_eIgnore;
-  }
-
-  // get the widget to send the event to
-  nsPoint offset;
-  nsCOMPtr<nsIWidget> widget = GetWidget(&offset);
-  if (!widget) {
-    return nsEventStatus_eIgnore;
-  }
-
-  WidgetMouseEvent event(true, msg, widget, WidgetMouseEvent::eReal, WidgetMouseEvent::eNormal);
-
-  event.widget = widget;
-  if (msg != NS_MOUSE_MOVE) {
-    event.clickCount = 1;
-  }
-  event.time = PR_IntervalNow();
-
-  nsPresContext* presContext = GetPresContext();
-  if (!presContext) {
-    return nsEventStatus_eIgnore;
-  }
-
-  nsIntPoint refPoint;
-  if (aEvent.touches.Length()) {
-    refPoint = aEvent.touches[0]->mRefPoint;
-  }
-
-  nsIntPoint pt = ToWidgetPoint(refPoint.x, refPoint.y, offset, presContext);
-  event.refPoint.x = pt.x;
-  event.refPoint.y = pt.y;
-  event.ignoreRootScrollFrame = true;
-
-  nsEventStatus status;
-  if NS_SUCCEEDED(widget->DispatchEvent(&event, status)) {
-    return status;
-  }
-  return nsEventStatus_eIgnore;
 }
 
 bool

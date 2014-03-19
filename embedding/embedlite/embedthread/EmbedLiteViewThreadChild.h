@@ -122,6 +122,7 @@ private:
 
   void InitGeckoWindow(const uint32_t& parentId);
   EmbedLiteAppThreadChild* AppChild();
+  void InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint = nullptr);
 
   uint32_t mId;
   uint64_t mOuterId;

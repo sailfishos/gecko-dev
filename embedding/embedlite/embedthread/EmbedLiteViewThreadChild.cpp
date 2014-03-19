@@ -642,6 +642,20 @@ EmbedLiteViewThreadChild::RecvAcknowledgeScrollUpdate(const FrameMetrics::ViewID
   return true;
 }
 
+void
+EmbedLiteViewThreadChild::InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint)
+{
+  if (aPoint) {
+    event.refPoint.x = aPoint->x;
+    event.refPoint.y = aPoint->y;
+  } else {
+    event.refPoint.x = 0;
+    event.refPoint.y = 0;
+  }
+
+  event.time = PR_Now() / 1000;
+}
+
 bool
 EmbedLiteViewThreadChild::RecvHandleSingleTap(const nsIntPoint& aPoint)
 {
@@ -651,7 +665,7 @@ EmbedLiteViewThreadChild::RecvHandleSingleTap(const nsIntPoint& aPoint)
     nsPoint offset;
     nsCOMPtr<nsIWidget> widget = mHelper->GetWidget(&offset);
     WidgetCompositionEvent event(true, NS_COMPOSITION_END, widget);
-    mHelper->InitEvent(event, nullptr);
+    InitEvent(event, nullptr);
     mHelper->DispatchWidgetEvent(event);
     mIMEComposing = false;
   }
@@ -724,27 +738,27 @@ EmbedLiteViewThreadChild::RecvHandleTextEvent(const nsString& commit, const nsSt
 
   if (StartComposite) {
     WidgetCompositionEvent event(true, NS_COMPOSITION_START, widget);
-    mHelper->InitEvent(event, nullptr);
+    InitEvent(event, nullptr);
     mHelper->DispatchWidgetEvent(event);
   }
 
   if (StartComposite || UpdateComposite) {
     WidgetCompositionEvent event(true, NS_COMPOSITION_UPDATE, widget);
-    mHelper->InitEvent(event, nullptr);
+    InitEvent(event, nullptr);
     event.data = pushStr;
     mHelper->DispatchWidgetEvent(event);
   }
 
   if (StartComposite || UpdateComposite || EndComposite) {
     WidgetTextEvent event(true, NS_TEXT_TEXT, widget);
-    mHelper->InitEvent(event, nullptr);
+    InitEvent(event, nullptr);
     event.theText = pushStr;
     mHelper->DispatchWidgetEvent(event);
   }
 
   if (EndComposite) {
     WidgetCompositionEvent event(true, NS_COMPOSITION_END, widget);
-    mHelper->InitEvent(event, nullptr);
+    InitEvent(event, nullptr);
     mHelper->DispatchWidgetEvent(event);
   }
 
@@ -840,7 +854,7 @@ EmbedLiteViewThreadChild::RecvInputDataTouchEvent(const ScrollableLayerGuid& aGu
     }
     if (status != nsEventStatus_eConsumeNoDefault && mDispatchSynthMouseEvents && sDispatchMouseEvents) {
       // Touch event not handled
-      status = mHelper->DispatchSynthesizedMouseEvent(localEvent);
+      status = mHelper->DispatchSynthesizedMouseEvent(localEvent.message, localEvent.time, localEvent.refPoint, localEvent.widget);
       if (status != nsEventStatus_eConsumeNoDefault && status != nsEventStatus_eConsumeDoDefault) {
         mDispatchSynthMouseEvents = false;
       }
