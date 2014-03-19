@@ -164,6 +164,10 @@ public:
                                          const bool& aIsRoot,
                                          const mozilla::layers::ZoomConstraints& aConstraints) = 0;
 
+    nsEventStatus DispatchSynthesizedMouseEvent(uint32_t aMsg, uint64_t aTime,
+                                                const LayoutDevicePoint& aRefPoint,
+                                                nsIWidget* aWidget);
+
 protected:
     CSSSize GetPageSize(nsCOMPtr<nsIDocument> aDocument, const CSSSize& aViewport);
 
@@ -184,16 +188,14 @@ protected:
     void DispatchMessageManagerMessage(const nsAString& aMessageName,
                                        const nsAString& aJSONData);
 
-    void DispatchSynthesizedMouseEvent(uint32_t aMsg, uint64_t aTime,
-                                       const LayoutDevicePoint& aRefPoint,
-                                       nsIWidget* aWidget);
-
     nsEventStatus DispatchWidgetEvent(WidgetGUIEvent& event);
 
     bool HasValidInnerSize();
     void InitializeRootMetrics();
 
     mozilla::layers::FrameMetrics ProcessUpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics);
+
+    bool UpdateFrameHandler(const mozilla::layers::FrameMetrics& aFrameMetrics);
 
 protected:
     float mOldViewportWidth;

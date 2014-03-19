@@ -1487,6 +1487,12 @@ TabChildBase::DispatchMessageManagerMessage(const nsAString& aMessageName,
 bool
 TabChild::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
 {
+  return TabChildBase::UpdateFrameHandler(aFrameMetrics);
+}
+
+bool
+TabChildBase::UpdateFrameHandler(const FrameMetrics& aFrameMetrics)
+{
   MOZ_ASSERT(aFrameMetrics.mScrollId != FrameMetrics::NULL_SCROLL_ID);
 
   if (aFrameMetrics.mIsRoot) {
@@ -1723,7 +1729,7 @@ TabChild::RecvMouseWheelEvent(const WidgetWheelEvent& event)
   return true;
 }
 
-void
+nsEventStatus
 TabChildBase::DispatchSynthesizedMouseEvent(uint32_t aMsg, uint64_t aTime,
                                             const LayoutDevicePoint& aRefPoint,
                                             nsIWidget* aWidget)
@@ -1742,7 +1748,7 @@ TabChildBase::DispatchSynthesizedMouseEvent(uint32_t aMsg, uint64_t aTime,
   }
   event.widget = aWidget;
 
-  DispatchWidgetEvent(event);
+  return DispatchWidgetEvent(event);
 }
 
 static Touch*
