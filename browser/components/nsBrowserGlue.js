@@ -478,7 +478,6 @@ BrowserGlue.prototype = {
     PageThumbs.init();
     NewTabUtils.init();
     BrowserNewTabPreloader.init();
-    CustomizationTabPreloader.init();
     SignInToWebsiteUX.init();
     PdfJs.init();
 #ifdef NIGHTLY_BUILD
@@ -1296,7 +1295,7 @@ BrowserGlue.prototype = {
   },
 
   _migrateUI: function BG__migrateUI() {
-    const UI_VERSION = 20;
+    const UI_VERSION = 22;
     const BROWSER_DOCURL = "chrome://browser/content/browser.xul#";
     let currentUIVersion = 0;
     try {
@@ -1566,6 +1565,22 @@ BrowserGlue.prototype = {
       if (this._getPersist(toolbar, resource)) {
         this._setPersist(toolbar, resource);
       }
+    }
+
+    if (currentUIVersion < 21) {
+      // Make sure the 'toolbarbutton-1' class will always be present from here
+      // on out.
+      let button = this._rdf.GetResource(BROWSER_DOCURL + "bookmarks-menu-button");
+      let classResource = this._rdf.GetResource("class");
+      if (this._getPersist(button, classResource)) {
+        this._setPersist(button, classResource);
+      }
+    }
+
+    if (currentUIVersion < 22) {
+      // Reset the Sync promobox count to promote the new FxAccount-based Sync.
+      Services.prefs.clearUserPref("browser.syncPromoViewsLeft");
+      Services.prefs.clearUserPref("browser.syncPromoViewsLeftMap");
     }
 
     if (this._dirty)

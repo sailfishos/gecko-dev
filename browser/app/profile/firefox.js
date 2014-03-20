@@ -250,7 +250,11 @@ pref("browser.uitour.enabled", true);
 pref("browser.uitour.requireSecure", true);
 pref("browser.uitour.themeOrigin", "https://addons.mozilla.org/%LOCALE%/firefox/themes/");
 pref("browser.uitour.pinnedTabUrl", "https://support.mozilla.org/%LOCALE%/kb/pinned-tabs-keep-favorite-websites-open");
+pref("browser.uitour.url", "https://www.mozilla.org/%LOCALE%/firefox/%VERSION%/tour/");
 pref("browser.uitour.whitelist.add.260", "www.mozilla.org,support.mozilla.org");
+
+pref("browser.customizemode.tip0.shown", false);
+pref("browser.customizemode.tip0.learnMoreUrl", "https://support.mozilla.org/1/firefox/%VERSION%/%OS%/%LOCALE%/customize");
 
 pref("keyword.enabled", true);
 
@@ -1171,7 +1175,7 @@ pref("devtools.shadereditor.enabled", false);
 pref("devtools.chrome.enabled", false);
 
 // Default theme ("dark" or "light")
-pref("devtools.theme", "dark");
+pref("devtools.theme", "light");
 
 // Display the introductory text
 pref("devtools.gcli.hideIntro", false);
@@ -1343,9 +1347,8 @@ pref("browser.uiCustomization.debug", false);
 // CustomizableUI state of the browser's user interface
 pref("browser.uiCustomization.state", "");
 
-// The URL where remote content that composes the UI for Firefox Accounts should
-// be fetched. Must use HTTPS.
-pref("identity.fxaccounts.remote.uri", "https://accounts.firefox.com/?service=sync&context=fx_desktop_v1");
+// The remote content URL shown for FxA signup. Must use HTTPS.
+pref("identity.fxaccounts.remote.signup.uri", "https://accounts.firefox.com/signup?service=sync&context=fx_desktop_v1");
 
 // The URL where remote content that forces re-authentication for Firefox Accounts
 // should be fetched.  Must use HTTPS.
@@ -1356,7 +1359,7 @@ pref("identity.fxaccounts.remote.signin.uri", "https://accounts.firefox.com/sign
 
 // The URL we take the user to when they opt to "manage" their Firefox Account.
 // Note that this will always need to be in the same TLD as the
-// "identity.fxaccounts.remote.uri" pref.
+// "identity.fxaccounts.remote.signup.uri" pref.
 pref("identity.fxaccounts.settings.uri", "https://accounts.firefox.com/settings");
 
 // The URL of the Firefox Accounts auth server backend

@@ -1037,6 +1037,7 @@ var gBrowserInit = {
     // apply full zoom settings to tabs restored by the session restore service.
     FullZoom.init();
     PanelUI.init();
+    TabstripFogConstrainer.init();
     LightweightThemeListener.init();
     WebrtcIndicator.init();
 
@@ -1317,6 +1318,7 @@ var gBrowserInit = {
       SocialUI.uninit();
       LightweightThemeListener.uninit();
       PanelUI.uninit();
+      TabstripFogConstrainer.uninit();
     }
 
     // Final window teardown, do this last.
@@ -2980,7 +2982,7 @@ const BrowserSearch = {
       return;
     }
     if (placement && placement.area == CustomizableUI.AREA_NAVBAR && searchBar &&
-        searchBar.parentNode.classList.contains("overflowedItem")) {
+        searchBar.parentNode.getAttribute("overflowedItem") == "true") {
       let navBar = document.getElementById(CustomizableUI.AREA_NAVBAR);
       navBar.overflowable.show().then(() => {
         focusSearchBar();
@@ -4671,6 +4673,36 @@ function onTitlebarMaxClick() {
     window.maximize();
 }
 #endif
+
+let TabstripFogConstrainer = {
+  _toolbar: null,
+  init: function() {
+#ifdef XP_WIN
+    this._toolbar = document.getElementById("TabsToolbar");
+    this._toolbar.addEventListener("tabdragstart", this);
+    this._toolbar.addEventListener("tabdragstop", this);
+#endif
+  },
+
+  handleEvent: function(e) {
+    switch (e.type) {
+      case "tabdragstart":
+        this._toolbar.setAttribute("draggingtab", "true");
+        break;
+      case "tabdragstop":
+        this._toolbar.removeAttribute("draggingtab");
+        break;
+    }
+  },
+
+  uninit: function() {
+#ifdef XP_WIN
+    this._toolbar.removeEventListener("tabdragstart", this);
+    this._toolbar.removeEventListener("tabdragstop", this);
+    this._toolbar = null;
+#endif
+  }
+};
 
 function displaySecurityInfo()
 {
@@ -6507,13 +6539,9 @@ var gIdentityHandler = {
 
     // Chrome URIs however get special treatment. Some chrome URIs are
     // whitelisted to provide a positive security signal to the user.
-    let chromeWhitelist = ["about:addons", "about:app-manager", "about:config",
-                           "about:crashes", "about:customizing", "about:healthreport",
-                           "about:home", "about:newaddon", "about:permissions",
-                           "about:preferences", "about:privatebrowsing",
-                           "about:sessionstore", "about:support", "about:welcomeback"];
-    let lowercaseSpec = uri.spec.toLowerCase();
-    if (chromeWhitelist.some(function(whitelistedSpec) lowercaseSpec.startsWith(whitelistedSpec))) {
+    let whitelist = /^about:(accounts|addons|app-manager|config|crashes|customizing|healthreport|home|newaddon|permissions|preferences|privatebrowsing|sessionrestore|support|welcomeback)/i;
+    let isChromeUI = uri.schemeIs("about") && whitelist.test(uri.spec);
+    if (isChromeUI) {
       this.setMode(this.IDENTITY_MODE_CHROMEUI);
     } else if (unknown) {
       this.setMode(this.IDENTITY_MODE_UNKNOWN);
@@ -6964,9 +6992,14 @@ let gPrivateBrowsingUI = {
  * @param aOpenNew
  *        True to open a new tab and switch to it, if no existing tab is found.
  *        If no suitable window is found, a new one will be opened.
+ * @param aOpenParams
+ *        If switching to this URI results in us opening a tab, aOpenParams
+ *        will be the parameter object that gets passed to openUILinkIn. Please
+ *        see the documentation for openUILinkIn to see what parameters can be
+ *        passed via this object.
  * @return True if an existing tab was found, false otherwise
  */
-function switchToTabHavingURI(aURI, aOpenNew) {
+function switchToTabHavingURI(aURI, aOpenNew, aOpenParams) {
   // This will switch to the tab in aWindow having aURI, if present.
   function switchIfURIInWindow(aWindow) {
     // Only switch to the tab if neither the source and desination window are
@@ -7014,9 +7047,9 @@ function switchToTabHavingURI(aURI, aOpenNew) {
   // No opened tab has that url.
   if (aOpenNew) {
     if (isBrowserWindow && isTabEmpty(gBrowser.selectedTab))
-      gBrowser.selectedBrowser.loadURI(aURI.spec);
+      openUILinkIn(aURI.spec, "current", aOpenParams);
     else
-      openUILinkIn(aURI.spec, "tab");
+      openUILinkIn(aURI.spec, "tab", aOpenParams);
   }
 
   return false;

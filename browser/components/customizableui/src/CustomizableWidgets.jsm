@@ -68,7 +68,7 @@ function setAttributes(aNode, aAttrs) {
 
 function updateCombinedWidgetStyle(aNode, aArea, aModifyCloseMenu) {
   let inPanel = (aArea == CustomizableUI.AREA_PANEL);
-  let cls = inPanel ? "panel-combined-button" : "toolbarbutton-1";
+  let cls = inPanel ? "panel-combined-button" : "toolbarbutton-1 toolbarbutton-combined";
   let attrs = {class: cls};
   if (aModifyCloseMenu) {
     attrs.closemenu = inPanel ? "none" : null;
@@ -364,7 +364,7 @@ const CustomizableWidgets = [{
       let inPanel = areaType == CustomizableUI.TYPE_MENU_PANEL;
       let inToolbar = areaType == CustomizableUI.TYPE_TOOLBAR;
       let closeMenu = inPanel ? "none" : null;
-      let cls = inPanel ? "panel-combined-button" : "toolbarbutton-1";
+      let cls = inPanel ? "panel-combined-button" : "toolbarbutton-1 toolbarbutton-combined";
 
       if (!this.currentArea)
         cls = null;
@@ -416,6 +416,11 @@ const CustomizableWidgets = [{
       let zoomResetButton = node.childNodes[2];
       let window = aDocument.defaultView;
       function updateZoomResetButton() {
+        let updateDisplay = true;
+        // Label should always show 100% in customize mode, so don't update:
+        if (aDocument.documentElement.hasAttribute("customizing")) {
+          updateDisplay = false;
+        }
         //XXXgijs in some tests we get called very early, and there's no docShell on the
         // tabbrowser. This breaks the zoom toolkit code (see bug 897410). Don't let that happen:
         let zoomFactor = 100;
@@ -423,7 +428,7 @@ const CustomizableWidgets = [{
           zoomFactor = Math.floor(window.ZoomManager.zoom * 100);
         } catch (e) {}
         zoomResetButton.setAttribute("label", CustomizableUI.getLocalizedProperty(
-          buttons[1], "label", [zoomFactor]
+          buttons[1], "label", [updateDisplay ? zoomFactor : 100]
         ));
       };
 
@@ -508,6 +513,18 @@ const CustomizableWidgets = [{
           container.removeEventListener("TabSelect", updateZoomResetButton);
         }.bind(this),
 
+        onCustomizeStart: function(aWindow) {
+          if (aWindow.document == aDocument) {
+            updateZoomResetButton();
+          }
+        },
+
+        onCustomizeEnd: function(aWindow) {
+          if (aWindow.document == aDocument) {
+            updateZoomResetButton();
+          }
+        },
+
         onWidgetDrag: function(aWidgetId, aArea) {
           if (aWidgetId != this.id)
             return;
@@ -525,7 +542,7 @@ const CustomizableWidgets = [{
     defaultArea: CustomizableUI.AREA_PANEL,
     onBuild: function(aDocument) {
       let inPanel = (this.currentArea == CustomizableUI.AREA_PANEL);
-      let cls = inPanel ? "panel-combined-button" : "toolbarbutton-1";
+      let cls = inPanel ? "panel-combined-button" : "toolbarbutton-1 toolbarbutton-combined";
 
       if (!this.currentArea)
         cls = null;

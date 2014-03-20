@@ -125,7 +125,7 @@ abstract public class BrowserApp extends GeckoApp
     private BrowserToolbar mBrowserToolbar;
     private HomePager mHomePager;
     private TabsPanel mTabsPanel;
-    private View mHomePagerContainer;
+    private ViewGroup mHomePagerContainer;
     protected Telemetry.Timer mAboutHomeStartupTimer = null;
     private ActionModeCompat mActionMode;
     private boolean mShowActionModeEndAnimation = false;
@@ -473,7 +473,7 @@ abstract public class BrowserApp extends GeckoApp
             }
         });
 
-        mHomePagerContainer = findViewById(R.id.home_pager_container);
+        mHomePagerContainer = (ViewGroup) findViewById(R.id.home_pager_container);
 
         mBrowserSearchContainer = findViewById(R.id.search_container);
         mBrowserSearch = (BrowserSearch) getSupportFragmentManager().findFragmentByTag(BROWSER_SEARCH_TAG);
@@ -503,6 +503,15 @@ abstract public class BrowserApp extends GeckoApp
         mBrowserToolbar.setOnFilterListener(new BrowserToolbar.OnFilterListener() {
             public void onFilter(String searchText, AutocompleteHandler handler) {
                 filterEditingMode(searchText, handler);
+            }
+        });
+
+        mBrowserToolbar.setOnFocusChangeListener(new View.OnFocusChangeListener() {
+            @Override
+            public void onFocusChange(View v, boolean hasFocus) {
+                if (isHomePagerVisible()) {
+                    mHomePager.onToolbarFocusChange(hasFocus);
+                }
             }
         });
 
@@ -1269,15 +1278,6 @@ abstract public class BrowserApp extends GeckoApp
         }
     }
 
-    private String mCurrentResponse;
-
-    @Override
-    public String getResponse(JSONObject origMessage) {
-        String res = mCurrentResponse;
-        mCurrentResponse = "";
-        return res;
-    }
-
     @Override
     public void addTab() {
         // Always load about:home when opening a new tab.
@@ -1740,8 +1740,20 @@ abstract public class BrowserApp extends GeckoApp
             final ViewStub homePagerStub = (ViewStub) findViewById(R.id.home_pager_stub);
             mHomePager = (HomePager) homePagerStub.inflate();
 
-            HomeBanner homeBanner = (HomeBanner) findViewById(R.id.home_banner);
-            mHomePager.setBanner(homeBanner);
+            // Don't show the banner in guest mode.
+            if (!getProfile().inGuestMode()) {
+                final HomeBanner homeBanner = (HomeBanner) findViewById(R.id.home_banner);
+                mHomePager.setBanner(homeBanner);
+
+                // Remove the banner from the view hierarchy if it is dismissed.
+                homeBanner.setOnDismissListener(new HomeBanner.OnDismissListener() {
+                    @Override
+                    public void onDismiss() {
+                        mHomePager.setBanner(null);
+                        mHomePagerContainer.removeView(homeBanner);
+                    }
+                });
+            }
         }
 
         mHomePagerContainer.setVisibility(View.VISIBLE);

@@ -304,7 +304,7 @@ EmbedLiteAppService::GetBrowserByID(uint32_t aId, nsIWebBrowser * *outWindow)
   nsCOMPtr<nsIWebBrowser> br;
   rv = view->GetBrowser(getter_AddRefs(br));
   NS_ENSURE_TRUE(br, rv);
-  *outWindow = br.forget().get();
+  *outWindow = br.forget().take();
   return rv;
 }
 
@@ -352,7 +352,7 @@ EmbedLiteAppService::ChromeEventHandler(nsIDOMWindow *aWin, nsIDOMEventTarget * 
   nsCOMPtr<nsPIDOMWindow> pidomWindow = do_GetInterface(aWin);
   NS_ENSURE_TRUE(pidomWindow, NS_ERROR_FAILURE);
   nsCOMPtr<nsIDOMEventTarget> target = do_QueryInterface(pidomWindow->GetChromeEventHandler());
-  *eventHandler = target.forget().get();
+  *eventHandler = target.forget().take();
   return NS_OK;
 }
 
@@ -370,7 +370,7 @@ EmbedLiteAppService::GetAnyEmbedWindow(bool aActive, nsIDOMWindow * *aWin)
         NS_ENSURE_TRUE(br, rv);
         nsCOMPtr<nsIDOMWindow> domWindow;
         br->GetContentDOMWindow(getter_AddRefs(domWindow));
-        *aWin = domWindow.forget().get();
+        *aWin = domWindow.forget().take();
         return NS_OK;
       } else {
         nsresult rv;
@@ -382,7 +382,7 @@ EmbedLiteAppService::GetAnyEmbedWindow(bool aActive, nsIDOMWindow * *aWin)
         if (isActive) {
           nsCOMPtr<nsIDOMWindow> domWindow;
           br->GetContentDOMWindow(getter_AddRefs(domWindow));
-          *aWin = domWindow.forget().get();
+          *aWin = domWindow.forget().take();
           return NS_OK;
         }
       }
