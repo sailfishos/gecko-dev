@@ -129,8 +129,8 @@ bool EmbedLiteViewThreadChild::RecvDestroy()
   AppChild()->AppService()->UnregisterView(mId);
   if (mHelper)
     mHelper->Unload();
-  if (mBChrome)
-    mBChrome->RemoveEventHandler();
+  if (mChrome)
+    mChrome->RemoveEventHandler();
   mWidget = nullptr;
   mWebBrowser = nullptr;
   mChrome = nullptr;
@@ -184,9 +184,7 @@ EmbedLiteViewThreadChild::InitGeckoWindow(const uint32_t& parentId)
 
   nsCOMPtr<nsIDOMWindow> domWindow;
 
-  nsIWebBrowserChrome** aNewWindow = getter_AddRefs(mChrome);
-  mBChrome = new WebBrowserChrome(this);
-  CallQueryInterface(static_cast<nsIWebBrowserChrome*>(mBChrome), aNewWindow);
+  mChrome = new WebBrowserChrome(this);
   uint32_t aChromeFlags = 0; // View()->GetWindowFlags();
 
   mWebBrowser->SetContainerWindow(mChrome);
