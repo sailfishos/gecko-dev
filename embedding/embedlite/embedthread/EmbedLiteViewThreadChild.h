@@ -128,10 +128,9 @@ private:
   uint64_t mOuterId;
   nsCOMPtr<nsIWidget> mWidget;
   nsCOMPtr<nsIWebBrowser> mWebBrowser;
-  nsCOMPtr<nsIWebBrowserChrome> mChrome;
+  nsRefPtr<WebBrowserChrome> mChrome;
   nsCOMPtr<nsIDOMWindow> mDOMWindow;
   nsCOMPtr<nsIWebNavigation> mWebNavigation;
-  WebBrowserChrome* mBChrome;
   gfxSize mViewSize;
   bool mViewResized;
   gfxSize mGLViewSize;
