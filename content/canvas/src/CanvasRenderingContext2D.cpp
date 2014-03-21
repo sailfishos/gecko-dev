@@ -3130,6 +3130,18 @@ CanvasRenderingContext2D::IsPointInPath(double x, double y, const CanvasWindingR
   return mPath->ContainsPoint(Point(x, y), mTarget->GetTransform());
 }
 
+bool CanvasRenderingContext2D::IsPointInPath(const CanvasPath& mPath, double x, double y, const CanvasWindingRule& mWinding)
+{
+  if (!FloatValidate(x,y)) {
+    return false;
+  }
+
+  EnsureTarget();
+  RefPtr<gfx::Path> tempPath = mPath.GetPath(mWinding, mTarget);
+
+  return tempPath->ContainsPoint(Point(x, y), mTarget->GetTransform());
+}
+
 bool
 CanvasRenderingContext2D::IsPointInStroke(double x, double y)
 {
@@ -3156,6 +3168,28 @@ CanvasRenderingContext2D::IsPointInStroke(double x, double y)
     return mPath->StrokeContainsPoint(strokeOptions, Point(x, y), mPathToDS);
   }
   return mPath->StrokeContainsPoint(strokeOptions, Point(x, y), mTarget->GetTransform());
+}
+
+bool CanvasRenderingContext2D::IsPointInStroke(const CanvasPath& mPath, double x, double y)
+{
+  if (!FloatValidate(x,y)) {
+    return false;
+  }
+
+  EnsureTarget();
+  RefPtr<gfx::Path> tempPath = mPath.GetPath(CanvasWindingRule::Nonzero, mTarget);
+
+  const ContextState &state = CurrentState();
+
+  StrokeOptions strokeOptions(state.lineWidth,
+                              state.lineJoin,
+                              state.lineCap,
+                              state.miterLimit,
+                              state.dash.Length(),
+                              state.dash.Elements(),
+                              state.dashOffset);
+
+  return tempPath->StrokeContainsPoint(strokeOptions, Point(x, y), mTarget->GetTransform());
 }
 
 //
@@ -3577,7 +3611,7 @@ CanvasRenderingContext2D::DrawWindow(nsGlobalWindow& window, double x,
     thebes = new gfxContext(mTarget);
     thebes->SetMatrix(gfxMatrix(matrix._11, matrix._12, matrix._21,
                                 matrix._22, matrix._31, matrix._32));
-  } else if (gfxPlatform::GetPlatform()->SupportsAzureContent()) {
+  } else {
     drawDT =
       gfxPlatform::GetPlatform()->CreateOffscreenContentDrawTarget(IntSize(ceil(sw), ceil(sh)),
                                                                    SurfaceFormat::B8G8R8A8);
@@ -3587,17 +3621,6 @@ CanvasRenderingContext2D::DrawWindow(nsGlobalWindow& window, double x,
     }
 
     thebes = new gfxContext(drawDT);
-    thebes->Scale(matrix._11, matrix._22);
-  } else {
-    drawSurf =
-      gfxPlatform::GetPlatform()->CreateOffscreenSurface(IntSize(ceil(sw), ceil(sh)),
-                                                         gfxContentType::COLOR_ALPHA);
-    if (!drawSurf) {
-      error.Throw(NS_ERROR_FAILURE);
-      return;
-    }
-
-    thebes = new gfxContext(drawSurf);
     thebes->Scale(matrix._11, matrix._22);
   }
 

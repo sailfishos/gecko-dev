@@ -53,7 +53,7 @@ ReadFrameDoubleSlot(IonJSFrameLayout *fp, int32_t slot)
     return *(double *)((char *)fp + OffsetOfFrameSlot(slot));
 }
 
-static inline double
+static inline float
 ReadFrameFloat32Slot(IonJSFrameLayout *fp, int32_t slot)
 {
     return *(float *)((char *)fp + OffsetOfFrameSlot(slot));
@@ -614,6 +614,11 @@ HandleException(ResumeFromException *rfe)
                 bool popSPSFrame = cx->runtime()->spsProfiler.enabled();
                 if (invalidated)
                     popSPSFrame = ionScript->hasSPSInstrumentation();
+
+                // If inline-frames are not profiled, then don't pop an SPS frame
+                // for them.
+                if (frames.more() && !js_JitOptions.profileInlineFrames)
+                    popSPSFrame = false;
 
                 // When profiling, each frame popped needs a notification that
                 // the function has exited, so invoke the probe that a function

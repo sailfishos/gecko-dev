@@ -392,13 +392,11 @@ gfxPlatform::Init()
         NS_RUNTIMEABORT("Could not initialize mScreenReferenceSurface");
     }
 
-    if (gPlatform->SupportsAzureContent()) {
-        gPlatform->mScreenReferenceDrawTarget =
-            gPlatform->CreateOffscreenContentDrawTarget(IntSize(1, 1),
-                                                        SurfaceFormat::B8G8R8A8);
-      if (!gPlatform->mScreenReferenceDrawTarget) {
-        NS_RUNTIMEABORT("Could not initialize mScreenReferenceDrawTarget");
-      }
+    gPlatform->mScreenReferenceDrawTarget =
+        gPlatform->CreateOffscreenContentDrawTarget(IntSize(1, 1),
+                                                    SurfaceFormat::B8G8R8A8);
+    if (!gPlatform->mScreenReferenceDrawTarget) {
+      NS_RUNTIMEABORT("Could not initialize mScreenReferenceDrawTarget");
     }
 
     rv = gfxFontCache::Init();
@@ -503,6 +501,7 @@ gfxPlatform::Shutdown()
     delete gGfxPlatformPrefsLock;
 
     gfxPrefs::DestroySingleton();
+    gfxFont::DestroySingletons();
 
     delete gPlatform;
     gPlatform = nullptr;

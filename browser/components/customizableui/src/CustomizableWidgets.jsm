@@ -73,11 +73,24 @@ function updateCombinedWidgetStyle(aNode, aArea, aModifyCloseMenu) {
   if (aModifyCloseMenu) {
     attrs.closemenu = inPanel ? "none" : null;
   }
+  attrs["cui-areatype"] = aArea ? CustomizableUI.getAreaType(aArea) : null;
   for (let i = 0, l = aNode.childNodes.length; i < l; ++i) {
     if (aNode.childNodes[i].localName == "separator")
       continue;
     setAttributes(aNode.childNodes[i], attrs);
   }
+}
+
+function addShortcut(aNode, aDocument, aItem) {
+  let shortcutId = aNode.getAttribute("key");
+  if (!shortcutId) {
+    return;
+  }
+  let shortcut = aDocument.getElementById(shortcutId);
+  if (!shortcut) {
+    return;
+  }
+  aItem.setAttribute("shortcut", ShortcutUtils.prettifyShortcut(shortcut));
 }
 
 const CustomizableWidgets = [{
@@ -291,6 +304,7 @@ const CustomizableWidgets = [{
         } else if (node.localName == "menuitem") {
           item = doc.createElementNS(kNSXUL, "toolbarbutton");
           item.setAttribute("class", "subviewbutton");
+          addShortcut(node, doc, item);
         } else {
           continue;
         }
@@ -366,8 +380,10 @@ const CustomizableWidgets = [{
           if (attrVal)
             item.setAttribute(attr, attrVal);
         }
-        if (node.localName == "menuitem")
+        if (node.localName == "menuitem") {
           item.classList.add("subviewbutton");
+          addShortcut(node, doc, item);
+        }
         fragment.appendChild(item);
       }
 
@@ -431,32 +447,21 @@ const CustomizableWidgets = [{
       let areaType = CustomizableUI.getAreaType(this.currentArea);
       let inPanel = areaType == CustomizableUI.TYPE_MENU_PANEL;
       let inToolbar = areaType == CustomizableUI.TYPE_TOOLBAR;
-      let closeMenu = inPanel ? "none" : null;
-      let cls = inPanel ? "panel-combined-button" : "toolbarbutton-1 toolbarbutton-combined";
-
-      if (!this.currentArea)
-        cls = null;
 
       let buttons = [{
         id: "zoom-out-button",
-        closemenu: closeMenu,
         command: "cmd_fullZoomReduce",
-        class: cls,
         label: true,
         tooltiptext: "tooltiptext2",
         shortcutId: "key_fullZoomReduce",
       }, {
         id: "zoom-reset-button",
-        closemenu: closeMenu,
         command: "cmd_fullZoomReset",
-        class: cls,
         tooltiptext: "tooltiptext2",
         shortcutId: "key_fullZoomReset",
       }, {
         id: "zoom-in-button",
-        closemenu: closeMenu,
         command: "cmd_fullZoomEnlarge",
-        class: cls,
         label: true,
         tooltiptext: "tooltiptext2",
         shortcutId: "key_fullZoomEnlarge",
@@ -515,6 +520,7 @@ const CustomizableWidgets = [{
         }
         updateZoomResetButton();
       }
+      updateCombinedWidgetStyle(node, this.currentArea, true);
 
       let listener = {
         onWidgetAdded: function(aWidgetId, aArea, aPosition) {
@@ -609,30 +615,21 @@ const CustomizableWidgets = [{
     type: "custom",
     defaultArea: CustomizableUI.AREA_PANEL,
     onBuild: function(aDocument) {
-      let inPanel = (this.currentArea == CustomizableUI.AREA_PANEL);
-      let cls = inPanel ? "panel-combined-button" : "toolbarbutton-1 toolbarbutton-combined";
-
-      if (!this.currentArea)
-        cls = null;
-
       let buttons = [{
         id: "cut-button",
         command: "cmd_cut",
-        class: cls,
         label: true,
         tooltiptext: "tooltiptext2",
         shortcutId: "key_cut",
       }, {
         id: "copy-button",
         command: "cmd_copy",
-        class: cls,
         label: true,
         tooltiptext: "tooltiptext2",
         shortcutId: "key_copy",
       }, {
         id: "paste-button",
         command: "cmd_paste",
-        class: cls,
         label: true,
         tooltiptext: "tooltiptext2",
         shortcutId: "key_paste",
@@ -655,6 +652,8 @@ const CustomizableWidgets = [{
         setAttributes(btnNode, aButton);
         node.appendChild(btnNode);
       });
+
+      updateCombinedWidgetStyle(node, this.currentArea);
 
       let listener = {
         onWidgetAdded: function(aWidgetId, aArea, aPosition) {
@@ -766,6 +765,7 @@ const CustomizableWidgets = [{
         elem.section = aSection;
         elem.value = item.value;
         elem.setAttribute("class", "subviewbutton");
+        addShortcut(item, doc, elem);
         containerElem.appendChild(elem);
       }
     },

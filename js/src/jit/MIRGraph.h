@@ -85,7 +85,7 @@ class MBasicBlock : public TempObject, public InlineListNode<MBasicBlock>
     static MBasicBlock *NewAsmJS(MIRGraph &graph, CompileInfo &info,
                                  MBasicBlock *pred, Kind kind);
 
-    bool dominates(MBasicBlock *other);
+    bool dominates(const MBasicBlock *other) const;
 
     void setId(uint32_t id) {
         id_ = id;
@@ -93,7 +93,7 @@ class MBasicBlock : public TempObject, public InlineListNode<MBasicBlock>
 
     // Mark the current block and all dominated blocks as unreachable.
     void setUnreachable();
-    bool unreachable() {
+    bool unreachable() const {
         return unreachable_;
     }
     // Move the definition to the top of the stack.
@@ -110,6 +110,7 @@ class MBasicBlock : public TempObject, public InlineListNode<MBasicBlock>
 
     // Increase the number of slots available
     bool increaseSlots(size_t num);
+    bool ensureHasSlots(size_t num);
 
     // Initializes a slot value; must not be called for normal stack
     // operations, as it will not create new SSA names for copies.
@@ -450,15 +451,6 @@ class MBasicBlock : public TempObject, public InlineListNode<MBasicBlock>
     MBasicBlock *getSuccessor(size_t index) const;
     size_t getSuccessorIndex(MBasicBlock *) const;
 
-    // Specifies the closest loop header dominating this block.
-    void setLoopHeader(MBasicBlock *loop) {
-        JS_ASSERT(loop->isLoopHeader());
-        loopHeader_ = loop;
-    }
-    MBasicBlock *loopHeader() const {
-        return loopHeader_;
-    }
-
     void setLoopDepth(uint32_t loopDepth) {
         loopDepth_ = loopDepth;
     }
@@ -512,7 +504,6 @@ class MBasicBlock : public TempObject, public InlineListNode<MBasicBlock>
     Vector<MBasicBlock *, 1, IonAllocPolicy> immediatelyDominated_;
     MBasicBlock *immediateDominator_;
     size_t numDominated_;
-    MBasicBlock *loopHeader_;
 
     jsbytecode *trackedPc_;
 

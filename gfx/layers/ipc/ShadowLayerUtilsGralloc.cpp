@@ -317,31 +317,11 @@ GrallocBufferActor::Create(const gfx::IntSize& aSize,
 
 void GrallocBufferActor::ActorDestroy(ActorDestroyReason)
 {
-  // used only for hacky fix for bug 862324
-  for (size_t i = 0; i < mDeprecatedTextureHosts.Length(); i++) {
-    mDeprecatedTextureHosts[i]->ForgetBuffer();
-  }
-
   // Used only for hacky fix for bug 966446.
   if (mTextureHost) {
     mTextureHost->ForgetBufferActor();
     mTextureHost = nullptr;
   }
-}
-
-// used only for hacky fix for bug 862324
-void GrallocBufferActor::AddDeprecatedTextureHost(DeprecatedTextureHost* aDeprecatedTextureHost)
-{
-  mDeprecatedTextureHosts.AppendElement(aDeprecatedTextureHost);
-}
-
-// used only for hacky fix for bug 862324
-void GrallocBufferActor::RemoveDeprecatedTextureHost(DeprecatedTextureHost* aDeprecatedTextureHost)
-{
-  mDeprecatedTextureHosts.RemoveElement(aDeprecatedTextureHost);
-  // that should be the only occurence, otherwise we'd leak this TextureHost...
-  // assert that that's not happening.
-  MOZ_ASSERT(!mDeprecatedTextureHosts.Contains(aDeprecatedTextureHost));
 }
 
 void GrallocBufferActor::AddTextureHost(TextureHost* aTextureHost)
@@ -422,29 +402,6 @@ ISurfaceAllocator::PlatformAllocSurfaceDescriptor(const gfx::IntSize& aSize,
                                                   uint32_t aCaps,
                                                   SurfaceDescriptor* aBuffer)
 {
-
-  // Check for devices that have problems with gralloc. We only check for
-  // this on ICS or earlier, in hopes that JB will work.
-#if ANDROID_VERSION <= 15
-  static bool checkedDevice = false;
-  static bool disableGralloc = false;
-
-  if (!checkedDevice) {
-    char propValue[PROPERTY_VALUE_MAX];
-    property_get("ro.product.device", propValue, "None");
-
-    if (strcmp("crespo",propValue) == 0) {
-      NS_WARNING("Nexus S has issues with gralloc, falling back to shmem");
-      disableGralloc = true;
-    }
-
-    checkedDevice = true;
-  }
-
-  if (disableGralloc) {
-    return false;
-  }
-#endif
 
   // Some GL implementations fail to render gralloc textures with
   // width < 64.  There's not much point in gralloc'ing buffers that

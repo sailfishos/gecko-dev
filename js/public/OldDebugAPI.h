@@ -23,7 +23,7 @@ class JSAtom;
 class JSFreeOp;
 
 namespace js {
-class StackFrame;
+class InterpreterFrame;
 class ScriptFrameIter;
 }
 
@@ -94,7 +94,7 @@ FormatStackDump(JSContext *cx, char *buf, bool showArgs, bool showLocals, bool s
 # ifdef JS_DEBUG
 JS_FRIEND_API(void) js_DumpValue(const JS::Value &val);
 JS_FRIEND_API(void) js_DumpId(jsid id);
-JS_FRIEND_API(void) js_DumpStackFrame(JSContext *cx, js::StackFrame *start = nullptr);
+JS_FRIEND_API(void) js_DumpInterpreterFrame(JSContext *cx, js::InterpreterFrame *start = nullptr);
 # endif
 
 JS_FRIEND_API(void)
@@ -203,8 +203,8 @@ JS_SetSingleStepMode(JSContext *cx, JSScript *script, bool singleStep);
 
 /* The closure argument will be marked. */
 extern JS_PUBLIC_API(bool)
-JS_SetTrap(JSContext *cx, JSScript *script, jsbytecode *pc,
-           JSTrapHandler handler, JS::Value closure);
+JS_SetTrap(JSContext *cx, JS::HandleScript script, jsbytecode *pc,
+           JSTrapHandler handler, JS::HandleValue closure);
 
 extern JS_PUBLIC_API(void)
 JS_ClearTrap(JSContext *cx, JSScript *script, jsbytecode *pc,

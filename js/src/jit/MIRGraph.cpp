@@ -314,7 +314,6 @@ MBasicBlock::MBasicBlock(MIRGraph &graph, CompileInfo &info, jsbytecode *pc, Kin
     immediatelyDominated_(graph.alloc()),
     immediateDominator_(nullptr),
     numDominated_(0),
-    loopHeader_(nullptr),
     trackedPc_(pc)
 #if defined (JS_ION_PERF)
     , lineno_(0u),
@@ -333,6 +332,17 @@ bool
 MBasicBlock::increaseSlots(size_t num)
 {
     return slots_.growBy(graph_.alloc(), num);
+}
+
+bool
+MBasicBlock::ensureHasSlots(size_t num)
+{
+    size_t depth = stackDepth() + num;
+    if (depth > nslots()) {
+        if (!increaseSlots(depth - nslots()))
+            return false;
+    }
+    return true;
 }
 
 void
@@ -951,7 +961,7 @@ MBasicBlock::assertUsesAreNotWithin(MUseIterator use, MUseIterator end)
 }
 
 bool
-MBasicBlock::dominates(MBasicBlock *other)
+MBasicBlock::dominates(const MBasicBlock *other) const
 {
     uint32_t high = domIndex() + numDominated();
     uint32_t low  = domIndex();

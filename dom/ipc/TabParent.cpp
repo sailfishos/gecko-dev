@@ -788,6 +788,12 @@ bool TabParent::SendMouseWheelEvent(WidgetWheelEvent& event)
   return PBrowserParent::SendMouseWheelEvent(event);
 }
 
+static void
+DoCommandCallback(mozilla::Command aCommand, void* aData)
+{
+  static_cast<InfallibleTArray<mozilla::CommandInt>*>(aData)->AppendElement(aCommand);
+}
+
 bool TabParent::SendRealKeyEvent(WidgetKeyboardEvent& event)
 {
   if (mIsDestroyed) {
@@ -797,7 +803,30 @@ bool TabParent::SendRealKeyEvent(WidgetKeyboardEvent& event)
   if (!MapEventCoordinatesForChildProcess(&event)) {
     return false;
   }
-  return PBrowserParent::SendRealKeyEvent(event);
+
+
+  MaybeNativeKeyBinding bindings;
+  bindings = void_t();
+  if (event.message == NS_KEY_PRESS) {
+    nsCOMPtr<nsIWidget> widget = GetWidget();
+
+    AutoInfallibleTArray<mozilla::CommandInt, 4> singleLine;
+    AutoInfallibleTArray<mozilla::CommandInt, 4> multiLine;
+    AutoInfallibleTArray<mozilla::CommandInt, 4> richText;
+
+    widget->ExecuteNativeKeyBinding(nsIWidget::NativeKeyBindingsForSingleLineEditor,
+                                    event, DoCommandCallback, &singleLine);
+    widget->ExecuteNativeKeyBinding(nsIWidget::NativeKeyBindingsForMultiLineEditor,
+                                    event, DoCommandCallback, &multiLine);
+    widget->ExecuteNativeKeyBinding(nsIWidget::NativeKeyBindingsForRichTextEditor,
+                                    event, DoCommandCallback, &richText);
+
+    if (!singleLine.IsEmpty() || !multiLine.IsEmpty() || !richText.IsEmpty()) {
+      bindings = NativeKeyBinding(singleLine, multiLine, richText);
+    }
+  }
+
+  return PBrowserParent::SendRealKeyEvent(event, bindings);
 }
 
 bool TabParent::SendRealTouchEvent(WidgetTouchEvent& event)
@@ -1190,6 +1219,28 @@ TabParent::GetChildProcessOffset()
 
   return LayoutDeviceIntPoint::ToUntyped(LayoutDeviceIntPoint::FromAppUnitsToNearest(
            pt, targetFrame->PresContext()->AppUnitsPerDevPixel()));
+}
+
+bool
+TabParent::RecvReplyKeyEvent(const WidgetKeyboardEvent& event)
+{
+  NS_ENSURE_TRUE(mFrameElement, true);
+
+  WidgetKeyboardEvent localEvent(event);
+  // Set mNoCrossProcessBoundaryForwarding to avoid this event from
+  // being infinitely redispatched and forwarded to the child again.
+  localEvent.mFlags.mNoCrossProcessBoundaryForwarding = true;
+
+  // Here we convert the WidgetEvent that we received to an nsIDOMEvent
+  // to be able to dispatch it to the <browser> element as the target element.
+  nsIDocument* doc = mFrameElement->OwnerDoc();
+  nsIPresShell* presShell = doc->GetShell();
+  NS_ENSURE_TRUE(presShell, true);
+  nsPresContext* presContext = presShell->GetPresContext();
+  NS_ENSURE_TRUE(presContext, true);
+
+  EventDispatcher::Dispatch(mFrameElement, presContext, &localEvent);
+  return true;
 }
 
 /**

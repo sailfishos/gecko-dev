@@ -303,7 +303,11 @@ var shell = {
     systemAppFrame.setAttribute('src', "data:text/html;charset=utf-8,%3C!DOCTYPE html>%3Cbody style='background:black;");
     let container = document.getElementById('container');
 #ifdef MOZ_WIDGET_COCOA
-    container.removeChild(document.getElementById('placeholder'));
+    // See shell.html
+    let hotfix = document.getElementById('placeholder');
+    if (hotfix) {
+      container.removeChild(hotfix);
+    }
 #endif
     container.appendChild(systemAppFrame);
 
@@ -1134,7 +1138,7 @@ let RemoteDebugger = {
        */
       DebuggerServer.createRootActor = function createRootActor(connection)
       {
-        let promise = Cu.import("resource://gre/modules/commonjs/sdk/core/promise.js", {}).Promise;
+        let { Promise: promise } = Cu.import("resource://gre/modules/Promise.jsm", {});
         let parameters = {
           // We do not expose browser tab actors yet,
           // but we still have to define tabList.getList(),

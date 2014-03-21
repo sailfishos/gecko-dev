@@ -123,6 +123,11 @@ public:
 
   GFX2D_API static Matrix Rotation(Float aAngle);
 
+  static Matrix Scaling(Float aX, Float aY)
+  {
+    return Matrix(aX, 0.0f, 0.0f, aY, 0.0f, 0.0f);
+  }
+
   Matrix operator*(const Matrix &aMatrix) const
   {
     Matrix resultMatrix;
@@ -352,6 +357,40 @@ public:
   {
     return Is2D() && As2D().IsIntegerTranslation();
   }
+
+  Point4D operator *(const Point4D& aPoint) const
+  {
+    Point4D retPoint;
+
+    retPoint.x = aPoint.x * _11 + aPoint.y * _21 + aPoint.z * _31 + _41;
+    retPoint.y = aPoint.x * _12 + aPoint.y * _22 + aPoint.z * _32 + _42;
+    retPoint.z = aPoint.x * _13 + aPoint.y * _23 + aPoint.z * _33 + _43;
+    retPoint.w = aPoint.x * _14 + aPoint.y * _24 + aPoint.z * _34 + _44;
+
+    return retPoint;
+  }
+
+  Point3D operator *(const Point3D& aPoint) const
+  {
+    Point4D temp(aPoint.x, aPoint.y, aPoint.z, 1);
+
+    temp = *this * temp;
+    temp /= temp.w;
+
+    return Point3D(temp.x, temp.y, temp.z);
+  }
+
+  Point operator *(const Point &aPoint) const
+  {
+    Point4D temp(aPoint.x, aPoint.y, 0, 1);
+
+    temp = *this * temp;
+    temp /= temp.w;
+
+    return Point(temp.x, temp.y);
+  }
+
+  GFX2D_API Rect TransformBounds(const Rect& rect) const;
 
   // Apply a scale to this matrix. This scale will be applied -before- the
   // existing transformation of the matrix.

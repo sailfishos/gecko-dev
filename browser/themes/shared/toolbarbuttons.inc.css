@@ -3,8 +3,8 @@
   list-style-image: url("chrome://browser/skin/Toolbar.png");
 }
 
-:-moz-any(@primaryToolbarButtons@):-moz-lwtheme-brighttext,
-#bookmarks-menu-button:-moz-lwtheme-brighttext > .toolbarbutton-menubutton-dropmarker > .dropmarker-icon {
+:-moz-any(@primaryToolbarButtons@):not(@inAnyPanel@):-moz-lwtheme-brighttext,
+#bookmarks-menu-button:not(@inAnyPanel@):-moz-lwtheme-brighttext > .toolbarbutton-menubutton-dropmarker > .dropmarker-icon {
   list-style-image: url(chrome://browser/skin/Toolbar-inverted.png);
 }
 
@@ -88,6 +88,9 @@
   -moz-image-region: rect(0, 414px, 18px, 396px);
 }
 
+%ifdef XP_MACOSX
+#restore-button,
+%endif
 #fullscreen-button[cui-areatype="toolbar"] {
   -moz-image-region: rect(0, 432px, 18px, 414px);
 }
