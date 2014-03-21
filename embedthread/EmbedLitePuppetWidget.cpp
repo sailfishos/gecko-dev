@@ -28,6 +28,8 @@
 #include "EmbedLiteCompositorParent.h"
 #include "mozilla/Preferences.h"
 #include "EmbedLiteApp.h"
+#include "LayerScope.h"
+#include "mozilla/unused.h"
 
 using namespace mozilla::dom;
 using namespace mozilla::hal;
@@ -81,6 +83,8 @@ EmbedLitePuppetWidget::IsTopLevel()
 
 void EmbedLitePuppetWidget::DestroyCompositor()
 {
+  LayerScope::DestroyServerSocket();
+
   if (mCompositorChild) {
     mCompositorChild->SendWillStop();
 
@@ -91,12 +95,16 @@ void EmbedLitePuppetWidget::DestroyCompositor()
     // events already in the MessageLoop get processed before the
     // CompositorChild is destroyed, so we add a task to the MessageLoop to
     // handle compositor desctruction.
-    MessageLoop::current()->PostTask(FROM_HERE,
-                                     NewRunnableMethod(mCompositorChild.get(), &CompositorChild::Destroy));
+    if (mCompositorChild) {
+      MessageLoop::current()->PostTask(FROM_HERE,
+                                       NewRunnableMethod(mCompositorChild.get(), &CompositorChild::Destroy));
+    }
     // The DestroyCompositor task we just added to the MessageLoop will handle
     // releasing mCompositorParent and mCompositorChild.
-    mCompositorParent.forget();
-    mCompositorChild.forget();
+    if (mCompositorParent)
+      unused << mCompositorParent.forget();
+    if (mCompositorChild)
+      unused << mCompositorChild.forget();
   }
 }
 
