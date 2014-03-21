@@ -57,6 +57,10 @@
 #include "SurfaceStream.h"              // for SurfaceStream, etc
 #include "SurfaceTypes.h"               // for SurfaceStreamType
 #include "ClientLayerManager.h"         // for ClientLayerManager, etc
+#if defined(MOZ_WIDGET_GONK) && ANDROID_VERSION >= 17
+#include "libdisplay/GonkDisplay.h"     // for GonkDisplay
+#include <ui/Fence.h>
+#endif
 
 #define BUFFER_OFFSET(i) ((char *)nullptr + (i))
 
@@ -1402,6 +1406,46 @@ CompositorOGL::EndFrame()
   mGLContext->SwapBuffers();
   mGLContext->fBindBuffer(LOCAL_GL_ARRAY_BUFFER, 0);
 }
+
+#if defined(MOZ_WIDGET_GONK) && ANDROID_VERSION >= 17
+void
+CompositorOGL::SetFBAcquireFence(Layer* aLayer)
+{
+  if (!aLayer) {
+    return;
+  }
+
+  const nsIntRegion& visibleRegion = aLayer->GetEffectiveVisibleRegion();
+  if (visibleRegion.IsEmpty()) {
+      return;
+  }
+
+  // Set FBAcquireFence to child
+  ContainerLayer* container = aLayer->AsContainerLayer();
+  if (container) {
+    for (Layer* child = container->GetFirstChild(); child; child = child->GetNextSibling()) {
+      SetFBAcquireFence(child);
+    }
+    return;
+  }
+
+  // Set FBAcquireFence to TexutreHost
+  LayerRenderState state = aLayer->GetRenderState();
+  if (!state.mTexture) {
+    return;
+  }
+  TextureHostOGL* texture = state.mTexture->AsHostOGL();
+  if (!texture) {
+    return;
+  }
+  texture->SetReleaseFence(new android::Fence(GetGonkDisplay()->GetPrevFBAcquireFd()));
+}
+#else
+void
+CompositorOGL::SetFBAcquireFence(Layer* aLayer)
+{
+}
+#endif
 
 void
 CompositorOGL::EndFrameForExternalComposition(const gfx::Matrix& aTransform)
