@@ -507,7 +507,7 @@ toolbar .toolbarbutton-1[checked]:not(:active):hover {
   transition: background-color 250ms;
 }
 
-.toolbarbutton-1[type="menu-button"] {
+.toolbarbutton-1[type="menu-button"]:not([overflowedItem=true]) {
   padding: 0;
 }
 
@@ -743,8 +743,8 @@ toolbar .toolbarbutton-1 > .toolbarbutton-menubutton-dropmarker > .dropmarker-ic
     list-style-image: url("chrome://browser/skin/Toolbar@2x.png");
   }
 
-  :-moz-any(@primaryToolbarButtons@):-moz-lwtheme-brighttext,
-  #bookmarks-menu-button[cui-areatype="toolbar"]:-moz-lwtheme-brighttext > .toolbarbutton-menubutton-dropmarker > .dropmarker-icon {
+  :-moz-any(@primaryToolbarButtons@):not(@inAnyPanel@):-moz-lwtheme-brighttext,
+  #bookmarks-menu-button:not(@inAnyPanel@):-moz-lwtheme-brighttext > .toolbarbutton-menubutton-dropmarker > .dropmarker-icon {
     list-style-image: url("chrome://browser/skin/Toolbar-inverted@2x.png");
   }
 
@@ -2807,9 +2807,17 @@ toolbarbutton.chevron > .toolbarbutton-menu-dropmarker {
   cursor: default;
 }
 
+.tab-close-button.close-icon:not([selected=true]):not(:hover):-moz-lwtheme-brighttext {
+  -moz-image-region: rect(0, 64px, 16px, 48px);
+}
+
 @media (min-resolution: 2dppx) {
   .tab-close-button > .toolbarbutton-icon {
     width: 16px;
+  }
+
+  .tab-close-button.close-icon:not([selected=true]):not(:hover):-moz-lwtheme-brighttext {
+    -moz-image-region: rect(0, 128px, 32px, 96px);
   }
 }
 

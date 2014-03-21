@@ -780,20 +780,20 @@ Sync11Service.prototype = {
 
     info = info.obj;
     if (!(CRYPTO_COLLECTION in info)) {
-      this._log.error("Consistency failure: info/collections excludes " + 
+      this._log.error("Consistency failure: info/collections excludes " +
                       "crypto after successful upload.");
       throw new Error("Symmetric key upload failed.");
     }
 
     // Can't check against local modified: clock drift.
     if (info[CRYPTO_COLLECTION] < serverModified) {
-      this._log.error("Consistency failure: info/collections crypto entry " + 
+      this._log.error("Consistency failure: info/collections crypto entry " +
                       "is stale after successful upload.");
       throw new Error("Symmetric key upload failed.");
     }
-    
+
     // Doesn't matter if the timestamp is ahead.
-    
+
     // Download and install them.
     let cryptoKeys = new CryptoWrapper(CRYPTO_COLLECTION, KEYS_WBO);
     let cryptoResp = cryptoKeys.fetch(this.resource(this.cryptoKeysURL)).response;
@@ -970,7 +970,6 @@ Sync11Service.prototype = {
           && (username || password || passphrase)) {
         Svc.Obs.notify("weave:service:setup-complete");
       }
-
       this._log.info("Logging in user " + this.identity.username);
       this._updateCachedURLs();
 
