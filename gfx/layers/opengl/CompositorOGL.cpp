@@ -430,7 +430,7 @@ CompositorOGL::Initialize()
         SurfaceStream::ChooseGLStreamType(SurfaceStream::OffMainThread,
                                           screen->PreserveBuffer());
       SurfaceFactory_GL* factory = nullptr;
-      if (mGLContext->GetContextType() == GLContextType::EGL && sEGLLibrary.HasKHRImageTexture2D()) {
+      if (mGLContext->GetContextType() == GLContextType::EGL) {
         // [Basic/OGL Layers, OMTC] WebGL layer init.
         factory = SurfaceFactory_EGLImage::Create(mGLContext, screen->Caps());
       } else {
