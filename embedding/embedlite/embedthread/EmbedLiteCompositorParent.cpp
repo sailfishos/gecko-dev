@@ -113,7 +113,11 @@ bool EmbedLiteCompositorParent::RenderGL()
   if (!mActiveClipping.IsEmpty() && state->mLayerManager->GetRoot()) {
     state->mLayerManager->GetRoot()->SetClipRect(&mActiveClipping);
   }
-  CompositorParent::Composite();
+
+  {
+    ScopedScissorRect autoScissor(context);
+    CompositorParent::Composite();
+  }
 
   if (context->IsOffscreen()) {
     if (!context->PublishFrame()) {
