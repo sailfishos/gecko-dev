@@ -56,7 +56,7 @@ class EmbedLiteViewImplIface
     virtual void UpdateScrollController() {}
     virtual void ViewAPIDestroyed() {}
     virtual uint32_t GetUniqueID() { return 0; }
-    virtual bool GetPendingTexture(mozilla::embedlite::EmbedLiteRenderTarget* aContextWrapper, int* textureID, int* width, int* height) { return false; }
+    virtual bool GetPendingTexture(mozilla::embedlite::EmbedLiteRenderTarget* aContextWrapper, int* textureID, int* width, int* height, int* textureTarget) { return false; }
 };
 
 } // namespace embedlite
