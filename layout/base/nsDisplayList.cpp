@@ -531,6 +531,7 @@ nsDisplayListBuilder::nsDisplayListBuilder(nsIFrame* aReferenceFrame,
       mAllowMergingAndFlattening(true),
       mWillComputePluginGeometry(false),
       mInTransform(false),
+      mInFixedPos(false),
       mSyncDecodeImages(false),
       mIsPaintingToWindow(false),
       mIsCompositingCheap(false),
@@ -766,13 +767,21 @@ static void RecordFrameMetrics(nsIFrame* aForFrame,
     if (nsIFrame* rootFrame = presShell->GetRootFrame()) {
       if (nsView* view = rootFrame->GetView()) {
         nsIWidget* widget = view->GetWidget();
+#ifdef MOZ_WIDGET_ANDROID
+        // Android hack - temporary workaround for bug 983208 until we figure
+        // out what a proper fix is.
+        if (!widget) {
+          widget = rootFrame->GetNearestWidget();
+        }
+#endif
         if (widget) {
           nsIntRect bounds;
           widget->GetBounds(bounds);
           metrics.mCompositionBounds = ParentLayerIntRect::FromUnknownRect(mozilla::gfx::IntRect(
               bounds.x, bounds.y, bounds.width, bounds.height));
         } else {
-          metrics.mCompositionBounds = RoundedToInt(LayoutDeviceRect::FromAppUnits(view->GetBounds(), auPerDevPixel)
+          nsRect viewBounds = view->GetBounds() + rootFrame->GetOffsetToCrossDoc(aReferenceFrame);
+          metrics.mCompositionBounds = RoundedToInt(LayoutDeviceRect::FromAppUnits(viewBounds, auPerDevPixel)
                                      * metrics.GetParentResolution());
         }
       }
@@ -1026,12 +1035,14 @@ nsDisplayList::GetBounds(nsDisplayListBuilder* aBuilder) const {
 
 bool
 nsDisplayList::ComputeVisibilityForRoot(nsDisplayListBuilder* aBuilder,
-                                        nsRegion* aVisibleRegion) {
+                                        nsRegion* aVisibleRegion,
+                                        nsIFrame* aDisplayPortFrame) {
   PROFILER_LABEL("nsDisplayList", "ComputeVisibilityForRoot");
   nsRegion r;
   r.And(*aVisibleRegion, GetBounds(aBuilder));
   return ComputeVisibilityForSublist(aBuilder, aVisibleRegion,
-                                     r.GetBounds(), r.GetBounds());
+                                     r.GetBounds(), r.GetBounds(),
+                                     aDisplayPortFrame);
 }
 
 static nsRegion
@@ -1095,7 +1106,8 @@ bool
 nsDisplayList::ComputeVisibilityForSublist(nsDisplayListBuilder* aBuilder,
                                            nsRegion* aVisibleRegion,
                                            const nsRect& aListVisibleBounds,
-                                           const nsRect& aAllowVisibleRegionExpansion) {
+                                           const nsRect& aAllowVisibleRegionExpansion,
+                                           nsIFrame* aDisplayPortFrame) {
 #ifdef DEBUG
   nsRegion r;
   r.And(*aVisibleRegion, GetBounds(aBuilder));
@@ -1153,9 +1165,27 @@ nsDisplayList::ComputeVisibilityForSublist(nsDisplayListBuilder* aBuilder,
     if (item->ComputeVisibility(aBuilder, aVisibleRegion,
                                 aAllowVisibleRegionExpansion.Intersect(bounds))) {
       anyVisible = true;
-      nsRegion opaque = TreatAsOpaque(item, aBuilder);
-      // Subtract opaque item from the visible region
-      aBuilder->SubtractFromVisibleRegion(aVisibleRegion, opaque);
+
+      // If we're in a displayport, we need to make sure that fixed position
+      // items do not subtract from the visible region, as async scrolling
+      // may expose these occluded areas.
+      // If the item is fixed pos in the same document as the displayport
+      // then don't let it occlude this list. The only other case possible
+      // is that the fixed pos content is in a child document, in which it
+      // would scroll with the rest of the content.
+      bool occlude = true;
+      if (aDisplayPortFrame && item->IsInFixedPos()) {
+        if (item->Frame()->PresContext() == aDisplayPortFrame->PresContext()) {
+          occlude = false;
+        }
+      }
+
+      if (occlude) {
+        nsRegion opaque = TreatAsOpaque(item, aBuilder);
+        // Subtract opaque item from the visible region
+        aBuilder->SubtractFromVisibleRegion(aVisibleRegion, opaque);
+      }
+
       if (aBuilder->NeedToForceTransparentSurfaceForItem(item) ||
           (list && list->NeedsTransparentSurface())) {
         forceTransparentSurface = true;
@@ -3585,7 +3615,8 @@ nsDisplaySubDocument::ComputeVisibility(nsDisplayListBuilder* aBuilder,
     childVisibleRegion.GetBounds().Intersect(mList.GetBounds(aBuilder));
   nsRect allowExpansion = boundedRect.Intersect(aAllowVisibleRegionExpansion);
   bool visible = mList.ComputeVisibilityForSublist(
-    aBuilder, &childVisibleRegion, boundedRect, allowExpansion);
+    aBuilder, &childVisibleRegion, boundedRect, allowExpansion,
+    usingDisplayPort ? mFrame : nullptr);
   // We don't allow this computation to influence aVisibleRegion, on the
   // assumption that the layer can be asynchronously scrolled so we'll
   // definitely need all the content under it.
@@ -3868,7 +3899,8 @@ nsDisplayScrollLayer::ComputeVisibility(nsDisplayListBuilder* aBuilder,
     childVisibleRegion.GetBounds().Intersect(mList.GetBounds(aBuilder));
   nsRect allowExpansion = boundedRect.Intersect(aAllowVisibleRegionExpansion);
   bool visible = mList.ComputeVisibilityForSublist(
-    aBuilder, &childVisibleRegion, boundedRect, allowExpansion);
+    aBuilder, &childVisibleRegion, boundedRect, allowExpansion,
+    usingDisplayPort ? mScrollFrame : nullptr);
   // We don't allow this computation to influence aVisibleRegion, on the
   // assumption that the layer can be asynchronously scrolled so we'll
   // definitely need all the content under it.

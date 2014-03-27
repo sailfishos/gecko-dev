@@ -65,7 +65,9 @@ browser.jar:
         skin/classic/browser/Privacy-16.png
         skin/classic/browser/Privacy-32.png
         skin/classic/browser/Privacy-48.png
-        skin/classic/browser/privatebrowsing-indicator.png
+        skin/classic/browser/privatebrowsing-mask-tabstrip-XPVista7.png
+        skin/classic/browser/privatebrowsing-mask-titlebar-XPVista7.png
+        skin/classic/browser/privatebrowsing-mask-titlebar-XPVista7-tall.png
         skin/classic/browser/reload-stop-go.png
         skin/classic/browser/searchbar.css
         skin/classic/browser/searchbar-dropdown-arrow.png
@@ -311,7 +313,6 @@ browser.jar:
         skin/classic/browser/devtools/app-manager/noise.png                 (../shared/devtools/app-manager/images/noise.png)
         skin/classic/browser/devtools/app-manager/default-app-icon.png      (../shared/devtools/app-manager/images/default-app-icon.png)
 #ifdef MOZ_SERVICES_SYNC
-        skin/classic/browser/sync-throbber.png
         skin/classic/browser/sync-16.png
         skin/classic/browser/sync-32.png
         skin/classic/browser/sync-128.png
@@ -327,6 +328,10 @@ browser.jar:
         skin/classic/browser/syncProgress.css
         skin/classic/browser/syncProgress-horizontalbar.png
         skin/classic/browser/syncProgress-horizontalbar-XPVista7.png
+        skin/classic/browser/syncProgress-menuPanel.png
+        skin/classic/browser/syncProgress-toolbar.png
+        skin/classic/browser/syncProgress-toolbar-inverted.png
+        skin/classic/browser/syncProgress-toolbar-XPVista7.png
 #endif
         skin/classic/browser/devtools/tooltip/arrow-horizontal-dark.png   (../shared/devtools/tooltip/arrow-horizontal-dark.png)
         skin/classic/browser/devtools/tooltip/arrow-horizontal-dark@2x.png   (../shared/devtools/tooltip/arrow-horizontal-dark@2x.png)
@@ -397,7 +402,11 @@ browser.jar:
         skin/classic/aero/browser/Privacy-16.png                     (Privacy-16-aero.png)
         skin/classic/aero/browser/Privacy-32.png                     (Privacy-32-aero.png)
         skin/classic/aero/browser/Privacy-48.png                     (Privacy-48-aero.png)
-        skin/classic/aero/browser/privatebrowsing-indicator.png
+        skin/classic/aero/browser/privatebrowsing-mask-tabstrip.png
+        skin/classic/aero/browser/privatebrowsing-mask-tabstrip-XPVista7.png
+        skin/classic/aero/browser/privatebrowsing-mask-titlebar.png
+        skin/classic/aero/browser/privatebrowsing-mask-titlebar-XPVista7.png
+        skin/classic/aero/browser/privatebrowsing-mask-titlebar-XPVista7-tall.png
         skin/classic/aero/browser/reload-stop-go.png
         skin/classic/aero/browser/searchbar.css
         skin/classic/aero/browser/searchbar-dropdown-arrow.png       (searchbar-dropdown-arrow-aero.png)
@@ -644,7 +653,6 @@ browser.jar:
         skin/classic/aero/browser/devtools/app-manager/default-app-icon.png      (../shared/devtools/app-manager/images/default-app-icon.png)
 
 #ifdef MOZ_SERVICES_SYNC
-        skin/classic/aero/browser/sync-throbber.png
         skin/classic/aero/browser/sync-16.png
         skin/classic/aero/browser/sync-32.png
         skin/classic/aero/browser/sync-128.png
@@ -660,6 +668,10 @@ browser.jar:
         skin/classic/aero/browser/syncProgress.css
         skin/classic/aero/browser/syncProgress-horizontalbar.png
         skin/classic/aero/browser/syncProgress-horizontalbar-XPVista7.png
+        skin/classic/aero/browser/syncProgress-menuPanel.png
+        skin/classic/aero/browser/syncProgress-toolbar.png
+        skin/classic/aero/browser/syncProgress-toolbar-inverted.png
+        skin/classic/aero/browser/syncProgress-toolbar-XPVista7.png
 #endif
 #endif
         skin/classic/aero/browser/devtools/tooltip/arrow-horizontal-dark.png   (../shared/devtools/tooltip/arrow-horizontal-dark.png)
