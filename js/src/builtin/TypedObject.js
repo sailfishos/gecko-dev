@@ -453,9 +453,9 @@ function SetTypedObjectValue(descr, typedObj, offset, fromValue) {
   new TypedObjectPointer(descr, typedObj, offset).set(fromValue);
 }
 
-// Assigns `fromValue` to the memory pointed at by `this`, adapting it
-// to `typeRepr` as needed. This is the most general entry point and
-// works for any type.
+// Writes `fromValue` into the memory pointed at by `this`, adapting
+// it to `typeRepr` as needed. This is the most general entry point
+// and works for any type.
 TypedObjectPointer.prototype.set = function(fromValue) {
   assert(TypedObjectIsAttached(this.typedObj), "set() called with unattached typedObj");
 
@@ -464,7 +464,7 @@ TypedObjectPointer.prototype.set = function(fromValue) {
   // memcpy.
   if (IsObject(fromValue) && ObjectIsTypedObject(fromValue)) {
     var typeRepr = DESCR_TYPE_REPR(this.descr);
-    if (!typeRepr.variable && TYPEDOBJ_TYPE_REPR(fromValue) === typeRepr) {
+    if (!this.descr.variable && TYPEDOBJ_TYPE_REPR(fromValue) === typeRepr) {
       if (!TypedObjectIsAttached(fromValue))
         ThrowError(JSMSG_TYPEDOBJECT_HANDLE_UNATTACHED);
 
@@ -778,10 +778,11 @@ function X4ToSource() {
   if (!IsObject(this) || !ObjectIsTypedObject(this))
     ThrowError(JSMSG_INCOMPATIBLE_PROTO, "X4", "toSource", typeof this);
 
-  if (DESCR_KIND(this) != JS_TYPEREPR_X4_KIND)
+  var descr = TYPEDOBJ_TYPE_DESCR(this);
+
+  if (DESCR_KIND(descr) != JS_TYPEREPR_X4_KIND)
     ThrowError(JSMSG_INCOMPATIBLE_PROTO, "X4", "toSource", typeof this);
 
-  var descr = TYPEDOBJ_TYPE_DESCR(this);
   var type = DESCR_TYPE(descr);
   return X4ProtoString(type)+"("+this.x+", "+this.y+", "+this.z+", "+this.w+")";
 }
@@ -1433,23 +1434,26 @@ function MapTypedParImplDepth1(inArray, inArrayType, outArrayType, func) {
   // relative to its owner (which is often but not always 0).
   const inBaseOffset = TYPEDOBJ_BYTEOFFSET(inArray);
 
-  ForkJoin(mapThread, ShrinkLeftmost(slicesInfo), ForkJoinMode(mode));
+  ForkJoin(mapThread, 0, slicesInfo.count, ForkJoinMode(mode));
   return outArray;
 
-  function mapThread(workerId, warmup) {
+  function mapThread(workerId, sliceStart, sliceEnd) {
     assert(TO_INT32(workerId) === workerId,
            "workerId not int: " + workerId);
-    assert(workerId >= 0 && workerId < pointers.length,
-          "workerId too large: " + workerId + " >= " + pointers.length);
-    assert(!!pointers[workerId],
+    assert(workerId < pointers.length,
+           "workerId too large: " + workerId + " >= " + pointers.length);
+
+    var pointerIndex = InParallelSection() ? workerId : 0;
+    assert(!!pointers[pointerIndex],
           "no pointer data for workerId: " + workerId);
 
+    const { inTypedObject, outTypedObject } = pointers[pointerIndex];
+    const sliceShift = slicesInfo.shift;
     var sliceId;
-    const { inTypedObject, outTypedObject } = pointers[workerId];
 
-    while (GET_SLICE(slicesInfo, sliceId)) {
-      const indexStart = SLICE_START(slicesInfo, sliceId);
-      const indexEnd = SLICE_END(slicesInfo, indexStart, length);
+    while (GET_SLICE(sliceStart, sliceEnd, sliceId)) {
+      const indexStart = SLICE_START_INDEX(sliceShift, sliceId);
+      const indexEnd = SLICE_END_INDEX(sliceShift, indexStart, length);
 
       var inOffset = inBaseOffset + std_Math_imul(inGrainTypeSize, indexStart);
       var outOffset = std_Math_imul(outGrainTypeSize, indexStart);
@@ -1481,7 +1485,7 @@ function MapTypedParImplDepth1(inArray, inArrayType, outArrayType, func) {
           if (outGrainTypeIsComplex)
             SetTypedObjectValue(outGrainType, outArray, outOffset, r);
           else
-          UnsafePutElements(outArray, i, r);
+            UnsafePutElements(outArray, i, r);
         }
         inOffset += inGrainTypeSize;
         outOffset += outGrainTypeSize;
@@ -1492,11 +1496,9 @@ function MapTypedParImplDepth1(inArray, inArrayType, outArrayType, func) {
       // to escape.
       if (outGrainTypeIsTransparent)
         ClearThreadLocalArenas();
-
-      MARK_SLICE_DONE(slicesInfo, sliceId);
-      if (warmup)
-        return;
     }
+
+    return sliceId;
   }
 
   return undefined;

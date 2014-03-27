@@ -143,6 +143,10 @@ protected:
   TabChild* mTabChild;
 };
 
+// This is base clase which helps to share Viewport and touch related functionality
+// between b2g/android FF/embedlite clients implementation.
+// It make sense to place in this class all helper functions, and functionality which could be shared between
+// Cross-process/Cross-thread implmentations.
 class TabChildBase : public nsFrameScriptExecutor,
                      public ipc::MessageManagerCallback
 {

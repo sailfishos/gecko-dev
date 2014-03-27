@@ -193,6 +193,9 @@
 
   <string name="pref_panels_show">&pref_panels_show;</string>
   <string name="pref_panels_hide">&pref_panels_hide;</string>
+  <string name="pref_panels_reorder">&pref_panels_reorder;</string>
+  <string name="pref_panels_move_up">&pref_panels_move_up;</string>
+  <string name="pref_panels_move_down">&pref_panels_move_down;</string>
 
   <string name="datareporting_notification_title">&datareporting_notification_title;</string>
   <string name="datareporting_notification_action_long">&datareporting_notification_action_long;</string>
@@ -233,14 +236,12 @@
   <string name="tabs_normal">&tabs_normal;</string>
   <string name="tabs_private">&tabs_private;</string>
   <string name="tabs_synced">&tabs_synced;</string>
-  <string name="save">&save;</string>
 
   <string name="site_settings_title">&site_settings_title3;</string>
   <string name="site_settings_cancel">&site_settings_cancel;</string>
   <string name="site_settings_clear">&site_settings_clear;</string>
   <string name="site_settings_no_settings">&site_settings_no_settings;</string>
 
-  <string name="reading_list_add">&reading_list_add;</string>
   <string name="reading_list_added">&reading_list_added;</string>
   <string name="reading_list_removed">&reading_list_removed;</string>
   <string name="reading_list_failed">&reading_list_failed;</string>

@@ -43,10 +43,16 @@ using namespace xpc;
 using mozilla::dom::DestroyProtoAndIfaceCache;
 using mozilla::dom::indexedDB::IndexedDatabaseManager;
 
-NS_IMPL_ISUPPORTS3(SandboxPrivate,
-                   nsIScriptObjectPrincipal,
-                   nsIGlobalObject,
-                   nsISupportsWeakReference)
+NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE_0(SandboxPrivate)
+NS_IMPL_CYCLE_COLLECTING_ADDREF(SandboxPrivate)
+NS_IMPL_CYCLE_COLLECTING_RELEASE(SandboxPrivate)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(SandboxPrivate)
+  NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
+  NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIScriptObjectPrincipal)
+  NS_INTERFACE_MAP_ENTRY(nsIScriptObjectPrincipal)
+  NS_INTERFACE_MAP_ENTRY(nsIGlobalObject)
+  NS_INTERFACE_MAP_ENTRY(nsISupportsWeakReference)
+NS_INTERFACE_MAP_END
 
 const char kScriptSecurityManagerContractID[] = NS_SCRIPTSECURITYMANAGER_CONTRACTID;
 
@@ -622,6 +628,20 @@ CreateObjectIn(JSContext *cx, unsigned argc, jsval *vp)
 
     return xpc::CreateObjectIn(cx, args[0], options, args.rval());
 }
+
+static bool
+CloneInto(JSContext *cx, unsigned argc, jsval *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    if (args.length() < 2) {
+        JS_ReportError(cx, "Function requires at least 2 arguments");
+        return false;
+    }
+
+    RootedValue options(cx, args.length() > 2 ? args[2] : UndefinedValue());
+    return xpc::CloneInto(cx, args[0], args[1], options, args.rval());
+}
+
 } /* namespace xpc */
 
 static bool
@@ -1131,6 +1151,7 @@ xpc::CreateSandboxObject(JSContext *cx, MutableHandleValue vp, nsISupports *prin
             (!JS_DefineFunction(cx, sandbox, "exportFunction", ExportFunction, 3, 0) ||
              !JS_DefineFunction(cx, sandbox, "evalInWindow", EvalInWindow, 2, 0) ||
              !JS_DefineFunction(cx, sandbox, "createObjectIn", CreateObjectIn, 2, 0) ||
+             !JS_DefineFunction(cx, sandbox, "cloneInto", CloneInto, 3, 0) ||
              !JS_DefineFunction(cx, sandbox, "isProxy", IsProxy, 1, 0)))
             return NS_ERROR_XPC_UNEXPECTED;
 
@@ -1573,6 +1594,16 @@ nsXPCComponents_utils_Sandbox::CallOrConstruct(nsIXPConnectWrappedNative *wrappe
 
     if (NS_FAILED(AssembleSandboxMemoryReporterName(cx, options.sandboxName)))
         return ThrowAndFail(NS_ERROR_INVALID_ARG, cx, _retval);
+
+    if (options.metadata.isNullOrUndefined()) {
+        // If the caller is running in a sandbox, inherit.
+        RootedObject callerGlobal(cx, CurrentGlobalOrNull(cx));
+        if (IsSandbox(callerGlobal)) {
+            rv = GetSandboxMetadata(cx, callerGlobal, &options.metadata);
+            if (NS_WARN_IF(NS_FAILED(rv)))
+                return rv;
+        }
+    }
 
     rv = CreateSandboxObject(cx, args.rval(), prinOrSop, options);
 

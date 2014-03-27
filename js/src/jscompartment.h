@@ -332,7 +332,7 @@ struct JSCompartment
         WrapperEnum(JSCompartment *c) : js::WrapperMap::Enum(c->crossCompartmentWrappers) {}
     };
 
-    void mark(JSTracer *trc);
+    void markRoots(JSTracer *trc);
     bool isDiscardingJitCode(JSTracer *trc);
     void sweep(js::FreeOp *fop, bool releaseTypes);
     void sweepCrossCompartmentWrappers();
@@ -525,6 +525,7 @@ ExclusiveContext::global() const
      * barrier on it. Once the compartment is popped, the handle is no longer
      * safe to use.
      */
+    MOZ_ASSERT(compartment_, "Caller needs to enter a compartment first");
     return Handle<GlobalObject*>::fromMarkedLocation(compartment_->global_.unsafeGet());
 }
 

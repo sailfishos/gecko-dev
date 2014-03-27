@@ -503,6 +503,7 @@ nsDisplayListBuilder::AddAnimationsAndTransitionsToLayer(Layer* aLayer,
       }
       AddAnimationsForProperty(aFrame, aProperty, anim,
                                aLayer, data, pending);
+      anim->mIsRunningOnCompositor = true;
     }
     aLayer->SetAnimationGeneration(ea->mAnimationGeneration);
   }
@@ -672,6 +673,13 @@ static void RecordFrameMetrics(nsIFrame* aForFrame,
   if (scrollableFrame) {
     nsRect contentBounds = scrollableFrame->GetScrollRange();
     nsPoint scrollPosition = scrollableFrame->GetScrollPosition();
+
+    // We ifndef the below code for Fennec because it requires special behaviour
+    // on the APZC side. Because Fennec has it's own PZC implementation which doesn't
+    // provide the special behaviour, this code will cause it to break. We can remove
+    // the ifndef once Fennec switches over to APZ or if we add the special handling
+    // to Fennec
+#ifndef MOZ_WIDGET_ANDROID
     if (scrollableFrame->GetScrollbarStyles().mVertical == NS_STYLE_OVERFLOW_HIDDEN) {
       contentBounds.y = scrollPosition.y;
       contentBounds.height = 0;
@@ -680,6 +688,8 @@ static void RecordFrameMetrics(nsIFrame* aForFrame,
       contentBounds.x = scrollPosition.x;
       contentBounds.width = 0;
     }
+#endif
+
     contentBounds.width += scrollableFrame->GetScrollPortRect().width;
     contentBounds.height += scrollableFrame->GetScrollPortRect().height;
     metrics.mScrollableRect = CSSRect::FromAppUnits(contentBounds);
@@ -698,7 +708,7 @@ static void RecordFrameMetrics(nsIFrame* aForFrame,
     metrics.mScrollableRect = CSSRect::FromAppUnits(contentBounds);
   }
 
-  metrics.mScrollId = aScrollId;
+  metrics.SetScrollId(aScrollId);
   metrics.mIsRoot = aIsRoot;
 
   // Only the root scrollable frame for a given presShell should pick up
@@ -4631,7 +4641,7 @@ nsDisplayTransform::ShouldPrerenderTransformedContent(nsDisplayListBuilder* aBui
   // Elements whose transform has been modified recently, or which
   // have a compositor-animated transform, can be prerendered. An element
   // might have only just had its transform animated in which case
-  // nsChangeHint_UpdateTransformLayer will not be present yet.
+  // the ActiveLayerManager may not have been notified yet.
   if (!ActiveLayerTracker::IsStyleAnimated(aFrame, eCSSProperty_transform) &&
       (!aFrame->GetContent() ||
        !nsLayoutUtils::HasAnimationsForCompositor(aFrame->GetContent(),

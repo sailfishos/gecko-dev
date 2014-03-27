@@ -2406,23 +2406,32 @@ JS_GetObjectId(JSContext *cx, HandleObject obj, MutableHandleId idp)
 
 namespace {
 
-class AutoHoldZone
+class AutoCompartmentRooter : private JS::CustomAutoRooter
 {
   public:
-    explicit AutoHoldZone(Zone *zone
-                          MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
-      : holdp(&zone->hold)
+    explicit AutoCompartmentRooter(JSContext *cx, JSCompartment *comp
+                                   MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
+      : CustomAutoRooter(cx), compartment(comp)
     {
         MOZ_GUARD_OBJECT_NOTIFIER_INIT;
-        *holdp = true;
     }
 
-    ~AutoHoldZone() {
-        *holdp = false;
+    operator JSCompartment *() {
+        return compartment;
+    }
+
+    JSCompartment *operator->() {
+        return compartment;
+    }
+
+  protected:
+    virtual void trace(JSTracer *trc)
+    {
+        compartment->mark();
     }
 
   private:
-    bool *holdp;
+    JSCompartment *compartment;
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 };
 
@@ -2480,7 +2489,7 @@ JS_NewGlobalObject(JSContext *cx, const JSClass *clasp, JSPrincipals *principals
     else
         zone = static_cast<Zone *>(options.zonePointer());
 
-    JSCompartment *compartment = NewCompartment(cx, zone, principals, options);
+    AutoCompartmentRooter compartment(cx, NewCompartment(cx, zone, principals, options));
     if (!compartment)
         return nullptr;
 
@@ -2489,8 +2498,6 @@ JS_NewGlobalObject(JSContext *cx, const JSClass *clasp, JSPrincipals *principals
         rt->systemZone = compartment->zone();
         rt->systemZone->isSystem = true;
     }
-
-    AutoHoldZone hold(compartment->zone());
 
     Rooted<GlobalObject *> global(cx);
     {
@@ -3977,7 +3984,7 @@ js_generic_native_method_dispatcher(JSContext *cx, unsigned argc, Value *vp)
     CallArgs args = CallArgsFromVp(argc, vp);
 
     const JSFunctionSpec *fs = (JSFunctionSpec *)
-        vp->toObject().as<JSFunction>().getExtendedSlot(0).toPrivate();
+        args.callee().as<JSFunction>().getExtendedSlot(0).toPrivate();
     JS_ASSERT((fs->flags & JSFUN_GENERIC_NATIVE) != 0);
 
     if (argc < 1) {
@@ -4622,7 +4629,7 @@ JS::CompileFunction(JSContext *cx, HandleObject obj, const ReadOnlyCompileOption
     if (!frontend::CompileFunctionBody(cx, &fun, options, formals, chars, length))
         return nullptr;
 
-    if (obj && funAtom) {
+    if (obj && funAtom && options.defineOnScope) {
         Rooted<jsid> id(cx, AtomToId(funAtom));
         RootedValue value(cx, ObjectValue(*fun));
         if (!JSObject::defineGeneric(cx, obj, id, value, nullptr, nullptr, JSPROP_ENUMERATE))

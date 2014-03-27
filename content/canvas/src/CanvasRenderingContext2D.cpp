@@ -94,6 +94,7 @@
 #include "nsGlobalWindow.h"
 #include "GLContext.h"
 #include "GLContextProvider.h"
+#include "SVGContentUtils.h"
 
 #undef free // apparently defined by some windows header, clashing with a free()
             // method in SkTypes.h
@@ -857,7 +858,7 @@ CanvasRenderingContext2D::EnsureTarget()
 
         SkiaGLGlue* glue = gfxPlatform::GetPlatform()->GetSkiaGLGlue();
 
-        if (glue) {
+        if (glue && glue->GetGrContext() && glue->GetGLContext()) {
           mTarget = Factory::CreateDrawTargetSkiaWithGrContext(glue->GetGrContext(), size, format);
           if (mTarget) {
             mStream = gfx::SurfaceStream::CreateForType(SurfaceStreamType::TripleBuffer, glue->GetGLContext());
@@ -2410,20 +2411,6 @@ CanvasRenderingContext2D::MeasureText(const nsAString& rawText,
   return new TextMetrics(width);
 }
 
-#ifdef ACCESSIBILITY
-// Callback function, for freeing hit regions bounds values stored in property table
-static void
-ReleaseBBoxPropertyValue(void*    aObject,       /* unused */
-                            nsIAtom* aPropertyName, /* unused */
-                            void*    aPropertyValue,
-                            void*    aData          /* unused */)
-{
-  nsRect* valPtr =
-    static_cast<nsRect*>(aPropertyValue);
-  delete valPtr;
-}
-#endif
-
 void
 CanvasRenderingContext2D::AddHitRegion(const HitRegionOptions& options, ErrorResult& error)
 {
@@ -2465,7 +2452,7 @@ CanvasRenderingContext2D::AddHitRegion(const HitRegionOptions& options, ErrorRes
     *nsBounds = nsLayoutUtils::RoundGfxRectToAppRect(rect, AppUnitsPerCSSPixel());
     options.mControl->DeleteProperty(nsGkAtoms::hitregion);
     options.mControl->SetProperty(nsGkAtoms::hitregion, nsBounds,
-                                  ReleaseBBoxPropertyValue);
+                                  nsINode::DeleteProperty<nsRect>);
   }
 #endif
 
@@ -4357,6 +4344,18 @@ CanvasPath::Constructor(const GlobalObject& aGlobal, CanvasPath& aCanvasPath, Er
 {
   RefPtr<gfx::Path> tempPath = aCanvasPath.GetPath(CanvasWindingRule::Nonzero,
                                                    gfxPlatform::GetPlatform()->ScreenReferenceDrawTarget());
+
+  nsRefPtr<CanvasPath> path = new CanvasPath(aGlobal.GetAsSupports(), tempPath->CopyToBuilder());
+  return path.forget();
+}
+
+already_AddRefed<CanvasPath>
+CanvasPath::Constructor(const GlobalObject& aGlobal, const nsAString& aPathString, ErrorResult& aRv)
+{
+  RefPtr<gfx::Path> tempPath = SVGContentUtils::GetPath(aPathString);
+  if (!tempPath) {
+    return Constructor(aGlobal, aRv);
+  }
 
   nsRefPtr<CanvasPath> path = new CanvasPath(aGlobal.GetAsSupports(), tempPath->CopyToBuilder());
   return path.forget();

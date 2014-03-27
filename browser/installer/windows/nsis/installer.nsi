@@ -21,6 +21,14 @@ CRCCheck on
 
 RequestExecutionLevel user
 
+; The commands inside this ifdef require NSIS 3.0a2 or greater so the ifdef can
+; be removed after we require NSIS 3.0a2 or greater.
+!ifdef NSIS_PACKEDVERSION
+  Unicode true
+  ManifestSupportedOS all
+  ManifestDPIAware true
+!endif
+
 !addplugindir ./
 
 Var TmpVal
@@ -287,7 +295,7 @@ Section "-Application" APP_IDX
   ${RegCleanMain} "Software\Mozilla"
   ${RegCleanUninstall}
 !ifdef MOZ_METRO
-  ${ResetWin8PromptKeys}
+  ${ResetWin8PromptKeys} "HKCU" ""
 !endif
   ${UpdateProtocolHandlers}
 
@@ -383,6 +391,14 @@ Section "-Application" APP_IDX
                                     $AppUserModelID \
                                     "FirefoxURL" \
                                     "FirefoxHTML"
+!else
+  ; The metro browser is not enabled by the mozconfig.
+  ${If} ${AtLeastWin8}
+    ${RemoveDEHRegistration} ${DELEGATE_EXECUTE_HANDLER_ID} \
+                             $AppUserModelID \
+                             "FirefoxURL" \
+                             "FirefoxHTML"
+  ${EndIf}
 !endif
   ${EndIf}
 
@@ -1083,9 +1099,13 @@ Function .onInit
 
   ${InstallOnInitCommon} "$(WARN_MIN_SUPPORTED_OS_MSG)"
 
+; The commands inside this ifndef are needed prior to NSIS 3.0a2 and can be
+; removed after we require NSIS 3.0a2 or greater.
+!ifndef NSIS_PACKEDVERSION
   ${If} ${AtLeastWinVista}
     System::Call 'user32::SetProcessDPIAware()'
   ${EndIf}
+!endif
 
   !insertmacro InitInstallOptionsFile "options.ini"
   !insertmacro InitInstallOptionsFile "shortcuts.ini"

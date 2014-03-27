@@ -40,6 +40,7 @@ class PrefObserver;
 class ConsoleListener;
 class PStorageChild;
 class ClonedMessageData;
+class PFileDescriptorSetChild;
 
 class ContentChild : public PContentChild
 {
@@ -64,6 +65,7 @@ public:
     bool Init(MessageLoop* aIOLoop,
               base::ProcessHandle aParentHandle,
               IPC::Channel* aChannel);
+    void InitProcessAttributes();
     void InitXPCOM();
 
     static ContentChild* GetSingleton() {
@@ -74,7 +76,7 @@ public:
         return mAppInfo;
     }
 
-    void SetProcessName(const nsAString& aName);
+    void SetProcessName(const nsAString& aName, bool aDontOverride = false);
     void GetProcessName(nsAString& aName);
     void GetProcessName(nsACString& aName);
     static void AppendProcessId(nsACString& aName);
@@ -271,6 +273,12 @@ public:
 
     BlobChild* GetOrCreateActorForBlob(nsIDOMBlob* aBlob);
 
+    virtual PFileDescriptorSetChild*
+    AllocPFileDescriptorSetChild(const FileDescriptor&) MOZ_OVERRIDE;
+
+    virtual bool
+    DeallocPFileDescriptorSetChild(PFileDescriptorSetChild*) MOZ_OVERRIDE;
+
 protected:
     virtual bool RecvPBrowserConstructor(PBrowserChild* actor,
                                          const IPCTabContext& context,
@@ -307,6 +315,7 @@ private:
 
     bool mIsForApp;
     bool mIsForBrowser;
+    bool mCanOverrideProcessName;
     nsString mProcessName;
 
     static ContentChild* sSingleton;

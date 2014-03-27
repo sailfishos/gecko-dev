@@ -802,23 +802,9 @@ typedef JSObject *
 (* JSPreWrapCallback)(JSContext *cx, JS::HandleObject scope, JS::HandleObject obj,
                       unsigned flags);
 
-/*
- * Callback used when wrapping determines that the underlying object is already
- * in the compartment for which it is being wrapped. This allows consumers to
- * maintain same-compartment wrapping invariants.
- *
- * |obj| is guaranteed to be same-compartment as |cx|, but it may (or may not)
- * be a security or cross-compartment wrapper. This is an unfortunate contract,
- * but is important for to avoid unnecessarily recomputing every cross-
- * compartment wrapper that gets passed to wrap.
- */
-typedef JSObject *
-(* JSSameCompartmentWrapObjectCallback)(JSContext *cx, JS::HandleObject obj);
-
 struct JSWrapObjectCallbacks
 {
     JSWrapObjectCallback wrap;
-    JSSameCompartmentWrapObjectCallback sameCompartmentWrap;
     JSPreWrapCallback preWrap;
 };
 
@@ -3377,6 +3363,7 @@ class JS_FRIEND_API(ReadOnlyCompileOptions)
         column(0),
         compileAndGo(false),
         forEval(false),
+        defineOnScope(true),
         noScriptRval(false),
         selfHostingMode(false),
         canLazilyParse(true),
@@ -3416,6 +3403,7 @@ class JS_FRIEND_API(ReadOnlyCompileOptions)
     unsigned column;
     bool compileAndGo;
     bool forEval;
+    bool defineOnScope;
     bool noScriptRval;
     bool selfHostingMode;
     bool canLazilyParse;
@@ -3517,6 +3505,7 @@ class JS_FRIEND_API(OwningCompileOptions) : public ReadOnlyCompileOptions
     OwningCompileOptions &setColumn(unsigned c) { column = c; return *this; }
     OwningCompileOptions &setCompileAndGo(bool cng) { compileAndGo = cng; return *this; }
     OwningCompileOptions &setForEval(bool eval) { forEval = eval; return *this; }
+    OwningCompileOptions &setDefineOnScope(bool define) { defineOnScope = define; return *this; }
     OwningCompileOptions &setNoScriptRval(bool nsr) { noScriptRval = nsr; return *this; }
     OwningCompileOptions &setSelfHostingMode(bool shm) { selfHostingMode = shm; return *this; }
     OwningCompileOptions &setCanLazilyParse(bool clp) { canLazilyParse = clp; return *this; }
@@ -3602,6 +3591,7 @@ class MOZ_STACK_CLASS JS_FRIEND_API(CompileOptions) : public ReadOnlyCompileOpti
     CompileOptions &setColumn(unsigned c) { column = c; return *this; }
     CompileOptions &setCompileAndGo(bool cng) { compileAndGo = cng; return *this; }
     CompileOptions &setForEval(bool eval) { forEval = eval; return *this; }
+    CompileOptions &setDefineOnScope(bool define) { defineOnScope = define; return *this; }
     CompileOptions &setNoScriptRval(bool nsr) { noScriptRval = nsr; return *this; }
     CompileOptions &setSelfHostingMode(bool shm) { selfHostingMode = shm; return *this; }
     CompileOptions &setCanLazilyParse(bool clp) { canLazilyParse = clp; return *this; }

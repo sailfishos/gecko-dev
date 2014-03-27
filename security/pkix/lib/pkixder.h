@@ -257,11 +257,7 @@ Nested(Input& input, uint8_t tag, Decoder decoder)
     return Failure;
   }
 
-  if (!nested.AtEnd() != Success) {
-    return Fail(SEC_ERROR_BAD_DER);
-  }
-
-  return Success;
+  return End(nested);
 }
 
 template <typename Decoder>
@@ -283,11 +279,7 @@ Nested(Input& input, uint8_t outerTag, uint8_t innerTag, Decoder decoder)
     return Failure;
   }
 
-  if (!nestedInput.AtEnd()) {
-    return Fail(SEC_ERROR_BAD_DER);
-  }
-
-  return Success;
+  return End(nestedInput);
 }
 
 // This can be used to decode constructs like this:
@@ -378,6 +370,23 @@ Boolean(Input& input, /*out*/ bool& value)
       PR_SetError(SEC_ERROR_BAD_DER, 0);
       return Failure;
   }
+}
+
+// This is for any BOOLEAN DEFAULT FALSE.
+// (If it is present and false, this is a bad encoding.)
+inline Result
+OptionalBoolean(Input& input, /*out*/ bool& value)
+{
+  value = false;
+  if (input.Peek(BOOLEAN)) {
+    if (Boolean(input, value) != Success) {
+      return Failure;
+    }
+    if (!value) {
+      return Fail(SEC_ERROR_BAD_DER);
+    }
+  }
+  return Success;
 }
 
 inline Result

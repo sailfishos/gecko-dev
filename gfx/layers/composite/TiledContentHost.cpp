@@ -42,7 +42,7 @@ TiledLayerBufferComposite::TiledLayerBufferComposite(ISurfaceAllocator* aAllocat
   mRetainedWidth = aDescriptor.retainedWidth();
   mRetainedHeight = aDescriptor.retainedHeight();
   mResolution = aDescriptor.resolution();
-  mFrameResolution = CSSToScreenScale(aDescriptor.frameResolution());
+  mFrameResolution = CSSToParentLayerScale(aDescriptor.frameResolution());
 
   // Combine any valid content that wasn't already uploaded
   nsIntRegion oldPaintedRegion(aOldPaintedRegion);
@@ -356,7 +356,7 @@ TiledContentHost::RenderTile(const TileHost& aTile,
     mCompositor->DrawQuad(graphicsRect, aClipRect, aEffectChain, aOpacity, aTransform);
   }
   mCompositor->DrawDiagnostics(DIAGNOSTIC_CONTENT|DIAGNOSTIC_TILE,
-                               aScreenRegion, aClipRect, aTransform);
+                               aScreenRegion, aClipRect, aTransform, mFlashCounter);
 }
 
 void
@@ -379,8 +379,8 @@ TiledContentHost::RenderLayerBuffer(TiledLayerBufferComposite& aLayerBuffer,
   // We assume that the current frame resolution is the one used in our primary
   // layer buffer. Compensate for a changing frame resolution.
   if (aLayerBuffer.GetFrameResolution() != mTiledBuffer.GetFrameResolution()) {
-    const CSSToScreenScale& layerResolution = aLayerBuffer.GetFrameResolution();
-    const CSSToScreenScale& localResolution = mTiledBuffer.GetFrameResolution();
+    const CSSToParentLayerScale& layerResolution = aLayerBuffer.GetFrameResolution();
+    const CSSToParentLayerScale& localResolution = mTiledBuffer.GetFrameResolution();
     layerScale.width = layerScale.height = layerResolution.scale / localResolution.scale;
     aVisibleRect.ScaleRoundOut(layerScale.width, layerScale.height);
   }
@@ -436,7 +436,7 @@ TiledContentHost::RenderLayerBuffer(TiledLayerBufferComposite& aLayerBuffer,
   gfx::Rect rect(aVisibleRect.x, aVisibleRect.y,
                  aVisibleRect.width, aVisibleRect.height);
   GetCompositor()->DrawDiagnostics(DIAGNOSTIC_CONTENT,
-                                   rect, aClipRect, aTransform);
+                                   rect, aClipRect, aTransform, mFlashCounter);
 }
 
 void

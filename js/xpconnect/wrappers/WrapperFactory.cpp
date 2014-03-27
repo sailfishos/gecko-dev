@@ -359,15 +359,23 @@ SelectWrapper(bool securityWrapper, bool wantXrays, XrayType xrayType,
     if (!securityWrapper) {
         if (xrayType == XrayForWrappedNative)
             return &PermissiveXrayXPCWN::singleton;
-        return &PermissiveXrayDOM::singleton;
+        else if (xrayType == XrayForDOMObject)
+            return &PermissiveXrayDOM::singleton;
+        MOZ_ASSERT(xrayType == XrayForJSObject);
+        return &PermissiveXrayJS::singleton;
     }
 
     // This is a security wrapper. Use the security versions and filter.
     if (xrayType == XrayForWrappedNative)
         return &FilteringWrapper<SecurityXrayXPCWN,
                                  CrossOriginAccessiblePropertiesOnly>::singleton;
-    return &FilteringWrapper<SecurityXrayDOM,
-                             CrossOriginAccessiblePropertiesOnly>::singleton;
+    else if (xrayType == XrayForDOMObject)
+        return &FilteringWrapper<SecurityXrayDOM,
+                                 CrossOriginAccessiblePropertiesOnly>::singleton;
+    // There's never any reason to expose pure JS objects to non-subsuming actors.
+    // Just use an opaque wrapper in this case.
+    MOZ_ASSERT(xrayType == XrayForJSObject);
+    return &FilteringWrapper<CrossCompartmentSecurityWrapper, Opaque>::singleton;
 }
 
 JSObject *
@@ -479,26 +487,6 @@ WrapperFactory::Rewrap(JSContext *cx, HandleObject existing, HandleObject obj,
         return Wrapper::Renew(cx, existing, obj, wrapper);
 
     return Wrapper::New(cx, obj, parent, wrapper);
-}
-
-JSObject *
-WrapperFactory::WrapForSameCompartment(JSContext *cx, HandleObject objArg)
-{
-    RootedObject obj(cx, objArg);
-    MOZ_ASSERT(js::IsObjectInContextCompartment(obj, cx));
-
-    // NB: The contract of WrapForSameCompartment says that |obj| may or may not
-    // be a security wrapper. These checks implicitly handle the security
-    // wrapper case.
-
-    // Outerize if necessary. This, in combination with the check in
-    // PrepareForUnwrapping, means that calling JS_Wrap* always outerizes.
-    obj = JS_ObjectToOuterObject(cx, obj);
-    NS_ENSURE_TRUE(obj, nullptr);
-
-    // The method below is a no-op for non-DOM objects.
-    dom::GetSameCompartmentWrapperForDOMBinding(*obj.address());
-    return obj;
 }
 
 // Call WaiveXrayAndWrap when you have a JS object that you don't want to be

@@ -457,6 +457,22 @@ public class Tab {
         });
     }
 
+    public void addToReadingList() {
+        if (!mReaderEnabled)
+            return;
+
+        JSONObject json = new JSONObject();
+        try {
+            json.put("tabID", String.valueOf(getId()));
+        } catch (JSONException e) {
+            Log.e(LOGTAG, "JSON error - failing to add to reading list", e);
+            return;
+        }
+
+        GeckoEvent e = GeckoEvent.createBroadcastEvent("Reader:Add", json.toString());
+        GeckoAppShell.sendEventToGecko(e);
+    }
+
     public void toggleReaderMode() {
         if (AboutPages.isAboutReader(mUrl)) {
             Tabs.getInstance().loadUrl(ReaderModeUtils.getUrlFromAboutReader(mUrl));
@@ -644,9 +660,9 @@ public class Tab {
         return !AboutPages.isAboutPage(url);
     }
 
-    void handleDocumentStart(boolean showProgress, String url) {
+    void handleDocumentStart(boolean restoring, String url) {
         setLoadProgress(LOAD_PROGRESS_START);
-        setState(showProgress ? STATE_LOADING : STATE_SUCCESS);
+        setState((!restoring && shouldShowProgress(url)) ? STATE_LOADING : STATE_SUCCESS);
         updateIdentityData(null);
         setReaderEnabled(false);
     }

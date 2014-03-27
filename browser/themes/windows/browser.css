@@ -123,7 +123,16 @@
  * text and icons to not appear fuzzy.
  */
 @media (-moz-windows-classic) {
-  #main-window[tabsintitlebar]:not([sizemode=fullscreen]) .tabbrowser-tab:not([selected=true]),
+  #main-window[tabsintitlebar]:not([sizemode=fullscreen]) .tabbrowser-tab[selected=true] {
+    position: relative;
+    z-index: 3;
+  }
+
+  #main-window[tabsintitlebar]:not([sizemode=fullscreen]) .tabbrowser-tab:not([selected=true]) {
+    position: relative;
+    z-index: 2;
+  }
+
   #main-window[tabsintitlebar]:not([sizemode=fullscreen]) .tabs-newtab-button {
     position: relative;
     z-index: 1;
@@ -176,6 +185,10 @@
   #main-window[tabsintitlebar]:not([sizemode=fullscreen]) .tabbrowser-arrowscrollbox > .scrollbutton-down {
     position: relative;
     z-index: 1;
+  }
+
+  #main-window[tabsintitlebar]:not([inFullscreen]) .tab-close-button:not(:-moz-any(:hover,:-moz-lwtheme,[selected="true"])) {
+    -moz-image-region: rect(0, 64px, 16px, 48px);
   }
 
   #main-window[tabsintitlebar][sizemode="normal"] #titlebar-content:-moz-lwtheme {
@@ -888,6 +901,7 @@ toolbarbutton[sdk-button="true"][cui-areatype="toolbar"] > .toolbarbutton-icon {
   box-shadow: none !important;
 }
 
+#back-button:not([disabled="true"]):hover:active > .toolbarbutton-icon,
 #back-button[open="true"] > .toolbarbutton-icon {
   background-color: hsla(210,4%,10%,.12) !important;
   box-shadow: 0 1px 0 0 hsla(210,80%,20%,.1) inset !important;

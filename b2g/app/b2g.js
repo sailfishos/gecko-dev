@@ -69,6 +69,7 @@ pref("network.buffer.cache.count", 24);
 pref("network.buffer.cache.size",  16384);
 
 // predictive actions
+pref("network.seer.enable", false); // disabled on b2g
 pref("network.seer.max-db-size", 2097152); // bytes
 pref("network.seer.preserve", 50); // percentage of seer data to keep when cleaning up
 
@@ -187,7 +188,8 @@ pref("privacy.item.syncAccount", true);
 
 // base url for the wifi geolocation network provider
 pref("geo.provider.use_mls", false);
-pref("geo.wifi.uri", "https://location.services.mozilla.com/v1/geolocate?key=%MOZILLA_API_KEY%");
+pref("geo.cell.scan", true);
+pref("geo.wifi.uri", "https://location.services.mozilla.com/v1/geolocate?key=%MOZ_MOZILLA_API_KEY%");
 
 // enable geo
 pref("geo.enabled", true);
@@ -417,6 +419,7 @@ pref("dom.global-constructor.disable.mozContact", false);
 pref("dom.phonenumber.substringmatching.BR", 8);
 pref("dom.phonenumber.substringmatching.CO", 10);
 pref("dom.phonenumber.substringmatching.VE", 7);
+pref("dom.phonenumber.substringmatching.CL", 8);
 
 // WebAlarms
 pref("dom.mozAlarms.enabled", true);
@@ -700,6 +703,8 @@ pref("dom.ipc.processPrelaunch.enabled", true);
 // Wait this long before pre-launching a new subprocess.
 pref("dom.ipc.processPrelaunch.delayMs", 5000);
 #endif
+
+pref("dom.ipc.reuse_parent_app", false);
 
 // When a process receives a system message, we hold a CPU wake lock on its
 // behalf for this many seconds, or until it handles the system message,

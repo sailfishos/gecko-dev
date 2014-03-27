@@ -12,7 +12,6 @@ const XULNS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource:///modules/SignInToWebsite.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "AboutHome",
                                   "resource:///modules/AboutHome.jsm");
@@ -87,6 +86,11 @@ XPCOMUtils.defineLazyModuleGetter(this, "BrowserUITelemetry",
 
 XPCOMUtils.defineLazyModuleGetter(this, "AsyncShutdown",
                                   "resource://gre/modules/AsyncShutdown.jsm");
+
+#ifdef NIGHTLY_BUILD
+XPCOMUtils.defineLazyModuleGetter(this, "SignInToWebsiteUX",
+                                  "resource:///modules/SignInToWebsite.jsm");
+#endif
 
 const PREF_PLUGINS_NOTIFYUSER = "plugins.update.notifyUser";
 const PREF_PLUGINS_UPDATEURL  = "plugins.update.url";
@@ -472,7 +476,11 @@ BrowserGlue.prototype = {
     PageThumbs.init();
     NewTabUtils.init();
     BrowserNewTabPreloader.init();
-    SignInToWebsiteUX.init();
+#ifdef NIGHTLY_BUILD
+    if (Services.prefs.getBoolPref("dom.identity.enabled")) {
+      SignInToWebsiteUX.init();
+    }
+#endif
     PdfJs.init();
 #ifdef NIGHTLY_BUILD
     ShumwayUtils.init();
@@ -626,7 +634,11 @@ BrowserGlue.prototype = {
     // Offer to reset a user's profile if it hasn't been used for 60 days.
     const OFFER_PROFILE_RESET_INTERVAL_MS = 60 * 24 * 60 * 60 * 1000;
     let lastUse = Services.appinfo.replacedLockTime;
-    if (lastUse &&
+    let disableResetPrompt = false;
+    try {
+      disableResetPrompt = Services.prefs.getBoolPref("browser.disableResetPrompt");
+    } catch(e) {}
+    if (!disableResetPrompt && lastUse &&
         Date.now() - lastUse >= OFFER_PROFILE_RESET_INTERVAL_MS) {
       this._resetUnusedProfileNotification();
     }
@@ -655,7 +667,11 @@ BrowserGlue.prototype = {
     BrowserNewTabPreloader.uninit();
     CustomizationTabPreloader.uninit();
     WebappManager.uninit();
-    SignInToWebsiteUX.uninit();
+#ifdef NIGHTLY_BUILD
+    if (Services.prefs.getBoolPref("dom.identity.enabled")) {
+      SignInToWebsiteUX.uninit();
+    }
+#endif
     webrtcUI.uninit();
   },
 
@@ -1059,6 +1075,19 @@ BrowserGlue.prototype = {
         importBookmarks = true;
     } catch(ex) {}
 
+    // Support legacy bookmarks.html format for apps that depend on that format.
+    let autoExportHTML = false;
+    try {
+      autoExportHTML = Services.prefs.getBoolPref("browser.bookmarks.autoExportHTML");
+    } catch (ex) {} // Do not export.
+    if (autoExportHTML) {
+      // Sqlite.jsm and Places shutdown happen at profile-before-change, thus,
+      // to be on the safe side, this should run earlier.
+      AsyncShutdown.profileChangeTeardown.addBlocker(
+        "Places: export bookmarks.html",
+        () => BookmarkHTMLUtils.exportToFile(BookmarkHTMLUtils.defaultPath));
+    }
+
     Task.spawn(function() {
       // Check if Safe Mode or the user has required to restore bookmarks from
       // default profile's bookmarks.html
@@ -1116,10 +1145,6 @@ BrowserGlue.prototype = {
         // An import operation is about to run.
         // Don't try to recreate smart bookmarks if autoExportHTML is true or
         // smart bookmarks are disabled.
-        let autoExportHTML = false;
-        try {
-          autoExportHTML = Services.prefs.getBoolPref("browser.bookmarks.autoExportHTML");
-        } catch(ex) {}
         let smartBookmarksVersion = 0;
         try {
           smartBookmarksVersion = Services.prefs.getIntPref("browser.places.smartBookmarksVersion");
@@ -1222,19 +1247,6 @@ BrowserGlue.prototype = {
       this._idleService.removeIdleObserver(this, this._bookmarksBackupIdleTime);
       delete this._bookmarksBackupIdleTime;
     }
-
-    // Support legacy bookmarks.html format for apps that depend on that format.
-    try {
-      if (Services.prefs.getBoolPref("browser.bookmarks.autoExportHTML")) {
-        // places-shutdown happens at profile-change-teardown, so here we
-        // can safely add a profile-before-change blocker.
-        AsyncShutdown.profileBeforeChange.addBlocker(
-          "Places: bookmarks.html",
-          () => BookmarkHTMLUtils.exportToFile(BookmarkHTMLUtils.defaultPath)
-                                 .then(null, Cu.reportError)
-        );
-      }
-    } catch (ex) {} // Do not export.
   },
 
   /**

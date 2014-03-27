@@ -162,6 +162,23 @@ nsDOMWindowUtils::GetDocument()
   return window->GetExtantDoc();
 }
 
+LayerTransactionChild*
+nsDOMWindowUtils::GetLayerTransaction()
+{
+  nsIWidget* widget = GetWidget();
+  if (!widget)
+    return nullptr;
+
+  LayerManager* manager = widget->GetLayerManager();
+  if (!manager)
+    return nullptr;
+
+  ShadowLayerForwarder* forwarder = manager->AsShadowForwarder();
+  return forwarder && forwarder->HasShadowManager() ?
+         forwarder->GetShadowManager() :
+         nullptr;
+}
+
 NS_IMETHODIMP
 nsDOMWindowUtils::GetImageAnimationMode(uint16_t *aMode)
 {
@@ -305,21 +322,6 @@ nsDOMWindowUtils::GetViewportInfo(uint32_t aDisplayWidth,
   return NS_OK;
 }
 
-static void DestroyDisplayPortPropertyData(void* aObject, nsIAtom* aPropertyName,
-                                           void* aPropertyValue, void* aData)
-{
-  DisplayPortPropertyData* data =
-    static_cast<DisplayPortPropertyData*>(aPropertyValue);
-  delete data;
-}
-
-static void DestroyNsRect(void* aObject, nsIAtom* aPropertyName,
-                          void* aPropertyValue, void* aData)
-{
-  nsRect* rect = static_cast<nsRect*>(aPropertyValue);
-  delete rect;
-}
-
 static void
 MaybeReflowForInflationScreenWidthChange(nsPresContext *aPresContext)
 {
@@ -405,7 +407,7 @@ nsDOMWindowUtils::SetDisplayPortForElement(float aXPx, float aYPx,
 
   content->SetProperty(nsGkAtoms::DisplayPort,
                        new DisplayPortPropertyData(displayport, aPriority),
-                       DestroyDisplayPortPropertyData);
+                       nsINode::DeleteProperty<DisplayPortPropertyData>);
 
   nsIFrame* rootScrollFrame = presShell->GetRootScrollFrame();
   if (rootScrollFrame) {
@@ -488,7 +490,7 @@ nsDOMWindowUtils::SetCriticalDisplayPortForElement(float aXPx, float aYPx,
                              nsPresContext::CSSPixelsToAppUnits(aWidthPx),
                              nsPresContext::CSSPixelsToAppUnits(aHeightPx));
   content->SetProperty(nsGkAtoms::CriticalDisplayPort, new nsRect(criticalDisplayport),
-                       DestroyNsRect);
+                       nsINode::DeleteProperty<nsRect>);
 
   nsIFrame* rootFrame = presShell->GetRootFrame();
   if (rootFrame) {
@@ -2552,12 +2554,9 @@ nsDOMWindowUtils::AdvanceTimeAndRefresh(int64_t aMilliseconds)
   nsRefreshDriver* driver = GetPresContext()->RefreshDriver();
   driver->AdvanceTimeAndRefresh(aMilliseconds);
 
-  nsIWidget* widget = GetWidget();
-  if (widget) {
-    CompositorChild* compositor = widget->GetRemoteRenderer();
-    if (compositor) {
-      compositor->SendSetTestSampleTime(driver->MostRecentRefresh());
-    }
+  LayerTransactionChild* transaction = GetLayerTransaction();
+  if (transaction) {
+    transaction->SendSetTestSampleTime(driver->MostRecentRefresh());
   }
 
   return NS_OK;
@@ -2573,12 +2572,9 @@ nsDOMWindowUtils::RestoreNormalRefresh()
   // Kick the compositor out of test mode before the refresh driver, so that
   // the refresh driver doesn't send an update that gets ignored by the
   // compositor.
-  nsIWidget* widget = GetWidget();
-  if (widget) {
-    CompositorChild* compositor = widget->GetRemoteRenderer();
-    if (compositor) {
-      compositor->SendLeaveTestMode();
-    }
+  LayerTransactionChild* transaction = GetLayerTransaction();
+  if (transaction) {
+    transaction->SendLeaveTestMode();
   }
 
   nsRefreshDriver* driver = GetPresContext()->RefreshDriver();

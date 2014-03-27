@@ -1300,7 +1300,9 @@ struct nsStylePosition {
   // in nsStyleStruct.cpp
   nsStyleGridTrackList mGridTemplateColumns;
   nsStyleGridTrackList mGridTemplateRows;
-  nsCSSValueGridTemplateAreas mGridTemplateAreas;
+
+  // nullptr for 'none'
+  nsRefPtr<mozilla::css::GridTemplateAreasValue> mGridTemplateAreas;
 
   // We represent the "grid-auto-position" property in two parts:
   nsStyleGridLine mGridAutoPositionColumn;
@@ -2031,6 +2033,10 @@ struct nsStyleDisplay {
     return mSpecifiedTransform != nullptr ||
            mTransformStyle == NS_STYLE_TRANSFORM_STYLE_PRESERVE_3D ||
            (mWillChangeBitField & NS_STYLE_WILL_CHANGE_TRANSFORM);
+  }
+
+  bool HasPerspectiveStyle() const {
+    return mChildPerspective.GetUnit() == eStyleUnit_Coord;
   }
 
   bool BackfaceIsHidden() const {

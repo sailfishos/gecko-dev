@@ -472,6 +472,7 @@ gfxPlatform::Shutdown()
         }
 
         gPlatform->mMemoryPressureObserver = nullptr;
+        gPlatform->mSkiaGlue = nullptr;
     }
 
 #ifdef MOZ_WIDGET_ANDROID
@@ -923,6 +924,10 @@ gfxPlatform::GetThebesSurfaceForDrawTarget(DrawTarget *aTarget)
     new gfxImageSurface(data->GetData(), gfxIntSize(size.width, size.height),
                         data->Stride(), format);
 
+  if (surf->CairoStatus()) {
+    return nullptr;
+  }
+
   surf->SetData(&kDrawSourceSurface, data.forget().drop(), DataSourceSurfaceDestroy);
   // keep the draw target alive as long as we need its data
   aTarget->AddRef();
@@ -1321,6 +1326,9 @@ gfxPlatform::GetLayerDiagnosticTypes()
   }
   if (gfxPrefs::DrawBigImageBorders()) {
     type |= mozilla::layers::DIAGNOSTIC_BIGIMAGE_BORDERS;
+  }
+  if (gfxPrefs::FlashLayerBorders()) {
+    type |= mozilla::layers::DIAGNOSTIC_FLASH_BORDERS;
   }
   return type;
 }
