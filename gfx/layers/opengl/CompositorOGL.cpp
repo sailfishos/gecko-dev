@@ -138,14 +138,11 @@ DrawQuads(GLContext *aGLContext,
                                      2, LOCAL_GL_FLOAT,
                                      LOCAL_GL_FALSE,
                                      0, BUFFER_OFFSET(bytes));
+  } else {
+    aGLContext->fDisableVertexAttribArray(texCoordAttribIndex);
   }
 
   aGLContext->fDrawArrays(aMode, 0, aRects.elements());
-
-  aGLContext->fDisableVertexAttribArray(vertAttribIndex);
-  if (texCoords) {
-    aGLContext->fDisableVertexAttribArray(texCoordAttribIndex);
-  }
 
   aGLContext->fBindBuffer(LOCAL_GL_ARRAY_BUFFER, 0);
 }
@@ -833,6 +830,8 @@ CompositorOGL::BeginFrame(const nsIntRegion& aInvalidRegion,
                                  LOCAL_GL_ONE, LOCAL_GL_ONE);
   mGLContext->fEnable(LOCAL_GL_BLEND);
 
+  mGLContext->fEnable(LOCAL_GL_SCISSOR_TEST);
+
   if (aClipRectOut && !aClipRectIn) {
     aClipRectOut->SetRect(0, 0, width, height);
   }
@@ -1001,77 +1000,6 @@ CompositorOGL::GetShaderProgramFor(const ShaderConfigOGL &aConfig)
   return shader;
 }
 
-struct MOZ_STACK_CLASS AutoBindTexture
-  : public ScopedGLWrapper<AutoBindTexture>
-{
-  friend struct ScopedGLWrapper<AutoBindTexture>;
-
-protected:
-  GLenum mTexUnit;
-  GLuint mOldTexId;
-
-public:
-  explicit AutoBindTexture(GLContext* aGL)
-    : ScopedGLWrapper<AutoBindTexture>(aGL)
-    , mTexUnit(0)
-    , mOldTexId(GLuint(-1))
-  { }
-
-  AutoBindTexture(GLContext* aGL, TextureSourceOGL* aTexture,
-                  GLenum aTexUnit = LOCAL_GL_TEXTURE0)
-    : ScopedGLWrapper<AutoBindTexture>(aGL)
-    , mTexUnit(0)
-    , mOldTexId(GLuint(-1))
-  {
-    MOZ_ASSERT(aTexture);
-    MOZ_ASSERT(mOldTexId == GLuint(-1));
-    mTexUnit = aTexUnit;
-
-    ScopedBindTextureUnit autoBindTexUnit(mGL, aTexUnit);
-
-    mGL->GetUIntegerv(LOCAL_GL_TEXTURE_BINDING_2D, &mOldTexId);
-    aTexture->BindTexture(mTexUnit, gfx::Filter::LINEAR);
-  }
-
-protected:
-  void UnwrapImpl()
-  {
-    if (mOldTexId == GLuint(-1))
-      return;
-
-    ScopedBindTextureUnit autoBindTexUnit(mGL, mTexUnit);
-    mGL->fBindTexture(LOCAL_GL_TEXTURE_2D, mOldTexId);
-  }
-};
-
-struct MOZ_STACK_CLASS AutoSaveTexture
-  : public ScopedGLWrapper<AutoSaveTexture>
-{
-  friend struct ScopedGLWrapper<AutoSaveTexture>;
-
-protected:
-  GLenum mTexUnit;
-  GLuint mOldTexId;
-
-public:
-  AutoSaveTexture(GLContext* aGL, GLenum aTexUnit = LOCAL_GL_TEXTURE0)
-    : ScopedGLWrapper<AutoSaveTexture>(aGL)
-    , mTexUnit(aTexUnit)
-    , mOldTexId(GLuint(-1))
-  {
-    ScopedBindTextureUnit savedTexUnit(mGL, mTexUnit);
-    mGL->GetUIntegerv(LOCAL_GL_TEXTURE_BINDING_2D, &mOldTexId);
-  }
-
-protected:
-  void UnwrapImpl()
-  {
-    ScopedBindTextureUnit savedTexUnit(mGL, mTexUnit);
-    mGL->fBindTexture(LOCAL_GL_TEXTURE_2D, mOldTexId);
-  }
-};
-
-
 void
 CompositorOGL::DrawLines(const std::vector<gfx::Point>& aLines, const gfx::Rect& aClipRect,
                          const gfx::Color& aColor,
@@ -1109,12 +1037,8 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
   IntRect intClipRect;
   clipRect.ToIntRect(&intClipRect);
 
-  ScopedGLState scopedScissorTestState(mGLContext, LOCAL_GL_SCISSOR_TEST, true);
-  ScopedScissorRect autoScissor(mGLContext,
-                                intClipRect.x,
-                                FlipY(intClipRect.y + intClipRect.height),
-                                intClipRect.width,
-                                intClipRect.height);
+  gl()->fScissor(intClipRect.x, FlipY(intClipRect.y + intClipRect.height),
+                 intClipRect.width, intClipRect.height);
 
   LayerScope::SendEffectChain(mGLContext, aEffectChain,
                               aRect.width, aRect.height);
@@ -1195,7 +1119,6 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
     case EFFECT_SOLID_COLOR: {
       program->SetRenderColor(color);
 
-      AutoSaveTexture bindMask(mGLContext, LOCAL_GL_TEXTURE0);
       if (maskType != MaskNone) {
         BindMaskForProgram(program, sourceMask, LOCAL_GL_TEXTURE0, maskQuadTransform);
       }
@@ -1234,7 +1157,6 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
 
       program->SetTextureUnit(0);
 
-      AutoSaveTexture bindMask(mGLContext, LOCAL_GL_TEXTURE1);
       if (maskType != MaskNone) {
         BindMaskForProgram(program, sourceMask, LOCAL_GL_TEXTURE1, maskQuadTransform);
       }
@@ -1268,7 +1190,6 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
 
       program->SetYCbCrTextureUnits(Y, Cb, Cr);
 
-      AutoSaveTexture bindMask(mGLContext, LOCAL_GL_TEXTURE3);
       if (maskType != MaskNone) {
         BindMaskForProgram(program, sourceMask, LOCAL_GL_TEXTURE3, maskQuadTransform);
       }
@@ -1289,7 +1210,6 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
       program->SetTextureTransform(Matrix4x4());
       program->SetTextureUnit(0);
 
-      AutoSaveTexture bindMask(mGLContext, LOCAL_GL_TEXTURE1);
       if (maskType != MaskNone) {
         sourceMask->BindTexture(LOCAL_GL_TEXTURE1, gfx::Filter::LINEAR);
         program->SetMaskTextureUnit(1);
@@ -1327,7 +1247,6 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
       program->SetWhiteTextureUnit(1);
       program->SetTextureTransform(gfx::Matrix4x4());
 
-      AutoBindTexture bindMask(mGLContext);
       if (maskType != MaskNone) {
         BindMaskForProgram(program, sourceMask, LOCAL_GL_TEXTURE2, maskQuadTransform);
       }
@@ -1358,7 +1277,6 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
     break;
   }
 
-  mGLContext->fActiveTexture(LOCAL_GL_TEXTURE0);
   // in case rendering has used some other GL context
   MakeCurrent();
 }
@@ -1645,11 +1563,6 @@ CompositorOGL::BindAndDrawQuad(GLuint aVertAttribIndex,
     mGLContext->fDrawArrays(aDrawMode, 1, 2);
   } else {
     mGLContext->fDrawArrays(aDrawMode, 0, 4);
-  }
-  mGLContext->fDisableVertexAttribArray(aVertAttribIndex);
-
-  if (aTexCoordAttribIndex != GLuint(-1)) {
-    mGLContext->fDisableVertexAttribArray(aTexCoordAttribIndex);
   }
 }
 
