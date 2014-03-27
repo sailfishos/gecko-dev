@@ -177,3 +177,14 @@ NS_IMETHODIMP EmbedLiteXulAppInfo::GetDistributionID(nsACString& aResult)
   aResult.AssignLiteral(MOZ_DISTRIBUTION_ID);
   return NS_OK;
 }
+
+NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetProcessID(uint32_t* aResult)
+{
+#ifdef XP_WIN
+  *aResult = GetCurrentProcessId();
+#else
+  *aResult = getpid();
+#endif
+  return NS_OK;
+}
