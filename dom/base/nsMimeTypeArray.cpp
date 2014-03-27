@@ -14,6 +14,7 @@
 #include "nsIMIMEInfo.h"
 #include "Navigator.h"
 #include "nsServiceManagerUtils.h"
+#include "nsUnicharUtils.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -111,9 +112,12 @@ nsMimeTypeArray::NamedGetter(const nsAString& aName, bool &aFound)
 
   EnsurePluginMimeTypes();
 
-  nsMimeType* mimeType = FindMimeType(mMimeTypes, aName);
+  nsString lowerName(aName);
+  ToLowerCase(lowerName);
+
+  nsMimeType* mimeType = FindMimeType(mMimeTypes, lowerName);
   if (!mimeType) {
-    mimeType = FindMimeType(mHiddenMimeTypes, aName);
+    mimeType = FindMimeType(mHiddenMimeTypes, lowerName);
   }
 
   if (mimeType) {
@@ -128,8 +132,8 @@ nsMimeTypeArray::NamedGetter(const nsAString& aName, bool &aFound)
   }
 
   nsCOMPtr<nsIMIMEInfo> mimeInfo;
-  mimeSrv->GetFromTypeAndExtension(NS_ConvertUTF16toUTF8(aName), EmptyCString(),
-                                   getter_AddRefs(mimeInfo));
+  mimeSrv->GetFromTypeAndExtension(NS_ConvertUTF16toUTF8(lowerName),
+                                   EmptyCString(), getter_AddRefs(mimeInfo));
   if (!mimeInfo) {
     return nullptr;
   }
@@ -164,7 +168,7 @@ nsMimeTypeArray::NamedGetter(const nsAString& aName, bool &aFound)
 
   // We don't want navigator.mimeTypes enumeration to expose MIME types with
   // application handlers, so add them to the list of hidden MIME types.
-  nsMimeType *mt = new nsMimeType(mWindow, aName);
+  nsMimeType *mt = new nsMimeType(mWindow, lowerName);
   mHiddenMimeTypes.AppendElement(mt);
 
   return mt;
