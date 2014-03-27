@@ -411,7 +411,7 @@ void TelemetryIOInterposeObserver::AddPath(const nsAString& aPath,
 void TelemetryIOInterposeObserver::Observe(Observation& aOb)
 {
   // We only report main-thread I/O
-  if (!NS_IsMainThread()) {
+  if (!IsMainThread()) {
     return;
   }
 

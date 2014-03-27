@@ -604,14 +604,6 @@ private:
 
 StaticRefPtr<TabChild> sPreallocatedTab;
 
-TabChildBase::TabChildBase()
-  : mOldViewportWidth(0.0f)
-  , mContentDocumentIsDisplayed(false)
-  , mTabChildGlobal(nullptr)
-  , mInnerSize(0, 0)
-{
-}
-
 /*static*/ void
 TabChild::PreloadSlowThings()
 {

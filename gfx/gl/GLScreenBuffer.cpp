@@ -78,8 +78,7 @@ GLScreenBuffer::Create(GLContext* gl,
         gl,
         nullptr);
 
-    GLScreenBuffer* p = new GLScreenBuffer(gl, caps, factory, stream);
-    return p;
+    return new GLScreenBuffer(gl, caps, factory, stream);
 }
 
 GLScreenBuffer::~GLScreenBuffer()

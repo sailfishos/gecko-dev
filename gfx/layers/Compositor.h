@@ -552,6 +552,7 @@ protected:
 
 private:
   static LayersBackend sBackend;
+
 };
 
 } // namespace layers
