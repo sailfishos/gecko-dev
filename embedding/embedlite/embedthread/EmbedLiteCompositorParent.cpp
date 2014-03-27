@@ -116,7 +116,10 @@ bool EmbedLiteCompositorParent::RenderGL()
 
   {
     ScopedScissorRect autoScissor(context);
+    GLenum oldTexUnit;
+    context->GetUIntegerv(LOCAL_GL_ACTIVE_TEXTURE, &oldTexUnit);
     CompositorParent::Composite();
+    context->fActiveTexture(oldTexUnit);
   }
 
   if (context->IsOffscreen()) {
