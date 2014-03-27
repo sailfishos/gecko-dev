@@ -711,7 +711,7 @@ EmbedLiteViewThreadParent::GetUniqueID()
   return mId;
 }
 
-bool EmbedLiteViewThreadParent::GetPendingTexture(EmbedLiteRenderTarget* aContextWrapper, int* textureID, int* width, int* height)
+bool EmbedLiteViewThreadParent::GetPendingTexture(EmbedLiteRenderTarget* aContextWrapper, int* textureID, int* width, int* height, int* aTextureTarget)
 {
   NS_ENSURE_TRUE(aContextWrapper && textureID && width && height, false);
   NS_ENSURE_TRUE(mCompositor, false);
@@ -741,6 +741,7 @@ bool EmbedLiteViewThreadParent::GetPendingTexture(EmbedLiteRenderTarget* aContex
     SharedSurface_GLTexture* glTexSurf = SharedSurface_GLTexture::Cast(sharedSurf);
     glTexSurf->SetConsumerGL(consumerContext);
     textureHandle = glTexSurf->Texture();
+    textureTarget = glTexSurf->TextureTarget();
     NS_ASSERTION(textureHandle, "Failed to get texture handle, fallback to pixels?");
   } else if (sharedSurf->Type() == SharedSurfaceType::Basic) {
     toUpload = SharedSurface_Basic::Cast(sharedSurf)->GetData();
@@ -759,6 +760,7 @@ bool EmbedLiteViewThreadParent::GetPendingTexture(EmbedLiteRenderTarget* aContex
                            mUploadTexture,
                            true);
     textureHandle = mUploadTexture;
+    textureTarget = LOCAL_GL_TEXTURE_2D;
   } else if (textureHandle) {
     if (consumerContext) {
       MOZ_ASSERT(consumerContext);
@@ -773,6 +775,9 @@ bool EmbedLiteViewThreadParent::GetPendingTexture(EmbedLiteRenderTarget* aContex
   *width = sharedSurf->Size().width;
   *height = sharedSurf->Size().height;
   *textureID = textureHandle;
+  if (aTextureTarget) {
+    *aTextureTarget = textureTarget;
+  }
   return true;
 }
 
