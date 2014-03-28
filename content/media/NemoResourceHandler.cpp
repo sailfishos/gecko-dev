@@ -15,6 +15,7 @@
 #include "mozilla/Services.h"
 #include "nsIObserverService.h"
 #include "nsStringGlue.h"
+#include "mozilla/Preferences.h"
 
 using namespace ResourcePolicy;
 
