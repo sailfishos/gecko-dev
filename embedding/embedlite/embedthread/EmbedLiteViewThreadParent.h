@@ -151,7 +151,6 @@ private:
 
   ScreenIntSize mViewSize;
   gfxSize mGLViewPortSize;
-  bool mInTouchProcess;
   MessageLoop* mUILoop;
   int mLastIMEState;
 
