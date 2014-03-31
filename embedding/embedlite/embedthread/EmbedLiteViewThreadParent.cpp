@@ -49,7 +49,6 @@ EmbedLiteViewThreadParent::EmbedLiteViewThreadParent(const uint32_t& id, const u
   , mView(EmbedLiteApp::GetInstance()->GetViewByID(id))
   , mViewAPIDestroyed(false)
   , mCompositor(nullptr)
-  , mInTouchProcess(false)
   , mUILoop(MessageLoop::current())
   , mLastIMEState(0)
   , mUploadTexture(0)
@@ -568,13 +567,6 @@ EmbedLiteViewThreadParent::ReceiveInputEvent(const InputData& aEvent)
     mController->ReceiveInputEvent(aEvent, &guid);
     if (aEvent.mInputType == MULTITOUCH_INPUT) {
       const MultiTouchInput& multiTouchInput = aEvent.AsMultiTouchInput();
-      if (multiTouchInput.mType == MultiTouchInput::MULTITOUCH_START ||
-          multiTouchInput.mType == MultiTouchInput::MULTITOUCH_ENTER) {
-        mInTouchProcess = true;
-      } else if (multiTouchInput.mType == MultiTouchInput::MULTITOUCH_END ||
-                 multiTouchInput.mType == MultiTouchInput::MULTITOUCH_LEAVE) {
-        mInTouchProcess = false;
-      }
       LayoutDeviceIntPoint lpt;
       MultiTouchInput translatedEvent(multiTouchInput.mType, multiTouchInput.mTime, multiTouchInput.modifiers);
       for (uint32_t i = 0; i < multiTouchInput.mTouches.Length(); ++i) {
