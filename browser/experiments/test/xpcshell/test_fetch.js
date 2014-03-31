@@ -20,7 +20,7 @@ let gHttpRoot   = null;
 let gPolicy     = new Experiments.Policy();
 
 function run_test() {
-  createAppInfo();
+  loadAddonManager();
   gProfileDir = do_get_profile();
 
   gHttpServer = new HttpServer();
@@ -77,6 +77,3 @@ add_task(function* test_fetchInvalid() {
   yield ex.uninit();
 });
 
-add_task(function* shutdown() {
-  yield removeCacheFile();
-});

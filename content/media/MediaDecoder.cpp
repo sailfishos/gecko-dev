@@ -1329,6 +1329,8 @@ void MediaDecoder::DurationChanged()
   // Duration has changed so we should recompute playback rate
   UpdatePlaybackRate();
 
+  SetInfinite(mDuration == -1);
+
   if (mOwner && oldDuration != mDuration && !IsInfinite()) {
     DECODER_LOG(PR_LOG_DEBUG, ("%p duration changed to %lld", this, mDuration));
     mOwner->DispatchEvent(NS_LITERAL_STRING("durationchange"));

@@ -2756,7 +2756,7 @@ nsXPCComponents_Utils::ImportGlobalProperties(HandleValue aPropertyList,
 {
     RootedObject global(cx, CurrentGlobalOrNull(cx));
     MOZ_ASSERT(global);
-    GlobalProperties options;
+    GlobalProperties options(false);
     NS_ENSURE_TRUE(aPropertyList.isObject(), NS_ERROR_INVALID_ARG);
     RootedObject propertyList(cx, &aPropertyList.toObject());
     NS_ENSURE_TRUE(JS_IsArrayObject(cx, propertyList), NS_ERROR_INVALID_ARG);
@@ -3789,8 +3789,8 @@ private:
 ComponentsSH ComponentsSH::singleton(0);
 
 // Singleton refcounting.
-NS_IMETHODIMP_(nsrefcnt) ComponentsSH::AddRef(void) { return 1; }
-NS_IMETHODIMP_(nsrefcnt) ComponentsSH::Release(void) { return 1; }
+NS_IMETHODIMP_(MozExternalRefCountType) ComponentsSH::AddRef(void) { return 1; }
+NS_IMETHODIMP_(MozExternalRefCountType) ComponentsSH::Release(void) { return 1; }
 
 NS_INTERFACE_MAP_BEGIN(ComponentsSH)
   NS_INTERFACE_MAP_ENTRY(nsIXPCScriptable)

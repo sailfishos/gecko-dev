@@ -1205,6 +1205,9 @@ pref("devtools.styleeditor.autocompletion-enabled", true);
 // Enable the Shader Editor.
 pref("devtools.shadereditor.enabled", false);
 
+// Enable the Canvas Debugger.
+pref("devtools.canvasdebugger.enabled", false);
+
 // Enable tools for Chrome development.
 pref("devtools.chrome.enabled", false);
 
@@ -1226,7 +1229,7 @@ pref("devtools.webconsole.filter.cssparser", false);
 pref("devtools.webconsole.filter.csslog", false);
 pref("devtools.webconsole.filter.exception", true);
 pref("devtools.webconsole.filter.jswarn", false);
-pref("devtools.webconsole.filter.jslog", true);
+pref("devtools.webconsole.filter.jslog", false);
 pref("devtools.webconsole.filter.error", true);
 pref("devtools.webconsole.filter.warn", true);
 pref("devtools.webconsole.filter.info", true);
@@ -1236,10 +1239,10 @@ pref("devtools.webconsole.filter.secwarn", true);
 
 // Remember the Browser Console filters
 pref("devtools.browserconsole.filter.network", true);
-pref("devtools.browserconsole.filter.networkinfo", true);
+pref("devtools.browserconsole.filter.networkinfo", false);
 pref("devtools.browserconsole.filter.netwarn", true);
 pref("devtools.browserconsole.filter.csserror", true);
-pref("devtools.browserconsole.filter.cssparser", true);
+pref("devtools.browserconsole.filter.cssparser", false);
 pref("devtools.browserconsole.filter.csslog", false);
 pref("devtools.browserconsole.filter.exception", true);
 pref("devtools.browserconsole.filter.jswarn", true);
@@ -1311,6 +1314,8 @@ pref("browser.newtabpage.rows", 3);
 
 // number of columns of newtab grid
 pref("browser.newtabpage.columns", 3);
+
+pref("browser.newtabpage.directorySource", "chrome://global/content/directoryLinks.json");
 
 // Enable the DOM fullscreen API.
 pref("full-screen-api.enabled", true);
@@ -1415,3 +1420,5 @@ pref("experiments.manifest.fetchIntervalSeconds", 86400);
 pref("experiments.manifest.uri", "https://telemetry-experiment.cdn.mozilla.net/manifest/v1/firefox/%VERSION%/%CHANNEL%");
 pref("experiments.manifest.certs.1.commonName", "*.cdn.mozilla.net");
 pref("experiments.manifest.certs.1.issuerName", "CN=Cybertrust Public SureServer SV CA,O=Cybertrust Inc");
+// Whether experiments are supported by the current application profile.
+pref("experiments.supported", true);

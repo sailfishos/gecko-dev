@@ -43,13 +43,8 @@ GetBuildConfiguration(JSContext *cx, unsigned argc, jsval *vp)
     RootedObject info(cx, JS_NewObject(cx, nullptr, JS::NullPtr(), JS::NullPtr()));
     if (!info)
         return false;
-    RootedValue value(cx);
 
-#ifdef JSGC_ROOT_ANALYSIS
-    value = BooleanValue(true);
-#else
-    value = BooleanValue(false);
-#endif
+    RootedValue value(cx, BooleanValue(false));
     if (!JS_SetProperty(cx, info, "rooting-analysis", value))
         return false;
 
@@ -835,7 +830,7 @@ CountHeap(JSContext *cx, unsigned argc, jsval *vp)
     return true;
 }
 
-#ifdef DEBUG
+#if defined(DEBUG) || defined(JS_OOM_BREAKPOINT)
 static bool
 OOMAfterAllocations(JSContext *cx, unsigned argc, jsval *vp)
 {
@@ -980,6 +975,9 @@ EnableSPSProfilingAssertions(JSContext *cx, unsigned argc, jsval *vp)
     static ProfileEntry stack[1000];
     static uint32_t stack_size = 0;
 
+    // Disable before re-enabling; see the assertion in |SPSProfiler::setProfilingStack|.
+    if (cx->runtime()->spsProfiler.installed())
+        cx->runtime()->spsProfiler.enable(false);
     SetRuntimeProfilingStack(cx->runtime(), stack, &stack_size, 1000);
     cx->runtime()->spsProfiler.enableSlowAssertions(args[0].toBoolean());
     cx->runtime()->spsProfiler.enable(true);
@@ -1512,7 +1510,7 @@ static const JSFunctionSpecWithHelp TestingFunctions[] = {
 "  then you can provide an extra argument with some specific traceable\n"
 "  thing to count.\n"),
 
-#ifdef DEBUG
+#if defined(DEBUG) || defined(JS_OOM_BREAKPOINT)
     JS_FN_HELP("oomAfterAllocations", OOMAfterAllocations, 1, 0,
 "oomAfterAllocations(count)",
 "  After 'count' js_malloc memory allocations, fail every following allocation\n"

@@ -29,18 +29,6 @@ let gManifestObject      = null;
 let gManifestHandlerURI  = null;
 let gTimerScheduleOffset = -1;
 
-let gGlobalScope = this;
-function loadAddonManager() {
-  let ns = {};
-  Cu.import("resource://gre/modules/Services.jsm", ns);
-  let head = "../../../../toolkit/mozapps/extensions/test/xpcshell/head_addons.js";
-  let file = do_get_file(head);
-  let uri = ns.Services.io.newFileURI(file);
-  ns.Services.scriptloader.loadSubScript(uri.spec, gGlobalScope);
-  createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "1.9.2");
-  startupManager();
-}
-
 function run_test() {
   run_next_test();
 }
@@ -76,6 +64,7 @@ add_task(function* test_setup() {
   gReporter = yield getReporter("json_payload_simple");
   yield gReporter.collectMeasurements();
   let payload = yield gReporter.getJSONPayload(true);
+  do_register_cleanup(() => gReporter._shutdown());
 
   gPolicy = new Experiments.Policy();
   patchPolicy(gPolicy, {
@@ -262,10 +251,5 @@ add_task(function* test_cache() {
 
   yield experiments.disableExperiment();
   yield experiments.uninit();
-  yield removeCacheFile();
-});
-
-add_task(function* shutdown() {
-  yield gReporter._shutdown();
   yield removeCacheFile();
 });

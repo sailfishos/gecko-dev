@@ -380,21 +380,25 @@ public class AndroidFxAccount {
     getSyncPrefs().edit().clear().commit();
   }
 
-  public boolean isSyncingEnabled() {
-    // TODO: Authority will be static in PR 426.
-    final int result = ContentResolver.getIsSyncable(account, BrowserContract.AUTHORITY);
-    if (result > 0) {
-      return true;
-    } else if (result == 0) {
-      return false;
-    } else {
-      // This should not happen.
-      throw new IllegalStateException("Sync enabled state unknown.");
+  /**
+   * Return true if the underlying Android account is currently set to sync automatically.
+   * <p>
+   * This is, confusingly, not the same thing as "being syncable": that refers
+   * to whether this account can be synced, ever; this refers to whether Android
+   * will try to sync the account at appropriate times.
+   *
+   * @return true if the account is set to sync automatically.
+   */
+  public boolean isSyncing() {
+    boolean isSyncEnabled = true;
+    for (String authority : new String[] { BrowserContract.AUTHORITY }) {
+      isSyncEnabled &= ContentResolver.getSyncAutomatically(account, authority);
     }
+    return isSyncEnabled;
   }
 
   public void enableSyncing() {
-    Logger.info(LOG_TAG, "Disabling sync for account named like " + Utils.obfuscateEmail(getEmail()));
+    Logger.info(LOG_TAG, "Enabling sync for account named like " + getObfuscatedEmail());
     for (String authority : new String[] { BrowserContract.AUTHORITY }) {
       ContentResolver.setSyncAutomatically(account, authority, true);
       ContentResolver.setIsSyncable(account, authority, 1);
@@ -402,14 +406,14 @@ public class AndroidFxAccount {
   }
 
   public void disableSyncing() {
-    Logger.info(LOG_TAG, "Disabling sync for account named like " + Utils.obfuscateEmail(getEmail()));
+    Logger.info(LOG_TAG, "Disabling sync for account named like " + getObfuscatedEmail());
     for (String authority : new String[] { BrowserContract.AUTHORITY }) {
       ContentResolver.setSyncAutomatically(account, authority, false);
     }
   }
 
   public void requestSync(Bundle extras) {
-    Logger.info(LOG_TAG, "Requesting sync for account named like " + Utils.obfuscateEmail(getEmail()) +
+    Logger.info(LOG_TAG, "Requesting sync for account named like " + getObfuscatedEmail() +
         (extras.isEmpty() ? "." : "; has extras."));
     for (String authority : new String[] { BrowserContract.AUTHORITY }) {
       ContentResolver.requestSync(account, authority, extras);
@@ -420,7 +424,7 @@ public class AndroidFxAccount {
     if (state == null) {
       throw new IllegalArgumentException("state must not be null");
     }
-    Logger.info(LOG_TAG, "Moving account named like " + Utils.obfuscateEmail(getEmail()) +
+    Logger.info(LOG_TAG, "Moving account named like " + getObfuscatedEmail() +
         " to state " + state.getStateLabel().toString());
     updateBundleValue(BUNDLE_KEY_STATE_LABEL, state.getStateLabel().name());
     updateBundleValue(BUNDLE_KEY_STATE, state.toJSONObject().toJSONString());
@@ -469,6 +473,17 @@ public class AndroidFxAccount {
    */
   public String getEmail() {
     return account.name;
+  }
+
+  /**
+   * Return the Firefox Account's local email address, obfuscated.
+   * <p>
+   * Use this when logging.
+   *
+   * @return local email address, obfuscated.
+   */
+  public String getObfuscatedEmail() {
+    return Utils.obfuscateEmail(account.name);
   }
 
   /**

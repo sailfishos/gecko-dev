@@ -26,8 +26,11 @@ const Ci = Components.interfaces;
 
 let SharedAll = {};
 Cu.import("resource://gre/modules/osfile/osfile_shared_allthreads.jsm", SharedAll);
-Cu.import("resource://gre/modules/Deprecated.jsm", this);
+Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
 Cu.import("resource://gre/modules/Timer.jsm", this);
+
+XPCOMUtils.defineLazyModuleGetter(this, 'Deprecated',
+  'resource://gre/modules/Deprecated.jsm');
 
 // Boilerplate, to simplify the transition to require()
 let LOG = SharedAll.LOG.bind(SharedAll, "Controller");
@@ -968,18 +971,30 @@ File.remove = function remove(path) {
 
 
 /**
- * Create a directory.
+ * Create a directory and, optionally, its parent directories.
  *
  * @param {string} path The name of the directory.
  * @param {*=} options Additional options.
- * Implementations may interpret the following fields:
  *
- * - {C pointer} winSecurity If specified, security attributes
- * as per winapi function |CreateDirectory|. If unspecified,
- * use the default security descriptor, inherited from the
- * parent directory.
- * - {bool} ignoreExisting If |true|, do not fail if the
- * directory already exists.
+ * - {string} from If specified, the call to |makeDir| creates all the
+ * ancestors of |path| that are descendants of |from|. Note that |path|
+ * must be a descendant of |from|, and that |from| and its existing
+ * subdirectories present in |path|  must be user-writeable.
+ * Example:
+ *   makeDir(Path.join(profileDir, "foo", "bar"), { from: profileDir });
+ *  creates directories profileDir/foo, profileDir/foo/bar
+ * - {bool} ignoreExisting If |false|, throw an error if the directory
+ * already exists. |true| by default. Ignored if |from| is specified.
+ * - {number} unixMode Under Unix, if specified, a file creation mode,
+ * as per libc function |mkdir|. If unspecified, dirs are
+ * created with a default mode of 0700 (dir is private to
+ * the user, the user can read, write and execute). Ignored under Windows
+ * or if the file system does not support file creation modes.
+ * - {C pointer} winSecurity Under Windows, if specified, security
+ * attributes as per winapi function |CreateDirectory|. If
+ * unspecified, use the default security descriptor, inherited from
+ * the parent directory. Ignored under Unix or if the file system
+ * does not support security descriptors.
  */
 File.makeDir = function makeDir(path, options) {
   return Scheduler.post("makeDir",

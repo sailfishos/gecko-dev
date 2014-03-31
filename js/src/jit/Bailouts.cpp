@@ -37,10 +37,11 @@ using namespace js::jit;
 // bailed out frame.
 
 SnapshotIterator::SnapshotIterator(const IonBailoutIterator &iter)
-  : SnapshotReader(iter.ionScript()->snapshots(),
-                   iter.snapshotOffset(),
-                   iter.ionScript()->snapshotsRVATableSize(),
-                   iter.ionScript()->snapshotsListSize()),
+  : snapshot_(iter.ionScript()->snapshots(),
+              iter.snapshotOffset(),
+              iter.ionScript()->snapshotsRVATableSize(),
+              iter.ionScript()->snapshotsListSize()),
+    recover_(snapshot_),
     fp_(iter.jsFrame()),
     machine_(iter.machineState()),
     ionScript_(iter.ionScript())
@@ -50,7 +51,7 @@ SnapshotIterator::SnapshotIterator(const IonBailoutIterator &iter)
 void
 IonBailoutIterator::dump() const
 {
-    if (type_ == IonFrame_OptimizedJS) {
+    if (type_ == JitFrame_IonJS) {
         InlineFrameIterator frames(GetJSContextFromJitCode(), this);
         for (;;) {
             frames.dump();
@@ -150,7 +151,7 @@ IonBailoutIterator::IonBailoutIterator(const JitActivationIterator &activations,
     const OsiIndex *osiIndex = frame.osiIndex();
 
     current_ = (uint8_t *) frame.fp();
-    type_ = IonFrame_OptimizedJS;
+    type_ = JitFrame_IonJS;
     topFrameSize_ = frame.frameSize();
     snapshotOffset_ = osiIndex->snapshotOffset();
 }

@@ -29,18 +29,6 @@ let gManifestObject      = null;
 let gManifestHandlerURI  = null;
 let gTimerScheduleOffset = -1;
 
-let gGlobalScope = this;
-function loadAddonManager() {
-  let ns = {};
-  Cu.import("resource://gre/modules/Services.jsm", ns);
-  let head = "../../../../toolkit/mozapps/extensions/test/xpcshell/head_addons.js";
-  let file = do_get_file(head);
-  let uri = ns.Services.io.newFileURI(file);
-  ns.Services.scriptloader.loadSubScript(uri.spec, gGlobalScope);
-  createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "1.9.2");
-  startupManager();
-}
-
 function run_test() {
   run_next_test();
 }
@@ -75,6 +63,7 @@ add_task(function* test_setup() {
   gReporter = yield getReporter("json_payload_simple");
   yield gReporter.collectMeasurements();
   let payload = yield gReporter.getJSONPayload(true);
+  do_register_cleanup(() => gReporter._shutdown());
 
   gPolicy = new Experiments.Policy();
   patchPolicy(gPolicy, {
@@ -254,6 +243,79 @@ add_task(function* test_getExperiments() {
                    "Entry " + i + " - Property '" + k + "' should match reference data.");
     }
   }
+
+  // Cleanup.
+
+  Services.obs.removeObserver(observer, OBSERVER_TOPIC);
+  yield experiments.uninit();
+  yield removeCacheFile();
+});
+
+// Test that we handle the experiments addon already being
+// installed properly.
+// We should just pave over them.
+
+add_task(function* test_addonAlreadyInstalled() {
+  const OBSERVER_TOPIC = "experiments-changed";
+  let observerFireCount = 0;
+  let expectedObserverFireCount = 0;
+  let observer = () => ++observerFireCount;
+  Services.obs.addObserver(observer, OBSERVER_TOPIC, false);
+
+  // Dates the following tests are based on.
+
+  let baseDate   = new Date(2014, 5, 1, 12);
+  let startDate  = futureDate(baseDate,   100 * MS_IN_ONE_DAY);
+  let endDate    = futureDate(baseDate, 10000 * MS_IN_ONE_DAY);
+
+  // The manifest data we test with.
+
+  gManifestObject = {
+    "version": 1,
+    experiments: [
+      {
+        id:               EXPERIMENT1_ID,
+        xpiURL:           gDataRoot + EXPERIMENT1_XPI_NAME,
+        xpiHash:          EXPERIMENT1_XPI_SHA1,
+        startTime:        dateToSeconds(startDate),
+        endTime:          dateToSeconds(endDate),
+        maxActiveSeconds: 10 * SEC_IN_ONE_DAY,
+        appName:          ["XPCShell"],
+        channel:          ["nightly"],
+      },
+    ],
+  };
+
+  let experiments = new Experiments.Experiments(gPolicy);
+
+  // Trigger update, clock set to before any activation.
+
+  let now = baseDate;
+  defineNow(gPolicy, now);
+  yield experiments.updateManifest();
+  Assert.equal(observerFireCount, 0,
+               "Experiments observer should not have been called yet.");
+  let list = yield experiments.getExperiments();
+  Assert.equal(list.length, 0, "Experiment list should be empty.");
+
+  // Install conflicting addon.
+
+  let installed = yield installAddon(gDataRoot + EXPERIMENT1_XPI_NAME, EXPERIMENT1_XPI_SHA1);
+  Assert.ok(installed, "Addon should have been installed.");
+
+  // Trigger update, clock set for the experiment to start.
+
+  now = futureDate(startDate, 10 * MS_IN_ONE_DAY);
+  defineNow(gPolicy, now);
+  yield experiments.updateManifest();
+  Assert.equal(observerFireCount, ++expectedObserverFireCount,
+               "Experiments observer should have been called.");
+
+  list = yield experiments.getExperiments();
+  list = yield experiments.getExperiments();
+  Assert.equal(list.length, 1, "Experiment list should have 1 entry now.");
+  Assert.equal(list[0].id, EXPERIMENT1_ID, "Experiment 1 should be the sole entry.");
+  Assert.equal(list[0].active, true, "Experiment 1 should be active.");
 
   // Cleanup.
 
@@ -1279,8 +1341,31 @@ add_task(function* test_unexpectedUninstall() {
   yield removeCacheFile();
 });
 
+// If the Addon Manager knows of an experiment that we don't, it should get
+// uninstalled.
+add_task(function* testUnknownExperimentsUninstalled() {
+  let experiments = new Experiments.Experiments(gPolicy);
 
-add_task(function* shutdown() {
-  yield gReporter._shutdown();
+  let addons = yield getExperimentAddons();
+  Assert.equal(addons.length, 0, "Precondition: No experiment add-ons are present.");
+  yield installAddon(gDataRoot + EXPERIMENT1_XPI_NAME, EXPERIMENT1_XPI_SHA1);
+  addons = yield getExperimentAddons();
+  Assert.equal(addons.length, 1, "Experiment 1 installed via AddonManager");
+
+  // Simulate no known experiments.
+  gManifestObject = {
+    "version": 1,
+    experiments: [],
+  };
+
+  yield experiments.updateManifest();
+  let fromManifest = yield experiments.getExperiments();
+  Assert.equal(fromManifest.length, 0, "No experiments known in manifest.");
+
+  // And the unknown add-on should be gone.
+  addons = yield getExperimentAddons();
+  Assert.equal(addons.length, 0, "Experiment 1 was uninstalled.");
+
+  yield experiments.uninit();
   yield removeCacheFile();
 });

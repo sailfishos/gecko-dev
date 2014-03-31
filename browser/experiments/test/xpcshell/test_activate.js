@@ -21,18 +21,6 @@ let gHttpRoot   = null;
 let gReporter   = null;
 let gPolicy     = null;
 
-let gGlobalScope = this;
-function loadAddonManager() {
-  let ns = {};
-  Cu.import("resource://gre/modules/Services.jsm", ns);
-  let head = "../../../../toolkit/mozapps/extensions/test/xpcshell/head_addons.js";
-  let file = do_get_file(head);
-  let uri = ns.Services.io.newFileURI(file);
-  ns.Services.scriptloader.loadSubScript(uri.spec, gGlobalScope);
-  createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "1.9.2");
-  startupManager();
-}
-
 function ManifestEntry(data) {
   this.id        = data.id        || EXPERIMENT1_ID;
   this.xpiURL    = data.xpiURL    || gHttpRoot + EXPERIMENT1_XPI_NAME;
@@ -63,6 +51,7 @@ add_task(function* test_setup() {
   gReporter = yield getReporter("json_payload_simple");
   yield gReporter.collectMeasurements();
   let payload = yield gReporter.getJSONPayload(true);
+  do_register_cleanup(() => gReporter._shutdown());
 
   patchPolicy(gPolicy, {
     updatechannel: () => "nightly",
@@ -130,9 +119,4 @@ add_task(function* test_startStop() {
   maybeStop = yield experiment.maybeStop();
   Assert.equal(maybeStop, true, "Experiment should have been stopped.");
   Assert.equal(experiment.enabled, false, "Experiment should be disabled.");
-});
-
-add_task(function* shutdown() {
-  yield gReporter._shutdown();
-  yield removeCacheFile();
 });

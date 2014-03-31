@@ -239,7 +239,6 @@ WEBIDL_FILES = [
     'MouseEvent.webidl',
     'MouseScrollEvent.webidl',
     'MozActivity.webidl',
-    'MozConnection.webidl',
     'MozMmsMessage.webidl',
     'MozMobileConnection.webidl',
     'MozNamedAttrMap.webidl',
@@ -251,6 +250,7 @@ WEBIDL_FILES = [
     'MutationObserver.webidl',
     'NativeOSFileInternals.webidl',
     'NetDashboard.webidl',
+    'NetworkInformation.webidl',
     'NetworkOptions.webidl',
     'Node.webidl',
     'NodeFilter.webidl',
@@ -620,4 +620,9 @@ if CONFIG['MOZ_B2G_BT']:
 if CONFIG['MOZ_BUILD_APP'] in ['browser', 'xulrunner']:
     WEBIDL_FILES += [
         'BrowserFeedWriter.webidl',
+    ]
+
+if CONFIG['MOZ_BUILD_APP'] in ['browser', 'mobile/android', 'xulrunner']:
+    WEBIDL_FILES += [
+        'External.webidl',
     ]

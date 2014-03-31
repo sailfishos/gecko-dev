@@ -987,9 +987,9 @@ class LSafepoint : public TempObject
     GeneralRegisterSet gcRegs_;
 
 #ifdef CHECK_OSIPOINT_REGISTERS
-    // Temp regs of the current instruction. This set is never written to the
-    // safepoint; it's only used by assertions during compilation.
-    RegisterSet tempRegs_;
+    // Clobbered regs of the current instruction. This set is never written to
+    // the safepoint; it's only used by assertions during compilation.
+    RegisterSet clobberedRegs_;
 #endif
 
     // Offset to a position in the safepoint stream, or
@@ -1052,12 +1052,12 @@ class LSafepoint : public TempObject
         return liveRegs_;
     }
 #ifdef CHECK_OSIPOINT_REGISTERS
-    void addTempRegister(AnyRegister reg) {
-        tempRegs_.addUnchecked(reg);
+    void addClobberedRegister(AnyRegister reg) {
+        clobberedRegs_.addUnchecked(reg);
         assertInvariants();
     }
-    const RegisterSet &tempRegs() const {
-        return tempRegs_;
+    const RegisterSet &clobberedRegs() const {
+        return clobberedRegs_;
     }
 #endif
     void addGcRegister(Register reg) {
@@ -1538,21 +1538,6 @@ LAllocation::toRegister() const
         visitor->setInstruction(this);                                      \
         return visitor->visit##opcode(this);                                \
     }
-
-#if defined(JS_NUNBOX32)
-# define BOX_OUTPUT_ACCESSORS()                                             \
-    const LDefinition *outputType() {                                       \
-        return getDef(TYPE_INDEX);                                          \
-    }                                                                       \
-    const LDefinition *outputPayload() {                                    \
-        return getDef(PAYLOAD_INDEX);                                       \
-    }
-#elif defined(JS_PUNBOX64)
-# define BOX_OUTPUT_ACCESSORS()                                             \
-    const LDefinition *outputValue() {                                      \
-        return getDef(0);                                                   \
-    }
-#endif
 
 #include "jit/LIR-Common.h"
 #if defined(JS_CODEGEN_X86) || defined(JS_CODEGEN_X64)
