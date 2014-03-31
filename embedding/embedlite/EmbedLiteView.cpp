@@ -411,10 +411,10 @@ EmbedLiteView::GetUniqueID()
 }
 
 bool
-EmbedLiteView::GetPendingTexture(EmbedLiteRenderTarget* aContextWrapper, int* textureID, int* width, int* height)
+EmbedLiteView::GetPendingTexture(EmbedLiteRenderTarget* aContextWrapper, int* textureID, int* width, int* height, int* textureTarget)
 {
   NS_ENSURE_TRUE(mViewImpl, false);
-  return mViewImpl->GetPendingTexture(aContextWrapper, textureID, width, height);
+  return mViewImpl->GetPendingTexture(aContextWrapper, textureID, width, height, textureTarget);
 }
 
 } // namespace embedlite
