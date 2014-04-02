@@ -412,19 +412,26 @@ JSONCreator(const jschar* aBuf, uint32_t aLen, void* aData)
 }
 
 bool
-TabChildHelper::DoSendSyncMessage(JSContext* aCx,
-                                  const nsAString& aMessage,
-                                  const mozilla::dom::StructuredCloneData& aData,
-                                  JS::Handle<JSObject *> aCpows,
-                                  InfallibleTArray<nsString>* aJSONRetVal)
+TabChildHelper::DoSendBlockingMessage(JSContext* aCx,
+                                      const nsAString& aMessage,
+                                      const mozilla::dom::StructuredCloneData& aData,
+                                      JS::Handle<JSObject *> aCpows,
+                                      nsIPrincipal* aPrincipal,
+                                      InfallibleTArray<nsString>* aJSONRetVal,
+                                      bool aIsSync)
 {
+  if (!aIsSync) {
+    LOGE("Async messages are not supported in this version\n");
+    return false;
+  }
+
   if (!mView->HasMessageListener(aMessage)) {
     LOGE("Message not registered msg:%s\n", NS_ConvertUTF16toUTF8(aMessage).get());
     return false;
   }
 
   NS_ENSURE_TRUE(InitTabChildGlobal(), false);
-  JSContext* cx = GetJSContext();
+  JSContext* cx = mTabChildGlobal->GetJSContextForEventHandlers();
   JSAutoRequest ar(cx);
 
   // FIXME: Need callback interface for simple JSON to avoid useless conversion here
