@@ -53,7 +53,7 @@ Requires: %{name} = %{version}-%{release}
 Summary: Misc files for xulrunner
 
 %description misc
-Tests and misc files for xulrunner
+Tests and misc files for xulrunner.
 
 %prep
 %setup -q -n %{name}-%{version}
