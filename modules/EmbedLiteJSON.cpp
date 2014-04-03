@@ -83,13 +83,14 @@ JSValToVariant(JSContext* cx, jsval& propval, nsIWritableVariant* aVariant)
 nsresult
 ParseObject(JSContext* cx, JSObject* object, nsIWritablePropertyBag2* aBag)
 {
-  JS::AutoIdArray props(cx, JS_Enumerate(cx, object));
+  JS::RootedObject modObj(cx, object);
+  JS::AutoIdArray props(cx, JS_Enumerate(cx, modObj));
   for (size_t i = 0; !!props && i < props.length(); ++i) {
     jsid propid = props[i];
     JS::Rooted<jsid> id(cx, props[i]);
     JS::RootedValue propname(cx);
     JS::Rooted<JS::Value> propval(cx);
-    JS::RootedObject modObj(cx, object);
+
     if (!JS_IdToValue(cx, propid, &propname) ||
         !JS_GetPropertyById(cx, modObj, id, &propval)) {
       NS_ERROR("Failed to get property by ID");
