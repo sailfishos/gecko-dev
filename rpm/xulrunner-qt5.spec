@@ -1,4 +1,4 @@
-%define greversion 29.0a1
+%define greversion 31.0a1
 
 Name:       xulrunner-qt5
 Summary:    XUL runner
@@ -53,7 +53,7 @@ Requires: %{name} = %{version}-%{release}
 Summary: Misc files for xulrunner
 
 %description misc
-Tests and misc files for xulrunner
+Tests and misc files for xulrunner.
 
 %prep
 %setup -q -n %{name}-%{version}
