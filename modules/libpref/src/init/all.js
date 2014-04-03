@@ -332,6 +332,9 @@ pref("apz.axis_lock_mode", 0);
 // Whether to print the APZC tree for debugging
 pref("apz.printtree", false);
 
+// Whether to allow build sub layers tree for iframes
+pref("apz.subframe.enabled", false);
+
 #ifdef XP_MACOSX
 // Whether to run in native HiDPI mode on machines with "Retina"/HiDPI display;
 //   <= 0 : hidpi mode disabled, display will just use pixel-based upscaling

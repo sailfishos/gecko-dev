@@ -52,6 +52,7 @@
 #include "nsIScrollPositionListener.h"
 #include "StickyScrollContainer.h"
 #include "nsIFrameInlines.h"
+#include "gfxPrefs.h"
 #include <algorithm>
 #include <cstdlib> // for std::abs(int/long)
 #include <cmath> // for std::abs(float/double)
@@ -2585,20 +2586,11 @@ ScrollFrameHelper::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
     bool wantLayerV = isVScrollable && (mVScrollbarBox || isFocused);
     bool wantLayerH = isHScrollable && (mHScrollbarBox || isFocused);
     // TODO Turn this on for inprocess OMTC on all platforms
-    bool wantSubAPZC = (XRE_GetProcessType() == GeckoProcessType_Content);
-#ifdef XP_WIN
-    if (XRE_GetWindowsEnvironment() == WindowsEnvironmentType_Metro) {
-      wantSubAPZC = true;
+    bool wantSubAPZC = gfxPrefs::APZSubframeEnabled();
+#ifdef MOZ_WIDGET_GONK
+    if (XRE_GetProcessType() != GeckoProcessType_Content) {
+      wantSubAPZC = false;
     }
-#else
-    static bool addedLayoutWantSubAPZC = false;
-    static bool layoutWantSubAPZC = false;
-    if (!addedLayoutWantSubAPZC) {
-      Preferences::AddBoolVarCache(&layoutWantSubAPZC,
-                                   "layout.want.subapzc", layoutWantSubAPZC);
-      addedLayoutWantSubAPZC = true;
-    }
-    wantSubAPZC = layoutWantSubAPZC;
 #endif
     shouldBuildLayer =
       wantSubAPZC &&
