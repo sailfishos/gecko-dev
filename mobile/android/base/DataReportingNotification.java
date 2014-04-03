@@ -26,13 +26,12 @@ public class DataReportingNotification {
 
     public static final String ALERT_NAME_DATAREPORTING_NOTIFICATION = "datareporting-notification";
 
-    private static final String DEFAULT_PREFS_BRANCH = AppConstants.ANDROID_PACKAGE_NAME + "_preferences";
     private static final String PREFS_POLICY_NOTIFIED_TIME = "datareporting.policy.dataSubmissionPolicyNotifiedTime";
     private static final String PREFS_POLICY_VERSION = "datareporting.policy.dataSubmissionPolicyVersion";
     private static final int DATA_REPORTING_VERSION = 1;
 
     public static void checkAndNotifyPolicy(Context context) {
-        SharedPreferences dataPrefs = context.getSharedPreferences(DEFAULT_PREFS_BRANCH, 0);
+        SharedPreferences dataPrefs = GeckoSharedPrefs.forApp(context);
 
         // Notify if user has not been notified or if policy version has changed.
         if ((!dataPrefs.contains(PREFS_POLICY_NOTIFIED_TIME)) ||
@@ -40,7 +39,7 @@ public class DataReportingNotification {
 
             // Launch main App to launch Data choices when notification is clicked.
             Intent prefIntent = new Intent(GeckoApp.ACTION_LAUNCH_SETTINGS);
-            prefIntent.setClassName(AppConstants.ANDROID_PACKAGE_NAME, AppConstants.BROWSER_INTENT_CLASS);
+            prefIntent.setClassName(AppConstants.ANDROID_PACKAGE_NAME, AppConstants.BROWSER_INTENT_CLASS_NAME);
 
             GeckoPreferences.setResourceToOpen(prefIntent, "preferences_vendor");
             prefIntent.putExtra(ALERT_NAME_DATAREPORTING_NOTIFICATION, true);

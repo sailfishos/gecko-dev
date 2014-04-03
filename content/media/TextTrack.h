@@ -7,10 +7,10 @@
 #ifndef mozilla_dom_TextTrack_h
 #define mozilla_dom_TextTrack_h
 
+#include "mozilla/DOMEventTargetHelper.h"
 #include "mozilla/dom/TextTrackBinding.h"
 #include "nsCOMPtr.h"
 #include "nsCycleCollectionParticipant.h"
-#include "nsDOMEventTargetHelper.h"
 #include "nsString.h"
 
 namespace mozilla {
@@ -36,11 +36,11 @@ enum TextTrackReadyState {
   FailedToLoad = 3U
 };
 
-class TextTrack MOZ_FINAL : public nsDOMEventTargetHelper
+class TextTrack MOZ_FINAL : public DOMEventTargetHelper
 {
 public:
   NS_DECL_ISUPPORTS_INHERITED
-  NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(TextTrack, nsDOMEventTargetHelper)
+  NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(TextTrack, DOMEventTargetHelper)
 
   TextTrack(nsISupports* aParent,
             TextTrackKind aKind,
@@ -106,6 +106,7 @@ public:
 
   TextTrackReadyState ReadyState() const;
   void SetReadyState(TextTrackReadyState aState);
+  void SetReadyState(uint32_t aReadyState);
 
   void AddCue(TextTrackCue& aCue);
   void RemoveCue(TextTrackCue& aCue, ErrorResult& aRv);

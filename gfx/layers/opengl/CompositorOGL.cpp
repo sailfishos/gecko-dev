@@ -328,7 +328,7 @@ CompositorOGL::Initialize()
       LOCAL_GL_NONE
     };
 
-    if (!mGLContext->IsGLES2()) {
+    if (!mGLContext->IsGLES()) {
       // No TEXTURE_RECTANGLE_ARB available on ES2
       textureTargets[1] = LOCAL_GL_TEXTURE_RECTANGLE_ARB;
     }
@@ -418,8 +418,6 @@ CompositorOGL::Initialize()
     0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
     /* Then quad texcoords */
     0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
-    /* Then flipped quad texcoords */
-    0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f,
   };
   mGLContext->fBufferData(LOCAL_GL_ARRAY_BUFFER, sizeof(vertices), vertices, LOCAL_GL_STATIC_DRAW);
   mGLContext->fBindBuffer(LOCAL_GL_ARRAY_BUFFER, 0);
@@ -525,7 +523,7 @@ CompositorOGL::BindAndDrawQuadWithTextureRect(ShaderProgramOGL *aProg,
     Matrix4x4 transform;
     ToMatrix4x4(aTextureTransform * textureTransform, transform);
     aProg->SetTextureTransform(transform);
-    BindAndDrawQuad(aProg, false);
+    BindAndDrawQuad(aProg);
   } else {
     Matrix4x4 transform;
     ToMatrix4x4(aTextureTransform, transform);
@@ -622,7 +620,7 @@ CompositorOGL::SetRenderTarget(CompositingRenderTarget *aSurface)
 }
 
 CompositingRenderTarget*
-CompositorOGL::GetCurrentRenderTarget()
+CompositorOGL::GetCurrentRenderTarget() const
 {
   return mCurrentRenderTarget;
 }
@@ -784,7 +782,7 @@ CompositorOGL::CreateFBOWithTexture(const IntRect& aRect, bool aCopyFromSource,
       GetFrameBufferInternalFormat(gl(), aSourceFrameBuffer, mWidget);
 
     bool isFormatCompatibleWithRGBA
-        = gl()->IsGLES2() ? (format == LOCAL_GL_RGBA)
+        = gl()->IsGLES() ? (format == LOCAL_GL_RGBA)
                           : true;
 
     if (isFormatCompatibleWithRGBA) {
@@ -1036,7 +1034,7 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
         BindMaskForProgram(program, sourceMask, LOCAL_GL_TEXTURE0, maskQuadTransform);
       }
 
-      BindAndDrawQuad(program, false, aDrawMode);
+      BindAndDrawQuad(program, aDrawMode);
     }
     break;
 
@@ -1120,7 +1118,12 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
 
       surface->BindTexture(LOCAL_GL_TEXTURE0, mFBOTextureTarget);
 
-      program->SetTextureTransform(Matrix4x4());
+      // Drawing is always flipped, but when copying between surfaces we want to avoid
+      // this, so apply a flip here to cancel the other one out.
+      Matrix transform;
+      transform.Translate(0.0, 1.0);
+      transform.Scale(1.0f, -1.0f);
+      program->SetTextureTransform(Matrix4x4::From2D(transform));
       program->SetTextureUnit(0);
 
       if (maskType != MaskNone) {
@@ -1137,7 +1140,7 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
       // Drawing is always flipped, but when copying between surfaces we want to avoid
       // this. Pass true for the flip parameter to introduce a second flip
       // that cancels the other one out.
-      BindAndDrawQuad(program, true);
+      BindAndDrawQuad(program);
     }
     break;
   case EFFECT_COMPONENT_ALPHA: {
@@ -1238,19 +1241,19 @@ CompositorOGL::EndFrame()
   // Unbind all textures
   mGLContext->fActiveTexture(LOCAL_GL_TEXTURE0);
   mGLContext->fBindTexture(LOCAL_GL_TEXTURE_2D, 0);
-  if (!mGLContext->IsGLES2()) {
+  if (!mGLContext->IsGLES()) {
     mGLContext->fBindTexture(LOCAL_GL_TEXTURE_RECTANGLE_ARB, 0);
   }
 
   mGLContext->fActiveTexture(LOCAL_GL_TEXTURE1);
   mGLContext->fBindTexture(LOCAL_GL_TEXTURE_2D, 0);
-  if (!mGLContext->IsGLES2()) {
+  if (!mGLContext->IsGLES()) {
     mGLContext->fBindTexture(LOCAL_GL_TEXTURE_RECTANGLE_ARB, 0);
   }
 
   mGLContext->fActiveTexture(LOCAL_GL_TEXTURE2);
   mGLContext->fBindTexture(LOCAL_GL_TEXTURE_2D, 0);
-  if (!mGLContext->IsGLES2()) {
+  if (!mGLContext->IsGLES()) {
     mGLContext->fBindTexture(LOCAL_GL_TEXTURE_RECTANGLE_ARB, 0);
   }
 }
@@ -1365,7 +1368,7 @@ CompositorOGL::CopyToTarget(DrawTarget *aTarget, const gfx::Matrix& aTransform)
 
   mGLContext->fBindFramebuffer(LOCAL_GL_FRAMEBUFFER, 0);
 
-  if (!mGLContext->IsGLES2()) {
+  if (!mGLContext->IsGLES()) {
     // GLES2 promises that binding to any custom FBO will attach
     // to GL_COLOR_ATTACHMENT0 attachment point.
     mGLContext->fReadBuffer(LOCAL_GL_BACK);
@@ -1478,27 +1481,15 @@ CompositorOGL::QuadVBOTexCoordsAttrib(GLuint aAttribIndex) {
 }
 
 void
-CompositorOGL::QuadVBOFlippedTexCoordsAttrib(GLuint aAttribIndex) {
-  mGLContext->fVertexAttribPointer(aAttribIndex, 2,
-                                    LOCAL_GL_FLOAT, LOCAL_GL_FALSE, 0,
-                                    (GLvoid*) QuadVBOFlippedTexCoordOffset());
-}
-
-void
 CompositorOGL::BindAndDrawQuad(GLuint aVertAttribIndex,
                                GLuint aTexCoordAttribIndex,
-                               bool aFlipped,
                                GLuint aDrawMode)
 {
   BindQuadVBO();
   QuadVBOVerticesAttrib(aVertAttribIndex);
 
   if (aTexCoordAttribIndex != GLuint(-1)) {
-    if (aFlipped)
-      QuadVBOFlippedTexCoordsAttrib(aTexCoordAttribIndex);
-    else
-      QuadVBOTexCoordsAttrib(aTexCoordAttribIndex);
-
+    QuadVBOTexCoordsAttrib(aTexCoordAttribIndex);
     mGLContext->fEnableVertexAttribArray(aTexCoordAttribIndex);
   }
 
@@ -1512,13 +1503,12 @@ CompositorOGL::BindAndDrawQuad(GLuint aVertAttribIndex,
 
 void
 CompositorOGL::BindAndDrawQuad(ShaderProgramOGL *aProg,
-                               bool aFlipped,
                                GLuint aDrawMode)
 {
   NS_ASSERTION(aProg->HasInitialized(), "Shader program not correctly initialized");
   BindAndDrawQuad(aProg->AttribLocation(ShaderProgramOGL::VertexCoordAttrib),
                   aProg->AttribLocation(ShaderProgramOGL::TexCoordAttrib),
-                  aFlipped, aDrawMode);
+                  aDrawMode);
 }
 
 GLuint

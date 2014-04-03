@@ -754,7 +754,15 @@ BluetoothHfpManager::ReceiveSocketData(BluetoothSocket* aSocket,
     }
 
     mCMER = atCommandValues[3].EqualsLiteral("1");
-    mSlcConnected = mCMER;
+
+    /**
+     * SLC is connected once the "indicator status update" is enabled by
+     * AT+CMER command. See 4.2.1 in Bluetooth hands-free profile 1.6
+     * for more details.
+     */
+    if (mCMER) {
+      mSlcConnected = true;
+    }
 
     // If we get internal request for SCO connection,
     // setup SCO after Service Level Connection established.
@@ -1690,7 +1698,7 @@ BluetoothHfpManager::OnSocketConnectError(BluetoothSocket* aSocket)
   mHandsfreeSocket = nullptr;
   mHeadsetSocket = nullptr;
 
-  OnConnect(NS_LITERAL_STRING("SocketConnectionError"));
+  OnConnect(NS_LITERAL_STRING(ERR_CONNECTION_FAILED));
 }
 
 void
@@ -1758,7 +1766,7 @@ BluetoothHfpManager::OnGetServiceChannel(const nsAString& aDeviceAddress,
   MOZ_ASSERT(mSocket);
 
   if (!mSocket->Connect(NS_ConvertUTF16toUTF8(aDeviceAddress), aChannel)) {
-    OnConnect(NS_LITERAL_STRING("SocketConnectionError"));
+    OnConnect(NS_LITERAL_STRING(ERR_CONNECTION_FAILED));
   }
 }
 

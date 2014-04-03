@@ -98,7 +98,7 @@ toolbarseparator {
   background-position: 0 1px, 0 0;
 
   box-shadow: inset 0 1px 0 hsla(0,0%,100%,.4);
-  margin-top: -1px;
+  margin-top: -@tabToolbarNavbarOverlap@;
   /* Position the toolbar above the bottom of background tabs */
   position: relative;
   z-index: 1;
@@ -1617,11 +1617,12 @@ toolbarbutton[sdk-button="true"][cui-areatype="toolbar"] > .toolbarbutton-icon {
 #zoom-controls[cui-areatype="toolbar"]:not([overflowedItem=true]) > #zoom-reset-button {
   min-width: 0;
   margin: 0;
+  -moz-box-orient: horizontal;
+  -moz-box-align: center;
 }
 
 #zoom-controls[cui-areatype="toolbar"]:not([overflowedItem=true]) > #zoom-reset-button > .toolbarbutton-text {
-  padding-top: 4px;
-  margin: 2px;
+  margin-top: 0;
 }
 
 /* ----- FULLSCREEN WINDOW CONTROLS ----- */
@@ -2765,8 +2766,8 @@ toolbarbutton.chevron > .toolbarbutton-menu-dropmarker {
   content: '';
   display: block;
   -moz-appearance: toolbar;
-  height: calc(@tabHeight@ + 1px);
-  margin-bottom: calc(-1px - @tabHeight@);
+  height: @tabHeight@;
+  margin-bottom: -@tabHeight@;
   visibility: hidden;
 }
 
@@ -2800,7 +2801,7 @@ toolbarbutton.chevron > .toolbarbutton-menu-dropmarker {
    * ordinal group value (see bug 853415). */
   -moz-box-ordinal-group: 1001;
   position: absolute;
-  bottom: 1px;
+  bottom: @tabToolbarNavbarOverlap@;
   left: 0;
   right: 0;
   z-index: 0;
@@ -3901,19 +3902,17 @@ toolbarbutton.chevron > .toolbarbutton-menu-dropmarker {
 /* Lion Fullscreen window styling */
 @media (-moz-mac-lion-theme) {
   #navigator-toolbox[inFullscreen]:not(:-moz-lwtheme)::before {
-    height: calc(@tabHeight@ + 11px) !important;
+    /* Adjust by the full element height of #titlebar, since that element is
+     * not displayed in native full-screen.
+     * Also add the height of the tabs, since we're calculating the
+     * total height of this pseudo-element, not just the top-padding. */
+    height: calc(@tabHeight@ + @spaceAboveTabbar@) !important;
   }
   #main-window[inFullscreen][privatebrowsingmode=temporary],
   #main-window[inFullscreen]:-moz-lwtheme {
-    /* This additional padding matches the change in height in the pseudo-element
-     * above. */
-    padding-top: 11px;
-  }
-  #main-window[inFullscreen]:not([privatebrowsingmode=temporary]):-moz-lwtheme {
-    /* In combination with the previous rule, forces the top 22px of the
-     * background image to be hidden, so the image doesn't jump around with
-     * the loss of the titlebar. */
-    background-position: right -11px;
+    /* Adjust by the full element height of #titlebar, since that element is
+     * not displayed in native full-screen. */
+    padding-top: @spaceAboveTabbar@;
   }
 }
 

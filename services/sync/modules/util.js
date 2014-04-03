@@ -3,9 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 this.EXPORTED_SYMBOLS = ["XPCOMUtils", "Services", "NetUtil",
-#ifdef MOZ_PLACES
-                         "PlacesUtils",
-#endif
                          "FileUtils", "Utils", "Async", "Svc", "Str"];
 
 const {classes: Cc, interfaces: Ci, results: Cr, utils: Cu} = Components;
@@ -19,9 +16,6 @@ Cu.import("resource://services-crypto/utils.js");
 Cu.import("resource://services-sync/constants.js");
 Cu.import("resource://gre/modules/FileUtils.jsm", this);
 Cu.import("resource://gre/modules/NetUtil.jsm", this);
-#ifdef MOZ_PLACES
-Cu.import("resource://gre/modules/PlacesUtils.jsm", this);
-#endif
 Cu.import("resource://gre/modules/Preferences.jsm");
 Cu.import("resource://gre/modules/Services.jsm", this);
 Cu.import("resource://gre/modules/XPCOMUtils.jsm", this);
@@ -413,17 +407,6 @@ this.Utils = {
         callback.call(that, error);
       }
     });
-  },
-
-  getIcon: function(iconUri, defaultIcon) {
-    try {
-      let iconURI = Utils.makeURI(iconUri);
-      return PlacesUtils.favicons.getFaviconLinkForIcon(iconURI).spec;
-    }
-    catch(ex) {}
-
-    // Just give the provided default icon or the system's default
-    return defaultIcon || PlacesUtils.favicons.defaultFavicon.spec;
   },
 
   getErrorString: function Utils_getErrorString(error, args) {

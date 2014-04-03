@@ -827,6 +827,8 @@ public:
                                   uint32_t aLineNumber = 0,
                                   uint32_t aColumnNumber = 0);
 
+  static void LogMessageToConsole(const char* aMsg, ...);
+  
   /**
    * Get the localized string named |aKey| in properties file |aFile|.
    */
@@ -1881,7 +1883,7 @@ public:
 
   /**
    * Returns the time limit on handling user input before
-   * nsEventStateManager::IsHandlingUserInput() stops returning true.
+   * EventStateManager::IsHandlingUserInput() stops returning true.
    * This enables us to detect long running user-generated event handlers.
    */
   static TimeDuration HandlingUserInputTimeout();

@@ -54,7 +54,7 @@
 #nav-bar {
   background-image: linear-gradient(@toolbarHighlight@, rgba(255,255,255,0));
   box-shadow: 0 1px 0 @toolbarHighlight@ inset;
-  margin-top: -1px; /* Move up 1px into the TabsToolbar */
+  margin-top: -@tabToolbarNavbarOverlap@; /* Move up into the TabsToolbar */
   padding-top: 2px;
   padding-bottom: 2px;
   /* Position the toolbar above the bottom of background tabs */
@@ -869,6 +869,7 @@ toolbarbutton[sdk-button="true"][cui-areatype="toolbar"] > .toolbarbutton-icon {
   padding: 1px;
   border: 1px solid ThreeDShadow;
   border-radius: 2px;
+  margin: 1px 3px;
 }
 
 #urlbar[focused],
@@ -894,8 +895,7 @@ toolbarbutton[sdk-button="true"][cui-areatype="toolbar"] > .toolbarbutton-icon {
 }
 
 #urlbar-container {
-  -moz-box-orient: horizontal;
-  -moz-box-align: stretch;
+  -moz-box-align: center;
 }
 
 @conditionalForwardWithUrlbar@ > #urlbar-wrapper {
@@ -926,13 +926,10 @@ toolbarbutton[sdk-button="true"][cui-areatype="toolbar"] > .toolbarbutton-icon {
 }
 
 @conditionalForwardWithUrlbar@[forwarddisabled] > #urlbar-wrapper {
-  /* Work with margin-top to align the clip-path correctly. */
-  margin-top: 5px;
   clip-path: url("chrome://browser/content/browser.xul#urlbar-back-button-clip-path");
 }
 
 @conditionalForwardWithUrlbar@[forwarddisabled] > #urlbar-wrapper > #urlbar {
-  margin-top: -4px;
   margin-left: -@conditionalForwardWithUrlbarWidth@px;
 }
 
@@ -1733,7 +1730,7 @@ richlistitem[type~="action"][actiontype="switchtab"] > .ac-url-box > .ac-action-
 #TabsToolbar::after {
   content: "";
   position: absolute;
-  bottom: 1px;
+  bottom: @tabToolbarNavbarOverlap@;
   left: 0;
   right: 0;
   z-index: 0;

@@ -118,6 +118,14 @@ CheckCertificatePolicies(BackCert& cert, EndEntityOrCA endEntityOrCA,
     return FatalError;
   }
 
+  // Bug 989051. Until we handle inhibitAnyPolicy we will fail close when
+  // inhibitAnyPolicy extension is present and we need to evaluate certificate
+  // policies.
+  if (cert.encodedInhibitAnyPolicy) {
+    PR_SetError(SEC_ERROR_POLICY_VALIDATION_FAILED, 0);
+    return RecoverableError;
+  }
+
   // The root CA certificate may omit the policies that it has been
   // trusted for, so we cannot require the policies to be present in those
   // certificates. Instead, the determination of which roots are trusted for
@@ -141,6 +149,11 @@ CheckCertificatePolicies(BackCert& cert, EndEntityOrCA endEntityOrCA,
   for (const CERTPolicyInfo* const* policyInfos = policies->policyInfos;
        *policyInfos; ++policyInfos) {
     if ((*policyInfos)->oid == requiredPolicy) {
+      return Success;
+    }
+    // Intermediate certs are allowed to have the anyPolicy OID
+    if (endEntityOrCA == MustBeCA &&
+        (*policyInfos)->oid == SEC_OID_X509_ANY_POLICY) {
       return Success;
     }
   }
@@ -175,7 +188,13 @@ DecodeBasicConstraints(const SECItem* encodedBasicConstraints,
   }
 
   bool isCA = false;
-  if (der::OptionalBoolean(input, isCA) != der::Success) {
+  // TODO(bug 989518): cA is by default false. According to DER, default
+  // values must not be explicitly encoded in a SEQUENCE. So, if this
+  // value is present and false, it is an encoding error. However, Go Daddy
+  // has issued many certificates with this improper encoding, so we can't
+  // enforce this yet (hence passing true for allowInvalidExplicitEncoding
+  // to der::OptionalBoolean).
+  if (der::OptionalBoolean(input, true, isCA) != der::Success) {
     return der::Fail(SEC_ERROR_EXTENSION_VALUE_INVALID);
   }
   basicConstraints.isCA = isCA;

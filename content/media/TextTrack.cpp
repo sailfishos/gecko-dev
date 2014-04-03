@@ -17,17 +17,17 @@ namespace mozilla {
 namespace dom {
 
 NS_IMPL_CYCLE_COLLECTION_INHERITED_5(TextTrack,
-                                     nsDOMEventTargetHelper,
+                                     DOMEventTargetHelper,
                                      mParent,
                                      mCueList,
                                      mActiveCueList,
                                      mTextTrackList,
                                      mTrackElement)
 
-NS_IMPL_ADDREF_INHERITED(TextTrack, nsDOMEventTargetHelper)
-NS_IMPL_RELEASE_INHERITED(TextTrack, nsDOMEventTargetHelper)
+NS_IMPL_ADDREF_INHERITED(TextTrack, DOMEventTargetHelper)
+NS_IMPL_RELEASE_INHERITED(TextTrack, DOMEventTargetHelper)
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(TextTrack)
-NS_INTERFACE_MAP_END_INHERITING(nsDOMEventTargetHelper)
+NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
 
 TextTrack::TextTrack(nsISupports* aParent,
                      TextTrackKind aKind,
@@ -188,6 +188,14 @@ TextTrackReadyState
 TextTrack::ReadyState() const
 {
   return mReadyState;
+}
+
+void
+TextTrack::SetReadyState(uint32_t aReadyState)
+{
+  if (aReadyState <= TextTrackReadyState::FailedToLoad) {
+    SetReadyState(static_cast<TextTrackReadyState>(aReadyState));
+  }
 }
 
 void
