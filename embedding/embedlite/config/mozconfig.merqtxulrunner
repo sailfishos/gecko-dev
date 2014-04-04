@@ -3,7 +3,6 @@ export CFLAGS="-O3"
 export CXXFLAGS="-O3"
 export MOZ_DEBUG_SYMBOLS=1
 export MOZILLA_OFFICIAL=1
-export CROSS_COMPILE=1
 
 mk_add_options PROFILE_GEN_SCRIPT=@TOPSRCDIR@/build/profile_pageloader.pl
 mk_add_options MOZ_MAKE_FLAGS="-j8"
