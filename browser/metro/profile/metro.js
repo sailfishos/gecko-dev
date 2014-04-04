@@ -58,7 +58,6 @@ pref("apz.min_skate_speed", "10.0");
 // 0 = free, 1 = standard, 2 = sticky
 pref("apz.axis_lock_mode", 2);
 pref("apz.cross_slide.enabled", true);
-// Allow build sub layers tree for iframes
 pref("apz.subframe.enabled", true);
 
 // Enable Microsoft TSF support by default for imes.
