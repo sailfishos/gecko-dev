@@ -20,16 +20,16 @@ NS_IMPL_QUERY_INTERFACE2(DirProvider,
                          nsIDirectoryServiceProvider,
                          nsIDirectoryServiceProvider2)
 
-NS_IMETHODIMP_(nsrefcnt)
+NS_IMETHODIMP_(MozExternalRefCountType)
 DirProvider::AddRef()
 {
   return 1;
 }
 
-NS_IMETHODIMP_(nsrefcnt)
+NS_IMETHODIMP_(MozExternalRefCountType)
 DirProvider::Release()
 {
-  return 1;
+  return 0;
 }
 
 NS_IMETHODIMP
