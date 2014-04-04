@@ -430,7 +430,6 @@ MediaDecoder::MediaDecoder() :
   mIgnoreProgressData(false),
   mInfiniteStream(false),
   mOwner(nullptr),
-  mFrameBufferLength(0),
   mPinnedForSeek(false),
   mShuttingDown(false),
   mPausedForPlaybackRateNull(false),
@@ -561,10 +560,6 @@ nsresult MediaDecoder::InitializeStateMachine(MediaDecoder* aCloneDonor)
     if (mMinimizePreroll) {
       mDecoderStateMachine->SetMinimizePrerollUntilPlaybackStarts();
     }
-    if (mFrameBufferLength > 0) {
-      // The valid mFrameBufferLength value was specified earlier
-      mDecoderStateMachine->SetFrameBufferLength(mFrameBufferLength);
-    }
   }
 
   ChangeState(PLAY_STATE_LOADING);
@@ -576,20 +571,6 @@ void MediaDecoder::SetMinimizePrerollUntilPlaybackStarts()
 {
   MOZ_ASSERT(NS_IsMainThread());
   mMinimizePreroll = true;
-}
-
-nsresult MediaDecoder::RequestFrameBufferLength(uint32_t aLength)
-{
-  if (aLength < FRAMEBUFFER_LENGTH_MIN || aLength > FRAMEBUFFER_LENGTH_MAX) {
-    return NS_ERROR_DOM_INDEX_SIZE_ERR;
-  }
-  mFrameBufferLength = aLength;
-
-  ReentrantMonitorAutoEnter mon(GetReentrantMonitor());
-  if (mDecoderStateMachine) {
-      mDecoderStateMachine->SetFrameBufferLength(aLength);
-  }
-  return NS_OK;
 }
 
 nsresult MediaDecoder::ScheduleStateMachineThread()
@@ -675,21 +656,6 @@ already_AddRefed<nsIPrincipal> MediaDecoder::GetCurrentPrincipal()
 {
   MOZ_ASSERT(NS_IsMainThread());
   return mResource ? mResource->GetCurrentPrincipal() : nullptr;
-}
-
-void MediaDecoder::AudioAvailable(float* aFrameBuffer,
-                                      uint32_t aFrameBufferLength,
-                                      float aTime)
-{
-  // Auto manage the frame buffer's memory. If we return due to an error
-  // here, this ensures we free the memory. Otherwise, we pass off ownership
-  // to HTMLMediaElement::NotifyAudioAvailable().
-  nsAutoArrayPtr<float> frameBuffer(aFrameBuffer);
-  MOZ_ASSERT(NS_IsMainThread());
-  if (mShuttingDown || !mOwner) {
-    return;
-  }
-  mOwner->NotifyAudioAvailable(frameBuffer.forget(), aFrameBufferLength, aTime);
 }
 
 void MediaDecoder::QueueMetadata(int64_t aPublishTime,
@@ -1446,15 +1412,6 @@ void MediaDecoder::UpdatePlaybackOffset(int64_t aOffset)
 bool MediaDecoder::OnStateMachineThread() const
 {
   return mDecoderStateMachine->OnStateMachineThread();
-}
-
-void MediaDecoder::NotifyAudioAvailableListener()
-{
-  MOZ_ASSERT(NS_IsMainThread());
-  if (mDecoderStateMachine) {
-    ReentrantMonitorAutoEnter mon(GetReentrantMonitor());
-    mDecoderStateMachine->NotifyAudioAvailableListener();
-  }
 }
 
 void MediaDecoder::SetPlaybackRate(double aPlaybackRate)
