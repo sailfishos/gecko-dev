@@ -107,7 +107,7 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
   }
 
   // create nsIFile pointing to appdir
-  char self[MAX_PATH];
+  char self[MAX_PATH] = "";
 #ifdef WIN32
   GetModuleFileNameA(GetModuleHandle(NULL), self, sizeof(self));
 #else
@@ -121,10 +121,15 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
   size_t lastslash_t = selfPath.find_last_of("/\\");
   if (lastslash_t == std::string::npos) {
     LOGE("Invalid module filename: %s", self);
+#ifdef WIN32
     return false;
+#else
+    // A hackish way to get this initialized when starting through booster.
+    selfPath = std::string("/usr/bin");
+#endif
+  } else {
+    selfPath = selfPath.substr(0, lastslash_t);
   }
-
-  selfPath = selfPath.substr(0, lastslash_t);
 
   nsCOMPtr<nsIFile> appdir;
   rv = XRE_GetBinaryPath(selfPath.c_str(), getter_AddRefs(appdir));
