@@ -192,7 +192,26 @@ GetGlobalContextCGL()
 already_AddRefed<GLContext>
 GLContextProviderCGL::CreateWrappingExisting(void* aContext, void* aSurface)
 {
-    return nullptr;
+    NSOpenGLContext *context = aContext ? aContext : [NSOpenGLContext currentContext];
+    if (!context) {
+        return nullptr;
+    }
+
+    GLContextCGL *shareContext = GetGlobalContextCGL();
+
+    // make the context transparent
+    GLint opaque = 0;
+    [context setValues:&opaque forParameter:NSOpenGLCPSurfaceOpacity];
+
+    SurfaceCaps caps = SurfaceCaps::ForRGBA();
+    nsRefPtr<GLContextCGL> glContext = new GLContextCGL(caps,
+                                                        shareContext,
+                                                        context);
+    if (!glContext->Init()) {
+        return nullptr;
+    }
+
+    return glContext.forget();
 }
 
 already_AddRefed<GLContext>
