@@ -100,8 +100,6 @@ public:
     static already_AddRefed<GLContextEGL>
     CreateEGLPBufferOffscreenContext(const gfxIntSize& size);
 
-    void SetPlatformContext(void* aContext);
-
 protected:
     friend class GLContextProviderEGL;
 
@@ -119,7 +117,7 @@ protected:
 #ifdef MOZ_WIDGET_GONK
     nsRefPtr<HwcComposer2D> mHwc;
 #endif
-    void *mPlatformContext;
+    bool mIsOwnContext;
 
     static EGLSurface CreatePBufferSurfaceTryingPowerOfTwo(EGLConfig config,
                                                            EGLenum bindToTextureFormat,

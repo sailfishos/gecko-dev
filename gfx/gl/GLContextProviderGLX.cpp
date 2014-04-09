@@ -834,7 +834,7 @@ GLContextGLX::~GLContextGLX()
 {
     MarkDestroyed();
 
-    if (mPlatformContext)
+    if (!mIsOwnContext)
         return;
 
     // see bug 659842 comment 76
@@ -907,12 +907,6 @@ GLContextGLX::IsDoubleBuffered() const
     return mDoubleBuffered;
 }
 
-void
-GLContextGLX::SetPlatformContext(void* aContext)
-{
-    mPlatformContext = aContext;
-}
-
 bool
 GLContextGLX::SupportsRobustness() const
 {
@@ -922,7 +916,7 @@ GLContextGLX::SupportsRobustness() const
 bool
 GLContextGLX::SwapBuffers()
 {
-    if (!mDoubleBuffered || mPlatformContext)
+    if (!mDoubleBuffered || !mIsOwnContext)
         return false;
     mGLX->xSwapBuffers(mDisplay, mDrawable);
     mGLX->xWaitGL();
@@ -947,7 +941,7 @@ GLContextGLX::GLContextGLX(
       mDoubleBuffered(aDoubleBuffered),
       mGLX(&sGLXLibrary),
       mPixmap(aPixmap),
-      mPlatformContext(nullptr)
+      mIsOwnContext(true)
 {
     MOZ_ASSERT(mGLX);
     // See 899855
@@ -990,27 +984,26 @@ GLContextProviderGLX::CreateForEmbedded(void* aContext, void* aSurface)
         return nullptr;
     }
 
-    bool doubleBuffered = true;
-    GLXContext glxContext = sGLXLibrary.xGetCurrentContext();
-    if (glxContext) {
-        void* platformContext = glxContext;
+    GLXContext glxContext = aContext ? (GLXContext)aContext : sGLXLibrary.xGetCurrentContext();
+    GLXDrawable glxDrawable = aSurface ? (GLXDrawable)aSurface : (GLXDrawable)sGLXLibrary.xGetCurrentDrawable();
+    if (glxContext && glxDrawable) {
         SurfaceCaps caps = SurfaceCaps::Any();
         nsRefPtr<GLContextGLX> glContext =
             new GLContextGLX(caps,
                              nullptr, // SharedContext
                              false, // Offscreen
                              (Display*)DefaultXDisplay(), // Display
-                             (GLXDrawable)sGLXLibrary.xGetCurrentDrawable(),
-                             glxContext,
+                             glxDrawable, glxContext,
                              false, // aDeleteDrawable,
-                             doubleBuffered,
+                             true,
                              (gfxXlibSurface*)nullptr);
 
-        glContext->SetPlatformContext(platformContext);
+        glContext->mIsOwnContext = false;
         gGlobalContext = glContext;
 
         return glContext.forget();
     }
+
     return nullptr;
 }
 

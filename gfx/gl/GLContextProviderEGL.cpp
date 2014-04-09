@@ -234,7 +234,7 @@ GLContextEGL::GLContextEGL(
     , mIsDoubleBuffered(false)
     , mCanBindToTexture(false)
     , mShareWithEGLImage(false)
-    , mPlatformContext(nullptr)
+    , mIsOwnContext(true)
 {
     // any EGL contexts will always be GLESv2
     SetProfileVersion(ContextProfile::OpenGLES, 200);
@@ -262,7 +262,7 @@ GLContextEGL::~GLContextEGL()
     // If mGLWidget is non-null, then we've been given it by the GL context provider,
     // and it's managed by the widget implementation. In this case, We can't destroy
     // our contexts.
-    if (mPlatformContext)
+    if (!mIsOwnContext)
         return;
 
 #ifdef DEBUG
@@ -429,7 +429,7 @@ GLContextEGL::RenewSurface() {
 
 void
 GLContextEGL::ReleaseSurface() {
-    if (!mPlatformContext) {
+    if (mIsOwnContext) {
         DestroySurface(mSurface);
     }
     mSurface = EGL_NO_SURFACE;
@@ -445,7 +445,7 @@ GLContextEGL::SetupLookupFunction()
 bool
 GLContextEGL::SwapBuffers()
 {
-    if (mSurface && !mPlatformContext) {
+    if (mSurface && mIsOwnContext) {
 #ifdef MOZ_WIDGET_GONK
         if (!mIsOffscreen) {
             if (mHwc) {
@@ -466,12 +466,6 @@ GLContextEGL::SwapBuffers()
 void
 GLContextEGL::HoldSurface(gfxASurface *aSurf) {
     mThebesSurface = aSurf;
-}
-
-void
-GLContextEGL::SetPlatformContext(void *context)
-{
-    mPlatformContext = context;
 }
 
 already_AddRefed<GLContextEGL>
@@ -689,8 +683,6 @@ CreateConfig(EGLConfig* aConfig)
     }
 }
 
-static nsRefPtr<GLContext> gGlobalContext;
-
 already_AddRefed<GLContext>
 GLContextProviderEGL::CreateWrappingExisting(void* aContext, void* aSurface)
 {
@@ -699,25 +691,22 @@ GLContextProviderEGL::CreateWrappingExisting(void* aContext, void* aSurface)
         return nullptr;
     }
 
-    EGLContext eglContext = sEGLLibrary.fGetCurrentContext();
-    if (eglContext) {
-        void* platformContext = eglContext;
+    EGLContext eglContext = aContext ? (EGLContext)aContext : sEGLLibrary.fGetCurrentContext();
+    EGLSurface eglSurface = aSurface ? (EGLSurface)aSurface : sEGLLibrary.fGetCurrentSurface(LOCAL_EGL_DRAW);
+    if (eglContext && eglSurface) {
         SurfaceCaps caps = SurfaceCaps::Any();
         EGLConfig config = EGL_NO_CONFIG;
-        EGLSurface surface = sEGLLibrary.fGetCurrentSurface(LOCAL_EGL_DRAW);
         nsRefPtr<GLContextEGL> glContext =
             new GLContextEGL(caps,
                              nullptr, false,
-                             config, surface, eglContext);
+                             config, eglSurface, eglContext);
 
         glContext->SetIsDoubleBuffered(true);
-        glContext->SetPlatformContext(platformContext);
-#if !defined(__arm__) // Must not use context sharing on arm (EGLImage should be enough)
-        gGlobalContext = glContext;
-#endif
+        glContext->mIsOwnContext = false;
 
         return glContext.forget();
     }
+
     return nullptr;
 }
 
@@ -886,13 +875,12 @@ GLContextProviderEGL::CreateOffscreen(const gfxIntSize& size,
 GLContext *
 GLContextProviderEGL::GetGlobalContext()
 {
-    return gGlobalContext.get();
+    return nullptr;
 }
 
 void
 GLContextProviderEGL::Shutdown()
 {
-    gGlobalContext = nullptr;
 }
 
 } /* namespace gl */

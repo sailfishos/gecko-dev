@@ -50,8 +50,6 @@ public:
 
     virtual bool SwapBuffers() MOZ_OVERRIDE;
 
-    void SetPlatformContext(void* aContext);
-
 private:
     friend class GLContextProviderGLX;
 
@@ -74,7 +72,7 @@ private:
     GLXLibrary* mGLX;
 
     nsRefPtr<gfxXlibSurface> mPixmap;
-    void* mPlatformContext;
+    void* mIsOwnContext;
 };
 
 }
