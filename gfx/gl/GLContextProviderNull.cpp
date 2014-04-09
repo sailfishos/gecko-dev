@@ -15,7 +15,7 @@ GLContextProviderNull::CreateForWindow(nsIWidget*)
 }
 
 already_AddRefed<GLContext>
-GLContextProviderNull::CreateForEmbedded()
+GLContextProviderNull::CreateWrappingExisting(void* aContext, void* aSurface)
 {
     return nullptr;
 }

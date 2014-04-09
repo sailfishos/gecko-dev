@@ -177,7 +177,7 @@ CompositorOGL::CreateContext()
 
   // If widget has active GL context then we can try to wrap it into Moz GL Context
   if (mWidget->HasGLContext()) {
-    context = GLContextProvider::CreateForEmbedded();
+    context = GLContextProvider::CreateWrappingExisting(nullptr, nullptr);
     if (!context || !context->Init()) {
       NS_WARNING("Failed to create embedded context");
       context = nullptr;

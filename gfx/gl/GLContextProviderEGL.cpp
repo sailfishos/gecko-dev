@@ -692,7 +692,7 @@ CreateConfig(EGLConfig* aConfig)
 static nsRefPtr<GLContext> gGlobalContext;
 
 already_AddRefed<GLContext>
-GLContextProviderEGL::CreateForEmbedded()
+GLContextProviderEGL::CreateWrappingExisting(void* aContext, void* aSurface)
 {
     if (!sEGLLibrary.EnsureInitialized()) {
         MOZ_CRASH("Failed to load EGL library!\n");
@@ -730,10 +730,6 @@ GLContextProviderEGL::CreateForWindow(nsIWidget *aWidget)
     }
 
     bool doubleBuffered = true;
-
-    if (aWidget->HasGLContext()) {
-        return CreateForEmbedded();
-    }
 
     EGLConfig config;
     if (!CreateConfig(&config)) {

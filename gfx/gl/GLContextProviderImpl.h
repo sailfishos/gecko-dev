@@ -61,9 +61,24 @@ public:
     CreateOffscreen(const gfxIntSize& size,
                     const SurfaceCaps& caps);
 
-    static already_AddRefed<GLContext>
-    CreateForEmbedded();
+    /**
+     * Create the gecko context wrapper for existing context.
+     *
+     * The offscreen context returned by this method will always have
+     * the ability to be rendered into a context created by a window.
+     * It might or might not share resources with the global context;
+     * query GetSharedContext() for a non-null result to check.  If
+     * resource sharing can be avoided on the target platform, it will
+     * be, in order to isolate the offscreen context.
+     *
+     * @param aContext The initial size of this offscreen context.
+     * @param aSurface The ContextFormat for this offscreen context.
+     *
+     * @return Context to use for offscreen rendering
+     */
 
+    static already_AddRefed<GLContext>
+    CreateWrappingExisting(void* aContext, void* aSurface);
 
     /**
      * Get a pointer to the global context, creating it if it doesn't exist.

@@ -76,7 +76,7 @@ EmbedLiteApp::~EmbedLiteApp()
 EmbedLiteRenderTarget*
 EmbedLiteApp::CreateEmbedLiteRenderTarget()
 {
-  return new EmbedLiteRenderTarget();
+  return new EmbedLiteRenderTarget(nullptr, nullptr);
 }
 
 void

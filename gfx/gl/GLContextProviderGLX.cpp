@@ -984,7 +984,7 @@ AreCompatibleVisuals(Visual *one, Visual *two)
 static nsRefPtr<GLContext> gGlobalContext;
 
 already_AddRefed<GLContext>
-GLContextProviderGLX::CreateForEmbedded()
+GLContextProviderGLX::CreateForEmbedded(void* aContext, void* aSurface)
 {
     if (!sGLXLibrary.EnsureInitialized()) {
         return nullptr;
@@ -1019,10 +1019,6 @@ GLContextProviderGLX::CreateForWindow(nsIWidget *aWidget)
 {
     if (!sGLXLibrary.EnsureInitialized()) {
         return nullptr;
-    }
-
-    if (aWidget->HasGLContext()) {
-        return CreateForEmbedded();
     }
 
     // Currently, we take whatever Visual the window already has, and

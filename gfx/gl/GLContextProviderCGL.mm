@@ -190,7 +190,7 @@ GetGlobalContextCGL()
 }
 
 already_AddRefed<GLContext>
-GLContextProviderCGL::CreateForEmbedded()
+GLContextProviderCGL::CreateWrappingExisting(void* aContext, void* aSurface)
 {
     return nullptr;
 }
