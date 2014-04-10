@@ -594,10 +594,7 @@ EmbedLiteViewThreadChild::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
     mViewResized = false;
   }
 
-
-  for (unsigned int i = 0; i < mControllerListeners.Length(); i++) {
-    mControllerListeners[i]->RequestContentRepaint(metrics);
-  }
+  RelayFrameMetrics(metrics);
 
   bool ret = true;
   if (sHandleDefaultAZPC.viewport) {
@@ -605,6 +602,14 @@ EmbedLiteViewThreadChild::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
   }
 
   return ret;
+}
+
+void
+EmbedLiteViewThreadChild::RelayFrameMetrics(const FrameMetrics& aFrameMetrics)
+{
+  for (unsigned int i = 0; i < mControllerListeners.Length(); i++) {
+    mControllerListeners[i]->RequestContentRepaint(aFrameMetrics);
+  }
 }
 
 bool

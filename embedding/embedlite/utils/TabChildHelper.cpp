@@ -240,6 +240,8 @@ TabChildHelper::Observe(nsISupports* aSubject,
           utils->SetResolution(mLastRootMetrics.mResolution.scale,
                                mLastRootMetrics.mResolution.scale);
           HandlePossibleViewportChange();
+          // Relay frame metrics to subscribed listeners
+          mView->RelayFrameMetrics(mLastRootMetrics);
         }
       }
 
@@ -265,6 +267,8 @@ TabChildHelper::HandleEvent(nsIDOMEvent* aEvent)
     // This meta data may or may not have been a meta viewport tag. If it was,
     // we should handle it immediately.
     HandlePossibleViewportChange();
+    // Relay frame metrics to subscribed listeners
+    mView->RelayFrameMetrics(mLastRootMetrics);
   }
 
   return NS_OK;

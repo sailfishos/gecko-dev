@@ -120,6 +120,10 @@ private:
   friend class EmbedLiteAppService;
   friend class EmbedLiteAppThreadChild;
 
+  /**
+   * Relay given frame metrics to listeners subscribed via EmbedLiteAppService
+   */
+  void RelayFrameMetrics(const mozilla::layers::FrameMetrics& aFrameMetrics);
   void InitGeckoWindow(const uint32_t& parentId);
   EmbedLiteAppThreadChild* AppChild();
   void InitEvent(WidgetGUIEvent& event, nsIntPoint* aPoint = nullptr);
