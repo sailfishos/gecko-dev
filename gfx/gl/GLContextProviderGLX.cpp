@@ -108,7 +108,6 @@ GLXLibrary::EnsureInitialized()
         { (PRFuncPtr*) &xSwapBuffersInternal, { "glXSwapBuffers", nullptr } },
         { (PRFuncPtr*) &xQueryVersionInternal, { "glXQueryVersion", nullptr } },
         { (PRFuncPtr*) &xGetCurrentContextInternal, { "glXGetCurrentContext", nullptr } },
-        { (PRFuncPtr*) &xGetCurrentDrawableInternal, { "glXGetCurrentDrawable", nullptr } },
         { (PRFuncPtr*) &xWaitGLInternal, { "glXWaitGL", nullptr } },
         { (PRFuncPtr*) &xWaitXInternal, { "glXWaitX", nullptr } },
         /* functions introduced in GLX 1.1 */
@@ -533,15 +532,6 @@ GLXLibrary::xGetCurrentContext()
 {
     BEFORE_GLX_CALL;
     GLXContext result = xGetCurrentContextInternal();
-    AFTER_GLX_CALL;
-    return result;
-}
-
-GLXDrawable
-GLXLibrary::xGetCurrentDrawable()
-{
-    BEFORE_GLX_CALL;
-    GLXDrawable result = xGetCurrentDrawableInternal();
     AFTER_GLX_CALL;
     return result;
 }

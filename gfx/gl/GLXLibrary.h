@@ -6,11 +6,8 @@
 #ifndef GFX_GLXLIBRARY_H
 #define GFX_GLXLIBRARY_H
 
-#include "GLContext.h"
 #include "GLContextTypes.h"
-#ifndef GLboolean_defined
 typedef realGLboolean GLboolean;
-#endif
 
 // stuff from glx.h
 #include "X11/Xlib.h"
@@ -47,7 +44,6 @@ public:
                       GLXContext context);
 
     GLXContext xGetCurrentContext();
-    GLXDrawable xGetCurrentDrawable();
     static void* xGetProcAddress(const char *procName);
     GLXFBConfig* xChooseFBConfig(Display* display, 
                                  int screen, 
@@ -124,8 +120,6 @@ private:
     PFNGLXMAKECURRENTPROC xMakeCurrentInternal;
     typedef GLXContext (GLAPIENTRY * PFNGLXGETCURRENTCONTEXT) ();
     PFNGLXGETCURRENTCONTEXT xGetCurrentContextInternal;
-    typedef GLXDrawable (GLAPIENTRY * PFNGLXGETCURRENTDRAWABLE) ();
-    PFNGLXGETCURRENTDRAWABLE xGetCurrentDrawableInternal;
     typedef void* (GLAPIENTRY * PFNGLXGETPROCADDRESSPROC) (const char *);
     PFNGLXGETPROCADDRESSPROC xGetProcAddressInternal;
     typedef GLXFBConfig* (GLAPIENTRY * PFNGLXCHOOSEFBCONFIG) (Display *,

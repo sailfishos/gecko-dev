@@ -469,7 +469,7 @@ GLContextEGL::HoldSurface(gfxASurface *aSurf) {
 
 already_AddRefed<GLContextEGL>
 GLContextEGL::CreateGLContext(const SurfaceCaps& caps,
-                GLContext *shareContext,
+                GLContextEGL *shareContext,
                 bool isOffscreen,
                 EGLConfig config,
                 EGLSurface surface)
@@ -479,7 +479,7 @@ GLContextEGL::CreateGLContext(const SurfaceCaps& caps,
         return nullptr;
     }
 
-    EGLContext eglShareContext = shareContext ? static_cast<GLContextEGL*>(shareContext)->mContext
+    EGLContext eglShareContext = shareContext ? shareContext->mContext
                                               : EGL_NO_CONTEXT;
     EGLint* attribs = sEGLLibrary.HasRobustness() ? gContextAttribsRobustness
                                                   : gContextAttribs;
@@ -782,10 +782,9 @@ GLContextEGL::CreateEGLPBufferOffscreenContext(const gfxIntSize& size)
     }
 
     SurfaceCaps dummyCaps = SurfaceCaps::Any();
-    GLContext *shareContext = GLContextProviderEGL::GetGlobalContext();
     nsRefPtr<GLContextEGL> glContext =
         GLContextEGL::CreateGLContext(dummyCaps,
-                                      shareContext, true,
+                                      nullptr, true,
                                       config, surface);
     if (!glContext) {
         NS_WARNING("Failed to create GLContext from PBuffer");
@@ -821,10 +820,9 @@ GLContextEGL::CreateEGLPixmapOffscreenContext(const gfxIntSize& size)
     MOZ_ASSERT(surface);
 
     SurfaceCaps dummyCaps = SurfaceCaps::Any();
-    GLContext *shareContext = GLContextProviderEGL::GetGlobalContext();
     nsRefPtr<GLContextEGL> glContext =
         GLContextEGL::CreateGLContext(dummyCaps,
-                                      shareContext, true,
+                                      nullptr, true,
                                       config, surface);
     if (!glContext) {
         NS_WARNING("Failed to create GLContext from XSurface");
