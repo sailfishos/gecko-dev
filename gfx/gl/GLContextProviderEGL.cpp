@@ -259,11 +259,10 @@ GLContextEGL::~GLContextEGL()
 {
     MarkDestroyed();
 
-    // If mGLWidget is non-null, then we've been given it by the GL context provider,
-    // and it's managed by the widget implementation. In this case, We can't destroy
-    // our contexts.
-    if (!mOwnsContext)
+    // Wrapping GLContext cannot be destroyed
+    if (!mOwnsContext) {
         return;
+    }
 
 #ifdef DEBUG
     printf_stderr("Destroying context %p surface %p on display %p\n", mContext, mSurface, EGL_DISPLAY());

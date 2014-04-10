@@ -46,7 +46,7 @@ public:
         return static_cast<GLContextEGL*>(gl);
     }
 
-    bool Init();
+    bool Init() MOZ_OVERRIDE;
 
     virtual bool IsDoubleBuffered() const MOZ_OVERRIDE {
         return mIsDoubleBuffered;

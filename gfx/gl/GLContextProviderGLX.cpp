@@ -834,8 +834,9 @@ GLContextGLX::~GLContextGLX()
 {
     MarkDestroyed();
 
-    if (!mOwnsContext)
+    if (!mOwnsContext) {
         return;
+    }
 
     // see bug 659842 comment 76
 #ifdef DEBUG

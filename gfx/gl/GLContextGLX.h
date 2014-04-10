@@ -36,7 +36,7 @@ public:
         return static_cast<GLContextGLX*>(gl);
     }
 
-    bool Init();
+    bool Init() MOZ_OVERRIDE;
 
     virtual bool MakeCurrentImpl(bool aForce) MOZ_OVERRIDE;
 

@@ -408,10 +408,10 @@ GLContextProviderWGL::CreateWrappingExisting(void* aContext, void* aSurface)
     }
 
     /**
-       * We need to make sure we call SetPixelFormat -after- calling
-       * EnsureInitialized, otherwise it can load/unload the dll and
-       * wglCreateContext will fail.
-       */
+     * We need to make sure we call SetPixelFormat -after- calling
+     * EnsureInitialized, otherwise it can load/unload the dll and
+     * wglCreateContext will fail.
+     */
 
     if (!aContext) {
         return nullptr;

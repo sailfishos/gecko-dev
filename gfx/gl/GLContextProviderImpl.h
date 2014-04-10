@@ -62,21 +62,13 @@ public:
                     const SurfaceCaps& caps);
 
     /**
-     * Create the gecko context wrapper for existing context.
+     * Create wrapping Gecko GLContext for external gl context.
      *
-     * The offscreen context returned by this method will always have
-     * the ability to be rendered into a context created by a window.
-     * It might or might not share resources with the global context;
-     * query GetSharedContext() for a non-null result to check.  If
-     * resource sharing can be avoided on the target platform, it will
-     * be, in order to isolate the offscreen context.
+     * @param aContext External context which will be wrapped by Gecko GLContext.
+     * @param aSurface External surface which is used for external context.
      *
-     * @param aContext The initial size of this offscreen context.
-     * @param aSurface The ContextFormat for this offscreen context.
-     *
-     * @return Context to use for offscreen rendering
+     * @return Wrapping Context to use for rendering
      */
-
     static already_AddRefed<GLContext>
     CreateWrappingExisting(void* aContext, void* aSurface);
 
