@@ -426,10 +426,6 @@ GLContextProviderWGL::CreateWrappingExisting(void* aContext, void* aSurface)
                                                         (HDC)aSurface,
                                                         (HGLRC)aContext);
 
-    if (sWGLLib.fGetCurrentContext() == aContext && !glContext->Init()) {
-        return nullptr;
-    }
-
     glContext->SetIsDoubleBuffered(true);
 
     return glContext.forget();

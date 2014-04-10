@@ -212,10 +212,6 @@ GLContextProviderCGL::CreateWrappingExisting(void* aContext, void* aSurface)
                                                         shareContext,
                                                         context);
 
-    if ([NSOpenGLContext currentContext] == context && !glContext->Init()) {
-        return nullptr;
-    }
-
     return glContext.forget();
 }
 

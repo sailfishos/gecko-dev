@@ -702,12 +702,6 @@ GLContextProviderEGL::CreateWrappingExisting(void* aContext, void* aSurface)
         glContext->SetIsDoubleBuffered(true);
         glContext->mOwnsContext = false;
 
-        if (sEGLLibrary.fGetCurrentContext() == aContext) {
-            if (!glContext->Init()) {
-                NS_WARNING("Failed to initialize wrapping EGL context");
-            }
-        }
-
         return glContext.forget();
     }
 

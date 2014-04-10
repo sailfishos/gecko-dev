@@ -984,29 +984,20 @@ GLContextProviderGLX::CreateWrappingExisting(void* aContext, void* aSurface)
         return nullptr;
     }
 
-    GLXContext glxContext = (GLXContext)aContext;
-    GLXDrawable glxDrawable = (GLXDrawable)aSurface;
-    if (glxContext && glxDrawable) {
+    if (aContext && aSurface) {
         SurfaceCaps caps = SurfaceCaps::Any();
         nsRefPtr<GLContextGLX> glContext =
             new GLContextGLX(caps,
                              nullptr, // SharedContext
                              false, // Offscreen
                              (Display*)DefaultXDisplay(), // Display
-                             glxDrawable, glxContext,
+                             (GLXDrawable)aSurface, (GLXContext)aContext,
                              false, // aDeleteDrawable,
                              true,
                              (gfxXlibSurface*)nullptr);
 
         glContext->mOwnsContext = false;
         gGlobalContext = glContext;
-
-        if (sGLXLibrary.xGetCurrentContext() == aContext) {
-            if (!glContext->Init()) {
-                NS_WARNING("[GLX] Failed to initialize wrapping context");
-                return nullptr;
-            }
-        }
 
         return glContext.forget();
     }
