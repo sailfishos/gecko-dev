@@ -192,12 +192,16 @@ GetGlobalContextCGL()
 already_AddRefed<GLContext>
 GLContextProviderCGL::CreateWrappingExisting(void* aContext, void* aSurface)
 {
-    NSOpenGLContext *context = aContext ? aContext : [NSOpenGLContext currentContext];
+    if (!sCGLLibrary.EnsureInitialized()) {
+        return nullptr;
+    }
+
+    NSOpenGLContext* context = (NSOpenGLContext)aContext;
     if (!context) {
         return nullptr;
     }
 
-    GLContextCGL *shareContext = GetGlobalContextCGL();
+    GLContextCGL* shareContext = GetGlobalContextCGL();
 
     // make the context transparent
     GLint opaque = 0;
@@ -207,7 +211,8 @@ GLContextProviderCGL::CreateWrappingExisting(void* aContext, void* aSurface)
     nsRefPtr<GLContextCGL> glContext = new GLContextCGL(caps,
                                                         shareContext,
                                                         context);
-    if (!glContext->Init()) {
+
+    if ([NSOpenGLContext currentContext] == context && !glContext->Init()) {
         return nullptr;
     }
 
@@ -217,10 +222,6 @@ GLContextProviderCGL::CreateWrappingExisting(void* aContext, void* aSurface)
 already_AddRefed<GLContext>
 GLContextProviderCGL::CreateForWindow(nsIWidget *aWidget)
 {
-    if (!sCGLLibrary.EnsureInitialized()) {
-        return nullptr;
-    }
-
     GLContextCGL *shareContext = GetGlobalContextCGL();
 
     NSOpenGLContext *context = [[NSOpenGLContext alloc]

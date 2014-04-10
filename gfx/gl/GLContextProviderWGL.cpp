@@ -413,23 +413,20 @@ GLContextProviderWGL::CreateWrappingExisting(void* aContext, void* aSurface)
        * wglCreateContext will fail.
        */
 
-    HGLRC context = aContext ? (HGLRC)aContext : sWGLLib.fGetCurrentContext()
-    HDC dc = aSurface ? (HDC)aSurface : 0;
-
-    GLContextWGL *shareContext = GetGlobalContextWGL();
-
-
-    if (!context) {
+    if (!aContext) {
         return nullptr;
     }
+
+    GLContextWGL *shareContext = GetGlobalContextWGL();
 
     SurfaceCaps caps = SurfaceCaps::ForRGBA();
     nsRefPtr<GLContextWGL> glContext = new GLContextWGL(caps,
                                                         shareContext,
                                                         false,
-                                                        dc,
-                                                        context);
-    if (!glContext->Init()) {
+                                                        (HDC)aSurface,
+                                                        (HGLRC)aContext);
+
+    if (sWGLLib.fGetCurrentContext() == aContext && !glContext->Init()) {
         return nullptr;
     }
 

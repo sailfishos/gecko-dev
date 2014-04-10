@@ -834,7 +834,7 @@ GLContextGLX::~GLContextGLX()
 {
     MarkDestroyed();
 
-    if (!mIsOwnContext)
+    if (!mOwnsContext)
         return;
 
     // see bug 659842 comment 76
@@ -916,7 +916,7 @@ GLContextGLX::SupportsRobustness() const
 bool
 GLContextGLX::SwapBuffers()
 {
-    if (!mDoubleBuffered || !mIsOwnContext)
+    if (!mDoubleBuffered || !mOwnsContext)
         return false;
     mGLX->xSwapBuffers(mDisplay, mDrawable);
     mGLX->xWaitGL();
@@ -941,7 +941,7 @@ GLContextGLX::GLContextGLX(
       mDoubleBuffered(aDoubleBuffered),
       mGLX(&sGLXLibrary),
       mPixmap(aPixmap),
-      mIsOwnContext(true)
+      mOwnsContext(true)
 {
     MOZ_ASSERT(mGLX);
     // See 899855
@@ -978,14 +978,14 @@ AreCompatibleVisuals(Visual *one, Visual *two)
 static nsRefPtr<GLContext> gGlobalContext;
 
 already_AddRefed<GLContext>
-GLContextProviderGLX::CreateForEmbedded(void* aContext, void* aSurface)
+GLContextProviderGLX::CreateWrappingExisting(void* aContext, void* aSurface)
 {
     if (!sGLXLibrary.EnsureInitialized()) {
         return nullptr;
     }
 
-    GLXContext glxContext = aContext ? (GLXContext)aContext : sGLXLibrary.xGetCurrentContext();
-    GLXDrawable glxDrawable = aSurface ? (GLXDrawable)aSurface : (GLXDrawable)sGLXLibrary.xGetCurrentDrawable();
+    GLXContext glxContext = (GLXContext)aContext;
+    GLXDrawable glxDrawable = (GLXDrawable)aSurface;
     if (glxContext && glxDrawable) {
         SurfaceCaps caps = SurfaceCaps::Any();
         nsRefPtr<GLContextGLX> glContext =
@@ -998,8 +998,15 @@ GLContextProviderGLX::CreateForEmbedded(void* aContext, void* aSurface)
                              true,
                              (gfxXlibSurface*)nullptr);
 
-        glContext->mIsOwnContext = false;
+        glContext->mOwnsContext = false;
         gGlobalContext = glContext;
+
+        if (sGLXLibrary.xGetCurrentContext() == aContext) {
+            if (!glContext->Init()) {
+                NS_WARNING("[GLX] Failed to initialize wrapping context");
+                return nullptr;
+            }
+        }
 
         return glContext.forget();
     }

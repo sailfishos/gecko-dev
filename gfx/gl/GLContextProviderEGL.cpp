@@ -234,7 +234,7 @@ GLContextEGL::GLContextEGL(
     , mIsDoubleBuffered(false)
     , mCanBindToTexture(false)
     , mShareWithEGLImage(false)
-    , mIsOwnContext(true)
+    , mOwnsContext(true)
 {
     // any EGL contexts will always be GLESv2
     SetProfileVersion(ContextProfile::OpenGLES, 200);
@@ -262,7 +262,7 @@ GLContextEGL::~GLContextEGL()
     // If mGLWidget is non-null, then we've been given it by the GL context provider,
     // and it's managed by the widget implementation. In this case, We can't destroy
     // our contexts.
-    if (!mIsOwnContext)
+    if (!mOwnsContext)
         return;
 
 #ifdef DEBUG
@@ -429,7 +429,7 @@ GLContextEGL::RenewSurface() {
 
 void
 GLContextEGL::ReleaseSurface() {
-    if (mIsOwnContext) {
+    if (mOwnsContext) {
         DestroySurface(mSurface);
     }
     mSurface = EGL_NO_SURFACE;
@@ -445,7 +445,7 @@ GLContextEGL::SetupLookupFunction()
 bool
 GLContextEGL::SwapBuffers()
 {
-    if (mSurface && mIsOwnContext) {
+    if (mSurface && mOwnsContext) {
 #ifdef MOZ_WIDGET_GONK
         if (!mIsOffscreen) {
             if (mHwc) {
@@ -691,18 +691,22 @@ GLContextProviderEGL::CreateWrappingExisting(void* aContext, void* aSurface)
         return nullptr;
     }
 
-    EGLContext eglContext = aContext ? (EGLContext)aContext : sEGLLibrary.fGetCurrentContext();
-    EGLSurface eglSurface = aSurface ? (EGLSurface)aSurface : sEGLLibrary.fGetCurrentSurface(LOCAL_EGL_DRAW);
-    if (eglContext && eglSurface) {
+    if (aContext && aSurface) {
         SurfaceCaps caps = SurfaceCaps::Any();
         EGLConfig config = EGL_NO_CONFIG;
         nsRefPtr<GLContextEGL> glContext =
             new GLContextEGL(caps,
                              nullptr, false,
-                             config, eglSurface, eglContext);
+                             config, (EGLSurface)aSurface, (EGLContext)aContext);
 
         glContext->SetIsDoubleBuffered(true);
-        glContext->mIsOwnContext = false;
+        glContext->mOwnsContext = false;
+
+        if (sEGLLibrary.fGetCurrentContext() == aContext) {
+            if (!glContext->Init()) {
+                NS_WARNING("Failed to initialize wrapping EGL context");
+            }
+        }
 
         return glContext.forget();
     }
