@@ -1,0 +1,35 @@
+changeset:   177501:4c9aa598472e
+tag:         qbase
+tag:         reset-gCaptureTouchList-upon-new-touch-seq.patch
+user:        Dmitry Rozhkov <dmitry.rojkov@gmail.com>
+date:        Tue Apr 08 16:58:03 2014 +0300
+summary:     Reset gCaptureTouchList upon new touch sequence
+
+diff --git a/layout/base/nsPresShell.cpp b/layout/base/nsPresShell.cpp
+--- a/layout/base/nsPresShell.cpp
++++ b/layout/base/nsPresShell.cpp
+@@ -6696,17 +6696,22 @@ PresShell::HandleEvent(nsIFrame* aFrame,
+       if (aEvent->message == NS_TOUCH_START) {
+         flags |= INPUT_IGNORE_ROOT_SCROLL_FRAME;
+         WidgetTouchEvent* touchEvent = aEvent->AsTouchEvent();
+         // if this is a continuing session, ensure that all these events are
+         // in the same document by taking the target of the events already in
+         // the capture list
+         nsCOMPtr<nsIContent> anyTarget;
+         if (gCaptureTouchList->Count() > 0) {
+-          gCaptureTouchList->Enumerate(&FindAnyTarget, &anyTarget);
++          if (touchEvent->touches.Length() == 1 && aEvent->message == NS_TOUCH_START) {
++            NS_WARNING("gCaptureTouchList must be empty upon new touch sequence.");
++            gCaptureTouchList->Clear();
++          } else {
++            gCaptureTouchList->Enumerate(&FindAnyTarget, &anyTarget);
++          }
+         } else {
+           gPreventMouseEvents = false;
+         }
+ 
+         for (int32_t i = touchEvent->touches.Length(); i; ) {
+           --i;
+           dom::Touch* touch = touchEvent->touches[i];
+ 
+

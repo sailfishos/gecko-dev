@@ -1,0 +1,26 @@
+From 60f23dfb567e55ab4c63d9ede81323da7a882161 Mon Sep 17 00:00:00 2001
+From: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
+Date: Wed, 19 Feb 2014 17:40:57 +0200
+Subject: [PATCH] Update zoom scale upon viewport change
+
+---
+ gfx/layers/ipc/AsyncPanZoomController.cpp | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/gfx/layers/ipc/AsyncPanZoomController.cpp b/gfx/layers/ipc/AsyncPanZoomController.cpp
+index 9c638e9..6271811 100644
+--- a/gfx/layers/ipc/AsyncPanZoomController.cpp
++++ b/gfx/layers/ipc/AsyncPanZoomController.cpp
+@@ -1560,6 +1560,9 @@ void AsyncPanZoomController::NotifyLayersUpdated(const FrameMetrics& aLayerMetri
+     if (mFrameMetrics.mViewport.width != aLayerMetrics.mViewport.width ||
+         mFrameMetrics.mViewport.height != aLayerMetrics.mViewport.height) {
+       needContentRepaint = true;
++      if (mFrameMetrics.mViewport.width != aLayerMetrics.mViewport.width) {
++        mFrameMetrics.mZoom.scale = aLayerMetrics.mZoom.scale;
++      }
+     }
+     mFrameMetrics.mViewport = aLayerMetrics.mViewport;
+   }
+-- 
+1.9.0
+
