@@ -905,6 +905,9 @@ TabChildHelper::HandlePossibleViewportChange()
   // displayport, so we start with async painting.
   ProcessUpdateFrame(metrics);
   mFrameMetrics = metrics;
+
+  // Relay frame metrics to subscribed listeners
+  mView->RelayFrameMetrics(metrics);
   return true;
 }
 
