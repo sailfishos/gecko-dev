@@ -9,12 +9,12 @@ License:    Mozilla License
 URL:        http://hg.mozilla.org/mozilla-central
 Source0:    %{name}-%{version}.tar.bz2
 Patch0:     add-sailfishos-org-certs.patch
-Patch1:     update-zoom-scale-upon-viewport-change.patch
-Patch2:     workaround-for-bug-977015.patch
-Patch3:     make-root-composition-bounds-equal-widget.patch
-Patch4:     turn-gestureeventlistener-to-fsm.patch
-Patch5:     fix-booster-startup.patch
-Patch6:     reset-gCaptureTouchList-upon-new-touch-seq.patch
+Patch1:     make-root-composition-bounds-equal-widget.patch
+Patch2:     fix-booster-startup.patch
+Patch3:     reset-gCaptureTouchList-upon-new-touch-seq.patch
+#Patch4:     update-zoom-scale-upon-viewport-change.patch
+#Patch5:     workaround-for-bug-977015.patch
+#Patch6:     turn-gestureeventlistener-to-fsm.patch
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
@@ -68,9 +68,9 @@ Tests and misc files for xulrunner
 %patch1 -p1
 %patch2 -p1
 %patch3 -p1
-%patch4 -p1
-%patch5 -p1
-%patch6 -p1
+#%patch4 -p1
+#%patch5 -p1
+#%patch6 -p1
 
 %build
 export DONT_POPULATE_VIRTUALENV=1
