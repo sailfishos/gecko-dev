@@ -10,9 +10,8 @@ URL:        http://hg.mozilla.org/mozilla-central
 Source0:    %{name}-%{version}.tar.bz2
 Patch0:     add-sailfishos-org-certs.patch
 Patch1:     update-zoom-scale-upon-viewport-change.patch
-Patch2:     fix-booster-startup.patch
-Patch3:     reset-gCaptureTouchList-upon-new-touch-seq.patch
-#Patch4:     make-root-composition-bounds-equal-widget.patch
+Patch2:     reset-gCaptureTouchList-upon-new-touch-seq.patch
+#Patch3:     make-root-composition-bounds-equal-widget.patch
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
@@ -65,8 +64,7 @@ Tests and misc files for xulrunner
 %patch0 -p1
 %patch1 -p1
 %patch2 -p1
-%patch3 -p1
-#%patch4 -p1
+#%patch3 -p1
 
 %build
 export DONT_POPULATE_VIRTUALENV=1
