@@ -526,19 +526,21 @@ bool
 DefineWebIDLBindingPropertiesOnXPCObject(JSContext* cx,
                                          JS::Handle<JSObject*> obj,
                                          const NativeProperties* properties,
-                                         bool defineUnforgeableAttributes)
+                                         bool defineOnlyUnforgeableAttributes)
 {
-  if (properties->methods &&
+  if (!defineOnlyUnforgeableAttributes &&
+      properties->methods &&
       !DefinePrefable(cx, obj, properties->methods)) {
     return false;
   }
 
-  if (properties->attributes &&
+  if (!defineOnlyUnforgeableAttributes &&
+      properties->attributes &&
       !DefinePrefable(cx, obj, properties->attributes)) {
     return false;
   }
 
-  if (defineUnforgeableAttributes && properties->unforgeableAttributes &&
+  if (defineOnlyUnforgeableAttributes && properties->unforgeableAttributes &&
       !DefinePrefable(cx, obj, properties->unforgeableAttributes)) {
     return false;
   }
@@ -1648,7 +1650,10 @@ private:
 nsresult
 ReparentWrapper(JSContext* aCx, JS::Handle<JSObject*> aObjArg)
 {
-  // aObj is assigned to below, so needs to be re-rooted.
+  // Check if we're near the stack limit before we get anywhere near the
+  // transplanting code.
+  JS_CHECK_RECURSION(aCx, return NS_ERROR_FAILURE);
+
   JS::Rooted<JSObject*> aObj(aCx, aObjArg);
   const DOMClass* domClass = GetDOMClass(aObj);
 

@@ -53,7 +53,7 @@
 #nav-bar {
   background-image: linear-gradient(@toolbarHighlight@, rgba(255,255,255,0));
   box-shadow: 0 1px 0 @toolbarHighlight@ inset;
-  margin-top: -1px; /* Move up 1px into the TabsToolbar */
+  margin-top: -@tabToolbarNavbarOverlap@; /* Move up into the TabsToolbar */
   padding-top: 2px;
   padding-bottom: 2px;
   /* Position the toolbar above the bottom of background tabs */
@@ -65,8 +65,12 @@
   -moz-image-region: rect(-5px, 12px, 11px, -4px);
 }
 
+/* This only has an effect when this element is placed on the bookmarks toolbar.
+ * It's 30px to make sure buttons with 18px icons fit along with the default 16px
+ * icons, without changing the size of the toolbar.
+ */
 #personal-bookmarks {
-  min-height: 29px;
+  min-height: 30px;
 }
 
 #browser-bottombox {
@@ -94,7 +98,7 @@ toolbarbutton.bookmark-item[open="true"] {
   -moz-padding-end: 2px;
 }
 
-.bookmark-item > .toolbarbutton-icon,
+.bookmark-item:not(#home-button) > .toolbarbutton-icon,
 #personal-bookmarks[cui-areatype="toolbar"] > #bookmarks-toolbar-placeholder > .toolbarbutton-icon {
   width: 16px;
   height: 16px;
@@ -133,13 +137,6 @@ toolbarpaletteitem[place="palette"] > #personal-bookmarks > #bookmarks-toolbar-p
   to   { transform: rotate(180deg) translateX(-16px) rotate(-180deg) scale(1); opacity: 0; }
 }
 
-@keyframes animation-bookmarkAddedToBookmarksBar {
-  from { transform: rotate(0deg) translateX(-10px) rotate(0deg) scale(1); opacity: 0; }
-  60%  { transform: rotate(180deg) translateX(-10px) rotate(-180deg) scale(2.2); opacity: 1; }
-  80%  { opacity: 1; }
-  to   { transform: rotate(180deg) translateX(-10px) rotate(-180deg) scale(1); opacity: 0; }
-}
-
 @keyframes animation-bookmarkPulse {
   from { transform: scale(1); }
   50%  { transform: scale(1.3); }
@@ -164,17 +161,29 @@ toolbarpaletteitem[place="palette"] > #personal-bookmarks > #bookmarks-toolbar-p
   opacity: 0;
 }
 
+#bookmarked-notification-dropmarker-anchor {
+  z-index: -1;
+  position: relative;
+}
+
+#bookmarked-notification-dropmarker-icon {
+  width: 18px;
+  height: 18px;
+  visibility: hidden;
+}
+
 #bookmarked-notification-anchor[notification="finish"] > #bookmarked-notification {
   background-image: url("chrome://browser/skin/places/bookmarks-notification-finish.png");
   animation: animation-bookmarkAdded 800ms;
   animation-timing-function: ease, ease, ease;
 }
 
-#bookmarked-notification-anchor[notification="finish"][in-bookmarks-toolbar=true] > #bookmarked-notification {
-  animation: animation-bookmarkAddedToBookmarksBar 800ms;
+#bookmarks-menu-button[notification="finish"] > .toolbarbutton-menubutton-dropmarker > .dropmarker-icon {
+  list-style-image: none !important;
 }
 
-#bookmarks-menu-button[notification="finish"] > .toolbarbutton-menubutton-dropmarker > .dropmarker-icon {
+#bookmarked-notification-dropmarker-anchor[notification="finish"] > #bookmarked-notification-dropmarker-icon {
+  visibility: visible;
   animation: animation-bookmarkPulse 300ms;
   animation-delay: 600ms;
   animation-timing-function: ease-out;
@@ -746,12 +755,6 @@ toolbarbutton[sdk-button="true"][cui-areatype="toolbar"] > .toolbarbutton-icon {
 }
 .unified-nav-forward[_moz-menuactive]:-moz-locale-dir(rtl) {
   list-style-image: url("moz-icon://stock/gtk-go-forward-rtl?size=menu") !important;
-}
-#home-button.bookmark-item {
-  list-style-image: url("moz-icon://stock/gtk-home?size=menu");
-}
-#home-button.bookmark-item[disabled="true"] {
-  list-style-image: url("moz-icon://stock/gtk-home?size=menu&state=disabled");
 }
 
 /* Menu panel buttons */
@@ -1438,28 +1441,12 @@ richlistitem[type~="action"][actiontype="switchtab"] > .ac-url-box > .ac-action-
 
 #bookmarks-menu-button[cui-areatype="toolbar"] > .toolbarbutton-menubutton-dropmarker {
   -moz-appearance: none !important;
+  -moz-box-align: center;
 }
 
 #bookmarks-menu-button[cui-areatype="toolbar"] > .toolbarbutton-menubutton-dropmarker > .dropmarker-icon {
   margin-top: 3px;
   margin-bottom: 3px;
-}
-
-#bookmarks-menu-button[cui-areatype="toolbar"].bookmark-item > .toolbarbutton-menubutton-dropmarker > .dropmarker-icon,
-#bookmarks-menu-button.bookmark-item {
-  list-style-image: url("chrome://browser/skin/Toolbar-small.png");
-}
-
-#bookmarks-menu-button.bookmark-item {
-  -moz-image-region: rect(0px 144px 16px 128px);
-}
-
-#bookmarks-menu-button.bookmark-item[starred] {
-  -moz-image-region: rect(16px 144px 32px 128px);
-}
-
-#bookmarks-menu-button[cui-areatype="toolbar"].bookmark-item > .toolbarbutton-menubutton-dropmarker > .dropmarker-icon {
-  -moz-image-region: rect(0px 160px 16px 144px);
 }
 
 #bookmarks-menu-button[disabled][cui-areatype="toolbar"] > .toolbarbutton-icon,
@@ -1526,9 +1513,9 @@ richlistitem[type~="action"][actiontype="switchtab"] > .ac-url-box > .ac-action-
 }
 
 .panel-promo-closebutton {
-  list-style-image: url("moz-icon://stock/gtk-close?size=menu");
-  margin-top: 0;
-  margin-bottom: 0;
+  -moz-appearance: none;
+  height: 16px;
+  width: 16px;
 }
 
 .panel-promo-closebutton > .toolbarbutton-text {
@@ -1568,7 +1555,7 @@ richlistitem[type~="action"][actiontype="switchtab"] > .ac-url-box > .ac-action-
 #TabsToolbar::after {
   content: "";
   position: absolute;
-  bottom: 1px;
+  bottom: @tabToolbarNavbarOverlap@;
   left: 0;
   right: 0;
   z-index: 0;
@@ -1623,11 +1610,27 @@ richlistitem[type~="action"][actiontype="switchtab"] > .ac-url-box > .ac-action-
   margin: -4px;
 }
 
+/* Tabstrip close button */
+.tabs-closebutton,
 .tab-close-button {
-  list-style-image: url("moz-icon://stock/gtk-close?size=menu");
-  margin-top: 0;
-  margin-bottom: -1px;
-  -moz-margin-end: -4px;
+  -moz-appearance: none;
+  height: 16px;
+  width: 16px;
+}
+
+.tabs-closebutton:not([selected]):not(:hover),
+.tab-close-button:not([selected]):not(:hover) {
+  background-image: -moz-image-rect(url("chrome://global/skin/icons/close.svg"), 0, 64, 16, 48);
+}
+
+.tabs-closebutton:not([selected]):not(:hover):-moz-lwtheme-brighttext,
+.tab-close-button:not([selected]):not(:hover):-moz-lwtheme-brighttext {
+  background-image: -moz-image-rect(url("chrome://global/skin/icons/close.svg"), 0, 80, 16, 64);
+}
+
+.tabs-closebutton:not([selected]):not(:hover):-moz-lwtheme-darktext,
+.tab-close-button:not([selected]):not(:hover):-moz-lwtheme-darktext {
+  background-image: -moz-image-rect(url("chrome://global/skin/icons/close.svg"), 0, 96, 16, 80);
 }
 
 /* Tabstrip new tab button */
@@ -1638,10 +1641,15 @@ richlistitem[type~="action"][actiontype="switchtab"] > .ac-url-box > .ac-action-
   -moz-image-region: auto;
 }
 
-/* Tabstrip close button */
-.tabs-closebutton,
 .customization-tipPanel-closeBox > .close-icon {
-  list-style-image: url("moz-icon://stock/gtk-close?size=menu");
+  -moz-appearance: none;
+  width: 16px;
+  height: 16px;
+}
+
+/* The :hover:active style from toolkit doesn't seem to work in this panel so just use :active. */
+.customization-tipPanel-closeBox > .close-icon:active {
+  background-image: -moz-image-rect(url("chrome://global/skin/icons/close.svg"), 0, 48, 16, 32);
 }
 
 .tabs-closebutton > .toolbarbutton-icon {
@@ -1654,7 +1662,7 @@ richlistitem[type~="action"][actiontype="switchtab"] > .ac-url-box > .ac-action-
 .tabbrowser-arrowscrollbox > .scrollbutton-up,
 .tabbrowser-arrowscrollbox > .scrollbutton-down {
   -moz-appearance: none;
-  margin: 0;
+  margin: 0 0 @tabToolbarNavbarOverlap@;
 }
 
 .tabbrowser-arrowscrollbox > .scrollbutton-up {
@@ -1686,6 +1694,10 @@ richlistitem[type~="action"][actiontype="switchtab"] > .ac-url-box > .ac-action-
   border-width: 0 0 0 2px;
   border-style: solid;
   border-image: url("chrome://browser/skin/tabbrowser/tab-overflow-border.png") 0 2 0 2 fill;
+}
+
+#TabsToolbar .toolbarbutton-1 {
+  margin-bottom: @tabToolbarNavbarOverlap@;
 }
 
 #TabsToolbar .toolbarbutton-1 > .toolbarbutton-icon,
@@ -2028,6 +2040,7 @@ chatbox {
   background-attachment: fixed;
 }
 
+#main-window[customize-entered] #browser-bottombox,
 #main-window[customize-entered] #navigator-toolbox > toolbar:not(#toolbar-menubar):not(#TabsToolbar),
 #main-window[customize-entered] #customization-container {
   border: 3px solid hsla(0,0%,0%,.1);
@@ -2039,6 +2052,7 @@ chatbox {
   -moz-border-left-colors: hsla(0,0%,0%,.05) hsla(0,0%,0%,.1) hsla(0,0%,0%,.2);
 }
 
+#main-window[customize-entered] #customization-container,
 #main-window[customize-entered] #navigator-toolbox > toolbar:not(#toolbar-menubar):not(#TabsToolbar) {
   border-bottom-width: 0;
 }

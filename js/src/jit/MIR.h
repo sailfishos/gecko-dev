@@ -2628,6 +2628,9 @@ class MCreateThisWithProto
     AliasSet getAliasSet() const {
         return AliasSet::None();
     }
+    bool congruentTo(MDefinition *ins) const {
+        return false;
+    }
     TypePolicy *typePolicy() {
         return this;
     }
@@ -3923,10 +3926,7 @@ class MMathFunction
     static const char *FunctionName(Function function);
 
     bool isFloat32Commutative() const {
-        return function_ == Log || function_ == Sin || function_ == Cos
-               || function_ == Exp || function_ == Tan || function_ == ATan
-               || function_ == ASin || function_ == ACos || function_ == Floor
-               || function_ == Ceil;
+        return function_ == Floor || function_ == Ceil;
     }
     void trySpecializeFloat32(TempAllocator &alloc);
     void computeRange(TempAllocator &alloc);
@@ -4396,6 +4396,9 @@ class MStringSplit
     }
     bool possiblyCalls() const {
         return true;
+    }
+    bool congruentTo(MDefinition *ins) const {
+        return false;
     }
     virtual AliasSet getAliasSet() const {
         // Although this instruction returns a new array, we don't have to mark

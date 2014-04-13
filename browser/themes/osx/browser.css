@@ -8,7 +8,7 @@
 %filter substitution
 %define forwardTransitionLength 150ms
 %define conditionalForwardWithUrlbar window:not([chromehidden~="toolbar"]) #urlbar-container
-%define conditionalForwardWithUrlbarWidth 27
+%define conditionalForwardWithUrlbarWidth 30
 %define spaceAboveTabbar 9px
 %define toolbarButtonPressed :hover:active:not([disabled="true"]):not([cui-areatype="menu-panel"])
 
@@ -97,7 +97,7 @@ toolbarseparator {
   background-position: 0 1px, 0 0;
 
   box-shadow: inset 0 1px 0 hsla(0,0%,100%,.4);
-  margin-top: -1px;
+  margin-top: -@tabToolbarNavbarOverlap@;
   /* Position the toolbar above the bottom of background tabs */
   position: relative;
   z-index: 1;
@@ -196,8 +196,7 @@ toolbarbutton.bookmark-item:not(.subviewbutton):not(#bookmarks-menu-button),
   margin: 0 !important;
 }
 
-toolbarbutton.bookmark-item:not(.subviewbutton):not(#bookmarks-menu-button):hover,
-toolbarbutton.bookmark-item:not(#bookmarks-menu-button)[open="true"] {
+toolbarbutton.bookmark-item:not(.subviewbutton):not(#bookmarks-menu-button):hover {
   background-color: rgba(0, 0, 0, .205);
 }
 
@@ -220,7 +219,7 @@ toolbarbutton.bookmark-item[open="true"]:not(.subviewbutton) {
 }
 
 toolbarbutton.bookmark-item:not(.subviewbutton):not(#bookmarks-menu-button):active:hover,
-toolbarbutton.bookmark-item:not(#bookmarks-menu-button)[open="true"] {
+toolbarbutton.bookmark-item:not(.subviewbutton):not(#bookmarks-menu-button)[open="true"] {
   box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.4), 0 1px rgba(255, 255, 255, 0.4);
   background-color: rgba(0, 0, 0, .5);
 }
@@ -230,7 +229,7 @@ toolbarbutton.bookmark-item > menupopup {
   -moz-margin-start: 3px;
 }
 
-.bookmark-item > .toolbarbutton-icon,
+.bookmark-item:not(#home-button) > .toolbarbutton-icon,
 #personal-bookmarks[cui-areatype="toolbar"] > #bookmarks-toolbar-placeholder > .toolbarbutton-icon {
   width: 16px;
   min-height: 16px;
@@ -396,6 +395,17 @@ toolbarpaletteitem[place="palette"] > #personal-bookmarks > #bookmarks-toolbar-p
   opacity: 0;
 }
 
+#bookmarked-notification-dropmarker-anchor {
+  z-index: -1;
+  position: relative;
+}
+
+#bookmarked-notification-dropmarker-icon {
+  width: 18px;
+  height: 18px;
+  visibility: hidden;
+}
+
 #bookmarked-notification-anchor[notification="finish"] > #bookmarked-notification {
   background-image: url("chrome://browser/skin/places/bookmarks-notification-finish.png");
   animation: animation-bookmarkAdded 800ms;
@@ -409,6 +419,11 @@ toolbarpaletteitem[place="palette"] > #personal-bookmarks > #bookmarks-toolbar-p
 }
 
 #bookmarks-menu-button[notification="finish"] > .toolbarbutton-menubutton-dropmarker > .dropmarker-icon {
+  list-style-image: none !important;
+}
+
+#bookmarked-notification-dropmarker-anchor[notification="finish"] > #bookmarked-notification-dropmarker-icon {
+  visibility: visible;
   animation: animation-bookmarkPulse 300ms;
   animation-delay: 600ms;
   animation-timing-function: ease-out;
@@ -449,7 +464,7 @@ toolbar .toolbarbutton-1:not([type="menu-button"]),
 .toolbarbutton-1 > .toolbarbutton-menubutton-button,
 .toolbarbutton-1 > .toolbarbutton-menubutton-dropmarker {
   -moz-box-orient: vertical;
-  height: 22px;
+  height: 24px;
   padding: 0;
   border: 0;
 }
@@ -485,7 +500,7 @@ toolbar .toolbarbutton-1[type="menu-button"]:not(:-moz-any([disabled],[open],[bu
 toolbar .toolbarbutton-1:not(:-moz-any([type="menu-button"],[disabled],#back-button,#forward-button)):-moz-any(:hover:active,[open],[checked]),
 toolbar .toolbarbutton-1[type="menu-button"]:not(:-moz-any([disabled],[open]))[buttonover]:active > .toolbarbutton-menubutton-button,
 toolbar .toolbarbutton-1[type="menu-button"]:not(:-moz-any([disabled],[open],[buttonover])):hover:active > .toolbarbutton-menubutton-dropmarker,
-toolbar .toolbarbutton-1[type="menu-button"][open] > .toolbarbutton-menubutton-dropmarker {
+toolbar .toolbarbutton-1[type="menu-button"][open]:not([disabled]) > .toolbarbutton-menubutton-dropmarker {
   background: hsla(0,0%,0%,.02) linear-gradient(hsla(0,0%,0%,.12), hsla(0,0%,0%,0)) border-box;
   border-color: hsla(0,0%,0%,.3);
   box-shadow: 0 1px 0 hsla(0,0%,100%,.5),
@@ -575,6 +590,14 @@ toolbar .toolbarbutton-1 > .toolbarbutton-menubutton-dropmarker > .dropmarker-ic
 @media not all and (min-resolution: 2dppx) {
 %include ../shared/toolbarbuttons.inc.css
 %include ../shared/menupanel.inc.css
+
+  #home-button.bookmark-item {
+    list-style-image: url("chrome://browser/skin/Toolbar.png");
+  }
+
+  #home-button.bookmark-item:not(@inAnyPanel@):-moz-lwtheme-brighttext {
+    list-style-image: url(chrome://browser/skin/Toolbar-inverted.png);
+  }
 
   #back-button:hover:active:not([disabled="true"]) {
     -moz-image-region: rect(18px, 36px, 36px, 18px);
@@ -731,11 +754,13 @@ toolbar .toolbarbutton-1 > .toolbarbutton-menubutton-dropmarker > .dropmarker-ic
      to avoid potentially breaking add-on toolbar buttons. */
 
   :-moz-any(@primaryToolbarButtons@),
+  #home-button.bookmark-item,
   #bookmarks-menu-button[cui-areatype="toolbar"] > .toolbarbutton-menubutton-dropmarker > .dropmarker-icon {
     list-style-image: url("chrome://browser/skin/Toolbar@2x.png");
   }
 
   :-moz-any(@primaryToolbarButtons@):not(@inAnyPanel@):-moz-lwtheme-brighttext,
+  #home-button.bookmark-item:not(@inAnyPanel@):-moz-lwtheme-brighttext,
   #bookmarks-menu-button:not(@inAnyPanel@):-moz-lwtheme-brighttext > .toolbarbutton-menubutton-dropmarker > .dropmarker-icon {
     list-style-image: url("chrome://browser/skin/Toolbar-inverted@2x.png");
   }
@@ -1355,14 +1380,14 @@ toolbarbutton[sdk-button="true"][cui-areatype="toolbar"] > .toolbarbutton-icon {
   -moz-margin-end: -7px;
   position: relative;
   z-index: 1;
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   padding: 4px 5px 4px 3px;
   border-radius: 10000px;
 }
 
 #back-button:not(:-moz-lwtheme) {
-  height: 31px;
+  height: 33px;
   padding: 4px 5px 5px 3px;
   margin-bottom: -1px;
   background: url(chrome://browser/skin/keyhole-circle.png) 0 0 no-repeat;
@@ -1371,17 +1396,17 @@ toolbarbutton[sdk-button="true"][cui-areatype="toolbar"] > .toolbarbutton-icon {
 @media (min-resolution: 2dppx) {
   #back-button:not(:-moz-lwtheme) {
     background-image: url(chrome://browser/skin/keyhole-circle@2x.png);
-    background-size: 90px;
+    background-size: 96px;
   }
 }
 
 #back-button:-moz-window-inactive:not(:-moz-lwtheme) {
-  background-position: -60px 0;
+  background-position: -64px 0;
 }
 
 #back-button:not([disabled="true"]):active:hover:not(:-moz-lwtheme),
 #back-button[open="true"]:not(:-moz-lwtheme) {
-  background-position: -30px 0;
+  background-position: -32px 0;
 }
 
 /* Forward button styles */
@@ -1389,6 +1414,7 @@ toolbarbutton[sdk-button="true"][cui-areatype="toolbar"] > .toolbarbutton-icon {
 #forward-button {
   -moz-margin-start: 0;
   -moz-margin-end: 0;
+  width: 32px;
   clip-path: url(chrome://browser/content/browser.xul#osx-keyhole-forward-clip-path);
 }
 
@@ -1474,12 +1500,10 @@ toolbarbutton[sdk-button="true"][cui-areatype="toolbar"] > .toolbarbutton-icon {
 /* home button */
 
 #home-button.bookmark-item {
-  list-style-image: url("chrome://browser/skin/home.png");
-  -moz-image-region: rect(0, 12px, 12px, 0);
-}
-
-#home-button.bookmark-item:hover {
-  -moz-image-region: rect(0, 24px, 12px, 12px);
+  /* We need to use !important here, because other selectors that apply padding
+     are more specific. */
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
 }
 
 #home-button.bookmark-item > .toolbarbutton-icon {
@@ -1583,11 +1607,12 @@ toolbarbutton[sdk-button="true"][cui-areatype="toolbar"] > .toolbarbutton-icon {
 #zoom-controls[cui-areatype="toolbar"]:not([overflowedItem=true]) > #zoom-reset-button {
   min-width: 0;
   margin: 0;
+  -moz-box-orient: horizontal;
+  -moz-box-align: center;
 }
 
 #zoom-controls[cui-areatype="toolbar"]:not([overflowedItem=true]) > #zoom-reset-button > .toolbarbutton-text {
-  padding-top: 4px;
-  margin: 2px;
+  margin-top: 0;
 }
 
 /* ----- FULLSCREEN WINDOW CONTROLS ----- */
@@ -1606,7 +1631,7 @@ toolbarbutton[sdk-button="true"][cui-areatype="toolbar"] > .toolbarbutton-icon {
   -moz-appearance: none;
   box-shadow: 0 1px rgba(255, 255, 255, 0.2), inset 0 1px hsla(0,0%,0%,.05);
   margin: 0 4px;
-  padding: 0;
+  padding: 1px 0;
   border: 1px solid;
   border-color: #626262 #787878 #8c8c8c;
   background-clip: padding-box;
@@ -2731,8 +2756,8 @@ toolbarbutton.chevron > .toolbarbutton-menu-dropmarker {
   content: '';
   display: block;
   -moz-appearance: toolbar;
-  height: calc(@tabHeight@ + 1px);
-  margin-bottom: calc(-1px - @tabHeight@);
+  height: @tabHeight@;
+  margin-bottom: -@tabHeight@;
   visibility: hidden;
 }
 
@@ -2766,7 +2791,7 @@ toolbarbutton.chevron > .toolbarbutton-menu-dropmarker {
    * ordinal group value (see bug 853415). */
   -moz-box-ordinal-group: 1001;
   position: absolute;
-  bottom: 1px;
+  bottom: @tabToolbarNavbarOverlap@;
   left: 0;
   right: 0;
   z-index: 0;
@@ -2837,7 +2862,7 @@ toolbarbutton.chevron > .toolbarbutton-menu-dropmarker {
 .tabbrowser-arrowscrollbox > .scrollbutton-up,
 .tabbrowser-arrowscrollbox > .scrollbutton-down {
   -moz-image-region: rect(0, 13px, 20px, 0);
-  margin: 0;
+  margin: 0 0 @tabToolbarNavbarOverlap@;
   padding: 0 4px;
   border: none;
 }
@@ -2961,8 +2986,9 @@ toolbarbutton.chevron > .toolbarbutton-menu-dropmarker {
 #TabsToolbar .toolbarbutton-1 > .toolbarbutton-menubutton-button,
 #TabsToolbar .toolbarbutton-1 > .toolbarbutton-menubutton-dropmarker {
   -moz-appearance: none;
+  margin: 0;
   /* !important flags needed because of bug 561154: */
-  margin: 0 !important;
+  /* Bug 990390: -moz-any is no longer used in the selector so the !important aren't necessary for that anymore. */
   padding: 0 !important;
   border: none !important;
   border-radius: 0 !important;
@@ -2972,8 +2998,11 @@ toolbarbutton.chevron > .toolbarbutton-menu-dropmarker {
 
 #TabsToolbar .toolbarbutton-1:not([type="menu-button"]),
 #TabsToolbar .toolbarbutton-1 > .toolbarbutton-menubutton-button {
-  margin: 0;
   padding: 0 1px;
+}
+
+#TabsToolbar .toolbarbutton-1 {
+  margin-bottom: @tabToolbarNavbarOverlap@;
 }
 
 #TabsToolbar .toolbarbutton-1 > .toolbarbutton-menubutton-dropmarker {
@@ -3838,20 +3867,17 @@ toolbarbutton.chevron > .toolbarbutton-menu-dropmarker {
 
 /* Lion Fullscreen window styling */
 @media (-moz-mac-lion-theme) {
-  #navigator-toolbox[inFullscreen]:not(:-moz-lwtheme)::before {
-    height: calc(@tabHeight@ + 11px) !important;
+  #navigator-toolbox[inFullscreen]::before {
+    /* Adjust by the full element height of #titlebar, since that element is
+     * not displayed in native full-screen.
+     * Also add the height of the tabs, since we're calculating the
+     * total height of this pseudo-element, not just the top-padding. */
+    height: calc(@tabHeight@ + @spaceAboveTabbar@) !important;
   }
-  #main-window[inFullscreen][privatebrowsingmode=temporary],
-  #main-window[inFullscreen]:-moz-lwtheme {
-    /* This additional padding matches the change in height in the pseudo-element
-     * above. */
-    padding-top: 11px;
-  }
-  #main-window[inFullscreen]:not([privatebrowsingmode=temporary]):-moz-lwtheme {
-    /* In combination with the previous rule, forces the top 22px of the
-     * background image to be hidden, so the image doesn't jump around with
-     * the loss of the titlebar. */
-    background-position: right -11px;
+  #main-window[inFullscreen][privatebrowsingmode=temporary] {
+    /* Adjust by the full element height of #titlebar, since that element is
+     * not displayed in native full-screen. */
+    padding-top: @spaceAboveTabbar@;
   }
 }
 
@@ -4215,6 +4241,7 @@ window > chatbox {
   background-attachment: fixed;
 }
 
+#main-window[customize-entered] #browser-bottombox,
 #main-window[customize-entered] #navigator-toolbox > toolbar:not(#TabsToolbar),
 #main-window[customize-entered] #customization-container {
   border: 3px solid hsla(0,0%,0%,.1);
@@ -4226,6 +4253,7 @@ window > chatbox {
   -moz-border-left-colors: hsla(0,0%,0%,.05) hsla(0,0%,0%,.1) hsla(0,0%,0%,.2);
 }
 
+#main-window[customize-entered] #customization-container,
 #main-window[customize-entered] #navigator-toolbox > toolbar:not(#TabsToolbar) {
   border-bottom-width: 0;
 }
