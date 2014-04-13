@@ -281,27 +281,6 @@ CompositorOGL::Initialize()
 
   MakeCurrent();
 
-  if (mGLContext->IsOffscreen()) {
-    GLScreenBuffer* screen = mGLContext->Screen();
-    if (screen) {
-      SurfaceStreamType streamType =
-        SurfaceStream::ChooseGLStreamType(SurfaceStream::OffMainThread,
-                                          screen->PreserveBuffer());
-      SurfaceFactory_GL* factory = nullptr;
-      if (mGLContext->GetContextType() == GLContextType::EGL && sEGLLibrary.HasKHRImageTexture2D()) {
-        // [Basic/OGL Layers, OMTC] WebGL layer init.
-        factory = SurfaceFactory_EGLImage::Create(mGLContext, screen->Caps());
-      } else {
-        // [Basic Layers, OMTC] WebGL layer init.
-        // Well, this *should* work...
-        factory = new SurfaceFactory_GLTexture(mGLContext, nullptr, screen->Caps());
-      }
-      if (factory) {
-        screen->Morph(factory, streamType);
-      }
-    }
-  }
-
   mHasBGRA =
     mGLContext->IsExtensionSupported(gl::GLContext::EXT_texture_format_BGRA8888) ||
     mGLContext->IsExtensionSupported(gl::GLContext::EXT_bgra);

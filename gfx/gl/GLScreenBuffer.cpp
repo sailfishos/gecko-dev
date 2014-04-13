@@ -58,16 +58,6 @@ GLScreenBuffer::Create(GLContext* gl,
     }
 #endif
 
-    if (gl->GetContextType() == GLContextType::EGL) {
-        bool isCrossProcess = !(XRE_GetProcessType() == GeckoProcessType_Default);
-        if (!isCrossProcess) {
-            // [Basic/OGL Layers, OMTC] WebGL layer init.
-            factory = SurfaceFactory_EGLImage::Create(gl, caps);
-        }
-    } else {
-        factory = new SurfaceFactory_GLTexture(gl, nullptr, caps);
-    }
-
     if (!factory) {
         factory = new SurfaceFactory_Basic(gl, caps);
     }

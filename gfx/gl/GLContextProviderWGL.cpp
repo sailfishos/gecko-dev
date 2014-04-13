@@ -403,32 +403,7 @@ GetGlobalContextWGL()
 already_AddRefed<GLContext>
 GLContextProviderWGL::CreateWrappingExisting(void* aContext, void* aSurface)
 {
-    if (!sWGLLib.EnsureInitialized()) {
-        return nullptr;
-    }
-
-    /**
-     * We need to make sure we call SetPixelFormat -after- calling
-     * EnsureInitialized, otherwise it can load/unload the dll and
-     * wglCreateContext will fail.
-     */
-
-    if (!aContext) {
-        return nullptr;
-    }
-
-    GLContextWGL *shareContext = GetGlobalContextWGL();
-
-    SurfaceCaps caps = SurfaceCaps::ForRGBA();
-    nsRefPtr<GLContextWGL> glContext = new GLContextWGL(caps,
-                                                        shareContext,
-                                                        false,
-                                                        (HDC)aSurface,
-                                                        (HGLRC)aContext);
-
-    glContext->SetIsDoubleBuffered(true);
-
-    return glContext.forget();
+    return nullptr;
 }
 
 already_AddRefed<GLContext>

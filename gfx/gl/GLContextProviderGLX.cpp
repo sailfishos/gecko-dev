@@ -846,10 +846,6 @@ GLContextGLX::~GLContextGLX()
 bool
 GLContextGLX::Init()
 {
-    if (mInitialized) {
-        return true;
-    }
-
     SetupLookupFunction();
     if (!InitWithPrefix("gl", true)) {
         return false;
@@ -907,7 +903,7 @@ GLContextGLX::SupportsRobustness() const
 bool
 GLContextGLX::SwapBuffers()
 {
-    if (!mDoubleBuffered || !mOwnsContext)
+    if (!mDoubleBuffered)
         return false;
     mGLX->xSwapBuffers(mDisplay, mDrawable);
     mGLX->xWaitGL();

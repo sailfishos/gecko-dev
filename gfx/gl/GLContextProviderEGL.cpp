@@ -259,7 +259,7 @@ GLContextEGL::~GLContextEGL()
 {
     MarkDestroyed();
 
-    // Wrapping GLContext cannot be destroyed
+    // Wrapped context should not destroy eglContext/Surface
     if (!mOwnsContext) {
         return;
     }
@@ -275,10 +275,6 @@ GLContextEGL::~GLContextEGL()
 bool
 GLContextEGL::Init()
 {
-    if (mInitialized) {
-        return true;
-    }
-
 #if defined(ANDROID)
     // We can't use LoadApitraceLibrary here because the GLContext
     // expects its own handle to the GL library
@@ -444,7 +440,7 @@ GLContextEGL::SetupLookupFunction()
 bool
 GLContextEGL::SwapBuffers()
 {
-    if (mSurface && mOwnsContext) {
+    if (mSurface) {
 #ifdef MOZ_WIDGET_GONK
         if (!mIsOffscreen) {
             if (mHwc) {

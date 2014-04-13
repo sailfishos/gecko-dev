@@ -66,10 +66,41 @@ EmbedLiteCompositorParent::AllocPLayerTransactionParent(const nsTArray<LayersBac
   if (listener) {
     listener->CompositorCreated();
   }
-  return CompositorParent::AllocPLayerTransactionParent(aBackendHints,
-                                                        aId,
-                                                        aTextureFactoryIdentifier,
-                                                        aSuccess);
+
+  PLayerTransactionParent* parent =
+    CompositorParent::AllocPLayerTransactionParent(aBackendHints,
+                                                   aId,
+                                                   aTextureFactoryIdentifier,
+                                                   aSuccess);
+
+  const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(RootLayerTreeId());
+  NS_ENSURE_TRUE(state && state->mLayerManager, parent);
+
+  GLContext* context = static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->gl();
+  NS_ENSURE_TRUE(context, parent);
+
+  if (context->IsOffscreen()) {
+    GLScreenBuffer* screen = context->Screen();
+    if (screen) {
+      SurfaceStreamType streamType =
+        SurfaceStream::ChooseGLStreamType(SurfaceStream::OffMainThread,
+                                          screen->PreserveBuffer());
+      SurfaceFactory_GL* factory = nullptr;
+      if (context->GetContextType() == GLContextType::EGL && sEGLLibrary.HasKHRImageTexture2D()) {
+        // [Basic/OGL Layers, OMTC] WebGL layer init.
+        factory = SurfaceFactory_EGLImage::Create(context, screen->Caps());
+      } else {
+        // [Basic Layers, OMTC] WebGL layer init.
+        // Well, this *should* work...
+        factory = new SurfaceFactory_GLTexture(context, nullptr, screen->Caps());
+      }
+      if (factory) {
+        screen->Morph(factory, streamType);
+      }
+    }
+  }
+
+  return parent;
 }
 
 bool
