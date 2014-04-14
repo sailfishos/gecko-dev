@@ -526,6 +526,13 @@ TabActor.prototype = {
   },
 
   /**
+   * Getter for the nsIMessageManager associated to the tab.
+   */
+  get messageManager() {
+    return this._chromeEventHandler;
+  },
+
+  /**
    * Getter for the tab's doc shell.
    */
   get docShell() {
@@ -719,7 +726,7 @@ TabActor.prototype = {
     this.conn.removeActorPool(this._tabPool);
     this._tabPool = null;
     if (this._tabActorPool) {
-      this.conn.removeActorPool(this._tabActorPool, true);
+      this.conn.removeActorPool(this._tabActorPool);
       this._tabActorPool = null;
     }
 
@@ -982,6 +989,14 @@ Object.defineProperty(BrowserTabActor.prototype, "docShell", {
   configurable: false
 });
 
+Object.defineProperty(BrowserTabActor.prototype, "messageManager", {
+  get: function() {
+    return this._browser.messageManager;
+  },
+  enumerable: true,
+  configurable: false
+});
+
 Object.defineProperty(BrowserTabActor.prototype, "title", {
   get: function() {
     let title = this.contentDocument.contentTitle;
@@ -1034,7 +1049,7 @@ function RemoteBrowserTabActor(aConnection, aBrowser)
 
 RemoteBrowserTabActor.prototype = {
   connect: function() {
-    return DebuggerServer.connectToChild(this._conn, this._browser.messageManager);
+    return DebuggerServer.connectToChild(this._conn, this._browser);
   },
 
   form: function() {

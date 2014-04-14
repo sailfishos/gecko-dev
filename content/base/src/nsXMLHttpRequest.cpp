@@ -264,9 +264,9 @@ NS_IMPL_ADDREF_INHERITED(nsXMLHttpRequestUpload, nsXHREventTarget)
 NS_IMPL_RELEASE_INHERITED(nsXMLHttpRequestUpload, nsXHREventTarget)
 
 /* virtual */ JSObject*
-nsXMLHttpRequestUpload::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aScope)
+nsXMLHttpRequestUpload::WrapObject(JSContext* aCx)
 {
-  return XMLHttpRequestUploadBinding::Wrap(aCx, aScope, this);
+  return XMLHttpRequestUploadBinding::Wrap(aCx, this);
 }
 
 /////////////////////////////////////////////
@@ -991,9 +991,8 @@ nsXMLHttpRequest::GetResponse(JSContext* aCx, ErrorResult& aRv)
       return JSVAL_NULL;
     }
 
-    JS::Rooted<JS::Value> result(aCx, JSVAL_NULL);
-    JS::Rooted<JSObject*> scope(aCx, JS::CurrentGlobalOrNull(aCx));
-    aRv = nsContentUtils::WrapNative(aCx, scope, mResponseBlob, &result);
+    JS::Rooted<JS::Value> result(aCx);
+    aRv = nsContentUtils::WrapNative(aCx, mResponseBlob, &result);
     return result;
   }
   case XML_HTTP_RESPONSE_TYPE_DOCUMENT:
@@ -1002,9 +1001,8 @@ nsXMLHttpRequest::GetResponse(JSContext* aCx, ErrorResult& aRv)
       return JSVAL_NULL;
     }
 
-    JS::Rooted<JSObject*> scope(aCx, JS::CurrentGlobalOrNull(aCx));
-    JS::Rooted<JS::Value> result(aCx, JSVAL_NULL);
-    aRv = nsContentUtils::WrapNative(aCx, scope, mResponseXML, &result);
+    JS::Rooted<JS::Value> result(aCx);
+    aRv = nsContentUtils::WrapNative(aCx, mResponseXML, &result);
     return result;
   }
   case XML_HTTP_RESPONSE_TYPE_JSON:
@@ -2004,14 +2002,18 @@ nsXMLHttpRequest::OnStartRequest(nsIRequest *request, nsISupports *ctxt)
 
   if (mState & XML_HTTP_REQUEST_PARSEBODY) {
     nsCOMPtr<nsIURI> baseURI, docURI;
+    rv = mChannel->GetURI(getter_AddRefs(docURI));
+    NS_ENSURE_SUCCESS(rv, rv);
+    baseURI = docURI;
+
     nsIScriptContext* sc = GetContextForEventHandlers(&rv);
     NS_ENSURE_SUCCESS(rv, rv);
     nsCOMPtr<nsIDocument> doc =
       nsContentUtils::GetDocumentFromScriptContext(sc);
-
+    nsCOMPtr<nsIURI> chromeXHRDocURI, chromeXHRDocBaseURI;
     if (doc) {
-      docURI = doc->GetDocumentURI();
-      baseURI = doc->GetBaseURI();
+      chromeXHRDocURI = doc->GetDocumentURI();
+      chromeXHRDocBaseURI = doc->GetBaseURI();
     }
 
     // Create an empty document from it.  Here we have to cheat a little bit...
@@ -2029,6 +2031,8 @@ nsXMLHttpRequest::OnStartRequest(nsIRequest *request, nsISupports *ctxt)
     NS_ENSURE_SUCCESS(rv, rv);
     mResponseXML = do_QueryInterface(responseDoc);
     mResponseXML->SetPrincipal(documentPrincipal);
+    mResponseXML->SetChromeXHRDocURI(chromeXHRDocURI);
+    mResponseXML->SetChromeXHRDocBaseURI(chromeXHRDocBaseURI);
 
     if (nsContentUtils::IsSystemPrincipal(mPrincipal)) {
       mResponseXML->ForceEnableXULXBL();
@@ -3658,17 +3662,7 @@ nsXMLHttpRequest::GetInterface(const nsIID & aIID, void **aResult)
 JS::Value
 nsXMLHttpRequest::GetInterface(JSContext* aCx, nsIJSID* aIID, ErrorResult& aRv)
 {
-  const nsID* iid = aIID->GetID();
-  nsCOMPtr<nsISupports> result;
-  JS::Rooted<JS::Value> v(aCx, JSVAL_NULL);
-  aRv = GetInterface(*iid, getter_AddRefs(result));
-  NS_ENSURE_FALSE(aRv.Failed(), JSVAL_NULL);
-
-  JS::Rooted<JSObject*> wrapper(aCx, GetWrapper());
-  JSAutoCompartment ac(aCx, wrapper);
-  JS::Rooted<JSObject*> global(aCx, JS_GetGlobalForObject(aCx, wrapper));
-  aRv = nsContentUtils::WrapNative(aCx, global, result, iid, &v);
-  return aRv.Failed() ? JSVAL_NULL : v;
+  return dom::GetInterface(aCx, this, aIID, aRv);
 }
 
 nsXMLHttpRequestUpload*

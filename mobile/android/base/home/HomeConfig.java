@@ -5,6 +5,8 @@
 
 package org.mozilla.gecko.home;
 
+import org.mozilla.gecko.GeckoAppShell;
+import org.mozilla.gecko.GeckoEvent;
 import org.mozilla.gecko.R;
 import org.mozilla.gecko.util.ThreadUtils;
 
@@ -142,7 +144,7 @@ public final class HomeConfig {
                 final int viewCount = jsonViews.length();
                 for (int i = 0; i < viewCount; i++) {
                     final JSONObject jsonViewConfig = (JSONObject) jsonViews.get(i);
-                    final ViewConfig viewConfig = new ViewConfig(jsonViewConfig);
+                    final ViewConfig viewConfig = new ViewConfig(i, jsonViewConfig);
                     mViews.add(viewConfig);
                 }
             } else {
@@ -603,6 +605,7 @@ public final class HomeConfig {
     }
 
     public static class ViewConfig implements Parcelable {
+        private final int mIndex;
         private final ViewType mType;
         private final String mDatasetId;
         private final ItemType mItemType;
@@ -617,7 +620,8 @@ public final class HomeConfig {
         private static final String JSON_KEY_BACK_IMAGE_URL = "backImageUrl";
         private static final String JSON_KEY_FILTER = "filter";
 
-        public ViewConfig(JSONObject json) throws JSONException, IllegalArgumentException {
+        public ViewConfig(int index, JSONObject json) throws JSONException, IllegalArgumentException {
+            mIndex = index;
             mType = ViewType.fromId(json.getString(JSON_KEY_TYPE));
             mDatasetId = json.getString(JSON_KEY_DATASET);
             mItemType = ItemType.fromId(json.getString(JSON_KEY_ITEM_TYPE));
@@ -630,6 +634,7 @@ public final class HomeConfig {
 
         @SuppressWarnings("unchecked")
         public ViewConfig(Parcel in) {
+            mIndex = in.readInt();
             mType = (ViewType) in.readParcelable(getClass().getClassLoader());
             mDatasetId = in.readString();
             mItemType = (ItemType) in.readParcelable(getClass().getClassLoader());
@@ -641,6 +646,7 @@ public final class HomeConfig {
         }
 
         public ViewConfig(ViewConfig viewConfig) {
+            mIndex = viewConfig.mIndex;
             mType = viewConfig.mType;
             mDatasetId = viewConfig.mDatasetId;
             mItemType = viewConfig.mItemType;
@@ -651,8 +657,9 @@ public final class HomeConfig {
             validate();
         }
 
-        public ViewConfig(ViewType type, String datasetId, ItemType itemType,
+        public ViewConfig(int index, ViewType type, String datasetId, ItemType itemType,
                           ItemHandler itemHandler, String backImageUrl, String filter) {
+            mIndex = index;
             mType = type;
             mDatasetId = datasetId;
             mItemType = itemType;
@@ -679,6 +686,10 @@ public final class HomeConfig {
             if (mItemHandler == null) {
                 throw new IllegalArgumentException("Can't create ViewConfig with null item handler");
             }
+        }
+
+        public int getIndex() {
+            return mIndex;
         }
 
         public ViewType getType() {
@@ -731,6 +742,7 @@ public final class HomeConfig {
 
         @Override
         public void writeToParcel(Parcel dest, int flags) {
+            dest.writeInt(mIndex);
             dest.writeParcelable(mType, 0);
             dest.writeString(mDatasetId);
             dest.writeParcelable(mItemType, 0);
@@ -926,6 +938,7 @@ public final class HomeConfig {
         private final HomeConfig mHomeConfig;
         private final Map<String, PanelConfig> mConfigMap;
         private final List<String> mConfigOrder;
+        private final List<GeckoEvent> mEventQueue;
         private final Thread mOriginalThread;
 
         private PanelConfig mDefaultPanel;
@@ -939,6 +952,7 @@ public final class HomeConfig {
             mOriginalThread = Thread.currentThread();
             mConfigMap = new HashMap<String, PanelConfig>();
             mConfigOrder = new LinkedList<String>();
+            mEventQueue = new LinkedList<GeckoEvent>();
             mEnabledCount = 0;
 
             mHasChanged = false;
@@ -1144,6 +1158,9 @@ public final class HomeConfig {
                 }
 
                 installed = true;
+
+                // Add an event to the queue if a new panel is sucessfully installed.
+                mEventQueue.add(GeckoEvent.createBroadcastEvent("HomePanels:Installed", panelConfig.getId()));
             }
 
             mHasChanged = true;
@@ -1177,6 +1194,9 @@ public final class HomeConfig {
             if (isCurrentDefaultPanel(panelConfig)) {
                 findNewDefault();
             }
+
+            // Add an event to the queue if a panel is succesfully uninstalled.
+            mEventQueue.add(GeckoEvent.createBroadcastEvent("HomePanels:Uninstalled", panelId));
 
             mHasChanged = true;
             return true;
@@ -1246,10 +1266,18 @@ public final class HomeConfig {
             final State newConfigState =
                     new State(mHomeConfig, makeOrderedCopy(true), isDefault());
 
+            // Copy the event queue to a new list, so that we only modify mEventQueue on
+            // the original thread where it was created.
+            final LinkedList<GeckoEvent> eventQueueCopy = new LinkedList<GeckoEvent>(mEventQueue);
+            mEventQueue.clear();
+
             ThreadUtils.getBackgroundHandler().post(new Runnable() {
                 @Override
                 public void run() {
                     mHomeConfig.save(newConfigState);
+
+                    // Send pending events after the new config is saved.
+                    sendEventsToGecko(eventQueueCopy);
                 }
             });
 
@@ -1272,6 +1300,10 @@ public final class HomeConfig {
             // need to deep copy the current PanelConfig instances.
             mHomeConfig.save(newConfigState);
 
+            // Send pending events after the new config is saved.
+            sendEventsToGecko(mEventQueue);
+            mEventQueue.clear();
+
             return newConfigState;
         }
 
@@ -1287,6 +1319,12 @@ public final class HomeConfig {
 
         public boolean isEmpty() {
             return mConfigMap.isEmpty();
+        }
+
+        private void sendEventsToGecko(List<GeckoEvent> events) {
+            for (GeckoEvent e : events) {
+                GeckoAppShell.sendEventToGecko(e);
+            }
         }
 
         private class EditorIterator implements Iterator<PanelConfig> {

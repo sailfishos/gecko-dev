@@ -14,6 +14,10 @@
 %endif
 }
 
+#main-window[customize-entered] {
+  min-width: -moz-fit-content;
+}
+
 searchbar {
   -moz-binding: url("chrome://browser/content/search/search.xml#searchbar");
 }
@@ -212,14 +216,14 @@ toolbar[customizing] > .overflow-button {
 }
 
 /* Fullscreen and caption buttons don't move with RTL on OS X so override the automatic ordering. */
-#titlebar-fullscreen-button:-moz-locale-dir(ltr),
+#titlebar-secondary-buttonbox:-moz-locale-dir(ltr),
 #titlebar-buttonbox-container:-moz-locale-dir(rtl),
 .titlebar-placeholder[type="fullscreen-button"]:-moz-locale-dir(ltr),
 .titlebar-placeholder[type="caption-buttons"]:-moz-locale-dir(rtl) {
   -moz-box-ordinal-group: 1000;
 }
 
-#titlebar-fullscreen-button:-moz-locale-dir(rtl),
+#titlebar-secondary-buttonbox:-moz-locale-dir(rtl),
 #titlebar-buttonbox-container:-moz-locale-dir(ltr),
 .titlebar-placeholder[type="caption-buttons"]:-moz-locale-dir(ltr),
 .titlebar-placeholder[type="fullscreen-button"]:-moz-locale-dir(rtl) {
@@ -229,6 +233,12 @@ toolbar[customizing] > .overflow-button {
 /* On non-OSX, these should be start-aligned */
 #titlebar-buttonbox-container {
   -moz-box-align: start;
+}
+%endif
+
+%if !defined(MOZ_WIDGET_GTK) && !defined(MOZ_WIDGET_QT)
+#TabsToolbar > .private-browsing-indicator {
+  -moz-box-ordinal-group: 1000;
 }
 %endif
 
@@ -922,13 +932,50 @@ chatbox:-moz-full-screen-ancestor > .chat-titlebar {
   -moz-binding: url("chrome://browser/content/places/menu.xml#places-popup-arrow");
   background: transparent;
   border: none;
-  transition: opacity 300ms;
+  transform: scale(.7);
+  opacity: 0;
+  transition-property: transform, opacity;
+  transition-duration: 0.15s;
+  transition-timing-function: ease;
   /* The popup inherits -moz-image-region from the button, must reset it */
   -moz-image-region: auto;
 }
 
+#BMB_bookmarksPopup[animate="open"] {
+  transform: none;
+  opacity: 1.0;
+}
+
+#BMB_bookmarksPopup[arrowposition="after_start"] {
+  transform-origin: 20px top;
+}
+
+#BMB_bookmarksPopup[arrowposition="after_end"] {
+  transform-origin: calc(100% - 20px) top;
+}
+
+#BMB_bookmarksPopup[arrowposition="before_start"] {
+  transform-origin: 20px bottom;
+}
+
+#BMB_bookmarksPopup[arrowposition="before_end"] {
+  transform-origin: calc(100% - 20px) bottom;
+}
+
+#BMB_bookmarksPopup[arrowposition="after_start"][animate="cancel"],
+#BMB_bookmarksPopup[arrowposition="before_end"][animate="cancel"] {
+  transform: scale(.7) skew(30deg, 20deg);
+}
+
+#BMB_bookmarksPopup[arrowposition="after_end"][animate="cancel"],
+#BMB_bookmarksPopup[arrowposition="before_start"][animate="cancel"] {
+  transform: scale(.7) skew(-30deg, -20deg);
+}
+
+
 /* Customize mode */
 #navigator-toolbox,
+#browser-bottombox,
 #content-deck {
   transition-property: margin-left, margin-right;
   transition-duration: 200ms;

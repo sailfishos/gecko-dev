@@ -17,8 +17,8 @@ interface Console {
   void group(any... data);
   void groupCollapsed(any... data);
   void groupEnd(any... data);
-  void time(any time);
-  void timeEnd(any time);
+  void time(optional any time);
+  void timeEnd(optional any time);
 
   [Throws]
   void profile(any... data);
@@ -42,6 +42,10 @@ dictionary ConsoleEvent {
   DOMString functionName = "";
   double timeStamp = 0;
   sequence<any> arguments;
+
+  // This array will only hold strings or null elements.
+  sequence<any> styles;
+
   boolean private = false;
   sequence<ConsoleStackEntry> stacktrace;
   DOMString groupName = "";

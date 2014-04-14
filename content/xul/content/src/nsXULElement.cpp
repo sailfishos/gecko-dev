@@ -1949,9 +1949,9 @@ nsXULElement::IsEventAttributeName(nsIAtom *aName)
 }
 
 JSObject*
-nsXULElement::WrapNode(JSContext *aCx, JS::Handle<JSObject*> aScope)
+nsXULElement::WrapNode(JSContext *aCx)
 {
-    return dom::XULElementBinding::Wrap(aCx, aScope, this);
+    return dom::XULElementBinding::Wrap(aCx, this);
 }
 
 NS_IMPL_CYCLE_COLLECTION_CLASS(nsXULPrototypeNode)
@@ -2662,7 +2662,7 @@ nsXULPrototypeScript::Compile(const char16_t* aText,
     }
 
     if (aOffThreadReceiver && JS::CanCompileOffThread(cx, options, aTextLength)) {
-        if (!JS::CompileOffThread(cx, scope, options,
+        if (!JS::CompileOffThread(cx, options,
                                   static_cast<const jschar*>(aText), aTextLength,
                                   OffThreadScriptReceiverCallback,
                                   static_cast<void*>(aOffThreadReceiver))) {

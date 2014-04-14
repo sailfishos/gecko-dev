@@ -685,7 +685,9 @@ const JSClass ThreadLocalJSRuntime::sGlobalClass = {
   "IndexedDBTransactionThreadGlobal",
   JSCLASS_GLOBAL_FLAGS,
   JS_PropertyStub, JS_DeletePropertyStub, JS_PropertyStub, JS_StrictPropertyStub,
-  JS_EnumerateStub, JS_ResolveStub, JS_ConvertStub
+  JS_EnumerateStub, JS_ResolveStub, JS_ConvertStub,
+  nullptr, nullptr, nullptr, nullptr,
+  JS_GlobalObjectTraceHook
 };
 
 inline
@@ -778,11 +780,7 @@ public:
     nsRefPtr<IDBFileHandle> fileHandle = IDBFileHandle::Create(aDatabase,
       aData.name, aData.type, fileInfo.forget());
 
-    JS::Rooted<JSObject*> global(aCx, JS::CurrentGlobalOrNull(aCx));
-    if (!global) {
-      return nullptr;
-    }
-    return fileHandle->WrapObject(aCx, global);
+    return fileHandle->WrapObject(aCx);
   }
 
   static JSObject* CreateAndWrapBlobOrFile(JSContext* aCx,
@@ -832,9 +830,7 @@ public:
       }
 
       JS::Rooted<JS::Value> wrappedBlob(aCx);
-      JS::Rooted<JSObject*> global(aCx, JS::CurrentGlobalOrNull(aCx));
-      rv = nsContentUtils::WrapNative(aCx, global, domBlob,
-                                      &NS_GET_IID(nsIDOMBlob),
+      rv = nsContentUtils::WrapNative(aCx, domBlob, &NS_GET_IID(nsIDOMBlob),
                                       &wrappedBlob);
       if (NS_FAILED(rv)) {
         NS_WARNING("Failed to wrap native!");
@@ -859,9 +855,7 @@ public:
     }
 
     JS::Rooted<JS::Value> wrappedFile(aCx);
-    JS::Rooted<JSObject*> global(aCx, JS::CurrentGlobalOrNull(aCx));
-    rv = nsContentUtils::WrapNative(aCx, global, domFile,
-                                    &NS_GET_IID(nsIDOMFile),
+    rv = nsContentUtils::WrapNative(aCx, domFile, &NS_GET_IID(nsIDOMFile),
                                     &wrappedFile);
     if (NS_FAILED(rv)) {
       NS_WARNING("Failed to wrap native!");
@@ -1341,6 +1335,9 @@ IDBObjectStore::DeserializeValue(JSContext* aCx,
   JSStructuredCloneCallbacks callbacks = {
     IDBObjectStore::StructuredCloneReadCallback<MainThreadDeserializationTraits>,
     nullptr,
+    nullptr,
+    nullptr,
+    nullptr,
     nullptr
   };
 
@@ -1362,6 +1359,9 @@ IDBObjectStore::SerializeValue(JSContext* aCx,
   JSStructuredCloneCallbacks callbacks = {
     nullptr,
     StructuredCloneWriteCallback,
+    nullptr,
+    nullptr,
+    nullptr,
     nullptr
   };
 
@@ -2610,9 +2610,9 @@ NS_IMPL_CYCLE_COLLECTING_ADDREF(IDBObjectStore)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(IDBObjectStore)
 
 JSObject*
-IDBObjectStore::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aScope)
+IDBObjectStore::WrapObject(JSContext* aCx)
 {
-  return IDBObjectStoreBinding::Wrap(aCx, aScope, this);
+  return IDBObjectStoreBinding::Wrap(aCx, this);
 }
 
 JS::Value
@@ -4526,6 +4526,9 @@ CreateIndexHelper::InsertDataFromObjectStore(mozIStorageConnection* aConnection)
 
     JSStructuredCloneCallbacks callbacks = {
       IDBObjectStore::StructuredCloneReadCallback<CreateIndexDeserializationTraits>,
+      nullptr,
+      nullptr,
+      nullptr,
       nullptr,
       nullptr
     };

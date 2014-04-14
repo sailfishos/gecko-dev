@@ -8,6 +8,8 @@
 #define nsMemoryReporterManager_h__
 
 #include "nsIMemoryReporter.h"
+#include "nsITimer.h"
+#include "nsServiceManagerUtils.h"
 #include "mozilla/Mutex.h"
 #include "nsTHashtable.h"
 #include "nsHashKeys.h"
@@ -141,6 +143,10 @@ public:
   };
   AmountFns mAmountFns;
 
+  // Convenience function to get RSS easily from other code.  This is useful
+  // when debugging transient memory spikes with printf instrumentation.
+  static int64_t ResidentFast();
+
   // Functions that measure per-tab memory consumption.
   struct SizeOfTabFns
   {
@@ -183,6 +189,7 @@ private:
     nsCOMPtr<nsITimer>                   mTimer;
     uint32_t                             mNumChildProcesses;
     uint32_t                             mNumChildProcessesCompleted;
+    bool                                 mParentDone;
     nsCOMPtr<nsIHandleReportCallback>    mHandleReport;
     nsCOMPtr<nsISupports>                mHandleReportData;
     nsCOMPtr<nsIFinishReportingCallback> mFinishReporting;
@@ -200,6 +207,7 @@ private:
       , mTimer(aTimer)
       , mNumChildProcesses(aNumChildProcesses)
       , mNumChildProcessesCompleted(0)
+      , mParentDone(false)
       , mHandleReport(aHandleReport)
       , mHandleReportData(aHandleReportData)
       , mFinishReporting(aFinishReporting)

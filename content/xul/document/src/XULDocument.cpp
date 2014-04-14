@@ -2485,6 +2485,8 @@ XULDocument::PrepareToWalk()
         // Block onload until we've finished building the complete
         // document content model.
         BlockOnload();
+
+        nsContentSink::NotifyDocElementCreated(this);
     }
 
     // There'd better not be anything on the context stack at this
@@ -3679,7 +3681,10 @@ XULDocument::ExecuteScript(nsIScriptContext * aContext,
     JS::ExposeObjectToActiveJS(global);
     xpc_UnmarkGrayScript(aScriptObject);
     JSAutoCompartment ac(cx, global);
-    if (!JS_ExecuteScript(cx, global, aScriptObject))
+
+    // The script is in the compilation scope. Clone it into the target scope
+    // and execute it.
+    if (!JS::CloneAndExecuteScript(cx, global, aScriptObject))
         nsJSUtils::ReportPendingException(cx);
     return NS_OK;
 }
@@ -4782,9 +4787,9 @@ XULDocument::GetBoxObjectFor(nsIDOMElement* aElement, nsIBoxObject** aResult)
 }
 
 JSObject*
-XULDocument::WrapNode(JSContext *aCx, JS::Handle<JSObject*> aScope)
+XULDocument::WrapNode(JSContext *aCx)
 {
-  return XULDocumentBinding::Wrap(aCx, aScope, this);
+  return XULDocumentBinding::Wrap(aCx, this);
 }
 
 } // namespace dom

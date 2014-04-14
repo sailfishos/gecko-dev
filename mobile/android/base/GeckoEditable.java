@@ -103,7 +103,8 @@ final class GeckoEditable
     private int mIcUpdateSeqno;
     private int mLastIcUpdateSeqno;
     private boolean mUpdateGecko;
-    private boolean mFocused;
+    private boolean mFocused; // Used by IC thread
+    private boolean mGeckoFocused; // Used by Gecko thread
     private volatile boolean mSuppressCompositions;
     private volatile boolean mSuppressKeyUp;
 
@@ -759,14 +760,19 @@ final class GeckoEditable
         });
 
         // Register/unregister Gecko-side text selection listeners
-        if (type == NOTIFY_IME_OF_BLUR) {
+        // and update the mGeckoFocused flag.
+        if (type == NOTIFY_IME_OF_BLUR && mGeckoFocused) {
+            // Check for focus here because Gecko may send us a blur before a focus in some
+            // cases, and we don't want to unregister an event that was not registered.
+            mGeckoFocused = false;
             mSuppressCompositions = false;
             GeckoAppShell.getEventDispatcher().
-                unregisterEventListener("TextSelection:IMECompositions", this);
+                unregisterEventListener("TextSelection:DraggingHandle", this);
         } else if (type == NOTIFY_IME_OF_FOCUS) {
+            mGeckoFocused = true;
             mSuppressCompositions = false;
             GeckoAppShell.getEventDispatcher().
-                registerEventListener("TextSelection:IMECompositions", this);
+                registerEventListener("TextSelection:DraggingHandle", this);
         }
     }
 
@@ -1222,11 +1228,11 @@ final class GeckoEditable
 
     @Override
     public void handleMessage(String event, JSONObject message) {
-        if (!"TextSelection:IMECompositions".equals(event)) {
+        if (!"TextSelection:DraggingHandle".equals(event)) {
             return;
         }
 
-        mSuppressCompositions = message.optBoolean("suppress", false);
+        mSuppressCompositions = message.optBoolean("dragging", false);
     }
 }
 

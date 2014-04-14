@@ -16,6 +16,7 @@
 #include "frontend/BytecodeCompiler.h"
 #include "jit/IonBuilder.h"
 #include "vm/Debugger.h"
+#include "vm/TraceLogging.h"
 
 #include "jscntxtinlines.h"
 #include "jscompartmentinlines.h"
@@ -169,14 +170,16 @@ static const JSClass workerGlobalClass = {
     JS_PropertyStub,  JS_DeletePropertyStub,
     JS_PropertyStub,  JS_StrictPropertyStub,
     JS_EnumerateStub, JS_ResolveStub,
-    JS_ConvertStub,   nullptr
+    JS_ConvertStub,   nullptr,
+    nullptr, nullptr, nullptr,
+    JS_GlobalObjectTraceHook
 };
 
 ParseTask::ParseTask(ExclusiveContext *cx, JSObject *exclusiveContextGlobal, JSContext *initCx,
-                     const jschar *chars, size_t length, JSObject *scopeChain,
+                     const jschar *chars, size_t length,
                      JS::OffThreadCompileCallback callback, void *callbackData)
   : cx(cx), options(initCx), chars(chars), length(length),
-    alloc(JSRuntime::TEMP_LIFO_ALLOC_PRIMARY_CHUNK_SIZE), scopeChain(initCx, scopeChain),
+    alloc(JSRuntime::TEMP_LIFO_ALLOC_PRIMARY_CHUNK_SIZE),
     exclusiveContextGlobal(initCx, exclusiveContextGlobal), optionsElement(initCx),
     optionsIntroductionScript(initCx), callback(callback), callbackData(callbackData),
     script(nullptr), errors(cx), overRecursed(false)
@@ -290,7 +293,7 @@ js::OffThreadParsingMustWaitForGC(JSRuntime *rt)
 
 bool
 js::StartOffThreadParseScript(JSContext *cx, const ReadOnlyCompileOptions &options,
-                              const jschar *chars, size_t length, HandleObject scopeChain,
+                              const jschar *chars, size_t length,
                               JS::OffThreadCompileCallback callback, void *callbackData)
 {
     // Suppress GC so that calls below do not trigger a new incremental GC
@@ -306,6 +309,9 @@ js::StartOffThreadParseScript(JSContext *cx, const ReadOnlyCompileOptions &optio
     compartmentOptions.setZone(JS::FreshZone);
     compartmentOptions.setInvisibleToDebugger(true);
     compartmentOptions.setMergeable(true);
+
+    // Don't falsely inherit the host's global trace hook.
+    compartmentOptions.setTrace(nullptr);
 
     JSObject *global = JS_NewGlobalObject(cx, &workerGlobalClass, nullptr,
                                           JS::FireOnNewGlobalHook, compartmentOptions);
@@ -345,7 +351,7 @@ js::StartOffThreadParseScript(JSContext *cx, const ReadOnlyCompileOptions &optio
 
     ScopedJSDeletePtr<ParseTask> task(
         cx->new_<ParseTask>(workercx.get(), global, cx, chars, length,
-                            scopeChain, callback, callbackData));
+                            callback, callbackData));
     if (!task)
         return false;
 
@@ -431,7 +437,7 @@ GlobalWorkerThreadState::ensureInitialized()
         helper.threadData.construct(static_cast<JSRuntime *>(nullptr));
         helper.thread = PR_CreateThread(PR_USER_THREAD,
                                         WorkerThread::ThreadMain, &helper,
-                                        PR_PRIORITY_NORMAL, PR_LOCAL_THREAD, PR_JOINABLE_THREAD, WORKER_STACK_SIZE);
+                                        PR_PRIORITY_NORMAL, PR_GLOBAL_THREAD, PR_JOINABLE_THREAD, WORKER_STACK_SIZE);
         if (!helper.thread || !helper.threadData.ref().init()) {
             for (size_t j = 0; j < threadCount; j++)
                 threads[j].destroy();
@@ -609,7 +615,7 @@ CallNewScriptHookForAllScripts(JSContext *cx, HandleScript script)
 JSScript *
 GlobalWorkerThreadState::finishParseTask(JSContext *maybecx, JSRuntime *rt, void *token)
 {
-    ParseTask *parseTask = nullptr;
+    ScopedJSDeletePtr<ParseTask> parseTask;
 
     // The token is a ParseTask* which should be in the finished list.
     // Find and remove its entry.
@@ -629,6 +635,23 @@ GlobalWorkerThreadState::finishParseTask(JSContext *maybecx, JSRuntime *rt, void
     // Mark the zone as no longer in use by an ExclusiveContext, and available
     // to be collected by the GC.
     rt->clearUsedByExclusiveThread(parseTask->cx->zone());
+    if (!maybecx) {
+        return nullptr;
+    }
+    JSContext *cx = maybecx;
+    JS_ASSERT(cx->compartment());
+
+    // Make sure we have all the constructors we need for the prototype
+    // remapping below, since we can't GC while that's happening.
+    Rooted<GlobalObject*> global(cx, &cx->global()->as<GlobalObject>());
+    if (!GlobalObject::ensureConstructor(cx, global, JSProto_Object) ||
+        !GlobalObject::ensureConstructor(cx, global, JSProto_Array) ||
+        !GlobalObject::ensureConstructor(cx, global, JSProto_Function) ||
+        !GlobalObject::ensureConstructor(cx, global, JSProto_RegExp) ||
+        !GlobalObject::ensureConstructor(cx, global, JSProto_Iterator))
+    {
+        return nullptr;
+    }
 
     // Point the prototypes of any objects in the script's compartment to refer
     // to the corresponding prototype in the new compartment. This will briefly
@@ -646,41 +669,41 @@ GlobalWorkerThreadState::finishParseTask(JSContext *maybecx, JSRuntime *rt, void
         JSProtoKey key = JS::IdentifyStandardPrototype(proto.toObject());
         if (key == JSProto_Null)
             continue;
+        JS_ASSERT(key == JSProto_Object || key == JSProto_Array ||
+                  key == JSProto_Function || key == JSProto_RegExp ||
+                  key == JSProto_Iterator);
 
-        JSObject *newProto = GetBuiltinPrototypePure(&parseTask->scopeChain->global(), key);
+        JSObject *newProto = GetBuiltinPrototypePure(global, key);
         JS_ASSERT(newProto);
 
         object->setProtoUnchecked(newProto);
     }
 
     // Move the parsed script and all its contents into the desired compartment.
-    gc::MergeCompartments(parseTask->cx->compartment(), parseTask->scopeChain->compartment());
+    gc::MergeCompartments(parseTask->cx->compartment(), cx->compartment());
     parseTask->finish();
 
     RootedScript script(rt, parseTask->script);
+    assertSameCompartment(cx, script);
 
-    // If we have a context, report any error or warnings generated during the
-    // parse, and inform the debugger about the compiled scripts.
-    if (maybecx) {
-        AutoCompartment ac(maybecx, parseTask->scopeChain);
-        for (size_t i = 0; i < parseTask->errors.length(); i++)
-            parseTask->errors[i]->throwError(maybecx);
-        if (parseTask->overRecursed)
-            js_ReportOverRecursed(maybecx);
+    // Report any error or warnings generated during the parse, and inform the
+    // debugger about the compiled scripts.
+    for (size_t i = 0; i < parseTask->errors.length(); i++)
+        parseTask->errors[i]->throwError(cx);
+    if (parseTask->overRecursed)
+        js_ReportOverRecursed(cx);
 
-        if (script) {
-            // The Debugger only needs to be told about the topmost script that was compiled.
-            GlobalObject *compileAndGoGlobal = nullptr;
-            if (script->compileAndGo())
-                compileAndGoGlobal = &script->global();
-            Debugger::onNewScript(maybecx, script, compileAndGoGlobal);
+    if (script) {
+        // The Debugger only needs to be told about the topmost script that was compiled.
+        GlobalObject *compileAndGoGlobal = nullptr;
+        if (script->compileAndGo())
+            compileAndGoGlobal = &script->global();
+        Debugger::onNewScript(cx, script, compileAndGoGlobal);
 
-            // The NewScript hook needs to be called for all compiled scripts.
-            CallNewScriptHookForAllScripts(maybecx, script);
-        }
+        // The NewScript hook needs to be called for all compiled scripts.
+        CallNewScriptHookForAllScripts(cx, script);
     }
 
-    js_delete(parseTask);
     return script;
 }
 
@@ -774,12 +797,9 @@ WorkerThread::handleIonWorkload()
 
     ionBuilder = WorkerThreadState().ionWorklist().popCopy();
 
-#if JS_TRACE_LOGGING
-    AutoTraceLog logger(TraceLogging::getLogger(TraceLogging::ION_BACKGROUND_COMPILER),
-                        TraceLogging::ION_COMPILE_START,
-                        TraceLogging::ION_COMPILE_STOP,
-                        ionBuilder->script());
-#endif
+    TraceLogger *logger = TraceLoggerForThread(thread);
+    AutoTraceLog logScript(logger, TraceLogCreateTextId(logger, ionBuilder->script()));
+    AutoTraceLog logCompile(logger, TraceLogger::IonCompilation);
 
     JSRuntime *rt = ionBuilder->script()->compartment()->runtimeFromAnyThread();
 
@@ -1068,7 +1088,7 @@ js::CancelOffThreadParses(JSRuntime *rt)
 
 bool
 js::StartOffThreadParseScript(JSContext *cx, const ReadOnlyCompileOptions &options,
-                              const jschar *chars, size_t length, HandleObject scopeChain,
+                              const jschar *chars, size_t length,
                               JS::OffThreadCompileCallback callback, void *callbackData)
 {
     MOZ_ASSUME_UNREACHABLE("Off thread compilation not available in non-THREADSAFE builds");

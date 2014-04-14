@@ -159,9 +159,9 @@ Telephony::Shutdown()
 }
 
 JSObject*
-Telephony::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aScope)
+Telephony::WrapObject(JSContext* aCx)
 {
-  return TelephonyBinding::Wrap(aCx, aScope, this);
+  return TelephonyBinding::Wrap(aCx, this);
 }
 
 // static
@@ -532,9 +532,6 @@ Telephony::CallStateChanged(uint32_t aServiceId, uint32_t aCallIndex,
                             bool aIsActive, bool aIsOutgoing, bool aIsEmergency,
                             bool aIsConference, bool aIsSwitchable, bool aIsMergeable)
 {
-  NS_ASSERTION(aCallIndex != kOutgoingPlaceholderCallIndex,
-               "This should never happen!");
-
   nsRefPtr<TelephonyCall> modifiedCall
       = GetCallFromEverywhere(aServiceId, aCallIndex);
 

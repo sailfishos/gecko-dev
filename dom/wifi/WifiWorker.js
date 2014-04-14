@@ -149,6 +149,7 @@ var WifiManager = (function() {
   }
 
   manager.ifname = ifname;
+  manager.connectToSupplicant = false;
   // Emulator build runs to here.
   // The debug() should only be used after WifiManager.
   if (!ifname) {
@@ -557,6 +558,7 @@ var WifiManager = (function() {
       // Tell the event worker to start waiting for events.
       retryTimer = null;
       connectTries = 0;
+      manager.connectToSupplicant = true;
       didConnectSupplicant(function(){});
       return;
     }
@@ -747,6 +749,9 @@ var WifiManager = (function() {
       if (manager.state !== "DISABLING" && manager.state !== "UNINITIALIZED") {
         notify("supplicantlost", { success: true });
       }
+      wifiCommand.closeSupplicantConnection(function() {
+        manager.connectToSupplicant = false;
+      });
       return false;
     }
     if (eventData.indexOf("CTRL-EVENT-DISCONNECTED") === 0) {
@@ -920,8 +925,8 @@ var WifiManager = (function() {
           gNetworkService.setWifiOperationMode(manager.ifname,
                                                WIFI_FIRMWARE_STATION,
                                                function (status) {
-            function doStartSupplicant() {
-              cancelWaitForDriverReadyTimer();
+
+            function startSupplicantInternal() {
               wifiCommand.startSupplicant(function (status) {
                 if (status < 0) {
                   unloadDriver(WIFI_FIRMWARE_STATION, function() {
@@ -937,6 +942,19 @@ var WifiManager = (function() {
                 });
               });
             }
+
+            function doStartSupplicant() {
+              cancelWaitForDriverReadyTimer();
+
+              if (!manager.connectToSupplicant) {
+                startSupplicantInternal();
+                return;
+              }
+              wifiCommand.closeSupplicantConnection(function () {
+                manager.connectToSupplicant = false;
+                startSupplicantInternal();
+              });
+            }
             // Driver startup on certain platforms takes longer than it takes for us
             // to return from loadDriver, so wait 2 seconds before starting
             // the supplicant to give it a chance to start.
@@ -949,19 +967,17 @@ var WifiManager = (function() {
         });
       });
     } else {
+      manager.state = "DISABLING";
       // Note these following calls ignore errors. If we fail to kill the
       // supplicant gracefully, then we need to continue telling it to die
       // until it does.
       let doDisableWifi = function() {
-        manager.state = "DISABLING";
         wifiCommand.terminateSupplicant(function (ok) {
           manager.connectionDropped(function () {
             wifiCommand.stopSupplicant(function (status) {
-              wifiCommand.closeSupplicantConnection(function () {
-                manager.state = "UNINITIALIZED";
-                netUtil.disableInterface(manager.ifname, function (ok) {
-                  unloadDriver(WIFI_FIRMWARE_STATION, callback);
-                });
+              manager.state = "UNINITIALIZED";
+              netUtil.disableInterface(manager.ifname, function (ok) {
+                unloadDriver(WIFI_FIRMWARE_STATION, callback);
               });
             });
           });
@@ -1300,7 +1316,7 @@ var WifiManager = (function() {
   manager.enableP2p = function(callback) {
     p2pManager.setEnabled(true, {
       onSupplicantConnected: function() {
-        wifiService.waitForEvent(WifiP2pManager.INTERFACE_NAME);
+        waitForEvent(WifiP2pManager.INTERFACE_NAME);
       },
 
       onEnabled: function(success) {
@@ -1910,11 +1926,13 @@ function WifiWorker() {
       case "DISCONNECTED":
         // wpa_supplicant may give us a "DISCONNECTED" event even if
         // we are already in "DISCONNECTED" state.
-        if (this.prevState === "INITIALIZING" ||
-          this.prevState === "DISCONNECTED" ||
-          this.prevState === "INTERFACE_DISABLED" ||
-          this.prevState === "INACTIVE" ||
-          this.prevState === "UNINITIALIZED") {
+        if ((WifiNetworkInterface.state ===
+             Ci.nsINetworkInterface.NETWORK_STATE_DISCONNECTED) &&
+             (this.prevState === "INITIALIZING" ||
+              this.prevState === "DISCONNECTED" ||
+              this.prevState === "INTERFACE_DISABLED" ||
+              this.prevState === "INACTIVE" ||
+              this.prevState === "UNINITIALIZED")) {
           return;
         }
 

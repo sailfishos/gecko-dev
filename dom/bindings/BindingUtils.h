@@ -34,6 +34,7 @@
 
 #include "nsWrapperCacheInlines.h"
 
+class nsIJSID;
 class nsPIDOMWindow;
 
 extern nsresult
@@ -789,8 +790,7 @@ MaybeWrapValue(JSContext* cx, JS::MutableHandle<JS::Value> rval)
 // having "value" inherit from nsWrapperCache.
 template <class T>
 MOZ_ALWAYS_INLINE bool
-WrapNewBindingObject(JSContext* cx, JS::Handle<JSObject*> scope, T* value,
-                     JS::MutableHandle<JS::Value> rval)
+WrapNewBindingObject(JSContext* cx, T* value, JS::MutableHandle<JS::Value> rval)
 {
   MOZ_ASSERT(value);
   JSObject* obj = value->GetWrapperPreserveColor();
@@ -804,7 +804,7 @@ WrapNewBindingObject(JSContext* cx, JS::Handle<JSObject*> scope, T* value,
       return false;
     }
 
-    obj = value->WrapObject(cx, scope);
+    obj = value->WrapObject(cx);
     if (!obj) {
       // At this point, obj is null, so just return false.
       // Callers seem to be testing JS_IsExceptionPending(cx) to
@@ -815,8 +815,7 @@ WrapNewBindingObject(JSContext* cx, JS::Handle<JSObject*> scope, T* value,
 
 #ifdef DEBUG
   const DOMClass* clasp = GetDOMClass(obj);
-  // clasp can be null if the cache contained a non-DOM object from a
-  // different compartment than scope.
+  // clasp can be null if the cache contained a non-DOM object.
   if (clasp) {
     // Some sanity asserts about our object.  Specifically:
     // 1)  If our class claims we're nsISupports, we better be nsISupports
@@ -828,13 +827,6 @@ WrapNewBindingObject(JSContext* cx, JS::Handle<JSObject*> scope, T* value,
     MOZ_ASSERT_IF(clasp->mDOMObjectIsISupports, (IsBaseOf<nsISupports, T>::value));
     MOZ_ASSERT(CheckWrapperCacheCast<T>::Check());
   }
-
-  // When called via XrayWrapper, we end up here while running in the
-  // chrome compartment.  But the obj we have would be created in
-  // whatever the content compartment is.  So at this point we need to
-  // make sure it's correctly wrapped for the compartment of |scope|.
-  // cx should already be in the compartment of |scope| here.
-  MOZ_ASSERT(js::IsObjectInContextCompartment(scope, cx));
 #endif
 
   rval.set(JS::ObjectValue(*obj));
@@ -879,7 +871,8 @@ WrapNewBindingNonWrapperCachedObject(JSContext* cx,
       ac.construct(cx, scope);
     }
 
-    obj = value->WrapObject(cx, scope);
+    MOZ_ASSERT(js::IsObjectInContextCompartment(scope, cx));
+    obj = value->WrapObject(cx);
   }
 
   if (!obj) {
@@ -926,7 +919,8 @@ WrapNewBindingNonWrapperCachedOwnedObject(JSContext* cx,
     }
 
     bool tookOwnership = false;
-    obj = value->WrapObject(cx, scope, &tookOwnership);
+    MOZ_ASSERT(js::IsObjectInContextCompartment(scope, cx));
+    obj = value->WrapObject(cx, &tookOwnership);
     MOZ_ASSERT_IF(obj, tookOwnership);
     if (tookOwnership) {
       value.forget();
@@ -1160,8 +1154,8 @@ XPCOMObjectToJsval(JSContext* cx, JS::Handle<JSObject*> scope,
 
 // Special-cased wrapping for variants
 bool
-VariantToJsval(JSContext* aCx, JS::Handle<JSObject*> aScope,
-               nsIVariant* aVariant, JS::MutableHandle<JS::Value> aRetval);
+VariantToJsval(JSContext* aCx, nsIVariant* aVariant,
+               JS::MutableHandle<JS::Value> aRetval);
 
 // Wrap an object "p" which is not using WebIDL bindings yet.  This _will_
 // actually work on WebIDL binding objects that are wrappercached, but will be
@@ -1169,13 +1163,13 @@ VariantToJsval(JSContext* aCx, JS::Handle<JSObject*> aScope,
 // nsWrapperCache for "p".
 template<class T>
 inline bool
-WrapObject(JSContext* cx, JS::Handle<JSObject*> scope, T* p,
-           nsWrapperCache* cache, const nsIID* iid,
+WrapObject(JSContext* cx, T* p, nsWrapperCache* cache, const nsIID* iid,
            JS::MutableHandle<JS::Value> rval)
 {
-  if (xpc_FastGetCachedWrapper(cache, scope, rval))
+  if (xpc_FastGetCachedWrapper(cx, cache, rval))
     return true;
   qsObjectHelper helper(p, cache);
+  JS::Rooted<JSObject*> scope(cx, JS::CurrentGlobalOrNull(cx));
   return XPCOMObjectToJsval(cx, scope, helper, iid, true, rval);
 }
 
@@ -1183,13 +1177,13 @@ WrapObject(JSContext* cx, JS::Handle<JSObject*> scope, T* p,
 // do something different.
 template<>
 inline bool
-WrapObject<nsIVariant>(JSContext* cx, JS::Handle<JSObject*> scope, nsIVariant* p,
+WrapObject<nsIVariant>(JSContext* cx, nsIVariant* p,
                        nsWrapperCache* cache, const nsIID* iid,
                        JS::MutableHandle<JS::Value> rval)
 {
   MOZ_ASSERT(iid);
   MOZ_ASSERT(iid->Equals(NS_GET_IID(nsIVariant)));
-  return VariantToJsval(cx, scope, p, rval);
+  return VariantToJsval(cx, p, rval);
 }
 
 // Wrap an object "p" which is not using WebIDL bindings yet.  Just like the
@@ -1197,10 +1191,10 @@ WrapObject<nsIVariant>(JSContext* cx, JS::Handle<JSObject*> scope, nsIVariant* p
 // nsWrapperCache* from "p".
 template<class T>
 inline bool
-WrapObject(JSContext* cx, JS::Handle<JSObject*> scope, T* p, const nsIID* iid,
+WrapObject(JSContext* cx, T* p, const nsIID* iid,
            JS::MutableHandle<JS::Value> rval)
 {
-  return WrapObject(cx, scope, p, GetWrapperCache(p), iid, rval);
+  return WrapObject(cx, p, GetWrapperCache(p), iid, rval);
 }
 
 // Just like the WrapObject above, but without requiring you to pick which
@@ -1208,52 +1202,51 @@ WrapObject(JSContext* cx, JS::Handle<JSObject*> scope, T* p, const nsIID* iid,
 // classinfo, for which it doesn't matter what IID is used to wrap.
 template<class T>
 inline bool
-WrapObject(JSContext* cx, JS::Handle<JSObject*> scope, T* p,
-           JS::MutableHandle<JS::Value> rval)
+WrapObject(JSContext* cx, T* p, JS::MutableHandle<JS::Value> rval)
 {
-  return WrapObject(cx, scope, p, nullptr, rval);
+  return WrapObject(cx, p, nullptr, rval);
 }
 
 // Helper to make it possible to wrap directly out of an nsCOMPtr
 template<class T>
 inline bool
-WrapObject(JSContext* cx, JS::Handle<JSObject*> scope, const nsCOMPtr<T>& p,
+WrapObject(JSContext* cx, const nsCOMPtr<T>& p,
            const nsIID* iid, JS::MutableHandle<JS::Value> rval)
 {
-  return WrapObject(cx, scope, p.get(), iid, rval);
+  return WrapObject(cx, p.get(), iid, rval);
 }
 
 // Helper to make it possible to wrap directly out of an nsCOMPtr
 template<class T>
 inline bool
-WrapObject(JSContext* cx, JS::Handle<JSObject*> scope, const nsCOMPtr<T>& p,
+WrapObject(JSContext* cx, const nsCOMPtr<T>& p,
            JS::MutableHandle<JS::Value> rval)
 {
-  return WrapObject(cx, scope, p, nullptr, rval);
+  return WrapObject(cx, p, nullptr, rval);
 }
 
 // Helper to make it possible to wrap directly out of an nsRefPtr
 template<class T>
 inline bool
-WrapObject(JSContext* cx, JS::Handle<JSObject*> scope, const nsRefPtr<T>& p,
+WrapObject(JSContext* cx, const nsRefPtr<T>& p,
            const nsIID* iid, JS::MutableHandle<JS::Value> rval)
 {
-  return WrapObject(cx, scope, p.get(), iid, rval);
+  return WrapObject(cx, p.get(), iid, rval);
 }
 
 // Helper to make it possible to wrap directly out of an nsRefPtr
 template<class T>
 inline bool
-WrapObject(JSContext* cx, JS::Handle<JSObject*> scope, const nsRefPtr<T>& p,
+WrapObject(JSContext* cx, const nsRefPtr<T>& p,
            JS::MutableHandle<JS::Value> rval)
 {
-  return WrapObject(cx, scope, p, nullptr, rval);
+  return WrapObject(cx, p, nullptr, rval);
 }
 
 // Specialization to make it easy to use WrapObject in codegen.
 template<>
 inline bool
-WrapObject<JSObject>(JSContext* cx, JS::Handle<JSObject*> scope, JSObject* p,
+WrapObject<JSObject>(JSContext* cx, JSObject* p,
                      JS::MutableHandle<JS::Value> rval)
 {
   rval.set(JS::ObjectOrNullValue(p));
@@ -1261,8 +1254,7 @@ WrapObject<JSObject>(JSContext* cx, JS::Handle<JSObject*> scope, JSObject* p,
 }
 
 inline bool
-WrapObject(JSContext* cx, JS::Handle<JSObject*> scope, JSObject& p,
-           JS::MutableHandle<JS::Value> rval)
+WrapObject(JSContext* cx, JSObject& p, JS::MutableHandle<JS::Value> rval)
 {
   rval.set(JS::ObjectValue(p));
   return true;
@@ -1274,10 +1266,10 @@ WrapObject(JSContext* cx, JS::Handle<JSObject*> scope, JSObject& p,
 // don't want those for our parent object.
 template<typename T>
 static inline JSObject*
-WrapNativeISupportsParent(JSContext* cx, JS::Handle<JSObject*> scope, T* p,
-                          nsWrapperCache* cache)
+WrapNativeISupportsParent(JSContext* cx, T* p, nsWrapperCache* cache)
 {
   qsObjectHelper helper(ToSupports(p), cache);
+  JS::Rooted<JSObject*> scope(cx, JS::CurrentGlobalOrNull(cx));
   JS::Rooted<JS::Value> v(cx);
   return XPCOMObjectToJsval(cx, scope, helper, nullptr, false, &v) ?
          v.toObjectOrNull() :
@@ -1289,8 +1281,7 @@ WrapNativeISupportsParent(JSContext* cx, JS::Handle<JSObject*> scope, T* p,
 template<typename T, bool isISupports=IsBaseOf<nsISupports, T>::value>
 struct WrapNativeParentFallback
 {
-  static inline JSObject* Wrap(JSContext* cx, JS::Handle<JSObject*> scope,
-                               T* parent, nsWrapperCache* cache)
+  static inline JSObject* Wrap(JSContext* cx, T* parent, nsWrapperCache* cache)
   {
     return nullptr;
   }
@@ -1301,10 +1292,9 @@ struct WrapNativeParentFallback
 template<typename T >
 struct WrapNativeParentFallback<T, true >
 {
-  static inline JSObject* Wrap(JSContext* cx, JS::Handle<JSObject*> scope,
-                               T* parent, nsWrapperCache* cache)
+  static inline JSObject* Wrap(JSContext* cx, T* parent, nsWrapperCache* cache)
   {
-    return WrapNativeISupportsParent(cx, scope, parent, cache);
+    return WrapNativeISupportsParent(cx, parent, cache);
   }
 };
 
@@ -1313,8 +1303,7 @@ struct WrapNativeParentFallback<T, true >
 template<typename T, bool hasWrapObject=HasWrapObject<T>::Value >
 struct WrapNativeParentHelper
 {
-  static inline JSObject* Wrap(JSContext* cx, JS::Handle<JSObject*> scope,
-                               T* parent, nsWrapperCache* cache)
+  static inline JSObject* Wrap(JSContext* cx, T* parent, nsWrapperCache* cache)
   {
     MOZ_ASSERT(cache);
 
@@ -1325,9 +1314,9 @@ struct WrapNativeParentHelper
 
     // Inline this here while we have non-dom objects in wrapper caches.
     if (!CouldBeDOMBinding(parent)) {
-      obj = WrapNativeParentFallback<T>::Wrap(cx, scope, parent, cache);
+      obj = WrapNativeParentFallback<T>::Wrap(cx, parent, cache);
     } else {
-      obj = parent->WrapObject(cx, scope);
+      obj = parent->WrapObject(cx);
     }
 
     return obj;
@@ -1339,33 +1328,32 @@ struct WrapNativeParentHelper
 template<typename T>
 struct WrapNativeParentHelper<T, false >
 {
-  static inline JSObject* Wrap(JSContext* cx, JS::Handle<JSObject*> scope,
-                               T* parent, nsWrapperCache* cache)
+  static inline JSObject* Wrap(JSContext* cx, T* parent, nsWrapperCache* cache)
   {
     JSObject* obj;
     if (cache && (obj = cache->GetWrapper())) {
 #ifdef DEBUG
-      NS_ASSERTION(WrapNativeISupportsParent(cx, scope, parent, cache) == obj,
+      NS_ASSERTION(WrapNativeISupportsParent(cx, parent, cache) == obj,
                    "Unexpected object in nsWrapperCache");
 #endif
       return obj;
     }
 
-    return WrapNativeISupportsParent(cx, scope, parent, cache);
+    return WrapNativeISupportsParent(cx, parent, cache);
   }
 };
 
 // Wrapping of our native parent.
 template<typename T>
 static inline JSObject*
-WrapNativeParent(JSContext* cx, JS::Handle<JSObject*> scope, T* p,
-                 nsWrapperCache* cache, bool useXBLScope = false)
+WrapNativeParent(JSContext* cx, T* p, nsWrapperCache* cache,
+                 bool useXBLScope = false)
 {
   if (!p) {
-    return scope;
+    return JS::CurrentGlobalOrNull(cx);
   }
 
-  JSObject* parent = WrapNativeParentHelper<T>::Wrap(cx, scope, p, cache);
+  JSObject* parent = WrapNativeParentHelper<T>::Wrap(cx, p, cache);
   if (!useXBLScope) {
     return parent;
   }
@@ -1389,9 +1377,9 @@ WrapNativeParent(JSContext* cx, JS::Handle<JSObject*> scope, T* p,
 // things like the nsWrapperCache for it.
 template<typename T>
 static inline JSObject*
-WrapNativeParent(JSContext* cx, JS::Handle<JSObject*> scope, const T& p)
+WrapNativeParent(JSContext* cx, const T& p)
 {
-  return WrapNativeParent(cx, scope, GetParentPointer(p), GetWrapperCache(p), GetUseXBLScope(p));
+  return WrapNativeParent(cx, GetParentPointer(p), GetWrapperCache(p), GetUseXBLScope(p));
 }
 
 // A way to differentiate between nodes, which use the parent object
@@ -1417,10 +1405,11 @@ struct GetParentObject
 {
   static JSObject* Get(JSContext* cx, JS::Handle<JSObject*> obj)
   {
+    MOZ_ASSERT(js::IsObjectInContextCompartment(obj, cx));
     T* native = UnwrapDOMObject<T>(obj);
     return
       GetRealParentObject(native,
-                          WrapNativeParent(cx, obj, native->GetParentObject()));
+                          WrapNativeParent(cx, native->GetParentObject()));
   }
 };
 
@@ -1448,7 +1437,7 @@ JSObject* GetJSObjectFromCallback(void* noncallback)
 
 template<typename T>
 static inline JSObject*
-WrapCallThisObject(JSContext* cx, JS::Handle<JSObject*> scope, const T& p)
+WrapCallThisObject(JSContext* cx, const T& p)
 {
   // Callbacks are nsISupports, so WrapNativeParent will just happily wrap them
   // up as an nsISupports XPCWrappedNative... which is not at all what we want.
@@ -1457,7 +1446,7 @@ WrapCallThisObject(JSContext* cx, JS::Handle<JSObject*> scope, const T& p)
   if (!obj) {
     // WrapNativeParent is a bit of a Swiss army knife that will
     // wrap anything for us.
-    obj = WrapNativeParent(cx, scope, p);
+    obj = WrapNativeParent(cx, p);
     if (!obj) {
       return nullptr;
     }
@@ -1478,7 +1467,6 @@ WrapCallThisObject(JSContext* cx, JS::Handle<JSObject*> scope, const T& p)
 template<>
 inline JSObject*
 WrapCallThisObject<JS::Rooted<JSObject*>>(JSContext* cx,
-                                          JS::Handle<JSObject*> scope,
                                           const JS::Rooted<JSObject*>& p)
 {
   JS::Rooted<JSObject*> obj(cx, p);
@@ -1495,29 +1483,39 @@ WrapCallThisObject<JS::Rooted<JSObject*>>(JSContext* cx,
 template <class T, bool isSmartPtr=HasgetMember<T>::Value>
 struct WrapNewBindingObjectHelper
 {
-  static inline bool Wrap(JSContext* cx, JS::Handle<JSObject*> scope,
-                          const T& value, JS::MutableHandle<JS::Value> rval)
+  static inline bool Wrap(JSContext* cx, const T& value,
+                          JS::MutableHandle<JS::Value> rval)
   {
-    return WrapNewBindingObject(cx, scope, value.get(), rval);
+    return WrapNewBindingObject(cx, value.get(), rval);
   }
 };
 
 template <class T>
 struct WrapNewBindingObjectHelper<T, false>
 {
-  static inline bool Wrap(JSContext* cx, JS::Handle<JSObject*> scope, T& value,
+  static inline bool Wrap(JSContext* cx, T& value,
                           JS::MutableHandle<JS::Value> rval)
   {
-    return WrapNewBindingObject(cx, scope, &value, rval);
+    return WrapNewBindingObject(cx, &value, rval);
   }
 };
 
 template<class T>
 inline bool
+WrapNewBindingObject(JSContext* cx, T& value, JS::MutableHandle<JS::Value> rval)
+{
+  return WrapNewBindingObjectHelper<T>::Wrap(cx, value, rval);
+}
+
+// We need this version of WrapNewBindingObject for codegen, so it'll have the
+// same signature as WrapNewBindingNonWrapperCachedObject and
+// WrapNewBindingNonWrapperCachedOwnedObject, which still need the scope.
+template<class T>
+inline bool
 WrapNewBindingObject(JSContext* cx, JS::Handle<JSObject*> scope, T& value,
                      JS::MutableHandle<JS::Value> rval)
 {
-  return WrapNewBindingObjectHelper<T>::Wrap(cx, scope, value, rval);
+  return WrapNewBindingObject(cx, value, rval);
 }
 
 template <class T>
@@ -1605,6 +1603,17 @@ WantsQueryInterface
     return NS_IsMainThread() && IsChromeOrXBL(aCx, aGlobal);
   }
 };
+
+JS::Value
+GetInterfaceImpl(JSContext* aCx, nsIInterfaceRequestor* aRequestor,
+                 nsWrapperCache* aCache, nsIJSID* aIID, ErrorResult& aError);
+
+template<class T>
+JS::Value
+GetInterface(JSContext* aCx, T* aThis, nsIJSID* aIID, ErrorResult& aError)
+{
+  return GetInterfaceImpl(aCx, aThis, aThis, aIID, aError);
+}
 
 bool
 ThrowingConstructor(JSContext* cx, unsigned argc, JS::Value* vp);
@@ -2553,6 +2562,8 @@ CreateGlobal(JSContext* aCx, T* aObject, nsWrapperCache* aCache,
              JSPrincipals* aPrincipal)
 {
   MOZ_ASSERT(!NS_IsMainThread());
+
+  aOptions.setTrace(TraceGlobal);
 
   JS::Rooted<JSObject*> global(aCx,
     JS_NewGlobalObject(aCx, aClass, aPrincipal, JS::DontFireOnNewGlobalHook,

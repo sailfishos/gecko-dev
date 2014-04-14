@@ -18,6 +18,7 @@
 #include "jit/MIR.h"
 #include "jit/ParallelFunctions.h"
 #include "vm/ForkJoin.h"
+#include "vm/TraceLogging.h"
 
 #ifdef JSGC_GENERATIONAL
 # include "jsgcinlines.h"
@@ -240,116 +241,6 @@ template void MacroAssembler::guardType(const ValueOperand &value, types::Type t
                                         Register scratch, Label *miss);
 
 void
-MacroAssembler::PushRegsInMask(RegisterSet set)
-{
-    int32_t diffF = set.fpus().size() * sizeof(double);
-    int32_t diffG = set.gprs().size() * sizeof(intptr_t);
-
-#if defined(JS_CODEGEN_X86) || defined(JS_CODEGEN_X64)
-    // On x86, always use push to push the integer registers, as it's fast
-    // on modern hardware and it's a small instruction.
-    for (GeneralRegisterBackwardIterator iter(set.gprs()); iter.more(); iter++) {
-        diffG -= sizeof(intptr_t);
-        Push(*iter);
-    }
-#elif defined(JS_CODEGEN_ARM)
-    if (set.gprs().size() > 1) {
-        adjustFrame(diffG);
-        startDataTransferM(IsStore, StackPointer, DB, WriteBack);
-        for (GeneralRegisterBackwardIterator iter(set.gprs()); iter.more(); iter++) {
-            diffG -= sizeof(intptr_t);
-            transferReg(*iter);
-        }
-        finishDataTransfer();
-    } else {
-        reserveStack(diffG);
-        for (GeneralRegisterBackwardIterator iter(set.gprs()); iter.more(); iter++) {
-            diffG -= sizeof(intptr_t);
-            storePtr(*iter, Address(StackPointer, diffG));
-        }
-    }
-#else
-    reserveStack(diffG);
-    for (GeneralRegisterBackwardIterator iter(set.gprs()); iter.more(); iter++) {
-        diffG -= sizeof(intptr_t);
-        storePtr(*iter, Address(StackPointer, diffG));
-    }
-#endif
-    JS_ASSERT(diffG == 0);
-
-#ifdef JS_CODEGEN_ARM
-    adjustFrame(diffF);
-    diffF += transferMultipleByRuns(set.fpus(), IsStore, StackPointer, DB);
-#else
-    reserveStack(diffF);
-    for (FloatRegisterBackwardIterator iter(set.fpus()); iter.more(); iter++) {
-        diffF -= sizeof(double);
-        storeDouble(*iter, Address(StackPointer, diffF));
-    }
-#endif
-    JS_ASSERT(diffF == 0);
-}
-
-void
-MacroAssembler::PopRegsInMaskIgnore(RegisterSet set, RegisterSet ignore)
-{
-    int32_t diffG = set.gprs().size() * sizeof(intptr_t);
-    int32_t diffF = set.fpus().size() * sizeof(double);
-    const int32_t reservedG = diffG;
-    const int32_t reservedF = diffF;
-
-#ifdef JS_CODEGEN_ARM
-    // ARM can load multiple registers at once, but only if we want back all
-    // the registers we previously saved to the stack.
-    if (ignore.empty(true)) {
-        diffF -= transferMultipleByRuns(set.fpus(), IsLoad, StackPointer, IA);
-        adjustFrame(-reservedF);
-    } else
-#endif
-    {
-        for (FloatRegisterBackwardIterator iter(set.fpus()); iter.more(); iter++) {
-            diffF -= sizeof(double);
-            if (!ignore.has(*iter))
-                loadDouble(Address(StackPointer, diffF), *iter);
-        }
-        freeStack(reservedF);
-    }
-    JS_ASSERT(diffF == 0);
-
-#if defined(JS_CODEGEN_X86) || defined(JS_CODEGEN_X64)
-    // On x86, use pop to pop the integer registers, if we're not going to
-    // ignore any slots, as it's fast on modern hardware and it's a small
-    // instruction.
-    if (ignore.empty(false)) {
-        for (GeneralRegisterForwardIterator iter(set.gprs()); iter.more(); iter++) {
-            diffG -= sizeof(intptr_t);
-            Pop(*iter);
-        }
-    } else
-#endif
-#ifdef JS_CODEGEN_ARM
-    if (set.gprs().size() > 1 && ignore.empty(false)) {
-        startDataTransferM(IsLoad, StackPointer, IA, WriteBack);
-        for (GeneralRegisterBackwardIterator iter(set.gprs()); iter.more(); iter++) {
-            diffG -= sizeof(intptr_t);
-            transferReg(*iter);
-        }
-        finishDataTransfer();
-        adjustFrame(-reservedG);
-    } else
-#endif
-    {
-        for (GeneralRegisterBackwardIterator iter(set.gprs()); iter.more(); iter++) {
-            diffG -= sizeof(intptr_t);
-            if (!ignore.has(*iter))
-                loadPtr(Address(StackPointer, diffG), *iter);
-        }
-        freeStack(reservedG);
-    }
-    JS_ASSERT(diffG == 0);
-}
-
-void
 MacroAssembler::branchNurseryPtr(Condition cond, const Address &ptr1, const ImmMaybeNurseryPtr &ptr2,
                                  Label *label)
 {
@@ -380,7 +271,7 @@ StoreToTypedFloatArray(MacroAssembler &masm, int arrayType, const S &value, cons
             masm.storeFloat32(value, dest);
         } else {
 #ifdef JS_MORE_DETERMINISTIC
-            // See the comment in ToDoubleForTypedArray.
+            // See the comment in TypedArrayObjectTemplate::doubleToNative.
             masm.canonicalizeDouble(value);
 #endif
             masm.convertDoubleToFloat32(value, ScratchFloatReg);
@@ -389,7 +280,7 @@ StoreToTypedFloatArray(MacroAssembler &masm, int arrayType, const S &value, cons
         break;
       case ScalarTypeDescr::TYPE_FLOAT64:
 #ifdef JS_MORE_DETERMINISTIC
-        // See the comment in ToDoubleForTypedArray.
+        // See the comment in TypedArrayObjectTemplate::doubleToNative.
         masm.canonicalizeDouble(value);
 #endif
         masm.storeDouble(value, dest);
@@ -444,8 +335,7 @@ MacroAssembler::loadFromTypedArray(int arrayType, const T &src, AnyRegister dest
             // Bail out if the value doesn't fit into a signed int32 value. This
             // is what allows MLoadTypedArrayElement to have a type() of
             // MIRType_Int32 for UInt32 array loads.
-            test32(dest.gpr(), dest.gpr());
-            j(Assembler::Signed, fail);
+            branchTest32(Assembler::Signed, dest.gpr(), dest.gpr(), fail);
         }
         break;
       case ScalarTypeDescr::TYPE_FLOAT32:
@@ -489,12 +379,11 @@ MacroAssembler::loadFromTypedArray(int arrayType, const T &src, const ValueOpera
       case ScalarTypeDescr::TYPE_UINT32:
         // Don't clobber dest when we could fail, instead use temp.
         load32(src, temp);
-        test32(temp, temp);
         if (allowDouble) {
             // If the value fits in an int32, store an int32 type tag.
             // Else, convert the value to double and box it.
             Label done, isDouble;
-            j(Assembler::Signed, &isDouble);
+            branchTest32(Assembler::Signed, temp, temp, &isDouble);
             {
                 tagValue(JSVAL_TYPE_INT32, temp, dest);
                 jump(&done);
@@ -507,7 +396,7 @@ MacroAssembler::loadFromTypedArray(int arrayType, const T &src, const ValueOpera
             bind(&done);
         } else {
             // Bailout if the value does not fit in an int32.
-            j(Assembler::Signed, fail);
+            branchTest32(Assembler::Signed, temp, temp, fail);
             tagValue(JSVAL_TYPE_INT32, temp, dest);
         }
         break;
@@ -532,106 +421,6 @@ template void MacroAssembler::loadFromTypedArray(int arrayType, const Address &s
                                                  bool allowDouble, Register temp, Label *fail);
 template void MacroAssembler::loadFromTypedArray(int arrayType, const BaseIndex &src, const ValueOperand &dest,
                                                  bool allowDouble, Register temp, Label *fail);
-
-// Note: this function clobbers the input register.
-void
-MacroAssembler::clampDoubleToUint8(FloatRegister input, Register output)
-{
-    JS_ASSERT(input != ScratchFloatReg);
-#ifdef JS_CODEGEN_ARM
-    ma_vimm(0.5, ScratchFloatReg);
-    if (hasVFPv3()) {
-        Label notSplit;
-        ma_vadd(input, ScratchFloatReg, ScratchFloatReg);
-        // Convert the double into an unsigned fixed point value with 24 bits of
-        // precision. The resulting number will look like 0xII.DDDDDD
-        as_vcvtFixed(ScratchFloatReg, false, 24, true);
-        // Move the fixed point value into an integer register
-        as_vxfer(output, InvalidReg, ScratchFloatReg, FloatToCore);
-        // see if this value *might* have been an exact integer after adding 0.5
-        // This tests the 1/2 through 1/16,777,216th places, but 0.5 needs to be tested out to
-        // the 1/140,737,488,355,328th place.
-        ma_tst(output, Imm32(0x00ffffff));
-        // convert to a uint8 by shifting out all of the fraction bits
-        ma_lsr(Imm32(24), output, output);
-        // If any of the bottom 24 bits were non-zero, then we're good, since this number
-        // can't be exactly XX.0
-        ma_b(&notSplit, NonZero);
-        as_vxfer(ScratchRegister, InvalidReg, input, FloatToCore);
-        ma_cmp(ScratchRegister, Imm32(0));
-        // If the lower 32 bits of the double were 0, then this was an exact number,
-        // and it should be even.
-        ma_bic(Imm32(1), output, NoSetCond, Zero);
-        bind(&notSplit);
-
-    } else {
-        Label outOfRange;
-        ma_vcmpz(input);
-        // do the add, in place so we can reference it later
-        ma_vadd(input, ScratchFloatReg, input);
-        // do the conversion to an integer.
-        as_vcvt(VFPRegister(ScratchFloatReg).uintOverlay(), VFPRegister(input));
-        // copy the converted value out
-        as_vxfer(output, InvalidReg, ScratchFloatReg, FloatToCore);
-        as_vmrs(pc);
-        ma_mov(Imm32(0), output, NoSetCond, Overflow);  // NaN => 0
-        ma_b(&outOfRange, Overflow);  // NaN
-        ma_cmp(output, Imm32(0xff));
-        ma_mov(Imm32(0xff), output, NoSetCond, Above);
-        ma_b(&outOfRange, Above);
-        // convert it back to see if we got the same value back
-        as_vcvt(ScratchFloatReg, VFPRegister(ScratchFloatReg).uintOverlay());
-        // do the check
-        as_vcmp(ScratchFloatReg, input);
-        as_vmrs(pc);
-        ma_bic(Imm32(1), output, NoSetCond, Zero);
-        bind(&outOfRange);
-    }
-#else
-
-    Label positive, done;
-
-    // <= 0 or NaN --> 0
-    zeroDouble(ScratchFloatReg);
-    branchDouble(DoubleGreaterThan, input, ScratchFloatReg, &positive);
-    {
-        move32(Imm32(0), output);
-        jump(&done);
-    }
-
-    bind(&positive);
-
-    // Add 0.5 and truncate.
-    loadConstantDouble(0.5, ScratchFloatReg);
-    addDouble(ScratchFloatReg, input);
-
-    Label outOfRange;
-
-    // Truncate to int32 and ensure the result <= 255. This relies on the
-    // processor setting output to a value > 255 for doubles outside the int32
-    // range (for instance 0x80000000).
-    cvttsd2si(input, output);
-    branch32(Assembler::Above, output, Imm32(255), &outOfRange);
-    {
-        // Check if we had a tie.
-        convertInt32ToDouble(output, ScratchFloatReg);
-        branchDouble(DoubleNotEqual, input, ScratchFloatReg, &done);
-
-        // It was a tie. Mask out the ones bit to get an even value.
-        // See also js_TypedArray_uint8_clamp_double.
-        and32(Imm32(~1), output);
-        jump(&done);
-    }
-
-    // > 255 --> 255
-    bind(&outOfRange);
-    {
-        move32(Imm32(255), output);
-    }
-
-    bind(&done);
-#endif
-}
 
 void
 MacroAssembler::newGCThing(Register result, Register temp, gc::AllocKind allocKind, Label *fail,
@@ -698,9 +487,9 @@ MacroAssembler::newGCString(Register result, Register temp, Label *fail)
 }
 
 void
-MacroAssembler::newGCShortString(Register result, Register temp, Label *fail)
+MacroAssembler::newGCFatInlineString(Register result, Register temp, Label *fail)
 {
-    newGCThing(result, temp, js::gc::FINALIZE_SHORT_STRING, fail);
+    newGCThing(result, temp, js::gc::FINALIZE_FAT_INLINE_STRING, fail);
 }
 
 void
@@ -768,10 +557,10 @@ MacroAssembler::newGCStringPar(Register result, Register cx, Register tempReg1, 
 }
 
 void
-MacroAssembler::newGCShortStringPar(Register result, Register cx, Register tempReg1,
-                                    Register tempReg2, Label *fail)
+MacroAssembler::newGCFatInlineStringPar(Register result, Register cx, Register tempReg1,
+                                        Register tempReg2, Label *fail)
 {
-    newGCThingPar(result, cx, tempReg1, tempReg2, js::gc::FINALIZE_SHORT_STRING, fail);
+    newGCThingPar(result, cx, tempReg1, tempReg2, js::gc::FINALIZE_FAT_INLINE_STRING, fail);
 }
 
 void
@@ -908,8 +697,7 @@ MacroAssembler::compareStrings(JSOp op, Register left, Register right, Register 
     branchTest32(Assembler::Zero, result, atomBit, &notAtom);
     branchTest32(Assembler::Zero, temp, atomBit, &notAtom);
 
-    cmpPtr(left, right);
-    emitSet(JSOpToCondition(MCompare::Compare_String, op), result);
+    cmpPtrSet(JSOpToCondition(MCompare::Compare_String, op), left, right, result);
     jump(&done);
 
     bind(&notAtom);
@@ -1349,68 +1137,118 @@ MacroAssembler::printf(const char *output, Register value)
     PopRegsInMask(RegisterSet::Volatile());
 }
 
-#if JS_TRACE_LOGGING
+#ifdef JS_TRACE_LOGGING
 void
-MacroAssembler::tracelogStart(JSScript *script)
+MacroAssembler::tracelogStart(Register logger, uint32_t textId)
 {
-    void (&TraceLogStart)(TraceLogging*, TraceLogging::Type, JSScript*) = TraceLog;
+    void (&TraceLogFunc)(TraceLogger*, uint32_t) = TraceLogStartEvent;
+
+    PushRegsInMask(RegisterSet::Volatile());
+
     RegisterSet regs = RegisterSet::Volatile();
-    PushRegsInMask(regs);
+    regs.takeUnchecked(logger);
 
     Register temp = regs.takeGeneral();
-    Register type = regs.takeGeneral();
-    Register rscript = regs.takeGeneral();
 
-    setupUnalignedABICall(3, temp);
-    movePtr(ImmPtr(TraceLogging::defaultLogger()), temp);
+    setupUnalignedABICall(2, temp);
+    passABIArg(logger);
+    move32(Imm32(textId), temp);
     passABIArg(temp);
-    move32(Imm32(TraceLogging::SCRIPT_START), type);
-    passABIArg(type);
-    movePtr(ImmGCPtr(script), rscript);
-    passABIArg(rscript);
-    callWithABINoProfiling(JS_FUNC_TO_DATA_PTR(void *, TraceLogStart));
+    callWithABINoProfiling(JS_FUNC_TO_DATA_PTR(void *, TraceLogFunc));
 
     PopRegsInMask(RegisterSet::Volatile());
 }
 
 void
-MacroAssembler::tracelogStop()
+MacroAssembler::tracelogStart(Register logger, Register textId)
 {
-    void (&TraceLogStop)(TraceLogging*, TraceLogging::Type) = TraceLog;
+    void (&TraceLogFunc)(TraceLogger*, uint32_t) = TraceLogStartEvent;
+
+    PushRegsInMask(RegisterSet::Volatile());
+
     RegisterSet regs = RegisterSet::Volatile();
-    PushRegsInMask(regs);
+    regs.takeUnchecked(logger);
+    regs.takeUnchecked(textId);
 
     Register temp = regs.takeGeneral();
-    Register logger = regs.takeGeneral();
-    Register type = regs.takeGeneral();
 
     setupUnalignedABICall(2, temp);
-    movePtr(ImmPtr(TraceLogging::defaultLogger()), logger);
     passABIArg(logger);
-    move32(Imm32(TraceLogging::SCRIPT_STOP), type);
-    passABIArg(type);
-    callWithABINoProfiling(JS_FUNC_TO_DATA_PTR(void *, TraceLogStop));
+    passABIArg(textId);
+    callWithABINoProfiling(JS_FUNC_TO_DATA_PTR(void *, TraceLogFunc));
+
+    regs.add(temp);
 
     PopRegsInMask(RegisterSet::Volatile());
 }
 
 void
-MacroAssembler::tracelogLog(TraceLogging::Type type)
+MacroAssembler::tracelogStop(Register logger, uint32_t textId)
 {
-    void (&TraceLogStop)(TraceLogging*, TraceLogging::Type) = TraceLog;
+    void (&TraceLogFunc)(TraceLogger*, uint32_t) = TraceLogStopEvent;
+
+    PushRegsInMask(RegisterSet::Volatile());
+
     RegisterSet regs = RegisterSet::Volatile();
-    PushRegsInMask(regs);
+    regs.takeUnchecked(logger);
 
     Register temp = regs.takeGeneral();
-    Register logger = regs.takeGeneral();
-    Register rtype = regs.takeGeneral();
 
     setupUnalignedABICall(2, temp);
-    movePtr(ImmPtr(TraceLogging::defaultLogger()), logger);
     passABIArg(logger);
-    move32(Imm32(type), rtype);
-    passABIArg(rtype);
-    callWithABINoProfiling(JS_FUNC_TO_DATA_PTR(void *, TraceLogStop));
+    move32(Imm32(textId), temp);
+    passABIArg(temp);
+    callWithABINoProfiling(JS_FUNC_TO_DATA_PTR(void *, TraceLogFunc));
+
+    regs.add(temp);
+
+    PopRegsInMask(RegisterSet::Volatile());
+}
+
+void
+MacroAssembler::tracelogStop(Register logger, Register textId)
+{
+#ifdef DEBUG
+    void (&TraceLogFunc)(TraceLogger*, uint32_t) = TraceLogStopEvent;
+
+    PushRegsInMask(RegisterSet::Volatile());
+
+    RegisterSet regs = RegisterSet::Volatile();
+    regs.takeUnchecked(logger);
+    regs.takeUnchecked(textId);
+
+    Register temp = regs.takeGeneral();
+
+    setupUnalignedABICall(2, temp);
+    passABIArg(logger);
+    passABIArg(textId);
+    callWithABINoProfiling(JS_FUNC_TO_DATA_PTR(void *, TraceLogFunc));
+
+    regs.add(temp);
+
+    PopRegsInMask(RegisterSet::Volatile());
+#else
+    tracelogStop(logger);
+#endif
+}
+
+void
+MacroAssembler::tracelogStop(Register logger)
+{
+    void (&TraceLogFunc)(TraceLogger*) = TraceLogStopEvent;
+
+    PushRegsInMask(RegisterSet::Volatile());
+
+    RegisterSet regs = RegisterSet::Volatile();
+    regs.takeUnchecked(logger);
+
+    Register temp = regs.takeGeneral();
+
+    setupUnalignedABICall(1, temp);
+    passABIArg(logger);
+    callWithABINoProfiling(JS_FUNC_TO_DATA_PTR(void *, TraceLogFunc));
+
+    regs.add(temp);
 
     PopRegsInMask(RegisterSet::Volatile());
 }
@@ -1633,9 +1471,8 @@ MacroAssembler::convertValueToInt(ValueOperand value, MDefinition *maybeInput,
                           behavior == IntConversion_ClampToUint8) &&
                          handleStringEntry &&
                          handleStringRejoin;
-    bool zeroObjects = behavior == IntConversion_ClampToUint8;
 
-    JS_ASSERT_IF(handleStrings || zeroObjects, conversion == IntConversion_Any);
+    JS_ASSERT_IF(handleStrings, conversion == IntConversion_Any);
 
     Label done, isInt32, isBool, isDouble, isNull, isString;
 
@@ -1658,8 +1495,7 @@ MacroAssembler::convertValueToInt(ValueOperand value, MDefinition *maybeInput,
             branchEqualTypeIfNeeded(MIRType_Null, maybeInput, tag, &isNull);
             if (handleStrings)
                 branchEqualTypeIfNeeded(MIRType_String, maybeInput, tag, &isString);
-            if (zeroObjects)
-                branchEqualTypeIfNeeded(MIRType_Object, maybeInput, tag, &isNull);
+            branchEqualTypeIfNeeded(MIRType_Object, maybeInput, tag, fail);
             branchTestUndefined(Assembler::NotEqual, tag, fail);
             break;
         }
@@ -1718,7 +1554,6 @@ MacroAssembler::convertValueToInt(JSContext *cx, const Value &v, Register output
 {
     bool handleStrings = (behavior == IntConversion_Truncate ||
                           behavior == IntConversion_ClampToUint8);
-    bool zeroObjects = behavior == IntConversion_ClampToUint8;
 
     if (v.isNumber() || (handleStrings && v.isString())) {
         double d;
@@ -1761,10 +1596,7 @@ MacroAssembler::convertValueToInt(JSContext *cx, const Value &v, Register output
 
     JS_ASSERT(v.isObject());
 
-    if (zeroObjects)
-        move32(Imm32(0), output);
-    else
-        jump(fail);
+    jump(fail);
     return true;
 }
 

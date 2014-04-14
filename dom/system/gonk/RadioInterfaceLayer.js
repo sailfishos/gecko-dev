@@ -911,11 +911,11 @@ XPCOMUtils.defineLazyGetter(this, "gDataConnectionManager", function () {
             this.debug("'ril.data.roaming_enabled' is now " + result);
             this.debug("Default id for data call: " + this._dataDefaultClientId);
           }
-          for (let connHandler of this._connectionHandlers) {
+          for (let clientId = 0; clientId < this._connectionHandlers.length; clientId++) {
+            let connHandler = this._connectionHandlers[clientId];
             let settings = connHandler.dataCallSettings;
-            settings.roamingEnabled = result;
+            settings.roamingEnabled = Array.isArray(result) ? result[clientId] : result;
           }
-
           if (this._dataDefaultClientId === -1) {
             // We haven't got the default id for data from db.
             break;
@@ -1038,7 +1038,8 @@ CdmaIccInfo.prototype = {
 
   // nsIDOMMozCdmaIccInfo
 
-  mdn: null
+  mdn: null,
+  prlVersion: 0
 };
 
 function DataConnectionHandler(clientId, radioInterface) {
@@ -2512,20 +2513,23 @@ RadioInterface.prototype = {
     }).bind(this));
   },
 
-  setCellBroadcastSearchList: function(newSearchListStr) {
-    if (newSearchListStr == this._cellBroadcastSearchListStr) {
+  setCellBroadcastSearchList: function(newSearchList) {
+    if ((newSearchList == this._cellBroadcastSearchList) ||
+          (newSearchList && this._cellBroadcastSearchList &&
+            newSearchList.gsm == this._cellBroadcastSearchList.gsm &&
+            newSearchList.cdma == this._cellBroadcastSearchList.cdma)) {
       return;
     }
 
     this.workerMessenger.send("setCellBroadcastSearchList",
-                              { searchListStr: newSearchListStr },
+                              { searchList: newSearchList },
                               (function callback(response) {
       if (!response.success) {
         let lock = gSettingsService.createLock();
         lock.set(kSettingsCellBroadcastSearchList,
-                 this._cellBroadcastSearchListStr, null);
+                 this._cellBroadcastSearchList, null);
       } else {
-        this._cellBroadcastSearchListStr = response.searchListStr;
+        this._cellBroadcastSearchList = response.searchList;
       }
 
       return false;
@@ -3384,7 +3388,7 @@ RadioInterface.prototype = {
   _sntp: null,
 
   // Cell Broadcast settings values.
-  _cellBroadcastSearchListStr: null,
+  _cellBroadcastSearchList: null,
 
   // Operator's mcc-mnc.
   _lastKnownNetwork: null,
@@ -3471,9 +3475,12 @@ RadioInterface.prototype = {
         break;
       case kSettingsCellBroadcastSearchList:
         if (DEBUG) {
-          this.debug("'" + kSettingsCellBroadcastSearchList + "' is now " + aResult);
+          this.debug("'" + kSettingsCellBroadcastSearchList +
+            "' is now " + JSON.stringify(aResult));
         }
-        this.setCellBroadcastSearchList(aResult);
+        // TODO: Set searchlist for Multi-SIM. See Bug 921326.
+        let result = Array.isArray(aResult) ? aResult[0] : aResult;
+        this.setCellBroadcastSearchList(result);
         break;
     }
   },

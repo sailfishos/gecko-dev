@@ -73,8 +73,7 @@ public:
                                                                        aTitle,
                                                                        options);
     JSAutoCompartment ac(aCx, mGlobal);
-    JS::Rooted<JSObject*> scope(aCx, mGlobal);
-    JS::Rooted<JSObject*> element(aCx, notification->WrapObject(aCx, scope));
+    JS::Rooted<JSObject*> element(aCx, notification->WrapObject(aCx));
     NS_ENSURE_TRUE(element, NS_ERROR_FAILURE);
 
     if (!JS_DefineElement(aCx, mNotifications, mCount++,
@@ -579,6 +578,7 @@ Notification::ShowInternal()
         ops.mTextClickable = true;
         ops.mManifestURL = manifestUrl;
         ops.mId = alertName;
+        ops.mDbId = mID;
         ops.mDir = DirectionToString(mDir);
         ops.mLang = mLang;
         ops.mTag = mTag;
@@ -736,9 +736,9 @@ Notification::Get(const GlobalObject& aGlobal,
 }
 
 JSObject*
-Notification::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aScope)
+Notification::WrapObject(JSContext* aCx)
 {
-  return mozilla::dom::NotificationBinding::Wrap(aCx, aScope, this);
+  return mozilla::dom::NotificationBinding::Wrap(aCx, this);
 }
 
 void

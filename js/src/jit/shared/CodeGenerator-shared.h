@@ -89,6 +89,11 @@ class CodeGeneratorShared : public LInstructionVisitor
     // Patchable backedges generated for loops.
     Vector<PatchableBackedgeInfo, 0, SystemAllocPolicy> patchableBackedges_;
 
+#ifdef JS_TRACE_LOGGING
+    js::Vector<CodeOffsetLabel, 0, SystemAllocPolicy> patchableTraceLoggers_;
+    js::Vector<CodeOffsetLabel, 0, SystemAllocPolicy> patchableTLScripts_;
+#endif
+
     // When profiling is enabled, this is the instrumentation manager which
     // maintains state of what script is currently being generated (for inline
     // scripts) and when instrumentation needs to be emitted or skipped.
@@ -351,6 +356,10 @@ class CodeGeneratorShared : public LInstructionVisitor
     inline void restoreLive(LInstruction *ins);
     inline void restoreLiveIgnore(LInstruction *ins, RegisterSet reg);
 
+    // Save/restore all registers that are both live and volatile.
+    inline void saveLiveVolatile(LInstruction *ins);
+    inline void restoreLiveVolatile(LInstruction *ins);
+
     template <typename T>
     void pushArg(const T &t) {
         masm.Push(t);
@@ -439,6 +448,31 @@ class CodeGeneratorShared : public LInstructionVisitor
     OutOfLinePropagateAbortPar *oolPropagateAbortPar(LInstruction *lir);
     virtual bool visitOutOfLineAbortPar(OutOfLineAbortPar *ool) = 0;
     virtual bool visitOutOfLinePropagateAbortPar(OutOfLinePropagateAbortPar *ool) = 0;
+
+#ifdef JS_TRACE_LOGGING
+  protected:
+    bool emitTracelogScript(bool isStart);
+    bool emitTracelogTree(bool isStart, uint32_t textId);
+
+  public:
+    bool emitTracelogScriptStart() {
+        return emitTracelogScript(/* isStart =*/ true);
+    }
+    bool emitTracelogScriptStop() {
+        return emitTracelogScript(/* isStart =*/ false);
+    }
+    bool emitTracelogStartEvent(uint32_t textId) {
+        return emitTracelogTree(/* isStart =*/ true, textId);
+    }
+    bool emitTracelogStopEvent(uint32_t textId) {
+#ifdef DEBUG
+        return emitTracelogTree(/* isStart =*/ false, textId);
+#else
+        return emitTracelogScript(/* isStart =*/ false);
+#endif
+    }
+    bool emitTracelogStopEvent();
+#endif
 };
 
 // An out-of-line path is generated at the end of the function.

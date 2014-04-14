@@ -131,7 +131,8 @@ XPCOMUtils.defineLazyModuleGetter(this, "CharsetMenu",
 
 // Lazily-loaded JS modules that use observer notifications
 [
-  ["Home", ["HomePanels:Get", "HomePanels:Authenticate"], "resource://gre/modules/Home.jsm"],
+  ["Home", ["HomePanels:Get", "HomePanels:Authenticate",
+            "HomePanels:Installed", "HomePanels:Uninstalled"], "resource://gre/modules/Home.jsm"],
 ].forEach(module => {
   let [name, notifications, resource] = module;
   XPCOMUtils.defineLazyModuleGetter(this, name, resource);
@@ -545,7 +546,6 @@ var BrowserApp = {
         return {
           title: title,
           uri: emailAddr,
-          type: "text/mailto",
         };
       },
       icon: "drawable://ic_menu_share",
@@ -563,7 +563,6 @@ var BrowserApp = {
         return {
           title: title,
           uri: phoneNumber,
-          type: "text/tel",
         };
       },
       icon: "drawable://ic_menu_share",
@@ -1166,20 +1165,6 @@ var BrowserApp = {
 #endif
       }
 
-      // Pref name translation.
-      switch (prefName) {
-#ifdef MOZ_TELEMETRY_REPORTING
-        // Telemetry pref differs based on build.
-        case Telemetry.SHARED_PREF_TELEMETRY_ENABLED:
-#ifdef MOZ_TELEMETRY_ON_BY_DEFAULT
-          prefName = "toolkit.telemetry.enabledPreRelease";
-#else
-          prefName = "toolkit.telemetry.enabled";
-#endif
-          break;
-#endif
-      }
-
       try {
         switch (Services.prefs.getPrefType(prefName)) {
           case Ci.nsIPrefBranch.PREF_BOOL:
@@ -1293,20 +1278,6 @@ var BrowserApp = {
         json.type = "int";
         json.value = parseInt(json.value);
         break;
-    }
-
-    // Pref name translation.
-    switch (json.name) {
-#ifdef MOZ_TELEMETRY_REPORTING
-      // Telemetry pref differs based on build.
-      case Telemetry.SHARED_PREF_TELEMETRY_ENABLED:
-#ifdef MOZ_TELEMETRY_ON_BY_DEFAULT
-        json.name = "toolkit.telemetry.enabledPreRelease";
-#else
-        json.name = "toolkit.telemetry.enabled";
-#endif
-        break;
-#endif
     }
 
     switch (json.type) {
@@ -2068,13 +2039,6 @@ var NativeWindow = {
         if (uri)
           return uri.schemeIs("tel");
         return false;
-      }
-    },
-
-    textContext: {
-      matches: function textContext(aElement) {
-        return ((aElement instanceof Ci.nsIDOMHTMLInputElement && aElement.mozIsTextField(false))
-                || aElement instanceof Ci.nsIDOMHTMLTextAreaElement);
       }
     },
 
@@ -4621,9 +4585,13 @@ var BrowserEventHandler = {
 
       if (this._scrollableElement != null) {
         // Discard if it's the top-level scrollable, we let Java handle this
+        // The top-level scrollable is the body in quirks mode and the html element
+        // in standards mode
         let doc = BrowserApp.selectedBrowser.contentDocument;
-        if (this._scrollableElement != doc.body && this._scrollableElement != doc.documentElement)
+        let rootScrollable = (doc.compatMode === "BackCompat" ? doc.body : doc.documentElement);
+        if (this._scrollableElement != rootScrollable) {
           sendMessageToJava({ type: "Panning:Override" });
+        }
       }
     }
 
@@ -4711,7 +4679,6 @@ var BrowserEventHandler = {
 
           let doc = BrowserApp.selectedBrowser.contentDocument;
           if (this._scrollableElement == null ||
-              this._scrollableElement == doc.body ||
               this._scrollableElement == doc.documentElement) {
             sendMessageToJava({ type: "Panning:CancelOverride" });
             return;
@@ -4952,8 +4919,10 @@ var BrowserEventHandler = {
     var computedStyle = win.getComputedStyle(elem);
     if (!computedStyle)
       return false;
-    return computedStyle.overflowX == 'auto' || computedStyle.overflowX == 'scroll'
-        || computedStyle.overflowY == 'auto' || computedStyle.overflowY == 'scroll';
+    // We check for overflow:hidden only because all the other cases are scrollable
+    // under various conditions. See https://bugzilla.mozilla.org/show_bug.cgi?id=911574#c24
+    // for some more details.
+    return !(computedStyle.overflowX == 'hidden' && computedStyle.overflowY == 'hidden');
   },
 
   _findScrollableElement: function(elem, checkElem) {
@@ -4961,16 +4930,15 @@ var BrowserEventHandler = {
     let scrollable = false;
     while (elem) {
       /* Element is scrollable if its scroll-size exceeds its client size, and:
-       * - It has overflow 'auto' or 'scroll'
-       * - It's a textarea
-       * - It's an HTML/BODY node
-       * - It's a text input
+       * - It has overflow other than 'hidden', or
+       * - It's a textarea node, or
+       * - It's a text input, or
        * - It's a select element showing multiple rows
        */
       if (checkElem) {
         if ((elem.scrollTopMax > 0 || elem.scrollLeftMax > 0) &&
             (this._hasScrollableOverflow(elem) ||
-             elem.mozMatchesSelector("html, body, textarea")) ||
+             elem.mozMatchesSelector("textarea")) ||
             (elem instanceof HTMLInputElement && elem.mozIsTextField(false)) ||
             (elem instanceof HTMLSelectElement && (elem.size > 1 || elem.multiple))) {
           scrollable = true;
@@ -5658,12 +5626,7 @@ let HealthReportStatusListener = {
 
   PREF_TELEMETRY_ENABLED:
 #ifdef MOZ_TELEMETRY_REPORTING
-    // Telemetry pref differs based on build.
-#ifdef MOZ_TELEMETRY_ON_BY_DEFAULT
-    "toolkit.telemetry.enabledPreRelease",
-#else
     "toolkit.telemetry.enabled",
-#endif
 #else
     null,
 #endif
@@ -6457,119 +6420,6 @@ var IndexedDB = {
     // timeout value. If the user doesn't notice the popup after this amount of
     // time then it is most likely not visible and we want to alert the page.
     timeoutId = setTimeout(timeoutNotification, firstTimeoutDuration);
-  }
-};
-
-var ClipboardHelper = {
-  // Recorded so search with option can be removed/replaced when default engine changed.
-  _searchMenuItem: -1,
-
-  get clipboardHelper() {
-    delete this.clipboardHelper;
-    return this.clipboardHelper = Cc["@mozilla.org/widget/clipboardhelper;1"].getService(Ci.nsIClipboardHelper);
-  },
-
-  get clipboard() {
-    delete this.clipboard;
-    return this.clipboard = Cc["@mozilla.org/widget/clipboard;1"].getService(Ci.nsIClipboard);
-  },
-
-  copy: function(aElement, aX, aY) {
-    if (SelectionHandler.isSelectionActive()) {
-      SelectionHandler.copySelection();
-      return;
-    }
-
-    let selectionStart = aElement.selectionStart;
-    let selectionEnd = aElement.selectionEnd;
-    if (selectionStart != selectionEnd) {
-      string = aElement.value.slice(selectionStart, selectionEnd);
-      this.clipboardHelper.copyString(string, aElement.ownerDocument);
-    } else {
-      this.clipboardHelper.copyString(aElement.value, aElement.ownerDocument);
-    }
-  },
-
-  paste: function(aElement) {
-    if (!aElement || !(aElement instanceof Ci.nsIDOMNSEditableElement))
-      return;
-    let target = aElement.QueryInterface(Ci.nsIDOMNSEditableElement);
-    target.editor.paste(Ci.nsIClipboard.kGlobalClipboard);
-    target.focus();  
-  },
-
-  inputMethod: function(aElement) {
-    Cc["@mozilla.org/imepicker;1"].getService(Ci.nsIIMEPicker).show();
-  },
-
-  getCopyContext: function(isCopyAll) {
-    return {
-      matches: function(aElement, aX, aY) {
-        // Do not show "Copy All" for normal non-input text selection.
-        if (!isCopyAll && SelectionHandler.isSelectionActive())
-          return true;
-
-        if (NativeWindow.contextmenus.textContext.matches(aElement)) {
-          // Don't include "copy" for password fields.
-          // mozIsTextField(true) tests for only non-password fields.
-          if (aElement instanceof Ci.nsIDOMHTMLInputElement && !aElement.mozIsTextField(true))
-            return false;
-
-          let selectionStart = aElement.selectionStart;
-          let selectionEnd = aElement.selectionEnd;
-          if (selectionStart != selectionEnd)
-            return true;
-
-          if (isCopyAll && aElement.textLength > 0)
-            return true;
-        }
-        return false;
-      }
-    };
-  },
-
-  selectAllContext: {
-    matches: function selectAllContextMatches(aElement, aX, aY) {
-      if (SelectionHandler.isSelectionActive())
-        return true;
-
-      if (NativeWindow.contextmenus.textContext.matches(aElement))
-        return (aElement.selectionStart > 0 || aElement.selectionEnd < aElement.textLength);
-
-      return false;
-    }
-  },
-
-  shareContext: {
-    matches: function shareContextMatches(aElement, aX, aY) {
-      return SelectionHandler.isSelectionActive();
-    }
-  },
-
-  searchWithContext: {
-    matches: function searchWithContextMatches(aElement, aX, aY) {
-      return SelectionHandler.isSelectionActive();
-    }
-  },
-
-  pasteContext: {
-    matches: function(aElement) {
-      if (NativeWindow.contextmenus.textContext.matches(aElement)) {
-        let flavors = ["text/unicode"];
-        return ClipboardHelper.clipboard.hasDataMatchingFlavors(flavors, flavors.length, Ci.nsIClipboard.kGlobalClipboard);
-      }
-      return false;
-    }
-  },
-
-  cutContext: {
-    matches: function(aElement) {
-      let copyctx = ClipboardHelper.getCopyContext(false);
-      if (NativeWindow.contextmenus.textContext.matches(aElement)) {
-        return copyctx.matches(aElement);
-      }
-      return false;
-    }
   }
 };
 
@@ -7531,8 +7381,6 @@ var RemoteDebugger = {
 };
 
 var Telemetry = {
-  SHARED_PREF_TELEMETRY_ENABLED: "datareporting.telemetry.enabled",
-
   addData: function addData(aHistogramId, aValue) {
     let histogram = Services.telemetry.getHistogramById(aHistogramId);
     histogram.add(aValue);
@@ -7570,17 +7418,13 @@ let Reader = {
   pageAction: {
     readerModeCallback: function(){
       sendMessageToJava({
-        gecko: {
-          type: "Reader:Click",
-        }
+        type: "Reader:Click",
       });
     },
 
     readerModeActiveCallback: function(){
       sendMessageToJava({
-        gecko: {
-          type: "Reader:LongClick",
-        }
+        type: "Reader:LongClick",
       });
     },
   },

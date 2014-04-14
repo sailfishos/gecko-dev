@@ -31,9 +31,8 @@ this.AccessFu = {
     Utils.init(aWindow);
 
     try {
-      let bridgeCc = Cc['@mozilla.org/android/bridge;1'];
-      bridgeCc.getService(Ci.nsIAndroidBridge).handleGeckoMessage(
-          JSON.stringify({ type: 'Accessibility:Ready' }));
+      Services.androidBridge.handleGeckoMessage(
+          { type: 'Accessibility:Ready' });
       Services.obs.addObserver(this, 'Accessibility:Settings', false);
     } catch (x) {
       // Not on Android
@@ -83,7 +82,7 @@ this.AccessFu = {
     this._enabled = true;
 
     Cu.import('resource://gre/modules/accessibility/Utils.jsm');
-    Cu.import('resource://gre/modules/accessibility/TouchAdapter.jsm');
+    Cu.import('resource://gre/modules/accessibility/PointerAdapter.jsm');
     Cu.import('resource://gre/modules/accessibility/Presentation.jsm');
 
     Logger.info('Enabled');
@@ -116,7 +115,7 @@ this.AccessFu = {
 
     this.Input.start();
     Output.start();
-    TouchAdapter.start();
+    PointerAdapter.start();
 
     Services.obs.addObserver(this, 'remote-browser-shown', false);
     Services.obs.addObserver(this, 'inprocess-browser-shown', false);
@@ -166,7 +165,7 @@ this.AccessFu = {
 
     this.Input.stop();
     Output.stop();
-    TouchAdapter.stop();
+    PointerAdapter.stop();
 
     Utils.win.removeEventListener('TabOpen', this);
     Utils.win.removeEventListener('TabClose', this);
@@ -702,8 +701,7 @@ var Output = {
   get androidBridge() {
     delete this.androidBridge;
     if (Utils.MozBuildApp === 'mobile/android') {
-      this.androidBridge = Cc['@mozilla.org/android/bridge;1'].getService(
-      Ci.nsIAndroidBridge);
+      this.androidBridge = Services.androidBridge;
     } else {
       this.androidBridge = null;
     }
@@ -734,7 +732,7 @@ var Output = {
           androidEvent.brailleOutput = this.brailleState.init(androidEvent.brailleOutput);
           break;
       }
-      this.androidBridge.handleGeckoMessage(JSON.stringify(androidEvent));
+      this.androidBridge.handleGeckoMessage(androidEvent);
     }
   },
 
@@ -789,7 +787,8 @@ var Input = {
     switch (gestureName) {
       case 'dwell1':
       case 'explore1':
-        this.moveToPoint('Simple', aGesture.x, aGesture.y);
+        this.moveToPoint('Simple', aGesture.touches[0].x,
+          aGesture.touches[0].y);
         break;
       case 'doubletap1':
         this.activateCurrent();
@@ -902,9 +901,8 @@ var Input = {
 
         if (Utils.MozBuildApp == 'mobile/android')
           // Return focus to native Android browser chrome.
-          Cc['@mozilla.org/android/bridge;1'].
-            getService(Ci.nsIAndroidBridge).handleGeckoMessage(
-              JSON.stringify({ type: 'ToggleChrome:Focus' }));
+          Services.androidBridge.handleGeckoMessage(
+              { type: 'ToggleChrome:Focus' });
         break;
       case aEvent.DOM_VK_RETURN:
         if (this.editState.editing)

@@ -2069,6 +2069,18 @@ LIRGenerator::visitLambda(MLambda *ins)
 }
 
 bool
+LIRGenerator::visitLambdaArrow(MLambdaArrow *ins)
+{
+    MOZ_ASSERT(ins->scopeChain()->type() == MIRType_Object);
+    MOZ_ASSERT(ins->thisDef()->type() == MIRType_Value);
+
+    LLambdaArrow *lir = new(alloc()) LLambdaArrow(useRegister(ins->scopeChain()), temp());
+    if (!useBox(lir, LLambdaArrow::ThisValue, ins->thisDef()))
+        return false;
+    return define(lir, ins) && assignSafepoint(lir, ins);
+}
+
+bool
 LIRGenerator::visitLambdaPar(MLambdaPar *ins)
 {
     JS_ASSERT(!ins->info().singletonType);
@@ -2376,6 +2388,16 @@ LIRGenerator::visitTypedObjectElements(MTypedObjectElements *ins)
 {
     JS_ASSERT(ins->type() == MIRType_Elements);
     return define(new(alloc()) LTypedObjectElements(useRegisterAtStart(ins->object())), ins);
+}
+
+bool
+LIRGenerator::visitSetTypedObjectOffset(MSetTypedObjectOffset *ins)
+{
+    return add(new(alloc()) LSetTypedObjectOffset(
+                   useRegister(ins->object()),
+                   useRegister(ins->offset()),
+                   temp()),
+               ins);
 }
 
 bool
@@ -3348,9 +3370,9 @@ LIRGenerator::visitCallInstanceOf(MCallInstanceOf *ins)
 }
 
 bool
-LIRGenerator::visitFunctionBoundary(MFunctionBoundary *ins)
+LIRGenerator::visitProfilerStackOp(MProfilerStackOp *ins)
 {
-    LFunctionBoundary *lir = new(alloc()) LFunctionBoundary(temp());
+    LProfilerStackOp *lir = new(alloc()) LProfilerStackOp(temp());
     if (!add(lir, ins))
         return false;
     // If slow assertions are enabled, then this node will result in a callVM
@@ -3522,8 +3544,11 @@ bool
 LIRGenerator::visitGetDOMMember(MGetDOMMember *ins)
 {
     MOZ_ASSERT(ins->isDomMovable(), "Members had better be movable");
-    MOZ_ASSERT(ins->domAliasSet() == JSJitInfo::AliasNone,
-               "Members had better not alias anything");
+    // We wish we could assert that ins->domAliasSet() == JSJitInfo::AliasNone,
+    // but some MGetDOMMembers are for [Pure], not [Constant] properties, whose
+    // value can in fact change as a result of DOM setters and method calls.
+    MOZ_ASSERT(ins->domAliasSet() != JSJitInfo::AliasEverything,
+               "Member gets had better not alias the world");
     LGetDOMMember *lir =
         new(alloc()) LGetDOMMember(useRegister(ins->object()));
     return defineBox(lir, ins);
@@ -3572,6 +3597,9 @@ LIRGenerator::visitInstruction(MInstruction *ins)
         return false;
     if (!ins->accept(this))
         return false;
+
+    if (ins->possiblyCalls())
+        gen->setPerformsCall();
 
     if (ins->resumePoint())
         updateResumeState(ins);

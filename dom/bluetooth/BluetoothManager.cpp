@@ -76,8 +76,9 @@ public:
 
     AutoPushJSContext cx(sc->GetNativeContext());
 
-    JS::Rooted<JSObject*> global(cx, sc->GetWindowProxy());
-    rv = nsContentUtils::WrapNative(cx, global, adapter, aValue);
+    JS::Rooted<JSObject*> scope(cx, sc->GetWindowProxy());
+    JSAutoCompartment ac(cx, scope);
+    rv = nsContentUtils::WrapNative(cx, adapter, aValue);
     if (NS_FAILED(rv)) {
       BT_WARNING("Cannot create native object!");
       SetError(NS_LITERAL_STRING("BluetoothNativeObjectError"));
@@ -245,7 +246,7 @@ BluetoothManager::IsConnected(uint16_t aProfileId, ErrorResult& aRv)
 }
 
 JSObject*
-BluetoothManager::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aScope)
+BluetoothManager::WrapObject(JSContext* aCx)
 {
-  return BluetoothManagerBinding::Wrap(aCx, aScope, this);
+  return BluetoothManagerBinding::Wrap(aCx, this);
 }

@@ -508,9 +508,8 @@ WebConsoleActor.prototype =
     let messageManager = null;
 
     if (this._parentIsContentActor) {
-      // Filter network requests by appId on Firefox OS devices.
       appId = this.parentActor.docShell.appId;
-      messageManager = this.parentActor._chromeGlobal;
+      messageManager = this.parentActor.messageManager;
     }
 
     while (aRequest.listeners.length > 0) {
@@ -534,9 +533,10 @@ WebConsoleActor.prototype =
           break;
         case "NetworkActivity":
           if (!this.networkMonitor) {
-            if (appId && messageManager) {
+            if (appId || messageManager) {
               this.networkMonitor =
-                new NetworkMonitorChild(appId, messageManager, this);
+                new NetworkMonitorChild(appId, messageManager,
+                                        this.parentActor.actorID, this);
             }
             else {
               this.networkMonitor = new NetworkMonitor({ window: window }, this);
@@ -1317,6 +1317,10 @@ WebConsoleActor.prototype =
     result.arguments = Array.map(aMessage.arguments || [], (aObj) => {
       let dbgObj = this.makeDebuggeeValue(aObj, true);
       return this.createValueGrip(dbgObj);
+    });
+
+    result.styles = Array.map(aMessage.styles || [], (aString) => {
+      return this.createValueGrip(aString);
     });
 
     return result;

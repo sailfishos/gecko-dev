@@ -36,6 +36,12 @@ CanvasClient::CreateCanvasClient(CanvasClientType aType,
                                  CompositableForwarder* aForwarder,
                                  TextureFlags aFlags)
 {
+#ifndef MOZ_WIDGET_GONK
+  if (XRE_GetProcessType() != GeckoProcessType_Default) {
+    NS_WARNING("Most platforms still need an optimized way to share GL cross process.");
+    return new CanvasClient2D(aForwarder, aFlags);
+  }
+#endif
   if (aType == CanvasClientGLContext &&
       aForwarder->GetCompositorBackendType() == LayersBackend::LAYERS_OPENGL) {
     aFlags |= TEXTURE_DEALLOCATE_CLIENT;
@@ -82,7 +88,7 @@ CanvasClient2D::Update(gfx::IntSize aSize, ClientCanvasLayer* aLayer)
   {
     // Restrict drawTarget to a scope so that terminates before Unlock.
     RefPtr<DrawTarget> target =
-      mBuffer->AsTextureClientDrawTarget()->GetAsDrawTarget();
+      mBuffer->GetAsDrawTarget();
     if (target) {
       aLayer->UpdateTarget(target);
       updated = true;

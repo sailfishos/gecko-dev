@@ -284,19 +284,26 @@ TextureClient::CreateTextureClientForDrawing(ISurfaceAllocator* aAllocator,
 
   RefPtr<TextureClient> result;
 
+#if defined(MOZ_WIDGET_GONK) || defined(XP_WIN)
+  int32_t maxTextureSize = aAllocator->GetMaxTextureSize();
+#endif
+
 #ifdef XP_WIN
   LayersBackend parentBackend = aAllocator->GetCompositorBackendType();
   if (parentBackend == LayersBackend::LAYERS_D3D11 &&
       (aMoz2DBackend == gfx::BackendType::DIRECT2D ||
         aMoz2DBackend == gfx::BackendType::DIRECT2D1_1) &&
       gfxWindowsPlatform::GetPlatform()->GetD2DDevice() &&
-
+      aSizeHint.width <= maxTextureSize &&
+      aSizeHint.height <= maxTextureSize &&
       !(aTextureFlags & TEXTURE_ALLOC_FALLBACK)) {
     result = new TextureClientD3D11(aFormat, aTextureFlags);
   }
   if (parentBackend == LayersBackend::LAYERS_D3D9 &&
       aMoz2DBackend == gfx::BackendType::CAIRO &&
       aAllocator->IsSameProcess() &&
+      aSizeHint.width <= maxTextureSize &&
+      aSizeHint.height <= maxTextureSize &&
       !(aTextureFlags & TEXTURE_ALLOC_FALLBACK)) {
     if (!gfxWindowsPlatform::GetPlatform()->GetD3D9Device()) {
       result = new DIBTextureClientD3D9(aFormat, aTextureFlags);
@@ -337,7 +344,6 @@ TextureClient::CreateTextureClientForDrawing(ISurfaceAllocator* aAllocator,
   if (!DisableGralloc(aFormat, aSizeHint)) {
     // Don't allow Gralloc texture clients to exceed the maximum texture size.
     // BufferTextureClients have code to handle tiling the surface client-side.
-    int32_t maxTextureSize = aAllocator->GetMaxTextureSize();
     if (aSizeHint.width <= maxTextureSize && aSizeHint.height <= maxTextureSize) {
       result = new GrallocTextureClientOGL(aAllocator, aFormat, aMoz2DBackend,
                                            aTextureFlags);
@@ -350,8 +356,7 @@ TextureClient::CreateTextureClientForDrawing(ISurfaceAllocator* aAllocator,
     result = CreateBufferTextureClient(aAllocator, aFormat, aTextureFlags, aMoz2DBackend);
   }
 
-  MOZ_ASSERT(!result || result->AsTextureClientDrawTarget(),
-             "Not a TextureClientDrawTarget?");
+  MOZ_ASSERT(!result || result->CanExposeDrawTarget(), "texture cannot expose a DrawTarget?");
   return result;
 }
 
@@ -485,12 +490,12 @@ bool TextureClient::CopyToTextureClient(TextureClient* aTarget,
   MOZ_ASSERT(IsLocked());
   MOZ_ASSERT(aTarget->IsLocked());
 
-  if (!aTarget->AsTextureClientDrawTarget() || !AsTextureClientDrawTarget()) {
+  if (!aTarget->CanExposeDrawTarget() || !CanExposeDrawTarget()) {
     return false;
   }
 
-  RefPtr<DrawTarget> destinationTarget = aTarget->AsTextureClientDrawTarget()->GetAsDrawTarget();
-  RefPtr<DrawTarget> sourceTarget = AsTextureClientDrawTarget()->GetAsDrawTarget();
+  RefPtr<DrawTarget> destinationTarget = aTarget->GetAsDrawTarget();
+  RefPtr<DrawTarget> sourceTarget = GetAsDrawTarget();
   RefPtr<gfx::SourceSurface> source = sourceTarget->Snapshot();
   destinationTarget->CopySurface(source,
                                  aRect ? *aRect : gfx::IntRect(gfx::IntPoint(0, 0), GetSize()),
@@ -511,12 +516,14 @@ TextureClient::Finalize()
   RefPtr<TextureChild> actor = mActor;
 
   if (actor) {
+    // The actor has a raw pointer to us, actor->mTextureClient. 
+    // Null it before RemoveTexture calls to avoid invalid actor->mTextureClient
+    // when calling TextureChild::ActorDestroy()
+    actor->mTextureClient = nullptr;
     // this will call ForceRemove in the right thread, using a sync proxy if needed
     if (actor->GetForwarder()) {
       actor->GetForwarder()->RemoveTexture(this);
     }
-    // The actor has a raw pointer to us, actor->mTextureClient. Null it before we die.
-    actor->mTextureClient = nullptr;
   }
 }
 
@@ -788,7 +795,7 @@ BufferTextureClient::Unlock()
     return;
   }
 
-  // see the comment on TextureClientDrawTarget::GetAsDrawTarget.
+  // see the comment on TextureClient::GetAsDrawTarget.
   // This DrawTarget is internal to the TextureClient and is only exposed to the
   // outside world between Lock() and Unlock(). This assertion checks that no outside
   // reference remains by the time Unlock() is called.

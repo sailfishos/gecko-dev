@@ -9,6 +9,7 @@
 #include "nsISupportsImpl.h"
 #include "nsPrintfCString.h"
 #include "nsThreadUtils.h"
+#include "mozilla/IOInterposer.h"
 #include "mozilla/VisualEventTracer.h"
 
 namespace mozilla {
@@ -59,6 +60,28 @@ nsresult CacheIOThread::Dispatch(nsIRunnable* aRunnable, uint32_t aLevel)
 
   if (mShutdown && (PR_GetCurrentThread() != mThread))
     return NS_ERROR_UNEXPECTED;
+
+  return DispatchInternal(aRunnable, aLevel);
+}
+
+nsresult CacheIOThread::DispatchAfterPendingOpens(nsIRunnable* aRunnable)
+{
+  MonitorAutoLock lock(mMonitor);
+
+  if (mShutdown && (PR_GetCurrentThread() != mThread))
+    return NS_ERROR_UNEXPECTED;
+
+  // Move everything from later executed OPEN level to the OPEN_PRIORITY level
+  // where we post the (eviction) runnable.
+  mEventQueue[OPEN_PRIORITY].AppendElements(mEventQueue[OPEN]);
+  mEventQueue[OPEN].Clear();
+
+  return DispatchInternal(aRunnable, OPEN_PRIORITY);
+}
+
+nsresult CacheIOThread::DispatchInternal(nsIRunnable* aRunnable, uint32_t aLevel)
+{
+  mMonitor.AssertCurrentThreadOwns();
 
   mEventQueue[aLevel].AppendElement(aRunnable);
   if (mLowestLevelWaiting > aLevel)
@@ -130,8 +153,10 @@ already_AddRefed<nsIEventTarget> CacheIOThread::Target()
 void CacheIOThread::ThreadFunc(void* aClosure)
 {
   PR_SetCurrentThreadName("Cache2 I/O");
+  mozilla::IOInterposer::RegisterCurrentThread();
   CacheIOThread* thread = static_cast<CacheIOThread*>(aClosure);
   thread->ThreadFunc();
+  mozilla::IOInterposer::UnregisterCurrentThread();
 }
 
 void CacheIOThread::ThreadFunc()

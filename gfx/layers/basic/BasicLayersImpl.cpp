@@ -18,71 +18,6 @@ using namespace mozilla::gfx;
 namespace mozilla {
 namespace layers {
 
-void
-AutoMaskData::Construct(const gfx::Matrix& aTransform,
-                        gfxASurface* aSurface)
-{
-  MOZ_ASSERT(!IsConstructed());
-  mTransform = aTransform;
-  mSurface = aSurface;
-}
-
-void
-AutoMaskData::Construct(const gfx::Matrix& aTransform,
-                        const SurfaceDescriptor& aSurface)
-{
-  MOZ_ASSERT(!IsConstructed());
-  mTransform = aTransform;
-  mSurfaceOpener.construct(OPEN_READ_ONLY, aSurface);
-}
-
-gfxASurface*
-AutoMaskData::GetSurface()
-{
-  MOZ_ASSERT(IsConstructed());
-  if (mSurface) {
-    return mSurface.get();
-  }
-  return mSurfaceOpener.ref().Get();
-}
-
-const gfx::Matrix&
-AutoMaskData::GetTransform()
-{
-  MOZ_ASSERT(IsConstructed());
-  return mTransform;
-}
-
-bool
-AutoMaskData::IsConstructed()
-{
-  return !!mSurface || !mSurfaceOpener.empty();
-}
-
-bool
-GetMaskData(Layer* aMaskLayer, AutoMaskData* aMaskData)
-{
-  if (aMaskLayer) {
-    nsRefPtr<gfxASurface> surface;
-    SurfaceDescriptor descriptor;
-    if (static_cast<BasicImplData*>(aMaskLayer->ImplData())
-        ->GetAsSurface(getter_AddRefs(surface), &descriptor) &&
-        (surface || IsSurfaceDescriptorValid(descriptor))) {
-      Matrix transform;
-      Matrix4x4 effectiveTransform = aMaskLayer->GetEffectiveTransform();
-      DebugOnly<bool> maskIs2D = effectiveTransform.CanDraw2D(&transform);
-      NS_ASSERTION(maskIs2D, "How did we end up with a 3D transform here?!");
-      if (surface) {
-        aMaskData->Construct(transform, surface);
-      } else {
-        aMaskData->Construct(transform, descriptor);
-      }
-      return true;
-    }
-  }
-  return false;
-}
-
 bool
 GetMaskData(Layer* aMaskLayer, AutoMoz2DMaskData* aMaskData)
 {
@@ -104,7 +39,7 @@ GetMaskData(Layer* aMaskLayer, AutoMoz2DMaskData* aMaskData)
 void
 PaintWithMask(gfxContext* aContext, float aOpacity, Layer* aMaskLayer)
 {
-  AutoMaskData mask;
+  AutoMoz2DMaskData mask;
   if (GetMaskData(aMaskLayer, &mask)) {
     if (aOpacity < 1.0) {
       aContext->PushGroup(gfxContentType::COLOR_ALPHA);
@@ -125,22 +60,75 @@ FillRectWithMask(DrawTarget* aDT,
                  const Rect& aRect,
                  const Color& aColor,
                  const DrawOptions& aOptions,
-                 Layer* aMaskLayer)
+                 SourceSurface* aMaskSource,
+                 const Matrix* aMaskTransform)
 {
-  AutoMoz2DMaskData mask;
-  if (GetMaskData(aMaskLayer, &mask)) {
+  if (aMaskSource && aMaskTransform) {
     aDT->PushClipRect(aRect);
     Matrix oldTransform = aDT->GetTransform();
 
-    aDT->SetTransform(mask.GetTransform());
-    aDT->MaskSurface(ColorPattern(aColor), mask.GetSurface(),
-                     Point(0, 0), aOptions);
+    aDT->SetTransform(*aMaskTransform);
+    aDT->MaskSurface(ColorPattern(aColor), aMaskSource, Point(), aOptions);
     aDT->SetTransform(oldTransform);
     aDT->PopClip();
     return;
   }
 
   aDT->FillRect(aRect, ColorPattern(aColor), aOptions);
+}
+void
+FillRectWithMask(DrawTarget* aDT,
+                 const Rect& aRect,
+                 const Color& aColor,
+                 const DrawOptions& aOptions,
+                 Layer* aMaskLayer)
+{
+  AutoMoz2DMaskData mask;
+  if (GetMaskData(aMaskLayer, &mask)) {
+    const Matrix& maskTransform = mask.GetTransform();
+    FillRectWithMask(aDT, aRect, aColor, aOptions, mask.GetSurface(), &maskTransform);
+    return;
+  }
+
+  FillRectWithMask(aDT, aRect, aColor, aOptions);
+}
+
+void
+FillRectWithMask(DrawTarget* aDT,
+                 const Rect& aRect,
+                 SourceSurface* aSurface,
+                 Filter aFilter,
+                 const DrawOptions& aOptions,
+                 ExtendMode aExtendMode,
+                 SourceSurface* aMaskSource,
+                 const Matrix* aMaskTransform,
+                 const Matrix* aSurfaceTransform)
+{
+  if (aMaskSource && aMaskTransform) {
+    aDT->PushClipRect(aRect);
+    Matrix oldTransform = aDT->GetTransform();
+
+    Matrix inverseMask = *aMaskTransform;
+    inverseMask.Invert();
+
+    Matrix transform = inverseMask * oldTransform;
+    if (aSurfaceTransform) {
+      transform = transform * (*aSurfaceTransform);
+    }
+
+    SurfacePattern source(aSurface, aExtendMode, transform, aFilter);
+
+    aDT->SetTransform(*aMaskTransform);
+    aDT->MaskSurface(source, aMaskSource, Point(0, 0), aOptions);
+    aDT->SetTransform(oldTransform);
+    aDT->PopClip();
+    return;
+  }
+
+  aDT->FillRect(aRect,
+                SurfacePattern(aSurface, aExtendMode,
+                               aSurfaceTransform ? (*aSurfaceTransform) : Matrix(),
+                               aFilter), aOptions);
 }
 
 void
@@ -153,25 +141,13 @@ FillRectWithMask(DrawTarget* aDT,
 {
   AutoMoz2DMaskData mask;
   if (GetMaskData(aMaskLayer, &mask)) {
-    aDT->PushClipRect(aRect);
-    Matrix oldTransform = aDT->GetTransform();
-    Matrix transform = oldTransform;
-
-    Matrix inverseMask = mask.GetTransform();
-    inverseMask.Invert();
-
-    transform *= inverseMask;
-
-    SurfacePattern source(aSurface, ExtendMode::CLAMP, transform, aFilter);
-
-    aDT->SetTransform(mask.GetTransform());
-    aDT->MaskSurface(source, mask.GetSurface(), Point(0, 0), aOptions);
-    aDT->SetTransform(oldTransform);
-    aDT->PopClip();
+    const Matrix& maskTransform = mask.GetTransform();
+    FillRectWithMask(aDT, aRect, aSurface, aFilter, aOptions, ExtendMode::CLAMP,
+                     mask.GetSurface(), &maskTransform);
     return;
   }
 
-  aDT->FillRect(aRect, SurfacePattern(aSurface, ExtendMode::CLAMP, Matrix(), aFilter), aOptions);
+  FillRectWithMask(aDT, aRect, aSurface, aFilter, aOptions, ExtendMode::CLAMP);
 }
 
 BasicImplData*

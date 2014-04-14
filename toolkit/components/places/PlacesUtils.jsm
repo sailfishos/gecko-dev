@@ -1306,15 +1306,13 @@ this.PlacesUtils = {
    *        Function to be called when done.
    *        The function will receive an array of itemIds associated to aURI and
    *        aURI itself.
-   * @param aScope
-   *        Scope for the callback.
    *
    * @return A object with a .cancel() method allowing to cancel the request.
    *
    * @note Children of live bookmarks folders are excluded. The callback function is
    *       not invoked if the request is cancelled or hits an error.
    */
-  asyncGetBookmarkIds: function PU_asyncGetBookmarkIds(aURI, aCallback, aScope)
+  asyncGetBookmarkIds: function PU_asyncGetBookmarkIds(aURI, aCallback)
   {
     if (!this._asyncGetBookmarksStmt) {
       let db = this.history.DBConnection;
@@ -1336,6 +1334,7 @@ this.PlacesUtils = {
     // will cause a REASON_CANCELED.  Thus we wrap the statement.
     let stmt = new AsyncStatementCancelWrapper(this._asyncGetBookmarksStmt);
     return stmt.executeAsync({
+      _callback: aCallback,
       _itemIds: [],
       handleResult: function(aResultSet) {
         for (let row; (row = aResultSet.getNextRow());) {
@@ -1345,7 +1344,7 @@ this.PlacesUtils = {
       handleCompletion: function(aReason)
       {
         if (aReason == Ci.mozIStorageStatementCallback.REASON_FINISHED) {
-          aCallback.apply(aScope, [this._itemIds, aURI]);
+          this._callback(this._itemIds, aURI);
         }
       }
     });
@@ -1698,12 +1697,12 @@ let GUIDHelper = {
         if (row)
           itemId = row.getResultByIndex(0);
       },
-      handleCompletion: function (aReason) {
+      handleCompletion: aReason => {
         if (aReason == REASON_FINISHED && itemId != -1) {
-          deferred.resolve(itemId);
-
           this.ensureObservingRemovedItems();
           this.idsForGUIDs.set(aGUID, itemId);
+
+          deferred.resolve(itemId);
         }
         else if (itemId != -1) {
           deferred.reject("no item found for the given guid");
@@ -1719,7 +1718,7 @@ let GUIDHelper = {
 
   getItemGUID: function (aItemId) {
     if (this.GUIDsForIds.has(aItemId))
-      return Promise.resolve(this.GUIDsForIds.has(aItemId));
+      return Promise.resolve(this.GUIDsForIds.get(aItemId));
 
     let deferred = Promise.defer();
     let guid = "";
@@ -1732,12 +1731,12 @@ let GUIDHelper = {
           guid = row.getResultByIndex(1);
         }
       },
-      handleCompletion: function (aReason) {
+      handleCompletion: aReason => {
         if (aReason == REASON_FINISHED && guid) {
-          deferred.resolve(guid);
-
           this.ensureObservingRemovedItems();
           this.GUIDsForIds.set(aItemId, guid);
+
+          deferred.resolve(guid);
         }
         else if (!guid) {
           deferred.reject("no item found for the given itemId");

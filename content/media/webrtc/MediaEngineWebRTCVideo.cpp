@@ -6,6 +6,7 @@
 #include "Layers.h"
 #include "ImageTypes.h"
 #include "ImageContainer.h"
+#include "mozilla/layers/GrallocTextureClient.h"
 #include "nsMemory.h"
 #include "mtransport/runnable_utils.h"
 
@@ -580,7 +581,7 @@ MediaEngineWebRTCVideoSource::StartImpl(webrtc::CaptureCapability aCapability) {
   config.mPreviewSize.width = aCapability.width;
   config.mPreviewSize.height = aCapability.height;
   mCameraControl->Start(&config);
-  mCameraControl->Set(CAMERA_PARAM_PICTURESIZE, config.mPreviewSize);
+  mCameraControl->Set(CAMERA_PARAM_PICTURE_SIZE, config.mPreviewSize);
 
   hal::RegisterScreenConfigurationObserver(this);
 }
@@ -653,9 +654,7 @@ MediaEngineWebRTCVideoSource::OnTakePictureComplete(uint8_t* aData, uint32_t aLe
 void
 MediaEngineWebRTCVideoSource::RotateImage(layers::Image* aImage, uint32_t aWidth, uint32_t aHeight) {
   layers::GrallocImage *nativeImage = static_cast<layers::GrallocImage*>(aImage);
-  layers::SurfaceDescriptor handle = nativeImage->GetSurfaceDescriptor();
-  layers::SurfaceDescriptorGralloc grallocHandle = handle.get_SurfaceDescriptorGralloc();
-  android::sp<android::GraphicBuffer> graphicBuffer = layers::GrallocBufferActor::GetFrom(grallocHandle);
+  android::sp<android::GraphicBuffer> graphicBuffer = nativeImage->GetGraphicBuffer();
   void *pMem = nullptr;
   uint32_t size = aWidth * aHeight * 3 / 2;
 

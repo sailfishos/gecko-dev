@@ -40,6 +40,22 @@ class TypedArrayObject : public ArrayBufferViewObject
     static const Class classes[ScalarTypeDescr::TYPE_MAX];
     static const Class protoClasses[ScalarTypeDescr::TYPE_MAX];
 
+    static const size_t FIXED_DATA_START = DATA_SLOT + 1;
+
+    // For typed arrays which can store their data inline, the array buffer
+    // object is created lazily.
+    static const uint32_t INLINE_BUFFER_LIMIT =
+        (JSObject::MAX_FIXED_SLOTS - FIXED_DATA_START) * sizeof(Value);
+
+    static gc::AllocKind
+    AllocKindForLazyBuffer(size_t nbytes)
+    {
+        JS_ASSERT(nbytes <= INLINE_BUFFER_LIMIT);
+        int dataSlots = (nbytes - 1) / sizeof(Value) + 1;
+        JS_ASSERT(int(nbytes) <= dataSlots * int(sizeof(Value)));
+        return gc::GetGCObjectKind(FIXED_DATA_START + dataSlots);
+    }
+
     static Value bufferValue(TypedArrayObject *tarr) {
         return tarr->getFixedSlot(BUFFER_SLOT);
     }
@@ -53,11 +69,16 @@ class TypedArrayObject : public ArrayBufferViewObject
         return tarr->getFixedSlot(LENGTH_SLOT);
     }
 
+    static bool
+    ensureHasBuffer(JSContext *cx, Handle<TypedArrayObject *> tarray);
+
     ArrayBufferObject *sharedBuffer() const;
     ArrayBufferObject *buffer() const {
-        JSObject &obj = bufferValue(const_cast<TypedArrayObject*>(this)).toObject();
-        if (obj.is<ArrayBufferObject>())
-            return &obj.as<ArrayBufferObject>();
+        JSObject *obj = bufferValue(const_cast<TypedArrayObject*>(this)).toObjectOrNull();
+        if (!obj)
+            return nullptr;
+        if (obj->is<ArrayBufferObject>())
+            return &obj->as<ArrayBufferObject>();
         return sharedBuffer();
     }
     uint32_t byteOffset() const {
@@ -77,9 +98,8 @@ class TypedArrayObject : public ArrayBufferViewObject
         return static_cast<void*>(getPrivate(DATA_SLOT));
     }
 
-    inline bool isArrayIndex(jsid id, uint32_t *ip = nullptr);
     Value getElement(uint32_t index);
-    bool setElement(ThreadSafeContext *cx, uint32_t index, const Value &value);
+    static void setElement(TypedArrayObject &obj, uint32_t index, double d);
 
     void neuter(void *newData);
 
@@ -229,6 +249,10 @@ class DataViewObject : public ArrayBufferViewObject
         return v;
     }
 
+    static Value bufferValue(DataViewObject *view) {
+        return view->getReservedSlot(BUFFER_SLOT);
+    }
+
     uint32_t byteOffset() const {
         return byteOffsetValue(const_cast<DataViewObject*>(this)).toInt32();
     }
@@ -237,16 +261,8 @@ class DataViewObject : public ArrayBufferViewObject
         return byteLengthValue(const_cast<DataViewObject*>(this)).toInt32();
     }
 
-    bool hasBuffer() const {
-        return getReservedSlot(BUFFER_SLOT).isObject();
-    }
-
     ArrayBufferObject &arrayBuffer() const {
-        return getReservedSlot(BUFFER_SLOT).toObject().as<ArrayBufferObject>();
-    }
-
-    static Value bufferValue(DataViewObject *view) {
-        return view->hasBuffer() ? ObjectValue(view->arrayBuffer()) : UndefinedValue();
+        return bufferValue(const_cast<DataViewObject*>(this)).toObject().as<ArrayBufferObject>();
     }
 
     void *dataPointer() const {
@@ -336,8 +352,6 @@ ClampIntForUint8Array(int32_t x)
         return 255;
     return x;
 }
-
-bool ToDoubleForTypedArray(JSContext *cx, JS::HandleValue vp, double *d);
 
 } // namespace js
 

@@ -21,6 +21,7 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/StaticPtr.h"
+#include "mozilla/dom/MediaStreamBinding.h"
 #include "mozilla/dom/MediaStreamTrackBinding.h"
 #include "prlog.h"
 #include "DOMMediaStream.h"
@@ -127,7 +128,8 @@ public:
   void
   AudioConfig(bool aEchoOn, uint32_t aEcho,
               bool aAgcOn, uint32_t aAGC,
-              bool aNoiseOn, uint32_t aNoise)
+              bool aNoiseOn, uint32_t aNoise,
+              int32_t aPlayoutDelay)
   {
     if (mAudioSource) {
 #ifdef MOZ_WEBRTC
@@ -135,7 +137,7 @@ public:
       RUN_ON_THREAD(mMediaThread,
                     WrapRunnable(nsRefPtr<MediaEngineSource>(mAudioSource), // threadsafe
                                  &MediaEngineSource::Config,
-                                 aEchoOn, aEcho, aAgcOn, aAGC, aNoiseOn, aNoise),
+                                 aEchoOn, aEcho, aAgcOn, aAGC, aNoiseOn, aNoise, aPlayoutDelay),
                     NS_DISPATCH_NORMAL);
 #endif
     }

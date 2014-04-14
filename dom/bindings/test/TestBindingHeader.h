@@ -90,7 +90,7 @@ class TestNonWrapperCacheInterface : public nsISupports
 public:
   NS_DECL_ISUPPORTS
 
-  virtual JSObject* WrapObject(JSContext* cx, JS::Handle<JSObject*> scope);
+  virtual JSObject* WrapObject(JSContext* cx);
 };
 
 class OnlyForUseInConstructor : public nsISupports,
@@ -472,6 +472,7 @@ public:
   // Any types
   void PassAny(JSContext*, JS::Handle<JS::Value>);
   void PassVariadicAny(JSContext*, const Sequence<JS::Value>&);
+  void PassOptionalAny(JSContext*, JS::Handle<JS::Value>);
   void PassAnyDefaultNull(JSContext*, JS::Handle<JS::Value>);
   void PassSequenceOfAny(JSContext*, const Sequence<JS::Value>&);
   void PassNullableSequenceOfAny(JSContext*, const Nullable<Sequence<JS::Value> >&);
