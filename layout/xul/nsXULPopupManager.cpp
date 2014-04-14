@@ -328,11 +328,15 @@ nsXULPopupManager::AdjustPopupsOnWindowChange(nsPIDOMWindow* aWindow)
   // When the parent window is moved, adjust any child popups. Dismissable
   // menus and panels are expected to roll up when a window is moved, so there
   // is no need to check these popups, only the noautohide popups.
+
+  // The items are added to a list so that they can be adjusted bottom to top.
+  nsTArray<nsMenuPopupFrame *> list;
+
   nsMenuChainItem* item = mNoHidePanels;
   while (item) {
     // only move popups that are within the same window and where auto
     // positioning has not been disabled
-    nsMenuPopupFrame* frame= item->Frame();
+    nsMenuPopupFrame* frame = item->Frame();
     if (frame->GetAutoPosition()) {
       nsIContent* popup = frame->GetContent();
       if (popup) {
@@ -342,7 +346,7 @@ nsXULPopupManager::AdjustPopupsOnWindowChange(nsPIDOMWindow* aWindow)
           if (window) {
             window = window->GetPrivateRoot();
             if (window == aWindow) {
-              frame->SetPopupPosition(nullptr, true, false);
+              list.AppendElement(frame);
             }
           }
         }
@@ -350,6 +354,17 @@ nsXULPopupManager::AdjustPopupsOnWindowChange(nsPIDOMWindow* aWindow)
     }
 
     item = item->GetParent();
+  }
+
+  for (int32_t l = list.Length() - 1; l >= 0; l--) {
+    list[l]->SetPopupPosition(nullptr, true, false);
+  }
+}
+
+void nsXULPopupManager::AdjustPopupsOnWindowChange(nsIPresShell* aPresShell)
+{
+  if (aPresShell->GetDocument()) {
+    AdjustPopupsOnWindowChange(aPresShell->GetDocument()->GetWindow());
   }
 }
 
@@ -378,28 +393,32 @@ nsXULPopupManager::PopupMoved(nsIFrame* aFrame, nsIntPoint aPnt)
   if (!menuPopupFrame)
     return;
 
-  // Convert desired point to CSS pixels for comparison
-  nsPresContext* presContext = menuPopupFrame->PresContext();
-  aPnt.x = presContext->DevPixelsToIntCSSPixels(aPnt.x);
-  aPnt.y = presContext->DevPixelsToIntCSSPixels(aPnt.y);
+  nsView* view = menuPopupFrame->GetView();
+  if (!view)
+    return;
 
   // Don't do anything if the popup is already at the specified location. This
   // prevents recursive calls when a popup is positioned.
-  nsIntPoint currentPnt = menuPopupFrame->ScreenPosition();
+  nsIntRect curDevSize = view->CalcWidgetBounds(eWindowType_popup);
   nsIWidget* widget = menuPopupFrame->GetWidget();
-  if ((aPnt.x != currentPnt.x || aPnt.y != currentPnt.y) || (widget &&
-      widget->GetClientOffset() != menuPopupFrame->GetLastClientOffset())) {
-    // Update the popup's position using SetPopupPosition if the popup is
-    // anchored and at the parent level as these maintain their position
-    // relative to the parent window. Otherwise, just update the popup to
-    // the specified screen coordinates.
-    if (menuPopupFrame->IsAnchored() &&
-        menuPopupFrame->PopupLevel() == ePopupLevelParent) {
-      menuPopupFrame->SetPopupPosition(nullptr, true, false);
-    }
-    else {
-      menuPopupFrame->MoveTo(aPnt.x, aPnt.y, false);
-    }
+  if (curDevSize.x == aPnt.x && curDevSize.y == aPnt.y &&
+      (!widget || widget->GetClientOffset() == menuPopupFrame->GetLastClientOffset())) {
+    return;
+  }
+
+  // Update the popup's position using SetPopupPosition if the popup is
+  // anchored and at the parent level as these maintain their position
+  // relative to the parent window. Otherwise, just update the popup to
+  // the specified screen coordinates.
+  if (menuPopupFrame->IsAnchored() &&
+      menuPopupFrame->PopupLevel() == ePopupLevelParent) {
+    menuPopupFrame->SetPopupPosition(nullptr, true, false);
+  }
+  else {
+    nsPresContext* presContext = menuPopupFrame->PresContext();
+    aPnt.x = presContext->DevPixelsToIntCSSPixels(aPnt.x);
+    aPnt.y = presContext->DevPixelsToIntCSSPixels(aPnt.y);
+    menuPopupFrame->MoveTo(aPnt.x, aPnt.y, false);
   }
 }
 

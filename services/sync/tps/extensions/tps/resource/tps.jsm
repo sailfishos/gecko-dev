@@ -11,6 +11,8 @@ let EXPORTED_SYMBOLS = ["TPS"];
 
 const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
 
+let module = this;
+
 // Global modules
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
@@ -20,7 +22,6 @@ Cu.import("resource://services-sync/main.js");
 Cu.import("resource://services-sync/util.js");
 
 // TPS modules
-Cu.import("resource://tps/fxaccounts.jsm");
 Cu.import("resource://tps/logger.jsm");
 
 // Module wrappers for tests
@@ -66,43 +67,58 @@ const SYNC_START_OVER   = "start-over";
 const OBSERVER_TOPICS = ["fxaccounts:onlogin",
                          "fxaccounts:onlogout",
                          "private-browsing",
+                         "quit-application-requested",
                          "sessionstore-windows-restored",
                          "weave:engine:start-tracking",
                          "weave:engine:stop-tracking",
+                         "weave:service:login:error",
                          "weave:service:setup-complete",
                          "weave:service:sync:finish",
+                         "weave:service:sync:delayed",
                          "weave:service:sync:error",
+                         "weave:service:sync:start"
                         ];
 
 let TPS = {
-  _waitingForSync: false,
-  _isTracking: false,
-  _test: null,
   _currentAction: -1,
   _currentPhase: -1,
+  _enabledEngines: null,
   _errors: 0,
+  _finalPhase: false,
+  _isTracking: false,
+  _operations_pending: 0,
+  _phaseFinished: false,
+  _phaselist: {},
   _setupComplete: false,
+  _syncActive: false,
   _syncErrors: 0,
-  _usSinceEpoch: 0,
   _tabsAdded: 0,
   _tabsFinished: 0,
-  _phaselist: {},
-  _operations_pending: 0,
-  _loggedIn: false,
-  _enabledEngines: null,
+  _test: null,
+  _usSinceEpoch: 0,
+  _waitingForSync: false,
 
-  /**
-   * Check if the Firefox Accounts feature is enabled
-   */
-  get fxaccounts_enabled() {
-    try {
-      return Services.prefs.getBoolPref("services.sync.fxaccounts.enabled");
-    } catch (e) {
-      return false;
+  _init: function TPS__init() {
+    // Check if Firefox Accounts is enabled
+    let service = Cc["@mozilla.org/weave/service;1"]
+                  .getService(Components.interfaces.nsISupports)
+                  .wrappedJSObject;
+    this.fxaccounts_enabled = service.fxAccountsEnabled;
+
+    OBSERVER_TOPICS.forEach(function (aTopic) {
+      Services.obs.addObserver(this, aTopic, true);
+    }, this);
+
+    // Import the appropriate authentication module
+    if (this.fxaccounts_enabled) {
+      Cu.import("resource://tps/auth/fxaccounts.jsm", module);
+    }
+    else {
+      Cu.import("resource://tps/auth/sync.jsm", module);
     }
   },
 
-  DumpError: function (msg) {
+  DumpError: function TPS__DumpError(msg) {
     this._errors++;
     Logger.logError("[phase" + this._currentPhase + "] " + msg);
     this.quit();
@@ -120,15 +136,33 @@ let TPS = {
           Logger.logInfo("private browsing " + data);
           break;
 
-        case "fxaccounts:onlogin":
-          this._loggedIn = true;
+        case "quit-application-requested":
+          // Ensure that we eventually wipe the data on the server
+          if (this._errors || !this._phaseFinished || this._finalPhase) {
+            try {
+              this.WipeServer();
+            } catch (ex) {}
+          }
+
+          OBSERVER_TOPICS.forEach(function(topic) {
+            Services.obs.removeObserver(this, topic);
+          }, this);
+
+          Logger.close();
+
           break;
 
-        case "fxaccounts:onlogout":
-          this._loggedIn = false;
+        case "sessionstore-windows-restored":
+          Utils.nextTick(this.RunNextTestAction, this);
+          break;
+
+        case "weave:service:setup-complete":
+          this._setupComplete = true;
           break;
 
         case "weave:service:sync:error":
+          this._syncActive = false;
+
           if (this._waitingForSync && this._syncErrors == 0) {
             // if this is the first sync error, retry...
             Logger.logInfo("sync error; retrying...");
@@ -143,13 +177,11 @@ let TPS = {
           }
           break;
 
-        case "weave:service:setup-complete":
-          this._setupComplete = true;
-          break;
-
         case "weave:service:sync:finish":
+          this._syncActive = false;
+          this._syncErrors = 0;
+
           if (this._waitingForSync) {
-            this._syncErrors = 0;
             this._waitingForSync = false;
             // Wait a second before continuing, otherwise we can get
             // 'sync not complete' errors.
@@ -159,16 +191,16 @@ let TPS = {
           }
           break;
 
+        case "weave:service:sync:start":
+          this._syncActive = true;
+          break;
+
         case "weave:engine:start-tracking":
           this._isTracking = true;
           break;
 
         case "weave:engine:stop-tracking":
           this._isTracking = false;
-          break;
-
-        case "sessionstore-windows-restored":
-          Utils.nextTick(this.RunNextTestAction, this);
           break;
       }
     }
@@ -193,10 +225,6 @@ let TPS = {
   },
 
   quit: function TPS__quit() {
-    OBSERVER_TOPICS.forEach(function(topic) {
-      Services.obs.removeObserver(this, topic);
-    }, this);
-    Logger.close();
     this.goQuitApplication();
   },
 
@@ -503,7 +531,8 @@ let TPS = {
           this._phaselist["phase" + this._currentPhase].length) {
         // we're all done
         Logger.logInfo("test phase " + this._currentPhase + ": " +
-          (this._errors ? "FAIL" : "PASS"));
+                       (this._errors ? "FAIL" : "PASS"));
+        this._phaseFinished = true;
         this.quit();
         return;
       }
@@ -564,8 +593,9 @@ let TPS = {
 
       Logger.init(logpath);
       Logger.logInfo("Sync version: " + WEAVE_VERSION);
-      Logger.logInfo("Firefox builddate: " + Services.appinfo.appBuildID);
+      Logger.logInfo("Firefox buildid: " + Services.appinfo.appBuildID);
       Logger.logInfo("Firefox version: " + Services.appinfo.version);
+      Logger.logInfo('Firefox Accounts enabled: ' + this.fxaccounts_enabled);
 
       // do some sync housekeeping
       if (Weave.Service.isLoggedIn) {
@@ -595,10 +625,6 @@ let TPS = {
    */
   _executeTestPhase: function _executeTestPhase(file, phase, settings) {
     try {
-      OBSERVER_TOPICS.forEach(function(topic) {
-        Services.obs.addObserver(this, topic, true);
-      }, this);
-
       // parse the test file
       Services.scriptloader.loadSubScript(file, this);
       this._currentPhase = phase;
@@ -639,14 +665,21 @@ let TPS = {
       // TODO Phases should be defined in a data type that has strong
       // ordering, not by lexical sorting.
       let currentPhase = parseInt(this._currentPhase, 10);
-      // Reset everything at the beginning of the test.
+
+      // Login at the beginning of the test.
       if (currentPhase <= 1) {
-        this_phase.unshift([this.ResetData]);
+        this_phase.unshift([this.Login]);
       }
 
       // Wipe the server at the end of the final test phase.
       if (currentPhase >= Object.keys(this.phases).length) {
-        this_phase.push([this.WipeServer]);
+        this._finalPhase = true;
+      }
+
+      // If a custom server was specified, set it now
+      if (this.config["serverURL"]) {
+        Weave.Service.serverURL = this.config.serverURL;
+        prefs.setCharPref('tps.serverURL', this.config.serverURL);
       }
 
       // Store account details as prefs so they're accessible to the Mozmill
@@ -659,10 +692,6 @@ let TPS = {
         prefs.setCharPref('tps.account.username', this.config.sync_account.username);
         prefs.setCharPref('tps.account.password', this.config.sync_account.password);
         prefs.setCharPref('tps.account.passphrase', this.config.sync_account.passphrase);
-      }
-
-      if (this.config["serverURL"]) {
-        prefs.setCharPref('tps.serverURL', this.config.serverURL);
       }
 
       // start processing the test actions
@@ -755,27 +784,19 @@ let TPS = {
   /**
    * Waits for Sync to logged in before returning
    */
-  waitForLoggedIn: function waitForLoggedIn() {
-    if (!this._loggedIn) {
-      this.waitForEvent("fxaccount:onlogin");
-    }
-
-    let cb = Async.makeSyncCallback();
-    Utils.nextTick(cb);
-    Async.waitForSyncCallback(cb);
-  },
-
-  /**
-   * Waits for Sync to logged in before returning
-   */
   waitForSetupComplete: function waitForSetup() {
     if (!this._setupComplete) {
       this.waitForEvent("weave:service:setup-complete");
     }
+  },
 
-    let cb = Async.makeSyncCallback();
-    Utils.nextTick(cb);
-    Async.waitForSyncCallback(cb);
+  /**
+   * Waits for Sync to be finished before returning
+   */
+  waitForSyncFinished: function TPS__waitForSyncFinished() {
+    if (this._syncActive) {
+      this.waitForEvent("weave:service:sync:finished");
+    }
   },
 
   /**
@@ -785,86 +806,20 @@ let TPS = {
     if (!this._isTracking) {
       this.waitForEvent("weave:engine:start-tracking");
     }
-
-    let cb = Async.makeSyncCallback();
-    Utils.nextTick(cb);
-    Async.waitForSyncCallback(cb);
-  },
-
-  /**
-   * Reset the client and server to an empty/pure state.
-   *
-   * All data on the server is wiped and replaced with new keys and local
-   * client data. The local client is configured such that it is in sync
-   * with the server and ready to handle changes.
-   *
-   * This is typically called at the beginning of every test to set up a clean
-   * slate.
-   *
-   * This executes synchronously and doesn't return until things are in a good
-   * state.
-   */
-  ResetData: function ResetData() {
-    this.Login(true);
-
-    Weave.Service.login();
-    Weave.Service.wipeServer();
-    Weave.Service.resetClient();
-    Weave.Service.login();
-
-    this.waitForTracking();
   },
 
   /**
    * Login on the server
    */
   Login: function Login(force) {
-    if (this._loggedIn && !force) {
+    if (Authentication.isLoggedIn && !force) {
       return;
-    }
-
-    let account = this.fxaccounts_enabled ? this.config.fx_account
-                                          : this.config.sync_account;
-    if (!account) {
-      this.DumperError("No account information found! Did you use a valid " +
-                       "config file?");
-      return;
-    }
-
-    // If there has been specified a custom server, set it now
-    if (this.config["serverURL"]) {
-      Weave.Service.serverURL = this.config.serverURL;
     }
 
     Logger.logInfo("Setting client credentials and login.");
-
-    if (this.fxaccounts_enabled) {
-      if (account["username"] && account["password"]) {
-        Logger.logInfo("Login via Firefox Accounts.");
-        FxAccountsHelper.signIn(account["username"], account["password"]);
-      }
-      else {
-        this.DumpError("Must specify username/password in the config file");
-        return;
-      }
-    }
-    else {
-      if (account["username"] && account["password"] && account["passphrase"]) {
-        Logger.logInfo("Login via the old Sync authentication.");
-        Weave.Service.identity.account = account["username"];
-        Weave.Service.identity.basicPassword = account["password"];
-        Weave.Service.identity.syncKey = account["passphrase"];
-
-        // Fake the login
-        Weave.Service.login();
-        this._loggedIn = true;
-        Weave.Svc.Obs.notify("weave:service:setup-complete");
-      }
-      else {
-        this.DumpError("Must specify username/password/passphrase in the config file");
-        return;
-      }
-    }
+    let account = this.fxaccounts_enabled ? this.config.fx_account
+                                          : this.config.sync_account;
+    Authentication.signIn(account);
 
     this.waitForSetupComplete();
     Logger.AssertEqual(Weave.Status.service, Weave.STATUS_OK, "Weave status OK");
@@ -898,8 +853,10 @@ let TPS = {
   },
 
   WipeServer: function TPS__WipeServer() {
-    Logger.logInfo("WipeServer()");
-    this.Login();
+    Logger.logInfo("Wiping data from server.");
+
+    this.Login(false);
+    Weave.Service.login();
     Weave.Service.wipeServer();
   },
 
@@ -1024,3 +981,6 @@ var Windows = {
     TPS.HandleWindows(aWindow, ACTION_ADD);
   },
 };
+
+// Initialize TPS
+TPS._init();

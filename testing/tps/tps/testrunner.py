@@ -46,70 +46,100 @@ class TempFile(object):
 
 class TPSTestRunner(object):
 
-    default_env = { 'MOZ_CRASHREPORTER_DISABLE': '1',
-                    'GNOME_DISABLE_CRASH_DIALOG': '1',
-                    'XRE_NO_WINDOWS_CRASH_DIALOG': '1',
-                    'MOZ_NO_REMOTE': '1',
-                    'XPCOM_DEBUG_BREAK': 'warn',
-                  }
-    default_preferences = { 'app.update.enabled' : False,
-                            'browser.dom.window.dump.enabled': True,
-                            'browser.sessionstore.resume_from_crash': False,
-                            'browser.shell.checkDefaultBrowser' : False,
-                            'browser.tabs.warnOnClose' : False,
-                            'browser.warnOnQuit': False,
-                            # Allow installing extensions dropped into the profile folder
-                            'extensions.autoDisableScopes': 10,
-                            'extensions.getAddons.get.url': 'http://127.0.0.1:4567/en-US/firefox/api/%API_VERSION%/search/guid:%IDS%',
-                            'extensions.update.enabled'    : False,
-                            # Don't open a dialog to show available add-on updates
-                            'extensions.update.notifyUser' : False,
-                            'services.sync.addons.ignoreRepositoryChecking': True,
-                            'services.sync.firstSync': 'notReady',
-                            'services.sync.lastversion': '1.0',
-                            'services.sync.log.rootLogger': 'Trace',
-                            'services.sync.log.logger.engine.addons': 'Trace',
-                            'services.sync.log.logger.service.main': 'Trace',
-                            'services.sync.log.logger.engine.bookmarks': 'Trace',
-                            'services.sync.log.appender.console': 'Trace',
-                            'services.sync.log.appender.debugLog.enabled': True,
-                            'toolkit.startup.max_resumed_crashes': -1,
-                          }
+    default_env = {
+        'MOZ_CRASHREPORTER_DISABLE': '1',
+        'GNOME_DISABLE_CRASH_DIALOG': '1',
+        'XRE_NO_WINDOWS_CRASH_DIALOG': '1',
+        'MOZ_NO_REMOTE': '1',
+        'XPCOM_DEBUG_BREAK': 'warn',
+    }
+
+    default_preferences = {
+        'app.update.enabled': False,
+        'browser.dom.window.dump.enabled': True,
+        'browser.sessionstore.resume_from_crash': False,
+        'browser.shell.checkDefaultBrowser': False,
+        'browser.tabs.warnOnClose': False,
+        'browser.warnOnQuit': False,
+        # Allow installing extensions dropped into the profile folder
+        'extensions.autoDisableScopes': 10,
+        'extensions.getAddons.get.url': 'http://127.0.0.1:4567/addons/api/%IDS%.xml',
+        'extensions.update.enabled': False,
+        # Don't open a dialog to show available add-on updates
+        'extensions.update.notifyUser': False,
+        'services.sync.addons.ignoreRepositoryChecking': True,
+        'services.sync.firstSync': 'notReady',
+        'services.sync.lastversion': '1.0',
+        'toolkit.startup.max_resumed_crashes': -1,
+    }
+
+    debug_preferences = {
+        'services.sync.log.appender.console': 'Trace',
+        'services.sync.log.appender.dump': 'Trace',
+        'services.sync.log.appender.file.level': 'Trace',
+        'services.sync.log.appender.file.logOnSuccess': True,
+        'services.sync.log.rootLogger': 'Trace',
+        'services.sync.log.logger.addonutils': 'Trace',
+        'services.sync.log.logger.declined': 'Trace',
+        'services.sync.log.logger.service.main': 'Trace',
+        'services.sync.log.logger.status': 'Trace',
+        'services.sync.log.logger.authenticator': 'Trace',
+        'services.sync.log.logger.network.resources': 'Trace',
+        'services.sync.log.logger.service.jpakeclient': 'Trace',
+        'services.sync.log.logger.engine.bookmarks': 'Trace',
+        'services.sync.log.logger.engine.clients': 'Trace',
+        'services.sync.log.logger.engine.forms': 'Trace',
+        'services.sync.log.logger.engine.history': 'Trace',
+        'services.sync.log.logger.engine.passwords': 'Trace',
+        'services.sync.log.logger.engine.prefs': 'Trace',
+        'services.sync.log.logger.engine.tabs': 'Trace',
+        'services.sync.log.logger.engine.addons': 'Trace',
+        'services.sync.log.logger.engine.apps': 'Trace',
+        'services.sync.log.logger.identity': 'Trace',
+        'services.sync.log.logger.userapi': 'Trace',
+    }
 
     syncVerRe = re.compile(
         r'Sync version: (?P<syncversion>.*)\n')
     ffVerRe = re.compile(
         r'Firefox version: (?P<ffver>.*)\n')
-    ffDateRe = re.compile(
-        r'Firefox builddate: (?P<ffdate>.*)\n')
+    ffBuildIDRe = re.compile(
+        r'Firefox buildid: (?P<ffbuildid>.*)\n')
 
     def __init__(self, extensionDir,
-                 testfile='sync.test',
-                 binary=None, config=None, rlock=None, mobile=False,
-                 logfile='tps.log', resultfile='tps_result.json',
-                 ignore_unused_engines=False):
-        self.extensions = []
-        self.testfile = testfile
-        self.logfile = os.path.abspath(logfile)
-        self.resultfile = resultfile
+                 binary=None,
+                 config=None,
+                 debug=False,
+                 ignore_unused_engines=False,
+                 logfile='tps.log',
+                 mobile=False,
+                 rlock=None,
+                 resultfile='tps_result.json',
+                 testfile=None):
         self.binary = binary
-        self.ignore_unused_engines = ignore_unused_engines
         self.config = config if config else {}
-        self.repo = None
-        self.changeset = None
+        self.debug = debug
+        self.extensions = []
+        self.ignore_unused_engines = ignore_unused_engines
+        self.logfile = os.path.abspath(logfile)
+        self.mobile = mobile
+        self.rlock = rlock
+        self.resultfile = resultfile
+        self.testfile = testfile
+
+        self.addonversion = None
         self.branch = None
+        self.changeset = None
+        self.errorlogs = {}
+        self.extensionDir = extensionDir
+        self.firefoxRunner = None
+        self.nightly = False
         self.numfailed = 0
         self.numpassed = 0
-        self.nightly = False
-        self.rlock = rlock
-        self.mobile = mobile
-        self.tpsxpi = None
-        self.firefoxRunner = None
-        self.extensionDir = extensionDir
-        self.productversion = None
-        self.addonversion = None
         self.postdata = {}
-        self.errorlogs = {}
+        self.productversion = None
+        self.repo = None
+        self.tpsxpi = None
 
     @property
     def mobile(self):
@@ -247,8 +277,8 @@ class TPSTestRunner(object):
         sync_version = match.group('syncversion') if match else 'unknown'
         match = self.ffVerRe.search(logdata)
         firefox_version = match.group('ffver') if match else 'unknown'
-        match = self.ffDateRe.search(logdata)
-        firefox_builddate = match.group('ffdate') if match else 'unknown'
+        match = self.ffBuildIDRe.search(logdata)
+        firefox_buildid = match.group('ffbuildid') if match else 'unknown'
         f.close()
         if phase.status == 'PASS':
             logdata = ''
@@ -279,8 +309,8 @@ class TPSTestRunner(object):
             self.errorlogs[testname] = tmplogfile
 
         resultdata = ({ 'productversion': { 'version': firefox_version,
-                                            'buildid': firefox_builddate,
-                                            'builddate': firefox_builddate[0:8],
+                                            'buildid': firefox_buildid,
+                                            'builddate': firefox_buildid[0:8],
                                             'product': 'Firefox',
                                             'repository': apprepo,
                                             'changeset': appchangeset,
@@ -301,21 +331,30 @@ class TPSTestRunner(object):
 
         return resultdata
 
+    def update_preferences(self):
+        self.preferences = self.default_preferences.copy()
+
+        if self.mobile:
+            self.preferences.update({'services.sync.client.type' : 'mobile'})
+
+        # Set a dummy username to force the correct authentication type. For the
+        # old sync, the username is not allowed to contain a '@'.
+        dummy = {'fx_account': 'dummy@somewhere', 'sync_account': 'dummy'}
+        auth_type = self.config.get('auth_type', 'fx_account')
+        self.preferences.update({'services.sync.username': dummy[auth_type]})
+
+        if self.debug:
+            self.preferences.update(self.debug_preferences)
+
     def run_tests(self):
         # delete the logfile if it already exists
         if os.access(self.logfile, os.F_OK):
             os.remove(self.logfile)
 
         # Make a copy of the default env variables and preferences, and update
-        # them for mobile settings if needed.
+        # them for custom settings
         self.env = self.default_env.copy()
-        self.preferences = self.default_preferences.copy()
-        if self.mobile:
-            self.preferences.update({'services.sync.client.type' : 'mobile'})
-
-        # If sync accounts have been chosen, disable Firefox Accounts
-        if self.config.get('auth_type', 'fx_account') != 'fx_account':
-            self.preferences.update({'services.sync.fxaccounts.enabled' : False})
+        self.update_preferences()
 
         # Acquire a lock to make sure no other threads are running tests
         # at the same time.

@@ -10,6 +10,7 @@ let gContentWindow;
 Components.utils.import("resource:///modules/UITour.jsm");
 
 function test() {
+  requestLongerTimeout(2);
   UITourTest();
 }
 
@@ -61,6 +62,30 @@ let tests = [
       CustomizableUI.reset();
       ok(!UITour.availableTargetsCache.has(window),
          "Targets should not be cached after reset");
+      done();
+    });
+  },
+
+  function test_availableTargets_exceptionFromGetTarget(done) {
+    // The query function for the "search" target will throw if it's not found.
+    // Make sure the callback still fires with the other available targets.
+    CustomizableUI.removeWidgetFromArea("search-container");
+    gContentAPI.getConfiguration("availableTargets", (data) => {
+      // Default minus "search" and "searchProvider"
+      ok_targets(data, [
+        "accountStatus",
+        "addons",
+        "appMenu",
+        "backForward",
+        "bookmarks",
+        "customize",
+        "help",
+        "home",
+        "pinnedTab",
+        "quit",
+        "urlbar",
+      ]);
+      CustomizableUI.reset();
       done();
     });
   },

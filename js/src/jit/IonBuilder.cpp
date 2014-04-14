@@ -3035,7 +3035,7 @@ IonBuilder::filterTypesAtTest(MTest *test)
         return true;
 
     // There is no TypeSet that can get filtered.
-    if (!subject->resultTypeSet())
+    if (!subject->resultTypeSet() || subject->resultTypeSet()->unknown())
         return true;
 
     // Only do this optimization if the typeset does contains null or undefined.
@@ -4108,6 +4108,10 @@ IonBuilder::makeInliningDecision(JSFunction *target, CallInfo &callInfo)
     // TI calls ObjectStateChange to trigger invalidation of the caller.
     types::TypeObjectKey *targetType = types::TypeObjectKey::get(target);
     targetType->watchStateChangeForInlinedCall(constraints());
+
+    // We mustn't relazify functions that have been inlined, because there's
+    // no way to tell if it safe to do so.
+    script()->setHasBeenInlined();
 
     return InliningDecision_Inline;
 }

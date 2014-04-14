@@ -1931,7 +1931,11 @@ pref("plugins.click_to_play", false);
 // Player ("Shockwave for Director"). To hide all plugins from enumeration, use
 // the empty string "" to match no plugin names. To allow all plugins to be
 // enumerated, use the string "*" to match all plugin names.
+#ifdef EARLY_BETA_OR_EARLIER
 pref("plugins.enumerable_names", "Java,Nexus Personal,QuickTime,Shockwave");
+#else
+pref("plugins.enumerable_names", "*");
+#endif
 
 // The default value for nsIPluginTag.enabledState (STATE_ENABLED = 2)
 pref("plugin.default.state", 2);
@@ -4183,7 +4187,7 @@ pref("memory.blob_report.stack_frames", 0);
 pref("social.whitelist", "https://mozsocial.cliqz.com,https://now.msn.com,https://mixi.jp");
 // comma separated list of domain origins (e.g. https://domain.com) for
 // directory websites (e.g. AMO) that can install providers for other sites
-pref("social.directories", "https://activations.mozilla.org");
+pref("social.directories", "https://activations.cdn.mozilla.net");
 // remote-install allows any website to activate a provider, with extended UI
 // notifying user of installation. we can later pref off remote install if
 // necessary. This does not affect whitelisted and directory installs.
