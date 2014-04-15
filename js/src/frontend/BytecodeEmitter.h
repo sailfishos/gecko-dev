@@ -151,7 +151,7 @@ struct BytecodeEmitter
         Normal,
 
         /*
-         * Emit JSOP_CALLINTRINSIC instead of JSOP_NAME and assert that
+         * Emit JSOP_GETINTRINSIC instead of JSOP_NAME and assert that
          * JSOP_NAME and JSOP_*GNAME don't ever get emitted. See the comment
          * for the field |selfHostingMode| in Parser.h for details.
          */
@@ -216,8 +216,6 @@ struct BytecodeEmitter
     unsigned currentLine() const { return current->currentLine; }
     unsigned lastColumn() const { return current->lastColumn; }
 
-    ptrdiff_t countFinalSourceNotes();
-
     bool reportError(ParseNode *pn, unsigned errorNumber, ...);
     bool reportStrictWarning(ParseNode *pn, unsigned errorNumber, ...);
     bool reportStrictModeError(ParseNode *pn, unsigned errorNumber, ...);
@@ -280,7 +278,10 @@ bool
 AddToSrcNoteDelta(ExclusiveContext *cx, BytecodeEmitter *bce, jssrcnote *sn, ptrdiff_t delta);
 
 bool
-FinishTakingSrcNotes(ExclusiveContext *cx, BytecodeEmitter *bce, jssrcnote *notes);
+FinishTakingSrcNotes(ExclusiveContext *cx, BytecodeEmitter *bce, uint32_t *out);
+
+void
+CopySrcNotes(BytecodeEmitter *bce, jssrcnote *destination, uint32_t nsrcnotes);
 
 } /* namespace frontend */
 } /* namespace js */

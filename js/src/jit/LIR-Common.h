@@ -3487,6 +3487,28 @@ class LLambda : public LInstructionHelper<1, 1, 1>
     }
 };
 
+class LLambdaArrow : public LInstructionHelper<1, 1 + BOX_PIECES, 1>
+{
+  public:
+    LIR_HEADER(LambdaArrow)
+
+    static const size_t ThisValue = 1;
+
+    LLambdaArrow(const LAllocation &scopeChain, const LDefinition &temp) {
+        setOperand(0, scopeChain);
+        setTemp(0, temp);
+    }
+    const LAllocation *scopeChain() {
+        return getOperand(0);
+    }
+    const LDefinition *temp() {
+        return getTemp(0);
+    }
+    const MLambdaArrow *mir() const {
+        return mir_->toLambdaArrow();
+    }
+};
+
 class LLambdaPar : public LInstructionHelper<1, 2, 2>
 {
   public:
@@ -3722,6 +3744,31 @@ class LTypedObjectElements : public LInstructionHelper<1, 1, 0>
     }
     const MTypedObjectElements *mir() const {
         return mir_->toTypedObjectElements();
+    }
+};
+
+// Load a typed array's elements vector.
+class LSetTypedObjectOffset : public LInstructionHelper<0, 2, 1>
+{
+  public:
+    LIR_HEADER(SetTypedObjectOffset)
+
+    LSetTypedObjectOffset(const LAllocation &object,
+                          const LAllocation &offset,
+                          const LDefinition &temp0)
+    {
+        setOperand(0, object);
+        setOperand(1, offset);
+        setTemp(0, temp0);
+    }
+    const LAllocation *object() {
+        return getOperand(0);
+    }
+    const LAllocation *offset() {
+        return getOperand(1);
+    }
+    const LDefinition *temp0() {
+        return getTemp(0);
     }
 };
 
@@ -5670,12 +5717,12 @@ class LCallInstanceOf : public LCallInstructionHelper<1, BOX_PIECES+1, 0>
     static const size_t RHS = BOX_PIECES;
 };
 
-class LFunctionBoundary : public LInstructionHelper<0, 0, 1>
+class LProfilerStackOp : public LInstructionHelper<0, 0, 1>
 {
   public:
-    LIR_HEADER(FunctionBoundary)
+    LIR_HEADER(ProfilerStackOp)
 
-    LFunctionBoundary(const LDefinition &temp) {
+    LProfilerStackOp(const LDefinition &temp) {
         setTemp(0, temp);
     }
 
@@ -5684,15 +5731,15 @@ class LFunctionBoundary : public LInstructionHelper<0, 0, 1>
     }
 
     JSScript *script() {
-        return mir_->toFunctionBoundary()->script();
+        return mir_->toProfilerStackOp()->script();
     }
 
-    MFunctionBoundary::Type type() {
-        return mir_->toFunctionBoundary()->type();
+    MProfilerStackOp::Type type() {
+        return mir_->toProfilerStackOp()->type();
     }
 
     unsigned inlineLevel() {
-        return mir_->toFunctionBoundary()->inlineLevel();
+        return mir_->toProfilerStackOp()->inlineLevel();
     }
 };
 

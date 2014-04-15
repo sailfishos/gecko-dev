@@ -9,7 +9,6 @@
 #include <stdint.h>                     // for uint64_t
 #include <map>                          // for _Rb_tree_iterator, etc
 #include <utility>                      // for pair
-#include "AutoOpenSurface.h"            // for AutoOpenSurface
 #include "LayerTransactionParent.h"     // for LayerTransactionParent
 #include "RenderTrace.h"                // for RenderTraceLayers
 #include "base/message_loop.h"          // for MessageLoop
@@ -313,12 +312,7 @@ bool
 CompositorParent::RecvMakeSnapshot(const SurfaceDescriptor& aInSnapshot,
                                    SurfaceDescriptor* aOutSnapshot)
 {
-  AutoOpenSurface opener(OPEN_READ_WRITE, aInSnapshot);
-  gfx::IntSize size = opener.Size();
-  // XXX CreateDrawTargetForSurface will always give us a Cairo surface, we can
-  // do better if AutoOpenSurface uses Moz2D directly.
-  RefPtr<DrawTarget> target =
-    gfxPlatform::GetPlatform()->CreateDrawTargetForSurface(opener.Get(), size);
+  RefPtr<DrawTarget> target = GetDrawTargetForDescriptor(aInSnapshot, gfx::BackendType::CAIRO);
   ForceComposeToTarget(target);
   *aOutSnapshot = aInSnapshot;
   return true;
@@ -1038,8 +1032,8 @@ CompositorParent::ComputeRenderIntegrity()
  * drive compositing itself.  For that it hands off work to the
  * CompositorParent it's associated with.
  */
-class CrossProcessCompositorParent : public PCompositorParent,
-                                     public ShadowLayersManager
+class CrossProcessCompositorParent MOZ_FINAL : public PCompositorParent,
+                                               public ShadowLayersManager
 {
   friend class CompositorParent;
 
@@ -1048,7 +1042,6 @@ public:
   CrossProcessCompositorParent(Transport* aTransport)
     : mTransport(aTransport)
   {}
-  virtual ~CrossProcessCompositorParent();
 
   // IToplevelProtocol::CloneToplevel()
   virtual IToplevelProtocol*
@@ -1092,6 +1085,9 @@ public:
   virtual AsyncCompositionManager* GetCompositionManager(LayerTransactionParent* aParent) MOZ_OVERRIDE;
 
 private:
+  // Private destructor, to discourage deletion outside of Release():
+  virtual ~CrossProcessCompositorParent();
+
   void DeferredDestroy();
 
   // There can be many CPCPs, and IPDL-generated code doesn't hold a

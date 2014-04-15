@@ -29,7 +29,6 @@ browser.jar:
   skin/classic/browser/Geolocation-16@2x.png
   skin/classic/browser/Geolocation-64.png
   skin/classic/browser/Geolocation-64@2x.png
-  skin/classic/browser/home.png
   skin/classic/browser/identity.png
   skin/classic/browser/identity@2x.png
   skin/classic/browser/identity-icons-generic.png
@@ -87,6 +86,8 @@ browser.jar:
   skin/classic/browser/Privacy-48.png
   skin/classic/browser/privatebrowsing-mask.png
   skin/classic/browser/privatebrowsing-mask@2x.png
+  skin/classic/browser/privatebrowsing-mask-short.png
+  skin/classic/browser/privatebrowsing-mask-short@2x.png
   skin/classic/browser/reload-stop-go.png
   skin/classic/browser/reload-stop-go@2x.png
   skin/classic/browser/searchbar-dropmarker.png
@@ -224,14 +225,18 @@ browser.jar:
   skin/classic/browser/preferences/saveFile.png             (preferences/saveFile.png)
 * skin/classic/browser/preferences/preferences.css          (preferences/preferences.css)
 * skin/classic/browser/preferences/in-content/preferences.css (preferences/in-content/preferences.css)
-  skin/classic/browser/preferences/in-content/check.png     (preferences/in-content/check.png)
-  skin/classic/browser/preferences/in-content/check@2x.png  (preferences/in-content/check@2x.png)
-  skin/classic/browser/preferences/in-content/icons.png     (preferences/in-content/icons.png)
-  skin/classic/browser/preferences/in-content/icons@2x.png  (preferences/in-content/icons@2x.png)
-  skin/classic/browser/preferences/in-content/header.png    (preferences/in-content/icons@2x.png)
-  skin/classic/browser/preferences/in-content/sorter.png    (preferences/in-content/sorter.png)
-  skin/classic/browser/preferences/in-content/dropdown.png  (preferences/in-content/dropdown.png)
-  skin/classic/browser/preferences/in-content/dropdown-disabled.png  (preferences/in-content/dropdown-disabled.png)
+  skin/classic/browser/preferences/in-content/check.png       (../shared/incontentprefs/check.png)
+  skin/classic/browser/preferences/in-content/check@2x.png    (../shared/incontentprefs/check@2x.png)
+  skin/classic/browser/preferences/in-content/icons.png       (../shared/incontentprefs/icons.png)
+  skin/classic/browser/preferences/in-content/icons@2x.png    (../shared/incontentprefs/icons@2x.png)
+  skin/classic/browser/preferences/in-content/header.png      (../shared/incontentprefs/header.png)
+  skin/classic/browser/preferences/in-content/header@2x.png   (../shared/incontentprefs/header@2x.png)
+  skin/classic/browser/preferences/in-content/sorter.png      (../shared/incontentprefs/sorter.png)
+  skin/classic/browser/preferences/in-content/sorter@2x.png   (../shared/incontentprefs/sorter@2x.png)
+  skin/classic/browser/preferences/in-content/dropdown.png    (../shared/incontentprefs/dropdown.png)
+  skin/classic/browser/preferences/in-content/dropdown@2x.png (../shared/incontentprefs/dropdown@2x.png)
+  skin/classic/browser/preferences/in-content/dropdown-disabled.png    (../shared/incontentprefs/dropdown-disabled.png)
+  skin/classic/browser/preferences/in-content/dropdown-disabled@2x.png (../shared/incontentprefs/dropdown-disabled@2x.png)
   skin/classic/browser/preferences/applications.css         (preferences/applications.css)
   skin/classic/browser/preferences/aboutPermissions.css     (preferences/aboutPermissions.css)
   skin/classic/browser/social/services-16.png               (social/services-16.png)
@@ -294,6 +299,8 @@ browser.jar:
   skin/classic/browser/tabview/stack-expander.png           (tabview/stack-expander.png)
   skin/classic/browser/tabview/tabview.png                  (tabview/tabview.png)
   skin/classic/browser/tabview/tabview.css                  (tabview/tabview.css)
+  skin/classic/browser/translation-16.png                   (../shared/translation/translation-16.png)
+  skin/classic/browser/translation-16@2x.png                (../shared/translation/translation-16@2x.png)
 * skin/classic/browser/devtools/common.css                  (../shared/devtools/common.css)
 * skin/classic/browser/devtools/dark-theme.css              (../shared/devtools/dark-theme.css)
 * skin/classic/browser/devtools/light-theme.css             (../shared/devtools/light-theme.css)
@@ -335,6 +342,7 @@ browser.jar:
 * skin/classic/browser/devtools/profiler.css                (devtools/profiler.css)
 * skin/classic/browser/devtools/netmonitor.css              (devtools/netmonitor.css)
 * skin/classic/browser/devtools/scratchpad.css              (devtools/scratchpad.css)
+  skin/classic/browser/devtools/eyedropper.css              (../shared/devtools/eyedropper.css)
   skin/classic/browser/devtools/magnifying-glass.png        (../shared/devtools/images/magnifying-glass.png)
   skin/classic/browser/devtools/magnifying-glass@2x.png     (../shared/devtools/images/magnifying-glass@2x.png)
   skin/classic/browser/devtools/magnifying-glass-light.png  (../shared/devtools/images/magnifying-glass-light.png)
@@ -410,6 +418,8 @@ browser.jar:
   skin/classic/browser/devtools/app-manager/rocket.svg                (../shared/devtools/app-manager/images/rocket.svg)
   skin/classic/browser/devtools/app-manager/noise.png                 (../shared/devtools/app-manager/images/noise.png)
   skin/classic/browser/devtools/app-manager/default-app-icon.png      (../shared/devtools/app-manager/images/default-app-icon.png)
+  skin/classic/browser/devtools/eyedropper-black.png        (../shared/devtools/images/eyedropper-black.png)
+
 #ifdef MOZ_SERVICES_SYNC
   skin/classic/browser/sync-16.png
   skin/classic/browser/sync-32.png

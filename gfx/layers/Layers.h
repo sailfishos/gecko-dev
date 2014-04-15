@@ -165,6 +165,11 @@ static void LayerManagerUserDataDestroy(void *data)
 class LayerManager {
   NS_INLINE_DECL_REFCOUNTING(LayerManager)
 
+protected:
+  typedef mozilla::gfx::DrawTarget DrawTarget;
+  typedef mozilla::gfx::IntSize IntSize;
+  typedef mozilla::gfx::SurfaceFormat SurfaceFormat;
+
 public:
   LayerManager()
     : mDestroyed(false)
@@ -174,7 +179,6 @@ public:
   {
     InitLog();
   }
-  virtual ~LayerManager() {}
 
   /**
    * Release layers and resources held by this layer manager, and mark
@@ -421,21 +425,28 @@ public:
   virtual LayersBackend GetBackendType() = 0;
 
   /**
-   * Creates a surface which is optimized for inter-operating with this layer
-   * manager.
+   * Type of layers backend that will be used to composite this layer tree.
+   * When compositing is done remotely, then this returns the layers type
+   * of the compositor.
    */
-  virtual already_AddRefed<gfxASurface>
-    CreateOptimalSurface(const gfx::IntSize &aSize,
-                         gfxImageFormat imageFormat);
+  virtual LayersBackend GetCompositorBackendType() { return GetBackendType(); }
 
   /**
-   * Creates a surface for alpha masks which is optimized for inter-operating
-   * with this layer manager. In contrast to CreateOptimalSurface, this surface
-   * is optimised for drawing alpha only and we assume that drawing the mask
-   * is fairly simple.
+   * Creates a DrawTarget which is optimized for inter-operating with this
+   * layer manager.
    */
-  virtual already_AddRefed<gfxASurface>
-    CreateOptimalMaskSurface(const gfx::IntSize &aSize);
+  virtual TemporaryRef<DrawTarget>
+    CreateOptimalDrawTarget(const IntSize &aSize,
+                            SurfaceFormat imageFormat);
+
+  /**
+   * Creates a DrawTarget for alpha masks which is optimized for inter-
+   * operating with this layer manager. In contrast to CreateOptimalDrawTarget,
+   * this surface is optimised for drawing alpha only and we assume that
+   * drawing the mask is fairly simple.
+   */
+  virtual TemporaryRef<DrawTarget>
+    CreateOptimalMaskDrawTarget(const IntSize &aSize);
 
   /**
    * Creates a DrawTarget for use with canvas which is optimized for
@@ -609,6 +620,9 @@ protected:
 
   nsIntRegion mRegionToClear;
 
+  // Protected destructor, to discourage deletion outside of Release():
+  virtual ~LayerManager() {}
+
   // Print interesting information about this into aTo.  Internally
   // used to implement Dump*() and Log*().
   virtual nsACString& PrintInfo(nsACString& aTo, const char* aPrefix);
@@ -665,8 +679,6 @@ public:
     TYPE_SHADOW,
     TYPE_THEBES
   };
-
-  virtual ~Layer();
 
   /**
    * Returns the LayerManager this Layer belongs to. Note that the layer
@@ -1357,6 +1369,9 @@ public:
 
 protected:
   Layer(LayerManager* aManager, void* aImplData);
+
+  // Protected destructor, to discourage deletion outside of Release():
+  virtual ~Layer();
 
   /**
    * We can snap layer transforms for two reasons:

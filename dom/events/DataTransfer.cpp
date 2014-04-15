@@ -169,9 +169,9 @@ DataTransfer::Constructor(const GlobalObject& aGlobal,
 }
 
 JSObject*
-DataTransfer::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aScope)
+DataTransfer::WrapObject(JSContext* aCx)
 {
-  return DataTransferBinding::Wrap(aCx, aScope, this);
+  return DataTransferBinding::Wrap(aCx, this);
 }
 
 NS_IMETHODIMP
@@ -657,8 +657,7 @@ DataTransfer::MozGetDataAt(JSContext* aCx, const nsAString& aFormat,
   }
 
   JS::Rooted<JS::Value> result(aCx);
-  JS::Rooted<JSObject*> scope(aCx, GetWrapper());
-  if (!VariantToJsval(aCx, scope, data, &result)) {
+  if (!VariantToJsval(aCx, data, &result)) {
     aRv = NS_ERROR_FAILURE;
     return JS::UndefinedValue();
   }

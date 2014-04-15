@@ -123,9 +123,9 @@ FileHandle::CreateFileObject(LockedFile* aLockedFile, uint32_t aFileSize)
 
 // virtual
 JSObject*
-FileHandle::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aScope)
+FileHandle::WrapObject(JSContext* aCx)
 {
-  return FileHandleBinding::Wrap(aCx, aScope, this);
+  return FileHandleBinding::Wrap(aCx, this);
 }
 
 already_AddRefed<LockedFile>
@@ -188,10 +188,8 @@ GetFileHelper::GetSuccessResult(JSContext* aCx,
   nsCOMPtr<nsIDOMFile> domFile =
     mFileHandle->CreateFileObject(mLockedFile, mParams->Size());
 
-  JS::Rooted<JSObject*> global(aCx, JS::CurrentGlobalOrNull(aCx));
   nsresult rv =
-    nsContentUtils::WrapNative(aCx, global, domFile,
-                               &NS_GET_IID(nsIDOMFile), aVal);
+    nsContentUtils::WrapNative(aCx, domFile, &NS_GET_IID(nsIDOMFile), aVal);
   NS_ENSURE_SUCCESS(rv, NS_ERROR_DOM_FILEHANDLE_UNKNOWN_ERR);
   return NS_OK;
 }

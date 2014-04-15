@@ -2027,8 +2027,7 @@ ICCompare_Boolean::Compiler::generateStubCode(MacroAssembler &masm)
 
     // Compare payload regs of R0 and R1.
     Assembler::Condition cond = JSOpToCondition(op, /* signed = */true);
-    masm.cmp32(left, right);
-    masm.emitSet(cond, left);
+    masm.cmp32Set(cond, left, right, left);
 
     // Box the result and return
     masm.tagValue(JSVAL_TYPE_BOOLEAN, left, R0);
@@ -2199,9 +2198,8 @@ ICCompare_Int32WithBoolean::Compiler::generateStubCode(MacroAssembler &masm)
 
         // Compare payload regs of R0 and R1.
         Assembler::Condition cond = JSOpToCondition(op_, /* signed = */true);
-        masm.cmp32(lhsIsInt32_ ? int32Reg : boolReg,
-                   lhsIsInt32_ ? boolReg : int32Reg);
-        masm.emitSet(cond, R0.scratchReg());
+        masm.cmp32Set(cond, (lhsIsInt32_ ? int32Reg : boolReg),
+                      (lhsIsInt32_ ? boolReg : int32Reg), R0.scratchReg());
 
         // Box the result and return
         masm.tagValue(JSVAL_TYPE_BOOLEAN, R0.scratchReg(), R0);
@@ -2327,8 +2325,7 @@ ICToBool_Int32::Compiler::generateStubCode(MacroAssembler &masm)
     masm.branchTestInt32(Assembler::NotEqual, R0, &failure);
 
     Label ifFalse;
-    Assembler::Condition cond = masm.testInt32Truthy(false, R0);
-    masm.j(cond, &ifFalse);
+    masm.branchTestInt32Truthy(false, R0, &ifFalse);
 
     masm.moveValue(BooleanValue(true), R0);
     EmitReturnFromIC(masm);
@@ -2354,8 +2351,7 @@ ICToBool_String::Compiler::generateStubCode(MacroAssembler &masm)
     masm.branchTestString(Assembler::NotEqual, R0, &failure);
 
     Label ifFalse;
-    Assembler::Condition cond = masm.testStringTruthy(false, R0);
-    masm.j(cond, &ifFalse);
+    masm.branchTestStringTruthy(false, R0, &ifFalse);
 
     masm.moveValue(BooleanValue(true), R0);
     EmitReturnFromIC(masm);
@@ -2401,8 +2397,7 @@ ICToBool_Double::Compiler::generateStubCode(MacroAssembler &masm)
     Label failure, ifTrue;
     masm.branchTestDouble(Assembler::NotEqual, R0, &failure);
     masm.unboxDouble(R0, FloatReg0);
-    Assembler::Condition cond = masm.testDoubleTruthy(true, FloatReg0);
-    masm.j(cond, &ifTrue);
+    masm.branchTestDoubleTruthy(true, FloatReg0, &ifTrue);
 
     masm.moveValue(BooleanValue(false), R0);
     EmitReturnFromIC(masm);
@@ -2429,8 +2424,7 @@ ICToBool_Object::Compiler::generateStubCode(MacroAssembler &masm)
 
     Register objReg = masm.extractObject(R0, ExtractTemp0);
     Register scratch = R1.scratchReg();
-    Assembler::Condition cond = masm.branchTestObjectTruthy(false, objReg, scratch, &slowPath);
-    masm.j(cond, &ifFalse);
+    masm.branchTestObjectTruthy(false, objReg, scratch, &slowPath, &ifFalse);
 
     // If object doesn't emulate undefined, it evaulates to true.
     masm.moveValue(BooleanValue(true), R0);
@@ -2935,8 +2929,7 @@ ICBinaryArith_BooleanWithInt32::Compiler::generateStubCode(MacroAssembler &masm)
       case JSOP_ADD: {
         Label fixOverflow;
 
-        masm.add32(rhsReg, lhsReg);
-        masm.j(Assembler::Overflow, &fixOverflow);
+        masm.branchAdd32(Assembler::Overflow, rhsReg, lhsReg, &fixOverflow);
         masm.tagValue(JSVAL_TYPE_INT32, lhsReg, R0);
         EmitReturnFromIC(masm);
 
@@ -2948,8 +2941,7 @@ ICBinaryArith_BooleanWithInt32::Compiler::generateStubCode(MacroAssembler &masm)
       case JSOP_SUB: {
         Label fixOverflow;
 
-        masm.sub32(rhsReg, lhsReg);
-        masm.j(Assembler::Overflow, &fixOverflow);
+        masm.branchSub32(Assembler::Overflow, rhsReg, lhsReg, &fixOverflow);
         masm.tagValue(JSVAL_TYPE_INT32, lhsReg, R0);
         EmitReturnFromIC(masm);
 
@@ -5646,10 +5638,6 @@ TryAttachGlobalNameStub(JSContext *cx, HandleScript script, jsbytecode *pc,
     bool isScripted;
     if (IsCacheableGetPropCall(cx, global, global, shape, &isScripted) && !isScripted)
     {
-#ifdef JS_HAS_NO_SUCH_METHOD
-        if (JSOp(*pc) == JSOP_CALLGNAME)
-            return true;
-#endif
         ICStub *monitorStub = stub->fallbackMonitorStub()->firstMonitorStub();
         IonSpew(IonSpew_BaselineIC, "  Generating GetName(GlobalName/NativeGetter) stub");
         RootedFunction getter(cx, &shape->getterObject()->as<JSFunction>());
@@ -5766,7 +5754,7 @@ DoGetNameFallback(JSContext *cx, BaselineFrame *frame, ICGetName_Fallback *stub,
     mozilla::DebugOnly<JSOp> op = JSOp(*pc);
     FallbackICSpew(cx, stub, "GetName(%s)", js_CodeName[JSOp(*pc)]);
 
-    JS_ASSERT(op == JSOP_NAME || op == JSOP_CALLNAME || op == JSOP_GETGNAME || op == JSOP_CALLGNAME);
+    JS_ASSERT(op == JSOP_NAME || op == JSOP_GETGNAME);
 
     RootedPropertyName name(cx, script->getName(pc));
 
@@ -5943,7 +5931,7 @@ DoGetIntrinsicFallback(JSContext *cx, BaselineFrame *frame, ICGetIntrinsic_Fallb
     mozilla::DebugOnly<JSOp> op = JSOp(*pc);
     FallbackICSpew(cx, stub, "GetIntrinsic(%s)", js_CodeName[JSOp(*pc)]);
 
-    JS_ASSERT(op == JSOP_GETINTRINSIC || op == JSOP_CALLINTRINSIC);
+    JS_ASSERT(op == JSOP_GETINTRINSIC);
 
     if (!GetIntrinsicOperation(cx, pc, res))
         return false;
@@ -6714,6 +6702,7 @@ ICGetProp_CallScripted::Compiler::generateStubCode(MacroAssembler &masm)
     }
     Register code = regs.takeAny();
     masm.loadPtr(Address(BaselineStubReg, ICGetProp_CallScripted::offsetOfGetter()), callee);
+    masm.branchIfFunctionHasNoScript(callee, &failureLeaveStubFrame);
     masm.loadPtr(Address(callee, JSFunction::offsetOfNativeOrScript()), code);
     masm.loadBaselineOrIonRaw(code, code, SequentialExecution, &failureLeaveStubFrame);
 
@@ -7608,6 +7597,7 @@ ICSetProp_CallScripted::Compiler::generateStubCode(MacroAssembler &masm)
     }
     Register code = regs.takeAny();
     masm.loadPtr(Address(BaselineStubReg, ICSetProp_CallScripted::offsetOfSetter()), callee);
+    masm.branchIfFunctionHasNoScript(callee, &failureLeaveStubFrame);
     masm.loadPtr(Address(callee, JSFunction::offsetOfNativeOrScript()), code);
     masm.loadBaselineOrIonRaw(code, code, SequentialExecution, &failureLeaveStubFrame);
 
@@ -9314,8 +9304,8 @@ ICIteratorMore_Native::Compiler::generateStubCode(MacroAssembler &masm)
 
     // Set output to true if props_cursor < props_end.
     masm.loadPtr(Address(nativeIterator, offsetof(NativeIterator, props_end)), scratch);
-    masm.cmpPtr(Address(nativeIterator, offsetof(NativeIterator, props_cursor)), scratch);
-    masm.emitSet(Assembler::LessThan, scratch);
+    Address cursorAddr = Address(nativeIterator, offsetof(NativeIterator, props_cursor));
+    masm.cmpPtrSet(Assembler::LessThan, cursorAddr, scratch, scratch);
 
     masm.tagValue(JSVAL_TYPE_BOOLEAN, scratch, R0);
     EmitReturnFromIC(masm);

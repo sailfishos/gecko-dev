@@ -117,9 +117,9 @@ HTMLTrackElement::OnChannelRedirect(nsIChannel* aChannel,
 }
 
 JSObject*
-HTMLTrackElement::WrapNode(JSContext* aCx, JS::Handle<JSObject*> aScope)
+HTMLTrackElement::WrapNode(JSContext* aCx)
 {
-  return HTMLTrackElementBinding::Wrap(aCx, aScope, this);
+  return HTMLTrackElementBinding::Wrap(aCx, this);
 }
 
 bool
@@ -130,7 +130,7 @@ HTMLTrackElement::IsWebVTTEnabled()
 }
 
 TextTrack*
-HTMLTrackElement::Track()
+HTMLTrackElement::GetTrack()
 {
   if (!mTrack) {
     CreateTextTrack();
@@ -153,7 +153,14 @@ HTMLTrackElement::CreateTextTrack()
     kind = TextTrackKind::Subtitles;
   }
 
-  mTrack = new TextTrack(OwnerDoc()->GetParentObject(), kind, label, srcLang,
+  bool hasHadScriptObject = true;
+  nsIScriptGlobalObject* scriptObject =
+    OwnerDoc()->GetScriptHandlingObject(hasHadScriptObject);
+
+  NS_ENSURE_TRUE_VOID(scriptObject || !hasHadScriptObject);
+
+  nsCOMPtr<nsPIDOMWindow> window = do_QueryInterface(scriptObject);
+  mTrack = new TextTrack(window, kind, label, srcLang,
                          TextTrackMode::Disabled,
                          TextTrackReadyState::NotLoaded,
                          TextTrackSource::Track);

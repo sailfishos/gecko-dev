@@ -62,8 +62,8 @@ private:
   uint64_t mLayersId;
 };
 
-class CompositorParent : public PCompositorParent,
-                         public ShadowLayersManager
+class CompositorParent MOZ_FINAL : public PCompositorParent,
+                                   public ShadowLayersManager
 {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(CompositorParent)
 
@@ -71,8 +71,6 @@ public:
   CompositorParent(nsIWidget* aWidget,
                    bool aUseExternalSurfaceSize = false,
                    int aSurfaceWidth = -1, int aSurfaceHeight = -1);
-
-  virtual ~CompositorParent();
 
   // IToplevelProtocol::CloneToplevel()
   virtual IToplevelProtocol*
@@ -232,6 +230,9 @@ public:
   static bool IsInCompositorThread();
 
 protected:
+  // Private destructor, to discourage deletion outside of Release():
+  virtual ~CompositorParent();
+
   virtual PLayerTransactionParent*
     AllocPLayerTransactionParent(const nsTArray<LayersBackend>& aBackendHints,
                                  const uint64_t& aId,

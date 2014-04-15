@@ -34,7 +34,6 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import org.mozilla.gecko.favicons.OnFaviconLoadedListener;
 import org.mozilla.gecko.favicons.decoders.FaviconDecoder;
 import org.mozilla.gecko.gfx.BitmapUtils;
-import org.mozilla.gecko.gfx.GeckoLayerClient;
 import org.mozilla.gecko.gfx.LayerView;
 import org.mozilla.gecko.gfx.PanZoomController;
 import org.mozilla.gecko.mozglue.GeckoLoader;
@@ -45,6 +44,7 @@ import org.mozilla.gecko.mozglue.generatorannotations.WrapElementForJNI;
 import org.mozilla.gecko.prompts.PromptService;
 import org.mozilla.gecko.util.GeckoEventListener;
 import org.mozilla.gecko.util.HardwareUtils;
+import org.mozilla.gecko.util.NativeJSContainer;
 import org.mozilla.gecko.util.ProxySelector;
 import org.mozilla.gecko.util.ThreadUtils;
 import org.mozilla.gecko.webapp.Allocator;
@@ -191,7 +191,7 @@ public class GeckoAppShell
 
     // helper methods
     //    public static native void setSurfaceView(GeckoSurfaceView sv);
-    public static native void setLayerClient(GeckoLayerClient client);
+    public static native void setLayerClient(Object client);
     public static native void onResume();
     public static void callObserver(String observerKey, String topic, String data) {
         sendEventToGecko(GeckoEvent.createCallObserverEvent(observerKey, topic, data));
@@ -319,7 +319,7 @@ public class GeckoAppShell
         GeckoAppShell.nativeInit();
 
         if (sLayerView != null)
-            GeckoAppShell.setLayerClient(sLayerView.getLayerClient());
+            GeckoAppShell.setLayerClient(sLayerView.getLayerClientObject());
 
         // First argument is the .apk path
         String combinedArgs = apkPath + " -greomni " + apkPath;
@@ -2287,8 +2287,9 @@ public class GeckoAppShell
     }
 
     @WrapElementForJNI(stubName = "HandleGeckoMessageWrapper")
-    public static void handleGeckoMessage(String message) {
+    public static void handleGeckoMessage(final NativeJSContainer message) {
         sEventDispatcher.dispatchEvent(message);
+        message.dispose();
     }
 
     @WrapElementForJNI

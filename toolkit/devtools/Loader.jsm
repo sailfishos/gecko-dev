@@ -34,6 +34,7 @@ this.EXPORTED_SYMBOLS = ["DevToolsLoader", "devtools", "BuiltinProvider",
 let loaderGlobals = {
   btoa: btoa,
   console: console,
+  hasChrome: true,
   promise: promise,
   _Iterator: Iterator,
   ChromeWorker: ChromeWorker,
@@ -282,6 +283,11 @@ DevToolsLoader.prototype = {
    * can be ignored.
    */
   main: function(id) {
+    // Ensure the main module isn't loaded twice, because it may have observable
+    // side-effects.
+    if (this._mainid) {
+      return;
+    }
     this._mainid = id;
     this._main = loader.main(this.provider.loader, id);
 

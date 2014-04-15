@@ -1341,7 +1341,7 @@ class MThrow
 types::TemporaryTypeSet *
 MakeSingletonTypeSet(types::CompilerConstraintList *constraints, JSObject *obj);
 
-void
+bool
 MergeTypes(MIRType *ptype, types::TemporaryTypeSet **ptypeSet,
            MIRType newType, types::TemporaryTypeSet *newTypeSet);
 
@@ -1561,7 +1561,7 @@ class MAbortPar : public MAryControlInstruction<0, 0>
     MAbortPar()
       : MAryControlInstruction<0, 0>()
     {
-        setResultType(MIRType_Undefined);
+        setResultType(MIRType_None);
         setGuard();
     }
 
@@ -4509,14 +4509,14 @@ class MPhi MOZ_FINAL : public MDefinition, public InlineForwardListNode<MPhi>
         triedToSpecialize_ = true;
         setResultType(type);
     }
-    void specializeType();
+    bool specializeType();
 
     // Whether this phi's type already includes information for def.
     bool typeIncludes(MDefinition *def);
 
     // Add types for this phi which speculate about new inputs that may come in
     // via a loop backedge.
-    void addBackedgeType(MIRType type, types::TemporaryTypeSet *typeSet);
+    bool addBackedgeType(MIRType type, types::TemporaryTypeSet *typeSet);
 
     // Initializes the operands vector to the given capacity,
     // permitting use of addInput() instead of addInputSlow().
@@ -5085,6 +5085,44 @@ class MLambda
     }
 };
 
+class MLambdaArrow
+  : public MBinaryInstruction,
+    public MixPolicy<ObjectPolicy<0>, BoxPolicy<1> >
+{
+    LambdaFunctionInfo info_;
+
+    MLambdaArrow(types::CompilerConstraintList *constraints, MDefinition *scopeChain,
+                 MDefinition *this_, JSFunction *fun)
+      : MBinaryInstruction(scopeChain, this_), info_(fun)
+    {
+        setResultType(MIRType_Object);
+        MOZ_ASSERT(!types::UseNewTypeForClone(fun));
+        if (!fun->hasSingletonType())
+            setResultTypeSet(MakeSingletonTypeSet(constraints, fun));
+    }
+
+  public:
+    INSTRUCTION_HEADER(LambdaArrow)
+
+    static MLambdaArrow *New(TempAllocator &alloc, types::CompilerConstraintList *constraints,
+                             MDefinition *scopeChain, MDefinition *this_, JSFunction *fun)
+    {
+        return new(alloc) MLambdaArrow(constraints, scopeChain, this_, fun);
+    }
+    MDefinition *scopeChain() const {
+        return getOperand(0);
+    }
+    MDefinition *thisDef() const {
+        return getOperand(1);
+    }
+    const LambdaFunctionInfo &info() const {
+        return info_;
+    }
+    TypePolicy *typePolicy() {
+        return this;
+    }
+};
+
 class MLambdaPar
   : public MBinaryInstruction,
     public SingleObjectPolicy
@@ -5590,6 +5628,44 @@ class MTypedObjectElements
     }
     AliasSet getAliasSet() const {
         return AliasSet::Load(AliasSet::ObjectFields);
+    }
+};
+
+// Inlined version of the js::SetTypedObjectOffset() intrinsic.
+class MSetTypedObjectOffset
+  : public MBinaryInstruction
+{
+  private:
+    MSetTypedObjectOffset(MDefinition *object, MDefinition *offset)
+      : MBinaryInstruction(object, offset)
+    {
+        JS_ASSERT(object->type() == MIRType_Object);
+        JS_ASSERT(offset->type() == MIRType_Int32);
+        setResultType(MIRType_None);
+    }
+
+  public:
+    INSTRUCTION_HEADER(SetTypedObjectOffset)
+
+    static MSetTypedObjectOffset *New(TempAllocator &alloc,
+                                      MDefinition *object,
+                                      MDefinition *offset)
+    {
+        return new(alloc) MSetTypedObjectOffset(object, offset);
+    }
+
+    MDefinition *object() const {
+        return getOperand(0);
+    }
+
+    MDefinition *offset() const {
+        return getOperand(1);
+    }
+
+    AliasSet getAliasSet() const {
+        // This affects the result of MTypedObjectElements,
+        // which is described as a load of ObjectFields.
+        return AliasSet::Store(AliasSet::ObjectFields);
     }
 };
 
@@ -9179,15 +9255,15 @@ class MNewStringObject :
 // Node that represents that a script has begun executing. This comes at the
 // start of the function and is called once per function (including inline
 // ones)
-class MFunctionBoundary : public MNullaryInstruction
+class MProfilerStackOp : public MNullaryInstruction
 {
   public:
     enum Type {
         Enter,        // a function has begun executing and it is not inline
         Exit,         // any function has exited (inlined or normal)
-        Inline_Enter, // an inline function has begun executing
+        InlineEnter,  // an inline function has begun executing
 
-        Inline_Exit   // all instructions of an inline function are done, a
+        InlineExit    // all instructions of an inline function are done, a
                       // return from the inline function could have occurred
                       // before this boundary
     };
@@ -9197,20 +9273,20 @@ class MFunctionBoundary : public MNullaryInstruction
     Type type_;
     unsigned inlineLevel_;
 
-    MFunctionBoundary(JSScript *script, Type type, unsigned inlineLevel)
+    MProfilerStackOp(JSScript *script, Type type, unsigned inlineLevel)
       : script_(script), type_(type), inlineLevel_(inlineLevel)
     {
-        JS_ASSERT_IF(type != Inline_Exit, script != nullptr);
-        JS_ASSERT_IF(type == Inline_Enter, inlineLevel != 0);
+        JS_ASSERT_IF(type != InlineExit, script != nullptr);
+        JS_ASSERT_IF(type == InlineEnter, inlineLevel != 0);
         setGuard();
     }
 
   public:
-    INSTRUCTION_HEADER(FunctionBoundary)
+    INSTRUCTION_HEADER(ProfilerStackOp)
 
-    static MFunctionBoundary *New(TempAllocator &alloc, JSScript *script, Type type,
+    static MProfilerStackOp *New(TempAllocator &alloc, JSScript *script, Type type,
                                   unsigned inlineLevel = 0) {
-        return new(alloc) MFunctionBoundary(script, type, inlineLevel);
+        return new(alloc) MProfilerStackOp(script, type, inlineLevel);
     }
 
     JSScript *script() {
@@ -9387,44 +9463,8 @@ class MResumePoint MOZ_FINAL : public MNode, public InlineForwardListNode<MResum
                 operands_[i].producer()->removeUse(&operands_[i]);
         }
     }
-};
 
-/*
- * Facade for a chain of MResumePoints that cross frame boundaries (due to
- * function inlining). Operands are ordered from oldest frame to newest.
- */
-class FlattenedMResumePointIter
-{
-    Vector<MResumePoint *, 8, SystemAllocPolicy> resumePoints;
-    MResumePoint *newest;
-    size_t numOperands_;
-
-  public:
-    explicit FlattenedMResumePointIter(MResumePoint *newest)
-      : newest(newest), numOperands_(0)
-    {}
-
-    bool init() {
-        MResumePoint *it = newest;
-        do {
-            if (!resumePoints.append(it))
-                return false;
-            it = it->caller();
-        } while (it);
-        Reverse(resumePoints.begin(), resumePoints.end());
-        return true;
-    }
-
-    MResumePoint **begin() {
-        return resumePoints.begin();
-    }
-    MResumePoint **end() {
-        return resumePoints.end();
-    }
-
-    size_t numOperands() const {
-        return numOperands_;
-    }
+    bool writeRecoverData(CompactBufferWriter &writer) const;
 };
 
 class MIsCallable

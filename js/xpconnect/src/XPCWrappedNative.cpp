@@ -140,7 +140,6 @@ nsresult
 XPCWrappedNative::WrapNewGlobal(xpcObjectHelper &nativeHelper,
                                 nsIPrincipal *principal,
                                 bool initStandardClasses,
-                                bool fireOnNewGlobalHook,
                                 JS::CompartmentOptions& aOptions,
                                 XPCWrappedNative **wrappedGlobal)
 {
@@ -171,6 +170,7 @@ XPCWrappedNative::WrapNewGlobal(xpcObjectHelper &nativeHelper,
     MOZ_ASSERT(clasp->flags & JSCLASS_IS_GLOBAL);
 
     // Create the global.
+    aOptions.setTrace(XPCWrappedNative::Trace);
     RootedObject global(cx, xpc::CreateGlobalObject(cx, clasp, principal, aOptions));
     if (!global)
         return NS_ERROR_FAILURE;
@@ -269,8 +269,6 @@ XPCWrappedNative::WrapNewGlobal(xpcObjectHelper &nativeHelper,
                                wrapper, wrappedGlobal);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    if (fireOnNewGlobalHook)
-        JS_FireOnNewGlobalObject(cx, global);
     return NS_OK;
 }
 
@@ -1325,6 +1323,7 @@ RescueOrphans(HandleObject obj)
                                           realParent, wn->GetIdentityObject());
     }
 
+    JSAutoCompartment ac(cx, obj);
     return ReparentWrapper(cx, obj);
 }
 

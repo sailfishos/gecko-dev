@@ -15,6 +15,7 @@
 #include "selfhosted.out.h"
 
 #include "builtin/Intl.h"
+#include "builtin/SelfHostingDefines.h"
 #include "builtin/TypedObject.h"
 #include "gc/Marking.h"
 #include "vm/Compression.h"
@@ -43,7 +44,9 @@ static const JSClass self_hosting_global_class = {
     JS_PropertyStub,  JS_DeletePropertyStub,
     JS_PropertyStub,  JS_StrictPropertyStub,
     JS_EnumerateStub, JS_ResolveStub,
-    JS_ConvertStub,   nullptr
+    JS_ConvertStub,   nullptr,
+    nullptr, nullptr, nullptr,
+    JS_GlobalObjectTraceHook
 };
 
 bool
@@ -438,6 +441,48 @@ js::intrinsic_UnsafePutElements(JSContext *cx, unsigned argc, Value *vp)
 }
 
 bool
+js::intrinsic_DefineValueProperty(JSContext *cx, unsigned argc, Value *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+
+    MOZ_ASSERT(args.length() == 4);
+    MOZ_ASSERT(args[0].isObject());
+    MOZ_ASSERT(args[3].isInt32());
+
+    RootedObject obj(cx, &args[0].toObject());
+    if (obj->is<ProxyObject>()) {
+        JS_ReportError(cx, "_DefineValueProperty can't be used on proxies");
+        return false;
+    }
+    RootedId id(cx);
+    if (!ValueToId<CanGC>(cx, args[1], &id))
+        return false;
+    RootedValue value(cx, args[2]);
+    unsigned attributes = args[3].toInt32();
+
+    unsigned resolvedAttributes = JSPROP_PERMANENT | JSPROP_READONLY;
+
+    MOZ_ASSERT(bool(attributes & ATTR_ENUMERABLE) != bool(attributes & ATTR_NONENUMERABLE),
+               "_DefineValueProperty must receive either ATTR_ENUMERABLE xor ATTR_NONENUMERABLE");
+    if (attributes & ATTR_ENUMERABLE)
+        resolvedAttributes |= JSPROP_ENUMERATE;
+
+    MOZ_ASSERT(bool(attributes & ATTR_CONFIGURABLE) != bool(attributes & ATTR_NONCONFIGURABLE),
+               "_DefineValueProperty must receive either ATTR_CONFIGURABLE xor "
+               "ATTR_NONCONFIGURABLE");
+    if (attributes & ATTR_CONFIGURABLE)
+        resolvedAttributes &= ~JSPROP_PERMANENT;
+
+    MOZ_ASSERT(bool(attributes & ATTR_WRITABLE) != bool(attributes & ATTR_NONWRITABLE),
+               "_DefineValueProperty must receive either ATTR_WRITABLE xor ATTR_NONWRITABLE");
+    if (attributes & ATTR_WRITABLE)
+        resolvedAttributes &= ~JSPROP_READONLY;
+
+    return JSObject::defineGeneric(cx, obj, id, value, JS_PropertyStub, JS_StrictPropertyStub,
+                                   resolvedAttributes);
+}
+
+bool
 js::intrinsic_UnsafeSetReservedSlot(JSContext *cx, unsigned argc, Value *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
@@ -706,6 +751,7 @@ static const JSFunctionSpec intrinsic_functions[] = {
     JS_FN("RuntimeDefaultLocale",    intrinsic_RuntimeDefaultLocale,    0,0),
 
     JS_FN("UnsafePutElements",       intrinsic_UnsafePutElements,       3,0),
+    JS_FN("_DefineValueProperty",    intrinsic_DefineValueProperty,     4,0),
     JS_FN("UnsafeSetReservedSlot",   intrinsic_UnsafeSetReservedSlot,   3,0),
     JS_FN("UnsafeGetReservedSlot",   intrinsic_UnsafeGetReservedSlot,   2,0),
     JS_FN("HaveSameClass",           intrinsic_HaveSameClass,           2,0),
@@ -748,8 +794,8 @@ static const JSFunctionSpec intrinsic_functions[] = {
               JSNativeThreadSafeWrapper<js::AttachTypedObject>,
               &js::AttachTypedObjectJitInfo, 3, 0),
     JS_FNINFO("SetTypedObjectOffset",
-              JSNativeThreadSafeWrapper<js::SetTypedObjectOffset>,
-              &js::SetTypedObjectOffsetJitInfo, 2, 0),
+              intrinsic_SetTypedObjectOffset,
+              &js::intrinsic_SetTypedObjectOffsetJitInfo, 2, 0),
     JS_FNINFO("ObjectIsTypeDescr",
               intrinsic_ObjectIsTypeDescr,
               &js::ObjectIsTypeDescrJitInfo, 1, 0),
@@ -841,8 +887,8 @@ void
 js::FillSelfHostingCompileOptions(CompileOptions &options)
 {
     /*
-     * In self-hosting mode, scripts emit JSOP_CALLINTRINSIC instead of
-     * JSOP_NAME or JSOP_GNAME to access unbound variables. JSOP_CALLINTRINSIC
+     * In self-hosting mode, scripts emit JSOP_GETINTRINSIC instead of
+     * JSOP_NAME or JSOP_GNAME to access unbound variables. JSOP_GETINTRINSIC
      * does a name lookup in a special object, whose properties are filled in
      * lazily upon first access for a given global.
      *
@@ -861,9 +907,9 @@ js::FillSelfHostingCompileOptions(CompileOptions &options)
     options.setSourcePolicy(CompileOptions::NO_SOURCE);
     options.setVersion(JSVERSION_LATEST);
     options.werrorOption = true;
+    options.strictOption = true;
 
 #ifdef DEBUG
-    options.strictOption = true;
     options.extraWarningsOption = true;
 #endif
 }
@@ -1061,6 +1107,8 @@ CloneObject(JSContext *cx, HandleObject selfHostedObject)
     if (selfHostedObject->is<JSFunction>()) {
         RootedFunction selfHostedFunction(cx, &selfHostedObject->as<JSFunction>());
         bool hasName = selfHostedFunction->atom() != nullptr;
+        // Arrow functions use the first extended slot for their lexical |this| value.
+        JS_ASSERT(!selfHostedFunction->isArrow());
         js::gc::AllocKind kind = hasName
                                  ? JSFunction::ExtendedFinalizeKind
                                  : selfHostedFunction->getAllocKind();

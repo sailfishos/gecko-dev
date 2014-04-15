@@ -10,6 +10,7 @@ import re
 import string
 import math
 import itertools
+from textwrap import dedent
 
 from WebIDL import BuiltinTypes, IDLBuiltinType, IDLNullValue, IDLSequenceType, IDLType, IDLAttribute, IDLUndefinedValue
 from Configuration import NoSuchDescriptorError, getTypesFromDescriptor, getTypesFromDictionary, getTypesFromCallback, Descriptor
@@ -52,7 +53,95 @@ def isTypeCopyConstructible(type):
 def wantsAddProperty(desc):
     return (desc.concrete and
             desc.wrapperCache and
-            not desc.interface.getExtendedAttribute("Global"))
+            not (desc.workers and
+                 desc.interface.getExtendedAttribute("Global")))
+
+
+# We'll want to insert the indent at the beginnings of lines, but we
+# don't want to indent empty lines.  So only indent lines that have a
+# non-newline character on them.
+lineStartDetector = re.compile("^(?=[^\n#])", re.MULTILINE)
+
+
+def indent(s, indentLevel=2):
+    """
+    Indent C++ code.
+
+    Weird secret feature: this doesn't indent lines that start with # (such as
+    #include lines).
+    """
+    if s == "":
+        return s
+    return re.sub(lineStartDetector, indentLevel * " ", s)
+
+
+def fill(template, **args):
+    """
+    Convenience function for filling in a multiline template.
+
+    `fill(template, name1=v1, name2=v2)` is a lot like
+    `string.Template(template).substitute({"name1": v1, "name2": v2})`.
+
+    However, it's shorter, and has a few nice features:
+
+      * If `template` is indented, fill() automatically dedents it!
+        This makes code using fill() with Python's multiline strings
+        much nicer to look at.
+
+      * If `template` starts with a blank line, fill() strips it off.
+        (Again, convenient with multiline strings.)
+
+      * fill() recognizes a special kind of substitution
+        of the form `$*{name}`.
+
+        Use this to paste in, and automatically indent, multiple lines.
+        (Mnemonic: The `*` is for "multiple lines").
+
+        A `$*` substitution must appear by itself on a line, with optional
+        preceding indentation (spaces only). The whole line is replaced by the
+        corresponding keyword argument, indented appropriately.  If the
+        argument is an empty string, no output is generated, not even a blank
+        line.
+    """
+
+    # This works by transforming the fill()-template to an equivalent
+    # string.Template.
+    multiline_substitution_re = re.compile(r"( *)\$\*{(\w+)}(\n)?")
+
+    def replace(match):
+        """
+        Replaces a line like '  $*{xyz}\n' with '${xyz_n}',
+        where n is the indent depth, and add a corresponding entry to args.
+        """
+        indentation, name, nl = match.groups()
+        depth = len(indentation)
+
+        # Check that $*{xyz} appears by itself on a line.
+        prev = match.string[:match.start()]
+        if (prev and not prev.endswith("\n")) or nl is None:
+            raise ValueError("Invalid fill() template: $*{%s} must appear by itself on a line" % name)
+
+        # Multiline text without a newline at the end is probably a mistake.
+        if not (args[name] == "" or args[name].endswith("\n")):
+            raise ValueError("Argument %s with value %r is missing a newline" % (name, args[name]))
+
+        # Now replace this whole line of template with the indented equivalent.
+        modified_name = name + "_" + str(depth)
+        indented_value = indent(args[name], depth)
+        if modified_name in args:
+            assert args[modified_name] == indented_value
+        else:
+            args[modified_name] = indented_value
+        return "${" + modified_name + "}"
+
+    t = template
+    if t.startswith("\n"):
+        t = t[1:]
+    t = dedent(t)
+    assert t.endswith("\n") or "\n" not in t
+    t = re.sub(multiline_substitution_re, replace, t)
+    t = string.Template(t)
+    return t.substitute(args)
 
 
 class CGThing():
@@ -109,14 +198,20 @@ class CGStringTable(CGThing):
         for s in self.strings:
             indices.append(currentIndex)
             currentIndex += len(s) + 1  # for the null terminator
-        return """const char *%s(unsigned int aIndex)
-{
-  static const char table[] = %s;
-  static const uint16_t indices[] = { %s };
-  static_assert(%d <= UINT16_MAX, "string table overflow!");
-  return &table[indices[aIndex]];
-}
-""" % (self.accessorName, table, ", ".join("%d" % index for index in indices), currentIndex)
+        return fill(
+            """
+            const char *${name}(unsigned int aIndex)
+            {
+              static const char table[] = ${table};
+              static const uint16_t indices[] = { ${indices} };
+              static_assert(${currentIndex} <= UINT16_MAX, "string table overflow!");
+              return &table[indices[aIndex]];
+            }
+            """,
+            name=self.accessorName,
+            table=table,
+            indices=", ".join("%d" % index for index in indices),
+            currentIndex=currentIndex)
 
 
 class CGNativePropertyHooks(CGThing):
@@ -203,20 +298,21 @@ def DOMClass(descriptor):
     # is never the ID of any prototype, so it's safe to use as
     # padding.
     protoList.extend(['prototypes::id::_ID_Count'] * (descriptor.config.maxProtoChainLength - len(protoList)))
-    prototypeChainString = ', '.join(protoList)
-    participant = "GetCCParticipant<%s>::Get()" % descriptor.nativeType
-    getParentObject = "GetParentObject<%s>::Get" % descriptor.nativeType
-    return """{
-  { %s },
-  IsBaseOf<nsISupports, %s >::value,
-  %s,
-  %s,
-  GetProtoObject,
-  %s
-}""" % (prototypeChainString, descriptor.nativeType,
-        NativePropertyHooks(descriptor),
-        getParentObject,
-        participant)
+
+    return fill(
+        """
+        {
+          { ${protoChain} },
+          IsBaseOf<nsISupports, ${nativeType} >::value,
+          ${hooks},
+          GetParentObject<${nativeType}>::Get,
+          GetProtoObject,
+          GetCCParticipant<${nativeType}>::Get()
+        }
+        """,
+        protoChain=', '.join(protoList),
+        nativeType=descriptor.nativeType,
+        hooks=NativePropertyHooks(descriptor))
 
 
 class CGDOMJSClass(CGThing):
@@ -235,9 +331,46 @@ class CGDOMJSClass(CGThing):
         callHook = LEGACYCALLER_HOOK_NAME if self.descriptor.operations["LegacyCaller"] else 'nullptr'
         slotCount = INSTANCE_RESERVED_SLOTS + self.descriptor.interface.totalMembersInSlots
         classFlags = "JSCLASS_IS_DOMJSCLASS | "
+        classExtensionAndObjectOps = """\
+JS_NULL_CLASS_EXT,
+JS_NULL_OBJECT_OPS
+"""
         if self.descriptor.interface.getExtendedAttribute("Global"):
             classFlags += "JSCLASS_DOM_GLOBAL | JSCLASS_GLOBAL_FLAGS_WITH_SLOTS(DOM_GLOBAL_SLOTS) | JSCLASS_IMPLEMENTS_BARRIERS"
-            traceHook = "mozilla::dom::TraceGlobal"
+            traceHook = "JS_GlobalObjectTraceHook"
+            if not self.descriptor.workers:
+                classExtensionAndObjectOps = """\
+{
+  nsGlobalWindow::OuterObject, /* outerObject */
+  nullptr, /* innerObject */
+  nullptr, /* iteratorObject */
+  false, /* isWrappedNative */
+  nullptr /* weakmapKeyDelegateOp */
+},
+{
+  nullptr, /* lookupGeneric */
+  nullptr, /* lookupProperty */
+  nullptr, /* lookupElement */
+  nullptr, /* defineGeneric */
+  nullptr, /* defineProperty */
+  nullptr, /* defineElement */
+  nullptr, /* getGeneric  */
+  nullptr, /* getProperty */
+  nullptr, /* getElement */
+  nullptr, /* setGeneric */
+  nullptr, /* setProperty */
+  nullptr, /* setElement */
+  nullptr, /* getGenericAttributes */
+  nullptr, /* setGenericAttributes */
+  nullptr, /* deleteProperty */
+  nullptr, /* deleteElement */
+  nullptr, /* watch */
+  nullptr, /* unwatch */
+  nullptr, /* slice */
+  nullptr, /* enumerate */
+  JS_ObjectToOuterObject /* thisObject */
+}
+"""
         else:
             classFlags += "JSCLASS_HAS_RESERVED_SLOTS(%d)" % slotCount
         if self.descriptor.interface.getExtendedAttribute("NeedNewResolve"):
@@ -251,34 +384,41 @@ class CGDOMJSClass(CGThing):
         else:
             newResolveHook = "JS_ResolveStub"
             enumerateHook = "JS_EnumerateStub"
-        template = """
-static const DOMJSClass Class = {
-  { "%s",
-    %s,
-    %s, /* addProperty */
-    JS_DeletePropertyStub, /* delProperty */
-    JS_PropertyStub,       /* getProperty */
-    JS_StrictPropertyStub, /* setProperty */
-    %s, /* enumerate */
-    %s, /* resolve */
-    JS_ConvertStub,
-    %s, /* finalize */
-    %s, /* call */
-    nullptr,               /* hasInstance */
-    nullptr,               /* construct */
-    %s, /* trace */
-    JS_NULL_CLASS_SPEC,
-    JS_NULL_CLASS_EXT,
-    JS_NULL_OBJECT_OPS
-  },
-%s
-};
-"""
-        return template % (self.descriptor.interface.identifier.name,
-                           classFlags,
-                           ADDPROPERTY_HOOK_NAME if wantsAddProperty(self.descriptor) else 'JS_PropertyStub',
-                           enumerateHook, newResolveHook, FINALIZE_HOOK_NAME, callHook, traceHook,
-                           CGIndenter(CGGeneric(DOMClass(self.descriptor))).define())
+
+        return fill(  # BOGUS extra blank line at the top
+            """
+
+            static const DOMJSClass Class = {
+              { "${name}",
+                ${flags},
+                ${addProperty}, /* addProperty */
+                JS_DeletePropertyStub, /* delProperty */
+                JS_PropertyStub,       /* getProperty */
+                JS_StrictPropertyStub, /* setProperty */
+                ${enumerate}, /* enumerate */
+                ${resolve}, /* resolve */
+                JS_ConvertStub,
+                ${finalize}, /* finalize */
+                ${call}, /* call */
+                nullptr,               /* hasInstance */
+                nullptr,               /* construct */
+                ${trace}, /* trace */
+                JS_NULL_CLASS_SPEC,
+                $*{classExtensionAndObjectOps}
+              },
+              $*{descriptor}
+            };
+            """,
+            name=self.descriptor.interface.identifier.name,
+            flags=classFlags,
+            addProperty=ADDPROPERTY_HOOK_NAME if wantsAddProperty(self.descriptor) else 'JS_PropertyStub',
+            enumerate=enumerateHook,
+            resolve=newResolveHook,
+            finalize=FINALIZE_HOOK_NAME,
+            call=callHook,
+            trace=traceHook,
+            classExtensionAndObjectOps=classExtensionAndObjectOps,
+            descriptor=DOMClass(self.descriptor))
 
 
 class CGDOMProxyJSClass(CGThing):
@@ -300,20 +440,22 @@ class CGDOMProxyJSClass(CGThing):
         if self.descriptor.interface.identifier.name == "HTMLAllCollection":
             flags.append("JSCLASS_EMULATES_UNDEFINED")
         callHook = LEGACYCALLER_HOOK_NAME if self.descriptor.operations["LegacyCaller"] else 'nullptr'
-        template = """
-static const DOMJSClass Class = {
-  PROXY_CLASS_DEF("%s",
-                  0, /* extra slots */
-                  %s,
-                  %s, /* call */
-                  nullptr  /* construct */),
-%s
-};
-"""
-        return template % (self.descriptor.interface.identifier.name,
-                           " | ".join(flags),
-                           callHook,
-                           CGIndenter(CGGeneric(DOMClass(self.descriptor))).define())
+        return fill(  # BOGUS extra blank line at the top
+            """
+
+            static const DOMJSClass Class = {
+              PROXY_CLASS_DEF("${name}",
+                              0, /* extra slots */
+                              ${flags},
+                              ${call}, /* call */
+                              nullptr  /* construct */),
+              $*{descriptor}
+            };
+            """,
+            name=self.descriptor.interface.identifier.name,
+            flags=" | ".join(flags),
+            call=callHook,
+            descriptor=DOMClass(self.descriptor))
 
 
 def PrototypeIDAndDepth(descriptor):
@@ -547,36 +689,27 @@ class CGGeneric(CGThing):
         return set()
 
 
-# We'll want to insert the indent at the beginnings of lines, but we
-# don't want to indent empty lines.  So only indent lines that have a
-# non-newline character on them.
-lineStartDetector = re.compile("^(?=[^\n#])", re.MULTILINE)
-
-
 class CGIndenter(CGThing):
     """
     A class that takes another CGThing and generates code that indents that
     CGThing by some number of spaces.  The default indent is two spaces.
     """
     def __init__(self, child, indentLevel=2, declareOnly=False):
+        assert isinstance(child, CGThing)
         CGThing.__init__(self)
         self.child = child
-        self.indent = " " * indentLevel
+        self.indentLevel = indentLevel
         self.declareOnly = declareOnly
 
     def declare(self):
-        decl = self.child.declare()
-        if decl is not "":
-            return re.sub(lineStartDetector, self.indent, decl)
-        else:
-            return ""
+        return indent(self.child.declare(), self.indentLevel)
 
     def define(self):
         defn = self.child.define()
-        if defn is not "" and not self.declareOnly:
-            return re.sub(lineStartDetector, self.indent, defn)
-        else:
+        if self.declareOnly:
             return defn
+        else:
+            return indent(defn, self.indentLevel)
 
 
 class CGWrapper(CGThing):
@@ -1373,7 +1506,7 @@ class CGConstructNavigatorObject(CGAbstractMethod):
     return nullptr;
   }
   JS::Rooted<JS::Value> v(aCx);
-  if (!WrapNewBindingObject(aCx, aObj, result, &v)) {
+  if (!WrapNewBindingObject(aCx, result, &v)) {
     //XXX Assertion disabled for now, see bug 991271.
     MOZ_ASSERT(true || JS_IsExceptionPending(aCx));
     return nullptr;
@@ -1418,26 +1551,32 @@ class CGNamedConstructors(CGThing):
             constructorID += self.descriptor.name
         else:
             constructorID += "_ID_Count"
-        nativePropertyHooks = """const NativePropertyHooks sNamedConstructorNativePropertyHooks = {
-    nullptr,
-    nullptr,
-    { nullptr, nullptr },
-    prototypes::id::%s,
-    %s,
-    nullptr
-};
 
-""" % (self.descriptor.name, constructorID)
-        namedConstructors = CGList([], ",\n")
+        namedConstructors = ""
         for n in self.descriptor.interface.namedConstructors:
-            namedConstructors.append(
-                CGGeneric("{ \"%s\", { %s, &sNamedConstructorNativePropertyHooks }, %i }" %
-                          (n.identifier.name, NamedConstructorName(n), methodLength(n))))
-        namedConstructors.append(CGGeneric("{ nullptr, { nullptr, nullptr }, 0 }"))
-        namedConstructors = CGWrapper(CGIndenter(namedConstructors),
-                                      pre="static const NamedConstructor namedConstructors[] = {\n",
-                                      post="\n};\n")
-        return nativePropertyHooks + namedConstructors.define()
+            namedConstructors += (
+                "{ \"%s\", { %s, &sNamedConstructorNativePropertyHooks }, %i },\n" %
+                (n.identifier.name, NamedConstructorName(n), methodLength(n)))
+
+        return fill(
+            """
+            const NativePropertyHooks sNamedConstructorNativePropertyHooks = {
+                nullptr,
+                nullptr,
+                { nullptr, nullptr },
+                prototypes::id::${name},
+                ${constructorID},
+                nullptr
+            };
+
+            static const NamedConstructor namedConstructors[] = {
+              $*{namedConstructors}
+              { nullptr, { nullptr, nullptr }, 0 }
+            };
+            """,
+            name=self.descriptor.name,
+            constructorID=constructorID,
+            namedConstructors=namedConstructors)
 
 
 class CGClassHasInstanceHook(CGAbstractStaticMethod):
@@ -2554,7 +2693,6 @@ class CGWrapWithCacheMethod(CGAbstractMethod):
     def __init__(self, descriptor, properties):
         assert descriptor.interface.hasInterfacePrototypeObject()
         args = [Argument('JSContext*', 'aCx'),
-                Argument('JS::Handle<JSObject*>', 'aScope'),
                 Argument(descriptor.nativeType + '*', 'aObject'),
                 Argument('nsWrapperCache*', 'aCache')]
         CGAbstractMethod.__init__(self, descriptor, 'Wrap', 'JSObject*', args)
@@ -2568,7 +2706,7 @@ class CGWrapWithCacheMethod(CGAbstractMethod):
 %s
   JS::Rooted<JSObject*> parent(aCx,
     GetRealParentObject(aObject,
-                        WrapNativeParent(aCx, aScope, aObject->GetParentObject())));
+                        WrapNativeParent(aCx, aObject->GetParentObject())));
   if (!parent) {
     return nullptr;
   }
@@ -2607,13 +2745,12 @@ class CGWrapMethod(CGAbstractMethod):
         # XXX can we wrap if we don't have an interface prototype object?
         assert descriptor.interface.hasInterfacePrototypeObject()
         args = [Argument('JSContext*', 'aCx'),
-                Argument('JS::Handle<JSObject*>', 'aScope'),
                 Argument('T*', 'aObject')]
         CGAbstractMethod.__init__(self, descriptor, 'Wrap', 'JSObject*', args,
                                   inline=True, templateArgs=["class T"])
 
     def definition_body(self):
-        return "  return Wrap(aCx, aScope, aObject, aObject);"
+        return "  return Wrap(aCx, aObject, aObject);"
 
 
 class CGWrapNonWrapperCacheMethod(CGAbstractMethod):
@@ -2627,7 +2764,6 @@ class CGWrapNonWrapperCacheMethod(CGAbstractMethod):
         # XXX can we wrap if we don't have an interface prototype object?
         assert descriptor.interface.hasInterfacePrototypeObject()
         args = [Argument('JSContext*', 'aCx'),
-                Argument('JS::Handle<JSObject*>', 'aScope'),
                 Argument(descriptor.nativeType + '*', 'aObject')]
         if descriptor.nativeOwnership == 'owned':
             args.append(Argument('bool*', 'aTookOwnership'))
@@ -2636,7 +2772,7 @@ class CGWrapNonWrapperCacheMethod(CGAbstractMethod):
 
     def definition_body(self):
         return """%s
-  JS::Rooted<JSObject*> global(aCx, JS_GetGlobalForObject(aCx, aScope));
+  JS::Rooted<JSObject*> global(aCx, JS::CurrentGlobalOrNull(aCx));
   JS::Handle<JSObject*> proto = GetProtoObject(aCx, global);
   if (!proto) {
     return nullptr;
@@ -2684,13 +2820,15 @@ class CGWrapGlobalMethod(CGAbstractMethod):
                                          aPrincipal);
 
 %s
+%s
 
   // XXXkhuey can't do this yet until workers can lazy resolve.
   // JS_FireOnNewGlobalObject(aCx, obj);
 
   return obj;""" % (AssertInheritanceChain(self.descriptor),
                     self.descriptor.nativeType,
-                    InitUnforgeableProperties(self.descriptor, self.properties))
+                    InitUnforgeableProperties(self.descriptor, self.properties),
+                    InitMemberSlots(self.descriptor, True))
 
 
 class CGUpdateMemberSlotsMethod(CGAbstractStaticMethod):
@@ -4745,7 +4883,7 @@ if (!returnArray) {
                 getIID = "&NS_GET_IID(%s), " % descriptor.nativeType
             else:
                 getIID = ""
-            wrap = "WrapObject(cx, ${obj}, %s, %s${jsvalHandle})" % (result, getIID)
+            wrap = "WrapObject(cx, %s, %s${jsvalHandle})" % (result, getIID)
             failed = None
 
         wrappingCode += wrapAndSetPtr(wrap, failed)
@@ -6570,7 +6708,9 @@ class CGSpecializedGetter(CGAbstractStaticMethod):
         nativeName = CGSpecializedGetter.makeNativeName(self.descriptor,
                                                         self.attr)
         if self.attr.slotIndex is not None:
-            if self.descriptor.hasXPConnectImpls:
+            if (self.descriptor.hasXPConnectImpls and
+                (self.descriptor.interface.identifier.name != 'Window' or
+                 self.attr.identifier.name != 'document')):
                 raise TypeError("Interface '%s' has XPConnect impls, so we "
                                 "can't use our slot for property '%s'!" %
                                 (self.descriptor.interface.identifier.name,
@@ -10992,8 +11132,7 @@ class CGBindingImplClass(CGClass):
                      []),
                     {"infallible": True}))
 
-        wrapArgs = [Argument('JSContext*', 'aCx'),
-                    Argument('JS::Handle<JSObject*>', 'aScope')]
+        wrapArgs = [Argument('JSContext*', 'aCx')]
         self.methodDecls.insert(0,
                                 ClassMethod("WrapObject", "JSObject*",
                                             wrapArgs, virtual=descriptor.wrapperCache,
@@ -11131,9 +11270,9 @@ NS_INTERFACE_MAP_END
 
         classImpl += """%s
 JSObject*
-${nativeType}::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aScope)
+${nativeType}::WrapObject(JSContext* aCx)
 {
-  return ${ifaceName}Binding::Wrap(aCx, aScope, this);
+  return ${ifaceName}Binding::Wrap(aCx, this);
 }
 
 """ % ctordtor
@@ -11267,8 +11406,9 @@ class CGJSImplMethod(CGJSImplMember):
 // Wrap the object before calling __Init so that __DOM_IMPL__ is available.
 nsCOMPtr<nsIGlobalObject> globalHolder = do_QueryInterface(window);
 JS::Rooted<JSObject*> scopeObj(cx, globalHolder->GetGlobalJSObject());
+MOZ_ASSERT(js::IsObjectInContextCompartment(scopeObj, cx));
 JS::Rooted<JS::Value> wrappedVal(cx);
-if (!WrapNewBindingObject(cx, scopeObj, impl, &wrappedVal)) {
+if (!WrapNewBindingObject(cx, impl, &wrappedVal)) {
   //XXX Assertion disabled for now, see bug 991271.
   MOZ_ASSERT(true || JS_IsExceptionPending(cx));
   aRv.Throw(NS_ERROR_UNEXPECTED);
@@ -11478,7 +11618,7 @@ class CGJSImplClass(CGBindingImplClass):
                          extradefinitions=extradefinitions)
 
     def getWrapObjectBody(self):
-        return ("JS::Rooted<JSObject*> obj(aCx, %sBinding::Wrap(aCx, aScope, this));\n"
+        return ("JS::Rooted<JSObject*> obj(aCx, %sBinding::Wrap(aCx, this));\n"
                 "if (!obj) {\n"
                 "  return nullptr;\n"
                 "}\n"
@@ -11529,7 +11669,8 @@ class CGJSImplClass(CGBindingImplClass):
             "}\n"
             "JS::Rooted<JSObject*> arg(cx, &args[1].toObject());\n"
             "nsRefPtr<${implName}> impl = new ${implName}(arg, window);\n"
-            "return WrapNewBindingObject(cx, arg, impl, args.rval());"
+            "MOZ_ASSERT(js::IsObjectInContextCompartment(arg, cx));\n"
+            "return WrapNewBindingObject(cx, impl, args.rval());"
         ).substitute({
             "ifaceName": self.descriptor.interface.identifier.name,
             "implName": self.descriptor.name
@@ -11623,7 +11764,7 @@ class CGCallback(CGClass):
         bodyWithThis = string.Template(
             setupCall +
             "JS::Rooted<JSObject*> thisObjJS(s.GetContext(),\n"
-            "  WrapCallThisObject(s.GetContext(), CallbackPreserveColor(), thisObjPtr));\n"
+            "  WrapCallThisObject(s.GetContext(), thisObjPtr));\n"
             "if (!thisObjJS) {\n"
             "  aRv.Throw(NS_ERROR_FAILURE);\n"
             "  return${errorReturn};\n"
@@ -12657,7 +12798,7 @@ class CGEventClass(CGBindingImplClass):
                          extradeclarations=baseDeclarations)
 
     def getWrapObjectBody(self):
-        return "return %sBinding::Wrap(aCx, aScope, this);" % self.descriptor.name
+        return "return %sBinding::Wrap(aCx, this);" % self.descriptor.name
 
     def implTraverse(self):
         retVal = ""

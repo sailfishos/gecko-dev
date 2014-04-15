@@ -11,6 +11,8 @@ const TAB_SIZE    = "devtools.editor.tabsize";
 const EXPAND_TAB  = "devtools.editor.expandtab";
 const KEYMAP      = "devtools.editor.keymap";
 const AUTO_CLOSE  = "devtools.editor.autoclosebrackets";
+const DETECT_INDENT = "devtools.editor.detectindentation";
+const DETECT_INDENT_MAX_LINES = 500;
 const L10N_BUNDLE = "chrome://browser/locale/devtools/sourceeditor.properties";
 const XUL_NS      = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 
@@ -53,6 +55,7 @@ const CM_SCRIPTS  = [
   "chrome://browser/content/devtools/codemirror/trailingspace.js",
   "chrome://browser/content/devtools/codemirror/emacs.js",
   "chrome://browser/content/devtools/codemirror/vim.js",
+  "chrome://browser/content/devtools/codemirror/sublime.js",
   "chrome://browser/content/devtools/codemirror/foldcode.js",
   "chrome://browser/content/devtools/codemirror/brace-fold.js",
   "chrome://browser/content/devtools/codemirror/comment-fold.js",
@@ -67,7 +70,7 @@ const CM_IFRAME   =
   "    <style>" +
   "      html, body { height: 100%; }" +
   "      body { margin: 0; overflow: hidden; }" +
-  "      .CodeMirror { width: 100%; height: 100% !important; line-height: normal!important}" +
+  "      .CodeMirror { width: 100%; height: 100% !important; line-height: 1.25 !important;}" +
   "    </style>" +
 [ "    <link rel='stylesheet' href='" + style + "'>" for (style of CM_STYLES) ].join("\n") +
   "  </head>" +
@@ -161,7 +164,7 @@ function Editor(config) {
   this.config.extraKeys[Editor.keyFor("indentMore")] = false;
 
   // If alternative keymap is provided, use it.
-  if (keyMap === "emacs" || keyMap === "vim")
+  if (keyMap === "emacs" || keyMap === "vim" || keyMap === "sublime")
     this.config.keyMap = keyMap;
 
   // Overwrite default config with user-provided, if needed.
@@ -311,6 +314,9 @@ Editor.prototype = {
 
       this.container = env;
       editors.set(this, cm);
+
+      this.resetIndentUnit();
+
       def.resolve();
     };
 
@@ -359,6 +365,33 @@ Editor.prototype = {
   setText: function (value) {
     let cm = editors.get(this);
     cm.setValue(value);
+
+    this.resetIndentUnit();
+  },
+
+  /**
+   * Set the editor's indentation based on the current prefs and
+   * re-detect indentation if we should.
+   */
+  resetIndentUnit: function() {
+    let cm = editors.get(this);
+
+    let indentWithTabs = !Services.prefs.getBoolPref(EXPAND_TAB);
+    let indentUnit = Services.prefs.getIntPref(TAB_SIZE);
+    let shouldDetect = Services.prefs.getBoolPref(DETECT_INDENT);
+
+    cm.setOption("tabSize", indentUnit);
+
+    if (shouldDetect) {
+      let indent = detectIndentation(this);
+      if (indent != null) {
+        indentWithTabs = indent.tabs;
+        indentUnit = indent.spaces ? indent.spaces : indentUnit;
+      }
+    }
+
+    cm.setOption("indentUnit", indentUnit);
+    cm.setOption("indentWithTabs", indentWithTabs);
   },
 
   /**
@@ -401,6 +434,14 @@ Editor.prototype = {
       return;
 
     this.setCursor(this.getCursor());
+  },
+
+  /**
+   * Returns true if there is more than one selection in the editor.
+   */
+  hasMultipleSelections: function () {
+    let cm = editors.get(this);
+    return cm.listSelections().length > 1;
   },
 
   /**
@@ -957,6 +998,72 @@ function controller(ed) {
 
     onEvent: function () {}
   };
+}
+
+/**
+ * Detect the indentation used in an editor. Returns an object
+ * with 'tabs' - whether this is tab-indented and 'spaces' - the
+ * width of one indent in spaces. Or `null` if it's inconclusive.
+ */
+function detectIndentation(ed) {
+  let cm = editors.get(ed);
+
+  let spaces = {};  // # spaces indent -> # lines with that indent
+  let last = 0;     // indentation width of the last line we saw
+  let tabs = 0;     // # of lines that start with a tab
+  let total = 0;    // # of indented lines (non-zero indent)
+
+  cm.eachLine(0, DETECT_INDENT_MAX_LINES, (line) => {
+    let text = line.text;
+
+    if (text.startsWith("\t")) {
+      tabs++;
+      total++;
+      return;
+    }
+    let width = 0;
+    while (text[width] === " ") {
+      width++;
+    }
+    // don't count lines that are all spaces
+    if (width == text.length) {
+      last = 0;
+      return;
+    }
+    if (width > 1) {
+      total++;
+    }
+
+    // see how much this line is offset from the line above it
+    let indent = Math.abs(width - last);
+    if (indent > 1) {
+      spaces[indent] = (spaces[indent] || 0) + 1;
+    }
+    last = width;
+  });
+
+  // this file is not indented at all
+  if (total == 0) {
+    return null;
+  }
+
+  // mark as tabs if they start more than half the lines
+  if (tabs >= total / 2) {
+    return { tabs: true };
+  }
+
+  // find most frequent non-zero width difference between adjacent lines
+  let freqIndent = null, max = 0;
+  for (let width in spaces) {
+    width = parseInt(width, 10);
+    let tally = spaces[width];
+    if (tally > max) {
+      max = tally;
+      freqIndent = width;
+    }
+  }
+
+  return { tabs: false, spaces: freqIndent };
 }
 
 module.exports = Editor;

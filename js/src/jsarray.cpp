@@ -2141,7 +2141,7 @@ js::ArrayShiftMoveElements(JSObject *obj)
      * themselves.
      */
     uint32_t initlen = obj->getDenseInitializedLength();
-    obj->moveDenseElementsUnbarriered(0, 1, initlen);
+    obj->moveDenseElementsNoPreBarrier(0, 1, initlen);
 }
 
 /* ES5 15.4.4.9 */
@@ -2983,6 +2983,8 @@ static const JSFunctionSpec array_methods[] = {
     JS_SELF_HOSTED_FN("find",        "ArrayFind",        1,0),
     JS_SELF_HOSTED_FN("findIndex",   "ArrayFindIndex",   1,0),
 
+    JS_SELF_HOSTED_FN("fill",        "ArrayFill",        3,0),
+
     JS_SELF_HOSTED_FN("@@iterator",  "ArrayValues",      0,0),
     JS_SELF_HOSTED_FN("entries",     "ArrayEntries",     0,0),
     JS_SELF_HOSTED_FN("keys",        "ArrayKeys",        0,0),
@@ -3083,6 +3085,8 @@ js_InitArrayClass(JSContext *cx, HandleObject obj)
     RootedShape shape(cx, EmptyShape::getInitialShape(cx, &ArrayObject::class_, TaggedProto(proto),
                                                       proto->getParent(), metadata,
                                                       gc::FINALIZE_OBJECT0));
+    if (!shape)
+        return nullptr;
 
     RootedObject arrayProto(cx, JSObject::createArray(cx, gc::FINALIZE_OBJECT4, gc::TenuredHeap, shape, type, 0));
     if (!arrayProto || !JSObject::setSingletonType(cx, arrayProto) || !AddLengthProperty(cx, arrayProto))

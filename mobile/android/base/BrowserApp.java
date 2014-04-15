@@ -29,9 +29,9 @@ import org.mozilla.gecko.favicons.decoders.IconDirectoryEntry;
 import org.mozilla.gecko.fxa.FirefoxAccounts;
 import org.mozilla.gecko.fxa.activities.FxAccountGetStartedActivity;
 import org.mozilla.gecko.gfx.BitmapUtils;
-import org.mozilla.gecko.gfx.GeckoLayerClient;
 import org.mozilla.gecko.gfx.ImmutableViewportMetrics;
 import org.mozilla.gecko.gfx.LayerMarginsAnimator;
+import org.mozilla.gecko.gfx.LayerView;
 import org.mozilla.gecko.health.BrowserHealthRecorder;
 import org.mozilla.gecko.health.BrowserHealthReporter;
 import org.mozilla.gecko.health.HealthRecorder;
@@ -107,7 +107,7 @@ abstract public class BrowserApp extends GeckoApp
                                  implements TabsPanel.TabsLayoutChangeListener,
                                             PropertyAnimator.PropertyAnimationListener,
                                             View.OnKeyListener,
-                                            GeckoLayerClient.OnMetricsChangedListener,
+                                            LayerView.OnMetricsChangedListener,
                                             BrowserSearch.OnSearchListener,
                                             BrowserSearch.OnEditSuggestionListener,
                                             HomePager.OnNewTabsListener,
@@ -567,6 +567,7 @@ abstract public class BrowserApp extends GeckoApp
         registerEventListener("Menu:Update");
         registerEventListener("Accounts:Create");
         registerEventListener("Accounts:Exist");
+        registerEventListener("Prompt:ShowTop");
 
         Distribution.init(this);
         JavaAddonManager.getInstance().init(getApplicationContext());
@@ -679,7 +680,7 @@ abstract public class BrowserApp extends GeckoApp
 
         if (enabled) {
             if (mLayerView != null) {
-                mLayerView.getLayerClient().setOnMetricsChangedListener(this);
+                mLayerView.setOnMetricsChangedListener(this);
             }
             setToolbarMargin(0);
             mHomePagerContainer.setPadding(0, mViewFlipper.getHeight(), 0, 0);
@@ -687,7 +688,7 @@ abstract public class BrowserApp extends GeckoApp
             // Immediately show the toolbar when disabling the dynamic
             // toolbar.
             if (mLayerView != null) {
-                mLayerView.getLayerClient().setOnMetricsChangedListener(null);
+                mLayerView.setOnMetricsChangedListener(null);
             }
             mHomePagerContainer.setPadding(0, 0, 0, 0);
             if (mViewFlipper != null) {
@@ -1467,7 +1468,7 @@ abstract public class BrowserApp extends GeckoApp
     }
 
     private boolean isHomePagerVisible() {
-        return (mHomePager != null && mHomePager.isLoaded()
+        return (mHomePager != null && mHomePager.isVisible()
             && mHomePagerContainer != null && mHomePagerContainer.getVisibility() == View.VISIBLE);
     }
 
@@ -1542,7 +1543,9 @@ abstract public class BrowserApp extends GeckoApp
         animator.setUseHardwareLayer(false);
 
         mBrowserToolbar.startEditing(url, animator);
-        showHomePagerWithAnimator(animator);
+
+        final String panelId = selectedTab.getMostRecentHomePanel();
+        showHomePagerWithAnimator(panelId, animator);
 
         animator.start();
     }
@@ -1631,7 +1634,7 @@ abstract public class BrowserApp extends GeckoApp
             message.put("type", BrowserHealthRecorder.EVENT_SEARCH);
             message.put("location", where);
             message.put("identifier", identifier);
-            GeckoAppShell.getEventDispatcher().dispatchEvent(message);
+            GeckoAppShell.getEventDispatcher().dispatchEvent(message, null);
         } catch (Exception e) {
             Log.w(LOGTAG, "Error recording search.", e);
         }
@@ -1672,8 +1675,13 @@ abstract public class BrowserApp extends GeckoApp
         }
 
         if (isAboutHome(tab)) {
-            final String pageId = AboutPages.getPageIdFromAboutHomeUrl(tab.getURL());
-            showHomePager(pageId);
+            String panelId = AboutPages.getPanelIdFromAboutHomeUrl(tab.getURL());
+            if (panelId == null) {
+                // No panel was specified in the URL. Try loading the most recent
+                // home panel for this tab.
+                panelId = tab.getMostRecentHomePanel();
+            }
+            showHomePager(panelId);
 
             if (mDynamicToolbar.isEnabled()) {
                 mDynamicToolbar.setVisible(true, VisibilityTransition.ANIMATE);
@@ -1695,18 +1703,14 @@ abstract public class BrowserApp extends GeckoApp
         }
     }
 
-    private void showHomePager(String pageId) {
-        showHomePagerWithAnimator(pageId, null);
+    private void showHomePager(String panelId) {
+        showHomePagerWithAnimator(panelId, null);
     }
 
-    private void showHomePagerWithAnimator(PropertyAnimator animator) {
-        // Passing null here means the default page will be defined
-        // by the HomePager's configuration.
-        showHomePagerWithAnimator(null, animator);
-    }
-
-    private void showHomePagerWithAnimator(String pageId, PropertyAnimator animator) {
+    private void showHomePagerWithAnimator(String panelId, PropertyAnimator animator) {
         if (isHomePagerVisible()) {
+            // Home pager already visible, make sure it shows the correct panel.
+            mHomePager.showPanel(panelId);
             return;
         }
 
@@ -1722,6 +1726,16 @@ abstract public class BrowserApp extends GeckoApp
         if (mHomePager == null) {
             final ViewStub homePagerStub = (ViewStub) findViewById(R.id.home_pager_stub);
             mHomePager = (HomePager) homePagerStub.inflate();
+
+            mHomePager.setOnPanelChangeListener(new HomePager.OnPanelChangeListener() {
+                @Override
+                public void onPanelSelected(String panelId) {
+                    final Tab currentTab = Tabs.getInstance().getSelectedTab();
+                    if (currentTab != null) {
+                        currentTab.setMostRecentHomePanel(panelId);
+                    }
+                }
+            });
 
             // Don't show the banner in guest mode.
             if (!getProfile().inGuestMode()) {
@@ -1743,7 +1757,7 @@ abstract public class BrowserApp extends GeckoApp
         mHomePagerContainer.setVisibility(View.VISIBLE);
         mHomePager.load(getSupportLoaderManager(),
                         getSupportFragmentManager(),
-                        pageId, animator);
+                        panelId, animator);
 
         // Hide the web content so it cannot be focused by screen readers.
         hideWebContentOnPropertyAnimationEnd(animator);

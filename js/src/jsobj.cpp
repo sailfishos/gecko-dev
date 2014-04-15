@@ -1253,17 +1253,12 @@ NewObject(ExclusiveContext *cx, types::TypeObject *type_, JSObject *parent, gc::
     if (!NewObjectMetadata(cx, &metadata))
         return nullptr;
 
-    // Normally, the number of fixed slots given an object is the maximum
-    // permitted for its size class. For array buffers we only use enough to
-    // cover the class reservd slots, so that the remaining space in the
-    // object's allocation is available for the buffer's data.
-    size_t nfixed;
-    if (clasp == &ArrayBufferObject::class_) {
-        JS_STATIC_ASSERT(ArrayBufferObject::RESERVED_SLOTS == 4);
-        nfixed = ArrayBufferObject::RESERVED_SLOTS;
-    } else {
-        nfixed = GetGCKindSlots(kind, clasp);
-    }
+    // For objects which can have fixed data following the object, only use
+    // enough fixed slots to cover the number of reserved slots in the object,
+    // regardless of the allocation kind specified.
+    size_t nfixed = ClassCanHaveFixedData(clasp)
+                    ? GetGCKindSlots(gc::GetGCObjectKind(clasp), clasp)
+                    : GetGCKindSlots(kind, clasp);
 
     RootedShape shape(cx, EmptyShape::getInitialShape(cx, clasp, type->proto(),
                                                       parent, metadata, nfixed));
@@ -1286,7 +1281,12 @@ NewObject(ExclusiveContext *cx, types::TypeObject *type_, JSObject *parent, gc::
      * This will cancel an already-running incremental GC from doing any more
      * slices, and it will prevent any future incremental GCs.
      */
-    if (clasp->trace && !(clasp->flags & JSCLASS_IMPLEMENTS_BARRIERS)) {
+    bool globalWithoutCustomTrace = clasp->trace == JS_GlobalObjectTraceHook &&
+                                    !cx->compartment()->options().getTrace();
+    if (clasp->trace &&
+        !globalWithoutCustomTrace &&
+        !(clasp->flags & JSCLASS_IMPLEMENTS_BARRIERS))
+    {
         if (!cx->shouldBeJSContext())
             return nullptr;
         JSRuntime *rt = cx->asJSContext()->runtime();
@@ -3055,8 +3055,9 @@ ReallocateElements(ThreadSafeContext *cx, JSObject *obj, ObjectElements *oldHead
 {
 #ifdef JSGC_GENERATIONAL
     if (cx->isJSContext()) {
-        return cx->asJSContext()->runtime()-> gcNursery.reallocateElements(cx->asJSContext(), obj, oldHeader,
-                                                                           oldCount, newCount);
+        return cx->asJSContext()->runtime()->gcNursery.reallocateElements(cx->asJSContext(), obj,
+                                                                          oldHeader, oldCount,
+                                                                          newCount);
     }
 #endif
 
@@ -3140,7 +3141,7 @@ JSObject::shrinkElements(ThreadSafeContext *cx, uint32_t newcap)
     uint32_t oldcap = getDenseCapacity();
     JS_ASSERT(newcap <= oldcap);
 
-    /* Don't shrink elements below the minimum capacity. */
+    // Don't shrink elements below the minimum capacity.
     if (oldcap <= SLOT_CAPACITY_MIN || !hasDynamicElements())
         return;
 
@@ -3151,8 +3152,10 @@ JSObject::shrinkElements(ThreadSafeContext *cx, uint32_t newcap)
 
     ObjectElements *newheader = ReallocateElements(cx, this, getElementsHeader(),
                                                    oldAllocated, newAllocated);
-    if (!newheader)
-        return;  /* Leave elements at its old size. */
+    if (!newheader) {
+        cx->recoverFromOutOfMemory();
+        return;  // Leave elements at its old size.
+    }
 
     newheader->capacity = newcap;
     elements = newheader->elements();
@@ -5022,6 +5025,25 @@ baseops::SetPropertyHelper(typename ExecutionModeTraits<mode>::ContextType cxArg
 
     if (IsImplicitDenseOrTypedArrayElement(shape)) {
         uint32_t index = JSID_TO_INT(id);
+
+        if (obj->is<TypedArrayObject>()) {
+            double d;
+            if (mode == ParallelExecution) {
+                // Bail if converting the value might invoke user-defined
+                // conversions.
+                if (vp.isObject())
+                    return false;
+                if (!NonObjectToNumber(cxArg, vp, &d))
+                    return false;
+            } else {
+                if (!ToNumber(cxArg->asJSContext(), vp, &d))
+                    return false;
+            }
+
+            TypedArrayObject::setElement(obj->as<TypedArrayObject>(), index, d);
+            return true;
+        }
+
         bool definesPast;
         if (!WouldDefinePastNonwritableLength(cxArg, obj, index, strict, &definesPast))
             return false;
@@ -5033,8 +5055,10 @@ baseops::SetPropertyHelper(typename ExecutionModeTraits<mode>::ContextType cxArg
         }
 
         if (mode == ParallelExecution)
-            return obj->setDenseOrTypedArrayElementIfHasType(cxArg, index, vp);
-        return obj->setDenseOrTypedArrayElementWithType(cxArg->asJSContext(), index, vp);
+            return obj->setDenseElementIfHasType(index, vp);
+
+        obj->setDenseElementWithType(cxArg->asJSContext(), index, vp);
+        return true;
     }
 
     if (obj->is<ArrayObject>() && id == NameToId(cxArg->names().length)) {

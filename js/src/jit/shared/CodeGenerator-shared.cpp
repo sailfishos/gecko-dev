@@ -250,63 +250,12 @@ CodeGeneratorShared::encode(LRecoverInfo *recover)
 
     RecoverOffset offset = recovers_.startRecover(frameCount, resumeAfter);
 
-    FlattenedMResumePointIter mirOperandIter(recover->mir());
-    if (!mirOperandIter.init())
-        return false;
-
-    for (MResumePoint **it = mirOperandIter.begin(), **end = mirOperandIter.end();
+    for (MResumePoint **it = recover->begin(), **end = recover->end();
          it != end;
          ++it)
     {
-        MResumePoint *mir = *it;
-        MBasicBlock *block = mir->block();
-        JSFunction *fun = block->info().funMaybeLazy();
-        JSScript *script = block->info().script();
-        jsbytecode *pc = mir->pc();
-        uint32_t exprStack = mir->stackDepth() - block->info().ninvoke();
-        recovers_.writeFrame(fun, script, pc, exprStack);
-
-#ifdef DEBUG
-        // Ensure that all snapshot which are encoded can safely be used for
-        // bailouts.
-        if (GetIonContext()->cx) {
-            uint32_t stackDepth;
-            bool reachablePC;
-            jsbytecode *bailPC = pc;
-
-            if (mir->mode() == MResumePoint::ResumeAfter)
-                bailPC = GetNextPc(pc);
-
-            if (!ReconstructStackDepth(GetIonContext()->cx, script,
-                                       bailPC, &stackDepth, &reachablePC))
-            {
-                return false;
-            }
-
-            if (reachablePC) {
-                if (JSOp(*bailPC) == JSOP_FUNCALL) {
-                    // For fun.call(this, ...); the reconstructStackDepth will
-                    // include the this. When inlining that is not included.
-                    // So the exprStackSlots will be one less.
-                    JS_ASSERT(stackDepth - exprStack <= 1);
-                } else if (JSOp(*bailPC) != JSOP_FUNAPPLY &&
-                           !IsGetPropPC(bailPC) && !IsSetPropPC(bailPC))
-                {
-                    // For fun.apply({}, arguments) the reconstructStackDepth will
-                    // have stackdepth 4, but it could be that we inlined the
-                    // funapply. In that case exprStackSlots, will have the real
-                    // arguments in the slots and not be 4.
-
-                    // With accessors, we have different stack depths depending on
-                    // whether or not we inlined the accessor, as the inlined stack
-                    // contains a callee function that should never have been there
-                    // and we might just be capturing an uneventful property site, in
-                    // which case there won't have been any violence.
-                    JS_ASSERT(exprStack == stackDepth);
-                }
-            }
-        }
-#endif
+        if (!recovers_.writeFrame(*it))
+            return false;
     }
 
     recovers_.endRecover();
@@ -320,14 +269,15 @@ CodeGeneratorShared::encode(LSnapshot *snapshot)
     if (snapshot->snapshotOffset() != INVALID_SNAPSHOT_OFFSET)
         return true;
 
-    if (!encode(snapshot->recoverInfo()))
+    LRecoverInfo *recoverInfo = snapshot->recoverInfo();
+    if (!encode(recoverInfo))
         return false;
 
-    RecoverOffset recoverOffset = snapshot->recoverInfo()->recoverOffset();
+    RecoverOffset recoverOffset = recoverInfo->recoverOffset();
     MOZ_ASSERT(recoverOffset != INVALID_RECOVER_OFFSET);
 
-    IonSpew(IonSpew_Snapshots, "Encoding LSnapshot %p (LRecoverInfo %p)",
-            (void *)snapshot, (void*) snapshot->recoverInfo());
+    IonSpew(IonSpew_Snapshots, "Encoding LSnapshot %p (LRecover %p)",
+            (void *)snapshot, (void*) recoverInfo);
 
     SnapshotOffset offset = snapshots_.startSnapshot(recoverOffset, snapshot->bailoutKind());
 
@@ -351,12 +301,8 @@ CodeGeneratorShared::encode(LSnapshot *snapshot)
     snapshots_.trackSnapshot(pcOpcode, mirOpcode, mirId, lirOpcode, lirId);
 #endif
 
-    FlattenedMResumePointIter mirOperandIter(snapshot->recoverInfo()->mir());
-    if (!mirOperandIter.init())
-        return false;
-
     uint32_t startIndex = 0;
-    for (MResumePoint **it = mirOperandIter.begin(), **end = mirOperandIter.end();
+    for (MResumePoint **it = recoverInfo->begin(), **end = recoverInfo->end();
          it != end;
          ++it)
     {
@@ -1013,6 +959,8 @@ CodeGeneratorShared::jumpToBlock(MBasicBlock *mir)
     }
 }
 
+// This function is not used for MIPS. MIPS has branchToBlock.
+#ifndef JS_CODEGEN_MIPS
 void
 CodeGeneratorShared::jumpToBlock(MBasicBlock *mir, Assembler::Condition cond)
 {
@@ -1028,6 +976,7 @@ CodeGeneratorShared::jumpToBlock(MBasicBlock *mir, Assembler::Condition cond)
         masm.j(cond, mir->lir()->label());
     }
 }
+#endif
 
 size_t
 CodeGeneratorShared::addCacheLocations(const CacheLocationList &locs, size_t *numLocs)
@@ -1045,6 +994,76 @@ CodeGeneratorShared::addCacheLocations(const CacheLocationList &locs, size_t *nu
     *numLocs = numLocations;
     return firstIndex;
 }
+
+#ifdef JS_TRACE_LOGGING
+
+bool
+CodeGeneratorShared::emitTracelogScript(bool isStart)
+{
+    RegisterSet regs = RegisterSet::Volatile();
+    Register logger = regs.takeGeneral();
+    Register script = regs.takeGeneral();
+
+    masm.Push(logger);
+    masm.Push(script);
+
+    CodeOffsetLabel patchLogger = masm.movWithPatch(ImmPtr(nullptr), logger);
+    if (!patchableTraceLoggers_.append(patchLogger))
+        return false;
+
+    CodeOffsetLabel patchScript = masm.movWithPatch(ImmWord(0), script);
+    if (!patchableTLScripts_.append(patchScript))
+        return false;
+
+    if (isStart)
+        masm.tracelogStart(logger, script);
+    else
+        masm.tracelogStop(logger, script);
+
+    masm.Pop(script);
+    masm.Pop(logger);
+    return true;
+}
+
+bool
+CodeGeneratorShared::emitTracelogTree(bool isStart, uint32_t textId)
+{
+    RegisterSet regs = RegisterSet::Volatile();
+    Register logger = regs.takeGeneral();
+
+    masm.Push(logger);
+
+    CodeOffsetLabel patchLocation = masm.movWithPatch(ImmPtr(nullptr), logger);
+    if (!patchableTraceLoggers_.append(patchLocation))
+        return false;
+
+    if (isStart)
+        masm.tracelogStart(logger, textId);
+    else
+        masm.tracelogStop(logger, textId);
+
+    masm.Pop(logger);
+    return true;
+}
+
+bool
+CodeGeneratorShared::emitTracelogStopEvent()
+{
+    RegisterSet regs = RegisterSet::Volatile();
+    Register logger = regs.takeGeneral();
+
+    masm.Push(logger);
+
+    CodeOffsetLabel patchLocation = masm.movWithPatch(ImmPtr(nullptr), logger);
+    if (!patchableTraceLoggers_.append(patchLocation))
+        return false;
+
+    masm.tracelogStop(logger);
+
+    masm.Pop(logger);
+    return true;
+}
+#endif
 
 } // namespace jit
 } // namespace js

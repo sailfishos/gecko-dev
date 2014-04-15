@@ -269,7 +269,10 @@ static void split(char* str, const char* sep, nsTArray<nsString>& result)
 /**
  * Helper function that implement join function.
  */
-static void join(nsTArray<nsCString>& array, const char* sep, const uint32_t maxlen, char* result)
+static void join(nsTArray<nsCString>& array,
+                 const char* sep,
+                 const uint32_t maxlen,
+                 char* result)
 {
 #define CHECK_LENGTH(len, add, max)  len += add;          \
                                      if (len > max - 1)   \
@@ -514,25 +517,31 @@ void NetworkUtils::setAccessPoint(CommandChain* aChain,
                                   NetworkResultOptions& aResult)
 {
   char command[MAX_COMMAND_SIZE];
+  nsCString ssid(GET_CHAR(mSsid));
+  nsCString key(GET_CHAR(mKey));
+
+  escapeQuote(ssid);
+  escapeQuote(key);
+
   if (SDK_VERSION >= 19) {
     snprintf(command, MAX_COMMAND_SIZE - 1, "softap set %s \"%s\" broadcast 6 %s \"%s\"",
                      GET_CHAR(mIfname),
-                     GET_CHAR(mSsid),
+                     ssid.get(),
                      GET_CHAR(mSecurity),
-                     GET_CHAR(mKey));
+                     key.get());
   } else if (SDK_VERSION >= 16) {
     snprintf(command, MAX_COMMAND_SIZE - 1, "softap set %s \"%s\" %s \"%s\"",
                      GET_CHAR(mIfname),
-                     GET_CHAR(mSsid),
+                     ssid.get(),
                      GET_CHAR(mSecurity),
-                     GET_CHAR(mKey));
+                     key.get());
   } else {
     snprintf(command, MAX_COMMAND_SIZE - 1, "softap set %s %s \"%s\" %s \"%s\" 6 0 8",
                      GET_CHAR(mIfname),
                      GET_CHAR(mWifictrlinterfacename),
-                     GET_CHAR(mSsid),
+                     ssid.get(),
                      GET_CHAR(mSecurity),
-                     GET_CHAR(mKey));
+                     key.get());
   }
 
   doCommand(command, aChain, aCallback);
@@ -1536,6 +1545,12 @@ bool NetworkUtils::setUSBTethering(NetworkParams& aOptions)
     RUN_CHAIN(aOptions, sUSBDisableChain, usbTetheringFail)
   }
   return true;
+}
+
+void NetworkUtils::escapeQuote(nsCString& aString)
+{
+  aString.ReplaceSubstring("\\", "\\\\");
+  aString.ReplaceSubstring("\"", "\\\"");
 }
 
 void NetworkUtils::checkUsbRndisState(NetworkParams& aOptions)

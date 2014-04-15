@@ -10,7 +10,9 @@
 #include "jit/BaselineJIT.h"
 #include "jit/CompileInfo.h"
 #include "jit/IonSpewer.h"
+#include "jit/Recover.h"
 #include "vm/ArgumentsObject.h"
+#include "vm/TraceLogging.h"
 
 #include "jsscriptinlines.h"
 
@@ -476,7 +478,7 @@ InitFromBailout(JSContext *cx, HandleScript caller, jsbytecode *callerPC,
     if (excInfo)
         exprStackSlots = excInfo->numExprSlots;
     else
-        exprStackSlots = iter.allocations() - (script->nfixed() + CountArgSlots(script, fun));
+        exprStackSlots = iter.numAllocations() - (script->nfixed() + CountArgSlots(script, fun));
 
     builder.resetFramePushed();
 
@@ -629,9 +631,9 @@ InitFromBailout(JSContext *cx, HandleScript caller, jsbytecode *callerPC,
         size_t thisvOffset = builder.framePushed() + IonJSFrameLayout::offsetOfThis();
         *builder.valuePointerAtStackOffset(thisvOffset) = thisv;
 
-        JS_ASSERT(iter.allocations() >= CountArgSlots(script, fun));
+        JS_ASSERT(iter.numAllocations() >= CountArgSlots(script, fun));
         IonSpew(IonSpew_BaselineBailouts, "      frame slots %u, nargs %u, nfixed %u",
-                iter.allocations(), fun->nargs(), script->nfixed());
+                iter.numAllocations(), fun->nargs(), script->nfixed());
 
         if (!callerPC) {
             // This is the first frame. Store the formals in a Vector until we
@@ -1260,9 +1262,9 @@ jit::BailoutIonToBaseline(JSContext *cx, JitActivation *activation, IonBailoutIt
     JS_ASSERT(bailoutInfo != nullptr);
     JS_ASSERT(*bailoutInfo == nullptr);
 
-#if JS_TRACE_LOGGING
-    TraceLogging::defaultLogger()->log(TraceLogging::INFO_ENGINE_BASELINE);
-#endif
+    TraceLogger *logger = TraceLoggerForMainThread(cx->runtime());
+    TraceLogStopEvent(logger, TraceLogger::IonMonkey);
+    TraceLogStartEvent(logger, TraceLogger::Baseline);
 
     // The caller of the top frame must be one of the following:
     //      IonJS - Ion calling into Ion.
@@ -1348,12 +1350,13 @@ jit::BailoutIonToBaseline(JSContext *cx, JitActivation *activation, IonBailoutIt
     jsbytecode *topCallerPC = nullptr;
 
     while (true) {
-#if JS_TRACE_LOGGING
+        MOZ_ASSERT(snapIter.instruction()->isResumePoint());
+
         if (frameNo > 0) {
-            TraceLogging::defaultLogger()->log(TraceLogging::SCRIPT_START, scr);
-            TraceLogging::defaultLogger()->log(TraceLogging::INFO_ENGINE_BASELINE);
+            TraceLogStartEvent(logger, TraceLogCreateTextId(logger, scr));
+            TraceLogStartEvent(logger, TraceLogger::Baseline);
         }
-#endif
+
         IonSpew(IonSpew_BaselineBailouts, "    FrameNo %d", frameNo);
 
         // If we are bailing out to a catch or finally block in this frame,
@@ -1383,7 +1386,6 @@ jit::BailoutIonToBaseline(JSContext *cx, JitActivation *activation, IonBailoutIt
         callerPC = callPC;
         fun = nextCallee;
         scr = fun->existingScript();
-        snapIter.nextFrame();
 
         // Save top caller info for adjusting SPS frames later.
         if (!topCaller) {
@@ -1393,6 +1395,8 @@ jit::BailoutIonToBaseline(JSContext *cx, JitActivation *activation, IonBailoutIt
         }
 
         frameNo++;
+
+        snapIter.nextInstruction();
     }
     IonSpew(IonSpew_BaselineBailouts, "  Done restoring frames");
 

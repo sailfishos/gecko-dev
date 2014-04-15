@@ -257,6 +257,7 @@ class MochitestRunner(MozbuildObject):
         opts = mochitest.MochitestOptions()
         options, args = opts.parse_args([])
 
+        options.subsuite = ''
         flavor = suite
 
         # Need to set the suite options before verifyOptions below.
@@ -268,6 +269,9 @@ class MochitestRunner(MozbuildObject):
         elif suite == 'browser':
             options.browserChrome = True
             flavor = 'browser-chrome'
+        elif suite == 'devtools':
+            options.browserChrome = True
+            options.subsuite = 'devtools'
         elif suite == 'metro':
             options.immersiveMode = True
             options.browserChrome = True
@@ -591,6 +595,13 @@ class MachCommands(MachCommandBase):
     def run_mochitest_browser(self, test_paths, **kwargs):
         return self.run_mochitest(test_paths, 'browser', **kwargs)
 
+    @Command('mochitest-devtools', category='testing',
+        conditions=[conditions.is_firefox],
+        description='Run a devtools mochitest with browser chrome.')
+    @MochitestCommand
+    def run_mochitest_devtools(self, test_paths, **kwargs):
+        return self.run_mochitest(test_paths, 'devtools', **kwargs)
+
     @Command('mochitest-metro', category='testing',
         conditions=[conditions.is_firefox],
         description='Run a mochitest with metro browser chrome.')
@@ -637,7 +648,7 @@ class MachCommands(MachCommandBase):
 # they should be modified to work with all devices.
 def is_emulator(cls):
     """Emulator needs to be configured."""
-    return cls.device_name in ('emulator', 'emulator-jb')
+    return cls.device_name.find('emulator') == 0
 
 
 @CommandProvider

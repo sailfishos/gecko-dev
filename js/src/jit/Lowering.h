@@ -154,6 +154,7 @@ class LIRGenerator : public LIRGeneratorSpecific
     bool visitRegExpReplace(MRegExpReplace *ins);
     bool visitStringReplace(MStringReplace *ins);
     bool visitLambda(MLambda *ins);
+    bool visitLambdaArrow(MLambdaArrow *ins);
     bool visitLambdaPar(MLambdaPar *ins);
     bool visitImplicitThis(MImplicitThis *ins);
     bool visitSlots(MSlots *ins);
@@ -178,6 +179,7 @@ class LIRGenerator : public LIRGeneratorSpecific
     bool visitTypedArrayElements(MTypedArrayElements *ins);
     bool visitNeuterCheck(MNeuterCheck *lir);
     bool visitTypedObjectElements(MTypedObjectElements *ins);
+    bool visitSetTypedObjectOffset(MSetTypedObjectOffset *ins);
     bool visitInitializedLength(MInitializedLength *ins);
     bool visitSetInitializedLength(MSetInitializedLength *ins);
     bool visitNot(MNot *ins);
@@ -237,7 +239,7 @@ class LIRGenerator : public LIRGeneratorSpecific
     bool visitInArray(MInArray *ins);
     bool visitInstanceOf(MInstanceOf *ins);
     bool visitCallInstanceOf(MCallInstanceOf *ins);
-    bool visitFunctionBoundary(MFunctionBoundary *ins);
+    bool visitProfilerStackOp(MProfilerStackOp *ins);
     bool visitIsCallable(MIsCallable *ins);
     bool visitHaveSameClass(MHaveSameClass *ins);
     bool visitHasClass(MHasClass *ins);

@@ -741,9 +741,9 @@ NS_IMPL_CYCLE_COLLECTING_ADDREF(nsDOMFileList)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(nsDOMFileList)
 
 JSObject*
-nsDOMFileList::WrapObject(JSContext *cx, JS::Handle<JSObject*> scope)
+nsDOMFileList::WrapObject(JSContext *cx)
 {
-  return FileListBinding::Wrap(cx, scope, this);
+  return FileListBinding::Wrap(cx, this);
 }
 
 NS_IMETHODIMP
@@ -797,7 +797,7 @@ nsDOMTemporaryFileBlob::CreateSlice(uint64_t aStart, uint64_t aLength,
 NS_IMETHODIMP
 nsDOMTemporaryFileBlob::GetInternalStream(nsIInputStream **aStream)
 {
-  nsCOMPtr<nsTemporaryFileInputStream> stream =
+  nsCOMPtr<nsIInputStream> stream =
     new nsTemporaryFileInputStream(mFileDescOwner, mStartPos, mStartPos + mLength);
   stream.forget(aStream);
   return NS_OK;

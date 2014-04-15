@@ -1176,7 +1176,7 @@ pref("devtools.profiler.ui.show-platform-data", false);
 pref("devtools.netmonitor.enabled", true);
 
 // The default Network Monitor UI settings
-pref("devtools.netmonitor.panes-network-details-width", 450);
+pref("devtools.netmonitor.panes-network-details-width", 550);
 pref("devtools.netmonitor.panes-network-details-height", 450);
 pref("devtools.netmonitor.statistics", true);
 pref("devtools.netmonitor.filters", "[\"all\"]");
@@ -1228,7 +1228,7 @@ pref("devtools.webconsole.filter.csserror", true);
 pref("devtools.webconsole.filter.cssparser", false);
 pref("devtools.webconsole.filter.csslog", false);
 pref("devtools.webconsole.filter.exception", true);
-pref("devtools.webconsole.filter.jswarn", false);
+pref("devtools.webconsole.filter.jswarn", true);
 pref("devtools.webconsole.filter.jslog", false);
 pref("devtools.webconsole.filter.error", true);
 pref("devtools.webconsole.filter.warn", true);
@@ -1274,15 +1274,20 @@ pref("devtools.hud.loglimit.cssparser", 200);
 pref("devtools.hud.loglimit.exception", 200);
 pref("devtools.hud.loglimit.console", 200);
 
+// By how many times eyedropper will magnify pixels
+pref("devtools.eyedropper.zoom", 6);
+
 // The developer tools editor configuration:
 // - tabsize: how many spaces to use when a Tab character is displayed.
 // - expandtab: expand Tab characters to spaces.
 // - keymap: which keymap to use (can be 'default', 'emacs' or 'vim')
 // - autoclosebrackets: whether to permit automatic bracket/quote closing.
+// - detectindentation: whether to detect the indentation from the file
 pref("devtools.editor.tabsize", 4);
 pref("devtools.editor.expandtab", true);
 pref("devtools.editor.keymap", "default");
 pref("devtools.editor.autoclosebrackets", true);
+pref("devtools.editor.detectindentation", true);
 
 // Enable the Font Inspector
 pref("devtools.fontinspector.enabled", true);
@@ -1315,7 +1320,7 @@ pref("browser.newtabpage.rows", 3);
 // number of columns of newtab grid
 pref("browser.newtabpage.columns", 3);
 
-pref("browser.newtabpage.directorySource", "chrome://global/content/directoryLinks.json");
+pref("browser.newtabpage.directorySource", "data:application/json,{}");
 
 // Enable the DOM fullscreen API.
 pref("full-screen-api.enabled", true);
@@ -1415,6 +1420,10 @@ pref("ui.key.menuAccessKeyFocuses", true);
 
 // Delete HTTP cache v2 data of users that didn't opt-in manually
 pref("browser.cache.auto_delete_cache_version", 1);
+// Play with different values of the decay time and get telemetry,
+// 0 means to randomize (and persist) the experiment value in users' profiles,
+// -1 means no experiment is run and we use the preferred value for frecency (6h)
+pref("browser.cache.frecency_experiment", 0);
 
 // Telemetry experiments settings.
 pref("experiments.enabled", false);

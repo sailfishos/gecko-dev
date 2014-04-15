@@ -73,7 +73,7 @@
                           accesskey="&emailPageCmd.accesskey;"
                           command="Browser:SendLink"/>
                 <menuseparator/>
-#ifndef XP_LINUX
+#if !defined(MOZ_WIDGET_GTK) && !defined(MOZ_WIDGET_QT)
                 <menuitem id="menu_printSetup"
                           label="&printSetupCmd.label;"
                           accesskey="&printSetupCmd.accesskey;"
@@ -504,6 +504,9 @@
                   <menuitem id="menu_responsiveUI"
                             observes="devtoolsMenuBroadcaster_ResponsiveUI"
                             accesskey="&responsiveDesignTool.accesskey;"/>
+                  <menuitem id="menu_eyedropper"
+                            observes="devtoolsMenuBroadcaster_Eyedropper"
+                            accesskey="&eyedropper.accesskey;"/>
                   <menuitem id="menu_scratchpad"
                             observes="devtoolsMenuBroadcaster_Scratchpad"
                             accesskey="&scratchpad.accesskey;"/>

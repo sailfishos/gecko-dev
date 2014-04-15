@@ -219,7 +219,7 @@ CreateXMLHttpRequest(JSContext *cx, unsigned argc, jsval *vp)
     if (NS_FAILED(rv))
         return false;
 
-    rv = nsContentUtils::WrapNative(cx, global, xhr, args.rval());
+    rv = nsContentUtils::WrapNative(cx, xhr, args.rval());
     if (NS_FAILED(rv))
         return false;
 
@@ -435,6 +435,9 @@ CloneNonReflectorsWrite(JSContext *cx, JSStructuredCloneWriter *writer,
 static const JSStructuredCloneCallbacks gForwarderStructuredCloneCallbacks = {
     CloneNonReflectorsRead,
     CloneNonReflectorsWrite,
+    nullptr,
+    nullptr,
+    nullptr,
     nullptr
 };
 
@@ -685,7 +688,7 @@ static const JSClass SandboxClass = {
     XPCONNECT_GLOBAL_FLAGS_WITH_EXTRA_SLOTS(1),
     JS_PropertyStub,   JS_DeletePropertyStub, JS_PropertyStub, JS_StrictPropertyStub,
     sandbox_enumerate, sandbox_resolve, sandbox_convert,  sandbox_finalize,
-    nullptr, nullptr, nullptr, TraceXPCGlobal
+    nullptr, nullptr, nullptr, JS_GlobalObjectTraceHook
 };
 
 static const JSFunctionSpec SandboxFunctions[] = {
@@ -1081,7 +1084,8 @@ xpc::CreateSandboxObject(JSContext *cx, MutableHandleValue vp, nsISupports *prin
     else
         compartmentOptions.setZone(JS::SystemZone);
 
-    compartmentOptions.setInvisibleToDebugger(options.invisibleToDebugger);
+    compartmentOptions.setInvisibleToDebugger(options.invisibleToDebugger)
+                      .setTrace(TraceXPCGlobal);
 
     RootedObject sandbox(cx, xpc::CreateGlobalObject(cx, &SandboxClass,
                                                      principal, compartmentOptions));

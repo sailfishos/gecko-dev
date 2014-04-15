@@ -87,13 +87,16 @@ struct DisplayPortPropertyData {
 
 struct DisplayPortMarginsPropertyData {
   DisplayPortMarginsPropertyData(const LayerMargin& aMargins,
-                                 uint32_t aAlignment, uint32_t aPriority)
+                                 uint32_t aAlignmentX, uint32_t aAlignmentY,
+                                 uint32_t aPriority)
     : mMargins(aMargins)
-    , mAlignment(aAlignment)
+    , mAlignmentX(aAlignmentX)
+    , mAlignmentY(aAlignmentY)
     , mPriority(aPriority)
   {}
   LayerMargin mMargins;
-  uint32_t mAlignment;
+  uint32_t mAlignmentX;
+  uint32_t mAlignmentY;
   uint32_t mPriority;
 };
 
@@ -1207,6 +1210,8 @@ public:
             nsRuleNode::ComputeCoordPercentCalc(aCoord, 0) == 0);
   }
 
+  static void MarkDescendantsDirty(nsIFrame *aSubtreeRoot);
+
   /*
    * Calculate the used values for 'width' and 'height' for a replaced element.
    *
@@ -1865,6 +1870,11 @@ public:
     return sCSSVariablesEnabled;
   }
 
+  static bool InterruptibleReflowEnabled()
+  {
+    return sInterruptibleReflowEnabled;
+  }
+
   /**
    * Unions the overflow areas of all non-popup children of aFrame with
    * aOverflowAreas.
@@ -2116,6 +2126,7 @@ private:
   static bool sFontSizeInflationDisabledInMasterProcess;
   static bool sInvalidationDebuggingIsEnabled;
   static bool sCSSVariablesEnabled;
+  static bool sInterruptibleReflowEnabled;
 };
 
 template<typename PointType, typename RectType, typename CoordType>

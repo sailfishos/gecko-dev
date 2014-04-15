@@ -232,7 +232,7 @@ if CONFIG['MOZ_INSTRUMENTS']:
 
 if CONFIG['ENABLE_TRACE_LOGGING']:
     SOURCES += [
-        'TraceLogging.cpp',
+        'vm/TraceLogging.cpp',
     ]
 
 if CONFIG['ENABLE_ION']:
@@ -281,6 +281,7 @@ if CONFIG['ENABLE_ION']:
         'jit/ParallelSafetyAnalysis.cpp',
         'jit/PerfSpewer.cpp',
         'jit/RangeAnalysis.cpp',
+        'jit/Recover.cpp',
         'jit/RegisterAllocator.cpp',
         'jit/Safepoints.cpp',
         'jit/shared/BaselineCompiler-shared.cpp',
@@ -301,6 +302,7 @@ if CONFIG['ENABLE_ION']:
             'jit/shared/BaselineIC-x86-shared.cpp',
             'jit/shared/CodeGenerator-x86-shared.cpp',
             'jit/shared/Lowering-x86-shared.cpp',
+            'jit/shared/MacroAssembler-x86-shared.cpp',
             'jit/shared/MoveEmitter-x86-shared.cpp',
         ]
         if CONFIG['JS_CODEGEN_X64']:

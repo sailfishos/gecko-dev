@@ -33,10 +33,8 @@ class nsDOMMutationRecord : public nsISupports,
 {
 public:
   nsDOMMutationRecord(nsIAtom* aType, nsISupports* aOwner)
-  : mType(aType), mOwner(aOwner)
+  : mType(aType), mAttrNamespace(NullString()), mPrevValue(NullString()), mOwner(aOwner)
   {
-    mAttrNamespace.SetIsVoid(PR_TRUE);
-    mPrevValue.SetIsVoid(PR_TRUE);
     SetIsDOMBinding();
   }
   virtual ~nsDOMMutationRecord() {}
@@ -46,10 +44,9 @@ public:
     return mOwner;
   }
 
-  virtual JSObject* WrapObject(JSContext* aCx,
-                               JS::Handle<JSObject*> aScope) MOZ_OVERRIDE
+  virtual JSObject* WrapObject(JSContext* aCx) MOZ_OVERRIDE
   {
-    return mozilla::dom::MutationRecordBinding::Wrap(aCx, aScope, this);
+    return mozilla::dom::MutationRecordBinding::Wrap(aCx, this);
   }
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
@@ -360,10 +357,9 @@ public:
               mozilla::dom::MutationCallback& aCb,
               mozilla::ErrorResult& aRv);
 
-  virtual JSObject* WrapObject(JSContext* aCx,
-                               JS::Handle<JSObject*> aScope) MOZ_OVERRIDE
+  virtual JSObject* WrapObject(JSContext* aCx) MOZ_OVERRIDE
   {
-    return mozilla::dom::MutationObserverBinding::Wrap(aCx, aScope, this);
+    return mozilla::dom::MutationObserverBinding::Wrap(aCx, this);
   }
 
   nsISupports* GetParentObject() const

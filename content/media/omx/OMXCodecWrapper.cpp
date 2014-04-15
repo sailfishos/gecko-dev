@@ -17,6 +17,7 @@
 
 #include "AudioChannelFormat.h"
 #include <mozilla/Monitor.h>
+#include "mozilla/layers/GrallocTextureClient.h"
 
 using namespace mozilla;
 using namespace mozilla::gfx;
@@ -256,9 +257,7 @@ void
 ConvertGrallocImageToNV12(GrallocImage* aSource, uint8_t* aDestination)
 {
   // Get graphic buffer.
-  SurfaceDescriptor handle = aSource->GetSurfaceDescriptor();
-  SurfaceDescriptorGralloc gralloc = handle.get_SurfaceDescriptorGralloc();
-  sp<GraphicBuffer> graphicBuffer = GrallocBufferActor::GetFrom(gralloc);
+  sp<GraphicBuffer> graphicBuffer = aSource->GetGraphicBuffer();
 
   int pixelFormat = graphicBuffer->getPixelFormat();
   // Only support NV21 (from camera) or YV12 (from HW decoder output) for now.

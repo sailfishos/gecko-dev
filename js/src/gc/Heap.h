@@ -72,7 +72,7 @@ enum AllocKind {
     FINALIZE_SHAPE,
     FINALIZE_BASE_SHAPE,
     FINALIZE_TYPE_OBJECT,
-    FINALIZE_SHORT_STRING,
+    FINALIZE_FAT_INLINE_STRING,
     FINALIZE_STRING,
     FINALIZE_EXTERNAL_STRING,
     FINALIZE_JITCODE,
@@ -288,6 +288,7 @@ struct FreeSpan
             return nullptr;
         }
         checkSpan();
+        JS_POISON(reinterpret_cast<void *>(thing), JS_ALLOCATED_TENURED_PATTERN, thingSize);
         return reinterpret_cast<void *>(thing);
     }
 

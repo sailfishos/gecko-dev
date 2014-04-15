@@ -629,7 +629,7 @@ protected:
   nsIDocument* GetTouchEventTargetDocument();
 #endif
   bool InZombieDocument(nsIContent *aContent);
-  already_AddRefed<nsIPresShell> GetParentPresShell();
+  already_AddRefed<nsIPresShell> GetParentPresShellForEventHandling();
   nsIContent* GetCurrentEventContent();
   nsIFrame* GetCurrentEventFrame();
   nsresult RetargetEventToParent(mozilla::WidgetGUIEvent* aEvent,
@@ -700,6 +700,7 @@ protected:
   virtual void ResumePainting() MOZ_OVERRIDE;
 
   void UpdateImageVisibility();
+  void UpdateActivePointerState(mozilla::WidgetGUIEvent* aEvent);
 
   nsRevocableEventPtr<nsRunnableMethod<PresShell> > mUpdateImageVisibilityEvent;
 

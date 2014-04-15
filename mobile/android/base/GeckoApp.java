@@ -362,15 +362,21 @@ public abstract class GeckoApp
     }
 
     @Override
-    public void showMenu(View menu) {
-        // Hide the menu before we reshow it to avoid platform specific bugs like
-        // bug 794581 and bug 968182.
+    public void showMenu(final View menu) {
+        // On devices using the custom menu, focus is cleared from the menu when its tapped.
+        // Close and then reshow it to avoid these issues. See bug 794581 and bug 968182.
         closeMenu();
 
-        mMenuPanel.removeAllViews();
-        mMenuPanel.addView(menu);
-
-        openOptionsMenu();
+        // Post the reshow code back to the UI thread to avoid some optimizations Android
+        // has put in place for menus that hide/show themselves quickly. See bug 985400.
+        ThreadUtils.postToUiThread(new Runnable() {
+            @Override
+            public void run() {
+                mMenuPanel.removeAllViews();
+                mMenuPanel.addView(menu);
+                openOptionsMenu();
+            }
+        });
     }
 
     @Override
@@ -1665,7 +1671,7 @@ public abstract class GeckoApp
             if (selectedTab != null)
                 Tabs.getInstance().notifyListeners(selectedTab, Tabs.TabEvents.SELECTED);
             geckoConnected();
-            GeckoAppShell.setLayerClient(mLayerView.getLayerClient());
+            GeckoAppShell.setLayerClient(mLayerView.getLayerClientObject());
             GeckoAppShell.sendEventToGecko(GeckoEvent.createBroadcastEvent("Viewport:Flush", null));
         }
 
@@ -1823,7 +1829,7 @@ public abstract class GeckoApp
         } else if (mCameraView instanceof TextureView) {
             mCameraView.setAlpha(0.0f);
         }
-        RelativeLayout mCameraLayout = (RelativeLayout) findViewById(R.id.camera_layout);
+        ViewGroup mCameraLayout = (ViewGroup) findViewById(R.id.camera_layout);
         // Some phones (eg. nexus S) need at least a 8x16 preview size
         mCameraLayout.addView(mCameraView,
                               new AbsoluteLayout.LayoutParams(8, 16, 0, 0));
@@ -1834,7 +1840,7 @@ public abstract class GeckoApp
             mCameraOrientationEventListener.disable();
             mCameraOrientationEventListener = null;
         }
-        RelativeLayout mCameraLayout = (RelativeLayout) findViewById(R.id.camera_layout);
+        ViewGroup mCameraLayout = (ViewGroup) findViewById(R.id.camera_layout);
         mCameraLayout.removeView(mCameraView);
     }
 

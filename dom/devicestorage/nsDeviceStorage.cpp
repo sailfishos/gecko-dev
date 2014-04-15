@@ -1054,7 +1054,7 @@ DeviceStorageFile::Write(nsIInputStream* aInputStream)
     return rv;
   }
 
-  nsCOMPtr<IOEventComplete> iocomplete = new IOEventComplete(this, "created");
+  nsCOMPtr<nsIRunnable> iocomplete = new IOEventComplete(this, "created");
   rv = NS_DispatchToMainThread(iocomplete);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
@@ -1114,7 +1114,7 @@ DeviceStorageFile::Write(InfallibleTArray<uint8_t>& aBits)
     return rv;
   }
 
-  nsCOMPtr<IOEventComplete> iocomplete = new IOEventComplete(this, "created");
+  nsCOMPtr<nsIRunnable> iocomplete = new IOEventComplete(this, "created");
   rv = NS_DispatchToMainThread(iocomplete);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
@@ -1167,7 +1167,7 @@ DeviceStorageFile::Remove()
     return rv;
   }
 
-  nsCOMPtr<IOEventComplete> iocomplete = new IOEventComplete(this, "deleted");
+  nsCOMPtr<nsIRunnable> iocomplete = new IOEventComplete(this, "deleted");
   return NS_DispatchToMainThread(iocomplete);
 }
 
@@ -1651,8 +1651,7 @@ InterfaceToJsval(nsPIDOMWindow* aWindow,
 
 
   JS::Rooted<JS::Value> someJsVal(cx);
-  nsresult rv =
-    nsContentUtils::WrapNative(cx, scopeObj, aObject, aIID, &someJsVal);
+  nsresult rv = nsContentUtils::WrapNative(cx, aObject, aIID, &someJsVal);
   if (NS_FAILED(rv)) {
     return JSVAL_NULL;
   }
@@ -1914,7 +1913,7 @@ public:
       bool check;
       mFile->mFile->IsDirectory(&check);
       if (!check) {
-        nsCOMPtr<PostErrorEvent> event =
+        nsCOMPtr<nsIRunnable> event =
           new PostErrorEvent(mRequest.forget(),
                              POST_ERROR_EVENT_FILE_NOT_ENUMERABLE);
         return NS_DispatchToMainThread(event);
@@ -1925,7 +1924,7 @@ public:
       = static_cast<nsDOMDeviceStorageCursor*>(mRequest.get());
     mFile->CollectFiles(cursor->mFiles, cursor->mSince);
 
-    nsCOMPtr<ContinueCursorEvent> event
+    nsRefPtr<ContinueCursorEvent> event
       = new ContinueCursorEvent(mRequest.forget());
     event->Continue();
 
@@ -2006,7 +2005,7 @@ nsDOMDeviceStorageCursor::GetElement(nsIDOMElement * *aRequestingElement)
 NS_IMETHODIMP
 nsDOMDeviceStorageCursor::Cancel()
 {
-  nsCOMPtr<PostErrorEvent> event
+  nsCOMPtr<nsIRunnable> event
     = new PostErrorEvent(this, POST_ERROR_EVENT_PERMISSION_DENIED);
   return NS_DispatchToMainThread(event);
 }
@@ -2038,7 +2037,7 @@ nsDOMDeviceStorageCursor::Allow(JS::HandleValue aChoices)
     = do_GetService(NS_STREAMTRANSPORTSERVICE_CONTRACTID);
   MOZ_ASSERT(target);
 
-  nsCOMPtr<InitCursorEvent> event = new InitCursorEvent(this, mFile);
+  nsCOMPtr<nsIRunnable> event = new InitCursorEvent(this, mFile);
   target->Dispatch(event, NS_DISPATCH_NORMAL);
   return NS_OK;
 }
@@ -2058,7 +2057,7 @@ nsDOMDeviceStorageCursor::Continue(ErrorResult& aRv)
     mDone = false;
   }
 
-  nsCOMPtr<ContinueCursorEvent> event = new ContinueCursorEvent(this);
+  nsRefPtr<ContinueCursorEvent> event = new ContinueCursorEvent(this);
   event->Continue();
 
   mOkToCallContinue = false;
@@ -2346,7 +2345,7 @@ public:
     bool check = false;
     dsFile->mFile->Exists(&check);
     if (check) {
-      nsCOMPtr<PostErrorEvent> event =
+      nsCOMPtr<nsIRunnable> event =
         new PostErrorEvent(mRequest.forget(), POST_ERROR_EVENT_FILE_EXISTS);
       return NS_DispatchToMainThread(event);
     }
@@ -2356,12 +2355,12 @@ public:
     if (NS_FAILED(rv)) {
       dsFile->mFile->Remove(false);
 
-      nsCOMPtr<PostErrorEvent> event =
+      nsCOMPtr<nsIRunnable> event =
         new PostErrorEvent(mRequest.forget(), POST_ERROR_EVENT_UNKNOWN);
       return NS_DispatchToMainThread(event);
     }
 
-    nsCOMPtr<PostResultEvent> event =
+    nsCOMPtr<nsIRunnable> event =
       new PostResultEvent(mRequest.forget(), fullPath);
     return NS_DispatchToMainThread(event);
   }
@@ -2397,7 +2396,7 @@ public:
     bool check = false;
     mFile->mFile->Exists(&check);
     if (check) {
-      nsCOMPtr<PostErrorEvent> event =
+      nsCOMPtr<nsIRunnable> event =
         new PostErrorEvent(mRequest.forget(), POST_ERROR_EVENT_FILE_EXISTS);
       return NS_DispatchToMainThread(event);
     }
@@ -2407,14 +2406,14 @@ public:
     if (NS_FAILED(rv)) {
       mFile->mFile->Remove(false);
 
-      nsCOMPtr<PostErrorEvent> event =
+      nsCOMPtr<nsIRunnable> event =
         new PostErrorEvent(mRequest.forget(), POST_ERROR_EVENT_UNKNOWN);
       return NS_DispatchToMainThread(event);
     }
 
     nsString fullPath;
     mFile->GetFullPath(fullPath);
-    nsCOMPtr<PostResultEvent> event =
+    nsCOMPtr<nsIRunnable> event =
       new PostResultEvent(mRequest.forget(), fullPath);
     return NS_DispatchToMainThread(event);
   }
@@ -2444,7 +2443,7 @@ public:
   {
     MOZ_ASSERT(!NS_IsMainThread());
 
-    nsRefPtr<nsRunnable> r;
+    nsCOMPtr<nsIRunnable> r;
     if (!mFile->mEditable) {
       bool check = false;
       mFile->mFile->Exists(&check);
@@ -2491,7 +2490,7 @@ public:
     MOZ_ASSERT(!NS_IsMainThread());
     mFile->Remove();
 
-    nsRefPtr<nsRunnable> r;
+    nsCOMPtr<nsIRunnable> r;
     bool check = false;
     mFile->mFile->Exists(&check);
     if (check) {
@@ -2749,7 +2748,7 @@ public:
 
   NS_IMETHOD Cancel()
   {
-    nsCOMPtr<PostErrorEvent> event
+    nsCOMPtr<nsIRunnable> event
       = new PostErrorEvent(mRequest.forget(),
                            POST_ERROR_EVENT_PERMISSION_DENIED);
     return NS_DispatchToMainThread(event);
@@ -3106,9 +3105,9 @@ nsDOMDeviceStorage::nsDOMDeviceStorage(nsPIDOMWindow* aWindow)
 }
 
 /* virtual */ JSObject*
-nsDOMDeviceStorage::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aScope)
+nsDOMDeviceStorage::WrapObject(JSContext* aCx)
 {
-  return DeviceStorageBinding::Wrap(aCx, aScope, this);
+  return DeviceStorageBinding::Wrap(aCx, this);
 }
 
 nsresult
