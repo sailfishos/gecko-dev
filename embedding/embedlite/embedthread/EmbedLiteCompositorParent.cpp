@@ -248,42 +248,6 @@ void EmbedLiteCompositorParent::ScheduleTask(CancelableTask* task, int time)
   }
 }
 
-void
-EmbedLiteCompositorParent::SetFirstPaintViewport(const nsIntPoint& aOffset,
-                                                 float aZoom, const nsIntRect& aPageRect,
-                                                 const gfx::Rect& aCssPageRect)
-{
-  LOGT("t");
-  EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(mId);
-  NS_ENSURE_TRUE(view, );
-  view->GetListener()->SetFirstPaintViewport(aOffset, aZoom, aPageRect,
-                                             gfxRect(aCssPageRect.x, aCssPageRect.y,
-                                                     aCssPageRect.width, aCssPageRect.height));
-}
-
-void EmbedLiteCompositorParent::SetPageRect(const gfx::Rect& aCssPageRect)
-{
-  LOGT("t");
-  EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(mId);
-  NS_ENSURE_TRUE(view, );
-  view->GetListener()->SetPageRect(gfxRect(aCssPageRect.x, aCssPageRect.y,
-                                           aCssPageRect.width, aCssPageRect.height));
-}
-
-void
-EmbedLiteCompositorParent::SyncViewportInfo(const nsIntRect& aDisplayPort, float aDisplayResolution,
-                                            bool aLayersUpdated, nsIntPoint& aScrollOffset,
-                                            float& aScaleX, float& aScaleY,
-                                            gfx::Margin& aFixedLayerMargins)
-{
-  LOGT("t");
-  EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(mId);
-  NS_ENSURE_TRUE(view, );
-  view->GetListener()->SyncViewportInfo(aDisplayPort, aDisplayResolution,
-                                        aLayersUpdated, aScrollOffset,
-                                        aScaleX, aScaleY);
-}
-
 } // namespace embedlite
 } // namespace mozilla
 
