@@ -96,9 +96,17 @@ public:
 
   bool Recv__delete__() MOZ_OVERRIDE;
 
-  bool RecvCompositorRecycle()
+  bool RecvCompositorRecycle(const MaybeFenceHandle& aFence)
   {
     RECYCLE_LOG("Receive recycle %p (%p)\n", mTextureClient, mWaitForRecycle.get());
+    if (aFence.type() != aFence.Tnull_t) {
+      FenceHandle fence = aFence.get_FenceHandle();
+      if (fence.IsValid() && mTextureClient) {
+        mTextureClient->SetReleaseFenceHandle(aFence);
+        // HWC might not provide Fence.
+        // In this case, HWC implicitly handles buffer's fence.
+      }
+    }
     mWaitForRecycle = nullptr;
     return true;
   }
@@ -243,12 +251,20 @@ TextureClient::GetIPDLActor()
 
 #ifdef MOZ_WIDGET_GONK
 static bool
-DisableGralloc(SurfaceFormat aFormat)
+DisableGralloc(SurfaceFormat aFormat, const gfx::IntSize& aSizeHint)
 {
   if (aFormat == gfx::SurfaceFormat::A8) {
     return true;
   }
+
 #if ANDROID_VERSION <= 15
+  // Adreno 200 has a problem of drawing gralloc buffer width less than 64 and
+  // drawing gralloc buffer with a height 9px-16px.
+  // See Bug 983971.
+  if (aSizeHint.width < 64 || aSizeHint.height < 32) {
+    return true;
+  }
+
   static bool checkedDevice = false;
   static bool disableGralloc = false;
 
@@ -327,7 +343,7 @@ TextureClient::CreateTextureClientForDrawing(ISurfaceAllocator* aAllocator,
 #endif
 
 #ifdef MOZ_WIDGET_GONK
-  if (!DisableGralloc(aFormat)) {
+  if (!DisableGralloc(aFormat, aSizeHint)) {
     // Don't allow Gralloc texture clients to exceed the maximum texture size.
     // BufferTextureClients have code to handle tiling the surface client-side.
     int32_t maxTextureSize = aAllocator->GetMaxTextureSize();
@@ -499,12 +515,14 @@ TextureClient::Finalize()
   RefPtr<TextureChild> actor = mActor;
 
   if (actor) {
+    // The actor has a raw pointer to us, actor->mTextureClient. 
+    // Null it before RemoveTexture calls to avoid invalid actor->mTextureClient
+    // when calling TextureChild::ActorDestroy()
+    actor->mTextureClient = nullptr;
     // this will call ForceRemove in the right thread, using a sync proxy if needed
     if (actor->GetForwarder()) {
       actor->GetForwarder()->RemoveTexture(this);
     }
-    // The actor has a raw pointer to us, actor->mTextureClient. Null it before we die.
-    actor->mTextureClient = nullptr;
   }
 }
 

@@ -51,6 +51,7 @@
 #include "ActiveLayerTracker.h"
 #include "nsContentUtils.h"
 #include "nsPrintfCString.h"
+#include "UnitTransforms.h"
 
 #include <stdint.h>
 #include <algorithm>
@@ -637,6 +638,76 @@ static bool GetApzcTreePrintPref() {
   return gPrintApzcTree;
 }
 
+static CSSSize
+CalculateRootCompositionSize(FrameMetrics& aMetrics,
+                             bool aIsRootContentDocRootScrollFrame,
+                             nsPresContext* aPresContext,
+                             nsIFrame* aForFrame, nsIFrame* aScrollFrame)
+{
+
+  if (aIsRootContentDocRootScrollFrame) {
+    return ViewAs<LayerPixel>(ParentLayerSize(aMetrics.mCompositionBounds.Size()),
+                              PixelCastJustification::ParentLayerToLayerForRootComposition)
+           / aMetrics.LayersPixelsPerCSSPixel();
+  }
+  LayerSize rootCompositionSize;
+  nsPresContext* rootPresContext =
+    aPresContext->GetToplevelContentDocumentPresContext();
+  if (!rootPresContext) {
+    rootPresContext = aPresContext->GetRootPresContext();
+  }
+  nsIPresShell* rootPresShell = nullptr;
+  if (rootPresContext) {
+    nsIPresShell* rootPresShell = rootPresContext->PresShell();
+    if (nsIFrame* rootFrame = rootPresShell->GetRootFrame()) {
+      if (nsView* view = rootFrame->GetView()) {
+        nsIWidget* widget = view->GetWidget();
+  #ifdef MOZ_WIDGET_ANDROID
+        // Android hack - temporary workaround for bug 983208 until we figure
+        // out what a proper fix is.
+        if (!widget) {
+          widget = rootFrame->GetNearestWidget();
+        }
+  #endif
+        if (widget) {
+          nsIntRect bounds;
+          widget->GetBounds(bounds);
+          rootCompositionSize = LayerSize(ViewAs<LayerPixel>(bounds.Size()));
+        } else {
+          LayoutDeviceToParentLayerScale parentResolution(
+            rootPresShell->GetCumulativeResolution().width
+            / rootPresShell->GetResolution().width);
+          int32_t rootAUPerDevPixel = rootPresContext->AppUnitsPerDevPixel();
+          nsRect viewBounds = view->GetBounds();
+          rootCompositionSize = ViewAs<LayerPixel>(
+            (LayoutDeviceRect::FromAppUnits(viewBounds, rootAUPerDevPixel)
+             * parentResolution).Size(), PixelCastJustification::ParentLayerToLayerForRootComposition);
+        }
+      }
+    }
+  } else {
+    nsIWidget* widget = (aScrollFrame ? aScrollFrame : aForFrame)->GetNearestWidget();
+    nsIntRect bounds;
+    widget->GetBounds(bounds);
+    rootCompositionSize = LayerSize(ViewAs<LayerPixel>(bounds.Size()));
+  }
+
+  // Adjust composition size for the size of scroll bars.
+  nsIFrame* rootRootScrollFrame = rootPresShell ? rootPresShell->GetRootScrollFrame() : nullptr;
+  nsIScrollableFrame* rootScrollableFrame = nullptr;
+  if (rootRootScrollFrame) {
+    rootScrollableFrame = aScrollFrame->GetScrollTargetFrame();
+  }
+  if (rootScrollableFrame && !LookAndFeel::GetInt(LookAndFeel::eIntID_UseOverlayScrollbars)) {
+    CSSMargin margins = CSSMargin::FromAppUnits(rootScrollableFrame->GetActualScrollbarSizes());
+    // Scrollbars are not subject to scaling, so CSS pixels = layer pixels for them.
+    rootCompositionSize.width -= margins.LeftRight();
+    rootCompositionSize.height -= margins.TopBottom();
+  }
+
+  return rootCompositionSize / aMetrics.LayersPixelsPerCSSPixel();
+}
+
 static void RecordFrameMetrics(nsIFrame* aForFrame,
                                nsIFrame* aScrollFrame,
                                const nsIFrame* aReferenceFrame,
@@ -669,20 +740,11 @@ static void RecordFrameMetrics(nsIFrame* aForFrame,
   if (aScrollFrame)
     scrollableFrame = aScrollFrame->GetScrollTargetFrame();
 
+  metrics.mScrollableRect = CSSRect::FromAppUnits(
+    nsLayoutUtils::CalculateScrollableRectForFrame(scrollableFrame, aForFrame));
+
   if (scrollableFrame) {
-    nsRect contentBounds = scrollableFrame->GetScrollRange();
     nsPoint scrollPosition = scrollableFrame->GetScrollPosition();
-    if (scrollableFrame->GetScrollbarStyles().mVertical == NS_STYLE_OVERFLOW_HIDDEN) {
-      contentBounds.y = scrollPosition.y;
-      contentBounds.height = 0;
-    }
-    if (scrollableFrame->GetScrollbarStyles().mHorizontal == NS_STYLE_OVERFLOW_HIDDEN) {
-      contentBounds.x = scrollPosition.x;
-      contentBounds.width = 0;
-    }
-    contentBounds.width += scrollableFrame->GetScrollPortRect().width;
-    contentBounds.height += scrollableFrame->GetScrollPortRect().height;
-    metrics.mScrollableRect = CSSRect::FromAppUnits(contentBounds);
     metrics.SetScrollOffset(CSSPoint::FromAppUnits(scrollPosition));
 
     // If the frame was scrolled since the last layers update, and by
@@ -692,10 +754,6 @@ static void RecordFrameMetrics(nsIFrame* aForFrame,
     if (originOfLastScroll && originOfLastScroll != nsGkAtoms::apz) {
       metrics.SetScrollOffsetUpdated(scrollableFrame->CurrentScrollGeneration());
     }
-  }
-  else {
-    nsRect contentBounds = aForFrame->GetRect();
-    metrics.mScrollableRect = CSSRect::FromAppUnits(contentBounds);
   }
 
   metrics.mScrollId = aScrollId;
@@ -795,6 +853,10 @@ static void RecordFrameMetrics(nsIFrame* aForFrame,
     ParentLayerIntMargin boundMargins = RoundedToInt(CSSMargin::FromAppUnits(sizes) * CSSToParentLayerScale(1.0f));
     metrics.mCompositionBounds.Deflate(boundMargins);
   }
+
+  metrics.SetRootCompositionSize(
+    CalculateRootCompositionSize(metrics, isRootContentDocRootScrollFrame,
+                                 presContext, aForFrame, aScrollFrame));
 
   if (GetApzcTreePrintPref()) {
     if (nsIContent* content = frameForCompositionBoundsCalculation->GetContent()) {

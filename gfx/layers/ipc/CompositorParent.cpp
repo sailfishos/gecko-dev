@@ -767,6 +767,7 @@ CompositorParent::ShadowLayersUpdated(LayerTransactionParent* aLayerTree,
   // change, dimension change would be done at the stage, update the size here is free of
   // race condition.
   mLayerManager->UpdateRenderBounds(aTargetConfig.clientBounds());
+  mLayerManager->SetRegionToClear(aTargetConfig.clearRegion());
 
   mCompositionManager->Updated(aIsFirstPaint, aTargetConfig);
   Layer* root = aLayerTree->GetRoot();
@@ -1253,8 +1254,12 @@ CrossProcessCompositorParent::GetCompositionManager(LayerTransactionParent* aLay
 void
 CrossProcessCompositorParent::DeferredDestroy()
 {
-  mSelfRef = nullptr;
-  // |this| was just destroyed, hands off
+  CrossProcessCompositorParent* self;
+  mSelfRef.forget(&self);
+
+  nsCOMPtr<nsIRunnable> runnable =
+    NS_NewNonOwningRunnableMethod(self, &CrossProcessCompositorParent::Release);
+  MOZ_ALWAYS_TRUE(NS_SUCCEEDED(NS_DispatchToMainThread(runnable)));
 }
 
 CrossProcessCompositorParent::~CrossProcessCompositorParent()

@@ -27,6 +27,7 @@
 #include "mozilla/Preferences.h"        // for Preferences
 #include "mozilla/gfx/BasePoint.h"      // for BasePoint
 #include "mozilla/gfx/Matrix.h"         // for Matrix4x4, Matrix
+#include "mozilla/layers/LayerManagerComposite.h"  // for LayerComposite, etc
 #include "mozilla/layers/CompositingRenderTargetOGL.h"
 #include "mozilla/layers/Effects.h"     // for EffectChain, TexturedEffect, etc
 #include "mozilla/layers/TextureHost.h"  // for TextureSource, etc
@@ -43,6 +44,7 @@
 #include "DecomposeIntoNoRepeatTriangles.h"
 #include "ScopedGLHelpers.h"
 #include "GLReadTexImageHelper.h"
+#include "TiledLayerBuffer.h"           // for TiledLayerComposer
 
 #if MOZ_ANDROID_OMTC
 #include "TexturePoolOGL.h"
@@ -147,72 +149,6 @@ DrawQuads(GLContext *aGLContext,
   aGLContext->fBindBuffer(LOCAL_GL_ARRAY_BUFFER, 0);
 }
 
-#ifdef MOZ_WIDGET_GONK
-CompositorOGLGonkBackendSpecificData::CompositorOGLGonkBackendSpecificData(CompositorOGL* aCompositor)
-  : mCompositor(aCompositor)
-{
-}
-
-CompositorOGLGonkBackendSpecificData::~CompositorOGLGonkBackendSpecificData()
-{
-  // Delete all textures by calling EndFrame twice
-  gl()->MakeCurrent();
-  EndFrame();
-  EndFrame();
-}
-
-GLContext*
-CompositorOGLGonkBackendSpecificData::gl() const
-{
-  return mCompositor->gl();
-}
-
-GLuint
-CompositorOGLGonkBackendSpecificData::GetTexture()
-{
-  GLuint texture = 0;
-
-  if (!mUnusedTextures.IsEmpty()) {
-    // Try to reuse one from the unused pile first
-    texture = mUnusedTextures[0];
-    mUnusedTextures.RemoveElementAt(0);
-  } else if (gl()->MakeCurrent()) {
-    // There isn't one to reuse, create one.
-    gl()->fGenTextures(1, &texture);
-  }
-
-  if (texture) {
-    mCreatedTextures.AppendElement(texture);
-  }
-
-  return texture;
-}
-
-void
-CompositorOGLGonkBackendSpecificData::EndFrame()
-{
-  gl()->MakeCurrent();
-
-  // Some platforms have issues unlocking Gralloc buffers even when they're
-  // rebound.
-  if (gfxPrefs::OverzealousGrallocUnlocking()) {
-    mUnusedTextures.AppendElements(mCreatedTextures);
-    mCreatedTextures.Clear();
-  }
-
-  // Delete unused textures
-  for (size_t i = 0; i < mUnusedTextures.Length(); i++) {
-    GLuint texture = mUnusedTextures[i];
-    gl()->fDeleteTextures(1, &texture);
-  }
-  mUnusedTextures.Clear();
-
-  // Move all created textures into the unused pile
-  mUnusedTextures.AppendElements(mCreatedTextures);
-  mCreatedTextures.Clear();
-}
-#endif
-
 CompositorOGL::CompositorOGL(nsIWidget *aWidget, int aSurfaceWidth,
                              int aSurfaceHeight, bool aUseExternalSurfaceSize)
   : mWidget(aWidget)
@@ -273,38 +209,18 @@ CompositorOGL::CreateContext()
   return context.forget();
 }
 
-GLuint
-CompositorOGL::GetTemporaryTexture(GLenum aTextureUnit)
-{
-  size_t index = aTextureUnit - LOCAL_GL_TEXTURE0;
-  // lazily grow the array of temporary textures
-  if (mTextures.Length() <= index) {
-    size_t prevLength = mTextures.Length();
-    mTextures.SetLength(index + 1);
-    for(unsigned int i = prevLength; i <= index; ++i) {
-      mTextures[i] = 0;
-    }
-  }
-  // lazily initialize the temporary textures
-  if (!mTextures[index]) {
-    if (!gl()->MakeCurrent()) {
-      return 0;
-    }
-    gl()->fGenTextures(1, &mTextures[index]);
-  }
-  return mTextures[index];
-}
-
 void
 CompositorOGL::Destroy()
 {
   if (gl() && gl()->MakeCurrent()) {
-    if (mTextures.Length() > 0) {
-      gl()->fDeleteTextures(mTextures.Length(), &mTextures[0]);
-    }
     mVBOs.Flush(gl());
   }
-  mTextures.SetLength(0);
+
+  if (mTexturePool) {
+    mTexturePool->Clear();
+    mTexturePool = nullptr;
+  }
+
   if (!mDestroyed) {
     mDestroyed = true;
     CleanupResources();
@@ -705,7 +621,7 @@ CompositorOGL::SetRenderTarget(CompositingRenderTarget *aSurface)
 }
 
 CompositingRenderTarget*
-CompositorOGL::GetCurrentRenderTarget()
+CompositorOGL::GetCurrentRenderTarget() const
 {
   return mCurrentRenderTarget;
 }
@@ -737,17 +653,13 @@ CalculatePOTSize(const IntSize& aSize, GLContext* gl)
 }
 
 void
-CompositorOGL::clearFBRect(const gfx::Rect* aRect)
+CompositorOGL::ClearRect(const gfx::Rect& aRect)
 {
-  if (!aRect) {
-    return;
-  }
-
   // Map aRect to OGL coordinates, origin:bottom-left
-  GLint y = mHeight - (aRect->y + aRect->height);
+  GLint y = mHeight - (aRect.y + aRect.height);
 
   ScopedGLState scopedScissorTestState(mGLContext, LOCAL_GL_SCISSOR_TEST, true);
-  ScopedScissorRect autoScissorRect(mGLContext, aRect->x, y, aRect->width, aRect->height);
+  ScopedScissorRect autoScissorRect(mGLContext, aRect.x, y, aRect.width, aRect.height);
   mGLContext->fClearColor(0.0, 0.0, 0.0, 0.0);
   mGLContext->fClear(LOCAL_GL_COLOR_BUFFER_BIT | LOCAL_GL_DEPTH_BUFFER_BIT);
 }
@@ -1315,11 +1227,9 @@ CompositorOGL::EndFrame()
 
   mCurrentRenderTarget = nullptr;
 
-#ifdef MOZ_WIDGET_GONK
-  if (mCompositorBackendSpecificData) {
-    static_cast<CompositorOGLGonkBackendSpecificData*>(mCompositorBackendSpecificData.get())->EndFrame();
+  if (mTexturePool) {
+    mTexturePool->EndFrame();
   }
-#endif
 
   mGLContext->SwapBuffers();
   mGLContext->fBindBuffer(LOCAL_GL_ARRAY_BUFFER, 0);
@@ -1329,6 +1239,13 @@ CompositorOGL::EndFrame()
 void
 CompositorOGL::SetFBAcquireFence(Layer* aLayer)
 {
+  // OpenGL does not provide ReleaseFence for rendering.
+  // Instead use FBAcquireFence as layer buffer's ReleaseFence
+  // to prevent flickering and tearing.
+  // FBAcquireFence is FramebufferSurface's AcquireFence.
+  // AcquireFence will be signaled when a buffer's content is available.
+  // See Bug 974152.
+
   if (!aLayer) {
     return;
   }
@@ -1338,7 +1255,7 @@ CompositorOGL::SetFBAcquireFence(Layer* aLayer)
       return;
   }
 
-  // Set FBAcquireFence to child
+  // Set FBAcquireFence on ContainerLayer's childs
   ContainerLayer* container = aLayer->AsContainerLayer();
   if (container) {
     for (Layer* child = container->GetFirstChild(); child; child = child->GetNextSibling()) {
@@ -1347,7 +1264,18 @@ CompositorOGL::SetFBAcquireFence(Layer* aLayer)
     return;
   }
 
-  // Set FBAcquireFence to TexutreHost
+  // Set FBAcquireFence as tiles' ReleaseFence on TiledLayerComposer.
+  TiledLayerComposer* composer = nullptr;
+  LayerComposite* shadow = aLayer->AsLayerComposite();
+  if (shadow) {
+    composer = shadow->GetTiledLayerComposer();
+    if (composer) {
+      composer->SetReleaseFence(new android::Fence(GetGonkDisplay()->GetPrevFBAcquireFd()));
+      return;
+    }
+  }
+
+  // Set FBAcquireFence as layer buffer's ReleaseFence
   LayerRenderState state = aLayer->GetRenderState();
   if (!state.mTexture) {
     return;
@@ -1374,6 +1302,9 @@ CompositorOGL::EndFrameForExternalComposition(const gfx::Matrix& aTransform)
     CopyToTarget(mTarget, aTransform);
     mGLContext->fBindBuffer(LOCAL_GL_ARRAY_BUFFER, 0);
   }
+  if (mTexturePool) {
+    mTexturePool->EndFrame();
+  }
 }
 
 void
@@ -1382,6 +1313,10 @@ CompositorOGL::AbortFrame()
   mGLContext->fBindBuffer(LOCAL_GL_ARRAY_BUFFER, 0);
   mFrameInProgress = false;
   mCurrentRenderTarget = nullptr;
+
+  if (mTexturePool) {
+    mTexturePool->EndFrame();
+  }
 }
 
 void
@@ -1468,17 +1403,6 @@ CompositorOGL::Resume()
 #endif
   return true;
 }
-
-#ifdef MOZ_WIDGET_GONK
-CompositorBackendSpecificData*
-CompositorOGL::GetCompositorBackendSpecificData()
-{
-  if (!mCompositorBackendSpecificData) {
-    mCompositorBackendSpecificData = new CompositorOGLGonkBackendSpecificData(this);
-  }
-  return mCompositorBackendSpecificData;
-}
-#endif
 
 TemporaryRef<DataTextureSource>
 CompositorOGL::CreateDataTextureSource(TextureFlags aFlags)
@@ -1575,6 +1499,144 @@ CompositorOGL::BindAndDrawQuad(ShaderProgramOGL *aProg,
   BindAndDrawQuad(aProg->AttribLocation(ShaderProgramOGL::VertexCoordAttrib),
                   aProg->AttribLocation(ShaderProgramOGL::TexCoordAttrib),
                   aFlipped, aDrawMode);
+}
+
+GLuint
+CompositorOGL::GetTemporaryTexture(GLenum aTarget, GLenum aUnit)
+{
+  if (!mTexturePool) {
+#ifdef MOZ_WIDGET_GONK
+    mTexturePool = new PerFrameTexturePoolOGL(gl());
+#else
+    mTexturePool = new PerUnitTexturePoolOGL(gl());
+#endif
+  }
+  return mTexturePool->GetTexture(aTarget, aUnit);
+}
+
+GLuint
+PerUnitTexturePoolOGL::GetTexture(GLenum aTarget, GLenum aTextureUnit)
+{
+  if (mTextureTarget == 0) {
+    mTextureTarget = aTarget;
+  }
+  MOZ_ASSERT(mTextureTarget == aTarget);
+
+  size_t index = aTextureUnit - LOCAL_GL_TEXTURE0;
+  // lazily grow the array of temporary textures
+  if (mTextures.Length() <= index) {
+    size_t prevLength = mTextures.Length();
+    mTextures.SetLength(index + 1);
+    for(unsigned int i = prevLength; i <= index; ++i) {
+      mTextures[i] = 0;
+    }
+  }
+  // lazily initialize the temporary textures
+  if (!mTextures[index]) {
+    if (!mGL->MakeCurrent()) {
+      return 0;
+    }
+    mGL->fGenTextures(1, &mTextures[index]);
+    mGL->fBindTexture(aTarget, mTextures[index]);
+    mGL->fTexParameteri(aTarget, LOCAL_GL_TEXTURE_WRAP_S, LOCAL_GL_CLAMP_TO_EDGE);
+    mGL->fTexParameteri(aTarget, LOCAL_GL_TEXTURE_WRAP_T, LOCAL_GL_CLAMP_TO_EDGE);
+  }
+  return mTextures[index];
+}
+
+void
+PerUnitTexturePoolOGL::DestroyTextures()
+{
+  if (mGL && mGL->MakeCurrent()) {
+    if (mTextures.Length() > 0) {
+      mGL->fDeleteTextures(mTextures.Length(), &mTextures[0]);
+    }
+  }
+  mTextures.SetLength(0);
+}
+
+void
+PerFrameTexturePoolOGL::DestroyTextures()
+{
+  if (!mGL->MakeCurrent()) {
+    return;
+  }
+
+  if (mUnusedTextures.Length() > 0) {
+    mGL->fDeleteTextures(mUnusedTextures.Length(), &mUnusedTextures[0]);
+    mUnusedTextures.Clear();
+  }
+
+  if (mCreatedTextures.Length() > 0) {
+    mGL->fDeleteTextures(mCreatedTextures.Length(), &mCreatedTextures[0]);
+    mCreatedTextures.Clear();
+  }
+}
+
+GLuint
+PerFrameTexturePoolOGL::GetTexture(GLenum aTarget, GLenum)
+{
+  if (mTextureTarget == 0) {
+    mTextureTarget = aTarget;
+  }
+
+  // The pool should always use the same texture target because it is illegal
+  // to change the target of an already exisiting gl texture.
+  // If we need to use several targets, a pool with several sub-pools (one per
+  // target) will have to be implemented.
+  // At the moment this pool is only used with tiling on b2g so we always need
+  // the same target.
+  MOZ_ASSERT(mTextureTarget == aTarget);
+
+  GLuint texture = 0;
+
+  if (!mUnusedTextures.IsEmpty()) {
+    // Try to reuse one from the unused pile first
+    texture = mUnusedTextures[0];
+    mUnusedTextures.RemoveElementAt(0);
+  } else if (mGL->MakeCurrent()) {
+    // There isn't one to reuse, create one.
+    mGL->fGenTextures(1, &texture);
+    mGL->fBindTexture(aTarget, texture);
+    mGL->fTexParameteri(aTarget, LOCAL_GL_TEXTURE_WRAP_S, LOCAL_GL_CLAMP_TO_EDGE);
+    mGL->fTexParameteri(aTarget, LOCAL_GL_TEXTURE_WRAP_T, LOCAL_GL_CLAMP_TO_EDGE);
+  }
+
+  if (texture) {
+    mCreatedTextures.AppendElement(texture);
+  }
+
+  return texture;
+}
+
+void
+PerFrameTexturePoolOGL::EndFrame()
+{
+  if (!mGL->MakeCurrent()) {
+    // this means the context got destroyed underneith us somehow, and the driver
+    // already has destroyed the textures.
+    mCreatedTextures.Clear();
+    mUnusedTextures.Clear();
+    return;
+  }
+
+  // Some platforms have issues unlocking Gralloc buffers even when they're
+  // rebound.
+  if (gfxPrefs::OverzealousGrallocUnlocking()) {
+    mUnusedTextures.AppendElements(mCreatedTextures);
+    mCreatedTextures.Clear();
+  }
+
+  // Delete unused textures
+  for (size_t i = 0; i < mUnusedTextures.Length(); i++) {
+    GLuint texture = mUnusedTextures[i];
+    mGL->fDeleteTextures(1, &texture);
+  }
+  mUnusedTextures.Clear();
+
+  // Move all created textures into the unused pile
+  mUnusedTextures.AppendElements(mCreatedTextures);
+  mCreatedTextures.Clear();
 }
 
 } /* layers */

@@ -810,6 +810,8 @@ let CustomizableUIInternal = {
 
       aWindow.addEventListener("unload", this);
       aWindow.addEventListener("command", this, true);
+
+      this.notifyListeners("onWindowOpened", aWindow);
     }
   },
 
@@ -850,6 +852,8 @@ let CustomizableUIInternal = {
         areaMap.delete(toDelete);
       }
     }
+
+    this.notifyListeners("onWindowClosed", aWindow);
   },
 
   setLocationAttributes: function(aNode, aArea) {
@@ -1590,6 +1594,12 @@ let CustomizableUIInternal = {
       aPosition = placements.length;
     }
 
+    let widget = gPalette.get(aWidgetId);
+    if (widget) {
+      widget.currentPosition = aPosition;
+      widget.currentArea = oldPlacement.area;
+    }
+
     if (aPosition == oldPlacement.position) {
       return;
     }
@@ -1601,11 +1611,6 @@ let CustomizableUIInternal = {
       aPosition--;
     }
     placements.splice(aPosition, 0, aWidgetId);
-
-    let widget = gPalette.get(aWidgetId);
-    if (widget) {
-      widget.currentPosition = aPosition;
-    }
 
     gDirty = true;
     gDirtyAreaCache.add(oldPlacement.area);
@@ -1652,19 +1657,25 @@ let CustomizableUIInternal = {
   },
 
   restoreStateForArea: function(aArea, aLegacyState) {
-    if (gPlacements.has(aArea)) {
-      // Already restored.
-      return;
-    }
+    let placementsPreexisted = gPlacements.has(aArea);
 
     this.beginBatchUpdate();
     try {
       gRestoring = true;
 
       let restored = false;
-      gPlacements.set(aArea, []);
+      if (placementsPreexisted) {
+        LOG("Restoring " + aArea + " from pre-existing placements");
+        for (let [position, id] in Iterator(gPlacements.get(aArea))) {
+          this.moveWidgetWithinArea(id, position);
+        }
+        gDirty = false;
+        restored = true;
+      } else {
+        gPlacements.set(aArea, []);
+      }
 
-      if (gSavedState && aArea in gSavedState.placements) {
+      if (!restored && gSavedState && aArea in gSavedState.placements) {
         LOG("Restoring " + aArea + " from saved state");
         let placements = gSavedState.placements[aArea];
         for (let id of placements)
@@ -2041,6 +2052,13 @@ let CustomizableUIInternal = {
   destroyWidget: function(aWidgetId) {
     let widget = gPalette.get(aWidgetId);
     if (!widget) {
+      gGroupWrapperCache.delete(aWidgetId);
+      for (let [window, ] of gBuildWindows) {
+        let windowCache = gSingleWrapperCache.get(window);
+        if (windowCache) {
+          windowCache.delete(aWidgetId);
+        }
+      }
       return;
     }
 
@@ -2470,6 +2488,18 @@ this.CustomizableUI = {
   get PANEL_COLUMN_COUNT() 3,
 
   /**
+   * An iteratable property of windows managed by CustomizableUI.
+   * Note that this can *only* be used as an iterator. ie:
+   *     for (let window of CustomizableUI.windows) { ... }
+   */
+  windows: {
+    "@@iterator": function*() {
+      for (let [window,] of gBuildWindows)
+        yield window;
+    }
+  },
+
+  /**
    * Add a listener object that will get fired for various events regarding
    * customization.
    *
@@ -2552,6 +2582,12 @@ this.CustomizableUI = {
    *   - onWidgetUnderflow(aNode, aContainer)
    *     Fired when a widget's DOM node is *not* overflowing its container, a
    *     toolbar, anymore.
+   *   - onWindowOpened(aWindow)
+   *     Fired when a window has been opened that is managed by CustomizableUI,
+   *     once all of the prerequisite setup has been done.
+   *   - onWindowClosed(aWindow)
+   *     Fired when a window that has been managed by CustomizableUI has been
+   *     closed.
    */
   addListener: function(aListener) {
     CustomizableUIInternal.addListener(aListener);
@@ -3267,7 +3303,7 @@ this.CustomizableUI = {
   }
 };
 Object.freeze(this.CustomizableUI);
-
+Object.freeze(this.CustomizableUI.windows);
 
 /**
  * All external consumers of widgets are really interacting with these wrappers
@@ -3430,7 +3466,7 @@ function XULWidgetGroupWrapper(aWidgetId) {
       instance = aWindow.gNavToolbox.palette.getElementsByAttribute("id", aWidgetId)[0];
     }
 
-    let wrapper = new XULWidgetSingleWrapper(aWidgetId, instance);
+    let wrapper = new XULWidgetSingleWrapper(aWidgetId, instance, aWindow.document);
     wrapperMap.set(aWidgetId, wrapper);
     return wrapper;
   };
@@ -3456,14 +3492,47 @@ function XULWidgetGroupWrapper(aWidgetId) {
  * A XULWidgetSingleWrapper is a wrapper around a single instance of a XUL 
  * widget in a particular window.
  */
-function XULWidgetSingleWrapper(aWidgetId, aNode) {
+function XULWidgetSingleWrapper(aWidgetId, aNode, aDocument) {
   this.isGroup = false;
 
   this.id = aWidgetId;
   this.type = "custom";
   this.provider = CustomizableUI.PROVIDER_XUL;
 
-  this.node = aNode;
+  let weakDoc = Cu.getWeakReference(aDocument);
+  // If we keep a strong ref, the weak ref will never die, so null it out:
+  aDocument = null;
+
+  this.__defineGetter__("node", function() {
+    // If we've set this to null (further down), we're sure there's nothing to
+    // be gotten here, so bail out early:
+    if (!weakDoc) {
+      return null;
+    }
+    if (aNode) {
+      // Return the last known node if it's still in the DOM...
+      if (aNode.ownerDocument.contains(aNode)) {
+        return aNode;
+      }
+      // ... or the toolbox
+      let toolbox = aNode.ownerDocument.defaultView.gNavToolbox;
+      if (toolbox && toolbox.palette && aNode.parentNode == toolbox.palette) {
+        return aNode;
+      }
+      // If it isn't, clear the cached value and fall through to the "slow" case:
+      aNode = null;
+    }
+
+    let doc = weakDoc.get();
+    if (doc) {
+      // Store locally so we can cache the result:
+      aNode = CustomizableUIInternal.findWidgetInWindow(aWidgetId, doc.defaultView);
+      return aNode;
+    }
+    // The weakref to the document is dead, we're done here forever more:
+    weakDoc = null;
+    return null;
+  });
 
   this.__defineGetter__("anchor", function() {
     let anchorId;
@@ -3472,16 +3541,21 @@ function XULWidgetSingleWrapper(aWidgetId, aNode) {
     if (placement) {
       anchorId = gAreas.get(placement.area).get("anchor");
     }
-    if (!anchorId) {
-      anchorId = aNode.getAttribute("cui-anchorid");
+
+    let node = this.node;
+    if (!anchorId && node) {
+      anchorId = node.getAttribute("cui-anchorid");
     }
 
-    return anchorId ? aNode.ownerDocument.getElementById(anchorId)
-                    : aNode;
+    return (anchorId && node) ? node.ownerDocument.getElementById(anchorId) : node;
   });
 
   this.__defineGetter__("overflowed", function() {
-    return aNode.getAttribute("overflowedItem") == "true";
+    let node = this.node;
+    if (!node) {
+      return false;
+    }
+    return node.getAttribute("overflowedItem") == "true";
   });
 
   Object.freeze(this);

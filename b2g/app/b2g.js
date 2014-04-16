@@ -69,6 +69,7 @@ pref("network.buffer.cache.count", 24);
 pref("network.buffer.cache.size",  16384);
 
 // predictive actions
+pref("network.seer.enable", false); // disabled on b2g
 pref("network.seer.max-db-size", 2097152); // bytes
 pref("network.seer.preserve", 50); // percentage of seer data to keep when cleaning up
 
@@ -845,6 +846,9 @@ pref("gfx.canvas.azure.accelerated", true);
 // Turn on dynamic cache size for Skia
 pref("gfx.canvas.skiagl.dynamic-cache", true);
 
+// Limit skia to canvases the size of the device screen or smaller
+pref("gfx.canvas.max-size-for-skia-gl", -1);
+
 // enable fence with readpixels for SurfaceStream
 pref("gfx.gralloc.fence-with-readpixels", true);
 
@@ -891,6 +895,8 @@ pref("apz.y_skate_size_multiplier", "1.5");
 pref("apz.x_stationary_size_multiplier", "1.5");
 pref("apz.y_stationary_size_multiplier", "1.8");
 pref("apz.enlarge_displayport_when_clipped", true);
+// Use "sticky" axis locking
+pref("apz.axis_lock_mode", 2);
 
 // This preference allows FirefoxOS apps (and content, I think) to force
 // the use of software (instead of hardware accelerated) 2D canvases by

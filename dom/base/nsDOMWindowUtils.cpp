@@ -313,54 +313,19 @@ static void DestroyDisplayPortPropertyData(void* aObject, nsIAtom* aPropertyName
   delete data;
 }
 
+static void DestroyDisplayPortMarginsPropertyData(void* aObject, nsIAtom* aPropertyName,
+                                                  void* aPropertyValue, void* aData)
+{
+  DisplayPortMarginsPropertyData* data =
+    static_cast<DisplayPortMarginsPropertyData*>(aPropertyValue);
+  delete data;
+}
+
 static void DestroyNsRect(void* aObject, nsIAtom* aPropertyName,
                           void* aPropertyValue, void* aData)
 {
   nsRect* rect = static_cast<nsRect*>(aPropertyValue);
   delete rect;
-}
-
-static void
-MaybeReflowForInflationScreenWidthChange(nsPresContext *aPresContext)
-{
-  if (aPresContext) {
-    nsIPresShell* presShell = aPresContext->GetPresShell();
-    bool fontInflationWasEnabled = presShell->FontSizeInflationEnabled();
-    presShell->NotifyFontSizeInflationEnabledIsDirty();
-    bool changed = false;
-    if (presShell && presShell->FontSizeInflationEnabled() &&
-        presShell->FontSizeInflationMinTwips() != 0) {
-      aPresContext->ScreenWidthInchesForFontInflation(&changed);
-    }
-
-    changed = changed ||
-      (fontInflationWasEnabled != presShell->FontSizeInflationEnabled());
-    if (changed) {
-      nsCOMPtr<nsIDocShell> docShell = aPresContext->GetDocShell();
-      if (docShell) {
-        nsCOMPtr<nsIContentViewer> cv;
-        docShell->GetContentViewer(getter_AddRefs(cv));
-        nsCOMPtr<nsIMarkupDocumentViewer> mudv = do_QueryInterface(cv);
-        if (mudv) {
-          nsTArray<nsCOMPtr<nsIMarkupDocumentViewer> > array;
-          mudv->AppendSubtree(array);
-          for (uint32_t i = 0, iEnd = array.Length(); i < iEnd; ++i) {
-            nsCOMPtr<nsIPresShell> shell;
-            nsCOMPtr<nsIContentViewer> cv = do_QueryInterface(array[i]);
-            cv->GetPresShell(getter_AddRefs(shell));
-            if (shell) {
-              nsIFrame *rootFrame = shell->GetRootFrame();
-              if (rootFrame) {
-                shell->FrameNeedsReflow(rootFrame,
-                                        nsIPresShell::eStyleChange,
-                                        NS_FRAME_IS_DIRTY);
-              }
-            }
-          }
-        }
-      }
-    }
-  }
 }
 
 NS_IMETHODIMP
@@ -377,11 +342,6 @@ nsDOMWindowUtils::SetDisplayPortForElement(float aXPx, float aYPx,
   if (!presShell) {
     return NS_ERROR_FAILURE;
   }
-
-  nsRect displayport(nsPresContext::CSSPixelsToAppUnits(aXPx),
-                     nsPresContext::CSSPixelsToAppUnits(aYPx),
-                     nsPresContext::CSSPixelsToAppUnits(aWidthPx),
-                     nsPresContext::CSSPixelsToAppUnits(aHeightPx));
 
   if (!aElement) {
     return NS_ERROR_INVALID_ARG;
@@ -403,25 +363,20 @@ nsDOMWindowUtils::SetDisplayPortForElement(float aXPx, float aYPx,
     return NS_OK;
   }
 
+  nsRect displayport(nsPresContext::CSSPixelsToAppUnits(aXPx),
+                     nsPresContext::CSSPixelsToAppUnits(aYPx),
+                     nsPresContext::CSSPixelsToAppUnits(aWidthPx),
+                     nsPresContext::CSSPixelsToAppUnits(aHeightPx));
+
   content->SetProperty(nsGkAtoms::DisplayPort,
                        new DisplayPortPropertyData(displayport, aPriority),
                        DestroyDisplayPortPropertyData);
 
   nsIFrame* rootScrollFrame = presShell->GetRootScrollFrame();
-  if (rootScrollFrame) {
-    if (content == rootScrollFrame->GetContent()) {
-      // We are setting a root displayport for a document.
-      // The pres shell needs a special flag set.
-      presShell->SetIgnoreViewportScrolling(true);
-
-      // When the "font.size.inflation.minTwips" preference is set, the
-      // layout depends on the size of the screen.  Since when the size
-      // of the screen changes, the root displayport also changes, we
-      // hook in the needed updates here rather than adding a
-      // separate notification just for this change.
-      nsPresContext* presContext = GetPresContext();
-      MaybeReflowForInflationScreenWidthChange(presContext);
-    }
+  if (rootScrollFrame && content == rootScrollFrame->GetContent()) {
+    // We are setting a root displayport for a document.
+    // The pres shell needs a special flag set.
+    presShell->SetIgnoreViewportScrolling(true);
   }
 
   nsIFrame* rootFrame = presShell->FrameManager()->GetRootFrame();
@@ -446,6 +401,107 @@ nsDOMWindowUtils::SetDisplayPortForElement(float aXPx, float aYPx,
       }
     }
   }
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsDOMWindowUtils::SetDisplayPortMarginsForElement(float aLeftMargin,
+                                                  float aTopMargin,
+                                                  float aRightMargin,
+                                                  float aBottomMargin,
+                                                  uint32_t aAlignment,
+                                                  nsIDOMElement* aElement,
+                                                  uint32_t aPriority)
+{
+  if (!nsContentUtils::IsCallerChrome()) {
+    return NS_ERROR_DOM_SECURITY_ERR;
+  }
+
+  nsIPresShell* presShell = GetPresShell();
+  if (!presShell) {
+    return NS_ERROR_FAILURE;
+  }
+
+  if (!aElement) {
+    return NS_ERROR_INVALID_ARG;
+  }
+
+  nsCOMPtr<nsIContent> content = do_QueryInterface(aElement);
+
+  if (!content) {
+    return NS_ERROR_INVALID_ARG;
+  }
+
+  if (content->GetCurrentDoc() != presShell->GetDocument()) {
+    return NS_ERROR_INVALID_ARG;
+  }
+
+  DisplayPortMarginsPropertyData* currentData =
+    static_cast<DisplayPortMarginsPropertyData*>(content->GetProperty(nsGkAtoms::DisplayPortMargins));
+  if (currentData && currentData->mPriority > aPriority) {
+    return NS_OK;
+  }
+
+  // Note order change of arguments between our function signature and
+  // LayerMargin constructor.
+  LayerMargin displayportMargins(aTopMargin,
+                                 aRightMargin,
+                                 aBottomMargin,
+                                 aLeftMargin);
+
+  content->SetProperty(nsGkAtoms::DisplayPortMargins,
+                       new DisplayPortMarginsPropertyData(displayportMargins, aAlignment, aPriority),
+                       DestroyDisplayPortMarginsPropertyData);
+
+  nsIFrame* rootScrollFrame = presShell->GetRootScrollFrame();
+  if (rootScrollFrame && content == rootScrollFrame->GetContent()) {
+    // We are setting a root displayport for a document.
+    // The pres shell needs a special flag set.
+    presShell->SetIgnoreViewportScrolling(true);
+  }
+
+  nsIFrame* rootFrame = presShell->FrameManager()->GetRootFrame();
+  if (rootFrame) {
+    rootFrame->SchedulePaint();
+  }
+
+  return NS_OK;
+}
+
+
+NS_IMETHODIMP
+nsDOMWindowUtils::SetDisplayPortBaseForElement(int32_t aX,
+                                               int32_t aY,
+                                               int32_t aWidth,
+                                               int32_t aHeight,
+                                               nsIDOMElement* aElement)
+{
+  if (!nsContentUtils::IsCallerChrome()) {
+    return NS_ERROR_DOM_SECURITY_ERR;
+  }
+
+  nsIPresShell* presShell = GetPresShell();
+  if (!presShell) {
+    return NS_ERROR_FAILURE;
+  }
+
+  if (!aElement) {
+    return NS_ERROR_INVALID_ARG;
+  }
+
+  nsCOMPtr<nsIContent> content = do_QueryInterface(aElement);
+
+  if (!content) {
+    return NS_ERROR_INVALID_ARG;
+  }
+
+  if (content->GetCurrentDoc() != presShell->GetDocument()) {
+    return NS_ERROR_INVALID_ARG;
+  }
+
+  content->SetProperty(nsGkAtoms::DisplayPortBase, new nsRect(aX, aY, aWidth, aHeight),
+                       DestroyNsRect);
 
   return NS_OK;
 }
@@ -3266,6 +3322,49 @@ nsDOMWindowUtils::GetPlugins(JSContext* cx, JS::MutableHandle<JS::Value> aPlugin
   return NS_OK;
 }
 
+static void
+MaybeReflowForInflationScreenWidthChange(nsPresContext *aPresContext)
+{
+  if (aPresContext) {
+    nsIPresShell* presShell = aPresContext->GetPresShell();
+    bool fontInflationWasEnabled = presShell->FontSizeInflationEnabled();
+    presShell->NotifyFontSizeInflationEnabledIsDirty();
+    bool changed = false;
+    if (presShell && presShell->FontSizeInflationEnabled() &&
+        presShell->FontSizeInflationMinTwips() != 0) {
+      aPresContext->ScreenWidthInchesForFontInflation(&changed);
+    }
+
+    changed = changed ||
+      (fontInflationWasEnabled != presShell->FontSizeInflationEnabled());
+    if (changed) {
+      nsCOMPtr<nsIDocShell> docShell = aPresContext->GetDocShell();
+      if (docShell) {
+        nsCOMPtr<nsIContentViewer> cv;
+        docShell->GetContentViewer(getter_AddRefs(cv));
+        nsCOMPtr<nsIMarkupDocumentViewer> mudv = do_QueryInterface(cv);
+        if (mudv) {
+          nsTArray<nsCOMPtr<nsIMarkupDocumentViewer> > array;
+          mudv->AppendSubtree(array);
+          for (uint32_t i = 0, iEnd = array.Length(); i < iEnd; ++i) {
+            nsCOMPtr<nsIPresShell> shell;
+            nsCOMPtr<nsIContentViewer> cv = do_QueryInterface(array[i]);
+            cv->GetPresShell(getter_AddRefs(shell));
+            if (shell) {
+              nsIFrame *rootFrame = shell->GetRootFrame();
+              if (rootFrame) {
+                shell->FrameNeedsReflow(rootFrame,
+                                        nsIPresShell::eStyleChange,
+                                        NS_FRAME_IS_DIRTY);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
 NS_IMETHODIMP
 nsDOMWindowUtils::SetScrollPositionClampingScrollPortSize(float aWidth, float aHeight)
 {
@@ -3285,6 +3384,14 @@ nsDOMWindowUtils::SetScrollPositionClampingScrollPortSize(float aWidth, float aH
   presShell->SetScrollPositionClampingScrollPortSize(
     nsPresContext::CSSPixelsToAppUnits(aWidth),
     nsPresContext::CSSPixelsToAppUnits(aHeight));
+
+  // When the "font.size.inflation.minTwips" preference is set, the
+  // layout depends on the size of the screen.  Since when the size
+  // of the screen changes, the scroll position clamping scroll port
+  // size also changes, we hook in the needed updates here rather
+  // than adding a separate notification just for this change.
+  nsPresContext* presContext = GetPresContext();
+  MaybeReflowForInflationScreenWidthChange(presContext);
 
   return NS_OK;
 }
