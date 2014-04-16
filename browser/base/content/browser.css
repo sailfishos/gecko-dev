@@ -13,6 +13,10 @@
 %endif
 }
 
+#main-window[customize-entered] {
+  min-width: -moz-fit-content;
+}
+
 searchbar {
   -moz-binding: url("chrome://browser/content/search/search.xml#searchbar");
 }
@@ -922,6 +926,7 @@ chatbox:-moz-full-screen-ancestor > .chat-titlebar {
 
 /* Customize mode */
 #navigator-toolbox,
+#browser-bottombox,
 #content-deck {
   transition-property: margin-left, margin-right;
   transition-duration: 150ms;
