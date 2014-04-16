@@ -533,10 +533,6 @@ public abstract class GeckoApp
 
     public void showPrivateTabs() { }
 
-    public void showRemoteTabs() { }
-
-    private void showTabs(TabsPanel.Panel panel) { }
-
     public void hideTabs() { }
 
     /**
@@ -1258,7 +1254,7 @@ public abstract class GeckoApp
         // the UI.
         // This is using a sledgehammer to crack a nut, but it'll do for
         // now.
-        if (LocaleManager.systemLocaleDidChange()) {
+        if (BrowserLocaleManager.getInstance().systemLocaleDidChange()) {
             Log.i(LOGTAG, "System locale changed. Restarting.");
             doRestart();
             GeckoAppShell.systemExit();
@@ -1336,8 +1332,8 @@ public abstract class GeckoApp
                 final SharedPreferences prefs = GeckoApp.this.getSharedPreferences();
 
                 // Wait until now to set this, because we'd rather throw an exception than 
-                // have a caller of LocaleManager regress startup.
-                LocaleManager.initialize(getApplicationContext());
+                // have a caller of BrowserLocaleManager regress startup.
+                BrowserLocaleManager.getInstance().initialize(getApplicationContext());
 
                 SessionInformation previousSession = SessionInformation.fromSharedPrefs(prefs);
                 if (previousSession.wasKilled()) {
@@ -1361,7 +1357,7 @@ public abstract class GeckoApp
                 Log.i(LOGTAG, "Creating HealthRecorder.");
 
                 final String osLocale = Locale.getDefault().toString();
-                String appLocale = LocaleManager.getAndApplyPersistedLocale(GeckoApp.this);
+                String appLocale = BrowserLocaleManager.getInstance().getAndApplyPersistedLocale(GeckoApp.this);
                 Log.d(LOGTAG, "OS locale is " + osLocale + ", app locale is " + appLocale);
 
                 if (appLocale == null) {
@@ -1394,6 +1390,13 @@ public abstract class GeckoApp
      * aware of the locale.
      *
      * Now we can display strings!
+     *
+     * You can think of this as being something like a second phase of onCreate,
+     * where you can do string-related operations. Use this in place of embedding
+     * strings in view XML.
+     *
+     * By contrast, onConfigurationChanged does some locale operations, but is in
+     * response to device changes.
      */
     @Override
     public void onLocaleReady(final String locale) {
@@ -1403,11 +1406,12 @@ public abstract class GeckoApp
 
         // The URL bar hint needs to be populated.
         TextView urlBar = (TextView) findViewById(R.id.url_bar_title);
-        if (urlBar == null) {
-            return;
+        if (urlBar != null) {
+            final String hint = getResources().getString(R.string.url_bar_default_text);
+            urlBar.setHint(hint);
+        } else {
+            Log.d(LOGTAG, "No URL bar in GeckoApp. Not loading localized hint string.");
         }
-        final String hint = getResources().getString(R.string.url_bar_default_text);
-        urlBar.setHint(hint);
 
         // Allow onConfigurationChanged to take care of the rest.
         onConfigurationChanged(getResources().getConfiguration());
@@ -2209,7 +2213,7 @@ public abstract class GeckoApp
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
         Log.d(LOGTAG, "onConfigurationChanged: " + newConfig.locale);
-        LocaleManager.correctLocale(this, getResources(), newConfig);
+        BrowserLocaleManager.getInstance().correctLocale(this, getResources(), newConfig);
 
         // onConfigurationChanged is not called for 180 degree orientation changes,
         // we will miss such rotations and the screen orientation will not be
@@ -2801,14 +2805,14 @@ public abstract class GeckoApp
     private static final String SESSION_END_LOCALE_CHANGED = "L";
 
     /**
-     * Use LocaleManager to change our persisted and current locales,
+     * Use BrowserLocaleManager to change our persisted and current locales,
      * and poke HealthRecorder to tell it of our changed state.
      */
     private void setLocale(final String locale) {
         if (locale == null) {
             return;
         }
-        final String resultant = LocaleManager.setSelectedLocale(this, locale);
+        final String resultant = BrowserLocaleManager.getInstance().setSelectedLocale(this, locale);
         if (resultant == null) {
             return;
         }

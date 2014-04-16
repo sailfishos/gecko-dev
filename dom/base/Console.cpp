@@ -507,9 +507,7 @@ NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN(Console)
     }
 
     for (uint32_t i = 0; i < data->mArguments.Length(); ++i) {
-      if (JSVAL_IS_TRACEABLE(data->mArguments[i])) {
-        aCallbacks.Trace(&data->mArguments[i], "data->mArguments[i]", aClosure);
-      }
+      aCallbacks.Trace(&data->mArguments[i], "data->mArguments[i]", aClosure);
     }
   }
 
@@ -814,14 +812,11 @@ Console::Method(JSContext* aCx, MethodName aMethodName,
         language == nsIProgrammingLanguage::JAVASCRIPT2) {
       ConsoleStackEntry& data = *callData->mStack.AppendElement();
 
-      nsCString string;
-      rv = stack->GetFilename(string);
+      rv = stack->GetFilename(data.mFilename);
       if (NS_FAILED(rv)) {
         Throw(aCx, rv);
         return;
       }
-
-      CopyUTF8toUTF16(string, data.mFilename);
 
       int32_t lineNumber;
       rv = stack->GetLineNumber(&lineNumber);
@@ -832,13 +827,11 @@ Console::Method(JSContext* aCx, MethodName aMethodName,
 
       data.mLineNumber = lineNumber;
 
-      rv = stack->GetName(string);
+      rv = stack->GetName(data.mFunctionName);
       if (NS_FAILED(rv)) {
         Throw(aCx, rv);
         return;
       }
-
-      CopyUTF8toUTF16(string, data.mFunctionName);
 
       data.mLanguage = language;
     }

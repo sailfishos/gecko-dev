@@ -10,7 +10,6 @@
 #include "SurfaceStream.h"              // for SurfaceStream
 #include "SurfaceTypes.h"               // for SurfaceStreamHandle
 #include "gfx2DGlue.h"                  // for ImageFormatToSurfaceFormat
-#include "gfxASurface.h"                // for gfxASurface, etc
 #include "gfxPlatform.h"                // for gfxPlatform
 #include "mozilla/gfx/BaseSize.h"       // for BaseSize
 #include "mozilla/layers/CompositableForwarder.h"
@@ -74,13 +73,14 @@ CanvasClient2D::Update(gfx::IntSize aSize, ClientCanvasLayer* aLayer)
     mBuffer = CreateBufferTextureClient(gfx::ImageFormatToSurfaceFormat(format),
                                         flags,
                                         gfxPlatform::GetPlatform()->GetPreferredCanvasBackend());
-    MOZ_ASSERT(mBuffer->AsTextureClientSurface());
-    mBuffer->AsTextureClientSurface()->AllocateForSurface(aSize);
+    MOZ_ASSERT(mBuffer->CanExposeDrawTarget());
+    mBuffer->AllocateForSurface(aSize);
 
     bufferCreated = true;
   }
 
   if (!mBuffer->Lock(OPEN_WRITE_ONLY)) {
+    mBuffer = nullptr;
     return;
   }
 

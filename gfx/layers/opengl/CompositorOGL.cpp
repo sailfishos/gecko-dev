@@ -14,7 +14,6 @@
 #include "LayerScope.h"                 // for LayerScope
 #include "gfx2DGlue.h"                  // for ThebesFilter
 #include "gfx3DMatrix.h"                // for gfx3DMatrix
-#include "gfxASurface.h"                // for gfxASurface, etc
 #include "gfxCrashReporterUtils.h"      // for ScopedGfxFeatureReporter
 #include "gfxImageSurface.h"            // for gfxImageSurface
 #include "gfxMatrix.h"                  // for gfxMatrix
@@ -175,19 +174,11 @@ CompositorOGL::CreateContext()
 {
   nsRefPtr<GLContext> context;
 
-  // If widget has active GL context then we can try to wrap it into Moz GL Context
-  if (mWidget->HasGLContext()) {
-    context = GLContextProvider::CreateForEmbedded();
-    if (!context || !context->Init()) {
-      NS_WARNING("Failed to create embedded context");
-      context = nullptr;
-    }
-  }
-
-  if (!context && !mWidget->GetNativeData(NS_NATIVE_WINDOW)) {
+  // Allow to create offscreen GL context for main Layer Manager
+  if (!context && PR_GetEnv("MOZ_LAYERS_PREFER_OFFSCREEN")) {
     SurfaceCaps caps = SurfaceCaps::ForRGB();
     caps.preserve = false;
-    caps.bpp16 = true;
+    caps.bpp16 = gfxPlatform::GetPlatform()->GetOffscreenFormat() == gfxImageFormat::RGB16_565;
     context = GLContextProvider::CreateOffscreen(gfxIntSize(mSurfaceSize.width,
                                                             mSurfaceSize.height), caps);
   }

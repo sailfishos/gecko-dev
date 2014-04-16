@@ -16,7 +16,6 @@
 #include "mozilla/layers/LayersTypes.h"  // for LayersBackend
 #include "mozilla/layers/PCompositableChild.h"  // for PCompositableChild
 #include "nsISupportsImpl.h"            // for MOZ_COUNT_CTOR, etc
-#include "gfxASurface.h"                // for gfxContentType
 
 namespace mozilla {
 namespace layers {
@@ -68,13 +67,15 @@ class TextureClientData;
  * where we have a different way of interfacing with the textures - in terms of
  * drawing into the compositable and/or passing its contents to the compostior.
  */
-class CompositableClient : public AtomicRefCounted<CompositableClient>
+class CompositableClient
 {
-public:
-  MOZ_DECLARE_REFCOUNTED_TYPENAME(CompositableClient)
-  CompositableClient(CompositableForwarder* aForwarder, TextureFlags aFlags = 0);
-
+protected:
   virtual ~CompositableClient();
+
+public:
+  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(CompositableClient)
+
+  CompositableClient(CompositableForwarder* aForwarder, TextureFlags aFlags = 0);
 
   virtual TextureInfo GetTextureInfo() const = 0;
 

@@ -9,7 +9,6 @@
 #include "ImageTypes.h"                 // for ImageFormat::PLANAR_YCBCR, etc
 #include "SharedTextureImage.h"         // for SharedTextureImage::Data, etc
 #include "gfx2DGlue.h"                  // for ImageFormatToSurfaceFormat
-#include "gfxASurface.h"                // for gfxASurface, etc
 #include "gfxPlatform.h"                // for gfxPlatform
 #include "mozilla/Assertions.h"         // for MOZ_ASSERT, etc
 #include "mozilla/RefPtr.h"             // for RefPtr, TemporaryRef
@@ -176,6 +175,7 @@ ImageClientSingle::UpdateImageInternal(ImageContainer* aContainer,
     }
 
     if (!mFrontBuffer->Lock(OPEN_WRITE_ONLY)) {
+      mFrontBuffer = nullptr;
       return false;
     }
     bool status = mFrontBuffer->AsTextureClientYCbCr()->UpdateYCbCr(*data);
@@ -243,6 +243,7 @@ ImageClientSingle::UpdateImageInternal(ImageContainer* aContainer,
     }
 
     if (!mFrontBuffer->Lock(OPEN_WRITE_ONLY)) {
+      mFrontBuffer = nullptr;
       return false;
     }
 

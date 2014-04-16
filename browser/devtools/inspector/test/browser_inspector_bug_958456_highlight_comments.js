@@ -8,7 +8,7 @@
 // highlighter, depending on the type of node hovered over.
 
 let {devtools} = Cu.import("resource://gre/modules/devtools/Loader.jsm", {});
-let promise = devtools.require("sdk/core/promise");
+let {Promise: promise} = Cu.import("resource://gre/modules/Promise.jsm", {});
 let {Task} = Cu.import("resource://gre/modules/Task.jsm", {});
 
 const TEST_PAGE = "http://mochi.test:8888/browser/browser/devtools/inspector/test/browser_inspector_bug_958456_highlight_comments.html";
@@ -25,7 +25,7 @@ function test() {
       openInspector((aInspector, aToolbox) => {
         inspector = aInspector;
         markupView = inspector.markup;
-        inspector.once("inspector-updated", startTests);
+        startTests();
       });
     }, content);
   }, true);

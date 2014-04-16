@@ -62,8 +62,8 @@ private:
   uint64_t mLayersId;
 };
 
-class CompositorParent MOZ_FINAL : public PCompositorParent,
-                                   public ShadowLayersManager
+class CompositorParent : public PCompositorParent,
+                         public ShadowLayersManager
 {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(CompositorParent)
 
@@ -301,6 +301,8 @@ private:
    */
   bool CanComposite();
 
+  void DidComposite();
+
   nsRefPtr<LayerManagerComposite> mLayerManager;
   nsRefPtr<Compositor> mCompositor;
   RefPtr<AsyncCompositionManager> mCompositionManager;
@@ -328,6 +330,8 @@ private:
   CancelableTask* mForceCompositionTask;
 
   nsRefPtr<APZCTreeManager> mApzcTreeManager;
+
+  bool mWantDidCompositeEvent;
 
   DISALLOW_EVIL_CONSTRUCTORS(CompositorParent);
 };

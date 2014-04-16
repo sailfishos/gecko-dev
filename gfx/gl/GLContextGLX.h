@@ -36,7 +36,7 @@ public:
         return static_cast<GLContextGLX*>(gl);
     }
 
-    bool Init();
+    bool Init() MOZ_OVERRIDE;
 
     virtual bool MakeCurrentImpl(bool aForce) MOZ_OVERRIDE;
 
@@ -49,8 +49,6 @@ public:
     virtual bool SupportsRobustness() const MOZ_OVERRIDE;
 
     virtual bool SwapBuffers() MOZ_OVERRIDE;
-
-    void SetPlatformContext(void* aContext);
 
 private:
     friend class GLContextProviderGLX;
@@ -74,7 +72,7 @@ private:
     GLXLibrary* mGLX;
 
     nsRefPtr<gfxXlibSurface> mPixmap;
-    void* mPlatformContext;
+    bool mOwnsContext;
 };
 
 }

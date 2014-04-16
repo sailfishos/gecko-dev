@@ -9,6 +9,7 @@
 #include "mozilla/DebugOnly.h"
 #include "mozilla/dom/HTMLAllCollection.h"
 #include "nsCOMPtr.h"
+#include "nsGlobalWindow.h"
 #include "nsXPIDLString.h"
 #include "nsPrintfCString.h"
 #include "nsReadableUtils.h"
@@ -2154,28 +2155,24 @@ NS_IMETHODIMP
 nsHTMLDocument::GetSelection(nsISelection** aReturn)
 {
   ErrorResult rv;
-  *aReturn = GetSelection(rv).take();
+  NS_IF_ADDREF(*aReturn = GetSelection(rv));
   return rv.ErrorCode();
 }
 
-already_AddRefed<Selection>
-nsHTMLDocument::GetSelection(ErrorResult& rv)
+Selection*
+nsHTMLDocument::GetSelection(ErrorResult& aRv)
 {
-  nsCOMPtr<nsIDOMWindow> window = do_QueryInterface(GetScopeObject());
-  nsCOMPtr<nsPIDOMWindow> pwin = do_QueryInterface(window);
-  if (!pwin) {
-    return nullptr;
-  }
-  NS_ASSERTION(pwin->IsInnerWindow(), "Should have inner window here!");
-  if (!pwin->GetOuterWindow() ||
-      pwin->GetOuterWindow()->GetCurrentInnerWindow() != pwin) {
+  nsCOMPtr<nsPIDOMWindow> window = do_QueryInterface(GetScopeObject());
+  if (!window) {
     return nullptr;
   }
 
-  nsCOMPtr<nsISelection> sel;
-  rv = window->GetSelection(getter_AddRefs(sel));
-  nsRefPtr<Selection> selection = static_cast<Selection*>(sel.get());
-  return selection.forget();
+  NS_ASSERTION(window->IsInnerWindow(), "Should have inner window here!");
+  if (!window->IsCurrentInnerWindow()) {
+    return nullptr;
+  }
+
+  return static_cast<nsGlobalWindow*>(window.get())->GetSelection(aRv);
 }
 
 NS_IMETHODIMP
@@ -2267,6 +2264,12 @@ nsHTMLDocument::NamedGetter(JSContext* cx, const nsAString& aName, bool& aFound,
   return &val.toObject();
 }
 
+bool
+nsHTMLDocument::NameIsEnumerable(const nsAString& aName)
+{
+  return true;
+}
+
 static PLDHashOperator
 IdentifierMapEntryAddNames(nsIdentifierMapEntry* aEntry, void* aArg)
 {
@@ -2279,7 +2282,7 @@ IdentifierMapEntryAddNames(nsIdentifierMapEntry* aEntry, void* aArg)
 }
 
 void
-nsHTMLDocument::GetSupportedNames(nsTArray<nsString>& aNames)
+nsHTMLDocument::GetSupportedNames(unsigned, nsTArray<nsString>& aNames)
 {
   mIdentifierMap.EnumerateEntries(IdentifierMapEntryAddNames, &aNames);
 }
