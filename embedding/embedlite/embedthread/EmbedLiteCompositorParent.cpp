@@ -66,10 +66,41 @@ EmbedLiteCompositorParent::AllocPLayerTransactionParent(const nsTArray<LayersBac
   if (listener) {
     listener->CompositorCreated();
   }
-  return CompositorParent::AllocPLayerTransactionParent(aBackendHints,
-                                                        aId,
-                                                        aTextureFactoryIdentifier,
-                                                        aSuccess);
+
+  PLayerTransactionParent* parent =
+    CompositorParent::AllocPLayerTransactionParent(aBackendHints,
+                                                   aId,
+                                                   aTextureFactoryIdentifier,
+                                                   aSuccess);
+
+  const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(RootLayerTreeId());
+  NS_ENSURE_TRUE(state && state->mLayerManager, parent);
+
+  GLContext* context = static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->gl();
+  NS_ENSURE_TRUE(context, parent);
+
+  if (context->IsOffscreen()) {
+    GLScreenBuffer* screen = context->Screen();
+    if (screen) {
+      SurfaceStreamType streamType =
+        SurfaceStream::ChooseGLStreamType(SurfaceStream::OffMainThread,
+                                          screen->PreserveBuffer());
+      SurfaceFactory_GL* factory = nullptr;
+      if (context->GetContextType() == GLContextType::EGL && sEGLLibrary.HasKHRImageTexture2D()) {
+        // [Basic/OGL Layers, OMTC] WebGL layer init.
+        factory = SurfaceFactory_EGLImage::Create(context, screen->Caps());
+      } else {
+        // [Basic Layers, OMTC] WebGL layer init.
+        // Well, this *should* work...
+        factory = new SurfaceFactory_GLTexture(context, nullptr, screen->Caps());
+      }
+      if (factory) {
+        screen->Morph(factory, streamType);
+      }
+    }
+  }
+
+  return parent;
 }
 
 bool
@@ -215,42 +246,6 @@ void EmbedLiteCompositorParent::ScheduleTask(CancelableTask* task, int time)
     mCurrentCompositeTask = NewRunnableMethod(this, &EmbedLiteCompositorParent::RenderGL);
     CompositorParent::ScheduleTask(mCurrentCompositeTask, time);
   }
-}
-
-void
-EmbedLiteCompositorParent::SetFirstPaintViewport(const nsIntPoint& aOffset,
-                                                 float aZoom, const nsIntRect& aPageRect,
-                                                 const gfx::Rect& aCssPageRect)
-{
-  LOGT("t");
-  EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(mId);
-  NS_ENSURE_TRUE(view, );
-  view->GetListener()->SetFirstPaintViewport(aOffset, aZoom, aPageRect,
-                                             gfxRect(aCssPageRect.x, aCssPageRect.y,
-                                                     aCssPageRect.width, aCssPageRect.height));
-}
-
-void EmbedLiteCompositorParent::SetPageRect(const gfx::Rect& aCssPageRect)
-{
-  LOGT("t");
-  EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(mId);
-  NS_ENSURE_TRUE(view, );
-  view->GetListener()->SetPageRect(gfxRect(aCssPageRect.x, aCssPageRect.y,
-                                           aCssPageRect.width, aCssPageRect.height));
-}
-
-void
-EmbedLiteCompositorParent::SyncViewportInfo(const nsIntRect& aDisplayPort, float aDisplayResolution,
-                                            bool aLayersUpdated, nsIntPoint& aScrollOffset,
-                                            float& aScaleX, float& aScaleY,
-                                            gfx::Margin& aFixedLayerMargins)
-{
-  LOGT("t");
-  EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(mId);
-  NS_ENSURE_TRUE(view, );
-  view->GetListener()->SyncViewportInfo(aDisplayPort, aDisplayResolution,
-                                        aLayersUpdated, aScrollOffset,
-                                        aScaleX, aScaleY);
 }
 
 } // namespace embedlite

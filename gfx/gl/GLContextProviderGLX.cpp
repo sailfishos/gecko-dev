@@ -108,7 +108,6 @@ GLXLibrary::EnsureInitialized()
         { (PRFuncPtr*) &xSwapBuffersInternal, { "glXSwapBuffers", nullptr } },
         { (PRFuncPtr*) &xQueryVersionInternal, { "glXQueryVersion", nullptr } },
         { (PRFuncPtr*) &xGetCurrentContextInternal, { "glXGetCurrentContext", nullptr } },
-        { (PRFuncPtr*) &xGetCurrentDrawableInternal, { "glXGetCurrentDrawable", nullptr } },
         { (PRFuncPtr*) &xWaitGLInternal, { "glXWaitGL", nullptr } },
         { (PRFuncPtr*) &xWaitXInternal, { "glXWaitX", nullptr } },
         /* functions introduced in GLX 1.1 */
@@ -537,15 +536,6 @@ GLXLibrary::xGetCurrentContext()
     return result;
 }
 
-GLXDrawable
-GLXLibrary::xGetCurrentDrawable()
-{
-    BEFORE_GLX_CALL;
-    GLXDrawable result = xGetCurrentDrawableInternal();
-    AFTER_GLX_CALL;
-    return result;
-}
-
 /* static */ void*
 GLXLibrary::xGetProcAddress(const char *procName)
 {
@@ -857,10 +847,6 @@ GLContextGLX::~GLContextGLX()
 bool
 GLContextGLX::Init()
 {
-    if (mInitialized) {
-        return true;
-    }
-
     SetupLookupFunction();
     if (!InitWithPrefix("gl", true)) {
         return false;
@@ -1012,10 +998,6 @@ GLContextProviderGLX::CreateForWindow(nsIWidget *aWidget)
 {
     if (!sGLXLibrary.EnsureInitialized()) {
         return nullptr;
-    }
-
-    if (aWidget->HasGLContext()) {
-        return CreateForEmbedded();
     }
 
     // Currently, we take whatever Visual the window already has, and

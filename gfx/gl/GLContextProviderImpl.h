@@ -61,10 +61,6 @@ public:
     CreateOffscreen(const gfxIntSize& size,
                     const SurfaceCaps& caps);
 
-    static already_AddRefed<GLContext>
-    CreateForEmbedded();
-
-
     /**
      * Create wrapping Gecko GLContext for external gl context.
      *
