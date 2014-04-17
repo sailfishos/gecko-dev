@@ -454,7 +454,7 @@ GLContextEGL::SetupLookupFunction()
 bool
 GLContextEGL::SwapBuffers()
 {
-    if (mSurface) {
+    if (mSurface && mOwnsContext) {
 #ifdef MOZ_WIDGET_GONK
         if (!mIsOffscreen) {
             if (mHwc) {
