@@ -185,7 +185,7 @@ CompositorOGL::CreateContext()
   }
 
   // Allow to create offscreen GL context for main Layer Manager
-  if (PR_GetEnv("MOZ_LAYERS_PREFER_OFFSCREEN")) {
+  if (!context && PR_GetEnv("MOZ_LAYERS_PREFER_OFFSCREEN")) {
     SurfaceCaps caps = SurfaceCaps::ForRGB();
     caps.preserve = false;
     caps.bpp16 = gfxPlatform::GetPlatform()->GetOffscreenFormat() == gfxImageFormat::RGB16_565;
