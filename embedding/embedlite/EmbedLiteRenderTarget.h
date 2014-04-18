@@ -26,7 +26,7 @@ private:
   mozilla::gl::GLContext* GetConsumerContext() { return mGLContext.get(); }
 
   friend class EmbedLiteApp;
-  EmbedLiteRenderTarget();
+  EmbedLiteRenderTarget(void* aContext = nullptr, void* aSurface = nullptr);
 
   RefPtr<mozilla::gl::GLContext> mGLContext;
 };

@@ -12,7 +12,7 @@
 using namespace mozilla::gl;
 using namespace mozilla::embedlite;
 
-EmbedLiteRenderTarget::EmbedLiteRenderTarget()
+EmbedLiteRenderTarget::EmbedLiteRenderTarget(void* aContext, void* aSurface)
 {
   nsRefPtr<GLContext> ctx = GLContextProvider::CreateForEmbedded();
 
