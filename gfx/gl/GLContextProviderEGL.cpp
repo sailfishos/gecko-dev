@@ -234,7 +234,7 @@ GLContextEGL::GLContextEGL(
     , mIsDoubleBuffered(false)
     , mCanBindToTexture(false)
     , mShareWithEGLImage(false)
-    , mPlatformContext(nullptr)
+    , mOwnsContext(true)
 {
     // any EGL contexts will always be GLESv2
     SetProfileVersion(ContextProfile::OpenGLES, 200);
@@ -259,11 +259,10 @@ GLContextEGL::~GLContextEGL()
 {
     MarkDestroyed();
 
-    // If mGLWidget is non-null, then we've been given it by the GL context provider,
-    // and it's managed by the widget implementation. In this case, We can't destroy
-    // our contexts.
-    if (mPlatformContext)
+    // Wrapped context should not destroy eglContext/Surface
+    if (!mOwnsContext) {
         return;
+    }
 
 #ifdef DEBUG
     printf_stderr("Destroying context %p surface %p on display %p\n", mContext, mSurface, EGL_DISPLAY());
@@ -276,10 +275,6 @@ GLContextEGL::~GLContextEGL()
 bool
 GLContextEGL::Init()
 {
-    if (mInitialized) {
-        return true;
-    }
-
 #if defined(ANDROID)
     // We can't use LoadApitraceLibrary here because the GLContext
     // expects its own handle to the GL library
@@ -409,6 +404,9 @@ GLContextEGL::IsCurrent() {
 
 bool
 GLContextEGL::RenewSurface() {
+    if (!mOwnsContext) {
+        return false;
+    }
 #ifndef MOZ_WIDGET_ANDROID
     MOZ_CRASH("unimplemented");
     // to support this on non-Android platforms, need to keep track of the nsIWidget that
@@ -429,7 +427,7 @@ GLContextEGL::RenewSurface() {
 
 void
 GLContextEGL::ReleaseSurface() {
-    if (!mPlatformContext) {
+    if (mOwnsContext) {
         DestroySurface(mSurface);
     }
     mSurface = EGL_NO_SURFACE;
@@ -445,7 +443,7 @@ GLContextEGL::SetupLookupFunction()
 bool
 GLContextEGL::SwapBuffers()
 {
-    if (mSurface && !mPlatformContext) {
+    if (mSurface && mOwnsContext) {
 #ifdef MOZ_WIDGET_GONK
         if (!mIsOffscreen) {
             if (mHwc) {
@@ -468,15 +466,9 @@ GLContextEGL::HoldSurface(gfxASurface *aSurf) {
     mThebesSurface = aSurf;
 }
 
-void
-GLContextEGL::SetPlatformContext(void *context)
-{
-    mPlatformContext = context;
-}
-
 already_AddRefed<GLContextEGL>
 GLContextEGL::CreateGLContext(const SurfaceCaps& caps,
-                GLContext *shareContext,
+                GLContextEGL *shareContext,
                 bool isOffscreen,
                 EGLConfig config,
                 EGLSurface surface)
@@ -486,7 +478,7 @@ GLContextEGL::CreateGLContext(const SurfaceCaps& caps,
         return nullptr;
     }
 
-    EGLContext eglShareContext = shareContext ? static_cast<GLContextEGL*>(shareContext)->mContext
+    EGLContext eglShareContext = shareContext ? shareContext->mContext
                                               : EGL_NO_CONTEXT;
     EGLint* attribs = sEGLLibrary.HasRobustness() ? gContextAttribsRobustness
                                                   : gContextAttribs;
@@ -689,35 +681,32 @@ CreateConfig(EGLConfig* aConfig)
     }
 }
 
-static nsRefPtr<GLContext> gGlobalContext;
-
 already_AddRefed<GLContext>
-GLContextProviderEGL::CreateForEmbedded()
+GLContextProviderEGL::CreateWrappingExisting(void* aContext, void* aSurface)
 {
     if (!sEGLLibrary.EnsureInitialized()) {
         MOZ_CRASH("Failed to load EGL library!\n");
         return nullptr;
     }
 
-    EGLContext eglContext = sEGLLibrary.fGetCurrentContext();
-    if (eglContext) {
-        void* platformContext = eglContext;
+    // TODO as soon context and surface guaranteed to be non-null
+    aSurface = aSurface ? aSurface : sEGLLibrary.fGetCurrentSurface(LOCAL_EGL_DRAW);
+    aContext = aContext ? aContext : sEGLLibrary.fGetCurrentContext();
+
+    if (aContext && aSurface) {
         SurfaceCaps caps = SurfaceCaps::Any();
         EGLConfig config = EGL_NO_CONFIG;
-        EGLSurface surface = sEGLLibrary.fGetCurrentSurface(LOCAL_EGL_DRAW);
         nsRefPtr<GLContextEGL> glContext =
             new GLContextEGL(caps,
                              nullptr, false,
-                             config, surface, eglContext);
+                             config, (EGLSurface)aSurface, (EGLContext)aContext);
 
         glContext->SetIsDoubleBuffered(true);
-        glContext->SetPlatformContext(platformContext);
-#if !defined(__arm__) // Must not use context sharing on arm (EGLImage should be enough)
-        gGlobalContext = glContext;
-#endif
+        glContext->mOwnsContext = false;
 
         return glContext.forget();
     }
+
     return nullptr;
 }
 
@@ -730,10 +719,6 @@ GLContextProviderEGL::CreateForWindow(nsIWidget *aWidget)
     }
 
     bool doubleBuffered = true;
-
-    if (aWidget->HasGLContext()) {
-        return CreateForEmbedded();
-    }
 
     EGLConfig config;
     if (!CreateConfig(&config)) {
@@ -800,10 +785,9 @@ GLContextEGL::CreateEGLPBufferOffscreenContext(const gfxIntSize& size)
     }
 
     SurfaceCaps dummyCaps = SurfaceCaps::Any();
-    GLContext *shareContext = GLContextProviderEGL::GetGlobalContext();
     nsRefPtr<GLContextEGL> glContext =
         GLContextEGL::CreateGLContext(dummyCaps,
-                                      shareContext, true,
+                                      nullptr, true,
                                       config, surface);
     if (!glContext) {
         NS_WARNING("Failed to create GLContext from PBuffer");
@@ -839,10 +823,9 @@ GLContextEGL::CreateEGLPixmapOffscreenContext(const gfxIntSize& size)
     MOZ_ASSERT(surface);
 
     SurfaceCaps dummyCaps = SurfaceCaps::Any();
-    GLContext *shareContext = GLContextProviderEGL::GetGlobalContext();
     nsRefPtr<GLContextEGL> glContext =
         GLContextEGL::CreateGLContext(dummyCaps,
-                                      shareContext, true,
+                                      nullptr, true,
                                       config, surface);
     if (!glContext) {
         NS_WARNING("Failed to create GLContext from XSurface");
@@ -890,13 +873,12 @@ GLContextProviderEGL::CreateOffscreen(const gfxIntSize& size,
 GLContext *
 GLContextProviderEGL::GetGlobalContext()
 {
-    return gGlobalContext.get();
+    return nullptr;
 }
 
 void
 GLContextProviderEGL::Shutdown()
 {
-    gGlobalContext = nullptr;
 }
 
 } /* namespace gl */

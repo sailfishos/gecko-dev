@@ -23,7 +23,7 @@ class GLContextEGL : public GLContext
 
     static already_AddRefed<GLContextEGL>
     CreateGLContext(const SurfaceCaps& caps,
-                    GLContext *shareContext,
+                    GLContextEGL *shareContext,
                     bool isOffscreen,
                     EGLConfig config,
                     EGLSurface surface);
@@ -46,7 +46,7 @@ public:
         return static_cast<GLContextEGL*>(gl);
     }
 
-    bool Init();
+    bool Init() MOZ_OVERRIDE;
 
     virtual bool IsDoubleBuffered() const MOZ_OVERRIDE {
         return mIsDoubleBuffered;
@@ -100,8 +100,6 @@ public:
     static already_AddRefed<GLContextEGL>
     CreateEGLPBufferOffscreenContext(const gfxIntSize& size);
 
-    void SetPlatformContext(void* aContext);
-
 protected:
     friend class GLContextProviderEGL;
 
@@ -119,7 +117,7 @@ protected:
 #ifdef MOZ_WIDGET_GONK
     nsRefPtr<HwcComposer2D> mHwc;
 #endif
-    void *mPlatformContext;
+    bool mOwnsContext;
 
     static EGLSurface CreatePBufferSurfaceTryingPowerOfTwo(EGLConfig config,
                                                            EGLenum bindToTextureFormat,

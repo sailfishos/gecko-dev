@@ -401,7 +401,7 @@ GetGlobalContextWGL()
 }
 
 already_AddRefed<GLContext>
-GLContextProviderWGL::CreateForEmbedded()
+GLContextProviderWGL::CreateWrappingExisting(void*, void*)
 {
     return nullptr;
 }

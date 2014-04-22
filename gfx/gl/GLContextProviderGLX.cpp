@@ -834,8 +834,10 @@ GLContextGLX::~GLContextGLX()
 {
     MarkDestroyed();
 
-    if (mPlatformContext)
+    // Wrapped context should not destroy glxContext/Surface
+    if (!mOwnsContext) {
         return;
+    }
 
     // see bug 659842 comment 76
 #ifdef DEBUG
@@ -855,10 +857,6 @@ GLContextGLX::~GLContextGLX()
 bool
 GLContextGLX::Init()
 {
-    if (mInitialized) {
-        return true;
-    }
-
     SetupLookupFunction();
     if (!InitWithPrefix("gl", true)) {
         return false;
@@ -907,12 +905,6 @@ GLContextGLX::IsDoubleBuffered() const
     return mDoubleBuffered;
 }
 
-void
-GLContextGLX::SetPlatformContext(void* aContext)
-{
-    mPlatformContext = aContext;
-}
-
 bool
 GLContextGLX::SupportsRobustness() const
 {
@@ -922,7 +914,7 @@ GLContextGLX::SupportsRobustness() const
 bool
 GLContextGLX::SwapBuffers()
 {
-    if (!mDoubleBuffered || mPlatformContext)
+    if (!mDoubleBuffered || !mOwnsContext)
         return false;
     mGLX->xSwapBuffers(mDisplay, mDrawable);
     mGLX->xWaitGL();
@@ -947,7 +939,7 @@ GLContextGLX::GLContextGLX(
       mDoubleBuffered(aDoubleBuffered),
       mGLX(&sGLXLibrary),
       mPixmap(aPixmap),
-      mPlatformContext(nullptr)
+      mOwnsContext(true)
 {
     MOZ_ASSERT(mGLX);
     // See 899855
@@ -984,33 +976,32 @@ AreCompatibleVisuals(Visual *one, Visual *two)
 static nsRefPtr<GLContext> gGlobalContext;
 
 already_AddRefed<GLContext>
-GLContextProviderGLX::CreateForEmbedded()
+GLContextProviderGLX::CreateWrappingExisting(void* aContext, void* aSurface)
 {
     if (!sGLXLibrary.EnsureInitialized()) {
         return nullptr;
     }
 
-    bool doubleBuffered = true;
-    GLXContext glxContext = sGLXLibrary.xGetCurrentContext();
-    if (glxContext) {
-        void* platformContext = glxContext;
+    aContext = aContext ? aContext : (void*)sGLXLibrary.xGetCurrentContext();
+    aSurface = aSurface ? aSurface : (void*)sGLXLibrary.xGetCurrentDrawable();
+    if (aContext && aSurface) {
         SurfaceCaps caps = SurfaceCaps::Any();
         nsRefPtr<GLContextGLX> glContext =
             new GLContextGLX(caps,
                              nullptr, // SharedContext
                              false, // Offscreen
                              (Display*)DefaultXDisplay(), // Display
-                             (GLXDrawable)sGLXLibrary.xGetCurrentDrawable(),
-                             glxContext,
+                             (GLXDrawable)aSurface, (GLXContext)aContext,
                              false, // aDeleteDrawable,
-                             doubleBuffered,
+                             true,
                              (gfxXlibSurface*)nullptr);
 
-        glContext->SetPlatformContext(platformContext);
+        glContext->mOwnsContext = false;
         gGlobalContext = glContext;
 
         return glContext.forget();
     }
+
     return nullptr;
 }
 
@@ -1021,10 +1012,6 @@ GLContextProviderGLX::CreateForWindow(nsIWidget *aWidget)
         return nullptr;
     }
 
-    if (aWidget->HasGLContext()) {
-        return CreateForEmbedded();
-    }
-
     // Currently, we take whatever Visual the window already has, and
     // try to create an fbconfig for that visual.  This isn't
     // necessarily what we want in the long run; an fbconfig may not
@@ -1032,7 +1019,7 @@ GLContextProviderGLX::CreateForWindow(nsIWidget *aWidget)
     // performance might be suboptimal.  But using the existing visual
     // is a relatively safe intermediate step.
 
-    Display *display = (Display*)aWidget->GetNativeData(NS_NATIVE_DISPLAY); 
+    Display *display = (Display*)aWidget->GetNativeData(NS_NATIVE_DISPLAY);
     if (!display) {
         NS_ERROR("X Display required for GLX Context provider");
         return nullptr;
