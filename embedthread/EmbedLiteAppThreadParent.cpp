@@ -40,6 +40,7 @@ EmbedLiteAppThreadParent::RecvInitialized()
 {
   LOGT();
   PR_SetEnv("MOZ_USE_OMTC=1");
+  PR_SetEnv("MOZ_LAYERS_PREFER_OFFSCREEN=1");
   mApp->Initialized();
   bool accel = mApp->IsAccelerated();
   mApp->SetBoolPref("layers.acceleration.disabled", !accel);
