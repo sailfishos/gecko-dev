@@ -176,18 +176,20 @@ CompositorOGL::CreateContext()
   nsRefPtr<GLContext> context;
 
   // If widget has active GL context then we can try to wrap it into Moz GL Context
+  // TODO: KILL ME SOONER
   if (mWidget->HasGLContext()) {
-    context = GLContextProvider::CreateForEmbedded();
+    context = GLContextProvider::CreateWrappingExisting(nullptr, nullptr);
     if (!context || !context->Init()) {
       NS_WARNING("Failed to create embedded context");
       context = nullptr;
     }
   }
 
-  if (!context && !mWidget->GetNativeData(NS_NATIVE_WINDOW)) {
+  // Allow to create offscreen GL context for main Layer Manager
+  if (!context && PR_GetEnv("MOZ_LAYERS_PREFER_OFFSCREEN")) {
     SurfaceCaps caps = SurfaceCaps::ForRGB();
     caps.preserve = false;
-    caps.bpp16 = true;
+    caps.bpp16 = gfxPlatform::GetPlatform()->GetOffscreenFormat() == gfxImageFormat::RGB16_565;
     context = GLContextProvider::CreateOffscreen(gfxIntSize(mSurfaceSize.width,
                                                             mSurfaceSize.height), caps);
   }
@@ -280,27 +282,6 @@ CompositorOGL::Initialize()
     return false;
 
   MakeCurrent();
-
-  if (mGLContext->IsOffscreen()) {
-    GLScreenBuffer* screen = mGLContext->Screen();
-    if (screen) {
-      SurfaceStreamType streamType =
-        SurfaceStream::ChooseGLStreamType(SurfaceStream::OffMainThread,
-                                          screen->PreserveBuffer());
-      SurfaceFactory_GL* factory = nullptr;
-      if (mGLContext->GetContextType() == GLContextType::EGL && sEGLLibrary.HasKHRImageTexture2D()) {
-        // [Basic/OGL Layers, OMTC] WebGL layer init.
-        factory = SurfaceFactory_EGLImage::Create(mGLContext, screen->Caps());
-      } else {
-        // [Basic Layers, OMTC] WebGL layer init.
-        // Well, this *should* work...
-        factory = new SurfaceFactory_GLTexture(mGLContext, nullptr, screen->Caps());
-      }
-      if (factory) {
-        screen->Morph(factory, streamType);
-      }
-    }
-  }
 
   mHasBGRA =
     mGLContext->IsExtensionSupported(gl::GLContext::EXT_texture_format_BGRA8888) ||

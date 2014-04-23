@@ -190,7 +190,7 @@ GetGlobalContextCGL()
 }
 
 already_AddRefed<GLContext>
-GLContextProviderCGL::CreateForEmbedded()
+GLContextProviderCGL::CreateWrappingExisting(void*, void*)
 {
     return nullptr;
 }
@@ -198,10 +198,6 @@ GLContextProviderCGL::CreateForEmbedded()
 already_AddRefed<GLContext>
 GLContextProviderCGL::CreateForWindow(nsIWidget *aWidget)
 {
-    if (!sCGLLibrary.EnsureInitialized()) {
-        return nullptr;
-    }
-
     GLContextCGL *shareContext = GetGlobalContextCGL();
 
     NSOpenGLContext *context = [[NSOpenGLContext alloc]
