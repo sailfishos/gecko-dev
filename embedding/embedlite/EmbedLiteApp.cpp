@@ -75,9 +75,9 @@ EmbedLiteApp::~EmbedLiteApp()
 }
 
 EmbedLiteRenderTarget*
-EmbedLiteApp::CreateEmbedLiteRenderTarget()
+EmbedLiteApp::CreateEmbedLiteRenderTarget(void* aContext, void* aSurface)
 {
-  return new EmbedLiteRenderTarget();
+  return new EmbedLiteRenderTarget(aContext, aSurface);
 }
 
 void
