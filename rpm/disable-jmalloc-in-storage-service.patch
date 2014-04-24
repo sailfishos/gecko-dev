@@ -1,0 +1,16 @@
+diff --git a/storage/src/moz.build b/storage/src/moz.build
+index 73ab863..48123a0 100644
+--- a/storage/src/moz.build
++++ b/storage/src/moz.build
+@@ -54,7 +54,10 @@ FINAL_LIBRARY = 'storagecomps'
+ # MOZ_MEMORY" options in db/sqlite3/src/Makefile.in.
+ if CONFIG['MOZ_MEMORY'] and not CONFIG['MOZ_NATIVE_SQLITE']:
+     if CONFIG['OS_TARGET'] != 'Android':
+-        DEFINES['MOZ_STORAGE_MEMORY'] = True
++        # Don't use jemalloc on EmbedLite too, because we can't guarantee
++        # that Gecko will configure sqlite before it is first used from UI code.
++        #DEFINES['MOZ_STORAGE_MEMORY'] = True
++        pass
+ 
+ # This is the default value.  If we ever change it when compiling sqlite, we
+ # will need to change it here as well.
