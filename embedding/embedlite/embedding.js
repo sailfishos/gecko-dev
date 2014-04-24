@@ -249,10 +249,6 @@ pref("plugin.default.state", 1);
 pref("notification.feature.enabled", true);
 pref("dom.webnotifications.enabled", true);
 
-pref("layers.progressive-paint", false);
-pref("layers.low-precision-buffer", true);
-pref("layers.low-precision-resolution", 250);
-
 // prevent tooltips from showing up
 pref("browser.chrome.toolbar_tips", false);
 pref("dom.indexedDB.warningQuota", 5);
