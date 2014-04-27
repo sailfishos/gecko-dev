@@ -4519,6 +4519,9 @@ var TabsInTitlebar = {
     let titlebar = $("titlebar");
     let titlebarContent = $("titlebar-content");
     let menubar = $("toolbar-menubar");
+#ifdef XP_MACOSX
+    let secondaryButtonsWidth = rect($("titlebar-secondary-buttonbox")).width;
+#endif
 
     if (allowed) {
       // We set the tabsintitlebar attribute first so that our CSS for
@@ -4536,7 +4539,6 @@ var TabsInTitlebar = {
       let captionButtonsBoxWidth = rect($("titlebar-buttonbox-container")).width;
 
 #ifdef XP_MACOSX
-      let fullscreenButtonWidth = rect($("titlebar-fullscreen-button")).width;
       // No need to look up the menubar stuff on OS X:
       let menuHeight = 0;
       let fullMenuHeight = 0;
@@ -4611,9 +4613,6 @@ var TabsInTitlebar = {
 
 
       // Finally, size the placeholders:
-#ifdef XP_MACOSX
-      this._sizePlaceholder("fullscreen-button", fullscreenButtonWidth);
-#endif
       this._sizePlaceholder("caption-buttons", captionButtonsBoxWidth);
 
       if (!this._draghandles) {
@@ -4641,6 +4640,10 @@ var TabsInTitlebar = {
       titlebar.style.marginBottom = "";
       menubar.style.paddingBottom = "";
     }
+
+#ifdef XP_MACOSX
+    this._sizePlaceholder("fullscreen-button", secondaryButtonsWidth);
+#endif
   },
 
   _sizePlaceholder: function (type, width) {
@@ -4679,7 +4682,8 @@ function updateTitlebarDisplay() {
     document.documentElement.setAttribute("chromemargin-nonlwtheme", "");
     let isCustomizing = document.documentElement.hasAttribute("customizing");
     let hasLWTheme = document.documentElement.hasAttribute("lwtheme");
-    if (!hasLWTheme || isCustomizing) {
+    let isPrivate = PrivateBrowsingUtils.isWindowPrivate(window);
+    if ((!hasLWTheme || isCustomizing) && !isPrivate) {
       document.documentElement.removeAttribute("chromemargin");
     }
     document.documentElement.setAttribute("drawtitle", "true");
