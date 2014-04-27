@@ -48,10 +48,12 @@ def process_package_overload(src, dst, version, app_buildid):
     # First replace numeric version like '1.3'
     # Then replace with 'slashed' version like '1_4'
     # Finally set the full length addon version like 1.3.20131230
+    # (reduce the app build id to only the build date
+    # as addon manager doesn't handle big ints in addon versions)
     defines = {
         "NUM_VERSION": version,
         "SLASH_VERSION": version.replace(".", "_"),
-        "FULL_VERSION": ("%s.%s" % (version, app_buildid))
+        "FULL_VERSION": ("%s.%s" % (version, app_buildid[:8]))
     }
     pp = Preprocessor(defines=defines)
     pp.do_filter("substitution")
@@ -131,7 +133,7 @@ def main(platform):
     ])
 
     # Ship b2g-desktop, but prevent its gaia profile to be shipped in the xpi
-    add_dir_to_zip(xpi_path, os.path.join(distdir, "b2g"), "b2g", ("gaia"))
+    add_dir_to_zip(xpi_path, os.path.join(distdir, "b2g"), "b2g", ("gaia", "B2G.app/Contents/MacOS/gaia"))
     # Then ship our own gaia profile
     add_dir_to_zip(xpi_path, os.path.join(gaia_path, "profile"), "profile")
 

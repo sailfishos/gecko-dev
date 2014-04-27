@@ -846,7 +846,10 @@ void imgFrame::ApplyDirtToSurfaces()
 void imgFrame::SetDiscardable()
 {
   MOZ_ASSERT(mLockCount, "Expected to be locked when SetDiscardable is called");
+  // Disabled elsewhere due to the cost of calling GetSourceSurfaceForSurface.
+#ifdef MOZ_WIDGET_ANDROID
   mDiscardable = true;
+#endif
 }
 
 int32_t imgFrame::GetRawTimeout() const
@@ -964,6 +967,10 @@ imgFrame::SizeOfExcludingThisWithComputedFallbackIfHeap(gfxMemoryLocation aLocat
   if (mVBuf && aLocation == gfxMemoryLocation::IN_PROCESS_HEAP) {
     n += aMallocSizeOf(mVBuf);
     n += mVBuf->HeapSizeOfExcludingThis(aMallocSizeOf);
+  }
+
+  if (mVBuf && aLocation == gfxMemoryLocation::IN_PROCESS_NONHEAP) {
+    n += mVBuf->NonHeapSizeOfExcludingThis();
   }
 
   if (mOptSurface && aLocation == mOptSurface->GetMemoryLocation()) {

@@ -11,8 +11,8 @@ const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/devtools/event-emitter.js");
-let promise = Cu.import("resource://gre/modules/commonjs/sdk/core/promise.js").Promise;
 Cu.import("resource://gre/modules/devtools/Loader.jsm");
+const { Promise: promise } = Cu.import("resource://gre/modules/Promise.jsm", {});
 
 var ProfilerController = devtools.require("devtools/profiler/controller");
 
@@ -315,13 +315,18 @@ DevTools.prototype = {
 
   /**
    * Close the toolbox for a given target
+   *
+   * @return promise
+   *         This promise will resolve to false if no toolbox was found
+   *         associated to the target. true, if the toolbox was successfuly
+   *         closed.
    */
   closeToolbox: function DT_closeToolbox(target) {
     let toolbox = this._toolboxes.get(target);
     if (toolbox == null) {
-      return;
+      return promise.resolve(false);
     }
-    return toolbox.destroy();
+    return toolbox.destroy().then(() => true);
   },
 
   /**

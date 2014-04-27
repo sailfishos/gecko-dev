@@ -13,10 +13,13 @@ import org.mozilla.gecko.home.HomeConfig.ItemHandler;
 import org.mozilla.gecko.home.HomeConfig.ViewConfig;
 import org.mozilla.gecko.home.HomePager.OnUrlOpenListener;
 import org.mozilla.gecko.home.PanelLayout.DatasetBacked;
+import org.mozilla.gecko.home.PanelLayout.FilterManager;
+import org.mozilla.gecko.home.PanelLayout.OnItemOpenListener;
 import org.mozilla.gecko.home.PanelLayout.PanelView;
 
 import android.content.Context;
 import android.database.Cursor;
+import android.util.Log;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.GridView;
@@ -27,40 +30,55 @@ public class PanelGridView extends GridView
 
     private final ViewConfig mViewConfig;
     private final PanelViewAdapter mAdapter;
-    private PanelViewUrlHandler mUrlHandler;
+    private PanelViewItemHandler mItemHandler;
+    private OnItemOpenListener mItemOpenListener;
 
     public PanelGridView(Context context, ViewConfig viewConfig) {
         super(context, null, R.attr.panelGridViewStyle);
 
         mViewConfig = viewConfig;
-        mUrlHandler = new PanelViewUrlHandler(viewConfig);
+        mItemHandler = new PanelViewItemHandler(viewConfig);
 
-        mAdapter = new PanelViewAdapter(context, viewConfig.getItemType());
+        mAdapter = new PanelViewAdapter(context, viewConfig);
         setAdapter(mAdapter);
 
         setOnItemClickListener(new PanelGridItemClickListener());
     }
 
     @Override
+    public void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        mItemHandler.setOnItemOpenListener(mItemOpenListener);
+    }
+
+    @Override
     public void onDetachedFromWindow() {
         super.onDetachedFromWindow();
-        mUrlHandler.setOnUrlOpenListener(null);
+        mItemHandler.setOnItemOpenListener(null);
     }
 
     @Override
     public void setDataset(Cursor cursor) {
+        Log.d(LOGTAG, "Setting dataset: " + mViewConfig.getDatasetId());
         mAdapter.swapCursor(cursor);
     }
 
     @Override
-    public void setOnUrlOpenListener(OnUrlOpenListener listener) {
-        mUrlHandler.setOnUrlOpenListener(listener);
+    public void setOnItemOpenListener(OnItemOpenListener listener) {
+        mItemHandler.setOnItemOpenListener(listener);
+        mItemOpenListener = listener;
+    }
+
+    @Override
+    public void setFilterManager(FilterManager filterManager) {
+        mAdapter.setFilterManager(filterManager);
+        mItemHandler.setFilterManager(filterManager);
     }
 
     private class PanelGridItemClickListener implements AdapterView.OnItemClickListener {
         @Override
         public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-            mUrlHandler.openUrlAtPosition(mAdapter.getCursor(), position);
+            mItemHandler.openItemAtPosition(mAdapter.getCursor(), position);
         }
     }
 }

@@ -1982,18 +1982,15 @@ nsGlobalWindow::SetInitialPrincipalToSubject()
 {
   FORWARD_TO_OUTER_VOID(SetInitialPrincipalToSubject, ());
 
-  // First, grab the subject principal. These methods never fail.
-  nsIScriptSecurityManager* ssm = nsContentUtils::GetSecurityManager();
-  nsCOMPtr<nsIPrincipal> newWindowPrincipal, systemPrincipal;
-  ssm->GetSubjectPrincipal(getter_AddRefs(newWindowPrincipal));
-  ssm->GetSystemPrincipal(getter_AddRefs(systemPrincipal));
+  // First, grab the subject principal.
+  nsCOMPtr<nsIPrincipal> newWindowPrincipal = nsContentUtils::GetSubjectPrincipal();
   if (!newWindowPrincipal) {
-    newWindowPrincipal = systemPrincipal;
+    newWindowPrincipal = nsContentUtils::GetSystemPrincipal();
   }
 
-  // Now, if we're about to use the system principal, make sure we're not using
-  // it for a content docshell.
-  if (newWindowPrincipal == systemPrincipal &&
+  // Now, if we're about to use the system principal or an nsExpandedPrincipal,
+  // make sure we're not using it for a content docshell.
+  if (nsContentUtils::IsSystemOrExpandedPrincipal(newWindowPrincipal) &&
       GetDocShell()->ItemType() != nsIDocShellTreeItem::typeChrome) {
     newWindowPrincipal = nullptr;
   }
@@ -2185,6 +2182,11 @@ CreateNativeGlobalForInner(JSContext* aCx,
   MOZ_ASSERT(aNewInner->IsInnerWindow());
   MOZ_ASSERT(aPrincipal);
   MOZ_ASSERT(aHolder);
+
+  // DOMWindow with nsEP is not supported, we have to make sure
+  // no one creates one accidentally.
+  nsCOMPtr<nsIExpandedPrincipal> nsEP = do_QueryInterface(aPrincipal);
+  MOZ_RELEASE_ASSERT(!nsEP, "DOMWindow with nsEP is not supported");
 
   nsGlobalWindow *top = nullptr;
   if (aNewInner->GetOuterWindow()) {
@@ -8361,6 +8363,13 @@ nsGlobalWindow::EnterModalState()
         frameSelection->SetMouseDownState(false);
       }
     }
+  }
+
+  // If there are any drag and drop operations in flight, try to end them.
+  nsCOMPtr<nsIDragService> ds =
+    do_GetService("@mozilla.org/widget/dragservice;1");
+  if (ds) {
+    ds->EndDragSession(true);
   }
 
   // Clear the capturing content if it is under topDoc.

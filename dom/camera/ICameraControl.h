@@ -51,6 +51,7 @@ enum {
   CAMERA_PARAM_THUMBNAILQUALITY,
   CAMERA_PARAM_SENSORANGLE,
   CAMERA_PARAM_ISOMODE,
+  CAMERA_PARAM_SCENEMODE_HDR_RETURNNORMALPICTURE,
 
   // supported features
   CAMERA_PARAM_SUPPORTED_PREVIEWSIZES,
@@ -131,11 +132,12 @@ public:
 
   virtual nsresult StartPreview() = 0;
   virtual nsresult StopPreview() = 0;
-  virtual nsresult AutoFocus(bool aCancelExistingCall) = 0;
+  virtual nsresult AutoFocus() = 0;
   virtual nsresult TakePicture() = 0;
   virtual nsresult StartRecording(DeviceStorageFileDescriptor *aFileDescriptor,
                                   const StartRecordingOptions* aOptions = nullptr) = 0;
   virtual nsresult StopRecording() = 0;
+  virtual nsresult ResumeContinuousFocus() = 0;
 
   virtual nsresult Set(uint32_t aKey, const nsAString& aValue) = 0;
   virtual nsresult Get(uint32_t aKey, nsAString& aValue) = 0;
