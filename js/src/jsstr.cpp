@@ -389,8 +389,7 @@ str_enumerate(JSContext *cx, HandleObject obj)
 }
 
 bool
-js::str_resolve(JSContext *cx, HandleObject obj, HandleId id, unsigned flags,
-                MutableHandleObject objp)
+js::str_resolve(JSContext *cx, HandleObject obj, HandleId id, MutableHandleObject objp)
 {
     if (!JSID_IS_INT(id))
         return true;
@@ -3174,7 +3173,7 @@ class SplitMatchResult {
         endIndex_ = SIZE_MAX;
     }
     bool isFailure() const {
-        return (endIndex_ == SIZE_MAX);
+        return endIndex_ == SIZE_MAX;
     }
     size_t endIndex() const {
         JS_ASSERT(!isFailure());

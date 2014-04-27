@@ -33,7 +33,6 @@ namespace dom {
 class Geolocation;
 class systemMessageCallback;
 class MediaStreamConstraints;
-class MediaStreamConstraintsInternal;
 class WakeLock;
 class ArrayBufferViewOrBlobOrStringOrFormData;
 }
@@ -208,7 +207,7 @@ public:
   MobileConnectionArray* GetMozMobileConnections(ErrorResult& aRv);
   CellBroadcast* GetMozCellBroadcast(ErrorResult& aRv);
   Voicemail* GetMozVoicemail(ErrorResult& aRv);
-  nsIDOMMozIccManager* GetMozIccManager(ErrorResult& aRv);
+  IccManager* GetMozIccManager(ErrorResult& aRv);
 #endif // MOZ_B2G_RIL
 #ifdef MOZ_GAMEPAD
   void GetGamepads(nsTArray<nsRefPtr<Gamepad> >& aGamepads, ErrorResult& aRv);
@@ -231,12 +230,11 @@ public:
                   ErrorResult& aRv);
 
 #ifdef MOZ_MEDIA_NAVIGATOR
-  void MozGetUserMedia(JSContext* aCx,
-                       const MediaStreamConstraints& aConstraints,
+  void MozGetUserMedia(const MediaStreamConstraints& aConstraints,
                        NavigatorUserMediaSuccessCallback& aOnSuccess,
                        NavigatorUserMediaErrorCallback& aOnError,
                        ErrorResult& aRv);
-  void MozGetUserMediaDevices(const MediaStreamConstraintsInternal& aConstraints,
+  void MozGetUserMediaDevices(const MediaStreamConstraints& aConstraints,
                               MozGetUserMediaDevicesSuccessCallback& aOnSuccess,
                               NavigatorUserMediaErrorCallback& aOnError,
                               uint64_t aInnerWindowID,

@@ -671,11 +671,16 @@ bool InitBaselineFrameForOsr(BaselineFrame *frame, InterpreterFrame *interpFrame
 JSObject *CreateDerivedTypedObj(JSContext *cx, HandleObject descr,
                                 HandleObject owner, int32_t offset);
 
+bool ArraySpliceDense(JSContext *cx, HandleObject obj, uint32_t start, uint32_t deleteCount);
+
 bool Recompile(JSContext *cx);
 JSString *RegExpReplace(JSContext *cx, HandleString string, HandleObject regexp,
                         HandleString repl);
 JSString *StringReplace(JSContext *cx, HandleString string, HandleString pattern,
                         HandleString repl);
+
+bool SetDenseElement(JSContext *cx, HandleObject obj, int32_t index, HandleValue value,
+                     bool strict);
 
 #ifdef DEBUG
 void AssertValidObjectPtr(JSContext *cx, JSObject *obj);

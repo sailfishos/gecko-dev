@@ -321,6 +321,18 @@ Call::Call()
 }
 
 void
+Call::Set(const nsAString& aNumber, const bool aIsOutgoing)
+{
+  mNumber = aNumber;
+  mDirection = (aIsOutgoing) ? BTHF_CALL_DIRECTION_OUTGOING :
+                               BTHF_CALL_DIRECTION_INCOMING;
+  // Same logic as implementation in ril_worker.js
+  if (aNumber.Length() && aNumber[0] == '+') {
+    mType = BTHF_CALL_ADDRTYPE_INTERNATIONAL;
+  }
+}
+
+void
 Call::Reset()
 {
   mState = nsITelephonyProvider::CALL_STATE_DISCONNECTED;
@@ -369,7 +381,6 @@ BluetoothHfpManager::Reset()
 
   // Phone & Device CIND
   ResetCallArray();
-  mCallSetupState = nsITelephonyProvider::CALL_STATE_DISCONNECTED;
   mBattChg = 5;
   mService = 0;
   mRoam = 0;
@@ -523,7 +534,7 @@ BluetoothHfpManager::ProcessConnectionState(bthf_connection_state_t aState,
   mPrevConnectionState = mConnectionState;
   mConnectionState = aState;
 
-  if (aState == BTHF_CONNECTION_STATE_CONNECTED) {
+  if (aState == BTHF_CONNECTION_STATE_SLC_CONNECTED) {
     BdAddressTypeToString(aBdAddress, mDeviceAddress);
     BT_HF_DISPATCH_MAIN(MainThreadTaskCmd::NOTIFY_CONN_STATE_CHANGED,
                         NS_LITERAL_STRING(BLUETOOTH_HFP_STATUS_CHANGED_ID));
@@ -603,40 +614,40 @@ BluetoothHfpManager::ProcessAtChld(bthf_chld_type_t aChld)
   message.AppendInt((int)aChld);
   BT_HF_DISPATCH_MAIN(MainThreadTaskCmd::NOTIFY_DIALER,
                       NS_ConvertUTF8toUTF16(message));
+
+  SendResponse(BTHF_AT_RESPONSE_OK);
 }
 
 void BluetoothHfpManager::ProcessDialCall(char *aNumber)
 {
   nsAutoCString message(aNumber);
+
+  // There are three cases based on aNumber,
+  // 1) Empty value:    Redial, BLDN
+  // 2) >xxx:           Memory dial, ATD>xxx
+  // 3) xxx:            Normal dial, ATDxxx
+  // We need to respond OK/Error for dial requests for every case listed above,
+  // 1) and 2):         Respond in either RespondToBLDNTask or
+  //                    HandleCallStateChanged()
+  // 3):                Respond here
   if (message.IsEmpty()) {
-    // Redial: BLDN
     mDialingRequestProcessed = false;
     BT_HF_DISPATCH_MAIN(MainThreadTaskCmd::NOTIFY_DIALER,
                         NS_LITERAL_STRING("BLDN"));
-  } else {
+    BT_HF_DISPATCH_MAIN(MainThreadTaskCmd::POST_TASK_RESPOND_TO_BLDN);
+  } else if (message[0] == '>') {
+    mDialingRequestProcessed = false;
     nsAutoCString newMsg("ATD");
-
-    if (message[0] == '>') {
-      // Memory dial: ATD>xxx
-      mDialingRequestProcessed = false;
-      newMsg += message;
-    } else {
-      // Dial number: ATDxxx
-      int end = message.FindChar(';');
-      if (end < 0) {
-        BT_WARNING("Couldn't get the number to dial");
-        SendResponse(BTHF_AT_RESPONSE_OK);
-        return;
-      }
-      newMsg += nsDependentCSubstring(message, 0, end);
-    }
-
+    newMsg += StringHead(message, message.Length() - 1);
     BT_HF_DISPATCH_MAIN(MainThreadTaskCmd::NOTIFY_DIALER,
                         NS_ConvertUTF8toUTF16(newMsg));
-  }
-
-  if (!mDialingRequestProcessed) {
     BT_HF_DISPATCH_MAIN(MainThreadTaskCmd::POST_TASK_RESPOND_TO_BLDN);
+  } else {
+    nsAutoCString newMsg("ATD");
+    newMsg += StringHead(message, message.Length() - 1);
+    BT_HF_DISPATCH_MAIN(MainThreadTaskCmd::NOTIFY_DIALER,
+                        NS_ConvertUTF8toUTF16(newMsg));
+    SendResponse(BTHF_AT_RESPONSE_OK);
   }
 }
 
@@ -668,7 +679,7 @@ BluetoothHfpManager::ProcessAtCind()
                           mService,
                           numActive,
                           numHeld,
-                          ConvertToBthfCallState(mCallSetupState),
+                          ConvertToBthfCallState(GetCallSetupState()),
                           mSignal,
                           mRoam,
                           mBattChg);
@@ -699,6 +710,8 @@ BluetoothHfpManager::ProcessAtClcc()
 
     SendCLCC(mCdmaSecondCall, 2);
   }
+
+  SendResponse(BTHF_AT_RESPONSE_OK);
 }
 
 void
@@ -718,7 +731,7 @@ BluetoothHfpManager::ProcessKeyPressed()
     (FindFirstCall(nsITelephonyProvider::CALL_STATE_CONNECTED) > 0);
 
   // Refer to AOSP HeadsetStateMachine.processKeyPressed
-  if (mCallSetupState == nsITelephonyProvider::CALL_STATE_INCOMING
+  if (FindFirstCall(nsITelephonyProvider::CALL_STATE_INCOMING)
       && !hasActiveCall) {
     /**
      * Bluetooth HSP spec 4.2.2
@@ -963,6 +976,11 @@ BluetoothHfpManager::SendCLCC(Call& aCall, int aIndex)
                                                BTHF_CALL_STATE_ACTIVE;
   }
 
+  if (callState == BTHF_CALL_STATE_INCOMING &&
+      FindFirstCall(nsITelephonyProvider::CALL_STATE_CONNECTED)) {
+    callState = BTHF_CALL_STATE_WAITING;
+  }
+
   bt_status_t status = sBluetoothHfpInterface->clcc_response(
                           aIndex,
                           aCall.mDirection,
@@ -991,31 +1009,25 @@ BluetoothHfpManager::SendResponse(bthf_at_response_t aResponseCode)
 }
 
 void
-BluetoothHfpManager::UpdatePhoneCIND(uint32_t aCallIndex, bool aSend)
+BluetoothHfpManager::UpdatePhoneCIND(uint32_t aCallIndex)
 {
-  // Update callsetup state
-  uint16_t callState = mCurrentCallArray[aCallIndex].mState;
-  if (callState == nsITelephonyProvider::CALL_STATE_CONNECTED ||
-      callState == nsITelephonyProvider::CALL_STATE_HELD) {
-    mCallSetupState = nsITelephonyProvider::CALL_STATE_DISCONNECTED;
-  } else {
-    mCallSetupState = callState;
-  }
-
   NS_ENSURE_TRUE_VOID(sBluetoothHfpInterface);
 
   int numActive = GetNumberOfCalls(nsITelephonyProvider::CALL_STATE_CONNECTED);
   int numHeld = GetNumberOfCalls(nsITelephonyProvider::CALL_STATE_HELD);
-  bthf_call_state_t bthfCallState = ConvertToBthfCallState(mCallSetupState);
-  nsAutoCString number = NS_ConvertUTF16toUTF8(mCurrentCallArray[aCallIndex].mNumber);
+  bthf_call_state_t callSetupState =
+    ConvertToBthfCallState(GetCallSetupState());
+  nsAutoCString number =
+    NS_ConvertUTF16toUTF8(mCurrentCallArray[aCallIndex].mNumber);
   bthf_call_addrtype_t type = mCurrentCallArray[aCallIndex].mType;
 
-  BT_LOGR("[%d] state %d => BTHF: active[%d] held[%d] state[%d]",
-          aCallIndex, callState, numActive, numHeld, bthfCallState);
+  BT_LOGR("[%d] state %d => BTHF: active[%d] held[%d] setupstate[%d]",
+          aCallIndex, mCurrentCallArray[aCallIndex].mState,
+          numActive, numHeld, callSetupState);
 
   NS_ENSURE_TRUE_VOID(BT_STATUS_SUCCESS ==
     sBluetoothHfpInterface->phone_state_change(
-      numActive, numHeld, bthfCallState, number.get(), type));
+      numActive, numHeld, callSetupState, number.get(), type));
 }
 
 void
@@ -1059,6 +1071,25 @@ BluetoothHfpManager::GetNumberOfCalls(uint16_t aState)
   return num;
 }
 
+uint16_t
+BluetoothHfpManager::GetCallSetupState()
+{
+  uint32_t callLength = mCurrentCallArray.Length();
+
+  for (uint32_t i = 1; i < callLength; ++i) {
+    switch (mCurrentCallArray[i].mState) {
+      case nsITelephonyProvider::CALL_STATE_INCOMING:
+      case nsITelephonyProvider::CALL_STATE_DIALING:
+      case nsITelephonyProvider::CALL_STATE_ALERTING:
+        return mCurrentCallArray[i].mState;
+      default:
+        break;
+    }
+  }
+
+  return nsITelephonyProvider::CALL_STATE_DISCONNECTED;
+}
+
 bthf_call_state_t
 BluetoothHfpManager::ConvertToBthfCallState(int aCallState)
 {
@@ -1066,9 +1097,7 @@ BluetoothHfpManager::ConvertToBthfCallState(int aCallState)
 
   // Refer to AOSP BluetoothPhoneService.convertCallState
   if (aCallState == nsITelephonyProvider::CALL_STATE_INCOMING) {
-    state = (FindFirstCall(nsITelephonyProvider::CALL_STATE_CONNECTED)) ?
-              BTHF_CALL_STATE_WAITING :
-              BTHF_CALL_STATE_INCOMING;
+    state = BTHF_CALL_STATE_INCOMING;
   } else if (aCallState == nsITelephonyProvider::CALL_STATE_DIALING) {
     state = BTHF_CALL_STATE_DIALING;
   } else if (aCallState == nsITelephonyProvider::CALL_STATE_ALERTING) {
@@ -1084,6 +1113,33 @@ BluetoothHfpManager::ConvertToBthfCallState(int aCallState)
   return state;
 }
 
+bool
+BluetoothHfpManager::IsTransitionState(uint16_t aCallState, bool aIsConference)
+{
+  /**
+   * Regard this callstate change as during CHLD=2 transition state if
+   * - the call becomes active, and numActive > 1
+   * - the call becomes held, and numHeld > 1 or an incoming call exists
+   *
+   * TODO:
+   * 1) handle CHLD=1 transition state
+   * 2) handle conference call cases
+   */
+  if (!aIsConference) {
+    switch (aCallState) {
+      case nsITelephonyProvider::CALL_STATE_CONNECTED:
+        return (GetNumberOfCalls(aCallState) > 1);
+      case nsITelephonyProvider::CALL_STATE_HELD:
+        return (GetNumberOfCalls(aCallState) > 1 ||
+                FindFirstCall(nsITelephonyProvider::CALL_STATE_INCOMING));
+      default:
+        break;
+    }
+  }
+
+  return false;
+}
+
 void
 BluetoothHfpManager::HandleCallStateChanged(uint32_t aCallIndex,
                                             uint16_t aCallState,
@@ -1093,27 +1149,33 @@ BluetoothHfpManager::HandleCallStateChanged(uint32_t aCallIndex,
                                             const bool aIsConference,
                                             bool aSend)
 {
-  if (!IsConnected()) {
-    // Normal case. No need to print out warnings.
+  // aCallIndex can be UINT32_MAX for the pending outgoing call state update.
+  // aCallIndex will be updated again after real call state changes. See Bug
+  // 990467.
+  if (aCallIndex == UINT32_MAX) {
     return;
   }
 
+  // Update call state only
   while (aCallIndex >= mCurrentCallArray.Length()) {
     Call call;
     mCurrentCallArray.AppendElement(call);
   }
-
   mCurrentCallArray[aCallIndex].mState = aCallState;
-  mCurrentCallArray[aCallIndex].mNumber = aNumber;
-  mCurrentCallArray[aCallIndex].mDirection = (aIsOutgoing) ?
-                                              BTHF_CALL_DIRECTION_OUTGOING :
-                                              BTHF_CALL_DIRECTION_INCOMING;
-  // Same logic as implementation in ril_worker.js
-  if (aNumber.Length() && aNumber[0] == '+') {
-    mCurrentCallArray[aCallIndex].mType = BTHF_CALL_ADDRTYPE_INTERNATIONAL;
+
+  // Return if SLC is disconnected
+  if (!IsConnected()) {
+    return;
   }
 
-  UpdatePhoneCIND(aCallIndex, aSend);
+  // Update call information besides call state
+  mCurrentCallArray[aCallIndex].Set(aNumber, aIsOutgoing);
+
+  // Notify bluedroid of phone state change if this
+  // call state change is not during transition state
+  if (!IsTransitionState(aCallState, aIsConference)) {
+    UpdatePhoneCIND(aCallIndex);
+  }
 
   switch (aCallState) {
     case nsITelephonyProvider::CALL_STATE_DIALING:
@@ -1168,12 +1230,7 @@ BluetoothHfpManager::UpdateSecondNumber(const nsAString& aNumber)
 
   // Always regard second call as incoming call since v1.2 RIL
   // doesn't support outgoing second call in CDMA.
-  mCdmaSecondCall.mDirection = BTHF_CALL_DIRECTION_INCOMING;
-
-  mCdmaSecondCall.mNumber = aNumber;
-  if (aNumber[0] == '+') {
-    mCdmaSecondCall.mType = BTHF_CALL_ADDRTYPE_INTERNATIONAL;
-  }
+  mCdmaSecondCall.Set(aNumber, false);
 
   // FIXME: check CDMA + bluedroid
   //UpdateCIND(CINDType::CALLSETUP, CallSetupState::INCOMING, true);
@@ -1257,8 +1314,7 @@ BluetoothHfpManager::IsScoConnected()
 bool
 BluetoothHfpManager::IsConnected()
 {
-  return (mConnectionState == BTHF_CONNECTION_STATE_SLC_CONNECTED ||
-          mConnectionState == BTHF_CONNECTION_STATE_CONNECTED);
+  return (mConnectionState == BTHF_CONNECTION_STATE_SLC_CONNECTED);
 }
 
 void

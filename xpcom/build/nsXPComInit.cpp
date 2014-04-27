@@ -134,8 +134,11 @@ extern nsresult nsStringInputStreamConstructor(nsISupports *, REFNSIID, void **)
 #endif
 
 #include "ogg/ogg.h"
-#ifdef MOZ_VPX
+#if defined(MOZ_VPX) && !defined(MOZ_VPX_NO_MEM_REPORTING)
 #include "vpx_mem/vpx_mem.h"
+#endif
+#ifdef MOZ_WEBM
+#include "nestegg/nestegg.h"
 #endif
 
 #include "GeckoProfiler.h"
@@ -418,6 +421,28 @@ NS_IMPL_ISUPPORTS1(VPXReporter, nsIMemoryReporter)
 /* static */ template<> Atomic<size_t> CountingAllocatorBase<VPXReporter>::sAmount(0);
 #endif /* MOZ_VPX */
 
+#ifdef MOZ_WEBM
+class NesteggReporter MOZ_FINAL : public nsIMemoryReporter
+                                , public CountingAllocatorBase<NesteggReporter>
+{
+public:
+    NS_DECL_ISUPPORTS
+
+private:
+    NS_IMETHODIMP
+    CollectReports(nsIHandleReportCallback* aHandleReport, nsISupports* aData)
+    {
+        return MOZ_COLLECT_REPORT(
+            "explicit/media/libnestegg", KIND_HEAP, UNITS_BYTES, MemoryAllocated(),
+            "Memory allocated through libnestegg for WebM media files.");
+    }
+};
+
+NS_IMPL_ISUPPORTS1(NesteggReporter, nsIMemoryReporter)
+
+/* static */ template<> Atomic<size_t> CountingAllocatorBase<NesteggReporter>::sAmount(0);
+#endif /* MOZ_WEBM */
+
 EXPORT_XPCOM_API(nsresult)
 NS_InitXPCOM2(nsIServiceManager* *result,
               nsIFile* binDirectory,
@@ -435,6 +460,17 @@ NS_InitXPCOM2(nsIServiceManager* *result,
     // Initialize the available memory tracker before other threads have had a
     // chance to start up, because the initialization is not thread-safe.
     mozilla::AvailableMemoryTracker::Init();
+
+#ifdef XP_UNIX
+    // Discover the current value of the umask, and save it where
+    // nsSystemInfo::Init can retrieve it when necessary.  There is no way
+    // to read the umask without changing it, and the setting is process-
+    // global, so this must be done while we are still single-threaded; the
+    // nsSystemInfo object is typically created much later, when some piece
+    // of chrome JS wants it.  The system call is specified as unable to fail.
+    nsSystemInfo::gUserUmask = ::umask(0777);
+    ::umask(nsSystemInfo::gUserUmask);
+#endif
 
     NS_LogInit();
 
@@ -577,7 +613,7 @@ NS_InitXPCOM2(nsIServiceManager* *result,
                           OggReporter::CountingRealloc,
                           OggReporter::CountingFree);
 
-#ifdef MOZ_VPX
+#if defined(MOZ_VPX) && !defined(MOZ_VPX_NO_MEM_REPORTING)
     // And for VPX.
     vpx_mem_set_functions(VPXReporter::CountingMalloc,
                           VPXReporter::CountingCalloc,
@@ -586,6 +622,11 @@ NS_InitXPCOM2(nsIServiceManager* *result,
                           memcpy,
                           memset,
                           memmove);
+#endif
+
+#ifdef MOZ_WEBM
+    // And for libnestegg.
+    nestegg_set_halloc_func(NesteggReporter::CountingRealloc);
 #endif
 
     // Initialize the JS engine.
@@ -640,6 +681,9 @@ NS_InitXPCOM2(nsIServiceManager* *result,
     RegisterStrongMemoryReporter(new OggReporter());
 #ifdef MOZ_VPX
     RegisterStrongMemoryReporter(new VPXReporter());
+#endif
+#ifdef MOZ_WEBM
+    RegisterStrongMemoryReporter(new NesteggReporter());
 #endif
 
     mozilla::Telemetry::Init();

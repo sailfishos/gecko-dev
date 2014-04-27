@@ -68,9 +68,6 @@ const COMPAT = {
 
   // The indent of a console group in pixels.
   GROUP_INDENT: 12,
-
-  // The default indent in pixels, applied even without any groups.
-  GROUP_INDENT_DEFAULT: 6,
 };
 
 // A map from the console API call levels to the Web Console severities.
@@ -817,9 +814,10 @@ Messages.Simple.prototype = Heritage.extend(Messages.BaseMessage.prototype,
 
     // Apply the current group by indenting appropriately.
     // TODO: remove this once bug 778766 is fixed.
-    let iconMarginLeft = this._groupDepthCompat * COMPAT.GROUP_INDENT +
-                         COMPAT.GROUP_INDENT_DEFAULT;
-    icon.style.marginLeft = iconMarginLeft + "px";
+    let indent = this._groupDepthCompat * COMPAT.GROUP_INDENT;
+    let indentNode = this.document.createElementNS(XHTML_NS, "span");
+    indentNode.className = "indent";
+    indentNode.style.width = indent + "px";
 
     let body = this._renderBody();
     this._repeatID.textContent += "|" + body.textContent;
@@ -833,6 +831,7 @@ Messages.Simple.prototype = Heritage.extend(Messages.BaseMessage.prototype,
     }
 
     this.element.appendChild(timestamp.element);
+    this.element.appendChild(indentNode);
     this.element.appendChild(icon);
     this.element.appendChild(body);
     if (repeatNode) {
@@ -870,7 +869,7 @@ Messages.Simple.prototype = Heritage.extend(Messages.BaseMessage.prototype,
   _renderBody: function()
   {
     let body = this.document.createElementNS(XHTML_NS, "span");
-    body.className = "body devtools-monospace";
+    body.className = "message-body-wrapper message-body devtools-monospace";
 
     let anchor, container = body;
     if (this._link || this._linkCallback) {
@@ -1110,14 +1109,14 @@ Messages.Extended.prototype = Heritage.extend(Messages.Simple.prototype,
   {
     let map = {
       "number": "cm-number",
-      "longstring": "cm-string",
-      "string": "cm-string",
+      "longstring": "console-string",
+      "string": "console-string",
       "regexp": "cm-string-2",
       "boolean": "cm-atom",
       "-infinity": "cm-atom",
       "infinity": "cm-atom",
       "null": "cm-atom",
-      "undefined": "cm-atom",
+      "undefined": "cm-comment",
     };
 
     let className = map[typeof grip];
@@ -1223,6 +1222,7 @@ Messages.ConsoleGeneric = function(packet)
       line: packet.lineNumber,
     },
   };
+
   switch (packet.level) {
     case "count": {
       let counter = packet.counter, label = counter.label;
@@ -1239,12 +1239,30 @@ Messages.ConsoleGeneric = function(packet)
 
   this._repeatID.consoleApiLevel = packet.level;
   this._repeatID.styles = packet.styles;
+  this._stacktrace = this._repeatID.stacktrace = packet.stacktrace;
   this._styles = packet.styles || [];
+
+  this._onClickCollapsible = this._onClickCollapsible.bind(this);
 };
 
 Messages.ConsoleGeneric.prototype = Heritage.extend(Messages.Extended.prototype,
 {
   _styles: null,
+  _stacktrace: null,
+
+  /**
+   * Tells if the message can be expanded/collapsed.
+   * @type boolean
+   */
+  collapsible: false,
+
+  /**
+   * Getter that tells if this message is collapsed - no details are shown.
+   * @type boolean
+   */
+  get collapsed() {
+    return this.collapsible && this.element && !this.element.hasAttribute("open");
+  },
 
   _renderBodyPieceSeparator: function()
   {
@@ -1253,13 +1271,84 @@ Messages.ConsoleGeneric.prototype = Heritage.extend(Messages.Extended.prototype,
 
   render: function()
   {
-    let lastStyle = null;
+    let msg = this.document.createElementNS(XHTML_NS, "span");
+    msg.className = "message-body devtools-monospace";
+
+    this._renderBodyPieces(msg);
+
+    let repeatNode = Messages.Simple.prototype._renderRepeatNode.call(this);
+    let location = Messages.Simple.prototype._renderLocation.call(this);
+    if (location) {
+      location.target = "jsdebugger";
+    }
+
+    let stack = null;
+    let twisty = null;
+    if (this._stacktrace && this._stacktrace.length > 0) {
+      stack = new Widgets.Stacktrace(this, this._stacktrace).render().element;
+
+      twisty = this.document.createElementNS(XHTML_NS, "a");
+      twisty.className = "theme-twisty";
+      twisty.href = "#";
+      twisty.title = l10n.getStr("messageToggleDetails");
+      twisty.addEventListener("click", this._onClickCollapsible);
+    }
+
+    let flex = this.document.createElementNS(XHTML_NS, "span");
+    flex.className = "message-flex-body";
+
+    if (twisty) {
+      flex.appendChild(twisty);
+    }
+
+    flex.appendChild(msg);
+
+    if (repeatNode) {
+      flex.appendChild(repeatNode);
+    }
+    if (location) {
+      flex.appendChild(location);
+    }
+
     let result = this.document.createDocumentFragment();
+    result.appendChild(flex);
+
+    if (stack) {
+      result.appendChild(this.document.createTextNode("\n"));
+      result.appendChild(stack);
+    }
+
+    this._message = result;
+    this._stacktrace = null;
+
+    Messages.Simple.prototype.render.call(this);
+
+    if (stack) {
+      this.collapsible = true;
+      this.element.setAttribute("collapsible", true);
+
+      let icon = this.element.querySelector(".icon");
+      icon.addEventListener("click", this._onClickCollapsible);
+    }
+
+    return this;
+  },
+
+  _renderBody: function()
+  {
+    let body = Messages.Simple.prototype._renderBody.apply(this, arguments);
+    body.classList.remove("devtools-monospace", "message-body");
+    return body;
+  },
+
+  _renderBodyPieces: function(container)
+  {
+    let lastStyle = null;
 
     for (let i = 0; i < this._messagePieces.length; i++) {
       let separator = i > 0 ? this._renderBodyPieceSeparator() : null;
       if (separator) {
-        result.appendChild(separator);
+        container.appendChild(separator);
       }
 
       let piece = this._messagePieces[i];
@@ -1270,13 +1359,11 @@ Messages.ConsoleGeneric.prototype = Heritage.extend(Messages.Extended.prototype,
         lastStyle = this.cleanupStyle(style);
       }
 
-      result.appendChild(this._renderBodyPiece(piece, lastStyle));
+      container.appendChild(this._renderBodyPiece(piece, lastStyle));
     }
 
-    this._message = result;
     this._messagePieces = null;
     this._styles = null;
-    return Messages.Simple.prototype.render.call(this);
   },
 
   _renderBodyPiece: function(piece, style)
@@ -1296,6 +1383,41 @@ Messages.ConsoleGeneric.prototype = Heritage.extend(Messages.Extended.prototype,
     }
 
     return result;
+  },
+
+  // no-op for the message location and .repeats elements.
+  // |this.render()| handles customized message output.
+  _renderLocation: function() { },
+  _renderRepeatNode: function() { },
+
+  /**
+   * Expand/collapse message details.
+   */
+  toggleDetails: function()
+  {
+    let twisty = this.element.querySelector(".theme-twisty");
+    if (this.element.hasAttribute("open")) {
+      this.element.removeAttribute("open");
+      twisty.removeAttribute("open");
+    } else {
+      this.element.setAttribute("open", true);
+      twisty.setAttribute("open", true);
+    }
+  },
+
+  /**
+   * The click event handler for the message expander arrow element. This method
+   * toggles the display of message details.
+   *
+   * @private
+   * @param nsIDOMEvent ev
+   *        The DOM event object.
+   * @see this.toggleDetails()
+   */
+  _onClickCollapsible: function(ev)
+  {
+    ev.preventDefault();
+    this.toggleDetails();
   },
 
   /**
@@ -1355,7 +1477,7 @@ Messages.ConsoleGeneric.prototype = Heritage.extend(Messages.Extended.prototype,
 Messages.ConsoleTrace = function(packet)
 {
   let options = {
-    className: "consoleTrace cm-s-mozilla",
+    className: "cm-s-mozilla",
     timestamp: packet.timeStamp,
     category: "webdev",
     severity: CONSOLE_API_LEVELS_TO_SEVERITIES[packet.level],
@@ -1412,6 +1534,13 @@ Messages.ConsoleTrace.prototype = Heritage.extend(Messages.Simple.prototype,
     return result;
   },
 
+  render: function()
+  {
+    Messages.Simple.prototype.render.apply(this, arguments);
+    this.element.setAttribute("open", true);
+    return this;
+  },
+
   /**
    * Render the stack frames.
    *
@@ -1429,7 +1558,7 @@ Messages.ConsoleTrace.prototype = Heritage.extend(Messages.Simple.prototype,
     cmprop.textContent = "trace";
 
     let title = this.document.createElementNS(XHTML_NS, "span");
-    title.className = "title devtools-monospace";
+    title.className = "message-body devtools-monospace";
     title.appendChild(cmvar);
     title.appendChild(this.document.createTextNode("."));
     title.appendChild(cmprop);
@@ -1443,7 +1572,8 @@ Messages.ConsoleTrace.prototype = Heritage.extend(Messages.Simple.prototype,
 
     let widget = new Widgets.Stacktrace(this, this._stacktrace).render();
 
-    let body = this.document.createElementNS(XHTML_NS, "div");
+    let body = this.document.createElementNS(XHTML_NS, "span");
+    body.className = "message-flex-body";
     body.appendChild(title);
     if (repeatNode) {
       body.appendChild(repeatNode);
@@ -1463,7 +1593,7 @@ Messages.ConsoleTrace.prototype = Heritage.extend(Messages.Simple.prototype,
   _renderBody: function()
   {
     let body = Messages.Simple.prototype._renderBody.apply(this, arguments);
-    body.classList.remove("devtools-monospace");
+    body.classList.remove("devtools-monospace", "message-body");
     return body;
   },
 
@@ -1986,8 +2116,8 @@ Widgets.ObjectRenderers.add({
       });
 
       // Strings are property names.
-      if (keyElem.classList && keyElem.classList.contains("cm-string")) {
-        keyElem.classList.remove("cm-string");
+      if (keyElem.classList && keyElem.classList.contains("console-string")) {
+        keyElem.classList.remove("console-string");
         keyElem.classList.add("cm-property");
       }
 
@@ -2061,7 +2191,7 @@ Widgets.ObjectRenderers.add({
 
     if (!this.options.concise) {
       this._text(" ");
-      this.element.appendChild(this.el("span.cm-string",
+      this.element.appendChild(this.el("span.console-string",
                                        VariablesView.getString(preview.text)));
     }
   },
@@ -2205,7 +2335,8 @@ Widgets.ObjectRenderers.add({
     }
 
     this._text("=", fragment);
-    fragment.appendChild(this.el("span.cm-string", '"' + escapeHTML(value) + '"'));
+    fragment.appendChild(this.el("span.console-string",
+                                 '"' + escapeHTML(value) + '"'));
 
     return fragment;
   },
@@ -2219,7 +2350,7 @@ Widgets.ObjectRenderers.add({
     this._text(" ");
 
     let text = VariablesView.getString(preview.textContent);
-    this.element.appendChild(this.el("span.cm-string", text));
+    this.element.appendChild(this.el("span.console-string", text));
   },
 
   _renderCommentNode: function()
@@ -2547,7 +2678,7 @@ Widgets.LongString.prototype = Heritage.extend(Widgets.BaseWidget.prototype,
     }
 
     let result = this.element = this.document.createElementNS(XHTML_NS, "span");
-    result.className = "longString cm-string";
+    result.className = "longString console-string";
     this._renderString(this.longStringActor.initial);
     result.appendChild(this._renderEllipsis());
 
@@ -2722,7 +2853,6 @@ Widgets.Stacktrace.prototype = Heritage.extend(Widgets.BaseWidget.prototype,
 
     return elem;
   },
-
 }); // Widgets.Stacktrace.prototype
 
 

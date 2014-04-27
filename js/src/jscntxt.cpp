@@ -1108,7 +1108,6 @@ JSContext::JSContext(JSRuntime *rt)
 #ifdef JS_THREADSAFE
     outstandingRequests(0),
 #endif
-    resolveFlags(0),
     iterValue(MagicValue(JS_NO_ITER_VALUE)),
     jitIsBroken(false),
 #ifdef MOZ_TRACE_JSCALLS
@@ -1206,8 +1205,8 @@ bool
 JSContext::currentlyRunning() const
 {
     for (ActivationIterator iter(runtime()); !iter.done(); ++iter) {
-        if (iter.activation()->cx() == this) {
-            if (iter.activation()->hasSavedFrameChain())
+        if (iter->cx() == this) {
+            if (iter->hasSavedFrameChain())
                 return false;
             return true;
         }

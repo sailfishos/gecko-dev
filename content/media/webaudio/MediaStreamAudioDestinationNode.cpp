@@ -15,7 +15,7 @@
 namespace mozilla {
 namespace dom {
 
-NS_IMPL_CYCLE_COLLECTION_INHERITED_1(MediaStreamAudioDestinationNode, AudioNode, mDOMStream)
+NS_IMPL_CYCLE_COLLECTION_INHERITED(MediaStreamAudioDestinationNode, AudioNode, mDOMStream)
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(MediaStreamAudioDestinationNode)
 NS_INTERFACE_MAP_END_INHERITING(AudioNode)
@@ -46,6 +46,11 @@ public:
                                                             aStream->SampleRate());
     AudioSegment* segment = track->Get<AudioSegment>();
     segment->AppendAndConsumeChunk(aOutput);
+  }
+
+  virtual size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const MOZ_OVERRIDE
+  {
+    return aMallocSizeOf(this) + SizeOfExcludingThis(aMallocSizeOf);
   }
 
 private:
@@ -79,6 +84,22 @@ MediaStreamAudioDestinationNode::MediaStreamAudioDestinationNode(AudioContext* a
   if (doc) {
     mDOMStream->CombineWithPrincipal(doc->NodePrincipal());
   }
+}
+
+size_t
+MediaStreamAudioDestinationNode::SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) const
+{
+  // Future:
+  // - mDOMStream
+  size_t amount = AudioNode::SizeOfExcludingThis(aMallocSizeOf);
+  amount += mPort->SizeOfIncludingThis(aMallocSizeOf);
+  return amount;
+}
+
+size_t
+MediaStreamAudioDestinationNode::SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const
+{
+  return aMallocSizeOf(this) + SizeOfExcludingThis(aMallocSizeOf);
 }
 
 void

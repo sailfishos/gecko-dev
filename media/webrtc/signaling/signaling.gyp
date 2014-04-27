@@ -57,6 +57,7 @@
         '../../../content/media',
         '../../../media/mtransport',
         '../trunk',
+        '../trunk/webrtc',
         '../trunk/webrtc/video_engine/include',
         '../trunk/webrtc/voice_engine/include',
         '../trunk/webrtc/modules/interface',
@@ -65,6 +66,7 @@
         '../../../netwerk/srtp/src/include',
         '../../../netwerk/srtp/src/crypto/include',
         '../../../ipc/chromium/src',
+        '../../mtransport/third_party/nrappkit/src/util/libekr',
       ],
 
       #
@@ -92,6 +94,7 @@
         './src/common/NullDeleter.h',
         './src/common/Wrapper.h',
         './src/common/NullTransport.h',
+        './src/common/YuvStamper.cpp',
         # Browser Logging
         './src/common/browser_logging/CSFLog.cpp',
         './src/common/browser_logging/CSFLog.h',
@@ -191,6 +194,26 @@
       # Conditionals
       #
       'conditions': [
+        ['moz_webrtc_omx==1', {
+          'sources': [
+            './src/media-conduit/WebrtcOMXH264VideoCodec.cpp',
+            './src/media-conduit/OMXVideoCodec.cpp',
+          ],
+          'include_dirs': [
+            '../../../content/media/omx',
+            '../../../gfx/layers/client',
+          ],
+          'cflags_mozilla': [
+            '-I$(ANDROID_SOURCE)/frameworks/av/include/media/stagefright',
+            '-I$(ANDROID_SOURCE)/frameworks/av/include',
+            '-I$(ANDROID_SOURCE)/frameworks/native/include/media/openmax',
+            '-I$(ANDROID_SOURCE)/frameworks/native/include',
+            '-I$(ANDROID_SOURCE)/frameworks/native/opengl/include',
+          ],
+          'defines' : [
+            'MOZ_WEBRTC_OMX'
+          ],
+        }],
         ['build_for_test==0', {
           'defines' : [
             'MOZILLA_INTERNAL_API'

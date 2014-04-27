@@ -120,7 +120,6 @@ public:
   MediaDecoderStateMachine(MediaDecoder* aDecoder,
                                MediaDecoderReader* aReader,
                                bool aRealTime = false);
-  ~MediaDecoderStateMachine();
 
   nsresult Init(MediaDecoderStateMachine* aCloneDonor);
 
@@ -307,7 +306,7 @@ public:
   nsresult ScheduleStateMachine(int64_t aUsecs = 0);
 
   // Timer function to implement ScheduleStateMachine(aUsecs).
-  void TimeoutExpired();
+  nsresult TimeoutExpired(int aGeneration);
 
   // Set the media fragment end time. aEndTime is in microseconds.
   void SetFragmentEndTime(int64_t aEndTime);
@@ -359,10 +358,10 @@ public:
   void SetMinimizePrerollUntilPlaybackStarts();
 
 protected:
+  virtual ~MediaDecoderStateMachine();
 
   void AssertCurrentThreadInMonitor() const { mDecoder->GetReentrantMonitor().AssertCurrentThreadIn(); }
 
-private:
   class WakeDecoderRunnable : public nsRunnable {
   public:
     WakeDecoderRunnable(MediaDecoderStateMachine* aSM)
@@ -937,6 +936,9 @@ private:
   mozilla::MediaMetadataManager mMetadataManager;
 
   MediaDecoderOwner::NextFrameStatus mLastFrameStatus;
+
+  // The id of timer tasks, used to ignore tasks that are scheduled previously.
+  int mTimerId;
 };
 
 } // namespace mozilla;

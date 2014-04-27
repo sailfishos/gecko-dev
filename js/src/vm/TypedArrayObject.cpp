@@ -166,7 +166,7 @@ js::ClampDoubleToUint8(const double x)
          * ones bit should do the trick to get us the value we
          * want.
          */
-        return (y & ~1);
+        return y & ~1;
     }
 
     return y;
@@ -470,7 +470,7 @@ class TypedArrayObjectTemplate : public TypedArrayObject
     DefineGetter(JSContext *cx, HandleObject proto, PropertyName *name, Native native)
     {
         RootedId id(cx, NameToId(name));
-        unsigned flags = JSPROP_SHARED | JSPROP_GETTER | JSPROP_PERMANENT;
+        unsigned attrs = JSPROP_SHARED | JSPROP_GETTER | JSPROP_PERMANENT;
 
         Rooted<GlobalObject*> global(cx, cx->compartment()->maybeGlobal());
         JSObject *getter = NewFunction(cx, NullPtr(), native, 0,
@@ -480,7 +480,7 @@ class TypedArrayObjectTemplate : public TypedArrayObject
 
         return DefineNativeProperty(cx, proto, id, UndefinedHandleValue,
                                     JS_DATA_TO_FUNC_PTR(PropertyOp, getter), nullptr,
-                                    flags, 0, 0);
+                                    attrs);
     }
 
     static
@@ -1978,6 +1978,8 @@ TypedArrayObject::getElement(uint32_t index)
 void
 TypedArrayObject::setElement(TypedArrayObject &obj, uint32_t index, double d)
 {
+    MOZ_ASSERT(index < obj.length());
+
     switch (obj.type()) {
       case ScalarTypeDescr::TYPE_INT8:
         TypedArrayObjectTemplate<int8_t>::setIndexValue(obj, index, d);
@@ -2059,7 +2061,7 @@ const JSFunctionSpec _typedArray##Object::jsfuncs[] = {                         
       if (!(obj = CheckedUnwrap(obj)))                                                          \
           return false;                                                                         \
       const Class *clasp = obj->getClass();                                                     \
-      return (clasp == &TypedArrayObject::classes[TypedArrayObjectTemplate<NativeType>::ArrayTypeID()]); \
+      return clasp == &TypedArrayObject::classes[TypedArrayObjectTemplate<NativeType>::ArrayTypeID()]; \
   }
 
 IMPL_TYPED_ARRAY_JSAPI_CONSTRUCTORS(Int8, int8_t)
@@ -2264,14 +2266,14 @@ InitArrayBufferClass(JSContext *cx)
         return nullptr;
 
     RootedId byteLengthId(cx, NameToId(cx->names().byteLength));
-    unsigned flags = JSPROP_SHARED | JSPROP_GETTER | JSPROP_PERMANENT;
+    unsigned attrs = JSPROP_SHARED | JSPROP_GETTER | JSPROP_PERMANENT;
     JSObject *getter = NewFunction(cx, NullPtr(), ArrayBufferObject::byteLengthGetter, 0,
                                    JSFunction::NATIVE_FUN, global, NullPtr());
     if (!getter)
         return nullptr;
 
     if (!DefineNativeProperty(cx, arrayBufferProto, byteLengthId, UndefinedHandleValue,
-                              JS_DATA_TO_FUNC_PTR(PropertyOp, getter), nullptr, flags, 0, 0))
+                              JS_DATA_TO_FUNC_PTR(PropertyOp, getter), nullptr, attrs))
         return nullptr;
 
     if (!JS_DefineFunctions(cx, ctor, ArrayBufferObject::jsstaticfuncs))
@@ -2364,7 +2366,7 @@ bool
 DataViewObject::defineGetter(JSContext *cx, PropertyName *name, HandleObject proto)
 {
     RootedId id(cx, NameToId(name));
-    unsigned flags = JSPROP_SHARED | JSPROP_GETTER | JSPROP_PERMANENT;
+    unsigned attrs = JSPROP_SHARED | JSPROP_GETTER | JSPROP_PERMANENT;
 
     Rooted<GlobalObject*> global(cx, cx->compartment()->maybeGlobal());
     JSObject *getter = NewFunction(cx, NullPtr(), DataViewObject::getter<ValueGetter>, 0,
@@ -2373,8 +2375,7 @@ DataViewObject::defineGetter(JSContext *cx, PropertyName *name, HandleObject pro
         return false;
 
     return DefineNativeProperty(cx, proto, id, UndefinedHandleValue,
-                                JS_DATA_TO_FUNC_PTR(PropertyOp, getter), nullptr,
-                                flags, 0, 0);
+                                JS_DATA_TO_FUNC_PTR(PropertyOp, getter), nullptr, attrs);
 }
 
 /* static */ bool

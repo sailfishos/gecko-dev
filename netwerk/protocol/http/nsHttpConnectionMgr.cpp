@@ -1178,6 +1178,7 @@ nsHttpConnectionMgr::ReportFailedToProcess(nsIURI *uri)
 
     nsAutoCString host;
     int32_t port = -1;
+    nsAutoCString username;
     bool usingSSL = false;
     bool isHttp = false;
 
@@ -1190,13 +1191,15 @@ nsHttpConnectionMgr::ReportFailedToProcess(nsIURI *uri)
         rv = uri->GetAsciiHost(host);
     if (NS_SUCCEEDED(rv))
         rv = uri->GetPort(&port);
+    if (NS_SUCCEEDED(rv))
+        uri->GetUsername(username);
     if (NS_FAILED(rv) || !isHttp || host.IsEmpty())
         return;
 
     // report the event for all the permutations of anonymous and
     // private versions of this host
     nsRefPtr<nsHttpConnectionInfo> ci =
-        new nsHttpConnectionInfo(host, port, nullptr, usingSSL);
+        new nsHttpConnectionInfo(host, port, username, nullptr, usingSSL);
     ci->SetAnonymous(false);
     ci->SetPrivate(false);
     PipelineFeedbackInfo(ci, RedCorruptedContent, nullptr, 0);
@@ -3066,14 +3069,6 @@ nsHalfOpenSocket::OnOutputStreamReady(nsIAsyncOutputStream *out)
     else {
         // this transaction was dispatched off the pending q before all the
         // sockets established themselves.
-
-        // We need to establish a small non-zero idle timeout so the connection
-        // mgr perceives this socket as suitable for persistent connection reuse
-        const PRIntervalTime k5Sec = PR_SecondsToInterval(5);
-        if (k5Sec < gHttpHandler->IdleTimeout())
-            conn->SetIdleTimeout(k5Sec);
-        else
-            conn->SetIdleTimeout(gHttpHandler->IdleTimeout());
 
         // After about 1 second allow for the possibility of restarting a
         // transaction due to server close. Keep at sub 1 second as that is the

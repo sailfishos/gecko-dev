@@ -14,7 +14,7 @@
 #include "jscntxt.h"
 #include "jsfun.h"
 
-#include "jit/IonFrameIterator.h"
+#include "jit/JitFrameIterator.h"
 
 namespace js {
 namespace jit {
@@ -268,6 +268,9 @@ void EnsureExitFrame(IonCommonFrameLayout *frame);
 void MarkJitActivations(JSRuntime *rt, JSTracer *trc);
 void MarkIonCompilerRoots(JSTracer *trc);
 
+JSCompartment *
+TopmostJitActivationCompartment(JSRuntime *rt);
+
 #ifdef JSGC_GENERATIONAL
 void UpdateJitActivationsForMinorGC(JSRuntime *rt, JSTracer *trc);
 #endif
@@ -282,7 +285,7 @@ MakeFrameDescriptor(uint32_t frameSize, FrameType type)
 inline JSScript *
 GetTopIonJSScript(uint8_t *ionTop, void **returnAddrOut, ExecutionMode mode)
 {
-    IonFrameIterator iter(ionTop, mode);
+    JitFrameIterator iter(ionTop, mode);
     JS_ASSERT(iter.type() == JitFrame_Exit);
     ++iter;
 
@@ -801,6 +804,10 @@ class IonBaselineStubFrameLayout : public IonCommonFrameLayout
     inline ICStub *maybeStubPtr() {
         uint8_t *fp = reinterpret_cast<uint8_t *>(this);
         return *reinterpret_cast<ICStub **>(fp + reverseOffsetOfStubPtr());
+    }
+    inline void setStubPtr(ICStub *stub) {
+        uint8_t *fp = reinterpret_cast<uint8_t *>(this);
+        *reinterpret_cast<ICStub **>(fp + reverseOffsetOfStubPtr()) = stub;
     }
 };
 

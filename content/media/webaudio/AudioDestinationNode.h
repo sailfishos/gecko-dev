@@ -30,6 +30,7 @@ public:
   // whether it's in offline mode.
   AudioDestinationNode(AudioContext* aContext,
                        bool aIsOffline,
+                       AudioChannel aChannel = AudioChannel::Normal,
                        uint32_t aNumberOfChannels = 0,
                        uint32_t aLength = 0,
                        float aSampleRate = 0.0f);
@@ -73,6 +74,14 @@ public:
 
   // When aIsOnlyNode is true, this is the only node for the AudioContext.
   void SetIsOnlyNodeForContext(bool aIsOnlyNode);
+
+  virtual const char* NodeType() const
+  {
+    return "AudioDestinationNode";
+  }
+
+  virtual size_t SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) const MOZ_OVERRIDE;
+  virtual size_t SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const MOZ_OVERRIDE;
 
 private:
   bool CheckAudioChannelPermissions(AudioChannel aValue);

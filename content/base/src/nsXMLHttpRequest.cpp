@@ -68,6 +68,7 @@
 #include "nsFormData.h"
 #include "nsStreamListenerWrapper.h"
 #include "xpcjsid.h"
+#include "nsITimedChannel.h"
 
 #include "nsWrapperCacheInlines.h"
 
@@ -1703,6 +1704,12 @@ nsXMLHttpRequest::Open(const nsACString& inMethod, const nsACString& url,
   if (httpChannel) {
     rv = httpChannel->SetRequestMethod(method);
     NS_ENSURE_SUCCESS(rv, rv);
+
+    // Set the initiator type
+    nsCOMPtr<nsITimedChannel> timedChannel(do_QueryInterface(httpChannel));
+    if (timedChannel) {
+      timedChannel->SetInitiatorType(NS_LITERAL_STRING("xmlhttprequest"));
+    }
   }
 
   ChangeState(XML_HTTP_REQUEST_OPENED);
@@ -2252,6 +2259,10 @@ nsXMLHttpRequest::SendAsBinary(const nsAString &aBody,
   if (!data) {
     aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
     return;
+  }
+
+  if (GetOwner() && GetOwner()->GetExtantDoc()) {
+    GetOwner()->GetExtantDoc()->WarnOnceAbout(nsIDocument::eSendAsBinary);
   }
 
   nsAString::const_iterator iter, end;
@@ -3330,7 +3341,7 @@ private:
   nsRefPtr<nsXMLHttpRequest> mXHR;
 };
 
-NS_IMPL_CYCLE_COLLECTION_1(AsyncVerifyRedirectCallbackForwarder, mXHR)
+NS_IMPL_CYCLE_COLLECTION(AsyncVerifyRedirectCallbackForwarder, mXHR)
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(AsyncVerifyRedirectCallbackForwarder)
   NS_INTERFACE_MAP_ENTRY(nsISupports)
@@ -3798,7 +3809,7 @@ NS_INTERFACE_MAP_END
 NS_IMPL_CYCLE_COLLECTING_ADDREF(nsXMLHttpRequestXPCOMifier)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(nsXMLHttpRequestXPCOMifier)
 
-// Can't NS_IMPL_CYCLE_COLLECTION_1 because mXHR has ambiguous
+// Can't NS_IMPL_CYCLE_COLLECTION( because mXHR has ambiguous
 // inheritance from nsISupports.
 NS_IMPL_CYCLE_COLLECTION_CLASS(nsXMLHttpRequestXPCOMifier)
 

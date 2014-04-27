@@ -678,8 +678,6 @@ let SessionStoreInternal = {
         debug("received unknown message '" + aMessage.name + "'");
         break;
     }
-
-    this._clearRestoringWindows();
   },
 
   /**
@@ -2583,6 +2581,12 @@ let SessionStoreInternal = {
       // Save the index in case we updated it above.
       tabData.index = activeIndex + 1;
 
+      // In electrolysis, we may need to change the browser's remote
+      // attribute so that it runs in a content process.
+      let activePageData = tabData.entries[activeIndex] || null;
+      let uri = activePageData ? activePageData.url || null : null;
+      tabbrowser.updateBrowserRemoteness(browser, uri);
+
       // Start a new epoch and include the epoch in the restoreHistory
       // message. If a message is received that relates to a previous epoch, we
       // discard it.
@@ -2605,12 +2609,6 @@ let SessionStoreInternal = {
         disallow: tabData.disallow || null,
         pageStyle: tabData.pageStyle || null
       });
-
-      // In electrolysis, we may need to change the browser's remote
-      // attribute so that it runs in a content process.
-      let activePageData = tabData.entries[activeIndex] || null;
-      let uri = activePageData ? activePageData.url || null : null;
-      tabbrowser.updateBrowserRemoteness(browser, uri);
 
       browser.messageManager.sendAsyncMessage("SessionStore:restoreHistory",
                                               {tabData: tabData, epoch: epoch});
@@ -3400,6 +3398,15 @@ let SessionStoreInternal = {
     this._closedWindows.splice(spliceTo, this._closedWindows.length);
   },
 
+  /**
+   * Clears the set of windows that are "resurrected" before writing to disk to
+   * make closing windows one after the other until shutdown work as expected.
+   *
+   * This function should only be called when we are sure that there has been
+   * a user action that indicates the browser is actively being used and all
+   * windows that have been closed before are not part of a series of closing
+   * windows.
+   */
   _clearRestoringWindows: function ssi_clearRestoringWindows() {
     for (let i = 0; i < this._closedWindows.length; i++) {
       delete this._closedWindows[i]._shouldRestore;

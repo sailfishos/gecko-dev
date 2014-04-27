@@ -35,10 +35,6 @@ Cu.import("resource://gre/modules/NetUtil.jsm");
 Services.prefs.setBoolPref("marionette.contentListener", false);
 let appName = Services.appinfo.name;
 
-// dumpn needed/used by dbg-transport.js
-this.dumpn = function dumpn(str) {
-  logger.trace(str);
-}
 let { devtools } = Cu.import("resource://gre/modules/devtools/Loader.jsm", {});
 let DevToolsUtils = devtools.require("devtools/toolkit/DevToolsUtils.js");
 this.DevToolsUtils = DevToolsUtils;
@@ -2375,8 +2371,9 @@ MarionetteServerConnection.prototype = {
                             Services.wm.getOuterWindowWithId(message.json.value);
 
         //go in here if we're already in a remote frame.
-        if ((!listenerWindow || listenerWindow.location.href != message.json.href) &&
-            (this.curBrowser.frameManager.currentRemoteFrame !== null)) {
+        if ((!listenerWindow || (listenerWindow.location &&
+                                listenerWindow.location.href != message.json.href)) &&
+                (this.curBrowser.frameManager.currentRemoteFrame !== null)) {
           // The outerWindowID from an OOP frame will not be meaningful to
           // the parent process here, since each process maintains its own
           // independent window list.  So, it will either be null (!listenerWindow)

@@ -139,6 +139,7 @@ class ParallelSafetyVisitor : public MInstructionVisitor
     UNSAFE_OP(LoadArrowThis)
     CUSTOM_OP(Call)
     UNSAFE_OP(ApplyArgs)
+    UNSAFE_OP(ArraySplice)
     UNSAFE_OP(Bail)
     UNSAFE_OP(AssertFloat32)
     UNSAFE_OP(GetDynamicName)
@@ -320,7 +321,6 @@ class ParallelSafetyVisitor : public MInstructionVisitor
     UNSAFE_OP(AsmJSPassStackArg)
     UNSAFE_OP(AsmJSParameter)
     UNSAFE_OP(AsmJSCall)
-    UNSAFE_OP(AsmJSCheckOverRecursed)
     DROP_OP(RecompileCheck)
 
     // It looks like this could easily be made safe:

@@ -34,7 +34,6 @@
 #include "mozilla/layers/TextureHost.h"
 #include "nsThreadUtils.h"
 
-using namespace base;
 using namespace mozilla::ipc;
 using namespace mozilla::gfx;
 
@@ -118,7 +117,7 @@ ImageBridgeParent::RecvUpdateNoSwap(const EditArray& aEdits)
 static void
 ConnectImageBridgeInParentProcess(ImageBridgeParent* aBridge,
                                   Transport* aTransport,
-                                  ProcessHandle aOtherProcess)
+                                  base::ProcessHandle aOtherProcess)
 {
   aBridge->Open(aTransport, aOtherProcess, XRE_GetIOMessageLoop(), ipc::ParentSide);
 }
@@ -126,7 +125,7 @@ ConnectImageBridgeInParentProcess(ImageBridgeParent* aBridge,
 /*static*/ PImageBridgeParent*
 ImageBridgeParent::Create(Transport* aTransport, ProcessId aOtherProcess)
 {
-  ProcessHandle processHandle;
+  base::ProcessHandle processHandle;
   if (!base::OpenProcessHandle(aOtherProcess, &processHandle)) {
     return nullptr;
   }
@@ -194,13 +193,12 @@ ImageBridgeParent::AllocPCompositableParent(const TextureInfo& aInfo,
 {
   uint64_t id = GenImageContainerID();
   *aID = id;
-  return new CompositableParent(this, aInfo, id);
+  return CompositableHost::CreateIPDLActor(this, aInfo, id);
 }
 
 bool ImageBridgeParent::DeallocPCompositableParent(PCompositableParent* aActor)
 {
-  delete aActor;
-  return true;
+  return CompositableHost::DestroyIPDLActor(aActor);
 }
 
 PTextureParent*

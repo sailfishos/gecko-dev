@@ -9,7 +9,6 @@
 #include "nsXBLDocumentInfo.h"
 #include "nsIInputStream.h"
 #include "nsNameSpaceManager.h"
-#include "nsHashtable.h"
 #include "nsIURI.h"
 #include "nsIURL.h"
 #include "nsIChannel.h"
@@ -887,7 +886,7 @@ GetOrCreateClassObjectMap(JSContext *cx, JS::Handle<JSObject*> scope, const char
 
   // First, see if the map is already defined.
   JS::Rooted<JSPropertyDescriptor> desc(cx);
-  if (!JS_GetOwnPropertyDescriptor(cx, scope, mapName, 0, &desc)) {
+  if (!JS_GetOwnPropertyDescriptor(cx, scope, mapName, &desc)) {
     return nullptr;
   }
   if (desc.object() && desc.value().isObject() &&
@@ -897,10 +896,9 @@ GetOrCreateClassObjectMap(JSContext *cx, JS::Handle<JSObject*> scope, const char
 
   // It's not there. Create and define it.
   JS::Rooted<JSObject*> map(cx, JS::NewWeakMapObject(cx));
-  if (!map || !JS_DefineProperty(cx, scope, mapName,
-                                 JS::ObjectValue(*map),
-                                 JS_PropertyStub, JS_StrictPropertyStub,
-                                 JSPROP_PERMANENT | JSPROP_READONLY))
+  if (!map || !JS_DefineProperty(cx, scope, mapName, map,
+                                 JSPROP_PERMANENT | JSPROP_READONLY,
+                                 JS_PropertyStub, JS_StrictPropertyStub))
   {
     return nullptr;
   }
@@ -1010,7 +1008,7 @@ nsXBLBinding::DoInitJSClass(JSContext *cx,
   // to create and define it.
   JS::Rooted<JSObject*> proto(cx);
   JS::Rooted<JSPropertyDescriptor> desc(cx);
-  if (!JS_GetOwnPropertyDescriptor(cx, holder, aClassName.get(), 0, &desc)) {
+  if (!JS_GetOwnPropertyDescriptor(cx, holder, aClassName.get(), &desc)) {
     return NS_ERROR_OUT_OF_MEMORY;
   }
   *aNew = !desc.object();
@@ -1042,9 +1040,9 @@ nsXBLBinding::DoInitJSClass(JSContext *cx,
     // stick it on.
     JSAutoCompartment ac3(cx, holder);
     if (!JS_WrapObject(cx, &proto) ||
-        !JS_DefineProperty(cx, holder, aClassName.get(), JS::ObjectValue(*proto),
-                           JS_PropertyStub, JS_StrictPropertyStub,
-                           JSPROP_READONLY | JSPROP_PERMANENT))
+        !JS_DefineProperty(cx, holder, aClassName.get(), proto,
+                           JSPROP_READONLY | JSPROP_PERMANENT,
+                           JS_PropertyStub, JS_StrictPropertyStub))
     {
       return NS_ERROR_OUT_OF_MEMORY;
     }

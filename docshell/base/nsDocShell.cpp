@@ -1325,7 +1325,6 @@ nsDocShell::LoadURI(nsIURI * aURI,
     if (IsPrintingOrPP()) {
       return NS_OK; // JS may not handle returning of an error code
     }
-    nsresult rv;
     nsCOMPtr<nsIURI> referrer;
     nsCOMPtr<nsIInputStream> postStream;
     nsCOMPtr<nsIInputStream> headersStream;
@@ -1544,17 +1543,9 @@ nsDocShell::LoadURI(nsIURI * aURI,
     //       for in InternalLoad is data:, javascript:, and about:blank
     //       URIs.  For other URIs this would all be dead wrong!
 
-    nsCOMPtr<nsIScriptSecurityManager> secMan =
-        do_GetService(NS_SCRIPTSECURITYMANAGER_CONTRACTID, &rv);
-    NS_ENSURE_SUCCESS(rv, rv);
-
     if (owner && mItemType != typeChrome) {
         nsCOMPtr<nsIPrincipal> ownerPrincipal = do_QueryInterface(owner);
-        bool isSystem;
-        rv = secMan->IsSystemPrincipal(ownerPrincipal, &isSystem);
-        NS_ENSURE_SUCCESS(rv, rv);
-        nsCOMPtr<nsIExpandedPrincipal> ep = do_QueryInterface(ownerPrincipal);
-        if (isSystem || ep) {
+        if (nsContentUtils::IsSystemOrExpandedPrincipal(ownerPrincipal)) {
             if (ownerIsExplicit) {
                 return NS_ERROR_DOM_SECURITY_ERR;
             }
@@ -1564,11 +1555,8 @@ nsDocShell::LoadURI(nsIURI * aURI,
     }
     if (!owner && !inheritOwner && !ownerIsExplicit) {
         // See if there's system or chrome JS code running
-        rv = secMan->SubjectPrincipalIsSystem(&inheritOwner);
-        if (NS_FAILED(rv)) {
-            // Set it back to false
-            inheritOwner = false;
-        }
+        inheritOwner = nsContentUtils::IsSystemPrincipal(
+          nsContentUtils::GetSubjectPrincipal());
     }
 
     if (aLoadFlags & LOAD_FLAGS_DISALLOW_INHERIT_OWNER) {
@@ -6830,14 +6818,6 @@ nsDocShell::OnRedirectStateChange(nsIChannel* aOldChannel,
       }
     }
 
-    // On session restore we get a redirect from page to itself. Don't count it.
-    bool equals = false;
-    if (mTiming &&
-        !(mLoadType == LOAD_HISTORY &&
-          NS_SUCCEEDED(newURI->Equals(oldURI, &equals)) && equals)) {
-        mTiming->NotifyRedirect(oldURI, newURI);
-    }
-
     // Below a URI visit is saved (see AddURIVisit method doc).
     // The visit chain looks something like:
     //   ...
@@ -10045,6 +10025,9 @@ nsDocShell::DoURILoad(nsIURI * aURI,
     nsCOMPtr<nsITimedChannel> timedChannel(do_QueryInterface(channel));
     if (timedChannel) {
         timedChannel->SetTimingEnabled(true);
+        if (IsFrame()) {
+            timedChannel->SetInitiatorType(NS_LITERAL_STRING("subdocument"));
+        }
     }
 
     rv = DoChannelLoad(channel, uriLoader, aBypassClassifier);
@@ -10888,20 +10871,30 @@ nsDocShell::AddState(JS::Handle<JS::Value> aData, const nsAString& aTitle,
 
     // Step 5: If aReplace is false, indicating that we're doing a pushState
     // rather than a replaceState, notify bfcache that we've added a page to
-    // the history so it can evict content viewers if appropriate.
+    // the history so it can evict content viewers if appropriate. Otherwise
+    // call ReplaceEntry so that we notify nsIHistoryListeners that an entry
+    // was replaced.
+    nsCOMPtr<nsISHistory> rootSH;
+    GetRootSessionHistory(getter_AddRefs(rootSH));
+    NS_ENSURE_TRUE(rootSH, NS_ERROR_UNEXPECTED);
+
+    nsCOMPtr<nsISHistoryInternal> internalSH =
+        do_QueryInterface(rootSH);
+    NS_ENSURE_TRUE(internalSH, NS_ERROR_UNEXPECTED);
+
     if (!aReplace) {
-        nsCOMPtr<nsISHistory> rootSH;
-        GetRootSessionHistory(getter_AddRefs(rootSH));
-        NS_ENSURE_TRUE(rootSH, NS_ERROR_UNEXPECTED);
-
-        nsCOMPtr<nsISHistoryInternal> internalSH =
-            do_QueryInterface(rootSH);
-        NS_ENSURE_TRUE(internalSH, NS_ERROR_UNEXPECTED);
-
         int32_t curIndex = -1;
         rv = rootSH->GetIndex(&curIndex);
         if (NS_SUCCEEDED(rv) && curIndex > -1) {
             internalSH->EvictOutOfRangeContentViewers(curIndex);
+        }
+    } else {
+        nsCOMPtr<nsISHEntry> rootSHEntry = GetRootSHEntry(newSHEntry);
+
+        int32_t index = -1;
+        rv = rootSH->GetIndexOfEntry(rootSHEntry, &index);
+        if (NS_SUCCEEDED(rv) && index > -1) {
+            internalSH->ReplaceEntry(index, rootSHEntry);
         }
     }
 

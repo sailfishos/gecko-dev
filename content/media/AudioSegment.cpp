@@ -175,7 +175,7 @@ AudioSegment::WriteTo(uint64_t aID, AudioStream* aOutput, AudioMixer* aMixer)
     // To avoid overbuffering in the AudioStream, we simply drop the silence,
     // here. The stream will underrun and output silence anyways.
     if (c.mBuffer || aOutput->GetWritten()) {
-      if (c.mBuffer) {
+      if (c.mBuffer && c.mBufferFormat != AUDIO_FORMAT_SILENCE) {
         channelData.SetLength(c.mChannelData.Length());
         for (uint32_t i = 0; i < channelData.Length(); ++i) {
           channelData[i] = c.mChannelData[i];
@@ -216,7 +216,7 @@ AudioSegment::WriteTo(uint64_t aID, AudioStream* aOutput, AudioMixer* aMixer)
   aOutput->Write(buf.Elements(), GetDuration(), &(mChunks[mChunks.Length() - 1].mTimeStamp));
 
   if (aMixer) {
-    aMixer->Mix(buf.Elements(), outputChannels, GetDuration());
+    aMixer->Mix(buf.Elements(), outputChannels, GetDuration(), aOutput->GetRate());
   }
   aOutput->Start();
 }

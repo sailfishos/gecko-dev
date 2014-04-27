@@ -24,6 +24,7 @@
     _(TableSwitchV)                 \
     _(Goto)                         \
     _(NewArray)                     \
+    _(ArraySplice)                  \
     _(NewObject)                    \
     _(NewSlots)                     \
     _(NewDeclEnvObject)             \
@@ -291,7 +292,6 @@
     _(AsmJSVoidReturn)              \
     _(AsmJSPassStackArg)            \
     _(AsmJSCall)                    \
-    _(AsmJSCheckOverRecursed)       \
     _(InterruptCheckPar)            \
     _(RecompileCheck)               \
     _(AssertRangeI)                 \
@@ -305,6 +305,10 @@
 # include "jit/x64/LOpcodes-x64.h"
 #elif defined(JS_CODEGEN_ARM)
 # include "jit/arm/LOpcodes-arm.h"
+#elif defined(JS_CODEGEN_MIPS)
+# include "jit/mips/LOpcodes-mips.h"
+#else
+# error "Unknown architecture!"
 #endif
 
 #define LIR_OPCODE_LIST(_)          \

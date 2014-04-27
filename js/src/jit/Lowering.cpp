@@ -494,7 +494,7 @@ LIRGenerator::visitCall(MCall *call)
 
             LCallNative *lir = new(alloc()) LCallNative(tempFixed(cxReg), tempFixed(numReg),
                                                         tempFixed(vpReg), tempFixed(tmpReg));
-            return (defineReturn(lir, call) && assignSafepoint(lir, call));
+            return defineReturn(lir, call) && assignSafepoint(lir, call);
         }
 
         LCallKnown *lir = new(alloc()) LCallKnown(useFixed(call->getFunction(), CallTempReg0),
@@ -564,6 +564,15 @@ LIRGenerator::visitAssertFloat32(MAssertFloat32 *assertion)
         JS_ASSERT_IF(!checkIsFloat32, type != MIRType_Float32);
     }
     return true;
+}
+
+bool
+LIRGenerator::visitArraySplice(MArraySplice *ins)
+{
+    LArraySplice *lir = new(alloc()) LArraySplice(useRegisterAtStart(ins->object()),
+                                                  useRegisterAtStart(ins->start()),
+                                                  useRegisterAtStart(ins->deleteCount()));
+    return add(lir, ins) && assignSafepoint(lir, ins);
 }
 
 bool
@@ -2331,15 +2340,16 @@ LIRGenerator::visitPostWriteBarrier(MPostWriteBarrier *ins)
 #ifdef JSGC_GENERATIONAL
     switch (ins->value()->type()) {
       case MIRType_Object: {
+        LDefinition tmp = needTempForPostBarrier() ? temp() : LDefinition::BogusTemp();
         LPostWriteBarrierO *lir =
             new(alloc()) LPostWriteBarrierO(useRegisterOrConstant(ins->object()),
-                                            useRegister(ins->value()),
-                                            temp());
+                                            useRegister(ins->value()), tmp);
         return add(lir, ins) && assignSafepoint(lir, ins);
       }
       case MIRType_Value: {
+        LDefinition tmp = needTempForPostBarrier() ? temp() : LDefinition::BogusTemp();
         LPostWriteBarrierV *lir =
-            new(alloc()) LPostWriteBarrierV(useRegisterOrConstant(ins->object()), temp());
+            new(alloc()) LPostWriteBarrierV(useRegisterOrConstant(ins->object()), tmp);
         if (!useBox(lir, LPostWriteBarrierV::Input, ins->value()))
             return false;
         return add(lir, ins) && assignSafepoint(lir, ins);
@@ -3490,12 +3500,6 @@ LIRGenerator::visitAsmJSCall(MAsmJSCall *ins)
         return add(lir, ins);
     }
     return defineReturn(lir, ins);
-}
-
-bool
-LIRGenerator::visitAsmJSCheckOverRecursed(MAsmJSCheckOverRecursed *ins)
-{
-    return add(new(alloc()) LAsmJSCheckOverRecursed(), ins);
 }
 
 bool

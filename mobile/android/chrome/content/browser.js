@@ -2102,6 +2102,11 @@ var NativeWindow = {
       else this._targetRef = null;
     },
 
+    get defaultContext() {
+      delete this.defaultContext;
+      return this.defaultContext = Strings.browser.GetStringFromName("browser.menu.context.default");
+    },
+
     /* Gets menuitems for an arbitrary node
      * Parameters:
      *   element - The element to look at. If this element has a contextmenu attribute, the
@@ -2183,7 +2188,7 @@ var NativeWindow = {
       } catch(ex) { }
 
       // Fallback to the default
-      return Strings.browser.GetStringFromName("browser.menu.context.default");
+      return this.defaultContext;
     },
 
     // Adds context menu items added through the add-on api
@@ -2338,7 +2343,8 @@ var NativeWindow = {
      */
     _reformatList: function(target) {
       let contexts = Object.keys(this.menus);
-      if (contexts.length == 1) {
+
+      if (contexts.length === 1) {
         // If there's only one context, we'll only show a single flat single select list
         return this._reformatMenuItems(target, this.menus[contexts[0]]);
       }
@@ -2357,12 +2363,24 @@ var NativeWindow = {
      */
     _reformatListAsTabs: function(target, menus) {
       let itemArray = [];
-      for (let context in menus) {
+
+      // Sort the keys so that "link" is always first
+      let contexts = Object.keys(this.menus);
+      contexts.sort((context1, context2) => {
+        if (context1 === this.defaultContext) {
+          return -1;
+        } else if (context2 === this.defaultContext) {
+          return 1;
+        }
+        return 0;
+      });
+
+      contexts.forEach(context => {
         itemArray.push({
           label: context,
           items: this._reformatMenuItems(target, menus[context])
         });
-      }
+      });
 
       return itemArray;
     },
@@ -2864,6 +2882,7 @@ function Tab(aURL, aParams) {
   this.lastTouchedAt = Date.now();
   this._zoom = 1.0;
   this._drawZoom = 1.0;
+  this._restoreZoom = false;
   this._fixedMarginLeft = 0;
   this._fixedMarginTop = 0;
   this._fixedMarginRight = 0;
@@ -2992,10 +3011,13 @@ Tab.prototype = {
     this.browser.addEventListener("blur", this, true);
     this.browser.addEventListener("scroll", this, true);
     this.browser.addEventListener("MozScrolledAreaChanged", this, true);
-    // Note that the XBL binding is untrusted
-    this.browser.addEventListener("PluginBindingAttached", this, true, true);
     this.browser.addEventListener("pageshow", this, true);
     this.browser.addEventListener("MozApplicationManifest", this, true);
+
+    // Note that the XBL binding is untrusted
+    this.browser.addEventListener("PluginBindingAttached", this, true, true);
+    this.browser.addEventListener("VideoBindingAttached", this, true, true);
+    this.browser.addEventListener("VideoBindingCast", this, true, true);
 
     Services.obs.addObserver(this, "before-first-paint", false);
     Services.obs.addObserver(this, "after-viewport-change", false);
@@ -3161,9 +3183,12 @@ Tab.prototype = {
     this.browser.removeEventListener("blur", this, true);
     this.browser.removeEventListener("scroll", this, true);
     this.browser.removeEventListener("MozScrolledAreaChanged", this, true);
-    this.browser.removeEventListener("PluginBindingAttached", this, true);
     this.browser.removeEventListener("pageshow", this, true);
     this.browser.removeEventListener("MozApplicationManifest", this, true);
+
+    this.browser.removeEventListener("PluginBindingAttached", this, true, true);
+    this.browser.removeEventListener("VideoBindingAttached", this, true, true);
+    this.browser.removeEventListener("VideoBindingCast", this, true, true);
 
     Services.obs.removeObserver(this, "before-first-paint");
     Services.obs.removeObserver(this, "after-viewport-change");
@@ -3462,6 +3487,7 @@ Tab.prototype = {
 
     let win = this.browser.contentWindow;
     win.scrollTo(x, y);
+    this.saveSessionZoom(aViewport.zoom);
 
     this.userScrollPos.x = win.scrollX;
     this.userScrollPos.y = win.scrollY;
@@ -3511,12 +3537,13 @@ Tab.prototype = {
   getViewport: function() {
     let screenW = gScreenWidth - gViewportMargins.left - gViewportMargins.right;
     let screenH = gScreenHeight - gViewportMargins.top - gViewportMargins.bottom;
+    let zoom = this.restoredSessionZoom() || this._zoom;
 
     let viewport = {
       width: screenW,
       height: screenH,
-      cssWidth: screenW / this._zoom,
-      cssHeight: screenH / this._zoom,
+      cssWidth: screenW / zoom,
+      cssHeight: screenH / zoom,
       pageLeft: 0,
       pageTop: 0,
       pageRight: screenW,
@@ -3524,13 +3551,13 @@ Tab.prototype = {
       // We make up matching css page dimensions
       cssPageLeft: 0,
       cssPageTop: 0,
-      cssPageRight: screenW / this._zoom,
-      cssPageBottom: screenH / this._zoom,
+      cssPageRight: screenW / zoom,
+      cssPageBottom: screenH / zoom,
       fixedMarginLeft: this._fixedMarginLeft,
       fixedMarginTop: this._fixedMarginTop,
       fixedMarginRight: this._fixedMarginRight,
       fixedMarginBottom: this._fixedMarginBottom,
-      zoom: this._zoom,
+      zoom: zoom,
     };
 
     // Set the viewport offset to current scroll offset
@@ -3916,6 +3943,16 @@ Tab.prototype = {
         break;
       }
 
+      case "VideoBindingAttached": {
+        CastingApps.handleVideoBindingAttached(this, aEvent);
+        break;
+      }
+
+      case "VideoBindingCast": {
+        CastingApps.handleVideoBindingCast(this, aEvent);
+        break;
+      }
+
       case "MozApplicationManifest": {
         OfflineApps.offlineAppRequested(aEvent.originalTarget.defaultView);
         break;
@@ -4152,6 +4189,9 @@ Tab.prototype = {
       tabID: this.id,
     };
 
+    // Restore zoom only when moving in session history, not for new page loads.
+    this._restoreZoom = aMessage != "New";
+
     if (aParams) {
       if ("url" in aParams)
         message.url = aParams.url;
@@ -4162,6 +4202,22 @@ Tab.prototype = {
     }
 
     sendMessageToJava(message);
+  },
+
+  saveSessionZoom: function(aZoom) {
+    let cwu = this.browser.contentWindow.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindowUtils);
+    cwu.setResolution(aZoom / window.devicePixelRatio, aZoom / window.devicePixelRatio);
+  },
+
+  restoredSessionZoom: function() {
+    if (!this._restoreZoom) {
+      return null;
+    }
+
+    let cwu = this.browser.contentWindow.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindowUtils);
+    let res = {x: {}, y: {}};
+    cwu.getResolution(res.x, res.y);
+    return res.x.value * window.devicePixelRatio;
   },
 
   OnHistoryNewEntry: function(aUri) {
@@ -4192,6 +4248,11 @@ Tab.prototype = {
   OnHistoryPurge: function(aNumEntries) {
     this._sendHistoryEvent("Purge", { numEntries: aNumEntries });
     return true;
+  },
+
+  OnHistoryReplaceEntry: function(aIndex) {
+    // we don't do anything with this, so don't propogate it
+    // for now anyway.
   },
 
   get metadata() {
@@ -4288,8 +4349,11 @@ Tab.prototype = {
     // In all of these cases, we maintain how much actual content is visible
     // within the screen width. Note that "actual content" may be different
     // with respect to CSS pixels because of the CSS viewport size changing.
-    let zoomScale = (screenW * oldBrowserWidth) / (aOldScreenWidth * viewportW);
-    let zoom = (aInitialLoad && metadata.defaultZoom) ? metadata.defaultZoom : this.clampZoom(this._zoom * zoomScale);
+    let zoom = this.restoredSessionZoom() || metadata.defaultZoom;
+    if (!zoom || !aInitialLoad) {
+      let zoomScale = (screenW * oldBrowserWidth) / (aOldScreenWidth * viewportW);
+      zoom = this.clampZoom(this._zoom * zoomScale);
+    }
     this.setResolution(zoom, false);
     this.setScrollClampingSize(zoom);
 
@@ -4425,7 +4489,8 @@ Tab.prototype = {
           // and zoom when calculating the new ones, so we need to reset these
           // things here before calling updateMetadata.
           this.setBrowserSize(kDefaultCSSViewportWidth, kDefaultCSSViewportHeight);
-          this.setResolution(gScreenWidth / this.browserWidth, false);
+          let zoom = this.restoredSessionZoom() || gScreenWidth / this.browserWidth;
+          this.setResolution(zoom, true);
           ViewportHandler.updateMetadata(this, true);
 
           // Note that if we draw without a display-port, things can go wrong. By the
@@ -4434,7 +4499,7 @@ Tab.prototype = {
           // call above does so at the end of the updateViewportSize function. As long
           // as that is happening, we don't need to do it again here.
 
-          if (contentDocument.mozSyntheticDocument) {
+          if (!this.restoredSessionZoom() && contentDocument.mozSyntheticDocument) {
             // for images, scale to fit width. this needs to happen *after* the call
             // to updateMetadata above, because that call sets the CSS viewport which
             // will affect the page size (i.e. contentDocument.body.scroll*) that we
@@ -8386,8 +8451,10 @@ HTMLContextMenuItem.prototype = Object.create(ContextMenuItem.prototype, {
           }
 
           var items = NativeWindow.contextmenus._getHTMLContextMenuItemsForMenu(elt, target);
+          // This menu will always only have one context, but we still make sure its the "right" one.
+          var context = NativeWindow.contextmenus._getContextType(target);
           if (items.length > 0) {
-            NativeWindow.contextmenus._addMenuItems(items, "link");
+            NativeWindow.contextmenus._addMenuItems(items, context);
           }
 
         } catch(ex) {

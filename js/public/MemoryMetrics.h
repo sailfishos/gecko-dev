@@ -123,6 +123,7 @@ struct ObjectsExtraSizes
     macro(Objects, NotLiveGCThing, mallocHeapElementsNonAsmJS) \
     macro(Objects, NotLiveGCThing, mallocHeapElementsAsmJS) \
     macro(Objects, NotLiveGCThing, nonHeapElementsAsmJS) \
+    macro(Objects, NotLiveGCThing, nonHeapElementsMapped) \
     macro(Objects, NotLiveGCThing, nonHeapCodeAsmJS) \
     macro(Objects, NotLiveGCThing, mallocHeapAsmJSModuleData) \
     macro(Objects, NotLiveGCThing, mallocHeapArgumentsData) \
@@ -511,7 +512,8 @@ struct CompartmentStats
     macro(Other,   NotLiveGCThing, compartmentObject) \
     macro(Other,   NotLiveGCThing, crossCompartmentWrappersTable) \
     macro(Other,   NotLiveGCThing, regexpCompartment) \
-    macro(Other,   NotLiveGCThing, debuggeesSet)
+    macro(Other,   NotLiveGCThing, debuggeesSet) \
+    macro(Other,   NotLiveGCThing, savedStacksSet)
 
     CompartmentStats()
       : FOR_EACH_SIZE(ZERO_SIZE)

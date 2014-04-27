@@ -59,6 +59,11 @@
 #include "nsCRT.h"
 #endif
 
+#ifdef MOZ_TASK_TRACER
+#include "GeckoTaskTracer.h"
+using namespace mozilla::tasktracer;
+#endif
+
 using namespace mozilla;
 
 #ifdef PR_LOGGING
@@ -343,6 +348,10 @@ nsThread::ThreadFunc(void *arg)
   // Release any observer of the thread here.
   self->SetObserver(nullptr);
 
+#ifdef MOZ_TASK_TRACER
+  FreeTraceInfo();
+#endif
+
   NS_RELEASE(self);
 }
 
@@ -445,6 +454,11 @@ nsThread::DispatchInternal(nsIRunnable *event, uint32_t flags,
     return NS_ERROR_ILLEGAL_DURING_SHUTDOWN;
   }
 
+#ifdef MOZ_TASK_TRACER
+  nsRefPtr<nsIRunnable> tracedRunnable = CreateTracedRunnable(event);
+  event = tracedRunnable;
+#endif
+
   if (flags & DISPATCH_SYNC) {
     nsThread *thread = nsThreadManager::get()->GetCurrentThread();
     if (NS_WARN_IF(!thread))
@@ -453,7 +467,7 @@ nsThread::DispatchInternal(nsIRunnable *event, uint32_t flags,
     // XXX we should be able to do something better here... we should
     //     be able to monitor the slot occupied by this event and use
     //     that to tell us when the event has been processed.
- 
+
     nsRefPtr<nsThreadSyncDispatch> wrapper =
         new nsThreadSyncDispatch(thread, event);
     if (!wrapper)
@@ -463,8 +477,9 @@ nsThread::DispatchInternal(nsIRunnable *event, uint32_t flags,
     if (NS_FAILED(rv))
       return rv;
 
+    // Allows waiting; ensure no locks are held that would deadlock us!
     while (wrapper->IsPending())
-      NS_ProcessNextEvent(thread);
+      NS_ProcessNextEvent(thread, true);
     return wrapper->Result();
   }
 
@@ -539,8 +554,9 @@ nsThread::Shutdown()
   // after setting mShutdownContext just before exiting.
   
   // Process events on the current thread until we receive a shutdown ACK.
+  // Allows waiting; ensure no locks are held that would deadlock us!
   while (!context.shutdownAck)
-    NS_ProcessNextEvent(context.joiningThread);
+    NS_ProcessNextEvent(context.joiningThread, true);
 
   // Now, it should be safe to join without fear of dead-locking.
 

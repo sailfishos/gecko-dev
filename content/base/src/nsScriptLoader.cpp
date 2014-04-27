@@ -28,6 +28,7 @@
 #include "nsContentPolicyUtils.h"
 #include "nsIHttpChannel.h"
 #include "nsIHttpChannelInternal.h"
+#include "nsITimedChannel.h"
 #include "nsIScriptElement.h"
 #include "nsIDOMHTMLScriptElement.h"
 #include "nsIDocShell.h"
@@ -53,6 +54,7 @@
 
 #include "mozilla/CORSMode.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/unused.h"
 
 #ifdef PR_LOGGING
 static PRLogModuleInfo* gCspPRLog;
@@ -74,10 +76,19 @@ public:
       mLoading(true),
       mIsInline(true),
       mHasSourceMapURL(false),
+      mScriptTextBuf(nullptr),
+      mScriptTextLength(0),
       mJSVersion(aVersion),
       mLineNo(1),
       mCORSMode(aCORSMode)
   {
+  }
+
+  ~nsScriptLoadRequest()
+  {
+    if (mScriptTextBuf) {
+      js_free(mScriptTextBuf);
+    }
   }
 
   NS_DECL_THREADSAFE_ISUPPORTS
@@ -101,7 +112,8 @@ public:
   bool mIsInline;         // Is the script inline or loaded?
   bool mHasSourceMapURL;  // Does the HTTP header have a source map url?
   nsString mSourceMapURL; // Holds source map url for loaded scripts
-  nsString mScriptText;   // Holds script for text loaded scripts
+  jschar* mScriptTextBuf;   // Holds script text for non-inline scripts. Don't
+  size_t mScriptTextLength; // use nsString so we can give ownership to jsapi.
   uint32_t mJSVersion;
   nsCOMPtr<nsIURI> mURI;
   nsCOMPtr<nsIPrincipal> mOriginPrincipal;
@@ -336,6 +348,12 @@ nsScriptLoader::StartLoad(nsScriptLoadRequest *aRequest, const nsAString &aType,
   nsCOMPtr<nsILoadContext> loadContext(do_QueryInterface(docshell));
   mozilla::net::SeerLearn(aRequest->mURI, mDocument->GetDocumentURI(),
       nsINetworkSeer::LEARN_LOAD_SUBRESOURCE, loadContext);
+
+  // Set the initiator type
+  nsCOMPtr<nsITimedChannel> timedChannel(do_QueryInterface(httpChannel));
+  if (timedChannel) {
+    timedChannel->SetInitiatorType(NS_LITERAL_STRING("script"));
+  }
 
   nsCOMPtr<nsIStreamLoader> loader;
   rv = NS_NewStreamLoader(getter_AddRefs(loader), this);
@@ -814,11 +832,10 @@ NotifyOffThreadScriptLoadCompletedRunnable::Run()
 static void
 OffThreadScriptLoaderCallback(void *aToken, void *aCallbackData)
 {
-  NotifyOffThreadScriptLoadCompletedRunnable* aRunnable =
-    static_cast<NotifyOffThreadScriptLoadCompletedRunnable*>(aCallbackData);
+  nsRefPtr<NotifyOffThreadScriptLoadCompletedRunnable> aRunnable =
+    dont_AddRef(static_cast<NotifyOffThreadScriptLoadCompletedRunnable*>(aCallbackData));
   aRunnable->SetToken(aToken);
   NS_DispatchToMainThread(aRunnable);
-  NS_RELEASE(aRunnable);
 }
 
 nsresult
@@ -844,18 +861,15 @@ nsScriptLoader::AttemptAsyncScriptParse(nsScriptLoadRequest* aRequest)
   JS::CompileOptions options(cx);
   FillCompileOptionsForRequest(aRequest, global, &options);
 
-  if (!JS::CanCompileOffThread(cx, options, aRequest->mScriptText.Length())) {
+  if (!JS::CanCompileOffThread(cx, options, aRequest->mScriptTextLength)) {
     return NS_ERROR_FAILURE;
   }
 
-  NotifyOffThreadScriptLoadCompletedRunnable* runnable =
+  nsRefPtr<NotifyOffThreadScriptLoadCompletedRunnable> runnable =
     new NotifyOffThreadScriptLoadCompletedRunnable(aRequest, this);
 
-  // This reference will be consumed by OffThreadScriptLoaderCallback.
-  NS_ADDREF(runnable);
-
   if (!JS::CompileOffThread(cx, options,
-                            aRequest->mScriptText.get(), aRequest->mScriptText.Length(),
+                            aRequest->mScriptTextBuf, aRequest->mScriptTextLength,
                             OffThreadScriptLoaderCallback,
                             static_cast<void*>(runnable))) {
     return NS_ERROR_OUT_OF_MEMORY;
@@ -863,6 +877,7 @@ nsScriptLoader::AttemptAsyncScriptParse(nsScriptLoadRequest* aRequest)
 
   mDocument->BlockOnload();
 
+  unused << runnable.forget();
   return NS_OK;
 }
 
@@ -879,8 +894,11 @@ nsScriptLoader::ProcessRequest(nsScriptLoadRequest* aRequest, void **aOffThreadT
   }
 
   NS_ENSURE_ARG(aRequest);
-  nsAFlatString* script;
   nsAutoString textData;
+  const jschar* scriptBuf = nullptr;
+  size_t scriptLength = 0;
+  JS::SourceBufferHolder::Ownership giveScriptOwnership =
+    JS::SourceBufferHolder::NoOwnership;
 
   nsCOMPtr<nsIDocument> doc;
 
@@ -892,13 +910,22 @@ nsScriptLoader::ProcessRequest(nsScriptLoadRequest* aRequest, void **aOffThreadT
     // copies.
     aRequest->mElement->GetScriptText(textData);
 
-    script = &textData;
+    scriptBuf = textData.get();
+    scriptLength = textData.Length();
+    giveScriptOwnership = JS::SourceBufferHolder::NoOwnership;
   }
   else {
-    script = &aRequest->mScriptText;
+    scriptBuf = aRequest->mScriptTextBuf;
+    scriptLength = aRequest->mScriptTextLength;
+
+    giveScriptOwnership = JS::SourceBufferHolder::GiveOwnership;
+    aRequest->mScriptTextBuf = nullptr;
+    aRequest->mScriptTextLength = 0;
 
     doc = scriptElem->OwnerDoc();
   }
+
+  JS::SourceBufferHolder srcBuf(scriptBuf, scriptLength, giveScriptOwnership);
 
   nsCOMPtr<nsIScriptElement> oldParserInsertedScript;
   uint32_t parserCreated = aRequest->mElement->GetParserCreated();
@@ -932,7 +959,7 @@ nsScriptLoader::ProcessRequest(nsScriptLoadRequest* aRequest, void **aOffThreadT
       doc->BeginEvaluatingExternalScript();
     }
     aRequest->mElement->BeginEvaluating();
-    rv = EvaluateScript(aRequest, *script, aOffThreadToken);
+    rv = EvaluateScript(aRequest, srcBuf, aOffThreadToken);
     aRequest->mElement->EndEvaluating();
     if (doc) {
       doc->EndEvaluatingExternalScript();
@@ -1039,7 +1066,7 @@ nsScriptLoader::FillCompileOptionsForRequest(nsScriptLoadRequest *aRequest,
 
 nsresult
 nsScriptLoader::EvaluateScript(nsScriptLoadRequest* aRequest,
-                               const nsAFlatString& aScript,
+                               JS::SourceBufferHolder& aSrcBuf,
                                void** aOffThreadToken)
 {
   // We need a document to evaluate scripts.
@@ -1090,7 +1117,7 @@ nsScriptLoader::EvaluateScript(nsScriptLoadRequest* aRequest,
 
   JS::CompileOptions options(entryScript.cx());
   FillCompileOptionsForRequest(aRequest, global, &options);
-  nsresult rv = nsJSUtils::EvaluateString(entryScript.cx(), aScript, global, options,
+  nsresult rv = nsJSUtils::EvaluateString(entryScript.cx(), aSrcBuf, global, options,
                                           aOffThreadToken);
 
   // Put the old script back in case it wants to do anything else.
@@ -1241,10 +1268,12 @@ DetectByteOrderMark(const unsigned char* aBytes, int32_t aLen, nsCString& oChars
 /* static */ nsresult
 nsScriptLoader::ConvertToUTF16(nsIChannel* aChannel, const uint8_t* aData,
                                uint32_t aLength, const nsAString& aHintCharset,
-                               nsIDocument* aDocument, nsString& aString)
+                               nsIDocument* aDocument,
+                               jschar*& aBufOut, size_t& aLengthOut)
 {
   if (!aLength) {
-    aString.Truncate();
+    aBufOut = nullptr;
+    aLengthOut = 0;
     return NS_OK;
   }
 
@@ -1297,17 +1326,23 @@ nsScriptLoader::ConvertToUTF16(nsIChannel* aChannel, const uint8_t* aData,
                                  aLength, &unicodeLength);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  if (!aString.SetLength(unicodeLength, fallible_t())) {
+  aBufOut = static_cast<jschar*>(js_malloc(unicodeLength * sizeof(jschar)));
+  if (!aBufOut) {
+    aLengthOut = 0;
     return NS_ERROR_OUT_OF_MEMORY;
   }
-
-  char16_t *ustr = aString.BeginWriting();
+  aLengthOut = unicodeLength;
 
   rv = unicodeDecoder->Convert(reinterpret_cast<const char*>(aData),
-                               (int32_t *) &aLength, ustr,
+                               (int32_t *) &aLength, aBufOut,
                                &unicodeLength);
   MOZ_ASSERT(NS_SUCCEEDED(rv));
-  aString.SetLength(unicodeLength);
+  aLengthOut = unicodeLength;
+  if (NS_FAILED(rv)) {
+    js_free(aBufOut);
+    aBufOut = nullptr;
+    aLengthOut = 0;
+  }
   return rv;
 }
 
@@ -1421,7 +1456,7 @@ nsScriptLoader::PrepareLoadedRequest(nsScriptLoadRequest* aRequest,
       hintCharset = mPreloads[i].mCharset;
     }
     rv = ConvertToUTF16(channel, aString, aStringLen, hintCharset, mDocument,
-                        aRequest->mScriptText);
+                        aRequest->mScriptTextBuf, aRequest->mScriptTextLength);
 
     NS_ENSURE_SUCCESS(rv, rv);
   }

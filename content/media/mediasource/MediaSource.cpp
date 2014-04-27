@@ -12,6 +12,7 @@
 #include "SourceBufferList.h"
 #include "mozilla/ErrorResult.h"
 #include "mozilla/FloatingPoint.h"
+#include "mozilla/Preferences.h"
 #include "mozilla/dom/BindingDeclarations.h"
 #include "mozilla/dom/HTMLMediaElement.h"
 #include "mozilla/mozalloc.h"
@@ -71,6 +72,9 @@ IsTypeSupported(const nsAString& aType)
   }
   if (!found) {
     return NS_ERROR_DOM_NOT_SUPPORTED_ERR;
+  }
+  if (Preferences::GetBool("media.mediasource.ignore_codecs", false)) {
+    return NS_OK;
   }
   // Check aType against HTMLMediaElement list of MIME types.  Since we've
   // already restricted the container format, this acts as a specific check
@@ -145,6 +149,7 @@ already_AddRefed<SourceBuffer>
 MediaSource::AddSourceBuffer(const nsAString& aType, ErrorResult& aRv)
 {
   nsresult rv = mozilla::IsTypeSupported(aType);
+  MSE_DEBUG("MediaSource::AddSourceBuffer(Type=%s) -> %x", NS_ConvertUTF16toUTF8(aType).get(), rv);
   if (NS_FAILED(rv)) {
     aRv.Throw(rv);
     return nullptr;
@@ -164,8 +169,13 @@ MediaSource::AddSourceBuffer(const nsAString& aType, ErrorResult& aRv)
     aRv.Throw(NS_ERROR_DOM_NOT_SUPPORTED_ERR);
     return nullptr;
   }
-  nsRefPtr<SourceBuffer> sourceBuffer = new SourceBuffer(this, NS_ConvertUTF16toUTF8(mimeType));
+  nsRefPtr<SourceBuffer> sourceBuffer = SourceBuffer::Create(this, NS_ConvertUTF16toUTF8(mimeType));
+  if (!sourceBuffer) {
+    aRv.Throw(NS_ERROR_FAILURE); // XXX need a better error here
+    return nullptr;
+  }
   mSourceBuffers->Append(sourceBuffer);
+  mActiveSourceBuffers->Append(sourceBuffer);
   MSE_DEBUG("%p AddSourceBuffer(Type=%s) -> %p", this,
             NS_ConvertUTF16toUTF8(mimeType).get(), sourceBuffer.get());
   return sourceBuffer.forget();
@@ -175,6 +185,7 @@ void
 MediaSource::RemoveSourceBuffer(SourceBuffer& aSourceBuffer, ErrorResult& aRv)
 {
   SourceBuffer* sourceBuffer = &aSourceBuffer;
+  MSE_DEBUG("%p RemoveSourceBuffer(Buffer=%p)", this, sourceBuffer);
   if (!mSourceBuffers->Contains(sourceBuffer)) {
     aRv.Throw(NS_ERROR_DOM_NOT_FOUND_ERR);
     return;
@@ -203,6 +214,7 @@ MediaSource::RemoveSourceBuffer(SourceBuffer& aSourceBuffer, ErrorResult& aRv)
 void
 MediaSource::EndOfStream(const Optional<MediaSourceEndOfStreamError>& aError, ErrorResult& aRv)
 {
+  MSE_DEBUG("%p EndOfStream(Error=%u)", this, aError.WasPassed() ? uint32_t(aError.Value()) : 0);
   if (mReadyState != MediaSourceReadyState::Open ||
       mSourceBuffers->AnyUpdating()) {
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
@@ -240,7 +252,14 @@ MediaSource::EndOfStream(const Optional<MediaSourceEndOfStreamError>& aError, Er
 /* static */ bool
 MediaSource::IsTypeSupported(const GlobalObject&, const nsAString& aType)
 {
-  return NS_SUCCEEDED(mozilla::IsTypeSupported(aType));
+#ifdef PR_LOGGING
+  if (!gMediaSourceLog) {
+    gMediaSourceLog = PR_NewLogModule("MediaSource");
+  }
+#endif
+  nsresult rv = mozilla::IsTypeSupported(aType);
+  MSE_DEBUG("MediaSource::IsTypeSupported(Type=%s) -> %x", NS_ConvertUTF16toUTF8(aType).get(), rv);
+  return NS_SUCCEEDED(rv);
 }
 
 bool
@@ -290,6 +309,7 @@ void
 MediaSource::SetReadyState(MediaSourceReadyState aState)
 {
   MOZ_ASSERT(aState != mReadyState);
+  MSE_DEBUG("%p SetReadyState old=%d new=%d", this, mReadyState, aState);
 
   MediaSourceReadyState oldState = mReadyState;
   mReadyState = aState;
@@ -370,8 +390,8 @@ MediaSource::NotifyEvicted(double aStart, double aEnd)
   mSourceBuffers->Evict(aStart, aEnd);
 }
 
-NS_IMPL_CYCLE_COLLECTION_INHERITED_2(MediaSource, DOMEventTargetHelper,
-                                     mSourceBuffers, mActiveSourceBuffers)
+NS_IMPL_CYCLE_COLLECTION_INHERITED(MediaSource, DOMEventTargetHelper,
+                                   mSourceBuffers, mActiveSourceBuffers)
 
 NS_IMPL_ADDREF_INHERITED(MediaSource, DOMEventTargetHelper)
 NS_IMPL_RELEASE_INHERITED(MediaSource, DOMEventTargetHelper)

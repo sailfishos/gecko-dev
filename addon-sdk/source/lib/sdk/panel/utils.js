@@ -223,7 +223,6 @@ exports.show = show
 function setupPanelFrame(frame) {
   frame.setAttribute("flex", 1);
   frame.setAttribute("transparent", "transparent");
-  frame.setAttribute("showcaret", true);
   frame.setAttribute("autocompleteenabled", true);
   if (platform === "darwin") {
     frame.style.borderRadius = "6px";
@@ -368,11 +367,16 @@ function style(panel) {
                 document.getAnonymousElementByAttribute(panel, "class",
                                                         "panel-inner-arrowcontent");
 
-    let color = window.getComputedStyle(node).getPropertyValue("color");
+    let { color, fontFamily, fontSize, fontWeight } = window.getComputedStyle(node);
 
     let style = contentDocument.createElement("style");
     style.id = "sdk-panel-style";
-    style.textContent = "body { color: " + color + "; }";
+    style.textContent = "body { " +
+      "color: " + color + ";" +
+      "font-family: " + fontFamily + ";" +
+      "font-weight: " + fontWeight + ";" +
+      "font-size: " + fontSize + ";" +
+    "}";
 
     let container = contentDocument.head ? contentDocument.head :
                     contentDocument.documentElement;

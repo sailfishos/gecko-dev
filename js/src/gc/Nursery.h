@@ -54,6 +54,7 @@ class Nursery
     static const int NumNurseryChunks = 16;
     static const int LastNurseryChunk = NumNurseryChunks - 1;
     static const size_t Alignment = gc::ChunkSize;
+    static const size_t ChunkShift = gc::ChunkShift;
     static const size_t NurserySize = gc::ChunkSize * NumNurseryChunks;
 
     explicit Nursery(JSRuntime *rt)
@@ -139,6 +140,16 @@ class Nursery
         return total;
     }
 
+    MOZ_ALWAYS_INLINE uintptr_t start() const {
+        JS_ASSERT(runtime_);
+        return ((JS::shadow::Runtime *)runtime_)->gcNurseryStart_;
+    }
+
+    MOZ_ALWAYS_INLINE uintptr_t heapEnd() const {
+        JS_ASSERT(runtime_);
+        return ((JS::shadow::Runtime *)runtime_)->gcNurseryEnd_;
+    }
+
   private:
     /*
      * The start and end pointers are stored under the runtime so that we can
@@ -190,14 +201,10 @@ class Nursery
         return reinterpret_cast<NurseryChunkLayout *>(start())[index];
     }
 
-    MOZ_ALWAYS_INLINE uintptr_t start() const {
-        JS_ASSERT(runtime_);
-        return ((JS::shadow::Runtime *)runtime_)->gcNurseryStart_;
-    }
-
-    MOZ_ALWAYS_INLINE uintptr_t heapEnd() const {
-        JS_ASSERT(runtime_);
-        return ((JS::shadow::Runtime *)runtime_)->gcNurseryEnd_;
+    MOZ_ALWAYS_INLINE void initChunk(int chunkno) {
+        NurseryChunkLayout &c = chunk(chunkno);
+        c.trailer.location = gc::ChunkLocationNursery;
+        c.trailer.runtime = runtime();
     }
 
     MOZ_ALWAYS_INLINE void setCurrentChunk(int chunkno) {
@@ -206,7 +213,7 @@ class Nursery
         currentChunk_ = chunkno;
         position_ = chunk(chunkno).start();
         currentEnd_ = chunk(chunkno).end();
-        chunk(chunkno).trailer.runtime = runtime();
+        initChunk(chunkno);
     }
 
     void updateDecommittedRegion() {
@@ -271,6 +278,7 @@ class Nursery
     size_t moveObjectToTenured(JSObject *dst, JSObject *src, gc::AllocKind dstKind);
     size_t moveElementsToTenured(JSObject *dst, JSObject *src, gc::AllocKind dstKind);
     size_t moveSlotsToTenured(JSObject *dst, JSObject *src, gc::AllocKind dstKind);
+    void forwardTypedArrayPointers(JSObject *dst, JSObject *src);
 
     /* Handle relocation of slots/elements pointers stored in Ion frames. */
     void setSlotsForwardingPointer(HeapSlot *oldSlots, HeapSlot *newSlots, uint32_t nslots);
@@ -314,10 +322,7 @@ class Nursery
 #endif
 
     friend class gc::MinorCollectionTracer;
-    friend class jit::CodeGenerator;
     friend class jit::MacroAssembler;
-    friend class jit::ICStubCompiler;
-    friend class jit::BaselineCompiler;
     friend void SetGCZeal(JSRuntime *, uint8_t, uint32_t);
 };
 

@@ -29,7 +29,7 @@ WebGLContext::DrawInstanced_check(const char* info)
 {
     // This restriction was removed in GLES3, so WebGL2 shouldn't have it.
     if (!IsWebGL2() &&
-        IsExtensionEnabled(ANGLE_instanced_arrays) &&
+        IsExtensionEnabled(WebGLExtensionID::ANGLE_instanced_arrays) &&
         !mBufferFetchingHasPerVertex)
     {
         /* http://www.khronos.org/registry/gles/extensions/ANGLE/ANGLE_instanced_arrays.txt
@@ -103,6 +103,8 @@ bool WebGLContext::DrawArrays_check(GLint first, GLsizei count, GLsizei primcoun
             ErrorInvalidFramebufferOperation("%s: incomplete framebuffer", info);
             return false;
         }
+    } else {
+        ClearBackbufferIfNeeded();
     }
 
     if (!DoFakeVertexAttrib0(checked_firstPlusCount.value())) {
@@ -192,7 +194,7 @@ WebGLContext::DrawElements_check(GLsizei count, GLenum type,
         checked_byteCount = count;
         first = byteOffset;
     }
-    else if (type == LOCAL_GL_UNSIGNED_INT && IsExtensionEnabled(OES_element_index_uint)) {
+    else if (type == LOCAL_GL_UNSIGNED_INT && IsExtensionEnabled(WebGLExtensionID::OES_element_index_uint)) {
         checked_byteCount = 4 * CheckedUint32(count);
         if (byteOffset % 4 != 0) {
             ErrorInvalidOperation("%s: invalid byteOffset for UNSIGNED_INT (must be a multiple of 4)", info);
@@ -264,6 +266,8 @@ WebGLContext::DrawElements_check(GLsizei count, GLenum type,
             ErrorInvalidFramebufferOperation("%s: incomplete framebuffer", info);
             return false;
         }
+    } else {
+        ClearBackbufferIfNeeded();
     }
 
     if (!DoFakeVertexAttrib0(mMaxFetchedVertices)) {
@@ -333,7 +337,7 @@ void WebGLContext::Draw_cleanup()
     if (!mBoundFramebuffer) {
         Invalidate();
         mShouldPresent = true;
-        mIsScreenCleared = false;
+        MOZ_ASSERT(!mBackbufferNeedsClear);
     }
 
     if (gl->WorkAroundDriverBugs()) {

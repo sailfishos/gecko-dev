@@ -87,6 +87,20 @@ class ABIArgGenerator
 static MOZ_CONSTEXPR_VAR Register OsrFrameReg = edx;
 static MOZ_CONSTEXPR_VAR Register PreBarrierReg = edx;
 
+// Registers used in the GenerateFFIIonExit Enable Activation block.
+static MOZ_CONSTEXPR_VAR Register AsmJSIonExitRegCallee = ecx;
+static MOZ_CONSTEXPR_VAR Register AsmJSIonExitRegE0 = edi;
+static MOZ_CONSTEXPR_VAR Register AsmJSIonExitRegE1 = eax;
+static MOZ_CONSTEXPR_VAR Register AsmJSIonExitRegE2 = ebx;
+static MOZ_CONSTEXPR_VAR Register AsmJSIonExitRegE3 = edx;
+
+// Registers used in the GenerateFFIIonExit Disable Activation block.
+static MOZ_CONSTEXPR_VAR Register AsmJSIonExitRegReturnData = edx;
+static MOZ_CONSTEXPR_VAR Register AsmJSIonExitRegReturnType = ecx;
+static MOZ_CONSTEXPR_VAR Register AsmJSIonExitRegD0 = edi;
+static MOZ_CONSTEXPR_VAR Register AsmJSIonExitRegD1 = eax;
+static MOZ_CONSTEXPR_VAR Register AsmJSIonExitRegD2 = esi;
+
 // GCC stack is aligned on 16 bytes, but we don't maintain the invariant in
 // jitted code.
 #if defined(__GNUC__)
@@ -246,8 +260,7 @@ class Assembler : public AssemblerX86Shared
     }
     void mov(AsmJSImmPtr imm, Register dest) {
         masm.movl_i32r(-1, dest.code());
-        AsmJSAbsoluteLink link(masm.currentOffset(), imm.kind());
-        enoughMemory_ &= asmJSAbsoluteLinks_.append(link);
+        enoughMemory_ &= append(AsmJSAbsoluteLink(masm.currentOffset(), imm.kind()));
     }
     void mov(const Operand &src, const Register &dest) {
         movl(src, dest);
@@ -328,8 +341,7 @@ class Assembler : public AssemblerX86Shared
     }
     void cmpl(const AsmJSAbsoluteAddress &lhs, const Register &rhs) {
         masm.cmpl_rm_force32(rhs.code(), (void*)-1);
-        AsmJSAbsoluteLink link(masm.currentOffset(), lhs.kind());
-        enoughMemory_ &= asmJSAbsoluteLinks_.append(link);
+        enoughMemory_ &= append(AsmJSAbsoluteLink(masm.currentOffset(), lhs.kind()));
     }
     CodeOffsetLabel cmplWithPatch(const Register &lhs, Imm32 rhs) {
         masm.cmpl_ir_force32(rhs.value, lhs.code());

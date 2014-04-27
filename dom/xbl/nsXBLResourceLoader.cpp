@@ -29,7 +29,7 @@
 #include "nsStyleSet.h"
 #include "nsIScriptSecurityManager.h"
 
-NS_IMPL_CYCLE_COLLECTION_1(nsXBLResourceLoader, mBoundElements)
+NS_IMPL_CYCLE_COLLECTION(nsXBLResourceLoader, mBoundElements)
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(nsXBLResourceLoader)
   NS_INTERFACE_MAP_ENTRY(nsICSSLoaderObserver)
@@ -119,7 +119,7 @@ nsXBLResourceLoader::LoadResources(bool* aResult)
       // XXX: initialDocumentURI is nullptr! 
       nsRefPtr<imgRequestProxy> req;
       nsContentUtils::LoadImage(url, doc, docPrincipal, docURL, nullptr,
-                                nsIRequest::LOAD_BACKGROUND,
+                                nsIRequest::LOAD_BACKGROUND, EmptyString(),
                                 getter_AddRefs(req));
     }
     else if (curr->mType == nsGkAtoms::stylesheet) {

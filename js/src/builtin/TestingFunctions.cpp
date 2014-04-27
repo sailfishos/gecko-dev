@@ -23,6 +23,8 @@
 #include "vm/GlobalObject.h"
 #include "vm/Interpreter.h"
 #include "vm/ProxyObject.h"
+#include "vm/SavedStacks.h"
+#include "vm/TraceLogging.h"
 
 #include "jscntxtinlines.h"
 #include "jsobjinlines.h"
@@ -86,6 +88,14 @@ GetBuildConfiguration(JSContext *cx, unsigned argc, jsval *vp)
     value = BooleanValue(false);
 #endif
     if (!JS_SetProperty(cx, info, "x64", value))
+        return false;
+
+#ifdef JS_ARM_SIMULATOR
+    value = BooleanValue(true);
+#else
+    value = BooleanValue(false);
+#endif
+    if (!JS_SetProperty(cx, info, "arm-simulator", value))
         return false;
 
 #ifdef MOZ_ASAN
@@ -683,20 +693,24 @@ struct JSCountHeapNode {
 
 typedef HashSet<void *, PointerHasher<void *, 3>, SystemAllocPolicy> VisitedSet;
 
-typedef struct JSCountHeapTracer {
+class CountHeapTracer
+{
+  public:
+    CountHeapTracer(JSRuntime *rt, JSTraceCallback callback) : base(rt, callback) {}
+
     JSTracer            base;
     VisitedSet          visited;
     JSCountHeapNode     *traceList;
     JSCountHeapNode     *recycleList;
     bool                ok;
-} JSCountHeapTracer;
+};
 
 static void
 CountHeapNotify(JSTracer *trc, void **thingp, JSGCTraceKind kind)
 {
     JS_ASSERT(trc->callback == CountHeapNotify);
 
-    JSCountHeapTracer *countTracer = (JSCountHeapTracer *)trc;
+    CountHeapTracer *countTracer = (CountHeapTracer *)trc;
     void *thing = *thingp;
 
     if (!countTracer->ok)
@@ -744,9 +758,9 @@ CountHeap(JSContext *cx, unsigned argc, jsval *vp)
     RootedValue startValue(cx, UndefinedValue());
     if (args.length() > 0) {
         jsval v = args[0];
-        if (JSVAL_IS_TRACEABLE(v)) {
+        if (v.isMarkable()) {
             startValue = v;
-        } else if (!JSVAL_IS_NULL(v)) {
+        } else if (!v.isNull()) {
             JS_ReportError(cx,
                            "the first argument is not null or a heap-allocated "
                            "thing");
@@ -771,11 +785,11 @@ CountHeap(JSContext *cx, unsigned argc, jsval *vp)
                 return false;
             }
             traceValue = args[2];
-            if (!JSVAL_IS_TRACEABLE(traceValue)){
+            if (!traceValue.isMarkable()){
                 JS_ReportError(cx, "cannot trace this kind of value");
                 return false;
             }
-            traceThing = JSVAL_TO_TRACEABLE(traceValue);
+            traceThing = traceValue.toGCThing();
         } else {
             for (size_t i = 0; ;) {
                 if (JS_FlatStringEqualsAscii(flatStr, traceKindNames[i].name)) {
@@ -792,8 +806,7 @@ CountHeap(JSContext *cx, unsigned argc, jsval *vp)
         }
     }
 
-    JSCountHeapTracer countTracer;
-    JS_TracerInit(&countTracer.base, JS_GetRuntime(cx), CountHeapNotify);
+    CountHeapTracer countTracer(JS_GetRuntime(cx), CountHeapNotify);
     if (!countTracer.visited.init()) {
         JS_ReportOutOfMemory(cx);
         return false;
@@ -835,6 +848,25 @@ CountHeap(JSContext *cx, unsigned argc, jsval *vp)
     }
 
     args.rval().setNumber(double(counter));
+    return true;
+}
+
+static bool
+GetSavedFrameCount(JSContext *cx, unsigned argc, jsval *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    args.rval().setNumber(cx->compartment()->savedStacks().count());
+    return true;
+}
+
+static bool
+SaveStack(JSContext *cx, unsigned argc, jsval *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    Rooted<SavedFrame*> frame(cx);
+    if (!cx->compartment()->savedStacks().saveCurrentStack(cx, &frame))
+        return false;
+    args.rval().setObject(*frame.get());
     return true;
 }
 
@@ -1055,14 +1087,14 @@ ShellObjectMetadataCallback(JSContext *cx, JSObject **pmetadata)
     static int createdIndex = 0;
     createdIndex++;
 
-    if (!JS_DefineProperty(cx, obj, "index", Int32Value(createdIndex),
-                           JS_PropertyStub, JS_StrictPropertyStub, 0))
+    if (!JS_DefineProperty(cx, obj, "index", createdIndex, 0,
+                           JS_PropertyStub, JS_StrictPropertyStub))
     {
         return false;
     }
 
-    if (!JS_DefineProperty(cx, obj, "stack", ObjectValue(*stack),
-                           JS_PropertyStub, JS_StrictPropertyStub, 0))
+    if (!JS_DefineProperty(cx, obj, "stack", stack, 0,
+                           JS_PropertyStub, JS_StrictPropertyStub))
     {
         return false;
     }
@@ -1451,8 +1483,13 @@ Neuter(JSContext *cx, unsigned argc, jsval *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
 
+    if (args.length() != 2) {
+        JS_ReportError(cx, "wrong number of arguments to neuter()");
+        return false;
+    }
+
     RootedObject obj(cx);
-    if (!JS_ValueToObject(cx, args.get(0), &obj))
+    if (!JS_ValueToObject(cx, args[0], &obj))
         return false;
 
     if (!obj) {
@@ -1460,7 +1497,23 @@ Neuter(JSContext *cx, unsigned argc, jsval *vp)
         return false;
     }
 
-    if (!JS_NeuterArrayBuffer(cx, obj))
+    NeuterDataDisposition changeData;
+    RootedString str(cx, JS::ToString(cx, args[1]));
+    if (!str)
+        return false;
+    JSAutoByteString dataDisposition(cx, str);
+    if (!dataDisposition)
+        return false;
+    if (strcmp(dataDisposition.ptr(), "same-data") == 0) {
+        changeData = KeepData;
+    } else if (strcmp(dataDisposition.ptr(), "change-data") == 0) {
+        changeData = ChangeData;
+    } else {
+        JS_ReportError(cx, "unknown parameter 2 to neuter()");
+        return false;
+    }
+
+    if (!JS_NeuterArrayBuffer(cx, obj, changeData))
         return false;
 
     args.rval().setUndefined();
@@ -1485,6 +1538,26 @@ TimesAccessed(JSContext *cx, unsigned argc, jsval *vp)
     static int32_t accessed = 0;
     CallArgs args = CallArgsFromVp(argc, vp);
     args.rval().setInt32(++accessed);
+    return true;
+}
+
+static bool
+EnableTraceLogger(JSContext *cx, unsigned argc, jsval *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    TraceLogger *logger = TraceLoggerForMainThread(cx->runtime());
+    args.rval().setBoolean(TraceLoggerEnable(logger));
+
+    return true;
+}
+
+static bool
+DisableTraceLogger(JSContext *cx, unsigned argc, jsval *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    TraceLogger *logger = TraceLoggerForMainThread(cx->runtime());
+    args.rval().setBoolean(TraceLoggerDisable(logger));
+
     return true;
 }
 
@@ -1517,6 +1590,15 @@ static const JSFunctionSpecWithHelp TestingFunctions[] = {
 "  to count only things of that kind. If kind is the string 'specific',\n"
 "  then you can provide an extra argument with some specific traceable\n"
 "  thing to count.\n"),
+
+    JS_FN_HELP("getSavedFrameCount", GetSavedFrameCount, 0, 0,
+"getSavedFrameCount()",
+"  Return the number of SavedFrame instances stored in this compartment's\n"
+"  SavedStacks cache."),
+
+    JS_FN_HELP("saveStack", SaveStack, 0, 0,
+"saveStack()",
+"  Capture a stack.\n"),
 
 #if defined(DEBUG) || defined(JS_OOM_BREAKPOINT)
     JS_FN_HELP("oomAfterAllocations", OOMAfterAllocations, 1, 0,
@@ -1716,13 +1798,25 @@ static const JSFunctionSpecWithHelp TestingFunctions[] = {
 "  Deserialize data generated by serialize."),
 
     JS_FN_HELP("neuter", Neuter, 1, 0,
-"neuter(buffer)",
-"  Neuter the given ArrayBuffer object as if it had been transferred to a WebWorker."),
+"neuter(buffer, \"change-data\"|\"same-data\")",
+"  Neuter the given ArrayBuffer object as if it had been transferred to a\n"
+"  WebWorker. \"change-data\" will update the internal data pointer.\n"
+"  \"same-data\" will leave it set to its original value, to mimic eg\n"
+"  asm.js ArrayBuffer neutering."),
 
     JS_FN_HELP("workerThreadCount", WorkerThreadCount, 0, 0,
 "workerThreadCount()",
 "  Returns the number of worker threads available for off-main-thread tasks."),
 
+    JS_FN_HELP("startTraceLogger", EnableTraceLogger, 0, 0,
+"startTraceLogger()",
+"  Start logging the mainThread.\n"
+"  Note: tracelogging starts automatically. Disable it by setting environment variable\n"
+"  TLOPTIONS=disableMainThread"),
+
+    JS_FN_HELP("stopTraceLogger", DisableTraceLogger, 0, 0,
+"startTraceLogger()",
+"  Stop logging the mainThread."),
     JS_FS_HELP_END
 };
 

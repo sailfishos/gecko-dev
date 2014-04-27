@@ -648,7 +648,7 @@ js_Stringify(JSContext *cx, MutableHandleValue vp, JSObject *replacer_, Value sp
     /* Step 10. */
     RootedId emptyId(cx, NameToId(cx->names().empty));
     if (!DefineNativeProperty(cx, wrapper, emptyId, vp, JS_PropertyStub, JS_StrictPropertyStub,
-                              JSPROP_ENUMERATE, 0))
+                              JSPROP_ENUMERATE))
     {
         return false;
     }
@@ -879,8 +879,8 @@ js_InitJSONClass(JSContext *cx, HandleObject obj)
     if (!JSON)
         return nullptr;
 
-    if (!JS_DefineProperty(cx, global, js_JSON_str, OBJECT_TO_JSVAL(JSON),
-                           JS_PropertyStub, JS_StrictPropertyStub, 0))
+    if (!JS_DefineProperty(cx, global, js_JSON_str, JSON, 0,
+                           JS_PropertyStub, JS_StrictPropertyStub))
         return nullptr;
 
     if (!JS_DefineFunctions(cx, JSON, json_static_methods))

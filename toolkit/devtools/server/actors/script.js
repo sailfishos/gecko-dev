@@ -3,6 +3,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 "use strict";
 
 let B2G_ID = "{3c2e2abc-06d4-11e1-ac3b-374f68613e61}";
@@ -24,8 +25,9 @@ let addonManager = null;
  * about them.
  */
 function mapURIToAddonID(uri, id) {
-  if (Services.appinfo.ID == B2G_ID)
+  if (Services.appinfo.ID == B2G_ID) {
     return false;
+  }
 
   if (!addonManager) {
     addonManager = Cc["@mozilla.org/addons/integration;1"].
@@ -553,7 +555,7 @@ ThreadActor.prototype = {
       this._prettyPrintWorker.addEventListener(
         "error", this._onPrettyPrintError, false);
 
-      if (wantLogging) {
+      if (dumpn.wantLogging) {
         this._prettyPrintWorker.addEventListener("message", this._onPrettyPrintMsg, false);
 
         const postMsg = this._prettyPrintWorker.postMessage;
@@ -4777,6 +4779,33 @@ update(AddonThreadActor.prototype, {
   // A constant prefix that will be used to form the actor ID by the server.
   actorPrefix: "addonThread",
 
+  onAttach: function(aRequest) {
+    if (!this.attached) {
+      Services.obs.addObserver(this, "chrome-document-global-created", false);
+      Services.obs.addObserver(this, "content-document-global-created", false);
+    }
+    return ThreadActor.prototype.onAttach.call(this, aRequest);
+  },
+
+  disconnect: function() {
+    if (this.attached) {
+      Services.obs.removeObserver(this, "content-document-global-created");
+      Services.obs.removeObserver(this, "chrome-document-global-created");
+    }
+    return ThreadActor.prototype.disconnect.call(this);
+  },
+
+  /**
+   * Called when a new DOM document global is created. Check if the DOM was
+   * loaded from an add-on and if so make the window a debuggee.
+   */
+  observe: function(aSubject, aTopic, aData) {
+    let id = {};
+    if (mapURIToAddonID(aSubject.location, id) && id.value === this.addonID) {
+      this.dbg.addDebuggee(aSubject.defaultView);
+    }
+  },
+
   /**
    * Override the eligibility check for scripts and sources to make
    * sure every script and source with a URL is stored when debugging
@@ -4784,12 +4813,14 @@ update(AddonThreadActor.prototype, {
    */
   _allowSource: function(aSourceURL) {
     // Hide eval scripts
-    if (!aSourceURL)
+    if (!aSourceURL) {
       return false;
+    }
 
     // XPIProvider.jsm evals some code in every add-on's bootstrap.js. Hide it
-    if (aSourceURL == "resource://gre/modules/addons/XPIProvider.jsm")
+    if (aSourceURL == "resource://gre/modules/addons/XPIProvider.jsm") {
       return false;
+    }
 
     return true;
   },
@@ -4836,32 +4867,60 @@ update(AddonThreadActor.prototype, {
    * @param aGlobal Debugger.Object
    */
   _checkGlobal: function ADA_checkGlobal(aGlobal) {
+    let obj = null;
+    try {
+      obj = aGlobal.unsafeDereference();
+    }
+    catch (e) {
+      // Because of bug 991399 we sometimes get bad objects here. If we can't
+      // dereference them then they won't be useful to us
+      return false;
+    }
+
     try {
       // This will fail for non-Sandbox objects, hence the try-catch block.
-      let metadata = Cu.getSandboxMetadata(aGlobal.unsafeDereference());
-      if (metadata)
+      let metadata = Cu.getSandboxMetadata(obj);
+      if (metadata) {
         return metadata.addonID === this.addonID;
+      }
     } catch (e) {
+    }
+
+    if (obj instanceof Ci.nsIDOMWindow) {
+      let id = {};
+      if (mapURIToAddonID(obj.document.documentURIObject, id)) {
+        return id.value === this.addonID;
+      }
+      return false;
     }
 
     // Check the global for a __URI__ property and then try to map that to an
     // add-on
     let uridescriptor = aGlobal.getOwnPropertyDescriptor("__URI__");
-    if (uridescriptor && "value" in uridescriptor) {
+    if (uridescriptor && "value" in uridescriptor && uridescriptor.value) {
+      let uri;
       try {
-        let uri = Services.io.newURI(uridescriptor.value, null, null);
-        let id = {};
-        if (mapURIToAddonID(uri, id)) {
-          return id.value === this.addonID;
-        }
+        uri = Services.io.newURI(uridescriptor.value, null, null);
       }
       catch (e) {
-        DevToolsUtils.reportException("AddonThreadActor.prototype._checkGlobal", e);
+        DevToolsUtils.reportException("AddonThreadActor.prototype._checkGlobal",
+                                      new Error("Invalid URI: " + uridescriptor.value));
+        return false;
+      }
+
+      let id = {};
+      if (mapURIToAddonID(uri, id)) {
+        return id.value === this.addonID;
       }
     }
 
     return false;
   }
+});
+
+AddonThreadActor.prototype.requestTypes = Object.create(ThreadActor.prototype.requestTypes);
+update(AddonThreadActor.prototype.requestTypes, {
+  "attach": AddonThreadActor.prototype.onAttach
 });
 
 /**

@@ -6,6 +6,7 @@
 #ifndef MOZILLA_GFX_COMPOSITOROGL_H
 #define MOZILLA_GFX_COMPOSITOROGL_H
 
+#include "gfx2DGlue.h"
 #include "GLContextTypes.h"             // for GLContext, etc
 #include "GLDefs.h"                     // for GLuint, LOCAL_GL_TEXTURE_2D, etc
 #include "OGLShaderProgram.h"           // for ShaderProgramOGL, etc
@@ -156,7 +157,7 @@ protected:
 class CompositorOGL : public Compositor
 {
   typedef mozilla::gl::GLContext GLContext;
-  
+
   friend class GLManagerCompositor;
 
   std::map<ShaderConfigOGL, ShaderProgramOGL*> mPrograms;
@@ -182,7 +183,7 @@ public:
                                     SupportsPartialTextureUpdate());
   }
 
-  virtual TemporaryRef<CompositingRenderTarget> 
+  virtual TemporaryRef<CompositingRenderTarget>
   CreateRenderTarget(const gfx::IntRect &aRect, SurfaceInitMode aInit) MOZ_OVERRIDE;
 
   virtual TemporaryRef<CompositingRenderTarget>
@@ -285,7 +286,12 @@ private:
                                 const gfx::Matrix4x4 &aTransformi,
                                 GLuint aDrawMode);
 
-  /** 
+  virtual gfx::IntSize GetWidgetSize() const MOZ_OVERRIDE
+  {
+    return gfx::ToIntSize(mWidgetSize);
+  }
+
+  /**
    * Context target, nullptr when drawing directly to our swap chain.
    */
   RefPtr<gfx::DrawTarget> mTarget;

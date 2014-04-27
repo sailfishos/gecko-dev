@@ -809,10 +809,10 @@ nsINode::CompareDocumentPosition(nsINode& aOtherNode) const
   const nsINode *node1 = &aOtherNode, *node2 = this;
 
   // Check if either node is an attribute
-  const nsIAttribute* attr1 = nullptr;
+  const Attr* attr1 = nullptr;
   if (node1->IsNodeOfType(nsINode::eATTRIBUTE)) {
-    attr1 = static_cast<const nsIAttribute*>(node1);
-    const nsIContent* elem = attr1->GetContent();
+    attr1 = static_cast<const Attr*>(node1);
+    const Element* elem = attr1->GetElement();
     // If there is an owner element add the attribute
     // to the chain and walk up to the element
     if (elem) {
@@ -821,8 +821,8 @@ nsINode::CompareDocumentPosition(nsINode& aOtherNode) const
     }
   }
   if (node2->IsNodeOfType(nsINode::eATTRIBUTE)) {
-    const nsIAttribute* attr2 = static_cast<const nsIAttribute*>(node2);
-    const nsIContent* elem = attr2->GetContent();
+    const Attr* attr2 = static_cast<const Attr*>(node2);
+    const Element* elem = attr2->GetElement();
     if (elem == node1 && attr1) {
       // Both nodes are attributes on the same element.
       // Compare position between the attributes.
@@ -1286,7 +1286,8 @@ nsINode::UnoptimizableCCNode() const
   const uintptr_t problematicFlags = (NODE_IS_ANONYMOUS_ROOT |
                                       NODE_IS_IN_NATIVE_ANONYMOUS_SUBTREE |
                                       NODE_IS_NATIVE_ANONYMOUS_ROOT |
-                                      NODE_MAY_BE_IN_BINDING_MNGR);
+                                      NODE_MAY_BE_IN_BINDING_MNGR |
+                                      NODE_IS_IN_SHADOW_TREE);
   return HasFlag(problematicFlags) ||
          NodeType() == nsIDOMNode::ATTRIBUTE_NODE ||
          // For strange cases like xbl:content/xbl:children

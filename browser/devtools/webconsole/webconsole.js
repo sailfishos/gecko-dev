@@ -145,9 +145,6 @@ const HISTORY_FORWARD = 1;
 // The indent of a console group in pixels.
 const GROUP_INDENT = 12;
 
-// The default indent in pixels, applied even without any groups.
-const GROUP_INDENT_DEFAULT = 6;
-
 // The number of messages to display in a single display update. If we display
 // too many messages at once we slow the Firefox UI too much.
 const MESSAGES_IN_INTERVAL = DEFAULT_LOG_LIMIT;
@@ -1373,7 +1370,7 @@ WebConsoleFrame.prototype = {
                                       aScriptError.timeStamp);
 
     // Select the body of the message node that is displayed in the console
-    let msgBody = node.getElementsByClassName("body")[0];
+    let msgBody = node.getElementsByClassName("message-body")[0];
     // Add the more info link node to messages that belong to certain categories
     this.addMoreInfoLink(msgBody, aScriptError);
 
@@ -2449,19 +2446,22 @@ WebConsoleFrame.prototype = {
       aClipboardText = aBody.innerText;
     }
 
+    let indentNode = this.document.createElementNS(XHTML_NS, "span");
+    indentNode.className = "indent";
+
+    // Apply the current group by indenting appropriately.
+    let indent = this.groupDepth * GROUP_INDENT;
+    indentNode.style.width = indent + "px";
+
     // Make the icon container, which is a vertical box. Its purpose is to
     // ensure that the icon stays anchored at the top of the message even for
     // long multi-line messages.
     let iconContainer = this.document.createElementNS(XHTML_NS, "span");
     iconContainer.className = "icon";
 
-    // Apply the current group by indenting appropriately.
-    let iconMarginLeft = this.groupDepth * GROUP_INDENT + GROUP_INDENT_DEFAULT;
-    iconContainer.style.marginLeft = iconMarginLeft + "px";
-
     // Create the message body, which contains the actual text of the message.
     let bodyNode = this.document.createElementNS(XHTML_NS, "span");
-    bodyNode.className = "body devtools-monospace";
+    bodyNode.className = "message-body-wrapper message-body devtools-monospace";
 
     // Store the body text, since it is needed later for the variables view.
     let body = aBody;
@@ -2528,6 +2528,7 @@ WebConsoleFrame.prototype = {
     }
 
     node.appendChild(timestampNode);
+    node.appendChild(indentNode);
     node.appendChild(iconContainer);
 
     // Display the variables view after the message node.
@@ -2608,7 +2609,9 @@ WebConsoleFrame.prototype = {
 
     locationNode.href = isScratchpad || !fullURL ? "#" : fullURL;
     locationNode.draggable = false;
-    locationNode.target = aTarget;
+    if (aTarget) {
+      locationNode.target = aTarget;
+    }
     locationNode.setAttribute("title", aSourceURL);
     locationNode.className = "message-location theme-link devtools-monospace";
 

@@ -606,8 +606,17 @@ ArenaHeader::getThingSize() const
  */
 struct ChunkTrailer
 {
+    /* The index the chunk in the nursery, or LocationTenuredHeap. */
+    uint32_t        location;
+
+#if JS_BITS_PER_WORD == 64
+    uint32_t        padding;
+#endif
+
     JSRuntime       *runtime;
 };
+
+static_assert(sizeof(ChunkTrailer) == 2 * sizeof(uintptr_t), "ChunkTrailer size is incorrect.");
 
 /* The chunk header (located at the end of the chunk to preserve arena alignment). */
 struct ChunkInfo
@@ -623,7 +632,7 @@ struct ChunkInfo
      * Calculating sizes and offsets is simpler if sizeof(ChunkInfo) is
      * architecture-independent.
      */
-    char            padding[16];
+    char            padding[20];
 #endif
 
     /*
@@ -972,7 +981,7 @@ AssertValidColor(const void *thing, uint32_t color)
 {
 #ifdef DEBUG
     ArenaHeader *aheader = reinterpret_cast<const Cell *>(thing)->arenaHeader();
-    JS_ASSERT_IF(color, color < aheader->getThingSize() / CellSize);
+    JS_ASSERT(color < aheader->getThingSize() / CellSize);
 #endif
 }
 
@@ -1015,6 +1024,7 @@ bool
 Cell::isMarked(uint32_t color /* = BLACK */) const
 {
     JS_ASSERT(isTenured());
+    JS_ASSERT(arenaHeader()->allocated());
     AssertValidColor(this, color);
     return chunk()->bitmap.isMarked(this, color);
 }

@@ -18,7 +18,8 @@ using namespace JS;
 /***************************************************************************/
 // nsJSID
 
-NS_IMPL_ISUPPORTS1(nsJSID, nsIJSID)
+NS_IMPL_CLASSINFO(nsJSID, nullptr, 0, NS_JS_ID_CID)
+NS_IMPL_ISUPPORTS1_CI(nsJSID, nsIJSID)
 
 char nsJSID::gNoString[] = "";
 
@@ -382,8 +383,8 @@ nsJSIID::NewID(nsIInterfaceInfo* aInfo)
 NS_IMETHODIMP
 nsJSIID::NewResolve(nsIXPConnectWrappedNative *wrapper,
                     JSContext * cx, JSObject * objArg,
-                    jsid idArg, uint32_t flags,
-                    JSObject * *objp, bool *_retval)
+                    jsid idArg, JSObject * *objp,
+                    bool *_retval)
 {
     RootedObject obj(cx, objArg);
     RootedId id(cx, idArg);

@@ -27,6 +27,7 @@ EXTRA_JS_MODULES += [
     'AppDownloadManager.jsm',
     'AppsServiceChild.jsm',
     'FreeSpaceWatcher.jsm',
+    'InterAppCommService.jsm',
     'OfflineCacheInstaller.jsm',
     'PermissionsInstaller.jsm',
     'PermissionsTable.jsm',
@@ -36,6 +37,7 @@ EXTRA_JS_MODULES += [
 EXTRA_PP_JS_MODULES += [
     'AppsUtils.jsm',
     'OperatorApps.jsm',
+    'ScriptPreloader.jsm',
     'Webapps.jsm',
 ]
 

@@ -9,8 +9,15 @@
  * Toolkit glue for the remote debugging protocol, loaded into the
  * debugging global.
  */
-let DevToolsUtils = require("devtools/toolkit/DevToolsUtils.js");
+let { Ci, Cc, CC, Cu, Cr } = require("chrome");
+let Debugger = require("Debugger");
 let Services = require("Services");
+let { ActorPool } = require("devtools/server/actors/common");
+let { DebuggerTransport, LocalDebuggerTransport, ChildDebuggerTransport } = require("devtools/server/transport");
+let DevToolsUtils = require("devtools/toolkit/DevToolsUtils");
+let { dumpn, dbg_assert } = DevToolsUtils;
+let Services = require("Services");
+let EventEmitter = require("devtools/toolkit/event-emitter");
 
 // Until all Debugger server code is converted to SDK modules,
 // imports Components.* alias from chrome module.
@@ -23,8 +30,12 @@ this.Cc = Cc;
 this.CC = CC;
 this.Cu = Cu;
 this.Cr = Cr;
-this.DevToolsUtils = DevToolsUtils;
+this.Debugger = Debugger;
 this.Services = Services;
+this.ActorPool = ActorPool;
+this.DevToolsUtils = DevToolsUtils;
+this.dumpn = dumpn;
+this.dbg_assert = dbg_assert;
 
 // Overload `Components` to prevent SDK loader exception on Components
 // object usage
@@ -37,11 +48,10 @@ const DBG_STRINGS_URI = "chrome://global/locale/devtools/debugger.properties";
 const nsFile = CC("@mozilla.org/file/local;1", "nsIFile", "initWithPath");
 Cu.import("resource://gre/modules/reflect.jsm");
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-let wantLogging = Services.prefs.getBoolPref("devtools.debugger.log");
+Cu.import("resource://gre/modules/NetUtil.jsm");
+dumpn.wantLogging = Services.prefs.getBoolPref("devtools.debugger.log");
 
-Cu.import("resource://gre/modules/commonjs/sdk/core/promise.js");
-Cu.import("resource://gre/modules/jsdebugger.jsm");
-addDebuggerToGlobal(this);
+Cu.import("resource://gre/modules/devtools/deprecated-sync-thenables.js");
 
 function loadSubScript(aURL)
 {
@@ -60,11 +70,10 @@ function loadSubScript(aURL)
 }
 
 let events = require("sdk/event/core");
-let {defer, resolve, reject, promised, all} = require("sdk/core/promise");
+let {defer, resolve, reject, all} = require("devtools/toolkit/deprecated-sync-thenables");
 this.defer = defer;
 this.resolve = resolve;
 this.reject = reject;
-this.promised = promised;
 this.all = all;
 
 Cu.import("resource://gre/modules/devtools/SourceMap.jsm");
@@ -75,22 +84,6 @@ XPCOMUtils.defineLazyModuleGetter(this, "console",
 XPCOMUtils.defineLazyGetter(this, "NetworkMonitorManager", () => {
   return require("devtools/toolkit/webconsole/network-monitor").NetworkMonitorManager;
 });
-
-function dumpn(str) {
-  if (wantLogging) {
-    dump("DBG-SERVER: " + str + "\n");
-  }
-}
-this.dumpn = dumpn;
-
-function dbg_assert(cond, e) {
-  if (!cond) {
-    return e;
-  }
-}
-this.dbg_assert = dbg_assert;
-
-loadSubScript.call(this, "resource://gre/modules/devtools/server/transport.js");
 
 // XPCOM constructors
 const ServerSocket = CC("@mozilla.org/network/server-socket;1",
@@ -185,19 +178,6 @@ var DebuggerServer = {
   chromeWindowType: null,
 
   /**
-   * Set that to a function that will be called anytime a new connection
-   * is opened or one is closed.
-   */
-  onConnectionChange: null,
-
-  _fireConnectionChange: function(aWhat) {
-    if (this.onConnectionChange &&
-        typeof this.onConnectionChange === "function") {
-      this.onConnectionChange(aWhat);
-    }
-  },
-
-  /**
    * Prompt the user to accept or decline the incoming connection. This is the
    * default implementation that products embedding the debugger server may
    * choose to override.
@@ -243,6 +223,8 @@ var DebuggerServer = {
 
     this._initialized = true;
   },
+
+  protocol: require("devtools/server/protocol"),
 
   /**
    * Initialize the debugger server's transport variables.  This can be
@@ -295,8 +277,6 @@ var DebuggerServer = {
     this._allowConnection = null;
     this._transportInitialized = false;
     this._initialized = false;
-
-    this._fireConnectionChange("closed");
 
     dumpn("Debugger server is shut down.");
   },
@@ -381,7 +361,7 @@ var DebuggerServer = {
     // In case of apps being loaded in parent process, DebuggerServer is already
     // initialized and browser actors are already loaded,
     // but childtab.js hasn't been loaded yet.
-    if (!("WebConsoleActor" in this)) {
+    if (!DebuggerServer.tabActorFactories.hasOwnProperty("consoleActor")) {
       this.addTabActors();
     }
     // But webbrowser.js and childtab.js aren't loaded from shell.js.
@@ -398,7 +378,7 @@ var DebuggerServer = {
    */
   addTabActors: function() {
     this.addActors("resource://gre/modules/devtools/server/actors/script.js");
-    this.addActors("resource://gre/modules/devtools/server/actors/webconsole.js");
+    this.registerModule("devtools/server/actors/webconsole");
     this.registerModule("devtools/server/actors/inspector");
     this.registerModule("devtools/server/actors/call-watcher");
     this.registerModule("devtools/server/actors/canvas");
@@ -414,6 +394,30 @@ var DebuggerServer = {
     if ("nsIProfiler" in Ci) {
       this.addActors("resource://gre/modules/devtools/server/actors/profiler.js");
     }
+  },
+
+  /**
+   * Passes a set of options to the BrowserAddonActors for the given ID.
+   *
+   * @param aId string
+   *        The ID of the add-on to pass the options to
+   * @param aOptions object
+   *        The options.
+   * @return a promise that will be resolved when complete.
+   */
+  setAddonOptions: function DS_setAddonOptions(aId, aOptions) {
+    if (!this._initialized) {
+      return;
+    }
+
+    let promises = [];
+
+    // Pass to all connections
+    for (let connID of Object.getOwnPropertyNames(this._connections)) {
+      promises.push(this._connections[connID].setAddonOptions(aId, aOptions));
+    }
+
+    return all(promises);
   },
 
   /**
@@ -708,7 +712,7 @@ var DebuggerServer = {
     }
     aTransport.ready();
 
-    this._fireConnectionChange("opened");
+    this.emit("connectionchange", "opened", conn);
     return conn;
   },
 
@@ -717,7 +721,7 @@ var DebuggerServer = {
    */
   _connectionClosed: function DS_connectionClosed(aConnection) {
     delete this._connections[aConnection.prefix];
-    this._fireConnectionChange("closed");
+    this.emit("connectionchange", "closed", aConnection);
   },
 
   // DebuggerServer extension API.
@@ -812,103 +816,17 @@ var DebuggerServer = {
   }
 };
 
+EventEmitter.decorate(DebuggerServer);
+
 if (this.exports) {
   exports.DebuggerServer = DebuggerServer;
 }
 // Needed on B2G (See header note)
 this.DebuggerServer = DebuggerServer;
 
-/**
- * Construct an ActorPool.
- *
- * ActorPools are actorID -> actor mapping and storage.  These are
- * used to accumulate and quickly dispose of groups of actors that
- * share a lifetime.
- */
-function ActorPool(aConnection)
-{
-  this.conn = aConnection;
-  this._cleanups = {};
-  this._actors = {};
-}
-
+// Export ActorPool for requirers of main.js
 if (this.exports) {
   exports.ActorPool = ActorPool;
-}
-// Needed on B2G (See header note)
-this.ActorPool = ActorPool;
-
-ActorPool.prototype = {
-  /**
-   * Add an actor to the actor pool.  If the actor doesn't have an ID,
-   * allocate one from the connection.
-   *
-   * @param aActor object
-   *        The actor implementation.  If the object has a
-   *        'disconnect' property, it will be called when the actor
-   *        pool is cleaned up.
-   */
-  addActor: function AP_addActor(aActor) {
-    aActor.conn = this.conn;
-    if (!aActor.actorID) {
-      let prefix = aActor.actorPrefix;
-      if (typeof aActor == "function") {
-        // typeName is a convention used with protocol.js-based actors
-        prefix = aActor.prototype.actorPrefix || aActor.prototype.typeName;
-      }
-      aActor.actorID = this.conn.allocID(prefix || undefined);
-    }
-
-    if (aActor.registeredPool) {
-      aActor.registeredPool.removeActor(aActor);
-    }
-    aActor.registeredPool = this;
-
-    this._actors[aActor.actorID] = aActor;
-    if (aActor.disconnect) {
-      this._cleanups[aActor.actorID] = aActor;
-    }
-  },
-
-  get: function AP_get(aActorID) {
-    return this._actors[aActorID];
-  },
-
-  has: function AP_has(aActorID) {
-    return aActorID in this._actors;
-  },
-
-  /**
-   * Returns true if the pool is empty.
-   */
-  isEmpty: function AP_isEmpty() {
-    return Object.keys(this._actors).length == 0;
-  },
-
-  /**
-   * Remove an actor from the actor pool.
-   */
-  removeActor: function AP_remove(aActor) {
-    delete this._actors[aActor.actorID];
-    delete this._cleanups[aActor.actorID];
-  },
-
-  /**
-   * Match the api expected by the protocol library.
-   */
-  unmanage: function(aActor) {
-    return this.removeActor(aActor);
-  },
-
-  /**
-   * Run all actor cleanups.
-   */
-  cleanup: function AP_cleanup() {
-    for each (let actor in this._cleanups) {
-      actor.disconnect();
-    }
-    this._cleanups = {};
-  }
 }
 
 /**
@@ -1059,6 +977,31 @@ DebuggerServerConnection.prototype = {
       error: "unknownError",
       message: errorString
     };
+  },
+
+  /**
+   * Passes a set of options to the BrowserAddonActors for the given ID.
+   *
+   * @param aId string
+   *        The ID of the add-on to pass the options to
+   * @param aOptions object
+   *        The options.
+   * @return a promise that will be resolved when complete.
+   */
+  setAddonOptions: function DSC_setAddonOptions(aId, aOptions) {
+    let addonList = this.rootActor._parameters.addonList;
+    if (!addonList) {
+      return resolve();
+    }
+    return addonList.getList().then((addonActors) => {
+      for (let actor of addonActors) {
+        if (actor.id != aId) {
+          continue;
+        }
+        actor.setOptions(aOptions);
+        return;
+      }
+    });
   },
 
   /* Forwarding packets to other transports based on actor name prefixes. */

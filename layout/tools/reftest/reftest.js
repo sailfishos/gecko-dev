@@ -41,6 +41,7 @@ var gLoadTimeout = 0;
 var gTimeoutHook = null;
 var gRemote = false;
 var gIgnoreWindowSize = false;
+var gShuffle = false;
 var gTotalChunks = 0;
 var gThisChunk = 0;
 var gContainingWindow = null;
@@ -432,6 +433,17 @@ function StartHTTPServer()
     gHttpServerPort = gServer.identity.primaryPort;
 }
 
+// Perform a Fisher-Yates shuffle of the array.
+function Shuffle(array)
+{
+    for (var i = array.length - 1; i > 0; i--) {
+        var j = Math.floor(Math.random() * (i + 1));
+        var temp = array[i];
+        array[i] = array[j];
+        array[j] = temp;
+    }
+}
+
 function StartTests()
 {
     var uri;
@@ -448,6 +460,12 @@ function StartTests()
         gNoCanvasCache = prefs.getIntPref("reftest.nocache");
     } catch(e) {
         gNoCanvasCache = false;
+    }
+
+    try {
+      gShuffle = prefs.getBoolPref("reftest.shuffle");
+    } catch (e) {
+      gShuffle = false;
     }
 
     try {
@@ -484,6 +502,11 @@ function StartTests()
         DoneTests();
     }
 #endif
+
+    if (gShuffle) {
+        gNoCanvasCache = true;
+    }
+
     try {
         ReadTopManifest(uri);
         BuildUseCounts();
@@ -522,6 +545,11 @@ function StartTests()
             gDumpLog("REFTEST INFO | Running chunk " + gThisChunk + " out of " + gTotalChunks + " chunks.  ");
             gDumpLog("tests " + (start+1) + "-" + end + "/" + gURLs.length + "\n");
         }
+
+        if (gShuffle) {
+            Shuffle(gURLs);
+        }
+
         gTotalTests = gURLs.length;
 
         if (!gTotalTests)
@@ -1687,6 +1715,11 @@ function RecordResult(testRunTime, errorMsg, scriptResults)
 function LoadFailed(why)
 {
     ++gTestResults.FailedLoad;
+    // Once bug 896840 is fixed, this can go away, but for now it will give log
+    // output that is TBPL starable for bug 789751 and bug 720452.
+    if (!why) {
+        gDumpLog("REFTEST TEST-UNEXPECTED-FAIL | load failed with unknown reason\n");
+    }
     gDumpLog("REFTEST TEST-UNEXPECTED-FAIL | " +
          gURLs[0]["url" + gState].spec + " | load failed: " + why + "\n");
     FlushTestLog();

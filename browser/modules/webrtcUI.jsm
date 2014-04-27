@@ -11,8 +11,10 @@ const Cc = Components.classes;
 const Ci = Components.interfaces;
 
 Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/PluralForm.jsm");
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+
+XPCOMUtils.defineLazyModuleGetter(this, "PluralForm",
+                                  "resource://gre/modules/PluralForm.jsm");
 
 XPCOMUtils.defineLazyServiceGetter(this, "MediaManagerService",
                                    "@mozilla.org/mediaManagerService;1",
@@ -141,14 +143,6 @@ function prompt(aContentWindow, aCallID, aAudioRequested, aVideoRequested, aDevi
 
   let secondaryActions = [
     {
-      label: stringBundle.getString("getUserMedia.always.label"),
-      accessKey: stringBundle.getString("getUserMedia.always.accesskey"),
-      callback: function () {
-        // don't save unless secure load!
-        mainAction.callback(aSecure);
-      }
-    },
-    {
       label: stringBundle.getString("getUserMedia.denyRequest.label"),
       accessKey: stringBundle.getString("getUserMedia.denyRequest.accesskey"),
       callback: function () {
@@ -160,8 +154,8 @@ function prompt(aContentWindow, aCallID, aAudioRequested, aVideoRequested, aDevi
       accessKey: stringBundle.getString("getUserMedia.never.accesskey"),
       callback: function () {
         denyRequest(aCallID);
-	// Let someone save "Never" for http sites so that they can be stopped from
-	// bothering you with doorhangers
+        // Let someone save "Never" for http sites so that they can be stopped from
+        // bothering you with doorhangers.
         let perms = Services.perms;
         if (audioDevices.length)
           perms.add(uri, "microphone", perms.DENY_ACTION);
@@ -170,6 +164,17 @@ function prompt(aContentWindow, aCallID, aAudioRequested, aVideoRequested, aDevi
       }
     }
   ];
+
+  if (aSecure) {
+    // Don't show the 'Always' action if the connection isn't secure.
+    secondaryActions.unshift({
+      label: stringBundle.getString("getUserMedia.always.label"),
+      accessKey: stringBundle.getString("getUserMedia.always.accesskey"),
+      callback: function () {
+        mainAction.callback(true);
+      }
+    });
+  }
 
   let options = {
     eventCallback: function(aTopic, aNewBrowser) {

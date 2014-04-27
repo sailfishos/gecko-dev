@@ -144,7 +144,7 @@ private:
   nsCOMPtr<nsIDOMXULElement> mElement;
 };
 
-NS_IMPL_CYCLE_COLLECTION_1(nsXULElementTearoff, mElement)
+NS_IMPL_CYCLE_COLLECTION(nsXULElementTearoff, mElement)
 
 NS_IMPL_CYCLE_COLLECTING_ADDREF(nsXULElementTearoff)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(nsXULElementTearoff)
@@ -810,9 +810,10 @@ nsXULElement::RemoveChildAt(uint32_t aIndex, bool aNotify)
       // If it's not, look at our parent
       if (!controlElement)
         GetParentTree(getter_AddRefs(controlElement));
+      nsCOMPtr<nsIDOMXULElement> xulElement(do_QueryInterface(controlElement));
 
       nsCOMPtr<nsIDOMElement> oldKidElem = do_QueryInterface(oldKid);
-      if (controlElement && oldKidElem) {
+      if (xulElement && oldKidElem) {
         // Iterate over all of the items and find out if they are contained inside
         // the removed subtree.
         int32_t length;
@@ -836,7 +837,7 @@ nsXULElement::RemoveChildAt(uint32_t aIndex, bool aNotify)
         if (curNode && nsContentUtils::ContentIsDescendantOf(curNode, oldKid)) {
             // Current item going away
             nsCOMPtr<nsIBoxObject> box;
-            controlElement->GetBoxObject(getter_AddRefs(box));
+            xulElement->GetBoxObject(getter_AddRefs(box));
             listBox = do_QueryInterface(box);
             if (listBox && oldKidElem) {
               listBox->GetIndexOfItem(oldKidElem, &newCurrentIndex);
@@ -2399,7 +2400,7 @@ nsXULPrototypeScript::Serialize(nsIObjectOutputStream* aStream,
 {
     NS_ENSURE_TRUE(aProtoDoc, NS_ERROR_UNEXPECTED);
     AutoSafeJSContext cx;
-    JS::Rooted<JSObject*> global(cx, aProtoDoc->GetCompilationGlobal());
+    JS::Rooted<JSObject*> global(cx, xpc::GetCompilationScope());
     NS_ENSURE_TRUE(global, NS_ERROR_UNEXPECTED);
     JSAutoCompartment ac(cx, global);
 
@@ -2421,8 +2422,8 @@ nsXULPrototypeScript::Serialize(nsIObjectOutputStream* aStream,
     // been set.
     JS::Handle<JSScript*> script =
         JS::Handle<JSScript*>::fromMarkedLocation(mScriptObject.address());
-    MOZ_ASSERT(!strcmp(JS_GetClass(JS::CurrentGlobalOrNull(cx))->name,
-                       "nsXULPrototypeScript compilation scope"));
+    // Note - Inverting the order of these operands is a rooting hazard.
+    MOZ_ASSERT(xpc::GetCompilationScope() == JS::CurrentGlobalOrNull(cx));
     return nsContentUtils::XPConnect()->WriteScript(aStream, cx,
                                                     xpc_UnmarkGrayScript(script));
 }
@@ -2489,13 +2490,11 @@ nsXULPrototypeScript::Deserialize(nsIObjectInputStream* aStream,
     aStream->Read32(&mLangVersion);
 
     AutoSafeJSContext cx;
-    JS::Rooted<JSObject*> global(cx, aProtoDoc->GetCompilationGlobal());
+    JS::Rooted<JSObject*> global(cx, xpc::GetCompilationScope());
     NS_ENSURE_TRUE(global, NS_ERROR_UNEXPECTED);
     JSAutoCompartment ac(cx, global);
 
     JS::Rooted<JSScript*> newScriptObject(cx);
-    MOZ_ASSERT(!strcmp(JS_GetClass(JS::CurrentGlobalOrNull(cx))->name,
-                       "nsXULPrototypeScript compilation scope"));
     nsresult rv = nsContentUtils::XPConnect()->ReadScript(aStream, cx,
                                                           newScriptObject.address());
     NS_ENSURE_SUCCESS(rv, rv);
@@ -2601,6 +2600,7 @@ NotifyOffThreadScriptCompletedRunnable::Run()
     JSScript *script;
     {
         AutoSafeJSContext cx;
+        JSAutoCompartment ac(cx, xpc::GetCompilationScope());
         script = JS::FinishOffThreadScript(cx, JS_GetRuntime(cx), mToken);
     }
 
@@ -2620,28 +2620,18 @@ OffThreadScriptReceiverCallback(void *aToken, void *aCallbackData)
 }
 
 nsresult
-nsXULPrototypeScript::Compile(const char16_t* aText,
-                              int32_t aTextLength,
+nsXULPrototypeScript::Compile(JS::SourceBufferHolder& aSrcBuf,
                               nsIURI* aURI,
                               uint32_t aLineNo,
                               nsIDocument* aDocument,
                               nsXULPrototypeDocument* aProtoDoc,
                               nsIOffThreadScriptReceiver *aOffThreadReceiver /* = nullptr */)
 {
-    // We'll compile the script using the prototype document's special
-    // script object as the parent. This ensures that we won't end up
-    // with an uncollectable reference.
-    //
-    // Compiling it using (for example) the first document's global
-    // object would cause JS to keep a reference via the __proto__ or
-    // parent pointer to the first document's global. If that happened,
-    // our script object would reference the first document, and the
-    // first document would indirectly reference the prototype document
-    // because it keeps the prototype cache alive. Circularity!
+    // We'll compile the script in the compilation scope.
     MOZ_ASSERT(aProtoDoc);
-    NS_ENSURE_TRUE(aProtoDoc->GetCompilationGlobal(), NS_ERROR_UNEXPECTED);
+    NS_ENSURE_TRUE(xpc::GetCompilationScope(), NS_ERROR_UNEXPECTED);
     AutoSafeJSContext cx;
-    JSAutoCompartment ac(cx, aProtoDoc->GetCompilationGlobal());
+    JSAutoCompartment ac(cx, xpc::GetCompilationScope());
 
     nsAutoCString urlspec;
     nsContentUtils::GetWrapperSafeScriptFilename(aDocument, aURI, urlspec);
@@ -2655,16 +2645,15 @@ nsXULPrototypeScript::Compile(const char16_t* aText,
     // If the script was inline, tell the JS parser to save source for
     // Function.prototype.toSource(). If it's out of line, we retrieve the
     // source from the files on demand.
-    options.setSourcePolicy(mOutOfLine ? JS::CompileOptions::LAZY_SOURCE
-                                       : JS::CompileOptions::SAVE_SOURCE);
+    options.setSourceIsLazy(mOutOfLine);
     JS::Rooted<JSObject*> scope(cx, JS::CurrentGlobalOrNull(cx));
     if (scope) {
       JS::ExposeObjectToActiveJS(scope);
     }
 
-    if (aOffThreadReceiver && JS::CanCompileOffThread(cx, options, aTextLength)) {
+    if (aOffThreadReceiver && JS::CanCompileOffThread(cx, options, aSrcBuf.length())) {
         if (!JS::CompileOffThread(cx, options,
-                                  static_cast<const jschar*>(aText), aTextLength,
+                                  aSrcBuf.get(), aSrcBuf.length(),
                                   OffThreadScriptReceiverCallback,
                                   static_cast<void*>(aOffThreadReceiver))) {
             return NS_ERROR_OUT_OF_MEMORY;
@@ -2672,13 +2661,26 @@ nsXULPrototypeScript::Compile(const char16_t* aText,
         // This reference will be consumed by the NotifyOffThreadScriptCompletedRunnable.
         NS_ADDREF(aOffThreadReceiver);
     } else {
-        JSScript* script = JS::Compile(cx, scope, options,
-                                   static_cast<const jschar*>(aText), aTextLength);
+        JSScript* script = JS::Compile(cx, scope, options, aSrcBuf);
         if (!script)
             return NS_ERROR_OUT_OF_MEMORY;
         Set(script);
     }
     return NS_OK;
+}
+
+nsresult
+nsXULPrototypeScript::Compile(const char16_t* aText,
+                              int32_t aTextLength,
+                              nsIURI* aURI,
+                              uint32_t aLineNo,
+                              nsIDocument* aDocument,
+                              nsXULPrototypeDocument* aProtoDoc,
+                              nsIOffThreadScriptReceiver *aOffThreadReceiver /* = nullptr */)
+{
+  JS::SourceBufferHolder srcBuf(aText, aTextLength,
+                                JS::SourceBufferHolder::NoOwnership);
+  return Compile(srcBuf, aURI, aLineNo, aDocument, aProtoDoc, aOffThreadReceiver);
 }
 
 void

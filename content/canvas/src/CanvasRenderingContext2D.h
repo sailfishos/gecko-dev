@@ -24,6 +24,7 @@
 #include "gfx2DGlue.h"
 #include "imgIEncoder.h"
 #include "nsLayoutUtils.h"
+#include "mozilla/EnumeratedArray.h"
 
 class nsGlobalWindow;
 class nsXULElement;
@@ -158,22 +159,22 @@ public:
 
   void GetStrokeStyle(OwningStringOrCanvasGradientOrCanvasPattern& value)
   {
-    GetStyleAsUnion(value, STYLE_STROKE);
+    GetStyleAsUnion(value, Style::STROKE);
   }
 
   void SetStrokeStyle(const StringOrCanvasGradientOrCanvasPattern& value)
   {
-    SetStyleFromUnion(value, STYLE_STROKE);
+    SetStyleFromUnion(value, Style::STROKE);
   }
 
   void GetFillStyle(OwningStringOrCanvasGradientOrCanvasPattern& value)
   {
-    GetStyleAsUnion(value, STYLE_FILL);
+    GetStyleAsUnion(value, Style::FILL);
   }
 
   void SetFillStyle(const StringOrCanvasGradientOrCanvasPattern& value)
   {
-    SetStyleFromUnion(value, STYLE_FILL);
+    SetStyleFromUnion(value, Style::FILL);
   }
 
   already_AddRefed<CanvasGradient>
@@ -457,16 +458,18 @@ public:
   NS_IMETHOD SetDimensions(int32_t width, int32_t height) MOZ_OVERRIDE;
   NS_IMETHOD InitializeWithSurface(nsIDocShell *shell, gfxASurface *surface, int32_t width, int32_t height) MOZ_OVERRIDE;
 
-  NS_IMETHOD Render(gfxContext *ctx,
-                    GraphicsFilter aFilter,
-                    uint32_t aFlags = RenderFlagPremultAlpha) MOZ_OVERRIDE;
   NS_IMETHOD GetInputStream(const char* aMimeType,
                             const char16_t* aEncoderOptions,
                             nsIInputStream **aStream) MOZ_OVERRIDE;
-  NS_IMETHOD GetThebesSurface(gfxASurface **surface) MOZ_OVERRIDE;
 
-  mozilla::TemporaryRef<mozilla::gfx::SourceSurface> GetSurfaceSnapshot() MOZ_OVERRIDE
-  { EnsureTarget(); return mTarget->Snapshot(); }
+  mozilla::TemporaryRef<mozilla::gfx::SourceSurface> GetSurfaceSnapshot(bool* aPremultAlpha = nullptr) MOZ_OVERRIDE
+  {
+    EnsureTarget();
+    if (aPremultAlpha) {
+      *aPremultAlpha = true;
+    }
+    return mTarget->Snapshot();
+  }
 
   NS_IMETHOD SetIsOpaque(bool isOpaque) MOZ_OVERRIDE;
   bool GetIsOpaque() MOZ_OVERRIDE { return mOpaque; }
@@ -490,17 +493,17 @@ public:
 
   NS_DECL_CYCLE_COLLECTION_SKIPPABLE_SCRIPT_HOLDER_CLASS(CanvasRenderingContext2D)
 
-  enum CanvasMultiGetterType {
-    CMG_STYLE_STRING = 0,
-    CMG_STYLE_PATTERN = 1,
-    CMG_STYLE_GRADIENT = 2
-  };
+  MOZ_BEGIN_NESTED_ENUM_CLASS(CanvasMultiGetterType, uint8_t)
+    STRING = 0,
+    PATTERN = 1,
+    GRADIENT = 2
+  MOZ_END_NESTED_ENUM_CLASS(CanvasMultiGetterType)
 
-  enum Style {
-    STYLE_STROKE = 0,
-    STYLE_FILL,
-    STYLE_MAX
-  };
+  MOZ_BEGIN_NESTED_ENUM_CLASS(Style, uint8_t)
+    STROKE = 0,
+    FILL,
+    MAX
+  MOZ_END_NESTED_ENUM_CLASS(Style)
 
   nsINode* GetParentObject()
   {
@@ -808,30 +811,35 @@ protected:
   }
 
   // text
-  enum TextAlign {
-    TEXT_ALIGN_START,
-    TEXT_ALIGN_END,
-    TEXT_ALIGN_LEFT,
-    TEXT_ALIGN_RIGHT,
-    TEXT_ALIGN_CENTER
-  };
 
-  enum TextBaseline {
-    TEXT_BASELINE_TOP,
-    TEXT_BASELINE_HANGING,
-    TEXT_BASELINE_MIDDLE,
-    TEXT_BASELINE_ALPHABETIC,
-    TEXT_BASELINE_IDEOGRAPHIC,
-    TEXT_BASELINE_BOTTOM
-  };
+public: // These enums are public only to accomodate non-C++11 legacy path of
+        // MOZ_FINISH_NESTED_ENUM_CLASS. Can move back to protected as soon
+        // as that legacy path is dropped.
+  MOZ_BEGIN_NESTED_ENUM_CLASS(TextAlign, uint8_t)
+    START,
+    END,
+    LEFT,
+    RIGHT,
+    CENTER
+  MOZ_END_NESTED_ENUM_CLASS(TextAlign)
 
+  MOZ_BEGIN_NESTED_ENUM_CLASS(TextBaseline, uint8_t)
+    TOP,
+    HANGING,
+    MIDDLE,
+    ALPHABETIC,
+    IDEOGRAPHIC,
+    BOTTOM
+  MOZ_END_NESTED_ENUM_CLASS(TextBaseline)
+
+  MOZ_BEGIN_NESTED_ENUM_CLASS(TextDrawOperation, uint8_t)
+    FILL,
+    STROKE,
+    MEASURE
+  MOZ_END_NESTED_ENUM_CLASS(TextDrawOperation)
+
+protected:
   gfxFontGroup *GetCurrentFontStyle();
-
-  enum TextDrawOperation {
-    TEXT_DRAW_OPERATION_FILL,
-    TEXT_DRAW_OPERATION_STROKE,
-    TEXT_DRAW_OPERATION_MEASURE
-  };
 
   /*
     * Implementation of the fillText, strokeText, and measure functions with
@@ -847,8 +855,8 @@ protected:
   // state stack handling
   class ContextState {
   public:
-    ContextState() : textAlign(TEXT_ALIGN_START),
-                     textBaseline(TEXT_BASELINE_ALPHABETIC),
+    ContextState() : textAlign(TextAlign::START),
+                     textBaseline(TextBaseline::ALPHABETIC),
                      lineWidth(1.0f),
                      miterLimit(10.0f),
                      globalAlpha(1.0f),
@@ -863,6 +871,9 @@ protected:
 
     ContextState(const ContextState& other)
         : fontGroup(other.fontGroup),
+          gradientStyles(other.gradientStyles),
+          patternStyles(other.patternStyles),
+          colorStyles(other.colorStyles),
           font(other.font),
           textAlign(other.textAlign),
           textBaseline(other.textBaseline),
@@ -880,13 +891,7 @@ protected:
           lineCap(other.lineCap),
           lineJoin(other.lineJoin),
           imageSmoothingEnabled(other.imageSmoothingEnabled)
-    {
-      for (int i = 0; i < STYLE_MAX; i++) {
-        colorStyles[i] = other.colorStyles[i];
-        gradientStyles[i] = other.gradientStyles[i];
-        patternStyles[i] = other.patternStyles[i];
-      }
-    }
+    { }
 
     void SetColorStyle(Style whichStyle, nscolor color)
     {
@@ -919,14 +924,14 @@ protected:
     std::vector<mozilla::RefPtr<mozilla::gfx::Path> > clipsPushed;
 
     nsRefPtr<gfxFontGroup> fontGroup;
-    nsRefPtr<CanvasGradient> gradientStyles[STYLE_MAX];
-    nsRefPtr<CanvasPattern> patternStyles[STYLE_MAX];
+    EnumeratedArray<Style, Style::MAX, nsRefPtr<CanvasGradient>> gradientStyles;
+    EnumeratedArray<Style, Style::MAX, nsRefPtr<CanvasPattern>> patternStyles;
+    EnumeratedArray<Style, Style::MAX, nscolor> colorStyles;
 
     nsString font;
     TextAlign textAlign;
     TextBaseline textBaseline;
 
-    nscolor colorStyles[STYLE_MAX];
     nscolor shadowColor;
 
     mozilla::gfx::Matrix transform;
@@ -984,6 +989,12 @@ protected:
 
   friend struct CanvasBidiProcessor;
 };
+
+MOZ_FINISH_NESTED_ENUM_CLASS(CanvasRenderingContext2D::CanvasMultiGetterType)
+MOZ_FINISH_NESTED_ENUM_CLASS(CanvasRenderingContext2D::Style)
+MOZ_FINISH_NESTED_ENUM_CLASS(CanvasRenderingContext2D::TextAlign)
+MOZ_FINISH_NESTED_ENUM_CLASS(CanvasRenderingContext2D::TextBaseline)
+MOZ_FINISH_NESTED_ENUM_CLASS(CanvasRenderingContext2D::TextDrawOperation)
 
 }
 }

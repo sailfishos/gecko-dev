@@ -66,9 +66,7 @@
 #include "nsAccessibilityService.h"
 #include "nsIWritablePropertyBag2.h"
 #endif
-#ifdef IBMBIDI
 #include "nsBidiUtils.h"
-#endif
 
 using namespace mozilla;
 using namespace mozilla::layout;
@@ -2199,6 +2197,7 @@ nsTreeBodyFrame::GetImage(int32_t aRowIndex, nsTreeColumn* aCol, bool aUseContex
                                                 doc->GetDocumentURI(),
                                                 imgNotificationObserver,
                                                 nsIRequest::LOAD_NORMAL,
+                                                EmptyString(),
                                                 getter_AddRefs(imageRequest));
         NS_ENSURE_SUCCESS(rv, rv);
                                   

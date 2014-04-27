@@ -238,10 +238,10 @@ public:
   static nsresult ShutdownMetadataWriteScheduling();
 
   static nsresult OpenFile(const nsACString &aKey,
-                           uint32_t aFlags,
+                           uint32_t aFlags, bool aResultOnAnyThread,
                            CacheFileIOListener *aCallback);
   static nsresult Read(CacheFileHandle *aHandle, int64_t aOffset,
-                       char *aBuf, int32_t aCount,
+                       char *aBuf, int32_t aCount, bool aResultOnAnyThread,
                        CacheFileIOListener *aCallback);
   static nsresult Write(CacheFileHandle *aHandle, int64_t aOffset,
                         const char *aBuf, int32_t aCount, bool aValidate,
@@ -359,6 +359,12 @@ private:
   static nsresult CacheIndexStateChanged();
   nsresult CacheIndexStateChangedInternal();
 
+  // Smart size calculation. UpdateSmartCacheSize() must be called on IO thread.
+  // It is called in EvictIfOverLimitInternal() just before we decide whether to
+  // start overlimit eviction or not and also in OverLimitEvictionInternal()
+  // before we start an eviction loop.
+  nsresult UpdateSmartCacheSize();
+
   // Memory reporting (private part)
   size_t SizeOfExcludingThisInternal(mozilla::MallocSizeOf mallocSizeOf) const;
 
@@ -380,6 +386,7 @@ private:
   nsCOMPtr<nsIDirectoryEnumerator>     mTrashDirEnumerator;
   nsTArray<nsCString>                  mFailedTrashDirs;
   nsRefPtr<CacheFileContextEvictor>    mContextEvictor;
+  TimeStamp                            mLastSmartSizeTime;
 };
 
 } // net
