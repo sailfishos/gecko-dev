@@ -25,7 +25,7 @@ EmbedLiteXulAppInfo::~EmbedLiteXulAppInfo()
 {
 }
 
-NS_IMPL_ISUPPORTS2(EmbedLiteXulAppInfo, nsIXULRuntime, nsIXULAppInfo)
+NS_IMPL_ISUPPORTS(EmbedLiteXulAppInfo, nsIXULRuntime, nsIXULAppInfo)
 
 NS_IMETHODIMP EmbedLiteXulAppInfo::GetID(nsACString& aID)
 {

@@ -61,6 +61,7 @@ public:
                                        const mozilla::layers::FrameMetrics::ViewID& aViewId,
                                        const bool& aIsRoot,
                                        const mozilla::layers::ZoomConstraints& aConstraints) MOZ_OVERRIDE;
+  void ReportSizeUpdate(const gfxSize& aSize);
 
 protected:
   nsIWidget* GetWidget(nsPoint* aOffset);
@@ -69,6 +70,7 @@ protected:
   bool ConvertMutiTouchInputToEvent(const mozilla::MultiTouchInput& aData,
                                     WidgetTouchEvent& aEvent);
   void CancelTapTracking();
+  bool HasValidInnerSize();
 
 private:
   bool InitTabChildGlobal();
@@ -78,6 +80,7 @@ private:
   friend class EmbedLiteViewThreadChild;
   EmbedLiteViewThreadChild* mView;
   mozilla::layers::FrameMetrics mLastSubFrameMetrics;
+  bool mHasValidInnerSize;
 };
 
 }
