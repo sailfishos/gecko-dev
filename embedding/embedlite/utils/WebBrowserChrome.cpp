@@ -56,13 +56,13 @@ WebBrowserChrome::~WebBrowserChrome()
   LOGT();
 }
 
-NS_IMPL_ISUPPORTS6(WebBrowserChrome,
-                   nsIWebBrowserChrome,
-                   nsIWebBrowserChromeFocus,
-                   nsIInterfaceRequestor,
-                   nsIEmbeddingSiteWindow,
-                   nsIWebProgressListener,
-                   nsSupportsWeakReference)
+NS_IMPL_ISUPPORTS(WebBrowserChrome,
+                  nsIWebBrowserChrome,
+                  nsIWebBrowserChromeFocus,
+                  nsIInterfaceRequestor,
+                  nsIEmbeddingSiteWindow,
+                  nsIWebProgressListener,
+                  nsSupportsWeakReference)
 
 NS_IMETHODIMP WebBrowserChrome::GetInterface(const nsIID& aIID, void** aInstancePtr)
 {

@@ -50,6 +50,7 @@ static bool sPostAZPCAsJsonViewport(false);
 
 TabChildHelper::TabChildHelper(EmbedLiteViewThreadChild* aView)
   : mView(aView)
+  , mHasValidInnerSize(false)
 {
   LOGT();
 
@@ -197,6 +198,12 @@ TabChildHelper::InitTabChildGlobal()
   chromeHandler->AddEventListener(NS_LITERAL_STRING("scroll"), this, false);
 
   return true;
+}
+
+bool
+TabChildHelper::HasValidInnerSize()
+{
+  return mHasValidInnerSize;
 }
 
 NS_IMETHODIMP
@@ -494,4 +501,16 @@ TabChildHelper::DoUpdateZoomConstraints(const uint32_t& aPresShellId,
                                           aViewId,
                                           aIsRoot,
                                           aConstraints);
+}
+
+void
+TabChildHelper::ReportSizeUpdate(const gfxSize& aSize)
+{
+  bool initialSizing = !HasValidInnerSize()
+                    && (aSize.width != 0 && aSize.height != 0);
+  if (initialSizing) {
+    mHasValidInnerSize = true;
+  }
+
+  HandlePossibleViewportChange();
 }

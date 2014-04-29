@@ -515,7 +515,7 @@ EmbedLiteViewThreadChild::RecvSetViewSize(const gfxSize& aSize)
   baseWindow->SetPositionAndSize(0, 0, mViewSize.width, mViewSize.height, true);
   baseWindow->SetVisibility(true);
 
-  mHelper->HandlePossibleViewportChange();
+  mHelper->ReportSizeUpdate(aSize);
 
   return true;
 }

@@ -74,7 +74,7 @@ EmbedLiteAppService::~EmbedLiteAppService()
 {
 }
 
-NS_IMPL_ISUPPORTS2(EmbedLiteAppService, nsIObserver, nsIEmbedAppService)
+NS_IMPL_ISUPPORTS(EmbedLiteAppService, nsIObserver, nsIEmbedAppService)
 
 NS_IMETHODIMP
 EmbedLiteAppService::Observe(nsISupports* aSubject,
