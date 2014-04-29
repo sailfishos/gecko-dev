@@ -199,14 +199,14 @@ public:
 
   Compositor(PCompositorParent* aParent = nullptr)
     : mCompositorID(0)
-    , mDiagnosticTypes(DIAGNOSTIC_NONE)
+    , mDiagnosticTypes(DiagnosticTypes::NO_DIAGNOSTIC)
     , mParent(aParent)
     , mWorldOpacity(1.0f)
     , mScreenRotation(ROTATION_0)
   {
   }
 
-  virtual TemporaryRef<DataTextureSource> CreateDataTextureSource(TextureFlags aFlags = 0) = 0;
+  virtual TemporaryRef<DataTextureSource> CreateDataTextureSource(TextureFlags aFlags = TextureFlags::NO_FLAGS) = 0;
   virtual bool Initialize() = 0;
   virtual void Destroy() = 0;
 

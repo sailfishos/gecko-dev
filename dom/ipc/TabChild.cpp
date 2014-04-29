@@ -96,7 +96,7 @@ using namespace mozilla::dom::indexedDB;
 using namespace mozilla::widget;
 using namespace mozilla::jsipc;
 
-NS_IMPL_ISUPPORTS1(ContentListener, nsIDOMEventListener)
+NS_IMPL_ISUPPORTS(ContentListener, nsIDOMEventListener)
 
 static const CSSSize kDefaultViewportSize(980, 480);
 
@@ -145,12 +145,6 @@ TabChildBase::InitializeRootMetrics()
   // as the resolution.
   mLastRootMetrics.mResolution = mLastRootMetrics.mCumulativeResolution / LayoutDeviceToParentLayerScale(1);
   mLastRootMetrics.SetScrollOffset(CSSPoint(0, 0));
-}
-
-bool
-TabChildBase::HasValidInnerSize()
-{
-  return (mInnerSize.width != 0) && (mInnerSize.height != 0);
 }
 
 void
@@ -696,6 +690,7 @@ TabChild::TabChild(ContentChild* aManager, const TabContext& aContext, uint32_t 
   , mWaitingTouchListeners(false)
   , mIgnoreKeyPressEvent(false)
   , mActiveElementManager(new ActiveElementManager())
+  , mHasValidInnerSize(false)
 {
   if (!sActiveDurationMsSet) {
     Preferences::AddIntVarCache(&sActiveDurationMs,
@@ -1288,6 +1283,12 @@ TabChild::BrowserFrameProvideWindow(nsIDOMWindow* aOpener,
   return NS_OK;
 }
 
+bool
+TabChild::HasValidInnerSize()
+{
+  return mHasValidInnerSize;
+}
+
 #ifdef DEBUG
 PContentPermissionRequestChild*
 TabChild:: SendPContentPermissionRequestConstructor(PContentPermissionRequestChild* aActor,
@@ -1614,6 +1615,9 @@ TabChild::RecvUpdateDimensions(const nsRect& rect, const nsIntSize& size, const 
 
     bool initialSizing = !HasValidInnerSize()
                       && (size.width != 0 && size.height != 0);
+    if (initialSizing) {
+      mHasValidInnerSize = true;
+    }
 
     mOrientation = orientation;
     mInnerSize = ScreenIntSize::FromUnknownSize(

@@ -832,13 +832,13 @@ CompositorOGL::GetShaderConfigFor(Effect *aEffect, MaskType aMask) const
   ShaderConfigOGL config;
 
   switch(aEffect->mType) {
-  case EFFECT_SOLID_COLOR:
+  case EffectTypes::SOLID_COLOR:
     config.SetRenderColor(true);
     break;
-  case EFFECT_YCBCR:
+  case EffectTypes::YCBCR:
     config.SetYCbCr(true);
     break;
-  case EFFECT_COMPONENT_ALPHA:
+  case EffectTypes::COMPONENT_ALPHA:
   {
     config.SetComponentAlpha(true);
     EffectComponentAlpha* effectComponentAlpha =
@@ -848,12 +848,12 @@ CompositorOGL::GetShaderConfigFor(Effect *aEffect, MaskType aMask) const
                      format == gfx::SurfaceFormat::B8G8R8X8);
     break;
   }
-  case EFFECT_RENDER_TARGET:
+  case EffectTypes::RENDER_TARGET:
     config.SetTextureTarget(mFBOTextureTarget);
     break;
   default:
   {
-    MOZ_ASSERT(aEffect->mType == EFFECT_RGB);
+    MOZ_ASSERT(aEffect->mType == EffectTypes::RGB);
     TexturedEffect* texturedEffect =
         static_cast<TexturedEffect*>(aEffect);
     TextureSourceOGL* source = texturedEffect->mTexture->AsSourceOGL();
@@ -868,8 +868,8 @@ CompositorOGL::GetShaderConfigFor(Effect *aEffect, MaskType aMask) const
     break;
   }
   }
-  config.SetMask2D(aMask == Mask2d);
-  config.SetMask3D(aMask == Mask3d);
+  config.SetMask2D(aMask == MaskType::Mask2d);
+  config.SetMask3D(aMask == MaskType::Mask3d);
   return config;
 }
 
@@ -938,8 +938,8 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
   EffectMask* effectMask;
   TextureSourceOGL* sourceMask = nullptr;
   gfx::Matrix4x4 maskQuadTransform;
-  if (aEffectChain.mSecondaryEffects[EFFECT_MASK]) {
-    effectMask = static_cast<EffectMask*>(aEffectChain.mSecondaryEffects[EFFECT_MASK].get());
+  if (aEffectChain.mSecondaryEffects[EffectTypes::MASK]) {
+    effectMask = static_cast<EffectMask*>(aEffectChain.mSecondaryEffects[EffectTypes::MASK].get());
     sourceMask = effectMask->mMaskTexture->AsSourceOGL();
 
     // NS_ASSERTION(textureMask->IsAlpha(),
@@ -961,10 +961,10 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
     maskQuadTransform._42 = float(-bounds.y)/bounds.height;
 
     maskType = effectMask->mIs3D
-                 ? Mask3d
-                 : Mask2d;
+                 ? MaskType::Mask3d
+                 : MaskType::Mask2d;
   } else {
-    maskType = MaskNone;
+    maskType = MaskType::MaskNone;
   }
 
   mPixelsFilled += aRect.width * aRect.height;
@@ -972,7 +972,7 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
   // Determine the color if this is a color shader and fold the opacity into
   // the color since color shaders don't have an opacity uniform.
   Color color;
-  if (aEffectChain.mPrimaryEffect->mType == EFFECT_SOLID_COLOR) {
+  if (aEffectChain.mPrimaryEffect->mType == EffectTypes::SOLID_COLOR) {
     EffectSolidColor* effectSolidColor =
       static_cast<EffectSolidColor*>(aEffectChain.mPrimaryEffect.get());
     color = effectSolidColor->mColor;
@@ -1007,10 +1007,10 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
   }
 
   switch (aEffectChain.mPrimaryEffect->mType) {
-    case EFFECT_SOLID_COLOR: {
+    case EffectTypes::SOLID_COLOR: {
       program->SetRenderColor(color);
 
-      if (maskType != MaskNone) {
+      if (maskType != MaskType::MaskNone) {
         BindMaskForProgram(program, sourceMask, LOCAL_GL_TEXTURE0, maskQuadTransform);
       }
 
@@ -1018,7 +1018,7 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
     }
     break;
 
-  case EFFECT_RGB: {
+  case EffectTypes::RGB: {
       TexturedEffect* texturedEffect =
           static_cast<TexturedEffect*>(aEffectChain.mPrimaryEffect.get());
       TextureSource *source = texturedEffect->mTexture;
@@ -1048,7 +1048,7 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
 
       program->SetTextureUnit(0);
 
-      if (maskType != MaskNone) {
+      if (maskType != MaskType::MaskNone) {
         BindMaskForProgram(program, sourceMask, LOCAL_GL_TEXTURE1, maskQuadTransform);
       }
 
@@ -1061,7 +1061,7 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
       }
     }
     break;
-  case EFFECT_YCBCR: {
+  case EffectTypes::YCBCR: {
       EffectYCbCr* effectYCbCr =
         static_cast<EffectYCbCr*>(aEffectChain.mPrimaryEffect.get());
       TextureSource* sourceYCbCr = effectYCbCr->mTexture;
@@ -1081,7 +1081,7 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
 
       program->SetYCbCrTextureUnits(Y, Cb, Cr);
 
-      if (maskType != MaskNone) {
+      if (maskType != MaskType::MaskNone) {
         BindMaskForProgram(program, sourceMask, LOCAL_GL_TEXTURE3, maskQuadTransform);
       }
       BindAndDrawQuadWithTextureRect(program,
@@ -1090,7 +1090,7 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
                                      sourceYCbCr->GetSubSource(Y));
     }
     break;
-  case EFFECT_RENDER_TARGET: {
+  case EffectTypes::RENDER_TARGET: {
       EffectRenderTarget* effectRenderTarget =
         static_cast<EffectRenderTarget*>(aEffectChain.mPrimaryEffect.get());
       RefPtr<CompositingRenderTargetOGL> surface
@@ -1106,7 +1106,7 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
       program->SetTextureTransform(Matrix4x4::From2D(transform));
       program->SetTextureUnit(0);
 
-      if (maskType != MaskNone) {
+      if (maskType != MaskType::MaskNone) {
         sourceMask->BindTexture(LOCAL_GL_TEXTURE1, gfx::Filter::LINEAR);
         program->SetMaskTextureUnit(1);
         program->SetMaskLayerTransform(maskQuadTransform);
@@ -1123,7 +1123,7 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
       BindAndDrawQuad(program);
     }
     break;
-  case EFFECT_COMPONENT_ALPHA: {
+  case EffectTypes::COMPONENT_ALPHA: {
       MOZ_ASSERT(gfxPrefs::ComponentAlphaEnabled());
       EffectComponentAlpha* effectComponentAlpha =
         static_cast<EffectComponentAlpha*>(aEffectChain.mPrimaryEffect.get());
@@ -1143,7 +1143,7 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
       program->SetWhiteTextureUnit(1);
       program->SetTextureTransform(gfx::Matrix4x4());
 
-      if (maskType != MaskNone) {
+      if (maskType != MaskType::MaskNone) {
         BindMaskForProgram(program, sourceMask, LOCAL_GL_TEXTURE2, maskQuadTransform);
       }
       // Pass 1.

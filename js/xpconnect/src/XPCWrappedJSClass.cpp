@@ -1,7 +1,6 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*-
- * vim: set ts=8 sw=4 et tw=78:
- *
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* vim: set ts=8 sts=4 et sw=4 tw=99: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -26,7 +25,7 @@ using namespace xpc;
 using namespace JS;
 using namespace mozilla;
 
-NS_IMPL_ISUPPORTS1(nsXPCWrappedJSClass, nsIXPCWrappedJSClass)
+NS_IMPL_ISUPPORTS(nsXPCWrappedJSClass, nsIXPCWrappedJSClass)
 
 // the value of this variable is never used - we use its address as a sentinel
 static uint32_t zero_methods_descriptor;
@@ -383,7 +382,7 @@ nsXPCWrappedJSClass::BuildPropertyEnumerator(XPCCallContext& ccx,
 
 /***************************************************************************/
 
-NS_IMPL_ISUPPORTS1(xpcProperty, nsIProperty)
+NS_IMPL_ISUPPORTS(xpcProperty, nsIProperty)
 
 xpcProperty::xpcProperty(const char16_t* aName, uint32_t aNameLen,
                          nsIVariant* aValue)
