@@ -317,6 +317,9 @@ public:
     mAncestorHasTouchEventHandler = aValue;
   }
 
+  bool HaveScrollableDisplayPort() const { return mHaveScrollableDisplayPort; }
+  void SetHaveScrollableDisplayPort() { mHaveScrollableDisplayPort = true; }
+
   bool SetIsCompositingCheap(bool aCompositingCheap) { 
     bool temp = mIsCompositingCheap; 
     mIsCompositingCheap = aCompositingCheap;
@@ -723,6 +726,10 @@ private:
   bool                           mContainsPluginItem;
   bool                           mContainsBlendMode;
   bool                           mAncestorHasTouchEventHandler;
+  // True when the first async-scrollable scroll frame for which we build a
+  // display list has a display port. An async-scrollable scroll frame is one
+  // which WantsAsyncScroll().
+  bool                           mHaveScrollableDisplayPort;
 };
 
 class nsDisplayItem;
@@ -1200,7 +1207,11 @@ public:
    * Stores the given opacity value to be applied when drawing. Returns
    * false if this isn't supported for this display item.
    */
-  virtual bool ApplyOpacity(float aOpacity) { return false; }
+  virtual bool ApplyOpacity(nsDisplayListBuilder* aBuilder,
+                            float aOpacity,
+                            const DisplayItemClip* aClip) {
+    return false;
+  }
   
 #ifdef MOZ_DUMP_PAINTING
   /**
@@ -1274,6 +1285,17 @@ public:
       return;
     }
     mClip = aBuilder->AllocateDisplayItemClip(aClip);
+  }
+
+  void IntersectClip(nsDisplayListBuilder* aBuilder, const DisplayItemClip& aClip)
+  {
+    if (mClip) {
+      DisplayItemClip temp = *mClip;
+      temp.IntersectWith(aClip);
+      SetClip(aBuilder, temp);
+    } else {
+      SetClip(aBuilder, aClip);
+    }
   }
 
   // If we return false here it means that if this item creates a layer then
@@ -2290,9 +2312,14 @@ public:
                                          const nsDisplayItemGeometry* aGeometry,
                                          nsRegion* aInvalidRegion) MOZ_OVERRIDE;
   
-  virtual bool ApplyOpacity(float aOpacity) MOZ_OVERRIDE
+  virtual bool ApplyOpacity(nsDisplayListBuilder* aBuilder,
+                            float aOpacity,
+                            const DisplayItemClip* aClip) MOZ_OVERRIDE
   {
     mOpacity = aOpacity;
+    if (aClip) {
+      IntersectClip(aBuilder, *aClip);
+    }
     return true;
   }
 
@@ -3196,6 +3223,12 @@ public:
   /* UntransformRect is like TransformRect, except that it inverts the
    * transform.
    */
+  static bool UntransformRect(const nsRect &aTransformedBounds,
+                              const nsRect &aChildBounds,
+                              const nsIFrame* aFrame,
+                              const nsPoint &aOrigin,
+                              nsRect *aOutRect);
+
   bool UntransformVisibleRect(nsDisplayListBuilder* aBuilder,
                               nsRect* aOutRect);
 

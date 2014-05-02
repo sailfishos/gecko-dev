@@ -103,11 +103,12 @@ protected:
 
   virtual nsresult StartPreviewImpl() MOZ_OVERRIDE;
   virtual nsresult StopPreviewImpl() MOZ_OVERRIDE;
-  virtual nsresult AutoFocusImpl(bool aCancelExistingCall) MOZ_OVERRIDE;
+  virtual nsresult AutoFocusImpl() MOZ_OVERRIDE;
   virtual nsresult TakePictureImpl() MOZ_OVERRIDE;
   virtual nsresult StartRecordingImpl(DeviceStorageFileDescriptor* aFileDescriptor,
                                       const StartRecordingOptions* aOptions = nullptr) MOZ_OVERRIDE;
   virtual nsresult StopRecordingImpl() MOZ_OVERRIDE;
+  virtual nsresult ResumeContinuousFocusImpl() MOZ_OVERRIDE;
   virtual nsresult PushParametersImpl() MOZ_OVERRIDE;
   virtual nsresult PullParametersImpl() MOZ_OVERRIDE;
   virtual already_AddRefed<RecorderProfileManager> GetRecorderProfileManagerImpl() MOZ_OVERRIDE;
@@ -135,7 +136,6 @@ protected:
   Size                      mLastRecorderSize;
   uint32_t                  mPreviewFps;
   bool                      mResumePreviewAfterTakingPicture;
-
   Atomic<uint32_t>          mDeferConfigUpdate;
   GonkCameraParameters      mParams;
 

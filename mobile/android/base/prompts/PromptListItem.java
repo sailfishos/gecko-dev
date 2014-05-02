@@ -2,6 +2,7 @@ package org.mozilla.gecko.prompts;
 
 import org.mozilla.gecko.gfx.BitmapUtils;
 import org.mozilla.gecko.GeckoAppShell;
+import org.mozilla.gecko.widget.GeckoActionProvider;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -37,17 +38,19 @@ public class PromptListItem {
         id = aObject.optInt("id");
         mSelected = aObject.optBoolean("selected");
 
-        JSONObject obj = aObject.optJSONObject("shareData");
+        JSONObject obj = aObject.optJSONObject("showAsActions");
         if (obj != null) {
             showAsActions = true;
             String uri = obj.isNull("uri") ? "" : obj.optString("uri");
-            String type = obj.isNull("type") ? "" : obj.optString("type");
+            String type = obj.isNull("type") ? GeckoActionProvider.DEFAULT_MIME_TYPE :
+                                               obj.optString("type", GeckoActionProvider.DEFAULT_MIME_TYPE);
             mIntent = GeckoAppShell.getShareIntent(GeckoAppShell.getContext(), uri, type, "");
             isParent = true;
         } else {
             mIntent = null;
             showAsActions = false;
-            isParent = aObject.optBoolean("isParent");
+            // Support both "isParent" (backwards compat for older consumers), and "menu" for the new Tabbed prompt ui.
+            isParent = aObject.optBoolean("isParent") || aObject.optBoolean("menu");
         }
 
         BitmapUtils.getDrawable(GeckoAppShell.getContext(), aObject.optString("icon"), new BitmapUtils.BitmapLoader() {

@@ -890,13 +890,13 @@ var WifiManager = (function() {
   };
 
   // Public interface of the wifi service.
-  manager.setWifiEnabled = function(enable, callback) {
-    if (enable === manager.enabled) {
+  manager.setWifiEnabled = function(enabled, callback) {
+    if (enabled === manager.isWifiEnabled(manager.state)) {
       callback("no change");
       return;
     }
 
-    if (enable) {
+    if (enabled) {
       manager.state = "INITIALIZING";
       // Register as network interface.
       WifiNetworkInterface.name = manager.ifname;
@@ -954,6 +954,10 @@ var WifiManager = (function() {
               }
               wifiCommand.closeSupplicantConnection(function () {
                 manager.connectToSupplicant = false;
+                // closeSupplicantConnection() will trigger onsupplicantlost
+                // and set manager.state to "UNINITIALIZED", we have to
+                // restore it here.
+                manager.state = "INITIALIZING";
                 startSupplicantInternal();
               });
             }
@@ -996,6 +1000,11 @@ var WifiManager = (function() {
 
   // Get wifi interface and load wifi driver when enable Ap mode.
   manager.setWifiApEnabled = function(enabled, configuration, callback) {
+    if (enabled === manager.isWifiTetheringEnabled(manager.tetheringState)) {
+      callback("no change");
+      return;
+    }
+
     if (enabled) {
       manager.tetheringState = "INITIALIZING";
       loadDriver(function (status) {
@@ -1260,6 +1269,26 @@ var WifiManager = (function() {
         return false;
     }
   }
+
+  manager.isWifiEnabled = function(state) {
+    switch (state) {
+      case "UNINITIALIZED":
+      case "DISABLING":
+        return false;
+      default:
+        return true;
+    }
+  }
+
+  manager.isWifiTetheringEnabled = function(state) {
+    switch (state) {
+      case "UNINITIALIZED":
+        return false;
+      default:
+        return true;
+    }
+  }
+
   manager.syncDebug = syncDebug;
   manager.stateOrdinal = function(state) {
     return supplicantStatesMap.indexOf(state);
@@ -1787,6 +1816,7 @@ function WifiWorker() {
       self.macAddress = mac;
       debug("Got mac: " + mac);
       self._fireEvent("wifiUp", { macAddress: mac });
+      self.requestDone();
     });
 
     if (WifiManager.state === "SCANNING")
@@ -1800,6 +1830,7 @@ function WifiWorker() {
 
     // Notify everybody, even if they didn't ask us to come up.
     self._fireEvent("wifiDown", {});
+    self.requestDone();
   };
 
   WifiManager.onpasswordmaybeincorrect = function() {
@@ -2431,8 +2462,12 @@ WifiWorker.prototype = {
   },
 
   _sendMessage: function(message, success, data, msg) {
-    msg.manager.sendAsyncMessage(message + (success ? ":OK" : ":NO"),
-                                 { data: data, rid: msg.rid, mid: msg.mid });
+    try {
+      msg.manager.sendAsyncMessage(message + (success ? ":OK" : ":NO"),
+                                   { data: data, rid: msg.rid, mid: msg.mid });
+    } catch (e) {
+      debug("sendAsyncMessage error : " + e);
+    }
     this._splicePendingRequest(msg);
   },
 
@@ -2475,7 +2510,11 @@ WifiWorker.prototype = {
       if ((i = this._domManagers.indexOf(msg.manager)) != -1) {
         this._domManagers.splice(i, 1);
       }
-
+      for (i = this._domRequest.length - 1; i >= 0; i--) {
+        if (this._domRequest[i].msg.manager === msg.manager) {
+          this._domRequest.splice(i, 1);
+        }
+      }
       return;
     }
 
@@ -2657,13 +2696,16 @@ WifiWorker.prototype = {
   },
 
   _setWifiEnabledCallback: function(status) {
+    if (status !== 0) {
+      this.requestDone();
+      return;
+    }
+
     // If we're enabling ourselves, then wait until we've connected to the
     // supplicant to notify. If we're disabling, we take care of this in
     // supplicantlost.
     if (WifiManager.supplicantStarted)
       WifiManager.start();
-
-    this.requestDone();
   },
 
   setWifiEnabled: function(enabled, callback) {
@@ -2677,13 +2719,20 @@ WifiWorker.prototype = {
 
   // requestDone() must be called to before callback complete(or error)
   // so next queue in the request quene can be executed.
-  queueRequest: function(enabled, callback) {
+  queueRequest: function(data, callback) {
     if (!callback) {
         throw "Try to enqueue a request without callback";
     }
 
+    let optimizeCommandList = ["setWifiEnabled", "setWifiApEnabled"];
+    if (optimizeCommandList.indexOf(data.command) != -1) {
+      this._stateRequests = this._stateRequests.filter(function(element) {
+        return element.data.command !== data.command;
+      });
+    }
+
     this._stateRequests.push({
-      enabled: enabled,
+      data: data,
       callback: callback
     });
 
@@ -2999,7 +3048,7 @@ WifiWorker.prototype = {
 
   shutdown: function() {
     debug("shutting down ...");
-    this.queueRequest(false, function(data) {
+    this.queueRequest({command: "setWifiEnabled", value: false}, function(data) {
       this.setWifiEnabled(false, this._setWifiEnabledCallback.bind(this));
     }.bind(this));
   },
@@ -3029,7 +3078,7 @@ WifiWorker.prototype = {
     // Find next valid request
     let request = this._stateRequests.shift();
 
-    request.callback(request.enabled);
+    request.callback(request.data);
   },
 
   notifyTetheringOn: function notifyTetheringOn() {
@@ -3075,14 +3124,11 @@ WifiWorker.prototype = {
   },
 
   handleWifiEnabled: function(enabled) {
-    if (WifiManager.enabled === enabled) {
-      return;
-    }
     // Make sure Wifi hotspot is idle before switching to Wifi mode.
     if (enabled) {
-      this.queueRequest(false, function(data) {
+      this.queueRequest({command: "setWifiApEnabled", value: false}, function(data) {
         if (this.tetheringSettings[SETTINGS_WIFI_TETHERING_ENABLED] ||
-            WifiManager.tetheringState != "UNINITIALIZED") {
+            WifiManager.isWifiTetheringEnabled(WifiManager.tetheringState)) {
           this.disconnectedByWifi = true;
           this.setWifiApEnabled(false, this.notifyTetheringOff.bind(this));
         } else {
@@ -3091,12 +3137,12 @@ WifiWorker.prototype = {
       }.bind(this));
     }
 
-    this.queueRequest(enabled, function(data) {
+    this.queueRequest({command: "setWifiEnabled", value: enabled}, function(data) {
       this.setWifiEnabled(enabled, this._setWifiEnabledCallback.bind(this));
     }.bind(this));
 
     if (!enabled) {
-      this.queueRequest(true, function(data) {
+      this.queueRequest({command: "setWifiApEnabled", value: true}, function(data) {
         if (this.disconnectedByWifi) {
           this.setWifiApEnabled(true, this.notifyTetheringOn.bind(this));
         } else {
@@ -3110,8 +3156,8 @@ WifiWorker.prototype = {
   handleWifiTetheringEnabled: function(enabled) {
     // Make sure Wifi is idle before switching to Wifi hotspot mode.
     if (enabled) {
-      this.queueRequest(false, function(data) {
-        if (WifiManager.enabled || WifiManager.state != "UNINITIALIZED") {
+      this.queueRequest({command: "setWifiEnabled", value: false}, function(data) {
+        if (WifiManager.isWifiEnabled(WifiManager.state)) {
           this.disconnectedByWifiTethering = true;
           this.setWifiEnabled(false, this._setWifiEnabledCallback.bind(this));
         } else {
@@ -3120,12 +3166,12 @@ WifiWorker.prototype = {
       }.bind(this));
     }
 
-    this.queueRequest(enabled, function(data) {
-      this.setWifiApEnabled(data, this.requestDone.bind(this));
+    this.queueRequest({command: "setWifiApEnabled", value: enabled}, function(data) {
+      this.setWifiApEnabled(enabled, this.requestDone.bind(this));
     }.bind(this));
 
     if (!enabled) {
-      this.queueRequest(true, function(data) {
+      this.queueRequest({command: "setWifiEnabled", value: true}, function(data) {
         if (this.disconnectedByWifiTethering) {
           this.setWifiEnabled(true, this._setWifiEnabledCallback.bind(this));
         } else {

@@ -297,7 +297,7 @@ pref("extensions.strictCompatibility", false);
 pref("extensions.minCompatibleAppVersion", "11.0");
 
 // Enable sub layers for apzc
-pref("layout.want.subapzc", true);
+pref("apz.subframe.enabled", true);
 
 // Enable HTML fullscreen API in content.
 pref("full-screen-api.enabled", true);

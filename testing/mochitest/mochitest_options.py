@@ -171,6 +171,12 @@ class MochitestOptions(optparse.OptionParser):
           "help": "run browser chrome Mochitests",
           "default": False,
         }],
+        [["--subsuite"],
+        { "action": "store",
+          "dest": "subsuite",
+          "help": "subsuite of tests to run",
+          "default": "",
+        }],
         [["--webapprt-content"],
         { "action": "store_true",
           "dest": "webapprtContent",
@@ -403,6 +409,8 @@ class MochitestOptions(optparse.OptionParser):
 
     def verifyOptions(self, options, mochitest):
         """ verify correct options and cleanup paths """
+
+        mozinfo.update({"e10s": options.e10s}) # for test manifest parsing.
 
         if options.app is None:
             if build_obj is not None:

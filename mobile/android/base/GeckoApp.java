@@ -646,10 +646,6 @@ public abstract class GeckoApp
             } else if (event.equals("Share:Text")) {
                 String text = message.getString("text");
                 GeckoAppShell.openUriExternal(text, "text/plain", "", "", Intent.ACTION_SEND, "");
-            } else if (event.equals("Share:Image")) {
-                String src = message.getString("url");
-                String type = message.getString("mime");
-                GeckoAppShell.shareImage(src, type);
             } else if (event.equals("Image:SetAs")) {
                 String src = message.getString("url");
                 setImageAs(src);
@@ -1569,7 +1565,6 @@ public abstract class GeckoApp
 
         //register for events
         registerEventListener("log");
-        registerEventListener("Reader:ListCountRequest");
         registerEventListener("Reader:ListStatusRequest");
         registerEventListener("Reader:Added");
         registerEventListener("Reader:Removed");
@@ -1591,7 +1586,6 @@ public abstract class GeckoApp
         registerEventListener("Accessibility:Ready");
         registerEventListener("Shortcut:Remove");
         registerEventListener("Share:Text");
-        registerEventListener("Share:Image");
         registerEventListener("Image:SetAs");
         registerEventListener("Sanitize:ClearHistory");
         registerEventListener("Update:Check");
@@ -1831,7 +1825,7 @@ public abstract class GeckoApp
         } else if (mCameraView instanceof TextureView) {
             mCameraView.setAlpha(0.0f);
         }
-        RelativeLayout mCameraLayout = (RelativeLayout) findViewById(R.id.camera_layout);
+        ViewGroup mCameraLayout = (ViewGroup) findViewById(R.id.camera_layout);
         // Some phones (eg. nexus S) need at least a 8x16 preview size
         mCameraLayout.addView(mCameraView,
                               new AbsoluteLayout.LayoutParams(8, 16, 0, 0));
@@ -1842,7 +1836,7 @@ public abstract class GeckoApp
             mCameraOrientationEventListener.disable();
             mCameraOrientationEventListener = null;
         }
-        RelativeLayout mCameraLayout = (RelativeLayout) findViewById(R.id.camera_layout);
+        ViewGroup mCameraLayout = (ViewGroup) findViewById(R.id.camera_layout);
         mCameraLayout.removeView(mCameraView);
     }
 
@@ -2103,7 +2097,6 @@ public abstract class GeckoApp
     public void onDestroy()
     {
         unregisterEventListener("log");
-        unregisterEventListener("Reader:ListCountRequest");
         unregisterEventListener("Reader:ListStatusRequest");
         unregisterEventListener("Reader:Added");
         unregisterEventListener("Reader:Removed");
@@ -2125,7 +2118,6 @@ public abstract class GeckoApp
         unregisterEventListener("Accessibility:Ready");
         unregisterEventListener("Shortcut:Remove");
         unregisterEventListener("Share:Text");
-        unregisterEventListener("Share:Image");
         unregisterEventListener("Image:SetAs");
         unregisterEventListener("Sanitize:ClearHistory");
         unregisterEventListener("Update:Check");
