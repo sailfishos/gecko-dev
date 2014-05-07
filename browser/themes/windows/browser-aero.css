@@ -58,8 +58,6 @@
     border-color: hsla(210,54%,20%,.25) hsla(210,54%,20%,.27) hsla(210,54%,20%,.3);
     box-shadow: 0 1px 0 hsla(0,0%,0%,.01) inset,
                 0 1px 0 hsla(0,0%,100%,.1);
-    transition-property: border-color;
-    transition-duration: 200ms;
   }
 
   #urlbar:not(:-moz-lwtheme)[focused],
@@ -145,6 +143,18 @@
     text-shadow: 0 0 .5em white, 0 0 .5em white, 0 1px 0 rgba(255,255,255,.4);
     border-left-style: none !important;
     border-right-style: none !important;
+  }
+
+  /* Use a different color only on Windows 8 and higher for inactive windows.
+   * On aero, the menubar fog disappears for inactive windows, and renders gray
+   * illegible.
+   */
+  @media not all and (-moz-os-version: windows-vista) {
+    @media not all and (-moz-os-version: windows-win7) {
+      #toolbar-menubar:not(:-moz-lwtheme):-moz-window-inactive {
+        color: ThreeDShadow;
+      }
+    }
   }
 
   #main-window[darkwindowframe="true"] #toolbar-menubar:not(:-moz-lwtheme):not(:-moz-window-inactive),
