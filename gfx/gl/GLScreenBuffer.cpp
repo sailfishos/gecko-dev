@@ -19,6 +19,8 @@
 #ifdef XP_MACOSX
 #include "SharedSurfaceIO.h"
 #endif
+#include "SharedSurfaceEGL.h"           // for SurfaceFactory_EGLImage
+#include "SharedSurfaceGL.h"            // for SurfaceFactory_GLTexture, etc
 #include "ScopedGLHelpers.h"
 #include "gfx2DGlue.h"
 
@@ -56,6 +58,17 @@ GLScreenBuffer::Create(GLContext* gl,
         factory = new SurfaceFactory_IOSurface(gl, caps);
     }
 #endif
+
+    if (!factory) {
+      if (gl->GetContextType() == GLContextType::EGL) {
+        // [Basic/OGL Layers, OMTC] WebGL layer init.
+        factory = SurfaceFactory_EGLImage::Create(gl, caps);
+      } else {
+        // [Basic Layers, OMTC] WebGL layer init.
+        // Well, this *should* work...
+        factory = new SurfaceFactory_GLTexture(gl, nullptr, caps);
+      }
+    }
 
     if (!factory)
         factory = new SurfaceFactory_Basic(gl, caps);
