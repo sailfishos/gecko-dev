@@ -1,0 +1,272 @@
+diff --git a/dom/ipc/TabChild.cpp b/dom/ipc/TabChild.cpp
+index 031e3ca..b6045e3 100644
+--- a/dom/ipc/TabChild.cpp
++++ b/dom/ipc/TabChild.cpp
+@@ -570,6 +570,8 @@ TabChild::HandlePossibleViewportChange()
+   FrameMetrics metrics(mLastRootMetrics);
+   metrics.mViewport = CSSRect(CSSPoint(), viewport);
+   metrics.mCompositionBounds = ScreenIntRect(ScreenIntPoint(), mInnerSize);
++  metrics.SetRootCompositionSize(
++      ScreenSize(mInnerSize) * ScreenToLayoutDeviceScale(1.0f) / metrics.mDevPixelsPerCSSPixel);
+ 
+   // This change to the zoom accounts for all types of changes I can conceive:
+   // 1. screen size changes, CSS viewport does not (pages with no meta viewport
+diff --git a/gfx/ipc/GfxMessageUtils.h b/gfx/ipc/GfxMessageUtils.h
+index 6621f2f..137744b 100644
+--- a/gfx/ipc/GfxMessageUtils.h
++++ b/gfx/ipc/GfxMessageUtils.h
+@@ -464,10 +464,10 @@ struct ParamTraits< mozilla::gfx::IntPointTyped<T> >
+   }
+ };
+ 
+-template<>
+-struct ParamTraits<mozilla::gfx::Size>
++template<class T>
++struct ParamTraits< mozilla::gfx::SizeTyped<T> >
+ {
+-  typedef mozilla::gfx::Size paramType;
++  typedef mozilla::gfx::SizeTyped<T> paramType;
+ 
+   static void Write(Message* msg, const paramType& param)
+   {
+@@ -610,6 +610,7 @@ struct ParamTraits<mozilla::layers::FrameMetrics>
+     WriteParam(aMsg, aParam.mDisplayPort);
+     WriteParam(aMsg, aParam.mCriticalDisplayPort);
+     WriteParam(aMsg, aParam.mCompositionBounds);
++    WriteParam(aMsg, aParam.mRootCompositionSize);
+     WriteParam(aMsg, aParam.mScrollId);
+     WriteParam(aMsg, aParam.mResolution);
+     WriteParam(aMsg, aParam.mCumulativeResolution);
+@@ -633,6 +634,7 @@ struct ParamTraits<mozilla::layers::FrameMetrics>
+             ReadParam(aMsg, aIter, &aResult->mDisplayPort) &&
+             ReadParam(aMsg, aIter, &aResult->mCriticalDisplayPort) &&
+             ReadParam(aMsg, aIter, &aResult->mCompositionBounds) &&
++            ReadParam(aMsg, aIter, &aResult->mRootCompositionSize) &&
+             ReadParam(aMsg, aIter, &aResult->mScrollId) &&
+             ReadParam(aMsg, aIter, &aResult->mResolution) &&
+             ReadParam(aMsg, aIter, &aResult->mCumulativeResolution) &&
+diff --git a/gfx/layers/FrameMetrics.h b/gfx/layers/FrameMetrics.h
+index 1d133e5..26c72c4 100644
+--- a/gfx/layers/FrameMetrics.h
++++ b/gfx/layers/FrameMetrics.h
+@@ -17,18 +17,30 @@ template <typename T> struct ParamTraits;
+ } // namespace IPC
+ 
+ namespace mozilla {
+-namespace layers {
+ 
+ // The layer coordinates of the parent layer. Like the layer coordinates
+ // of the current layer (LayerPixel) but doesn't include the current layer's
+ // resolution.
+ struct ParentLayerPixel {};
+ 
++typedef gfx::PointTyped<ParentLayerPixel> ParentLayerPoint;
++typedef gfx::RectTyped<ParentLayerPixel> ParentLayerRect;
++typedef gfx::SizeTyped<ParentLayerPixel> ParentLayerSize;
++
++typedef gfx::IntMarginTyped<ParentLayerPixel> ParentLayerIntMargin;
++typedef gfx::IntPointTyped<ParentLayerPixel> ParentLayerIntPoint;
++typedef gfx::IntRectTyped<ParentLayerPixel> ParentLayerIntRect;
++typedef gfx::IntSizeTyped<ParentLayerPixel> ParentLayerIntSize;
++
++typedef gfx::ScaleFactor<CSSPixel, ParentLayerPixel> CSSToParentLayerScale;
+ typedef gfx::ScaleFactor<LayoutDevicePixel, ParentLayerPixel> LayoutDeviceToParentLayerScale;
+-typedef gfx::ScaleFactor<ParentLayerPixel, LayerPixel> ParentLayerToLayerScale;
++typedef gfx::ScaleFactor<ScreenPixel, ParentLayerPixel> ScreenToParentLayerScale;
+ 
++typedef gfx::ScaleFactor<ParentLayerPixel, LayerPixel> ParentLayerToLayerScale;
+ typedef gfx::ScaleFactor<ParentLayerPixel, ScreenPixel> ParentLayerToScreenScale;
+ 
++namespace layers {
++
+ /**
+  * The viewport and displayport metrics for the painted frame at the
+  * time of a layer-tree transaction.  These metrics are especially
+@@ -64,6 +76,7 @@ public:
+     , mDisableScrollingY(false)
+     , mUpdateScrollOffset(false)
+     , mScrollGeneration(0)
++    , mRootCompositionSize(0, 0)
+   {}
+ 
+   // Default copy ctor and operator= are fine
+@@ -71,6 +84,7 @@ public:
+   bool operator==(const FrameMetrics& aOther) const
+   {
+     return mCompositionBounds.IsEqualEdges(aOther.mCompositionBounds) &&
++           mRootCompositionSize == aOther.mRootCompositionSize &&
+            mDisplayPort.IsEqualEdges(aOther.mDisplayPort) &&
+            mCriticalDisplayPort.IsEqualEdges(aOther.mCriticalDisplayPort) &&
+            mViewport.IsEqualEdges(aOther.mViewport) &&
+@@ -366,6 +380,16 @@ public:
+     return mScrollGeneration;
+   }
+ 
++  void SetRootCompositionSize(const CSSSize& aRootCompositionSize)
++  {
++    mRootCompositionSize = aRootCompositionSize;
++  }
++
++  const CSSSize& GetRootCompositionSize() const
++  {
++    return mRootCompositionSize;
++  }
++
+ private:
+   // New fields from now on should be made private and old fields should
+   // be refactored to be private.
+@@ -380,6 +404,9 @@ private:
+   bool mUpdateScrollOffset;
+   // The scroll generation counter used to acknowledge the scroll offset update.
+   uint32_t mScrollGeneration;
++
++  // The size of the root scrollable's composition bounds, but in local CSS pixels.
++  CSSSize mRootCompositionSize;
+ };
+ 
+ /**
+diff --git a/gfx/layers/ipc/AsyncPanZoomController.cpp b/gfx/layers/ipc/AsyncPanZoomController.cpp
+index d098331..4c80629 100644
+--- a/gfx/layers/ipc/AsyncPanZoomController.cpp
++++ b/gfx/layers/ipc/AsyncPanZoomController.cpp
+@@ -1304,8 +1304,16 @@ const CSSRect AsyncPanZoomController::CalculatePendingDisplayPort(
+   double estimatedPaintDurationMillis = aEstimatedPaintDuration * 1000;
+ 
+   CSSRect compositionBounds = aFrameMetrics.CalculateCompositedRectInCssPixels();
++  CSSSize compositionSize = aFrameMetrics.GetRootCompositionSize();
++  if (compositionSize.width > 0 && compositionSize.height > 0) {
++    compositionSize =
++      CSSSize(std::min(compositionBounds.width, compositionSize.width),
++              std::min(compositionBounds.height, compositionSize.height));
++  } else {
++    compositionSize = compositionBounds.Size();
++  }
+   CSSPoint scrollOffset = aFrameMetrics.mScrollOffset;
+-  CSSRect displayPort(scrollOffset, compositionBounds.Size());
++  CSSRect displayPort(scrollOffset, compositionSize);
+   CSSPoint velocity = aVelocity / aFrameMetrics.mZoom;
+ 
+   // If scrolling is disabled here then our actual velocity is going
+@@ -1606,6 +1614,7 @@ void AsyncPanZoomController::NotifyLayersUpdated(const FrameMetrics& aLayerMetri
+     }
+     mFrameMetrics.mScrollableRect = aLayerMetrics.mScrollableRect;
+     mFrameMetrics.mCompositionBounds = aLayerMetrics.mCompositionBounds;
++    mFrameMetrics.SetRootCompositionSize(aLayerMetrics.GetRootCompositionSize());
+     mFrameMetrics.mResolution = aLayerMetrics.mResolution;
+     mFrameMetrics.mCumulativeResolution = aLayerMetrics.mCumulativeResolution;
+     mFrameMetrics.mHasScrollgrab = aLayerMetrics.mHasScrollgrab;
+diff --git a/layout/base/nsDisplayList.cpp b/layout/base/nsDisplayList.cpp
+index c840564..fee7931 100644
+--- a/layout/base/nsDisplayList.cpp
++++ b/layout/base/nsDisplayList.cpp
+@@ -591,6 +591,86 @@ static void AdjustForScrollBars(ScreenIntRect& aToAdjust, nsIScrollableFrame* aS
+   }
+ }
+ 
++static CSSSize
++CalculateRootCompositionSize(FrameMetrics& aMetrics,
++                             bool aIsRootContentDocRootScrollFrame,
++                             nsPresContext* aPresContext,
++                             nsIFrame* aForFrame, nsIFrame* aScrollFrame)
++{
++
++  if (aIsRootContentDocRootScrollFrame) {
++    // convert from parent layer pixels to layer pixels to css pixels
++    ParentLayerIntRect compRect(aMetrics.mCompositionBounds.x, aMetrics.mCompositionBounds.y, aMetrics.mCompositionBounds.width, aMetrics.mCompositionBounds.height);
++    return ParentLayerSize(compRect.Size())
++                           * aMetrics.mResolution / aMetrics.LayersPixelsPerCSSPixel();
++  }
++  ParentLayerIntSize rootCompositionSize;
++  nsPresContext* rootPresContext =
++    aPresContext->GetToplevelContentDocumentPresContext();
++  if (!rootPresContext) {
++    rootPresContext = aPresContext->GetRootPresContext();
++  }
++  nsIPresShell* rootPresShell = nullptr;
++  if (rootPresContext) {
++    nsIPresShell* rootPresShell = rootPresContext->PresShell();
++    if (nsIFrame* rootFrame = rootPresShell->GetRootFrame()) {
++      if (nsView* view = rootFrame->GetView()) {
++        nsIWidget* widget = view->GetWidget();
++  #ifdef MOZ_WIDGET_ANDROID
++        // Android hack - temporary workaround for bug 983208 until we figure
++        // out what a proper fix is.
++        if (!widget) {
++          widget = rootFrame->GetNearestWidget();
++        }
++  #endif
++        if (widget) {
++          nsIntRect bounds;
++          widget->GetBounds(bounds);
++          rootCompositionSize = ParentLayerIntSize::FromUnknownSize(mozilla::gfx::IntSize(
++            bounds.width, bounds.height));
++        } else {
++          gfxSize res = rootPresShell->GetCumulativeResolution();
++          LayoutDeviceToParentLayerScale parentResolution(res.width);
++          int32_t rootAUPerDevPixel = rootPresContext->AppUnitsPerDevPixel();
++          nsRect viewBounds = view->GetBounds();
++          rootCompositionSize =
++            RoundedToInt(LayoutDeviceRect::FromAppUnits(viewBounds, rootAUPerDevPixel)
++            * parentResolution).Size();
++        }
++      }
++    }
++  } else {
++    nsIWidget* widget = (aScrollFrame ? aScrollFrame : aForFrame)->GetNearestWidget();
++    nsIntRect bounds;
++    widget->GetBounds(bounds);
++    rootCompositionSize = ParentLayerIntSize::FromUnknownSize(mozilla::gfx::IntSize(
++      bounds.width, bounds.height));
++  }
++
++  LayoutDeviceToParentLayerScale parentResolution(1.0f);
++  if (rootPresShell) {
++    parentResolution.scale =
++      rootPresShell->GetCumulativeResolution().width / rootPresShell->GetResolution().width;
++  }
++
++  CSSSize size =
++    ParentLayerSize(rootCompositionSize) / (parentResolution * aMetrics.mDevPixelsPerCSSPixel);
++
++  // Adjust composition size for the size of scroll bars.
++  nsIFrame* rootRootScrollFrame = rootPresShell ? rootPresShell->GetRootScrollFrame() : nullptr;
++  nsIScrollableFrame* rootScrollableFrame = nullptr;
++  if (rootRootScrollFrame) {
++    rootScrollableFrame = aScrollFrame->GetScrollTargetFrame();
++  }
++  if (rootScrollableFrame && !LookAndFeel::GetInt(LookAndFeel::eIntID_UseOverlayScrollbars)) {
++    CSSMargin margins = CSSMargin::FromAppUnits(rootScrollableFrame->GetActualScrollbarSizes());
++    size.width -= margins.LeftRight();
++    size.height -= margins.TopBottom();
++  }
++
++  return size;
++}
++
+ static void RecordFrameMetrics(nsIFrame* aForFrame,
+                                nsIFrame* aScrollFrame,
+                                const nsIFrame* aReferenceFrame,
+@@ -734,6 +814,10 @@ static void RecordFrameMetrics(nsIFrame* aForFrame,
+ 
+   metrics.mPresShellId = presShell->GetPresShellId();
+ 
++  metrics.SetRootCompositionSize(
++    CalculateRootCompositionSize(metrics, isRootContentDocRootScrollFrame,
++                                 presContext, aForFrame, aScrollFrame));
++
+   // If the scroll frame's content is marked 'scrollgrab', record this
+   // in the FrameMetrics so APZ knows to provide the scroll grabbing
+   // behaviour.
+diff --git a/widget/xpwidgets/APZCCallbackHelper.cpp b/widget/xpwidgets/APZCCallbackHelper.cpp
+index 7c73af7..1c97048 100644
+--- a/widget/xpwidgets/APZCCallbackHelper.cpp
++++ b/widget/xpwidgets/APZCCallbackHelper.cpp
+@@ -145,7 +145,7 @@ APZCCallbackHelper::UpdateRootFrame(nsIDOMWindowUtils* aUtils,
+     // Finally, we multiply by a ScreenToLayerScale of 1.0f because the goal here is to
+     // take the async zoom calculated by the APZC and tell gecko about it (turning it into
+     // a "sync" zoom) which will update the resolution at which the layer is painted.
+-    mozilla::layers::ParentLayerToLayerScale presShellResolution =
++    mozilla::ParentLayerToLayerScale presShellResolution =
+         aMetrics.mZoom
+         / aMetrics.mDevPixelsPerCSSPixel
+         / aMetrics.GetParentResolution()
