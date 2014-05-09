@@ -893,6 +893,18 @@ LayerComposite::Destroy()
   }
 }
 
+void
+LayerComposite::AddBlendModeEffect(EffectChain& aEffectChain)
+{
+  gfx::CompositionOp blendMode = GetLayer()->GetEffectiveMixBlendMode();
+  if (blendMode == gfx::CompositionOp::OP_OVER) {
+    return;
+  }
+
+  aEffectChain.mSecondaryEffects[EFFECT_BLEND_MODE] = new EffectBlendMode(blendMode);
+  return;
+}
+
 bool
 LayerManagerComposite::CanUseCanvasLayerForSize(const IntSize &aSize)
 {
