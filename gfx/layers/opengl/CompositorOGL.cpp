@@ -839,7 +839,9 @@ CompositorOGL::CreateFBOWithTexture(const IntRect& aRect, bool aCopyFromSource,
 }
 
 ShaderConfigOGL
-CompositorOGL::GetShaderConfigFor(Effect *aEffect, MaskType aMask) const
+CompositorOGL::GetShaderConfigFor(Effect *aEffect,
+                                  MaskType aMask,
+                                  gfx::CompositionOp aOp) const
 {
   ShaderConfigOGL config;
 
@@ -878,6 +880,12 @@ CompositorOGL::GetShaderConfigFor(Effect *aEffect, MaskType aMask) const
                   source->GetFormat() == gfx::SurfaceFormat::R5G6B5);
     config = ShaderConfigFromTargetAndFormat(source->GetTextureTarget(),
                                              source->GetFormat());
+    if (aOp == gfx::CompositionOp::OP_MULTIPLY &&
+        !texturedEffect->mPremultiplied) {
+      // We can do these blend modes just using glBlendFunc but we need the data
+      // to be premultiplied first.
+      config.SetPremultiply(true);
+    }
     break;
   }
   }
@@ -921,6 +929,40 @@ CompositorOGL::DrawLines(const std::vector<gfx::Point>& aLines, const gfx::Rect&
                      aClipRect, effects, aOpacity, aTransform,
                      LOCAL_GL_LINE_STRIP);
   }
+}
+
+static bool SetBlendMode(GLContext* aGL, gfx::CompositionOp aBlendMode, bool aIsPremultiplied = true)
+{
+  if (aBlendMode == gfx::CompositionOp::OP_OVER && aIsPremultiplied) {
+    return false;
+  }
+
+  GLenum srcBlend;
+  GLenum dstBlend;
+
+  switch (aBlendMode) {
+    case gfx::CompositionOp::OP_OVER:
+      MOZ_ASSERT(!aIsPremultiplied);
+      srcBlend = LOCAL_GL_SRC_ALPHA;
+      dstBlend = LOCAL_GL_ONE_MINUS_SRC_ALPHA;
+      break;
+    case gfx::CompositionOp::OP_SCREEN:
+      srcBlend = aIsPremultiplied ? LOCAL_GL_ONE : LOCAL_GL_SRC_ALPHA;
+      dstBlend = LOCAL_GL_ONE_MINUS_SRC_COLOR;
+      break;
+    case gfx::CompositionOp::OP_MULTIPLY:
+      // If the source data was un-premultiplied we should have already
+      // asked the fragment shader to fix that.
+      srcBlend = LOCAL_GL_DST_COLOR;
+      dstBlend = LOCAL_GL_ONE_MINUS_SRC_ALPHA;
+      break;
+    default:
+      MOZ_ASSERT(0, "Unsupported blend mode!");
+  }
+
+  aGL->fBlendFuncSeparate(srcBlend, dstBlend,
+                          LOCAL_GL_ONE, LOCAL_GL_ONE);
+  return true;
 }
 
 void
@@ -1000,7 +1042,14 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
     aOpacity = 1.f;
   }
 
-  ShaderConfigOGL config = GetShaderConfigFor(aEffectChain.mPrimaryEffect, maskType);
+  gfx::CompositionOp blendMode = gfx::CompositionOp::OP_OVER;
+  if (aEffectChain.mSecondaryEffects[EFFECT_BLEND_MODE]) {
+    EffectBlendMode *blendEffect =
+      static_cast<EffectBlendMode*>(aEffectChain.mSecondaryEffects[EFFECT_BLEND_MODE].get());
+    blendMode = blendEffect->mBlendMode;
+  }
+
+  ShaderConfigOGL config = GetShaderConfigFor(aEffectChain.mPrimaryEffect, maskType, blendMode);
   config.SetOpacity(aOpacity != 1.f);
   ShaderProgramOGL *program = GetShaderProgramFor(config);
   program->Activate();
@@ -1019,6 +1068,8 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
     program->SetTexCoordMultiplier(source->GetSize().width, source->GetSize().height);
   }
 
+  bool didSetBlendMode = false;
+
   switch (aEffectChain.mPrimaryEffect->mType) {
     case EFFECT_SOLID_COLOR: {
       program->SetRenderColor(color);
@@ -1026,6 +1077,8 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
       if (maskType != MaskNone) {
         BindMaskForProgram(program, sourceMask, LOCAL_GL_TEXTURE0, maskQuadTransform);
       }
+
+      didSetBlendMode = SetBlendMode(gl(), blendMode);
 
       BindAndDrawQuad(program, aDrawMode);
     }
@@ -1036,10 +1089,7 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
           static_cast<TexturedEffect*>(aEffectChain.mPrimaryEffect.get());
       TextureSource *source = texturedEffect->mTexture;
 
-      if (!texturedEffect->mPremultiplied) {
-        mGLContext->fBlendFuncSeparate(LOCAL_GL_SRC_ALPHA, LOCAL_GL_ONE_MINUS_SRC_ALPHA,
-                                       LOCAL_GL_ONE, LOCAL_GL_ONE);
-      }
+      didSetBlendMode = SetBlendMode(gl(), blendMode, texturedEffect->mPremultiplied);
 
       gfx::Filter filter = texturedEffect->mFilter;
       gfx3DMatrix textureTransform;
@@ -1067,11 +1117,6 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
 
       BindAndDrawQuadWithTextureRect(program, textureTransform,
                                      texturedEffect->mTextureCoords, source);
-
-      if (!texturedEffect->mPremultiplied) {
-        mGLContext->fBlendFuncSeparate(LOCAL_GL_ONE, LOCAL_GL_ONE_MINUS_SRC_ALPHA,
-                                       LOCAL_GL_ONE, LOCAL_GL_ONE);
-      }
     }
     break;
   case EFFECT_YCBCR: {
@@ -1097,6 +1142,7 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
       if (maskType != MaskNone) {
         BindMaskForProgram(program, sourceMask, LOCAL_GL_TEXTURE3, maskQuadTransform);
       }
+      didSetBlendMode = SetBlendMode(gl(), blendMode);
       BindAndDrawQuadWithTextureRect(program,
                                      gfx3DMatrix(),
                                      effectYCbCr->mTextureCoords,
@@ -1133,11 +1179,13 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
       // Drawing is always flipped, but when copying between surfaces we want to avoid
       // this. Pass true for the flip parameter to introduce a second flip
       // that cancels the other one out.
+      didSetBlendMode = SetBlendMode(gl(), blendMode);
       BindAndDrawQuad(program);
     }
     break;
   case EFFECT_COMPONENT_ALPHA: {
       MOZ_ASSERT(gfxPrefs::ComponentAlphaEnabled());
+      MOZ_ASSERT(blendMode == gfx::CompositionOp::OP_OVER, "Can't support blend modes with component alpha!");
       EffectComponentAlpha* effectComponentAlpha =
         static_cast<EffectComponentAlpha*>(aEffectChain.mPrimaryEffect.get());
       TextureSourceOGL* sourceOnWhite = effectComponentAlpha->mOnWhite->AsSourceOGL();
@@ -1197,6 +1245,11 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
   default:
     MOZ_ASSERT(false, "Unhandled effect type");
     break;
+  }
+
+  if (didSetBlendMode) {
+    gl()->fBlendFuncSeparate(LOCAL_GL_ONE, LOCAL_GL_ONE_MINUS_SRC_ALPHA,
+                             LOCAL_GL_ONE, LOCAL_GL_ONE);
   }
 
   // in case rendering has used some other GL context
