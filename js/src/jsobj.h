@@ -187,7 +187,7 @@ DenseRangeWriteBarrierPost(JSRuntime *rt, JSObject *obj, uint32_t start, uint32_
 #ifdef JSGC_GENERATIONAL
     if (count > 0) {
         JS::shadow::Runtime *shadowRuntime = JS::shadow::Runtime::asShadowRuntime(rt);
-        shadowRuntime->gcStoreBufferPtr()->putSlot(obj, HeapSlot::Element, start, count);
+        shadowRuntime->gcStoreBufferPtr()->putSlotFromAnyThread(obj, HeapSlot::Element, start, count);
     }
 #endif
 }
@@ -438,7 +438,7 @@ class JSObject : public js::ObjectImpl
     inline js::types::TypeObject* getType(JSContext *cx);
     js::types::TypeObject* uninlinedGetType(JSContext *cx);
 
-    const js::HeapPtr<js::types::TypeObject> &typeFromGC() const {
+    const js::HeapPtrTypeObject &typeFromGC() const {
         /* Direct field access for use by GC. */
         return type_;
     }
@@ -1089,8 +1089,9 @@ class JSObject : public js::ObjectImpl
 
     static JSObject *thisObject(JSContext *cx, js::HandleObject obj)
     {
-        JSObjectOp op = obj->getOps()->thisObject;
-        return op ? op(cx, obj) : obj;
+        if (js::ObjectOp op = obj->getOps()->thisObject)
+            return op(cx, obj);
+        return obj;
     }
 
     static bool thisObject(JSContext *cx, const js::Value &v, js::Value *vp);
@@ -1200,17 +1201,19 @@ js_IsCallable(const js::Value &v)
 }
 
 inline JSObject *
-GetInnerObject(JSContext *cx, js::HandleObject obj)
+GetInnerObject(JSObject *obj)
 {
-    if (JSObjectOp op = obj->getClass()->ext.innerObject)
-        return op(cx, obj);
+    if (js::InnerObjectOp op = obj->getClass()->ext.innerObject) {
+        JS::AutoAssertNoGC nogc;
+        return op(obj);
+    }
     return obj;
 }
 
 inline JSObject *
 GetOuterObject(JSContext *cx, js::HandleObject obj)
 {
-    if (JSObjectOp op = obj->getClass()->ext.outerObject)
+    if (js::ObjectOp op = obj->getClass()->ext.outerObject)
         return op(cx, obj);
     return obj;
 }

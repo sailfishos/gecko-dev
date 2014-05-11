@@ -8,7 +8,6 @@
 include LayersSurfaces;
 include protocol PCompositable;
 include protocol PCompositor;
-include protocol PGrallocBuffer;
 include protocol PLayer;
 include protocol PRenderFrame;
 include protocol PTexture;
@@ -207,6 +206,8 @@ struct CommonLayerAttributes {
   LayerRect stickyScrollRangeInner;
   uint64_t scrollbarTargetContainerId;
   uint32_t scrollbarDirection;
+  int8_t mixBlendMode;
+  bool forceIsolatedGroup;
   nullable PLayer maskLayer;
   // Animated colors will only honored for ColorLayers.
   Animation[] animations;
@@ -358,6 +359,16 @@ struct OpUpdateTexture {
   MaybeRegion region;
 };
 
+struct OpDeliverFence {
+  uint64_t transactionId;
+  PTexture texture;
+  FenceHandle fence;
+};
+
+struct OpReplyDeliverFence {
+  uint64_t transactionId;
+};
+
 union CompositableOperation {
   OpUpdatePictureRect;
 
@@ -427,6 +438,14 @@ union EditReply {
   OpTextureSwap;
 
   ReturnReleaseFence;
+};
+
+union AsyncParentMessageData {
+  OpDeliverFence;
+};
+
+union AsyncChildMessageData {
+  OpReplyDeliverFence;
 };
 
 } // namespace

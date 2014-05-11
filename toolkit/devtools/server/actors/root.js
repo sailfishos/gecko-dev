@@ -6,8 +6,11 @@
 
 "use strict";
 
-let devtools_ = Cu.import("resource://gre/modules/devtools/Loader.jsm", {}).devtools;
-let { createExtraActors, appendExtraActors } = devtools_.require("devtools/server/actors/common");
+const { Ci } = require("chrome");
+const Services = require("Services");
+const { ActorPool, appendExtraActors, createExtraActors } = require("devtools/server/actors/common");
+const { DebuggerServer } = require("devtools/server/main");
+const { dumpProtocolSpec } = require("devtools/server/protocol");
 
 /* Root actor for the remote debugging protocol. */
 
@@ -291,9 +294,7 @@ RootActor.prototype = {
     return JSON.parse(JSON.stringify(aRequest));
   },
 
-  onProtocolDescription: function (aRequest) {
-    return protocol.dumpProtocolSpec()
-  },
+  onProtocolDescription: dumpProtocolSpec,
 
   /* Support for DebuggerServer.addGlobalActor. */
   _createExtraActors: createExtraActors,
@@ -338,3 +339,5 @@ RootActor.prototype.requestTypes = {
   "echo": RootActor.prototype.onEcho,
   "protocolDescription": RootActor.prototype.onProtocolDescription
 };
+
+exports.RootActor = RootActor;

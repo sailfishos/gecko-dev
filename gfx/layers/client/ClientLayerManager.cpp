@@ -27,6 +27,7 @@
 #include "nsTArray.h"                   // for AutoInfallibleTArray
 #include "nsXULAppAPI.h"                // for XRE_GetProcessType, etc
 #include "TiledLayerBuffer.h"
+#include "mozilla/dom/WindowBinding.h"  // for Overfill Callback
 #ifdef MOZ_WIDGET_ANDROID
 #include "AndroidBridge.h"
 #endif
@@ -39,7 +40,7 @@ namespace layers {
 
 ClientLayerManager::ClientLayerManager(nsIWidget* aWidget)
   : mPhase(PHASE_NONE)
-  , mWidget(aWidget) 
+  , mWidget(aWidget)
   , mTargetRotation(ROTATION_0)
   , mRepeatTransaction(false)
   , mIsRepeatTransaction(false)
@@ -53,6 +54,14 @@ ClientLayerManager::ClientLayerManager(nsIWidget* aWidget)
 
 ClientLayerManager::~ClientLayerManager()
 {
+  ClearCachedResources();
+  // Stop receiveing AsyncParentMessage at Forwarder.
+  // After the call, the message is directly handled by LayerTransactionChild. 
+  // Basically this function should be called in ShadowLayerForwarder's
+  // destructor. But when the destructor is triggered by 
+  // CompositorChild::Destroy(), the destructor can not handle it correctly.
+  // See Bug 1000525.
+  mForwarder->StopReceiveAsyncParentMessge();
   mRoot = nullptr;
 
   MOZ_COUNT_DTOR(ClientLayerManager);
@@ -266,9 +275,7 @@ ClientLayerManager::GetRemoteRenderer()
 void
 ClientLayerManager::Composite()
 {
-  if (LayerTransactionChild* manager = mForwarder->GetShadowManager()) {
-    manager->SendForceComposite();
-  }
+  mForwarder->Composite();
 }
 
 void
@@ -285,7 +292,36 @@ ClientLayerManager::DidComposite()
   }
 }
 
-void 
+bool
+ClientLayerManager::RequestOverfill(mozilla::dom::OverfillCallback* aCallback)
+{
+  MOZ_ASSERT(aCallback != nullptr);
+  MOZ_ASSERT(HasShadowManager(), "Request Overfill only supported on b2g for now");
+
+  if (HasShadowManager()) {
+    CompositorChild* child = GetRemoteRenderer();
+    NS_ASSERTION(child, "Could not get CompositorChild");
+
+    child->AddOverfillObserver(this);
+    child->SendRequestOverfill();
+    mOverfillCallbacks.AppendElement(aCallback);
+  }
+
+  return true;
+}
+
+void
+ClientLayerManager::RunOverfillCallback(const uint32_t aOverfill)
+{
+  for (size_t i = 0; i < mOverfillCallbacks.Length(); i++) {
+    ErrorResult error;
+    mOverfillCallbacks[i]->Call(aOverfill, error);
+  }
+
+  mOverfillCallbacks.Clear();
+}
+
+void
 ClientLayerManager::MakeSnapshotIfRequired()
 {
   if (!mShadowTarget) {
@@ -428,6 +464,7 @@ ClientLayerManager::ForwardTransaction(bool aScheduleComposite)
   }
 
   mForwarder->RemoveTexturesIfNecessary();
+  mForwarder->SendPendingAsyncMessge();
   mPhase = PHASE_NONE;
 
   // this may result in Layers being deleted, which results in
@@ -498,9 +535,7 @@ void
 ClientLayerManager::ClearCachedResources(Layer* aSubtree)
 {
   MOZ_ASSERT(!HasShadowManager() || !aSubtree);
-  if (LayerTransactionChild* manager = mForwarder->GetShadowManager()) {
-    manager->SendClearCachedResources();
-  }
+  mForwarder->ClearCachedResources();
   if (aSubtree) {
     ClearLayer(aSubtree);
   } else if (mRoot) {
@@ -571,5 +606,5 @@ ClientLayer::~ClientLayer()
   MOZ_COUNT_DTOR(ClientLayer);
 }
 
-}
-}
+} // layers
+} // mozilla

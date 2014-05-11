@@ -269,7 +269,7 @@ void MarkJitActivations(JSRuntime *rt, JSTracer *trc);
 void MarkIonCompilerRoots(JSTracer *trc);
 
 JSCompartment *
-TopmostJitActivationCompartment(JSRuntime *rt);
+TopmostIonActivationCompartment(JSRuntime *rt);
 
 #ifdef JSGC_GENERATIONAL
 void UpdateJitActivationsForMinorGC(JSRuntime *rt, JSTracer *trc);
@@ -283,9 +283,9 @@ MakeFrameDescriptor(uint32_t frameSize, FrameType type)
 
 // Returns the JSScript associated with the topmost Ion frame.
 inline JSScript *
-GetTopIonJSScript(uint8_t *ionTop, void **returnAddrOut, ExecutionMode mode)
+GetTopIonJSScript(uint8_t *jitTop, void **returnAddrOut, ExecutionMode mode)
 {
-    JitFrameIterator iter(ionTop, mode);
+    JitFrameIterator iter(jitTop, mode);
     JS_ASSERT(iter.type() == JitFrame_Exit);
     ++iter;
 

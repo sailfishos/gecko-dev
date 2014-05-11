@@ -951,6 +951,11 @@ nsIFrame::GetUsedPadding() const
 int
 nsIFrame::GetSkipSides(const nsHTMLReflowState* aReflowState) const
 {
+  if (MOZ_UNLIKELY(StyleBorder()->mBoxDecorationBreak ==
+                     NS_STYLE_BOX_DECORATION_BREAK_CLONE)) {
+    return 0;
+  }
+
   // Convert the logical skip sides to physical sides using the frame's
   // writing mode
   WritingMode writingMode = GetWritingMode();
@@ -1275,7 +1280,8 @@ nsIFrame::OutsetBorderRadii(nscoord aRadii[8], const nsMargin &aOffsets)
 }
 
 /* virtual */ bool
-nsIFrame::GetBorderRadii(nscoord aRadii[8]) const
+nsIFrame::GetBorderRadii(const nsSize& aFrameSize, const nsSize& aBorderArea,
+                         int aSkipSides, nscoord aRadii[8]) const
 {
   if (IsThemed()) {
     // When we're themed, the native theme code draws the border and
@@ -1290,9 +1296,16 @@ nsIFrame::GetBorderRadii(nscoord aRadii[8]) const
     }
     return false;
   }
-  nsSize size = GetSize();
-  return ComputeBorderRadii(StyleBorder()->mBorderRadius, size, size,
-                            GetSkipSides(), aRadii);
+  return ComputeBorderRadii(StyleBorder()->mBorderRadius,
+                            aFrameSize, aBorderArea,
+                            aSkipSides, aRadii);
+}
+
+bool
+nsIFrame::GetBorderRadii(nscoord aRadii[8]) const
+{
+  nsSize sz = GetSize();
+  return GetBorderRadii(sz, sz, GetSkipSides(), aRadii);
 }
 
 bool
@@ -1855,15 +1868,15 @@ WrapPreserve3DList(nsIFrame* aFrame, nsDisplayListBuilder* aBuilder, nsDisplayLi
 class AutoSaveRestoreBlendMode
 {
   nsDisplayListBuilder& mBuilder;
-  bool                  AutoResetContainsBlendMode;
+  EnumSet<gfx::CompositionOp> mSavedBlendModes;
 public:
   AutoSaveRestoreBlendMode(nsDisplayListBuilder& aBuilder)
-    : mBuilder(aBuilder),
-      AutoResetContainsBlendMode(aBuilder.ContainsBlendMode()) {
-  }
+    : mBuilder(aBuilder)
+    , mSavedBlendModes(aBuilder.ContainedBlendModes())
+  { }
 
   ~AutoSaveRestoreBlendMode() {
-    mBuilder.SetContainsBlendMode(AutoResetContainsBlendMode);
+    mBuilder.SetContainsBlendModes(mSavedBlendModes);
   }
 };
 
@@ -1916,7 +1929,7 @@ nsIFrame::BuildDisplayListForStackingContext(nsDisplayListBuilder* aBuilder,
   // a nsDisplayBlendContainer. Set the blend mode back when the routine exits
   // so we keep track if the parent stacking context needs a container too.
   AutoSaveRestoreBlendMode autoRestoreBlendMode(*aBuilder);
-  aBuilder->SetContainsBlendMode(false);
+  aBuilder->SetContainsBlendModes(BlendModeSet());
  
   if (isTransformed) {
     const nsRect overflow = GetVisualOverflowRectRelativeToSelf();
@@ -2116,7 +2129,7 @@ nsIFrame::BuildDisplayListForStackingContext(nsDisplayListBuilder* aBuilder,
 
   if (aBuilder->ContainsBlendMode()) {
       resultList.AppendNewToTop(
-        new (aBuilder) nsDisplayBlendContainer(aBuilder, this, &resultList));
+        new (aBuilder) nsDisplayBlendContainer(aBuilder, this, &resultList, aBuilder->ContainedBlendModes()));
   }
 
   /* If there's blending, wrap up the list in a blend-mode item. Note
@@ -2330,7 +2343,7 @@ nsIFrame::BuildDisplayListForChild(nsDisplayListBuilder*   aBuilder,
   nsDisplayList extraPositionedDescendants;
   if (isStackingContext) {
     if (disp->mMixBlendMode != NS_STYLE_BLEND_NORMAL) {
-      aBuilder->SetContainsBlendMode(true);
+      aBuilder->SetContainsBlendMode(disp->mMixBlendMode);
     }
     // True stacking context.
     // For stacking contexts, BuildDisplayListForStackingContext handles

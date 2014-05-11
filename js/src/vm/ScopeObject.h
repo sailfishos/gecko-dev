@@ -726,8 +726,8 @@ class ScopeIterVal
     friend class DebugScopes;
 
     AbstractFramePtr frame_;
-    RelocatablePtr<JSObject> cur_;
-    RelocatablePtr<NestedScopeObject> staticScope_;
+    RelocatablePtrObject cur_;
+    RelocatablePtrNestedScopeObject staticScope_;
     ScopeIter::Type type_;
     bool hasScopeObject_;
 
@@ -801,23 +801,27 @@ class DebugScopeObject : public ProxyObject
 
     /* Currently, the 'declarative' scopes are Call and Block. */
     bool isForDeclarative() const;
+
+    // Get a property by 'id', but returns sentinel values instead of throwing
+    // on exceptional cases.
+    bool getMaybeSentinelValue(JSContext *cx, HandleId id, MutableHandleValue vp);
 };
 
 /* Maintains per-compartment debug scope bookkeeping information. */
 class DebugScopes
 {
     /* The map from (non-debug) scopes to debug scopes. */
-    typedef WeakMap<EncapsulatedPtrObject, RelocatablePtrObject> ObjectWeakMap;
+    typedef WeakMap<PreBarrieredObject, RelocatablePtrObject> ObjectWeakMap;
     ObjectWeakMap proxiedScopes;
     static MOZ_ALWAYS_INLINE void proxiedScopesPostWriteBarrier(JSRuntime *rt, ObjectWeakMap *map,
-                                                               const EncapsulatedPtrObject &key);
+                                                               const PreBarrieredObject &key);
 
     /*
      * The map from live frames which have optimized-away scopes to the
      * corresponding debug scopes.
      */
     typedef HashMap<ScopeIterKey,
-                    ReadBarriered<DebugScopeObject>,
+                    ReadBarrieredDebugScopeObject,
                     ScopeIterKey,
                     RuntimeAllocPolicy> MissingScopeMap;
     MissingScopeMap missingScopes;

@@ -7,7 +7,6 @@ package org.mozilla.gecko;
 import org.mozilla.gecko.db.BrowserContract;
 import org.mozilla.gecko.util.ThreadUtils;
 import org.mozilla.gecko.util.UiAsyncTask;
-
 import org.json.JSONArray;
 import org.json.JSONException;
 
@@ -21,6 +20,7 @@ import android.util.Log;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.regex.Pattern;
 
 public final class TabsAccessor {
     private static final String LOGTAG = "GeckoTabsAccessor";
@@ -33,7 +33,8 @@ public final class TabsAccessor {
                                                                 BrowserContract.Tabs.TITLE,
                                                                 BrowserContract.Tabs.URL,
                                                                 BrowserContract.Clients.GUID,
-                                                                BrowserContract.Clients.NAME
+                                                                BrowserContract.Clients.NAME,
+                                                                BrowserContract.Clients.LAST_MODIFIED,
                                                             };
 
     // Projection column numbers
@@ -41,7 +42,8 @@ public final class TabsAccessor {
         TITLE,
         URL,
         GUID,
-        NAME
+        NAME,
+        LAST_MODIFIED,
     };
 
     private static final String CLIENTS_SELECTION = BrowserContract.Clients.GUID + " IS NOT NULL";
@@ -49,12 +51,18 @@ public final class TabsAccessor {
 
     private static final String LOCAL_CLIENT_SELECTION = BrowserContract.Clients.GUID + " IS NULL";
     private static final String LOCAL_TABS_SELECTION = BrowserContract.Tabs.CLIENT_GUID + " IS NULL";
+    private static final Pattern FILTERED_URL_PATTERN = Pattern.compile("^(about|chrome|wyciwyg|file):");
 
     public static class RemoteTab {
         public String title;
         public String url;
         public String guid;
         public String name;
+        /**
+         * This is the last time the remote client uploaded a tabs record; that
+         * is, it is not per tab, but per remote client.
+         */
+        public long lastModified;
     }
 
     public interface OnQueryTabsCompleteListener {
@@ -103,7 +111,8 @@ public final class TabsAccessor {
                         tab.url = cursor.getString(TABS_COLUMN.URL.ordinal());
                         tab.guid = cursor.getString(TABS_COLUMN.GUID.ordinal());
                         tab.name = cursor.getString(TABS_COLUMN.NAME.ordinal());
-                
+                        tab.lastModified = cursor.getLong(TABS_COLUMN.LAST_MODIFIED.ordinal());
+
                         tabs.add(tab);
                     }
                 } finally {
@@ -149,9 +158,9 @@ public final class TabsAccessor {
 
         int position = 0;
         for (Tab tab : tabs) {
-            // Skip this tab if it has a null URL or is in private browsing mode
+            // Skip this tab if it has a null URL or is in private browsing mode, or is a filtered URL.
             String url = tab.getURL();
-            if (url == null || tab.isPrivate())
+            if (url == null || tab.isPrivate() || isFilteredURL(url))
                 continue;
 
             ContentValues values = new ContentValues();
@@ -191,5 +200,14 @@ public final class TabsAccessor {
         deleteLocalTabs(cr);
         insertLocalTabs(cr, tabs);
         updateLocalClient(cr);
+    }
+
+    /**
+     * Matches the supplied URL string against the set of URLs to filter.
+     *
+     * @return true if the supplied URL should be skipped; false otherwise.
+     */
+    private static boolean isFilteredURL(String url) {
+        return FILTERED_URL_PATTERN.matcher(url).lookingAt();
     }
 }

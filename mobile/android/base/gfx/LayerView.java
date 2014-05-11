@@ -5,6 +5,7 @@
 
 package org.mozilla.gecko.gfx;
 
+import org.mozilla.gecko.AndroidGamepadManager;
 import org.mozilla.gecko.GeckoAccessibility;
 import org.mozilla.gecko.GeckoAppShell;
 import org.mozilla.gecko.GeckoEvent;
@@ -63,7 +64,7 @@ public class LayerView extends FrameLayout implements Tabs.OnTabsChangedListener
     /* Must be a PAINT_xxx constant */
     private int mPaintState;
     private int mBackgroundColor;
-    private boolean mFullScreen;
+    private FullScreenState mFullScreenState;
 
     private SurfaceView mSurfaceView;
     private TextureView mTextureView;
@@ -108,6 +109,7 @@ public class LayerView extends FrameLayout implements Tabs.OnTabsChangedListener
         mGLController = GLController.getInstance(this);
         mPaintState = PAINT_START;
         mBackgroundColor = Color.WHITE;
+        mFullScreenState = FullScreenState.NONE;
 
         mTouchInterceptors = new ArrayList<TouchEventInterceptor>();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.ICE_CREAM_SANDWICH) {
@@ -291,6 +293,9 @@ public class LayerView extends FrameLayout implements Tabs.OnTabsChangedListener
 
     @Override
     public boolean onGenericMotionEvent(MotionEvent event) {
+        if (AndroidGamepadManager.handleMotionEvent(event)) {
+            return true;
+        }
         if (mPanZoomController != null && mPanZoomController.onMotionEvent(event)) {
             return true;
         }
@@ -688,12 +693,16 @@ public class LayerView extends FrameLayout implements Tabs.OnTabsChangedListener
         GeckoAccessibility.onLayerViewFocusChanged(this, gainFocus);
     }
 
-    public void setFullScreen(boolean fullScreen) {
-        mFullScreen = fullScreen;
+    public void setFullScreenState(FullScreenState state) {
+        mFullScreenState = state;
     }
 
     public boolean isFullScreen() {
-        return mFullScreen;
+        return mFullScreenState != FullScreenState.NONE;
+    }
+
+    public FullScreenState getFullScreenState() {
+        return mFullScreenState;
     }
 
     @Override

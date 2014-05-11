@@ -493,7 +493,7 @@ js::Invoke(JSContext *cx, CallArgs args, MaybeConstruct construct)
 
     bool ok = RunScript(cx, state);
 
-    JS_ASSERT_IF(ok && construct, !args.rval().isPrimitive());
+    JS_ASSERT_IF(ok && construct, args.rval().isObject());
     return ok;
 }
 
@@ -638,7 +638,7 @@ js::Execute(JSContext *cx, HandleScript script, JSObject &scopeChainArg, Value *
 {
     /* The scope chain could be anything, so innerize just in case. */
     RootedObject scopeChain(cx, &scopeChainArg);
-    scopeChain = GetInnerObject(cx, scopeChain);
+    scopeChain = GetInnerObject(scopeChain);
     if (!scopeChain)
         return false;
 
@@ -1932,7 +1932,7 @@ CASE(JSOP_ITER)
     MutableHandleValue res = REGS.stackHandleAt(-1);
     if (!ValueToIterator(cx, flags, res))
         goto error;
-    JS_ASSERT(!res.isPrimitive());
+    JS_ASSERT(res.isObject());
 }
 END_CASE(JSOP_ITER)
 
@@ -3230,31 +3230,15 @@ END_CASE(JSOP_INITELEM_INC)
 
 CASE(JSOP_SPREAD)
 {
-    int32_t count = REGS.sp[-2].toInt32();
+    HandleValue countVal = REGS.stackHandleAt(-2);
     RootedObject &arr = rootObject0;
     arr = &REGS.sp[-3].toObject();
-    const Value iterable = REGS.sp[-1];
-    ForOfIterator iter(cx);
-    RootedValue &iterVal = rootValue0;
-    iterVal.set(iterable);
-    if (!iter.init(iterVal))
+    HandleValue iterable = REGS.stackHandleAt(-1);
+    MutableHandleValue resultCountVal = REGS.stackHandleAt(-2);
+
+    if (!SpreadOperation(cx, arr, countVal, iterable, resultCountVal))
         goto error;
-    while (true) {
-        bool done;
-        if (!iter.next(&iterVal, &done))
-            goto error;
-        if (done)
-            break;
-        if (count == INT32_MAX) {
-            JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr,
-                                 JSMSG_SPREAD_TOO_LARGE);
-            goto error;
-        }
-        if (!JSObject::defineElement(cx, arr, count++, iterVal, nullptr, nullptr,
-                                     JSPROP_ENUMERATE))
-            goto error;
-    }
-    REGS.sp[-2].setInt32(count);
+
     REGS.sp--;
 }
 END_CASE(JSOP_SPREAD)
@@ -3962,4 +3946,32 @@ js::InitGetterSetterOperation(JSContext *cx, jsbytecode *pc, HandleObject obj, H
         return false;
 
     return InitGetterSetterOperation(cx, pc, obj, id, val);
+}
+
+bool
+js::SpreadOperation(JSContext *cx, HandleObject arr, HandleValue countVal,
+                    HandleValue iterable, MutableHandleValue resultCountVal)
+{
+    int32_t count = countVal.toInt32();
+    ForOfIterator iter(cx);
+    RootedValue iterVal(cx, iterable);
+    if (!iter.init(iterVal))
+        return false;
+    while (true) {
+        bool done;
+        if (!iter.next(&iterVal, &done))
+            return false;
+        if (done)
+            break;
+        if (count == INT32_MAX) {
+            JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr,
+                                 JSMSG_SPREAD_TOO_LARGE);
+            return false;
+        }
+        if (!JSObject::defineElement(cx, arr, count++, iterVal, nullptr, nullptr,
+                                     JSPROP_ENUMERATE))
+            return false;
+    }
+    resultCountVal.setInt32(count);
+    return true;
 }

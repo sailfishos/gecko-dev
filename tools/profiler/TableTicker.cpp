@@ -115,7 +115,7 @@ void TableTicker::StreamMetaJSCustomObject(JSStreamWriter& b)
     b.NameValue("processType", XRE_GetProcessType());
 
     TimeDuration delta = TimeStamp::Now() - sStartTime;
-    b.NameValue("startTime", static_cast<float>(PR_Now()/1000.0 - delta.ToMilliseconds()));
+    b.NameValue("startTime", static_cast<double>(PR_Now()/1000.0 - delta.ToMilliseconds()));
 
     nsresult res;
     nsCOMPtr<nsIHttpProtocolHandler> http = do_GetService(NS_NETWORK_PROTOCOL_CONTRACTID_PREFIX "http", &res);
@@ -283,13 +283,15 @@ void TableTicker::StreamJSObject(JSStreamWriter& b)
         }
       }
 
-      // Send a event asking any subprocesses (plugins) to
-      // give us their information
-      SubprocessClosure closure(&b);
-      nsCOMPtr<nsIObserverService> os = mozilla::services::GetObserverService();
-      if (os) {
-        nsRefPtr<ProfileSaveEvent> pse = new ProfileSaveEvent(SubProcessCallback, &closure);
-        os->NotifyObservers(pse, "profiler-subprocess", nullptr);
+      if (Sampler::CanNotifyObservers()) {
+        // Send a event asking any subprocesses (plugins) to
+        // give us their information
+        SubprocessClosure closure(&b);
+        nsCOMPtr<nsIObserverService> os = mozilla::services::GetObserverService();
+        if (os) {
+          nsRefPtr<ProfileSaveEvent> pse = new ProfileSaveEvent(SubProcessCallback, &closure);
+          os->NotifyObservers(pse, "profiler-subprocess", nullptr);
+        }
       }
 
   #if defined(SPS_OS_android) && !defined(MOZ_WIDGET_GONK)
@@ -306,7 +308,6 @@ void TableTicker::StreamJSObject(JSStreamWriter& b)
     b.EndArray();
 
   b.EndObject();
-
 }
 
 // END SaveProfileTask et al

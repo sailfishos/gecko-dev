@@ -90,8 +90,12 @@ TEST_F(pkixder_input_tests, InputInitWithNullPointerOrZeroLength)
   ASSERT_EQ(Failure, input.Init(nullptr, 100));
   ASSERT_EQ(SEC_ERROR_BAD_DER, PR_GetError());
 
-  // Is this a bug?
+  // Though it seems odd to initialize with zero-length and non-null ptr, this
+  // is working as intended. The Input class was intended to protect against
+  // buffer overflows, and there's no risk with the current behavior. See bug
+  // 1000354.
   ASSERT_EQ(Success, input.Init((const uint8_t*) "hello", 0));
+  ASSERT_TRUE(input.AtEnd());
 }
 
 TEST_F(pkixder_input_tests, InputInitWithLargeData)
@@ -417,12 +421,31 @@ TEST_F(pkixder_input_tests, MarkAndGetSECItem)
   SECItem item;
   memset(&item, 0x00, sizeof item);
 
-  ASSERT_TRUE(input.GetSECItem(siBuffer, mark, item));
+  ASSERT_EQ(Success, input.GetSECItem(siBuffer, mark, item));
   ASSERT_EQ(siBuffer, item.type);
   ASSERT_EQ(sizeof expectedItemData, item.len);
   ASSERT_TRUE(item.data);
   ASSERT_EQ(0, memcmp(item.data, expectedItemData, sizeof expectedItemData));
 }
+
+// Cannot run this test on debug builds because of the PR_NOT_REACHED
+#ifndef DEBUG
+TEST_F(pkixder_input_tests, MarkAndGetSECItemDifferentInput)
+{
+  Input input;
+  const uint8_t der[] = { 0x11, 0x22, 0x33, 0x44 };
+  ASSERT_EQ(Success, input.Init(der, sizeof der));
+
+  Input another;
+  Input::Mark mark = another.GetMark();
+
+  ASSERT_EQ(Success, input.Skip(3));
+
+  SECItem item;
+  ASSERT_EQ(Failure, input.GetSECItem(siBuffer, mark, item));
+  ASSERT_EQ(SEC_ERROR_INVALID_ARGS, PR_GetError());
+}
+#endif
 
 TEST_F(pkixder_input_tests, ExpectTagAndLength)
 {
@@ -550,7 +573,7 @@ TEST_F(pkixder_input_tests, NestedOf)
 
   std::vector<uint8_t> readValues;
   ASSERT_EQ(Success,
-    NestedOf(input, SEQUENCE, INTEGER, MustNotBeEmpty,
+    NestedOf(input, SEQUENCE, INTEGER, EmptyAllowed::No,
              mozilla::pkix::bind(NestedOfHelper, mozilla::pkix::_1,
                                  mozilla::pkix::ref(readValues))));
   ASSERT_EQ((size_t) 3, readValues.size());
@@ -568,7 +591,7 @@ TEST_F(pkixder_input_tests, NestedOfWithTruncatedData)
 
   std::vector<uint8_t> readValues;
   ASSERT_EQ(Failure,
-    NestedOf(input, SEQUENCE, INTEGER, MustNotBeEmpty,
+    NestedOf(input, SEQUENCE, INTEGER, EmptyAllowed::No,
              mozilla::pkix::bind(NestedOfHelper, mozilla::pkix::_1,
                                  mozilla::pkix::ref(readValues))));
   ASSERT_EQ(SEC_ERROR_BAD_DER, PR_GetError());

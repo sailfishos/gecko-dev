@@ -214,9 +214,17 @@ static const char kOOMAllocationSizeParameter[] = "OOMAllocationSize=";
 static const int kOOMAllocationSizeParameterLen =
   sizeof(kOOMAllocationSizeParameter)-1;
 
+static const char kTotalPageFileParameter[] = "TotalPageFile=";
+static const int kTotalPageFileParameterLen =
+  sizeof(kTotalPageFileParameter)-1;
+
 static const char kAvailablePageFileParameter[] = "AvailablePageFile=";
 static const int kAvailablePageFileParameterLen =
   sizeof(kAvailablePageFileParameter)-1;
+
+static const char kTotalPhysicalMemoryParameter[] = "TotalPhysicalMemory=";
+static const int kTotalPhysicalMemoryParameterLen =
+  sizeof(kTotalPhysicalMemoryParameter)-1;
 
 static const char kAvailablePhysicalMemoryParameter[] = "AvailablePhysicalMemory=";
 static const int kAvailablePhysicalMemoryParameterLen =
@@ -689,7 +697,9 @@ bool MinidumpCallback(
         WRITE_STATEX_FIELD(dwMemoryLoad, SysMemory, ltoa);
         WRITE_STATEX_FIELD(ullTotalVirtual, TotalVirtualMemory, _ui64toa);
         WRITE_STATEX_FIELD(ullAvailVirtual, AvailableVirtualMemory, _ui64toa);
+        WRITE_STATEX_FIELD(ullTotalPageFile, TotalPageFile, _ui64toa);
         WRITE_STATEX_FIELD(ullAvailPageFile, AvailablePageFile, _ui64toa);
+        WRITE_STATEX_FIELD(ullTotalPhys, TotalPhysicalMemory, _ui64toa);
         WRITE_STATEX_FIELD(ullAvailPhys, AvailablePhysicalMemory, _ui64toa);
 
 #undef WRITE_STATEX_FIELD
@@ -1342,7 +1352,7 @@ EnsureDirectoryExists(nsIFile* dir)
   nsresult rv = dir->Create(nsIFile::DIRECTORY_TYPE, 0700);
 
   if (NS_WARN_IF(NS_FAILED(rv) && rv != NS_ERROR_FILE_ALREADY_EXISTS)) {
-	return rv;
+    return rv;
   }
 
   return NS_OK;
@@ -2071,45 +2081,20 @@ nsresult SetSubmitReports(bool aSubmitReports)
     return NS_OK;
 }
 
-void
-UpdateCrashEventsDir()
+static void
+SetCrashEventsDir(nsIFile* aDir)
 {
-  nsCOMPtr<nsIFile> eventsDir;
+  nsCOMPtr<nsIFile> eventsDir = aDir;
 
-  // We prefer the following locations in order:
-  //
-  // 1. If environment variable is present, use it. We don't expect
-  //    the environment variable except for tests and other atypical setups.
-  // 2. Inside the profile directory.
-  // 3. Inside the user application data directory (no profile available).
-  // 4. A temporary directory (setup likely is invalid / application is buggy).
   const char *env = PR_GetEnv("CRASHES_EVENTS_DIR");
-  if (env) {
-    eventsDir = do_CreateInstance(NS_LOCAL_FILE_CONTRACTID);
-    if (!eventsDir) {
-      return;
-    }
-    eventsDir->InitWithNativePath(nsDependentCString(env));
+  if (env && *env) {
+    NS_NewNativeLocalFile(nsDependentCString(env),
+                          false, getter_AddRefs(eventsDir));
     EnsureDirectoryExists(eventsDir);
-  } else {
-    nsresult rv = NS_GetSpecialDirectory("ProfD", getter_AddRefs(eventsDir));
-    if (NS_SUCCEEDED(rv)) {
-      eventsDir->Append(NS_LITERAL_STRING("crashes"));
-      EnsureDirectoryExists(eventsDir);
-      eventsDir->Append(NS_LITERAL_STRING("events"));
-      EnsureDirectoryExists(eventsDir);
-    } else {
-      rv = NS_GetSpecialDirectory("UAppData", getter_AddRefs(eventsDir));
-      if (NS_SUCCEEDED(rv)) {
-        eventsDir->Append(NS_LITERAL_STRING("Crash Reports"));
-        EnsureDirectoryExists(eventsDir);
-        eventsDir->Append(NS_LITERAL_STRING("events"));
-        EnsureDirectoryExists(eventsDir);
-      } else {
-        NS_WARNING("Couldn't get the user appdata directory. Crash events may not be produced.");
-        return;
-      }
-    }
+  }
+
+  if (eventsDirectory) {
+    NS_Free(eventsDirectory);
   }
 
 #ifdef XP_WIN
@@ -2121,6 +2106,56 @@ UpdateCrashEventsDir()
   eventsDir->GetNativePath(path);
   eventsDirectory = ToNewCString(path);
 #endif
+}
+
+void
+SetProfileDirectory(nsIFile* aDir)
+{
+  nsCOMPtr<nsIFile> dir;
+  aDir->Clone(getter_AddRefs(dir));
+
+  dir->Append(NS_LITERAL_STRING("crashes"));
+  EnsureDirectoryExists(dir);
+  dir->Append(NS_LITERAL_STRING("events"));
+  EnsureDirectoryExists(dir);
+  SetCrashEventsDir(dir);
+}
+
+void
+SetUserAppDataDirectory(nsIFile* aDir)
+{
+  nsCOMPtr<nsIFile> dir;
+  aDir->Clone(getter_AddRefs(dir));
+
+  dir->Append(NS_LITERAL_STRING("Crash Reports"));
+  EnsureDirectoryExists(dir);
+  dir->Append(NS_LITERAL_STRING("events"));
+  EnsureDirectoryExists(dir);
+  SetCrashEventsDir(dir);
+}
+
+void
+UpdateCrashEventsDir()
+{
+  const char *env = PR_GetEnv("CRASHES_EVENTS_DIR");
+  if (env && *env) {
+    SetCrashEventsDir(nullptr);
+  }
+
+  nsCOMPtr<nsIFile> eventsDir;
+  nsresult rv = NS_GetSpecialDirectory("ProfD", getter_AddRefs(eventsDir));
+  if (NS_SUCCEEDED(rv)) {
+    SetProfileDirectory(eventsDir);
+    return;
+  }
+
+  rv = NS_GetSpecialDirectory("UAppData", getter_AddRefs(eventsDir));
+  if (NS_SUCCEEDED(rv)) {
+    SetUserAppDataDirectory(eventsDir);
+    return;
+  }
+
+  NS_WARNING("Couldn't get the user appdata directory. Crash events may not be produced.");
 }
 
 bool GetCrashEventsDir(nsAString& aPath)

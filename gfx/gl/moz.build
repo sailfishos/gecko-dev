@@ -46,6 +46,7 @@ EXPORTS += [
     'GLTextureImage.h',
     'GLTypes.h',
     'GLUploadHelpers.h',
+    'HeapCopyOfStackArray.h',
     'ScopedGLHelpers.h',
     'SharedSurface.h',
     'SharedSurfaceEGL.h',
@@ -150,8 +151,10 @@ include('/ipc/chromium/chromium-config.mozbuild')
 
 FINAL_LIBRARY = 'xul'
 
-if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows' and CONFIG['MOZ_WEBGL']:
-    DEFINES['MOZ_D3DCOMPILER_DLL'] = CONFIG['MOZ_D3DCOMPILER_DLL']
+if CONFIG['MOZ_D3DCOMPILER_VISTA_DLL']:
+    DEFINES['MOZ_D3DCOMPILER_VISTA_DLL'] = CONFIG['MOZ_D3DCOMPILER_VISTA_DLL']
+if CONFIG['MOZ_D3DCOMPILER_XP_DLL']:
+    DEFINES['MOZ_D3DCOMPILER_XP_DLL'] = CONFIG['MOZ_D3DCOMPILER_XP_DLL']
 
 if CONFIG['MOZ_ANDROID_OMTC']:
     DEFINES['MOZ_ANDROID_OMTC'] = True

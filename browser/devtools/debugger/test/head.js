@@ -22,6 +22,7 @@ let { BrowserToolboxProcess } = Cu.import("resource:///modules/devtools/ToolboxP
 let { DebuggerServer } = Cu.import("resource://gre/modules/devtools/dbg-server.jsm", {});
 let { DebuggerClient } = Cu.import("resource://gre/modules/devtools/dbg-client.jsm", {});
 let { AddonManager } = Cu.import("resource://gre/modules/AddonManager.jsm", {});
+let EventEmitter = require("devtools/toolkit/event-emitter");
 const { promiseInvoke } = require("devtools/async-utils");
 let TargetFactory = devtools.TargetFactory;
 let Toolbox = devtools.Toolbox;
@@ -61,11 +62,11 @@ function dbg_assert(cond, e) {
 
 function addWindow(aUrl) {
   info("Adding window: " + aUrl);
-  return promise.resolve(getDOMWindow(window.open(aUrl)));
+  return promise.resolve(getChromeWindow(window.open(aUrl)));
 }
 
-function getDOMWindow(aReference) {
-  return aReference
+function getChromeWindow(aWindow) {
+  return aWindow
     .QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIWebNavigation)
     .QueryInterface(Ci.nsIDocShellTreeItem).rootTreeItem
     .QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindow);
@@ -299,6 +300,15 @@ function isCaretPos(aPanel, aLine, aCol = 1) {
   return cursor.line == (aLine - 1) && cursor.ch == (aCol - 1);
 }
 
+function isDebugPos(aPanel, aLine) {
+  let editor = aPanel.panelWin.DebuggerView.editor;
+  let location = editor.getDebugLocation();
+
+  // Source editor starts counting line and column numbers from 0.
+  info("Current editor debug position: " + (location + 1));
+  return location != null && editor.hasLineClass(aLine - 1, "debug-line");
+}
+
 function isEditorSel(aPanel, [start, end]) {
   let editor = aPanel.panelWin.DebuggerView.editor;
   let range = {
@@ -522,6 +532,8 @@ function initAddonDebugger(aUrl) {
 
 function AddonDebugger() {
   this._onMessage = this._onMessage.bind(this);
+  this._onConsoleAPICall = this._onConsoleAPICall.bind(this);
+  EventEmitter.decorate(this);
 }
 
 AddonDebugger.prototype = {
@@ -548,7 +560,11 @@ AddonDebugger.prototype = {
     let addonActor = yield getAddonActorForUrl(this.client, aUrl);
 
     let targetOptions = {
-      form: { addonActor: addonActor.actor, title: addonActor.name },
+      form: {
+        addonActor: addonActor.actor,
+        consoleActor: addonActor.consoleActor,
+        title: addonActor.name
+      },
       client: this.client,
       chrome: true
     };
@@ -557,8 +573,8 @@ AddonDebugger.prototype = {
       customIframe: this.frame
     };
 
-    let target = devtools.TargetFactory.forTab(targetOptions);
-    let toolbox = yield gDevTools.showToolbox(target, "jsdebugger", devtools.Toolbox.HostType.CUSTOM, toolboxOptions);
+    this.target = devtools.TargetFactory.forTab(targetOptions);
+    let toolbox = yield gDevTools.showToolbox(this.target, "jsdebugger", devtools.Toolbox.HostType.CUSTOM, toolboxOptions);
 
     info("Addon debugger panel shown successfully.");
 
@@ -567,6 +583,7 @@ AddonDebugger.prototype = {
     // Wait for the initial resume...
     yield waitForClientEvents(this.debuggerPanel, "resumed");
     yield prepareDebugger(this.debuggerPanel);
+    yield this._attachConsole();
   }),
 
   destroy: Task.async(function*() {
@@ -577,6 +594,27 @@ AddonDebugger.prototype = {
     this.frame.remove();
     window.removeEventListener("message", this._onMessage);
   }),
+
+  _attachConsole: function() {
+    let deferred = promise.defer();
+    this.client.attachConsole(this.target.form.consoleActor, ["ConsoleAPI"], (aResponse, aWebConsoleClient) => {
+      if (aResponse.error) {
+        deferred.reject(aResponse);
+      }
+      else {
+        this.webConsole = aWebConsoleClient;
+        this.client.addListener("consoleAPICall", this._onConsoleAPICall);
+        deferred.resolve();
+      }
+    });
+    return deferred.promise;
+  },
+
+  _onConsoleAPICall: function(aType, aPacket) {
+    if (aPacket.from != this.webConsole.actor)
+      return;
+    this.emit("console", aPacket.message);
+  },
 
   /**
    * Returns a list of the groups and sources in the UI. The returned array
@@ -749,10 +787,11 @@ function openVarPopup(aPanel, aCoords, aWaitForFetchedProperties) {
   let fetchedProperties = aWaitForFetchedProperties
     ? waitForDebuggerEvents(aPanel, events.FETCHED_BUBBLE_PROPERTIES)
     : promise.resolve(null);
+  let updatedFrame = waitForDebuggerEvents(aPanel, events.FETCHED_SCOPES);
 
   let { left, top } = editor.getCoordsFromPosition(aCoords);
   bubble._findIdentifier(left, top);
-  return promise.all([popupShown, fetchedProperties]).then(waitForTick);
+  return promise.all([popupShown, fetchedProperties, updatedFrame]).then(waitForTick);
 }
 
 // Simulates the mouse hovering a variable in the debugger

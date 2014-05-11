@@ -241,7 +241,11 @@ bool
 SharedFrameMetricsHelper::AboutToCheckerboard(const FrameMetrics& aContentMetrics,
                                               const FrameMetrics& aCompositorMetrics)
 {
-  return !aContentMetrics.mDisplayPort.Contains(aCompositorMetrics.CalculateCompositedRectInCssPixels() - aCompositorMetrics.GetScrollOffset());
+  CSSRect painted =
+        (aContentMetrics.mCriticalDisplayPort.IsEmpty() ? aContentMetrics.mDisplayPort : aContentMetrics.mCriticalDisplayPort)
+        + aContentMetrics.GetScrollOffset();
+  CSSRect showing = CSSRect(aCompositorMetrics.GetScrollOffset(), aCompositorMetrics.CalculateBoundedCompositedSizeInCssPixels());
+  return !painted.Contains(showing);
 }
 
 ClientTiledLayerBuffer::ClientTiledLayerBuffer(ClientTiledThebesLayer* aThebesLayer,
@@ -664,6 +668,10 @@ ClientTiledLayerBuffer::PaintThebes(const nsIntRegion& aNewValidRegion,
           gfx::IntSize(ceilf(bounds.width * mResolution),
                        ceilf(bounds.height * mResolution)),
           gfx::ImageFormatToSurfaceFormat(format));
+
+      if (!mSinglePaintDrawTarget) {
+        return;
+      }
 
       ctxt = new gfxContext(mSinglePaintDrawTarget);
 

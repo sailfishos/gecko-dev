@@ -12,6 +12,7 @@ import java.util.List;
 
 import org.json.JSONObject;
 import org.mozilla.gecko.BrowserApp;
+import org.mozilla.gecko.EventDispatcher;
 import org.mozilla.gecko.GeckoAppShell;
 import org.mozilla.gecko.GeckoApplication;
 import org.mozilla.gecko.GeckoProfile;
@@ -34,10 +35,11 @@ import org.mozilla.gecko.util.MenuUtils;
 import org.mozilla.gecko.widget.ThemedImageButton;
 import org.mozilla.gecko.widget.ThemedImageView;
 import org.mozilla.gecko.widget.ThemedRelativeLayout;
-import org.mozilla.gecko.widget.ThemedView;
 
 import android.content.Context;
 import android.content.res.Resources;
+import android.graphics.Bitmap;
+import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.StateListDrawable;
 import android.os.Build;
@@ -137,8 +139,7 @@ public class BrowserToolbar extends ThemedRelativeLayout
     private MenuPopup menuPopup;
     private List<View> focusOrder;
 
-    private final ThemedView editSeparator;
-    private final View editCancel;
+    private final ImageView editCancel;
 
     private boolean shouldShrinkURLBar = false;
 
@@ -180,8 +181,9 @@ public class BrowserToolbar extends ThemedRelativeLayout
         isSwitchingTabs = true;
         isAnimatingEntry = false;
 
-        registerEventListener("Reader:Click");
-        registerEventListener("Reader:LongClick");
+        EventDispatcher.getInstance().registerGeckoThreadListener(this,
+            "Reader:Click",
+            "Reader:LongClick");
 
         final Resources res = getResources();
         urlBarViewOffset = res.getDimensionPixelSize(R.dimen.url_bar_offset_left);
@@ -220,8 +222,7 @@ public class BrowserToolbar extends ThemedRelativeLayout
         actionItemBar = (LinearLayout) findViewById(R.id.menu_items);
         hasSoftMenuButton = !HardwareUtils.hasMenuButton();
 
-        editSeparator = (ThemedView) findViewById(R.id.edit_separator);
-        editCancel = findViewById(R.id.edit_cancel);
+        editCancel = (ImageView) findViewById(R.id.edit_cancel);
 
         // We use different layouts on phones and tablets, so adjust the focus
         // order appropriately.
@@ -328,6 +329,7 @@ public class BrowserToolbar extends ThemedRelativeLayout
         urlEditLayout.setOnFocusChangeListener(new View.OnFocusChangeListener() {
             @Override
             public void onFocusChange(View v, boolean hasFocus) {
+                // This will select the url bar when entering editing mode.
                 setSelected(hasFocus);
                 if (focusChangeListener != null) {
                     focusChangeListener.onFocusChange(v, hasFocus);
@@ -600,15 +602,16 @@ public class BrowserToolbar extends ThemedRelativeLayout
     }
 
     private int getUrlBarEntryTranslation() {
-        if (editSeparator == null) {
+        if (editCancel == null) {
             // We are on tablet, and there is no animation so return a translation of 0.
             return 0;
         }
 
-        // We would ideally use the right-most point of the edit layout instead of the
-        // edit separator and its margin, but it is not inflated when this code initially runs.
-        final LayoutParams lp = (LayoutParams) editSeparator.getLayoutParams();
-        return editSeparator.getLeft() - lp.leftMargin - urlBarEntry.getRight();
+        // Find the distance from the right-edge of the url bar (where we're translating from) to
+        // the left-edge of the cancel button (where we're translating to; note that the cancel
+        // button must be laid out, i.e. not View.GONE).
+        final LayoutParams lp = (LayoutParams) urlEditLayout.getLayoutParams();
+        return editCancel.getLeft() - lp.leftMargin - urlBarEntry.getRight();
     }
 
     private int getUrlBarCurveTranslation() {
@@ -850,12 +853,14 @@ public class BrowserToolbar extends ThemedRelativeLayout
     }
 
     private void setUrlEditLayoutVisibility(final boolean showEditLayout, PropertyAnimator animator) {
-        urlEditLayout.prepareAnimation(showEditLayout, animator);
-
-        final View viewToShow = (showEditLayout ? urlEditLayout : urlDisplayLayout);
-        final View viewToHide = (showEditLayout ? urlDisplayLayout : urlEditLayout);
+        if (showEditLayout) {
+            urlEditLayout.prepareShowAnimation(animator);
+        }
 
         if (animator == null) {
+            final View viewToShow = (showEditLayout ? urlEditLayout : urlDisplayLayout);
+            final View viewToHide = (showEditLayout ? urlDisplayLayout : urlEditLayout);
+
             viewToHide.setVisibility(View.GONE);
             viewToShow.setVisibility(View.VISIBLE);
 
@@ -864,29 +869,23 @@ public class BrowserToolbar extends ThemedRelativeLayout
             return;
         }
 
-        ViewHelper.setAlpha(viewToShow, 0.0f);
-        animator.attach(viewToShow,
-                        PropertyAnimator.Property.ALPHA,
-                        1.0f);
-
-        animator.attach(viewToHide,
-                        PropertyAnimator.Property.ALPHA,
-                        0.0f);
-
         animator.addPropertyAnimationListener(new PropertyAnimationListener() {
             @Override
             public void onPropertyAnimationStart() {
-                viewToShow.setVisibility(View.VISIBLE);
                 if (!showEditLayout) {
+                    urlEditLayout.setVisibility(View.GONE);
+                    urlDisplayLayout.setVisibility(View.VISIBLE);
+
                     setCancelVisibility(View.INVISIBLE);
                 }
             }
 
             @Override
             public void onPropertyAnimationEnd() {
-                viewToHide.setVisibility(View.GONE);
-                ViewHelper.setAlpha(viewToHide, 1.0f);
                 if (showEditLayout) {
+                    urlDisplayLayout.setVisibility(View.GONE);
+                    urlEditLayout.setVisibility(View.VISIBLE);
+
                     setCancelVisibility(View.VISIBLE);
                 }
             }
@@ -894,8 +893,7 @@ public class BrowserToolbar extends ThemedRelativeLayout
     }
 
     private void setCancelVisibility(final int visibility) {
-        if (editSeparator != null && editCancel != null) {
-            editSeparator.setVisibility(visibility);
+        if (editCancel != null) {
             editCancel.setVisibility(visibility);
         }
     }
@@ -1021,9 +1019,6 @@ public class BrowserToolbar extends ThemedRelativeLayout
         if (isAnimatingEntry)
             return;
 
-        // Highlight the toolbar from the start of the animation.
-        setSelected(true);
-
         urlDisplayLayout.prepareStartEditingAnimation();
 
         // Slide toolbar elements.
@@ -1105,6 +1100,10 @@ public class BrowserToolbar extends ThemedRelativeLayout
         }
 
         updateProgressVisibility();
+
+        // The animation looks cleaner if the text in the URL bar is
+        // not selected so clear the selection by clearing focus.
+        urlEditLayout.clearFocus();
 
         if (Build.VERSION.SDK_INT < 11) {
             stopEditingWithoutAnimation();
@@ -1338,9 +1337,6 @@ public class BrowserToolbar extends ThemedRelativeLayout
         menuButton.setPrivateMode(isPrivate);
         menuIcon.setPrivateMode(isPrivate);
         urlEditLayout.setPrivateMode(isPrivate);
-        if (editSeparator != null) {
-            editSeparator.setPrivateMode(isPrivate);
-        }
 
         if (backButton instanceof BackButton) {
             ((BackButton) backButton).setPrivateMode(isPrivate);
@@ -1366,8 +1362,9 @@ public class BrowserToolbar extends ThemedRelativeLayout
     public void onDestroy() {
         Tabs.unregisterOnTabsChangedListener(this);
 
-        unregisterEventListener("Reader:Click");
-        unregisterEventListener("Reader:LongClick");
+        EventDispatcher.getInstance().unregisterGeckoThreadListener(this,
+            "Reader:Click",
+            "Reader:LongClick");
     }
 
     public boolean openOptionsMenu() {
@@ -1407,14 +1404,6 @@ public class BrowserToolbar extends ThemedRelativeLayout
         }
 
         return true;
-    }
-
-    private void registerEventListener(String event) {
-        GeckoAppShell.getEventDispatcher().registerEventListener(event, this);
-    }
-
-    private void unregisterEventListener(String event) {
-        GeckoAppShell.getEventDispatcher().unregisterEventListener(event, this);
     }
 
     @Override

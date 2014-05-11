@@ -95,6 +95,14 @@ public:
   {
     MOZ_ASSERT(NS_IsMainThread());
 
+    // Bluetooth just enabled, clear profile controllers and runnable arrays.
+    sControllerArray.Clear();
+    sBondingRunnableArray.Clear();
+    sChangeDiscoveryRunnableArray.Clear();
+    sGetDeviceRunnableArray.Clear();
+    sSetPropertyRunnableArray.Clear();
+    sUnbondingRunnableArray.Clear();
+
     // Bluetooth scan mode is NONE by default
     bt_scan_mode_t mode = BT_SCAN_MODE_CONNECTABLE;
     bt_property_t prop;
@@ -772,8 +780,6 @@ BluetoothServiceBluedroid::GetDefaultAdapterPathInternal(
 {
   MOZ_ASSERT(NS_IsMainThread());
 
-  nsRefPtr<BluetoothReplyRunnable> runnable(aRunnable);
-
   BluetoothValue v = InfallibleTArray<BluetoothNamedValue>();
 
   BT_APPEND_NAMED_VALUE(v.get_ArrayOfBluetoothNamedValue(),
@@ -791,10 +797,7 @@ BluetoothServiceBluedroid::GetDefaultAdapterPathInternal(
   BT_APPEND_NAMED_VALUE(v.get_ArrayOfBluetoothNamedValue(),
                         "Devices", sAdapterBondedAddressArray);
 
-  nsAutoString replyError;
-  DispatchBluetoothReply(runnable.get(), v, replyError);
-
-  unused << runnable.forget(); // picked up in DispatchBluetoothReply
+  DispatchBluetoothReply(aRunnable, v, EmptyString());
 
   return NS_OK;
 }
@@ -1154,8 +1157,9 @@ NextBluetoothProfileController()
   NS_ENSURE_FALSE_VOID(sControllerArray.IsEmpty());
   sControllerArray.RemoveElementAt(0);
   // Re-check if the task array is empty, if it's not, the next task will begin.
-  NS_ENSURE_FALSE_VOID(sControllerArray.IsEmpty());
-  sControllerArray[0]->StartSession();
+  if (!sControllerArray.IsEmpty()) {
+    sControllerArray[0]->StartSession();
+  }
 }
 
 static void

@@ -95,7 +95,6 @@ RotatedBuffer::DrawBufferQuadrant(gfx::DrawTarget* aTarget,
 
   gfx::Point quadrantTranslation(quadrantRect.x, quadrantRect.y);
 
-  MOZ_ASSERT(aOperator == CompositionOp::OP_OVER || aOperator == CompositionOp::OP_SOURCE);
   // direct2d is much slower when using OP_SOURCE so use OP_OVER and
   // (maybe) a clear instead. Normally we need to draw in a single operation
   // (to avoid flickering) but direct2d is ok since it defers rendering.
@@ -516,10 +515,12 @@ RotatedContentBuffer::BeginPaint(ThebesLayer* aLayer,
   if (result.mRegionToDraw.IsEmpty())
     return result;
 
-  // Do not modify result.mRegionToDraw or result.mContentType after this call.
-  // Do not modify mBufferRect, mBufferRotation, or mDidSelfCopy,
-  // or call CreateBuffer before this call.
-  FinalizeFrame(result.mRegionToDraw);
+  if (HaveBuffer()) {
+    // Do not modify result.mRegionToDraw or result.mContentType after this call.
+    // Do not modify mBufferRect, mBufferRotation, or mDidSelfCopy,
+    // or call CreateBuffer before this call.
+    FinalizeFrame(result.mRegionToDraw);
+  }
 
   nsIntRect drawBounds = result.mRegionToDraw.GetBounds();
   RefPtr<DrawTarget> destDTBuffer;

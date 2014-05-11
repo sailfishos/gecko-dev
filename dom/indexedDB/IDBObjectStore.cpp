@@ -777,8 +777,8 @@ public:
 
     nsRefPtr<FileInfo>& fileInfo = aFile.mFileInfo;
 
-    nsRefPtr<IDBFileHandle> fileHandle = IDBFileHandle::Create(aDatabase,
-      aData.name, aData.type, fileInfo.forget());
+    nsRefPtr<IDBFileHandle> fileHandle = IDBFileHandle::Create(aData.name,
+      aData.type, aDatabase, fileInfo.forget());
 
     return fileHandle->WrapObject(aCx);
   }
@@ -837,7 +837,7 @@ public:
         return nullptr;
       }
 
-      return JSVAL_TO_OBJECT(wrappedBlob);
+      return wrappedBlob.toObjectOrNull();
     }
 
     nsCOMPtr<nsIDOMFile> domFile;
@@ -862,7 +862,7 @@ public:
       return nullptr;
     }
 
-    return JSVAL_TO_OBJECT(wrappedFile);
+    return wrappedFile.toObjectOrNull();
   }
 };
 
@@ -1560,7 +1560,7 @@ IDBObjectStore::StructuredCloneWriteCallback(JSContext* aCx,
   IDBTransaction* transaction = cloneWriteInfo->mTransaction;
   FileManager* fileManager = transaction->Database()->Manager();
 
-  file::FileHandle* fileHandle = nullptr;
+  FileHandle* fileHandle = nullptr;
   if (NS_SUCCEEDED(UNWRAP_OBJECT(FileHandle, aObj, fileHandle))) {
     nsRefPtr<FileInfo> fileInfo = fileHandle->GetFileInfo();
 
@@ -1837,7 +1837,7 @@ IDBObjectStore::GetAddInfo(JSContext* aCx,
 
   // Return DATA_ERR if a key was passed in and this objectStore uses inline
   // keys.
-  if (!JSVAL_IS_VOID(aKeyVal) && HasValidKeyPath()) {
+  if (!aKeyVal.isUndefined() && HasValidKeyPath()) {
     return NS_ERROR_DOM_INDEXEDDB_DATA_ERR;
   }
 
@@ -2615,14 +2615,14 @@ IDBObjectStore::GetKeyPath(JSContext* aCx, ErrorResult& aRv)
 {
   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
 
-  if (!JSVAL_IS_VOID(mCachedKeyPath)) {
+  if (!mCachedKeyPath.isUndefined()) {
     return mCachedKeyPath;
   }
 
   aRv = GetKeyPath().ToJSVal(aCx, mCachedKeyPath);
   ENSURE_SUCCESS(aRv, JSVAL_VOID);
 
-  if (JSVAL_IS_GCTHING(mCachedKeyPath)) {
+  if (mCachedKeyPath.isGCThing()) {
     mozilla::HoldJSObjects(this);
     mRooted = true;
   }
@@ -4125,7 +4125,7 @@ OpenKeyCursorHelper::DoDatabaseWork(mozIStorageConnection* /* aConnection */)
       break;
 
     default:
-      MOZ_ASSUME_UNREACHABLE("Unknown direction type!");
+      MOZ_CRASH("Unknown direction type!");
   }
 
   nsCString firstQuery = queryStart + keyRangeClause + directionClause +
@@ -4197,7 +4197,7 @@ OpenKeyCursorHelper::DoDatabaseWork(mozIStorageConnection* /* aConnection */)
       break;
 
     default:
-      MOZ_ASSUME_UNREACHABLE("Unknown direction type!");
+      MOZ_CRASH("Unknown direction type!");
   }
 
   mContinueQuery = queryStart + keyRangeClause + directionClause + openLimit;

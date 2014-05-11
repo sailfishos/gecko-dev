@@ -701,8 +701,7 @@ InitGlobals(nsPresContext* aPresContext)
   // per font-family tables for stretchy operators, in order of preference.
   // Do not include the Unicode table in this list.
   if (!gGlyphTableList->AddGlyphTable(NS_LITERAL_STRING("MathJax_Main")) ||
-      !gGlyphTableList->AddGlyphTable(NS_LITERAL_STRING("STIXNonUnicode")) ||
-      !gGlyphTableList->AddGlyphTable(NS_LITERAL_STRING("STIXSizeOneSym")) ||
+      !gGlyphTableList->AddGlyphTable(NS_LITERAL_STRING("STIXGeneral")) ||
       !gGlyphTableList->AddGlyphTable(NS_LITERAL_STRING("Standard Symbols L"))
 #ifdef XP_WIN
       || !gGlyphTableList->AddGlyphTable(NS_LITERAL_STRING("Symbol"))
@@ -1309,10 +1308,6 @@ nsMathMLChar::StretchEnumContext::TryParts(nsGlyphTable* aGlyphTable,
       textRun[i] = aGlyphTable->MakeTextRun(mThebesContext, oneDevPixel,
                                             *aFontGroup, ch);
       nsBoundingMetrics bm = MeasureTextRun(mThebesContext, textRun[i]);
-
-      // TODO: For the generic Unicode table, ideally we should check that the
-      // glyphs are actually found and that they each come from the same
-      // font.
       bmdata[i] = bm;
       sizedata[i] = isVertical ? bm.ascent + bm.descent
                                : bm.rightBearing - bm.leftBearing;
@@ -1322,6 +1317,32 @@ nsMathMLChar::StretchEnumContext::TryParts(nsGlyphTable* aGlyphTable,
       textRun[i] = nullptr;
       bmdata[i] = nsBoundingMetrics();
       sizedata[i] = i == 3 ? mTargetSize : 0;
+    }
+  }
+
+  // For the Unicode table, we check that all the glyphs are actually found and
+  // come from the same font.
+  if (aGlyphTable == &gGlyphTableList->mUnicodeTable) {
+    gfxFont* unicodeFont = nullptr;
+    for (int32_t i = 0; i < 4; i++) {
+      if (!textRun[i]) {
+        continue;
+      }
+      if (textRun[i]->GetLength() != 1 ||
+          textRun[i]->GetCharacterGlyphs()[0].IsMissing()) {
+        return false;
+      }
+      uint32_t numGlyphRuns;
+      const gfxTextRun::GlyphRun* glyphRuns =
+        textRun[i]->GetGlyphRuns(&numGlyphRuns);
+      if (numGlyphRuns != 1) {
+        return false;
+      }
+      if (!unicodeFont) {
+        unicodeFont = glyphRuns[0].mFont;
+      } else if (unicodeFont != glyphRuns[0].mFont) {
+        return false;
+      }
     }
   }
 

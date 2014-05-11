@@ -54,7 +54,7 @@ jit::SplitCriticalEdges(MIRGraph &graph)
 }
 
 // Operands to a resume point which are dead at the point of the resume can be
-// replaced with undefined values. This analysis supports limited detection of
+// replaced with a magic value. This analysis supports limited detection of
 // dead operands, pruning those which are defined in the resume point's basic
 // block and have no uses outside the block or at points later than the resume
 // point.
@@ -92,6 +92,14 @@ jit::EliminateDeadResumePointOperands(MIRGenerator *mir, MIRGraph &graph)
             // than doing a more sophisticated analysis, just ignore these.
             if (ins->isUnbox() || ins->isParameter() || ins->isTypeBarrier() || ins->isComputeThis())
                 continue;
+
+            // TypedObject intermediate values captured by resume points may
+            // be legitimately dead in Ion code, but are still needed if we
+            // bail out. They can recover on bailout.
+            if (ins->isNewDerivedTypedObject()) {
+                MOZ_ASSERT(ins->canRecoverOnBailout());
+                continue;
+            }
 
             // If the instruction's behavior has been constant folded into a
             // separate instruction, we can't determine precisely where the
@@ -135,11 +143,19 @@ jit::EliminateDeadResumePointOperands(MIRGenerator *mir, MIRGraph &graph)
                     continue;
                 }
 
+                // The operand is an uneliminable slot. This currently
+                // includes argument slots in non-strict scripts (due to being
+                // observable via Function.arguments).
+                if (!block->info().canOptimizeOutSlot(uses->index())) {
+                    uses++;
+                    continue;
+                }
+
                 // Store an optimized out magic value in place of all dead
                 // resume point operands. Making any such substitution can in
                 // general alter the interpreter's behavior, even though the
                 // code is dead, as the interpreter will still execute opcodes
-                // whose effects cannot be observed. If the undefined value
+                // whose effects cannot be observed. If the magic value value
                 // were to flow to, say, a dead property access the
                 // interpreter could throw an exception; we avoid this problem
                 // by removing dead operands before removing dead code.
@@ -171,6 +187,9 @@ jit::EliminateDeadCode(MIRGenerator *mir, MIRGraph &graph)
                 !inst->hasUses() && !inst->isGuard() &&
                 !inst->isControlInstruction()) {
                 inst = block->discardAt(inst);
+            } else if (!inst->hasLiveDefUses() && inst->canRecoverOnBailout()) {
+                inst->setRecoveredOnBailout();
+                inst++;
             } else {
                 inst++;
             }
@@ -231,18 +250,11 @@ IsPhiObservable(MPhi *phi, Observability observe)
         return true;
     }
 
-    // If the Phi is one of the formal argument, and we are using an argument
-    // object in the function. The phi might be observable after a bailout.
-    // For inlined frames this is not needed, as they are captured in the inlineResumePoint.
-    if (fun && info.hasArguments()) {
-        uint32_t first = info.firstArgSlot();
-        if (first <= slot && slot - first < info.nargs()) {
-            // If arguments obj aliases formals, then the arg slots will never be used.
-            if (info.argsObjAliasesFormals())
-                return false;
-            return true;
-        }
-    }
+    // The Phi is an uneliminable slot. Currently this includes argument slots
+    // in non-strict scripts (due to being observable via Function.arguments).
+    if (fun && !info.canOptimizeOutSlot(slot))
+        return true;
+
     return false;
 }
 
@@ -1382,11 +1394,6 @@ jit::AssertBasicGraphCoherency(MIRGraph &graph)
         for (size_t i = 0; i < block->numPredecessors(); i++)
             JS_ASSERT(CheckPredecessorImpliesSuccessor(*block, block->getPredecessor(i)));
 
-        // Assert that use chains are valid for this instruction.
-        for (MDefinitionIterator iter(*block); iter; iter++) {
-            for (uint32_t i = 0, e = iter->numOperands(); i < e; i++)
-                JS_ASSERT(CheckOperandImpliesUse(*iter, iter->getOperand(i)));
-        }
         for (MResumePointIterator iter(block->resumePointsBegin()); iter != block->resumePointsEnd(); iter++) {
             for (uint32_t i = 0, e = iter->numOperands(); i < e; i++) {
                 if (iter->getUseFor(i)->hasProducer())
@@ -1395,11 +1402,16 @@ jit::AssertBasicGraphCoherency(MIRGraph &graph)
         }
         for (MPhiIterator phi(block->phisBegin()); phi != block->phisEnd(); phi++) {
             JS_ASSERT(phi->numOperands() == block->numPredecessors());
+            MOZ_ASSERT(!phi->isRecoveredOnBailout());
         }
         for (MDefinitionIterator iter(*block); iter; iter++) {
             JS_ASSERT(iter->block() == *block);
-            for (MUseIterator i(iter->usesBegin()); i != iter->usesEnd(); i++)
-                JS_ASSERT(CheckUseImpliesOperand(*iter, *i));
+
+            // Assert that use chains are valid for this instruction.
+            for (uint32_t i = 0, end = iter->numOperands(); i < end; i++)
+                JS_ASSERT(CheckOperandImpliesUse(*iter, iter->getOperand(i)));
+            for (MUseIterator use(iter->usesBegin()); use != iter->usesEnd(); use++)
+                JS_ASSERT(CheckUseImpliesOperand(*iter, *use));
 
             if (iter->isInstruction()) {
                 if (MResumePoint *resume = iter->toInstruction()->resumePoint()) {
@@ -1407,6 +1419,9 @@ jit::AssertBasicGraphCoherency(MIRGraph &graph)
                         JS_ASSERT(ins->block() == iter->block());
                 }
             }
+
+            if (iter->isRecoveredOnBailout())
+                MOZ_ASSERT(!iter->hasLiveDefUses());
         }
     }
 
@@ -2252,10 +2267,15 @@ jit::AnalyzeNewScriptProperties(JSContext *cx, JSFunction *fun,
     types::TypeScript::SetThis(cx, script, types::Type::ObjectType(type));
 
     MIRGraph graph(&temp);
+    InlineScriptTree *inlineScriptTree = InlineScriptTree::New(&temp, nullptr, nullptr, script);
+    if (!inlineScriptTree)
+        return false;
+
     CompileInfo info(script, fun,
                      /* osrPc = */ nullptr, /* constructing = */ false,
                      DefinitePropertiesAnalysis,
-                     script->needsArgsObj());
+                     script->needsArgsObj(),
+                     inlineScriptTree);
 
     AutoTempAllocatorRooter root(cx, &temp);
 
@@ -2360,7 +2380,8 @@ jit::AnalyzeNewScriptProperties(JSContext *cx, JSFunction *fun,
 }
 
 static bool
-ArgumentsUseCanBeLazy(JSContext *cx, JSScript *script, MInstruction *ins, size_t index)
+ArgumentsUseCanBeLazy(JSContext *cx, JSScript *script, MInstruction *ins, size_t index,
+                      bool *argumentsContentsObserved)
 {
     // We can read the frame's arguments directly for f.apply(x, arguments).
     if (ins->isCall()) {
@@ -2368,13 +2389,16 @@ ArgumentsUseCanBeLazy(JSContext *cx, JSScript *script, MInstruction *ins, size_t
             ins->toCall()->numActualArgs() == 2 &&
             index == MCall::IndexOfArgument(1))
         {
+            *argumentsContentsObserved = true;
             return true;
         }
     }
 
     // arguments[i] can read fp->canonicalActualArg(i) directly.
-    if (ins->isCallGetElement() && index == 0)
+    if (ins->isCallGetElement() && index == 0) {
+        *argumentsContentsObserved = true;
         return true;
+    }
 
     // arguments.length length can read fp->numActualArgs() directly.
     if (ins->isCallGetProperty() && index == 0 && ins->toCallGetProperty()->name() == cx->names().length)
@@ -2397,6 +2421,26 @@ jit::AnalyzeArgumentsUsage(JSContext *cx, JSScript *scriptArg)
     // and also simplifies handling of early returns.
     script->setNeedsArgsObj(true);
 
+    // Always construct arguments objects when in debug mode and for generator
+    // scripts (generators can be suspended when speculation fails).
+    //
+    // FIXME: Don't build arguments for ES6 generator expressions.
+    if (cx->compartment()->debugMode() || script->isGenerator())
+        return true;
+
+    // If the script has dynamic name accesses which could reach 'arguments',
+    // the parser will already have checked to ensure there are no explicit
+    // uses of 'arguments' in the function. If there are such uses, the script
+    // will be marked as definitely needing an arguments object.
+    //
+    // New accesses on 'arguments' can occur through 'eval' or the debugger
+    // statement. In the former case, we will dynamically detect the use and
+    // mark the arguments optimization as having failed.
+    if (script->bindingsAccessedDynamically()) {
+        script->setNeedsArgsObj(false);
+        return true;
+    }
+
     if (!jit::IsIonEnabled(cx) || !script->compileAndGo())
         return true;
 
@@ -2416,10 +2460,14 @@ jit::AnalyzeArgumentsUsage(JSContext *cx, JSScript *scriptArg)
         return false;
 
     MIRGraph graph(&temp);
+    InlineScriptTree *inlineScriptTree = InlineScriptTree::New(&temp, nullptr, nullptr, script);
+    if (!inlineScriptTree)
+        return false;
     CompileInfo info(script, script->functionNonDelazifying(),
                      /* osrPc = */ nullptr, /* constructing = */ false,
                      ArgumentsUsageAnalysis,
-                     /* needsArgsObj = */ true);
+                     /* needsArgsObj = */ true,
+                     inlineScriptTree);
 
     AutoTempAllocatorRooter root(cx, &temp);
 
@@ -2455,6 +2503,8 @@ jit::AnalyzeArgumentsUsage(JSContext *cx, JSScript *scriptArg)
 
     MDefinition *argumentsValue = graph.begin()->getSlot(info.argsObjSlot());
 
+    bool argumentsContentsObserved = false;
+
     for (MUseDefIterator uses(argumentsValue); uses; uses++) {
         MDefinition *use = uses.def();
 
@@ -2462,9 +2512,19 @@ jit::AnalyzeArgumentsUsage(JSContext *cx, JSScript *scriptArg)
         if (!use->isInstruction())
             return true;
 
-        if (!ArgumentsUseCanBeLazy(cx, script, use->toInstruction(), uses.index()))
+        if (!ArgumentsUseCanBeLazy(cx, script, use->toInstruction(), uses.index(),
+                                   &argumentsContentsObserved))
+        {
             return true;
+        }
     }
+
+    // If a script explicitly accesses the contents of 'arguments', and has
+    // formals which may be stored as part of a call object, don't use lazy
+    // arguments. The compiler can then assume that accesses through
+    // arguments[i] will be on unaliased variables.
+    if (script->funHasAnyAliasedFormal() && argumentsContentsObserved)
+        return true;
 
     script->setNeedsArgsObj(false);
     return true;

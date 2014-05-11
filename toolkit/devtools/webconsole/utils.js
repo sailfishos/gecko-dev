@@ -1087,11 +1087,10 @@ let DebuggerEnvironmentSupport = {
   getProperty: function(aObj, aName)
   {
     // TODO: we should use getVariableDescriptor() here - bug 725815.
-    let result = undefined;
-    try {
-      result = aObj.getVariable(aName);
-    } catch (ex) {
-      // getVariable() throws for invalid identifiers.
+    let result = aObj.getVariable(aName);
+    // FIXME: Need actual UI, bug 941287.
+    if (result.optimizedOut || result.missingArguments) {
+      return null;
     }
     return result === undefined ? null : { value: result };
   },
@@ -1291,11 +1290,14 @@ ConsoleServiceListener.prototype =
  *        - onConsoleAPICall(). This method is invoked with one argument, the
  *        Console API message that comes from the observer service, whenever
  *        a relevant console API call is received.
+ * @param string aConsoleID
+ *        Options - The consoleID that this listener should listen to
  */
-function ConsoleAPIListener(aWindow, aOwner)
+function ConsoleAPIListener(aWindow, aOwner, aConsoleID)
 {
   this.window = aWindow;
   this.owner = aOwner;
+  this.consoleID = aConsoleID;
   if (this.window) {
     this.layoutHelpers = new LayoutHelpers(this.window);
   }
@@ -1321,6 +1323,12 @@ ConsoleAPIListener.prototype =
    * @see WebConsoleActor
    */
   owner: null,
+
+  /**
+   * The consoleID that we listen for. If not null then only messages from this
+   * console will be returned.
+   */
+  consoleID: null,
 
   /**
    * Initialize the window.console API observer.
@@ -1355,6 +1363,9 @@ ConsoleAPIListener.prototype =
         return;
       }
     }
+    if (this.consoleID && apiMessage.consoleID != this.consoleID) {
+      return;
+    }
 
     this.owner.onConsoleAPICall(apiMessage);
   },
@@ -1383,6 +1394,10 @@ ConsoleAPIListener.prototype =
       ids.forEach((id) => {
         messages = messages.concat(ConsoleAPIStorage.getEvents(id));
       });
+    }
+
+    if (this.consoleID) {
+      messages = messages.filter((m) => m.consoleID == this.consoleID);
     }
 
     if (aIncludePrivate) {

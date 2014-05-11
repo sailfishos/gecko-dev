@@ -101,6 +101,10 @@
                 accesskey="&moveToNewWindow.accesskey;"
                 tbattr="tabbrowser-multiple"
                 oncommand="gBrowser.replaceTabWithWindow(TabContextMenu.contextTab);"/>
+      <menuitem id="context_openNonRemoteWindow" label="Open in new non-e10s window"
+                tbattr="tabbrowser-remote"
+                hidden="true"
+                oncommand="gBrowser.openNonRemoteWindow(TabContextMenu.contextTab);"/>
       <menuseparator/>
       <menuitem id="context_reloadAllTabs" label="&reloadAllTabs.label;" accesskey="&reloadAllTabs.accesskey;"
                 tbattr="tabbrowser-multiple-visible"
@@ -573,7 +577,7 @@
                      label="&tabCmd.label;"
                      command="cmd_newNavigatorTab"
                      onclick="checkForMiddleClick(this, event);"
-                     tooltiptext="&newTabButton.tooltip;"
+                     tooltip="dynamic-shortcut-tooltip"
                      ondrop="newTabButtonObserver.onDrop(event)"
                      ondragover="newTabButtonObserver.onDragOver(event)"
                      ondragenter="newTabButtonObserver.onDragOver(event)"
@@ -639,7 +643,7 @@
 
       <hbox id="nav-bar-customization-target" flex="1">
         <toolbaritem id="urlbar-container" flex="400" persist="width"
-                     forwarddisabled="true" title="&locationItem.title;" removable="false"
+                     title="&locationItem.title;" removable="false"
                      cui-areatype="toolbar"
                      class="chromeclass-location" overflows="false">
           <toolbarbutton id="back-button" class="toolbarbutton-1 chromeclass-toolbar-additional"
@@ -794,6 +798,13 @@
               <observes element="viewBookmarksSidebar" attribute="checked"/>
             </menuitem>
             <menuseparator/>
+            <!-- NB: temporary solution for bug 985024, this should go away soon. -->
+            <menuitem id="BMB_bookmarksShowAllTop"
+                      class="subviewbutton"
+                      label="&showAllBookmarks2.label;"
+                      command="Browser:ShowAllBookmarks"
+                      key="manBookmarkKb"/>
+            <menuseparator/>
             <menuitem id="BMB_subscribeToPageMenuitem"
 #ifndef XP_MACOSX
                       class="menuitem-iconic subviewbutton"
@@ -863,6 +874,7 @@
              during the customization of the toolbar, in the palette, and before
              the Downloads Indicator overlay is loaded. -->
         <toolbarbutton id="downloads-button" class="toolbarbutton-1 chromeclass-toolbar-additional"
+                       key="key_openDownloads"
                        oncommand="DownloadsIndicatorView.onCommand(event);"
                        ondrop="DownloadsIndicatorView.onDrop(event);"
                        ondragover="DownloadsIndicatorView.onDragOver(event);"
@@ -870,7 +882,7 @@
                        label="&downloads.label;"
                        removable="true"
                        cui-areatype="toolbar"
-                       tooltiptext="&downloads.tooltip;"/>
+                       tooltip="dynamic-shortcut-tooltip"/>
 
         <toolbarbutton id="home-button" class="toolbarbutton-1 chromeclass-toolbar-additional"
                        persist="class" removable="true"
@@ -879,6 +891,7 @@
                        ondragenter="homeButtonObserver.onDragOver(event)"
                        ondrop="homeButtonObserver.onDrop(event)"
                        ondragexit="homeButtonObserver.onDragExit(event)"
+                       key="goHome"
                        onclick="BrowserGoHome(event);"
                        cui-areatype="toolbar"
                        aboutHomeOverrideTooltip="&abouthome.pageTitle;"/>
@@ -1000,9 +1013,11 @@
 
       <toolbarbutton id="print-button" class="toolbarbutton-1 chromeclass-toolbar-additional"
 #ifdef XP_MACOSX
-                     command="cmd_print" tooltip="dynamic-shortcut-tooltip"
+                     command="cmd_print"
+                     tooltip="dynamic-shortcut-tooltip"
 #else
-                     command="cmd_printPreview" tooltiptext="&printButton.tooltip;"
+                     command="cmd_printPreview"
+                     tooltiptext="&printButton.tooltip;"
 #endif
                      label="&printButton.label;"/>
 
@@ -1059,8 +1074,7 @@
                     tabcontainer="tabbrowser-tabs"
                     contentcontextmenu="contentAreaContextMenu"
                     autocompletepopup="PopupAutoComplete"
-                    selectpopup="ContentSelectDropdown"
-                    onclick="contentAreaClick(event, false);"/>
+                    selectpopup="ContentSelectDropdown"/>
         <chatbar id="pinnedchats" layer="true" mousethrough="always" hidden="true"/>
       </vbox>
       <splitter id="social-sidebar-splitter"

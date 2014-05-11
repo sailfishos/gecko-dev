@@ -146,9 +146,10 @@ class JavaPanZoomController
         setState(PanZoomState.NOTHING);
 
         mEventDispatcher = eventDispatcher;
-        registerEventListener(MESSAGE_ZOOM_RECT);
-        registerEventListener(MESSAGE_ZOOM_PAGE);
-        registerEventListener(MESSAGE_TOUCH_LISTENER);
+        mEventDispatcher.registerGeckoThreadListener(this,
+            MESSAGE_ZOOM_RECT,
+            MESSAGE_ZOOM_PAGE,
+            MESSAGE_TOUCH_LISTENER);
 
         mMode = AxisLockMode.STANDARD;
 
@@ -193,9 +194,10 @@ class JavaPanZoomController
 
     @Override
     public void destroy() {
-        unregisterEventListener(MESSAGE_ZOOM_RECT);
-        unregisterEventListener(MESSAGE_ZOOM_PAGE);
-        unregisterEventListener(MESSAGE_TOUCH_LISTENER);
+        mEventDispatcher.unregisterGeckoThreadListener(this,
+            MESSAGE_ZOOM_RECT,
+            MESSAGE_ZOOM_PAGE,
+            MESSAGE_TOUCH_LISTENER);
         mSubscroller.destroy();
         mTouchEventHandler.destroy();
     }
@@ -205,14 +207,6 @@ class JavaPanZoomController
         // -(t-1)^2+1
         t = t-1;
         return -t*t+1;
-    }
-
-    private void registerEventListener(String event) {
-        mEventDispatcher.registerEventListener(event, this);
-    }
-
-    private void unregisterEventListener(String event) {
-        mEventDispatcher.unregisterEventListener(event, this);
     }
 
     private void setState(PanZoomState state) {
@@ -475,8 +469,11 @@ class JavaPanZoomController
             return false;
 
         case TOUCHING:
-            // Don't allow panning if there is an element in full-screen mode. See bug 775511.
-            if ((mTarget.isFullScreen() && !mSubscroller.scrolling()) || panDistance(event) < PAN_THRESHOLD) {
+            // Don't allow panning if there is a non-root element in full-screen mode. See bug 775511 and bug 859683.
+            if (mTarget.getFullScreenState() == FullScreenState.NON_ROOT_ELEMENT && !mSubscroller.scrolling()) {
+                return false;
+            }
+            if (panDistance(event) < PAN_THRESHOLD) {
                 return false;
             }
             cancelTouch();
@@ -1179,7 +1176,7 @@ class JavaPanZoomController
 
     @Override
     public boolean onScale(SimpleScaleGestureDetector detector) {
-        if (mTarget.isFullScreen())
+        if (mTarget.getFullScreenState() != FullScreenState.NONE)
             return false;
 
         if (mState != PanZoomState.PINCHING)

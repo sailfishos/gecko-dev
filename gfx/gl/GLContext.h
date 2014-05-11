@@ -42,10 +42,6 @@
 #include "mozilla/Scoped.h"
 #include "gfx2DGlue.h"
 
-#ifdef DEBUG
-#define MOZ_ENABLE_GL_TRACKING 1
-#endif
-
 class nsIntRegion;
 class nsIRunnable;
 class nsIThread;
@@ -582,6 +578,20 @@ private:
     GLenum mGLError;
 #endif // DEBUG
 
+    static void GLAPIENTRY StaticDebugCallback(GLenum source,
+                                               GLenum type,
+                                               GLuint id,
+                                               GLenum severity,
+                                               GLsizei length,
+                                               const GLchar* message,
+                                               const GLvoid* userParam);
+    void DebugCallback(GLenum source,
+                       GLenum type,
+                       GLuint id,
+                       GLenum severity,
+                       GLsizei length,
+                       const GLchar* message);
+
 
 // -----------------------------------------------------------------------------
 // MOZ_GL_DEBUG implementation
@@ -590,7 +600,7 @@ private:
 #undef BEFORE_GL_CALL
 #undef AFTER_GL_CALL
 
-#ifdef MOZ_ENABLE_GL_TRACKING
+#ifdef DEBUG
 
 #ifndef MOZ_FUNCTION_NAME
 # ifdef __GNUC__
@@ -650,6 +660,8 @@ private:
         return tip;
     }
 
+    static void AssertNotPassingStackBufferToTheGL(const void* ptr);
+
 #define BEFORE_GL_CALL                              \
             do {                                    \
                 BeforeGLCall(MOZ_FUNCTION_NAME);    \
@@ -665,11 +677,14 @@ private:
                 TrackingContext()->a;               \
             } while (0)
 
+#define ASSERT_NOT_PASSING_STACK_BUFFER_TO_GL(ptr) AssertNotPassingStackBufferToTheGL(ptr)
+
 #else // ifdef DEBUG
 
 #define BEFORE_GL_CALL do { } while (0)
 #define AFTER_GL_CALL do { } while (0)
 #define TRACKING_CONTEXT(a) do {} while (0)
+#define ASSERT_NOT_PASSING_STACK_BUFFER_TO_GL(ptr) do {} while (0)
 
 #endif // ifdef DEBUG
 
@@ -809,6 +824,7 @@ public:
 
 private:
     void raw_fBufferData(GLenum target, GLsizeiptr size, const GLvoid* data, GLenum usage) {
+        ASSERT_NOT_PASSING_STACK_BUFFER_TO_GL(data);
         BEFORE_GL_CALL;
         mSymbols.fBufferData(target, size, data, usage);
         AFTER_GL_CALL;
@@ -823,12 +839,14 @@ public:
             !data &&
             Vendor() == GLVendor::NVIDIA)
         {
-            char c = 0;
-            fBufferSubData(target, size-1, 1, &c);
+            ScopedDeleteArray<char> buf(new char[1]);
+            buf[0] = 0;
+            fBufferSubData(target, size-1, 1, buf);
         }
     }
 
     void fBufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, const GLvoid* data) {
+        ASSERT_NOT_PASSING_STACK_BUFFER_TO_GL(data);
         BEFORE_GL_CALL;
         mSymbols.fBufferSubData(target, offset, size, data);
         AFTER_GL_CALL;
@@ -873,12 +891,14 @@ public:
     }
 
     void fCompressedTexImage2D(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLsizei height, GLint border, GLsizei imageSize, const GLvoid *pixels) {
+        ASSERT_NOT_PASSING_STACK_BUFFER_TO_GL(pixels);
         BEFORE_GL_CALL;
         mSymbols.fCompressedTexImage2D(target, level, internalformat, width, height, border, imageSize, pixels);
         AFTER_GL_CALL;
     }
 
     void fCompressedTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLsizei imageSize, const GLvoid *pixels) {
+        ASSERT_NOT_PASSING_STACK_BUFFER_TO_GL(pixels);
         BEFORE_GL_CALL;
         mSymbols.fCompressedTexSubImage2D(target, level, xoffset, yoffset, width, height, format, imageSize, pixels);
         AFTER_GL_CALL;
@@ -1384,6 +1404,7 @@ public:
     }
 
     void fTextureRangeAPPLE(GLenum target, GLsizei length, GLvoid *pointer) {
+        ASSERT_NOT_PASSING_STACK_BUFFER_TO_GL(pointer);
         BEFORE_GL_CALL;
         mSymbols.fTextureRangeAPPLE(target, length, pointer);
         AFTER_GL_CALL;
@@ -1423,6 +1444,7 @@ public:
 
 private:
     void raw_fReadPixels(GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type, GLvoid *pixels) {
+        ASSERT_NOT_PASSING_STACK_BUFFER_TO_GL(pixels);
         BEFORE_GL_CALL;
         mSymbols.fReadPixels(x, y, width, height, format, type, pixels);
         AFTER_GL_CALL;
@@ -1524,6 +1546,7 @@ public:
 
 private:
     void raw_fTexImage2D(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLint border, GLenum format, GLenum type, const GLvoid *pixels) {
+        ASSERT_NOT_PASSING_STACK_BUFFER_TO_GL(pixels);
         BEFORE_GL_CALL;
         mSymbols.fTexImage2D(target, level, internalformat, width, height, border, format, type, pixels);
         AFTER_GL_CALL;
@@ -1543,6 +1566,7 @@ public:
     }
 
     void fTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLenum type, const GLvoid* pixels) {
+        ASSERT_NOT_PASSING_STACK_BUFFER_TO_GL(pixels);
         BEFORE_GL_CALL;
         mSymbols.fTexSubImage2D(target, level, xoffset, yoffset, width, height, format, type, pixels);
         AFTER_GL_CALL;
@@ -2496,7 +2520,7 @@ protected:
     virtual bool MakeCurrentImpl(bool aForce) = 0;
 
 public:
-#ifdef MOZ_ENABLE_GL_TRACKING
+#ifdef DEBUG
     static void StaticInit() {
         PR_NewThreadPrivateIndex(&sCurrentGLContextTLS, nullptr);
     }
@@ -2506,7 +2530,7 @@ public:
         if (IsDestroyed()) {
             return false;
         }
-#ifdef MOZ_ENABLE_GL_TRACKING
+#ifdef DEBUG
     PR_SetThreadPrivate(sCurrentGLContextTLS, this);
 
     // XXX this assertion is disabled because it's triggering on Mac;
@@ -2953,7 +2977,7 @@ public:
 
 #undef ASSERT_SYMBOL_PRESENT
 
-#ifdef MOZ_ENABLE_GL_TRACKING
+#ifdef DEBUG
     void CreatedProgram(GLContext *aOrigin, GLuint aName);
     void CreatedShader(GLContext *aOrigin, GLuint aName);
     void CreatedBuffers(GLContext *aOrigin, GLsizei aCount, GLuint *aNames);

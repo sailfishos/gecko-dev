@@ -121,8 +121,8 @@ GetDoubleWrappedJSObject(XPCCallContext& ccx, XPCWrappedNative* wrapper)
 
             RootedValue val(ccx);
             if (JS_GetPropertyById(ccx, mainObj, id, &val) &&
-                !JSVAL_IS_PRIMITIVE(val)) {
-                obj = JSVAL_TO_OBJECT(val);
+                !val.isPrimitive()) {
+                obj = val.toObjectOrNull();
             }
         }
     }
@@ -248,9 +248,8 @@ DefinePropertyIfFound(XPCCallContext& ccx,
                 AutoResolveName arn(ccx, id);
                 if (resolved)
                     *resolved = true;
-                return JS_DefinePropertyById(ccx, obj, id,
-                                             OBJECT_TO_JSVAL(JS_GetFunctionObject(fun)),
-                                             nullptr, nullptr,
+                RootedObject value(ccx, JS_GetFunctionObject(fun));
+                return JS_DefinePropertyById(ccx, obj, id, value,
                                              propFlags & ~JSPROP_ENUMERATE);
             }
         }
@@ -277,8 +276,7 @@ DefinePropertyIfFound(XPCCallContext& ccx,
                 AutoResolveName arn(ccx, id);
                 if (resolved)
                     *resolved = true;
-                return JS_DefinePropertyById(ccx, obj, id, OBJECT_TO_JSVAL(jso),
-                                             nullptr, nullptr,
+                return JS_DefinePropertyById(ccx, obj, id, jso,
                                              propFlags & ~JSPROP_ENUMERATE);
             } else if (NS_FAILED(rv) && rv != NS_ERROR_NO_INTERFACE) {
                 return Throw(rv, ccx);
@@ -313,10 +311,9 @@ DefinePropertyIfFound(XPCCallContext& ccx,
             AutoResolveName arn(ccx, id);
             if (resolved)
                 *resolved = true;
-            return JS_DefinePropertyById(ccx, obj, id, JSVAL_VOID,
-                                         JS_DATA_TO_FUNC_PTR(JSPropertyOp,
-                                                             funobj.get()),
-                                         nullptr, propFlags);
+            return JS_DefinePropertyById(ccx, obj, id, UndefinedHandleValue, propFlags,
+                                         JS_DATA_TO_FUNC_PTR(JSPropertyOp, funobj.get()),
+                                         nullptr);
         }
 
         if (resolved)
@@ -338,8 +335,7 @@ DefinePropertyIfFound(XPCCallContext& ccx,
             AutoResolveName arn(ccx, id);
             if (resolved)
                 *resolved = true;
-            return JS_DefinePropertyById(ccx, obj, id, OBJECT_TO_JSVAL(jso),
-                                         nullptr, nullptr,
+            return JS_DefinePropertyById(ccx, obj, id, jso,
                                          propFlags & ~JSPROP_ENUMERATE);
         }
         if (resolved)
@@ -353,8 +349,7 @@ DefinePropertyIfFound(XPCCallContext& ccx,
         if (resolved)
             *resolved = true;
         return member->GetConstantValue(ccx, iface, val.address()) &&
-               JS_DefinePropertyById(ccx, obj, id, val, nullptr, nullptr,
-                                     propFlags);
+               JS_DefinePropertyById(ccx, obj, id, val, propFlags);
     }
 
     if (id == rt->GetStringID(XPCJSRuntime::IDX_TO_STRING) ||
@@ -372,8 +367,7 @@ DefinePropertyIfFound(XPCCallContext& ccx,
         AutoResolveName arn(ccx, id);
         if (resolved)
             *resolved = true;
-        return JS_DefinePropertyById(ccx, obj, id, funval, nullptr, nullptr,
-                                     propFlags);
+        return JS_DefinePropertyById(ccx, obj, id, funval, propFlags);
     }
 
     // else...
@@ -381,7 +375,7 @@ DefinePropertyIfFound(XPCCallContext& ccx,
     MOZ_ASSERT(member->IsAttribute(), "way broken!");
 
     propFlags |= JSPROP_GETTER | JSPROP_SHARED;
-    JSObject* funobj = JSVAL_TO_OBJECT(funval);
+    JSObject* funobj = funval.toObjectOrNull();
     JSPropertyOp getter = JS_DATA_TO_FUNC_PTR(JSPropertyOp, funobj);
     JSStrictPropertyOp setter;
     if (member->IsWritableAttribute()) {
@@ -396,8 +390,7 @@ DefinePropertyIfFound(XPCCallContext& ccx,
     if (resolved)
         *resolved = true;
 
-    return JS_DefinePropertyById(ccx, obj, id, JSVAL_VOID, getter, setter,
-                                 propFlags);
+    return JS_DefinePropertyById(ccx, obj, id, UndefinedHandleValue, propFlags, getter, setter);
 }
 
 /***************************************************************************/
@@ -487,7 +480,7 @@ XPC_WN_Shared_Convert(JSContext *cx, HandleObject obj, JSType type, MutableHandl
                 if (!XPCWrappedNative::CallMethod(ccx))
                     return false;
 
-                if (JSVAL_IS_PRIMITIVE(vp))
+                if (vp.isPrimitive())
                     return true;
             }
 
@@ -828,8 +821,6 @@ XPC_WN_Helper_Call(JSContext *cx, unsigned argc, jsval *vp)
     if (!ccx.IsValid())
         return false;
 
-    MOZ_ASSERT(obj == ccx.GetFlattenedJSObject());
-
     PRE_HELPER_STUB
     Call(wrapper, cx, obj, args, &retval);
     POST_HELPER_STUB
@@ -847,8 +838,6 @@ XPC_WN_Helper_Construct(JSContext *cx, unsigned argc, jsval *vp)
                        args.array(), args.rval().address());
     if (!ccx.IsValid())
         return false;
-
-    MOZ_ASSERT(obj == ccx.GetFlattenedJSObject());
 
     PRE_HELPER_STUB
     Construct(wrapper, cx, obj, args, &retval);

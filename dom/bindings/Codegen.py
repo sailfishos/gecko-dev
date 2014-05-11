@@ -23,7 +23,7 @@ HASINSTANCE_HOOK_NAME = '_hasInstance'
 NEWRESOLVE_HOOK_NAME = '_newResolve'
 ENUMERATE_HOOK_NAME = '_enumerate'
 ENUM_ENTRY_VARIABLE_NAME = 'strings'
-INSTANCE_RESERVED_SLOTS = 3
+INSTANCE_RESERVED_SLOTS = 1
 
 
 def memberReservedSlot(member):
@@ -353,6 +353,7 @@ JS_NULL_OBJECT_OPS
         if self.descriptor.interface.getExtendedAttribute("Global"):
             classFlags += "JSCLASS_DOM_GLOBAL | JSCLASS_GLOBAL_FLAGS_WITH_SLOTS(DOM_GLOBAL_SLOTS) | JSCLASS_IMPLEMENTS_BARRIERS"
             traceHook = "JS_GlobalObjectTraceHook"
+            reservedSlots = "JSCLASS_GLOBAL_APPLICATION_SLOTS"
             if not self.descriptor.workers:
                 classExtensionAndObjectOps = """\
 {
@@ -388,6 +389,7 @@ JS_NULL_OBJECT_OPS
 """
         else:
             classFlags += "JSCLASS_HAS_RESERVED_SLOTS(%d)" % slotCount
+            reservedSlots = slotCount
         if self.descriptor.interface.getExtendedAttribute("NeedNewResolve"):
             newResolveHook = "(JSResolveOp)" + NEWRESOLVE_HOOK_NAME
             classFlags += " | JSCLASS_NEW_RESOLVE"
@@ -423,6 +425,10 @@ JS_NULL_OBJECT_OPS
               },
               $*{descriptor}
             };
+            static_assert(${instanceReservedSlots} == DOM_INSTANCE_RESERVED_SLOTS,
+                          "Must have the right minimal number of reserved slots.");
+            static_assert(${reservedSlots} >= ${slotCount},
+                          "Must have enough reserved slots.");
             """,
             name=self.descriptor.interface.identifier.name,
             flags=classFlags,
@@ -433,7 +439,10 @@ JS_NULL_OBJECT_OPS
             call=callHook,
             trace=traceHook,
             classExtensionAndObjectOps=classExtensionAndObjectOps,
-            descriptor=DOMClass(self.descriptor))
+            descriptor=DOMClass(self.descriptor),
+            instanceReservedSlots=INSTANCE_RESERVED_SLOTS,
+            reservedSlots=reservedSlots,
+            slotCount=slotCount)
 
 
 class CGDOMProxyJSClass(CGThing):
@@ -2328,6 +2337,8 @@ class CGCreateInterfaceObjectsMethod(CGAbstractMethod):
             parentProtoType = "Rooted"
             if self.descriptor.interface.getExtendedAttribute("ArrayClass"):
                 getParentProto = "aCx, JS_GetArrayPrototype(aCx, aGlobal)"
+            elif self.descriptor.interface.getExtendedAttribute("ExceptionClass"):
+                getParentProto = "aCx, JS_GetErrorPrototype(aCx)"
             else:
                 getParentProto = "aCx, JS_GetObjectPrototype(aCx, aGlobal)"
         else:
@@ -2966,6 +2977,9 @@ class CGWrapGlobalMethod(CGAbstractMethod):
                                                      aOptions,
                                                      aPrincipal);
 
+              // obj is a new global, so has a new compartment.  Enter it
+              // before doing anything with it.
+              JSAutoCompartment ac(aCx, obj);
               $*{unforgeable}
 
               $*{slots}
@@ -5044,7 +5058,7 @@ def getWrapTemplateForType(type, descriptorProvider, result, successCode,
                   $*{innerTemplate}
                 } while (0);
                 if (!JS_DefineElement(cx, returnArray, ${index}, tmp,
-                                      nullptr, nullptr, JSPROP_ENUMERATE)) {
+                                      JSPROP_ENUMERATE)) {
                   $*{exceptionCode}
                 }
               }
@@ -5576,6 +5590,8 @@ class CGCallGenerator(CGThing):
             self.cgRoot.append(CGGeneric("if (rv.Failed()) {\n"))
             self.cgRoot.append(CGIndenter(errorReport))
             self.cgRoot.append(CGGeneric("}\n"))
+
+        self.cgRoot.append(CGGeneric("MOZ_ASSERT(!JS_IsExceptionPending(cx));\n"))
 
     def define(self):
         return self.cgRoot.define()
@@ -6787,8 +6803,8 @@ class CGNewResolveHook(CGAbstractBindingMethod):
             // define it.
             if (!desc.value().isUndefined() &&
                 !JS_DefinePropertyById(cx, obj, id, desc.value(),
-                                       desc.getter(), desc.setter(),
-                                       desc.attributes())) {
+                                       desc.attributes(),
+                                       desc.getter(), desc.setter())) {
               return false;
             }
             objp.set(obj);
@@ -8688,8 +8704,8 @@ class CGResolveOwnPropertyViaNewresolve(CGAbstractBindingMethod):
               if (objDesc.object() &&
                   !objDesc.value().isUndefined() &&
                   !JS_DefinePropertyById(cx, obj, id, objDesc.value(),
-                                         objDesc.getter(), objDesc.setter(),
-                                         objDesc.attributes())) {
+                                         objDesc.attributes(),
+                                         objDesc.getter(), objDesc.setter())) {
                 return false;
               }
             }
@@ -10022,6 +10038,12 @@ class CGDescriptor(CGThing):
             not descriptor.workers):
             cgThings.append(CGConstructorEnabled(descriptor))
 
+        if (descriptor.interface.hasMembersInSlots() and
+            descriptor.interface.hasChildInterfaces()):
+            raise TypeError("We don't support members in slots on "
+                            "non-leaf interfaces like %s" %
+                            descriptor.interface.identifier.name)
+
         if descriptor.concrete:
             if descriptor.proxy:
                 if descriptor.interface.totalMembersInSlots != 0:
@@ -10049,10 +10071,6 @@ class CGDescriptor(CGThing):
                 cgThings.append(CGDOMJSClass(descriptor))
                 cgThings.append(CGGetJSClassMethod(descriptor))
                 if descriptor.interface.hasMembersInSlots():
-                    if descriptor.interface.hasChildInterfaces():
-                        raise TypeError("We don't support members in slots on "
-                                        "non-leaf interfaces like %s" %
-                                        descriptor.interface.identifier.name)
                     cgThings.append(CGUpdateMemberSlotsMethod(descriptor))
 
             if descriptor.interface.getExtendedAttribute("Global"):
@@ -10570,7 +10588,7 @@ class CGDictionary(CGThing):
                              member.location))
 
         propDef = (
-            'JS_DefinePropertyById(cx, obj, atomsCache->%s, temp, nullptr, nullptr, JSPROP_ENUMERATE)' %
+            'JS_DefinePropertyById(cx, obj, atomsCache->%s, temp, JSPROP_ENUMERATE)' %
             self.makeIdName(member.identifier.name))
 
         innerTemplate = wrapForType(
@@ -12525,8 +12543,8 @@ class CallbackMember(CGNativeMember):
                 {
                     'result': result,
                     'successCode': "continue;\n" if arg.variadic else "break;\n",
-                    'jsvalRef': "argv.handleAt(%s)" % jsvalIndex,
-                    'jsvalHandle': "argv.handleAt(%s)" % jsvalIndex,
+                    'jsvalRef': "argv[%s]" % jsvalIndex,
+                    'jsvalHandle': "argv[%s]" % jsvalIndex,
                     # XXXbz we don't have anything better to use for 'obj',
                     # really...  It's OK to use CallbackPreserveColor because
                     # CallSetup already handled the unmark-gray bits for us.
@@ -12558,7 +12576,7 @@ class CallbackMember(CGNativeMember):
                   // This is our current trailing argument; reduce argc
                   --argc;
                 } else {
-                  argv[${i}] = JS::UndefinedValue();
+                  argv[${i}].setUndefined();
                 }
                 """,
                 argName=arg.identifier.name,
@@ -12816,7 +12834,7 @@ class CallbackSetter(CallbackAccessor):
         return fill(
             """
             MOZ_ASSERT(argv.length() == 1);
-            if (!JS_SetProperty(cx, CallbackPreserveColor(), "${attrName}", argv.handleAt(0))) {
+            if (!JS_SetProperty(cx, CallbackPreserveColor(), "${attrName}", argv[0])) {
               aRv.Throw(NS_ERROR_UNEXPECTED);
               return${errorReturn};
             }

@@ -55,7 +55,7 @@ class CSSRuleListImpl : public nsICSSRuleList
 public:
   CSSRuleListImpl(nsCSSStyleSheet *aStyleSheet);
 
-  NS_DECL_ISUPPORTS
+  virtual nsCSSStyleSheet* GetParentObject() MOZ_OVERRIDE;
 
   virtual nsIDOMCSSRule*
   IndexedGetter(uint32_t aIndex, bool& aFound) MOZ_OVERRIDE;
@@ -81,20 +81,11 @@ CSSRuleListImpl::~CSSRuleListImpl()
 {
 }
 
-DOMCI_DATA(CSSRuleList, CSSRuleListImpl)
-
-// QueryInterface implementation for CSSRuleList
-NS_INTERFACE_MAP_BEGIN(CSSRuleListImpl)
-  NS_INTERFACE_MAP_ENTRY(nsICSSRuleList)
-  NS_INTERFACE_MAP_ENTRY(nsIDOMCSSRuleList)
-  NS_INTERFACE_MAP_ENTRY(nsISupports)
-  NS_DOM_INTERFACE_MAP_ENTRY_CLASSINFO(CSSRuleList)
-NS_INTERFACE_MAP_END
-
-
-NS_IMPL_ADDREF(CSSRuleListImpl)
-NS_IMPL_RELEASE(CSSRuleListImpl)
-
+nsCSSStyleSheet*
+CSSRuleListImpl::GetParentObject()
+{
+  return mStyleSheet;
+}
 
 uint32_t
 CSSRuleListImpl::Length()
@@ -1624,47 +1615,30 @@ nsCSSStyleSheet::DidDirty()
 nsresult
 nsCSSStyleSheet::SubjectSubsumesInnerPrincipal()
 {
-  // Get the security manager and do the subsumes check
-  nsIScriptSecurityManager *securityManager =
-    nsContentUtils::GetSecurityManager();
+  nsCOMPtr<nsIPrincipal> subjectPrincipal = nsContentUtils::GetSubjectPrincipal();
+  if (subjectPrincipal->Subsumes(mInner->mPrincipal)) {
+    return NS_OK;
+  }
 
-  nsCOMPtr<nsIPrincipal> subjectPrincipal;
-  nsresult rv = securityManager->GetSubjectPrincipal(getter_AddRefs(subjectPrincipal));
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  if (!subjectPrincipal) {
+  // Allow access only if CORS mode is not NONE
+  if (GetCORSMode() == CORS_NONE) {
     return NS_ERROR_DOM_SECURITY_ERR;
   }
 
-  bool subsumes;
-  rv = subjectPrincipal->Subsumes(mInner->mPrincipal, &subsumes);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  if (subsumes) {
-    return NS_OK;
+  // Now make sure we set the principal of our inner to the
+  // subjectPrincipal.  That means we need a unique inner, of
+  // course.  But we don't want to do that if we're not complete
+  // yet.  Luckily, all the callers of this method throw anyway if
+  // not complete, so we can just do that here too.
+  if (!mInner->mComplete) {
+    return NS_ERROR_DOM_INVALID_ACCESS_ERR;
   }
-  
-  if (!nsContentUtils::IsCallerChrome()) {
-    // Allow access only if CORS mode is not NONE
-    if (GetCORSMode() == CORS_NONE) {
-      return NS_ERROR_DOM_SECURITY_ERR;
-    }
 
-    // Now make sure we set the principal of our inner to the
-    // subjectPrincipal.  That means we need a unique inner, of
-    // course.  But we don't want to do that if we're not complete
-    // yet.  Luckily, all the callers of this method throw anyway if
-    // not complete, so we can just do that here too.
-    if (!mInner->mComplete) {
-      return NS_ERROR_DOM_INVALID_ACCESS_ERR;
-    }
+  WillDirty();
 
-    WillDirty();
+  mInner->mPrincipal = subjectPrincipal;
 
-    mInner->mPrincipal = subjectPrincipal;
-
-    DidDirty();
-  }
+  DidDirty();
 
   return NS_OK;
 }
@@ -1790,7 +1764,7 @@ nsCSSStyleSheet::GetCssRules(nsIDOMCSSRuleList** aCssRules)
   return rv.ErrorCode();
 }
 
-nsIDOMCSSRuleList*
+nsICSSRuleList*
 nsCSSStyleSheet::GetCssRules(ErrorResult& aRv)
 {
   // No doing this on incomplete sheets!

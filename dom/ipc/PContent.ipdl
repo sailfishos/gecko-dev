@@ -21,6 +21,7 @@ include protocol PImageBridge;
 include protocol PIndexedDB;
 include protocol PMemoryReportRequest;
 include protocol PNecko;
+include protocol PSharedBufferManager;
 include protocol PSms;
 include protocol PSpeechSynthesis;
 include protocol PStorage;
@@ -263,6 +264,7 @@ struct PrefSetting {
 intr protocol PContent
 {
     parent opens PCompositor;
+    parent opens PSharedBufferManager;
     parent opens PImageBridge;
     child opens PBackground;
 
@@ -314,8 +316,6 @@ both:
     async PBrowser(IPCTabContext context, uint32_t chromeFlags);
 
     async PBlob(BlobConstructorParams params);
-
-    async PJavaScript();
 
     PFileDescriptorSet(FileDescriptor fd);
 
@@ -422,6 +422,8 @@ parent:
         returns (uint64_t id, bool isForApp, bool isForBrowser);
     sync GetXPCOMProcessAttributes()
         returns (bool isOffline);
+
+    async PJavaScript();
 
     PDeviceStorageRequest(DeviceStorageParams params);
 

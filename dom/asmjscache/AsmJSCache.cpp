@@ -36,6 +36,7 @@
 #include "nsXULAppAPI.h"
 #include "prio.h"
 #include "private/pprio.h"
+#include "mozilla/Services.h"
 
 #define ASMJSCACHE_METADATA_FILE_NAME "metadata"
 #define ASMJSCACHE_ENTRY_FILE_NAME_BASE "module"
@@ -688,7 +689,7 @@ MainProcessRunnable::InitOnMainThread()
       MOZ_ASSERT(isApp);
 
       nsCOMPtr<nsIPermissionManager> pm =
-        do_GetService(NS_PERMISSIONMANAGER_CONTRACTID);
+        services::GetPermissionManager();
       NS_ENSURE_TRUE(pm, NS_ERROR_UNEXPECTED);
 
       uint32_t permission;
@@ -1041,11 +1042,11 @@ MainProcessRunnable::Run()
     case eWaitingToOpenCacheFileForRead:
     case eOpened:
     case eFinished: {
-      MOZ_ASSUME_UNREACHABLE("Shouldn't Run() in this state");
+      MOZ_MAKE_COMPILER_ASSUME_IS_UNREACHABLE("Shouldn't Run() in this state");
     }
   }
 
-  MOZ_ASSUME_UNREACHABLE("Corrupt state");
+  MOZ_MAKE_COMPILER_ASSUME_IS_UNREACHABLE("Corrupt state");
   return NS_OK;
 }
 
@@ -1322,23 +1323,22 @@ AllocEntryParent(OpenMode aOpenMode,
                  WriteParams aWriteParams,
                  nsIPrincipal* aPrincipal)
 {
-  ParentProcessRunnable* runnable =
+  nsRefPtr<ParentProcessRunnable> runnable =
     new ParentProcessRunnable(aPrincipal, aOpenMode, aWriteParams);
-
-  // AddRef to keep the runnable alive until DeallocEntryParent.
-  runnable->AddRef();
 
   nsresult rv = NS_DispatchToMainThread(runnable);
   NS_ENSURE_SUCCESS(rv, nullptr);
 
-  return runnable;
+  // Transfer ownership to IPDL.
+  return runnable.forget().take();
 }
 
 void
 DeallocEntryParent(PAsmJSCacheEntryParent* aActor)
 {
-  // Match the AddRef in AllocEntryParent.
-  static_cast<ParentProcessRunnable*>(aActor)->Release();
+  // Transfer ownership back from IPDL.
+  nsRefPtr<ParentProcessRunnable> op =
+    dont_AddRef(static_cast<ParentProcessRunnable*>(aActor));
 }
 
 namespace {
@@ -1511,11 +1511,11 @@ ChildProcessRunnable::Run()
     case eOpening:
     case eOpened:
     case eFinished: {
-      MOZ_ASSUME_UNREACHABLE("Shouldn't Run() in this state");
+      MOZ_MAKE_COMPILER_ASSUME_IS_UNREACHABLE("Shouldn't Run() in this state");
     }
   }
 
-  MOZ_ASSUME_UNREACHABLE("Corrupt state");
+  MOZ_MAKE_COMPILER_ASSUME_IS_UNREACHABLE("Corrupt state");
   return NS_OK;
 }
 
@@ -1628,8 +1628,7 @@ OpenEntryForRead(nsIPrincipal* aPrincipal,
 }
 
 void
-CloseEntryForRead(JS::Handle<JSObject*> global,
-                  size_t aSize,
+CloseEntryForRead(size_t aSize,
                   const uint8_t* aMemory,
                   intptr_t aFile)
 {
@@ -1682,8 +1681,7 @@ OpenEntryForWrite(nsIPrincipal* aPrincipal,
 }
 
 void
-CloseEntryForWrite(JS::Handle<JSObject*> global,
-                   size_t aSize,
+CloseEntryForWrite(size_t aSize,
                    uint8_t* aMemory,
                    intptr_t aFile)
 {
@@ -1826,13 +1824,13 @@ public:
   WaitForStoragesToComplete(nsTArray<nsIOfflineStorage*>& aStorages,
                             nsIRunnable* aCallback) MOZ_OVERRIDE
   {
-    MOZ_ASSUME_UNREACHABLE("There are no storages");
+    MOZ_ASSERT_UNREACHABLE("There are no storages");
   }
 
   virtual void
   AbortTransactionsForStorage(nsIOfflineStorage* aStorage) MOZ_OVERRIDE
   {
-    MOZ_ASSUME_UNREACHABLE("There are no storages");
+    MOZ_ASSERT_UNREACHABLE("There are no storages");
   }
 
   virtual bool

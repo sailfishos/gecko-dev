@@ -76,7 +76,8 @@
 }
 
 %ifdef WINDOWS_AERO
-@media not all and (-moz-windows-compositor) {
+@media not all and (-moz-windows-compositor),
+       not all and (-moz-windows-default-theme) {
 %endif
   #toolbar-menubar {
     background-color: transparent !important;
@@ -92,10 +93,20 @@
     color: InactiveCaptionText;
   }
 
+  #main-window[tabsintitlebar] #main-menubar > menu:not(:-moz-lwtheme) {
+    color: inherit;
+  }
+
   #TabsToolbar:-moz-lwtheme {
     background: linear-gradient(to top, @toolbarShadowColor@ 2px, transparent 2px);
   }
+%ifdef WINDOWS_AERO
+}
+%endif
 
+%ifdef WINDOWS_AERO
+@media not all and (-moz-windows-compositor) {
+%endif
   #main-window[tabsintitlebar] #titlebar:-moz-lwtheme {
     visibility: hidden;
   }
@@ -105,25 +116,6 @@
     visibility: visible;
   }
 %ifdef WINDOWS_AERO
-}
-%endif
-
-/* Make the menu inherit the toolbar's color. On non-compositor (Aero Basic, XP modern, classic)
- * this is defined above, but only for tabsintitlebar. Otherwise (Aero Glass, Windows 8),
- * this is hardcoded to black in browser-aero.css, even without tabsintitlebar. */
-%ifdef WINDOWS_AERO
-@media not all and (-moz-windows-compositor) {
-%endif
-  #main-window[tabsintitlebar] #main-menubar > menu:not(:-moz-lwtheme) {
-    color: inherit;
-  }
-%ifdef WINDOWS_AERO
-}
-
-@media (-moz-windows-compositor) {
-  #main-menubar > menu:not(:-moz-lwtheme) {
-    color: inherit;
-  }
 }
 %endif
 
@@ -877,6 +869,7 @@ toolbarbutton[sdk-button="true"][cui-areatype="toolbar"] > .toolbarbutton-icon {
 /* unified back/forward button */
 
 #forward-button {
+  -moz-box-align: stretch; /* let the button shape grow vertically with the location bar */
   padding: 0 !important;
 }
 
@@ -1116,7 +1109,7 @@ toolbarbutton[sdk-button="true"][cui-areatype="toolbar"] > .toolbarbutton-icon {
 #urlbar,
 .searchbar-textbox {
   -moz-appearance: none;
-  margin: 1px 3px;
+  margin: 0 3px;
   padding: 0;
   background-clip: padding-box;
   border: 1px solid ThreeDShadow;
@@ -2274,8 +2267,8 @@ toolbarbutton.bookmark-item[dragover="true"][open="true"] {
   -moz-margin-end: -8px;
 }
 
-@conditionalForwardWithUrlbar@[forwarddisabled] > #urlbar-wrapper > #urlbar > #notification-popup-box {
-  padding-left: 5px;
+@conditionalForwardWithUrlbar@ > #forward-button[disabled] + #urlbar > #notification-popup-box {
+  padding-left: 7px;
 }
 
 #notification-popup-box:-moz-locale-dir(rtl),

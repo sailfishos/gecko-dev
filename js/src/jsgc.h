@@ -50,6 +50,18 @@ enum HeapState {
     MinorCollecting   // doing a GC of the minor heap (nursery)
 };
 
+struct ExtraTracer {
+    JSTraceDataOp op;
+    void *data;
+
+    ExtraTracer()
+      : op(nullptr), data(nullptr)
+        {}
+    ExtraTracer(JSTraceDataOp op, void *data)
+      : op(op), data(data)
+        {}
+};
+
 namespace jit {
     class JitCode;
 }
@@ -353,30 +365,165 @@ GetGCKindSlots(AllocKind thingKind, const Class *clasp)
 }
 
 /*
- * ArenaList::head points to the start of the list. Normally cursor points
- * to the first arena in the list with some free things and all arenas
- * before cursor are fully allocated. However, as the arena currently being
- * allocated from is considered full while its list of free spans is moved
- * into the freeList, during the GC or cell enumeration, when an
- * unallocated freeList is moved back to the arena, we can see an arena
- * with some free cells before the cursor. The cursor is an indirect
- * pointer to allow for efficient list insertion at the cursor point and
- * other list manipulations.
+ * Arena lists have a head and a cursor. The cursor conceptually lies on arena
+ * boundaries, i.e. before the first arena, between two arenas, or after the
+ * last arena.
+ *
+ * Normally the arena following the cursor is the first arena in the list with
+ * some free things and all arenas before the cursor are fully allocated. (And
+ * if the cursor is at the end of the list, then all the arenas are full.)
+ *
+ * However, the arena currently being allocated from is considered full while
+ * its list of free spans is moved into the freeList. Therefore, during GC or
+ * cell enumeration, when an unallocated freeList is moved back to the arena,
+ * we can see an arena with some free cells before the cursor.
+ *
+ * Arenas following the cursor should not be full.
  */
-struct ArenaList {
-    ArenaHeader     *head;
-    ArenaHeader     **cursor;
+class ArenaList {
+    // The cursor is implemented via an indirect pointer, |cursorp_|, to allow
+    // for efficient list insertion at the cursor point and other list
+    // manipulations.
+    //
+    // - If the list is empty: |head| is null, |cursorp_| points to |head|, and
+    //   therefore |*cursorp_| is null.
+    //
+    // - If the list is not empty: |head| is non-null, and...
+    //
+    //   - If the cursor is at the start of the list: |cursorp_| points to
+    //     |head|, and therefore |*cursorp_| points to the first arena.
+    //
+    //   - If cursor is at the end of the list: |cursorp_| points to the |next|
+    //     field of the last arena, and therefore |*cursorp_| is null.
+    //
+    //   - If the cursor is at neither the start nor the end of the list:
+    //     |cursorp_| points to the |next| field of the arena preceding the
+    //     cursor, and therefore |*cursorp_| points to the arena following the
+    //     cursor.
+    //
+    // |cursorp_| is never null.
+    //
+    ArenaHeader     *head_;
+    ArenaHeader     **cursorp_;
 
+  public:
     ArenaList() {
         clear();
     }
 
-    void clear() {
-        head = nullptr;
-        cursor = &head;
+    // This does checking just of |head_| and |cursorp_|.
+    void check() const {
+#ifdef DEBUG
+        // If the list is empty, it must have this form.
+        JS_ASSERT_IF(!head_, cursorp_ == &head_);
+
+        // If there's an arena following the cursor, it must not be full.
+        ArenaHeader *cursor = *cursorp_;
+        JS_ASSERT_IF(cursor, cursor->hasFreeThings());
+#endif
     }
 
-    void insert(ArenaHeader *arena);
+    // This does checking involving all the arenas in the list.
+    void deepCheck() const {
+#ifdef DEBUG
+        check();
+        // All full arenas must precede all non-full arenas.
+        //
+        // XXX: this is currently commented out because it fails moderately
+        // often. I'm not sure if this is because (a) it's not true that all
+        // full arenas must precede all non-full arenas, or (b) we have some
+        // defective list-handling code.
+        //
+//      bool havePassedFullArenas = false;
+//      for (ArenaHeader *aheader = head_; aheader; aheader = aheader->next) {
+//          if (havePassedFullArenas) {
+//              JS_ASSERT(aheader->hasFreeThings());
+//          } else if (aheader->hasFreeThings()) {
+//              havePassedFullArenas = true;
+//          }
+//      }
+#endif
+    }
+
+    void clear() {
+        head_ = nullptr;
+        cursorp_ = &head_;
+        check();
+    }
+
+    bool isEmpty() const {
+        check();
+        return !head_;
+    }
+
+    // This returns nullptr if the list is empty.
+    ArenaHeader *head() const {
+        check();
+        return head_;
+    }
+
+    bool isCursorAtEnd() const {
+        check();
+        return !*cursorp_;
+    }
+
+    // This can return nullptr.
+    ArenaHeader *arenaAfterCursor() const {
+        check();
+        return *cursorp_;
+    }
+
+    // This moves the cursor past |aheader|. |aheader| must be an arena within
+    // this list.
+    void moveCursorPast(ArenaHeader *aheader) {
+        cursorp_ = &aheader->next;
+        check();
+    }
+
+    // This does two things.
+    // - Inserts |a| at the cursor.
+    // - Leaves the cursor sitting just before |a|, if |a| is not full, or just
+    //   after |a|, if |a| is full.
+    //
+    void insertAtCursor(ArenaHeader *a) {
+        check();
+        a->next = *cursorp_;
+        *cursorp_ = a;
+        // At this point, the cursor is sitting before |a|. Move it after |a|
+        // if necessary.
+        if (!a->hasFreeThings())
+            cursorp_ = &a->next;
+        check();
+    }
+
+    // This inserts |a| at the start of the list, and doesn't change the
+    // cursor.
+    void insertAtStart(ArenaHeader *a) {
+        check();
+        a->next = head_;
+        if (isEmpty())
+            cursorp_ = &a->next;        // The cursor remains null.
+        head_ = a;
+        check();
+    }
+
+    // Appends |list|. |this|'s cursor must be at the end.
+    void appendToListWithCursorAtEnd(ArenaList &other) {
+        JS_ASSERT(isCursorAtEnd());
+        deepCheck();
+        other.deepCheck();
+        if (!other.isEmpty()) {
+            // Because |this|'s cursor is at the end, |cursorp_| points to the
+            // list-ending null. So this assignment appends |other| to |this|.
+            *cursorp_ = other.head_;
+
+            // If |other|'s cursor isn't at the start of the list, then update
+            // |this|'s cursor accordingly.
+            if (other.cursorp_ != &other.head_)
+                cursorp_ = other.cursorp_;
+        }
+        deepCheck();
+    }
 };
 
 class ArenaLists
@@ -390,13 +537,13 @@ class ArenaLists
      * GC we only move the head of the of the list of spans back to the arena
      * only for the arena that was not fully allocated.
      */
-    FreeSpan       freeLists[FINALIZE_LIMIT];
+    FreeList       freeLists[FINALIZE_LIMIT];
 
     ArenaList      arenaLists[FINALIZE_LIMIT];
 
     /*
      * The background finalization adds the finalized arenas to the list at
-     * the *cursor position. backgroundFinalizeState controls the interaction
+     * the cursor position. backgroundFinalizeState controls the interaction
      * between the GC lock and the access to the list from the allocation
      * thread.
      *
@@ -408,7 +555,7 @@ class ArenaLists
      * lock. The former indicates that the finalization still runs. The latter
      * signals that finalization just added to the list finalized arenas. In
      * that case the lock effectively serves as a read barrier to ensure that
-     * the allocation thread see all the writes done during finalization.
+     * the allocation thread sees all the writes done during finalization.
      */
     enum BackgroundFinalizeState {
         BFS_DONE,
@@ -443,9 +590,10 @@ class ArenaLists
              * the background finalization is disabled.
              */
             JS_ASSERT(backgroundFinalizeState[i] == BFS_DONE);
-            ArenaHeader **headp = &arenaLists[i].head;
-            while (ArenaHeader *aheader = *headp) {
-                *headp = aheader->next;
+            ArenaHeader *next;
+            for (ArenaHeader *aheader = arenaLists[i].head(); aheader; aheader = next) {
+                // Copy aheader->next before releasing.
+                next = aheader->next;
                 aheader->chunk()->releaseArena(aheader);
             }
         }
@@ -453,15 +601,15 @@ class ArenaLists
 
     static uintptr_t getFreeListOffset(AllocKind thingKind) {
         uintptr_t offset = offsetof(ArenaLists, freeLists);
-        return offset + thingKind * sizeof(FreeSpan);
+        return offset + thingKind * sizeof(FreeList);
     }
 
-    const FreeSpan *getFreeList(AllocKind thingKind) const {
+    const FreeList *getFreeList(AllocKind thingKind) const {
         return &freeLists[thingKind];
     }
 
     ArenaHeader *getFirstArena(AllocKind thingKind) const {
-        return arenaLists[thingKind].head;
+        return arenaLists[thingKind].head();
     }
 
     ArenaHeader *getFirstArenaToSweep(AllocKind thingKind) const {
@@ -476,14 +624,10 @@ class ArenaLists
              */
             if (backgroundFinalizeState[i] != BFS_DONE)
                 return false;
-            if (arenaLists[i].head)
+            if (!arenaLists[i].isEmpty())
                 return false;
         }
         return true;
-    }
-
-    bool arenasAreFull(AllocKind thingKind) const {
-        return !*arenaLists[thingKind].cursor;
     }
 
     void unmarkAll() {
@@ -491,7 +635,7 @@ class ArenaLists
             /* The background finalization must have stopped at this point. */
             JS_ASSERT(backgroundFinalizeState[i] == BFS_DONE ||
                       backgroundFinalizeState[i] == BFS_JUST_FINISHED);
-            for (ArenaHeader *aheader = arenaLists[i].head; aheader; aheader = aheader->next) {
+            for (ArenaHeader *aheader = arenaLists[i].head(); aheader; aheader = aheader->next) {
                 uintptr_t *word = aheader->chunk()->bitmap.arenaBits(aheader);
                 memset(word, 0, ArenaBitmapWords * sizeof(uintptr_t));
             }
@@ -517,11 +661,11 @@ class ArenaLists
     }
 
     void purge(AllocKind i) {
-        FreeSpan *headSpan = &freeLists[i];
-        if (!headSpan->isEmpty()) {
-            ArenaHeader *aheader = headSpan->arenaHeader();
-            aheader->setFirstFreeSpan(headSpan);
-            headSpan->initAsEmpty();
+        FreeList *freeList = &freeLists[i];
+        if (!freeList->isEmpty()) {
+            ArenaHeader *aheader = freeList->arenaHeader();
+            aheader->setFirstFreeSpan(freeList->getHead());
+            freeList->initAsEmpty();
         }
     }
 
@@ -538,11 +682,11 @@ class ArenaLists
     }
 
     void copyFreeListToArena(AllocKind thingKind) {
-        FreeSpan *headSpan = &freeLists[thingKind];
-        if (!headSpan->isEmpty()) {
-            ArenaHeader *aheader = headSpan->arenaHeader();
+        FreeList *freeList = &freeLists[thingKind];
+        if (!freeList->isEmpty()) {
+            ArenaHeader *aheader = freeList->arenaHeader();
             JS_ASSERT(!aheader->hasFreeThings());
-            aheader->setFirstFreeSpan(headSpan);
+            aheader->setFirstFreeSpan(freeList->getHead());
         }
     }
 
@@ -557,10 +701,10 @@ class ArenaLists
 
 
     void clearFreeListInArena(AllocKind kind) {
-        FreeSpan *headSpan = &freeLists[kind];
-        if (!headSpan->isEmpty()) {
-            ArenaHeader *aheader = headSpan->arenaHeader();
-            JS_ASSERT(aheader->getFirstFreeSpan().isSameNonEmptySpan(headSpan));
+        FreeList *freeList = &freeLists[kind];
+        if (!freeList->isEmpty()) {
+            ArenaHeader *aheader = freeList->arenaHeader();
+            JS_ASSERT(freeList->isSameNonEmptySpan(aheader->getFirstFreeSpan()));
             aheader->setAsFullyUsed();
         }
     }
@@ -570,16 +714,16 @@ class ArenaLists
      * arena using copyToArena().
      */
     bool isSynchronizedFreeList(AllocKind kind) {
-        FreeSpan *headSpan = &freeLists[kind];
-        if (headSpan->isEmpty())
+        FreeList *freeList = &freeLists[kind];
+        if (freeList->isEmpty())
             return true;
-        ArenaHeader *aheader = headSpan->arenaHeader();
+        ArenaHeader *aheader = freeList->arenaHeader();
         if (aheader->hasFreeThings()) {
             /*
              * If the arena has a free list, it must be the same as one in
              * lists.
              */
-            JS_ASSERT(aheader->getFirstFreeSpan().isSameNonEmptySpan(headSpan));
+            JS_ASSERT(freeList->isSameNonEmptySpan(aheader->getFirstFreeSpan()));
             return true;
         }
         return false;

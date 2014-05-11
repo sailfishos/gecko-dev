@@ -33,6 +33,9 @@
 #if defined(XP_WIN)
 #include <windows.h>
 #include <accctrl.h>
+
+#define PATH_MAX MAX_PATH
+
 #endif // defined(XP_WIN)
 
 #include "jsapi.h"
@@ -540,6 +543,8 @@ static const dom::ConstantSpec gLibcProperties[] =
   INT_CONSTANT(S_IFSOCK),
 #endif // defined(S_IFIFO)
 
+  INT_CONSTANT(PATH_MAX),
+
   // Constants used to define data structures
   //
   // Many data structures have different fields/sizes/etc. on
@@ -732,6 +737,7 @@ static const dom::ConstantSpec gWinProperties[] =
   INT_CONSTANT(DACL_SECURITY_INFORMATION),
 
   // Errors
+  INT_CONSTANT(ERROR_SUCCESS),
   INT_CONSTANT(ERROR_INVALID_HANDLE),
   INT_CONSTANT(ERROR_ACCESS_DENIED),
   INT_CONSTANT(ERROR_DIR_NOT_EMPTY),
@@ -741,6 +747,7 @@ static const dom::ConstantSpec gWinProperties[] =
   INT_CONSTANT(ERROR_NO_MORE_FILES),
   INT_CONSTANT(ERROR_PATH_NOT_FOUND),
   INT_CONSTANT(ERROR_BAD_ARGUMENTS),
+  INT_CONSTANT(ERROR_SHARING_VIOLATION),
   INT_CONSTANT(ERROR_NOT_SUPPORTED),
 
   PROP_END
@@ -770,7 +777,7 @@ JSObject *GetOrCreateObjectProperty(JSContext *cx, JS::Handle<JSObject*> aObject
       JSMSG_UNEXPECTED_TYPE, aProperty, "not an object");
     return nullptr;
   }
-  return JS_DefineObject(cx, aObject, aProperty, nullptr, nullptr,
+  return JS_DefineObject(cx, aObject, aProperty, nullptr, JS::NullPtr(),
                          JSPROP_ENUMERATE);
 }
 

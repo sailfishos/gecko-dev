@@ -1698,7 +1698,13 @@ NS_IMPL_CYCLE_COLLECTION_CLASS(nsGlobalWindow)
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INTERNAL(nsGlobalWindow)
   if (MOZ_UNLIKELY(cb.WantDebugInfo())) {
     char name[512];
-    PR_snprintf(name, sizeof(name), "nsGlobalWindow #%ld", tmp->mWindowID);
+    nsAutoCString uri;
+    if (tmp->mDoc && tmp->mDoc->GetDocumentURI()) {
+      tmp->mDoc->GetDocumentURI()->GetSpec(uri);
+    }
+    PR_snprintf(name, sizeof(name), "nsGlobalWindow #%ld %s %s",
+                tmp->mWindowID, tmp->IsInnerWindow() ? "inner" : "outer",
+                uri.get());
     cb.DescribeRefCountedNode(tmp->mRefCnt.get(), name);
   } else {
     NS_IMPL_CYCLE_COLLECTION_DESCRIBE(nsGlobalWindow, tmp->mRefCnt.get())
@@ -2014,9 +2020,6 @@ nsGlobalWindow::SetInitialPrincipalToSubject()
 
   // First, grab the subject principal.
   nsCOMPtr<nsIPrincipal> newWindowPrincipal = nsContentUtils::GetSubjectPrincipal();
-  if (!newWindowPrincipal) {
-    newWindowPrincipal = nsContentUtils::GetSystemPrincipal();
-  }
 
   // Now, if we're about to use the system principal or an nsExpandedPrincipal,
   // make sure we're not using it for a content docshell.
@@ -6055,52 +6058,41 @@ nsGlobalWindow::MakeScriptDialogTitle(nsAString &aOutTitle)
   // Try to get a host from the running principal -- this will do the
   // right thing for javascript: and data: documents.
 
-  nsresult rv = NS_OK;
-  NS_ASSERTION(nsContentUtils::GetSecurityManager(),
-    "Global Window has no security manager!");
-  if (nsContentUtils::GetSecurityManager()) {
-    nsCOMPtr<nsIPrincipal> principal;
-    rv = nsContentUtils::GetSecurityManager()->
-      GetSubjectPrincipal(getter_AddRefs(principal));
+  nsCOMPtr<nsIPrincipal> principal = nsContentUtils::GetSubjectPrincipal();
+  nsCOMPtr<nsIURI> uri;
+  nsresult rv = principal->GetURI(getter_AddRefs(uri));
+  // Note - The check for the current JSContext here isn't necessarily sensical.
+  // It's just designed to preserve existing behavior during a mass-conversion
+  // patch.
+  if (NS_SUCCEEDED(rv) && uri && nsContentUtils::GetCurrentJSContext()) {
+    // remove user:pass for privacy and spoof prevention
 
-    if (NS_SUCCEEDED(rv) && principal) {
-      nsCOMPtr<nsIURI> uri;
-      rv = principal->GetURI(getter_AddRefs(uri));
+    nsCOMPtr<nsIURIFixup> fixup(do_GetService(NS_URIFIXUP_CONTRACTID));
+    if (fixup) {
+      nsCOMPtr<nsIURI> fixedURI;
+      rv = fixup->CreateExposableURI(uri, getter_AddRefs(fixedURI));
+      if (NS_SUCCEEDED(rv) && fixedURI) {
+        nsAutoCString host;
+        fixedURI->GetHost(host);
 
-      if (NS_SUCCEEDED(rv) && uri) {
-        // remove user:pass for privacy and spoof prevention
+        if (!host.IsEmpty()) {
+          // if this URI has a host we'll show it. For other
+          // schemes (e.g. file:) we fall back to the localized
+          // generic string
 
-        nsCOMPtr<nsIURIFixup> fixup(do_GetService(NS_URIFIXUP_CONTRACTID));
-        if (fixup) {
-          nsCOMPtr<nsIURI> fixedURI;
-          rv = fixup->CreateExposableURI(uri, getter_AddRefs(fixedURI));
-          if (NS_SUCCEEDED(rv) && fixedURI) {
-            nsAutoCString host;
-            fixedURI->GetHost(host);
+          nsAutoCString prepath;
+          fixedURI->GetPrePath(prepath);
 
-            if (!host.IsEmpty()) {
-              // if this URI has a host we'll show it. For other
-              // schemes (e.g. file:) we fall back to the localized
-              // generic string
-
-              nsAutoCString prepath;
-              fixedURI->GetPrePath(prepath);
-
-              NS_ConvertUTF8toUTF16 ucsPrePath(prepath);
-              const char16_t *formatStrings[] = { ucsPrePath.get() };
-              nsXPIDLString tempString;
-              nsContentUtils::FormatLocalizedString(nsContentUtils::eCOMMON_DIALOG_PROPERTIES,
-                                                    "ScriptDlgHeading",
-                                                    formatStrings,
-                                                    tempString);
-              aOutTitle = tempString;
-            }
-          }
+          NS_ConvertUTF8toUTF16 ucsPrePath(prepath);
+          const char16_t *formatStrings[] = { ucsPrePath.get() };
+          nsXPIDLString tempString;
+          nsContentUtils::FormatLocalizedString(nsContentUtils::eCOMMON_DIALOG_PROPERTIES,
+                                                "ScriptDlgHeading",
+                                                formatStrings,
+                                                tempString);
+          aOutTitle = tempString;
         }
       }
-    }
-    else { // failed to get subject principal
-      NS_WARNING("No script principal? Who is calling alert/confirm/prompt?!");
     }
   }
 
@@ -7073,6 +7065,22 @@ nsGlobalWindow::ScrollTo(const CSSIntPoint& aScroll)
     }
     sf->ScrollToCSSPixels(scroll);
   }
+}
+
+void
+nsGlobalWindow::MozRequestOverfill(OverfillCallback& aCallback,
+                                   mozilla::ErrorResult& aError)
+{
+  nsIWidget* widget = nsContentUtils::WidgetForDocument(mDoc);
+  if (widget) {
+    mozilla::layers::LayerManager* manager = widget->GetLayerManager();
+    if (manager) {
+      manager->RequestOverfill(&aCallback);
+      return;
+    }
+  }
+
+  aError.Throw(NS_ERROR_NOT_AVAILABLE);
 }
 
 NS_IMETHODIMP
@@ -8992,6 +9000,9 @@ nsGlobalWindow::ShowModalDialog(JSContext* aCx, const nsAString& aUrl,
   aError = nsContentUtils::XPConnect()->JSToVariant(aCx,
                                                     aArgument,
                                                     getter_AddRefs(args));
+  if (aError.Failed()) {
+    return JS::UndefinedValue();
+  }
 
   nsCOMPtr<nsIVariant> retVal = ShowModalDialog(aUrl, args, aOptions, aError);
   if (aError.Failed()) {
@@ -11693,28 +11704,14 @@ nsGlobalWindow::SetTimeoutOrInterval(nsIScriptTimeoutHandler *aHandler,
   // If our principals subsume the subject principal then use the subject
   // principal. Otherwise, use our principal to avoid running script in
   // elevated principals.
-
-  nsCOMPtr<nsIPrincipal> subjectPrincipal;
-  nsresult rv;
-  rv = nsContentUtils::GetSecurityManager()->
-    GetSubjectPrincipal(getter_AddRefs(subjectPrincipal));
-  if (NS_FAILED(rv)) {
-    return NS_ERROR_FAILURE;
-  }
-
-  bool subsumes = false;
-  nsCOMPtr<nsIPrincipal> ourPrincipal = GetPrincipal();
-
+  //
   // Note the direction of this test: We don't allow setTimeouts running with
   // chrome privileges on content windows, but we do allow setTimeouts running
   // with content privileges on chrome windows (where they can't do very much,
   // of course).
-  rv = ourPrincipal->Subsumes(subjectPrincipal, &subsumes);
-  if (NS_FAILED(rv)) {
-    return NS_ERROR_FAILURE;
-  }
-
-  if (subsumes) {
+  nsCOMPtr<nsIPrincipal> subjectPrincipal = nsContentUtils::GetSubjectPrincipal();
+  nsCOMPtr<nsIPrincipal> ourPrincipal = GetPrincipal();
+  if (ourPrincipal->Subsumes(subjectPrincipal)) {
     timeout->mPrincipal = subjectPrincipal;
   } else {
     timeout->mPrincipal = ourPrincipal;
@@ -11730,6 +11727,7 @@ nsGlobalWindow::SetTimeoutOrInterval(nsIScriptTimeoutHandler *aHandler,
 
     timeout->mWhen = TimeStamp::Now() + delta;
 
+    nsresult rv;
     timeout->mTimer = do_CreateInstance("@mozilla.org/timer;1", &rv);
     if (NS_FAILED(rv)) {
       return rv;
@@ -13653,7 +13651,7 @@ nsGlobalWindow::EnableNetworkEvent(uint32_t aType)
   MOZ_ASSERT(IsInnerWindow());
 
   nsCOMPtr<nsIPermissionManager> permMgr =
-    do_GetService(NS_PERMISSIONMANAGER_CONTRACTID);
+    services::GetPermissionManager();
   if (!permMgr) {
     NS_ERROR("No PermissionManager available!");
     return;

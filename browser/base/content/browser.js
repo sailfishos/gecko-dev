@@ -776,6 +776,14 @@ var gBrowserInit = {
 
     window.addEventListener("AppCommand", HandleAppCommandEvent, true);
 
+    // These routines add message listeners. They must run before
+    // loading the frame script to ensure that we don't miss any
+    // message sent between when the frame script is loaded and when
+    // the listener is registered.
+    DOMLinkHandler.init();
+    gPageStyleMenu.init();
+    LanguageDetectionListener.init();
+
     messageManager.loadFrameScript("chrome://browser/content/content.js", true);
 
     // initialize observers and listeners
@@ -793,9 +801,6 @@ var gBrowserInit = {
     // hook up UI through progress listener
     gBrowser.addProgressListener(window.XULBrowserWindow);
     gBrowser.addTabsProgressListener(window.TabsProgressListener);
-
-    // setup our common DOMLinkAdded listener
-    DOMLinkHandler.init();
 
     // setup simple gestures support
     gGestureSupport.init(true);
@@ -858,9 +863,11 @@ var gBrowserInit = {
       }
     }
 
-    // Certain kinds of automigration rely on this notification to complete their
-    // tasks BEFORE the browser window is shown.
-    Services.obs.notifyObservers(null, "browser-window-before-show", "");
+    // Certain kinds of automigration rely on this notification to complete
+    // their tasks BEFORE the browser window is shown. SessionStore uses it to
+    // restore tabs into windows AFTER important parts like gMultiProcessBrowser
+    // have been initialized.
+    Services.obs.notifyObservers(window, "browser-window-before-show", "");
 
     // Set a sane starting width/height for all resolutions on new profiles.
     if (!document.documentElement.hasAttribute("width")) {
@@ -914,6 +921,31 @@ var gBrowserInit = {
     CombinedStopReload.init();
     gPrivateBrowsingUI.init();
     TabsInTitlebar.init();
+
+#ifdef XP_WIN
+    if (window.matchMedia("(-moz-os-version: windows-win8)").matches &&
+        window.matchMedia("(-moz-windows-default-theme)").matches) {
+      let windowFrameColor = Cu.import("resource:///modules/Windows8WindowFrameColor.jsm", {})
+                               .Windows8WindowFrameColor.get();
+
+      // Formula from W3C's WCAG 2.0 spec's color ratio and relative luminance,
+      // section 1.3.4, http://www.w3.org/TR/WCAG20/ .
+      windowFrameColor = windowFrameColor.map((color) => {
+        if (color <= 10) {
+          return color / 255 / 12.92;
+        }
+        return Math.pow(((color / 255) + 0.055) / 1.055, 2.4);
+      });
+      let backgroundLuminance = windowFrameColor[0] * 0.2126 +
+                                windowFrameColor[1] * 0.7152 +
+                                windowFrameColor[2] * 0.0722;
+      let foregroundLuminance = 0; // Default to black for foreground text.
+      let contrastRatio = (backgroundLuminance + 0.05) / (foregroundLuminance + 0.05);
+      if (contrastRatio < 3) {
+        document.documentElement.setAttribute("darkwindowframe", "true");
+      }
+    }
+#endif
 
     // Wait until chrome is painted before executing code not critical to making the window visible
     this._boundDelayedStartup = this._delayedStartup.bind(this, mustLoadSidebar);
@@ -1020,8 +1052,6 @@ var gBrowserInit = {
     IndexedDBPromptHelper.init();
     gFormSubmitObserver.init();
     gRemoteTabsUI.init();
-    gPageStyleMenu.init();
-    LanguageDetectionListener.init();
 
     // Initialize the full zoom setting.
     // We do this before the session restore service gets initialized so we can
@@ -1170,31 +1200,6 @@ var gBrowserInit = {
       WindowsPrefSync.init();
     }
 
-#ifdef XP_WIN
-    if (window.matchMedia("(-moz-os-version: windows-win8)").matches &&
-        window.matchMedia("(-moz-windows-default-theme)").matches) {
-      let windows8WindowFrameColor = Cu.import("resource:///modules/Windows8WindowFrameColor.jsm", {}).Windows8WindowFrameColor;
-      let windowFrameColor = windows8WindowFrameColor.get();
-
-      // Formula from W3C's WCAG 2.0 spec's color ratio and relative luminance,
-      // section 1.3.4, http://www.w3.org/TR/WCAG20/ .
-      windowFrameColor = windowFrameColor.map((color) => {
-        if (color <= 10) {
-          return color / 255 / 12.92;
-        }
-        return Math.pow(((color / 255) + 0.055) / 1.055, 2.4);
-      });
-      let backgroundLuminance = windowFrameColor[0] * 0.2126 +
-                                windowFrameColor[1] * 0.7152 +
-                                windowFrameColor[2] * 0.0722;
-      let foregroundLuminance = 0; // Default to black for foreground text.
-      let contrastRatio = (backgroundLuminance + 0.05) / (foregroundLuminance + 0.05);
-      if (contrastRatio < 3) {
-        document.documentElement.setAttribute("darkwindowframe", "true");
-      }
-    }
-#endif
-
     SessionStore.promiseInitialized.then(() => {
       // Bail out if the window has been closed in the meantime.
       if (window.closed) {
@@ -1206,8 +1211,6 @@ var gBrowserInit = {
 
       SocialUI.init();
       TabView.init();
-
-      setTimeout(function () { BrowserChromeTest.markAsReady(); }, 0);
     });
     this.delayedStartupFinished = true;
 
@@ -4786,8 +4789,11 @@ const nodeToTooltipMap = {
   "print-button": "printButton.tooltip",
 #endif
   "new-window-button": "newWindowButton.tooltip",
+  "new-tab-button": "newTabButton.tooltip",
+  "tabs-newtab-button": "newTabButton.tooltip",
   "fullscreen-button": "fullscreenButton.tooltip",
   "tabview-button": "tabviewButton.tooltip",
+  "downloads-button": "downloads.tooltip",
 };
 const nodeToShortcutMap = {
   "bookmarks-menu-button": "manBookmarkKb",
@@ -4795,12 +4801,15 @@ const nodeToShortcutMap = {
   "print-button": "printKb",
 #endif
   "new-window-button": "key_newNavigator",
+  "new-tab-button": "key_newNavigatorTab",
+  "tabs-newtab-button": "key_newNavigatorTab",
   "fullscreen-button": "key_fullScreen",
   "tabview-button": "key_tabview",
+  "downloads-button": "key_openDownloads"
 };
 const gDynamicTooltipCache = new Map();
 function UpdateDynamicShortcutTooltipText(aTooltip) {
-  let nodeId = aTooltip.triggerNode.id;
+  let nodeId = aTooltip.triggerNode.id || aTooltip.triggerNode.getAttribute("anonid");
   if (!gDynamicTooltipCache.has(nodeId) && nodeId in nodeToTooltipMap) {
     let strId = nodeToTooltipMap[nodeId];
     let args = [];
@@ -5180,7 +5189,8 @@ function UpdateCurrentCharset(target) {
 }
 
 function charsetLoadListener() {
-  var charset = CharsetMenu.foldCharset(window.content.document.characterSet);
+  let currCharset = gBrowser.selectedBrowser.characterSet;
+  let charset = CharsetMenu.foldCharset(currCharset);
 
   if (charset.length > 0 && (charset != gLastBrowserCharset)) {
     gPrevCharset = gLastBrowserCharset;
@@ -6949,6 +6959,12 @@ var TabContextMenu = {
     for (let menuItem of menuItems)
       menuItem.disabled = disabled;
 
+#ifdef NIGHTLY_BUILD
+    menuItems = aPopupMenu.getElementsByAttribute("tbattr", "tabbrowser-remote");
+    for (let menuItem of menuItems)
+      menuItem.hidden = !gMultiProcessBrowser;
+#endif
+
     disabled = gBrowser.visibleTabs.length == 1;
     menuItems = aPopupMenu.getElementsByAttribute("tbattr", "tabbrowser-multiple-visible");
     for (let menuItem of menuItems)
@@ -7171,23 +7187,6 @@ function focusNextFrame(event) {
   if (element.ownerDocument == document)
     focusAndSelectUrlBar();
 }
-let BrowserChromeTest = {
-  _cb: null,
-  _ready: false,
-  markAsReady: function () {
-    this._ready = true;
-    if (this._cb) {
-      this._cb();
-      this._cb = null;
-    }
-  },
-  runWhenReady: function (cb) {
-    if (this._ready)
-      cb();
-    else
-      this._cb = cb;
-  }
-};
 
 function BrowserOpenNewTabOrWindow(event) {
   if (event.shiftKey) {

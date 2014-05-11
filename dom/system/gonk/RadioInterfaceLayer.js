@@ -24,8 +24,11 @@ Cu.import("resource://gre/modules/systemlibs.js");
 Cu.import("resource://gre/modules/Promise.jsm");
 Cu.import("resource://gre/modules/FileUtils.jsm");
 
-var RIL = {};
-Cu.import("resource://gre/modules/ril_consts.js", RIL);
+XPCOMUtils.defineLazyGetter(this, "RIL", function () {
+  let obj = {};
+  Cu.import("resource://gre/modules/ril_consts.js", obj);
+  return obj;
+});
 
 // set to true in ril_consts.js to see debug messages
 var DEBUG = RIL.DEBUG_RIL;
@@ -46,6 +49,10 @@ function debug(s) {
 // Ril quirk to attach data registration on demand.
 let RILQUIRKS_DATA_REGISTRATION_ON_DEMAND =
   libcutils.property_get("ro.moz.ril.data_reg_on_demand", "false") == "true";
+
+// Ril quirk to control the uicc/data subscription.
+let RILQUIRKS_SUBSCRIPTION_CONTROL =
+  libcutils.property_get("ro.moz.ril.subscription_control", "false") == "true";
 
 // Ril quirk to always turn the radio off for the client without SIM card
 // except hw default client.
@@ -92,7 +99,6 @@ const kSettingsTimezoneAutoUpdateAvailable = "time.timezone.automatic-update.ava
 const NS_PREFBRANCH_PREFCHANGE_TOPIC_ID = "nsPref:changed";
 
 const kPrefCellBroadcastDisabled = "ril.cellbroadcast.disabled";
-const kPrefClirModePreference = "ril.clirMode";
 const kPrefRilNumRadioInterfaces = "ril.numRadioInterfaces";
 
 const DOM_MOBILE_MESSAGE_DELIVERY_RECEIVED = "received";
@@ -787,7 +793,8 @@ XPCOMUtils.defineLazyGetter(this, "gDataConnectionManager", function () {
         this._currentDataClientId = this._dataDefaultClientId;
         let connHandler = this._connectionHandlers[this._currentDataClientId];
         let radioInterface = connHandler.radioInterface;
-        if (RILQUIRKS_DATA_REGISTRATION_ON_DEMAND) {
+        if (RILQUIRKS_DATA_REGISTRATION_ON_DEMAND ||
+            RILQUIRKS_SUBSCRIPTION_CONTROL) {
           radioInterface.setDataRegistration(true);
         }
         if (this._dataEnabled) {
@@ -807,7 +814,8 @@ XPCOMUtils.defineLazyGetter(this, "gDataConnectionManager", function () {
       let newSettings = newConnHandler.dataCallSettings;
 
       if (!this._dataEnabled) {
-        if (RILQUIRKS_DATA_REGISTRATION_ON_DEMAND) {
+        if (RILQUIRKS_DATA_REGISTRATION_ON_DEMAND ||
+            RILQUIRKS_SUBSCRIPTION_CONTROL) {
           oldIface.setDataRegistration(false);
           newIface.setDataRegistration(true);
         }
@@ -823,7 +831,8 @@ XPCOMUtils.defineLazyGetter(this, "gDataConnectionManager", function () {
           if (DEBUG) {
             this.debug("Executing pending data call request.");
           }
-          if (RILQUIRKS_DATA_REGISTRATION_ON_DEMAND) {
+          if (RILQUIRKS_DATA_REGISTRATION_ON_DEMAND ||
+              RILQUIRKS_SUBSCRIPTION_CONTROL) {
             newIface.setDataRegistration(true);
           }
           newSettings.oldEnabled = newSettings.enabled;
@@ -845,7 +854,8 @@ XPCOMUtils.defineLazyGetter(this, "gDataConnectionManager", function () {
       newSettings.enabled = true;
 
       this._currentDataClientId = this._dataDefaultClientId;
-      if (RILQUIRKS_DATA_REGISTRATION_ON_DEMAND) {
+      if (RILQUIRKS_DATA_REGISTRATION_ON_DEMAND ||
+          RILQUIRKS_SUBSCRIPTION_CONTROL) {
         oldIface.setDataRegistration(false);
         newIface.setDataRegistration(true);
       }
@@ -1615,7 +1625,6 @@ WorkerMessenger.prototype = {
     let options = {
       debug: DEBUG,
       cellBroadcastDisabled: false,
-      clirMode: RIL.CLIR_DEFAULT,
       quirks: {
         callstateExtraUint32:
           libcutils.property_get("ro.moz.ril.callstate_extra_int", "false") === "true",
@@ -1631,8 +1640,8 @@ WorkerMessenger.prototype = {
           libcutils.property_get("ro.moz.ril.query_icc_count", "false") == "true",
         sendStkProfileDownload:
           libcutils.property_get("ro.moz.ril.send_stk_profile_dl", "false") == "true",
-        dataRegistrationOnDemand:
-          libcutils.property_get("ro.moz.ril.data_reg_on_demand", "false") == "true"
+        dataRegistrationOnDemand: RILQUIRKS_DATA_REGISTRATION_ON_DEMAND,
+        subscriptionControl: RILQUIRKS_SUBSCRIPTION_CONTROL
       },
       rilEmergencyNumbers: libcutils.property_get("ril.ecclist") ||
                            libcutils.property_get("ro.ril.ecclist")
@@ -1641,10 +1650,6 @@ WorkerMessenger.prototype = {
     try {
       options.cellBroadcastDisabled =
         Services.prefs.getBoolPref(kPrefCellBroadcastDisabled);
-    } catch(e) {}
-
-    try {
-      options.clirMode = Services.prefs.getIntPref(kPrefClirModePreference);
     } catch(e) {}
 
     this.send(null, "setInitialOptions", options);
@@ -3494,16 +3499,6 @@ RadioInterface.prototype = {
                                                 this.clientId, message);
   },
 
-  _updateCallingLineIdRestrictionPref: function(mode) {
-    try {
-      Services.prefs.setIntPref(kPrefClirModePreference, mode);
-      Services.prefs.savePrefFile(null);
-      if (DEBUG) {
-        this.debug(kPrefClirModePreference + " pref is now " + mode);
-      }
-    } catch (e) {}
-  },
-
   sendMMI: function(target, message) {
     if (DEBUG) this.debug("SendMMI " + JSON.stringify(message));
     this.workerMessenger.send("sendMMI", message, (function(response) {
@@ -3511,7 +3506,6 @@ RadioInterface.prototype = {
         this._sendCfStateChanged(response);
       } else if (response.isSetCLIR && response.success) {
         this._sendClirModeChanged(response.clirMode);
-        this._updateCallingLineIdRestrictionPref(response.clirMode);
       }
 
       target.sendAsyncMessage("RIL:SendMMI", {
@@ -3542,7 +3536,6 @@ RadioInterface.prototype = {
     this.workerMessenger.send("setCLIR", message, (function(response) {
       if (response.success) {
         this._sendClirModeChanged(response.clirMode);
-        this._updateCallingLineIdRestrictionPref(response.clirMode);
       }
       target.sendAsyncMessage("RIL:SetCallingLineIdRestriction", {
         clientId: this.clientId,

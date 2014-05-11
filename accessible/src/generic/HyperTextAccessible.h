@@ -119,14 +119,14 @@ public:
    *                       by the offset returned is at [offset]. If the passed-in offset in inside a
    *                       descendant, then the returned offset will be on the relevant embedded object char.
    */
-  int32_t DOMPointToOffset(nsINode* aNode, int32_t aNodeOffset,
-                           bool aIsEndOffset = false) const;
+  uint32_t DOMPointToOffset(nsINode* aNode, int32_t aNodeOffset,
+                            bool aIsEndOffset = false) const;
 
   /**
    * Transform the given a11y point into the offset relative this hypertext.
    */
-  int32_t TransformOffset(Accessible* aDescendant, int32_t aOffset,
-                          bool aIsEndOffset) const;
+  uint32_t TransformOffset(Accessible* aDescendant, uint32_t aOffset,
+                           bool aIsEndOffset) const;
 
   /**
    * Convert start and end hypertext offsets into DOM range.
@@ -302,7 +302,7 @@ public:
    * Get/set caret offset, if no caret then -1.
    */
   int32_t CaretOffset() const;
-  void SetCaretOffset(int32_t aOffset) { SetSelectionRange(aOffset, aOffset); }
+  void SetCaretOffset(int32_t aOffset);
 
   /**
    * Provide the line number for the caret.
@@ -406,6 +406,11 @@ public:
    */
   virtual already_AddRefed<nsIEditor> GetEditor() const;
 
+  /**
+   * Return DOM selection object for the accessible.
+   */
+  dom::Selection* DOMSelection() const;
+
 protected:
   // Accessible
   virtual ENameValueFlag NativeName(nsString& aName) MOZ_OVERRIDE;
@@ -416,12 +421,12 @@ protected:
   /**
    * Transform magic offset into text offset.
    */
-  int32_t ConvertMagicOffset(int32_t aOffset);
+  uint32_t ConvertMagicOffset(int32_t aOffset) const;
 
   /**
    * Adjust an offset the caret stays at to get a text by line boundary.
    */
-  int32_t AdjustCaretOffset(int32_t aOffset) const;
+  uint32_t AdjustCaretOffset(uint32_t aOffset) const;
 
   /**
    * Return true if caret is at end of line.
@@ -440,7 +445,7 @@ protected:
   /**
    * Return an offset of the found word boundary.
    */
-  int32_t FindWordBoundary(int32_t aOffset, nsDirection aDirection,
+  uint32_t FindWordBoundary(uint32_t aOffset, nsDirection aDirection,
                            EWordMovementType aWordMovementType)
   {
     return FindOffset(aOffset, aDirection, eSelectWord, aWordMovementType);
@@ -464,16 +469,16 @@ protected:
   /**
    * Return an offset for requested line boundary. See constants above.
    */
-  int32_t FindLineBoundary(int32_t aOffset,
-                           EWhichLineBoundary aWhichLineBoundary);
+  uint32_t FindLineBoundary(uint32_t aOffset,
+                            EWhichLineBoundary aWhichLineBoundary);
 
   /**
    * Return an offset corresponding to the given direction and selection amount
    * relative the given offset. A helper used to find word or line boundaries.
    */
-  int32_t FindOffset(int32_t aOffset, nsDirection aDirection,
-                     nsSelectionAmount aAmount,
-                     EWordMovementType aWordMovementType = eDefaultBehavior);
+  uint32_t FindOffset(uint32_t aOffset, nsDirection aDirection,
+                      nsSelectionAmount aAmount,
+                      EWordMovementType aWordMovementType = eDefaultBehavior);
 
   /**
    * Return the boundaries of the substring in case of textual frame or
@@ -486,10 +491,9 @@ protected:
   // Selection helpers
 
   /**
-   * Return frame/DOM selection object for the accessible.
+   * Return frame selection object for the accessible.
    */
   already_AddRefed<nsFrameSelection> FrameSelection() const;
-  dom::Selection* DOMSelection() const;
 
   /**
    * Return selection ranges within the accessible subtree.
@@ -516,10 +520,9 @@ protected:
    * @param aEndOffset        [in, out] the end offset
    * @param aAttributes       [out, optional] result attributes
    */
-  nsresult GetSpellTextAttribute(nsINode* aNode, int32_t aNodeOffset,
-                                 int32_t *aStartOffset,
-                                 int32_t *aEndOffset,
-                                 nsIPersistentProperties *aAttributes);
+  void GetSpellTextAttr(nsINode* aNode, int32_t aNodeOffset,
+                        uint32_t* aStartOffset, uint32_t* aEndOffset,
+                        nsIPersistentProperties* aAttributes);
 
 private:
   /**

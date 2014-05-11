@@ -96,7 +96,7 @@ GetJSValFromKeyPathString(JSContext* aCx,
   nsString targetObjectPropName;
   JS::Rooted<JSObject*> targetObject(aCx, nullptr);
   JS::Rooted<JSObject*> obj(aCx,
-    JSVAL_IS_PRIMITIVE(aValue) ? nullptr : JSVAL_TO_OBJECT(aValue));
+    aValue.isPrimitive() ? nullptr : aValue.toObjectOrNull());
 
   while (tokenizer.hasMoreTokens()) {
     const nsDependentSubstring& token = tokenizer.nextToken();
@@ -129,10 +129,10 @@ GetJSValFromKeyPathString(JSContext* aCx,
         }
         if (tokenizer.hasMoreTokens()) {
           // ...and walk to it if there are more steps...
-          if (JSVAL_IS_PRIMITIVE(intermediate)) {
+          if (intermediate.isPrimitive()) {
             return NS_ERROR_DOM_INDEXEDDB_DATA_ERR;
           }
-          obj = JSVAL_TO_OBJECT(intermediate);
+          obj = intermediate.toObjectOrNull();
         }
         else {
           // ...otherwise use it as key
@@ -169,9 +169,7 @@ GetJSValFromKeyPathString(JSContext* aCx,
         }
 
         if (!JS_DefineUCProperty(aCx, obj, token.BeginReading(),
-                                 token.Length(),
-                                 OBJECT_TO_JSVAL(dummy), nullptr, nullptr,
-                                 JSPROP_ENUMERATE)) {
+                                 token.Length(), dummy, JSPROP_ENUMERATE)) {
           IDB_REPORT_INTERNAL_ERR();
           rv = NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR;
           break;
@@ -189,8 +187,7 @@ GetJSValFromKeyPathString(JSContext* aCx,
         }
 
         if (!JS_DefineUCProperty(aCx, obj, token.BeginReading(),
-                                 token.Length(), OBJECT_TO_JSVAL(dummy),
-                                 nullptr, nullptr, JSPROP_ENUMERATE)) {
+                                 token.Length(), dummy, JSPROP_ENUMERATE)) {
           IDB_REPORT_INTERNAL_ERR();
           rv = NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR;
           break;
@@ -272,7 +269,7 @@ KeyPath::Parse(JSContext* aCx, const JS::Value& aValue_, KeyPath* aKeyPath)
   // See if this is a JS array.
   if (JS_IsArrayObject(aCx, aValue)) {
 
-    JS::Rooted<JSObject*> obj(aCx, JSVAL_TO_OBJECT(aValue));
+    JS::Rooted<JSObject*> obj(aCx, aValue.toObjectOrNull());
 
     uint32_t length;
     if (!JS_GetArrayLength(aCx, obj, &length)) {
@@ -301,7 +298,7 @@ KeyPath::Parse(JSContext* aCx, const JS::Value& aValue_, KeyPath* aKeyPath)
     }
   }
   // Otherwise convert it to a string.
-  else if (!JSVAL_IS_NULL(aValue) && !JSVAL_IS_VOID(aValue)) {
+  else if (!aValue.isNull() && !aValue.isUndefined()) {
     JSString* jsstr;
     nsDependentJSString str;
     if (!(jsstr = JS::ToString(aCx, aValue)) ||
@@ -435,7 +432,7 @@ KeyPath::ExtractOrCreateKey(JSContext* aCx, const JS::Value& aValue,
 
   if (NS_FAILED(aKey.AppendItem(aCx, false, value))) {
     NS_ASSERTION(aKey.IsUnset(), "Should be unset");
-    return JSVAL_IS_VOID(value) ? NS_OK : NS_ERROR_DOM_INDEXEDDB_DATA_ERR;
+    return value.isUndefined() ? NS_OK : NS_ERROR_DOM_INDEXEDDB_DATA_ERR;
   }
 
   aKey.FinishArray();

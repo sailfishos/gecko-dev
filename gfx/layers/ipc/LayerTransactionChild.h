@@ -18,6 +18,7 @@ namespace mozilla {
 
 namespace layout {
 class RenderFrameChild;
+class ShadowLayerForwarder;
 }
 
 namespace layers {
@@ -37,18 +38,18 @@ public:
 
   bool IPCOpen() const { return mIPCOpen; }
 
+  void SetForwarder(ShadowLayerForwarder* aForwarder)
+  {
+    mForwarder = aForwarder;
+  }
+
 protected:
   LayerTransactionChild()
     : mIPCOpen(false)
+    , mDestroyed(false)
+    , mForwarder(nullptr)
   {}
   ~LayerTransactionChild() { }
-
-  virtual PGrallocBufferChild*
-  AllocPGrallocBufferChild(const IntSize&,
-                           const uint32_t&, const uint32_t&,
-                           MaybeMagicGrallocBufferHandle*) MOZ_OVERRIDE;
-  virtual bool
-  DeallocPGrallocBufferChild(PGrallocBufferChild* actor) MOZ_OVERRIDE;
 
   virtual PLayerChild* AllocPLayerChild() MOZ_OVERRIDE;
   virtual bool DeallocPLayerChild(PLayerChild* actor) MOZ_OVERRIDE;
@@ -59,6 +60,9 @@ protected:
   virtual PTextureChild* AllocPTextureChild(const SurfaceDescriptor& aSharedData,
                                             const TextureFlags& aFlags) MOZ_OVERRIDE;
   virtual bool DeallocPTextureChild(PTextureChild* actor) MOZ_OVERRIDE;
+
+  virtual bool
+  RecvParentAsyncMessage(const mozilla::layers::AsyncParentMessageData& aMessage) MOZ_OVERRIDE;
 
   virtual void ActorDestroy(ActorDestroyReason why) MOZ_OVERRIDE;
 
@@ -76,6 +80,8 @@ protected:
   friend class layout::RenderFrameChild;
 
   bool mIPCOpen;
+  bool mDestroyed;
+  ShadowLayerForwarder* mForwarder;
 };
 
 } // namespace layers

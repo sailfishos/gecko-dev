@@ -27,6 +27,7 @@ class nsIDOMNavigatorSystemMessages;
 class nsDOMCameraManager;
 class nsDOMDeviceStorage;
 class nsIDOMBlob;
+class nsIPrincipal;
 
 namespace mozilla {
 namespace dom {
@@ -156,6 +157,11 @@ public:
   // The XPCOM GetDoNotTrack is ok
   Geolocation* GetGeolocation(ErrorResult& aRv);
   battery::BatteryManager* GetBattery(ErrorResult& aRv);
+
+  static already_AddRefed<Promise> GetDataStores(nsPIDOMWindow* aWindow,
+                                                 const nsAString& aName,
+                                                 ErrorResult& aRv);
+
   already_AddRefed<Promise> GetDataStores(const nsAString &aName,
                                           ErrorResult& aRv);
   bool Vibrate(uint32_t aDuration);
@@ -282,9 +288,9 @@ public:
   static bool HasFMRadioSupport(JSContext* /* unused */, JSObject* aGlobal);
 #endif // MOZ_B2G_FM
 #ifdef MOZ_NFC
-  static bool HasNfcSupport(JSContext* /* unused */, JSObject* aGlobal);
-  static bool HasNfcPeerSupport(JSContext* /* unused */, JSObject* aGlobal);
-  static bool HasNfcManagerSupport(JSContext* /* unused */, JSObject* aGlobal);
+  static bool HasNFCSupport(JSContext* /* unused */, JSObject* aGlobal);
+  static bool HasNFCPeerSupport(JSContext* /* unused */, JSObject* aGlobal);
+  static bool HasNFCManagerSupport(JSContext* /* unused */, JSObject* aGlobal);
 #endif // MOZ_NFC
 #ifdef MOZ_TIME_MANAGER
   static bool HasTimeSupport(JSContext* /* unused */, JSObject* aGlobal);
@@ -299,11 +305,15 @@ public:
 
   static bool HasInputMethodSupport(JSContext* /* unused */, JSObject* aGlobal);
 
+  static bool HasDataStoreSupport(nsIPrincipal* aPrincipal);
+
   static bool HasDataStoreSupport(JSContext* cx, JSObject* aGlobal);
 
   static bool HasDownloadsSupport(JSContext* aCx, JSObject* aGlobal);
 
   static bool HasPermissionSettingsSupport(JSContext* aCx, JSObject* aGlobal);
+
+  static bool HasNetworkStatsSupport(JSContext* aCx, JSObject* aGlobal);
 
   nsPIDOMWindow* GetParentObject() const
   {

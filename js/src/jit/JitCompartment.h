@@ -216,6 +216,20 @@ class JitRuntime
     // IonScripts in the runtime.
     InlineList<PatchableBackedge> backedgeList_;
 
+    // In certain cases, we want to optimize certain opcodes to typed instructions,
+    // to avoid carrying an extra register to feed into an unbox. Unfortunately,
+    // that's not always possible. For example, a GetPropertyCacheT could return a
+    // typed double, but if it takes its out-of-line path, it could return an
+    // object, and trigger invalidation. The invalidation bailout will consider the
+    // return value to be a double, and create a garbage Value.
+    //
+    // To allow the GetPropertyCacheT optimization, we allow the ability for
+    // GetPropertyCache to override the return value at the top of the stack - the
+    // value that will be temporarily corrupt. This special override value is set
+    // only in callVM() targets that are about to return *and* have invalidated
+    // their callee.
+    js::Value ionReturnOverride_;
+
   private:
     JitCode *generateExceptionTailStub(JSContext *cx);
     JitCode *generateBailoutTailStub(JSContext *cx);
@@ -262,6 +276,10 @@ class JitRuntime
     JSC::ExecutableAllocator *ionAlloc(JSRuntime *rt) {
         JS_ASSERT(rt->currentThreadOwnsInterruptLock());
         return ionAlloc_;
+    }
+
+    bool hasIonAlloc() const {
+        return !!ionAlloc_;
     }
 
     bool ionCodeProtected() {
@@ -341,6 +359,20 @@ class JitRuntime
     JitCode *forkJoinGetSliceStub() const {
         return forkJoinGetSliceStub_;
     }
+
+    bool hasIonReturnOverride() const {
+        return !ionReturnOverride_.isMagic(JS_ARG_POISON);
+    }
+    js::Value takeIonReturnOverride() {
+        js::Value v = ionReturnOverride_;
+        ionReturnOverride_ = js::MagicValue(JS_ARG_POISON);
+        return v;
+    }
+    void setIonReturnOverride(const js::Value &v) {
+        JS_ASSERT(!hasIonReturnOverride());
+        JS_ASSERT(!v.isMagic());
+        ionReturnOverride_ = v;
+    }
 };
 
 class JitZone
@@ -359,33 +391,26 @@ class JitCompartment
     friend class JitActivation;
 
     // Map ICStub keys to ICStub shared code objects.
-    typedef WeakValueCache<uint32_t, ReadBarriered<JitCode> > ICStubCodeMap;
+    typedef WeakValueCache<uint32_t, ReadBarrieredJitCode> ICStubCodeMap;
     ICStubCodeMap *stubCodes_;
 
     // Keep track of offset into various baseline stubs' code at return
     // point from called script.
-    void *baselineCallReturnFromIonAddr_;
-    void *baselineGetPropReturnFromIonAddr_;
-    void *baselineSetPropReturnFromIonAddr_;
-
-    // Same as above, but is used for return from a baseline stub. This is
-    // used for recompiles of on-stack baseline scripts (e.g., for debug
-    // mode).
-    void *baselineCallReturnFromStubAddr_;
-    void *baselineGetPropReturnFromStubAddr_;
-    void *baselineSetPropReturnFromStubAddr_;
+    void *baselineCallReturnAddr_;
+    void *baselineGetPropReturnAddr_;
+    void *baselineSetPropReturnAddr_;
 
     // Stub to concatenate two strings inline. Note that it can't be
     // stored in JitRuntime because masm.newGCString bakes in zone-specific
     // pointers. This has to be a weak pointer to avoid keeping the whole
     // compartment alive.
-    ReadBarriered<JitCode> stringConcatStub_;
-    ReadBarriered<JitCode> parallelStringConcatStub_;
+    ReadBarrieredJitCode stringConcatStub_;
+    ReadBarrieredJitCode parallelStringConcatStub_;
 
     // Set of JSScripts invoked by ForkJoin (i.e. the entry script). These
     // scripts are marked if their respective parallel IonScripts' age is less
     // than a certain amount. See IonScript::parallelAge_.
-    typedef HashSet<EncapsulatedPtrScript> ScriptSet;
+    typedef HashSet<PreBarrieredScript> ScriptSet;
     ScriptSet *activeParallelEntryScripts_;
 
     JitCode *generateStringConcatStub(JSContext *cx, ExecutionMode mode);
@@ -405,54 +430,29 @@ class JitCompartment
         ICStubCodeMap::AddPtr p = stubCodes_->lookupForAdd(key);
         return stubCodes_->add(p, key, stubCode.get());
     }
-    void initBaselineCallReturnFromIonAddr(void *addr) {
-        JS_ASSERT(baselineCallReturnFromIonAddr_ == nullptr);
-        baselineCallReturnFromIonAddr_ = addr;
+    void initBaselineCallReturnAddr(void *addr) {
+        JS_ASSERT(baselineCallReturnAddr_ == nullptr);
+        baselineCallReturnAddr_ = addr;
     }
-    void *baselineCallReturnFromIonAddr() {
-        JS_ASSERT(baselineCallReturnFromIonAddr_ != nullptr);
-        return baselineCallReturnFromIonAddr_;
+    void *baselineCallReturnAddr() {
+        JS_ASSERT(baselineCallReturnAddr_ != nullptr);
+        return baselineCallReturnAddr_;
     }
-    void initBaselineGetPropReturnFromIonAddr(void *addr) {
-        JS_ASSERT(baselineGetPropReturnFromIonAddr_ == nullptr);
-        baselineGetPropReturnFromIonAddr_ = addr;
+    void initBaselineGetPropReturnAddr(void *addr) {
+        JS_ASSERT(baselineGetPropReturnAddr_ == nullptr);
+        baselineGetPropReturnAddr_ = addr;
     }
-    void *baselineGetPropReturnFromIonAddr() {
-        JS_ASSERT(baselineGetPropReturnFromIonAddr_ != nullptr);
-        return baselineGetPropReturnFromIonAddr_;
+    void *baselineGetPropReturnAddr() {
+        JS_ASSERT(baselineGetPropReturnAddr_ != nullptr);
+        return baselineGetPropReturnAddr_;
     }
-    void initBaselineSetPropReturnFromIonAddr(void *addr) {
-        JS_ASSERT(baselineSetPropReturnFromIonAddr_ == nullptr);
-        baselineSetPropReturnFromIonAddr_ = addr;
+    void initBaselineSetPropReturnAddr(void *addr) {
+        JS_ASSERT(baselineSetPropReturnAddr_ == nullptr);
+        baselineSetPropReturnAddr_ = addr;
     }
-    void *baselineSetPropReturnFromIonAddr() {
-        JS_ASSERT(baselineSetPropReturnFromIonAddr_ != nullptr);
-        return baselineSetPropReturnFromIonAddr_;
-    }
-
-    void initBaselineCallReturnFromStubAddr(void *addr) {
-        MOZ_ASSERT(baselineCallReturnFromStubAddr_ == nullptr);
-        baselineCallReturnFromStubAddr_ = addr;;
-    }
-    void *baselineCallReturnFromStubAddr() {
-        JS_ASSERT(baselineCallReturnFromStubAddr_ != nullptr);
-        return baselineCallReturnFromStubAddr_;
-    }
-    void initBaselineGetPropReturnFromStubAddr(void *addr) {
-        JS_ASSERT(baselineGetPropReturnFromStubAddr_ == nullptr);
-        baselineGetPropReturnFromStubAddr_ = addr;
-    }
-    void *baselineGetPropReturnFromStubAddr() {
-        JS_ASSERT(baselineGetPropReturnFromStubAddr_ != nullptr);
-        return baselineGetPropReturnFromStubAddr_;
-    }
-    void initBaselineSetPropReturnFromStubAddr(void *addr) {
-        JS_ASSERT(baselineSetPropReturnFromStubAddr_ == nullptr);
-        baselineSetPropReturnFromStubAddr_ = addr;
-    }
-    void *baselineSetPropReturnFromStubAddr() {
-        JS_ASSERT(baselineSetPropReturnFromStubAddr_ != nullptr);
-        return baselineSetPropReturnFromStubAddr_;
+    void *baselineSetPropReturnAddr() {
+        JS_ASSERT(baselineSetPropReturnAddr_ != nullptr);
+        return baselineSetPropReturnAddr_;
     }
 
     bool notifyOfActiveParallelEntryScript(JSContext *cx, HandleScript script);
@@ -492,7 +492,7 @@ ShouldPreserveParallelJITCode(JSRuntime *rt, JSScript *script, bool increase = f
 {
     IonScript *parallelIon = script->parallelIonScript();
     uint32_t age = increase ? parallelIon->increaseParallelAge() : parallelIon->parallelAge();
-    return age < jit::IonScript::MAX_PARALLEL_AGE && !rt->gcShouldCleanUpEverything;
+    return age < jit::IonScript::MAX_PARALLEL_AGE && !rt->gc.shouldCleanUpEverything;
 }
 
 // On windows systems, really large frames need to be incrementally touched.

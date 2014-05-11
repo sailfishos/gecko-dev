@@ -10,5 +10,7 @@ SIMPLE_PROGRAMS = [
 ]
 
 SOURCES += [
-    '%s.c' % s for s in SIMPLE_PROGRAMS
+    '%s.cpp' % s for s in SIMPLE_PROGRAMS
 ]
+
+FAIL_ON_WARNINGS = True

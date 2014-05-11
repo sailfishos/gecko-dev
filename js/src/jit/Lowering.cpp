@@ -2303,7 +2303,8 @@ LIRGenerator::visitTypeBarrier(MTypeBarrier *ins)
     }
 
     // Handle typebarrier with specific TypeObject/SingleObjects.
-    if (inputType == MIRType_Object && !types->hasType(types::Type::AnyObjectType()))
+    if (inputType == MIRType_Object && !types->hasType(types::Type::AnyObjectType()) &&
+        ins->barrierKind() != BarrierKind::TypeTagOnly)
     {
         LDefinition tmp = needTemp ? temp() : LDefinition::BogusTemp();
         LTypeBarrierO *barrier = new(alloc()) LTypeBarrierO(useRegister(ins->getOperand(0)), tmp);
@@ -3043,6 +3044,21 @@ LIRGenerator::visitGuardString(MGuardString *ins)
 }
 
 bool
+LIRGenerator::visitGuardShapePolymorphic(MGuardShapePolymorphic *ins)
+{
+    MOZ_ASSERT(ins->obj()->type() == MIRType_Object);
+    MOZ_ASSERT(ins->type() == MIRType_Object);
+
+    LGuardShapePolymorphic *guard =
+        new(alloc()) LGuardShapePolymorphic(useRegister(ins->obj()), temp());
+    if (!assignSnapshot(guard, Bailout_ShapeGuard))
+        return false;
+    if (!add(guard, ins))
+        return false;
+    return redefine(ins, ins->obj());
+}
+
+bool
 LIRGenerator::visitAssertRange(MAssertRange *ins)
 {
     MDefinition *input = ins->input();
@@ -3597,6 +3613,9 @@ SpewResumePoint(MBasicBlock *block, MInstruction *ins, MResumePoint *resumePoint
 bool
 LIRGenerator::visitInstruction(MInstruction *ins)
 {
+    if (ins->isRecoveredOnBailout())
+        return true;
+
     if (!gen->ensureBallast())
         return false;
     if (!ins->accept(this))

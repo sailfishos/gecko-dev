@@ -14,14 +14,18 @@ import java.util.Vector;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
+import org.mozilla.gecko.AndroidGamepadManager;
 import org.mozilla.gecko.DynamicToolbar.PinReason;
 import org.mozilla.gecko.DynamicToolbar.VisibilityTransition;
 import org.mozilla.gecko.GeckoProfileDirectories.NoMozillaDirectoryException;
+import org.mozilla.gecko.Telemetry;
+import org.mozilla.gecko.TelemetryContract;
 import org.mozilla.gecko.animation.PropertyAnimator;
 import org.mozilla.gecko.animation.ViewHelper;
 import org.mozilla.gecko.db.BrowserContract.Combined;
 import org.mozilla.gecko.db.BrowserContract.ReadingListItems;
 import org.mozilla.gecko.db.BrowserDB;
+import org.mozilla.gecko.db.SuggestedSites;
 import org.mozilla.gecko.favicons.Favicons;
 import org.mozilla.gecko.favicons.LoadFaviconTask;
 import org.mozilla.gecko.favicons.OnFaviconLoadedListener;
@@ -48,6 +52,7 @@ import org.mozilla.gecko.preferences.GeckoPreferences;
 import org.mozilla.gecko.prompts.Prompt;
 import org.mozilla.gecko.prompts.PromptListItem;
 import org.mozilla.gecko.sync.setup.SyncAccounts;
+import org.mozilla.gecko.tabspanel.TabsPanel;
 import org.mozilla.gecko.toolbar.AutocompleteHandler;
 import org.mozilla.gecko.toolbar.BrowserToolbar;
 import org.mozilla.gecko.toolbar.ToolbarProgressView;
@@ -267,6 +272,10 @@ abstract public class BrowserApp extends GeckoApp
 
     @Override
     public boolean onKey(View v, int keyCode, KeyEvent event) {
+        if (AndroidGamepadManager.handleKeyEvent(event)) {
+            return true;
+        }
+
         // Global onKey handler. This is called if the focused UI doesn't
         // handle the key event, and before Gecko swallows the events.
         if (event.getAction() != KeyEvent.ACTION_DOWN) {
@@ -356,6 +365,14 @@ abstract public class BrowserApp extends GeckoApp
         return super.onKeyDown(keyCode, event);
     }
 
+    @Override
+    public boolean onKeyUp(int keyCode, KeyEvent event) {
+        if (AndroidGamepadManager.handleKeyEvent(event)) {
+            return true;
+        }
+        return super.onKeyUp(keyCode, event);
+    }
+
     void handleReaderListStatusRequest(final String url) {
         ThreadUtils.postToBackgroundThread(new Runnable() {
             @Override
@@ -418,6 +435,31 @@ abstract public class BrowserApp extends GeckoApp
         });
     }
 
+    private void handleReaderFaviconRequest(final String url) {
+        (new UiAsyncTask<Void, Void, String>(ThreadUtils.getBackgroundHandler()) {
+            @Override
+            public String doInBackground(Void... params) {
+                return Favicons.getFaviconURLForPageURL(url);
+            }
+
+            @Override
+            public void onPostExecute(String faviconUrl) {
+                JSONObject args = new JSONObject();
+
+                if (faviconUrl != null) {
+                    try {
+                        args.put("url", url);
+                        args.put("faviconUrl", faviconUrl);
+                    } catch (JSONException e) {
+                        Log.w(LOGTAG, "Error building JSON favicon arguments.", e);
+                    }
+                }
+
+                GeckoAppShell.sendEventToGecko(GeckoEvent.createBroadcastEvent("Reader:FaviconReturn", args.toString()));
+            }
+        }).execute();
+    }
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         mAboutHomeStartupTimer = new Telemetry.UptimeTimer("FENNEC_STARTUP_TIME_ABOUTHOME");
@@ -437,6 +479,10 @@ abstract public class BrowserApp extends GeckoApp
         ((GeckoApplication) getApplication()).prepareLightweightTheme();
         super.onCreate(savedInstanceState);
 
+        // Init suggested sites engine in BrowserDB.
+        final SuggestedSites suggestedSites = new SuggestedSites(getApplicationContext());
+        BrowserDB.setSuggestedSites(suggestedSites);
+
         mViewFlipper = (ViewFlipper) findViewById(R.id.browser_actionbar);
         mActionBar = (ActionModeCompatView) findViewById(R.id.actionbar);
 
@@ -446,6 +492,8 @@ abstract public class BrowserApp extends GeckoApp
         if (Intent.ACTION_VIEW.equals(intent.getAction())) {
             // Show the target URL immediately in the toolbar.
             mBrowserToolbar.setTitle(intent.getDataString());
+
+            Telemetry.sendUIEvent(TelemetryContract.Event.LOAD_URL, TelemetryContract.Method.INTENT);
         }
 
         ((GeckoApp.MainLayout) mMainLayout).setTouchEventInterceptor(new HideTabsTouchListener());
@@ -483,20 +531,26 @@ abstract public class BrowserApp extends GeckoApp
         mFindInPageBar = (FindInPageBar) findViewById(R.id.find_in_page);
         mMediaCastingBar = (MediaCastingBar) findViewById(R.id.media_casting);
 
-        registerEventListener("CharEncoding:Data");
-        registerEventListener("CharEncoding:State");
-        registerEventListener("Feedback:LastUrl");
-        registerEventListener("Feedback:OpenPlayStore");
-        registerEventListener("Feedback:MaybeLater");
-        registerEventListener("Telemetry:Gather");
-        registerEventListener("Settings:Show");
-        registerEventListener("Updater:Launch");
-        registerEventListener("Menu:Add");
-        registerEventListener("Menu:Remove");
-        registerEventListener("Menu:Update");
-        registerEventListener("Accounts:Create");
-        registerEventListener("Accounts:Exist");
-        registerEventListener("Prompt:ShowTop");
+        EventDispatcher.getInstance().registerGeckoThreadListener(this,
+            "CharEncoding:Data",
+            "CharEncoding:State",
+            "Feedback:LastUrl",
+            "Feedback:OpenPlayStore",
+            "Feedback:MaybeLater",
+            "Telemetry:Gather",
+            "Settings:Show",
+            "Updater:Launch",
+            "Menu:Add",
+            "Menu:Remove",
+            "Menu:Update",
+            "Accounts:Create",
+            "Accounts:Exist",
+            "Prompt:ShowTop",
+            "Reader:ListStatusRequest",
+            "Reader:Added",
+            "Reader:Removed",
+            "Reader:Share",
+            "Reader:FaviconRequest");
 
         Distribution.init(this);
         JavaAddonManager.getInstance().init(getApplicationContext());
@@ -558,14 +612,14 @@ abstract public class BrowserApp extends GeckoApp
     @Override
     public void onResume() {
         super.onResume();
-        unregisterEventListener("Prompt:ShowTop");
+        EventDispatcher.getInstance().unregisterGeckoThreadListener(this, "Prompt:ShowTop");
     }
 
     @Override
     public void onPause() {
         super.onPause();
         // Register for Prompt:ShowTop so we can foreground this activity even if it's hidden.
-        registerEventListener("Prompt:ShowTop");
+        EventDispatcher.getInstance().registerGeckoThreadListener(this, "Prompt:ShowTop");
     }
 
     private void setBrowserToolbarListeners() {
@@ -598,6 +652,12 @@ abstract public class BrowserApp extends GeckoApp
             public void onFocusChange(View v, boolean hasFocus) {
                 if (isHomePagerVisible()) {
                     mHomePager.onToolbarFocusChange(hasFocus);
+                }
+
+                if (hasFocus) {
+                    Telemetry.startUISession(TelemetryContract.Session.URLBAR_FOCUSED);
+                } else {
+                    Telemetry.stopUISession(TelemetryContract.Session.URLBAR_FOCUSED);
                 }
             }
         });
@@ -707,6 +767,7 @@ abstract public class BrowserApp extends GeckoApp
             String text = Clipboard.getText();
             if (!TextUtils.isEmpty(text)) {
                 Tabs.getInstance().loadUrl(text);
+                Telemetry.sendUIEvent(TelemetryContract.Event.LOAD_URL, TelemetryContract.Method.CONTEXT_MENU);
             }
             return true;
         }
@@ -830,19 +891,26 @@ abstract public class BrowserApp extends GeckoApp
             mBrowserHealthReporter = null;
         }
 
-        unregisterEventListener("CharEncoding:Data");
-        unregisterEventListener("CharEncoding:State");
-        unregisterEventListener("Feedback:LastUrl");
-        unregisterEventListener("Feedback:OpenPlayStore");
-        unregisterEventListener("Feedback:MaybeLater");
-        unregisterEventListener("Telemetry:Gather");
-        unregisterEventListener("Settings:Show");
-        unregisterEventListener("Updater:Launch");
-        unregisterEventListener("Menu:Add");
-        unregisterEventListener("Menu:Remove");
-        unregisterEventListener("Menu:Update");
-        unregisterEventListener("Accounts:Create");
-        unregisterEventListener("Accounts:Exist");
+        EventDispatcher.getInstance().unregisterGeckoThreadListener(this,
+            "CharEncoding:Data",
+            "CharEncoding:State",
+            "Feedback:LastUrl",
+            "Feedback:OpenPlayStore",
+            "Feedback:MaybeLater",
+            "Telemetry:Gather",
+            "Settings:Show",
+            "Updater:Launch",
+            "Menu:Add",
+            "Menu:Remove",
+            "Menu:Update",
+            "Accounts:Create",
+            "Accounts:Exist",
+            "Prompt:ShowTop",
+            "Reader:ListStatusRequest",
+            "Reader:Added",
+            "Reader:Removed",
+            "Reader:Share",
+            "Reader:FaviconRequest");
 
         if (AppConstants.MOZ_ANDROID_BEAM && Build.VERSION.SDK_INT >= 14) {
             NfcAdapter nfc = NfcAdapter.getDefaultAdapter(this);
@@ -893,6 +961,9 @@ abstract public class BrowserApp extends GeckoApp
 
         GeckoAppShell.openUriExternal(url, "text/plain", "", "",
                                       Intent.ACTION_SEND, tab.getDisplayTitle());
+
+        // Context: Sharing via chrome list (no explicit session is active)
+        Telemetry.sendUIEvent(TelemetryContract.Event.SHARE, TelemetryContract.Method.LIST);
     }
 
     @Override
@@ -1206,6 +1277,9 @@ abstract public class BrowserApp extends GeckoApp
                 final String url = message.getString("url");
                 GeckoAppShell.openUriExternal(url, "text/plain", "", "",
                                               Intent.ACTION_SEND, title);
+            } else if (event.equals("Reader:FaviconRequest")) {
+                final String url = message.getString("url");
+                handleReaderFaviconRequest(url);
             } else if (event.equals("Settings:Show")) {
                 // null strings return "null" (http://code.google.com/p/android/issues/detail?id=13830)
                 String resource = null;
@@ -1561,6 +1635,8 @@ abstract public class BrowserApp extends GeckoApp
         // If the URL doesn't look like a search query, just load it.
         if (!StringUtils.isSearchQuery(url, true)) {
             Tabs.getInstance().loadUrl(url, Tabs.LOADURL_USER_ENTERED);
+
+            Telemetry.sendUIEvent(TelemetryContract.Event.LOAD_URL);
             return;
         }
 
@@ -1586,6 +1662,7 @@ abstract public class BrowserApp extends GeckoApp
                 // using the default search engine.
                 if (TextUtils.isEmpty(keywordUrl)) {
                     Tabs.getInstance().loadUrl(url, Tabs.LOADURL_USER_ENTERED);
+                    Telemetry.sendUIEvent(TelemetryContract.Event.LOAD_URL);
                     return;
                 }
 
@@ -1594,6 +1671,7 @@ abstract public class BrowserApp extends GeckoApp
                 // Otherwise, construct a search query from the bookmark keyword.
                 final String searchUrl = keywordUrl.replace("%s", URLEncoder.encode(keywordSearch));
                 Tabs.getInstance().loadUrl(searchUrl, Tabs.LOADURL_USER_ENTERED);
+                Telemetry.sendUIEvent(TelemetryContract.Event.LOAD_URL, "", "keyword");
             }
         });
     }
@@ -1617,7 +1695,7 @@ abstract public class BrowserApp extends GeckoApp
             message.put("type", BrowserHealthRecorder.EVENT_SEARCH);
             message.put("location", where);
             message.put("identifier", identifier);
-            GeckoAppShell.getEventDispatcher().dispatchEvent(message, null);
+            EventDispatcher.getInstance().dispatchEvent(message, null);
         } catch (Exception e) {
             Log.w(LOGTAG, "Error recording search.", e);
         }
@@ -2277,6 +2355,10 @@ abstract public class BrowserApp extends GeckoApp
 
         final int itemId = item.getItemId();
 
+        // Track the menu action. We don't know much about the context, but we can use this to determine
+        // the frequency of use for various actions.
+        Telemetry.sendUIEvent(TelemetryContract.Event.ACTION, TelemetryContract.Method.MENU, getResources().getResourceEntryName(itemId));
+
         if (itemId == R.id.bookmark) {
             tab = Tabs.getInstance().getSelectedTab();
             if (tab != null) {
@@ -2486,9 +2568,11 @@ abstract public class BrowserApp extends GeckoApp
             return;
         }
 
-        // Dismiss editing mode if the user is loading a URL from an external app.
         if (Intent.ACTION_VIEW.equals(action)) {
+            // Dismiss editing mode if the user is loading a URL from an external app.
             mBrowserToolbar.cancelEdit();
+
+            Telemetry.sendUIEvent(TelemetryContract.Event.LOAD_URL, TelemetryContract.Method.INTENT);
             return;
         }
 

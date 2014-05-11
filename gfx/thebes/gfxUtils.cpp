@@ -15,6 +15,7 @@
 #include "GeckoProfiler.h"
 #include "ImageContainer.h"
 #include "gfx2DGlue.h"
+#include "gfxPrefs.h"
 
 #ifdef XP_WIN
 #include "gfxWindowsPlatform.h"
@@ -998,6 +999,31 @@ gfxUtils::CopySurfaceToDataSourceSurfaceWithFormat(SourceSurface* aSurface,
   return dataSurface.forget();
 }
 
+const uint32_t gfxUtils::sNumFrameColors = 8;
+
+/* static */ const gfx::Color&
+gfxUtils::GetColorForFrameNumber(uint64_t aFrameNumber)
+{
+    static bool initialized = false;
+    static gfx::Color colors[sNumFrameColors];
+
+    if (!initialized) {
+        uint32_t i = 0;
+        colors[i++] = gfx::Color::FromABGR(0xffff0000);
+        colors[i++] = gfx::Color::FromABGR(0xffcc00ff);
+        colors[i++] = gfx::Color::FromABGR(0xff0066cc);
+        colors[i++] = gfx::Color::FromABGR(0xff00ff00);
+        colors[i++] = gfx::Color::FromABGR(0xff33ffff);
+        colors[i++] = gfx::Color::FromABGR(0xffff0099);
+        colors[i++] = gfx::Color::FromABGR(0xff0000ff);
+        colors[i++] = gfx::Color::FromABGR(0xff999999);
+        MOZ_ASSERT(i == sNumFrameColors);
+        initialized = true;
+    }
+
+    return colors[aFrameNumber % sNumFrameColors];
+}
+
 #ifdef MOZ_DUMP_PAINTING
 /* static */ void
 gfxUtils::WriteAsPNG(DrawTarget* aDT, const char* aFile)
@@ -1075,7 +1101,13 @@ gfxUtils::CopyAsDataURL(RefPtr<gfx::SourceSurface> aSourceSurface)
   gfxUtils::CopyAsDataURL(dt.get());
 }
 
-bool gfxUtils::sDumpPaintList = getenv("MOZ_DUMP_PAINT_LIST") != 0;
+static bool sDumpPaintList = getenv("MOZ_DUMP_PAINT_LIST") != 0;
+
+/* static */ bool
+gfxUtils::DumpPaintList() {
+  return sDumpPaintList || gfxPrefs::LayoutDumpDisplayList();
+}
+
 bool gfxUtils::sDumpPainting = getenv("MOZ_DUMP_PAINT") != 0;
 bool gfxUtils::sDumpPaintingToFile = getenv("MOZ_DUMP_PAINT_TO_FILE") != 0;
 FILE *gfxUtils::sDumpPaintFile = nullptr;

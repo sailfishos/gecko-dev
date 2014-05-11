@@ -82,7 +82,7 @@ import mozinfo
 _cleanup_encoding_re = re.compile(u'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f\\\\]')
 def _cleanup_encoding_repl(m):
     c = m.group(0)
-    return '\\\\' if c == '\\' else '\\x{:02X}'.format(ord(c))
+    return '\\\\' if c == '\\' else '\\x{0:02X}'.format(ord(c))
 def cleanup_encoding(s):
     """S is either a byte or unicode string.  Either way it may
        contain control characters, unpaired surrogates, reserved code
@@ -358,8 +358,10 @@ class XPCShellTestThread(Thread):
 
                 yield path
 
-        return (list(sanitize_list(test_object['head'], 'head')),
-                list(sanitize_list(test_object['tail'], 'tail')))
+        headlist = test_object['head'] if 'head' in test_object else ''
+        taillist = test_object['tail'] if 'tail' in test_object else ''
+        return (list(sanitize_list(headlist, 'head')),
+                list(sanitize_list(taillist, 'tail')))
 
     def buildXpcsCmd(self, testdir):
         """

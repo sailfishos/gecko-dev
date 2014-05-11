@@ -15,9 +15,11 @@ const Cu = Components.utils;
 const Cc = Components.classes;
 const Ci = Components.interfaces;
 
+Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/IndexedDBHelper.jsm");
-Cu.import("resource://gre/modules/PhoneNumberUtils.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "PhoneNumberUtils",
+                                  "resource://gre/modules/PhoneNumberUtils.jsm");
 Cu.importGlobalProperties(["indexedDB"]);
 
 /* all exported symbols need to be bound to this on B2G - Bug 961777 */
@@ -971,7 +973,7 @@ ContactDB.prototype = {
     if (DEBUG) debug("invalidate cache");
     this.newTxn("readwrite", SAVED_GETALL_STORE_NAME, function (txn, store) {
       store.clear();
-    }, aErrorCb);
+    }, null, aErrorCb);
   },
 
   incrementRevision: function CDB_incrementRevision(txn) {
@@ -1042,9 +1044,11 @@ ContactDB.prototype = {
           contactsArray.push(aContacts[i]);
         }
 
+        let contactIdsArray = contactsArray.map(function(el) el.id);
+
         // save contact ids in cache
         this.newTxn("readwrite", SAVED_GETALL_STORE_NAME, function(txn, store) {
-          store.put(contactsArray.map(function(el) el.id), aQuery);
+          store.put(contactIdsArray, aQuery);
         }, null, aFailureCb);
 
         // send full contacts

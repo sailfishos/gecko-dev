@@ -24,11 +24,15 @@ XPCOMUtils.defineLazyModuleGetter(this, "CustomizationTabPreloader",
 const SIMPLETEST_OVERRIDES =
   ["ok", "is", "isnot", "ise", "todo", "todo_is", "todo_isnot", "info", "expectAssertions"];
 
-window.addEventListener("load", testOnLoad, false);
+window.addEventListener("load", function testOnLoad() {
+  window.removeEventListener("load", testOnLoad);
+  window.addEventListener("MozAfterPaint", function testOnMozAfterPaint() {
+    window.removeEventListener("MozAfterPaint", testOnMozAfterPaint);
+    setTimeout(testInit, 0);
+  });
+});
 
-function testOnLoad() {
-  window.removeEventListener("load", testOnLoad, false);
-
+function testInit() {
   gConfig = readConfig();
   if (gConfig.testRoot == "browser" ||
       gConfig.testRoot == "metro" ||
@@ -143,15 +147,6 @@ Tester.prototype = {
   },
 
   start: function Tester_start() {
-    // Check whether this window is ready to run tests.
-    if (window.BrowserChromeTest) {
-      BrowserChromeTest.runWhenReady(this.actuallyStart.bind(this));
-      return;
-    }
-    this.actuallyStart();
-  },
-
-  actuallyStart: function Tester_actuallyStart() {
     //if testOnLoad was not called, then gConfig is not defined
     if (!gConfig)
       gConfig = readConfig();
@@ -189,6 +184,7 @@ Tester.prototype = {
                            : this.currentTest ? "Found an unexpected {elt} at the end of test run"
                                               : "Found an unexpected {elt}";
 
+    // Remove stale tabs
     if (this.currentTest && window.gBrowser && gBrowser.tabs.length > 1) {
       while (gBrowser.tabs.length > 1) {
         let lastTab = gBrowser.tabContainer.lastChild;
@@ -199,6 +195,14 @@ Tester.prototype = {
       }
     }
 
+    // Replace the last tab with a fresh one
+    if (window.gBrowser) {
+      gBrowser.addTab("about:blank", { skipAnimation: true });
+      gBrowser.removeCurrentTab();
+      gBrowser.stop();
+    }
+
+    // Remove stale windows
     this.dumper.dump("TEST-INFO | checking window state\n");
     let windowsEnum = Services.wm.getEnumerator(null);
     while (windowsEnum.hasMoreElements()) {
@@ -440,16 +444,6 @@ Tester.prototype = {
     // is invoked to start the tests.
     this.waitForWindowsState((function () {
       if (this.done) {
-        // Many tests randomly add and remove tabs, resulting in the original
-        // tab being replaced by a new one. The last test in the suite doing this
-        // will erroneously be blamed for leaking this new tab's DOM window and
-        // docshell until shutdown. We can prevent this by removing this tab now
-        // that all tests are done.
-        if (window.gBrowser) {
-          gBrowser.addTab();
-          gBrowser.removeCurrentTab();
-        }
-
         // Uninitialize a few things explicitly so that they can clean up
         // frames and browser intentionally kept alive until shutdown to
         // eliminate false positives.

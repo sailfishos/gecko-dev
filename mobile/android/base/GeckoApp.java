@@ -36,6 +36,7 @@ import org.mozilla.gecko.background.announcements.AnnouncementsBroadcastService;
 import org.mozilla.gecko.db.BrowserDB;
 import org.mozilla.gecko.favicons.Favicons;
 import org.mozilla.gecko.gfx.BitmapUtils;
+import org.mozilla.gecko.gfx.FullScreenState;
 import org.mozilla.gecko.gfx.Layer;
 import org.mozilla.gecko.gfx.LayerView;
 import org.mozilla.gecko.gfx.PluginLayer;
@@ -496,31 +497,6 @@ public abstract class GeckoApp
         outState.putString(SAVED_STATE_PRIVATE_SESSION, mPrivateBrowsingSession);
     }
 
-    void handleFaviconRequest(final String url) {
-        (new UiAsyncTask<Void, Void, String>(ThreadUtils.getBackgroundHandler()) {
-            @Override
-            public String doInBackground(Void... params) {
-                return Favicons.getFaviconURLForPageURL(url);
-            }
-
-            @Override
-            public void onPostExecute(String faviconUrl) {
-                JSONObject args = new JSONObject();
-
-                if (faviconUrl != null) {
-                    try {
-                        args.put("url", url);
-                        args.put("faviconUrl", faviconUrl);
-                    } catch (JSONException e) {
-                        Log.w(LOGTAG, "Error building JSON favicon arguments.", e);
-                    }
-                }
-
-                GeckoAppShell.sendEventToGecko(GeckoEvent.createBroadcastEvent("Reader:FaviconReturn", args.toString()));
-            }
-        }).execute();
-    }
-
     void handleClearHistory() {
         BrowserDB.clearHistory(getContentResolver());
     }
@@ -565,9 +541,6 @@ public abstract class GeckoApp
                 // generic log listener
                 final String msg = message.getString("msg");
                 Log.d(LOGTAG, "Log: " + msg);
-            } else if (event.equals("Reader:FaviconRequest")) {
-                final String url = message.getString("url");
-                handleFaviconRequest(url);
             } else if (event.equals("Gecko:DelayedStartup")) {
                 ThreadUtils.postToBackgroundThread(new UninstallListener.DelayedStartupTask(this));
             } else if (event.equals("Gecko:Ready")) {
@@ -592,13 +565,14 @@ public abstract class GeckoApp
                 // Local ref to layerView for thread safety
                 LayerView layerView = mLayerView;
                 if (layerView != null) {
-                    layerView.setFullScreen(true);
+                    layerView.setFullScreenState(message.getBoolean("rootElement")
+                            ? FullScreenState.ROOT_ELEMENT : FullScreenState.NON_ROOT_ELEMENT);
                 }
             } else if (event.equals("DOMFullScreen:Stop")) {
                 // Local ref to layerView for thread safety
                 LayerView layerView = mLayerView;
                 if (layerView != null) {
-                    layerView.setFullScreen(false);
+                    layerView.setFullScreenState(FullScreenState.NONE);
                 }
             } else if (event.equals("Permissions:Data")) {
                 String host = message.getString("host");
@@ -635,6 +609,9 @@ public abstract class GeckoApp
             } else if (event.equals("Share:Text")) {
                 String text = message.getString("text");
                 GeckoAppShell.openUriExternal(text, "text/plain", "", "", Intent.ACTION_SEND, "");
+
+                // Context: Sharing via chrome list (no explicit session is active)
+                Telemetry.sendUIEvent(TelemetryContract.Event.SHARE, TelemetryContract.Method.LIST);
             } else if (event.equals("Image:SetAs")) {
                 String src = message.getString("url");
                 setImageAs(src);
@@ -665,49 +642,7 @@ public abstract class GeckoApp
                 } else {
                     // something went wrong.
                     Log.e(LOGTAG, "Received Contact:Add message with no email nor phone number");
-                }                
-            } else if (event.equals("Intent:GetHandlers")) {
-                Intent intent = GeckoAppShell.getOpenURIIntent((Context) this, message.optString("url"),
-                    message.optString("mime"), message.optString("action"), message.optString("title"));
-                String[] handlers = GeckoAppShell.getHandlersForIntent(intent);
-                List<String> appList = Arrays.asList(handlers);
-                JSONObject handlersJSON = new JSONObject();
-                handlersJSON.put("apps", new JSONArray(appList));
-                EventDispatcher.sendResponse(message, handlersJSON);
-            } else if (event.equals("Intent:Open")) {
-                GeckoAppShell.openUriExternal(message.optString("url"),
-                    message.optString("mime"), message.optString("packageName"),
-                    message.optString("className"), message.optString("action"), message.optString("title"));
-            } else if (event.equals("Intent:OpenForResult")) {
-                Intent intent = GeckoAppShell.getOpenURIIntent(this,
-                                                               message.optString("url"),
-                                                               message.optString("mime"),
-                                                               message.optString("action"),
-                                                               message.optString("title"));
-                intent.setClassName(message.optString("packageName"), message.optString("className"));
-
-                intent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
-
-                final JSONObject originalMessage = message;
-                ActivityHandlerHelper.startIntentForActivity(this,
-                                                             intent,
-                        new ActivityResultHandler() {
-                            @Override
-                            public void onActivityResult (int resultCode, Intent data) {
-                                JSONObject response = new JSONObject();
-
-                                try {
-                                    if (data != null) {
-                                        response.put("extras", bundleToJSON(data.getExtras()));
-                                    }
-                                    response.put("resultCode", resultCode);
-                                } catch (JSONException e) {
-                                    Log.w(LOGTAG, "Error building JSON response.", e);
-                                }
-
-                                EventDispatcher.sendResponse(originalMessage, response);
-                            }
-                        });
+                }
             } else if (event.equals("Locale:Set")) {
                 setLocale(message.getString("locale"));
             } else if (event.equals("NativeApp:IsDebuggable")) {
@@ -866,23 +801,6 @@ public abstract class GeckoApp
                 });
             }
         });
-    }
-
-    private JSONObject bundleToJSON(Bundle bundle) {
-        JSONObject json = new JSONObject();
-        if (bundle == null) {
-            return json;
-        }
-
-        for (String key : bundle.keySet()) {
-            try {
-                json.put(key, bundle.get(key));
-            } catch (JSONException e) {
-                Log.w(LOGTAG, "Error building JSON response.", e);
-            }
-        }
-
-        return json;
     }
 
     private void addFullScreenPluginView(View view) {
@@ -1353,7 +1271,7 @@ public abstract class GeckoApp
                 // through "onDestroy" -- essentially the same as the lifecycle
                 // of the activity itself.
                 final String profilePath = getProfile().getDir().getAbsolutePath();
-                final EventDispatcher dispatcher = GeckoAppShell.getEventDispatcher();
+                final EventDispatcher dispatcher = EventDispatcher.getInstance();
                 Log.i(LOGTAG, "Creating HealthRecorder.");
 
                 final String osLocale = Locale.getDefault().toString();
@@ -1383,6 +1301,7 @@ public abstract class GeckoApp
 
         GeckoAppShell.setNotificationClient(makeNotificationClient());
         NotificationHelper.init(getApplicationContext());
+        IntentHelper.init(this);
     }
 
     /**
@@ -1433,7 +1352,7 @@ public abstract class GeckoApp
 
         if (mLayerView == null) {
             LayerView layerView = (LayerView) findViewById(R.id.layer_view);
-            layerView.initializeView(GeckoAppShell.getEventDispatcher());
+            layerView.initializeView(EventDispatcher.getInstance());
             mLayerView = layerView;
             GeckoAppShell.setLayerView(layerView);
             // bind the GeckoEditable instance to the new LayerView
@@ -1572,41 +1491,34 @@ public abstract class GeckoApp
         mAppStateListeners = new LinkedList<GeckoAppShell.AppStateListener>();
 
         //register for events
-        registerEventListener("log");
-        registerEventListener("Reader:ListStatusRequest");
-        registerEventListener("Reader:Added");
-        registerEventListener("Reader:Removed");
-        registerEventListener("Reader:Share");
-        registerEventListener("Reader:FaviconRequest");
-        registerEventListener("onCameraCapture");
-        registerEventListener("Gecko:Ready");
-        registerEventListener("Gecko:DelayedStartup");
-        registerEventListener("Toast:Show");
-        registerEventListener("DOMFullScreen:Start");
-        registerEventListener("DOMFullScreen:Stop");
-        registerEventListener("ToggleChrome:Hide");
-        registerEventListener("ToggleChrome:Show");
-        registerEventListener("ToggleChrome:Focus");
-        registerEventListener("Permissions:Data");
-        registerEventListener("Session:StatePurged");
-        registerEventListener("Bookmark:Insert");
-        registerEventListener("Accessibility:Event");
-        registerEventListener("Accessibility:Ready");
-        registerEventListener("Shortcut:Remove");
-        registerEventListener("Share:Text");
-        registerEventListener("Image:SetAs");
-        registerEventListener("Sanitize:ClearHistory");
-        registerEventListener("Update:Check");
-        registerEventListener("Update:Download");
-        registerEventListener("Update:Install");
-        registerEventListener("PrivateBrowsing:Data");
-        registerEventListener("Contact:Add");
-        registerEventListener("Intent:Open");
-        registerEventListener("Intent:OpenForResult");
-        registerEventListener("Intent:GetHandlers");
-        registerEventListener("Locale:Set");
-        registerEventListener("NativeApp:IsDebuggable");
-        registerEventListener("SystemUI:Visibility");
+        EventDispatcher.getInstance().registerGeckoThreadListener(this,
+            "log",
+            "onCameraCapture",
+            "Gecko:Ready",
+            "Gecko:DelayedStartup",
+            "Toast:Show",
+            "DOMFullScreen:Start",
+            "DOMFullScreen:Stop",
+            "ToggleChrome:Hide",
+            "ToggleChrome:Show",
+            "ToggleChrome:Focus",
+            "Permissions:Data",
+            "Session:StatePurged",
+            "Bookmark:Insert",
+            "Accessibility:Event",
+            "Accessibility:Ready",
+            "Shortcut:Remove",
+            "Share:Text",
+            "Image:SetAs",
+            "Sanitize:ClearHistory",
+            "Update:Check",
+            "Update:Download",
+            "Update:Install",
+            "PrivateBrowsing:Data",
+            "Contact:Add",
+            "Locale:Set",
+            "NativeApp:IsDebuggable",
+            "SystemUI:Visibility");
 
         EventListener.registerEvents();
 
@@ -1614,14 +1526,14 @@ public abstract class GeckoApp
           SmsManager.getInstance().start();
         }
 
-        mContactService = new ContactService(GeckoAppShell.getEventDispatcher(), this);
+        mContactService = new ContactService(EventDispatcher.getInstance(), this);
 
         mPromptService = new PromptService(this);
 
         mTextSelection = new TextSelection((TextSelectionHandle) findViewById(R.id.start_handle),
                                            (TextSelectionHandle) findViewById(R.id.middle_handle),
                                            (TextSelectionHandle) findViewById(R.id.end_handle),
-                                           GeckoAppShell.getEventDispatcher(),
+                                           EventDispatcher.getInstance(),
                                            this);
 
         PrefsHelper.getPref("app.update.autodownload", new PrefsHelper.PrefHandlerBase() {
@@ -2113,40 +2025,34 @@ public abstract class GeckoApp
     @Override
     public void onDestroy()
     {
-        unregisterEventListener("log");
-        unregisterEventListener("Reader:ListStatusRequest");
-        unregisterEventListener("Reader:Added");
-        unregisterEventListener("Reader:Removed");
-        unregisterEventListener("Reader:Share");
-        unregisterEventListener("Reader:FaviconRequest");
-        unregisterEventListener("onCameraCapture");
-        unregisterEventListener("Gecko:Ready");
-        unregisterEventListener("Gecko:DelayedStartup");
-        unregisterEventListener("Toast:Show");
-        unregisterEventListener("DOMFullScreen:Start");
-        unregisterEventListener("DOMFullScreen:Stop");
-        unregisterEventListener("ToggleChrome:Hide");
-        unregisterEventListener("ToggleChrome:Show");
-        unregisterEventListener("ToggleChrome:Focus");
-        unregisterEventListener("Permissions:Data");
-        unregisterEventListener("Session:StatePurged");
-        unregisterEventListener("Bookmark:Insert");
-        unregisterEventListener("Accessibility:Event");
-        unregisterEventListener("Accessibility:Ready");
-        unregisterEventListener("Shortcut:Remove");
-        unregisterEventListener("Share:Text");
-        unregisterEventListener("Image:SetAs");
-        unregisterEventListener("Sanitize:ClearHistory");
-        unregisterEventListener("Update:Check");
-        unregisterEventListener("Update:Download");
-        unregisterEventListener("Update:Install");
-        unregisterEventListener("PrivateBrowsing:Data");
-        unregisterEventListener("Contact:Add");
-        unregisterEventListener("Intent:Open");
-        unregisterEventListener("Intent:GetHandlers");
-        unregisterEventListener("Locale:Set");
-        unregisterEventListener("NativeApp:IsDebuggable");
-        unregisterEventListener("SystemUI:Visibility");
+        EventDispatcher.getInstance().unregisterGeckoThreadListener(this,
+            "log",
+            "onCameraCapture",
+            "Gecko:Ready",
+            "Gecko:DelayedStartup",
+            "Toast:Show",
+            "DOMFullScreen:Start",
+            "DOMFullScreen:Stop",
+            "ToggleChrome:Hide",
+            "ToggleChrome:Show",
+            "ToggleChrome:Focus",
+            "Permissions:Data",
+            "Session:StatePurged",
+            "Bookmark:Insert",
+            "Accessibility:Event",
+            "Accessibility:Ready",
+            "Shortcut:Remove",
+            "Share:Text",
+            "Image:SetAs",
+            "Sanitize:ClearHistory",
+            "Update:Check",
+            "Update:Download",
+            "Update:Install",
+            "PrivateBrowsing:Data",
+            "Contact:Add",
+            "Locale:Set",
+            "NativeApp:IsDebuggable",
+            "SystemUI:Visibility");
 
         EventListener.unregisterEvents();
 
@@ -2165,6 +2071,7 @@ public abstract class GeckoApp
         if (mTextSelection != null)
             mTextSelection.destroy();
         NotificationHelper.destroy();
+        IntentHelper.destroy();
 
         if (SmsManager.getInstance() != null) {
             SmsManager.getInstance().stop();
@@ -2189,14 +2096,6 @@ public abstract class GeckoApp
         super.onDestroy();
 
         Tabs.unregisterOnTabsChangedListener(this);
-    }
-
-    protected void registerEventListener(String event) {
-        GeckoAppShell.getEventDispatcher().registerEventListener(event, this);
-    }
-
-    protected void unregisterEventListener(String event) {
-        GeckoAppShell.getEventDispatcher().unregisterEventListener(event, this);
     }
 
     // Get a temporary directory, may return null

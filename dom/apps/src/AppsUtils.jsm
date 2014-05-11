@@ -11,7 +11,6 @@ const Cr = Components.results;
 
 Cu.import("resource://gre/modules/osfile.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/Task.jsm");
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Promise.jsm");
 
@@ -124,6 +123,11 @@ this.AppsUtils = {
     }
 
     return null;
+  },
+
+  getManifestFor: function getManifestFor(aManifestURL) {
+    debug("getManifestFor(" + aManifestURL + ")");
+    return DOMApplicationRegistry.getManifestFor(aManifestURL);
   },
 
   getAppLocalIdByManifestURL: function getAppLocalIdByManifestURL(aApps, aManifestURL) {

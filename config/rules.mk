@@ -707,9 +707,6 @@ clean clobber realclean clobber_all distclean::
 else
 clean clobber realclean clobber_all distclean::
 	$(foreach dir,$(PARALLEL_DIRS) $(DIRS) $(TOOL_DIRS),-$(call SUBMAKE,$@,$(dir)))
-
-distclean::
-	$(foreach dir,$(PARALLEL_DIRS) $(DIRS) $(TOOL_DIRS),-$(call SUBMAKE,$@,$(dir)))
 endif
 
 distclean::
@@ -1303,12 +1300,6 @@ ifneq ($(DIST_FILES),)
 DIST_FILES_PATH := $(FINAL_TARGET)
 DIST_FILES_FLAGS := $(XULAPP_DEFINES)
 PP_TARGETS += DIST_FILES
-endif
-
-ifneq ($(DIST_CHROME_FILES),)
-DIST_CHROME_FILES_PATH := $(FINAL_TARGET)/chrome
-DIST_CHROME_FILES_FLAGS := $(XULAPP_DEFINES)
-PP_TARGETS += DIST_CHROME_FILES
 endif
 
 ifneq ($(XPI_PKGNAME),)

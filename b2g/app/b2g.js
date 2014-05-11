@@ -4,8 +4,29 @@
 
 #filter substitution
 
+#ifndef MOZ_MULET
 pref("toolkit.defaultChromeURI", "chrome://b2g/content/shell.html");
 pref("browser.chromeURL", "chrome://b2g/content/");
+#endif
+
+#ifdef MOZ_MULET
+// Set FxOS as the default homepage
+// bug 1000122: this pref is fetched as a complex value,
+// so that it can't be set a just a string.
+// data: url is a workaround this.
+pref("browser.startup.homepage", "data:text/plain,browser.startup.homepage=chrome://b2g/content/shell.html");
+// Prevent having the firstrun page
+pref("startup.homepage_welcome_url", "");
+pref("browser.shell.checkDefaultBrowser", false);
+// Automatically open devtools on the firefox os panel
+pref("devtools.toolbox.host", "side");
+pref("devtools.toolbox.sidebar.width", 800);
+// Disable session store to ensure having only one tab opened
+pref("browser.sessionstore.max_tabs_undo", 0);
+pref("browser.sessionstore.max_windows_undo", 0);
+pref("browser.sessionstore.restore_on_demand", false);
+pref("browser.sessionstore.resume_from_crash", false);
+#endif
 
 // Bug 945235: Prevent all bars to be considered visible:
 pref("toolkit.defaultChromeFeatures", "chrome,dialog=no,close,resizable,scrollbars,extrachrome");
@@ -155,11 +176,6 @@ pref("browser.search.suggest.enabled", true);
 
 // tell the search service that we don't really expose the "current engine"
 pref("browser.search.noCurrentEngine", true);
-
-// Enable sparse localization by setting a few package locale overrides
-pref("chrome.override_package.global", "b2g-l10n");
-pref("chrome.override_package.mozapps", "b2g-l10n");
-pref("chrome.override_package.passwordmgr", "b2g-l10n");
 
 // enable xul error pages
 pref("browser.xul.error_pages.enabled", true);
@@ -517,7 +533,7 @@ pref("marionette.force-local", true);
 #ifdef MOZ_UPDATER
 // When we're applying updates, we can't let anything hang us on
 // quit+restart.  The user has no recourse.
-pref("shutdown.watchdog.timeoutSecs", 5);
+pref("shutdown.watchdog.timeoutSecs", 10);
 // Timeout before the update prompt automatically installs the update
 pref("b2g.update.apply-prompt-timeout", 60000); // milliseconds
 // Amount of time to wait after the user is idle before prompting to apply an update
@@ -569,7 +585,7 @@ pref("extensions.getAddons.cache.enabled", false);
 
 // Context Menu
 pref("ui.click_hold_context_menus", true);
-pref("ui.click_hold_context_menus.delay", 750);
+pref("ui.click_hold_context_menus.delay", 400);
 
 // Enable device storage
 pref("device.storage.enabled", true);
@@ -691,6 +707,19 @@ pref("hal.processPriorityManager.gonk.BACKGROUND.Nice", 18);
 // Processes get this niceness when they have low CPU priority.
 pref("hal.processPriorityManager.gonk.LowCPUNice", 18);
 
+// By default the compositor thread on gonk runs without real-time priority.  RT
+// priority can be enabled by setting this pref to a value between 1 and 99.
+// Note that audio processing currently runs at RT priority 2 or 3 at most.
+//
+// If RT priority is disabled, then the compositor nice value is used.  The
+// code will default to ANDROID_PRIORITY_URGENT_DISPLAY which is -8.  Per gfx
+// request we are keeping the compositor at nice level 0 until we can complete
+// the investigation in bug 982972.
+//
+// Do not change these values without gfx team review.
+pref("hal.gonk.COMPOSITOR.rt_priority", 0);
+pref("hal.gonk.COMPOSITOR.nice", 0);
+
 // Fire a memory pressure event when the system has less than Xmb of memory
 // remaining.  You should probably set this just above Y.KillUnderKB for
 // the highest priority class Y that you want to make an effort to keep alive.
@@ -760,7 +789,11 @@ pref("network.activity.blipIntervalMilliseconds", 250);
 // can be flipped to false.
 pref("network.gonk.manage-offline-status", true);
 
+// On Firefox Mulet, we can't enable shared JSM scope
+// as it breaks most Firefox JSMs (see bug 961777)
+#ifndef MOZ_MULET
 pref("jsloader.reuseGlobal", true);
+#endif
 
 // Enable font inflation for browser tab content.
 pref("font.size.inflation.minTwips", 120);
@@ -806,6 +839,7 @@ pref("general.useragent.updates.retry", 86400); // 1 day
 pref("media.useAudioChannelService", true);
 
 pref("b2g.version", @MOZ_B2G_VERSION@);
+pref("b2g.osName", @MOZ_B2G_OS_NAME@);
 
 // Disable console buffering to save memory.
 pref("consoleservice.buffered", false);
@@ -899,9 +933,9 @@ pref("osfile.reset_worker_delay", 5000);
 pref("apz.asyncscroll.throttle", 40);
 pref("apz.pan_repaint_interval", 16);
 
-// Maximum fling velocity in inches/ms.  Slower devices may need to reduce this
-// to avoid checkerboarding.  Note, float value must be set as a string.
-pref("apz.max_velocity_inches_per_ms", "0.0375");
+// APZ physics settings, tuned by UX designers
+pref("apz.max_velocity_inches_per_ms", "0.07");
+pref("apz.fling_friction", "0.003");
 
 // Tweak default displayport values to reduce the risk of running out of
 // memory when zooming in

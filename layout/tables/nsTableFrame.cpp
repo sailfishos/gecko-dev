@@ -1409,6 +1409,11 @@ nsTableFrame::PaintTableBorderBackground(nsRenderingContext& aRenderingContext,
 int
 nsTableFrame::GetLogicalSkipSides(const nsHTMLReflowState* aReflowState) const
 {
+  if (MOZ_UNLIKELY(StyleBorder()->mBoxDecorationBreak ==
+                     NS_STYLE_BOX_DECORATION_BREAK_CLONE)) {
+    return 0;
+  }
+
   int skip = 0;
   // frame attribute was accounted for in nsHTMLTableElement::MapTableBorderInto
   // account for pagination
@@ -2924,7 +2929,7 @@ nsTableFrame::ReflowChildren(nsTableReflowState& aReflowState,
   }
    // if the child is a tbody in paginated mode reduce the height by a repeated footer
   bool allowRepeatedFooter = false;
-  for (uint32_t childX = 0; childX < rowGroups.Length(); childX++) {
+  for (size_t childX = 0; childX < rowGroups.Length(); childX++) {
     nsIFrame* kidFrame = rowGroups[childX];
     // Get the frame state bits
     // See if we should only reflow the dirty child frames

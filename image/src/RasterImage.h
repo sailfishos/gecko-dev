@@ -181,6 +181,10 @@ public:
   virtual size_t NonHeapSizeOfDecoded() const;
   virtual size_t OutOfProcessSizeOfDecoded() const;
 
+  virtual size_t HeapSizeOfVectorImageDocument(nsACString* aDocURL = nullptr) const MOZ_OVERRIDE {
+    return 0;
+  }
+
   /* Triggers discarding. */
   void Discard(bool force = false);
   void ForceDiscard() { Discard(/* force = */ true); }
@@ -365,7 +369,7 @@ private:
 
     RasterImage* mImage;
 
-    uint32_t mBytesToDecode;
+    size_t mBytesToDecode;
 
     enum DecodeRequestStatus
     {
@@ -677,7 +681,7 @@ private: // data
   // Decoder and friends
   nsRefPtr<Decoder>          mDecoder;
   nsRefPtr<DecodeRequest>    mDecodeRequest;
-  uint32_t                   mBytesDecoded;
+  size_t                     mBytesDecoded;
 
   bool                       mInDecoder;
   // END LOCKED MEMBER VARIABLES
@@ -725,7 +729,7 @@ private: // data
   nsresult SyncDecode();
   nsresult InitDecoder(bool aDoSizeDecode);
   nsresult WriteToDecoder(const char *aBuffer, uint32_t aCount, DecodeStrategy aStrategy);
-  nsresult DecodeSomeData(uint32_t aMaxBytes, DecodeStrategy aStrategy);
+  nsresult DecodeSomeData(size_t aMaxBytes, DecodeStrategy aStrategy);
   bool     IsDecodeFinished();
   TimeStamp mDrawStartTime;
 

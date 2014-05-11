@@ -173,7 +173,7 @@ JS_FRIEND_API(bool)
 JS_SetDebugModeForAllCompartments(JSContext *cx, bool debug)
 {
     for (ZonesIter zone(cx->runtime(), SkipAtoms); !zone.done(); zone.next()) {
-        // Invalidate a zone at a time to avoid doing a zone-wide CellIter
+        // Invalidate a zone at a time to avoid doing a ZoneCellIter
         // per compartment.
         AutoDebugModeInvalidation invalidate(zone);
         for (CompartmentsInZoneIter c(zone); !c.done(); c.next()) {
@@ -297,7 +297,7 @@ JS_SetWatchPoint(JSContext *cx, HandleObject origobj, HandleId id,
 {
     assertSameCompartment(cx, origobj);
 
-    RootedObject obj(cx, GetInnerObject(cx, origobj));
+    RootedObject obj(cx, GetInnerObject(origobj));
     if (!obj)
         return false;
 
@@ -677,7 +677,7 @@ JS_GetPropertyDescArray(JSContext *cx, JS::HandleObject obj, JSPropertyDescArray
             pd[i].id = IdToValue(props[i]);
             if (!AddValueRoot(cx, &pd[i].value, nullptr))
                 goto bad;
-            if (!Proxy::get(cx, obj, obj, props.handleAt(i), MutableHandleValue::fromMarkedLocation(&pd[i].value)))
+            if (!Proxy::get(cx, obj, obj, props[i], MutableHandleValue::fromMarkedLocation(&pd[i].value)))
                 goto bad;
         }
 
@@ -835,7 +835,7 @@ JS_DumpPCCounts(JSContext *cx, HandleScript script)
 JS_PUBLIC_API(void)
 JS_DumpCompartmentPCCounts(JSContext *cx)
 {
-    for (CellIter i(cx->zone(), gc::FINALIZE_SCRIPT); !i.done(); i.next()) {
+    for (ZoneCellIter i(cx->zone(), gc::FINALIZE_SCRIPT); !i.done(); i.next()) {
         RootedScript script(cx, i.get<JSScript>());
         if (script->compartment() != cx->compartment())
             continue;
@@ -1023,7 +1023,7 @@ FormatFrame(JSContext *cx, const NonBuiltinScriptFrameIter &iter, char *buf, int
     AutoPropertyDescArray thisProps(cx);
     if (iter.computeThis(cx)) {
         thisVal = iter.computedThisValue();
-        if (showThisProps && !thisVal.isPrimitive()) {
+        if (showThisProps && thisVal.isObject()) {
             RootedObject thisObj(cx, &thisVal.toObject());
             thisProps.fetch(thisObj);
         }

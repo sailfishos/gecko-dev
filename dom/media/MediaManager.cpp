@@ -24,10 +24,12 @@
 #include "nsISupportsPrimitives.h"
 #include "nsIInterfaceRequestorUtils.h"
 #include "mozilla/Types.h"
+#include "mozilla/PeerIdentity.h"
 #include "mozilla/dom/ContentChild.h"
 #include "mozilla/dom/MediaStreamBinding.h"
 #include "mozilla/dom/MediaStreamTrackBinding.h"
 #include "mozilla/dom/GetUserMediaRequestBinding.h"
+#include "mozilla/Preferences.h"
 #include "MediaTrackConstraints.h"
 
 #include "Latency.h"
@@ -38,6 +40,8 @@
 #include "nsJSUtils.h"
 #include "nsDOMFile.h"
 #include "nsGlobalWindow.h"
+
+#include "mozilla/Preferences.h"
 
 /* Using WebRTC backend on Desktops (Mac, Windows, Linux), otherwise default */
 #include "MediaEngineDefault.h"
@@ -494,11 +498,13 @@ public:
     uint64_t aWindowID,
     GetUserMediaCallbackMediaStreamListener* aListener,
     MediaEngineSource* aAudioSource,
-    MediaEngineSource* aVideoSource)
+    MediaEngineSource* aVideoSource,
+    PeerIdentity* aPeerIdentity)
     : mAudioSource(aAudioSource)
     , mVideoSource(aVideoSource)
     , mWindowID(aWindowID)
     , mListener(aListener)
+    , mPeerIdentity(aPeerIdentity)
     , mManager(MediaManager::GetInstance())
   {
     mSuccess.swap(aSuccess);
@@ -621,9 +627,16 @@ public:
                reinterpret_cast<uint64_t>(stream.get()),
                reinterpret_cast<int64_t>(trackunion->GetStream()));
 
-    trackunion->CombineWithPrincipal(window->GetExtantDoc()->NodePrincipal());
+    nsCOMPtr<nsIPrincipal> principal;
+    if (mPeerIdentity) {
+      principal = do_CreateInstance("@mozilla.org/nullprincipal;1");
+      trackunion->SetPeerIdentity(mPeerIdentity.forget());
+    } else {
+      principal = window->GetExtantDoc()->NodePrincipal();
+    }
+    trackunion->CombineWithPrincipal(principal);
 
-    // The listener was added at the begining in an inactive state.
+    // The listener was added at the beginning in an inactive state.
     // Activate our listener. We'll call Start() on the source when get a callback
     // that the MediaStream has started consuming. The listener is freed
     // when the page is invalidated (on navigation or close).
@@ -662,6 +675,7 @@ private:
   nsRefPtr<MediaEngineSource> mVideoSource;
   uint64_t mWindowID;
   nsRefPtr<GetUserMediaCallbackMediaStreamListener> mListener;
+  nsAutoPtr<PeerIdentity> mPeerIdentity;
   nsRefPtr<MediaManager> mManager; // get ref to this when creating the runnable
 };
 
@@ -717,7 +731,7 @@ static SourceSet *
   GetSources(MediaEngine *engine,
              ConstraintsType &aConstraints,
              void (MediaEngine::* aEnumerate)(nsTArray<nsRefPtr<SourceType> >*),
-             char* media_device_name = nullptr)
+             const char* media_device_name = nullptr)
 {
   ScopedDeletePtr<SourceSet> result(new SourceSet);
 
@@ -735,7 +749,6 @@ static SourceSet *
       * to.
       */
     for (uint32_t len = sources.Length(), i = 0; i < len; i++) {
-#ifdef DEBUG
       sources[i]->GetName(deviceName);
       if (media_device_name && strlen(media_device_name) > 0)  {
         if (deviceName.EqualsASCII(media_device_name)) {
@@ -743,11 +756,8 @@ static SourceSet *
           break;
         }
       } else {
-#endif
         candidateSet.AppendElement(MediaDevice::Create(sources[i]));
-#ifdef DEBUG
       }
-#endif
     }
   }
 
@@ -1055,9 +1065,14 @@ public:
         return;
       }
     }
+    PeerIdentity* peerIdentity = nullptr;
+    if (!mConstraints.mPeerIdentity.IsEmpty()) {
+      peerIdentity = new PeerIdentity(mConstraints.mPeerIdentity);
+    }
 
     NS_DispatchToMainThread(new GetUserMediaStreamRunnable(
-      mSuccess, mError, mWindowID, mListener, aAudioSource, aVideoSource
+      mSuccess, mError, mWindowID, mListener, aAudioSource, aVideoSource,
+      peerIdentity
     ));
 
     MOZ_ASSERT(!mSuccess);
@@ -1128,7 +1143,8 @@ public:
     const MediaStreamConstraints& aConstraints,
     already_AddRefed<nsIGetUserMediaDevicesSuccessCallback> aSuccess,
     already_AddRefed<nsIDOMGetUserMediaErrorCallback> aError,
-    uint64_t aWindowId, char* aAudioLoopbackDev, char* aVideoLoopbackDev)
+    uint64_t aWindowId, nsACString& aAudioLoopbackDev,
+    nsACString& aVideoLoopbackDev)
     : mConstraints(aConstraints)
     , mSuccess(aSuccess)
     , mError(aError)
@@ -1153,14 +1169,14 @@ public:
       VideoTrackConstraintsN constraints(GetInvariant(mConstraints.mVideo));
       ScopedDeletePtr<SourceSet> s(GetSources(backend, constraints,
           &MediaEngine::EnumerateVideoDevices,
-          mLoopbackVideoDevice));
+          mLoopbackVideoDevice.get()));
       final->MoveElementsFrom(*s);
     }
     if (IsOn(mConstraints.mAudio)) {
       AudioTrackConstraintsN constraints(GetInvariant(mConstraints.mAudio));
       ScopedDeletePtr<SourceSet> s (GetSources(backend, constraints,
           &MediaEngine::EnumerateAudioDevices,
-          mLoopbackAudioDevice));
+          mLoopbackAudioDevice.get()));
       final->MoveElementsFrom(*s);
     }
     NS_DispatchToMainThread(new DeviceSuccessCallbackRunnable(mWindowId,
@@ -1181,8 +1197,8 @@ private:
   // Audio & Video loopback devices to be used based on
   // the preference settings. This is currently used for
   // automated media tests only.
-  char* mLoopbackAudioDevice;
-  char* mLoopbackVideoDevice;
+  nsCString mLoopbackAudioDevice;
+  nsCString mLoopbackVideoDevice;
 };
 
 MediaManager::MediaManager()
@@ -1296,8 +1312,8 @@ MediaManager::NotifyRecordingStatusChange(nsPIDOMWindow* aWindow,
   props->SetPropertyAsAString(NS_LITERAL_STRING("requestURL"), requestURL);
 
   obs->NotifyObservers(static_cast<nsIPropertyBag2*>(props),
-		       "recording-device-events",
-		       aMsg.get());
+                       "recording-device-events",
+                       aMsg.get());
 
   // Forward recording events to parent process.
   // The events are gathered in chrome process and used for recording indicator
@@ -1331,6 +1347,8 @@ MediaManager::GetUserMedia(bool aPrivileged,
 
   nsCOMPtr<nsIDOMGetUserMediaSuccessCallback> onSuccess(aOnSuccess);
   nsCOMPtr<nsIDOMGetUserMediaErrorCallback> onError(aOnError);
+
+  MediaStreamConstraints c(aConstraints); // copy
 
   /**
    * If we were asked to get a picture, before getting a snapshot, we check if
@@ -1391,8 +1409,6 @@ MediaManager::GetUserMedia(bool aPrivileged,
 
   // No need for locking because we always do this in the main thread.
   listeners->AppendElement(listener);
-
-  MediaStreamConstraints c(aConstraints); // copy
 
   // Developer preference for turning off permission check.
   if (Preferences::GetBool("media.navigator.permission.disabled", false)) {
@@ -1566,22 +1582,12 @@ MediaManager::GetUserMediaDevices(nsPIDOMWindow* aWindow,
 
   nsCOMPtr<nsIGetUserMediaDevicesSuccessCallback> onSuccess(aOnSuccess);
   nsCOMPtr<nsIDOMGetUserMediaErrorCallback> onError(aOnError);
-  char* loopbackAudioDevice = nullptr;
-  char* loopbackVideoDevice = nullptr;
-
-#ifdef DEBUG
-  nsresult rv;
 
   // Check if the preference for using loopback devices is enabled.
-  nsCOMPtr<nsIPrefService> prefs = do_GetService("@mozilla.org/preferences-service;1", &rv);
-  if (NS_SUCCEEDED(rv)) {
-    nsCOMPtr<nsIPrefBranch> branch = do_QueryInterface(prefs);
-    if (branch) {
-      branch->GetCharPref("media.audio_loopback_dev", &loopbackAudioDevice);
-      branch->GetCharPref("media.video_loopback_dev", &loopbackVideoDevice);
-    }
-  }
-#endif
+  nsAdoptingCString loopbackAudioDevice =
+    Preferences::GetCString("media.audio_loopback_dev");
+  nsAdoptingCString loopbackVideoDevice =
+    Preferences::GetCString("media.video_loopback_dev");
 
   nsCOMPtr<nsIRunnable> gUMDRunnable = new GetUserMediaDevicesRunnable(
     aConstraints, onSuccess.forget(), onError.forget(),
@@ -1676,8 +1682,7 @@ MediaManager::RemoveFromWindowList(uint64_t aWindowID,
         // Notify the UI that this window no longer has gUM active
         char windowBuffer[32];
         PR_snprintf(windowBuffer, sizeof(windowBuffer), "%llu", outerID);
-        nsAutoString data;
-        data.Append(NS_ConvertUTF8toUTF16(windowBuffer));
+        nsString data = NS_ConvertUTF8toUTF16(windowBuffer);
 
         nsCOMPtr<nsIObserverService> obs = services::GetObserverService();
         obs->NotifyObservers(nullptr, "recording-window-ended", data.get());

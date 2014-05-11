@@ -3021,7 +3021,11 @@ XREMain::XRE_mainInit(bool* aExitFlag)
   if ((mAppData->flags & NS_XRE_ENABLE_CRASH_REPORTER) &&
       NS_SUCCEEDED(
          CrashReporter::SetExceptionHandler(mAppData->xreDirectory))) {
-    CrashReporter::UpdateCrashEventsDir();
+    nsCOMPtr<nsIFile> file;
+    rv = mDirProvider.GetUserAppDataDirectory(getter_AddRefs(file));
+    if (NS_SUCCEEDED(rv)) {
+      CrashReporter::SetUserAppDataDirectory(file);
+    }
     if (mAppData->crashReporterURL)
       CrashReporter::SetServerURL(nsDependentCString(mAppData->crashReporterURL));
 
@@ -3676,7 +3680,7 @@ XREMain::XRE_mainStartup(bool* aExitFlag)
   if (mAppData->flags & NS_XRE_ENABLE_CRASH_REPORTER)
       MakeOrSetMinidumpPath(mProfD);
 
-  CrashReporter::UpdateCrashEventsDir();
+  CrashReporter::SetProfileDirectory(mProfD);
 #endif
 
   nsAutoCString version;
@@ -4036,8 +4040,6 @@ XREMain::XRE_main(int argc, char* argv[], const nsXREAppData* aAppData)
   GeckoProfilerInitRAII profilerGuard(&aLocal);
   PROFILER_LABEL("Startup", "XRE_Main");
 
-  mozilla::IOInterposerInit ioInterposerGuard;
-
   nsresult rv = NS_OK;
 
   gArgc = argc;
@@ -4052,6 +4054,8 @@ XREMain::XRE_main(int argc, char* argv[], const nsXREAppData* aAppData)
   gAppData = mAppData;
 
   ScopedLogging log;
+
+  mozilla::IOInterposerInit ioInterposerGuard;
 
 #if defined(MOZ_WIDGET_GTK)
 #if defined(MOZ_MEMORY) || defined(__FreeBSD__) || defined(__NetBSD__)

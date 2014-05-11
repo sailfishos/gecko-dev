@@ -257,14 +257,14 @@ JavaScriptChild::AnswerDefineProperty(const ObjectId &objId, const nsString &id,
     if (!toDescriptor(cx, descriptor, &desc))
         return false;
 
-    if (!js::CheckDefineProperty(cx, obj, internedId, desc.value(), desc.getter(),
-                                 desc.setter(), desc.attributes()))
+    if (!js::CheckDefineProperty(cx, obj, internedId, desc.value(), desc.attributes(),
+                                 desc.getter(), desc.setter()))
     {
         return fail(cx, rs);
     }
 
-    if (!JS_DefinePropertyById(cx, obj, internedId, desc.value(), desc.getter(),
-                               desc.setter(), desc.attributes()))
+    if (!JS_DefinePropertyById(cx, obj, internedId, desc.value(), desc.attributes(),
+                               desc.getter(), desc.setter()))
     {
         return fail(cx, rs);
     }
@@ -501,7 +501,7 @@ JavaScriptChild::AnswerCall(const ObjectId &objId, const nsTArray<JSParam> &argv
         ContextOptionsRef(cx).setDontReportUncaught(true);
 
         HandleValueArray args = HandleValueArray::subarray(vals, 2, vals.length() - 2);
-        bool success = JS::Call(cx, vals.handleAt(1), vals.handleAt(0), args, &rval);
+        bool success = JS::Call(cx, vals[1], vals[0], args, &rval);
         if (!success)
             return fail(cx, rs);
     }
@@ -536,7 +536,7 @@ JavaScriptChild::AnswerCall(const ObjectId &objId, const nsTArray<JSParam> &argv
     // treat this as the outparam never having been set.
     for (size_t i = 0; i < vals.length(); i++) {
         JSVariant variant;
-        if (!toVariant(cx, vals.handleAt(i), &variant))
+        if (!toVariant(cx, vals[i], &variant))
             return fail(cx, rs);
         outparams->ReplaceElementAt(i, JSParam(variant));
     }
@@ -596,7 +596,7 @@ JavaScriptChild::AnswerGetPropertyNames(const ObjectId &objId, const uint32_t &f
 
     for (size_t i = 0; i < props.length(); i++) {
         nsString name;
-        if (!convertIdToGeckoString(cx, props.handleAt(i), &name))
+        if (!convertIdToGeckoString(cx, props[i], &name))
             return fail(cx, rs);
 
         names->AppendElement(name);

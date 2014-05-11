@@ -165,6 +165,11 @@ toolbarseparator {
   min-height: 19px; /* 16px button height + 2px padding + 1px margin-bottom */
 }
 
+#nav-bar-customization-target > #wrapper-personal-bookmarks > #personal-bookmarks {
+  min-height: 32px;
+  -moz-box-align: center;
+}
+
 toolbarbutton.chevron {
   list-style-image: url("chrome://global/skin/icons/chevron.png");
   margin: 1px 0 0;
@@ -3379,7 +3384,7 @@ toolbarbutton.chevron > .toolbarbutton-menu-dropmarker {
   }
 }
 
-@conditionalForwardWithUrlbar@[forwarddisabled] > #urlbar > #notification-popup-box {
+@conditionalForwardWithUrlbar@ > #forward-button[disabled] + #urlbar > #notification-popup-box {
   padding-left: 7px;
 }
 
@@ -4309,6 +4314,12 @@ window > chatbox {
 #main-window[customize-entered] #customization-container,
 #main-window[customize-entered] #navigator-toolbox > toolbar:not(#TabsToolbar) {
   border-bottom-width: 0;
+}
+
+/* Compensate for the border set above for this horizontal line. */
+#main-window[customize-entered] #navigator-toolbox::after {
+  margin-left: 3px;
+  margin-right: 3px;
 }
 
 #main-window[customize-entered] #TabsToolbar {

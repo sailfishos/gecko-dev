@@ -172,7 +172,6 @@ public:
   nsCOMPtr<nsISupports> m_kungFuDeathGrip;
   JSContext *m_cx;
   JS::PersistentRooted<JSObject*> m_scope;
-  nsCOMPtr<nsIPrincipal> m_principals;
   nsXPIDLCString m_jsCallback;
   NS_DECL_ISUPPORTS
 };
@@ -940,13 +939,13 @@ cryptojs_ReadArgsAndGenerateKey(JSContext *cx,
   int    keySize;
   nsresult  rv;
 
-  if (!JSVAL_IS_INT(argv[0])) {
+  if (!argv[0].isInt32()) {
     JS_ReportError(cx, "%s%s", JS_ERROR,
                    "passed in non-integer for key size");
     return NS_ERROR_FAILURE;
   }
-  keySize = JSVAL_TO_INT(argv[0]);
-  if (!JSVAL_IS_NULL(argv[1])) {
+  keySize = argv[0].toInt32();
+  if (!argv[1].isNull()) {
     JS::Rooted<JS::Value> v(cx, argv[1]);
     jsString = JS::ToString(cx, v);
     NS_ENSURE_TRUE(jsString, NS_ERROR_OUT_OF_MEMORY);
@@ -955,7 +954,7 @@ cryptojs_ReadArgsAndGenerateKey(JSContext *cx,
     NS_ENSURE_TRUE(!!params, NS_ERROR_OUT_OF_MEMORY);
   }
 
-  if (JSVAL_IS_NULL(argv[2])) {
+  if (argv[2].isNull()) {
     JS_ReportError(cx,"%s%s", JS_ERROR,
              "key generation type not specified");
     return NS_ERROR_FAILURE;
@@ -2037,24 +2036,7 @@ nsCrypto::GenerateCRMFRequest(JSContext* aContext,
   // when the request has been generated.
   //
 
-  nsCOMPtr<nsIScriptSecurityManager> secMan =
-    do_GetService(NS_SCRIPTSECURITYMANAGER_CONTRACTID);
-  if (MOZ_UNLIKELY(!secMan)) {
-    aRv.Throw(NS_ERROR_UNEXPECTED);
-    return nullptr;
-  }
-
-  nsCOMPtr<nsIPrincipal> principals;
-  nsresult rv = secMan->GetSubjectPrincipal(getter_AddRefs(principals));
-  if (NS_FAILED(nrv)) {
-    aRv.Throw(nrv);
-    return nullptr;
-  }
-  if (MOZ_UNLIKELY(!principals)) {
-    aRv.Throw(NS_ERROR_UNEXPECTED);
-    return nullptr;
-  }
-
+  MOZ_ASSERT(nsContentUtils::GetCurrentJSContext());
   nsCryptoRunArgs *args = new nsCryptoRunArgs(aContext);
 
   args->m_kungFuDeathGrip = GetISupportsFromContext(aContext);
@@ -2062,11 +2044,10 @@ nsCrypto::GenerateCRMFRequest(JSContext* aContext,
   if (!aJsCallback.IsVoid()) {
     args->m_jsCallback = aJsCallback;
   }
-  args->m_principals = principals;
 
   nsCryptoRunnable *cryptoRunnable = new nsCryptoRunnable(args);
 
-  rv = NS_DispatchToMainThread(cryptoRunnable);
+  nsresult rv = NS_DispatchToMainThread(cryptoRunnable);
   if (NS_FAILED(rv)) {
     aRv.Throw(rv);
     delete cryptoRunnable;

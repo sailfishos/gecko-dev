@@ -219,7 +219,6 @@ var DebuggerServer = {
 
     this.xpcInspector = Cc["@mozilla.org/jsinspector;1"].getService(Ci.nsIJSInspector);
     this.initTransport(aAllowConnectionCallback);
-    this.addActors("resource://gre/modules/devtools/server/actors/root.js");
 
     this._initialized = true;
   },
@@ -346,7 +345,8 @@ var DebuggerServer = {
 
     if (!restrictPrivileges) {
       this.addTabActors();
-      this.addGlobalActor(this.ChromeDebuggerActor, "chromeDebugger");
+      let { ChromeDebuggerActor } = require("devtools/server/actors/script");
+      this.addGlobalActor(ChromeDebuggerActor, "chromeDebugger");
       this.registerModule("devtools/server/actors/preference");
     }
 
@@ -377,7 +377,7 @@ var DebuggerServer = {
    * Install tab actors.
    */
   addTabActors: function() {
-    this.addActors("resource://gre/modules/devtools/server/actors/script.js");
+    this.registerModule("devtools/server/actors/script");
     this.registerModule("devtools/server/actors/webconsole");
     this.registerModule("devtools/server/actors/inspector");
     this.registerModule("devtools/server/actors/call-watcher");

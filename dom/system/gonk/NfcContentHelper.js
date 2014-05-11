@@ -23,8 +23,11 @@ Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/DOMRequestHelper.jsm");
 
-let NFC = {};
-Cu.import("resource://gre/modules/nfc_consts.js", NFC);
+XPCOMUtils.defineLazyGetter(this, "NFC", function () {
+  let obj = {};
+  Cu.import("resource://gre/modules/nfc_consts.js", obj);
+  return obj;
+});
 
 Cu.import("resource://gre/modules/systemlibs.js");
 const NFC_ENABLED = libcutils.property_get("ro.moz.nfc.enabled", "false") === "true";
@@ -407,11 +410,13 @@ NfcContentHelper.prototype = {
       case "NFC:GetDetailsNDEFResponse":
         this.handleGetDetailsNDEFResponse(result);
         break;
+      case "NFC:CheckP2PRegistrationResponse":
+        this.handleCheckP2PRegistrationResponse(result);
+        break;
       case "NFC:ConnectResponse": // Fall through.
       case "NFC:CloseResponse":
       case "NFC:WriteNDEFResponse":
       case "NFC:MakeReadOnlyNDEFResponse":
-      case "NFC:CheckP2PRegistrationResponse":
       case "NFC:NotifySendFileStatusResponse":
       case "NFC:ConfigResponse":
         if (result.status !== NFC.GECKO_NFC_ERROR_SUCCESS) {
@@ -467,6 +472,13 @@ NfcContentHelper.prototype = {
     let requestId = atob(result.requestId);
     let result = new GetDetailsNDEFResponse(result);
     this.fireRequestSuccess(requestId, result);
+  },
+
+  handleCheckP2PRegistrationResponse: function handleCheckP2PRegistrationResponse(result) {
+    // Privilaged status API. Always fire success to avoid using exposed props.
+    // The receiver must check the boolean mapped status code to handle.
+    let requestId = atob(result.requestId);
+    this.fireRequestSuccess(requestId, result.status == NFC.GECKO_NFC_ERROR_SUCCESS);
   },
 };
 

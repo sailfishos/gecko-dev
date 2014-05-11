@@ -107,7 +107,7 @@ class JitFrameIterator
         mode_(mode)
     { }
 
-    explicit JitFrameIterator(JSContext *cx);
+    explicit JitFrameIterator(ThreadSafeContext *cx);
     explicit JitFrameIterator(const ActivationIterator &activations);
     explicit JitFrameIterator(IonJSFrameLayout *fp, ExecutionMode mode);
 
@@ -258,6 +258,7 @@ class SnapshotIterator
     IonJSFrameLayout *fp_;
     MachineState machine_;
     IonScript *ionScript_;
+    AutoValueVector *instructionResults_;
 
   private:
     // Read a spilled register from the machine state.
@@ -280,6 +281,11 @@ class SnapshotIterator
         return true;
     }
     uintptr_t fromStack(int32_t offset) const;
+
+    bool hasInstructionResult(uint32_t index) const {
+        return instructionResults_;
+    }
+    Value fromInstructionResult(uint32_t index) const;
 
     Value allocationValue(const RValueAllocation &a);
     bool allocationReadable(const RValueAllocation &a);
@@ -338,9 +344,18 @@ class SnapshotIterator
         return recover_.moreInstructions();
     }
 
+    // Register a vector used for storing the results of the evaluation of
+    // recover instructions. This vector should be registered before the
+    // beginning of the iteration. This function is in charge of allocating
+    // enough space for all instructions results, and return false iff it fails.
+    bool initIntructionResults(AutoValueVector &results);
+
+    void storeInstructionResult(Value v);
+
   public:
     // Handle iterating over frames of the snapshots.
     void nextFrame();
+    void settleOnFrame();
 
     inline bool moreFrames() const {
         // The last instruction is recovering the innermost frame, so as long as
@@ -477,7 +492,7 @@ class InlineFrameIteratorMaybeGC
     }
 
   public:
-    InlineFrameIteratorMaybeGC(JSContext *cx, const JitFrameIterator *iter)
+    InlineFrameIteratorMaybeGC(ThreadSafeContext *cx, const JitFrameIterator *iter)
       : callee_(cx),
         script_(cx)
     {
@@ -491,9 +506,9 @@ class InlineFrameIteratorMaybeGC
         resetOn(iter);
     }
 
-    InlineFrameIteratorMaybeGC(JSContext *cx, const IonBailoutIterator *iter);
+    InlineFrameIteratorMaybeGC(ThreadSafeContext *cx, const IonBailoutIterator *iter);
 
-    InlineFrameIteratorMaybeGC(JSContext *cx, const InlineFrameIteratorMaybeGC *iter)
+    InlineFrameIteratorMaybeGC(ThreadSafeContext *cx, const InlineFrameIteratorMaybeGC *iter)
       : frame_(iter ? iter->frame_ : nullptr),
         framesRead_(0),
         frameCount_(iter ? iter->frameCount_ : UINT32_MAX),
@@ -533,7 +548,7 @@ class InlineFrameIteratorMaybeGC
     }
 
     template <class ArgOp, class LocalOp>
-    void readFrameArgsAndLocals(JSContext *cx, ArgOp &argOp, LocalOp &localOp,
+    void readFrameArgsAndLocals(ThreadSafeContext *cx, ArgOp &argOp, LocalOp &localOp,
                                 JSObject **scopeChain, Value *rval,
                                 ArgumentsObject **argsObj, Value *thisv,
                                 ReadFrameArgsBehavior behavior) const
@@ -602,7 +617,9 @@ class InlineFrameIteratorMaybeGC
     }
 
     template <class Op>
-    void unaliasedForEachActual(JSContext *cx, Op op, ReadFrameArgsBehavior behavior) const {
+    void unaliasedForEachActual(ThreadSafeContext *cx, Op op,
+                                ReadFrameArgsBehavior behavior) const
+    {
         Nop nop;
         readFrameArgsAndLocals(cx, op, nop, nullptr, nullptr, nullptr, nullptr, behavior);
     }

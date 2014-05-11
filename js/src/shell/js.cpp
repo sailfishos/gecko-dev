@@ -601,7 +601,7 @@ Version(JSContext *cx, unsigned argc, jsval *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
     JSVersion origVersion = JS_GetVersion(cx);
-    if (args.length() == 0 || JSVAL_IS_VOID(args[0])) {
+    if (args.length() == 0 || args[0].isUndefined()) {
         /* Get version. */
         args.rval().setInt32(origVersion);
     } else {
@@ -1771,7 +1771,7 @@ GetScriptAndPCArgs(JSContext *cx, unsigned argc, jsval *argv, MutableHandleScrip
     if (argc != 0) {
         jsval v = argv[0];
         unsigned intarg = 0;
-        if (!JSVAL_IS_PRIMITIVE(v) &&
+        if (v.isObject() &&
             JS_GetClass(&v.toObject()) == Jsvalify(&JSFunction::class_)) {
             script = ValueToScript(cx, v);
             if (!script)
@@ -1797,7 +1797,7 @@ static JSTrapStatus
 TrapHandler(JSContext *cx, JSScript *, jsbytecode *pc, jsval *rvalArg,
             jsval closure)
 {
-    RootedString str(cx, JSVAL_TO_STRING(closure));
+    RootedString str(cx, closure.toString());
     RootedValue rval(cx, *rvalArg);
 
     ScriptFrameIter iter(cx);
@@ -2569,7 +2569,7 @@ Clone(JSContext *cx, unsigned argc, jsval *vp)
 
     {
         Maybe<JSAutoCompartment> ac;
-        RootedObject obj(cx, JSVAL_IS_PRIMITIVE(args[0]) ? nullptr : &args[0].toObject());
+        RootedObject obj(cx, args[0].isPrimitive() ? nullptr : &args[0].toObject());
 
         if (obj && obj->is<CrossCompartmentWrapperObject>()) {
             obj = UncheckedUnwrap(obj);
@@ -2814,7 +2814,7 @@ EvalInContext(JSContext *cx, unsigned argc, jsval *vp)
             ac.construct(cx, sobj);
         }
 
-        sobj = GetInnerObject(cx, sobj);
+        sobj = GetInnerObject(sobj);
         if (!sobj)
             return false;
         if (!(sobj->getClass()->flags & JSCLASS_IS_GLOBAL)) {
@@ -3071,7 +3071,7 @@ static bool
 resolver_enumerate(JSContext *cx, HandleObject obj)
 {
     jsval v = JS_GetReservedSlot(obj, 0);
-    RootedObject referent(cx, JSVAL_TO_OBJECT(v));
+    RootedObject referent(cx, v.toObjectOrNull());
 
     AutoIdArray ida(cx, JS_Enumerate(cx, referent));
     bool ok = !!ida;
@@ -3495,7 +3495,7 @@ Parent(JSContext *cx, unsigned argc, jsval *vp)
     }
 
     Value v = args[0];
-    if (JSVAL_IS_PRIMITIVE(v)) {
+    if (v.isPrimitive()) {
         JS_ReportError(cx, "Only objects have parents!");
         return false;
     }
@@ -3505,7 +3505,7 @@ Parent(JSContext *cx, unsigned argc, jsval *vp)
 
     /* Outerize if necessary.  Embrace the ugliness! */
     if (parent) {
-        if (JSObjectOp op = parent->getClass()->ext.outerObject)
+        if (js::ObjectOp op = parent->getClass()->ext.outerObject)
             args.rval().setObjectOrNull(op(cx, parent));
     }
 
@@ -4196,12 +4196,12 @@ Wrap(JSContext *cx, unsigned argc, jsval *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
     Value v = args.get(0);
-    if (JSVAL_IS_PRIMITIVE(v)) {
+    if (v.isPrimitive()) {
         args.rval().set(v);
         return true;
     }
 
-    RootedObject obj(cx, JSVAL_TO_OBJECT(v));
+    RootedObject obj(cx, v.toObjectOrNull());
     JSObject *wrapped = Wrapper::New(cx, obj, &obj->global(),
                                      &Wrapper::singleton);
     if (!wrapped)
@@ -4931,7 +4931,7 @@ static const JSFunctionSpecWithHelp fuzzing_unsafe_functions[] = {
 static bool
 PrintHelpString(JSContext *cx, jsval v)
 {
-    JSString *str = JSVAL_TO_STRING(v);
+    JSString *str = v.toString();
     JS::Anchor<JSString *> a_str(str);
     const jschar *chars = JS_GetStringCharsZ(cx, str);
     if (!chars)
@@ -4955,7 +4955,7 @@ PrintHelp(JSContext *cx, HandleObject obj)
     if (!JS_LookupProperty(cx, obj, "help", &help))
         return false;
 
-    if (JSVAL_IS_VOID(usage) || JSVAL_IS_VOID(help))
+    if (usage.isUndefined() || help.isUndefined())
         return true;
 
     return PrintHelpString(cx, usage) && PrintHelpString(cx, help);
@@ -4979,11 +4979,11 @@ Help(JSContext *cx, unsigned argc, jsval *vp)
             RootedId id(cx, ida[i]);
             if (!JS_LookupPropertyById(cx, global, id, &v))
                 return false;
-            if (JSVAL_IS_PRIMITIVE(v)) {
+            if (v.isPrimitive()) {
                 JS_ReportError(cx, "primitive arg");
                 return false;
             }
-            obj = JSVAL_TO_OBJECT(v);
+            obj = v.toObjectOrNull();
             if (!PrintHelp(cx, obj))
                 return false;
         }
@@ -5514,8 +5514,7 @@ ShellOpenAsmJSCacheEntryForRead(HandleObject global, const jschar *begin, const 
 }
 
 static void
-ShellCloseAsmJSCacheEntryForRead(HandleObject global, size_t serializedSize, const uint8_t *memory,
-                                 intptr_t handle)
+ShellCloseAsmJSCacheEntryForRead(size_t serializedSize, const uint8_t *memory, intptr_t handle)
 {
     // Undo the cookie adjustment done when opening the file.
     memory -= sizeof(uint32_t);
@@ -5603,8 +5602,7 @@ ShellOpenAsmJSCacheEntryForWrite(HandleObject global, bool installed,
 }
 
 static void
-ShellCloseAsmJSCacheEntryForWrite(HandleObject global, size_t serializedSize, uint8_t *memory,
-                                  intptr_t handle)
+ShellCloseAsmJSCacheEntryForWrite(size_t serializedSize, uint8_t *memory, intptr_t handle)
 {
     // Undo the cookie adjustment done when opening the file.
     memory -= sizeof(uint32_t);
@@ -5779,10 +5777,10 @@ BindScriptArgs(JSContext *cx, JSObject *obj_, OptionParser *op)
 
     for (size_t i = 0; !msr.empty(); msr.popFront(), ++i) {
         const char *scriptArg = msr.front();
-        JSString *str = JS_NewStringCopyZ(cx, scriptArg);
+        JS::RootedString str(cx, JS_NewStringCopyZ(cx, scriptArg));
         if (!str ||
-            !JS_DefineElement(cx, scriptArgs, i, STRING_TO_JSVAL(str), nullptr, nullptr,
-                              JSPROP_ENUMERATE)) {
+            !JS_DefineElement(cx, scriptArgs, i, str, JSPROP_ENUMERATE))
+        {
             return false;
         }
     }
@@ -6040,7 +6038,7 @@ Shell(JSContext *cx, OptionParser *op, char **envp)
     JSAutoCompartment ac(cx, glob);
     js::SetDefaultObjectForContext(cx, glob);
 
-    JSObject *envobj = JS_DefineObject(cx, glob, "environment", &env_class, nullptr, 0);
+    JSObject *envobj = JS_DefineObject(cx, glob, "environment", &env_class);
     if (!envobj)
         return 1;
     JS_SetPrivate(envobj, envp);

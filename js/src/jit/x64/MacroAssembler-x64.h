@@ -1237,6 +1237,10 @@ class MacroAssemblerX64 : public MacroAssemblerX86Shared
         }
     }
 
+    void incrementInt32Value(const Address &addr) {
+        addPtr(Imm32(1), addr);
+    }
+
     // If source is a double, load it into dest. If source is int32,
     // convert it to double. Else, branch to failure.
     void ensureDouble(const ValueOperand &source, FloatRegister dest, Label *failure) {
@@ -1297,10 +1301,9 @@ class MacroAssemblerX64 : public MacroAssemblerX86Shared
     }
 
     // Save an exit frame (which must be aligned to the stack pointer) to
-    // ThreadData::ionTop of the main thread.
+    // PerThreadData::jitTop of the main thread.
     void linkExitFrame() {
-        storePtr(StackPointer,
-                 AbsoluteAddress(GetIonContext()->runtime->addressOfIonTop()));
+        storePtr(StackPointer, AbsoluteAddress(GetIonContext()->runtime->addressOfJitTop()));
     }
 
     void callWithExitFrame(JitCode *target, Register dynStack) {
@@ -1313,7 +1316,7 @@ class MacroAssemblerX64 : public MacroAssemblerX86Shared
     // Save an exit frame to the thread data of the current thread, given a
     // register that holds a PerThreadData *.
     void linkParallelExitFrame(const Register &pt) {
-        storePtr(StackPointer, Address(pt, offsetof(PerThreadData, ionTop)));
+        storePtr(StackPointer, Address(pt, offsetof(PerThreadData, jitTop)));
     }
 
     // See CodeGeneratorX64 calls to noteAsmJSGlobalAccess.
@@ -1331,8 +1334,8 @@ class MacroAssemblerX64 : public MacroAssemblerX86Shared
     }
 
 #ifdef JSGC_GENERATIONAL
-    void branchPtrInNurseryRange(Register ptr, Register temp, Label *label);
-    void branchValueIsNurseryObject(ValueOperand value, Register temp, Label *label);
+    void branchPtrInNurseryRange(Condition cond, Register ptr, Register temp, Label *label);
+    void branchValueIsNurseryObject(Condition cond, ValueOperand value, Register temp, Label *label);
 #endif
 };
 

@@ -508,52 +508,122 @@ CodeGenerator::testValueTruthyKernel(const ValueOperand &value,
                                      const LDefinition *scratch1, const LDefinition *scratch2,
                                      FloatRegister fr,
                                      Label *ifTruthy, Label *ifFalsy,
-                                     OutOfLineTestObject *ool)
+                                     OutOfLineTestObject *ool,
+                                     MDefinition *valueMIR)
 {
-    Register tag = masm.splitTagForTest(value);
+    // Count the number of possible type tags we might have, so we'll know when
+    // we've checked them all and hence can avoid emitting a tag check for the
+    // last one.  In particular, whenever tagCount is 1 that means we've tried
+    // all but one of them already so we know exactly what's left based on the
+    // mightBe* booleans.
+    bool mightBeUndefined = valueMIR->mightBeType(MIRType_Undefined);
+    bool mightBeNull = valueMIR->mightBeType(MIRType_Null);
+    bool mightBeBoolean = valueMIR->mightBeType(MIRType_Boolean);
+    bool mightBeInt32 = valueMIR->mightBeType(MIRType_Int32);
+    bool mightBeObject = valueMIR->mightBeType(MIRType_Object);
+    bool mightBeString = valueMIR->mightBeType(MIRType_String);
+    bool mightBeDouble = valueMIR->mightBeType(MIRType_Double);
+    int tagCount = int(mightBeUndefined) + int(mightBeNull) +
+        int(mightBeBoolean) + int(mightBeInt32) + int(mightBeObject) +
+        int(mightBeString) + int(mightBeDouble);
 
-    // Eventually we will want some sort of type filter here. For now, just
-    // emit all easy cases. For speed we use the cached tag for all comparison,
-    // except for doubles, which we test last (as the operation can clobber the
-    // tag, which may be in ScratchReg).
-    masm.branchTestUndefined(Assembler::Equal, tag, ifFalsy);
-    masm.branchTestNull(Assembler::Equal, tag, ifFalsy);
+    MOZ_ASSERT_IF(!valueMIR->emptyResultTypeSet(), tagCount > 0);
 
-    Label notBoolean;
-    masm.branchTestBoolean(Assembler::NotEqual, tag, &notBoolean);
-    masm.branchTestBooleanTruthy(false, value, ifFalsy);
-    masm.jump(ifTruthy);
-    masm.bind(&notBoolean);
-
-    Label notInt32;
-    masm.branchTestInt32(Assembler::NotEqual, tag, &notInt32);
-    masm.branchTestInt32Truthy(false, value, ifFalsy);
-    masm.jump(ifTruthy);
-    masm.bind(&notInt32);
-
-    if (ool) {
-        Label notObject;
-
-        masm.branchTestObject(Assembler::NotEqual, tag, &notObject);
-
-        Register objreg = masm.extractObject(value, ToRegister(scratch1));
-        testObjectEmulatesUndefined(objreg, ifFalsy, ifTruthy, ToRegister(scratch2), ool);
-
-        masm.bind(&notObject);
-    } else {
-        masm.branchTestObject(Assembler::Equal, tag, ifTruthy);
+    // If we know we're null or undefined, we're definitely falsy, no
+    // need to even check the tag.
+    if (int(mightBeNull) + int(mightBeUndefined) == tagCount) {
+        masm.jump(ifFalsy);
+        return;
     }
 
-    // Test if a string is non-empty.
-    Label notString;
-    masm.branchTestString(Assembler::NotEqual, tag, &notString);
-    masm.branchTestStringTruthy(false, value, ifFalsy);
-    masm.jump(ifTruthy);
-    masm.bind(&notString);
+    Register tag = masm.splitTagForTest(value);
 
-    // If we reach here the value is a double.
-    masm.unboxDouble(value, fr);
-    masm.branchTestDoubleTruthy(false, fr, ifFalsy);
+    if (mightBeUndefined) {
+        MOZ_ASSERT(tagCount > 1);
+        masm.branchTestUndefined(Assembler::Equal, tag, ifFalsy);
+        --tagCount;
+    }
+
+    if (mightBeNull) {
+        MOZ_ASSERT(tagCount > 1);
+        masm.branchTestNull(Assembler::Equal, tag, ifFalsy);
+        --tagCount;
+    }
+
+    if (mightBeBoolean) {
+        MOZ_ASSERT(tagCount != 0);
+        Label notBoolean;
+        if (tagCount != 1)
+            masm.branchTestBoolean(Assembler::NotEqual, tag, &notBoolean);
+        masm.branchTestBooleanTruthy(false, value, ifFalsy);
+        if (tagCount != 1)
+            masm.jump(ifTruthy);
+        // Else just fall through to truthiness.
+        masm.bind(&notBoolean);
+        --tagCount;
+    }
+
+    if (mightBeInt32) {
+        MOZ_ASSERT(tagCount != 0);
+        Label notInt32;
+        if (tagCount != 1)
+            masm.branchTestInt32(Assembler::NotEqual, tag, &notInt32);
+        masm.branchTestInt32Truthy(false, value, ifFalsy);
+        if (tagCount != 1)
+            masm.jump(ifTruthy);
+        // Else just fall through to truthiness.
+        masm.bind(&notInt32);
+        --tagCount;
+    }
+
+    if (mightBeObject) {
+        MOZ_ASSERT(tagCount != 0);
+        if (ool) {
+            Label notObject;
+
+            if (tagCount != 1)
+                masm.branchTestObject(Assembler::NotEqual, tag, &notObject);
+
+            Register objreg = masm.extractObject(value, ToRegister(scratch1));
+            testObjectEmulatesUndefined(objreg, ifFalsy, ifTruthy, ToRegister(scratch2), ool);
+
+            masm.bind(&notObject);
+        } else {
+            if (tagCount != 1)
+                masm.branchTestObject(Assembler::Equal, tag, ifTruthy);
+            // Else just fall through to truthiness.
+        }
+        --tagCount;
+    } else {
+        MOZ_ASSERT(!ool,
+                   "We better not have an unused OOL path, since the code generator will try to "
+                   "generate code for it but we never set up its labels, which will cause null "
+                   "derefs of those labels.");
+    }
+
+    if (mightBeString) {
+        // Test if a string is non-empty.
+        MOZ_ASSERT(tagCount != 0);
+        Label notString;
+        if (tagCount != 1)
+            masm.branchTestString(Assembler::NotEqual, tag, &notString);
+        masm.branchTestStringTruthy(false, value, ifFalsy);
+        if (tagCount != 1)
+            masm.jump(ifTruthy);
+        // Else just fall through to truthiness.
+        masm.bind(&notString);
+        --tagCount;
+    }
+
+    if (mightBeDouble) {
+        MOZ_ASSERT(tagCount == 1);
+        // If we reach here the value is a double.
+        masm.unboxDouble(value, fr);
+        masm.branchTestDoubleTruthy(false, fr, ifFalsy);
+        --tagCount;
+    }
+
+    MOZ_ASSERT(tagCount == 0);
 
     // Fall through for truthy.
 }
@@ -563,9 +633,10 @@ CodeGenerator::testValueTruthy(const ValueOperand &value,
                                const LDefinition *scratch1, const LDefinition *scratch2,
                                FloatRegister fr,
                                Label *ifTruthy, Label *ifFalsy,
-                               OutOfLineTestObject *ool)
+                               OutOfLineTestObject *ool,
+                               MDefinition *valueMIR)
 {
-    testValueTruthyKernel(value, scratch1, scratch2, fr, ifTruthy, ifFalsy, ool);
+    testValueTruthyKernel(value, scratch1, scratch2, fr, ifTruthy, ifFalsy, ool, valueMIR);
     masm.jump(ifTruthy);
 }
 
@@ -612,7 +683,12 @@ bool
 CodeGenerator::visitTestVAndBranch(LTestVAndBranch *lir)
 {
     OutOfLineTestObject *ool = nullptr;
-    if (lir->mir()->operandMightEmulateUndefined()) {
+    MDefinition *input = lir->mir()->input();
+    // Unfortunately, it's possible that someone (e.g. phi elimination) switched
+    // out our input after we did cacheOperandMightEmulateUndefined.  So we
+    // might think it can emulate undefined _and_ know that it can't be an
+    // object.
+    if (lir->mir()->operandMightEmulateUndefined() && input->mightBeType(MIRType_Object)) {
         ool = new(alloc()) OutOfLineTestObject();
         if (!addOutOfLineCode(ool))
             return false;
@@ -624,7 +700,7 @@ CodeGenerator::visitTestVAndBranch(LTestVAndBranch *lir)
     testValueTruthy(ToValue(lir, LTestVAndBranch::Input),
                     lir->temp1(), lir->temp2(),
                     ToFloatRegister(lir->tempFloat()),
-                    truthy, falsy, ool);
+                    truthy, falsy, ool, input);
     return true;
 }
 
@@ -1504,7 +1580,15 @@ CodeGenerator::emitGetPropertyPolymorphic(LInstruction *ins, Register obj, Regis
     Label done;
     for (size_t i = 0; i < mir->numShapes(); i++) {
         Label next;
-        masm.branchPtr(Assembler::NotEqual, scratch, ImmGCPtr(mir->objShape(i)), &next);
+        if (i == mir->numShapes() - 1) {
+            if (!bailoutCmpPtr(Assembler::NotEqual, scratch, ImmGCPtr(mir->objShape(i)),
+                               ins->snapshot()))
+            {
+                return false;
+            }
+        } else {
+            masm.branchPtr(Assembler::NotEqual, scratch, ImmGCPtr(mir->objShape(i)), &next);
+        }
 
         Shape *shape = mir->shape(i);
         if (shape->slot() < shape->numFixedSlots()) {
@@ -1518,13 +1602,10 @@ CodeGenerator::emitGetPropertyPolymorphic(LInstruction *ins, Register obj, Regis
             masm.loadTypedOrValue(Address(scratch, offset), output);
         }
 
-        masm.jump(&done);
+        if (i != mir->numShapes() - 1)
+            masm.jump(&done);
         masm.bind(&next);
     }
-
-    // Bailout if no shape matches.
-    if (!bailout(ins->snapshot()))
-        return false;
 
     masm.bind(&done);
     return true;
@@ -1561,7 +1642,15 @@ CodeGenerator::emitSetPropertyPolymorphic(LInstruction *ins, Register obj, Regis
     Label done;
     for (size_t i = 0; i < mir->numShapes(); i++) {
         Label next;
-        masm.branchPtr(Assembler::NotEqual, scratch, ImmGCPtr(mir->objShape(i)), &next);
+        if (i == mir->numShapes() - 1) {
+            if (!bailoutCmpPtr(Assembler::NotEqual, scratch, ImmGCPtr(mir->objShape(i)),
+                               ins->snapshot()))
+            {
+                return false;
+            }
+        } else {
+            masm.branchPtr(Assembler::NotEqual, scratch, ImmGCPtr(mir->objShape(i)), &next);
+        }
 
         Shape *shape = mir->shape(i);
         if (shape->slot() < shape->numFixedSlots()) {
@@ -1579,13 +1668,10 @@ CodeGenerator::emitSetPropertyPolymorphic(LInstruction *ins, Register obj, Regis
             masm.storeConstantOrRegister(value, addr);
         }
 
-        masm.jump(&done);
+        if (i != mir->numShapes() - 1)
+            masm.jump(&done);
         masm.bind(&next);
     }
-
-    // Bailout if no shape matches.
-    if (!bailout(ins->snapshot()))
-        return false;
 
     masm.bind(&done);
     return true;
@@ -1722,13 +1808,39 @@ CodeGenerator::visitGuardObjectIdentity(LGuardObjectIdentity *guard)
 }
 
 bool
+CodeGenerator::visitGuardShapePolymorphic(LGuardShapePolymorphic *lir)
+{
+    const MGuardShapePolymorphic *mir = lir->mir();
+    Register obj = ToRegister(lir->object());
+    Register temp = ToRegister(lir->temp());
+
+    MOZ_ASSERT(mir->numShapes() > 1);
+
+    Label done;
+    masm.loadObjShape(obj, temp);
+
+    for (size_t i = 0; i < mir->numShapes(); i++) {
+        Shape *shape = mir->getShape(i);
+        if (i == mir->numShapes() - 1) {
+            if (!bailoutCmpPtr(Assembler::NotEqual, temp, ImmGCPtr(shape), lir->snapshot()))
+                return false;
+        } else {
+            masm.branchPtr(Assembler::Equal, temp, ImmGCPtr(shape), &done);
+        }
+    }
+
+    masm.bind(&done);
+    return true;
+}
+
+bool
 CodeGenerator::visitTypeBarrierV(LTypeBarrierV *lir)
 {
     ValueOperand operand = ToValue(lir, LTypeBarrierV::Input);
     Register scratch = ToTempRegisterOrInvalid(lir->temp());
 
     Label miss;
-    masm.guardTypeSet(operand, lir->mir()->resultTypeSet(), scratch, &miss);
+    masm.guardTypeSet(operand, lir->mir()->resultTypeSet(), lir->mir()->barrierKind(), scratch, &miss);
     if (!bailoutFrom(&miss, lir->snapshot()))
         return false;
     return true;
@@ -1737,6 +1849,8 @@ CodeGenerator::visitTypeBarrierV(LTypeBarrierV *lir)
 bool
 CodeGenerator::visitTypeBarrierO(LTypeBarrierO *lir)
 {
+    MOZ_ASSERT(lir->mir()->barrierKind() != BarrierKind::TypeTagOnly);
+
     Register obj = ToRegister(lir->object());
     Register scratch = ToTempRegisterOrInvalid(lir->temp());
 
@@ -1754,7 +1868,7 @@ CodeGenerator::visitMonitorTypes(LMonitorTypes *lir)
     Register scratch = ToTempUnboxRegister(lir->temp());
 
     Label matched, miss;
-    masm.guardTypeSet(operand, lir->mir()->typeSet(), scratch, &miss);
+    masm.guardTypeSet(operand, lir->mir()->typeSet(), lir->mir()->barrierKind(), scratch, &miss);
     if (!bailoutFrom(&miss, lir->snapshot()))
         return false;
     return true;
@@ -1837,10 +1951,11 @@ CodeGenerator::visitPostWriteBarrierO(LPostWriteBarrierO *lir)
         JS_ASSERT(!nursery.isInside(&lir->object()->toConstant()->toObject()));
 #endif
     } else {
-        masm.branchPtrInNurseryRange(ToRegister(lir->object()), temp, ool->rejoin());
+        masm.branchPtrInNurseryRange(Assembler::Equal, ToRegister(lir->object()), temp,
+                                     ool->rejoin());
     }
 
-    masm.branchPtrInNurseryRange(ToRegister(lir->value()), temp, ool->entry());
+    masm.branchPtrInNurseryRange(Assembler::Equal, ToRegister(lir->value()), temp, ool->entry());
 
     masm.bind(ool->rejoin());
 #endif
@@ -1863,11 +1978,12 @@ CodeGenerator::visitPostWriteBarrierV(LPostWriteBarrierV *lir)
         JS_ASSERT(!nursery.isInside(&lir->object()->toConstant()->toObject()));
 #endif
     } else {
-        masm.branchPtrInNurseryRange(ToRegister(lir->object()), temp, ool->rejoin());
+        masm.branchPtrInNurseryRange(Assembler::Equal, ToRegister(lir->object()), temp,
+                                     ool->rejoin());
     }
 
     ValueOperand value = ToValue(lir, LPostWriteBarrierV::Input);
-    masm.branchValueIsNurseryObject(value, temp, ool->entry());
+    masm.branchValueIsNurseryObject(Assembler::Equal, value, temp, ool->entry());
 
     masm.bind(ool->rejoin());
 #endif
@@ -2690,7 +2806,19 @@ CodeGenerator::generateArgumentsChecks(bool bailout)
     // Reserve the amount of stack the actual frame will use. We have to undo
     // this before falling through to the method proper though, because the
     // monomorphic call case will bypass this entire path.
-    masm.reserveStack(frameSize());
+
+    // On windows, we cannot skip very far down the stack without touching the
+    // memory pages in-between.  This is a corner-case code for situations where the
+    // Ion frame data for a piece of code is very large.  To handle this special case,
+    // for frames over 1k in size we allocate memory on the stack incrementally, touching
+    // it as we go.
+    uint32_t frameSizeLeft = frameSize();
+    while (frameSizeLeft > 1024) {
+        masm.reserveStack(1024);
+        masm.store32(Imm32(0), Address(StackPointer, 0));
+        frameSizeLeft -= 1024;
+    }
+    masm.reserveStack(frameSizeLeft);
 
     // No registers are allocated yet, so it's safe to grab anything.
     Register temp = GeneralRegisterSet(EntryTempMask).getAny();
@@ -2710,7 +2838,7 @@ CodeGenerator::generateArgumentsChecks(bool bailout)
         // ... * sizeof(Value)          - Scale by value size.
         // ArgToStackOffset(...)        - Compute displacement within arg vector.
         int32_t offset = ArgToStackOffset((i - info.startArgSlot()) * sizeof(Value));
-        masm.guardTypeSet(Address(StackPointer, offset), types, temp, &miss);
+        masm.guardTypeSet(Address(StackPointer, offset), types, BarrierKind::TypeSet, temp, &miss);
     }
 
     if (miss.used()) {
@@ -3186,7 +3314,7 @@ CodeGenerator::emitValueResultChecks(LInstruction *lir, MDefinition *mir)
     if (mir->resultTypeSet() && !mir->resultTypeSet()->unknown()) {
         // We have a result TypeSet, assert this value is in it.
         Label miss, ok;
-        masm.guardTypeSet(output, mir->resultTypeSet(), temp1, &miss);
+        masm.guardTypeSet(output, mir->resultTypeSet(), BarrierKind::TypeSet, temp1, &miss);
         masm.jump(&ok);
 
         masm.bind(&miss);
@@ -5238,7 +5366,12 @@ CodeGenerator::visitNotV(LNotV *lir)
     Label *ifFalsy;
 
     OutOfLineTestObjectWithLabels *ool = nullptr;
-    if (lir->mir()->operandMightEmulateUndefined()) {
+    MDefinition *operand = lir->mir()->operand();
+    // Unfortunately, it's possible that someone (e.g. phi elimination) switched
+    // out our operand after we did cacheOperandMightEmulateUndefined.  So we
+    // might think it can emulate undefined _and_ know that it can't be an
+    // object.
+    if (lir->mir()->operandMightEmulateUndefined() && operand->mightBeType(MIRType_Object)) {
         ool = new(alloc()) OutOfLineTestObjectWithLabels();
         if (!addOutOfLineCode(ool))
             return false;
@@ -5253,7 +5386,7 @@ CodeGenerator::visitNotV(LNotV *lir)
 
     testValueTruthyKernel(ToValue(lir, LNotV::Input), lir->temp1(), lir->temp2(),
                           ToFloatRegister(lir->tempFloat()),
-                          ifTruthy, ifFalsy, ool);
+                          ifTruthy, ifFalsy, ool, operand);
 
     Label join;
     Register output = ToRegister(lir->output());
@@ -6701,6 +6834,7 @@ CodeGenerator::visitCallsiteCloneCache(LCallsiteCloneCache *ins)
     Register output = ToRegister(ins->output());
 
     CallsiteCloneIC cache(callee, mir->block()->info().script(), mir->callPc(), output);
+    cache.setProfilerLeavePC(mir->profilerLeavePc());
     return addCache(ins, allocateCache(cache));
 }
 
@@ -6734,6 +6868,7 @@ CodeGenerator::visitGetNameCache(LGetNameCache *ins)
     bool isTypeOf = ins->mir()->accessKind() != MGetNameCache::NAME;
 
     NameIC cache(liveRegs, isTypeOf, scopeChain, ins->mir()->name(), output);
+    cache.setProfilerLeavePC(ins->mir()->profilerLeavePc());
     return addCache(ins, allocateCache(cache));
 }
 
@@ -6760,15 +6895,17 @@ CodeGenerator::visitNameIC(OutOfLineUpdateCache *ool, DataPtr<NameIC> &ic)
 bool
 CodeGenerator::addGetPropertyCache(LInstruction *ins, RegisterSet liveRegs, Register objReg,
                                    PropertyName *name, TypedOrValueRegister output,
-                                   bool monitoredResult)
+                                   bool monitoredResult, jsbytecode *profilerLeavePc)
 {
     switch (gen->info().executionMode()) {
       case SequentialExecution: {
         GetPropertyIC cache(liveRegs, objReg, name, output, monitoredResult);
+        cache.setProfilerLeavePC(profilerLeavePc);
         return addCache(ins, allocateCache(cache));
       }
       case ParallelExecution: {
         GetPropertyParIC cache(objReg, name, output);
+        cache.setProfilerLeavePC(profilerLeavePc);
         return addCache(ins, allocateCache(cache));
       }
       default:
@@ -6779,15 +6916,17 @@ CodeGenerator::addGetPropertyCache(LInstruction *ins, RegisterSet liveRegs, Regi
 bool
 CodeGenerator::addSetPropertyCache(LInstruction *ins, RegisterSet liveRegs, Register objReg,
                                    PropertyName *name, ConstantOrRegister value, bool strict,
-                                   bool needsTypeBarrier)
+                                   bool needsTypeBarrier, jsbytecode *profilerLeavePc)
 {
     switch (gen->info().executionMode()) {
       case SequentialExecution: {
           SetPropertyIC cache(liveRegs, objReg, name, value, strict, needsTypeBarrier);
+            cache.setProfilerLeavePC(profilerLeavePc);
           return addCache(ins, allocateCache(cache));
       }
       case ParallelExecution: {
           SetPropertyParIC cache(objReg, name, value, strict, needsTypeBarrier);
+            cache.setProfilerLeavePC(profilerLeavePc);
           return addCache(ins, allocateCache(cache));
       }
       default:
@@ -6798,17 +6937,20 @@ CodeGenerator::addSetPropertyCache(LInstruction *ins, RegisterSet liveRegs, Regi
 bool
 CodeGenerator::addSetElementCache(LInstruction *ins, Register obj, Register unboxIndex,
                                   Register temp, FloatRegister tempFloat, ValueOperand index,
-                                  ConstantOrRegister value, bool strict, bool guardHoles)
+                                  ConstantOrRegister value, bool strict, bool guardHoles,
+                                  jsbytecode *profilerLeavePc)
 {
     switch (gen->info().executionMode()) {
       case SequentialExecution: {
         SetElementIC cache(obj, unboxIndex, temp, tempFloat, index, value, strict,
                            guardHoles);
+        cache.setProfilerLeavePC(profilerLeavePc);
         return addCache(ins, allocateCache(cache));
       }
       case ParallelExecution: {
         SetElementParIC cache(obj, unboxIndex, temp, tempFloat, index, value, strict,
                               guardHoles);
+        cache.setProfilerLeavePC(profilerLeavePc);
         return addCache(ins, allocateCache(cache));
       }
       default:
@@ -6825,7 +6967,8 @@ CodeGenerator::visitGetPropertyCacheV(LGetPropertyCacheV *ins)
     bool monitoredResult = ins->mir()->monitoredResult();
     TypedOrValueRegister output = TypedOrValueRegister(GetValueOutput(ins));
 
-    return addGetPropertyCache(ins, liveRegs, objReg, name, output, monitoredResult);
+    return addGetPropertyCache(ins, liveRegs, objReg, name, output, monitoredResult,
+                               ins->mir()->profilerLeavePc());
 }
 
 bool
@@ -6837,7 +6980,8 @@ CodeGenerator::visitGetPropertyCacheT(LGetPropertyCacheT *ins)
     bool monitoredResult = ins->mir()->monitoredResult();
     TypedOrValueRegister output(ins->mir()->type(), ToAnyRegister(ins->getDef(0)));
 
-    return addGetPropertyCache(ins, liveRegs, objReg, name, output, monitoredResult);
+    return addGetPropertyCache(ins, liveRegs, objReg, name, output, monitoredResult,
+                               ins->mir()->profilerLeavePc());
 }
 
 typedef bool (*GetPropertyICFn)(JSContext *, size_t, HandleObject, MutableHandleValue);
@@ -6893,16 +7037,18 @@ CodeGenerator::visitGetPropertyParIC(OutOfLineUpdateCache *ool, DataPtr<GetPrope
 bool
 CodeGenerator::addGetElementCache(LInstruction *ins, Register obj, ConstantOrRegister index,
                                   TypedOrValueRegister output, bool monitoredResult,
-                                  bool allowDoubleResult)
+                                  bool allowDoubleResult, jsbytecode *profilerLeavePc)
 {
     switch (gen->info().executionMode()) {
       case SequentialExecution: {
         RegisterSet liveRegs = ins->safepoint()->liveRegs();
         GetElementIC cache(liveRegs, obj, index, output, monitoredResult, allowDoubleResult);
+        cache.setProfilerLeavePC(profilerLeavePc);
         return addCache(ins, allocateCache(cache));
       }
       case ParallelExecution: {
         GetElementParIC cache(obj, index, output, monitoredResult, allowDoubleResult);
+        cache.setProfilerLeavePC(profilerLeavePc);
         return addCache(ins, allocateCache(cache));
       }
       default:
@@ -6918,7 +7064,8 @@ CodeGenerator::visitGetElementCacheV(LGetElementCacheV *ins)
     TypedOrValueRegister output = TypedOrValueRegister(GetValueOutput(ins));
     const MGetElementCache *mir = ins->mir();
 
-    return addGetElementCache(ins, obj, index, output, mir->monitoredResult(), mir->allowDoubleResult());
+    return addGetElementCache(ins, obj, index, output, mir->monitoredResult(),
+                              mir->allowDoubleResult(), mir->profilerLeavePc());
 }
 
 bool
@@ -6929,7 +7076,8 @@ CodeGenerator::visitGetElementCacheT(LGetElementCacheT *ins)
     TypedOrValueRegister output(ins->mir()->type(), ToAnyRegister(ins->output()));
     const MGetElementCache *mir = ins->mir();
 
-    return addGetElementCache(ins, obj, index, output, mir->monitoredResult(), mir->allowDoubleResult());
+    return addGetElementCache(ins, obj, index, output, mir->monitoredResult(),
+                              mir->allowDoubleResult(), mir->profilerLeavePc());
 }
 
 typedef bool (*GetElementICFn)(JSContext *, size_t, HandleObject, HandleValue, MutableHandleValue);
@@ -6965,7 +7113,8 @@ CodeGenerator::visitSetElementCacheV(LSetElementCacheV *ins)
     ConstantOrRegister value = TypedOrValueRegister(ToValue(ins, LSetElementCacheV::Value));
 
     return addSetElementCache(ins, obj, unboxIndex, temp, tempFloat, index, value,
-                              ins->mir()->strict(), ins->mir()->guardHoles());
+                              ins->mir()->strict(), ins->mir()->guardHoles(),
+                              ins->mir()->profilerLeavePc());
 }
 
 bool
@@ -6984,7 +7133,8 @@ CodeGenerator::visitSetElementCacheT(LSetElementCacheT *ins)
         value = TypedOrValueRegister(ins->mir()->value()->type(), ToAnyRegister(tmp));
 
     return addSetElementCache(ins, obj, unboxIndex, temp, tempFloat, index, value,
-                              ins->mir()->strict(), ins->mir()->guardHoles());
+                              ins->mir()->strict(), ins->mir()->guardHoles(),
+                              ins->mir()->profilerLeavePc());
 }
 
 typedef bool (*SetElementICFn)(JSContext *, size_t, HandleObject, HandleValue, HandleValue);
@@ -7060,6 +7210,7 @@ CodeGenerator::visitBindNameCache(LBindNameCache *ins)
     Register scopeChain = ToRegister(ins->scopeChain());
     Register output = ToRegister(ins->output());
     BindNameIC cache(scopeChain, ins->mir()->name(), output);
+    cache.setProfilerLeavePC(ins->mir()->profilerLeavePc());
 
     return addCache(ins, allocateCache(cache));
 }
@@ -7154,7 +7305,8 @@ CodeGenerator::visitSetPropertyCacheV(LSetPropertyCacheV *ins)
     ConstantOrRegister value = TypedOrValueRegister(ToValue(ins, LSetPropertyCacheV::Value));
 
     return addSetPropertyCache(ins, liveRegs, objReg, ins->mir()->name(), value,
-                               ins->mir()->strict(), ins->mir()->needsTypeBarrier());
+                               ins->mir()->strict(), ins->mir()->needsTypeBarrier(),
+                               ins->mir()->profilerLeavePc());
 }
 
 bool
@@ -7170,7 +7322,8 @@ CodeGenerator::visitSetPropertyCacheT(LSetPropertyCacheT *ins)
         value = TypedOrValueRegister(ins->valueType(), ToAnyRegister(ins->getOperand(1)));
 
     return addSetPropertyCache(ins, liveRegs, objReg, ins->mir()->name(), value,
-                               ins->mir()->strict(), ins->mir()->needsTypeBarrier());
+                               ins->mir()->strict(), ins->mir()->needsTypeBarrier(),
+                               ins->mir()->profilerLeavePc());
 }
 
 typedef bool (*SetPropertyICFn)(JSContext *, size_t, HandleObject, HandleValue);
@@ -8051,7 +8204,7 @@ CodeGenerator::visitProfilerStackOp(LProfilerStackOp *lir)
 
         case MProfilerStackOp::Enter:
             if (gen->options.spsSlowAssertionsEnabled()) {
-                if (!inlinedFunction || js_JitOptions.profileInlineFrames) {
+                if (!inlinedFunction) {
                     saveLive(lir);
                     pushArg(ImmGCPtr(lir->script()));
                     if (!callVM(SPSEnterInfo, lir))
@@ -8074,7 +8227,7 @@ CodeGenerator::visitProfilerStackOp(LProfilerStackOp *lir)
 
         case MProfilerStackOp::Exit:
             if (gen->options.spsSlowAssertionsEnabled()) {
-                if (!inlinedFunction || js_JitOptions.profileInlineFrames) {
+                if (!inlinedFunction) {
                     saveLive(lir);
                     pushArg(ImmGCPtr(lir->script()));
                     // Once we've exited, then we shouldn't emit instrumentation for

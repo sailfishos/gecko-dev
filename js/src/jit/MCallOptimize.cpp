@@ -385,9 +385,9 @@ IonBuilder::inlineArrayPopShift(CallInfo &callInfo, MArrayPopShift::Mode mode)
     bool needsHoleCheck = thisTypes->hasObjectFlags(constraints(), types::OBJECT_FLAG_NON_PACKED);
     bool maybeUndefined = returnTypes->hasType(types::Type::UndefinedType());
 
-    bool barrier = PropertyReadNeedsTypeBarrier(analysisContext, constraints(),
-                                                callInfo.thisArg(), nullptr, returnTypes);
-    if (barrier)
+    BarrierKind barrier = PropertyReadNeedsTypeBarrier(analysisContext, constraints(),
+                                                       callInfo.thisArg(), nullptr, returnTypes);
+    if (barrier != BarrierKind::NoBarrier)
         returnType = MIRType_Value;
 
     MArrayPopShift *ins = MArrayPopShift::New(alloc(), callInfo.thisArg(), mode,
@@ -1231,7 +1231,7 @@ IonBuilder::inlineRegExpExec(CallInfo &callInfo)
     if (!resumeAfter(exec))
         return InliningStatus_Error;
 
-    if (!pushTypeBarrier(exec, getInlineReturnTypeSet(), true))
+    if (!pushTypeBarrier(exec, getInlineReturnTypeSet(), BarrierKind::TypeSet))
         return InliningStatus_Error;
 
     return InliningStatus_Inlined;
@@ -1637,10 +1637,10 @@ IonBuilder::inlineHasClasses(CallInfo &callInfo, const Class *clasp1, const Clas
             current->add(either);
             // Convert to bool with the '!!' idiom
             MNot *resultInverted = MNot::New(alloc(), either);
-            resultInverted->infer();
+            resultInverted->cacheOperandMightEmulateUndefined();
             current->add(resultInverted);
             MNot *result = MNot::New(alloc(), resultInverted);
-            result->infer();
+            result->cacheOperandMightEmulateUndefined();
             current->add(result);
             current->push(result);
         }
@@ -1782,7 +1782,7 @@ IonBuilder::inlineUnsafeGetReservedSlot(CallInfo &callInfo)
     current->push(load);
 
     // We don't track reserved slot types, so always emit a barrier.
-    if (!pushTypeBarrier(load, getInlineReturnTypeSet(), true))
+    if (!pushTypeBarrier(load, getInlineReturnTypeSet(), BarrierKind::TypeSet))
         return InliningStatus_Error;
 
     return InliningStatus_Inlined;
@@ -1903,7 +1903,7 @@ IonBuilder::inlineAssertFloat32(CallInfo &callInfo)
     JS_ASSERT(secondArg->type() == MIRType_Boolean);
     JS_ASSERT(secondArg->isConstant());
 
-    bool mustBeFloat32 = JSVAL_TO_BOOLEAN(secondArg->toConstant()->value());
+    bool mustBeFloat32 = secondArg->toConstant()->value().toBoolean();
     current->add(MAssertFloat32::New(alloc(), callInfo.getArg(0), mustBeFloat32));
 
     MConstant *undefined = MConstant::New(alloc(), UndefinedValue());
@@ -1917,6 +1917,15 @@ IonBuilder::inlineBoundFunction(CallInfo &nativeCallInfo, JSFunction *target)
 {
     JSFunction *scriptedTarget = &(target->getBoundFunctionTarget()->as<JSFunction>());
     JSRuntime *runtime = scriptedTarget->runtimeFromMainThread();
+
+    // Don't optimize if we're constructing and the callee is not a
+    // constructor, so that CallKnown does not have to handle this case
+    // (it should always throw).
+    if (nativeCallInfo.constructing() && !scriptedTarget->isInterpretedConstructor() &&
+        !scriptedTarget->isNativeConstructor())
+    {
+        return InliningStatus_NotInlined;
+    }
 
     if (gc::IsInsideNursery(runtime, scriptedTarget))
         return InliningStatus_NotInlined;

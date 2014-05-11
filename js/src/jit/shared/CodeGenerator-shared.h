@@ -272,7 +272,7 @@ class CodeGeneratorShared : public LInstructionVisitor
     // false on failure.
     bool encode(LRecoverInfo *recover);
     bool encode(LSnapshot *snapshot);
-    bool encodeAllocations(LSnapshot *snapshot, MResumePoint *resumePoint, uint32_t *startIndex);
+    bool encodeAllocation(LSnapshot *snapshot, MDefinition *def, uint32_t *startIndex);
 
     // Attempts to assign a BailoutId to a snapshot, if one isn't already set.
     // If the bailout table is full, this returns false, which is not a fatal
@@ -421,7 +421,11 @@ class CodeGeneratorShared : public LInstructionVisitor
     // mir->lir()->label(), or use getJumpLabelForBranch() if a label to use
     // directly is needed.
     void jumpToBlock(MBasicBlock *mir);
+
+// This function is not used for MIPS. MIPS has branchToBlock.
+#ifndef JS_CODEGEN_MIPS
     void jumpToBlock(MBasicBlock *mir, Assembler::Condition cond);
+#endif
 
   private:
     void generateInvalidateEpilogue();

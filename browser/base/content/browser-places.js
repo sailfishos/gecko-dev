@@ -922,6 +922,7 @@ let PlacesToolbarHelper = {
     if (forceToolbarOverflowCheck) {
       viewElt._placesView.updateOverflowStatus();
     }
+    this._shouldWrap = false;
     this._setupPlaceholder();
   },
 
@@ -1035,6 +1036,7 @@ let PlacesToolbarHelper = {
 
 let BookmarkingUI = {
   BOOKMARK_BUTTON_ID: "bookmarks-menu-button",
+  BOOKMARK_BUTTON_SHORTCUT: "addBookmarkAsKb",
   get button() {
     delete this.button;
     let widgetGroup = CustomizableUI.getWidget(this.BOOKMARK_BUTTON_ID);
@@ -1096,14 +1098,22 @@ let BookmarkingUI = {
   {
     delete this._starredTooltip;
     return this._starredTooltip =
-      gNavigatorBundle.getString("starButtonOn.tooltip");
+      this._getFormattedTooltip("starButtonOn.tooltip2");
   },
 
   get _unstarredTooltip()
   {
     delete this._unstarredTooltip;
     return this._unstarredTooltip =
-      gNavigatorBundle.getString("starButtonOff.tooltip");
+      this._getFormattedTooltip("starButtonOff.tooltip2");
+  },
+
+  _getFormattedTooltip: function(strId) {
+    let args = [];
+    let shortcut = document.getElementById(this.BOOKMARK_BUTTON_SHORTCUT);
+    if (shortcut)
+      args.push(ShortcutUtils.prettifyShortcut(shortcut));
+    return gNavigatorBundle.getFormattedString(strId, args);
   },
 
   /**
@@ -1535,6 +1545,10 @@ let BookmarkingUI = {
       viewToolbar.removeAttribute("checked");
     else
       viewToolbar.setAttribute("checked", "true");
+    // Get all statically placed buttons to supply them with keyboard shortcuts.
+    let staticButtons = viewToolbar.parentNode.getElementsByTagName("toolbarbutton");
+    for (let i = 0, l = staticButtons.length; i < l; ++i)
+      CustomizableUI.addShortcut(staticButtons[i]);
     // Setup the Places view.
     this._panelMenuView = new PlacesPanelMenuView("place:folder=BOOKMARKS_MENU",
                                                   "panelMenu_bookmarksMenu",

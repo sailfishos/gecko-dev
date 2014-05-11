@@ -6,7 +6,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 include LayersSurfaces;
-include protocol PGrallocBuffer;
 include protocol PLayerTransaction;
 include "mozilla/GfxMessageUtils.h";
 include "nsRegion.h";
@@ -45,7 +44,13 @@ child:
   // the root layer tree).
   async DidComposite(uint64_t id);
 
+  // The parent sends the child the requested fill ratio numbers.
+  async Overfill(uint32_t aOverfill);
+
 parent:
+
+  // Child sends the parent a request for fill ratio numbers.
+  async RequestOverfill();
 
   // The child is about to be destroyed, so perform any necessary cleanup.
   sync WillStop();

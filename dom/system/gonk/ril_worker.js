@@ -53,7 +53,6 @@ if (!this.debug) {
 }
 
 let RIL_CELLBROADCAST_DISABLED;
-let RIL_CLIR_MODE;
 let RIL_EMERGENCY_NUMBERS;
 const DEFAULT_EMERGENCY_NUMBERS = ["112", "911"];
 
@@ -95,6 +94,9 @@ let RILQUIRKS_SEND_STK_PROFILE_DOWNLOAD;
 
 // Ril quirk to attach data registration on demand.
 let RILQUIRKS_DATA_REGISTRATION_ON_DEMAND;
+
+// Ril quirk to control the uicc/data subscription.
+let RILQUIRKS_SUBSCRIPTION_CONTROL;
 
 function BufObject(aContext) {
   this.context = aContext;
@@ -223,7 +225,8 @@ function RilObject(aContext) {
   // Init properties that are only initialized once.
   this.v5Legacy = RILQUIRKS_V5_LEGACY;
   this.cellBroadcastDisabled = RIL_CELLBROADCAST_DISABLED;
-  this.clirMode = RIL_CLIR_MODE;
+
+  this._hasHangUpPendingOutgoingCall = false;
 }
 RilObject.prototype = {
   context: null,
@@ -265,11 +268,6 @@ RilObject.prototype = {
    * Global Cell Broadcast switch.
    */
   cellBroadcastDisabled: false,
-
-  /**
-   * Global CLIR mode settings.
-   */
-  clirMode: CLIR_DEFAULT,
 
   /**
    * Parsed Cell Broadcast search lists.
@@ -418,6 +416,11 @@ RilObject.prototype = {
       MMI: cbmmi || null
     };
     this.mergedCellBroadcastConfig = null;
+
+    /**
+     * True if the pending outgoing call is hung up by user.
+     */
+    this._hasHangUpPendingOutgoingCall = false;
   },
 
   /**
@@ -1111,13 +1114,10 @@ RilObject.prototype = {
    *        nsIDOMMozMobileConnection interface.
    */
   setCLIR: function(options) {
-    if (options) {
-      this.clirMode = options.clirMode;
-    }
     let Buf = this.context.Buf;
     Buf.newParcel(REQUEST_SET_CLIR, options);
     Buf.writeInt32(1);
-    Buf.writeInt32(this.clirMode);
+    Buf.writeInt32(options.clirMode);
     Buf.sendParcel();
   },
 
@@ -1288,7 +1288,7 @@ RilObject.prototype = {
     Buf.sendParcel();
   },
 
-/**
+  /**
    * Exchange APDU data on an open Logical UICC channel
    */
   iccExchangeAPDU: function(options) {
@@ -1330,6 +1330,23 @@ RilObject.prototype = {
     Buf.newParcel(REQUEST_SIM_CLOSE_CHANNEL, options);
     Buf.writeInt32(1);
     Buf.writeInt32(options.channel);
+    Buf.sendParcel();
+  },
+
+  /**
+   * Enable/Disable UICC subscription
+   */
+  setUiccSubscription: function(options) {
+    if (DEBUG) {
+      this.context.debug("setUiccSubscription: " + JSON.stringify(options));
+    }
+
+    let Buf = this.context.Buf;
+    Buf.newParcel(REQUEST_SET_UICC_SUBSCRIPTION, options);
+    Buf.writeInt32(this.context.clientId);
+    Buf.writeInt32(options.appIndex);
+    Buf.writeInt32(this.context.clientId);
+    Buf.writeInt32(options.enabled ? 1 : 0);
     Buf.sendParcel();
   },
 
@@ -1547,6 +1564,7 @@ RilObject.prototype = {
     let callIndex = call.callIndex;
     if (callIndex === OUTGOING_PLACEHOLDER_CALL_INDEX) {
       if (DEBUG) this.context.debug("Hang up pending outgoing call.");
+      this._hasHangUpPendingOutgoingCall = true;
       this._removeVoiceCall(call, GECKO_CALL_ERROR_NORMAL_CALL_CLEARING);
       return;
     }
@@ -2115,10 +2133,15 @@ RilObject.prototype = {
    *        Boolean value indicating attach or detach.
    */
   setDataRegistration: function(options) {
-    let request = options.attach ? RIL_REQUEST_GPRS_ATTACH :
-                                   RIL_REQUEST_GPRS_DETACH;
     this._attachDataRegistration = options.attach;
-    this.context.Buf.simpleRequest(request);
+
+    if (RILQUIRKS_DATA_REGISTRATION_ON_DEMAND) {
+      let request = options.attach ? RIL_REQUEST_GPRS_ATTACH :
+                                     RIL_REQUEST_GPRS_DETACH;
+      this.context.Buf.simpleRequest(request);
+    } else if (RILQUIRKS_SUBSCRIPTION_CONTROL && options.attach) {
+      this.context.Buf.simpleRequest(REQUEST_SET_DATA_SUBSCRIPTION, options);
+    }
   },
 
   /**
@@ -3187,10 +3210,18 @@ RilObject.prototype = {
     let newCardState;
     let index = this._isCdma ? iccStatus.cdmaSubscriptionAppIndex :
                                iccStatus.gsmUmtsSubscriptionAppIndex;
-    let app = iccStatus.apps[index];
+
+    if (RILQUIRKS_SUBSCRIPTION_CONTROL && index === -1) {
+      // Should enable uicc scription.
+      for (let i = 0; i < iccStatus.apps.length; i++) {
+        this.setUiccSubscription({appIndex: i, enabled: true});
+      }
+      return;
+    }
 
     // When |iccStatus.cardState| is not CARD_STATE_PRESENT or have incorrect
     // app information, we can not get iccId. So treat ICC as undetected.
+    let app = iccStatus.apps[index];
     if (iccStatus.cardState !== CARD_STATE_PRESENT || !app) {
       if (this.cardState !== GECKO_CARDSTATE_UNDETECTED) {
         this.operator = null;
@@ -3870,21 +3901,27 @@ RilObject.prototype = {
 
     // Go through any remaining calls that are new to us.
     for each (let newCall in newCalls) {
-      if (newCall.isVoice) {
-        if (newCall.isMpty) {
-          conferenceChanged = true;
-        }
-        if (!pendingOutgoingCall &&
-            (newCall.state === CALL_STATE_DIALING ||
-             newCall.state === CALL_STATE_ALERTING)) {
-          // Receive a new outgoing call which is already hung up by user.
-          if (DEBUG) this.context.debug("Pending outgoing call is hung up by user.");
-          this.sendHangUpRequest(newCall.callIndex);
-        } else {
-          this._addNewVoiceCall(newCall);
-        }
+      if (!newCall.isVoice) {
+        continue;
+      }
+
+      if (newCall.isMpty) {
+        conferenceChanged = true;
+      }
+
+      if (this._hasHangUpPendingOutgoingCall &&
+          (newCall.state === CALL_STATE_DIALING ||
+           newCall.state === CALL_STATE_ALERTING)) {
+        // Receive a new outgoing call which is already hung up by user.
+        if (DEBUG) this.context.debug("Pending outgoing call is hung up by user.");
+        this._hasHangUpPendingOutgoingCall = false;
+        this.sendHangUpRequest(newCall.callIndex);
+      } else {
+        this._addNewVoiceCall(newCall);
       }
     }
+
+    this._hasHangUpPendingOutgoingCall = false;
 
     if (clearConferenceRequest) {
       this._hasConferenceRequest = false;
@@ -3961,7 +3998,7 @@ RilObject.prototype = {
     }
 
     if (DEBUG) this.context.debug("Remove pending outgoing call.");
-    this._removeVoiceCall(pendingOutgoingCall, failCause);
+    this._removeVoiceCall(call, failCause);
   },
 
   _ensureConference: function() {
@@ -5364,6 +5401,7 @@ RilObject.prototype[REQUEST_DIAL] = function REQUEST_DIAL(length, options) {
   if (options.rilRequestError) {
     this.getFailCauseCode((function(failCause) {
       this._removePendingOutgoingCall(failCause);
+      this._hasHangUpPendingOutgoingCall = false;
     }).bind(this));
   }
 };
@@ -5848,6 +5886,8 @@ RilObject.prototype[REQUEST_QUERY_FACILITY_LOCK] = function REQUEST_QUERY_FACILI
   options.success = (options.rilRequestError === 0);
   if (!options.success) {
     options.errorMsg = RIL_ERROR_TO_GECKO_ERROR[options.rilRequestError];
+    this.sendChromeMessage(options);
+    return;
   }
 
   let services;
@@ -6328,6 +6368,8 @@ RilObject.prototype[REQUEST_GET_SMSC_ADDRESS] = function REQUEST_GET_SMSC_ADDRES
 RilObject.prototype[REQUEST_SET_SMSC_ADDRESS] = null;
 RilObject.prototype[REQUEST_REPORT_SMS_MEMORY_STATUS] = null;
 RilObject.prototype[REQUEST_REPORT_STK_SERVICE_IS_RUNNING] = null;
+RilObject.prototype[REQUEST_CDMA_GET_SUBSCRIPTION_SOURCE] = null;
+RilObject.prototype[REQUEST_ISIM_AUTHENTICATION] = null;
 RilObject.prototype[REQUEST_ACKNOWLEDGE_INCOMING_GSM_SMS_WITH_PDU] = null;
 RilObject.prototype[REQUEST_STK_SEND_ENVELOPE_WITH_STATUS] = function REQUEST_STK_SEND_ENVELOPE_WITH_STATUS(length, options) {
   if (options.rilRequestError) {
@@ -6367,6 +6409,10 @@ RilObject.prototype[REQUEST_VOICE_RADIO_TECH] = function REQUEST_VOICE_RADIO_TEC
   let radioTech = this.context.Buf.readInt32List();
   this._processRadioTech(radioTech[0]);
 };
+RilObject.prototype[REQUEST_SET_UICC_SUBSCRIPTION] = null;
+RilObject.prototype[REQUEST_SET_DATA_SUBSCRIPTION] = null;
+RilObject.prototype[REQUEST_GET_UICC_SUBSCRIPTION] = null;
+RilObject.prototype[REQUEST_GET_DATA_SUBSCRIPTION] = null;
 RilObject.prototype[REQUEST_GET_UNLOCK_RETRY_COUNT] = function REQUEST_GET_UNLOCK_RETRY_COUNT(length, options) {
   options.success = (options.rilRequestError === 0);
   if (!options.success) {
@@ -6435,8 +6481,9 @@ RilObject.prototype[UNSOLICITED_RESPONSE_RADIO_STATE_CHANGED] = function UNSOLIC
     this.getBasebandVersion();
     this.updateCellBroadcastConfig();
     this.setPreferredNetworkType();
-    this.setCLIR();
-    if (RILQUIRKS_DATA_REGISTRATION_ON_DEMAND && this._attachDataRegistration) {
+    if ((RILQUIRKS_DATA_REGISTRATION_ON_DEMAND ||
+         RILQUIRKS_SUBSCRIPTION_CONTROL) &&
+        this._attachDataRegistration) {
       this.setDataRegistration({attach: true});
     }
   }
@@ -6515,6 +6562,7 @@ RilObject.prototype[UNSOLICITED_ON_USSD] = function UNSOLICITED_ON_USSD() {
                           message: message,
                           sessionEnded: !this._ussdSession});
 };
+RilObject.prototype[UNSOLICITED_ON_USSD_REQUEST] = null;
 RilObject.prototype[UNSOLICITED_NITZ_TIME_RECEIVED] = function UNSOLICITED_NITZ_TIME_RECEIVED() {
   let dateString = this.context.Buf.readString();
 
@@ -6710,6 +6758,7 @@ RilObject.prototype[UNSOLICITED_RIL_CONNECTED] = function UNSOLICITED_RIL_CONNEC
   // Reset radio in the case that b2g restart (or crash).
   this.setRadioEnabled({enabled: false});
 };
+RilObject.prototype[UNSOLICITED_VOICE_RADIO_TECH_CHANGED] = null;
 
 /**
  * This object exposes the functionality to parse and serialize PDU strings
@@ -13607,7 +13656,7 @@ ICCUtilsHelperObject.prototype = {
     let iccInfo = RIL.iccInfo;
     let pnnEntry;
 
-    if (!mcc || !mnc || !lac) {
+    if (!mcc || !mnc || lac == null || lac < 0) {
       return null;
     }
 
@@ -14689,7 +14738,6 @@ let ContextPool = {
     DEBUG = DEBUG_WORKER || aOptions.debug;
     RIL_EMERGENCY_NUMBERS = aOptions.rilEmergencyNumbers;
     RIL_CELLBROADCAST_DISABLED = aOptions.cellBroadcastDisabled;
-    RIL_CLIR_MODE = aOptions.clirMode;
 
     let quirks = aOptions.quirks;
     RILQUIRKS_CALLSTATE_EXTRA_UINT32 = quirks.callstateExtraUint32;
@@ -14700,6 +14748,7 @@ let ContextPool = {
     RILQUIRKS_HAVE_QUERY_ICC_LOCK_RETRY_COUNT = quirks.haveQueryIccLockRetryCount;
     RILQUIRKS_SEND_STK_PROFILE_DOWNLOAD = quirks.sendStkProfileDownload;
     RILQUIRKS_DATA_REGISTRATION_ON_DEMAND = quirks.dataRegistrationOnDemand;
+    RILQUIRKS_SUBSCRIPTION_CONTROL = quirks.subscriptionControl;
   },
 
   registerClient: function(aOptions) {

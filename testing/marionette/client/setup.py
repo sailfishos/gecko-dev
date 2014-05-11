@@ -2,14 +2,7 @@ import os
 from setuptools import setup, find_packages
 import sys
 
-version = '0.7.6'
-
-# get documentation from the README
-try:
-    here = os.path.dirname(os.path.abspath(__file__))
-    description = file(os.path.join(here, 'README.md')).read()
-except (OSError, IOError):
-    description = ''
+version = '0.7.7'
 
 # dependencies
 with open('requirements.txt') as f:
@@ -27,7 +20,7 @@ if os.path.exists(transport_dir) and method:
     try:
         subprocess.check_call(cmd, cwd=transport_dir)
     except subprocess.CalledProcessError:
-        print "Error running setup.py in %s" % directory
+        print "Error running setup.py in %s" % transport_dir
         raise
 else:
     deps += ['marionette-transport == 0.1']
@@ -35,7 +28,7 @@ else:
 setup(name='marionette_client',
       version=version,
       description="Marionette test automation client",
-      long_description=description,
+      long_description='See http://marionette-client.readthedocs.org/',
       classifiers=[], # Get strings from http://pypi.python.org/pypi?%3Aaction=list_classifiers
       keywords='mozilla',
       author='Jonathan Griffin',

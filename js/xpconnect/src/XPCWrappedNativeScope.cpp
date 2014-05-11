@@ -135,7 +135,7 @@ XPCWrappedNativeScope::GetComponentsJSObject()
     AutoJSContext cx;
     if (!mComponents) {
         nsIPrincipal *p = GetPrincipal();
-        bool system = XPCWrapper::GetSecurityManager()->IsSystemPrincipal(p);
+        bool system = nsXPConnect::SecurityManager()->IsSystemPrincipal(p);
         mComponents = system ? new nsXPCComponents(this)
                              : new nsXPCComponentsBase(this);
     }
@@ -183,8 +183,8 @@ XPCWrappedNativeScope::AttachComponentsObject(JSContext* aCx)
     MOZ_ASSERT(js::IsObjectInContextCompartment(global, aCx));
 
     RootedId id(aCx, XPCJSRuntime::Get()->GetStringID(XPCJSRuntime::IDX_COMPONENTS));
-    return JS_DefinePropertyById(aCx, global, id, ObjectValue(*components),
-                                 nullptr, nullptr, JSPROP_PERMANENT | JSPROP_READONLY);
+    return JS_DefinePropertyById(aCx, global, id, components,
+                                 JSPROP_PERMANENT | JSPROP_READONLY);
 }
 
 JSObject*
