@@ -65,27 +65,27 @@ typedef enum {
   GST_PLAY_FLAG_SOFT_COLORBALANCE = (1 << 10)
 } PlayFlags;
 
+static const char defaultFilter[] = "capsfilter name=filter ! ";
+static const char nemoFilter[] = "colorconv ! capsfilter name=filter ! ";
+static bool useNemoFilter = getenv("USE_NEMO_GSTREAMER") != 0;
+
 void* sCurrentDecoderUser = nullptr;
 static bool sNoLimitOneGSTDecoder = getenv("NO_LIMIT_ONE_GST_DECODER") != 0;
 
 void ResetIfCurrentDecoderActive(void* aCaller)
 {
-#ifdef HAS_NEMO_RESOURCE
   if (!sNoLimitOneGSTDecoder && sCurrentDecoderUser == aCaller) {
     sCurrentDecoderUser = nullptr;
   }
-#endif
 }
 
 bool UpdateCurrentAsActiveIfNotBusy(void* aCaller)
 {
-#ifdef HAS_NEMO_RESOURCE
   if (!sNoLimitOneGSTDecoder && sCurrentDecoderUser != nullptr && sCurrentDecoderUser != aCaller)
   {
     return false;
   }
   sCurrentDecoderUser = aCaller;
-#endif
   return true;
 }
 
@@ -164,9 +164,7 @@ GStreamerReader::~GStreamerReader()
 
 void GStreamerReader::Suspend()
 {
-#ifdef HAS_NEMO_RESOURCE
   ResetIfCurrentDecoderActive(this);
-#endif
 }
 
 nsresult GStreamerReader::Init(MediaDecoderReader* aCloneDonor)
@@ -192,18 +190,16 @@ nsresult GStreamerReader::Init(MediaDecoderReader* aCloneDonor)
   g_object_set(mPlayBin, "buffer-size", 0, nullptr);
   mBus = gst_pipeline_get_bus(GST_PIPELINE(mPlayBin));
 
-#ifndef HAS_NEMO_RESOURCE
-  mVideoSink = gst_parse_bin_from_description("capsfilter name=filter ! "
-#else
-  mVideoSink = gst_parse_bin_from_description("colorconv ! capsfilter name=filter ! "
-#endif
-      "appsink name=videosink sync=false max-buffers=1 "
+  nsAutoCString description;
+  description.AppendPrintf("%s %s %s", useNemoFilter ? nemoFilter : defaultFilter,
+    "appsink name=videosink sync=false max-buffers=1 ",
 #if GST_VERSION_MAJOR >= 1
       "caps=video/x-raw,format=I420"
 #else
       "caps=video/x-raw-yuv,format=(fourcc)I420"
 #endif
-      , TRUE, nullptr);
+  );
+  mVideoSink = gst_parse_bin_from_description(description.get(), TRUE, nullptr);
   mVideoAppSink = GST_APP_SINK(gst_bin_get_by_name(GST_BIN(mVideoSink),
         "videosink"));
   mAudioSink = gst_parse_bin_from_description("capsfilter name=filter ! "
