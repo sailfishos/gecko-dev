@@ -59,13 +59,13 @@ JSONCreator(const jschar* aBuf, uint32_t aLen, void* aData)
 nsresult
 JSValToVariant(JSContext* cx, jsval& propval, nsIWritableVariant* aVariant)
 {
-  if (JSVAL_IS_BOOLEAN(propval)) {
-    aVariant->SetAsBool(JSVAL_TO_BOOLEAN(propval));
-  } else if (JSVAL_IS_INT(propval)) {
-    aVariant->SetAsInt32(JSVAL_TO_INT(propval));
-  } else if (JSVAL_IS_DOUBLE(propval)) {
-    aVariant->SetAsDouble(JSVAL_TO_DOUBLE(propval));
-  } else if (JSVAL_IS_STRING(propval)) {
+  if (propval.isBoolean()) {
+    aVariant->SetAsBool(propval.toBoolean());
+  } else if (propval.isInt32()) {
+    aVariant->SetAsInt32(propval.toInt32());
+  } else if (propval.isDouble()) {
+    aVariant->SetAsDouble(propval.toDouble());
+  } else if (propval.isString()) {
     JS::Rooted<JS::Value> val(cx, propval);
     JSString* propvalString = JS::ToString(cx, val);
     nsDependentJSString vstr;
@@ -73,7 +73,7 @@ JSValToVariant(JSContext* cx, jsval& propval, nsIWritableVariant* aVariant)
       return NS_ERROR_FAILURE;
     }
     aVariant->SetAsAString(vstr);
-  } else if (!JSVAL_IS_PRIMITIVE(propval)) {
+  } else if (!propval.isPrimitive()) {
     NS_ERROR("Value is not primitive");
     return NS_ERROR_FAILURE;
   }
@@ -105,7 +105,7 @@ ParseObject(JSContext* cx, JSObject* object, nsIWritablePropertyBag2* aBag)
       return NS_ERROR_FAILURE;
     }
 
-    if (JSVAL_IS_PRIMITIVE(propval)) {
+    if (propval.isPrimitive()) {
       nsCOMPtr<nsIVariant> value;
       nsContentUtils::XPConnect()->JSValToVariant(cx, propval, getter_AddRefs(value));
       nsCOMPtr<nsIWritablePropertyBag> bagSimple = do_QueryInterface(aBag);
@@ -121,7 +121,7 @@ ParseObject(JSContext* cx, JSObject* object, nsIWritablePropertyBag2* aBag)
             JS::Rooted<JS::Value> v(cx);
             if (!JS_GetElement(cx, obj, i, &v))
               continue;
-            if (JSVAL_IS_PRIMITIVE(v)) {
+            if (v.isPrimitive()) {
               nsCOMPtr<nsIVariant> value;
               nsContentUtils::XPConnect()->JSValToVariant(cx, v, getter_AddRefs(value));
               childArray.AppendElement(value);
@@ -129,7 +129,7 @@ ParseObject(JSContext* cx, JSObject* object, nsIWritablePropertyBag2* aBag)
               nsCOMPtr<nsIWritableVariant> value = do_CreateInstance("@mozilla.org/variant;1");
               nsCOMPtr<nsIWritablePropertyBag2> contextProps;
               CreateObjectStatic(getter_AddRefs(contextProps));
-              JSObject* obj = JSVAL_TO_OBJECT(v);
+              JSObject* obj = v.toObjectOrNull();
               ParseObject(cx, obj, contextProps);
               value->SetAsInterface(NS_GET_IID(nsIWritablePropertyBag2), contextProps);
               childArray.AppendElement(value);
@@ -170,12 +170,12 @@ EmbedLiteJSON::ParseJSON(nsAString const& aJson, nsIPropertyBag2** aRoot)
     return NS_ERROR_FAILURE;
   }
 
-  if (JSVAL_IS_PRIMITIVE(json)) {
+  if (json.isPrimitive()) {
     NS_ERROR("We don't handle primitive values");
     return NS_ERROR_FAILURE;
   }
 
-  JSObject* obj = JSVAL_TO_OBJECT(json);
+  JSObject* obj = json.toObjectOrNull();
   nsCOMPtr<nsIWritablePropertyBag2> contextProps;
   if (obj) {
     CreateObject(getter_AddRefs(contextProps));
