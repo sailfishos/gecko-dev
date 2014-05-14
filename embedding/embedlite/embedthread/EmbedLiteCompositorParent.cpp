@@ -41,6 +41,7 @@ EmbedLiteCompositorParent::EmbedLiteCompositorParent(nsIWidget* aWidget,
   , mCurrentCompositeTask(nullptr)
   , mWorldOpacity(1.0f)
   , mLastViewSize(aSurfaceWidth, aSurfaceHeight)
+  , mInitialPaintCount(0)
 {
   AddRef();
   EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(mId);
@@ -73,33 +74,6 @@ EmbedLiteCompositorParent::AllocPLayerTransactionParent(const nsTArray<LayersBac
                                                    aId,
                                                    aTextureFactoryIdentifier,
                                                    aSuccess);
-
-  const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(RootLayerTreeId());
-  NS_ENSURE_TRUE(state && state->mLayerManager, parent);
-
-  GLContext* context = static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->gl();
-  NS_ENSURE_TRUE(context, parent);
-
-  if (context->IsOffscreen()) {
-    GLScreenBuffer* screen = context->Screen();
-    if (screen) {
-      SurfaceStreamType streamType =
-        SurfaceStream::ChooseGLStreamType(SurfaceStream::OffMainThread,
-                                          screen->PreserveBuffer());
-      SurfaceFactory_GL* factory = nullptr;
-      if (context->GetContextType() == GLContextType::EGL && sEGLLibrary.HasKHRImageTexture2D()) {
-        // [Basic/OGL Layers, OMTC] WebGL layer init.
-        factory = SurfaceFactory_EGLImage::Create(context, screen->Caps());
-      } else {
-        // [Basic Layers, OMTC] WebGL layer init.
-        // Well, this *should* work...
-        factory = new SurfaceFactory_GLTexture(context, nullptr, screen->Caps());
-      }
-      if (factory) {
-        screen->Morph(factory, streamType);
-      }
-    }
-  }
 
   return parent;
 }
@@ -159,6 +133,11 @@ bool EmbedLiteCompositorParent::RenderGL()
   if (context->IsOffscreen()) {
     if (!context->PublishFrame()) {
       NS_ERROR("Failed to publish context frame");
+    }
+    // Temporary hack, we need two extra paints in order to get initial picture
+    if (mInitialPaintCount < 2) {
+      ScheduleRenderOnCompositorThread();
+      mInitialPaintCount++;
     }
   }
 
