@@ -63,6 +63,8 @@ protected:
   nsIntRect mActiveClipping;
   CancelableTask *mCurrentCompositeTask;
   float mWorldOpacity;
+  gfx::IntSize mLastViewSize;
+  short mInitialPaintCount;
 };
 
 } // embedlite
