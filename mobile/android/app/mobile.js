@@ -103,6 +103,7 @@ pref("network.buffer.cache.count", 24);
 pref("network.buffer.cache.size",  16384);
 
 // predictive actions
+pref("network.seer.enabled", false);
 pref("network.seer.max-db-size", 2097152); // bytes
 pref("network.seer.preserve", 50); // percentage of seer data to keep when cleaning up
 
@@ -234,6 +235,7 @@ pref("accessibility.browsewithcaret_shortcut.enabled", false);
 // Whether the character encoding menu is under the main Firefox button. This
 // preference is a string so that localizers can alter it.
 pref("browser.menu.showCharacterEncoding", "chrome://browser/locale/browser.properties");
+pref("intl.charsetmenu.browser.static", "chrome://browser/locale/browser.properties");
 
 // pointer to the default engine name
 pref("browser.search.defaultenginename", "chrome://browser/locale/region.properties");

@@ -29,6 +29,7 @@
 #include "nsIFocusManager.h"
 #include "nsIDOMScrollAreaEvent.h"
 #include "nsISerializable.h"
+#include "nsIURIFixup.h"
 #include "nsIEmbedBrowserChromeListener.h"
 #include "nsIBaseWindow.h"
 
@@ -259,7 +260,18 @@ WebBrowserChrome::OnLocationChange(nsIWebProgress* aWebProgress,
 
   nsCString spec;
   if (location) {
-    location->GetSpec(spec);
+    nsCOMPtr<nsIURIFixup> fixup(do_GetService("@mozilla.org/docshell/urifixup;1"));
+    if (fixup) {
+        nsCOMPtr<nsIURI> tmpuri;
+        nsresult rv = fixup->CreateExposableURI(location, getter_AddRefs(tmpuri));
+        if (NS_SUCCEEDED(rv) && tmpuri) {
+            tmpuri->GetSpec(spec);
+        } else {
+            location->GetSpec(spec);
+        }
+    } else {
+        location->GetSpec(spec);
+    }
   }
   nsCString slocation(spec);
   int32_t i = slocation.RFind("#");
