@@ -4181,6 +4181,17 @@ TypeObject::sweep(FreeOp *fop, bool *oom)
 }
 
 void
+TypeCompartment::clearTables()
+{
+    if (allocationSiteTable && allocationSiteTable->initialized())
+        allocationSiteTable->clear();
+    if (arrayTypeTable && arrayTypeTable->initialized())
+        arrayTypeTable->clear();
+    if (objectTypeTable && objectTypeTable->initialized())
+        objectTypeTable->clear();
+}
+
+void
 TypeCompartment::sweep(FreeOp *fop)
 {
     /*
@@ -4394,6 +4405,7 @@ TypeZone::sweep(FreeOp *fop, bool releaseTypes, bool *oom)
 
     /* Sweep and find compressed indexes for each compiler output. */
     size_t newCompilerOutputCount = 0;
+#ifdef JS_ION
     if (compilerOutputs) {
         for (size_t i = 0; i < compilerOutputs->length(); i++) {
             CompilerOutput &output = (*compilerOutputs)[i];
@@ -4408,7 +4420,7 @@ TypeZone::sweep(FreeOp *fop, bool releaseTypes, bool *oom)
             }
         }
     }
-
+#endif
     if (inferenceEnabled) {
         gcstats::AutoPhase ap2(rt->gcStats, gcstats::PHASE_DISCARD_TI);
 

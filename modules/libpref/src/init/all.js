@@ -508,7 +508,11 @@ pref("accessibility.typeaheadfind.timeout", 4000);
 pref("accessibility.typeaheadfind.enabletimeout", true);
 pref("accessibility.typeaheadfind.soundURL", "beep");
 pref("accessibility.typeaheadfind.enablesound", true);
+#ifdef XP_MACOSX
+pref("accessibility.typeaheadfind.prefillwithselection", false);
+#else
 pref("accessibility.typeaheadfind.prefillwithselection", true);
+#endif
 
 // use Mac OS X Appearance panel text smoothing setting when rendering text, disabled by default
 pref("gfx.use_text_smoothing_setting", false);
@@ -1294,7 +1298,7 @@ pref("network.dir.format", 2);
 pref("network.prefetch-next", true);
 
 // enables the predictive service
-pref("network.seer.enabled", true);
+pref("network.seer.enabled", false);
 pref("network.seer.enable-hover-on-ssl", false);
 pref("network.seer.page-degradation.day", 0);
 pref("network.seer.page-degradation.week", 5);

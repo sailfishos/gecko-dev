@@ -588,17 +588,15 @@ EmbedLiteViewThreadChild::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
   }
 
 
-  FrameMetrics metrics(aFrameMetrics);
   if (mViewResized && mHelper->HandlePossibleViewportChange()) {
-    metrics = mHelper->mLastRootMetrics;
     mViewResized = false;
   }
 
-  RelayFrameMetrics(metrics);
+  RelayFrameMetrics(aFrameMetrics);
 
   bool ret = true;
   if (sHandleDefaultAZPC.viewport) {
-    ret = mHelper->RecvUpdateFrame(metrics);
+    ret = mHelper->RecvUpdateFrame(aFrameMetrics);
   }
 
   return ret;
