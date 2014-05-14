@@ -63,6 +63,7 @@ protected:
   CancelableTask *mCurrentCompositeTask;
   float mWorldOpacity;
   gfx::IntSize mLastViewSize;
+  short mInitialPaintCount;
 };
 
 } // embedlite

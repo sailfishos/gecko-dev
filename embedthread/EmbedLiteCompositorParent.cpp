@@ -41,6 +41,7 @@ EmbedLiteCompositorParent::EmbedLiteCompositorParent(nsIWidget* aWidget,
   , mCurrentCompositeTask(nullptr)
   , mWorldOpacity(1.0f)
   , mLastViewSize(aSurfaceWidth, aSurfaceHeight)
+  , mInitialPaintCount(0)
 {
   AddRef();
   EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(mId);
@@ -162,6 +163,11 @@ bool EmbedLiteCompositorParent::RenderGL()
   if (context->IsOffscreen()) {
     if (!context->PublishFrame()) {
       NS_ERROR("Failed to publish context frame");
+    }
+    // Temporary hack, we need two extra paints in order to get initial picture
+    if (mInitialPaintCount < 2) {
+      ScheduleRenderOnCompositorThread();
+      mInitialPaintCount++;
     }
   }
 
