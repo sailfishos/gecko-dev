@@ -142,13 +142,20 @@ public:
                                         const bool &minimizeMemoryUsage,
                                         const nsString &aDMDDumpIdent) MOZ_OVERRIDE;
 
+    virtual PCycleCollectWithLogsChild*
+    AllocPCycleCollectWithLogsChild(const bool& aDumpAllTraces,
+                                    const FileDescriptor& aGCLog,
+                                    const FileDescriptor& aCCLog) MOZ_OVERRIDE;
     virtual bool
-    RecvAudioChannelNotify() MOZ_OVERRIDE;
+    DeallocPCycleCollectWithLogsChild(PCycleCollectWithLogsChild* aActor) MOZ_OVERRIDE;
+    virtual bool
+    RecvPCycleCollectWithLogsConstructor(PCycleCollectWithLogsChild* aChild,
+                                         const bool& aDumpAllTraces,
+                                         const FileDescriptor& aGCLog,
+                                         const FileDescriptor& aCCLog) MOZ_OVERRIDE;
 
     virtual bool
-    RecvDumpGCAndCCLogsToFile(const nsString& aIdentifier,
-                              const bool& aDumpAllTraces,
-                              const bool& aDumpChildProcesses) MOZ_OVERRIDE;
+    RecvAudioChannelNotify() MOZ_OVERRIDE;
 
     virtual PTestShellChild* AllocPTestShellChild() MOZ_OVERRIDE;
     virtual bool DeallocPTestShellChild(PTestShellChild*) MOZ_OVERRIDE;
@@ -249,7 +256,8 @@ public:
                                       const int32_t& aMountGeneration,
                                       const bool& aIsMediaPresent,
                                       const bool& aIsSharing,
-                                      const bool& aIsFormatting) MOZ_OVERRIDE;
+                                      const bool& aIsFormatting,
+                                      const bool& aIsFake) MOZ_OVERRIDE;
 
     virtual bool RecvNuwaFork() MOZ_OVERRIDE;
 

@@ -92,9 +92,13 @@ ifdef MOZ_DISABLE_PROGUARD
   PROGUARD_PASSES=0
 else
   ifdef MOZ_DEBUG
-  PROGUARD_PASSES=1
+    PROGUARD_PASSES=1
   else
-  PROGUARD_PASSES=6
+    ifndef MOZILLA_OFFICIAL
+      PROGUARD_PASSES=1
+    else
+      PROGUARD_PASSES=6
+    endif
   endif
 endif
 
@@ -252,7 +256,11 @@ cd $(2) && zip -q $(1) -r * -x $(not_android_res_files)
 
 endef
 
+# We delete the archive before updating so that resources removed from
+# the filesystem are removed from the archive.
 geckoview_resources.zip: $(all_resources) $(GLOBAL_DEPS)
+	$(REPORT_BUILD)
+	$(RM) -rf $@
 	$(foreach dir,$(ANDROID_RES_DIRS),$(call zip_directory_with_relative_paths,$(CURDIR)/$@,$(dir)))
 
 # All of generated/org/mozilla/gecko/R.java, gecko.ap_, and R.txt are

@@ -610,8 +610,7 @@ public class BrowserToolbar extends ThemedRelativeLayout
         // Find the distance from the right-edge of the url bar (where we're translating from) to
         // the left-edge of the cancel button (where we're translating to; note that the cancel
         // button must be laid out, i.e. not View.GONE).
-        final LayoutParams lp = (LayoutParams) urlEditLayout.getLayoutParams();
-        return editCancel.getLeft() - lp.leftMargin - urlBarEntry.getRight();
+        return editCancel.getLeft() - urlBarEntry.getRight();
     }
 
     private int getUrlBarCurveTranslation() {
@@ -1004,11 +1003,17 @@ public class BrowserToolbar extends ThemedRelativeLayout
             ViewHelper.setTranslationX(urlBarTranslatingEdge, entryTranslation);
         }
 
+        // Prevent taps through the editing mode cancel button (bug 1001243).
+        tabsButton.setEnabled(false);
+
         ViewHelper.setTranslationX(tabsButton, curveTranslation);
         ViewHelper.setTranslationX(tabsCounter, curveTranslation);
         ViewHelper.setTranslationX(actionItemBar, curveTranslation);
 
         if (hasSoftMenuButton) {
+            // Prevent tabs through the editing mode cancel button (bug 1001243).
+            menuButton.setEnabled(false);
+
             ViewHelper.setTranslationX(menuButton, curveTranslation);
             ViewHelper.setTranslationX(menuIcon, curveTranslation);
         }
@@ -1130,11 +1135,15 @@ public class BrowserToolbar extends ThemedRelativeLayout
             }
         }
 
+        tabsButton.setEnabled(true);
+
         ViewHelper.setTranslationX(tabsButton, 0);
         ViewHelper.setTranslationX(tabsCounter, 0);
         ViewHelper.setTranslationX(actionItemBar, 0);
 
         if (hasSoftMenuButton) {
+            menuButton.setEnabled(true);
+
             ViewHelper.setTranslationX(menuButton, 0);
             ViewHelper.setTranslationX(menuIcon, 0);
         }
