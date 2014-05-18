@@ -192,9 +192,8 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
   rv = NS_NewNativeLocalFile(greHomeCSTR, PR_FALSE,
                              getter_AddRefs(kDirectoryProvider.sGREDir));
 
-  if (getenv("USE_PRE_DEFINED_APP_INFO")) {
-    XRE_AddStaticComponent(&kLocalAppInfoModule);
-  }
+  // Initialize default xul application info component
+  XRE_AddStaticComponent(&kLocalAppInfoModule);
 
   // init embedding
   rv = XRE_InitEmbedding2(xuldir, appdir,
