@@ -23,13 +23,6 @@ public:
   NS_DECL_ISUPPORTS
   NS_DECL_NSIXULRUNTIME
   NS_DECL_NSIXULAPPINFO
-
-  static void SetEmbedAppDataInfo(const char* name,
-                                  const char* uaName,
-                                  const char* vendor,
-                                  const char* id,
-                                  const char* appBuildID,
-                                  const char* version);
 };
 
 
