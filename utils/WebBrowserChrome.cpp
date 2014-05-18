@@ -62,7 +62,8 @@ NS_IMPL_ISUPPORTS(WebBrowserChrome,
                   nsIWebBrowserChromeFocus,
                   nsIInterfaceRequestor,
                   nsIEmbeddingSiteWindow,
-                  nsIWebProgressListener)
+                  nsIWebProgressListener,
+                  nsISupportsWeakReference)
 
 NS_IMETHODIMP WebBrowserChrome::GetInterface(const nsIID& aIID, void** aInstancePtr)
 {
