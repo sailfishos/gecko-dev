@@ -60,7 +60,7 @@ gfxQtPlatform::gfxQtPlatform()
     if (!sFontconfigUtils)
         sFontconfigUtils = gfxFontconfigUtils::GetFontconfigUtils();
 
-    mScreenDepth = qApp->primaryScreen()->depth();
+    mScreenDepth = qApp && qApp->primaryScreen() ? qApp->primaryScreen()->depth() : 24;
     if (mScreenDepth == 16 || Preferences::GetBool("gfx.qt.rgb16.force", false)) {
         sOffscreenFormat = gfxImageFormat::RGB16_565;
     }
