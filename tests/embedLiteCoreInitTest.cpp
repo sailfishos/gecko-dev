@@ -40,7 +40,6 @@ int main(int argc, char** argv)
   g_thread_init(NULL);
 #endif
 
-  setenv("USE_PRE_DEFINED_APP_INFO", "1", 1);
   printf("Load XUL Symbols\n");
   if (LoadEmbedLite(argc, argv)) {
     printf("XUL Symbols loaded\n");

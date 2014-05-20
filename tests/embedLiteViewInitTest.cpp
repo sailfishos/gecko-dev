@@ -144,7 +144,6 @@ int main(int argc, char** argv)
   gtk_widget_set_default_colormap(gdk_rgb_get_colormap());
 #endif
 
-  setenv("USE_PRE_DEFINED_APP_INFO", "1", 1);
   printf("Load XUL Symbols\n");
   if (LoadEmbedLite(argc, argv)) {
     printf("XUL Symbols loaded\n");
