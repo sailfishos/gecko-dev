@@ -56,6 +56,11 @@
     "n_values": 21,
     "description": "Maximum number of concurrent threads reached during a given download session"
   },
+  "BLOCKLIST_SYNC_FILE_LOAD": {
+    "expires_in_version": "35",
+    "kind": "boolean",
+    "description": "blocklist.xml has been loaded synchronously"
+  },
   "COMPARTMENT_DONATED_NODE": {
     "expires_in_version": "never",
     "kind": "boolean",
@@ -307,6 +312,12 @@
     "expires_in_version": "never",
     "kind": "flag",
     "description": "Has seen location error"
+  },
+  "JS_MINOR_VERSION": {
+    "expires_in_version": "never",
+    "kind": "enumerated",
+    "n_values": 10,
+    "description": "JavaScript version in web content (1.x)"
   },
   "TELEMETRY_PING": {
     "expires_in_version": "never",
@@ -3330,6 +3341,22 @@
     "extended_statistics_ok": true,
     "description": "Widget: Time it takes for the message before a UI message (ms)"
   },
+  "FX_SESSION_RESTORE_STARTUP_INIT_SESSION_MS": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": "30000",
+    "n_buckets": 20,
+    "extended_statistics_ok": true,
+    "description": "Session restore: Time it takes to prepare the data structures for restoring a session (ms)"
+  },
+  "FX_SESSION_RESTORE_STARTUP_ONLOAD_INITIAL_WINDOW_MS": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": "30000",
+    "n_buckets": 20,
+    "extended_statistics_ok": true,
+    "description": "Session restore: Time it takes to finish restoration once we have first opened a window (ms)"
+  },
   "FX_SESSION_RESTORE_COLLECT_ALL_WINDOWS_DATA_MS": {
     "expires_in_version": "never",
     "kind": "exponential",
@@ -4267,6 +4294,11 @@
     "extended_statistics_ok": true,
     "description": "Time (ms) it takes to initialize the search service"
   },
+  "SEARCH_SERVICE_INIT_SYNC": {
+    "expires_in_version": "35",
+    "kind": "boolean",
+    "description": "search service has been initialized synchronously"
+  },
   "SEARCH_SERVICE_BUILD_CACHE_MS": {
     "expires_in_version": "never",
     "kind": "exponential",
@@ -5120,6 +5152,76 @@
     "n_buckets": 1000,
     "description": "The delay (in milliseconds) when video is behind audio. Zero delay is not counted. Measured every second of a call."
   },
+  "WEBRTC_VIDEO_QUALITY_INBOUND_PACKETLOSS": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": 1000,
+    "n_buckets": 100,
+    "description": "Locally measured packet loss on inbound video (permille). Sampled every second of a call."
+  },
+  "WEBRTC_AUDIO_QUALITY_INBOUND_PACKETLOSS": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": 1000,
+    "n_buckets": 100,
+    "description": "Locally measured packet loss on inbound audio (permille). Sampled every second of a call."
+  },
+  "WEBRTC_VIDEO_QUALITY_OUTBOUND_PACKETLOSS": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": 1000,
+    "n_buckets": 100,
+    "description": "RTCP-reported packet loss by remote recipient of outbound video (permille). Sampled every second of a call (for easy comparison)."
+  },
+  "WEBRTC_AUDIO_QUALITY_OUTBOUND_PACKETLOSS": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": 1000,
+    "n_buckets": 100,
+    "description": "RTCP-reported packet loss by remote recipient of outbound audio (permille). Sampled every second of a call (for easy comparison)."
+  },
+  "WEBRTC_VIDEO_QUALITY_INBOUND_JITTER": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": 10000,
+    "n_buckets": 100,
+    "description": "Locally measured jitter on inbound video (ms). Sampled every second of a call."
+  },
+  "WEBRTC_AUDIO_QUALITY_INBOUND_JITTER": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": 10000,
+    "n_buckets": 1000,
+    "description": "Locally measured jitter on inbound audio (ms). Sampled every second of a call."
+  },
+  "WEBRTC_VIDEO_QUALITY_OUTBOUND_JITTER": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": 10000,
+    "n_buckets": 1000,
+    "description": "RTCP-reported jitter by remote recipient of outbound video (ms). Sampled every second of a call (for easy comparison)."
+  },
+  "WEBRTC_AUDIO_QUALITY_OUTBOUND_JITTER": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": 10000,
+    "n_buckets": 1000,
+    "description": "RTCP-reported jitter by remote recipient of outbound audio (ms). Sampled every second of a call (for easy comparison)."
+  },
+  "WEBRTC_VIDEO_QUALITY_OUTBOUND_RTT": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": 10000,
+    "n_buckets": 1000,
+    "description": "Roundtrip time of outbound video (ms). Sampled every second of a call."
+  },
+  "WEBRTC_AUDIO_QUALITY_OUTBOUND_RTT": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": 10000,
+    "n_buckets": 1000,
+    "description": "Roundtrip time of outbound audio (ms). Sampled every second of a call."
+  },
   "WEBRTC_CALL_DURATION": {
     "expires_in_version": "never",
     "kind": "exponential",
@@ -5920,11 +6022,33 @@
   "CERT_PINNING_RESULTS": {
     "expires_in_version": "never",
     "kind": "boolean",
-    "description": "Certificate pinning evalutation results (0 = failure, 1 = success)"
+    "description": "Certificate pinning results (0 = failure, 1 = success)"
   },
   "CERT_PINNING_TEST_RESULTS": {
     "expires_in_version": "never",
     "kind": "boolean",
-    "description": "Certificate pinning evalutation results (0 = failure, 1 = success)"
+    "description": "Certificate pinning test results (0 = failure, 1 = success)"
+  },
+  "CERT_PINNING_MOZ_RESULTS": {
+    "expires_in_version": "never",
+    "kind": "boolean",
+    "description": "Certificate pinning results for Mozilla sites (0 = failure, 1 = success)"
+  },
+  "CERT_PINNING_MOZ_TEST_RESULTS": {
+    "expires_in_version": "never",
+    "kind": "boolean",
+    "description": "Certificate pinning test results for Mozilla sites (0 = failure, 1 = success)"
+  },
+  "CERT_PINNING_MOZ_RESULTS_BY_HOST": {
+    "expires_in_version": "never",
+    "kind": "enumerated",
+    "n_values": 512,
+    "description": "Certificate pinning results by host for Mozilla operational sites"
+  },
+  "CERT_PINNING_MOZ_TEST_RESULTS_BY_HOST": {
+    "expires_in_version": "never",
+    "kind": "enumerated",
+    "n_values": 512,
+    "description": "Certificate pinning test results by host for Mozilla operational sites"
   }
 }

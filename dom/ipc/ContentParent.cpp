@@ -84,6 +84,7 @@
 #include "nsIExternalProtocolService.h"
 #include "nsIGfxInfo.h"
 #include "nsIIdleService.h"
+#include "nsIJSRuntimeService.h"
 #include "nsIMemoryInfoDumper.h"
 #include "nsIMemoryReporter.h"
 #include "nsIMozBrowserFrame.h"
@@ -500,6 +501,11 @@ nsDataHashtable<nsStringHashKey, ContentParent*>* ContentParent::sAppContentPare
 nsTArray<ContentParent*>* ContentParent::sNonAppContentParents;
 nsTArray<ContentParent*>* ContentParent::sPrivateContent;
 StaticAutoPtr<LinkedList<ContentParent> > ContentParent::sContentParents;
+
+#ifdef MOZ_NUWA_PROCESS
+// The pref updates sent to the Nuwa process.
+static nsTArray<PrefSetting>* sNuwaPrefUpdates;
+#endif
 
 // This is true when subprocess launching is enabled.  This is the
 // case between StartUp() and ShutDown() or JoinAllSubprocesses().
@@ -1325,6 +1331,14 @@ ContentParent::ActorDestroy(ActorDestroyReason why)
     // remove the global remote preferences observers
     Preferences::RemoveObserver(this, "");
 
+#ifdef MOZ_NUWA_PROCESS
+    // Remove the pref update requests.
+    if (IsNuwaProcess() && sNuwaPrefUpdates) {
+        delete sNuwaPrefUpdates;
+        sNuwaPrefUpdates = nullptr;
+    }
+#endif
+
     RecvRemoveGeolocationListener();
 
     mConsoleService = nullptr;
@@ -1680,7 +1694,7 @@ ContentParent::InitInternal(ProcessPriority aInitialPriority,
             DebugOnly<bool> opened = PCompositor::Open(this);
             MOZ_ASSERT(opened);
 
-            if (gfxPrefs::AsyncVideoEnabled()) {
+            if (gfxPrefs::AsyncVideoOOPEnabled()) {
                 opened = PImageBridge::Open(this);
                 MOZ_ASSERT(opened);
             }
@@ -2115,6 +2129,13 @@ ContentParent::RecvAddNewProcess(const uint32_t& aPid,
                                 aPid,
                                 aFds);
     content->Init();
+
+    size_t numNuwaPrefUpdates = sNuwaPrefUpdates ?
+                                sNuwaPrefUpdates->Length() : 0;
+    // Resend pref updates to the forked child.
+    for (int i = 0; i < numNuwaPrefUpdates; i++) {
+        content->SendPreferenceUpdate(sNuwaPrefUpdates->ElementAt(i));
+    }
     PreallocatedProcessManager::PublishSpareProcess(content);
     return true;
 #else
@@ -2162,9 +2183,22 @@ ContentParent::Observe(nsISupports* aSubject,
 
         PrefSetting pref(strData, null_t(), null_t());
         Preferences::GetPreference(&pref);
+#ifdef MOZ_NUWA_PROCESS
+        if (IsNuwaProcess() && PreallocatedProcessManager::IsNuwaReady()) {
+            // Don't send the pref update to the Nuwa process. Save the update
+            // to send to the forked child.
+            if (!sNuwaPrefUpdates) {
+                sNuwaPrefUpdates = new nsTArray<PrefSetting>();
+            }
+            sNuwaPrefUpdates->AppendElement(pref);
+        } else if (!SendPreferenceUpdate(pref)) {
+            return NS_ERROR_NOT_AVAILABLE;
+        }
+#else
         if (!SendPreferenceUpdate(pref)) {
             return NS_ERROR_NOT_AVAILABLE;
         }
+#endif
     }
     else if (!strcmp(aTopic, NS_IPC_IOSERVICE_SET_OFFLINE_TOPIC)) {
       NS_ConvertUTF16toUTF8 dataStr(aData);
@@ -2322,7 +2356,15 @@ mozilla::jsipc::PJavaScriptParent *
 ContentParent::AllocPJavaScriptParent()
 {
     MOZ_ASSERT(!ManagedPJavaScriptParent().Length());
-    mozilla::jsipc::JavaScriptParent *parent = new mozilla::jsipc::JavaScriptParent();
+
+    nsCOMPtr<nsIJSRuntimeService> svc = do_GetService("@mozilla.org/js/xpc/RuntimeService;1");
+    NS_ENSURE_TRUE(svc, nullptr);
+
+    JSRuntime *rt;
+    svc->GetRuntime(&rt);
+    NS_ENSURE_TRUE(svc, nullptr);
+
+    mozilla::jsipc::JavaScriptParent *parent = new mozilla::jsipc::JavaScriptParent(rt);
     if (!parent->init()) {
         delete parent;
         return nullptr;
@@ -3316,7 +3358,7 @@ ContentParent::DoSendAsyncMessage(JSContext* aCx,
     return false;
   }
   InfallibleTArray<CpowEntry> cpows;
-  if (!GetCPOWManager()->Wrap(aCx, aCpows, &cpows)) {
+  if (aCpows && !GetCPOWManager()->Wrap(aCx, aCpows, &cpows)) {
     return false;
   }
   return SendAsyncMessage(nsString(aMessage), data, cpows, aPrincipal);

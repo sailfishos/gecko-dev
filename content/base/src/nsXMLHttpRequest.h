@@ -65,6 +65,7 @@ class ArrayBufferBuilder
   uint8_t* mDataPtr;
   uint32_t mCapacity;
   uint32_t mLength;
+  void* mMapPtr;
 public:
   ArrayBufferBuilder();
   ~ArrayBufferBuilder();
@@ -88,6 +89,14 @@ public:
   uint32_t capacity() { return mCapacity; }
 
   JSObject* getArrayBuffer(JSContext* aCx);
+
+  // Memory mapping to starting position of file(aFile) in the zip
+  // package(aJarFile).
+  //
+  // The file in the zip package has to be uncompressed and the starting
+  // position of the file must be aligned according to array buffer settings
+  // in JS engine.
+  nsresult mapToFileInPackage(const nsCString& aFile, nsIFile* aJarFile);
 
 protected:
   static bool areOverlappingRegions(const uint8_t* aStart1, uint32_t aLength1,
@@ -407,6 +416,8 @@ private:
     return Send(Nullable<RequestBody>(aBody));
   }
 
+  bool IsDeniedCrossSiteRequest();
+
 public:
   void Send(ErrorResult& aRv)
   {
@@ -453,6 +464,7 @@ public:
   void Abort();
 
   // response
+  void GetResponseURL(nsAString& aUrl);
   uint32_t Status();
   void GetStatusText(nsCString& aStatusText);
   void GetResponseHeader(const nsACString& aHeader, nsACString& aResult,
@@ -727,6 +739,7 @@ protected:
 
   mozilla::ArrayBufferBuilder mArrayBufferBuilder;
   JS::Heap<JSObject*> mResultArrayBuffer;
+  bool mIsMappedArrayBuffer;
 
   void ResetResponse();
 

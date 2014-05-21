@@ -22,25 +22,6 @@ using mozilla::PodCopy;
 using mozilla::RangedPtr;
 using mozilla::RoundUpPow2;
 
-bool
-JSString::isFatInline() const
-{
-    // It's possible for fat-inline strings to be converted to flat strings;
-    // as a result, checking just for the arena isn't enough to determine if a
-    // string is fat-inline.  Hence the isInline() check.
-    bool is_FatInline = (getAllocKind() == gc::FINALIZE_FAT_INLINE_STRING) && isInline();
-    JS_ASSERT_IF(is_FatInline, isFlat());
-    return is_FatInline;
-}
-
-bool
-JSString::isExternal() const
-{
-    bool is_external = (getAllocKind() == gc::FINALIZE_EXTERNAL_STRING);
-    JS_ASSERT_IF(is_external, isFlat());
-    return is_external;
-}
-
 size_t
 JSString::sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf)
 {
@@ -59,7 +40,7 @@ JSString::sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf)
     // JSExtensibleString: count the full capacity, not just the used space.
     if (isExtensible()) {
         JSExtensibleString &extensible = asExtensible();
-        return mallocSizeOf(extensible.chars());
+        return mallocSizeOf(extensible.nonInlineChars());
     }
 
     // JSExternalString: don't count, the chars could be stored anywhere.
@@ -231,8 +212,7 @@ JSRope::flattenInternal(ExclusiveContext *maybecx)
      * To avoid maintaining a stack, tree nodes are mutated to indicate how many
      * times they have been visited. Since ropes can be dags, a node may be
      * encountered multiple times during traversal. However, step 3 above leaves
-     * a valid dependent string, so everything works out. This algorithm is
-     * homomorphic to marking code.
+     * a valid dependent string, so everything works out.
      *
      * While ropes avoid all sorts of quadratic cases with string
      * concatenation, they can't help when ropes are immediately flattened.
@@ -260,6 +240,14 @@ JSRope::flattenInternal(ExclusiveContext *maybecx)
     JSString *str = this;
     jschar *pos;
 
+    /*
+     * JSString::flattenData is a tagged pointer to the parent node.
+     * The tag indicates what to do when we return to the parent.
+     */
+    static const uintptr_t Tag_Mask = 0x3;
+    static const uintptr_t Tag_FinishNode = 0x0;
+    static const uintptr_t Tag_VisitRightChild = 0x1;
+
     /* Find the left most string, containing the first string. */
     JSRope *leftMostRope = this;
     while (leftMostRope->leftChild()->isRope())
@@ -273,32 +261,31 @@ JSRope::flattenInternal(ExclusiveContext *maybecx)
              * Simulate a left-most traversal from the root to leftMost->leftChild()
              * via first_visit_node
              */
+            JS_ASSERT(str->isRope());
             while (str != leftMostRope) {
-                JS_ASSERT(str->isRope());
                 if (b == WithIncrementalBarrier) {
-                    JSString::writeBarrierPre(str->d.u1.left);
-                    JSString::writeBarrierPre(str->d.s.u2.right);
+                    JSString::writeBarrierPre(str->d.s.u2.left);
+                    JSString::writeBarrierPre(str->d.s.u3.right);
                 }
-                JSString *child = str->d.u1.left;
-                str->d.u1.chars = left.chars();
-                child->d.s.u3.parent = str;
-                child->d.lengthAndFlags = 0x200;
+                JSString *child = str->d.s.u2.left;
+                JS_ASSERT(child->isRope());
+                str->d.s.u2.nonInlineChars = left.nonInlineChars();
+                child->d.u1.flattenData = uintptr_t(str) | Tag_VisitRightChild;
                 str = child;
             }
             if (b == WithIncrementalBarrier) {
-                JSString::writeBarrierPre(str->d.u1.left);
-                JSString::writeBarrierPre(str->d.s.u2.right);
+                JSString::writeBarrierPre(str->d.s.u2.left);
+                JSString::writeBarrierPre(str->d.s.u3.right);
             }
-            str->d.u1.chars = left.chars();
+            str->d.s.u2.nonInlineChars = left.nonInlineChars();
             wholeCapacity = capacity;
-            wholeChars = const_cast<jschar *>(left.chars());
-            size_t bits = left.d.lengthAndFlags;
-            pos = wholeChars + (bits >> LENGTH_SHIFT);
+            wholeChars = const_cast<jschar *>(left.nonInlineChars());
+            pos = wholeChars + left.d.u1.length;
             JS_STATIC_ASSERT(!(EXTENSIBLE_FLAGS & DEPENDENT_FLAGS));
-            left.d.lengthAndFlags = bits ^ (EXTENSIBLE_FLAGS | DEPENDENT_FLAGS);
-            left.d.s.u2.base = (JSLinearString *)this;  /* will be true on exit */
-            StringWriteBarrierPostRemove(maybecx, &left.d.u1.left);
-            StringWriteBarrierPost(maybecx, (JSString **)&left.d.s.u2.base);
+            left.d.u1.flags ^= (EXTENSIBLE_FLAGS | DEPENDENT_FLAGS);
+            left.d.s.u3.base = (JSLinearString *)this;  /* will be true on exit */
+            StringWriteBarrierPostRemove(maybecx, &left.d.s.u2.left);
+            StringWriteBarrierPost(maybecx, (JSString **)&left.d.s.u3.base);
             goto visit_right_child;
         }
     }
@@ -309,54 +296,56 @@ JSRope::flattenInternal(ExclusiveContext *maybecx)
     pos = wholeChars;
     first_visit_node: {
         if (b == WithIncrementalBarrier) {
-            JSString::writeBarrierPre(str->d.u1.left);
-            JSString::writeBarrierPre(str->d.s.u2.right);
+            JSString::writeBarrierPre(str->d.s.u2.left);
+            JSString::writeBarrierPre(str->d.s.u3.right);
         }
 
-        JSString &left = *str->d.u1.left;
-        str->d.u1.chars = pos;
-        StringWriteBarrierPostRemove(maybecx, &str->d.u1.left);
+        JSString &left = *str->d.s.u2.left;
+        str->d.s.u2.nonInlineChars = pos;
+        StringWriteBarrierPostRemove(maybecx, &str->d.s.u2.left);
         if (left.isRope()) {
-            left.d.s.u3.parent = str;          /* Return to this when 'left' done, */
-            left.d.lengthAndFlags = 0x200;     /* but goto visit_right_child. */
+            /* Return to this node when 'left' done, then goto visit_right_child. */
+            left.d.u1.flattenData = uintptr_t(str) | Tag_VisitRightChild;
             str = &left;
             goto first_visit_node;
         }
         size_t len = left.length();
-        PodCopy(pos, left.d.u1.chars, len);
+        PodCopy(pos, left.asLinear().chars(), len);
         pos += len;
     }
     visit_right_child: {
-        JSString &right = *str->d.s.u2.right;
+        JSString &right = *str->d.s.u3.right;
         if (right.isRope()) {
-            right.d.s.u3.parent = str;         /* Return to this node when 'right' done, */
-            right.d.lengthAndFlags = 0x300;    /* but goto finish_node. */
+            /* Return to this node when 'right' done, then goto finish_node. */
+            right.d.u1.flattenData = uintptr_t(str) | Tag_FinishNode;
             str = &right;
             goto first_visit_node;
         }
         size_t len = right.length();
-        PodCopy(pos, right.d.u1.chars, len);
+        PodCopy(pos, right.asLinear().chars(), len);
         pos += len;
     }
     finish_node: {
         if (str == this) {
             JS_ASSERT(pos == wholeChars + wholeLength);
             *pos = '\0';
-            str->d.lengthAndFlags = buildLengthAndFlags(wholeLength, EXTENSIBLE_FLAGS);
-            str->d.u1.chars = wholeChars;
-            str->d.s.u2.capacity = wholeCapacity;
-            StringWriteBarrierPostRemove(maybecx, &str->d.u1.left);
-            StringWriteBarrierPostRemove(maybecx, &str->d.s.u2.right);
+            str->d.u1.length = wholeLength;
+            str->d.u1.flags = EXTENSIBLE_FLAGS;
+            str->d.s.u2.nonInlineChars = wholeChars;
+            str->d.s.u3.capacity = wholeCapacity;
+            StringWriteBarrierPostRemove(maybecx, &str->d.s.u2.left);
+            StringWriteBarrierPostRemove(maybecx, &str->d.s.u3.right);
             return &this->asFlat();
         }
-        size_t progress = str->d.lengthAndFlags;
-        str->d.lengthAndFlags = buildLengthAndFlags(pos - str->d.u1.chars, DEPENDENT_FLAGS);
-        str->d.s.u2.base = (JSLinearString *)this;       /* will be true on exit */
-        StringWriteBarrierPost(maybecx, (JSString **)&str->d.s.u2.base);
-        str = str->d.s.u3.parent;
-        if (progress == 0x200)
+        uintptr_t flattenData = str->d.u1.flattenData;
+        str->d.u1.flags = DEPENDENT_FLAGS;
+        str->d.u1.length = pos - str->d.s.u2.nonInlineChars;
+        str->d.s.u3.base = (JSLinearString *)this;       /* will be true on exit */
+        StringWriteBarrierPost(maybecx, (JSString **)&str->d.s.u3.base);
+        str = (JSString *)(flattenData & ~Tag_Mask);
+        if ((flattenData & Tag_Mask) == Tag_VisitRightChild)
             goto visit_right_child;
-        JS_ASSERT(progress == 0x300);
+        JS_ASSERT((flattenData & Tag_Mask) == Tag_FinishNode);
         goto finish_node;
     }
 }
@@ -432,7 +421,7 @@ JSDependentString::copyNonPureCharsZ(ThreadSafeContext *cx, ScopedJSFreePtr<jsch
     if (!s)
         return false;
 
-    PodCopy(s, chars(), n);
+    PodCopy(s, nonInlineChars(), n);
     s[n] = 0;
 
     out.reset(s);
@@ -457,15 +446,15 @@ JSDependentString::undepend(ExclusiveContext *cx)
     if (!s)
         return nullptr;
 
-    PodCopy(s, chars(), n);
+    PodCopy(s, nonInlineChars(), n);
     s[n] = 0;
-    d.u1.chars = s;
+    d.s.u2.nonInlineChars = s;
 
     /*
      * Transform *this into an undepended string so 'base' will remain rooted
      * for the benefit of any other dependent string that depends on *this.
      */
-    d.lengthAndFlags = buildLengthAndFlags(n, UNDEPENDED_FLAGS);
+    d.u1.flags = UNDEPENDED_FLAGS;
 
     return &this->asFlat();
 }

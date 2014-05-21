@@ -172,8 +172,8 @@ AudioContext::Constructor(const GlobalObject& aGlobal,
   if (aNumberOfChannels == 0 ||
       aNumberOfChannels > WebAudioUtils::MaxChannelCount ||
       aLength == 0 ||
-      aSampleRate <= 1.0f ||
-      aSampleRate >= TRACK_RATE_MAX) {
+      aSampleRate < WebAudioUtils::MinSampleRate ||
+      aSampleRate > WebAudioUtils::MaxSampleRate) {
     // The DOM binding protects us against infinity and NaN
     aRv.Throw(NS_ERROR_DOM_NOT_SUPPORTED_ERR);
     return nullptr;
@@ -204,24 +204,13 @@ AudioContext::CreateBuffer(JSContext* aJSContext, uint32_t aNumberOfChannels,
                            uint32_t aLength, float aSampleRate,
                            ErrorResult& aRv)
 {
-  if (aSampleRate < 8000 || aSampleRate > 192000 || !aLength || !aNumberOfChannels) {
+  if (!aNumberOfChannels) {
     aRv.Throw(NS_ERROR_DOM_INDEX_SIZE_ERR);
     return nullptr;
   }
 
-  if (aLength > INT32_MAX) {
-    aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
-    return nullptr;
-  }
-
-  nsRefPtr<AudioBuffer> buffer =
-    new AudioBuffer(this, int32_t(aLength), aSampleRate);
-  if (!buffer->InitializeBuffers(aNumberOfChannels, aJSContext)) {
-    aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
-    return nullptr;
-  }
-
-  return buffer.forget();
+  return AudioBuffer::Create(this, aNumberOfChannels, aLength,
+                             aSampleRate, aJSContext, aRv);
 }
 
 namespace {
@@ -590,21 +579,16 @@ AudioContext::UpdateNodeCount(int32_t aDelta)
   }
 }
 
-JSContext*
-AudioContext::GetJSContext() const
+JSObject*
+AudioContext::GetGlobalJSObject() const
 {
-  MOZ_ASSERT(NS_IsMainThread());
+  nsCOMPtr<nsIGlobalObject> parentObject = do_QueryInterface(GetParentObject());
+  if (!parentObject) {
+    return nullptr;
+  }
 
-  nsCOMPtr<nsIScriptGlobalObject> scriptGlobal =
-    do_QueryInterface(GetParentObject());
-  if (!scriptGlobal) {
-    return nullptr;
-  }
-  nsIScriptContext* scriptContext = scriptGlobal->GetContext();
-  if (!scriptContext) {
-    return nullptr;
-  }
-  return scriptContext->GetNativeContext();
+  // This can also return null.
+  return parentObject->GetGlobalJSObject();
 }
 
 void

@@ -1,6 +1,13 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* vim: set ts=8 sts=2 et sw=2 tw=80: */
-/* Copyright 2013 Mozilla Foundation
+/* This code is made available to you under your choice of the following sets
+ * of licensing terms:
+ */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ */
+/* Copyright 2013 Mozilla Contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -107,8 +114,8 @@ static Result BuildForward(TrustDomain& trustDomain,
                            PRTime time,
                            EndEntityOrCA endEntityOrCA,
                            KeyUsages requiredKeyUsagesIfPresent,
-                           SECOidTag requiredEKUIfPresent,
-                           SECOidTag requiredPolicy,
+                           KeyPurposeId requiredEKUIfPresent,
+                           const CertPolicyId& requiredPolicy,
                            /*optional*/ const SECItem* stapledOCSPResponse,
                            unsigned int subCACount,
                            /*out*/ ScopedCERTCertList& results);
@@ -119,8 +126,8 @@ BuildForwardInner(TrustDomain& trustDomain,
                   BackCert& subject,
                   PRTime time,
                   EndEntityOrCA endEntityOrCA,
-                  SECOidTag requiredEKUIfPresent,
-                  SECOidTag requiredPolicy,
+                  KeyPurposeId requiredEKUIfPresent,
+                  const CertPolicyId& requiredPolicy,
                   CERTCertificate* potentialIssuerCertToDup,
                   unsigned int subCACount,
                   ScopedCERTCertList& results)
@@ -189,8 +196,8 @@ BuildForward(TrustDomain& trustDomain,
              PRTime time,
              EndEntityOrCA endEntityOrCA,
              KeyUsages requiredKeyUsagesIfPresent,
-             SECOidTag requiredEKUIfPresent,
-             SECOidTag requiredPolicy,
+             KeyPurposeId requiredEKUIfPresent,
+             const CertPolicyId& requiredPolicy,
              /*optional*/ const SECItem* stapledOCSPResponse,
              unsigned int subCACount,
              /*out*/ ScopedCERTCertList& results)
@@ -329,8 +336,8 @@ BuildCertChain(TrustDomain& trustDomain,
                PRTime time,
                EndEntityOrCA endEntityOrCA,
                /*optional*/ KeyUsages requiredKeyUsagesIfPresent,
-               /*optional*/ SECOidTag requiredEKUIfPresent,
-               /*optional*/ SECOidTag requiredPolicy,
+               /*optional*/ KeyPurposeId requiredEKUIfPresent,
+               const CertPolicyId& requiredPolicy,
                /*optional*/ const SECItem* stapledOCSPResponse,
                /*out*/ ScopedCERTCertList& results)
 {
@@ -348,7 +355,7 @@ BuildCertChain(TrustDomain& trustDomain,
   // domain name the certificate is valid for.
   BackCert::IncludeCN includeCN
     = endEntityOrCA == EndEntityOrCA::MustBeEndEntity &&
-      requiredEKUIfPresent == SEC_OID_EXT_KEY_USAGE_SERVER_AUTH
+      requiredEKUIfPresent == KeyPurposeId::id_kp_serverAuth
     ? BackCert::IncludeCN::Yes
     : BackCert::IncludeCN::No;
 

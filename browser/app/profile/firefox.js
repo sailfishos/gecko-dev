@@ -811,11 +811,7 @@ pref("plugin.state.f5 sam inspection host plugin", 2);
 // display door hanger if flash not installed
 pref("plugins.notifyMissingFlash", true);
 
-#ifdef XP_WIN
-pref("browser.preferences.instantApply", false);
-#else
 pref("browser.preferences.instantApply", true);
-#endif
 #ifdef XP_MACOSX
 pref("browser.preferences.animateFadeIn", true);
 #else
@@ -823,7 +819,7 @@ pref("browser.preferences.animateFadeIn", false);
 #endif
 
 // Toggles between the two Preferences implementations, pop-up window and in-content
-pref("browser.preferences.inContent", false);
+pref("browser.preferences.inContent", true);
 
 pref("browser.download.show_plugins_in_list", true);
 pref("browser.download.hide_plugins_without_extensions", true);
@@ -1018,6 +1014,8 @@ pref("browser.sessionstore.restore_pinned_tabs_on_demand", false);
 pref("browser.sessionstore.upgradeBackup.latestBuildID", "");
 // End-users should not run sessionstore in debug mode
 pref("browser.sessionstore.debug", false);
+// Forget closed windows/tabs after two weeks
+pref("browser.sessionstore.cleanup.forget_closed_after", 1209600000);
 
 // allow META refresh by default
 pref("accessibility.blockautorefresh", false);
@@ -1332,9 +1330,11 @@ pref("devtools.tilt.outro_transition", true);
 //                  'Open Recent'-menu.
 // - showTrailingSpace: Whether to highlight trailing space or not.
 // - enableCodeFolding: Whether to enable code folding or not.
+// - enableAutocompletion: Whether to enable JavaScript autocompletion.
 pref("devtools.scratchpad.recentFilesMax", 10);
 pref("devtools.scratchpad.showTrailingSpace", false);
 pref("devtools.scratchpad.enableCodeFolding", true);
+pref("devtools.scratchpad.enableAutocompletion", true);
 
 // Enable the Style Editor.
 pref("devtools.styleeditor.enabled", true);

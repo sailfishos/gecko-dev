@@ -72,13 +72,10 @@ EvalCertWithHashType(const CERTCertificate* cert, SECOidTag hashType,
     return false;
   }
 
-  PR_LOG(gPublicKeyPinningLog, PR_LOG_DEBUG,
-         ("pkpin: base_64(hash(key)='%s'\n", base64Out.get()));
-
   for (size_t i = 0; i < fingerprints->size; i++) {
     if (base64Out.Equals(fingerprints->data[i])) {
       PR_LOG(gPublicKeyPinningLog, PR_LOG_DEBUG,
-             ("pkpin: found pin base_64(hash(key)='%s'\n", base64Out.get()));
+             ("pkpin: found pin base_64 ='%s'\n", base64Out.get()));
       return true;
     }
   }
@@ -110,7 +107,7 @@ EvalChainWithHashType(const CERTCertList* certList, SECOidTag hashType,
        node = CERT_LIST_NEXT(node)) {
     currentCert = node->cert;
     PR_LOG(gPublicKeyPinningLog, PR_LOG_DEBUG,
-           ("pkpin: certArray subject:     '%s'\n",
+           ("pkpin: certArray subject: '%s'\n",
             currentCert->subjectName));
     PR_LOG(gPublicKeyPinningLog, PR_LOG_DEBUG,
            ("pkpin: certArray common_name: '%s'\n",
@@ -154,7 +151,7 @@ TransportSecurityPreloadCompare(const void *key, const void *entry) {
  */
 static bool
 CheckPinsForHostname(const CERTCertList *certList, const char *hostname,
-                     const PRTime time)
+                     const PRTime time, bool enforceTestMode)
 {
   if (!certList) {
     return false;
@@ -195,16 +192,33 @@ CheckPinsForHostname(const CERTCertList *certList, const char *hostname,
   if (foundEntry && foundEntry->pinset) {
     bool result = EvalChainWithPinset(certList, foundEntry->pinset);
     bool retval = result;
-    Telemetry::ID histogram = Telemetry::CERT_PINNING_RESULTS;
+    Telemetry::ID histogram = foundEntry->mIsMoz
+      ? Telemetry::CERT_PINNING_MOZ_RESULTS
+      : Telemetry::CERT_PINNING_RESULTS;
     if (foundEntry->mTestMode) {
-      histogram = Telemetry::CERT_PINNING_TEST_RESULTS;
-      retval = true;
+      histogram = foundEntry->mIsMoz
+        ? Telemetry::CERT_PINNING_MOZ_TEST_RESULTS
+        : Telemetry::CERT_PINNING_TEST_RESULTS;
+      if (!enforceTestMode) {
+        retval = true;
+      }
     }
-    Telemetry::Accumulate(histogram, result ? 1 : 0);
+    // We can collect per-host pinning violations for this host because it is
+    // operationally critical to Firefox.
+    if (foundEntry->mId != kUnknownId) {
+      int32_t bucket = foundEntry->mId * 2 + (result ? 1 : 0);
+      histogram = foundEntry->mTestMode
+        ? Telemetry::CERT_PINNING_MOZ_TEST_RESULTS_BY_HOST
+        : Telemetry::CERT_PINNING_MOZ_RESULTS_BY_HOST;
+      Telemetry::Accumulate(histogram, bucket);
+    } else {
+      Telemetry::Accumulate(histogram, result ? 1 : 0);
+    }
     PR_LOG(gPublicKeyPinningLog, PR_LOG_DEBUG,
-           ("pkpin: Pin check %s for host '%s' (mode=%s)\n",
-            result ? "passed" : "failed", evalHost,
-            foundEntry->mTestMode ? "test" : "production"));
+           ("pkpin: Pin check %s for %s host '%s' (mode=%s)\n",
+            result ? "passed" : "failed",
+            foundEntry->mIsMoz ? "mozilla" : "non-mozilla",
+            hostname, foundEntry->mTestMode ? "test" : "production"));
     return retval;
   }
   return true; // No pinning information for this hostname
@@ -216,7 +230,8 @@ CheckPinsForHostname(const CERTCertList *certList, const char *hostname,
  * evaluating at the first OK pin).
  */
 static bool
-CheckChainAgainstAllNames(const CERTCertList* certList, const PRTime time) {
+CheckChainAgainstAllNames(const CERTCertList* certList, const PRTime time,
+                          bool enforceTestMode) {
   PR_LOG(gPublicKeyPinningLog, PR_LOG_DEBUG,
          ("pkpin: top of checkChainAgainstAllNames"));
   CERTCertListNode* node = CERT_LIST_HEAD(certList);
@@ -260,7 +275,7 @@ CheckChainAgainstAllNames(const CERTCertList* certList, const PRTime time) {
         // cannot call CheckPinsForHostname on empty or null hostname
         break;
       }
-      if (CheckPinsForHostname(certList, hostName, time)) {
+      if (CheckPinsForHostname(certList, hostName, time, enforceTestMode)) {
         hasValidPins = true;
         break;
       }
@@ -274,7 +289,8 @@ CheckChainAgainstAllNames(const CERTCertList* certList, const PRTime time) {
 bool
 PublicKeyPinningService::ChainHasValidPins(const CERTCertList* certList,
                                            const char* hostname,
-                                           const PRTime time)
+                                           const PRTime time,
+                                           bool enforceTestMode)
 {
   if (!certList) {
     return false;
@@ -283,7 +299,7 @@ PublicKeyPinningService::ChainHasValidPins(const CERTCertList* certList,
     return true;
   }
   if (!hostname || hostname[0] == 0) {
-    return CheckChainAgainstAllNames(certList, time);
+    return CheckChainAgainstAllNames(certList, time, enforceTestMode);
   }
-  return CheckPinsForHostname(certList, hostname, time);
+  return CheckPinsForHostname(certList, hostname, time, enforceTestMode);
 }

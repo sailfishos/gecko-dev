@@ -107,7 +107,7 @@ var CastingApps = {
     // Let's figure out if we have everything needed to cast a video. The binding
     // defaults to |false| so we only need to send an event if |true|.
     let video = aEvent.target;
-    if (!video instanceof HTMLVideoElement) {
+    if (!(video instanceof HTMLVideoElement)) {
       return;
     }
 
@@ -126,7 +126,7 @@ var CastingApps = {
   handleVideoBindingCast: function handleVideoBindingCast(aTab, aEvent) {
     // The binding wants to start a casting session
     let video = aEvent.target;
-    if (!video instanceof HTMLVideoElement) {
+    if (!(video instanceof HTMLVideoElement)) {
       return;
     }
 
@@ -172,13 +172,7 @@ var CastingApps = {
   },
 
   _getVideo: function(aElement) {
-    if (!aElement instanceof HTMLVideoElement) {
-      return null;
-    }
-
-    // Allow websites to opt-out using the Apple airplay attribute
-    // https://developer.apple.com/library/safari/documentation/AudioVideo/Conceptual/AirPlayGuide/OptingInorOutofAirPlay/OptingInorOutofAirPlay.html
-    if (aElement.getAttribute("x-webkit-airplay") === "deny") {
+    if (!(aElement instanceof HTMLVideoElement)) {
       return null;
     }
 

@@ -22,6 +22,7 @@
 #include "nsIObjectLoadingContent.h"
 #include "nsFrame.h"
 #include "mozilla/layers/ShadowLayers.h"
+#include "ClientLayerManager.h"
 
 #include "nsIScrollableFrame.h"
 
@@ -577,7 +578,7 @@ nsDOMWindowUtils::GetResolution(float* aXResolution, float* aYResolution)
 }
 
 NS_IMETHODIMP
-nsDOMWindowUtils::GetIsHistoryRestored(bool* aIsHistoryRestored) {
+nsDOMWindowUtils::GetIsResolutionSet(bool* aIsResolutionSet) {
   if (!nsContentUtils::IsCallerChrome()) {
     return NS_ERROR_DOM_SECURITY_ERR;
   }
@@ -588,7 +589,7 @@ nsDOMWindowUtils::GetIsHistoryRestored(bool* aIsHistoryRestored) {
   }
 
   const nsIScrollableFrame* sf = presShell->GetRootScrollFrameAsScrollable();
-  *aIsHistoryRestored = sf && sf->DidHistoryRestore();
+  *aIsResolutionSet = sf && sf->IsResolutionSet();
 
   return NS_OK;
 }
@@ -3964,6 +3965,50 @@ nsDOMWindowUtils::GetOMTAOrComputedStyle(nsIDOMElement* aElement,
   NS_ENSURE_SUCCESS(rv, rv);
 
   return style->GetPropertyValue(aProperty, aResult);
+}
+
+NS_IMETHODIMP
+nsDOMWindowUtils::GetContentAPZTestData(JSContext* aContext,
+                                        JS::MutableHandleValue aOutContentTestData)
+{
+  if (!nsContentUtils::IsCallerChrome()) {
+    return NS_ERROR_DOM_SECURITY_ERR;
+  }
+
+  if (nsIWidget* widget = GetWidget()) {
+    nsRefPtr<LayerManager> lm = widget->GetLayerManager();
+    if (lm && lm->GetBackendType() == LayersBackend::LAYERS_CLIENT) {
+      ClientLayerManager* clm = static_cast<ClientLayerManager*>(lm.get());
+      if (!clm->GetAPZTestData().ToJS(aOutContentTestData, aContext)) {
+        return NS_ERROR_FAILURE;
+      }
+    }
+  }
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsDOMWindowUtils::GetCompositorAPZTestData(JSContext* aContext,
+                                           JS::MutableHandleValue aOutCompositorTestData)
+{
+  if (!nsContentUtils::IsCallerChrome()) {
+    return NS_ERROR_DOM_SECURITY_ERR;
+  }
+
+  if (nsIWidget* widget = GetWidget()) {
+    nsRefPtr<LayerManager> lm = widget->GetLayerManager();
+    if (lm && lm->GetBackendType() == LayersBackend::LAYERS_CLIENT) {
+      ClientLayerManager* clm = static_cast<ClientLayerManager*>(lm.get());
+      APZTestData compositorSideData;
+      clm->GetCompositorSideAPZTestData(&compositorSideData);
+      if (!compositorSideData.ToJS(aOutCompositorTestData, aContext)) {
+        return NS_ERROR_FAILURE;
+      }
+    }
+  }
+
+  return NS_OK;
 }
 
 NS_IMETHODIMP

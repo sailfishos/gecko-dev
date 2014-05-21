@@ -874,6 +874,7 @@ nsBaseWidget::GetPreferredCompositorBackends(nsTArray<LayersBackend>& aHints)
 static void
 CheckForBasicBackends(nsTArray<LayersBackend>& aHints)
 {
+#ifndef XP_WIN
   for (size_t i = 0; i < aHints.Length(); ++i) {
     if (aHints[i] == LayersBackend::LAYERS_BASIC &&
         !Preferences::GetBool("layers.offmainthreadcomposition.force-basic", false)) {
@@ -881,6 +882,7 @@ CheckForBasicBackends(nsTArray<LayersBackend>& aHints)
       aHints[i] = LayersBackend::LAYERS_NONE;
     }
   }
+#endif
 }
 
 void nsBaseWidget::CreateCompositor(int aWidth, int aHeight)
@@ -1129,6 +1131,14 @@ NS_METHOD nsBaseWidget::GetBounds(nsIntRect &aRect)
 NS_METHOD nsBaseWidget::GetScreenBounds(nsIntRect &aRect)
 {
   return GetBounds(aRect);
+}
+
+NS_METHOD nsBaseWidget::GetRestoredBounds(nsIntRect &aRect)
+{
+  if (SizeMode() != nsSizeMode_Normal) {
+    return NS_ERROR_FAILURE;
+  }
+  return GetScreenBounds(aRect);
 }
 
 nsIntPoint nsBaseWidget::GetClientOffset()

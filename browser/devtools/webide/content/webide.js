@@ -15,7 +15,7 @@ const {AppProjects} = require("devtools/app-manager/app-projects");
 const {Connection} = require("devtools/client/connection-manager");
 const {AppManager} = require("devtools/app-manager");
 
-const Strings = Services.strings.createBundle("chrome://webide/locale/webide.properties");
+const Strings = Services.strings.createBundle("chrome://webide/content/webide.properties");
 
 const HTML = "http://www.w3.org/1999/xhtml";
 
@@ -395,7 +395,6 @@ let UI = {
     if (this.toolboxPromise) {
       this.toolboxPromise.then(toolbox => {
         toolbox.destroy();
-        document.querySelector("#action-button-debug").removeAttribute("active");
         this.toolboxPromise = null;
       }, this.console.error);
     }
@@ -436,6 +435,7 @@ let UI = {
 
     let splitter = document.querySelector(".devtools-horizontal-splitter");
     splitter.setAttribute("hidden", "true");
+    document.querySelector("#action-button-debug").removeAttribute("active");
   },
 
   console: {
