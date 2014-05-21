@@ -55,7 +55,6 @@ protected:
 
   bool IsGLBackend();
 
-  RefPtr<EmbedLiteViewThreadParent> mView;
   RefPtr<mozilla::layers::CompositorChild> mChildCompositor;
   MessageLoop* mChildMessageLoop;
   uint32_t mId;

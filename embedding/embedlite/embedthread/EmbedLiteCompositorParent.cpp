@@ -147,6 +147,11 @@ bool EmbedLiteCompositorParent::RenderGL()
     state->mLayerManager->GetRoot()->SetClipRect(&mActiveClipping);
   }
 
+  if (context->IsOffscreen() && context->OffscreenSize() != mLastViewSize) {
+    context->ResizeOffscreen(gfx::IntSize(mLastViewSize.width, mLastViewSize.height));
+    ScheduleRenderOnCompositorThread();
+  }
+
   {
     ScopedScissorRect autoScissor(context);
     GLenum oldTexUnit;
@@ -184,6 +189,7 @@ EmbedLiteCompositorParent::RequestHasHWAcceleratedContext()
 void EmbedLiteCompositorParent::SetSurfaceSize(int width, int height)
 {
   NS_ENSURE_TRUE(IsGLBackend(),);
+  mLastViewSize.SizeTo(width, height);
   CompositorParent::SetEGLSurfaceSize(width, height);
 }
 
