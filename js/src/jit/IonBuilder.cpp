@@ -4288,7 +4288,7 @@ IonBuilder::inlineSingleCall(CallInfo &callInfo, JSFunction *target)
 {
     // Expects formals to be popped and wrapped.
     if (target->isNative())
-        return inlineNativeCall(callInfo, target->native());
+        return inlineNativeCall(callInfo, target);
 
     if (!inlineScriptedCall(callInfo, target))
         return InliningStatus_Error;
@@ -6330,9 +6330,6 @@ IonBuilder::pushDOMTypeBarrier(MInstruction *ins, types::TemporaryTypeSet *obser
     MDefinition* replace = ins;
     if (jitinfo->returnType() != JSVAL_TYPE_DOUBLE ||
         observed->getKnownMIRType() != MIRType_Int32) {
-        JS_ASSERT(jitinfo->returnType() == JSVAL_TYPE_UNKNOWN ||
-                  observed->getKnownMIRType() == MIRType_Value ||
-                  MIRTypeFromValueType(jitinfo->returnType()) == observed->getKnownMIRType());
         replace = ensureDefiniteType(ins, MIRTypeFromValueType(jitinfo->returnType()));
         if (replace != ins) {
             current->pop();
