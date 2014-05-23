@@ -174,6 +174,7 @@ private:
   nsCOMPtr<nsIWidget> mParent;
 
   uint32_t mId;
+  RefPtr<EmbedLiteCompositorParent> mCompositorWrapper;
 };
 
 }  // namespace widget

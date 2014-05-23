@@ -314,8 +314,6 @@ EmbedLiteView::SetViewClipping(float aX, float aY, float aWidth, float aHeight)
 void
 EmbedLiteView::SetViewOpacity(float aOpacity)
 {
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->SetViewOpacity(aOpacity);
 }
 
 void

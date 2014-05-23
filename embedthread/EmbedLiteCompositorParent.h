@@ -14,12 +14,9 @@
 #include "EmbedLiteViewThreadParent.h"
 
 namespace mozilla {
-namespace layers {
-class CompositingRenderTarget;
-}
 namespace embedlite {
 
-class EmbedLiteCompositorParent : public mozilla::layers::CompositorParent
+class EmbedLiteCompositorParent : public mozilla::layers::ICompositorListener
 {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(EmbedLiteCompositorParent)
 public:
@@ -36,34 +33,19 @@ public:
   void SetClipping(const gfxRect& aClipRect);
   void SetWorldOpacity(float aOpacity);
 
-  virtual bool RecvStop() MOZ_OVERRIDE;
-  virtual void SetChildCompositor(mozilla::layers::CompositorChild*, MessageLoop*);
-  mozilla::layers::CompositorChild* GetChildCompositor() {
-    return mChildCompositor;
-  }
-  virtual bool RequestHasHWAcceleratedContext();
+  virtual void Created();
+  virtual bool Invalidate();
+
+  mozilla::layers::CompositorParent* Compositor() { return mCompositor.get(); }
+
 protected:
-  virtual PLayerTransactionParent*
-    AllocPLayerTransactionParent(const nsTArray<LayersBackend>& aBackendHints,
-                                 const uint64_t& aId,
-                                 TextureFactoryIdentifier* aTextureFactoryIdentifier,
-                                 bool* aSuccess);
-
-  virtual void ScheduleTask(CancelableTask*, int);
-
-  void DeferredDestroyCompositor();
-
-  bool IsGLBackend();
-
-  RefPtr<mozilla::layers::CompositorChild> mChildCompositor;
-  MessageLoop* mChildMessageLoop;
   uint32_t mId;
   gfx::Matrix mWorldTransform;
   nsIntRect mActiveClipping;
-  CancelableTask *mCurrentCompositeTask;
-  float mWorldOpacity;
+  CancelableTask* mCurrentCompositeTask;
   gfx::IntSize mLastViewSize;
   short mInitialPaintCount;
+  RefPtr<mozilla::layers::CompositorParent> mCompositor;
 };
 
 } // embedlite

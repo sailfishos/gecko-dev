@@ -514,7 +514,8 @@ CompositorParent*
 EmbedLitePuppetWidget::NewCompositorParent(int aSurfaceWidth, int aSurfaceHeight)
 {
   gfxPlatform::GetPlatform();
-  return new EmbedLiteCompositorParent(this, true, aSurfaceWidth, aSurfaceHeight, mId);
+  mCompositorWrapper = new EmbedLiteCompositorParent(this, true, aSurfaceWidth, aSurfaceHeight, mId);
+  return mCompositorWrapper->Compositor();
 }
 
 void EmbedLitePuppetWidget::CreateCompositor()
@@ -543,7 +544,6 @@ void EmbedLitePuppetWidget::CreateCompositor(int aWidth, int aHeight)
   ClientLayerManager* lm = new ClientLayerManager(this);
   MessageLoop* childMessageLoop = CompositorParent::CompositorLoop();
   mCompositorChild = new CompositorChild(lm);
-  static_cast<EmbedLiteCompositorParent*>(mCompositorParent.get())->SetChildCompositor(mCompositorChild, MessageLoop::current());
   mCompositorChild->Open(parentChannel, childMessageLoop, ipc::ChildSide);
 
   TextureFactoryIdentifier textureFactoryIdentifier;
@@ -591,9 +591,7 @@ EmbedLitePuppetWidget::GetNaturalBounds()
 bool
 EmbedLitePuppetWidget::HasGLContext()
 {
-  EmbedLiteCompositorParent* parent =
-    static_cast<EmbedLiteCompositorParent*>(mCompositorParent.get());
-  return parent->RequestHasHWAcceleratedContext();
+  return true;
 }
 
 }  // namespace widget

@@ -41,7 +41,6 @@ public:
   virtual void SetGLViewPortSize(int width, int height);
   virtual void SetGLViewTransform(gfx::Matrix matrix);
   virtual void SetViewClipping(const gfxRect& aClipRect);
-  virtual void SetViewOpacity(const float aOpacity);
   virtual void SetTransformation(float aScale, nsIntPoint aScrollOffset);
   virtual void ScheduleRender();
   virtual void UpdateScrollController();
