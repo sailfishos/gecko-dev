@@ -198,6 +198,7 @@ CompositorParent::CompositorParent(nsIWidget* aWidget,
   , mOverrideComposeReadiness(false)
   , mForceCompositionTask(nullptr)
   , mWantDidCompositeEvent(false)
+  , mListener(nullptr)
 {
   NS_ABORT_IF_FALSE(sCompositorThread != nullptr || sCompositorThreadID,
                     "The compositor thread must be Initialized before instanciating a COmpositorParent.");
@@ -216,6 +217,12 @@ CompositorParent::CompositorParent(nsIWidget* aWidget,
 
   mApzcTreeManager = new APZCTreeManager();
   ++sCompositorThreadRefCount;
+}
+
+void
+CompositorParent::SetCompositorInterface(ICompositorListener* aListener)
+{
+  mListener = aListener;
 }
 
 PlatformThreadId
@@ -516,6 +523,11 @@ CompositorParent::ScheduleResumeOnCompositorThread(int width, int height)
 void
 CompositorParent::ScheduleTask(CancelableTask* task, int time)
 {
+  if (mListener && mListener->Invalidate()) {
+    CancelCurrentCompositeTask();
+    return;
+  }
+
   if (time == 0) {
     MessageLoop::current()->PostTask(FROM_HERE, task);
   } else {
@@ -939,6 +951,9 @@ CompositorParent::AllocPLayerTransactionParent(const nsTArray<LayersBackend>& aB
 
   *aTextureFactoryIdentifier = mCompositor->GetTextureFactoryIdentifier();
   LayerTransactionParent* p = new LayerTransactionParent(mLayerManager, this, 0);
+  if (mListener) {
+    mListener->Created();
+  }
   p->AddIPDLReference();
   return p;
 }

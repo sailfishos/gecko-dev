@@ -107,8 +107,6 @@ protected:
                         const nsAString& aData);
   virtual bool RecvSetGLViewSize(const gfxSize&);
 
-  void RequestHasHWAcceleratedContextLooped();
-
   virtual bool
   RecvAddMessageListeners(const InfallibleTArray<nsString>& messageNames);
 

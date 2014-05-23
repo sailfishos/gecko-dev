@@ -103,7 +103,7 @@ EmbedLiteViewThreadParent::UpdateScrollController()
   NS_ENSURE_TRUE(mView, );
 
   if (mCompositor) {
-    mRootLayerTreeId = mCompositor->RootLayerTreeId();
+    mRootLayerTreeId = mCompositor->Compositor()->RootLayerTreeId();
     mController->SetManagerByRootLayerTreeId(mRootLayerTreeId);
     CompositorParent::SetControllerForLayerTree(mRootLayerTreeId, mController);
   }
@@ -539,14 +539,6 @@ EmbedLiteViewThreadParent::SetViewClipping(const gfxRect& aClipRect)
 }
 
 void
-EmbedLiteViewThreadParent::SetViewOpacity(const float aOpacity)
-{
-  if (mCompositor) {
-    mCompositor->SetWorldOpacity(aOpacity);
-  }
-}
-
-void
 EmbedLiteViewThreadParent::SetTransformation(float aScale, nsIntPoint aScrollOffset)
 {
 }
@@ -555,7 +547,7 @@ void
 EmbedLiteViewThreadParent::ScheduleRender()
 {
   if (mCompositor) {
-    mCompositor->ScheduleRenderOnCompositorThread();
+    mCompositor->Compositor()->ScheduleRenderOnCompositorThread();
   }
 }
 
@@ -715,7 +707,7 @@ bool EmbedLiteViewThreadParent::GetPendingTexture(EmbedLiteRenderTarget* aContex
   NS_ENSURE_TRUE(aContextWrapper && textureID && width && height, false);
   NS_ENSURE_TRUE(mCompositor, false);
 
-  const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(mCompositor->RootLayerTreeId());
+  const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(mCompositor->Compositor()->RootLayerTreeId());
   NS_ENSURE_TRUE(state && state->mLayerManager, false);
 
   GLContext* context = static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->gl();

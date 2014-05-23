@@ -52,6 +52,13 @@ class Compositor;
 class LayerManagerComposite;
 class LayerTransactionParent;
 
+class ICompositorListener
+{
+public:
+  virtual void Created() {};
+  virtual bool Invalidate() { return false; };
+};
+
 struct ScopedLayerTreeRegistration
 {
   ScopedLayerTreeRegistration(uint64_t aLayersId,
@@ -63,8 +70,8 @@ private:
   uint64_t mLayersId;
 };
 
-class CompositorParent : public PCompositorParent,
-                         public ShadowLayersManager
+class CompositorParent MOZ_FINAL : public PCompositorParent,
+                                   public ShadowLayersManager
 {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(CompositorParent)
 
@@ -72,6 +79,8 @@ public:
   CompositorParent(nsIWidget* aWidget,
                    bool aUseExternalSurfaceSize = false,
                    int aSurfaceWidth = -1, int aSurfaceHeight = -1);
+
+  void SetCompositorInterface(ICompositorListener* aListener);
 
   // IToplevelProtocol::CloneToplevel()
   virtual IToplevelProtocol*
@@ -242,7 +251,17 @@ public:
    */
   static bool IsInCompositorThread();
 
-protected:
+  /*
+   * Setup compositor surface size, must be called in Compositor parent thread
+   */
+  void SetEGLSurfaceSize(int width, int height);
+
+  /*
+   * Composite to Target, if target is null, then compositing will be done to Current GL context
+   */
+  void CompositeToTarget(gfx::DrawTarget* aTarget);
+
+private:
   // Private destructor, to discourage deletion outside of Release():
   virtual ~CompositorParent();
 
@@ -254,12 +273,8 @@ protected:
   virtual bool DeallocPLayerTransactionParent(PLayerTransactionParent* aLayers) MOZ_OVERRIDE;
   virtual void ScheduleTask(CancelableTask*, int);
   void Composite();
-  void CompositeToTarget(gfx::DrawTarget* aTarget);
   void ForceComposeToTarget(gfx::DrawTarget* aTarget);
 
-  void SetEGLSurfaceSize(int width, int height);
-
-private:
   void InitializeLayerManager(const nsTArray<LayersBackend>& aBackendHints);
   void PauseComposition();
   void ResumeComposition();
@@ -345,6 +360,7 @@ private:
   nsRefPtr<APZCTreeManager> mApzcTreeManager;
 
   bool mWantDidCompositeEvent;
+  ICompositorListener* mListener;
 
   DISALLOW_EVIL_CONSTRUCTORS(CompositorParent);
 };
