@@ -81,33 +81,6 @@ EmbedLitePuppetWidget::IsTopLevel()
          mWindowType == eWindowType_invisible;
 }
 
-void EmbedLitePuppetWidget::DestroyCompositor()
-{
-  LayerScope::DestroyServerSocket();
-
-  if (mCompositorChild) {
-    mCompositorChild->SendWillStop();
-
-    // The call just made to SendWillStop can result in IPC from the
-    // CompositorParent to the CompositorChild (e.g. caused by the destruction
-    // of shared memory). We need to ensure this gets processed by the
-    // CompositorChild before it gets destroyed. It suffices to ensure that
-    // events already in the MessageLoop get processed before the
-    // CompositorChild is destroyed, so we add a task to the MessageLoop to
-    // handle compositor desctruction.
-    if (mCompositorChild) {
-      MessageLoop::current()->PostTask(FROM_HERE,
-                                       NewRunnableMethod(mCompositorChild.get(), &CompositorChild::Destroy));
-    }
-    // The DestroyCompositor task we just added to the MessageLoop will handle
-    // releasing mCompositorParent and mCompositorChild.
-    if (mCompositorParent)
-      unused << mCompositorParent.forget();
-    if (mCompositorChild)
-      unused << mCompositorChild.forget();
-  }
-}
-
 EmbedLitePuppetWidget::EmbedLitePuppetWidget(EmbedLiteViewThreadChild* aEmbed, uint32_t& aId)
   : mEmbed(aEmbed)
   , mVisible(false)
@@ -125,7 +98,6 @@ EmbedLitePuppetWidget::~EmbedLitePuppetWidget()
   MOZ_COUNT_DTOR(EmbedLitePuppetWidget);
   LOGT("this:%p", this);
   gTopLevelWindows.RemoveElement(this);
-  DestroyCompositor();
 }
 
 NS_IMETHODIMP
@@ -210,6 +182,9 @@ EmbedLitePuppetWidget::Destroy()
   mEmbed = nullptr;
   mChild = nullptr;
   mCompositorWrapper = nullptr;
+
+  DestroyCompositor();
+
   return NS_OK;
 }
 
