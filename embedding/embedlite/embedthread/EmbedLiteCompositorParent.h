@@ -24,23 +24,21 @@ public:
                             bool aRenderToEGLSurface,
                             int aSurfaceWidth, int aSurfaceHeight,
                             uint32_t id);
-  virtual ~EmbedLiteCompositorParent();
 
   bool RenderToContext(gfx::DrawTarget* aTarget);
   bool RenderGL();
   void SetSurfaceSize(int width, int height);
   void SetWorldTransform(gfx::Matrix);
   void SetClipping(const gfxRect& aClipRect);
-  void SetWorldOpacity(float aOpacity);
+  mozilla::layers::CompositorParent* Compositor() { return mCompositor.get(); }
+
+private:
+  virtual ~EmbedLiteCompositorParent();
 
   virtual void Created();
   virtual bool Invalidate();
-
-  mozilla::layers::CompositorParent* Compositor() { return mCompositor.get(); }
-
   void UpdateTransformState();
 
-protected:
   uint32_t mId;
   gfx::Matrix mWorldTransform;
   nsIntRect mActiveClipping;
