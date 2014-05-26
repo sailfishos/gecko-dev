@@ -41,7 +41,6 @@ EmbedLiteCompositorParent::EmbedLiteCompositorParent(nsIWidget* aWidget,
   , mLastViewSize(aSurfaceWidth, aSurfaceHeight)
   , mInitialPaintCount(0)
 {
-  AddRef();
   mCompositor = new CompositorParent(aWidget, aRenderToEGLSurface, aSurfaceWidth, aSurfaceHeight);
   mCompositor->SetCompositorInterface(this);
   EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(mId);
