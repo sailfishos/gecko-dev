@@ -232,7 +232,7 @@ public:
     AutoSyncLoopHolder syncLoop(mWorkerPrivate);
     mSyncLoopTarget = syncLoop.EventTarget();
 
-    if (NS_FAILED(NS_DispatchToMainThread(this, NS_DISPATCH_NORMAL))) {
+    if (NS_FAILED(NS_DispatchToMainThread(this))) {
       JS_ReportError(cx,
                      "Failed to dispatch to main thread for the Console API!");
       return false;
@@ -1439,13 +1439,13 @@ void
 Console::MakeFormatString(nsCString& aFormat, int32_t aInteger,
                           int32_t aMantissa, char aCh)
 {
-  aFormat.Append("%");
+  aFormat.Append('%');
   if (aInteger >= 0) {
     aFormat.AppendInt(aInteger);
   }
 
   if (aMantissa >= 0) {
-    aFormat.Append(".");
+    aFormat.Append('.');
     aFormat.AppendInt(aMantissa);
   }
 
@@ -1589,7 +1589,7 @@ Console::IncreaseCounter(JSContext* aCx, const ConsoleStackEntry& aFrame,
 
   if (key.IsEmpty()) {
     key.Append(aFrame.mFilename);
-    key.Append(NS_LITERAL_STRING(":"));
+    key.Append(':');
     key.AppendInt(aFrame.mLineNumber);
   }
 

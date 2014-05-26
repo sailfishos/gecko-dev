@@ -685,6 +685,23 @@ nsGenericDOMDataNode::SetShadowRoot(ShadowRoot* aShadowRoot)
 {
 }
 
+nsTArray<nsIContent*>&
+nsGenericDOMDataNode::DestInsertionPoints()
+{
+  nsDataSlots *slots = DataSlots();
+  return slots->mDestInsertionPoints;
+}
+
+nsTArray<nsIContent*>*
+nsGenericDOMDataNode::GetExistingDestInsertionPoints() const
+{
+  nsDataSlots *slots = GetExistingDataSlots();
+  if (slots) {
+    return &slots->mDestInsertionPoints;
+  }
+  return nullptr;
+}
+
 nsXBLBinding *
 nsGenericDOMDataNode::GetXBLBinding() const
 {
@@ -996,6 +1013,11 @@ nsGenericDOMDataNode::TextIsOnlyWhitespace()
 bool
 nsGenericDOMDataNode::HasTextForTranslation()
 {
+  if (NodeType() != nsIDOMNode::TEXT_NODE &&
+      NodeType() != nsIDOMNode::CDATA_SECTION_NODE) {
+    return false;
+  }
+
   if (mText.Is2b()) {
     // The fragment contains non-8bit characters which means there
     // was at least one "interesting" character to trigger non-8bit.

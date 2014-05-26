@@ -35,8 +35,6 @@ const GOOGLE_PIN_PREFIX = "GOOGLE_PIN_";
 
 // Pins expire in 18 weeks
 const PINNING_MINIMUM_REQUIRED_MAX_AGE = 60 * 60 * 24 * 7 * 18;
-const CHROME_JSON_SOURCE = "https://src.chromium.org/chrome/trunk/src/net/http/transport_security_state_static.json";
-const CHROME_CERT_SOURCE = "https://src.chromium.org/chrome/trunk/src/net/http/transport_security_state_static.certs";
 
 const FILE_HEADER = "/* This Source Code Form is subject to the terms of the Mozilla Public\n" +
 " * License, v. 2.0. If a copy of the MPL was not distributed with this\n" +
@@ -312,15 +310,22 @@ function downloadAndParseChromePins(filename,
 
   // Grab the domain entry lists. Chrome's entry format is similar to
   // ours, except theirs includes a HSTS mode.
+  const cData = gStaticPins.chromium_data;
   let entries = chromePreloads.entries;
   entries.forEach(function(entry) {
+    let pinsetName = cData.substitute_pinsets[entry.pins];
+    if (!pinsetName) {
+      pinsetName = entry.pins;
+    }
+    let isProductionDomain =
+      (cData.production_domains.indexOf(entry.name) != -1);
     if (entry.pins && chromeImportedPinsets[entry.pins]) {
       chromeImportedEntries.push({
         name: entry.name,
         include_subdomains: entry.include_subdomains,
-        test_mode: true,
+        test_mode: !isProductionDomain,
         is_moz: false,
-        pins: entry.pins });
+        pins: pinsetName });
     }
   });
   return [ chromeImportedPinsets, chromeImportedEntries ];
@@ -409,6 +414,9 @@ function writeFingerprints(certNameToSKD, certSKDToName, name, hashes, type) {
   writeString("static const char* " + varPrefix + "_Data[] = {\n");
   let SKDList = [];
   for (let certName of hashes) {
+    if (!(certName in certNameToSKD)) {
+      throw "Can't find " + certName + " in certNameToSKD";
+    }
     SKDList.push(certNameToSKD[certName]);
   }
   for (let skd of SKDList.sort()) {
@@ -518,7 +526,7 @@ function writeFile(certNameToSKD, certSKDToName,
 
   // Write the pinsets
   writeString(PINSETDEF);
-  writeString("/* Mozilla static pinsets */\n");
+  writeString("/* PreloadedHPKPins.json pinsets */\n");
   gStaticPins.pinsets.sort(compareByName).forEach(function(pinset) {
     writeFullPinset(certNameToSKD, certSKDToName, pinset);
   });
@@ -536,10 +544,10 @@ function writeFile(certNameToSKD, certSKDToName,
 
 let [ certNameToSKD, certSKDToName ] = loadNSSCertinfo(gTestCertFile);
 let [ chromeNameToHash, chromeNameToMozName ] = downloadAndParseChromeCerts(
-  CHROME_CERT_SOURCE, certSKDToName);
+  gStaticPins.chromium_data.cert_file_url, certSKDToName);
 let [ chromeImportedPinsets, chromeImportedEntries ] =
-  downloadAndParseChromePins(CHROME_JSON_SOURCE, chromeNameToHash,
-    chromeNameToMozName, certNameToSKD, certSKDToName);
+  downloadAndParseChromePins(gStaticPins.chromium_data.json_file_url,
+    chromeNameToHash, chromeNameToMozName, certNameToSKD, certSKDToName);
 
 writeFile(certNameToSKD, certSKDToName, chromeImportedPinsets,
           chromeImportedEntries);

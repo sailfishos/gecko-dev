@@ -313,6 +313,11 @@ void nsRegion::SimplifyOutwardByArea(uint32_t aThreshold)
   pixman_box32_t *boxes;
   int n;
   boxes = pixman_region32_rectangles(&mImpl, &n);
+
+  // if we have no rectangles then we're done
+  if (!n)
+    return;
+
   pixman_box32_t *end = boxes + n;
   pixman_box32_t *topRectsEnd = boxes+1;
   pixman_box32_t *topRects = boxes;
@@ -925,7 +930,7 @@ nsRect nsRegion::GetLargestRectangle (const nsRect& aContainingRect) const {
 nsCString
 nsRegion::ToString() const {
     nsCString result;
-    result.AppendLiteral("[");
+    result.Append('[');
 
     int n;
     pixman_box32_t *boxes = pixman_region32_rectangles(const_cast<pixman_region32_t*>(&mImpl), &n);
@@ -936,7 +941,7 @@ nsRegion::ToString() const {
         result.Append(nsPrintfCString("%d,%d,%d,%d", boxes[i].x1, boxes[i].y1, boxes[i].x2, boxes[i].y2));
 
     }
-    result.AppendLiteral("]");
+    result.Append(']');
 
     return result;
 }

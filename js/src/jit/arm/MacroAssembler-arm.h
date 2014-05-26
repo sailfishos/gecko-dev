@@ -957,13 +957,7 @@ class MacroAssemblerARMCompat : public MacroAssemblerARM
     void branchTestMagicValue(Condition cond, const ValueOperand &val, JSWhyMagic why,
                               Label *label) {
         JS_ASSERT(cond == Equal || cond == NotEqual);
-        // Test for magic
-        Label notmagic;
-        Condition testCond = testMagic(cond, val);
-        ma_b(&notmagic, InvertCondition(testCond));
-        // Test magic value
-        branch32(cond, val.payloadReg(), Imm32(static_cast<int32_t>(why)), label);
-        bind(&notmagic);
+        branchTestValue(cond, val, MagicValue(why), label);
     }
     void branchTestInt32Truthy(bool truthy, const ValueOperand &operand, Label *label) {
         Condition c = testInt32Truthy(truthy, operand);
@@ -1435,6 +1429,9 @@ class MacroAssemblerARMCompat : public MacroAssemblerARM
     void addPtr(ImmPtr imm, const Register dest) {
         addPtr(ImmWord(uintptr_t(imm.value)), dest);
     }
+    void mulBy3(const Register &src, const Register &dest) {
+        as_add(dest, src, lsl(src, 1));
+    }
 
     void setStackArg(Register reg, uint32_t arg);
 
@@ -1549,6 +1546,8 @@ class MacroAssemblerARMCompat : public MacroAssemblerARM
     }
     void floor(FloatRegister input, Register output, Label *handleNotAnInt);
     void floorf(FloatRegister input, Register output, Label *handleNotAnInt);
+    void ceil(FloatRegister input, Register output, Label *handleNotAnInt);
+    void ceilf(FloatRegister input, Register output, Label *handleNotAnInt);
     void round(FloatRegister input, Register output, Label *handleNotAnInt, FloatRegister tmp);
     void roundf(FloatRegister input, Register output, Label *handleNotAnInt, FloatRegister tmp);
 

@@ -168,7 +168,7 @@ private:
 
         mFD = fd;
 
-        if (NS_FAILED(NS_DispatchToMainThread(this, NS_DISPATCH_NORMAL))) {
+        if (NS_FAILED(NS_DispatchToMainThread(this))) {
             NS_WARNING("Failed to dispatch to main thread!");
 
             CloseFile();
@@ -506,6 +506,17 @@ TabParent::UpdateFrame(const FrameMetrics& aFrameMetrics)
 {
   if (!mIsDestroyed) {
     unused << SendUpdateFrame(aFrameMetrics);
+  }
+}
+
+void
+TabParent::UIResolutionChanged()
+{
+  if (!mIsDestroyed) {
+    // TryCacheDPIAndScale()'s cache is keyed off of
+    // mDPI being greater than 0, so this invalidates it.
+    mDPI = -1;
+    unused << SendUIResolutionChanged();
   }
 }
 

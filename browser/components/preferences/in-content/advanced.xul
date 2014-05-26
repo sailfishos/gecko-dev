@@ -1,6 +1,8 @@
-<!-- This Source Code Form is subject to the terms of the Mozilla Public
-   - License, v. 2.0. If a copy of the MPL was not distributed with this file,
-   - You can obtain one at http://mozilla.org/MPL/2.0/.  -->
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+<!-- Advanced panel -->
 
 <script type="application/javascript"
         src="chrome://browser/content/preferences/in-content/advanced.js"/>
@@ -435,9 +437,6 @@
 
         <separator/>
 
-#ifdef XP_MACOSX
-        <vbox>
-#endif
         <hbox>
           <button id="viewCertificatesButton"
                   label="&viewCerts.label;" accesskey="&viewCerts.accesskey;"
@@ -446,18 +445,11 @@
           <button id="verificationButton"
                   label="&verify2.label;" accesskey="&verify2.accesskey;"
                   oncommand="gAdvancedPane.showOCSP();"/>
-#ifdef XP_MACOSX
-        </hbox>
-        <hbox>
-#endif
           <button id="viewSecurityDevicesButton"
                   label="&viewSecurityDevices.label;" accesskey="&viewSecurityDevices.accesskey;"
                   oncommand="gAdvancedPane.showSecurityDevices();"
                   preference="security.disable_button.openDeviceManager"/>
         </hbox>
-#ifdef XP_MACOSX
-        </vbox>
-#endif
     </tabpanel>
   </tabpanels>
 </tabbox>

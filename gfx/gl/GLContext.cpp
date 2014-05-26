@@ -43,11 +43,11 @@
 #include "nsCocoaFeatures.h"
 #endif
 
-using namespace mozilla::gfx;
-using namespace mozilla::layers;
-
 namespace mozilla {
 namespace gl {
+
+using namespace mozilla::gfx;
+using namespace mozilla::layers;
 
 #ifdef DEBUG
 unsigned GLContext::sCurrentGLContextTLS = -1;
@@ -1183,11 +1183,9 @@ GLContext::InitWithPrefix(const char *prefix, bool trygl)
                                  0, nullptr,
                                  true);
         }
-    }
 
-    if (mInitialized)
         reporter.SetSuccessful();
-    else {
+    } else {
         // if initialization fails, ensure all symbols are zero, to avoid hard-to-understand bugs
         mSymbols.Zero();
         NS_WARNING("InitWithPrefix failed!");

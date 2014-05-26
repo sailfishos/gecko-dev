@@ -1,4 +1,4 @@
-57469
+57488
 0/nm
 0th/pt
 1/n1
@@ -17122,6 +17122,7 @@ aggravation/M
 aggregate/MGNDSX
 aggregated/E
 aggregation/M
+aggregator/SM
 aggression/SM
 aggressive/YP
 aggressiveness/M
@@ -17802,6 +17803,8 @@ anomalous/Y
 anomaly/SM
 anon/S
 anonymity/M
+anonymization/SM
+anonymize/DSG
 anonymous/Y
 anopheles/M
 anorak/MS
@@ -20248,6 +20251,9 @@ blotter/MS
 blotting
 blotto
 blouse/MGDS
+bloviate/SGD
+bloviation
+bloviator/SM
 blow/SZGMR
 blower/M
 blowfly/SM
@@ -27461,6 +27467,7 @@ durably
 durance/M
 duration/MS
 duress/M
+durian/SM
 during
 durst
 durum/M
@@ -34336,7 +34343,7 @@ immediateness/M
 immemorial/Y
 immense/RYTP
 immensity/SM
-immerse/XDSGN
+immerse/XDSGNV
 immersible
 immersion/M
 immigrant/SM
@@ -37761,6 +37768,7 @@ mafiosi
 mafioso/M
 mag/SM
 magazine/SM
+mage/SM
 magenta/M
 maggot/MS
 maggoty/RT
@@ -41491,7 +41499,7 @@ opportunist/MS
 opportunistic
 opportunistically
 opportunity/SM
-oppose/DSG
+oppose/DSGRB
 opposed/U
 opposite/SMYNX
 opposition/M
@@ -43367,6 +43375,8 @@ philtre/MS
 phish/ZGDR
 phisher/M
 phlebitis/M
+phlebotomist/SM
+phlebotomize/SGD
 phlebotomy
 phlegm/M
 phlegmatic
@@ -47059,6 +47069,9 @@ rheumatic/MS
 rheumatically
 rheumatism/M
 rheumatoid
+rheumatological
+rheumatologist/SM
+rheumatology/M
 rheumy/TR
 rhinestone/SM
 rhinitis/M
@@ -50223,6 +50236,7 @@ sometime/S
 someway/S
 somewhat/S
 somewhere
+sommelier/SM
 somnambulism/M
 somnambulist/SM
 somnolence/M
@@ -52366,6 +52380,9 @@ syndrome/SM
 synergism/M
 synergistic
 synergy/SM
+synesthesia
+synesthete/S
+synesthetic
 synfuel/MS
 synod/SM
 synonym/SM
@@ -52826,6 +52843,8 @@ telephony/M
 telephoto/SM
 telephotography/M
 teleplay/MS
+teleport/SGD
+teleportation
 teleprinter/SM
 teleprocessing/M
 teleprompter/SM
@@ -54158,7 +54177,7 @@ trews
 trey/MS
 triad/SM
 triadic
-triage/MG
+triage/MGS
 trial/ASM
 trialed
 trialing

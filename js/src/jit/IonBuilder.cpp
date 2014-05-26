@@ -444,19 +444,24 @@ IonBuilder::analyzeNewLoopTypes(MBasicBlock *entry, jsbytecode *start, jsbytecod
     for (size_t i = 0; i < loopHeaders_.length(); i++) {
         if (loopHeaders_[i].pc == start) {
             MBasicBlock *oldEntry = loopHeaders_[i].header;
-            MResumePoint *oldEntryRp = oldEntry->entryResumePoint();
-            size_t stackDepth = oldEntryRp->numOperands();
-            for (size_t slot = 0; slot < stackDepth; slot++) {
-                MDefinition *oldDef = oldEntryRp->getOperand(slot);
-                if (!oldDef->isPhi()) {
-                    MOZ_ASSERT(oldDef->block()->id() < oldEntry->id());
-                    MOZ_ASSERT(oldDef == entry->getSlot(slot));
-                    continue;
+
+            // If this block has been discarded, its resume points will have
+            // already discarded their operands.
+            if (!oldEntry->isDead()) {
+                MResumePoint *oldEntryRp = oldEntry->entryResumePoint();
+                size_t stackDepth = oldEntryRp->numOperands();
+                for (size_t slot = 0; slot < stackDepth; slot++) {
+                    MDefinition *oldDef = oldEntryRp->getOperand(slot);
+                    if (!oldDef->isPhi()) {
+                        MOZ_ASSERT(oldDef->block()->id() < oldEntry->id());
+                        MOZ_ASSERT(oldDef == entry->getSlot(slot));
+                        continue;
+                    }
+                    MPhi *oldPhi = oldDef->toPhi();
+                    MPhi *newPhi = entry->getSlot(slot)->toPhi();
+                    if (!newPhi->addBackedgeType(oldPhi->type(), oldPhi->resultTypeSet()))
+                        return false;
                 }
-                MPhi *oldPhi = oldDef->toPhi();
-                MPhi *newPhi = entry->getSlot(slot)->toPhi();
-                if (!newPhi->addBackedgeType(oldPhi->type(), oldPhi->resultTypeSet()))
-                    return false;
             }
 
             // Update the most recent header for this loop encountered, in case
@@ -3111,11 +3116,13 @@ IonBuilder::filterTypesAtTest(MTest *test)
                 return false;
 
             replace = ensureDefiniteTypeSet(subject, type);
-            // Make sure we don't hoist it above the MTest, we can use the
-            // 'dependency' of an MInstruction. This is normally used by
-            // Alias Analysis, but won't get overwritten, since this
-            // instruction doesn't have an AliasSet.
-            replace->setDependency(test);
+            if (replace != subject) {
+                // Make sure we don't hoist it above the MTest, we can use the
+                // 'dependency' of an MInstruction. This is normally used by
+                // Alias Analysis, but won't get overwritten, since this
+                // instruction doesn't have an AliasSet.
+                replace->setDependency(test);
+            }
         }
 
         current->setSlot(i, replace);
@@ -6403,6 +6410,12 @@ IonBuilder::ensureDefiniteTypeSet(MDefinition *def, types::TemporaryTypeSet *typ
         return replace;
     }
 
+    // Don't replace if input type is more accurate than given typeset.
+    if (def->type() != types->getKnownMIRType()) {
+        MOZ_ASSERT(types->getKnownMIRType() == MIRType_Value);
+        return def;
+    }
+
     // Create a NOP mir instruction to filter the typeset.
     MFilterTypeSet *filter = MFilterTypeSet::New(alloc(), def, types);
     current->add(filter);
@@ -7440,7 +7453,12 @@ IonBuilder::getTypedArrayElements(MDefinition *obj)
         void *data = tarr->viewData();
         // Bug 979449 - Optimistically embed the elements and use TI to
         //              invalidate if we move them.
-        if (!gc::IsInsideNursery(tarr->runtimeFromMainThread(), data)) {
+#ifdef JSGC_GENERATIONAL
+        bool isTenured = !tarr->runtimeFromMainThread()->gc.nursery.isInside(data);
+#else
+        bool isTenured = true;
+#endif
+        if (isTenured) {
             // The 'data' pointer can change in rare circumstances
             // (ArrayBufferObject::changeContents).
             types::TypeObjectKey *tarrType = types::TypeObjectKey::get(tarr);
@@ -7747,8 +7765,10 @@ IonBuilder::setElemTryTypedStatic(bool *emitted, MDefinition *object,
 
     TypedArrayObject *tarr = &tarrObj->as<TypedArrayObject>();
 
-    if (gc::IsInsideNursery(tarr->runtimeFromMainThread(), tarr->viewData()))
+#ifdef JSGC_GENERATIONAL
+    if (tarr->runtimeFromMainThread()->gc.nursery.isInside(tarr->viewData()))
         return true;
+#endif
 
     ArrayBufferView::ViewType viewType = (ArrayBufferView::ViewType) tarr->type();
 
@@ -8890,7 +8910,7 @@ CanInlinePropertyOpShapes(const BaselineInspector::ShapeVector &shapes)
 {
     for (size_t i = 0; i < shapes.length(); i++) {
         // We inline the property access as long as the shape is not in
-        // dictionary made. We cannot be sure that the shape is still a
+        // dictionary mode. We cannot be sure that the shape is still a
         // lastProperty, and calling Shape::search() on dictionary mode
         // shapes that aren't lastProperty is invalid.
         if (shapes[i]->inDictionary())

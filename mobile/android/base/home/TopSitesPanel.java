@@ -16,7 +16,6 @@ import org.mozilla.gecko.TelemetryContract;
 import org.mozilla.gecko.db.BrowserContract.Thumbnails;
 import org.mozilla.gecko.db.BrowserContract.TopSites;
 import org.mozilla.gecko.db.BrowserDB;
-import org.mozilla.gecko.db.TopSitesCursorWrapper;
 import org.mozilla.gecko.favicons.Favicons;
 import org.mozilla.gecko.favicons.OnFaviconLoadedListener;
 import org.mozilla.gecko.gfx.BitmapUtils;
@@ -281,7 +280,6 @@ public class TopSitesPanel extends HomeFragment {
         // Hide ununsed menu items.
         menu.findItem(R.id.home_open_in_reader).setVisible(false);
         menu.findItem(R.id.home_edit_bookmark).setVisible(false);
-        menu.findItem(R.id.home_remove).setVisible(false);
 
         TopSitesGridContextMenuInfo info = (TopSitesGridContextMenuInfo) menuInfo;
         menu.setHeaderTitle(info.getDisplayTitle());
@@ -314,7 +312,6 @@ public class TopSitesPanel extends HomeFragment {
         }
 
         TopSitesGridContextMenuInfo info = (TopSitesGridContextMenuInfo) menuInfo;
-        final Activity activity = getActivity();
 
         final int itemId = item.getItemId();
 
@@ -331,7 +328,7 @@ public class TopSitesPanel extends HomeFragment {
                 }
             });
 
-            Telemetry.sendUIEvent(TelemetryContract.Event.TOP_SITES_PIN);
+            Telemetry.sendUIEvent(TelemetryContract.Event.PIN);
             return true;
         }
 
@@ -346,7 +343,8 @@ public class TopSitesPanel extends HomeFragment {
                 }
             });
 
-            Telemetry.sendUIEvent(TelemetryContract.Event.TOP_SITES_UNPIN);
+            Telemetry.sendUIEvent(TelemetryContract.Event.UNPIN);
+
             return true;
         }
 
@@ -354,7 +352,7 @@ public class TopSitesPanel extends HomeFragment {
             // Decode "user-entered" URLs before showing them.
             mEditPinnedSiteListener.onEditPinnedSite(info.position, decodeUserEnteredUrl(info.url));
 
-            Telemetry.sendUIEvent(TelemetryContract.Event.TOP_SITES_EDIT);
+            Telemetry.sendUIEvent(TelemetryContract.Event.EDIT);
             return true;
         }
 

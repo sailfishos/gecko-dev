@@ -572,6 +572,9 @@ class MacroAssemblerX64 : public MacroAssemblerX86Shared
     void subPtr(Register src, const Address &dest) {
         subq(src, Operand(dest));
     }
+    void mulBy3(const Register &src, const Register &dest) {
+        lea(Operand(src, src, TimesTwo), dest);
+    }
 
     void branch32(Condition cond, AbsoluteAddress lhs, Imm32 rhs, Label *label) {
         if (JSC::X86Assembler::isAddressImmediate(lhs.addr)) {
@@ -962,14 +965,7 @@ class MacroAssemblerX64 : public MacroAssemblerX86Shared
                               Label *label)
     {
         JS_ASSERT(cond == Equal || cond == NotEqual);
-        // Test for magic
-        Label notmagic;
-        Condition testCond = testMagic(cond, val);
-        j(InvertCondition(testCond), &notmagic);
-        // Test magic value
-        unboxMagic(val, ScratchReg);
-        branch32(cond, ScratchReg, Imm32(static_cast<int32_t>(why)), label);
-        bind(&notmagic);
+        branchTestValue(cond, val, MagicValue(why), label);
     }
     Condition testMagic(Condition cond, const ValueOperand &src) {
         splitTag(src, ScratchReg);

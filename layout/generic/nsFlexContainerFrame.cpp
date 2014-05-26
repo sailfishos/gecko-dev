@@ -1464,7 +1464,7 @@ NS_QUERYFRAME_TAIL_INHERITING(nsFlexContainerFrameSuper)
 
 NS_IMPL_FRAMEARENA_HELPERS(nsFlexContainerFrame)
 
-nsIFrame*
+nsContainerFrame*
 NS_NewFlexContainerFrame(nsIPresShell* aPresShell,
                          nsStyleContext* aContext)
 {
@@ -1552,7 +1552,7 @@ bool
 FrameWantsToBeInAnonymousFlexItem(nsIFrame* aFrame)
 {
   // Note: This needs to match the logic in
-  // nsCSSFrameConstructor::FrameConstructionItem::NeedsAnonFlexItem()
+  // nsCSSFrameConstructor::FrameConstructionItem::NeedsAnonFlexOrGridItem()
   return (aFrame->IsFrameOfType(nsIFrame::eLineParticipant) ||
           nsGkAtoms::placeholderFrame == aFrame->GetType());
 }

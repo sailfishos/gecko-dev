@@ -6382,8 +6382,7 @@ AutoFilename::reset(void *newScriptSource)
 const char *
 AutoFilename::get() const
 {
-    JS_ASSERT(scriptSource_);
-    return reinterpret_cast<ScriptSource*>(scriptSource_)->filename();
+    return scriptSource_ ? reinterpret_cast<ScriptSource*>(scriptSource_)->filename() : nullptr;
 }
 
 JS_PUBLIC_API(bool)
@@ -6577,14 +6576,17 @@ JSAutoByteString::encodeLatin1(ExclusiveContext *cx, JSString *str)
 }
 
 JS_PUBLIC_API(void)
-JS::SetLargeAllocationFailureCallback(JSRuntime *rt, JS::LargeAllocationFailureCallback lafc)
+JS::SetLargeAllocationFailureCallback(JSRuntime *rt, JS::LargeAllocationFailureCallback lafc,
+                                      void *data)
 {
     rt->largeAllocationFailureCallback = lafc;
+    rt->largeAllocationFailureCallbackData = data;
 }
 
 JS_PUBLIC_API(void)
-JS::SetOutOfMemoryCallback(JSRuntime *rt, OutOfMemoryCallback cb)
+JS::SetOutOfMemoryCallback(JSRuntime *rt, OutOfMemoryCallback cb, void *data)
 {
     rt->oomCallback = cb;
+    rt->oomCallbackData = data;
 }
 

@@ -581,6 +581,9 @@ class MacroAssemblerX86 : public MacroAssemblerX86Shared
     void subPtr(Register src, const Address &dest) {
         subl(src, Operand(dest));
     }
+    void mulBy3(const Register &src, const Register &dest) {
+        lea(Operand(src, src, TimesTwo), dest);
+    }
 
     void branch32(Condition cond, AbsoluteAddress lhs, Imm32 rhs, Label *label) {
         cmpl(Operand(lhs), rhs);
@@ -777,19 +780,7 @@ class MacroAssemblerX86 : public MacroAssemblerX86Shared
                               Label *label)
     {
         JS_ASSERT(cond == Equal || cond == NotEqual);
-        if (cond == Equal) {
-            // Test for magic
-            Label notmagic;
-            Condition testCond = testMagic(Equal, val);
-            j(InvertCondition(testCond), &notmagic);
-            // Test magic value
-            branch32(Equal, val.payloadReg(), Imm32(static_cast<int32_t>(why)), label);
-            bind(&notmagic);
-        } else {
-            Condition testCond = testMagic(NotEqual, val);
-            j(testCond, label);
-            branch32(NotEqual, val.payloadReg(), Imm32(static_cast<int32_t>(why)), label);
-        }
+        branchTestValue(cond, val, MagicValue(why), label);
     }
 
     // Note: this function clobbers the source register.

@@ -1189,6 +1189,25 @@ LIRGenerator::visitFloor(MFloor *ins)
 }
 
 bool
+LIRGenerator::visitCeil(MCeil *ins)
+{
+    MIRType type = ins->num()->type();
+    JS_ASSERT(IsFloatingPointType(type));
+
+    if (type == MIRType_Double) {
+        LCeil *lir = new(alloc()) LCeil(useRegister(ins->num()));
+        if (!assignSnapshot(lir))
+            return false;
+        return define(lir, ins);
+    }
+
+    LCeilF *lir = new(alloc()) LCeilF(useRegister(ins->num()));
+    if (!assignSnapshot(lir))
+        return false;
+    return define(lir, ins);
+}
+
+bool
 LIRGenerator::visitRound(MRound *ins)
 {
     MIRType type = ins->num()->type();
@@ -1639,6 +1658,12 @@ LIRGenerator::visitNop(MNop *nop)
 }
 
 bool
+LIRGenerator::visitLimitedTruncate(MLimitedTruncate *nop)
+{
+    return redefine(nop, nop->input());
+}
+
+bool
 LIRGenerator::visitOsrEntry(MOsrEntry *entry)
 {
     LOsrEntry *lir = new(alloc()) LOsrEntry;
@@ -1951,14 +1976,18 @@ MustCloneRegExp(MRegExp *regexp)
             return true;
 
         MDefinition *def = node->toDefinition();
-        if (def->isRegExpTest() && iter->index() == 1) {
-            // Optimized RegExp.prototype.test.
-            JS_ASSERT(def->toRegExpTest()->regexp() == regexp);
-            continue;
+        if (def->isRegExpTest()) {
+            MRegExpTest *test = def->toRegExpTest();
+            if (test->indexOf(*iter) == 1) {
+                // Optimized RegExp.prototype.test.
+                JS_ASSERT(test->regexp() == regexp);
+                continue;
+            }
+        } else if (def->isCall()) {
+            MCall *call = def->toCall();
+            if (!MustCloneRegExpForCall(call, call->indexOf(*iter)))
+                continue;
         }
-
-        if (def->isCall() && !MustCloneRegExpForCall(def->toCall(), iter->index()))
-            continue;
 
         return true;
     }

@@ -11775,6 +11775,7 @@ ICCFileHelperObject.prototype = {
       case ICC_EF_ICCID:
         return EF_PATH_MF_SIM;
       case ICC_EF_ADN:
+      case ICC_EF_SDN: // Fall through.
         return EF_PATH_MF_SIM + EF_PATH_DF_TELECOM;
       case ICC_EF_PBR:
         return EF_PATH_MF_SIM + EF_PATH_DF_TELECOM + EF_PATH_DF_PHONEBOOK;
@@ -14240,6 +14241,9 @@ ICCContactHelperObject.prototype = {
       case "fdn":
         ICCRecordHelper.readADNLike(ICC_EF_FDN, onsuccess, onerror);
         break;
+      case "sdn":
+        ICCRecordHelper.readADNLike(ICC_EF_SDN, onsuccess, onerror);
+        break;
       default:
         if (DEBUG) {
           this.context.debug("Unsupported contactType :" + contactType);
@@ -14908,6 +14912,10 @@ let ContextPool = {
     RILQUIRKS_SEND_STK_PROFILE_DOWNLOAD = quirks.sendStkProfileDownload;
     RILQUIRKS_DATA_REGISTRATION_ON_DEMAND = quirks.dataRegistrationOnDemand;
     RILQUIRKS_SUBSCRIPTION_CONTROL = quirks.subscriptionControl;
+  },
+
+  setDebugFlag: function(aOptions) {
+    DEBUG = DEBUG_WORKER || aOptions.debug;
   },
 
   registerClient: function(aOptions) {

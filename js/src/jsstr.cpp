@@ -2250,9 +2250,13 @@ struct ReplaceData
         elembase = nullptr;
         repstr = string;
 
-        /* We're about to store pointers into the middle of our string. */
-        dollarEnd = repstr->chars() + repstr->length();
-        dollar = js_strchr_limit(repstr->chars(), '$', dollarEnd);
+        const jschar *chars = repstr->chars();
+        if (const jschar *p = js_strchr_limit(chars, '$', chars + repstr->length())) {
+            dollarIndex = p - chars;
+            MOZ_ASSERT(dollarIndex < repstr->length());
+        } else {
+            dollarIndex = UINT32_MAX;
+        }
     }
 
     inline void setReplacementFunction(JSObject *func) {
@@ -2260,16 +2264,15 @@ struct ReplaceData
         lambda = func;
         elembase = nullptr;
         repstr = nullptr;
-        dollar = dollarEnd = nullptr;
+        dollarIndex = UINT32_MAX;
     }
 
     RootedString       str;            /* 'this' parameter object as a string */
     StringRegExpGuard  g;              /* regexp parameter object and private data */
     RootedObject       lambda;         /* replacement function object or null */
     RootedObject       elembase;       /* object for function(a){return b[a]} replace */
-    Rooted<JSLinearString*> repstr; /* replacement string */
-    const jschar       *dollar;        /* null or pointer to first $ in repstr */
-    const jschar       *dollarEnd;     /* limit pointer for js_strchr_limit */
+    Rooted<JSLinearString*> repstr;    /* replacement string */
+    uint32_t           dollarIndex;    /* index of first $ in repstr, or UINT32_MAX */
     int                leftIndex;      /* left context index in str->chars */
     JSSubString        dollarStr;      /* for "$$" InterpretDollar result */
     bool               calledBack;     /* record whether callback has been called */
@@ -2484,21 +2487,27 @@ FindReplaceLength(JSContext *cx, RegExpStatics *res, ReplaceData &rdata, size_t 
         return true;
     }
 
-    JSString *repstr = rdata.repstr;
+    JSLinearString *repstr = rdata.repstr;
     CheckedInt<uint32_t> replen = repstr->length();
-    for (const jschar *dp = rdata.dollar, *ep = rdata.dollarEnd; dp;
-         dp = js_strchr_limit(dp, '$', ep)) {
-        JSSubString sub;
-        size_t skip;
-        if (InterpretDollar(res, dp, ep, rdata, &sub, &skip)) {
-            if (sub.length > skip)
-                replen += sub.length - skip;
-            else
-                replen -= skip - sub.length;
-            dp += skip;
-        } else {
-            dp++;
-        }
+    if (rdata.dollarIndex != UINT32_MAX) {
+        MOZ_ASSERT(rdata.dollarIndex < repstr->length());
+        const jschar *dp = repstr->chars() + rdata.dollarIndex;
+        const jschar *ep = repstr->chars() + repstr->length();
+        do {
+            JSSubString sub;
+            size_t skip;
+            if (InterpretDollar(res, dp, ep, rdata, &sub, &skip)) {
+                if (sub.length > skip)
+                    replen += sub.length - skip;
+                else
+                    replen -= skip - sub.length;
+                dp += skip;
+            } else {
+                dp++;
+            }
+
+            dp = js_strchr_limit(dp, '$', ep);
+        } while (dp);
     }
 
     if (!replen.isValid()) {
@@ -2518,27 +2527,32 @@ static void
 DoReplace(RegExpStatics *res, ReplaceData &rdata)
 {
     JSLinearString *repstr = rdata.repstr;
-    const jschar *cp;
-    const jschar *bp = cp = repstr->chars();
+    const jschar *bp = repstr->chars();
+    const jschar *cp = bp;
 
-    const jschar *dp = rdata.dollar;
-    const jschar *ep = rdata.dollarEnd;
-    for (; dp; dp = js_strchr_limit(dp, '$', ep)) {
-        /* Move one of the constant portions of the replacement value. */
-        size_t len = dp - cp;
-        rdata.sb.infallibleAppend(cp, len);
-        cp = dp;
+    if (rdata.dollarIndex != UINT32_MAX) {
+        MOZ_ASSERT(rdata.dollarIndex < repstr->length());
+        const jschar *dp = bp + rdata.dollarIndex;
+        const jschar *ep = bp + repstr->length();
+        do {
+            /* Move one of the constant portions of the replacement value. */
+            size_t len = dp - cp;
+            rdata.sb.infallibleAppend(cp, len);
+            cp = dp;
 
-        JSSubString sub;
-        size_t skip;
-        if (InterpretDollar(res, dp, ep, rdata, &sub, &skip)) {
-            len = sub.length;
-            rdata.sb.infallibleAppend(sub.chars, len);
-            cp += skip;
-            dp += skip;
-        } else {
-            dp++;
-        }
+            JSSubString sub;
+            size_t skip;
+            if (InterpretDollar(res, dp, ep, rdata, &sub, &skip)) {
+                len = sub.length;
+                rdata.sb.infallibleAppend(sub.chars, len);
+                cp += skip;
+                dp += skip;
+            } else {
+                dp++;
+            }
+
+            dp = js_strchr_limit(dp, '$', ep);
+        } while (dp);
     }
     rdata.sb.infallibleAppend(cp, repstr->length() - (cp - bp));
 }
@@ -2664,13 +2678,12 @@ BuildFlatReplacement(JSContext *cx, HandleString textstr, HandleString repstr,
  */
 static inline bool
 BuildDollarReplacement(JSContext *cx, JSString *textstrArg, JSLinearString *repstr,
-                       const jschar *firstDollar, const FlatMatch &fm, MutableHandleValue rval)
+                       uint32_t firstDollarIndex, const FlatMatch &fm, MutableHandleValue rval)
 {
     Rooted<JSLinearString*> textstr(cx, textstrArg->ensureLinear(cx));
     if (!textstr)
         return false;
 
-    JS_ASSERT(repstr->chars() <= firstDollar && firstDollar < repstr->chars() + repstr->length());
     size_t matchStart = fm.match();
     size_t matchLimit = matchStart + fm.patternLength();
 
@@ -2685,56 +2698,64 @@ BuildDollarReplacement(JSContext *cx, JSString *textstrArg, JSLinearString *reps
     if (!newReplaceChars.reserve(textstr->length() - fm.patternLength() + repstr->length()))
         return false;
 
+    JS_ASSERT(firstDollarIndex < repstr->length());
+    const jschar *firstDollar = repstr->chars() + firstDollarIndex;
+
     /* Move the pre-dollar chunk in bulk. */
     newReplaceChars.infallibleAppend(repstr->chars(), firstDollar);
 
     /* Move the rest char-by-char, interpreting dollars as we encounter them. */
-#define ENSURE(__cond) if (!(__cond)) return false;
+    const jschar *textchars = textstr->chars();
     const jschar *repstrLimit = repstr->chars() + repstr->length();
     for (const jschar *it = firstDollar; it < repstrLimit; ++it) {
         if (*it != '$' || it == repstrLimit - 1) {
-            ENSURE(newReplaceChars.append(*it));
+            if (!newReplaceChars.append(*it))
+                return false;
             continue;
         }
 
         switch (*(it + 1)) {
           case '$': /* Eat one of the dollars. */
-            ENSURE(newReplaceChars.append(*it));
+            if (!newReplaceChars.append(*it))
+                return false;
             break;
           case '&':
-            ENSURE(newReplaceChars.append(textstr->chars() + matchStart,
-                                          textstr->chars() + matchLimit));
+            if (!newReplaceChars.append(textchars + matchStart, textchars + matchLimit))
+                return false;
             break;
           case '`':
-            ENSURE(newReplaceChars.append(textstr->chars(), textstr->chars() + matchStart));
+            if (!newReplaceChars.append(textchars, textchars + matchStart))
+                return false;
             break;
           case '\'':
-            ENSURE(newReplaceChars.append(textstr->chars() + matchLimit,
-                                          textstr->chars() + textstr->length()));
+            if (!newReplaceChars.append(textchars + matchLimit, textchars + textstr->length()))
+                return false;
             break;
           default: /* The dollar we saw was not special (no matter what its mother told it). */
-            ENSURE(newReplaceChars.append(*it));
+            if (!newReplaceChars.append(*it))
+                return false;
             continue;
         }
         ++it; /* We always eat an extra char in the above switch. */
     }
 
     RootedString leftSide(cx, js_NewDependentString(cx, textstr, 0, matchStart));
-    ENSURE(leftSide);
+    if (!leftSide)
+        return false;
 
     RootedString newReplace(cx, newReplaceChars.finishString());
-    ENSURE(newReplace);
+    if (!newReplace)
+        return false;
 
     JS_ASSERT(textstr->length() >= matchLimit);
     RootedString rightSide(cx, js_NewDependentString(cx, textstr, matchLimit,
-                                                        textstr->length() - matchLimit));
-    ENSURE(rightSide);
+                                                     textstr->length() - matchLimit));
+    if (!rightSide)
+        return false;
 
     RopeBuilder builder(cx);
-    ENSURE(builder.append(leftSide) &&
-           builder.append(newReplace) &&
-           builder.append(rightSide));
-#undef ENSURE
+    if (!builder.append(leftSide) || !builder.append(newReplace) || !builder.append(rightSide))
+        return false;
 
     rval.setString(builder.result());
     return true;
@@ -2754,7 +2775,7 @@ static inline JSFatInlineString *
 FlattenSubstrings(JSContext *cx, const jschar *chars,
                   const StringRange *ranges, size_t rangesLen, size_t outputLen)
 {
-    JS_ASSERT(JSFatInlineString::lengthFits(outputLen));
+    JS_ASSERT(JSFatInlineString::twoByteLengthFits(outputLen));
 
     JSFatInlineString *str = js_NewGCFatInlineString<CanGC>(cx);
     if (!str)
@@ -2796,7 +2817,7 @@ AppendSubstrings(JSContext *cx, Handle<JSFlatString*> flatStr,
         size_t substrLen = 0;
         size_t end = i;
         for (; end < rangesLen; end++) {
-            if (substrLen + ranges[end].length > JSFatInlineString::MAX_FAT_INLINE_LENGTH)
+            if (substrLen + ranges[end].length > JSFatInlineString::MAX_LENGTH_TWO_BYTE)
                 break;
             substrLen += ranges[end].length;
         }
@@ -2942,7 +2963,7 @@ StrReplaceRegExp(JSContext *cx, ReplaceData &rdata, MutableHandleValue rval)
 
     /* Optimize removal. */
     if (rdata.repstr && rdata.repstr->length() == 0) {
-        JS_ASSERT(!rdata.lambda && !rdata.elembase && !rdata.dollar);
+        JS_ASSERT(!rdata.lambda && !rdata.elembase && rdata.dollarIndex == UINT32_MAX);
         return StrReplaceRegexpRemove(cx, rdata.str, re, rval);
     }
 
@@ -3022,8 +3043,8 @@ StrReplaceString(JSContext *cx, ReplaceData &rdata, const FlatMatch &fm, Mutable
      * Note: we could optimize the text.length == pattern.length case if we wanted,
      * even in the presence of dollar metachars.
      */
-    if (rdata.dollar)
-        return BuildDollarReplacement(cx, rdata.str, rdata.repstr, rdata.dollar, fm, rval);
+    if (rdata.dollarIndex != UINT32_MAX)
+        return BuildDollarReplacement(cx, rdata.str, rdata.repstr, rdata.dollarIndex, fm, rval);
     return BuildFlatReplacement(cx, rdata.str, rdata.repstr, fm, rval);
 }
 
@@ -3755,170 +3776,6 @@ str_slice(JSContext *cx, unsigned argc, Value *vp)
     return true;
 }
 
-#if JS_HAS_STR_HTML_HELPERS
-/*
- * HTML composition aids.
- */
-static bool
-tagify(JSContext *cx, const char *begin, HandleLinearString param, const char *end,
-       CallReceiver call)
-{
-    JSString *thisstr = ThisToStringForStringProto(cx, call);
-    if (!thisstr)
-        return false;
-
-    JSLinearString *str = thisstr->ensureLinear(cx);
-    if (!str)
-        return false;
-
-    if (!end)
-        end = begin;
-
-    size_t beglen = strlen(begin);
-    size_t taglen = 1 + beglen + 1;                     /* '<begin' + '>' */
-    if (param) {
-        size_t numChars = param->length();
-        const jschar *parchars = param->chars();
-        for (size_t i = 0, parlen = numChars; i < parlen; ++i) {
-            if (parchars[i] == '"')
-                numChars += 5;                          /* len(&quot;) - len(") */
-        }
-        taglen += 2 + numChars + 1;                     /* '="param"' */
-    }
-    size_t endlen = strlen(end);
-    taglen += str->length() + 2 + endlen + 1;           /* 'str</end>' */
-
-
-    StringBuffer sb(cx);
-    if (!sb.reserve(taglen))
-        return false;
-
-    sb.infallibleAppend('<');
-
-    MOZ_ALWAYS_TRUE(sb.appendInflated(begin, beglen));
-
-    if (param) {
-        sb.infallibleAppend('=');
-        sb.infallibleAppend('"');
-        const jschar *parchars = param->chars();
-        for (size_t i = 0, parlen = param->length(); i < parlen; ++i) {
-            if (parchars[i] != '"') {
-                sb.infallibleAppend(parchars[i]);
-            } else {
-                MOZ_ALWAYS_TRUE(sb.append("&quot;"));
-            }
-        }
-        sb.infallibleAppend('"');
-    }
-
-    sb.infallibleAppend('>');
-
-    MOZ_ALWAYS_TRUE(sb.append(str));
-
-    sb.infallibleAppend('<');
-    sb.infallibleAppend('/');
-
-    MOZ_ALWAYS_TRUE(sb.appendInflated(end, endlen));
-
-    sb.infallibleAppend('>');
-
-    JSFlatString *retstr = sb.finishString();
-    if (!retstr)
-        return false;
-
-    call.rval().setString(retstr);
-    return true;
-}
-
-static bool
-tagify_value(JSContext *cx, CallArgs args, const char *begin, const char *end)
-{
-    RootedLinearString param(cx, ArgToRootedString(cx, args, 0));
-    if (!param)
-        return false;
-
-    return tagify(cx, begin, param, end, args);
-}
-
-static bool
-str_bold(JSContext *cx, unsigned argc, Value *vp)
-{
-    return tagify(cx, "b", NullPtr(), nullptr, CallReceiverFromVp(vp));
-}
-
-static bool
-str_italics(JSContext *cx, unsigned argc, Value *vp)
-{
-    return tagify(cx, "i", NullPtr(), nullptr, CallReceiverFromVp(vp));
-}
-
-static bool
-str_fixed(JSContext *cx, unsigned argc, Value *vp)
-{
-    return tagify(cx, "tt", NullPtr(), nullptr, CallReceiverFromVp(vp));
-}
-
-static bool
-str_fontsize(JSContext *cx, unsigned argc, Value *vp)
-{
-    return tagify_value(cx, CallArgsFromVp(argc, vp), "font size", "font");
-}
-
-static bool
-str_fontcolor(JSContext *cx, unsigned argc, Value *vp)
-{
-    return tagify_value(cx, CallArgsFromVp(argc, vp), "font color", "font");
-}
-
-static bool
-str_link(JSContext *cx, unsigned argc, Value *vp)
-{
-    return tagify_value(cx, CallArgsFromVp(argc, vp), "a href", "a");
-}
-
-static bool
-str_anchor(JSContext *cx, unsigned argc, Value *vp)
-{
-    return tagify_value(cx, CallArgsFromVp(argc, vp), "a name", "a");
-}
-
-static bool
-str_strike(JSContext *cx, unsigned argc, Value *vp)
-{
-    return tagify(cx, "strike", NullPtr(), nullptr, CallReceiverFromVp(vp));
-}
-
-static bool
-str_small(JSContext *cx, unsigned argc, Value *vp)
-{
-    return tagify(cx, "small", NullPtr(), nullptr, CallReceiverFromVp(vp));
-}
-
-static bool
-str_big(JSContext *cx, unsigned argc, Value *vp)
-{
-    return tagify(cx, "big", NullPtr(), nullptr, CallReceiverFromVp(vp));
-}
-
-static bool
-str_blink(JSContext *cx, unsigned argc, Value *vp)
-{
-    return tagify(cx, "blink", NullPtr(), nullptr, CallReceiverFromVp(vp));
-}
-
-static bool
-str_sup(JSContext *cx, unsigned argc, Value *vp)
-{
-    return tagify(cx, "sup", NullPtr(), nullptr, CallReceiverFromVp(vp));
-}
-
-static bool
-str_sub(JSContext *cx, unsigned argc, Value *vp)
-{
-    return tagify(cx, "sub", NullPtr(), nullptr, CallReceiverFromVp(vp));
-}
-#endif /* JS_HAS_STR_HTML_HELPERS */
-
 static const JSFunctionSpec string_methods[] = {
 #if JS_HAS_TOSOURCE
     JS_FN("quote",             str_quote,             0,JSFUN_GENERIC_NATIVE),
@@ -3966,21 +3823,20 @@ static const JSFunctionSpec string_methods[] = {
     JS_FN("slice",             str_slice,             2,JSFUN_GENERIC_NATIVE),
 
     /* HTML string methods. */
-#if JS_HAS_STR_HTML_HELPERS
-    JS_FN("bold",              str_bold,              0,0),
-    JS_FN("italics",           str_italics,           0,0),
-    JS_FN("fixed",             str_fixed,             0,0),
-    JS_FN("fontsize",          str_fontsize,          1,0),
-    JS_FN("fontcolor",         str_fontcolor,         1,0),
-    JS_FN("link",              str_link,              1,0),
-    JS_FN("anchor",            str_anchor,            1,0),
-    JS_FN("strike",            str_strike,            0,0),
-    JS_FN("small",             str_small,             0,0),
-    JS_FN("big",               str_big,               0,0),
-    JS_FN("blink",             str_blink,             0,0),
-    JS_FN("sup",               str_sup,               0,0),
-    JS_FN("sub",               str_sub,               0,0),
-#endif
+    JS_SELF_HOSTED_FN("bold",     "String_bold",       0,0),
+    JS_SELF_HOSTED_FN("italics",  "String_italics",    0,0),
+    JS_SELF_HOSTED_FN("fixed",    "String_fixed",      0,0),
+    JS_SELF_HOSTED_FN("strike",   "String_strike",     0,0),
+    JS_SELF_HOSTED_FN("small",    "String_small",      0,0),
+    JS_SELF_HOSTED_FN("big",      "String_big",        0,0),
+    JS_SELF_HOSTED_FN("blink",    "String_blink",      0,0),
+    JS_SELF_HOSTED_FN("sup",      "String_sup",        0,0),
+    JS_SELF_HOSTED_FN("sub",      "String_sub",        0,0),
+    JS_SELF_HOSTED_FN("anchor",   "String_anchor",     1,0),
+    JS_SELF_HOSTED_FN("link",     "String_link",       1,0),
+    JS_SELF_HOSTED_FN("fontcolor","String_fontcolor",  1,0),
+    JS_SELF_HOSTED_FN("fontsize", "String_fontsize",   1,0),
+
     JS_SELF_HOSTED_FN("@@iterator", "String_iterator", 0,0),
     JS_FS_END
 };
@@ -4158,7 +4014,7 @@ template <AllowGC allowGC>
 JSFlatString *
 js_NewStringCopyN(ExclusiveContext *cx, const jschar *s, size_t n)
 {
-    if (JSFatInlineString::lengthFits(n))
+    if (JSFatInlineString::twoByteLengthFits(n))
         return NewFatInlineString<allowGC>(cx, TwoByteChars(s, n));
 
     jschar *news = cx->pod_malloc<jschar>(n + 1);
@@ -4182,7 +4038,7 @@ template <AllowGC allowGC>
 JSFlatString *
 js_NewStringCopyN(ThreadSafeContext *cx, const char *s, size_t n)
 {
-    if (JSFatInlineString::lengthFits(n))
+    if (JSFatInlineString::twoByteLengthFits(n))
         return NewFatInlineString<allowGC>(cx, JS::Latin1Chars(s, n));
 
     jschar *chars = InflateString(cx, s, &n);
@@ -4205,7 +4061,7 @@ JSFlatString *
 js_NewStringCopyZ(ExclusiveContext *cx, const jschar *s)
 {
     size_t n = js_strlen(s);
-    if (JSFatInlineString::lengthFits(n))
+    if (JSFatInlineString::twoByteLengthFits(n))
         return NewFatInlineString<allowGC>(cx, TwoByteChars(s, n));
 
     size_t m = (n + 1) * sizeof(jschar);

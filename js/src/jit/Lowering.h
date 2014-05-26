@@ -119,6 +119,7 @@ class LIRGenerator : public LIRGeneratorSpecific
     bool visitRsh(MRsh *ins);
     bool visitUrsh(MUrsh *ins);
     bool visitFloor(MFloor *ins);
+    bool visitCeil(MCeil *ins);
     bool visitRound(MRound *ins);
     bool visitMinMax(MMinMax *ins);
     bool visitAbs(MAbs *ins);
@@ -141,6 +142,7 @@ class LIRGenerator : public LIRGeneratorSpecific
     bool visitStart(MStart *start);
     bool visitOsrEntry(MOsrEntry *entry);
     bool visitNop(MNop *nop);
+    bool visitLimitedTruncate(MLimitedTruncate *nop);
     bool visitOsrValue(MOsrValue *value);
     bool visitOsrScopeChain(MOsrScopeChain *object);
     bool visitOsrReturnValue(MOsrReturnValue *value);

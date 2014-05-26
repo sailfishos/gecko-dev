@@ -119,6 +119,10 @@
 #include "nsSystemInfo.h"
 #endif
 
+#if defined(XP_LINUX)
+#include "mozilla/Hal.h"
+#endif
+
 #ifdef ANDROID
 # include "gfxAndroidPlatform.h"
 #endif
@@ -818,19 +822,19 @@ ContentParent::CreateBrowserOrApp(const TabContext& aContext,
     nsRefPtr<ContentParent> p = sAppContentParents->Get(manifestURL);
 
     if (!p && Preferences::GetBool("dom.ipc.reuse_parent_app")) {
-        nsAutoString parentAppURL;
+        nsAutoString parentAppManifestURL;
         aFrameElement->GetAttr(kNameSpaceID_None,
-                               nsGkAtoms::parentapp, parentAppURL);
-        nsAdoptingString systemAppURL =
-            Preferences::GetString("browser.homescreenURL");
+                               nsGkAtoms::parentapp, parentAppManifestURL);
+        nsAdoptingString systemAppManifestURL =
+            Preferences::GetString("browser.manifestURL");
         nsCOMPtr<nsIAppsService> appsService =
             do_GetService(APPS_SERVICE_CONTRACTID);
-        if (!parentAppURL.IsEmpty() &&
-            !parentAppURL.Equals(systemAppURL) &&
+        if (!parentAppManifestURL.IsEmpty() &&
+            !parentAppManifestURL.Equals(systemAppManifestURL) &&
             appsService) {
             nsCOMPtr<mozIApplication> parentApp;
             nsCOMPtr<mozIApplication> app;
-            appsService->GetAppByManifestURL(parentAppURL,
+            appsService->GetAppByManifestURL(parentAppManifestURL,
                                              getter_AddRefs(parentApp));
             appsService->GetAppByManifestURL(manifestURL,
                                              getter_AddRefs(app));
@@ -845,7 +849,7 @@ ContentParent::CreateBrowserOrApp(const TabContext& aContext,
                 NS_SUCCEEDED(parentApp->GetAppStatus(&parentAppStatus)) &&
                 parentAppStatus == nsIPrincipal::APP_STATUS_CERTIFIED) {
                 // Check if we can re-use the process of the parent app.
-                p = sAppContentParents->Get(parentAppURL);
+                p = sAppContentParents->Get(parentAppManifestURL);
             }
         }
     }
@@ -3055,6 +3059,21 @@ ContentParent::RecvGetRandomValues(const uint32_t& length,
 
     return true;
 }
+
+bool
+ContentParent::RecvGetSystemMemory(const uint64_t& aGetterId)
+{
+  uint32_t memoryTotal = 0;
+
+#if defined(XP_LINUX)
+  memoryTotal = mozilla::hal::GetTotalSystemMemoryLevel();
+#endif
+
+  unused << SendSystemMemoryAvailable(aGetterId, memoryTotal);
+
+  return true;
+}
+
 
 bool
 ContentParent::RecvLoadURIExternal(const URIParams& uri)

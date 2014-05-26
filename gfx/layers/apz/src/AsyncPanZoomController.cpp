@@ -126,10 +126,10 @@ WidgetModifiersToDOMModifiers(mozilla::Modifiers aModifiers)
 
 }
 
-using namespace mozilla::css;
-
 namespace mozilla {
 namespace layers {
+
+using namespace mozilla::css;
 
 typedef mozilla::layers::AllowedTouchBehavior AllowedTouchBehavior;
 typedef GeckoContentController::APZStateChange APZStateChange;
@@ -1728,6 +1728,7 @@ bool AsyncPanZoomController::SampleContentTransformForFrame(const TimeStamp& aSa
 
   for (uint32_t i = 0; i < deferredTasks.length(); ++i) {
     deferredTasks[i]->Run();
+    delete deferredTasks[i];
   }
 
   // Cancel the mAsyncScrollTimeoutTask because we will fire a

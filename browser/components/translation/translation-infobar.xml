@@ -21,11 +21,11 @@
     <content>
       <xul:hbox class="notification-inner outset" flex="1" xbl:inherits="type">
         <xul:hbox anonid="details" align="center" flex="1">
-          <xul:image anonid="messageImage" class="messageImage" xbl:inherits="src=image,type,value"/>
+          <xul:image anonid="messageImage" class="messageImage"/>
           <xul:deck anonid="translationStates" selectedIndex="0">
 
             <!-- offer to translate -->
-            <xul:hbox class="translate-offer-box" align="baseline">
+            <xul:hbox class="translate-offer-box" align="center">
               <xul:label value="&translation.thisPageIsIn.label;"/>
               <xul:menulist anonid="detectedLanguage">
                 <xul:menupopup/>
@@ -43,7 +43,7 @@
             </xul:vbox>
 
             <!-- translated -->
-            <xul:hbox class="translated-box" align="baseline">
+            <xul:hbox class="translated-box" align="center">
               <xul:label value="&translation.translatedFrom.label;"/>
               <xul:menulist anonid="fromLanguage"
                             oncommand="document.getBindingParent(this).translate()">
@@ -64,7 +64,7 @@
             </xul:hbox>
 
             <!-- error -->
-            <xul:hbox class="translation-error" align="baseline">
+            <xul:hbox class="translation-error" align="center">
               <xul:label value="&translation.errorTranslating.label;"/>
               <xul:button label="&translation.tryAgain.button;" anonid="tryAgain"
                           oncommand="document.getBindingParent(this).translate();"/>
@@ -98,8 +98,28 @@
     </content>
     <implementation>
       <property name="state"
-                onget="return this._getAnonElt('translationStates').selectedIndex;"
-                onset="this._getAnonElt('translationStates').selectedIndex = val;"/>
+                onget="return this._getAnonElt('translationStates').selectedIndex;">
+        <setter>
+          <![CDATA[
+          let deck = this._getAnonElt('translationStates');
+
+          let activeElt = document.activeElement;
+          if (activeElt && deck.contains(activeElt))
+            activeElt.blur();
+
+          let stateName;
+          for (let name of ["OFFER", "TRANSLATING", "TRANSLATED", "ERROR"]) {
+            if (this.translation["STATE_" + name] == val) {
+              stateName = name.toLowerCase();
+              break;
+            }
+          }
+          this.setAttribute("state", stateName);
+
+          deck.selectedIndex = val;
+          ]]>
+        </setter>
+      </property>
 
       <method name="init">
         <parameter name="aTranslation"/>

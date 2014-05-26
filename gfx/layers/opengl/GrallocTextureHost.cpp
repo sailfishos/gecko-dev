@@ -285,18 +285,20 @@ GrallocTextureHostOGL::GrallocTextureHostOGL(TextureFlags aFlags,
                                              const NewSurfaceDescriptorGralloc& aDescriptor)
   : TextureHost(aFlags)
 {
+  gfx::SurfaceFormat format = gfx::SurfaceFormat::UNKNOWN;
   mGrallocHandle = aDescriptor;
 
   android::GraphicBuffer* graphicBuffer = GetGraphicBufferFromDesc(mGrallocHandle).get();
-  if (!graphicBuffer) {
-	  NS_RUNTIMEABORT("Invalid SurfaceDescriptor passed in");
-  }
+  MOZ_ASSERT(graphicBuffer);
 
   mSize = aDescriptor.size();
-  gfx::SurfaceFormat format =
-    SurfaceFormatForAndroidPixelFormat(graphicBuffer->getPixelFormat(),
-                                       aFlags & TextureFlags::RB_SWAPPED);
-
+  if (graphicBuffer) {
+    format =
+      SurfaceFormatForAndroidPixelFormat(graphicBuffer->getPixelFormat(),
+                                         aFlags & TextureFlags::RB_SWAPPED);
+  } else {
+    NS_WARNING("gralloc buffer is nullptr");
+  }
   mTextureSource = new GrallocTextureSourceOGL(nullptr,
                                                graphicBuffer,
                                                format);
@@ -452,11 +454,6 @@ GrallocTextureHostOGL::SetCompositableBackendSpecificData(CompositableBackendSpe
   mCompositableBackendData = aBackendData;
   if (mTextureSource) {
     mTextureSource->SetCompositableBackendSpecificData(aBackendData);
-  }
-  // Register this object to CompositableBackendSpecificData
-  // as current TextureHost.
-  if (aBackendData) {
-    aBackendData->SetCurrentReleaseFenceTexture(this);
   }
 }
 

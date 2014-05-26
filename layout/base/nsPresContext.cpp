@@ -49,11 +49,15 @@
 #include "mozilla/dom/MediaQueryList.h"
 #include "nsSMILAnimationController.h"
 #include "mozilla/css/ImageLoader.h"
+#include "mozilla/dom/PBrowserParent.h"
 #include "mozilla/dom/TabChild.h"
+#include "mozilla/dom/TabParent.h"
 #include "nsRefreshDriver.h"
 #include "Layers.h"
 #include "nsIDOMEvent.h"
 #include "gfxPrefs.h"
+#include "nsIDOMChromeWindow.h"
+#include "nsFrameLoader.h"
 
 #include "nsContentUtils.h"
 #include "nsCxPusher.h"
@@ -496,10 +500,10 @@ nsPresContext::GetFontPrefsForLang(nsIAtom *aLanguage) const
     Preferences::GetCString("font.size.unit");
 
   if (!cvalue.IsEmpty()) {
-    if (cvalue.Equals("px")) {
+    if (cvalue.EqualsLiteral("px")) {
       unit = eUnit_px;
     }
-    else if (cvalue.Equals("pt")) {
+    else if (cvalue.EqualsLiteral("pt")) {
       unit = eUnit_pt;
     }
     else {
@@ -768,11 +772,11 @@ nsPresContext::GetUserPreferences()
   // * image animation
   const nsAdoptingCString& animatePref =
     Preferences::GetCString("image.animation_mode");
-  if (animatePref.Equals("normal"))
+  if (animatePref.EqualsLiteral("normal"))
     mImageAnimationModePref = imgIContainer::kNormalAnimMode;
-  else if (animatePref.Equals("none"))
+  else if (animatePref.EqualsLiteral("none"))
     mImageAnimationModePref = imgIContainer::kDontAnimMode;
-  else if (animatePref.Equals("once"))
+  else if (animatePref.EqualsLiteral("once"))
     mImageAnimationModePref = imgIContainer::kLoopOnceAnimMode;
   else // dynamic change to invalid value should act like it does initially
     mImageAnimationModePref = imgIContainer::kNormalAnimMode;
@@ -1766,6 +1770,35 @@ nsPresContext::UIResolutionChangedInternal()
   mDeviceContext->CheckDPIChange();
   if (mCurAppUnitsPerDevPixel != AppUnitsPerDevPixel()) {
     AppUnitsPerDevPixelChanged();
+  }
+
+  nsCOMPtr<nsIDOMChromeWindow> chromeWindow(do_QueryInterface(mDocument->GetWindow()));
+  nsCOMPtr<nsIMessageBroadcaster> windowMM;
+  if (chromeWindow) {
+    chromeWindow->GetMessageManager(getter_AddRefs(windowMM));
+  }
+  if (windowMM) {
+    uint32_t tabChildCount = 0;
+    windowMM->GetChildCount(&tabChildCount);
+    for (uint32_t j = 0; j < tabChildCount; ++j) {
+      nsCOMPtr<nsIMessageListenerManager> childMM;
+      windowMM->GetChildAt(j, getter_AddRefs(childMM));
+      if (!childMM) {
+        continue;
+      }
+      nsCOMPtr<nsIMessageSender> tabMM = do_QueryInterface(childMM);
+
+      mozilla::dom::ipc::MessageManagerCallback* cb =
+       static_cast<nsFrameMessageManager*>(tabMM.get())->GetCallback();
+      if (cb) {
+        nsFrameLoader* fl = static_cast<nsFrameLoader*>(cb);
+        PBrowserParent* remoteBrowser = fl->GetRemoteBrowser();
+        TabParent* remote = static_cast<TabParent*>(remoteBrowser);
+        if (remote) {
+          remote->UIResolutionChanged();
+        }
+      }
+    }
   }
 
   mDocument->EnumerateSubDocuments(UIResolutionChangedSubdocumentCallback,

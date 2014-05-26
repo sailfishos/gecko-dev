@@ -15,7 +15,7 @@
 
 #include "mozilla/Attributes.h"
 #include "nsCOMPtr.h"
-#include "nsIFrame.h"
+#include "nsContainerFrame.h"
 #include "nsPoint.h"
 #include "nsRect.h"
 #include "nsCaret.h"
@@ -3370,6 +3370,9 @@ public:
 
   virtual bool SetVisibleRegionOnLayer() MOZ_OVERRIDE { return false; }
 
+#ifdef MOZ_DUMP_PAINTING
+  virtual void WriteDebugInfo(nsACString& aTo) MOZ_OVERRIDE;
+#endif
 private:
   static gfx3DMatrix GetResultingTransformMatrixInternal(const FrameTransformProperties& aProperties,
                                                          const nsPoint& aOrigin,

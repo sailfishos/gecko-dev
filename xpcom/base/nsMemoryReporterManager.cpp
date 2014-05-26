@@ -711,13 +711,21 @@ public:
     // because KIND_HEAP memory means "counted in heap-allocated", which
     // this is not.
     rv = MOZ_COLLECT_REPORT(
+      "explicit/heap-overhead/bin-unused", KIND_NONHEAP, UNITS_BYTES,
+      stats.bin_unused,
+"Bytes reserved for bins of fixed-size allocations which do not correspond to "
+"an active allocation.");
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    rv = MOZ_COLLECT_REPORT(
       "explicit/heap-overhead/waste", KIND_NONHEAP, UNITS_BYTES,
       stats.waste,
 "Committed bytes which do not correspond to an active allocation and which the "
 "allocator is not intentionally keeping alive (i.e., not 'heap-bookkeeping' or "
-"'heap-page-cache').  Although the allocator will waste some space under any "
-"circumstances, a large value here may indicate that the heap is highly "
-"fragmented, or that allocator is performing poorly for some other reason.");
+"'heap-page-cache' or 'heap-bin-unused').  Although the allocator will waste "
+"some space under any circumstances, a large value here may indicate that the "
+"heap is highly fragmented, or that allocator is performing poorly for some "
+"other reason.");
     NS_ENSURE_SUCCESS(rv, rv);
 
     rv = MOZ_COLLECT_REPORT(
@@ -751,6 +759,21 @@ public:
 "Ratio of committed, unused bytes to allocated bytes; i.e., "
 "'heap-overhead' / 'heap-allocated'.  This measures the overhead of "
 "the heap allocator relative to amount of memory allocated.");
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    rv = MOZ_COLLECT_REPORT(
+      "heap-mapped", KIND_OTHER, UNITS_BYTES, stats.mapped,
+      "Amount of memory currently mapped.");
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    rv = MOZ_COLLECT_REPORT(
+      "heap-chunksize", KIND_OTHER, UNITS_BYTES, stats.chunksize,
+      "Size of chunks.");
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    rv = MOZ_COLLECT_REPORT(
+      "heap-chunks", KIND_OTHER, UNITS_COUNT, (stats.mapped / stats.chunksize),
+      "Number of chunks currently mapped.");
     NS_ENSURE_SUCCESS(rv, rv);
 
     return NS_OK;
@@ -1426,7 +1449,7 @@ public:
     // create artificial (i.e. deterministic) reporters -- which allows us
     // to precisely test nsMemoryReporterManager.explicit -- but we can't
     // do that for distinguished amounts.
-    if (aPath.Equals("heap-allocated") ||
+    if (aPath.EqualsLiteral("heap-allocated") ||
         (aKind == nsIMemoryReporter::KIND_NONHEAP &&
          PromiseFlatCString(aPath).Find("explicit") == 0)) {
       Int64Wrapper* wrappedInt64 = static_cast<Int64Wrapper*>(aWrappedExplicit);
@@ -1641,6 +1664,28 @@ nsMemoryReporterManager::GetHasMozMallocUsableSize(bool* aHas)
   size_t usable = moz_malloc_usable_size(p);
   free(p);
   *aHas = !!(usable > 0);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsMemoryReporterManager::GetIsDMDEnabled(bool* aIsEnabled)
+{
+#ifdef MOZ_DMD
+  *aIsEnabled = true;
+#else
+  *aIsEnabled = false;
+#endif
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsMemoryReporterManager::GetIsDMDRunning(bool* aIsRunning)
+{
+#ifdef MOZ_DMD
+  *aIsRunning = dmd::IsRunning();
+#else
+  *aIsRunning = false;
+#endif
   return NS_OK;
 }
 

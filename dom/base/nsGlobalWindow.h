@@ -37,7 +37,8 @@
 #include "nsSize.h"
 #include "mozFlushType.h"
 #include "prclist.h"
-#include "nsIDOMStorageEvent.h"
+#include "mozilla/dom/StorageEvent.h"
+#include "mozilla/dom/StorageEventBinding.h"
 #include "nsFrameMessageManager.h"
 #include "mozilla/LinkedList.h"
 #include "mozilla/TimeStamp.h"
@@ -434,6 +435,7 @@ public:
   virtual NS_HIDDEN_(void) SetIsBackground(bool aIsBackground);
   virtual NS_HIDDEN_(void) SetChromeEventHandler(mozilla::dom::EventTarget* aChromeEventHandler);
 
+  // Outer windows only.
   virtual NS_HIDDEN_(void) SetInitialPrincipalToSubject();
 
   virtual NS_HIDDEN_(PopupControlState) PushPopupControlState(PopupControlState state, bool aForce) const;
@@ -453,14 +455,18 @@ public:
   }
   virtual NS_HIDDEN_(bool) IsRunningTimeout() { return mTimeoutFiringDepth > 0; }
 
-  virtual NS_HIDDEN_(bool) WouldReuseInnerWindow(nsIDocument *aNewDocument);
+  // Outer windows only.
+  virtual NS_HIDDEN_(bool) WouldReuseInnerWindow(nsIDocument* aNewDocument);
 
   virtual NS_HIDDEN_(void) SetDocShell(nsIDocShell* aDocShell);
   virtual void DetachFromDocShell();
   virtual NS_HIDDEN_(nsresult) SetNewDocument(nsIDocument *aDocument,
                                               nsISupports *aState,
                                               bool aForceReuseInnerWindow);
+
+  // Outer windows only.
   void DispatchDOMWindowCreated();
+
   virtual NS_HIDDEN_(void) SetOpenerWindow(nsIDOMWindow* aOpener,
                                            bool aOriginalOpener);
 
@@ -470,8 +476,9 @@ public:
   virtual NS_HIDDEN_(void) EnterModalState();
   virtual NS_HIDDEN_(void) LeaveModalState();
 
+  // Outer windows only.
   virtual NS_HIDDEN_(bool) CanClose();
-  virtual NS_HIDDEN_(nsresult) ForceClose();
+  virtual NS_HIDDEN_(void) ForceClose();
 
   virtual NS_HIDDEN_(void) MaybeUpdateTouchState();
   virtual NS_HIDDEN_(void) UpdateTouchState();
@@ -557,6 +564,7 @@ public:
   // (alert, prompt, confirm) are currently allowed in this window.
   void EnableDialogs();
   void DisableDialogs();
+  // Outer windows only.
   bool AreDialogsEnabled();
 
   nsIScriptContext *GetContextInternal()
@@ -696,6 +704,7 @@ public:
 
   void UnmarkGrayTimers();
 
+  // Inner windows only.
   void AddEventTargetObject(mozilla::DOMEventTargetHelper* aObject);
   void RemoveEventTargetObject(mozilla::DOMEventTargetHelper* aObject);
 
@@ -848,6 +857,7 @@ protected:
                       mozilla::ErrorResult& aError);
 
 public:
+  void Alert(mozilla::ErrorResult& aError);
   void Alert(const nsAString& aMessage, mozilla::ErrorResult& aError);
   bool Confirm(const nsAString& aMessage, mozilla::ErrorResult& aError);
   void Prompt(const nsAString& aMessage, const nsAString& aInitial,
@@ -1044,7 +1054,8 @@ protected:
   void DropOuterWindowDocs();
   void CleanUp();
   void ClearControllers();
-  nsresult FinalClose();
+  // Outer windows only.
+  void FinalClose();
 
   inline void MaybeClearInnerWindow(nsGlobalWindow* aExpectedInner)
   {
@@ -1326,8 +1337,9 @@ protected:
 
   inline int32_t DOMMinTimeoutValue() const;
 
-  nsresult CloneStorageEvent(const nsAString& aType,
-                             nsCOMPtr<nsIDOMStorageEvent>& aEvent);
+  already_AddRefed<mozilla::dom::StorageEvent>
+  CloneStorageEvent(const nsAString& aType,
+                    const nsRefPtr<mozilla::dom::StorageEvent>& aEvent);
 
   // Outer windows only.
   nsDOMWindowList* GetWindowList();
@@ -1343,6 +1355,7 @@ protected:
                                   bool aDefaultStylesOnly,
                                   nsIDOMCSSStyleDeclaration** aReturn);
 
+  // Outer windows only.
   void PreloadLocalStorage();
 
   // Returns device pixels.  Outer windows only.
@@ -1511,7 +1524,7 @@ protected:
   // These member variables are used on both inner and the outer windows.
   nsCOMPtr<nsIPrincipal> mDocumentPrincipal;
 
-  typedef nsCOMArray<nsIDOMStorageEvent> nsDOMStorageEventArray;
+  typedef nsTArray<nsRefPtr<mozilla::dom::StorageEvent>> nsDOMStorageEventArray;
   nsDOMStorageEventArray mPendingStorageEvents;
 
   uint32_t mTimeoutsSuspendDepth;

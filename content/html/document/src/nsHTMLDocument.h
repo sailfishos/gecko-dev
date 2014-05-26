@@ -104,7 +104,6 @@ public:
   NS_DECL_NSIDOMHTMLDOCUMENT
 
   mozilla::dom::HTMLAllCollection* All();
-  JSObject* GetAll(JSContext* aCx, mozilla::ErrorResult& aRv);
 
   nsISupports* ResolveName(const nsAString& aName, nsWrapperCache **aCache);
 
@@ -112,7 +111,10 @@ public:
   virtual void RemovedForm() MOZ_OVERRIDE;
   virtual int32_t GetNumFormsSynchronous() MOZ_OVERRIDE;
   virtual void TearingDownEditor(nsIEditor *aEditor) MOZ_OVERRIDE;
-  virtual void SetIsXHTML(bool aXHTML) MOZ_OVERRIDE { mIsRegularHTML = !aXHTML; }
+  virtual void SetIsXHTML(bool aXHTML) MOZ_OVERRIDE
+  {
+    mType = (aXHTML ? eXHTML : eHTML);
+  }
   virtual void SetDocWriteDisabled(bool aDisabled) MOZ_OVERRIDE
   {
     mDisableDocWrite = aDisabled;

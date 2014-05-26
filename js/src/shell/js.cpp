@@ -755,7 +755,7 @@ CreateMappedArrayBuffer(JSContext *cx, unsigned argc, Value *vp)
             JS_ReportError(cx, "Unable to stat file");
             return false;
         }
-        if (st.st_size < offset) {
+        if (st.st_size < off_t(offset)) {
             JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr,
                                  JSMSG_ARG_INDEX_OUT_OF_RANGE, "2");
             return false;
@@ -800,33 +800,26 @@ Options(JSContext *cx, unsigned argc, jsval *vp)
         else if (strcmp(opt.ptr(), "strict_mode") == 0)
             JS::ContextOptionsRef(cx).toggleStrictMode();
         else {
-            char* msg = JS_sprintf_append(nullptr,
-                                          "unknown option name '%s'."
-                                          " The valid names are strict,"
-                                          " werror, and strict_mode.",
-                                          opt.ptr());
-            if (!msg) {
-                JS_ReportOutOfMemory(cx);
-                return false;
-            }
-
-            JS_ReportError(cx, msg);
-            free(msg);
+            JS_ReportError(cx,
+                           "unknown option name '%s'."
+                           " The valid names are strict,"
+                           " werror, and strict_mode.",
+                           opt.ptr());
             return false;
         }
     }
 
     char *names = strdup("");
     bool found = false;
-    if (!names && oldContextOptions.extraWarnings()) {
+    if (names && oldContextOptions.extraWarnings()) {
         names = JS_sprintf_append(names, "%s%s", found ? "," : "", "strict");
         found = true;
     }
-    if (!names && oldContextOptions.werror()) {
+    if (names && oldContextOptions.werror()) {
         names = JS_sprintf_append(names, "%s%s", found ? "," : "", "werror");
         found = true;
     }
-    if (!names && oldContextOptions.strictMode()) {
+    if (names && oldContextOptions.strictMode()) {
         names = JS_sprintf_append(names, "%s%s", found ? "," : "", "strict_mode");
         found = true;
     }
@@ -2439,7 +2432,7 @@ DumpHeap(JSContext *cx, unsigned argc, jsval *vp)
     CallArgs args = CallArgsFromVp(argc, vp);
 
     JSAutoByteString fileName;
-    if (args.hasDefined(0)) {
+    if (args.hasDefined(0) && !args[0].isNull()) {
         RootedString str(cx, JS::ToString(cx, args[0]));
         if (!str)
             return false;
@@ -4437,6 +4430,30 @@ PrintProfilerEvents(JSContext *cx, unsigned argc, Value *vp)
     return true;
 }
 
+static bool
+IsLatin1(JSContext *cx, unsigned argc, Value *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    bool isLatin1 = args.get(0).isString() && args[0].toString()->hasLatin1Chars();
+    args.rval().setBoolean(isLatin1);
+    return true;
+}
+
+static bool
+ToLatin1(JSContext *cx, unsigned argc, Value *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    if (!args.get(0).isString() || !args[0].toString()->isLinear()) {
+        args.rval().setUndefined();
+        return true;
+    }
+
+    JSLinearString *s = &args[0].toString()->asLinear();
+    s->debugUnsafeConvertToLatin1();
+    args.rval().setString(s);
+    return true;
+}
+
 static const JSFunctionSpecWithHelp shell_functions[] = {
     JS_FN_HELP("version", Version, 0, 0,
 "version([number])",
@@ -4801,6 +4818,10 @@ static const JSFunctionSpecWithHelp shell_functions[] = {
 "  Register a callback with the profiler that prints javascript profiler events\n"
 "  to stderr.  Callback is only registered if profiling is enabled."),
 
+    JS_FN_HELP("isLatin1", IsLatin1, 1, 0,
+"isLatin1(s)",
+"  Return true iff the string's characters are stored as Latin1."),
+
     JS_FS_HELP_END
 };
 
@@ -4864,6 +4885,10 @@ static const JSFunctionSpecWithHelp fuzzing_unsafe_functions[] = {
     JS_FN_HELP("untrap", Untrap, 2, 0,
 "untrap(fun[, pc])",
 "  Remove a trap."),
+
+    JS_FN_HELP("toLatin1", ToLatin1, 1, 0,
+"toLatin1(s)",
+"  Convert the string's characters to Latin1."),
 
     JS_FN_HELP("withSourceHook", WithSourceHook, 1, 0,
 "withSourceHook(hook, fun)",
@@ -5016,7 +5041,7 @@ my_ErrorReporter(JSContext *cx, const char *message, JSErrorReport *report)
 }
 
 static void
-my_OOMCallback(JSContext *cx)
+my_OOMCallback(JSContext *cx, void *data)
 {
     // If a script is running, the engine is about to throw the string "out of
     // memory", which may or may not be caught. Otherwise the engine will just
@@ -6263,7 +6288,7 @@ main(int argc, char **argv, char **envp)
     if (!rt)
         return 1;
 
-    JS::SetOutOfMemoryCallback(rt, my_OOMCallback);
+    JS::SetOutOfMemoryCallback(rt, my_OOMCallback, nullptr);
     if (!SetRuntimeOptions(rt, op))
         return 1;
 
