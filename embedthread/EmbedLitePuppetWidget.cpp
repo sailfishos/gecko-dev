@@ -209,6 +209,7 @@ EmbedLitePuppetWidget::Destroy()
   mLayerManager = nullptr;
   mEmbed = nullptr;
   mChild = nullptr;
+  mCompositorWrapper = nullptr;
   return NS_OK;
 }
 

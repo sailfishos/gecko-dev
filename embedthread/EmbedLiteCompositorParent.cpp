@@ -94,21 +94,14 @@ EmbedLiteCompositorParent::Created()
   }
 }
 
-bool
-EmbedLiteCompositorParent::Invalidate()
+void
+EmbedLiteCompositorParent::UpdateTransformState()
 {
-  LOGF();
-  EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(mId);
-  if (!view) {
-    LOGE("view not available.. forgot SuspendComposition call?");
-    return false;
-  }
-
   const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(mCompositor->RootLayerTreeId());
-  NS_ENSURE_TRUE(state && state->mLayerManager, false);
+  NS_ENSURE_TRUE(state && state->mLayerManager, );
 
   GLContext* context = static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->gl();
-  NS_ENSURE_TRUE(context, false);
+  NS_ENSURE_TRUE(context, );
 
   state->mLayerManager->SetWorldTransform(mWorldTransform);
 
@@ -120,6 +113,19 @@ EmbedLiteCompositorParent::Invalidate()
     context->ResizeOffscreen(gfx::IntSize(mLastViewSize.width, mLastViewSize.height));
     mCompositor->ScheduleRenderOnCompositorThread();
   }
+}
+
+bool
+EmbedLiteCompositorParent::Invalidate()
+{
+  LOGF();
+  EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(mId);
+  if (!view) {
+    LOGE("view not available.. forgot SuspendComposition call?");
+    return false;
+  }
+
+  UpdateTransformState();
 
   if (!view->GetListener()->Invalidate()) {
     mCurrentCompositeTask = NewRunnableMethod(this, &EmbedLiteCompositorParent::RenderGL);

@@ -38,6 +38,8 @@ public:
 
   mozilla::layers::CompositorParent* Compositor() { return mCompositor.get(); }
 
+  void UpdateTransformState();
+
 protected:
   uint32_t mId;
   gfx::Matrix mWorldTransform;
