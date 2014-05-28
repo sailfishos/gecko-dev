@@ -243,7 +243,7 @@ public:
   static bool IsInCompositorThread();
 
 protected:
-  // protected destructor, to discourage deletion outside of Release():
+  // Private destructor, to discourage deletion outside of Release():
   virtual ~CompositorParent();
 
   virtual PLayerTransactionParent*
@@ -251,21 +251,20 @@ protected:
                                  const uint64_t& aId,
                                  TextureFactoryIdentifier* aTextureFactoryIdentifier,
                                  bool* aSuccess) MOZ_OVERRIDE;
-  void CompositeToTarget(gfx::DrawTarget* aTarget);
-  void SetEGLSurfaceSize(int width, int height);
-  virtual void ScheduleTask(CancelableTask*, int);
-  void CancelCurrentCompositeTask();
   virtual bool DeallocPLayerTransactionParent(PLayerTransactionParent* aLayers) MOZ_OVERRIDE;
-
-private:
+  virtual void ScheduleTask(CancelableTask*, int);
   void Composite();
+  void CompositeToTarget(gfx::DrawTarget* aTarget);
   void ForceComposeToTarget(gfx::DrawTarget* aTarget);
+
+  void SetEGLSurfaceSize(int width, int height);
 
   void InitializeLayerManager(const nsTArray<LayersBackend>& aBackendHints);
   void PauseComposition();
   void ResumeComposition();
   void ResumeCompositionAndResize(int width, int height);
   void ForceComposition();
+  void CancelCurrentCompositeTask();
 
   inline static PlatformThreadId CompositorThreadID();
 
