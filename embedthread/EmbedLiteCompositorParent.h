@@ -16,9 +16,8 @@
 namespace mozilla {
 namespace embedlite {
 
-class EmbedLiteCompositorParent : public mozilla::layers::ICompositorListener
+class EmbedLiteCompositorParent : public mozilla::layers::CompositorParent
 {
-  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(EmbedLiteCompositorParent)
 public:
   EmbedLiteCompositorParent(nsIWidget* aWidget,
                             bool aRenderToEGLSurface,
@@ -30,10 +29,16 @@ public:
   void SetSurfaceSize(int width, int height);
   void SetWorldTransform(gfx::Matrix);
   void SetClipping(const gfxRect& aClipRect);
-  mozilla::layers::CompositorParent* Compositor() { return mCompositor.get(); }
+  mozilla::layers::CompositorParent* Compositor() { return this; }
 
-private:
-  virtual ~EmbedLiteCompositorParent();
+protected:
+  virtual PLayerTransactionParent*
+  AllocPLayerTransactionParent(const nsTArray<LayersBackend>& aBackendHints,
+                               const uint64_t& aId,
+                               TextureFactoryIdentifier* aTextureFactoryIdentifier,
+                               bool* aSuccess) MOZ_OVERRIDE;
+  virtual void ScheduleTask(CancelableTask*, int);
+  virtual bool RecvStop() MOZ_OVERRIDE;
 
   virtual void Created();
   virtual bool Invalidate();
@@ -45,7 +50,6 @@ private:
   CancelableTask* mCurrentCompositeTask;
   gfx::IntSize mLastViewSize;
   short mInitialPaintCount;
-  RefPtr<mozilla::layers::CompositorParent> mCompositor;
 };
 
 } // embedlite
