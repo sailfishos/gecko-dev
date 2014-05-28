@@ -1017,7 +1017,7 @@ CompositorD3D11::PaintToTarget()
                                              SurfaceFormat::B8G8R8A8);
   mTarget->CopySurface(sourceSurface,
                        IntRect(0, 0, bbDesc.Width, bbDesc.Height),
-                       IntPoint());
+                       IntPoint(-mTargetBounds.x, -mTargetBounds.y));
   mTarget->Flush();
   mContext->Unmap(readTexture, 0);
 }
