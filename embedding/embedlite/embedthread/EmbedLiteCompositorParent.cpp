@@ -36,13 +36,12 @@ EmbedLiteCompositorParent::EmbedLiteCompositorParent(nsIWidget* aWidget,
                                                      int aSurfaceWidth,
                                                      int aSurfaceHeight,
                                                      uint32_t id)
-  : mId(id)
+  : CompositorParent(aWidget, aRenderToEGLSurface, aSurfaceWidth, aSurfaceHeight)
+  , mId(id)
   , mCurrentCompositeTask(nullptr)
   , mLastViewSize(aSurfaceWidth, aSurfaceHeight)
   , mInitialPaintCount(0)
 {
-  mCompositor = new CompositorParent(aWidget, aRenderToEGLSurface, aSurfaceWidth, aSurfaceHeight);
-  mCompositor->SetCompositorInterface(this);
   EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(mId);
   LOGT("this:%p, view:%p", this, view);
   MOZ_ASSERT(view, "Something went wrong, Compositor not suspended on destroy?");
@@ -50,10 +49,28 @@ EmbedLiteCompositorParent::EmbedLiteCompositorParent(nsIWidget* aWidget,
   pview->SetCompositor(this);
 }
 
-EmbedLiteCompositorParent::~EmbedLiteCompositorParent()
+bool
+EmbedLiteCompositorParent::RecvStop()
 {
   LOGT();
   EmbedLiteApp::GetInstance()->ViewDestroyed(mId);
+  return CompositorParent::RecvStop();
+}
+
+PLayerTransactionParent*
+EmbedLiteCompositorParent::AllocPLayerTransactionParent(const nsTArray<LayersBackend>& aBackendHints,
+                                                        const uint64_t& aId,
+                                                        TextureFactoryIdentifier* aTextureFactoryIdentifier,
+                                                        bool* aSuccess)
+{
+  PLayerTransactionParent* p =
+    CompositorParent::AllocPLayerTransactionParent(aBackendHints,
+                                                   aId,
+                                                   aTextureFactoryIdentifier,
+                                                   aSuccess);
+
+  Created();
+  return p;
 }
 
 void
@@ -65,7 +82,7 @@ EmbedLiteCompositorParent::Created()
     listener->CompositorCreated();
   }
 
-  const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(mCompositor->RootLayerTreeId());
+  const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(RootLayerTreeId());
   NS_ENSURE_TRUE(state && state->mLayerManager, );
 
   GLContext* context = static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->gl();
@@ -96,7 +113,7 @@ EmbedLiteCompositorParent::Created()
 void
 EmbedLiteCompositorParent::UpdateTransformState()
 {
-  const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(mCompositor->RootLayerTreeId());
+  const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(RootLayerTreeId());
   NS_ENSURE_TRUE(state && state->mLayerManager, );
 
   GLContext* context = static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->gl();
@@ -110,7 +127,17 @@ EmbedLiteCompositorParent::UpdateTransformState()
 
   if (context->IsOffscreen() && context->OffscreenSize() != mLastViewSize) {
     context->ResizeOffscreen(gfx::IntSize(mLastViewSize.width, mLastViewSize.height));
-    mCompositor->ScheduleRenderOnCompositorThread();
+    ScheduleRenderOnCompositorThread();
+  }
+}
+
+void
+EmbedLiteCompositorParent::ScheduleTask(CancelableTask* task, int time)
+{
+  if (Invalidate()) {
+    CancelCurrentCompositeTask();
+  } else {
+    CompositorParent::ScheduleTask(task, time);
   }
 }
 
@@ -129,22 +156,23 @@ EmbedLiteCompositorParent::Invalidate()
   if (!view->GetListener()->Invalidate()) {
     mCurrentCompositeTask = NewRunnableMethod(this, &EmbedLiteCompositorParent::RenderGL);
     MessageLoop::current()->PostDelayedTask(FROM_HERE, mCurrentCompositeTask, 16);
+    return true;
   }
 
-  return true;
+  return false;
 }
 
 bool EmbedLiteCompositorParent::RenderToContext(gfx::DrawTarget* aTarget)
 {
   LOGF();
-  const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(mCompositor->RootLayerTreeId());
+  const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(RootLayerTreeId());
 
   NS_ENSURE_TRUE(state->mLayerManager, false);
   if (!state->mLayerManager->GetRoot()) {
     // Nothing to paint yet, just return silently
     return false;
   }
-  mCompositor->CompositeToTarget(aTarget);
+  CompositeToTarget(aTarget);
   return true;
 }
 
@@ -155,7 +183,7 @@ bool EmbedLiteCompositorParent::RenderGL()
     mCurrentCompositeTask = nullptr;
   }
 
-  const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(mCompositor->RootLayerTreeId());
+  const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(RootLayerTreeId());
   NS_ENSURE_TRUE(state && state->mLayerManager, false);
 
   GLContext* context = static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->gl();
@@ -165,7 +193,7 @@ bool EmbedLiteCompositorParent::RenderGL()
     ScopedScissorRect autoScissor(context);
     GLenum oldTexUnit;
     context->GetUIntegerv(LOCAL_GL_ACTIVE_TEXTURE, &oldTexUnit);
-    mCompositor->CompositeToTarget(nullptr);
+    CompositeToTarget(nullptr);
     context->fActiveTexture(oldTexUnit);
   }
 
@@ -175,7 +203,7 @@ bool EmbedLiteCompositorParent::RenderGL()
     }
     // Temporary hack, we need two extra paints in order to get initial picture
     if (mInitialPaintCount < 2) {
-      mCompositor->ScheduleRenderOnCompositorThread();
+      ScheduleRenderOnCompositorThread();
       mInitialPaintCount++;
     }
   }
@@ -191,7 +219,7 @@ bool EmbedLiteCompositorParent::RenderGL()
 void EmbedLiteCompositorParent::SetSurfaceSize(int width, int height)
 {
   mLastViewSize.SizeTo(width, height);
-  mCompositor->SetEGLSurfaceSize(width, height);
+  SetEGLSurfaceSize(width, height);
 }
 
 void EmbedLiteCompositorParent::SetWorldTransform(gfx::Matrix aMatrix)

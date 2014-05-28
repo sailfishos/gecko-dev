@@ -52,13 +52,6 @@ class Compositor;
 class LayerManagerComposite;
 class LayerTransactionParent;
 
-class ICompositorListener
-{
-public:
-  virtual void Created() {};
-  virtual bool Invalidate() { return false; };
-};
-
 struct ScopedLayerTreeRegistration
 {
   ScopedLayerTreeRegistration(uint64_t aLayersId,
@@ -70,8 +63,8 @@ private:
   uint64_t mLayersId;
 };
 
-class CompositorParent MOZ_FINAL : public PCompositorParent,
-                                   public ShadowLayersManager
+class CompositorParent : public PCompositorParent,
+                         public ShadowLayersManager
 {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(CompositorParent)
 
@@ -79,8 +72,6 @@ public:
   CompositorParent(nsIWidget* aWidget,
                    bool aUseExternalSurfaceSize = false,
                    int aSurfaceWidth = -1, int aSurfaceHeight = -1);
-
-  void SetCompositorInterface(ICompositorListener* aListener);
 
   // IToplevelProtocol::CloneToplevel()
   virtual IToplevelProtocol*
@@ -251,18 +242,8 @@ public:
    */
   static bool IsInCompositorThread();
 
-  /*
-   * Setup compositor surface size, must be called in Compositor parent thread
-   */
-  void SetEGLSurfaceSize(int width, int height);
-
-  /*
-   * Composite to Target, if target is null, then compositing will be done to Current GL context
-   */
-  void CompositeToTarget(gfx::DrawTarget* aTarget);
-
-private:
-  // Private destructor, to discourage deletion outside of Release():
+protected:
+  // protected destructor, to discourage deletion outside of Release():
   virtual ~CompositorParent();
 
   virtual PLayerTransactionParent*
@@ -270,8 +251,13 @@ private:
                                  const uint64_t& aId,
                                  TextureFactoryIdentifier* aTextureFactoryIdentifier,
                                  bool* aSuccess) MOZ_OVERRIDE;
-  virtual bool DeallocPLayerTransactionParent(PLayerTransactionParent* aLayers) MOZ_OVERRIDE;
+  void CompositeToTarget(gfx::DrawTarget* aTarget);
+  void SetEGLSurfaceSize(int width, int height);
   virtual void ScheduleTask(CancelableTask*, int);
+  void CancelCurrentCompositeTask();
+  virtual bool DeallocPLayerTransactionParent(PLayerTransactionParent* aLayers) MOZ_OVERRIDE;
+
+private:
   void Composite();
   void ForceComposeToTarget(gfx::DrawTarget* aTarget);
 
@@ -280,7 +266,6 @@ private:
   void ResumeComposition();
   void ResumeCompositionAndResize(int width, int height);
   void ForceComposition();
-  void CancelCurrentCompositeTask();
 
   inline static PlatformThreadId CompositorThreadID();
 
@@ -360,7 +345,6 @@ private:
   nsRefPtr<APZCTreeManager> mApzcTreeManager;
 
   bool mWantDidCompositeEvent;
-  ICompositorListener* mListener;
 
   DISALLOW_EVIL_CONSTRUCTORS(CompositorParent);
 };
