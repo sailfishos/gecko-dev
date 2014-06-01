@@ -468,16 +468,18 @@ JSRuntime::~JSRuntime()
 void
 NewObjectCache::clearNurseryObjects(JSRuntime *rt)
 {
+#ifdef JSGC_GENERATIONAL
     for (unsigned i = 0; i < mozilla::ArrayLength(entries); ++i) {
         Entry &e = entries[i];
         JSObject *obj = reinterpret_cast<JSObject *>(&e.templateObject);
-        if (IsInsideNursery(rt, e.key) ||
-            IsInsideNursery(rt, obj->slots) ||
-            IsInsideNursery(rt, obj->elements))
+        if (IsInsideNursery(e.key) ||
+            rt->gc.nursery.isInside(obj->slots) ||
+            rt->gc.nursery.isInside(obj->elements))
         {
             PodZero(&e);
         }
     }
+#endif
 }
 
 void
@@ -757,12 +759,21 @@ JSRuntime::onOutOfMemory(void *p, size_t nbytes, JSContext *cx)
     else if (p == reinterpret_cast<void *>(1))
         p = js_calloc(nbytes);
     else
-      p = js_realloc(p, nbytes);
+        p = js_realloc(p, nbytes);
     if (p)
         return p;
     if (cx)
         js_ReportOutOfMemory(cx);
     return nullptr;
+}
+
+void *
+JSRuntime::onOutOfMemoryCanGC(void *p, size_t bytes)
+{
+    if (!largeAllocationFailureCallback || bytes < LARGE_ALLOCATION)
+        return nullptr;
+    largeAllocationFailureCallback(largeAllocationFailureCallbackData);
+    return onOutOfMemory(p, bytes);
 }
 
 bool

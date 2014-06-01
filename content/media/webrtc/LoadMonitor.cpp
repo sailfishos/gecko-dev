@@ -23,17 +23,28 @@
 #include "mozilla/TimeStamp.h"
 #include "mozilla/Services.h"
 
-#if defined(ANDROID) || defined(LINUX)
+#ifdef XP_UNIX
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <unistd.h>
 #endif
 
 #ifdef XP_MACOSX
-#include <sys/time.h>
 #include <mach/mach_host.h>
 #include <mach/mach_init.h>
 #include <mach/host_info.h>
+#endif
+
+#if defined(__DragonFly__) || defined(__FreeBSD__) \
+ || defined(__NetBSD__) || defined(__OpenBSD__)
+#include <sys/sysctl.h>
+# if defined(__OpenBSD__)
+#define KERN_CP_TIME KERN_CPTIME
+# endif
+#endif
+
+#if defined(__NetBSD__) || defined(__OpenBSD__)
+#include <sys/sched.h>
 #endif
 
 #ifdef XP_WIN
@@ -147,7 +158,7 @@ void LoadMonitor::Shutdown()
 
     nsRefPtr<LoadMonitorRemoveObserver> remObsRunner = new LoadMonitorRemoveObserver(this);
     if (!NS_IsMainThread()) {
-      NS_DispatchToMainThread(remObsRunner, NS_DISPATCH_NORMAL);
+      NS_DispatchToMainThread(remObsRunner);
     } else {
       remObsRunner->Run();
     }
@@ -407,6 +418,39 @@ nsresult LoadInfo::UpdateSystemLoad()
                 cpu_times,
                 &mSystemLoad);
   return NS_OK;
+#elif defined(__DragonFly__) || defined(__FreeBSD__) \
+   || defined(__NetBSD__) || defined(__OpenBSD__)
+#if defined(__NetBSD__)
+  uint64_t cp_time[CPUSTATES];
+#else
+  long cp_time[CPUSTATES];
+#endif // __NetBSD__
+  size_t sz = sizeof(cp_time);
+#ifdef KERN_CP_TIME
+  int mib[] = {
+    CTL_KERN,
+    KERN_CP_TIME,
+  };
+  size_t miblen = sizeof(mib) / sizeof(mib[0]);
+  if (sysctl(mib, miblen, &cp_time, &sz, NULL, 0)) {
+#else
+  if (sysctlbyname("kern.cp_time", &cp_time, &sz, NULL, 0)) {
+#endif // KERN_CP_TIME
+    LOG(("sysctl kern.cp_time failed"));
+    return NS_ERROR_FAILURE;
+  }
+
+  const uint64_t cpu_times = cp_time[CP_NICE]
+                           + cp_time[CP_SYS]
+                           + cp_time[CP_INTR]
+                           + cp_time[CP_USER];
+  const uint64_t total_times = cpu_times + cp_time[CP_IDLE];
+
+  UpdateCpuLoad(mTicksPerInterval,
+                total_times,
+                cpu_times,
+                &mSystemLoad);
+  return NS_OK;
 #elif defined(XP_WIN)
   float load;
   nsresult rv = mSysMon.QuerySystemLoad(&load);
@@ -423,7 +467,7 @@ nsresult LoadInfo::UpdateSystemLoad()
 }
 
 nsresult LoadInfo::UpdateProcessLoad() {
-#if defined(LINUX) || defined(ANDROID) || defined(XP_MACOSX)
+#if defined(XP_UNIX)
   struct timeval tv;
   gettimeofday(&tv, nullptr);
   const uint64_t total_times = tv.tv_sec * PR_USEC_PER_SEC + tv.tv_usec;
@@ -556,7 +600,7 @@ LoadMonitor::Init(nsRefPtr<LoadMonitor> &self)
   }
 
   nsRefPtr<LoadMonitorAddObserver> addObsRunner = new LoadMonitorAddObserver(self);
-  NS_DispatchToMainThread(addObsRunner, NS_DISPATCH_NORMAL);
+  NS_DispatchToMainThread(addObsRunner);
 
   NS_NewNamedThread("Sys Load Info", getter_AddRefs(mLoadInfoThread));
 

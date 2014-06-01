@@ -101,6 +101,15 @@
   background-color: #3689b2;
 }
 
+.cm-s-mozilla .cm-unused-line {
+  text-decoration: line-through;
+  -moz-text-decoration-color: red;
+}
+
+.cm-s-mozilla .cm-executed-line {
+  background-color: #133c26;
+}
+
 .theme-fg-color3,
 .cm-s-mozilla .cm-builtin,
 .cm-s-mozilla .cm-tag,
@@ -156,7 +165,8 @@
 
 .theme-toolbar,
 .devtools-toolbar,
-.devtools-sidebar-tabs > tabs { /* General toolbar styling */
+.devtools-sidebar-tabs > tabs,
+.CodeMirror-dialog { /* General toolbar styling */
   color: #b6babf;
   background-color: #343c45;
   border-color: hsla(210,8%,5%,.6);

@@ -331,14 +331,14 @@ MediaDevice::GetType(nsAString& aType)
 NS_IMETHODIMP
 VideoDevice::GetType(nsAString& aType)
 {
-  aType.Assign(NS_LITERAL_STRING("video"));
+  aType.AssignLiteral("video");
   return NS_OK;
 }
 
 NS_IMETHODIMP
 AudioDevice::GetType(nsAString& aType)
 {
-  aType.Assign(NS_LITERAL_STRING("audio"));
+  aType.AssignLiteral("audio");
   return NS_OK;
 }
 
@@ -1834,7 +1834,7 @@ MediaManager::Observe(nsISupports* aSubject, const char* aTopic,
       MOZ_ASSERT(msg);
       msg->GetData(errorMessage);
       if (errorMessage.IsEmpty())
-        errorMessage.Assign(NS_LITERAL_STRING("UNKNOWN_ERROR"));
+        errorMessage.AssignLiteral("UNKNOWN_ERROR");
     }
 
     nsString key(aData);
@@ -1860,7 +1860,10 @@ MediaManager::Observe(nsISupports* aSubject, const char* aTopic,
 #ifdef MOZ_WIDGET_GONK
   else if (!strcmp(aTopic, "phone-state-changed")) {
     nsString state(aData);
-    if (atoi((const char*)state.get()) == nsIAudioManager::PHONE_STATE_IN_CALL) {
+    nsresult rv;
+    uint32_t phoneState = state.ToInteger(&rv);
+
+    if (NS_SUCCEEDED(rv) && phoneState == nsIAudioManager::PHONE_STATE_IN_CALL) {
       StopMediaStreams();
     }
     return NS_OK;

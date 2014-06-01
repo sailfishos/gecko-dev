@@ -181,7 +181,6 @@ EmbedLitePuppetWidget::Destroy()
   mLayerManager = nullptr;
   mEmbed = nullptr;
   mChild = nullptr;
-  mCompositorWrapper = nullptr;
 
   DestroyCompositor();
 
@@ -490,8 +489,7 @@ CompositorParent*
 EmbedLitePuppetWidget::NewCompositorParent(int aSurfaceWidth, int aSurfaceHeight)
 {
   gfxPlatform::GetPlatform();
-  mCompositorWrapper = new EmbedLiteCompositorParent(this, true, aSurfaceWidth, aSurfaceHeight, mId);
-  return mCompositorWrapper->Compositor();
+  return new EmbedLiteCompositorParent(this, true, aSurfaceWidth, aSurfaceHeight, mId);
 }
 
 void EmbedLitePuppetWidget::CreateCompositor()

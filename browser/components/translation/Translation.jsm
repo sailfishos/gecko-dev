@@ -8,9 +8,9 @@ this.EXPORTED_SYMBOLS = ["Translation"];
 
 const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
 
-Cu.import("resource://gre/modules/Promise.jsm");
+const TRANSLATION_PREF_SHOWUI = "browser.translation.ui.show";
+
 Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 
 this.Translation = {
   supportedSourceLanguages: ["en", "zh", "ja", "es", "de", "fr", "ru", "ar", "ko", "pt"],
@@ -28,6 +28,9 @@ this.Translation = {
   },
 
   languageDetected: function(aBrowser, aDetectedLanguage) {
+    if (!Services.prefs.getBoolPref(TRANSLATION_PREF_SHOWUI))
+      return;
+
     if (this.supportedSourceLanguages.indexOf(aDetectedLanguage) != -1 &&
         aDetectedLanguage != this.defaultTargetLanguage) {
       if (!aBrowser.translationUI)

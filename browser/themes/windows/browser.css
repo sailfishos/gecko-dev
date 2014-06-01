@@ -96,10 +96,6 @@
   #main-window[tabsintitlebar] #main-menubar > menu:not(:-moz-lwtheme) {
     color: inherit;
   }
-
-  #TabsToolbar:-moz-lwtheme {
-    background: linear-gradient(to top, @toolbarShadowColor@ 2px, transparent 2px);
-  }
 %ifdef WINDOWS_AERO
 }
 %endif
@@ -272,16 +268,28 @@
 }
 
 #TabsToolbar:not([collapsed="true"]) + #nav-bar {
-  margin-top: -@tabToolbarNavbarOverlap@; /* Move up into the TabsToolbar */
+  margin-top: -1px; /* Move up into the TabsToolbar for the inner highlight at the top of the nav-bar */
   /* Position the toolbar above the bottom of background tabs */
   position: relative;
   z-index: 1;
 }
 
 #nav-bar {
+  border-top: 1px solid @toolbarShadowColor@ !important;
+  background-clip: padding-box;
   background-image: linear-gradient(@toolbarHighlight@, rgba(255,255,255,0));
   box-shadow: 0 1px 0 @toolbarHighlight@ inset;
 }
+
+%ifdef WINDOWS_AERO
+@media not all and (-moz-windows-compositor) {
+%endif
+  #TabsToolbar[collapsed="true"] + #nav-bar {
+    border-top-style: none !important;
+  }
+%ifdef WINDOWS_AERO
+}
+%endif
 
 #personal-bookmarks {
   min-height: 24px;
@@ -1746,10 +1754,7 @@ toolbarbutton[type="socialmark"] > .toolbarbutton-icon {
 #TabsToolbar {
   min-height: 0;
   padding: 0;
-}
-
-#main-window:not([customizing]) #TabsToolbar:not(:-moz-lwtheme) {
-  background-image: linear-gradient(to top, @toolbarShadowColor@ 2px, rgba(0,0,0,.05) 2px, transparent 50%);
+  margin-bottom: -@tabToolbarNavbarOverlap@; /* overlap the nav-bar's top border */
 }
 
 #main-window[tabsintitlebar] #TabsToolbar {
@@ -2348,6 +2353,63 @@ toolbarbutton.bookmark-item[dragover="true"][open="true"] {
   margin: 0px;
 }
 
+/* Translation infobar */
+
+%include ../shared/translation/infobar.inc.css
+
+@media (-moz-windows-default-theme) {
+  notification[value="translation"],
+  notification[value="translation"] button,
+  notification[value="translation"] menulist {
+    color: #545454;
+  }
+
+  notification[value="translation"] {
+    background-color: #EEE;
+  }
+
+  notification[value="translation"] menulist {
+    border: 1px solid #C1C1C1;
+    background-color: #FFF;
+  }
+
+  notification[value="translation"] button {
+    border: 1px solid #C1C1C1;
+    background-color: #FBFBFB;
+  }
+
+  notification[value="translation"] button:hover,
+  notification[value="translation"] button:active,
+  notification[value="translation"] menulist:hover,
+  notification[value="translation"] menulist:active {
+    background-color: #EBEBEB;
+  }
+
+  notification[value="translation"] button[anonid="translate"] {
+    color: #FFF;
+    background-color: #0095DD;
+    box-shadow: none;
+    border: 1px solid #006B9D;
+  }
+
+  notification[value="translation"] button[anonid="translate"]:hover,
+  notification[value="translation"] button[anonid="translate"]:active {
+    background-color: #008ACB;
+  }
+
+  notification[value="translation"] button[type="menu"] > .button-box > .button-menu-dropmarker,
+  notification[value="translation"] menulist > .menulist-dropmarker {
+    list-style-image: url("chrome://browser/skin/toolbarbutton-dropdown-arrow.png");
+  }
+
+  @media (min-resolution: 1.25dppx) {
+    notification[value="translation"] button[type="menu"] > .button-box > .button-menu-dropmarker,
+    notification[value="translation"] menulist > .menulist-dropmarker {
+      list-style-image: url("chrome://browser/skin/toolbarbutton-dropdown-arrow@2x.png");
+    }
+  }
+}
+
 .translate-notification-icon,
 #translate-notification-icon {
   list-style-image: url(chrome://browser/skin/translation-16.png);
@@ -2872,4 +2934,17 @@ chatbox {
 
 #UITourTooltipButtons {
   margin: 24px -4px -4px;
+}
+
+%include ../shared/contextmenu.inc.css
+
+#context-navigation {
+  background-color: -moz-dialog;
+  padding-bottom: 2px;
+  margin-bottom: 2px;
+}
+
+#context-sep-navigation {
+  -moz-margin-start: -28px;
+  margin-top: -4px;
 }

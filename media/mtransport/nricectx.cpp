@@ -89,6 +89,14 @@ extern "C" {
 
 namespace mozilla {
 
+TimeStamp nr_socket_short_term_violation_time() {
+  return NrSocketBase::short_term_violation_time();
+}
+
+TimeStamp nr_socket_long_term_violation_time() {
+  return NrSocketBase::long_term_violation_time();
+}
+
 MOZ_MTLOG_MODULE("mtransport")
 
 const char kNrIceTransportUdp[] = "udp";
@@ -510,6 +518,10 @@ nsresult NrIceCtx::SetControlling(Controlling controlling) {
   MOZ_MTLOG(ML_DEBUG, "ICE ctx " << name_ << " setting controlling to" <<
             controlling);
   return NS_OK;
+}
+
+NrIceCtx::Controlling NrIceCtx::GetControlling() {
+  return (peer_->controlling) ? ICE_CONTROLLING : ICE_CONTROLLED;
 }
 
 nsresult NrIceCtx::SetStunServers(const std::vector<NrIceStunServer>&

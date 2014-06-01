@@ -663,6 +663,7 @@ function PCT_setLocalDescription(peer, desc, stateExpected, onSuccess) {
     info(peer + ": 'onsignalingstatechange' event '" + state + "' received");
     if(stateExpected === state && eventFired == false) {
       eventFired = true;
+      peer.setLocalDescStableEventDate = new Date();
       check_next_test();
     } else {
       ok(false, "This event has either already fired or there has been a " +
@@ -673,6 +674,7 @@ function PCT_setLocalDescription(peer, desc, stateExpected, onSuccess) {
 
   peer.setLocalDescription(desc, function () {
     stateChanged = true;
+    peer.setLocalDescDate = new Date();
     check_next_test();
   });
 };
@@ -729,6 +731,7 @@ function PCT_setRemoteDescription(peer, desc, stateExpected, onSuccess) {
     info(peer + ": 'onsignalingstatechange' event '" + state + "' received");
     if(stateExpected === state && eventFired == false) {
       eventFired = true;
+      peer.setRemoteDescStableEventDate = new Date();
       check_next_test();
     } else {
       ok(false, "This event has either already fired or there has been a " +
@@ -739,6 +742,7 @@ function PCT_setRemoteDescription(peer, desc, stateExpected, onSuccess) {
 
   peer.setRemoteDescription(desc, function () {
     stateChanged = true;
+    peer.setRemoteDescDate = new Date();
     check_next_test();
   });
 };
@@ -1728,7 +1732,7 @@ PeerConnectionWrapper.prototype = {
     var addStreamTimeout = null;
 
     function _checkMediaTracks(constraintsRemote, onSuccess) {
-      if (self.addStreamTimeout === null) {
+      if (self.addStreamTimeout !== null) {
         clearTimeout(self.addStreamTimeout);
       }
 
@@ -1761,11 +1765,6 @@ PeerConnectionWrapper.prototype = {
       onSuccess();
     }
 
-    function __checkMediaTracksTimeout(onSuccess) {
-      ok(false, self + " checkMediaTracks() timed out waiting for onaddstream event to fire");
-      onSuccess();
-    }
-
     // we have to do this check as the onaddstream never fires if the remote
     // stream has no track at all!
     var expectedRemoteTracks =
@@ -1783,7 +1782,8 @@ PeerConnectionWrapper.prototype = {
         _checkMediaTracks(constraintsRemote, onSuccess);
       };
       addStreamTimeout = setTimeout(function () {
-        self._checkMediaTracksTimeout(onSuccess);
+        ok(false, self + " checkMediaTracks() timed out waiting for onaddstream event to fire");
+        onSuccess();
       }, 60000);
     }
   },

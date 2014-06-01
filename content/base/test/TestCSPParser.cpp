@@ -90,6 +90,13 @@ nsresult runTest(uint32_t aExpectedPolicyCount, // this should be 0 for policies
   // we init the csp with http://www.selfuri.com
   nsCOMPtr<nsIURI> selfURI;
   nsresult rv = NS_NewURI(getter_AddRefs(selfURI), "http://www.selfuri.com");
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  // we also init the csp with a dummyChannel, which is unused
+  // for the parser tests but surpresses assertions in SetRequestContext.
+  nsCOMPtr<nsIChannel> dummyChannel;
+  rv = NS_NewChannel(getter_AddRefs(dummyChannel), selfURI);
+  NS_ENSURE_SUCCESS(rv, rv);
 
   // create a CSP object
   nsCOMPtr<nsIContentSecurityPolicy> csp =
@@ -102,7 +109,7 @@ nsresult runTest(uint32_t aExpectedPolicyCount, // this should be 0 for policies
   csp->SetRequestContext(selfURI,
                          nullptr,  // nsIURI* aReferrer
                          nullptr,  // nsIPrincipal* aDocumentPrincipal
-                         nullptr); // nsIChannel* aChannel
+                         dummyChannel);
   NS_ENSURE_SUCCESS(rv, rv);
 
   // append a policy
@@ -667,6 +674,28 @@ nsresult TestGoodGeneratedPolicies() {
       "script-src http://policy-uri" },
     { "img-src 'self'; ",
       "img-src http://www.selfuri.com" },
+    { "frame-ancestors foo-bar.com",
+      "frame-ancestors http://foo-bar.com" },
+    { "frame-ancestors http://a.com",
+      "frame-ancestors http://a.com" },
+    { "frame-ancestors 'self'",
+      "frame-ancestors http://www.selfuri.com" },
+    { "frame-ancestors http://self.com:88",
+      "frame-ancestors http://self.com:88" },
+    { "frame-ancestors http://a.b.c.d.e.f.g.h.i.j.k.l.x.com",
+      "frame-ancestors http://a.b.c.d.e.f.g.h.i.j.k.l.x.com" },
+    { "frame-ancestors https://self.com:34",
+      "frame-ancestors https://self.com:34" },
+    { "default-src 'none'; frame-ancestors 'self'",
+      "default-src 'none'; frame-ancestors http://www.selfuri.com" },
+    { "frame-ancestors http://self:80",
+      "frame-ancestors http://self:80" },
+    { "frame-ancestors http://self.com/bar",
+      "frame-ancestors http://self.com" },
+    { "default-src 'self'; frame-ancestors 'self'",
+      "default-src http://www.selfuri.com; frame-ancestors http://www.selfuri.com" },
+    { "frame-ancestors http://bar.com/foo.png",
+      "frame-ancestors http://bar.com" },
   };
 
   uint32_t policyCount = sizeof(policies) / sizeof(PolicyTest);

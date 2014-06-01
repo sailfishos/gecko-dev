@@ -1262,6 +1262,10 @@ jit::BailoutIonToBaseline(JSContext *cx, JitActivation *activation, IonBailoutIt
                           bool invalidate, BaselineBailoutInfo **bailoutInfo,
                           const ExceptionBailoutInfo *excInfo)
 {
+    // The Baseline frames we will reconstruct on the heap are not rooted, so GC
+    // must be suppressed here.
+    JS_ASSERT(cx->mainThread().suppressGC);
+
     JS_ASSERT(bailoutInfo != nullptr);
     JS_ASSERT(*bailoutInfo == nullptr);
 
@@ -1342,6 +1346,10 @@ jit::BailoutIonToBaseline(JSContext *cx, JitActivation *activation, IonBailoutIt
 
     if (!snapIter.initIntructionResults(instructionResults))
         return BAILOUT_RETURN_FATAL_ERROR;
+
+#ifdef TRACK_SNAPSHOTS
+    snapIter.spewBailingFrom();
+#endif
 
     RootedFunction callee(cx, iter.maybeCallee());
     RootedScript scr(cx, iter.script());

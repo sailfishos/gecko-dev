@@ -204,6 +204,10 @@ WebappsActor.prototype = {
   actorPrefix: "webapps",
 
   disconnect: function () {
+    try {
+      this.unwatchApps();
+    } catch(e) {}
+
     // When we stop using this actor, we should ensure removing all files.
     for (let upload of this._uploads) {
       upload.remove();
@@ -250,7 +254,7 @@ WebappsActor.prototype = {
         reg.broadcastMessage("Webapps:UpdateState", {
           app: aApp,
           manifest: manifest,
-          manifestURL: aApp.manifestURL
+          id: aApp.id
         });
         reg.broadcastMessage("Webapps:FireEvent", {
           eventType: ["downloadsuccess", "downloadapplied"],

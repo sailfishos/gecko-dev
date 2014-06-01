@@ -330,7 +330,7 @@ WebSocket::ScheduleConnectionCloseEvents(nsISupports* aContext,
                                          nsresult aStatusCode,
                                          bool sync)
 {
-  NS_ABORT_IF_FALSE(NS_IsMainThread(), "Not running on main thread");
+  MOZ_ASSERT(NS_IsMainThread());
 
   // no-op if some other code has already initiated close event
   if (!mOnCloseScheduled) {
@@ -351,8 +351,7 @@ WebSocket::ScheduleConnectionCloseEvents(nsISupports* aContext,
     if (sync) {
       DispatchConnectionCloseEvents();
     } else {
-      NS_DispatchToMainThread(new CallDispatchConnectionCloseEvents(this),
-                              NS_DISPATCH_NORMAL);
+      NS_DispatchToCurrentThread(new CallDispatchConnectionCloseEvents(this));
     }
   }
 
@@ -704,7 +703,7 @@ WebSocket::Init(JSContext* aCx,
     }
 
     if (!mRequestedProtocolList.IsEmpty()) {
-      mRequestedProtocolList.Append(NS_LITERAL_CSTRING(", "));
+      mRequestedProtocolList.AppendLiteral(", ");
     }
 
     AppendUTF16toUTF8(aProtocolArray[index], mRequestedProtocolList);
@@ -1019,7 +1018,7 @@ WebSocket::ParseURL(const nsString& aURL)
 
   mResource = filePath;
   if (!query.IsEmpty()) {
-    mResource.AppendLiteral("?");
+    mResource.Append('?');
     mResource.Append(query);
   }
   uint32_t length = mResource.Length();

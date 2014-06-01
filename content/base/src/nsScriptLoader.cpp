@@ -975,7 +975,8 @@ nsScriptLoader::ProcessRequest(nsScriptLoadRequest* aRequest, void **aOffThreadT
 
   // The window may have gone away by this point, in which case there's no point
   // in trying to run the script.
-  nsPIDOMWindow *pwin = mDocument->GetInnerWindow();
+  nsCOMPtr<nsIDocument> master = mDocument->MasterDocument();
+  nsPIDOMWindow *pwin = master->GetInnerWindow();
   bool runScript = !!pwin;
   if (runScript) {
     nsContentUtils::DispatchTrustedEvent(scriptElem->OwnerDoc(),
@@ -985,7 +986,7 @@ nsScriptLoader::ProcessRequest(nsScriptLoadRequest* aRequest, void **aOffThreadT
   }
 
   // Inner window could have gone away after firing beforescriptexecute
-  pwin = mDocument->GetInnerWindow();
+  pwin = master->GetInnerWindow();
   if (!pwin) {
     runScript = false;
   }
@@ -1047,7 +1048,8 @@ nsScriptLoader::FireScriptEvaluated(nsresult aResult,
 already_AddRefed<nsIScriptGlobalObject>
 nsScriptLoader::GetScriptGlobalObject()
 {
-  nsPIDOMWindow *pwin = mDocument->GetInnerWindow();
+  nsCOMPtr<nsIDocument> master = mDocument->MasterDocument();
+  nsPIDOMWindow *pwin = master->GetInnerWindow();
   if (!pwin) {
     return nullptr;
   }
@@ -1147,18 +1149,27 @@ nsScriptLoader::EvaluateScript(nsScriptLoadRequest* aRequest,
 
   bool oldProcessingScriptTag = context->GetProcessingScriptTag();
   context->SetProcessingScriptTag(true);
+  nsresult rv;
+  {
+    // Update our current script.
+    AutoCurrentScriptUpdater scriptUpdater(this, aRequest->mElement);
+    Maybe<AutoCurrentScriptUpdater> masterScriptUpdater;
+    nsCOMPtr<nsIDocument> master = mDocument->MasterDocument();
+    if (master != mDocument) {
+      // If this script belongs to an import document, it will be
+      // executed in the context of the master document. During the
+      // execution currentScript of the master should refer to this
+      // script. So let's update the mCurrentScript of the ScriptLoader
+      // of the master document too.
+      masterScriptUpdater.construct(master->ScriptLoader(),
+                                    aRequest->mElement);
+    }
 
-  // Update our current script.
-  nsCOMPtr<nsIScriptElement> oldCurrent = mCurrentScript;
-  mCurrentScript = aRequest->mElement;
-
-  JS::CompileOptions options(entryScript.cx());
-  FillCompileOptionsForRequest(aRequest, global, &options);
-  nsresult rv = nsJSUtils::EvaluateString(entryScript.cx(), aSrcBuf, global, options,
-                                          aOffThreadToken);
-
-  // Put the old script back in case it wants to do anything else.
-  mCurrentScript = oldCurrent;
+    JS::CompileOptions options(entryScript.cx());
+    FillCompileOptionsForRequest(aRequest, global, &options);
+    rv = nsJSUtils::EvaluateString(entryScript.cx(), aSrcBuf, global, options,
+                                   aOffThreadToken);
+  }
 
   context->SetProcessingScriptTag(oldProcessingScriptTag);
   return rv;
@@ -1281,21 +1292,21 @@ DetectByteOrderMark(const unsigned char* aBytes, int32_t aLen, nsCString& oChars
     if (aLen >= 3 && 0xBB == aBytes[1] && 0xBF == aBytes[2]) {
       // EF BB BF
       // Win2K UTF-8 BOM
-      oCharset.Assign("UTF-8");
+      oCharset.AssignLiteral("UTF-8");
     }
     break;
   case 0xFE:
     if (0xFF == aBytes[1]) {
       // FE FF
       // UTF-16, big-endian
-      oCharset.Assign("UTF-16BE");
+      oCharset.AssignLiteral("UTF-16BE");
     }
     break;
   case 0xFF:
     if (0xFE == aBytes[1]) {
       // FF FE
       // UTF-16, little-endian
-      oCharset.Assign("UTF-16LE");
+      oCharset.AssignLiteral("UTF-16LE");
     }
     break;
   }

@@ -121,6 +121,11 @@
 #endif
 #endif
 #endif
+#ifdef MOZ_REPLACE_MALLOC
+#ifndef MOZ_JEMALLOC3
+@BINPATH@/@DLL_PREFIX@replace_jemalloc@DLL_SUFFIX@
+#endif
+#endif
 
 [browser]
 ; [Base Browser Files]
@@ -530,6 +535,9 @@
 @BINPATH@/components/Push.js
 @BINPATH@/components/Push.manifest
 @BINPATH@/components/PushServiceLauncher.js
+
+@BINPATH@/components/SlowScriptDebug.manifest
+@BINPATH@/components/SlowScriptDebug.js
 
 #ifndef RELEASE_BUILD
 @BINPATH@/components/InterAppComm.manifest

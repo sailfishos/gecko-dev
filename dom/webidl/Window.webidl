@@ -52,7 +52,8 @@ typedef any Transferable;
   // other browsing contexts
   [Replaceable, Throws, CrossOriginReadable] readonly attribute WindowProxy frames;
   [Replaceable, CrossOriginReadable] readonly attribute unsigned long length;
-  [Unforgeable, Throws, CrossOriginReadable] readonly attribute WindowProxy top;
+  //[Unforgeable, Throws, CrossOriginReadable] readonly attribute WindowProxy top;
+  [Unforgeable, Throws, CrossOriginReadable] readonly attribute WindowProxy? top;
   [Throws, CrossOriginReadable] attribute WindowProxy? opener;
   //[Throws] readonly attribute WindowProxy parent;
   [Replaceable, Throws, CrossOriginReadable] readonly attribute WindowProxy? parent;
@@ -72,7 +73,8 @@ typedef any Transferable;
   [Throws] readonly attribute ApplicationCache applicationCache;
 
   // user prompts
-  [Throws] void alert(optional DOMString message = "");
+  [Throws] void alert();
+  [Throws] void alert(DOMString message);
   [Throws] boolean confirm(optional DOMString message = "");
   [Throws] DOMString? prompt(optional DOMString message = "", optional DOMString default = "");
   [Throws] void print();
@@ -294,9 +296,9 @@ partial interface Window {
 
   [Throws] attribute boolean                            fullScreen;
 
-  [Throws] void             back();
-  [Throws] void             forward();
-  [Throws] void             home();
+  [Throws, ChromeOnly] void             back();
+  [Throws, ChromeOnly] void             forward();
+  [Throws, ChromeOnly] void             home();
 
   // XXX Should this be in nsIDOMChromeWindow?
   void                      updateCommands(DOMString action);

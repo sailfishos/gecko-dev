@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 "use strict";
+
 /**
  * Toolkit glue for the remote debugging protocol, loaded into the
  * debugging global.
@@ -47,8 +48,9 @@ Object.defineProperty(this, "Components", {
 
 const DBG_STRINGS_URI = "chrome://global/locale/devtools/debugger.properties";
 
-const nsFile = CC("@mozilla.org/file/local;1", "nsIFile", "initWithPath");
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+DevToolsUtils.defineLazyGetter(this, "nsFile", () => {
+  return CC("@mozilla.org/file/local;1", "nsIFile", "initWithPath");
+});
 
 const LOG_PREF = "devtools.debugger.log";
 const VERBOSE_PREF = "devtools.debugger.log.verbose";
@@ -56,8 +58,6 @@ dumpn.wantLogging = Services.prefs.getBoolPref(LOG_PREF);
 dumpv.wantVerbose =
   Services.prefs.getPrefType(VERBOSE_PREF) !== Services.prefs.PREF_INVALID &&
   Services.prefs.getBoolPref(VERBOSE_PREF);
-
-Cu.import("resource://gre/modules/devtools/deprecated-sync-thenables.js");
 
 function loadSubScript(aURL)
 {
@@ -82,22 +82,18 @@ this.resolve = resolve;
 this.reject = reject;
 this.all = all;
 
-Cu.import("resource://gre/modules/devtools/SourceMap.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "console",
-                                  "resource://gre/modules/devtools/Console.jsm");
-
-XPCOMUtils.defineLazyGetter(this, "NetworkMonitorManager", () => {
-  return require("devtools/toolkit/webconsole/network-monitor").NetworkMonitorManager;
+// XPCOM constructors
+DevToolsUtils.defineLazyGetter(this, "ServerSocket", () => {
+  return CC("@mozilla.org/network/server-socket;1",
+            "nsIServerSocket",
+            "initSpecialConnection");
 });
 
-// XPCOM constructors
-const ServerSocket = CC("@mozilla.org/network/server-socket;1",
-                        "nsIServerSocket",
-                        "initSpecialConnection");
-const UnixDomainServerSocket = CC("@mozilla.org/network/server-socket;1",
-                                  "nsIServerSocket",
-                                  "initWithFilename");
+DevToolsUtils.defineLazyGetter(this, "UnixDomainServerSocket", () => {
+  return CC("@mozilla.org/network/server-socket;1",
+            "nsIServerSocket",
+            "initWithFilename");
+});
 
 var gRegisteredModules = Object.create(null);
 
@@ -196,9 +192,10 @@ var DebuggerServer = {
    * @return true if the connection should be permitted, false otherwise
    */
   _defaultAllowConnection: function DS__defaultAllowConnection() {
-    let title = L10N.getStr("remoteIncomingPromptTitle");
-    let msg = L10N.getStr("remoteIncomingPromptMessage");
-    let disableButton = L10N.getStr("remoteIncomingPromptDisable");
+    let bundle = Services.strings.createBundle(DBG_STRINGS_URI)
+    let title = bundle.GetStringFromName("remoteIncomingPromptTitle");
+    let msg = bundle.GetStringFromName("remoteIncomingPromptMessage");
+    let disableButton = bundle.GetStringFromName("remoteIncomingPromptDisable");
     let prompt = Services.prompt;
     let flags = prompt.BUTTON_POS_0 * prompt.BUTTON_TITLE_OK +
                 prompt.BUTTON_POS_1 * prompt.BUTTON_TITLE_CANCEL +
@@ -228,7 +225,7 @@ var DebuggerServer = {
       return;
     }
 
-    this.xpcInspector = Cc["@mozilla.org/jsinspector;1"].getService(Ci.nsIJSInspector);
+    this.xpcInspector = require("xpcInspector");
     this.initTransport(aAllowConnectionCallback);
 
     this._initialized = true;
@@ -404,6 +401,7 @@ var DebuggerServer = {
     this.registerModule("devtools/server/actors/framerate");
     this.registerModule("devtools/server/actors/eventlooplag");
     this.registerModule("devtools/server/actors/layout");
+    this.registerModule("devtools/server/actors/csscoverage");
     if ("nsIProfiler" in Ci) {
       this.addActors("resource://gre/modules/devtools/server/actors/profiler.js");
     }
@@ -600,6 +598,7 @@ var DebuggerServer = {
 
       actor = msg.json.actor;
 
+      let { NetworkMonitorManager } = require("devtools/toolkit/webconsole/network-monitor");
       netMonitor = new NetworkMonitorManager(aFrame, actor.actor);
 
       deferred.resolve(actor);
@@ -1276,23 +1275,3 @@ DebuggerServerConnection.prototype = {
           uneval(Object.keys(aPool._actors)));
   }
 };
-
-/**
- * Localization convenience methods.
- */
-let L10N = {
-
-  /**
-   * L10N shortcut function.
-   *
-   * @param string aName
-   * @return string
-   */
-  getStr: function L10N_getStr(aName) {
-    return this.stringBundle.GetStringFromName(aName);
-  }
-};
-
-XPCOMUtils.defineLazyGetter(L10N, "stringBundle", function() {
-  return Services.strings.createBundle(DBG_STRINGS_URI);
-});

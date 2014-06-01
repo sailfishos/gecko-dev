@@ -48,9 +48,11 @@ XPCOMUtils.defineLazyGetter(this, "nsGzipConverter",
 let gMgr = Cc["@mozilla.org/memory-reporter-manager;1"]
              .getService(Ci.nsIMemoryReporterManager);
 
-let gUnnamedProcessStr = "Main Process";
+const gUnnamedProcessStr = "Main Process";
 
 let gIsDiff = false;
+
+const DMDFile = "out.dmd";
 
 //---------------------------------------------------------------------------
 
@@ -292,6 +294,11 @@ function onLoad()
                             "collection log.\n" +
                             "WARNING: These logs may be large (>1GB).";
 
+  const DMDEnabledDesc = "Run DMD analysis and save it to '" + DMDFile + "'.\n";
+  const DMDDisabledDesc = "DMD is not running. Please re-start with $DMD and " +
+                          "the other relevant environment variables set " +
+                          "appropriately.";
+
   let ops = appendElement(header, "div", "");
 
   let row1 = appendElement(ops, "div", "opsRow");
@@ -334,6 +341,21 @@ function onLoad()
                saveGCLogAndConciseCCLog, "Save concise", 'saveLogsConcise');
   appendButton(row4, GCAndCCAllLogDesc,
                saveGCLogAndVerboseCCLog, "Save verbose", 'saveLogsVerbose');
+
+  // Three cases here:
+  // - DMD is disabled (i.e. not built): don't show the button.
+  // - DMD is enabled but is not running: show the button, but disable it.
+  // - DMD is enabled and is running: show the button and enable it.
+  if (gMgr.isDMDEnabled) {
+    let row5 = appendElement(ops, "div", "opsRow");
+
+    appendElementWithText(row5, "div", "opsRowLabel", "Save DMD output");
+    let enableButton = gMgr.isDMDRunning;
+    let dmdButton =
+      appendButton(row5, enableButton ? DMDEnabledDesc : DMDDisabledDesc,
+                   doDMD, "Save", "dmdButton");
+    dmdButton.disabled = !enableButton;
+  }
 
   // Generate the main div, where content ("section" divs) will go.  It's
   // hidden at first.
@@ -411,6 +433,17 @@ function saveGCLogAndConciseCCLog()
 function saveGCLogAndVerboseCCLog()
 {
   dumpGCLogAndCCLog(true);
+}
+
+function doDMD()
+{
+  updateMainAndFooter('Saving DMD output...', HIDE_FOOTER);
+  try {
+    let x = DMDReportAndDump('out.dmd');
+    updateMainAndFooter('Saved DMD output to ' + DMDFile, HIDE_FOOTER);
+  } catch (ex) {
+    updateMainAndFooter(ex.toString(), HIDE_FOOTER);
+  }
 }
 
 function dumpGCLogAndCCLog(aVerbose)
