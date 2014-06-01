@@ -49,12 +49,10 @@ EmbedLiteCompositorParent::EmbedLiteCompositorParent(nsIWidget* aWidget,
   pview->SetCompositor(this);
 }
 
-bool
-EmbedLiteCompositorParent::RecvStop()
+EmbedLiteCompositorParent::~EmbedLiteCompositorParent()
 {
   LOGT();
   EmbedLiteApp::GetInstance()->ViewDestroyed(mId);
-  return CompositorParent::RecvStop();
 }
 
 PLayerTransactionParent*
@@ -69,12 +67,13 @@ EmbedLiteCompositorParent::AllocPLayerTransactionParent(const nsTArray<LayersBac
                                                    aTextureFactoryIdentifier,
                                                    aSuccess);
 
-  Created();
+  // Prepare Offscreen rendering context
+  PrepareOffscreen();
   return p;
 }
 
 void
-EmbedLiteCompositorParent::Created()
+EmbedLiteCompositorParent::PrepareOffscreen()
 {
   EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(mId);
   EmbedLiteViewListener* listener = view ? view->GetListener() : nullptr;

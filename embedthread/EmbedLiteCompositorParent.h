@@ -29,19 +29,19 @@ public:
   void SetSurfaceSize(int width, int height);
   void SetWorldTransform(gfx::Matrix);
   void SetClipping(const gfxRect& aClipRect);
-  mozilla::layers::CompositorParent* Compositor() { return this; }
 
 protected:
+  virtual ~EmbedLiteCompositorParent();
   virtual PLayerTransactionParent*
   AllocPLayerTransactionParent(const nsTArray<LayersBackend>& aBackendHints,
                                const uint64_t& aId,
                                TextureFactoryIdentifier* aTextureFactoryIdentifier,
                                bool* aSuccess) MOZ_OVERRIDE;
-  virtual void ScheduleTask(CancelableTask*, int);
-  virtual bool RecvStop() MOZ_OVERRIDE;
+  virtual void ScheduleTask(CancelableTask*, int) MOZ_OVERRIDE;
 
-  virtual void Created();
-  virtual bool Invalidate();
+private:
+  void PrepareOffscreen();
+  bool Invalidate();
   void UpdateTransformState();
 
   uint32_t mId;
