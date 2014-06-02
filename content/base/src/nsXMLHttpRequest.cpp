@@ -1913,7 +1913,9 @@ nsXMLHttpRequest::OnDataAvailable(nsIRequest *request,
 NS_IMETHODIMP
 nsXMLHttpRequest::OnStartRequest(nsIRequest *request, nsISupports *ctxt)
 {
-  PROFILER_LABEL("nsXMLHttpRequest", "OnStartRequest");
+  PROFILER_LABEL("nsXMLHttpRequest", "OnStartRequest",
+    js::ProfileEntry::Category::NETWORK);
+
   nsresult rv = NS_OK;
   if (!mFirstStartRequestSeen && mRequestObserver) {
     mFirstStartRequestSeen = true;
@@ -2155,7 +2157,9 @@ nsXMLHttpRequest::OnStartRequest(nsIRequest *request, nsISupports *ctxt)
 NS_IMETHODIMP
 nsXMLHttpRequest::OnStopRequest(nsIRequest *request, nsISupports *ctxt, nsresult status)
 {
-  PROFILER_LABEL("content", "nsXMLHttpRequest::OnStopRequest");
+  PROFILER_LABEL("nsXMLHttpRequest", "OnStopRequest",
+    js::ProfileEntry::Category::NETWORK);
+
   if (request != mChannel) {
     // Can this still happen?
     return NS_OK;
@@ -2529,6 +2533,7 @@ GetRequestBody(nsIVariant* aBody, nsIInputStream** aResult, uint64_t* aContentLe
       JS::Rooted<JSObject*> obj(cx, realVal.toObjectOrNull());
       if (JS_IsArrayBufferObject(obj)) {
           ArrayBuffer buf(obj);
+          buf.ComputeLengthAndData();
           return GetRequestBody(buf.Data(), buf.Length(), aResult,
                                 aContentLength, aContentType, aCharset);
       }
@@ -2572,14 +2577,16 @@ nsXMLHttpRequest::GetRequestBody(nsIVariant* aVariant,
   switch (body.GetType()) {
     case nsXMLHttpRequest::RequestBody::ArrayBuffer:
     {
-      return ::GetRequestBody(value.mArrayBuffer->Data(),
-                              value.mArrayBuffer->Length(), aResult,
+      const ArrayBuffer* buffer = value.mArrayBuffer;
+      buffer->ComputeLengthAndData();
+      return ::GetRequestBody(buffer->Data(), buffer->Length(), aResult,
                               aContentLength, aContentType, aCharset);
     }
     case nsXMLHttpRequest::RequestBody::ArrayBufferView:
     {
-      return ::GetRequestBody(value.mArrayBufferView->Data(),
-                              value.mArrayBufferView->Length(), aResult,
+      const ArrayBufferView* view = value.mArrayBufferView;
+      view->ComputeLengthAndData();
+      return ::GetRequestBody(view->Data(), view->Length(), aResult,
                               aContentLength, aContentType, aCharset);
     }
     case nsXMLHttpRequest::RequestBody::Blob:
@@ -3583,15 +3590,11 @@ nsXMLHttpRequest::OnProgress(nsIRequest *aRequest, nsISupports *aContext, uint64
   // So, try to remove the headers, if possible.
   bool lengthComputable = (aProgressMax != UINT64_MAX);
   if (upload) {
-    uint64_t loaded = aProgress;
-    uint64_t total = aProgressMax;
+    mUploadTransferred = aProgress;
     if (lengthComputable) {
-      uint64_t headerSize = aProgressMax - mUploadTotal;
-      loaded -= headerSize;
-      total -= headerSize;
+      mUploadTransferred = aProgressMax - mUploadTotal;
     }
     mUploadLengthComputable = lengthComputable;
-    mUploadTransferred = loaded;
     mProgressSinceLastProgressEvent = true;
 
     MaybeDispatchProgressEvents(false);

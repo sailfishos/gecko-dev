@@ -5369,7 +5369,8 @@ class _GenerateProtocolActorCode(ipdl.ast.Visitor):
     def profilerLabel(self, tag, msgname):
         return StmtExpr(ExprCall(ExprVar('PROFILER_LABEL'),
                                  [ ExprLiteral.String('IPDL::' + self.protocol.name),
-                                   ExprLiteral.String(tag + msgname) ]))
+                                   ExprLiteral.String(tag + msgname),
+                                   ExprVar('js::ProfileEntry::Category::OTHER') ]))
 
     def saveActorId(self, md):
         idvar = ExprVar('__id')
@@ -5460,7 +5461,6 @@ def _splitMethodDefn(md, clsname):
     md.decl.static = 0
     md.decl.warn_unused = 0
     md.decl.never_inline = 0
-    md.decl.pure = 0
     md.decl.only_for_definition = True
     for param in md.decl.params:
         if isinstance(param, Param):

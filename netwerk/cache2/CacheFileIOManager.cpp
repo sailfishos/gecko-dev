@@ -1245,6 +1245,7 @@ CacheFileIOManager::Shutdown()
   CacheIndex::Shutdown();
 
   if (CacheObserver::ClearCacheOnShutdown()) {
+    Telemetry::AutoTimer<Telemetry::NETWORK_DISK_CACHE2_SHUTDOWN_CLEAR_PRIVATE> totalTimer;
     gInstance->SyncRemoveAllCacheFiles();
   }
 
@@ -3298,7 +3299,7 @@ CacheFileIOManager::CreateFile(CacheFileHandle *aHandle)
 void
 CacheFileIOManager::HashToStr(const SHA1Sum::Hash *aHash, nsACString &_retval)
 {
-  _retval.AssignLiteral("");
+  _retval.Truncate();
   const char hexChars[] = {'0', '1', '2', '3', '4', '5', '6', '7',
                            '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
   for (uint32_t i=0 ; i<sizeof(SHA1Sum::Hash) ; i++) {

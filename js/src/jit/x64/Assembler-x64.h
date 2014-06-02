@@ -299,7 +299,7 @@ class Assembler : public AssemblerX86Shared
 
     CodeOffsetLabel movWithPatch(ImmWord word, Register dest) {
         masm.movq_i64r(word.value, dest.code());
-        return masm.currentOffset();
+        return CodeOffsetLabel(masm.currentOffset());
     }
     CodeOffsetLabel movWithPatch(ImmPtr imm, Register dest) {
         return movWithPatch(ImmWord(uintptr_t(imm.value)), dest);
@@ -403,6 +403,24 @@ class Assembler : public AssemblerX86Shared
     }
     void andq(Imm32 imm, Register dest) {
         masm.andq_ir(imm.value, dest.code());
+    }
+    void andq(const Operand &src, Register dest) {
+        switch (src.kind()) {
+          case Operand::REG:
+            masm.andq_rr(src.reg(), dest.code());
+            break;
+          case Operand::MEM_REG_DISP:
+            masm.andq_mr(src.disp(), src.base(), dest.code());
+            break;
+          case Operand::MEM_SCALE:
+            masm.andq_mr(src.disp(), src.base(), src.index(), src.scale(), dest.code());
+            break;
+          case Operand::MEM_ADDRESS32:
+            masm.andq_mr(src.address(), dest.code());
+            break;
+          default:
+            MOZ_ASSUME_UNREACHABLE("unexpected operand kind");
+        }
     }
 
     void addq(Imm32 imm, Register dest) {
@@ -528,7 +546,7 @@ class Assembler : public AssemblerX86Shared
     }
     void mov(AsmJSImmPtr imm, Register dest) {
         masm.movq_i64r(-1, dest.code());
-        enoughMemory_ &= append(AsmJSAbsoluteLink(masm.currentOffset(), imm.kind()));
+        enoughMemory_ &= append(AsmJSAbsoluteLink(CodeOffsetLabel(masm.currentOffset()), imm.kind()));
     }
     void mov(const Operand &src, Register dest) {
         movq(src, dest);

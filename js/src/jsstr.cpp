@@ -1202,7 +1202,7 @@ class StringSegmentRange
     }
 
   public:
-    StringSegmentRange(JSContext *cx)
+    explicit StringSegmentRange(JSContext *cx)
       : stack(cx), cur(cx)
     {}
 
@@ -1707,7 +1707,7 @@ class FlatMatch
     friend class StringRegExpGuard;
 
   public:
-    FlatMatch(JSContext *cx) : patstr(cx) {}
+    explicit FlatMatch(JSContext *cx) : patstr(cx) {}
     JSLinearString *pattern() const { return patstr; }
     size_t patternLength() const { return patlen; }
 
@@ -1793,7 +1793,7 @@ class MOZ_STACK_CLASS StringRegExpGuard
     }
 
   public:
-    StringRegExpGuard(JSContext *cx)
+    explicit StringRegExpGuard(JSContext *cx)
       : re_(cx), fm(cx), obj_(cx)
     { }
 
@@ -2221,7 +2221,7 @@ class RopeBuilder {
     void operator=(const RopeBuilder &other) MOZ_DELETE;
 
   public:
-    RopeBuilder(JSContext *cx)
+    explicit RopeBuilder(JSContext *cx)
       : cx(cx), res(cx, cx->runtime()->emptyString)
     {}
 
@@ -2239,7 +2239,7 @@ namespace {
 
 struct ReplaceData
 {
-    ReplaceData(JSContext *cx)
+    explicit ReplaceData(JSContext *cx)
       : str(cx), g(cx), lambda(cx), elembase(cx), repstr(cx),
         fig(cx, NullValue()), sb(cx)
     {}
@@ -2780,8 +2780,8 @@ FlattenSubstrings(JSContext *cx, const jschar *chars,
     JSFatInlineString *str = js_NewGCFatInlineString<CanGC>(cx);
     if (!str)
         return nullptr;
-    jschar *buf = str->init(outputLen);
 
+    jschar *buf = str->initTwoByte(outputLen);
     size_t pos = 0;
     for (size_t i = 0; i < rangesLen; i++) {
         PodCopy(buf + pos, chars + ranges[i].start, ranges[i].length);
@@ -4198,6 +4198,37 @@ js::StringToSource(JSContext *cx, JSString *str)
     return js_QuoteString(cx, str, '"');
 }
 
+static bool
+EqualCharsLatin1TwoByte(const Latin1Char *s1, const jschar *s2, size_t len)
+{
+    for (const Latin1Char *s1end = s1 + len; s1 < s1end; s1++, s2++) {
+        if (jschar(*s1) != *s2)
+            return false;
+    }
+    return true;
+}
+
+static bool
+EqualChars(JSLinearString *str1, JSLinearString *str2)
+{
+    MOZ_ASSERT(str1->length() == str2->length());
+
+    size_t len = str1->length();
+
+    AutoCheckCannotGC nogc;
+    if (str1->hasTwoByteChars()) {
+        if (str2->hasTwoByteChars())
+            return PodEqual(str1->twoByteChars(nogc), str2->twoByteChars(nogc), len);
+
+        return EqualCharsLatin1TwoByte(str2->latin1Chars(nogc), str1->twoByteChars(nogc), len);
+    }
+
+    if (str2->hasLatin1Chars())
+        return PodEqual(str1->latin1Chars(nogc), str2->latin1Chars(nogc), len);
+
+    return EqualCharsLatin1TwoByte(str1->latin1Chars(nogc), str2->twoByteChars(nogc), len);
+}
+
 bool
 js::EqualStrings(JSContext *cx, JSString *str1, JSString *str2, bool *result)
 {
@@ -4219,7 +4250,7 @@ js::EqualStrings(JSContext *cx, JSString *str1, JSString *str2, bool *result)
     if (!linear2)
         return false;
 
-    *result = PodEqual(linear1->chars(), linear2->chars(), length1);
+    *result = EqualChars(linear1, linear2);
     return true;
 }
 
@@ -4233,7 +4264,7 @@ js::EqualStrings(JSLinearString *str1, JSLinearString *str2)
     if (length1 != str2->length())
         return false;
 
-    return PodEqual(str1->chars(), str2->chars(), length1);
+    return EqualChars(str1, str2);
 }
 
 static bool

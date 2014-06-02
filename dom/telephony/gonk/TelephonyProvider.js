@@ -38,9 +38,6 @@ const CDMA_SECOND_CALL_INDEX = 2;
 const DIAL_ERROR_INVALID_STATE_ERROR = "InvalidStateError";
 const DIAL_ERROR_OTHER_CONNECTION_IN_USE = "OtherConnectionInUse";
 
-// Should match the value we set in dom/telephony/TelephonyCommon.h
-const OUTGOING_PLACEHOLDER_CALL_INDEX = 0xffffffff;
-
 let DEBUG;
 function debug(s) {
   dump("TelephonyProvider: " + s + "\n");
@@ -244,19 +241,16 @@ TelephonyProvider.prototype = {
       case nsITelephonyProvider.CALL_STATE_DIALING: // Fall through...
       case nsITelephonyProvider.CALL_STATE_ALERTING:
       case nsITelephonyProvider.CALL_STATE_CONNECTED:
-        aCall.isActive = true;
         this._activeCall = new SingleCall(aCall);
         this._updateCallAudioState(aCall);
         break;
 
       case nsITelephonyProvider.CALL_STATE_INCOMING:
-        aCall.isActive = false;
         this._updateCallAudioState(aCall);
         break;
 
       case nsITelephonyProvider.CALL_STATE_HELD: // Fall through...
       case nsITelephonyProvider.CALL_STATE_DISCONNECTED:
-        aCall.isActive = false;
         if (this._matchActiveSingleCall(aCall)) {
           // Previously active call is not active now.
           this._activeCall = null;
@@ -267,11 +261,6 @@ TelephonyProvider.prototype = {
   },
 
   _updateCallAudioState: function(aCall) {
-    // Ignore audio state setting if the call is a placeholder.
-    if (aCall && aCall.callIndex === OUTGOING_PLACEHOLDER_CALL_INDEX) {
-      return;
-    }
-
     let active = (this._activeCall !== null);
     let incoming = (aCall &&
                     aCall.state === nsITelephonyProvider.CALL_STATE_INCOMING);
@@ -367,7 +356,6 @@ TelephonyProvider.prototype = {
       for (let call of response.calls) {
         call.clientId = aClientId;
         call.state = this._convertRILCallState(call.state);
-        call.isActive = this._matchActiveSingleCall(call);
         call.isSwitchable = true;
         call.isMergeable = true;
 
@@ -412,8 +400,7 @@ TelephonyProvider.prototype = {
       for (let i = 0, indexes = Object.keys(calls); i < indexes.length; ++i) {
         let call = calls[indexes[i]];
         aListener.enumerateCallState(call.clientId, call.callIndex,
-                                     call.state, call.number,
-                                     call.isActive, call.isOutgoing,
+                                     call.state, call.number, call.isOutgoing,
                                      call.isEmergency, call.isConference,
                                      call.isSwitchable, call.isMergeable);
       }
@@ -538,7 +525,7 @@ TelephonyProvider.prototype = {
       if (response.isCdma) {
         onCdmaDialSuccess.call(this);
       } else {
-        aTelephonyCallback.notifyDialSuccess();
+        aTelephonyCallback.notifyDialSuccess(response.callIndex);
       }
       return false;
     }).bind(this));
@@ -782,7 +769,6 @@ TelephonyProvider.prototype = {
                                                     aCall.callIndex,
                                                     aCall.state,
                                                     aCall.number,
-                                                    aCall.isActive,
                                                     aCall.isOutgoing,
                                                     aCall.isEmergency,
                                                     aCall.isConference,
@@ -836,7 +822,6 @@ TelephonyProvider.prototype = {
       call.state = aCall.state;
       call.isConference = aCall.isConference;
       call.isEmergency = aCall.isEmergency;
-      call.isActive = aCall.isActive;
       call.isSwitchable = aCall.isSwitchable != null ?
                           aCall.isSwitchable : call.isSwitchable;
       call.isMergeable = aCall.isMergeable != null ?
@@ -848,13 +833,6 @@ TelephonyProvider.prototype = {
       call.isMergeable = aCall.isMergeable != null ?
                          aCall.isMergeable : true;
 
-      // Get the actual call for pending outgoing call. Remove the original one.
-      if (this._currentCalls[aClientId][OUTGOING_PLACEHOLDER_CALL_INDEX] &&
-          call.callIndex != OUTGOING_PLACEHOLDER_CALL_INDEX &&
-          call.isOutgoing) {
-        delete this._currentCalls[aClientId][OUTGOING_PLACEHOLDER_CALL_INDEX];
-      }
-
       this._currentCalls[aClientId][aCall.callIndex] = call;
     }
 
@@ -862,7 +840,6 @@ TelephonyProvider.prototype = {
                                                   call.callIndex,
                                                   call.state,
                                                   call.number,
-                                                  call.isActive,
                                                   call.isOutgoing,
                                                   call.isEmergency,
                                                   call.isConference,

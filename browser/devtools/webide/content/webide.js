@@ -15,7 +15,7 @@ const {require} = devtools;
 const {Services} = Cu.import("resource://gre/modules/Services.jsm");
 const {AppProjects} = require("devtools/app-manager/app-projects");
 const {Connection} = require("devtools/client/connection-manager");
-const {AppManager} = require("devtools/app-manager");
+const {AppManager} = require("devtools/webide/app-manager");
 const {Promise: promise} = Cu.import("resource://gre/modules/Promise.jsm", {});
 const ProjectEditor = require("projecteditor/projecteditor");
 
@@ -23,6 +23,11 @@ const Strings = Services.strings.createBundle("chrome://webide/content/webide.pr
 
 const HTML = "http://www.w3.org/1999/xhtml";
 const HELP_URL = "https://developer.mozilla.org/Firefox_OS/Using_the_App_Manager#Troubleshooting";
+
+// See bug 989619
+console.log = console.log.bind(console);
+console.warn = console.warn.bind(console);
+console.error = console.error.bind(console);
 
 window.addEventListener("load", function onLoad() {
   window.removeEventListener("load", onLoad);
@@ -50,19 +55,19 @@ let UI = {
     this.onfocus = this.onfocus.bind(this);
     window.addEventListener("focus", this.onfocus, true);
 
-    try {
+    AppProjects.load().then(() => {
       let lastProjectLocation = Services.prefs.getCharPref("devtools.webide.lastprojectlocation");
-      AppProjects.load().then(() => {
+      if (lastProjectLocation) {
         let lastProject = AppProjects.get(lastProjectLocation);
         if (lastProject) {
           AppManager.selectedProject = lastProject;
         } else {
           AppManager.selectedProject = null;
         }
-      });
-    } catch(e) {
-      AppManager.selectedProject = null;
-    }
+      } else {
+        AppManager.selectedProject = null;
+      }
+    });
   },
 
   uninit: function() {
@@ -144,6 +149,7 @@ let UI = {
   },
 
   busy: function() {
+    this.hidePanels();
     document.querySelector("window").classList.add("busy")
     this.updateCommands();
   },
@@ -157,7 +163,6 @@ let UI = {
     // Freeze the UI until the promise is resolved. A 30s timeout
     // will unfreeze the UI, just in case the promise never gets
     // resolved.
-    this.hidePanels();
     let timeout = setTimeout(() => {
       this.unbusy();
       UI.reportError("error_operationTimeout", operationDescription);
@@ -205,37 +210,28 @@ let UI = {
   updateRuntimeList: function() {
     let USBListNode = document.querySelector("#runtime-panel-usbruntime");
     let simulatorListNode = document.querySelector("#runtime-panel-simulators");
-    while (USBListNode.hasChildNodes()) {
-      USBListNode.firstChild.remove();
-    }
+    let customListNode = document.querySelector("#runtime-panel-custom");
 
-    for (let runtime of AppManager.runtimeList.usb) {
-      let panelItemNode = document.createElement("toolbarbutton");
-      panelItemNode.className = "panel-item runtime-panel-item-usbruntime";
-      panelItemNode.setAttribute("label", runtime.getName());
-      USBListNode.appendChild(panelItemNode);
-      let r = runtime;
-      panelItemNode.addEventListener("click", () => {
-        this.hidePanels();
-        this.connectToRuntime(r);
-      }, true);
+    for (let [type, parent] of [
+      ["usb", USBListNode],
+      ["simulator", simulatorListNode],
+      ["custom", customListNode],
+    ]) {
+      while (parent.hasChildNodes()) {
+        parent.firstChild.remove();
+      }
+      for (let runtime of AppManager.runtimeList[type]) {
+        let panelItemNode = document.createElement("toolbarbutton");
+        panelItemNode.className = "panel-item runtime-panel-item-" + type;
+        panelItemNode.setAttribute("label", runtime.getName());
+        parent.appendChild(panelItemNode);
+        let r = runtime;
+        panelItemNode.addEventListener("click", () => {
+          this.hidePanels();
+          this.connectToRuntime(r);
+        }, true);
+      }
     }
-
-    while (simulatorListNode.hasChildNodes()) {
-      simulatorListNode.firstChild.remove();
-    }
-    for (let runtime of AppManager.runtimeList.simulator) {
-      let panelItemNode = document.createElement("toolbarbutton");
-      panelItemNode.className = "panel-item runtime-panel-item-simulator";
-      panelItemNode.setAttribute("label", runtime.getName());
-      simulatorListNode.appendChild(panelItemNode);
-      let r = runtime;
-      panelItemNode.addEventListener("click", () => {
-        this.hidePanels();
-        this.connectToRuntime(r);
-      }, true);
-    }
-
   },
 
   connectToRuntime: function(runtime) {

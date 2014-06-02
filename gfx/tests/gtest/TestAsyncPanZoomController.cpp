@@ -139,13 +139,21 @@ public:
     ReentrantMonitorAutoEnter lock(mMonitor);
     return mFrameMetrics;
   }
+
+  void AssertStateIsReset() {
+    ReentrantMonitorAutoEnter lock(mMonitor);
+    EXPECT_EQ(NOTHING, mState);
+  }
 };
 
 class TestAPZCTreeManager : public APZCTreeManager {
 public:
-  // Expose this so test code can call it directly.
+  // Expose these so test code can call it directly.
   void BuildOverscrollHandoffChain(AsyncPanZoomController* aApzc) {
     APZCTreeManager::BuildOverscrollHandoffChain(aApzc);
+  }
+  void ClearOverscrollHandoffChain() {
+    APZCTreeManager::ClearOverscrollHandoffChain();
   }
 };
 
@@ -235,6 +243,10 @@ void ApzcPan(AsyncPanZoomController* apzc,
   aTime += TIME_BETWEEN_TOUCH_EVENT;
   mti.mTouches.AppendElement(SingleTouchData(0, ScreenIntPoint(10, aTouchEndY), ScreenSize(0, 0), 0, 0));
   status = apzc->ReceiveInputEvent(mti);
+
+  // Since we've explicitly built the overscroll handoff chain before
+  // touch-start, we need to explicitly clear it after touch-end.
+  aTreeManager->ClearOverscrollHandoffChain();
 }
 
 static
@@ -834,6 +846,7 @@ TEST_F(AsyncPanZoomControllerTester, ShortPress) {
   EXPECT_CALL(*mcc, HandleSingleTap(CSSPoint(10, 10), 0, apzc->GetGuid())).Times(1);
   mcc->RunDelayedTask();
 
+  apzc->AssertStateIsReset();
   apzc->Destroy();
 }
 
@@ -858,6 +871,7 @@ TEST_F(AsyncPanZoomControllerTester, MediumPress) {
   EXPECT_CALL(*mcc, HandleSingleTap(CSSPoint(10, 10), 0, apzc->GetGuid())).Times(1);
   mcc->RunDelayedTask();
 
+  apzc->AssertStateIsReset();
   apzc->Destroy();
 }
 
@@ -927,6 +941,7 @@ DoLongPressTest(bool aShouldUseTouchAction, uint32_t aBehavior) {
   apzc->ContentReceivedTouch(false);
   check.Call("postHandleLongTapUp");
 
+  apzc->AssertStateIsReset();
   apzc->Destroy();
 }
 
@@ -1013,6 +1028,7 @@ DoLongPressPreventDefaultTest(bool aShouldUseTouchAction, uint32_t aBehavior) {
   EXPECT_EQ(ScreenPoint(), pointOut);
   EXPECT_EQ(ViewTransform(), viewTransformOut);
 
+  apzc->AssertStateIsReset();
   apzc->Destroy();
 }
 
@@ -1099,7 +1115,7 @@ static already_AddRefed<AsyncPanZoomController>
 GetTargetAPZC(APZCTreeManager* manager, const ScreenPoint& aPoint,
               gfx3DMatrix& aTransformToApzcOut, gfx3DMatrix& aTransformToGeckoOut)
 {
-  nsRefPtr<AsyncPanZoomController> hit = manager->GetTargetAPZC(aPoint);
+  nsRefPtr<AsyncPanZoomController> hit = manager->GetTargetAPZC(aPoint, nullptr);
   if (hit) {
     manager->GetInputTransforms(hit.get(), aTransformToApzcOut, aTransformToGeckoOut);
   }

@@ -102,14 +102,6 @@ RegExpObjectBuilder::build(HandleAtom source, RegExpFlag flags)
     return reobj_->init(cx, source, flags) ? reobj_.get() : nullptr;
 }
 
-static inline void
-MaybeTraceRegExpShared(JSContext *cx, RegExpShared *shared)
-{
-    Zone *zone = cx->zone();
-    if (zone->needsBarrier())
-        shared->trace(zone->barrierTracer());
-}
-
 RegExpObject *
 RegExpObjectBuilder::clone(Handle<RegExpObject *> other)
 {
@@ -137,10 +129,6 @@ RegExpObjectBuilder::clone(Handle<RegExpObject *> other)
     RegExpGuard g(cx);
     if (!other->getShared(cx->asJSContext(), &g))
         return nullptr;
-
-    // Copying a RegExpShared from one object to another requires a read
-    // barrier, as the shared pointer in an object may be weak.
-    MaybeTraceRegExpShared(cx->asJSContext(), g.re());
 
     Rooted<JSAtom *> source(cx, other->getSource());
     return build(source, *g);
@@ -227,6 +215,29 @@ VectorMatchPairs::allocOrExpandArray(size_t pairCount)
 }
 
 /* RegExpObject */
+
+static inline void
+MaybeTraceRegExpShared(JSContext *cx, RegExpShared *shared)
+{
+    Zone *zone = cx->zone();
+    if (zone->needsBarrier())
+        shared->trace(zone->barrierTracer());
+}
+
+bool
+RegExpObject::getShared(JSContext *cx, RegExpGuard *g)
+{
+    if (RegExpShared *shared = maybeShared()) {
+        // Fetching a RegExpShared from an object requires a read
+        // barrier, as the shared pointer might be weak.
+        MaybeTraceRegExpShared(cx, shared);
+
+        g->init(*shared);
+        return true;
+    }
+
+    return createShared(cx, g);
+}
 
 /* static */ void
 RegExpObject::trace(JSTracer *trc, JSObject *obj)
@@ -936,7 +947,7 @@ RegExpCompartment::createMatchResultTemplateObject(JSContext *cx)
     JS_ASSERT(shape->slot() == 1 &&
               shape->propidRef() == NameToId(cx->names().input));
 
-    matchResultTemplateObject_ = templateObject;
+    matchResultTemplateObject_.set(templateObject);
 
     return matchResultTemplateObject_;
 }
@@ -984,7 +995,7 @@ RegExpCompartment::sweep(JSRuntime *rt)
     if (matchResultTemplateObject_ &&
         IsObjectAboutToBeFinalized(matchResultTemplateObject_.unsafeGet()))
     {
-        matchResultTemplateObject_ = nullptr;
+        matchResultTemplateObject_.set(nullptr);
     }
 }
 

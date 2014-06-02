@@ -172,7 +172,7 @@ class RTCStatsQuery {
     explicit RTCStatsQuery(bool internalStats);
     ~RTCStatsQuery();
 
-    mozilla::dom::RTCStatsReportInternal report;
+    nsAutoPtr<mozilla::dom::RTCStatsReportInternal> report;
     std::string error;
     // A timestamp to help with telemetry.
     mozilla::TimeStamp iceStartTime;
@@ -246,8 +246,6 @@ public:
   void onCallEvent(const OnCallEventArgs &args);
 
   // DataConnection observers
-  void NotifyConnection();
-  void NotifyClosedConnection();
   void NotifyDataChannel(already_AddRefed<mozilla::DataChannel> aChannel);
 
   // Get the media object
@@ -442,15 +440,6 @@ public:
     delete tmp;
   }
 
-  NS_IMETHODIMP ReadyState(mozilla::dom::PCImplReadyState* aState);
-
-  mozilla::dom::PCImplReadyState ReadyState()
-  {
-    mozilla::dom::PCImplReadyState state;
-    ReadyState(&state);
-    return state;
-  }
-
   NS_IMETHODIMP SignalingState(mozilla::dom::PCImplSignalingState* aState);
 
   mozilla::dom::PCImplSignalingState SignalingState()
@@ -539,6 +528,10 @@ public:
   // is called to start the list over.
   void ClearSdpParseErrorMessages();
 
+  void OnAddIceCandidateError() {
+    ++mAddCandidateErrorCount;
+  }
+
   // Called to retreive the list of parsing errors.
   const std::vector<std::string> &GetSdpParseErrors();
 
@@ -578,7 +571,6 @@ private:
   NS_IMETHODIMP EnsureDataConnection(uint16_t aNumstreams);
 
   nsresult CloseInt();
-  void ChangeReadyState(mozilla::dom::PCImplReadyState aReadyState);
   nsresult CheckApiState(bool assert_ice_ready) const;
   void CheckThread() const {
     NS_ABORT_IF_FALSE(CheckThreadInt(), "Wrong thread");
@@ -640,7 +632,6 @@ private:
 
   // The call
   mozilla::ScopedDeletePtr<Internal> mInternal;
-  mozilla::dom::PCImplReadyState mReadyState;
   mozilla::dom::PCImplSignalingState mSignalingState;
 
   // ICE State
@@ -720,6 +711,7 @@ private:
 
   // Holder for error messages from parsing SDP
   std::vector<std::string> mSDPParseErrorMessages;
+  unsigned int mAddCandidateErrorCount;
 
   bool mTrickle;
 

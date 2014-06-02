@@ -104,7 +104,7 @@ class CallbackVector : public Vector<Callback<F>, 4, SystemAllocPolicy> {};
 class GCRuntime
 {
   public:
-    GCRuntime(JSRuntime *rt);
+    explicit GCRuntime(JSRuntime *rt);
     bool init(uint32_t maxbytes);
     void finish();
 
@@ -144,18 +144,30 @@ class GCRuntime
 #ifdef JS_THREADSAFE
     void notifyRequestEnd() { conservativeGC.updateForRequestEnd(); }
 #endif
-    bool isBackgroundSweeping() { return helperThread.sweeping(); }
-    void waitBackgroundSweepEnd() { helperThread.waitBackgroundSweepEnd(); }
-    void waitBackgroundSweepOrAllocEnd() { helperThread.waitBackgroundSweepOrAllocEnd(); }
-    void startBackgroundShrink() { helperThread.startBackgroundShrink(); }
-    void freeLater(void *p) { helperThread.freeLater(p); }
+    bool isBackgroundSweeping() { return helperState.isBackgroundSweeping(); }
+    void waitBackgroundSweepEnd() { helperState.waitBackgroundSweepEnd(); }
+    void waitBackgroundSweepOrAllocEnd() { helperState.waitBackgroundSweepOrAllocEnd(); }
+    void startBackgroundShrink() { helperState.startBackgroundShrink(); }
+    void startBackgroundAllocationIfIdle() { helperState.startBackgroundAllocationIfIdle(); }
+    void freeLater(void *p) { helperState.freeLater(p); }
+
 #ifdef DEBUG
-    bool onBackgroundThread() { return helperThread.onBackgroundThread(); }
+
+    bool onBackgroundThread() { return helperState.onBackgroundThread(); }
+
+    bool currentThreadOwnsGCLock() {
+#ifdef JS_THREADSAFE
+        return lockOwner == PR_GetCurrentThread();
+#else
+        return true;
 #endif
+    }
+
+#endif // DEBUG
 
 #ifdef JS_THREADSAFE
     void assertCanLock() {
-        JS_ASSERT(lockOwner != PR_GetCurrentThread());
+        JS_ASSERT(!currentThreadOwnsGCLock());
     }
 #endif
 
@@ -203,7 +215,7 @@ class GCRuntime
   private:
     // For ArenaLists::allocateFromArenaInline()
     friend class ArenaLists;
-    Chunk *pickChunk(Zone *zone);
+    Chunk *pickChunk(Zone *zone, AutoMaybeStartBackgroundAllocation &maybeStartBackgroundAllocation);
 
     inline bool wantBackgroundAllocation() const;
 
@@ -525,6 +537,14 @@ class GCRuntime
     /* Strong references on scripts held for PCCount profiling API. */
     js::ScriptAndCountsVector *scriptAndCountsVector;
 
+    /*
+     * Some regions of code are hard for the static rooting hazard analysis to
+     * understand. In those cases, we trade the static analysis for a dynamic
+     * analysis. When this is non-zero, we should assert if we trigger, or
+     * might trigger, a GC.
+     */
+    int inUnsafeRegion;
+
   private:
     /* Always preserve JIT code during GCs, for testing. */
     bool                  alwaysPreserveCode;
@@ -533,16 +553,16 @@ class GCRuntime
     size_t                noGCOrAllocationCheck;
 #endif
 
-    /* Synchronize GC heap access between main thread and GCHelperThread. */
+    /* Synchronize GC heap access between main thread and GCHelperState. */
     PRLock                *lock;
     mozilla::DebugOnly<PRThread *>   lockOwner;
 
-    js::GCHelperThread helperThread;
+    GCHelperState helperState;
 
     ConservativeGCData conservativeGC;
 
     //friend class js::gc::Chunk; // todo: remove
-    friend class js::GCHelperThread;
+    friend class js::GCHelperState;
     friend class js::gc::MarkingValidator;
 };
 

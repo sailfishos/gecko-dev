@@ -39,6 +39,7 @@
 #include "mozilla/dom/HTMLMediaElement.h"
 #include "mozilla/dom/HTMLTemplateElement.h"
 #include "mozilla/dom/HTMLContentElement.h"
+#include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/dom/TextDecoder.h"
 #include "mozilla/dom/TouchEvent.h"
 #include "mozilla/dom/ShadowRoot.h"
@@ -234,7 +235,6 @@ bool nsContentUtils::sInitialized = false;
 bool nsContentUtils::sIsFullScreenApiEnabled = false;
 bool nsContentUtils::sTrustedFullScreenOnly = true;
 bool nsContentUtils::sFullscreenApiIsContentOnly = false;
-bool nsContentUtils::sIsIdleObserverAPIEnabled = false;
 bool nsContentUtils::sIsPerformanceTimingEnabled = false;
 bool nsContentUtils::sIsResourceTimingEnabled = false;
 
@@ -433,8 +433,6 @@ nsContentUtils::Init()
 
   Preferences::AddBoolVarCache(&sTrustedFullScreenOnly,
                                "full-screen-api.allow-trusted-requests-only");
-
-  sIsIdleObserverAPIEnabled = Preferences::GetBool("dom.idle-observers-api.enabled", true);
 
   Preferences::AddBoolVarCache(&sIsPerformanceTimingEnabled,
                                "dom.enable_performance", true);
@@ -5056,8 +5054,12 @@ nsContentUtils::CheckForSubFrameDrop(nsIDragSession* aDragSession,
   }
   
   nsIDocument* targetDoc = target->OwnerDoc();
-  nsCOMPtr<nsIWebNavigation> twebnav = do_GetInterface(targetDoc->GetWindow());
-  nsCOMPtr<nsIDocShellTreeItem> tdsti = do_QueryInterface(twebnav);
+  nsPIDOMWindow* targetWin = targetDoc->GetWindow();
+  if (!targetWin) {
+    return true;
+  }
+
+  nsCOMPtr<nsIDocShellTreeItem> tdsti = targetWin->GetDocShell();
   if (!tdsti) {
     return true;
   }
@@ -5628,6 +5630,8 @@ nsContentUtils::WrapNative(JSContext *cx, nsISupports *native,
                            nsWrapperCache *cache, const nsIID* aIID,
                            JS::MutableHandle<JS::Value> vp, bool aAllowWrapping)
 {
+  MOZ_ASSERT(cx == GetCurrentJSContext());
+
   if (!native) {
     vp.setNull();
 
@@ -5647,8 +5651,7 @@ nsContentUtils::WrapNative(JSContext *cx, nsISupports *native,
 
   nsresult rv = NS_OK;
   JS::Rooted<JSObject*> scope(cx, JS::CurrentGlobalOrNull(cx));
-  AutoPushJSContext context(cx);
-  rv = sXPConnect->WrapNativeToJSVal(context, scope, native, cache, aIID,
+  rv = sXPConnect->WrapNativeToJSVal(cx, scope, native, cache, aIID,
                                      aAllowWrapping, vp);
   return rv;
 }
@@ -5899,7 +5902,7 @@ nsContentUtils::FlushLayoutForTree(nsIDOMWindow* aWindow)
         for (; i < i_end; ++i) {
             nsCOMPtr<nsIDocShellTreeItem> item;
             docShell->GetChildAt(i, getter_AddRefs(item));
-            nsCOMPtr<nsIDOMWindow> win = do_GetInterface(item);
+            nsCOMPtr<nsIDOMWindow> win = item->GetWindow();
             if (win) {
                 FlushLayoutForTree(win);
             }
@@ -6110,11 +6113,15 @@ nsContentUtils::IsPatternMatching(nsAString& aValue, nsAString& aPattern,
                                   nsIDocument* aDocument)
 {
   NS_ASSERTION(aDocument, "aDocument should be a valid pointer (not null)");
-  nsCOMPtr<nsIScriptGlobalObject> sgo = do_QueryInterface(aDocument->GetWindow());
-  NS_ENSURE_TRUE(sgo, true);
+  nsCOMPtr<nsIGlobalObject> globalObject =
+    do_QueryInterface(aDocument->GetWindow());
+  if (NS_WARN_IF(!globalObject)) {
+    return true;
+  }
 
-  AutoPushJSContext cx(sgo->GetContext()->GetNativeContext());
-  NS_ENSURE_TRUE(cx, true);
+  AutoJSAPI jsapi;
+  JSContext* cx = jsapi.cx();
+  JSAutoCompartment ac(cx, globalObject->GetGlobalJSObject());
 
   // The pattern has to match the entire value.
   aPattern.Insert(NS_LITERAL_STRING("^(?:"), 0);

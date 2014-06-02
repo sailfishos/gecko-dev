@@ -58,6 +58,7 @@ public:
   };
   NSSCertDBTrustDomain(SECTrustType certDBTrustType, OCSPFetching ocspFetching,
                        OCSPCache& ocspCache, void* pinArg,
+                       CertVerifier::ocsp_get_config ocspGETConfig,
                        CERTChainVerifyCallback* checkChainCallback = nullptr);
 
   virtual SECStatus FindPotentialIssuers(
@@ -89,12 +90,14 @@ private:
   static const PRTime ServerFailureDelay = 5 * 60 * PR_USEC_PER_SEC;
   SECStatus VerifyAndMaybeCacheEncodedOCSPResponse(
     const CERTCertificate* cert, CERTCertificate* issuerCert, PRTime time,
-    const SECItem* encodedResponse, EncodedResponseSource responseSource);
+    uint16_t maxLifetimeInDays, const SECItem* encodedResponse,
+    EncodedResponseSource responseSource);
 
   const SECTrustType mCertDBTrustType;
   const OCSPFetching mOCSPFetching;
   OCSPCache& mOCSPCache; // non-owning!
   void* mPinArg; // non-owning!
+  const CertVerifier::ocsp_get_config mOCSPGetConfig;
   CERTChainVerifyCallback* mCheckChainCallback; // non-owning!
 };
 

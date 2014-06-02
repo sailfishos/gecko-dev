@@ -1299,10 +1299,10 @@ MacroAssemblerARM::ma_vpush(VFPRegister r)
 }
 
 // Branches when done from within arm-specific code.
-void
+BufferOffset
 MacroAssemblerARM::ma_b(Label *dest, Assembler::Condition c, bool isPatchable)
 {
-    as_b(dest, c, isPatchable);
+    return as_b(dest, c, isPatchable);
 }
 
 void
@@ -1937,6 +1937,13 @@ MacroAssemblerARMCompat::and32(Imm32 imm, Register dest)
 }
 
 void
+MacroAssemblerARMCompat::and32(const Address &src, Register dest)
+{
+    load32(src, ScratchRegister);
+    ma_and(ScratchRegister, dest, SetCond);
+}
+
+void
 MacroAssemblerARMCompat::addPtr(Register src, Register dest)
 {
     ma_add(src, dest);
@@ -2047,7 +2054,7 @@ MacroAssemblerARMCompat::movePtr(AsmJSImmPtr imm, Register dest)
     else
         rs = L_LDR;
 
-    enoughMemory_ &= append(AsmJSAbsoluteLink(nextOffset().getOffset(), imm.kind()));
+    enoughMemory_ &= append(AsmJSAbsoluteLink(CodeOffsetLabel(nextOffset().getOffset()), imm.kind()));
     ma_movPatchable(Imm32(-1), dest, Always, rs);
 }
 void
@@ -3282,6 +3289,35 @@ MacroAssemblerARMCompat::extractTag(const BaseIndex &address, Register scratch)
     return extractTag(Address(scratch, address.offset), scratch);
 }
 
+template <typename T>
+void
+MacroAssemblerARMCompat::storeUnboxedValue(ConstantOrRegister value, MIRType valueType, const T &dest,
+                                           MIRType slotType)
+{
+    if (valueType == MIRType_Double) {
+        storeDouble(value.reg().typedReg().fpu(), dest);
+        return;
+    }
+
+    // Store the type tag if needed.
+    if (valueType != slotType)
+        storeTypeTag(ImmType(ValueTypeFromMIRType(valueType)), dest);
+
+    // Store the payload.
+    if (value.constant())
+        storePayload(value.value(), dest);
+    else
+        storePayload(value.reg().typedReg().gpr(), dest);
+}
+
+template void
+MacroAssemblerARMCompat::storeUnboxedValue(ConstantOrRegister value, MIRType valueType, const Address &dest,
+                                           MIRType slotType);
+
+template void
+MacroAssemblerARMCompat::storeUnboxedValue(ConstantOrRegister value, MIRType valueType, const BaseIndex &dest,
+                                           MIRType slotType);
+
 void
 MacroAssemblerARMCompat::moveValue(const Value &val, Register type, Register data)
 {
@@ -3468,28 +3504,39 @@ MacroAssemblerARMCompat::storePayload(Register src, Operand dest)
 }
 
 void
-MacroAssemblerARMCompat::storePayload(const Value &val, Register base, Register index, int32_t shift)
+MacroAssemblerARMCompat::storePayload(const Value &val, const BaseIndex &dest)
 {
+    unsigned shift = ScaleToShift(dest.scale);
+    MOZ_ASSERT(dest.offset == 0);
+
     jsval_layout jv = JSVAL_TO_IMPL(val);
     if (val.isMarkable())
         ma_mov(ImmGCPtr((gc::Cell *)jv.s.payload.ptr), ScratchRegister);
     else
         ma_mov(Imm32(jv.s.payload.i32), ScratchRegister);
-    JS_STATIC_ASSERT(NUNBOX32_PAYLOAD_OFFSET == 0);
+
     // If NUNBOX32_PAYLOAD_OFFSET is not zero, the memory operand [base + index << shift + imm]
     // cannot be encoded into a single instruction, and cannot be integrated into the as_dtr call.
-    as_dtr(IsStore, 32, Offset, ScratchRegister, DTRAddr(base, DtrRegImmShift(index, LSL, shift)));
+    JS_STATIC_ASSERT(NUNBOX32_PAYLOAD_OFFSET == 0);
+
+    as_dtr(IsStore, 32, Offset, ScratchRegister,
+           DTRAddr(dest.base, DtrRegImmShift(dest.index, LSL, shift)));
 }
+
 void
-MacroAssemblerARMCompat::storePayload(Register src, Register base, Register index, int32_t shift)
+MacroAssemblerARMCompat::storePayload(Register src, const BaseIndex &dest)
 {
-    JS_ASSERT((shift < 32) && (shift >= 0));
+    unsigned shift = ScaleToShift(dest.scale);
+    MOZ_ASSERT(shift < 32 && shift >= 0);
+    MOZ_ASSERT(dest.offset == 0);
+
     // If NUNBOX32_PAYLOAD_OFFSET is not zero, the memory operand [base + index << shift + imm]
     // cannot be encoded into a single instruction, and cannot be integrated into the as_dtr call.
     JS_STATIC_ASSERT(NUNBOX32_PAYLOAD_OFFSET == 0);
+
     // Technically, shift > -32 can be handle by changing LSL to ASR, but should never come up,
     // and this is one less code path to get wrong.
-    as_dtr(IsStore, 32, Offset, src, DTRAddr(base, DtrRegImmShift(index, LSL, shift)));
+    as_dtr(IsStore, 32, Offset, src, DTRAddr(dest.base, DtrRegImmShift(dest.index, LSL, shift)));
 }
 
 void
@@ -3505,9 +3552,15 @@ MacroAssemblerARMCompat::storeTypeTag(ImmTag tag, Operand dest) {
 }
 
 void
-MacroAssemblerARMCompat::storeTypeTag(ImmTag tag, Register base, Register index, int32_t shift) {
-    JS_ASSERT(base != ScratchRegister);
-    JS_ASSERT(index != ScratchRegister);
+MacroAssemblerARMCompat::storeTypeTag(ImmTag tag, const BaseIndex &dest)
+{
+    Register base = dest.base;
+    Register index = dest.index;
+    unsigned shift = ScaleToShift(dest.scale);
+    MOZ_ASSERT(dest.offset == 0);
+    MOZ_ASSERT(base != ScratchRegister);
+    MOZ_ASSERT(index != ScratchRegister);
+
     // A value needs to be store a value int base + index << shift + 4.
     // Arm cannot handle this in a single operand, so a temp register is required.
     // However, the scratch register is presently in use to hold the immediate that
@@ -3518,20 +3571,6 @@ MacroAssemblerARMCompat::storeTypeTag(ImmTag tag, Register base, Register index,
     ma_mov(tag, ScratchRegister);
     ma_str(ScratchRegister, DTRAddr(base, DtrRegImmShift(index, LSL, shift)));
     ma_sub(base, Imm32(NUNBOX32_TYPE_OFFSET), base);
-}
-
-void
-MacroAssemblerARMCompat::linkExitFrame()
-{
-    uint8_t *dest = (uint8_t*)GetIonContext()->runtime->addressOfJitTop();
-    movePtr(ImmPtr(dest), ScratchRegister);
-    ma_str(StackPointer, Operand(ScratchRegister, 0));
-}
-
-void
-MacroAssemblerARMCompat::linkParallelExitFrame(Register pt)
-{
-    ma_str(StackPointer, Operand(pt, offsetof(PerThreadData, jitTop)));
 }
 
 // ARM says that all reads of pc will return 8 higher than the
@@ -4243,9 +4282,10 @@ MacroAssemblerARMCompat::ceil(FloatRegister input, Register output, Label *bail)
     ma_vcvt_U32_F64(ScratchFloatReg, ScratchFloatReg);
     compareDouble(ScratchFloatReg, input);
     ma_add(output, Imm32(1), output, NoSetCond, NotEqual);
-    // Bail out if the add overflowed or the result is negative
+    // Bail out if the add overflowed or the result is non positive
     ma_mov(output, output, SetCond);
     ma_b(bail, Signed);
+    ma_b(bail, Zero);
 
     bind(&fin);
 }
@@ -4294,9 +4334,10 @@ MacroAssemblerARMCompat::ceilf(FloatRegister input, Register output, Label *bail
     ma_vcvt_U32_F32(ScratchFloatReg, ScratchFloatReg);
     compareFloat(ScratchFloatReg, input);
     ma_add(output, Imm32(1), output, NoSetCond, NotEqual);
-    // Bail out if the add overflowed or the result is negative
+    // Bail out if the add overflowed or the result is non positive
     ma_mov(output, output, SetCond);
     ma_b(bail, Signed);
+    ma_b(bail, Zero);
 
     bind(&fin);
 }
@@ -4305,8 +4346,9 @@ CodeOffsetLabel
 MacroAssemblerARMCompat::toggledJump(Label *label)
 {
     // Emit a B that can be toggled to a CMP. See ToggleToJmp(), ToggleToCmp().
-    CodeOffsetLabel ret(nextOffset().getOffset());
-    ma_b(label, Always, true);
+    
+    BufferOffset b = ma_b(label, Always, true);
+    CodeOffsetLabel ret(b.getOffset());
     return ret;
 }
 

@@ -1059,6 +1059,19 @@ var WifiManager = (function() {
     }
   }
 
+  var wifiHotspotStatusTimer = null;
+  function cancelWifiHotspotStatusTimer() {
+    if (wifiHotspotStatusTimer) {
+      wifiHotspotStatusTimer.cancel();
+      wifiHotspotStatusTimer = null;
+    }
+  }
+
+  function createWifiHotspotStatusTimer(onTimeout) {
+    wifiHotspotStatusTimer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
+    wifiHotspotStatusTimer.init(onTimeout, 5000, Ci.nsITimer.TYPE_REPEATING_SLACK);
+  }
+
   // Get wifi interface and load wifi driver when enable Ap mode.
   manager.setWifiApEnabled = function(enabled, configuration, callback) {
     if (enabled === manager.isWifiTetheringEnabled(manager.tetheringState)) {
@@ -1072,7 +1085,18 @@ var WifiManager = (function() {
         if (status < 0) {
           callback();
           manager.tetheringState = "UNINITIALIZED";
+          if (wifiHotspotStatusTimer) {
+            cancelWifiHotspotStatusTimer();
+            wifiCommand.closeHostapdConnection(function(result) {
+            });
+          }
           return;
+        }
+
+        function getWifiHotspotStatus() {
+          wifiCommand.hostapdGetStations(function(result) {
+            notify("stationInfoUpdate", {station: result});
+          });
         }
 
         function doStartWifiTethering() {
@@ -1084,6 +1108,13 @@ var WifiManager = (function() {
               manager.tetheringState = "UNINITIALIZED";
             } else {
               manager.tetheringState = "COMPLETED";
+              wifiCommand.connectToHostapd(function(result) {
+                if (result) {
+                  return;
+                }
+                // Create a timer to track the connection status.
+                createWifiHotspotStatusTimer(getWifiHotspotStatus);
+              });
             }
             // Pop out current request.
             callback();
@@ -1730,7 +1761,6 @@ function WifiWorker() {
 
   this.wantScanResults = [];
 
-  this._allowWpaEap = false;
   this._needToEnableNetworks = false;
   this._highestPriority = -1;
 
@@ -1934,12 +1964,6 @@ function WifiWorker() {
       self._enableAllNetworks();
       WifiManager.saveConfig(function() {})
     });
-
-    try {
-      self._allowWpaEap = (WifiManager.getCapabilities().eapMethod.indexOf("SIM") != -1);
-    } catch (e) {
-      self._allowWpaEap = false;
-    }
 
     // Notify everybody, even if they didn't ask us to come up.
     WifiManager.getMacAddress(function (mac) {
@@ -2251,18 +2275,6 @@ function WifiWorker() {
                 ("wep_key0" in known && known.wep_key0)) {
               network.password = "*";
             }
-          } else if (!self._allowWpaEap &&
-                     (eapIndex = network.security.indexOf("WPA-EAP")) >= 0) {
-            // Don't offer to connect to WPA-EAP networks unless one has been
-            // configured through other means (e.g. it was added directly to
-            // wpa_supplicant.conf). Here, we have an unknown WPA-EAP network,
-            // so we ignore it entirely if it only supports WPA-EAP, otherwise
-            // we take EAP out of the list and offer the rest of the
-            // security.
-            if (network.security.length === 1)
-              continue;
-
-            network.security.splice(eapIndex, 1);
           }
 
           self.networksArray.push(network);
@@ -2280,6 +2292,10 @@ function WifiWorker() {
       self.wantScanResults.forEach(function(callback) { callback(self.networksArray) });
       self.wantScanResults = [];
     });
+  };
+
+  WifiManager.onstationInfoUpdate = function() {
+    self._fireEvent("stationInfoUpdate", { station: this.station });
   };
 
   // Read the 'wifi.enabled' setting in order to start with a known

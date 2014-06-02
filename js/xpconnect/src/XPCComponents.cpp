@@ -13,6 +13,7 @@
 #include "nsJSUtils.h"
 #include "mozJSComponentLoader.h"
 #include "nsContentUtils.h"
+#include "JavaScriptParent.h"
 #include "jsfriendapi.h"
 #include "js/StructuredClone.h"
 #include "mozilla/Attributes.h"
@@ -2146,7 +2147,7 @@ nsXPCConstructor::CallOrConstruct(nsIXPConnectWrappedNative *wrapper,JSContext *
 
     JS::Rooted<JS::Value> arg(cx, ObjectValue(*iidObj));
     RootedValue rval(cx);
-    if (!JS_CallFunctionName(cx, cidObj, "createInstance", arg, &rval) ||
+    if (!JS_CallFunctionName(cx, cidObj, "createInstance", JS::HandleValueArray(arg), &rval) ||
         rval.isPrimitive()) {
         // createInstance will have thrown an exception
         *_retval = false;
@@ -3110,6 +3111,17 @@ nsXPCComponents_Utils::IsDeadWrapper(HandleValue obj, bool *out)
     return NS_OK;
 }
 
+NS_IMETHODIMP
+nsXPCComponents_Utils::IsCrossProcessWrapper(HandleValue obj, bool *out)
+{
+    *out = false;
+    if (obj.isPrimitive())
+        return NS_ERROR_INVALID_ARG;
+
+    *out = jsipc::IsCPOW(js::CheckedUnwrap(&obj.toObject()));
+    return NS_OK;
+}
+
 /* void recomputerWrappers(jsval vobj); */
 NS_IMETHODIMP
 nsXPCComponents_Utils::RecomputeWrappers(HandleValue vobj, JSContext *cx)
@@ -3371,7 +3383,7 @@ nsXPCComponents_Utils::GetIncumbentGlobal(HandleValue aCallback,
     // Invoke the callback, if passed.
     if (aCallback.isObject()) {
         RootedValue ignored(aCx);
-        if (!JS_CallFunctionValue(aCx, JS::NullPtr(), aCallback, globalVal, &ignored))
+        if (!JS_CallFunctionValue(aCx, JS::NullPtr(), aCallback, JS::HandleValueArray(globalVal), &ignored))
             return NS_ERROR_FAILURE;
     }
 

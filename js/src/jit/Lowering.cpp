@@ -1338,8 +1338,7 @@ bool
 LIRGenerator::visitMathFunction(MMathFunction *ins)
 {
     JS_ASSERT(IsFloatingPointType(ins->type()));
-    JS_ASSERT_IF(ins->type() == MIRType_Double, ins->input()->type() == MIRType_Double);
-    JS_ASSERT_IF(ins->type() == MIRType_Float32, ins->input()->type() == MIRType_Float32);
+    JS_ASSERT(ins->type() == ins->input()->type());
 
     if (ins->type() == MIRType_Double) {
         // Note: useRegisterAtStart is safe here, the temp is not a FP register.
@@ -1916,10 +1915,14 @@ LIRGenerator::visitToString(MToString *ins)
         return assignSafepoint(lir, ins);
       }
 
+      case MIRType_String:
+        return redefine(ins, ins->input());
+
       case MIRType_Value: {
-        JS_ASSERT(!opd->mightBeType(MIRType_Object));
-        LPrimitiveToString *lir = new(alloc()) LPrimitiveToString(tempToUnbox());
-        if (!useBox(lir, LPrimitiveToString::Input, opd))
+        LValueToString *lir = new(alloc()) LValueToString(tempToUnbox());
+        if (!useBox(lir, LValueToString::Input, opd))
+            return false;
+        if (ins->fallible() && !assignSnapshot(lir))
             return false;
         if (!define(lir, ins))
             return false;
@@ -1927,7 +1930,7 @@ LIRGenerator::visitToString(MToString *ins)
       }
 
       default:
-        // Objects might be effectful. (see ToPrimitive)
+        // Float32 and objects are not supported.
         MOZ_ASSUME_UNREACHABLE("unexpected type");
     }
 }
@@ -2092,15 +2095,6 @@ LIRGenerator::visitLambdaPar(MLambdaPar *ins)
                                               useRegister(ins->scopeChain()),
                                               temp(), temp());
     return define(lir, ins);
-}
-
-bool
-LIRGenerator::visitImplicitThis(MImplicitThis *ins)
-{
-    JS_ASSERT(ins->callee()->type() == MIRType_Object);
-
-    LImplicitThis *lir = new(alloc()) LImplicitThis(useRegister(ins->callee()));
-    return assignSnapshot(lir) && defineBox(lir, ins);
 }
 
 bool
@@ -2550,7 +2544,7 @@ LIRGenerator::visitLoadElement(MLoadElement *ins)
       case MIRType_Value:
       {
         LLoadElementV *lir = new(alloc()) LLoadElementV(useRegister(ins->elements()),
-                                               useRegisterOrConstant(ins->index()));
+                                                        useRegisterOrConstant(ins->index()));
         if (ins->fallible() && !assignSnapshot(lir))
             return false;
         return defineBox(lir, ins);
@@ -2562,7 +2556,7 @@ LIRGenerator::visitLoadElement(MLoadElement *ins)
       default:
       {
         LLoadElementT *lir = new(alloc()) LLoadElementT(useRegister(ins->elements()),
-                                               useRegisterOrConstant(ins->index()));
+                                                        useRegisterOrConstant(ins->index()));
         if (ins->fallible() && !assignSnapshot(lir))
             return false;
         return define(lir, ins);

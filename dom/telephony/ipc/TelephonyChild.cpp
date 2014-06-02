@@ -65,7 +65,6 @@ TelephonyChild::RecvNotifyCallStateChanged(const uint32_t& aClientId,
                               aData.callIndex(),
                               aData.callState(),
                               aData.number(),
-                              aData.isActive(),
                               aData.isOutGoing(),
                               aData.isEmergency(),
                               aData.isConference(),
@@ -159,7 +158,6 @@ TelephonyRequestChild::RecvNotifyEnumerateCallState(const uint32_t& aClientId,
                                 aData.callIndex(),
                                 aData.callState(),
                                 aData.number(),
-                                aData.isActive(),
                                 aData.isOutGoing(),
                                 aData.isEmergency(),
                                 aData.isConference(),
@@ -178,10 +176,10 @@ TelephonyRequestChild::RecvNotifyDialError(const nsString& aError)
 }
 
 bool
-TelephonyRequestChild::RecvNotifyDialSuccess()
+TelephonyRequestChild::RecvNotifyDialSuccess(const uint32_t& aCallIndex)
 {
   MOZ_ASSERT(mCallback);
 
-  mCallback->NotifyDialSuccess();
+  mCallback->NotifyDialSuccess(aCallIndex);
   return true;
 }

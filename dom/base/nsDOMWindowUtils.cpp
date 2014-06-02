@@ -103,13 +103,10 @@ class gfxContext;
 
 static NS_DEFINE_CID(kAppShellCID, NS_APPSHELL_CID);
 
-DOMCI_DATA(WindowUtils, nsDOMWindowUtils)
-
 NS_INTERFACE_MAP_BEGIN(nsDOMWindowUtils)
   NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIDOMWindowUtils)
   NS_INTERFACE_MAP_ENTRY(nsIDOMWindowUtils)
   NS_INTERFACE_MAP_ENTRY(nsISupportsWeakReference)
-  NS_DOM_INTERFACE_MAP_ENTRY_CLASSINFO(WindowUtils)
 NS_INTERFACE_MAP_END
 
 NS_IMPL_ADDREF(nsDOMWindowUtils)
@@ -318,8 +315,9 @@ nsDOMWindowUtils::GetViewportInfo(uint32_t aDisplayWidth,
   *aAllowZoom = info.IsZoomAllowed();
   *aMinZoom = info.GetMinZoom().scale;
   *aMaxZoom = info.GetMaxZoom().scale;
-  *aWidth = info.GetSize().width;
-  *aHeight = info.GetSize().height;
+  CSSIntSize size = gfx::RoundedToInt(info.GetSize());
+  *aWidth = size.width;
+  *aHeight = size.height;
   *aAutoSize = info.IsAutoSizeEnabled();
   return NS_OK;
 }
@@ -665,7 +663,9 @@ nsDOMWindowUtils::SendMouseEventToWindow(const nsAString& aType,
                                          bool aIsSynthesized,
                                          uint8_t aOptionalArgCount)
 {
-  PROFILER_LABEL("nsDOMWindowUtils", "SendMouseEventToWindow");
+  PROFILER_LABEL("nsDOMWindowUtils", "SendMouseEventToWindow",
+    js::ProfileEntry::Category::EVENTS);
+
   return SendMouseEventCommon(aType, aX, aY, aButton, aClickCount, aModifiers,
                               aIgnoreRootScrollFrame, aPressure,
                               aInputSourceArg, true, nullptr,
@@ -1427,7 +1427,9 @@ NS_IMETHODIMP
 nsDOMWindowUtils::GarbageCollect(nsICycleCollectorListener *aListener,
                                  int32_t aExtraForgetSkippableCalls)
 {
-  PROFILER_LABEL("GC", "GarbageCollect");
+  PROFILER_LABEL("nsDOMWindowUtils", "GarbageCollect",
+    js::ProfileEntry::Category::GC);
+
   // Always permit this in debug builds.
 #ifndef DEBUG
   if (!nsContentUtils::IsCallerChrome()) {

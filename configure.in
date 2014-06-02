@@ -2189,6 +2189,7 @@ ia64*-hpux*)
         dnl both SSSE3 and SSE4.1.
         HAVE_TOOLCHAIN_SUPPORT_MSSSE3=1
         HAVE_TOOLCHAIN_SUPPORT_MSSE4_1=1
+        MOZ_MEMORY=1
     fi
     AC_DEFINE(HAVE_SNPRINTF)
     AC_DEFINE(_WINDOWS)
@@ -2556,7 +2557,7 @@ if test "$GNU_CC" -a "$OS_TARGET" != WINNT; then
     ;;
   *)
     case $GCC_VERSION in
-    4.4*)
+    4.4*|4.6*)
       VISIBILITY_FLAGS='-I$(DIST)/system_wrappers -include $(topsrcdir)/config/gcc_hidden_dso_handle.h'
       ;;
     *)
@@ -4376,7 +4377,7 @@ if test "$COMPILE_ENVIRONMENT"; then
   if test "$MOZ_ENABLE_GTK3"; then
     PKG_CHECK_MODULES(MOZ_GTK3, gtk+-3.0 >= $GTK3_VERSION gtk+-unix-print-3.0 glib-2.0 gobject-2.0 $GDK_PACKAGES)
   fi
-  if test "$MOZ_ENABLE_GTK2"; then
+  if test "$MOZ_ENABLE_GTK"; then
     if test "$MOZ_X11"; then
       GDK_PACKAGES=gdk-x11-2.0
     fi
@@ -6354,6 +6355,19 @@ if test -n "$MOZ_MAINTENANCE_SERVICE"; then
 fi
 
 dnl ========================================================
+dnl Bundled fonts on desktop platforms
+dnl ========================================================
+
+MOZ_ARG_ENABLE_BOOL(bundled-fonts,
+[  --enable-bundled-fonts  Enable support for bundled fonts on desktop platforms],
+    MOZ_BUNDLED_FONTS=1,
+    MOZ_BUNDLED_FONTS=)
+
+if test -n "$MOZ_BUNDLED_FONTS"; then
+  AC_DEFINE(MOZ_BUNDLED_FONTS)
+fi
+
+dnl ========================================================
 dnl Verify MAR signatures
 dnl ========================================================
 
@@ -7102,16 +7116,13 @@ else
     ;;
   *-mingw*)
     AC_DEFINE(MOZ_MEMORY_WINDOWS)
-    if test -z "$MOZ_DEBUG"; then
-      WIN32_CRT_LIBS="msvcrt.lib msvcprt.lib"
-    else
-      WIN32_CRT_LIBS="msvcrtd.lib msvcprtd.lib"
-    fi
+    export MOZ_NO_DEBUG_RTL=1
+    WIN32_CRT_LIBS="msvcrt.lib msvcprt.lib"
     dnl Look for a broken crtdll.obj
     WIN32_CRTDLL_FULLPATH=`lib -nologo -list $WIN32_CRT_LIBS | grep crtdll\\.obj`
     lib -NOLOGO -OUT:crtdll.obj $WIN32_CRT_LIBS -EXTRACT:$WIN32_CRTDLL_FULLPATH
     if grep -q '__imp__\{0,1\}free' crtdll.obj; then
-      MOZ_GLUE_LDFLAGS='-LIBPATH:$(DIST)/lib -NODEFAULTLIB:msvcrt -NODEFAULTLIB:msvcrtd -NODEFAULTLIB:msvcprt -NODEFAULTLIB:msvcprtd -DEFAULTLIB:mozcrt'
+      MOZ_GLUE_LDFLAGS='-LIBPATH:$(DIST)/lib -NODEFAULTLIB:msvcrt -NODEFAULTLIB:msvcprt -DEFAULTLIB:mozcrt'
       dnl Also pass this to NSPR/NSS
       DLLFLAGS="$DLLFLAGS $MOZ_GLUE_LDFLAGS"
     else
@@ -8121,7 +8132,13 @@ AC_SUBST(MOZ_PIXMAN_LIBS)
 # Check for headers defining standard int types.
 if test -n "$COMPILE_ENVIRONMENT"; then
     MOZ_CHECK_HEADERS(stdint.h inttypes.h sys/int_types.h)
+
+    if test "${ac_cv_header_inttypes_h}" = "yes"; then
+        HAVE_INTTYPES_H=1
+    fi
 fi
+
+AC_SUBST(HAVE_INTTYPES_H)
 
 if test "$MOZ_TREE_CAIRO"; then
     MOZ_CAIRO_CFLAGS='-I$(LIBXUL_DIST)/include/cairo'
@@ -8853,7 +8870,6 @@ AC_SUBST(CC_VERSION)
 AC_SUBST(CXX_VERSION)
 AC_SUBST(MSMANIFEST_TOOL)
 AC_SUBST(NS_ENABLE_TSF)
-AC_SUBST(MOZ_NSS_PATCH)
 AC_SUBST(MOZ_APP_COMPONENT_LIBS)
 AC_SUBST(MOZ_APP_EXTRA_LIBS)
 
@@ -9204,6 +9220,9 @@ if test -z "$MOZ_NATIVE_NSPR"; then
         ac_configure_args="$ac_configure_args --disable-debug"
     else
         ac_configure_args="$ac_configure_args --enable-debug"
+        if test -n "$MOZ_NO_DEBUG_RTL"; then
+            ac_configure_args="$ac_configure_args --disable-debug-rtl"
+        fi
     fi
     if test "$MOZ_OPTIMIZE" = "1"; then
         ac_configure_args="$ac_configure_args --enable-optimize"

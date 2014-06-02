@@ -77,7 +77,7 @@ class RegExpObjectBuilder
     bool getOrCreateClone(HandleTypeObject type);
 
   public:
-    RegExpObjectBuilder(ExclusiveContext *cx, RegExpObject *reobj = nullptr);
+    explicit RegExpObjectBuilder(ExclusiveContext *cx, RegExpObject *reobj = nullptr);
 
     RegExpObject *reobj() { return reobj_; }
 
@@ -270,7 +270,7 @@ class RegExpGuard : public JS::CustomAutoRooter
     void operator=(const RegExpGuard &) MOZ_DELETE;
 
   public:
-    RegExpGuard(ExclusiveContext *cx)
+    explicit RegExpGuard(ExclusiveContext *cx)
       : CustomAutoRooter(cx), re_(nullptr)
     {}
 
@@ -345,7 +345,7 @@ class RegExpCompartment
     JSObject *createMatchResultTemplateObject(JSContext *cx);
 
   public:
-    RegExpCompartment(JSRuntime *rt);
+    explicit RegExpCompartment(JSRuntime *rt);
     ~RegExpCompartment();
 
     bool init(JSContext *cx);
@@ -453,18 +453,7 @@ class RegExpObject : public JSObject
     bool multiline() const  { return getFixedSlot(MULTILINE_FLAG_SLOT).toBoolean(); }
     bool sticky() const     { return getFixedSlot(STICKY_FLAG_SLOT).toBoolean(); }
 
-    void shared(RegExpGuard *g) const {
-        JS_ASSERT(maybeShared() != nullptr);
-        g->init(*maybeShared());
-    }
-
-    bool getShared(JSContext *cx, RegExpGuard *g) {
-        if (RegExpShared *shared = maybeShared()) {
-            g->init(*shared);
-            return true;
-        }
-        return createShared(cx, g);
-    }
+    bool getShared(JSContext *cx, RegExpGuard *g);
 
     void setShared(RegExpShared &shared) {
         JS_ASSERT(!maybeShared());

@@ -168,7 +168,7 @@ public:
                                      const int32_t& aCause,
                                      const int32_t& aFocusChange) MOZ_OVERRIDE;
     virtual bool RecvRequestFocus(const bool& aCanRaise) MOZ_OVERRIDE;
-    virtual bool RecvSetCursor(const uint32_t& aValue) MOZ_OVERRIDE;
+    virtual bool RecvSetCursor(const uint32_t& aValue, const bool& aForce) MOZ_OVERRIDE;
     virtual bool RecvSetBackgroundColor(const nscolor& aValue) MOZ_OVERRIDE;
     virtual bool RecvSetStatus(const uint32_t& aType, const nsString& aStatus) MOZ_OVERRIDE;
     virtual bool RecvIsParentWindowMainWidgetVisible(bool* aIsVisible);
@@ -381,8 +381,8 @@ private:
     // |aOutTargetGuid| will contain the identifier
     // of the APZC instance that handled the event. aOutTargetGuid may be
     // null.
-    void MaybeForwardEventToRenderFrame(WidgetInputEvent& aEvent,
-                                        ScrollableLayerGuid* aOutTargetGuid);
+    nsEventStatus MaybeForwardEventToRenderFrame(WidgetInputEvent& aEvent,
+                                                 ScrollableLayerGuid* aOutTargetGuid);
     // The offset for the child process which is sampled at touch start. This
     // means that the touch events are relative to where the frame was at the
     // start of the touch. We need to look for a better solution to this

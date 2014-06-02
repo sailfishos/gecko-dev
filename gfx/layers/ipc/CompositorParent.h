@@ -86,7 +86,7 @@ public:
   virtual bool RecvResume() MOZ_OVERRIDE;
   virtual bool RecvNotifyChildCreated(const uint64_t& child) MOZ_OVERRIDE;
   virtual bool RecvMakeSnapshot(const SurfaceDescriptor& aInSnapshot,
-                                SurfaceDescriptor* aOutSnapshot) MOZ_OVERRIDE;
+                                const nsIntRect& aRect) MOZ_OVERRIDE;
   virtual bool RecvFlushRendering() MOZ_OVERRIDE;
 
   virtual bool RecvNotifyRegionInvalidated(const nsIntRegion& aRegion) MOZ_OVERRIDE;
@@ -96,6 +96,7 @@ public:
   virtual void ActorDestroy(ActorDestroyReason why) MOZ_OVERRIDE;
 
   virtual void ShadowLayersUpdated(LayerTransactionParent* aLayerTree,
+                                   const uint64_t& aTransactionId,
                                    const TargetConfig& aTargetConfig,
                                    bool aIsFirstPaint,
                                    bool aScheduleComposite,
@@ -226,6 +227,7 @@ public:
     PCompositorParent* mCrossProcessParent;
     TargetConfig mTargetConfig;
     APZTestData mApzTestData;
+    LayerTransactionParent* mLayerTree;
   };
 
   /**
@@ -243,7 +245,7 @@ public:
   static bool IsInCompositorThread();
 
 protected:
-  // Private destructor, to discourage deletion outside of Release():
+  // Protected destructor, to discourage deletion outside of Release():
   virtual ~CompositorParent();
 
   virtual PLayerTransactionParent*
@@ -253,9 +255,9 @@ protected:
                                  bool* aSuccess) MOZ_OVERRIDE;
   virtual bool DeallocPLayerTransactionParent(PLayerTransactionParent* aLayers) MOZ_OVERRIDE;
   virtual void ScheduleTask(CancelableTask*, int);
-  void Composite();
-  void CompositeToTarget(gfx::DrawTarget* aTarget);
-  void ForceComposeToTarget(gfx::DrawTarget* aTarget);
+  void CompositeCallback();
+  void CompositeToTarget(gfx::DrawTarget* aTarget, const nsIntRect* aRect = nullptr);
+  void ForceComposeToTarget(gfx::DrawTarget* aTarget, const nsIntRect* aRect = nullptr);
 
   void SetEGLSurfaceSize(int width, int height);
 
@@ -327,6 +329,8 @@ protected:
   TimeStamp mExpectedComposeStartTime;
 #endif
 
+  uint64_t mPendingTransaction;
+
   bool mPaused;
 
   bool mUseExternalSurfaceSize;
@@ -342,8 +346,6 @@ protected:
   CancelableTask* mForceCompositionTask;
 
   nsRefPtr<APZCTreeManager> mApzcTreeManager;
-
-  bool mWantDidCompositeEvent;
 
   DISALLOW_EVIL_CONSTRUCTORS(CompositorParent);
 };

@@ -20,6 +20,7 @@ const isDebugBuild = Cc["@mozilla.org/xpcom/debug;1"]
 
 const SEC_ERROR_BASE = Ci.nsINSSErrorsService.NSS_SEC_ERROR_BASE;
 const SSL_ERROR_BASE = Ci.nsINSSErrorsService.NSS_SSL_ERROR_BASE;
+const PSM_ERROR_BASE = Ci.nsINSSErrorsService.PSM_ERROR_BASE;
 
 // Sort in numerical order
 const SEC_ERROR_INVALID_ARGS                            = SEC_ERROR_BASE +   5; // -8187
@@ -55,6 +56,8 @@ const SEC_ERROR_CERT_SIGNATURE_ALGORITHM_DISABLED       = SEC_ERROR_BASE + 176;
 const SEC_ERROR_APPLICATION_CALLBACK_ERROR              = SEC_ERROR_BASE + 178;
 
 const SSL_ERROR_BAD_CERT_DOMAIN                         = SSL_ERROR_BASE +  12;
+
+const PSM_ERROR_KEY_PINNING_FAILURE                     = PSM_ERROR_BASE +   0;
 
 // Supported Certificate Usages
 const certificateUsageSSLClient              = 0x0001;
@@ -441,24 +444,33 @@ function getFailingHttpServer(serverPort, serverIdentities) {
 //   what is the expected base path of the OCSP request.
 function startOCSPResponder(serverPort, identity, invalidIdentities,
                             nssDBLocation, expectedCertNames,
-                            expectedBasePaths) {
+                            expectedBasePaths, expectedMethods,
+                            expectedResponseTypes) {
   let httpServer = new HttpServer();
   httpServer.registerPrefixHandler("/",
     function handleServerCallback(aRequest, aResponse) {
       invalidIdentities.forEach(function(identity) {
         do_check_neq(aRequest.host, identity)
       });
+      do_print("got request for: " + aRequest.path);
       let basePath = aRequest.path.slice(1).split("/")[0];
       if (expectedBasePaths.length >= 1) {
         do_check_eq(basePath, expectedBasePaths.shift());
       }
       do_check_true(expectedCertNames.length >= 1);
+      if (expectedMethods && expectedMethods.length >= 1) {
+        do_check_eq(aRequest.method, expectedMethods.shift());
+      }
+      let responseType = "good";
+      if (expectedResponseTypes && expectedResponseTypes.length >= 1) {
+        responseType = expectedResponseTypes.shift();
+      }
       let expectedNick = expectedCertNames.shift();
-      do_print("Generating ocsp response for '" + expectedNick + "(" +
-               basePath + ")'");
+      do_print("Generating ocsp response(" + responseType + ") for '" +
+               expectedNick + "(" + basePath + ")'");
       aResponse.setStatusLine(aRequest.httpVersion, 200, "OK");
       aResponse.setHeader("Content-Type", "application/ocsp-response");
-      let args = [ ["good", expectedNick, "unused" ] ];
+      let args = [ [responseType, expectedNick, "unused" ] ];
       let retArray = generateOCSPResponses(args, nssDBLocation);
       let responseBody = retArray[0];
       aResponse.bodyOutputStream.write(responseBody, responseBody.length);
@@ -471,6 +483,15 @@ function startOCSPResponder(serverPort, identity, invalidIdentities,
   return {
     stop: function(callback) {
       do_check_eq(expectedCertNames.length, 0);
+      if (expectedMethods) {
+        do_check_eq(expectedMethods.length, 0);
+      }
+      if (expectedBasePaths) {
+        do_check_eq(expectedBasePaths.length, 0);
+      }
+      if (expectedResponseTypes) {
+        do_check_eq(expectedResponseTypes.length, 0);
+      }
       httpServer.stop(callback);
     }
   };

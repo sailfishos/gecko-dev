@@ -22,6 +22,7 @@ let emulator = (function() {
   function run(cmd, callback) {
     pendingCmdCount++;
     originalRunEmulatorCmd(cmd, function(result) {
+      is(result[result.length - 1], "OK", "emulator command should be OK.");
       pendingCmdCount--;
       if (callback && typeof callback === "function") {
         callback(result);
@@ -54,6 +55,23 @@ let emulator = (function() {
  * Telephony related helper functions.
  */
 (function() {
+  /**
+   * @return Promise
+   */
+  function delay(ms) {
+    let deferred = Promise.defer();
+
+    let startTime = Date.now();
+    waitFor(function() {
+      deferred.resolve();
+    },function() {
+      let duration = Date.now() - startTime;
+      return (duration >= ms);
+    });
+
+    return deferred.promise;
+  }
+
   /**
    * @return Promise
    */
@@ -1015,6 +1033,7 @@ let emulator = (function() {
    * Public members.
    */
 
+  this.gDelay = delay;
   this.gCheckInitialState = checkInitialState;
   this.gClearCalls = clearCalls;
   this.gOutCallStrPool = outCallStrPool;

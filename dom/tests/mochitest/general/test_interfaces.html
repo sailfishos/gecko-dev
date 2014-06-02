@@ -309,6 +309,8 @@ var interfaceNamesInGlobalScope =
 // IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "DOMMMIError", b2g: true, pref: "dom.mobileconnection.enabled"},
 // IMPORTANT: Do not change this list without review from a DOM peer!
+    {name: "DOMMobileMessageError", b2g: true, pref: "dom.sms.enabled"},
+// IMPORTANT: Do not change this list without review from a DOM peer!
     "DOMParser",
 // IMPORTANT: Do not change this list without review from a DOM peer!
     "DOMPoint",
@@ -577,6 +579,8 @@ var interfaceNamesInGlobalScope =
 // IMPORTANT: Do not change this list without review from a DOM peer!
     "KeyEvent",
 // IMPORTANT: Do not change this list without review from a DOM peer!
+    {name: "KeyPair", pref: "dom.webcrypto.enabled"},
+// IMPORTANT: Do not change this list without review from a DOM peer!
     "KeyboardEvent",
 // IMPORTANT: Do not change this list without review from a DOM peer!
     "LocalMediaStream",
@@ -709,7 +713,9 @@ var interfaceNamesInGlobalScope =
 // IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "MozWifiConnectionInfoEvent", b2g: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!
-    {name: "MozWifiManager", b2g: true, permission: "wifi-manage"},
+    {name: "MozWifiStationInfoEvent", b2g: true},
+// IMPORTANT: Do not change this list without review from a DOM peer!
+   {name: "MozWifiManager", b2g: true, permission: "wifi-manage"},
 // IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "MozWifiNetwork", b2g: true, permission: "wifi-manage"},
 // IMPORTANT: Do not change this list without review from a DOM peer!
@@ -777,7 +783,7 @@ var interfaceNamesInGlobalScope =
 // IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "PermissionSettings", b2g: true, permission: "permissions"},
 // IMPORTANT: Do not change this list without review from a DOM peer!
-    "PhoneNumberService",
+    {name: "PhoneNumberService", permission: "phonenumberservice"},
 // IMPORTANT: Do not change this list without review from a DOM peer!
     "Plugin",
 // IMPORTANT: Do not change this list without review from a DOM peer!
@@ -1194,8 +1200,6 @@ var interfaceNamesInGlobalScope =
     "WheelEvent",
 // IMPORTANT: Do not change this list without review from a DOM peer!
     "Window",
-// IMPORTANT: Do not change this list without review from a DOM peer!
-    "WindowUtils",
 // IMPORTANT: Do not change this list without review from a DOM peer!
     "Worker",
 // IMPORTANT: Do not change this list without review from a DOM peer!

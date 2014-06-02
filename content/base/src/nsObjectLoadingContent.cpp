@@ -920,7 +920,8 @@ NS_IMETHODIMP
 nsObjectLoadingContent::OnStartRequest(nsIRequest *aRequest,
                                        nsISupports *aContext)
 {
-  PROFILER_LABEL("nsObjectLoadingContent", "OnStartRequest");
+  PROFILER_LABEL("nsObjectLoadingContent", "OnStartRequest",
+    js::ProfileEntry::Category::NETWORK);
 
   LOG(("OBJLC [%p]: Channel OnStartRequest", this));
 
@@ -982,6 +983,9 @@ nsObjectLoadingContent::OnStopRequest(nsIRequest *aRequest,
                                       nsISupports *aContext,
                                       nsresult aStatusCode)
 {
+  PROFILER_LABEL("nsObjectLoadingContent", "OnStopRequest",
+    js::ProfileEntry::Category::NETWORK);
+
   NS_ENSURE_TRUE(nsContentUtils::IsCallerChrome(), NS_ERROR_NOT_AVAILABLE);
 
   if (aRequest != mChannel) {
@@ -1532,14 +1536,14 @@ nsObjectLoadingContent::UpdateObjectParameters(bool aJavaURI)
 
   if (isJava && hasCodebase && codebaseStr.IsEmpty()) {
     // Java treats codebase="" as "/"
-    codebaseStr.AssignLiteral("/");
+    codebaseStr.Assign('/');
     // XXX(johns): This doesn't cover the case of "https:" which java would
     //             interpret as "https:///" but we interpret as this document's
     //             URI but with a changed scheme.
   } else if (isJava && !hasCodebase) {
     // Java expects a directory as the codebase, or else it will construct
     // relative URIs incorrectly :(
-    codebaseStr.AssignLiteral(".");
+    codebaseStr.Assign('.');
   }
 
   if (!codebaseStr.IsEmpty()) {

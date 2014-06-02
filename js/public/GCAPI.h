@@ -249,7 +249,7 @@ enum GCProgress {
 struct JS_FRIEND_API(GCDescription) {
     bool isCompartment_;
 
-    GCDescription(bool isCompartment)
+    explicit GCDescription(bool isCompartment)
       : isCompartment_(isCompartment) {}
 
     jschar *formatMessage(JSRuntime *rt) const;
@@ -341,7 +341,7 @@ class JS_FRIEND_API(AutoDisableGenerationalGC)
 #endif
 
   public:
-    AutoDisableGenerationalGC(JSRuntime *rt);
+    explicit AutoDisableGenerationalGC(JSRuntime *rt);
     ~AutoDisableGenerationalGC();
 };
 
@@ -369,9 +369,27 @@ extern JS_FRIEND_API(void)
 ShrinkGCBuffers(JSRuntime *rt);
 
 /*
- * Assert if any GC occured while this guard object was live. This is most
- * useful to help the exact rooting hazard analysis in complex regions, since
- * it cannot understand dataflow.
+ * Assert if a GC occurs while this class is live. This class does not disable
+ * the static rooting hazard analysis.
+ */
+class JS_PUBLIC_API(AutoAssertOnGC)
+{
+    JSRuntime *runtime;
+    size_t gcNumber;
+
+  public:
+    AutoAssertOnGC();
+    explicit AutoAssertOnGC(JSRuntime *rt);
+    ~AutoAssertOnGC();
+
+    static void VerifyIsSafeToGC(JSRuntime *rt);
+};
+
+/*
+ * Disable the static rooting hazard analysis in the live region, but assert if
+ * any GC occurs while this guard object is live. This is most useful to help
+ * the exact rooting hazard analysis in complex regions, since it cannot
+ * understand dataflow.
  *
  * Note: GC behavior is unpredictable even when deterministice and is generally
  *       non-deterministic in practice. The fact that this guard has not
@@ -381,22 +399,28 @@ ShrinkGCBuffers(JSRuntime *rt);
  *       that the hazard analysis is correct for that code, rather than relying
  *       on this class.
  */
-class JS_PUBLIC_API(AutoAssertNoGC)
+class JS_PUBLIC_API(AutoSuppressGCAnalysis) : public AutoAssertOnGC
 {
-#ifdef JS_DEBUG
-    JSRuntime *runtime;
-    size_t gcNumber;
+  public:
+    AutoSuppressGCAnalysis() : AutoAssertOnGC() {}
+    explicit AutoSuppressGCAnalysis(JSRuntime *rt) : AutoAssertOnGC(rt) {}
+};
 
+/*
+ * Place AutoCheckCannotGC in scopes that you believe can never GC. These
+ * annotations will be verified both dynamically via AutoAssertOnGC, and
+ * statically with the rooting hazard analysis (implemented by making the
+ * analysis consider AutoCheckCannotGC to be a GC pointer, and therefore
+ * complain if it is live across a GC call.) It is useful when dealing with
+ * internal pointers to GC things where the GC thing itself may not be present
+ * for the static analysis: e.g. acquiring inline chars from a JSString* on the
+ * heap.
+ */
+class JS_PUBLIC_API(AutoCheckCannotGC) : public AutoAssertOnGC
+{
   public:
-    AutoAssertNoGC();
-    AutoAssertNoGC(JSRuntime *rt);
-    ~AutoAssertNoGC();
-#else
-  public:
-    /* Prevent unreferenced local warnings in opt builds. */
-    AutoAssertNoGC() {}
-    AutoAssertNoGC(JSRuntime *) {}
-#endif
+    AutoCheckCannotGC() : AutoAssertOnGC() {}
+    explicit AutoCheckCannotGC(JSRuntime *rt) : AutoAssertOnGC(rt) {}
 };
 
 class JS_PUBLIC_API(ObjectPtr)
@@ -406,7 +430,7 @@ class JS_PUBLIC_API(ObjectPtr)
   public:
     ObjectPtr() : value(nullptr) {}
 
-    ObjectPtr(JSObject *obj) : value(obj) {}
+    explicit ObjectPtr(JSObject *obj) : value(obj) {}
 
     /* Always call finalize before the destructor. */
     ~ObjectPtr() { MOZ_ASSERT(!value); }

@@ -336,6 +336,12 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(nsXULElement,
     }
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
+NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(nsXULElement,
+                                                nsStyledElement)
+    // Why aren't we unlinking the prototype?
+    tmp->ClearHasID();
+NS_IMPL_CYCLE_COLLECTION_UNLINK_END
+
 NS_IMPL_ADDREF_INHERITED(nsXULElement, nsStyledElement)
 NS_IMPL_RELEASE_INHERITED(nsXULElement, nsStyledElement)
 
@@ -1503,7 +1509,6 @@ nsXULElement::GetBoxObject(ErrorResult& rv)
   }
 
 
-NS_IMPL_XUL_STRING_ATTR(ClassName, _class)
 NS_IMPL_XUL_STRING_ATTR(Align, align)
 NS_IMPL_XUL_STRING_ATTR(Dir, dir)
 NS_IMPL_XUL_STRING_ATTR(Flex, flex)
@@ -2716,14 +2721,11 @@ OffThreadScriptReceiverCallback(void *aToken, void *aCallbackData)
 
 nsresult
 nsXULPrototypeScript::Compile(JS::SourceBufferHolder& aSrcBuf,
-                              nsIURI* aURI,
-                              uint32_t aLineNo,
+                              nsIURI* aURI, uint32_t aLineNo,
                               nsIDocument* aDocument,
-                              nsXULPrototypeDocument* aProtoDoc,
                               nsIOffThreadScriptReceiver *aOffThreadReceiver /* = nullptr */)
 {
     // We'll compile the script in the compilation scope.
-    NS_ENSURE_STATE(aProtoDoc);
     NS_ENSURE_TRUE(xpc::GetCompilationScope(), NS_ERROR_UNEXPECTED);
     AutoSafeJSContext cx;
     JSAutoCompartment ac(cx, xpc::GetCompilationScope());
@@ -2770,12 +2772,11 @@ nsXULPrototypeScript::Compile(const char16_t* aText,
                               nsIURI* aURI,
                               uint32_t aLineNo,
                               nsIDocument* aDocument,
-                              nsXULPrototypeDocument* aProtoDoc,
                               nsIOffThreadScriptReceiver *aOffThreadReceiver /* = nullptr */)
 {
   JS::SourceBufferHolder srcBuf(aText, aTextLength,
                                 JS::SourceBufferHolder::NoOwnership);
-  return Compile(srcBuf, aURI, aLineNo, aDocument, aProtoDoc, aOffThreadReceiver);
+  return Compile(srcBuf, aURI, aLineNo, aDocument, aOffThreadReceiver);
 }
 
 void

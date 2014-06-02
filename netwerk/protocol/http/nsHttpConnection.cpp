@@ -223,12 +223,12 @@ nsHttpConnection::StartSpdy(uint8_t spdyVersion)
         // This is ok - treat mTransaction as a single real request.
         // Wrap the old http transaction into the new spdy session
         // as the first stream.
+        LOG(("nsHttpConnection::StartSpdy moves single transaction %p "
+             "into SpdySession %p\n", mTransaction.get(), mSpdySession.get()));
         rv = AddTransaction(mTransaction, mPriority);
         if (NS_FAILED(rv)) {
             return;
         }
-        LOG(("nsHttpConnection::StartSpdy moves single transaction %p "
-             "into SpdySession %p\n", mTransaction.get(), mSpdySession.get()));
     } else {
         int32_t count = list.Length();
 
@@ -261,7 +261,7 @@ nsHttpConnection::StartSpdy(uint8_t spdyVersion)
     if (!mTLSFilter) {
         mTransaction = mSpdySession;
     } else {
-        mTLSFilter->AddTransaction(mSpdySession);
+        mTLSFilter->SetProxiedTransaction(mSpdySession);
     }
 }
 
@@ -428,7 +428,7 @@ nsHttpConnection::Activate(nsAHttpTransaction *trans, uint32_t caps, int32_t pri
     }
 
     if (mTLSFilter) {
-        mTLSFilter->AddTransaction(trans);
+        mTLSFilter->SetProxiedTransaction(trans);
         mTransaction = mTLSFilter;
     }
 
@@ -1759,14 +1759,11 @@ nsHttpConnection::MakeConnectString(nsAHttpTransaction *trans,
     request->SetHeader(nsHttp::Proxy_Connection, NS_LITERAL_CSTRING("keep-alive"));
     request->SetHeader(nsHttp::Connection, NS_LITERAL_CSTRING("keep-alive"));
 
-    const char *val = trans->RequestHead()->PeekHeader(nsHttp::Host);
-    if (val) {
-        // all HTTP/1.1 requests must include a Host header (even though it
-        // may seem redundant in this case; see bug 82388).
-        request->SetHeader(nsHttp::Host, nsDependentCString(val));
-    }
+    // all HTTP/1.1 requests must include a Host header (even though it
+    // may seem redundant in this case; see bug 82388).
+    request->SetHeader(nsHttp::Host, result);
 
-    val = trans->RequestHead()->PeekHeader(nsHttp::Proxy_Authorization);
+    const char *val = trans->RequestHead()->PeekHeader(nsHttp::Proxy_Authorization);
     if (val) {
         // we don't know for sure if this authorization is intended for the
         // SSL proxy, so we add it just in case.

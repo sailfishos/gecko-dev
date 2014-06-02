@@ -490,9 +490,11 @@ var BrowserApp = {
 
         let newtabStrings = Strings.browser.GetStringFromName("newtabpopup.opened");
         let label = PluralForm.get(1, newtabStrings).replace("#1", 1);
+        let buttonLabel = Strings.browser.GetStringFromName("newtabpopup.switch");
         NativeWindow.toast.show(label, "long", {
           button: {
-            icon: "drawable://select_opened_tab",
+            icon: "drawable://switch_button_icon",
+            label: buttonLabel,
             callback: () => { BrowserApp.selectTab(tab); },
           }
         });
@@ -507,9 +509,11 @@ var BrowserApp = {
 
         let newtabStrings = Strings.browser.GetStringFromName("newprivatetabpopup.opened");
         let label = PluralForm.get(1, newtabStrings).replace("#1", 1);
+        let buttonLabel = Strings.browser.GetStringFromName("newtabpopup.switch");
         NativeWindow.toast.show(label, "long", {
           button: {
-            icon: "drawable://select_opened_tab",
+            icon: "drawable://switch_button_icon",
+            label: buttonLabel,
             callback: () => { BrowserApp.selectTab(tab); },
           }
         });
@@ -964,7 +968,7 @@ var BrowserApp = {
 
   // Calling this will update the state in BrowserApp after a tab has been
   // closed in the Java UI.
-  _handleTabClosed: function _handleTabClosed(aTab) {
+  _handleTabClosed: function _handleTabClosed(aTab, aShowUndoToast) {
     if (aTab == this.selectedTab)
       this.selectedTab = null;
 
@@ -972,8 +976,25 @@ var BrowserApp = {
     evt.initUIEvent("TabClose", true, false, window, null);
     aTab.browser.dispatchEvent(evt);
 
+    // Get a title for the undo close toast. Fall back to the URL if there is no title.
+    let title = aTab.browser.contentDocument.title || aTab.browser.contentDocument.URL;
+
     aTab.destroy();
     this._tabs.splice(this._tabs.indexOf(aTab), 1);
+
+    if (aShowUndoToast) {
+      let message = Strings.browser.formatStringFromName("undoCloseToast.message", [title], 1);
+      NativeWindow.toast.show(message, "short", {
+        button: {
+          icon: "drawable://undo_button_icon",
+          label: Strings.browser.GetStringFromName("undoCloseToast.action2"),
+          callback: function() {
+            let ss = Cc["@mozilla.org/browser/sessionstore;1"].getService(Ci.nsISessionStore);
+            ss.undoCloseTab(window, 0);
+          }
+        }
+      });
+    }
   },
 
   // Use this method to select a tab from JS. This method sends a message
@@ -1503,9 +1524,11 @@ var BrowserApp = {
         this._handleTabSelected(this.getTabForId(parseInt(aData)));
         break;
 
-      case "Tab:Closed":
-        this._handleTabClosed(this.getTabForId(parseInt(aData)));
+      case "Tab:Closed": {
+        let data = JSON.parse(aData);
+        this._handleTabClosed(this.getTabForId(data.tabId), data.showUndoToast);
         break;
+      }
 
       case "keyword-search":
         // This event refers to a search via the URL bar, not a bookmarks

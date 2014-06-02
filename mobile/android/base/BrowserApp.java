@@ -235,14 +235,6 @@ abstract public class BrowserApp extends GeckoApp
             case SELECTED:
                 if (Tabs.getInstance().isSelectedTab(tab)) {
                     updateHomePagerForTab(tab);
-
-                    final TabsPanel.Panel panel = tab.isPrivate()
-                                                ? TabsPanel.Panel.PRIVATE_TABS
-                                                : TabsPanel.Panel.NORMAL_TABS;
-
-                    if (areTabsShown() && mTabsPanel.getCurrentPanel() != panel) {
-                        showTabs(panel);
-                    }
                 }
                 break;
             case START:
@@ -1625,6 +1617,10 @@ abstract public class BrowserApp extends GeckoApp
             throw new IllegalArgumentException("Cannot handle null URLs in enterEditingMode");
         }
 
+        if (mBrowserToolbar.isEditing() || mBrowserToolbar.isAnimating()) {
+            return;
+        }
+
         final Tab selectedTab = Tabs.getInstance().getSelectedTab();
         mTargetTabForEditingMode = (selectedTab != null ? selectedTab.getId() : null);
 
@@ -1707,7 +1703,9 @@ abstract public class BrowserApp extends GeckoApp
                 // Otherwise, construct a search query from the bookmark keyword.
                 final String searchUrl = keywordUrl.replace("%s", URLEncoder.encode(keywordSearch));
                 Tabs.getInstance().loadUrl(searchUrl, Tabs.LOADURL_USER_ENTERED);
-                Telemetry.sendUIEvent(TelemetryContract.Event.LOAD_URL, "", "keyword");
+                Telemetry.sendUIEvent(TelemetryContract.Event.LOAD_URL,
+                                      TelemetryContract.Method.NONE,
+                                      "keyword");
             }
         });
     }
@@ -1805,31 +1803,30 @@ abstract public class BrowserApp extends GeckoApp
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
         Log.d(LOGTAG, "onActivityResult: " + requestCode + ", " + resultCode + ", " + data);
         switch (requestCode) {
-        case ACTIVITY_REQUEST_PREFERENCES:
-            // We just returned from preferences. If our locale changed,
-            // we need to redisplay at this point, and do any other browser-level
-            // bookkeeping that we associate with a locale change.
-            if (resultCode != GeckoPreferences.RESULT_CODE_LOCALE_DID_CHANGE) {
-                Log.d(LOGTAG, "No locale change returning from preferences; nothing to do.");
-                return;
-            }
-
-            ThreadUtils.postToBackgroundThread(new Runnable() {
-                @Override
-                public void run() {
-                    final LocaleManager localeManager = BrowserLocaleManager.getInstance();
-                    final Locale locale = localeManager.getCurrentLocale(getApplicationContext());
-                    Log.d(LOGTAG, "Read persisted locale " + locale);
-                    if (locale == null) {
-                        return;
-                    }
-                    onLocaleChanged(BrowserLocaleManager.getLanguageTag(locale));
+            case ACTIVITY_REQUEST_PREFERENCES:
+                // We just returned from preferences. If our locale changed,
+                // we need to redisplay at this point, and do any other browser-level
+                // bookkeeping that we associate with a locale change.
+                if (resultCode != GeckoPreferences.RESULT_CODE_LOCALE_DID_CHANGE) {
+                    Log.d(LOGTAG, "No locale change returning from preferences; nothing to do.");
+                    return;
                 }
-            });
 
-            return;
-        default:
-            return;
+                ThreadUtils.postToBackgroundThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        final LocaleManager localeManager = BrowserLocaleManager.getInstance();
+                        final Locale locale = localeManager.getCurrentLocale(getApplicationContext());
+                        Log.d(LOGTAG, "Read persisted locale " + locale);
+                        if (locale == null) {
+                            return;
+                        }
+                        onLocaleChanged(BrowserLocaleManager.getLanguageTag(locale));
+                    }
+                });
+                break;
+            default:
+                super.onActivityResult(requestCode, resultCode, data);
         }
     }
 

@@ -312,7 +312,7 @@ class MacroAssemblerARM : public Assembler
     void ma_vpush(VFPRegister r);
 
     // branches when done from within arm-specific code
-    void ma_b(Label *dest, Condition c = Always, bool isPatchable = false);
+    BufferOffset ma_b(Label *dest, Condition c = Always, bool isPatchable = false);
     void ma_bx(Register dest, Condition c = Always);
 
     void ma_b(void *target, Relocation::Kind reloc, Condition c = Always);
@@ -699,7 +699,7 @@ class MacroAssemblerARMCompat : public MacroAssemblerARM
     }
 
     CodeOffsetLabel movWithPatch(ImmWord imm, Register dest) {
-        CodeOffsetLabel label = currentOffset();
+        CodeOffsetLabel label = CodeOffsetLabel(currentOffset());
         ma_movPatchable(Imm32(imm.value), dest, Always, hasMOVWT() ? L_MOVWT : L_LDR);
         return label;
     }
@@ -992,6 +992,10 @@ class MacroAssemblerARMCompat : public MacroAssemblerARM
         ma_ldr(Operand(address.base, address.offset), ScratchRegister);
         branchTest32(cond, ScratchRegister, imm, label);
     }
+    void branchTest32(Condition cond, AbsoluteAddress address, Imm32 imm, Label *label) {
+        loadPtr(address, ScratchRegister);
+        branchTest32(cond, ScratchRegister, imm, label);
+    }
     void branchTestPtr(Condition cond, Register lhs, Register rhs, Label *label) {
         branchTest32(cond, lhs, rhs, label);
     }
@@ -1087,6 +1091,10 @@ class MacroAssemblerARMCompat : public MacroAssemblerARM
             load32(address, dest.gpr());
     }
 
+    template <typename T>
+    void storeUnboxedValue(ConstantOrRegister value, MIRType valueType, const T &dest,
+                           MIRType slotType);
+
     void moveValue(const Value &val, const ValueOperand &dest);
 
     void moveValue(const ValueOperand &src, const ValueOperand &dest) {
@@ -1181,18 +1189,16 @@ class MacroAssemblerARMCompat : public MacroAssemblerARM
     }
     void storePayload(const Value &val, Operand dest);
     void storePayload(Register src, Operand dest);
-    void storePayload(const Value &val, Register base, Register index, int32_t shift = defaultShift);
-    void storePayload(Register src, Register base, Register index, int32_t shift = defaultShift);
+    void storePayload(const Value &val, const BaseIndex &dest);
+    void storePayload(Register src, const BaseIndex &dest);
     void storeTypeTag(ImmTag tag, Operand dest);
-    void storeTypeTag(ImmTag tag, Register base, Register index, int32_t shift = defaultShift);
+    void storeTypeTag(ImmTag tag, const BaseIndex &dest);
 
     void makeFrameDescriptor(Register frameSizeReg, FrameType type) {
         ma_lsl(Imm32(FRAMESIZE_SHIFT), frameSizeReg, frameSizeReg);
         ma_orr(Imm32(type), frameSizeReg);
     }
 
-    void linkExitFrame();
-    void linkParallelExitFrame(Register pt);
     void handleFailureWithHandler(void *handler);
     void handleFailureWithHandlerTail();
 
@@ -1293,6 +1299,7 @@ class MacroAssemblerARMCompat : public MacroAssemblerARM
     void and32(Register src, Register dest);
     void and32(Imm32 imm, Register dest);
     void and32(Imm32 imm, const Address &dest);
+    void and32(const Address &src, Register dest);
     void or32(Imm32 imm, const Address &dest);
     void xorPtr(Imm32 imm, Register dest);
     void xorPtr(Register src, Register dest);

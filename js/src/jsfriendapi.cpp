@@ -74,12 +74,6 @@ JS_GetAnonymousString(JSRuntime *rt)
     return rt->commonNames->anonymous;
 }
 
-JS_FRIEND_API(void)
-JS_SetIsWorkerRuntime(JSRuntime *rt)
-{
-    rt->setIsWorkerRuntime();
-}
-
 JS_FRIEND_API(JSObject *)
 JS_FindCompilationScope(JSContext *cx, HandleObject objArg)
 {
@@ -684,7 +678,7 @@ JS_SetAccumulateTelemetryCallback(JSRuntime *rt, JSAccumulateTelemetryDataCallba
 JS_FRIEND_API(JSObject *)
 JS_CloneObject(JSContext *cx, HandleObject obj, HandleObject protoArg, HandleObject parent)
 {
-    Rooted<js::TaggedProto> proto(cx, protoArg.get());
+    Rooted<TaggedProto> proto(cx, TaggedProto(protoArg.get()));
     return CloneObject(cx, obj, proto, parent);
 }
 

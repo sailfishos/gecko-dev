@@ -52,11 +52,15 @@ let WebAudioGraphView = {
   initialize: function() {
     this._onGraphNodeClick = this._onGraphNodeClick.bind(this);
     this._onThemeChange = this._onThemeChange.bind(this);
+    this._onNodeSelect = this._onNodeSelect.bind(this);
+    this._onStartContext = this._onStartContext.bind(this);
 
     this.draw = debounce(this.draw.bind(this), GRAPH_DEBOUNCE_TIMER);
     $('#graph-target').addEventListener('click', this._onGraphNodeClick, false);
 
     window.on(EVENTS.THEME_CHANGE, this._onThemeChange);
+    window.on(EVENTS.UI_INSPECTOR_NODE_SET, this._onNodeSelect);
+    window.on(EVENTS.START_CONTEXT, this._onStartContext);
   },
 
   /**
@@ -68,6 +72,8 @@ let WebAudioGraphView = {
     }
     $('#graph-target').removeEventListener('click', this._onGraphNodeClick, false);
     window.off(EVENTS.THEME_CHANGE, this._onThemeChange);
+    window.off(EVENTS.UI_INSPECTOR_NODE_SET, this._onNodeSelect);
+    window.off(EVENTS.START_CONTEXT, this._onStartContext);
   },
 
   /**
@@ -75,21 +81,7 @@ let WebAudioGraphView = {
    * and clears out old content
    */
   resetUI: function () {
-    $("#reload-notice").hidden = true;
-    $("#waiting-notice").hidden = false;
-    $("#content").hidden = true;
     this.resetGraph();
-  },
-
-  /**
-   * Called once "start-context" is fired, indicating that there is audio context
-   * activity to view and inspect
-   */
-  showContent: function () {
-    $("#reload-notice").hidden = true;
-    $("#waiting-notice").hidden = true;
-    $("#content").hidden = false;
-    this.draw();
   },
 
   /**
@@ -101,20 +93,18 @@ let WebAudioGraphView = {
   },
 
   /**
-   * Makes the corresponding graph node appear "focused", called from WebAudioParamView
+   * Makes the corresponding graph node appear "focused", removing
+   * focused styles from all other nodes. If no `actorID` specified,
+   * make all nodes appear unselected.
+   * Called from UI_INSPECTOR_NODE_SELECT.
    */
   focusNode: function (actorID) {
     // Remove class "selected" from all nodes
-    Array.prototype.forEach.call($$(".nodes > g"), $node => $node.classList.remove("selected"));
+    Array.forEach($$(".nodes > g"), $node => $node.classList.remove("selected"));
     // Add to "selected"
-    this._getNodeByID(actorID).classList.add("selected");
-  },
-
-  /**
-   * Unfocuses the corresponding graph node, called from WebAudioParamView
-   */
-  blurNode: function (actorID) {
-    this._getNodeByID(actorID).classList.remove("selected");
+    if (actorID) {
+      this._getNodeByID(actorID).classList.add("selected");
+    }
   },
 
   /**
@@ -233,6 +223,18 @@ let WebAudioGraphView = {
   /**
    * Event handlers
    */
+
+  /**
+   * Called once "start-context" is fired, indicating that there is an audio
+   * context being created to view so render the graph.
+   */
+  _onStartContext: function () {
+    this.draw();
+  },
+
+  _onNodeSelect: function (eventName, id) {
+    this.focusNode(id);
+  },
 
   /**
    * Fired when the devtools theme changes.

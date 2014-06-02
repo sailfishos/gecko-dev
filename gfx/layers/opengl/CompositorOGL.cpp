@@ -154,10 +154,6 @@ CompositorOGL::CreateContext()
 void
 CompositorOGL::Destroy()
 {
-  if (gl() && gl()->MakeCurrent()) {
-    mVBOs.Flush(gl());
-  }
-
   if (mTexturePool) {
     mTexturePool->Clear();
     mTexturePool = nullptr;
@@ -334,11 +330,35 @@ CompositorOGL::Initialize()
   mGLContext->fGenBuffers(1, &mQuadVBO);
   mGLContext->fBindBuffer(LOCAL_GL_ARRAY_BUFFER, mQuadVBO);
 
+  // 4 quads, with the number of the quad (vertexID) encoded in w.
   GLfloat vertices[] = {
-    /* First quad vertices */
-    0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
-    /* Then quad texcoords */
-    0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
+    0.0f, 0.0f, 0.0f, 0.0f,
+    1.0f, 0.0f, 0.0f, 0.0f,
+    0.0f, 1.0f, 0.0f, 0.0f,
+    1.0f, 0.0f, 0.0f, 0.0f,
+    0.0f, 1.0f, 0.0f, 0.0f,
+    1.0f, 1.0f, 0.0f, 0.0f,
+
+    0.0f, 0.0f, 0.0f, 1.0f,
+    1.0f, 0.0f, 0.0f, 1.0f,
+    0.0f, 1.0f, 0.0f, 1.0f,
+    1.0f, 0.0f, 0.0f, 1.0f,
+    0.0f, 1.0f, 0.0f, 1.0f,
+    1.0f, 1.0f, 0.0f, 1.0f,
+
+    0.0f, 0.0f, 0.0f, 2.0f,
+    1.0f, 0.0f, 0.0f, 2.0f,
+    0.0f, 1.0f, 0.0f, 2.0f,
+    1.0f, 0.0f, 0.0f, 2.0f,
+    0.0f, 1.0f, 0.0f, 2.0f,
+    1.0f, 1.0f, 0.0f, 2.0f,
+
+    0.0f, 0.0f, 0.0f, 3.0f,
+    1.0f, 0.0f, 0.0f, 3.0f,
+    0.0f, 1.0f, 0.0f, 3.0f,
+    1.0f, 0.0f, 0.0f, 3.0f,
+    0.0f, 1.0f, 0.0f, 3.0f,
+    1.0f, 1.0f, 0.0f, 3.0f,
   };
   HeapCopyOfStackArray<GLfloat> verticesOnHeap(vertices);
   mGLContext->fBufferData(LOCAL_GL_ARRAY_BUFFER,
@@ -403,6 +423,12 @@ SetRects(int n,
   aTextureRects[n] = Rect(tx0, ty0, tx1 - tx0, ty1 - ty0);
 }
 
+static inline bool
+FuzzyEqual(float a, float b)
+{
+  return fabs(a - b) < 0.0001f;
+}
+
 static int
 DecomposeIntoNoRepeatRects(const Rect& aRect,
                            const Rect& aTexCoordRect,
@@ -416,61 +442,47 @@ DecomposeIntoNoRepeatRects(const Rect& aRect,
   bool flipped = false;
   if (texCoordRect.height < 0) {
     flipped = true;
-    texCoordRect.y = texCoordRect.YMost();
+    texCoordRect.y += texCoordRect.height;
     texCoordRect.height = -texCoordRect.height;
   }
 
+  // Wrap the texture coordinates so they are within [0,1] and cap width/height
+  // at 1. We rely on this below.
+  texCoordRect = Rect(Point(WrapTexCoord(texCoordRect.x),
+                            WrapTexCoord(texCoordRect.y)),
+                      Size(std::min(texCoordRect.width, 1.0f),
+                           std::min(texCoordRect.height, 1.0f)));
+
+  NS_ASSERTION(texCoordRect.x >= 0.0f && texCoordRect.x <= 1.0f &&
+               texCoordRect.y >= 0.0f && texCoordRect.y <= 1.0f &&
+               texCoordRect.width >= 0.0f && texCoordRect.width <= 1.0f &&
+               texCoordRect.height >= 0.0f && texCoordRect.height <= 1.0f &&
+               texCoordRect.XMost() >= 0.0f && texCoordRect.XMost() <= 2.0f &&
+               texCoordRect.YMost() >= 0.0f && texCoordRect.YMost() <= 2.0f,
+               "We just wrapped the texture coordinates, didn't we?");
+
+  // Get the top left and bottom right points of the rectangle. Note that
+  // tl.x/tl.y are within [0,1] but br.x/br.y are within [0,2].
   Point tl = texCoordRect.TopLeft();
   Point br = texCoordRect.BottomRight();
 
-  // Chen check if we wrap in either the x or y axis; if we do,
-  // then also use fmod to figure out the "true" non-wrapping
-  // texture coordinates.
-  bool xwrap = false, ywrap = false;
-
-  if (texCoordRect.x < 0 ||
-      texCoordRect.x > 1.0f ||
-      texCoordRect.XMost() < 0 ||
-      texCoordRect.XMost() > 1.0f) {
-    xwrap = true;
-    tl = Point(WrapTexCoord(tl.x), tl.y);
-    br = Point(WrapTexCoord(br.x), br.y);
-  }
-
-  if (texCoordRect.y < 0 ||
-      texCoordRect.y > 1.0f ||
-      texCoordRect.YMost() < 0 ||
-      texCoordRect.YMost() > 1.0f) {
-    ywrap = true;
-    tl = Point(tl.x, WrapTexCoord(tl.y));
-    br = Point(br.x, WrapTexCoord(br.y));
-  }
-
   NS_ASSERTION(tl.x >= 0.0f && tl.x <= 1.0f &&
                tl.y >= 0.0f && tl.y <= 1.0f &&
-               br.x >= 0.0f && br.x <= 1.0f &&
-               br.y >= 0.0f && br.y <= 1.0f,
+               br.x >= tl.x && br.x <= 2.0f &&
+               br.y >= tl.y && br.y <= 2.0f &&
+               br.x - tl.x <= 1.0f &&
+               br.y - tl.y <= 1.0f,
                "Somehow generated invalid texture coordinates");
 
-  // If xwrap is false, the texture will be sampled from tl.x
-  // .. br.x.  If xwrap is true, then it will be split into tl.x
-  // .. 1.0, and 0.0 .. br.x.  Same for the Y axis.  The
-  // destination rectangle is also split appropriately, according
-  // to the calculated xmid/ymid values.
+  // Then check if we wrap in either the x or y axis.
+  bool xwrap = br.x > 1.0f;
+  bool ywrap = br.y > 1.0f;
 
-  // There isn't a 1:1 mapping between tex coords and destination coords;
-  // when computing midpoints, we have to take that into account.  We
-  // need to map the texture coords, which are (in the wrap case):
-  // |tl->1| and |0->br| to the |0->1| range of the vertex coords.  So
-  // we have the length (1-tl)+(br) that needs to map into 0->1.
-  // These are only valid if there is wrap involved, they won't be used
-  // otherwise.
-  GLfloat xlen = (1.0f - tl.x) + br.x;
-  GLfloat ylen = (1.0f - tl.y) + br.y;
-
-  NS_ASSERTION(!xwrap || xlen > 0.0f, "xlen isn't > 0, what's going on?");
-  NS_ASSERTION(!ywrap || ylen > 0.0f, "ylen isn't > 0, what's going on?");
-
+  // If xwrap is false, the texture will be sampled from tl.x .. br.x.
+  // If xwrap is true, then it will be split into tl.x .. 1.0, and
+  // 0.0 .. WrapTexCoord(br.x). Same for the Y axis. The destination
+  // rectangle is also split appropriately, according to the calculated
+  // xmid/ymid values.
   if (!xwrap && !ywrap) {
     SetRects(0, aLayerRects, aTextureRects,
              aRect.x, aRect.y, aRect.XMost(), aRect.YMost(),
@@ -479,8 +491,28 @@ DecomposeIntoNoRepeatRects(const Rect& aRect,
     return 1;
   }
 
-  GLfloat xmid = aRect.x + (1.0f - tl.x) / xlen * aRect.width;
-  GLfloat ymid = aRect.y + (1.0f - tl.y) / ylen * aRect.height;
+  // If we are dealing with wrapping br.x and br.y are greater than 1.0 so
+  // wrap them here as well.
+  br = Point(xwrap ? WrapTexCoord(br.x) : br.x,
+             ywrap ? WrapTexCoord(br.y) : br.y);
+
+  // If we wrap around along the x axis, we will draw first from
+  // tl.x .. 1.0 and then from 0.0 .. br.x (which we just wrapped above).
+  // The same applies for the Y axis. The midpoints we calculate here are
+  // only valid if we actually wrap around.
+  GLfloat xmid = aRect.x + (1.0f - tl.x) / texCoordRect.width * aRect.width;
+  GLfloat ymid = aRect.y + (1.0f - tl.y) / texCoordRect.height * aRect.height;
+
+  NS_ASSERTION(!xwrap ||
+               (xmid > aRect.x &&
+                xmid < aRect.XMost() &&
+                FuzzyEqual((xmid - aRect.x) + (aRect.XMost() - xmid), aRect.width)),
+               "xmid should be within [x,XMost()] and the wrapped rect should have the same width");
+  NS_ASSERTION(!ywrap ||
+               (ymid > aRect.y &&
+                ymid < aRect.YMost() &&
+                FuzzyEqual((ymid - aRect.y) + (aRect.YMost() - ymid), aRect.height)),
+               "ymid should be within [y,YMost()] and the wrapped rect should have the same height");
 
   if (!xwrap && ywrap) {
     SetRects(0, aLayerRects, aTextureRects,
@@ -543,9 +575,7 @@ CompositorOGL::BindAndDrawQuadWithTextureRect(ShaderProgramOGL *aProg,
                                          aTexCoordRect,
                                          layerRects,
                                          textureRects);
-  for (int n = 0; n < rects; ++n) {
-    BindAndDrawQuad(aProg, layerRects[n], textureRects[n]);
-  }
+  BindAndDrawQuads(aProg, rects, layerRects, textureRects);
 }
 
 void
@@ -687,12 +717,12 @@ CompositorOGL::BeginFrame(const nsIntRegion& aInvalidRegion,
                           Rect *aClipRectOut,
                           Rect *aRenderBoundsOut)
 {
-  PROFILER_LABEL("CompositorOGL", "BeginFrame");
+  PROFILER_LABEL("CompositorOGL", "BeginFrame",
+    js::ProfileEntry::Category::GRAPHICS);
+
   MOZ_ASSERT(!mFrameInProgress, "frame still in progress (should have called EndFrame or AbortFrame");
 
   LayerScope::BeginFrame(mGLContext, PR_Now());
-
-  mVBOs.Reset();
 
   mFrameInProgress = true;
   gfx::Rect rect;
@@ -744,9 +774,20 @@ CompositorOGL::BeginFrame(const nsIntRegion& aInvalidRegion,
   TexturePoolOGL::Fill(gl());
 #endif
 
-  mCurrentRenderTarget = CompositingRenderTargetOGL::RenderTargetForWindow(this,
-                            IntSize(width, height),
-                            aTransform);
+  // Make sure the render offset is respected. We ignore this when we have a
+  // target to stop tests failing - this is only used by the Android browser
+  // UI for its dynamic toolbar.
+  IntPoint origin;
+  if (!mTarget) {
+    origin.x = -mRenderOffset.x;
+    origin.y = -mRenderOffset.y;
+  }
+
+  mCurrentRenderTarget =
+    CompositingRenderTargetOGL::RenderTargetForWindow(this,
+                                                      origin,
+                                                      IntSize(width, height),
+                                                      aTransform);
   mCurrentRenderTarget->BindRenderTarget();
 #ifdef DEBUG
   mWindowRenderTarget = mCurrentRenderTarget;
@@ -977,15 +1018,13 @@ CompositorOGL::DrawQuad(const Rect& aRect,
                         Float aOpacity,
                         const gfx::Matrix4x4 &aTransform)
 {
-  PROFILER_LABEL("CompositorOGL", "DrawQuad");
+  PROFILER_LABEL("CompositorOGL", "DrawQuad",
+    js::ProfileEntry::Category::GRAPHICS);
+
   MOZ_ASSERT(mFrameInProgress, "frame not started");
 
-  Rect clipRect = aClipRect;
-  if (!mTarget) {
-    clipRect.MoveBy(mRenderOffset.x, mRenderOffset.y);
-  }
   IntRect intClipRect;
-  clipRect.ToIntRect(&intClipRect);
+  aClipRect.ToIntRect(&intClipRect);
 
   gl()->fScissor(intClipRect.x, FlipY(intClipRect.y + intClipRect.height),
                  intClipRect.width, intClipRect.height);
@@ -1252,7 +1291,9 @@ CompositorOGL::DrawQuad(const Rect& aRect,
 void
 CompositorOGL::EndFrame()
 {
-  PROFILER_LABEL("CompositorOGL", "EndFrame");
+  PROFILER_LABEL("CompositorOGL", "EndFrame",
+    js::ProfileEntry::Category::GRAPHICS);
+
   MOZ_ASSERT(mCurrentRenderTarget == mWindowRenderTarget, "Rendering target not properly restored");
 
 #ifdef MOZ_DUMP_PAINTING
@@ -1264,7 +1305,7 @@ CompositorOGL::EndFrame()
       mWidget->GetBounds(rect);
     }
     RefPtr<DrawTarget> target = gfxPlatform::GetPlatform()->CreateOffscreenContentDrawTarget(IntSize(rect.width, rect.height), SurfaceFormat::B8G8R8A8);
-    CopyToTarget(target, mCurrentRenderTarget->GetTransform());
+    CopyToTarget(target, nsIntPoint(), mCurrentRenderTarget->GetTransform());
 
     WriteSnapshotToDumpFile(this, target);
   }
@@ -1275,7 +1316,7 @@ CompositorOGL::EndFrame()
   LayerScope::EndFrame(mGLContext);
 
   if (mTarget) {
-    CopyToTarget(mTarget, mCurrentRenderTarget->GetTransform());
+    CopyToTarget(mTarget, mTargetBounds.TopLeft(), mCurrentRenderTarget->GetTransform());
     mGLContext->fBindBuffer(LOCAL_GL_ARRAY_BUFFER, 0);
     mCurrentRenderTarget = nullptr;
     return;
@@ -1374,7 +1415,7 @@ CompositorOGL::EndFrameForExternalComposition(const gfx::Matrix& aTransform)
   // This lets us reftest and screenshot content rendered externally
   if (mTarget) {
     MakeCurrent();
-    CopyToTarget(mTarget, aTransform);
+    CopyToTarget(mTarget, mTargetBounds.TopLeft(), aTransform);
     mGLContext->fBindBuffer(LOCAL_GL_ARRAY_BUFFER, 0);
   }
   if (mTexturePool) {
@@ -1402,7 +1443,7 @@ CompositorOGL::SetDestinationSurfaceSize(const gfx::IntSize& aSize)
 }
 
 void
-CompositorOGL::CopyToTarget(DrawTarget *aTarget, const gfx::Matrix& aTransform)
+CompositorOGL::CopyToTarget(DrawTarget* aTarget, const nsIntPoint& aTopLeft, const gfx::Matrix& aTransform)
 {
   IntRect rect;
   if (mUseExternalSurfaceSize) {
@@ -1436,6 +1477,8 @@ CompositorOGL::CopyToTarget(DrawTarget *aTarget, const gfx::Matrix& aTransform)
   glToCairoTransform.Invert();
   glToCairoTransform.Scale(1.0, -1.0);
   glToCairoTransform.Translate(0.0, -height);
+
+  glToCairoTransform.PostTranslate(-aTopLeft.x, -aTopLeft.y);
 
   Matrix oldMatrix = aTarget->GetTransform();
   aTarget->SetTransform(glToCairoTransform);
@@ -1505,48 +1548,29 @@ CompositorOGL::MakeCurrent(MakeCurrentFlags aFlags) {
 }
 
 void
-CompositorOGL::BindQuadVBO() {
-  mGLContext->fBindBuffer(LOCAL_GL_ARRAY_BUFFER, mQuadVBO);
-}
-
-void
-CompositorOGL::QuadVBOVerticesAttrib(GLuint aAttribIndex) {
-  mGLContext->fVertexAttribPointer(aAttribIndex, 2,
-                                    LOCAL_GL_FLOAT, LOCAL_GL_FALSE, 0,
-                                    (GLvoid*) QuadVBOVertexOffset());
-}
-
-void
-CompositorOGL::QuadVBOTexCoordsAttrib(GLuint aAttribIndex) {
-  mGLContext->fVertexAttribPointer(aAttribIndex, 2,
-                                    LOCAL_GL_FLOAT, LOCAL_GL_FALSE, 0,
-                                    (GLvoid*) QuadVBOTexCoordOffset());
-}
-
-void
-CompositorOGL::BindAndDrawQuad(ShaderProgramOGL *aProg,
-                               const Rect& aLayerRect,
-                               const Rect& aTextureRect)
+CompositorOGL::BindAndDrawQuads(ShaderProgramOGL *aProg,
+                                int aQuads,
+                                const Rect* aLayerRects,
+                                const Rect* aTextureRects)
 {
   NS_ASSERTION(aProg->HasInitialized(), "Shader program not correctly initialized");
 
-  aProg->SetLayerRect(aLayerRect);
+  const GLuint coordAttribIndex = 0;
 
-  GLuint vertAttribIndex = aProg->AttribLocation(ShaderProgramOGL::VertexCoordAttrib);
-  GLuint texCoordAttribIndex = aProg->AttribLocation(ShaderProgramOGL::TexCoordAttrib);
+  mGLContext->fBindBuffer(LOCAL_GL_ARRAY_BUFFER, mQuadVBO);
+  mGLContext->fVertexAttribPointer(coordAttribIndex, 4,
+                                   LOCAL_GL_FLOAT, LOCAL_GL_FALSE, 0,
+                                   (GLvoid*) 0);
+  mGLContext->fEnableVertexAttribArray(coordAttribIndex);
 
-  BindQuadVBO();
-  QuadVBOVerticesAttrib(vertAttribIndex);
-
-  if (texCoordAttribIndex != GLuint(-1)) {
-    QuadVBOTexCoordsAttrib(texCoordAttribIndex);
-    mGLContext->fEnableVertexAttribArray(texCoordAttribIndex);
-
-    aProg->SetTextureRect(aTextureRect);
+  aProg->SetLayerRects(aLayerRects);
+  if (aProg->GetTextureCount() > 0) {
+    aProg->SetTextureRects(aTextureRects);
   }
 
-  mGLContext->fEnableVertexAttribArray(vertAttribIndex);
-  mGLContext->fDrawArrays(LOCAL_GL_TRIANGLE_STRIP, 0, 4);
+  // We are using GL_TRIANGLES here because the Mac Intel drivers fail to properly
+  // process uniform arrays with GL_TRIANGLE_STRIP. Go figure.
+  mGLContext->fDrawArrays(LOCAL_GL_TRIANGLES, 0, 6 * aQuads);
 }
 
 GLuint

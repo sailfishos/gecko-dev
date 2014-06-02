@@ -19,6 +19,11 @@ window.sawEvent = function(event, isattr) {
 
 registerCleanupFunction(() => {
   delete window.sawEvent;
+
+  // Ensure sidebar is hidden after each test:
+  if (!document.getElementById("sidebar-box").hidden) {
+    toggleSidebar("", false);
+  }
 });
 
 function checkExpectedEvents(expected) {
@@ -34,6 +39,16 @@ function createSidebarItem() {
   gTestSidebarItem.id = "testsidebar";
   gTestSidebarItem.setAttribute("label", "Test Sidebar");
   gSidebarMenu.insertBefore(gTestSidebarItem, gSidebarMenu.firstChild);
+}
+
+function addWidget() {
+  CustomizableUI.addWidgetToArea("sidebar-button", "nav-bar");
+  PanelUI.disableSingleSubviewPanelAnimations();
+}
+
+function removeWidget() {
+  CustomizableUI.removeWidgetFromArea("sidebar-button");
+  PanelUI.enableSingleSubviewPanelAnimations();
 }
 
 // Filters out the trailing menuseparators from the sidebar list
@@ -71,7 +86,7 @@ let showSidebarPopup = Task.async(function*() {
 
 // Check the sidebar widget shows the default items
 add_task(function*() {
-  CustomizableUI.addWidgetToArea("sidebar-button", "nav-bar");
+  addWidget();
 
   yield showSidebarPopup();
 
@@ -84,13 +99,14 @@ add_task(function*() {
   document.getElementById("customizationui-widget-panel").hidePopup();
   yield subviewHiddenPromise;
 
-  yield resetCustomization();
+  removeWidget();
 });
 
 function add_sidebar_task(description, setup, teardown) {
   add_task(function*() {
     info(description);
     createSidebarItem();
+    addWidget();
     yield setup();
 
     CustomizableUI.addWidgetToArea("sidebar-button", "nav-bar");
@@ -109,7 +125,7 @@ function add_sidebar_task(description, setup, teardown) {
 
     yield teardown();
     gTestSidebarItem.remove();
-    return resetCustomization();
+    removeWidget();
   });
 }
 

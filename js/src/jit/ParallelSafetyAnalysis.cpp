@@ -92,7 +92,7 @@ class ParallelSafetyVisitor : public MInstructionVisitor
     }
 
   public:
-    ParallelSafetyVisitor(MIRGraph &graph)
+    explicit ParallelSafetyVisitor(MIRGraph &graph)
       : graph_(graph),
         unsafe_(false),
         cx_(nullptr)
@@ -198,7 +198,6 @@ class ParallelSafetyVisitor : public MInstructionVisitor
     UNSAFE_OP(RegExp)
     CUSTOM_OP(Lambda)
     UNSAFE_OP(LambdaArrow)
-    UNSAFE_OP(ImplicitThis)
     SAFE_OP(Slots)
     SAFE_OP(Elements)
     SAFE_OP(ConstantElements)
@@ -610,6 +609,19 @@ ParallelSafetyVisitor::replace(MInstruction *oldInstruction,
     block->insertBefore(oldInstruction, replacementInstruction);
     oldInstruction->replaceAllUsesWith(replacementInstruction);
     block->discard(oldInstruction);
+
+    // We may have replaced a specialized Float32 instruction by its
+    // non-specialized version, so just retry to specialize it. This relies on
+    // the fact that Phis' types don't change during the ParallelSafetyAnalysis;
+    // otherwise we'd have to run the entire TypeAnalyzer Float32 analysis once
+    // instructions have been replaced.
+    if (replacementInstruction->isFloat32Commutative() &&
+        replacementInstruction->type() != MIRType_Float32)
+    {
+        replacementInstruction->trySpecializeFloat32(alloc());
+    }
+    JS_ASSERT(oldInstruction->type() == replacementInstruction->type());
+
     return true;
 }
 

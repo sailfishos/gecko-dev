@@ -79,6 +79,7 @@ public:
   void ContentViewScaleChanged(nsContentView* aView);
 
   virtual void ShadowLayersUpdated(LayerTransactionParent* aLayerTree,
+                                   const uint64_t& aTransactionId,
                                    const TargetConfig& aTargetConfig,
                                    bool aIsFirstPaint,
                                    bool aScheduleComposite,
@@ -109,8 +110,8 @@ public:
    *        of the APZC instance that handled the event, if one was found. This
    *        argument may be null.
    */
-  void NotifyInputEvent(WidgetInputEvent& aEvent,
-                        ScrollableLayerGuid* aOutTargetGuid);
+  nsEventStatus NotifyInputEvent(WidgetInputEvent& aEvent,
+                                 ScrollableLayerGuid* aOutTargetGuid);
 
   void ZoomToRect(uint32_t aPresShellId, ViewID aViewId, const CSSRect& aRect);
 

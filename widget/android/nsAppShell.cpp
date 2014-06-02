@@ -228,14 +228,18 @@ nsAppShell::ProcessNextNativeEvent(bool mayWait)
 {
     EVLOG("nsAppShell::ProcessNextNativeEvent %d", mayWait);
 
-    PROFILER_LABEL("nsAppShell", "ProcessNextNativeEvent");
+    PROFILER_LABEL("nsAppShell", "ProcessNextNativeEvent",
+        js::ProfileEntry::Category::EVENTS);
+
     nsAutoPtr<AndroidGeckoEvent> curEvent;
     {
         MutexAutoLock lock(mCondLock);
 
         curEvent = PopNextEvent();
         if (!curEvent && mayWait) {
-            PROFILER_LABEL("nsAppShell::ProcessNextNativeEvent", "Wait");
+            PROFILER_LABEL("nsAppShell", "ProcessNextNativeEvent::Wait",
+                js::ProfileEntry::Category::EVENTS);
+
             // hmm, should we really hardcode this 10s?
 #if defined(DEBUG_ANDROID_EVENTS)
             PRTime t0, t1;
@@ -601,7 +605,7 @@ nsAppShell::ProcessNextNativeEvent(bool mayWait)
         if (svc) {
             if (curEvent->Action() == AndroidGeckoEvent::ACTION_GAMEPAD_ADDED) {
                 int svc_id = svc->AddGamepad("android",
-                                             mozilla::dom::StandardMapping,
+                                             mozilla::dom::GamepadMappingType::Standard,
                                              mozilla::dom::kStandardGamepadButtons,
                                              mozilla::dom::kStandardGamepadAxes);
                 mozilla::widget::android::GeckoAppShell::GamepadAdded(curEvent->ID(),

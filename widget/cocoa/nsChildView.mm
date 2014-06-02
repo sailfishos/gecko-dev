@@ -64,6 +64,7 @@
 #include "GLContextCGL.h"
 #include "GLUploadHelpers.h"
 #include "ScopedGLHelpers.h"
+#include "HeapCopyOfStackArray.h"
 #include "mozilla/layers/GLManager.h"
 #include "mozilla/layers/CompositorOGL.h"
 #include "mozilla/layers/BasicCompositor.h"
@@ -2790,8 +2791,12 @@ GLPresenter::GLPresenter(GLContext* aContext)
     /* Then quad texcoords */
     0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
   };
-  mGLContext->fBufferData(LOCAL_GL_ARRAY_BUFFER, sizeof(vertices), vertices, LOCAL_GL_STATIC_DRAW);
-  mGLContext->fBindBuffer(LOCAL_GL_ARRAY_BUFFER, 0);
+  HeapCopyOfStackArray<GLfloat> verticesOnHeap(vertices);
+  mGLContext->fBufferData(LOCAL_GL_ARRAY_BUFFER,
+                          verticesOnHeap.ByteLength(),
+                          verticesOnHeap.Data(),
+                          LOCAL_GL_STATIC_DRAW);
+   mGLContext->fBindBuffer(LOCAL_GL_ARRAY_BUFFER, 0);
 }
 
 GLPresenter::~GLPresenter()
@@ -2810,24 +2815,24 @@ GLPresenter::BindAndDrawQuad(ShaderProgramOGL *aProgram,
 {
   mGLContext->MakeCurrent();
 
-  aProgram->SetLayerRect(aLayerRect);
-  aProgram->SetTextureRect(aTextureRect);
+  gfx::Rect layerRects[4];
+  gfx::Rect textureRects[4];
 
-  GLuint vertAttribIndex = aProgram->AttribLocation(ShaderProgramOGL::VertexCoordAttrib);
-  GLuint texCoordAttribIndex = aProgram->AttribLocation(ShaderProgramOGL::TexCoordAttrib);
+  layerRects[0] = aLayerRect;
+  textureRects[0] = aTextureRect;
+
+  aProgram->SetLayerRects(layerRects);
+  aProgram->SetTextureRects(textureRects);
+
+  const GLuint coordAttribIndex = 0;
 
   mGLContext->fBindBuffer(LOCAL_GL_ARRAY_BUFFER, mQuadVBO);
-  mGLContext->fVertexAttribPointer(vertAttribIndex, 2,
+  mGLContext->fVertexAttribPointer(coordAttribIndex, 4,
                                    LOCAL_GL_FLOAT, LOCAL_GL_FALSE, 0,
                                    (GLvoid*)0);
-  mGLContext->fEnableVertexAttribArray(vertAttribIndex);
-  mGLContext->fVertexAttribPointer(texCoordAttribIndex, 2,
-                                   LOCAL_GL_FLOAT, LOCAL_GL_FALSE, 0,
-                                   (GLvoid*) (sizeof(float)*4*2));
-  mGLContext->fEnableVertexAttribArray(texCoordAttribIndex);
+  mGLContext->fEnableVertexAttribArray(coordAttribIndex);
   mGLContext->fDrawArrays(LOCAL_GL_TRIANGLE_STRIP, 0, 4);
-  mGLContext->fDisableVertexAttribArray(vertAttribIndex);
-  mGLContext->fDisableVertexAttribArray(texCoordAttribIndex);
+  mGLContext->fDisableVertexAttribArray(coordAttribIndex);
 }
 
 void
@@ -3544,7 +3549,8 @@ NSEvent* gLastDragMouseDownEvent = nil;
     return;
   }
 
-  PROFILER_LABEL("widget", "ChildView::drawRect");
+  PROFILER_LABEL("ChildView", "drawRect",
+    js::ProfileEntry::Category::GRAPHICS);
 
   // The CGContext that drawRect supplies us with comes with a transform that
   // scales one user space unit to one Cocoa point, which can consist of
@@ -3562,27 +3568,29 @@ NSEvent* gLastDragMouseDownEvent = nil;
   nsIntRegion region = [self nativeDirtyRegionWithBoundingRect:aRect];
 
   // Create Cairo objects.
-  nsRefPtr<gfxQuartzSurface> targetSurface =
-    new gfxQuartzSurface(aContext, backingSize);
-  targetSurface->SetAllowUseAsSource(false);
+  nsRefPtr<gfxQuartzSurface> targetSurface;
 
   nsRefPtr<gfxContext> targetContext;
-  if (gfxPlatform::GetPlatform()->SupportsAzureContentForType(gfx::BackendType::CAIRO)) {
-    RefPtr<gfx::DrawTarget> dt =
-      gfxPlatform::GetPlatform()->CreateDrawTargetForSurface(targetSurface,
-                                                             gfx::IntSize(backingSize.width,
-                                                                          backingSize.height));
-    dt->AddUserData(&gfxContext::sDontUseAsSourceKey, dt, nullptr);
-    targetContext = new gfxContext(dt);
-  } else if (gfxPlatform::GetPlatform()->SupportsAzureContentForType(gfx::BackendType::COREGRAPHICS)) {
+  if (gfxPlatform::GetPlatform()->SupportsAzureContentForType(gfx::BackendType::COREGRAPHICS)) {
     RefPtr<gfx::DrawTarget> dt =
       gfx::Factory::CreateDrawTargetForCairoCGContext(aContext,
                                                       gfx::IntSize(backingSize.width,
                                                                    backingSize.height));
     dt->AddUserData(&gfxContext::sDontUseAsSourceKey, dt, nullptr);
     targetContext = new gfxContext(dt);
+  } else if (gfxPlatform::GetPlatform()->SupportsAzureContentForType(gfx::BackendType::CAIRO)) {
+    // This is dead code unless you mess with prefs, but keep it around for
+    // debugging.
+    targetSurface = new gfxQuartzSurface(aContext, backingSize);
+    targetSurface->SetAllowUseAsSource(false);
+    RefPtr<gfx::DrawTarget> dt =
+      gfxPlatform::GetPlatform()->CreateDrawTargetForSurface(targetSurface,
+                                                             gfx::IntSize(backingSize.width,
+                                                                          backingSize.height));
+    dt->AddUserData(&gfxContext::sDontUseAsSourceKey, dt, nullptr);
+    targetContext = new gfxContext(dt);
   } else {
-    targetContext = new gfxContext(targetSurface);
+    MOZ_ASSERT_UNREACHABLE("COREGRAPHICS is the only supported backed");
   }
 
   // Set up the clip region.
@@ -3663,7 +3671,8 @@ NSEvent* gLastDragMouseDownEvent = nil;
 
 - (void)drawUsingOpenGL
 {
-  PROFILER_LABEL("widget", "ChildView::drawUsingOpenGL");
+  PROFILER_LABEL("ChildView", "drawUsingOpenGL",
+    js::ProfileEntry::Category::GRAPHICS);
 
   if (![self isUsingOpenGL] || !mGeckoChild->IsVisible())
     return;

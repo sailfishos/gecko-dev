@@ -809,6 +809,7 @@ RenderFrameParent::ContentViewScaleChanged(nsContentView* aView)
 
 void
 RenderFrameParent::ShadowLayersUpdated(LayerTransactionParent* aLayerTree,
+                                       const uint64_t& aTransactionId,
                                        const TargetConfig& aTargetConfig,
                                        bool aIsFirstPaint,
                                        bool aScheduleComposite,
@@ -931,13 +932,14 @@ RenderFrameParent::OwnerContentChanged(nsIContent* aContent)
   BuildViewMap();
 }
 
-void
+nsEventStatus
 RenderFrameParent::NotifyInputEvent(WidgetInputEvent& aEvent,
                                     ScrollableLayerGuid* aOutTargetGuid)
 {
   if (GetApzcTreeManager()) {
-    GetApzcTreeManager()->ReceiveInputEvent(aEvent, aOutTargetGuid);
+    return GetApzcTreeManager()->ReceiveInputEvent(aEvent, aOutTargetGuid);
   }
+  return nsEventStatus_eIgnore;
 }
 
 void

@@ -231,7 +231,7 @@ struct AutoEnterAnalysis
     JSCompartment *compartment;
     bool oldActiveAnalysis;
 
-    AutoEnterAnalysis(ExclusiveContext *cx)
+    explicit AutoEnterAnalysis(ExclusiveContext *cx)
       : suppressGC(cx)
     {
         init(cx->defaultFreeOp(), cx->compartment());
@@ -325,7 +325,7 @@ GetTypeNewObject(JSContext *cx, JSProtoKey key)
     RootedObject proto(cx);
     if (!GetBuiltinPrototype(cx, key, &proto))
         return nullptr;
-    return cx->getNewType(GetClassForProtoKey(key), proto.get());
+    return cx->getNewType(GetClassForProtoKey(key), TaggedProto(proto.get()));
 }
 
 /* Get a type object for the immediate allocation site within a native. */
@@ -733,7 +733,7 @@ TypeScript::MonitorAssign(JSContext *cx, HandleObject obj, jsid id)
         // idea here is that normal object initialization should not trigger
         // deoptimization in most cases, while actual usage as a hashmap should.
         TypeObject* type = obj->type();
-        if (type->getPropertyCount() < 8)
+        if (type->getPropertyCount() < 128)
             return;
         MarkTypeObjectUnknownProperties(cx, type);
     }

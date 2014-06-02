@@ -61,6 +61,8 @@ public class ToolbarEditText extends CustomEditText
     private boolean mSettingAutoComplete;
     // Spans used for marking the autocomplete text
     private Object[] mAutoCompleteSpans;
+    // Do not process autocomplete result
+    private boolean mDiscardAutoCompleteResult;
 
     public ToolbarEditText(Context context, AttributeSet attrs) {
         super(context, attrs);
@@ -226,6 +228,12 @@ public class ToolbarEditText extends CustomEditText
      */
     @Override
     public final void onAutocomplete(final String result) {
+        // If mDiscardAutoCompleteResult is true, we temporarily disabled
+        // autocomplete (due to backspacing, etc.) and we should bail early.
+        if (mDiscardAutoCompleteResult) {
+            return;
+        }
+
         if (!isEnabled() || result == null) {
             mAutoCompleteResult = "";
             return;
@@ -360,8 +368,7 @@ public class ToolbarEditText extends CustomEditText
                 return super.deleteSurroundingText(beforeLength, afterLength);
             }
 
-            @Override
-            public boolean setComposingText(final CharSequence text, final int newCursorPosition) {
+            private boolean removeAutocompleteOnComposing(final CharSequence text) {
                 final Editable editable = getText();
                 final int composingStart = BaseInputConnection.getComposingSpanStart(editable);
                 final int composingEnd = BaseInputConnection.getComposingSpanEnd(editable);
@@ -373,21 +380,26 @@ public class ToolbarEditText extends CustomEditText
                     removeAutocomplete(editable)) {
                     // Make the IME aware that we interrupted the setComposingText call,
                     // by having finishComposingText() send change notifications to the IME.
-                    return super.finishComposingText();
+                    finishComposingText();
+                    return true;
                 }
-                return super.setComposingText(text, newCursorPosition);
+                return false;
             }
 
             @Override
-            public boolean sendKeyEvent(final KeyEvent event) {
-                if ((event.getKeyCode() == KeyEvent.KEYCODE_DEL ||
-                    (Build.VERSION.SDK_INT >= 11 &&
-                        event.getKeyCode() == KeyEvent.KEYCODE_FORWARD_DEL)) &&
-                    removeAutocomplete(getText())) {
-                    // Delete autocomplete text when backspacing or forward deleting.
+            public boolean commitText(CharSequence text, int newCursorPosition) {
+                if (removeAutocompleteOnComposing(text)) {
                     return false;
                 }
-                return super.sendKeyEvent(event);
+                return super.commitText(text, newCursorPosition);
+            }
+
+            @Override
+            public boolean setComposingText(final CharSequence text, final int newCursorPosition) {
+                if (removeAutocompleteOnComposing(text)) {
+                    return false;
+                }
+                return super.setComposingText(text, newCursorPosition);
             }
         };
     }
@@ -436,6 +448,10 @@ public class ToolbarEditText extends CustomEditText
             }
 
             mAutoCompletePrefixLength = textLength;
+
+            // If we are not autocompleting, we set mDiscardAutoCompleteResult to true
+            // to discard any autocomplete results that are in-flight, and vice versa.
+            mDiscardAutoCompleteResult = !doAutocomplete;
 
             if (doAutocomplete && mAutoCompleteResult.startsWith(text)) {
                 // If this text already matches our autocomplete text, autocomplete likely
@@ -515,6 +531,14 @@ public class ToolbarEditText extends CustomEditText
                     mDismissListener.onDismiss();
                 }
 
+                return true;
+            }
+
+            if ((keyCode == KeyEvent.KEYCODE_DEL ||
+                (Build.VERSION.SDK_INT >= 11 &&
+                    keyCode == KeyEvent.KEYCODE_FORWARD_DEL)) &&
+                removeAutocomplete(getText())) {
+                // Delete autocomplete text when backspacing or forward deleting.
                 return true;
             }
 

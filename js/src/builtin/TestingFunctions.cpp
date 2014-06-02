@@ -510,7 +510,14 @@ SelectForGC(JSContext *cx, unsigned argc, Value *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
 
+    /*
+     * The selectedForMarking set is intended to be manually marked at slice
+     * start to detect missing pre-barriers. It is invalid for nursery things
+     * to be in the set, so evict the nursery before adding items.
+     */
     JSRuntime *rt = cx->runtime();
+    MinorGC(rt, JS::gcreason::EVICT_NURSERY);
+
     for (unsigned i = 0; i < args.length(); i++) {
         if (args[i].isObject()) {
             if (!rt->gc.selectedForMarking.append(&args[i].toObject()))
@@ -1566,11 +1573,11 @@ Neuter(JSContext *cx, unsigned argc, jsval *vp)
 }
 
 static bool
-WorkerThreadCount(JSContext *cx, unsigned argc, jsval *vp)
+HelperThreadCount(JSContext *cx, unsigned argc, jsval *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
 #ifdef JS_THREADSAFE
-    args.rval().setInt32(cx->runtime()->useHelperThreads() ? WorkerThreadState().threadCount : 0);
+    args.rval().setInt32(HelperThreadState().threadCount);
 #else
     args.rval().setInt32(0);
 #endif
@@ -1898,9 +1905,9 @@ static const JSFunctionSpecWithHelp TestingFunctions[] = {
 "  \"same-data\" will leave it set to its original value, to mimic eg\n"
 "  asm.js ArrayBuffer neutering."),
 
-    JS_FN_HELP("workerThreadCount", WorkerThreadCount, 0, 0,
-"workerThreadCount()",
-"  Returns the number of worker threads available for off-main-thread tasks."),
+    JS_FN_HELP("helperThreadCount", HelperThreadCount, 0, 0,
+"helperThreadCount()",
+"  Returns the number of helper threads available for off-main-thread tasks."),
 
     JS_FN_HELP("startTraceLogger", EnableTraceLogger, 0, 0,
 "startTraceLogger()",

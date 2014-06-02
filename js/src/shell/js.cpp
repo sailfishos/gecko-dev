@@ -221,7 +221,7 @@ class ShellPrincipals: public JSPrincipals {
     }
 
   public:
-    ShellPrincipals(uint32_t bits, int32_t refcount = 0) : bits(bits) {
+    explicit ShellPrincipals(uint32_t bits, int32_t refcount = 0) : bits(bits) {
         this->refcount = refcount;
     }
 
@@ -1086,7 +1086,7 @@ class AutoSaveFrameChain
     bool saved_;
 
   public:
-    AutoSaveFrameChain(JSContext *cx)
+    explicit AutoSaveFrameChain(JSContext *cx)
       : cx_(cx),
         saved_(false)
     {}
@@ -2887,9 +2887,7 @@ WorkerMain(void *arg)
 {
     WorkerInput *input = (WorkerInput *) arg;
 
-    JSRuntime *rt = JS_NewRuntime(8L * 1024L * 1024L,
-                                  JS_USE_HELPER_THREADS,
-                                  input->runtime);
+    JSRuntime *rt = JS_NewRuntime(8L * 1024L * 1024L, input->runtime);
     if (!rt) {
         js_delete(input);
         return;
@@ -3782,7 +3780,7 @@ struct FreeOnReturn
     const char *ptr;
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 
-    FreeOnReturn(JSContext *cx, const char *ptr = nullptr
+    explicit FreeOnReturn(JSContext *cx, const char *ptr = nullptr
                  MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
       : cx(cx), ptr(ptr)
     {
@@ -3936,7 +3934,7 @@ class AutoCStringVector
 {
     Vector<char *> argv_;
   public:
-    AutoCStringVector(JSContext *cx) : argv_(cx) {}
+    explicit AutoCStringVector(JSContext *cx) : argv_(cx) {}
     ~AutoCStringVector() {
         for (size_t i = 0; i < argv_.length(); i++)
             js_free(argv_[i]);
@@ -4347,7 +4345,7 @@ class ShellSourceHook: public SourceHook {
         RootedValue filenameValue(cx, StringValue(str));
 
         RootedValue result(cx);
-        if (!Call(cx, UndefinedHandleValue, fun, filenameValue, &result))
+        if (!Call(cx, UndefinedHandleValue, fun, HandleValueArray(filenameValue), &result))
             return false;
 
         str = JS::ToString(cx, result);
@@ -6284,7 +6282,7 @@ main(int argc, char **argv, char **envp)
         return 1;
 
     /* Use the same parameters as the browser in xpcjsruntime.cpp. */
-    rt = JS_NewRuntime(32L * 1024L * 1024L, JS_USE_HELPER_THREADS);
+    rt = JS_NewRuntime(32L * 1024L * 1024L);
     if (!rt)
         return 1;
 

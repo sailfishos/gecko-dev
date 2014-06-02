@@ -1834,7 +1834,6 @@ BuildTextRunsScanner::BuildTextRunForFrames(void* aTextBuffer)
   gfxSkipChars skipChars;
 
   const void* textPtr = aTextBuffer;
-  bool anySmallcapsStyle = false;
   bool anyTextTransformStyle = false;
   bool anyMathMLStyling = false;
   uint8_t sstyScriptLevel = 0;
@@ -1912,9 +1911,6 @@ BuildTextRunsScanner::BuildTextRunForFrames(void* aTextBuffer)
       textFlags |= gfxTextRunFactory::TEXT_ENABLE_SPACING;
     }
     fontStyle = f->StyleFont();
-    if (NS_STYLE_FONT_VARIANT_SMALL_CAPS == fontStyle->mFont.variant) {
-      anySmallcapsStyle = true;
-    }
     if (NS_MATHML_MATHVARIANT_NONE != fontStyle->mMathVariant) {
       anyMathMLStyling = true;
     } else if (mLineContainer->GetStateBits() & NS_FRAME_IS_IN_SINGLE_CHAR_MI) {
@@ -2079,9 +2075,6 @@ BuildTextRunsScanner::BuildTextRunForFrames(void* aTextBuffer)
 
   // Setup factory chain
   nsAutoPtr<nsTransformingTextRunFactory> transformingFactory;
-  if (anySmallcapsStyle) {
-    transformingFactory = new nsFontVariantTextRunFactory();
-  }
   if (anyTextTransformStyle) {
     transformingFactory =
       new nsCaseTransformTextRunFactory(transformingFactory.forget());
@@ -4041,10 +4034,7 @@ nsContinuingTextFrame::DestroyFrom(nsIFrame* aDestructRoot)
   // because there's a direction change at the start of this frame), then
   // we have to clear the textrun because we're going away and the
   // textrun had better not keep a dangling reference to us.
-  if ((GetStateBits() & TEXT_IN_TEXTRUN_USER_DATA) ||
-      (GetStateBits() & TEXT_IN_UNINFLATED_TEXTRUN_USER_DATA) ||
-      (!mPrevContinuation &&
-       !(GetStateBits() & TEXT_STYLE_MATCHES_PREV_CONTINUATION)) ||
+  if (IsInTextRunUserData() ||
       (mPrevContinuation &&
        mPrevContinuation->StyleContext() != StyleContext())) {
     ClearTextRuns();
@@ -4353,6 +4343,17 @@ nsTextFrame::ClearTextRun(nsTextFrame* aStartContinuation,
   }
 }
 
+void
+nsTextFrame::DisconnectTextRuns()
+{
+  MOZ_ASSERT(!IsInTextRunUserData(),
+             "Textrun mentions this frame in its user data so we can't just disconnect");
+  mTextRun = nullptr;
+  if ((GetStateBits() & TEXT_HAS_FONT_INFLATION)) {
+    Properties().Delete(UninflatedTextRunProperty());
+  }
+}
+
 nsresult
 nsTextFrame::CharacterDataChanged(CharacterDataChangeInfo* aInfo)
 {
@@ -4526,7 +4527,9 @@ public:
 void
 nsDisplayText::Paint(nsDisplayListBuilder* aBuilder,
                      nsRenderingContext* aCtx) {
-  PROFILER_LABEL("nsDisplayText", "Paint");
+  PROFILER_LABEL("nsDisplayText", "Paint",
+    js::ProfileEntry::Category::GRAPHICS);
+
   // Add 1 pixel of dirty area around mVisibleRect to allow us to paint
   // antialiased pixels beyond the measured text extents.
   // This is temporary until we do this in the actual calculation of text extents.
@@ -5332,7 +5335,9 @@ nsTextFrame::PaintOneShadow(uint32_t aOffset, uint32_t aLength,
                             const nsCharClipDisplayItem::ClipEdges& aClipEdges,
                             nscoord aLeftSideOffset, gfxRect& aBoundingBox)
 {
-  PROFILER_LABEL("nsTextFrame", "PaintOneShadow");
+  PROFILER_LABEL("nsTextFrame", "PaintOneShadow",
+    js::ProfileEntry::Category::GRAPHICS);
+
   gfxPoint shadowOffset(aShadowDetails->mXOffset, aShadowDetails->mYOffset);
   nscoord blurRadius = std::max(aShadowDetails->mRadius, 0);
 
@@ -7362,8 +7367,12 @@ HasSoftHyphenBefore(const nsTextFragment* aFrag, gfxTextRun* aTextRun,
   return false;
 }
 
+/**
+ * Removes all frames from aFrame up to (but not including) aFirstToNotRemove,
+ * because their text has all been taken and reflowed by earlier frames.
+ */
 static void
-RemoveInFlows(nsTextFrame* aFrame, nsTextFrame* aFirstToNotRemove)
+RemoveEmptyInFlows(nsTextFrame* aFrame, nsTextFrame* aFirstToNotRemove)
 {
   NS_PRECONDITION(aFrame != aFirstToNotRemove, "This will go very badly");
   // We have to be careful here, because some RemoveFrame implementations
@@ -7389,16 +7398,18 @@ RemoveInFlows(nsTextFrame* aFrame, nsTextFrame* aFirstToNotRemove)
   nsIFrame* prevContinuation = aFrame->GetPrevContinuation();
   nsIFrame* lastRemoved = aFirstToNotRemove->GetPrevContinuation();
 
-  // Clear the text run on the first frame we'll remove to make sure none of
-  // the frames we keep shares its text run.  We need to do this now, before
-  // we unlink the frames to remove from the flow, because DestroyFrom calls
-  // ClearTextRuns() and that will start at the first frame with the text
-  // run and walk the continuations.  We only need to care about the first
-  // and last frames we remove since text runs are contiguous.
-  aFrame->ClearTextRuns();
-  if (aFrame != lastRemoved) {
-    // Clear the text run on the last frame we'll remove for the same reason.
-    static_cast<nsTextFrame*>(lastRemoved)->ClearTextRuns();
+  for (nsTextFrame* f = aFrame; f != aFirstToNotRemove;
+       f = static_cast<nsTextFrame*>(f->GetNextContinuation())) {
+    // f is going to be destroyed soon, after it is unlinked from the
+    // continuation chain. If its textrun is going to be destroyed we need to
+    // do it now, before we unlink the frames to remove from the flow,
+    // because DestroyFrom calls ClearTextRuns() and that will start at the
+    // first frame with the text run and walk the continuations.
+    if (f->IsInTextRunUserData()) {
+      f->ClearTextRuns();
+    } else {
+      f->DisconnectTextRuns();
+    }
   }
 
   prevContinuation->SetNextInFlow(aFirstToNotRemove);
@@ -7507,15 +7518,8 @@ nsTextFrame::SetLength(int32_t aLength, nsLineLayout* aLineLayout,
         // Remember that we have to remove this frame.
         framesToRemove = f;
       }
-
-      // Important: if |f| has the same style context as its prev continuation,
-      // mark it accordingly so we can skip clearing textruns as needed.  Note
-      // that at this point f always has a prev continuation.
-      if (f->StyleContext() == f->GetPrevContinuation()->StyleContext()) {
-        f->AddStateBits(TEXT_STYLE_MATCHES_PREV_CONTINUATION);
-      }
     } else if (framesToRemove) {
-      RemoveInFlows(framesToRemove, f);
+      RemoveEmptyInFlows(framesToRemove, f);
       framesToRemove = nullptr;
     }
     f = next;
@@ -7526,7 +7530,7 @@ nsTextFrame::SetLength(int32_t aLength, nsLineLayout* aLineLayout,
   if (framesToRemove) {
     // We are guaranteed that we exited the loop with f not null, per the
     // postcondition above
-    RemoveInFlows(framesToRemove, f);
+    RemoveEmptyInFlows(framesToRemove, f);
   }
 
 #ifdef DEBUG

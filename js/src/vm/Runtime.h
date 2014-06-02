@@ -143,7 +143,7 @@ struct EvalCacheEntry
 
 struct EvalCacheLookup
 {
-    EvalCacheLookup(JSContext *cx) : str(cx), callerScript(cx) {}
+    explicit EvalCacheLookup(JSContext *cx) : str(cx), callerScript(cx) {}
     RootedLinearString str;
     RootedScript callerScript;
     JSVersion version;
@@ -432,7 +432,7 @@ AtomStateOffsetToName(const JSAtomState &atomState, size_t offset)
 // the acquisition must be done in the order below to avoid deadlocks.
 enum RuntimeLock {
     ExclusiveAccessLock,
-    WorkerThreadStateLock,
+    HelperThreadStateLock,
     InterruptLock,
     GCLock
 };
@@ -580,7 +580,7 @@ class PerThreadData : public PerThreadDataFriendFields
     // Number of active bytecode compilation on this thread.
     unsigned activeCompilations;
 
-    PerThreadData(JSRuntime *runtime);
+    explicit PerThreadData(JSRuntime *runtime);
     ~PerThreadData();
 
     bool init();
@@ -692,7 +692,7 @@ struct JSRuntime : public JS::shadow::Runtime,
     class AutoLockForInterrupt {
         JSRuntime *rt;
       public:
-        AutoLockForInterrupt(JSRuntime *rt MOZ_GUARD_OBJECT_NOTIFIER_PARAM) : rt(rt) {
+        explicit AutoLockForInterrupt(JSRuntime *rt MOZ_GUARD_OBJECT_NOTIFIER_PARAM) : rt(rt) {
             MOZ_GUARD_OBJECT_NOTIFIER_INIT;
             rt->assertCanLock(js::InterruptLock);
 #ifdef JS_THREADSAFE
@@ -1269,7 +1269,7 @@ struct JSRuntime : public JS::shadow::Runtime,
         return liveRuntimesCount > 0;
     }
 
-    JSRuntime(JSRuntime *parentRuntime, JSUseHelperThreads useHelperThreads);
+    JSRuntime(JSRuntime *parentRuntime);
     ~JSRuntime();
 
     bool init(uint32_t maxbytes);
@@ -1335,27 +1335,11 @@ struct JSRuntime : public JS::shadow::Runtime,
   private:
     JS::RuntimeOptions options_;
 
-    JSUseHelperThreads useHelperThreads_;
-
     // Settings for how helper threads can be used.
     bool parallelIonCompilationEnabled_;
     bool parallelParsingEnabled_;
 
-    // True iff this is a DOM Worker runtime.
-    bool isWorkerRuntime_;
-
   public:
-
-    // This controls whether the JSRuntime is allowed to create any helper
-    // threads at all. This means both specific threads (background GC thread)
-    // and the general JS worker thread pool.
-    bool useHelperThreads() const {
-#ifdef JS_THREADSAFE
-        return useHelperThreads_ == JS_USE_HELPER_THREADS;
-#else
-        return false;
-#endif
-    }
 
     // Note: these values may be toggled dynamically (in response to about:config
     // prefs changing).
@@ -1363,22 +1347,21 @@ struct JSRuntime : public JS::shadow::Runtime,
         parallelIonCompilationEnabled_ = value;
     }
     bool canUseParallelIonCompilation() const {
-        return useHelperThreads() &&
-               parallelIonCompilationEnabled_;
+#ifdef JS_THREADSAFE
+        return parallelIonCompilationEnabled_;
+#else
+        return false;
+#endif
     }
     void setParallelParsingEnabled(bool value) {
         parallelParsingEnabled_ = value;
     }
     bool canUseParallelParsing() const {
-        return useHelperThreads() &&
-               parallelParsingEnabled_;
-    }
-
-    void setIsWorkerRuntime() {
-        isWorkerRuntime_ = true;
-    }
-    bool isWorkerRuntime() const {
-        return isWorkerRuntime_;
+#ifdef JS_THREADSAFE
+        return parallelParsingEnabled_;
+#else
+        return false;
+#endif
     }
 
     const JS::RuntimeOptions &options() const {
@@ -1691,7 +1674,7 @@ class RuntimeAllocPolicy
     JSRuntime *const runtime;
 
   public:
-    RuntimeAllocPolicy(JSRuntime *rt) : runtime(rt) {}
+    MOZ_IMPLICIT RuntimeAllocPolicy(JSRuntime *rt) : runtime(rt) {}
     void *malloc_(size_t bytes) { return runtime->malloc_(bytes); }
     void *calloc_(size_t bytes) { return runtime->calloc_(bytes); }
     void *realloc_(void *p, size_t bytes) { return runtime->realloc_(p, bytes); }

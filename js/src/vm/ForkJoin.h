@@ -225,7 +225,7 @@ class ForkJoinActivation : public Activation
     gc::AutoStopVerifyingBarriers av_;
 
   public:
-    ForkJoinActivation(JSContext *cx);
+    explicit ForkJoinActivation(JSContext *cx);
     ~ForkJoinActivation();
 };
 
@@ -426,7 +426,7 @@ class ForkJoinContext : public ThreadSafeContext
 
     // ForkJoinContext is allocated on the stack. It would be dangerous to GC
     // with it live because of the GC pointer fields stored in the context.
-    JS::AutoAssertNoGC nogc_;
+    JS::AutoSuppressGCAnalysis nogc_;
 };
 
 // Locks a JSContext for its scope. Be very careful, because locking a
@@ -446,7 +446,7 @@ class LockedJSContext
     JSContext *jscx_;
 
   public:
-    LockedJSContext(ForkJoinContext *cx)
+    explicit LockedJSContext(ForkJoinContext *cx)
 #if defined(JS_THREADSAFE) && defined(JS_ION)
       : cx_(cx),
         jscx_(cx->acquireJSContext())

@@ -254,7 +254,7 @@ WebappsActor.prototype = {
         reg.broadcastMessage("Webapps:UpdateState", {
           app: aApp,
           manifest: manifest,
-          id: aApp.id
+          manifestURL: aApp.manifestURL
         });
         reg.broadcastMessage("Webapps:FireEvent", {
           eventType: ["downloadsuccess", "downloadapplied"],
@@ -797,6 +797,12 @@ WebappsActor.prototype = {
     }
 
     let deferred = promise.defer();
+
+    if (Services.appinfo.ID &&
+        Services.appinfo.ID != "{3c2e2abc-06d4-11e1-ac3b-374f68613e61}") {
+      return { error: "notSupported",
+               message: "Not B2G. Can't launch app." };
+    }
 
     DOMApplicationRegistry.launch(
       aRequest.manifestURL,

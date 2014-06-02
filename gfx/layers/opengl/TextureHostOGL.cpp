@@ -116,17 +116,6 @@ FlagsToGLFlags(TextureFlags aFlags)
   return static_cast<gl::TextureImage::Flags>(result);
 }
 
-static GLenum
-WrapMode(gl::GLContext *aGl, TextureFlags aFlags)
-{
-  if ((aFlags & TextureFlags::ALLOW_REPEAT) &&
-      (aGl->IsExtensionSupported(GLContext::ARB_texture_non_power_of_two) ||
-       aGl->IsExtensionSupported(GLContext::OES_texture_npot))) {
-    return LOCAL_GL_REPEAT;
-  }
-  return LOCAL_GL_CLAMP_TO_EDGE;
-}
-
 CompositableDataGonkOGL::CompositableDataGonkOGL()
  : mTexture(0)
  , mBoundEGLImage(EGL_NO_IMAGE)
@@ -250,9 +239,18 @@ TextureImageTextureSourceOGL::Update(gfx::DataSourceSurface* aSurface,
       (mTexImage->GetSize() != size && !aSrcOffset) ||
       mTexImage->GetContentType() != gfx::ContentForFormat(aSurface->GetFormat())) {
     if (mFlags & TextureFlags::DISALLOW_BIGIMAGE) {
+      GLint maxTextureSize;
+      mGL->fGetIntegerv(LOCAL_GL_MAX_TEXTURE_SIZE, &maxTextureSize);
+      if (size.width > maxTextureSize || size.height > maxTextureSize) {
+        NS_WARNING("Texture exceeds maximum texture size, refusing upload");
+        return false;
+      }
+      // Explicitly use CreateBasicTextureImage instead of CreateTextureImage,
+      // because CreateTextureImage might still choose to create a tiled
+      // texture image.
       mTexImage = CreateBasicTextureImage(mGL, size,
                                           gfx::ContentForFormat(aSurface->GetFormat()),
-                                          WrapMode(mGL, mFlags),
+                                          LOCAL_GL_CLAMP_TO_EDGE,
                                           FlagsToGLFlags(mFlags),
                                           SurfaceFormatToImageFormat(aSurface->GetFormat()));
     } else {
@@ -263,7 +261,7 @@ TextureImageTextureSourceOGL::Update(gfx::DataSourceSurface* aSurface,
       mTexImage = CreateTextureImage(mGL,
                                      size,
                                      gfx::ContentForFormat(aSurface->GetFormat()),
-                                     WrapMode(mGL, mFlags),
+                                     LOCAL_GL_CLAMP_TO_EDGE,
                                      FlagsToGLFlags(mFlags),
                                      SurfaceFormatToImageFormat(aSurface->GetFormat()));
     }
@@ -288,7 +286,7 @@ TextureImageTextureSourceOGL::EnsureBuffer(const nsIntSize& aSize,
     mTexImage = CreateTextureImage(mGL,
                                    aSize.ToIntSize(),
                                    aContentType,
-                                   WrapMode(mGL, mFlags),
+                                   LOCAL_GL_CLAMP_TO_EDGE,
                                    FlagsToGLFlags(mFlags));
   }
   mTexImage->Resize(aSize.ToIntSize());

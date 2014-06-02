@@ -2328,6 +2328,14 @@
     "n_buckets": 20,
     "description": "Time spent loading plugin DLL and obtaining metadata (ms)"
   },
+  "PLUGIN_STARTUP_MS": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": "5000",
+    "n_buckets": 20,
+    "extended_statistics_ok": true,
+    "description": "Time spent starting up plugins (ms)"
+  },
   "PLUGIN_SHUTDOWN_MS": {
     "expires_in_version": "never",
     "kind": "exponential",
@@ -2703,6 +2711,14 @@
     "n_buckets": 10,
     "extended_statistics_ok": true,
     "description": "Time spent (ms) during showdown deleting disk cache for 'clear private data' option"
+  },
+  "NETWORK_DISK_CACHE2_SHUTDOWN_CLEAR_PRIVATE": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": "10000",
+    "n_buckets": 10,
+    "extended_statistics_ok": true,
+    "description": "Time spent (ms) during showdown deleting disk cache v2 for 'clear private data' option"
   },
   "NETWORK_DISK_CACHE_REVALIDATION": {
     "expires_in_version": "never",
@@ -4431,14 +4447,6 @@
     "extended_statistics_ok": true,
     "description": "Time (ms) spent to initialize Firefox Health Report service."
   },
-  "HEALTHREPORT_SHUTDOWN_DELAY_MS": {
-    "expires_in_version": "never",
-    "kind": "exponential",
-    "high": "20000",
-    "n_buckets": 15,
-    "extended_statistics_ok": true,
-    "description": "Time (ms) that Firefox Health Report delays application shutdown by."
-  },
   "HEALTHREPORT_GENERATE_JSON_PAYLOAD_MS": {
     "expires_in_version": "never",
     "kind": "exponential",
@@ -5164,6 +5172,34 @@
     "n_buckets": 1000,
     "description": "The delay (in milliseconds) when video is behind audio. Zero delay is not counted. Measured every second of a call."
   },
+  "WEBRTC_VIDEO_QUALITY_INBOUND_BANDWIDTH_KBITS": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": 1000000,
+    "n_buckets": 1000,
+    "description": "Locally measured data rate of inbound video (kbit/s). Computed every second of a call."
+  },
+  "WEBRTC_AUDIO_QUALITY_INBOUND_BANDWIDTH_KBITS": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": 1000000,
+    "n_buckets": 1000,
+    "description": "Locally measured data rate on inbound audio (kbit/s). Computed every second of a call."
+  },
+  "WEBRTC_VIDEO_QUALITY_OUTBOUND_BANDWIDTH_KBITS": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": 1000000,
+    "n_buckets": 1000,
+    "description": "Data rate deduced from RTCP from remote recipient of outbound video (kbit/s). Computed every second of a call (for easy comparison)."
+  },
+  "WEBRTC_AUDIO_QUALITY_OUTBOUND_BANDWIDTH_KBITS": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": 1000000,
+    "n_buckets": 1000,
+    "description": "Data rate deduced from RTCP from remote recipient of outbound audio (kbit/s). Computed every second of a call (for easy comparison)."
+  },
   "WEBRTC_VIDEO_QUALITY_INBOUND_PACKETLOSS": {
     "expires_in_version": "never",
     "kind": "exponential",
@@ -5247,6 +5283,20 @@
     "high": "500",
     "n_buckets": "50",
     "description": "The number of calls made during a session."
+  },
+  "WEBRTC_ICE_ADD_CANDIDATE_ERRORS_GIVEN_SUCCESS": {
+    "expires_in_version": "never",
+    "kind": "linear",
+    "high": "30",
+    "n_buckets": "29",
+    "description": "The number of times AddIceCandidate failed on a given PeerConnection, given that ICE succeeded."
+  },
+  "WEBRTC_ICE_ADD_CANDIDATE_ERRORS_GIVEN_FAILURE": {
+    "expires_in_version": "never",
+    "kind": "linear",
+    "high": "30",
+    "n_buckets": "29",
+    "description": "The number of times AddIceCandidate failed on a given PeerConnection, given that ICE failed."
   },
   "DEVTOOLS_DEBUGGER_RDP_LOCAL_TRACERDETACH_MS": {
     "expires_in_version": "never",
@@ -6072,5 +6122,44 @@
     "kind": "enumerated",
     "n_values": 512,
     "description": "Certificate pinning test results by host for Mozilla operational sites"
+  },
+  "WEAVE_CONFIGURED": {
+    "expires_in_version": "never",
+    "kind": "boolean",
+    "description": "If any version of Firefox Sync is configured for this device"
+  },
+  "WEAVE_CONFIGURED_MASTER_PASSWORD": {
+    "expires_in_version": "never",
+    "kind": "boolean",
+    "description": "If both Firefox Sync and Master Password are configured for this device"
+  },
+  "WEAVE_START_COUNT": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": 1000,
+    "n_buckets": 10,
+    "description": "The number of times a sync started in this session"
+  },
+  "WEAVE_COMPLETE_SUCCESS_COUNT": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": 1000,
+    "n_buckets": 10,
+    "description": "The number of times a sync successfully completed in this session"
+  },
+  "WEAVE_CUSTOM_LEGACY_SERVER_CONFIGURATION": {
+    "expires_in_version": "never",
+    "kind": "boolean",
+    "description": "Whether legacy Sync is configured to use a custom server"
+  },
+  "WEAVE_CUSTOM_FXA_SERVER_CONFIGURATION": {
+    "expires_in_version": "never",
+    "kind": "boolean",
+    "description": "Whether FxA Sync is configured to use a custom authentication server"
+  },
+  "WEAVE_CUSTOM_TOKEN_SERVER_CONFIGURATION": {
+    "expires_in_version": "never",
+    "kind": "boolean",
+    "description": "Whether FxA Sync is configured to use a custom token server"
   }
 }

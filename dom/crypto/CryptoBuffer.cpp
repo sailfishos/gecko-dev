@@ -19,18 +19,21 @@ CryptoBuffer::Assign(const uint8_t* aData, uint32_t aLength)
 uint8_t*
 CryptoBuffer::Assign(const SECItem* aItem)
 {
+  MOZ_ASSERT(aItem);
   return Assign(aItem->data, aItem->len);
 }
 
 uint8_t*
 CryptoBuffer::Assign(const ArrayBuffer& aData)
 {
+  aData.ComputeLengthAndData();
   return Assign(aData.Data(), aData.Length());
 }
 
 uint8_t*
 CryptoBuffer::Assign(const ArrayBufferView& aData)
 {
+  aData.ComputeLengthAndData();
   return Assign(aData.Data(), aData.Length());
 }
 
