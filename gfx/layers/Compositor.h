@@ -201,7 +201,6 @@ public:
     : mCompositorID(0)
     , mDiagnosticTypes(DiagnosticTypes::NO_DIAGNOSTIC)
     , mParent(aParent)
-    , mWorldOpacity(1.0f)
     , mScreenRotation(ROTATION_0)
   {
   }
@@ -469,11 +468,6 @@ public:
    */
   static LayersBackend GetBackend();
 
-  /**
-   * Set Opacity multiplier for all compositable layers
-   */
-  virtual void SetWorldOpacity(gfx::Float aWorldOpacity) { mWorldOpacity = aWorldOpacity; }
-
   size_t GetFillRatio() {
     float fillRatio = 0;
     if (mPixelsFilled > 0 && mPixelsPerFrame > 0) {
@@ -531,7 +525,6 @@ protected:
    */
   size_t mPixelsPerFrame;
   size_t mPixelsFilled;
-  gfx::Float mWorldOpacity;
 
   ScreenRotation mScreenRotation;
 

@@ -51,13 +51,6 @@
 
 #include "GeckoProfiler.h"
 
-#include "GLContext.h"                  // for GLContext
-#include "GLScreenBuffer.h"             // for GLScreenBuffer
-#include "SharedSurfaceEGL.h"           // for SurfaceFactory_EGLImage
-#include "SharedSurfaceGL.h"            // for SurfaceFactory_GLTexture, etc
-#include "SurfaceStream.h"              // for SurfaceStream, etc
-#include "SurfaceTypes.h"               // for SurfaceStreamType
-#include "ClientLayerManager.h"         // for ClientLayerManager, etc
 #if defined(MOZ_WIDGET_GONK) && ANDROID_VERSION >= 17
 #include "libdisplay/GonkDisplay.h"     // for GonkDisplay
 #include <ui/Fence.h>
@@ -69,7 +62,6 @@ namespace mozilla {
 
 using namespace std;
 using namespace gfx;
-using namespace gl;
 
 namespace layers {
 
@@ -115,15 +107,12 @@ CompositorOGL::CreateContext()
 {
   nsRefPtr<GLContext> context;
 
-  // If widget has active GL context then we can try to wrap it into Moz GL Context
-  // TODO: KILL ME SOONER
-  if (mWidget->HasGLContext()) {
-    context = GLContextProvider::CreateWrappingExisting(nullptr, nullptr);
-    if (!context || !context->Init()) {
-      NS_WARNING("Failed to create embedded context");
-      context = nullptr;
-    }
+#ifdef XP_WIN
+  if (PR_GetEnv("MOZ_LAYERS_PREFER_EGL")) {
+    printf_stderr("Trying GL layers...\n");
+    context = gl::GLContextProviderEGL::CreateForWindow(mWidget);
   }
+#endif
 
   // Allow to create offscreen GL context for main Layer Manager
   if (!context && PR_GetEnv("MOZ_LAYERS_PREFER_OFFSCREEN")) {
@@ -133,13 +122,6 @@ CompositorOGL::CreateContext()
     context = GLContextProvider::CreateOffscreen(gfxIntSize(mSurfaceSize.width,
                                                             mSurfaceSize.height), caps);
   }
-
-#ifdef XP_WIN
-  if (!context && PR_GetEnv("MOZ_LAYERS_PREFER_EGL")) {
-    printf_stderr("Trying GL layers...\n");
-    context = gl::GLContextProviderEGL::CreateForWindow(mWidget);
-  }
-#endif
 
   if (!context)
     context = gl::GLContextProvider::CreateForWindow(mWidget);
@@ -603,9 +585,6 @@ CompositorOGL::PrepareViewport(const gfx::IntSize& aSize,
   if (!mGLContext->IsOffscreen()) {
     viewMatrix.Scale(1.0f, -1.0f);
   }
-  if (!mTarget) {
-    viewMatrix.Translate(mRenderOffset.x, mRenderOffset.y);
-  }
 
   viewMatrix = aWorldTransform * viewMatrix;
 
@@ -807,7 +786,7 @@ CompositorOGL::BeginFrame(const nsIntRegion& aInvalidRegion,
   // If the Android compositor is being used, this clear will be done in
   // DrawWindowUnderlay. Make sure the bits used here match up with those used
   // in mobile/android/base/gfx/LayerRenderer.java
-#if !defined(MOZ_ANDROID_OMTC) && !defined(USE_ANDROID_OMTC_HACKS)
+#ifndef MOZ_ANDROID_OMTC
   mGLContext->fClearColor(0.0, 0.0, 0.0, 0.0);
   mGLContext->fClear(LOCAL_GL_COLOR_BUFFER_BIT | LOCAL_GL_DEPTH_BUFFER_BIT);
 #endif
@@ -1101,7 +1080,7 @@ CompositorOGL::DrawQuad(const Rect& aRect,
   IntPoint offset = mCurrentRenderTarget->GetOrigin();
   program->SetRenderOffset(offset.x, offset.y);
   if (aOpacity != 1.f)
-    program->SetLayerOpacity(aOpacity * mWorldOpacity);
+    program->SetLayerOpacity(aOpacity);
   if (config.mFeatures & ENABLE_TEXTURE_RECT) {
     TexturedEffect* texturedEffect =
         static_cast<TexturedEffect*>(aEffectChain.mPrimaryEffect.get());
