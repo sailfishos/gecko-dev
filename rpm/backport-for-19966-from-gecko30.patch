@@ -1,0 +1,563 @@
+diff --git a/content/base/src/nsGkAtomList.h b/content/base/src/nsGkAtomList.h
+index ad73b88..bb41d29 100644
+--- a/content/base/src/nsGkAtomList.h
++++ b/content/base/src/nsGkAtomList.h
+@@ -1958,6 +1958,7 @@ GK_ATOM(genConInitializerProperty, "QuoteNodeProperty")
+ GK_ATOM(labelMouseDownPtProperty, "LabelMouseDownPtProperty")
+ GK_ATOM(baseURIProperty, "baseURIProperty")
+ GK_ATOM(lockedStyleStates, "lockedStyleStates")
++GK_ATOM(apzCallbackTransform, "apzCallbackTransform")
+ 
+ // Languages for lang-specific transforms
+ GK_ATOM(Japanese, "ja")
+diff --git a/dom/ipc/TabChild.cpp b/dom/ipc/TabChild.cpp
+index b6045e3..6a6e34d 100644
+--- a/dom/ipc/TabChild.cpp
++++ b/dom/ipc/TabChild.cpp
+@@ -635,7 +635,7 @@ TabChild::HandlePossibleViewportChange()
+ 
+   // Force a repaint with these metrics. This, among other things, sets the
+   // displayport, so we start with async painting.
+-  ProcessUpdateFrame(metrics);
++  mLastRootMetrics = ProcessUpdateFrame(metrics);
+ }
+ 
+ nsresult
+@@ -1499,7 +1499,9 @@ TabChild::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
+   if (aFrameMetrics.mIsRoot) {
+     nsCOMPtr<nsIDOMWindowUtils> utils(GetDOMWindowUtils());
+     if (APZCCallbackHelper::HasValidPresShellId(utils, aFrameMetrics)) {
+-      return ProcessUpdateFrame(aFrameMetrics);
++      mLastRootMetrics = ProcessUpdateFrame(aFrameMetrics);
++      APZCCallbackHelper::UpdateCallbackTransform(aFrameMetrics, mLastRootMetrics);
++      return true;
+     }
+   } else {
+     // aFrameMetrics.mIsRoot is false, so we are trying to update a subframe.
+@@ -1509,6 +1511,7 @@ TabChild::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
+     if (content) {
+       FrameMetrics newSubFrameMetrics(aFrameMetrics);
+       APZCCallbackHelper::UpdateSubFrame(content, newSubFrameMetrics);
++      APZCCallbackHelper::UpdateCallbackTransform(aFrameMetrics, newSubFrameMetrics);
+       return true;
+     }
+   }
+@@ -1516,7 +1519,8 @@ TabChild::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
+   // We've recieved a message that is out of date and we want to ignore.
+   // However we can't reply without painting so we reply by painting the
+   // exact same thing as we did before.
+-  return ProcessUpdateFrame(mLastRootMetrics);
++  mLastRootMetrics = ProcessUpdateFrame(mLastRootMetrics);
++  return true;
+ }
+ 
+ bool
+@@ -1527,11 +1531,11 @@ TabChild::RecvAcknowledgeScrollUpdate(const ViewID& aScrollId,
+   return true;
+ }
+ 
+-bool
++FrameMetrics
+ TabChild::ProcessUpdateFrame(const FrameMetrics& aFrameMetrics)
+   {
+     if (!mGlobal || !mTabChildGlobal) {
+-        return true;
++        return aFrameMetrics;
+     }
+ 
+     nsCOMPtr<nsIDOMWindowUtils> utils(GetDOMWindowUtils());
+@@ -1588,9 +1592,7 @@ TabChild::ProcessUpdateFrame(const FrameMetrics& aFrameMetrics)
+ 
+     DispatchMessageManagerMessage(NS_LITERAL_STRING("Viewport:Change"), data);
+ 
+-    mLastRootMetrics = newMetrics;
+-
+-    return true;
++    return newMetrics;
+ }
+ 
+ bool
+@@ -1600,9 +1602,10 @@ TabChild::RecvHandleDoubleTap(const CSSPoint& aPoint, const ScrollableLayerGuid&
+         return true;
+     }
+ 
++    CSSPoint point = APZCCallbackHelper::ApplyCallbackTransform(aPoint, aGuid);
+     nsCString data;
+-    data += nsPrintfCString("{ \"x\" : %f", aPoint.x);
+-    data += nsPrintfCString(", \"y\" : %f", aPoint.y);
++    data += nsPrintfCString("{ \"x\" : %f", point.x);
++    data += nsPrintfCString(", \"y\" : %f", point.y);
+     data += nsPrintfCString(" }");
+ 
+     DispatchMessageManagerMessage(NS_LITERAL_STRING("Gesture:DoubleTap"), data);
+@@ -1617,7 +1620,7 @@ TabChild::RecvHandleSingleTap(const CSSPoint& aPoint, const ScrollableLayerGuid&
+     return true;
+   }
+ 
+-  LayoutDevicePoint currentPoint = aPoint * mWidget->GetDefaultScale();;
++  LayoutDevicePoint currentPoint = APZCCallbackHelper::ApplyCallbackTransform(aPoint, aGuid) * mWidget->GetDefaultScale();;
+ 
+   int time = 0;
+   DispatchSynthesizedMouseEvent(NS_MOUSE_MOVE, time, currentPoint);
+@@ -1635,7 +1638,9 @@ TabChild::RecvHandleLongTap(const CSSPoint& aPoint, const ScrollableLayerGuid& a
+   }
+ 
+   mContextMenuHandled =
+-      DispatchMouseEvent(NS_LITERAL_STRING("contextmenu"), aPoint, 2, 1, 0, false,
++      DispatchMouseEvent(NS_LITERAL_STRING("contextmenu"),
++                         APZCCallbackHelper::ApplyCallbackTransform(aPoint, aGuid),
++                         2, 1, 0, false,
+                          nsIDOMMouseEvent::MOZ_SOURCE_TOUCH);
+ 
+   SendContentReceivedTouch(aGuid, mContextMenuHandled);
+@@ -1887,6 +1892,10 @@ TabChild::RecvRealTouchEvent(const WidgetTouchEvent& aEvent,
+                              const ScrollableLayerGuid& aGuid)
+ {
+   WidgetTouchEvent localEvent(aEvent);
++  for (size_t i = 0; i < localEvent.touches.Length(); i++) {
++    aEvent.touches[i]->mRefPoint = APZCCallbackHelper::ApplyCallbackTransform(aEvent.touches[i]->mRefPoint, aGuid, mWidget->GetDefaultScale());
++  }
++
+   nsEventStatus status = DispatchWidgetEvent(localEvent);
+ 
+   if (!IsAsyncPanZoomEnabled()) {
+diff --git a/dom/ipc/TabChild.h b/dom/ipc/TabChild.h
+index 3d50858..3a084a0 100644
+--- a/dom/ipc/TabChild.h
++++ b/dom/ipc/TabChild.h
+@@ -424,7 +424,7 @@ private:
+     bool InitRenderingState();
+     void DestroyWindow();
+     void SetProcessNameToAppName();
+-    bool ProcessUpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics);
++    FrameMetrics ProcessUpdateFrame(const FrameMetrics& aFrameMetrics);
+ 
+     // Call RecvShow(nsIntSize(0, 0)) and block future calls to RecvShow().
+     void DoFakeShow();
+diff --git a/gfx/ipc/GfxMessageUtils.h b/gfx/ipc/GfxMessageUtils.h
+index 137744b..62af233 100644
+--- a/gfx/ipc/GfxMessageUtils.h
++++ b/gfx/ipc/GfxMessageUtils.h
+@@ -620,8 +620,6 @@ struct ParamTraits<mozilla::layers::FrameMetrics>
+     WriteParam(aMsg, aParam.mPresShellId);
+     WriteParam(aMsg, aParam.mIsRoot);
+     WriteParam(aMsg, aParam.mHasScrollgrab);
+-    WriteParam(aMsg, aParam.mDisableScrollingX);
+-    WriteParam(aMsg, aParam.mDisableScrollingY);
+     WriteParam(aMsg, aParam.mUpdateScrollOffset);
+     WriteParam(aMsg, aParam.mScrollGeneration);
+   }
+@@ -644,8 +642,6 @@ struct ParamTraits<mozilla::layers::FrameMetrics>
+             ReadParam(aMsg, aIter, &aResult->mPresShellId) &&
+             ReadParam(aMsg, aIter, &aResult->mIsRoot) &&
+             ReadParam(aMsg, aIter, &aResult->mHasScrollgrab) &&
+-            ReadParam(aMsg, aIter, &aResult->mDisableScrollingX) &&
+-            ReadParam(aMsg, aIter, &aResult->mDisableScrollingY) &&
+             ReadParam(aMsg, aIter, &aResult->mUpdateScrollOffset) &&
+             ReadParam(aMsg, aIter, &aResult->mScrollGeneration));
+   }
+diff --git a/gfx/layers/FrameMetrics.h b/gfx/layers/FrameMetrics.h
+index 26c72c4..c88ab76 100644
+--- a/gfx/layers/FrameMetrics.h
++++ b/gfx/layers/FrameMetrics.h
+@@ -72,8 +72,6 @@ public:
+     , mMayHaveTouchListeners(false)
+     , mIsRoot(false)
+     , mHasScrollgrab(false)
+-    , mDisableScrollingX(false)
+-    , mDisableScrollingY(false)
+     , mUpdateScrollOffset(false)
+     , mScrollGeneration(0)
+     , mRootCompositionSize(0, 0)
+@@ -98,8 +96,6 @@ public:
+            mPresShellId == aOther.mPresShellId &&
+            mIsRoot == aOther.mIsRoot &&
+            mHasScrollgrab == aOther.mHasScrollgrab &&
+-           mDisableScrollingX == aOther.mDisableScrollingX &&
+-           mDisableScrollingY == aOther.mDisableScrollingY &&
+            mUpdateScrollOffset == aOther.mUpdateScrollOffset;
+   }
+   bool operator!=(const FrameMetrics& aOther) const
+@@ -344,26 +340,6 @@ public:
+     return mZoom;
+   }
+ 
+-  bool GetDisableScrollingX() const
+-  {
+-    return mDisableScrollingX;
+-  }
+-
+-  void SetDisableScrollingX(bool aDisableScrollingX)
+-  {
+-    mDisableScrollingX = aDisableScrollingX;
+-  }
+-
+-  bool GetDisableScrollingY() const
+-  {
+-    return mDisableScrollingY;
+-  }
+-
+-  void SetDisableScrollingY(bool aDisableScrollingY)
+-  {
+-    mDisableScrollingY = aDisableScrollingY;
+-  }
+-
+   void SetScrollOffsetUpdated(uint32_t aScrollGeneration)
+   {
+     mUpdateScrollOffset = true;
+@@ -394,11 +370,6 @@ private:
+   // New fields from now on should be made private and old fields should
+   // be refactored to be private.
+ 
+-  // Allow disabling scrolling in individual axis to support
+-  // |overflow: hidden|.
+-  bool mDisableScrollingX;
+-  bool mDisableScrollingY;
+-
+   // Whether mScrollOffset was updated by something other than the APZ code, and
+   // if the APZC receiving this metrics should update its local copy.
+   bool mUpdateScrollOffset;
+diff --git a/gfx/layers/ipc/AsyncPanZoomController.cpp b/gfx/layers/ipc/AsyncPanZoomController.cpp
+index 41422e5..49c20a3 100644
+--- a/gfx/layers/ipc/AsyncPanZoomController.cpp
++++ b/gfx/layers/ipc/AsyncPanZoomController.cpp
+@@ -771,7 +771,7 @@ nsEventStatus AsyncPanZoomController::OnScaleBegin(const PinchGestureInput& aEve
+     return nsEventStatus_eIgnore;
+   }
+ 
+-  if (!AllowZoom()) {
++  if (!mZoomConstraints.mAllowZoom) {
+     return nsEventStatus_eConsumeNoDefault;
+   }
+ 
+@@ -930,7 +930,7 @@ nsEventStatus AsyncPanZoomController::OnSingleTapUp(const TapGestureInput& aEven
+   nsRefPtr<GeckoContentController> controller = GetGeckoContentController();
+   // If mZoomConstraints.mAllowZoom is true we wait for a call to OnSingleTapConfirmed before
+   // sending event to content
+-  if (controller && !AllowZoom()) {
++  if (controller && !mZoomConstraints.mAllowZoom) {
+     int32_t modifiers = WidgetModifiersToDOMModifiers(aEvent.modifiers);
+     CSSPoint geckoScreenPoint;
+     if (ConvertToGecko(aEvent.mPoint, &geckoScreenPoint)) {
+@@ -971,7 +971,7 @@ nsEventStatus AsyncPanZoomController::OnDoubleTap(const TapGestureInput& aEvent)
+   APZC_LOG("%p got a double-tap in state %d\n", this, mState);
+   nsRefPtr<GeckoContentController> controller = GetGeckoContentController();
+   if (controller) {
+-    if (AllowZoom()) {
++    if (mZoomConstraints.mAllowZoom) {
+       int32_t modifiers = WidgetModifiersToDOMModifiers(aEvent.modifiers);
+       CSSPoint geckoScreenPoint;
+       if (ConvertToGecko(aEvent.mPoint, &geckoScreenPoint)) {
+@@ -1137,11 +1137,9 @@ void AsyncPanZoomController::AttemptScroll(const ScreenPoint& aStartPoint,
+ 
+     CSSPoint cssOverscroll;
+     gfx::Point scrollOffset(mX.AdjustDisplacement(cssDisplacement.x,
+-                                                  cssOverscroll.x,
+-                                                  mFrameMetrics.GetDisableScrollingX()),
++                                                  cssOverscroll.x),
+                             mY.AdjustDisplacement(cssDisplacement.y,
+-                                                  cssOverscroll.y,
+-                                                  mFrameMetrics.GetDisableScrollingY()));
++                                                  cssOverscroll.y));
+     overscroll = cssOverscroll * zoom;
+ 
+     if (fabs(scrollOffset.x) > EPSILON || fabs(scrollOffset.y) > EPSILON) {
+@@ -1237,10 +1235,8 @@ bool FlingAnimation::Sample(FrameMetrics& aFrameMetrics,
+   // a larger swipe should move you a shorter distance).
+   CSSPoint cssOffset = offset / aFrameMetrics.mZoom;
+   aFrameMetrics.mScrollOffset += CSSPoint::FromUnknownPoint(gfx::Point(
+-    mX.AdjustDisplacement(cssOffset.x, overscroll.x,
+-                          aFrameMetrics.GetDisableScrollingX()),
+-    mY.AdjustDisplacement(cssOffset.y, overscroll.y,
+-                          aFrameMetrics.GetDisableScrollingY())
++    mX.AdjustDisplacement(cssOffset.x, overscroll.x),
++    mY.AdjustDisplacement(cssOffset.y, overscroll.y)
+   ));
+ 
+   return true;
+@@ -1329,15 +1325,6 @@ const CSSRect AsyncPanZoomController::CalculatePendingDisplayPort(
+   CSSRect displayPort(scrollOffset, compositionSize);
+   CSSPoint velocity = aVelocity / aFrameMetrics.mZoom;
+ 
+-  // If scrolling is disabled here then our actual velocity is going
+-  // to be zero, so treat the displayport accordingly.
+-  if (aFrameMetrics.GetDisableScrollingX()) {
+-    velocity.x = 0;
+-  }
+-  if (aFrameMetrics.GetDisableScrollingY()) {
+-    velocity.y = 0;
+-  }
+-
+   // Enlarge the displayport along both axes depending on how fast we're moving
+   // on that axis and how long it takes to paint. Apply some heuristics to try
+   // to minimize checkerboarding.
+@@ -1564,7 +1551,8 @@ gfx3DMatrix AsyncPanZoomController::GetNontransientAsyncTransform() {
+ 
+ gfx3DMatrix AsyncPanZoomController::GetTransformToLastDispatchedPaint() {
+   ReentrantMonitorAutoEnter lock(mMonitor);
+-  CSSPoint scrollChange = mLastContentPaintMetrics.mScrollOffset - mLastDispatchedPaintMetrics.mScrollOffset;
++  LayerPoint scrollChange = (mLastContentPaintMetrics.mScrollOffset - mLastDispatchedPaintMetrics.mScrollOffset)
++                          * mLastContentPaintMetrics.LayersPixelsPerCSSPixel();
+   float zoomChange = mLastContentPaintMetrics.mZoom.scale / mLastDispatchedPaintMetrics.mZoom.scale;
+   return gfx3DMatrix::Translation(scrollChange.x, scrollChange.y, 0) *
+          gfx3DMatrix::ScalingMatrix(zoomChange, zoomChange, 1);
+@@ -1631,8 +1619,6 @@ void AsyncPanZoomController::NotifyLayersUpdated(const FrameMetrics& aLayerMetri
+     mFrameMetrics.mResolution = aLayerMetrics.mResolution;
+     mFrameMetrics.mCumulativeResolution = aLayerMetrics.mCumulativeResolution;
+     mFrameMetrics.mHasScrollgrab = aLayerMetrics.mHasScrollgrab;
+-    mFrameMetrics.SetDisableScrollingX(aLayerMetrics.GetDisableScrollingX());
+-    mFrameMetrics.SetDisableScrollingY(aLayerMetrics.GetDisableScrollingY());
+ 
+     // If the layers update was not triggered by our own repaint request, then
+     // we want to take the new scroll offset.
+@@ -1882,14 +1868,6 @@ bool AsyncPanZoomController::IsPanningState(PanZoomState aState) {
+   return (aState == PANNING || aState == PANNING_LOCKED_X || aState == PANNING_LOCKED_Y);
+ }
+ 
+-bool AsyncPanZoomController::AllowZoom() {
+-  // In addition to looking at the zoom constraints, which comes from the meta
+-  // viewport tag, disallow zooming if we are overflow:hidden in either direction.
+-  ReentrantMonitorAutoEnter lock(mMonitor);
+-  return mZoomConstraints.mAllowZoom
+-      && !(mFrameMetrics.GetDisableScrollingX() || mFrameMetrics.GetDisableScrollingY());
+-}
+-
+ void AsyncPanZoomController::SetContentResponseTimer() {
+   if (!mContentResponseTimeoutTask) {
+     mContentResponseTimeoutTask =
+diff --git a/gfx/layers/ipc/AsyncPanZoomController.h b/gfx/layers/ipc/AsyncPanZoomController.h
+index 7875c36..2fa5a0b 100644
+--- a/gfx/layers/ipc/AsyncPanZoomController.h
++++ b/gfx/layers/ipc/AsyncPanZoomController.h
+@@ -612,8 +612,6 @@ private:
+   bool IsTransformingState(PanZoomState aState);
+   bool IsPanningState(PanZoomState mState);
+ 
+-  bool AllowZoom();
+-
+   enum AxisLockMode {
+     FREE,     /* No locking at all */
+     STANDARD, /* Default axis locking mode that remains locked until pan ends*/
+diff --git a/gfx/layers/ipc/Axis.cpp b/gfx/layers/ipc/Axis.cpp
+index 83b7339..dec692c 100644
+--- a/gfx/layers/ipc/Axis.cpp
++++ b/gfx/layers/ipc/Axis.cpp
+@@ -135,20 +135,12 @@ void Axis::StartTouch(int32_t aPos) {
+   mAxisLocked = false;
+ }
+ 
+-float Axis::AdjustDisplacement(float aDisplacement, float& aOverscrollAmountOut,
+-                               bool aScrollingDisabled) {
++float Axis::AdjustDisplacement(float aDisplacement, float& aOverscrollAmountOut) {
+   if (mAxisLocked) {
+     aOverscrollAmountOut = 0;
+     return 0;
+   }
+ 
+-  if (aScrollingDisabled) {
+-    // Scrolling is disabled on this axis, stop scrolling.
+-    aOverscrollAmountOut = aDisplacement;
+-    mAcceleration = 0;
+-    return 0;
+-  }
+-
+   if (fabsf(mVelocity) < gVelocityThreshold) {
+     mAcceleration = 0;
+   }
+diff --git a/gfx/layers/ipc/Axis.h b/gfx/layers/ipc/Axis.h
+index c59a3ad..63f5702 100644
+--- a/gfx/layers/ipc/Axis.h
++++ b/gfx/layers/ipc/Axis.h
+@@ -77,12 +77,8 @@ public:
+    * prevent any displacement from happening). If overscroll ocurred, its amount
+    * is written to |aOverscrollAmountOut|.
+    * The adjusted displacement is returned.
+-   *
+-   * aScrollingDisabled is used to indicate that no scrolling should happen
+-   * in this axis. This is used to implement overflow: hidden;
+    */
+-  float AdjustDisplacement(float aDisplacement, float& aOverscrollAmountOut,
+-                           bool aScrollingDisabled);
++  float AdjustDisplacement(float aDisplacement, float& aOverscrollAmountOut);
+ 
+   /**
+    * Gets the distance between the starting position of the touch supplied in
+diff --git a/layout/base/nsDisplayList.cpp b/layout/base/nsDisplayList.cpp
+index fa65a4d..8c432df 100644
+--- a/layout/base/nsDisplayList.cpp
++++ b/layout/base/nsDisplayList.cpp
+@@ -705,16 +705,18 @@ static void RecordFrameMetrics(nsIFrame* aForFrame,
+ 
+   if (scrollableFrame) {
+     nsRect contentBounds = scrollableFrame->GetScrollRange();
++    nsPoint scrollPosition = scrollableFrame->GetScrollPosition();
+     if (scrollableFrame->GetScrollbarStyles().mVertical == NS_STYLE_OVERFLOW_HIDDEN) {
+-      metrics.SetDisableScrollingY(true);
++      contentBounds.y = scrollPosition.y;
++      contentBounds.height = 0;
+     }
+     if (scrollableFrame->GetScrollbarStyles().mHorizontal == NS_STYLE_OVERFLOW_HIDDEN) {
+-      metrics.SetDisableScrollingX(true);
++      contentBounds.x = scrollPosition.x;
++      contentBounds.width = 0;
+     }
+     contentBounds.width += scrollableFrame->GetScrollPortRect().width;
+     contentBounds.height += scrollableFrame->GetScrollPortRect().height;
+     metrics.mScrollableRect = CSSRect::FromAppUnits(contentBounds);
+-    nsPoint scrollPosition = scrollableFrame->GetScrollPosition();
+     metrics.mScrollOffset = CSSPoint::FromAppUnits(scrollPosition);
+ 
+     // If the frame was scrolled since the last layers update, and by
+diff --git a/widget/xpwidgets/APZCCallbackHelper.cpp b/widget/xpwidgets/APZCCallbackHelper.cpp
+index 1c97048..f9e9f9c 100644
+--- a/widget/xpwidgets/APZCCallbackHelper.cpp
++++ b/widget/xpwidgets/APZCCallbackHelper.cpp
+@@ -92,6 +92,23 @@ ScrollFrameTo(nsIScrollableFrame* aFrame, const CSSPoint& aPoint)
+     return CSSPoint();
+   }
+ 
++  CSSPoint targetScrollPosition = aPoint;
++
++  // If the frame is overflow:hidden on a particular axis, we don't want to allow
++  // user-driven scroll on that axis. Simply set the scroll position on that axis
++  // to whatever it already is. Note that this will leave the APZ's async scroll
++  // position out of sync with the gecko scroll position, but APZ can deal with that
++  // (by design). Note also that when we run into this case, even if both axes
++  // have overflow:hidden, we want to set aSuccessOut to true, so that the displayport
++  // follows the async scroll position rather than the gecko scroll position.
++  CSSPoint geckoScrollPosition = CSSPoint::FromAppUnits(aFrame->GetScrollPosition());
++  if (aFrame->GetScrollbarStyles().mVertical == NS_STYLE_OVERFLOW_HIDDEN) {
++    targetScrollPosition.y = geckoScrollPosition.y;
++  }
++  if (aFrame->GetScrollbarStyles().mHorizontal == NS_STYLE_OVERFLOW_HIDDEN) {
++    targetScrollPosition.x = geckoScrollPosition.x;
++  }
++
+   // If the scrollable frame is currently in the middle of an async or smooth
+   // scroll then we don't want to interrupt it (see bug 961280).
+   // Also if the scrollable frame got a scroll request from something other than us
+@@ -99,12 +116,13 @@ ScrollFrameTo(nsIScrollableFrame* aFrame, const CSSPoint& aPoint)
+   // because we'll clobber that one, which is bad.
+   if (!aFrame->IsProcessingAsyncScroll() &&
+      (!aFrame->OriginOfLastScroll() || aFrame->OriginOfLastScroll() == nsGkAtoms::apz)) {
+-    aFrame->ScrollToCSSPixelsApproximate(aPoint, nsGkAtoms::apz);
++    aFrame->ScrollToCSSPixelsApproximate(targetScrollPosition, nsGkAtoms::apz);
++    geckoScrollPosition = CSSPoint::FromAppUnits(aFrame->GetScrollPosition());
+   }
+   // Return the final scroll position after setting it so that anything that relies
+   // on it can have an accurate value. Note that even if we set it above re-querying it
+   // is a good idea because it may have gotten clamped or rounded.
+-  return CSSPoint::FromAppUnits(aFrame->GetScrollPosition());
++  return geckoScrollPosition;
+ }
+ 
+ void
+@@ -275,5 +293,62 @@ APZCCallbackHelper::AcknowledgeScrollUpdate(const FrameMetrics::ViewID& aScrollI
+     }
+ }
+ 
++static void
++DestroyCSSPoint(void* aObject, nsIAtom* aPropertyName,
++                void* aPropertyValue, void* aData)
++{
++  CSSPoint* point = static_cast<CSSPoint*>(aPropertyValue);
++  delete point;
++}
++
++void
++APZCCallbackHelper::UpdateCallbackTransform(const FrameMetrics& aApzcMetrics, const FrameMetrics& aActualMetrics)
++{
++    nsCOMPtr<nsIContent> content = nsLayoutUtils::FindContentFor(aApzcMetrics.mScrollId);
++    if (!content) {
++        return;
++    }
++    CSSPoint scrollDelta = aApzcMetrics.mScrollOffset - aActualMetrics.mScrollOffset;
++    content->SetProperty(nsGkAtoms::apzCallbackTransform, new CSSPoint(scrollDelta), DestroyCSSPoint);
++}
++
++CSSPoint
++APZCCallbackHelper::ApplyCallbackTransform(const CSSPoint& aInput, const ScrollableLayerGuid& aGuid)
++{
++    // XXX: technically we need to walk all the way up the layer tree from the layer
++    // represented by |aGuid.mScrollId| up to the root of the layer tree and apply
++    // the input transforms at each level in turn. However, it is quite difficult
++    // to do this given that the structure of the layer tree may be different from
++    // the structure of the content tree. Also it may be impossible to do correctly
++    // at this point because there are other CSS transforms and such interleaved in
++    // between so applying the inputTransforms all in a row at the end may leave
++    // some things transformed improperly. In practice we should rarely hit scenarios
++    // where any of this matters, so I'm skipping it for now and just doing the single
++    // transform for the layer that the input hit.
++
++    if (aGuid.mScrollId != FrameMetrics::NULL_SCROLL_ID) {
++        nsCOMPtr<nsIContent> content = nsLayoutUtils::FindContentFor(aGuid.mScrollId);
++        if (content) {
++            void* property = content->GetProperty(nsGkAtoms::apzCallbackTransform);
++            if (property) {
++                CSSPoint delta = (*static_cast<CSSPoint*>(property));
++                return aInput + delta;
++            }
++        }
++    }
++    return aInput;
++}
++
++nsIntPoint
++APZCCallbackHelper::ApplyCallbackTransform(const nsIntPoint& aPoint,
++                                        const ScrollableLayerGuid& aGuid,
++                                        const CSSToLayoutDeviceScale& aScale)
++{
++    LayoutDevicePoint point = LayoutDevicePoint(aPoint.x, aPoint.y);
++    point = ApplyCallbackTransform(point / aScale, aGuid) * aScale;
++    LayoutDeviceIntPoint ret = gfx::RoundedToInt(point);
++    return nsIntPoint(ret.x, ret.y);
++}
++
+ }
+ }
+diff --git a/widget/xpwidgets/APZCCallbackHelper.h b/widget/xpwidgets/APZCCallbackHelper.h
+index f0d5150..505a3c1 100644
+--- a/widget/xpwidgets/APZCCallbackHelper.h
++++ b/widget/xpwidgets/APZCCallbackHelper.h
+@@ -23,6 +23,7 @@ namespace widget {
+ class APZCCallbackHelper
+ {
+     typedef mozilla::layers::FrameMetrics FrameMetrics;
++    typedef mozilla::layers::ScrollableLayerGuid ScrollableLayerGuid;
+ 
+ public:
+     /* Checks to see if the pres shell that the given FrameMetrics object refers
+@@ -67,6 +68,33 @@ public:
+        that it accepts future scroll offset updates from APZ. */
+     static void AcknowledgeScrollUpdate(const FrameMetrics::ViewID& aScrollId,
+                                         const uint32_t& aScrollGeneration);
++
++    /* Save an "input transform" property on the content element corresponding to
++       the scrollable content. This is needed because in some cases when the APZ code
++       sends a paint request via the GeckoContentController interface, we don't always
++       apply the scroll offset that was requested. Since the APZ code doesn't know
++       that we didn't apply it, it will transform inputs assuming that we had applied
++       it, and so we need to apply a fixup to the input to account for the fact that
++       we didn't.
++       The |aApzcMetrics| argument are the metrics that the APZ sent us, and the
++       |aActualMetrics| argument are the metrics representing the gecko state after we
++       applied some or all of the APZ metrics. */
++    static void UpdateCallbackTransform(const FrameMetrics& aApzcMetrics,
++                                        const FrameMetrics& aActualMetrics);
++
++    /* Apply an "input transform" to the given |aInput| and return the transformed value.
++       The input transform applied is the one for the content element corresponding to
++       |aGuid|; this is populated in a previous call to UpdateCallbackTransform. See that
++       method's documentations for details. */
++    static CSSPoint ApplyCallbackTransform(const CSSPoint& aInput,
++                                           const ScrollableLayerGuid& aGuid);
++
++    /* Same as above, but operates on nsIntPoint that are assumed to be in LayoutDevice
++       pixel space. Requires an additonal |aScale| parameter to convert between CSS and
++       LayoutDevice space. */
++    static nsIntPoint ApplyCallbackTransform(const nsIntPoint& aPoint,
++                                             const ScrollableLayerGuid& aGuid,
++                                             const CSSToLayoutDeviceScale& aScale);
+ };
+ 
+ }

@@ -17,6 +17,7 @@ Patch5:     fix-booster-startup.patch
 Patch6:     reset-gCaptureTouchList-upon-new-touch-seq.patch
 Patch7:     disable-jmalloc-in-storage-service.patch
 Patch8:     workaround-for-crash-18096.patch
+Patch9:     backport-for-19966-from-gecko30.patch
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
@@ -75,6 +76,7 @@ Tests and misc files for xulrunner
 %patch6 -p1
 %patch7 -p1
 %patch8 -p1
+%patch9 -p1
 
 %build
 export DONT_POPULATE_VIRTUALENV=1
