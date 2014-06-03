@@ -377,7 +377,7 @@ public class BrowserToolbar extends ThemedRelativeLayout
                 public void onClick(View v) {
                     Telemetry.sendUIEvent(TelemetryContract.Event.CANCEL,
                                           TelemetryContract.Method.ACTIONBAR,
-                                          Integer.toString(editCancel.getId()));
+                                          getResources().getResourceEntryName(editCancel.getId()));
                     cancelEdit();
                 }
             });
@@ -413,37 +413,6 @@ public class BrowserToolbar extends ThemedRelativeLayout
         }
 
         return urlDisplayLayout.dismissSiteIdentityPopup();
-    }
-
-    public boolean onKey(int keyCode, KeyEvent event) {
-        if (event.getAction() != KeyEvent.ACTION_DOWN) {
-            return false;
-        }
-
-        // Galaxy Note sends key events for the stylus that are outside of the
-        // valid keyCode range (see bug 758427)
-        if (keyCode > KeyEvent.getMaxKeyCode()) {
-            return true;
-        }
-
-        // This method is called only if the key event was not handled
-        // by any of the views, which usually means the edit box lost focus
-        if (keyCode == KeyEvent.KEYCODE_BACK ||
-            keyCode == KeyEvent.KEYCODE_MENU ||
-            keyCode == KeyEvent.KEYCODE_DPAD_UP ||
-            keyCode == KeyEvent.KEYCODE_DPAD_DOWN ||
-            keyCode == KeyEvent.KEYCODE_DPAD_LEFT ||
-            keyCode == KeyEvent.KEYCODE_DPAD_RIGHT ||
-            keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
-            keyCode == KeyEvent.KEYCODE_DEL ||
-            keyCode == KeyEvent.KEYCODE_VOLUME_UP ||
-            keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
-            return false;
-        } else if (isEditing()) {
-            return urlEditLayout.onKey(keyCode, event);
-        }
-
-        return false;
     }
 
     @Override
