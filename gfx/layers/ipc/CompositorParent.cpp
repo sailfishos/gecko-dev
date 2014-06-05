@@ -78,7 +78,6 @@ static Thread* sCompositorThread = nullptr;
 // manual reference count of the compositor thread.
 static int sCompositorThreadRefCount = 0;
 static MessageLoop* sMainLoop = nullptr;
-static MessageLoop* sCompositorLoop = nullptr;
 
 // See ImageBridgeChild.cpp
 void ReleaseImageBridgeParentSingleton();
@@ -94,7 +93,6 @@ static void DeleteCompositorThread()
     ReleaseImageBridgeParentSingleton();
     delete sCompositorThread;
     sCompositorThread = nullptr;
-    sCompositorLoop = nullptr;
   } else {
     sMainLoop->PostTask(FROM_HERE, NewRunnableFunction(&DeleteCompositorThread));
   }
@@ -114,7 +112,6 @@ static void SetThreadPriority()
 
 void CompositorParent::StartUp()
 {
-  MOZ_ASSERT(!sCompositorLoop);
   CreateCompositorMap();
   CreateThread();
   sMainLoop = MessageLoop::current();
@@ -129,9 +126,7 @@ void CompositorParent::ShutDown()
 bool CompositorParent::CreateThread()
 {
   NS_ASSERTION(NS_IsMainThread(), "Should be on the main Thread!");
-  if (sCompositorThread || sCompositorLoop) {
-    return true;
-  }
+  MOZ_ASSERT(!sCompositorThread);
   sCompositorThreadRefCount = 1;
   sCompositorThread = new Thread("Compositor");
 
@@ -160,7 +155,7 @@ void CompositorParent::DestroyThread()
 
 MessageLoop* CompositorParent::CompositorLoop()
 {
-  return sCompositorThread ? sCompositorThread->message_loop() : sCompositorLoop;
+  return sCompositorThread ? sCompositorThread->message_loop() : nullptr;
 }
 
 CompositorParent::CompositorParent(nsIWidget* aWidget,
