@@ -79,9 +79,6 @@ static Thread* sCompositorThread = nullptr;
 static int sCompositorThreadRefCount = 0;
 static MessageLoop* sMainLoop = nullptr;
 // When ContentParent::StartUp() is called, we use the Thread global.
-// When StartUpWithExistingThread() is used, we have to use the two
-// duplicated globals, because there's no API to make a Thread from an
-// existing thread.
 static PlatformThreadId sCompositorThreadID = 0;
 static MessageLoop* sCompositorLoop = nullptr;
 
@@ -113,24 +110,14 @@ static void ReleaseCompositorThread()
   }
 }
 
-void
-CompositorParent::StartUpWithExistingThread(MessageLoop* aMsgLoop,
-                                            PlatformThreadId aThreadID)
+static void SetThreadPriority()
 {
-  MOZ_ASSERT(!sCompositorThread);
-  CreateCompositorMap();
-  sCompositorLoop = aMsgLoop;
-  sCompositorThreadID = aThreadID;
-  sMainLoop = MessageLoop::current();
-  sCompositorThreadRefCount = 1;
+  hal::SetCurrentThreadPriority(hal::THREAD_PRIORITY_COMPOSITOR);
 }
 
 void CompositorParent::StartUp()
 {
-  // Check if compositor started already with StartUpWithExistingThread
-  if (sCompositorThreadID) {
-    return;
-  }
+  MOZ_ASSERT(!sCompositorThreadID);
   MOZ_ASSERT(!sCompositorLoop);
   CreateCompositorMap();
   CreateThread();
