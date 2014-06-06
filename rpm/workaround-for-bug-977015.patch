@@ -1,0 +1,28 @@
+diff --git a/embedding/embedlite/tests/content/embedScrollStyles.css b/embedding/embedlite/tests/content/embedScrollStyles.css
+index c181ce4..00af1e3 100644
+--- a/embedding/embedlite/tests/content/embedScrollStyles.css
++++ b/embedding/embedlite/tests/content/embedScrollStyles.css
+@@ -22,6 +22,8 @@ html xul|scrollbar {
+   border: 0px solid transparent !important;
+   pointer-events: none;
+   opacity: 1;
++  /* make frame scrollbar invisible until bug 977015 is fixed */
++  display: none;
+ }
+ 
+ xul|scrollbar[orient="vertical"] {
+diff --git a/layout/generic/nsGfxScrollFrame.cpp b/layout/generic/nsGfxScrollFrame.cpp
+index 7529fc9..f966645 100644
+--- a/layout/generic/nsGfxScrollFrame.cpp
++++ b/layout/generic/nsGfxScrollFrame.cpp
+@@ -1055,8 +1055,8 @@ ScrollFrameHelper::WantAsyncScroll() const
+   // The check for scroll bars was added in bug 825692 to prevent layerization
+   // of text inputs for performance reasons. However, if a text input is
+   // focused we want to layerize it so we can async scroll it (bug 946408).
+-  bool isVAsyncScrollable = isVScrollable && (mVScrollbarBox || isFocused);
+-  bool isHAsyncScrollable = isHScrollable && (mHScrollbarBox || isFocused);
++  bool isVAsyncScrollable = isVScrollable;
++  bool isHAsyncScrollable = isHScrollable;
+   return isVAsyncScrollable || isHAsyncScrollable;
+ }
+ 
