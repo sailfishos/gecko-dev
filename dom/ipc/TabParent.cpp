@@ -1888,10 +1888,9 @@ TabParent::GetWidget() const
 bool
 TabParent::UseAsyncPanZoom()
 {
-  bool usingOffMainThreadCompositing = !!CompositorParent::CompositorLoop();
   bool asyncPanZoomEnabled =
     Preferences::GetBool("layers.async-pan-zoom.enabled", false);
-  return (usingOffMainThreadCompositing && asyncPanZoomEnabled &&
+  return (asyncPanZoomEnabled &&
           GetScrollingBehavior() == ASYNC_PAN_ZOOM);
 }
 
