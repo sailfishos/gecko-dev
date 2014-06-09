@@ -68,11 +68,11 @@ public:
 
   virtual SECStatus GetCertTrust(mozilla::pkix::EndEntityOrCA endEntityOrCA,
                                  const mozilla::pkix::CertPolicyId& policy,
-                                 const CERTCertificate* candidateCert,
+                                 const SECItem& candidateCertDER,
                          /*out*/ mozilla::pkix::TrustLevel* trustLevel);
 
   virtual SECStatus VerifySignedData(const CERTSignedData* signedData,
-                                     const CERTCertificate* cert);
+                                     const SECItem& subjectPublicKeyInfo);
 
   virtual SECStatus CheckRevocation(mozilla::pkix::EndEntityOrCA endEntityOrCA,
                                     const CERTCertificate* cert,

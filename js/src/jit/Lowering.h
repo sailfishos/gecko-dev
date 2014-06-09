@@ -52,7 +52,6 @@ class LIRGenerator : public LIRGeneratorSpecific
     bool lowerBitOp(JSOp op, MInstruction *ins);
     bool lowerShiftOp(JSOp op, MShiftInstruction *ins);
     bool lowerBinaryV(JSOp op, MBinaryInstruction *ins);
-    bool precreatePhi(LBlock *block, MPhi *phi);
     bool definePhis();
 
     bool lowerCallArguments(MCall *call);
@@ -183,6 +182,7 @@ class LIRGenerator : public LIRGeneratorSpecific
     bool visitNeuterCheck(MNeuterCheck *lir);
     bool visitTypedObjectElements(MTypedObjectElements *ins);
     bool visitSetTypedObjectOffset(MSetTypedObjectOffset *ins);
+    bool visitTypedObjectProto(MTypedObjectProto *ins);
     bool visitInitializedLength(MInitializedLength *ins);
     bool visitSetInitializedLength(MSetInitializedLength *ins);
     bool visitNot(MNot *ins);

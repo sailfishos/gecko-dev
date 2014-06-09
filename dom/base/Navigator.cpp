@@ -795,7 +795,7 @@ Navigator::Vibrate(const nsTArray<uint32_t>& aPattern)
   nsTArray<uint32_t> pattern(aPattern);
 
   if (pattern.Length() > sMaxVibrateListLen) {
-    pattern.SetLength(sMaxVibrateMS);
+    pattern.SetLength(sMaxVibrateListLen);
   }
 
   for (size_t i = 0; i < pattern.Length(); ++i) {
@@ -1497,7 +1497,7 @@ Navigator::GetFeature(const nsAString& aName)
     if (XRE_GetProcessType() == GeckoProcessType_Default) {
       uint32_t memLevel = mozilla::hal::GetTotalSystemMemoryLevel();
       if (memLevel == 0) {
-        p->MaybeReject(NS_LITERAL_STRING("Abnormal"));
+        p->MaybeReject(NS_ERROR_NOT_AVAILABLE);
         return p.forget();
       }
       p->MaybeResolve((int)memLevel);

@@ -430,8 +430,8 @@
 @BINPATH@/components/RadioInterfaceLayer.js
 @BINPATH@/components/RadioInterfaceLayer.manifest
 @BINPATH@/components/RILContentHelper.js
-@BINPATH@/components/TelephonyProvider.js
-@BINPATH@/components/TelephonyProvider.manifest
+@BINPATH@/components/TelephonyService.js
+@BINPATH@/components/TelephonyService.manifest
 #endif // MOZ_WIDGET_GONK && MOZ_B2G_RIL
 
 #ifndef MOZ_WIDGET_GONK
@@ -486,6 +486,8 @@
 @BINPATH@/components/nsFormHistory.js
 @BINPATH@/components/FormHistoryStartup.js
 @BINPATH@/components/nsInputListAutoComplete.js
+@BINPATH@/components/formautofill.manifest
+@BINPATH@/components/AutofillController.js
 @BINPATH@/components/contentSecurityPolicy.manifest
 @BINPATH@/components/contentSecurityPolicy.js
 @BINPATH@/components/contentAreaDropListener.manifest
@@ -671,6 +673,21 @@
 @BINPATH@/res/table-remove-row-active.gif
 @BINPATH@/res/table-remove-row-hover.gif
 @BINPATH@/res/table-remove-row.gif
+@BINPATH@/res/text_caret.png
+@BINPATH@/res/text_caret@1.5x.png
+@BINPATH@/res/text_caret@2.25x.png
+@BINPATH@/res/text_caret@2x.png
+@BINPATH@/res/text_caret_tilt_left.png
+@BINPATH@/res/text_caret_tilt_left@1.5x.png
+@BINPATH@/res/text_caret_tilt_left@2.25x.png
+@BINPATH@/res/text_caret_tilt_left@2x.png
+@BINPATH@/res/text_caret_tilt_right.png
+@BINPATH@/res/text_caret_tilt_right@1.5x.png
+@BINPATH@/res/text_caret_tilt_right@2.25x.png
+@BINPATH@/res/text_caret_tilt_right@2x.png
+@BINPATH@/res/text_selection_handle.png
+@BINPATH@/res/text_selection_handle@1.5.png
+@BINPATH@/res/text_selection_handle@2.png
 @BINPATH@/res/grabber.gif
 #ifdef XP_MACOSX
 @BINPATH@/res/cursors/*
@@ -799,6 +816,7 @@ bin/components/@DLL_PREFIX@nkgnomevfs@DLL_SUFFIX@
 @BINPATH@/components/HelperAppDialog.js
 @BINPATH@/components/DownloadsUI.js
 @BINPATH@/components/InterAppCommUIGlue.js
+@BINPATH@/components/SystemMessageGlue.js
 
 #ifndef MOZ_WIDGET_GONK
 @BINPATH@/components/SimulatorScreen.js

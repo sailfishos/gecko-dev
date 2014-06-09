@@ -80,12 +80,6 @@ static Thread* sCompositorThread = nullptr;
 // manual reference count of the compositor thread.
 static int sCompositorThreadRefCount = 0;
 static MessageLoop* sMainLoop = nullptr;
-// When ContentParent::StartUp() is called, we use the Thread global.
-// When StartUpWithExistingThread() is used, we have to use the two
-// duplicated globals, because there's no API to make a Thread from an
-// existing thread.
-static PlatformThreadId sCompositorThreadID = 0;
-static MessageLoop* sCompositorLoop = nullptr;
 
 // See ImageBridgeChild.cpp
 void ReleaseImageBridgeParentSingleton();
@@ -101,8 +95,6 @@ static void DeleteCompositorThread()
     ReleaseImageBridgeParentSingleton();
     delete sCompositorThread;
     sCompositorThread = nullptr;
-    sCompositorLoop = nullptr;
-    sCompositorThreadID = 0;
   } else {
     sMainLoop->PostTask(FROM_HERE, NewRunnableFunction(&DeleteCompositorThread));
   }
@@ -120,25 +112,8 @@ static void SetThreadPriority()
   hal::SetCurrentThreadPriority(hal::THREAD_PRIORITY_COMPOSITOR);
 }
 
-void
-CompositorParent::StartUpWithExistingThread(MessageLoop* aMsgLoop,
-                                            PlatformThreadId aThreadID)
-{
-  MOZ_ASSERT(!sCompositorThread);
-  CreateCompositorMap();
-  sCompositorLoop = aMsgLoop;
-  sCompositorThreadID = aThreadID;
-  sMainLoop = MessageLoop::current();
-  sCompositorThreadRefCount = 1;
-}
-
 void CompositorParent::StartUp()
 {
-  // Check if compositor started already with StartUpWithExistingThread
-  if (sCompositorThreadID) {
-    return;
-  }
-  MOZ_ASSERT(!sCompositorLoop);
   CreateCompositorMap();
   CreateThread();
   sMainLoop = MessageLoop::current();
@@ -153,9 +128,7 @@ void CompositorParent::ShutDown()
 bool CompositorParent::CreateThread()
 {
   NS_ASSERTION(NS_IsMainThread(), "Should be on the main Thread!");
-  if (sCompositorThread || sCompositorLoop) {
-    return true;
-  }
+  MOZ_ASSERT(!sCompositorThread);
   sCompositorThreadRefCount = 1;
   sCompositorThread = new Thread("Compositor");
 
@@ -185,7 +158,7 @@ void CompositorParent::DestroyThread()
 
 MessageLoop* CompositorParent::CompositorLoop()
 {
-  return sCompositorThread ? sCompositorThread->message_loop() : sCompositorLoop;
+  return sCompositorThread ? sCompositorThread->message_loop() : nullptr;
 }
 
 CompositorParent::CompositorParent(nsIWidget* aWidget,
@@ -203,8 +176,8 @@ CompositorParent::CompositorParent(nsIWidget* aWidget,
   , mOverrideComposeReadiness(false)
   , mForceCompositionTask(nullptr)
 {
-  NS_ABORT_IF_FALSE(sCompositorThread != nullptr || sCompositorThreadID,
-                    "The compositor thread must be Initialized before instanciating a COmpositorParent.");
+  MOZ_ASSERT(sCompositorThread != nullptr,
+             "The compositor thread must be Initialized before instanciating a CmpositorParent.");
   MOZ_COUNT_CTOR(CompositorParent);
   mCompositorID = 0;
   // FIXME: This holds on the the fact that right now the only thing that
@@ -222,16 +195,10 @@ CompositorParent::CompositorParent(nsIWidget* aWidget,
   ++sCompositorThreadRefCount;
 }
 
-PlatformThreadId
-CompositorParent::CompositorThreadID()
-{
-  return sCompositorThread ? sCompositorThread->thread_id() : sCompositorThreadID;
-}
-
 bool
 CompositorParent::IsInCompositorThread()
 {
-  return CompositorThreadID() == PlatformThread::CurrentId();
+  return sCompositorThread && sCompositorThread->thread_id() == PlatformThread::CurrentId();
 }
 
 uint64_t
@@ -409,8 +376,8 @@ CompositorParent::ScheduleRenderOnCompositorThread()
 void
 CompositorParent::PauseComposition()
 {
-  NS_ABORT_IF_FALSE(CompositorThreadID() == PlatformThread::CurrentId(),
-                    "PauseComposition() can only be called on the compositor thread");
+  MOZ_ASSERT(IsInCompositorThread(),
+             "PauseComposition() can only be called on the compositor thread");
 
   MonitorAutoLock lock(mPauseCompositionMonitor);
 
@@ -428,8 +395,8 @@ CompositorParent::PauseComposition()
 void
 CompositorParent::ResumeComposition()
 {
-  NS_ABORT_IF_FALSE(CompositorThreadID() == PlatformThread::CurrentId(),
-                    "ResumeComposition() can only be called on the compositor thread");
+  MOZ_ASSERT(IsInCompositorThread(),
+             "ResumeComposition() can only be called on the compositor thread");
 
   MonitorAutoLock lock(mResumeCompositionMonitor);
 
@@ -615,8 +582,8 @@ CompositorParent::CompositeToTarget(DrawTarget* aTarget, const nsIntRect* aRect)
   PROFILER_LABEL("CompositorParent", "Composite",
     js::ProfileEntry::Category::GRAPHICS);
 
-  NS_ABORT_IF_FALSE(CompositorThreadID() == PlatformThread::CurrentId(),
-                    "Composite can only be called on the compositor thread");
+  MOZ_ASSERT(IsInCompositorThread(),
+             "Composite can only be called on the compositor thread");
 
 #ifdef COMPOSITOR_PERFORMANCE_WARNING
   TimeDuration scheduleDelta = TimeStamp::Now() - mExpectedComposeStartTime;

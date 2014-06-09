@@ -247,6 +247,18 @@ JS_SetCompartmentPrincipals(JSCompartment *compartment, JSPrincipals *principals
     compartment->isSystem = isSystem;
 }
 
+JS_FRIEND_API(JSPrincipals *)
+JS_GetScriptPrincipals(JSScript *script)
+{
+    return script->principals();
+}
+
+JS_FRIEND_API(JSPrincipals *)
+JS_GetScriptOriginPrincipals(JSScript *script)
+{
+    return script->originPrincipals();
+}
+
 JS_FRIEND_API(bool)
 JS_WrapPropertyDescriptor(JSContext *cx, JS::MutableHandle<js::PropertyDescriptor> desc)
 {
@@ -969,8 +981,6 @@ JS::IncrementalObjectBarrier(JSObject *obj)
 
     JS_ASSERT(!obj->zone()->runtimeFromMainThread()->isHeapMajorCollecting());
 
-    AutoMarkInDeadZone amn(obj->zone());
-
     JSObject::writeBarrierPre(obj);
 }
 
@@ -981,13 +991,13 @@ JS::IncrementalReferenceBarrier(void *ptr, JSGCTraceKind kind)
         return;
 
     gc::Cell *cell = static_cast<gc::Cell *>(ptr);
+
+#ifdef DEBUG
     Zone *zone = kind == JSTRACE_OBJECT
                  ? static_cast<JSObject *>(cell)->zone()
                  : cell->tenuredZone();
-
     JS_ASSERT(!zone->runtimeFromMainThread()->isHeapMajorCollecting());
-
-    AutoMarkInDeadZone amn(zone);
+#endif
 
     if (kind == JSTRACE_OBJECT)
         JSObject::writeBarrierPre(static_cast<JSObject*>(cell));

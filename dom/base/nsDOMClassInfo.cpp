@@ -56,7 +56,6 @@
 
 // Window scriptable helper includes
 #include "nsIDocShell.h"
-#include "nsIScriptExternalNameSet.h"
 #include "nsJSUtils.h"
 #include "nsScriptNameSpaceManager.h"
 #include "nsIJSNativeInitializer.h"
@@ -1118,34 +1117,6 @@ nsDOMClassInfo::Init()
   sIsInitialized = true;
 
   return NS_OK;
-}
-
-// static
-int32_t
-nsDOMClassInfo::GetArrayIndexFromId(JSContext *cx, JS::Handle<jsid> id, bool *aIsNumber)
-{
-  if (aIsNumber) {
-    *aIsNumber = false;
-  }
-
-  int i;
-  if (JSID_IS_INT(id)) {
-      i = JSID_TO_INT(id);
-  } else {
-      JS::Rooted<JS::Value> idval(cx);
-      double array_index;
-      if (!::JS_IdToValue(cx, id, &idval) ||
-          !JS::ToNumber(cx, idval, &array_index) ||
-          !::JS_DoubleIsInt32(array_index, &i)) {
-        return -1;
-      }
-  }
-
-  if (aIsNumber) {
-    *aIsNumber = true;
-  }
-
-  return i;
 }
 
 NS_IMETHODIMP
@@ -2611,13 +2582,6 @@ OldBindingConstructorEnabled(const nsGlobalNameStruct *aStruct,
     }
 
     if (!expose) {
-      return false;
-    }
-  }
-
-  // Don't expose CSSSupportsRule unless @supports processing is enabled.
-  if (aStruct->mDOMClassInfoID == eDOMClassInfo_CSSSupportsRule_id) {
-    if (!CSSSupportsRule::PrefEnabled()) {
       return false;
     }
   }

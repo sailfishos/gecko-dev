@@ -231,6 +231,11 @@ WEBIDL_FILES = [
     'LockedFile.webidl',
     'MediaElementAudioSourceNode.webidl',
     'MediaError.webidl',
+    'MediaKeyError.webidl',
+    'MediaKeyMessageEvent.webidl',
+    'MediaKeyNeededEvent.webidl',
+    'MediaKeys.webidl',
+    'MediaKeySession.webidl',
     'MediaList.webidl',
     'MediaQueryList.webidl',
     'MediaRecorder.webidl',
@@ -298,6 +303,7 @@ WEBIDL_FILES = [
     'RTCIceCandidate.webidl',
     'RTCIdentityAssertion.webidl',
     'RTCPeerConnection.webidl',
+    'RTCPeerConnectionStatic.webidl',
     'RTCSessionDescription.webidl',
     'RTCStatsReport.webidl',
     'Screen.webidl',
@@ -622,6 +628,7 @@ if not CONFIG['MOZ_DISABLE_CRYPTOLEGACY']:
     ]
 
 GENERATED_EVENTS_WEBIDL_FILES = [
+    'AutocompleteErrorEvent.webidl',
     'BlobEvent.webidl',
     'CallGroupErrorEvent.webidl',
     'CFStateChangeEvent.webidl',
@@ -639,6 +646,7 @@ GENERATED_EVENTS_WEBIDL_FILES = [
     'MozInterAppMessageEvent.webidl',
     'MozOtaStatusEvent.webidl',
     'MozStkCommandEvent.webidl',
+    'ProgressEvent.webidl',
     'RTCDataChannelEvent.webidl',
     'RTCPeerConnectionIceEvent.webidl',
     'RTCPeerConnectionIdentityErrorEvent.webidl',

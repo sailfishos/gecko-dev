@@ -152,12 +152,14 @@ MNewStringObject::templateObj() const {
 CodeGenerator::CodeGenerator(MIRGenerator *gen, LIRGraph *graph, MacroAssembler *masm)
   : CodeGeneratorSpecific(gen, graph, masm)
   , ionScriptLabels_(gen->alloc())
+  , scriptCounts_(nullptr)
 {
 }
 
 CodeGenerator::~CodeGenerator()
 {
     JS_ASSERT_IF(!gen->compilingAsmJS(), masm.numAsmJSAbsoluteLinks() == 0);
+    js_delete(scriptCounts_);
 }
 
 typedef bool (*StringToNumberFn)(ThreadSafeContext *, JSString *, double *);
@@ -3157,21 +3159,18 @@ CodeGenerator::visitOutOfLineInterruptCheckPar(OutOfLineInterruptCheckPar *ool)
 IonScriptCounts *
 CodeGenerator::maybeCreateScriptCounts()
 {
-    // If scripts are being profiled, create a new IonScriptCounts and attach
-    // it to the script. This must be done on the main thread.
-    JSContext *cx = GetIonContext()->cx;
-    if (!cx || !cx->runtime()->profilingScripts)
+    // If scripts are being profiled, create a new IonScriptCounts for the
+    // profiling data, which will be attached to the associated JSScript or
+    // AsmJS module after code generation finishes.
+    if (!GetIonContext()->runtime->profilingScripts())
         return nullptr;
+
+    IonScriptCounts *counts = nullptr;
 
     CompileInfo *outerInfo = &gen->info();
     JSScript *script = outerInfo->script();
-    if (!script)
-        return nullptr;
 
-    if (!script->hasScriptCounts() && !script->initScriptCounts(cx))
-        return nullptr;
-
-    IonScriptCounts *counts = js_new<IonScriptCounts>();
+    counts = js_new<IonScriptCounts>();
     if (!counts || !counts->init(graph.numBlocks())) {
         js_delete(counts);
         return nullptr;
@@ -3180,24 +3179,26 @@ CodeGenerator::maybeCreateScriptCounts()
     for (size_t i = 0; i < graph.numBlocks(); i++) {
         MBasicBlock *block = graph.getBlock(i)->mir();
 
-        // Find a PC offset in the outermost script to use. If this block
-        // is from an inlined script, find a location in the outer script
-        // to associate information about the inlining with.
-        MResumePoint *resume = block->entryResumePoint();
-        while (resume->caller())
-            resume = resume->caller();
+        uint32_t offset = 0;
+        if (script) {
+            // Find a PC offset in the outermost script to use. If this block
+            // is from an inlined script, find a location in the outer script
+            // to associate information about the inlining with.
+            MResumePoint *resume = block->entryResumePoint();
+            while (resume->caller())
+                resume = resume->caller();
+            offset = script->pcToOffset(resume->pc());
+        }
 
-        uint32_t offset = script->pcToOffset(resume->pc());
         if (!counts->block(i).init(block->id(), offset, block->numSuccessors())) {
             js_delete(counts);
             return nullptr;
         }
-
         for (size_t j = 0; j < block->numSuccessors(); j++)
             counts->block(i).setSuccessor(j, block->getSuccessor(j)->id());
     }
 
-    script->addIonCounts(counts);
+    scriptCounts_ = counts;
     return counts;
 }
 
@@ -3484,7 +3485,7 @@ CodeGenerator::generateBody()
                 return false;
 
 #ifdef DEBUG
-            if (!emitDebugResultChecks(*iter))
+            if (!counts && !emitDebugResultChecks(*iter))
                 return false;
 #endif
         }
@@ -4379,6 +4380,23 @@ CodeGenerator::visitNeuterCheck(LNeuterCheck *lir)
     if (!bailoutTest32(Assembler::NonZero, temp, flag, lir->snapshot()))
         return false;
 
+    return true;
+}
+
+bool
+CodeGenerator::visitTypedObjectProto(LTypedObjectProto *lir)
+{
+    Register obj = ToRegister(lir->object());
+    JS_ASSERT(ToRegister(lir->output()) == ReturnReg);
+
+    // Eventually we ought to inline this helper function for
+    // efficiency, but it's mildly non-trivial since we must reach
+    // into the type object and so on.
+
+    const Register tempReg = ToRegister(lir->temp());
+    masm.setupUnalignedABICall(1, tempReg);
+    masm.passABIArg(obj);
+    masm.callWithABI(JS_FUNC_TO_DATA_PTR(void *, TypedObjectProto));
     return true;
 }
 
@@ -6702,6 +6720,9 @@ CodeGenerator::link(JSContext *cx, types::CompilerConstraintList *constraints)
         }
     }
 
+    if (scriptCounts_ && !script->hasScriptCounts() && !script->initScriptCounts(cx))
+        return false;
+
     // Check to make sure we didn't have a mid-build invalidation. If so, we
     // will trickle to jit::Compile() and return Method_Skipped.
     types::RecompileInfo recompileInfo;
@@ -6878,6 +6899,10 @@ CodeGenerator::link(JSContext *cx, types::CompilerConstraintList *constraints)
       default:
         MOZ_ASSUME_UNREACHABLE("No such execution mode");
     }
+
+    // Attach any generated script counts to the script.
+    if (IonScriptCounts *counts = extractScriptCounts())
+        script->addIonCounts(counts);
 
     return true;
 }
@@ -8320,6 +8345,27 @@ CodeGenerator::visitGetDOMProperty(LGetDOMProperty *ins)
     const Register PrivateReg = ToRegister(ins->getPrivReg());
     const Register ValueReg = ToRegister(ins->getValueReg());
 
+    Label haveValue;
+    if (ins->mir()->valueMayBeInSlot()) {
+        size_t slot = ins->mir()->domMemberSlotIndex();
+        // It's a bit annoying to redo these slot calculations, which duplcate
+        // LSlots and a few other things like that, but I'm not sure there's a
+        // way to reuse those here.
+        if (slot < JSObject::MAX_FIXED_SLOTS) {
+            masm.loadValue(Address(ObjectReg, JSObject::getFixedSlotOffset(slot)),
+                           JSReturnOperand);
+        } else {
+            // It's a dynamic slot.
+            slot -= JSObject::MAX_FIXED_SLOTS;
+            // Use PrivateReg as a scratch register for the slots pointer.
+            masm.loadPtr(Address(ObjectReg, JSObject::offsetOfSlots()),
+                         PrivateReg);
+            masm.loadValue(Address(PrivateReg, slot*sizeof(js::Value)),
+                           JSReturnOperand);
+        }
+        masm.branchTestUndefined(Assembler::NotEqual, JSReturnOperand, &haveValue);
+    }
+
     DebugOnly<uint32_t> initialStack = masm.framePushed();
 
     masm.checkStackAlignment();
@@ -8368,6 +8414,8 @@ CodeGenerator::visitGetDOMProperty(LGetDOMProperty *ins)
                        JSReturnOperand);
     }
     masm.adjustStack(IonDOMExitFrameLayout::Size());
+
+    masm.bind(&haveValue);
 
     JS_ASSERT(masm.framePushed() == initialStack);
     return true;
@@ -8451,70 +8499,36 @@ bool
 CodeGenerator::visitProfilerStackOp(LProfilerStackOp *lir)
 {
     Register temp = ToRegister(lir->temp()->output());
-    bool inlinedFunction = lir->inlineLevel() > 0;
 
     switch (lir->type()) {
-        case MProfilerStackOp::InlineEnter:
-            // Multiple scripts can be inlined at one depth, but there is only
-            // one InlineExit node to signify this. To deal with this, if we
-            // reach the entry of another inline script on the same level, then
-            // just reset the sps metadata about the frame. We must balance
-            // calls to leave()/reenter(), so perform the balance without
-            // emitting any instrumentation. Technically the previous inline
-            // call at this same depth has reentered, but the instrumentation
-            // will be emitted at the common join point for all inlines at the
-            // same depth.
-            if (sps_.inliningDepth() == lir->inlineLevel()) {
-                sps_.leaveInlineFrame();
-                sps_.skipNextReenter();
-                sps_.reenter(masm, temp);
-            }
-
-            sps_.leave(masm, temp, /* inlinedFunction = */ true);
-            if (!sps_.enterInlineFrame())
-                return false;
-            // fallthrough
-
         case MProfilerStackOp::Enter:
             if (gen->options.spsSlowAssertionsEnabled()) {
-                if (!inlinedFunction) {
-                    saveLive(lir);
-                    pushArg(ImmGCPtr(lir->script()));
-                    if (!callVM(SPSEnterInfo, lir))
-                        return false;
-                    restoreLive(lir);
-                }
-                sps_.pushManual(lir->script(), masm, temp, /* inlinedFunction = */ inlinedFunction);
+                saveLive(lir);
+                pushArg(ImmGCPtr(lir->script()));
+                if (!callVM(SPSEnterInfo, lir))
+                    return false;
+                restoreLive(lir);
+                sps_.pushManual(lir->script(), masm, temp, /* inlinedFunction = */ false);
                 return true;
             }
 
-            return sps_.push(lir->script(), masm, temp, /* inlinedFunction = */ inlinedFunction);
-
-        case MProfilerStackOp::InlineExit:
-            // all inline returns were covered with ::Exit, so we just need to
-            // maintain the state of inline frames currently active and then
-            // reenter the caller
-            sps_.leaveInlineFrame();
-            sps_.reenter(masm, temp, /* inlinedFunction = */ true);
-            return true;
+            return sps_.push(lir->script(), masm, temp, /* inlinedFunction = */ false);
 
         case MProfilerStackOp::Exit:
             if (gen->options.spsSlowAssertionsEnabled()) {
-                if (!inlinedFunction) {
-                    saveLive(lir);
-                    pushArg(ImmGCPtr(lir->script()));
-                    // Once we've exited, then we shouldn't emit instrumentation for
-                    // the corresponding reenter() because we no longer have a
-                    // frame.
-                    sps_.skipNextReenter();
-                    if (!callVM(SPSExitInfo, lir))
-                        return false;
-                    restoreLive(lir);
-                }
+                saveLive(lir);
+                pushArg(ImmGCPtr(lir->script()));
+                // Once we've exited, then we shouldn't emit instrumentation for
+                // the corresponding reenter() because we no longer have a
+                // frame.
+                sps_.skipNextReenter();
+                if (!callVM(SPSExitInfo, lir))
+                    return false;
+                restoreLive(lir);
                 return true;
             }
 
-            sps_.pop(masm, temp, /* inlinedFunction = */ inlinedFunction);
+            sps_.pop(masm, temp, /* inlinedFunction = */ false);
             return true;
 
         default:
@@ -8649,10 +8663,10 @@ CodeGenerator::visitAsmJSCall(LAsmJSCall *ins)
     }
 #endif
 
-   if (mir->spIncrement())
+    if (mir->spIncrement())
         masm.freeStack(mir->spIncrement());
 
-   JS_ASSERT((AlignmentAtPrologue +  masm.framePushed()) % StackAlignment == 0);
+    JS_ASSERT((AlignmentAtAsmJSPrologue + masm.framePushed()) % StackAlignment == 0);
 
 #ifdef DEBUG
     Label ok;

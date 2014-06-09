@@ -11,7 +11,6 @@
 
 #include "jscompartment.h"
 #include "jsprf.h"
-#include "jsworkers.h"
 
 #include "gc/Marking.h"
 #include "jit/AliasAnalysis.h"
@@ -41,6 +40,7 @@
 #include "jit/UnreachableCodeElimination.h"
 #include "jit/ValueNumbering.h"
 #include "vm/ForkJoin.h"
+#include "vm/HelperThreads.h"
 #include "vm/TraceLogging.h"
 
 #include "jscompartmentinlines.h"
@@ -1413,8 +1413,7 @@ OptimizeMIR(MIRGenerator *mir)
         // frequently.
         JSScript *script = mir->info().script();
         if (!script || !script->hadFrequentBailouts()) {
-            LICM licm(mir, graph);
-            if (!licm.analyze())
+            if (!LICM(mir, graph))
                 return false;
             IonSpewPass("LICM");
             AssertExtendedGraphCoherency(graph);
@@ -1505,6 +1504,21 @@ OptimizeMIR(MIRGenerator *mir)
         AssertExtendedGraphCoherency(graph);
 
         if (mir->shouldCancel("DCE"))
+            return false;
+    }
+
+    // Make loops contiguious. We do this after GVN/UCE and range analysis,
+    // which can remove CFG edges, exposing more blocks that can be moved.
+    // We also disable this when profiling, since reordering blocks appears
+    // to make the profiler unhappy.
+    {
+        AutoTraceLog log(logger, TraceLogger::MakeLoopsContiguous);
+        if (!MakeLoopsContiguous(graph))
+            return false;
+        IonSpewPass("Make loops contiguous");
+        AssertExtendedGraphCoherency(graph);
+
+        if (mir->shouldCancel("Make loops contiguous"))
             return false;
     }
 
@@ -1746,14 +1760,9 @@ OffThreadCompilationAvailable(JSContext *cx)
     //
     // Require cpuCount > 1 so that Ion compilation jobs and main-thread
     // execution are not competing for the same resources.
-    //
-    // Skip off thread compilation if PC count profiling is enabled, as
-    // CodeGenerator::maybeCreateScriptCounts will not attach script profiles
-    // when running off thread.
     return cx->runtime()->canUseParallelIonCompilation()
         && HelperThreadState().cpuCount > 1
-        && cx->runtime()->gc.incrementalState == gc::NO_INCREMENTAL
-        && !cx->runtime()->profilingScripts;
+        && cx->runtime()->gc.incrementalState == gc::NO_INCREMENTAL;
 #else
     return false;
 #endif
@@ -1988,10 +1997,9 @@ CheckScriptSize(JSContext *cx, JSScript* script)
         if (cx->runtime()->canUseParallelIonCompilation() && cpuCount > 1) {
             // Even if off thread compilation is enabled, there are cases where
             // compilation must still occur on the main thread. Don't compile
-            // in these cases (except when profiling scripts, as compilations
-            // occurring with profiling should reflect those without), but do
-            // not forbid compilation so that the script may be compiled later.
-            if (!OffThreadCompilationAvailable(cx) && !cx->runtime()->profilingScripts) {
+            // in these cases, but do not forbid compilation so that the script
+            // may be compiled later.
+            if (!OffThreadCompilationAvailable(cx)) {
                 IonSpew(IonSpew_Abort,
                         "Script too large for main thread, skipping (%u bytes) (%u locals/args)",
                         script->length(), numLocalsAndArgs);

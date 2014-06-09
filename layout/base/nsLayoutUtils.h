@@ -27,7 +27,6 @@
 #include "mozilla/gfx/2D.h"
 #include "Units.h"
 #include "mozilla/ToString.h"
-#include "gfxPrefs.h"
 
 #include <limits>
 #include <algorithm>
@@ -482,6 +481,12 @@ public:
                                            nsRect* aDisplayPort = nullptr);
 
   /**
+   * Store whether aThumbFrame wants its own layer. This sets a property on
+   * the frame.
+   */
+  static void SetScrollbarThumbLayerization(nsIFrame* aThumbFrame, bool aLayerize);
+
+  /**
    * Finds the nearest ancestor frame to aItem that is considered to have (or
    * will have) "animated geometry". For example the scrolled frames of
    * scrollframes which are actively being scrolled fall into this category.
@@ -758,6 +763,21 @@ public:
                                          uint32_t aPointCount, CSSPoint* aPoints);
 
   /**
+   * Same as above function, but transform points in app units and
+   * handle 1 point per call.
+   */
+  static TransformResult TransformPoint(nsIFrame* aFromFrame, nsIFrame* aToFrame,
+                                        nsPoint& aPoint);
+
+  /**
+   * Transforms a rect from aFromFrame to aToFrame. In app units.
+   * Returns the bounds of the actual rect if the transform requires rotation
+   * or anything complex like that.
+   */
+  static TransformResult TransformRect(nsIFrame* aFromFrame, nsIFrame* aToFrame,
+                                       nsRect& aRect);
+
+  /**
    * Return true if a "layer transform" could be computed for aFrame,
    * and optionally return the computed transform.  The returned
    * transform is what would be set on the layer currently if a layers
@@ -986,6 +1006,21 @@ public:
     DOMRectList* mRectList;
 
     RectListBuilder(DOMRectList* aList);
+    virtual void AddRect(const nsRect& aRect);
+  };
+
+  /**
+   * SelectionCaret draws carets base on range. The carets are at begin
+   * and end position of range's client rects. This class help us to
+   * collect first and last rect for drawing carets.
+   */
+  struct FirstAndLastRectCollector : public RectCallback {
+    nsRect mFirstRect;
+    nsRect mLastRect;
+    bool mSeenFirstRect;
+
+    FirstAndLastRectCollector();
+
     virtual void AddRect(const nsRect& aRect);
   };
 
@@ -2187,7 +2222,7 @@ public:
                                   ViewID aScrollId,
                                   const std::string& aKey,
                                   const std::string& aValue) {
-    if (gfxPrefs::APZTestLoggingEnabled()) {
+    if (IsAPZTestLoggingEnabled()) {
       DoLogTestDataForPaint(aPresShell, aScrollId, aKey, aValue);
     }
   }
@@ -2202,7 +2237,7 @@ public:
                                   ViewID aScrollId,
                                   const std::string& aKey,
                                   const Value& aValue) {
-    if (gfxPrefs::APZTestLoggingEnabled()) {
+    if (IsAPZTestLoggingEnabled()) {
       DoLogTestDataForPaint(aPresShell, aScrollId, aKey,
           mozilla::ToString(aValue));
     }
@@ -2247,6 +2282,8 @@ private:
                                     ViewID aScrollId,
                                     const std::string& aKey,
                                     const std::string& aValue);
+
+  static bool IsAPZTestLoggingEnabled();
 };
 
 MOZ_FINISH_NESTED_ENUM_CLASS(nsLayoutUtils::RepaintMode)

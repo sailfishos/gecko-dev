@@ -16,7 +16,7 @@
 #include "mozilla/MemoryReporting.h"
 #include "nsDOMBlobBuilder.h"
 #include "nsIDOMDocument.h"
-#include "nsIDOMProgressEvent.h"
+#include "mozilla/dom/ProgressEvent.h"
 #include "nsIJARChannel.h"
 #include "nsIJARURI.h"
 #include "nsLayoutCID.h"
@@ -1465,21 +1465,15 @@ nsXMLHttpRequest::DispatchProgressEvent(DOMEventTargetHelper* aTarget,
                          aType.EqualsLiteral(TIMEOUT_STR) ||
                          aType.EqualsLiteral(ABORT_STR);
 
-  nsCOMPtr<nsIDOMEvent> event;
-  nsresult rv = NS_NewDOMProgressEvent(getter_AddRefs(event), this,
-                                       nullptr, nullptr);
-  if (NS_FAILED(rv)) {
-    return;
-  }
+  ProgressEventInit init;
+  init.mBubbles = false;
+  init.mCancelable = false;
+  init.mLengthComputable = aLengthComputable;
+  init.mLoaded = aLoaded;
+  init.mTotal = (aTotal == UINT64_MAX) ? 0 : aTotal;
 
-  nsCOMPtr<nsIDOMProgressEvent> progress = do_QueryInterface(event);
-  if (!progress) {
-    return;
-  }
-
-  progress->InitProgressEvent(aType, false, false, aLengthComputable,
-                              aLoaded, (aTotal == UINT64_MAX) ? 0 : aTotal);
-
+  nsRefPtr<ProgressEvent> event =
+    ProgressEvent::Constructor(aTarget, aType, init);
   event->SetTrusted(true);
 
   aTarget->DispatchDOMEvent(nullptr, event, nullptr, nullptr);
@@ -2531,8 +2525,8 @@ GetRequestBody(nsIVariant* aBody, nsIInputStream** aResult, uint64_t* aContentLe
     nsresult rv = aBody->GetAsJSVal(&realVal);
     if (NS_SUCCEEDED(rv) && !realVal.isPrimitive()) {
       JS::Rooted<JSObject*> obj(cx, realVal.toObjectOrNull());
-      if (JS_IsArrayBufferObject(obj)) {
-          ArrayBuffer buf(obj);
+      ArrayBuffer buf;
+      if (buf.Init(obj)) {
           buf.ComputeLengthAndData();
           return GetRequestBody(buf.Data(), buf.Length(), aResult,
                                 aContentLength, aContentType, aCharset);

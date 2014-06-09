@@ -40,9 +40,6 @@
 #include "jsutil.h"
 #include "jswatchpoint.h"
 #include "jsweakmap.h"
-#ifdef JS_THREADSAFE
-#include "jsworkers.h"
-#endif
 #include "jswrapper.h"
 #include "prmjtime.h"
 
@@ -70,6 +67,7 @@
 #include "vm/DateObject.h"
 #include "vm/Debugger.h"
 #include "vm/ErrorObject.h"
+#include "vm/HelperThreads.h"
 #include "vm/Interpreter.h"
 #include "vm/NumericConversions.h"
 #include "vm/RegExpStatics.h"
@@ -1090,7 +1088,6 @@ JS_TransplantObject(JSContext *cx, HandleObject origobj, HandleObject target)
     JS_ASSERT(!origobj->is<CrossCompartmentWrapperObject>());
     JS_ASSERT(!target->is<CrossCompartmentWrapperObject>());
 
-    AutoMaybeTouchDeadZones agc(cx);
     AutoDisableProxyCheck adpc(cx->runtime());
 
     JSCompartment *destination = target->compartment();
@@ -3634,7 +3631,7 @@ JS_DeletePropertyById2(JSContext *cx, HandleObject obj, HandleId id, bool *resul
     CHECK_REQUEST(cx);
     assertSameCompartment(cx, obj, id);
 
-    return JSObject::deleteByValue(cx, obj, IdToValue(id), result);
+    return JSObject::deleteGeneric(cx, obj, id, result);
 }
 
 JS_PUBLIC_API(bool)
@@ -3656,7 +3653,8 @@ JS_DeleteProperty2(JSContext *cx, HandleObject obj, const char *name, bool *resu
     JSAtom *atom = Atomize(cx, name, strlen(name));
     if (!atom)
         return false;
-    return JSObject::deleteByValue(cx, obj, StringValue(atom), result);
+    RootedId id(cx, AtomToId(atom));
+    return JSObject::deleteGeneric(cx, obj, id, result);
 }
 
 JS_PUBLIC_API(bool)
@@ -3669,7 +3667,8 @@ JS_DeleteUCProperty2(JSContext *cx, HandleObject obj, const jschar *name, size_t
     JSAtom *atom = AtomizeChars(cx, name, AUTO_NAMELEN(name, namelen));
     if (!atom)
         return false;
-    return JSObject::deleteByValue(cx, obj, StringValue(atom), result);
+    RootedId id(cx, AtomToId(atom));
+    return JSObject::deleteGeneric(cx, obj, id, result);
 }
 
 JS_PUBLIC_API(bool)
@@ -4205,8 +4204,6 @@ JS_DefineFunctions(JSContext *cx, HandleObject obj, const JSFunctionSpec *fs)
     CHECK_REQUEST(cx);
     assertSameCompartment(cx, obj);
 
-    RootedObject ctor(cx);
-
     for (; fs->name; fs++) {
         RootedAtom atom(cx);
         // If the name starts with "@@", it must be a well-known symbol.
@@ -4228,11 +4225,12 @@ JS_DefineFunctions(JSContext *cx, HandleObject obj, const JSFunctionSpec *fs)
          */
         unsigned flags = fs->flags;
         if (flags & JSFUN_GENERIC_NATIVE) {
-            if (!ctor) {
-                ctor = JS_GetConstructor(cx, obj);
-                if (!ctor)
-                    return false;
-            }
+            // We require that any consumers using JSFUN_GENERIC_NATIVE stash
+            // the prototype and constructor in the global slots before invoking
+            // JS_DefineFunctions on the proto.
+            JSProtoKey key = JSCLASS_CACHED_PROTO_KEY(obj->getClass());
+            JS_ASSERT(obj == &obj->global().getPrototype(key).toObject());
+            RootedObject ctor(cx, &obj->global().getConstructor(key).toObject());
 
             flags &= ~JSFUN_GENERIC_NATIVE;
             JSFunction *fun = DefineFunction(cx, ctor, id,
@@ -5884,7 +5882,7 @@ JS_NewRegExpObject(JSContext *cx, HandleObject obj, char *bytes, size_t length, 
 {
     AssertHeapIsIdle(cx);
     CHECK_REQUEST(cx);
-    jschar *chars = InflateString(cx, bytes, &length);
+    ScopedJSFreePtr<jschar> chars(InflateString(cx, bytes, &length));
     if (!chars)
         return nullptr;
 
@@ -5894,7 +5892,6 @@ JS_NewRegExpObject(JSContext *cx, HandleObject obj, char *bytes, size_t length, 
 
     RegExpObject *reobj = RegExpObject::create(cx, res, chars, length,
                                                RegExpFlag(flags), nullptr, cx->tempLifoAlloc());
-    js_free(chars);
     return reobj;
 }
 
@@ -6094,10 +6091,15 @@ JS_ReportPendingException(JSContext *cx)
 }
 
 JS::AutoSaveExceptionState::AutoSaveExceptionState(JSContext *cx)
-    : context(cx), wasThrowing(cx->throwing), exceptionValue(cx)
+  : context(cx),
+    wasPropagatingForcedReturn(cx->propagatingForcedReturn_),
+    wasThrowing(cx->throwing),
+    exceptionValue(cx)
 {
     AssertHeapIsIdle(cx);
     CHECK_REQUEST(cx);
+    if (wasPropagatingForcedReturn)
+        cx->clearPropagatingForcedReturn();
     if (wasThrowing) {
         exceptionValue = cx->unwrappedException_;
         cx->clearPendingException();
@@ -6107,6 +6109,7 @@ JS::AutoSaveExceptionState::AutoSaveExceptionState(JSContext *cx)
 void
 JS::AutoSaveExceptionState::restore()
 {
+    context->propagatingForcedReturn_ = wasPropagatingForcedReturn;
     context->throwing = wasThrowing;
     context->unwrappedException_ = exceptionValue;
     drop();
@@ -6114,6 +6117,8 @@ JS::AutoSaveExceptionState::restore()
 
 JS::AutoSaveExceptionState::~AutoSaveExceptionState()
 {
+    if (wasPropagatingForcedReturn && !context->isPropagatingForcedReturn())
+        context->setPropagatingForcedReturn();
     if (wasThrowing && !context->isExceptionPending()) {
         context->throwing = true;
         context->unwrappedException_ = exceptionValue;

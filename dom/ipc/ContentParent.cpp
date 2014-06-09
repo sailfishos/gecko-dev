@@ -311,7 +311,7 @@ MaybeTestPBackground()
 // XXX Workaround for bug 986973 to maintain the existing broken semantics
 template<>
 struct nsIConsoleService::COMTypeInfo<nsConsoleService, void> {
-  static const nsIID kIID NS_HIDDEN;
+  static const nsIID kIID;
 };
 const nsIID nsIConsoleService::COMTypeInfo<nsConsoleService, void>::kIID = NS_ICONSOLESERVICE_IID;
 
@@ -800,7 +800,10 @@ ContentParent::CreateBrowserOrApp(const TabContext& aContext,
                 // DeallocPBrowserParent() releases this ref.
                 tp.forget().take(),
                 aContext.AsIPCTabContext(),
-                chromeFlags);
+                chromeFlags,
+                cp->ChildID(),
+                cp->IsForApp(),
+                cp->IsForBrowser());
             return static_cast<TabParent*>(browser);
         }
         return nullptr;
@@ -898,7 +901,10 @@ ContentParent::CreateBrowserOrApp(const TabContext& aContext,
         // DeallocPBrowserParent() releases this ref.
         nsRefPtr<TabParent>(tp).forget().take(),
         aContext.AsIPCTabContext(),
-        chromeFlags);
+        chromeFlags,
+        p->ChildID(),
+        p->IsForApp(),
+        p->IsForBrowser());
 
     p->MaybeTakeCPUWakeLock(aFrameElement);
 
@@ -1176,10 +1182,23 @@ ContentParent::ShutDownProcess(bool aCloseWithError)
     // shut down the cycle collector.  But by then it's too late to release any
     // CC'ed objects, so we need to null them out here, while we still can.  See
     // bug 899761.
-    if (mMessageManager) {
-      mMessageManager->Disconnect();
-      mMessageManager = nullptr;
-    }
+    ShutDownMessageManager();
+}
+
+void
+ContentParent::ShutDownMessageManager()
+{
+  if (!mMessageManager) {
+    return;
+  }
+
+  mMessageManager->ReceiveMessage(
+            static_cast<nsIContentFrameMessageManager*>(mMessageManager.get()),
+            CHILD_PROCESS_SHUTDOWN_MESSAGE, false,
+            nullptr, nullptr, nullptr, nullptr);
+
+  mMessageManager->Disconnect();
+  mMessageManager = nullptr;
 }
 
 void
@@ -1305,12 +1324,8 @@ ContentParent::ActorDestroy(ActorDestroyReason why)
         mForceKillTask = nullptr;
     }
 
-    nsRefPtr<nsFrameMessageManager> ppm = mMessageManager;
-    if (ppm) {
-      ppm->ReceiveMessage(static_cast<nsIContentFrameMessageManager*>(ppm.get()),
-                          CHILD_PROCESS_SHUTDOWN_MESSAGE, false,
-                          nullptr, nullptr, nullptr, nullptr);
-    }
+    ShutDownMessageManager();
+
     nsRefPtr<ContentParent> kungFuDeathGrip(this);
     nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
     if (obs) {
@@ -1319,10 +1334,6 @@ ContentParent::ActorDestroy(ActorDestroyReason why)
             obs->RemoveObserver(static_cast<nsIObserver*>(this),
                                 sObserverTopics[i]);
         }
-    }
-
-    if (ppm) {
-      ppm->Disconnect();
     }
 
     // Tell the memory reporter manager that this ContentParent is going away.
@@ -2411,7 +2422,10 @@ ContentParent::DeallocPJavaScriptParent(PJavaScriptParent *parent)
 
 PBrowserParent*
 ContentParent::AllocPBrowserParent(const IPCTabContext& aContext,
-                                   const uint32_t &aChromeFlags)
+                                   const uint32_t& aChromeFlags,
+                                   const uint64_t& aId,
+                                   const bool& aIsForApp,
+                                   const bool& aIsForBrowser)
 {
     unused << aChromeFlags;
 

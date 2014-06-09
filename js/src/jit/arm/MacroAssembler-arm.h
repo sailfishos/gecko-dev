@@ -453,9 +453,9 @@ private:
 
 class MacroAssemblerARMCompat : public MacroAssemblerARM
 {
+    bool inCall_;
     // Number of bytes the stack is adjusted inside a call to C. Calls to C may
     // not be nested.
-    bool inCall_;
     uint32_t args_;
     // The actual number of arguments that were passed, used to assert that
     // the initial number of arguments declared was correct.
@@ -475,8 +475,6 @@ class MacroAssemblerARMCompat : public MacroAssemblerARM
     uint32_t padding_;
 #endif
     bool dynamicAlignment_;
-
-    bool enoughMemory_;
 
     // Used to work around the move resolver's lack of support for
     // moving into register pairs, which the softfp ABI needs.
@@ -505,12 +503,8 @@ class MacroAssemblerARMCompat : public MacroAssemblerARM
   public:
     MacroAssemblerARMCompat()
       : inCall_(false),
-        enoughMemory_(true),
         framePushed_(0)
     { }
-    bool oom() const {
-        return Assembler::oom() || !enoughMemory_;
-    }
 
   public:
     using MacroAssemblerARM::call;
@@ -576,7 +570,9 @@ class MacroAssemblerARMCompat : public MacroAssemblerARM
     }
 
     void appendCallSite(const CallSiteDesc &desc) {
-        enoughMemory_ &= append(CallSite(desc, currentOffset(), framePushed_));
+        // Add an extra sizeof(void*) to include the return address that was
+        // pushed by the call instruction (see CallSite::stackDepth).
+        enoughMemory_ &= append(CallSite(desc, currentOffset(), framePushed_ + sizeof(void*)));
     }
 
     void call(const CallSiteDesc &desc, const Register reg) {
@@ -976,6 +972,7 @@ class MacroAssemblerARMCompat : public MacroAssemblerARM
         ma_b(label, c);
     }
     void branchTest32(Condition cond, Register lhs, Register rhs, Label *label) {
+        JS_ASSERT(cond == Zero || cond == NonZero || cond == Signed || cond == NotSigned);
         // x86 likes test foo, foo rather than cmp foo, #0.
         // Convert the former into the latter.
         if (lhs == rhs && (cond == Zero || cond == NonZero))
@@ -985,6 +982,7 @@ class MacroAssemblerARMCompat : public MacroAssemblerARM
         ma_b(label, cond);
     }
     void branchTest32(Condition cond, Register lhs, Imm32 imm, Label *label) {
+        JS_ASSERT(cond == Zero || cond == NonZero || cond == Signed || cond == NotSigned);
         ma_tst(lhs, imm);
         ma_b(label, cond);
     }
@@ -1530,7 +1528,7 @@ class MacroAssemblerARMCompat : public MacroAssemblerARM
     bool buildOOLFakeExitFrame(void *fakeReturnAddr);
 
   private:
-    void callWithABIPre(uint32_t *stackAdjust);
+    void callWithABIPre(uint32_t *stackAdjust, bool callFromAsmJS = false);
     void callWithABIPost(uint32_t stackAdjust, MoveOp::Type result);
 
   public:

@@ -1467,7 +1467,7 @@ pref("browser.newtabpage.rows", 3);
 // number of columns of newtab grid
 pref("browser.newtabpage.columns", 3);
 
-pref("browser.newtabpage.directorySource", "chrome://global/content/directoryLinks.json");
+pref("browser.newtabpage.directory.source", "chrome://global/content/directoryLinks.json");
 
 // Enable the DOM fullscreen API.
 pref("full-screen-api.enabled", true);
@@ -1517,6 +1517,9 @@ pref("security.csp.speccompliant", true);
 // Block insecure active content on https pages
 pref("security.mixed_content.block_active_content", true);
 
+// 1 = allow MITM for certificate pinning checks.
+pref("security.cert_pinning.enforcement_level", 1);
+
 // Override the Gecko-default value of false for Firefox.
 pref("plain_text.wrap_long_lines", true);
 
@@ -1562,6 +1565,8 @@ pref("identity.fxaccounts.settings.uri", "https://accounts.firefox.com/settings"
 pref("ui.key.menuAccessKeyFocuses", true);
 #endif
 
+// Encrypted media extensions.
+pref("media.eme.enabled", false);
 
 // Delete HTTP cache v2 data of users that didn't opt-in manually
 pref("browser.cache.auto_delete_cache_version", 1);

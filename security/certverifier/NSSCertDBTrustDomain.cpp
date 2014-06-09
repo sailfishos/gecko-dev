@@ -72,13 +72,12 @@ NSSCertDBTrustDomain::FindPotentialIssuers(
 SECStatus
 NSSCertDBTrustDomain::GetCertTrust(EndEntityOrCA endEntityOrCA,
                                    const CertPolicyId& policy,
-                                   const CERTCertificate* candidateCert,
+                                   const SECItem& candidateCertDER,
                                    /*out*/ TrustLevel* trustLevel)
 {
-  PR_ASSERT(candidateCert);
   PR_ASSERT(trustLevel);
 
-  if (!candidateCert || !trustLevel) {
+  if (!trustLevel) {
     PR_SetError(SEC_ERROR_INVALID_ARGS, 0);
     return SECFailure;
   }
@@ -90,13 +89,27 @@ NSSCertDBTrustDomain::GetCertTrust(EndEntityOrCA endEntityOrCA,
   }
 #endif
 
+  // XXX: This would be cleaner and more efficient if we could get the trust
+  // information without constructing a CERTCertificate here, but NSS doesn't
+  // expose it in any other easy-to-use fashion. The use of
+  // CERT_NewTempCertificate to get a CERTCertificate shouldn't be a
+  // performance problem because NSS will just find the existing
+  // CERTCertificate in its in-memory cache and return it.
+  ScopedCERTCertificate candidateCert(
+    CERT_NewTempCertificate(CERT_GetDefaultCertDB(),
+                            const_cast<SECItem*>(&candidateCertDER), nullptr,
+                            false, true));
+  if (!candidateCert) {
+    return SECFailure;
+  }
+
   // XXX: CERT_GetCertTrust seems to be abusing SECStatus as a boolean, where
   // SECSuccess means that there is a trust record and SECFailure means there
   // is not a trust record. I looked at NSS's internal uses of
   // CERT_GetCertTrust, and all that code uses the result as a boolean meaning
   // "We have a trust record."
   CERTCertTrust trust;
-  if (CERT_GetCertTrust(candidateCert, &trust) == SECSuccess) {
+  if (CERT_GetCertTrust(candidateCert.get(), &trust) == SECSuccess) {
     PRUint32 flags = SEC_GET_TRUST_FLAGS(&trust, mCertDBTrustType);
 
     // For DISTRUST, we use the CERTDB_TRUSTED or CERTDB_TRUSTED_CA bit,
@@ -122,7 +135,7 @@ NSSCertDBTrustDomain::GetCertTrust(EndEntityOrCA endEntityOrCA,
         return SECSuccess;
       }
 #ifndef MOZ_NO_EV_CERTS
-      if (CertIsAuthoritativeForEVPolicy(candidateCert, policy)) {
+      if (CertIsAuthoritativeForEVPolicy(candidateCert.get(), policy)) {
         *trustLevel = TrustLevel::TrustAnchor;
         return SECSuccess;
       }
@@ -136,9 +149,10 @@ NSSCertDBTrustDomain::GetCertTrust(EndEntityOrCA endEntityOrCA,
 
 SECStatus
 NSSCertDBTrustDomain::VerifySignedData(const CERTSignedData* signedData,
-                                       const CERTCertificate* cert)
+                                       const SECItem& subjectPublicKeyInfo)
 {
-  return ::mozilla::pkix::VerifySignedData(signedData, cert, mPinArg);
+  return ::mozilla::pkix::VerifySignedData(signedData, subjectPublicKeyInfo,
+                                           mPinArg);
 }
 
 static PRIntervalTime
@@ -378,6 +392,13 @@ NSSCertDBTrustDomain::CheckRevocation(
       PR_SetError(cachedResponseErrorCode, 0);
       return SECFailure;
     }
+    if (stapledOCSPResponse) {
+      PR_LOG(gCertVerifierLog, PR_LOG_DEBUG,
+             ("NSSCertDBTrustDomain: returning SECFailure from expired "
+              "stapled response after OCSP request failure"));
+      PR_SetError(SEC_ERROR_OCSP_OLD_RESPONSE, 0);
+      return SECFailure;
+    }
 
     PR_LOG(gCertVerifierLog, PR_LOG_DEBUG,
            ("NSSCertDBTrustDomain: returning SECSuccess after "
@@ -401,10 +422,18 @@ NSSCertDBTrustDomain::CheckRevocation(
     return rv;
   }
 
+  if (stapledOCSPResponse) {
+    PR_LOG(gCertVerifierLog, PR_LOG_DEBUG,
+           ("NSSCertDBTrustDomain: returning SECFailure from expired stapled "
+            "response after OCSP request verification failure"));
+    PR_SetError(SEC_ERROR_OCSP_OLD_RESPONSE, 0);
+    return SECFailure;
+  }
+
   PR_LOG(gCertVerifierLog, PR_LOG_DEBUG,
          ("NSSCertDBTrustDomain: end of CheckRevocation"));
 
-  return SECSuccess;
+  return SECSuccess; // Soft fail -> success :(
 }
 
 SECStatus

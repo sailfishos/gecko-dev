@@ -1604,6 +1604,21 @@ nsLayoutUtils::IsFixedPosFrameInDisplayPort(const nsIFrame* aFrame, nsRect* aDis
   return ViewportHasDisplayPort(aFrame->PresContext(), aDisplayPort);
 }
 
+NS_DECLARE_FRAME_PROPERTY(ScrollbarThumbLayerized, nullptr)
+
+/* static */ void
+nsLayoutUtils::SetScrollbarThumbLayerization(nsIFrame* aThumbFrame, bool aLayerize)
+{
+  aThumbFrame->Properties().Set(ScrollbarThumbLayerized(),
+    reinterpret_cast<void*>(intptr_t(aLayerize)));
+}
+
+static bool
+IsScrollbarThumbLayerized(nsIFrame* aThumbFrame)
+{
+  return reinterpret_cast<intptr_t>(aThumbFrame->Properties().Get(ScrollbarThumbLayerized()));
+}
+
 static nsIFrame*
 GetAnimatedGeometryRootForFrame(nsIFrame* aFrame,
                                 const nsIFrame* aStopAtAncestor)
@@ -1625,10 +1640,11 @@ GetAnimatedGeometryRootForFrame(nsIFrame* aFrame,
     if (!parent)
       break;
     nsIAtom* parentType = parent->GetType();
-    // Treat the slider thumb as being as an active scrolled root
-    // so that it can move without repainting.
-    if (parentType == nsGkAtoms::sliderFrame)
+    // Treat the slider thumb as being as an active scrolled root when it wants
+    // its own layer so that it can move without repainting.
+    if (parentType == nsGkAtoms::sliderFrame && IsScrollbarThumbLayerized(f)) {
       break;
+    }
     // Sticky frames are active if their nearest scrollable frame
     // is also active, just keep a record of sticky frames that we
     // encounter for now.
@@ -2227,6 +2243,66 @@ nsLayoutUtils::TransformPoints(nsIFrame* aFromFrame, nsIFrame* aToFrame,
     aPoints[i] = LayoutDevicePoint(toDevPixels.x, toDevPixels.y) /
         devPixelsPerCSSPixelToFrame;
   }
+  return TRANSFORM_SUCCEEDED;
+}
+
+nsLayoutUtils::TransformResult
+nsLayoutUtils::TransformPoint(nsIFrame* aFromFrame, nsIFrame* aToFrame,
+                              nsPoint& aPoint)
+{
+  nsIFrame* nearestCommonAncestor = FindNearestCommonAncestorFrame(aFromFrame, aToFrame);
+  if (!nearestCommonAncestor) {
+    return NO_COMMON_ANCESTOR;
+  }
+  gfx3DMatrix downToDest = GetTransformToAncestor(aToFrame, nearestCommonAncestor);
+  if (downToDest.IsSingular()) {
+    return NONINVERTIBLE_TRANSFORM;
+  }
+  downToDest.Invert();
+  gfx3DMatrix upToAncestor = GetTransformToAncestor(aFromFrame, nearestCommonAncestor);
+
+  float devPixelsPerAppUnitFromFrame =
+    1.0f / aFromFrame->PresContext()->AppUnitsPerDevPixel();
+  float devPixelsPerAppUnitToFrame =
+    1.0f / aToFrame->PresContext()->AppUnitsPerDevPixel();
+  gfxPoint toDevPixels = downToDest.ProjectPoint(
+      upToAncestor.ProjectPoint(
+        gfxPoint(aPoint.x * devPixelsPerAppUnitFromFrame,
+                 aPoint.y * devPixelsPerAppUnitFromFrame)));
+  aPoint.x = toDevPixels.x / devPixelsPerAppUnitToFrame;
+  aPoint.y = toDevPixels.y / devPixelsPerAppUnitToFrame;
+  return TRANSFORM_SUCCEEDED;
+}
+
+nsLayoutUtils::TransformResult
+nsLayoutUtils::TransformRect(nsIFrame* aFromFrame, nsIFrame* aToFrame,
+                             nsRect& aRect)
+{
+  nsIFrame* nearestCommonAncestor = FindNearestCommonAncestorFrame(aFromFrame, aToFrame);
+  if (!nearestCommonAncestor) {
+    return NO_COMMON_ANCESTOR;
+  }
+  gfx3DMatrix downToDest = GetTransformToAncestor(aToFrame, nearestCommonAncestor);
+  if (downToDest.IsSingular()) {
+    return NONINVERTIBLE_TRANSFORM;
+  }
+  downToDest.Invert();
+  gfx3DMatrix upToAncestor = GetTransformToAncestor(aFromFrame, nearestCommonAncestor);
+
+  float devPixelsPerAppUnitFromFrame =
+    1.0f / aFromFrame->PresContext()->AppUnitsPerDevPixel();
+  float devPixelsPerAppUnitToFrame =
+    1.0f / aToFrame->PresContext()->AppUnitsPerDevPixel();
+  gfxRect toDevPixels = downToDest.ProjectRectBounds(
+    upToAncestor.ProjectRectBounds(
+      gfxRect(aRect.x * devPixelsPerAppUnitFromFrame,
+              aRect.y * devPixelsPerAppUnitFromFrame,
+              aRect.width * devPixelsPerAppUnitFromFrame,
+              aRect.height * devPixelsPerAppUnitFromFrame)));
+  aRect.x = toDevPixels.x / devPixelsPerAppUnitToFrame;
+  aRect.y = toDevPixels.y / devPixelsPerAppUnitToFrame;
+  aRect.width = toDevPixels.width / devPixelsPerAppUnitToFrame;
+  aRect.height = toDevPixels.height / devPixelsPerAppUnitToFrame;
   return TRANSFORM_SUCCEEDED;
 }
 
@@ -3153,6 +3229,20 @@ void nsLayoutUtils::RectListBuilder::AddRect(const nsRect& aRect) {
 
   rect->SetLayoutRect(aRect);
   mRectList->Append(rect);
+}
+
+nsLayoutUtils::FirstAndLastRectCollector::FirstAndLastRectCollector()
+  : mSeenFirstRect(false)
+{
+}
+
+void nsLayoutUtils::FirstAndLastRectCollector::AddRect(const nsRect& aRect) {
+  if (!mSeenFirstRect) {
+    mSeenFirstRect = true;
+    mFirstRect = aRect;
+  }
+
+  mLastRect = aRect;
 }
 
 nsIFrame* nsLayoutUtils::GetContainingBlockForClientRect(nsIFrame* aFrame)
@@ -4963,7 +5053,7 @@ nsLayoutUtils::DrawPixelSnapped(nsRenderingContext* aRenderingContext,
   gfxUtils::DrawPixelSnapped(ctx, aDrawable,
                              drawingParams.mUserSpaceToImageSpace, subimage,
                              sourceRect, imageRect, drawingParams.mFillRect,
-                             gfxImageFormat::ARGB32, aFilter);
+                             gfx::SurfaceFormat::B8G8R8A8, aFilter);
 }
 
 /* static */ nsresult
@@ -6579,14 +6669,15 @@ nsLayoutUtils::CalculateExpandedScrollableRect(nsIFrame* aFrame)
 /* static */ bool
 nsLayoutUtils::WantSubAPZC()
 {
-   // TODO Turn this on for inprocess OMTC on all platforms
-   bool wantSubAPZC = gfxPrefs::APZSubframeEnabled();
+  // TODO Turn this on for inprocess OMTC on all platforms
+  bool wantSubAPZC = gfxPrefs::AsyncPanZoomEnabled() &&
+                     gfxPrefs::APZSubframeEnabled();
 #ifdef MOZ_WIDGET_GONK
-   if (XRE_GetProcessType() != GeckoProcessType_Content) {
-     wantSubAPZC = false;
-   }
+  if (XRE_GetProcessType() != GeckoProcessType_Content) {
+    wantSubAPZC = false;
+  }
 #endif
-   return wantSubAPZC;
+  return wantSubAPZC;
 }
 
 /* static */ void
@@ -6602,6 +6693,11 @@ nsLayoutUtils::DoLogTestDataForPaint(nsIPresShell* aPresShell,
   }
 }
 
+/* static */ bool
+nsLayoutUtils::IsAPZTestLoggingEnabled()
+{
+  return gfxPrefs::APZTestLoggingEnabled();
+}
 
 nsLayoutUtils::SurfaceFromElementResult::SurfaceFromElementResult()
   // Use safe default values here
