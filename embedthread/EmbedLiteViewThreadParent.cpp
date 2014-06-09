@@ -560,7 +560,7 @@ EmbedLiteViewThreadParent::ReceiveInputEvent(const InputData& aEvent)
     if (aEvent.mInputType == MULTITOUCH_INPUT) {
       const MultiTouchInput& multiTouchInput = aEvent.AsMultiTouchInput();
       LayoutDeviceIntPoint lpt;
-      MultiTouchInput translatedEvent(multiTouchInput.mType, multiTouchInput.mTime, multiTouchInput.modifiers);
+      MultiTouchInput translatedEvent(multiTouchInput.mType, multiTouchInput.mTime, TimeStamp(), multiTouchInput.modifiers);
       for (uint32_t i = 0; i < multiTouchInput.mTouches.Length(); ++i) {
         const SingleTouchData& data = multiTouchInput.mTouches[i];
         mController->GetManager()->TransformCoordinateToGecko(ScreenIntPoint(data.mScreenPoint.x, data.mScreenPoint.y), &lpt);
@@ -615,7 +615,7 @@ void
 EmbedLiteViewThreadParent::MousePress(int x, int y, int mstime, unsigned int buttons, unsigned int modifiers)
 {
   LOGT("pt[%i,%i], t:%i, bt:%u, mod:%u", x, y, mstime, buttons, modifiers);
-  MultiTouchInput event(MultiTouchInput::MULTITOUCH_START, mstime, modifiers);
+  MultiTouchInput event(MultiTouchInput::MULTITOUCH_START, mstime, TimeStamp(), modifiers);
   event.mTouches.AppendElement(SingleTouchData(0,
                                                mozilla::ScreenIntPoint(x, y),
                                                mozilla::ScreenSize(1, 1),
@@ -631,7 +631,7 @@ void
 EmbedLiteViewThreadParent::MouseRelease(int x, int y, int mstime, unsigned int buttons, unsigned int modifiers)
 {
   LOGT("pt[%i,%i], t:%i, bt:%u, mod:%u", x, y, mstime, buttons, modifiers);
-  MultiTouchInput event(MultiTouchInput::MULTITOUCH_END, mstime, modifiers);
+  MultiTouchInput event(MultiTouchInput::MULTITOUCH_END, mstime, TimeStamp(), modifiers);
   event.mTouches.AppendElement(SingleTouchData(0,
                                                mozilla::ScreenIntPoint(x, y),
                                                mozilla::ScreenSize(1, 1),
@@ -647,7 +647,7 @@ void
 EmbedLiteViewThreadParent::MouseMove(int x, int y, int mstime, unsigned int buttons, unsigned int modifiers)
 {
   LOGT("pt[%i,%i], t:%i, bt:%u, mod:%u", x, y, mstime, buttons, modifiers);
-  MultiTouchInput event(MultiTouchInput::MULTITOUCH_MOVE, mstime, modifiers);
+  MultiTouchInput event(MultiTouchInput::MULTITOUCH_MOVE, mstime, TimeStamp(), modifiers);
   event.mTouches.AppendElement(SingleTouchData(0,
                                                mozilla::ScreenIntPoint(x, y),
                                                mozilla::ScreenSize(1, 1),
