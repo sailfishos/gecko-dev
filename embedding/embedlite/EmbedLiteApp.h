@@ -88,7 +88,7 @@ public:
   virtual void Stop();
 
   // if true then compositor will be started in separate own thread, and view->CompositorCreated notification will be called in non-main thread
-  virtual void SetCompositorInSeparateThread(bool aOwnThread) { mIsCompositeInMainThread = !aOwnThread; }
+  virtual void SetCompositorInSeparateThread(bool aOwnThread) { } // Deprecated
 
   // Create custom Event Message pump, alloc new object which must be destroyed in EmbedLiteAppListener::Destroyed, or later
   virtual EmbedLiteMessagePump* CreateEmbedLiteMessagePump(EmbedLiteMessagePumpListener* aListener);
@@ -168,7 +168,6 @@ private:
   RenderType mRenderType;
   char* mProfilePath;
   bool mIsAsyncLoop;
-  bool mIsCompositeInMainThread;
 };
 
 } // namespace embedlite

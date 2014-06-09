@@ -55,7 +55,6 @@ EmbedLiteApp::EmbedLiteApp()
   , mRenderType(RENDER_AUTO)
   , mProfilePath(strdup("mozembed"))
   , mIsAsyncLoop(false)
-  , mIsCompositeInMainThread(true)
 {
   LOGT();
   sSingleton = this;
@@ -455,9 +454,6 @@ EmbedLiteApp::Initialized()
 {
   if (mListener) {
     mListener->Initialized();
-  }
-  if (mIsCompositeInMainThread) {
-    mozilla::layers::CompositorParent::StartUpWithExistingThread(MessageLoop::current(), PlatformThread::CurrentId());
   }
 }
 
