@@ -1,18 +1,5 @@
-diff --git a/embedding/embedlite/tests/content/embedScrollStyles.css b/embedding/embedlite/tests/content/embedScrollStyles.css
-index c181ce4..00af1e3 100644
---- a/embedding/embedlite/tests/content/embedScrollStyles.css
-+++ b/embedding/embedlite/tests/content/embedScrollStyles.css
-@@ -22,6 +22,8 @@ html xul|scrollbar {
-   border: 0px solid transparent !important;
-   pointer-events: none;
-   opacity: 1;
-+  /* make frame scrollbar invisible until bug 977015 is fixed */
-+  display: none;
- }
- 
- xul|scrollbar[orient="vertical"] {
 diff --git a/layout/generic/nsGfxScrollFrame.cpp b/layout/generic/nsGfxScrollFrame.cpp
-index 7529fc9..f966645 100644
+index 3bf29bd..0b2d9c1 100644
 --- a/layout/generic/nsGfxScrollFrame.cpp
 +++ b/layout/generic/nsGfxScrollFrame.cpp
 @@ -1055,8 +1055,8 @@ ScrollFrameHelper::WantAsyncScroll() const
