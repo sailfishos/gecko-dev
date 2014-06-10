@@ -1,0 +1,21 @@
+diff --git a/embedding/embedlite/embedthread/EmbedLiteViewThreadChild.cpp b/embedding/embedlite/embedthread/EmbedLiteViewThreadChild.cpp
+index b401cb6..1f26e41 100644
+--- a/embedding/embedlite/embedthread/EmbedLiteViewThreadChild.cpp
++++ b/embedding/embedlite/embedthread/EmbedLiteViewThreadChild.cpp
+@@ -581,9 +581,13 @@ EmbedLiteViewThreadChild::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
+ 
+ 
+   FrameMetrics metrics(aFrameMetrics);
+-  if (mViewResized && mHelper->HandlePossibleViewportChange()) {
+-    metrics = mHelper->mFrameMetrics;
+-    mViewResized = false;
++  if (mViewResized) {
++      mViewResized = false;
++      // If PresShell didn't change we can reuse old metrics
++      if (metrics.mPresShellId == mHelper->mFrameMetrics.mPresShellId
++          && mHelper->HandlePossibleViewportChange()) {
++          metrics = mHelper->mFrameMetrics;
++      }
+   }
+ 
+   RelayFrameMetrics(metrics);
