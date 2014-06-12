@@ -1,0 +1,13 @@
+diff --git a/embedding/embedlite/utils/TabChildHelper.cpp b/embedding/embedlite/utils/TabChildHelper.cpp
+index 5197993..076002b 100644
+--- a/embedding/embedlite/utils/TabChildHelper.cpp
++++ b/embedding/embedlite/utils/TabChildHelper.cpp
+@@ -839,6 +839,8 @@ TabChildHelper::HandlePossibleViewportChange()
+   FrameMetrics metrics(mLastRootMetrics);
+   metrics.mViewport = CSSRect(CSSPoint(), viewport);
+   metrics.mCompositionBounds = ScreenIntRect(ScreenIntPoint(), mInnerSize);
++  metrics.SetRootCompositionSize(
++      ScreenSize(mInnerSize) * ScreenToLayoutDeviceScale(1.0f) / metrics.mDevPixelsPerCSSPixel);
+ 
+   // This change to the zoom accounts for all types of changes I can conceive:
+   // 1. screen size changes, CSS viewport does not (pages with no meta viewport
