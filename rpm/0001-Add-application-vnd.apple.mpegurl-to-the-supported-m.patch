@@ -1,0 +1,75 @@
+From ccaf2432e9c4a8468af73c6fbf80fa618d05933c Mon Sep 17 00:00:00 2001
+From: Andrew den Exter <andrew.den.exter@jollamobile.com>
+Date: Thu, 29 May 2014 06:22:02 +0000
+Subject: Add application/vnd.apple.mpegurl to the supported media types.
+
+---
+ content/media/gstreamer/GStreamerFormatHelper.cpp  | 10 ++++++++--
+ netwerk/mime/nsMimeTypes.h                         |  1 +
+ toolkit/components/mediasniffer/nsMediaSniffer.cpp |  4 +++-
+ 3 files changed, 12 insertions(+), 3 deletions(-)
+
+diff --git a/content/media/gstreamer/GStreamerFormatHelper.cpp b/content/media/gstreamer/GStreamerFormatHelper.cpp
+index be71331..d2bcf6b 100644
+--- a/content/media/gstreamer/GStreamerFormatHelper.cpp
++++ b/content/media/gstreamer/GStreamerFormatHelper.cpp
+@@ -36,13 +36,16 @@ void GStreamerFormatHelper::Shutdown() {
+   }
+ }
+ 
+-static char const *const sContainers[6][2] = {
++static char const *const sContainers[9][2] = {
+   {"video/mp4", "video/quicktime"},
+   {"video/quicktime", "video/quicktime"},
+   {"audio/mp4", "audio/x-m4a"},
+   {"audio/x-m4a", "audio/x-m4a"},
+   {"audio/mpeg", "audio/mpeg, mpegversion=(int)1"},
+   {"audio/mp3", "audio/mpeg, mpegversion=(int)1"},
++  {"audio/x-mpegurl", "application/x-hls"},
++  {"application/x-mpegurl", "application/x-hls"},
++  {"application/vnd.apple.mpegurl", "application/x-hls"},
+ };
+ 
+ static char const *const sCodecs[9][2] = {
+@@ -63,7 +66,10 @@ static char const * const sDefaultCodecCaps[][2] = {
+   {"audio/mp4", "audio/mpeg, mpegversion=(int)4"},
+   {"audio/x-m4a", "audio/mpeg, mpegversion=(int)4"},
+   {"audio/mp3", "audio/mpeg, layer=(int)3"},
+-  {"audio/mpeg", "audio/mpeg, layer=(int)3"}
++  {"audio/mpeg", "audio/mpeg, layer=(int)3"},
++  {"audio/x-mpegurl", "application/x-hls"},
++  {"application/x-mpegurl", "application/x-hls"},
++  {"application/vnd.apple.mpegurl", "application/x-hls"},
+ };
+ 
+ GStreamerFormatHelper::GStreamerFormatHelper()
+diff --git a/netwerk/mime/nsMimeTypes.h b/netwerk/mime/nsMimeTypes.h
+index 8b7396c..44d599f 100644
+--- a/netwerk/mime/nsMimeTypes.h
++++ b/netwerk/mime/nsMimeTypes.h
+@@ -144,6 +144,7 @@
+ #define VIDEO_OGG                           "video/ogg"
+ #define VIDEO_WEBM                          "video/webm"
+ #define VIDEO_3GPP                          "video/3gpp"
++#define VIDEO_M3U8                          "application/vnd.apple.mpegurl"
+ #define APPLICATION_OGG                     "application/ogg"
+ 
+ /* x-uuencode-apple-single. QuickMail made me do this. */
+diff --git a/toolkit/components/mediasniffer/nsMediaSniffer.cpp b/toolkit/components/mediasniffer/nsMediaSniffer.cpp
+index 47e6780..c4bbbd8 100644
+--- a/toolkit/components/mediasniffer/nsMediaSniffer.cpp
++++ b/toolkit/components/mediasniffer/nsMediaSniffer.cpp
+@@ -35,7 +35,9 @@ nsMediaSniffer::nsMediaSnifferEntry nsMediaSniffer::sSnifferEntries[] = {
+   // The string RIFF, followed by four bytes, followed by the string WAVE
+   PATTERN_ENTRY("\xFF\xFF\xFF\xFF\x00\x00\x00\x00\xFF\xFF\xFF\xFF", "RIFF\x00\x00\x00\x00WAVE", AUDIO_WAV),
+   // mp3 with ID3 tags, the string "ID3".
+-  PATTERN_ENTRY("\xFF\xFF\xFF", "ID3", AUDIO_MP3)
++  PATTERN_ENTRY("\xFF\xFF\xFF", "ID3", AUDIO_MP3),
++  // live stream m3u playlist, the string ""#EXTM3U"
++  PATTERN_ENTRY("\xFF\xFF\xFF\xFF\xFF\xFF\xFF", "#EXTM3U", VIDEO_M3U8)
+ };
+ 
+ // This function implements mp4 sniffing algorithm, described at
+-- 
+1.8.3-rc3
+
