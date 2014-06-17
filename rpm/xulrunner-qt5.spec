@@ -129,6 +129,7 @@ touch /var/lib/_MOZEMBED_CACHE_CLEAN_
 %files
 %defattr(-,root,root,-)
 %attr(755,-,-) %{_bindir}/*
+%dir %{_libdir}/%{name}-%{greversion}
 %dir %{_libdir}/%{name}-%{greversion}/defaults
 %{_libdir}/%{name}-%{greversion}/*.so
 %{_libdir}/%{name}-%{greversion}/omni.ja
