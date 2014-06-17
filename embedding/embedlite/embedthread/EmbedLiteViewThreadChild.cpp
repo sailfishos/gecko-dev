@@ -210,6 +210,7 @@ EmbedLiteViewThreadChild::InitGeckoWindow(const uint32_t& parentId)
     NS_ERROR("Got stuck with DOMWindow1!");
   }
 
+  mozilla::dom::AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(mDOMWindow);
   utils->GetOuterWindowID(&mOuterId);
 
@@ -589,7 +590,7 @@ EmbedLiteViewThreadChild::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
 
   if (mViewResized &&
       aFrameMetrics.mIsRoot &&
-      mHelper->mLastRootMetrics.mPresShellId == aFrameMetrics.mPresShellId &&
+      mHelper->mLastRootMetrics.GetPresShellId() == aFrameMetrics.GetPresShellId() &&
       mHelper->HandlePossibleViewportChange()) {
     mViewResized = false;
   }
@@ -781,6 +782,7 @@ bool
 EmbedLiteViewThreadChild::RecvHandleKeyPressEvent(const int& domKeyCode, const int& gmodifiers, const int& charCode)
 {
   nsCOMPtr<nsPIDOMWindow> window = do_GetInterface(mWebNavigation);
+  mozilla::dom::AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
   NS_ENSURE_TRUE(utils, true);
   bool handled = false;
@@ -805,6 +807,7 @@ bool
 EmbedLiteViewThreadChild::RecvHandleKeyReleaseEvent(const int& domKeyCode, const int& gmodifiers, const int& charCode)
 {
   nsCOMPtr<nsPIDOMWindow> window = do_GetInterface(mWebNavigation);
+  mozilla::dom::AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
   NS_ENSURE_TRUE(utils, true);
   bool handled = false;
@@ -826,6 +829,7 @@ EmbedLiteViewThreadChild::RecvMouseEvent(const nsString& aType,
   }
 
   nsCOMPtr<nsPIDOMWindow> window = do_GetInterface(mWebNavigation);
+  mozilla::dom::AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
 
   NS_ENSURE_TRUE(utils, true);
