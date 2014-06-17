@@ -17,13 +17,13 @@ namespace webrtc {
 MouseCursorMonitor* MouseCursorMonitor::CreateForWindow(
     const DesktopCaptureOptions& options,
     WindowId window) {
-  return NULL;
+  return 0;
 }
 
 MouseCursorMonitor* MouseCursorMonitor::CreateForScreen(
     const DesktopCaptureOptions& options,
     ScreenId screen) {
-  return NULL;
+  return 0;
 }
 
 }  // namespace webrtc

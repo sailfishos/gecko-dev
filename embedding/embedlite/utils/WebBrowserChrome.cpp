@@ -29,6 +29,7 @@
 #include "nsIURIFixup.h"
 #include "nsIEmbedBrowserChromeListener.h"
 #include "nsIBaseWindow.h"
+#include "ScriptSettings.h"
 
 #define MOZ_AFTER_PAINT_LITERAL "MozAfterPaint"
 #define MOZ_scroll "scroll"
