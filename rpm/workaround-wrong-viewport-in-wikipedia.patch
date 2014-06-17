@@ -1,0 +1,14 @@
+diff --git a/gfx/layers/apz/src/AsyncPanZoomController.cpp b/gfx/layers/apz/src/AsyncPanZoomController.cpp
+index 52c0771..de44e93 100644
+--- a/gfx/layers/apz/src/AsyncPanZoomController.cpp
++++ b/gfx/layers/apz/src/AsyncPanZoomController.cpp
+@@ -1740,6 +1740,9 @@ void AsyncPanZoomController::NotifyLayersUpdated(const FrameMetrics& aLayerMetri
+     if (mFrameMetrics.mViewport.width != aLayerMetrics.mViewport.width ||
+         mFrameMetrics.mViewport.height != aLayerMetrics.mViewport.height) {
+       needContentRepaint = true;
++      if (mFrameMetrics.mViewport.width != aLayerMetrics.mViewport.width) {
++        mFrameMetrics.SetZoom(aLayerMetrics.GetZoom());
++      }
+     }
+     mFrameMetrics.mViewport = aLayerMetrics.mViewport;
+   }
