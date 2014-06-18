@@ -393,8 +393,10 @@ EmbedLiteViewThreadChild::RecvResumeTimeouts()
   nsCOMPtr<nsPIDOMWindow> pwindow(do_QueryInterface(mDOMWindow, &rv));
   NS_ENSURE_SUCCESS(rv, false);
 
-  rv = pwindow->ResumeTimeouts();
-  NS_ENSURE_SUCCESS(rv, false);
+  if (pwindow->TimeoutSuspendCount()) {
+    rv = pwindow->ResumeTimeouts();
+    NS_ENSURE_SUCCESS(rv, false);
+  }
 
   return true;
 }
