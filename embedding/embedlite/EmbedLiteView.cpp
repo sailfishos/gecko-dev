@@ -300,7 +300,7 @@ void
 EmbedLiteView::SetGLViewTransform(gfxMatrix matrix)
 {
   NS_ENSURE_TRUE(mViewImpl, );
-  gfx::Matrix m(matrix.xx, matrix.yx, matrix.xy, matrix.yy, matrix.x0, matrix.y0);
+  gfx::Matrix m(matrix._11, matrix._12, matrix._21, matrix._22, matrix._31, matrix._32);
   mViewImpl->SetGLViewTransform(m);
 }
 
