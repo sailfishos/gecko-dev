@@ -19,6 +19,7 @@
 #include "jstypes.h"
 
 #include "js/Anchor.h"
+#include "js/GCAPI.h"
 #include "js/RootingAPI.h"
 #include "js/Utility.h"
 
@@ -1288,6 +1289,13 @@ IsOptimizedPlaceholderMagicValue(const Value &v)
     return false;
 }
 
+static MOZ_ALWAYS_INLINE void
+ExposeValueToActiveJS(const Value &v)
+{
+    if (v.isMarkable())
+        ExposeGCThingToActiveJS(v.toGCThing(), v.gcKind());
+}
+
 /************************************************************************/
 
 static inline Value
@@ -1550,14 +1558,12 @@ namespace js {
 template <> struct GCMethods<const JS::Value>
 {
     static JS::Value initial() { return JS::UndefinedValue(); }
-    static ThingRootKind kind() { return THING_ROOT_VALUE; }
     static bool poisoned(const JS::Value &v) { return JS::IsPoisonedValue(v); }
 };
 
 template <> struct GCMethods<JS::Value>
 {
     static JS::Value initial() { return JS::UndefinedValue(); }
-    static ThingRootKind kind() { return THING_ROOT_VALUE; }
     static bool poisoned(const JS::Value &v) { return JS::IsPoisonedValue(v); }
     static bool needsPostBarrier(const JS::Value &v) {
         return v.isObject() && gc::IsInsideNursery(reinterpret_cast<gc::Cell*>(&v.toObject()));

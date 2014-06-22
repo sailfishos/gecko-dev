@@ -2135,18 +2135,21 @@ nsWindow::OnExposeEvent(cairo_t *cr)
     if (gfxPlatform::GetPlatform()->
             SupportsAzureContentForType(BackendType::CAIRO)) {
         IntSize intSize(surf->GetSize().width, surf->GetSize().height);
-        ctx = new gfxContext(gfxPlatform::GetPlatform()->
-            CreateDrawTargetForSurface(surf, intSize));
+        RefPtr<DrawTarget> dt =
+          gfxPlatform::GetPlatform()->CreateDrawTargetForSurface(surf, intSize);
+        ctx = new gfxContext(dt);
     } else if (gfxPlatform::GetPlatform()->
                    SupportsAzureContentForType(BackendType::SKIA) &&
                surf->GetType() == gfxSurfaceType::Image) {
        gfxImageSurface* imgSurf = static_cast<gfxImageSurface*>(surf);
        SurfaceFormat format = ImageFormatToSurfaceFormat(imgSurf->Format());
        IntSize intSize(surf->GetSize().width, surf->GetSize().height);
-       ctx = new gfxContext(gfxPlatform::GetPlatform()->CreateDrawTargetForData(
-           imgSurf->Data(), intSize, imgSurf->Stride(), format));
-    }  else {
-        ctx = new gfxContext(surf);
+       RefPtr<DrawTarget> dt =
+         gfxPlatform::GetPlatform()->CreateDrawTargetForData(
+                        imgSurf->Data(), intSize, imgSurf->Stride(), format);
+       ctx = new gfxContext(dt);
+    } else {
+        MOZ_MAKE_COMPILER_ASSUME_IS_UNREACHABLE("Unexpected content type");
     }
 
 #ifdef MOZ_X11
@@ -6022,12 +6025,7 @@ nsWindow::GetSurfaceForGdkDrawable(GdkDrawable* aDrawable,
 TemporaryRef<DrawTarget>
 nsWindow::StartRemoteDrawing()
 {
-#if (MOZ_WIDGET_GTK == 2)
   gfxASurface *surf = GetThebesSurface();
-#else
-  // TODO GTK3
-  gfxASurface *surf = nullptr;
-#endif
   if (!surf) {
     return nullptr;
   }
@@ -6042,22 +6040,17 @@ nsWindow::StartRemoteDrawing()
 
 // return the gfxASurface for rendering to this widget
 gfxASurface*
-#if (MOZ_WIDGET_GTK == 2)
 nsWindow::GetThebesSurface()
-#else
+#if (MOZ_WIDGET_GTK == 3)
+{
+    return GetThebesSurface(nullptr);
+}
+gfxASurface*
 nsWindow::GetThebesSurface(cairo_t *cr)
 #endif
 {
     if (!mGdkWindow)
         return nullptr;
-
-#if (MOZ_WIDGET_GTK != 2)
-    cairo_surface_t *surf = cairo_get_target(cr);
-    if (cairo_surface_status(surf) != CAIRO_STATUS_SUCCESS) {
-      NS_NOTREACHED("Missing cairo target?");
-      return nullptr;
-    }
-#endif // MOZ_WIDGET_GTK2
 
 #ifdef MOZ_X11
     gint width, height;
@@ -6092,21 +6085,27 @@ nsWindow::GetThebesSurface(cairo_t *cr)
     if (!usingShm)
 #  endif  // MOZ_HAVE_SHMIMAGE
 
-#if (MOZ_WIDGET_GTK == 2)
-    mThebesSurface = new gfxXlibSurface
-        (GDK_WINDOW_XDISPLAY(mGdkWindow),
-         gdk_x11_window_get_xid(mGdkWindow),
-         visual,
-         size);
-#else
+#if (MOZ_WIDGET_GTK == 3)
 #if MOZ_TREE_CAIRO
 #error "cairo-gtk3 target must be built with --enable-system-cairo"
-#else
-    mThebesSurface = gfxASurface::Wrap(surf);
+#else    
+    if (cr) {
+        cairo_surface_t *surf = cairo_get_target(cr);
+        if (cairo_surface_status(surf) != CAIRO_STATUS_SUCCESS) {
+          NS_NOTREACHED("Missing cairo target?");
+          return nullptr;
+        }
+        mThebesSurface = gfxASurface::Wrap(surf);
+    } else
 #endif
-#endif
+#endif // (MOZ_WIDGET_GTK == 3)
+        mThebesSurface = new gfxXlibSurface
+            (GDK_WINDOW_XDISPLAY(mGdkWindow),
+             gdk_x11_window_get_xid(mGdkWindow),
+             visual,
+             size);
 
-#endif
+#endif // MOZ_X11
 
     // if the surface creation is reporting an error, then
     // we don't have a surface to give back

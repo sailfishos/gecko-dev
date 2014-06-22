@@ -306,7 +306,7 @@ this.DOMApplicationRegistry = {
   },
 
   // Registers all the activities and system messages.
-  registerAppsHandlers: function(aRunUpdate) {
+  registerAppsHandlers: Task.async(function*(aRunUpdate) {
     this.notifyAppsRegistryStart();
     let ids = [];
     for (let id in this.webapps) {
@@ -318,42 +318,40 @@ this.DOMApplicationRegistry = {
       // Read the CSPs and roles. If MOZ_SYS_MSG is defined this is done on
       // _processManifestForIds so as to not reading the manifests
       // twice
-      this._readManifests(ids).then((aResults) => {
-        aResults.forEach((aResult) => {
-          if (!aResult.manifest) {
-            // If we can't load the manifest, we probably have a corrupted
-            // registry. We delete the app since we can't do anything with it.
-            delete this.webapps[aResult.id];
-            return;
-          }
-          let app = this.webapps[aResult.id];
-          app.csp = aResult.manifest.csp || "";
-          app.role = aResult.manifest.role || "";
-          if (app.appStatus >= Ci.nsIPrincipal.APP_STATUS_PRIVILEGED) {
-            app.redirects = this.sanitizeRedirects(aResult.redirects);
-          }
-        });
+      let results = yield this._readManifests(ids);
+      results.forEach((aResult) => {
+        if (!aResult.manifest) {
+          // If we can't load the manifest, we probably have a corrupted
+          // registry. We delete the app since we can't do anything with it.
+          delete this.webapps[aResult.id];
+          return;
+        }
+        let app = this.webapps[aResult.id];
+        app.csp = aResult.manifest.csp || "";
+        app.role = aResult.manifest.role || "";
+        if (app.appStatus >= Ci.nsIPrincipal.APP_STATUS_PRIVILEGED) {
+          app.redirects = this.sanitizeRedirects(aResult.redirects);
+        }
       });
 
       // Nothing else to do but notifying we're ready.
       this.notifyAppsRegistryReady();
     }
-  },
+  }),
 
-  updateDataStoreForApp: function(aId) {
+  updateDataStoreForApp: Task.async(function*(aId) {
     if (!this.webapps[aId]) {
       return;
     }
 
     // Create or Update the DataStore for this app
-    this._readManifests([{ id: aId }]).then((aResult) => {
-      let app = this.webapps[aId];
-      this.updateDataStore(app.localId, app.origin, app.manifestURL,
-                           aResult[0].manifest, app.appStatus);
-    });
-  },
+    let results = yield this._readManifests([{ id: aId }]);
+    let app = this.webapps[aId];
+    this.updateDataStore(app.localId, app.origin, app.manifestURL,
+                         results[0].manifest, app.appStatus);
+  }),
 
-  updatePermissionsForApp: function(aId, aIsPreinstalled) {
+  updatePermissionsForApp: function(aId, aIsPreinstalled, aIsSystemUpdate) {
     if (!this.webapps[aId]) {
       return;
     }
@@ -368,7 +366,8 @@ this.DOMApplicationRegistry = {
           manifest: data.manifest,
           manifestURL: this.webapps[aId].manifestURL,
           origin: this.webapps[aId].origin,
-          isPreinstalled: aIsPreinstalled
+          isPreinstalled: aIsPreinstalled,
+          isSystemUpdate: aIsSystemUpdate
         }, true, function() {
           debug("Error installing permissions for " + aId);
         });
@@ -600,7 +599,8 @@ this.DOMApplicationRegistry = {
             continue;
           }
           this.updateOfflineCacheForApp(id);
-          this.updatePermissionsForApp(id, isPreinstalled);
+          this.updatePermissionsForApp(id, isPreinstalled,
+                                       true /* isSystemUpdate */);
         }
         // Need to update the persisted list of apps since
         // installPreinstalledApp() removes the ones failing to install.
@@ -609,19 +609,20 @@ this.DOMApplicationRegistry = {
 
       // DataStores must be initialized at startup.
       for (let id in this.webapps) {
-        this.updateDataStoreForApp(id);
+        yield this.updateDataStoreForApp(id);
       }
 
-      this.registerAppsHandlers(runUpdate);
+      yield this.registerAppsHandlers(runUpdate);
     }.bind(this)).then(null, Cu.reportError);
   },
 
-  updateDataStore: function(aId, aOrigin, aManifestURL, aManifest, aAppStatus) {
-    // Just Certified Apps can use DataStores
-    let prefName = "dom.testing.datastore_enabled_for_hosted_apps";
-    if (aAppStatus != Ci.nsIPrincipal.APP_STATUS_CERTIFIED &&
-        (Services.prefs.getPrefType(prefName) == Services.prefs.PREF_INVALID ||
-         !Services.prefs.getBoolPref(prefName))) {
+  updateDataStore: function(aId, aOrigin, aManifestURL, aManifest) {
+    let uri = Services.io.newURI(aOrigin, null, null);
+    let secMan = Cc["@mozilla.org/scriptsecuritymanager;1"]
+                   .getService(Ci.nsIScriptSecurityManager);
+    let principal = secMan.getAppCodebasePrincipal(uri, aId,
+                                                   /*mozbrowser*/ false);
+    if (!dataStoreService.checkPermission(principal)) {
       return;
     }
 
@@ -1090,7 +1091,7 @@ this.DOMApplicationRegistry = {
 
     switch (aMessage.name) {
       case "Webapps:Install": {
-#ifdef MOZ_ANDROID_SYNTHAPKS
+#ifdef MOZ_WIDGET_ANDROID
         Services.obs.notifyObservers(mm, "webapps-runtime-install", JSON.stringify(msg));
 #else
         this.doInstall(msg, mm);
@@ -1101,7 +1102,11 @@ this.DOMApplicationRegistry = {
         this.getSelf(msg, mm);
         break;
       case "Webapps:Uninstall":
+#ifdef MOZ_WIDGET_ANDROID
+        Services.obs.notifyObservers(mm, "webapps-runtime-uninstall", JSON.stringify(msg));
+#else
         this.doUninstall(msg, mm);
+#endif
         break;
       case "Webapps:Launch":
         this.doLaunch(msg, mm);
@@ -1119,7 +1124,7 @@ this.DOMApplicationRegistry = {
         this.doGetAll(msg, mm);
         break;
       case "Webapps:InstallPackage": {
-#ifdef MOZ_ANDROID_SYNTHAPKS
+#ifdef MOZ_WIDGET_ANDROID
         Services.obs.notifyObservers(mm, "webapps-runtime-install-package", JSON.stringify(msg));
 #else
         this.doInstallPackage(msg, mm);
@@ -1539,7 +1544,7 @@ this.DOMApplicationRegistry = {
         true);
     }
     this.updateDataStore(this.webapps[id].localId, app.origin,
-                         app.manifestURL, newManifest, app.appStatus);
+                         app.manifestURL, newManifest);
     this.broadcastMessage("Webapps:UpdateState", {
       app: app,
       manifest: newManifest,
@@ -1957,7 +1962,7 @@ this.DOMApplicationRegistry = {
       }
 
       this.updateDataStore(this.webapps[aId].localId, aApp.origin,
-                           aApp.manifestURL, aApp.manifest, aApp.appStatus);
+                           aApp.manifestURL, aApp.manifest);
 
       aApp.name = manifest.name;
       aApp.csp = manifest.csp || "";
@@ -2490,8 +2495,7 @@ this.DOMApplicationRegistry = {
       }
 
       this.updateDataStore(this.webapps[id].localId,  this.webapps[id].origin,
-                           this.webapps[id].manifestURL, jsonManifest,
-                           this.webapps[id].appStatus);
+                           this.webapps[id].manifestURL, jsonManifest);
     }
 
     for each (let prop in ["installState", "downloadAvailable", "downloading",
@@ -2510,15 +2514,15 @@ this.DOMApplicationRegistry = {
     } else if (manifest.package_path) {
       // If it is a local app then it must been installed from a local file
       // instead of web.
-#ifdef MOZ_ANDROID_SYNTHAPKS
       // In that case, we would already have the manifest, not just the update
       // manifest.
+#ifdef MOZ_WIDGET_ANDROID
       dontNeedNetwork = !!aData.app.manifest;
 #else
       if (aData.app.localInstallPath) {
         dontNeedNetwork = true;
         jsonManifest.package_path = "file://" + aData.app.localInstallPath;
-      }
+      }   
 #endif
 
       // origin for install apps is meaningless here, since it's app:// and this
@@ -2627,7 +2631,7 @@ this.DOMApplicationRegistry = {
     }
 
     this.updateDataStore(this.webapps[aId].localId, aNewApp.origin,
-                         aNewApp.manifestURL, aManifest, aNewApp.appStatus);
+                         aNewApp.manifestURL, aManifest);
 
     this.broadcastMessage("Webapps:UpdateState", {
       app: app,

@@ -36,7 +36,6 @@
 #include "nsContentUtils.h"
 #include "nsIRequest.h"
 
-#include "nsFrameManager.h"
 #include "nsIScriptSecurityManager.h"
 #include "nsIXPConnect.h"
 #include "jsapi.h"
@@ -1280,7 +1279,7 @@ HTMLMediaElement::CurrentTime() const
   if (mSrcStream) {
     MediaStream* stream = GetSrcMediaStream();
     if (stream) {
-      return MediaTimeToSeconds(stream->GetCurrentTime());
+      return stream->StreamTimeToSeconds(stream->GetCurrentTime());
     }
   }
 
@@ -1673,18 +1672,20 @@ HTMLMediaElement::BuildObjectFromTags(nsCStringHashKey::KeyType aKey,
   return PL_DHASH_NEXT;
 }
 
-JSObject*
-HTMLMediaElement::MozGetMetadata(JSContext* cx, ErrorResult& aRv)
+void
+HTMLMediaElement::MozGetMetadata(JSContext* cx,
+                                 JS::MutableHandle<JSObject*> aRetval,
+                                 ErrorResult& aRv)
 {
   if (mReadyState < nsIDOMHTMLMediaElement::HAVE_METADATA) {
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
-    return nullptr;
+    return;
   }
 
   JS::Rooted<JSObject*> tags(cx, JS_NewObject(cx, nullptr, JS::NullPtr(), JS::NullPtr()));
   if (!tags) {
     aRv.Throw(NS_ERROR_FAILURE);
-    return nullptr;
+    return;
   }
   if (mTags) {
     MetadataIterCx iter = {cx, tags, false};
@@ -1692,19 +1693,19 @@ HTMLMediaElement::MozGetMetadata(JSContext* cx, ErrorResult& aRv)
     if (iter.error) {
       NS_WARNING("couldn't create metadata object!");
       aRv.Throw(NS_ERROR_FAILURE);
-      return nullptr;
+      return;
     }
   }
 
-  return tags;
+  aRetval.set(tags);
 }
 
 NS_IMETHODIMP
 HTMLMediaElement::MozGetMetadata(JSContext* cx, JS::MutableHandle<JS::Value> aValue)
 {
   ErrorResult rv;
-
-  JSObject* obj = MozGetMetadata(cx, rv);
+  JS::Rooted<JSObject*> obj(cx);
+  MozGetMetadata(cx, &obj, rv);
   if (!rv.Failed()) {
     MOZ_ASSERT(obj);
     aValue.setObject(*obj);
@@ -1965,7 +1966,7 @@ HTMLMediaElement::LookupMediaElementURITable(nsIURI* aURI)
   return nullptr;
 }
 
-HTMLMediaElement::HTMLMediaElement(already_AddRefed<nsINodeInfo>& aNodeInfo)
+HTMLMediaElement::HTMLMediaElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo)
   : nsGenericHTMLElement(aNodeInfo),
     mSrcStreamListener(nullptr),
     mCurrentLoadID(0),
@@ -1990,6 +1991,8 @@ HTMLMediaElement::HTMLMediaElement(already_AddRefed<nsINodeInfo>& aNodeInfo)
     mPaused(true),
     mMuted(0),
     mStatsShowing(false),
+    mAllowCasting(false),
+    mIsCasting(false),
     mAudioCaptured(false),
     mPlayingBeforeSeek(false),
     mPausedForInactiveDocumentOrChannel(false),
@@ -2027,7 +2030,7 @@ HTMLMediaElement::HTMLMediaElement(already_AddRefed<nsINodeInfo>& aNodeInfo)
 
   mPaused.SetOuter(this);
 
-  RegisterFreezableElement();
+  RegisterActivityObserver();
   NotifyOwnerDocumentActivityChanged();
 }
 
@@ -2039,7 +2042,7 @@ HTMLMediaElement::~HTMLMediaElement()
   if (mVideoFrameContainer) {
     mVideoFrameContainer->ForgetElement();
   }
-  UnregisterFreezableElement();
+  UnregisterActivityObserver();
   if (mDecoder) {
     ShutdownDecoder();
   }

@@ -19,6 +19,10 @@ XPCOMUtils.defineLazyServiceGetter(this, "ppmm",
                                    "@mozilla.org/parentprocessmessagemanager;1",
                                    "nsIMessageBroadcaster");
 
+XPCOMUtils.defineLazyServiceGetter(this, "dataStoreService",
+                                   "@mozilla.org/datastore-service;1",
+                                   "nsIDataStoreService");
+
 this.DataStoreChangeNotifier = {
   children: [],
   messages: [ "DataStore:Changed", "DataStore:RegisterForMessages",
@@ -65,17 +69,21 @@ this.DataStoreChangeNotifier = {
 
 
   receiveMessage: function(aMessage) {
-    debug("receiveMessage");
+    debug("receiveMessage ");
 
-    // No check has to be done when the message is 'child-process-shutdown'
-    // because at this point the target is already disconnected from
-    // nsFrameMessageManager, so that assertAppHasStatus will always fail.
-    let prefName = 'dom.testing.datastore_enabled_for_hosted_apps';
-    if (aMessage.name != 'child-process-shutdown' &&
-        (Services.prefs.getPrefType(prefName) == Services.prefs.PREF_INVALID ||
-         !Services.prefs.getBoolPref(prefName)) &&
-        !aMessage.target.assertAppHasStatus(Ci.nsIPrincipal.APP_STATUS_CERTIFIED)) {
-      return;
+    // No check has to be done when the message is 'child-process-shutdown'.
+    if (aMessage.name != "child-process-shutdown") {
+      if (!("principal" in aMessage)) {
+        return;
+      }
+      let secMan = Cc["@mozilla.org/scriptsecuritymanager;1"]
+                     .getService(Ci.nsIScriptSecurityManager);
+      let uri = Services.io.newURI(aMessage.principal.origin, null, null);
+      let principal = secMan.getAppCodebasePrincipal(uri,
+        aMessage.principal.appId, aMessage.principal.isInBrowserElement);
+      if (!principal || !dataStoreService.checkPermission(principal)) {
+        return;
+      }
     }
 
     switch (aMessage.name) {
@@ -91,7 +99,7 @@ this.DataStoreChangeNotifier = {
               this.children[i].store == aMessage.data.store &&
               this.children[i].owner == aMessage.data.owner) {
             debug("Register on existing index: " + i);
-            ++this.children[i].count;
+            this.children[i].windows.push(aMessage.data.innerWindowID);
             return;
           }
         }
@@ -99,23 +107,40 @@ this.DataStoreChangeNotifier = {
         this.children.push({ mm: aMessage.target,
                              store: aMessage.data.store,
                              owner: aMessage.data.owner,
-                             count: 1 });
+                             windows: [ aMessage.data.innerWindowID ]});
         break;
 
-      case "child-process-shutdown":
       case "DataStore:UnregisterForMessages":
         debug("Unregister");
 
-        for (let i = 0; i < this.children.length;) {
+        for (let i = 0; i < this.children.length; ++i) {
           if (this.children[i].mm == aMessage.target) {
             debug("Unregister index: " + i);
-            if (!--this.children[i].count) {
-              debug("Unregister delete index: " + i);
-              this.children.splice(i, 1);
+
+            var pos = this.children[i].windows.indexOf(aMessage.data.innerWindowID);
+            if (pos != -1) {
+              this.children[i].windows.splice(pos, 1);
             }
-            break;
-          } else {
-            ++i;
+
+            if (this.children[i].windows.length) {
+              continue;
+            }
+
+            debug("Unregister delete index: " + i);
+            this.children.splice(i, 1);
+            --i;
+          }
+        }
+        break;
+
+      case "child-process-shutdown":
+        debug("Child process shutdown");
+
+        for (let i = 0; i < this.children.length; ++i) {
+          if (this.children[i].mm == aMessage.target) {
+            debug("Unregister index: " + i);
+            this.children.splice(i, 1);
+            --i;
           }
         }
         break;

@@ -1036,6 +1036,29 @@ nsNativeThemeCocoa::DrawPushButton(CGContextRef cgContext, const HIRect& inBoxRe
   NS_OBJC_END_TRY_ABORT_BLOCK;
 }
 
+void
+nsNativeThemeCocoa::DrawFocusOutline(CGContextRef cgContext, const HIRect& inBoxRect,
+                                     EventStates inState, uint8_t aWidgetType,
+                                     nsIFrame* aFrame)
+{
+  NS_OBJC_BEGIN_TRY_ABORT_BLOCK;
+
+  HIThemeFrameDrawInfo fdi;
+  fdi.version = 0;
+  fdi.kind = kHIThemeFrameTextFieldSquare;
+  fdi.state = kThemeStateActive;
+  fdi.isFocused = TRUE;
+
+#if DRAW_IN_FRAME_DEBUG
+  CGContextSetRGBFillColor(cgContext, 0.0, 0.0, 0.5, 0.25);
+  CGContextFillRect(cgContext, inBoxRect);
+#endif
+
+  HIThemeDrawFrame(&inBoxRect, &fdi, cgContext, HITHEME_ORIENTATION);
+
+  NS_OBJC_END_TRY_ABORT_BLOCK;
+}
+
 typedef void (*RenderHIThemeControlFunction)(CGContextRef cgContext, const HIRect& aRenderRect, void* aData);
 
 static void
@@ -2084,10 +2107,10 @@ nsNativeThemeCocoa::IsParentScrollbarRolledOver(nsIFrame* aFrame)
 }
 
 static bool
-IsHiDPIContext(nsDeviceContext* aContext)
+IsHiDPIContext(nsPresContext* aContext)
 {
   return nsPresContext::AppUnitsPerCSSPixel() >=
-    2 * aContext->UnscaledAppUnitsPerDevPixel();
+    2 * aContext->DeviceContext()->UnscaledAppUnitsPerDevPixel();
 }
 
 NS_IMETHODIMP
@@ -2100,7 +2123,7 @@ nsNativeThemeCocoa::DrawWidgetBackground(nsRenderingContext* aContext,
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NSRESULT;
 
   // setup to draw into the correct port
-  int32_t p2a = aContext->AppUnitsPerDevPixel();
+  int32_t p2a = aFrame->PresContext()->AppUnitsPerDevPixel();
 
   gfxRect nativeDirtyRect(aDirtyRect.x, aDirtyRect.y,
                           aDirtyRect.width, aDirtyRect.height);
@@ -2117,7 +2140,7 @@ nsNativeThemeCocoa::DrawWidgetBackground(nsRenderingContext* aContext,
 
   gfxContextMatrixAutoSaveRestore save(thebesCtx);
 
-  bool hidpi = IsHiDPIContext(aContext->DeviceContext());
+  bool hidpi = IsHiDPIContext(aFrame->PresContext());
   if (hidpi) {
     // Use high-resolution drawing.
     nativeWidgetRect.ScaleInverse(2.0f);
@@ -2142,7 +2165,7 @@ nsNativeThemeCocoa::DrawWidgetBackground(nsRenderingContext* aContext,
     fprintf(stderr, "Native theme drawing widget %d [%p] dis:%d in rect [%d %d %d %d]\n",
             aWidgetType, aFrame, IsDisabled(aFrame), aRect.x, aRect.y, aRect.width, aRect.height);
     fprintf(stderr, "Cairo matrix: [%f %f %f %f %f %f]\n",
-            mat.xx, mat.yx, mat.xy, mat.yy, mat.x0, mat.y0);
+            mat._11, mat._12, mat._21, mat._22, mat._31, mat._32);
     fprintf(stderr, "Native theme xform[0]: [%f %f %f %f %f %f]\n",
             mm0.a, mm0.b, mm0.c, mm0.d, mm0.tx, mm0.ty);
     CGAffineTransform mm = CGContextGetCTM(cgContext);
@@ -2266,6 +2289,10 @@ nsNativeThemeCocoa::DrawWidgetBackground(nsRenderingContext* aContext,
       } else {
         DrawPushButton(cgContext, macRect, eventState, aWidgetType, aFrame);
       }
+      break;
+
+    case NS_THEME_FOCUS_OUTLINE:
+      DrawFocusOutline(cgContext, macRect, eventState, aWidgetType, aFrame);
       break;
 
     case NS_THEME_MOZ_MAC_HELP_BUTTON:
@@ -2817,7 +2844,7 @@ nsNativeThemeCocoa::GetWidgetBorder(nsDeviceContext* aContext,
       break;
   }
 
-  if (IsHiDPIContext(aContext)) {
+  if (IsHiDPIContext(aFrame->PresContext())) {
     *aResult = *aResult + *aResult; // doubled
   }
 
@@ -2855,7 +2882,7 @@ bool
 nsNativeThemeCocoa::GetWidgetOverflow(nsDeviceContext* aContext, nsIFrame* aFrame,
                                       uint8_t aWidgetType, nsRect* aOverflowRect)
 {
-  int32_t p2a = aContext->AppUnitsPerDevPixel();
+  int32_t p2a = aFrame->PresContext()->AppUnitsPerDevPixel();
   switch (aWidgetType) {
     case NS_THEME_BUTTON:
     case NS_THEME_MOZ_MAC_HELP_BUTTON:
@@ -2890,6 +2917,11 @@ nsNativeThemeCocoa::GetWidgetOverflow(nsDeviceContext* aContext, nsIFrame* aFram
       // Progress bars draw a 2 pixel white shadow under their progress indicators
       nsMargin m(0, 0, NSIntPixelsToAppUnits(2, p2a), 0);
       aOverflowRect->Inflate(m);
+      return true;
+    }
+    case NS_THEME_FOCUS_OUTLINE:
+    {
+      aOverflowRect->Inflate(NSIntPixelsToAppUnits(2, p2a));
       return true;
     }
   }
@@ -3191,7 +3223,7 @@ nsNativeThemeCocoa::GetMinimumWidgetSize(nsRenderingContext* aContext,
     }
   }
 
-  if (IsHiDPIContext(aContext->DeviceContext())) {
+  if (IsHiDPIContext(aFrame->PresContext())) {
     *aResult = *aResult * 2;
   }
 
@@ -3387,6 +3419,8 @@ nsNativeThemeCocoa::ThemeSupportsWidget(nsPresContext* aPresContext, nsIFrame* a
               scrollFrame && scrollFrame->GetScrollbarVisibility());
       break;
     }
+    case NS_THEME_FOCUS_OUTLINE:
+      return true;
   }
 
   return false;

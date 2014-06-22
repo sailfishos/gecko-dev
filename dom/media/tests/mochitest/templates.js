@@ -7,6 +7,8 @@ var HAVE_LOCAL_OFFER = "have-local-offer";
 var HAVE_REMOTE_OFFER = "have-remote-offer";
 var CLOSED = "closed";
 
+const ICE_NEW = "new";
+
 function deltaSeconds(date1, date2) {
   return (date2.getTime() - date1.getTime())/1000;
 }
@@ -17,6 +19,13 @@ function dumpSdp(test) {
   }
   if (typeof test._remote_answer !== 'undefined') {
     dump("ERROR: SDP answer: " + test._remote_answer.sdp.replace(/[\r]/g, ''));
+  }
+
+  if (typeof test.pcLocal.iceConnectionLog !== 'undefined') {
+    dump("pcLocal ICE connection state log: " + test.pcLocal.iceConnectionLog + "\n");
+  }
+  if (typeof test.pcRemote.iceConnectionLog !== 'undefined') {
+    dump("pcRemote ICE connection state log: " + test.pcRemote.iceConnectionLog + "\n");
   }
 
   if ((typeof test.pcLocal.setRemoteDescDate !== 'undefined') &&
@@ -37,6 +46,34 @@ function dumpSdp(test) {
 }
 
 var commandsPeerConnection = [
+  [
+    'PC_LOCAL_SETUP_ICE_LOGGER',
+    function (test) {
+      test.pcLocal.logIceConnectionState();
+      test.next();
+    }
+  ],
+  [
+    'PC_REMOTE_SETUP_ICE_LOGGER',
+    function (test) {
+      test.pcRemote.logIceConnectionState();
+      test.next();
+    }
+  ],
+  [
+    'PC_LOCAL_SETUP_SIGNALING_LOGGER',
+    function (test) {
+      test.pcLocal.logSignalingState();
+      test.next();
+    }
+  ],
+  [
+    'PC_REMOTE_SETUP_SIGNALING_LOGGER',
+    function (test) {
+      test.pcRemote.logSignalingState();
+      test.next();
+    }
+  ],
   [
     'PC_LOCAL_GUM',
     function (test) {
@@ -66,6 +103,22 @@ var commandsPeerConnection = [
     function (test) {
       is(test.pcRemote.signalingState, STABLE,
          "Initial remote signalingState is 'stable'");
+      test.next();
+    }
+  ],
+  [
+    'PC_LOCAL_CHECK_INITIAL_ICE_STATE',
+    function (test) {
+      is(test.pcLocal.iceConnectionState, ICE_NEW,
+        "Initial local ICE connection state is 'new'");
+      test.next();
+    }
+  ],
+  [
+    'PC_REMOTE_CHECK_INITIAL_ICE_STATE',
+    function (test) {
+      is(test.pcRemote.iceConnectionState, ICE_NEW,
+        "Initial remote ICE connection state is 'new'");
       test.next();
     }
   ],
@@ -178,6 +231,7 @@ var commandsPeerConnection = [
       var myPc = myTest.pcLocal;
 
       function onIceConnectedSuccess () {
+        info("pcLocal ICE connection state log: " + test.pcLocal.iceConnectionLog);
         ok(true, "pc_local: ICE switched to 'connected' state");
         myTest.next();
       };
@@ -188,6 +242,7 @@ var commandsPeerConnection = [
       };
 
       if (myPc.isIceConnected()) {
+        info("pcLocal ICE connection state log: " + test.pcLocal.iceConnectionLog);
         ok(true, "pc_local: ICE is in connected state");
         myTest.next();
       } else if (myPc.isIceConnectionPending()) {
@@ -206,6 +261,7 @@ var commandsPeerConnection = [
       var myPc = myTest.pcRemote;
 
       function onIceConnectedSuccess () {
+        info("pcRemote ICE connection state log: " + test.pcRemote.iceConnectionLog);
         ok(true, "pc_remote: ICE switched to 'connected' state");
         myTest.next();
       };
@@ -216,6 +272,7 @@ var commandsPeerConnection = [
       };
 
       if (myPc.isIceConnected()) {
+        info("pcRemote ICE connection state log: " + test.pcRemote.iceConnectionLog);
         ok(true, "pc_remote: ICE is in connected state");
         myTest.next();
       } else if (myPc.isIceConnectionPending()) {
@@ -285,6 +342,34 @@ var commandsPeerConnection = [
  */
 var commandsDataChannel = [
   [
+    'PC_LOCAL_SETUP_ICE_LOGGER',
+    function (test) {
+      test.pcLocal.logIceConnectionState();
+      test.next();
+    }
+  ],
+  [
+    'PC_REMOTE_SETUP_ICE_LOGGER',
+    function (test) {
+      test.pcRemote.logIceConnectionState();
+      test.next();
+    }
+  ],
+  [
+    'PC_LOCAL_SETUP_SIGNALING_LOGGER',
+    function (test) {
+      test.pcLocal.logSignalingState();
+      test.next();
+    }
+  ],
+  [
+    'PC_REMOTE_SETUP_SIGNALING_LOGGER',
+    function (test) {
+      test.pcRemote.logSignalingState();
+      test.next();
+    }
+  ],
+  [
     'PC_LOCAL_GUM',
     function (test) {
       test.pcLocal.getAllUserMedia(function () {
@@ -301,6 +386,14 @@ var commandsDataChannel = [
     }
   ],
   [
+    'PC_LOCAL_CHECK_INITIAL_ICE_STATE',
+    function (test) {
+      is(test.pcLocal.iceConnectionState, ICE_NEW,
+        "Initial local ICE connection state is 'new'");
+      test.next();
+    }
+  ],
+  [
     'PC_REMOTE_GUM',
     function (test) {
       test.pcRemote.getAllUserMedia(function () {
@@ -313,6 +406,14 @@ var commandsDataChannel = [
     function (test) {
       is(test.pcRemote.signalingState, STABLE,
          "Initial remote signalingState is stable");
+      test.next();
+    }
+  ],
+  [
+    'PC_REMOTE_CHECK_INITIAL_ICE_STATE',
+    function (test) {
+      is(test.pcRemote.iceConnectionState, ICE_NEW,
+        "Initial remote ICE connection state is 'new'");
       test.next();
     }
   ],
@@ -379,10 +480,9 @@ var commandsDataChannel = [
     function (test) {
       test.waitForInitialDataChannel(test.pcLocal, function () {
         ok(true, test.pcLocal + " dataChannels[0] switched to 'open'");
-      }, function () {
-        ok(false, test.pcLocal + " initial dataChannels[0] failed to switch to 'open'");
-        unexpectedEventAndFinish(this, 'timeout')
-      });
+      },
+      // At this point a timeout failure will be of no value
+      null);
       test.next();
     }
   ],
@@ -391,10 +491,9 @@ var commandsDataChannel = [
     function (test) {
       test.waitForInitialDataChannel(test.pcRemote, function () {
         ok(true, test.pcRemote + " dataChannels[0] switched to 'open'");
-      }, function () {
-        ok(false, test.pcRemote + " initial dataChannels[0] failed to switch to 'open'");
-        unexpectedEventAndFinish(this, 'timeout');
-      });
+      },
+      // At this point a timeout failure will be of no value
+      null);
       test.next();
     }
   ],
@@ -428,6 +527,7 @@ var commandsDataChannel = [
       var myPc = myTest.pcLocal;
 
       function onIceConnectedSuccess () {
+        info("pcLocal ICE connection state log: " + test.pcLocal.iceConnectionLog);
         ok(true, "pc_local: ICE switched to 'connected' state");
         myTest.next();
       };
@@ -438,6 +538,7 @@ var commandsDataChannel = [
       };
 
       if (myPc.isIceConnected()) {
+        info("pcLocal ICE connection state log: " + test.pcLocal.iceConnectionLog);
         ok(true, "pc_local: ICE is in connected state");
         myTest.next();
       } else if (myPc.isIceConnectionPending()) {
@@ -456,6 +557,7 @@ var commandsDataChannel = [
       var myPc = myTest.pcRemote;
 
       function onIceConnectedSuccess () {
+        info("pcRemote ICE connection state log: " + test.pcRemote.iceConnectionLog);
         ok(true, "pc_remote: ICE switched to 'connected' state");
         myTest.next();
       };
@@ -466,6 +568,7 @@ var commandsDataChannel = [
       };
 
       if (myPc.isIceConnected()) {
+        info("pcRemote ICE connection state log: " + test.pcRemote.iceConnectionLog);
         ok(true, "pc_remote: ICE is in connected state");
         myTest.next();
       } else if (myPc.isIceConnectionPending()) {
@@ -484,7 +587,10 @@ var commandsDataChannel = [
         test.next();
       }, function() {
         ok(false, test.pcLocal + " initial dataChannels[0] failed to switch to 'open'");
+        //TODO: use stopAndExit() once bug 1019323 has landed
         unexpectedEventAndFinish(this, 'timeout')
+        // to prevent test framework timeouts
+        test.next();
       });
     }
   ],
@@ -495,7 +601,10 @@ var commandsDataChannel = [
         test.next();
       }, function() {
         ok(false, test.pcRemote + " initial dataChannels[0] failed to switch to 'open'");
+        //TODO: use stopAndExit() once bug 1019323 has landed
         unexpectedEventAndFinish(this, 'timeout');
+        // to prevent test framework timeouts
+        test.next();
       });
     }
   ],
@@ -684,3 +793,4 @@ var commandsDataChannel = [
     }
   ]
 ];
+

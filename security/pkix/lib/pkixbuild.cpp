@@ -75,10 +75,19 @@ BackCert::Init(const SECItem& certDER)
   for (const CERTCertExtension* ext = *exts; ext; ext = *++exts) {
     const SECItem** out = nullptr;
 
-    if (ext->id.len == 3 &&
-        ext->id.data[0] == 0x55 && ext->id.data[1] == 0x1d) {
-      // { id-ce x }
-      switch (ext->id.data[2]) {
+    // python DottedOIDToCode.py id-ce 2.5.29
+    static const uint8_t id_ce[] = {
+      0x55, 0x1d
+    };
+
+    // python DottedOIDToCode.py id-pe-authorityInfoAccess 1.3.6.1.5.5.7.1.1
+    static const uint8_t id_pe_authorityInfoAccess[] = {
+      0x2b, 0x06, 0x01, 0x05, 0x05, 0x07, 0x01, 0x01
+    };
+
+    if (ext->id.len == PR_ARRAY_SIZE(id_ce) + 1 &&
+        !memcmp(ext->id.data, id_ce, PR_ARRAY_SIZE(id_ce))) {
+      switch (ext->id.data[ext->id.len - 1]) {
         case 14: out = &dummyEncodedSubjectKeyIdentifier; break; // bug 965136
         case 15: out = &encodedKeyUsage; break;
         case 17: out = &dummyEncodedSubjectAltName; break; // bug 970542
@@ -89,21 +98,20 @@ BackCert::Init(const SECItem& certDER)
         case 37: out = &encodedExtendedKeyUsage; break;
         case 54: out = &encodedInhibitAnyPolicy; break; // Bug 989051
       }
-    } else if (ext->id.len == 9 &&
-               ext->id.data[0] == 0x2b && ext->id.data[1] == 0x06 &&
-               ext->id.data[2] == 0x06 && ext->id.data[3] == 0x01 &&
-               ext->id.data[4] == 0x05 && ext->id.data[5] == 0x05 &&
-               ext->id.data[6] == 0x07 && ext->id.data[7] == 0x01) {
-      // { id-pe x }
-      switch (ext->id.data[8]) {
-        // We should remember the value of the encoded AIA extension here, but
-        // since our TrustDomain implementations get the OCSP URI using
-        // CERT_GetOCSPAuthorityInfoAccessLocation, we currently don't need to.
-        case 1: out = &dummyEncodedAuthorityInfoAccess; break;
-      }
-    } else if (ext->critical.data && ext->critical.len > 0) {
-      // The only valid explicit value of the critical flag is TRUE because
-      // it is defined as BOOLEAN DEFAULT FALSE, so we just assume it is true.
+    } else if (ext->id.len == PR_ARRAY_SIZE(id_pe_authorityInfoAccess) &&
+               !memcmp(ext->id.data, id_pe_authorityInfoAccess,
+                       PR_ARRAY_SIZE(id_pe_authorityInfoAccess))) {
+      // We should remember the value of the encoded AIA extension here, but
+      // since our TrustDomain implementations get the OCSP URI using
+      // CERT_GetOCSPAuthorityInfoAccessLocation, we currently don't need to.
+      out = &dummyEncodedAuthorityInfoAccess;
+    }
+
+    // If this is an extension we don't understand and it's marked critical,
+    // we must reject this certificate.
+    // (The only valid explicit value of the critical flag is TRUE because
+    // it is defined as BOOLEAN DEFAULT FALSE, so we just assume it is true.)
+    if (!out && ext->critical.data && ext->critical.len > 0) {
       return Fail(RecoverableError, SEC_ERROR_UNKNOWN_CRITICAL_EXTENSION);
     }
 
@@ -134,7 +142,7 @@ static Result BuildForward(TrustDomain& trustDomain,
                            BackCert& subject,
                            PRTime time,
                            EndEntityOrCA endEntityOrCA,
-                           KeyUsages requiredKeyUsagesIfPresent,
+                           KeyUsage requiredKeyUsageIfPresent,
                            KeyPurposeId requiredEKUIfPresent,
                            const CertPolicyId& requiredPolicy,
                            /*optional*/ const SECItem* stapledOCSPResponse,
@@ -150,7 +158,7 @@ BuildForwardInner(TrustDomain& trustDomain,
                   const CertPolicyId& requiredPolicy,
                   const SECItem& potentialIssuerDER,
                   unsigned int subCACount,
-                  ScopedCERTCertList& results)
+                  /*out*/ ScopedCERTCertList& results)
 {
   BackCert potentialIssuer(&subject, BackCert::IncludeCN::No);
   Result rv = potentialIssuer.Init(potentialIssuerDER);
@@ -180,9 +188,12 @@ BuildForwardInner(TrustDomain& trustDomain,
     return rv;
   }
 
+  // RFC 5280, Section 4.2.1.3: "If the keyUsage extension is present, then the
+  // subject public key MUST NOT be used to verify signatures on certificates
+  // or CRLs unless the corresponding keyCertSign or cRLSign bit is set."
   rv = BuildForward(trustDomain, potentialIssuer, time, EndEntityOrCA::MustBeCA,
-                    KU_KEY_CERT_SIGN, requiredEKUIfPresent, requiredPolicy,
-                    nullptr, subCACount, results);
+                    KeyUsage::keyCertSign, requiredEKUIfPresent,
+                    requiredPolicy, nullptr, subCACount, results);
   if (rv != Success) {
     return rv;
   }
@@ -202,7 +213,7 @@ BuildForward(TrustDomain& trustDomain,
              BackCert& subject,
              PRTime time,
              EndEntityOrCA endEntityOrCA,
-             KeyUsages requiredKeyUsagesIfPresent,
+             KeyUsage requiredKeyUsageIfPresent,
              KeyPurposeId requiredEKUIfPresent,
              const CertPolicyId& requiredPolicy,
              /*optional*/ const SECItem* stapledOCSPResponse,
@@ -217,7 +228,7 @@ BuildForward(TrustDomain& trustDomain,
   // See the explanation of error prioritization in pkix.h.
   rv = CheckIssuerIndependentProperties(trustDomain, subject, time,
                                         endEntityOrCA,
-                                        requiredKeyUsagesIfPresent,
+                                        requiredKeyUsageIfPresent,
                                         requiredEKUIfPresent, requiredPolicy,
                                         subCACount, &trustLevel);
   PRErrorCode deferredEndEntityError = 0;
@@ -340,8 +351,8 @@ BuildCertChain(TrustDomain& trustDomain,
                const CERTCertificate* nssCert,
                PRTime time,
                EndEntityOrCA endEntityOrCA,
-               /*optional*/ KeyUsages requiredKeyUsagesIfPresent,
-               /*optional*/ KeyPurposeId requiredEKUIfPresent,
+               KeyUsage requiredKeyUsageIfPresent,
+               KeyPurposeId requiredEKUIfPresent,
                const CertPolicyId& requiredPolicy,
                /*optional*/ const SECItem* stapledOCSPResponse,
                /*out*/ ScopedCERTCertList& results)
@@ -367,7 +378,7 @@ BuildCertChain(TrustDomain& trustDomain,
   }
 
   rv = BuildForward(trustDomain, cert, time, endEntityOrCA,
-                    requiredKeyUsagesIfPresent, requiredEKUIfPresent,
+                    requiredKeyUsageIfPresent, requiredEKUIfPresent,
                     requiredPolicy, stapledOCSPResponse, 0, results);
   if (rv != Success) {
     results = nullptr;

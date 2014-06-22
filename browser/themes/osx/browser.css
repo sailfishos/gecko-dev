@@ -109,6 +109,18 @@ toolbarseparator {
   background: url(chrome://browser/skin/Toolbar-background-noise.png) hsl(0,0%,83%);
 }
 
+#navigator-toolbox > toolbar:not(#toolbar-menubar):not(#TabsToolbar):not(#nav-bar):not(#addon-bar) {
+  overflow: -moz-hidden-unscrollable;
+  max-height: 4em;
+  transition: min-height 170ms ease-out, max-height 170ms ease-out;
+}
+
+#navigator-toolbox > toolbar:not(#toolbar-menubar):not(#TabsToolbar):not(#nav-bar):not(#addon-bar)[collapsed=true] {
+  min-height: 0.1px;
+  max-height: 0;
+  transition: min-height 170ms ease-out, max-height 170ms ease-out, visibility 170ms linear;
+}
+
 #nav-bar {
   -moz-appearance: none;
   background: url(chrome://browser/skin/Toolbar-background-noise.png),
@@ -149,7 +161,7 @@ toolbarseparator {
   padding: 4px;
 }
 
-#PersonalToolbar {
+#PersonalToolbar:not([collapsed=true]) {
   padding: 0 4px 4px;
   /* 4px padding ^  plus 19px personal-bookmarks (see below) */
   min-height: 23px;
@@ -236,7 +248,6 @@ toolbarbutton.bookmark-item:not(.subviewbutton):not(#bookmarks-menu-button),
 .bookmark-item > .toolbarbutton-text,
 #personal-bookmarks[cui-areatype="toolbar"] > #bookmarks-toolbar-placeholder > .toolbarbutton-text {
   display: -moz-box !important; /* Force the display of the label for bookmarks */
-  margin: 0 !important;
 }
 
 toolbarbutton.bookmark-item:not(.subviewbutton):not(#bookmarks-menu-button):hover {
@@ -1400,11 +1411,6 @@ toolbarbutton[sdk-button="true"][cui-areatype="toolbar"] > .toolbarbutton-icon {
   border-bottom-right-radius: 0;
 }
 
-.toolbarbutton-1 > .toolbarbutton-text,
-.toolbarbutton-1 > .toolbarbutton-menubutton-button > .toolbarbutton-text {
-  margin: 2px 0 0;
-}
-
 .toolbarbutton-1 > menupopup {
   margin-top: 1px;
 }
@@ -1679,10 +1685,6 @@ toolbarbutton[sdk-button="true"][cui-areatype="toolbar"] > .toolbarbutton-icon {
   margin: 0;
   -moz-box-orient: horizontal;
   -moz-box-align: center;
-}
-
-#zoom-controls[cui-areatype="toolbar"]:not([overflowedItem=true]) > #zoom-reset-button > .toolbarbutton-text {
-  margin-top: 0;
 }
 
 /* ----- FULLSCREEN WINDOW CONTROLS ----- */
@@ -2207,6 +2209,14 @@ richlistitem[type~="action"][actiontype="switchtab"][selected="true"] > .ac-url-
   }
 }
 
+%ifdef MOZ_LOOP
+/* Loop */
+/* XXX - probably need retina images here */
+#loop-call-button {
+  list-style-image: url("chrome://global/skin/loop/loop-call.png");
+}
+%endif
+
 /* social share panel */
 .social-share-frame {
   background: linear-gradient(to bottom, rgba(242,242,242,.99), rgba(242,242,242,.95));
@@ -2574,7 +2584,6 @@ richlistitem[type~="action"][actiontype="switchtab"][selected="true"] > .ac-url-
 
 .panel-promo-closebutton > .toolbarbutton-text {
   padding: 0;
-  margin: 0;
 }
 
 @media (min-resolution: 2dppx) {
@@ -2961,20 +2970,6 @@ toolbarbutton.chevron > .toolbarbutton-menu-dropmarker {
   .tabbrowser-arrowscrollbox > .scrollbutton-down > .toolbarbutton-icon {
     width: 13px;
   }
-}
-
-.tabbrowser-arrowscrollbox > .scrollbutton-up:not([disabled]):-moz-locale-dir(ltr),
-.tabbrowser-arrowscrollbox > .scrollbutton-down:not([disabled]):-moz-locale-dir(rtl) {
-  border-width: 0 2px 0 0;
-  border-style: solid;
-  border-image: url("chrome://browser/skin/tabbrowser/tab-overflow-border.png") 0 2 0 2 fill;
-}
-
-.tabbrowser-arrowscrollbox > .scrollbutton-down:not([disabled]):-moz-locale-dir(ltr),
-.tabbrowser-arrowscrollbox > .scrollbutton-up:not([disabled]):-moz-locale-dir(rtl) {
-  border-width: 0 0 0 2px;
-  border-style: solid;
-  border-image: url("chrome://browser/skin/tabbrowser/tab-overflow-border.png") 0 2 0 2 fill;
 }
 
 /**
@@ -4357,6 +4352,25 @@ window > chatbox {
                     url("chrome://browser/skin/customizableui/background-noise-toolbar.png"),
                     linear-gradient(to bottom, rgb(233,233,233), rgb(178,178,178) 40px);
   background-attachment: fixed;
+}
+
+#main-window[tabsintitlebar][customization-lwtheme] > #titlebar:-moz-lwtheme,
+#main-window[customization-lwtheme] > #tab-view-deck:-moz-lwtheme {
+  background-repeat: no-repeat;
+  background-position: right top;
+  background-attachment: fixed;
+  /* The image will get set from CustomizeMode.jsm */
+  background-image: none;
+  background-color: transparent;
+}
+
+#main-window[customization-lwtheme]:-moz-lwtheme {
+  background-image: url("chrome://browser/skin/customizableui/customizeMode-gridTexture.png"),
+                    url("chrome://browser/skin/customizableui/background-noise-toolbar.png");
+  background-color: rgb(178,178,178);
+  background-repeat: repeat;
+  background-attachment: fixed;
+  background-position: left top;
 }
 
 #main-window[customize-entered] #browser-bottombox,

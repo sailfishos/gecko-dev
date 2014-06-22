@@ -71,7 +71,7 @@ user_pref("extensions.installDistroAddons", false);
 user_pref("extensions.defaultProviders.enabled", true);
 
 user_pref("geo.wifi.uri", "http://%(server)s/tests/dom/tests/mochitest/geolocation/network_geolocation.sjs");
-user_pref("geo.wifi.timeToWaitBeforeSending", 200);
+user_pref("geo.wifi.timeToWaitBeforeSending", 2000);
 user_pref("geo.wifi.scan", false);
 user_pref("geo.wifi.logging.enabled", true);
 
@@ -123,6 +123,7 @@ user_pref("datareporting.policy.dataSubmissionPolicyBypassAcceptance", true);
 // Point Firefox Health Report at a local server. We don't care if it actually
 // works. It just can't hit the default production endpoint.
 user_pref("datareporting.healthreport.documentServerURI", "http://%(server)s/healthreport/");
+user_pref("datareporting.healthreport.about.reportUrl", "http://%(server)s/abouthealthreport/");
 
 // Make sure CSS error reporting is enabled for tests
 user_pref("layout.css.report_errors", true);
@@ -171,6 +172,12 @@ user_pref("browser.webapps.testing", true);
 user_pref("browser.snippets.enabled", false);
 user_pref("browser.snippets.syncPromo.enabled", false);
 
+// Disable useragent updates.
+user_pref("general.useragent.updates.enabled", false);
+
+// Disable webapp updates.  Yes, it is supposed to be an integer.
+user_pref("browser.webapps.checkForUpdates", 0);
+
 // Do not turn HTTP cache v2 for our infra tests (some tests are failing)
 user_pref("browser.cache.use_new_backend_temp", false);
 
@@ -193,3 +200,7 @@ user_pref('identity.fxaccounts.auth.uri', 'https://%(server)s/fxa-dummy/');
 
 // Enable logging of APZ test data (see bug 961289).
 user_pref('apz.test.logging_enabled', true);
+
+// Make sure Translation won't hit the network.
+user_pref("browser.translation.bing.authURL", "http://%(server)s/browser/browser/components/translation/test/bing.sjs");
+user_pref("browser.translation.bing.translateArrayURL", "http://%(server)s/browser/browser/components/translation/test/bing.sjs");

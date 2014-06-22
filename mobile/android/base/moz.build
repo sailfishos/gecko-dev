@@ -16,6 +16,13 @@ resjar.sources = []
 resjar.generated_sources += [
     'org/mozilla/gecko/R.java',
 ]
+
+if CONFIG['MOZ_NATIVE_DEVICES']:
+    resjar.generated_sources += ['com/google/android/gms/R.java']
+    DEFINES["GOOGLE_PLAY_SERVICES"] = 1
+    resjar.generated_sources += ['android/support/v7/appcompat/R.java']
+    resjar.generated_sources += ['android/support/v7/mediarouter/R.java']
+
 resjar.javac_flags += ['-Xlint:all']
 
 mgjar = add_java_jar('gecko-mozglue')
@@ -365,6 +372,7 @@ gbjar.sources += [
     'Tab.java',
     'Tabs.java',
     'TabsAccessor.java',
+    'tabspanel/PrivateTabsPanel.java',
     'tabspanel/RemoteTabsContainerPanel.java',
     'tabspanel/RemoteTabsList.java',
     'tabspanel/RemoteTabsPanel.java',
@@ -404,8 +412,6 @@ gbjar.sources += [
     'webapp/TaskKiller.java',
     'webapp/UninstallListener.java',
     'webapp/WebappImpl.java',
-    'WebappAllocator.java',
-    'WebappImpl.java',
     'widget/ActivityChooserModel.java',
     'widget/AllCapsTextView.java',
     'widget/AnimatedHeightLayout.java',
@@ -472,6 +478,12 @@ gbjar.extra_jars = [
     'sync-thirdparty.jar',
     'websockets.jar',
 ]
+
+if CONFIG['MOZ_NATIVE_DEVICES']:
+    gbjar.extra_jars += [CONFIG['ANDROID_APPCOMPAT_LIB']]
+    gbjar.extra_jars += [CONFIG['ANDROID_MEDIAROUTER_LIB']]
+    gbjar.extra_jars += [CONFIG['GOOGLE_PLAY_SERVICES_LIB']]
+
 gbjar.javac_flags += ['-Xlint:all,-deprecation,-fallthrough']
 
 spjar = add_java_jar('squareup-picasso')

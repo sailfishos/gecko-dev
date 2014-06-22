@@ -119,7 +119,7 @@ SimpleTiledLayerBuffer::ValidateTile(SimpleTiledLayerTile aTile,
 
   if (doBufferedDrawing) {
     // try to directly access the pixels of the TextureClient
-    srcDT = textureClient->GetAsDrawTarget();
+    srcDT = textureClient->BorrowDrawTarget();
     if (srcDT->LockBits(&srcData, &srcSize, &srcStride, &srcFormat)) {
       if (!aTile.mCachedBuffer) {
         aTile.mCachedBuffer = SharedBuffer::Create(srcStride * srcSize.height);
@@ -150,7 +150,7 @@ SimpleTiledLayerBuffer::ValidateTile(SimpleTiledLayerTile aTile,
 
   // this might get set above if we couldn't extract out a buffer
   if (!doBufferedDrawing) {
-    drawTarget = textureClient->GetAsDrawTarget();
+    drawTarget = textureClient->BorrowDrawTarget();
 
     fullPaint = true;
     drawBounds = nsIntRect(aTileOrigin.x, aTileOrigin.y, GetScaledTileSize().width, GetScaledTileSize().height);
@@ -247,9 +247,11 @@ SimpleTiledContentClient::UseTiledLayerBuffer()
   mTiledBuffer.ClearPaintedRegion();
 }
 
-SimpleClientTiledThebesLayer::SimpleClientTiledThebesLayer(ClientLayerManager* aManager)
+SimpleClientTiledThebesLayer::SimpleClientTiledThebesLayer(ClientLayerManager* aManager,
+                                                           ClientLayerManager::ThebesLayerCreationHint aCreationHint)
   : ThebesLayer(aManager,
-                static_cast<ClientLayer*>(MOZ_THIS_IN_INITIALIZER_LIST()))
+                static_cast<ClientLayer*>(MOZ_THIS_IN_INITIALIZER_LIST()),
+                aCreationHint)
   , mContentClient()
 {
   MOZ_COUNT_CTOR(SimpleClientTiledThebesLayer);

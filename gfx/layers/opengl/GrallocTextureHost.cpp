@@ -90,9 +90,11 @@ TextureTargetForAndroidPixelFormat(android::PixelFormat aFormat)
 }
 
 GrallocTextureSourceOGL::GrallocTextureSourceOGL(CompositorOGL* aCompositor,
+                                                 GrallocTextureHostOGL* aTextureHost,
                                                  android::GraphicBuffer* aGraphicBuffer,
                                                  gfx::SurfaceFormat aFormat)
   : mCompositor(aCompositor)
+  , mTextureHost(aTextureHost)
   , mGraphicBuffer(aGraphicBuffer)
   , mEGLImage(0)
   , mFormat(aFormat)
@@ -142,6 +144,13 @@ GrallocTextureSourceOGL::BindTexture(GLenum aTextureUnit, gfx::Filter aFilter)
   }
 
   ApplyFilterToBoundTexture(gl(), aFilter, textureTarget);
+
+#if defined(MOZ_WIDGET_GONK) && ANDROID_VERSION >= 17
+  if (mTextureHost) {
+    // Wait until it's ready.
+    mTextureHost->WaitAcquireFenceSyncComplete();
+  }
+#endif
 }
 
 void GrallocTextureSourceOGL::Lock()
@@ -300,6 +309,7 @@ GrallocTextureHostOGL::GrallocTextureHostOGL(TextureFlags aFlags,
     NS_WARNING("gralloc buffer is nullptr");
   }
   mTextureSource = new GrallocTextureSourceOGL(nullptr,
+                                               this,
                                                graphicBuffer,
                                                format);
 }

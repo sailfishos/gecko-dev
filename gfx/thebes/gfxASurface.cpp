@@ -586,7 +586,7 @@ public:
     NS_DECL_ISUPPORTS
 
     NS_IMETHOD CollectReports(nsIMemoryReporterCallback *aCb,
-                              nsISupports *aClosure)
+                              nsISupports *aClosure, bool aAnonymize)
     {
         const size_t len = ArrayLength(sSurfaceMemoryReporterAttrs);
         for (size_t i = 0; i < len; i++) {
@@ -697,13 +697,6 @@ void
 gfxASurface::DumpAsDataURL(FILE* aOutput)
 {
   WriteAsPNG_internal(aOutput, false);
-}
-
-void
-gfxASurface::PrintAsDataURL()
-{
-  WriteAsPNG_internal(stdout, false);
-  fprintf(stdout, "\n");
 }
 
 void

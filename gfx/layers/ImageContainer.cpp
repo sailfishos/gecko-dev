@@ -575,6 +575,10 @@ PlanarYCbCrImage::GetAsSourceSurface()
   }
 
   RefPtr<gfx::DataSourceSurface> surface = gfx::Factory::CreateDataSourceSurface(size, format);
+  if (!surface) {
+    NS_WARNING("Failed to create SourceSurface.");
+    return nullptr;
+  }
 
   gfx::ConvertYCbCrToRGB(mData, format, size, surface->GetData(), surface->Stride());
 
@@ -590,6 +594,10 @@ RemoteBitmapImage::GetAsSourceSurface()
                          ? gfx::SurfaceFormat::B8G8R8X8
                          : gfx::SurfaceFormat::B8G8R8A8;
   RefPtr<gfx::DataSourceSurface> newSurf = gfx::Factory::CreateDataSourceSurface(mSize, fmt);
+  if (!newSurf) {
+    NS_WARNING("Failed to create SourceSurface.");
+    return nullptr;
+  }
 
   for (int y = 0; y < mSize.height; y++) {
     memcpy(newSurf->GetData() + newSurf->Stride() * y,
@@ -641,13 +649,15 @@ CairoImage::GetTextureClient(CompositableClient *aClient)
     return nullptr;
   }
 
+  TextureClientAutoUnlock autoUnolck(textureClient);
   {
     // We must not keep a reference to the DrawTarget after it has been unlocked.
-    RefPtr<DrawTarget> dt = textureClient->GetAsDrawTarget();
+    DrawTarget* dt = textureClient->BorrowDrawTarget();
+    if (!dt) {
+      return nullptr;
+    }
     dt->CopySurface(surface, IntRect(IntPoint(), surface->GetSize()), IntPoint());
   }
-
-  textureClient->Unlock();
 
   mTextureClients.Put(forwarder->GetSerial(), textureClient);
   return textureClient;

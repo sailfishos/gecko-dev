@@ -13,13 +13,22 @@
 #include "nsRect.h"
 #include "nsMargin.h"
 #include "mozilla/AppUnits.h"
+#include "mozilla/TypeTraits.h"
 
 namespace mozilla {
+
+template <typename T>
+struct IsPixel : FalseType {};
 
 struct CSSPixel;
 struct LayoutDevicePixel;
 struct LayerPixel;
 struct ScreenPixel;
+
+template<> struct IsPixel<CSSPixel>          : TrueType {};
+template<> struct IsPixel<LayoutDevicePixel> : TrueType {};
+template<> struct IsPixel<LayerPixel>        : TrueType {};
+template<> struct IsPixel<ScreenPixel>       : TrueType {};
 
 typedef gfx::PointTyped<CSSPixel> CSSPoint;
 typedef gfx::IntPointTyped<CSSPixel> CSSIntPoint;
@@ -189,6 +198,9 @@ struct LayoutDevicePixel {
  * 3) the "widget scale" (see nsIWidget::GetDefaultScale)
  */
 struct LayerPixel {
+  static nsIntRect ToUntyped(const LayerIntRect& aRect) {
+    return nsIntRect(aRect.x, aRect.y, aRect.width, aRect.height);
+  }
 };
 
 /*

@@ -250,13 +250,20 @@ pref("media.apple.mp3.enabled", true);
 #ifdef MOZ_WEBRTC
 pref("media.navigator.enabled", true);
 pref("media.navigator.video.enabled", true);
-pref("media.navigator.load_adapt", false);
+pref("media.navigator.load_adapt", true);
 pref("media.navigator.load_adapt.measure_interval",1000);
 pref("media.navigator.load_adapt.avg_seconds",3);
 pref("media.navigator.load_adapt.high_load","0.90");
 pref("media.navigator.load_adapt.low_load","0.40");
 pref("media.navigator.video.default_fps",30);
 pref("media.navigator.video.default_minfps",10);
+
+pref("media.webrtc.debug.trace_mask", 0);
+pref("media.webrtc.debug.multi_log", false);
+pref("media.webrtc.debug.aec_log_dir", "");
+pref("media.webrtc.debug.log_file", "");
+pref("media.webrtc.debug.aec_dump_max_size", 4194304); // 4MB
+
 #ifdef MOZ_WIDGET_GONK
 pref("media.navigator.video.default_width",320);
 pref("media.navigator.video.default_height",240);
@@ -265,6 +272,7 @@ pref("media.peerconnection.video.enabled", true);
 pref("media.navigator.video.max_fs", 1200); // 640x480 == 1200mb
 pref("media.navigator.video.max_fr", 30);
 pref("media.peerconnection.video.h264_enabled", false);
+pref("media.getusermedia.aec", 4);
 #else
 pref("media.navigator.video.default_width",0);  // adaptive default
 pref("media.navigator.video.default_height",0); // adaptive default
@@ -272,6 +280,7 @@ pref("media.peerconnection.enabled", true);
 pref("media.peerconnection.video.enabled", true);
 pref("media.navigator.video.max_fs", 0); // unrestricted
 pref("media.navigator.video.max_fr", 0); // unrestricted
++pref("media.getusermedia.aec", 1);
 #endif
 pref("media.peerconnection.video.min_bitrate", 200);
 pref("media.peerconnection.video.start_bitrate", 300);
@@ -291,7 +300,6 @@ pref("media.peerconnection.identity.timeout", 10000);
 // setting (for Xxx = Ec, Agc, or Ns).  Defaults are all set to kXxxDefault here.
 pref("media.peerconnection.turn.disable", false);
 pref("media.getusermedia.aec_enabled", true);
-pref("media.getusermedia.aec", 1);
 pref("media.getusermedia.agc_enabled", false);
 pref("media.getusermedia.agc", 1);
 pref("media.getusermedia.noise_enabled", true);
@@ -839,7 +847,7 @@ pref("javascript.options.ion",              true);
 pref("javascript.options.asmjs",            true);
 pref("javascript.options.native_regexp",    true);
 pref("javascript.options.parallel_parsing", true);
-pref("javascript.options.ion.parallel_compilation", true);
+pref("javascript.options.ion.offthread_compilation", true);
 // This preference instructs the JS engine to discard the
 // source of any privileged JS after compilation. This saves
 // memory, but makes things like Function.prototype.toSource()
@@ -3776,36 +3784,29 @@ pref("layers.offmainthreadcomposition.enabled", false);
 // -1 -> default (match layout.frame_rate or 60 FPS)
 // 0  -> full-tilt mode: Recomposite even if not transaction occured.
 pref("layers.offmainthreadcomposition.frame-rate", -1);
-#ifndef XP_WIN
+
 // Asynchonous video compositing using the ImageBridge IPDL protocol.
 // requires off-main-thread compositing.
-pref("layers.async-video.enabled",false);
-#endif
+pref("layers.async-video.enabled", true);
+pref("layers.async-video-oop.enabled",true);
 
 #ifdef XP_WIN
 pref("layers.offmainthreadcomposition.enabled", true);
-pref("layers.async-video.enabled", true);
-#endif
-
-#ifdef MOZ_X11
-// OMTC off by default on Linux, but if activated, use new textures and async-video.
-pref("layers.async-video.enabled", true);
+// XXX - see bug 1009616
+pref("layers.async-video-oop.enabled", false);
 #endif
 
 #ifdef MOZ_WIDGET_QT
 pref("layers.offmainthreadcomposition.enabled", true);
-pref("layers.async-video.enabled",true);
 #endif
 
 #ifdef XP_MACOSX
 pref("layers.offmainthreadcomposition.enabled", true);
-pref("layers.async-video.enabled",true);
 #endif
 
 // ANDROID covers android and b2g
 #ifdef ANDROID
 pref("layers.offmainthreadcomposition.enabled", true);
-pref("layers.async-video.enabled",true);
 #endif
 
 // same effect as layers.offmainthreadcomposition.enabled, but specifically for

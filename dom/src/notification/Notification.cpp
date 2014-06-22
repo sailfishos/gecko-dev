@@ -46,7 +46,7 @@ public:
   {
     MOZ_ASSERT(aWindow);
     MOZ_ASSERT(aPromise);
-    JSContext* cx = aGlobal.GetContext();
+    JSContext* cx = aGlobal.Context();
     JSAutoCompartment ac(cx, mGlobal);
     mNotifications = JS_NewArrayObject(cx, 0);
     HoldData();
@@ -606,7 +606,7 @@ Notification::ShowInternal()
         ops.mLang = mLang;
         ops.mTag = mTag;
 
-        if (!ops.ToObject(cx, &val)) {
+        if (!ToJSValue(cx, ops, &val)) {
           NS_WARNING("Converting dict to object failed!");
           return;
         }

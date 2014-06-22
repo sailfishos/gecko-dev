@@ -164,6 +164,33 @@ RBitNot::recover(JSContext *cx, SnapshotIterator &iter) const
 }
 
 bool
+MBitAnd::writeRecoverData(CompactBufferWriter &writer) const
+{
+    MOZ_ASSERT(canRecoverOnBailout());
+    writer.writeUnsigned(uint32_t(RInstruction::Recover_BitAnd));
+    return true;
+}
+
+RBitAnd::RBitAnd(CompactBufferReader &reader)
+{ }
+
+bool
+RBitAnd::recover(JSContext *cx, SnapshotIterator &iter) const
+{
+    RootedValue lhs(cx, iter.read());
+    RootedValue rhs(cx, iter.read());
+    int32_t result;
+    MOZ_ASSERT(!lhs.isObject() && !rhs.isObject());
+
+    if (!js::BitAnd(cx, lhs, rhs, &result))
+        return false;
+
+    RootedValue rootedResult(cx, js::Int32Value(result));
+    iter.storeInstructionResult(rootedResult);
+    return true;
+}
+
+bool
 MBitOr::writeRecoverData(CompactBufferWriter &writer) const
 {
     MOZ_ASSERT(canRecoverOnBailout());
@@ -364,6 +391,97 @@ RSub::recover(JSContext *cx, SnapshotIterator &iter) const
     return true;
 }
 
+bool
+MConcat::writeRecoverData(CompactBufferWriter &writer) const
+{
+    MOZ_ASSERT(canRecoverOnBailout());
+    writer.writeUnsigned(uint32_t(RInstruction::Recover_Concat));
+    return true;
+}
+
+RConcat::RConcat(CompactBufferReader &reader)
+{}
+
+bool
+RConcat::recover(JSContext *cx, SnapshotIterator &iter) const
+{
+    RootedValue lhs(cx, iter.read());
+    RootedValue rhs(cx, iter.read());
+    RootedValue result(cx);
+
+    MOZ_ASSERT(!lhs.isObject() && !rhs.isObject());
+    if (!js::AddValues(cx, &lhs, &rhs, &result))
+        return false;
+
+    iter.storeInstructionResult(result);
+    return true;
+}
+
+bool
+MMul::writeRecoverData(CompactBufferWriter &writer) const
+{
+    MOZ_ASSERT(canRecoverOnBailout());
+    writer.writeUnsigned(uint32_t(RInstruction::Recover_Mul));
+    writer.writeByte(specialization_ == MIRType_Float32);
+    return true;
+}
+
+RMul::RMul(CompactBufferReader &reader)
+{
+    isFloatOperation_ = reader.readByte();
+}
+
+bool
+RMul::recover(JSContext *cx, SnapshotIterator &iter) const
+{
+    RootedValue lhs(cx, iter.read());
+    RootedValue rhs(cx, iter.read());
+    RootedValue result(cx);
+
+    if (!js::MulValues(cx, &lhs, &rhs, &result))
+        return false;
+
+    // MIRType_Float32 is a specialization embedding the fact that the result is
+    // rounded to a Float32.
+    if (isFloatOperation_ && !RoundFloat32(cx, result, &result))
+        return false;
+
+    iter.storeInstructionResult(result);
+    return true;
+}
+
+bool
+MDiv::writeRecoverData(CompactBufferWriter &writer) const
+{
+    MOZ_ASSERT(canRecoverOnBailout());
+    writer.writeUnsigned(uint32_t(RInstruction::Recover_Div));
+    writer.writeByte(specialization_ == MIRType_Float32);
+    return true;
+}
+
+RDiv::RDiv(CompactBufferReader &reader)
+{
+    isFloatOperation_ = reader.readByte();
+}
+
+bool
+RDiv::recover(JSContext *cx, SnapshotIterator &iter) const
+{
+    RootedValue lhs(cx, iter.read());
+    RootedValue rhs(cx, iter.read());
+    RootedValue result(cx);
+
+    if (!js::DivValues(cx, &lhs, &rhs, &result))
+        return false;
+
+    // MIRType_Float32 is a specialization embedding the fact that the result is
+    // rounded to a Float32.
+    if (isFloatOperation_ && !RoundFloat32(cx, result, &result))
+        return false;
+
+    iter.storeInstructionResult(result);
+    return true;
+}
 
 bool
 MMod::writeRecoverData(CompactBufferWriter &writer) const

@@ -104,6 +104,12 @@ RootActor.prototype = {
     // Whether the server-side highlighter actor exists and can be used to
     // remotely highlight nodes (see server/actors/highlighter.js)
     highlightable: true,
+    // Which custom highlighter does the server-side highlighter actor supports?
+    // (see server/actors/highlighter.js)
+    customHighlighters: [
+      "BoxModelHighlighter",
+      "CssTransformHighlighter"
+    ],
     // Whether the inspector actor implements the getImageDataFromURL
     // method that returns data-uris for image URLs. This is used for image
     // tooltips for instance
@@ -139,7 +145,7 @@ RootActor.prototype = {
   /**
    * The (chrome) window, for use by child actors
    */
-  get window() Services.wm.getMostRecentWindow(DebuggerServer.chromeWindowType),
+  get window() isWorker ? null : Services.wm.getMostRecentWindow(DebuggerServer.chromeWindowType),
 
   /**
    * The list of all windows

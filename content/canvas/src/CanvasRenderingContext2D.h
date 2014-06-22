@@ -85,11 +85,14 @@ public:
                 const gfx::Point& aCP2,
                 const gfx::Point& aCP3);
 
-  mozilla::RefPtr<mozilla::gfx::Path> GetPath(const CanvasWindingRule& winding,
-                                              const mozilla::RefPtr<mozilla::gfx::DrawTarget>& mTarget) const;
+  TemporaryRef<gfx::Path> GetPath(const CanvasWindingRule& aWinding,
+                                  const gfx::DrawTarget* aTarget) const;
 
   explicit CanvasPath(nsISupports* aParent);
-  CanvasPath(nsISupports* aParent, RefPtr<gfx::PathBuilder> mPathBuilder);
+  // TemporaryRef arg because the return value from Path::CopyToBuilder() is
+  // passed directly and we can't drop the only ref to have a raw pointer.
+  CanvasPath(nsISupports* aParent,
+             TemporaryRef<gfx::PathBuilder> aPathBuilder);
   virtual ~CanvasPath() {}
 
 private:
@@ -388,19 +391,22 @@ public:
   void Arc(double x, double y, double radius, double startAngle,
            double endAngle, bool anticlockwise, mozilla::ErrorResult& error);
 
-  JSObject* GetMozCurrentTransform(JSContext* cx,
-                                   mozilla::ErrorResult& error) const;
+  void GetMozCurrentTransform(JSContext* cx,
+			      JS::MutableHandle<JSObject*> result,
+			      mozilla::ErrorResult& error) const;
   void SetMozCurrentTransform(JSContext* cx,
                               JS::Handle<JSObject*> currentTransform,
                               mozilla::ErrorResult& error);
-  JSObject* GetMozCurrentTransformInverse(JSContext* cx,
-                                          mozilla::ErrorResult& error) const;
+  void GetMozCurrentTransformInverse(JSContext* cx,
+				     JS::MutableHandle<JSObject*> result,
+				     mozilla::ErrorResult& error) const;
   void SetMozCurrentTransformInverse(JSContext* cx,
                                      JS::Handle<JSObject*> currentTransform,
                                      mozilla::ErrorResult& error);
   void GetFillRule(nsAString& fillRule);
   void SetFillRule(const nsAString& fillRule);
-  JS::Value GetMozDash(JSContext* cx, mozilla::ErrorResult& error);
+  void GetMozDash(JSContext* cx, JS::MutableHandle<JS::Value> retval,
+		  mozilla::ErrorResult& error);
   void SetMozDash(JSContext* cx, const JS::Value& mozDash,
                   mozilla::ErrorResult& error);
 

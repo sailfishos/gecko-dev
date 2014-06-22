@@ -46,7 +46,7 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 //----------------------------------------------------------------------
 // Implementation
 
-SVGStyleElement::SVGStyleElement(already_AddRefed<nsINodeInfo>& aNodeInfo)
+SVGStyleElement::SVGStyleElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo)
   : SVGStyleElementBase(aNodeInfo)
 {
   AddMutationObserver(this);
@@ -83,7 +83,7 @@ void
 SVGStyleElement::UnbindFromTree(bool aDeep, bool aNullParent)
 {
   nsCOMPtr<nsIDocument> oldDoc = GetCurrentDoc();
-  ShadowRoot* oldShadow = GetShadowRoot();
+  ShadowRoot* oldShadow = GetContainingShadow();
   SVGStyleElementBase::UnbindFromTree(aDeep, aNullParent);
   UpdateStyleSheetInternal(oldDoc, oldShadow);
 }

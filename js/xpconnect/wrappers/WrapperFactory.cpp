@@ -122,14 +122,16 @@ WrapperFactory::DoubleWrap(JSContext *cx, HandleObject obj, unsigned flags)
 
 // In general, we're trying to deprecate COWs incrementally as we introduce
 // Xrays to the corresponding object types. But switching off COWs for Object
-// instances would be too tumultuous at present, so we punt on that for later.
+// and Array instances would be too tumultuous at present, so we punt on that
+// for later.
 static bool
 ForceCOWBehavior(JSObject *obj)
 {
-    if (IdentifyStandardInstanceOrPrototype(obj) == JSProto_Object) {
+    JSProtoKey key = IdentifyStandardInstanceOrPrototype(obj);
+    if (key == JSProto_Object || key == JSProto_Array || key == JSProto_Function) {
         MOZ_ASSERT(GetXrayType(obj) == XrayForJSObject,
-                   "We should use XrayWrappers for standard ES Object instances "
-                   "modulo this hack");
+                   "We should use XrayWrappers for standard ES Object, Array, and Function "
+                   "instances modulo this hack");
         return true;
     }
     return false;
@@ -358,13 +360,6 @@ SelectWrapper(bool securityWrapper, bool wantXrays, XrayType xrayType,
     if (!wantXrays || xrayType == NotXray) {
         if (!securityWrapper)
             return &CrossCompartmentWrapper::singleton;
-        // In general, we don't want opaque function wrappers to be callable.
-        // But in the case of XBL, we rely on content being able to invoke
-        // functions exposed from the XBL scope. We could remove this exception,
-        // if needed, by using ExportFunction to generate the content-side
-        // representations of XBL methods.
-        else if (originIsXBLScope)
-            return &FilteringWrapper<CrossCompartmentSecurityWrapper, OpaqueWithCall>::singleton;
         return &FilteringWrapper<CrossCompartmentSecurityWrapper, Opaque>::singleton;
     }
 
@@ -388,14 +383,21 @@ SelectWrapper(bool securityWrapper, bool wantXrays, XrayType xrayType,
                                  CrossOriginAccessiblePropertiesOnly>::singleton;
     // There's never any reason to expose pure JS objects to non-subsuming actors.
     // Just use an opaque wrapper in this case.
+    //
+    // In general, we don't want opaque function wrappers to be callable.
+    // But in the case of XBL, we rely on content being able to invoke
+    // functions exposed from the XBL scope. We could remove this exception,
+    // if needed, by using ExportFunction to generate the content-side
+    // representations of XBL methods.
     MOZ_ASSERT(xrayType == XrayForJSObject);
+    if (originIsXBLScope)
+        return &FilteringWrapper<CrossCompartmentSecurityWrapper, OpaqueWithCall>::singleton;
     return &FilteringWrapper<CrossCompartmentSecurityWrapper, Opaque>::singleton;
 }
 
 JSObject *
 WrapperFactory::Rewrap(JSContext *cx, HandleObject existing, HandleObject obj,
-                       HandleObject wrappedProto, HandleObject parent,
-                       unsigned flags)
+                       HandleObject parent, unsigned flags)
 {
     MOZ_ASSERT(!IsWrapper(obj) ||
                GetProxyHandler(obj) == &XrayWaiver ||

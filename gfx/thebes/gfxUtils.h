@@ -11,6 +11,7 @@
 #include "imgIContainer.h"
 #include "mozilla/gfx/2D.h"
 #include "mozilla/RefPtr.h"
+#include "nsPrintfCString.h"
 
 class gfxDrawable;
 class nsIntRegion;
@@ -18,7 +19,7 @@ struct nsIntRect;
 
 namespace mozilla {
 namespace layers {
-class PlanarYCbCrData;
+struct PlanarYCbCrData;
 }
 }
 
@@ -40,8 +41,15 @@ public:
      * If the source is not gfxImageFormat::ARGB32, no operation is performed.  If
      * aDestSurface is given, the data is copied over.
      */
-    static void PremultiplyDataSurface(DataSourceSurface *aSurface);
-    static mozilla::TemporaryRef<DataSourceSurface> UnpremultiplyDataSurface(DataSourceSurface* aSurface);
+    static bool PremultiplyDataSurface(DataSourceSurface* srcSurf,
+                                       DataSourceSurface* destSurf);
+    static bool UnpremultiplyDataSurface(DataSourceSurface* srcSurf,
+                                         DataSourceSurface* destSurf);
+
+    static mozilla::TemporaryRef<DataSourceSurface>
+      CreatePremultipliedDataSurface(DataSourceSurface* srcSurf);
+    static mozilla::TemporaryRef<DataSourceSurface>
+      CreateUnpremultipliedDataSurface(DataSourceSurface* srcSurf);
 
     static void ConvertBGRAtoRGBA(uint8_t* aData, uint32_t aLength);
 
@@ -240,19 +248,19 @@ public:
      * Writes a binary PNG file.
      * Expensive. Creates a DataSourceSurface, then a DrawTarget, then passes to DrawTarget overloads
      */
-    static void WriteAsPNG(mozilla::RefPtr<mozilla::gfx::SourceSurface> aSourceSurface, const char* aFile);
+    static void WriteAsPNG(mozilla::gfx::SourceSurface* aSourceSurface, const char* aFile);
 
     /**
      * Write as a PNG encoded Data URL to stdout.
      * Expensive. Creates a DataSourceSurface, then a DrawTarget, then passes to DrawTarget overloads
      */
-    static void DumpAsDataURL(mozilla::RefPtr<mozilla::gfx::SourceSurface> aSourceSurface);
+    static void DumpAsDataURL(mozilla::gfx::SourceSurface* aSourceSurface);
 
     /**
      * Copy a PNG encoded Data URL to the clipboard.
      * Expensive. Creates a DataSourceSurface, then a DrawTarget, then passes to DrawTarget overloads
      */
-    static void CopyAsDataURL(mozilla::RefPtr<mozilla::gfx::SourceSurface> aSourceSurface);
+    static void CopyAsDataURL(mozilla::gfx::SourceSurface* aSourceSurface);
 #endif
 };
 

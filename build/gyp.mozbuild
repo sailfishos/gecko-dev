@@ -31,7 +31,7 @@ gyp_vars = {
     'use_openssl': 0,
 
     # saves 4MB when webrtc_trace is off
-    'enable_lazy_trace_alloc': 1,
+    'enable_lazy_trace_alloc': 0,
 
      # turn off mandatory use of NEON and instead use NEON detection
     'arm_neon': 0,
@@ -43,7 +43,7 @@ gyp_vars = {
     # (for vp8) chromium sets to 0 also
     'use_temporal_layers': 0,
     # Creates AEC internal sample dump files in current directory
-    # 'aec_debug_dump': 1,
+    'aec_debug_dump': 1,
 
     # codec enable/disables:
     'include_g711': 1,

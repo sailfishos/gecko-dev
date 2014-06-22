@@ -50,8 +50,9 @@ static const KeywordInfo keywords[] = {
 
 // Returns a KeywordInfo for the specified characters, or nullptr if the string
 // is not a keyword.
+template <typename CharT>
 static const KeywordInfo *
-FindKeyword(const jschar *s, size_t length)
+FindKeyword(const CharT *s, size_t length)
 {
     JS_ASSERT(length != 0);
 
@@ -87,30 +88,47 @@ FindKeyword(const jschar *s, size_t length)
     return nullptr;
 }
 
+static const KeywordInfo *
+FindKeyword(JSLinearString *str)
+{
+    JS::AutoCheckCannotGC nogc;
+    return str->hasLatin1Chars()
+           ? FindKeyword(str->latin1Chars(nogc), str->length())
+           : FindKeyword(str->twoByteChars(nogc), str->length());
+}
+
+template <typename CharT>
+static bool
+IsIdentifier(const CharT *chars, size_t length)
+{
+    if (length == 0)
+        return false;
+
+    if (!IsIdentifierStart(*chars))
+        return false;
+
+    const CharT *end = chars + length;
+    while (++chars != end) {
+        if (!IsIdentifierPart(*chars))
+            return false;
+    }
+
+    return true;
+}
+
 bool
 frontend::IsIdentifier(JSLinearString *str)
 {
-    const jschar *chars = str->chars();
-    size_t length = str->length();
-
-    if (length == 0)
-        return false;
-    jschar c = *chars;
-    if (!IsIdentifierStart(c))
-        return false;
-    const jschar *end = chars + length;
-    while (++chars != end) {
-        c = *chars;
-        if (!IsIdentifierPart(c))
-            return false;
-    }
-    return true;
+    JS::AutoCheckCannotGC nogc;
+    return str->hasLatin1Chars()
+           ? ::IsIdentifier(str->latin1Chars(nogc), str->length())
+           : ::IsIdentifier(str->twoByteChars(nogc), str->length());
 }
 
 bool
 frontend::IsKeyword(JSLinearString *str)
 {
-    return FindKeyword(str->chars(), str->length()) != nullptr;
+    return FindKeyword(str) != nullptr;
 }
 
 TokenStream::SourceCoords::SourceCoords(ExclusiveContext *cx, uint32_t ln)
@@ -307,6 +325,9 @@ TokenStream::TokenStream(ExclusiveContext *cx, const ReadOnlyCompileOptions &opt
     // See getTokenInternal() for an explanation of maybeStrSpecial[].
     memset(maybeStrSpecial, 0, sizeof(maybeStrSpecial));
     maybeStrSpecial[unsigned('"')] = true;
+#ifdef JS_HAS_TEMPLATE_STRINGS
+    maybeStrSpecial[unsigned('`')] = true;
+#endif
     maybeStrSpecial[unsigned('\'')] = true;
     maybeStrSpecial[unsigned('\\')] = true;
     maybeStrSpecial[unsigned('\n')] = true;
@@ -686,11 +707,12 @@ TokenStream::reportCompileErrorNumberVA(uint32_t offset, unsigned flags, unsigne
 
         // Unicode and char versions of the window into the offending source
         // line, without final \n.
-        err.report.uclinebuf = windowBuf.extractWellSized();
+        err.report.uclinebuf = windowBuf.stealChars();
         if (!err.report.uclinebuf)
             return false;
-        TwoByteChars tbchars(err.report.uclinebuf, windowLength);
-        err.report.linebuf = LossyTwoByteCharsToNewLatin1CharsZ(cx, tbchars).c_str();
+
+        mozilla::Range<const jschar> tbchars(err.report.uclinebuf, windowLength);
+        err.report.linebuf = JS::LossyTwoByteCharsToNewLatin1CharsZ(cx, tbchars).c_str();
         if (!err.report.linebuf)
             return false;
 
@@ -959,12 +981,8 @@ TokenStream::putIdentInTokenbuf(const jschar *identStart)
 }
 
 bool
-TokenStream::checkForKeyword(const jschar *s, size_t length, TokenKind *ttp)
+TokenStream::checkForKeyword(const KeywordInfo *kw, TokenKind *ttp)
 {
-    const KeywordInfo *kw = FindKeyword(s, length);
-    if (!kw)
-        return true;
-
     if (kw->tokentype == TOK_RESERVED)
         return reportError(JSMSG_RESERVED_ID, kw->chars);
 
@@ -987,6 +1005,26 @@ TokenStream::checkForKeyword(const jschar *s, size_t length, TokenKind *ttp)
 
     // Strict reserved word.
     return reportStrictModeError(JSMSG_RESERVED_ID, kw->chars);
+}
+
+bool
+TokenStream::checkForKeyword(const jschar *s, size_t length, TokenKind *ttp)
+{
+    const KeywordInfo *kw = FindKeyword(s, length);
+    if (!kw)
+        return true;
+
+    return checkForKeyword(kw, ttp);
+}
+
+bool
+TokenStream::checkForKeyword(JSAtom *atom, TokenKind *ttp)
+{
+    const KeywordInfo *kw = FindKeyword(atom);
+    if (!kw)
+        return true;
+
+    return checkForKeyword(kw, ttp);
 }
 
 enum FirstCharKind {
@@ -1012,6 +1050,9 @@ enum FirstCharKind {
     EOL,
     BasePrefix,
     Other,
+#ifdef JS_HAS_TEMPLATE_STRINGS
+    TemplateString,
+#endif
 
     LastCharKind = Other
 };
@@ -1031,7 +1072,12 @@ enum FirstCharKind {
 #define T_COMMA     TOK_COMMA
 #define T_COLON     TOK_COLON
 #define T_BITNOT    TOK_BITNOT
-#define _______ Other
+#ifdef JS_HAS_TEMPLATE_STRINGS
+#define Templat     TemplateString
+#else
+#define Templat     Other
+#endif
+#define _______     Other
 static const uint8_t firstCharKinds[] = {
 /*         0        1        2        3        4        5        6        7        8        9    */
 /*   0+ */ _______, _______, _______, _______, _______, _______, _______, _______, _______,   Space,
@@ -1043,7 +1089,7 @@ static const uint8_t firstCharKinds[] = {
 /*  60+ */ _______, _______, _______,TOK_HOOK, _______,   Ident,   Ident,   Ident,   Ident,   Ident,
 /*  70+ */   Ident,   Ident,   Ident,   Ident,   Ident,   Ident,   Ident,   Ident,   Ident,   Ident,
 /*  80+ */   Ident,   Ident,   Ident,   Ident,   Ident,   Ident,   Ident,   Ident,   Ident,   Ident,
-/*  90+ */   Ident,  TOK_LB, _______,  TOK_RB, _______,   Ident, _______,   Ident,   Ident,   Ident,
+/*  90+ */   Ident,  TOK_LB, _______,  TOK_RB, _______,   Ident, Templat,   Ident,   Ident,   Ident,
 /* 100+ */   Ident,   Ident,   Ident,   Ident,   Ident,   Ident,   Ident,   Ident,   Ident,   Ident,
 /* 110+ */   Ident,   Ident,   Ident,   Ident,   Ident,   Ident,   Ident,   Ident,   Ident,   Ident,
 /* 120+ */   Ident,   Ident,   Ident,  TOK_LC, _______,  TOK_RC,T_BITNOT, _______
@@ -1051,6 +1097,7 @@ static const uint8_t firstCharKinds[] = {
 #undef T_COMMA
 #undef T_COLON
 #undef T_BITNOT
+#undef Templat
 #undef _______
 
 static_assert(LastCharKind < (1 << (sizeof(firstCharKinds[0]) * 8)),
@@ -1249,9 +1296,13 @@ TokenStream::getTokenInternal(Modifier modifier)
         goto out;
     }
 
-    // Look for a string.
+    // Look for a string or a template string.
     //
-    if (c1kind == String) {
+    if (c1kind == String
+#ifdef JS_HAS_TEMPLATE_STRINGS
+         || c1kind == TemplateString
+#endif
+         ) {
         tp = newToken(-1);
         qc = c;
         tokenbuf.clear();
@@ -1281,6 +1332,12 @@ TokenStream::getTokenInternal(Modifier modifier)
                             c = peekChar();
                             // Strict mode code allows only \0, then a non-digit.
                             if (val != 0 || JS7_ISDEC(c)) {
+#ifdef JS_HAS_TEMPLATE_STRINGS
+                                if (c1kind == TemplateString) {
+                                    reportError(JSMSG_DEPRECATED_OCTAL);
+                                    goto error;
+                                }
+#endif
                                 if (!reportStrictModeError(JSMSG_DEPRECATED_OCTAL))
                                     goto error;
                                 flags.sawOctalEscape = true;
@@ -1331,10 +1388,25 @@ TokenStream::getTokenInternal(Modifier modifier)
                         }
                         break;
                     }
-                } else if (TokenBuf::isRawEOLChar(c) || c == EOF) {
+                } else if (c == EOF) {
                     ungetCharIgnoreEOL(c);
                     reportError(JSMSG_UNTERMINATED_STRING);
                     goto error;
+                } else if (TokenBuf::isRawEOLChar(c)) {
+#ifdef JS_HAS_TEMPLATE_STRINGS
+                    if (c1kind == String) {
+#endif
+                        ungetCharIgnoreEOL(c);
+                        reportError(JSMSG_UNTERMINATED_STRING);
+                        goto error;
+#ifdef JS_HAS_TEMPLATE_STRINGS
+                    }
+                    if (c == '\r') {
+                        c = '\n';
+                        if (peekChar() == '\n')
+                            skipChars(1);
+                    }
+#endif
                 }
             }
             if (!tokenbuf.append(c))
@@ -1343,7 +1415,15 @@ TokenStream::getTokenInternal(Modifier modifier)
         JSAtom *atom = atomize(cx, tokenbuf);
         if (!atom)
             goto error;
-        tp->type = TOK_STRING;
+#ifdef JS_HAS_TEMPLATE_STRINGS
+        if (c1kind == String) {
+#endif
+            tp->type = TOK_STRING;
+#ifdef JS_HAS_TEMPLATE_STRINGS
+        } else {
+            tp->type = TOK_TEMPLATE_STRING;
+        }
+#endif
         tp->setAtom(atom);
         goto out;
     }
@@ -1758,6 +1838,9 @@ TokenKindToString(TokenKind tt)
       case TOK_NAME:            return "TOK_NAME";
       case TOK_NUMBER:          return "TOK_NUMBER";
       case TOK_STRING:          return "TOK_STRING";
+#ifdef JS_HAS_TEMPLATE_STRINGS
+      case TOK_TEMPLATE_STRING: return "TOK_TEMPLATE_STRING";
+#endif
       case TOK_REGEXP:          return "TOK_REGEXP";
       case TOK_TRUE:            return "TOK_TRUE";
       case TOK_FALSE:           return "TOK_FALSE";

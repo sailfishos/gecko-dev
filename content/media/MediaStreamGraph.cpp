@@ -48,12 +48,6 @@ PRLogModuleInfo* gMediaStreamGraphLog;
 #endif
 
 /**
- * We make the initial mCurrentTime nonzero so that zero times can have
- * special meaning if necessary.
- */
-static const int32_t INITIAL_CURRENT_TIME = 1;
-
-/**
  * The singleton graph instance.
  */
 static MediaStreamGraphImpl* gGraph;
@@ -349,8 +343,7 @@ MediaStreamGraphImpl::GetAudioPosition(MediaStream* aStream)
     return mCurrentTime;
   }
   return aStream->mAudioOutputStreams[0].mAudioPlaybackStartTime +
-      TicksToTimeRoundDown(mSampleRate,
-                           positionInFrames);
+    RateConvertTicksRoundDown(GraphRate(), mSampleRate, positionInFrames);
 }
 
 void
@@ -360,7 +353,7 @@ MediaStreamGraphImpl::UpdateCurrentTime()
   if (mRealtime) {
     TimeStamp now = TimeStamp::Now();
     prevCurrentTime = mCurrentTime;
-    nextCurrentTime = INITIAL_CURRENT_TIME +
+    nextCurrentTime =
       SecondsToMediaTime((now - mInitialTimeStamp).ToSeconds());
 
     mCurrentTimeStamp = now;
@@ -916,17 +909,14 @@ MediaStreamGraphImpl::PlayAudio(MediaStream* aStream,
 
     // offset and audioOutput.mLastTickWritten can differ by at most one sample,
     // because of the rounding issue. We track that to ensure we don't skip a
-    // sample, or play a sample twice.
+    // sample. One sample may be played twice, but this should not happen
+    // again during an unblocked sequence of track samples.
     TrackTicks offset = track->TimeToTicksRoundDown(GraphTimeToStreamTime(aStream, aFrom));
-    if (!audioOutput.mLastTickWritten) {
-        audioOutput.mLastTickWritten = offset;
-    }
-    if (audioOutput.mLastTickWritten != offset) {
+    if (audioOutput.mLastTickWritten &&
+        audioOutput.mLastTickWritten != offset) {
       // If there is a global underrun of the MSG, this property won't hold, and
       // we reset the sample count tracking.
-      if (mozilla::Abs(audioOutput.mLastTickWritten - offset) != 1) {
-        audioOutput.mLastTickWritten = offset;
-      } else {
+      if (offset - audioOutput.mLastTickWritten == 1) {
         offset = audioOutput.mLastTickWritten;
       }
     }
@@ -950,18 +940,23 @@ MediaStreamGraphImpl::PlayAudio(MediaStream* aStream,
       } else {
         toWrite = TimeToTicksRoundDown(mSampleRate, end - aFrom);
       }
+      ticksNeeded -= toWrite;
 
       if (blocked) {
         output.InsertNullDataAtStart(toWrite);
         STREAM_LOG(PR_LOG_DEBUG+1, ("MediaStream %p writing %ld blocking-silence samples for %f to %f (%ld to %ld)\n",
                                     aStream, toWrite, MediaTimeToSeconds(t), MediaTimeToSeconds(end),
                                     offset, offset + toWrite));
-        ticksNeeded -= toWrite;
       } else {
         TrackTicks endTicksNeeded = offset + toWrite;
         TrackTicks endTicksAvailable = audio->GetDuration();
+        STREAM_LOG(PR_LOG_DEBUG+1, ("MediaStream %p writing %ld samples for %f to %f (samples %ld to %ld)\n",
+                                     aStream, toWrite, MediaTimeToSeconds(t), MediaTimeToSeconds(end),
+                                     offset, endTicksNeeded));
+
         if (endTicksNeeded <= endTicksAvailable) {
           output.AppendSlice(*audio, offset, endTicksNeeded);
+          offset = endTicksNeeded;
         } else {
           MOZ_ASSERT(track->IsEnded(), "Not enough data, and track not ended.");
           // If we are at the end of the track, maybe write the remaining
@@ -969,21 +964,16 @@ MediaStreamGraphImpl::PlayAudio(MediaStream* aStream,
           if (endTicksNeeded > endTicksAvailable &&
               offset < endTicksAvailable) {
             output.AppendSlice(*audio, offset, endTicksAvailable);
-            ticksNeeded -= endTicksAvailable - offset;
             toWrite -= endTicksAvailable - offset;
+            offset = endTicksAvailable;
           }
           output.AppendNullData(toWrite);
         }
         output.ApplyVolume(volume);
-        STREAM_LOG(PR_LOG_DEBUG+1, ("MediaStream %p writing %ld samples for %f to %f (samples %ld to %ld)\n",
-                                     aStream, toWrite, MediaTimeToSeconds(t), MediaTimeToSeconds(end),
-                                     offset, endTicksNeeded));
-        ticksNeeded -= toWrite;
       }
       t = end;
-      offset += toWrite;
-      audioOutput.mLastTickWritten += toWrite;
     }
+    audioOutput.mLastTickWritten = offset;
 
     // Need unique id for stream & track - and we want it to match the inserter
     output.WriteTo(LATENCY_STREAM_ID(aStream, track->GetID()),
@@ -1160,21 +1150,11 @@ MediaStreamGraphImpl::EnsureNextIterationLocked(MonitorAutoLock& aLock)
 static GraphTime
 RoundUpToNextAudioBlock(TrackRate aSampleRate, GraphTime aTime)
 {
-  TrackTicks ticks = TimeToTicksRoundUp(aSampleRate, aTime);
+  TrackTicks ticks = aTime;
   uint64_t block = ticks >> WEBAUDIO_BLOCK_SIZE_BITS;
   uint64_t nextBlock = block + 1;
   TrackTicks nextTicks = nextBlock << WEBAUDIO_BLOCK_SIZE_BITS;
-  // Find the smallest time t such that TimeToTicksRoundUp(aSampleRate,t) == nextTicks
-  // That's the smallest integer t such that
-  //   t*aSampleRate > ((nextTicks - 1) << MEDIA_TIME_FRAC_BITS)
-  // Both sides are integers, so this is equivalent to
-  //   t*aSampleRate >= ((nextTicks - 1) << MEDIA_TIME_FRAC_BITS) + 1
-  //   t >= (((nextTicks - 1) << MEDIA_TIME_FRAC_BITS) + 1)/aSampleRate
-  //   t = ceil((((nextTicks - 1) << MEDIA_TIME_FRAC_BITS) + 1)/aSampleRate)
-  // Using integer division, that's
-  //   t = (((nextTicks - 1) << MEDIA_TIME_FRAC_BITS) + 1 + aSampleRate - 1)/aSampleRate
-  //     = ((nextTicks - 1) << MEDIA_TIME_FRAC_BITS)/aSampleRate + 1
-  return ((nextTicks - 1) << MEDIA_TIME_FRAC_BITS)/aSampleRate + 1;
+  return nextTicks;
 }
 
 void
@@ -1873,6 +1853,7 @@ MediaStream::SetGraphImpl(MediaStreamGraphImpl* aGraph)
 {
   MOZ_ASSERT(!mGraph, "Should only be called once");
   mGraph = aGraph;
+  mBuffer.InitGraphRate(aGraph->GraphRate());
 }
 
 void
@@ -2289,11 +2270,13 @@ SourceMediaStream::ResampleAudioToGraphSampleRate(TrackData* aTrackData, MediaSe
     return;
   }
   AudioSegment* segment = static_cast<AudioSegment*>(aSegment);
-  if (!aTrackData->mResampler) {
-    int channels = segment->ChannelCount();
+  int channels = segment->ChannelCount();
 
-    // If this segment is just silence, we delay instanciating the resampler.
-    if (channels) {
+  // If this segment is just silence, we delay instanciating the resampler.
+  if (channels) {
+    if (aTrackData->mResampler) {
+      MOZ_ASSERT(aTrackData->mResamplerChannelCount == segment->ChannelCount());
+    } else {
       SpeexResamplerState* state = speex_resampler_init(channels,
                                                         aTrackData->mInputRate,
                                                         GraphImpl()->AudioSampleRate(),
@@ -2303,6 +2286,9 @@ SourceMediaStream::ResampleAudioToGraphSampleRate(TrackData* aTrackData, MediaSe
         return;
       }
       aTrackData->mResampler.own(state);
+#ifdef DEBUG
+      aTrackData->mResamplerChannelCount = channels;
+#endif
     }
   }
   segment->ResampleChunks(aTrackData->mResampler);
@@ -2642,8 +2628,8 @@ ProcessedMediaStream::DestroyImpl()
 }
 
 MediaStreamGraphImpl::MediaStreamGraphImpl(bool aRealtime, TrackRate aSampleRate)
-  : mCurrentTime(INITIAL_CURRENT_TIME)
-  , mStateComputedTime(INITIAL_CURRENT_TIME)
+  : mCurrentTime(0)
+  , mStateComputedTime(0)
   , mProcessingGraphUpdateIndex(0)
   , mPortCount(0)
   , mMonitor("MediaStreamGraphImpl")
@@ -2765,7 +2751,7 @@ struct ArrayClearer
 
 NS_IMETHODIMP
 MediaStreamGraphImpl::CollectReports(nsIHandleReportCallback* aHandleReport,
-                                     nsISupports* aData)
+                                     nsISupports* aData, bool aAnonymize)
 {
   // Clears out the report array after we're done with it.
   ArrayClearer reportCleanup(mAudioStreamSizes);
@@ -2803,17 +2789,17 @@ MediaStreamGraphImpl::CollectReports(nsIHandleReportCallback* aHandleReport,
     const char* const nodeType =  usage.mNodeType.get();
 
     nsPrintfCString domNodePath("explicit/webaudio/audio-node/%s/dom-nodes",
-                                  nodeType);
+                                nodeType);
     REPORT(domNodePath, usage.mDomNode,
            "Memory used by AudioNode DOM objects (Web Audio).");
 
     nsPrintfCString enginePath("explicit/webaudio/audio-node/%s/engine-objects",
-                                nodeType);
+                               nodeType);
     REPORT(enginePath, usage.mEngine,
            "Memory used by AudioNode engine objects (Web Audio).");
 
     nsPrintfCString streamPath("explicit/webaudio/audio-node/%s/stream-objects",
-                                nodeType);
+                               nodeType);
     REPORT(streamPath, usage.mStream,
            "Memory used by AudioNode stream objects (Web Audio).");
 
@@ -2899,7 +2885,8 @@ MediaStreamGraph::StartNonRealtimeProcessing(TrackRate aRate, uint32_t aTicksToP
 
   if (graph->mNonRealtimeProcessing)
     return;
-  graph->mEndTime = graph->mCurrentTime + TicksToTimeRoundUp(aRate, aTicksToProcess);
+  graph->mEndTime = graph->mCurrentTime +
+    RateConvertTicksRoundUp(graph->GraphRate(), aRate, aTicksToProcess);
   graph->mNonRealtimeProcessing = true;
   graph->EnsureRunInStableState();
 }

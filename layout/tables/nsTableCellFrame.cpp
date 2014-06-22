@@ -713,7 +713,7 @@ nsTableCellFrame::GetCellBaseline() const
   nsIFrame *inner = mFrames.FirstChild();
   nscoord borderPadding = GetUsedBorderAndPadding().top;
   nscoord result;
-  if (nsLayoutUtils::GetFirstLineBaseline(inner, &result))
+  if (nsLayoutUtils::GetFirstLineBaseline(GetWritingMode(), inner, &result))
     return result + borderPadding;
   return inner->GetContentRect().YMost() - inner->GetPosition().y +
          borderPadding;
@@ -828,9 +828,10 @@ CalcUnpaginagedHeight(nsPresContext*        aPresContext,
   int32_t rowIndex;
   firstCellInFlow->GetRowIndex(rowIndex);
   int32_t rowSpan = aTableFrame.GetEffectiveRowSpan(*firstCellInFlow);
-  nscoord cellSpacing = firstTableInFlow->GetCellSpacingX();
 
-  nscoord computedHeight = ((rowSpan - 1) * cellSpacing) - aVerticalBorderPadding;
+  nscoord computedHeight = firstTableInFlow->GetCellSpacingY(rowIndex,
+                                                             rowIndex + rowSpan - 1);
+  computedHeight -= aVerticalBorderPadding;
   int32_t rowX;
   for (row = firstRGInFlow->GetFirstRow(), rowX = 0; row; row = row->GetNextRow(), rowX++) {
     if (rowX > rowIndex + rowSpan - 1) {

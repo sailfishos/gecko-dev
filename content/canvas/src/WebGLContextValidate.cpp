@@ -328,8 +328,7 @@ bool WebGLContext::ValidateBlendEquationEnum(GLenum mode, const char *info)
             return true;
         case LOCAL_GL_MIN:
         case LOCAL_GL_MAX:
-            if (IsWebGL2()) {
-                // http://www.opengl.org/registry/specs/EXT/blend_minmax.txt
+            if (IsExtensionEnabled(WebGLExtensionID::EXT_blend_minmax)) {
                 return true;
             }
             break;
@@ -1206,12 +1205,8 @@ WebGLContext::ValidateTexInputData(GLenum type, int jsArrayType, WebGLTexImageFu
         validInput = (jsArrayType == -1 || jsArrayType == js::ArrayBufferView::TYPE_UINT8);
         break;
 
-        // TODO: WebGL spec doesn't allow half floats to specified as UInt16.
     case LOCAL_GL_HALF_FLOAT:
     case LOCAL_GL_HALF_FLOAT_OES:
-        validInput = (jsArrayType == -1);
-        break;
-
     case LOCAL_GL_UNSIGNED_SHORT:
     case LOCAL_GL_UNSIGNED_SHORT_4_4_4_4:
     case LOCAL_GL_UNSIGNED_SHORT_5_5_5_1:
@@ -1776,6 +1771,11 @@ WebGLContext::InitAndValidateGL()
     {
         // Todo: Bug 898404: Only allow WebGL2 on GL>=3.0 on desktop GL.
         return false;
+    }
+
+    // Default value for all disabled vertex attributes is [0, 0, 0, 1]
+    for (int32_t index = 0; index < mGLMaxVertexAttribs; ++index) {
+        VertexAttrib4f(index, 0, 0, 0, 1);
     }
 
     mMemoryPressureObserver

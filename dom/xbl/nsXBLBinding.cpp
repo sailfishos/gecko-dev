@@ -360,7 +360,7 @@ nsXBLBinding::GenerateAnonymousContent()
         if (point) {
           point->AppendInsertedChild(child);
         } else {
-          nsINodeInfo *ni = child->NodeInfo();
+          NodeInfo *ni = child->NodeInfo();
           if (ni->NamespaceID() != kNameSpaceID_XUL ||
               (!ni->Equals(nsGkAtoms::_template) &&
                !ni->Equals(nsGkAtoms::observes))) {
@@ -1096,10 +1096,13 @@ nsXBLBinding::LookupMember(JSContext* aCx, JS::Handle<jsid> aId,
 
   // Get the string as an nsString before doing anything, so we can make
   // convenient comparisons during our search.
+  //
+  // Note: the infallibleInit call below depends on this check.
   if (!JSID_IS_STRING(aId)) {
     return true;
   }
-  nsDependentJSString name(aId);
+  nsDependentJSString name;
+  name.infallibleInit(aId);
 
   // We have a weak reference to our bound element, so make sure it's alive.
   if (!mBoundElement || !mBoundElement->GetWrapper()) {

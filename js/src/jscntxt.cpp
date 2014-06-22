@@ -668,10 +668,12 @@ js_ExpandErrorArguments(ExclusiveContext *cx, JSErrorCallback callback,
     *messagep = nullptr;
 
     /* Most calls supply js_GetErrorMessage; if this is so, assume nullptr. */
-    if (!callback || callback == js_GetErrorMessage)
+    if (!callback || callback == js_GetErrorMessage) {
         efs = js_GetLocalizedErrorMessage(cx, userRef, nullptr, errorNumber);
-    else
+    } else {
+        AutoSuppressGC suppressGC(cx);
         efs = callback(userRef, nullptr, errorNumber);
+    }
     if (efs) {
         reportp->exnType = efs->exnType;
 
@@ -756,10 +758,10 @@ js_ExpandErrorArguments(ExclusiveContext *cx, JSErrorCallback callback,
                 JS_ASSERT(expandedArgs == argCount);
                 *out = 0;
                 js_free(buffer);
-                TwoByteChars ucmsg(reportp->ucmessage,
-                                   PointerRangeSize(static_cast<const jschar *>(reportp->ucmessage),
-                                                    static_cast<const jschar *>(out)));
-                *messagep = LossyTwoByteCharsToNewLatin1CharsZ(cx, ucmsg).c_str();
+                size_t msgLen = PointerRangeSize(static_cast<const jschar *>(reportp->ucmessage),
+                                                 static_cast<const jschar *>(out));
+                mozilla::Range<const jschar> ucmsg(reportp->ucmessage, msgLen);
+                *messagep = JS::LossyTwoByteCharsToNewLatin1CharsZ(cx, ucmsg).c_str();
                 if (!*messagep)
                     goto error;
             }

@@ -46,7 +46,7 @@ interface nsITabParent;
  
 typedef unsigned long nsLoadFlags;
 
-[scriptable, builtinclass, uuid(9c65a466-9814-48f8-a4ca-c4600b03b15d)]
+[scriptable, builtinclass, uuid(2a099e83-44df-415a-be76-c145966074e7)]
 interface nsIDocShell : nsIDocShellTreeItem
 {
   /**
@@ -114,6 +114,7 @@ interface nsIDocShell : nsIDocShellTreeItem
   const long INTERNAL_LOAD_FLAGS_IS_SRCDOC               = 0x40;
 
   const long INTERNAL_LOAD_FLAGS_FIXUP_SCHEME_TYPOS      = 0x80;
+  const long INTERNAL_LOAD_FLAGS_NO_OPENER               = 0x100;
 
   /**
    * Loads the given URI.  This method is identical to loadURI(...) except
@@ -448,6 +449,11 @@ interface nsIDocShell : nsIDocShellTreeItem
                         in wstring aURL,
                         [optional] in nsIChannel aFailedChannel);
 
+  /**
+   * The channel that failed to load and resulted in an error page.
+   * May be null. Relevant only to error pages.
+   */
+  readonly attribute nsIChannel failedChannel;
 
   /**
    * Keeps track of the previous SHTransaction index and the current

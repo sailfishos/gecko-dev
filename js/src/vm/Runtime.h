@@ -28,9 +28,7 @@
 #include "frontend/ParseMaps.h"
 #include "gc/GCRuntime.h"
 #include "gc/Tracer.h"
-#ifndef JS_YARR
 #include "irregexp/RegExpStack.h"
-#endif
 #ifdef XP_MACOSX
 # include "jit/AsmJSSignalHandlers.h"
 #endif
@@ -51,7 +49,7 @@
 namespace js {
 
 class PerThreadData;
-class ThreadSafeContext;
+struct ThreadSafeContext;
 class AutoKeepAtoms;
 #ifdef JS_TRACE_LOGGING
 class TraceLogger;
@@ -75,13 +73,7 @@ js_ReportOverRecursed(js::ThreadSafeContext *cx);
 
 namespace JSC { class ExecutableAllocator; }
 
-#ifdef JS_YARR
-namespace WTF { class BumpPointerAllocator; }
-#endif
-
 namespace js {
-
-typedef Rooted<JSLinearString*> RootedLinearString;
 
 class Activation;
 class ActivationIterator;
@@ -94,7 +86,7 @@ class JitActivation;
 struct PcScriptCache;
 class Simulator;
 class SimulatorRuntime;
-class AutoFlushICache;
+struct AutoFlushICache;
 }
 
 /*
@@ -133,6 +125,8 @@ struct ScopeCoordinateNameCache {
     ScopeCoordinateNameCache() : shape(nullptr) {}
     void purge();
 };
+
+typedef Vector<ScriptAndCounts, 0, SystemAllocPolicy> ScriptAndCountsVector;
 
 struct EvalCacheEntry
 {
@@ -499,10 +493,8 @@ class PerThreadData : public PerThreadDataFriendFields
 
     inline void setJitStackLimit(uintptr_t limit);
 
-#ifndef JS_YARR
     // Information about the heap allocated backtrack stack used by RegExp JIT code.
     irregexp::RegExpStack regexpStack;
-#endif
 
 #ifdef JS_TRACE_LOGGING
     TraceLogger         *traceLogger;
@@ -577,6 +569,11 @@ class PerThreadData : public PerThreadDataFriendFields
      */
     int32_t suppressGC;
 
+#ifdef DEBUG
+    // Whether this thread is actively Ion compiling.
+    bool ionCompiling;
+#endif
+
     // Number of active bytecode compilation on this thread.
     unsigned activeCompilations;
 
@@ -605,10 +602,21 @@ class PerThreadData : public PerThreadDataFriendFields
         {
             JS_ASSERT(!pt->runtime_);
             pt->runtime_ = rt;
+#if defined(JS_ARM_SIMULATOR) || defined(JS_MIPS_SIMULATOR)
+            // The simulator has a pointer to its SimulatorRuntime, but helper threads
+            // don't have a simulator as they don't run JIT code so this pointer need not
+            // be updated. All the paths that the helper threads use access the
+            // SimulatorRuntime via the PerThreadData.
+            JS_ASSERT(!pt->simulator_);
+#endif
         }
 
         ~AutoEnterRuntime() {
             pt->runtime_ = nullptr;
+#if defined(JS_ARM_SIMULATOR) || defined(JS_MIPS_SIMULATOR)
+            // Check that helper threads have not run JIT code and/or added a simulator.
+            JS_ASSERT(!pt->simulator_);
+#endif
         }
     };
 
@@ -804,9 +812,6 @@ struct JSRuntime : public JS::shadow::Runtime,
      * thread-data level.
      */
     JSC::ExecutableAllocator *execAlloc_;
-#ifdef JS_YARR
-    WTF::BumpPointerAllocator *bumpAlloc_;
-#endif
     js::jit::JitRuntime *jitRuntime_;
 
     /*
@@ -819,9 +824,6 @@ struct JSRuntime : public JS::shadow::Runtime,
     js::InterpreterStack interpreterStack_;
 
     JSC::ExecutableAllocator *createExecutableAllocator(JSContext *cx);
-#ifdef JS_YARR
-    WTF::BumpPointerAllocator *createBumpPointerAllocator(JSContext *cx);
-#endif
     js::jit::JitRuntime *createJitRuntime(JSContext *cx);
 
   public:
@@ -835,11 +837,6 @@ struct JSRuntime : public JS::shadow::Runtime,
     JSC::ExecutableAllocator *maybeExecAlloc() {
         return execAlloc_;
     }
-#ifdef JS_YARR
-    WTF::BumpPointerAllocator *getBumpPointerAllocator(JSContext *cx) {
-        return bumpAlloc_ ? bumpAlloc_ : createBumpPointerAllocator(cx);
-    }
-#endif
     js::jit::JitRuntime *getJitRuntime(JSContext *cx) {
         return jitRuntime_ ? jitRuntime_ : createJitRuntime(cx);
     }
@@ -953,31 +950,9 @@ struct JSRuntime : public JS::shadow::Runtime,
     bool isHeapMinorCollecting() { return gc.isHeapMinorCollecting(); }
     bool isHeapCollecting() { return gc.isHeapCollecting(); }
 
-#ifdef JS_GC_ZEAL
-    int gcZeal() { return gc.zealMode; }
+    bool isFJMinorCollecting() { return gc.isFJMinorCollecting(); }
 
-    bool upcomingZealousGC() {
-        return gc.nextScheduled == 1;
-    }
-
-    bool needZealousGC() {
-        if (gc.nextScheduled > 0 && --gc.nextScheduled == 0) {
-            if (gcZeal() == js::gc::ZealAllocValue ||
-                gcZeal() == js::gc::ZealGenerationalGCValue ||
-                (gcZeal() >= js::gc::ZealIncrementalRootsThenFinish &&
-                 gcZeal() <= js::gc::ZealIncrementalMultipleSlices))
-            {
-                gc.nextScheduled = gc.zealFrequency;
-            }
-            return true;
-        }
-        return false;
-    }
-#else
-    int gcZeal() { return 0; }
-    bool upcomingZealousGC() { return false; }
-    bool needZealousGC() { return false; }
-#endif
+    int gcZeal() { return gc.zeal(); }
 
     void lockGC() {
         assertCanLock(js::GCLock);
@@ -1001,6 +976,9 @@ struct JSRuntime : public JS::shadow::Runtime,
     js::jit::SimulatorRuntime *simulatorRuntime() const;
     void setSimulatorRuntime(js::jit::SimulatorRuntime *srt);
 #endif
+
+    /* Strong references on scripts held for PCCount profiling API. */
+    js::ScriptAndCountsVector *scriptAndCountsVector;
 
     /* Well-known numbers held for use by this runtime's contexts. */
     const js::Value     NaNValue;
@@ -1276,13 +1254,6 @@ struct JSRuntime : public JS::shadow::Runtime,
 
     JSRuntime *thisFromCtor() { return this; }
 
-    void setGCMaxMallocBytes(size_t value);
-
-    void resetGCMallocBytes() {
-        gc.mallocBytes = ptrdiff_t(gc.maxMallocBytes);
-        gc.mallocGCTriggered = false;
-    }
-
     /*
      * Call this after allocating memory held by GC things, to update memory
      * pressure counters or report the OOM error if necessary. If oomError and
@@ -1295,10 +1266,6 @@ struct JSRuntime : public JS::shadow::Runtime,
     void updateMallocCounter(JS::Zone *zone, size_t nbytes);
 
     void reportAllocationOverflow() { js_ReportAllocationOverflow(nullptr); }
-
-    bool isTooMuchMalloc() const {
-        return gc.mallocBytes <= 0;
-    }
 
     /*
      * The function must be called outside the GC lock.
@@ -1336,19 +1303,19 @@ struct JSRuntime : public JS::shadow::Runtime,
     JS::RuntimeOptions options_;
 
     // Settings for how helper threads can be used.
-    bool parallelIonCompilationEnabled_;
+    bool offthreadIonCompilationEnabled_;
     bool parallelParsingEnabled_;
 
   public:
 
     // Note: these values may be toggled dynamically (in response to about:config
     // prefs changing).
-    void setParallelIonCompilationEnabled(bool value) {
-        parallelIonCompilationEnabled_ = value;
+    void setOffthreadIonCompilationEnabled(bool value) {
+        offthreadIonCompilationEnabled_ = value;
     }
-    bool canUseParallelIonCompilation() const {
+    bool canUseOffthreadIonCompilation() const {
 #ifdef JS_THREADSAFE
-        return parallelIonCompilationEnabled_;
+        return offthreadIonCompilationEnabled_;
 #else
         return false;
 #endif
@@ -1683,6 +1650,32 @@ class RuntimeAllocPolicy
 };
 
 extern const JSSecurityCallbacks NullSecurityCallbacks;
+
+// Debugging RAII class which marks the current thread as performing an Ion
+// compilation, for use by CurrentThreadCan{Read,Write}CompilationData
+class AutoEnterIonCompilation
+{
+  public:
+    AutoEnterIonCompilation(MOZ_GUARD_OBJECT_NOTIFIER_ONLY_PARAM) {
+        MOZ_GUARD_OBJECT_NOTIFIER_INIT;
+
+#if defined(DEBUG) && defined(JS_THREADSAFE)
+        PerThreadData *pt = js::TlsPerThreadData.get();
+        JS_ASSERT(!pt->ionCompiling);
+        pt->ionCompiling = true;
+#endif
+    }
+
+    ~AutoEnterIonCompilation() {
+#if defined(DEBUG) && defined(JS_THREADSAFE)
+        PerThreadData *pt = js::TlsPerThreadData.get();
+        JS_ASSERT(pt->ionCompiling);
+        pt->ionCompiling = false;
+#endif
+    }
+
+    MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
+};
 
 } /* namespace js */
 

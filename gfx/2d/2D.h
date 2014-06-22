@@ -620,7 +620,7 @@ public:
   DrawTarget() : mTransformDirty(false), mPermitSubpixelAA(false) {}
   virtual ~DrawTarget() {}
 
-  virtual BackendType GetType() const = 0;
+  virtual BackendType GetBackendType() const = 0;
   /**
    * Returns a SourceSurface which is a snapshot of the current contents of the DrawTarget.
    * Multiple calls to Snapshot() without any drawing operations in between will
@@ -998,6 +998,18 @@ public:
   virtual ~DrawEventRecorder() { }
 };
 
+struct Tile
+{
+  RefPtr<DrawTarget> mDrawTarget;
+  IntPoint mTileOrigin;
+};
+
+struct TileSet
+{
+  Tile* mTiles;
+  size_t mTileCount;
+};
+
 class GFX2D_API Factory
 {
 public:
@@ -1090,6 +1102,14 @@ public:
 #endif
   static TemporaryRef<DrawTarget>
     CreateDualDrawTarget(DrawTarget *targetA, DrawTarget *targetB);
+
+  /*
+   * This creates a new tiled DrawTarget. When a tiled drawtarget is used the
+   * drawing is distributed over number of tiles which may each hold an
+   * individual offset. The tiles in the set must each have the same backend
+   * and format.
+   */
+  static TemporaryRef<DrawTarget> CreateTiledDrawTarget(const TileSet& aTileSet);
 
 #ifdef XP_MACOSX
   static TemporaryRef<DrawTarget> CreateDrawTargetForCairoCGContext(CGContextRef cg, const IntSize& aSize);

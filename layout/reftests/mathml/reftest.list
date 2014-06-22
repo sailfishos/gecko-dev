@@ -4,6 +4,7 @@
 == dir-4.html dir-4-ref.html
 == dir-5.html dir-5-ref.html
 == dir-6.html dir-6-ref.html
+== dir-6a.html dir-6a-ref.html
 == dir-7.html dir-7-ref.html
 fails == dir-8.html dir-8-ref.html
 fails == dir-9.html dir-9-ref.html # Bug 787215
@@ -200,41 +201,41 @@ fails-if(B2G||Android||OSX==10.6) == menclose-3-radical.html menclose-3-radical-
 == menclose-3-invalid.html menclose-3-invalid-ref.html
 == menclose-3-multiple.html menclose-3-multiple-ref.html
 == menclose-3-unknown.html menclose-3-unknown.html
-fails-if(B2G&&browserIsRemote) == menclose-4.html data:text/html,<body>Pass
-fails-if(B2G&&browserIsRemote) == menclose-5-actuarial.html menclose-5-actuarial-ref.html
-fails-if(B2G&&browserIsRemote) == menclose-5-bottom.html menclose-5-bottom-ref.html
-fails-if(B2G&&browserIsRemote) == menclose-5-box.html menclose-5-box-ref.html
-fuzzy-if(OSX,1,100) fails-if(B2G&&browserIsRemote) == menclose-5-circle.html menclose-5-circle-ref.html
-fails-if(B2G&&browserIsRemote) == menclose-5-downdiagonalstrike.html menclose-5-downdiagonalstrike-ref.html
-fails-if(B2G&&browserIsRemote) == menclose-5-horizontalstrike.html menclose-5-horizontalstrike-ref.html
-fails-if(B2G&&browserIsRemote) == menclose-5-left.html menclose-5-left-ref.html
+random-if(B2G&&browserIsRemote) == menclose-4.html data:text/html,<body>Pass
+random-if(B2G&&browserIsRemote) == menclose-5-actuarial.html menclose-5-actuarial-ref.html
+random-if(B2G&&browserIsRemote) == menclose-5-bottom.html menclose-5-bottom-ref.html
+random-if(B2G&&browserIsRemote) == menclose-5-box.html menclose-5-box-ref.html
+fuzzy-if(OSX,1,100) random-if(B2G&&browserIsRemote) == menclose-5-circle.html menclose-5-circle-ref.html
+random-if(B2G&&browserIsRemote) == menclose-5-downdiagonalstrike.html menclose-5-downdiagonalstrike-ref.html
+random-if(B2G&&browserIsRemote) == menclose-5-horizontalstrike.html menclose-5-horizontalstrike-ref.html
+random-if(B2G&&browserIsRemote) == menclose-5-left.html menclose-5-left-ref.html
 == menclose-5-longdiv.html menclose-5-longdiv-ref.html
-fails-if(B2G&&browserIsRemote) == menclose-5-madruwb.html menclose-5-madruwb-ref.html
-fails-if(B2G&&browserIsRemote) == menclose-5-radical.html menclose-5-radical-ref.html
-fails-if(B2G&&browserIsRemote) == menclose-5-right.html menclose-5-right-ref.html
-fails-if(B2G&&browserIsRemote) == menclose-5-roundedbox.html menclose-5-roundedbox-ref.html
-fails-if(B2G&&browserIsRemote) == menclose-5-top.html menclose-5-top-ref.html
-fails-if(B2G&&browserIsRemote) == menclose-5-updiagonalarrow.html menclose-5-updiagonalarrow-ref.html
-fails-if(B2G&&browserIsRemote) == menclose-5-updiagonalstrike.html menclose-5-updiagonalstrike-ref.html
-fails-if(B2G&&browserIsRemote) == menclose-5-verticalstrike.html menclose-5-verticalstrike-ref.html
-fails-if(B2G&&browserIsRemote) == menclose-5-phasorangle.html menclose-5-phasorangle-ref.html
-fails-if(B2G&&browserIsRemote) == menclose-6-actuarial.html menclose-6-ref.html
-fails-if(B2G&&browserIsRemote) == menclose-6-bottom.html menclose-6-ref.html
-fails-if(B2G&&browserIsRemote) == menclose-6-box.html menclose-6-ref.html
-fails-if(B2G&&browserIsRemote) == menclose-6-circle.html menclose-6-ref.html
-fails-if(B2G&&browserIsRemote) == menclose-6-downdiagonalstrike.html menclose-6-ref.html
-fails-if(B2G&&browserIsRemote) == menclose-6-horizontalstrike.html menclose-6-ref.html
-fails-if(B2G&&browserIsRemote) == menclose-6-left.html menclose-6-ref.html
-== menclose-6-longdiv.html menclose-6-ref.html
-fails-if(B2G&&browserIsRemote) == menclose-6-madruwb.html menclose-6-ref.html
-fails-if(B2G&&browserIsRemote) == menclose-6-radical.html menclose-6-ref.html
-fails-if(B2G&&browserIsRemote) == menclose-6-right.html menclose-6-ref.html
-fails-if(B2G&&browserIsRemote) == menclose-6-roundedbox.html menclose-6-ref.html
-fails-if(B2G&&browserIsRemote) == menclose-6-top.html menclose-6-ref.html
-fails-if(B2G&&browserIsRemote) == menclose-6-updiagonalarrow.html menclose-6-ref.html
-fails-if(B2G&&browserIsRemote) == menclose-6-updiagonalstrike.html menclose-6-ref.html
-fails-if(B2G&&browserIsRemote) == menclose-6-verticalstrike.html menclose-6-ref.html
-fails-if(B2G&&browserIsRemote) == menclose-6-phasorangle.html menclose-6-ref.html
+random-if(B2G&&browserIsRemote) == menclose-5-madruwb.html menclose-5-madruwb-ref.html
+random-if(B2G&&browserIsRemote) == menclose-5-radical.html menclose-5-radical-ref.html
+random-if(B2G&&browserIsRemote) == menclose-5-right.html menclose-5-right-ref.html
+random-if(B2G&&browserIsRemote) == menclose-5-roundedbox.html menclose-5-roundedbox-ref.html
+random-if(B2G&&browserIsRemote) == menclose-5-top.html menclose-5-top-ref.html
+random-if(B2G&&browserIsRemote) == menclose-5-updiagonalarrow.html menclose-5-updiagonalarrow-ref.html
+random-if(B2G&&browserIsRemote) == menclose-5-updiagonalstrike.html menclose-5-updiagonalstrike-ref.html
+random-if(B2G&&browserIsRemote) == menclose-5-verticalstrike.html menclose-5-verticalstrike-ref.html
+random-if(B2G&&browserIsRemote) == menclose-5-phasorangle.html menclose-5-phasorangle-ref.html
+random-if(B2G&&browserIsRemote) == menclose-6-actuarial.html menclose-6-ref.html
+random-if(B2G&&browserIsRemote) == menclose-6-bottom.html menclose-6-ref.html
+random-if(B2G&&browserIsRemote) == menclose-6-box.html menclose-6-ref.html
+random-if(B2G&&browserIsRemote) == menclose-6-circle.html menclose-6-ref.html
+random-if(B2G&&browserIsRemote) == menclose-6-downdiagonalstrike.html menclose-6-ref.html
+random-if(B2G&&browserIsRemote) == menclose-6-horizontalstrike.html menclose-6-ref.html
+random-if(B2G&&browserIsRemote) == menclose-6-left.html menclose-6-ref.html
+random-if(B2G&&browserIsRemote) == menclose-6-longdiv.html menclose-6-ref.html
+random-if(B2G&&browserIsRemote) == menclose-6-madruwb.html menclose-6-ref.html
+random-if(B2G&&browserIsRemote) == menclose-6-radical.html menclose-6-ref.html
+random-if(B2G&&browserIsRemote) == menclose-6-right.html menclose-6-ref.html
+random-if(B2G&&browserIsRemote) == menclose-6-roundedbox.html menclose-6-ref.html
+random-if(B2G&&browserIsRemote) == menclose-6-top.html menclose-6-ref.html
+random-if(B2G&&browserIsRemote) == menclose-6-updiagonalarrow.html menclose-6-ref.html
+random-if(B2G&&browserIsRemote) == menclose-6-updiagonalstrike.html menclose-6-ref.html
+random-if(B2G&&browserIsRemote) == menclose-6-verticalstrike.html menclose-6-ref.html
+random-if(B2G&&browserIsRemote) == menclose-6-phasorangle.html menclose-6-ref.html
 == mmultiscript-align.html mmultiscript-align-ref.html
 fails-if(winWidget&&!/^Windows\x20NT\x205\.1/.test(http.oscpu)) == subscript-italic-correction.html subscript-italic-correction-ref.html # Windows versions with Cambria Math, bug 961482
 fails-if(B2G||Android||/^Windows\x20NT\x205\.1/.test(http.oscpu)||OSX==10.6) == mathvariant-1a.html mathvariant-1a-ref.html # Bug 1010679
@@ -269,6 +270,16 @@ random-if(B2G&&browserIsRemote) == munderover-accentunder-dynamic.html munderove
 == rowlines-2b.html rowlines-2-ref.html
 != rowlines-3-1.html rowlines-3-1-ref.html
 == rowlines-3-2.html rowlines-3-2-ref.html
+== tablespacing-1.html tablespacing-1-ref.html
+== tablespacing-2.html tablespacing-2-ref.html
+== tablespacing-3.html tablespacing-3-ref.html
+fails-if(B2G&&browserIsRemote) == tablespacing-4.html tablespacing-4-ref.html
+fails-if(B2G&&browserIsRemote) == tablespacing-5.html tablespacing-5-ref.html
+fails-if(B2G&&browserIsRemote) == tablespacing-5a.html tablespacing-5a-ref.html
+fails-if(B2G&&browserIsRemote) == tablespacing-6.html tablespacing-6-ref.html
+== tablespacing-7.html tablespacing-7-ref.html
+!= tablespacing-8a.html tablespacing-8-ref.html
+!= tablespacing-8b.html tablespacing-8-ref.html
 != op-dict-1.html op-dict-1-ref.html
 == op-dict-2.html op-dict-2-ref.html
 != op-dict-3.html op-dict-3-ref.html

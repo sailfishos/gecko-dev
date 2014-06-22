@@ -171,6 +171,16 @@ CheckMarkedThing(JSTracer *trc, T **thingp)
     JS_ASSERT(*thingp);
 
 #ifdef DEBUG
+#ifdef JSGC_FJGENERATIONAL
+    /*
+     * The code below (runtimeFromMainThread(), etc) makes assumptions
+     * not valid for the ForkJoin worker threads during ForkJoin GGC,
+     * so just bail.
+     */
+    if (ForkJoinContext::current())
+        return;
+#endif
+
     /* This function uses data that's not available in the nursery. */
     if (IsInsideNursery(thing))
         return;
@@ -187,6 +197,9 @@ CheckMarkedThing(JSTracer *trc, T **thingp)
     JS_ASSERT(trc->hasTracingDetails());
 
     DebugOnly<JSRuntime *> rt = trc->runtime();
+
+    JS_ASSERT_IF(IS_GC_MARKING_TRACER(trc) && rt->gc.isManipulatingDeadZones(),
+                 !thing->zone()->scheduledForDestruction);
 
     JS_ASSERT(CurrentThreadCanAccessRuntime(rt));
 
@@ -218,33 +231,6 @@ CheckMarkedThing(JSTracer *trc, T **thingp)
 
 }
 
-/*
- * We only set the maybeAlive flag for objects and scripts. It's assumed that,
- * if a compartment is alive, then it will have at least some live object or
- * script it in. Even if we get this wrong, the worst that will happen is that
- * scheduledForDestruction will be set on the compartment, which will cause some
- * extra GC activity to try to free the compartment.
- */
-template<typename T>
-static inline void
-SetMaybeAliveFlag(T *thing)
-{
-}
-
-template<>
-void
-SetMaybeAliveFlag(JSObject *thing)
-{
-    thing->compartment()->maybeAlive = true;
-}
-
-template<>
-void
-SetMaybeAliveFlag(JSScript *thing)
-{
-    thing->compartment()->maybeAlive = true;
-}
-
 template<typename T>
 static void
 MarkInternal(JSTracer *trc, T **thingp)
@@ -253,6 +239,16 @@ MarkInternal(JSTracer *trc, T **thingp)
     T *thing = *thingp;
 
     if (!trc->callback) {
+#ifdef JSGC_FJGENERATIONAL
+        /*
+         * This case should never be reached from PJS collections as
+         * those should all be using a ForkJoinNurseryCollectionTracer
+         * that carries a callback.
+         */
+        JS_ASSERT(!ForkJoinContext::current());
+        JS_ASSERT(!trc->runtime()->isFJMinorCollecting());
+#endif
+
         /*
          * We may mark a Nursery thing outside the context of the
          * MinorCollectionTracer because of a pre-barrier. The pre-barrier is
@@ -278,7 +274,7 @@ MarkInternal(JSTracer *trc, T **thingp)
             return;
 
         PushMarkStack(AsGCMarker(trc), thing);
-        SetMaybeAliveFlag(thing);
+        thing->zone()->maybeAlive = true;
     } else {
         trc->callback(trc, (void **)thingp, MapTypeToTraceKind<T>::kind);
         trc->unsetTracingLocation();
@@ -289,8 +285,8 @@ MarkInternal(JSTracer *trc, T **thingp)
 
 #define JS_ROOT_MARKING_ASSERT(trc)                                     \
     JS_ASSERT_IF(IS_GC_MARKING_TRACER(trc),                             \
-                 trc->runtime()->gc.incrementalState == NO_INCREMENTAL ||       \
-                 trc->runtime()->gc.incrementalState == MARK_ROOTS);
+                 trc->runtime()->gc.state() == NO_INCREMENTAL ||        \
+                 trc->runtime()->gc.state() == MARK_ROOTS);
 
 namespace js {
 namespace gc {
@@ -381,11 +377,25 @@ IsMarked(T **thingp)
     JS_ASSERT(thingp);
     JS_ASSERT(*thingp);
 #ifdef JSGC_GENERATIONAL
-    if (IsInsideNursery(*thingp)) {
-        Nursery &nursery = (*thingp)->runtimeFromMainThread()->gc.nursery;
-        return nursery.getForwardedPointer(thingp);
+    JSRuntime* rt = (*thingp)->runtimeFromAnyThread();
+#ifdef JSGC_FJGENERATIONAL
+    // Must precede the case for JSGC_GENERATIONAL because IsInsideNursery()
+    // will also be true for the ForkJoinNursery.
+    if (rt->isFJMinorCollecting()) {
+        ForkJoinContext *ctx = ForkJoinContext::current();
+        ForkJoinNursery &fjNursery = ctx->fjNursery();
+        if (fjNursery.isInsideFromspace(*thingp))
+            return fjNursery.getForwardedPointer(thingp);
     }
+    else
 #endif
+    {
+        if (IsInsideNursery(*thingp)) {
+            Nursery &nursery = rt->gc.nursery;
+            return nursery.getForwardedPointer(thingp);
+        }
+    }
+#endif  // JSGC_GENERATIONAL
     Zone *zone = (*thingp)->tenuredZone();
     if (!zone->isCollecting() || zone->isGCFinished())
         return true;
@@ -407,14 +417,25 @@ IsAboutToBeFinalized(T **thingp)
         return false;
 
 #ifdef JSGC_GENERATIONAL
-    Nursery &nursery = rt->gc.nursery;
-    JS_ASSERT_IF(!rt->isHeapMinorCollecting(), !IsInsideNursery(thing));
-    if (rt->isHeapMinorCollecting()) {
-        if (IsInsideNursery(thing))
-            return !nursery.getForwardedPointer(thingp);
-        return false;
+#ifdef JSGC_FJGENERATIONAL
+    if (rt->isFJMinorCollecting()) {
+        ForkJoinContext *ctx = ForkJoinContext::current();
+        ForkJoinNursery &fjNursery = ctx->fjNursery();
+        if (fjNursery.isInsideFromspace(thing))
+            return !fjNursery.getForwardedPointer(thingp);
     }
+    else
 #endif
+    {
+        Nursery &nursery = rt->gc.nursery;
+        JS_ASSERT_IF(!rt->isHeapMinorCollecting(), !IsInsideNursery(thing));
+        if (rt->isHeapMinorCollecting()) {
+            if (IsInsideNursery(thing))
+                return !nursery.getForwardedPointer(thingp);
+            return false;
+        }
+    }
+#endif  // JSGC_GENERATIONAL
 
     if (!thing->tenuredZone()->isGCSweeping())
         return false;
@@ -437,9 +458,20 @@ UpdateIfRelocated(JSRuntime *rt, T **thingp)
 {
     JS_ASSERT(thingp);
 #ifdef JSGC_GENERATIONAL
-    if (*thingp && rt->isHeapMinorCollecting() && IsInsideNursery(*thingp))
-        rt->gc.nursery.getForwardedPointer(thingp);
+#ifdef JSGC_FJGENERATIONAL
+    if (*thingp && rt->isFJMinorCollecting()) {
+        ForkJoinContext *ctx = ForkJoinContext::current();
+        ForkJoinNursery &fjNursery = ctx->fjNursery();
+        if (fjNursery.isInsideFromspace(*thingp))
+            fjNursery.getForwardedPointer(thingp);
+    }
+    else
 #endif
+    {
+        if (*thingp && rt->isHeapMinorCollecting() && IsInsideNursery(*thingp))
+            rt->gc.nursery.getForwardedPointer(thingp);
+    }
+#endif  // JSGC_GENERATIONAL
     return *thingp;
 }
 
@@ -827,7 +859,7 @@ ShouldMarkCrossCompartment(JSTracer *trc, JSObject *src, Cell *cell)
          */
         if (cell->isMarked(GRAY)) {
             JS_ASSERT(!zone->isCollecting());
-            trc->runtime()->gc.foundBlackGrayEdges = true;
+            trc->runtime()->gc.setFoundBlackGrayEdges();
         }
         return zone->isGCMarking();
     } else {
@@ -1579,7 +1611,7 @@ GCMarker::processMarkStackTop(SliceBudget &budget)
             // if the gloal has no custom trace hook of it's own, or has been moved to a different
             // compartment, and so can't have one.
             JS_ASSERT_IF(runtime()->gcMode() == JSGC_MODE_INCREMENTAL &&
-                         runtime()->gc.incrementalEnabled &&
+                         runtime()->gc.isIncrementalGCEnabled() &&
                          !(clasp->trace == JS_GlobalObjectTraceHook &&
                            (!obj->compartment()->options().getTrace() ||
                             !obj->isOwnGlobal())),

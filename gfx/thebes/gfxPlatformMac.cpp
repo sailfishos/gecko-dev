@@ -105,25 +105,6 @@ gfxPlatformMac::CreateOffscreenSurface(const IntSize& size,
     return newSurface.forget();
 }
 
-already_AddRefed<gfxASurface>
-gfxPlatformMac::OptimizeImage(gfxImageSurface *aSurface,
-                              gfxImageFormat format)
-{
-    const gfxIntSize& surfaceSize = aSurface->GetSize();
-    nsRefPtr<gfxImageSurface> isurf = aSurface;
-
-    if (format != aSurface->Format()) {
-        isurf = new gfxImageSurface (surfaceSize, format);
-        if (!isurf->CopyFrom (aSurface)) {
-            // don't even bother doing anything more
-            nsRefPtr<gfxASurface> ret = aSurface;
-            return ret.forget();
-        }
-    }
-
-    return nullptr;
-}
-
 TemporaryRef<ScaledFont>
 gfxPlatformMac::GetScaledFontForFont(DrawTarget* aTarget, gfxFont *aFont)
 {
@@ -402,7 +383,7 @@ gfxPlatformMac::ReadAntiAliasingThreshold()
 already_AddRefed<gfxASurface>
 gfxPlatformMac::GetThebesSurfaceForDrawTarget(DrawTarget *aTarget)
 {
-  if (aTarget->GetType() == BackendType::COREGRAPHICS_ACCELERATED) {
+  if (aTarget->GetBackendType() == BackendType::COREGRAPHICS_ACCELERATED) {
     RefPtr<SourceSurface> source = aTarget->Snapshot();
     RefPtr<DataSourceSurface> sourceData = source->GetDataSurface();
     unsigned char* data = sourceData->GetData();
@@ -412,7 +393,7 @@ gfxPlatformMac::GetThebesSurfaceForDrawTarget(DrawTarget *aTarget)
     nsRefPtr<gfxImageSurface> cpy = new gfxImageSurface(ThebesIntSize(sourceData->GetSize()), gfxImageFormat::ARGB32);
     cpy->CopyFrom(surf);
     return cpy.forget();
-  } else if (aTarget->GetType() == BackendType::COREGRAPHICS) {
+  } else if (aTarget->GetBackendType() == BackendType::COREGRAPHICS) {
     CGContextRef cg = static_cast<CGContextRef>(aTarget->GetNativeSurface(NativeSurfaceType::CGCONTEXT));
 
     //XXX: it would be nice to have an implicit conversion from IntSize to gfxIntSize
@@ -433,12 +414,6 @@ gfxPlatformMac::UseAcceleratedCanvas()
 {
   // Lion or later is required
   return nsCocoaFeatures::OnLionOrLater() && Preferences::GetBool("gfx.canvas.azure.accelerated", false);
-}
-
-bool
-gfxPlatformMac::SupportsOffMainThreadCompositing()
-{
-  return true;
 }
 
 void

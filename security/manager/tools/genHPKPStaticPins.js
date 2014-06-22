@@ -319,11 +319,16 @@ function downloadAndParseChromePins(filename,
     }
     let isProductionDomain =
       (cData.production_domains.indexOf(entry.name) != -1);
-    if (entry.pins && chromeImportedPinsets[entry.pins]) {
+    let isProductionPinset =
+      (cData.production_pinsets.indexOf(pinsetName) != -1);
+    let excludeDomain =
+      (cData.exclude_domains.indexOf(entry.name) != -1);
+    let isTestMode = !isProductionPinset && !isProductionDomain;
+    if (entry.pins && !excludeDomain && chromeImportedPinsets[entry.pins]) {
       chromeImportedEntries.push({
         name: entry.name,
         include_subdomains: entry.include_subdomains,
-        test_mode: !isProductionDomain,
+        test_mode: isTestMode,
         is_moz: false,
         pins: pinsetName });
     }

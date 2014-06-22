@@ -2100,9 +2100,6 @@ RuntimeService::CreateServiceWorker(const GlobalObject& aGlobal,
   nsRefPtr<ServiceWorker> serviceWorker =
     new ServiceWorker(window, sharedWorker);
 
-  // While it hasn't been parsed, the intention is to only expose ServiceWorkers
-  // to content after it has indeed been parsed.
-  serviceWorker->mState = ServiceWorkerState::Parsed;
   serviceWorker->mURL = aScriptURL;
   serviceWorker->mScope = NS_ConvertUTF8toUTF16(aScope);
 
@@ -2123,7 +2120,7 @@ RuntimeService::CreateSharedWorkerInternal(const GlobalObject& aGlobal,
   nsCOMPtr<nsPIDOMWindow> window = do_QueryInterface(aGlobal.GetAsSupports());
   MOZ_ASSERT(window);
 
-  JSContext* cx = aGlobal.GetContext();
+  JSContext* cx = aGlobal.Context();
 
   WorkerPrivate::LoadInfo loadInfo;
   nsresult rv = WorkerPrivate::GetLoadInfo(cx, window, nullptr, aScriptURL,

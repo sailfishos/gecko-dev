@@ -259,7 +259,7 @@ class MochitestOptions(optparse.OptionParser):
           "dest": "profilePath",
           "help": "Directory where the profile will be stored."
                  "This directory will be deleted after the tests are finished",
-          "default": tempfile.mkdtemp(),
+          "default": None,
         }],
         [["--testing-modules-dir"],
         { "action": "store",
@@ -428,6 +428,10 @@ class MochitestOptions(optparse.OptionParser):
 
         optparse.OptionParser.__init__(self, **kwargs)
         for option, value in self.mochitest_options:
+            # Allocate new lists so references to original don't get mutated.
+            # allowing multiple uses within a single process.
+            if "default" in value and isinstance(value["default"], list):
+                value["default"] = []
             self.add_option(*option, **value)
         addCommonOptions(self)
         self.set_usage(self.__doc__)
@@ -460,6 +464,9 @@ class MochitestOptions(optparse.OptionParser):
                 options.xrePath = build_obj.bindir
             else:
                 self.error("could not find xre directory, --xre-path must be specified")
+
+        if options.profilePath is None:
+            options.profilePath = tempfile.mkdtemp()
 
         # allow relative paths
         options.xrePath = mochitest.getFullPath(options.xrePath)
@@ -705,11 +712,11 @@ class B2GOptions(MochitestOptions):
                    gaia profile to use",
           "default": None,
         }],
-        [["--logcat-dir"],
+        [["--logdir"],
         { "action": "store",
           "type": "string",
-          "dest": "logcat_dir",
-          "help": "directory to store logcat dump files",
+          "dest": "logdir",
+          "help": "directory to store log files",
           "default": None,
         }],
         [['--busybox'],
@@ -738,7 +745,6 @@ class B2GOptions(MochitestOptions):
         defaults = {}
         defaults["httpPort"] = DEFAULT_PORTS['http']
         defaults["sslPort"] = DEFAULT_PORTS['https']
-        defaults["remoteTestRoot"] = "/data/local/tests"
         defaults["logFile"] = "mochitest.log"
         defaults["autorun"] = True
         defaults["closeWhenDone"] = True
@@ -757,8 +763,8 @@ class B2GOptions(MochitestOptions):
         if options.geckoPath and not options.emulator:
             self.error("You must specify --emulator if you specify --gecko-path")
 
-        if options.logcat_dir and not options.emulator:
-            self.error("You must specify --emulator if you specify --logcat-dir")
+        if options.logdir and not options.emulator:
+            self.error("You must specify --emulator if you specify --logdir")
 
         if not os.path.isdir(options.xrePath):
             self.error("--xre-path '%s' is not a directory" % options.xrePath)

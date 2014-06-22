@@ -59,14 +59,20 @@ MediaOmxReader::MediaOmxReader(AbstractMediaDecoder *aDecoder)
 
 MediaOmxReader::~MediaOmxReader()
 {
-  ReleaseMediaResources();
-  ReleaseDecoder();
-  mOmxDecoder.clear();
 }
 
 nsresult MediaOmxReader::Init(MediaDecoderReader* aCloneDonor)
 {
   return NS_OK;
+}
+
+void MediaOmxReader::Shutdown()
+{
+  ReleaseMediaResources();
+  if (mOmxDecoder.get()) {
+    mOmxDecoder->ReleaseDecoder();
+  }
+  mOmxDecoder.clear();
 }
 
 bool MediaOmxReader::IsWaitingMediaResources()
@@ -96,13 +102,6 @@ void MediaOmxReader::ReleaseMediaResources()
   }
   if (mOmxDecoder.get()) {
     mOmxDecoder->ReleaseMediaResources();
-  }
-}
-
-void MediaOmxReader::ReleaseDecoder()
-{
-  if (mOmxDecoder.get()) {
-    mOmxDecoder->ReleaseDecoder();
   }
 }
 
@@ -375,7 +374,6 @@ nsresult MediaOmxReader::Seek(int64_t aTarget, int64_t aStartTime, int64_t aEndT
   NS_ASSERTION(mDecoder->OnDecodeThread(), "Should be on decode thread.");
   EnsureActive();
 
-  ResetDecode();
   VideoFrameContainer* container = mDecoder->GetVideoFrameContainer();
   if (container && container->GetImageContainer()) {
     container->GetImageContainer()->ClearAllImagesExceptFront();
@@ -398,13 +396,6 @@ nsresult MediaOmxReader::Seek(int64_t aTarget, int64_t aStartTime, int64_t aEndT
   }
 
   return NS_OK;
-}
-
-static uint64_t BytesToTime(int64_t offset, uint64_t length, uint64_t durationUs) {
-  double perc = double(offset) / double(length);
-  if (perc > 1.0)
-    perc = 1.0;
-  return uint64_t(double(durationUs) * perc);
 }
 
 void MediaOmxReader::SetIdle() {

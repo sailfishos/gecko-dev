@@ -201,7 +201,7 @@ class ReftestRunner(MozbuildObject):
             raise Exception(ADB_NOT_FOUND % ('%s-remote' % suite, b2g_home))
 
         options.b2gPath = b2g_home
-        options.logcat_dir = self.reftest_dir
+        options.logdir = self.reftest_dir
         options.httpdPath = os.path.join(self.topsrcdir, 'netwerk', 'test', 'httpserver')
         options.xrePath = xre_path
         options.ignoreWindowSize = True
@@ -214,7 +214,7 @@ class ReftestRunner(MozbuildObject):
 
     def run_desktop_test(self, test_file=None, filter=None, suite=None,
             debugger=None, parallel=False, shuffle=False,
-            e10s=False, this_chunk=None, total_chunks=None):
+            e10s=False, extraPrefs=None, this_chunk=None, total_chunks=None):
         """Runs a reftest.
 
         test_file is a path to a test file. It can be a relative path from the
@@ -264,6 +264,10 @@ class ReftestRunner(MozbuildObject):
         if e10s:
             extra_args.append('--e10s')
 
+        if extraPrefs:
+            for pref in extraPrefs:
+                extra_args.extend(['--setpref', pref])
+
         if this_chunk:
             extra_args.append('--this-chunk=%s' % this_chunk)
 
@@ -309,6 +313,11 @@ def ReftestCommand(func):
         help='Use content processes.')
     func = e10s(func)
 
+    extraPrefs = CommandArgument('--setpref', action='append',
+        default=[], dest='extraPrefs', metavar='PREF=VALUE',
+        help='Set prefs in the reftest profile.')
+    func = extraPrefs(func)
+
     totalChunks = CommandArgument('--total-chunks',
         help = 'How many chunks to split the tests up into.')
     func = totalChunks(func)
@@ -326,9 +335,9 @@ def B2GCommand(func):
         help='Path to busybox binary to install on device')
     func = busybox(func)
 
-    logcatdir = CommandArgument('--logcat-dir', default=None,
-        help='directory to store logcat dump files')
-    func = logcatdir(func)
+    logdir = CommandArgument('--logdir', default=None,
+        help='directory to store log files')
+    func = logdir(func)
 
     sdcard = CommandArgument('--sdcard', default="10MB",
         help='Define size of sdcard: 1MB, 50MB...etc')

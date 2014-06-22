@@ -684,7 +684,9 @@ CompositorParent::ForceComposeToTarget(DrawTarget* aTarget, const nsIntRect* aRe
 bool
 CompositorParent::CanComposite()
 {
-  return !(mPaused || !mLayerManager || !mLayerManager->GetRoot());
+  return mLayerManager &&
+         mLayerManager->GetRoot() &&
+         !mPaused;
 }
 
 // Go down the composite layer tree, setting properties to match their
@@ -974,7 +976,7 @@ CompositorParent::RecvNotifyChildCreated(const uint64_t& child)
 }
 
 void
-CompositorParent::NotifyChildCreated(uint64_t aChild)
+CompositorParent::NotifyChildCreated(const uint64_t& aChild)
 {
   sIndirectLayerTrees[aChild].mParent = this;
   sIndirectLayerTrees[aChild].mLayerManager = mLayerManager;
@@ -1129,6 +1131,7 @@ public:
   virtual AsyncCompositionManager* GetCompositionManager(LayerTransactionParent* aParent) MOZ_OVERRIDE;
 
   void DidComposite(uint64_t aId);
+
 private:
   // Private destructor, to discourage deletion outside of Release():
   virtual ~CrossProcessCompositorParent();
@@ -1286,14 +1289,15 @@ CrossProcessCompositorParent::DeallocPLayerTransactionParent(PLayerTransactionPa
 bool
 CrossProcessCompositorParent::RecvNotifyChildCreated(const uint64_t& child)
 {
-  const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(child);
-  if (!state) {
-    return false;
+  for (LayerTreeMap::iterator it = sIndirectLayerTrees.begin();
+       it != sIndirectLayerTrees.end(); it++) {
+    CompositorParent::LayerTreeState* lts = &it->second;
+    if (lts->mParent && lts->mCrossProcessParent == this) {
+      lts->mParent->NotifyChildCreated(child);
+      return true;
+    }
   }
-
-  MOZ_ASSERT(state->mParent);
-  state->mParent->NotifyChildCreated(child);
-  return true;
+  return false;
 }
 
 void

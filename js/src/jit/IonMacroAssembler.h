@@ -41,13 +41,13 @@ class MacroAssembler : public MacroAssemblerSpecific
     }
 
   public:
-    class AutoRooter : public AutoGCRooter
+    class AutoRooter : public JS::AutoGCRooter
     {
         MacroAssembler *masm_;
 
       public:
         AutoRooter(JSContext *cx, MacroAssembler *masm)
-          : AutoGCRooter(cx, IONMASM),
+          : JS::AutoGCRooter(cx, IONMASM),
             masm_(masm)
         { }
 
@@ -816,6 +816,12 @@ class MacroAssembler : public MacroAssemblerSpecific
 
     void newGCThingPar(Register result, Register cx, Register tempReg1, Register tempReg2,
                        gc::AllocKind allocKind, Label *fail);
+#ifdef JSGC_FJGENERATIONAL
+    void newGCNurseryThingPar(Register result, Register cx, Register tempReg1, Register tempReg2,
+                              gc::AllocKind allocKind, Label *fail);
+#endif
+    void newGCTenuredThingPar(Register result, Register cx, Register tempReg1, Register tempReg2,
+                              gc::AllocKind allocKind, Label *fail);
     void newGCThingPar(Register result, Register cx, Register tempReg1, Register tempReg2,
                        JSObject *templateObject, Label *fail);
     void newGCStringPar(Register result, Register cx, Register tempReg1, Register tempReg2,

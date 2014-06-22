@@ -54,14 +54,14 @@ class TypeWrapper {
             return 0;
         return 1;
     }
-    inline JSObject *getSingleObject(unsigned) const {
+    inline JSObject *getSingleObjectNoBarrier(unsigned) const {
         if (t_.isSingleObject())
-            return t_.singleObject();
+            return t_.singleObjectNoBarrier();
         return nullptr;
     }
-    inline types::TypeObject *getTypeObject(unsigned) const {
+    inline types::TypeObject *getTypeObjectNoBarrier(unsigned) const {
         if (t_.isTypeObject())
-            return t_.typeObject();
+            return t_.typeObjectNoBarrier();
         return nullptr;
     }
 };
@@ -144,6 +144,12 @@ MacroAssembler::guardObjectType(Register obj, const TypeSet *types,
     JS_ASSERT(types->getObjectCount());
     JS_ASSERT(scratch != InvalidReg);
 
+    // Note: this method elides read barriers on values read from type sets, as
+    // this may be called off the main thread during Ion compilation. This is
+    // safe to do as the final JitCode object will be allocated during the
+    // incremental GC (or the compilation canceled before we start sweeping),
+    // see CodeGenerator::link. Other callers should use TypeSet::readBarrier
+    // to trigger the barrier on the contents of type sets passed in here.
     Label matched;
 
     BranchGCPtr lastBranch;
@@ -151,15 +157,15 @@ MacroAssembler::guardObjectType(Register obj, const TypeSet *types,
     bool hasTypeObjects = false;
     unsigned count = types->getObjectCount();
     for (unsigned i = 0; i < count; i++) {
-        if (!types->getSingleObject(i)) {
-            hasTypeObjects = hasTypeObjects || types->getTypeObject(i);
+        if (!types->getSingleObjectNoBarrier(i)) {
+            hasTypeObjects = hasTypeObjects || types->getTypeObjectNoBarrier(i);
             continue;
         }
 
         if (lastBranch.isInitialized())
             lastBranch.emit(*this);
 
-        JSObject *object = types->getSingleObject(i);
+        JSObject *object = types->getSingleObjectNoBarrier(i);
         lastBranch = BranchGCPtr(Equal, obj, ImmGCPtr(object), &matched);
     }
 
@@ -177,13 +183,13 @@ MacroAssembler::guardObjectType(Register obj, const TypeSet *types,
         loadPtr(Address(obj, JSObject::offsetOfType()), scratch);
 
         for (unsigned i = 0; i < count; i++) {
-            if (!types->getTypeObject(i))
+            if (!types->getTypeObjectNoBarrier(i))
                 continue;
 
             if (lastBranch.isInitialized())
                 lastBranch.emit(*this);
 
-            types::TypeObject *object = types->getTypeObject(i);
+            types::TypeObject *object = types->getTypeObjectNoBarrier(i);
             lastBranch = BranchGCPtr(Equal, scratch, ImmGCPtr(object), &matched);
         }
     }
@@ -628,9 +634,52 @@ void
 MacroAssembler::newGCThingPar(Register result, Register cx, Register tempReg1, Register tempReg2,
                               gc::AllocKind allocKind, Label *fail)
 {
+#ifdef JSGC_FJGENERATIONAL
+    if (IsNurseryAllocable(allocKind))
+        return newGCNurseryThingPar(result, cx, tempReg1, tempReg2, allocKind, fail);
+#endif
+    return newGCTenuredThingPar(result, cx, tempReg1, tempReg2, allocKind, fail);
+}
+
+#ifdef JSGC_FJGENERATIONAL
+void
+MacroAssembler::newGCNurseryThingPar(Register result, Register cx,
+                                     Register tempReg1, Register tempReg2,
+                                     gc::AllocKind allocKind, Label *fail)
+{
+    JS_ASSERT(IsNurseryAllocable(allocKind));
+
+    uint32_t thingSize = uint32_t(gc::Arena::thingSize(allocKind));
+
+    // Correctness depends on thingSize being smaller than a chunk
+    // (not a problem) and the last chunk of the nursery not being
+    // located at the very top of the address space.  The regular
+    // Nursery makes the same assumption, see nurseryAllocate() above.
+
+    // The ForkJoinNursery is a member variable of the ForkJoinContext.
+    size_t offsetOfPosition =
+        ForkJoinContext::offsetOfFJNursery() + gc::ForkJoinNursery::offsetOfPosition();
+    size_t offsetOfEnd =
+        ForkJoinContext::offsetOfFJNursery() + gc::ForkJoinNursery::offsetOfCurrentEnd();
+    loadPtr(Address(cx, offsetOfPosition), result);
+    loadPtr(Address(cx, offsetOfEnd), tempReg2);
+    computeEffectiveAddress(Address(result, thingSize), tempReg1);
+    branchPtr(Assembler::Below, tempReg2, tempReg1, fail);
+    storePtr(tempReg1, Address(cx, offsetOfPosition));
+}
+#endif
+
+void
+MacroAssembler::newGCTenuredThingPar(Register result, Register cx,
+                                     Register tempReg1, Register tempReg2,
+                                     gc::AllocKind allocKind, Label *fail)
+{
     // Similar to ::newGCThing(), except that it allocates from a custom
     // Allocator in the ForkJoinContext*, rather than being hardcoded to the
     // compartment allocator.  This requires two temporary registers.
+    //
+    // When the ForkJoin generational collector is enabled this is only used
+    // for those object types that cannot be allocated in the ForkJoinNursery.
     //
     // Subtle: I wanted to reuse `result` for one of the temporaries, but the
     // register allocator was assigning it to the same register as `cx`.
@@ -686,14 +735,14 @@ void
 MacroAssembler::newGCStringPar(Register result, Register cx, Register tempReg1, Register tempReg2,
                                Label *fail)
 {
-    newGCThingPar(result, cx, tempReg1, tempReg2, js::gc::FINALIZE_STRING, fail);
+    newGCTenuredThingPar(result, cx, tempReg1, tempReg2, js::gc::FINALIZE_STRING, fail);
 }
 
 void
 MacroAssembler::newGCFatInlineStringPar(Register result, Register cx, Register tempReg1,
                                         Register tempReg2, Label *fail)
 {
-    newGCThingPar(result, cx, tempReg1, tempReg2, js::gc::FINALIZE_FAT_INLINE_STRING, fail);
+    newGCTenuredThingPar(result, cx, tempReg1, tempReg2, js::gc::FINALIZE_FAT_INLINE_STRING, fail);
 }
 
 void

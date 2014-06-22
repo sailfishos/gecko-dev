@@ -13,6 +13,12 @@ const Cc = Components.classes;
 
 //Services.prefs.setBoolPref("devtools.dump.emit", true);
 
+const { Promise: promise } = Cu.import("resource://gre/modules/Promise.jsm", {});
+const require = Cu.import("resource://gre/modules/devtools/Loader.jsm", {}).devtools.require;
+
+// All test are asynchronous
+waitForExplicitFinish();
+
 let tempScope = {};
 Cu.import("resource://gre/modules/devtools/LayoutHelpers.jsm", tempScope);
 let LayoutHelpers = tempScope.LayoutHelpers;
@@ -42,6 +48,34 @@ SimpleTest.registerCleanupFunction(() => {
 });
 
 /**
+ * Define an async test based on a generator function
+ */
+function asyncTest(generator) {
+  return () => Task.spawn(generator).then(null, ok.bind(null, false)).then(finish);
+}
+
+/**
+ * Add a new test tab in the browser and load the given url.
+ * @param {String} url The url to be loaded in the new tab
+ * @return a promise that resolves to the tab object when the url is loaded
+ */
+function addTab(url) {
+  let def = promise.defer();
+
+  let tab = gBrowser.selectedTab = gBrowser.addTab();
+  gBrowser.selectedBrowser.addEventListener("load", function onload() {
+    gBrowser.selectedBrowser.removeEventListener("load", onload, true);
+    info("URL " + url + " loading complete into new test tab");
+    waitForFocus(() => {
+      def.resolve(tab);
+    }, content);
+  }, true);
+  content.location = url;
+
+  return def.promise;
+}
+
+/**
  * Simple DOM node accesor function that takes either a node or a string css
  * selector as argument and returns the corresponding node
  * @param {String|DOMNode} nodeOrSelector
@@ -60,7 +94,8 @@ function getNode(nodeOrSelector) {
  * loaded in the toolbox
  * @param {String} reason Defaults to "test" which instructs the inspector not
  * to highlight the node upon selection
- * @param {String} reason Defaults to "test" which instructs the inspector not to highlight the node upon selection
+ * @param {String} reason Defaults to "test" which instructs the inspector not
+ * to highlight the node upon selection
  * @return a promise that resolves when the inspector is updated with the new
  * node
  */
@@ -306,6 +341,26 @@ function isHighlighting()
   return !root.hasAttribute("hidden");
 }
 
+/**
+ * Observes mutation changes on the box-model highlighter and returns a promise
+ * that resolves when one of the attributes changes.
+ * If an attribute changes in the box-model, it means its position/dimensions
+ * got updated
+ */
+function waitForBoxModelUpdate() {
+  let def = promise.defer();
+
+  let root = getBoxModelRoot();
+  let polygon = root.querySelector(".box-model-content");
+  let observer = new polygon.ownerDocument.defaultView.MutationObserver(() => {
+    observer.disconnect();
+    def.resolve();
+  });
+  observer.observe(polygon, {attributes: true});
+
+  return def.promise;
+}
+
 function getHighlitNode()
 {
   if (isHighlighting()) {
@@ -434,49 +489,15 @@ function isNodeCorrectlyHighlighted(node, prefix="") {
   prefix += (node.classList.length ? "." + [...node.classList].join(".") : "");
   prefix += " ";
 
-  let quads = helper.getAdjustedQuads(node, "content");
-  let {p1:cp1, p2:cp2, p3:cp3, p4:cp4} = boxModel.content.points;
-  is(cp1.x, quads.p1.x, prefix + "content point 1 x co-ordinate is correct");
-  is(cp1.y, quads.p1.y, prefix + "content point 1 y co-ordinate is correct");
-  is(cp2.x, quads.p2.x, prefix + "content point 2 x co-ordinate is correct");
-  is(cp2.y, quads.p2.y, prefix + "content point 2 y co-ordinate is correct");
-  is(cp3.x, quads.p3.x, prefix + "content point 3 x co-ordinate is correct");
-  is(cp3.y, quads.p3.y, prefix + "content point 3 y co-ordinate is correct");
-  is(cp4.x, quads.p4.x, prefix + "content point 4 x co-ordinate is correct");
-  is(cp4.y, quads.p4.y, prefix + "content point 4 y co-ordinate is correct");
-
-  quads = helper.getAdjustedQuads(node, "padding");
-  let {p1:pp1, p2:pp2, p3:pp3, p4:pp4} = boxModel.padding.points;
-  is(pp1.x, quads.p1.x, prefix + "padding point 1 x co-ordinate is correct");
-  is(pp1.y, quads.p1.y, prefix + "padding point 1 y co-ordinate is correct");
-  is(pp2.x, quads.p2.x, prefix + "padding point 2 x co-ordinate is correct");
-  is(pp2.y, quads.p2.y, prefix + "padding point 2 y co-ordinate is correct");
-  is(pp3.x, quads.p3.x, prefix + "padding point 3 x co-ordinate is correct");
-  is(pp3.y, quads.p3.y, prefix + "padding point 3 y co-ordinate is correct");
-  is(pp4.x, quads.p4.x, prefix + "padding point 4 x co-ordinate is correct");
-  is(pp4.y, quads.p4.y, prefix + "padding point 4 y co-ordinate is correct");
-
-  quads = helper.getAdjustedQuads(node, "border");
-  let {p1:bp1, p2:bp2, p3:bp3, p4:bp4} = boxModel.border.points;
-  is(bp1.x, quads.p1.x, prefix + "border point 1 x co-ordinate is correct");
-  is(bp1.y, quads.p1.y, prefix + "border point 1 y co-ordinate is correct");
-  is(bp2.x, quads.p2.x, prefix + "border point 2 x co-ordinate is correct");
-  is(bp2.y, quads.p2.y, prefix + "border point 2 y co-ordinate is correct");
-  is(bp3.x, quads.p3.x, prefix + "border point 3 x co-ordinate is correct");
-  is(bp3.y, quads.p3.y, prefix + "border point 3 y co-ordinate is correct");
-  is(bp4.x, quads.p4.x, prefix + "border point 4 x co-ordinate is correct");
-  is(bp4.y, quads.p4.y, prefix + "border point 4 y co-ordinate is correct");
-
-  quads = helper.getAdjustedQuads(node, "margin");
-  let {p1:mp1, p2:mp2, p3:mp3, p4:mp4} = boxModel.margin.points;
-  is(mp1.x, quads.p1.x, prefix + "margin point 1 x co-ordinate is correct");
-  is(mp1.y, quads.p1.y, prefix + "margin point 1 y co-ordinate is correct");
-  is(mp2.x, quads.p2.x, prefix + "margin point 2 x co-ordinate is correct");
-  is(mp2.y, quads.p2.y, prefix + "margin point 2 y co-ordinate is correct");
-  is(mp3.x, quads.p3.x, prefix + "margin point 3 x co-ordinate is correct");
-  is(mp3.y, quads.p3.y, prefix + "margin point 3 y co-ordinate is correct");
-  is(mp4.x, quads.p4.x, prefix + "margin point 4 x co-ordinate is correct");
-  is(mp4.y, quads.p4.y, prefix + "margin point 4 y co-ordinate is correct");
+  for (let boxType of ["content", "padding", "border", "margin"]) {
+    let quads = helper.getAdjustedQuads(node, boxType);
+    for (let point in boxModel[boxType].points) {
+      is(boxModel[boxType].points[point].x, quads[point].x,
+        prefix + boxType + " point " + point + " x coordinate is correct");
+      is(boxModel[boxType].points[point].y, quads[point].y,
+        prefix + boxType + " point " + point + " y coordinate is correct");
+    }
+  }
 }
 
 function getContainerForRawNode(markupView, rawNode)
@@ -490,3 +511,32 @@ SimpleTest.registerCleanupFunction(function () {
   let target = TargetFactory.forTab(gBrowser.selectedTab);
   gDevTools.closeToolbox(target);
 });
+
+/**
+ * Define an async test based on a generator function
+ */
+function asyncTest(generator) {
+  return () => Task.spawn(generator).then(null, ok.bind(null, false)).then(finish);
+}
+
+/**
+ * Add a new test tab in the browser and load the given url.
+ * @param {String} url The url to be loaded in the new tab
+ * @return a promise that resolves to the tab object when the url is loaded
+ */
+function addTab(url) {
+  info("Adding a new tab with URL: '" + url + "'");
+  let def = promise.defer();
+
+  let tab = gBrowser.selectedTab = gBrowser.addTab();
+  gBrowser.selectedBrowser.addEventListener("load", function onload() {
+    gBrowser.selectedBrowser.removeEventListener("load", onload, true);
+    info("URL '" + url + "' loading complete");
+    waitForFocus(() => {
+      def.resolve(tab);
+    }, content);
+  }, true);
+  content.location = url;
+
+  return def.promise;
+}

@@ -188,7 +188,6 @@
 #endif
 @BINPATH@/components/dom_notification.xpt
 @BINPATH@/components/dom_html.xpt
-@BINPATH@/components/dom_indexeddb.xpt
 @BINPATH@/components/dom_offline.xpt
 @BINPATH@/components/dom_payment.xpt
 @BINPATH@/components/dom_json.xpt
@@ -804,7 +803,7 @@ bin/components/@DLL_PREFIX@nkgnomevfs@DLL_SUFFIX@
 @BINPATH@/components/DirectoryProvider.js
 @BINPATH@/components/ActivitiesGlue.js
 @BINPATH@/components/ProcessGlobal.js
-@BINPATH@/components/ContentHandler.js
+@BINPATH@/components/OMAContentHandler.js
 @BINPATH@/components/PaymentGlue.js
 @BINPATH@/components/YoutubeProtocolHandler.js
 @BINPATH@/components/RecoveryService.js
@@ -830,6 +829,12 @@ bin/components/@DLL_PREFIX@nkgnomevfs@DLL_SUFFIX@
 @BINPATH@/components/DataStore.manifest
 @BINPATH@/components/DataStoreImpl.js
 @BINPATH@/components/dom_datastore.xpt
+
+@BINPATH@/components/MobileIdentity.manifest
+@BINPATH@/components/MobileIdentity.js
+@BINPATH@/components/dom_mobileidentity.xpt
+@BINPATH@/components/MobileIdentityUIGlue.js
+@BINPATH@/components/services_mobileidentity.xpt
 
 #ifdef MOZ_WEBSPEECH
 @BINPATH@/components/dom_webspeechsynth.xpt

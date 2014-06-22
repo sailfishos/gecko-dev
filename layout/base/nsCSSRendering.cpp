@@ -31,6 +31,7 @@
 #include "nsCSSRendering.h"
 #include "nsCSSColorUtils.h"
 #include "nsITheme.h"
+#include "nsThemeConstants.h"
 #include "nsLayoutUtils.h"
 #include "nsBlockFrame.h"
 #include "gfxContext.h"
@@ -768,11 +769,14 @@ nsCSSRendering::PaintOutline(nsPresContext* aPresContext,
 
   // Get our style context's color struct.
   const nsStyleOutline* ourOutline = aStyleContext->StyleOutline();
+  MOZ_ASSERT(ourOutline != NS_STYLE_BORDER_STYLE_NONE,
+             "shouldn't have created nsDisplayOutline item");
 
+  uint8_t outlineStyle = ourOutline->GetOutlineStyle();
   nscoord width;
   ourOutline->GetOutlineWidth(width);
 
-  if (width == 0) {
+  if (width == 0 && outlineStyle != NS_STYLE_BORDER_STYLE_AUTO) {
     // Empty outline
     return;
   }
@@ -823,11 +827,24 @@ nsCSSRendering::PaintOutline(nsPresContext* aPresContext,
   gfxCornerSizes outlineRadii;
   ComputePixelRadii(twipsRadii, twipsPerPixel, &outlineRadii);
 
-  uint8_t outlineStyle = ourOutline->GetOutlineStyle();
-  uint8_t outlineStyles[4] = { outlineStyle,
-                               outlineStyle,
-                               outlineStyle,
-                               outlineStyle };
+  if (outlineStyle == NS_STYLE_BORDER_STYLE_AUTO) {
+    nsITheme* theme = aPresContext->GetTheme();
+    if (theme && theme->ThemeSupportsWidget(aPresContext, aForFrame,
+                                            NS_THEME_FOCUS_OUTLINE)) {
+      theme->DrawWidgetBackground(&aRenderingContext, aForFrame,
+                                  NS_THEME_FOCUS_OUTLINE, innerRect,
+                                  aDirtyRect);
+      return;
+    } else if (width == 0) {
+      return; // empty outline
+    }
+    // http://dev.w3.org/csswg/css-ui/#outline
+    // "User agents may treat 'auto' as 'solid'."
+    outlineStyle = NS_STYLE_BORDER_STYLE_SOLID;
+  }
+
+  uint8_t outlineStyles[4] = { outlineStyle, outlineStyle,
+                               outlineStyle, outlineStyle };
 
   // This handles treating the initial color as 'currentColor'; if we
   // ever want 'invert' back we'll need to do a bit of work here too.
@@ -1585,7 +1602,8 @@ nsCSSRendering::PaintBackground(nsPresContext* aPresContext,
 }
 
 void
-nsCSSRendering::PaintBackgroundColor(nsPresContext* aPresContext,
+nsCSSRendering::PaintBackgroundColor(gfxRGBA aColor,
+                                     nsPresContext* aPresContext,
                                      nsRenderingContext& aRenderingContext,
                                      nsIFrame* aForFrame,
                                      const nsRect& aDirtyRect,
@@ -1617,7 +1635,7 @@ nsCSSRendering::PaintBackgroundColor(nsPresContext* aPresContext,
     sc = aForFrame->StyleContext();
   }
 
-  PaintBackgroundColorWithSC(aPresContext, aRenderingContext, aForFrame,
+  PaintBackgroundColorWithSC(aColor, aPresContext, aRenderingContext, aForFrame,
                              aDirtyRect, aBorderArea, sc,
                              *aForFrame->StyleBorder(), aFlags);
 }
@@ -2856,7 +2874,8 @@ nsCSSRendering::PaintBackgroundWithSC(nsPresContext* aPresContext,
 }
 
 void
-nsCSSRendering::PaintBackgroundColorWithSC(nsPresContext* aPresContext,
+nsCSSRendering::PaintBackgroundColorWithSC(gfxRGBA aColor,
+                                           nsPresContext* aPresContext,
                                            nsRenderingContext& aRenderingContext,
                                            nsIFrame* aForFrame,
                                            const nsRect& aDirtyRect,
@@ -2886,11 +2905,11 @@ nsCSSRendering::PaintBackgroundColorWithSC(nsPresContext* aPresContext,
   // background colors.
   bool drawBackgroundImage;
   bool drawBackgroundColor;
-  nscolor bgColor = DetermineBackgroundColor(aPresContext,
-                                             aBackgroundSC,
-                                             aForFrame,
-                                             drawBackgroundImage,
-                                             drawBackgroundColor);
+  DetermineBackgroundColor(aPresContext,
+                           aBackgroundSC,
+                           aForFrame,
+                           drawBackgroundImage,
+                           drawBackgroundColor);
 
   NS_ASSERTION(drawBackgroundImage || drawBackgroundColor,
                "Should not be trying to paint a background if we don't have one");
@@ -2934,7 +2953,7 @@ nsCSSRendering::PaintBackgroundColorWithSC(nsPresContext* aPresContext,
                     aDirtyRect, haveRoundedCorners, bgRadii, appUnitsPerPixel,
                     &clipState);
 
-  ctx->SetColor(gfxRGBA(bgColor));
+  ctx->SetColor(aColor);
 
   gfxContextAutoSaveRestore autoSR;
   DrawBackgroundColor(clipState, ctx, haveRoundedCorners, appUnitsPerPixel);
@@ -4766,7 +4785,8 @@ nsImageRenderer::Draw(nsPresContext*       aPresContext,
   switch (mType) {
     case eStyleImageType_Image:
     {
-      nsLayoutUtils::DrawSingleImage(&aRenderingContext, mImageContainer,
+      nsLayoutUtils::DrawSingleImage(&aRenderingContext, aPresContext,
+                                     mImageContainer,
                                      graphicsFilter, aFill, aDirtyRect,
                                      nullptr,
                                      ConvertImageRendererToDrawFlags(mFlags));
@@ -4787,7 +4807,8 @@ nsImageRenderer::Draw(nsPresContext*       aPresContext,
         NS_WARNING("Could not create drawable for element");
         return;
       }
-      nsLayoutUtils::DrawPixelSnapped(&aRenderingContext, drawable, graphicsFilter,
+      nsLayoutUtils::DrawPixelSnapped(&aRenderingContext, aPresContext,
+                                      drawable, graphicsFilter,
                                       aDest, aFill, aDest.TopLeft(), aDirtyRect);
       return;
     }
@@ -4846,7 +4867,8 @@ nsImageRenderer::DrawBackground(nsPresContext*       aPresContext,
     GraphicsFilter graphicsFilter =
       nsLayoutUtils::GetGraphicsFilterForFrame(mForFrame);
 
-    nsLayoutUtils::DrawBackgroundImage(&aRenderingContext, mImageContainer,
+    nsLayoutUtils::DrawBackgroundImage(&aRenderingContext, aPresContext,
+                mImageContainer,
                 nsIntSize(nsPresContext::AppUnitsToIntCSSPixels(mSize.width),
                           nsPresContext::AppUnitsToIntCSSPixels(mSize.height)),
                 graphicsFilter,
@@ -4967,6 +4989,7 @@ nsImageRenderer::DrawBorderImageComponent(nsPresContext*       aPresContext,
 
     if (!RequiresScaling(aFill, aHFill, aVFill, aUnitSize)) {
       nsLayoutUtils::DrawSingleImage(&aRenderingContext,
+                                     aPresContext,
                                      subImage,
                                      graphicsFilter,
                                      aFill, aDirtyRect,
@@ -4977,6 +5000,7 @@ nsImageRenderer::DrawBorderImageComponent(nsPresContext*       aPresContext,
 
     nsRect tile = ComputeTile(aFill, aHFill, aVFill, aUnitSize);
     nsLayoutUtils::DrawImage(&aRenderingContext,
+                             aPresContext,
                              subImage,
                              graphicsFilter,
                              tile, aFill, tile.TopLeft(), aDirtyRect,
@@ -5048,7 +5072,8 @@ nsImageRenderer::DrawBorderImageComponent(nsPresContext*       aPresContext,
                              gfxIntSize(srcRect.width, srcRect.height));
     nsPoint anchor(nsPresContext::CSSPixelsToAppUnits(aSrc.x),
                    nsPresContext::CSSPixelsToAppUnits(aSrc.y));
-    nsLayoutUtils::DrawPixelSnapped(&aRenderingContext, srcSliceDrawable,
+    nsLayoutUtils::DrawPixelSnapped(&aRenderingContext, aPresContext,
+                                    srcSliceDrawable,
                                     graphicsFilter, destTile, aFill,
                                     anchor, aDirtyRect);
 
@@ -5145,11 +5170,11 @@ nsContextBoxBlur::Init(const nsRect& aRect, nscoord aSpreadRadius,
   // and will sometimes get incorrect results (e.g. rotated blurs)
   gfxMatrix transform = aDestinationCtx->CurrentMatrix();
   // XXX: we could probably handle negative scales but for now it's easier just to fallback
-  if (transform.HasNonAxisAlignedTransform() || transform.xx <= 0.0 || transform.yy <= 0.0) {
+  if (transform.HasNonAxisAlignedTransform() || transform._11 <= 0.0 || transform._22 <= 0.0) {
     transform = gfxMatrix();
   } else {
-    scaleX = transform.xx;
-    scaleY = transform.yy;
+    scaleX = transform._11;
+    scaleY = transform._22;
   }
 
   // compute a large or smaller blur radius
@@ -5269,9 +5294,9 @@ nsContextBoxBlur::BlurRectangle(gfxContext* aDestinationCtx,
   // and will sometimes get incorrect results (e.g. rotated blurs)
   gfxMatrix transform = aDestinationCtx->CurrentMatrix();
   // XXX: we could probably handle negative scales but for now it's easier just to fallback
-  if (!transform.HasNonAxisAlignedTransform() && transform.xx > 0.0 && transform.yy > 0.0) {
-    scaleX = transform.xx;
-    scaleY = transform.yy;
+  if (!transform.HasNonAxisAlignedTransform() && transform._11 > 0.0 && transform._22 > 0.0) {
+    scaleX = transform._11;
+    scaleY = transform._22;
     aDestinationCtx->IdentityMatrix();
   } else {
     transform = gfxMatrix();

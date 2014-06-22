@@ -37,7 +37,7 @@ class JSAtom;
 struct JSErrorFormatString;
 class JSLinearString;
 struct JSJitInfo;
-class JSErrorReport;
+struct JSErrorReport;
 
 namespace JS {
 template <class T>
@@ -688,7 +688,7 @@ NotifyAnimationActivity(JSObject *obj);
  * thus it will really return the outermost enclosing function *since the
  * innermost eval*.
  */
-JS_FRIEND_API(JSScript *)
+JS_FRIEND_API(JSFunction *)
 GetOutermostEnclosingFunctionOfScriptedCaller(JSContext *cx);
 
 JS_FRIEND_API(JSFunction *)
@@ -2063,9 +2063,6 @@ IdToValue(jsid id)
     JS_ASSERT(JSID_IS_VOID(id));
     return JS::UndefinedValue();
 }
-
-extern JS_FRIEND_API(bool)
-IsTypedArrayThisCheck(JS::IsAcceptableThis test);
 
 /*
  * If the embedder has registered a default JSContext callback, returns the

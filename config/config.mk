@@ -54,6 +54,7 @@ _MOZBUILD_EXTERNAL_VARIABLES := \
   JAR_MANIFEST \
   JAVA_JAR_TARGETS \
   JS_MODULES_PATH \
+  LD_VERSION_SCRIPT \
   LIBRARY_NAME \
   MODULE \
   MSVC_ENABLE_PGO \
@@ -886,6 +887,9 @@ export NONASCII
 
 ifdef MOZ_GTK2_CFLAGS
 MOZ_GTK2_CFLAGS := -I$(topsrcdir)/widget/gtk/compat $(MOZ_GTK2_CFLAGS)
+endif
+ifdef MOZ_GTK3_CFLAGS
+MOZ_GTK3_CFLAGS := -I$(topsrcdir)/widget/gtk/compat-gtk3 $(MOZ_GTK3_CFLAGS)
 endif
 
 DEFINES += -DNO_NSPR_10_SUPPORT

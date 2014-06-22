@@ -10,11 +10,13 @@ import java.util.List;
 
 import org.mozilla.gecko.db.BrowserContract.ExpirePriority;
 import org.mozilla.gecko.db.SuggestedSites;
+import org.mozilla.gecko.distribution.Distribution;
 import org.mozilla.gecko.favicons.decoders.LoadFaviconResult;
 import org.mozilla.gecko.mozglue.RobocopTarget;
 
 import android.content.ContentResolver;
 import android.content.ContentValues;
+import android.content.Context;
 import android.database.ContentObserver;
 import android.database.Cursor;
 import android.graphics.drawable.BitmapDrawable;
@@ -138,6 +140,9 @@ public class BrowserDB {
 
         @RobocopTarget
         public Cursor getBookmarkForUrl(ContentResolver cr, String url);
+
+        public int addDefaultBookmarks(Context context, ContentResolver cr, int offset);
+        public int addDistributionBookmarks(ContentResolver cr, Distribution distribution, int offset);
     }
 
     static {
@@ -149,8 +154,20 @@ public class BrowserDB {
         sDb = new LocalBrowserDB(profile);
     }
 
+    public static int addDefaultBookmarks(Context context, ContentResolver cr, final int offset) {
+        return sDb.addDefaultBookmarks(context, cr, offset);
+    }
+
+    public static int addDistributionBookmarks(ContentResolver cr, Distribution distribution, int offset) {
+        return sDb.addDistributionBookmarks(cr, distribution, offset);
+    }
+
     public static void setSuggestedSites(SuggestedSites suggestedSites) {
         sSuggestedSites = suggestedSites;
+    }
+
+    public static boolean hideSuggestedSite(String url) {
+        return sSuggestedSites.hideSite(url);
     }
 
     public static void invalidateCachedState() {

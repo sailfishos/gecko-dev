@@ -556,7 +556,7 @@ Range::setDouble(double l, double h)
 {
     // Infer lower_, upper_, hasInt32LowerBound_, and hasInt32UpperBound_.
     if (l >= INT32_MIN && l <= INT32_MAX) {
-        lower_ = int32_t(floor(l));
+        lower_ = int32_t(::floor(l));
         hasInt32LowerBound_ = true;
     } else {
         lower_ = INT32_MIN;
@@ -916,9 +916,9 @@ Range::abs(TempAllocator &alloc, const Range *op)
     int32_t l = op->lower_;
     int32_t u = op->upper_;
 
-    return new(alloc) Range(Max(Max(int32_t(0), l), u == INT32_MIN ? INT32_MAX : -u),
+    return new(alloc) Range(Max(Max(int32_t(0), l), u == INT32_MIN ? int32_t(INT32_MAX) : -u),
                             true,
-                            Max(Max(int32_t(0), u), l == INT32_MIN ? INT32_MAX : -l),
+                            Max(Max(int32_t(0), u), l == INT32_MIN ? int32_t(INT32_MAX) : -l),
                             op->hasInt32Bounds() && l != INT32_MIN,
                             op->canHaveFractionalPart_,
                             op->max_exponent_);
@@ -952,6 +952,31 @@ Range::max(TempAllocator &alloc, const Range *lhs, const Range *rhs)
                             lhs->hasInt32UpperBound_ && rhs->hasInt32UpperBound_,
                             lhs->canHaveFractionalPart_ || rhs->canHaveFractionalPart_,
                             Max(lhs->max_exponent_, rhs->max_exponent_));
+}
+
+Range *
+Range::floor(TempAllocator &alloc, const Range *op)
+{
+    Range *copy = new(alloc) Range(*op);
+    // Decrement lower bound of copy range if op have a factional part and lower
+    // bound is Int32 defined. Also we avoid to decrement when op have a
+    // fractional part but lower_ >= JSVAL_INT_MAX.
+    if (op->canHaveFractionalPart() && op->hasInt32LowerBound())
+        copy->setLowerInit(int64_t(copy->lower_) - 1);
+
+    // Also refine max_exponent_ because floor may have decremented int value
+    // If we've got int32 defined bounds, just deduce it using defined bounds.
+    // But, if we don't have those, value's max_exponent_ may have changed.
+    // Because we're looking to maintain an over estimation, if we can,
+    // we increment it.
+    if(copy->hasInt32Bounds())
+        copy->max_exponent_ = copy->exponentImpliedByInt32Bounds();
+    else if(copy->max_exponent_ < MaxFiniteExponent)
+        copy->max_exponent_++;
+
+    copy->canHaveFractionalPart_ = false;
+    copy->assertInvariants();
+    return copy;
 }
 
 bool
@@ -1028,7 +1053,7 @@ MBeta::computeRange(TempAllocator &alloc)
     Range *range = Range::intersect(alloc, &opRange, comparison_, &emptyRange);
     if (emptyRange) {
         IonSpew(IonSpew_Range, "Marking block for inst %d unreachable", id());
-        block()->setUnreachable();
+        block()->setUnreachableUnchecked();
     } else {
         setRange(range);
     }
@@ -1179,9 +1204,7 @@ void
 MFloor::computeRange(TempAllocator &alloc)
 {
     Range other(getOperand(0));
-    Range *copy = new(alloc) Range(other);
-    copy->resetFractionalPart();
-    setRange(copy);
+    setRange(Range::floor(alloc, &other));
 }
 
 void
@@ -2671,16 +2694,77 @@ void
 MDiv::collectRangeInfoPreTrunc()
 {
     Range lhsRange(lhs());
+    Range rhsRange(rhs());
+
+    // Test if Dividend is non-negative.
     if (lhsRange.isFiniteNonNegative())
         canBeNegativeDividend_ = false;
+
+    // Try removing divide by zero check.
+    if (!rhsRange.canBeZero())
+        canBeDivideByZero_ = false;
+
+    // If lhsRange does not contain INT32_MIN in its range,
+    // negative overflow check can be skipped.
+    if (!lhsRange.contains(INT32_MIN))
+        canBeNegativeOverflow_ = false;
+
+    // If rhsRange does not contain -1 likewise.
+    if (!rhsRange.contains(-1))
+        canBeNegativeOverflow_ = false;
+
+    // If lhsRange does not contain a zero,
+    // negative zero check can be skipped.
+    if (!lhsRange.canBeZero())
+        canBeNegativeZero_ = false;
+
+    // If rhsRange >= 0 negative zero check can be skipped.
+    if (rhsRange.isFiniteNonNegative())
+        canBeNegativeZero_ = false;
+}
+
+void
+MMul::collectRangeInfoPreTrunc()
+{
+    Range lhsRange(lhs());
+    Range rhsRange(rhs());
+
+    // If lhsRange contains only positive then we can skip negative zero check.
+    if (lhsRange.isFiniteNonNegative() && !lhsRange.canBeZero())
+        setCanBeNegativeZero(false);
+
+    // Likewise rhsRange.
+    if (rhsRange.isFiniteNonNegative() && !rhsRange.canBeZero())
+        setCanBeNegativeZero(false);
+
+    // If rhsRange and lhsRange contain Non-negative integers only,
+    // We skip negative zero check.
+    if (rhsRange.isFiniteNonNegative() && lhsRange.isFiniteNonNegative())
+        setCanBeNegativeZero(false);
+
+    //If rhsRange and lhsRange < 0. Then we skip negative zero check.
+    if (rhsRange.isFiniteNegative() && lhsRange.isFiniteNegative())
+        setCanBeNegativeZero(false);
 }
 
 void
 MMod::collectRangeInfoPreTrunc()
 {
     Range lhsRange(lhs());
+    Range rhsRange(rhs());
     if (lhsRange.isFiniteNonNegative())
         canBeNegativeDividend_ = false;
+    if (!rhsRange.canBeZero())
+        canBeDivideByZero_ = false;
+
+}
+
+void
+MToInt32::collectRangeInfoPreTrunc()
+{
+    Range inputRange(input());
+    if (!inputRange.canBeZero())
+        canBeNegativeZero_ = false;
 }
 
 void

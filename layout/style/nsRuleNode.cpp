@@ -45,6 +45,7 @@
 #include "prtime.h"
 #include "CSSVariableResolver.h"
 #include "nsCSSParser.h"
+#include "CounterStyleManager.h"
 
 #if defined(_MSC_VER) || defined(__MINGW32__)
 #include <malloc.h>
@@ -591,11 +592,7 @@ SpecifiedCalcToComputedCalc(const nsCSSValue& aValue, nsStyleCoord& aCoord,
                                aCanStoreInRuleTree);
   nsRuleNode::ComputedCalc vals = ComputeCalc(aValue, ops);
 
-  nsStyleCoord::Calc *calcObj =
-    new (aStyleContext->Alloc(sizeof(nsStyleCoord::Calc))) nsStyleCoord::Calc;
-  // Because we use aStyleContext->Alloc(), we have to store the result
-  // on the style context and not in the rule tree.
-  aCanStoreInRuleTree = false;
+  nsStyleCoord::Calc* calcObj = new nsStyleCoord::Calc;
 
   calcObj->mLength = vals.mLength;
   calcObj->mPercent = vals.mPercent;
@@ -621,7 +618,7 @@ nsRuleNode::SpecifiedCalcToComputedCalc(const nsCSSValue& aValue,
 nsRuleNode::ComputeComputedCalc(const nsStyleCoord& aValue,
                                 nscoord aPercentageBasis)
 {
-  nsStyleCoord::Calc *calc = aValue.GetCalcValue();
+  nsStyleCoord::Calc* calc = aValue.GetCalcValue();
   return calc->mLength +
          NSToCoordFloorClamped(aPercentageBasis * calc->mPercent);
 }
@@ -2387,7 +2384,7 @@ nsRuleNode::SetDefaultOnRoot(const nsStyleStructID aSID, nsStyleContext* aContex
     }
     case eStyleStruct_List:
     {
-      nsStyleList* list = new (mPresContext) nsStyleList();
+      nsStyleList* list = new (mPresContext) nsStyleList(mPresContext);
       aContext->SetStyle(eStyleStruct_List, list);
       return list;
     }
@@ -3957,6 +3954,7 @@ nsRuleNode::ComputeFontData(void* aStartStruct,
         case eFamily_moz_fixed:
           fl = FontFamilyList(eFamily_moz_fixed);
           generic = kGenericFont_moz_fixed;
+          break;
         default:
           fl.Clear();
           generic = kGenericFont_NONE;
@@ -7016,14 +7014,42 @@ nsRuleNode::ComputeListData(void* aStartStruct,
                             const RuleDetail aRuleDetail,
                             const bool aCanStoreInRuleTree)
 {
-  COMPUTE_START_INHERITED(List, (), list, parentList)
+  COMPUTE_START_INHERITED(List, (mPresContext), list, parentList)
 
-  // list-style-type: enum, inherit, initial
-  SetDiscrete(*aRuleData->ValueForListStyleType(),
-              list->mListStyleType, canStoreInRuleTree,
-              SETDSC_ENUMERATED | SETDSC_UNSET_INHERIT,
-              parentList->mListStyleType,
-              NS_STYLE_LIST_STYLE_DISC, 0, 0, 0, 0);
+  // list-style-type: string, none, inherit, initial
+  const nsCSSValue* typeValue = aRuleData->ValueForListStyleType();
+  switch (typeValue->GetUnit()) {
+    case eCSSUnit_Unset:
+    case eCSSUnit_Inherit: {
+      canStoreInRuleTree = false;
+      nsString type;
+      parentList->GetListStyleType(type);
+      list->SetListStyleType(type, parentList->GetCounterStyle());
+      break;
+    }
+    case eCSSUnit_Initial:
+      list->SetListStyleType(NS_LITERAL_STRING("disc"), mPresContext);
+      break;
+    case eCSSUnit_Ident: {
+      nsString typeIdent;
+      typeValue->GetStringValue(typeIdent);
+      list->SetListStyleType(typeIdent, mPresContext);
+      break;
+    }
+    case eCSSUnit_Enumerated:
+      // For compatibility with html attribute map.
+      // This branch should never be called for value from CSS.
+      list->SetListStyleType(
+          NS_ConvertASCIItoUTF16(
+              nsCSSProps::ValueToKeyword(
+                  typeValue->GetIntValue(), nsCSSProps::kListStyleKTable)),
+          mPresContext);
+      break;
+    case eCSSUnit_Null:
+      break;
+    default:
+      NS_NOTREACHED("Unexpected value unit");
+  }
 
   // list-style-image: url, none, inherit
   const nsCSSValue* imageValue = aRuleData->ValueForListStyleImage();

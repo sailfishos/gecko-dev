@@ -5,33 +5,6 @@
 
 package org.mozilla.gecko.webapp;
 
-import org.mozilla.gecko.ActivityHandlerHelper;
-import org.mozilla.gecko.AppConstants;
-import org.mozilla.gecko.GeckoAppShell;
-import org.mozilla.gecko.GeckoEvent;
-import org.mozilla.gecko.GeckoProfile;
-import org.mozilla.gecko.favicons.decoders.FaviconDecoder;
-import org.mozilla.gecko.gfx.BitmapUtils;
-import org.mozilla.gecko.util.ActivityResultHandler;
-import org.mozilla.gecko.EventDispatcher;
-import org.mozilla.gecko.util.EventCallback;
-import org.mozilla.gecko.util.NativeEventListener;
-import org.mozilla.gecko.util.NativeJSObject;
-import org.mozilla.gecko.util.ThreadUtils;
-import org.mozilla.gecko.WebappAllocator;
-
-import android.app.Activity;
-import android.app.ActivityManager;
-import android.content.Context;
-import android.content.Intent;
-import android.content.IntentFilter;
-import android.content.pm.ApplicationInfo;
-import android.content.pm.PackageManager;
-import android.content.pm.PackageManager.NameNotFoundException;
-import android.graphics.Bitmap;
-import android.net.Uri;
-import android.util.Log;
-
 import java.io.File;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -40,6 +13,26 @@ import java.util.Set;
 
 import org.json.JSONException;
 import org.json.JSONObject;
+import org.mozilla.gecko.ActivityHandlerHelper;
+import org.mozilla.gecko.EventDispatcher;
+import org.mozilla.gecko.GeckoAppShell;
+import org.mozilla.gecko.GeckoProfile;
+import org.mozilla.gecko.util.ActivityResultHandler;
+import org.mozilla.gecko.util.EventCallback;
+import org.mozilla.gecko.util.NativeEventListener;
+import org.mozilla.gecko.util.NativeJSObject;
+import org.mozilla.gecko.util.ThreadUtils;
+
+import android.app.Activity;
+import android.app.ActivityManager;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
+import android.net.Uri;
+import android.os.Build;
+import android.util.Log;
 
 public class EventListener implements NativeEventListener  {
 
@@ -49,6 +42,7 @@ public class EventListener implements NativeEventListener  {
         EventDispatcher.getInstance().registerGeckoThreadListener(this,
             "Webapps:Preinstall",
             "Webapps:InstallApk",
+            "Webapps:UninstallApk",
             "Webapps:Postinstall",
             "Webapps:Open",
             "Webapps:Uninstall",
@@ -59,6 +53,7 @@ public class EventListener implements NativeEventListener  {
         EventDispatcher.getInstance().unregisterGeckoThreadListener(this,
             "Webapps:Preinstall",
             "Webapps:InstallApk",
+            "Webapps:UninstallApk",
             "Webapps:Postinstall",
             "Webapps:Open",
             "Webapps:Uninstall",
@@ -68,18 +63,12 @@ public class EventListener implements NativeEventListener  {
     @Override
     public void handleMessage(String event, NativeJSObject message, EventCallback callback) {
         try {
-            if (AppConstants.MOZ_ANDROID_SYNTHAPKS && event.equals("Webapps:InstallApk")) {
+            if (event.equals("Webapps:InstallApk")) {
                 installApk(GeckoAppShell.getGeckoInterface().getActivity(), message, callback);
+            } else if (event.equals("Webapps:UninstallApk")) {
+                uninstallApk(GeckoAppShell.getGeckoInterface().getActivity(), message);
             } else if (event.equals("Webapps:Postinstall")) {
-                if (AppConstants.MOZ_ANDROID_SYNTHAPKS) {
-                    postInstallWebapp(message.getString("apkPackageName"), message.getString("origin"));
-                } else {
-                    postInstallWebapp(message.getString("name"),
-                                      message.getString("manifestURL"),
-                                      message.getString("origin"),
-                                      message.getString("iconURL"),
-                                      message.getString("originalOrigin"));
-                }
+                postInstallWebapp(message.getString("apkPackageName"), message.getString("origin"));
             } else if (event.equals("Webapps:Open")) {
                 Intent intent = GeckoAppShell.getWebappIntent(message.getString("manifestURL"),
                                                               message.getString("origin"),
@@ -88,16 +77,6 @@ public class EventListener implements NativeEventListener  {
                     return;
                 }
                 GeckoAppShell.getGeckoInterface().getActivity().startActivity(intent);
-            } else if (!AppConstants.MOZ_ANDROID_SYNTHAPKS && event.equals("Webapps:Uninstall")) {
-                uninstallWebapp(message.getString("origin"));
-            } else if (!AppConstants.MOZ_ANDROID_SYNTHAPKS && event.equals("Webapps:Preinstall")) {
-                String name = message.getString("name");
-                String manifestURL = message.getString("manifestURL");
-                String origin = message.getString("origin");
-
-                JSONObject obj = new JSONObject();
-                obj.put("profile", preInstallWebapp(name, manifestURL, origin).toString());
-                callback.sendSuccess(obj);
             } else if (event.equals("Webapps:GetApkVersions")) {
                 JSONObject obj = new JSONObject();
                 obj.put("versions", getApkVersions(GeckoAppShell.getGeckoInterface().getActivity(),
@@ -109,30 +88,6 @@ public class EventListener implements NativeEventListener  {
         }
     }
 
-    // Not used by MOZ_ANDROID_SYNTHAPKS.
-    public static File preInstallWebapp(String aTitle, String aURI, String aOrigin) {
-        int index = WebappAllocator.getInstance(GeckoAppShell.getContext()).findAndAllocateIndex(aOrigin, aTitle, (String) null);
-        GeckoProfile profile = GeckoProfile.get(GeckoAppShell.getContext(), "webapp" + index);
-        return profile.getDir();
-    }
-
-    // Not used by MOZ_ANDROID_SYNTHAPKS.
-    public static void postInstallWebapp(String aTitle, String aURI, String aOrigin, String aIconURL, String aOriginalOrigin) {
-        WebappAllocator allocator = WebappAllocator.getInstance(GeckoAppShell.getContext());
-        int index = allocator.getIndexForApp(aOriginalOrigin);
-
-        assert aIconURL != null;
-
-        final int preferredSize = GeckoAppShell.getPreferredIconSize();
-        Bitmap icon = FaviconDecoder.getMostSuitableBitmapFromDataURI(aIconURL, preferredSize);
-
-        assert aOrigin != null && index != -1;
-        allocator.updateAppAllocation(aOrigin, index, icon);
-
-        GeckoAppShell.createShortcut(aTitle, aURI, aOrigin, icon, "webapp");
-    }
-
-    // Used by MOZ_ANDROID_SYNTHAPKS.
     public static void postInstallWebapp(String aPackageName, String aOrigin) {
         Allocator allocator = Allocator.getInstance(GeckoAppShell.getContext());
         int index = allocator.findOrAllocatePackage(aPackageName);
@@ -241,6 +196,20 @@ public class EventListener implements NativeEventListener  {
                 }
             }
         });
+    }
+
+    public static void uninstallApk(final Activity context, NativeJSObject message) {
+        String packageName = message.getString("apkPackageName");
+        Uri packageUri = Uri.parse("package:" + packageName);
+
+        Intent intent;
+        if (Build.VERSION.SDK_INT < 14) {
+            intent = new Intent(Intent.ACTION_DELETE, packageUri);
+        } else {
+            intent = new Intent(Intent.ACTION_UNINSTALL_PACKAGE, packageUri);
+        }
+
+        context.startActivity(intent);
     }
 
     private static final int DEFAULT_VERSION_CODE = -1;

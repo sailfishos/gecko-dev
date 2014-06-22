@@ -15,7 +15,6 @@
 #include "gfx2DGlue.h"                  // for ThebesFilter
 #include "gfx3DMatrix.h"                // for gfx3DMatrix
 #include "gfxCrashReporterUtils.h"      // for ScopedGfxFeatureReporter
-#include "gfxImageSurface.h"            // for gfxImageSurface
 #include "gfxMatrix.h"                  // for gfxMatrix
 #include "GraphicsFilter.h"             // for GraphicsFilter
 #include "gfxPlatform.h"                // for gfxPlatform
@@ -1008,6 +1007,9 @@ CompositorOGL::DrawQuad(const Rect& aRect,
 
   IntRect intClipRect;
   aClipRect.ToIntRect(&intClipRect);
+  if (!mTarget) {
+    intClipRect.MoveBy(mRenderOffset.x, mRenderOffset.y);
+  }
 
   gl()->fScissor(intClipRect.x, FlipY(intClipRect.y + intClipRect.height),
                  intClipRect.width, intClipRect.height);
@@ -1452,6 +1454,10 @@ CompositorOGL::CopyToTarget(DrawTarget* aTarget, const nsIntPoint& aTopLeft, con
 
   RefPtr<DataSourceSurface> source =
         Factory::CreateDataSourceSurface(rect.Size(), gfx::SurfaceFormat::B8G8R8A8);
+  if (!source) {
+    NS_WARNING("Failed to create SourceSurface.");
+    return;
+  }
 
   ReadPixelsIntoDataSurface(mGLContext, source);
 

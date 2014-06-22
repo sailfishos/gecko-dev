@@ -71,9 +71,6 @@ var gAdvancedPane = {
 #endif
     this.updateActualCacheSize();
     this.updateActualAppCacheSize();
-
-    // Notify observers that the UI is now ready
-    Services.obs.notifyObservers(window, "advanced-pane-loaded", null);
   },
 
   /**
@@ -304,10 +301,12 @@ var gAdvancedPane = {
 
     actualSizeLabel.textContent = prefStrBundle.getString("actualDiskCacheSizeCalculated");
 
-    var cacheService =
-      Components.classes["@mozilla.org/netwerk/cache-storage-service;1"]
-                .getService(Components.interfaces.nsICacheStorageService);
-    cacheService.asyncGetDiskConsumption(this.observer);
+    try {
+      var cacheService =
+        Components.classes["@mozilla.org/netwerk/cache-storage-service;1"]
+                  .getService(Components.interfaces.nsICacheStorageService);
+      cacheService.asyncGetDiskConsumption(this.observer);
+    } catch (e) {}
   },
 
   // Retrieves the amount of space currently used by offline cache
@@ -324,11 +323,13 @@ var gAdvancedPane = {
       }
     };
 
-    var cacheService =
-      Components.classes["@mozilla.org/netwerk/cache-storage-service;1"]
-                .getService(Components.interfaces.nsICacheStorageService);
-    var storage = cacheService.appCacheStorage(LoadContextInfo.default, null);
-    storage.asyncVisitStorage(visitor, false);
+    try {
+      var cacheService =
+        Components.classes["@mozilla.org/netwerk/cache-storage-service;1"]
+                  .getService(Components.interfaces.nsICacheStorageService);
+      var storage = cacheService.appCacheStorage(LoadContextInfo.default, null);
+      storage.asyncVisitStorage(visitor, false);
+    } catch (e) {}
   },
 
   updateCacheSizeUI: function (smartSizeEnabled)
@@ -372,9 +373,9 @@ var gAdvancedPane = {
    */
   clearCache: function ()
   {
-    var cache = Components.classes["@mozilla.org/netwerk/cache-storage-service;1"]
-                                 .getService(Components.interfaces.nsICacheStorageService);
     try {
+      var cache = Components.classes["@mozilla.org/netwerk/cache-storage-service;1"]
+                            .getService(Components.interfaces.nsICacheStorageService);
       cache.clear();
     } catch(ex) {}
     this.updateActualCacheSize();

@@ -148,6 +148,7 @@ class MochitestServer(object):
     # get testing environment
     env = environment(xrePath=self._xrePath)
     env["XPCOM_DEBUG_BREAK"] = "warn"
+    env["LD_LIBRARY_PATH"] = self._xrePath
 
     # When running with an ASan build, our xpcshell server will also be ASan-enabled,
     # thus consuming too much resources when running together with the browser on
@@ -421,18 +422,24 @@ class MochitestUtilsMixin(object):
     else:
       return options.testPath
 
-  def getTestRoot(self, options):
-    if options.browserChrome:
-      if options.immersiveMode:
-        return 'metro'
-      return 'browser'
-    elif options.a11y:
-      return 'a11y'
-    elif options.webapprtChrome:
-      return 'webapprtChrome'
-    elif options.chrome:
-      return 'chrome'
-    return self.TEST_PATH
+  def setTestRoot(self, options):
+    if hasattr(self, "testRoot"):
+      return self.testRoot, self.testRootAbs
+    else:
+      if options.browserChrome:
+        if options.immersiveMode:
+          self.testRoot = 'metro'
+        else:
+          self.testRoot = 'browser'
+      elif options.a11y:
+        self.testRoot = 'a11y'
+      elif options.webapprtChrome:
+        self.testRoot = 'webapprtChrome'
+      elif options.chrome:
+        self.testRoot = 'chrome'
+      else:
+        self.testRoot = self.TEST_PATH
+      self.testRootAbs = os.path.join(SCRIPT_DIR, self.testRoot)
 
   def buildTestURL(self, options):
     testHost = "http://mochi.test:8888"
@@ -446,11 +453,14 @@ class MochitestUtilsMixin(object):
       testURL = "about:blank"
     return testURL
 
-  def buildTestPath(self, options):
+  def buildTestPath(self, options, disabled=True):
     """ Build the url path to the specific test harness and test file or directory
         Build a manifest of tests to run and write out a json file for the harness to read
+
+        disabled -- This allows to add all disabled tests on the build side
+                    and then on the run side to only run the enabled ones
     """
-    manifest = None
+    self.setTestRoot(options)
     manifest = self.getTestManifest(options)
 
     if manifest:
@@ -471,12 +481,12 @@ class MochitestUtilsMixin(object):
          testPath.endswith('.xul') or \
          testPath.endswith('.js'):
           # In the case where we have a single file, we don't want to filter based on options such as subsuite.
-          tests = manifest.active_tests(disabled=True, options=None, **info)
+          tests = manifest.active_tests(disabled=disabled, options=None, **info)
           for test in tests:
               if 'disabled' in test:
                   del test['disabled']
       else:
-          tests = manifest.active_tests(disabled=True, options=options, **info)
+          tests = manifest.active_tests(disabled=disabled, options=options, **info)
       paths = []
 
       for test in tests:
@@ -489,7 +499,7 @@ class MochitestUtilsMixin(object):
           continue
 
         if not self.isTest(options, tp):
-          print 'Warning: %s from manifest %s is not a valid test' % (test['name'], test['manifest'])
+          log.warning('Warning: %s from manifest %s is not a valid test' % (test['name'], test['manifest']))
           continue
 
         testob = {'path': tp}
@@ -505,7 +515,7 @@ class MochitestUtilsMixin(object):
 
       paths.sort(path_sort)
 
-      # Bug 883865 - add this functionality into manifestDestiny
+      # Bug 883865 - add this functionality into manifestparser
       with open(os.path.join(SCRIPT_DIR, 'tests.json'), 'w') as manifestFile:
         manifestFile.write(json.dumps({'tests': paths}))
       options.manifestFile = 'tests.json'
@@ -737,6 +747,7 @@ class SSLTunnel:
       exit(1)
 
     env = environment(xrePath=self.xrePath)
+    env["LD_LIBRARY_PATH"] = self.xrePath
     self.process = mozprocess.ProcessHandler([ssltunnel, self.configFile],
                                                env=env)
     self.process.run()
@@ -907,6 +918,7 @@ class Mochitest(MochitestUtilsMixin):
 
     # Pre-create the certification database for the profile
     env = self.environment(xrePath=options.xrePath)
+    env["LD_LIBRARY_PATH"] = options.xrePath
     bin_suffix = mozinfo.info.get('bin_suffix', '')
     certutil = os.path.join(options.utilityPath, "certutil" + bin_suffix)
     pk12util = os.path.join(options.utilityPath, "pk12util" + bin_suffix)
@@ -1246,9 +1258,9 @@ class Mochitest(MochitestUtilsMixin):
       self.lastTestSeen = self.test_name
       startTime = datetime.now()
 
-      # b2g desktop requires FirefoxRunner even though appname is b2g
+      # b2g desktop requires Runner even though appname is b2g
       if mozinfo.info.get('appname') == 'b2g' and mozinfo.info.get('toolkit') != 'gonk':
-          runner_cls = mozrunner.FirefoxRunner
+          runner_cls = mozrunner.Runner
       else:
           runner_cls = mozrunner.runners.get(mozinfo.info.get('appname', 'firefox'),
                                              mozrunner.Runner)
@@ -1257,12 +1269,7 @@ class Mochitest(MochitestUtilsMixin):
                           cmdargs=args,
                           env=env,
                           process_class=mozprocess.ProcessHandlerMixin,
-                          kp_kwargs=kp_kwargs,
-                          )
-
-      # XXX work around bug 898379 until mozrunner is updated for m-c; see
-      # https://bugzilla.mozilla.org/show_bug.cgi?id=746243#c49
-      runner.kp_kwargs = kp_kwargs
+                          process_args=kp_kwargs)
 
       # start the runner
       runner.start(debug_args=debug_args,
@@ -1330,8 +1337,7 @@ class Mochitest(MochitestUtilsMixin):
     self.countfail = 0
     self.counttodo = 0
 
-    self.testRoot = self.getTestRoot(options)
-    self.testRootAbs = os.path.join(SCRIPT_DIR, self.testRoot)
+    self.setTestRoot(options)
 
     if not options.runByDir:
       return self.doTests(options, onLaunch)

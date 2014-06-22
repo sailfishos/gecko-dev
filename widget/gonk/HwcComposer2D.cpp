@@ -377,9 +377,9 @@ HwcComposer2D::PrepareLayerList(Layer* aLayer,
         // Reflection is applied before rotation
         gfxMatrix rotation = transform * aGLWorldTransform;
         // Compute fuzzy zero like PreservesAxisAlignedRectangles()
-        if (fabs(rotation.xx) < 1e-6) {
-            if (rotation.xy < 0) {
-                if (rotation.yx > 0) {
+        if (fabs(rotation._11) < 1e-6) {
+            if (rotation._21 < 0) {
+                if (rotation._12 > 0) {
                     // 90 degree rotation
                     //
                     // |  0  -1  |
@@ -403,7 +403,7 @@ HwcComposer2D::PrepareLayerList(Layer* aLayer,
                     LOGD("Layer vertically reflected then rotated 270 degrees");
                 }
             } else {
-                if (rotation.yx < 0) {
+                if (rotation._12 < 0) {
                     // 270 degree rotation
                     //
                     // |  0   1  |
@@ -427,8 +427,8 @@ HwcComposer2D::PrepareLayerList(Layer* aLayer,
                     LOGD("Layer horizontally reflected then rotated 270 degrees");
                 }
             }
-        } else if (rotation.xx < 0) {
-            if (rotation.yy > 0) {
+        } else if (rotation._11 < 0) {
+            if (rotation._22 > 0) {
                 // Horizontal reflection
                 //
                 // | -1   0  |
@@ -452,7 +452,7 @@ HwcComposer2D::PrepareLayerList(Layer* aLayer,
                 LOGD("Layer rotated 180 degrees");
             }
         } else {
-            if (rotation.yy < 0) {
+            if (rotation._22 < 0) {
                 // Vertical reflection
                 //
                 // |  1   0  |
@@ -682,6 +682,25 @@ HwcComposer2D::Commit()
     hwc_display_contents_1_t *displays[HWC_NUM_DISPLAY_TYPES] = { nullptr };
     displays[HWC_DISPLAY_PRIMARY] = mList;
 
+    for (uint32_t j=0; j < (mList->numHwLayers - 1); j++) {
+        if (mHwcLayerMap.IsEmpty() ||
+            (mList->hwLayers[j].compositionType == HWC_FRAMEBUFFER)) {
+            continue;
+        }
+        LayerRenderState state = mHwcLayerMap[j]->GetLayer()->GetRenderState();
+        if (!state.mTexture) {
+            continue;
+        }
+        TextureHostOGL* texture = state.mTexture->AsHostOGL();
+        if (!texture) {
+            continue;
+        }
+        sp<Fence> fence = texture->GetAndResetAcquireFence();
+        if (fence.get() && fence->isValid()) {
+            mList->hwLayers[j].acquireFenceFd = fence->dup();
+        }
+    }
+
     int err = mHwc->set(mHwc, HWC_NUM_DISPLAY_TYPES, displays);
 
     mPrevDisplayFence = mPrevRetireFence;
@@ -774,6 +793,7 @@ HwcComposer2D::TryRender(Layer* aRoot,
                           gfxMatrix(),
                           aGLWorldTransform))
     {
+        mHwcLayerMap.Clear();
         LOGD("Render aborted. Nothing was drawn to the screen");
         return false;
     }

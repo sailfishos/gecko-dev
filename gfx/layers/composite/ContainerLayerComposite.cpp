@@ -21,6 +21,7 @@
 #include "mozilla/layers/CompositorTypes.h"  // for DiagnosticFlags::CONTAINER
 #include "mozilla/layers/Effects.h"     // for Effect, EffectChain, etc
 #include "mozilla/layers/TextureHost.h"  // for CompositingRenderTarget
+#include "mozilla/layers/AsyncPanZoomController.h"  // for AsyncPanZoomController
 #include "mozilla/mozalloc.h"           // for operator delete, etc
 #include "nsAutoPtr.h"                  // for nsRefPtr
 #include "nsDebug.h"                    // for NS_ASSERTION
@@ -123,15 +124,15 @@ static void DrawLayerInfo(const nsIntRect& aClipRect,
     return;
   }
 
-  nsAutoCString layerInfo;
-  aLayer->PrintInfo(layerInfo, "");
+  std::stringstream ss;
+  aLayer->PrintInfo(ss, "");
 
   nsIntRegion visibleRegion = aLayer->GetVisibleRegion();
 
   uint32_t maxWidth = std::min<uint32_t>(visibleRegion.GetBounds().width, 500);
 
   nsIntPoint topLeft = visibleRegion.GetBounds().TopLeft();
-  aManager->GetTextRenderer()->RenderText(layerInfo.get(), gfx::IntPoint(topLeft.x, topLeft.y),
+  aManager->GetTextRenderer()->RenderText(ss.str().c_str(), gfx::IntPoint(topLeft.x, topLeft.y),
                                           aLayer->GetEffectiveTransform(), 16,
                                           maxWidth);
 
@@ -239,7 +240,10 @@ static void DrawVelGraph(const nsIntRect& aClipRect,
   textureSource->Update(data);
 
   EffectChain effectChain;
-  effectChain.mPrimaryEffect = CreateTexturedEffect(SurfaceFormat::B8G8R8A8, textureSource, Filter::POINT);
+  effectChain.mPrimaryEffect = CreateTexturedEffect(SurfaceFormat::B8G8R8A8,
+                                                    textureSource,
+                                                    Filter::POINT,
+                                                    true);
 
   compositor->DrawQuad(graphRect,
                        clipRect,
@@ -315,6 +319,28 @@ ContainerRender(ContainerT* aContainer,
 
   nsAutoTArray<Layer*, 12> children;
   aContainer->SortChildrenBy3DZOrder(children);
+
+  // If this is a scrollable container layer, and it's overscrolled, the layer's
+  // contents are transformed in a way that would leave blank regions in the
+  // composited area. If the layer has a background color, fill these areas
+  // with the background color by drawing a rectangle of the background color
+  // over the entire composited area before drawing the container contents.
+  if (AsyncPanZoomController* apzc = aContainer->GetAsyncPanZoomController()) {
+    if (apzc->IsOverscrolled()) {
+      gfxRGBA color = aContainer->GetBackgroundColor();
+      // If the background is completely transparent, there's no point in
+      // drawing anything for it. Hopefully the layers behind, if any, will
+      // provide suitable content for the overscroll effect.
+      if (color.a != 0.0) {
+        EffectChain effectChain(aContainer);
+        effectChain.mPrimaryEffect = new EffectSolidColor(ToColor(color));
+        gfx::Rect clipRect(aClipRect.x, aClipRect.y, aClipRect.width, aClipRect.height);
+        Compositor* compositor = aManager->GetCompositor();
+        compositor->DrawQuad(compositor->ClipRectInLayersCoordinates(clipRect),
+            clipRect, effectChain, opacity, Matrix4x4());
+      }
+    }
+  }
 
   /**
    * Render this container's contents.

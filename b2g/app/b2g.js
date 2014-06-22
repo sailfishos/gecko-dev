@@ -290,12 +290,9 @@ pref("layers.offmainthreadcomposition.enabled", true);
 pref("layers.offmainthreadcomposition.async-animations", true);
 #ifndef MOZ_WIDGET_GONK
 pref("dom.ipc.tabs.disabled", true);
-pref("layers.async-video.enabled", false);
 #else
 pref("dom.ipc.tabs.disabled", false);
 pref("layers.acceleration.disabled", false);
-pref("layers.async-video.enabled", true);
-pref("layers.async-video-oop.enabled",true);
 pref("layers.async-pan-zoom.enabled", true);
 pref("gfx.content.azure.backends", "cairo");
 #endif
@@ -390,10 +387,13 @@ pref("content.ime.strict_policy", true);
 // $ adb shell start
 pref("browser.dom.window.dump.enabled", false);
 
+// Turn on the CSP 1.0 parser for Content Security Policy headers
+pref("security.csp.speccompliant", true);
+
 // Default Content Security Policy to apply to privileged and certified apps
 pref("security.apps.privileged.CSP.default", "default-src *; script-src 'self'; object-src 'none'; style-src 'self' 'unsafe-inline'");
 // If you change this CSP, make sure to update the fast path in nsCSPService.cpp
-pref("security.apps.certified.CSP.default", "default-src *; script-src 'self'; object-src 'none'; style-src 'self'");
+pref("security.apps.certified.CSP.default", "default-src *; script-src 'self'; object-src 'none'; style-src 'self' 'unsafe-inline'");
 
 // Temporarily force-enable GL compositing.  This is default-disabled
 // deep within the bowels of the widgetry system.  Remove me when GL
@@ -463,6 +463,17 @@ pref("services.push.pingInterval", 1800000); // 30 minutes
 pref("services.push.requestTimeout", 10000);
 // enable udp wakeup support
 pref("services.push.udp.wakeupEnabled", true);
+// This value should be the prefix to be added to the current PDP context[1]
+// domain or a full-qualified domain name.
+// If finished with a dot, it will be added as a prefix to the PDP context
+// domain. If not, will be used as the DNS query.
+// If the DNS query is unsuccessful, the push agent will send a null netid and
+// is a server decision what to do with the device. If the MCC-MNC identifies a
+// unique network the server will change to UDP mode. Otherwise, a websocket
+// connection will be maintained.
+// [1] Packet Data Protocol
+//     http://en.wikipedia.org/wiki/GPRS_core_network#PDP_context
+pref("services.push.udp.well-known_netidAddress", "_wakeup_.");
 
 // NetworkStats
 #ifdef MOZ_WIDGET_GONK
@@ -549,15 +560,7 @@ pref("app.update.incompatible.mode", 0);
 pref("app.update.staging.enabled", true);
 pref("app.update.service.enabled", true);
 
-// The URL hosting the update manifest.
-// Temporary hack to only put Flame builds on aus4. 18 is Jelly Bean (4.3).
-// This needs to be changed if Flame upgrades to 19 (Kit Kat) before other devices
-// move to aus4.
-#if ANDROID_VERSION == 18
 pref("app.update.url", "https://aus4.mozilla.org/update/3/%PRODUCT%/%VERSION%/%BUILD_ID%/%PRODUCT_DEVICE%/%LOCALE%/%CHANNEL%/%OS_VERSION%/%DISTRIBUTION%/%DISTRIBUTION_VERSION%/update.xml");
-#else
-pref("app.update.url", "http://update.boot2gecko.org/%CHANNEL%/update.xml");
-#endif
 pref("app.update.channel", "@MOZ_UPDATE_CHANNEL@");
 
 // Interval at which update manifest is fetched.  In units of seconds.
@@ -992,6 +995,8 @@ pref("selectioncaret.enabled", false);
 pref("services.sync.fxaccounts.enabled", true);
 pref("identity.fxaccounts.enabled", true);
 #endif
+
+pref("services.mobileid.server.uri", "http://msisdn.dev.mozaws.net");
 
 // Enable mapped array buffer
 pref("dom.mapped_arraybuffer.enabled", true);

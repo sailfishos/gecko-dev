@@ -31,6 +31,10 @@ public interface TelemetryContract {
         // Cancel a state, action, etc.
         CANCEL("cancel.1"),
 
+        // Start casting a video.
+        // Note: Only used in JavaScript for now, but here for completeness.
+        CAST("cast.1"),
+
         // Editing an item.
         EDIT("edit.1"),
 
@@ -121,6 +125,9 @@ public interface TelemetryContract {
 
         // Action occurred via an intent.
         INTENT("intent"),
+
+        // Action occurred via a homescreen launcher.
+        HOMESCREEN("homescreen"),
 
         // Action triggered from a list.
         LIST("list"),

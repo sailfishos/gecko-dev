@@ -14,9 +14,10 @@
 #include <algorithm>
 #include "jsfriendapi.h"
 #include "mozilla/dom/ContentChild.h"
-#include "mozilla/dom/ContentParent.h"
-#include "mozilla/dom/FileHandleBinding.h"
+#include "mozilla/dom/nsIContentParent.h"
+#include "mozilla/dom/MutableFileBinding.h"
 #include "mozilla/dom/StructuredCloneTags.h"
+#include "mozilla/dom/TabChild.h"
 #include "mozilla/dom/ipc/Blob.h"
 #include "mozilla/dom/quota/FileStreams.h"
 #include "mozilla/Endian.h"
@@ -33,9 +34,9 @@
 #include "AsyncConnectionHelper.h"
 #include "IDBCursor.h"
 #include "IDBEvents.h"
-#include "IDBFileHandle.h"
 #include "IDBIndex.h"
 #include "IDBKeyRange.h"
+#include "IDBMutableFile.h"
 #include "IDBTransaction.h"
 #include "DatabaseInfo.h"
 #include "KeyPath.h"
@@ -62,7 +63,7 @@ using mozilla::NativeEndian;
 
 BEGIN_INDEXEDDB_NAMESPACE
 
-struct FileHandleData
+struct MutableFileData
 {
   nsString type;
   nsString name;
@@ -111,7 +112,8 @@ public:
   virtual nsresult Dispatch(nsIEventTarget* aDatabaseThread) MOZ_OVERRIDE;
 
   virtual nsresult
-  PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams) = 0;
+  PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams,
+                                nsIContentChild* aBlobCreator) = 0;
 
   virtual nsresult
   UnpackResponseFromParentProcess(const ResponseValue& aResponseValue) = 0;
@@ -184,7 +186,8 @@ public:
   virtual void ReleaseMainThreadObjects() MOZ_OVERRIDE;
 
   virtual nsresult
-  PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams) MOZ_OVERRIDE;
+  PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams,
+                                nsIContentChild* aBlobCreator) MOZ_OVERRIDE;
 
   virtual ChildProcessSendResult
   SendResponseToChildProcess(nsresult aResultCode) MOZ_OVERRIDE;
@@ -228,7 +231,8 @@ public:
   virtual void ReleaseMainThreadObjects() MOZ_OVERRIDE;
 
   virtual nsresult
-  PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams) MOZ_OVERRIDE;
+  PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams,
+                                nsIContentChild* aBlobCreator) MOZ_OVERRIDE;
 
   virtual ChildProcessSendResult
   SendResponseToChildProcess(nsresult aResultCode) MOZ_OVERRIDE;
@@ -263,7 +267,8 @@ public:
                                     JS::MutableHandle<JS::Value> aVal) MOZ_OVERRIDE;
 
   virtual nsresult
-  PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams) MOZ_OVERRIDE;
+  PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams,
+                                nsIContentChild* aBlobCreator) MOZ_OVERRIDE;
 
   virtual ChildProcessSendResult
   SendResponseToChildProcess(nsresult aResultCode) MOZ_OVERRIDE;
@@ -286,7 +291,8 @@ public:
                                   MOZ_OVERRIDE;
 
   virtual nsresult
-  PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams) MOZ_OVERRIDE;
+  PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams,
+                                nsIContentChild* aBlobCreator) MOZ_OVERRIDE;
 
   virtual ChildProcessSendResult
   SendResponseToChildProcess(nsresult aResultCode) MOZ_OVERRIDE;
@@ -322,7 +328,8 @@ public:
   virtual void ReleaseMainThreadObjects() MOZ_OVERRIDE;
 
   virtual nsresult
-  PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams) MOZ_OVERRIDE;
+  PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams,
+                                nsIContentChild* aBlobCreator) MOZ_OVERRIDE;
 
   virtual ChildProcessSendResult
   SendResponseToChildProcess(nsresult aResultCode) MOZ_OVERRIDE;
@@ -373,7 +380,8 @@ public:
   ReleaseMainThreadObjects() MOZ_OVERRIDE;
 
   virtual nsresult
-  PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams) MOZ_OVERRIDE;
+  PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams,
+                                nsIContentChild* aBlobCreator) MOZ_OVERRIDE;
 
   virtual ChildProcessSendResult
   SendResponseToChildProcess(nsresult aResultCode) MOZ_OVERRIDE;
@@ -480,7 +488,8 @@ public:
   virtual void ReleaseMainThreadObjects() MOZ_OVERRIDE;
 
   virtual nsresult
-  PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams) MOZ_OVERRIDE;
+  PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams,
+                                nsIContentChild* aBlobCreator) MOZ_OVERRIDE;
 
   virtual ChildProcessSendResult
   SendResponseToChildProcess(nsresult aResultCode) MOZ_OVERRIDE;
@@ -522,7 +531,8 @@ public:
   ReleaseMainThreadObjects() MOZ_OVERRIDE;
 
   virtual nsresult
-  PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams) MOZ_OVERRIDE;
+  PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams,
+                                nsIContentChild* aBlobCreator) MOZ_OVERRIDE;
 
   virtual ChildProcessSendResult
   SendResponseToChildProcess(nsresult aResultCode) MOZ_OVERRIDE;
@@ -560,7 +570,8 @@ public:
   virtual void ReleaseMainThreadObjects() MOZ_OVERRIDE;
 
   virtual nsresult
-  PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams) MOZ_OVERRIDE;
+  PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams,
+                                nsIContentChild* aBlobCreator) MOZ_OVERRIDE;
 
   virtual ChildProcessSendResult
   SendResponseToChildProcess(nsresult aResultCode) MOZ_OVERRIDE;
@@ -768,19 +779,19 @@ ResolveMysteryBlob(nsIDOMBlob* aBlob, const nsString& aContentType,
 class MainThreadDeserializationTraits
 {
 public:
-  static JSObject* CreateAndWrapFileHandle(JSContext* aCx,
-                                           IDBDatabase* aDatabase,
-                                           StructuredCloneFile& aFile,
-                                           const FileHandleData& aData)
+  static JSObject* CreateAndWrapMutableFile(JSContext* aCx,
+                                            IDBDatabase* aDatabase,
+                                            StructuredCloneFile& aFile,
+                                            const MutableFileData& aData)
   {
     MOZ_ASSERT(NS_IsMainThread());
 
     nsRefPtr<FileInfo>& fileInfo = aFile.mFileInfo;
 
-    nsRefPtr<IDBFileHandle> fileHandle = IDBFileHandle::Create(aData.name,
+    nsRefPtr<IDBMutableFile> mutableFile = IDBMutableFile::Create(aData.name,
       aData.type, aDatabase, fileInfo.forget());
 
-    return fileHandle->WrapObject(aCx);
+    return mutableFile->WrapObject(aCx);
   }
 
   static JSObject* CreateAndWrapBlobOrFile(JSContext* aCx,
@@ -870,12 +881,12 @@ public:
 class CreateIndexDeserializationTraits
 {
 public:
-  static JSObject* CreateAndWrapFileHandle(JSContext* aCx,
-                                           IDBDatabase* aDatabase,
-                                           StructuredCloneFile& aFile,
-                                           const FileHandleData& aData)
+  static JSObject* CreateAndWrapMutableFile(JSContext* aCx,
+                                            IDBDatabase* aDatabase,
+                                            StructuredCloneFile& aFile,
+                                            const MutableFileData& aData)
   {
-    // FileHandle can't be used in index creation, so just make a dummy object.
+    // MutableFile can't be used in index creation, so just make a dummy object.
     return JS_NewObject(aCx, nullptr, JS::NullPtr(), JS::NullPtr());
   }
 
@@ -1393,10 +1404,10 @@ StructuredCloneReadString(JSStructuredCloneReader* aReader,
 
 // static
 bool
-IDBObjectStore::ReadFileHandle(JSStructuredCloneReader* aReader,
-                               FileHandleData* aRetval)
+IDBObjectStore::ReadMutableFile(JSStructuredCloneReader* aReader,
+                                MutableFileData* aRetval)
 {
-  static_assert(SCTAG_DOM_FILEHANDLE == 0xFFFF8004,
+  static_assert(SCTAG_DOM_MUTABLEFILE == 0xFFFF8004,
                 "Update me!");
   MOZ_ASSERT(aReader && aRetval);
 
@@ -1432,7 +1443,7 @@ IDBObjectStore::ReadBlobOrFile(JSStructuredCloneReader* aReader,
 
   aRetval->tag = aTag;
 
-  // If it's not a FileHandle, it's a Blob or a File.
+  // If it's not a MutableFile, it's a Blob or a File.
   uint64_t size;
   if (!JS_ReadBytes(aReader, &size, sizeof(uint64_t))) {
     NS_WARNING("Failed to read size!");
@@ -1489,13 +1500,13 @@ IDBObjectStore::StructuredCloneReadCallback(JSContext* aCx,
   // so that if people accidentally change them they notice.
   static_assert(SCTAG_DOM_BLOB == 0xFFFF8001 &&
                 SCTAG_DOM_FILE_WITHOUT_LASTMODIFIEDDATE == 0xFFFF8002 &&
-                SCTAG_DOM_FILEHANDLE == 0xFFFF8004 &&
+                SCTAG_DOM_MUTABLEFILE == 0xFFFF8004 &&
                 SCTAG_DOM_FILE == 0xFFFF8005,
                 "You changed our structured clone tag values and just ate "
                 "everyone's IndexedDB data.  I hope you are happy.");
 
   if (aTag == SCTAG_DOM_FILE_WITHOUT_LASTMODIFIEDDATE ||
-      aTag == SCTAG_DOM_FILEHANDLE ||
+      aTag == SCTAG_DOM_MUTABLEFILE ||
       aTag == SCTAG_DOM_BLOB ||
       aTag == SCTAG_DOM_FILE) {
     StructuredCloneReadInfo* cloneReadInfo =
@@ -1509,14 +1520,14 @@ IDBObjectStore::StructuredCloneReadCallback(JSContext* aCx,
     StructuredCloneFile& file = cloneReadInfo->mFiles[aData];
     IDBDatabase* database = cloneReadInfo->mDatabase;
 
-    if (aTag == SCTAG_DOM_FILEHANDLE) {
-      FileHandleData data;
-      if (!ReadFileHandle(aReader, &data)) {
+    if (aTag == SCTAG_DOM_MUTABLEFILE) {
+      MutableFileData data;
+      if (!ReadMutableFile(aReader, &data)) {
         return nullptr;
       }
 
-      return DeserializationTraits::CreateAndWrapFileHandle(aCx, database,
-                                                            file, data);
+      return DeserializationTraits::CreateAndWrapMutableFile(aCx, database,
+                                                             file, data);
     }
 
     BlobOrFileData data;
@@ -1561,25 +1572,25 @@ IDBObjectStore::StructuredCloneWriteCallback(JSContext* aCx,
   IDBTransaction* transaction = cloneWriteInfo->mTransaction;
   FileManager* fileManager = transaction->Database()->Manager();
 
-  FileHandle* fileHandle = nullptr;
-  if (NS_SUCCEEDED(UNWRAP_OBJECT(FileHandle, aObj, fileHandle))) {
-    nsRefPtr<FileInfo> fileInfo = fileHandle->GetFileInfo();
+  MutableFile* mutableFile = nullptr;
+  if (NS_SUCCEEDED(UNWRAP_OBJECT(MutableFile, aObj, mutableFile))) {
+    nsRefPtr<FileInfo> fileInfo = mutableFile->GetFileInfo();
 
-    // Throw when trying to store non IDB file handles or IDB file handles
+    // Throw when trying to store non IDB mutable files or IDB mutable files
     // across databases.
     if (!fileInfo || fileInfo->Manager() != fileManager) {
       return false;
     }
 
-    NS_ConvertUTF16toUTF8 convType(fileHandle->Type());
+    NS_ConvertUTF16toUTF8 convType(mutableFile->Type());
     uint32_t convTypeLength =
       NativeEndian::swapToLittleEndian(convType.Length());
 
-    NS_ConvertUTF16toUTF8 convName(fileHandle->Name());
+    NS_ConvertUTF16toUTF8 convName(mutableFile->Name());
     uint32_t convNameLength =
       NativeEndian::swapToLittleEndian(convName.Length());
 
-    if (!JS_WriteUint32Pair(aWriter, SCTAG_DOM_FILEHANDLE,
+    if (!JS_WriteUint32Pair(aWriter, SCTAG_DOM_MUTABLEFILE,
                             cloneWriteInfo->mFiles.Length()) ||
         !JS_WriteBytes(aWriter, &convTypeLength, sizeof(uint32_t)) ||
         !JS_WriteBytes(aWriter, convType.get(), convType.Length()) ||
@@ -1748,7 +1759,7 @@ IDBObjectStore::ConvertActorsToBlobs(
 // static
 nsresult
 IDBObjectStore::ConvertBlobsToActors(
-                                    ContentParent* aContentParent,
+                                    nsIContentParent* aContentParent,
                                     FileManager* aFileManager,
                                     const nsTArray<StructuredCloneFile>& aFiles,
                                     InfallibleTArray<PBlobParent*>& aActors)
@@ -2611,24 +2622,30 @@ IDBObjectStore::WrapObject(JSContext* aCx)
   return IDBObjectStoreBinding::Wrap(aCx, this);
 }
 
-JS::Value
-IDBObjectStore::GetKeyPath(JSContext* aCx, ErrorResult& aRv)
+void
+IDBObjectStore::GetKeyPath(JSContext* aCx, JS::MutableHandle<JS::Value> aResult,
+                           ErrorResult& aRv)
 {
   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
 
   if (!mCachedKeyPath.isUndefined()) {
-    return mCachedKeyPath;
+    JS::ExposeValueToActiveJS(mCachedKeyPath);
+    aResult.set(mCachedKeyPath);
+    return;
   }
 
   aRv = GetKeyPath().ToJSVal(aCx, mCachedKeyPath);
-  ENSURE_SUCCESS(aRv, JSVAL_VOID);
+  if (NS_WARN_IF(aRv.Failed())) {
+    return;
+  }
 
   if (mCachedKeyPath.isGCThing()) {
     mozilla::HoldJSObjects(this);
     mRooted = true;
   }
 
-  return mCachedKeyPath;
+  JS::ExposeValueToActiveJS(mCachedKeyPath);
+  aResult.set(mCachedKeyPath);
 }
 
 already_AddRefed<DOMStringList>
@@ -3040,7 +3057,22 @@ ObjectStoreHelper::Dispatch(nsIEventTarget* aDatabaseThread)
   NS_ASSERTION(objectStoreActor, "Must have an actor here!");
 
   ObjectStoreRequestParams params;
-  nsresult rv = PackArgumentsForParentProcess(params);
+
+  // Our "parent" process may be either the root process or another content
+  // process if this indexedDB is managed by a PBrowser that is managed by a
+  // PContentBridge.  We need to find which one it is so that we can create
+  // PBlobs that are managed by the right nsIContentChild.
+  IndexedDBChild* rootActor =
+    static_cast<IndexedDBChild*>(objectStoreActor->Manager()->
+                                 Manager()->Manager());
+  nsIContentChild* blobCreator;
+  if (rootActor->GetManagerContent()) {
+    blobCreator = rootActor->GetManagerContent();
+  } else {
+    blobCreator = rootActor->GetManagerTab()->Manager();
+  }
+
+  nsresult rv = PackArgumentsForParentProcess(params, blobCreator);
   IDB_ENSURE_SUCCESS(rv, NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR);
 
   NoDispatchEventTarget target;
@@ -3320,10 +3352,12 @@ AddHelper::ReleaseMainThreadObjects()
 }
 
 nsresult
-AddHelper::PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams)
+AddHelper::PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams,
+                                         nsIContentChild* aBlobCreator)
 {
   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
   NS_ASSERTION(!IndexedDatabaseManager::IsMainProcess(), "Wrong process!");
+  NS_ASSERTION(aBlobCreator, "Must have a valid creator!");
 
   PROFILER_MAIN_THREAD_LABEL("AddHelper", "PackArgumentsForParentProcess",
     js::ProfileEntry::Category::STORAGE);
@@ -3341,8 +3375,7 @@ AddHelper::PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams)
     InfallibleTArray<PBlobChild*>& blobsChild = commonParams.blobsChild();
     blobsChild.SetCapacity(fileCount);
 
-    ContentChild* contentChild = ContentChild::GetSingleton();
-    NS_ASSERTION(contentChild, "This should never be null!");
+    NS_ASSERTION(aBlobCreator, "This should never be null!");
 
     for (uint32_t index = 0; index < fileCount; index++) {
       const StructuredCloneFile& file = files[index];
@@ -3351,7 +3384,7 @@ AddHelper::PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams)
       NS_ASSERTION(!file.mFileInfo, "This is not yet supported!");
 
       BlobChild* actor =
-        contentChild->GetOrCreateActorForBlob(file.mFile);
+        aBlobCreator->GetOrCreateActorForBlob(file.mFile);
       if (!actor) {
         IDB_REPORT_INTERNAL_ERR();
         return NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR;
@@ -3487,11 +3520,13 @@ GetHelper::ReleaseMainThreadObjects()
 }
 
 nsresult
-GetHelper::PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams)
+GetHelper::PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams,
+                                         nsIContentChild* aBlobCreator)
 {
   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
   NS_ASSERTION(!IndexedDatabaseManager::IsMainProcess(), "Wrong process!");
   NS_ASSERTION(mKeyRange, "This should never be null!");
+  NS_ASSERTION(aBlobCreator, "Must have a valid creator!");
 
   PROFILER_MAIN_THREAD_LABEL("GetHelper", "PackArgumentsForParentProcess [IDBObjectStore.cpp]",
     js::ProfileEntry::Category::STORAGE);
@@ -3522,7 +3557,7 @@ GetHelper::SendResponseToChildProcess(nsresult aResultCode)
     IDBDatabase* database = mObjectStore->Transaction()->Database();
     NS_ASSERTION(database, "This should never be null!");
 
-    ContentParent* contentParent = database->GetContentParent();
+    nsIContentParent* contentParent = database->GetContentParent();
     NS_ASSERTION(contentParent, "This should never be null!");
 
     FileManager* fileManager = database->Manager();
@@ -3625,11 +3660,13 @@ DeleteHelper::GetSuccessResult(JSContext* aCx,
 }
 
 nsresult
-DeleteHelper::PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams)
+DeleteHelper::PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams,
+                                            nsIContentChild* aBlobCreator)
 {
   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
   NS_ASSERTION(!IndexedDatabaseManager::IsMainProcess(), "Wrong process!");
   NS_ASSERTION(mKeyRange, "This should never be null!");
+  NS_ASSERTION(aBlobCreator, "Must have a valid creator!");
 
   PROFILER_MAIN_THREAD_LABEL("DeleteHelper", "PackArgumentsForParentProcess",
     js::ProfileEntry::Category::STORAGE);
@@ -3708,10 +3745,12 @@ ClearHelper::DoDatabaseWork(mozIStorageConnection* aConnection)
 }
 
 nsresult
-ClearHelper::PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams)
+ClearHelper::PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams,
+                                           nsIContentChild* aBlobCreator)
 {
   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
   NS_ASSERTION(!IndexedDatabaseManager::IsMainProcess(), "Wrong process!");
+  NS_ASSERTION(aBlobCreator, "Must have a valid creator!");
 
   PROFILER_MAIN_THREAD_LABEL("ClearHelper", "PackArgumentsForParentProcess",
     js::ProfileEntry::Category::STORAGE);
@@ -3942,11 +3981,12 @@ OpenCursorHelper::ReleaseMainThreadObjects()
 }
 
 nsresult
-OpenCursorHelper::PackArgumentsForParentProcess(
-                                              ObjectStoreRequestParams& aParams)
+OpenCursorHelper::PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams,
+                                                nsIContentChild* aBlobCreator)
 {
   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
   NS_ASSERTION(!IndexedDatabaseManager::IsMainProcess(), "Wrong process!");
+  NS_ASSERTION(aBlobCreator, "Must have a valid creator!");
 
   PROFILER_MAIN_THREAD_LABEL("OpenCursorHelper", "PackArgumentsForParentProcess [IDBObjectStore.cpp]",
     js::ProfileEntry::Category::STORAGE);
@@ -3987,7 +4027,7 @@ OpenCursorHelper::SendResponseToChildProcess(nsresult aResultCode)
     IDBDatabase* database = mObjectStore->Transaction()->Database();
     NS_ASSERTION(database, "This should never be null!");
 
-    ContentParent* contentParent = database->GetContentParent();
+    nsIContentParent* contentParent = database->GetContentParent();
     NS_ASSERTION(contentParent, "This should never be null!");
 
     FileManager* fileManager = database->Manager();
@@ -4265,11 +4305,12 @@ OpenKeyCursorHelper::ReleaseMainThreadObjects()
 }
 
 nsresult
-OpenKeyCursorHelper::PackArgumentsForParentProcess(
-                                              ObjectStoreRequestParams& aParams)
+OpenKeyCursorHelper::PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams,
+                                                   nsIContentChild* aBlobCreator)
 {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(!IndexedDatabaseManager::IsMainProcess());
+  NS_ASSERTION(aBlobCreator, "Must have a valid creator!");
 
   PROFILER_MAIN_THREAD_LABEL("OpenKeyCursorHelper", "PackArgumentsForParentProcess [IDBObjectStore.cpp]",
     js::ProfileEntry::Category::STORAGE);
@@ -4705,10 +4746,12 @@ GetAllHelper::ReleaseMainThreadObjects()
 }
 
 nsresult
-GetAllHelper::PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams)
+GetAllHelper::PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams,
+                                            nsIContentChild* aBlobCreator)
 {
   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
   NS_ASSERTION(!IndexedDatabaseManager::IsMainProcess(), "Wrong process!");
+  NS_ASSERTION(aBlobCreator, "Must have a valid creator!");
 
   PROFILER_MAIN_THREAD_LABEL("GetAllHelper", "PackArgumentsForParentProcess [IDBObjectStore.cpp]",
     js::ProfileEntry::Category::STORAGE);
@@ -4747,7 +4790,7 @@ GetAllHelper::SendResponseToChildProcess(nsresult aResultCode)
     IDBDatabase* database = mObjectStore->Transaction()->Database();
     NS_ASSERTION(database, "This should never be null!");
 
-    ContentParent* contentParent = database->GetContentParent();
+    nsIContentParent* contentParent = database->GetContentParent();
     NS_ASSERTION(contentParent, "This should never be null!");
 
     FileManager* fileManager = database->Manager();
@@ -4951,11 +4994,12 @@ GetAllKeysHelper::ReleaseMainThreadObjects()
 }
 
 nsresult
-GetAllKeysHelper::PackArgumentsForParentProcess(
-                                              ObjectStoreRequestParams& aParams)
+GetAllKeysHelper::PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams,
+                                                nsIContentChild* aBlobCreator)
 {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(!IndexedDatabaseManager::IsMainProcess());
+  NS_ASSERTION(aBlobCreator, "Must have a valid creator!");
 
   PROFILER_MAIN_THREAD_LABEL("GetAllKeysHelper", "PackArgumentsForParentProcess [IDBObjectStore.cpp]",
     js::ProfileEntry::Category::STORAGE);
@@ -5103,10 +5147,12 @@ CountHelper::ReleaseMainThreadObjects()
 }
 
 nsresult
-CountHelper::PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams)
+CountHelper::PackArgumentsForParentProcess(ObjectStoreRequestParams& aParams,
+                                           nsIContentChild* aBlobCreator)
 {
   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
   NS_ASSERTION(!IndexedDatabaseManager::IsMainProcess(), "Wrong process!");
+  NS_ASSERTION(aBlobCreator, "Must have a valid creator!");
 
   PROFILER_MAIN_THREAD_LABEL("CountHelper", "PackArgumentsForParentProcess [IDBObjectStore.cpp]",
     js::ProfileEntry::Category::STORAGE);

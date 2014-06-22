@@ -39,9 +39,6 @@
 #include "jit/PcScriptCache.h"
 #include "js/MemoryMetrics.h"
 #include "js/SliceBudget.h"
-#ifdef JS_YARR
-#include "yarr/BumpPointerAllocator.h"
-#endif
 
 #include "jscntxtinlines.h"
 #include "jsgcinlines.h"
@@ -87,6 +84,9 @@ PerThreadData::PerThreadData(JSRuntime *runtime)
 #endif
     dtoaState(nullptr),
     suppressGC(0),
+#ifdef DEBUG
+    ionCompiling(false),
+#endif
     activeCompilations(0)
 {}
 
@@ -107,10 +107,8 @@ PerThreadData::init()
     if (!dtoaState)
         return false;
 
-#ifndef JS_YARR
     if (!regexpStack.init())
         return false;
-#endif
 
     return true;
 }
@@ -154,9 +152,6 @@ JSRuntime::JSRuntime(JSRuntime *parentRuntime)
     tempLifoAlloc(TEMP_LIFO_ALLOC_PRIMARY_CHUNK_SIZE),
     freeLifoAlloc(TEMP_LIFO_ALLOC_PRIMARY_CHUNK_SIZE),
     execAlloc_(nullptr),
-#ifdef JS_YARR
-    bumpAlloc_(nullptr),
-#endif
     jitRuntime_(nullptr),
     selfHostingGlobal_(nullptr),
     nativeStackBase(0),
@@ -181,6 +176,7 @@ JSRuntime::JSRuntime(JSRuntime *parentRuntime)
 #if defined(JS_ARM_SIMULATOR) || defined(JS_MIPS_SIMULATOR)
     simulatorRuntime_(nullptr),
 #endif
+    scriptAndCountsVector(nullptr),
     NaNValue(DoubleNaNValue()),
     negativeInfinityValue(DoubleValue(NegativeInfinity<double>())),
     positiveInfinityValue(DoubleValue(PositiveInfinity<double>())),
@@ -223,7 +219,7 @@ JSRuntime::JSRuntime(JSRuntime *parentRuntime)
     defaultJSContextCallback(nullptr),
     ctypesActivityCallback(nullptr),
     forkJoinWarmup(0),
-    parallelIonCompilationEnabled_(true),
+    offthreadIonCompilationEnabled_(true),
     parallelParsingEnabled_(true),
 #ifdef DEBUG
     enteredPolicy(nullptr),
@@ -435,9 +431,6 @@ JSRuntime::~JSRuntime()
     atomsCompartment_ = nullptr;
 
     js_free(defaultLocale);
-#ifdef JS_YARR
-    js_delete(bumpAlloc_);
-#endif
     js_delete(mathCache_);
 #ifdef JS_ION
     js_delete(jitRuntime_);
@@ -513,10 +506,6 @@ JSRuntime::addSizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf, JS::Runtim
     rtSizes->dtoa += mallocSizeOf(mainThread.dtoaState);
 
     rtSizes->temporary += tempLifoAlloc.sizeOfExcludingThis(mallocSizeOf);
-
-#ifdef JS_YARR
-    rtSizes->regexpData += bumpAlloc_ ? bumpAlloc_->sizeOfNonHeapData() : 0;
-#endif
 
     rtSizes->interpreterStack += interpreterStack_.sizeOfExcludingThis(mallocSizeOf);
 
@@ -600,22 +589,6 @@ JSRuntime::createExecutableAllocator(JSContext *cx)
     return execAlloc_;
 }
 
-#ifdef JS_YARR
-
-WTF::BumpPointerAllocator *
-JSRuntime::createBumpPointerAllocator(JSContext *cx)
-{
-    JS_ASSERT(!bumpAlloc_);
-    JS_ASSERT(cx->runtime() == this);
-
-    bumpAlloc_ = js_new<WTF::BumpPointerAllocator>();
-    if (!bumpAlloc_)
-        js_ReportOutOfMemory(cx);
-    return bumpAlloc_;
-}
-
-#endif // JS_YARR
-
 MathCache *
 JSRuntime::createMathCache(JSContext *cx)
 {
@@ -695,19 +668,6 @@ JSRuntime::triggerActivityCallback(bool active)
 }
 
 void
-JSRuntime::setGCMaxMallocBytes(size_t value)
-{
-    /*
-     * For compatibility treat any value that exceeds PTRDIFF_T_MAX to
-     * mean that value.
-     */
-    gc.maxMallocBytes = (ptrdiff_t(value) >= 0) ? value : size_t(-1) >> 1;
-    resetGCMallocBytes();
-    for (ZonesIter zone(this, WithAtoms); !zone.done(); zone.next())
-        zone->setGCMaxMallocBytes(value);
-}
-
-void
 JSRuntime::updateMallocCounter(size_t nbytes)
 {
     updateMallocCounter(nullptr, nbytes);
@@ -716,22 +676,13 @@ JSRuntime::updateMallocCounter(size_t nbytes)
 void
 JSRuntime::updateMallocCounter(JS::Zone *zone, size_t nbytes)
 {
-    /* We tolerate any thread races when updating gcMallocBytes. */
-    gc.mallocBytes -= ptrdiff_t(nbytes);
-    if (MOZ_UNLIKELY(gc.mallocBytes <= 0))
-        onTooMuchMalloc();
-    else if (zone)
-        zone->updateMallocCounter(nbytes);
+    gc.updateMallocCounter(zone, nbytes);
 }
 
 JS_FRIEND_API(void)
 JSRuntime::onTooMuchMalloc()
 {
-    if (!CurrentThreadCanAccessRuntime(this))
-        return;
-
-    if (!gc.mallocGCTriggered)
-        gc.mallocGCTriggered = TriggerGC(this, JS::gcreason::TOO_MUCH_MALLOC);
+    gc.onTooMuchMalloc();
 }
 
 JS_FRIEND_API(void *)

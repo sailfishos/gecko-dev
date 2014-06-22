@@ -44,6 +44,7 @@
 #include "nsIScreenManager.h"
 #include "nsIServiceManager.h"
 #include "nsThemeConstants.h"
+#include "nsTransitionManager.h"
 #include "nsDisplayList.h"
 #include "mozilla/EventDispatcher.h"
 #include "mozilla/EventStateManager.h"
@@ -330,26 +331,37 @@ nsMenuPopupFrame::GetShadowStyle()
   return NS_STYLE_WINDOW_SHADOW_DEFAULT;
 }
 
-// this class is used for dispatching popupshown events asynchronously.
-class nsXULPopupShownEvent : public nsRunnable
+NS_IMETHODIMP nsXULPopupShownEvent::Run()
 {
-public:
-  nsXULPopupShownEvent(nsIContent *aPopup, nsPresContext* aPresContext)
-    : mPopup(aPopup), mPresContext(aPresContext)
-  {
+  WidgetMouseEvent event(true, NS_XUL_POPUP_SHOWN, nullptr,
+                         WidgetMouseEvent::eReal);
+  return EventDispatcher::Dispatch(mPopup, mPresContext, &event);                 
+}
+
+NS_IMETHODIMP nsXULPopupShownEvent::HandleEvent(nsIDOMEvent* aEvent)
+{
+  nsMenuPopupFrame* popup = do_QueryFrame(mPopup->GetPrimaryFrame());
+  if (popup) {
+    // ResetPopupShownDispatcher will delete the reference to this, so keep
+    // another one until Run is finished.
+    nsRefPtr<nsXULPopupShownEvent> event = this;
+    // Only call Run if it the dispatcher was assigned. This avoids calling the
+    // Run method if the transitionend event fires multiple times.
+    if (popup->ClearPopupShownDispatcher()) {
+      return Run();
+    }
   }
 
-  NS_IMETHOD Run() MOZ_OVERRIDE
-  {
-    WidgetMouseEvent event(true, NS_XUL_POPUP_SHOWN, nullptr,
-                           WidgetMouseEvent::eReal);
-    return EventDispatcher::Dispatch(mPopup, mPresContext, &event);                 
-  }
+  CancelListener();
+  return NS_OK;
+}
 
-private:
-  nsCOMPtr<nsIContent> mPopup;
-  nsRefPtr<nsPresContext> mPresContext;
-};
+void nsXULPopupShownEvent::CancelListener()
+{
+  mPopup->RemoveSystemEventListener(NS_LITERAL_STRING("transitionend"), this, false);
+}
+
+NS_IMPL_ISUPPORTS_INHERITED(nsXULPopupShownEvent, nsRunnable, nsIDOMEventListener);
 
 void
 nsMenuPopupFrame::SetInitialChildList(ChildListID  aListID,
@@ -482,6 +494,21 @@ nsMenuPopupFrame::LayoutPopup(nsBoxLayoutState& aState, nsIFrame* aParentMenu,
   // finally, if the popup just opened, send a popupshown event
   if (mIsOpenChanged) {
     mIsOpenChanged = false;
+
+#ifndef MOZ_WIDGET_GTK
+    // If the animate attribute is set to open, check for a transition and wait
+    // for it to finish before firing the popupshown event.
+    if (mContent->AttrValueIs(kNameSpaceID_None, nsGkAtoms::animate,
+                              nsGkAtoms::open, eCaseMatters) &&
+        nsLayoutUtils::HasCurrentAnimations(mContent, nsGkAtoms::transitionsProperty, pc)) {
+      mPopupShownDispatcher = new nsXULPopupShownEvent(mContent, pc);
+      mContent->AddSystemEventListener(NS_LITERAL_STRING("transitionend"),
+                                       mPopupShownDispatcher, false, false);
+      return;
+    }
+#endif
+
+    // If there are no transitions, fire the popupshown event right away.
     nsCOMPtr<nsIRunnable> event = new nsXULPopupShownEvent(GetContent(), pc);
     NS_DispatchToCurrentThread(event);
   }
@@ -778,6 +805,8 @@ nsMenuPopupFrame::HidePopup(bool aDeselectMenu, nsPopupState aNewState)
 {
   NS_ASSERTION(aNewState == ePopupClosed || aNewState == ePopupInvisible,
                "popup being set to unexpected state");
+
+  ClearPopupShownDispatcher();
 
   // don't hide the popup when it isn't open
   if (mPopupState == ePopupClosed || mPopupState == ePopupShowing)
@@ -1156,15 +1185,28 @@ nsMenuPopupFrame::SetPopupPosition(nsIFrame* aAnchorFrame, bool aIsMove, bool aS
     }
   }
 
-  // the dimensions of the anchor in its app units
-  nsRect parentRect = aAnchorFrame->GetScreenRectInAppUnits();
+  // In order to deal with transforms, we need the root prescontext:
+  nsPresContext* rootPresContext = presContext->GetRootPresContext();
 
-  // the anchor may be in a different document with a different scale,
-  // so adjust the size so that it is in the app units of the popup instead
-  // of the anchor.
-  parentRect = parentRect.ConvertAppUnitsRoundOut(
-    aAnchorFrame->PresContext()->AppUnitsPerDevPixel(),
-    presContext->AppUnitsPerDevPixel());
+  // If we can't reach a root pres context, don't bother continuing:
+  if (!rootPresContext) {
+    return NS_OK;
+  }
+
+  // And then we need its root frame for a reference
+  nsIFrame* referenceFrame = rootPresContext->FrameManager()->GetRootFrame();
+
+  // the dimensions of the anchor
+  nsRect parentRect = aAnchorFrame->GetRectRelativeToSelf();
+  // Relative to the root
+  parentRect = nsLayoutUtils::TransformFrameRectToAncestor(aAnchorFrame,
+                                                           parentRect,
+                                                           referenceFrame);
+  // Relative to the screen
+  parentRect.MoveBy(referenceFrame->GetScreenRectInAppUnits().TopLeft());
+  // In its own app units
+  parentRect.ConvertAppUnitsRoundOut(rootPresContext->AppUnitsPerDevPixel(),
+                                     presContext->AppUnitsPerDevPixel());
 
   // Set the popup's size to the preferred size. Below, this size will be
   // adjusted to fit on the screen or within the content area. If the anchor
@@ -1469,7 +1511,7 @@ bool nsMenuPopupFrame::ConsumeOutsideClicks()
 
   nsCOMPtr<nsIContent> parentContent = mContent->GetParent();
   if (parentContent) {
-    nsINodeInfo *ni = parentContent->NodeInfo();
+    dom::NodeInfo *ni = parentContent->NodeInfo();
     if (ni->Equals(nsGkAtoms::menulist, kNameSpaceID_XUL))
       return true;  // Consume outside clicks for combo boxes on all platforms
 #if defined(XP_WIN)
@@ -1873,6 +1915,8 @@ nsMenuPopupFrame::DestroyFrom(nsIFrame* aDestructRoot)
     nsContentUtils::AddScriptRunner(
       new nsUnsetAttrRunnable(menu->GetContent(), nsGkAtoms::open));
   }
+
+  ClearPopupShownDispatcher();
 
   nsXULPopupManager* pm = nsXULPopupManager::GetInstance();
   if (pm)

@@ -76,6 +76,7 @@ enum ReadFrameArgsBehavior {
 class IonCommonFrameLayout;
 class IonJSFrameLayout;
 class IonExitFrameLayout;
+class IonBailoutIterator;
 
 class BaselineFrame;
 
@@ -88,11 +89,15 @@ class JitFrameIterator
     FrameType type_;
     uint8_t *returnAddressToFp_;
     size_t frameSize_;
+    ExecutionMode mode_;
+    enum Kind {
+        Kind_FrameIterator,
+        Kind_BailoutIterator
+    } kind_;
 
   private:
     mutable const SafepointIndex *cachedSafepointIndex_;
     const JitActivation *activation_;
-    ExecutionMode mode_;
 
     void dumpBaseline() const;
 
@@ -102,14 +107,21 @@ class JitFrameIterator
         type_(JitFrame_Exit),
         returnAddressToFp_(nullptr),
         frameSize_(0),
+        mode_(mode),
+        kind_(Kind_FrameIterator),
         cachedSafepointIndex_(nullptr),
-        activation_(nullptr),
-        mode_(mode)
+        activation_(nullptr)
     { }
 
     explicit JitFrameIterator(ThreadSafeContext *cx);
     explicit JitFrameIterator(const ActivationIterator &activations);
     explicit JitFrameIterator(IonJSFrameLayout *fp, ExecutionMode mode);
+
+    bool isBailoutIterator() const {
+        return kind_ == Kind_BailoutIterator;
+    }
+    IonBailoutIterator *asBailoutIterator();
+    const IonBailoutIterator *asBailoutIterator() const;
 
     // Current frame information.
     FrameType type() const {
@@ -179,6 +191,10 @@ class JitFrameIterator
         return returnAddressToFp_;
     }
 
+    // Returns the resume address. As above, except taking
+    // BaselineDebugModeOSRInfo into account, if present.
+    uint8_t *resumeAddressToFp() const;
+
     // Previous frame information extracted from the current frame.
     inline size_t prevFrameLocalSize() const;
     inline FrameType prevType() const;
@@ -200,6 +216,10 @@ class JitFrameIterator
 
     // Returns the IonScript associated with this JS frame.
     IonScript *ionScript() const;
+
+    // Returns the IonScript associated with this JS frame; the frame must
+    // not be invalidated.
+    IonScript *ionScriptFromCalleeToken() const;
 
     // Returns the Safepoint associated with this JS frame. Incurs a lookup
     // overhead.
@@ -243,7 +263,6 @@ class JitFrameIterator
 };
 
 class IonJSFrameLayout;
-class IonBailoutIterator;
 
 class RResumePoint;
 

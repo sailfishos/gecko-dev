@@ -41,7 +41,6 @@
 #include "nsDOMString.h"
 #include "nsDOMTokenList.h"
 #include "nsFocusManager.h"
-#include "nsFrameManager.h"
 #include "nsFrameSelection.h"
 #include "nsGenericHTMLElement.h"
 #include "nsGkAtoms.h"
@@ -62,7 +61,8 @@
 #include "nsIEditor.h"
 #include "nsIEditorIMESupport.h"
 #include "nsILinkHandler.h"
-#include "nsINodeInfo.h"
+#include "mozilla/dom/NodeInfo.h"
+#include "mozilla/dom/NodeInfoInlines.h"
 #include "nsIPresShell.h"
 #include "nsIScriptError.h"
 #include "nsIScriptGlobalObject.h"
@@ -779,33 +779,33 @@ nsINode::SetUserData(const nsAString &aKey, nsIVariant *aData,
   return NS_OK;
 }
 
-JS::Value
+void
 nsINode::SetUserData(JSContext* aCx, const nsAString& aKey,
                      JS::Handle<JS::Value> aData,
-                     nsIDOMUserDataHandler* aHandler, ErrorResult& aError)
+                     nsIDOMUserDataHandler* aHandler,
+                     JS::MutableHandle<JS::Value> aRetval,
+                     ErrorResult& aError)
 {
   nsCOMPtr<nsIVariant> data;
-  JS::Rooted<JS::Value> dataVal(aCx, aData);
-  aError = nsContentUtils::XPConnect()->JSValToVariant(aCx, dataVal, getter_AddRefs(data));
+  aError = nsContentUtils::XPConnect()->JSValToVariant(aCx, aData, getter_AddRefs(data));
   if (aError.Failed()) {
-    return JS::UndefinedValue();
+    return;
   }
 
   nsCOMPtr<nsIVariant> oldData;
   aError = SetUserData(aKey, data, aHandler, getter_AddRefs(oldData));
   if (aError.Failed()) {
-    return JS::UndefinedValue();
+    return;
   }
 
   if (!oldData) {
-    return JS::NullValue();
+    aRetval.setNull();
+    return;
   }
 
-  JS::Rooted<JS::Value> result(aCx);
   JSAutoCompartment ac(aCx, GetWrapper());
   aError = nsContentUtils::XPConnect()->VariantToJS(aCx, GetWrapper(), oldData,
-                                                    &result);
-  return result;
+                                                    aRetval);
 }
 
 nsIVariant*
@@ -820,19 +820,19 @@ nsINode::GetUserData(const nsAString& aKey)
   return static_cast<nsIVariant*>(GetProperty(DOM_USER_DATA, key));
 }
 
-JS::Value
-nsINode::GetUserData(JSContext* aCx, const nsAString& aKey, ErrorResult& aError)
+void
+nsINode::GetUserData(JSContext* aCx, const nsAString& aKey,
+                     JS::MutableHandle<JS::Value> aRetval, ErrorResult& aError)
 {
   nsIVariant* data = GetUserData(aKey);
   if (!data) {
-    return JS::NullValue();
+    aRetval.setNull();
+    return;
   }
 
-  JS::Rooted<JS::Value> result(aCx);
   JSAutoCompartment ac(aCx, GetWrapper());
   aError = nsContentUtils::XPConnect()->VariantToJS(aCx, GetWrapper(), data,
-                                                    &result);
-  return result;
+                                                    aRetval);
 }
 
 uint16_t
@@ -971,8 +971,8 @@ nsINode::IsEqualNode(nsINode* aOther)
       return false;
     }
 
-    nsINodeInfo* nodeInfo1 = node1->mNodeInfo;
-    nsINodeInfo* nodeInfo2 = node2->mNodeInfo;
+    mozilla::dom::NodeInfo* nodeInfo1 = node1->mNodeInfo;
+    mozilla::dom::NodeInfo* nodeInfo2 = node2->mNodeInfo;
     if (!nodeInfo1->Equals(nodeInfo2) ||
         nodeInfo1->GetExtraName() != nodeInfo2->GetExtraName()) {
       return false;
@@ -2735,4 +2735,26 @@ EventTarget::DispatchEvent(Event& aEvent,
   bool result = false;
   aRv = DispatchEvent(&aEvent, &result);
   return result;
+}
+
+Element*
+nsINode::GetParentElementCrossingShadowRoot() const
+{
+  if (!mParent) {
+    return nullptr;
+  }
+
+  if (mParent->IsElement()) {
+    return mParent->AsElement();
+  }
+
+  ShadowRoot* shadowRoot = ShadowRoot::FromNode(mParent);
+  if (shadowRoot) {
+    nsIContent* host = shadowRoot->GetHost();
+    MOZ_ASSERT(host, "ShowRoots should always have a host");
+    MOZ_ASSERT(host->IsElement(), "ShadowRoot hosts should always be Elements");
+    return host->AsElement();
+  }
+
+  return nullptr;
 }

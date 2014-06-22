@@ -58,7 +58,6 @@ import org.mozilla.gecko.util.HardwareUtils;
 import org.mozilla.gecko.util.NativeEventListener;
 import org.mozilla.gecko.util.NativeJSObject;
 import org.mozilla.gecko.util.ThreadUtils;
-import org.mozilla.gecko.util.UiAsyncTask;
 import org.mozilla.gecko.webapp.EventListener;
 import org.mozilla.gecko.webapp.UninstallListener;
 import org.mozilla.gecko.widget.ButtonToast;
@@ -111,7 +110,6 @@ import android.view.MotionEvent;
 import android.view.OrientationEventListener;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
-import android.view.TextureView;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewStub;
@@ -175,7 +173,6 @@ public abstract class GeckoApp
 
     protected RelativeLayout mMainLayout;
     protected RelativeLayout mGeckoLayout;
-    public View getView() { return mGeckoLayout; }
     private View mCameraView;
     private OrientationEventListener mCameraOrientationEventListener;
     public List<GeckoAppShell.AppStateListener> mAppStateListeners;
@@ -538,14 +535,14 @@ public abstract class GeckoApp
             final String url = message.getString("url");
             final String title = message.getString("title");
             final Context context = this;
-            ThreadUtils.postToUiThread(new Runnable() {
+            ThreadUtils.postToBackgroundThread(new Runnable() {
                 @Override
                 public void run() {
-                    Toast.makeText(context, R.string.bookmark_added, Toast.LENGTH_SHORT).show();
-                    ThreadUtils.postToBackgroundThread(new Runnable() {
+                    BrowserDB.addBookmark(getContentResolver(), title, url);
+                    ThreadUtils.postToUiThread(new Runnable() {
                         @Override
                         public void run() {
-                            BrowserDB.addBookmark(getContentResolver(), title, url);
+                            Toast.makeText(context, R.string.bookmark_added, Toast.LENGTH_SHORT).show();
                         }
                     });
                 }
@@ -843,8 +840,8 @@ public abstract class GeckoApp
         mFullScreenPluginContainer = new FullScreenHolder(this);
 
         FrameLayout.LayoutParams layoutParams = new FrameLayout.LayoutParams(
-                            ViewGroup.LayoutParams.FILL_PARENT,
-                            ViewGroup.LayoutParams.FILL_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT,
                             Gravity.CENTER);
         mFullScreenPluginContainer.addView(view, layoutParams);
 

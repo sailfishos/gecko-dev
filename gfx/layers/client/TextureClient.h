@@ -31,6 +31,14 @@ class gfxReusableSurfaceWrapper;
 class gfxImageSurface;
 
 namespace mozilla {
+namespace gfx {
+class SurfaceStream;
+}
+
+namespace gl {
+class GLContext;
+}
+
 namespace layers {
 
 class AsyncTransactionTracker;
@@ -39,7 +47,7 @@ class CompositableForwarder;
 class ISurfaceAllocator;
 class CompositableClient;
 class PlanarYCbCrImage;
-class PlanarYCbCrData;
+struct PlanarYCbCrData;
 class Image;
 class PTextureChild;
 class TextureChild;
@@ -53,7 +61,8 @@ class TextureClient;
 
 enum TextureAllocationFlags {
   ALLOC_DEFAULT = 0,
-  ALLOC_CLEAR_BUFFER = 1
+  ALLOC_CLEAR_BUFFER = 1,
+  ALLOC_CLEAR_BUFFER_WHITE = 2
 };
 
 /**
@@ -159,13 +168,13 @@ public:
    * {
    *   // Restrict this code's scope to ensure all references to dt are gone
    *   // when Unlock is called.
-   *   RefPtr<DrawTarget> dt = texture->GetAsDrawTarget();
+   *   DrawTarget* dt = texture->BorrowDrawTarget();
    *   // use the draw target ...
    * }
    * texture->Unlock();
    *
    */
-  virtual TemporaryRef<gfx::DrawTarget> GetAsDrawTarget() { return nullptr; }
+  virtual gfx::DrawTarget* BorrowDrawTarget() { return nullptr; }
 
   // TextureClients that can expose a DrawTarget should override this method.
   virtual gfx::SurfaceFormat GetFormat() const
@@ -291,11 +300,24 @@ public:
    */
   void ForceRemove();
 
-  virtual void SetReleaseFenceHandle(FenceHandle aReleaseFenceHandle) {}
+  virtual void SetReleaseFenceHandle(FenceHandle aReleaseFenceHandle)
+  {
+    mReleaseFenceHandle = aReleaseFenceHandle;
+  }
 
   const FenceHandle& GetReleaseFenceHandle() const
   {
     return mReleaseFenceHandle;
+  }
+
+  virtual void SetAcquireFenceHandle(FenceHandle aAcquireFenceHandle)
+  {
+    mAcquireFenceHandle = aAcquireFenceHandle;
+  }
+
+  const FenceHandle& GetAcquireFenceHandle() const
+  {
+    return mAcquireFenceHandle;
   }
 
   /**
@@ -347,6 +369,7 @@ protected:
   bool mShared;
   bool mValid;
   FenceHandle mReleaseFenceHandle;
+  FenceHandle mAcquireFenceHandle;
 
   friend class TextureChild;
   friend void TestTextureClientSurface(TextureClient*, gfxImageSurface*);
@@ -381,7 +404,7 @@ public:
 
   virtual bool CanExposeDrawTarget() const MOZ_OVERRIDE { return true; }
 
-  virtual TemporaryRef<gfx::DrawTarget> GetAsDrawTarget() MOZ_OVERRIDE;
+  virtual gfx::DrawTarget* BorrowDrawTarget() MOZ_OVERRIDE;
 
   virtual bool AllocateForSurface(gfx::IntSize aSize,
                                   TextureAllocationFlags aFlags = ALLOC_DEFAULT) MOZ_OVERRIDE;
@@ -479,6 +502,49 @@ public:
 protected:
   uint8_t* mBuffer;
   size_t mBufSize;
+};
+
+/**
+ * A TextureClient implementation to share SurfaceStream.
+ */
+class StreamTextureClient : public TextureClient
+{
+public:
+  StreamTextureClient(TextureFlags aFlags);
+
+  ~StreamTextureClient();
+
+  virtual bool IsAllocated() const MOZ_OVERRIDE;
+
+  virtual bool Lock(OpenMode mode) MOZ_OVERRIDE;
+
+  virtual void Unlock() MOZ_OVERRIDE;
+
+  virtual bool IsLocked() const MOZ_OVERRIDE { return mIsLocked; }
+
+  virtual bool ToSurfaceDescriptor(SurfaceDescriptor& aOutDescriptor) MOZ_OVERRIDE;
+
+  virtual bool HasInternalBuffer() const MOZ_OVERRIDE { return false; }
+
+  void InitWith(gfx::SurfaceStream* aStream);
+
+  virtual gfx::IntSize GetSize() const { return gfx::IntSize(); }
+
+  virtual gfx::SurfaceFormat GetFormat() const MOZ_OVERRIDE
+  {
+    return gfx::SurfaceFormat::UNKNOWN;
+  }
+
+  virtual bool AllocateForSurface(gfx::IntSize aSize, TextureAllocationFlags aFlags) MOZ_OVERRIDE
+  {
+    MOZ_CRASH("Should never hit this.");
+    return false;
+  }
+
+protected:
+  bool mIsLocked;
+  RefPtr<gfx::SurfaceStream> mStream;
+  RefPtr<gl::GLContext> mGL; // Just for reference holding.
 };
 
 struct TextureClientAutoUnlock

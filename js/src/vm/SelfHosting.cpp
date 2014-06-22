@@ -33,6 +33,8 @@
 using namespace js;
 using namespace js::selfhosted;
 
+using JS::AutoCheckCannotGC;
+
 static void
 selfHosting_ErrorReporter(JSContext *cx, const char *message, JSErrorReport *report)
 {
@@ -290,7 +292,7 @@ intrinsic_ParallelSpew(ThreadSafeContext *cx, unsigned argc, Value *vp)
     if (!inspector.ensureChars(cx, nogc))
         return false;
 
-    ScopedJSFreePtr<char> bytes(TwoByteCharsToNewUTF8CharsZ(cx, inspector.twoByteRange()).c_str());
+    ScopedJSFreePtr<char> bytes(JS::CharsToNewUTF8CharsZ(cx, inspector.twoByteRange()).c_str());
     parallel::Spew(parallel::SpewOps, bytes);
 
     args.rval().setUndefined();
@@ -302,7 +304,11 @@ JS_JITINFO_NATIVE_PARALLEL_THREADSAFE(intrinsic_ParallelSpew_jitInfo, intrinsic_
 #endif
 
 /*
- * ForkJoin(func, feedback): Invokes |func| many times in parallel.
+ * ForkJoin(func, sliceStart, sliceEnd, mode, updatable): Invokes |func| many times in parallel.
+ *
+ * If "func" will update a pre-existing object then that object /must/ be passed
+ * as the object "updatable".  It is /not/ correct to pass an object that
+ * references the updatable objects indirectly.
  *
  * See ForkJoin.cpp for details and ParallelArray.js for examples.
  */
@@ -784,7 +790,7 @@ static const JSFunctionSpec intrinsic_functions[] = {
     JS_FN("NewStringIterator",       intrinsic_NewStringIterator,       0,0),
     JS_FN("IsStringIterator",        intrinsic_IsStringIterator,        1,0),
 
-    JS_FN("ForkJoin",                intrinsic_ForkJoin,                2,0),
+    JS_FN("ForkJoin",                intrinsic_ForkJoin,                5,0),
     JS_FN("ForkJoinNumWorkers",      intrinsic_ForkJoinNumWorkers,      0,0),
     JS_FN("NewDenseArray",           intrinsic_NewDenseArray,           1,0),
     JS_FN("ShouldForceSequential",   intrinsic_ShouldForceSequential,   0,0),

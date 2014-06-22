@@ -6,11 +6,7 @@
 
 const { Cc, Ci, Cu } = require("chrome");
 
-const { XPCOMUtils } = require("resource://gre/modules/XPCOMUtils.jsm");
 const Services = require("Services");
-
-const promise = require("resource://gre/modules/Promise.jsm").Promise;
-const { getRuleLocation } = require("devtools/server/actors/stylesheets");
 
 const protocol = require("devtools/server/protocol");
 const { method, custom, RetVal, Arg } = protocol;
@@ -21,8 +17,11 @@ loader.lazyGetter(this, "gDevTools", () => {
 loader.lazyGetter(this, "DOMUtils", () => {
   return Cc["@mozilla.org/inspector/dom-utils;1"].getService(Ci.inIDOMUtils)
 });
-loader.lazyGetter(this, "prettifyCSS", () => {
-  return require("resource:///modules/devtools/StyleSheetEditor.jsm").prettifyCSS;
+loader.lazyGetter(this, "stylesheets", () => {
+  return require("devtools/server/actors/stylesheets");
+});
+loader.lazyGetter(this, "CssLogic", () => {
+  return require("devtools/styleinspector/css-logic").CssLogic;
 });
 
 const CSSRule = Ci.nsIDOMCSSRule;
@@ -180,7 +179,8 @@ let UsageReportActor = protocol.ActorClass({
     observer.observe(document, {
       attributes: true,
       childList: true,
-      characterData: false
+      characterData: false,
+      subtree: true
     });
   },
 
@@ -364,10 +364,10 @@ let UsageReportActor = protocol.ActorClass({
     const ruleToRuleReport = function(rule, ruleData) {
       return {
         url: rule.url,
-        shortUrl: rule.url.split("/").slice(-1),
+        shortUrl: rule.url.split("/").slice(-1)[0],
         start: { line: rule.line, column: rule.column },
         selectorText: ruleData.selectorText,
-        formattedCssText: prettifyCSS(ruleData.cssText)
+        formattedCssText: CssLogic.prettifyCSS(ruleData.cssText)
       };
     }
 
@@ -441,9 +441,17 @@ let UsageReportActor = protocol.ActorClass({
   _testOnly_isRunning: method(function() {
     return this._running;
   }, {
-    response: { value: RetVal("boolean")}
+    response: { value: RetVal("boolean") }
   }),
 
+  /**
+   * For testing only. What pages did we visit.
+   */
+  _testOnly_visitedPages: method(function() {
+    return [...this._visitedPages];
+  }, {
+    response: { value: RetVal("array:string") }
+  }),
 });
 
 exports.UsageReportActor = UsageReportActor;
@@ -515,7 +523,7 @@ function getImportedSheets(stylesheet) {
  * @see deconstructRuleId(ruleId)
  */
 function ruleToId(rule) {
-  let loc = getRuleLocation(rule);
+  let loc = stylesheets.getRuleLocation(rule);
   return sheetToUrl(rule.parentStyleSheet) + "|" + loc.line + "|" + loc.column;
 }
 
@@ -639,10 +647,11 @@ const SEL_MEDIA = [ "blank", "first", "left", "right" ];
  * we think should not have to match in order for the selector to be relevant.
  */
 function getTestSelector(selector) {
+  let replacement = selector;
   let replaceSelector = pseudo => {
-    selector = selector.replace(" :" + selector, " *")
-                       .replace("(:" + selector, "(*")
-                       .replace(":" + selector, "");
+    replacement = replacement.replace(" :" + pseudo, " *")
+                             .replace("(:" + pseudo, "(*")
+                             .replace(":" + pseudo, "");
   };
 
   SEL_EXTERNAL.forEach(replaceSelector);
@@ -651,10 +660,10 @@ function getTestSelector(selector) {
 
   // Pseudo elements work in : and :: forms
   SEL_ELEMENT.forEach(pseudo => {
-    selector = selector.replace("::" + selector, "");
+    replacement = replacement.replace("::" + pseudo, "");
   });
 
-  return selector;
+  return replacement;
 }
 
 /**
@@ -672,11 +681,17 @@ exports.SEL_ALL = [
  * Find a URL for a given stylesheet
  */
 const sheetToUrl = exports.sheetToUrl = function(stylesheet) {
+  // For <link> elements
   if (stylesheet.href) {
     return stylesheet.href;
   }
-  if (stylesheet.ownerNode && stylesheet.ownerNode.baseURI) {
-    return stylesheet.ownerNode.baseURI;
+
+  // For <style> elements
+  if (stylesheet.ownerNode) {
+    let document = stylesheet.ownerNode.ownerDocument;
+    let sheets = [...document.querySelectorAll("style")];
+    let index = sheets.indexOf(stylesheet.ownerNode);
+    return getURL(document) + ' → <style> index ' + index;
   }
 
   throw new Error("Unknown sheet source");
@@ -757,11 +772,13 @@ const knownFronts = new WeakMap();
 
 /**
  * Create a UsageReportFront only when needed (returns a promise)
+ * For notes on target.makeRemote(), see
+ * https://bugzilla.mozilla.org/show_bug.cgi?id=1016330#c7
  */
 const getUsage = exports.getUsage = function(target) {
   return target.makeRemote().then(() => {
     let front = knownFronts.get(target.client)
-    if (front == null) {
+    if (front == null && target.form.usageReportActor != null) {
       front = new UsageReportFront(target.client, target.form);
       knownFronts.set(target.client, front);
     }

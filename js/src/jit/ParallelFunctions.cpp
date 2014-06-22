@@ -17,6 +17,8 @@
 using namespace js;
 using namespace jit;
 
+using JS::AutoCheckCannotGC;
+
 using parallel::Spew;
 using parallel::SpewOps;
 using parallel::SpewBailouts;
@@ -36,7 +38,11 @@ JSObject *
 jit::NewGCThingPar(ForkJoinContext *cx, gc::AllocKind allocKind)
 {
     JS_ASSERT(ForkJoinContext::current() == cx);
+#ifdef JSGC_FJGENERATIONAL
+    return js::NewGCObject<CanGC>(cx, allocKind, 0, gc::DefaultHeap);
+#else
     return js::NewGCObject<NoGC>(cx, allocKind, 0, gc::TenuredHeap);
+#endif
 }
 
 bool

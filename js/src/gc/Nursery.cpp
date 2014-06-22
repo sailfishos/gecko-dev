@@ -107,7 +107,7 @@ js::Nursery::enable()
     setCurrentChunk(0);
     currentStart_ = position();
 #ifdef JS_GC_ZEAL
-    if (runtime()->gc.zealMode == ZealGenerationalGCValue)
+    if (runtime()->gcZeal() == ZealGenerationalGCValue)
         enterZealMode();
 #endif
 }
@@ -129,7 +129,7 @@ js::Nursery::isEmpty() const
     JS_ASSERT(runtime_);
     if (!isEnabled())
         return true;
-    JS_ASSERT_IF(runtime_->gc.zealMode != ZealGenerationalGCValue, currentStart_ == start());
+    JS_ASSERT_IF(runtime_->gcZeal() != ZealGenerationalGCValue, currentStart_ == start());
     return position() == currentStart_;
 }
 
@@ -244,7 +244,7 @@ js::Nursery::reallocateSlots(JSContext *cx, JSObject *obj, HeapSlot *oldSlots,
 
     if (!isInside(oldSlots)) {
         HeapSlot *newSlots = static_cast<HeapSlot *>(cx->realloc_(oldSlots, oldSize, newSize));
-        if (oldSlots != newSlots) {
+        if (newSlots && oldSlots != newSlots) {
             hugeSlots.remove(oldSlots);
             /* If this put fails, we will only leak the slots. */
             (void)hugeSlots.put(newSlots);
@@ -257,7 +257,8 @@ js::Nursery::reallocateSlots(JSContext *cx, JSObject *obj, HeapSlot *oldSlots,
         return oldSlots;
 
     HeapSlot *newSlots = allocateSlots(cx, obj, newCount);
-    PodCopy(newSlots, oldSlots, oldCount);
+    if (newSlots)
+        PodCopy(newSlots, oldSlots, oldCount);
     return newSlots;
 }
 
@@ -284,7 +285,8 @@ js::Nursery::allocateHugeSlots(JSContext *cx, size_t nslots)
 {
     HeapSlot *slots = cx->pod_malloc<HeapSlot>(nslots);
     /* If this put fails, we will only leak the slots. */
-    (void)hugeSlots.put(slots);
+    if (slots)
+        (void)hugeSlots.put(slots);
     return slots;
 }
 
@@ -348,7 +350,7 @@ class MinorCollectionTracer : public JSTracer
          * sweep their dead views. Incremental collection also use these lists,
          * so we may need to save and restore their contents here.
          */
-        if (rt->gc.incrementalState != NO_INCREMENTAL) {
+        if (rt->gc.state() != NO_INCREMENTAL) {
             for (GCCompartmentsIter c(rt); !c.done(); c.next()) {
                 if (!ArrayBufferObject::saveArrayBufferList(c, liveArrayBuffers))
                     CrashAtUnhandlableOOM("OOM while saving live array buffers");
@@ -359,7 +361,7 @@ class MinorCollectionTracer : public JSTracer
 
     ~MinorCollectionTracer() {
         runtime()->setNeedsBarrier(savedRuntimeNeedBarrier);
-        if (runtime()->gc.incrementalState != NO_INCREMENTAL)
+        if (runtime()->gc.state() != NO_INCREMENTAL)
             ArrayBufferObject::restoreArrayBufferLists(liveArrayBuffers);
     }
 };
@@ -581,9 +583,13 @@ js::Nursery::moveObjectToTenured(JSObject *dst, JSObject *src, AllocKind dstKind
      * Arrays do not necessarily have the same AllocKind between src and dst.
      * We deal with this by copying elements manually, possibly re-inlining
      * them if there is adequate room inline in dst.
+     *
+     * For Arrays we're reducing tenuredSize to the smaller srcSize
+     * because moveElementsToTenured() accounts for all Array elements,
+     * even if they are inlined.
      */
     if (src->is<ArrayObject>())
-        srcSize = sizeof(ObjectImpl);
+        tenuredSize = srcSize = sizeof(ObjectImpl);
 
     js_memcpy(dst, src, srcSize);
     tenuredSize += moveSlotsToTenured(dst, src, dstKind);
@@ -741,11 +747,17 @@ js::Nursery::collect(JSRuntime *rt, JS::gcreason::Reason reason, TypeObjectList 
 
     JS_AbortIfWrongThread(rt);
 
-    if (!isEnabled())
+    StoreBuffer &sb = rt->gc.storeBuffer;
+    if (!isEnabled() || isEmpty()) {
+        /*
+         * Our barriers are not always exact, and there may be entries in the
+         * storebuffer even when the nursery is disabled or empty. It's not
+         * safe to keep these entries as they may refer to tenured cells which
+         * may be freed after this point.
+         */
+        sb.clear();
         return;
-
-    if (isEmpty())
-        return;
+    }
 
     rt->gc.stats.count(gcstats::STAT_MINOR_GC);
 
@@ -757,7 +769,6 @@ js::Nursery::collect(JSRuntime *rt, JS::gcreason::Reason reason, TypeObjectList 
     MinorCollectionTracer trc(rt, this);
 
     // Mark the store buffer. This must happen first.
-    StoreBuffer &sb = rt->gc.storeBuffer;
     TIME_START(markValues);
     sb.markValues(&trc);
     TIME_END(markValues);
@@ -912,6 +923,10 @@ js::Nursery::collect(JSRuntime *rt, JS::gcreason::Reason reason, TypeObjectList 
 #endif
 }
 
+#undef TIME_START
+#undef TIME_END
+#undef TIME_TOTAL
+
 void
 js::Nursery::freeHugeSlots()
 {
@@ -930,7 +945,7 @@ js::Nursery::sweep()
     for (int i = 0; i < NumNurseryChunks; ++i)
         initChunk(i);
 
-    if (runtime()->gc.zealMode == ZealGenerationalGCValue) {
+    if (runtime()->gcZeal() == ZealGenerationalGCValue) {
         MOZ_ASSERT(numActiveChunks_ == NumNurseryChunks);
 
         /* Only reset the alloc point when we are close to the end. */
@@ -955,7 +970,7 @@ void
 js::Nursery::growAllocableSpace()
 {
 #ifdef JS_GC_ZEAL
-    MOZ_ASSERT_IF(runtime()->gc.zealMode == ZealGenerationalGCValue,
+    MOZ_ASSERT_IF(runtime()->gcZeal() == ZealGenerationalGCValue,
                   numActiveChunks_ == NumNurseryChunks);
 #endif
     numActiveChunks_ = Min(numActiveChunks_ * 2, NumNurseryChunks);
@@ -965,7 +980,7 @@ void
 js::Nursery::shrinkAllocableSpace()
 {
 #ifdef JS_GC_ZEAL
-    if (runtime()->gc.zealMode == ZealGenerationalGCValue)
+    if (runtime()->gcZeal() == ZealGenerationalGCValue)
         return;
 #endif
     numActiveChunks_ = Max(numActiveChunks_ - 1, 1);

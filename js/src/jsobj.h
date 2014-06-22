@@ -33,7 +33,7 @@ struct ObjectsExtraSizes;
 namespace js {
 
 class AutoPropDescVector;
-struct GCMarker;
+class GCMarker;
 struct NativeIterator;
 class Nursery;
 struct StackShape;
@@ -187,6 +187,10 @@ DenseRangeWriteBarrierPost(JSRuntime *rt, JSObject *obj, uint32_t start, uint32_
 #endif
 }
 
+namespace gc {
+class ForkJoinNursery;
+}
+
 }  /* namespace js */
 
 /*
@@ -203,9 +207,10 @@ class JSObject : public js::ObjectImpl
 {
   private:
     friend class js::Shape;
-    friend struct js::GCMarker;
-    friend class  js::NewObjectCache;
+    friend class js::GCMarker;
+    friend class js::NewObjectCache;
     friend class js::Nursery;
+    friend class js::gc::ForkJoinNursery;
 
     /* Make the type object to use for LAZY_TYPE objects. */
     static js::types::TypeObject *makeLazyType(JSContext *cx, js::HandleObject obj);
@@ -669,22 +674,7 @@ class JSObject : public js::ObjectImpl
         DenseRangeWriteBarrierPost(runtimeFromMainThread(), this, dstStart, count);
     }
 
-    void initDenseElementsUnbarriered(uint32_t dstStart, const js::Value *src, uint32_t count) {
-        /*
-         * For use by parallel threads, which since they cannot see nursery
-         * things do not require a barrier.
-         */
-        JS_ASSERT(dstStart + count <= getDenseCapacity());
-#if defined(DEBUG) && defined(JSGC_GENERATIONAL)
-        JS_ASSERT(!js::gc::IsInsideNursery(this));
-        for (uint32_t index = 0; index < count; ++index) {
-            const JS::Value& value = src[index];
-            if (value.isMarkable())
-                JS_ASSERT(!js::gc::IsInsideNursery(static_cast<js::gc::Cell *>(value.toGCThing())));
-        }
-#endif
-        memcpy(&elements[dstStart], src, count * sizeof(js::HeapSlot));
-    }
+    void initDenseElementsUnbarriered(uint32_t dstStart, const js::Value *src, uint32_t count);
 
     void moveDenseElements(uint32_t dstStart, uint32_t srcStart, uint32_t count) {
         JS_ASSERT(dstStart + count <= getDenseCapacity());

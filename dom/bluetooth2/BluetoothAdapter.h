@@ -90,8 +90,10 @@ public:
     return mDiscoverableTimeout;
   }
 
-  JS::Value GetDevices(JSContext* aContext, ErrorResult& aRv);
-  JS::Value GetUuids(JSContext* aContext, ErrorResult& aRv);
+  void GetDevices(JSContext* aContext, JS::MutableHandle<JS::Value> aDevices,
+                  ErrorResult& aRv);
+  void GetUuids(JSContext* aContext, JS::MutableHandle<JS::Value> aUuids,
+                ErrorResult& aRv);
 
   already_AddRefed<mozilla::dom::DOMRequest>
     SetName(const nsAString& aName, ErrorResult& aRv);
@@ -184,6 +186,13 @@ private:
     StartStopDiscovery(bool aStart, ErrorResult& aRv);
   already_AddRefed<mozilla::dom::DOMRequest>
     PairUnpair(bool aPair, const nsAString& aDeviceAddress, ErrorResult& aRv);
+
+  bool IsAdapterAttributeChanged(BluetoothAdapterAttribute aType,
+                                 const BluetoothValue& aValue);
+  void HandlePropertyChanged(const BluetoothValue& aValue);
+  void DispatchAttributeEvent(const nsTArray<nsString>& aTypes);
+  BluetoothAdapterAttribute
+    ConvertStringToAdapterAttribute(const nsAString& aString);
 
   JS::Heap<JSObject*> mJsUuids;
   JS::Heap<JSObject*> mJsDeviceAddresses;

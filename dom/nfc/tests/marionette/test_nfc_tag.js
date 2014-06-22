@@ -7,35 +7,10 @@ MARIONETTE_HEAD_JS = "head.js";
 let url = "http://www.mozilla.org";
 
 // TODO : Get this from emulator console command.
-const T2T_RE_INDEX = 2;
+const T1T_RE_INDEX = 2;
+const T2T_RE_INDEX = 3;
 
-function activateRE(re) {
-  let deferred = Promise.defer();
-  let cmd = "nfc nci rf_intf_activated_ntf " + re;
-
-  emulator.run(cmd, function(result) {
-    is(result.pop(), "OK", "check activation of RE" + re);
-    deferred.resolve();
-  });
-
-  return deferred.promise;
-}
-
-function setTagData(re, flag, tnf, type, payload) {
-  let deferred = Promise.defer();
-  let cmd = "nfc tag set " + re +
-            " [" + flag + "," + tnf + "," + type + "," + payload + ",]";
-
-  log("Executing \'" + cmd + "\'");
-  emulator.run(cmd, function(result) {
-    is(result.pop(), "OK", "set NDEF data of tag" + re);
-    deferred.resolve();
-  });
-
-  return deferred.promise;
-}
-
-function testUrlTagDiscover() {
+function testUrlTagDiscover(re) {
   log("Running \'testUrlTagDiscover\'");
   // TODO : Make flag value readable.
   let flag = 0xd0;
@@ -56,17 +31,25 @@ function testUrlTagDiscover() {
     is(type, NfcUtils.toUTF8(records[0].type), "check for type field in NDEF");
     is(payload, NfcUtils.toUTF8(records[0].payload), "check for payload field in NDEF");
 
-    toggleNFC(false, runNextTest);
+    toggleNFC(false).then(runNextTest);
   });
 
-  toggleNFC(true, function() {
-    setTagData(T2T_RE_INDEX, flag, tnf, btoa(type), btoa(payload))
-    .then(() => activateRE(T2T_RE_INDEX));
-  });
+  toggleNFC(true)
+  .then(() => emulator.setTagData(re, flag, tnf, btoa(type), btoa(payload)))
+  .then(() => emulator.activateRE(re));
+}
+
+function testUrlT1TDiscover() {
+  testUrlTagDiscover(T1T_RE_INDEX);
+}
+
+function testUrlT2TDiscover() {
+  testUrlTagDiscover(T2T_RE_INDEX);
 }
 
 let tests = [
-  testUrlTagDiscover
+  testUrlT1TDiscover,
+  testUrlT2TDiscover
 ];
 
 SpecialPowers.pushPermissions(

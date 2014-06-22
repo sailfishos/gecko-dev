@@ -391,17 +391,14 @@ void
 MDefinition::replaceAllUsesWith(MDefinition *dom)
 {
     JS_ASSERT(dom != nullptr);
-    if (dom == this)
-        return;
+    JS_ASSERT(dom != this);
 
     for (size_t i = 0, e = numOperands(); i < e; i++)
         getOperand(i)->setUseRemovedUnchecked();
 
-    for (MUseIterator i(usesBegin()); i != usesEnd(); ) {
-        MUse *use = *i++;
-        JS_ASSERT(use->producer() == this);
-        use->replaceProducer(dom);
-    }
+    for (MUseIterator i(usesBegin()); i != usesEnd(); i++)
+        i->setProducerUnchecked(dom);
+    dom->uses_.takeElements(uses_);
 }
 
 bool
@@ -1537,28 +1534,6 @@ MDiv::fallible() const
     return !isTruncated();
 }
 
-bool
-MMod::canBeDivideByZero() const
-{
-    JS_ASSERT(specialization_ == MIRType_Int32);
-    return !rhs()->isConstant() || rhs()->toConstant()->value().toInt32() == 0;
-}
-
-bool
-MMod::canBePowerOfTwoDivisor() const
-{
-    JS_ASSERT(specialization_ == MIRType_Int32);
-
-    if (!rhs()->isConstant())
-        return true;
-
-    int32_t i = rhs()->toConstant()->value().toInt32();
-    if (i <= 0 || !IsPowerOfTwo(i))
-        return false;
-
-    return true;
-}
-
 MDefinition *
 MMod::foldsTo(TempAllocator &alloc, bool useValueNumbers)
 {
@@ -1569,6 +1544,23 @@ MMod::foldsTo(TempAllocator &alloc, bool useValueNumbers)
         return folded;
 
     return this;
+}
+
+void
+MMod::analyzeEdgeCasesForward()
+{
+    // These optimizations make sense only for integer division
+    if (specialization_ != MIRType_Int32)
+        return;
+
+    if (rhs()->isConstant() && !rhs()->toConstant()->value().isInt32(0))
+        canBeDivideByZero_ = false;
+
+    if (rhs()->isConstant()) {
+        int32_t n = rhs()->toConstant()->value().toInt32();
+        if (n > 0 && !IsPowerOfTwo(n))
+            canBePowerOfTwoDivisor_ = false;
+    }
 }
 
 bool
@@ -3040,7 +3032,7 @@ MAsmJSCall::New(TempAllocator &alloc, const CallSiteDesc &desc, Callee callee,
     for (size_t i = 0; i < call->argRegs_.length(); i++)
         call->argRegs_[i] = args[i].reg;
 
-    if (!call->operands_.init(alloc, call->argRegs_.length() + (callee.which() == Callee::Dynamic ? 1 : 0)))
+    if (!call->init(alloc, call->argRegs_.length() + (callee.which() == Callee::Dynamic ? 1 : 0)))
         return nullptr;
     // FixedList doesn't initialize its elements, so do an unchecked init.
     for (size_t i = 0; i < call->argRegs_.length(); i++)

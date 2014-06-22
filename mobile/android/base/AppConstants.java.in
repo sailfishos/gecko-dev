@@ -6,8 +6,6 @@
 
 package org.mozilla.gecko;
 
-import android.app.Activity;
-
 import org.mozilla.gecko.mozglue.RobocopTarget;
 
 /**
@@ -144,13 +142,6 @@ public class AppConstants {
 
     public static final boolean MOZ_ANDROID_BEAM =
 #ifdef MOZ_ANDROID_BEAM
-    true;
-#else
-    false;
-#endif
-
-    public static final boolean MOZ_ANDROID_SYNTHAPKS =
-#ifdef MOZ_ANDROID_SYNTHAPKS
     true;
 #else
     false;

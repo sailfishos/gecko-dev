@@ -1427,7 +1427,7 @@ NewObject(ExclusiveContext *cx, types::TypeObject *type_, JSObject *parent, gc::
         if (!cx->shouldBeJSContext())
             return nullptr;
         JSRuntime *rt = cx->asJSContext()->runtime();
-        rt->gc.incrementalEnabled = false;
+        rt->gc.disableIncrementalGC();
 
 #ifdef DEBUG
         if (rt->gcMode() == JSGC_MODE_INCREMENTAL) {
@@ -2505,6 +2505,9 @@ JSObject::TradeGuts(JSContext *cx, JSObject *a, JSObject *b, TradeGutsReserved &
 bool
 JSObject::swap(JSContext *cx, HandleObject a, HandleObject b)
 {
+    AutoMarkInDeadZone adc1(a->zone());
+    AutoMarkInDeadZone adc2(b->zone());
+
     // Ensure swap doesn't cause a finalizer to not be run.
     JS_ASSERT(IsBackgroundFinalized(a->tenuredGetAllocKind()) ==
               IsBackgroundFinalized(b->tenuredGetAllocKind()));
@@ -2821,6 +2824,8 @@ JSObject::setSlotSpan(ThreadSafeContext *cx, HandleObject obj, uint32_t span)
     return true;
 }
 
+// This will not run the garbage collector.  If a nursery cannot accomodate the slot array
+// an attempt will be made to place the array in the tenured area.
 static HeapSlot *
 AllocateSlots(ThreadSafeContext *cx, JSObject *obj, uint32_t nslots)
 {
@@ -2828,9 +2833,17 @@ AllocateSlots(ThreadSafeContext *cx, JSObject *obj, uint32_t nslots)
     if (cx->isJSContext())
         return cx->asJSContext()->runtime()->gc.nursery.allocateSlots(cx->asJSContext(), obj, nslots);
 #endif
+#ifdef JSGC_FJGENERATIONAL
+    if (cx->isForkJoinContext())
+        return cx->asForkJoinContext()->fjNursery().allocateSlots(obj, nslots);
+#endif
     return cx->pod_malloc<HeapSlot>(nslots);
 }
 
+// This will not run the garbage collector.  If a nursery cannot accomodate the slot array
+// an attempt will be made to place the array in the tenured area.
+//
+// If this returns null then the old slots will be left alone.
 static HeapSlot *
 ReallocateSlots(ThreadSafeContext *cx, JSObject *obj, HeapSlot *oldSlots,
                 uint32_t oldCount, uint32_t newCount)
@@ -2838,8 +2851,14 @@ ReallocateSlots(ThreadSafeContext *cx, JSObject *obj, HeapSlot *oldSlots,
 #ifdef JSGC_GENERATIONAL
     if (cx->isJSContext()) {
         return cx->asJSContext()->runtime()->gc.nursery.reallocateSlots(cx->asJSContext(),
-                                                                          obj, oldSlots,
-                                                                          oldCount, newCount);
+                                                                        obj, oldSlots,
+                                                                        oldCount, newCount);
+    }
+#endif
+#ifdef JSGC_FJGENERATIONAL
+    if (cx->isForkJoinContext()) {
+        return cx->asForkJoinContext()->fjNursery().reallocateSlots(obj, oldSlots,
+                                                                    oldCount, newCount);
     }
 #endif
     return (HeapSlot *)cx->realloc_(oldSlots, oldCount * sizeof(HeapSlot),
@@ -2911,10 +2930,14 @@ JSObject::growSlots(ThreadSafeContext *cx, HandleObject obj, uint32_t oldCount, 
 static void
 FreeSlots(ThreadSafeContext *cx, HeapSlot *slots)
 {
-    // Note: threads without a JSContext do not have access to nursery allocated things.
 #ifdef JSGC_GENERATIONAL
+    // Note: threads without a JSContext do not have access to GGC nursery allocated things.
     if (cx->isJSContext())
         return cx->asJSContext()->runtime()->gc.nursery.freeSlots(cx->asJSContext(), slots);
+#endif
+#ifdef JSGC_FJGENERATIONAL
+    if (cx->isForkJoinContext())
+        return cx->asForkJoinContext()->fjNursery().freeSlots(slots);
 #endif
     js_free(slots);
 }
@@ -3131,6 +3154,8 @@ JSObject::maybeDensifySparseElements(js::ExclusiveContext *cx, HandleObject obj)
     return ED_OK;
 }
 
+// This will not run the garbage collector.  If a nursery cannot accomodate the element array
+// an attempt will be made to place the array in the tenured area.
 static ObjectElements *
 AllocateElements(ThreadSafeContext *cx, JSObject *obj, uint32_t nelems)
 {
@@ -3138,10 +3163,16 @@ AllocateElements(ThreadSafeContext *cx, JSObject *obj, uint32_t nelems)
     if (cx->isJSContext())
         return cx->asJSContext()->runtime()->gc.nursery.allocateElements(cx->asJSContext(), obj, nelems);
 #endif
+#ifdef JSGC_FJGENERATIONAL
+    if (cx->isForkJoinContext())
+        return cx->asForkJoinContext()->fjNursery().allocateElements(obj, nelems);
+#endif
 
     return static_cast<js::ObjectElements *>(cx->malloc_(nelems * sizeof(HeapValue)));
 }
 
+// This will not run the garbage collector.  If a nursery cannot accomodate the element array
+// an attempt will be made to place the array in the tenured area.
 static ObjectElements *
 ReallocateElements(ThreadSafeContext *cx, JSObject *obj, ObjectElements *oldHeader,
                    uint32_t oldCount, uint32_t newCount)
@@ -3149,8 +3180,14 @@ ReallocateElements(ThreadSafeContext *cx, JSObject *obj, ObjectElements *oldHead
 #ifdef JSGC_GENERATIONAL
     if (cx->isJSContext()) {
         return cx->asJSContext()->runtime()->gc.nursery.reallocateElements(cx->asJSContext(), obj,
-                                                                             oldHeader, oldCount,
-                                                                             newCount);
+                                                                           oldHeader, oldCount,
+                                                                           newCount);
+    }
+#endif
+#ifdef JSGC_FJGENERATIONAL
+    if (cx->isForkJoinContext()) {
+        return cx->asForkJoinContext()->fjNursery().reallocateElements(obj, oldHeader,
+                                                                       oldCount, newCount);
     }
 #endif
 
@@ -3400,6 +3437,26 @@ JSProtoKey
 JS::IdentifyStandardInstanceOrPrototype(JSObject *obj)
 {
     return JSCLASS_CACHED_PROTO_KEY(obj->getClass());
+}
+
+JSProtoKey
+JS::IdentifyStandardConstructor(JSObject *obj)
+{
+    // Note that NATIVE_CTOR does not imply that we are a standard constructor,
+    // but the converse is true (at least until we start having self-hosted
+    // constructors for standard classes). This lets us avoid a costly loop for
+    // many functions (which, depending on the call site, may be the common case).
+    if (!obj->is<JSFunction>() || !(obj->as<JSFunction>().flags() & JSFunction::NATIVE_CTOR))
+        return JSProto_Null;
+
+    GlobalObject &global = obj->global();
+    for (size_t k = 0; k < JSProto_LIMIT; ++k) {
+        JSProtoKey key = static_cast<JSProtoKey>(k);
+        if (global.getConstructor(key) == ObjectValue(*obj))
+            return key;
+    }
+
+    return JSProto_Null;
 }
 
 bool
@@ -5274,7 +5331,7 @@ baseops::DeleteGeneric(JSContext *cx, HandleObject obj, HandleId id, bool *succe
         return CallJSDeletePropertyOp(cx, obj->getClass()->delProperty, obj, id, succeeded);
     }
 
-    GCPoke(cx->runtime());
+    cx->runtime()->gc.poke();
 
     if (IsImplicitDenseOrTypedArrayElement(shape)) {
         if (obj->is<TypedArrayObject>()) {

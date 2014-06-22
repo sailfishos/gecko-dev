@@ -1817,6 +1817,10 @@ GK_ATOM(onuserproximity, "onuserproximity")
 // light sensor support
 GK_ATOM(ondevicelight, "ondevicelight")
 
+// Audio channel events
+GK_ATOM(onmozinterruptbegin, "onmozinterruptbegin")
+GK_ATOM(onmozinterruptend, "onmozinterruptbegin")
+
 //---------------------------------------------------------------------------
 // Special atoms
 //---------------------------------------------------------------------------
@@ -1941,8 +1945,8 @@ GK_ATOM(onratechange, "onratechange")
 GK_ATOM(ondurationchange, "ondurationchange")
 GK_ATOM(onvolumechange, "onvolumechange")
 GK_ATOM(onaddtrack, "onaddtrack")
+GK_ATOM(oncontrollerchange, "oncontrollerchange")
 GK_ATOM(oncuechange, "oncuechange")
-GK_ATOM(oncurrentchange, "oncurrentchange")
 GK_ATOM(onenter, "onenter")
 GK_ATOM(onexit, "onexit")
 GK_ATOM(onneedkey, "onneedkey")
@@ -2064,6 +2068,7 @@ GK_ATOM(overlay_scrollbars, "overlay-scrollbars")
 GK_ATOM(windows_default_theme, "windows-default-theme")
 GK_ATOM(mac_graphite_theme, "mac-graphite-theme")
 GK_ATOM(mac_lion_theme, "mac-lion-theme")
+GK_ATOM(mac_yosemite_theme, "mac-yosemite-theme")
 GK_ATOM(windows_compositor, "windows-compositor")
 GK_ATOM(windows_glass, "windows-glass")
 GK_ATOM(touch_enabled, "touch-enabled")
@@ -2095,6 +2100,7 @@ GK_ATOM(_moz_overlay_scrollbars, "-moz-overlay-scrollbars")
 GK_ATOM(_moz_windows_default_theme, "-moz-windows-default-theme")
 GK_ATOM(_moz_mac_graphite_theme, "-moz-mac-graphite-theme")
 GK_ATOM(_moz_mac_lion_theme, "-moz-mac-lion-theme")
+GK_ATOM(_moz_mac_yosemite_theme, "-moz-mac-yosemite-theme")
 GK_ATOM(_moz_windows_compositor, "-moz-windows-compositor")
 GK_ATOM(_moz_windows_classic, "-moz-windows-classic")
 GK_ATOM(_moz_windows_glass, "-moz-windows-glass")

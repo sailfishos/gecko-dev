@@ -83,6 +83,9 @@ class BaseMachFormatter(base.BaseFormatter):
                                              data["command"])
 
     def log(self, data):
+        if data.get('component'):
+            return " ".join([data["component"], data["level"], data["message"]])
+
         return "%s %s" % (data["level"], data["message"])
 
     def _get_subtest_data(self, data):
@@ -167,8 +170,3 @@ class MachTerminalFormatter(BaseMachFormatter):
             result = s
 
         return result
-
-if __name__ == "__main__":
-    base.format_file(sys.stdin,
-                     handlers.StreamHandler(stream=sys.stdout,
-                                            formatter=MachFormatter()))

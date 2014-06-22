@@ -24,7 +24,7 @@ namespace layers {
 
 class CompositableClient;
 class AsyncTransactionTracker;
-class TextureFactoryIdentifier;
+struct TextureFactoryIdentifier;
 class SurfaceDescriptor;
 class SurfaceDescriptorTiles;
 class ThebesBufferData;
@@ -183,6 +183,11 @@ public:
   virtual void UpdatedTexture(CompositableClient* aCompositable,
                               TextureClient* aTexture,
                               nsIntRegion* aRegion) = 0;
+
+
+  virtual void SendFenceHandle(AsyncTransactionTracker* aTracker,
+                               PTextureChild* aTexture,
+                               const FenceHandle& aFence) = 0;
 
   void IdentifyTextureHost(const TextureFactoryIdentifier& aIdentifier);
 

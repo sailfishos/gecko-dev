@@ -202,7 +202,6 @@
 @BINPATH@/components/dom_network.xpt
 @BINPATH@/components/dom_notification.xpt
 @BINPATH@/components/dom_html.xpt
-@BINPATH@/components/dom_indexeddb.xpt
 @BINPATH@/components/dom_offline.xpt
 @BINPATH@/components/dom_json.xpt
 @BINPATH@/components/dom_power.xpt
@@ -372,6 +371,7 @@
 @BINPATH@/browser/components/devtools-clhandler.js
 @BINPATH@/browser/components/Experiments.manifest
 @BINPATH@/browser/components/ExperimentsService.js
+@BINPATH@/browser/components/translation.manifest
 @BINPATH@/components/Downloads.manifest
 @BINPATH@/components/DownloadLegacy.js
 @BINPATH@/components/BrowserPageThumbs.manifest
@@ -638,11 +638,9 @@
 #endif
 
 ; [Webide Files]
-#ifdef MOZ_DEVTOOLS_WEBIDE
 @BINPATH@/browser/chrome/webide@JAREXT@
 @BINPATH@/browser/chrome/webide.manifest
 @BINPATH@/browser/@PREF_DIR@/webide-prefs.js
-#endif
 
 ; shell icons
 #ifdef XP_UNIX

@@ -200,6 +200,9 @@ let CustomizableUIInternal = {
         "bookmarks-menu-button",
         "downloads-button",
         "home-button",
+#ifdef MOZ_LOOP
+        "loop-call-button",
+#endif
         "social-share-button",
       ],
       defaultCollapsed: false,
@@ -1926,13 +1929,21 @@ let CustomizableUIInternal = {
     this.notifyListeners("onWidgetCreated", widget.id);
 
     if (widget.defaultArea) {
+      let addToDefaultPlacements = false;
       let area = gAreas.get(widget.defaultArea);
-      //XXXgijs this won't have any effect for legacy items. Sort of OK because
-      // consumers can modify currentset? Maybe?
-      if (area.has("defaultPlacements")) {
-        area.get("defaultPlacements").push(widget.id);
-      } else {
-        area.set("defaultPlacements", [widget.id]);
+      if (widget.source == CustomizableUI.SOURCE_BUILTIN) {
+        addToDefaultPlacements = true;
+      } else if (!CustomizableUI.isBuiltinToolbar(widget.defaultArea) &&
+                 widget.defaultArea != CustomizableUI.AREA_PANEL) {
+        addToDefaultPlacements = true;
+      }
+
+      if (addToDefaultPlacements) {
+        if (area.has("defaultPlacements")) {
+          area.get("defaultPlacements").push(widget.id);
+        } else {
+          area.set("defaultPlacements", [widget.id]);
+        }
       }
     }
 

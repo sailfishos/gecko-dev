@@ -10,6 +10,7 @@
 #include "vm/String.h"
 
 #include "mozilla/PodOperations.h"
+#include "mozilla/Range.h"
 
 #include "jscntxt.h"
 
@@ -42,9 +43,20 @@ AllocateFatInlineString(ThreadSafeContext *cx, size_t len, CharT **chars)
 
 template <AllowGC allowGC>
 static MOZ_ALWAYS_INLINE JSInlineString *
-NewFatInlineString(ThreadSafeContext *cx, JS::Latin1Chars chars)
+NewFatInlineString(ThreadSafeContext *cx, mozilla::Range<const Latin1Char> chars)
 {
     size_t len = chars.length();
+
+    if (EnableLatin1Strings) {
+        Latin1Char *p;
+        JSInlineString *str = AllocateFatInlineString<allowGC>(cx, len, &p);
+        if (!str)
+            return nullptr;
+
+        mozilla::PodCopy(p, chars.start().get(), len);
+        p[len] = '\0';
+        return str;
+    }
 
     jschar *p;
     JSInlineString *str = AllocateFatInlineString<allowGC>(cx, len, &p);
@@ -59,7 +71,7 @@ NewFatInlineString(ThreadSafeContext *cx, JS::Latin1Chars chars)
 
 template <AllowGC allowGC>
 static MOZ_ALWAYS_INLINE JSInlineString *
-NewFatInlineString(ExclusiveContext *cx, JS::TwoByteChars chars)
+NewFatInlineString(ThreadSafeContext *cx, mozilla::Range<const jschar> chars)
 {
     /*
      * Don't bother trying to find a static atom; measurement shows that not
@@ -79,7 +91,7 @@ NewFatInlineString(ExclusiveContext *cx, JS::TwoByteChars chars)
 
 template <typename CharT>
 static MOZ_ALWAYS_INLINE JSInlineString *
-NewFatInlineString(ExclusiveContext *cx, Handle<JSLinearString*> base, size_t start, size_t length)
+NewFatInlineString(ExclusiveContext *cx, HandleLinearString base, size_t start, size_t length)
 {
     MOZ_ASSERT(JSFatInlineString::lengthFits<CharT>(length));
 
@@ -88,7 +100,7 @@ NewFatInlineString(ExclusiveContext *cx, Handle<JSLinearString*> base, size_t st
     if (!s)
         return nullptr;
 
-    AutoCheckCannotGC nogc;
+    JS::AutoCheckCannotGC nogc;
     mozilla::PodCopy(chars, base->chars<CharT>(nogc) + start, length);
     chars[length] = 0;
     return s;
@@ -194,7 +206,7 @@ JSDependentString::new_(js::ExclusiveContext *cx, JSLinearString *baseArg, size_
                         ? JSFatInlineString::twoByteLengthFits(length)
                         : JSFatInlineString::latin1LengthFits(length);
     if (useFatInline) {
-        JS::Rooted<JSLinearString*> base(cx, baseArg);
+        js::RootedLinearString base(cx, baseArg);
         if (baseArg->hasLatin1Chars())
             return js::NewFatInlineString<JS::Latin1Char>(cx, base, start, length);
         return js::NewFatInlineString<jschar>(cx, base, start, length);
@@ -206,7 +218,7 @@ JSDependentString::new_(js::ExclusiveContext *cx, JSLinearString *baseArg, size_
         return str;
     }
 
-    JS::Rooted<JSLinearString*> base(cx, baseArg);
+    js::RootedLinearString base(cx, baseArg);
 
     str = (JSDependentString *)js_NewGCString<js::CanGC>(cx);
     if (!str)

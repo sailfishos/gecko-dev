@@ -52,7 +52,6 @@
 #include "gfxBlur.h"
 #include "gfxUtils.h"
 
-#include "nsFrameManager.h"
 #include "nsFrameLoader.h"
 #include "nsBidi.h"
 #include "nsBidiPresUtils.h"
@@ -93,6 +92,7 @@
 #include "mozilla/dom/HTMLVideoElement.h"
 #include "mozilla/dom/TextMetrics.h"
 #include "mozilla/dom/UnionTypes.h"
+#include "mozilla/dom/SVGMatrix.h"
 #include "nsGlobalWindow.h"
 #include "GLContext.h"
 #include "GLContextProvider.h"
@@ -149,7 +149,7 @@ public:
   NS_DECL_ISUPPORTS
 
   NS_IMETHOD CollectReports(nsIHandleReportCallback* aHandleReport,
-                            nsISupports* aData)
+                            nsISupports* aData, bool aAnonymize)
   {
     return MOZ_COLLECT_REPORT(
       "canvas-2d-pixels", KIND_OTHER, UNITS_BYTES,
@@ -262,7 +262,8 @@ public:
         mode = ExtendMode::REPEAT;
       }
       mPattern = new (mSurfacePattern.addr())
-        SurfacePattern(state.patternStyles[aStyle]->mSurface, mode);
+        SurfacePattern(state.patternStyles[aStyle]->mSurface, mode,
+                       state.patternStyles[aStyle]->mTransform);
     }
 
     return *mPattern;
@@ -381,6 +382,12 @@ private:
   Float mSigma;
   mgfx::Rect mTempRect;
 };
+
+void
+CanvasPattern::SetTransform(SVGMatrix& aMatrix)
+{
+  mTransform = ToMatrix(aMatrix.GetMatrix());
+}
 
 void
 CanvasGradient::AddColorStop(float offset, const nsAString& colorstr, ErrorResult& rv)
@@ -1267,8 +1274,9 @@ CanvasRenderingContext2D::SetTransform(double m11, double m12,
   mTarget->SetTransform(matrix);
 }
 
-JSObject*
-MatrixToJSObject(JSContext* cx, const Matrix& matrix, ErrorResult& error)
+static void
+MatrixToJSObject(JSContext* cx, const Matrix& matrix,
+                 JS::MutableHandle<JSObject*> result, ErrorResult& error)
 {
   double elts[6] = { matrix._11, matrix._12,
                      matrix._21, matrix._22,
@@ -1278,10 +1286,9 @@ MatrixToJSObject(JSContext* cx, const Matrix& matrix, ErrorResult& error)
   JS::Rooted<JS::Value> val(cx);
   if (!ToJSValue(cx, elts, &val)) {
     error.Throw(NS_ERROR_OUT_OF_MEMORY);
-    return nullptr;
+  } else {
+    result.set(&val.toObject());
   }
-
-  return &val.toObject();
 }
 
 static bool
@@ -1334,11 +1341,13 @@ CanvasRenderingContext2D::SetMozCurrentTransform(JSContext* cx,
   }
 }
 
-JSObject*
+void
 CanvasRenderingContext2D::GetMozCurrentTransform(JSContext* cx,
+                                                 JS::MutableHandle<JSObject*> result,
                                                  ErrorResult& error) const
 {
-  return MatrixToJSObject(cx, mTarget ? mTarget->GetTransform() : Matrix(), error);
+  MatrixToJSObject(cx, mTarget ? mTarget->GetTransform() : Matrix(),
+                   result, error);
 }
 
 void
@@ -1361,12 +1370,14 @@ CanvasRenderingContext2D::SetMozCurrentTransformInverse(JSContext* cx,
   }
 }
 
-JSObject*
+void
 CanvasRenderingContext2D::GetMozCurrentTransformInverse(JSContext* cx,
+                                                        JS::MutableHandle<JSObject*> result,
                                                         ErrorResult& error) const
 {
   if (!mTarget) {
-    return MatrixToJSObject(cx, Matrix(), error);
+    MatrixToJSObject(cx, Matrix(), result, error);
+    return;
   }
 
   Matrix ctm = mTarget->GetTransform();
@@ -1376,7 +1387,7 @@ CanvasRenderingContext2D::GetMozCurrentTransformInverse(JSContext* cx,
     ctm = Matrix(NaN, NaN, NaN, NaN, NaN, NaN);
   }
 
-  return MatrixToJSObject(cx, ctm, error);
+  MatrixToJSObject(cx, ctm, result, error);
 }
 
 //
@@ -2315,6 +2326,8 @@ CanvasRenderingContext2D::SetFont(const nsAString& font,
                      fontStyle->mFont.systemFont,
                      printerFont,
                      fontStyle->mFont.variant == NS_STYLE_FONT_VARIANT_SMALL_CAPS,
+                     fontStyle->mFont.synthesis & NS_FONT_SYNTHESIS_WEIGHT,
+                     fontStyle->mFont.synthesis & NS_FONT_SYNTHESIS_STYLE,
                      fontStyle->mFont.languageOverride);
 
   fontStyle->mFont.AddFontFeaturesToStyle(&style);
@@ -3111,10 +3124,12 @@ CanvasRenderingContext2D::SetMozDash(JSContext* cx,
   }
 }
 
-JS::Value
-CanvasRenderingContext2D::GetMozDash(JSContext* cx, ErrorResult& error)
+void
+CanvasRenderingContext2D::GetMozDash(JSContext* cx,
+                                     JS::MutableHandle<JS::Value> retval,
+                                     ErrorResult& error)
 {
-  return DashArrayToJSVal(CurrentState().dash, cx, error);
+  DashArrayToJSVal(CurrentState().dash, cx, retval, error);
 }
 
 void
@@ -4344,7 +4359,7 @@ CanvasPath::CanvasPath(nsISupports* aParent)
   mPathBuilder = gfxPlatform::GetPlatform()->ScreenReferenceDrawTarget()->CreatePathBuilder();
 }
 
-CanvasPath::CanvasPath(nsISupports* aParent, RefPtr<PathBuilder> aPathBuilder)
+CanvasPath::CanvasPath(nsISupports* aParent, TemporaryRef<PathBuilder> aPathBuilder)
   : mParent(aParent), mPathBuilder(aPathBuilder)
 {
   SetIsDOMBinding();
@@ -4541,8 +4556,8 @@ CanvasPath::BezierTo(const gfx::Point& aCP1,
   mPathBuilder->BezierTo(aCP1, aCP2, aCP3);
 }
 
-RefPtr<gfx::Path>
-CanvasPath::GetPath(const CanvasWindingRule& winding, const mozilla::RefPtr<mozilla::gfx::DrawTarget>& mTarget) const
+TemporaryRef<gfx::Path>
+CanvasPath::GetPath(const CanvasWindingRule& winding, const DrawTarget* aTarget) const
 {
   FillRule fillRule = FillRule::FILL_WINDING;
   if (winding == CanvasWindingRule::Evenodd) {
@@ -4550,7 +4565,7 @@ CanvasPath::GetPath(const CanvasWindingRule& winding, const mozilla::RefPtr<mozi
   }
 
   if (mPath &&
-      (mPath->GetBackendType() == mTarget->GetType()) &&
+      (mPath->GetBackendType() == aTarget->GetBackendType()) &&
       (mPath->GetFillRule() == fillRule)) {
     return mPath;
   }
@@ -4566,8 +4581,8 @@ CanvasPath::GetPath(const CanvasWindingRule& winding, const mozilla::RefPtr<mozi
   }
 
   // retarget our backend if we're used with a different backend
-  if (mPath->GetBackendType() != mTarget->GetType()) {
-    RefPtr<PathBuilder> tmpPathBuilder = mTarget->CreatePathBuilder(fillRule);
+  if (mPath->GetBackendType() != aTarget->GetBackendType()) {
+    RefPtr<PathBuilder> tmpPathBuilder = aTarget->CreatePathBuilder(fillRule);
     mPath->StreamToSink(tmpPathBuilder);
     mPath = tmpPathBuilder->Finish();
   } else if (mPath->GetFillRule() != fillRule) {

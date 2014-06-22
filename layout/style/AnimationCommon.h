@@ -17,11 +17,13 @@
 #include "nsSMILKeySpline.h"
 #include "nsStyleStruct.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/FloatingPoint.h"
 #include "nsCSSPseudoElements.h"
 
-class nsPresContext;
 class nsIFrame;
-class ElementPropertyTransition;
+class nsPresContext;
+class nsStyleChangeList;
+struct ElementPropertyTransition;
 
 
 namespace mozilla {
@@ -72,6 +74,13 @@ protected:
   virtual void AddElementData(CommonElementAnimationData* aData) = 0;
   virtual void ElementDataRemoved() = 0;
   void RemoveAllElementData();
+
+  // When this returns a value other than nullptr, it also,
+  // as a side-effect, notifies the ActiveLayerTracker.
+  static CommonElementAnimationData*
+  GetAnimationsForCompositor(nsIContent* aContent,
+                             nsIAtom* aElementProperty,
+                             nsCSSProperty aProperty);
 
   // Update the style on aElement from the transition stored in this manager and
   // the new parent style - aParentStyle. aElement must be transitioning or
@@ -229,7 +238,8 @@ struct AnimationProperty
 struct AnimationTiming
 {
   mozilla::TimeDuration mIterationDuration;
-  float mIterationCount; // NS_IEEEPositiveInfinity() means infinite
+  mozilla::TimeDuration mDelay;
+  float mIterationCount; // mozilla::PositiveInfinity<float>() means infinite
   uint8_t mDirection;
   uint8_t mFillMode;
 
@@ -280,6 +290,10 @@ struct ComputedTiming
  */
 struct ElementAnimation
 {
+protected:
+  virtual ~ElementAnimation() { }
+
+public:
   ElementAnimation()
     : mIsRunningOnCompositor(false)
     , mLastNotification(LAST_NOTIFICATION_NONE)
@@ -289,7 +303,6 @@ struct ElementAnimation
   // FIXME: If we succeed in moving transition-specific code to a type of
   // AnimationEffect (as per the Web Animations API) we should remove these
   // virtual methods.
-  virtual ~ElementAnimation() { }
   virtual ElementPropertyTransition* AsTransition() { return nullptr; }
   virtual const ElementPropertyTransition* AsTransition() const {
     return nullptr;
@@ -299,20 +312,44 @@ struct ElementAnimation
     return mPlayState == NS_STYLE_ANIMATION_PLAY_STATE_PAUSED;
   }
 
-  bool HasAnimationOfProperty(nsCSSProperty aProperty) const;
-  bool IsRunningAt(mozilla::TimeStamp aTime) const;
-
-  // Return the duration, at aTime (or, if paused, mPauseStart), since
-  // the *end* of the delay period.  May be negative.
-  mozilla::TimeDuration ElapsedDurationAt(mozilla::TimeStamp aTime) const {
-    NS_ABORT_IF_FALSE(!IsPaused() || aTime >= mPauseStart,
-                      "if paused, aTime must be at least mPauseStart");
-    return (IsPaused() ? mPauseStart : aTime) - mStartTime - mDelay;
+  // After transitions finish they need to be retained for one throttle-able
+  // cycle (for reasons see explanation in nsTransitionManager.cpp). In the
+  // meantime, however, they should be ignored.
+  bool IsFinishedTransition() const {
+    return mStartTime.IsNull();
+  }
+  void SetFinishedTransition() {
+    MOZ_ASSERT(AsTransition(),
+               "Calling SetFinishedTransition but it's not a transition");
+    mStartTime = mozilla::TimeStamp();
   }
 
-  // Return the duration of the active interval.
-  mozilla::TimeDuration ActiveDuration() const {
-    return mTiming.mIterationDuration.MultDouble(mTiming.mIterationCount);
+  bool HasAnimationOfProperty(nsCSSProperty aProperty) const;
+  bool IsRunningAt(mozilla::TimeStamp aTime) const;
+  bool IsCurrentAt(mozilla::TimeStamp aTime) const;
+
+  // Return the duration at aTime (or, if paused, mPauseStart) since
+  // the start of the delay period.  May be negative.
+  mozilla::TimeDuration GetLocalTimeAt(mozilla::TimeStamp aTime) const {
+    MOZ_ASSERT(!IsPaused() || aTime >= mPauseStart,
+               "if paused, aTime must be at least mPauseStart");
+    MOZ_ASSERT(!IsFinishedTransition(),
+               "GetLocalTimeAt should not be called on a finished transition");
+    return (IsPaused() ? mPauseStart : aTime) - mStartTime;
+  }
+
+  // Return the duration of the active interval for the given timing parameters.
+  static mozilla::TimeDuration ActiveDuration(const AnimationTiming& aTiming) {
+    if (aTiming.mIterationCount == mozilla::PositiveInfinity<float>()) {
+      // An animation that repeats forever has an infinite active duration
+      // unless its iteration duration is zero, in which case it has a zero
+      // active duration.
+      const TimeDuration zeroDuration;
+      return aTiming.mIterationDuration == zeroDuration
+             ? zeroDuration
+             : mozilla::TimeDuration::Forever();
+    }
+    return aTiming.mIterationDuration.MultDouble(aTiming.mIterationCount);
   }
 
   // Return the duration from the start the active interval to the point where
@@ -320,7 +357,7 @@ struct ElementAnimation
   // a negative delay in which case it is the absolute value of the delay.
   // This is used for setting the elapsedTime member of AnimationEvents.
   mozilla::TimeDuration InitialAdvance() const {
-    return std::max(TimeDuration(), mDelay * -1);
+    return std::max(TimeDuration(), mTiming.mDelay * -1);
   }
 
   // This function takes as input the timing parameters of an animation and
@@ -329,17 +366,16 @@ struct ElementAnimation
   // This function returns ComputedTiming::kNullTimeFraction for the
   // mTimeFraction member of the return value if the animation should not be
   // run (because it is not currently active and is not filling at this time).
-  static ComputedTiming GetComputedTimingAt(TimeDuration aElapsedDuration,
+  static ComputedTiming GetComputedTimingAt(TimeDuration aLocalTime,
                                             const AnimationTiming& aTiming);
 
   nsString mName; // empty string for 'none'
   AnimationTiming mTiming;
-  // The beginning of the delay period.  This is also used by
-  // ElementPropertyTransition in its IsRemovedSentinel and
-  // SetRemovedSentinel methods.
+  // The beginning of the delay period.  This is also set to a null
+  // timestamp to mark transitions that have finished and are due to
+  // be removed on the next throttle-able cycle.
   mozilla::TimeStamp mStartTime;
   mozilla::TimeStamp mPauseStart;
-  mozilla::TimeDuration mDelay;
   uint8_t mPlayState;
   bool mIsRunningOnCompositor;
 
@@ -358,6 +394,11 @@ struct ElementAnimation
 
 typedef InfallibleTArray<nsRefPtr<ElementAnimation> > ElementAnimationPtrArray;
 
+enum EnsureStyleRuleFlags {
+  EnsureStyleRule_IsThrottled,
+  EnsureStyleRule_IsNotThrottled
+};
+
 namespace css {
 
 struct CommonElementAnimationData : public PRCList
@@ -369,6 +410,7 @@ struct CommonElementAnimationData : public PRCList
     , mManager(aManager)
     , mAnimationGeneration(0)
     , mFlushGeneration(aNow)
+    , mNeedsRefreshes(true)
 #ifdef DEBUG
     , mCalledPropertyDtor(false)
 #endif
@@ -391,6 +433,12 @@ struct CommonElementAnimationData : public PRCList
     mElement->DeleteProperty(mElementProperty);
   }
 
+  // This updates mNeedsRefreshes so the caller may need to check
+  // for changes to values (for example, nsAnimationManager provides
+  // CheckNeedsRefresh to register or unregister from observing the refresh
+  // driver when this value changes).
+  void EnsureStyleRuleFor(TimeStamp aRefreshTime, EnsureStyleRuleFlags aFlags);
+
   bool CanThrottleTransformChanges(mozilla::TimeStamp aTime);
 
   bool CanThrottleAnimation(mozilla::TimeStamp aTime);
@@ -411,10 +459,20 @@ struct CommonElementAnimationData : public PRCList
   static bool IsCompositorAnimationDisabledForFrame(nsIFrame* aFrame);
 
   // True if this animation can be performed on the compositor thread.
-  // Do not pass CanAnimate_AllowPartial to make sure that all properties of this
-  // animation are supported by the compositor.
-  virtual bool CanPerformOnCompositorThread(CanAnimateFlags aFlags) const = 0;
-  virtual bool HasAnimationOfProperty(nsCSSProperty aProperty) const = 0;
+  //
+  // If aFlags contains CanAnimate_AllowPartial, returns whether the
+  // state of this element's animations at the current refresh driver
+  // time contains animation data that can be done on the compositor
+  // thread.  (This is useful for determining whether a layer should be
+  // active, or whether to send data to the layer.)
+  //
+  // If aFlags does not contain CanAnimate_AllowPartial, returns whether
+  // the state of this element's animations at the current refresh driver
+  // time can be fully represented by data sent to the compositor.
+  // (This is useful for determining whether throttle the animation
+  // (suppress main-thread style updates).)
+  bool CanPerformOnCompositorThread(CanAnimateFlags aFlags) const;
+  bool HasAnimationOfProperty(nsCSSProperty aProperty) const;
 
   static void LogAsyncAnimationFailure(nsCString& aMessage,
                                        const nsIContent* aContent = nullptr);
@@ -448,6 +506,10 @@ struct CommonElementAnimationData : public PRCList
   // Update mAnimationGeneration to nsCSSFrameConstructor's count
   void UpdateAnimationGeneration(nsPresContext* aPresContext);
 
+  // Returns true if there is an animation in the before or active phase at
+  // the given time.
+  bool HasCurrentAnimationsAt(mozilla::TimeStamp aTime);
+
   // The refresh time associated with mStyleRule.
   TimeStamp mStyleRuleRefreshTime;
 
@@ -455,6 +517,11 @@ struct CommonElementAnimationData : public PRCList
   // Used to prevent updating the styles twice for a given element during
   // UpdateAllThrottledStyles.
   TimeStamp mFlushGeneration;
+
+  // False when we know that our current style rule is valid
+  // indefinitely into the future (because all of our animations are
+  // either completed or paused).  May be invalidated by a style change.
+  bool mNeedsRefreshes;
 
 #ifdef DEBUG
   bool mCalledPropertyDtor;

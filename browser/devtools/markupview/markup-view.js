@@ -175,10 +175,26 @@ MarkupView.prototype = {
     this._hoveredNode = null;
   },
 
+  /**
+   * Show the box model highlighter on a given node front
+   * @param {NodeFront} nodeFront The node to show the highlighter for
+   * @param {Object} options Options for the highlighter
+   * @return a promise that resolves when the highlighter for this nodeFront is
+   * shown, taking into account that there could already be highlighter requests
+   * queued up
+   */
   _showBoxModel: function(nodeFront, options={}) {
-    this._inspector.toolbox.highlighterUtils.highlightNodeFront(nodeFront, options);
+    return this._inspector.toolbox.highlighterUtils.highlightNodeFront(nodeFront, options);
   },
 
+  /**
+   * Hide the box model highlighter on a given node front
+   * @param {NodeFront} nodeFront The node to hide the highlighter for
+   * @param {Boolean} forceHide See toolbox-highlighter-utils/unhighlight
+   * @return a promise that resolves when the highlighter for this nodeFront is
+   * hidden, taking into account that there could already be highlighter requests
+   * queued up
+   */
   _hideBoxModel: function(forceHide) {
     return this._inspector.toolbox.highlighterUtils.unhighlight(forceHide);
   },
@@ -215,12 +231,12 @@ MarkupView.prototype = {
   },
 
   update: function() {
-    let updateChildren = function(node) {
+    let updateChildren = (node) => {
       this.getContainer(node).update();
       for (let child of node.treeChildren()) {
         updateChildren(child);
       }
-    }.bind(this);
+    };
 
     // Start with the documentElement
     let documentElement;
@@ -277,7 +293,7 @@ MarkupView.prototype = {
    */
   _shouldNewSelectionBeHighlighted: function() {
     let reason = this._inspector.selection.reason;
-    let unwantedReasons = ["inspector-open", "navigateaway", "test"];
+    let unwantedReasons = ["inspector-open", "navigateaway", "nodeselected", "test"];
     let isHighlitNode = this._hoveredNode === this._inspector.selection.nodeFront;
     return !isHighlitNode && reason && unwantedReasons.indexOf(reason) === -1;
   },
@@ -345,11 +361,15 @@ MarkupView.prototype = {
 
     switch(aEvent.keyCode) {
       case Ci.nsIDOMKeyEvent.DOM_VK_H:
-        let node = this._selectedContainer.node;
-        if (node.hidden) {
-          this.walker.unhideNode(node).then(() => this.nodeChanged(node));
+        if (aEvent.metaKey || aEvent.shiftKey) {
+          handled = false;
         } else {
-          this.walker.hideNode(node).then(() => this.nodeChanged(node));
+          let node = this._selectedContainer.node;
+          if (node.hidden) {
+            this.walker.unhideNode(node).then(() => this.nodeChanged(node));
+          } else {
+            this.walker.hideNode(node).then(() => this.nodeChanged(node));
+          }
         }
         break;
       case Ci.nsIDOMKeyEvent.DOM_VK_DELETE:
@@ -1224,10 +1244,10 @@ MarkupView.prototype = {
     this._previewBar.classList.add("hide");
     win.clearTimeout(this._resizePreviewTimeout);
 
-    win.setTimeout(function() {
+    win.setTimeout(() => {
       this._updatePreview();
       this._previewBar.classList.remove("hide");
-    }.bind(this), 1000);
+    }, 1000);
   }
 };
 

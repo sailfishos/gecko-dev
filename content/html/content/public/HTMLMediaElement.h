@@ -86,7 +86,7 @@ public:
     return mCORSMode;
   }
 
-  HTMLMediaElement(already_AddRefed<nsINodeInfo>& aNodeInfo);
+  HTMLMediaElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo);
   virtual ~HTMLMediaElement();
 
   /**
@@ -488,6 +488,26 @@ public:
     mStatsShowing = aShow;
   }
 
+  bool MozAllowCasting() const
+  {
+    return mAllowCasting;
+  }
+
+  void SetMozAllowCasting(bool aShow)
+  {
+    mAllowCasting = aShow;
+  }
+
+  bool MozIsCasting() const
+  {
+    return mIsCasting;
+  }
+
+  void SetMozIsCasting(bool aShow)
+  {
+    mIsCasting = aShow;
+  }
+
   already_AddRefed<DOMMediaStream> GetMozSrcObject() const;
 
   void SetMozSrcObject(DOMMediaStream& aValue);
@@ -529,7 +549,8 @@ public:
     return mAudioCaptured;
   }
 
-  JSObject* MozGetMetadata(JSContext* aCx, ErrorResult& aRv);
+  void MozGetMetadata(JSContext* aCx, JS::MutableHandle<JSObject*> aResult,
+                      ErrorResult& aRv);
 
   double MozFragmentEnd();
 
@@ -1091,6 +1112,14 @@ protected:
   // True if the media statistics are currently being shown by the builtin
   // video controls
   bool mStatsShowing;
+
+  // The following two fields are here for the private storage of the builtin
+  // video controls, and control 'casting' of the video to external devices
+  // (TVs, projectors etc.)
+  // True if casting is currently allowed
+  bool mAllowCasting;
+  // True if currently casting this video
+  bool mIsCasting;
 
   // True if the sound is being captured.
   bool mAudioCaptured;

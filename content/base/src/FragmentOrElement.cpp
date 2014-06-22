@@ -24,7 +24,7 @@
 #include "mozilla/dom/Attr.h"
 #include "nsDOMAttributeMap.h"
 #include "nsIAtom.h"
-#include "nsINodeInfo.h"
+#include "mozilla/dom/NodeInfo.h"
 #include "nsIDocumentInlines.h"
 #include "nsIDocumentEncoder.h"
 #include "nsIDOMNodeList.h"
@@ -62,7 +62,6 @@
 #ifdef MOZ_XUL
 #include "nsXULElement.h"
 #endif /* MOZ_XUL */
-#include "nsFrameManager.h"
 #include "nsFrameSelection.h"
 #ifdef DEBUG
 #include "nsRange.h"
@@ -631,12 +630,12 @@ FragmentOrElement::nsDOMSlots::SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) c
   return n;
 }
 
-FragmentOrElement::FragmentOrElement(already_AddRefed<nsINodeInfo>& aNodeInfo)
+FragmentOrElement::FragmentOrElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo)
   : nsIContent(aNodeInfo)
 {
 }
 
-FragmentOrElement::FragmentOrElement(already_AddRefed<nsINodeInfo>&& aNodeInfo)
+FragmentOrElement::FragmentOrElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo)
   : nsIContent(aNodeInfo)
 {
 }
@@ -1858,7 +1857,8 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INTERNAL(FragmentOrElement)
       if (!name->IsAtom()) {
         NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(cb,
                                            "mAttrsAndChildren[i]->NodeInfo()");
-        cb.NoteXPCOMChild(name->NodeInfo());
+        cb.NoteNativeChild(name->NodeInfo(),
+                           NS_CYCLE_COLLECTION_PARTICIPANT(NodeInfo));
       }
     }
 
@@ -2845,4 +2845,42 @@ FragmentOrElement::SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) const
   }
 
   return n;
+}
+
+void
+FragmentOrElement::SetIsElementInStyleScopeFlagOnSubtree(bool aInStyleScope)
+{
+  if (aInStyleScope && IsElementInStyleScope()) {
+    return;
+  }
+
+  if (IsElement()) {
+    SetIsElementInStyleScope(aInStyleScope);
+    SetIsElementInStyleScopeFlagOnShadowTree(aInStyleScope);
+  }
+
+  nsIContent* n = GetNextNode(this);
+  while (n) {
+    if (n->IsElementInStyleScope()) {
+      n = n->GetNextNonChildNode(this);
+    } else {
+      if (n->IsElement()) {
+        n->SetIsElementInStyleScope(aInStyleScope);
+        n->AsElement()->SetIsElementInStyleScopeFlagOnShadowTree(aInStyleScope);
+      }
+      n = n->GetNextNode(this);
+    }
+  }
+}
+
+void
+FragmentOrElement::SetIsElementInStyleScopeFlagOnShadowTree(bool aInStyleScope)
+{
+  NS_ASSERTION(IsElement(), "calling SetIsElementInStyleScopeFlagOnShadowTree "
+                            "on a non-Element is useless");
+  ShadowRoot* shadowRoot = GetShadowRoot();
+  while (shadowRoot) {
+    shadowRoot->SetIsElementInStyleScopeFlagOnSubtree(aInStyleScope);
+    shadowRoot = shadowRoot->GetOlderShadow();
+  }
 }

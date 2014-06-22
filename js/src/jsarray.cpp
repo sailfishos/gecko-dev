@@ -49,6 +49,8 @@ using mozilla::DebugOnly;
 using mozilla::IsNaN;
 using mozilla::PointerRangeSize;
 
+using JS::AutoCheckCannotGC;
+
 bool
 js::GetLengthProperty(JSContext *cx, HandleObject obj, uint32_t *lengthp)
 {
@@ -858,16 +860,17 @@ AddLengthProperty(ExclusiveContext *cx, HandleObject obj)
 }
 
 #if JS_HAS_TOSOURCE
-MOZ_ALWAYS_INLINE bool
-IsArray(HandleValue v)
-{
-    return v.isObject() && v.toObject().is<ArrayObject>();
-}
 
-MOZ_ALWAYS_INLINE bool
-array_toSource_impl(JSContext *cx, CallArgs args)
+static bool
+array_toSource(JSContext *cx, unsigned argc, Value *vp)
 {
-    JS_ASSERT(IsArray(args.thisv()));
+    JS_CHECK_RECURSION(cx, return false);
+    CallArgs args = CallArgsFromVp(argc, vp);
+
+    if (!args.thisv().isObject()) {
+        ReportIncompatible(cx, args);
+        return false;
+    }
 
     Rooted<JSObject*> obj(cx, &args.thisv().toObject());
     RootedValue elt(cx);
@@ -933,13 +936,6 @@ array_toSource_impl(JSContext *cx, CallArgs args)
     return true;
 }
 
-static bool
-array_toSource(JSContext *cx, unsigned argc, Value *vp)
-{
-    JS_CHECK_RECURSION(cx, return false);
-    CallArgs args = CallArgsFromVp(argc, vp);
-    return CallNonGenericMethod<IsArray, array_toSource_impl>(cx, args);
-}
 #endif
 
 struct EmptySeparatorOp
@@ -947,23 +943,22 @@ struct EmptySeparatorOp
     bool operator()(JSContext *, StringBuffer &sb) { return true; }
 };
 
+template <typename CharT>
 struct CharSeparatorOp
 {
-    jschar sep;
-    explicit CharSeparatorOp(jschar sep) : sep(sep) {};
+    const CharT sep;
+    explicit CharSeparatorOp(CharT sep) : sep(sep) {};
     bool operator()(JSContext *, StringBuffer &sb) { return sb.append(sep); }
 };
 
 struct StringSeparatorOp
 {
-    const jschar *sepchars;
-    size_t seplen;
+    HandleLinearString sep;
 
-    StringSeparatorOp(const jschar *sepchars, size_t seplen)
-      : sepchars(sepchars), seplen(seplen) {};
+    explicit StringSeparatorOp(HandleLinearString sep) : sep(sep) {}
 
     bool operator()(JSContext *cx, StringBuffer &sb) {
-        return sb.append(sepchars, seplen);
+        return sb.append(sep);
     }
 };
 
@@ -1068,22 +1063,16 @@ ArrayJoin(JSContext *cx, CallArgs &args)
         return false;
 
     // Steps 4 and 5
-    RootedString sepstr(cx, nullptr);
-    const jschar *sepchars;
-    size_t seplen;
+    RootedLinearString sepstr(cx);
     if (!Locale && args.hasDefined(0)) {
-        sepstr = ToString<CanGC>(cx, args[0]);
+        JSString *s = ToString<CanGC>(cx, args[0]);
+        if (!s)
+            return false;
+        sepstr = s->ensureLinear(cx);
         if (!sepstr)
             return false;
-        sepchars = sepstr->getChars(cx);
-        if (!sepchars)
-            return false;
-        seplen = sepstr->length();
     } else {
-        HandlePropertyName comma = cx->names().comma;
-        sepstr = comma;
-        sepchars = comma->chars();
-        seplen = comma->length();
+        sepstr = cx->names().comma;
     }
 
     JS::Anchor<JSString*> anchor(sepstr);
@@ -1104,9 +1093,12 @@ ArrayJoin(JSContext *cx, CallArgs &args)
     }
 
     StringBuffer sb(cx);
+    if (sepstr->hasTwoByteChars() && !sb.ensureTwoByteChars())
+        return false;
 
     // The separator will be added |length - 1| times, reserve space for that
     // so that we don't have to unnecessarily grow the buffer.
+    size_t seplen = sepstr->length();
     if (length > 0 && !sb.reserve(seplen * (length - 1)))
         return false;
 
@@ -1116,11 +1108,18 @@ ArrayJoin(JSContext *cx, CallArgs &args)
         if (!ArrayJoinKernel<Locale>(cx, op, obj, length, sb))
             return false;
     } else if (seplen == 1) {
-        CharSeparatorOp op(sepchars[0]);
-        if (!ArrayJoinKernel<Locale>(cx, op, obj, length, sb))
-            return false;
+        jschar c = sepstr->latin1OrTwoByteChar(0);
+        if (c <= JSString::MAX_LATIN1_CHAR) {
+            CharSeparatorOp<Latin1Char> op(c);
+            if (!ArrayJoinKernel<Locale>(cx, op, obj, length, sb))
+                return false;
+        } else {
+            CharSeparatorOp<jschar> op(c);
+            if (!ArrayJoinKernel<Locale>(cx, op, obj, length, sb))
+                return false;
+        }
     } else {
-        StringSeparatorOp op(sepchars, seplen);
+        StringSeparatorOp op(sepstr);
         if (!ArrayJoinKernel<Locale>(cx, op, obj, length, sb))
             return false;
     }
@@ -1532,8 +1531,10 @@ struct SortComparatorStringifiedElements
       : cx(cx), sb(sb) {}
 
     bool operator()(const StringifiedElement &a, const StringifiedElement &b, bool *lessOrEqualp) {
-        return CompareSubStringValues(cx, sb.begin() + a.charsBegin, a.charsEnd - a.charsBegin,
-                                      sb.begin() + b.charsBegin, b.charsEnd - b.charsBegin,
+        return CompareSubStringValues(cx, sb.rawTwoByteBegin() + a.charsBegin,
+                                      a.charsEnd - a.charsBegin,
+                                      sb.rawTwoByteBegin() + b.charsBegin,
+                                      b.charsEnd - b.charsBegin,
                                       lessOrEqualp);
     }
 };

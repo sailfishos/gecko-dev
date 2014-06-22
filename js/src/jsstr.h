@@ -48,27 +48,38 @@ SkipSpace(const CharT *s, const CharT *end)
 
 // Return less than, equal to, or greater than zero depending on whether
 // s1 is less than, equal to, or greater than s2.
+template <typename Char1, typename Char2>
 inline int32_t
-CompareChars(const jschar *s1, size_t l1, const jschar *s2, size_t l2)
+CompareChars(const Char1 *s1, size_t len1, const Char2 *s2, size_t len2)
 {
-    size_t n = Min(l1, l2);
+    size_t n = Min(len1, len2);
     for (size_t i = 0; i < n; i++) {
         if (int32_t cmp = s1[i] - s2[i])
             return cmp;
     }
 
-    return (int32_t)(l1 - l2);
+    return int32_t(len1 - len2);
 }
 
 }  /* namespace js */
 
 struct JSSubString {
+    JSLinearString  *base;
+    size_t          offset;
     size_t          length;
-    const jschar    *chars;
-};
 
-extern const jschar js_empty_ucstr[];
-extern const JSSubString js_EmptySubString;
+    JSSubString() { mozilla::PodZero(this); }
+
+    void initEmpty(JSLinearString *base) {
+        this->base = base;
+        offset = length = 0;
+    }
+    void init(JSLinearString *base, size_t offset, size_t length) {
+        this->base = base;
+        this->offset = offset;
+        this->length = length;
+    }
+};
 
 /*
  * Shorthands for ASCII (7-bit) decimal and hex conversion.
@@ -101,13 +112,9 @@ extern JSLinearString *
 js_NewDependentString(JSContext *cx, JSString *base, size_t start, size_t length);
 
 /* Copy a counted string and GC-allocate a descriptor for it. */
-template <js::AllowGC allowGC>
+template <js::AllowGC allowGC, typename CharT>
 extern JSFlatString *
-js_NewStringCopyN(js::ExclusiveContext *cx, const jschar *s, size_t n);
-
-template <js::AllowGC allowGC>
-extern JSFlatString *
-js_NewStringCopyN(js::ThreadSafeContext *cx, const char *s, size_t n);
+js_NewStringCopyN(js::ThreadSafeContext *cx, const CharT *s, size_t n);
 
 /* Copy a C string and GC-allocate a descriptor for it. */
 template <js::AllowGC allowGC>
@@ -187,6 +194,9 @@ EqualStrings(JSContext *cx, JSLinearString *str1, JSLinearString *str2, bool *re
 extern bool
 EqualStrings(JSLinearString *str1, JSLinearString *str2);
 
+extern bool
+EqualChars(JSLinearString *str1, JSLinearString *str2);
+
 /*
  * Return less than, equal to, or greater than zero depending on whether
  * str1 is less than, equal to, or greater than str2.
@@ -205,15 +215,13 @@ StringEqualsAscii(JSLinearString *str, const char *asciiBytes);
 
 /* Return true if the string contains a pattern anywhere inside it. */
 extern bool
-StringHasPattern(const jschar *text, uint32_t textlen,
-                 const jschar *pat, uint32_t patlen);
+StringHasPattern(JSLinearString *text, const jschar *pat, uint32_t patlen);
 
 extern int
-StringFindPattern(const jschar *text, uint32_t textlen,
-                  const jschar *pat, uint32_t patlen);
+StringFindPattern(JSLinearString *text, JSLinearString *pat, size_t start);
 
 extern bool
-StringHasRegExpMetaChars(const jschar *chars, size_t length);
+StringHasRegExpMetaChars(JSLinearString *str);
 
 } /* namespace js */
 
@@ -223,8 +231,9 @@ js_strlen(const jschar *s);
 extern int32_t
 js_strcmp(const jschar *lhs, const jschar *rhs);
 
-extern jschar *
-js_strchr_limit(const jschar *s, jschar c, const jschar *limit);
+template <typename CharT>
+extern const CharT *
+js_strchr_limit(const CharT *s, jschar c, const CharT *limit);
 
 static MOZ_ALWAYS_INLINE void
 js_strncpy(jschar *dst, const jschar *src, size_t nelem)
@@ -236,6 +245,16 @@ extern jschar *
 js_strdup(js::ThreadSafeContext *cx, const jschar *s);
 
 namespace js {
+
+inline bool
+EqualCharsLatin1TwoByte(const Latin1Char *s1, const jschar *s2, size_t len)
+{
+    for (const Latin1Char *s1end = s1 + len; s1 < s1end; s1++, s2++) {
+        if (jschar(*s1) != *s2)
+            return false;
+    }
+    return true;
+}
 
 /*
  * Inflate bytes in ASCII encoding to jschars. Return null on error, otherwise

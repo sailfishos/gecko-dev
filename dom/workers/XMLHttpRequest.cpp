@@ -1192,12 +1192,16 @@ EventRunnable::PreDispatch(JSContext* aCx, WorkerPrivate* aWorkerPrivate)
             mUseCachedArrayBufferResponse = true;
             doClone = false;
           } else {
+            MOZ_ASSERT(!JS_IsNeuteredArrayBufferObject(obj));
             JS::AutoValueArray<1> argv(aCx);
             argv[0].set(response);
             obj = JS_NewArrayObject(aCx, argv);
             if (obj) {
               transferable.setObject(*obj);
-              mProxy->mArrayBufferResponseWasTransferred = true;
+              // Only cache the response when the readyState is DONE.
+              if (xhr->ReadyState() == nsIXMLHttpRequest::DONE) {
+                mProxy->mArrayBufferResponseWasTransferred = true;
+              }
             } else {
               mResponseResult = NS_ERROR_OUT_OF_MEMORY;
               doClone = false;
@@ -1623,7 +1627,7 @@ XMLHttpRequest::Constructor(const GlobalObject& aGlobal,
                             const MozXMLHttpRequestParameters& aParams,
                             ErrorResult& aRv)
 {
-  JSContext* cx = aGlobal.GetContext();
+  JSContext* cx = aGlobal.Context();
   WorkerPrivate* workerPrivate = GetWorkerPrivateFromContext(cx);
   MOZ_ASSERT(workerPrivate);
 
@@ -2313,8 +2317,10 @@ XMLHttpRequest::SetResponseType(XMLHttpRequestResponseType aResponseType,
   mResponseType = ConvertStringToResponseType(acceptedResponseTypeString);
 }
 
-jsval
-XMLHttpRequest::GetResponse(JSContext* /* unused */, ErrorResult& aRv)
+void
+XMLHttpRequest::GetResponse(JSContext* /* unused */,
+                            JS::MutableHandle<JS::Value> aResponse,
+                            ErrorResult& aRv)
 {
   if (NS_SUCCEEDED(mStateData.mResponseTextResult) &&
       mStateData.mResponse.isUndefined()) {
@@ -2327,14 +2333,15 @@ XMLHttpRequest::GetResponse(JSContext* /* unused */, ErrorResult& aRv)
                           mStateData.mResponseText.Length());
     if (!str) {
       aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
-      return JSVAL_VOID;
+      return;
     }
 
     mStateData.mResponse = STRING_TO_JSVAL(str);
   }
 
+  JS::ExposeValueToActiveJS(mStateData.mResponse);
   aRv = mStateData.mResponseResult;
-  return mStateData.mResponse;
+  aResponse.set(mStateData.mResponse);
 }
 
 void

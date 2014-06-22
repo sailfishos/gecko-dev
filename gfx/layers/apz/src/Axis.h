@@ -25,7 +25,7 @@ const float EPSILON = 0.0001f;
 // isn't too large.
 const float COORDINATE_EPSILON = 0.01f;
 
-class FrameMetrics;
+struct FrameMetrics;
 class AsyncPanZoomController;
 
 /**
@@ -108,6 +108,11 @@ public:
    * Return whether this axis is overscrolled in either direction.
    */
   bool IsOverscrolled() const;
+
+  /**
+   * Clear any overscroll amount on this axis.
+   */
+  void ClearOverscroll();
 
   /**
    * Gets the distance between the starting position of the touch supplied in

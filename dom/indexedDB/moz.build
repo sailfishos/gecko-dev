@@ -7,12 +7,6 @@
 DIRS += ['ipc']
 TEST_DIRS += ['test']
 
-XPIDL_SOURCES += [
-    'nsIIndexedDatabaseManager.idl',
-]
-
-XPIDL_MODULE = 'dom_indexeddb'
-
 EXPORTS.mozilla.dom.indexedDB += [
     'Client.h',
     'DatabaseInfo.h',
@@ -22,9 +16,9 @@ EXPORTS.mozilla.dom.indexedDB += [
     'IDBDatabase.h',
     'IDBEvents.h',
     'IDBFactory.h',
-    'IDBFileHandle.h',
     'IDBIndex.h',
     'IDBKeyRange.h',
+    'IDBMutableFile.h',
     'IDBObjectStore.h',
     'IDBRequest.h',
     'IDBTransaction.h',
@@ -45,8 +39,8 @@ UNIFIED_SOURCES += [
     'IDBDatabase.cpp',
     'IDBEvents.cpp',
     'IDBFactory.cpp',
-    'IDBFileHandle.cpp',
     'IDBKeyRange.cpp',
+    'IDBMutableFile.cpp',
     'IDBRequest.cpp',
     'IDBTransaction.cpp',
     'IDBWrapperCache.cpp',

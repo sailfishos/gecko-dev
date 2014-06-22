@@ -17,8 +17,10 @@
 #include ../services/manifests/HealthReportAndroidManifest_permissions.xml.in
 #include ../services/manifests/SyncAndroidManifest_permissions.xml.in
 
+#ifndef RELEASE_BUILD
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE"/>
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
+#endif
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <uses-permission android:name="android.permission.INTERNET"/>
@@ -75,6 +77,9 @@
                  android:icon="@drawable/icon"
                  android:name="org.mozilla.gecko.GeckoApplication"
                  android:hardwareAccelerated="true"
+# The preprocessor does not yet support arbitrary parentheses, so this cannot
+# be parenthesized thus to clarify that the logical AND operator has precedence:
+#   !defined(MOZILLA_OFFICIAL) || (defined(NIGHTLY_BUILD) && defined(MOZ_DEBUG))
 #if !defined(MOZILLA_OFFICIAL) || defined(NIGHTLY_BUILD) && defined(MOZ_DEBUG)
                  android:debuggable="true">
 #else
@@ -82,6 +87,11 @@
 #endif
 
         <meta-data android:name="com.sec.android.support.multiwindow" android:value="true"/>
+
+#ifdef GOOGLE_PLAY_SERVICES
+        <!-- This resources comes from Google Play Services. Required for casting support. -->
+        <meta-data android:name="com.google.android.gms.version" android:value="@integer/google_play_services_version" />
+#endif
 
         <!-- If the windowSoftInputMode adjust* flag changes below, the
              setSoftInputMode call in BrowserSearch#onStop must also be updated. -->
@@ -188,7 +198,6 @@
             </intent-filter>
         </activity>
 
-#ifdef MOZ_ANDROID_SYNTHAPKS
         <activity android:name="org.mozilla.gecko.webapp.Dispatcher"
             android:noHistory="true" >
             <intent-filter>
@@ -212,7 +221,6 @@
              <category android:name="android.intent.category.DEFAULT" />
           </intent-filter>
         </receiver>
-#endif
 
         <activity android:name=".Webapp"
                   android:label="@string/webapp_generic_name"

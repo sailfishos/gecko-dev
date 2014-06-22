@@ -77,10 +77,8 @@ XPCOMUtils.defineLazyModuleGetter(this, "ShumwayUtils",
                                   "resource://shumway/ShumwayUtils.jsm");
 #endif
 
-#ifdef MOZ_ANDROID_SYNTHAPKS
 XPCOMUtils.defineLazyModuleGetter(this, "WebappManager",
                                   "resource://gre/modules/WebappManager.jsm");
-#endif
 
 XPCOMUtils.defineLazyModuleGetter(this, "CharsetMenu",
                                   "resource://gre/modules/CharsetMenu.jsm");
@@ -123,10 +121,13 @@ XPCOMUtils.defineLazyModuleGetter(this, "CharsetMenu",
     Services.scriptloader.loadSubScript(script, sandbox);
     return sandbox[name];
   });
-  notifications.forEach(function (aNotification) {
-    Services.obs.addObserver(function(s, t, d) {
-        window[name].observe(s, t, d)
-    }, aNotification, false);
+  let observer = (s, t, d) => {
+    Services.obs.removeObserver(observer, t);
+    Services.obs.addObserver(window[name], t, false);
+    window[name].observe(s, t, d); // Explicitly notify new observer
+  };
+  notifications.forEach((notification) => {
+    Services.obs.addObserver(observer, notification, false);
   });
 });
 
@@ -137,10 +138,13 @@ XPCOMUtils.defineLazyModuleGetter(this, "CharsetMenu",
 ].forEach(module => {
   let [name, notifications, resource] = module;
   XPCOMUtils.defineLazyModuleGetter(this, name, resource);
+  let observer = (s, t, d) => {
+    Services.obs.removeObserver(observer, t);
+    Services.obs.addObserver(this[name], t, false);
+    this[name].observe(s, t, d); // Explicitly notify new observer
+  };
   notifications.forEach(notification => {
-    Services.obs.addObserver((s,t,d) => {
-      this[name].observe(s,t,d)
-    }, notification, false);
+    Services.obs.addObserver(observer, notification, false);
   });
 });
 
@@ -326,16 +330,14 @@ var BrowserApp = {
     Services.obs.addObserver(this, "FormHistory:Init", false);
     Services.obs.addObserver(this, "gather-telemetry", false);
     Services.obs.addObserver(this, "keyword-search", false);
-#ifdef MOZ_ANDROID_SYNTHAPKS
     Services.obs.addObserver(this, "webapps-runtime-install", false);
     Services.obs.addObserver(this, "webapps-runtime-install-package", false);
     Services.obs.addObserver(this, "webapps-ask-install", false);
     Services.obs.addObserver(this, "webapps-launch", false);
-    Services.obs.addObserver(this, "webapps-uninstall", false);
+    Services.obs.addObserver(this, "webapps-runtime-uninstall", false);
     Services.obs.addObserver(this, "Webapps:AutoInstall", false);
     Services.obs.addObserver(this, "Webapps:Load", false);
     Services.obs.addObserver(this, "Webapps:AutoUninstall", false);
-#endif
     Services.obs.addObserver(this, "sessionstore-state-purge-complete", false);
 
     function showFullScreenWarning() {
@@ -377,13 +379,9 @@ var BrowserApp = {
     XPInstallObserver.init();
     CharacterEncoding.init();
     ActivityObserver.init();
-#ifdef MOZ_ANDROID_SYNTHAPKS
     // TODO: replace with Android implementation of WebappOSUtils.isLaunchable.
     Cu.import("resource://gre/modules/Webapps.jsm");
     DOMApplicationRegistry.allAppsLaunchable = true;
-#else
-    WebappsUI.init();
-#endif
     RemoteDebugger.init();
     Reader.init();
     UserAgentOverrides.init();
@@ -484,6 +482,9 @@ var BrowserApp = {
     NativeWindow.contextmenus.add(Strings.browser.GetStringFromName("contextmenu.openInNewTab"),
       NativeWindow.contextmenus.linkOpenableNonPrivateContext,
       function(aTarget) {
+        UITelemetry.addEvent("action.1", "contextmenu", null, "web_open_new_tab");
+        UITelemetry.addEvent("loadurl.1", "contextmenu", null);
+
         let url = NativeWindow.contextmenus._getLinkURL(aTarget);
         ContentAreaUtils.urlSecurityCheck(url, aTarget.ownerDocument.nodePrincipal);
         let tab = BrowserApp.addTab(url, { selected: false, parentId: BrowserApp.selectedTab.id });
@@ -503,6 +504,9 @@ var BrowserApp = {
     NativeWindow.contextmenus.add(Strings.browser.GetStringFromName("contextmenu.openInPrivateTab"),
       NativeWindow.contextmenus.linkOpenableContext,
       function(aTarget) {
+        UITelemetry.addEvent("action.1", "contextmenu", null, "web_open_private_tab");
+        UITelemetry.addEvent("loadurl.1", "contextmenu", null);
+
         let url = NativeWindow.contextmenus._getLinkURL(aTarget);
         ContentAreaUtils.urlSecurityCheck(url, aTarget.ownerDocument.nodePrincipal);
         let tab = BrowserApp.addTab(url, { selected: false, parentId: BrowserApp.selectedTab.id, isPrivate: true });
@@ -522,6 +526,8 @@ var BrowserApp = {
     NativeWindow.contextmenus.add(Strings.browser.GetStringFromName("contextmenu.copyLink"),
       NativeWindow.contextmenus.linkCopyableContext,
       function(aTarget) {
+        UITelemetry.addEvent("action.1", "contextmenu", null, "web_copy_link");
+
         let url = NativeWindow.contextmenus._getLinkURL(aTarget);
         NativeWindow.contextmenus._copyStringToDefaultClipboard(url);
       });
@@ -529,6 +535,8 @@ var BrowserApp = {
     NativeWindow.contextmenus.add(Strings.browser.GetStringFromName("contextmenu.copyEmailAddress"),
       NativeWindow.contextmenus.emailLinkContext,
       function(aTarget) {
+        UITelemetry.addEvent("action.1", "contextmenu", null, "web_copy_email");
+
         let url = NativeWindow.contextmenus._getLinkURL(aTarget);
         let emailAddr = NativeWindow.contextmenus._stripScheme(url);
         NativeWindow.contextmenus._copyStringToDefaultClipboard(emailAddr);
@@ -537,6 +545,8 @@ var BrowserApp = {
     NativeWindow.contextmenus.add(Strings.browser.GetStringFromName("contextmenu.copyPhoneNumber"),
       NativeWindow.contextmenus.phoneNumberLinkContext,
       function(aTarget) {
+        UITelemetry.addEvent("action.1", "contextmenu", null, "web_copy_phone");
+
         let url = NativeWindow.contextmenus._getLinkURL(aTarget);
         let phoneNumber = NativeWindow.contextmenus._stripScheme(url);
         NativeWindow.contextmenus._copyStringToDefaultClipboard(phoneNumber);
@@ -553,7 +563,9 @@ var BrowserApp = {
         };
       },
       icon: "drawable://ic_menu_share",
-      callback: function(aTarget) { }
+      callback: function(aTarget) {
+        UITelemetry.addEvent("action.1", "contextmenu", null, "web_share_link");
+      }
     });
 
     NativeWindow.contextmenus.add({
@@ -570,7 +582,9 @@ var BrowserApp = {
         };
       },
       icon: "drawable://ic_menu_share",
-      callback: function(aTarget) { }
+      callback: function(aTarget) {
+        UITelemetry.addEvent("action.1", "contextmenu", null, "web_share_email");
+      }
     });
 
     NativeWindow.contextmenus.add({
@@ -587,12 +601,16 @@ var BrowserApp = {
         };
       },
       icon: "drawable://ic_menu_share",
-      callback: function(aTarget) { }
+      callback: function(aTarget) {
+        UITelemetry.addEvent("action.1", "contextmenu", null, "web_share_phone");
+      }
     });
 
     NativeWindow.contextmenus.add(Strings.browser.GetStringFromName("contextmenu.addToContacts"),
       NativeWindow.contextmenus._disableInGuest(NativeWindow.contextmenus.emailLinkContext),
       function(aTarget) {
+        UITelemetry.addEvent("action.1", "contextmenu", null, "web_contact_email");
+
         let url = NativeWindow.contextmenus._getLinkURL(aTarget);
         sendMessageToJava({
           type: "Contact:Add",
@@ -603,6 +621,8 @@ var BrowserApp = {
     NativeWindow.contextmenus.add(Strings.browser.GetStringFromName("contextmenu.addToContacts"),
       NativeWindow.contextmenus._disableInGuest(NativeWindow.contextmenus.phoneNumberLinkContext),
       function(aTarget) {
+        UITelemetry.addEvent("action.1", "contextmenu", null, "web_contact_phone");
+
         let url = NativeWindow.contextmenus._getLinkURL(aTarget);
         sendMessageToJava({
           type: "Contact:Add",
@@ -613,6 +633,8 @@ var BrowserApp = {
     NativeWindow.contextmenus.add(Strings.browser.GetStringFromName("contextmenu.bookmarkLink"),
       NativeWindow.contextmenus._disableInGuest(NativeWindow.contextmenus.linkBookmarkableContext),
       function(aTarget) {
+        UITelemetry.addEvent("action.1", "contextmenu", null, "web_bookmark");
+
         let url = NativeWindow.contextmenus._getLinkURL(aTarget);
         let title = aTarget.textContent || aTarget.title || url;
         sendMessageToJava({
@@ -625,18 +647,21 @@ var BrowserApp = {
     NativeWindow.contextmenus.add(Strings.browser.GetStringFromName("contextmenu.playMedia"),
       NativeWindow.contextmenus.mediaContext("media-paused"),
       function(aTarget) {
+        UITelemetry.addEvent("action.1", "contextmenu", null, "web_play");
         aTarget.play();
       });
 
     NativeWindow.contextmenus.add(Strings.browser.GetStringFromName("contextmenu.pauseMedia"),
       NativeWindow.contextmenus.mediaContext("media-playing"),
       function(aTarget) {
+        UITelemetry.addEvent("action.1", "contextmenu", null, "web_pause");
         aTarget.pause();
       });
 
     NativeWindow.contextmenus.add(Strings.browser.GetStringFromName("contextmenu.showControls2"),
       NativeWindow.contextmenus.mediaContext("media-hidingcontrols"),
       function(aTarget) {
+        UITelemetry.addEvent("action.1", "contextmenu", null, "web_controls_media");
         aTarget.setAttribute("controls", true);
       });
 
@@ -655,30 +680,36 @@ var BrowserApp = {
       },
       icon: "drawable://ic_menu_share",
       callback: function(aTarget) {
+        UITelemetry.addEvent("action.1", "contextmenu", null, "web_share_media");
       }
     });
 
     NativeWindow.contextmenus.add(Strings.browser.GetStringFromName("contextmenu.fullScreen"),
       NativeWindow.contextmenus.SelectorContext("video:not(:-moz-full-screen)"),
       function(aTarget) {
+        UITelemetry.addEvent("action.1", "contextmenu", null, "web_fullscreen");
         aTarget.mozRequestFullScreen();
       });
 
     NativeWindow.contextmenus.add(Strings.browser.GetStringFromName("contextmenu.mute"),
       NativeWindow.contextmenus.mediaContext("media-unmuted"),
       function(aTarget) {
+        UITelemetry.addEvent("action.1", "contextmenu", null, "web_mute");
         aTarget.muted = true;
       });
   
     NativeWindow.contextmenus.add(Strings.browser.GetStringFromName("contextmenu.unmute"),
       NativeWindow.contextmenus.mediaContext("media-muted"),
       function(aTarget) {
+        UITelemetry.addEvent("action.1", "contextmenu", null, "web_unmute");
         aTarget.muted = false;
       });
 
     NativeWindow.contextmenus.add(Strings.browser.GetStringFromName("contextmenu.copyImageLocation"),
       NativeWindow.contextmenus.imageLocationCopyableContext,
       function(aTarget) {
+        UITelemetry.addEvent("action.1", "contextmenu", null, "web_copy_image");
+
         let url = aTarget.src;
         NativeWindow.contextmenus._copyStringToDefaultClipboard(url);
       });
@@ -701,12 +732,16 @@ var BrowserApp = {
       },
       icon: "drawable://ic_menu_share",
       menu: true,
-      callback: function(aTarget) { }
+      callback: function(aTarget) {
+        UITelemetry.addEvent("action.1", "contextmenu", null, "web_share_image");
+      }
     });
 
     NativeWindow.contextmenus.add(Strings.browser.GetStringFromName("contextmenu.saveImage"),
       NativeWindow.contextmenus.imageSaveableContext,
       function(aTarget) {
+        UITelemetry.addEvent("action.1", "contextmenu", null, "web_save_image");
+
         ContentAreaUtils.saveImageURL(aTarget.currentURI.spec, null, "SaveImageTitle",
                                       false, true, aTarget.ownerDocument.documentURIObject,
                                       aTarget.ownerDocument);
@@ -715,6 +750,8 @@ var BrowserApp = {
     NativeWindow.contextmenus.add(Strings.browser.GetStringFromName("contextmenu.setImageAs"),
       NativeWindow.contextmenus._disableInGuest(NativeWindow.contextmenus.imageSaveableContext),
       function(aTarget) {
+        UITelemetry.addEvent("action.1", "contextmenu", null, "web_background_image");
+
         let src = aTarget.src;
         sendMessageToJava({
           type: "Image:SetAs",
@@ -736,6 +773,8 @@ var BrowserApp = {
         return Strings.browser.GetStringFromName("contextmenu.saveVideo");
       }, NativeWindow.contextmenus.mediaSaveableContext,
       function(aTarget) {
+        UITelemetry.addEvent("action.1", "contextmenu", null, "web_save_media");
+
         let url = aTarget.currentSrc || aTarget.src;
         let filePickerTitleKey = (aTarget instanceof HTMLVideoElement &&
                                   (aTarget.videoWidth != 0 && aTarget.videoHeight != 0))
@@ -770,9 +809,6 @@ var BrowserApp = {
     HealthReportStatusListener.uninit();
     CharacterEncoding.uninit();
     SearchEngines.uninit();
-#ifndef MOZ_ANDROID_SYNTHAPKS
-    WebappsUI.uninit();
-#endif
     RemoteDebugger.uninit();
     Reader.uninit();
     UserAgentOverrides.uninit();
@@ -961,7 +997,6 @@ var BrowserApp = {
     sendMessageToJava(message);
   },
 
-#ifdef MOZ_ANDROID_SYNTHAPKS
   _loadWebapp: function(aMessage) {
 
     this._initRuntime(this._startupStatus, aMessage.url, aUrl => {
@@ -969,7 +1004,6 @@ var BrowserApp = {
       this.addTab(aUrl, { title: aMessage.name });
     });
   },
-#endif
 
   // Calling this will update the state in BrowserApp after a tab has been
   // closed in the Java UI.
@@ -1627,7 +1661,6 @@ var BrowserApp = {
         this.notifyPrefObservers(aData);
         break;
 
-#ifdef MOZ_ANDROID_SYNTHAPKS
       case "webapps-runtime-install":
         WebappManager.install(JSON.parse(aData), aSubject);
         break;
@@ -1645,8 +1678,8 @@ var BrowserApp = {
         break;
       }
 
-      case "webapps-uninstall": {
-        WebappManager.uninstall(JSON.parse(aData));
+      case "webapps-runtime-uninstall": {
+        WebappManager.uninstall(JSON.parse(aData), aSubject);
         break;
       }
 
@@ -1661,7 +1694,6 @@ var BrowserApp = {
       case "Webapps:AutoUninstall":
         WebappManager.autoUninstall(JSON.parse(aData));
         break;
-#endif
 
       case "Locale:Changed":
         if (aData) {
@@ -1676,6 +1708,14 @@ var BrowserApp = {
         }
 
         Services.prefs.setBoolPref("intl.locale.matchOS", !aData);
+
+        // Ensure that this choice is immediately persisted, because
+        // Gecko won't be told again if it forgets.
+        Services.prefs.savePrefFile(null);
+
+        // Blow away the string cache so that future lookups get the
+        // correct locale.
+        Services.strings.flushBundles();
         break;
 
       default:
@@ -2290,16 +2330,46 @@ var NativeWindow = {
       return res;
     },
 
+    _findTarget: function(x, y) {
+      let isDescendant = function(parent, child) {
+        let node = child;
+        while (node) {
+          if (node === parent) {
+            return true;
+          }
+
+          node = node.parentNode;
+        }
+
+        return false;
+      };
+
+      let target = BrowserEventHandler._highlightElement;
+      let touchTarget = ElementTouchHelper.anyElementFromPoint(x, y);
+
+      // If we have a highlighted element that has a click handler, we want to ensure our target is inside it
+      if (isDescendant(target, touchTarget)) {
+        target = touchTarget;
+      } else if (!target) {
+        // Otherwise, let's try to find something clickable
+        target = ElementTouchHelper.elementFromPoint(x, y);
+
+        // If that failed, we'll just fall back to anything under the user's finger
+        if (!target) {
+          target = touchTarget;
+        }
+      }
+
+      return target;
+    },
+
     /* Checks if there are context menu items to show, and if it finds them
      * sends a contextmenu event to content. We also send showing events to
      * any html5 context menus we are about to show, and fire some local notifications
      * for chrome consumers to do lazy menuitem construction
      */
     _sendToContent: function(x, y) {
-      let target = BrowserEventHandler._highlightElement || ElementTouchHelper.elementFromPoint(x, y);
-      if (!target)
-        target = ElementTouchHelper.anyElementFromPoint(x, y);
-
+      let target = this._findTarget(x, y);
       if (!target)
         return;
 
@@ -7030,246 +7100,6 @@ var ActivityObserver = {
   }
 };
 
-#ifndef MOZ_ANDROID_SYNTHAPKS
-var WebappsUI = {
-  init: function init() {
-    Cu.import("resource://gre/modules/Webapps.jsm");
-    Cu.import("resource://gre/modules/AppsUtils.jsm");
-    DOMApplicationRegistry.allAppsLaunchable = true;
-
-    Services.obs.addObserver(this, "webapps-ask-install", false);
-    Services.obs.addObserver(this, "webapps-launch", false);
-    Services.obs.addObserver(this, "webapps-uninstall", false);
-    Services.obs.addObserver(this, "webapps-install-error", false);
-  },
-
-  uninit: function unint() {
-    Services.obs.removeObserver(this, "webapps-ask-install");
-    Services.obs.removeObserver(this, "webapps-launch");
-    Services.obs.removeObserver(this, "webapps-uninstall");
-    Services.obs.removeObserver(this, "webapps-install-error");
-  },
-
-  DEFAULT_ICON: "chrome://browser/skin/images/default-app-icon.png",
-  DEFAULT_PREFS_FILENAME: "default-prefs.js",
-
-  observe: function observe(aSubject, aTopic, aData) {
-    let data = {};
-    try {
-      data = JSON.parse(aData);
-      data.mm = aSubject;
-    } catch(ex) { }
-    switch (aTopic) {
-      case "webapps-install-error":
-        let msg = "";
-        switch (aData) {
-          case "INVALID_MANIFEST":
-          case "MANIFEST_PARSE_ERROR":
-            msg = Strings.browser.GetStringFromName("webapps.manifestInstallError");
-            break;
-          case "NETWORK_ERROR":
-          case "MANIFEST_URL_ERROR":
-            msg = Strings.browser.GetStringFromName("webapps.networkInstallError");
-            break;
-          default:
-            msg = Strings.browser.GetStringFromName("webapps.installError");
-        }
-        NativeWindow.toast.show(msg, "short");
-        console.log("Error installing app: " + aData);
-        break;
-      case "webapps-ask-install":
-        this.doInstall(data);
-        break;
-      case "webapps-launch":
-        this.openURL(data.manifestURL, data.origin);
-        break;
-      case "webapps-uninstall":
-        sendMessageToJava({
-          type: "Webapps:Uninstall",
-          origin: data.origin
-        });
-        break;
-    }
-  },
-
-  doInstall: function doInstall(aData) {
-    let jsonManifest = aData.isPackage ? aData.app.updateManifest : aData.app.manifest;
-    let manifest = new ManifestHelper(jsonManifest, aData.app.origin);
-
-    if (Services.prompt.confirm(null, Strings.browser.GetStringFromName("webapps.installTitle"), manifest.name + "\n" + aData.app.origin)) {
-      // Get a profile for the app to be installed in. We'll download everything before creating the icons.
-      let origin = aData.app.origin;
-      sendMessageToJava({
-         type: "Webapps:Preinstall",
-         name: manifest.name,
-         manifestURL: aData.app.manifestURL,
-         origin: origin
-      }, (data) => {
-        let profilePath = data.profile;
-        if (!profilePath)
-          return;
-
-        let file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsILocalFile);
-        file.initWithPath(profilePath);
-
-        let self = this;
-        DOMApplicationRegistry.confirmInstall(aData, file,
-          function (aManifest) {
-            let localeManifest = new ManifestHelper(aManifest, aData.app.origin);
-
-            // the manifest argument is the manifest from within the zip file,
-            // TODO so now would be a good time to ask about permissions.
-            self.makeBase64Icon(localeManifest.biggestIconURL || this.DEFAULT_ICON,
-              function(scaledIcon, fullsizeIcon) {
-                // if java returned a profile path to us, try to use it to pre-populate the app cache
-                // also save the icon so that it can be used in the splash screen
-                try {
-                  let iconFile = file.clone();
-                  iconFile.append("logo.png");
-                  let persist = Cc["@mozilla.org/embedding/browser/nsWebBrowserPersist;1"].createInstance(Ci.nsIWebBrowserPersist);
-                  persist.persistFlags = Ci.nsIWebBrowserPersist.PERSIST_FLAGS_REPLACE_EXISTING_FILES;
-                  persist.persistFlags |= Ci.nsIWebBrowserPersist.PERSIST_FLAGS_AUTODETECT_APPLY_CONVERSION;
-
-                  let source = Services.io.newURI(fullsizeIcon, "UTF8", null);
-                  persist.saveURI(source, null, null, null, null, iconFile, null);
-
-                  // aData.app.origin may now point to the app: url that hosts this app
-                  sendMessageToJava({
-                    type: "Webapps:Postinstall",
-                    name: localeManifest.name,
-                    manifestURL: aData.app.manifestURL,
-                    originalOrigin: origin,
-                    origin: aData.app.origin,
-                    iconURL: fullsizeIcon
-                  });
-                  if (!!aData.isPackage) {
-                    // For packaged apps, put a notification in the notification bar.
-                    let message = Strings.browser.GetStringFromName("webapps.alertSuccess");
-                    let alerts = Cc["@mozilla.org/alerts-service;1"].getService(Ci.nsIAlertsService);
-                    alerts.showAlertNotification("drawable://alert_app", localeManifest.name, message, true, "", {
-                      observe: function () {
-                        self.openURL(aData.app.manifestURL, aData.app.origin);
-                      }
-                    }, "webapp");
-                  }
-
-                  // Create a system notification allowing the user to launch the app
-                  let observer = {
-                    observe: function (aSubject, aTopic) {
-                      if (aTopic == "alertclickcallback") {
-                        WebappsUI.openURL(aData.app.manifestURL, origin);
-                      }
-                    }
-                  };
-
-                  let message = Strings.browser.GetStringFromName("webapps.alertSuccess");
-                  let alerts = Cc["@mozilla.org/alerts-service;1"].getService(Ci.nsIAlertsService);
-                  alerts.showAlertNotification("drawable://alert_app", localeManifest.name, message, true, "", observer, "webapp");
-                } catch(ex) {
-                  console.log(ex);
-                }
-                self.writeDefaultPrefs(file, localeManifest);
-              }
-            );
-          }
-        );
-      });
-    } else {
-      DOMApplicationRegistry.denyInstall(aData);
-    }
-  },
-
-  writeDefaultPrefs: function webapps_writeDefaultPrefs(aProfile, aManifest) {
-      // build any app specific default prefs
-      let prefs = [];
-      if (aManifest.orientation) {
-        prefs.push({name:"app.orientation.default", value: aManifest.orientation.join(",") });
-      }
-
-      // write them into the app profile
-      let defaultPrefsFile = aProfile.clone();
-      defaultPrefsFile.append(this.DEFAULT_PREFS_FILENAME);
-      this._writeData(defaultPrefsFile, prefs);
-  },
-
-  _writeData: function(aFile, aPrefs) {
-    if (aPrefs.length > 0) {
-      let array = new TextEncoder().encode(JSON.stringify(aPrefs));
-      OS.File.writeAtomic(aFile.path, array, { tmpPath: aFile.path + ".tmp" }).then(null, function onError(reason) {
-        console.log("Error writing default prefs: " + reason);
-      });
-    }
-  },
-
-  openURL: function openURL(aManifestURL, aOrigin) {
-    sendMessageToJava({
-      type: "Webapps:Open",
-      manifestURL: aManifestURL,
-      origin: aOrigin
-    });
-  },
-
-  get iconSize() {
-    let iconSize = 64;
-    try {
-      let jni = new JNI();
-      let cls = jni.findClass("org/mozilla/gecko/GeckoAppShell");
-      let method = jni.getStaticMethodID(cls, "getPreferredIconSize", "()I");
-      iconSize = jni.callStaticIntMethod(cls, method);
-      jni.close();
-    } catch(ex) {
-      console.log(ex);
-    }
-
-    delete this.iconSize;
-    return this.iconSize = iconSize;
-  },
-
-  makeBase64Icon: function loadAndMakeBase64Icon(aIconURL, aCallbackFunction) {
-    let size = this.iconSize;
-
-    let canvas = document.createElementNS("http://www.w3.org/1999/xhtml", "canvas");
-    canvas.width = canvas.height = size;
-    let ctx = canvas.getContext("2d");
-    let favicon = new Image();
-    favicon.onload = function() {
-      ctx.drawImage(favicon, 0, 0, size, size);
-      let scaledIcon = canvas.toDataURL("image/png", "");
-
-      canvas.width = favicon.width;
-      canvas.height = favicon.height;
-      ctx.drawImage(favicon, 0, 0, favicon.width, favicon.height);
-      let fullsizeIcon = canvas.toDataURL("image/png", "");
-
-      canvas = null;
-      aCallbackFunction.call(null, scaledIcon, fullsizeIcon);
-    };
-    favicon.onerror = function() {
-      Cu.reportError("CreateShortcut: favicon image load error");
-
-      // if the image failed to load, and it was not our default icon, attempt to
-      // use our default as a fallback
-      if (favicon.src != WebappsUI.DEFAULT_ICON) {
-        favicon.src = WebappsUI.DEFAULT_ICON;
-      }
-    };
-  
-    favicon.src = aIconURL;
-  },
-
-  createShortcut: function createShortcut(aTitle, aURL, aIconURL, aType) {
-    this.makeBase64Icon(aIconURL, function _createShortcut(icon) {
-      try {
-        let shell = Cc["@mozilla.org/browser/shell-service;1"].createInstance(Ci.nsIShellService);
-        shell.createShortcut(aTitle, aURL, icon, aType);
-      } catch(e) {
-        Cu.reportError(e);
-      }
-    });
-  }
-}
-#endif
-
 var RemoteDebugger = {
   init: function rd_init() {
     Services.prefs.addObserver("devtools.debugger.", this, false);
@@ -7537,9 +7367,20 @@ let Reader = {
       }
 
       case "Reader:Remove": {
-        let url = aData;
-        this.removeArticleFromCache(url, function(success) {
-          this.log("Reader:Remove success=" + success + ", url=" + url);
+        let args = JSON.parse(aData);
+
+        if (!("url" in args)) {
+          throw new Error("Reader:Remove requires URL as an argument");
+        }
+
+        this.removeArticleFromCache(args.url, function(success) {
+          this.log("Reader:Remove success=" + success + ", url=" + args.url);
+          if (success && args.notify) {
+            sendMessageToJava({
+              type: "Reader:Removed",
+              url: args.url
+            });
+          }
         }.bind(this));
         break;
       }
@@ -8251,12 +8092,12 @@ var Tabs = {
       case "Session:Prefetch":
         if (aData) {
           let uri = Services.io.newURI(aData, null, null);
-          if (uri && !this._domains.has(uri.host)) {
-            try {
+          try {
+            if (uri && !this._domains.has(uri.host)) {
               Services.io.QueryInterface(Ci.nsISpeculativeConnect).speculativeConnect(uri, null);
               this._domains.add(uri.host);
-            } catch (e) {}
-          }
+            }
+          } catch (e) {}
         }
         break;
     }

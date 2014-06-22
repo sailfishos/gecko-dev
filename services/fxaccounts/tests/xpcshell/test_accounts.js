@@ -176,7 +176,8 @@ add_task(function test_get_signed_in_user_initially_unset() {
   do_check_eq(result.kB, credentials.kB);
 
   // sign out
-  yield account.signOut();
+  let localOnly = true;
+  yield account.signOut(localOnly);
 
   // user should be undefined after sign out
   let result = yield account.getSignedInUser();
@@ -293,8 +294,9 @@ add_test(function test_getKeys() {
       // Before getKeys, we have no keys
       do_check_eq(!!user.kA, false);
       do_check_eq(!!user.kB, false);
-      // And we still have a key-fetch token to use
+      // And we still have a key-fetch token and unwrapBKey to use
       do_check_eq(!!user.keyFetchToken, true);
+      do_check_eq(!!user.unwrapBKey, true);
 
       fxa.internal.getKeys().then(() => {
         fxa.getSignedInUser().then((user) => {
@@ -304,6 +306,7 @@ add_test(function test_getKeys() {
           do_check_eq(user.kA, expandHex("11"));
           do_check_eq(user.kB, expandHex("66"));
           do_check_eq(user.keyFetchToken, undefined);
+          do_check_eq(user.unwrapBKey, undefined);
           do_test_finished();
           run_next_test();
         });

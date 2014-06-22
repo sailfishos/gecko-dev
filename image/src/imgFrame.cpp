@@ -16,7 +16,6 @@
 
 static bool gDisableOptimize = false;
 
-#include "cairo.h"
 #include "GeckoProfiler.h"
 #include "mozilla/Likely.h"
 #include "mozilla/MemoryReporting.h"
@@ -36,6 +35,13 @@ VolatileBufferRelease(void *vbuf)
   delete static_cast<VolatileBufferPtr<unsigned char>*>(vbuf);
 }
 
+static int32_t
+VolatileSurfaceStride(const IntSize& size, SurfaceFormat format)
+{
+  // Stride must be a multiple of four or cairo will complain.
+  return (size.width * BytesPerPixel(format) + 0x3) & ~0x3;
+}
+
 static TemporaryRef<DataSourceSurface>
 CreateLockedSurface(VolatileBuffer *vbuf,
                     const IntSize& size,
@@ -45,7 +51,7 @@ CreateLockedSurface(VolatileBuffer *vbuf,
     new VolatileBufferPtr<unsigned char>(vbuf);
   MOZ_ASSERT(!vbufptr->WasBufferPurged(), "Expected image data!");
 
-  int32_t stride = size.width * BytesPerPixel(format);
+  int32_t stride = VolatileSurfaceStride(size, format);
   RefPtr<DataSourceSurface> surf =
     Factory::CreateWrappingDataSourceSurface(*vbufptr, stride, size, format);
   if (!surf) {
@@ -60,7 +66,7 @@ CreateLockedSurface(VolatileBuffer *vbuf,
 static TemporaryRef<VolatileBuffer>
 AllocateBufferForImage(const IntSize& size, SurfaceFormat format)
 {
-  int32_t stride = size.width * BytesPerPixel(format);
+  int32_t stride = VolatileSurfaceStride(size, format);
   RefPtr<VolatileBuffer> buf = new VolatileBuffer();
   if (buf->Init(stride * size.height,
                 1 << gfxAlphaRecovery::GoodAlignmentLog2()))
@@ -337,12 +343,12 @@ imgFrame::SurfaceForDrawing(bool               aDoPadding,
       imageSpaceToUserSpace.Invert();
       SurfacePattern pattern(aSurface,
                              ExtendMode::REPEAT,
-                             Matrix(imageSpaceToUserSpace.xx,
-                                    imageSpaceToUserSpace.xy,
-                                    imageSpaceToUserSpace.yx,
-                                    imageSpaceToUserSpace.yy,
-                                    imageSpaceToUserSpace.x0,
-                                    imageSpaceToUserSpace.y0));
+                             Matrix(imageSpaceToUserSpace._11,
+                                    imageSpaceToUserSpace._21,
+                                    imageSpaceToUserSpace._12,
+                                    imageSpaceToUserSpace._22,
+                                    imageSpaceToUserSpace._31,
+                                    imageSpaceToUserSpace._32));
       target->FillRect(fillRect, pattern);
     }
 
@@ -383,16 +389,29 @@ bool imgFrame::Draw(gfxContext *aContext, GraphicsFilter aFilter,
   bool doPadding = aPadding != nsIntMargin(0,0,0,0);
   bool doPartialDecode = !ImageComplete();
 
-  RefPtr<DrawTarget> dt = aContext->GetDrawTarget();
-
   if (mSinglePixel && !doPadding && !doPartialDecode) {
     if (mSinglePixelColor.a == 0.0) {
       return true;
     }
 
-    Rect target(aFill.x, aFill.y, aFill.width, aFill.height);
-    dt->FillRect(target, ColorPattern(mSinglePixelColor),
-                 DrawOptions(1.0f, CompositionOpForOp(aContext->CurrentOperator())));
+    if (aContext->IsCairo()) {
+      gfxContext::GraphicsOperator op = aContext->CurrentOperator();
+      if (op == gfxContext::OPERATOR_OVER && mSinglePixelColor.a == 1.0) {
+        aContext->SetOperator(gfxContext::OPERATOR_SOURCE);
+      }
+      aContext->SetDeviceColor(ThebesColor(mSinglePixelColor));
+      aContext->NewPath();
+      aContext->Rectangle(aFill);
+      aContext->Fill();
+      aContext->SetOperator(op);
+      aContext->SetDeviceColor(gfxRGBA(0,0,0,0));
+      return true;
+    }
+    RefPtr<DrawTarget> dt = aContext->GetDrawTarget();
+    dt->FillRect(ToRect(aFill),
+                 ColorPattern(mSinglePixelColor),
+                 DrawOptions(1.0f,
+                             CompositionOpForOp(aContext->CurrentOperator())));
     return true;
   }
 

@@ -30,7 +30,6 @@
 #include "nsGkAtoms.h"
 #include "nsImageFrame.h"
 #include "nsLayoutStylesheetCache.h"
-#include "nsNodeInfo.h"
 #include "nsRange.h"
 #include "nsRegion.h"
 #include "nsRepeatService.h"
@@ -63,6 +62,7 @@
 #include "CacheObserver.h"
 #include "DisplayItemClip.h"
 #include "ActiveLayerTracker.h"
+#include "CounterStyleManager.h"
 
 #include "AudioChannelService.h"
 #include "mozilla/dom/DataStoreService.h"
@@ -131,6 +131,7 @@ using namespace mozilla::system;
 #include "mozilla/IMEStateManager.h"
 #include "nsDocument.h"
 #include "mozilla/dom/HTMLVideoElement.h"
+#include "CameraPreferences.h"
 
 using namespace mozilla;
 using namespace mozilla::net;
@@ -293,6 +294,10 @@ nsLayoutStatics::Initialize()
 
   CacheObserver::Init();
 
+  CounterStyleManager::InitializeBuiltinCounterStyles();
+
+  CameraPreferences::Initialize();
+
   return NS_OK;
 }
 
@@ -423,4 +428,6 @@ nsLayoutStatics::Shutdown()
   nsDocument::XPCOMShutdown();
 
   CacheObserver::Shutdown();
+
+  CameraPreferences::Shutdown();
 }

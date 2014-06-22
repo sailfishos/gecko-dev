@@ -24,6 +24,9 @@ let isLinux = ("@mozilla.org/gnome-gconf-service;1" in Cc);
 let isWindows = ("@mozilla.org/windows-registry-key;1" in Cc);
 let gWindow = window;
 
+// Default to empty directory links
+let gDirectorySource = "data:application/json,{}";
+
 // The tests assume all three rows of sites are shown, but the window may be too
 // short to actually show three rows.  Resize it if necessary.
 let requiredInnerHeight =
@@ -95,9 +98,10 @@ function test() {
   waitForExplicitFinish();
   // start TestRunner.run() after directory links is downloaded and written to disk
   watchLinksChangeOnce().then(() => {
-    TestRunner.run();
+    // Wait for hidden page to update with the desired links
+    whenPagesUpdated(() => TestRunner.run(), true);
   });
-  Services.prefs.setCharPref(PREF_NEWTAB_DIRECTORYSOURCE, "data:application/json,{}");
+  Services.prefs.setCharPref(PREF_NEWTAB_DIRECTORYSOURCE, gDirectorySource);
 }
 
 /**
@@ -304,7 +308,7 @@ function addNewTabPageTab() {
     if (NewTabUtils.allPages.enabled) {
       // Continue when the link cache has been populated.
       NewTabUtils.links.populateCache(function () {
-        executeSoon(TestRunner.next);
+        whenSearchInitDone();
       });
     } else {
       // It's important that we call next() asynchronously.
@@ -602,33 +606,18 @@ function whenPagesUpdated(aCallback, aOnlyIfHidden=false) {
 }
 
 /**
- * Waits a small amount of time for search events to stop occurring in the
- * newtab page.
- *
- * newtab pages receive some search events around load time that are difficult
- * to predict.  There are two categories of such events: (1) "State" events
- * triggered by engine notifications like engine-changed, due to the search
- * service initializing itself on app startup.  This can happen when a test is
- * the first test to run.  (2) "State" events triggered by the newtab page
- * itself when gSearch first sets itself up.  newtab preloading makes these a
- * pain to predict.
+ * Waits for the response to the page's initial search state request.
  */
 function whenSearchInitDone() {
-  info("Waiting for initial search events...");
-  let numTicks = 0;
-  function reset(event) {
-    info("Got initial search event " + event.detail.type +
-         ", waiting for more...");
-    numTicks = 0;
+  if (getContentWindow().gSearch._initialStateReceived) {
+    executeSoon(TestRunner.next);
+    return;
   }
   let eventName = "ContentSearchService";
-  getContentWindow().addEventListener(eventName, reset);
-  let interval = window.setInterval(() => {
-    if (++numTicks >= 100) {
-      info("Done waiting for initial search events");
-      window.clearInterval(interval);
-      getContentWindow().removeEventListener(eventName, reset);
+  getContentWindow().addEventListener(eventName, function onEvent(event) {
+    if (event.detail.type == "State") {
+      getContentWindow().removeEventListener(eventName, onEvent);
       TestRunner.next();
     }
-  }, 0);
+  });
 }

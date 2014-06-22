@@ -6,7 +6,6 @@
 
 #include "jit/AsmJSLink.h"
 
-#include "mozilla/BinarySearch.h"
 #include "mozilla/PodOperations.h"
 
 #ifdef MOZ_VTUNE
@@ -32,7 +31,6 @@
 using namespace js;
 using namespace js::jit;
 
-using mozilla::BinarySearch;
 using mozilla::IsNaN;
 using mozilla::PodZero;
 
@@ -93,29 +91,14 @@ AsmJSFrameIterator::operator++()
     settle(ReturnAddressForJitCall(sp_));
 }
 
-struct GetCallSite
-{
-    const AsmJSModule &module;
-    explicit GetCallSite(const AsmJSModule &module) : module(module) {}
-    uint32_t operator[](size_t index) const {
-        return module.callSite(index).returnAddressOffset();
-    }
-};
-
 void
 AsmJSFrameIterator::settle(uint8_t *returnAddress)
 {
-    uint32_t target = returnAddress - module_->codeBase();
-    size_t lowerBound = 0;
-    size_t upperBound = module_->numCallSites();
-
-    size_t match;
-    if (!BinarySearch(GetCallSite(*module_), lowerBound, upperBound, target, &match)) {
+    callsite_ = module_->lookupCallSite(returnAddress);
+    if (!callsite_ || callsite_->isEntry()) {
         module_ = nullptr;
         return;
     }
-
-    callsite_ = &module_->callSite(match);
 
     if (callsite_->isEntry()) {
         module_ = nullptr;
@@ -607,6 +590,11 @@ HandleDynamicLinkFailure(JSContext *cx, CallArgs args, AsmJSModule &module, Hand
            .setCompileAndGo(false)
            .setNoScriptRval(false);
 
+    // The exported function inherits an implicit strict context if the module
+    // also inherited it somehow.
+    if (module.strict())
+        options.strictOption = true;
+
     SourceBufferHolder srcBuf(src->chars(), end - begin, SourceBufferHolder::NoOwnership);
     if (!frontend::CompileFunctionBody(cx, &fun, options, formals, srcBuf))
         return false;
@@ -722,8 +710,8 @@ SendModuleToAttachedProfiler(JSContext *cx, AsmJSModule &module)
 
 #if defined(JS_ION_PERF)
     if (module.numExportedFunctions() > 0) {
-        size_t firstEntryCode = (size_t) module.entryTrampoline(module.exportedFunction(0));
-        writePerfSpewerAsmJSEntriesAndExits(firstEntryCode, (size_t) module.globalData() - firstEntryCode);
+        size_t firstEntryCode = size_t(module.codeBase() + module.functionBytes());
+        writePerfSpewerAsmJSEntriesAndExits(firstEntryCode, module.codeBytes() - module.functionBytes());
     }
     if (!SendBlocksToPerf(cx, module))
         return false;
@@ -941,15 +929,15 @@ js::AsmJSModuleToString(JSContext *cx, HandleFunction fun, bool addParenToLambda
             return nullptr;
 
         if (PropertyName *argName = module.globalArgumentName()) {
-            if (!out.append(argName->chars(), argName->length()))
+            if (!out.append(argName))
                 return nullptr;
         }
         if (PropertyName *argName = module.importArgumentName()) {
-            if (!out.append(", ") || !out.append(argName->chars(), argName->length()))
+            if (!out.append(", ") || !out.append(argName))
                 return nullptr;
         }
         if (PropertyName *argName = module.bufferArgumentName()) {
-            if (!out.append(", ") || !out.append(argName->chars(), argName->length()))
+            if (!out.append(", ") || !out.append(argName))
                 return nullptr;
         }
 
@@ -965,7 +953,7 @@ js::AsmJSModuleToString(JSContext *cx, HandleFunction fun, bool addParenToLambda
         if (!AppendUseStrictSource(cx, fun, src, out))
             return nullptr;
     } else {
-        if (!out.append(src->chars(), src->length()))
+        if (!out.append(src))
             return nullptr;
     }
 
@@ -1048,7 +1036,7 @@ js::AsmJSFunctionToString(JSContext *cx, HandleFunction fun)
         Rooted<JSFlatString*> src(cx, source->substring(cx, begin, end));
         if (!src)
             return nullptr;
-        if (!out.append(src->chars(), src->length()))
+        if (!out.append(src))
             return nullptr;
     }
 

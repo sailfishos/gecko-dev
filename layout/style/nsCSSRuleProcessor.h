@@ -29,6 +29,7 @@ class nsCSSKeyframesRule;
 class nsCSSPageRule;
 class nsCSSFontFeatureValuesRule;
 class nsCSSStyleSheet;
+class nsCSSCounterStyleRule;
 
 /**
  * The CSS style rule processor provides a mechanism for sibling style
@@ -52,7 +53,8 @@ public:
                      mozilla::dom::Element* aScopeElement);
   virtual ~nsCSSRuleProcessor();
 
-  NS_DECL_ISUPPORTS
+  NS_DECL_CYCLE_COLLECTING_ISUPPORTS
+  NS_DECL_CYCLE_COLLECTION_CLASS(nsCSSRuleProcessor)
 
 public:
   nsresult ClearRuleCascades();
@@ -129,6 +131,9 @@ public:
   nsCSSKeyframesRule* KeyframesRuleForName(nsPresContext* aPresContext,
                                            const nsString& aName);
 
+  nsCSSCounterStyleRule* CounterStyleRuleForName(nsPresContext* aPresContext,
+                                                 const nsAString& aName);
+
   bool AppendPageRules(nsPresContext* aPresContext,
                        nsTArray<nsCSSPageRule*>& aArray);
 
@@ -177,6 +182,8 @@ private:
                                        mozilla::dom::Element* aStatefulElement,
                                        nsCSSPseudoElements::Type aPseudoType,
                                        mozilla::EventStates aStateMask);
+
+  void ClearSheets();
 
   // The sheet order here is the same as in nsStyleSet::mSheets
   sheet_array_type mSheets;

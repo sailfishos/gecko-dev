@@ -86,9 +86,9 @@ MediaKeyMessageEvent::Constructor(const GlobalObject& aGlobal,
   if (aEventInitDict.mMessage.WasPassed()) {
     const auto& a = aEventInitDict.mMessage.Value();
     a.ComputeLengthAndData();
-    e->mMessage = Uint8Array::Create(aGlobal.GetContext(), owner, a.Length(), a.Data());
+    e->mMessage = Uint8Array::Create(aGlobal.Context(), owner, a.Length(), a.Data());
   } else {
-    e->mMessage = Uint8Array::Create(aGlobal.GetContext(), owner, 0, nullptr);
+    e->mMessage = Uint8Array::Create(aGlobal.Context(), owner, 0, nullptr);
   }
   if (!e->mMessage) {
     aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
@@ -99,8 +99,10 @@ MediaKeyMessageEvent::Constructor(const GlobalObject& aGlobal,
   return e.forget();
 }
 
-JSObject*
-MediaKeyMessageEvent::GetMessage(JSContext* cx, ErrorResult& aRv)
+void
+MediaKeyMessageEvent::GetMessage(JSContext* cx,
+                                 JS::MutableHandle<JSObject*> aMessage,
+                                 ErrorResult& aRv)
 {
   if (!mMessage) {
     mMessage = Uint8Array::Create(cx,
@@ -109,12 +111,12 @@ MediaKeyMessageEvent::GetMessage(JSContext* cx, ErrorResult& aRv)
                                   mRawMessage.Elements());
     if (!mMessage) {
       aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
-      return nullptr;
+      return;
     }
     mRawMessage.Clear();
   }
   JS::ExposeObjectToActiveJS(mMessage);
-  return mMessage;
+  aMessage.set(mMessage);
 }
 
 void

@@ -31,6 +31,7 @@ WebGLContext::GetExtensionString(WebGLExtensionID ext)
         sExtensionNamesEnumeratedArray[WebGLExtensionID::x] = #x;
 
         WEBGL_EXTENSION_IDENTIFIER(ANGLE_instanced_arrays)
+        WEBGL_EXTENSION_IDENTIFIER(EXT_blend_minmax)
         WEBGL_EXTENSION_IDENTIFIER(EXT_color_buffer_half_float)
         WEBGL_EXTENSION_IDENTIFIER(EXT_frag_depth)
         WEBGL_EXTENSION_IDENTIFIER(EXT_sRGB)
@@ -162,16 +163,16 @@ bool WebGLContext::IsExtensionSupported(WebGLExtensionID ext) const
             // For warnings-as-errors.
             break;
     }
-// Uncomment this switch for any new extensions
-#if 0
+
     if (Preferences::GetBool("webgl.enable-draft-extensions", false) || IsWebGL2()) {
         switch (ext) {
+            case WebGLExtensionID::EXT_blend_minmax:
+                return WebGLExtensionBlendMinMax::IsSupported(this);
             default:
                 // For warnings-as-errors.
                 break;
         }
     }
-#endif
 
     return false;
 }
@@ -182,11 +183,15 @@ CompareWebGLExtensionName(const nsACString& name, const char *other)
     return name.Equals(other, nsCaseInsensitiveCStringComparator());
 }
 
-JSObject*
-WebGLContext::GetExtension(JSContext *cx, const nsAString& aName, ErrorResult& rv)
+void
+WebGLContext::GetExtension(JSContext *cx, const nsAString& aName,
+                           JS::MutableHandle<JSObject*> aRetval,
+                           ErrorResult& rv)
 {
-    if (IsContextLost())
-        return nullptr;
+    if (IsContextLost()) {
+        aRetval.set(nullptr);
+        return;
+    }
 
     NS_LossyConvertUTF16toASCII name(aName);
 
@@ -235,12 +240,14 @@ WebGLContext::GetExtension(JSContext *cx, const nsAString& aName, ErrorResult& r
     }
 
     if (ext == WebGLExtensionID::Unknown) {
-        return nullptr;
+        aRetval.set(nullptr);
+        return;
     }
 
     // step 2: check if the extension is supported
     if (!IsExtensionSupported(cx, ext)) {
-        return nullptr;
+        aRetval.set(nullptr);
+        return;
     }
 
     // step 3: if the extension hadn't been previously been created, create it now, thus enabling it
@@ -248,7 +255,7 @@ WebGLContext::GetExtension(JSContext *cx, const nsAString& aName, ErrorResult& r
         EnableExtension(ext);
     }
 
-    return WebGLObjectAsJSObject(cx, mExtensions[ext].get(), rv);
+    aRetval.set(WebGLObjectAsJSObject(cx, mExtensions[ext].get(), rv));
 }
 
 void
@@ -323,6 +330,9 @@ WebGLContext::EnableExtension(WebGLExtensionID ext)
             break;
         case WebGLExtensionID::EXT_frag_depth:
             obj = new WebGLExtensionFragDepth(this);
+            break;
+        case WebGLExtensionID::EXT_blend_minmax:
+            obj = new WebGLExtensionBlendMinMax(this);
             break;
         default:
             MOZ_ASSERT(false, "should not get there.");

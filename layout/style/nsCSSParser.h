@@ -23,7 +23,7 @@ struct nsCSSSelectorList;
 class nsMediaList;
 class nsCSSKeyframeRule;
 class nsCSSValue;
-class nsRuleData;
+struct nsRuleData;
 
 namespace mozilla {
 class CSSVariableValues;
@@ -263,6 +263,17 @@ public:
                                    nsCSSStyleSheet* aSheet,
                                    uint32_t aLineNumber,
                                    uint32_t aLineOffset);
+
+  bool ParseCounterStyleName(const nsAString& aBuffer,
+                             nsIURI* aURL,
+                             nsAString& aName);
+
+  bool ParseCounterDescriptor(nsCSSCounterDesc aDescID,
+                              const nsAString& aBuffer,
+                              nsIURI* aSheetURL,
+                              nsIURI* aBaseURL,
+                              nsIPrincipal* aSheetPrincipal,
+                              nsCSSValue& aValue);
 
 protected:
   // This is a CSSParserImpl*, but if we expose that type name in this

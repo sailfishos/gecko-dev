@@ -122,7 +122,6 @@
   <string name="pref_category_home">&pref_category_home;</string>
   <string name="pref_category_home_summary">&pref_category_home_summary;</string>
   <string name="pref_category_home_panels">&pref_category_home_panels;</string>
-  <string name="pref_home_add_panel">&pref_home_add_panel;</string>
   <string name="home_add_panel_title">&home_add_panel_title;</string>
   <string name="home_add_panel_empty">&home_add_panel_empty;</string>
   <string name="home_add_panel_installed">&home_add_panel_installed;</string>
@@ -247,6 +246,7 @@
   <string name="new_tab">&new_tab;</string>
   <string name="new_private_tab">&new_private_tab;</string>
   <string name="close_all_tabs">&close_all_tabs;</string>
+  <string name="close_private_tabs">&close_private_tabs;</string>
   <string name="tabs_normal">&tabs_normal;</string>
   <string name="tabs_private">&tabs_private;</string>
   <string name="tabs_synced">&tabs_synced;</string>
@@ -323,6 +323,11 @@
   <string name="home_reading_list_hint_accessible">&home_reading_list_hint_accessible;</string>
   <string name="home_default_empty">&home_default_empty;</string>
   <string name="home_move_up_to_filter">&home_move_up_to_filter;</string>
+  <string name="private_browsing_title">&private_browsing_title;</string>
+  <string name="private_tabs_panel_description">&private_tabs_panel_description;</string>
+  <string name="private_tabs_panel_learn_more">&private_tabs_panel_learn_more;</string>
+  <!-- https://support.mozilla.org/%LOCALE%/kb/mobile-private-browsing-browse-web-without-saving-syncing-info -->
+  <string name="private_tabs_panel_learn_more_link">https://support.mozilla.org/&formatS1;/kb/mobile-private-browsing-browse-web-without-saving-syncing-info</string>
   <string name="pin_site_dialog_hint">&pin_site_dialog_hint;</string>
 
   <string name="filepicker_title">&filepicker_title;</string>

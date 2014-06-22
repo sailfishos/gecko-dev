@@ -78,6 +78,18 @@
   background-color: -moz-Dialog;
 }
 
+#navigator-toolbox > toolbar:not(#toolbar-menubar):not(#TabsToolbar):not(#nav-bar):not(#addon-bar) {
+  overflow: -moz-hidden-unscrollable;
+  max-height: 4em;
+  transition: min-height 170ms ease-out, max-height 170ms ease-out;
+}
+
+#navigator-toolbox > toolbar:not(#toolbar-menubar):not(#TabsToolbar):not(#nav-bar):not(#addon-bar)[collapsed=true] {
+  min-height: 0.1px;
+  max-height: 0;
+  transition: min-height 170ms ease-out, max-height 170ms ease-out, visibility 170ms linear;
+}
+
 %ifdef WINDOWS_AERO
 @media not all and (-moz-windows-compositor),
        not all and (-moz-windows-default-theme) {
@@ -192,7 +204,7 @@
     border-bottom: 1px solid transparent;
   }
 
-  #main-window[tabsintitlebar][sizemode="normal"] #titlebar-content:-moz-lwtheme {
+  #main-window[tabsintitlebar][sizemode="normal"] > #tab-view-deck > #browser-panel:-moz-lwtheme {
     /* Render a window top border: */
     background-image: linear-gradient(to bottom,
           ThreeDLightShadow 0, ThreeDLightShadow 1px,
@@ -209,7 +221,7 @@
 
 /* Render a window top border for lwthemes on WinXP modern themes: */
 @media (-moz-windows-theme: luna-blue) {
-  #main-window[tabsintitlebar][sizemode="normal"] #titlebar-content:-moz-lwtheme {
+  #main-window[tabsintitlebar][sizemode="normal"] > #tab-view-deck > #browser-panel:-moz-lwtheme {
     background-image: linear-gradient(to bottom,
         rgb(8, 49, 216) 0, rgb(8, 49, 216) 1px,
         rgb(15, 77, 227) 1px, rgb(15, 77, 227) 2px,
@@ -218,7 +230,7 @@
         transparent 4px);
   }
 
-  #main-window[tabsintitlebar][sizemode="normal"] #titlebar-content:-moz-lwtheme:-moz-window-inactive {
+  #main-window[tabsintitlebar][sizemode="normal"] > #tab-view-deck > #browser-panel:-moz-lwtheme:-moz-window-inactive {
     background-image: linear-gradient(to bottom,
         rgb(91, 104, 205) 0, rgb(91, 104, 205) 1px,
         rgb(116, 128, 220) 1px, rgb(116, 128, 220) 2px,
@@ -228,7 +240,7 @@
 }
 
 @media (-moz-windows-theme: luna-silver) {
-  #main-window[tabsintitlebar][sizemode="normal"] #titlebar-content:-moz-lwtheme {
+  #main-window[tabsintitlebar][sizemode="normal"] > #tab-view-deck > #browser-panel:-moz-lwtheme {
     background-image: linear-gradient(to bottom,
         rgb(102,102,126) 0, rgb(102,102,126) 1px,
         rgb(168,167,191) 1px, rgb(168,167,191) 2px,
@@ -237,7 +249,7 @@
         transparent 4px);
   }
 
-  #main-window[tabsintitlebar][sizemode="normal"] #titlebar-content:-moz-lwtheme:-moz-window-inactive {
+  #main-window[tabsintitlebar][sizemode="normal"] > #tab-view-deck > #browser-panel:-moz-lwtheme:-moz-window-inactive {
     background-image: linear-gradient(to bottom,
         rgb(186,186,197) 0, rgb(186,186,197) 1px,
         rgb(236,238,245) 1px, rgb(236,238,245) 2px,
@@ -248,7 +260,7 @@
 }
 
 @media (-moz-windows-theme: luna-olive) {
-  #main-window[tabsintitlebar][sizemode="normal"] #titlebar-content:-moz-lwtheme {
+  #main-window[tabsintitlebar][sizemode="normal"] > #tab-view-deck > #browser-panel:-moz-lwtheme {
     background-image: linear-gradient(to bottom,
         rgb(139,161,105) 0, rgb(139,161,105) 1px,
         rgb(171, 189, 133) 1px, rgb(171, 189, 133) 2px,
@@ -256,7 +268,7 @@
         transparent 3px);
   }
 
-  #main-window[tabsintitlebar][sizemode="normal"] #titlebar-content:-moz-lwtheme:-moz-window-inactive {
+  #main-window[tabsintitlebar][sizemode="normal"] > #tab-view-deck > #browser-panel:-moz-lwtheme:-moz-window-inactive {
     background-image: linear-gradient(to bottom,
         rgb(207, 214, 188) 0, rgb(207, 214, 188) 1px,
         rgb(224, 226, 200) 1px, rgb(224, 226, 200) 2px,
@@ -1515,6 +1527,13 @@ richlistitem[type~="action"][actiontype="switchtab"] > .ac-url-box > .ac-action-
 }
 
 
+%ifdef MOZ_LOOP
+/* Loop */
+#loop-call-button {
+  list-style-image: url("chrome://global/skin/loop/loop-call.png");
+}
+%endif
+
 /* social share panel */
 
 #social-share-panel > iframe {
@@ -1721,7 +1740,6 @@ toolbarbutton[type="socialmark"] > .toolbarbutton-icon {
 
 .panel-promo-closebutton > .toolbarbutton-text {
   padding: 0;
-  margin: 0;
 }
 
 /* ::::: content area ::::: */
@@ -1848,9 +1866,6 @@ toolbarbutton[type="socialmark"] > .toolbarbutton-icon {
 .tabbrowser-arrowscrollbox > .scrollbutton-down {
   list-style-image: url("chrome://browser/skin/tabbrowser/tab-arrow-left.png");
   margin: 0 0 @tabToolbarNavbarOverlap@;
-  padding-right: 2px;
-  border-right: 2px solid transparent;
-  background-origin: border-box;
 }
 
 #TabsToolbar[brighttext] > #tabbrowser-tabs > .tabbrowser-arrowscrollbox > .scrollbutton-up,
@@ -1875,13 +1890,6 @@ toolbarbutton[type="socialmark"] > .toolbarbutton-icon {
 .tabbrowser-arrowscrollbox > .scrollbutton-down[notifybgtab] {
   background-color: Highlight;
   transition: none;
-}
-
-.tabbrowser-arrowscrollbox > .scrollbutton-up:not([disabled]),
-.tabbrowser-arrowscrollbox > .scrollbutton-down:not([disabled]) {
-  border-width: 0 2px 0 0;
-  border-style: solid;
-  border-image: url("chrome://browser/skin/tabbrowser/tab-overflow-border.png") 0 2 0 2 fill;
 }
 
 .tabs-newtab-button > .toolbarbutton-icon {
@@ -2421,13 +2429,6 @@ notification[value="translation"] {
   notification[value="translation"] button:not([type="menu"]) > .button-box {
     -moz-margin-end: 3ch;
   }
-
-  @media (min-resolution: 1.25dppx) {
-    notification[value="translation"] button[type="menu"] > .button-box > .button-menu-dropmarker,
-    notification[value="translation"] menulist > .menulist-dropmarker {
-      list-style-image: url("chrome://browser/skin/toolbarbutton-dropdown-arrow@2x.png");
-    }
-  }
 }
 
 .translate-notification-icon,
@@ -2830,9 +2831,25 @@ chatbox {
   transform: perspective(0.01px);
 }
 
-#main-window[customize-entered] {
+#main-window[customize-entered] > #tab-view-deck {
   background-image: url("chrome://browser/skin/customizableui/customizeMode-gridTexture.png");
   background-attachment: fixed;
+}
+
+#main-window[customization-lwtheme] > #tab-view-deck:-moz-lwtheme {
+  background-repeat: no-repeat;
+  background-position: right top;
+  background-attachment: fixed;
+  /* The image will get set from CustomizeMode.jsm */
+  background-image: none;
+  background-color: transparent;
+}
+
+#main-window[customization-lwtheme]:-moz-lwtheme {
+  background-image: url("chrome://browser/skin/customizableui/customizeMode-gridTexture.png");
+  background-repeat: repeat;
+  background-attachment: fixed;
+  background-position: left top;
 }
 
 #main-window[customize-entered] #browser-bottombox,

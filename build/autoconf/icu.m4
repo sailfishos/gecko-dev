@@ -84,11 +84,11 @@ if test -n "$ENABLE_INTL_API"; then
         case "$OS_TARGET" in
             WINNT)
                 ICU_LIB_NAMES="icuin icuuc icudt"
+                MOZ_ICU_DBG_SUFFIX=
+                if test -n "$MOZ_DEBUG" -a -z "$MOZ_NO_DEBUG_RTL"; then
+                    MOZ_ICU_DBG_SUFFIX=d
+                fi
                 if test -n "$MOZ_SHARED_ICU"; then
-                    MOZ_ICU_DBG_SUFFIX=
-                    if test -n "$MOZ_DEBUG" -a -z "$MOZ_NO_DEBUG_RTL"; then
-                        MOZ_ICU_DBG_SUFFIX=d
-                    fi
                     MOZ_ICU_LIBS='$(foreach lib,$(ICU_LIB_NAMES),$(DEPTH)/intl/icu/target/lib/$(LIB_PREFIX)$(lib)$(MOZ_ICU_DBG_SUFFIX).$(LIB_SUFFIX))'
                 fi
                 ;;
@@ -108,7 +108,7 @@ if test -n "$ENABLE_INTL_API"; then
                 AC_MSG_ERROR([ECMAScript Internationalization API is not yet supported on this platform])
         esac
         if test -z "$MOZ_SHARED_ICU"; then
-            MOZ_ICU_LIBS='$(call EXPAND_LIBNAME_PATH,$(ICU_LIB_NAMES),$(DEPTH)/intl/icu/target/lib)'
+            MOZ_ICU_LIBS='$(call EXPAND_LIBNAME_PATH,$(addsuffix $(MOZ_ICU_DBG_SUFFIX),$(ICU_LIB_NAMES)),$(DEPTH)/intl/icu/target/lib)'
         fi
     fi
 fi
@@ -297,6 +297,15 @@ if test -z "$BUILDING_JS" -o -n "$JS_STANDALONE"; then
     	    ICU_CFLAGS="$ICU_CFLAGS -Od"
     	    ICU_CXXFLAGS="$ICU_CXXFLAGS -Od"
     	fi
+        fi
+
+        if test -z "$MOZ_SHARED_ICU"; then
+          ICU_CXXFLAGS="$ICU_CXXFLAGS -DU_STATIC_IMPLEMENTATION"
+          ICU_CFLAGS="$ICU_CFLAGS -DU_STATIC_IMPLEMENTATION"
+          if test "$GNU_CC"; then
+            ICU_CFLAGS="$ICU_CFLAGS -fvisibility=hidden"
+            ICU_CXXFLAGS="$ICU_CXXFLAGS -fvisibility=hidden"
+          fi
         fi
 
         # We cannot use AC_OUTPUT_SUBDIRS since ICU tree is out of spidermonkey.
