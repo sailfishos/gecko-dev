@@ -93,20 +93,22 @@ EmbedLiteViewThreadParent::SetCompositor(EmbedLiteCompositorParent* aCompositor)
     mCompositor->SetSurfaceSize(mGLViewPortSize.width, mGLViewPortSize.height);
 }
 
-void
+NS_IMETHODIMP
 EmbedLiteViewThreadParent::UpdateScrollController()
 {
   if (mViewAPIDestroyed) {
-    return;
+    return NS_OK;
   }
 
-  NS_ENSURE_TRUE(mView, );
+  NS_ENSURE_TRUE(mView, NS_OK);
 
   if (mCompositor) {
     mRootLayerTreeId = mCompositor->RootLayerTreeId();
     mController->SetManagerByRootLayerTreeId(mRootLayerTreeId);
     CompositorParent::SetControllerForLayerTree(mRootLayerTreeId, mController);
   }
+
+  return NS_OK;
 }
 
 // Child notification
@@ -320,102 +322,135 @@ EmbedLiteViewThreadParent::RecvSetBackgroundColor(const nscolor& aColor)
 
 // Incoming API calls
 
-void
+NS_IMETHODIMP
 EmbedLiteViewThreadParent::LoadURL(const char* aUrl)
 {
   LOGT("url:%s", aUrl);
   unused << SendLoadURL(NS_ConvertUTF8toUTF16(nsDependentCString(aUrl)));
+
+  return NS_OK;
 }
 
-void EmbedLiteViewThreadParent::GoBack()
+NS_IMETHODIMP
+EmbedLiteViewThreadParent::GoBack()
 {
   unused << SendGoBack();
+
+  return NS_OK;
 }
 
-void EmbedLiteViewThreadParent::GoForward()
+NS_IMETHODIMP
+EmbedLiteViewThreadParent::GoForward()
 {
   unused << SendGoForward();
+
+  return NS_OK;
 }
 
-void EmbedLiteViewThreadParent::StopLoad()
+NS_IMETHODIMP
+EmbedLiteViewThreadParent::StopLoad()
 {
   unused << SendStopLoad();
+
+  return NS_OK;
 }
 
-void EmbedLiteViewThreadParent::Reload(bool hardReload)
+NS_IMETHODIMP
+EmbedLiteViewThreadParent::Reload(bool hardReload)
 {
   unused << SendReload(hardReload);
+
+  return NS_OK;
 }
 
-void
+NS_IMETHODIMP
 EmbedLiteViewThreadParent::SetIsActive(bool aIsActive)
 {
   LOGF();
   unused << SendSetIsActive(aIsActive);
+
+  return NS_OK;
 }
 
-void
+NS_IMETHODIMP
 EmbedLiteViewThreadParent::SetIsFocused(bool aIsFocused)
 {
   LOGF();
   unused << SendSetIsFocused(aIsFocused);
+
+  return NS_OK;
 }
 
-void
+NS_IMETHODIMP
 EmbedLiteViewThreadParent::SuspendTimeouts()
 {
   LOGF();
   unused << SendSuspendTimeouts();
+
+  return NS_OK;
 }
 
-void
+NS_IMETHODIMP
 EmbedLiteViewThreadParent::ResumeTimeouts()
 {
   LOGF();
   unused << SendResumeTimeouts();
+
+  return NS_OK;
 }
 
-void
+NS_IMETHODIMP
 EmbedLiteViewThreadParent::LoadFrameScript(const char* aURI)
 {
   LOGT("uri:%s", aURI);
   unused << SendLoadFrameScript(NS_ConvertUTF8toUTF16(nsDependentCString(aURI)));
+
+  return NS_OK;
 }
 
-void
+NS_IMETHODIMP
 EmbedLiteViewThreadParent::DoSendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage)
 {
   LOGT("msgName:%ls, msg:%ls", aMessageName, aMessage);
   const nsDependentString msgname(aMessageName);
   const nsDependentString msg(aMessage);
-  unused << SendAsyncMessage(msgname,
-                             msg);
+  unused << SendAsyncMessage(msgname, msg);
+
+  return NS_OK;
 }
 
-void
+NS_IMETHODIMP
 EmbedLiteViewThreadParent::AddMessageListener(const char* aMessageName)
 {
   LOGT("msgName:%s", aMessageName);
   unused << SendAddMessageListener(nsDependentCString(aMessageName));
+
+  return NS_OK;
 }
 
-void
+NS_IMETHODIMP
 EmbedLiteViewThreadParent::RemoveMessageListener(const char* aMessageName)
 {
   LOGT("msgName:%s", aMessageName);
   unused << SendRemoveMessageListener(nsDependentCString(aMessageName));
+
+  return NS_OK;
 }
 
-void
+NS_IMETHODIMP
 EmbedLiteViewThreadParent::AddMessageListeners(const nsTArray<nsString>& aMessageNames)
 {
   unused << SendAddMessageListeners(aMessageNames);
+
+  return NS_OK;
 }
 
-void
+NS_IMETHODIMP
 EmbedLiteViewThreadParent::RemoveMessageListeners(const nsTArray<nsString>& aMessageNames)
 {
   unused << SendRemoveMessageListeners(aMessageNames);
+
+  return NS_OK;
 }
 
 bool
@@ -430,6 +465,7 @@ EmbedLiteViewThreadParent::RecvAsyncMessage(const nsString& aMessage,
 
   NS_ENSURE_TRUE(mView, false);
   mView->GetListener()->RecvAsyncMessage(aMessage.get(), aData.get());
+
   return true;
 }
 
@@ -449,6 +485,7 @@ EmbedLiteViewThreadParent::RecvSyncMessage(const nsString& aMessage,
     aJSONRetVal->AppendElement(NS_ConvertUTF8toUTF16(nsDependentCString(retval)));
     delete retval;
   }
+
   return true;
 }
 
@@ -475,34 +512,38 @@ _depth_to_gfxformat(int depth)
   }
 }
 
-bool
+NS_IMETHODIMP
 EmbedLiteViewThreadParent::RenderToImage(unsigned char* aData, int imgW, int imgH, int stride, int depth)
 {
   LOGF("d:%p, sz[%i,%i], stride:%i, depth:%i", aData, imgW, imgH, stride, depth);
   if (mCompositor) {
     RefPtr<DrawTarget> target = gfxPlatform::GetPlatform()->CreateDrawTargetForData(aData, IntSize(imgW, imgH), stride, _depth_to_gfxformat(depth));
     {
-      return mCompositor->RenderToContext(target);
+      return mCompositor->RenderToContext(target) ? NS_OK : NS_ERROR_FAILURE;
     }
   }
-  return false;
+
+  return NS_OK;
 }
 
-bool
+NS_IMETHODIMP
 EmbedLiteViewThreadParent::RenderGL()
 {
   if (mCompositor) {
-    return mCompositor->RenderGL();
+    return mCompositor->RenderGL() ? NS_OK : NS_ERROR_FAILURE;
   }
-  return false;
+
+  return NS_OK;
 }
 
-void
+NS_IMETHODIMP
 EmbedLiteViewThreadParent::SetViewSize(int width, int height)
 {
   LOGT("sz[%i,%i]", width, height);
   mViewSize = ScreenIntSize(width, height);
   unused << SendSetViewSize(gfxSize(width, height));
+
+  return NS_OK;
 }
 
 bool
@@ -512,7 +553,7 @@ EmbedLiteViewThreadParent::RecvGetGLViewSize(gfxSize* aSize)
   return true;
 }
 
-void
+NS_IMETHODIMP
 EmbedLiteViewThreadParent::SetGLViewPortSize(int width, int height)
 {
   mGLViewPortSize = gfxSize(width, height);
@@ -520,39 +561,48 @@ EmbedLiteViewThreadParent::SetGLViewPortSize(int width, int height)
     mCompositor->SetSurfaceSize(width, height);
   }
   unused << SendSetGLViewSize(mGLViewPortSize);
+
+  return NS_OK;
 }
 
-void
-EmbedLiteViewThreadParent::SetGLViewTransform(gfx::Matrix matrix)
+NS_IMETHODIMP
+EmbedLiteViewThreadParent::SetGLViewTransform(mozilla::gfx::Matrix & aMatrix)
 {
   if (mCompositor) {
-    mCompositor->SetWorldTransform(matrix);
+    mCompositor->SetWorldTransform(aMatrix);
   }
+
+  return NS_OK;
 }
 
-void
+NS_IMETHODIMP
 EmbedLiteViewThreadParent::SetViewClipping(const gfxRect& aClipRect)
 {
   if (mCompositor) {
     mCompositor->SetClipping(aClipRect);
   }
+
+  return NS_OK;
 }
 
-void
-EmbedLiteViewThreadParent::SetTransformation(float aScale, nsIntPoint aScrollOffset)
+NS_IMETHODIMP
+EmbedLiteViewThreadParent::SetTransformation(float aScale, nsIntPoint& aScrollOffset)
 {
+  return NS_OK;
 }
 
-void
+NS_IMETHODIMP
 EmbedLiteViewThreadParent::ScheduleRender()
 {
   if (mCompositor) {
     mCompositor->ScheduleRenderOnCompositorThread();
   }
+
+  return NS_OK;
 }
 
-void
-EmbedLiteViewThreadParent::ReceiveInputEvent(const InputData& aEvent)
+NS_IMETHODIMP
+EmbedLiteViewThreadParent::ReceiveInputEvent(const mozilla::InputData & aEvent)
 {
   if (mController->GetManager()) {
     ScrollableLayerGuid guid;
@@ -576,9 +626,11 @@ EmbedLiteViewThreadParent::ReceiveInputEvent(const InputData& aEvent)
       }
     }
   }
+
+  return NS_OK;
 }
 
-void
+NS_IMETHODIMP
 EmbedLiteViewThreadParent::TextEvent(const char* composite, const char* preEdit)
 {
   LOGT("commit:%s, pre:%s, mLastIMEState:%i", composite, preEdit, mLastIMEState);
@@ -588,30 +640,38 @@ EmbedLiteViewThreadParent::TextEvent(const char* composite, const char* preEdit)
   } else {
     NS_ERROR("Text event must not be sent while IME disabled");
   }
+
+  return NS_OK;
 }
 
-void
+NS_IMETHODIMP
 EmbedLiteViewThreadParent::ViewAPIDestroyed()
 {
   mViewAPIDestroyed = true;
   mView = nullptr;
+
+  return NS_OK;
 }
 
-void
+NS_IMETHODIMP
 EmbedLiteViewThreadParent::SendKeyPress(int domKeyCode, int gmodifiers, int charCode)
 {
   LOGT("dom:%i, mod:%i, char:'%c'", domKeyCode, gmodifiers, charCode);
   unused << SendHandleKeyPressEvent(domKeyCode, gmodifiers, charCode);
+
+  return NS_OK;
 }
 
-void
+NS_IMETHODIMP
 EmbedLiteViewThreadParent::SendKeyRelease(int domKeyCode, int gmodifiers, int charCode)
 {
   LOGT("dom:%i, mod:%i, char:'%c'", domKeyCode, gmodifiers, charCode);
   unused << SendHandleKeyReleaseEvent(domKeyCode, gmodifiers, charCode);
+
+  return NS_OK;
 }
 
-void
+NS_IMETHODIMP
 EmbedLiteViewThreadParent::MousePress(int x, int y, int mstime, unsigned int buttons, unsigned int modifiers)
 {
   LOGT("pt[%i,%i], t:%i, bt:%u, mod:%u", x, y, mstime, buttons, modifiers);
@@ -625,9 +685,10 @@ EmbedLiteViewThreadParent::MousePress(int x, int y, int mstime, unsigned int but
   unused << SendMouseEvent(NS_LITERAL_STRING("mousedown"),
                            x, y, buttons, 1, modifiers,
                            true);
+  return NS_OK;
 }
 
-void
+NS_IMETHODIMP
 EmbedLiteViewThreadParent::MouseRelease(int x, int y, int mstime, unsigned int buttons, unsigned int modifiers)
 {
   LOGT("pt[%i,%i], t:%i, bt:%u, mod:%u", x, y, mstime, buttons, modifiers);
@@ -641,9 +702,11 @@ EmbedLiteViewThreadParent::MouseRelease(int x, int y, int mstime, unsigned int b
   unused << SendMouseEvent(NS_LITERAL_STRING("mouseup"),
                            x, y, buttons, 1, modifiers,
                            true);
+
+  return NS_OK;
 }
 
-void
+NS_IMETHODIMP
 EmbedLiteViewThreadParent::MouseMove(int x, int y, int mstime, unsigned int buttons, unsigned int modifiers)
 {
   LOGT("pt[%i,%i], t:%i, bt:%u, mod:%u", x, y, mstime, buttons, modifiers);
@@ -657,6 +720,8 @@ EmbedLiteViewThreadParent::MouseMove(int x, int y, int mstime, unsigned int butt
   unused << SendMouseEvent(NS_LITERAL_STRING("mousemove"),
                            x, y, buttons, 1, modifiers,
                            true);
+
+  return NS_OK;
 }
 
 bool
@@ -696,28 +761,31 @@ EmbedLiteViewThreadParent::RecvSetInputContext(const int32_t& aIMEEnabled,
   return true;
 }
 
-uint32_t
-EmbedLiteViewThreadParent::GetUniqueID()
+NS_IMETHODIMP
+EmbedLiteViewThreadParent::GetUniqueID(uint32_t *aId)
 {
-  return mId;
+  *aId = mId;
+
+  return NS_OK;
 }
 
-bool EmbedLiteViewThreadParent::GetPendingTexture(EmbedLiteRenderTarget* aContextWrapper, int* textureID, int* width, int* height, int* aTextureTarget)
+NS_IMETHODIMP
+EmbedLiteViewThreadParent::GetPendingTexture(EmbedLiteRenderTarget* aContextWrapper, int* textureID, int* width, int* height, int* aTextureTarget)
 {
-  NS_ENSURE_TRUE(aContextWrapper && textureID && width && height, false);
-  NS_ENSURE_TRUE(mCompositor, false);
+  NS_ENSURE_TRUE(aContextWrapper && textureID && width && height, NS_ERROR_FAILURE);
+  NS_ENSURE_TRUE(mCompositor, NS_ERROR_FAILURE);
 
   const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(mCompositor->RootLayerTreeId());
-  NS_ENSURE_TRUE(state && state->mLayerManager, false);
+  NS_ENSURE_TRUE(state && state->mLayerManager, NS_ERROR_FAILURE);
 
   GLContext* context = static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->gl();
-  NS_ENSURE_TRUE(context && context->IsOffscreen(), false);
+  NS_ENSURE_TRUE(context && context->IsOffscreen(), NS_ERROR_FAILURE);
 
   GLContext* consumerContext = aContextWrapper->GetConsumerContext();
-  NS_ENSURE_TRUE(consumerContext && consumerContext->Init(), false);
+  NS_ENSURE_TRUE(consumerContext && consumerContext->Init(), NS_ERROR_FAILURE);
 
   SharedSurface* sharedSurf = context->RequestFrame();
-  NS_ENSURE_TRUE(sharedSurf, false);
+  NS_ENSURE_TRUE(sharedSurf, NS_ERROR_FAILURE);
 
   DataSourceSurface* toUpload = nullptr;
   GLuint textureHandle = 0;
@@ -768,7 +836,8 @@ bool EmbedLiteViewThreadParent::GetPendingTexture(EmbedLiteRenderTarget* aContex
   if (aTextureTarget) {
     *aTextureTarget = textureTarget;
   }
-  return true;
+
+  return NS_OK;
 }
 
 } // namespace embedlite

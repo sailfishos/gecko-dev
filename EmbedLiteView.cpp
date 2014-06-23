@@ -65,12 +65,12 @@ EmbedLiteView::GetListener() const
 }
 
 void
-EmbedLiteView::SetImpl(EmbedLiteViewImplIface* aViewImpl)
+EmbedLiteView::SetImpl(EmbedLiteViewIface* aViewImpl)
 {
   mViewImpl = aViewImpl;
 }
 
-EmbedLiteViewImplIface*
+EmbedLiteViewIface*
 EmbedLiteView::GetImpl()
 {
   return mViewImpl;
@@ -190,14 +190,14 @@ EmbedLiteView::RenderToImage(unsigned char* aData, int imgW, int imgH, int strid
 {
   LOGF("data:%p, sz[%i,%i], stride:%i, depth:%i", aData, imgW, imgH, stride, depth);
   NS_ENSURE_TRUE(mViewImpl, false);
-  return mViewImpl->RenderToImage(aData, imgW, imgH, stride, depth);
+  return NS_SUCCEEDED(mViewImpl->RenderToImage(aData, imgW, imgH, stride, depth));
 }
 
 bool
 EmbedLiteView::RenderGL()
 {
   NS_ENSURE_TRUE(mViewImpl, false);
-  return mViewImpl->RenderGL();
+  return NS_SUCCEEDED(mViewImpl->RenderGL());
 }
 
 char*
@@ -401,7 +401,10 @@ EmbedLiteView::PinchEnd(int x, int y, float scale)
 uint32_t
 EmbedLiteView::GetUniqueID()
 {
-  if (mViewImpl && mViewImpl->GetUniqueID() != mUniqueID) {
+  NS_ENSURE_TRUE(mViewImpl, 0);
+  uint32_t id;
+  mViewImpl->GetUniqueID(&id);
+  if (id != mUniqueID) {
     NS_ERROR("Something went wrong");
   }
   return mUniqueID;
@@ -411,7 +414,7 @@ bool
 EmbedLiteView::GetPendingTexture(EmbedLiteRenderTarget* aContextWrapper, int* textureID, int* width, int* height, int* textureTarget)
 {
   NS_ENSURE_TRUE(mViewImpl, false);
-  return mViewImpl->GetPendingTexture(aContextWrapper, textureID, width, height, textureTarget);
+  return NS_SUCCEEDED(mViewImpl->GetPendingTexture(aContextWrapper, textureID, width, height, textureTarget));
 }
 
 } // namespace embedlite

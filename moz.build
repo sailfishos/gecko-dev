@@ -14,6 +14,7 @@ FAIL_ON_WARNINGS = True
 FINAL_LIBRARY = 'xul'
 
 XPIDL_SOURCES += [
+    'embedhelpers/EmbedLiteViewIface.idl',
     'modules/nsIEmbedAppService.idl',
     'modules/nsIEmbedLiteJSON.idl',
     'utils/nsIEmbedBrowserChromeListener.idl',
