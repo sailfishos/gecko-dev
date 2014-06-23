@@ -187,10 +187,8 @@ ClientTiledThebesLayer::BeginPaint()
 
   // Calculate the transform required to convert ParentLayer space of our
   // display port ancestor to the Layer space of this layer.
-  gfx3DMatrix transformToDisplayPort =
-    GetTransformToAncestorsParentLayer(this, displayPortAncestor);
-
-  mPaintData.mTransformDisplayPortToLayer = transformToDisplayPort.Inverse();
+  gfx3DMatrix transformDisplayPortToLayer =
+    GetTransformToAncestorsParentLayer(this, displayPortAncestor).Inverse();
 
   // Note that below we use GetZoomToParent() in a number of places. Because this
   // code runs on the client side, the mTransformScale field of the FrameMetrics
@@ -204,7 +202,7 @@ ClientTiledThebesLayer::BeginPaint()
     (displayportMetrics.mCriticalDisplayPort * displayportMetrics.GetZoomToParent())
     + displayportMetrics.mCompositionBounds.TopLeft();
   mPaintData.mCriticalDisplayPort = RoundedOut(
-    ApplyParentLayerToLayerTransform(mPaintData.mTransformDisplayPortToLayer, criticalDisplayPort));
+    ApplyParentLayerToLayerTransform(transformDisplayPortToLayer, criticalDisplayPort));
   TILING_PRLOG_OBJ(("TILING 0x%p: Critical displayport %s\n", this, tmpstr.get()), mPaintData.mCriticalDisplayPort);
 
   // Compute the viewport that applies to this layer in the LayoutDevice
@@ -213,7 +211,7 @@ ClientTiledThebesLayer::BeginPaint()
     (displayportMetrics.mViewport * displayportMetrics.GetZoomToParent())
     + displayportMetrics.mCompositionBounds.TopLeft();
   mPaintData.mViewport = ApplyParentLayerToLayerTransform(
-    mPaintData.mTransformDisplayPortToLayer, viewport);
+    transformDisplayPortToLayer, viewport);
   TILING_PRLOG_OBJ(("TILING 0x%p: Viewport %s\n", this, tmpstr.get()), mPaintData.mViewport);
 
   // Store the resolution from the displayport ancestor layer. Because this is Gecko-side,
