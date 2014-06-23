@@ -12,10 +12,11 @@
 #include "nsRect.h"
 #include "InputData.h"
 
+class EmbedLiteViewIface;
+
 namespace mozilla {
 namespace embedlite {
 
-class EmbedLiteViewImplIface;
 class EmbedLiteView;
 class EmbedLiteRenderTarget;
 
@@ -152,12 +153,12 @@ public:
 private:
   friend class EmbedLiteViewThreadParent;
   friend class EmbedLiteCompositorParent;
-  void SetImpl(EmbedLiteViewImplIface*);
-  EmbedLiteViewImplIface* GetImpl();
+  void SetImpl(EmbedLiteViewIface*);
+  EmbedLiteViewIface* GetImpl();
 
   EmbedLiteApp* mApp;
   EmbedLiteViewListener* mListener;
-  EmbedLiteViewImplIface* mViewImpl;
+  EmbedLiteViewIface* mViewImpl;
   uint32_t mUniqueID;
   uint32_t mParent;
 };

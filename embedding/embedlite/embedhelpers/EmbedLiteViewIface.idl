@@ -1,0 +1,65 @@
+/* -*- Mode: IDL; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+#include "nsISupports.idl"
+
+%{C++
+#include "mozilla/gfx/Matrix.h"
+#include "gfxRect.h"
+#include "EmbedLiteRenderTarget.h"
+#include "InputData.h"
+%}
+
+%{C++
+template<class T> class nsTArray;
+class nsString;
+%}
+[ref] native nsStringTArrayRef(nsTArray<nsString>);
+[ref] native gfxMatrix(mozilla::gfx::Matrix);
+[ref] native gfxRect(gfxRect);
+[ref] native nsIntPoint(nsIntPoint);
+[ref] native nsIntRect(nsIntRect);
+[ref] native InputData(mozilla::InputData);
+[ptr] native EmbedLiteRenderTarget(mozilla::embedlite::EmbedLiteRenderTarget);
+[ptr] native buffer(unsigned char);
+
+[scriptable, uuid(6d7750f8-e028-4445-a0cb-d9ce28fb03dd)]
+interface EmbedLiteViewIface
+{
+    void LoadURL(in string aName);
+    void GoBack();
+    void GoForward();
+    void StopLoad();
+    void Reload(in boolean aHardReload);
+    void LoadFrameScript(in string aURI);
+    void DoSendAsyncMessage([const] in wstring aMessageName,[const] in wstring aMessage);
+    void AddMessageListener(in string aMessageName);
+    void RemoveMessageListener(in string aMessageName);
+    void AddMessageListeners([const] in nsStringTArrayRef aNames);
+    void RemoveMessageListeners([const] in nsStringTArrayRef aNames);
+    void RenderToImage(in buffer aData, in int32_t aWidth, in int32_t aHeigth, in int32_t aStride, in int32_t aDepth);
+    void RenderGL();
+    void SetIsActive(in boolean isActive);
+    void SetIsFocused(in boolean isFocused);
+    void SuspendTimeouts();
+    void ResumeTimeouts();
+    void SetViewSize(in int32_t aWidth, in int32_t aHeight);
+    void SetGLViewPortSize(in int32_t aWidth, in int32_t aHeight);
+    void SetGLViewTransform(in gfxMatrix aMatrix);
+    void SetViewClipping([const] in gfxRect aClipRect);
+    void SetTransformation(in float aScale, in nsIntPoint aScrollOffset);
+    void ScheduleRender();
+    void ReceiveInputEvent([const] in InputData aEvent);
+    void TextEvent(in string aComposite, in string aPreEdit);
+    void SendKeyPress(in int32_t aDomKeyCode, in int32_t aModifiers, in int32_t aCharCode);
+    void SendKeyRelease(in int32_t aDomKeyCode, in int32_t aModifiers, in int32_t aCharCode);
+    void MousePress(in int32_t aX, in int32_t aY, in int32_t aTime, in uint32_t aButtons, in uint32_t aModifiers);
+    void MouseRelease(in int32_t aX, in int32_t aY, in int32_t aTime, in uint32_t aButtons, in uint32_t aModifiers);
+    void MouseMove(in int32_t aX, in int32_t aY, in int32_t aTime, in uint32_t aButtons, in uint32_t aModifiers);
+    void UpdateScrollController();
+    void ViewAPIDestroyed();
+    void GetUniqueID(out uint32_t aId);
+    void GetPendingTexture(in EmbedLiteRenderTarget aContextWrapper, out int32_t aTextureID, out int32_t aTextureTarget, out int32_t aWidth, out int32_t aHeight);
+};
