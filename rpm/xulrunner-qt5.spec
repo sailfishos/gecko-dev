@@ -14,6 +14,7 @@ Patch2:     workaround-for-bug-977015.patch
 Patch3:     fix-20430-invalidate-obsolete-scroll-offset.patch
 Patch4:     workaround-wrong-viewport-in-wikipedia.patch
 Patch5:     transition-from-pinching-to-panning.patch
+Patch6:     workaround-for-bug-20684-wrong-viewport-after-orientation-change.patch
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
@@ -69,6 +70,7 @@ Tests and misc files for xulrunner
 %patch3 -p1
 %patch4 -p1
 %patch5 -p1
+%patch6 -p1
 
 %build
 export DONT_POPULATE_VIRTUALENV=1
