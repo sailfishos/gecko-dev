@@ -139,6 +139,9 @@ bool EmbedLiteCompositorParent::RenderGL()
 
   GLContext* context = static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->gl();
   NS_ENSURE_TRUE(context, false);
+  if (!context->IsCurrent()) {
+    context->MakeCurrent(true);
+  }
   NS_ENSURE_TRUE(context->IsCurrent(), false);
 
   state->mLayerManager->SetWorldTransform(mWorldTransform);
