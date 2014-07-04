@@ -46,6 +46,8 @@ ImageBridgeParent::ImageBridgeParent(MessageLoop* aLoop, Transport* aTransport)
   : mMessageLoop(aLoop)
   , mTransport(aTransport)
 {
+  MOZ_ASSERT(NS_IsMainThread());
+
   // creates the map only if it has not been created already, so it is safe
   // with several bridges
   CompositableMap::Create();
@@ -53,10 +55,15 @@ ImageBridgeParent::ImageBridgeParent(MessageLoop* aLoop, Transport* aTransport)
 
 ImageBridgeParent::~ImageBridgeParent()
 {
+  MOZ_ASSERT(NS_IsMainThread());
+
   if (mTransport) {
+    MOZ_ASSERT(XRE_GetIOMessageLoop());
     XRE_GetIOMessageLoop()->PostTask(FROM_HERE,
                                      new DeleteTask<Transport>(mTransport));
   }
+
+  sImageBridges.erase(mChildProcessId);
 }
 
 LayersBackend
