@@ -1,19 +1,19 @@
-commit 917d7d4b2e0ac783d1a00824c53cde5018784363
+commit 609b14e281013f9358b32758ad89c5483a0553b5
 Author: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
-Date:   Thu Jul 3 10:55:49 2014 +0300
+Date:   Fri Jul 4 17:00:01 2014 +0300
 
     Update viewport upon orientation change
 
 diff --git a/gfx/layers/apz/src/AsyncPanZoomController.cpp b/gfx/layers/apz/src/AsyncPanZoomController.cpp
-index 286108b..dbcef54 100644
+index 286108b..9d69257 100644
 --- a/gfx/layers/apz/src/AsyncPanZoomController.cpp
 +++ b/gfx/layers/apz/src/AsyncPanZoomController.cpp
 @@ -1760,6 +1760,9 @@ void AsyncPanZoomController::NotifyLayersUpdated(const FrameMetrics& aLayerMetri
        }
      }
      mFrameMetrics.mViewport = aLayerMetrics.mViewport;
-+  } else if (aLayerMetrics.mCompositionBounds.height == mFrameMetrics.mCompositionBounds.width ||
-+      aLayerMetrics.mCompositionBounds.width == mFrameMetrics.mCompositionBounds.height) {
++  } else if (aLayerMetrics.mCompositionBounds.height <= mFrameMetrics.mCompositionBounds.width &&
++      aLayerMetrics.mCompositionBounds.width >= mFrameMetrics.mCompositionBounds.height) {
 +    mFrameMetrics.mViewport = aLayerMetrics.mViewport;
    }
  
