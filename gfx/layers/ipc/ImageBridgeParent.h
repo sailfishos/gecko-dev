@@ -115,6 +115,13 @@ private:
   // This keeps us alive until ActorDestroy(), at which point we do a
   // deferred destruction of ourselves.
   nsRefPtr<ImageBridgeParent> mSelfRef;
+
+  /**
+   * Map of all living ImageBridgeParent instances
+   */
+  static std::map<base::ProcessId, ImageBridgeParent*> sImageBridges;
+
+  static MessageLoop* sMainLoop;
 };
 
 } // layers

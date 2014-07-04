@@ -42,7 +42,11 @@ namespace layers {
 
 class PGrallocBufferParent;
 
-ImageBridgeParent::ImageBridgeParent(MessageLoop* aLoop, Transport* aTransport)
+MessageLoop* ImageBridgeParent::sMainLoop = nullptr;
+
+ImageBridgeParent::ImageBridgeParent(MessageLoop* aLoop,
+                                     Transport* aTransport,
+                                     ProcessId aChildProcessId)
   : mMessageLoop(aLoop)
   , mTransport(aTransport)
 {
@@ -51,6 +55,8 @@ ImageBridgeParent::ImageBridgeParent(MessageLoop* aLoop, Transport* aTransport)
   // creates the map only if it has not been created already, so it is safe
   // with several bridges
   CompositableMap::Create();
+  sImageBridges[aChildProcessId] = this;
+  sMainLoop = MessageLoop::current();
 }
 
 ImageBridgeParent::~ImageBridgeParent()
@@ -232,23 +238,11 @@ MessageLoop * ImageBridgeParent::GetMessageLoop() {
   return mMessageLoop;
 }
 
-class ReleaseRunnable : public nsRunnable
+static void
+DeferredReleaseImageBridgeParentOnMainThread(ImageBridgeParent* aDyingImageBridgeParent)
 {
-public:
-  ReleaseRunnable(ImageBridgeParent* aRef)
-    : mRef(aRef)
-  {
-  }
-
-  NS_IMETHOD Run()
-  {
-    mRef->Release();
-    return NS_OK;
-  }
-
-private:
-  ImageBridgeParent* mRef;
-};
+  aDyingImageBridgeParent->Release();
+}
 
 void
 ImageBridgeParent::DeferredDestroy()
@@ -256,8 +250,9 @@ ImageBridgeParent::DeferredDestroy()
   ImageBridgeParent* self;
   mSelfRef.forget(&self);
 
-  nsCOMPtr<nsIRunnable> runnable = new ReleaseRunnable(self);
-  MOZ_ALWAYS_TRUE(NS_SUCCEEDED(NS_DispatchToMainThread(runnable)));
+  sMainLoop->PostTask(
+    FROM_HERE,
+    NewRunnableFunction(&DeferredReleaseImageBridgeParentOnMainThread, this));
 }
 
 IToplevelProtocol*
