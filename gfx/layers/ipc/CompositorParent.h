@@ -296,9 +296,11 @@ private:
   nsRefPtr<APZCTreeManager> mApzcTreeManager;
 
   bool mWantDidCompositeEvent;
-  const nsRefPtr<CompositorThreadHolder> mCompositorThreadHolder;
+  nsRefPtr<CompositorThreadHolder> mCompositorThreadHolder;
 
   DISALLOW_EVIL_CONSTRUCTORS(CompositorParent);
+
+  friend void DeferredDeleteCompositorParentOnMainThread(CompositorParent* aNowReadyToDie);
 };
 
 } // layers
