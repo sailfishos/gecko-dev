@@ -103,7 +103,7 @@ void ReleaseImageBridgeParentSingleton();
 
 class CompositorThreadHolder MOZ_FINAL
 {
-  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(CompositorThreadHolder)
+  NS_INLINE_DECL_THREADSAFE_REFCOUNTING_WITH_MAIN_THREAD_DESTRUCTION(CompositorThreadHolder)
 
 public:
   CompositorThreadHolder()
@@ -138,13 +138,10 @@ private:
 static StaticRefPtr<CompositorThreadHolder> sCompositorThreadHolder;
 static bool sFinishedCompositorShutDown = false;
 
-static MessageLoop* sMainLoop = nullptr;
-
 /* static */ Thread*
 CompositorThreadHolder::CreateCompositorThread()
 {
   MOZ_ASSERT(NS_IsMainThread());
-  sMainLoop = MessageLoop::current();
 
   MOZ_ASSERT(!sCompositorThreadHolder, "The compositor thread has already been started!");
 
@@ -316,20 +313,11 @@ CompositorParent::RecvWillStop()
   return true;
 }
 
-void DeferredDeleteCompositorParentOnMainThread(CompositorParent* aNowReadyToDie)
-{
-  MOZ_ASSERT(NS_IsMainThread());
-  aNowReadyToDie->mCompositorThreadHolder = nullptr;
-  aNowReadyToDie->Release();
-}
-
-static void DeferredDeleteCompositorParentOnIOThread(CompositorParent* aToBeDeletedOnMainThread)
+void CompositorParent::DeferredDestroy()
 {
   MOZ_ASSERT(!NS_IsMainThread());
-  MOZ_ASSERT(sMainLoop);
-  sMainLoop->PostTask(FROM_HERE,
-                      NewRunnableFunction(&DeferredDeleteCompositorParentOnMainThread,
-                                          aToBeDeletedOnMainThread));
+  mCompositorThreadHolder = nullptr;
+  Release();
 }
 
 bool
@@ -341,10 +329,9 @@ CompositorParent::RecvStop()
   // this thread.
   // We must keep the compositor parent alive untill the code handling message
   // reception is finished on this thread.
-  this->AddRef(); // Corresponds to DeferredDeleteCompositorParentOnMainThread's Release
+  this->AddRef(); // Corresponds to DeferredDestroy's Release
   MessageLoop::current()->PostTask(FROM_HERE,
-                                   NewRunnableFunction(&DeferredDeleteCompositorParentOnIOThread,
-                                                       this));
+                                   NewRunnableMethod(this,&CompositorParent::DeferredDestroy));
   return true;
 }
 
@@ -1092,7 +1079,7 @@ class CrossProcessCompositorParent MOZ_FINAL : public PCompositorParent,
 {
   friend class CompositorParent;
 
-  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(CrossProcessCompositorParent)
+  NS_INLINE_DECL_THREADSAFE_REFCOUNTING_WITH_MAIN_THREAD_DESTRUCTION(CrossProcessCompositorParent)
 public:
   CrossProcessCompositorParent(Transport* aTransport)
     : mTransport(aTransport)
@@ -1157,7 +1144,7 @@ private:
   // Child side's process Id.
   base::ProcessId mChildProcessId;
 
-  const nsRefPtr<CompositorThreadHolder> mCompositorThreadHolder;
+  nsRefPtr<CompositorThreadHolder> mCompositorThreadHolder;
 };
 
 static void
@@ -1336,12 +1323,8 @@ CrossProcessCompositorParent::GetCompositionManager(LayerTransactionParent* aLay
 void
 CrossProcessCompositorParent::DeferredDestroy()
 {
-  CrossProcessCompositorParent* self;
-  mSelfRef.forget(&self);
-
-  MOZ_ASSERT(sMainLoop);
-  sMainLoop->PostTask(FROM_HERE,
-                      NewRunnableMethod(self, &CrossProcessCompositorParent::Release));
+  mCompositorThreadHolder = nullptr;
+  mSelfRef = nullptr;
 }
 
 CrossProcessCompositorParent::~CrossProcessCompositorParent()
