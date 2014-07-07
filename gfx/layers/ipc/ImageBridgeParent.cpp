@@ -44,11 +44,16 @@ class PGrallocBufferParent;
 
 MessageLoop* ImageBridgeParent::sMainLoop = nullptr;
 
+// defined in CompositorParent.cpp
+CompositorThreadHolder* GetCompositorThreadHolder();
+
 ImageBridgeParent::ImageBridgeParent(MessageLoop* aLoop,
                                      Transport* aTransport,
                                      ProcessId aChildProcessId)
   : mMessageLoop(aLoop)
   , mTransport(aTransport)
+  , mChildProcessId(aChildProcessId)
+  , mCompositorThreadHolder(GetCompositorThreadHolder())
 {
   MOZ_ASSERT(NS_IsMainThread());
   sMainLoop = MessageLoop::current();
@@ -259,6 +264,7 @@ MessageLoop * ImageBridgeParent::GetMessageLoop() {
 void
 ImageBridgeParent::DeferredDestroy()
 {
+  mCompositorThreadHolder = nullptr;
   mSelfRef = nullptr;
 }
 
