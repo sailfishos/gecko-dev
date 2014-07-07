@@ -335,6 +335,7 @@ void
 EmbedLiteApp::SendObserve(const char* aMessageName, const char16_t* aMessage)
 {
   LOGT("topic:%s", aMessageName);
+  NS_ENSURE_TRUE(mAppParent, );
   unused << mAppParent->SendObserve(nsDependentCString(aMessageName), aMessage ? nsDependentString((const char16_t*)aMessage) : nsString());
 }
 
