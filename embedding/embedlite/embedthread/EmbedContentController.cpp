@@ -51,7 +51,7 @@ void EmbedContentController::HandleDoubleTap(const CSSPoint& aPoint, int32_t aMo
       NewRunnableMethod(this, &EmbedContentController::HandleDoubleTap, aPoint, aModifiers, aGuid));
     return;
   }
-  if (!GetListener()->HandleDoubleTap(nsIntPoint(aPoint.x, aPoint.y))) {
+  if (mRenderFrame && !GetListener()->HandleDoubleTap(nsIntPoint(aPoint.x, aPoint.y))) {
     unused << mRenderFrame->SendHandleDoubleTap(nsIntPoint(aPoint.x, aPoint.y));
   }
 }
@@ -66,7 +66,7 @@ void EmbedContentController::HandleSingleTap(const CSSPoint& aPoint, int32_t aMo
       NewRunnableMethod(this, &EmbedContentController::HandleSingleTap, aPoint, aModifiers, aGuid));
     return;
   }
-  if (!GetListener()->HandleSingleTap(nsIntPoint(aPoint.x, aPoint.y))) {
+  if (mRenderFrame && !GetListener()->HandleSingleTap(nsIntPoint(aPoint.x, aPoint.y))) {
     unused << mRenderFrame->SendHandleSingleTap(nsIntPoint(aPoint.x, aPoint.y));
   }
 }
@@ -81,7 +81,7 @@ void EmbedContentController::HandleLongTap(const CSSPoint& aPoint, int32_t aModi
       NewRunnableMethod(this, &EmbedContentController::HandleLongTap, aPoint, aModifiers, aGuid));
     return;
   }
-  if (!GetListener()->HandleLongTap(nsIntPoint(aPoint.x, aPoint.y))) {
+  if (mRenderFrame && !GetListener()->HandleLongTap(nsIntPoint(aPoint.x, aPoint.y))) {
     unused << mRenderFrame->SendHandleLongTap(nsIntPoint(aPoint.x, aPoint.y));
   }
 }
@@ -113,7 +113,7 @@ void EmbedContentController::SendAsyncScrollDOMEvent(bool aIsRoot,
     aScrollableSize.width, aScrollableSize.height);
   gfxRect rect(aContentRect.x, aContentRect.y, aContentRect.width, aContentRect.height);
   gfxSize size(aScrollableSize.width, aScrollableSize.height);
-  if (aIsRoot && !GetListener()->SendAsyncScrollDOMEvent(rect, size)) {
+  if (mRenderFrame && aIsRoot && !GetListener()->SendAsyncScrollDOMEvent(rect, size)) {
     unused << mRenderFrame->SendAsyncScrollDOMEvent(rect, size);
   }
 }
@@ -128,7 +128,7 @@ void EmbedContentController::AcknowledgeScrollUpdate(const FrameMetrics::ViewID&
       NewRunnableMethod(this, &EmbedContentController::AcknowledgeScrollUpdate, aScrollId, aScrollGeneration));
     return;
   }
-  if (!GetListener()->AcknowledgeScrollUpdate((uint32_t)aScrollId, aScrollGeneration)) {
+  if (mRenderFrame && !GetListener()->AcknowledgeScrollUpdate((uint32_t)aScrollId, aScrollGeneration)) {
     unused << mRenderFrame->SendAcknowledgeScrollUpdate(aScrollId, aScrollGeneration);
   }
 }
@@ -173,7 +173,7 @@ EmbedLiteViewListener* const EmbedContentController::GetListener() const
 
 void EmbedContentController::DoRequestContentRepaint(const FrameMetrics& aFrameMetrics)
 {
-  if (!GetListener()->RequestContentRepaint()) {
+  if (mRenderFrame && !GetListener()->RequestContentRepaint()) {
     unused << mRenderFrame->SendUpdateFrame(aFrameMetrics);
   }
 }

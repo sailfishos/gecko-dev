@@ -602,6 +602,9 @@ EmbedLiteViewThreadParent::TextEvent(const char* composite, const char* preEdit)
 void
 EmbedLiteViewThreadParent::ViewAPIDestroyed()
 {
+  if (mController) {
+    mController->ClearRenderFrame();
+  }
   mViewAPIDestroyed = true;
   mView = nullptr;
 }
