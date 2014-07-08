@@ -301,19 +301,6 @@ JS_SetWatchPoint(JSContext *cx, HandleObject origobj, HandleId id,
     if (!obj)
         return false;
 
-    RootedId propid(cx);
-
-    if (JSID_IS_INT(id)) {
-        propid = id;
-    } else if (JSID_IS_OBJECT(id)) {
-        JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr, JSMSG_CANT_WATCH_PROP);
-        return false;
-    } else {
-        RootedValue val(cx, IdToValue(id));
-        if (!ValueToId<CanGC>(cx, val, &propid))
-            return false;
-    }
-
     if (!obj->isNative() || obj->is<TypedArrayObject>()) {
         JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr, JSMSG_CANT_WATCH,
                              obj->getClass()->name);
@@ -327,7 +314,7 @@ JS_SetWatchPoint(JSContext *cx, HandleObject origobj, HandleId id,
     if (!JSObject::sparsifyDenseElements(cx, obj))
         return false;
 
-    types::MarkTypePropertyNonData(cx, obj, propid);
+    types::MarkTypePropertyNonData(cx, obj, id);
 
     WatchpointMap *wpmap = cx->compartment()->watchpointMap;
     if (!wpmap) {
@@ -338,7 +325,7 @@ JS_SetWatchPoint(JSContext *cx, HandleObject origobj, HandleId id,
         }
         cx->compartment()->watchpointMap = wpmap;
     }
-    return wpmap->watch(cx, obj, propid, handler, closure);
+    return wpmap->watch(cx, obj, id, handler, closure);
 }
 
 JS_PUBLIC_API(bool)
@@ -1068,7 +1055,7 @@ FormatFrame(JSContext *cx, const NonBuiltinScriptFrameIter &iter, char *buf, int
 
     RootedValue thisVal(cx);
     AutoPropertyDescArray thisProps(cx);
-    if (iter.computeThis(cx)) {
+    if (iter.hasUsableAbstractFramePtr() && iter.computeThis(cx)) {
         thisVal = iter.computedThisValue();
         if (showThisProps && thisVal.isObject()) {
             RootedObject thisObj(cx, &thisVal.toObject());
@@ -1337,7 +1324,7 @@ JSAbstractFramePtr::evaluateUCInStackFrame(JSContext *cx,
     RootedValue thisv(cx, frame.thisValue());
 
     js::AutoCompartment ac(cx, env);
-    return EvaluateInEnv(cx, env, thisv, frame, ConstTwoByteChars(chars, length), length,
+    return EvaluateInEnv(cx, env, thisv, frame, mozilla::Range<const jschar>(chars, length),
                          filename, lineno, rval);
 }
 

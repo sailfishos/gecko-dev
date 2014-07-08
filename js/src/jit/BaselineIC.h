@@ -414,6 +414,7 @@ class ICEntry
     _(GetProp_Primitive)        \
     _(GetProp_StringLength)     \
     _(GetProp_Native)           \
+    _(GetProp_NativeDoesNotExist) \
     _(GetProp_NativePrototype)  \
     _(GetProp_CallScripted)     \
     _(GetProp_CallNative)       \
@@ -1963,6 +1964,14 @@ class ICCompare_Fallback : public ICFallbackStub
         if (!code)
             return nullptr;
         return space->allocate<ICCompare_Fallback>(code);
+    }
+
+    static const size_t UNOPTIMIZABLE_ACCESS_BIT = 0;
+    void noteUnoptimizableAccess() {
+        extra_ |= (1u << UNOPTIMIZABLE_ACCESS_BIT);
+    }
+    bool hadUnoptimizableAccess() const {
+        return extra_ & (1u << UNOPTIMIZABLE_ACCESS_BIT);
     }
 
     // Compiler for this stub kind.
@@ -4412,6 +4421,104 @@ class ICGetPropNativeCompiler : public ICStubCompiler
     }
 };
 
+template <size_t ProtoChainDepth> class ICGetProp_NativeDoesNotExistImpl;
+
+class ICGetProp_NativeDoesNotExist : public ICMonitoredStub
+{
+    friend class ICStubSpace;
+  public:
+    static const size_t MAX_PROTO_CHAIN_DEPTH = 8;
+
+  protected:
+    ICGetProp_NativeDoesNotExist(JitCode *stubCode, ICStub *firstMonitorStub,
+                                 size_t protoChainDepth);
+
+  public:
+    static inline ICGetProp_NativeDoesNotExist *New(ICStubSpace *space, JitCode *code,
+                                                    ICStub *firstMonitorStub,
+                                                    size_t protoChainDepth)
+    {
+        if (!code)
+            return nullptr;
+        return space->allocate<ICGetProp_NativeDoesNotExist>(code, firstMonitorStub,
+                                                             protoChainDepth);
+    }
+
+    size_t protoChainDepth() const {
+        MOZ_ASSERT(extra_ <= MAX_PROTO_CHAIN_DEPTH);
+        return extra_;
+    }
+
+    template <size_t ProtoChainDepth>
+    ICGetProp_NativeDoesNotExistImpl<ProtoChainDepth> *toImpl() {
+        MOZ_ASSERT(ProtoChainDepth == protoChainDepth());
+        return static_cast<ICGetProp_NativeDoesNotExistImpl<ProtoChainDepth> *>(this);
+    }
+
+    static size_t offsetOfShape(size_t idx);
+};
+
+template <size_t ProtoChainDepth>
+class ICGetProp_NativeDoesNotExistImpl : public ICGetProp_NativeDoesNotExist
+{
+    friend class ICStubSpace;
+  public:
+    static const size_t MAX_PROTO_CHAIN_DEPTH = 8;
+    static const size_t NumShapes = ProtoChainDepth + 1;
+
+  private:
+    mozilla::Array<HeapPtrShape, NumShapes> shapes_;
+
+    ICGetProp_NativeDoesNotExistImpl(JitCode *stubCode, ICStub *firstMonitorStub,
+                                     const AutoShapeVector *shapes);
+
+  public:
+    static inline ICGetProp_NativeDoesNotExistImpl<ProtoChainDepth> *New(
+        ICStubSpace *space, JitCode *code, ICStub *firstMonitorStub,
+        const AutoShapeVector *shapes)
+    {
+        if (!code)
+            return nullptr;
+        return space->allocate<ICGetProp_NativeDoesNotExistImpl<ProtoChainDepth>>(
+                    code, firstMonitorStub, shapes);
+    }
+
+    void traceShapes(JSTracer *trc) {
+        for (size_t i = 0; i < NumShapes; i++)
+            MarkShape(trc, &shapes_[i], "baseline-getpropnativedoesnotexist-stub-shape");
+    }
+
+    static size_t offsetOfShape(size_t idx) {
+        return offsetof(ICGetProp_NativeDoesNotExistImpl, shapes_) + (idx * sizeof(HeapPtrShape));
+    }
+};
+
+class ICGetPropNativeDoesNotExistCompiler : public ICStubCompiler
+{
+    ICStub *firstMonitorStub_;
+    RootedObject obj_;
+    size_t protoChainDepth_;
+
+  protected:
+    virtual int32_t getKey() const {
+        return static_cast<int32_t>(kind) | (static_cast<int32_t>(protoChainDepth_) << 16);
+    }
+
+    bool generateStubCode(MacroAssembler &masm);
+
+  public:
+    ICGetPropNativeDoesNotExistCompiler(JSContext *cx, ICStub *firstMonitorStub,
+                                        HandleObject obj, size_t protoChainDepth);
+
+    template <size_t ProtoChainDepth>
+    ICStub *getStubSpecific(ICStubSpace *space, const AutoShapeVector *shapes) {
+        return ICGetProp_NativeDoesNotExistImpl<ProtoChainDepth>::New(space, getStubCode(),
+                                                                      firstMonitorStub_, shapes);
+    }
+
+    ICStub *getStub(ICStubSpace *space);
+};
+
 class ICGetPropCallGetter : public ICMonitoredStub
 {
     friend class ICStubSpace;
@@ -4684,7 +4791,7 @@ class ICGetPropCallDOMProxyNativeStub : public ICMonitoredStub
     HeapPtrShape shape_;
 
     // Proxy handler to check against.
-    BaseProxyHandler *proxyHandler_;
+    const BaseProxyHandler *proxyHandler_;
 
     // Object shape of expected expando object. (nullptr if no expando object should be there)
     HeapPtrShape expandoShape_;
@@ -4701,7 +4808,7 @@ class ICGetPropCallDOMProxyNativeStub : public ICMonitoredStub
 
     ICGetPropCallDOMProxyNativeStub(ICStub::Kind kind, JitCode *stubCode,
                                     ICStub *firstMonitorStub, HandleShape shape,
-                                    BaseProxyHandler *proxyHandler, HandleShape expandoShape,
+                                    const BaseProxyHandler *proxyHandler, HandleShape expandoShape,
                                     HandleObject holder, HandleShape holderShape,
                                     HandleFunction getter, uint32_t pcOffset);
 
@@ -4752,7 +4859,7 @@ class ICGetProp_CallDOMProxyNative : public ICGetPropCallDOMProxyNativeStub
 {
     friend class ICStubSpace;
     ICGetProp_CallDOMProxyNative(JitCode *stubCode, ICStub *firstMonitorStub, HandleShape shape,
-                                 BaseProxyHandler *proxyHandler, HandleShape expandoShape,
+                                 const BaseProxyHandler *proxyHandler, HandleShape expandoShape,
                                  HandleObject holder, HandleShape holderShape,
                                  HandleFunction getter, uint32_t pcOffset)
       : ICGetPropCallDOMProxyNativeStub(ICStub::GetProp_CallDOMProxyNative, stubCode,
@@ -4763,7 +4870,7 @@ class ICGetProp_CallDOMProxyNative : public ICGetPropCallDOMProxyNativeStub
   public:
     static inline ICGetProp_CallDOMProxyNative *New(
             ICStubSpace *space, JitCode *code, ICStub *firstMonitorStub,
-            HandleShape shape, BaseProxyHandler *proxyHandler,
+            HandleShape shape, const BaseProxyHandler *proxyHandler,
             HandleShape expandoShape, HandleObject holder, HandleShape holderShape,
             HandleFunction getter, uint32_t pcOffset)
     {
@@ -4787,7 +4894,7 @@ class ICGetProp_CallDOMProxyWithGenerationNative : public ICGetPropCallDOMProxyN
 
   public:
     ICGetProp_CallDOMProxyWithGenerationNative(JitCode *stubCode, ICStub *firstMonitorStub,
-                                               HandleShape shape, BaseProxyHandler *proxyHandler,
+                                               HandleShape shape, const BaseProxyHandler *proxyHandler,
                                                ExpandoAndGeneration *expandoAndGeneration,
                                                uint32_t generation, HandleShape expandoShape,
                                                HandleObject holder, HandleShape holderShape,
@@ -4802,7 +4909,7 @@ class ICGetProp_CallDOMProxyWithGenerationNative : public ICGetPropCallDOMProxyN
 
     static inline ICGetProp_CallDOMProxyWithGenerationNative *New(
             ICStubSpace *space, JitCode *code, ICStub *firstMonitorStub,
-            HandleShape shape, BaseProxyHandler *proxyHandler,
+            HandleShape shape, const BaseProxyHandler *proxyHandler,
             ExpandoAndGeneration *expandoAndGeneration, uint32_t generation,
             HandleShape expandoShape, HandleObject holder, HandleShape holderShape,
             HandleFunction getter, uint32_t pcOffset)
@@ -4863,18 +4970,18 @@ class ICGetProp_DOMProxyShadowed : public ICMonitoredStub
   friend class ICStubSpace;
   protected:
     HeapPtrShape shape_;
-    BaseProxyHandler *proxyHandler_;
+    const BaseProxyHandler *proxyHandler_;
     HeapPtrPropertyName name_;
     uint32_t pcOffset_;
 
     ICGetProp_DOMProxyShadowed(JitCode *stubCode, ICStub *firstMonitorStub, HandleShape shape,
-                               BaseProxyHandler *proxyHandler, HandlePropertyName name,
+                               const BaseProxyHandler *proxyHandler, HandlePropertyName name,
                                uint32_t pcOffset);
 
   public:
     static inline ICGetProp_DOMProxyShadowed *New(ICStubSpace *space, JitCode *code,
                                                   ICStub *firstMonitorStub, HandleShape shape,
-                                                  BaseProxyHandler *proxyHandler,
+                                                  const BaseProxyHandler *proxyHandler,
                                                   HandlePropertyName name, uint32_t pcOffset)
     {
         if (!code)
@@ -5155,7 +5262,8 @@ class ICSetProp_NativeAddImpl : public ICSetProp_NativeAdd
     }
 };
 
-class ICSetPropNativeAddCompiler : public ICStubCompiler {
+class ICSetPropNativeAddCompiler : public ICStubCompiler
+{
     RootedObject obj_;
     RootedShape oldShape_;
     size_t protoChainDepth_;
@@ -6315,7 +6423,7 @@ IsCacheableDOMProxy(JSObject *obj)
     if (!obj->is<ProxyObject>())
         return false;
 
-    BaseProxyHandler *handler = obj->as<ProxyObject>().handler();
+    const BaseProxyHandler *handler = obj->as<ProxyObject>().handler();
 
     if (handler->family() != GetDOMProxyHandlerFamily())
         return false;

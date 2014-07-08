@@ -991,7 +991,8 @@ class IDLInterface(IDLObjectWithScope):
                 self._isOnGlobalProtoChain = True
             elif (identifier == "NeedNewResolve" or
                   identifier == "OverrideBuiltins" or
-                  identifier == "ChromeOnly"):
+                  identifier == "ChromeOnly" or
+                  identifier == "LegacyEventInit"):
                 # Known extended attributes that do not take values
                 if not attr.noArguments():
                     raise WebIDLError("[%s] must take no arguments" % identifier,
@@ -1705,7 +1706,7 @@ class IDLSequenceType(IDLType):
             # Just forward to the union; it'll deal
             return other.isDistinguishableFrom(self)
         return (other.isPrimitive() or other.isString() or other.isEnum() or
-                other.isDate() or other.isNonCallbackInterface())
+                other.isDate() or other.isNonCallbackInterface() or other.isMozMap())
 
     def _getDependentObjects(self):
         return self.inner._getDependentObjects()
@@ -1759,7 +1760,7 @@ class IDLMozMapType(IDLType):
             # Just forward to the union; it'll deal
             return other.isDistinguishableFrom(self)
         return (other.isPrimitive() or other.isString() or other.isEnum() or
-                other.isDate() or other.isNonCallbackInterface())
+                other.isDate() or other.isNonCallbackInterface() or other.isSequence())
 
     def _getDependentObjects(self):
         return self.inner._getDependentObjects()
@@ -2634,6 +2635,34 @@ class IDLNullValue(IDLObject):
     def _getDependentObjects(self):
         return set()
 
+class IDLEmptySequenceValue(IDLObject):
+    def __init__(self, location):
+        IDLObject.__init__(self, location)
+        self.type = None
+        self.value = None
+
+    def coerceToType(self, type, location):
+        if type.isUnion():
+            # We use the flat member types here, because if we have a nullable
+            # member type, or a nested union, we want the type the value
+            # actually coerces to, not the nullable or nested union type.
+            for subtype in type.unroll().flatMemberTypes:
+                try:
+                    return self.coerceToType(subtype, location)
+                except:
+                    pass
+
+        if not type.isSequence():
+            raise WebIDLError("Cannot coerce empty sequence value to type %s." % type,
+                              [location])
+
+        emptySequenceValue = IDLEmptySequenceValue(self.location)
+        emptySequenceValue.type = type
+        return emptySequenceValue
+
+    def _getDependentObjects(self):
+        return set()
+
 class IDLUndefinedValue(IDLObject):
     def __init__(self, location):
         IDLObject.__init__(self, location)
@@ -3216,6 +3245,7 @@ class IDLMethod(IDLInterfaceMember, IDLScope):
         assert isinstance(jsonifier, bool)
         self._jsonifier = jsonifier
         self._specialType = specialType
+        self._unforgeable = False
 
         if static and identifier.name == "prototype":
             raise WebIDLError("The identifier of a static operation must not be 'prototype'",
@@ -3491,9 +3521,10 @@ class IDLMethod(IDLInterfaceMember, IDLScope):
                               "[SetterThrows]",
                               [attr.location, self.location])
         elif identifier == "Unforgeable":
-            raise WebIDLError("Methods must not be flagged as "
-                              "[Unforgeable]",
-                              [attr.location, self.location])
+            if self.isStatic():
+                raise WebIDLError("[Unforgeable] is only allowed on non-static "
+                                  "methods", [attr.location, self.location])
+            self._unforgeable = True
         elif identifier == "SameObject":
             raise WebIDLError("Methods must not be flagged as [SameObject]",
                               [attr.location, self.location]);
@@ -3533,6 +3564,9 @@ class IDLMethod(IDLInterfaceMember, IDLScope):
 
     def returnsPromise(self):
         return self._overloads[0].returnType.isPromise()
+
+    def isUnforgeable(self):
+        return self._unforgeable
 
     def _getDependentObjects(self):
         deps = set()
@@ -3954,7 +3988,7 @@ class Parser(Tokenizer):
 
     def p_DictionaryMember(self, p):
         """
-            DictionaryMember : Type IDENTIFIER DefaultValue SEMICOLON
+            DictionaryMember : Type IDENTIFIER Default SEMICOLON
         """
         # These quack a lot like optional arguments, so just treat them that way.
         t = p[1]
@@ -3966,15 +4000,26 @@ class Parser(Tokenizer):
                            defaultValue=defaultValue, variadic=False,
                            dictionaryMember=True)
 
-    def p_DefaultValue(self, p):
+    def p_Default(self, p):
         """
-            DefaultValue : EQUALS ConstValue
-                         |
+            Default : EQUALS DefaultValue
+                    |
         """
         if len(p) > 1:
             p[0] = p[2]
         else:
             p[0] = None
+
+    def p_DefaultValue(self, p):
+        """
+            DefaultValue : ConstValue
+                         | LBRACKET RBRACKET
+        """
+        if len(p) == 2:
+            p[0] = p[1]
+        else:
+            assert len(p) == 3 # Must be []
+            p[0] = IDLEmptySequenceValue(self.getLocation(p, 1))
 
     def p_Exception(self, p):
         """
@@ -4434,7 +4479,7 @@ class Parser(Tokenizer):
 
     def p_Argument(self, p):
         """
-            Argument : ExtendedAttributeList Optional Type Ellipsis ArgumentName DefaultValue
+            Argument : ExtendedAttributeList Optional Type Ellipsis ArgumentName Default
         """
         t = p[3]
         assert isinstance(t, IDLType)
@@ -5005,8 +5050,14 @@ class Parser(Tokenizer):
         self.parser = yacc.yacc(module=self,
                                 outputdir=outputdir,
                                 tabmodule='webidlyacc',
-                                errorlog=yacc.NullLogger(),
-                                picklefile='WebIDLGrammar.pkl')
+                                errorlog=yacc.NullLogger()
+                                # Pickling the grammar is a speedup in
+                                # some cases (older Python?) but a
+                                # significant slowdown in others.
+                                # We're not pickling for now, until it
+                                # becomes a speedup again.
+                                # , picklefile='WebIDLGrammar.pkl'
+                            )
         self._globalScope = IDLScope(BuiltinLocation("<Global Scope>"), None, None)
         self._installBuiltins(self._globalScope)
         self._productions = []

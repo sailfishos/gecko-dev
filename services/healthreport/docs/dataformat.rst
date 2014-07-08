@@ -1073,6 +1073,35 @@ org.mozilla.crashes.crashes
 
 This measurement contains a historical record of application crashes.
 
+Version 4
+^^^^^^^^^
+
+This version follows up from version 3, adding submissions which are now
+tracked by the :ref:`crashes_crashmanager`.
+
+This measurement will be reported on each day there was a crash or crash
+submission. Records may contain the following fields, whose values indicate
+the number of crashes, hangs, or submissions that occurred on the given day:
+
+* main-crash
+* main-crash-submission-succeeded
+* main-crash-submission-failed
+* main-hang
+* main-hang-submission-succeeded
+* main-hang-submission-failed
+* content-crash
+* content-crash-submission-succeeded
+* content-crash-submission-failed
+* content-hang
+* content-hang-submission-succeeded
+* content-hang-submission-failed
+* plugin-crash
+* plugin-crash-submission-succeeded
+* plugin-crash-submission-failed
+* plugin-hang
+* plugin-hang-submission-succeeded
+* plugin-hang-submission-failed
+
 Version 3
 ^^^^^^^^^
 
@@ -1151,6 +1180,14 @@ Example
     "org.mozilla.crashes.crashes": {
       "_v": 2,
       "mainCrash": 2
+    }
+    "org.mozilla.crashes.crashes": {
+      "_v": 4,
+      "main-crash": 2,
+      "main-crash-submission-succeeded": 1,
+      "main-crash-submission-failed": 1,
+      "main-hang": 1,
+      "plugin-crash": 2
     }
 
 org.mozilla.healthreport.submissions
@@ -1402,6 +1439,36 @@ Example
       "google.urlbar": 7
     },
 
+org.mozilla.searches.engines
+----------------------------
+
+This measurement contains information about search engines.
+
+Version 1
+^^^^^^^^^
+
+This version debuted with Firefox 31 on desktop. It contains the
+following properties:
+
+default
+   Daily string identifier or name of the default search engine provider.
+
+   This field will only be collected if Telemetry is enabled. If
+   Telemetry is enabled and then later disabled, this field may
+   disappear from future days in the payload.
+
+   The special value ``NONE`` could occur if there is no default search
+   engine.
+
+   The special value ``UNDEFINED`` could occur if a default search
+   engine exists but its identifier could not be determined.
+
+   This field's contents are
+   ``Services.search.defaultEngine.identifier`` (if defined) or
+   ``"other-"`` + ``Services.search.defaultEngine.name`` if not.
+   In other words, search engines without an ``.identifier``
+   are prefixed with ``other-``.
+
 org.mozilla.sync.sync
 ---------------------
 
@@ -1556,6 +1623,16 @@ detectedLanguageChangedBefore
 detectedLanguageChangedAfter
     Integer count of the number of times the user manually adjusted the detected
     language after having first translated the page.
+targetLanguageChanged
+    Integer count of the number of times the user manually adjusted the target
+    language.
+deniedTranslationOffer
+    Integer count of the number of times the user opted-out offered
+    page translation, either by the Not Now button or by the notification's
+    close button in the "offer" state.
+showOriginalContent
+    Integer count of the number of times the user activated the Show Original
+    command.
 
 Additional daily counts broken down by language are reported in the following
 properties:
@@ -1588,13 +1665,22 @@ Example
       "detectLanguageEnabled": 1,
       "showTranslationUI": 1,
       "translationOpportunityCount": 134,
+      "missedTranslationOpportunityCount": 32,
       "pageTranslatedCount": 6,
       "charactersTranslatedCount": "1126",
       "detectedLanguageChangedBefore": 1,
       "detectedLanguageChangedAfter": 2,
+      "targetLanguageChanged": 0,
+      "deniedTranslationOffer": 3,
+      "showOriginalContent": 2,
       "translationOpportunityCountsByLanguage": {
         "fr": 100,
         "es": 34
+      },
+      "missedTranslationOpportunityCountsByLanguage": {
+        "it": 20,
+        "nl": 10,
+        "fi": 2
       },
       "pageTranslatedCountsByLanguage": {
         "fr": {
@@ -1620,13 +1706,22 @@ lastActive
     ID of the final Telemetry Experiment that is active on a given day, if any.
 
 
+Version 2
+^^^^^^^^^
+
+Adds an additional optional property:
+
+lastActiveBranch
+    If the experiment uses branches, the branch identifier string.
+
 Example
 ^^^^^^^
 
 ::
 
     "org.mozilla.experiments.info": {
-      "_v": 1,
-      "lastActive": "some.experiment.id"
+      "_v": 2,
+      "lastActive": "some.experiment.id",
+      "lastActiveBranch": "control"
     }
 

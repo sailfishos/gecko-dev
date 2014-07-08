@@ -66,6 +66,7 @@
 #include "mozilla/Services.h"
 #include "mozilla/StaticPtr.h"
 #include "mozilla/unused.h"
+#include "nsAnonymousTemporaryFile.h"
 #include "nsAppRunner.h"
 #include "nsAutoPtr.h"
 #include "nsCDefaultURIFixup.h"
@@ -102,6 +103,7 @@
 #include "nsIURIFixup.h"
 #include "nsIWindowWatcher.h"
 #include "nsIXULRuntime.h"
+#include "nsMemoryInfoDumper.h"
 #include "nsMemoryReporterManager.h"
 #include "nsServiceManagerUtils.h"
 #include "nsStyleSheetService.h"
@@ -118,6 +120,8 @@
 #include "nsIDocShell.h"
 #include "mozilla/net/NeckoMessageUtils.h"
 #include "gfxPrefs.h"
+#include "prio.h"
+#include "private/pprio.h"
 
 #if defined(ANDROID) || defined(LINUX)
 #include "nsSystemInfo.h"
@@ -445,6 +449,7 @@ private:
 // A memory reporter for ContentParent objects themselves.
 class ContentParentsMemoryReporter MOZ_FINAL : public nsIMemoryReporter
 {
+    ~ContentParentsMemoryReporter() {}
 public:
     NS_DECL_ISUPPORTS
     NS_DECL_NSIMEMORYREPORTER
@@ -831,7 +836,8 @@ ContentParent::AnswerBridgeToChildProcess(const uint64_t& id)
 
 /*static*/ TabParent*
 ContentParent::CreateBrowserOrApp(const TabContext& aContext,
-                                  Element* aFrameElement)
+                                  Element* aFrameElement,
+                                  ContentParent* aOpenerContentParent)
 {
     if (!sCanLaunchSubprocesses) {
         return nullptr;
@@ -863,9 +869,12 @@ ContentParent::CreateBrowserOrApp(const TabContext& aContext,
             parent->SetIsForApp(isForApp);
             parent->SetIsForBrowser(isForBrowser);
             constructorSender = parent;
-        } else if (nsRefPtr<ContentParent> cp =
-                   GetNewOrUsed(aContext.IsBrowserElement(), initialPriority)) {
-            constructorSender = cp;
+        } else {
+          if (aOpenerContentParent) {
+            constructorSender = aOpenerContentParent;
+          } else {
+            constructorSender = GetNewOrUsed(aContext.IsBrowserElement(), initialPriority);
+          }
         }
         if (constructorSender) {
             uint32_t chromeFlags = 0;
@@ -1131,6 +1140,8 @@ public:
     }
 
 private:
+    ~SystemMessageHandledListener() {}
+
     static StaticAutoPtr<LinkedList<SystemMessageHandledListener> > sListeners;
 
     void ShutDown()
@@ -1883,10 +1894,15 @@ ContentParent::InitInternal(ProcessPriority aInitialPriority,
             DebugOnly<bool> opened = PCompositor::Open(this);
             MOZ_ASSERT(opened);
 
+#ifndef MOZ_WIDGET_GONK
             if (gfxPrefs::AsyncVideoOOPEnabled()) {
                 opened = PImageBridge::Open(this);
                 MOZ_ASSERT(opened);
             }
+#else
+            opened = PImageBridge::Open(this);
+            MOZ_ASSERT(opened);
+#endif
         }
     }
 #ifdef MOZ_WIDGET_GONK
@@ -2442,9 +2458,22 @@ ContentParent::Observe(nsISupports* aSubject,
             // The pre-%n part of the string should be all ASCII, so the byte
             // offset in identOffset should be correct as a char offset.
             MOZ_ASSERT(cmsg[identOffset - 1] == '=');
+            FileDescriptor dmdFileDesc;
+#ifdef MOZ_DMD
+            FILE *dmdFile;
+            nsAutoString dmdIdent(Substring(msg, identOffset));
+            nsresult rv = nsMemoryInfoDumper::OpenDMDFile(dmdIdent, Pid(), &dmdFile);
+            if (NS_WARN_IF(NS_FAILED(rv))) {
+                // Proceed with the memory report as if DMD were disabled.
+                dmdFile = nullptr;
+            }
+            if (dmdFile) {
+                dmdFileDesc = FILEToFileDescriptor(dmdFile);
+                fclose(dmdFile);
+            }
+#endif
             unused << SendPMemoryReportRequestConstructor(
-              generation, anonymize, minimize,
-              nsString(Substring(msg, identOffset)));
+              generation, anonymize, minimize, dmdFileDesc);
         }
     }
     else if (!strcmp(aTopic, "child-gc-request")){
@@ -2789,7 +2818,7 @@ PMemoryReportRequestParent*
 ContentParent::AllocPMemoryReportRequestParent(const uint32_t& aGeneration,
                                                const bool &aAnonymize,
                                                const bool &aMinimizeMemoryUsage,
-                                               const nsString &aDMDDumpIdent)
+                                               const FileDescriptor &aDMDFile)
 {
     MemoryReportRequestParent* parent = new MemoryReportRequestParent();
     return parent;
@@ -3645,6 +3674,21 @@ ContentParent::RecvBackUpXResources(const FileDescriptor& aXSocketFd)
         mChildXSocketFdDup.reset(aXSocketFd.PlatformHandle());
     }
 #endif
+    return true;
+}
+
+bool
+ContentParent::RecvOpenAnonymousTemporaryFile(FileDescriptor *aFD)
+{
+    PRFileDesc *prfd;
+    nsresult rv = NS_OpenAnonymousTemporaryFile(&prfd);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+        return false;
+    }
+    *aFD = FileDescriptor::PlatformHandleType(PR_FileDesc2NativeHandle(prfd));
+    // The FileDescriptor object owns a duplicate of the file handle; we
+    // must close the original (and clean up the NSPR descriptor).
+    PR_Close(prfd);
     return true;
 }
 

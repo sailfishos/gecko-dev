@@ -152,10 +152,17 @@ callback interface MozIdleObserver {
 };
 
 #ifdef MOZ_B2G
+dictionary MobileIdOptions {
+  boolean forceSelection = false;
+};
+
 [NoInterfaceObject]
 interface NavigatorMobileId {
-    [Throws, NewObject]
-    Promise getMobileIdAssertion();
+    // Ideally we would use [CheckPermissions] here, but the "mobileid"
+    // permission is set to PROMPT_ACTION and [CheckPermissions] only checks
+    // for ALLOW_ACTION.
+    [Throws, NewObject, Func="Navigator::HasMobileIdSupport"]
+    Promise getMobileIdAssertion(optional MobileIdOptions options);
 };
 Navigator implements NavigatorMobileId;
 #endif // MOZ_B2G
@@ -245,8 +252,6 @@ partial interface Navigator {
   boolean mozIsLocallyAvailable(DOMString uri, boolean whenOffline);
 };
 
-// nsIDOMMozNavigatorMobileMessage
-interface MozMobileMessageManager;
 partial interface Navigator {
   [Func="Navigator::HasMobileMessageSupport"]
   readonly attribute MozMobileMessageManager? mozMobileMessage;

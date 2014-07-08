@@ -797,8 +797,8 @@ HashableValue::setValue(JSContext *cx, HandleValue v)
         value = v;
     }
 
-    JS_ASSERT(value.isUndefined() || value.isNull() || value.isBoolean() ||
-              value.isNumber() || value.isString() || value.isObject());
+    JS_ASSERT(value.isUndefined() || value.isNull() || value.isBoolean() || value.isNumber() ||
+              value.isString() || value.isSymbol() || value.isObject());
     return true;
 }
 
@@ -1051,7 +1051,7 @@ InitClass(JSContext *cx, Handle<GlobalObject*> global, const Class *clasp, JSPro
     Rooted<JSFunction*> ctor(cx, global->createConstructor(cx, construct, ClassName(key, cx), 1));
     if (!ctor ||
         !LinkConstructorAndPrototype(cx, ctor, proto) ||
-        !DefinePropertiesAndBrand(cx, proto, properties, methods) ||
+        !DefinePropertiesAndFunctions(cx, proto, properties, methods) ||
         !GlobalObject::initBuiltinConstructor(cx, global, key, ctor, proto))
     {
         return nullptr;
@@ -1315,7 +1315,7 @@ MapObject::set_impl(JSContext *cx, CallArgs args)
         return false;
     }
     WriteBarrierPost(cx->runtime(), &map, key.get());
-    args.rval().setUndefined();
+    args.rval().set(args.thisv());
     return true;
 }
 
@@ -1777,7 +1777,7 @@ SetObject::add_impl(JSContext *cx, CallArgs args)
         return false;
     }
     WriteBarrierPost(cx->runtime(), &set, key.get());
-    args.rval().setUndefined();
+    args.rval().set(args.thisv());
     return true;
 }
 

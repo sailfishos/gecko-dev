@@ -102,6 +102,7 @@ UNIFIED_SOURCES += [
     'builtin/Object.cpp',
     'builtin/Profilers.cpp',
     'builtin/SIMD.cpp',
+    'builtin/SymbolObject.cpp',
     'builtin/TestingFunctions.cpp',
     'builtin/TypedObject.cpp',
     'devtools/sharkctl.cpp',
@@ -115,6 +116,7 @@ UNIFIED_SOURCES += [
     'frontend/TokenStream.cpp',
     'gc/Barrier.cpp',
     'gc/ForkJoinNursery.cpp',
+    'gc/GCTrace.cpp',
     'gc/Iteration.cpp',
     'gc/Marking.cpp',
     'gc/Memory.cpp',
@@ -197,6 +199,7 @@ UNIFIED_SOURCES += [
     'vm/String.cpp',
     'vm/StringBuffer.cpp',
     'vm/StructuredClone.cpp',
+    'vm/Symbol.cpp',
     'vm/ThreadPool.cpp',
     'vm/TypedArrayObject.cpp',
     'vm/UbiNode.cpp',
@@ -245,6 +248,7 @@ if CONFIG['ENABLE_ION']:
         'irregexp/NativeRegExpMacroAssembler.cpp',
         'jit/AliasAnalysis.cpp',
         'jit/AsmJS.cpp',
+        'jit/AsmJSFrameIterator.cpp',
         'jit/AsmJSLink.cpp',
         'jit/AsmJSModule.cpp',
         'jit/AsmJSSignalHandlers.cpp',
@@ -371,7 +375,6 @@ if CONFIG['ENABLE_ION']:
         ]
     elif CONFIG['JS_CODEGEN_ARM']:
         SOURCES += [
-            'assembler/assembler/ARMAssembler.cpp',
             'assembler/assembler/MacroAssemblerARM.cpp',
         ]
 

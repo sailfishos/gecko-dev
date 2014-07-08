@@ -9,6 +9,7 @@
 
 #include "nsCSSRules.h"
 #include "nsCSSValue.h"
+#include "mozilla/CSSStyleSheet.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/css/ImportRule.h"
 #include "mozilla/css/NameSpaceRule.h"
@@ -17,7 +18,6 @@
 #include "nsIAtom.h"
 
 #include "nsCSSProps.h"
-#include "nsCSSStyleSheet.h"
 
 #include "nsCOMPtr.h"
 #include "nsIDOMCSSStyleSheet.h"
@@ -31,7 +31,6 @@
 #include "nsStyleUtil.h"
 #include "mozilla/css/Declaration.h"
 #include "nsCSSParser.h"
-#include "nsPrintfCString.h"
 #include "nsDOMClassInfoID.h"
 #include "mozilla/dom/CSSStyleDeclarationBinding.h"
 #include "StyleRule.h"
@@ -59,11 +58,11 @@ IMPL_STYLE_RULE_INHERIT_MAP_RULE_INFO_INTO(class_, super_)
 namespace mozilla {
 namespace css {
 
-nsCSSStyleSheet*
+CSSStyleSheet*
 Rule::GetStyleSheet() const
 {
   if (!(mSheet & 0x1)) {
-    return reinterpret_cast<nsCSSStyleSheet*>(mSheet);
+    return reinterpret_cast<CSSStyleSheet*>(mSheet);
   }
 
   return nullptr;
@@ -80,7 +79,7 @@ Rule::GetHTMLCSSStyleSheet() const
 }
 
 /* virtual */ void
-Rule::SetStyleSheet(nsCSSStyleSheet* aSheet)
+Rule::SetStyleSheet(CSSStyleSheet* aSheet)
 {
   // We don't reference count this up reference. The style sheet
   // will tell us when it's going away or when we're detached from
@@ -135,7 +134,7 @@ class GroupRuleRuleList MOZ_FINAL : public dom::CSSRuleList
 public:
   GroupRuleRuleList(GroupRule *aGroupRule);
 
-  virtual nsCSSStyleSheet* GetParentObject() MOZ_OVERRIDE;
+  virtual CSSStyleSheet* GetParentObject() MOZ_OVERRIDE;
 
   virtual nsIDOMCSSRule*
   IndexedGetter(uint32_t aIndex, bool& aFound) MOZ_OVERRIDE;
@@ -162,7 +161,7 @@ GroupRuleRuleList::~GroupRuleRuleList()
 {
 }
 
-nsCSSStyleSheet*
+CSSStyleSheet*
 GroupRuleRuleList::GetParentObject()
 {
   if (!mGroupRule) {
@@ -343,7 +342,7 @@ ImportRule::ImportRule(const ImportRule& aCopy)
   // property of that @import rule, since it is null only if the target
   // sheet failed security checks.
   if (aCopy.mChildSheet) {
-    nsRefPtr<nsCSSStyleSheet> sheet =
+    nsRefPtr<CSSStyleSheet> sheet =
       aCopy.mChildSheet->Clone(nullptr, this, nullptr, nullptr);
     SetSheet(sheet);
     // SetSheet sets mMedia appropriately
@@ -403,7 +402,7 @@ ImportRule::Clone() const
 }
 
 void
-ImportRule::SetSheet(nsCSSStyleSheet* aSheet)
+ImportRule::SetSheet(CSSStyleSheet* aSheet)
 {
   NS_PRECONDITION(aSheet, "null arg");
 
@@ -494,8 +493,8 @@ ImportRule::SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const
   // - mURLSpec
   //
   // The following members are not measured:
-  // - mMedia, because it is measured via nsCSSStyleSheet::mMedia
-  // - mChildSheet, because it is measured via nsCSSStyleSheetInner::mSheets
+  // - mMedia, because it is measured via CSSStyleSheet::mMedia
+  // - mChildSheet, because it is measured via CSSStyleSheetInner::mSheets
 }
 
 } // namespace css
@@ -547,7 +546,7 @@ IMPL_STYLE_RULE_INHERIT_MAP_RULE_INFO_INTO(GroupRule, Rule)
 static bool
 SetStyleSheetReference(Rule* aRule, void* aSheet)
 {
-  nsCSSStyleSheet* sheet = (nsCSSStyleSheet*)aSheet;
+  CSSStyleSheet* sheet = (CSSStyleSheet*)aSheet;
   aRule->SetStyleSheet(sheet);
   return true;
 }
@@ -582,7 +581,7 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(GroupRule)
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 /* virtual */ void
-GroupRule::SetStyleSheet(nsCSSStyleSheet* aSheet)
+GroupRule::SetStyleSheet(CSSStyleSheet* aSheet)
 {
   // Don't set the sheet on the kids if it's already the same as the sheet we
   // already have.  This is needed to avoid O(N^2) behavior in group nesting
@@ -613,7 +612,7 @@ void
 GroupRule::AppendStyleRule(Rule* aRule)
 {
   mRules.AppendObject(aRule);
-  nsCSSStyleSheet* sheet = GetStyleSheet();
+  CSSStyleSheet* sheet = GetStyleSheet();
   aRule->SetStyleSheet(sheet);
   aRule->SetParentRule(this);
   if (sheet) {
@@ -711,7 +710,7 @@ GroupRule::GetCssRules(nsIDOMCSSRuleList* *aRuleList)
 nsresult
 GroupRule::InsertRule(const nsAString & aRule, uint32_t aIndex, uint32_t* _retval)
 {
-  nsCSSStyleSheet* sheet = GetStyleSheet();
+  CSSStyleSheet* sheet = GetStyleSheet();
   NS_ENSURE_TRUE(sheet, NS_ERROR_FAILURE);
   
   if (aIndex > uint32_t(mRules.Count()))
@@ -726,7 +725,7 @@ GroupRule::InsertRule(const nsAString & aRule, uint32_t aIndex, uint32_t* _retva
 nsresult
 GroupRule::DeleteRule(uint32_t aIndex)
 {
-  nsCSSStyleSheet* sheet = GetStyleSheet();
+  CSSStyleSheet* sheet = GetStyleSheet();
   NS_ENSURE_TRUE(sheet, NS_ERROR_FAILURE);
 
   if (aIndex >= uint32_t(mRules.Count()))
@@ -789,7 +788,7 @@ NS_INTERFACE_MAP_BEGIN(MediaRule)
 NS_INTERFACE_MAP_END_INHERITING(GroupRule)
 
 /* virtual */ void
-MediaRule::SetStyleSheet(nsCSSStyleSheet* aSheet)
+MediaRule::SetStyleSheet(CSSStyleSheet* aSheet)
 {
   if (mMedia) {
     // Set to null so it knows it's leaving one sheet and joining another.
@@ -1408,52 +1407,6 @@ AppendSerializedFontSrc(const nsCSSValue& src, nsAString & aResult)
   aResult.Truncate(aResult.Length() - 2); // remove the last comma-space
 }
 
-// print all characters with at least four hex digits
-static void
-AppendSerializedUnicodePoint(uint32_t aCode, nsACString &aBuf)
-{
-  aBuf.Append(nsPrintfCString("%04X", aCode));
-}
-
-// A unicode-range: descriptor is represented as an array of integers,
-// to be interpreted as a sequence of pairs: min max min max ...
-// It is in source order.  (Possibly it should be sorted and overlaps
-// consolidated, but right now we don't do that.)
-static void
-AppendSerializedUnicodeRange(nsCSSValue const & aValue,
-                             nsAString & aResult)
-{
-  NS_PRECONDITION(aValue.GetUnit() == eCSSUnit_Null ||
-                  aValue.GetUnit() == eCSSUnit_Array,
-                  "improper value unit for unicode-range:");
-  aResult.Truncate();
-  if (aValue.GetUnit() != eCSSUnit_Array)
-    return;
-
-  nsCSSValue::Array const & sources = *aValue.GetArrayValue();
-  nsAutoCString buf;
-
-  NS_ABORT_IF_FALSE(sources.Count() % 2 == 0,
-                    "odd number of entries in a unicode-range: array");
-
-  for (uint32_t i = 0; i < sources.Count(); i += 2) {
-    uint32_t min = sources[i].GetIntValue();
-    uint32_t max = sources[i+1].GetIntValue();
-
-    // We don't try to replicate the U+XX?? notation.
-    buf.AppendLiteral("U+");
-    AppendSerializedUnicodePoint(min, buf);
-
-    if (min != max) {
-      buf.Append('-');
-      AppendSerializedUnicodePoint(max, buf);
-    }
-    buf.AppendLiteral(", ");
-  }
-  buf.Truncate(buf.Length() - 2); // remove the last comma-space
-  CopyASCIItoUTF16(buf, aResult);
-}
-
 // Mapping from nsCSSFontDesc codes to nsCSSFontFaceStyleDecl fields.
 nsCSSValue nsCSSFontFaceStyleDecl::* const
 nsCSSFontFaceStyleDecl::Fields[] = {
@@ -1539,7 +1492,7 @@ nsCSSFontFaceStyleDecl::GetPropertyValue(nsCSSFontDesc aFontDescID,
     return NS_OK;
 
   case eCSSFontDesc_UnicodeRange:
-    AppendSerializedUnicodeRange(val, aResult);
+    nsStyleUtil::AppendUnicodeRange(val, aResult);
     return NS_OK;
 
   case eCSSFontDesc_UNKNOWN:
@@ -2367,7 +2320,7 @@ nsCSSKeyframeRule::SetKeyText(const nsAString& aKeyText)
 
   newSelectors.SwapElements(mKeys);
 
-  nsCSSStyleSheet* sheet = GetStyleSheet();
+  CSSStyleSheet* sheet = GetStyleSheet();
   if (sheet) {
     sheet->SetModifiedByChildRule();
 
@@ -2404,7 +2357,7 @@ nsCSSKeyframeRule::ChangeDeclaration(css::Declaration* aDeclaration)
     mDeclaration = aDeclaration;
   }
 
-  nsCSSStyleSheet* sheet = GetStyleSheet();
+  CSSStyleSheet* sheet = GetStyleSheet();
   if (sheet) {
     sheet->SetModifiedByChildRule();
 
@@ -2543,7 +2496,7 @@ nsCSSKeyframesRule::SetName(const nsAString& aName)
 
   mName = aName;
 
-  nsCSSStyleSheet* sheet = GetStyleSheet();
+  CSSStyleSheet* sheet = GetStyleSheet();
   if (sheet) {
     sheet->SetModifiedByChildRule();
 
@@ -2578,7 +2531,7 @@ nsCSSKeyframesRule::AppendRule(const nsAString& aRule)
 
     AppendStyleRule(rule);
 
-    nsCSSStyleSheet* sheet = GetStyleSheet();
+    CSSStyleSheet* sheet = GetStyleSheet();
     if (sheet) {
       sheet->SetModifiedByChildRule();
 
@@ -2626,7 +2579,7 @@ nsCSSKeyframesRule::DeleteRule(const nsAString& aKey)
 
     mRules.RemoveObjectAt(index);
 
-    nsCSSStyleSheet* sheet = GetStyleSheet();
+    CSSStyleSheet* sheet = GetStyleSheet();
     if (sheet) {
       sheet->SetModifiedByChildRule();
 
@@ -2887,7 +2840,7 @@ nsCSSPageRule::ChangeDeclaration(css::Declaration* aDeclaration)
     mDeclaration = aDeclaration;
   }
 
-  nsCSSStyleSheet* sheet = GetStyleSheet();
+  CSSStyleSheet* sheet = GetStyleSheet();
   if (sheet) {
     sheet->SetModifiedByChildRule();
   }
@@ -3181,7 +3134,7 @@ nsCSSCounterStyleRule::SetName(const nsAString& aName)
 
     mName = name;
 
-    nsCSSStyleSheet* sheet = GetStyleSheet();
+    CSSStyleSheet* sheet = GetStyleSheet();
     if (sheet) {
       sheet->SetModifiedByChildRule();
       if (doc) {
@@ -3227,7 +3180,7 @@ nsCSSCounterStyleRule::SetDesc(nsCSSCounterDesc aDescID, const nsCSSValue& aValu
   mValues[aDescID] = aValue;
   mGeneration++;
 
-  nsCSSStyleSheet* sheet = GetStyleSheet();
+  CSSStyleSheet* sheet = GetStyleSheet();
   if (sheet) {
     sheet->SetModifiedByChildRule();
     if (doc) {
@@ -3457,7 +3410,7 @@ nsCSSCounterStyleRule::SetDescriptor(nsCSSCounterDesc aDescID,
 {
   nsCSSParser parser;
   nsCSSValue value;
-  nsCSSStyleSheet* sheet = GetStyleSheet();
+  CSSStyleSheet* sheet = GetStyleSheet();
   nsIURI* baseURL = nullptr;
   nsIPrincipal* principal = nullptr;
   if (sheet) {

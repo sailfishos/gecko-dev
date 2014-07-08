@@ -200,7 +200,9 @@ AndroidBridge::Init(JNIEnv *jEnv)
 
     jclass eglClass = getClassGlobalRef("com/google/android/gles_jni/EGLSurfaceImpl");
     if (eglClass) {
-        jEGLSurfacePointerField = getField("mEGLSurface", "I");
+        // The pointer type moved to a 'long' in Android L, API version 20
+        const char* jniType = mAPIVersion >= 20 ? "J" : "I";
+        jEGLSurfacePointerField = getField("mEGLSurface", jniType);
     } else {
         jEGLSurfacePointerField = 0;
     }
@@ -1951,7 +1953,8 @@ AndroidBridge::IsContentDocumentDisplayed()
 }
 
 bool
-AndroidBridge::ProgressiveUpdateCallback(bool aHasPendingNewThebesContent, const LayerRect& aDisplayPort, float aDisplayResolution, bool aDrawingCritical, ParentLayerRect& aCompositionBounds, CSSToParentLayerScale& aZoom)
+AndroidBridge::ProgressiveUpdateCallback(bool aHasPendingNewThebesContent, const LayerRect& aDisplayPort, float aDisplayResolution,
+                                         bool aDrawingCritical, ScreenPoint& aScrollOffset, CSSToScreenScale& aZoom)
 {
     mozilla::widget::android::GeckoLayerClient *client = mLayerClient;
     if (!client) {
@@ -1971,10 +1974,8 @@ AndroidBridge::ProgressiveUpdateCallback(bool aHasPendingNewThebesContent, const
 
     ProgressiveUpdateData* progressiveUpdateData = ProgressiveUpdateData::Wrap(progressiveUpdateDataJObj);
 
-    aCompositionBounds.x = progressiveUpdateData->getx();
-    aCompositionBounds.y = progressiveUpdateData->gety();
-    aCompositionBounds.width = progressiveUpdateData->getwidth();
-    aCompositionBounds.height = progressiveUpdateData->getheight();
+    aScrollOffset.x = progressiveUpdateData->getx();
+    aScrollOffset.y = progressiveUpdateData->gety();
     aZoom.scale = progressiveUpdateData->getscale();
 
     bool ret = progressiveUpdateData->getabort();

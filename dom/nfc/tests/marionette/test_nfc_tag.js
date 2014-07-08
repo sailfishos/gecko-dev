@@ -9,6 +9,8 @@ let url = "http://www.mozilla.org";
 // TODO : Get this from emulator console command.
 const T1T_RE_INDEX = 2;
 const T2T_RE_INDEX = 3;
+const T3T_RE_INDEX = 4;
+const T4T_RE_INDEX = 5;
 
 function testUrlTagDiscover(re) {
   log("Running \'testUrlTagDiscover\'");
@@ -24,7 +26,7 @@ function testUrlTagDiscover(re) {
     let index = msg.techList.indexOf("NDEF");
     isnot(index, -1, "check for \'NDEF\' in tech list");
 
-    let records = msg.records;
+    let records = Cu.waiveXrays(msg.records);
     ok(records.length > 0);
 
     is(tnf, records[0].tnf, "check for TNF field in NDEF");
@@ -47,9 +49,19 @@ function testUrlT2TDiscover() {
   testUrlTagDiscover(T2T_RE_INDEX);
 }
 
+function testUrlT3TDiscover() {
+  testUrlTagDiscover(T3T_RE_INDEX);
+}
+
+function testUrlT4TDiscover() {
+  testUrlTagDiscover(T4T_RE_INDEX);
+}
+
 let tests = [
   testUrlT1TDiscover,
-  testUrlT2TDiscover
+  testUrlT2TDiscover,
+  testUrlT3TDiscover,
+  testUrlT4TDiscover
 ];
 
 SpecialPowers.pushPermissions(

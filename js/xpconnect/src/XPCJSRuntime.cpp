@@ -84,6 +84,8 @@ const char* const XPCJSRuntime::mStrings[] = {
     "realFrameElement",     // IDX_REALFRAMEELEMENT
     "length",               // IDX_LENGTH
     "name",                 // IDX_NAME
+    "undefined",            // IDX_UNDEFINED
+    "",                     // IDX_EMPTYSTRING
 };
 
 /***************************************************************************/
@@ -249,7 +251,7 @@ static uint32_t kLivingAdopters = 0;
 void
 RecordAdoptedNode(JSCompartment *c)
 {
-    CompartmentPrivate *priv = EnsureCompartmentPrivate(c);
+    CompartmentPrivate *priv = CompartmentPrivate::Get(c);
     if (!priv->adoptedNode) {
         priv->adoptedNode = true;
         ++kLivingAdopters;
@@ -259,7 +261,7 @@ RecordAdoptedNode(JSCompartment *c)
 void
 RecordDonatedNode(JSCompartment *c)
 {
-    EnsureCompartmentPrivate(c)->donatedNode = true;
+    CompartmentPrivate::Get(c)->donatedNode = true;
 }
 
 CompartmentPrivate::~CompartmentPrivate()
@@ -376,37 +378,6 @@ bool CompartmentPrivate::TryParseLocationURI(CompartmentPrivate::LocationHint aL
     MOZ_ASSUME_UNREACHABLE("Chain parser loop does not terminate");
 }
 
-CompartmentPrivate*
-EnsureCompartmentPrivate(JSObject *obj)
-{
-    return EnsureCompartmentPrivate(js::GetObjectCompartment(obj));
-}
-
-CompartmentPrivate*
-EnsureCompartmentPrivate(JSCompartment *c)
-{
-    CompartmentPrivate *priv = GetCompartmentPrivate(c);
-    if (priv)
-        return priv;
-    priv = new CompartmentPrivate(c);
-    JS_SetCompartmentPrivate(c, priv);
-    return priv;
-}
-
-XPCWrappedNativeScope*
-MaybeGetObjectScope(JSObject *obj)
-{
-    MOZ_ASSERT(obj);
-    JSCompartment *compartment = js::GetObjectCompartment(obj);
-
-    MOZ_ASSERT(compartment);
-    CompartmentPrivate *priv = GetCompartmentPrivate(compartment);
-    if (!priv)
-        return nullptr;
-
-    return priv->scope;
-}
-
 static bool
 PrincipalImmuneToScriptPolicy(nsIPrincipal* aPrincipal)
 {
@@ -502,14 +473,14 @@ Scriptability::SetDocShellAllowsScript(bool aAllowed)
 Scriptability&
 Scriptability::Get(JSObject *aScope)
 {
-    return EnsureCompartmentPrivate(aScope)->scriptability;
+    return CompartmentPrivate::Get(aScope)->scriptability;
 }
 
 bool
 IsContentXBLScope(JSCompartment *compartment)
 {
     // We always eagerly create compartment privates for XBL scopes.
-    CompartmentPrivate *priv = GetCompartmentPrivate(compartment);
+    CompartmentPrivate *priv = CompartmentPrivate::Get(compartment);
     if (!priv || !priv->scope)
         return false;
     return priv->scope->IsContentXBLScope();
@@ -522,9 +493,15 @@ IsInContentXBLScope(JSObject *obj)
 }
 
 bool
+IsInAddonScope(JSObject *obj)
+{
+    return ObjectScope(obj)->IsAddonScope();
+}
+
+bool
 IsUniversalXPConnectEnabled(JSCompartment *compartment)
 {
-    CompartmentPrivate *priv = GetCompartmentPrivate(compartment);
+    CompartmentPrivate *priv = CompartmentPrivate::Get(compartment);
     if (!priv)
         return false;
     return priv->universalXPConnectEnabled;
@@ -549,7 +526,7 @@ EnableUniversalXPConnect(JSContext *cx)
     // the security wrapping code.
     if (AccessCheck::isChrome(compartment))
         return true;
-    CompartmentPrivate *priv = GetCompartmentPrivate(compartment);
+    CompartmentPrivate *priv = CompartmentPrivate::Get(compartment);
     if (!priv)
         return true;
     priv->universalXPConnectEnabled = true;
@@ -643,7 +620,7 @@ CompartmentDestroyedCallback(JSFreeOp *fop, JSCompartment *compartment)
 
     // Get the current compartment private into an AutoPtr (which will do the
     // cleanup for us), and null out the private (which may already be null).
-    nsAutoPtr<CompartmentPrivate> priv(GetCompartmentPrivate(compartment));
+    nsAutoPtr<CompartmentPrivate> priv(CompartmentPrivate::Get(compartment));
     JS_SetCompartmentPrivate(compartment, nullptr);
 }
 
@@ -1165,6 +1142,9 @@ class WatchdogManager : public nsIObserver
         // Register ourselves as an observer to get updates on the pref.
         mozilla::Preferences::AddStrongObserver(this, "dom.use_watchdog");
     }
+
+  protected:
+
     virtual ~WatchdogManager()
     {
         // Shutting down the watchdog requires context-switching to the watchdog
@@ -1173,6 +1153,8 @@ class WatchdogManager : public nsIObserver
         MOZ_ASSERT(!mWatchdog);
         mozilla::Preferences::RemoveObserver(this, "dom.use_watchdog");
     }
+
+  public:
 
     NS_IMETHOD Observe(nsISupports* aSubject, const char* aTopic,
                        const char16_t* aData)
@@ -1702,7 +1684,7 @@ GetCompartmentName(JSCompartment *c, nsCString &name, int *anonymizeID,
         // script location, append the compartment's location to allow
         // differentiation of multiple compartments owned by the same principal
         // (e.g. components owned by the system or null principal).
-        CompartmentPrivate *compartmentPrivate = GetCompartmentPrivate(c);
+        CompartmentPrivate *compartmentPrivate = CompartmentPrivate::Get(c);
         if (compartmentPrivate) {
             const nsACString& location = compartmentPrivate->GetLocation();
             if (!location.IsEmpty() && !location.Equals(name)) {
@@ -1777,6 +1759,8 @@ JSMainRuntimeCompartmentsUserDistinguishedAmount()
 
 class JSMainRuntimeTemporaryPeakReporter MOZ_FINAL : public nsIMemoryReporter
 {
+    ~JSMainRuntimeTemporaryPeakReporter() {}
+
   public:
     NS_DECL_ISUPPORTS
 
@@ -1892,6 +1876,10 @@ ReportZoneStats(const JS::ZoneStats &zStats,
     size_t gcTotal = 0, sundriesGCHeap = 0, sundriesMallocHeap = 0;
 
     MOZ_ASSERT(!gcTotalOut == zStats.isTotals);
+
+    ZCREPORT_GC_BYTES(pathPrefix + NS_LITERAL_CSTRING("symbols/gc-heap"),
+        zStats.symbolsGCHeap,
+        "Symbols.");
 
     ZCREPORT_GC_BYTES(pathPrefix + NS_LITERAL_CSTRING("gc-heap-arena-admin"),
         zStats.gcHeapArenaAdmin,
@@ -2374,9 +2362,13 @@ ReportJSRuntimeExplicitTreeStats(const JS::RuntimeStats &rtStats,
         KIND_HEAP, rtStats.runtime.mathCache,
         "The math cache.");
 
-    RREPORT_BYTES(rtPath + NS_LITERAL_CSTRING("runtime/source-data-cache"),
-        KIND_HEAP, rtStats.runtime.sourceDataCache,
-        "The source data cache, which holds decompressed script source code.");
+    RREPORT_BYTES(rtPath + NS_LITERAL_CSTRING("runtime/uncompressed-source-cache"),
+        KIND_HEAP, rtStats.runtime.uncompressedSourceCache,
+        "The uncompressed source code cache.");
+
+    RREPORT_BYTES(rtPath + NS_LITERAL_CSTRING("runtime/compressed-source-sets"),
+        KIND_HEAP, rtStats.runtime.compressedSourceSet,
+        "The table indexing compressed source code in the runtime.");
 
     RREPORT_BYTES(rtPath + NS_LITERAL_CSTRING("runtime/script-data"),
         KIND_HEAP, rtStats.runtime.scriptData,
@@ -2540,6 +2532,9 @@ ReportJSRuntimeExplicitTreeStats(const JS::RuntimeStats &rtStats,
 
 class JSMainRuntimeCompartmentsReporter MOZ_FINAL : public nsIMemoryReporter
 {
+
+    ~JSMainRuntimeCompartmentsReporter() {}
+
   public:
     NS_DECL_ISUPPORTS
 
@@ -2700,7 +2695,7 @@ class XPCJSRuntimeStats : public JS::RuntimeStats
         nsCString cName;
         GetCompartmentName(c, cName, &mAnonymizeID, /* replaceSlashes = */ true);
         if (mGetLocations) {
-            CompartmentPrivate *cp = GetCompartmentPrivate(c);
+            CompartmentPrivate *cp = CompartmentPrivate::Get(c);
             if (cp)
               cp->GetLocationURI(CompartmentPrivate::LocationHintAddon,
                                  getter_AddRefs(extras->location));

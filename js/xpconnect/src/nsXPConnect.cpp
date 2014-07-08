@@ -21,10 +21,6 @@
 #include "WrapperFactory.h"
 #include "AccessCheck.h"
 
-#ifdef MOZ_JSDEBUGGER
-#include "jsdIDebuggerService.h"
-#endif
-
 #include "XPCQuickStubs.h"
 
 #include "mozilla/dom/BindingUtils.h"
@@ -56,9 +52,6 @@ NS_IMPL_ISUPPORTS(nsXPConnect,
 nsXPConnect* nsXPConnect::gSelf = nullptr;
 bool         nsXPConnect::gOnceAliveNowDead = false;
 uint32_t     nsXPConnect::gReportAllJSExceptions = 0;
-
-bool         xpc::gDebugMode = false;
-bool         xpc::gDesiredDebugMode = false;
 
 // Global cache of the default script security manager (QI'd to
 // nsIScriptSecurityManager)
@@ -304,30 +297,6 @@ static inline T UnexpectedFailure(T rv)
     return rv;
 }
 
-/* void initClasses (in JSContextPtr aJSContext, in JSObjectPtr aGlobalJSObj); */
-NS_IMETHODIMP
-nsXPConnect::InitClasses(JSContext * aJSContext, JSObject * aGlobalJSObj)
-{
-    MOZ_ASSERT(aJSContext, "bad param");
-    MOZ_ASSERT(aGlobalJSObj, "bad param");
-    RootedObject globalJSObj(aJSContext, aGlobalJSObj);
-
-    JSAutoCompartment ac(aJSContext, globalJSObj);
-
-    XPCWrappedNativeScope* scope =
-        XPCWrappedNativeScope::GetNewOrUsed(aJSContext, globalJSObj);
-
-    if (!scope)
-        return UnexpectedFailure(NS_ERROR_FAILURE);
-
-    scope->RemoveWrappedNativeProtos();
-
-    if (!XPCNativeWrapper::AttachNewConstructorObject(aJSContext, globalJSObj))
-        return UnexpectedFailure(NS_ERROR_FAILURE);
-
-    return NS_OK;
-}
-
 void
 TraceXPCGlobal(JSTracer *trc, JSObject *obj)
 {
@@ -390,7 +359,7 @@ InitGlobalObject(JSContext* aJSContext, JS::Handle<JSObject*> aGlobal, uint32_t 
     JSAutoCompartment ac(aJSContext, aGlobal);
     if (!(aFlags & nsIXPConnect::OMIT_COMPONENTS_OBJECT)) {
         // XPCCallContext gives us an active request needed to save/restore.
-        if (!GetCompartmentPrivate(aGlobal)->scope->AttachComponentsObject(aJSContext) ||
+        if (!CompartmentPrivate::Get(aGlobal)->scope->AttachComponentsObject(aJSContext) ||
             !XPCNativeWrapper::AttachNewConstructorObject(aJSContext, aGlobal)) {
             return UnexpectedFailure(false);
         }
@@ -658,7 +627,7 @@ nsXPConnect::GetWrappedNativeOfNativeObject(JSContext * aJSContext,
 
     RootedObject aScope(aJSContext, aScopeArg);
 
-    XPCWrappedNativeScope* scope = GetObjectScope(aScope);
+    XPCWrappedNativeScope* scope = ObjectScope(aScope);
     if (!scope)
         return UnexpectedFailure(NS_ERROR_FAILURE);
 
@@ -689,8 +658,8 @@ nsXPConnect::ReparentWrappedNativeIfFound(JSContext * aJSContext,
     RootedObject aScope(aJSContext, aScopeArg);
     RootedObject aNewParent(aJSContext, aNewParentArg);
 
-    XPCWrappedNativeScope* scope = GetObjectScope(aScope);
-    XPCWrappedNativeScope* scope2 = GetObjectScope(aNewParent);
+    XPCWrappedNativeScope* scope = ObjectScope(aScope);
+    XPCWrappedNativeScope* scope2 = ObjectScope(aNewParent);
     if (!scope || !scope2)
         return UnexpectedFailure(NS_ERROR_FAILURE);
 
@@ -720,7 +689,7 @@ nsXPConnect::RescueOrphansInScope(JSContext *aJSContext, JSObject *aScopeArg)
 {
     RootedObject aScope(aJSContext, aScopeArg);
 
-    XPCWrappedNativeScope *scope = GetObjectScope(aScope);
+    XPCWrappedNativeScope *scope = ObjectScope(aScope);
     if (!scope)
         return UnexpectedFailure(NS_ERROR_FAILURE);
 
@@ -820,7 +789,7 @@ nsXPConnect::CreateSandbox(JSContext *cx, nsIPrincipal *principal,
 NS_IMETHODIMP
 nsXPConnect::EvalInSandboxObject(const nsAString& source, const char *filename,
                                  JSContext *cx, JSObject *sandboxArg,
-                                 bool returnStringOnly, MutableHandleValue rval)
+                                 MutableHandleValue rval)
 {
     if (!sandboxArg)
         return NS_ERROR_INVALID_ARG;
@@ -833,7 +802,7 @@ nsXPConnect::EvalInSandboxObject(const nsAString& source, const char *filename,
         filenameStr = NS_LITERAL_CSTRING("x-bogus://XPConnect/Sandbox");
     }
     return EvalInSandbox(cx, sandbox, source, filenameStr, 1,
-                         JSVERSION_DEFAULT, returnStringOnly, rval);
+                         JSVERSION_DEFAULT, rval);
 }
 
 /* nsIXPConnectJSObjectHolder getWrappedNativePrototype (in JSContextPtr aJSContext, in JSObjectPtr aScope, in nsIClassInfo aClassInfo); */
@@ -846,7 +815,7 @@ nsXPConnect::GetWrappedNativePrototype(JSContext * aJSContext,
     RootedObject aScope(aJSContext, aScopeArg);
     JSAutoCompartment ac(aJSContext, aScope);
 
-    XPCWrappedNativeScope* scope = GetObjectScope(aScope);
+    XPCWrappedNativeScope* scope = ObjectScope(aScope);
     if (!scope)
         return UnexpectedFailure(NS_ERROR_FAILURE);
 
@@ -1047,12 +1016,6 @@ nsXPConnect::AfterProcessNextEvent(nsIThreadInternal *aThread,
 
     PopJSContextNoScriptContext();
 
-    // If the cx stack is empty, that means we're at the an un-nested event
-    // loop. This is a good time to make changes to debug mode.
-    if (XPCJSRuntime::Get()->GetJSContextStack()->Count() == 0) {
-        MOZ_ASSERT(mEventDepth == 0);
-        CheckForDebugMode(XPCJSRuntime::Get()->Runtime());
-    }
     return NS_OK;
 }
 
@@ -1112,69 +1075,6 @@ NS_IMETHODIMP_(void)
 nsXPConnect::UnregisterContextCallback(xpcContextCallback func)
 {
     mRuntime->RemoveContextCallback(func);
-}
-
-#ifdef MOZ_JSDEBUGGER
-void
-nsXPConnect::CheckForDebugMode(JSRuntime *rt)
-{
-    if (gDebugMode == gDesiredDebugMode) {
-        return;
-    }
-
-    // This can happen if a Worker is running, but we don't have the ability to
-    // debug workers right now, so just return.
-    if (!NS_IsMainThread())
-        MOZ_CRASH();
-
-    AutoSafeJSContext cx;
-    JS_SetRuntimeDebugMode(rt, gDesiredDebugMode);
-
-    nsresult rv;
-    const char jsdServiceCtrID[] = "@mozilla.org/js/jsd/debugger-service;1";
-    nsCOMPtr<jsdIDebuggerService> jsds = do_GetService(jsdServiceCtrID, &rv);
-    if (NS_FAILED(rv)) {
-        goto fail;
-    }
-
-    if (!JS_SetDebugModeForAllCompartments(cx, gDesiredDebugMode))
-        goto fail;
-
-    if (gDesiredDebugMode) {
-        rv = jsds->ActivateDebugger(rt);
-    }
-
-    gDebugMode = gDesiredDebugMode;
-    return;
-
-fail:
-    if (jsds)
-        jsds->DeactivateDebugger();
-
-    /*
-     * If an attempt to turn debug mode on fails, cancel the request. It's
-     * always safe to turn debug mode off, since DeactivateDebugger prevents
-     * debugger callbacks from having any effect.
-     */
-    if (gDesiredDebugMode)
-        JS_SetRuntimeDebugMode(rt, false);
-    gDesiredDebugMode = gDebugMode = false;
-}
-#else //MOZ_JSDEBUGGER not defined
-void
-nsXPConnect::CheckForDebugMode(JSRuntime *rt)
-{
-    gDesiredDebugMode = gDebugMode = false;
-}
-#endif //#ifdef MOZ_JSDEBUGGER
-
-
-void
-xpc_ActivateDebugMode()
-{
-    XPCJSRuntime* rt = nsXPConnect::GetRuntimeInstance();
-    nsXPConnect::XPConnect()->SetDebugModeWhenPossible(true, true);
-    nsXPConnect::CheckForDebugMode(rt->Runtime());
 }
 
 /* virtual */
@@ -1307,26 +1207,17 @@ void
 SetLocationForGlobal(JSObject *global, const nsACString& location)
 {
     MOZ_ASSERT(global);
-    EnsureCompartmentPrivate(global)->SetLocation(location);
+    CompartmentPrivate::Get(global)->SetLocation(location);
 }
 
 void
 SetLocationForGlobal(JSObject *global, nsIURI *locationURI)
 {
     MOZ_ASSERT(global);
-    EnsureCompartmentPrivate(global)->SetLocationURI(locationURI);
+    CompartmentPrivate::Get(global)->SetLocationURI(locationURI);
 }
 
 } // namespace xpc
-
-NS_IMETHODIMP
-nsXPConnect::SetDebugModeWhenPossible(bool mode, bool allowSyncDisable)
-{
-    gDesiredDebugMode = mode;
-    if (!mode && allowSyncDisable)
-        CheckForDebugMode(mRuntime->Runtime());
-    return NS_OK;
-}
 
 NS_IMETHODIMP
 nsXPConnect::NotifyDidPaint()

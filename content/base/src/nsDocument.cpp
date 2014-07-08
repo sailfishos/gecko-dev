@@ -102,7 +102,6 @@
 #include "nsBidiUtils.h"
 
 #include "nsIDOMUserDataHandler.h"
-#include "nsIDOMXPathExpression.h"
 #include "nsIDOMXPathNSResolver.h"
 #include "nsIParserService.h"
 #include "nsContentCreatorFunctions.h"
@@ -139,16 +138,15 @@
 #include "nsIXULDocument.h"
 #include "nsIPrompt.h"
 #include "nsIPropertyBag2.h"
-#include "nsIDOMPageTransitionEvent.h"
-#include "nsIDOMStyleRuleChangeEvent.h"
-#include "nsIDOMStyleSheetChangeEvent.h"
-#include "nsIDOMStyleSheetApplicableStateChangeEvent.h"
+#include "mozilla/dom/PageTransitionEvent.h"
+#include "mozilla/dom/StyleRuleChangeEvent.h"
+#include "mozilla/dom/StyleSheetChangeEvent.h"
+#include "mozilla/dom/StyleSheetApplicableStateChangeEvent.h"
 #include "nsJSUtils.h"
 #include "nsFrameLoader.h"
 #include "nsEscape.h"
 #include "nsObjectLoadingContent.h"
 #include "nsHtml5TreeOpExecutor.h"
-#include "nsIDOMElementReplaceEvent.h"
 #include "mozilla/dom/HTMLLinkElement.h"
 #include "mozilla/dom/HTMLMediaElement.h"
 #ifdef MOZ_WEBRTC
@@ -183,7 +181,6 @@
 #include "nsXULAppAPI.h"
 #include "mozilla/dom/Touch.h"
 #include "mozilla/dom/TouchEvent.h"
-#include "GeneratedEvents.h"
 
 #include "mozilla/Preferences.h"
 
@@ -218,6 +215,7 @@
 #include "nsISecurityConsoleMessage.h"
 #include "nsCharSeparatedTokenizer.h"
 #include "mozilla/dom/XPathEvaluator.h"
+#include "mozilla/dom/XPathResult.h"
 #include "nsIDocumentEncoder.h"
 #include "nsIDocumentActivity.h"
 #include "nsIStructuredCloneContainer.h"
@@ -761,7 +759,7 @@ nsDOMStyleSheetList::Length()
   return mLength;
 }
 
-nsCSSStyleSheet*
+CSSStyleSheet*
 nsDOMStyleSheetList::IndexedGetter(uint32_t aIndex, bool& aFound)
 {
   if (!mDocument || aIndex >= (uint32_t)mDocument->GetNumberOfStyleSheets()) {
@@ -773,7 +771,7 @@ nsDOMStyleSheetList::IndexedGetter(uint32_t aIndex, bool& aFound)
   nsIStyleSheet *sheet = mDocument->GetStyleSheetAt(aIndex);
   NS_ASSERTION(sheet, "Must have a sheet");
 
-  return static_cast<nsCSSStyleSheet*>(sheet);
+  return static_cast<CSSStyleSheet*>(sheet);
 }
 
 void
@@ -1986,9 +1984,7 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INTERNAL(nsDocument)
     PL_DHashTableEnumerate(tmp->mSubDocuments, SubDocTraverser, &cb);
   }
 
-  if (tmp->mCSSLoader) {
-    tmp->mCSSLoader->TraverseCachedSheets(cb);
-  }
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mCSSLoader)
 
   for (uint32_t i = 0; i < tmp->mHostObjectURIs.Length(); ++i) {
     nsHostObjectProtocolHandler::Traverse(tmp->mHostObjectURIs[i], cb);
@@ -2085,9 +2081,7 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(nsDocument)
 
   tmp->mPendingTitleChangeEvent.Revoke();
 
-  if (tmp->mCSSLoader) {
-    tmp->mCSSLoader->UnlinkCachedSheets();
-  }
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mCSSLoader)
 
   for (uint32_t i = 0; i < tmp->mHostObjectURIs.Length(); ++i) {
     nsHostObjectProtocolHandler::RemoveDataEntry(tmp->mHostObjectURIs[i]);
@@ -2681,18 +2675,9 @@ nsDocument::InitCSP(nsIChannel* aChannel)
   }
 
   nsAutoCString tCspHeaderValue, tCspROHeaderValue;
-  nsAutoCString tCspOldHeaderValue, tCspOldROHeaderValue;
 
   nsCOMPtr<nsIHttpChannel> httpChannel = do_QueryInterface(aChannel);
   if (httpChannel) {
-    httpChannel->GetResponseHeader(
-        NS_LITERAL_CSTRING("x-content-security-policy"),
-        tCspOldHeaderValue);
-
-    httpChannel->GetResponseHeader(
-        NS_LITERAL_CSTRING("x-content-security-policy-report-only"),
-        tCspOldROHeaderValue);
-
     httpChannel->GetResponseHeader(
         NS_LITERAL_CSTRING("content-security-policy"),
         tCspHeaderValue);
@@ -2703,35 +2688,6 @@ nsDocument::InitCSP(nsIChannel* aChannel)
   }
   NS_ConvertASCIItoUTF16 cspHeaderValue(tCspHeaderValue);
   NS_ConvertASCIItoUTF16 cspROHeaderValue(tCspROHeaderValue);
-  NS_ConvertASCIItoUTF16 cspOldHeaderValue(tCspOldHeaderValue);
-  NS_ConvertASCIItoUTF16 cspOldROHeaderValue(tCspOldROHeaderValue);
-
-  // Only use the CSP 1.0 spec compliant headers if a pref to do so
-  // is set. This lets us turn on the 1.0 parser per platform. This
-  // pref is also set by the tests for 1.0 spec compliant CSP.
-  bool specCompliantEnabled =
-    Preferences::GetBool("security.csp.speccompliant");
-
-  // If spec compliant pref isn't set, pretend we never got these headers.
-  if ((!cspHeaderValue.IsEmpty() || !cspROHeaderValue.IsEmpty()) &&
-       !specCompliantEnabled) {
-    PR_LOG(gCspPRLog, PR_LOG_DEBUG,
-            ("Got spec compliant CSP headers but pref was not set"));
-    cspHeaderValue.Truncate();
-    cspROHeaderValue.Truncate();
-  }
-
-  // If both the new header AND the old header are present, warn that
-  // the old header will be ignored. Otherwise, if the old header is
-  // present, warn that it will be deprecated.
-  bool oldHeaderIsPresent = !cspOldHeaderValue.IsEmpty() || !cspOldROHeaderValue.IsEmpty();
-  bool newHeaderIsPresent = !cspHeaderValue.IsEmpty() || !cspROHeaderValue.IsEmpty();
-
-  if (oldHeaderIsPresent && newHeaderIsPresent) {
-    mCSPWebConsoleErrorQueue.Add("BothCSPHeadersPresent");
-  } else if (oldHeaderIsPresent) {
-    mCSPWebConsoleErrorQueue.Add("OldCSPHeaderDeprecated");
-  }
 
   // Figure out if we need to apply an app default CSP or a CSP from an app manifest
   nsIPrincipal* principal = NodePrincipal();
@@ -2759,9 +2715,7 @@ nsDocument::InitCSP(nsIChannel* aChannel)
   if (!applyAppDefaultCSP &&
       !applyAppManifestCSP &&
       cspHeaderValue.IsEmpty() &&
-      cspROHeaderValue.IsEmpty() &&
-      cspOldHeaderValue.IsEmpty() &&
-      cspOldROHeaderValue.IsEmpty()) {
+      cspROHeaderValue.IsEmpty()) {
 #ifdef PR_LOGGING
     nsCOMPtr<nsIURI> chanURI;
     aChannel->GetURI(getter_AddRefs(chanURI));
@@ -2811,7 +2765,7 @@ nsDocument::InitCSP(nsIChannel* aChannel)
   //   * however, we still support XCSP headers during the transition phase
   //     and fall back to the JS implementation if we find an XCSP header.
 
-  if (newHeaderIsPresent && CSPService::sNewBackendEnabled) {
+  if (CSPService::sNewBackendEnabled) {
     csp = do_CreateInstance("@mozilla.org/cspcontext;1", &rv);
   }
   else {
@@ -2844,35 +2798,24 @@ nsDocument::InitCSP(nsIChannel* aChannel)
     }
 
     if (appCSP) {
-      // Use the 1.0 CSP parser for apps if the pref to do so is set.
-      csp->AppendPolicy(appCSP, selfURI, false, specCompliantEnabled);
+      csp->AppendPolicy(appCSP, selfURI, false, true);
     }
   }
 
   // ----- if the doc is an app and specifies a CSP in its manifest, apply it.
   if (applyAppManifestCSP) {
-    // Use the 1.0 CSP parser for apps if the pref to do so is set.
-    csp->AppendPolicy(appManifestCSP, selfURI, false, specCompliantEnabled);
+    csp->AppendPolicy(appManifestCSP, selfURI, false, true);
   }
-
-  // While we are supporting both CSP 1.0 and the x- headers, the 1.0 headers
-  // take priority.  If both are present, the x-* headers are ignored.
 
   // ----- if there's a full-strength CSP header, apply it.
   if (!cspHeaderValue.IsEmpty()) {
     rv = AppendCSPFromHeader(csp, cspHeaderValue, selfURI, false, true);
-    NS_ENSURE_SUCCESS(rv, rv);
-  } else if (!cspOldHeaderValue.IsEmpty()) {
-    rv = AppendCSPFromHeader(csp, cspOldHeaderValue, selfURI, false, false);
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
   // ----- if there's a report-only CSP header, apply it.
   if (!cspROHeaderValue.IsEmpty()) {
     rv = AppendCSPFromHeader(csp, cspROHeaderValue, selfURI, true, true);
-    NS_ENSURE_SUCCESS(rv, rv);
-  } else if (!cspOldROHeaderValue.IsEmpty()) {
-    rv = AppendCSPFromHeader(csp, cspOldROHeaderValue, selfURI, true, false);
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
@@ -2883,9 +2826,8 @@ nsDocument::InitCSP(nsIChannel* aChannel)
 
     // PermitsAncestry sends violation reports when necessary
     rv = csp->PermitsAncestry(docShell, &safeAncestry);
-    NS_ENSURE_SUCCESS(rv, rv);
 
-    if (!safeAncestry) {
+    if (NS_FAILED(rv) || !safeAncestry) {
 #ifdef PR_LOGGING
       PR_LOG(gCspPRLog, PR_LOG_DEBUG,
               ("CSP doesn't like frame's ancestry, not loading."));
@@ -3970,7 +3912,7 @@ nsDocument::RemoveChildAt(uint32_t aIndex, bool aNotify)
 }
 
 void
-nsDocument::EnsureOnDemandBuiltInUASheet(nsCSSStyleSheet* aSheet)
+nsDocument::EnsureOnDemandBuiltInUASheet(CSSStyleSheet* aSheet)
 {
   // Contains() takes nsISupport*, so annoyingly we have to cast here
   if (mOnDemandBuiltInUASheets.Contains(static_cast<nsIStyleSheet*>(aSheet))) {
@@ -3982,7 +3924,7 @@ nsDocument::EnsureOnDemandBuiltInUASheet(nsCSSStyleSheet* aSheet)
 }
 
 void
-nsDocument::AddOnDemandBuiltInUASheet(nsCSSStyleSheet* aSheet)
+nsDocument::AddOnDemandBuiltInUASheet(CSSStyleSheet* aSheet)
 {
   // Contains() takes nsISupport*, so annoyingly we have to cast here
   MOZ_ASSERT(!mOnDemandBuiltInUASheets.Contains(static_cast<nsIStyleSheet*>(aSheet)));
@@ -4034,30 +3976,27 @@ nsDocument::AddStyleSheetToStyleSets(nsIStyleSheet* aSheet)
   }
 }
 
-#define DO_STYLESHEET_NOTIFICATION(createFunc, concreteInterface, initMethod, type, ...) \
-  do {                                                                  \
-    nsCOMPtr<nsIDOMEvent> event;                                        \
-    nsresult rv = createFunc(getter_AddRefs(event), this,               \
-                             mPresShell ?                               \
-                             mPresShell->GetPresContext() : nullptr,    \
-                             nullptr);                                  \
-    if (NS_FAILED(rv)) {                                                \
-      return;                                                           \
-    }                                                                   \
-    nsCOMPtr<nsIDOMCSSStyleSheet> cssSheet(do_QueryInterface(aSheet));  \
-    if (!cssSheet) {                                                    \
-      return;                                                           \
-    }                                                                   \
-    nsCOMPtr<concreteInterface> ssEvent(do_QueryInterface(event));      \
-    MOZ_ASSERT(ssEvent);                                                \
-    ssEvent->initMethod(NS_LITERAL_STRING(type), true, true,            \
-                        cssSheet, __VA_ARGS__);                         \
-    event->SetTrusted(true);                                            \
-    event->SetTarget(this);                                             \
-    nsRefPtr<AsyncEventDispatcher> asyncDispatcher =                    \
-      new AsyncEventDispatcher(this, event);                            \
-    asyncDispatcher->mDispatchChromeOnly = true;                        \
-    asyncDispatcher->PostDOMEvent();                                    \
+#define DO_STYLESHEET_NOTIFICATION(className, type, memberName, argName)      \
+  do {                                                                        \
+    nsRefPtr<CSSStyleSheet> cssSheet = do_QueryObject(aSheet);                \
+    if (!cssSheet) {                                                          \
+      return;                                                                 \
+    }                                                                         \
+                                                                              \
+    className##Init init;                                                     \
+    init.mBubbles = true;                                                     \
+    init.mCancelable = true;                                                  \
+    init.mStylesheet = cssSheet;                                              \
+    init.memberName = argName;                                                \
+                                                                              \
+    nsRefPtr<className> event =                                               \
+      className::Constructor(this, NS_LITERAL_STRING(type), init);            \
+    event->SetTrusted(true);                                                  \
+    event->SetTarget(this);                                                   \
+    nsRefPtr<AsyncEventDispatcher> asyncDispatcher =                          \
+      new AsyncEventDispatcher(this, event);                                  \
+    asyncDispatcher->mDispatchChromeOnly = true;                              \
+    asyncDispatcher->PostDOMEvent();                                          \
   } while (0);
 
 void
@@ -4066,10 +4005,9 @@ nsDocument::NotifyStyleSheetAdded(nsIStyleSheet* aSheet, bool aDocumentSheet)
   NS_DOCUMENT_NOTIFY_OBSERVERS(StyleSheetAdded, (this, aSheet, aDocumentSheet));
 
   if (StyleSheetChangeEventsEnabled()) {
-    DO_STYLESHEET_NOTIFICATION(NS_NewDOMStyleSheetChangeEvent,
-                               nsIDOMStyleSheetChangeEvent,
-                               InitStyleSheetChangeEvent,
+    DO_STYLESHEET_NOTIFICATION(StyleSheetChangeEvent,
                                "StyleSheetAdded",
+                               mDocumentSheet,
                                aDocumentSheet);
   }
 }
@@ -4080,10 +4018,9 @@ nsDocument::NotifyStyleSheetRemoved(nsIStyleSheet* aSheet, bool aDocumentSheet)
   NS_DOCUMENT_NOTIFY_OBSERVERS(StyleSheetRemoved, (this, aSheet, aDocumentSheet));
 
   if (StyleSheetChangeEventsEnabled()) {
-    DO_STYLESHEET_NOTIFICATION(NS_NewDOMStyleSheetChangeEvent,
-                               nsIDOMStyleSheetChangeEvent,
-                               InitStyleSheetChangeEvent,
+    DO_STYLESHEET_NOTIFICATION(StyleSheetChangeEvent,
                                "StyleSheetRemoved",
+                               mDocumentSheet,
                                aDocumentSheet);
   }
 }
@@ -4209,10 +4146,9 @@ nsDocument::SetStyleSheetApplicableState(nsIStyleSheet* aSheet,
                                (this, aSheet, aApplicable));
 
   if (StyleSheetChangeEventsEnabled()) {
-    DO_STYLESHEET_NOTIFICATION(NS_NewDOMStyleSheetApplicableStateChangeEvent,
-                               nsIDOMStyleSheetApplicableStateChangeEvent,
-                               InitStyleSheetApplicableStateChangeEvent,
+    DO_STYLESHEET_NOTIFICATION(StyleSheetApplicableStateChangeEvent,
                                "StyleSheetApplicableStateChanged",
+                               mApplicable,
                                aApplicable);
   }
 
@@ -4280,7 +4216,7 @@ nsDocument::LoadAdditionalStyleSheet(additionalSheetType aType, nsIURI* aSheetUR
   // Loading the sheet sync.
   nsRefPtr<mozilla::css::Loader> loader = new mozilla::css::Loader();
 
-  nsRefPtr<nsCSSStyleSheet> sheet;
+  nsRefPtr<CSSStyleSheet> sheet;
   nsresult rv = loader->LoadSheetSync(aSheetURI, aType == eAgentSheet,
     true, getter_AddRefs(sheet));
   NS_ENSURE_SUCCESS(rv, rv);
@@ -4983,10 +4919,9 @@ nsDocument::StyleRuleChanged(nsIStyleSheet* aSheet,
 
   if (StyleSheetChangeEventsEnabled()) {
     nsCOMPtr<css::Rule> rule = do_QueryInterface(aNewStyleRule);
-    DO_STYLESHEET_NOTIFICATION(NS_NewDOMStyleRuleChangeEvent,
-                               nsIDOMStyleRuleChangeEvent,
-                               InitStyleRuleChangeEvent,
+    DO_STYLESHEET_NOTIFICATION(StyleRuleChangeEvent,
                                "StyleRuleChanged",
+                               mRule,
                                rule ? rule->GetDOMRule() : nullptr);
   }
 }
@@ -5000,10 +4935,9 @@ nsDocument::StyleRuleAdded(nsIStyleSheet* aSheet,
 
   if (StyleSheetChangeEventsEnabled()) {
     nsCOMPtr<css::Rule> rule = do_QueryInterface(aStyleRule);
-    DO_STYLESHEET_NOTIFICATION(NS_NewDOMStyleRuleChangeEvent,
-                               nsIDOMStyleRuleChangeEvent,
-                               InitStyleRuleChangeEvent,
+    DO_STYLESHEET_NOTIFICATION(StyleRuleChangeEvent,
                                "StyleRuleAdded",
+                               mRule,
                                rule ? rule->GetDOMRule() : nullptr);
   }
 }
@@ -5017,10 +4951,9 @@ nsDocument::StyleRuleRemoved(nsIStyleSheet* aSheet,
 
   if (StyleSheetChangeEventsEnabled()) {
     nsCOMPtr<css::Rule> rule = do_QueryInterface(aStyleRule);
-    DO_STYLESHEET_NOTIFICATION(NS_NewDOMStyleRuleChangeEvent,
-                               nsIDOMStyleRuleChangeEvent,
-                               InitStyleRuleChangeEvent,
+    DO_STYLESHEET_NOTIFICATION(StyleRuleChangeEvent,
                                "StyleRuleRemoved",
+                               mRule,
                                rule ? rule->GetDOMRule() : nullptr);
   }
 }
@@ -5476,7 +5409,7 @@ nsDocument::CustomElementConstructor(JSContext* aCx, unsigned aArgc, JS::Value* 
   // Function name is the type of the custom element.
   JSString* jsFunName =
     JS_GetFunctionId(JS_ValueToFunction(aCx, args.calleev()));
-  nsDependentJSString elemName;
+  nsAutoJSString elemName;
   if (!elemName.init(aCx, jsFunName)) {
     return true;
   }
@@ -5559,7 +5492,8 @@ namespace {
 
 class ProcessStackRunner MOZ_FINAL : public nsIRunnable
 {
-  public:
+  ~ProcessStackRunner() {}
+public:
   ProcessStackRunner(bool aIsBaseQueue = false)
     : mIsBaseQueue(aIsBaseQueue)
   {
@@ -8741,19 +8675,22 @@ nsDocument::DispatchPageTransition(EventTarget* aDispatchTarget,
                                    const nsAString& aType,
                                    bool aPersisted)
 {
-  if (aDispatchTarget) {
-    nsCOMPtr<nsIDOMEvent> event;
-    CreateEvent(NS_LITERAL_STRING("pagetransition"), getter_AddRefs(event));
-    nsCOMPtr<nsIDOMPageTransitionEvent> ptEvent = do_QueryInterface(event);
-    if (ptEvent && NS_SUCCEEDED(ptEvent->InitPageTransitionEvent(aType, true,
-                                                                 true,
-                                                                 aPersisted))) {
-      event->SetTrusted(true);
-      event->SetTarget(this);
-      EventDispatcher::DispatchDOMEvent(aDispatchTarget, nullptr, event,
-                                        nullptr, nullptr);
-    }
+  if (!aDispatchTarget) {
+    return;
   }
+
+  PageTransitionEventInit init;
+  init.mBubbles = true;
+  init.mCancelable = true;
+  init.mPersisted = aPersisted;
+
+  nsRefPtr<PageTransitionEvent> event =
+    PageTransitionEvent::Constructor(this, aType, init);
+
+  event->SetTrusted(true);
+  event->SetTarget(this);
+  EventDispatcher::DispatchDOMEvent(aDispatchTarget, nullptr, event,
+                                    nullptr, nullptr);
 }
 
 static bool
@@ -8956,8 +8893,7 @@ nsDocument::MutationEventDispatched(nsINode* aTarget)
       return;
     }
 
-    nsCOMPtr<nsPIDOMWindow> window;
-    window = do_QueryInterface(GetWindow());
+    nsPIDOMWindow* window = GetInnerWindow();
     if (window &&
         !window->HasMutationListeners(NS_EVENT_BITS_MUTATION_SUBTREEMODIFIED)) {
       mSubtreeModifiedTargets.Clear();
@@ -9329,9 +9265,10 @@ namespace {
  * the CSSLoader's style cache
  */
 class StubCSSLoaderObserver MOZ_FINAL : public nsICSSLoaderObserver {
+  ~StubCSSLoaderObserver() {}
 public:
   NS_IMETHOD
-  StyleSheetLoaded(nsCSSStyleSheet*, bool, nsresult)
+  StyleSheetLoaded(CSSStyleSheet*, bool, nsresult)
   {
     return NS_OK;
   }
@@ -9357,7 +9294,7 @@ nsDocument::PreloadStyle(nsIURI* uri, const nsAString& charset,
 
 nsresult
 nsDocument::LoadChromeSheetSync(nsIURI* uri, bool isAgentSheet,
-                                nsCSSStyleSheet** sheet)
+                                CSSStyleSheet** sheet)
 {
   return CSSLoader()->LoadSheetSync(uri, isAgentSheet, isAgentSheet, sheet);
 }
@@ -9706,10 +9643,10 @@ nsIDocument::CreateStaticClone(nsIDocShell* aCloneContainer)
       }
       int32_t sheetsCount = GetNumberOfStyleSheets();
       for (int32_t i = 0; i < sheetsCount; ++i) {
-        nsRefPtr<nsCSSStyleSheet> sheet = do_QueryObject(GetStyleSheetAt(i));
+        nsRefPtr<CSSStyleSheet> sheet = do_QueryObject(GetStyleSheetAt(i));
         if (sheet) {
           if (sheet->IsApplicable()) {
-            nsRefPtr<nsCSSStyleSheet> clonedSheet =
+            nsRefPtr<CSSStyleSheet> clonedSheet =
               sheet->Clone(nullptr, nullptr, clonedDoc, nullptr);
             NS_WARN_IF_FALSE(clonedSheet, "Cloning a stylesheet didn't work!");
             if (clonedSheet) {
@@ -9722,11 +9659,11 @@ nsIDocument::CreateStaticClone(nsIDocShell* aCloneContainer)
       sheetsCount = thisAsDoc->mOnDemandBuiltInUASheets.Count();
       // Iterate backwards to maintain order
       for (int32_t i = sheetsCount - 1; i >= 0; --i) {
-        nsRefPtr<nsCSSStyleSheet> sheet =
+        nsRefPtr<CSSStyleSheet> sheet =
           do_QueryObject(thisAsDoc->mOnDemandBuiltInUASheets[i]);
         if (sheet) {
           if (sheet->IsApplicable()) {
-            nsRefPtr<nsCSSStyleSheet> clonedSheet =
+            nsRefPtr<CSSStyleSheet> clonedSheet =
               sheet->Clone(nullptr, nullptr, clonedDoc, nullptr);
             NS_WARN_IF_FALSE(clonedSheet, "Cloning a stylesheet didn't work!");
             if (clonedSheet) {
@@ -12089,7 +12026,7 @@ nsIDocument::Constructor(const GlobalObject& aGlobal,
   return doc.forget();
 }
 
-already_AddRefed<nsIDOMXPathExpression>
+XPathExpression*
 nsIDocument::CreateExpression(const nsAString& aExpression,
                               nsIDOMXPathNSResolver* aResolver,
                               ErrorResult& rv)
@@ -12104,21 +12041,14 @@ nsIDocument::CreateNSResolver(nsINode* aNodeResolver,
   return XPathEvaluator()->CreateNSResolver(aNodeResolver, rv);
 }
 
-already_AddRefed<nsISupports>
-nsIDocument::Evaluate(const nsAString& aExpression, nsINode* aContextNode,
-                      nsIDOMXPathNSResolver* aResolver, uint16_t aType,
-                      nsISupports* aResult, ErrorResult& rv)
+already_AddRefed<XPathResult>
+nsIDocument::Evaluate(JSContext* aCx, const nsAString& aExpression,
+                      nsINode* aContextNode, nsIDOMXPathNSResolver* aResolver,
+                      uint16_t aType, JS::Handle<JSObject*> aResult,
+                      ErrorResult& rv)
 {
-  return XPathEvaluator()->Evaluate(aExpression, aContextNode, aResolver, aType,
-                                    aResult, rv);
-}
-
-NS_IMETHODIMP
-nsDocument::CreateExpression(const nsAString& aExpression,
-                             nsIDOMXPathNSResolver* aResolver,
-                             nsIDOMXPathExpression** aResult)
-{
-  return XPathEvaluator()->CreateExpression(aExpression, aResolver, aResult);
+  return XPathEvaluator()->Evaluate(aCx, aExpression, aContextNode, aResolver,
+                                    aType, aResult, rv);
 }
 
 NS_IMETHODIMP

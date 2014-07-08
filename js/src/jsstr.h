@@ -61,6 +61,9 @@ CompareChars(const Char1 *s1, size_t len1, const Char2 *s2, size_t len2)
     return int32_t(len1 - len2);
 }
 
+extern int32_t
+CompareChars(const jschar *s1, size_t len1, JSLinearString *s2);
+
 }  /* namespace js */
 
 struct JSSubString {
@@ -95,36 +98,6 @@ struct JSSubString {
 extern JSObject *
 js_InitStringClass(JSContext *cx, js::HandleObject obj);
 
-extern const char js_escape_str[];
-extern const char js_unescape_str[];
-extern const char js_uneval_str[];
-extern const char js_decodeURI_str[];
-extern const char js_encodeURI_str[];
-extern const char js_decodeURIComponent_str[];
-extern const char js_encodeURIComponent_str[];
-
-/* GC-allocate a string descriptor for the given malloc-allocated chars. */
-template <js::AllowGC allowGC, typename CharT>
-extern JSFlatString *
-js_NewString(js::ThreadSafeContext *cx, CharT *chars, size_t length);
-
-extern JSLinearString *
-js_NewDependentString(JSContext *cx, JSString *base, size_t start, size_t length);
-
-/* Copy a counted string and GC-allocate a descriptor for it. */
-template <js::AllowGC allowGC, typename CharT>
-extern JSFlatString *
-js_NewStringCopyN(js::ThreadSafeContext *cx, const CharT *s, size_t n);
-
-/* Copy a C string and GC-allocate a descriptor for it. */
-template <js::AllowGC allowGC>
-extern JSFlatString *
-js_NewStringCopyZ(js::ExclusiveContext *cx, const jschar *s);
-
-template <js::AllowGC allowGC>
-extern JSFlatString *
-js_NewStringCopyZ(js::ThreadSafeContext *cx, const char *s);
-
 /*
  * Convert a value to a printable C string.
  */
@@ -132,7 +105,71 @@ extern const char *
 js_ValueToPrintable(JSContext *cx, const js::Value &,
                     JSAutoByteString *bytes, bool asSource = false);
 
+extern size_t
+js_strlen(const jschar *s);
+
+extern int32_t
+js_strcmp(const jschar *lhs, const jschar *rhs);
+
+template <typename CharT>
+extern const CharT *
+js_strchr_limit(const CharT *s, jschar c, const CharT *limit);
+
+static MOZ_ALWAYS_INLINE void
+js_strncpy(jschar *dst, const jschar *src, size_t nelem)
+{
+    return mozilla::PodCopy(dst, src, nelem);
+}
+
+extern jschar *
+js_strdup(js::ThreadSafeContext *cx, const jschar *s);
+
 namespace js {
+
+/* GC-allocate a string descriptor for the given malloc-allocated chars. */
+template <js::AllowGC allowGC, typename CharT>
+extern JSFlatString *
+NewString(js::ThreadSafeContext *cx, CharT *chars, size_t length);
+
+/* Like NewString, but doesn't try to deflate to Latin1. */
+template <js::AllowGC allowGC, typename CharT>
+extern JSFlatString *
+NewStringDontDeflate(js::ThreadSafeContext *cx, CharT *chars, size_t length);
+
+extern JSLinearString *
+NewDependentString(JSContext *cx, JSString *base, size_t start, size_t length);
+
+/* Copy a counted string and GC-allocate a descriptor for it. */
+template <js::AllowGC allowGC, typename CharT>
+extern JSFlatString *
+NewStringCopyN(js::ThreadSafeContext *cx, const CharT *s, size_t n);
+
+template <js::AllowGC allowGC>
+inline JSFlatString *
+NewStringCopyN(ThreadSafeContext *cx, const char *s, size_t n)
+{
+    return NewStringCopyN<allowGC>(cx, reinterpret_cast<const Latin1Char *>(s), n);
+}
+
+/* Like NewStringCopyN, but doesn't try to deflate to Latin1. */
+template <js::AllowGC allowGC, typename CharT>
+extern JSFlatString *
+NewStringCopyNDontDeflate(js::ThreadSafeContext *cx, const CharT *s, size_t n);
+
+/* Copy a C string and GC-allocate a descriptor for it. */
+template <js::AllowGC allowGC>
+inline JSFlatString *
+NewStringCopyZ(js::ExclusiveContext *cx, const jschar *s)
+{
+    return NewStringCopyN<allowGC>(cx, s, js_strlen(s));
+}
+
+template <js::AllowGC allowGC>
+inline JSFlatString *
+NewStringCopyZ(js::ThreadSafeContext *cx, const char *s)
+{
+    return NewStringCopyN<allowGC>(cx, s, strlen(s));
+}
 
 /*
  * Convert a non-string value to a string, returning null after reporting an
@@ -204,6 +241,10 @@ EqualChars(JSLinearString *str1, JSLinearString *str2);
 extern bool
 CompareStrings(JSContext *cx, JSString *str1, JSString *str2, int32_t *result);
 
+/*
+ * Same as CompareStrings but for atoms.  Don't use this to just test
+ * for equality; use this when you need an ordering on atoms.
+ */
 extern int32_t
 CompareAtoms(JSAtom *atom1, JSAtom *atom2);
 
@@ -223,34 +264,23 @@ StringFindPattern(JSLinearString *text, JSLinearString *pat, size_t start);
 extern bool
 StringHasRegExpMetaChars(JSLinearString *str);
 
-} /* namespace js */
+template <typename Char1, typename Char2>
+inline bool
+EqualChars(const Char1 *s1, const Char2 *s2, size_t len);
 
-extern size_t
-js_strlen(const jschar *s);
-
-extern int32_t
-js_strcmp(const jschar *lhs, const jschar *rhs);
-
-template <typename CharT>
-extern const CharT *
-js_strchr_limit(const CharT *s, jschar c, const CharT *limit);
-
-static MOZ_ALWAYS_INLINE void
-js_strncpy(jschar *dst, const jschar *src, size_t nelem)
+template <typename Char1>
+inline bool
+EqualChars(const Char1 *s1, const Char1 *s2, size_t len)
 {
-    return mozilla::PodCopy(dst, src, nelem);
+    return mozilla::PodEqual(s1, s2, len);
 }
 
-extern jschar *
-js_strdup(js::ThreadSafeContext *cx, const jschar *s);
-
-namespace js {
-
+template <typename Char1, typename Char2>
 inline bool
-EqualCharsLatin1TwoByte(const Latin1Char *s1, const jschar *s2, size_t len)
+EqualChars(const Char1 *s1, const Char2 *s2, size_t len)
 {
-    for (const Latin1Char *s1end = s1 + len; s1 < s1end; s1++, s2++) {
-        if (jschar(*s1) != *s2)
+    for (const Char1 *s1end = s1 + len; s1 < s1end; s1++, s2++) {
+        if (*s1 != *s2)
             return false;
     }
     return true;
@@ -289,8 +319,9 @@ CopyAndInflateChars(jschar *dst, const JS::Latin1Char *src, size_t srclen)
  * must to be initialized with the buffer size and will contain on return the
  * number of copied bytes.
  */
+template <typename CharT>
 extern bool
-DeflateStringToBuffer(JSContext *maybecx, const jschar *chars,
+DeflateStringToBuffer(JSContext *maybecx, const CharT *chars,
                       size_t charsLength, char *bytes, size_t *length);
 
 /*
@@ -303,6 +334,9 @@ str_replace(JSContext *cx, unsigned argc, js::Value *vp);
 extern bool
 str_fromCharCode(JSContext *cx, unsigned argc, Value *vp);
 
+extern bool
+str_fromCharCode_one_arg(JSContext *cx, HandleValue code, MutableHandleValue rval);
+
 } /* namespace js */
 
 extern bool
@@ -311,9 +345,15 @@ js_str_toString(JSContext *cx, unsigned argc, js::Value *vp);
 extern bool
 js_str_charAt(JSContext *cx, unsigned argc, js::Value *vp);
 
+namespace js {
+
+extern bool
+str_charCodeAt_impl(JSContext *cx, HandleString string, HandleValue index, MutableHandleValue res);
+
+} /* namespace js */
+
 extern bool
 js_str_charCodeAt(JSContext *cx, unsigned argc, js::Value *vp);
-
 /*
  * Convert one UCS-4 char and write it into a UTF-8 buffer, which must be at
  * least 6 bytes long.  Return the number of UTF-8 bytes of data written.
@@ -350,8 +390,9 @@ PutEscapedString(char *buffer, size_t size, JSLinearString *str, uint32_t quote)
     return n;
 }
 
+template <typename CharT>
 inline size_t
-PutEscapedString(char *buffer, size_t bufferSize, const jschar *chars, size_t length, uint32_t quote)
+PutEscapedString(char *buffer, size_t bufferSize, const CharT *chars, size_t length, uint32_t quote)
 {
     size_t n = PutEscapedStringImpl(buffer, bufferSize, nullptr, chars, length, quote);
 

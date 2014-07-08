@@ -34,7 +34,10 @@
 
 using namespace js;
 using namespace gc;
-using namespace mozilla;
+
+using mozilla::ArrayLength;
+using mozilla::PodCopy;
+using mozilla::PodZero;
 
 //#define PROFILE_NURSERY
 
@@ -162,6 +165,7 @@ js::Nursery::allocateObject(JSContext *cx, size_t size, size_t numDynamic)
         JSObject *obj = static_cast<JSObject *>(allocate(totalSize));
         if (obj) {
             obj->setInitialSlots(reinterpret_cast<HeapSlot *>(size_t(obj) + size));
+            TraceNurseryAlloc(obj, size);
             return obj;
         }
         /* If we failed to allocate as a block, retry with out-of-line slots. */
@@ -181,6 +185,7 @@ js::Nursery::allocateObject(JSContext *cx, size_t size, size_t numDynamic)
     else
         freeSlots(cx, slots);
 
+    TraceNurseryAlloc(obj, size);
     return obj;
 }
 
@@ -333,7 +338,7 @@ class MinorCollectionTracer : public JSTracer
         savedRuntimeNeedBarrier(rt->needsBarrier()),
         disableStrictProxyChecking(rt)
     {
-        rt->gc.number++;
+        rt->gc.incGcNumber();
 
         /*
          * We disable the runtime needsBarrier() check so that pre-barriers do
@@ -570,6 +575,7 @@ js::Nursery::moveToTenured(MinorCollectionTracer *trc, JSObject *src)
     overlay->forwardTo(dst);
     trc->insertIntoFixupList(overlay);
 
+    TracePromoteToTenured(src, dst);
     return static_cast<void *>(dst);
 }
 
@@ -761,6 +767,8 @@ js::Nursery::collect(JSRuntime *rt, JS::gcreason::Reason reason, TypeObjectList 
 
     rt->gc.stats.count(gcstats::STAT_MINOR_GC);
 
+    TraceMinorGCStart();
+
     TIME_START(total);
 
     AutoStopVerifyingBarriers av(rt, false);
@@ -833,7 +841,7 @@ js::Nursery::collect(JSRuntime *rt, JS::gcreason::Reason reason, TypeObjectList 
     // Update any slot or element pointers whose destination has been tenured.
     TIME_START(updateJitActivations);
 #ifdef JS_ION
-    js::jit::UpdateJitActivationsForMinorGC(rt, &trc);
+    js::jit::UpdateJitActivationsForMinorGC<Nursery>(&rt->mainThread, &trc);
 #endif
     TIME_END(updateJitActivations);
 
@@ -880,6 +888,8 @@ js::Nursery::collect(JSRuntime *rt, JS::gcreason::Reason reason, TypeObjectList 
         disable();
 
     TIME_END(total);
+
+    TraceMinorGCEnd();
 
 #ifdef PROFILE_NURSERY
     int64_t totalTime = TIME_TOTAL(total);

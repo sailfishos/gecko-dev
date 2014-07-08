@@ -53,7 +53,7 @@ CodeGeneratorARM::generateAsmJSPrologue(Label *stackOverflowLabel)
 {
     JS_ASSERT(gen->compilingAsmJS());
 
-    // See comment in Assembler-arm.h about AsmJSSizeOfRetAddr.
+    // See comment in Assembler-shared.h about AsmJSFrameSize.
     masm.push(lr);
 
     // The asm.js over-recursed handler wants to be able to assume that SP
@@ -178,7 +178,7 @@ CodeGeneratorARM::generateOutOfLineCode()
         // Push the frame size, so the handler can recover the IonScript.
         masm.ma_mov(Imm32(frameSize()), lr);
 
-        JitCode *handler = gen->jitRuntime()->getGenericBailoutHandler();
+        JitCode *handler = gen->jitRuntime()->getGenericBailoutHandler(gen->info().executionMode());
         masm.branch(handler);
     }
 
@@ -188,22 +188,6 @@ CodeGeneratorARM::generateOutOfLineCode()
 bool
 CodeGeneratorARM::bailoutIf(Assembler::Condition condition, LSnapshot *snapshot)
 {
-    CompileInfo &info = snapshot->mir()->block()->info();
-    switch (info.executionMode()) {
-
-      case ParallelExecution: {
-        // in parallel mode, make no attempt to recover, just signal an error.
-        OutOfLineAbortPar *ool = oolAbortPar(ParallelBailoutUnsupported,
-                                             snapshot->mir()->block(),
-                                             snapshot->mir()->pc());
-        masm.ma_b(ool->entry(), condition);
-        return true;
-      }
-      case SequentialExecution:
-        break;
-      default:
-        MOZ_ASSUME_UNREACHABLE("No such execution mode");
-    }
     if (!encode(snapshot))
         return false;
 
@@ -214,7 +198,7 @@ CodeGeneratorARM::bailoutIf(Assembler::Condition condition, LSnapshot *snapshot)
                  frameClass_.frameSize() == masm.framePushed());
 
     if (assignBailoutId(snapshot)) {
-        uint8_t *code = deoptTable_->raw() + snapshot->bailoutId() * BAILOUT_TABLE_ENTRY_SIZE;
+        uint8_t *code = Assembler::BailoutTableStart(deoptTable_->raw()) + snapshot->bailoutId() * BAILOUT_TABLE_ENTRY_SIZE;
         masm.ma_b(code, Relocation::HARDCODED, condition);
         return true;
     }
@@ -237,23 +221,6 @@ CodeGeneratorARM::bailoutFrom(Label *label, LSnapshot *snapshot)
         return false;
     JS_ASSERT(label->used());
     JS_ASSERT(!label->bound());
-
-    CompileInfo &info = snapshot->mir()->block()->info();
-    switch (info.executionMode()) {
-
-      case ParallelExecution: {
-        // in parallel mode, make no attempt to recover, just signal an error.
-        OutOfLineAbortPar *ool = oolAbortPar(ParallelBailoutUnsupported,
-                                             snapshot->mir()->block(),
-                                             snapshot->mir()->pc());
-        masm.retarget(label, ool->entry());
-        return true;
-      }
-      case SequentialExecution:
-        break;
-      default:
-        MOZ_ASSUME_UNREACHABLE("No such execution mode");
-    }
 
     if (!encode(snapshot))
         return false;
@@ -859,9 +826,10 @@ CodeGeneratorARM::visitModMaskI(LModMaskI *ins)
 {
     Register src = ToRegister(ins->getOperand(0));
     Register dest = ToRegister(ins->getDef(0));
-    Register tmp = ToRegister(ins->getTemp(0));
+    Register tmp1 = ToRegister(ins->getTemp(0));
+    Register tmp2 = ToRegister(ins->getTemp(1));
     MMod *mir = ins->mir();
-    masm.ma_mod_mask(src, dest, tmp, ins->shift());
+    masm.ma_mod_mask(src, dest, tmp1, tmp2, ins->shift());
     if (mir->canBeNegativeDividend()) {
         if (!mir->isTruncated()) {
             JS_ASSERT(mir->fallible());
@@ -1021,14 +989,14 @@ CodeGeneratorARM::visitPowHalfD(LPowHalfD *ins)
     Label done;
 
     // Masm.pow(-Infinity, 0.5) == Infinity.
-    masm.ma_vimm(NegativeInfinity<double>(), ScratchFloatReg);
-    masm.compareDouble(input, ScratchFloatReg);
-    masm.ma_vneg(ScratchFloatReg, output, Assembler::Equal);
+    masm.ma_vimm(NegativeInfinity<double>(), ScratchDoubleReg);
+    masm.compareDouble(input, ScratchDoubleReg);
+    masm.ma_vneg(ScratchDoubleReg, output, Assembler::Equal);
     masm.ma_b(&done, Assembler::Equal);
 
     // Math.pow(-0, 0.5) == 0 == Math.pow(0, 0.5). Adding 0 converts any -0 to 0.
-    masm.ma_vimm(0.0, ScratchFloatReg);
-    masm.ma_vadd(ScratchFloatReg, input, output);
+    masm.ma_vimm(0.0, ScratchDoubleReg);
+    masm.ma_vadd(ScratchDoubleReg, input, output);
     masm.ma_vsqrt(output, output);
 
     masm.bind(&done);
@@ -1284,8 +1252,8 @@ CodeGeneratorARM::visitRoundF(LRoundF *lir)
 void
 CodeGeneratorARM::emitRoundDouble(FloatRegister src, Register dest, Label *fail)
 {
-    masm.ma_vcvt_F64_I32(src, ScratchFloatReg);
-    masm.ma_vxfer(ScratchFloatReg, dest);
+    masm.ma_vcvt_F64_I32(src, ScratchDoubleReg);
+    masm.ma_vxfer(ScratchDoubleReg, dest);
     masm.ma_cmp(dest, Imm32(0x7fffffff));
     masm.ma_cmp(dest, Imm32(0x80000000), Assembler::NotEqual);
     masm.ma_b(fail, Assembler::Equal);
@@ -1387,8 +1355,8 @@ CodeGeneratorARM::visitBoxFloatingPoint(LBoxFloatingPoint *box)
 
     FloatRegister reg = ToFloatRegister(in);
     if (box->type() == MIRType_Float32) {
-        masm.convertFloat32ToDouble(reg, ScratchFloatReg);
-        reg = ScratchFloatReg;
+        masm.convertFloat32ToDouble(reg, ScratchFloat32Reg);
+        reg = ScratchFloat32Reg;
     }
 
     //masm.as_vxfer(ToRegister(payload), ToRegister(type),

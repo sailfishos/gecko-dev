@@ -91,9 +91,6 @@ public:
                      const nsAString& aPseudoElt,
                      nsIPresShell* aPresShell,
                      StyleType aStyleType);
-  virtual ~nsComputedDOMStyle();
-
-  static void Shutdown();
 
   virtual nsINode *GetParentObject() MOZ_OVERRIDE
   {
@@ -134,6 +131,8 @@ public:
   static void UnregisterPrefChangeCallbacks();
 
 private:
+  virtual ~nsComputedDOMStyle();
+
   void AssertFlushedPendingReflows() {
     NS_ASSERTION(mFlushedPendingReflows,
                  "property getter should have been marked layout-dependent");

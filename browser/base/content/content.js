@@ -1,4 +1,4 @@
-/* -*- Mode: javascript; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -34,22 +34,22 @@ addMessageListener("Browser:HideSessionRestoreButton", function (message) {
   }
 });
 
+addEventListener("DOMFormHasPassword", function(event) {
+  InsecurePasswordUtils.checkForInsecurePasswords(event.target);
+  LoginManagerContent.onFormPassword(event);
+});
+addEventListener("DOMAutoComplete", function(event) {
+  LoginManagerContent.onUsernameInput(event);
+});
+addEventListener("blur", function(event) {
+  LoginManagerContent.onUsernameInput(event);
+});
+
 if (Services.appinfo.processType == Services.appinfo.PROCESS_TYPE_CONTENT) {
   addEventListener("contextmenu", function (event) {
     sendAsyncMessage("contextmenu", {}, { event: event });
   }, false);
 } else {
-  addEventListener("DOMFormHasPassword", function(event) {
-    InsecurePasswordUtils.checkForInsecurePasswords(event.target);
-    LoginManagerContent.onFormPassword(event);
-  });
-  addEventListener("DOMAutoComplete", function(event) {
-    LoginManagerContent.onUsernameInput(event);
-  });
-  addEventListener("blur", function(event) {
-    LoginManagerContent.onUsernameInput(event);
-  });
-
   addEventListener("mozUITour", function(event) {
     if (!Services.prefs.getBoolPref("browser.uitour.enabled"))
       return;
@@ -258,10 +258,23 @@ let ClickEventHandler = {
   },
 
   handleEvent: function(event) {
-    // Bug 903016: Most of this code is an unfortunate duplication from
-    // contentAreaClick in browser.js.
-    if (!event.isTrusted || event.defaultPrevented || event.button == 2)
+    if (!event.isTrusted || event.defaultPrevented || event.button == 2) {
       return;
+    }
+
+    let originalTarget = event.originalTarget;
+    let ownerDoc = originalTarget.ownerDocument;
+
+    // Handle click events from about pages
+    if (ownerDoc.documentURI.startsWith("about:certerror")) {
+      this.onAboutCertError(originalTarget, ownerDoc);
+      return;
+    } else if (ownerDoc.documentURI.startsWith("about:blocked")) {
+      this.onAboutBlocked(originalTarget, ownerDoc);
+      return;
+    } else if (ownerDoc.documentURI.startsWith("about:neterror")) {
+      this.onAboutNetError(originalTarget, ownerDoc);
+    }
 
     let [href, node] = this._hrefAndLinkNodeForClickEvent(event);
 
@@ -274,12 +287,12 @@ let ClickEventHandler = {
       json.href = href;
       if (node) {
         json.title = node.getAttribute("title");
-
         if (event.button == 0 && !event.ctrlKey && !event.shiftKey &&
             !event.altKey && !event.metaKey) {
           json.bookmark = node.getAttribute("rel") == "sidebar";
-          if (json.bookmark)
+          if (json.bookmark) {
             event.preventDefault(); // Need to prevent the pageload.
+          }
         }
       }
 
@@ -288,8 +301,34 @@ let ClickEventHandler = {
     }
 
     // This might be middle mouse navigation.
-    if (event.button == 1)
+    if (event.button == 1) {
       sendAsyncMessage("Content:Click", json);
+    }
+  },
+
+  onAboutCertError: function (targetElement, ownerDoc) {
+    sendAsyncMessage("Browser:CertExceptionError", {
+      location: ownerDoc.location.href,
+      elementId: targetElement.getAttribute("id"),
+      isTopFrame: (ownerDoc.defaultView.parent === ownerDoc.defaultView)
+    });
+  },
+
+  onAboutBlocked: function (targetElement, ownerDoc) {
+    sendAsyncMessage("Browser:SiteBlockedError", {
+      location: ownerDoc.location.href,
+      isMalware: /e=malwareBlocked/.test(ownerDoc.documentURI),
+      elementId: targetElement.getAttribute("id"),
+      isTopFrame: (ownerDoc.defaultView.parent === ownerDoc.defaultView)
+    });
+  },
+
+  onAboutNetError: function (targetElement, ownerDoc) {
+    let elmId = targetElement.getAttribute("id");
+    if (elmId != "errorTryAgain" || !/e=netOffline/.test(ownerDoc.documentURI)) {
+      return;
+    }
+    sendSyncMessage("Browser:NetworkError", {});
   },
 
   /**

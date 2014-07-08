@@ -48,39 +48,6 @@ struct AnimationEventInfo {
 
 typedef InfallibleTArray<AnimationEventInfo> EventArray;
 
-/**
- * Data about all of the animations running on an element.
- */
-struct ElementAnimations MOZ_FINAL
-  : public mozilla::css::CommonElementAnimationData
-{
-  typedef mozilla::TimeStamp TimeStamp;
-  typedef mozilla::TimeDuration TimeDuration;
-
-  ElementAnimations(mozilla::dom::Element *aElement, nsIAtom *aElementProperty,
-                    nsAnimationManager *aAnimationManager, TimeStamp aNow);
-
-  void GetEventsAt(TimeStamp aRefreshTime, EventArray &aEventsToDispatch);
-
-  bool IsForElement() const { // rather than for a pseudo-element
-    return mElementProperty == nsGkAtoms::animationsProperty;
-  }
-
-  nsString PseudoElement()
-  {
-    return mElementProperty == nsGkAtoms::animationsProperty ?
-             EmptyString() :
-             mElementProperty == nsGkAtoms::animationsOfBeforeProperty ?
-               NS_LITERAL_STRING("::before") :
-               NS_LITERAL_STRING("::after");
-  }
-
-  void PostRestyleForAnimation(nsPresContext *aPresContext) {
-    nsRestyleHint styleHint = IsForElement() ? eRestyle_Self : eRestyle_Subtree;
-    aPresContext->PresShell()->RestyleForAnimation(mElement, styleHint);
-  }
-};
-
 class nsAnimationManager MOZ_FINAL
   : public mozilla::css::CommonAnimationManager
 {
@@ -91,7 +58,7 @@ public:
   {
   }
 
-  static mozilla::css::CommonElementAnimationData*
+  static mozilla::ElementAnimationCollection*
   GetAnimationsForCompositor(nsIContent* aContent, nsCSSProperty aProperty)
   {
     return mozilla::css::CommonAnimationManager::GetAnimationsForCompositor(
@@ -109,9 +76,12 @@ public:
     return false;
   }
 
-  void UpdateStyleAndEvents(ElementAnimations* aEA,
+  void UpdateStyleAndEvents(mozilla::ElementAnimationCollection* aEA,
                             mozilla::TimeStamp aRefreshTime,
                             mozilla::EnsureStyleRuleFlags aFlags);
+  void GetEventsAt(mozilla::ElementAnimationCollection* aEA,
+                   mozilla::TimeStamp aRefreshTime,
+                   EventArray &aEventsToDispatch);
 
   // nsIStyleRuleProcessor (parts)
   virtual void RulesMatching(ElementRuleProcessorData* aData) MOZ_OVERRIDE;
@@ -158,19 +128,21 @@ public:
     }
   }
 
-  ElementAnimations* GetElementAnimations(mozilla::dom::Element *aElement,
-                                          nsCSSPseudoElements::Type aPseudoType,
-                                          bool aCreateIfNeeded);
+  mozilla::ElementAnimationCollection*
+  GetElementAnimations(mozilla::dom::Element *aElement,
+                       nsCSSPseudoElements::Type aPseudoType,
+                       bool aCreateIfNeeded);
 
   // Updates styles on throttled animations. See note on nsTransitionManager
   void UpdateAllThrottledStyles();
 
 protected:
-  virtual void ElementDataRemoved() MOZ_OVERRIDE
+  virtual void ElementCollectionRemoved() MOZ_OVERRIDE
   {
     CheckNeedsRefresh();
   }
-  virtual void AddElementData(mozilla::css::CommonElementAnimationData* aData) MOZ_OVERRIDE;
+  virtual void
+  AddElementCollection(mozilla::ElementAnimationCollection* aData) MOZ_OVERRIDE;
 
   /**
    * Check to see if we should stop or start observing the refresh driver
@@ -182,7 +154,8 @@ private:
                        mozilla::ElementAnimationPtrArray& aAnimations);
   bool BuildSegment(InfallibleTArray<mozilla::AnimationPropertySegment>&
                       aSegments,
-                    nsCSSProperty aProperty, const nsAnimation& aAnimation,
+                    nsCSSProperty aProperty,
+                    const mozilla::StyleAnimation& aAnimation,
                     float aFromKey, nsStyleContext* aFromContext,
                     mozilla::css::Declaration* aFromDeclaration,
                     float aToKey, nsStyleContext* aToContext);

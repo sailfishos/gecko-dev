@@ -396,7 +396,9 @@ MediaStreamGraphImpl::UpdateCurrentTime()
     // Calculate blocked time and fire Blocked/Unblocked events
     GraphTime blockedTime = 0;
     GraphTime t = prevCurrentTime;
-    while (t < nextCurrentTime) {
+    // include |nextCurrentTime| to ensure NotifyBlockingChanged() is called
+    // before NotifyFinished() when |nextCurrentTime == stream end time|
+    while (t <= nextCurrentTime) {
       GraphTime end;
       bool blocked = stream->mBlocked.GetAt(t, &end);
       if (blocked) {
@@ -451,6 +453,8 @@ MediaStreamGraphImpl::UpdateCurrentTime()
     // out.
     if (mCurrentTime >=
           stream->StreamTimeToGraphTime(stream->GetStreamBuffer().GetAllTracksEnd()))  {
+      NS_WARN_IF_FALSE(stream->mNotifiedBlocked,
+        "Should've notified blocked=true for a fully finished stream");
       stream->mNotifiedFinished = true;
       stream->mLastPlayedVideoFrame.SetNull();
       SetStreamOrderDirty();
@@ -688,7 +692,7 @@ MediaStreamGraphImpl::RecomputeBlocking(GraphTime aEndBlockingDecisions)
                               this, MediaTimeToSeconds(mStateComputedTime),
                               MediaTimeToSeconds(aEndBlockingDecisions)));
   mStateComputedTime = aEndBlockingDecisions;
- 
+
   if (blockingDecisionsWillChange) {
     // Make sure we wake up to notify listeners about these changes.
     EnsureNextIteration();
@@ -938,7 +942,7 @@ MediaStreamGraphImpl::PlayAudio(MediaStream* aStream,
       if (end >= aTo) {
         toWrite = ticksNeeded;
       } else {
-        toWrite = TimeToTicksRoundDown(mSampleRate, end - aFrom);
+        toWrite = TimeToTicksRoundDown(mSampleRate, end - t);
       }
       ticksNeeded -= toWrite;
 
@@ -1587,6 +1591,7 @@ public:
 
 class MediaStreamGraphShutdownObserver MOZ_FINAL : public nsIObserver
 {
+  ~MediaStreamGraphShutdownObserver() {}
 public:
   NS_DECL_ISUPPORTS
   NS_DECL_NSIOBSERVER
@@ -1698,6 +1703,11 @@ MediaStreamGraphImpl::RunInStableState()
   for (uint32_t i = 0; i < controlMessagesToRunDuringShutdown.Length(); ++i) {
     controlMessagesToRunDuringShutdown[i]->RunDuringShutdown();
   }
+
+#ifdef DEBUG
+  mCanRunMessagesSynchronously = mDetectedNotRunning &&
+    mLifecycleState >= LIFECYCLE_WAITING_FOR_THREAD_SHUTDOWN;
+#endif
 }
 
 static NS_DEFINE_CID(kAppShellCID, NS_APPSHELL_CID);
@@ -1747,7 +1757,14 @@ MediaStreamGraphImpl::AppendMessage(ControlMessage* aMessage)
     // this message.
     // This should only happen during forced shutdown, or after a non-realtime
     // graph has finished processing.
+#ifdef DEBUG
+    MOZ_ASSERT(mCanRunMessagesSynchronously);
+    mCanRunMessagesSynchronously = false;
+#endif
     aMessage->RunDuringShutdown();
+#ifdef DEBUG
+    mCanRunMessagesSynchronously = true;
+#endif
     delete aMessage;
     if (IsEmpty() &&
         mLifecycleState >= LIFECYCLE_WAITING_FOR_STREAM_DESTRUCTION) {
@@ -2119,7 +2136,7 @@ MediaStream::AddListener(MediaStreamListener* aListener)
 
 void
 MediaStream::RemoveListenerImpl(MediaStreamListener* aListener)
-{ 
+{
   // wouldn't need this if we could do it in the opposite order
   nsRefPtr<MediaStreamListener> listener(aListener);
   mListeners.RemoveElement(aListener);
@@ -2171,7 +2188,10 @@ MediaStream::RunAfterPendingUpdates(nsRefPtr<nsIRunnable> aRunnable)
     }
     virtual void RunDuringShutdown() MOZ_OVERRIDE
     {
-      mRunnable->Run();
+      // Don't run mRunnable now as it may call AppendMessage() which would
+      // assume that there are no remaining controlMessagesToRunDuringShutdown.
+      MOZ_ASSERT(NS_IsMainThread());
+      NS_DispatchToCurrentThread(mRunnable);
     }
   private:
     nsRefPtr<nsIRunnable> mRunnable;
@@ -2291,7 +2311,7 @@ SourceMediaStream::ResampleAudioToGraphSampleRate(TrackData* aTrackData, MediaSe
 #endif
     }
   }
-  segment->ResampleChunks(aTrackData->mResampler);
+  segment->ResampleChunks(aTrackData->mResampler, aTrackData->mInputRate, GraphImpl()->AudioSampleRate());
 }
 
 bool
@@ -2651,6 +2671,9 @@ MediaStreamGraphImpl::MediaStreamGraphImpl(bool aRealtime, TrackRate aSampleRate
   , mSelfRef(MOZ_THIS_IN_INITIALIZER_LIST())
   , mAudioStreamSizes()
   , mNeedsMemoryReport(false)
+#ifdef DEBUG
+  , mCanRunMessagesSynchronously(false)
+#endif
 {
 #ifdef PR_LOGGING
   if (!gMediaStreamGraphLog) {
@@ -2786,7 +2809,8 @@ MediaStreamGraphImpl::CollectReports(nsIHandleReportCallback* aHandleReport,
 
   for (size_t i = 0; i < mAudioStreamSizes.Length(); i++) {
     const AudioNodeSizes& usage = mAudioStreamSizes[i];
-    const char* const nodeType =  usage.mNodeType.get();
+    const char* const nodeType =  usage.mNodeType.IsEmpty() ?
+                                  "<unknown>" : usage.mNodeType.get();
 
     nsPrintfCString domNodePath("explicit/webaudio/audio-node/%s/dom-nodes",
                                 nodeType);

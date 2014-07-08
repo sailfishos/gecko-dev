@@ -275,7 +275,6 @@ public:
   };
 
   MediaDecoder();
-  virtual ~MediaDecoder();
 
   // Reset the decoder and notify the media element that
   // server connection is closed.
@@ -608,7 +607,7 @@ public:
 
   // Set a flag indicating whether seeking is supported
   virtual void SetMediaSeekable(bool aMediaSeekable) MOZ_OVERRIDE;
-  virtual void SetTransportSeekable(bool aTransportSeekable) MOZ_FINAL MOZ_OVERRIDE;
+
   // Returns true if this media supports seeking. False for example for WebM
   // files without an index and chained ogg files.
   virtual bool IsMediaSeekable() MOZ_FINAL MOZ_OVERRIDE;
@@ -718,14 +717,14 @@ public:
   // Records activity stopping on the channel. The monitor must be held.
   virtual void NotifyPlaybackStarted() {
     GetReentrantMonitor().AssertCurrentThreadIn();
-    mPlaybackStatistics.Start();
+    mPlaybackStatistics->Start();
   }
 
   // Used to estimate rates of data passing through the decoder's channel.
   // Records activity stopping on the channel. The monitor must be held.
   virtual void NotifyPlaybackStopped() {
     GetReentrantMonitor().AssertCurrentThreadIn();
-    mPlaybackStatistics.Stop();
+    mPlaybackStatistics->Stop();
   }
 
   // The actual playback rate computation. The monitor must be held.
@@ -752,10 +751,7 @@ public:
   // main thread to be presented when the |currentTime| of the media is greater
   // or equal to aPublishTime.
   void QueueMetadata(int64_t aPublishTime,
-                     int aChannels,
-                     int aRate,
-                     bool aHasAudio,
-                     bool aHasVideo,
+                     MediaInfo* aInfo,
                      MetadataTags* aTags);
 
   /******
@@ -778,11 +774,17 @@ public:
 
   // Called when the metadata from the media file has been loaded by the
   // state machine. Call on the main thread only.
-  virtual void MetadataLoaded(int aChannels,
-                              int aRate,
-                              bool aHasAudio,
-                              bool aHasVideo,
+  virtual void MetadataLoaded(MediaInfo* aInfo,
                               MetadataTags* aTags);
+
+  // Called from MetadataLoaded(). Creates audio tracks and adds them to its
+  // owner's audio track list, and implies to video tracks respectively.
+  // Call on the main thread only.
+  void ConstructMediaTracks();
+
+  // Removes all audio tracks and video tracks that are previously added into
+  // the track list. Call on the main thread only.
+  virtual void RemoveMediaTracks() MOZ_OVERRIDE;
 
   // Called when the first frame has been loaded.
   // Call on the main thread only.
@@ -999,6 +1001,8 @@ public:
   }
 
 protected:
+  virtual ~MediaDecoder();
+
   /******
    * The following members should be accessed with the decoder lock held.
    ******/
@@ -1036,10 +1040,6 @@ protected:
 
   // True when playback should start with audio captured (not playing).
   bool mInitialAudioCaptured;
-
-  // True if the resource is seekable at a transport level (server supports byte
-  // range requests, local file, etc.).
-  bool mTransportSeekable;
 
   // True if the media is seekable (i.e. supports random access).
   bool mMediaSeekable;
@@ -1194,7 +1194,7 @@ protected:
   // Data needed to estimate playback data rate. The timeline used for
   // this estimate is "decode time" (where the "current time" is the
   // time of the last decoded video frame).
-  MediaChannelStatistics mPlaybackStatistics;
+  nsRefPtr<MediaChannelStatistics> mPlaybackStatistics;
 
   // True when our media stream has been pinned. We pin the stream
   // while seeking.
@@ -1218,6 +1218,14 @@ protected:
   // to minimize preroll, as we assume the user is likely to keep playing,
   // or play the media again.
   bool mMinimizePreroll;
+
+  // True if audio tracks and video tracks are constructed and added into the
+  // track list, false if all tracks are removed from the track list.
+  bool mMediaTracksConstructed;
+
+  // Stores media info, including info of audio tracks and video tracks, should
+  // only be accessed from main thread.
+  nsAutoPtr<MediaInfo> mInfo;
 };
 
 } // namespace mozilla

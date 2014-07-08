@@ -110,12 +110,15 @@ private:
   DECL_GFX_PREF(Live, "apz.axis_lock_mode",                    APZAxisLockMode, int32_t, 0);
   DECL_GFX_PREF(Live, "apz.content_response_timeout",          APZContentResponseTimeout, int32_t, 300);
   DECL_GFX_PREF(Live, "apz.cross_slide.enabled",               APZCrossSlideEnabled, bool, false);
+  DECL_GFX_PREF(Live, "apz.danger_zone_x",                     APZDangerZoneX, int32_t, 50);
+  DECL_GFX_PREF(Live, "apz.danger_zone_y",                     APZDangerZoneY, int32_t, 100);
   DECL_GFX_PREF(Live, "apz.enlarge_displayport_when_clipped",  APZEnlargeDisplayPortWhenClipped, bool, false);
   DECL_GFX_PREF(Live, "apz.fling_accel_interval_ms",           APZFlingAccelInterval, int32_t, 500);
   DECL_GFX_PREF(Live, "apz.fling_accel_base_mult",             APZFlingAccelBaseMultiplier, float, 1.0f);
   DECL_GFX_PREF(Live, "apz.fling_accel_supplemental_mult",     APZFlingAccelSupplementalMultiplier, float, 1.0f);
   DECL_GFX_PREF(Once, "apz.fling_friction",                    APZFlingFriction, float, 0.002f);
   DECL_GFX_PREF(Live, "apz.fling_repaint_interval",            APZFlingRepaintInterval, int32_t, 75);
+  DECL_GFX_PREF(Once, "apz.fling_stop_on_tap_threshold",       APZFlingStopOnTapThreshold, float, 0.05f);
   DECL_GFX_PREF(Once, "apz.fling_stopped_threshold",           APZFlingStoppedThreshold, float, 0.01f);
   DECL_GFX_PREF(Once, "apz.max_velocity_inches_per_ms",        APZMaxVelocity, float, -1.0f);
   DECL_GFX_PREF(Once, "apz.max_velocity_queue_size",           APZMaxVelocityQueueSize, uint32_t, 5);
@@ -130,6 +133,7 @@ private:
   DECL_GFX_PREF(Live, "apz.overscroll.snap_back.spring_friction", APZOverscrollSnapBackSpringFriction, float, 0.1f);
   DECL_GFX_PREF(Live, "apz.overscroll.snap_back.mass",         APZOverscrollSnapBackMass, float, 1000.0f);
   DECL_GFX_PREF(Live, "apz.pan_repaint_interval",              APZPanRepaintInterval, int32_t, 250);
+  DECL_GFX_PREF(Live, "apz.printtree",                         APZPrintTree, bool, false);
   DECL_GFX_PREF(Live, "apz.subframe.enabled",                  APZSubframeEnabled, bool, false);
   DECL_GFX_PREF(Once, "apz.test.logging_enabled",              APZTestLoggingEnabled, bool, false);
   DECL_GFX_PREF(Live, "apz.touch_start_tolerance",             APZTouchStartTolerance, float, 1.0f/4.5f);
@@ -205,6 +209,7 @@ private:
   DECL_GFX_PREF(Live, "layers.frame-counter",                  DrawFrameCounter, bool, false);
   DECL_GFX_PREF(Live, "layers.low-precision-buffer",           UseLowPrecisionBuffer, bool, false);
   DECL_GFX_PREF(Live, "layers.low-precision-resolution",       LowPrecisionResolution, float, 0.25f);
+  DECL_GFX_PREF(Live, "layers.low-precision-opacity",          LowPrecisionOpacity, float, 1.0f);
   DECL_GFX_PREF(Once, "layers.offmainthreadcomposition.enabled", LayersOffMainThreadCompositionEnabled, bool, false);
   DECL_GFX_PREF(Live, "layers.offmainthreadcomposition.frame-rate", LayersCompositionFrameRate, int32_t,-1);
   DECL_GFX_PREF(Once, "layers.offmainthreadcomposition.force-enabled", LayersOffMainThreadCompositionForceEnabled, bool, false);
@@ -214,6 +219,7 @@ private:
   DECL_GFX_PREF(Once, "layers.prefer-opengl",                  LayersPreferOpenGL, bool, false);
   DECL_GFX_PREF(Once, "layers.progressive-paint",              UseProgressiveTilePainting, bool, false);
   DECL_GFX_PREF(Once, "layers.scroll-graph",                   LayersScrollGraph, bool, false);
+  DECL_GFX_PREF(Once, "layers.uniformity-info",                UniformityInfo, bool, false);
 
   DECL_GFX_PREF(Once, "layout.css.touch_action.enabled",       TouchActionEnabled, bool, false);
   DECL_GFX_PREF(Once, "layout.frame_rate",                     LayoutFrameRate, int32_t, -1);
@@ -230,9 +236,11 @@ public:
   // Manage the singleton:
   static gfxPrefs& GetSingleton()
   {
+    MOZ_ASSERT(!sInstanceHasBeenDestroyed, "Should never recreate a gfxPrefs instance!");
     if (!sInstance) {
       sInstance = new gfxPrefs;
     }
+    MOZ_ASSERT(SingletonExists());
     return *sInstance;
   }
   static void DestroySingleton();
@@ -240,6 +248,7 @@ public:
 
 private:
   static gfxPrefs* sInstance;
+  static bool sInstanceHasBeenDestroyed;
 
 private:
   // Creating these to avoid having to include Preferences.h in the .h

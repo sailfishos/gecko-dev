@@ -20,7 +20,7 @@
 #include "mozilla/FileUtils.h"
 #include "mozilla/FileLocation.h"
 
-#if defined(XP_WIN) && defined(_MSC_VER)
+#ifdef HAVE_SEH_EXCEPTIONS
 #define MOZ_WIN_MEM_TRY_BEGIN __try {
 #define MOZ_WIN_MEM_TRY_CATCH(cmd) }                                \
   __except(GetExceptionCode()==EXCEPTION_IN_PAGE_ERROR ?            \
@@ -95,12 +95,12 @@ class nsZipArchive
 {
   friend class nsZipFind;
 
+  /** destructing the object closes the archive */
+  ~nsZipArchive();
+
 public:
   /** constructing does not open the archive. See OpenArchive() */
   nsZipArchive();
-
-  /** destructing the object closes the archive */
-  ~nsZipArchive();
 
   /** 
    * OpenArchive 

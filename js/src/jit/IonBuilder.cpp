@@ -693,7 +693,7 @@ IonBuilder::build()
     }
 
     // Emit the start instruction, so we can begin real instructions.
-    current->makeStart(MStart::New(alloc(), MStart::StartType_Default));
+    current->add(MStart::New(alloc(), MStart::StartType_Default));
     if (instrumentedProfiling())
         current->add(MProfilerStackOp::New(alloc(), script(), MProfilerStackOp::Enter));
 
@@ -1075,6 +1075,7 @@ IonBuilder::addOsrValueTypeBarrier(uint32_t slot, MInstruction **def_,
       case MIRType_Int32:
       case MIRType_Double:
       case MIRType_String:
+      case MIRType_Symbol:
       case MIRType_Object:
         if (type != def->type()) {
             MUnbox *unbox = MUnbox::New(alloc(), def, type, MUnbox::Fallible);
@@ -3069,10 +3070,24 @@ IonBuilder::filterTypesAtTest(MTest *test)
     bool trueBranch = test->ifTrue() == current;
 
     MDefinition *subject = nullptr;
-    bool removeUndefined;
-    bool removeNull;
+    bool removeUndefined = false;
+    bool removeNull = false;
+    bool setTypeToObject = false;
 
-    test->filtersUndefinedOrNull(trueBranch, &subject, &removeUndefined, &removeNull);
+    // setTypeToObject is set to true only when we're sure that the type is object.
+    // If IsObject results to true, and we're in the true branch,
+    // then setTypeToObject is true. Similarly, if the instruction is !IsObject and
+    // we're not in true branch.
+    MDefinition *ins = test->getOperand(0);
+    if (ins->isIsObject() && trueBranch) {
+        setTypeToObject = true;
+        subject = ins->getOperand(0);
+    } else if (!trueBranch && ins->isNot() && ins->toNot()->getOperand(0)->isIsObject()) {
+        setTypeToObject = true;
+        subject = ins->getOperand(0)->getOperand(0);
+    } else {
+        test->filtersUndefinedOrNull(trueBranch, &subject, &removeUndefined, &removeNull);
+    }
 
     // The test filters no undefined or null.
     if (!subject)
@@ -3082,9 +3097,11 @@ IonBuilder::filterTypesAtTest(MTest *test)
     if (!subject->resultTypeSet() || subject->resultTypeSet()->unknown())
         return true;
 
-    // Only do this optimization if the typeset does contains null or undefined.
-    if ((!(removeUndefined && subject->resultTypeSet()->hasType(types::Type::UndefinedType())) &&
-         !(removeNull && subject->resultTypeSet()->hasType(types::Type::NullType()))))
+    // Only do this optimization if the typeset does contains null or undefined
+    // or if type isn't already object only.
+    if (!(removeUndefined && subject->resultTypeSet()->hasType(types::Type::UndefinedType())) &&
+        !(removeNull && subject->resultTypeSet()->hasType(types::Type::NullType())) &&
+        !(setTypeToObject && subject->type() != MIRType_Object))
     {
         return true;
     }
@@ -3099,9 +3116,12 @@ IonBuilder::filterTypesAtTest(MTest *test)
 
         // Create replacement MIR with filtered TypesSet.
         if (!replace) {
-            types::TemporaryTypeSet *type =
-                subject->resultTypeSet()->filter(alloc_->lifoAlloc(), removeUndefined,
-                                                                      removeNull);
+            types::TemporaryTypeSet *type;
+            if (setTypeToObject)
+                type = subject->resultTypeSet()->cloneObjectsOnly(alloc_->lifoAlloc());
+            else
+                type = subject->resultTypeSet()->filter(alloc_->lifoAlloc(), removeUndefined,
+                                                                             removeNull);
             if (!type)
                 return false;
 
@@ -6199,6 +6219,10 @@ IonBuilder::testSingletonPropertyTypes(MDefinition *obj, JSObject *singleton, Pr
         key = JSProto_String;
         break;
 
+      case MIRType_Symbol:
+        key = JSProto_Symbol;
+        break;
+
       case MIRType_Int32:
       case MIRType_Double:
         key = JSProto_Number;
@@ -6501,6 +6525,7 @@ jit::TypeSetIncludes(types::TypeSet *types, MIRType input, types::TypeSet *input
       case MIRType_Double:
       case MIRType_Float32:
       case MIRType_String:
+      case MIRType_Symbol:
       case MIRType_MagicOptimizedArguments:
         return types->hasType(types::Type::PrimitiveType(ValueTypeFromMIRType(input)));
 
@@ -7246,9 +7271,13 @@ IonBuilder::getElemTryCache(bool *emitted, MDefinition *obj, MDefinition *index)
     if (obj->mightBeType(MIRType_String))
         return true;
 
-    // Index should be integer or string
-    if (!index->mightBeType(MIRType_Int32) && !index->mightBeType(MIRType_String))
+    // Index should be integer, string, or symbol
+    if (!index->mightBeType(MIRType_Int32) &&
+        !index->mightBeType(MIRType_String) &&
+        !index->mightBeType(MIRType_Symbol))
+    {
         return true;
+    }
 
     // Turn off cacheing if the element is int32 and we've seen non-native objects as the target
     // of this getelem.
@@ -7262,9 +7291,9 @@ IonBuilder::getElemTryCache(bool *emitted, MDefinition *obj, MDefinition *index)
     BarrierKind barrier = PropertyReadNeedsTypeBarrier(analysisContext, constraints(), obj,
                                                        nullptr, types);
 
-    // Always add a barrier if the index might be a string, so that the cache
-    // can attach stubs for particular properties.
-    if (index->mightBeType(MIRType_String))
+    // Always add a barrier if the index might be a string or symbol, so that
+    // the cache can attach stubs for particular properties.
+    if (index->mightBeType(MIRType_String) || index->mightBeType(MIRType_Symbol))
         barrier = BarrierKind::TypeSet;
 
     // See note about always needing a barrier in jsop_getprop.
@@ -7300,7 +7329,8 @@ IonBuilder::jsop_getelem_dense(MDefinition *obj, MDefinition *index)
 {
     types::TemporaryTypeSet *types = bytecodeTypes(pc);
 
-    if (JSOp(*pc) == JSOP_CALLELEM && !index->mightBeType(MIRType_String)) {
+    MOZ_ASSERT(index->type() == MIRType_Int32 || index->type() == MIRType_Double);
+    if (JSOp(*pc) == JSOP_CALLELEM) {
         // Indexed call on an element of an array. Populate the observed types
         // with any objects that could be in the array, to avoid extraneous
         // type barriers.
@@ -7872,8 +7902,12 @@ IonBuilder::setElemTryCache(bool *emitted, MDefinition *object,
     if (!object->mightBeType(MIRType_Object))
         return true;
 
-    if (!index->mightBeType(MIRType_Int32) && !index->mightBeType(MIRType_String))
+    if (!index->mightBeType(MIRType_Int32) &&
+        !index->mightBeType(MIRType_String) &&
+        !index->mightBeType(MIRType_Symbol))
+    {
         return true;
+    }
 
     // TODO: Bug 876650: remove this check:
     // Temporary disable the cache if non dense native,
@@ -8693,7 +8727,7 @@ IonBuilder::getPropTryTypedObject(bool *emitted,
                                   types::TemporaryTypeSet *resultTypes)
 {
     TypedObjectPrediction fieldPrediction;
-    int32_t fieldOffset;
+    size_t fieldOffset;
     size_t fieldIndex;
     if (!typedObjectHasField(obj, name, &fieldOffset, &fieldPrediction, &fieldIndex))
         return true;
@@ -9338,7 +9372,7 @@ IonBuilder::setPropTryTypedObject(bool *emitted, MDefinition *obj,
                                   PropertyName *name, MDefinition *value)
 {
     TypedObjectPrediction fieldPrediction;
-    int32_t fieldOffset;
+    size_t fieldOffset;
     size_t fieldIndex;
     if (!typedObjectHasField(obj, name, &fieldOffset, &fieldPrediction, &fieldIndex))
         return true;
@@ -9733,9 +9767,12 @@ IonBuilder::jsop_defvar(uint32_t index)
     PropertyName *name = script()->getName(index);
 
     // Bake in attrs.
-    unsigned attrs = JSPROP_ENUMERATE | JSPROP_PERMANENT;
+    unsigned attrs = JSPROP_ENUMERATE;
     if (JSOp(*pc) == JSOP_DEFCONST)
         attrs |= JSPROP_READONLY;
+    else
+        attrs |= JSPROP_PERMANENT;
+    JS_ASSERT(!script()->isForEval());
 
     // Pass the ScopeChain.
     JS_ASSERT(analysis().usesScopeChain());
@@ -10109,6 +10146,12 @@ IonBuilder::jsop_in_dense()
     MInitializedLength *initLength = MInitializedLength::New(alloc(), elements);
     current->add(initLength);
 
+    // If there are no holes, speculate the InArray check will not fail.
+    if (!needsHoleCheck && !failedBoundsCheck_) {
+        addBoundsCheck(idInt32, initLength);
+        return pushConstant(BooleanValue(true));
+    }
+
     // Check if id < initLength and elem[id] not a hole.
     MInArray *ins = MInArray::New(alloc(), elements, id, initLength, obj, needsHoleCheck);
 
@@ -10354,7 +10397,7 @@ IonBuilder::loadTypedObjectElements(MDefinition *typedObj,
 bool
 IonBuilder::typedObjectHasField(MDefinition *typedObj,
                                 PropertyName *name,
-                                int32_t *fieldOffset,
+                                size_t *fieldOffset,
                                 TypedObjectPrediction *fieldPrediction,
                                 size_t *fieldIndex)
 {

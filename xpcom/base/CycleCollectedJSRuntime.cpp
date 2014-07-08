@@ -492,6 +492,11 @@ CycleCollectedJSRuntime::CycleCollectedJSRuntime(JSRuntime* aParentRuntime,
   JS_SetDestroyZoneCallback(mJSRuntime, XPCStringConvert::FreeZoneCache);
   JS_SetSweepZoneCallback(mJSRuntime, XPCStringConvert::ClearZoneCache);
 
+  static js::DOMCallbacks DOMcallbacks = {
+    InstanceClassHasProtoAtDepth
+  };
+  SetDOMCallbacks(mJSRuntime, &DOMcallbacks);
+
   nsCycleCollector_registerJSRuntime(this);
 }
 
@@ -574,6 +579,7 @@ CycleCollectedJSRuntime::DescribeGCThing(bool aIsMarked, void* aThing,
     static const char trace_types[][11] = {
       "Object",
       "String",
+      "Symbol",
       "Script",
       "LazyScript",
       "IonCode",

@@ -135,6 +135,7 @@ using namespace mozilla::gfx;
 class SRGBOverrideObserver MOZ_FINAL : public nsIObserver,
                                        public nsSupportsWeakReference
 {
+    ~SRGBOverrideObserver() {}
 public:
     NS_DECL_ISUPPORTS
     NS_DECL_NSIOBSERVER
@@ -144,8 +145,6 @@ NS_IMPL_ISUPPORTS(SRGBOverrideObserver, nsIObserver, nsISupportsWeakReference)
 
 #define GFX_DOWNLOADABLE_FONTS_ENABLED "gfx.downloadable_fonts.enabled"
 
-#define GFX_PREF_HARFBUZZ_SCRIPTS "gfx.font_rendering.harfbuzz.scripts"
-#define HARFBUZZ_SCRIPTS_DEFAULT  mozilla::unicode::SHAPING_DEFAULT
 #define GFX_PREF_FALLBACK_USE_CMAPS  "gfx.font_rendering.fallback.always_use_cmaps"
 
 #define GFX_PREF_OPENTYPE_SVG "gfx.font_rendering.opentype_svg.enabled"
@@ -180,6 +179,7 @@ static const char* kObservedPrefs[] = {
 
 class FontPrefsObserver MOZ_FINAL : public nsIObserver
 {
+    ~FontPrefsObserver() {}
 public:
     NS_DECL_ISUPPORTS
     NS_DECL_NSIOBSERVER
@@ -204,6 +204,7 @@ FontPrefsObserver::Observe(nsISupports *aSubject,
 
 class MemoryPressureObserver MOZ_FINAL : public nsIObserver
 {
+    ~MemoryPressureObserver() {}
 public:
     NS_DECL_ISUPPORTS
     NS_DECL_NSIOBSERVER
@@ -263,7 +264,6 @@ gfxPlatform::gfxPlatform()
   : mAzureCanvasBackendCollector(MOZ_THIS_IN_INITIALIZER_LIST(),
                                  &gfxPlatform::GetAzureBackendInfo)
 {
-    mUseHarfBuzzScripts = UNINITIALIZED_VALUE;
     mAllowDownloadableFonts = UNINITIALIZED_VALUE;
     mFallbackUsesCmaps = UNINITIALIZED_VALUE;
 
@@ -514,10 +514,12 @@ gfxPlatform::InitLayersIPC()
         XRE_GetProcessType() == GeckoProcessType_Default)
     {
         mozilla::layers::CompositorParent::StartUp();
+#ifndef MOZ_WIDGET_GONK
         if (gfxPrefs::AsyncVideoEnabled()) {
             mozilla::layers::ImageBridgeChild::StartUp();
         }
-#ifdef MOZ_WIDGET_GONK
+#else
+        mozilla::layers::ImageBridgeChild::StartUp();
         SharedBufferManagerChild::StartUp();
 #endif
     }
@@ -1015,11 +1017,18 @@ TemporaryRef<DrawTarget>
 gfxPlatform::CreateDrawTargetForData(unsigned char* aData, const IntSize& aSize, int32_t aStride, SurfaceFormat aFormat)
 {
   NS_ASSERTION(mContentBackend != BackendType::NONE, "No backend.");
-  if (mContentBackend == BackendType::CAIRO) {
-    nsRefPtr<gfxImageSurface> image = new gfxImageSurface(aData, gfxIntSize(aSize.width, aSize.height), aStride, SurfaceFormatToImageFormat(aFormat));
-    return Factory::CreateDrawTargetForCairoSurface(image->CairoSurface(), aSize);
+
+  RefPtr<DrawTarget> dt = Factory::CreateDrawTargetForData(mContentBackend,
+                                                           aData, aSize,
+                                                           aStride, aFormat);
+  if (!dt) {
+    // Factory::CreateDrawTargetForData does not support mContentBackend; retry
+    // with BackendType::CAIRO:
+    dt = Factory::CreateDrawTargetForData(BackendType::CAIRO,
+                                          aData, aSize,
+                                          aStride, aFormat);
   }
-  return Factory::CreateDrawTargetForData(mContentBackend, aData, aSize, aStride, aFormat);
+  return dt.forget();
 }
 
 /* static */ BackendType
@@ -1120,18 +1129,6 @@ gfxPlatform::UseGraphiteShaping()
     }
 
     return mGraphiteShapingEnabled;
-}
-
-bool
-gfxPlatform::UseHarfBuzzForScript(int32_t aScriptCode)
-{
-    if (mUseHarfBuzzScripts == UNINITIALIZED_VALUE) {
-        mUseHarfBuzzScripts = Preferences::GetInt(GFX_PREF_HARFBUZZ_SCRIPTS, HARFBUZZ_SCRIPTS_DEFAULT);
-    }
-
-    int32_t shapingType = mozilla::unicode::ScriptShapingType(aScriptCode);
-
-    return (mUseHarfBuzzScripts & shapingType) != 0;
 }
 
 gfxFontEntry*
@@ -1868,9 +1865,6 @@ gfxPlatform::FontsPrefsChanged(const char *aPref)
     } else if (!strcmp(GFX_PREF_GRAPHITE_SHAPING, aPref)) {
         mGraphiteShapingEnabled = UNINITIALIZED_VALUE;
         FlushFontAndWordCaches();
-    } else if (!strcmp(GFX_PREF_HARFBUZZ_SCRIPTS, aPref)) {
-        mUseHarfBuzzScripts = UNINITIALIZED_VALUE;
-        FlushFontAndWordCaches();
     } else if (!strcmp(BIDI_NUMERAL_PREF, aPref)) {
         mBidiNumeralOption = UNINITIALIZED_VALUE;
     } else if (!strcmp(GFX_PREF_OPENTYPE_SVG, aPref)) {
@@ -2017,12 +2011,12 @@ InitLayersAccelerationPrefs()
       if (gfxInfo) {
         int32_t status;
         if (NS_SUCCEEDED(gfxInfo->GetFeatureStatus(nsIGfxInfo::FEATURE_DIRECT3D_9_LAYERS, &status))) {
-          if (status == nsIGfxInfo::FEATURE_NO_INFO) {
+          if (status == nsIGfxInfo::FEATURE_STATUS_OK) {
             sLayersSupportsD3D9 = true;
           }
         }
         if (NS_SUCCEEDED(gfxInfo->GetFeatureStatus(nsIGfxInfo::FEATURE_DIRECT3D_11_LAYERS, &status))) {
-          if (status == nsIGfxInfo::FEATURE_NO_INFO) {
+          if (status == nsIGfxInfo::FEATURE_STATUS_OK) {
             sLayersSupportsD3D11 = true;
           }
         }

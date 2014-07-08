@@ -5,6 +5,7 @@
 
 #include "CameraPreferences.h"
 #include "CameraCommon.h"
+#include "mozilla/ArrayUtils.h"
 #include "mozilla/Monitor.h"
 #include "mozilla/StaticPtr.h"
 #include "mozilla/Preferences.h"
@@ -129,13 +130,9 @@ CameraPreferences::PreferenceChanged(const char* aPref, void* aClosure)
       return;
   }
 
-#ifdef DEBUG
   if (NS_FAILED(rv)) {
-    nsCString msg;
-    msg.AppendPrintf("Failed to update pref '%s' (0x%x)\n", aPref, rv);
-    NS_WARNING(msg.get());
+    DOM_CAMERA_LOGE("Failed to get pref '%s' (0x%x)\n", aPref, rv);
   }
-#endif
 }
 
 /* static */

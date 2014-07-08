@@ -45,7 +45,7 @@ LIRGenerator::visitParameter(MParameter *param)
         offset = 1 + param->index();
 
     LParameter *ins = new(alloc()) LParameter;
-    if (!defineBox(ins, param, LDefinition::PRESET))
+    if (!defineBox(ins, param, LDefinition::FIXED))
         return false;
 
     offset *= sizeof(Value);
@@ -118,13 +118,7 @@ bool
 LIRGenerator::visitCheckOverRecursed(MCheckOverRecursed *ins)
 {
     LCheckOverRecursed *lir = new(alloc()) LCheckOverRecursed();
-
-    if (!add(lir, ins))
-        return false;
-    if (!assignSafepoint(lir, ins))
-        return false;
-
-    return true;
+    return add(lir, ins) && assignSafepoint(lir, ins);
 }
 
 bool
@@ -235,13 +229,6 @@ LIRGenerator::visitNewStringObject(MNewStringObject *ins)
 
     LNewStringObject *lir = new(alloc()) LNewStringObject(useRegister(ins->input()), temp());
     return define(lir, ins) && assignSafepoint(lir, ins);
-}
-
-bool
-LIRGenerator::visitAbortPar(MAbortPar *ins)
-{
-    LAbortPar *lir = new(alloc()) LAbortPar();
-    return add(lir, ins);
 }
 
 bool
@@ -512,6 +499,13 @@ LIRGenerator::visitBail(MBail *bail)
 }
 
 bool
+LIRGenerator::visitUnreachable(MUnreachable *unreachable)
+{
+    LUnreachable *lir = new(alloc()) LUnreachable();
+    return add(lir, unreachable);
+}
+
+bool
 LIRGenerator::visitAssertFloat32(MAssertFloat32 *assertion)
 {
     MIRType type = assertion->input()->type();
@@ -628,27 +622,58 @@ ReorderComparison(JSOp op, MDefinition **lhsp, MDefinition **rhsp)
     return op;
 }
 
+static bool
+ShouldReorderCommutative(MDefinition *lhs, MDefinition *rhs, MInstruction *ins)
+{
+    // lhs and rhs are used by the commutative operator.
+    JS_ASSERT(lhs->hasDefUses());
+    JS_ASSERT(rhs->hasDefUses());
+
+    // Ensure that if there is a constant, then it is in rhs.
+    if (rhs->isConstant())
+        return false;
+    if (lhs->isConstant())
+        return true;
+
+    // Since clobbering binary operations clobber the left operand, prefer a
+    // non-constant lhs operand with no further uses. To be fully precise, we
+    // should check whether this is the *last* use, but checking hasOneDefUse()
+    // is a decent approximation which doesn't require any extra analysis.
+    bool rhsSingleUse = rhs->hasOneDefUse();
+    bool lhsSingleUse = lhs->hasOneDefUse();
+    if (rhsSingleUse) {
+        if (!lhsSingleUse)
+            return true;
+    } else {
+        if (lhsSingleUse)
+            return false;
+    }
+
+    // If this is a reduction-style computation, such as
+    //
+    //   sum = 0;
+    //   for (...)
+    //      sum += ...;
+    //
+    // put the phi on the left to promote coalescing. This is fairly specific.
+    if (rhsSingleUse &&
+        rhs->isPhi() &&
+        rhs->block()->isLoopHeader() &&
+        ins == rhs->toPhi()->getLoopBackedgeOperand())
+    {
+        return true;
+    }
+
+    return false;
+}
+
 static void
-ReorderCommutative(MDefinition **lhsp, MDefinition **rhsp)
+ReorderCommutative(MDefinition **lhsp, MDefinition **rhsp, MInstruction *ins)
 {
     MDefinition *lhs = *lhsp;
     MDefinition *rhs = *rhsp;
 
-    // Ensure that if there is a constant, then it is in rhs.
-    // In addition, since clobbering binary operations clobber the left
-    // operand, prefer a non-constant lhs operand with no further uses.
-
-    if (rhs->isConstant())
-        return;
-
-    // lhs and rhs are used by the commutative operator. If they have any
-    // *other* uses besides, try to reorder to avoid clobbering them. To
-    // be fully precise, we should check whether this is the *last* use,
-    // but checking hasOneDefUse() is a decent approximation which doesn't
-    // require any extra analysis.
-    JS_ASSERT(lhs->hasDefUses());
-    JS_ASSERT(rhs->hasDefUses());
-    if (lhs->isConstant() || (rhs->hasOneDefUse() && !lhs->hasOneDefUse())) {
+    if (ShouldReorderCommutative(lhs, rhs, ins)) {
         *rhsp = lhs;
         *lhsp = rhs;
     }
@@ -663,7 +688,7 @@ LIRGenerator::visitTest(MTest *test)
 
     // String is converted to length of string in the type analysis phase (see
     // TestPolicy).
-    JS_ASSERT(opd->type() != MIRType_String);
+    MOZ_ASSERT(opd->type() != MIRType_String);
 
     if (opd->type() == MIRType_Value) {
         LDefinition temp0, temp1;
@@ -693,6 +718,10 @@ LIRGenerator::visitTest(MTest *test)
     // no payload.
     if (opd->type() == MIRType_Undefined || opd->type() == MIRType_Null)
         return add(new(alloc()) LGoto(ifFalse));
+
+    // All symbols are truthy.
+    if (opd->type() == MIRType_Symbol)
+        return add(new(alloc()) LGoto(ifTrue));
 
     // Constant Double operand.
     if (opd->type() == MIRType_Double && opd->isConstant()) {
@@ -830,7 +859,7 @@ LIRGenerator::visitTest(MTest *test)
         MDefinition *lhs = opd->getOperand(0);
         MDefinition *rhs = opd->getOperand(1);
         if (lhs->type() == MIRType_Int32 && rhs->type() == MIRType_Int32) {
-            ReorderCommutative(&lhs, &rhs);
+            ReorderCommutative(&lhs, &rhs, test);
             return lowerForBitAndAndBranch(new(alloc()) LBitAndAndBranch(ifTrue, ifFalse), test, lhs, rhs);
         }
     }
@@ -1013,7 +1042,7 @@ LIRGenerator::lowerBitOp(JSOp op, MInstruction *ins)
     MDefinition *rhs = ins->getOperand(1);
 
     if (lhs->type() == MIRType_Int32 && rhs->type() == MIRType_Int32) {
-        ReorderCommutative(&lhs, &rhs);
+        ReorderCommutative(&lhs, &rhs, ins);
         return lowerForALU(new(alloc()) LBitOpI(op), ins, lhs, rhs);
     }
 
@@ -1218,7 +1247,7 @@ LIRGenerator::visitRound(MRound *ins)
         return define(lir, ins);
     }
 
-    LRoundF *lir = new (alloc()) LRoundF(useRegister(ins->num()), tempDouble());
+    LRoundF *lir = new (alloc()) LRoundF(useRegister(ins->num()), tempFloat32());
     if (!assignSnapshot(lir, Bailout_Round))
         return false;
     return define(lir, ins);
@@ -1230,7 +1259,7 @@ LIRGenerator::visitMinMax(MMinMax *ins)
     MDefinition *first = ins->getOperand(0);
     MDefinition *second = ins->getOperand(1);
 
-    ReorderCommutative(&first, &second);
+    ReorderCommutative(&first, &second, ins);
 
     if (ins->specialization() == MIRType_Int32) {
         LMinMaxI *lir = new(alloc()) LMinMaxI(useRegisterAtStart(first), useRegisterOrConstant(second));
@@ -1392,7 +1421,7 @@ LIRGenerator::visitAdd(MAdd *ins)
 
     if (ins->specialization() == MIRType_Int32) {
         JS_ASSERT(lhs->type() == MIRType_Int32);
-        ReorderCommutative(&lhs, &rhs);
+        ReorderCommutative(&lhs, &rhs, ins);
         LAddI *lir = new(alloc()) LAddI;
 
         if (ins->fallible() && !assignSnapshot(lir, Bailout_OverflowInvalidate))
@@ -1407,13 +1436,13 @@ LIRGenerator::visitAdd(MAdd *ins)
 
     if (ins->specialization() == MIRType_Double) {
         JS_ASSERT(lhs->type() == MIRType_Double);
-        ReorderCommutative(&lhs, &rhs);
+        ReorderCommutative(&lhs, &rhs, ins);
         return lowerForFPU(new(alloc()) LMathD(JSOP_ADD), ins, lhs, rhs);
     }
 
     if (ins->specialization() == MIRType_Float32) {
         JS_ASSERT(lhs->type() == MIRType_Float32);
-        ReorderCommutative(&lhs, &rhs);
+        ReorderCommutative(&lhs, &rhs, ins);
         return lowerForFPU(new(alloc()) LMathF(JSOP_ADD), ins, lhs, rhs);
     }
 
@@ -1462,7 +1491,7 @@ LIRGenerator::visitMul(MMul *ins)
 
     if (ins->specialization() == MIRType_Int32) {
         JS_ASSERT(lhs->type() == MIRType_Int32);
-        ReorderCommutative(&lhs, &rhs);
+        ReorderCommutative(&lhs, &rhs, ins);
 
         // If our RHS is a constant -1 and we don't have to worry about
         // overflow, we can optimize to an LNegI.
@@ -1473,7 +1502,7 @@ LIRGenerator::visitMul(MMul *ins)
     }
     if (ins->specialization() == MIRType_Double) {
         JS_ASSERT(lhs->type() == MIRType_Double);
-        ReorderCommutative(&lhs, &rhs);
+        ReorderCommutative(&lhs, &rhs, ins);
 
         // If our RHS is a constant -1.0, we can optimize to an LNegD.
         if (rhs->isConstant() && rhs->toConstant()->value() == DoubleValue(-1.0))
@@ -1483,7 +1512,7 @@ LIRGenerator::visitMul(MMul *ins)
     }
     if (ins->specialization() == MIRType_Float32) {
         JS_ASSERT(lhs->type() == MIRType_Float32);
-        ReorderCommutative(&lhs, &rhs);
+        ReorderCommutative(&lhs, &rhs, ins);
 
         // We apply the same optimizations as for doubles
         if (rhs->isConstant() && rhs->toConstant()->value() == Float32Value(-1.0f))
@@ -1831,9 +1860,10 @@ LIRGenerator::visitToInt32(MToInt32 *convert)
       }
 
       case MIRType_String:
+      case MIRType_Symbol:
       case MIRType_Object:
       case MIRType_Undefined:
-        // Objects might be effectful. Undefined coerces to NaN, not int32.
+        // Objects might be effectful. Undefined and symbols coerce to NaN, not int32.
         MOZ_ASSUME_UNREACHABLE("ToInt32 invalid input type");
         return false;
 
@@ -1861,6 +1891,7 @@ LIRGenerator::visitTruncateToInt32(MTruncateToInt32 *truncate)
 
       case MIRType_Null:
       case MIRType_Undefined:
+      case MIRType_Symbol:
         return define(new(alloc()) LInteger(0), truncate);
 
       case MIRType_Int32:
@@ -2179,7 +2210,7 @@ LIRGenerator::visitGuardThreadExclusive(MGuardThreadExclusive *ins)
                                            useFixed(ins->object(), CallTempReg1),
                                            tempFixed(CallTempReg2));
     lir->setMir(ins);
-    return add(lir, ins);
+    return assignSnapshot(lir, Bailout_GuardThreadExclusive) && add(lir, ins);
 }
 
 bool
@@ -2463,6 +2494,8 @@ LIRGenerator::visitNot(MNot *ins)
       case MIRType_Undefined:
       case MIRType_Null:
         return define(new(alloc()) LInteger(1), ins);
+      case MIRType_Symbol:
+        return define(new(alloc()) LInteger(0), ins);
       case MIRType_Object: {
         // Objects that don't emulate undefined can be constant-folded.
         if (!ins->operandMightEmulateUndefined())
@@ -3083,10 +3116,11 @@ LIRGenerator::visitAssertRange(MAssertRange *ins)
         lir = new(alloc()) LAssertRangeD(useRegister(input), tempDouble());
         break;
 
-      case MIRType_Float32:
-        lir = new(alloc()) LAssertRangeF(useRegister(input), tempFloat32());
+      case MIRType_Float32: {
+        LDefinition armtemp = hasMultiAlias() ? tempFloat32() : LDefinition::BogusTemp();
+        lir = new(alloc()) LAssertRangeF(useRegister(input), tempFloat32(), armtemp);
         break;
-
+      }
       case MIRType_Value:
         lir = new(alloc()) LAssertRangeV(tempToUnbox(), tempDouble(), tempDouble());
         if (!useBox(lir, LAssertRangeV::Input, input))
@@ -3193,17 +3227,20 @@ LIRGenerator::visitSetElementCache(MSetElementCache *ins)
     // |useRegister| below.
     LInstruction *lir;
     if (ins->value()->type() == MIRType_Value) {
+        LDefinition tempF32 = hasUnaliasedDouble() ? tempFloat32() : LDefinition::BogusTemp();
         lir = new(alloc()) LSetElementCacheV(useByteOpRegister(ins->object()), tempToUnbox(),
-                                             temp(), tempDouble());
+                                             temp(), tempDouble(), tempF32);
 
         if (!useBox(lir, LSetElementCacheV::Index, ins->index()))
             return false;
         if (!useBox(lir, LSetElementCacheV::Value, ins->value()))
             return false;
     } else {
+        LDefinition tempF32 = hasUnaliasedDouble() ? tempFloat32() : LDefinition::BogusTemp();
         lir = new(alloc()) LSetElementCacheT(useByteOpRegister(ins->object()),
                                              useRegisterOrConstant(ins->value()),
-                                             tempToUnbox(), temp(), tempDouble());
+                                             tempToUnbox(), temp(), tempDouble(),
+                                             tempF32);
 
         if (!useBox(lir, LSetElementCacheT::Index, ins->index()))
             return false;
@@ -3424,6 +3461,17 @@ LIRGenerator::visitIsCallable(MIsCallable *ins)
 }
 
 bool
+LIRGenerator::visitIsObject(MIsObject *ins)
+{
+    MDefinition *opd = ins->input();
+    JS_ASSERT(opd->type() == MIRType_Value);
+    LIsObject *lir = new(alloc()) LIsObject();
+    if (!useBoxAtStart(lir, LIsObject::Input, opd))
+        return false;
+    return define(lir, ins);
+}
+
+bool
 LIRGenerator::visitHaveSameClass(MHaveSameClass *ins)
 {
     MDefinition *lhs = ins->lhs();
@@ -3477,8 +3525,10 @@ LIRGenerator::visitAsmJSReturn(MAsmJSReturn *ins)
 {
     MDefinition *rval = ins->getOperand(0);
     LAsmJSReturn *lir = new(alloc()) LAsmJSReturn;
-    if (IsFloatingPointType(rval->type()))
-        lir->setOperand(0, useFixed(rval, ReturnFloatReg));
+    if (rval->type() == MIRType_Float32)
+        lir->setOperand(0, useFixed(rval, ReturnFloat32Reg));
+    else if (rval->type() == MIRType_Double)
+        lir->setOperand(0, useFixed(rval, ReturnDoubleReg));
     else if (rval->type() == MIRType_Int32)
         lir->setOperand(0, useFixed(rval, ReturnReg));
     else

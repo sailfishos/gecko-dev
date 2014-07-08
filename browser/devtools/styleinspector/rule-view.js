@@ -1,4 +1,4 @@
-/* -*- Mode: javascript; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
 /* vim: set ts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -167,7 +167,7 @@ ElementStyle.prototype = {
         dummyElement.parentNode.removeChild(dummyElement);
       }
       this.dummyElementPromise = null;
-    });
+    }, console.error);
   },
 
   /**
@@ -511,7 +511,7 @@ Rule.prototype = {
 
       this._originalSourceStrings = sourceStrings;
       return sourceStrings;
-    });
+    }, console.error);
   },
 
   /**
@@ -1236,7 +1236,7 @@ CssRuleView.prototype = {
       value = {
         property: getPropertyNameAndValue(node).name,
         value: node.parentNode.textContent,
-        url: node.textContent,
+        url: node.href,
         enabled: prop.enabled,
         overridden: prop.overridden,
         pseudoElement: prop.rule.pseudoElement,
@@ -1395,6 +1395,7 @@ CssRuleView.prototype = {
   },
 
   destroy: function() {
+    this.isDestroyed = true;
     this.clear();
 
     gDummyPromise = null;
@@ -1405,9 +1406,9 @@ CssRuleView.prototype = {
     this._prefObserver.destroy();
 
     this.element.removeEventListener("copy", this._onCopy);
-    delete this._onCopy;
+    this._onCopy = null;
 
-    delete this._outputParser;
+    this._outputParser = null;
 
     // Remove context menu
     if (this._contextmenu) {
@@ -1623,6 +1624,10 @@ CssRuleView.prototype = {
     let seenPseudoElement = false;
     let seenNormalElement = false;
 
+    if (!this._elementStyle.rules) {
+      return;
+    }
+
     for (let rule of this._elementStyle.rules) {
       if (rule.domRule.system) {
         continue;
@@ -1692,14 +1697,23 @@ function RuleEditor(aRuleView, aRule) {
   this.doc = this.ruleView.doc;
   this.rule = aRule;
   this.isEditable = !aRule.isSystem;
+  // Flag that blocks updates of the selector and properties when it is
+  // being edited
+  this.isEditing = false;
 
   this._onNewProperty = this._onNewProperty.bind(this);
   this._newPropertyDestroy = this._newPropertyDestroy.bind(this);
+  this._onSelectorDone = this._onSelectorDone.bind(this);
 
   this._create();
 }
 
 RuleEditor.prototype = {
+  get isSelectorEditable() {
+    let toolbox = this.ruleView.inspector.toolbox;
+    return toolbox.target.client.traits.selectorEditable;
+  },
+
   _create: function() {
     this.element = this.doc.createElementNS(HTML_NS, "div");
     this.element.className = "ruleview-rule theme-separator";
@@ -1741,9 +1755,29 @@ RuleEditor.prototype = {
 
     let header = createChild(code, "div", {});
 
-    this.selectorText = createChild(header, "span", {
+    this.selectorContainer = createChild(header, "span", {
+      class: "ruleview-selectorcontainer"
+    });
+
+    this.selectorText = createChild(this.selectorContainer, "span", {
       class: "ruleview-selector theme-fg-color3"
     });
+
+    if (this.isEditable && this.rule.domRule.type !== ELEMENT_STYLE &&
+        this.isSelectorEditable) {
+      this.selectorContainer.addEventListener("click", aEvent => {
+        // Clicks within the selector shouldn't propagate any further.
+        aEvent.stopPropagation();
+      }, false);
+
+      editableField({
+        element: this.selectorText,
+        done: this._onSelectorDone,
+        stopOnShiftTab: true,
+        stopOnTab: true,
+        stopOnReturn: true
+      });
+    }
 
     this.openBrace = createChild(header, "span", {
       class: "ruleview-ruleopen",
@@ -1825,7 +1859,7 @@ RuleEditor.prototype = {
       this.rule.getOriginalSourceStrings().then((strings) => {
         sourceLabel.setAttribute("value", strings.short);
         sourceLabel.setAttribute("tooltiptext", strings.full);
-      })
+      }, console.error);
     }
   },
 
@@ -2019,6 +2053,36 @@ RuleEditor.prototype = {
     if (this.multipleAddedProperties && this.multipleAddedProperties.length) {
       this.addProperties(this.multipleAddedProperties);
     }
+  },
+
+  /**
+   * Called when the selector's inplace editor is closed.
+   * Ignores the change if the user pressed escape, otherwise
+   * commits it.
+   *
+   * @param {string} aValue
+   *        The value contained in the editor.
+   * @param {boolean} aCommit
+   *        True if the change should be applied.
+   */
+  _onSelectorDone: function(aValue, aCommit) {
+    if (!aCommit || this.isEditing || aValue === "" ||
+        aValue === this.rule.selectorText) {
+      return;
+    }
+
+    this.isEditing = true;
+
+    this.rule.domRule.modifySelector(aValue).then(isModified => {
+      this.isEditing = false;
+
+      if (isModified) {
+        this.ruleView.refreshPanel();
+      }
+    }).then(null, err => {
+      this.isEditing = false;
+      promiseWarn(err);
+    });
   }
 };
 
@@ -2256,6 +2320,10 @@ TextPropertyEditor.prototype = {
    * Populate the span based on changes to the TextProperty.
    */
   update: function() {
+    if (this.ruleEditor.ruleView.isDestroyed) {
+      return;
+    }
+
     if (this.prop.enabled) {
       this.enable.style.removeProperty("visibility");
       this.enable.setAttribute("checked", "");
@@ -2423,7 +2491,7 @@ TextPropertyEditor.prototype = {
    *        True if the change should be applied.
    */
   _onNameDone: function(aValue, aCommit) {
-    if (aCommit) {
+    if (aCommit && !this.ruleEditor.isEditing) {
       // Unlike the value editor, if a name is empty the entire property
       // should always be removed.
       if (aValue.trim() === "") {
@@ -2472,7 +2540,7 @@ TextPropertyEditor.prototype = {
    *        True if the change should be applied.
    */
    _onValueDone: function(aValue, aCommit) {
-    if (!aCommit) {
+    if (!aCommit && !this.ruleEditor.isEditing) {
        // A new property should be removed when escape is pressed.
        if (this.removeOnRevert) {
          this.remove();
@@ -2568,8 +2636,9 @@ TextPropertyEditor.prototype = {
    * @param {string} aValue The value to set the current property to.
    */
   _previewValue: function(aValue) {
-    // Since function call is throttled, we need to make sure we are still editing
-    if (!this.editing) {
+    // Since function call is throttled, we need to make sure we are still
+    // editing, and any selector modifications have been completed
+    if (!this.editing || this.ruleEditor.isEditing) {
       return;
     }
 
@@ -2805,7 +2874,13 @@ function getParentTextProperty(node) {
   if (!parent) {
     return null;
   }
-  return parent.querySelector(".ruleview-propertyvalue").textProperty;
+
+  let propValue = parent.querySelector(".ruleview-propertyvalue");
+  if (!propValue) {
+    return null;
+  }
+
+  return propValue.textProperty;
 }
 
 /**

@@ -334,6 +334,7 @@ class MacroAssembler : public MacroAssemblerSpecific
           case MIRType_Boolean:   return branchTestBoolean(cond, val, label);
           case MIRType_Int32:     return branchTestInt32(cond, val, label);
           case MIRType_String:    return branchTestString(cond, val, label);
+          case MIRType_Symbol:    return branchTestSymbol(cond, val, label);
           case MIRType_Object:    return branchTestObject(cond, val, label);
           case MIRType_Double:    return branchTestDouble(cond, val, label);
           case MIRType_MagicOptimizedArguments: // Fall through.
@@ -418,8 +419,8 @@ class MacroAssembler : public MacroAssemblerSpecific
         } else if (IsFloatingPointType(src.type())) {
             FloatRegister reg = src.typedReg().fpu();
             if (src.type() == MIRType_Float32) {
-                convertFloat32ToDouble(reg, ScratchFloatReg);
-                reg = ScratchFloatReg;
+                convertFloat32ToDouble(reg, ScratchDoubleReg);
+                reg = ScratchDoubleReg;
             }
             storeDouble(reg, dest);
         } else {
@@ -441,8 +442,8 @@ class MacroAssembler : public MacroAssemblerSpecific
     }
 
     void storeCallFloatResult(FloatRegister reg) {
-        if (reg != ReturnFloatReg)
-            moveDouble(ReturnFloatReg, reg);
+        if (reg != ReturnDoubleReg)
+            moveDouble(ReturnDoubleReg, reg);
     }
 
     void storeCallResultValue(AnyRegister dest) {
@@ -541,19 +542,17 @@ class MacroAssembler : public MacroAssemblerSpecific
             // carries a reference to a gcthing.  Need to unpack the pointer,
             // push it using ImmGCPtr, and then rematerialize the id at runtime.
 
-            // double-checking this here to ensure we don't lose sync
-            // with implementation of JSID_IS_GCTHING.
-            if (JSID_IS_OBJECT(id)) {
-                JSObject *obj = JSID_TO_OBJECT(id);
-                movePtr(ImmGCPtr(obj), scratchReg);
-                JS_ASSERT(((size_t)obj & JSID_TYPE_MASK) == 0);
-                orPtr(Imm32(JSID_TYPE_OBJECT), scratchReg);
-                Push(scratchReg);
-            } else {
+            if (JSID_IS_STRING(id)) {
                 JSString *str = JSID_TO_STRING(id);
                 JS_ASSERT(((size_t)str & JSID_TYPE_MASK) == 0);
                 JS_ASSERT(JSID_TYPE_STRING == 0x0);
                 Push(ImmGCPtr(str));
+            } else {
+                MOZ_ASSERT(JSID_IS_SYMBOL(id));
+                JS::Symbol *sym = JSID_TO_SYMBOL(id);
+                movePtr(ImmGCPtr(sym), scratchReg);
+                orPtr(Imm32(JSID_TYPE_SYMBOL), scratchReg);
+                Push(scratchReg);
             }
         } else {
             Push(ImmWord(JSID_BITS(id)));
@@ -566,8 +565,8 @@ class MacroAssembler : public MacroAssemblerSpecific
         } else if (IsFloatingPointType(v.type())) {
             FloatRegister reg = v.typedReg().fpu();
             if (v.type() == MIRType_Float32) {
-                convertFloat32ToDouble(reg, ScratchFloatReg);
-                reg = ScratchFloatReg;
+                convertFloat32ToDouble(reg, ScratchDoubleReg);
+                reg = ScratchDoubleReg;
             }
             Push(reg);
         } else {
@@ -646,6 +645,7 @@ class MacroAssembler : public MacroAssemblerSpecific
     void callPreBarrier(const T &address, MIRType type) {
         JS_ASSERT(type == MIRType_Value ||
                   type == MIRType_String ||
+                  type == MIRType_Symbol ||
                   type == MIRType_Object ||
                   type == MIRType_Shape);
         Label done;
@@ -671,6 +671,7 @@ class MacroAssembler : public MacroAssemblerSpecific
     void patchableCallPreBarrier(const T &address, MIRType type) {
         JS_ASSERT(type == MIRType_Value ||
                   type == MIRType_String ||
+                  type == MIRType_Symbol ||
                   type == MIRType_Object ||
                   type == MIRType_Shape);
 

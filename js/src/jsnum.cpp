@@ -45,7 +45,6 @@ using mozilla::MinNumberValue;
 using mozilla::NegativeInfinity;
 using mozilla::PodCopy;
 using mozilla::PositiveInfinity;
-using mozilla::Range;
 using mozilla::RangedPtr;
 
 using JS::AutoCheckCannotGC;
@@ -178,7 +177,7 @@ ComputeAccurateBinaryBaseInteger(const CharT *start, const CharT *end, int base)
 
 template <typename CharT>
 double
-js::ParseDecimalNumber(const Range<const CharT> chars)
+js::ParseDecimalNumber(const mozilla::Range<const CharT> chars)
 {
     MOZ_ASSERT(chars.length() > 0);
     uint64_t dec = 0;
@@ -196,10 +195,10 @@ js::ParseDecimalNumber(const Range<const CharT> chars)
 }
 
 template double
-js::ParseDecimalNumber(const Range<const Latin1Char> chars);
+js::ParseDecimalNumber(const mozilla::Range<const Latin1Char> chars);
 
 template double
-js::ParseDecimalNumber(const Range<const jschar> chars);
+js::ParseDecimalNumber(const mozilla::Range<const jschar> chars);
 
 template <typename CharT>
 bool
@@ -648,7 +647,7 @@ js::Int32ToString(ThreadSafeContext *cx, int32_t si)
     if (JSFlatString *str = LookupInt32ToString(cx, si))
         return str;
 
-    JSFatInlineString *str = js_NewGCFatInlineString<allowGC>(cx);
+    JSFatInlineString *str = NewGCFatInlineString<allowGC>(cx);
     if (!str)
         return nullptr;
 
@@ -883,7 +882,7 @@ num_toLocaleString_impl(JSContext *cx, CallArgs args)
         return ok;
     }
 
-    str = js_NewStringCopyN<CanGC>(cx, buf, buflen);
+    str = NewStringCopyN<CanGC>(cx, buf, buflen);
     js_free(buf);
     if (!str)
         return false;
@@ -944,7 +943,7 @@ DToStrResult(JSContext *cx, double d, JSDToStrMode mode, int precision, CallArgs
         JS_ReportOutOfMemory(cx);
         return false;
     }
-    JSString *str = js_NewStringCopyZ<CanGC>(cx, numStr);
+    JSString *str = NewStringCopyZ<CanGC>(cx, numStr);
     if (!str)
         return false;
     args.rval().setString(str);
@@ -1237,10 +1236,10 @@ js_InitNumberClass(JSContext *cx, HandleObject obj)
     if (!JS_DefineConstDoubles(cx, ctor, number_constants))
         return nullptr;
 
-    if (!DefinePropertiesAndBrand(cx, ctor, nullptr, number_static_methods))
+    if (!DefinePropertiesAndFunctions(cx, ctor, nullptr, number_static_methods))
         return nullptr;
 
-    if (!DefinePropertiesAndBrand(cx, numberProto, nullptr, number_methods))
+    if (!DefinePropertiesAndFunctions(cx, numberProto, nullptr, number_methods))
         return nullptr;
 
     if (!JS_DefineFunctions(cx, global, number_functions))
@@ -1362,7 +1361,7 @@ js_NumberToStringWithBase(ThreadSafeContext *cx, double d, int base)
                      cbuf.dbuf && cbuf.dbuf == numStr);
     }
 
-    JSFlatString *s = js_NewStringCopyZ<allowGC>(cx, numStr);
+    JSFlatString *s = NewStringCopyZ<allowGC>(cx, numStr);
 
     if (comp)
         comp->dtoaCache.cache(base, d, s);
@@ -1429,7 +1428,7 @@ js::IndexToString(JSContext *cx, uint32_t index)
     if (JSFlatString *str = c->dtoaCache.lookup(10, index))
         return str;
 
-    JSFatInlineString *str = js_NewGCFatInlineString<CanGC>(cx);
+    JSFatInlineString *str = NewGCFatInlineString<CanGC>(cx);
     if (!str)
         return nullptr;
 
@@ -1563,7 +1562,7 @@ js::NonObjectToNumberSlow(ThreadSafeContext *cx, Value v, double *out)
         return true;
     }
 
-    JS_ASSERT(v.isUndefined());
+    JS_ASSERT(v.isUndefined() || v.isSymbol());
     *out = GenericNaN();
     return true;
 }

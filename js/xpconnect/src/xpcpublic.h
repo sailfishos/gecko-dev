@@ -97,6 +97,13 @@ GetXBLScopeOrGlobal(JSContext *cx, JSObject *obj)
     return GetXBLScope(cx, obj);
 }
 
+// This function is similar to GetXBLScopeOrGlobal. However, if |obj| is a
+// chrome scope, then it will return an add-on scope if addonId is non-null.
+// Like GetXBLScopeOrGlobal, it returns the scope of |obj| if it's already a
+// content XBL scope. But it asserts that |obj| is not an add-on scope.
+JSObject *
+GetScopeForXBLExecution(JSContext *cx, JS::HandleObject obj, JSAddonId *addonId);
+
 // Returns whether XBL scopes have been explicitly disabled for code running
 // in this compartment. See the comment around mAllowContentXBLScope.
 bool
@@ -108,6 +115,12 @@ AllowContentXBLScope(JSCompartment *c);
 // not already exist.
 bool
 UseContentXBLScope(JSCompartment *c);
+
+bool
+IsInAddonScope(JSObject *obj);
+
+JSObject *
+GetAddonScope(JSContext *cx, JS::HandleObject contentScope, JSAddonId *addonId);
 
 bool
 IsSandboxPrototypeProxy(JSObject *obj);
@@ -193,11 +206,6 @@ xpc_TryUnmarkWrappedGrayObject(nsISupports* aWrappedJS);
 
 extern void
 xpc_UnmarkSkippableJSHolders();
-
-// No JS can be on the stack when this is called. Probably only useful from
-// xpcshell.
-void
-xpc_ActivateDebugMode();
 
 // readable string conversions, static methods and members only
 class XPCStringConvert

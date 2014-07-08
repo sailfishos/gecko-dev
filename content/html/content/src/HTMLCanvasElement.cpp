@@ -440,7 +440,7 @@ HTMLCanvasElement::ParseParams(JSContext* aCx,
   *usingCustomParseOptions = false;
   if (aParams.Length() == 0 && aEncoderOptions.isString()) {
     NS_NAMED_LITERAL_STRING(mozParseOptions, "-moz-parse-options:");
-    nsDependentJSString paramString;
+    nsAutoJSString paramString;
     if (!paramString.init(aCx, aEncoderOptions.toString())) {
       return NS_ERROR_FAILURE;
     }
@@ -543,15 +543,14 @@ HTMLCanvasElement::ToBlob(JSContext* aCx,
   }
 #endif
 
-  nsCOMPtr<nsIScriptContext> scriptContext =
-    GetScriptContextFromJSContext(nsContentUtils::GetCurrentJSContext());
-
   uint8_t* imageBuffer = nullptr;
   int32_t format = 0;
   if (mCurrentContext) {
     mCurrentContext->GetImageBuffer(&imageBuffer, &format);
   }
 
+  nsCOMPtr<nsIGlobalObject> global = OwnerDoc()->GetScopeObject();
+  MOZ_ASSERT(global);
   aRv = ImageEncoder::ExtractDataAsync(type,
                                        params,
                                        usingCustomParseOptions,
@@ -559,7 +558,7 @@ HTMLCanvasElement::ToBlob(JSContext* aCx,
                                        format,
                                        GetSize(),
                                        mCurrentContext,
-                                       scriptContext,
+                                       global,
                                        aCallback);
 }
 
@@ -614,8 +613,9 @@ HTMLCanvasElement::MozGetAsFileImpl(const nsAString& aName,
   }
 
   // The DOMFile takes ownership of the buffer
-  nsRefPtr<nsDOMMemoryFile> file =
-    new nsDOMMemoryFile(imgData, (uint32_t)imgSize, aName, type, PR_Now());
+  nsRefPtr<DOMFile> file =
+    DOMFile::CreateMemoryFile(imgData, (uint32_t)imgSize, aName, type,
+                              PR_Now());
 
   file.forget(aResult);
   return NS_OK;

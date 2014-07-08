@@ -19,9 +19,9 @@
 
 #include "libdisplay/GonkDisplay.h"
 #include "Framebuffer.h"
-#include "GLContext.h"                  // for GLContext
 #include "HwcUtils.h"
 #include "HwcComposer2D.h"
+#include "LayerScope.h"
 #include "mozilla/layers/LayerManagerComposite.h"
 #include "mozilla/layers/PLayerTransaction.h"
 #include "mozilla/layers/ShadowLayerUtilsGralloc.h"
@@ -69,6 +69,7 @@ static StaticRefPtr<HwcComposer2D> sInstance;
 HwcComposer2D::HwcComposer2D()
     : mHwc(nullptr)
     , mList(nullptr)
+    , mGLContext(nullptr)
     , mMaxLayerCount(0)
     , mColorFill(false)
     , mRBSwapSupport(false)
@@ -85,7 +86,7 @@ HwcComposer2D::~HwcComposer2D() {
 }
 
 int
-HwcComposer2D::Init(hwc_display_t dpy, hwc_surface_t sur)
+HwcComposer2D::Init(hwc_display_t dpy, hwc_surface_t sur, gl::GLContext* aGLContext)
 {
     MOZ_ASSERT(!Initialized());
 
@@ -123,6 +124,7 @@ HwcComposer2D::Init(hwc_display_t dpy, hwc_surface_t sur)
 
     mDpy = dpy;
     mSur = sur;
+    mGLContext = aGLContext;
 
     return 0;
 }
@@ -583,6 +585,13 @@ HwcComposer2D::TryHwComposition()
             // GPU or partial OVERLAY Composition
             return false;
         } else if (blitComposite) {
+            // Some EGLSurface implementations require glClear() on blit composition.
+            // See bug 1029856.
+            if (mGLContext) {
+                mGLContext->MakeCurrent();
+                mGLContext->fClearColor(0.0, 0.0, 0.0, 0.0);
+                mGLContext->fClear(LOCAL_GL_COLOR_BUFFER_BIT);
+            }
             // BLIT Composition, flip FB target
             GetGonkDisplay()->UpdateFBSurface(mDpy, mSur);
             FramebufferSurface* fbsurface = (FramebufferSurface*)(GetGonkDisplay()->GetFBSurface());
@@ -798,13 +807,32 @@ HwcComposer2D::TryRender(Layer* aRoot,
         return false;
     }
 
+    // Send data to LayerScope for debugging
+    SendtoLayerScope();
+
     if (!TryHwComposition()) {
         LOGD("H/W Composition failed");
+        LayerScope::CleanLayer();
         return false;
     }
 
     LOGD("Frame rendered");
     return true;
+}
+
+void
+HwcComposer2D::SendtoLayerScope()
+{
+    if (!LayerScope::CheckSendable()) {
+        return;
+    }
+
+    const int len = mList->numHwLayers;
+    for (int i = 0; i < len; ++i) {
+        LayerComposite* layer = mHwcLayerMap[i];
+        const hwc_rect_t r = mList->hwLayers[i].displayFrame;
+        LayerScope::SendLayer(layer, r.right - r.left, r.bottom - r.top);
+    }
 }
 
 } // namespace mozilla

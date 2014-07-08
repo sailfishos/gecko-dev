@@ -166,14 +166,14 @@ private:
 
 class nsGenericHTMLElementTearoff : public nsIDOMElementCSSInlineStyle
 {
+  virtual ~nsGenericHTMLElementTearoff()
+  {
+  }
+
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
 
   nsGenericHTMLElementTearoff(nsGenericHTMLElement *aElement)
     : mElement(aElement)
-  {
-  }
-
-  virtual ~nsGenericHTMLElementTearoff()
   {
   }
 
@@ -3100,9 +3100,9 @@ nsGenericHTMLElement::SetItemValue(JSContext* aCx, JS::Value aValue,
     return;
   }
 
-  binding_detail::FakeDependentString string;
+  nsAutoString string;
   JS::Rooted<JS::Value> value(aCx, aValue);
-  if (!ConvertJSValueToString(aCx, value, &value, eStringify, eStringify, string)) {
+  if (!ConvertJSValueToString(aCx, value, eStringify, eStringify, string)) {
     aError.Throw(NS_ERROR_UNEXPECTED);
     return;
   }

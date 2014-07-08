@@ -23,6 +23,7 @@
 #include "nsStyleStructInlines.h"
 #include "nsStyleTransformMatrix.h"
 #include "gfxMatrix.h"
+#include "gfxPrefs.h"
 #include "nsSVGIntegrationUtils.h"
 #include "nsLayoutUtils.h"
 #include "nsIScrollableFrame.h"
@@ -59,7 +60,6 @@
 #include <algorithm>
 
 using namespace mozilla;
-using namespace mozilla::css;
 using namespace mozilla::layers;
 using namespace mozilla::dom;
 using namespace mozilla::layout;
@@ -415,12 +415,12 @@ nsDisplayListBuilder::AddAnimationsAndTransitionsToLayer(Layer* aLayer,
   if (!content) {
     return;
   }
-  CommonElementAnimationData* et =
+  ElementAnimationCollection* transitions =
     nsTransitionManager::GetAnimationsForCompositor(content, aProperty);
-  CommonElementAnimationData* ea =
+  ElementAnimationCollection* animations =
     nsAnimationManager::GetAnimationsForCompositor(content, aProperty);
 
-  if (!ea && !et) {
+  if (!animations && !transitions) {
     return;
   }
 
@@ -475,16 +475,16 @@ nsDisplayListBuilder::AddAnimationsAndTransitionsToLayer(Layer* aLayer,
     data = null_t();
   }
 
-  if (et) {
-    AddAnimationsForProperty(aFrame, aProperty, et->mAnimations,
+  if (transitions) {
+    AddAnimationsForProperty(aFrame, aProperty, transitions->mAnimations,
                              aLayer, data, pending);
-    aLayer->SetAnimationGeneration(et->mAnimationGeneration);
+    aLayer->SetAnimationGeneration(transitions->mAnimationGeneration);
   }
 
-  if (ea) {
-    AddAnimationsForProperty(aFrame, aProperty, ea->mAnimations,
+  if (animations) {
+    AddAnimationsForProperty(aFrame, aProperty, animations->mAnimations,
                              aLayer, data, pending);
-    aLayer->SetAnimationGeneration(ea->mAnimationGeneration);
+    aLayer->SetAnimationGeneration(animations->mAnimationGeneration);
   }
 }
 
@@ -616,17 +616,6 @@ static void UnmarkFrameForDisplay(nsIFrame* aFrame) {
   }
 }
 
-static bool gPrintApzcTree = false;
-
-static bool GetApzcTreePrintPref() {
-  static bool initialized = false;
-  if (!initialized) {
-    Preferences::AddBoolVarCache(&gPrintApzcTree, "apz.printtree", gPrintApzcTree);
-    initialized = true;
-  }
-  return gPrintApzcTree;
-}
-
 static void RecordFrameMetrics(nsIFrame* aForFrame,
                                nsIFrame* aScrollFrame,
                                const nsIFrame* aReferenceFrame,
@@ -735,8 +724,8 @@ static void RecordFrameMetrics(nsIFrame* aForFrame,
   nsIFrame* frameForCompositionBoundsCalculation = aScrollFrame ? aScrollFrame : aForFrame;
   nsRect compositionBounds(frameForCompositionBoundsCalculation->GetOffsetToCrossDoc(aReferenceFrame),
                            frameForCompositionBoundsCalculation->GetSize());
-  metrics.mCompositionBounds = RoundedToInt(LayoutDeviceRect::FromAppUnits(compositionBounds, auPerDevPixel)
-                                            * layoutToParentLayerScale);
+  metrics.mCompositionBounds = LayoutDeviceRect::FromAppUnits(compositionBounds, auPerDevPixel)
+                                * layoutToParentLayerScale;
 
   // For the root scroll frame of the root content document, the above calculation
   // will yield the size of the viewport frame as the composition bounds, which
@@ -753,8 +742,8 @@ static void RecordFrameMetrics(nsIFrame* aForFrame,
     if (nsIFrame* rootFrame = presShell->GetRootFrame()) {
       if (nsView* view = rootFrame->GetView()) {
         nsRect viewBoundsAppUnits = view->GetBounds() + rootFrame->GetOffsetToCrossDoc(aReferenceFrame);
-        ParentLayerIntRect viewBounds = RoundedToInt(LayoutDeviceRect::FromAppUnits(viewBoundsAppUnits, auPerDevPixel)
-                                                     * layoutToParentLayerScale);
+        ParentLayerRect viewBounds = LayoutDeviceRect::FromAppUnits(viewBoundsAppUnits, auPerDevPixel)
+                                     * layoutToParentLayerScale;
 
         // On Android, we need to do things a bit differently to get things
         // right (see bug 983208, bug 988882). We use the bounds of the nearest
@@ -774,7 +763,7 @@ static void RecordFrameMetrics(nsIFrame* aForFrame,
         if (widget) {
           nsIntRect widgetBounds;
           widget->GetBounds(widgetBounds);
-          metrics.mCompositionBounds = ViewAs<ParentLayerPixel>(widgetBounds);
+          metrics.mCompositionBounds = ParentLayerRect(ViewAs<ParentLayerPixel>(widgetBounds));
 #ifdef MOZ_WIDGET_ANDROID
           if (viewBounds.height < metrics.mCompositionBounds.height) {
             metrics.mCompositionBounds.height = viewBounds.height;
@@ -791,7 +780,7 @@ static void RecordFrameMetrics(nsIFrame* aForFrame,
   if (scrollableFrame && !LookAndFeel::GetInt(LookAndFeel::eIntID_UseOverlayScrollbars)) {
     nsMargin sizes = scrollableFrame->GetActualScrollbarSizes();
     // Scrollbars are not subject to scaling, so CSS pixels = layer pixels for them.
-    ParentLayerIntMargin boundMargins = RoundedToInt(CSSMargin::FromAppUnits(sizes) * CSSToParentLayerScale(1.0f));
+    ParentLayerMargin boundMargins = CSSMargin::FromAppUnits(sizes) * CSSToParentLayerScale(1.0f);
     metrics.mCompositionBounds.Deflate(boundMargins);
   }
 
@@ -799,7 +788,7 @@ static void RecordFrameMetrics(nsIFrame* aForFrame,
     nsLayoutUtils::CalculateRootCompositionSize(aScrollFrame ? aScrollFrame : aForFrame,
                                                 isRootContentDocRootScrollFrame, metrics));
 
-  if (GetApzcTreePrintPref()) {
+  if (gfxPrefs::APZPrintTree()) {
     if (nsIContent* content = frameForCompositionBoundsCalculation->GetContent()) {
       nsAutoString contentDescription;
       content->Describe(contentDescription);
@@ -813,7 +802,7 @@ static void RecordFrameMetrics(nsIFrame* aForFrame,
   // in the FrameMetrics so APZ knows to provide the scroll grabbing
   // behaviour.
   if (aScrollFrame && nsContentUtils::HasScrollgrab(aScrollFrame->GetContent())) {
-    metrics.mHasScrollgrab = true;
+    metrics.SetHasScrollgrab(true);
   }
 
   aRoot->SetFrameMetrics(metrics);
@@ -4712,7 +4701,7 @@ nsDisplayOpacity::CanUseAsyncAnimations(nsDisplayListBuilder* aBuilder)
   if (nsLayoutUtils::IsAnimationLoggingEnabled()) {
     nsCString message;
     message.AppendLiteral("Performance warning: Async animation disabled because frame was not marked active for opacity animation");
-    CommonElementAnimationData::LogAsyncAnimationFailure(message,
+    ElementAnimationCollection::LogAsyncAnimationFailure(message,
                                                          Frame()->GetContent());
   }
   return false;
@@ -4742,39 +4731,39 @@ nsDisplayTransform::ShouldPrerenderTransformedContent(nsDisplayListBuilder* aBui
     if (aLogAnimations) {
       nsCString message;
       message.AppendLiteral("Performance warning: Async animation disabled because frame was not marked active for transform animation");
-      CommonElementAnimationData::LogAsyncAnimationFailure(message,
+      ElementAnimationCollection::LogAsyncAnimationFailure(message,
                                                            aFrame->GetContent());
     }
     return false;
   }
 
   nsSize refSize = aBuilder->RootReferenceFrame()->GetSize();
-  // Only prerender if the transformed frame's size (in the reference
-  // frames coordinate space) is <= the reference frame size (~viewport),
-  // allowing a 1/8th fuzz factor for shadows, borders, etc.
+  // Only prerender if the transformed frame's size is <= the
+  // reference frame size (~viewport), allowing a 1/8th fuzz factor
+  // for shadows, borders, etc.
   refSize += nsSize(refSize.width / 8, refSize.height / 8);
-  nsRect frameRect = aFrame->GetVisualOverflowRectRelativeToSelf();
-
-  frameRect =
-    nsLayoutUtils::TransformFrameRectToAncestor(aFrame, frameRect,
-                                                aBuilder->RootReferenceFrame());
-
-  if (frameRect.Size() <= refSize) {
-    return true;
+  nsSize frameSize = aFrame->GetVisualOverflowRectRelativeToSelf().Size();
+  if (frameSize <= refSize) {
+    // Bug 717521 - pre-render max 4096 x 4096 device pixels.
+    nscoord max = aFrame->PresContext()->DevPixelsToAppUnits(4096);
+    nsRect visual = aFrame->GetVisualOverflowRect();
+    if (visual.width <= max && visual.height <= max) {
+      return true;
+    }
   }
 
   if (aLogAnimations) {
     nsCString message;
     message.AppendLiteral("Performance warning: Async animation disabled because frame size (");
-    message.AppendInt(nsPresContext::AppUnitsToIntCSSPixels(frameRect.width));
+    message.AppendInt(nsPresContext::AppUnitsToIntCSSPixels(frameSize.width));
     message.AppendLiteral(", ");
-    message.AppendInt(nsPresContext::AppUnitsToIntCSSPixels(frameRect.height));
+    message.AppendInt(nsPresContext::AppUnitsToIntCSSPixels(frameSize.height));
     message.AppendLiteral(") is bigger than the viewport (");
     message.AppendInt(nsPresContext::AppUnitsToIntCSSPixels(refSize.width));
     message.AppendLiteral(", ");
     message.AppendInt(nsPresContext::AppUnitsToIntCSSPixels(refSize.height));
     message.Append(')');
-    CommonElementAnimationData::LogAsyncAnimationFailure(message,
+    ElementAnimationCollection::LogAsyncAnimationFailure(message,
                                                          aFrame->GetContent());
   }
   return false;

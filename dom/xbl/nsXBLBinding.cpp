@@ -51,6 +51,7 @@
 #include "prprf.h"
 #include "nsNodeUtils.h"
 #include "nsJSUtils.h"
+#include "nsCycleCollector.h"
 
 // Nasty hack.  Maybe we could move some of the classinfo utility methods
 // (e.g. WrapNative) over to nsContentUtils?
@@ -73,7 +74,7 @@ XBLFinalize(JSFreeOp *fop, JSObject *obj)
 {
   nsXBLDocumentInfo* docInfo =
     static_cast<nsXBLDocumentInfo*>(::JS_GetPrivate(obj));
-  nsContentUtils::DeferredFinalize(docInfo);
+  cyclecollector::DeferredFinalize(docInfo);
 }
 
 static bool
@@ -702,7 +703,7 @@ UpdateInsertionParent(XBLChildrenElement* aPoint,
   }
 
   for (size_t i = 0; i < aPoint->InsertedChildrenLength(); ++i) {
-    nsIContent* child = aPoint->mInsertedChildren[i];
+    nsIContent* child = aPoint->InsertedChild(i);
 
     MOZ_ASSERT(child->GetParentNode());
 
@@ -924,7 +925,8 @@ GetOrCreateMapEntryForPrototype(JSContext *cx, JS::Handle<JSObject*> proto)
                                                      : "__XBLClassObjectMap__";
 
   // Now, enter the XBL scope, since that's where we need to operate, and wrap
-  // the proto accordingly.
+  // the proto accordingly. We hang the map off of the content XBL scope for
+  // content, and the Window for chrome (whether add-ons are involved or not).
   JS::Rooted<JSObject*> scope(cx, xpc::GetXBLScopeOrGlobal(cx, proto));
   JS::Rooted<JSObject*> wrappedProto(cx, proto);
   JSAutoCompartment ac(cx, scope);
@@ -980,6 +982,8 @@ nsXBLBinding::DoInitJSClass(JSContext *cx,
   // but we need to make sure never to assume that the the reflector and
   // prototype are same-compartment with the bound document.
   JS::Rooted<JSObject*> global(cx, js::GetGlobalForObjectCrossCompartment(obj));
+
+  // We never store class objects in add-on scopes.
   JS::Rooted<JSObject*> xblScope(cx, xpc::GetXBLScopeOrGlobal(cx, global));
 
   JS::Rooted<JSObject*> parent_proto(cx);
@@ -1096,13 +1100,13 @@ nsXBLBinding::LookupMember(JSContext* aCx, JS::Handle<jsid> aId,
 
   // Get the string as an nsString before doing anything, so we can make
   // convenient comparisons during our search.
-  //
-  // Note: the infallibleInit call below depends on this check.
   if (!JSID_IS_STRING(aId)) {
     return true;
   }
-  nsDependentJSString name;
-  name.infallibleInit(aId);
+  nsAutoJSString name;
+  if (!name.init(aCx, JSID_TO_STRING(aId))) {
+    return false;
+  }
 
   // We have a weak reference to our bound element, so make sure it's alive.
   if (!mBoundElement || !mBoundElement->GetWrapper()) {
@@ -1117,8 +1121,12 @@ nsXBLBinding::LookupMember(JSContext* aCx, JS::Handle<jsid> aId,
   // never get here. But on the off-chance that someone adds new callsites to
   // LookupMember, we do a release-mode assertion as belt-and-braces.
   // We do a release-mode assertion here to be extra safe.
+  //
+  // This code is only called for content XBL, so we don't have to worry about
+  // add-on scopes here.
   JS::Rooted<JSObject*> boundScope(aCx,
     js::GetGlobalForObjectCrossCompartment(mBoundElement->GetWrapper()));
+  MOZ_RELEASE_ASSERT(!xpc::IsInAddonScope(boundScope));
   MOZ_RELEASE_ASSERT(!xpc::IsInContentXBLScope(boundScope));
   JS::Rooted<JSObject*> xblScope(aCx, xpc::GetXBLScope(aCx, boundScope));
   NS_ENSURE_TRUE(xblScope, false);
@@ -1128,9 +1136,7 @@ nsXBLBinding::LookupMember(JSContext* aCx, JS::Handle<jsid> aId,
   {
     JSAutoCompartment ac(aCx, xblScope);
     JS::Rooted<jsid> id(aCx, aId);
-    if (!JS_WrapId(aCx, &id) ||
-        !LookupMemberInternal(aCx, name, id, aDesc, xblScope))
-    {
+    if (!LookupMemberInternal(aCx, name, id, aDesc, xblScope)) {
       return false;
     }
   }

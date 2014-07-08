@@ -10,6 +10,7 @@
 #include "jsprf.h"
 
 #include "builtin/TypedObject.h"
+#include "gc/GCTrace.h"
 #include "jit/Bailouts.h"
 #include "jit/BaselineFrame.h"
 #include "jit/BaselineIC.h"
@@ -76,11 +77,12 @@ MacroAssembler::guardTypeSet(const Source &address, const TypeSet *types, Barrie
     JS_ASSERT(!types->unknown());
 
     Label matched;
-    types::Type tests[7] = {
+    types::Type tests[8] = {
         types::Type::Int32Type(),
         types::Type::UndefinedType(),
         types::Type::BooleanType(),
         types::Type::StringType(),
+        types::Type::SymbolType(),
         types::Type::NullType(),
         types::Type::MagicArgType(),
         types::Type::AnyObjectType()
@@ -97,7 +99,7 @@ MacroAssembler::guardTypeSet(const Source &address, const TypeSet *types, Barrie
 
     // Emit all typed tests.
     BranchType lastBranch;
-    for (size_t i = 0; i < 7; i++) {
+    for (size_t i = 0; i < mozilla::ArrayLength(tests); i++) {
         if (!types->hasType(tests[i]))
             continue;
 
@@ -283,8 +285,8 @@ StoreToTypedFloatArray(MacroAssembler &masm, int arrayType, const S &value, cons
             // See the comment in TypedArrayObjectTemplate::doubleToNative.
             masm.canonicalizeDouble(value);
 #endif
-            masm.convertDoubleToFloat32(value, ScratchFloatReg);
-            masm.storeFloat32(ScratchFloatReg, dest);
+            masm.convertDoubleToFloat32(value, ScratchFloat32Reg);
+            masm.storeFloat32(ScratchFloat32Reg, dest);
         }
         break;
       case ScalarTypeDescr::TYPE_FLOAT64:
@@ -399,8 +401,8 @@ MacroAssembler::loadFromTypedArray(int arrayType, const T &src, const ValueOpera
             }
             bind(&isDouble);
             {
-                convertUInt32ToDouble(temp, ScratchFloatReg);
-                boxDouble(ScratchFloatReg, dest);
+                convertUInt32ToDouble(temp, ScratchDoubleReg);
+                boxDouble(ScratchDoubleReg, dest);
             }
             bind(&done);
         } else {
@@ -410,16 +412,16 @@ MacroAssembler::loadFromTypedArray(int arrayType, const T &src, const ValueOpera
         }
         break;
       case ScalarTypeDescr::TYPE_FLOAT32:
-        loadFromTypedArray(arrayType, src, AnyRegister(ScratchFloatReg), dest.scratchReg(),
+        loadFromTypedArray(arrayType, src, AnyRegister(ScratchFloat32Reg), dest.scratchReg(),
                            nullptr);
         if (LIRGenerator::allowFloat32Optimizations())
-            convertFloat32ToDouble(ScratchFloatReg, ScratchFloatReg);
-        boxDouble(ScratchFloatReg, dest);
+            convertFloat32ToDouble(ScratchFloat32Reg, ScratchDoubleReg);
+        boxDouble(ScratchDoubleReg, dest);
         break;
       case ScalarTypeDescr::TYPE_FLOAT64:
-        loadFromTypedArray(arrayType, src, AnyRegister(ScratchFloatReg), dest.scratchReg(),
+        loadFromTypedArray(arrayType, src, AnyRegister(ScratchDoubleReg), dest.scratchReg(),
                            nullptr);
-        boxDouble(ScratchFloatReg, dest);
+        boxDouble(ScratchDoubleReg, dest);
         break;
       default:
         MOZ_ASSUME_UNREACHABLE("Invalid typed array type");
@@ -436,12 +438,16 @@ template void MacroAssembler::loadFromTypedArray(int arrayType, const BaseIndex 
 void
 MacroAssembler::checkAllocatorState(Label *fail)
 {
-#ifdef JS_GC_ZEAL
-    // Don't execute the inline path if gcZeal is active.
+    // Don't execute the inline path if we are tracing allocations.
+    if (js::gc::TraceEnabled())
+        jump(fail);
+
+# ifdef JS_GC_ZEAL
+    // Don't execute the inline path if gc zeal or tracing are active.
     branch32(Assembler::NotEqual,
              AbsoluteAddress(GetIonContext()->runtime->addressOfGCZeal()), Imm32(0),
              fail);
-#endif
+# endif
 
     // Don't execute the inline path if the compartment has an object metadata callback,
     // as the metadata to use for the object may vary between executions of the op.
@@ -879,6 +885,21 @@ MacroAssembler::initGCThing(Register obj, Register slots, JSObject *templateObj,
                      Address(obj, JSObject::getPrivateDataOffset(nfixed)));
         }
     }
+
+#ifdef JS_GC_TRACE
+    RegisterSet regs = RegisterSet::Volatile();
+    PushRegsInMask(regs);
+    regs.takeUnchecked(obj);
+    Register temp = regs.takeGeneral();
+
+    setupUnalignedABICall(2, temp);
+    passABIArg(obj);
+    movePtr(ImmGCPtr(templateObj->type()), temp);
+    passABIArg(temp);
+    callWithABI(JS_FUNC_TO_DATA_PTR(void *, js::gc::TraceCreateObject));
+
+    PopRegsInMask(RegisterSet::Volatile());
+#endif
 }
 
 void
@@ -1343,7 +1364,10 @@ MacroAssembler::assumeUnreachable(const char *output)
 
 static void
 Printf0_(const char *output) {
-    printf("%s", output);
+    // Use stderr instead of stdout because this is only used for debug
+    // output. stderr is less likely to interfere with the program's normal
+    // output, and it's always unbuffered.
+    fprintf(stderr, "%s", output);
 }
 
 void
@@ -1365,7 +1389,7 @@ MacroAssembler::printf(const char *output)
 static void
 Printf1_(const char *output, uintptr_t value) {
     char *line = JS_sprintf_append(nullptr, output, value);
-    printf("%s", line);
+    fprintf(stderr, "%s", line);
     js_free(line);
 }
 
@@ -1510,8 +1534,8 @@ MacroAssembler::convertInt32ValueToDouble(const Address &address, Register scrat
 {
     branchTestInt32(Assembler::NotEqual, address, done);
     unboxInt32(address, scratch);
-    convertInt32ToDouble(scratch, ScratchFloatReg);
-    storeDouble(ScratchFloatReg, address);
+    convertInt32ToDouble(scratch, ScratchDoubleReg);
+    storeDouble(ScratchDoubleReg, address);
 }
 
 void
@@ -1678,6 +1702,7 @@ MacroAssembler::convertTypedOrValueToFloatingPoint(TypedOrValueRegister src, Flo
         break;
       case MIRType_Object:
       case MIRType_String:
+      case MIRType_Symbol:
         jump(fail);
         break;
       case MIRType_Undefined:
@@ -1754,7 +1779,7 @@ MacroAssembler::convertValueToInt(ValueOperand value, MDefinition *maybeInput,
         jump(fail);
     }
 
-    // The value is null or undefined in truncation contexts - just emit 0.
+    // The value is null, undefined, or a symbol in truncation contexts - just emit 0.
     if (isNull.used())
         bind(&isNull);
     mov(ImmWord(0), output);
@@ -1894,6 +1919,7 @@ MacroAssembler::convertTypedOrValueToInt(TypedOrValueRegister src, FloatRegister
         convertDoubleToInt(temp, output, temp, nullptr, fail, behavior);
         break;
       case MIRType_String:
+      case MIRType_Symbol:
       case MIRType_Object:
         jump(fail);
         break;
@@ -1976,6 +2002,9 @@ MacroAssembler::branchEqualTypeIfNeeded(MIRType type, MDefinition *maybeDef, Reg
             break;
           case MIRType_String:
             branchTestString(Equal, tag, label);
+            break;
+          case MIRType_Symbol:
+            branchTestSymbol(Equal, tag, label);
             break;
           case MIRType_Object:
             branchTestObject(Equal, tag, label);

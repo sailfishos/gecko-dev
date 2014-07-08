@@ -316,7 +316,7 @@ public:
    * Returns whether this APZC is for an element marked with the 'scrollgrab'
    * attribute.
    */
-  bool HasScrollgrab() const { return mFrameMetrics.mHasScrollgrab; }
+  bool HasScrollgrab() const { return mFrameMetrics.GetHasScrollgrab(); }
 
   /**
    * Returns whether this APZC has room to be panned (in any direction).
@@ -806,6 +806,7 @@ public:
   bool TakeOverFling(ScreenPoint aVelocity);
 
 private:
+  friend class OverscrollableAnimation;
   friend class FlingAnimation;
   friend class OverscrollSnapBackAnimation;
   // The initial velocity of the most recent fling.

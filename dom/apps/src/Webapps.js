@@ -181,9 +181,16 @@ WebappsRegistry.prototype = {
 
   checkInstalled: function(aManifestURL) {
     let manifestURL = Services.io.newURI(aManifestURL, null, this._window.document.baseURIObject);
-    this._window.document.nodePrincipal.checkMayLoad(manifestURL, true, false);
 
     let request = this.createRequest();
+
+    try {
+      this._window.document.nodePrincipal.checkMayLoad(manifestURL, true,
+                                                       false);
+    } catch (ex) {
+      Services.DOMRequest.fireErrorAsync(request, "CROSS_ORIGIN_CHECK_NOT_ALLOWED");
+      return request;
+    }
 
     this.addMessageListeners("Webapps:CheckInstalled:Return:OK");
     cpmm.sendAsyncMessage("Webapps:CheckInstalled", { origin: this._getOrigin(this._window.location.href),
@@ -432,7 +439,11 @@ WebappsApplication.prototype = {
   },
 
   get downloadError() {
-    return new this._window.DOMError(this._downloadError || '');
+    // Only return DOMError when we have an error.
+    if (!this._downloadError) {
+      return null;
+    }
+    return new this._window.DOMError(this._downloadError);
   },
 
   download: function() {
@@ -586,7 +597,8 @@ WebappsApplication.prototype = {
       }
     }
 
-    if (aMsg.error) {
+    // Intentional use of 'in' so we unset the error if this is explicitly null.
+    if ('error' in aMsg) {
       this._downloadError = aMsg.error;
     }
 
@@ -641,6 +653,12 @@ WebappsApplication.prototype = {
         }
 
         msg.eventType.forEach((aEventType) => {
+          // If we are in a successful state clear any past errors.
+          if (aEventType === 'downloadapplied' ||
+              aEventType === 'downloadsuccess') {
+            this._downloadError = null;
+          }
+
           if ("_on" + aEventType in this) {
             this._fireEvent(aEventType);
           } else {

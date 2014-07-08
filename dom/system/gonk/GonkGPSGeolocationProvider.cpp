@@ -61,34 +61,11 @@ NS_IMPL_ISUPPORTS(GonkGPSGeolocationProvider,
                   nsISettingsServiceCallback)
 
 /* static */ GonkGPSGeolocationProvider* GonkGPSGeolocationProvider::sSingleton = nullptr;
-GpsCallbacks GonkGPSGeolocationProvider::mCallbacks = {
-  sizeof(GpsCallbacks),
-  LocationCallback,
-  StatusCallback,
-  SvStatusCallback,
-  NmeaCallback,
-  SetCapabilitiesCallback,
-  AcquireWakelockCallback,
-  ReleaseWakelockCallback,
-  CreateThreadCallback,
-#ifdef GPS_CAPABILITY_ON_DEMAND_TIME
-  RequestUtcTimeCallback,
-#endif
-};
+GpsCallbacks GonkGPSGeolocationProvider::mCallbacks;
 
 #ifdef MOZ_B2G_RIL
-AGpsCallbacks
-GonkGPSGeolocationProvider::mAGPSCallbacks = {
-  AGPSStatusCallback,
-  CreateThreadCallback,
-};
-
-AGpsRilCallbacks
-GonkGPSGeolocationProvider::mAGPSRILCallbacks = {
-  AGPSRILSetIDCallback,
-  AGPSRILRefLocCallback,
-  CreateThreadCallback,
-};
+AGpsCallbacks GonkGPSGeolocationProvider::mAGPSCallbacks;
+AGpsRilCallbacks GonkGPSGeolocationProvider::mAGPSRILCallbacks;
 #endif // MOZ_B2G_RIL
 
 void
@@ -564,6 +541,31 @@ GonkGPSGeolocationProvider::Init()
     return;
   }
 
+  if (!mCallbacks.size) {
+    mCallbacks.size = sizeof(GpsCallbacks);
+    mCallbacks.location_cb = LocationCallback;
+    mCallbacks.status_cb = StatusCallback;
+    mCallbacks.sv_status_cb = SvStatusCallback;
+    mCallbacks.nmea_cb = NmeaCallback;
+    mCallbacks.set_capabilities_cb = SetCapabilitiesCallback;
+    mCallbacks.acquire_wakelock_cb = AcquireWakelockCallback;
+    mCallbacks.release_wakelock_cb = ReleaseWakelockCallback;
+    mCallbacks.create_thread_cb = CreateThreadCallback;
+
+#ifdef GPS_CAPABILITY_ON_DEMAND_TIME
+    mCallbacks.request_utc_time_cb = RequestUtcTimeCallback;
+#endif
+
+#ifdef MOZ_B2G_RIL
+    mAGPSCallbacks.status_cb = AGPSStatusCallback;
+    mAGPSCallbacks.create_thread_cb = CreateThreadCallback;
+
+    mAGPSRILCallbacks.request_setid = AGPSRILSetIDCallback;
+    mAGPSRILCallbacks.request_refloc = AGPSRILRefLocCallback;
+    mAGPSRILCallbacks.create_thread_cb = CreateThreadCallback;
+#endif
+  }
+
   if (mGpsInterface->init(&mCallbacks) != 0) {
     return;
   }
@@ -848,8 +850,10 @@ GonkGPSGeolocationProvider::Handle(const nsAString& aName,
       NS_ENSURE_TRUE(cx, NS_OK);
 
       // NB: No need to enter a compartment to read the contents of a string.
-      nsDependentJSString apn;
-      apn.init(cx, aResult.toString());
+      nsAutoJSString apn;
+      if (!apn.init(cx, aResult.toString())) {
+        return NS_ERROR_FAILURE;
+      }
       if (!apn.IsEmpty()) {
         SetAGpsDataConn(apn);
       }

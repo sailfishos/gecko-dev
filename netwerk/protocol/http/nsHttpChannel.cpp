@@ -226,7 +226,6 @@ nsHttpChannel::nsHttpChannel()
     , mIsPartialRequest(0)
     , mHasAutoRedirectVetoNotifier(0)
     , mDidReval(false)
-    , mForcePending(false)
 {
     LOG(("Creating nsHttpChannel [this=%p]\n", this));
     mChannelCreationTime = PR_Now();
@@ -2164,56 +2163,39 @@ nsHttpChannel::ProcessPartialContent()
             rv = InstallOfflineCacheListener(mLogicalOffset);
             if (NS_FAILED(rv)) return rv;
         }
-
-        // merge any new headers with the cached response headers
-        rv = mCachedResponseHead->UpdateHeaders(mResponseHead->Headers());
-        if (NS_FAILED(rv)) return rv;
-
-        // update the cached response head
-        nsAutoCString head;
-        mCachedResponseHead->Flatten(head, true);
-        rv = mCacheEntry->SetMetaDataElement("response-head", head.get());
-        if (NS_FAILED(rv)) return rv;
-
-        UpdateInhibitPersistentCachingFlag();
-
-        rv = UpdateExpirationTime();
-        if (NS_FAILED(rv)) return rv;
-
-        mCachedContentIsPartial = false;
-        mConcurentCacheAccess = 0;
-
-        // notify observers interested in looking at a response that has been
-        // merged with any cached headers (http-on-examine-merged-response).
-        gHttpHandler->OnExamineMergedResponse(this);
-    }
-    else {
+    } else {
         // suspend the current transaction
         rv = mTransactionPump->Suspend();
         if (NS_FAILED(rv)) return rv;
+    }
 
-        // merge any new headers with the cached response headers
-        rv = mCachedResponseHead->UpdateHeaders(mResponseHead->Headers());
-        if (NS_FAILED(rv)) return rv;
+    // merge any new headers with the cached response headers
+    rv = mCachedResponseHead->UpdateHeaders(mResponseHead->Headers());
+    if (NS_FAILED(rv)) return rv;
 
-        // update the cached response head
-        nsAutoCString head;
-        mCachedResponseHead->Flatten(head, true);
-        rv = mCacheEntry->SetMetaDataElement("response-head", head.get());
-        if (NS_FAILED(rv)) return rv;
+    // update the cached response head
+    nsAutoCString head;
+    mCachedResponseHead->Flatten(head, true);
+    rv = mCacheEntry->SetMetaDataElement("response-head", head.get());
+    if (NS_FAILED(rv)) return rv;
 
-        // make the cached response be the current response
-        mResponseHead = Move(mCachedResponseHead);
+    // make the cached response be the current response
+    mResponseHead = Move(mCachedResponseHead);
 
-        UpdateInhibitPersistentCachingFlag();
+    UpdateInhibitPersistentCachingFlag();
 
-        rv = UpdateExpirationTime();
-        if (NS_FAILED(rv)) return rv;
+    rv = UpdateExpirationTime();
+    if (NS_FAILED(rv)) return rv;
 
-        // notify observers interested in looking at a response that has been
-        // merged with any cached headers (http-on-examine-merged-response).
-        gHttpHandler->OnExamineMergedResponse(this);
+    // notify observers interested in looking at a response that has been
+    // merged with any cached headers (http-on-examine-merged-response).
+    gHttpHandler->OnExamineMergedResponse(this);
 
+    if (mConcurentCacheAccess) {
+        mCachedContentIsPartial = false;
+        mConcurentCacheAccess = 0;
+        // Now we continue reading the network response.
+    } else {
         // the cached content is valid, although incomplete.
         mCachedContentIsValid = true;
         rv = ReadFromCache(false);
@@ -5581,6 +5563,8 @@ public:
     nsresult SetData(uint32_t aPostID, const nsACString& aKey);
 
 protected:
+    ~nsHttpChannelCacheKey() {}
+
     nsCOMPtr<nsISupportsPRUint32> mSupportsPRUint32;
     nsCOMPtr<nsISupportsCString> mSupportsCString;
 };
@@ -6201,24 +6185,6 @@ nsHttpChannel::GetPerformance()
       return docPerformance->GetParentPerformance();
     }
     return docPerformance;
-}
-
-void
-nsHttpChannel::ForcePending(bool aForcePending)
-{
-    // Set true here so IsPending will return true.
-    // Required for callback diversion from child back to parent. In such cases
-    // OnStopRequest can be called in the parent before callbacks are diverted
-    // back from the child to the listener in the parent.
-    mForcePending = aForcePending;
-}
-
-NS_IMETHODIMP
-nsHttpChannel::IsPending(bool *aIsPending)
-{
-    NS_ENSURE_ARG_POINTER(aIsPending);
-    *aIsPending = mIsPending || mForcePending;
-    return NS_OK;
 }
 
 } } // namespace mozilla::net

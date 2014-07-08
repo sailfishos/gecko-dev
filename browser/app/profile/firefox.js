@@ -1,4 +1,4 @@
-# -*- Mode: JavaScript; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 2 -*-
+# -*- indent-tabs-mode: nil; js-indent-level: 2 -*-
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
@@ -218,7 +218,9 @@ pref("app.update.incompatible.mode", 0);
 
 // Whether or not to attempt using the service for updates.
 #ifdef MOZ_MAINTENANCE_SERVICE
+#ifndef HAVE_64BIT_BUILD
 pref("app.update.service.enabled", true);
+#endif
 #endif
 
 // Symmetric (can be overridden by individual extensions) update preferences.
@@ -645,7 +647,7 @@ pref("accessibility.typeaheadfind.flashBar", 1);
 // plugin finder service url
 pref("pfs.datasource.url", "https://pfs.mozilla.org/plugins/PluginFinderService.php?mimetype=%PLUGIN_MIMETYPE%&appID=%APP_ID%&appVersion=%APP_VERSION%&clientOS=%CLIENT_OS%&chromeLocale=%CHROME_LOCALE%&appRelease=%APP_RELEASE%");
 
-pref("plugins.update.url", "https://www.mozilla.org/%LOCALE%/plugincheck/");
+pref("plugins.update.url", "https://www.mozilla.org/%LOCALE%/plugincheck/?utm_source=firefox-browser&utm_medium=firefox-browser&utm_campaign=plugincheck-update");
 pref("plugins.update.notifyUser", false);
 
 pref("plugins.click_to_play", true);
@@ -1434,6 +1436,7 @@ pref("devtools.editor.expandtab", true);
 pref("devtools.editor.keymap", "default");
 pref("devtools.editor.autoclosebrackets", true);
 pref("devtools.editor.detectindentation", true);
+pref("devtools.editor.autocomplete", true);
 
 // Enable the Font Inspector
 pref("devtools.fontinspector.enabled", true);
@@ -1510,6 +1513,7 @@ pref("image.mem.max_decoded_image_kb", 256000);
 #ifdef MOZ_LOOP
 pref("loop.server", "https://loop.services.mozilla.com");
 pref("loop.do_not_disturb", false);
+pref("loop.ringtone", "chrome://browser/content/loop/shared/sounds/Firefox-Long.ogg");
 #endif
 
 // serverURL to be assigned by services team
@@ -1521,9 +1525,6 @@ pref("social.manifest.facebook", "{\"origin\":\"https://www.facebook.com\",\"nam
 pref("social.sidebar.unload_timeout_ms", 10000);
 
 pref("dom.identity.enabled", false);
-
-// Turn on the CSP 1.0 parser for Content Security Policy headers
-pref("security.csp.speccompliant", true);
 
 // Block insecure active content on https pages
 pref("security.mixed_content.block_active_content", true);

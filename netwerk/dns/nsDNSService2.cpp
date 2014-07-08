@@ -250,6 +250,8 @@ nsDNSRecord::ReportUnusable(uint16_t aPort)
 class nsDNSAsyncRequest MOZ_FINAL : public nsResolveHostCallback
                                   , public nsICancelable
 {
+    ~nsDNSAsyncRequest() {}
+
 public:
     NS_DECL_THREADSAFE_ISUPPORTS
     NS_DECL_NSICANCELABLE
@@ -264,7 +266,6 @@ public:
         , mListener(listener)
         , mFlags(flags)
         , mAF(af) {}
-    ~nsDNSAsyncRequest() {}
 
     void OnLookupComplete(nsHostResolver *, nsHostRecord *, nsresult);
     // Returns TRUE if the DNS listener arg is the same as the member listener
@@ -675,15 +676,20 @@ nsDNSService::AsyncResolve(const nsACString  &hostname,
 
     const nsACString *hostPtr = &hostname;
 
+    nsAutoCString strLocalhost(NS_LITERAL_CSTRING("localhost"));
     if (localDomain) {
-        hostPtr = &(NS_LITERAL_CSTRING("localhost"));
+        hostPtr = &strLocalhost;
     }
 
     nsresult rv;
     nsAutoCString hostACE;
     if (idn && !IsASCII(*hostPtr)) {
-        if (NS_SUCCEEDED(idn->ConvertUTF8toACE(*hostPtr, hostACE)))
+        if (IsUTF8(*hostPtr) &&
+            NS_SUCCEEDED(idn->ConvertUTF8toACE(*hostPtr, hostACE))) {
             hostPtr = &hostACE;
+        } else {
+            return NS_ERROR_FAILURE;
+        }
     }
 
     // make sure JS callers get notification on the main thread
@@ -745,8 +751,12 @@ nsDNSService::CancelAsyncResolve(const nsACString  &aHostname,
 
     nsAutoCString hostACE;
     if (idn && !IsASCII(aHostname)) {
-        if (NS_SUCCEEDED(idn->ConvertUTF8toACE(aHostname, hostACE)))
+        if (IsUTF8(aHostname) &&
+            NS_SUCCEEDED(idn->ConvertUTF8toACE(aHostname, hostACE))) {
             hostname = hostACE;
+        } else {
+            return NS_ERROR_FAILURE;
+        }
     }
 
     uint16_t af = GetAFForLookup(hostname, aFlags);
@@ -784,15 +794,20 @@ nsDNSService::Resolve(const nsACString &hostname,
 
     const nsACString *hostPtr = &hostname;
 
+    nsAutoCString strLocalhost(NS_LITERAL_CSTRING("localhost"));
     if (localDomain) {
-        hostPtr = &(NS_LITERAL_CSTRING("localhost"));
+        hostPtr = &strLocalhost;
     }
 
     nsresult rv;
     nsAutoCString hostACE;
     if (idn && !IsASCII(*hostPtr)) {
-        if (NS_SUCCEEDED(idn->ConvertUTF8toACE(*hostPtr, hostACE)))
+        if (IsUTF8(*hostPtr) &&
+            NS_SUCCEEDED(idn->ConvertUTF8toACE(*hostPtr, hostACE))) {
             hostPtr = &hostACE;
+        } else {
+            return NS_ERROR_FAILURE;
+        }
     }
 
     //

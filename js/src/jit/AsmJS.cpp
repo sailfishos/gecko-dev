@@ -16,7 +16,6 @@
 #include "jsprf.h"
 #include "prmjtime.h"
 
-#include "assembler/assembler/MacroAssembler.h"
 #include "frontend/Parser.h"
 #include "jit/AsmJSLink.h"
 #include "jit/AsmJSModule.h"
@@ -275,7 +274,7 @@ FunctionStatementList(ParseNode *fn)
 static inline bool
 IsNormalObjectField(ExclusiveContext *cx, ParseNode *pn)
 {
-    JS_ASSERT(pn->isKind(PNK_COLON));
+    JS_ASSERT(pn->isKind(PNK_COLON) || pn->isKind(PNK_SHORTHAND));
     return pn->getOp() == JSOP_INITPROP &&
            BinaryLeft(pn)->isKind(PNK_NAME) &&
            BinaryLeft(pn)->name() != cx->names().proto;
@@ -291,7 +290,7 @@ ObjectNormalFieldName(ExclusiveContext *cx, ParseNode *pn)
 static inline ParseNode *
 ObjectFieldInitializer(ParseNode *pn)
 {
-    JS_ASSERT(pn->isKind(PNK_COLON));
+    JS_ASSERT(pn->isKind(PNK_COLON) || pn->isKind(PNK_SHORTHAND));
     return BinaryRight(pn);
 }
 
@@ -659,10 +658,10 @@ class ABIArgIter
     uint32_t stackBytesConsumedSoFar() const { return gen_.stackBytesConsumedSoFar(); }
 };
 
-typedef js::Vector<MIRType, 8> MIRTypeVector;
+typedef Vector<MIRType, 8> MIRTypeVector;
 typedef ABIArgIter<MIRTypeVector> ABIArgMIRTypeIter;
 
-typedef js::Vector<VarType, 8, LifoAllocPolicy<Fallible> > VarTypeVector;
+typedef Vector<VarType, 8, LifoAllocPolicy<Fallible> > VarTypeVector;
 typedef ABIArgIter<VarTypeVector> ABIArgTypeIter;
 
 class Signature
@@ -749,8 +748,8 @@ enum NeedsBoundsCheck {
 
 namespace {
 
-typedef js::Vector<PropertyName*,1> LabelVector;
-typedef js::Vector<MBasicBlock*,8> BlockVector;
+typedef Vector<PropertyName*,1> LabelVector;
+typedef Vector<MBasicBlock*,8> BlockVector;
 
 // ModuleCompiler encapsulates the compilation of an entire asm.js module. Over
 // the course of an ModuleCompiler object's lifetime, many FunctionCompiler
@@ -831,13 +830,18 @@ class MOZ_STACK_CLASS ModuleCompiler
         {}
 
         PropertyName *name() const { return name_; }
-
         bool defined() const { return defined_; }
-        void finish(uint32_t start, uint32_t end) {
+
+        void define(ModuleCompiler &m, ParseNode *fn) {
             JS_ASSERT(!defined_);
             defined_ = true;
-            srcOffset_ = start;
-            endOffset_ = end;
+
+            // The begin/end char range is relative to the beginning of the module.
+            // hence the assertions.
+            JS_ASSERT(fn->pn_pos.begin > m.moduleStart());
+            JS_ASSERT(fn->pn_pos.begin <= fn->pn_pos.end);
+            srcOffset_ = fn->pn_pos.begin - m.moduleStart();
+            endOffset_ = fn->pn_pos.end - m.moduleStart();
         }
 
         uint32_t srcOffset() const { JS_ASSERT(defined_); return srcOffset_; }
@@ -924,7 +928,7 @@ class MOZ_STACK_CLASS ModuleCompiler
         }
     };
 
-    typedef js::Vector<const Func*> FuncPtrVector;
+    typedef Vector<const Func*> FuncPtrVector;
 
     class FuncPtrTable
     {
@@ -954,7 +958,7 @@ class MOZ_STACK_CLASS ModuleCompiler
         const Func &elem(unsigned i) const { return *elems_[i]; }
     };
 
-    typedef js::Vector<FuncPtrTable> FuncPtrTableVector;
+    typedef Vector<FuncPtrTable> FuncPtrTableVector;
 
     class ExitDescriptor
     {
@@ -1017,9 +1021,9 @@ class MOZ_STACK_CLASS ModuleCompiler
 
     typedef HashMap<PropertyName*, MathBuiltin> MathNameMap;
     typedef HashMap<PropertyName*, Global*> GlobalMap;
-    typedef js::Vector<Func*> FuncVector;
-    typedef js::Vector<AsmJSGlobalAccess> GlobalAccessVector;
-    typedef js::Vector<SlowFunction> SlowFunctionVector;
+    typedef Vector<Func*> FuncVector;
+    typedef Vector<AsmJSGlobalAccess> GlobalAccessVector;
+    typedef Vector<SlowFunction> SlowFunctionVector;
 
     ExclusiveContext *             cx_;
     AsmJSParser &                  parser_;
@@ -1036,8 +1040,8 @@ class MOZ_STACK_CLASS ModuleCompiler
     FuncPtrTableVector             funcPtrTables_;
     ExitMap                        exits_;
     MathNameMap                    standardLibraryMathNames_;
-    Label                          stackOverflowLabel_;
-    Label                          interruptLabel_;
+    NonAssertingLabel              stackOverflowLabel_;
+    NonAssertingLabel              interruptLabel_;
 
     char *                         errorString_;
     uint32_t                       errorOffset_;
@@ -1096,12 +1100,6 @@ class MOZ_STACK_CLASS ModuleCompiler
         }
         if (errorOverRecursed_)
             js_ReportOverRecursed(cx_);
-
-        // Avoid spurious Label assertions on compilation failure.
-        if (!stackOverflowLabel_.bound())
-            stackOverflowLabel_.bind(0);
-        if (!interruptLabel_.bound())
-            interruptLabel_.bind(0);
     }
 
     bool init() {
@@ -1410,9 +1408,6 @@ class MOZ_STACK_CLASS ModuleCompiler
             return false;
         return exits_.add(p, Move(exitDescriptor), *exitIndex);
     }
-    bool addFunctionName(PropertyName *name, uint32_t *index) {
-        return module_->addFunctionName(name, index);
-    }
 
     // Note a constraint on the minimum size of the heap.  The heap size is
     // constrained when linking to be at least the maximum of all such constraints.
@@ -1426,58 +1421,78 @@ class MOZ_STACK_CLASS ModuleCompiler
         return moduleLifo_;
     }
 
-#if defined(MOZ_VTUNE) || defined(JS_ION_PERF)
-    bool addProfiledFunction(const Func &func, unsigned endCodeOffset) {
-        unsigned lineno = 0U, columnIndex = 0U;
-        tokenStream().srcCoords.lineNumAndColumnIndex(func.srcOffset(), &lineno, &columnIndex);
-        unsigned startCodeOffset = func.code()->offset();
-        return module_->addProfiledFunction(func.name(), startCodeOffset, endCodeOffset,
-                                            lineno, columnIndex);
-    }
-#endif
-
-#ifdef JS_ION_PERF
-    bool addPerfProfiledBlocks(AsmJSPerfSpewer &perfSpewer, const Func &func, unsigned endCodeOffset) {
-        unsigned startCodeOffset = func.code()->offset();
-        perfSpewer.noteBlocksOffsets();
-        unsigned endInlineCodeOffset = perfSpewer.endInlineCode.offset();
-        return module_->addPerfProfiledBlocks(func.name(), startCodeOffset, endInlineCodeOffset,
-                                              endCodeOffset, perfSpewer.basicBlocks());
-    }
-#endif
-
-    bool addFunctionCounts(IonScriptCounts *counts) {
-        return module_->addFunctionCounts(counts);
-    }
-
     void startFunctionBodies() {
-        JS_ASSERT(masm_.size() == 0);
         module_->startFunctionBodies();
     }
+
+    void startGeneratingFunction(Func &func, MIRGenerator &mir) {
+        // A single MacroAssembler is reused for all function compilations so
+        // that there is a single linear code segment for each module. To avoid
+        // spiking memory, a LifoAllocScope in the caller frees all MIR/LIR
+        // after each function is compiled. This method is responsible for cleaning
+        // out any dangling pointers that the MacroAssembler may have kept.
+        masm_.resetForNewCodeGenerator(mir.alloc());
+        masm_.align(CodeAlignment);
+        masm_.bind(func.code());
+    }
+
+    bool finishGeneratingFunction(Func &func, MIRGenerator &mir, CodeGenerator &codegen) {
+        JS_ASSERT(func.defined() && func.code()->bound());
+
+        uint32_t beginOffset = func.code()->offset();
+        uint32_t endOffset = masm_.currentOffset();
+        if (!module_->addFunctionCodeRange(func.name(), beginOffset, endOffset))
+            return false;
+
+        jit::IonScriptCounts *counts = codegen.extractScriptCounts();
+        if (counts && !module_->addFunctionCounts(counts)) {
+            js_delete(counts);
+            return false;
+        }
+
+#if defined(MOZ_VTUNE) || defined(JS_ION_PERF)
+        unsigned line = 0, column = 0;
+        tokenStream().srcCoords.lineNumAndColumnIndex(func.srcOffset(), &line, &column);
+        unsigned startCodeOffset = func.code()->offset();
+        unsigned endCodeOffset = masm_.currentOffset();
+        if (!module_->addProfiledFunction(func.name(), startCodeOffset, endCodeOffset, line, column))
+            return false;
+# ifdef JS_ION_PERF
+        if (PerfBlockEnabled()) {
+            // Per-block profiling info uses significantly more memory so only
+            // store this information if it is actively requested.
+            mir.perfSpewer().noteBlocksOffsets();
+            unsigned endInlineCodeOffset = mir.perfSpewer().endInlineCode.offset();
+            if (!module_->addPerfProfiledBlocks(func.name(), startCodeOffset, endInlineCodeOffset,
+                                                endCodeOffset, mir.perfSpewer().basicBlocks()))
+            {
+                return false;
+            }
+        }
+# endif
+#endif
+        return true;
+    }
+
     void finishFunctionBodies() {
         JS_ASSERT(!finishedFunctionBodies_);
         masm_.align(AsmJSPageSize);
         finishedFunctionBodies_ = true;
-        module_->finishFunctionBodies(masm_.size());
+        module_->finishFunctionBodies(masm_.currentOffset());
+    }
+
+    void startGeneratingEntry(unsigned exportIndex) {
+        module_->exportedFunction(exportIndex).initCodeOffset(masm_.currentOffset());
+    }
+    bool finishGeneratingEntry(unsigned exportIndex) {
+        return module_->addEntryCodeRange(exportIndex, masm_.currentOffset());
     }
 
     void setInterpExitOffset(unsigned exitIndex) {
-#if defined(JS_CODEGEN_ARM)
-        masm_.flush();
-#endif
-        module_->exit(exitIndex).initInterpOffset(masm_.size());
+        module_->exit(exitIndex).initInterpOffset(masm_.currentOffset());
     }
     void setIonExitOffset(unsigned exitIndex) {
-#if defined(JS_CODEGEN_ARM)
-        masm_.flush();
-#endif
-        module_->exit(exitIndex).initIonOffset(masm_.size());
-    }
-    void setEntryOffset(unsigned exportIndex) {
-#if defined(JS_CODEGEN_ARM)
-        masm_.flush();
-#endif
-        module_->exportedFunction(exportIndex).initCodeOffset(masm_.size());
+        module_->exit(exitIndex).initIonOffset(masm_.currentOffset());
     }
 
     void buildCompilationTimeReport(bool storedInCache, ScopedJSFreePtr<char> *out) {
@@ -1790,15 +1805,14 @@ class FunctionCompiler
 
   private:
     typedef HashMap<PropertyName*, Local> LocalMap;
-    typedef js::Vector<TypedValue> VarInitializerVector;
+    typedef Vector<TypedValue> VarInitializerVector;
     typedef HashMap<PropertyName*, BlockVector> LabeledBlockMap;
     typedef HashMap<ParseNode*, BlockVector> UnlabeledBlockMap;
-    typedef js::Vector<ParseNode*, 4> NodeStack;
+    typedef Vector<ParseNode*, 4> NodeStack;
 
     ModuleCompiler &       m_;
     LifoAlloc &            lifo_;
     ParseNode *            fn_;
-    uint32_t               functionNameIndex_;
 
     LocalMap               locals_;
     VarInitializerVector   varInitializers_;
@@ -1819,15 +1833,11 @@ class FunctionCompiler
     LabeledBlockMap        labeledBreaks_;
     LabeledBlockMap        labeledContinues_;
 
-    static const uint32_t NO_FUNCTION_NAME_INDEX = UINT32_MAX;
-    JS_STATIC_ASSERT(NO_FUNCTION_NAME_INDEX > CallSiteDesc::FUNCTION_NAME_INDEX_MAX);
-
   public:
     FunctionCompiler(ModuleCompiler &m, ParseNode *fn, LifoAlloc &lifo)
       : m_(m),
         lifo_(lifo),
         fn_(fn),
-        functionNameIndex_(NO_FUNCTION_NAME_INDEX),
         locals_(m.cx()),
         varInitializers_(m.cx()),
         alloc_(nullptr),
@@ -2184,7 +2194,7 @@ class FunctionCompiler
         uint32_t spIncrement_;
         Signature sig_;
         MAsmJSCall::Args regArgs_;
-        js::Vector<MAsmJSPassStackArg*> stackArgs_;
+        Vector<MAsmJSPassStackArg*> stackArgs_;
         bool childClobbers_;
 
         friend class FunctionCompiler;
@@ -2269,12 +2279,7 @@ class FunctionCompiler
         uint32_t line, column;
         m_.tokenStream().srcCoords.lineNumAndColumnIndex(call.node_->pn_pos.begin, &line, &column);
 
-        if (functionNameIndex_ == NO_FUNCTION_NAME_INDEX) {
-            if (!m_.addFunctionName(FunctionName(fn_), &functionNameIndex_))
-                return false;
-        }
-
-        CallSiteDesc desc(line, column, functionNameIndex_);
+        CallSiteDesc desc(line, column);
         MAsmJSCall *ins = MAsmJSCall::New(alloc(), desc, callee, call.regArgs_, returnType,
                                           call.spIncrement_);
         if (!ins)
@@ -5342,16 +5347,7 @@ CheckFunction(ModuleCompiler &m, LifoAlloc &lifo, MIRGenerator **mir, ModuleComp
     if (func->defined())
         return m.failName(fn, "function '%s' already defined", FunctionName(fn));
 
-    uint32_t funcBegin = fn->pn_pos.begin;
-    uint32_t funcEnd = fn->pn_pos.end;
-    // The begin/end char range is relative to the beginning of the module,
-    // hence the assertions.
-    JS_ASSERT(funcBegin > m.moduleStart());
-    JS_ASSERT(funcEnd > m.moduleStart());
-    funcBegin -= m.moduleStart();
-    funcEnd -= m.moduleStart();
-    func->finish(funcBegin, funcEnd);
-
+    func->define(m, fn);
     func->accumulateCompileTime((PRMJ_Now() - before) / PRMJ_USEC_PER_MSEC);
 
     m.parser().release(mark);
@@ -5359,7 +5355,7 @@ CheckFunction(ModuleCompiler &m, LifoAlloc &lifo, MIRGenerator **mir, ModuleComp
     // Copy the cumulative minimum heap size constraint to the MIR for use in analysis.  The length
     // is also constrained to particular lengths, so firstly round up - a larger 'heap required
     // length' can help range analysis to prove that bounds checks are not needed.
-    uint32_t len = js::RoundUpToNextValidAsmJSHeapLength(m.minHeapLength());
+    uint32_t len = RoundUpToNextValidAsmJSHeapLength(m.minHeapLength());
     m.requireHeapLengthToBeAtLeast(len);
 
     *mir = f.extractMIR();
@@ -5373,45 +5369,14 @@ GenerateCode(ModuleCompiler &m, ModuleCompiler::Func &func, MIRGenerator &mir, L
 {
     int64_t before = PRMJ_Now();
 
-    // A single MacroAssembler is reused for all function compilations so
-    // that there is a single linear code segment for each module. To avoid
-    // spiking memory, a LifoAllocScope in the caller frees all MIR/LIR
-    // after each function is compiled. This method is responsible for cleaning
-    // out any dangling pointers that the MacroAssembler may have kept.
-    m.masm().resetForNewCodeGenerator(mir.alloc());
-
-    m.masm().bind(func.code());
+    m.startGeneratingFunction(func, mir);
 
     ScopedJSDeletePtr<CodeGenerator> codegen(js_new<CodeGenerator>(&mir, &lir, &m.masm()));
     if (!codegen || !codegen->generateAsmJS(&m.stackOverflowLabel()))
         return m.fail(nullptr, "internal codegen failure (probably out of memory)");
 
-    jit::IonScriptCounts *counts = codegen->extractScriptCounts();
-    if (counts && !m.addFunctionCounts(counts)) {
-        js_delete(counts);
+    if (!m.finishGeneratingFunction(func, mir, *codegen))
         return false;
-    }
-
-#if defined(MOZ_VTUNE) || defined(JS_ION_PERF)
-    // Profiling might not be active now, but it may be activated later (perhaps
-    // after the module has been cached and reloaded from the cache). Function
-    // profiling info isn't huge, so store it always (in --enable-profiling
-    // builds, which is only Nightly builds, but default).
-    if (!m.addProfiledFunction(func, m.masm().size()))
-        return false;
-#endif
-
-#ifdef JS_ION_PERF
-    // Per-block profiling info uses significantly more memory so only store
-    // this information if it is actively requested.
-    if (PerfBlockEnabled()) {
-        if (!m.addPerfProfiledBlocks(mir.perfSpewer(), func, m.masm().size()))
-            return false;
-    }
-#endif
-
-    // Align internal function headers.
-    m.masm().align(CodeAlignment);
 
     func.accumulateCompileTime((PRMJ_Now() - before) / PRMJ_USEC_PER_MSEC);
     if (!m.maybeReportCompileTime(func))
@@ -5420,7 +5385,7 @@ GenerateCode(ModuleCompiler &m, ModuleCompiler::Func &func, MIRGenerator &mir, L
     // Unlike regular IonMonkey which links and generates a new JitCode for
     // every function, we accumulate all the functions in the module in a
     // single MacroAssembler and link at end. Linking asm.js doesn't require a
-    // CodeGenerator so we can destroy it now.
+    // CodeGenerator so we can destroy it now (via ScopedJSDeletePtr).
     return true;
 }
 
@@ -5523,11 +5488,11 @@ ParallelCompilationEnabled(ExclusiveContext *cx)
 // State of compilation as tracked and updated by the main thread.
 struct ParallelGroupState
 {
-    js::Vector<AsmJSParallelTask> &tasks;
+    Vector<AsmJSParallelTask> &tasks;
     int32_t outstandingJobs; // Good work, jobs!
     uint32_t compiledJobs;
 
-    explicit ParallelGroupState(js::Vector<AsmJSParallelTask> &tasks)
+    explicit ParallelGroupState(Vector<AsmJSParallelTask> &tasks)
       : tasks(tasks), outstandingJobs(0), compiledJobs(0)
     { }
 };
@@ -5702,12 +5667,12 @@ CheckFunctionsParallel(ModuleCompiler &m)
 
     IonSpew(IonSpew_Logs, "Can't log asm.js script. (Compiled on background thread.)");
 
-    // Saturate all helper threads plus the main thread.
-    size_t numParallelJobs = HelperThreadState().threadCount + 1;
+    // Saturate all helper threads.
+    size_t numParallelJobs = HelperThreadState().maxAsmJSCompilationThreads();
 
     // Allocate scoped AsmJSParallelTask objects. Each contains a unique
     // LifoAlloc that provides all necessary memory for compilation.
-    js::Vector<AsmJSParallelTask, 0> tasks(m.cx());
+    Vector<AsmJSParallelTask, 0> tasks(m.cx());
     if (!tasks.initCapacity(numParallelJobs))
         return false;
 
@@ -5884,24 +5849,6 @@ CheckModuleReturn(ModuleCompiler &m)
     return true;
 }
 
-// All registers except the stack pointer.
-static const RegisterSet AllRegsExceptSP =
-    RegisterSet(GeneralRegisterSet(Registers::AllMask &
-                                   ~(uint32_t(1) << Registers::StackPointer)),
-                FloatRegisterSet(FloatRegisters::AllMask));
-#if defined(JS_CODEGEN_ARM)
-// The ARM system ABI also includes d15 in the non volatile float registers.
-// Also exclude lr (a.k.a. r14) as we preserve it manually)
-static const RegisterSet NonVolatileRegs =
-    RegisterSet(GeneralRegisterSet(Registers::NonVolatileMask &
-                                   ~(uint32_t(1) << Registers::lr)),
-                FloatRegisterSet(FloatRegisters::NonVolatileMask | (1 << FloatRegisters::d15)));
-#else
-static const RegisterSet NonVolatileRegs =
-    RegisterSet(GeneralRegisterSet(Registers::NonVolatileMask),
-                FloatRegisterSet(FloatRegisters::NonVolatileMask));
-#endif
-
 static void
 LoadAsmJSActivationIntoRegister(MacroAssembler &masm, Register reg)
 {
@@ -5920,7 +5867,7 @@ LoadJSContextFromActivation(MacroAssembler &masm, Register activation, Register 
 static void
 AssertStackAlignment(MacroAssembler &masm)
 {
-    JS_ASSERT((AsmJSSizeOfRetAddr + masm.framePushed()) % StackAlignment == 0);
+    JS_ASSERT((AsmJSFrameSize + masm.framePushed()) % StackAlignment == 0);
 #ifdef DEBUG
     Label ok;
     JS_ASSERT(IsPowerOfTwo(StackAlignment));
@@ -5945,7 +5892,7 @@ StackDecrementForCall(MacroAssembler &masm, unsigned bytesToPush)
 {
     // Include extra padding so that, after pushing the bytesToPush,
     // the stack is aligned for a call instruction.
-    unsigned alreadyPushed = AsmJSSizeOfRetAddr + masm.framePushed();
+    unsigned alreadyPushed = AsmJSFrameSize + masm.framePushed();
     return AlignBytes(alreadyPushed + bytesToPush, StackAlignment) - alreadyPushed;
 }
 
@@ -5955,6 +5902,19 @@ StackDecrementForCall(MacroAssembler &masm, const VectorT &argTypes, unsigned ex
 {
     return StackDecrementForCall(masm, StackArgBytes(argTypes) + extraBytes);
 }
+
+#if defined(JS_CODEGEN_ARM)
+// The ARM system ABI also includes d15 in the non volatile float registers.
+// Also exclude lr (a.k.a. r14) as we preserve it manually)
+static const RegisterSet NonVolatileRegs =
+    RegisterSet(GeneralRegisterSet(Registers::NonVolatileMask &
+                                   ~(uint32_t(1) << Registers::lr)),
+                FloatRegisterSet(FloatRegisters::NonVolatileMask | (1 << FloatRegisters::d15)));
+#else
+static const RegisterSet NonVolatileRegs =
+    RegisterSet(GeneralRegisterSet(Registers::NonVolatileMask),
+                FloatRegisterSet(FloatRegisters::NonVolatileMask));
+#endif
 
 #if defined(JS_CODEGEN_MIPS)
 // Mips is using one more double slot due to stack alignment for double values.
@@ -5990,7 +5950,7 @@ GenerateEntry(ModuleCompiler &m, const AsmJSModule::ExportedFunction &exportedFu
     // PushRegsInMask(NonVolatileRegs).
     masm.setFramePushed(0);
 
-    // See AsmJSSizeOfRetAddr comment in Assembler-*.h.
+    // See AsmJSFrameSize comment in Assembler-shared.h.
 #if defined(JS_CODEGEN_ARM)
     masm.push(lr);
 #endif // JS_CODEGEN_ARM
@@ -6027,7 +5987,7 @@ GenerateEntry(ModuleCompiler &m, const AsmJSModule::ExportedFunction &exportedFu
     Register argv = ABIArgGenerator::NonArgReturnVolatileReg0;
     Register scratch = ABIArgGenerator::NonArgReturnVolatileReg1;
 #if defined(JS_CODEGEN_X86)
-    masm.loadPtr(Address(StackPointer, AsmJSSizeOfRetAddr + masm.framePushed()), argv);
+    masm.loadPtr(Address(StackPointer, AsmJSFrameSize + masm.framePushed()), argv);
 #else
     masm.movePtr(IntArgReg0, argv);
 #endif
@@ -6056,8 +6016,8 @@ GenerateEntry(ModuleCompiler &m, const AsmJSModule::ExportedFunction &exportedFu
                 masm.storePtr(scratch, Address(StackPointer, iter->offsetFromArgBase()));
             } else {
                 JS_ASSERT(iter.mirType() == MIRType_Double || iter.mirType() == MIRType_Float32);
-                masm.loadDouble(src, ScratchFloatReg);
-                masm.storeDouble(ScratchFloatReg, Address(StackPointer, iter->offsetFromArgBase()));
+                masm.loadDouble(src, ScratchDoubleReg);
+                masm.storeDouble(ScratchDoubleReg, Address(StackPointer, iter->offsetFromArgBase()));
             }
             break;
         }
@@ -6065,7 +6025,7 @@ GenerateEntry(ModuleCompiler &m, const AsmJSModule::ExportedFunction &exportedFu
 
     // Call into the real function.
     AssertStackAlignment(masm);
-    masm.call(CallSiteDesc::Entry(), func.code());
+    masm.call(func.code());
 
     // Pop the stack and recover the original 'argv' argument passed to the
     // trampoline (which was pushed on the stack).
@@ -6080,11 +6040,11 @@ GenerateEntry(ModuleCompiler &m, const AsmJSModule::ExportedFunction &exportedFu
         masm.storeValue(JSVAL_TYPE_INT32, ReturnReg, Address(argv, 0));
         break;
       case RetType::Float:
-        masm.convertFloat32ToDouble(ReturnFloatReg, ReturnFloatReg);
-        // Fall through as ReturnFloatReg now contains a Double
+        masm.convertFloat32ToDouble(ReturnFloat32Reg, ReturnDoubleReg);
+        // Fall through as ReturnDoubleReg now contains a Double
       case RetType::Double:
-        masm.canonicalizeDouble(ReturnFloatReg);
-        masm.storeDouble(ReturnFloatReg, Address(argv, 0));
+        masm.canonicalizeDouble(ReturnDoubleReg);
+        masm.storeDouble(ReturnDoubleReg, Address(argv, 0));
         break;
     }
 
@@ -6231,9 +6191,9 @@ FillArgumentArray(ModuleCompiler &m, const VarTypeVector &argTypes,
             } else {
                 JS_ASSERT(i.mirType() == MIRType_Double);
                 Address src(StackPointer, offsetToCallerStackArgs + i->offsetFromArgBase());
-                masm.loadDouble(src, ScratchFloatReg);
-                masm.canonicalizeDouble(ScratchFloatReg);
-                masm.storeDouble(ScratchFloatReg, dstAddr);
+                masm.loadDouble(src, ScratchDoubleReg);
+                masm.canonicalizeDouble(ScratchDoubleReg);
+                masm.storeDouble(ScratchDoubleReg, dstAddr);
             }
             break;
         }
@@ -6249,13 +6209,17 @@ GenerateFFIInterpreterExit(ModuleCompiler &m, const ModuleCompiler::ExitDescript
     m.setInterpExitOffset(exitIndex);
     masm.setFramePushed(0);
 
-    // See AsmJSSizeOfRetAddr comment in Assembler-*.h.
+    // See AsmJSFrameSize comment in Assembler-shared.h.
 #if defined(JS_CODEGEN_ARM)
     masm.push(lr);
-#endif
-#if defined(JS_CODEGEN_MIPS)
+#elif defined(JS_CODEGEN_MIPS)
     masm.push(ra);
 #endif
+
+    // Store the frame pointer in AsmJSActivation::exitFP for stack unwinding.
+    Register activation = ABIArgGenerator::NonArgReturnVolatileReg0;
+    LoadAsmJSActivationIntoRegister(masm, activation);
+    masm.storePtr(StackPointer, Address(activation, AsmJSActivation::offsetOfExitFP()));
 
     MIRType typeArray[] = { MIRType_Pointer,   // cx
                             MIRType_Pointer,   // exitDatum
@@ -6274,17 +6238,12 @@ GenerateFFIInterpreterExit(ModuleCompiler &m, const ModuleCompiler::ExitDescript
     masm.reserveStack(stackDec);
 
     // Fill the argument array.
-    unsigned offsetToCallerStackArgs = AsmJSSizeOfRetAddr + masm.framePushed();
-    Register scratch = ABIArgGenerator::NonArgReturnVolatileReg0;
+    unsigned offsetToCallerStackArgs = AsmJSFrameSize + masm.framePushed();
+    Register scratch = ABIArgGenerator::NonArgReturnVolatileReg1;
     FillArgumentArray(m, exit.sig().args(), offsetToArgv, offsetToCallerStackArgs, scratch);
 
     // Prepare the arguments for the call to InvokeFromAsmJS_*.
     ABIArgMIRTypeIter i(invokeArgTypes);
-    Register activation = ABIArgGenerator::NonArgReturnVolatileReg1;
-    LoadAsmJSActivationIntoRegister(masm, activation);
-
-    // Record sp in the AsmJSActivation for stack-walking.
-    masm.storePtr(StackPointer, Address(activation, AsmJSActivation::offsetOfExitSP()));
 
     // argument 0: cx
     if (i->kind() == ABIArg::GPR) {
@@ -6325,18 +6284,18 @@ GenerateFFIInterpreterExit(ModuleCompiler &m, const ModuleCompiler::ExitDescript
     AssertStackAlignment(masm);
     switch (exit.sig().retType().which()) {
       case RetType::Void:
-        masm.callExit(AsmJSImmPtr(AsmJSImm_InvokeFromAsmJS_Ignore), i.stackBytesConsumedSoFar());
+        masm.call(AsmJSImmPtr(AsmJSImm_InvokeFromAsmJS_Ignore));
         masm.branchTest32(Assembler::Zero, ReturnReg, ReturnReg, throwLabel);
         break;
       case RetType::Signed:
-        masm.callExit(AsmJSImmPtr(AsmJSImm_InvokeFromAsmJS_ToInt32), i.stackBytesConsumedSoFar());
+        masm.call(AsmJSImmPtr(AsmJSImm_InvokeFromAsmJS_ToInt32));
         masm.branchTest32(Assembler::Zero, ReturnReg, ReturnReg, throwLabel);
         masm.unboxInt32(argv, ReturnReg);
         break;
       case RetType::Double:
-        masm.callExit(AsmJSImmPtr(AsmJSImm_InvokeFromAsmJS_ToNumber), i.stackBytesConsumedSoFar());
+        masm.call(AsmJSImmPtr(AsmJSImm_InvokeFromAsmJS_ToNumber));
         masm.branchTest32(Assembler::Zero, ReturnReg, ReturnReg, throwLabel);
-        masm.loadDouble(argv, ReturnFloatReg);
+        masm.loadDouble(argv, ReturnDoubleReg);
         break;
       case RetType::Float:
         MOZ_ASSUME_UNREACHABLE("Float32 shouldn't be returned from a FFI");
@@ -6346,6 +6305,11 @@ GenerateFFIInterpreterExit(ModuleCompiler &m, const ModuleCompiler::ExitDescript
     // Note: the caller is IonMonkey code which means there are no non-volatile
     // registers to restore.
     masm.freeStack(stackDec);
+
+    // Clear exitFP before the frame is destroyed.
+    LoadAsmJSActivationIntoRegister(masm, activation);
+    masm.storePtr(ImmWord(0), Address(activation, AsmJSActivation::offsetOfExitFP()));
+
     masm.ret();
 }
 
@@ -6369,9 +6333,6 @@ GenerateOOLConvert(ModuleCompiler &m, RetType retType, Label *throwLabel)
     Register scratch = ABIArgGenerator::NonArgReturnVolatileReg0;
     Register activation = ABIArgGenerator::NonArgReturnVolatileReg1;
     LoadAsmJSActivationIntoRegister(masm, activation);
-
-    // Record sp in the AsmJSActivation for stack-walking.
-    masm.storePtr(StackPointer, Address(activation, AsmJSActivation::offsetOfExitSP()));
 
     // Store real arguments
     ABIArgMIRTypeIter i(callArgTypes);
@@ -6400,14 +6361,14 @@ GenerateOOLConvert(ModuleCompiler &m, RetType retType, Label *throwLabel)
     AssertStackAlignment(masm);
     switch (retType.which()) {
       case RetType::Signed:
-        masm.callExit(AsmJSImmPtr(AsmJSImm_CoerceInPlace_ToInt32), i.stackBytesConsumedSoFar());
+        masm.call(AsmJSImmPtr(AsmJSImm_CoerceInPlace_ToInt32));
         masm.branchTest32(Assembler::Zero, ReturnReg, ReturnReg, throwLabel);
         masm.unboxInt32(Address(StackPointer, offsetToArgv), ReturnReg);
         break;
       case RetType::Double:
-        masm.callExit(AsmJSImmPtr(AsmJSImm_CoerceInPlace_ToNumber), i.stackBytesConsumedSoFar());
+        masm.call(AsmJSImmPtr(AsmJSImm_CoerceInPlace_ToNumber));
         masm.branchTest32(Assembler::Zero, ReturnReg, ReturnReg, throwLabel);
-        masm.loadDouble(Address(StackPointer, offsetToArgv), ReturnFloatReg);
+        masm.loadDouble(Address(StackPointer, offsetToArgv), ReturnDoubleReg);
         break;
       default:
         MOZ_ASSUME_UNREACHABLE("Unsupported convert type");
@@ -6423,19 +6384,22 @@ GenerateFFIIonExit(ModuleCompiler &m, const ModuleCompiler::ExitDescriptor &exit
     m.setIonExitOffset(exitIndex);
     masm.setFramePushed(0);
 
-    // See AsmJSSizeOfRetAddr comment in Assembler-*.h.
-#if defined(JS_CODEGEN_X64)
-    masm.Push(HeapReg);
-#elif defined(JS_CODEGEN_ARM)
+    // See AsmJSFrameSize comment in Assembler-shared.h.
+#if defined(JS_CODEGEN_ARM)
     masm.push(lr);
-
-    // The GlobalReg (r10) and HeapReg (r11) also need to be restored before
-    // returning to asm.js code.
-    // The NANReg also needs to be restored, but is a constant and is reloaded before
-    // returning to asm.js code.
-    masm.PushRegsInMask(GeneralRegisterSet((1<<GlobalReg.code()) | (1<<HeapReg.code())));
 #elif defined(JS_CODEGEN_MIPS)
     masm.push(ra);
+#endif
+
+    // Store the frame pointer in AsmJSActivation::exitFP for stack unwinding.
+    Register activation = ABIArgGenerator::NonArgReturnVolatileReg0;
+    LoadAsmJSActivationIntoRegister(masm, activation);
+    masm.storePtr(StackPointer, Address(activation, AsmJSActivation::offsetOfExitFP()));
+
+    // Ion does not preserve nonvolatile registers, so we have to preserve them.
+#if defined(JS_CODEGEN_X64)
+    masm.Push(HeapReg);
+#elif defined(JS_CODEGEN_ARM) || defined(JS_CODEGEN_MIPS)
     masm.PushRegsInMask(GeneralRegisterSet((1<<GlobalReg.code()) | (1<<HeapReg.code())));
 #endif
 
@@ -6502,7 +6466,7 @@ GenerateFFIIonExit(ModuleCompiler &m, const ModuleCompiler::ExitDescriptor &exit
     argOffset += sizeof(Value);
 
     // 5. Fill the arguments
-    unsigned offsetToCallerStackArgs = masm.framePushed() + AsmJSSizeOfRetAddr;
+    unsigned offsetToCallerStackArgs = masm.framePushed() + AsmJSFrameSize;
     FillArgumentArray(m, exit.sig().args(), argOffset, offsetToCallerStackArgs, scratch);
     argOffset += exit.sig().args().length() * sizeof(Value);
     JS_ASSERT(argOffset == offsetToArgs + argBytes);
@@ -6533,19 +6497,6 @@ GenerateFFIIonExit(ModuleCompiler &m, const ModuleCompiler::ExitDescriptor &exit
         Register reg2 = AsmJSIonExitRegE2;
         Register reg3 = AsmJSIonExitRegE3;
 
-        LoadAsmJSActivationIntoRegister(masm, reg0);
-
-        // Record sp in the AsmJSActivation for stack-walking.
-#if defined(JS_CODEGEN_MIPS)
-        // Add a flag to indicate to AsmJSFrameIterator that we are calling
-        // into Ion, since the offset from SP to the return address is
-        // different when calling Ion vs. the native ABI.
-        masm.ma_or(reg1, StackPointer, Imm32(0x1));
-        masm.storePtr(reg1, Address(reg0, AsmJSActivation::offsetOfExitSP()));
-#else
-        masm.storePtr(StackPointer, Address(reg0, AsmJSActivation::offsetOfExitSP()));
-#endif
-
         // The following is inlined:
         //   JSContext *cx = activation->cx();
         //   Activation *act = cx->mainThread().activation();
@@ -6559,6 +6510,7 @@ GenerateFFIIonExit(ModuleCompiler &m, const ModuleCompiler::ExitDescriptor &exit
         size_t offsetOfJitTop = offsetof(JSRuntime, mainThread) + offsetof(PerThreadData, jitTop);
         size_t offsetOfJitJSContext = offsetof(JSRuntime, mainThread) +
                                       offsetof(PerThreadData, jitJSContext);
+        LoadAsmJSActivationIntoRegister(masm, reg0);
         masm.loadPtr(Address(reg0, AsmJSActivation::offsetOfContext()), reg3);
         masm.loadPtr(Address(reg3, JSContext::offsetOfRuntime()), reg0);
         masm.loadPtr(Address(reg0, offsetOfActivation), reg1);
@@ -6586,22 +6538,17 @@ GenerateFFIIonExit(ModuleCompiler &m, const ModuleCompiler::ExitDescriptor &exit
         Register reg1 = AsmJSIonExitRegD1;
         Register reg2 = AsmJSIonExitRegD2;
 
-        LoadAsmJSActivationIntoRegister(masm, reg0);
-
         // The following is inlined:
-        //   JSContext *cx = activation->cx();
-        //   Activation *act = cx->mainThread().activation();
-        //   act.active_ = false;
-        //   cx->mainThread().jitTop = prevJitTop_;
-        //   cx->mainThread().jitJSContext = prevJitJSContext_;
+        //   rt->mainThread.activation()->active_ = false;
+        //   rt->mainThread.jitTop = prevJitTop_;
+        //   rt->mainThread.jitJSContext = prevJitJSContext_;
         // On the ARM store8() uses the secondScratchReg (lr) as a temp.
         size_t offsetOfActivation = offsetof(JSRuntime, mainThread) +
                                     PerThreadData::offsetOfActivation();
         size_t offsetOfJitTop = offsetof(JSRuntime, mainThread) + offsetof(PerThreadData, jitTop);
         size_t offsetOfJitJSContext = offsetof(JSRuntime, mainThread) +
                                       offsetof(PerThreadData, jitJSContext);
-        masm.loadPtr(Address(reg0, AsmJSActivation::offsetOfContext()), reg0);
-        masm.loadPtr(Address(reg0, JSContext::offsetOfRuntime()), reg0);
+        masm.movePtr(AsmJSImmPtr(AsmJSImm_Runtime), reg0);
         masm.loadPtr(Address(reg0, offsetOfActivation), reg1);
         masm.store8(Imm32(0), Address(reg1, JitActivation::offsetOfActiveUint8()));
         masm.loadPtr(Address(reg1, JitActivation::offsetOfPrevJitTop()), reg2);
@@ -6622,11 +6569,11 @@ GenerateFFIIonExit(ModuleCompiler &m, const ModuleCompiler::ExitDescriptor &exit
       case RetType::Void:
         break;
       case RetType::Signed:
-        masm.convertValueToInt32(JSReturnOperand, ReturnFloatReg, ReturnReg, &oolConvert,
+        masm.convertValueToInt32(JSReturnOperand, ReturnDoubleReg, ReturnReg, &oolConvert,
                                  /* -0 check */ false);
         break;
       case RetType::Double:
-        masm.convertValueToDouble(JSReturnOperand, ReturnFloatReg, &oolConvert);
+        masm.convertValueToDouble(JSReturnOperand, ReturnDoubleReg, &oolConvert);
         break;
       case RetType::Float:
         MOZ_ASSUME_UNREACHABLE("Float shouldn't be returned from a FFI");
@@ -6635,13 +6582,19 @@ GenerateFFIIonExit(ModuleCompiler &m, const ModuleCompiler::ExitDescriptor &exit
 
     masm.bind(&done);
     masm.freeStack(stackDec);
+
+    // Restore non-volatile registers saved in the prologue.
 #if defined(JS_CODEGEN_X64)
     masm.Pop(HeapReg);
-#endif
-#if defined(JS_CODEGEN_ARM) || defined(JS_CODEGEN_MIPS)
+#elif defined(JS_CODEGEN_ARM) || defined(JS_CODEGEN_MIPS)
     masm.loadConstantDouble(GenericNaN(), NANReg);
     masm.PopRegsInMask(GeneralRegisterSet((1<<GlobalReg.code()) | (1<<HeapReg.code())));
 #endif
+
+    // Clear exitFP before the frame is destroyed.
+    LoadAsmJSActivationIntoRegister(masm, activation);
+    masm.storePtr(ImmWord(0), Address(activation, AsmJSActivation::offsetOfExitFP()));
+
     masm.ret();
     JS_ASSERT(masm.framePushed() == 0);
 
@@ -6682,17 +6635,19 @@ GenerateStackOverflowExit(ModuleCompiler &m, Label *throwLabel)
     masm.align(CodeAlignment);
     masm.bind(&m.stackOverflowLabel());
 
+    // The stack-overflow is checked before bumping the stack.
+    masm.setFramePushed(0);
+
+    // Store the frame pointer in AsmJSActivation::exitFP for stack unwinding.
+    Register activation = ABIArgGenerator::NonArgReturnVolatileReg0;
+    LoadAsmJSActivationIntoRegister(masm, activation);
+    masm.storePtr(StackPointer, Address(activation, AsmJSActivation::offsetOfExitFP()));
+
     MIRTypeVector argTypes(m.cx());
     argTypes.infallibleAppend(MIRType_Pointer); // cx
 
     unsigned stackDec = StackDecrementForCall(masm, argTypes, MaybeRetAddr);
     masm.reserveStack(stackDec);
-
-    Register activation = ABIArgGenerator::NonArgReturnVolatileReg0;
-    LoadAsmJSActivationIntoRegister(masm, activation);
-
-    // Record sp in the AsmJSActivation for stack-walking.
-    masm.storePtr(StackPointer, Address(activation, AsmJSActivation::offsetOfExitSP()));
 
     ABIArgMIRTypeIter i(argTypes);
 
@@ -6708,12 +6663,21 @@ GenerateStackOverflowExit(ModuleCompiler &m, Label *throwLabel)
     JS_ASSERT(i.done());
 
     AssertStackAlignment(masm);
-    masm.callExit(AsmJSImmPtr(AsmJSImm_ReportOverRecursed), i.stackBytesConsumedSoFar());
+    masm.call(AsmJSImmPtr(AsmJSImm_ReportOverRecursed));
+
+    // Clear exitFP before the frame is destroyed.
+    LoadAsmJSActivationIntoRegister(masm, activation);
+    masm.storePtr(ImmWord(0), Address(activation, AsmJSActivation::offsetOfExitFP()));
 
     // Don't worry about restoring the stack; throwLabel will pop everything.
     masm.jump(throwLabel);
     return !masm.oom();
 }
+
+static const RegisterSet AllRegsExceptSP =
+    RegisterSet(GeneralRegisterSet(Registers::AllMask &
+                                   ~(uint32_t(1) << Registers::StackPointer)),
+                FloatRegisterSet(FloatRegisters::AllMask));
 
 // The operation-callback exit is called from arbitrarily-interrupted asm.js
 // code. That means we must first save *all* registers and restore *all*
@@ -6902,10 +6866,10 @@ static bool
 GenerateStubs(ModuleCompiler &m)
 {
     for (unsigned i = 0; i < m.module().numExportedFunctions(); i++) {
-        m.setEntryOffset(i);
+        m.startGeneratingEntry(i);
         if (!GenerateEntry(m, m.module().exportedFunction(i)))
             return false;
-        if (m.masm().oom())
+        if (m.masm().oom() || !m.finishGeneratingEntry(i))
             return false;
     }
 

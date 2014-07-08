@@ -14,8 +14,6 @@
 
 using namespace js;
 
-using mozilla::Range;
-
 template <typename CharT, class Buffer>
 static CharT *
 ExtractWellSized(ExclusiveContext *cx, Buffer &cb)
@@ -57,8 +55,17 @@ StringBuffer::inflateChars()
     MOZ_ASSERT(isLatin1());
 
     TwoByteCharBuffer twoByte(cx);
-    if (!twoByte.append(latin1Chars().begin(), latin1Chars().length()))
+
+    /*
+     * Note: we don't use Vector::capacity() because it always returns a
+     * value >= sInlineCapacity. Since Latin1CharBuffer::sInlineCapacity >
+     * TwoByteCharBuffer::sInlineCapacitychars, we'd always malloc here.
+     */
+    size_t capacity = Max(reserved_, latin1Chars().length());
+    if (!twoByte.reserve(capacity))
         return false;
+
+    twoByte.infallibleAppend(latin1Chars().begin(), latin1Chars().length());
 
     cb.destroy();
     cb.construct<TwoByteCharBuffer>(Move(twoByte));
@@ -77,7 +84,7 @@ FinishStringFlat(ExclusiveContext *cx, StringBuffer &sb, Buffer &cb)
     if (!buf)
         return nullptr;
 
-    JSFlatString *str = js_NewString<CanGC>(cx, buf.get(), len);
+    JSFlatString *str = NewStringDontDeflate<CanGC>(cx, buf.get(), len);
     if (!str)
         return nullptr;
 
@@ -99,11 +106,15 @@ StringBuffer::finishString()
     JS_STATIC_ASSERT(JSFatInlineString::MAX_LENGTH_LATIN1 < Latin1CharBuffer::InlineLength);
 
     if (isLatin1()) {
-        if (JSFatInlineString::latin1LengthFits(len))
-            return NewFatInlineString<CanGC>(cx, Range<const Latin1Char>(latin1Chars().begin(), len));
+        if (JSFatInlineString::latin1LengthFits(len)) {
+            mozilla::Range<const Latin1Char> range(latin1Chars().begin(), len);
+            return NewFatInlineString<CanGC>(cx, range);
+        }
     } else {
-        if (JSFatInlineString::twoByteLengthFits(len))
-            return NewFatInlineString<CanGC>(cx, Range<const jschar>(twoByteChars().begin(), len));
+        if (JSFatInlineString::twoByteLengthFits(len)) {
+            mozilla::Range<const jschar> range(twoByteChars().begin(), len);
+            return NewFatInlineString<CanGC>(cx, range);
+        }
     }
 
     return isLatin1()
@@ -144,6 +155,10 @@ js::ValueToStringBufferSlow(JSContext *cx, const Value &arg, StringBuffer &sb)
         return BooleanToStringBuffer(v.toBoolean(), sb);
     if (v.isNull())
         return sb.append(cx->names().null);
+    if (v.isSymbol()) {
+        JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr, JSMSG_SYMBOL_TO_STRING);
+        return false;
+    }
     JS_ASSERT(v.isUndefined());
     return sb.append(cx->names().undefined);
 }

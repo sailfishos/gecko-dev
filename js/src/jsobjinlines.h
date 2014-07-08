@@ -535,6 +535,8 @@ JSObject::create(js::ExclusiveContext *cx, js::gc::AllocKind kind, js::gc::Initi
     if (span)
         obj->initializeSlotRange(0, span);
 
+    js::gc::TraceCreateObject(obj);
+
     return obj;
 }
 
@@ -569,6 +571,8 @@ JSObject::createArray(js::ExclusiveContext *cx, js::gc::AllocKind kind, js::gc::
     size_t span = shape->slotSpan();
     if (span)
         obj->initializeSlotRange(0, span);
+
+    js::gc::TraceCreateObject(obj);
 
     return &obj->as<js::ArrayObject>();
 }
@@ -664,8 +668,7 @@ namespace js {
 
 PropDesc::PropDesc(const Value &getter, const Value &setter,
                    Enumerability enumerable, Configurability configurable)
-  : descObj_(nullptr),
-    value_(UndefinedValue()),
+  : value_(UndefinedValue()),
     get_(getter), set_(setter),
     attrs(JSPROP_GETTER | JSPROP_SETTER | JSPROP_SHARED |
           (enumerable ? JSPROP_ENUMERATE : 0) |

@@ -145,6 +145,7 @@ static int64_t gCanvasAzureMemoryUsed = 0;
 // underlying surface implementations.  See bug 655638 for details.
 class Canvas2dPixelsReporter MOZ_FINAL : public nsIMemoryReporter
 {
+  ~Canvas2dPixelsReporter() {}
 public:
   NS_DECL_ISUPPORTS
 
@@ -558,7 +559,11 @@ DrawTarget* CanvasRenderingContext2D::sErrorTarget = nullptr;
 
 
 CanvasRenderingContext2D::CanvasRenderingContext2D()
-  : mForceSoftware(false), mZero(false), mOpaque(false), mResetLayer(true)
+  : mForceSoftware(false)
+  // these are the default values from the Canvas spec
+  , mWidth(300), mHeight(150)
+  , mZero(false), mOpaque(false)
+  , mResetLayer(true)
   , mIPC(false)
   , mStream(nullptr)
   , mIsEntireFrameInvalid(false)
@@ -2325,7 +2330,6 @@ CanvasRenderingContext2D::SetFont(const nsAString& font,
                      fontStyle->mFont.sizeAdjust,
                      fontStyle->mFont.systemFont,
                      printerFont,
-                     fontStyle->mFont.variant == NS_STYLE_FONT_VARIANT_SMALL_CAPS,
                      fontStyle->mFont.synthesis & NS_FONT_SYNTHESIS_WEIGHT,
                      fontStyle->mFont.synthesis & NS_FONT_SYNTHESIS_STYLE,
                      fontStyle->mFont.languageOverride);

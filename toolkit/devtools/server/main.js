@@ -1,4 +1,4 @@
-/* -*- Mode: javascript; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
 /* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -1199,6 +1199,8 @@ DebuggerServerConnection.prototype = {
    *          @return Promise
    *                  The promise is resolved when copying completes or rejected
    *                  if any (unexpected) errors occur.
+   *                  This object also emits "progress" events for each chunk
+   *                  that is copied.  See stream-utils.js.
    */
   onBulkPacket: function(packet) {
     let { actor: actorKey, type, length } = packet;

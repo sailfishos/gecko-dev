@@ -1,4 +1,4 @@
-/* -*- Mode: JavaScript; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
 /* vim:set ts=2 sw=2 sts=2 et: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -622,16 +622,17 @@ function do_throw(error, stack) {
 }
 
 function _format_stack(stack) {
+  let normalized;
   if (stack instanceof Components.interfaces.nsIStackFrame) {
-    let stack_msg = "";
-    let frame = stack;
-    while (frame != null) {
-      stack_msg += frame + "\n";
-      frame = frame.caller;
+    let frames = [];
+    for (let frame = stack; frame; frame = frame.caller) {
+      frames.push(frame.filename + ":" + frame.name + ":" + frame.lineNumber);
     }
-    return stack_msg;
+    normalized = frames.join("\n");
+  } else {
+    normalized = "" + stack;
   }
-  return "" + stack;
+  return _Task.Debugging.generateReadableStack(normalized, "    ");
 }
 
 function do_throw_todo(text, stack) {

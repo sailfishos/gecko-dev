@@ -689,16 +689,16 @@ public:
                                       false /* wants untrusted */);
   }
 
-  virtual ~VibrateWindowListener()
-  {
-  }
-
   void RemoveListener();
 
   NS_DECL_ISUPPORTS
   NS_DECL_NSIDOMEVENTLISTENER
 
 private:
+  virtual ~VibrateWindowListener()
+  {
+  }
+
   nsWeakPtr mWindow;
   nsWeakPtr mDocument;
 };
@@ -1056,6 +1056,8 @@ Navigator::GetGeolocation(ErrorResult& aRv)
 
 class BeaconStreamListener MOZ_FINAL : public nsIStreamListener
 {
+    ~BeaconStreamListener() {}
+
   public:
     BeaconStreamListener() {}
 
@@ -1250,7 +1252,7 @@ Navigator::SendBeacon(const nsAString& aUrl,
         return false;
       }
 
-      ArrayBufferView& view = aData.Value().GetAsArrayBufferView();
+      const ArrayBufferView& view = aData.Value().GetAsArrayBufferView();
       view.ComputeLengthAndData();
       rv = strStream->SetData(reinterpret_cast<char*>(view.Data()),
                               view.Length());
@@ -1558,7 +1560,7 @@ Navigator::RequestWakeLock(const nsAString &aTopic, ErrorResult& aRv)
   return pmService->NewWakeLock(aTopic, mWindow, aRv);
 }
 
-nsIDOMMozMobileMessageManager*
+MobileMessageManager*
 Navigator::GetMozMobileMessage()
 {
   if (!mMobileMessageManager) {
@@ -1566,8 +1568,8 @@ Navigator::GetMozMobileMessage()
     NS_ENSURE_TRUE(mWindow, nullptr);
     NS_ENSURE_TRUE(mWindow->GetDocShell(), nullptr);
 
-    mMobileMessageManager = new MobileMessageManager();
-    mMobileMessageManager->Init(mWindow);
+    mMobileMessageManager = new MobileMessageManager(mWindow);
+    mMobileMessageManager->Init();
   }
 
   return mMobileMessageManager;
@@ -1589,7 +1591,8 @@ Navigator::GetMozTelephony(ErrorResult& aRv)
 
 #ifdef MOZ_B2G
 already_AddRefed<Promise>
-Navigator::GetMobileIdAssertion(ErrorResult& aRv)
+Navigator::GetMobileIdAssertion(const MobileIdOptions& aOptions,
+                                ErrorResult& aRv)
 {
   if (!mWindow || !mWindow->GetDocShell()) {
     aRv.Throw(NS_ERROR_UNEXPECTED);
@@ -1603,8 +1606,22 @@ Navigator::GetMobileIdAssertion(ErrorResult& aRv)
     return nullptr;
   }
 
+  JSContext *cx = nsContentUtils::GetCurrentJSContext();
+  if (!cx) {
+    aRv.Throw(NS_ERROR_FAILURE);
+    return nullptr;
+  }
+
+  JS::Rooted<JS::Value> optionsValue(cx);
+  if (!ToJSValue(cx, aOptions, &optionsValue)) {
+    aRv.Throw(NS_ERROR_FAILURE);
+    return nullptr;
+  }
+
   nsCOMPtr<nsISupports> promise;
-  aRv = service->GetMobileIdAssertion(mWindow, getter_AddRefs(promise));
+  aRv = service->GetMobileIdAssertion(mWindow,
+                                      optionsValue,
+                                      getter_AddRefs(promise));
 
   nsRefPtr<Promise> p = static_cast<Promise*>(promise.get());
   return p.forget();
@@ -1936,7 +1953,6 @@ Navigator::DoNewResolve(JSContext* aCx, JS::Handle<JSObject*> aObject,
                         JS::Handle<jsid> aId,
                         JS::MutableHandle<JSPropertyDescriptor> aDesc)
 {
-  // Note: The infallibleInit call below depends on this check.
   if (!JSID_IS_STRING(aId)) {
     return true;
   }
@@ -1946,8 +1962,10 @@ Navigator::DoNewResolve(JSContext* aCx, JS::Handle<JSObject*> aObject,
     return Throw(aCx, NS_ERROR_NOT_INITIALIZED);
   }
 
-  nsDependentJSString name;
-  name.infallibleInit(aId);
+  nsAutoJSString name;
+  if (!name.init(aCx, JSID_TO_STRING(aId))) {
+    return false;
+  }
 
   const nsGlobalNameStruct* name_struct =
     nameSpaceManager->LookupNavigatorName(name);
@@ -2345,6 +2363,31 @@ Navigator::HasFeatureDetectionSupport(JSContext* /* unused */, JSObject* aGlobal
   return CheckPermission(win, "feature-detection");
 }
 
+#ifdef MOZ_B2G
+/* static */
+bool
+Navigator::HasMobileIdSupport(JSContext* aCx, JSObject* aGlobal)
+{
+  nsCOMPtr<nsPIDOMWindow> win = GetWindowFromGlobal(aGlobal);
+  if (!win) {
+    return false;
+  }
+
+  nsIDocument* doc = win->GetExtantDoc();
+  if (!doc) {
+    return false;
+  }
+
+  nsIPrincipal* principal = doc->NodePrincipal();
+
+  nsCOMPtr<nsIPermissionManager> permMgr = services::GetPermissionManager();
+  NS_ENSURE_TRUE(permMgr, false);
+
+  uint32_t permission = nsIPermissionManager::UNKNOWN_ACTION;
+  permMgr->TestPermissionFromPrincipal(principal, "mobileid", &permission);
+  return permission != nsIPermissionManager::UNKNOWN_ACTION;
+}
+#endif
 
 /* static */
 already_AddRefed<nsPIDOMWindow>

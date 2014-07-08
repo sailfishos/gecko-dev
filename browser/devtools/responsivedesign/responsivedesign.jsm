@@ -1,4 +1,4 @@
-/* -*- Mode: Javascript; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
 /* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -213,7 +213,8 @@ function ResponsiveUI(aWindow, aTab)
     this.onPageLoad();
   }
 
-  ResponsiveUIManager.emit("on", this.tab, this);
+  // E10S: We should be using target here. See bug 1028234
+  ResponsiveUIManager.emit("on", { tab: this.tab });
 }
 
 ResponsiveUI.prototype = {
@@ -305,7 +306,8 @@ ResponsiveUI.prototype = {
     if (this.touchEventHandler)
       this.touchEventHandler.stop();
     this._telemetry.toolClosed("responsive");
-    ResponsiveUIManager.emit("off", this.tab, this);
+    // E10S: We should be using target here. See bug 1028234
+    ResponsiveUIManager.emit("off", { tab: this.tab });
   },
 
   /**

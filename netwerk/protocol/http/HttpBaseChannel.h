@@ -63,6 +63,9 @@ class HttpBaseChannel : public nsHashPropertyBag
                       , public PrivateBrowsingChannel<HttpBaseChannel>
                       , public nsITimedChannel
 {
+protected:
+  virtual ~HttpBaseChannel();
+
 public:
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_NSIUPLOADCHANNEL
@@ -72,7 +75,6 @@ public:
   NS_DECL_NSIREDIRECTHISTORY
 
   HttpBaseChannel();
-  virtual ~HttpBaseChannel();
 
   virtual nsresult Init(nsIURI *aURI, uint32_t aCaps, nsProxyInfo *aProxyInfo,
                         uint32_t aProxyResolveFlags,
@@ -167,6 +169,7 @@ public:
   NS_IMETHOD GetResponseTimeoutEnabled(bool *aEnable);
   NS_IMETHOD SetResponseTimeoutEnabled(bool aEnable);
   NS_IMETHOD AddRedirect(nsIPrincipal *aRedirect);
+  NS_IMETHOD ForcePending(bool aForcePending);
 
   inline void CleanRedirectCacheChainIfNecessary()
   {
@@ -189,9 +192,10 @@ public:
         NS_DECL_NSIUTF8STRINGENUMERATOR
 
         nsContentEncodings(nsIHttpChannel* aChannel, const char* aEncodingHeader);
-        virtual ~nsContentEncodings();
 
     private:
+        virtual ~nsContentEncodings();
+
         nsresult PrepareForNext(void);
 
         // We do not own the buffer.  The channel owns it.
@@ -366,7 +370,9 @@ protected:
   // so that the timing can still be queried from OnStopRequest
   TimingStruct                      mTransactionTimings;
 
-  nsCOMPtr<nsIPrincipal> mPrincipal;
+  nsCOMPtr<nsIPrincipal>            mPrincipal;
+
+  bool                              mForcePending;
 };
 
 // Share some code while working around C++'s absurd inability to handle casting
@@ -409,7 +415,6 @@ nsresult HttpAsyncAborter<T>::AsyncAbort(nsresult status)
          ("HttpAsyncAborter::AsyncAbort [this=%p status=%x]\n", mThis, status));
 
   mThis->mStatus = status;
-  mThis->mIsPending = false;
 
   // if this fails?  Callers ignore our return value anyway....
   return AsyncCall(&T::HandleAsyncAbort);

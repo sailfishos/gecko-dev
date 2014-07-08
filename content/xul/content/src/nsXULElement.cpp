@@ -124,6 +124,8 @@ uint32_t             nsXULPrototypeAttribute::gNumCacheFills;
 class nsXULElementTearoff MOZ_FINAL : public nsIDOMElementCSSInlineStyle,
                                       public nsIFrameLoaderOwner
 {
+  ~nsXULElementTearoff() {}
+
 public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(nsXULElementTearoff,
@@ -2760,8 +2762,8 @@ nsXULPrototypeScript::Compile(JS::SourceBufferHolder& aSrcBuf,
         // This reference will be consumed by the NotifyOffThreadScriptCompletedRunnable.
         NS_ADDREF(aOffThreadReceiver);
     } else {
-        JSScript* script = JS::Compile(cx, scope, options, aSrcBuf);
-        if (!script)
+        JS::Rooted<JSScript*> script(cx);
+        if (!JS::Compile(cx, scope, options, aSrcBuf, &script))
             return NS_ERROR_OUT_OF_MEMORY;
         Set(script);
     }

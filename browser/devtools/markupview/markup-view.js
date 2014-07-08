@@ -1,4 +1,4 @@
-/* -*- Mode: Javascript; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
 /* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -156,21 +156,28 @@ MarkupView.prototype = {
   },
 
   _hoveredNode: null,
-  _showContainerAsHovered: function(nodeFront) {
-    if (this._hoveredNode !== nodeFront) {
-      if (this._hoveredNode) {
-        this._containers.get(this._hoveredNode).hovered = false;
-      }
-      this._containers.get(nodeFront).hovered = true;
 
-      this._hoveredNode = nodeFront;
+  /**
+   * Show a NodeFront's container as being hovered
+   * @param {NodeFront} nodeFront The node to show as hovered
+   */
+  _showContainerAsHovered: function(nodeFront) {
+    if (this._hoveredNode === nodeFront) {
+      return;
     }
+
+    if (this._hoveredNode) {
+      this.getContainer(this._hoveredNode).hovered = false;
+    }
+
+    this.getContainer(nodeFront).hovered = true;
+    this._hoveredNode = nodeFront;
   },
 
   _onMouseLeave: function() {
     this._hideBoxModel(true);
     if (this._hoveredNode) {
-      this._containers.get(this._hoveredNode).hovered = false;
+      this.getContainer(this._hoveredNode).hovered = false;
     }
     this._hoveredNode = null;
   },
@@ -178,13 +185,12 @@ MarkupView.prototype = {
   /**
    * Show the box model highlighter on a given node front
    * @param {NodeFront} nodeFront The node to show the highlighter for
-   * @param {Object} options Options for the highlighter
    * @return a promise that resolves when the highlighter for this nodeFront is
    * shown, taking into account that there could already be highlighter requests
    * queued up
    */
-  _showBoxModel: function(nodeFront, options={}) {
-    return this._inspector.toolbox.highlighterUtils.highlightNodeFront(nodeFront, options);
+  _showBoxModel: function(nodeFront) {
+    return this._inspector.toolbox.highlighterUtils.highlightNodeFront(nodeFront);
   },
 
   /**
@@ -200,7 +206,7 @@ MarkupView.prototype = {
   },
 
   _briefBoxModelTimer: null,
-  _brieflyShowBoxModel: function(nodeFront, options) {
+  _brieflyShowBoxModel: function(nodeFront) {
     let win = this._frame.contentWindow;
 
     if (this._briefBoxModelTimer) {
@@ -208,7 +214,7 @@ MarkupView.prototype = {
       this._briefBoxModelTimer = null;
     }
 
-    this._showBoxModel(nodeFront, options);
+    this._showBoxModel(nodeFront);
 
     this._briefBoxModelTimer = this._frame.contentWindow.setTimeout(() => {
       this._hideBoxModel();
@@ -305,10 +311,15 @@ MarkupView.prototype = {
     let selection = this._inspector.selection;
 
     this.htmlEditor.hide();
+    if (this._hoveredNode && this._hoveredNode !== selection.nodeFront) {
+      this.getContainer(this._hoveredNode).hovered = false;
+      this._hoveredNode = null;
+    }
+
     let done = this._inspector.updating("markup-view");
     if (selection.isNode()) {
       if (this._shouldNewSelectionBeHighlighted()) {
-        this._brieflyShowBoxModel(selection.nodeFront, {});
+        this._brieflyShowBoxModel(selection.nodeFront);
       }
 
       this.showNode(selection.nodeFront, true).then(() => {
@@ -377,7 +388,7 @@ MarkupView.prototype = {
         this.deleteNode(this._selectedContainer.node);
         break;
       case Ci.nsIDOMKeyEvent.DOM_VK_HOME:
-        let rootContainer = this._containers.get(this._rootNode);
+        let rootContainer = this.getContainer(this._rootNode);
         this.navigate(rootContainer.children.firstChild.container);
         break;
       case Ci.nsIDOMKeyEvent.DOM_VK_LEFT:
@@ -462,7 +473,7 @@ MarkupView.prototype = {
       return;
     }
 
-    let container = this._containers.get(aNode);
+    let container = this.getContainer(aNode);
 
     // Retain the node so we can undo this...
     this.walker.retainNode(aNode).then(() => {
@@ -470,7 +481,7 @@ MarkupView.prototype = {
       let sibling = null;
       this.undo.do(() => {
         if (container.selected) {
-          this.navigate(this._containers.get(parent));
+          this.navigate(this.getContainer(parent));
         }
         this.walker.removeNode(aNode).then(nextSibling => {
           sibling = nextSibling;
@@ -531,7 +542,7 @@ MarkupView.prototype = {
     }
 
     if (this._containers.has(aNode)) {
-      return this._containers.get(aNode);
+      return this.getContainer(aNode);
     }
 
     if (aNode === this.walker.rootNode) {
@@ -575,7 +586,7 @@ MarkupView.prototype = {
         }
       }
 
-      let container = this._containers.get(target);
+      let container = this.getContainer(target);
       if (!container) {
         // Container might not exist if this came from a load event for a node
         // we're not viewing.
@@ -624,7 +635,7 @@ MarkupView.prototype = {
       if (this._inspector.selection.nodeFront === reselectParent) {
         this.walker.children(reselectParent).then((o) => {
           let node = o.nodes[reselectChildIndex];
-          let container = this._containers.get(node);
+          let container = this.getContainer(node);
           if (node && container) {
             this.markNodeAsSelected(node, "outerhtml");
             if (container.hasChildren) {
@@ -643,7 +654,7 @@ MarkupView.prototype = {
    */
   _onDisplayChange: function(nodes) {
     for (let node of nodes) {
-      let container = this._containers.get(node);
+      let container = this.getContainer(node);
       if (container) {
         container.isDisplayed = node.isDisplayed;
       }
@@ -659,7 +670,7 @@ MarkupView.prototype = {
     let removedContainers = new Set();
 
     for (let {type, target, added, removed} of aMutations) {
-      let container = this._containers.get(target);
+      let container = this.getContainer(target);
 
       if (container) {
         if (type === "attributes" || type === "characterData") {
@@ -672,7 +683,7 @@ MarkupView.prototype = {
 
           // If there has been additions, flash the nodes
           added.forEach(added => {
-            let addedContainer = this._containers.get(added);
+            let addedContainer = this.getContainer(added);
             addedOrEditedContainers.add(addedContainer);
 
             // The node may be added as a result of an append, in which case it
@@ -711,7 +722,7 @@ MarkupView.prototype = {
       return this._ensureVisible(aNode);
     }).then(() => {
       // Why is this not working?
-      this.layoutHelpers.scrollIntoViewIfNeeded(this._containers.get(aNode).editor.elt, centered);
+      this.layoutHelpers.scrollIntoViewIfNeeded(this.getContainer(aNode).editor.elt, centered);
     });
   },
 
@@ -728,7 +739,7 @@ MarkupView.prototype = {
    * Expand the node's children.
    */
   expandNode: function(aNode) {
-    let container = this._containers.get(aNode);
+    let container = this.getContainer(aNode);
     this._expandContainer(container);
   },
 
@@ -757,14 +768,14 @@ MarkupView.prototype = {
    */
   expandAll: function(aNode) {
     aNode = aNode || this._rootNode;
-    return this._expandAll(this._containers.get(aNode));
+    return this._expandAll(this.getContainer(aNode));
   },
 
   /**
    * Collapse the node's children.
    */
   collapseNode: function(aNode) {
-    let container = this._containers.get(aNode);
+    let container = this.getContainer(aNode);
     container.expanded = false;
   },
 
@@ -816,7 +827,7 @@ MarkupView.prototype = {
    *          If the child cannot be found, returns -1
    */
   updateNodeOuterHTML: function(aNode, newValue, oldValue) {
-    let container = this._containers.get(aNode);
+    let container = this.getContainer(aNode);
     if (!container) {
       return;
     }
@@ -839,7 +850,7 @@ MarkupView.prototype = {
    */
   beginEditingOuterHTML: function(aNode) {
     this.getNodeOuterHTML(aNode).then((oldValue)=> {
-      let container = this._containers.get(aNode);
+      let container = this.getContainer(aNode);
       if (!container) {
         return;
       }
@@ -880,7 +891,7 @@ MarkupView.prototype = {
    * @param aNode The NodeFront to mark as selected.
    */
   markNodeAsSelected: function(aNode, reason) {
-    let container = this._containers.get(aNode);
+    let container = this.getContainer(aNode);
     if (this._selectedContainer === container) {
       return false;
     }
@@ -902,10 +913,10 @@ MarkupView.prototype = {
    */
   _ensureVisible: function(node) {
     while (node) {
-      let container = this._containers.get(node);
+      let container = this.getContainer(node);
       let parent = node.parentNode();
       if (!container.elt.parentNode) {
-        let parentContainer = this._containers.get(parent);
+        let parentContainer = this.getContainer(parent);
         if (parentContainer) {
           parentContainer.childrenDirty = true;
           this._updateChildren(parentContainer, {expand: node});

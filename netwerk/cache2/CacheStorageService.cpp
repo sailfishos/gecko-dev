@@ -290,7 +290,7 @@ private:
       static_cast<WalkMemoryCacheRunnable*>(aClosure);
 
     // Ignore disk entries
-    if (aEntry->IsUsingDiskLocked())
+    if (aEntry->IsUsingDisk())
       return PL_DHASH_NEXT;
 
     walker->mSize += aEntry->GetMetadataMemoryConsumption();
@@ -1293,15 +1293,21 @@ CacheStorageService::AddStorageEntry(nsCSubstring const& aContextKey,
     if (!sGlobalEntryTables->Get(aContextKey, &entries)) {
       entries = new CacheEntryTable(CacheEntryTable::ALL_ENTRIES);
       sGlobalEntryTables->Put(aContextKey, entries);
-      LOG(("  new storage entries table for context %s", aContextKey.BeginReading()));
+      LOG(("  new storage entries table for context '%s'", aContextKey.BeginReading()));
     }
 
     bool entryExists = entries->Get(entryKey, getter_AddRefs(entry));
 
-    // check whether the file is already doomed
-    if (entryExists && entry->IsFileDoomed() && !aReplace) {
-      LOG(("  file already doomed, replacing the entry"));
-      aReplace = true;
+    if (entryExists && !aReplace) {
+      // check whether the file is already doomed or we want to turn this entry
+      // to a memory-only.
+      if (MOZ_UNLIKELY(entry->IsFileDoomed())) {
+        LOG(("  file already doomed, replacing the entry"));
+        aReplace = true;
+      } else if (MOZ_UNLIKELY(!aWriteToDisk) && MOZ_LIKELY(entry->IsUsingDisk())) {
+        LOG(("  entry is persistnet but we want mem-only, replacing it"));
+        aReplace = true;
+      }
     }
 
     // If truncate is demanded, delete and doom the current entry
@@ -1316,10 +1322,6 @@ CacheStorageService::AddStorageEntry(nsCSubstring const& aContextKey,
 
       entry = nullptr;
       entryExists = false;
-    }
-
-    if (entryExists && entry->SetUsingDisk(aWriteToDisk)) {
-      RecordMemoryOnlyEntry(entry, !aWriteToDisk, true /* overwrite */);
     }
 
     // Ensure entry for the particular URL, if not read/only
@@ -1341,6 +1343,67 @@ CacheStorageService::AddStorageEntry(nsCSubstring const& aContextKey,
   return NS_OK;
 }
 
+nsresult
+CacheStorageService::CheckStorageEntry(CacheStorage const* aStorage,
+                                       nsIURI* aURI,
+                                       const nsACString & aIdExtension,
+                                       bool* aResult)
+{
+  nsresult rv;
+
+  nsAutoCString contextKey;
+  CacheFileUtils::AppendKeyPrefix(aStorage->LoadInfo(), contextKey);
+
+  if (!aStorage->WriteToDisk()) {
+    AppendMemoryStorageID(contextKey);
+  }
+
+#ifdef PR_LOGGING
+  nsAutoCString uriSpec;
+  aURI->GetAsciiSpec(uriSpec);
+  LOG(("CacheStorageService::CheckStorageEntry [uri=%s, eid=%s, contextKey=%s]",
+    uriSpec.get(), aIdExtension.BeginReading(), contextKey.get()));
+#endif
+
+  {
+    mozilla::MutexAutoLock lock(mLock);
+
+    NS_ENSURE_FALSE(mShutdown, NS_ERROR_NOT_INITIALIZED);
+
+    nsAutoCString entryKey;
+    rv = CacheEntry::HashingKey(EmptyCString(), aIdExtension, aURI, entryKey);
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    CacheEntryTable* entries;
+    if ((*aResult = sGlobalEntryTables->Get(contextKey, &entries)) &&
+        entries->GetWeak(entryKey, aResult)) {
+      LOG(("  found in hash tables"));
+      return NS_OK;
+    }
+  }
+
+  if (!aStorage->WriteToDisk()) {
+    // Memory entry, nothing more to do.
+    LOG(("  not found in hash tables"));
+    return NS_OK;
+  }
+
+  // Disk entry, not found in the hashtable, check the index.
+  nsAutoCString fileKey;
+  rv = CacheEntry::HashingKey(contextKey, aIdExtension, aURI, fileKey);
+
+  CacheIndex::EntryStatus status;
+  rv = CacheIndex::HasEntry(fileKey, &status);
+  if (NS_FAILED(rv) || status == CacheIndex::DO_NOT_KNOW) {
+    LOG(("  index doesn't know, rv=0x%08x", rv));
+    return NS_ERROR_NOT_AVAILABLE;
+  }
+
+  *aResult = status == CacheIndex::EXISTS;
+  LOG(("  %sfound in index", *aResult ? "" : "not "));
+  return NS_OK;
+}
+
 namespace { // anon
 
 class CacheEntryDoomByKeyCallback : public CacheFileIOListener
@@ -1350,9 +1413,10 @@ public:
 
   CacheEntryDoomByKeyCallback(nsICacheEntryDoomCallback* aCallback)
     : mCallback(aCallback) { }
-  virtual ~CacheEntryDoomByKeyCallback();
 
 private:
+  virtual ~CacheEntryDoomByKeyCallback();
+
   NS_IMETHOD OnFileOpened(CacheFileHandle *aHandle, nsresult aResult) { return NS_OK; }
   NS_IMETHOD OnDataWritten(CacheFileHandle *aHandle, const char *aBuf, nsresult aResult) { return NS_OK; }
   NS_IMETHOD OnDataRead(CacheFileHandle *aHandle, char *aBuf, nsresult aResult) { return NS_OK; }
@@ -1410,17 +1474,17 @@ CacheStorageService::DoomStorageEntry(CacheStorage const* aStorage,
     CacheEntryTable* entries;
     if (sGlobalEntryTables->Get(contextKey, &entries)) {
       if (entries->Get(entryKey, getter_AddRefs(entry))) {
-        if (aStorage->WriteToDisk() || !entry->IsUsingDiskLocked()) {
+        if (aStorage->WriteToDisk() || !entry->IsUsingDisk()) {
           // When evicting from disk storage, purge
           // When evicting from memory storage and the entry is memory-only, purge
           LOG(("  purging entry %p for %s [storage use disk=%d, entry use disk=%d]",
-            entry.get(), entryKey.get(), aStorage->WriteToDisk(), entry->IsUsingDiskLocked()));
+            entry.get(), entryKey.get(), aStorage->WriteToDisk(), entry->IsUsingDisk()));
           entries->Remove(entryKey);
         }
         else {
           // Otherwise, leave it
           LOG(("  leaving entry %p for %s [storage use disk=%d, entry use disk=%d]",
-            entry.get(), entryKey.get(), aStorage->WriteToDisk(), entry->IsUsingDiskLocked()));
+            entry.get(), entryKey.get(), aStorage->WriteToDisk(), entry->IsUsingDisk()));
           entry = nullptr;
         }
       }
@@ -1729,7 +1793,7 @@ size_t CollectEntryMemory(nsACString const & aKey,
   // Bypass memory-only entries, those will be reported when iterating
   // the memory only table. Memory-only entries are stored in both ALL_ENTRIES
   // and MEMORY_ONLY hashtables.
-  if (aTable->Type() == CacheEntryTable::MEMORY_ONLY || aEntry->IsUsingDiskLocked())
+  if (aTable->Type() == CacheEntryTable::MEMORY_ONLY || aEntry->IsUsingDisk())
     n += aEntry->SizeOfIncludingThis(mallocSizeOf);
 
   return n;

@@ -563,7 +563,7 @@ Range::setDouble(double l, double h)
         hasInt32LowerBound_ = false;
     }
     if (h >= INT32_MIN && h <= INT32_MAX) {
-        upper_ = int32_t(ceil(h));
+        upper_ = int32_t(::ceil(h));
         hasInt32UpperBound_ = true;
     } else {
         upper_ = INT32_MAX;
@@ -916,9 +916,9 @@ Range::abs(TempAllocator &alloc, const Range *op)
     int32_t l = op->lower_;
     int32_t u = op->upper_;
 
-    return new(alloc) Range(Max(Max(int32_t(0), l), u == INT32_MIN ? int32_t(INT32_MAX) : -u),
+    return new(alloc) Range(Max(Max(int32_t(0), l), u == INT32_MIN ? INT32_MAX : -u),
                             true,
-                            Max(Max(int32_t(0), u), l == INT32_MIN ? int32_t(INT32_MAX) : -l),
+                            Max(Max(int32_t(0), u), l == INT32_MIN ? INT32_MAX : -l),
                             op->hasInt32Bounds() && l != INT32_MIN,
                             op->canHaveFractionalPart_,
                             op->max_exponent_);
@@ -972,6 +972,25 @@ Range::floor(TempAllocator &alloc, const Range *op)
     if(copy->hasInt32Bounds())
         copy->max_exponent_ = copy->exponentImpliedByInt32Bounds();
     else if(copy->max_exponent_ < MaxFiniteExponent)
+        copy->max_exponent_++;
+
+    copy->canHaveFractionalPart_ = false;
+    copy->assertInvariants();
+    return copy;
+}
+
+Range *
+Range::ceil(TempAllocator &alloc, const Range *op)
+{
+    Range *copy = new(alloc) Range(*op);
+
+    // We need to refine max_exponent_ because ceil may have incremented the int value.
+    // If we have got int32 bounds defined, just deduce it using the defined bounds.
+    // Else we can just increment its value,
+    // as we are looking to maintain an over estimation.
+    if (copy->hasInt32Bounds())
+        copy->max_exponent_ = copy->exponentImpliedByInt32Bounds();
+    else if (copy->max_exponent_ < MaxFiniteExponent)
         copy->max_exponent_++;
 
     copy->canHaveFractionalPart_ = false;
@@ -1205,6 +1224,13 @@ MFloor::computeRange(TempAllocator &alloc)
 {
     Range other(getOperand(0));
     setRange(Range::floor(alloc, &other));
+}
+
+void
+MCeil::computeRange(TempAllocator &alloc)
+{
+    Range other(getOperand(0));
+    setRange(Range::ceil(alloc, &other));
 }
 
 void
@@ -1697,13 +1723,13 @@ RangeAnalysis::analyzeLoopIterationCount(MBasicBlock *header,
     // The first operand of the phi should be the lhs' value at the start of
     // the first executed iteration, and not a value written which could
     // replace the second operand below during the middle of execution.
-    MDefinition *lhsInitial = lhs.term->toPhi()->getOperand(0);
+    MDefinition *lhsInitial = lhs.term->toPhi()->getLoopPredecessorOperand();
     if (lhsInitial->block()->isMarked())
         return nullptr;
 
     // The second operand of the phi should be a value written by an add/sub
     // in every loop iteration, i.e. in a block which dominates the backedge.
-    MDefinition *lhsWrite = lhs.term->toPhi()->getOperand(1);
+    MDefinition *lhsWrite = lhs.term->toPhi()->getLoopBackedgeOperand();
     if (lhsWrite->isBeta())
         lhsWrite = lhsWrite->getOperand(0);
     if (!lhsWrite->isAdd() && !lhsWrite->isSub())
@@ -1783,17 +1809,11 @@ RangeAnalysis::analyzeLoopPhi(MBasicBlock *header, LoopIterationBound *loopBound
 
     JS_ASSERT(phi->numOperands() == 2);
 
-    MBasicBlock *preLoop = header->loopPredecessor();
-    JS_ASSERT(!preLoop->isMarked() && preLoop->successorWithPhis() == header);
-
-    MBasicBlock *backedge = header->backedge();
-    JS_ASSERT(backedge->isMarked() && backedge->successorWithPhis() == header);
-
-    MDefinition *initial = phi->getOperand(preLoop->positionInPhiSuccessor());
+    MDefinition *initial = phi->getLoopPredecessorOperand();
     if (initial->block()->isMarked())
         return;
 
-    SimpleLinearSum modified = ExtractLinearSum(phi->getOperand(backedge->positionInPhiSuccessor()));
+    SimpleLinearSum modified = ExtractLinearSum(phi->getLoopBackedgeOperand());
 
     if (modified.term != phi || modified.constant == 0)
         return;
@@ -1977,10 +1997,14 @@ RangeAnalysis::tryHoistBoundsCheck(MBasicBlock *header, MBoundsCheck *ins)
 
     MBoundsCheckLower *lowerCheck = MBoundsCheckLower::New(alloc(), lowerTerm);
     lowerCheck->setMinimum(lowerConstant);
+    lowerCheck->computeRange(alloc());
+    lowerCheck->collectRangeInfoPreTrunc();
 
     MBoundsCheck *upperCheck = MBoundsCheck::New(alloc(), upperTerm, ins->length());
     upperCheck->setMinimum(upperConstant);
     upperCheck->setMaximum(upperConstant);
+    upperCheck->computeRange(alloc());
+    upperCheck->collectRangeInfoPreTrunc();
 
     // Hoist the loop invariant upper and lower bounds checks.
     preLoop->insertBefore(preLoop->lastIns(), lowerCheck);

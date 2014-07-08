@@ -12,6 +12,7 @@ from StringIO import StringIO
 from xml.etree.ElementTree import ElementTree
 
 from mozbuild.base import MozbuildObject
+os.environ.pop('MOZ_OBJDIR')
 build_obj = MozbuildObject.from_environment()
 
 from runxpcshelltests import XPCShellTests
@@ -129,6 +130,32 @@ add_task(function () {
   Assert.ok(true);
 
   run_next_test();
+});
+'''
+
+ADD_TASK_STACK_TRACE = '''
+Components.utils.import("resource://gre/modules/Promise.jsm", this);
+
+function run_test() { run_next_test(); }
+
+add_task(function* this_test_will_fail() {
+  for (let i = 0; i < 10; ++i) {
+    yield Promise.resolve();
+  }
+  Assert.ok(false);
+});
+'''
+
+ADD_TASK_STACK_TRACE_WITHOUT_STAR = '''
+Components.utils.import("resource://gre/modules/Promise.jsm", this);
+
+function run_test() { run_next_test(); }
+
+add_task(function this_test_will_fail() {
+  for (let i = 0; i < 10; ++i) {
+    yield Promise.resolve();
+  }
+  Assert.ok(false);
 });
 '''
 
@@ -585,6 +612,37 @@ tail =
         self.assertEquals(1, self.x.testCount)
         self.assertEquals(0, self.x.passCount)
         self.assertEquals(1, self.x.failCount)
+
+    def testAddTaskStackTrace(self):
+        """
+        Ensuring that calling Assert.ok(false) from inside add_task()
+        results in a human-readable stack trace.
+        """
+        self.writeFile("test_add_task_stack_trace.js",
+            ADD_TASK_STACK_TRACE)
+        self.writeManifest(["test_add_task_stack_trace.js"])
+
+        self.assertTestResult(False)
+        self.assertInLog("this_test_will_fail")
+        self.assertInLog("run_next_test")
+        self.assertInLog("run_test")
+        self.assertNotInLog("Task.jsm")
+
+    def testAddTaskStackTraceWithoutStar(self):
+        """
+        Ensuring that calling Assert.ok(false) from inside add_task()
+        results in a human-readable stack trace. This variant uses deprecated
+        `function()` syntax instead of now standard `function*()`.
+        """
+        self.writeFile("test_add_task_stack_trace_without_star.js",
+            ADD_TASK_STACK_TRACE)
+        self.writeManifest(["test_add_task_stack_trace_without_star.js"])
+
+        self.assertTestResult(False)
+        self.assertInLog("this_test_will_fail")
+        self.assertInLog("run_next_test")
+        self.assertInLog("run_test")
+        self.assertNotInLog("Task.jsm")
 
     def testMissingHeadFile(self):
         """

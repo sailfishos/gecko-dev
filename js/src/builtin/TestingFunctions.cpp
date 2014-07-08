@@ -764,6 +764,7 @@ static const struct TraceKindPair {
     { "all",        -1                  },
     { "object",     JSTRACE_OBJECT      },
     { "string",     JSTRACE_STRING      },
+    { "symbol",     JSTRACE_SYMBOL      },
 };
 
 static bool
@@ -879,10 +880,25 @@ static bool
 SaveStack(JSContext *cx, unsigned argc, jsval *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
-    Rooted<SavedFrame*> frame(cx);
-    if (!cx->compartment()->savedStacks().saveCurrentStack(cx, &frame))
+
+    unsigned maxFrameCount = 0;
+    if (args.length() >= 1) {
+        double d;
+        if (!ToNumber(cx, args[0], &d))
+            return false;
+        if (d < 0) {
+            js_ReportValueErrorFlags(cx, JSREPORT_ERROR, JSMSG_UNEXPECTED_TYPE,
+                                     JSDVG_SEARCH_STACK, args[0], JS::NullPtr(),
+                                     "not a valid maximum frame count", NULL);
+            return false;
+        }
+        maxFrameCount = d;
+    }
+
+    Rooted<JSObject*> stack(cx);
+    if (!JS::CaptureCurrentStack(cx, &stack, maxFrameCount))
         return false;
-    args.rval().setObject(*frame.get());
+    args.rval().setObjectOrNull(stack);
     return true;
 }
 
@@ -1852,7 +1868,7 @@ FindPath(JSContext *cx, unsigned argc, jsval *vp)
                                JSPROP_ENUMERATE, nullptr, nullptr))
             return false;
 
-        RootedString edge(cx, js_NewString<CanGC>(cx, edges[i].get(), js_strlen(edges[i])));
+        RootedString edge(cx, NewString<CanGC>(cx, edges[i].get(), js_strlen(edges[i])));
         if (!edge)
             return false;
         edges[i].forget();

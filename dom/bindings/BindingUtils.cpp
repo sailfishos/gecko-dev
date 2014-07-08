@@ -320,6 +320,13 @@ DefinePrefable(JSContext* cx, JS::Handle<JSObject*> obj,
 }
 
 bool
+DefineUnforgeableMethods(JSContext* cx, JS::Handle<JSObject*> obj,
+                         const Prefable<const JSFunctionSpec>* props)
+{
+  return DefinePrefable(cx, obj, props);
+}
+
+bool
 DefineUnforgeableAttributes(JSContext* cx, JS::Handle<JSObject*> obj,
                             const Prefable<const JSPropertySpec>* props)
 {
@@ -1272,10 +1279,7 @@ XrayDefineProperty(JSContext* cx, JS::Handle<JSObject*> wrapper,
   if (!js::IsProxy(obj))
       return true;
 
-  MOZ_ASSERT(IsDOMProxy(obj), "What kind of proxy is this?");
-
-  DOMProxyHandler* handler =
-    static_cast<DOMProxyHandler*>(js::GetProxyHandler(obj));
+  const DOMProxyHandler* handler = GetDOMProxyHandler(obj);
   return handler->defineProperty(cx, wrapper, id, desc, defined);
 }
 
@@ -2107,8 +2111,7 @@ NonVoidByteStringToJsval(JSContext *cx, const nsACString &str,
 
 bool
 ConvertJSValueToByteString(JSContext* cx, JS::Handle<JS::Value> v,
-                           JS::MutableHandle<JS::Value> pval, bool nullable,
-                           nsACString& result)
+                           bool nullable, nsACString& result)
 {
   JS::Rooted<JSString*> s(cx);
   if (v.isString()) {
@@ -2124,38 +2127,58 @@ ConvertJSValueToByteString(JSContext* cx, JS::Handle<JS::Value> v,
     if (!s) {
       return false;
     }
-    pval.set(JS::StringValue(s));  // Root the new string.
-  }
-
-  size_t length;
-  const jschar *chars = JS_GetStringCharsZAndLength(cx, s, &length);
-  if (!chars) {
-    return false;
   }
 
   // Conversion from Javascript string to ByteString is only valid if all
-  // characters < 256.
-  for (size_t i = 0; i < length; i++) {
-    if (chars[i] > 255) {
+  // characters < 256. This is always the case for Latin1 strings.
+  size_t length;
+  if (!js::StringHasLatin1Chars(s)) {
+    // ThrowErrorMessage can GC, so we first scan the string for bad chars
+    // and report the error outside the AutoCheckCannotGC scope.
+    bool foundBadChar = false;
+    size_t badCharIndex;
+    jschar badChar;
+    {
+      JS::AutoCheckCannotGC nogc;
+      const jschar* chars = JS_GetTwoByteStringCharsAndLength(cx, nogc, s, &length);
+      if (!chars) {
+        return false;
+      }
+
+      for (size_t i = 0; i < length; i++) {
+        if (chars[i] > 255) {
+          badCharIndex = i;
+          badChar = chars[i];
+          foundBadChar = true;
+          break;
+        }
+      }
+    }
+
+    if (foundBadChar) {
+      MOZ_ASSERT(badCharIndex < length);
+      MOZ_ASSERT(badChar > 255);
       // The largest unsigned 64 bit number (18,446,744,073,709,551,615) has
       // 20 digits, plus one more for the null terminator.
       char index[21];
       static_assert(sizeof(size_t) <= 8, "index array too small");
-      PR_snprintf(index, sizeof(index), "%d", i);
+      PR_snprintf(index, sizeof(index), "%d", badCharIndex);
       // A jschar is 16 bits long.  The biggest unsigned 16 bit
       // number (65,535) has 5 digits, plus one more for the null
       // terminator.
-      char badChar[6];
-      static_assert(sizeof(jschar) <= 2, "badChar array too small");
-      PR_snprintf(badChar, sizeof(badChar), "%d", chars[i]);
-      ThrowErrorMessage(cx, MSG_INVALID_BYTESTRING, index, badChar);
+      char badCharArray[6];
+      static_assert(sizeof(jschar) <= 2, "badCharArray too small");
+      PR_snprintf(badCharArray, sizeof(badCharArray), "%d", badChar);
+      ThrowErrorMessage(cx, MSG_INVALID_BYTESTRING, index, badCharArray);
       return false;
     }
+  } else {
+    length = js::GetStringLength(s);
   }
 
-  if (length >= UINT32_MAX) {
-    return false;
-  }
+  static_assert(js::MaxStringLength < UINT32_MAX,
+                "length+1 shouldn't overflow");
+
   result.SetCapacity(length+1);
   JS_EncodeStringToBuffer(cx, s, result.BeginWriting(), length);
   result.BeginWriting()[length] = '\0';
@@ -2459,7 +2482,7 @@ CreateGlobalOptions<nsGlobalWindow>::TraceGlobal(JSTracer* aTrc, JSObject* aObj)
   // We might be called from a GC during the creation of a global, before we've
   // been able to set up the compartment private or the XPCWrappedNativeScope,
   // so we need to null-check those.
-  xpc::CompartmentPrivate* compartmentPrivate = xpc::GetCompartmentPrivate(aObj);
+  xpc::CompartmentPrivate* compartmentPrivate = xpc::CompartmentPrivate::Get(aObj);
   if (compartmentPrivate && compartmentPrivate->scope) {
     compartmentPrivate->scope->TraceSelf(aTrc);
   }
@@ -2470,7 +2493,10 @@ bool
 CreateGlobalOptions<nsGlobalWindow>::PostCreateGlobal(JSContext* aCx,
                                                       JS::Handle<JSObject*> aGlobal)
 {
-  return XPCWrappedNativeScope::GetNewOrUsed(aCx, aGlobal);
+  // Invoking the XPCWrappedNativeScope constructor automatically hooks it
+  // up to the compartment of aGlobal.
+  (void) new XPCWrappedNativeScope(aCx, aGlobal);
+  return true;
 }
 
 #ifdef DEBUG

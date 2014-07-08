@@ -40,6 +40,8 @@ public:
   void SetFrame(nsSVGImageFrame *frame) { mFrame = frame; }
 
 private:
+  ~nsSVGImageListener() {}
+
   nsSVGImageFrame *mFrame;
 };
 
@@ -436,8 +438,8 @@ nsSVGImageFrame::GetFrameForPoint(const nsPoint &aPoint)
                GetRasterImageTransform(nativeWidth, nativeHeight,
                                        FOR_HIT_TESTING),
                0, 0, nativeWidth, nativeHeight,
-               PresContext()->AppUnitsToDevPixels(aPoint.x),
-               PresContext()->AppUnitsToDevPixels(aPoint.y))) {
+               PresContext()->AppUnitsToFloatCSSPixels(aPoint.x),
+               PresContext()->AppUnitsToFloatCSSPixels(aPoint.y))) {
         return nullptr;
       }
     }

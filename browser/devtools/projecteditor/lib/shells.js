@@ -1,4 +1,4 @@
-/* -*- Mode: Javascript; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
 /* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -36,17 +36,13 @@ var Shell = Class({
 
     let constructor = this._editorTypeForResource();
 
-    this.editor = constructor(this.doc, this.host);
+    this.editor = constructor(this.host);
     this.editor.shell = this;
     this.editorAppended = this.editor.appended;
 
-    let loadDefer = promise.defer();
     this.editor.on("load", () => {
-      loadDefer.resolve();
+      this.editorDeferred.resolve();
     });
-
-    this.editorLoaded = loadDefer.promise;
-
     this.elt.appendChild(this.editor.elt);
   },
 
@@ -56,6 +52,8 @@ var Shell = Class({
    * need to be added before calling this.
    */
   load: function() {
+    this.editorDeferred = promise.defer();
+    this.editorLoaded = this.editorDeferred.promise;
     this.editor.load(this.resource);
   },
 
@@ -193,6 +191,8 @@ var ShellDeck = Class({
       }
       this.deck.selectedPanel = shell.elt;
       this._activeShell = shell;
+
+      shell.load();
       shell.editorLoaded.then(() => {
         // Handle case where another shell has been requested before this
         // one is finished loading.

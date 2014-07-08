@@ -2724,7 +2724,6 @@ var InspectorFront = exports.InspectorFront = protocol.FrontClass(InspectorActor
 
     // XXX: This is the first actor type in its hierarchy to use the protocol
     // library, so we're going to self-own on the client side for now.
-    client.addActorPool(this);
     this.manage(this);
   },
 
@@ -2776,6 +2775,10 @@ function nodeDocument(node) {
  * See TreeWalker documentation for explanations of the methods.
  */
 function DocumentWalker(aNode, aRootWin, aShow, aFilter, aExpandEntityReferences) {
+  if (!aRootWin.location) {
+    throw new Error("Got an invalid root window in DocumentWalker");
+  }
+
   let doc = nodeDocument(aNode);
   this.layoutHelpers = new LayoutHelpers(aRootWin);
   this.walker = doc.createTreeWalker(doc,

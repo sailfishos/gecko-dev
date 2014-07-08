@@ -243,16 +243,19 @@ MP4Reader::ReadMetadata(MediaInfo* aInfo,
     ReentrantMonitorAutoEnter mon(mDecoder->GetReentrantMonitor());
     mDecoder->SetMediaDuration(duration);
   }
-  // We can seek if we get a duration *and* the reader reports that it's
-  // seekable.
-  if (!mDecoder->GetResource()->IsTransportSeekable() || !mDemuxer->CanSeek()) {
-    mDecoder->SetMediaSeekable(false);
-  }
 
   *aInfo = mInfo;
   *aTags = nullptr;
 
   return NS_OK;
+}
+
+bool
+MP4Reader::IsMediaSeekable()
+{
+  // We can seek if we get a duration *and* the reader reports that it's
+  // seekable.
+  return mDecoder->GetResource()->IsTransportSeekable() && mDemuxer->CanSeek();
 }
 
 bool
@@ -454,13 +457,13 @@ MP4Reader::Flush(TrackType aTrack)
   // Set a flag so that we ignore all output while we call
   // MediaDataDecoder::Flush().
   {
-    data.mIsFlushing = true;
     MonitorAutoLock mon(data.mMonitor);
+    data.mIsFlushing = true;
   }
   data.mDecoder->Flush();
   {
-    data.mIsFlushing = false;
     MonitorAutoLock mon(data.mMonitor);
+    data.mIsFlushing = false;
   }
 }
 

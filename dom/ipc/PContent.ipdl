@@ -66,6 +66,7 @@ struct FontListEntry {
     int16_t   stretch;
     uint8_t   italic;
     uint8_t   index;
+    bool      isHidden;
 };
 
 struct DeviceStorageFreeSpaceParams
@@ -351,7 +352,7 @@ child:
     async SetProcessSandbox();
 
     PMemoryReportRequest(uint32_t generation, bool anonymize,
-                         bool minimizeMemoryUsage, nsString DMDDumpIdent);
+                         bool minimizeMemoryUsage, FileDescriptor DMDFile);
 
     /**
      * Notify the AudioChannelService in the child processes.
@@ -645,6 +646,8 @@ parent:
      * use the newly-invalid surface.
      */
     BackUpXResources(FileDescriptor aXSocketFd);
+
+    sync OpenAnonymousTemporaryFile() returns (FileDescriptor aFD);
 
 both:
      AsyncMessage(nsString aMessage, ClonedMessageData aData,

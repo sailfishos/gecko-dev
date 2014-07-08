@@ -114,7 +114,7 @@ void TableTicker::StreamMetaJSCustomObject(JSStreamWriter& b)
     b.NameValue("jank", mJankOnly);
     b.NameValue("processType", XRE_GetProcessType());
 
-    TimeDuration delta = TimeStamp::Now() - sStartTime;
+    mozilla::TimeDuration delta = mozilla::TimeStamp::Now() - sStartTime;
     b.NameValue("startTime", static_cast<double>(PR_Now()/1000.0 - delta.ToMilliseconds()));
 
     nsresult res;
@@ -170,10 +170,14 @@ JSObject* TableTicker::ToJSObject(JSContext *aCx)
 {
   JS::RootedValue val(aCx);
   std::stringstream ss;
-  JSStreamWriter b(ss);
-  StreamJSObject(b);
-  NS_ConvertUTF8toUTF16 js_string(nsDependentCString(ss.str().c_str()));
-  JS_ParseJSON(aCx, static_cast<const jschar*>(js_string.get()), js_string.Length(), &val);
+  {
+    // Define a scope to prevent a moving GC during ~JSStreamWriter from
+    // trashing the return value.
+    JSStreamWriter b(ss);
+    StreamJSObject(b);
+    NS_ConvertUTF8toUTF16 js_string(nsDependentCString(ss.str().c_str()));
+    JS_ParseJSON(aCx, static_cast<const jschar*>(js_string.get()), js_string.Length(), &val);
+  }
   return &val.toObject();
 }
 
@@ -424,7 +428,7 @@ static void mergeNativeBacktrace(ThreadProfile &aProfile, const PCArray &array) 
     while (pseudoStackPos < stack->stackSize()) {
       volatile StackEntry& entry = stack->mStack[pseudoStackPos];
 
-      if (entry.stackAddress() < array.sp_array[i-1] && entry.stackAddress())
+      if (entry.isCpp() && entry.stackAddress() && entry.stackAddress() < array.sp_array[i-1])
         break;
 
       addProfileEntry(entry, aProfile, stack, array.array[0]);
@@ -636,7 +640,7 @@ void TableTicker::InplaceTick(TickSample* sample)
       recordSample = false;
       // only record the events when we have a we haven't seen a tracer event for 100ms
       if (!sLastTracerEvent.IsNull()) {
-        TimeDuration delta = sample->timestamp - sLastTracerEvent;
+        mozilla::TimeDuration delta = sample->timestamp - sLastTracerEvent;
         if (delta.ToMilliseconds() > 100.0) {
             recordSample = true;
         }
@@ -658,12 +662,12 @@ void TableTicker::InplaceTick(TickSample* sample)
     currThreadProfile.flush();
 
   if (sample && currThreadProfile.GetThreadResponsiveness()->HasData()) {
-    TimeDuration delta = currThreadProfile.GetThreadResponsiveness()->GetUnresponsiveDuration(sample->timestamp);
+    mozilla::TimeDuration delta = currThreadProfile.GetThreadResponsiveness()->GetUnresponsiveDuration(sample->timestamp);
     currThreadProfile.addTag(ProfileEntry('r', static_cast<float>(delta.ToMilliseconds())));
   }
 
   if (sample) {
-    TimeDuration delta = sample->timestamp - sStartTime;
+    mozilla::TimeDuration delta = sample->timestamp - sStartTime;
     currThreadProfile.addTag(ProfileEntry('t', static_cast<float>(delta.ToMilliseconds())));
   }
 

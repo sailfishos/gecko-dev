@@ -192,10 +192,13 @@ GetCaseIndependentLetters(jschar character,
                           bool ascii_subject,
                           jschar *letters)
 {
-    JS_ASSERT(!ascii_subject);
-
     jschar lower = unicode::ToLowerCase(character);
     jschar upper = unicode::ToUpperCase(character);
+
+    // The standard requires that non-ASCII characters cannot have ASCII
+    // character codes in their equivalence class.
+    if (ascii_subject && character > kMaxOneByteCharCode)
+        return 0;
 
     letters[0] = character;
 
@@ -212,6 +215,23 @@ GetCaseIndependentLetters(jschar character,
         return 2;
     }
     return 1;
+}
+
+static jschar
+ConvertNonLatin1ToLatin1(jschar c)
+{
+    JS_ASSERT(c > kMaxOneByteCharCode);
+    switch (c) {
+      // This are equivalent characters in unicode.
+      case 0x39c:
+      case 0x3bc:
+        return 0xb5;
+      // This is an uppercase of a Latin-1 character
+      // outside of Latin-1.
+      case 0x178:
+        return 0xff;
+    }
+    return 0;
 }
 
 void
@@ -670,17 +690,14 @@ TextNode::FilterASCII(int depth, bool ignore_case)
 
                 // Here, we need to check for characters whose upper and lower cases
                 // are outside the Latin-1 range.
-                jschar chars[kEcma262UnCanonicalizeMaxWidth];
-                size_t length = GetCaseIndependentLetters(c, true, chars);
-                JS_ASSERT(length <= 1);
-
-                if (length == 0) {
+                jschar converted = ConvertNonLatin1ToLatin1(c);
+                if (converted == 0) {
                     // Character is outside Latin-1 completely
                     return set_replacement(nullptr);
                 }
 
                 // Convert quark to Latin-1 in place.
-                quarks[j] = chars[0];
+                quarks[j] = converted;
             }
         } else {
             JS_ASSERT(elm.text_type() == TextElement::CHAR_CLASS);
@@ -1462,7 +1479,7 @@ class irregexp::RegExpCompiler
   private:
     EndNode* accept_;
     int next_register_;
-    js::Vector<RegExpNode *, 4, SystemAllocPolicy> work_list_;
+    Vector<RegExpNode *, 4, SystemAllocPolicy> work_list_;
     int recursion_depth_;
     RegExpMacroAssembler* macro_assembler_;
     bool ignore_case_;
@@ -2955,7 +2972,7 @@ EmitDoubleBoundaryTest(RegExpMacroAssembler* masm,
     }
 }
 
-typedef js::Vector<int, 4, LifoAllocPolicy<Infallible> > RangeBoundaryVector;
+typedef Vector<int, 4, LifoAllocPolicy<Infallible> > RangeBoundaryVector;
 
 // even_label is for ranges[i] to ranges[i + 1] where i - start_index is even.
 // odd_label is for ranges[i] to ranges[i + 1] where i - start_index is odd.
@@ -3957,7 +3974,7 @@ class AlternativeGenerationList
 
   private:
     static const size_t kAFew = 10;
-    js::Vector<AlternativeGeneration *, 1, LifoAllocPolicy<Infallible> > alt_gens_;
+    Vector<AlternativeGeneration *, 1, LifoAllocPolicy<Infallible> > alt_gens_;
     AlternativeGeneration a_few_alt_gens_[kAFew];
 };
 

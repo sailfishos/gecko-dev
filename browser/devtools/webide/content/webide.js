@@ -27,9 +27,8 @@ const Strings = Services.strings.createBundle("chrome://webide/content/webide.pr
 const HTML = "http://www.w3.org/1999/xhtml";
 const HELP_URL = "https://developer.mozilla.org/Firefox_OS/Using_the_App_Manager#Troubleshooting";
 
-// download some JSON early.
+// download template index early
 GetTemplatesJSON(true);
-GetAddonsJSON(true);
 
 // See bug 989619
 console.log = console.log.bind(console);
@@ -139,6 +138,8 @@ let UI = {
         this.updateProjectButton();
         this.updateProjectEditorHeader();
         break;
+      case "install-progress":
+        this.updateProgress(Math.round(100 * details.bytesSent / details.totalBytes));
     };
   },
 
@@ -170,16 +171,56 @@ let UI = {
     }
   },
 
+  /********** BUSY UI **********/
+
+  _busyTimeout: null,
+  _busyOperationDescription: null,
+  _busyPromise: null,
+
+  updateProgress: function(percent) {
+    let progress = document.querySelector("#action-busy-determined");
+    progress.mode = "determined";
+    progress.value = percent;
+    this.setupBusyTimeout();
+  },
+
   busy: function() {
     this.hidePanels();
-    document.querySelector("window").classList.add("busy")
+    let win = document.querySelector("window");
+    win.classList.add("busy")
+    win.classList.add("busy-undetermined");
     this.updateCommands();
   },
 
   unbusy: function() {
-    document.querySelector("window").classList.remove("busy")
+    let win = document.querySelector("window");
+    win.classList.remove("busy")
+    win.classList.remove("busy-determined");
+    win.classList.remove("busy-undetermined");
     this.updateCommands();
     this._busyPromise = null;
+  },
+
+  setupBusyTimeout: function() {
+    this.cancelBusyTimeout();
+    this._busyTimeout = setTimeout(() => {
+      this.unbusy();
+      UI.reportError("error_operationTimeout", this._busyOperationDescription);
+      this._busyPromise.reject("promise timeout: " + this._busyOperationDescription);
+    }, 30000);
+  },
+
+  cancelBusyTimeout: function() {
+    clearTimeout(this._busyTimeout);
+  },
+
+  busyWithProgressUntil: function(promise, operationDescription) {
+    this.busyUntil(promise, operationDescription);
+    let win = document.querySelector("window");
+    let progress = document.querySelector("#action-busy-determined");
+    progress.mode = "undetermined";
+    win.classList.add("busy-determined");
+    win.classList.remove("busy-undetermined");
   },
 
   busyUntil: function(promise, operationDescription) {
@@ -187,17 +228,14 @@ let UI = {
     // will unfreeze the UI, just in case the promise never gets
     // resolved.
     this._busyPromise = promise;
-    let timeout = setTimeout(() => {
-      this.unbusy();
-      UI.reportError("error_operationTimeout", operationDescription);
-      promise.reject("promise timeout: " + operationDescription);
-    }, 30000);
+    this._busyOperationDescription = operationDescription;
+    this.setupBusyTimeout();
     this.busy();
     promise.then(() => {
-      clearTimeout(timeout);
+      this.cancelBusyTimeout();
       this.unbusy();
     }, (e) => {
-      clearTimeout(timeout);
+      this.cancelBusyTimeout();
       UI.reportError("error_operationFail", operationDescription);
       console.error(e);
       this.unbusy();
@@ -233,7 +271,15 @@ let UI = {
   /********** RUNTIME **********/
 
   updateRuntimeList: function() {
+    let wifiHeaderNode = document.querySelector("#runtime-header-wifi-devices");
+    if (AppManager.isWiFiScanningEnabled) {
+      wifiHeaderNode.removeAttribute("hidden");
+    } else {
+      wifiHeaderNode.setAttribute("hidden", "true");
+    }
+
     let USBListNode = document.querySelector("#runtime-panel-usbruntime");
+    let WiFiListNode = document.querySelector("#runtime-panel-wifi-devices");
     let simulatorListNode = document.querySelector("#runtime-panel-simulators");
     let customListNode = document.querySelector("#runtime-panel-custom");
 
@@ -261,6 +307,7 @@ let UI = {
 
     for (let [type, parent] of [
       ["usb", USBListNode],
+      ["wifi", WiFiListNode],
       ["simulator", simulatorListNode],
       ["custom", customListNode],
     ]) {
@@ -321,13 +368,34 @@ let UI = {
 
   // ProjectEditor & details screen
 
+  destroyProjectEditor: function() {
+    if (this.projecteditor) {
+      this.projecteditor.destroy();
+      this.projecteditor = null;
+    }
+  },
+
+  updateProjectEditorMenusVisibility: function() {
+    if (this.projecteditor) {
+      let panel = document.querySelector("#deck").selectedPanel;
+      if (panel && panel.id == "deck-panel-projecteditor") {
+        this.projecteditor.menuEnabled = true;
+      } else {
+        this.projecteditor.menuEnabled = false;
+      }
+    }
+  },
+
   getProjectEditor: function() {
     if (this.projecteditor) {
       return this.projecteditor.loaded;
     }
 
     let projecteditorIframe = document.querySelector("#deck-panel-projecteditor");
-    this.projecteditor = ProjectEditor.ProjectEditor(projecteditorIframe);
+    this.projecteditor = ProjectEditor.ProjectEditor(projecteditorIframe, {
+      menubar: document.querySelector("#main-menubar"),
+      menuindex: 1
+    });
     this.projecteditor.on("onEditorSave", (editor, resource) => {
       AppManager.validateProject(AppManager.selectedProject);
     });
@@ -367,6 +435,12 @@ let UI = {
       return;
     }
 
+    // Save last project location
+
+    if (project.location) {
+      Services.prefs.setCharPref("devtools.webide.lastprojectlocation", project.location);
+    }
+
     // Make sure the directory exist before we show Project Editor
 
     let forceDetailsOnly = false;
@@ -391,10 +465,6 @@ let UI = {
     this.getProjectEditor().then(() => {
       this.updateProjectEditorHeader();
     }, console.error);
-
-    if (project.location) {
-      Services.prefs.setCharPref("devtools.webide.lastprojectlocation", project.location);
-    }
   },
 
   /********** DECK **********/
@@ -409,12 +479,14 @@ let UI = {
     let deck = document.querySelector("#deck");
     let panel = deck.querySelector("#deck-panel-" + id);
     deck.selectedPanel = panel;
+    this.updateProjectEditorMenusVisibility();
   },
 
   resetDeck: function() {
     this.resetFocus();
     let deck = document.querySelector("#deck");
     deck.selectedPanel = null;
+    this.updateProjectEditorMenusVisibility();
   },
 
   /********** COMMANDS **********/
@@ -752,6 +824,8 @@ let Cmds = {
   },
 
   showRuntimePanel: function() {
+    AppManager.scanForWiFiRuntimes();
+
     let panel = document.querySelector("#runtime-panel");
     let anchor = document.querySelector("#runtime-panel-button > .panel-button-anchor");
 
@@ -790,12 +864,11 @@ let Cmds = {
   play: function() {
     switch(AppManager.selectedProject.type) {
       case "packaged":
+        return UI.busyWithProgressUntil(AppManager.installAndRunProject(), "installing and running app");
       case "hosted":
         return UI.busyUntil(AppManager.installAndRunProject(), "installing and running app");
-        break;
       case "runtimeApp":
         return UI.busyUntil(AppManager.runRuntimeApp(), "running app");
-        break;
     }
     return promise.reject();
   },
@@ -822,7 +895,11 @@ let Cmds = {
   },
 
   toggleEditors: function() {
-    Services.prefs.setBoolPref("devtools.webide.showProjectEditor", !UI.isProjectEditorEnabled());
+    let isNowEnabled = !UI.isProjectEditorEnabled();
+    Services.prefs.setBoolPref("devtools.webide.showProjectEditor", isNowEnabled);
+    if (!isNowEnabled) {
+      UI.destroyProjectEditor();
+    }
     UI.openProject();
   },
 

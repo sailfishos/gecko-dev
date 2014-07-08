@@ -111,10 +111,10 @@ function start() {
   info('GL vendor: ' + glVendor);
   info('GL renderer: ' + glRenderer);
   
-  if (glRenderer.contains('llvmpipe')) {
-    kGLDriver = GLDRIVER_MESA;
-  } else if (glRenderer.contains('Android Emulator')) {
+  if (glRenderer.contains('Android Emulator')) {
     kGLDriver = GLDRIVER_X86EMULATOR;
+  } else if (glRenderer.contains('llvmpipe')) {
+    kGLDriver = GLDRIVER_MESA;
   } else if (glVendor.contains('NVIDIA')) {
     kGLDriver = GLDRIVER_NVIDIA;
   }

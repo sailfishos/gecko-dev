@@ -90,6 +90,7 @@ SocialUI = {
     if (!this._initialized) {
       return;
     }
+    SocialSidebar.saveWindowState();
 
     Services.obs.removeObserver(this, "social:ambient-notification-changed");
     Services.obs.removeObserver(this, "social:profile-changed");
@@ -550,10 +551,15 @@ SocialShare = {
   },
 
   update: function() {
-    let shareButton = this.shareButton;
-    shareButton.hidden = !SocialUI.enabled ||
-                         [p for (p of Social.providers) if (p.shareURL)].length == 0;
-    let disabled = shareButton.hidden || !this.canSharePage(gBrowser.currentURI);
+    let widget = CustomizableUI.getWidget("social-share-button");
+    if (!widget)
+      return;
+    let shareButton = widget.forWindow(window).node;
+    // hidden state is based on available share providers and location of
+    // button. It's always visible and disabled in the customization palette.
+    shareButton.hidden = !SocialUI.enabled || (widget.areaType &&
+                         [p for (p of Social.providers) if (p.shareURL)].length == 0);
+    let disabled = !widget.areaType || shareButton.hidden || !this.canSharePage(gBrowser.currentURI);
 
     // 1. update the relevent command's disabled state so the keyboard
     // shortcut only works when available.
@@ -710,6 +716,11 @@ SocialSidebar = {
   },
 
   restoreWindowState: function() {
+    // Window state is used to allow different sidebar providers in each window.
+    // We also store the provider used in a pref as the default sidebar to
+    // maintain that state for users who do not restore window state. The
+    // existence of social.sidebar.provider means the sidebar is open with that
+    // provider.
     this._initialized = true;
     if (!this.canShow)
       return;
@@ -737,13 +748,22 @@ SocialSidebar = {
     let data = SessionStore.getWindowValue(window, "socialSidebar");
     // if this window doesn't have it's own state, use the state from the opener
     if (!data && window.opener && !window.opener.closed) {
-      data = SessionStore.getWindowValue(window.opener, "socialSidebar");
+      try {
+        data = SessionStore.getWindowValue(window.opener, "socialSidebar");
+      } catch(e) {
+        // Window is not tracked, which happens on osx if the window is opened
+        // from the hidden window. That happens when you close the last window
+        // without quiting firefox, then open a new window.
+      }
     }
     if (data) {
       data = JSON.parse(data);
       document.getElementById("social-sidebar-browser").setAttribute("origin", data.origin);
       if (!data.hidden)
         this.show(data.origin);
+    } else if (Services.prefs.prefHasUserValue("social.sidebar.provider")) {
+      // no window state, use the global state if it is available
+      this.show(Services.prefs.getCharPref("social.sidebar.provider"));
     }
   },
 
@@ -754,7 +774,18 @@ SocialSidebar = {
       "hidden": broadcaster.hidden,
       "origin": sidebarOrigin
     };
-    SessionStore.setWindowValue(window, "socialSidebar", JSON.stringify(data));
+
+    // Save a global state for users who do not restore state.
+    if (broadcaster.hidden)
+      Services.prefs.clearUserPref("social.sidebar.provider");
+    else
+      Services.prefs.setCharPref("social.sidebar.provider", sidebarOrigin);
+
+    try {
+      SessionStore.setWindowValue(window, "socialSidebar", JSON.stringify(data));
+    } catch(e) {
+      // window not tracked during uninit
+    }
   },
 
   setSidebarVisibilityState: function(aEnabled) {
@@ -1152,7 +1183,6 @@ SocialStatus = {
     let button = widget.forWindow(window).node;
     if (button) {
       // we only grab the first notification, ignore all others
-      let place = CustomizableUI.getPlaceForItem(button);
       let provider = Social._getProviderFromOrigin(origin);
       let icons = provider.ambientNotificationIcons;
       let iconNames = Object.keys(icons);
@@ -1162,7 +1192,7 @@ SocialStatus = {
       // ambient notification and profile changes.
       let iconURL = provider.icon32URL || provider.iconURL;
       let tooltiptext;
-      if (!notif || place == "palette") {
+      if (!notif || !widget.areaType) {
         button.style.listStyleImage = "url(" + iconURL + ")";
         button.setAttribute("badge", "");
         button.setAttribute("aria-label", "");
@@ -1219,8 +1249,12 @@ SocialMarks = {
   update: function() {
     // signal each button to update itself
     let currentButtons = document.querySelectorAll('toolbarbutton[type="socialmark"]');
-    for (let elt of currentButtons)
-      elt.update();
+    for (let elt of currentButtons) {
+      // make sure we can call update since the xbl is not completely bound if
+      // the button is in overflow, until the button becomes visible.
+      if (elt.update)
+        elt.update();
+    }
   },
 
   updatePanelButtons: function() {
@@ -1233,7 +1267,9 @@ SocialMarks = {
       if (!widget)
         continue;
       let node = widget.forWindow(window).node;
-      if (node)
+      // xbl binding is not complete on startup when buttons are not in toolbar,
+      // verify update is available
+      if (node && node.update)
         node.update();
     }
   },

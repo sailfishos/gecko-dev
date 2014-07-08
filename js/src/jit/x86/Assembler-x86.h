@@ -43,8 +43,10 @@ static MOZ_CONSTEXPR_VAR Register JSReturnReg_Data = edx;
 static MOZ_CONSTEXPR_VAR Register StackPointer = esp;
 static MOZ_CONSTEXPR_VAR Register FramePointer = ebp;
 static MOZ_CONSTEXPR_VAR Register ReturnReg = eax;
-static MOZ_CONSTEXPR_VAR FloatRegister ReturnFloatReg = xmm0;
-static MOZ_CONSTEXPR_VAR FloatRegister ScratchFloatReg = xmm7;
+static MOZ_CONSTEXPR_VAR FloatRegister ReturnFloat32Reg = xmm0;
+static MOZ_CONSTEXPR_VAR FloatRegister ScratchFloat32Reg = xmm7;
+static MOZ_CONSTEXPR_VAR FloatRegister ReturnDoubleReg = xmm0;
+static MOZ_CONSTEXPR_VAR FloatRegister ScratchDoubleReg = xmm7;
 
 // Avoid ebp, which is the FramePointer, which is unavailable in some modes.
 static MOZ_CONSTEXPR_VAR Register ArgumentsRectifierReg = esi;
@@ -110,13 +112,6 @@ static const uint32_t StackAlignment = 4;
 #endif
 static const bool StackKeptAligned = false;
 static const uint32_t CodeAlignment = 8;
-
-// As an invariant across architectures, within asm.js code:
-//   $sp % StackAlignment = (AsmJSSizeOfRetAddr + masm.framePushed) % StackAlignment
-// On x86, this naturally falls out of the fact that the 'call' instruction
-// pushes the return address on the stack and masm.framePushed = 0 at the first
-// instruction of the prologue.
-static const uint32_t AsmJSSizeOfRetAddr = sizeof(void*);
 
 struct ImmTag : public Imm32
 {
@@ -380,13 +375,6 @@ class Assembler : public AssemblerX86Shared
         JmpSrc src = masm.call();
         addPendingJump(src, target, Relocation::HARDCODED);
     }
-    void call(AsmJSImmPtr target) {
-        // Moving to a register is suboptimal. To fix (use a single
-        // call-immediate instruction) we'll need to distinguish a new type of
-        // relative patch to an absolute address in AsmJSAbsoluteLink.
-        mov(target, eax);
-        call(eax);
-    }
 
     // Emit a CALL or CMP (nop) instruction. ToggleCall can be used to patch
     // this instruction.
@@ -394,11 +382,11 @@ class Assembler : public AssemblerX86Shared
         CodeOffsetLabel offset(size());
         JmpSrc src = enabled ? masm.call() : masm.cmp_eax();
         addPendingJump(src, ImmPtr(target->raw()), Relocation::JITCODE);
-        JS_ASSERT(size() - offset.offset() == ToggledCallSize());
+        JS_ASSERT(size() - offset.offset() == ToggledCallSize(nullptr));
         return offset;
     }
 
-    static size_t ToggledCallSize() {
+    static size_t ToggledCallSize(uint8_t *code) {
         // Size of a call instruction.
         return 5;
     }
@@ -406,7 +394,6 @@ class Assembler : public AssemblerX86Shared
     // Re-routes pending jumps to an external target, flushing the label in the
     // process.
     void retarget(Label *label, ImmPtr target, Relocation::Kind reloc) {
-        JSC::MacroAssembler::Label jsclabel;
         if (label->used()) {
             bool more;
             JSC::X86Assembler::JmpSrc jmp(label->offset());

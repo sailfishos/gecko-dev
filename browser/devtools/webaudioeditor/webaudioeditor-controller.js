@@ -94,19 +94,24 @@ AudioNodeView.prototype.getType = Task.async(function* () {
 });
 
 // Helper method to create connections in the AudioNodeConnections
-// WeakMap for rendering
+// WeakMap for rendering. Returns a boolean indicating
+// if the connection was successfully created. Will return `false`
+// when the connection was previously made.
 AudioNodeView.prototype.connect = function (destination) {
-  let connections = AudioNodeConnections.get(this);
-  if (!connections) {
-    connections = [];
-    AudioNodeConnections.set(this, connections);
+  let connections = AudioNodeConnections.get(this) || new Set();
+  AudioNodeConnections.set(this, connections);
+
+  // Don't duplicate add.
+  if (!connections.has(destination)) {
+    connections.add(destination);
+    return true;
   }
-  connections.push(destination);
+  return false;
 };
 
 // Helper method to remove audio connections from the current AudioNodeView
 AudioNodeView.prototype.disconnect = function () {
-  AudioNodeConnections.set(this, []);
+  AudioNodeConnections.set(this, new Set());
 };
 
 // Returns a promise that resolves to an array of objects containing
@@ -156,6 +161,7 @@ let WebAudioEditorController = {
     gFront.on("connect-node", this._onConnectNode);
     gFront.on("disconnect-node", this._onDisconnectNode);
     gFront.on("change-param", this._onChangeParam);
+    gFront.on("destroy-node", this._onDestroyNode);
 
     // Hook into theme change so we can change
     // the graph's marker styling, since we can't do this
@@ -166,6 +172,7 @@ let WebAudioEditorController = {
     window.on(EVENTS.CREATE_NODE, this._onUpdatedContext);
     window.on(EVENTS.CONNECT_NODE, this._onUpdatedContext);
     window.on(EVENTS.DISCONNECT_NODE, this._onUpdatedContext);
+    window.on(EVENTS.DESTROY_NODE, this._onUpdatedContext);
   },
 
   /**
@@ -180,9 +187,11 @@ let WebAudioEditorController = {
     gFront.off("connect-node", this._onConnectNode);
     gFront.off("disconnect-node", this._onDisconnectNode);
     gFront.off("change-param", this._onChangeParam);
+    gFront.off("destroy-node", this._onDestroyNode);
     window.off(EVENTS.CREATE_NODE, this._onUpdatedContext);
     window.off(EVENTS.CONNECT_NODE, this._onUpdatedContext);
     window.off(EVENTS.DISCONNECT_NODE, this._onUpdatedContext);
+    window.off(EVENTS.DESTROY_NODE, this._onUpdatedContext);
     gDevTools.off("pref-changed", this._onThemeChange);
   },
 
@@ -265,6 +274,20 @@ let WebAudioEditorController = {
   }),
 
   /**
+   * Called on `destroy-node` when an AudioNode is GC'd. Removes
+   * from the AudioNode array and fires an event indicating the removal.
+   */
+  _onDestroyNode: function (nodeActor) {
+    for (let i = 0; i < AudioNodes.length; i++) {
+      if (equalActors(AudioNodes[i].actor, nodeActor)) {
+        AudioNodes.splice(i, 1);
+        window.emit(EVENTS.DESTROY_NODE, nodeActor.actorID);
+        break;
+      }
+    }
+  },
+
+  /**
    * Called when a node is connected to another node.
    */
   _onConnectNode: Task.async(function* ({ source: sourceActor, dest: destActor }) {
@@ -275,8 +298,10 @@ let WebAudioEditorController = {
     // adding an edge.
     let [source, dest] = yield waitForNodeCreation(sourceActor, destActor);
 
-    source.connect(dest);
-    window.emit(EVENTS.CONNECT_NODE, source.id, dest.id);
+    // Connect nodes, and only emit if it's a new connection.
+    if (source.connect(dest)) {
+      window.emit(EVENTS.CONNECT_NODE, source.id, dest.id);
+    }
 
     function waitForNodeCreation (sourceActor, destActor) {
       let deferred = defer();

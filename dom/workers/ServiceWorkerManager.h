@@ -18,11 +18,53 @@
 #include "nsTArrayForwardDeclare.h"
 #include "nsTWeakRef.h"
 
+class nsIScriptError;
+
 namespace mozilla {
 namespace dom {
 namespace workers {
 
 class ServiceWorker;
+class ServiceWorkerContainer;
+class ServiceWorkerUpdateInstance;
+
+/**
+ * UpdatePromise is a utility class that sort of imitates Promise, but not
+ * completely. Using DOM Promise from C++ is a pain when we know the precise types
+ * we're dealing with since it involves dealing with JSAPI. In this case we
+ * also don't (yet) need the 'thenables added after resolution should trigger
+ * immediately' support and other things like that. All we want is something
+ * that works reasonably Promise like and can resolve real DOM Promises added
+ * pre-emptively.
+ */
+class UpdatePromise MOZ_FINAL
+{
+public:
+  UpdatePromise();
+  ~UpdatePromise();
+
+  void AddPromise(Promise* aPromise);
+  void ResolveAllPromises(const nsACString& aScriptSpec, const nsACString& aScope);
+  void RejectAllPromises(nsresult aRv);
+  void RejectAllPromises(const ErrorEventInit& aErrorDesc);
+
+  bool
+  IsRejected() const
+  {
+    return mState == Rejected;
+  }
+
+private:
+  enum {
+    Pending,
+    Resolved,
+    Rejected
+  } mState;
+
+  // XXXnsm: Right now we don't need to support AddPromise() after
+  // already being resolved (i.e. true Promise-like behaviour).
+  nsTArray<nsTWeakRef<Promise>> mPromises;
+};
 
 /*
  * Wherever the spec treats a worker instance and a description of said worker
@@ -32,13 +74,19 @@ class ServiceWorker;
  */
 class ServiceWorkerInfo
 {
-  const nsCString mScriptSpec;
+  nsCString mScriptSpec;
 public:
 
   bool
   IsValid() const
   {
     return !mScriptSpec.IsVoid();
+  }
+
+  void
+  Invalidate()
+  {
+    mScriptSpec.SetIsVoid(true);
   }
 
   const nsCString&
@@ -49,19 +97,23 @@ public:
   }
 
   ServiceWorkerInfo()
-  { }
+  {
+    Invalidate();
+  }
 
   explicit ServiceWorkerInfo(const nsACString& aScriptSpec)
     : mScriptSpec(aScriptSpec)
   { }
 };
 
-class ServiceWorkerRegistration
+// Needs to inherit from nsISupports because NS_ProxyRelease() does not support
+// non-ISupports classes.
+class ServiceWorkerRegistration MOZ_FINAL : public nsISupports
 {
-private:
-  ~ServiceWorkerRegistration() {}
+  virtual ~ServiceWorkerRegistration();
+
 public:
-  NS_INLINE_DECL_REFCOUNTING(ServiceWorkerRegistration)
+  NS_DECL_ISUPPORTS
 
   nsCString mScope;
   // The scriptURL for the registration. This may be completely different from
@@ -72,18 +124,20 @@ public:
   ServiceWorkerInfo mWaitingWorker;
   ServiceWorkerInfo mInstallingWorker;
 
-  bool mHasUpdatePromise;
+  nsAutoPtr<UpdatePromise> mUpdatePromise;
+  nsRefPtr<ServiceWorkerUpdateInstance> mUpdateInstance;
 
   void
   AddUpdatePromiseObserver(Promise* aPromise)
   {
-    // FIXME(nsm): Same bug, different patch.
+    MOZ_ASSERT(HasUpdatePromise());
+    mUpdatePromise->AddPromise(aPromise);
   }
 
   bool
   HasUpdatePromise()
   {
-    return mHasUpdatePromise;
+    return mUpdatePromise;
   }
 
   // When unregister() is called on a registration, it is not immediately
@@ -91,11 +145,7 @@ public:
   // pendingUninstall and when all controlling documents go away, removed.
   bool mPendingUninstall;
 
-  explicit ServiceWorkerRegistration(const nsACString& aScope)
-    : mScope(aScope),
-      mHasUpdatePromise(false),
-      mPendingUninstall(false)
-  { }
+  explicit ServiceWorkerRegistration(const nsACString& aScope);
 
   ServiceWorkerInfo
   Newest() const
@@ -126,6 +176,8 @@ public:
 class ServiceWorkerManager MOZ_FINAL : public nsIServiceWorkerManager
 {
   friend class RegisterRunnable;
+  friend class CallInstallRunnable;
+  friend class ServiceWorkerUpdateInstance;
 
 public:
   NS_DECL_ISUPPORTS
@@ -174,12 +226,35 @@ public:
 
   nsClassHashtable<nsCStringHashKey, ServiceWorkerDomainInfo> mDomainMap;
 
-  // FIXME(nsm): What do we do if a page calls for register("/foo_worker.js", { scope: "/*"
-  // }) and then another page calls register("/bar_worker.js", { scope: "/*" })
-  // while the install is in progress. The async install steps for register
-  // bar_worker.js could finish before foo_worker.js, but bar_worker still has
-  // to be the winning controller.
-  // FIXME(nsm): Move this into per domain?
+  void
+  ResolveRegisterPromises(ServiceWorkerRegistration* aRegistration,
+                          const nsACString& aWorkerScriptSpec);
+
+  void
+  RejectUpdatePromiseObservers(ServiceWorkerRegistration* aRegistration,
+                               nsresult aResult);
+
+  void
+  RejectUpdatePromiseObservers(ServiceWorkerRegistration* aRegistration,
+                               const ErrorEventInit& aErrorDesc);
+
+  void
+  FinishFetch(ServiceWorkerRegistration* aRegistration,
+              nsPIDOMWindow* aWindow);
+
+  void
+  FinishInstall(ServiceWorkerRegistration* aRegistration);
+
+  void
+  HandleError(JSContext* aCx,
+              const nsACString& aScope,
+              const nsAString& aWorkerURL,
+              nsString aMessage,
+              nsString aFilename,
+              nsString aLine,
+              uint32_t aLineNumber,
+              uint32_t aColumnNumber,
+              uint32_t aFlags);
 
   static already_AddRefed<ServiceWorkerManager>
   GetInstance();
@@ -191,11 +266,20 @@ private:
   NS_IMETHOD
   Update(ServiceWorkerRegistration* aRegistration, nsPIDOMWindow* aWindow);
 
-  NS_IMETHODIMP
+  void
+  Install(ServiceWorkerRegistration* aRegistration,
+          ServiceWorkerInfo aServiceWorkerInfo);
+
+  NS_IMETHOD
   CreateServiceWorkerForWindow(nsPIDOMWindow* aWindow,
                                const nsACString& aScriptSpec,
                                const nsACString& aScope,
                                ServiceWorker** aServiceWorker);
+
+  NS_IMETHOD
+  CreateServiceWorker(const nsACString& aScriptSpec,
+                      const nsACString& aScope,
+                      ServiceWorker** aServiceWorker);
 
   static PLDHashOperator
   CleanupServiceWorkerInformation(const nsACString& aDomain,

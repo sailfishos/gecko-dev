@@ -168,12 +168,13 @@ typedef struct nsKeyPairInfoStr {
 class nsCryptoRunArgs : public nsISupports {
 public:
   nsCryptoRunArgs(JSContext *aCx);
-  virtual ~nsCryptoRunArgs();
   nsCOMPtr<nsISupports> m_kungFuDeathGrip;
   JSContext *m_cx;
   JS::PersistentRooted<JSObject*> m_scope;
   nsXPIDLCString m_jsCallback;
   NS_DECL_ISUPPORTS
+protected:
+  virtual ~nsCryptoRunArgs();
 };
 
 //This class is used to run the callback code
@@ -191,6 +192,13 @@ private:
   nsCryptoRunArgs *m_args;
 };
 
+namespace mozilla {
+template<>
+struct HasDangerousPublicDestructor<nsCryptoRunnable>
+{
+  static const bool value = true;
+};
+}
 
 //We're going to inherit the memory passed
 //into us.
@@ -199,10 +207,11 @@ private:
 class nsP12Runnable : public nsIRunnable {
 public:
   nsP12Runnable(nsIX509Cert **certArr, int32_t numCerts, nsIPK11Token *token);
-  virtual ~nsP12Runnable();
 
   NS_IMETHOD Run();
   NS_DECL_ISUPPORTS
+protected:
+  virtual ~nsP12Runnable();
 private:
   nsCOMPtr<nsIPK11Token> mToken;
   nsIX509Cert **mCertArr;
@@ -963,13 +972,13 @@ cryptojs_ReadArgsAndGenerateKey(JSContext *cx,
   jsString = JS::ToString(cx, v);
   NS_ENSURE_TRUE(jsString, NS_ERROR_OUT_OF_MEMORY);
   argv[2] = STRING_TO_JSVAL(jsString);
-  nsDependentJSString dependentKeyGenAlg;
-  NS_ENSURE_TRUE(dependentKeyGenAlg.init(cx, jsString), NS_ERROR_UNEXPECTED);
-  nsAutoString keyGenAlg(dependentKeyGenAlg);
+  nsAutoJSString autoJSKeyGenAlg;
+  NS_ENSURE_TRUE(autoJSKeyGenAlg.init(cx, jsString), NS_ERROR_UNEXPECTED);
+  nsAutoString keyGenAlg(autoJSKeyGenAlg);
   keyGenAlg.Trim("\r\n\t ");
   keyGenType->keyGenType = cryptojs_interpret_key_gen_type(keyGenAlg);
   if (keyGenType->keyGenType == invalidKeyGen) {
-    NS_LossyConvertUTF16toASCII keyGenAlgNarrow(dependentKeyGenAlg);
+    NS_LossyConvertUTF16toASCII keyGenAlgNarrow(autoJSKeyGenAlg);
     JS_ReportError(cx, "%s%s%s", JS_ERROR,
                    "invalid key generation argument:",
                    keyGenAlgNarrow.get());
@@ -985,7 +994,7 @@ cryptojs_ReadArgsAndGenerateKey(JSContext *cx,
                                    *slot,willEscrow);
 
   if (rv != NS_OK) {
-    NS_LossyConvertUTF16toASCII keyGenAlgNarrow(dependentKeyGenAlg);
+    NS_LossyConvertUTF16toASCII keyGenAlgNarrow(autoJSKeyGenAlg);
     JS_ReportError(cx,"%s%s%s", JS_ERROR,
                    "could not generate the key for algorithm ",
                    keyGenAlgNarrow.get());

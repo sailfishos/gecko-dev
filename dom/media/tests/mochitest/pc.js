@@ -349,6 +349,15 @@ MediaElementChecker.prototype = {
 };
 
 /**
+ * Only calls info() if SimpleTest.info() is available
+ */
+function safeInfo(message) {
+  if (typeof(info) === "function") {
+    info(message);
+  }
+}
+
+/**
  * Query function for determining if any IP address is available for
  * generating SDP.
  *
@@ -374,16 +383,16 @@ function isNetworkReady() {
         var ip = ips.value[j];
         // skip IPv6 address until bug 797262 is implemented
         if (ip.indexOf(":") < 0) {
-          info("Network interface is ready with address: " + ip);
+          safeInfo("Network interface is ready with address: " + ip);
           return true;
         }
       }
     }
     // ip address is not available
-    info("Network interface is not ready, required additional network setup");
+    safeInfo("Network interface is not ready, required additional network setup");
     return false;
   }
-  info("Network setup is not required");
+  safeInfo("Network setup is not required");
   return true;
 }
 
@@ -1110,23 +1119,17 @@ DataChannelTest.prototype = Object.create(PeerConnectionTest.prototype, {
      */
     value : function DCT_waitForInitialDataChannel(peer, onSuccess, onFailure) {
       var dcConnectionTimeout = null;
+      var dcOpened = false;
 
       function dataChannelConnected(channel) {
-        clearTimeout(dcConnectionTimeout);
-        is(channel.readyState, "open", peer + " dataChannels[0] switched to state: 'open'");
-        onSuccess();
-      }
-
-      if (peer.dataChannels.length >= 1) {
-        if (peer.dataChannels[0].readyState === "open") {
-          is(peer.dataChannels[0].readyState, "open", peer + " dataChannels[0] is already in state: 'open'");
+        // in case the switch statement below had called onSuccess already we
+        // don't want to call it again
+        if (!dcOpened) {
+          clearTimeout(dcConnectionTimeout);
+          is(channel.readyState, "open", peer + " dataChannels[0] switched to state: 'open'");
+          dcOpened = true;
           onSuccess();
-          return;
-        } else {
-          is(peer.dataChannels[0].readyState, "connecting", peer + " dataChannels[0] is in state: 'connecting'");
         }
-      } else {
-        info(peer + "'s dataChannels[] is empty");
       }
 
       // TODO: drno: convert dataChannels into an object and make
@@ -1137,11 +1140,33 @@ DataChannelTest.prototype = Object.create(PeerConnectionTest.prototype, {
         peer.registerDataChannelOpenEvents(dataChannelConnected);
       }
 
-      if (onFailure) {
-        dcConnectionTimeout = setTimeout(function () {
-          info(peer + " timed out while waiting for dataChannels[0] to connect");
-          onFailure();
-        }, 60000);
+      if (peer.dataChannels.length >= 1) {
+        // snapshot of the live value as it might change during test execution
+        const readyState = peer.dataChannels[0].readyState;
+        switch (readyState) {
+          case "open": {
+            is(readyState, "open", peer + " dataChannels[0] is already in state: 'open'");
+            dcOpened = true;
+            onSuccess();
+            break;
+          }
+          case "connecting": {
+            is(readyState, "connecting", peer + " dataChannels[0] is in state: 'connecting'");
+            if (onFailure) {
+              dcConnectionTimeout = setTimeout(function () {
+                is(peer.dataChannels[0].readyState, "open", peer + " timed out while waiting for dataChannels[0] to open");
+                onFailure();
+              }, 60000);
+            }
+            break;
+          }
+          default: {
+            ok(false, "dataChannels[0] is in unexpected state " + readyState);
+            if (onFailure) {
+              onFailure()
+            }
+          }
+        }
       }
     }
   }

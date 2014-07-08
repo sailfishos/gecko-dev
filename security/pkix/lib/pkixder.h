@@ -41,8 +41,7 @@
 #include "pkix/nullptr.h"
 
 #include "prerror.h"
-#include "prlog.h"
-#include "secder.h"
+#include "prtime.h"
 #include "secerr.h"
 #include "secoidt.h"
 #include "stdint.h"
@@ -73,8 +72,9 @@ enum Tag
   NULLTag = UNIVERSAL | 0x05,
   OIDTag = UNIVERSAL | 0x06,
   ENUMERATED = UNIVERSAL | 0x0a,
+  SEQUENCE = UNIVERSAL | CONSTRUCTED | 0x10, // 0x30
+  UTCTime = UNIVERSAL | 0x17,
   GENERALIZED_TIME = UNIVERSAL | 0x18,
-  SEQUENCE = UNIVERSAL | CONSTRUCTED | 0x30,
 };
 
 enum Result
@@ -338,6 +338,22 @@ ExpectTagAndGetValue(Input& input, uint8_t tag, /*out*/ Input& value)
   return input.Skip(length, value);
 }
 
+// Like ExpectTagAndGetValue, except the output SECItem will contain the
+// encoded tag and length along with the value.
+inline Result
+ExpectTagAndGetTLV(Input& input, uint8_t tag, /*out*/ SECItem& tlv)
+{
+  Input::Mark mark(input.GetMark());
+  uint16_t length;
+  if (internal::ExpectTagAndGetLength(input, tag, length) != Success) {
+    return Failure;
+  }
+  if (input.Skip(length) != Success) {
+    return Failure;
+  }
+  return input.GetSECItem(siBuffer, mark, tlv);
+}
+
 inline Result
 End(Input& input)
 {
@@ -497,17 +513,33 @@ Enumerated(Input& input, uint8_t& value)
   return internal::IntegralValue(input, ENUMERATED | 0, value);
 }
 
+// XXX: This function should have the signature:
+//
+//    Result TimeChoice(Input& input, /*out*/ PRTime& time);
+//
+// and parse the tag (and length and value) from the input like the other
+// functions here. However, currently we get TimeChoices already partially
+// decoded by NSS, so for now we'll have this signature, where the input
+// parameter contains the value of the time choice.
+//
+// type must be either siGeneralizedTime or siUTCTime.
+//
+// Only times from 1970-01-01-00:00:00 onward are accepted, in order to
+// eliminate the chance for complications in converting times to traditional
+// time formats that start at 1970.
+Result TimeChoice(SECItemType type, Input& input, /*out*/ PRTime& time);
+
+// Only times from 1970-01-01-00:00:00 onward are accepted, in order to
+// eliminate the chance for complications in converting times to traditional
+// time formats that start at 1970.
 inline Result
 GeneralizedTime(Input& input, PRTime& time)
 {
-  SECItem encoded;
-  if (ExpectTagAndGetValue(input, GENERALIZED_TIME, encoded) != Success) {
+  Input value;
+  if (ExpectTagAndGetValue(input, GENERALIZED_TIME, value) != Success) {
     return Failure;
   }
-  if (DER_GeneralizedTimeToTime(&time, &encoded) != SECSuccess) {
-    return Failure;
-  }
-  return Success;
+  return TimeChoice(siGeneralizedTime, value, time);
 }
 
 // This parser will only parse values between 0..127. If this range is
@@ -572,15 +604,21 @@ OID(Input& input, const uint8_t (&expectedOid)[Len])
 inline Result
 AlgorithmIdentifier(Input& input, SECAlgorithmID& algorithmID)
 {
-  if (ExpectTagAndGetValue(input, OIDTag, algorithmID.algorithm) != Success) {
+  Input value;
+  if (ExpectTagAndGetValue(input, der::SEQUENCE, value) != Success) {
+    return Failure;
+  }
+  if (ExpectTagAndGetValue(value, OIDTag, algorithmID.algorithm) != Success) {
     return Failure;
   }
   algorithmID.parameters.data = nullptr;
   algorithmID.parameters.len = 0;
-  if (input.AtEnd()) {
-    return Success;
+  if (!value.AtEnd()) {
+    if (Null(value) != Success) {
+      return Failure;
+    }
   }
-  return Null(input);
+  return End(value);
 }
 
 inline Result
@@ -622,31 +660,107 @@ CertificateSerialNumber(Input& input, /*out*/ SECItem& value)
 
 // x.509 and OCSP both use this same version numbering scheme, though OCSP
 // only supports v1.
-enum Version { v1 = 0, v2 = 1, v3 = 2 };
+MOZILLA_PKIX_ENUM_CLASS Version { v1 = 0, v2 = 1, v3 = 2 };
 
 // X.509 Certificate and OCSP ResponseData both use this
 // "[0] EXPLICIT Version DEFAULT <defaultVersion>" construct, but with
 // different default versions.
 inline Result
-OptionalVersion(Input& input, /*out*/ uint8_t& version)
+OptionalVersion(Input& input, /*out*/ Version& version)
 {
-  const uint8_t tag = CONTEXT_SPECIFIC | CONSTRUCTED | 0;
-  if (!input.Peek(tag)) {
-    version = v1;
+  static const uint8_t TAG = CONTEXT_SPECIFIC | CONSTRUCTED | 0;
+  if (!input.Peek(TAG)) {
+    version = Version::v1;
     return Success;
   }
-  if (ExpectTagAndLength(input, tag, 3) != Success) {
+  Input value;
+  if (ExpectTagAndGetValue(input, TAG, value) != Success) {
     return Failure;
   }
-  if (ExpectTagAndLength(input, INTEGER, 1) != Success) {
+  uint8_t integerValue;
+  if (Integer(value, integerValue) != Success) {
     return Failure;
   }
-  if (input.Read(version) != Success) {
+  if (End(value) != Success) {
     return Failure;
   }
-  if (version & 0x80) { // negative
-    return Fail(SEC_ERROR_BAD_DER);
+  switch (integerValue) {
+    case static_cast<uint8_t>(Version::v3): version = Version::v3; break;
+    case static_cast<uint8_t>(Version::v2): version = Version::v2; break;
+    // XXX(bug 1031093): We shouldn't accept an explicit encoding of v1, but we
+    // do here for compatibility reasons.
+    case static_cast<uint8_t>(Version::v1): version = Version::v1; break;
+    default:
+      return Fail(SEC_ERROR_BAD_DER);
   }
+  return Success;
+}
+
+template <typename ExtensionHandler>
+inline Result
+OptionalExtensions(Input& input, uint8_t tag, ExtensionHandler extensionHandler)
+{
+  if (!input.Peek(tag)) {
+    return Success;
+  }
+
+  Input extensions;
+  {
+    Input tagged;
+    if (ExpectTagAndGetValue(input, tag, tagged) != Success) {
+      return Failure;
+    }
+    if (ExpectTagAndGetValue(tagged, SEQUENCE, extensions) != Success) {
+      return Failure;
+    }
+    if (End(tagged) != Success) {
+      return Failure;
+    }
+  }
+
+  // Extensions ::= SEQUENCE SIZE (1..MAX) OF Extension
+  //
+  // TODO(bug 997994): According to the specification, there should never be
+  // an empty sequence of extensions but we've found OCSP responses that have
+  // that (see bug 991898).
+  while (!extensions.AtEnd()) {
+    Input extension;
+    if (ExpectTagAndGetValue(extensions, SEQUENCE, extension)
+          != Success) {
+      return Failure;
+    }
+
+    // Extension  ::=  SEQUENCE  {
+    //      extnID      OBJECT IDENTIFIER,
+    //      critical    BOOLEAN DEFAULT FALSE,
+    //      extnValue   OCTET STRING
+    //      }
+    Input extnID;
+    if (ExpectTagAndGetValue(extension, OIDTag, extnID) != Success) {
+      return Failure;
+    }
+    bool critical;
+    if (OptionalBoolean(extension, false, critical) != Success) {
+      return Failure;
+    }
+    SECItem extnValue;
+    if (ExpectTagAndGetValue(extension, OCTET_STRING, extnValue)
+          != Success) {
+      return Failure;
+    }
+    if (End(extension) != Success) {
+      return Failure;
+    }
+
+    bool understood = false;
+    if (extensionHandler(extnID, extnValue, understood) != Success) {
+      return Failure;
+    }
+    if (critical && !understood) {
+      return Fail(SEC_ERROR_UNKNOWN_CRITICAL_EXTENSION);
+    }
+  }
+
   return Success;
 }
 

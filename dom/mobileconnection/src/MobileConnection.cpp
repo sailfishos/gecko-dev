@@ -4,7 +4,6 @@
 
 #include "MobileConnection.h"
 
-#include "GeneratedEvents.h"
 #include "mozilla/dom/CFStateChangeEvent.h"
 #include "mozilla/dom/DataErrorEvent.h"
 #include "mozilla/dom/MozClirModeEvent.h"
@@ -604,7 +603,13 @@ MobileConnection::SetCallForwardingOption(const MozCallForwardingOptions& aOptio
     return nullptr;
   }
 
-  AutoSafeJSContext cx;
+  AutoJSAPI jsapi;
+  if (!NS_WARN_IF(jsapi.Init(GetOwner()))) {
+    aRv.Throw(NS_ERROR_FAILURE);
+    return nullptr;
+  }
+
+  JSContext *cx = jsapi.cx();
   JS::Rooted<JS::Value> options(cx);
   if (!ToJSValue(cx, aOptions, &options)) {
     aRv.Throw(NS_ERROR_TYPE_ERR);
@@ -635,7 +640,13 @@ MobileConnection::GetCallBarringOption(const MozCallBarringOptions& aOptions,
     return nullptr;
   }
 
-  AutoSafeJSContext cx;
+  AutoJSAPI jsapi;
+  if (!NS_WARN_IF(jsapi.Init(GetOwner()))) {
+    aRv.Throw(NS_ERROR_FAILURE);
+    return nullptr;
+  }
+
+  JSContext *cx = jsapi.cx();
   JS::Rooted<JS::Value> options(cx);
   if (!ToJSValue(cx, aOptions, &options)) {
     aRv.Throw(NS_ERROR_TYPE_ERR);
@@ -666,7 +677,13 @@ MobileConnection::SetCallBarringOption(const MozCallBarringOptions& aOptions,
     return nullptr;
   }
 
-  AutoSafeJSContext cx;
+  AutoJSAPI jsapi;
+  if (!NS_WARN_IF(jsapi.Init(GetOwner()))) {
+    aRv.Throw(NS_ERROR_FAILURE);
+    return nullptr;
+  }
+
+  JSContext *cx = jsapi.cx();
   JS::Rooted<JS::Value> options(cx);
   if (!ToJSValue(cx, aOptions, &options)) {
     aRv.Throw(NS_ERROR_TYPE_ERR);
@@ -697,7 +714,13 @@ MobileConnection::ChangeCallBarringPassword(const MozCallBarringOptions& aOption
     return nullptr;
   }
 
-  AutoSafeJSContext cx;
+  AutoJSAPI jsapi;
+  if (!NS_WARN_IF(jsapi.Init(GetOwner()))) {
+    aRv.Throw(NS_ERROR_FAILURE);
+    return nullptr;
+  }
+
+  JSContext *cx = jsapi.cx();
   JS::Rooted<JS::Value> options(cx);
   if (!ToJSValue(cx, aOptions, &options)) {
     aRv.Throw(NS_ERROR_TYPE_ERR);

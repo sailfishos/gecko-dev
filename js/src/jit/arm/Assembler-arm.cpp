@@ -190,16 +190,14 @@ jit::VFPRegister::encode()
 
     switch (kind) {
       case Double:
-        return VFPRegIndexSplit(_code &0xf , _code >> 4);
+        return VFPRegIndexSplit(code_ & 0xf , code_ >> 4);
       case Single:
-        return VFPRegIndexSplit(_code >> 1, _code & 1);
+        return VFPRegIndexSplit(code_ >> 1, code_ & 1);
       default:
         // vfp register treated as an integer, NOT a gpr
-        return VFPRegIndexSplit(_code >> 1, _code & 1);
+        return VFPRegIndexSplit(code_ >> 1, code_ & 1);
     }
 }
-
-VFPRegister js::jit::NoVFPRegister(true);
 
 bool
 InstDTR::isTHIS(const Instruction &i)
@@ -519,6 +517,7 @@ jit::PatchJump(CodeLocationJump &jump_, CodeLocationLabel label)
     // We need to determine if this jump can fit into the standard 24+2 bit address
     // or if we need a larger branch (or just need to use our pool entry)
     Instruction *jump = (Instruction*)jump_.raw();
+    // jumpWithPatch() returns the offset of the jump and never a pool or nop.
     Assembler::Condition c;
     jump->extractCond(&c);
     JS_ASSERT(jump->is<InstBranchImm>() || jump->is<InstLDR>());
@@ -734,7 +733,7 @@ Assembler::getPtr32Target(Iter *start, Register *dest, RelocStyle *style)
         InstMovT *top = load2->as<InstMovT>();
         top->extractImm(&targ_top);
 
-        // Make sure they are being loaded intothe same register.
+        // Make sure they are being loaded into the same register.
         JS_ASSERT(top->checkDest(temp));
 
         if (dest)
@@ -787,8 +786,8 @@ TraceDataRelocations(JSTracer *trc, uint8_t *buffer, CompactBufferReader &reader
 {
     while (reader.more()) {
         size_t offset = reader.readUnsigned();
-        InstructionIterator iter((Instruction*)(buffer+offset));
-        void *ptr = const_cast<uint32_t *>(js::jit::Assembler::getPtr32Target(&iter));
+        InstructionIterator iter((Instruction*)(buffer + offset));
+        void *ptr = const_cast<uint32_t *>(Assembler::getPtr32Target(&iter));
         // No barrier needed since these are constants.
         gc::MarkGCThingUnbarriered(trc, reinterpret_cast<void **>(&ptr), "ion-masm-ptr");
     }
@@ -796,12 +795,12 @@ TraceDataRelocations(JSTracer *trc, uint8_t *buffer, CompactBufferReader &reader
 }
 static void
 TraceDataRelocations(JSTracer *trc, ARMBuffer *buffer,
-                     js::Vector<BufferOffset, 0, SystemAllocPolicy> *locs)
+                     Vector<BufferOffset, 0, SystemAllocPolicy> *locs)
 {
     for (unsigned int idx = 0; idx < locs->length(); idx++) {
         BufferOffset bo = (*locs)[idx];
         ARMBuffer::AssemblerBufferInstIterator iter(bo, buffer);
-        void *ptr = const_cast<uint32_t *>(jit::Assembler::getPtr32Target(&iter));
+        void *ptr = const_cast<uint32_t *>(Assembler::getPtr32Target(&iter));
 
         // No barrier needed since these are constants.
         gc::MarkGCThingUnbarriered(trc, reinterpret_cast<void **>(&ptr), "ion-masm-ptr");
@@ -1185,64 +1184,62 @@ BOffImm::getDest(Instruction *src)
 
 //VFPRegister implementation
 VFPRegister
-VFPRegister::doubleOverlay() const
+VFPRegister::doubleOverlay(unsigned int which) const
 {
     JS_ASSERT(!_isInvalid);
-    if (kind != Double) {
-        JS_ASSERT(_code % 2 == 0);
-        return VFPRegister(_code >> 1, Double);
-    }
+    if (kind != Double)
+        return VFPRegister(code_ >> 1, Double);
     return *this;
 }
 VFPRegister
-VFPRegister::singleOverlay() const
+VFPRegister::singleOverlay(unsigned int which) const
 {
     JS_ASSERT(!_isInvalid);
     if (kind == Double) {
         // There are no corresponding float registers for d16-d31
-        JS_ASSERT(_code < 16);
-        return VFPRegister(_code << 1, Single);
+        JS_ASSERT(code_ < 16);
+        JS_ASSERT(which < 2);
+        return VFPRegister((code_ << 1) + which, Single);
     }
-
-    JS_ASSERT(_code % 2 == 0);
-    return VFPRegister(_code, Single);
+    JS_ASSERT(which == 0);
+    return VFPRegister(code_, Single);
 }
 
 VFPRegister
-VFPRegister::sintOverlay() const
+VFPRegister::sintOverlay(unsigned int which) const
 {
     JS_ASSERT(!_isInvalid);
     if (kind == Double) {
         // There are no corresponding float registers for d16-d31
-        ASSERT(_code < 16);
-        return VFPRegister(_code << 1, Int);
+        JS_ASSERT(code_ < 16);
+        JS_ASSERT(which < 2);
+        return VFPRegister((code_ << 1) + which, Int);
     }
-
-    JS_ASSERT(_code % 2 == 0);
-    return VFPRegister(_code, Int);
+    JS_ASSERT(which == 0);
+    return VFPRegister(code_, Int);
 }
 VFPRegister
-VFPRegister::uintOverlay() const
+VFPRegister::uintOverlay(unsigned int which) const
 {
     JS_ASSERT(!_isInvalid);
     if (kind == Double) {
         // There are no corresponding float registers for d16-d31
-        ASSERT(_code < 16);
-        return VFPRegister(_code << 1, UInt);
+        JS_ASSERT(code_ < 16);
+        JS_ASSERT(which < 2);
+        return VFPRegister((code_ << 1) + which, UInt);
     }
-
-    JS_ASSERT(_code % 2 == 0);
-    return VFPRegister(_code, UInt);
+    JS_ASSERT(which == 0);
+    return VFPRegister(code_, UInt);
 }
 
 bool
-VFPRegister::isInvalid()
+VFPRegister::isInvalid() const
 {
     return _isInvalid;
 }
 
 bool
-VFPRegister::isMissing()
+VFPRegister::isMissing() const
 {
     JS_ASSERT(!_isInvalid);
     return _isMissing;
@@ -1310,6 +1307,11 @@ Assembler::writeInst(uint32_t x, uint32_t *dest)
 
     writeInstStatic(x, dest);
     return BufferOffset();
+}
+BufferOffset
+Assembler::writeBranchInst(uint32_t x)
+{
+    return m_buffer.putInt(x, /* markAsBranch = */ true);
 }
 void
 Assembler::writeInstStatic(uint32_t x, uint32_t *dest)
@@ -1448,13 +1450,13 @@ Assembler::as_tst(Register src1, Operand2 op2, Condition c)
 BufferOffset
 Assembler::as_movw(Register dest, Imm16 imm, Condition c, Instruction *pos)
 {
-    JS_ASSERT(hasMOVWT());
+    JS_ASSERT(HasMOVWT());
     return writeInst(0x03000000 | c | imm.encode() | RD(dest), (uint32_t*)pos);
 }
 BufferOffset
 Assembler::as_movt(Register dest, Imm16 imm, Condition c, Instruction *pos)
 {
-    JS_ASSERT(hasMOVWT());
+    JS_ASSERT(HasMOVWT());
     return writeInst(0x03400000 | c | imm.encode() | RD(dest), (uint32_t*)pos);
 }
 
@@ -1702,8 +1704,8 @@ Assembler::as_BranchPool(uint32_t value, RepatchLabel *label, ARMBuffer::PoolEnt
 {
     PoolHintPun php;
     php.phd.init(0, c, PoolHintData::poolBranch, pc);
-    m_buffer.markNextAsBranch();
-    BufferOffset ret = m_buffer.insertEntry(4, (uint8_t*)&php.raw, int32Pool, (uint8_t*)&value, pe);
+    BufferOffset ret = m_buffer.insertEntry(4, (uint8_t*)&php.raw, int32Pool, (uint8_t*)&value, pe,
+                                            /* markAsBranch = */ true);
     // If this label is already bound, then immediately replace the stub load with
     // a correct branch.
     if (label->bound()) {
@@ -1830,8 +1832,7 @@ Assembler::writePoolGuard(BufferOffset branch, Instruction *dest, BufferOffset a
 BufferOffset
 Assembler::as_b(BOffImm off, Condition c, bool isPatchable)
 {
-    m_buffer.markNextAsBranch();
-    BufferOffset ret =writeInst(((int)c) | op_b | off.encode());
+    BufferOffset ret = writeBranchInst(((int)c) | op_b | off.encode());
     if (c == Always && !isPatchable)
         m_buffer.markGuard();
     return ret;
@@ -1844,9 +1845,10 @@ Assembler::as_b(Label *l, Condition c, bool isPatchable)
         BufferOffset ret;
         return ret;
     }
-    m_buffer.markNextAsBranch();
+
     if (l->bound()) {
-        BufferOffset ret = as_nop();
+        // Note only one instruction is emitted here, the NOP is overwritten.
+        BufferOffset ret = writeBranchInst(Always | InstNOP::NopInst);
         as_b(BufferOffset(l).diffB<BOffImm>(ret), c, ret);
         return ret;
     }
@@ -1894,8 +1896,7 @@ Assembler::as_blx(Register r, Condition c)
 BufferOffset
 Assembler::as_bl(BOffImm off, Condition c)
 {
-    m_buffer.markNextAsBranch();
-    return writeInst(((int)c) | op_bl | off.encode());
+    return writeBranchInst(((int)c) | op_bl | off.encode());
 }
 
 BufferOffset
@@ -1905,9 +1906,10 @@ Assembler::as_bl(Label *l, Condition c)
         BufferOffset ret;
         return ret;
     }
-    m_buffer.markNextAsBranch();
+
     if (l->bound()) {
-        BufferOffset ret = as_nop();
+        // Note only one instruction is emitted here, the NOP is overwritten.
+        BufferOffset ret = writeBranchInst(Always | InstNOP::NopInst);
         as_bl(BufferOffset(l).diffB<BOffImm>(ret), c, ret);
         return ret;
     }
@@ -2097,16 +2099,15 @@ Assembler::as_vxfer(Register vt1, Register vt2, VFPRegister vm, FloatToCore_ f2c
     } else {
         JS_ASSERT(idx == 0);
     }
-    VFPXferSize xfersz = WordTransfer;
-    uint32_t (*encodeVFP)(VFPRegister) = VN;
-    if (vt2 != InvalidReg) {
-        // We are doing a 64 bit transfer.
-        xfersz = DoubleTransfer;
-        encodeVFP = VM;
-    }
 
-    return writeVFPInst(sz, xfersz | f2c | c |
-                        RT(vt1) | maybeRN(vt2) | encodeVFP(vm) | idx);
+    if (vt2 == InvalidReg) {
+        return writeVFPInst(sz, WordTransfer | f2c | c |
+                            RT(vt1) | maybeRN(vt2) | VN(vm) | idx);
+    } else {
+        // We are doing a 64 bit transfer.
+        return writeVFPInst(sz, DoubleTransfer | f2c | c |
+                            RT(vt1) | maybeRN(vt2) | VM(vm) | idx);
+    }
 }
 enum vcvt_destFloatness {
     toInteger = 1 << 18,
@@ -2615,6 +2616,25 @@ InstIsArtificialGuard(Instruction *inst, const PoolHeader **ph)
     return !(*ph)->isNatural();
 }
 
+// If the instruction points to a artificial pool guard then skip the pool.
+Instruction *
+Instruction::skipPool()
+{
+    const PoolHeader *ph;
+    // If this is a guard, and the next instruction is a header,
+    // always work around the pool. If it isn't a guard, then start
+    // looking ahead.
+    if (InstIsGuard(this, &ph)) {
+        // Don't skip a natural guard.
+        if (ph->isNatural())
+            return this;
+        return (this + 1 + ph->size())->skipPool();
+    }
+    if (InstIsBNop(this))
+        return (this + 1)->skipPool();
+    return this;
+}
+
 // Cases to be handled:
 // 1) no pools or branches in sight => return this+1
 // 2) branch to next instruction => return this+2, because a nop needed to be inserted into the stream.
@@ -2654,12 +2674,10 @@ Instruction::next()
     // If this is a guard, and the next instruction is a header, always work around the pool
     // If it isn't a guard, then start looking ahead.
     if (InstIsGuard(this, &ph))
-        return ret + ph->size();
+        return (ret + ph->size())->skipPool();
     if (InstIsArtificialGuard(ret, &ph))
-        return ret + 1 + ph->size();
-    if (InstIsBNop(ret))
-        return ret + 1;
-    return ret;
+        return (ret + 1 + ph->size())->skipPool();
+    return ret->skipPool();
 }
 
 void
@@ -2703,6 +2721,8 @@ void
 Assembler::ToggleCall(CodeLocationLabel inst_, bool enabled)
 {
     Instruction *inst = (Instruction *)inst_.raw();
+    // Skip a pool with an artificial guard.
+    inst = inst->skipPool();
     JS_ASSERT(inst->is<InstMovW>() || inst->is<InstLDR>());
 
     if (inst->is<InstMovW>()) {
@@ -2729,6 +2749,37 @@ Assembler::ToggleCall(CodeLocationLabel inst_, bool enabled)
     AutoFlushICache::flush(uintptr_t(inst), 4);
 }
 
+size_t
+Assembler::ToggledCallSize(uint8_t *code)
+{
+    Instruction *inst = (Instruction *)code;
+    // Skip a pool with an artificial guard.
+    inst = inst->skipPool();
+    JS_ASSERT(inst->is<InstMovW>() || inst->is<InstLDR>());
+
+    if (inst->is<InstMovW>()) {
+        // If it looks like the start of a movw/movt sequence,
+        // then make sure we have all of it (and advance the iterator
+        // past the full sequence)
+        inst = inst->next();
+        JS_ASSERT(inst->is<InstMovT>());
+    }
+
+    inst = inst->next();
+    JS_ASSERT(inst->is<InstNOP>() || inst->is<InstBLXReg>());
+    return uintptr_t(inst) + 4 - uintptr_t(code);
+}
+
+uint8_t *
+Assembler::BailoutTableStart(uint8_t *code)
+{
+    Instruction *inst = (Instruction *)code;
+    // Skip a pool with an artificial guard or NOP fill.
+    inst = inst->skipPool();
+    JS_ASSERT(inst->is<InstBLImm>());
+    return (uint8_t *) inst;
+}
+
 void Assembler::updateBoundsCheck(uint32_t heapSize, Instruction *inst)
 {
     JS_ASSERT(inst->is<InstCMP>());
@@ -2748,12 +2799,25 @@ void Assembler::updateBoundsCheck(uint32_t heapSize, Instruction *inst)
     // within AsmJSModule::patchHeapAccesses, which does that for us.  Don't call this!
 }
 
-InstructionIterator::InstructionIterator(Instruction *i_) : i(i_) {
-    const PoolHeader *ph;
-    // If this is a guard, and the next instruction is a header, always work around the pool
-    // If it isn't a guard, then start looking ahead.
-    if (InstIsArtificialGuard(i, &ph)) {
-        i = i->next();
-    }
+InstructionIterator::InstructionIterator(Instruction *i_) : i(i_)
+{
+    // Work around pools with an artificial pool guard and around nop-fill.
+    i = i->skipPool();
 }
 Assembler *Assembler::dummy = nullptr;
+
+uint32_t Assembler::NopFill = 0;
+
+uint32_t
+Assembler::GetNopFill()
+{
+    static bool isSet = false;
+    if (!isSet) {
+        char *fillStr = getenv("ARM_ASM_NOP_FILL");
+        uint32_t fill;
+        if (fillStr && sscanf(fillStr, "%u", &fill) == 1)
+            NopFill = fill;
+        isSet = true;
+    }
+    return NopFill;
+}

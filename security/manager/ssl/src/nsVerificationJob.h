@@ -10,7 +10,6 @@
 #include "nspr.h"
 
 #include "nsIX509Cert.h"
-#include "nsIX509Cert3.h"
 #include "nsProxyRelease.h"
 
 class nsBaseVerificationJob
@@ -33,10 +32,12 @@ class nsCertVerificationResult : public nsICertVerificationResult
 {
 public:
   nsCertVerificationResult();
-  virtual ~nsCertVerificationResult();
 
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_NSICERTVERIFICATIONRESULT
+
+protected:
+  virtual ~nsCertVerificationResult();
 
 private:
   nsresult mRV;

@@ -277,9 +277,10 @@ DevTools.prototype = {
       });
 
       // If we were asked for a specific tool then we need to wait for the
-      // tool to be ready, otherwise we can just wait for toolbox open
+      // tool to be ready and selected, otherwise we can just wait for the
+      // toolbox open promise.
       if (toolId != null) {
-        toolbox.once(toolId + "-ready", (event, panel) => {
+        toolbox.once(toolId + "-selected", (event, panel) => {
           this.emit("toolbox-ready", toolbox);
           deferred.resolve(toolbox);
         });
@@ -432,9 +433,13 @@ let gDevToolsBrowser = {
       win.DeveloperToolbar.show(false);
     }
 
+    // Enable WebIDE?
+    let webIDEEnabled = Services.prefs.getBoolPref("devtools.webide.enabled");
+    toggleCmd("Tools:WebIDE", webIDEEnabled);
+
     // Enable App Manager?
     let appMgrEnabled = Services.prefs.getBoolPref("devtools.appmanager.enabled");
-    toggleCmd("Tools:DevAppMgr", appMgrEnabled);
+    toggleCmd("Tools:DevAppMgr", !webIDEEnabled && appMgrEnabled);
 
     // Enable Browser Toolbox?
     let chromeEnabled = Services.prefs.getBoolPref("devtools.chrome.enabled");
@@ -522,16 +527,19 @@ let gDevToolsBrowser = {
    * Open the App Manager
    */
   openAppManager: function(gBrowser) {
-    if (Services.prefs.getBoolPref("devtools.webide.enabled")) {
-      let win = Services.wm.getMostRecentWindow("devtools:webide");
-      if (win) {
-        win.focus();
-      } else {
-        let ww = Cc["@mozilla.org/embedcomp/window-watcher;1"].getService(Ci.nsIWindowWatcher);
-        ww.openWindow(null, "chrome://webide/content/", "webide", "chrome,centerscreen,resizable", null);
-      }
+    gBrowser.selectedTab = gBrowser.addTab("about:app-manager");
+  },
+
+  /**
+   * Open WebIDE
+   */
+  openWebIDE: function() {
+    let win = Services.wm.getMostRecentWindow("devtools:webide");
+    if (win) {
+      win.focus();
     } else {
-      gBrowser.selectedTab = gBrowser.addTab("about:app-manager");
+      let ww = Cc["@mozilla.org/embedcomp/window-watcher;1"].getService(Ci.nsIWindowWatcher);
+      ww.openWindow(null, "chrome://webide/content/", "webide", "chrome,centerscreen,resizable", null);
     }
   },
 

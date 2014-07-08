@@ -29,7 +29,6 @@
 class imgIRequest;
 class nsAString;
 class nsBindingManager;
-class nsCSSStyleSheet;
 class nsIDocShell;
 class nsDocShell;
 class nsDOMNavigationTiming;
@@ -52,7 +51,6 @@ class nsIDOMDocumentType;
 class nsIDOMElement;
 class nsIDOMNodeFilter;
 class nsIDOMNodeList;
-class nsIDOMXPathExpression;
 class nsIDOMXPathNSResolver;
 class nsIHTMLCollection;
 class nsILayoutHistoryState;
@@ -83,6 +81,7 @@ class nsIGlobalObject;
 struct nsCSSSelectorList;
 
 namespace mozilla {
+class CSSStyleSheet;
 class ErrorResult;
 class EventStates;
 
@@ -122,6 +121,8 @@ class TouchList;
 class TreeWalker;
 class UndoManager;
 class XPathEvaluator;
+class XPathExpression;
+class XPathResult;
 template<typename> class OwningNonNull;
 template<typename> class Sequence;
 
@@ -779,7 +780,7 @@ public:
    * TODO We can get rid of the whole concept of delayed loading if we fix
    * bug 77999.
    */
-  virtual void EnsureOnDemandBuiltInUASheet(nsCSSStyleSheet* aSheet) = 0;
+  virtual void EnsureOnDemandBuiltInUASheet(mozilla::CSSStyleSheet* aSheet) = 0;
 
   /**
    * Get the number of (document) stylesheets
@@ -1401,7 +1402,7 @@ public:
    * into a DOM window.  This corresponds to the completion of document load,
    * or to the page's presentation being restored into an existing DOM window.
    * This notification fires applicable DOM events to the content window.  See
-   * nsIDOMPageTransitionEvent.idl for a description of the |aPersisted|
+   * PageTransitionEvent.webidl for a description of the |aPersisted|
    * parameter. If aDispatchStartTarget is null, the pageshow event is
    * dispatched on the ScriptGlobalObject for this document, otherwise it's
    * dispatched on aDispatchStartTarget.
@@ -1416,7 +1417,7 @@ public:
    * into a DOM window.  This corresponds to the unloading of the document, or
    * to the document's presentation being saved but removed from an existing
    * DOM window.  This notification fires applicable DOM events to the content
-   * window.  See nsIDOMPageTransitionEvent.idl for a description of the
+   * window.  See PageTransitionEvent.webidl for a description of the
    * |aPersisted| parameter. If aDispatchStartTarget is null, the pagehide
    * event is dispatched on the ScriptGlobalObject for this document,
    * otherwise it's dispatched on aDispatchStartTarget.
@@ -1836,7 +1837,7 @@ public:
    * DO NOT USE FOR UNTRUSTED CONTENT.
    */
   virtual nsresult LoadChromeSheetSync(nsIURI* aURI, bool aIsAgentSheet,
-                                       nsCSSStyleSheet** aSheet) = 0;
+                                       mozilla::CSSStyleSheet** aSheet) = 0;
 
   /**
    * Returns true if the locale used for the document specifies a direction of
@@ -2268,16 +2269,16 @@ public:
                                           const nsAString& aAttrValue);
   Element* GetBindingParent(nsINode& aNode);
   void LoadBindingDocument(const nsAString& aURI, mozilla::ErrorResult& rv);
-  already_AddRefed<nsIDOMXPathExpression>
+  mozilla::dom::XPathExpression*
     CreateExpression(const nsAString& aExpression,
                      nsIDOMXPathNSResolver* aResolver,
                      mozilla::ErrorResult& rv);
   already_AddRefed<nsIDOMXPathNSResolver>
     CreateNSResolver(nsINode* aNodeResolver, mozilla::ErrorResult& rv);
-  already_AddRefed<nsISupports>
-    Evaluate(const nsAString& aExpression, nsINode* aContextNode,
+  already_AddRefed<mozilla::dom::XPathResult>
+    Evaluate(JSContext* aCx, const nsAString& aExpression, nsINode* aContextNode,
              nsIDOMXPathNSResolver* aResolver, uint16_t aType,
-             nsISupports* aResult, mozilla::ErrorResult& rv);
+             JS::Handle<JSObject*> aResult, mozilla::ErrorResult& rv);
   // Touch event handlers already on nsINode
   already_AddRefed<mozilla::dom::Touch>
     CreateTouch(nsIDOMWindow* aView, mozilla::dom::EventTarget* aTarget,

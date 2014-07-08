@@ -791,7 +791,6 @@ def run(arguments=sys.argv[1:], target_cfg=None, pkg_cfg=None,
     extra_environment = {}
     if command == "test":
         # This should be contained in the test runner package.
-        # maybe just do: target_cfg.main = 'test-harness/run-tests'
         harness_options['main'] = 'sdk/test/runner'
         harness_options['mainPath'] = 'sdk/test/runner'
     else:
@@ -835,12 +834,6 @@ def run(arguments=sys.argv[1:], target_cfg=None, pkg_cfg=None,
             sys.exit(1)
         # Pass a flag in order to force using sdk modules shipped in the xpi
         harness_options['force-use-bundled-sdk'] = True
-
-    # Pass the list of absolute path for all test modules
-    if command == "test":
-        harness_options['allTestModules'] = manifest.get_all_test_modules()
-        if len(harness_options['allTestModules']) == 0:
-            sys.exit(0)
 
     from cuddlefish.rdf import gen_manifest, RDFUpdate
 

@@ -23,12 +23,6 @@
 
 BEGIN_BLUETOOTH_NAMESPACE
 
-const bt_interface_t*
-GetBluetoothInterface()
-{
-  return BluetoothServiceBluedroid::GetBluetoothInterface();
-}
-
 void
 StringToBdAddressType(const nsAString& aBdAddress,
                       bt_bdaddr_t *aRetBdAddressType)
@@ -53,6 +47,15 @@ BdAddressTypeToString(bt_bdaddr_t* aBdAddressType, nsAString& aRetBdAddress)
           (int)addr[3],(int)addr[4],(int)addr[5]);
 
   aRetBdAddress = NS_ConvertUTF8toUTF16(bdstr);
+}
+
+uint16_t
+UuidToServiceClassInt(bt_uuid_t* p_uuid)
+{
+  // extract short UUID 0000xxxx-0000-1000-8000-00805f9b34fb
+  uint16_t shortUuid;
+  memcpy(&shortUuid, &(p_uuid->uu[2]), sizeof(uint16_t));
+  return ntohs(shortUuid);
 }
 
 bool

@@ -110,6 +110,7 @@ pref("mozilla.widget.disable-native-theme", true);
 pref("layout.reflow.synthMouseMove", false);
 pref("layers.enable-tiles", true);
 pref("layers.low-precision-buffer", true);
+pref("layers.low-precision-opacity", "0.5");
 /*
    Cross Process Mutex is not supported on Mac OS X so progressive
    paint cannot be enabled for B2G on Mac OS X desktop
@@ -387,9 +388,6 @@ pref("content.ime.strict_policy", true);
 // $ adb shell start
 pref("browser.dom.window.dump.enabled", false);
 
-// Turn on the CSP 1.0 parser for Content Security Policy headers
-pref("security.csp.speccompliant", true);
-
 // Default Content Security Policy to apply to privileged and certified apps
 pref("security.apps.privileged.CSP.default", "default-src *; script-src 'self'; object-src 'none'; style-src 'self' 'unsafe-inline'");
 // If you change this CSP, make sure to update the fast path in nsCSPService.cpp
@@ -479,6 +477,11 @@ pref("services.push.udp.well-known_netidAddress", "_wakeup_.");
 #ifdef MOZ_WIDGET_GONK
 pref("dom.mozNetworkStats.enabled", true);
 pref("dom.webapps.firstRunWithSIM", true);
+#endif
+
+// ResourceStats
+#ifdef MOZ_WIDGET_GONK
+pref("dom.resource_stats.enabled", true);
 #endif
 
 #ifdef MOZ_B2G_RIL
@@ -910,9 +913,6 @@ pref("gfx.canvas.max-size-for-skia-gl", -1);
 // enable fence with readpixels for SurfaceStream
 pref("gfx.gralloc.fence-with-readpixels", true);
 
-// Cell Broadcast API
-pref("ril.cellbroadcast.disabled", false);
-
 // The url of the page used to display network error details.
 pref("b2g.neterror.url", "app://system.gaiamobile.org/net_error.html");
 
@@ -962,10 +962,10 @@ pref("apz.overscroll.enabled", true);
 pref("apz.overscroll.fling_friction", "0.02");
 pref("apz.overscroll.fling_stopped_threshold", "0.4");
 pref("apz.overscroll.clamping", "0.5");
-pref("apz.overscroll.z_effect", "0.2");
+pref("apz.overscroll.z_effect", "0.5");
 pref("apz.overscroll.snap_back.spring_stiffness", "0.6");
 pref("apz.overscroll.snap_back.spring_friction", "0.1");
-pref("apz.overscroll.snap_back.mass", "1000");
+pref("apz.overscroll.snap_back.mass", "1200");
 
 // This preference allows FirefoxOS apps (and content, I think) to force
 // the use of software (instead of hardware accelerated) 2D canvases by
@@ -996,7 +996,8 @@ pref("services.sync.fxaccounts.enabled", true);
 pref("identity.fxaccounts.enabled", true);
 #endif
 
-pref("services.mobileid.server.uri", "http://msisdn.dev.mozaws.net");
+// Mobile Identity API.
+pref("services.mobileid.server.uri", "https://msisdn-dev.stage.mozaws.net");
 
 // Enable mapped array buffer
 pref("dom.mapped_arraybuffer.enabled", true);

@@ -215,18 +215,6 @@ struct ThreadSafeContext : ContextFriendFields,
     bool isForkJoinContext() const;
     ForkJoinContext *asForkJoinContext();
 
-    // The generational GC nursery may only be used on the main thread.
-#ifdef JSGC_GENERATIONAL
-    inline bool hasNursery() const {
-        return isJSContext();
-    }
-
-    inline js::Nursery &nursery() {
-        JS_ASSERT(hasNursery());
-        return runtime_->gc.nursery;
-    }
-#endif
-
     /*
      * Allocator used when allocating GCThings on this context. If we are a
      * JSContext, this is the Zone allocator of the JSContext's zone.
@@ -386,6 +374,9 @@ class ExclusiveContext : public ThreadSafeContext
     }
     JSCompartment *atomsCompartment() {
         return runtime_->atomsCompartment();
+    }
+    SymbolRegistry &symbolRegistry() {
+        return runtime_->symbolRegistry();
     }
     ScriptDataTable &scriptDataTable() {
         return runtime_->scriptDataTable();
@@ -547,6 +538,13 @@ struct JSContext : public js::ExclusiveContext,
     {
         if (functionCallback)
             functionCallback(fun, scr, this, entering);
+    }
+#endif
+
+    // The generational GC nursery may only be used on the main thread.
+#ifdef JSGC_GENERATIONAL
+    inline js::Nursery &nursery() {
+        return runtime_->gc.nursery;
     }
 #endif
 
@@ -1009,6 +1007,7 @@ class ContextAllocPolicy
 
 /* Exposed intrinsics so that Ion may inline them. */
 bool intrinsic_ToObject(JSContext *cx, unsigned argc, Value *vp);
+bool intrinsic_IsObject(JSContext *cx, unsigned argc, Value *vp);
 bool intrinsic_ToInteger(JSContext *cx, unsigned argc, Value *vp);
 bool intrinsic_ToString(JSContext *cx, unsigned argc, Value *vp);
 bool intrinsic_IsCallable(JSContext *cx, unsigned argc, Value *vp);

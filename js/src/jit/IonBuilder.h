@@ -453,7 +453,7 @@ class IonBuilder : public MIRGenerator
     TypedObjectPrediction typedObjectPrediction(types::TemporaryTypeSet *types);
     bool typedObjectHasField(MDefinition *typedObj,
                              PropertyName *name,
-                             int32_t *fieldOffset,
+                             size_t *fieldOffset,
                              TypedObjectPrediction *fieldTypeReprs,
                              size_t *fieldIndex);
     MDefinition *loadTypedObjectType(MDefinition *value);
@@ -730,6 +730,7 @@ class IonBuilder : public MIRGenerator
 
     // Utility intrinsics.
     InliningStatus inlineIsCallable(CallInfo &callInfo);
+    InliningStatus inlineIsObject(CallInfo &callInfo);
     InliningStatus inlineHaveSameClass(CallInfo &callInfo);
     InliningStatus inlineToObject(CallInfo &callInfo);
     InliningStatus inlineToInteger(CallInfo &callInfo);

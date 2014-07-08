@@ -172,7 +172,7 @@ static void DeferredDestroyCompositor(CompositorParent* aCompositorParent,
 
 void nsBaseWidget::DestroyCompositor()
 {
-  LayerScope::DestroyServerSocket();
+  LayerScope::DeInit();
 
   if (mCompositorChild) {
     mCompositorChild->SendWillStop();
@@ -817,7 +817,7 @@ nsBaseWidget::ComputeShouldAccelerate(bool aDefault)
 
     int32_t status;
     if (NS_SUCCEEDED(gfxInfo->GetFeatureStatus(nsIGfxInfo::FEATURE_OPENGL_LAYERS, &status))) {
-      if (status == nsIGfxInfo::FEATURE_NO_INFO) {
+      if (status == nsIGfxInfo::FEATURE_STATUS_OK) {
         whitelisted = true;
       }
     }
@@ -900,8 +900,8 @@ void nsBaseWidget::CreateCompositor(int aWidth, int aHeight)
     return;
   }
 
-  // The server socket has to be created on the main thread.
-  LayerScope::CreateServerSocket();
+  // Initialize LayerScope on the main thread.
+  LayerScope::Init();
 
   mCompositorParent = NewCompositorParent(aWidth, aHeight);
   MessageChannel *parentChannel = mCompositorParent->GetIPCChannel();
@@ -1714,6 +1714,8 @@ static void debug_SetCachedBoolPref(const char * aPrefName,bool aValue)
 
 //////////////////////////////////////////////////////////////
 class Debug_PrefObserver MOZ_FINAL : public nsIObserver {
+    ~Debug_PrefObserver() {}
+
   public:
     NS_DECL_ISUPPORTS
     NS_DECL_NSIOBSERVER

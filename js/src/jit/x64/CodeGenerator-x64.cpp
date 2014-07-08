@@ -74,8 +74,8 @@ CodeGeneratorX64::visitBox(LBox *box)
     if (IsFloatingPointType(box->type())) {
         FloatRegister reg = ToFloatRegister(in);
         if (box->type() == MIRType_Float32) {
-            masm.convertFloat32ToDouble(reg, ScratchFloatReg);
-            reg = ScratchFloatReg;
+            masm.convertFloat32ToDouble(reg, ScratchDoubleReg);
+            reg = ScratchDoubleReg;
         }
         masm.movq(reg, ToRegister(result));
     } else {
@@ -106,6 +106,9 @@ CodeGeneratorX64::visitUnbox(LUnbox *unbox)
           case MIRType_String:
             cond = masm.testString(Assembler::NotEqual, value);
             break;
+          case MIRType_Symbol:
+            cond = masm.testSymbol(Assembler::NotEqual, value);
+            break;
           default:
             MOZ_ASSUME_UNREACHABLE("Given MIRType cannot be unboxed.");
         }
@@ -125,6 +128,9 @@ CodeGeneratorX64::visitUnbox(LUnbox *unbox)
         break;
       case MIRType_String:
         masm.unboxString(value, ToRegister(result));
+        break;
+      case MIRType_Symbol:
+        masm.unboxSymbol(value, ToRegister(result));
         break;
       default:
         MOZ_ASSUME_UNREACHABLE("Given MIRType cannot be unboxed.");

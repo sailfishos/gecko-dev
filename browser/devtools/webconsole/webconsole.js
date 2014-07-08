@@ -1,4 +1,4 @@
-/* -*- js2-basic-offset: 2; indent-tabs-mode: nil; -*- */
+/* -*- js-indent-level: 2; indent-tabs-mode: nil -*- */
 /* vim: set ts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -4292,8 +4292,8 @@ JSTerm.prototype = {
 
     if (this._autocompleteQuery && input.startsWith(this._autocompleteQuery)) {
       let filterBy = input;
-      // Find the last non-alphanumeric if exists.
-      let lastNonAlpha = input.match(/[^a-zA-Z0-9][a-zA-Z0-9]*$/);
+      // Find the last non-alphanumeric other than _ or $ if it exists.
+      let lastNonAlpha = input.match(/[^a-zA-Z0-9_$][a-zA-Z0-9_$]*$/);
       // If input contains non-alphanumerics, use the part after the last one
       // to filter the cache
       if (lastNonAlpha) {

@@ -1,4 +1,4 @@
-/* -*- Mode: javascript; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
 /* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -1622,6 +1622,9 @@ RequestsMenuView.prototype = Heritage.extend(WidgetMethods, {
       !selectedItem.attachment.responseContent ||
       !selectedItem.attachment.responseContent.content.mimeType.contains("image/");
 
+    let separator = $("#request-menu-context-separator");
+    separator.hidden = !selectedItem;
+
     let newTabElement = $("#request-menu-context-newtab");
     newTabElement.hidden = !selectedItem;
   },
@@ -1942,6 +1945,19 @@ function NetworkDetailsView() {
 
 NetworkDetailsView.prototype = {
   /**
+   * An object containing the state of tabs.
+   */
+  _viewState: {
+    // if updating[tab] is true a task is currently updating the given tab.
+    updating: [],
+    // if dirty[tab] is true, the tab needs to be repopulated once current
+    // update task finishes
+    dirty: [],
+    // the most recently received attachment data for the request
+    latestData: null,
+  },
+
+  /**
    * Initialization function, called when the network monitor is started.
    */
   initialize: function() {
@@ -2046,7 +2062,19 @@ NetworkDetailsView.prototype = {
       return;
     }
 
+    let viewState = this._viewState;
+    if (viewState.updating[tab]) {
+      // A task is currently updating this tab. If we started another update
+      // task now it would result in a duplicated content as described in bugs
+      // 997065 and 984687. As there's no way to stop the current task mark the
+      // tab dirty and refresh the panel once the current task finishes.
+      viewState.dirty[tab] = true;
+      viewState.latestData = src;
+      return;
+    }
+
     Task.spawn(function*() {
+      viewState.updating[tab] = true;
       switch (tab) {
         case 0: // "Headers"
           yield view._setSummary(src);
@@ -2076,13 +2104,32 @@ NetworkDetailsView.prototype = {
           yield view._setHtmlPreview(src.responseContent);
           break;
       }
-      populated[tab] = true;
-      window.emit(EVENTS.TAB_UPDATED);
+      viewState.updating[tab] = false;
+    }).then(() => {
+      if (tab == this.widget.selectedIndex) {
+        if (viewState.dirty[tab]) {
+          // The request information was updated while the task was running.
+          viewState.dirty[tab] = false;
+          view.populate(viewState.latestData);
+        }
+        else {
+          // Tab is selected but not dirty. We're done here.
+          populated[tab] = true;
+          window.emit(EVENTS.TAB_UPDATED);
 
-      if (NetMonitorController.isConnected()) {
-        NetMonitorView.RequestsMenu.ensureSelectedItemIsVisible();
+          if (NetMonitorController.isConnected()) {
+            NetMonitorView.RequestsMenu.ensureSelectedItemIsVisible();
+          }
+        }
       }
-    });
+      else {
+        if (viewState.dirty[tab]) {
+          // Tab is dirty but no longer selected. Don't refresh it now, it'll be
+          // done if the tab is shown again.
+          viewState.dirty[tab] = false;
+        }
+      }
+    }, Cu.reportError);
   },
 
   /**

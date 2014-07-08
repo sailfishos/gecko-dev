@@ -1,5 +1,6 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -59,7 +60,9 @@ public:
   friend struct TimerAdditionComparator;
 
   void Fire();
-  nsresult PostTimerEvent();
+  // If a failure is encountered, the reference is returned to the caller
+  static already_AddRefed<nsTimerImpl> PostTimerEvent(
+      already_AddRefed<nsTimerImpl> aTimerRef);
   void SetDelayInternal(uint32_t aDelay);
 
   NS_DECL_THREADSAFE_ISUPPORTS
@@ -76,6 +79,8 @@ public:
     mTracedTask = mozilla::tasktracer::CreateFakeTracedTask(*(int**)(this));
   }
 #endif
+
+  virtual size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const;
 
 private:
   ~nsTimerImpl();

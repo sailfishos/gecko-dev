@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -30,15 +31,15 @@
 #include "mozilla/MacroForEach.h"
 
 inline nsISupports*
-ToSupports(nsISupports* p)
+ToSupports(nsISupports* aSupports)
 {
-    return p;
+  return aSupports;
 }
 
 inline nsISupports*
-ToCanonicalSupports(nsISupports* p)
+ToCanonicalSupports(nsISupports* aSupports)
 {
-    return nullptr;
+  return nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -46,13 +47,14 @@ ToCanonicalSupports(nsISupports* p)
 
 #if (defined(DEBUG) || (defined(NIGHTLY_BUILD) && !defined(MOZ_PROFILING))) && !defined(XPCOM_GLUE_AVOID_NSPR)
 
-class nsAutoOwningThread {
+class nsAutoOwningThread
+{
 public:
-    nsAutoOwningThread() { mThread = PR_GetCurrentThread(); }
-    void *GetThread() const { return mThread; }
+  nsAutoOwningThread() { mThread = PR_GetCurrentThread(); }
+  void* GetThread() const { return mThread; }
 
 private:
-    void *mThread;
+  void* mThread;
 };
 
 #define NS_DECL_OWNINGTHREAD            nsAutoOwningThread _mOwningThread;
@@ -132,24 +134,23 @@ do {                                                              \
 #define NS_REFCOUNT_CHANGE (1 << NS_NUMBER_OF_FLAGS_IN_REFCNT)
 #define NS_REFCOUNT_VALUE(_val) (_val >> NS_NUMBER_OF_FLAGS_IN_REFCNT)
 
-class nsCycleCollectingAutoRefCnt {
-
+class nsCycleCollectingAutoRefCnt
+{
 public:
-  nsCycleCollectingAutoRefCnt()
-    : mRefCntAndFlags(0)
-  {}
+  nsCycleCollectingAutoRefCnt() : mRefCntAndFlags(0) {}
 
   explicit nsCycleCollectingAutoRefCnt(uintptr_t aValue)
     : mRefCntAndFlags(aValue << NS_NUMBER_OF_FLAGS_IN_REFCNT)
   {
   }
 
-  MOZ_ALWAYS_INLINE uintptr_t incr(nsISupports *owner)
+  MOZ_ALWAYS_INLINE uintptr_t incr(nsISupports* aOwner)
   {
-    return incr(owner, nullptr);
+    return incr(aOwner, nullptr);
   }
 
-  MOZ_ALWAYS_INLINE uintptr_t incr(void *owner, nsCycleCollectionParticipant *p)
+  MOZ_ALWAYS_INLINE uintptr_t incr(void* aOwner,
+                                   nsCycleCollectionParticipant* aCp)
   {
     mRefCntAndFlags += NS_REFCOUNT_CHANGE;
     mRefCntAndFlags &= ~NS_IS_PURPLE;
@@ -159,7 +160,7 @@ public:
       mRefCntAndFlags |= NS_IN_PURPLE_BUFFER;
       // Refcount isn't zero, so Suspect won't delete anything.
       MOZ_ASSERT(get() > 0);
-      NS_CycleCollectorSuspect3(owner, p, this, nullptr);
+      NS_CycleCollectorSuspect3(aOwner, aCp, this, nullptr);
     }
     return NS_REFCOUNT_VALUE(mRefCntAndFlags);
   }
@@ -171,22 +172,23 @@ public:
     mRefCntAndFlags = NS_REFCOUNT_CHANGE | NS_IN_PURPLE_BUFFER;
   }
 
-  MOZ_ALWAYS_INLINE uintptr_t decr(nsISupports *owner,
-                                   bool *shouldDelete = nullptr)
+  MOZ_ALWAYS_INLINE uintptr_t decr(nsISupports* aOwner,
+                                   bool* aShouldDelete = nullptr)
   {
-    return decr(owner, nullptr, shouldDelete);
+    return decr(aOwner, nullptr, aShouldDelete);
   }
 
-  MOZ_ALWAYS_INLINE uintptr_t decr(void *owner, nsCycleCollectionParticipant *p,
-                                   bool *shouldDelete = nullptr)
+  MOZ_ALWAYS_INLINE uintptr_t decr(void* aOwner,
+                                   nsCycleCollectionParticipant* aCp,
+                                   bool* aShouldDelete = nullptr)
   {
     MOZ_ASSERT(get() > 0);
     if (!IsInPurpleBuffer()) {
       mRefCntAndFlags -= NS_REFCOUNT_CHANGE;
       mRefCntAndFlags |= (NS_IN_PURPLE_BUFFER | NS_IS_PURPLE);
       uintptr_t retval = NS_REFCOUNT_VALUE(mRefCntAndFlags);
-      // Suspect may delete 'owner' and 'this'!
-      NS_CycleCollectorSuspect3(owner, p, this, shouldDelete);
+      // Suspect may delete 'aOwner' and 'this'!
+      NS_CycleCollectorSuspect3(aOwner, aCp, this, aShouldDelete);
       return retval;
     }
     mRefCntAndFlags -= NS_REFCOUNT_CHANGE;
@@ -226,54 +228,58 @@ public:
     return get();
   }
 
- private:
+private:
   uintptr_t mRefCntAndFlags;
 };
 
-class nsAutoRefCnt {
+class nsAutoRefCnt
+{
+public:
+  nsAutoRefCnt() : mValue(0) {}
+  explicit nsAutoRefCnt(nsrefcnt aValue) : mValue(aValue) {}
 
- public:
-    nsAutoRefCnt() : mValue(0) {}
-    explicit nsAutoRefCnt(nsrefcnt aValue) : mValue(aValue) {}
+  // only support prefix increment/decrement
+  nsrefcnt operator++() { return ++mValue; }
+  nsrefcnt operator--() { return --mValue; }
 
-    // only support prefix increment/decrement
-    nsrefcnt operator++() { return ++mValue; }
-    nsrefcnt operator--() { return --mValue; }
+  nsrefcnt operator=(nsrefcnt aValue) { return (mValue = aValue); }
+  operator nsrefcnt() const { return mValue; }
+  nsrefcnt get() const { return mValue; }
 
-    nsrefcnt operator=(nsrefcnt aValue) { return (mValue = aValue); }
-    operator nsrefcnt() const { return mValue; }
-    nsrefcnt get() const { return mValue; }
-
-    static const bool isThreadSafe = false;
- private:
-    nsrefcnt operator++(int) MOZ_DELETE;
-    nsrefcnt operator--(int) MOZ_DELETE;
-    nsrefcnt mValue;
+  static const bool isThreadSafe = false;
+private:
+  nsrefcnt operator++(int) MOZ_DELETE;
+  nsrefcnt operator--(int) MOZ_DELETE;
+  nsrefcnt mValue;
 };
 
 #ifndef XPCOM_GLUE
 namespace mozilla {
-class ThreadSafeAutoRefCnt {
- public:
-    ThreadSafeAutoRefCnt() : mValue(0) {}
-    explicit ThreadSafeAutoRefCnt(nsrefcnt aValue) : mValue(aValue) {}
-    
-    // only support prefix increment/decrement
-    MOZ_ALWAYS_INLINE nsrefcnt operator++() { return ++mValue; }
-    MOZ_ALWAYS_INLINE nsrefcnt operator--() { return --mValue; }
+class ThreadSafeAutoRefCnt
+{
+public:
+  ThreadSafeAutoRefCnt() : mValue(0) {}
+  explicit ThreadSafeAutoRefCnt(nsrefcnt aValue) : mValue(aValue) {}
 
-    MOZ_ALWAYS_INLINE nsrefcnt operator=(nsrefcnt aValue) { return (mValue = aValue); }
-    MOZ_ALWAYS_INLINE operator nsrefcnt() const { return mValue; }
-    MOZ_ALWAYS_INLINE nsrefcnt get() const { return mValue; }
+  // only support prefix increment/decrement
+  MOZ_ALWAYS_INLINE nsrefcnt operator++() { return ++mValue; }
+  MOZ_ALWAYS_INLINE nsrefcnt operator--() { return --mValue; }
 
-    static const bool isThreadSafe = true;
- private:
-    nsrefcnt operator++(int) MOZ_DELETE;
-    nsrefcnt operator--(int) MOZ_DELETE;
-    // In theory, RelaseAcquire consistency (but no weaker) is sufficient for
-    // the counter. Making it weaker could speed up builds on ARM (but not x86),
-    // but could break pre-existing code that assumes sequential consistency.
-    Atomic<nsrefcnt> mValue;
+  MOZ_ALWAYS_INLINE nsrefcnt operator=(nsrefcnt aValue)
+  {
+    return (mValue = aValue);
+  }
+  MOZ_ALWAYS_INLINE operator nsrefcnt() const { return mValue; }
+  MOZ_ALWAYS_INLINE nsrefcnt get() const { return mValue; }
+
+  static const bool isThreadSafe = true;
+private:
+  nsrefcnt operator++(int) MOZ_DELETE;
+  nsrefcnt operator--(int) MOZ_DELETE;
+  // In theory, RelaseAcquire consistency (but no weaker) is sufficient for
+  // the counter. Making it weaker could speed up builds on ARM (but not x86),
+  // but could break pre-existing code that assumes sequential consistency.
+  Atomic<nsrefcnt> mValue;
 };
 }
 #endif
@@ -406,7 +412,7 @@ public:
 #define NS_INIT_ISUPPORTS() ((void)0)
 
 namespace mozilla {
-template <typename T>
+template<typename T>
 struct HasDangerousPublicDestructor
 {
   static const bool value = false;
@@ -414,11 +420,11 @@ struct HasDangerousPublicDestructor
 }
 
 #if defined(__clang__)
-#  if MOZ_USING_LIBCXX && __has_include(<type_traits>)
-#    define MOZ_HAVE_STD_IS_DESTRUCTIBLE
-#  else
-#    define MOZ_CAN_USE_IS_DESTRUCTIBLE_FALLBACK
-#  endif
+   // bug 1028428 shows that at least in FreeBSD 10.0 with Clang 3.4 and libc++ 3.4,
+   // std::is_destructible is buggy in that it returns false when it should return true
+   // on ipc::SharedMemory. On the other hand, all Clang versions currently in use
+   // seem to handle the fallback just fine.
+#  define MOZ_CAN_USE_IS_DESTRUCTIBLE_FALLBACK
 #elif defined(__GNUC__)
    // GCC 4.7 is has buggy std::is_destructible
 #  if MOZ_USING_LIBSTDCXX && MOZ_GCC_VERSION_AT_LEAST(4, 8, 0)
@@ -427,10 +433,6 @@ struct HasDangerousPublicDestructor
    // Works for me on GCC 4.8.2 on Fedora 20 x86-64.
 #  elif MOZ_GCC_VERSION_AT_LEAST(4, 8, 2)
 #    define MOZ_CAN_USE_IS_DESTRUCTIBLE_FALLBACK
-#  endif
-#elif defined(_MSC_VER)
-#  if _MSC_VER >= 1700
-#    define MOZ_HAVE_STD_IS_DESTRUCTIBLE
 #  endif
 #endif
 
@@ -718,13 +720,13 @@ NS_IMETHODIMP_(void) _class::DeleteCycleCollectable(void)                     \
 
 struct QITableEntry
 {
-  const nsIID *iid;     // null indicates end of the QITableEntry array
+  const nsIID* iid;     // null indicates end of the QITableEntry array
   int32_t   offset;
 };
 
 NS_COM_GLUE nsresult NS_FASTCALL
 NS_TableDrivenQI(void* aThis, REFNSIID aIID,
-                 void **aInstancePtr, const QITableEntry* entries);
+                 void** aInstancePtr, const QITableEntry* aEntries);
 
 /**
  * Implement table-driven queryinterface
@@ -879,12 +881,12 @@ NS_IMETHODIMP _class::QueryInterface(REFNSIID aIID, void** aInstancePtr)      \
   NS_IMPL_QUERY_TAIL_GUTS
 
 
-  /*
-    This is the new scheme.  Using this notation now will allow us to switch to
-    a table driven mechanism when it's ready.  Note the difference between this
-    and the (currently) underlying NS_IMPL_QUERY_INTERFACE mechanism.  You must
-    explicitly mention |nsISupports| when using the interface maps.
-  */
+/*
+  This is the new scheme.  Using this notation now will allow us to switch to
+  a table driven mechanism when it's ready.  Note the difference between this
+  and the (currently) underlying NS_IMPL_QUERY_INTERFACE mechanism.  You must
+  explicitly mention |nsISupports| when using the interface maps.
+*/
 #define NS_INTERFACE_MAP_BEGIN(_implClass)      NS_IMPL_QUERY_HEAD(_implClass)
 #define NS_INTERFACE_MAP_ENTRY(_interface)      NS_IMPL_QUERY_BODY(_interface)
 #define NS_INTERFACE_MAP_ENTRY_CONDITIONAL(_interface, condition)             \

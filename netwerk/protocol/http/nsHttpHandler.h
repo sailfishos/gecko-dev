@@ -57,7 +57,6 @@ public:
     NS_DECL_NSISPECULATIVECONNECT
 
     nsHttpHandler();
-    virtual ~nsHttpHandler();
 
     nsresult Init();
     nsresult AddStandardRequestHeaders(nsHttpHeaderArray *);
@@ -77,7 +76,10 @@ public:
     uint8_t        RedirectionLimit()        { return mRedirectionLimit; }
     PRIntervalTime IdleTimeout()             { return mIdleTimeout; }
     PRIntervalTime SpdyTimeout()             { return mSpdyTimeout; }
-    PRIntervalTime ResponseTimeout()         { return mResponseTimeout; }
+    PRIntervalTime ResponseTimeout() {
+      return mResponseTimeoutEnabled ? mResponseTimeout : 0;
+    }
+    PRIntervalTime ResponseTimeoutEnabled()  { return mResponseTimeoutEnabled; }
     uint16_t       MaxRequestAttempts()      { return mMaxRequestAttempts; }
     const char    *DefaultSocketType()       { return mDefaultSocketType.get(); /* ok to return null */ }
     uint32_t       PhishyUserPassLength()    { return mPhishyUserPassLength; }
@@ -312,6 +314,7 @@ public:
     void ClearCacheSkippedUntil() { mCacheSkippedUntil = TimeStamp(); }
 
 private:
+    virtual ~nsHttpHandler();
 
     //
     // Useragent/prefs helper methods
@@ -362,6 +365,7 @@ private:
     PRIntervalTime mIdleTimeout;
     PRIntervalTime mSpdyTimeout;
     PRIntervalTime mResponseTimeout;
+    bool mResponseTimeoutEnabled;
 
     uint16_t mMaxRequestAttempts;
     uint16_t mMaxRequestDelay;
@@ -545,6 +549,7 @@ class nsHttpsHandler : public nsIHttpProtocolHandler
                      , public nsSupportsWeakReference
                      , public nsISpeculativeConnect
 {
+    virtual ~nsHttpsHandler() { }
 public:
     // we basically just want to override GetScheme and GetDefaultPort...
     // all other methods should be forwarded to the nsHttpHandler instance.
@@ -556,7 +561,6 @@ public:
     NS_FORWARD_NSISPECULATIVECONNECT     (gHttpHandler->)
 
     nsHttpsHandler() { }
-    virtual ~nsHttpsHandler() { }
 
     nsresult Init();
 };

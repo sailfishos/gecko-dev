@@ -2,15 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+/* jshint esnext:true */
 /* global loop:true */
 
 var loop = loop || {};
 loop.conversation = (function(OT, mozL10n) {
   "use strict";
 
-  var sharedViews = loop.shared.views,
-      // aliasing translation function as __ for concision
-      __ = mozL10n.get;
+  var sharedViews = loop.shared.views;
 
   /**
    * App router.
@@ -55,8 +54,7 @@ loop.conversation = (function(OT, mozL10n) {
      */
     handleDecline: function(event) {
       event.preventDefault();
-      // XXX For now, we just close the window.
-      window.close();
+      this.model.trigger("decline");
     }
   });
 
@@ -97,6 +95,7 @@ loop.conversation = (function(OT, mozL10n) {
     routes: {
       "incoming/:version": "incoming",
       "call/accept": "accept",
+      "call/decline": "decline",
       "call/ongoing": "conversation",
       "call/ended": "ended"
     },
@@ -122,9 +121,13 @@ loop.conversation = (function(OT, mozL10n) {
      *                             by the router from the URL.
      */
     incoming: function(loopVersion) {
+      window.navigator.mozLoop.startAlerting();
       this._conversation.set({loopVersion: loopVersion});
       this._conversation.once("accept", function() {
         this.navigate("call/accept", {trigger: true});
+      }.bind(this));
+      this._conversation.once("decline", function() {
+        this.navigate("call/decline", {trigger: true});
       }.bind(this));
       this.loadView(new IncomingCallView({model: this._conversation}));
     },
@@ -133,10 +136,20 @@ loop.conversation = (function(OT, mozL10n) {
      * Accepts an incoming call.
      */
     accept: function() {
+      window.navigator.mozLoop.stopAlerting();
       this._conversation.initiate({
-        baseServerUrl: window.navigator.mozLoop.serverUrl,
+        client: new loop.Client(),
         outgoing: false
       });
+    },
+
+    /**
+     * Declines an incoming call.
+     */
+    decline: function() {
+      window.navigator.mozLoop.stopAlerting();
+      // XXX For now, we just close the window
+      window.close();
     },
 
     /**
@@ -173,6 +186,8 @@ loop.conversation = (function(OT, mozL10n) {
     // Do the initial L10n setup, we do this before anything
     // else to ensure the L10n environment is setup correctly.
     mozL10n.initialize(window.navigator.mozLoop);
+
+    document.title = mozL10n.get("incoming_call_title");
 
     router = new ConversationRouter({
       conversation: new loop.shared.models.ConversationModel({}, {sdk: OT}),

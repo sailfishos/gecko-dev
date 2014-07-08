@@ -41,6 +41,14 @@ data_path = mozpath.join(data_path, 'data')
 
 
 class TestEmitterBasic(unittest.TestCase):
+    def setUp(self):
+        self._old_env = dict(os.environ)
+        os.environ.pop('MOZ_OBJDIR', None)
+
+    def tearDown(self):
+        os.environ.clear()
+        os.environ.update(self._old_env)
+
     def reader(self, name):
         config = MockConfig(mozpath.join(data_path, name), extra_substs=dict(
             ENABLE_TESTS='1',
@@ -379,7 +387,7 @@ class TestEmitterBasic(unittest.TestCase):
         objs = [o for o in self.read_topsrcdir(reader)
                 if isinstance(o, TestManifest)]
 
-        self.assertEqual(len(objs), 6)
+        self.assertEqual(len(objs), 8)
 
         metadata = {
             'a11y.ini': {
@@ -435,6 +443,14 @@ class TestEmitterBasic(unittest.TestCase):
                     'tail1': False,
                     'tail2': False,
                 },
+            },
+            'reftest.list': {
+                'flavor': 'reftest',
+                'installs': {},
+            },
+            'crashtest.list': {
+                'flavor': 'crashtest',
+                'installs': {},
             },
         }
 

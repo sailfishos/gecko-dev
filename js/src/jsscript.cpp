@@ -700,7 +700,7 @@ js::XDRScript(XDRState<mode> *xdr, HandleObject enclosingScope, HandleScript enc
             CompileOptions options(cx);
             options.setOriginPrincipals(xdr->originPrincipals());
             ss->initFromOptions(cx, options);
-            sourceObject = ScriptSourceObject::create(cx, ss, options);
+            sourceObject = ScriptSourceObject::create(cx, ss);
             if (!sourceObject)
                 return false;
         } else {
@@ -1241,66 +1241,26 @@ JSScript::destroyScriptCounts(FreeOp *fop)
 }
 
 void
-ScriptSourceObject::setSource(ScriptSource *source)
-{
-    if (source)
-        source->incref();
-    if (this->source())
-        this->source()->decref();
-    setReservedSlot(SOURCE_SLOT, PrivateValue(source));
-}
-
-JSObject *
-ScriptSourceObject::element() const
-{
-    return getReservedSlot(ELEMENT_SLOT).toObjectOrNull();
-}
-
-void
-ScriptSourceObject::initElement(HandleObject element)
-{
-    JS_ASSERT(getReservedSlot(ELEMENT_SLOT).isNull());
-    setReservedSlot(ELEMENT_SLOT, ObjectOrNullValue(element));
-}
-
-const Value &
-ScriptSourceObject::elementAttributeName() const
-{
-    const Value &prop = getReservedSlot(ELEMENT_PROPERTY_SLOT);
-    JS_ASSERT(prop.isUndefined() || prop.isString());
-    return prop;
-}
-
-void
-ScriptSourceObject::initIntroductionScript(JSScript *script)
-{
-    JS_ASSERT(!getReservedSlot(INTRODUCTION_SCRIPT_SLOT).toPrivate());
-
-    // There is no equivalent of cross-compartment wrappers for scripts. If
-    // the introduction script would be in a different compartment from the
-    // compiled code, we would be creating a cross-compartment script
-    // reference, which would be bogus. In that case, just don't bother to
-    // retain the introduction script.
-    if (script && script->compartment() == compartment())
-        setReservedSlot(INTRODUCTION_SCRIPT_SLOT, PrivateValue(script));
-}
-
-void
 ScriptSourceObject::trace(JSTracer *trc, JSObject *obj)
 {
     ScriptSourceObject *sso = static_cast<ScriptSourceObject *>(obj);
 
-    if (JSScript *script = sso->introductionScript()) {
-        MarkScriptUnbarriered(trc, &script, "ScriptSourceObject introductionScript");
-        sso->setReservedSlot(INTRODUCTION_SCRIPT_SLOT, PrivateValue(script));
+    // Don't trip over the poison 'not yet initialized' values.
+    if (!sso->getReservedSlot(INTRODUCTION_SCRIPT_SLOT).isMagic(JS_GENERIC_MAGIC)) {
+        JSScript *script = sso->introductionScript();
+        if (script) {
+            MarkScriptUnbarriered(trc, &script, "ScriptSourceObject introductionScript");
+            sso->setReservedSlot(INTRODUCTION_SCRIPT_SLOT, PrivateValue(script));
+        }
     }
 }
 
 void
 ScriptSourceObject::finalize(FreeOp *fop, JSObject *obj)
 {
-    // ScriptSource::setSource automatically takes care of the refcount
-    obj->as<ScriptSourceObject>().setSource(nullptr);
+    ScriptSourceObject *sso = &obj->as<ScriptSourceObject>();
+    sso->source()->decref();
+    sso->setReservedSlot(SOURCE_SLOT, PrivateValue(nullptr));
 }
 
 const Class ScriptSourceObject::class_ = {
@@ -1322,26 +1282,59 @@ const Class ScriptSourceObject::class_ = {
 };
 
 ScriptSourceObject *
-ScriptSourceObject::create(ExclusiveContext *cx, ScriptSource *source,
-                           const ReadOnlyCompileOptions &options)
+ScriptSourceObject::create(ExclusiveContext *cx, ScriptSource *source)
 {
     RootedObject object(cx, NewObjectWithGivenProto(cx, &class_, nullptr, cx->global()));
     if (!object)
         return nullptr;
     RootedScriptSource sourceObject(cx, &object->as<ScriptSourceObject>());
 
-    source->incref();
-    sourceObject->initSlot(SOURCE_SLOT, PrivateValue(source));
-    sourceObject->initSlot(ELEMENT_SLOT, ObjectOrNullValue(options.element()));
-    if (options.elementAttributeName())
-        sourceObject->initSlot(ELEMENT_PROPERTY_SLOT, StringValue(options.elementAttributeName()));
-    else
-        sourceObject->initSlot(ELEMENT_PROPERTY_SLOT, UndefinedValue());
+    source->incref();    // The matching decref is in ScriptSourceObject::finalize.
+    sourceObject->initReservedSlot(SOURCE_SLOT, PrivateValue(source));
 
-    sourceObject->initSlot(INTRODUCTION_SCRIPT_SLOT, PrivateValue(nullptr));
-    sourceObject->initIntroductionScript(options.introductionScript());
+    // The remaining slots should eventually be populated by a call to
+    // initFromOptions. Poison them until that point.
+    sourceObject->initReservedSlot(ELEMENT_SLOT, MagicValue(JS_GENERIC_MAGIC));
+    sourceObject->initReservedSlot(ELEMENT_PROPERTY_SLOT, MagicValue(JS_GENERIC_MAGIC));
+    sourceObject->initReservedSlot(INTRODUCTION_SCRIPT_SLOT, MagicValue(JS_GENERIC_MAGIC));
 
     return sourceObject;
+}
+
+/* static */ bool
+ScriptSourceObject::initFromOptions(JSContext *cx, HandleScriptSource source,
+                                    const ReadOnlyCompileOptions &options)
+{
+    assertSameCompartment(cx, source);
+
+    RootedValue element(cx, ObjectOrNullValue(options.element()));
+    if (!cx->compartment()->wrap(cx, &element))
+        return false;
+    source->setReservedSlot(ELEMENT_SLOT, element);
+
+    RootedValue elementAttributeName(cx);
+    if (options.elementAttributeName())
+        elementAttributeName = StringValue(options.elementAttributeName());
+    else
+        elementAttributeName = UndefinedValue();
+    if (!cx->compartment()->wrap(cx, &elementAttributeName))
+        return false;
+    source->setReservedSlot(ELEMENT_PROPERTY_SLOT, elementAttributeName);
+
+    // There is no equivalent of cross-compartment wrappers for scripts. If the
+    // introduction script and ScriptSourceObject are in different compartments,
+    // we would be creating a cross-compartment script reference, which is
+    // forbidden. In that case, simply don't bother to retain the introduction
+    // script.
+    if (options.introductionScript() &&
+        options.introductionScript()->compartment() == cx->compartment())
+    {
+        source->setReservedSlot(INTRODUCTION_SCRIPT_SLOT, PrivateValue(options.introductionScript()));
+    } else {
+        source->setReservedSlot(INTRODUCTION_SCRIPT_SLOT, UndefinedValue());
+    }
+
+    return true;
 }
 
 /* static */ bool
@@ -1369,13 +1362,13 @@ JSScript::sourceData(JSContext *cx)
     return scriptSource()->substring(cx, sourceStart(), sourceEnd());
 }
 
-SourceDataCache::AutoHoldEntry::AutoHoldEntry()
+UncompressedSourceCache::AutoHoldEntry::AutoHoldEntry()
   : cache_(nullptr), source_(nullptr), charsToFree_(nullptr)
 {
 }
 
 void
-SourceDataCache::AutoHoldEntry::holdEntry(SourceDataCache *cache, ScriptSource *source)
+UncompressedSourceCache::AutoHoldEntry::holdEntry(UncompressedSourceCache *cache, ScriptSource *source)
 {
     // Initialise the holder for a specific cache and script source. This will
     // hold on to the cached source chars in the event that the cache is purged.
@@ -1385,7 +1378,7 @@ SourceDataCache::AutoHoldEntry::holdEntry(SourceDataCache *cache, ScriptSource *
 }
 
 void
-SourceDataCache::AutoHoldEntry::deferDelete(const jschar *chars)
+UncompressedSourceCache::AutoHoldEntry::deferDelete(const jschar *chars)
 {
     // Take ownership of source chars now the cache is being purged. Remove our
     // reference to the ScriptSource which might soon be destroyed.
@@ -1395,7 +1388,7 @@ SourceDataCache::AutoHoldEntry::deferDelete(const jschar *chars)
     charsToFree_ = chars;
 }
 
-SourceDataCache::AutoHoldEntry::~AutoHoldEntry()
+UncompressedSourceCache::AutoHoldEntry::~AutoHoldEntry()
 {
     // The holder is going out of scope. If it has taken ownership of cached
     // chars then delete them, otherwise unregister ourself with the cache.
@@ -1409,7 +1402,7 @@ SourceDataCache::AutoHoldEntry::~AutoHoldEntry()
 }
 
 void
-SourceDataCache::holdEntry(AutoHoldEntry &holder, ScriptSource *ss)
+UncompressedSourceCache::holdEntry(AutoHoldEntry &holder, ScriptSource *ss)
 {
     JS_ASSERT(!holder_);
     holder.holdEntry(this, ss);
@@ -1417,14 +1410,14 @@ SourceDataCache::holdEntry(AutoHoldEntry &holder, ScriptSource *ss)
 }
 
 void
-SourceDataCache::releaseEntry(AutoHoldEntry &holder)
+UncompressedSourceCache::releaseEntry(AutoHoldEntry &holder)
 {
     JS_ASSERT(holder_ == &holder);
     holder_ = nullptr;
 }
 
 const jschar *
-SourceDataCache::lookup(ScriptSource *ss, AutoHoldEntry &holder)
+UncompressedSourceCache::lookup(ScriptSource *ss, AutoHoldEntry &holder)
 {
     JS_ASSERT(!holder_);
     if (!map_)
@@ -1437,7 +1430,7 @@ SourceDataCache::lookup(ScriptSource *ss, AutoHoldEntry &holder)
 }
 
 bool
-SourceDataCache::put(ScriptSource *ss, const jschar *str, AutoHoldEntry &holder)
+UncompressedSourceCache::put(ScriptSource *ss, const jschar *str, AutoHoldEntry &holder)
 {
     JS_ASSERT(!holder_);
 
@@ -1461,7 +1454,7 @@ SourceDataCache::put(ScriptSource *ss, const jschar *str, AutoHoldEntry &holder)
 }
 
 void
-SourceDataCache::purge()
+UncompressedSourceCache::purge()
 {
     if (!map_)
         return;
@@ -1481,7 +1474,7 @@ SourceDataCache::purge()
 }
 
 size_t
-SourceDataCache::sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf)
+UncompressedSourceCache::sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf)
 {
     size_t n = 0;
     if (map_ && !map_->empty()) {
@@ -1495,7 +1488,7 @@ SourceDataCache::sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf)
 }
 
 const jschar *
-ScriptSource::chars(JSContext *cx, SourceDataCache::AutoHoldEntry &holder)
+ScriptSource::chars(JSContext *cx, UncompressedSourceCache::AutoHoldEntry &holder)
 {
     switch (dataType) {
       case DataUncompressed:
@@ -1503,7 +1496,7 @@ ScriptSource::chars(JSContext *cx, SourceDataCache::AutoHoldEntry &holder)
 
       case DataCompressed: {
 #ifdef USE_ZLIB
-        if (const jschar *decompressed = cx->runtime()->sourceDataCache.lookup(this, holder))
+        if (const jschar *decompressed = cx->runtime()->uncompressedSourceCache.lookup(this, holder))
             return decompressed;
 
         const size_t nbytes = sizeof(jschar) * (length_ + 1);
@@ -1520,7 +1513,7 @@ ScriptSource::chars(JSContext *cx, SourceDataCache::AutoHoldEntry &holder)
 
         decompressed[length_] = 0;
 
-        if (!cx->runtime()->sourceDataCache.put(this, decompressed, holder)) {
+        if (!cx->runtime()->uncompressedSourceCache.put(this, decompressed, holder)) {
             JS_ReportOutOfMemory(cx);
             js_free(decompressed);
             return nullptr;
@@ -1532,6 +1525,9 @@ ScriptSource::chars(JSContext *cx, SourceDataCache::AutoHoldEntry &holder)
 #endif
       }
 
+      case DataParent:
+        return parent()->chars(cx, holder);
+
       default:
         MOZ_CRASH();
     }
@@ -1541,11 +1537,11 @@ JSFlatString *
 ScriptSource::substring(JSContext *cx, uint32_t start, uint32_t stop)
 {
     JS_ASSERT(start <= stop);
-    SourceDataCache::AutoHoldEntry holder;
+    UncompressedSourceCache::AutoHoldEntry holder;
     const jschar *chars = this->chars(cx, holder);
     if (!chars)
         return nullptr;
-    return js_NewStringCopyN<CanGC>(cx, chars + start, stop - start);
+    return NewStringCopyNDontDeflate<CanGC>(cx, chars + start, stop - start);
 }
 
 void
@@ -1561,7 +1557,7 @@ ScriptSource::setSource(const jschar *chars, size_t length, bool ownsChars /* = 
 }
 
 void
-ScriptSource::setCompressedSource(void *raw, size_t nbytes)
+ScriptSource::setCompressedSource(JSRuntime *maybert, void *raw, size_t nbytes, HashNumber hash)
 {
     JS_ASSERT(dataType == DataMissing || dataType == DataUncompressed);
     if (dataType == DataUncompressed && ownsUncompressedChars())
@@ -1570,6 +1566,33 @@ ScriptSource::setCompressedSource(void *raw, size_t nbytes)
     dataType = DataCompressed;
     data.compressed.raw = raw;
     data.compressed.nbytes = nbytes;
+    data.compressed.hash = hash;
+
+    if (maybert)
+        updateCompressedSourceSet(maybert);
+}
+
+void
+ScriptSource::updateCompressedSourceSet(JSRuntime *rt)
+{
+    JS_ASSERT(dataType == DataCompressed);
+    JS_ASSERT(!inCompressedSourceSet);
+
+    CompressedSourceSet::AddPtr p = rt->compressedSourceSet.lookupForAdd(this);
+    if (p) {
+        // There is another ScriptSource with the same compressed data.
+        // Mark that ScriptSource as the parent and use it for all attempts to
+        // get the source for this ScriptSource.
+        ScriptSource *parent = *p;
+        parent->incref();
+
+        js_free(compressedData());
+        dataType = DataParent;
+        data.parent = parent;
+    } else {
+        if (rt->compressedSourceSet.add(p, this))
+            inCompressedSourceSet = true;
+    }
 }
 
 bool
@@ -1688,6 +1711,7 @@ SourceCompressionTask::work()
         }
     }
     compressedBytes = comp.outWritten();
+    compressedHash = CompressedSourceHasher::computeHash(compressed, compressedBytes);
 #else
     MOZ_CRASH();
 #endif
@@ -1701,6 +1725,8 @@ SourceCompressionTask::work()
 
 ScriptSource::~ScriptSource()
 {
+    JS_ASSERT_IF(inCompressedSourceSet, dataType == DataCompressed);
+
     switch (dataType) {
       case DataUncompressed:
         if (ownsUncompressedChars())
@@ -1708,7 +1734,19 @@ ScriptSource::~ScriptSource()
         break;
 
       case DataCompressed:
+        // Script source references are only manipulated on the main thread,
+        // except during off thread parsing when the source may be created
+        // and used exclusively by the thread doing the parse. In this case the
+        // ScriptSource might be destroyed while off the main thread, but it
+        // will not have been added to the runtime's compressed source set
+        // until the parse is finished on the main thread.
+        if (inCompressedSourceSet)
+            TlsPerThreadData.get()->runtimeFromMainThread()->compressedSourceSet.remove(this);
         js_free(compressedData());
+        break;
+
+      case DataParent:
+        parent()->decref();
         break;
 
       default:
@@ -1753,7 +1791,22 @@ ScriptSource::performXDR(XDRState<mode> *xdr)
         if (!xdr->codeUint32(&length_))
             return false;
 
-        uint32_t compressedLength = (dataType == DataCompressed) ? compressedBytes() : 0;
+        uint32_t compressedLength;
+        if (mode == XDR_ENCODE) {
+            switch (dataType) {
+              case DataUncompressed:
+                compressedLength = 0;
+                break;
+              case DataCompressed:
+                compressedLength = compressedBytes();
+                break;
+              case DataParent:
+                compressedLength = parent()->compressedBytes();
+                break;
+              default:
+                MOZ_CRASH();
+            }
+        }
         if (!xdr->codeUint32(&compressedLength))
             return false;
 
@@ -1776,11 +1829,25 @@ ScriptSource::performXDR(XDRState<mode> *xdr)
             }
 
             if (compressedLength)
-                setCompressedSource(p, compressedLength);
+                setCompressedSource(xdr->cx()->runtime(), p, compressedLength,
+                                    CompressedSourceHasher::computeHash(p, compressedLength));
             else
                 setSource((const jschar *) p, length_);
         } else {
-            void *p = compressedLength ? compressedData() : (void *) uncompressedChars();
+            void *p;
+            switch (dataType) {
+              case DataUncompressed:
+                p = (void *) uncompressedChars();
+                break;
+              case DataCompressed:
+                p = compressedData();
+                break;
+              case DataParent:
+                p = parent()->compressedData();
+                break;
+              default:
+                MOZ_CRASH();
+            }
             if (!xdr->codeBytes(p, byteLen))
                 return false;
         }
@@ -2054,8 +2121,8 @@ static bool
 SaveSharedScriptData(ExclusiveContext *cx, Handle<JSScript *> script, SharedScriptData *ssd,
                      uint32_t nsrcnotes)
 {
-    ASSERT(script != nullptr);
-    ASSERT(ssd != nullptr);
+    JS_ASSERT(script != nullptr);
+    JS_ASSERT(ssd != nullptr);
 
     AutoLockForExclusiveAccess lock(cx);
 
@@ -2084,7 +2151,7 @@ SaveSharedScriptData(ExclusiveContext *cx, Handle<JSScript *> script, SharedScri
      */
     if (cx->isJSContext()) {
         JSRuntime *rt = cx->asJSContext()->runtime();
-        if (JS::IsIncrementalGCInProgress(rt) && rt->gc.isFull)
+        if (JS::IsIncrementalGCInProgress(rt) && rt->gc.isFullGc())
             ssd->marked = true;
     }
 #endif
@@ -2102,14 +2169,14 @@ MarkScriptData(JSRuntime *rt, const jsbytecode *bytecode)
      * a GC. Since SweepScriptBytecodes is only called during a full gc,
      * to preserve this invariant, only mark during a full gc.
      */
-    if (rt->gc.isFull)
+    if (rt->gc.isFullGc())
         SharedScriptData::fromBytecode(bytecode)->marked = true;
 }
 
 void
 js::UnmarkScriptData(JSRuntime *rt)
 {
-    JS_ASSERT(rt->gc.isFull);
+    JS_ASSERT(rt->gc.isFullGc());
     ScriptDataTable &table = rt->scriptDataTable();
     for (ScriptDataTable::Enum e(table); !e.empty(); e.popFront()) {
         SharedScriptData *entry = e.front();
@@ -2120,7 +2187,7 @@ js::UnmarkScriptData(JSRuntime *rt)
 void
 js::SweepScriptData(JSRuntime *rt)
 {
-    JS_ASSERT(rt->gc.isFull);
+    JS_ASSERT(rt->gc.isFullGc());
     ScriptDataTable &table = rt->scriptDataTable();
 
     if (rt->keepAtoms())
@@ -2810,29 +2877,29 @@ js_GetScriptLineExtent(JSScript *script)
 }
 
 void
-js::DescribeScriptedCallerForCompilation(JSContext *cx, JSScript **maybeScript,
+js::DescribeScriptedCallerForCompilation(JSContext *cx, MutableHandleScript maybeScript,
                                          const char **file, unsigned *linenop,
                                          uint32_t *pcOffset, JSPrincipals **origin,
                                          LineOption opt)
 {
     if (opt == CALLED_FROM_JSOP_EVAL) {
         jsbytecode *pc = nullptr;
-        *maybeScript = cx->currentScript(&pc);
+        maybeScript.set(cx->currentScript(&pc));
         JS_ASSERT(JSOp(*pc) == JSOP_EVAL || JSOp(*pc) == JSOP_SPREADEVAL);
         JS_ASSERT(*(pc + (JSOp(*pc) == JSOP_EVAL ? JSOP_EVAL_LENGTH
                                                  : JSOP_SPREADEVAL_LENGTH)) == JSOP_LINENO);
-        *file = (*maybeScript)->filename();
+        *file = maybeScript->filename();
         *linenop = GET_UINT16(pc + (JSOp(*pc) == JSOP_EVAL ? JSOP_EVAL_LENGTH
                                                            : JSOP_SPREADEVAL_LENGTH));
-        *pcOffset = pc - (*maybeScript)->code();
-        *origin = (*maybeScript)->originPrincipals();
+        *pcOffset = pc - maybeScript->code();
+        *origin = maybeScript->originPrincipals();
         return;
     }
 
     NonBuiltinFrameIter iter(cx);
 
     if (iter.done()) {
-        *maybeScript = nullptr;
+        maybeScript.set(nullptr);
         *file = nullptr;
         *linenop = 0;
         *pcOffset = 0;
@@ -2847,10 +2914,10 @@ js::DescribeScriptedCallerForCompilation(JSContext *cx, JSScript **maybeScript,
     // These values are only used for introducer fields which are debugging
     // information and can be safely left null for asm.js frames.
     if (iter.hasScript()) {
-        *maybeScript = iter.script();
-        *pcOffset = iter.pc() - (*maybeScript)->code();
+        maybeScript.set(iter.script());
+        *pcOffset = iter.pc() - maybeScript->code();
     } else {
-        *maybeScript = nullptr;
+        maybeScript.set(nullptr);
         *pcOffset = 0;
     }
 }
@@ -3325,7 +3392,9 @@ JSScript::markChildren(JSTracer *trc)
     // JSScript::Create(), but not yet finished initializing it with
     // fullyInitFromEmitter() or fullyInitTrivial().
 
-    JS_ASSERT_IF(trc->runtime()->gc.strictCompartmentChecking, zone()->isCollecting());
+    JS_ASSERT_IF(IS_GC_MARKING_TRACER(trc) &&
+                 static_cast<GCMarker *>(trc)->shouldCheckCompartments(),
+                 zone()->isCollecting());
 
     for (uint32_t i = 0; i < natoms(); ++i) {
         if (atoms[i])
@@ -3874,7 +3943,7 @@ LazyScriptHashPolicy::match(JSScript *script, const Lookup &lookup)
         return false;
     }
 
-    SourceDataCache::AutoHoldEntry holder;
+    UncompressedSourceCache::AutoHoldEntry holder;
 
     const jschar *scriptChars = script->scriptSource()->chars(cx, holder);
     if (!scriptChars)

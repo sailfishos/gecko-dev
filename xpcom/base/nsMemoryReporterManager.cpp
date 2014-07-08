@@ -27,7 +27,12 @@
 #include "mozilla/Telemetry.h"
 #include "mozilla/dom/PMemoryReportRequestParent.h" // for dom::MemoryReport
 
-#ifndef XP_WIN
+#ifdef XP_WIN
+#include <process.h>
+#ifndef getpid
+#define getpid _getpid
+#endif
+#else
 #include <unistd.h>
 #endif
 
@@ -118,6 +123,8 @@ ResidentUniqueDistinguishedAmount(int64_t* aN)
 
 class ResidentUniqueReporter MOZ_FINAL : public nsIMemoryReporter
 {
+  ~ResidentUniqueReporter() {}
+
 public:
   NS_DECL_ISUPPORTS
 
@@ -558,6 +565,8 @@ NS_IMPL_ISUPPORTS(PrivateReporter, nsIMemoryReporter)
 #ifdef HAVE_VSIZE_AND_RESIDENT_REPORTERS
 class VsizeReporter MOZ_FINAL : public nsIMemoryReporter
 {
+  ~VsizeReporter() {}
+
 public:
   NS_DECL_ISUPPORTS
 
@@ -583,6 +592,8 @@ NS_IMPL_ISUPPORTS(VsizeReporter, nsIMemoryReporter)
 
 class ResidentReporter MOZ_FINAL : public nsIMemoryReporter
 {
+  ~ResidentReporter() {}
+
 public:
   NS_DECL_ISUPPORTS
 
@@ -615,6 +626,8 @@ NS_IMPL_ISUPPORTS(ResidentReporter, nsIMemoryReporter)
 
 class PageFaultsSoftReporter MOZ_FINAL : public nsIMemoryReporter
 {
+  ~PageFaultsSoftReporter() {}
+
 public:
   NS_DECL_ISUPPORTS
 
@@ -657,6 +670,8 @@ PageFaultsHardDistinguishedAmount(int64_t* aAmount)
 
 class PageFaultsHardReporter MOZ_FINAL : public nsIMemoryReporter
 {
+  ~PageFaultsHardReporter() {}
+
 public:
   NS_DECL_ISUPPORTS
 
@@ -704,6 +719,8 @@ HeapOverheadRatio(jemalloc_stats_t* aStats)
 
 class JemallocHeapReporter MOZ_FINAL : public nsIMemoryReporter
 {
+  ~JemallocHeapReporter() {}
+
 public:
   NS_DECL_ISUPPORTS
 
@@ -807,6 +824,8 @@ NS_IMPL_ISUPPORTS(JemallocHeapReporter, nsIMemoryReporter)
 class AtomTablesReporter MOZ_FINAL : public nsIMemoryReporter
 {
   MOZ_DEFINE_MALLOC_SIZE_OF(MallocSizeOf)
+
+  ~AtomTablesReporter() {}
 
 public:
   NS_DECL_ISUPPORTS
@@ -1090,8 +1109,17 @@ nsMemoryReporterManager::StartGettingReports()
   GetReportsState* s = mGetReportsState;
 
   // Get reports for this process.
+  FILE *parentDMDFile = nullptr;
+#ifdef MOZ_DMD
+  nsresult rv = nsMemoryInfoDumper::OpenDMDFile(s->mDMDDumpIdent, getpid(),
+                                                &parentDMDFile);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    // Proceed with the memory report as if DMD were disabled.
+    parentDMDFile = nullptr;
+  }
+#endif
   GetReportsForThisProcessExtended(s->mHandleReport, s->mHandleReportData,
-                                   s->mAnonymize, s->mDMDDumpIdent);
+                                   s->mAnonymize, parentDMDFile);
   s->mParentDone = true;
 
   // If there are no remaining child processes, we can finish up immediately.
@@ -1124,13 +1152,13 @@ nsMemoryReporterManager::GetReportsForThisProcess(
   nsISupports* aHandleReportData, bool aAnonymize)
 {
   return GetReportsForThisProcessExtended(aHandleReport, aHandleReportData,
-                                          aAnonymize, nsString());
+                                          aAnonymize, nullptr);
 }
 
 NS_IMETHODIMP
 nsMemoryReporterManager::GetReportsForThisProcessExtended(
   nsIHandleReportCallback* aHandleReport, nsISupports* aHandleReportData,
-  bool aAnonymize, const nsAString& aDMDDumpIdent)
+  bool aAnonymize, FILE* aDMDFile)
 {
   // Memory reporters are not necessarily threadsafe, so this function must
   // be called from the main thread.
@@ -1139,11 +1167,13 @@ nsMemoryReporterManager::GetReportsForThisProcessExtended(
   }
 
 #ifdef MOZ_DMD
-  if (!aDMDDumpIdent.IsEmpty()) {
+  if (aDMDFile) {
     // Clear DMD's reportedness state before running the memory
     // reporters, to avoid spurious twice-reported warnings.
     dmd::ClearReports();
   }
+#else
+  MOZ_ASSERT(!aDMDFile);
 #endif
 
   MemoryReporterArray allReporters;
@@ -1158,8 +1188,8 @@ nsMemoryReporterManager::GetReportsForThisProcessExtended(
   }
 
 #ifdef MOZ_DMD
-  if (!aDMDDumpIdent.IsEmpty()) {
-    return nsMemoryInfoDumper::DumpDMD(aDMDDumpIdent);
+  if (aDMDFile) {
+    return nsMemoryInfoDumper::DumpDMDToFile(aDMDFile);
   }
 #endif
 
@@ -1443,6 +1473,8 @@ nsMemoryReporterManager::UnblockRegistrationAndRestoreOriginalReporters()
 // passed to nsIMemoryReporter::CollectReports.
 class Int64Wrapper MOZ_FINAL : public nsISupports
 {
+  ~Int64Wrapper() {}
+
 public:
   NS_DECL_ISUPPORTS
   Int64Wrapper() : mValue(0)
@@ -1455,6 +1487,8 @@ NS_IMPL_ISUPPORTS0(Int64Wrapper)
 
 class ExplicitCallback MOZ_FINAL : public nsIHandleReportCallback
 {
+  ~ExplicitCallback() {}
+
 public:
   NS_DECL_ISUPPORTS
 

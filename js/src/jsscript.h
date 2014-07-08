@@ -339,7 +339,7 @@ typedef HashMap<JSScript *,
 
 class ScriptSource;
 
-class SourceDataCache
+class UncompressedSourceCache
 {
     typedef HashMap<ScriptSource *,
                     const jschar *,
@@ -350,17 +350,17 @@ class SourceDataCache
     // Hold an entry in the source data cache and prevent it from being purged on GC.
     class AutoHoldEntry
     {
-        SourceDataCache *cache_;
+        UncompressedSourceCache *cache_;
         ScriptSource *source_;
         const jschar *charsToFree_;
       public:
         explicit AutoHoldEntry();
         ~AutoHoldEntry();
       private:
-        void holdEntry(SourceDataCache *cache, ScriptSource *source);
+        void holdEntry(UncompressedSourceCache *cache, ScriptSource *source);
         void deferDelete(const jschar *chars);
         ScriptSource *source() const { return source_; }
-        friend class SourceDataCache;
+        friend class UncompressedSourceCache;
     };
 
   private:
@@ -368,7 +368,7 @@ class SourceDataCache
     AutoHoldEntry *holder_;
 
   public:
-    SourceDataCache() : map_(nullptr), holder_(nullptr) {}
+    UncompressedSourceCache() : map_(nullptr), holder_(nullptr) {}
 
     const jschar *lookup(ScriptSource *ss, AutoHoldEntry &asp);
     bool put(ScriptSource *ss, const jschar *chars, AutoHoldEntry &asp);
@@ -396,7 +396,8 @@ class ScriptSource
     enum {
         DataMissing,
         DataUncompressed,
-        DataCompressed
+        DataCompressed,
+        DataParent
     } dataType;
 
     union {
@@ -408,7 +409,10 @@ class ScriptSource
         struct {
             void *raw;
             size_t nbytes;
+            HashNumber hash;
         } compressed;
+
+        ScriptSource *parent;
     } data;
 
     uint32_t length_;
@@ -450,6 +454,9 @@ class ScriptSource
     bool argumentsNotIncluded_:1;
     bool hasIntroductionOffset_:1;
 
+    // Whether this is in the runtime's set of compressed ScriptSources.
+    bool inCompressedSourceSet:1;
+
   public:
     explicit ScriptSource()
       : refs(0),
@@ -464,7 +471,8 @@ class ScriptSource
         introductionType_(nullptr),
         sourceRetrievable_(false),
         argumentsNotIncluded_(false),
-        hasIntroductionOffset_(false)
+        hasIntroductionOffset_(false),
+        inCompressedSourceSet(false)
     {
     }
     ~ScriptSource();
@@ -482,6 +490,7 @@ class ScriptSource
     void setSourceRetrievable() { sourceRetrievable_ = true; }
     bool sourceRetrievable() const { return sourceRetrievable_; }
     bool hasSourceData() const { return dataType != DataMissing; }
+    bool hasCompressedSource() const { return dataType == DataCompressed; }
     size_t length() const {
         JS_ASSERT(hasSourceData());
         return length_;
@@ -490,7 +499,7 @@ class ScriptSource
         JS_ASSERT(hasSourceData());
         return argumentsNotIncluded_;
     }
-    const jschar *chars(JSContext *cx, SourceDataCache::AutoHoldEntry &asp);
+    const jschar *chars(JSContext *cx, UncompressedSourceCache::AutoHoldEntry &asp);
     JSFlatString *substring(JSContext *cx, uint32_t start, uint32_t stop);
     void addSizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf,
                                 JS::ScriptSourceInfo *info) const;
@@ -515,8 +524,19 @@ class ScriptSource
         return data.compressed.nbytes;
     }
 
+    HashNumber compressedHash() const {
+        JS_ASSERT(dataType == DataCompressed);
+        return data.compressed.hash;
+    }
+
+    ScriptSource *parent() const {
+        JS_ASSERT(dataType == DataParent);
+        return data.parent;
+    }
+
     void setSource(const jschar *chars, size_t length, bool ownsChars = true);
-    void setCompressedSource(void *raw, size_t nbytes);
+    void setCompressedSource(JSRuntime *maybert, void *raw, size_t nbytes, HashNumber hash);
+    void updateCompressedSourceSet(JSRuntime *rt);
     bool ensureOwnsSource(ExclusiveContext *cx);
 
     // XDR handling
@@ -581,6 +601,27 @@ class ScriptSourceHolder
     }
 };
 
+struct CompressedSourceHasher
+{
+    typedef ScriptSource *Lookup;
+
+    static HashNumber computeHash(const void *data, size_t nbytes) {
+        return mozilla::HashBytes(data, nbytes);
+    }
+
+    static HashNumber hash(const ScriptSource *ss) {
+        return ss->compressedHash();
+    }
+
+    static bool match(const ScriptSource *a, const ScriptSource *b) {
+        return a->compressedBytes() == b->compressedBytes() &&
+               a->compressedHash() == b->compressedHash() &&
+               !memcmp(a->compressedData(), b->compressedData(), a->compressedBytes());
+    }
+};
+
+typedef HashSet<ScriptSource *, CompressedSourceHasher, SystemAllocPolicy> CompressedSourceSet;
+
 class ScriptSourceObject : public JSObject
 {
   public:
@@ -588,24 +629,29 @@ class ScriptSourceObject : public JSObject
 
     static void trace(JSTracer *trc, JSObject *obj);
     static void finalize(FreeOp *fop, JSObject *obj);
-    static ScriptSourceObject *create(ExclusiveContext *cx, ScriptSource *source,
-                                      const ReadOnlyCompileOptions &options);
+    static ScriptSourceObject *create(ExclusiveContext *cx, ScriptSource *source);
 
-    ScriptSource *source() {
+    // Initialize those properties of this ScriptSourceObject whose values
+    // are provided by |options|, re-wrapping as necessary.
+    static bool initFromOptions(JSContext *cx, HandleScriptSource source,
+                                const ReadOnlyCompileOptions &options);
+
+    ScriptSource *source() const {
         return static_cast<ScriptSource *>(getReservedSlot(SOURCE_SLOT).toPrivate());
     }
-
-    void setSource(ScriptSource *source);
-
-    JSObject *element() const;
-    void initElement(HandleObject element);
-    const Value &elementAttributeName() const;
-
+    JSObject *element() const {
+        return getReservedSlot(ELEMENT_SLOT).toObjectOrNull();
+    }
+    const Value &elementAttributeName() const {
+        return getReservedSlot(ELEMENT_PROPERTY_SLOT);
+    }
     JSScript *introductionScript() const {
+        if (getReservedSlot(INTRODUCTION_SCRIPT_SLOT).isUndefined())
+            return nullptr;
         void *untyped = getReservedSlot(INTRODUCTION_SCRIPT_SLOT).toPrivate();
+        MOZ_ASSERT(untyped);
         return static_cast<JSScript *>(untyped);
     }
-    void initIntroductionScript(JSScript *script);
 
   private:
     static const uint32_t SOURCE_SLOT = 0;
@@ -1982,7 +2028,7 @@ enum LineOption {
 };
 
 extern void
-DescribeScriptedCallerForCompilation(JSContext *cx, JSScript **maybeScript,
+DescribeScriptedCallerForCompilation(JSContext *cx, MutableHandleScript maybeScript,
                                      const char **file, unsigned *linenop,
                                      uint32_t *pcOffset, JSPrincipals **origin,
                                      LineOption opt = NOT_CALLED_FROM_JSOP_EVAL);

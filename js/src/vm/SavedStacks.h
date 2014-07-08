@@ -48,8 +48,10 @@ class SavedFrame : public JSObject {
                     HashPolicy,
                     SystemAllocPolicy> Set;
 
+    class AutoLookupRooter;
+
   private:
-    void initFromLookup(Lookup &lookup);
+    void initFromLookup(const Lookup &lookup);
 
     enum {
         // The reserved slots in the SavedFrame class.
@@ -79,26 +81,9 @@ class SavedFrame : public JSObject {
     static SavedFrame *checkThis(JSContext *cx, CallArgs &args, const char *fnName);
 };
 
-struct SavedFrame::Lookup {
-    Lookup(JSAtom *source, size_t line, size_t column, JSAtom *functionDisplayName,
-           SavedFrame *parent, JSPrincipals *principals)
-        : source(source),
-          line(line),
-          column(column),
-          functionDisplayName(functionDisplayName),
-          parent(parent),
-          principals(principals)
-    {
-        JS_ASSERT(source);
-    }
-
-    JSAtom       *source;
-    size_t       line;
-    size_t       column;
-    JSAtom       *functionDisplayName;
-    SavedFrame   *parent;
-    JSPrincipals *principals;
-};
+typedef JS::Handle<SavedFrame*> HandleSavedFrame;
+typedef JS::MutableHandle<SavedFrame*> MutableHandleSavedFrame;
+typedef JS::Rooted<SavedFrame*> RootedSavedFrame;
 
 struct SavedFrame::HashPolicy
 {
@@ -119,8 +104,9 @@ class SavedStacks {
 
     bool     init();
     bool     initialized() const { return frames.initialized(); }
-    bool     saveCurrentStack(JSContext *cx, MutableHandle<SavedFrame*> frame);
+    bool     saveCurrentStack(JSContext *cx, MutableHandleSavedFrame frame, unsigned maxFrameCount = 0);
     void     sweep(JSRuntime *rt);
+    void     trace(JSTracer *trc);
     uint32_t count();
     void     clear();
 
@@ -130,12 +116,13 @@ class SavedStacks {
     SavedFrame::Set          frames;
     JSObject                 *savedFrameProto;
 
-    bool       insertFrames(JSContext *cx, ScriptFrameIter &iter, MutableHandle<SavedFrame*> frame);
-    SavedFrame *getOrCreateSavedFrame(JSContext *cx, SavedFrame::Lookup &lookup);
+    bool       insertFrames(JSContext *cx, ScriptFrameIter &iter, MutableHandleSavedFrame frame,
+                            unsigned maxFrameCount = 0);
+    SavedFrame *getOrCreateSavedFrame(JSContext *cx, const SavedFrame::Lookup &lookup);
     // |SavedFrame.prototype| is created lazily and held weakly. It should only
     // be accessed through this method.
     JSObject   *getOrCreateSavedFramePrototype(JSContext *cx);
-    SavedFrame *createFrameFromLookup(JSContext *cx, SavedFrame::Lookup &lookup);
+    SavedFrame *createFrameFromLookup(JSContext *cx, const SavedFrame::Lookup &lookup);
 
     // Cache for memoizing PCToLineNumber lookups.
 
@@ -154,9 +141,47 @@ class SavedStacks {
               column(column)
         { }
 
-        ReadBarrieredAtom source;
-        size_t            line;
-        size_t            column;
+        PreBarrieredAtom source;
+        size_t           line;
+        size_t           column;
+    };
+
+    class MOZ_STACK_CLASS AutoLocationValueRooter : public JS::CustomAutoRooter
+    {
+      public:
+        AutoLocationValueRooter(JSContext *cx)
+            : JS::CustomAutoRooter(cx),
+              value() {}
+
+        void set(LocationValue &loc) {
+            value = loc;
+        }
+
+        LocationValue &get() {
+            return value;
+        }
+
+      private:
+        virtual void trace(JSTracer *trc) {
+            if (value.source)
+                gc::MarkString(trc, &value.source, "SavedStacks::LocationValue::source");
+        }
+
+        SavedStacks::LocationValue value;
+    };
+
+    class MOZ_STACK_CLASS MutableHandleLocationValue
+    {
+      public:
+        inline MOZ_IMPLICIT MutableHandleLocationValue(AutoLocationValueRooter *location)
+            : location(location) {}
+
+        void set(LocationValue &loc) {
+            location->set(loc);
+        }
+
+      private:
+        AutoLocationValueRooter *location;
     };
 
     struct PCLocationHasher : public DefaultHasher<PCKey> {
@@ -178,7 +203,8 @@ class SavedStacks {
     PCLocationMap pcLocationMap;
 
     void sweepPCLocationMap();
-    bool getLocation(JSContext *cx, JSScript *script, jsbytecode *pc, LocationValue *locationp);
+    bool getLocation(JSContext *cx, JSScript *script, jsbytecode *pc,
+                     MutableHandleLocationValue locationp);
 };
 
 bool SavedStacksMetadataCallback(JSContext *cx, JSObject **pmetadata);

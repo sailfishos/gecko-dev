@@ -1,4 +1,4 @@
-/* -*- Mode: Java; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
 /* vim: set shiftwidth=2 tabstop=2 autoindent cindent expandtab: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
@@ -630,7 +630,7 @@ var WifiManager = (function() {
         if (!dhcpInfo) {
           if (++manager.dhcpFailuresCount >= MAX_RETRIES_ON_DHCP_FAILURE) {
             manager.dhcpFailuresCount = 0;
-            notify("disconnected", {ssid: manager.connectionInfo.ssid});
+            notify("disconnected", {connectionInfo: manager.connectionInfo});
             return;
           }
           // NB: We have to call disconnect first. Otherwise, we only reauth with
@@ -658,7 +658,7 @@ var WifiManager = (function() {
 
   var driverEventMap = { STOPPED: "driverstopped", STARTED: "driverstarted", HANGED: "driverhung" };
 
-  manager.getCurrentNetworkId = function (ssid, callback) {
+  manager.getNetworkId = function (ssid, callback) {
     manager.getConfiguredNetworks(function(networks) {
       if (!networks) {
         debug("Unable to get configured networks");
@@ -667,9 +667,10 @@ var WifiManager = (function() {
       for (let net in networks) {
         let network = networks[net];
         // Trying to get netId from
-        // 1. CURRENT network.
-        // 2. Trying to associate with SSID 'ssid' event
-        if (network.status === "CURRENT" ||
+        // 1. network matching SSID if SSID is provided.
+        // 2. current network if no SSID is provided, it's not guaranteed that
+        //    current network matches requested SSID.
+        if ((!ssid && network.status === "CURRENT") ||
             (ssid && ssid === dequote(network.ssid))) {
           return callback(net);
         }
@@ -682,14 +683,20 @@ var WifiManager = (function() {
     if (event.indexOf("CTRL-EVENT-EAP-FAILURE") !== -1) {
       if (event.indexOf("EAP authentication failed") !== -1) {
         notify("passwordmaybeincorrect");
+        if (manager.authenticationFailuresCount > MAX_RETRIES_ON_AUTHENTICATION_FAILURE) {
+          manager.authenticationFailuresCount = 0;
+          notify("disconnected", {connectionInfo: manager.connectionInfo});
+        }
       }
       return true;
     }
     if (event.indexOf("CTRL-EVENT-EAP-TLS-CERT-ERROR") !== -1) {
       // Cert Error
-      manager.disconnect(function() {
-        manager.reassociate(function(){});
-      });
+      notify("passwordmaybeincorrect");
+      if (manager.authenticationFailuresCount > MAX_RETRIES_ON_AUTHENTICATION_FAILURE) {
+        manager.authenticationFailuresCount = 0;
+        notify("disconnected", {connectionInfo: manager.connectionInfo});
+      }
       return true;
     }
     if (event.indexOf("CTRL-EVENT-EAP-STARTED") !== -1) {
@@ -709,7 +716,7 @@ var WifiManager = (function() {
         notify("passwordmaybeincorrect");
         if (manager.authenticationFailuresCount > MAX_RETRIES_ON_AUTHENTICATION_FAILURE) {
           manager.authenticationFailuresCount = 0;
-          notify("disconnected", {ssid: manager.connectionInfo.ssid});
+          notify("disconnected", {connectionInfo: manager.connectionInfo});
         }
         return true;
       }
@@ -797,7 +804,7 @@ var WifiManager = (function() {
       var bssid = token.split("=")[1];
       if (manager.authenticationFailuresCount > MAX_RETRIES_ON_AUTHENTICATION_FAILURE) {
         manager.authenticationFailuresCount = 0;
-        notify("disconnected", {ssid: manager.connectionInfo.ssid});
+        notify("disconnected", {connectionInfo: manager.connectionInfo});
       }
       manager.connectionInfo.bssid = null;
       manager.connectionInfo.ssid = null;
@@ -809,7 +816,7 @@ var WifiManager = (function() {
       notify("passwordmaybeincorrect");
       if (manager.authenticationFailuresCount > MAX_RETRIES_ON_AUTHENTICATION_FAILURE) {
         manager.authenticationFailuresCount = 0;
-        notify("disconnected", {ssid: manager.connectionInfo.ssid});
+        notify("disconnected", {connectionInfo: manager.connectionInfo});
       }
       return true;
     }
@@ -1223,7 +1230,7 @@ var WifiManager = (function() {
       var errors = 0;
       for (var n = 1; n < lines.length; ++n) {
         var result = lines[n].split("\t");
-        var netId = result[0];
+        var netId = parseInt(result[0], 10);
         var config = networks[netId] = { netId: netId };
         switch (result[3]) {
         case "[CURRENT]":
@@ -1407,7 +1414,7 @@ var WifiManager = (function() {
           manager.loopDetectionCount++;
         }
         if (manager.loopDetectionCount > MAX_SUPPLICANT_LOOP_ITERATIONS) {
-          notify("disconnected", {ssid: manager.connectionInfo.ssid});
+          notify("disconnected", {connectionInfo: manager.connectionInfo});
           manager.loopDetectionCount = 0;
         }
       }
@@ -1950,10 +1957,10 @@ function WifiWorker() {
         net.phase1 = quote(net.phase1);
 
       if (hasValidProperty("phase2")) {
-        if (net.eap === "PEAP") {
-          net.phase2 = quote("auth=" + net.phase2);
-        } else {  // TLS, TTLS
+        if (net.phase2 === "TLS") {
           net.phase2 = quote("autheap=" + net.phase2);
+        } else { // PAP, MSCHAPV2, etc.
+          net.phase2 = quote("auth=" + net.phase2);
         }
       }
 
@@ -2020,10 +2027,12 @@ function WifiWorker() {
       self._needToEnableNetworks = false;
     }
 
-    WifiManager.getCurrentNetworkId(this.ssid, function(netId) {
+    let connectionInfo = this.connectionInfo;
+    WifiManager.getNetworkId(connectionInfo.ssid, function(netId) {
       // Trying to get netId from current network.
       if (!netId &&
           self.currentNetwork &&
+          self.currentNetwork.ssid == dequote(connectionInfo.ssid) &&
           typeof self.currentNetwork.netId !== "undefined") {
         netId = self.currentNetwork.netId;
       }
@@ -2496,6 +2505,7 @@ WifiWorker.prototype = {
         function tensPlace(percent) ((percent / 10) | 0)
 
         if (last && last.linkSpeed === info.linkSpeed &&
+            last.ipAddress === info.ipAddress &&
             tensPlace(last.relSignalStrength) === tensPlace(info.relSignalStrength)) {
           return;
         }
@@ -3126,6 +3136,11 @@ WifiWorker.prototype = {
       this._reconnectOnDisconnect = (this.currentNetwork &&
                                     (this.currentNetwork.ssid === ssid));
       WifiManager.removeNetwork(configured.netId, function(ok) {
+        if (self._needToEnableNetworks) {
+          self._enableAllNetworks();
+          self._needToEnableNetworks = false;
+        }
+
         if (!ok) {
           self._sendMessage(message, false, "Unable to remove the network", msg);
           self._reconnectOnDisconnect = false;
@@ -3294,13 +3309,13 @@ WifiWorker.prototype = {
       return;
     }
 
-    let certDB2 = Cc["@mozilla.org/security/x509certdb;1"]
-                  .getService(Ci.nsIX509CertDB2);
-    if (!certDB2) {
+    let certDB = Cc["@mozilla.org/security/x509certdb;1"]
+                 .getService(Ci.nsIX509CertDB);
+    if (!certDB) {
       self._sendMessage(message, false, "Failed to query NSS DB service", msg);
     }
 
-    let certList = certDB2.getCerts();
+    let certList = certDB.getCerts();
     if (!certList) {
       self._sendMessage(message, false, "Failed to get certificate List", msg);
     }
@@ -3317,7 +3332,7 @@ WifiWorker.prototype = {
     };
 
     while (certListEnum.hasMoreElements()) {
-      let certInfo = certListEnum.getNext().QueryInterface(Ci.nsIX509Cert3);
+      let certInfo = certListEnum.getNext().QueryInterface(Ci.nsIX509Cert);
       let certNicknameInfo = /WIFI\_([A-Z]*)\_(.*)/.exec(certInfo.nickname);
       if (!certNicknameInfo) {
         continue;

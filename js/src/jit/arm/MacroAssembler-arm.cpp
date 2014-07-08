@@ -56,8 +56,8 @@ MacroAssemblerARM::convertInt32ToDouble(Register src, FloatRegister dest_)
 void
 MacroAssemblerARM::convertInt32ToDouble(const Address &src, FloatRegister dest)
 {
-    ma_vldr(Operand(src), ScratchFloatReg);
-    as_vcvt(dest, VFPRegister(ScratchFloatReg).sintOverlay());
+    ma_vldr(Operand(src), ScratchDoubleReg);
+    as_vcvt(dest, VFPRegister(ScratchDoubleReg).sintOverlay());
 }
 
 void
@@ -94,8 +94,9 @@ void MacroAssemblerARM::convertDoubleToFloat32(FloatRegister src, FloatRegister 
 void
 MacroAssemblerARM::branchTruncateDouble(FloatRegister src, Register dest, Label *fail)
 {
-    ma_vcvt_F64_I32(src, ScratchFloatReg);
-    ma_vxfer(ScratchFloatReg, dest);
+    FloatRegister ScratchSIntReg = ScratchDoubleReg.sintOverlay();
+    ma_vcvt_F64_I32(src, ScratchSIntReg);
+    ma_vxfer(ScratchSIntReg, dest);
     ma_cmp(dest, Imm32(0x7fffffff));
     ma_cmp(dest, Imm32(0x80000000), Assembler::NotEqual);
     ma_b(fail, Assembler::Equal);
@@ -111,11 +112,12 @@ MacroAssemblerARM::convertDoubleToInt32(FloatRegister src, Register dest,
     // convert the floating point value to an integer, if it did not fit,
     //     then when we convert it *back* to  a float, it will have a
     //     different value, which we can test.
-    ma_vcvt_F64_I32(src, ScratchFloatReg);
+    FloatRegister ScratchSIntReg = ScratchDoubleReg.sintOverlay();
+    ma_vcvt_F64_I32(src, ScratchSIntReg);
     // move the value into the dest register.
-    ma_vxfer(ScratchFloatReg, dest);
-    ma_vcvt_I32_F64(ScratchFloatReg, ScratchFloatReg);
-    ma_vcmp(src, ScratchFloatReg);
+    ma_vxfer(ScratchSIntReg, dest);
+    ma_vcvt_I32_F64(ScratchSIntReg, ScratchDoubleReg);
+    ma_vcmp(src, ScratchDoubleReg);
     as_vmrs(pc);
     ma_b(fail, Assembler::VFP_NotEqualOrUnordered);
 
@@ -140,11 +142,11 @@ MacroAssemblerARM::convertFloat32ToInt32(FloatRegister src, Register dest,
     // convert the floating point value to an integer, if it did not fit,
     //     then when we convert it *back* to  a float, it will have a
     //     different value, which we can test.
-    ma_vcvt_F32_I32(src, ScratchFloatReg);
+    ma_vcvt_F32_I32(src, ScratchFloat32Reg.sintOverlay());
     // move the value into the dest register.
-    ma_vxfer(ScratchFloatReg, dest);
-    ma_vcvt_I32_F32(ScratchFloatReg, ScratchFloatReg);
-    ma_vcmp_f32(src, ScratchFloatReg);
+    ma_vxfer(ScratchFloat32Reg, dest);
+    ma_vcvt_I32_F32(ScratchFloat32Reg.sintOverlay(), ScratchFloat32Reg);
+    ma_vcmp_f32(src, ScratchFloat32Reg);
     as_vmrs(pc);
     ma_b(fail, Assembler::VFP_NotEqualOrUnordered);
 
@@ -166,26 +168,25 @@ MacroAssemblerARM::convertFloat32ToDouble(FloatRegister src, FloatRegister dest)
 
 void
 MacroAssemblerARM::branchTruncateFloat32(FloatRegister src, Register dest, Label *fail) {
-    ma_vcvt_F32_I32(src, ScratchFloatReg);
-    ma_vxfer(ScratchFloatReg, dest);
+    ma_vcvt_F32_I32(src, ScratchFloat32Reg.sintOverlay());
+    ma_vxfer(ScratchFloat32Reg, dest);
     ma_cmp(dest, Imm32(0x7fffffff));
     ma_cmp(dest, Imm32(0x80000000), Assembler::NotEqual);
     ma_b(fail, Assembler::Equal);
 }
 
 void
-MacroAssemblerARM::convertInt32ToFloat32(Register src, FloatRegister dest_) {
+MacroAssemblerARM::convertInt32ToFloat32(Register src, FloatRegister dest) {
     // direct conversions aren't possible.
-    VFPRegister dest = VFPRegister(dest_).singleOverlay();
     as_vxfer(src, InvalidReg, dest.sintOverlay(),
              CoreToFloat);
-    as_vcvt(dest, dest.sintOverlay());
+    as_vcvt(dest.singleOverlay(), dest.sintOverlay());
 }
 
 void
 MacroAssemblerARM::convertInt32ToFloat32(const Address &src, FloatRegister dest) {
-    ma_vldr(Operand(src), ScratchFloatReg);
-    as_vcvt(dest, VFPRegister(ScratchFloatReg).sintOverlay());
+    ma_vldr(Operand(src), ScratchFloat32Reg);
+    as_vcvt(dest, VFPRegister(ScratchFloat32Reg).sintOverlay());
 }
 
 void
@@ -295,7 +296,7 @@ MacroAssemblerARM::ma_alu(Register src1, Imm32 imm, Register dest,
         return;
     }
 
-    if (hasMOVWT()) {
+    if (HasMOVWT()) {
         // If the operation is a move-a-like then we can try to use movw to
         // move the bits into the destination.  Otherwise, we'll need to
         // fall back on a multi-instruction format :(
@@ -370,7 +371,7 @@ MacroAssemblerARM::ma_alu(Register src1, Imm32 imm, Register dest,
 
     // Well, damn. We can use two 16 bit mov's, then do the op
     // or we can do a single load from a pool then op.
-    if (hasMOVWT()) {
+    if (HasMOVWT()) {
         // Try to load the immediate into a scratch register
         // then use that
         as_movw(ScratchRegister, imm.value & 0xffff, c);
@@ -426,10 +427,7 @@ MacroAssemblerARM::ma_movPatchable(Imm32 imm_, Register dest, Assembler::Conditi
     if (i) {
         // Make sure the current instruction is not an artificial guard
         // inserted by the assembler buffer.
-        // The InstructionIterator already does this and handles edge cases,
-        // so, just asking an iterator for its current instruction should be
-        // enough to make sure we don't accidentally inspect an artificial guard.
-        i = InstructionIterator(i).cur();
+        i = i->skipPool();
     }
     switch(rs) {
       case L_MOVWT:
@@ -450,8 +448,8 @@ MacroAssemblerARM::ma_movPatchable(Imm32 imm_, Register dest, Assembler::Conditi
 }
 
 void
-MacroAssemblerARM::ma_movPatchable(ImmPtr imm, Register dest,
-                                   Assembler::Condition c, RelocStyle rs, Instruction *i)
+MacroAssemblerARM::ma_movPatchable(ImmPtr imm, Register dest, Assembler::Condition c,
+                                   RelocStyle rs, Instruction *i)
 {
     return ma_movPatchable(Imm32(int32_t(imm.value)), dest, c, rs, i);
 }
@@ -485,7 +483,7 @@ MacroAssemblerARM::ma_mov(ImmGCPtr ptr, Register dest)
     // before to recover the pointer, and not after.
     writeDataRelocation(ptr);
     RelocStyle rs;
-    if (hasMOVWT())
+    if (HasMOVWT())
         rs = L_MOVWT;
     else
         rs = L_LDR;
@@ -921,7 +919,8 @@ MacroAssemblerARM::ma_check_mul(Register src1, Imm32 imm, Register dest, Conditi
 }
 
 void
-MacroAssemblerARM::ma_mod_mask(Register src, Register dest, Register hold, int32_t shift)
+MacroAssemblerARM::ma_mod_mask(Register src, Register dest, Register hold, Register tmp,
+                               int32_t shift)
 {
     // MATH:
     // We wish to compute x % (1<<y) - 1 for a known constant, y.
@@ -944,20 +943,24 @@ MacroAssemblerARM::ma_mod_mask(Register src, Register dest, Register hold, int32
     //    as holding the trial subtraction as a temp value
     // dest is the accumulator (and holds the final result)
 
-    // move the whole value into the scratch register, setting the codition codes so
-    // we can muck with them later
-    as_mov(ScratchRegister, O2Reg(src), SetCond);
+    // move the whole value into tmp, setting the codition codes so we can
+    // muck with them later.
+    //
+    // Note that we cannot use ScratchRegister in place of tmp here, as ma_and
+    // below on certain architectures move the mask into ScratchRegister
+    // before performing the bitwise and.
+    as_mov(tmp, O2Reg(src), SetCond);
     // Zero out the dest.
     ma_mov(Imm32(0), dest);
     // Set the hold appropriately.
     ma_mov(Imm32(1), hold);
     ma_mov(Imm32(-1), hold, NoSetCond, Signed);
-    ma_rsb(Imm32(0), ScratchRegister, SetCond, Signed);
+    ma_rsb(Imm32(0), tmp, SetCond, Signed);
     // Begin the main loop.
     bind(&head);
 
     // Extract the bottom bits into lr.
-    ma_and(Imm32(mask), ScratchRegister, secondScratchReg_);
+    ma_and(Imm32(mask), tmp, secondScratchReg_);
     // Add those bits to the accumulator.
     ma_add(secondScratchReg_, dest, dest);
     // Do a trial subtraction, this is the same operation as cmp, but we store the dest
@@ -965,7 +968,7 @@ MacroAssemblerARM::ma_mod_mask(Register src, Register dest, Register hold, int32
     // If (sum - C) > 0, store sum - C back into sum, thus performing a modulus.
     ma_mov(secondScratchReg_, dest, NoSetCond, NotSigned);
     // Get rid of the bits that we extracted before, and set the condition codes
-    as_mov(ScratchRegister, lsr(ScratchRegister, shift), SetCond);
+    as_mov(tmp, lsr(tmp, shift), SetCond);
     // If the shift produced zero, finish, otherwise, continue in the loop.
     ma_b(&head, NonZero);
     // Check the hold to see if we need to negate the result.  Hold can only be 1 or -1,
@@ -1475,7 +1478,7 @@ DoubleLowWord(const double value)
 void
 MacroAssemblerARM::ma_vimm(double value, FloatRegister dest, Condition cc)
 {
-    if (hasVFPv3()) {
+    if (HasVFPv3()) {
         if (DoubleLowWord(value) == 0) {
             if (DoubleHighWord(value) == 0) {
                 // To zero a register, load 1.0, then execute dN <- dN - dN
@@ -1506,7 +1509,7 @@ void
 MacroAssemblerARM::ma_vimm_f32(float value, FloatRegister dest, Condition cc)
 {
     VFPRegister vd = VFPRegister(dest).singleOverlay();
-    if (hasVFPv3()) {
+    if (HasVFPv3()) {
         if (Float32Word(value) == 0) {
             // To zero a register, load 1.0, then execute sN <- sN - sN
             as_vimm(vd, VFPImm::one, cc);
@@ -1557,22 +1560,30 @@ MacroAssemblerARM::ma_vcmpz_f32(FloatRegister src1, Condition cc)
 void
 MacroAssemblerARM::ma_vcvt_F64_I32(FloatRegister src, FloatRegister dest, Condition cc)
 {
-    as_vcvt(VFPRegister(dest).sintOverlay(), VFPRegister(src), false, cc);
+    JS_ASSERT(src.isDouble());
+    JS_ASSERT(dest.isSInt());
+    as_vcvt(dest, src, false, cc);
 }
 void
 MacroAssemblerARM::ma_vcvt_F64_U32(FloatRegister src, FloatRegister dest, Condition cc)
 {
-    as_vcvt(VFPRegister(dest).uintOverlay(), VFPRegister(src), false, cc);
+    JS_ASSERT(src.isDouble());
+    JS_ASSERT(dest.isUInt());
+    as_vcvt(dest, src, false, cc);
 }
 void
-MacroAssemblerARM::ma_vcvt_I32_F64(FloatRegister dest, FloatRegister src, Condition cc)
+MacroAssemblerARM::ma_vcvt_I32_F64(FloatRegister src, FloatRegister dest, Condition cc)
 {
-    as_vcvt(VFPRegister(dest), VFPRegister(src).sintOverlay(), false, cc);
+    JS_ASSERT(src.isSInt());
+    JS_ASSERT(dest.isDouble());
+    as_vcvt(dest, src, false, cc);
 }
 void
-MacroAssemblerARM::ma_vcvt_U32_F64(FloatRegister dest, FloatRegister src, Condition cc)
+MacroAssemblerARM::ma_vcvt_U32_F64(FloatRegister src, FloatRegister dest, Condition cc)
 {
-    as_vcvt(VFPRegister(dest), VFPRegister(src).uintOverlay(), false, cc);
+    JS_ASSERT(src.isUInt());
+    JS_ASSERT(dest.isDouble());
+    as_vcvt(dest, src, false, cc);
 }
 
 void
@@ -1586,12 +1597,12 @@ MacroAssemblerARM::ma_vcvt_F32_U32(FloatRegister src, FloatRegister dest, Condit
     as_vcvt(VFPRegister(dest).uintOverlay(), VFPRegister(src).singleOverlay(), false, cc);
 }
 void
-MacroAssemblerARM::ma_vcvt_I32_F32(FloatRegister dest, FloatRegister src, Condition cc)
+MacroAssemblerARM::ma_vcvt_I32_F32(FloatRegister src, FloatRegister dest, Condition cc)
 {
     as_vcvt(VFPRegister(dest).singleOverlay(), VFPRegister(src).sintOverlay(), false, cc);
 }
 void
-MacroAssemblerARM::ma_vcvt_U32_F32(FloatRegister dest, FloatRegister src, Condition cc)
+MacroAssemblerARM::ma_vcvt_U32_F32(FloatRegister src, FloatRegister dest, Condition cc)
 {
     as_vcvt(VFPRegister(dest).singleOverlay(), VFPRegister(src).uintOverlay(), false, cc);
 }
@@ -1612,18 +1623,6 @@ void
 MacroAssemblerARM::ma_vxfer(Register src1, Register src2, FloatRegister dest, Condition cc)
 {
     as_vxfer(src1, src2, VFPRegister(dest), CoreToFloat, cc);
-}
-
-void
-MacroAssemblerARM::ma_vxfer(VFPRegister src, Register dest, Condition cc)
-{
-    as_vxfer(dest, InvalidReg, src, FloatToCore, cc);
-}
-
-void
-MacroAssemblerARM::ma_vxfer(VFPRegister src, Register dest1, Register dest2, Condition cc)
-{
-    as_vxfer(dest1, dest2, src, FloatToCore, cc);
 }
 
 BufferOffset
@@ -1740,10 +1739,7 @@ MacroAssemblerARMCompat::buildOOLFakeExitFrame(void *fakeReturnAddr)
     uint32_t descriptor = MakeFrameDescriptor(framePushed(), JitFrame_IonJS);
 
     Push(Imm32(descriptor)); // descriptor_
-
-    enterNoPool();
     Push(ImmPtr(fakeReturnAddr));
-    leaveNoPool();
 
     return true;
 }
@@ -1756,7 +1752,7 @@ MacroAssemblerARMCompat::callWithExitFrame(JitCode *target)
 
     addPendingJump(m_buffer.nextOffset(), ImmPtr(target->raw()), Relocation::JITCODE);
     RelocStyle rs;
-    if (hasMOVWT())
+    if (HasMOVWT())
         rs = L_MOVWT;
     else
         rs = L_LDR;
@@ -1774,7 +1770,7 @@ MacroAssemblerARMCompat::callWithExitFrame(JitCode *target, Register dynStack)
 
     addPendingJump(m_buffer.nextOffset(), ImmPtr(target->raw()), Relocation::JITCODE);
     RelocStyle rs;
-    if (hasMOVWT())
+    if (HasMOVWT())
         rs = L_MOVWT;
     else
         rs = L_LDR;
@@ -1793,6 +1789,17 @@ MacroAssemblerARMCompat::callIon(Register callee)
         adjustFrame(sizeof(void*));
         ma_callIon(callee);
     }
+}
+
+void
+MacroAssemblerARMCompat::callIonFromAsmJS(Register callee)
+{
+    ma_callIonNoPush(callee);
+
+    // The Ion ABI has the callee pop the return address off the stack.
+    // The asm.js caller assumes that the call leaves sp unchanged, so bump
+    // the stack.
+    subPtr(Imm32(sizeof(void*)), sp);
 }
 
 void
@@ -1979,6 +1986,12 @@ MacroAssemblerARMCompat::or32(Imm32 imm, const Address &dest)
 }
 
 void
+MacroAssemblerARMCompat::or32(Imm32 imm, Register dest)
+{
+    ma_orr(imm, dest);
+}
+
+void
 MacroAssemblerARMCompat::xorPtr(Imm32 imm, Register dest)
 {
     ma_eor(imm, dest);
@@ -2049,7 +2062,7 @@ void
 MacroAssemblerARMCompat::movePtr(AsmJSImmPtr imm, Register dest)
 {
     RelocStyle rs;
-    if (hasMOVWT())
+    if (HasMOVWT())
         rs = L_MOVWT;
     else
         rs = L_LDR;
@@ -2436,16 +2449,16 @@ MacroAssemblerARMCompat::storePtr(Register src, AbsoluteAddress dest)
 void
 MacroAssembler::clampDoubleToUint8(FloatRegister input, Register output)
 {
-    JS_ASSERT(input != ScratchFloatReg);
-    ma_vimm(0.5, ScratchFloatReg);
-    if (hasVFPv3()) {
+    JS_ASSERT(input != ScratchDoubleReg);
+    ma_vimm(0.5, ScratchDoubleReg);
+    if (HasVFPv3()) {
         Label notSplit;
-        ma_vadd(input, ScratchFloatReg, ScratchFloatReg);
+        ma_vadd(input, ScratchDoubleReg, ScratchDoubleReg);
         // Convert the double into an unsigned fixed point value with 24 bits of
         // precision. The resulting number will look like 0xII.DDDDDD
-        as_vcvtFixed(ScratchFloatReg, false, 24, true);
+        as_vcvtFixed(ScratchDoubleReg, false, 24, true);
         // Move the fixed point value into an integer register
-        as_vxfer(output, InvalidReg, ScratchFloatReg, FloatToCore);
+        as_vxfer(output, InvalidReg, ScratchFloat32Reg.uintOverlay(), FloatToCore);
         // see if this value *might* have been an exact integer after adding 0.5
         // This tests the 1/2 through 1/16,777,216th places, but 0.5 needs to be tested out to
         // the 1/140,737,488,355,328th place.
@@ -2465,11 +2478,11 @@ MacroAssembler::clampDoubleToUint8(FloatRegister input, Register output)
         Label outOfRange;
         ma_vcmpz(input);
         // do the add, in place so we can reference it later
-        ma_vadd(input, ScratchFloatReg, input);
+        ma_vadd(input, ScratchDoubleReg, input);
         // do the conversion to an integer.
-        as_vcvt(VFPRegister(ScratchFloatReg).uintOverlay(), VFPRegister(input));
+        as_vcvt(VFPRegister(ScratchDoubleReg).uintOverlay(), VFPRegister(input));
         // copy the converted value out
-        as_vxfer(output, InvalidReg, ScratchFloatReg, FloatToCore);
+        as_vxfer(output, InvalidReg, ScratchDoubleReg, FloatToCore);
         as_vmrs(pc);
         ma_mov(Imm32(0), output, NoSetCond, Overflow);  // NaN => 0
         ma_b(&outOfRange, Overflow);  // NaN
@@ -2477,9 +2490,9 @@ MacroAssembler::clampDoubleToUint8(FloatRegister input, Register output)
         ma_mov(Imm32(0xff), output, NoSetCond, Above);
         ma_b(&outOfRange, Above);
         // convert it back to see if we got the same value back
-        as_vcvt(ScratchFloatReg, VFPRegister(ScratchFloatReg).uintOverlay());
+        as_vcvt(ScratchDoubleReg, VFPRegister(ScratchDoubleReg).uintOverlay());
         // do the check
-        as_vcmp(ScratchFloatReg, input);
+        as_vcmp(ScratchDoubleReg, input);
         as_vmrs(pc);
         ma_bic(Imm32(1), output, NoSetCond, Zero);
         bind(&outOfRange);
@@ -2732,6 +2745,12 @@ MacroAssemblerARMCompat::testString(Assembler::Condition cond, const ValueOperan
 }
 
 Assembler::Condition
+MacroAssemblerARMCompat::testSymbol(Assembler::Condition cond, const ValueOperand &value)
+{
+    return testSymbol(cond, value.typeReg());
+}
+
+Assembler::Condition
 MacroAssemblerARMCompat::testObject(Assembler::Condition cond, const ValueOperand &value)
 {
     return testObject(cond, value.typeReg());
@@ -2773,23 +2792,34 @@ MacroAssemblerARMCompat::testBoolean(Assembler::Condition cond, Register tag)
 }
 
 Assembler::Condition
-MacroAssemblerARMCompat::testNull(Assembler::Condition cond, Register tag) {
+MacroAssemblerARMCompat::testNull(Assembler::Condition cond, Register tag)
+{
     JS_ASSERT(cond == Equal || cond == NotEqual);
     ma_cmp(tag, ImmTag(JSVAL_TAG_NULL));
     return cond;
 }
 
 Assembler::Condition
-MacroAssemblerARMCompat::testUndefined(Assembler::Condition cond, Register tag) {
+MacroAssemblerARMCompat::testUndefined(Assembler::Condition cond, Register tag)
+{
     JS_ASSERT(cond == Equal || cond == NotEqual);
     ma_cmp(tag, ImmTag(JSVAL_TAG_UNDEFINED));
     return cond;
 }
 
 Assembler::Condition
-MacroAssemblerARMCompat::testString(Assembler::Condition cond, Register tag) {
+MacroAssemblerARMCompat::testString(Assembler::Condition cond, Register tag)
+{
     JS_ASSERT(cond == Equal || cond == NotEqual);
     ma_cmp(tag, ImmTag(JSVAL_TAG_STRING));
+    return cond;
+}
+
+Assembler::Condition
+MacroAssemblerARMCompat::testSymbol(Assembler::Condition cond, Register tag)
+{
+    JS_ASSERT(cond == Equal || cond == NotEqual);
+    ma_cmp(tag, ImmTag(JSVAL_TAG_SYMBOL));
     return cond;
 }
 
@@ -2885,6 +2915,14 @@ MacroAssemblerARMCompat::testString(Condition cond, const Address &address)
 }
 
 Assembler::Condition
+MacroAssemblerARMCompat::testSymbol(Condition cond, const Address &address)
+{
+    JS_ASSERT(cond == Equal || cond == NotEqual);
+    extractTag(address, ScratchRegister);
+    return testSymbol(cond, ScratchRegister);
+}
+
+Assembler::Condition
 MacroAssemblerARMCompat::testObject(Condition cond, const Address &address)
 {
     JS_ASSERT(cond == Equal || cond == NotEqual);
@@ -2950,6 +2988,15 @@ MacroAssemblerARMCompat::testString(Condition cond, const BaseIndex &src)
     JS_ASSERT(cond == Equal || cond == NotEqual);
     extractTag(src, ScratchRegister);
     ma_cmp(ScratchRegister, ImmTag(JSVAL_TAG_STRING));
+    return cond;
+}
+
+Assembler::Condition
+MacroAssemblerARMCompat::testSymbol(Condition cond, const BaseIndex &src)
+{
+    JS_ASSERT(cond == Equal || cond == NotEqual);
+    extractTag(src, ScratchRegister);
+    ma_cmp(ScratchRegister, ImmTag(JSVAL_TAG_SYMBOL));
     return cond;
 }
 
@@ -3048,25 +3095,14 @@ MacroAssemblerARMCompat::branchTestValue(Condition cond, const Address &valaddr,
 
 // unboxing code
 void
-MacroAssemblerARMCompat::unboxInt32(const ValueOperand &operand, Register dest)
+MacroAssemblerARMCompat::unboxNonDouble(const ValueOperand &operand, Register dest)
 {
-    ma_mov(operand.payloadReg(), dest);
+    if (operand.payloadReg() != dest)
+        ma_mov(operand.payloadReg(), dest);
 }
 
 void
-MacroAssemblerARMCompat::unboxInt32(const Address &src, Register dest)
-{
-    ma_ldr(payloadOf(src), dest);
-}
-
-void
-MacroAssemblerARMCompat::unboxBoolean(const ValueOperand &operand, Register dest)
-{
-    ma_mov(operand.payloadReg(), dest);
-}
-
-void
-MacroAssemblerARMCompat::unboxBoolean(const Address &src, Register dest)
+MacroAssemblerARMCompat::unboxNonDouble(const Address &src, Register dest)
 {
     ma_ldr(payloadOf(src), dest);
 }
@@ -3074,7 +3110,6 @@ MacroAssemblerARMCompat::unboxBoolean(const Address &src, Register dest)
 void
 MacroAssemblerARMCompat::unboxDouble(const ValueOperand &operand, FloatRegister dest)
 {
-    JS_ASSERT(dest != ScratchFloatReg);
     as_vxfer(operand.payloadReg(), operand.typeReg(),
              VFPRegister(dest), CoreToFloat);
 }
@@ -3083,30 +3118,6 @@ void
 MacroAssemblerARMCompat::unboxDouble(const Address &src, FloatRegister dest)
 {
     ma_vldr(Operand(src), dest);
-}
-
-void
-MacroAssemblerARMCompat::unboxString(const ValueOperand &operand, Register dest)
-{
-    ma_mov(operand.payloadReg(), dest);
-}
-
-void
-MacroAssemblerARMCompat::unboxString(const Address &src, Register dest)
-{
-    ma_ldr(payloadOf(src), dest);
-}
-
-void
-MacroAssemblerARMCompat::unboxObject(const ValueOperand &src, Register dest)
-{
-    ma_mov(src.payloadReg(), dest);
-}
-
-void
-MacroAssemblerARMCompat::unboxObject(const Address &src, Register dest)
-{
-    ma_ldr(payloadOf(src), dest);
 }
 
 void
@@ -3160,9 +3171,9 @@ MacroAssemblerARMCompat::int32ValueToDouble(const ValueOperand &operand, FloatRe
     // transfer the integral value to a floating point register
     VFPRegister vfpdest = VFPRegister(dest);
     as_vxfer(operand.payloadReg(), InvalidReg,
-             vfpdest.sintOverlay(), CoreToFloat);
+             ScratchFloat32Reg.sintOverlay(), CoreToFloat);
     // convert the value to a double.
-    as_vcvt(vfpdest, vfpdest.sintOverlay());
+    as_vcvt(vfpdest, ScratchFloat32Reg.sintOverlay());
 }
 
 void
@@ -3527,7 +3538,7 @@ void
 MacroAssemblerARMCompat::storePayload(Register src, const BaseIndex &dest)
 {
     unsigned shift = ScaleToShift(dest.scale);
-    MOZ_ASSERT(shift < 32 && shift >= 0);
+    MOZ_ASSERT(shift < 32);
     MOZ_ASSERT(dest.offset == 0);
 
     // If NUNBOX32_PAYLOAD_OFFSET is not zero, the memory operand [base + index << shift + imm]
@@ -3617,26 +3628,13 @@ void
 MacroAssemblerARM::ma_call(ImmPtr dest)
 {
     RelocStyle rs;
-    if (hasMOVWT())
+    if (HasMOVWT())
         rs = L_MOVWT;
     else
         rs = L_LDR;
 
     ma_movPatchable(dest, CallReg, Always, rs);
     as_blx(CallReg);
-}
-
-void
-MacroAssemblerARM::ma_callAndStoreRet(const Register r, uint32_t stackArgBytes)
-{
-    // Note: this function stores the return address to sp[0]. The caller must
-    // anticipate this by pushing additional space on the stack. The ABI does
-    // not provide space for a return address so this function may only be
-    // called if no argument are passed.
-    JS_ASSERT(stackArgBytes == 0);
-    AutoForbidPools afp(this);
-    as_dtr(IsStore, 32, Offset, pc, DTRAddr(sp, DtrOffImm(0)));
-    as_blx(r);
 }
 
 void
@@ -3835,7 +3833,7 @@ void
 MacroAssemblerARMCompat::passABIArg(const MoveOperand &from, MoveOp::Type type)
 {
 #if defined(JS_ARM_SIMULATOR)
-    if (useHardFpABI())
+    if (UseHardFpABI())
         MacroAssemblerARMCompat::passHardFpABIArg(from, type);
     else
         MacroAssemblerARMCompat::passSoftFpABIArg(from, type);
@@ -3873,10 +3871,10 @@ MacroAssemblerARMCompat::callWithABIPre(uint32_t *stackAdjust, bool callFromAsmJ
 
     *stackAdjust = ((usedIntSlots_ > NumIntArgRegs) ? usedIntSlots_ - NumIntArgRegs : 0) * sizeof(intptr_t);
 #if defined(JS_CODEGEN_ARM_HARDFP) || defined(JS_ARM_SIMULATOR)
-    if (useHardFpABI())
+    if (UseHardFpABI())
         *stackAdjust += 2*((usedFloatSlots_ > NumFloatArgRegs) ? usedFloatSlots_ - NumFloatArgRegs : 0) * sizeof(intptr_t);
 #endif
-    uint32_t alignmentAtPrologue = callFromAsmJS ? AsmJSSizeOfRetAddr : 0;
+    uint32_t alignmentAtPrologue = callFromAsmJS ? AsmJSFrameSize : 0;
 
     if (!dynamicAlignment_) {
         *stackAdjust += ComputeByteAlignment(framePushed_ + *stackAdjust + alignmentAtPrologue,
@@ -3935,15 +3933,15 @@ MacroAssemblerARMCompat::callWithABIPost(uint32_t stackAdjust, MoveOp::Type resu
 
     switch (result) {
       case MoveOp::DOUBLE:
-        if (!useHardFpABI()) {
+        if (!UseHardFpABI()) {
             // Move double from r0/r1 to ReturnFloatReg.
-            as_vxfer(r0, r1, ReturnFloatReg, CoreToFloat);
+            as_vxfer(r0, r1, ReturnDoubleReg, CoreToFloat);
             break;
         }
       case MoveOp::FLOAT32:
-        if (!useHardFpABI()) {
+        if (!UseHardFpABI()) {
             // Move float32 from r0 to ReturnFloatReg.
-            as_vxfer(r0, InvalidReg, VFPRegister(d0).singleOverlay(), CoreToFloat);
+            as_vxfer(r0, InvalidReg, ReturnFloat32Reg.singleOverlay(), CoreToFloat);
             break;
         }
       case MoveOp::GENERAL:
@@ -4153,8 +4151,8 @@ MacroAssemblerARMCompat::floor(FloatRegister input, Register output, Label *bail
     // Since it is known to be > 0.0, explicitly convert to a larger range,
     // then a value that rounds to INT_MAX is explicitly different from an
     // argument that clamps to INT_MAX
-    ma_vcvt_F64_U32(input, ScratchFloatReg);
-    ma_vxfer(VFPRegister(ScratchFloatReg).uintOverlay(), output);
+    ma_vcvt_F64_U32(input, ScratchDoubleReg.uintOverlay());
+    ma_vxfer(ScratchDoubleReg.uintOverlay(), output);
     ma_mov(output, output, SetCond);
     ma_b(bail, Signed);
     ma_b(&fin);
@@ -4170,10 +4168,10 @@ MacroAssemblerARMCompat::floor(FloatRegister input, Register output, Label *bail
     bind(&handleNeg);
     // Negative case, negate, then start dancing
     ma_vneg(input, input);
-    ma_vcvt_F64_U32(input, ScratchFloatReg);
-    ma_vxfer(VFPRegister(ScratchFloatReg).uintOverlay(), output);
-    ma_vcvt_U32_F64(ScratchFloatReg, ScratchFloatReg);
-    compareDouble(ScratchFloatReg, input);
+    ma_vcvt_F64_U32(input, ScratchDoubleReg.uintOverlay());
+    ma_vxfer(ScratchDoubleReg.uintOverlay(), output);
+    ma_vcvt_U32_F64(ScratchDoubleReg.uintOverlay(), ScratchDoubleReg);
+    compareDouble(ScratchDoubleReg, input);
     ma_add(output, Imm32(1), output, NoSetCond, NotEqual);
     // Negate the output.  Since INT_MIN < -INT_MAX, even after adding 1,
     // the result will still be a negative number
@@ -4205,8 +4203,8 @@ MacroAssemblerARMCompat::floorf(FloatRegister input, Register output, Label *bai
     // Since it is known to be > 0.0, explicitly convert to a larger range,
     // then a value that rounds to INT_MAX is explicitly different from an
     // argument that clamps to INT_MAX
-    ma_vcvt_F32_U32(input, ScratchFloatReg);
-    ma_vxfer(VFPRegister(ScratchFloatReg).uintOverlay(), output);
+    ma_vcvt_F32_U32(input, ScratchFloat32Reg.uintOverlay());
+    ma_vxfer(VFPRegister(ScratchFloat32Reg).uintOverlay(), output);
     ma_mov(output, output, SetCond);
     ma_b(bail, Signed);
     ma_b(&fin);
@@ -4222,10 +4220,10 @@ MacroAssemblerARMCompat::floorf(FloatRegister input, Register output, Label *bai
     bind(&handleNeg);
     // Negative case, negate, then start dancing
     ma_vneg_f32(input, input);
-    ma_vcvt_F32_U32(input, ScratchFloatReg);
-    ma_vxfer(VFPRegister(ScratchFloatReg).uintOverlay(), output);
-    ma_vcvt_U32_F32(ScratchFloatReg, ScratchFloatReg);
-    compareFloat(ScratchFloatReg, input);
+    ma_vcvt_F32_U32(input, ScratchFloat32Reg.uintOverlay());
+    ma_vxfer(VFPRegister(ScratchFloat32Reg).uintOverlay(), output);
+    ma_vcvt_U32_F32(ScratchFloat32Reg.uintOverlay(), ScratchFloat32Reg);
+    compareFloat(ScratchFloat32Reg, input);
     ma_add(output, Imm32(1), output, NoSetCond, NotEqual);
     // Negate the output.  Since INT_MIN < -INT_MAX, even after adding 1,
     // the result will still be a negative number
@@ -4256,15 +4254,16 @@ MacroAssemblerARMCompat::ceil(FloatRegister input, Register output, Label *bail)
 
     // We are in the ]-Inf; 0[ range
     // If we are in the ]-1; 0[ range => bailout
-    ma_vimm(-1.0, ScratchFloatReg);
-    compareDouble(input, ScratchFloatReg);
+    ma_vimm(-1.0, ScratchDoubleReg);
+    compareDouble(input, ScratchDoubleReg);
     ma_b(bail, Assembler::GreaterThan);
 
     // We are in the ]-Inf; -1] range: ceil(x) == -floor(-x) and floor can
     // be computed with direct truncation here (x > 0).
-    ma_vneg(input, ScratchFloatReg);
-    ma_vcvt_F64_U32(ScratchFloatReg, ScratchFloatReg);
-    ma_vxfer(VFPRegister(ScratchFloatReg).uintOverlay(), output);
+    ma_vneg(input, ScratchDoubleReg);
+    FloatRegister ScratchUIntReg = ScratchDoubleReg.uintOverlay();
+    ma_vcvt_F64_U32(ScratchDoubleReg, ScratchUIntReg);
+    ma_vxfer(ScratchUIntReg, output);
     ma_neg(output, output, SetCond);
     ma_b(bail, NotSigned);
     ma_b(&fin);
@@ -4280,10 +4279,10 @@ MacroAssemblerARMCompat::ceil(FloatRegister input, Register output, Label *bail)
     // We are in the ]0; +inf] range: truncate integer values, maybe add 1 for
     // non integer values, maybe bail if overflow.
     bind(&handlePos);
-    ma_vcvt_F64_U32(input, ScratchFloatReg);
-    ma_vxfer(VFPRegister(ScratchFloatReg).uintOverlay(), output);
-    ma_vcvt_U32_F64(ScratchFloatReg, ScratchFloatReg);
-    compareDouble(ScratchFloatReg, input);
+    ma_vcvt_F64_U32(input, ScratchUIntReg);
+    ma_vxfer(ScratchUIntReg, output);
+    ma_vcvt_U32_F64(ScratchUIntReg, ScratchDoubleReg);
+    compareDouble(ScratchDoubleReg, input);
     ma_add(output, Imm32(1), output, NoSetCond, NotEqual);
     // Bail out if the add overflowed or the result is non positive
     ma_mov(output, output, SetCond);
@@ -4308,15 +4307,16 @@ MacroAssemblerARMCompat::ceilf(FloatRegister input, Register output, Label *bail
 
     // We are in the ]-Inf; 0[ range
     // If we are in the ]-1; 0[ range => bailout
-    ma_vimm_f32(-1.f, ScratchFloatReg);
-    compareFloat(input, ScratchFloatReg);
+    ma_vimm_f32(-1.f, ScratchFloat32Reg);
+    compareFloat(input, ScratchFloat32Reg);
     ma_b(bail, Assembler::GreaterThan);
 
     // We are in the ]-Inf; -1] range: ceil(x) == -floor(-x) and floor can
     // be computed with direct truncation here (x > 0).
-    ma_vneg_f32(input, ScratchFloatReg);
-    ma_vcvt_F32_U32(ScratchFloatReg, ScratchFloatReg);
-    ma_vxfer(VFPRegister(ScratchFloatReg).uintOverlay(), output);
+    ma_vneg_f32(input, ScratchFloat32Reg);
+    FloatRegister ScratchUIntReg = ScratchDoubleReg.uintOverlay();
+    ma_vcvt_F32_U32(ScratchFloat32Reg, ScratchUIntReg);
+    ma_vxfer(ScratchUIntReg, output);
     ma_neg(output, output, SetCond);
     ma_b(bail, NotSigned);
     ma_b(&fin);
@@ -4332,10 +4332,10 @@ MacroAssemblerARMCompat::ceilf(FloatRegister input, Register output, Label *bail
     // We are in the ]0; +inf] range: truncate integer values, maybe add 1 for
     // non integer values, maybe bail if overflow.
     bind(&handlePos);
-    ma_vcvt_F32_U32(input, ScratchFloatReg);
-    ma_vxfer(VFPRegister(ScratchFloatReg).uintOverlay(), output);
-    ma_vcvt_U32_F32(ScratchFloatReg, ScratchFloatReg);
-    compareFloat(ScratchFloatReg, input);
+    ma_vcvt_F32_U32(input, ScratchUIntReg);
+    ma_vxfer(ScratchUIntReg, output);
+    ma_vcvt_U32_F32(ScratchUIntReg, ScratchFloat32Reg);
+    compareFloat(ScratchFloat32Reg, input);
     ma_add(output, Imm32(1), output, NoSetCond, NotEqual);
     // Bail out if the add overflowed or the result is non positive
     ma_mov(output, output, SetCond);
@@ -4359,15 +4359,13 @@ CodeOffsetLabel
 MacroAssemblerARMCompat::toggledCall(JitCode *target, bool enabled)
 {
     BufferOffset bo = nextOffset();
-    CodeOffsetLabel offset(bo.getOffset());
     addPendingJump(bo, ImmPtr(target->raw()), Relocation::JITCODE);
-    ma_movPatchable(ImmPtr(target->raw()), ScratchRegister, Always, hasMOVWT() ? L_MOVWT : L_LDR);
+    ma_movPatchable(ImmPtr(target->raw()), ScratchRegister, Always, HasMOVWT() ? L_MOVWT : L_LDR);
     if (enabled)
         ma_blx(ScratchRegister);
     else
         ma_nop();
-    JS_ASSERT(nextOffset().getOffset() - offset.offset() == ToggledCallSize());
-    return offset;
+    return CodeOffsetLabel(bo.getOffset());
 }
 
 void
@@ -4381,11 +4379,11 @@ MacroAssemblerARMCompat::round(FloatRegister input, Register output, Label *bail
     ma_vcmpz(input);
     // Adding 0.5 is technically incorrect!
     // We want to add 0.5 to negative numbers, and 0.49999999999999999 to positive numbers.
-    ma_vimm(0.5, ScratchFloatReg);
+    ma_vimm(0.5, ScratchDoubleReg);
     // Since we already know the sign bit, flip all numbers to be positive, stored in tmp.
     ma_vabs(input, tmp);
     // Add 0.5, storing the result into tmp.
-    ma_vadd(ScratchFloatReg, tmp, tmp);
+    ma_vadd(ScratchDoubleReg, tmp, tmp);
     as_vmrs(pc);
     ma_b(&handleZero, Assembler::Equal);
     ma_b(&handleNeg, Assembler::Signed);
@@ -4396,8 +4394,8 @@ MacroAssemblerARMCompat::round(FloatRegister input, Register output, Label *bail
     // Since it is known to be > 0.0, explicitly convert to a larger range,
     // then a value that rounds to INT_MAX is explicitly different from an
     // argument that clamps to INT_MAX
-    ma_vcvt_F64_U32(tmp, ScratchFloatReg);
-    ma_vxfer(VFPRegister(ScratchFloatReg).uintOverlay(), output);
+    ma_vcvt_F64_U32(tmp, ScratchDoubleReg.uintOverlay());
+    ma_vxfer(VFPRegister(ScratchDoubleReg).uintOverlay(), output);
     ma_mov(output, output, SetCond);
     ma_b(bail, Signed);
     ma_b(&fin);
@@ -4412,14 +4410,14 @@ MacroAssemblerARMCompat::round(FloatRegister input, Register output, Label *bail
 
     bind(&handleNeg);
     // Negative case, negate, then start dancing.  This number may be positive, since we added 0.5
-    ma_vcvt_F64_U32(tmp, ScratchFloatReg);
-    ma_vxfer(VFPRegister(ScratchFloatReg).uintOverlay(), output);
+    ma_vcvt_F64_U32(tmp, ScratchDoubleReg.uintOverlay());
+    ma_vxfer(VFPRegister(ScratchDoubleReg).uintOverlay(), output);
 
     // -output is now a correctly rounded value, unless the original value was exactly
     // halfway between two integers, at which point, it has been rounded away from zero, when
     // it should be rounded towards \infty.
-    ma_vcvt_U32_F64(ScratchFloatReg, ScratchFloatReg);
-    compareDouble(ScratchFloatReg, tmp);
+    ma_vcvt_U32_F64(ScratchDoubleReg.uintOverlay(), ScratchDoubleReg);
+    compareDouble(ScratchDoubleReg, tmp);
     ma_sub(output, Imm32(1), output, NoSetCond, Equal);
     // Negate the output.  Since INT_MIN < -INT_MAX, even after adding 1,
     // the result will still be a negative number
@@ -4444,11 +4442,11 @@ MacroAssemblerARMCompat::roundf(FloatRegister input, Register output, Label *bai
     ma_vcmpz_f32(input);
     // Adding 0.5 is technically incorrect!
     // We want to add 0.5 to negative numbers, and 0.49999999999999999 to positive numbers.
-    ma_vimm_f32(0.5f, ScratchFloatReg);
+    ma_vimm_f32(0.5f, ScratchFloat32Reg);
     // Since we already know the sign bit, flip all numbers to be positive, stored in tmp.
     ma_vabs_f32(input, tmp);
     // Add 0.5, storing the result into tmp.
-    ma_vadd_f32(ScratchFloatReg, tmp, tmp);
+    ma_vadd_f32(ScratchFloat32Reg, tmp, tmp);
     as_vmrs(pc);
     ma_b(&handleZero, Assembler::Equal);
     ma_b(&handleNeg, Assembler::Signed);
@@ -4459,30 +4457,30 @@ MacroAssemblerARMCompat::roundf(FloatRegister input, Register output, Label *bai
     // Since it is known to be > 0.0, explicitly convert to a larger range,
     // then a value that rounds to INT_MAX is explicitly different from an
     // argument that clamps to INT_MAX
-    ma_vcvt_F32_U32(tmp, ScratchFloatReg);
-    ma_vxfer(VFPRegister(ScratchFloatReg).uintOverlay(), output);
+    ma_vcvt_F32_U32(tmp, ScratchFloat32Reg.uintOverlay());
+    ma_vxfer(VFPRegister(ScratchFloat32Reg).uintOverlay(), output);
     ma_mov(output, output, SetCond);
     ma_b(bail, Signed);
     ma_b(&fin);
 
     bind(&handleZero);
-    // Move the top word of the double into the output reg, if it is non-zero,
+    // Move the whole float32 into the output reg, if it is non-zero,
     // then the original value was -0.0
-    as_vxfer(output, InvalidReg, input, FloatToCore, Always, 1);
+    as_vxfer(output, InvalidReg, input, FloatToCore, Always, 0);
     ma_cmp(output, Imm32(0));
     ma_b(bail, NonZero);
     ma_b(&fin);
 
     bind(&handleNeg);
     // Negative case, negate, then start dancing.  This number may be positive, since we added 0.5
-    ma_vcvt_F32_U32(tmp, ScratchFloatReg);
-    ma_vxfer(VFPRegister(ScratchFloatReg).uintOverlay(), output);
+    ma_vcvt_F32_U32(tmp, ScratchFloat32Reg.uintOverlay());
+    ma_vxfer(VFPRegister(ScratchFloat32Reg).uintOverlay(), output);
 
     // -output is now a correctly rounded value, unless the original value was exactly
     // halfway between two integers, at which point, it has been rounded away from zero, when
     // it should be rounded towards \infty.
-    ma_vcvt_U32_F32(ScratchFloatReg, ScratchFloatReg);
-    compareFloat(ScratchFloatReg, tmp);
+    ma_vcvt_U32_F32(ScratchFloat32Reg.uintOverlay(), ScratchFloat32Reg);
+    compareFloat(ScratchFloat32Reg, tmp);
     ma_sub(output, Imm32(1), output, NoSetCond, Equal);
     // Negate the output.  Since INT_MIN < -INT_MAX, even after adding 1,
     // the result will still be a negative number

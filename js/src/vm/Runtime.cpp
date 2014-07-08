@@ -211,6 +211,7 @@ JSRuntime::JSRuntime(JSRuntime *parentRuntime)
     staticStrings(nullptr),
     commonNames(nullptr),
     permanentAtoms(nullptr),
+    wellKnownSymbols(nullptr),
     wrapObjectCallbacks(&DefaultWrapObjectCallbacks),
     preserveWrapperCallback(nullptr),
     jitSupportsFloatingPoint(false),
@@ -229,8 +230,6 @@ JSRuntime::JSRuntime(JSRuntime *parentRuntime)
 {
     liveRuntimesCount++;
 
-    setGCMode(JSGC_MODE_GLOBAL);
-
     /* Initialize infallibly first, so we can goto bad and JS_DestroyRuntime. */
     JS_INIT_CLIST(&onNewGlobalObjectWatchers);
 
@@ -247,7 +246,7 @@ JitSupportsFloatingPoint()
         return false;
 
 #if defined(JS_ION) && WTF_ARM_ARCH_VERSION == 6
-    if (!js::jit::hasVFP())
+    if (!js::jit::HasVFP())
         return false;
 #endif
 
@@ -306,10 +305,16 @@ JSRuntime::init(uint32_t maxbytes)
     atomsZone.forget();
     this->atomsCompartment_ = atomsCompartment.forget();
 
+    if (!symbolRegistry_.init())
+        return false;
+
     if (!scriptDataTable_.init())
         return false;
 
     if (!evalCache.init())
+        return false;
+
+    if (!compressedSourceSet.init())
         return false;
 
     /* The garbage collector depends on everything before this point being initialized. */
@@ -511,7 +516,9 @@ JSRuntime::addSizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf, JS::Runtim
 
     rtSizes->mathCache += mathCache_ ? mathCache_->sizeOfIncludingThis(mallocSizeOf) : 0;
 
-    rtSizes->sourceDataCache += sourceDataCache.sizeOfExcludingThis(mallocSizeOf);
+    rtSizes->uncompressedSourceCache += uncompressedSourceCache.sizeOfExcludingThis(mallocSizeOf);
+
+    rtSizes->compressedSourceSet += compressedSourceSet.sizeOfExcludingThis(mallocSizeOf);
 
     rtSizes->scriptData += scriptDataTable().sizeOfExcludingThis(mallocSizeOf);
     for (ScriptDataTable::Range r = scriptDataTable().all(); !r.empty(); r.popFront())
@@ -571,7 +578,7 @@ JSRuntime::requestInterrupt(InterruptMode mode)
      * handlers to halt running code.
      */
     if (!SignalBasedTriggersDisabled()) {
-        RequestInterruptForAsmJSCode(this);
+        RequestInterruptForAsmJSCode(this, mode);
         jit::RequestInterruptForIonCode(this, mode);
     }
 #endif

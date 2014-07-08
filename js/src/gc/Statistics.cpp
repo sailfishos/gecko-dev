@@ -288,6 +288,7 @@ static const PhaseInfo phases[] = {
     { PHASE_SWEEP_MARK_GRAY_WEAK, "Mark Gray and Weak", PHASE_SWEEP_MARK },
     { PHASE_FINALIZE_START, "Finalize Start Callback", PHASE_SWEEP },
     { PHASE_SWEEP_ATOMS, "Sweep Atoms", PHASE_SWEEP },
+    { PHASE_SWEEP_SYMBOL_REGISTRY, "Sweep Symbol Registry", PHASE_SWEEP },
     { PHASE_SWEEP_COMPARTMENTS, "Sweep Compartments", PHASE_SWEEP },
     { PHASE_SWEEP_DISCARD_CODE, "Sweep Discard Code", PHASE_SWEEP_COMPARTMENTS },
     { PHASE_SWEEP_TABLES, "Sweep Tables", PHASE_SWEEP_COMPARTMENTS },
@@ -556,7 +557,7 @@ Statistics::endGC()
         (*cb)(JS_TELEMETRY_GC_MARK_ROOTS_MS, t(phaseTimes[PHASE_MARK_ROOTS]));
         (*cb)(JS_TELEMETRY_GC_MARK_GRAY_MS, t(phaseTimes[PHASE_SWEEP_MARK_GRAY]));
         (*cb)(JS_TELEMETRY_GC_NON_INCREMENTAL, !!nonincrementalReason);
-        (*cb)(JS_TELEMETRY_GC_INCREMENTAL_DISABLED, !runtime->gc.isIncrementalGCEnabled());
+        (*cb)(JS_TELEMETRY_GC_INCREMENTAL_DISABLED, !runtime->gc.isIncrementalGCAllowed());
         (*cb)(JS_TELEMETRY_GC_SCC_SWEEP_TOTAL_MS, t(sccTotal));
         (*cb)(JS_TELEMETRY_GC_SCC_SWEEP_MAX_PAUSE_MS, t(sccLongest));
 

@@ -167,6 +167,7 @@ AsmJSModule::addSizeOfMisc(mozilla::MallocSizeOf mallocSizeOf, size_t *asmJSModu
                         exits_.sizeOfExcludingThis(mallocSizeOf) +
                         exports_.sizeOfExcludingThis(mallocSizeOf) +
                         callSites_.sizeOfExcludingThis(mallocSizeOf) +
+                        codeRanges_.sizeOfExcludingThis(mallocSizeOf) +
                         functionNames_.sizeOfExcludingThis(mallocSizeOf) +
                         heapAccesses_.sizeOfExcludingThis(mallocSizeOf) +
                         functionCounts_.sizeOfExcludingThis(mallocSizeOf) +
@@ -189,11 +190,11 @@ struct CallSiteRetAddrOffset
 };
 
 const CallSite *
-AsmJSModule::lookupCallSite(uint8_t *returnAddress) const
+AsmJSModule::lookupCallSite(void *returnAddress) const
 {
     JS_ASSERT(isFinished());
 
-    uint32_t target = returnAddress - code_;
+    uint32_t target = ((uint8_t*)returnAddress) - code_;
     size_t lowerBound = 0;
     size_t upperBound = callSites_.length();
 
@@ -202,6 +203,45 @@ AsmJSModule::lookupCallSite(uint8_t *returnAddress) const
         return nullptr;
 
     return &callSites_[match];
+}
+
+namespace js {
+
+// Create an ordering on CodeRange and pc offsets suitable for BinarySearch.
+// Stick these in the same namespace as AsmJSModule so that argument-dependent
+// lookup will find it.
+bool
+operator==(size_t pcOffset, const AsmJSModule::CodeRange &rhs)
+{
+    return pcOffset >= rhs.begin() && pcOffset < rhs.end();
+}
+bool
+operator<=(const AsmJSModule::CodeRange &lhs, const AsmJSModule::CodeRange &rhs)
+{
+    return lhs.begin() <= rhs.begin();
+}
+bool
+operator<(size_t pcOffset, const AsmJSModule::CodeRange &rhs)
+{
+    return pcOffset < rhs.begin();
+}
+
+} // namespace js
+
+const AsmJSModule::CodeRange *
+AsmJSModule::lookupCodeRange(void *pc) const
+{
+    JS_ASSERT(isFinished());
+
+    uint32_t target = ((uint8_t*)pc) - code_;
+    size_t lowerBound = 0;
+    size_t upperBound = codeRanges_.length();
+
+    size_t match;
+    if (!BinarySearch(codeRanges_, lowerBound, upperBound, target, &match))
+        return nullptr;
+
+    return &codeRanges_[match];
 }
 
 struct HeapAccessOffset
@@ -214,12 +254,12 @@ struct HeapAccessOffset
 };
 
 const AsmJSHeapAccess *
-AsmJSModule::lookupHeapAccess(uint8_t *pc) const
+AsmJSModule::lookupHeapAccess(void *pc) const
 {
     JS_ASSERT(isFinished());
     JS_ASSERT(containsPC(pc));
 
-    uint32_t target = pc - code_;
+    uint32_t target = ((uint8_t*)pc) - code_;
     size_t lowerBound = 0;
     size_t upperBound = heapAccesses_.length();
 
@@ -280,15 +320,26 @@ AsmJSModule::finish(ExclusiveContext *cx, TokenStream &tokenStream, MacroAssembl
 
 #if defined(JS_CODEGEN_ARM)
     // ARM requires the offsets to be updated.
+    pod.functionBytes_ = masm.actualOffset(pod.functionBytes_);
     for (size_t i = 0; i < heapAccesses_.length(); i++) {
         AsmJSHeapAccess &a = heapAccesses_[i];
         a.setOffset(masm.actualOffset(a.offset()));
     }
+    for (unsigned i = 0; i < numExportedFunctions(); i++)
+        exportedFunction(i).updateCodeOffset(masm);
+    for (unsigned i = 0; i < numExits(); i++)
+        exit(i).updateOffsets(masm);
     for (size_t i = 0; i < callSites_.length(); i++) {
         CallSite &c = callSites_[i];
         c.setReturnAddressOffset(masm.actualOffset(c.returnAddressOffset()));
     }
+    for (size_t i = 0; i < codeRanges_.length(); i++) {
+        CodeRange &c = codeRanges_[i];
+        c.begin_ = masm.actualOffset(c.begin_);
+        c.end_ = masm.actualOffset(c.end_);
+    }
 #endif
+    JS_ASSERT(pod.functionBytes_ % AsmJSPageSize == 0);
 
     // Absolute link metadata: absolute addresses that refer to some fixed
     // address in the address space.
@@ -362,12 +413,11 @@ AsmJSModule::finish(ExclusiveContext *cx, TokenStream &tokenStream, MacroAssembl
 #endif
 
 #if defined(MOZ_VTUNE) || defined(JS_ION_PERF)
-    // Fix up the code offsets.  Note the endCodeOffset should not be
-    // filtered through 'actualOffset' as it is generated using 'size()'
-    // rather than a label.
+    // Fix up the code offsets.
     for (size_t i = 0; i < profiledFunctions_.length(); i++) {
         ProfiledFunction &pf = profiledFunctions_[i];
         pf.pod.startCodeOffset = masm.actualOffset(pf.pod.startCodeOffset);
+        pf.pod.endCodeOffset = masm.actualOffset(pf.pod.endCodeOffset);
     }
 #endif
 #ifdef JS_ION_PERF
@@ -375,6 +425,7 @@ AsmJSModule::finish(ExclusiveContext *cx, TokenStream &tokenStream, MacroAssembl
         ProfiledBlocksFunction &pbf = perfProfiledBlocksFunctions_[i];
         pbf.pod.startCodeOffset = masm.actualOffset(pbf.pod.startCodeOffset);
         pbf.endInlineCodeOffset = masm.actualOffset(pbf.endInlineCodeOffset);
+        pbf.pod.endCodeOffset = masm.actualOffset(pbf.pod.endCodeOffset);
         BasicBlocksVector &basicBlocks = pbf.blocks;
         for (uint32_t i = 0; i < basicBlocks.length(); i++) {
             Record &r = basicBlocks[i];
@@ -717,8 +768,10 @@ ReadScalar(const uint8_t *src, T *dst)
 static size_t
 SerializedNameSize(PropertyName *name)
 {
-    return sizeof(uint32_t) +
-           (name ? name->length() * sizeof(jschar) : 0);
+    size_t s = sizeof(uint32_t);
+    if (name)
+        s += name->length() * (name->hasLatin1Chars() ? sizeof(Latin1Char) : sizeof(jschar));
+    return s;
 }
 
 size_t
@@ -732,8 +785,15 @@ SerializeName(uint8_t *cursor, PropertyName *name)
 {
     JS_ASSERT_IF(name, !name->empty());
     if (name) {
-        cursor = WriteScalar<uint32_t>(cursor, name->length());
-        cursor = WriteBytes(cursor, name->chars(), name->length() * sizeof(jschar));
+        static_assert(JSString::MAX_LENGTH <= INT32_MAX, "String length must fit in 31 bits");
+        uint32_t length = name->length();
+        uint32_t lengthAndEncoding = (length << 1) | uint32_t(name->hasLatin1Chars());
+        cursor = WriteScalar<uint32_t>(cursor, lengthAndEncoding);
+        JS::AutoCheckCannotGC nogc;
+        if (name->hasLatin1Chars())
+            cursor = WriteBytes(cursor, name->latin1Chars(nogc), length * sizeof(Latin1Char));
+        else
+            cursor = WriteBytes(cursor, name->twoByteChars(nogc), length * sizeof(jschar));
     } else {
         cursor = WriteScalar<uint32_t>(cursor, 0);
     }
@@ -746,27 +806,20 @@ AsmJSModule::Name::serialize(uint8_t *cursor) const
     return SerializeName(cursor, name_);
 }
 
+template <typename CharT>
 static const uint8_t *
-DeserializeName(ExclusiveContext *cx, const uint8_t *cursor, PropertyName **name)
+DeserializeChars(ExclusiveContext *cx, const uint8_t *cursor, size_t length, PropertyName **name)
 {
-    uint32_t length;
-    cursor = ReadScalar<uint32_t>(cursor, &length);
-
-    if (length == 0) {
-        *name = nullptr;
-        return cursor;
-    }
-
-    js::Vector<jschar> tmp(cx);
-    jschar *src;
-    if ((size_t(cursor) & (sizeof(jschar) - 1)) != 0) {
+    Vector<CharT> tmp(cx);
+    CharT *src;
+    if ((size_t(cursor) & (sizeof(CharT) - 1)) != 0) {
         // Align 'src' for AtomizeChars.
         if (!tmp.resize(length))
             return nullptr;
-        memcpy(tmp.begin(), cursor, length * sizeof(jschar));
+        memcpy(tmp.begin(), cursor, length * sizeof(CharT));
         src = tmp.begin();
     } else {
-        src = (jschar *)cursor;
+        src = (CharT *)cursor;
     }
 
     JSAtom *atom = AtomizeChars(cx, src, length);
@@ -774,7 +827,25 @@ DeserializeName(ExclusiveContext *cx, const uint8_t *cursor, PropertyName **name
         return nullptr;
 
     *name = atom->asPropertyName();
-    return cursor + length * sizeof(jschar);
+    return cursor + length * sizeof(CharT);
+}
+
+static const uint8_t *
+DeserializeName(ExclusiveContext *cx, const uint8_t *cursor, PropertyName **name)
+{
+    uint32_t lengthAndEncoding;
+    cursor = ReadScalar<uint32_t>(cursor, &lengthAndEncoding);
+
+    uint32_t length = lengthAndEncoding >> 1;
+    if (length == 0) {
+        *name = nullptr;
+        return cursor;
+    }
+
+    bool latin1 = lengthAndEncoding & 0x1;
+    return latin1
+           ? DeserializeChars<Latin1Char>(cx, cursor, length, name)
+           : DeserializeChars<jschar>(cx, cursor, length, name);
 }
 
 const uint8_t *
@@ -792,7 +863,7 @@ AsmJSModule::Name::clone(ExclusiveContext *cx, Name *out) const
 
 template <class T>
 size_t
-SerializedVectorSize(const js::Vector<T, 0, SystemAllocPolicy> &vec)
+SerializedVectorSize(const Vector<T, 0, SystemAllocPolicy> &vec)
 {
     size_t size = sizeof(uint32_t);
     for (size_t i = 0; i < vec.length(); i++)
@@ -802,7 +873,7 @@ SerializedVectorSize(const js::Vector<T, 0, SystemAllocPolicy> &vec)
 
 template <class T>
 uint8_t *
-SerializeVector(uint8_t *cursor, const js::Vector<T, 0, SystemAllocPolicy> &vec)
+SerializeVector(uint8_t *cursor, const Vector<T, 0, SystemAllocPolicy> &vec)
 {
     cursor = WriteScalar<uint32_t>(cursor, vec.length());
     for (size_t i = 0; i < vec.length(); i++)
@@ -812,7 +883,7 @@ SerializeVector(uint8_t *cursor, const js::Vector<T, 0, SystemAllocPolicy> &vec)
 
 template <class T>
 const uint8_t *
-DeserializeVector(ExclusiveContext *cx, const uint8_t *cursor, js::Vector<T, 0, SystemAllocPolicy> *vec)
+DeserializeVector(ExclusiveContext *cx, const uint8_t *cursor, Vector<T, 0, SystemAllocPolicy> *vec)
 {
     uint32_t length;
     cursor = ReadScalar<uint32_t>(cursor, &length);
@@ -1058,6 +1129,7 @@ AsmJSModule::serializedSize() const
            SerializedVectorSize(exits_) +
            SerializedVectorSize(exports_) +
            SerializedPodVectorSize(callSites_) +
+           SerializedPodVectorSize(codeRanges_) +
            SerializedVectorSize(functionNames_) +
            SerializedPodVectorSize(heapAccesses_) +
 #if defined(MOZ_VTUNE) || defined(JS_ION_PERF)
@@ -1078,6 +1150,7 @@ AsmJSModule::serialize(uint8_t *cursor) const
     cursor = SerializeVector(cursor, exits_);
     cursor = SerializeVector(cursor, exports_);
     cursor = SerializePodVector(cursor, callSites_);
+    cursor = SerializePodVector(cursor, codeRanges_);
     cursor = SerializeVector(cursor, functionNames_);
     cursor = SerializePodVector(cursor, heapAccesses_);
 #if defined(MOZ_VTUNE) || defined(JS_ION_PERF)
@@ -1104,6 +1177,7 @@ AsmJSModule::deserialize(ExclusiveContext *cx, const uint8_t *cursor)
     (cursor = DeserializeVector(cx, cursor, &exits_)) &&
     (cursor = DeserializeVector(cx, cursor, &exports_)) &&
     (cursor = DeserializePodVector(cx, cursor, &callSites_)) &&
+    (cursor = DeserializePodVector(cx, cursor, &codeRanges_)) &&
     (cursor = DeserializeVector(cx, cursor, &functionNames_)) &&
     (cursor = DeserializePodVector(cx, cursor, &heapAccesses_)) &&
 #if defined(MOZ_VTUNE) || defined(JS_ION_PERF)
@@ -1174,6 +1248,7 @@ AsmJSModule::clone(JSContext *cx, ScopedJSDeletePtr<AsmJSModule> *moduleOut) con
         !CloneVector(cx, exits_, &out.exits_) ||
         !CloneVector(cx, exports_, &out.exports_) ||
         !ClonePodVector(cx, callSites_, &out.callSites_) ||
+        !ClonePodVector(cx, codeRanges_, &out.codeRanges_) ||
         !CloneVector(cx, functionNames_, &out.functionNames_) ||
         !ClonePodVector(cx, heapAccesses_, &out.heapAccesses_) ||
         !staticLinkData_.clone(cx, &out.staticLinkData_))
@@ -1344,7 +1419,7 @@ class ModuleChars
 {
   protected:
     uint32_t isFunCtor_;
-    js::Vector<PropertyNameWrapper, 0, SystemAllocPolicy> funCtorArgs_;
+    Vector<PropertyNameWrapper, 0, SystemAllocPolicy> funCtorArgs_;
 
   public:
     static uint32_t beginOffset(AsmJSParser &parser) {
@@ -1360,7 +1435,7 @@ class ModuleCharsForStore : ModuleChars
 {
     uint32_t uncompressedSize_;
     uint32_t compressedSize_;
-    js::Vector<char, 0, SystemAllocPolicy> compressedBuffer_;
+    Vector<char, 0, SystemAllocPolicy> compressedBuffer_;
 
   public:
     bool init(AsmJSParser &parser) {
@@ -1428,7 +1503,7 @@ class ModuleCharsForStore : ModuleChars
 
 class ModuleCharsForLookup : ModuleChars
 {
-    js::Vector<jschar, 0, SystemAllocPolicy> chars_;
+    Vector<jschar, 0, SystemAllocPolicy> chars_;
 
   public:
     const uint8_t *deserialize(ExclusiveContext *cx, const uint8_t *cursor) {

@@ -6,7 +6,6 @@
 
 #include "base/basictypes.h"
 #include "BluetoothManager.h"
-#include "BluetoothCommon.h"
 #include "BluetoothAdapter.h"
 #include "BluetoothService.h"
 #include "BluetoothReplyRunnable.h"
@@ -76,8 +75,8 @@ class GetAdaptersTask : public BluetoothReplyRunnable
     return true;
   }
 
-  void
-  ReleaseMembers()
+  virtual void
+  ReleaseMembers() MOZ_OVERRIDE
   {
     BluetoothReplyRunnable::ReleaseMembers();
     mManager = nullptr;
@@ -260,7 +259,9 @@ BluetoothManager::DispatchAttributeEvent()
   JSAutoCompartment ac(cx, scope);
 
   nsTArray<nsString> types;
-  types.AppendElement(NS_LITERAL_STRING("DefaultAdapter"));
+  BT_APPEND_ENUM_STRING(types,
+                        BluetoothManagerAttribute,
+                        BluetoothManagerAttribute::DefaultAdapter);
 
   if (!ToJSValue(cx, types, &value)) {
     JS_ClearPendingException(cx);

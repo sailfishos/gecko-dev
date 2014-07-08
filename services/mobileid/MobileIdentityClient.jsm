@@ -21,9 +21,8 @@ Cu.import("resource://gre/modules/Services.jsm");
 
 this.MobileIdentityClient = function(aServerUrl) {
   let serverUrl = aServerUrl || SERVER_URL;
-  let forceHttps = false;
+  let forceHttps = true;
   try {
-    // TODO: Force https in production. Bug 1021595.
     forceHttps = Services.prefs.getBoolPref(PREF_FORCE_HTTPS);
   } catch(e) {
     log.warn("Getting force HTTPS pref failed. If this was not intentional " +
@@ -106,7 +105,7 @@ this.MobileIdentityClient.prototype = {
    */
   _deriveHawkCredentials: function(aSessionToken) {
     return deriveHawkCredentials(aSessionToken, CREDENTIALS_DERIVATION_INFO,
-                          CREDENTIALS_DERIVATION_SIZE);
+                                 CREDENTIALS_DERIVATION_SIZE, true /*hexKey*/);
   },
 
   /**

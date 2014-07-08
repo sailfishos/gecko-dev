@@ -62,9 +62,13 @@ loop.shared.models = (function() {
      *
      * Available options:
      *
-     * - {String} baseServerUrl The server URL
      * - {Boolean} outgoing Set to true if this model represents the
      *                            outgoing call.
+     * - {Boolean} callType Only valid for outgoing calls. The type of media in
+     *                      the call, e.g. "audio" or "audio-video"
+     * - {loop.shared.Client} client  A client object to request call information
+     *                                from. Expects requestCallInfo for outgoing
+     *                                calls, requestCallsInfo for incoming calls.
      *
      * Triggered events:
      *
@@ -75,10 +79,6 @@ loop.shared.models = (function() {
      * @param {Object} options Options object
      */
     initiate: function(options) {
-      var client = new loop.shared.Client({
-        baseServerUrl: options.baseServerUrl
-      });
-
       function handleResult(err, sessionData) {
         /*jshint validthis:true */
         if (err) {
@@ -99,10 +99,11 @@ loop.shared.models = (function() {
       }
 
       if (options.outgoing) {
-        client.requestCallInfo(this.get("loopToken"), handleResult.bind(this));
+        options.client.requestCallInfo(this.get("loopToken"), options.callType,
+          handleResult.bind(this));
       }
       else {
-        client.requestCallsInfo(this.get("loopVersion"),
+        options.client.requestCallsInfo(this.get("loopVersion"),
           handleResult.bind(this));
       }
     },
@@ -139,7 +140,6 @@ loop.shared.models = (function() {
         throw new Error("Can't start session as it's not ready");
       }
       this.session = this.sdk.initSession(this.get("sessionId"));
-      this.listenTo(this.session, "sessionConnected", this._sessionConnected);
       this.listenTo(this.session, "streamCreated", this._streamCreated);
       this.listenTo(this.session, "connectionDestroyed",
                                   this._connectionDestroyed);
@@ -147,7 +147,8 @@ loop.shared.models = (function() {
                                   this._sessionDisconnected);
       this.listenTo(this.session, "networkDisconnected",
                                   this._networkDisconnected);
-      this.session.connect(this.get("apiKey"), this.get("sessionToken"));
+      this.session.connect(this.get("apiKey"), this.get("sessionToken"),
+                           this._onConnectCompletion.bind(this));
     },
 
     /**
@@ -160,14 +161,22 @@ loop.shared.models = (function() {
     },
 
     /**
-     * Session is created.
+     * Manages connection status
+     * triggers apropriate event for connection error/success
+     * http://tokbox.com/opentok/tutorials/connect-session/js/
+     * http://tokbox.com/opentok/tutorials/hello-world/js/
      * http://tokbox.com/opentok/libraries/client/js/reference/SessionConnectEvent.html
      *
-     * @param  {SessionConnectEvent} event
+     * @param {error|null} error
      */
-    _sessionConnected: function(event) {
-      this.trigger("session:connected", event);
-      this.set("ongoing", true);
+    _onConnectCompletion: function(error) {
+      if (error) {
+        this.trigger("session:connection-error", error);
+        this.endSession();
+      } else {
+        this.trigger("session:connected");
+        this.set("ongoing", true);
+      }
     },
 
     /**

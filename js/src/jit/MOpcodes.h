@@ -43,6 +43,7 @@ namespace jit {
     _(ApplyArgs)                                                            \
     _(ArraySplice)                                                          \
     _(Bail)                                                                 \
+    _(Unreachable)                                                          \
     _(AssertFloat32)                                                        \
     _(GetDynamicName)                                                       \
     _(FilterArgumentsOrEval)                                                \
@@ -196,6 +197,7 @@ namespace jit {
     _(GetDOMMember)                                                         \
     _(SetDOMProperty)                                                       \
     _(IsCallable)                                                           \
+    _(IsObject)                                                             \
     _(HaveSameClass)                                                        \
     _(HasClass)                                                             \
     _(AsmJSNeg)                                                             \
@@ -217,7 +219,6 @@ namespace jit {
     _(NewPar)                                                               \
     _(NewDenseArrayPar)                                                     \
     _(NewDerivedTypedObject)                                                \
-    _(AbortPar)                                                             \
     _(LambdaPar)                                                            \
     _(RestPar)                                                              \
     _(ForkJoinContext)                                                      \

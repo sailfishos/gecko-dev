@@ -1,4 +1,4 @@
-/* -*- Mode: Javascript; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- indent-tabs-mode: nil; js-indent-level: 4 -*- */
 
 "use strict";
 
@@ -190,7 +190,8 @@ function isRootedTypeName(name)
         name == "WrappableJSErrorResult" ||
         name == "js::frontend::TokenStream" ||
         name == "js::frontend::TokenStream::Position" ||
-        name == "ModuleCompiler")
+        name == "ModuleCompiler" ||
+        name == "JSAddonId")
     {
         return true;
     }
@@ -247,6 +248,12 @@ function isOverridableField(initialCSU, csu, field)
         return false;
     if (initialCSU == 'nsIXPConnectJSObjectHolder' && field == 'GetJSObject')
         return false;
+    if (initialCSU == 'nsIXPConnect' && field == 'GetSafeJSContext')
+        return false;
+    if (initialCSU == 'nsIScriptContext') {
+        if (field == 'GetWindowProxy' || field == 'GetWindowProxyPreserveColor')
+            return false;
+    }
 
     return true;
 }

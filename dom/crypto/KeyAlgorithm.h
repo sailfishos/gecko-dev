@@ -18,7 +18,8 @@
 namespace mozilla {
 namespace dom {
 
-class Key;
+class CryptoKey;
+class KeyAlgorithm;
 
 enum KeyAlgorithmStructuredCloneTags {
   SCTAG_KEYALG,
@@ -27,6 +28,16 @@ enum KeyAlgorithmStructuredCloneTags {
   SCTAG_RSAKEYALG,
   SCTAG_RSAHASHEDKEYALG
 };
+
+}
+
+template<>
+struct HasDangerousPublicDestructor<dom::KeyAlgorithm>
+{
+  static const bool value = true;
+};
+
+namespace dom {
 
 class KeyAlgorithm : public nsISupports,
                      public nsWrapperCache

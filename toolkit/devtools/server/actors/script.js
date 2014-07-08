@@ -1,4 +1,4 @@
-/* -*- Mode: javascript; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2; js-indent-level: 2; -*- */
+/* -*- indent-tabs-mode: nil; js-indent-level: 2; js-indent-level: 2 -*- */
 /* vim: set ft=javascript ts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -39,7 +39,8 @@ let addonManager = null;
  * about them.
  */
 function mapURIToAddonID(uri, id) {
-  if ((Services.appinfo.ID || undefined) == B2G_ID) {
+  if (Services.appinfo.processType == Services.appinfo.PROCESS_TYPE_CONTENT ||
+      (Services.appinfo.ID || undefined) == B2G_ID) {
     return false;
   }
 
@@ -1075,10 +1076,12 @@ ThreadActor.prototype = {
    *        The frame we want to clear the stepping hooks from.
    */
   _clearSteppingHooks: function (aFrame) {
-    while (aFrame) {
-      aFrame.onStep = undefined;
-      aFrame.onPop = undefined;
-      aFrame = aFrame.older;
+    if (aFrame && aFrame.live) {
+      while (aFrame) {
+        aFrame.onStep = undefined;
+        aFrame.onPop = undefined;
+        aFrame = aFrame.older;
+      }
     }
   },
 
@@ -1576,8 +1579,7 @@ ThreadActor.prototype = {
           if (!actualLocation) {
             actualLocation = {
               url: aLocation.url,
-              line: line,
-              column: 0
+              line: line
             };
           }
           found = true;
@@ -5057,7 +5059,13 @@ ThreadSources.prototype = {
           .QueryInterface(Ci.nsIURL);
         if (url.fileExtension === "js") {
           spec.contentType = "text/javascript";
-          spec.text = aScript.source.text;
+          // If the Debugger API wasn't able to load the source,
+          // because sources were discarded
+          // (javascript.options.discardSystemSource == true),
+          // give source() a chance to fetch them.
+          if (aScript.source.text != "[no source]") {
+            spec.text = aScript.source.text;
+          }
         }
       } catch(ex) {
         // Not a valid URI.
@@ -5173,6 +5181,8 @@ ThreadSources.prototype = {
    */
   getOriginalLocation: function ({ url, line, column }) {
     if (url in this._sourceMapsByGeneratedSource) {
+      column = column || 0;
+      
       return this._sourceMapsByGeneratedSource[url]
         .then((aSourceMap) => {
           let { source: aSourceURL, line: aLine, column: aColumn } = aSourceMap.originalPositionFor({

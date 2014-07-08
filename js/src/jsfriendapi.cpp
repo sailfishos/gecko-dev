@@ -24,6 +24,7 @@
 #include "vm/WrapperObject.h"
 
 #include "jsobjinlines.h"
+#include "jsscriptinlines.h"
 
 #include "vm/ScopeObject-inl.h"
 
@@ -262,12 +263,6 @@ JS_FRIEND_API(bool)
 JS_WrapPropertyDescriptor(JSContext *cx, JS::MutableHandle<js::PropertyDescriptor> desc)
 {
     return cx->compartment()->wrap(cx, desc);
-}
-
-JS_FRIEND_API(bool)
-JS_WrapAutoIdVector(JSContext *cx, js::AutoIdVector &props)
-{
-    return cx->compartment()->wrap(cx, props);
 }
 
 JS_FRIEND_API(void)
@@ -638,7 +633,7 @@ js::TraceWeakMaps(WeakMapTracer *trc)
 extern JS_FRIEND_API(bool)
 js::AreGCGrayBitsValid(JSRuntime *rt)
 {
-    return rt->gc.grayBitsValid;
+    return rt->gc.areGrayBitsValid();
 }
 
 JS_FRIEND_API(bool)
@@ -677,6 +672,12 @@ js::GetWeakmapKeyDelegate(JSObject *key)
     if (JSWeakmapKeyDelegateOp op = key->getClass()->ext.weakmapKeyDelegateOp)
         return op(key);
     return nullptr;
+}
+
+JS_FRIEND_API(JSLinearString *)
+js::StringToLinearStringSlow(JSContext *cx, JSString *str)
+{
+    return str->ensureLinear(cx);
 }
 
 JS_FRIEND_API(void)
@@ -868,7 +869,7 @@ JS::SetGCSliceCallback(JSRuntime *rt, GCSliceCallback callback)
 JS_FRIEND_API(bool)
 JS::WasIncrementalGC(JSRuntime *rt)
 {
-    return rt->gc.isIncremental;
+    return rt->gc.isIncrementalGc();
 }
 
 jschar *
@@ -892,19 +893,19 @@ JS::NotifyDidPaint(JSRuntime *rt)
 JS_FRIEND_API(bool)
 JS::IsIncrementalGCEnabled(JSRuntime *rt)
 {
-    return rt->gc.isIncrementalGCEnabled() && rt->gcMode() == JSGC_MODE_INCREMENTAL;
+    return rt->gc.isIncrementalGCEnabled();
 }
 
 JS_FRIEND_API(bool)
 JS::IsIncrementalGCInProgress(JSRuntime *rt)
 {
-    return rt->gc.state() != gc::NO_INCREMENTAL && !rt->gc.verifyPreData;
+    return rt->gc.isIncrementalGCInProgress();
 }
 
 JS_FRIEND_API(void)
 JS::DisableIncrementalGC(JSRuntime *rt)
 {
-    rt->gc.disableIncrementalGC();
+    rt->gc.disallowIncrementalGC();
 }
 
 JS::AutoDisableGenerationalGC::AutoDisableGenerationalGC(JSRuntime *rt)
@@ -967,6 +968,9 @@ JS::IncrementalReferenceBarrier(void *ptr, JSGCTraceKind kind)
     if (!ptr)
         return;
 
+    if (kind == JSTRACE_STRING && StringIsPermanentAtom(static_cast<JSString *>(ptr)))
+        return;
+
     gc::Cell *cell = static_cast<gc::Cell *>(ptr);
     Zone *zone = kind == JSTRACE_OBJECT
                  ? static_cast<JSObject *>(cell)->zone()
@@ -980,6 +984,8 @@ JS::IncrementalReferenceBarrier(void *ptr, JSGCTraceKind kind)
         JSObject::writeBarrierPre(static_cast<JSObject*>(cell));
     else if (kind == JSTRACE_STRING)
         JSString::writeBarrierPre(static_cast<JSString*>(cell));
+    else if (kind == JSTRACE_SYMBOL)
+        JS::Symbol::writeBarrierPre(static_cast<JS::Symbol*>(cell));
     else if (kind == JSTRACE_SCRIPT)
         JSScript::writeBarrierPre(static_cast<JSScript*>(cell));
     else if (kind == JSTRACE_LAZY_SCRIPT)

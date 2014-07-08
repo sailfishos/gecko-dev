@@ -9,6 +9,8 @@
   %webideDTD;
 ]>
 
+<?xul-overlay href="chrome://global/content/editMenuOverlay.xul"?>
+
 <?xml-stylesheet href="chrome://global/skin/global.css"?>
 <?xml-stylesheet href="chrome://webide/skin/webide.css"?>
 
@@ -23,6 +25,7 @@
         width="640" height="480"
         persist="screenX screenY width height">
 
+  <script type="application/javascript" src="chrome://global/content/globalOverlay.js"></script>
   <script type="application/javascript" src="webide.js"></script>
   <script type="application/javascript" src="cli.js"></script>
 
@@ -44,7 +47,7 @@
       <command id="cmd_showAddons" oncommand="Cmds.showAddons()"/>
       <command id="cmd_showTroubleShooting" oncommand="Cmds.showTroubleShooting()"/>
       <command id="cmd_play" oncommand="Cmds.play()"/>
-      <command id="cmd_stop" oncommand="Cmds.stop()"/>
+      <command id="cmd_stop" oncommand="Cmds.stop()" label="&projectMenu_stop_label;"/>
       <command id="cmd_toggleToolbox" oncommand="Cmds.toggleToolbox()"/>
     </commandset>
   </commandset>
@@ -58,7 +61,7 @@
         <menuitem command="cmd_showProjectPanel" key="key_showProjectPanel" label="&projectMenu_selectApp_label;" accesskey="&projectMenu_selectApp_accessley;"/>
         <menuseparator/>
         <menuitem command="cmd_play" key="key_play" label="&projectMenu_play_label;" accesskey="&projectMenu_play_accesskey;"/>
-        <menuitem command="cmd_stop" key="key_stop" label="&projectMenu_stop_label;" accesskey="&projectMenu_stop_accesskey;"/>
+        <menuitem command="cmd_stop" accesskey="&projectMenu_stop_accesskey;"/>
         <menuitem command="cmd_toggleToolbox" key="key_toggleToolbox" label="&projectMenu_debug_label;" accesskey="&projectMenu_debug_accesskey;"/>
         <menuseparator/>
         <menuitem command="cmd_removeProject" accesskey="&projectMenu_remove_accesskey;"/>
@@ -88,7 +91,6 @@
     <key key="&key_quit;" id="key_quit" command="cmd_quit" modifiers="accel"/>
     <key key="&key_showProjectPanel;" id="key_showProjectPanel" command="cmd_showProjectPanel" modifiers="accel"/>
     <key key="&key_play;" id="key_play" command="cmd_play" modifiers="accel"/>
-    <key key="&key_stop;" id="key_stop" command="cmd_stop" modifiers="accel"/>
     <key key="&key_toggleEditor;" id="key_toggleEditor" command="cmd_toggleEditor" modifiers="accel"/>
     <key keycode="&key_toggleToolbox;" id="key_toggleToolbox" command="cmd_toggleToolbox"/>
   </keyset>
@@ -100,7 +102,10 @@
         <toolbarbutton id="action-button-play"  class="action-button" command="cmd_play" tooltiptext="&projectMenu_play_label;"/>
         <toolbarbutton id="action-button-stop"  class="action-button" command="cmd_stop" tooltiptext="&projectMenu_stop_label;"/>
         <toolbarbutton id="action-button-debug" class="action-button" command="cmd_toggleToolbox" tooltiptext="&projectMenu_debug_label;"/>
-        <html:img id="action-busy" src="chrome://webide/skin/throbber.svg"/>
+        <hbox id="action-busy" align="center">
+          <html:img id="action-busy-undetermined" src="chrome://webide/skin/throbber.svg"/>
+          <progressmeter id="action-busy-determined"/>
+        </hbox>
       </hbox>
 
       <hbox id="panel-buttons-container">
@@ -142,6 +147,8 @@
         <toolbarbutton class="panel-item-help" label="&runtimePanel_nousbdevice;" id="runtime-panel-nousbdevice" command="cmd_showTroubleShooting"/>
         <toolbarbutton class="panel-item-help" label="&runtimePanel_noadbhelper;" id="runtime-panel-noadbhelper" command="cmd_showAddons"/>
         <vbox id="runtime-panel-usbruntime"></vbox>
+        <label class="panel-header" id="runtime-header-wifi-devices">&runtimePanel_WiFiDevices;</label>
+        <vbox id="runtime-panel-wifi-devices"></vbox>
         <label class="panel-header">&runtimePanel_simulators;</label>
         <toolbarbutton class="panel-item-help" label="&runtimePanel_nosimulator;" id="runtime-panel-nosimulator" command="cmd_showAddons"/>
         <vbox id="runtime-panel-simulators"></vbox>

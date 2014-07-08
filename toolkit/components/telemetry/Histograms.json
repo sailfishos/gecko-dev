@@ -1247,12 +1247,6 @@
     "extended_statistics_ok": true,
     "description": "ms elapsed time of OCSP etc.. that failed"
   },
-  "CERT_VALIDATION_LIBRARY": {
-    "expires_in_version": "never",
-    "kind": "enumerated",
-    "n_values": 4,
-    "description": "Which certificate validation library is in use? (1=classic, 2=libpkix, 3=mozilla::pkix)"
-  },
   "SSL_KEY_EXCHANGE_ALGORITHM_FULL": {
     "expires_in_version": "never",
     "kind": "enumerated",
@@ -2965,6 +2959,28 @@
     "extended_statistics_ok": true,
     "description": "PLACES: Time to calculate the md5 hash for a backup"
   },
+  "FENNEC_DISTRIBUTION_REFERRER_INVALID": {
+    "expires_in_version": "never",
+    "kind": "flag",
+    "description": "Whether the referrer intent specified an invalid distribution name",
+    "cpp_guard": "ANDROID"
+  },
+  "FENNEC_DISTRIBUTION_CODE_CATEGORY": {
+    "expires_in_version": "never",
+    "kind": "enumerated",
+    "n_values": 20,
+    "description": "First digit of HTTP result code, or error category, during distribution download",
+    "cpp_guard": "ANDROID"
+  },
+  "FENNEC_DISTRIBUTION_DOWNLOAD_TIME_MS": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "low": 100,
+    "high": "40000",
+    "n_buckets": 30,
+    "description": "Time taken to download a specified distribution file (msec)",
+    "cpp_guard": "ANDROID"
+  },
   "FENNEC_FAVICONS_COUNT": {
     "expires_in_version": "never",
     "kind": "exponential",
@@ -3527,14 +3543,6 @@
     "expires_in_version": "never",
     "kind": "boolean",
     "description": "Session restore: Whether the file read on startup contained parse-able JSON"
-  },
-  "FX_SESSION_RESTORE_BACKUP_FILE_MS": {
-    "expires_in_version": "never",
-    "kind": "exponential",
-    "high": "30000",
-    "n_buckets": 10,
-    "extended_statistics_ok": true,
-    "description": "Session restore: Time to make a backup copy of the session file (ms)"
   },
   "FX_SESSION_RESTORE_RESTORE_WINDOW_MS": {
     "expires_in_version": "never",
@@ -4498,22 +4506,6 @@
     "extended_statistics_ok": true,
     "description": "Time (ms) it takes to run memory reporters when sending a telemetry ping"
   },
-  "SSL_SUCCESFUL_CERT_VALIDATION_TIME_LIBPKIX": {
-    "expires_in_version": "never",
-    "kind": "exponential",
-    "high": "60000",
-    "n_buckets": 50,
-    "extended_statistics_ok": true,
-    "description": "Time spent on a successful cert verification in libpix mode (ms)"
-  },
-  "SSL_SUCCESFUL_CERT_VALIDATION_TIME_CLASSIC": {
-    "expires_in_version": "never",
-    "kind": "exponential",
-    "high": "60000",
-    "n_buckets": 50,
-    "extended_statistics_ok": true,
-    "description": "Time spent on a successful cert  verification in classic mode (ms)"
-  },
   "SSL_SUCCESFUL_CERT_VALIDATION_TIME_MOZILLAPKIX" : {
     "expires_in_version": "never",
     "kind": "exponential",
@@ -4521,22 +4513,6 @@
     "n_buckets": 50,
     "extended_statistics_ok": true,
     "description": "Time spent on a successful cert verification in mozilla::pkix mode (ms)"
-  },
-  "SSL_INITIAL_FAILED_CERT_VALIDATION_TIME_LIBPKIX" : {
-    "expires_in_version": "never",
-    "kind": "exponential",
-    "high": "60000",
-    "n_buckets": 50,
-    "extended_statistics_ok": true,
-    "description": "Time spent on an initially failed cert verification in libpix mode (ms)"
-  },
-  "SSL_INITIAL_FAILED_CERT_VALIDATION_TIME_CLASSIC": {
-    "expires_in_version": "never",
-    "kind": "exponential",
-    "high": "60000",
-    "n_buckets": 50,
-    "extended_statistics_ok": true,
-    "description": "Time spent on an initially failed cert  verification in classic mode (ms)"
   },
   "SSL_INITIAL_FAILED_CERT_VALIDATION_TIME_MOZILLAPKIX" : {
     "expires_in_version": "never",
@@ -6492,5 +6468,29 @@
     "expires_in_version": "never",
     "kind": "flag",
     "description": "If a master-password is enabled for this profile"
+  },
+  "DISPLAY_SCALING_OSX" : {
+    "expires_in_version": "never",
+    "kind": "linear",
+    "high": "500",
+    "n_buckets": "100",
+    "description": "Scaling percentage for the display where the first window is opened (OS X only)",
+    "cpp_guard": "XP_MACOSX"
+  },
+  "DISPLAY_SCALING_MSWIN" : {
+    "expires_in_version": "never",
+    "kind": "linear",
+    "high": "500",
+    "n_buckets": "100",
+    "description": "Scaling percentage for the display where the first window is opened (MS Windows only)",
+    "cpp_guard": "XP_WIN"
+  },
+  "DISPLAY_SCALING_LINUX" : {
+    "expires_in_version": "never",
+    "kind": "linear",
+    "high": "500",
+    "n_buckets": "100",
+    "description": "Scaling percentage for the display where the first window is opened (Linux only)",
+    "cpp_guard": "XP_LINUX"
   }
 }

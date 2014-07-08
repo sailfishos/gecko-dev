@@ -360,7 +360,7 @@ gfxWindowsPlatform::UpdateRenderMode()
     if (gfxInfo) {
         int32_t status;
         if (NS_SUCCEEDED(gfxInfo->GetFeatureStatus(nsIGfxInfo::FEATURE_DIRECT2D, &status))) {
-            if (status != nsIGfxInfo::FEATURE_NO_INFO) {
+            if (status != nsIGfxInfo::FEATURE_STATUS_OK) {
                 d2dBlocked = true;
             }
         }
@@ -1004,15 +1004,11 @@ gfxWindowsPlatform::GetPlatformCMSOutputProfile(void* &mem, size_t &mem_size)
     if (!dc)
         return;
 
-#if _MSC_VER
-    __try {
+    MOZ_SEH_TRY {
         res = GetICMProfileW(dc, &size, (LPWSTR)&str);
-    } __except(GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION) {
+    } MOZ_SEH_EXCEPT(GetExceptionCode() == EXCEPTION_ILLEGAL_INSTRUCTION) {
         res = FALSE;
     }
-#else
-    res = GetICMProfileW(dc, &size, (LPWSTR)&str);
-#endif
 
     ReleaseDC(nullptr, dc);
     if (!res)

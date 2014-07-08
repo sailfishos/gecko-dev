@@ -99,6 +99,7 @@ class AudioSegment;
 class VideoSegment;
 class MediaTaskQueue;
 class SharedThreadPool;
+class AudioSink;
 
 // GetCurrentTime is defined in winbase.h as zero argument macro forwarding to
 // GetTickCount() and conflicts with MediaDecoderStateMachine::GetCurrentTime
@@ -121,6 +122,7 @@ class SharedThreadPool;
 */
 class MediaDecoderStateMachine
 {
+  friend class AudioSink;
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(MediaDecoderStateMachine)
 public:
   typedef MediaDecoder::DecodedStreamData DecodedStreamData;
@@ -185,9 +187,6 @@ public:
   // on the appropriate threads.
   bool OnDecodeThread() const;
   bool OnStateMachineThread() const;
-  bool OnAudioThread() const {
-    return IsCurrentThread(mAudioThread);
-  }
 
   MediaDecoderOwner::NextFrameStatus GetNextFrameStatus();
 
@@ -208,17 +207,6 @@ public:
   // is currently queued. This is called from the main thread and must
   // be called with the decode monitor held.
   void ClearPositionChangeFlag();
-
-  // Called from the main thread or the decoder thread to set whether the media
-  // resource can seek into unbuffered ranges. The decoder monitor must be
-  // obtained before calling this.
-  void SetTransportSeekable(bool aSeekable);
-
-  // Called from the main thread or the decoder thread to set whether the media
-  // can seek to random location. This is not true for chained ogg and WebM
-  // media without index. The decoder monitor must be obtained before calling
-  // this.
-  void SetMediaSeekable(bool aSeekable);
 
   // Update the playback position. This can result in a timeupdate event
   // and an invalidate of the frame being dispatched asynchronously if
@@ -290,16 +278,6 @@ public:
     return mEndTime;
   }
 
-  bool IsTransportSeekable() {
-    AssertCurrentThreadInMonitor();
-    return mTransportSeekable;
-  }
-
-  bool IsMediaSeekable() {
-    AssertCurrentThreadInMonitor();
-    return mMediaSeekable;
-  }
-
   // Returns the shared state machine thread.
   nsIEventTarget* GetStateMachineThread();
 
@@ -345,7 +323,7 @@ public:
   // shutting down. The decoder monitor must be held while calling this.
   bool IsShutdown();
 
-  void QueueMetadata(int64_t aPublishTime, int aChannels, int aRate, bool aHasAudio, bool aHasVideo, MetadataTags* aTags);
+  void QueueMetadata(int64_t aPublishTime, MediaInfo* aInfo, MetadataTags* aTags);
 
   // Returns true if we're currently playing. The decoder monitor must
   // be held.
@@ -461,21 +439,16 @@ protected:
   // Returns true if we recently exited "quick buffering" mode.
   bool JustExitedQuickBuffering();
 
-  // Waits on the decoder ReentrantMonitor for aUsecs microseconds. If the decoder
-  // monitor is awoken by a Notify() call, we'll continue waiting, unless
-  // we've moved into shutdown state. This enables us to ensure that we
-  // wait for a specified time, and that the myriad of Notify()s we do on
-  // the decoder monitor don't cause the audio thread to be starved. aUsecs
-  // values of less than 1 millisecond are rounded up to 1 millisecond
-  // (see bug 651023). The decoder monitor must be held. Called only on the
-  // audio thread.
-  void Wait(int64_t aUsecs);
-
   // Dispatches an asynchronous event to update the media element's ready state.
   void UpdateReadyState();
 
   // Resets playback timing data. Called when we seek, on the decode thread.
   void ResetPlayback();
+
+  // Orders the Reader to stop decoding, and blocks until the Reader
+  // has stopped decoding and finished delivering samples, then calls
+  // ResetPlayback() to discard all enqueued data. 
+  void FlushDecoding();
 
   // Returns the audio clock, if we have audio, or -1 if we don't.
   // Called on the state machine thread.
@@ -513,21 +486,6 @@ protected:
   // state machine thread.
   void AdvanceFrame();
 
-  // Write aFrames of audio frames of silence to the audio hardware. Returns
-  // the number of frames actually written. The write size is capped at
-  // SILENCE_BYTES_CHUNK (32kB), so must be called in a loop to write the
-  // desired number of frames. This ensures that the playback position
-  // advances smoothly, and guarantees that we don't try to allocate an
-  // impossibly large chunk of memory in order to play back silence. Called
-  // on the audio thread.
-  uint32_t PlaySilence(uint32_t aFrames,
-                       uint32_t aChannels,
-                       uint64_t aFrameOffset);
-
-  // Pops an audio chunk from the front of the audio queue, and pushes its
-  // audio data to the audio hardware.
-  uint32_t PlayFromAudioQueue(uint64_t aFrameOffset, uint32_t aChannels);
-
   // Stops the audio thread. The decoder monitor must be held with exactly
   // one lock count. Called on the state machine thread.
   void StopAudioThread();
@@ -535,11 +493,6 @@ protected:
   // Starts the audio thread. The decoder monitor must be held with exactly
   // one lock count. Called on the state machine thread.
   nsresult StartAudioThread();
-
-  // The main loop for the audio thread. Sent to the thread as
-  // an nsRunnableMethod. This continually does blocking writes to
-  // to audio stream to play audio data.
-  void AudioLoop();
 
   // Sets internal state which causes playback of media to pause.
   // The decoder monitor must be held.
@@ -672,6 +625,20 @@ protected:
   bool IsAudioDecoding();
   bool IsVideoDecoding();
 
+  // Set the time that playback started from the system clock.
+  // Can only be called on the state machine thread.
+  void SetPlayStartTime(const TimeStamp& aTimeStamp);
+
+  // Update mAudioEndTime.
+  void OnAudioEndTimeUpdate(int64_t aAudioEndTime);
+
+  // Update mDecoder's playback offset.
+  void OnPlaybackOffsetUpdate(int64_t aPlaybackOffset);
+
+  // Called by the AudioSink to signal that all outstanding work is complete
+  // and the sink is shutting down.
+  void OnAudioSinkComplete();
+
   // The decoder object that created this state machine. The state machine
   // holds a strong reference to the decoder to ensure that the decoder stays
   // alive once media element has started the decoder shutdown process, and has
@@ -702,10 +669,6 @@ protected:
   // Accessed on state machine, audio, main, and AV thread.
   State mState;
 
-  // Thread for pushing audio onto the audio hardware.
-  // The "audio push thread".
-  nsCOMPtr<nsIThread> mAudioThread;
-
   // The task queue in which we run decode tasks. This is referred to as
   // the "decode thread", though in practise tasks can run on a different
   // thread every time they're called.
@@ -726,7 +689,7 @@ protected:
 
   // The time that playback started from the system clock. This is used for
   // timing the presentation of video frames when there's no audio.
-  // Accessed only via the state machine thread.
+  // Accessed only via the state machine thread.  Must be set via SetPlayStartTime.
   TimeStamp mPlayStartTime;
 
   // When we start writing decoded data to a new DecodedDataStream, or we
@@ -734,11 +697,6 @@ protected:
   // MediaStream and what that corresponds to in the media.
   int64_t mSyncPointInMediaStream; // microseconds
   int64_t mSyncPointInDecodedStream; // microseconds
-
-  // When the playbackRate changes, and there is no audio clock, it is necessary
-  // to reset the mPlayStartTime. This is done next time the clock is queried,
-  // when this member is true. Access protected by decoder monitor.
-  bool mResetPlayStartTime;
 
   // The amount of time we've spent playing already the media. The current
   // playback position is therefore |Now() - mPlayStartTime +
@@ -778,11 +736,8 @@ protected:
   // Media Fragment end time in microseconds. Access controlled by decoder monitor.
   int64_t mFragmentEndTime;
 
-  // The audio stream resource. Used on the state machine, and audio threads.
-  // This is created and destroyed on the audio thread, while holding the
-  // decoder monitor, so if this is used off the audio thread, you must
-  // first acquire the decoder monitor and check that it is non-null.
-  RefPtr<AudioStream> mAudioStream;
+  // The audio sink resource.  Used on state machine and audio threads.
+  RefPtr<AudioSink> mAudioSink;
 
   // The reader, don't call its methods with the decoder monitor held.
   // This is created in the state machine's constructor.
@@ -827,11 +782,6 @@ protected:
 
   // Pitch preservation for the playback rate. Synchronized via decoder monitor.
   bool mPreservesPitch;
-
-  // Position at which the last playback rate change occured, used to compute
-  // the actual position in the stream when the playback rate changes and there
-  // is no audio to be sync-ed to. Synchronized via decoder monitor.
-  int64_t mBasePosition;
 
   // Time at which we started decoding. Synchronised via decoder monitor.
   TimeStamp mDecodeStartTime;
@@ -907,14 +857,6 @@ protected:
   // streams). When this is true, mStopAudioThread is always true and
   // the audio thread will never start again after it has stopped.
   bool mAudioCaptured;
-
-  // True if the media resource can be seeked on a transport level. Accessed
-  // from the state machine and main threads. Synchronised via decoder monitor.
-  bool mTransportSeekable;
-
-  // True if the media can be seeked. Accessed from the state machine and main
-  // threads. Synchronised via decoder monitor.
-  bool mMediaSeekable;
 
   // True if an event to notify about a change in the playback
   // position has been queued, but not yet run. It is set to false when

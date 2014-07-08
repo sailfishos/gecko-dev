@@ -22,7 +22,6 @@
 class nsPluginArray;
 class nsMimeTypeArray;
 class nsPIDOMWindow;
-class nsIDOMMozMobileMessageManager;
 class nsIDOMNavigatorSystemMessages;
 class nsDOMCameraManager;
 class nsDOMDeviceStorage;
@@ -36,6 +35,7 @@ class systemMessageCallback;
 struct MediaStreamConstraints;
 class WakeLock;
 class ArrayBufferViewOrBlobOrStringOrFormData;
+struct MobileIdOptions;
 }
 }
 
@@ -114,7 +114,6 @@ class Navigator : public nsIDOMNavigator
 {
 public:
   Navigator(nsPIDOMWindow *aInnerWindow);
-  virtual ~Navigator();
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_AMBIGUOUS(Navigator,
@@ -207,7 +206,7 @@ public:
   DesktopNotificationCenter* GetMozNotification(ErrorResult& aRv);
   bool MozIsLocallyAvailable(const nsAString& aURI, bool aWhenOffline,
                              ErrorResult& aRv);
-  nsIDOMMozMobileMessageManager* GetMozMobileMessage();
+  MobileMessageManager* GetMozMobileMessage();
   Telephony* GetMozTelephony(ErrorResult& aRv);
   network::Connection* GetConnection(ErrorResult& aRv);
   nsDOMCameraManager* GetMozCameras(ErrorResult& aRv);
@@ -216,14 +215,15 @@ public:
                             ErrorResult& aRv);
   bool MozHasPendingMessage(const nsAString& aType, ErrorResult& aRv);
 #ifdef MOZ_B2G
-  already_AddRefed<Promise> GetMobileIdAssertion(ErrorResult& aRv);
+  already_AddRefed<Promise> GetMobileIdAssertion(const MobileIdOptions& options,
+                                                 ErrorResult& aRv);
 #endif
 #ifdef MOZ_B2G_RIL
   MobileConnectionArray* GetMozMobileConnections(ErrorResult& aRv);
   CellBroadcast* GetMozCellBroadcast(ErrorResult& aRv);
   Voicemail* GetMozVoicemail(ErrorResult& aRv);
   IccManager* GetMozIccManager(ErrorResult& aRv);
-#endif // MOZ_B2G_RILi
+#endif // MOZ_B2G_RIL
 #ifdef MOZ_GAMEPAD
   void GetGamepads(nsTArray<nsRefPtr<Gamepad> >& aGamepads, ErrorResult& aRv);
 #endif // MOZ_GAMEPAD
@@ -295,6 +295,10 @@ public:
 
   static bool HasFeatureDetectionSupport(JSContext* aCx, JSObject* aGlobal);
 
+#ifdef MOZ_B2G
+  static bool HasMobileIdSupport(JSContext* aCx, JSObject* aGlobal);
+#endif
+
   nsPIDOMWindow* GetParentObject() const
   {
     return GetWindow();
@@ -303,6 +307,8 @@ public:
   virtual JSObject* WrapObject(JSContext* cx) MOZ_OVERRIDE;
 
 private:
+  virtual ~Navigator();
+
   bool CheckPermission(const char* type);
   static bool CheckPermission(nsPIDOMWindow* aWindow, const char* aType);
   // GetWindowFromGlobal returns the inner window for this global, if

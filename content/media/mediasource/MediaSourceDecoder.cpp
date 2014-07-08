@@ -14,6 +14,7 @@
 #include "mozilla/dom/HTMLMediaElement.h"
 #include "mozilla/dom/TimeRanges.h"
 #include "mozilla/mozalloc.h"
+#include "nsAutoPtr.h"
 #include "nsISupports.h"
 #include "nsIThread.h"
 #include "prlog.h"
@@ -141,6 +142,8 @@ public:
   {
     return mInfo.HasAudio();
   }
+
+  bool IsMediaSeekable() { return true; }
 
   nsresult ReadMetadata(MediaInfo* aInfo, MetadataTags** aTags) MOZ_OVERRIDE;
   nsresult Seek(int64_t aTime, int64_t aStartTime, int64_t aEndTime,
@@ -414,7 +417,7 @@ MediaSourceReader::CreateSubDecoder(const nsACString& aType,
   // XXX: Why/when is mDecoder null here, since it should be equal to aParentDecoder?!
   nsRefPtr<SubBufferDecoder> decoder =
     new SubBufferDecoder(new SourceBufferResource(nullptr, aType), aParentDecoder);
-  nsAutoPtr<MediaDecoderReader> reader(DecoderTraits::CreateReader(aType, decoder));
+  nsRefPtr<MediaDecoderReader> reader(DecoderTraits::CreateReader(aType, decoder));
   if (!reader) {
     return nullptr;
   }
@@ -428,7 +431,7 @@ MediaSourceReader::CreateSubDecoder(const nsACString& aType,
   reader->Init(nullptr);
   ReentrantMonitorAutoEnter mon(aParentDecoder->GetReentrantMonitor());
   MSE_DEBUG("Registered subdecoder %p subreader %p", decoder.get(), reader.get());
-  decoder->SetReader(reader.forget());
+  decoder->SetReader(reader);
   mPendingDecoders.AppendElement(decoder);
   if (NS_FAILED(static_cast<MediaSourceDecoder*>(mDecoder)->EnqueueDecoderInitialization())) {
     MSE_DEBUG("%p: Failed to enqueue decoder initialization task", this);
@@ -463,7 +466,8 @@ nsresult
 MediaSourceReader::Seek(int64_t aTime, int64_t aStartTime, int64_t aEndTime,
                         int64_t aCurrentTime)
 {
-  if (!mMediaSource->ActiveSourceBuffers()->AllContainsTime (aTime / USECS_PER_S)) {
+  double target = static_cast<double>(aTime) / USECS_PER_S;
+  if (!mMediaSource->ActiveSourceBuffers()->AllContainsTime(target)) {
     NS_DispatchToMainThread(new ChangeToHaveMetadata(mDecoder));
   }
 
@@ -471,7 +475,7 @@ MediaSourceReader::Seek(int64_t aTime, int64_t aStartTime, int64_t aEndTime,
   // This is a workaround for our lack of async functionality in the
   // MediaDecoderStateMachine. Bug 979104 implements what we need and
   // we'll remove this for an async approach based on that in bug XXXXXXX.
-  while (!mMediaSource->ActiveSourceBuffers()->AllContainsTime (aTime / USECS_PER_S)
+  while (!mMediaSource->ActiveSourceBuffers()->AllContainsTime(target)
          && !IsShutdown()) {
     mMediaSource->WaitForData();
     MaybeSwitchVideoReaders();
@@ -512,9 +516,6 @@ MediaSourceReader::GetBuffered(dom::TimeRanges* aBuffered, int64_t aStartTime)
 nsresult
 MediaSourceReader::ReadMetadata(MediaInfo* aInfo, MetadataTags** aTags)
 {
-  mDecoder->SetMediaSeekable(true);
-  mDecoder->SetTransportSeekable(false);
-
   MSE_DEBUG("%p: MSR::ReadMetadata pending=%u", this, mPendingDecoders.Length());
 
   InitializePendingDecoders();

@@ -178,6 +178,8 @@ types::TypeString(Type type)
             return "float";
           case JSVAL_TYPE_STRING:
             return "string";
+          case JSVAL_TYPE_SYMBOL:
+            return "symbol";
           case JSVAL_TYPE_MAGIC:
             return "lazyargs";
           default:
@@ -332,6 +334,8 @@ TypeSet::mightBeMIRType(jit::MIRType type)
         return baseFlags() & TYPE_FLAG_DOUBLE;
       case jit::MIRType_String:
         return baseFlags() & TYPE_FLAG_STRING;
+      case jit::MIRType_Symbol:
+        return baseFlags() & TYPE_FLAG_SYMBOL;
       case jit::MIRType_MagicOptimizedArguments:
         return baseFlags() & TYPE_FLAG_LAZYARGS;
       case jit::MIRType_MagicHole:
@@ -671,6 +675,18 @@ TypeSet::filter(LifoAlloc *alloc, bool filterUndefined, bool filterNull) const
 
     if (filterNull)
         res->flags = res->flags & ~TYPE_FLAG_NULL;
+
+    return res;
+}
+
+TemporaryTypeSet *
+TypeSet::cloneObjectsOnly(LifoAlloc *alloc)
+{
+    TemporaryTypeSet *res = clone(alloc);
+    if (!res)
+        return nullptr;
+
+    res->flags &= TYPE_FLAG_ANYOBJECT;
 
     return res;
 }
@@ -1324,6 +1340,8 @@ GetMIRTypeFromTypeFlags(TypeFlags flags)
         return jit::MIRType_Double;
       case TYPE_FLAG_STRING:
         return jit::MIRType_String;
+      case TYPE_FLAG_SYMBOL:
+        return jit::MIRType_Symbol;
       case TYPE_FLAG_LAZYARGS:
         return jit::MIRType_MagicOptimizedArguments;
       case TYPE_FLAG_ANYOBJECT:
@@ -3929,7 +3947,7 @@ ExclusiveContext::getNewType(const Class *clasp, TaggedProto proto, JSFunction *
         return nullptr;
 
 #ifdef JSGC_GENERATIONAL
-    if (proto.isObject() && hasNursery() && IsInsideNursery(proto.toObject())) {
+    if (proto.isObject() && isJSContext() && IsInsideNursery(proto.toObject())) {
         asJSContext()->runtime()->gc.storeBuffer.putGeneric(
             NewTypeObjectsSetRef(&newTypeObjects, clasp, proto.toObject(), fun));
     }
@@ -4431,28 +4449,17 @@ TypeZone::sweep(FreeOp *fop, bool releaseTypes, bool *oom)
                 types::TypeScript::Sweep(fop, script, oom);
 
                 if (releaseTypes) {
-                    if (script->hasParallelIonScript()) {
-#ifdef JS_ION
-                        // It's possible that we preserved the parallel
-                        // IonScript. The heuristic for their preservation is
-                        // independent of general JIT code preservation.
-                        MOZ_ASSERT(jit::ShouldPreserveParallelJITCode(rt, script));
-                        script->parallelIonScript()->recompileInfoRef().shouldSweep(*this);
-#else
-                        MOZ_CRASH();
-#endif
-                    } else {
-                        script->types->destroy();
-                        script->types = nullptr;
+                    script->types->destroy();
+                    script->types = nullptr;
 
-                        /*
-                         * Freeze constraints on stack type sets need to be
-                         * regenerated the next time the script is analyzed.
-                         */
-                        script->clearHasFreezeConstraints();
-                    }
+                    /*
+                     * Freeze constraints on stack type sets need to be
+                     * regenerated the next time the script is analyzed.
+                     */
+                    script->clearHasFreezeConstraints();
 
                     JS_ASSERT(!script->hasIonScript());
+                    JS_ASSERT(!script->hasParallelIonScript());
                 } else {
                     /* Update the recompile indexes in any IonScripts still on the script. */
                     if (script->hasIonScript())
@@ -4529,10 +4536,8 @@ TypeScript::printTypes(JSContext *cx, HandleScript script) const
     fprintf(stderr, " #%u %s:%d ", script->id(), script->filename(), (int) script->lineno());
 
     if (script->functionNonDelazifying()) {
-        if (js::PropertyName *name = script->functionNonDelazifying()->name()) {
-            const jschar *chars = name->getChars(nullptr);
-            JSString::dumpChars(chars, name->length());
-        }
+        if (js::PropertyName *name = script->functionNonDelazifying()->name())
+            name->dumpCharsNoNewline();
     }
 
     fprintf(stderr, "\n    this:");

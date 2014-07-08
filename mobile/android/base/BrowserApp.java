@@ -7,14 +7,17 @@ package org.mozilla.gecko;
 
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.lang.Class;
+import java.lang.reflect.Method;
 import java.net.URLEncoder;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Vector;
 
-import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
+
 import org.mozilla.gecko.DynamicToolbar.PinReason;
 import org.mozilla.gecko.DynamicToolbar.VisibilityTransition;
 import org.mozilla.gecko.GeckoProfileDirectories.NoMozillaDirectoryException;
@@ -111,16 +114,16 @@ import android.widget.RelativeLayout;
 import android.widget.Toast;
 import android.widget.ViewFlipper;
 
-abstract public class BrowserApp extends GeckoApp
-                                 implements TabsPanel.TabsLayoutChangeListener,
-                                            PropertyAnimator.PropertyAnimationListener,
-                                            View.OnKeyListener,
-                                            LayerView.OnMetricsChangedListener,
-                                            BrowserSearch.OnSearchListener,
-                                            BrowserSearch.OnEditSuggestionListener,
-                                            HomePager.OnNewTabsListener,
-                                            OnUrlOpenListener,
-                                            ActionModeCompat.Presenter {
+public class BrowserApp extends GeckoApp
+                        implements TabsPanel.TabsLayoutChangeListener,
+                                   PropertyAnimator.PropertyAnimationListener,
+                                   View.OnKeyListener,
+                                   LayerView.OnMetricsChangedListener,
+                                   BrowserSearch.OnSearchListener,
+                                   BrowserSearch.OnEditSuggestionListener,
+                                   HomePager.OnNewTabsListener,
+                                   OnUrlOpenListener,
+                                   ActionModeCompat.Presenter {
     private static final String LOGTAG = "GeckoBrowserApp";
 
     private static final int TABS_ANIMATION_DURATION = 450;
@@ -546,6 +549,20 @@ abstract public class BrowserApp extends GeckoApp
             "Updater:Launch");
 
         Distribution.init(this);
+
+        // Shipping Native casting is optional and dependent on whether you've downloaded the support
+        // and google play libraries
+        if (AppConstants.MOZ_MEDIA_PLAYER) {
+            try {
+                Class<?> mediaManagerClass = Class.forName("org.mozilla.gecko.MediaPlayerManager");
+                Method init = mediaManagerClass.getMethod("init", Context.class);
+                init.invoke(null, this);
+            } catch(Exception ex) {
+                // Ignore failures
+                Log.i(LOGTAG, "No native casting support", ex);
+            }
+        }
+
         JavaAddonManager.getInstance().init(getApplicationContext());
         mSharedPreferencesHelper = new SharedPreferencesHelper(getApplicationContext());
         mOrderedBroadcastHelper = new OrderedBroadcastHelper(getApplicationContext());
@@ -581,7 +598,31 @@ abstract public class BrowserApp extends GeckoApp
 
         // Set the maximum bits-per-pixel the favicon system cares about.
         IconDirectoryEntry.setMaxBPP(GeckoAppShell.getScreenDepth());
+
+        Class<?> mediaManagerClass = getMediaPlayerManager();
+        if (mediaManagerClass != null) {
+            try {
+                Method init = mediaManagerClass.getMethod("init", Context.class);
+                init.invoke(null, this);
+            } catch(Exception ex) {
+                Log.i(LOGTAG, "Error initializing media manager", ex);
+            }
+        }
     }
+
+    private Class<?> getMediaPlayerManager() {
+        if (AppConstants.MOZ_MEDIA_PLAYER) {
+            try {
+                return Class.forName("org.mozilla.gecko.MediaPlayerManager");
+            } catch(Exception ex) {
+                // Ignore failures
+                Log.i(LOGTAG, "No native casting support", ex);
+            }
+        }
+
+        return null;
+    }
+
 
     @Override
     public void onBackPressed() {
@@ -757,12 +798,17 @@ abstract public class BrowserApp extends GeckoApp
             if (!TextUtils.isEmpty(text)) {
                 Tabs.getInstance().loadUrl(text);
                 Telemetry.sendUIEvent(TelemetryContract.Event.LOAD_URL, TelemetryContract.Method.CONTEXT_MENU);
+                Telemetry.sendUIEvent(TelemetryContract.Event.ACTION, TelemetryContract.Method.CONTEXT_MENU, "pasteandgo");
             }
             return true;
         }
 
         if (itemId == R.id.site_settings) {
+            // This can be selected from either the browser menu or the contextmenu, depending on the size and version (v11+) of the phone.
             GeckoAppShell.sendEventToGecko(GeckoEvent.createBroadcastEvent("Permissions:Get", null));
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.HONEYCOMB) {
+                Telemetry.sendUIEvent(TelemetryContract.Event.ACTION, TelemetryContract.Method.CONTEXT_MENU, "site_settings");
+            }
             return true;
         }
 
@@ -770,11 +816,13 @@ abstract public class BrowserApp extends GeckoApp
             String text = Clipboard.getText();
             if (!TextUtils.isEmpty(text)) {
                 enterEditingMode(text);
+                Telemetry.sendUIEvent(TelemetryContract.Event.ACTION, TelemetryContract.Method.CONTEXT_MENU, "paste");
             }
             return true;
         }
 
         if (itemId == R.id.subscribe) {
+            // This can be selected from either the browser menu or the contextmenu, depending on the size and version (v11+) of the phone.
             Tab tab = Tabs.getInstance().getSelectedTab();
             if (tab != null && tab.hasFeeds()) {
                 JSONObject args = new JSONObject();
@@ -784,11 +832,15 @@ abstract public class BrowserApp extends GeckoApp
                     Log.e(LOGTAG, "error building json arguments");
                 }
                 GeckoAppShell.sendEventToGecko(GeckoEvent.createBroadcastEvent("Feeds:Subscribe", args.toString()));
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.HONEYCOMB) {
+                    Telemetry.sendUIEvent(TelemetryContract.Event.ACTION, TelemetryContract.Method.CONTEXT_MENU, "subscribe");
+                }
             }
             return true;
         }
 
         if (itemId == R.id.add_search_engine) {
+            // This can be selected from either the browser menu or the contextmenu, depending on the size and version (v11+) of the phone.
             Tab tab = Tabs.getInstance().getSelectedTab();
             if (tab != null && tab.hasOpenSearch()) {
                 JSONObject args = new JSONObject();
@@ -799,6 +851,10 @@ abstract public class BrowserApp extends GeckoApp
                     return true;
                 }
                 GeckoAppShell.sendEventToGecko(GeckoEvent.createBroadcastEvent("SearchEngines:Add", args.toString()));
+
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.HONEYCOMB) {
+                    Telemetry.sendUIEvent(TelemetryContract.Event.ACTION, TelemetryContract.Method.CONTEXT_MENU, "add_search_engine");
+                }
             }
             return true;
         }
@@ -809,6 +865,7 @@ abstract public class BrowserApp extends GeckoApp
                 String url = tab.getURL();
                 if (url != null) {
                     Clipboard.setText(url);
+                    Telemetry.sendUIEvent(TelemetryContract.Event.ACTION, TelemetryContract.Method.CONTEXT_MENU, "copyurl");
                 }
             }
             return true;
@@ -905,6 +962,16 @@ abstract public class BrowserApp extends GeckoApp
                 // because the source code looks like it will only do this
                 // automatically on API 14+
                 nfc.setNdefPushMessageCallback(null, this);
+            }
+        }
+
+        Class<?> mediaManagerClass = getMediaPlayerManager();
+        if (mediaManagerClass != null) {
+            try {
+                Method destroy = mediaManagerClass.getMethod("onDestroy",  (Class[]) null);
+                destroy.invoke(null);
+            } catch(Exception ex) {
+                Log.i(LOGTAG, "Error destroying media manager", ex);
             }
         }
 
@@ -1130,6 +1197,10 @@ abstract public class BrowserApp extends GeckoApp
             // Do exactly the same thing as if you tapped 'Sync' in Settings.
             final Intent intent = new Intent(getContext(), FxAccountGetStartedActivity.class);
             intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            final NativeJSObject extras = message.optObject("extras", null);
+            if (extras != null) {
+                intent.putExtra("extras", extras.toString());
+            }
             getContext().startActivity(intent);
 
         } else if ("CharEncoding:Data".equals(event)) {
@@ -1659,8 +1730,7 @@ abstract public class BrowserApp extends GeckoApp
         // If the URL doesn't look like a search query, just load it.
         if (!StringUtils.isSearchQuery(url, true)) {
             Tabs.getInstance().loadUrl(url, Tabs.LOADURL_USER_ENTERED);
-
-            Telemetry.sendUIEvent(TelemetryContract.Event.LOAD_URL);
+            Telemetry.sendUIEvent(TelemetryContract.Event.LOAD_URL, TelemetryContract.Method.ACTIONBAR, "user");
             return;
         }
 
@@ -1686,7 +1756,7 @@ abstract public class BrowserApp extends GeckoApp
                 // using the default search engine.
                 if (TextUtils.isEmpty(keywordUrl)) {
                     Tabs.getInstance().loadUrl(url, Tabs.LOADURL_USER_ENTERED);
-                    Telemetry.sendUIEvent(TelemetryContract.Event.LOAD_URL);
+                    Telemetry.sendUIEvent(TelemetryContract.Event.LOAD_URL, TelemetryContract.Method.ACTIONBAR, "user");
                     return;
                 }
 
@@ -1696,7 +1766,7 @@ abstract public class BrowserApp extends GeckoApp
                 final String searchUrl = keywordUrl.replace("%s", URLEncoder.encode(keywordSearch));
                 Tabs.getInstance().loadUrl(searchUrl, Tabs.LOADURL_USER_ENTERED);
                 Telemetry.sendUIEvent(TelemetryContract.Event.LOAD_URL,
-                                      TelemetryContract.Method.NONE,
+                                      TelemetryContract.Method.ACTIONBAR,
                                       "keyword");
             }
         });
@@ -2639,13 +2709,13 @@ abstract public class BrowserApp extends GeckoApp
         String action = intent.getAction();
 
         final boolean isViewAction = Intent.ACTION_VIEW.equals(action);
-        final boolean isBookmarkAction = GeckoApp.ACTION_BOOKMARK.equals(action);
+        final boolean isBookmarkAction = GeckoApp.ACTION_HOMESCREEN_SHORTCUT.equals(action);
 
         if (mInitialized && (isViewAction || isBookmarkAction)) {
             // Dismiss editing mode if the user is loading a URL from an external app.
             mBrowserToolbar.cancelEdit();
 
-            // GeckoApp.ACTION_BOOKMARK means we're opening a bookmark that
+            // GeckoApp.ACTION_HOMESCREEN_SHORTCUT means we're opening a bookmark that
             // was added to Android's homescreen.
             final TelemetryContract.Method method =
                 (isViewAction ? TelemetryContract.Method.INTENT : TelemetryContract.Method.HOMESCREEN);
@@ -2742,7 +2812,7 @@ abstract public class BrowserApp extends GeckoApp
 
     // HomePager.OnNewTabsListener
     @Override
-    public void onNewTabs(String[] urls) {
+    public void onNewTabs(List<String> urls) {
         final EnumSet<OnUrlOpenListener.Flags> flags = EnumSet.of(OnUrlOpenListener.Flags.ALLOW_SWITCH_TO_TAB);
 
         for (String url : urls) {

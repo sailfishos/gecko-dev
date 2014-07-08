@@ -335,6 +335,23 @@ ICStub::trace(JSTracer *trc)
         MarkShape(trc, &propStub->holderShape(), "baseline-getpropnativeproto-stub-holdershape");
         break;
       }
+      case ICStub::GetProp_NativeDoesNotExist: {
+        ICGetProp_NativeDoesNotExist *propStub = toGetProp_NativeDoesNotExist();
+        JS_STATIC_ASSERT(ICGetProp_NativeDoesNotExist::MAX_PROTO_CHAIN_DEPTH == 8);
+        switch (propStub->protoChainDepth()) {
+          case 0: propStub->toImpl<0>()->traceShapes(trc); break;
+          case 1: propStub->toImpl<1>()->traceShapes(trc); break;
+          case 2: propStub->toImpl<2>()->traceShapes(trc); break;
+          case 3: propStub->toImpl<3>()->traceShapes(trc); break;
+          case 4: propStub->toImpl<4>()->traceShapes(trc); break;
+          case 5: propStub->toImpl<5>()->traceShapes(trc); break;
+          case 6: propStub->toImpl<6>()->traceShapes(trc); break;
+          case 7: propStub->toImpl<7>()->traceShapes(trc); break;
+          case 8: propStub->toImpl<8>()->traceShapes(trc); break;
+          default: MOZ_ASSUME_UNREACHABLE("Invalid proto stub.");
+        }
+        break;
+      }
       case ICStub::GetProp_CallDOMProxyNative:
       case ICStub::GetProp_CallDOMProxyWithGenerationNative: {
         ICGetPropCallDOMProxyNativeStub *propStub;
@@ -1341,6 +1358,9 @@ ICTypeMonitor_PrimitiveSet::Compiler::generateStubCode(MacroAssembler &masm)
     if (flags_ & TypeToFlag(JSVAL_TYPE_STRING))
         masm.branchTestString(Assembler::Equal, R0, &success);
 
+    if (flags_ & TypeToFlag(JSVAL_TYPE_SYMBOL))
+        masm.branchTestSymbol(Assembler::Equal, R0, &success);
+
     // Currently, we will never generate primitive stub checks for object.  However,
     // when we do get to the point where we want to collapse our monitor chains of
     // objects and singletons down (when they get too long) to a generic "any object"
@@ -1562,6 +1582,9 @@ ICTypeUpdate_PrimitiveSet::Compiler::generateStubCode(MacroAssembler &masm)
 
     if (flags_ & TypeToFlag(JSVAL_TYPE_STRING))
         masm.branchTestString(Assembler::Equal, R0, &success);
+
+    if (flags_ & TypeToFlag(JSVAL_TYPE_SYMBOL))
+        masm.branchTestSymbol(Assembler::Equal, R0, &success);
 
     // Currently, we will never generate primitive stub checks for object.  However,
     // when we do get to the point where we want to collapse our monitor chains of
@@ -1945,6 +1968,8 @@ DoCompareFallback(JSContext *cx, BaselineFrame *frame, ICCompare_Fallback *stub_
             return true;
         }
     }
+
+    stub->noteUnoptimizableAccess();
 
     return true;
 }
@@ -2886,7 +2911,7 @@ ICBinaryArith_Double::Compiler::generateStubCode(MacroAssembler &masm)
         masm.passABIArg(FloatReg0, MoveOp::DOUBLE);
         masm.passABIArg(FloatReg1, MoveOp::DOUBLE);
         masm.callWithABI(JS_FUNC_TO_DATA_PTR(void *, NumberMod), MoveOp::DOUBLE);
-        JS_ASSERT(ReturnFloatReg == FloatReg0);
+        JS_ASSERT(ReturnDoubleReg == FloatReg0);
         break;
       default:
         MOZ_ASSUME_UNREACHABLE("Unexpected op");
@@ -3331,6 +3356,35 @@ EffectlesslyLookupProperty(JSContext *cx, HandleObject obj, HandlePropertyName n
         if (shape)
             holder.set(checkObj);
     }
+    return true;
+}
+
+static bool
+CheckHasNoSuchProperty(JSContext *cx, HandleObject obj, HandlePropertyName name,
+                       MutableHandleObject lastProto, size_t *protoChainDepthOut)
+{
+    MOZ_ASSERT(protoChainDepthOut != nullptr);
+
+    size_t depth = 0;
+    RootedObject curObj(cx, obj);
+    while (curObj) {
+        if (!curObj->isNative())
+            return false;
+
+        Shape *shape = curObj->nativeLookup(cx, NameToId(name));
+        if (shape)
+            return false;
+
+        JSObject *proto = curObj->getTaggedProto().toObjectOrNull();
+        if (!proto)
+            break;
+
+        curObj = proto;
+        depth++;
+    }
+
+    lastProto.set(curObj);
+    *protoChainDepthOut = depth;
     return true;
 }
 
@@ -5497,8 +5551,8 @@ ICSetElem_TypedArray::Compiler::generateStubCode(MacroAssembler &masm)
         if (LIRGenerator::allowFloat32Optimizations() &&
             type_ == ScalarTypeDescr::TYPE_FLOAT32)
         {
-            masm.convertDoubleToFloat32(FloatReg0, ScratchFloatReg);
-            masm.storeToTypedFloatArray(type_, ScratchFloatReg, dest);
+            masm.convertDoubleToFloat32(FloatReg0, ScratchFloat32Reg);
+            masm.storeToTypedFloatArray(type_, ScratchFloat32Reg, dest);
         } else {
             masm.storeToTypedFloatArray(type_, FloatReg0, dest);
         }
@@ -6287,6 +6341,9 @@ TryAttachPrimitiveGetPropStub(JSContext *cx, HandleScript script, jsbytecode *pc
     if (val.isString()) {
         primitiveType = JSVAL_TYPE_STRING;
         proto = GlobalObject::getOrCreateStringPrototype(cx, global);
+    } else if (val.isSymbol()) {
+        primitiveType = JSVAL_TYPE_SYMBOL;
+        proto = GlobalObject::getOrCreateSymbolPrototype(cx, global);
     } else if (val.isNumber()) {
         primitiveType = JSVAL_TYPE_DOUBLE;
         proto = GlobalObject::getOrCreateNumberPrototype(cx, global);
@@ -6317,6 +6374,48 @@ TryAttachPrimitiveGetPropStub(JSContext *cx, HandleScript script, jsbytecode *pc
     IonSpew(IonSpew_BaselineIC, "  Generating GetProp_Primitive stub");
     ICGetProp_Primitive::Compiler compiler(cx, monitorStub, primitiveType, proto,
                                            isFixedSlot, offset);
+    ICStub *newStub = compiler.getStub(compiler.getStubSpace(script));
+    if (!newStub)
+        return false;
+
+    stub->addNewStub(newStub);
+    *attached = true;
+    return true;
+}
+
+static bool
+TryAttachNativeDoesNotExistStub(JSContext *cx, HandleScript script, jsbytecode *pc,
+                                ICGetProp_Fallback *stub, HandlePropertyName name,
+                                HandleValue val, bool *attached)
+{
+    MOZ_ASSERT(!*attached);
+
+    if (!val.isObject())
+        return true;
+
+    RootedObject obj(cx, &val.toObject());
+
+    // Don't attach stubs for CALLPROP since those need NoSuchMethod handling.
+    if (JSOp(*pc) == JSOP_CALLPROP)
+        return true;
+
+    // Check if does-not-exist can be confirmed on property.
+    RootedObject lastProto(cx);
+    size_t protoChainDepth = SIZE_MAX;
+    if (!CheckHasNoSuchProperty(cx, obj, name, &lastProto, &protoChainDepth))
+        return true;
+    MOZ_ASSERT(protoChainDepth < SIZE_MAX);
+
+    if (protoChainDepth > ICGetProp_NativeDoesNotExist::MAX_PROTO_CHAIN_DEPTH)
+        return true;
+
+    ICStub *monitorStub = stub->fallbackMonitorStub()->firstMonitorStub();
+    RootedShape objShape(cx, obj->lastProperty());
+    RootedShape lastShape(cx, lastProto->lastProperty());
+
+    // Confirmed no-such-property.  Add stub.
+    IonSpew(IonSpew_BaselineIC, "  Generating GetProp_NativeDoesNotExist stub");
+    ICGetPropNativeDoesNotExistCompiler compiler(cx, monitorStub, obj, protoChainDepth);
     ICStub *newStub = compiler.getStub(compiler.getStubSpace(script));
     if (!newStub)
         return false;
@@ -6409,6 +6508,14 @@ DoGetPropFallback(JSContext *cx, BaselineFrame *frame, ICGetProp_Fallback *stub_
 
     if (val.isString() || val.isNumber() || val.isBoolean()) {
         if (!TryAttachPrimitiveGetPropStub(cx, script, pc, stub, name, val, res, &attached))
+            return false;
+        if (attached)
+            return true;
+    }
+
+    if (res.isUndefined()) {
+        // Try attaching property-not-found optimized stub for undefined results.
+        if (!TryAttachNativeDoesNotExistStub(cx, script, pc, stub, name, val, &attached))
             return false;
         if (attached)
             return true;
@@ -6528,6 +6635,9 @@ ICGetProp_Primitive::Compiler::generateStubCode(MacroAssembler &masm)
     switch (primitiveType_) {
       case JSVAL_TYPE_STRING:
         masm.branchTestString(Assembler::NotEqual, R0, &failure);
+        break;
+      case JSVAL_TYPE_SYMBOL:
+        masm.branchTestSymbol(Assembler::NotEqual, R0, &failure);
         break;
       case JSVAL_TYPE_DOUBLE: // Also used for int32.
         masm.branchTestNumber(Assembler::NotEqual, R0, &failure);
@@ -6663,6 +6773,87 @@ ICGetPropNativeCompiler::generateStubCode(MacroAssembler &masm)
     EmitEnterTypeMonitorIC(masm);
 
     // Failure case - jump to next stub
+    masm.bind(&failure);
+    EmitStubGuardFailure(masm);
+    return true;
+}
+
+ICStub *
+ICGetPropNativeDoesNotExistCompiler::getStub(ICStubSpace *space)
+{
+    AutoShapeVector shapes(cx);
+    if (!shapes.append(obj_->lastProperty()))
+        return nullptr;
+
+    if (!GetProtoShapes(obj_, protoChainDepth_, &shapes))
+        return nullptr;
+
+    JS_STATIC_ASSERT(ICGetProp_NativeDoesNotExist::MAX_PROTO_CHAIN_DEPTH == 8);
+
+    ICStub *stub = nullptr;
+    switch(protoChainDepth_) {
+      case 0: stub = getStubSpecific<0>(space, &shapes); break;
+      case 1: stub = getStubSpecific<1>(space, &shapes); break;
+      case 2: stub = getStubSpecific<2>(space, &shapes); break;
+      case 3: stub = getStubSpecific<3>(space, &shapes); break;
+      case 4: stub = getStubSpecific<4>(space, &shapes); break;
+      case 5: stub = getStubSpecific<5>(space, &shapes); break;
+      case 6: stub = getStubSpecific<6>(space, &shapes); break;
+      case 7: stub = getStubSpecific<7>(space, &shapes); break;
+      case 8: stub = getStubSpecific<8>(space, &shapes); break;
+      default: MOZ_ASSUME_UNREACHABLE("ProtoChainDepth too high.");
+    }
+    if (!stub)
+        return nullptr;
+    return stub;
+}
+
+bool
+ICGetPropNativeDoesNotExistCompiler::generateStubCode(MacroAssembler &masm)
+{
+    Label failure;
+
+    GeneralRegisterSet regs(availableGeneralRegs(1));
+    Register scratch = regs.takeAny();
+
+#ifdef DEBUG
+    // Ensure that protoChainDepth_ matches the protoChainDepth stored on the stub.
+    {
+        Label ok;
+        masm.load16ZeroExtend(Address(BaselineStubReg, ICStub::offsetOfExtra()), scratch);
+        masm.branch32(Assembler::Equal, scratch, Imm32(protoChainDepth_), &ok);
+        masm.assumeUnreachable("Non-matching proto chain depth on stub.");
+        masm.bind(&ok);
+    }
+#endif // DEBUG
+
+    // Guard input is an object.
+    masm.branchTestObject(Assembler::NotEqual, R0, &failure);
+
+    // Unbox and guard against old shape.
+    Register objReg = masm.extractObject(R0, ExtractTemp0);
+    masm.loadPtr(Address(BaselineStubReg, ICGetProp_NativeDoesNotExist::offsetOfShape(0)),
+                 scratch);
+    masm.branchTestObjShape(Assembler::NotEqual, objReg, scratch, &failure);
+
+    Register protoReg = regs.takeAny();
+    // Check the proto chain.
+    for (size_t i = 0; i < protoChainDepth_; i++) {
+        masm.loadObjProto(i == 0 ? objReg : protoReg, protoReg);
+        masm.branchTestPtr(Assembler::Zero, protoReg, protoReg, &failure);
+        size_t shapeOffset = ICGetProp_NativeDoesNotExistImpl<0>::offsetOfShape(i + 1);
+        masm.loadPtr(Address(BaselineStubReg, shapeOffset), scratch);
+        masm.branchTestObjShape(Assembler::NotEqual, protoReg, scratch, &failure);
+    }
+
+    // Shape and type checks succeeded, ok to proceed.
+    masm.moveValue(UndefinedValue(), R0);
+
+    // Normally for this op, the result would have to be monitored by TI.
+    // However, since this stub ALWAYS returns UndefinedValue(), and we can be sure
+    // that undefined is already registered with the type-set, this can be avoided.
+    EmitReturnFromIC(masm);
+
     masm.bind(&failure);
     EmitStubGuardFailure(masm);
     return true;
@@ -9754,6 +9945,10 @@ ICTypeOf_Typed::Compiler::generateStubCode(MacroAssembler &masm)
         masm.branchTestBoolean(Assembler::NotEqual, R0, &failure);
         break;
 
+      case JSTYPE_SYMBOL:
+        masm.branchTestSymbol(Assembler::NotEqual, R0, &failure);
+        break;
+
       default:
         MOZ_ASSUME_UNREACHABLE("Unexpected type");
     }
@@ -10109,6 +10304,43 @@ ICGetProp_NativePrototype::Clone(JSContext *cx, ICStubSpace *space, ICStub *firs
                holder, holderShape);
 }
 
+ICGetProp_NativeDoesNotExist::ICGetProp_NativeDoesNotExist(
+        JitCode *stubCode, ICStub *firstMonitorStub, size_t protoChainDepth)
+  : ICMonitoredStub(GetProp_NativeDoesNotExist, stubCode, firstMonitorStub)
+{
+    MOZ_ASSERT(protoChainDepth <= MAX_PROTO_CHAIN_DEPTH);
+    extra_ = protoChainDepth;
+}
+
+/* static */ size_t
+ICGetProp_NativeDoesNotExist::offsetOfShape(size_t idx)
+{
+    MOZ_ASSERT(ICGetProp_NativeDoesNotExistImpl<0>::offsetOfShape(idx) ==
+               ICGetProp_NativeDoesNotExistImpl<
+                    ICGetProp_NativeDoesNotExist::MAX_PROTO_CHAIN_DEPTH>::offsetOfShape(idx));
+    return ICGetProp_NativeDoesNotExistImpl<0>::offsetOfShape(idx);
+}
+
+template <size_t ProtoChainDepth>
+ICGetProp_NativeDoesNotExistImpl<ProtoChainDepth>::ICGetProp_NativeDoesNotExistImpl(
+        JitCode *stubCode, ICStub *firstMonitorStub, const AutoShapeVector *shapes)
+  : ICGetProp_NativeDoesNotExist(stubCode, firstMonitorStub, ProtoChainDepth)
+{
+    MOZ_ASSERT(shapes->length() == NumShapes);
+    for (size_t i = 0; i < NumShapes; i++)
+        shapes_[i].init((*shapes)[i]);
+}
+
+ICGetPropNativeDoesNotExistCompiler::ICGetPropNativeDoesNotExistCompiler(
+        JSContext *cx, ICStub *firstMonitorStub, HandleObject obj, size_t protoChainDepth)
+  : ICStubCompiler(cx, ICStub::GetProp_NativeDoesNotExist),
+    firstMonitorStub_(firstMonitorStub),
+    obj_(cx, obj),
+    protoChainDepth_(protoChainDepth)
+{
+    MOZ_ASSERT(protoChainDepth_ <= ICGetProp_NativeDoesNotExist::MAX_PROTO_CHAIN_DEPTH);
+}
+
 ICGetPropCallGetter::ICGetPropCallGetter(Kind kind, JitCode *stubCode, ICStub *firstMonitorStub,
                                          HandleObject holder, HandleShape holderShape, HandleFunction getter,
                                          uint32_t pcOffset)
@@ -10345,7 +10577,7 @@ ICCall_ScriptedFunCall::Clone(JSContext *, ICStubSpace *space, ICStub *firstMoni
 ICGetPropCallDOMProxyNativeStub::ICGetPropCallDOMProxyNativeStub(Kind kind, JitCode *stubCode,
                                                                  ICStub *firstMonitorStub,
                                                                  HandleShape shape,
-                                                                 BaseProxyHandler *proxyHandler,
+                                                                 const BaseProxyHandler *proxyHandler,
                                                                  HandleShape expandoShape,
                                                                  HandleObject holder,
                                                                  HandleShape holderShape,
@@ -10411,7 +10643,7 @@ ICGetProp_CallDOMProxyWithGenerationNative::Clone(JSContext *cx, ICStubSpace *sp
 ICGetProp_DOMProxyShadowed::ICGetProp_DOMProxyShadowed(JitCode *stubCode,
                                                        ICStub *firstMonitorStub,
                                                        HandleShape shape,
-                                                       BaseProxyHandler *proxyHandler,
+                                                       const BaseProxyHandler *proxyHandler,
                                                        HandlePropertyName name,
                                                        uint32_t pcOffset)
   : ICMonitoredStub(ICStub::GetProp_DOMProxyShadowed, stubCode, firstMonitorStub),

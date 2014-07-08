@@ -126,16 +126,16 @@ gfxUserFontSet::AddFontFace(const nsAString& aFamilyName,
                             int32_t aStretch,
                             uint32_t aItalicStyle,
                             const nsTArray<gfxFontFeature>& aFeatureSettings,
-                            const nsString& aLanguageOverride,
+                            uint32_t aLanguageOverride,
                             gfxSparseBitSet *aUnicodeRanges)
 {
+    MOZ_ASSERT(aWeight != 0,
+               "aWeight must not be 0; use NS_FONT_WEIGHT_NORMAL instead");
+
     nsAutoString key(aFamilyName);
     ToLowerCase(key);
 
     bool found;
-
-    if (aWeight == 0)
-        aWeight = NS_FONT_WEIGHT_NORMAL;
 
     // stretch, italic/oblique ==> zero implies normal
 
@@ -144,9 +144,6 @@ gfxUserFontSet::AddFontFace(const nsAString& aFamilyName,
         family = new gfxMixedFontFamily(aFamilyName);
         mFontFamilies.Put(key, family);
     }
-
-    uint32_t languageOverride =
-        gfxFontStyle::ParseFontLanguageOverride(aLanguageOverride);
 
     // If there's already a proxy in the family whose descriptors all match,
     // we can just move it to the end of the list instead of adding a new
@@ -164,7 +161,7 @@ gfxUserFontSet::AddFontFace(const nsAString& aFamilyName,
             static_cast<gfxProxyFontEntry*>(fontList[i].get());
         if (!existingProxyEntry->Matches(aFontFaceSrcList,
                                          aWeight, aStretch, aItalicStyle,
-                                         aFeatureSettings, languageOverride,
+                                         aFeatureSettings, aLanguageOverride,
                                          aUnicodeRanges)) {
             continue;
         }
@@ -181,7 +178,7 @@ gfxUserFontSet::AddFontFace(const nsAString& aFamilyName,
         new gfxProxyFontEntry(aFontFaceSrcList, aWeight, aStretch,
                               aItalicStyle,
                               aFeatureSettings,
-                              languageOverride,
+                              aLanguageOverride,
                               aUnicodeRanges);
     family->AddFontEntry(proxyEntry);
 #ifdef PR_LOGGING
@@ -832,6 +829,14 @@ nsTHashtable<gfxUserFontSet::UserFontCache::Entry>*
 NS_IMPL_ISUPPORTS(gfxUserFontSet::UserFontCache::Flusher, nsIObserver)
 
 PLDHashOperator
+gfxUserFontSet::UserFontCache::Entry::RemoveUnlessPersistent(Entry* aEntry,
+                                                             void* aUserData)
+{
+    return aEntry->mPersistence == kPersistent ? PL_DHASH_NEXT :
+                                                 PL_DHASH_REMOVE;
+}
+
+PLDHashOperator
 gfxUserFontSet::UserFontCache::Entry::RemoveIfPrivate(Entry* aEntry,
                                                       void* aUserData)
 {
@@ -864,7 +869,7 @@ gfxUserFontSet::UserFontCache::Flusher::Observe(nsISupports* aSubject,
     }
 
     if (!strcmp(aTopic, "cacheservice:empty-cache")) {
-        sUserFonts->Clear();
+        sUserFonts->EnumerateEntries(Entry::RemoveUnlessPersistent, nullptr);
     } else if (!strcmp(aTopic, "last-pb-context-exited")) {
         sUserFonts->EnumerateEntries(Entry::RemoveIfPrivate, nullptr);
     } else if (!strcmp(aTopic, "xpcom-shutdown")) {
@@ -876,16 +881,32 @@ gfxUserFontSet::UserFontCache::Flusher::Observe(nsISupports* aSubject,
     return NS_OK;
 }
 
+static bool
+IgnorePrincipal(nsIURI *aURI)
+{
+    nsresult rv;
+    bool inherits = false;
+    rv = NS_URIChainHasFlags(aURI,
+                             nsIProtocolHandler::URI_INHERITS_SECURITY_CONTEXT,
+                             &inherits);
+    return NS_SUCCEEDED(rv) && inherits;
+}
+
 bool
 gfxUserFontSet::UserFontCache::Entry::KeyEquals(const KeyTypePointer aKey) const
 {
-    bool equal;
-    if (NS_FAILED(mURI->Equals(aKey->mURI, &equal)) || !equal) {
+    bool result;
+    if (NS_FAILED(mURI->Equals(aKey->mURI, &result)) || !result) {
         return false;
     }
 
-    if (NS_FAILED(mPrincipal->Equals(aKey->mPrincipal, &equal)) || !equal) {
-        return false;
+    // For data: URIs, we don't care about the principal; otherwise, check it.
+    if (!IgnorePrincipal(mURI)) {
+        NS_ASSERTION(mPrincipal && aKey->mPrincipal,
+                     "only data: URIs are allowed to omit the principal");
+        if (NS_FAILED(mPrincipal->Equals(aKey->mPrincipal, &result)) || !result) {
+            return false;
+        }
     }
 
     if (mPrivate != aKey->mPrivate) {
@@ -906,7 +927,8 @@ gfxUserFontSet::UserFontCache::Entry::KeyEquals(const KeyTypePointer aKey) const
 }
 
 void
-gfxUserFontSet::UserFontCache::CacheFont(gfxFontEntry *aFontEntry)
+gfxUserFontSet::UserFontCache::CacheFont(gfxFontEntry *aFontEntry,
+                                         EntryPersistence aPersistence)
 {
     NS_ASSERTION(aFontEntry->mFamilyName.Length() != 0,
                  "caching a font associated with no family yet");
@@ -925,8 +947,17 @@ gfxUserFontSet::UserFontCache::CacheFont(gfxFontEntry *aFontEntry)
     }
 
     gfxUserFontData *data = aFontEntry->mUserFontData;
-    sUserFonts->PutEntry(Key(data->mURI, data->mPrincipal, aFontEntry,
-                             data->mPrivate));
+    // For data: URIs, the principal is ignored; anyone who has the same
+    // data: URI is able to load it and get an equivalent font.
+    // Otherwise, the principal is used as part of the cache key.
+    nsIPrincipal *principal;
+    if (IgnorePrincipal(data->mURI)) {
+        principal = nullptr;
+    } else {
+        principal = data->mPrincipal;
+    }
+    sUserFonts->PutEntry(Key(data->mURI, principal, aFontEntry,
+                             data->mPrivate, aPersistence));
 
 #ifdef DEBUG_USERFONT_CACHE
     printf("userfontcache added fontentry: %p\n", aFontEntry);
@@ -965,7 +996,15 @@ gfxUserFontSet::UserFontCache::GetFont(nsIURI            *aSrcURI,
         return nullptr;
     }
 
-    Entry* entry = sUserFonts->GetEntry(Key(aSrcURI, aPrincipal, aProxy,
+    // Ignore principal when looking up a data: URI.
+    nsIPrincipal *principal;
+    if (IgnorePrincipal(aSrcURI)) {
+        principal = nullptr;
+    } else {
+        principal = aPrincipal;
+    }
+
+    Entry* entry = sUserFonts->GetEntry(Key(aSrcURI, principal, aProxy,
                                             aPrivate));
     if (entry) {
         return entry->GetFontEntry();
@@ -990,20 +1029,21 @@ gfxUserFontSet::UserFontCache::Entry::DumpEntry(Entry* aEntry, void* aUserData)
 {
     nsresult rv;
 
-    nsAutoCString principalURISpec;
-
-    nsCOMPtr<nsIURI> principalURI;
-    rv = aEntry->mPrincipal->GetURI(getter_AddRefs(principalURI));
-    if (NS_SUCCEEDED(rv)) {
-        principalURI->GetSpec(principalURISpec);
-    }
-
+    nsAutoCString principalURISpec("(null)");
     bool setDomain = false;
-    nsCOMPtr<nsIURI> domainURI;
 
-    aEntry->mPrincipal->GetDomain(getter_AddRefs(domainURI));
-    if (domainURI) {
-        setDomain = true;
+    if (aEntry->mPrincipal) {
+        nsCOMPtr<nsIURI> principalURI;
+        rv = aEntry->mPrincipal->GetURI(getter_AddRefs(principalURI));
+        if (NS_SUCCEEDED(rv)) {
+            principalURI->GetSpec(principalURISpec);
+        }
+
+        nsCOMPtr<nsIURI> domainURI;
+        aEntry->mPrincipal->GetDomain(getter_AddRefs(domainURI));
+        if (domainURI) {
+            setDomain = true;
+        }
     }
 
     NS_ASSERTION(aEntry->mURI, "null URI in userfont cache entry");

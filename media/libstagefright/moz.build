@@ -46,6 +46,7 @@ if CONFIG['OS_TARGET'] != 'Android':
     ]
 
 EXPORTS.mp4_demuxer += [
+    'binding/include/mp4_demuxer/AnnexB.h',
     'binding/include/mp4_demuxer/DecoderData.h',
     'binding/include/mp4_demuxer/mp4_demuxer.h',
 ]
@@ -125,4 +126,7 @@ elif CONFIG['GNU_CXX']:
         '-Wno-unused',
     ]
     if CONFIG['CLANG_CXX']:
-        CXXFLAGS += ['-Wno-tautological-constant-out-of-range-compare']
+        CXXFLAGS += [
+            '-Wno-mismatched-tags',
+            '-Wno-tautological-constant-out-of-range-compare',
+        ]

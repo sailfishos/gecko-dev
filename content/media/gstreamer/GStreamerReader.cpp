@@ -472,8 +472,6 @@ nsresult GStreamerReader::ReadMetadata(MediaInfo* aInfo,
       LOG(PR_LOG_DEBUG, "have duration %" GST_TIME_FORMAT, GST_TIME_ARGS(duration));
       duration = GST_TIME_AS_USECONDS (duration);
       mDecoder->SetMediaDuration(duration);
-    } else {
-      mDecoder->SetMediaSeekable(false);
     }
   }
 
@@ -500,6 +498,28 @@ nsresult GStreamerReader::ReadMetadata(MediaInfo* aInfo,
   }
 
   return NS_OK;
+}
+
+bool
+GStreamerReader::IsMediaSeekable()
+{
+  if (mUseParserDuration) {
+    return true;
+  }
+
+  gint64 duration;
+#if GST_VERSION_MAJOR >= 1
+  if (gst_element_query_duration(GST_ELEMENT(mPlayBin), GST_FORMAT_TIME,
+                                 &duration)) {
+#else
+  GstFormat format = GST_FORMAT_TIME;
+  if (gst_element_query_duration(GST_ELEMENT(mPlayBin), &format, &duration) &&
+      format == GST_FORMAT_TIME) {
+#endif
+    return true;
+  }
+
+  return false;
 }
 
 nsresult GStreamerReader::CheckSupportedFormats()

@@ -33,12 +33,33 @@
 namespace mozilla { namespace pkix {
 
 Result
-CheckTimes(const CERTCertificate* cert, PRTime time)
+CheckTimes(const CERTValidity& validity, PRTime time)
 {
-  PR_ASSERT(cert);
+  der::Input notBeforeInput;
+  if (notBeforeInput.Init(validity.notBefore.data, validity.notBefore.len)
+        != der::Success) {
+    return Fail(RecoverableError, SEC_ERROR_EXPIRED_CERTIFICATE);
+  }
+  PRTime notBefore;
+  if (der::TimeChoice(validity.notBefore.type, notBeforeInput, notBefore)
+        != der::Success) {
+    return Fail(RecoverableError, SEC_ERROR_EXPIRED_CERTIFICATE);
+  }
+  if (time < notBefore) {
+    return Fail(RecoverableError, SEC_ERROR_EXPIRED_CERTIFICATE);
+  }
 
-  SECCertTimeValidity validity = CERT_CheckCertValidTimes(cert, time, false);
-  if (validity != secCertTimeValid) {
+  der::Input notAfterInput;
+  if (notAfterInput.Init(validity.notAfter.data, validity.notAfter.len)
+        != der::Success) {
+    return Fail(RecoverableError, SEC_ERROR_EXPIRED_CERTIFICATE);
+  }
+  PRTime notAfter;
+  if (der::TimeChoice(validity.notAfter.type, notAfterInput, notAfter)
+        != der::Success) {
+    return Fail(RecoverableError, SEC_ERROR_EXPIRED_CERTIFICATE);
+  }
+  if (time > notAfter) {
     return Fail(RecoverableError, SEC_ERROR_EXPIRED_CERTIFICATE);
   }
 
@@ -312,7 +333,7 @@ DecodeBasicConstraints(der::Input& input, /*out*/ bool& isCA,
 Result
 CheckBasicConstraints(EndEntityOrCA endEntityOrCA,
                       const SECItem* encodedBasicConstraints,
-                      const der::Version version, TrustLevel trustLevel,
+                      der::Version version, TrustLevel trustLevel,
                       unsigned int subCACount)
 {
   bool isCA = false;
@@ -383,56 +404,49 @@ CheckBasicConstraints(EndEntityOrCA endEntityOrCA,
   return Success;
 }
 
-Result
-BackCert::GetConstrainedNames(/*out*/ const CERTGeneralName** result)
-{
-  if (!constrainedNames) {
-    if (!GetArena()) {
-      return FatalError;
-    }
-
-    constrainedNames =
-      CERT_GetConstrainedCertificateNames(GetNSSCert(), arena.get(),
-                                          includeCN == IncludeCN::Yes);
-    if (!constrainedNames) {
-      return MapSECStatus(SECFailure);
-    }
-  }
-
-  *result = constrainedNames;
-  return Success;
-}
-
 // 4.2.1.10. Name Constraints
 Result
-CheckNameConstraints(BackCert& cert)
+CheckNameConstraints(const BackCert& cert)
 {
   if (!cert.encodedNameConstraints) {
     return Success;
   }
 
-  PLArenaPool* arena = cert.GetArena();
+  ScopedPLArenaPool arena(PORT_NewArena(DER_DEFAULT_CHUNKSIZE));
   if (!arena) {
-    return FatalError;
+    return MapSECStatus(SECFailure);
   }
 
   // Owned by arena
   const CERTNameConstraints* constraints =
-    CERT_DecodeNameConstraintsExtension(arena, cert.encodedNameConstraints);
+    CERT_DecodeNameConstraintsExtension(arena.get(), cert.encodedNameConstraints);
   if (!constraints) {
     return MapSECStatus(SECFailure);
   }
 
-  for (BackCert* prev = cert.childCert; prev; prev = prev->childCert) {
-    const CERTGeneralName* names = nullptr;
-    Result rv = prev->GetConstrainedNames(&names);
-    if (rv != Success) {
-      return rv;
+  for (const BackCert* child = cert.childCert; child;
+       child = child->childCert) {
+    ScopedCERTCertificate
+      nssCert(CERT_NewTempCertificate(CERT_GetDefaultCertDB(),
+                                      const_cast<SECItem*>(&child->GetDER()),
+                                      nullptr, false, true));
+    if (!nssCert) {
+      return MapSECStatus(SECFailure);
     }
-    PORT_Assert(names);
+
+    bool includeCN = child->includeCN == BackCert::IncludeCN::Yes;
+    // owned by arena
+    const CERTGeneralName*
+      names(CERT_GetConstrainedCertificateNames(nssCert.get(), arena.get(),
+                                                includeCN));
+    if (!names) {
+      return MapSECStatus(SECFailure);
+    }
+
     CERTGeneralName* currentName = const_cast<CERTGeneralName*>(names);
     do {
-      if (CERT_CheckNameSpace(arena, constraints, currentName) != SECSuccess) {
+      if (CERT_CheckNameSpace(arena.get(), constraints, currentName)
+            != SECSuccess) {
         // XXX: It seems like CERT_CheckNameSpace doesn't always call
         // PR_SetError when it fails. We set the error code here, though this
         // may be papering over some fatal errors. NSS's
@@ -635,14 +649,6 @@ CheckIssuerIndependentProperties(TrustDomain& trustDomain,
     *trustLevelOut = trustLevel;
   }
 
-  // XXX: Good enough for now. There could be an illegal explicit version
-  // number or one we don't support, but we can safely treat those all as v3
-  // for now since processing of v3 certificates is strictly more strict than
-  // processing of v1 certificates.
-  der::Version version = (!cert.GetNSSCert()->version.data &&
-                          !cert.GetNSSCert()->version.len) ? der::Version::v1
-                                                           : der::Version::v3;
-
   // 4.2.1.1. Authority Key Identifier is ignored (see bug 965136).
 
   // 4.2.1.2. Subject Key Identifier is ignored (see bug 965136).
@@ -675,7 +681,7 @@ CheckIssuerIndependentProperties(TrustDomain& trustDomain,
 
   // 4.2.1.9. Basic Constraints.
   rv = CheckBasicConstraints(endEntityOrCA, cert.encodedBasicConstraints,
-                             version, trustLevel, subCACount);
+                             cert.version, trustLevel, subCACount);
   if (rv != Success) {
     return rv;
   }
@@ -701,7 +707,7 @@ CheckIssuerIndependentProperties(TrustDomain& trustDomain,
 
   // IMPORTANT: This check must come after the other checks in order for error
   // ranking to work correctly.
-  rv = CheckTimes(cert.GetNSSCert(), time);
+  rv = CheckTimes(cert.GetNSSCert()->validity, time);
   if (rv != Success) {
     return rv;
   }

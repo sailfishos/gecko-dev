@@ -39,6 +39,9 @@ XPCOMUtils.defineLazyModuleGetter(this, "UserAgentOverrides",
 XPCOMUtils.defineLazyModuleGetter(this, "LoginManagerContent",
                                   "resource://gre/modules/LoginManagerContent.jsm");
 
+XPCOMUtils.defineLazyModuleGetter(this, "LoginManagerParent",
+                                  "resource://gre/modules/LoginManagerParent.jsm");
+
 XPCOMUtils.defineLazyModuleGetter(this, "Task", "resource://gre/modules/Task.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "OS", "resource://gre/modules/osfile.jsm");
 
@@ -5394,6 +5397,8 @@ var FormAssistant = {
     BrowserApp.deck.addEventListener("click", this, true);
     BrowserApp.deck.addEventListener("input", this, false);
     BrowserApp.deck.addEventListener("pageshow", this, false);
+
+    LoginManagerParent.init();
   },
 
   uninit: function() {
@@ -6820,6 +6825,7 @@ var SearchEngines = {
       icon: "drawable://ab_add_search_engine",
       selector: filter,
       action: function(aElement) {
+        UITelemetry.addEvent("action.1", "actionbar", null, "add_search_engine");
         SearchEngines.addEngine(aElement);
       }
     });
@@ -7036,7 +7042,7 @@ var SearchEngines = {
     let mDBConn = Services.storage.openDatabase(dbFile);
     let stmts = [];
     stmts[0] = mDBConn.createStatement("SELECT favicon FROM history_with_favicons WHERE url = ?");
-    stmts[0].bindStringParameter(0, docURI.spec);
+    stmts[0].bindByIndex(0, docURI.spec);
     let favicon = null;
     Services.search.init(function addEngine_cb(rv) {
       if (!Components.isSuccessCode(rv)) {

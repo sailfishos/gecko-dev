@@ -1870,7 +1870,7 @@ GetPropertyParIC::update(ForkJoinContext *cx, size_t cacheIndex,
         if (cache.canAttachStub()) {
             bool alreadyStubbed;
             if (!cache.hasOrAddStubbedShape(ncx, obj->lastProperty(), &alreadyStubbed))
-                return cx->setPendingAbortFatal(ParallelBailoutFailedIC);
+                return cx->setPendingAbortFatal(ParallelBailoutOutOfMemory);
             if (alreadyStubbed)
                 return true;
 
@@ -1887,13 +1887,13 @@ GetPropertyParIC::update(ForkJoinContext *cx, size_t cacheIndex,
 
                 if (canCache == GetPropertyIC::CanAttachReadSlot) {
                     if (!cache.attachReadSlot(ncx, ion, obj, holder, shape))
-                        return cx->setPendingAbortFatal(ParallelBailoutFailedIC);
+                        return cx->setPendingAbortFatal(ParallelBailoutOutOfMemory);
                     attachedStub = true;
                 }
 
                 if (!attachedStub && canCache == GetPropertyIC::CanAttachArrayLength) {
                     if (!cache.attachArrayLength(ncx, ion, obj))
-                        return cx->setPendingAbortFatal(ParallelBailoutFailedIC);
+                        return cx->setPendingAbortFatal(ParallelBailoutOutOfMemory);
                     attachedStub = true;
                 }
             }
@@ -1903,7 +1903,7 @@ GetPropertyParIC::update(ForkJoinContext *cx, size_t cacheIndex,
                 (cache.output().type() == MIRType_Value || cache.output().type() == MIRType_Int32))
             {
                 if (!cache.attachTypedArrayLength(ncx, ion, obj))
-                    return cx->setPendingAbortFatal(ParallelBailoutFailedIC);
+                    return cx->setPendingAbortFatal(ParallelBailoutOutOfMemory);
                 attachedStub = true;
             }
         }
@@ -2869,7 +2869,7 @@ SetPropertyParIC::update(ForkJoinContext *cx, size_t cacheIndex, HandleObject ob
         if (cache.canAttachStub()) {
             bool alreadyStubbed;
             if (!cache.hasOrAddStubbedShape(ncx, obj->lastProperty(), &alreadyStubbed))
-                return cx->setPendingAbortFatal(ParallelBailoutFailedIC);
+                return cx->setPendingAbortFatal(ParallelBailoutOutOfMemory);
             if (alreadyStubbed) {
                 return baseops::SetPropertyHelper<ParallelExecution>(
                     cx, obj, obj, id, baseops::Qualified, &v, cache.strict());
@@ -2889,7 +2889,7 @@ SetPropertyParIC::update(ForkJoinContext *cx, size_t cacheIndex, HandleObject ob
 
                 if (canCache == SetPropertyIC::CanAttachSetSlot) {
                     if (!cache.attachSetSlot(ncx, ion, obj, shape, checkTypeset))
-                        return cx->setPendingAbortFatal(ParallelBailoutFailedIC);
+                        return cx->setPendingAbortFatal(ParallelBailoutOutOfMemory);
                     attachedStub = true;
                 }
             }
@@ -2912,7 +2912,7 @@ SetPropertyParIC::update(ForkJoinContext *cx, size_t cacheIndex, HandleObject ob
     {
         LockedJSContext ncx(cx);
         if (cache.canAttachStub() && !cache.attachAddSlot(ncx, ion, obj, oldShape, checkTypeset))
-            return cx->setPendingAbortFatal(ParallelBailoutFailedIC);
+            return cx->setPendingAbortFatal(ParallelBailoutOutOfMemory);
     }
 
     return true;
@@ -3367,6 +3367,7 @@ GetElementIC::attachArgumentsElement(JSContext *cx, HandleScript outerScript, Io
         JS_ASSERT(index().reg().type() == MIRType_Boolean ||
                   index().reg().type() == MIRType_Int32 ||
                   index().reg().type() == MIRType_String ||
+                  index().reg().type() == MIRType_Symbol ||
                   index().reg().type() == MIRType_Object);
         masm.branchTestMIRType(Assembler::NotEqual, elemIdx, index().reg().type(),
                                &failureRestoreIndex);
@@ -3572,12 +3573,12 @@ StoreDenseElement(MacroAssembler &masm, ConstantOrRegister value, Register eleme
     masm.bind(&convert);
     if (reg.hasValue()) {
         masm.branchTestInt32(Assembler::NotEqual, reg.valueReg(), &storeValue);
-        masm.int32ValueToDouble(reg.valueReg(), ScratchFloatReg);
-        masm.storeDouble(ScratchFloatReg, target);
+        masm.int32ValueToDouble(reg.valueReg(), ScratchDoubleReg);
+        masm.storeDouble(ScratchDoubleReg, target);
     } else {
         JS_ASSERT(reg.type() == MIRType_Int32);
-        masm.convertInt32ToDouble(reg.typedReg().gpr(), ScratchFloatReg);
-        masm.storeDouble(ScratchFloatReg, target);
+        masm.convertInt32ToDouble(reg.typedReg().gpr(), ScratchDoubleReg);
+        masm.storeDouble(ScratchDoubleReg, target);
     }
 
     masm.bind(&done);
@@ -3701,7 +3702,8 @@ static bool
 GenerateSetTypedArrayElement(JSContext *cx, MacroAssembler &masm, IonCache::StubAttacher &attacher,
                              HandleTypedArrayObject tarr, Register object,
                              ValueOperand indexVal, ConstantOrRegister value,
-                             Register tempUnbox, Register temp, FloatRegister tempFloat)
+                             Register tempUnbox, Register temp, FloatRegister tempDouble,
+                             FloatRegister tempFloat32)
 {
     Label failures, done, popObjectAndFail;
 
@@ -3730,18 +3732,22 @@ GenerateSetTypedArrayElement(JSContext *cx, MacroAssembler &masm, IonCache::Stub
     BaseIndex target(elements, index, ScaleFromElemWidth(width));
 
     if (arrayType == ScalarTypeDescr::TYPE_FLOAT32) {
+        FloatRegister ftemp;
         if (LIRGenerator::allowFloat32Optimizations()) {
-            if (!masm.convertConstantOrRegisterToFloat(cx, value, tempFloat, &failures))
+            JS_ASSERT(tempFloat32 != InvalidFloatReg);
+            if (!masm.convertConstantOrRegisterToFloat(cx, value, tempFloat32, &failures))
                 return false;
+            ftemp = tempFloat32;
         } else {
-            if (!masm.convertConstantOrRegisterToDouble(cx, value, tempFloat, &failures))
+            if (!masm.convertConstantOrRegisterToDouble(cx, value, tempDouble, &failures))
                 return false;
+            ftemp = tempDouble;
         }
-        masm.storeToTypedFloatArray(arrayType, tempFloat, target);
+        masm.storeToTypedFloatArray(arrayType, ftemp, target);
     } else if (arrayType == ScalarTypeDescr::TYPE_FLOAT64) {
-        if (!masm.convertConstantOrRegisterToDouble(cx, value, tempFloat, &failures))
+        if (!masm.convertConstantOrRegisterToDouble(cx, value, tempDouble, &failures))
             return false;
-        masm.storeToTypedFloatArray(arrayType, tempFloat, target);
+        masm.storeToTypedFloatArray(arrayType, tempDouble, target);
     } else {
         // On x86 we only have 6 registers available to use, so reuse the object
         // register to compute the intermediate value to store and restore it
@@ -3749,13 +3755,13 @@ GenerateSetTypedArrayElement(JSContext *cx, MacroAssembler &masm, IonCache::Stub
         masm.push(object);
 
         if (arrayType == ScalarTypeDescr::TYPE_UINT8_CLAMPED) {
-            if (!masm.clampConstantOrRegisterToUint8(cx, value, tempFloat, object,
+            if (!masm.clampConstantOrRegisterToUint8(cx, value, tempDouble, object,
                                                      &popObjectAndFail))
             {
                 return false;
             }
         } else {
-            if (!masm.truncateConstantOrRegisterToInt32(cx, value, tempFloat, object,
+            if (!masm.truncateConstantOrRegisterToInt32(cx, value, tempDouble, object,
                                                         &popObjectAndFail))
             {
                 return false;
@@ -3788,7 +3794,7 @@ SetElementIC::attachTypedArrayElement(JSContext *cx, HandleScript outerScript, I
     RepatchStubAppender attacher(*this);
     if (!GenerateSetTypedArrayElement(cx, masm, attacher, tarr,
                                       object(), index(), value(),
-                                      tempToUnboxIndex(), temp(), tempFloat()))
+                                      tempToUnboxIndex(), temp(), tempDouble(), tempFloat32()))
     {
         return false;
     }
@@ -3859,7 +3865,7 @@ SetElementParIC::attachTypedArrayElement(LockedJSContext &cx, IonScript *ion,
     DispatchStubPrepender attacher(*this);
     if (!GenerateSetTypedArrayElement(cx, masm, attacher, tarr,
                                       object(), index(), value(),
-                                      tempToUnboxIndex(), temp(), tempFloat()))
+                                      tempToUnboxIndex(), temp(), tempDouble(), tempFloat32()))
     {
         return false;
     }
@@ -3884,20 +3890,20 @@ SetElementParIC::update(ForkJoinContext *cx, size_t cacheIndex, HandleObject obj
         if (cache.canAttachStub()) {
             bool alreadyStubbed;
             if (!cache.hasOrAddStubbedShape(ncx, obj->lastProperty(), &alreadyStubbed))
-                return cx->setPendingAbortFatal(ParallelBailoutFailedIC);
+                return cx->setPendingAbortFatal(ParallelBailoutOutOfMemory);
             if (alreadyStubbed)
                 return SetElementPar(cx, obj, idval, value, cache.strict());
 
             bool attachedStub = false;
             if (IsDenseElementSetInlineable(obj, idval)) {
                 if (!cache.attachDenseElement(ncx, ion, obj, idval))
-                    return cx->setPendingAbortFatal(ParallelBailoutFailedIC);
+                    return cx->setPendingAbortFatal(ParallelBailoutOutOfMemory);
                 attachedStub = true;
             }
             if (!attachedStub && IsTypedArrayElementSetInlineable(obj, idval, value)) {
                 RootedTypedArrayObject tarr(cx, &obj->as<TypedArrayObject>());
                 if (!cache.attachTypedArrayElement(ncx, ion, tarr))
-                    return cx->setPendingAbortFatal(ParallelBailoutFailedIC);
+                    return cx->setPendingAbortFatal(ParallelBailoutOutOfMemory);
             }
         }
     }
@@ -3970,7 +3976,7 @@ GetElementParIC::update(ForkJoinContext *cx, size_t cacheIndex, HandleObject obj
         if (cache.canAttachStub()) {
             bool alreadyStubbed;
             if (!cache.hasOrAddStubbedShape(ncx, obj->lastProperty(), &alreadyStubbed))
-                return cx->setPendingAbortFatal(ParallelBailoutFailedIC);
+                return cx->setPendingAbortFatal(ParallelBailoutOutOfMemory);
             if (alreadyStubbed)
                 return true;
 
@@ -3992,7 +3998,7 @@ GetElementParIC::update(ForkJoinContext *cx, size_t cacheIndex, HandleObject obj
                 if (canCache == GetPropertyIC::CanAttachReadSlot)
                 {
                     if (!cache.attachReadSlot(ncx, ion, obj, idval, name, holder, shape))
-                        return cx->setPendingAbortFatal(ParallelBailoutFailedIC);
+                        return cx->setPendingAbortFatal(ParallelBailoutOutOfMemory);
                     attachedStub = true;
                 }
             }
@@ -4000,7 +4006,7 @@ GetElementParIC::update(ForkJoinContext *cx, size_t cacheIndex, HandleObject obj
                 GetElementIC::canAttachDenseElement(obj, idval))
             {
                 if (!cache.attachDenseElement(ncx, ion, obj, idval))
-                    return cx->setPendingAbortFatal(ParallelBailoutFailedIC);
+                    return cx->setPendingAbortFatal(ParallelBailoutOutOfMemory);
                 attachedStub = true;
             }
             if (!attachedStub &&
@@ -4008,7 +4014,7 @@ GetElementParIC::update(ForkJoinContext *cx, size_t cacheIndex, HandleObject obj
             {
                 RootedTypedArrayObject tarr(cx, &obj->as<TypedArrayObject>());
                 if (!cache.attachTypedArrayElement(ncx, ion, tarr, idval))
-                    return cx->setPendingAbortFatal(ParallelBailoutFailedIC);
+                    return cx->setPendingAbortFatal(ParallelBailoutOutOfMemory);
                 attachedStub = true;
             }
         }

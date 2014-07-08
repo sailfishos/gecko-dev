@@ -1,4 +1,4 @@
-/* -*- Mode: Javascript; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
 /* vim: set ts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -815,42 +815,6 @@ CssLogic.shortSource = function CssLogic_shortSource(aSheet)
 }
 
 /**
- * Extract the background image URL (if any) from a property value.
- * Used, for example, for the preview tooltip in the rule view and
- * computed view.
- *
- * @param {String} aProperty
- * @param {String} aSheetHref
- * @return {string} a image URL
- */
-CssLogic.getBackgroundImageUriFromProperty = function(aProperty, aSheetHref) {
-  let startToken = "url(", start = aProperty.indexOf(startToken), end;
-  if (start === -1) {
-    return null;
-  }
-
-  aProperty = aProperty.substring(start + startToken.length).trim();
-  let quote = aProperty.substring(0, 1);
-  if (quote === "'" || quote === '"') {
-    end = aProperty.search(new RegExp(quote + "\\s*\\)"));
-    start = 1;
-  } else {
-    end = aProperty.indexOf(")");
-    start = 0;
-  }
-
-  let uri = aProperty.substring(start, end).trim();
-  if (aSheetHref) {
-    let IOService = Cc["@mozilla.org/network/io-service;1"]
-      .getService(Ci.nsIIOService);
-    let sheetUri = IOService.newURI(aSheetHref, null, null);
-    uri = sheetUri.resolve(uri);
-  }
-
-  return uri;
-}
-
-/**
  * Find the position of [element] in [nodeList].
  * @returns an index of the match, or -1 if there is no match
  */
@@ -937,7 +901,7 @@ const TAB_CHARS = "\t";
  * @param string text The CSS source to prettify.
  * @return string Prettified CSS source
  */
-CssLogic.prettifyCSS = function(text) {
+CssLogic.prettifyCSS = function(text, ruleCount) {
   if (CssLogic.LINE_SEPARATOR == null) {
     let os = Cc["@mozilla.org/xre/app-info;1"].getService(Ci.nsIXULRuntime).OS;
     CssLogic.LINE_SEPARATOR = (os === "WINNT" ? "\r\n" : "\n");
@@ -945,6 +909,12 @@ CssLogic.prettifyCSS = function(text) {
 
   // remove initial and terminating HTML comments and surrounding whitespace
   text = text.replace(/(?:^\s*<!--[\r\n]*)|(?:\s*-->\s*$)/g, "");
+
+  // don't attempt to prettify if there's more than one line per rule.
+  let lineCount = text.split("\n").length - 1;
+  if (ruleCount !== null && lineCount >= ruleCount) {
+    return text;
+  }
 
   let parts = [];    // indented parts
   let partStart = 0; // start offset of currently parsed part

@@ -16,6 +16,7 @@
 #include "jit/BaselineFrame.h"
 #include "jit/JitCompartment.h"
 #endif
+#include "js/GCAPI.h"
 #include "vm/Opcodes.h"
 
 #include "jit/JitFrameIterator-inl.h"
@@ -31,7 +32,7 @@ using mozilla::PodCopy;
 
 void
 InterpreterFrame::initExecuteFrame(JSContext *cx, JSScript *script, AbstractFramePtr evalInFramePrev,
-                             const Value &thisv, JSObject &scopeChain, ExecuteType type)
+                                   const Value &thisv, JSObject &scopeChain, ExecuteType type)
 {
     /*
      * See encoding of ExecuteType. When GLOBAL isn't set, we are executing a
@@ -586,7 +587,7 @@ FrameIter::settleOnActivation()
         }
 
         if (activation->isAsmJS()) {
-            data_.asmJSFrames_ = AsmJSFrameIterator(data_.activations_->asAsmJS());
+            data_.asmJSFrames_ = AsmJSFrameIterator(*data_.activations_->asAsmJS());
 
             if (data_.asmJSFrames_.done()) {
                 ++data_.activations_;
@@ -638,7 +639,7 @@ FrameIter::Data::Data(ThreadSafeContext *cx, SavedOption savedOption,
 #ifdef JS_ION
   , jitFrames_((uint8_t *)nullptr, SequentialExecution)
   , ionInlineFrameNo_(0)
-  , asmJSFrames_(nullptr)
+  , asmJSFrames_()
 #endif
 {
 }
@@ -666,6 +667,8 @@ FrameIter::FrameIter(ThreadSafeContext *cx, SavedOption savedOption)
   , ionInlineFrames_(cx, (js::jit::JitFrameIterator*) nullptr)
 #endif
 {
+    // settleOnActivation can only GC if principals are given.
+    JS::AutoSuppressGCAnalysis nogc;
     settleOnActivation();
 }
 
@@ -676,6 +679,8 @@ FrameIter::FrameIter(ThreadSafeContext *cx, ContextOption contextOption,
   , ionInlineFrames_(cx, (js::jit::JitFrameIterator*) nullptr)
 #endif
 {
+    // settleOnActivation can only GC if principals are given.
+    JS::AutoSuppressGCAnalysis nogc;
     settleOnActivation();
 }
 
@@ -1587,24 +1592,13 @@ jit::JitActivation::setActive(JSContext *cx, bool active)
 #ifdef JS_ION
 
 void
-jit::JitActivation::freeRematerializedFramesInVector(RematerializedFrameVector &frames)
-{
-    for (size_t i = 0; i < frames.length(); i++) {
-        RematerializedFrame *f = frames[i];
-        f->RematerializedFrame::~RematerializedFrame();
-        js_free(f);
-    }
-    frames.clear();
-}
-
-void
 jit::JitActivation::removeRematerializedFrame(uint8_t *top)
 {
     if (!rematerializedFrames_)
         return;
 
     if (RematerializedFrameTable::Ptr p = rematerializedFrames_->lookup(top)) {
-        freeRematerializedFramesInVector(p->value());
+        RematerializedFrame::FreeInVector(p->value());
         rematerializedFrames_->remove(p);
     }
 }
@@ -1616,14 +1610,14 @@ jit::JitActivation::clearRematerializedFrames()
         return;
 
     for (RematerializedFrameTable::Enum e(*rematerializedFrames_); !e.empty(); e.popFront()) {
-        freeRematerializedFramesInVector(e.front().value());
+        RematerializedFrame::FreeInVector(e.front().value());
         e.removeFront();
     }
 }
 
+template <class T>
 jit::RematerializedFrame *
-jit::JitActivation::getRematerializedFrame(ThreadSafeContext *cx, JitFrameIterator &iter,
-                                           size_t inlineDepth)
+jit::JitActivation::getRematerializedFrame(ThreadSafeContext *cx, const T &iter, size_t inlineDepth)
 {
     // Only allow rematerializing from the same thread.
     MOZ_ASSERT(cx->perThreadData == cx_->perThreadData);
@@ -1638,12 +1632,6 @@ jit::JitActivation::getRematerializedFrame(ThreadSafeContext *cx, JitFrameIterat
         }
     }
 
-    // The unit of rematerialization is an uninlined frame and its inlined
-    // frames. Since inlined frames do not exist outside of snapshots, it is
-    // impossible to synchronize their rematerialized copies to preserve
-    // identity. Therefore, we always rematerialize an uninlined frame and all
-    // its inlined frames at once.
-
     uint8_t *top = iter.fp();
     RematerializedFrameTable::AddPtr p = rematerializedFrames_->lookupForAdd(top);
     if (!p) {
@@ -1651,24 +1639,27 @@ jit::JitActivation::getRematerializedFrame(ThreadSafeContext *cx, JitFrameIterat
         if (!rematerializedFrames_->add(p, top, Move(empty)))
             return nullptr;
 
+        // The unit of rematerialization is an uninlined frame and its inlined
+        // frames. Since inlined frames do not exist outside of snapshots, it
+        // is impossible to synchronize their rematerialized copies to
+        // preserve identity. Therefore, we always rematerialize an uninlined
+        // frame and all its inlined frames at once.
         InlineFrameIterator inlineIter(cx, &iter);
-        if (!p->value().resize(inlineIter.frameCount()))
+        if (!RematerializedFrame::RematerializeInlineFrames(cx, top, inlineIter, p->value()))
             return nullptr;
-
-        while (true) {
-            size_t frameNo = inlineIter.frameNo();
-            p->value()[frameNo] = RematerializedFrame::New(cx, top, inlineIter);
-            if (!p->value()[frameNo])
-                return nullptr;
-
-            if (!inlineIter.more())
-                break;
-            ++inlineIter;
-        }
     }
 
     return p->value()[inlineDepth];
 }
+
+template jit::RematerializedFrame *
+jit::JitActivation::getRematerializedFrame<jit::JitFrameIterator>(ThreadSafeContext *cx,
+                                                                  const jit::JitFrameIterator &iter,
+                                                                  size_t inlineDepth);
+template jit::RematerializedFrame *
+jit::JitActivation::getRematerializedFrame<jit::IonBailoutIterator>(ThreadSafeContext *cx,
+                                                                    const jit::IonBailoutIterator &iter,
+                                                                    size_t inlineDepth);
 
 jit::RematerializedFrame *
 jit::JitActivation::lookupRematerializedFrame(uint8_t *top, size_t inlineDepth)
@@ -1685,11 +1676,8 @@ jit::JitActivation::markRematerializedFrames(JSTracer *trc)
 {
     if (!rematerializedFrames_)
         return;
-    for (RematerializedFrameTable::Enum e(*rematerializedFrames_); !e.empty(); e.popFront()) {
-        RematerializedFrameVector &frames = e.front().value();
-        for (size_t i = 0; i < frames.length(); i++)
-            frames[i]->mark(trc);
-    }
+    for (RematerializedFrameTable::Enum e(*rematerializedFrames_); !e.empty(); e.popFront())
+        RematerializedFrame::MarkInVector(trc, e.front().value());
 }
 
 #endif // JS_ION
@@ -1700,7 +1688,7 @@ AsmJSActivation::AsmJSActivation(JSContext *cx, AsmJSModule &module)
     errorRejoinSP_(nullptr),
     profiler_(nullptr),
     resumePC_(nullptr),
-    exitSP_(nullptr)
+    exitFP_(nullptr)
 {
     if (cx->runtime()->spsProfiler.enabled()) {
         // Use a profiler string that matches jsMatch regex in

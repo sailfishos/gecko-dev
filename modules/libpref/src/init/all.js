@@ -1,4 +1,4 @@
-/* -*- Mode: Java; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -137,6 +137,11 @@ pref("dom.webcrypto.enabled", true);
 
 // Whether the UndoManager API is enabled
 pref("dom.undo_manager.enabled", false);
+
+// Whether to run add-on code in different compartments from browser code. This
+// causes a separate compartment for each (addon, global) combination, which may
+// significantly increase the number of compartments in the system.
+pref("dom.compartment_per_addon", false);
 
 // Fastback caching - if this pref is negative, then we calculate the number
 // of content viewers to cache based on the amount of available memory.
@@ -280,7 +285,8 @@ pref("media.peerconnection.enabled", true);
 pref("media.peerconnection.video.enabled", true);
 pref("media.navigator.video.max_fs", 0); // unrestricted
 pref("media.navigator.video.max_fr", 0); // unrestricted
-+pref("media.getusermedia.aec", 1);
+pref("media.peerconnection.video.h264_enabled", false);
+pref("media.getusermedia.aec", 1);
 #endif
 pref("media.peerconnection.video.min_bitrate", 200);
 pref("media.peerconnection.video.start_bitrate", 300);
@@ -339,6 +345,9 @@ pref("media.tabstreaming.time_per_frame", 40);
 // TextTrack support
 pref("media.webvtt.enabled", true);
 pref("media.webvtt.regions.enabled", false);
+
+// AudioTrack and VideoTrack support
+pref("media.track.enabled", false);
 
 // Whether to enable MediaSource support
 pref("media.mediasource.enabled", false);
@@ -442,23 +451,6 @@ pref("gfx.font_rendering.wordcache.charlimit", 32);
 pref("gfx.font_rendering.wordcache.maxentries", 10000);
 
 pref("gfx.font_rendering.graphite.enabled", true);
-
-// Check intl/unicharutil/util/nsUnicodeProperties.h for definitions of script bits
-// in the ShapingType enumeration
-// Currently-defined bits:
-//  SHAPING_DEFAULT   = 0x0001,
-//  SHAPING_ARABIC    = 0x0002,
-//  SHAPING_HEBREW    = 0x0004,
-//  SHAPING_HANGUL    = 0x0008,
-//  SHAPING_MONGOLIAN = 0x0010,
-//  SHAPING_INDIC     = 0x0020,
-//  SHAPING_THAI      = 0x0040
-// (see http://mxr.mozilla.org/mozilla-central/ident?i=ShapingType)
-// Scripts not listed are grouped in the default category.
-// Set the pref to 255 to have all text shaped via the harfbuzz backend.
-// Default setting:
-// We use harfbuzz for all scripts (except when using AAT fonts on OS X).
-pref("gfx.font_rendering.harfbuzz.scripts", 255);
 
 #ifdef XP_WIN
 pref("gfx.font_rendering.directwrite.enabled", false);
@@ -632,6 +624,11 @@ pref("devtools.defaultColorUnit", "hex");
 
 // Used for devtools debugging
 pref("devtools.dump.emit", false);
+
+// Disable device discovery logging
+pref("devtools.discovery.log", false);
+// Disable scanning for DevTools devices via WiFi
+pref("devtools.remote.wifi.scan", false);
 
 // view source
 pref("view_source.syntax_highlight", true);
@@ -826,6 +823,8 @@ pref("privacy.donottrackheader.enabled",    false);
 //   0 = tracking is acceptable
 //   1 = tracking is unacceptable
 pref("privacy.donottrackheader.value",      1);
+// Enforce tracking protection
+pref("privacy.trackingprotection.enabled",  false);
 
 pref("dom.event.contextmenu.enabled",       true);
 pref("dom.event.clipboardevents.enabled",   true);
@@ -978,7 +977,7 @@ pref("network.http.default-socket-type", "");
 // the packet is lost or delayed on the route.
 pref("network.http.keep-alive.timeout", 115);
 
-// Timeout connections if an initial response is not received after 10 mins.
+// Timeout connections if an initial response is not received after 5 mins.
 pref("network.http.response.timeout", 300);
 
 // Limit the absolute number of http connections.
@@ -1049,8 +1048,8 @@ pref("network.http.pipelining.reschedule-timeout", 1500);
 // restarted without pipelining.
 pref("network.http.pipelining.read-timeout", 30000);
 
-// Prompt for 307 redirects
-pref("network.http.prompt-temp-redirect", true);
+// Prompt for redirects resulting in unsafe HTTP requests
+pref("network.http.prompt-temp-redirect", false);
 
 // If true generate CORRUPTED_CONTENT errors for entities that
 // contain an invalid Assoc-Req response header
@@ -1403,6 +1402,8 @@ pref("network.predictor.preserve", 80); // percentage of predictor data to keep 
 
 // Allow insecure NTLMv1 when needed.
 pref("network.negotiate-auth.allow-insecure-ntlm-v1", false);
+// Allow insecure NTLMv1 for HTTPS protected sites by default.
+pref("network.negotiate-auth.allow-insecure-ntlm-v1-https", true);
 
 // This list controls which URIs can use the negotiate-auth protocol.  This
 // list should be limited to the servers you know you'll need to login to.
@@ -1590,7 +1591,7 @@ pref("font.blacklist.underline_offset", "FangSong,Gulim,GulimChe,MingLiU,MingLiU
 // default features. This allows us to skip analyzing the GSUB/GPOS tables
 // unless features are explicitly enabled.
 // Use NSPR_LOG_MODULES=fontinit:5 to dump out details of space lookups
-pref("font.whitelist.skip_default_features_space_check", "Fira Sans OT,Fira Mono OT");
+pref("font.whitelist.skip_default_features_space_check", "Fira Sans,Fira Mono");
 #endif
 
 pref("images.dither", "auto");
@@ -1606,7 +1607,7 @@ pref("security.notification_enable_delay", 500);
 pref("security.csp.enable", true);
 pref("security.csp.debug", false);
 pref("security.csp.experimentalEnabled", false);
-pref("security.csp.newbackend.enable", false);
+pref("security.csp.newbackend.enable", true);
 
 // Mixed content blocking
 pref("security.mixed_content.block_active_content", false);
@@ -1882,6 +1883,9 @@ pref("layout.css.DOMPoint.enabled", true);
 // Is support for DOMQuad enabled?
 pref("layout.css.DOMQuad.enabled", true);
 
+// Is support for DOMMatrix enabled?
+pref("layout.css.DOMMatrix.enabled", true);
+
 // Is support for GeometryUtils.getBoxQuads enabled?
 #ifdef RELEASE_BUILD
 pref("layout.css.getBoxQuads.enabled", false);
@@ -1956,6 +1960,9 @@ pref("layout.css.grid.enabled", false);
 
 // Is support for CSS box-decoration-break enabled?
 pref("layout.css.box-decoration-break.enabled", false);
+
+// Is layout of CSS outline-style:auto enabled?
+pref("layout.css.outline-style-auto.enabled", false);
 
 // pref for which side vertical scrollbars should be on
 // 0 = end-side in UI direction
@@ -3170,60 +3177,60 @@ pref("font.name.sans-serif.el", "Roboto"); // To be updated once the Greek lette
 pref("font.name.monospace.el", "Droid Sans Mono");
 
 pref("font.name.serif.he", "Charis SIL Compact");
-pref("font.name.sans-serif.he", "Fira Sans OT");
-pref("font.name.monospace.he", "Fira Mono OT");
-pref("font.name-list.sans-serif.he", "Droid Sans Hebrew, Fira Sans OT");
+pref("font.name.sans-serif.he", "Fira Sans");
+pref("font.name.monospace.he", "Fira Mono");
+pref("font.name-list.sans-serif.he", "Droid Sans Hebrew, Fira Sans");
 
 pref("font.name.serif.ja", "Charis SIL Compact");
-pref("font.name.sans-serif.ja", "Fira Sans OT");
+pref("font.name.sans-serif.ja", "Fira Sans");
 pref("font.name.monospace.ja", "MotoyaLMaru");
-pref("font.name-list.sans-serif.ja", "Fira Sans OT, MotoyaLMaru, MotoyaLCedar, Droid Sans Japanese");
-pref("font.name-list.monospace.ja", "MotoyaLMaru, MotoyaLCedar, Fira Mono OT");
+pref("font.name-list.sans-serif.ja", "Fira Sans, MotoyaLMaru, MotoyaLCedar, Droid Sans Japanese");
+pref("font.name-list.monospace.ja", "MotoyaLMaru, MotoyaLCedar, Fira Mono");
 
 pref("font.name.serif.ko", "Charis SIL Compact");
-pref("font.name.sans-serif.ko", "Fira Sans OT");
-pref("font.name.monospace.ko", "Fira Mono OT");
+pref("font.name.sans-serif.ko", "Fira Sans");
+pref("font.name.monospace.ko", "Fira Mono");
 
 pref("font.name.serif.th", "Charis SIL Compact");
-pref("font.name.sans-serif.th", "Fira Sans OT");
-pref("font.name.monospace.th", "Fira Mono OT");
-pref("font.name-list.sans-serif.th", "Fira Sans OT, Noto Sans Thai, Droid Sans Thai");
+pref("font.name.sans-serif.th", "Fira Sans");
+pref("font.name.monospace.th", "Fira Mono");
+pref("font.name-list.sans-serif.th", "Fira Sans, Noto Sans Thai, Droid Sans Thai");
 
 pref("font.name.serif.tr", "Charis SIL Compact");
-pref("font.name.sans-serif.tr", "Fira Sans OT");
-pref("font.name.monospace.tr", "Fira Mono OT");
+pref("font.name.sans-serif.tr", "Fira Sans");
+pref("font.name.monospace.tr", "Fira Mono");
 
 pref("font.name.serif.x-baltic", "Charis SIL Compact");
-pref("font.name.sans-serif.x-baltic", "Fira Sans OT");
-pref("font.name.monospace.x-baltic", "Fira Mono OT");
+pref("font.name.sans-serif.x-baltic", "Fira Sans");
+pref("font.name.monospace.x-baltic", "Fira Mono");
 
 pref("font.name.serif.x-central-euro", "Charis SIL Compact");
-pref("font.name.sans-serif.x-central-euro", "Fira Sans OT");
-pref("font.name.monospace.x-central-euro", "Fira Mono OT");
+pref("font.name.sans-serif.x-central-euro", "Fira Sans");
+pref("font.name.monospace.x-central-euro", "Fira Mono");
 
 pref("font.name.serif.x-cyrillic", "Charis SIL Compact");
-pref("font.name.sans-serif.x-cyrillic", "Fira Sans OT");
-pref("font.name.monospace.x-cyrillic", "Fira Mono OT");
+pref("font.name.sans-serif.x-cyrillic", "Fira Sans");
+pref("font.name.monospace.x-cyrillic", "Fira Mono");
 
 pref("font.name.serif.x-unicode", "Charis SIL Compact");
-pref("font.name.sans-serif.x-unicode", "Fira Sans OT");
-pref("font.name.monospace.x-unicode", "Fira Mono OT");
+pref("font.name.sans-serif.x-unicode", "Fira Sans");
+pref("font.name.monospace.x-unicode", "Fira Mono");
 
 pref("font.name.serif.x-western", "Charis SIL Compact");
-pref("font.name.sans-serif.x-western", "Fira Sans OT");
-pref("font.name.monospace.x-western", "Fira Mono OT");
+pref("font.name.sans-serif.x-western", "Fira Sans");
+pref("font.name.monospace.x-western", "Fira Mono");
 
 pref("font.name.serif.zh-CN", "Charis SIL Compact");
-pref("font.name.sans-serif.zh-CN", "Fira Sans OT");
-pref("font.name.monospace.zh-CN", "Fira Mono OT");
+pref("font.name.sans-serif.zh-CN", "Fira Sans");
+pref("font.name.monospace.zh-CN", "Fira Mono");
 
 pref("font.name.serif.zh-HK", "Charis SIL Compact");
-pref("font.name.sans-serif.zh-HK", "Fira Sans OT");
-pref("font.name.monospace.zh-HK", "Fira Mono OT");
+pref("font.name.sans-serif.zh-HK", "Fira Sans");
+pref("font.name.monospace.zh-HK", "Fira Mono");
 
 pref("font.name.serif.zh-TW", "Charis SIL Compact");
-pref("font.name.sans-serif.zh-TW", "Fira Sans OT");
-pref("font.name.monospace.zh-TW", "Fira Mono OT");
+pref("font.name.sans-serif.zh-TW", "Fira Sans");
+pref("font.name.monospace.zh-TW", "Fira Mono");
 
 #else
 
@@ -3698,7 +3705,12 @@ pref("canvas.image.cache.limit", 0);
 pref("image.onload.decode.limit", 0);
 
 // WebGL prefs
+#ifdef ANDROID
+// Disable MSAA on mobile.
+pref("gl.msaa-level", 0);
+#else
 pref("gl.msaa-level", 2);
+#endif
 pref("webgl.force-enabled", false);
 pref("webgl.disabled", false);
 pref("webgl.shader_validator", true);
@@ -3709,8 +3721,9 @@ pref("webgl.msaa-force", false);
 pref("webgl.prefer-16bpp", false);
 pref("webgl.default-no-alpha", false);
 pref("webgl.force-layers-readback", false);
-pref("webgl.lose-context-on-heap-minimize", false);
+pref("webgl.lose-context-on-memory-preasure", false);
 pref("webgl.can-lose-context-in-foreground", true);
+pref("webgl.restore-context-when-visible", true);
 pref("webgl.max-warnings-per-context", 32);
 pref("webgl.enable-draft-extensions", false);
 pref("webgl.enable-privileged-extensions", false);
@@ -3919,6 +3932,9 @@ pref("dom.battery.enabled", true);
 // Image srcset
 pref("dom.image.srcset.enabled", false);
 
+// <picture> element and sizes
+pref("dom.image.picture.enabled", false);
+
 // WebSMS
 pref("dom.sms.enabled", false);
 // Enable Latin characters replacement with corresponding ones in GSM SMS
@@ -4043,6 +4059,12 @@ pref("dom.mozApps.maxLocalId", 1000);
 // builds it may contain more than one origin so we can test
 // different stages (dev, staging, prod) of the same app store.
 pref("dom.mozApps.signed_apps_installable_from", "https://marketplace.firefox.com");
+
+// Whether or not to dump mozApps debug messages to the console.
+// Only checked on startup, so restart after changing this pref.
+// Ignored on Android, where we always report debug messages because it's
+// unnecessary to restrict reporting, per bug 1003469.
+pref("dom.mozApps.debug", false);
 
 // Minimum delay in milliseconds between network activity notifications (0 means
 // no notifications). The delay is the same for both download and upload, though
@@ -4176,11 +4198,17 @@ pref("dom.voicemail.defaultServiceId", 0);
 pref("dom.inter-app-communication-api.enabled", false);
 
 // The tables used for Safebrowsing phishing and malware checks.
-pref("urlclassifier.malware_table", "goog-malware-shavar,test-malware-simple");
-pref("urlclassifier.phish_table", "goog-phish-shavar,test-phish-simple");
+pref("urlclassifier.malwareTable", "goog-malware-shavar,test-malware-simple");
+pref("urlclassifier.phishTable", "goog-phish-shavar,test-phish-simple");
 pref("urlclassifier.downloadBlockTable", "");
 pref("urlclassifier.downloadAllowTable", "");
-pref("urlclassifier.disallow_completions", "test-malware-simple,test-phish-simple,goog-downloadwhite-digest256");
+pref("urlclassifier.disallow_completions", "test-malware-simple,test-phish-simple,goog-downloadwhite-digest256,mozpub-track-digest256");
+
+// The table and update/gethash URLs for Safebrowsing phishing and malware
+// checks.
+pref("urlclassifier.trackingTable", "mozpub-track-digest256");
+pref("browser.trackingprotection.updateURL", "https://tracking.services.mozilla.com/update?client=SAFEBROWSING_ID&appver=%VERSION%&pver=2.2");
+pref("browser.trackingprotection.gethashURL", "https://tracking.services.mozilla.com/gethash?client=SAFEBROWSING_ID&appver=%VERSION%&pver=2.2");
 
 // Turn off Spatial navigation by default.
 pref("snav.enabled", false);

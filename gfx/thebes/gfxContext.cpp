@@ -16,6 +16,7 @@
 
 #include "gfxColor.h"
 #include "gfxMatrix.h"
+#include "gfxUtils.h"
 #include "gfxASurface.h"
 #include "gfxPattern.h"
 #include "gfxPlatform.h"
@@ -1957,34 +1958,31 @@ gfxContext::RoundedRectangle(const gfxRect& rect,
 #ifdef MOZ_DUMP_PAINTING
 void
 gfxContext::WriteAsPNG(const char* aFile)
-{ 
-  nsRefPtr<gfxASurface> surf = CurrentSurface();
-  if (surf) {
-    surf->WriteAsPNG(aFile);
+{
+  if (mDT) {
+    gfxUtils::WriteAsPNG(mDT, aFile);
   } else {
-    NS_WARNING("No surface found!");
+    NS_WARNING("No DrawTarget found!");
   }
 }
 
 void 
-gfxContext::DumpAsDataURL()
-{ 
-  nsRefPtr<gfxASurface> surf = CurrentSurface();
-  if (surf) {
-    surf->DumpAsDataURL();
+gfxContext::DumpAsDataURI()
+{
+  if (mDT) {
+    gfxUtils::DumpAsDataURI(mDT);
   } else {
-    NS_WARNING("No surface found!");
+    NS_WARNING("No DrawTarget found!");
   }
 }
 
 void 
-gfxContext::CopyAsDataURL()
-{ 
-  nsRefPtr<gfxASurface> surf = CurrentSurface();
-  if (surf) {
-    surf->CopyAsDataURL();
+gfxContext::CopyAsDataURI()
+{
+  if (mDT) {
+    gfxUtils::CopyAsDataURI(mDT);
   } else {
-    NS_WARNING("No surface found!");
+    NS_WARNING("No DrawTarget found!");
   }
 }
 #endif
@@ -2280,9 +2278,21 @@ gfxContext::PushNewDT(gfxContentType content)
   clipBounds.width = std::max(1.0f, clipBounds.width);
   clipBounds.height = std::max(1.0f, clipBounds.height);
 
+  SurfaceFormat format = gfxPlatform::GetPlatform()->Optimal2DFormatForContent(content);
+
   RefPtr<DrawTarget> newDT =
     mDT->CreateSimilarDrawTarget(IntSize(int32_t(clipBounds.width), int32_t(clipBounds.height)),
-                                  gfxPlatform::GetPlatform()->Optimal2DFormatForContent(content));
+                                 format);
+
+  if (!newDT) {
+    NS_WARNING("Failed to create DrawTarget of sufficient size.");
+    newDT = mDT->CreateSimilarDrawTarget(IntSize(64, 64), format);
+
+    if (!newDT) {
+      // If even this fails.. we're most likely just out of memory!
+      NS_ABORT_OOM(BytesPerPixel(format) * 64 * 64);
+    }
+  }
 
   Save();
 

@@ -183,6 +183,8 @@ public:
   NS_DECL_NSIAUTHPROMPT
 
   XMLHttpRequestAuthPrompt();
+
+protected:
   virtual ~XMLHttpRequestAuthPrompt();
 };
 
@@ -1169,7 +1171,17 @@ nsXMLHttpRequest::GetStatusText(nsCString& aStatusText)
     return;
   }
 
-  httpChannel->GetResponseStatusText(aStatusText);
+
+  // Check the current XHR state to see if it is valid to obtain the statusText
+  // value.  This check is to prevent the status text for redirects from being
+  // available before all the redirects have been followed and HTTP headers have
+  // been received.
+  uint16_t readyState;
+  GetReadyState(&readyState);
+  if (readyState != OPENED && readyState != UNSENT) {
+    httpChannel->GetResponseStatusText(aStatusText);
+  }
+
 
 }
 
@@ -1862,7 +1874,9 @@ bool nsXMLHttpRequest::CreateDOMFile(nsIRequest *request)
   mChannel->GetContentType(contentType);
 
   mDOMFile =
-    new nsDOMFileFile(file, EmptyString(), NS_ConvertASCIItoUTF16(contentType));
+    DOMFile::CreateFromFile(file, EmptyString(),
+                            NS_ConvertASCIItoUTF16(contentType));
+
   mBlobSet = nullptr;
   NS_ASSERTION(mResponseBody.IsEmpty(), "mResponseBody should be empty");
   return true;
@@ -3436,6 +3450,8 @@ public:
   }
 
 private:
+  ~AsyncVerifyRedirectCallbackForwarder() {}
+
   nsRefPtr<nsXMLHttpRequest> mXHR;
 };
 
@@ -4049,12 +4065,11 @@ ArrayBufferBuilder::getArrayBuffer(JSContext* aCx)
   }
 
   JSObject* obj = JS_NewArrayBufferWithContents(aCx, mLength, mDataPtr);
-  mDataPtr = nullptr;
   mLength = mCapacity = 0;
   if (!obj) {
     js_free(mDataPtr);
-    return nullptr;
   }
+  mDataPtr = nullptr;
   return obj;
 }
 

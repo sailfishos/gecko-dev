@@ -34,7 +34,6 @@
     _(NewDenseArrayPar)             \
     _(NewCallObjectPar)             \
     _(NewDerivedTypedObject)        \
-    _(AbortPar)                     \
     _(InitElem)                     \
     _(InitElemGetterSetter)         \
     _(MutateProto)                  \
@@ -49,6 +48,7 @@
     _(CallNative)                   \
     _(ApplyArgsGeneric)             \
     _(Bail)                         \
+    _(Unreachable)                  \
     _(GetDynamicName)               \
     _(FilterArgumentsOrEvalS)       \
     _(FilterArgumentsOrEvalV)       \
@@ -282,6 +282,7 @@
     _(SetDOMProperty)               \
     _(CallDOMNative)                \
     _(IsCallable)                   \
+    _(IsObject)                     \
     _(HaveSameClass)                \
     _(HasClass)                     \
     _(AsmJSLoadHeap)                \

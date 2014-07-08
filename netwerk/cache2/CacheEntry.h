@@ -67,8 +67,6 @@ public:
   nsCString const &GetStorageID() const { return mStorageID; }
   nsCString const &GetEnhanceID() const { return mEnhanceID; }
   nsIURI* GetURI() const { return mURI; }
-  // Accessible only under the CacheStorageService lock (asserts it)
-  bool IsUsingDiskLocked() const;
   // Accessible at any time
   bool IsUsingDisk() const { return mUseDisk; }
   bool SetUsingDisk(bool aUsingDisk);
@@ -206,11 +204,14 @@ private:
     nsresult mRv;
   };
 
+  // Starts the load or just invokes the callback, bypasses (when required)
+  // if busy.  Returns true on job done, false on bypass.
+  bool Open(Callback & aCallback, bool aTruncate, bool aPriority, bool aBypassIfBusy);
   // Loads from disk asynchronously
   bool Load(bool aTruncate, bool aPriority);
   void OnLoaded();
 
-  void RememberCallback(Callback & aCallback, bool aBypassIfBusy);
+  void RememberCallback(Callback & aCallback);
   void InvokeCallbacksLock();
   void InvokeCallbacks();
   bool InvokeCallbacks(bool aReadOnly);
@@ -265,9 +266,7 @@ private:
   nsCString mStorageID;
 
   // Whether it's allowed to persist the data to disk
-  // Synchronized by the service management lock.
-  // Hence, leave it as a standalone boolean.
-  bool mUseDisk;
+  bool const mUseDisk;
 
   // Set when entry is doomed with AsyncDoom() or DoomAlreadyRemoved().
   // Left as a standalone flag to not bother with locking (there is no need).
@@ -351,12 +350,12 @@ class CacheEntryHandle : public nsICacheEntry
 {
 public:
   CacheEntryHandle(CacheEntry* aEntry);
-  virtual ~CacheEntryHandle();
   CacheEntry* Entry() const { return mEntry; }
 
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_FORWARD_NSICACHEENTRY(mEntry->)
 private:
+  virtual ~CacheEntryHandle();
   nsRefPtr<CacheEntry> mEntry;
 };
 

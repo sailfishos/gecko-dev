@@ -1,4 +1,4 @@
-# -*- Mode: javascript; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
+# -*- indent-tabs-mode: nil; js-indent-level: 2 -*-
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
@@ -757,13 +757,6 @@ var gBrowserInit = {
 
     var mustLoadSidebar = false;
 
-    if (!gMultiProcessBrowser) {
-      // There is a Content:Click message manually sent from content.
-      Cc["@mozilla.org/eventlistenerservice;1"]
-        .getService(Ci.nsIEventListenerService)
-        .addSystemEventListener(gBrowser, "click", contentAreaClick, true);
-    }
-
     gBrowser.addEventListener("DOMUpdatePageReport", gPopupBlockerObserver, false);
 
     // Note that the XBL binding is untrusted
@@ -786,6 +779,7 @@ var gBrowserInit = {
     DOMLinkHandler.init();
     gPageStyleMenu.init();
     LanguageDetectionListener.init();
+    BrowserOnClick.init();
 
     let mm = window.getGroupMessageManager("browsers");
     mm.loadFrameScript("chrome://browser/content/content.js", true);
@@ -801,6 +795,15 @@ var gBrowserInit = {
           .XULBrowserWindow = window.XULBrowserWindow;
     window.QueryInterface(Ci.nsIDOMChromeWindow).browserDOMWindow =
       new nsBrowserAccess();
+
+    if (!gMultiProcessBrowser) {
+      // There is a Content:Click message manually sent from content.
+      Cc["@mozilla.org/eventlistenerservice;1"]
+        .getService(Ci.nsIEventListenerService)
+        .addSystemEventListener(gBrowser, "click", contentAreaClick, true);
+    } else {
+      gBrowser.updateBrowserRemoteness(gBrowser.mCurrentBrowser, true);
+    }
 
     // hook up UI through progress listener
     gBrowser.addProgressListener(window.XULBrowserWindow);
@@ -1319,6 +1322,8 @@ var gBrowserInit = {
     TabsInTitlebar.uninit();
 
     ToolbarIconColor.uninit();
+
+    BrowserOnClick.uninit();
 
     var enumerator = Services.wm.getEnumerator(null);
     enumerator.getNext();
@@ -1908,7 +1913,6 @@ function loadURI(uri, referrer, postData, allowThirdPartyFixup) {
 }
 
 function getShortcutOrURIAndPostData(aURL, aCallback) {
-  let mayInheritPrincipal = false;
   let postData = null;
   let shortcutURL = null;
   let keyword = aURL;
@@ -1924,8 +1928,7 @@ function getShortcutOrURIAndPostData(aURL, aCallback) {
   if (engine) {
     let submission = engine.getSubmission(param);
     postData = submission.postData;
-    aCallback({ postData: submission.postData, url: submission.uri.spec,
-                mayInheritPrincipal: mayInheritPrincipal });
+    aCallback({ postData: submission.postData, url: submission.uri.spec });
     return;
   }
 
@@ -1933,8 +1936,7 @@ function getShortcutOrURIAndPostData(aURL, aCallback) {
     PlacesUtils.getURLAndPostDataForKeyword(keyword);
 
   if (!shortcutURL) {
-    aCallback({ postData: postData, url: aURL,
-                mayInheritPrincipal: mayInheritPrincipal });
+    aCallback({ postData: postData, url: aURL });
     return;
   }
 
@@ -1966,12 +1968,7 @@ function getShortcutOrURIAndPostData(aURL, aCallback) {
         postData = getPostDataStream(escapedPostData, param, encodedParam,
                                                "application/x-www-form-urlencoded");
 
-      // This URL came from a bookmark, so it's safe to let it inherit the current
-      // document's principal.
-      mayInheritPrincipal = true;
-
-      aCallback({ postData: postData, url: shortcutURL,
-                  mayInheritPrincipal: mayInheritPrincipal });
+      aCallback({ postData: postData, url: shortcutURL });
     }
 
     if (matches) {
@@ -1994,15 +1991,9 @@ function getShortcutOrURIAndPostData(aURL, aCallback) {
     // the original URL.
     postData = null;
 
-    aCallback({ postData: postData, url: aURL,
-                mayInheritPrincipal: mayInheritPrincipal });
+    aCallback({ postData: postData, url: aURL });
   } else {
-    // This URL came from a bookmark, so it's safe to let it inherit the current
-    // document's principal.
-    mayInheritPrincipal = true;
-
-    aCallback({ postData: postData, url: shortcutURL,
-                mayInheritPrincipal: mayInheritPrincipal });
+    aCallback({ postData: postData, url: shortcutURL });
   }
 }
 
@@ -2282,56 +2273,81 @@ function PageProxyClickHandler(aEvent)
 
 /**
  * Handle command events bubbling up from error page content
- * or from about:newtab
+ * or from about:newtab or from remote error pages that invoke
+ * us via async messaging.
  */
 let BrowserOnClick = {
-  handleEvent: function BrowserOnClick_handleEvent(aEvent) {
-    if (!aEvent.isTrusted || // Don't trust synthetic events
-        aEvent.button == 2) {
+  init: function () {
+    let mm = window.messageManager;
+    mm.addMessageListener("Browser:CertExceptionError", this);
+    mm.addMessageListener("Browser:SiteBlockedError", this);
+    mm.addMessageListener("Browser:NetworkError", this);
+  },
+
+  uninit: function () {
+    let mm = window.messageManager;
+    mm.removeMessageListener("Browser:CertExceptionError", this);
+    mm.removeMessageListener("Browser:SiteBlockedError", this);
+    mm.removeMessageListener("Browser:NetworkError", this);
+  },
+
+  handleEvent: function (event) {
+    if (!event.isTrusted || // Don't trust synthetic events
+        event.button == 2) {
       return;
     }
 
-    let originalTarget = aEvent.originalTarget;
+    let originalTarget = event.originalTarget;
     let ownerDoc = originalTarget.ownerDocument;
 
-    // If the event came from an ssl error page, it is probably either the "Add
-    // Exception…" or "Get me out of here!" button
-    if (ownerDoc.documentURI.startsWith("about:certerror")) {
-      this.onAboutCertError(originalTarget, ownerDoc);
-    }
-    else if (ownerDoc.documentURI.startsWith("about:blocked")) {
-      this.onAboutBlocked(originalTarget, ownerDoc);
-    }
-    else if (ownerDoc.documentURI.startsWith("about:neterror")) {
-      this.onAboutNetError(originalTarget, ownerDoc);
-    }
-    else if (gMultiProcessBrowser &&
-             ownerDoc.documentURI.toLowerCase() == "about:newtab") {
-      this.onE10sAboutNewTab(aEvent, ownerDoc);
+    if (gMultiProcessBrowser &&
+        ownerDoc.documentURI.toLowerCase() == "about:newtab") {
+      this.onE10sAboutNewTab(event, ownerDoc);
     }
     else if (ownerDoc.documentURI.startsWith("about:tabcrashed")) {
-      this.onAboutTabCrashed(aEvent, ownerDoc);
+      this.onAboutTabCrashed(event, ownerDoc);
     }
   },
 
-  onAboutCertError: function BrowserOnClick_onAboutCertError(aTargetElm, aOwnerDoc) {
-    let elmId = aTargetElm.getAttribute("id");
-    let secHistogram = Services.telemetry.getHistogramById("SECURITY_UI");
-    let isTopFrame = (aOwnerDoc.defaultView.parent === aOwnerDoc.defaultView);
+  receiveMessage: function (msg) {
+    switch (msg.name) {
+      case "Browser:CertExceptionError":
+        this.onAboutCertError(msg.target, msg.json.elementId,
+                              msg.json.isTopFrame, msg.json.location);
+      break;
+      case "Browser:SiteBlockedError":
+        this.onAboutBlocked(msg.json.elementId, msg.json.isMalware,
+                            msg.json.isTopFrame, msg.json.location);
+      break;
+      case "Browser:NetworkError":
+        // Reset network state, the error page will refresh on its own.
+        Services.io.offline = false;
+      break;
+    }
+  },
 
-    switch (elmId) {
+  onAboutCertError: function (browser, elementId, isTopFrame, location) {
+    let secHistogram = Services.telemetry.getHistogramById("SECURITY_UI");
+
+    switch (elementId) {
       case "exceptionDialogButton":
+        let docshell = aOwnerDoc.defaultView.QueryInterface(Ci.nsIInterfaceRequestor)
+                                            .getInterface(Ci.nsIWebNavigation)
+                                            .QueryInterface(Ci.nsIDocShell);
+        let securityInfo = docshell.failedChannel.securityInfo;
+        let sslStatus = securityInfo.QueryInterface(Ci.nsISSLStatusProvider).SSLStatus;
         if (isTopFrame) {
           secHistogram.add(Ci.nsISecurityUITelemetry.WARNING_BAD_CERT_TOP_CLICK_ADD_EXCEPTION);
         }
-        let params = { exceptionAdded : false };
+        let params = { exceptionAdded : false,
+                       sslStatus : sslStatus };
 
         try {
           switch (Services.prefs.getIntPref("browser.ssl_override_behavior")) {
             case 2 : // Pre-fetch & pre-populate
               params.prefetchCert = true;
             case 1 : // Pre-populate
-              params.location = aOwnerDoc.location.href;
+              params.location = location;
           }
         } catch (e) {
           Components.utils.reportError("Couldn't get ssl_override pref: " + e);
@@ -2342,7 +2358,7 @@ let BrowserOnClick = {
 
         // If the user added the exception cert, attempt to reload the page
         if (params.exceptionAdded) {
-          aOwnerDoc.location.reload();
+          browser.reload();
         }
         break;
 
@@ -2368,20 +2384,14 @@ let BrowserOnClick = {
     }
   },
 
-  onAboutBlocked: function BrowserOnClick_onAboutBlocked(aTargetElm, aOwnerDoc) {
-    let elmId = aTargetElm.getAttribute("id");
-    let secHistogram = Services.telemetry.getHistogramById("SECURITY_UI");
-
-    // The event came from a button on a malware/phishing block page
-    // First check whether it's malware or phishing, so that we can
-    // use the right strings/links
-    let isMalware = /e=malwareBlocked/.test(aOwnerDoc.documentURI);
+  onAboutBlocked: function (elementId, isMalware, isTopFrame, location) {
+    // Depending on what page we are displaying here (malware/phishing)
+    // use the right strings and links for each.
     let bucketName = isMalware ? "WARNING_MALWARE_PAGE_":"WARNING_PHISHING_PAGE_";
+    let secHistogram = Services.telemetry.getHistogramById("SECURITY_UI");
     let nsISecTel = Ci.nsISecurityUITelemetry;
-    let isIframe = (aOwnerDoc.defaultView.parent === aOwnerDoc.defaultView);
-    bucketName += isIframe ? "TOP_" : "FRAME_";
-
-    switch (elmId) {
+    bucketName += isTopFrame ? "TOP_" : "FRAME_";
+    switch (elementId) {
       case "getMeOutButton":
         secHistogram.add(nsISecTel[bucketName + "GET_ME_OUT_OF_HERE"]);
         getMeOutOfHere();
@@ -2401,7 +2411,7 @@ let BrowserOnClick = {
           // append the current url, and go there.
           try {
             let reportURL = formatURL("browser.safebrowsing.malware.reportURL", true);
-            reportURL += aOwnerDoc.location.href;
+            reportURL += location;
             content.location = reportURL;
           } catch (e) {
             Components.utils.reportError("Couldn't get malware report URL: " + e);
@@ -2425,17 +2435,17 @@ let BrowserOnClick = {
    * the next page also in the parent) and instructs the browser to open the url
    * in the current tab which will make it update the remoteness of the tab.
    */
-  onE10sAboutNewTab: function(aEvent, aOwnerDoc) {
-    let isTopFrame = (aOwnerDoc.defaultView.parent === aOwnerDoc.defaultView);
-    if (!isTopFrame || aEvent.button != 0) {
+  onE10sAboutNewTab: function(event, ownerDoc) {
+    let isTopFrame = (ownerDoc.defaultView.parent === ownerDoc.defaultView);
+    if (!isTopFrame || event.button != 0) {
       return;
     }
 
-    let anchorTarget = aEvent.originalTarget.parentNode;
+    let anchorTarget = event.originalTarget.parentNode;
 
     if (anchorTarget instanceof HTMLAnchorElement &&
         anchorTarget.classList.contains("newtab-link")) {
-      aEvent.preventDefault();
+      event.preventDefault();
       openUILinkIn(anchorTarget.href, "current");
     }
   },
@@ -2444,17 +2454,17 @@ let BrowserOnClick = {
    * The about:tabcrashed can't do window.reload() because that
    * would reload the page but not use a remote browser.
    */
-  onAboutTabCrashed: function(aEvent, aOwnerDoc) {
-    let isTopFrame = (aOwnerDoc.defaultView.parent === aOwnerDoc.defaultView);
+  onAboutTabCrashed: function(event, ownerDoc) {
+    let isTopFrame = (ownerDoc.defaultView.parent === ownerDoc.defaultView);
     if (!isTopFrame) {
       return;
     }
 
-    let button = aEvent.originalTarget;
+    let button = event.originalTarget;
     if (button.id == "tryAgain") {
 #ifdef MOZ_CRASHREPORTER
-      if (aOwnerDoc.getElementById("checkSendReport").checked) {
-        let browser = gBrowser.getBrowserForDocument(aOwnerDoc);
+      if (ownerDoc.getElementById("checkSendReport").checked) {
+        let browser = gBrowser.getBrowserForDocument(ownerDoc);
         TabCrashReporter.submitCrashReport(browser);
       }
 #endif
@@ -2463,7 +2473,7 @@ let BrowserOnClick = {
     }
   },
 
-  ignoreWarningButton: function BrowserOnClick_ignoreWarningButton(aIsMalware) {
+  ignoreWarningButton: function (isMalware) {
     // Allow users to override and continue through to the site,
     // but add a notify bar as a reminder, so that they don't lose
     // track after, e.g., tab switching.
@@ -2482,7 +2492,7 @@ let BrowserOnClick = {
     }];
 
     let title;
-    if (aIsMalware) {
+    if (isMalware) {
       title = gNavigatorBundle.getString("safebrowsing.reportedAttackSite");
       buttons[1] = {
         label: gNavigatorBundle.getString("safebrowsing.notAnAttackButton.label"),
@@ -2520,13 +2530,6 @@ let BrowserOnClick = {
     // Persist the notification until the user removes so it
     // doesn't get removed on redirects.
     notification.persistence = -1;
-  },
-
-  onAboutNetError: function BrowserOnClick_onAboutNetError(aTargetElm, aOwnerDoc) {
-    let elmId = aTargetElm.getAttribute("id");
-    if (elmId != "errorTryAgain" || !/e=netOffline/.test(aOwnerDoc.documentURI))
-      return;
-    Services.io.offline = false;
   },
 };
 
@@ -2623,7 +2626,7 @@ function getWebNavigation()
 
 function BrowserReloadWithFlags(reloadFlags) {
   let url = gBrowser.currentURI.spec;
-  if (gBrowser.updateBrowserRemoteness(gBrowser.selectedBrowser, url)) {
+  if (gBrowser.updateBrowserRemotenessByURL(gBrowser.selectedBrowser, url)) {
     // If the remoteness has changed, the new browser doesn't have any
     // information of what was loaded before, so we need to load the previous
     // URL again.
@@ -5142,6 +5145,8 @@ function middleMousePaste(event) {
   // bar's behavior (stripsurroundingwhitespace)
   clipboard = clipboard.replace(/\s*\n\s*/g, "");
 
+  clipboard = stripUnsafeProtocolOnPaste(clipboard);
+
   // if it's not the current tab, we don't need to do anything because the 
   // browser doesn't exist.
   let where = whereToOpenLink(event, true, false);
@@ -5169,12 +5174,34 @@ function middleMousePaste(event) {
     if (where != "current" ||
         lastLocationChange == gBrowser.selectedBrowser.lastLocationChange) {
       openUILink(data.url, event,
-                 { ignoreButton: true,
-                   disallowInheritPrincipal: !data.mayInheritPrincipal });
+                 { ignoreButton: true });
     }
   });
 
   event.stopPropagation();
+}
+
+function stripUnsafeProtocolOnPaste(pasteData) {
+  // Don't allow pasting in full URIs which inherit the security context.
+  const URI_INHERITS_SECURITY_CONTEXT = Ci.nsIProtocolHandler.URI_INHERITS_SECURITY_CONTEXT;
+
+  let pastedURI;
+  try {
+    pastedURI = makeURI(pasteData.trim());
+  } catch (ex) {
+    return pasteData;
+  }
+
+  while (Services.netutil.URIChainHasFlags(pastedURI, URI_INHERITS_SECURITY_CONTEXT)) {
+    pasteData = pastedURI.path.trim();
+    try {
+      pastedURI = makeURI(pasteData);
+    } catch (ex) {
+      break;
+    }
+  }
+
+  return pasteData;
 }
 
 function handleDroppedLink(event, url, name)
@@ -6626,7 +6653,6 @@ var gIdentityHandler = {
     switch (newMode) {
     case this.IDENTITY_MODE_DOMAIN_VERIFIED:
       host = this.getEffectiveHost();
-      owner = gNavigatorBundle.getString("identity.ownerUnknown2");
       verifier = this._identityBox.tooltipText;
       break;
     case this.IDENTITY_MODE_IDENTIFIED: {

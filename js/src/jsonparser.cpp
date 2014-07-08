@@ -22,7 +22,6 @@
 
 using namespace js;
 
-using mozilla::Range;
 using mozilla::RangedPtr;
 
 JSONParserBase::~JSONParserBase()
@@ -135,7 +134,7 @@ JSONParser<CharT>::readString()
             current++;
             JSFlatString *str = (ST == JSONParser::PropertyName)
                                 ? AtomizeChars(cx, start.get(), length)
-                                : js_NewStringCopyN<CanGC>(cx, start.get(), length);
+                                : NewStringCopyN<CanGC>(cx, start.get(), length);
             if (!str)
                 return token(OOM);
             return stringToken(str);
@@ -277,7 +276,7 @@ JSONParser<CharT>::readNumber()
 
     /* Fast path: no fractional or exponent part. */
     if (current == end || (*current != '.' && *current != 'e' && *current != 'E')) {
-        Range<const CharT> chars(digitStart.get(), current - digitStart);
+        mozilla::Range<const CharT> chars(digitStart.get(), current - digitStart);
         if (chars.length() < strlen("9007199254740992")) {
             // If the decimal number is shorter than the length of 2**53, (the
             // largest number a double can represent with integral precision),

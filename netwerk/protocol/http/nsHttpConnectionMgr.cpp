@@ -342,9 +342,10 @@ nsHttpConnectionMgr::DoShiftReloadConnectionCleanup(nsHttpConnectionInfo *aCI)
 
 class SpeculativeConnectArgs
 {
+    virtual ~SpeculativeConnectArgs() {}
+
 public:
     SpeculativeConnectArgs() { mOverridesOK = false; }
-    virtual ~SpeculativeConnectArgs() {}
 
     // Added manually so we can use nsRefPtr without inheriting from
     // nsISupports
@@ -510,6 +511,28 @@ nsHttpConnectionMgr::UpdateRequestTokenBucket(EventTokenBucket *aBucket)
     if (NS_SUCCEEDED(rv))
         unused << bucket.forget();
     return rv;
+}
+
+PLDHashOperator
+nsHttpConnectionMgr::RemoveDeadConnections(const nsACString &key,
+                nsAutoPtr<nsConnectionEntry> &ent,
+                void *aArg)
+{
+    if (ent->mIdleConns.Length()   == 0 &&
+        ent->mActiveConns.Length() == 0 &&
+        ent->mHalfOpens.Length()   == 0 &&
+        ent->mPendingQ.Length()    == 0) {
+        return PL_DHASH_REMOVE;
+    }
+    return PL_DHASH_NEXT;
+}
+
+nsresult
+nsHttpConnectionMgr::ClearConnectionHistory()
+{
+    MOZ_ASSERT(PR_GetCurrentThread() == gSocketThread);
+    mCT.Enumerate(RemoveDeadConnections, nullptr);
+    return NS_OK;
 }
 
 // Given a nsHttpConnectionInfo find the connection entry object that
@@ -3011,11 +3034,6 @@ nsHttpConnectionMgr::nsHalfOpenSocket::CancelBackupTimer()
 void
 nsHttpConnectionMgr::nsHalfOpenSocket::Abandon()
 {
-    if (IsSpeculative()) {
-      Telemetry::AutoCounter<Telemetry::HTTPCONNMGR_UNUSED_SPECULATIVE_CONN> unusedSpeculativeConn;
-      ++unusedSpeculativeConn;
-    }
-
     LOG(("nsHalfOpenSocket::Abandon [this=%p ent=%s]",
          this, mEnt->mConnInfo->Host()));
 
@@ -3684,6 +3702,11 @@ void
 nsHttpConnectionMgr::
 nsConnectionEntry::RemoveHalfOpen(nsHalfOpenSocket *halfOpen)
 {
+    if (halfOpen->IsSpeculative()) {
+      Telemetry::AutoCounter<Telemetry::HTTPCONNMGR_UNUSED_SPECULATIVE_CONN> unusedSpeculativeConn;
+      ++unusedSpeculativeConn;
+    }
+
     // A failure to create the transport object at all
     // will result in it not being present in the halfopen table
     // so ignore failures of RemoveElement()

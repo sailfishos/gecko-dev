@@ -253,155 +253,67 @@ bool nsContentUtils::sDOMWindowDumpEnabled;
 // Subset of http://www.whatwg.org/specs/web-apps/current-work/#autofill-field-name
 enum AutocompleteFieldName
 {
-  eAutocompleteFieldName_OFF,
-  eAutocompleteFieldName_ON,
-
-  // Name types
-  eAutocompleteFieldName_NAME,
-  //eAutocompleteFieldName_HONORIFIC_PREFIX,
-  eAutocompleteFieldName_GIVEN_NAME,
-  eAutocompleteFieldName_ADDITIONAL_NAME,
-  eAutocompleteFieldName_FAMILY_NAME,
-  //eAutocompleteFieldName_HONORIFIC_SUFFIX,
-  //eAutocompleteFieldName_NICKNAME,
-  //eAutocompleteFieldName_ORGANIZATION_TITLE,
-
-  // Login types
-  eAutocompleteFieldName_USERNAME,
-  eAutocompleteFieldName_NEW_PASSWORD,
-  eAutocompleteFieldName_CURRENT_PASSWORD,
-
-  // Address types
-  eAutocompleteFieldName_ORGANIZATION,
-  eAutocompleteFieldName_STREET_ADDRESS,
-  eAutocompleteFieldName_ADDRESS_LINE1,
-  eAutocompleteFieldName_ADDRESS_LINE2,
-  eAutocompleteFieldName_ADDRESS_LINE3,
-  eAutocompleteFieldName_ADDRESS_LEVEL4,
-  eAutocompleteFieldName_ADDRESS_LEVEL3,
-  eAutocompleteFieldName_ADDRESS_LEVEL2,
-  eAutocompleteFieldName_ADDRESS_LEVEL1,
-  eAutocompleteFieldName_COUNTRY,
-  eAutocompleteFieldName_COUNTRY_NAME,
-  eAutocompleteFieldName_POSTAL_CODE,
-
-  // Credit card types
-  /*
-  eAutocompleteFieldName_CC_NAME,
-  eAutocompleteFieldName_CC_GIVEN_NAME,
-  eAutocompleteFieldName_CC_ADDITIONAL_NAME,
-  eAutocompleteFieldName_CC_FAMILY_NAME,
-  eAutocompleteFieldName_CC_NUMBER,
-  eAutocompleteFieldName_CC_EXP,
-  eAutocompleteFieldName_CC_EXP_MONTH,
-  eAutocompleteFieldName_CC_EXP_YEAR,
-  eAutocompleteFieldName_CC_CSC,
-  eAutocompleteFieldName_CC_TYPE
-  */
-
-  // Additional field types
-  /*
-  eAutocompleteFieldName_LANGUAGE,
-  eAutocompleteFieldName_BDAY,
-  eAutocompleteFieldName_BDAY_DAY,
-  eAutocompleteFieldName_BDAY_MONTH,
-  eAutocompleteFieldName_BDAY_YEAR,
-  eAutocompleteFieldName_SEX,
-  eAutocompleteFieldName_URL,
-  eAutocompleteFieldName_PHOTO,
-  */
-
-  // Contact category types
-  eAutocompleteFieldName_TEL,
-  eAutocompleteFieldName_TEL_COUNTRY_CODE,
-  eAutocompleteFieldName_TEL_NATIONAL,
-  eAutocompleteFieldName_TEL_AREA_CODE,
-  eAutocompleteFieldName_TEL_LOCAL,
-  eAutocompleteFieldName_TEL_LOCAL_PREFIX,
-  eAutocompleteFieldName_TEL_LOCAL_SUFFIX,
-  eAutocompleteFieldName_TEL_EXTENSION,
-  eAutocompleteFieldName_EMAIL,
-  //eAutocompleteFieldName_IMPP,
-
-  eAutocompleteFieldName_last, // Dummy to check table sizes
+  #define AUTOCOMPLETE_FIELD_NAME(name_, value_) \
+    eAutocompleteFieldName_##name_,
+  #define AUTOCOMPLETE_CONTACT_FIELD_NAME(name_, value_) \
+    AUTOCOMPLETE_FIELD_NAME(name_, value_)
+  #include "AutocompleteFieldList.h"
+  #undef AUTOCOMPLETE_FIELD_NAME
+  #undef AUTOCOMPLETE_CONTACT_FIELD_NAME
 };
 
 enum AutocompleteFieldHint
 {
-  eAutocompleteFieldHint_SHIPPING,
-  eAutocompleteFieldHint_BILLING,
-  eAutocompleteFieldHint_last, // Dummy to check table sizes
+  #define AUTOCOMPLETE_FIELD_HINT(name_, value_) \
+    eAutocompleteFieldHint_##name_,
+  #include "AutocompleteFieldList.h"
+  #undef AUTOCOMPLETE_FIELD_HINT
 };
 
 enum AutocompleteFieldContactHint
 {
-  eAutocompleteFieldContactHint_HOME,
-  eAutocompleteFieldContactHint_WORK,
-  eAutocompleteFieldContactHint_MOBILE,
-  eAutocompleteFieldContactHint_FAX,
-  //eAutocompleteFieldContactHint_PAGER,
-  eAutocompleteFieldContactHint_last, // Dummy to check table sizes
+  #define AUTOCOMPLETE_FIELD_CONTACT_HINT(name_, value_) \
+    eAutocompleteFieldContactHint_##name_,
+  #include "AutocompleteFieldList.h"
+  #undef AUTOCOMPLETE_FIELD_CONTACT_HINT
 };
 
 enum AutocompleteCategory
 {
-  eAutocompleteCategory_NORMAL,
-  eAutocompleteCategory_CONTACT,
+  #define AUTOCOMPLETE_CATEGORY(name_, value_) eAutocompleteCategory_##name_,
+  #include "AutocompleteFieldList.h"
+  #undef AUTOCOMPLETE_CATEGORY
 };
 
 static const nsAttrValue::EnumTable kAutocompleteFieldNameTable[] = {
-  { "off", eAutocompleteFieldName_OFF },
-  { "on", eAutocompleteFieldName_ON },
-
-  { "name", eAutocompleteFieldName_NAME },
-  { "given-name", eAutocompleteFieldName_GIVEN_NAME },
-  { "additional-name", eAutocompleteFieldName_ADDITIONAL_NAME },
-  { "family-name", eAutocompleteFieldName_FAMILY_NAME },
-
-  { "username", eAutocompleteFieldName_USERNAME },
-  { "new-password", eAutocompleteFieldName_NEW_PASSWORD },
-  { "current-password", eAutocompleteFieldName_CURRENT_PASSWORD },
-
-  { "organization", eAutocompleteFieldName_ORGANIZATION },
-  { "street-address", eAutocompleteFieldName_STREET_ADDRESS },
-  { "address-line1", eAutocompleteFieldName_ADDRESS_LINE1 },
-  { "address-line2", eAutocompleteFieldName_ADDRESS_LINE2 },
-  { "address-line3", eAutocompleteFieldName_ADDRESS_LINE3 },
-  { "address-level4", eAutocompleteFieldName_ADDRESS_LEVEL4 },
-  { "address-level3", eAutocompleteFieldName_ADDRESS_LEVEL3 },
-  { "address-level2", eAutocompleteFieldName_ADDRESS_LEVEL2 },
-  { "address-level1", eAutocompleteFieldName_ADDRESS_LEVEL1 },
-  { "country", eAutocompleteFieldName_COUNTRY },
-  { "country-name", eAutocompleteFieldName_COUNTRY_NAME },
-  { "postal-code", eAutocompleteFieldName_POSTAL_CODE },
+  #define AUTOCOMPLETE_FIELD_NAME(name_, value_) \
+    { value_, eAutocompleteFieldName_##name_ },
+  #include "AutocompleteFieldList.h"
+  #undef AUTOCOMPLETE_FIELD_NAME
   { 0 }
 };
 
 static const nsAttrValue::EnumTable kAutocompleteContactFieldNameTable[] = {
-  { "tel", eAutocompleteFieldName_TEL },
-  { "tel-country-code", eAutocompleteFieldName_TEL_COUNTRY_CODE },
-  { "tel-national", eAutocompleteFieldName_TEL_NATIONAL },
-  { "tel-area-code", eAutocompleteFieldName_TEL_AREA_CODE },
-  { "tel-local", eAutocompleteFieldName_TEL_LOCAL },
-  { "tel-local-prefix", eAutocompleteFieldName_TEL_LOCAL_PREFIX },
-  { "tel-local-suffix", eAutocompleteFieldName_TEL_LOCAL_SUFFIX },
-  { "tel-extension", eAutocompleteFieldName_TEL_EXTENSION },
-
-  { "email", eAutocompleteFieldName_EMAIL },
+  #define AUTOCOMPLETE_CONTACT_FIELD_NAME(name_, value_) \
+    { value_, eAutocompleteFieldName_##name_ },
+  #include "AutocompleteFieldList.h"
+  #undef AUTOCOMPLETE_CONTACT_FIELD_NAME
   { 0 }
 };
 
 static const nsAttrValue::EnumTable kAutocompleteFieldHintTable[] = {
-  { "shipping", eAutocompleteFieldHint_SHIPPING },
-  { "billing", eAutocompleteFieldHint_BILLING },
+  #define AUTOCOMPLETE_FIELD_HINT(name_, value_) \
+    { value_, eAutocompleteFieldHint_##name_ },
+  #include "AutocompleteFieldList.h"
+  #undef AUTOCOMPLETE_FIELD_HINT
   { 0 }
 };
 
 static const nsAttrValue::EnumTable kAutocompleteContactFieldHintTable[] = {
-  { "home", eAutocompleteFieldContactHint_HOME },
-  { "work", eAutocompleteFieldContactHint_WORK },
-  { "mobile", eAutocompleteFieldContactHint_MOBILE },
-  { "fax", eAutocompleteFieldContactHint_FAX },
+  #define AUTOCOMPLETE_FIELD_CONTACT_HINT(name_, value_) \
+    { value_, eAutocompleteFieldContactHint_##name_ },
+  #include "AutocompleteFieldList.h"
+  #undef AUTOCOMPLETE_FIELD_CONTACT_HINT
   { 0 }
 };
 
@@ -415,6 +327,8 @@ static PLDHashTable sEventListenerManagersHash;
 class DOMEventListenerManagersHashReporter MOZ_FINAL : public nsIMemoryReporter
 {
   MOZ_DEFINE_MALLOC_SIZE_OF(MallocSizeOf)
+
+  ~DOMEventListenerManagersHashReporter() {}
 
 public:
   NS_DECL_ISUPPORTS
@@ -480,6 +394,8 @@ EventListenerManagerHashClearEntry(PLDHashTable *table, PLDHashEntryHdr *entry)
 class SameOriginChecker MOZ_FINAL : public nsIChannelEventSink,
                                     public nsIInterfaceRequestor
 {
+  ~SameOriginChecker() {}
+
   NS_DECL_ISUPPORTS
   NS_DECL_NSICHANNELEVENTSINK
   NS_DECL_NSIINTERFACEREQUESTOR
@@ -523,12 +439,6 @@ nsContentUtils::Init()
 
     return NS_OK;
   }
-
-  // Check that all the entries in the autocomplete enums are handled in EnumTables
-  MOZ_ASSERT(eAutocompleteFieldName_last == ArrayLength(kAutocompleteFieldNameTable)
-             + ArrayLength(kAutocompleteContactFieldNameTable) - 2);
-  MOZ_ASSERT(eAutocompleteFieldHint_last == ArrayLength(kAutocompleteFieldHintTable) - 1);
-  MOZ_ASSERT(eAutocompleteFieldContactHint_last == ArrayLength(kAutocompleteContactFieldHintTable) - 1);
 
   sNameSpaceManager = nsNameSpaceManager::GetInstance();
   NS_ENSURE_TRUE(sNameSpaceManager, NS_ERROR_OUT_OF_MEMORY);
@@ -966,6 +876,81 @@ nsContentUtils::InternalSerializeAutocompleteAttribute(const nsAttrValue* aAttrV
   }
 
   return eAutocompleteAttrState_Invalid;
+}
+
+// Parse an integer according to HTML spec
+int32_t
+nsContentUtils::ParseHTMLInteger(const nsAString& aValue,
+                                 ParseHTMLIntegerResultFlags *aResult)
+{
+  int result = eParseHTMLInteger_NoFlags;
+
+  nsAString::const_iterator iter, end;
+  aValue.BeginReading(iter);
+  aValue.EndReading(end);
+
+  while (iter != end && nsContentUtils::IsHTMLWhitespace(*iter)) {
+    result |= eParseHTMLInteger_NonStandard;
+    ++iter;
+  }
+
+  if (iter == end) {
+    result |= eParseHTMLInteger_Error | eParseHTMLInteger_ErrorNoValue;
+    *aResult = (ParseHTMLIntegerResultFlags)result;
+    return 0;
+  }
+
+  bool negate = false;
+  if (*iter == char16_t('-')) {
+    negate = true;
+    ++iter;
+  } else if (*iter == char16_t('+')) {
+    result |= eParseHTMLInteger_NonStandard;
+    ++iter;
+  }
+
+  bool foundValue = false;
+  int32_t value = 0;
+  int32_t pValue = 0; // Previous value, used to check integer overflow
+  while (iter != end) {
+    if (*iter >= char16_t('0') && *iter <= char16_t('9')) {
+      value = (value * 10) + (*iter - char16_t('0'));
+      ++iter;
+      // Checking for integer overflow.
+      if (pValue > value) {
+        result |= eParseHTMLInteger_Error | eParseHTMLInteger_ErrorOverflow;
+        break;
+      } else {
+        foundValue = true;
+        pValue = value;
+      }
+    } else if (*iter == char16_t('%')) {
+      ++iter;
+      result |= eParseHTMLInteger_IsPercent;
+      break;
+    } else {
+      break;
+    }
+  }
+
+  if (!foundValue) {
+    result |= eParseHTMLInteger_Error | eParseHTMLInteger_ErrorNoValue;
+  }
+
+  if (negate) {
+    value = -value;
+    // Checking the special case of -0.
+    if (!value) {
+      result |= eParseHTMLInteger_NonStandard;
+    }
+  }
+
+  if (iter != end) {
+    result |= eParseHTMLInteger_DidNotConsumeAllInput;
+  }
+
+  *aResult = (ParseHTMLIntegerResultFlags)result;
+  return value;
 }
 
 #define SKIP_WHITESPACE(iter, end_iter, end_res)                 \
@@ -4544,7 +4529,7 @@ nsContentUtils::IsInSameAnonymousTree(const nsINode* aNode,
   // For nodes in a shadow tree, it is insufficient to simply compare
   // the binding parent because a node may host multiple ShadowRoots,
   // thus nodes in different shadow tree may have the same binding parent.
-  if (aNode->HasFlag(NODE_IS_IN_SHADOW_TREE)) {
+  if (aNode->IsInShadowTree()) {
     return nodeAsContent->GetContainingShadow() ==
       aContent->GetContainingShadow();
   }
@@ -5988,7 +5973,8 @@ nsContentUtils::CreateBlobBuffer(JSContext* aCx,
   nsCOMPtr<nsIDOMBlob> blob;
   if (blobData) {
     memcpy(blobData, aData.BeginReading(), blobLen);
-    blob = new nsDOMMemoryFile(blobData, blobLen, EmptyString());
+    blob = mozilla::dom::DOMFile::CreateMemoryFile(blobData, blobLen,
+                                                   EmptyString());
   } else {
     return NS_ERROR_OUT_OF_MEMORY;
   }
@@ -6078,22 +6064,6 @@ nsContentUtils::AllocClassMatchingInfo(nsINode* aRootNode,
     aRootNode->OwnerDoc()->GetCompatibilityMode() == eCompatibility_NavQuirks ?
     eIgnoreCase : eCaseMatters;
   return info;
-}
-
-// static
-void
-nsContentUtils::DeferredFinalize(nsISupports* aSupports)
-{
-  cyclecollector::DeferredFinalize(aSupports);
-}
-
-// static
-void
-nsContentUtils::DeferredFinalize(mozilla::DeferredFinalizeAppendFunction aAppendFunc,
-                                 mozilla::DeferredFinalizeFunction aFunc,
-                                 void* aThing)
-{
-  cyclecollector::DeferredFinalize(aAppendFunc, aFunc, aThing);
 }
 
 // static
@@ -6411,15 +6381,12 @@ nsContentUtils::IsPatternMatching(nsAString& aValue, nsAString& aPattern,
                                   nsIDocument* aDocument)
 {
   NS_ASSERTION(aDocument, "aDocument should be a valid pointer (not null)");
-  nsCOMPtr<nsIGlobalObject> globalObject =
-    do_QueryInterface(aDocument->GetWindow());
-  if (NS_WARN_IF(!globalObject)) {
-    return true;
-  }
 
   AutoJSAPI jsapi;
+  if (NS_WARN_IF(!jsapi.Init(aDocument->GetWindow()))) {
+    return true;
+  }
   JSContext* cx = jsapi.cx();
-  JSAutoCompartment ac(cx, globalObject->GetGlobalJSObject());
 
   // The pattern has to match the entire value.
   aPattern.Insert(NS_LITERAL_STRING("^(?:"), 0);

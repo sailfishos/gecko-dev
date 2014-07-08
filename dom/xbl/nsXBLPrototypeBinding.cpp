@@ -39,6 +39,7 @@
 
 #include "nsCSSRuleProcessor.h"
 #include "nsXBLResourceLoader.h"
+#include "mozilla/AddonPathService.h"
 #include "mozilla/dom/CDATASection.h"
 #include "mozilla/dom/Comment.h"
 #include "mozilla/dom/Element.h"
@@ -154,10 +155,15 @@ nsXBLPrototypeBinding::Traverse(nsCycleCollectionTraversalCallback &cb) const
 }
 
 void
-nsXBLPrototypeBinding::UnlinkJSObjects()
+nsXBLPrototypeBinding::Unlink()
 {
-  if (mImplementation)
+  if (mImplementation) {
     mImplementation->UnlinkJSObjects();
+  }
+
+  if (mResources) {
+    mResources->Unlink();
+  }
 }
 
 void
@@ -249,7 +255,7 @@ nsXBLPrototypeBinding::BindingAttached(nsIContent* aBoundElement)
 {
   if (mImplementation && mImplementation->CompiledMembers() &&
       mImplementation->mConstructor)
-    return mImplementation->mConstructor->Execute(aBoundElement);
+    return mImplementation->mConstructor->Execute(aBoundElement, MapURIToAddonID(mBindingURI));
   return NS_OK;
 }
 
@@ -258,7 +264,7 @@ nsXBLPrototypeBinding::BindingDetached(nsIContent* aBoundElement)
 {
   if (mImplementation && mImplementation->CompiledMembers() &&
       mImplementation->mDestructor)
-    return mImplementation->mDestructor->Execute(aBoundElement);
+    return mImplementation->mDestructor->Execute(aBoundElement, MapURIToAddonID(mBindingURI));
   return NS_OK;
 }
 
@@ -1686,14 +1692,14 @@ nsXBLPrototypeBinding::EnsureResources()
 }
 
 void
-nsXBLPrototypeBinding::AppendStyleSheet(nsCSSStyleSheet* aSheet)
+nsXBLPrototypeBinding::AppendStyleSheet(CSSStyleSheet* aSheet)
 {
   EnsureResources();
   mResources->AppendStyleSheet(aSheet);
 }
 
 void
-nsXBLPrototypeBinding::RemoveStyleSheet(nsCSSStyleSheet* aSheet)
+nsXBLPrototypeBinding::RemoveStyleSheet(CSSStyleSheet* aSheet)
 {
   if (!mResources) {
     MOZ_ASSERT(false, "Trying to remove a sheet that does not exist.");
@@ -1703,13 +1709,13 @@ nsXBLPrototypeBinding::RemoveStyleSheet(nsCSSStyleSheet* aSheet)
   mResources->RemoveStyleSheet(aSheet);
 } 
 void
-nsXBLPrototypeBinding::InsertStyleSheetAt(size_t aIndex, nsCSSStyleSheet* aSheet)
+nsXBLPrototypeBinding::InsertStyleSheetAt(size_t aIndex, CSSStyleSheet* aSheet)
 {
   EnsureResources();
   mResources->InsertStyleSheetAt(aIndex, aSheet);
 }
 
-nsCSSStyleSheet*
+CSSStyleSheet*
 nsXBLPrototypeBinding::StyleSheetAt(size_t aIndex) const
 {
   MOZ_ASSERT(mResources);
@@ -1730,7 +1736,7 @@ nsXBLPrototypeBinding::HasStyleSheets() const
 
 void
 nsXBLPrototypeBinding::AppendStyleSheetsTo(
-                                      nsTArray<nsCSSStyleSheet*>& aResult) const
+                                      nsTArray<CSSStyleSheet*>& aResult) const
 {
   if (mResources) {
     mResources->AppendStyleSheetsTo(aResult);

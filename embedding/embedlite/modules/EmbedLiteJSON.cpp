@@ -68,7 +68,7 @@ JSValToVariant(JSContext* cx, jsval& propval, nsIWritableVariant* aVariant)
   } else if (propval.isString()) {
     JS::Rooted<JS::Value> val(cx, propval);
     JSString* propvalString = JS::ToString(cx, val);
-    nsDependentJSString vstr;
+    nsAutoJSString vstr;
     if (!propvalString || !vstr.init(cx, propvalString)) {
       return NS_ERROR_FAILURE;
     }
@@ -99,7 +99,7 @@ ParseObject(JSContext* cx, JSObject* object, nsIWritablePropertyBag2* aBag)
 
     JS::Rooted<JS::Value> val(cx, propname);
     JSString* propnameString = JS::ToString(cx, val);
-    nsDependentJSString pstr;
+    nsAutoJSString pstr;
     if (!propnameString || !pstr.init(cx, propnameString)) {
       NS_ERROR("Failed to get property string");
       return NS_ERROR_FAILURE;

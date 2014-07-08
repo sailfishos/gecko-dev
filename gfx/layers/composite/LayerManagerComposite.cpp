@@ -16,6 +16,7 @@
 #include "GeckoProfiler.h"              // for profiler_set_frame_number, etc
 #include "ImageLayerComposite.h"        // for ImageLayerComposite
 #include "Layers.h"                     // for Layer, ContainerLayer, etc
+#include "LayerScope.h"                 // for LayerScope Tool
 #include "ThebesLayerComposite.h"       // for ThebesLayerComposite
 #include "TiledLayerBuffer.h"           // for TiledLayerComposer
 #include "Units.h"                      // for ScreenIntRect
@@ -417,6 +418,9 @@ LayerManagerComposite::Render()
   /** Our more efficient but less powerful alter ego, if one is available. */
   nsRefPtr<Composer2D> composer2D = mCompositor->GetWidget()->GetComposer2D();
 
+  // Set LayerScope begin/end frame
+  LayerScopeAutoFrame frame(PR_Now());
+
   if (!mTarget && composer2D && composer2D->TryRender(mRoot, mWorldMatrix, mGeometryChanged)) {
     if (mFPS) {
       double fps = mFPS->mCompositionFps.AddFrameAndGetFps(TimeStamp::Now());
@@ -655,10 +659,11 @@ LayerManagerComposite::ComputeRenderIntegrity()
   }
 
   const FrameMetrics& rootMetrics = root->AsContainerLayer()->GetFrameMetrics();
-  nsIntRect screenRect(rootMetrics.mCompositionBounds.x,
-                       rootMetrics.mCompositionBounds.y,
-                       rootMetrics.mCompositionBounds.width,
-                       rootMetrics.mCompositionBounds.height);
+  ParentLayerIntRect bounds = RoundedToInt(rootMetrics.mCompositionBounds);
+  nsIntRect screenRect(bounds.x,
+                       bounds.y,
+                       bounds.width,
+                       bounds.height);
 
   float lowPrecisionMultiplier = 1.0f;
   float highPrecisionMultiplier = 1.0f;

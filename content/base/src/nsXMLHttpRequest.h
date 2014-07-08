@@ -52,6 +52,10 @@ class nsIJSID;
 
 namespace mozilla {
 
+namespace dom {
+class DOMFile;
+}
+
 // A helper for building up an ArrayBuffer object's data
 // before creating the ArrayBuffer itself.  Will do doubling
 // based reallocation, up to an optional maximum growth given.
@@ -612,9 +616,10 @@ protected:
     NS_DECL_NSIHTTPHEADERVISITOR
     nsHeaderVisitor(nsXMLHttpRequest* aXMLHttpRequest, nsIHttpChannel* aHttpChannel)
       : mXHR(aXMLHttpRequest), mHttpChannel(aHttpChannel) {}
-    virtual ~nsHeaderVisitor() {}
     const nsACString &Headers() { return mHeaders; }
   private:
+    virtual ~nsHeaderVisitor() {}
+
     nsCString mHeaders;
     nsXMLHttpRequest* mXHR;
     nsCOMPtr<nsIHttpChannel> mHttpChannel;
@@ -666,7 +671,7 @@ protected:
   nsCOMPtr<nsIDOMBlob> mResponseBlob;
   // Non-null only when we are able to get a os-file representation of the
   // response, i.e. when loading from a file.
-  nsRefPtr<nsDOMFile> mDOMFile;
+  nsRefPtr<mozilla::dom::DOMFile> mDOMFile;
   // We stream data to mBlobSet when response type is "blob" or "moz-blob"
   // and mDOMFile is null.
   nsAutoPtr<BlobSet> mBlobSet;
@@ -794,12 +799,14 @@ class nsXMLHttpRequestXPCOMifier MOZ_FINAL : public nsIStreamListener,
   {
   }
 
+private:
   ~nsXMLHttpRequestXPCOMifier() {
     if (mXHR) {
       mXHR->mXPCOMifier = nullptr;
     }
   }
 
+public:
   NS_FORWARD_NSISTREAMLISTENER(mXHR->)
   NS_FORWARD_NSIREQUESTOBSERVER(mXHR->)
   NS_FORWARD_NSICHANNELEVENTSINK(mXHR->)
@@ -827,8 +834,9 @@ public:
   }
   nsXHRParseEndListener(nsIXMLHttpRequest* aXHR)
     : mXHR(do_GetWeakReference(aXHR)) {}
-  virtual ~nsXHRParseEndListener() {}
 private:
+  virtual ~nsXHRParseEndListener() {}
+
   nsWeakPtr mXHR;
 };
 

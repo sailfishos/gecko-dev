@@ -171,7 +171,7 @@ nsIContent::GetFlattenedTreeParent() const
 
   // Shadow roots never shows up in the flattened tree. Return the host
   // instead.
-  if (parent && parent->HasFlag(NODE_IS_IN_SHADOW_TREE)) {
+  if (parent && parent->IsInShadowTree()) {
     ShadowRoot* parentShadowRoot = ShadowRoot::FromNode(parent);
     if (parentShadowRoot) {
       return parentShadowRoot->GetHost();
@@ -498,6 +498,12 @@ nsNodeWeakReference::QueryReferent(const nsIID& aIID, void** aInstancePtr)
 {
   return mNode ? mNode->QueryInterface(aIID, aInstancePtr) :
                  NS_ERROR_NULL_POINTER;
+}
+
+size_t
+nsNodeWeakReference::SizeOfOnlyThis(mozilla::MallocSizeOf aMallocSizeOf) const
+{
+  return aMallocSizeOf(this);
 }
 
 

@@ -184,7 +184,7 @@ nsCSPContext::ShouldLoad(nsContentPolicyType aContentType,
       // incorrectly fail the unit tests.
       if (!isPreload) {
         this->AsyncReportViolation(aContentLocation,
-                                   aRequestOrigin,
+                                   mSelfURI,
                                    violatedDirective,
                                    p,             /* policy index        */
                                    EmptyString(), /* no observer subject */
@@ -441,7 +441,7 @@ nsCSPContext::GetAllowsHash(const nsAString& aContent,
       mPolicies[p]->getDirectiveStringForContentType(                          \
                         nsIContentPolicy::TYPE_ ## contentPolicyType,          \
                         violatedDirective);                                    \
-      this->AsyncReportViolation(selfISupports, nullptr, violatedDirective, p, \
+      this->AsyncReportViolation(selfISupports, mSelfURI, violatedDirective, p, \
                                  NS_LITERAL_STRING(observerTopic),             \
                                  aSourceFile, aScriptSample, aLineNum);        \
     }                                                                          \
@@ -692,7 +692,7 @@ nsCSPContext::SendReports(nsISupports* aBlockedContentSource,
 
   // line-number
   if (aLineNum != 0) {
-    csp_report.AppendASCII(", \"script-sample\": \"");
+    csp_report.AppendASCII(", \"line-number\": \"");
     csp_report.AppendInt(aLineNum);
     csp_report.AppendASCII("\"");
   }
@@ -708,12 +708,13 @@ nsCSPContext::SendReports(nsISupports* aBlockedContentSource,
   nsCOMPtr<nsIChannel> reportChannel;
 
   for (uint32_t r = 0; r < reportURIs.Length(); r++) {
+    nsAutoCString reportURICstring = NS_ConvertUTF16toUTF8(reportURIs[r]);
     // try to create a new uri from every report-uri string
     rv = NS_NewURI(getter_AddRefs(reportURI), reportURIs[r]);
     if (NS_FAILED(rv)) {
       const char16_t* params[] = { reportURIs[r].get() };
       CSPCONTEXTLOG(("Could not create nsIURI for report URI %s",
-                     reportURIs[r].get()));
+                     reportURICstring.get()));
       CSP_LogLocalizedStr(NS_LITERAL_STRING("triedToSendReport").get(),
                           params, ArrayLength(params),
                           aSourceFile, aScriptSample, aLineNum, 0,
@@ -725,7 +726,7 @@ nsCSPContext::SendReports(nsISupports* aBlockedContentSource,
     rv = NS_NewChannel(getter_AddRefs(reportChannel), reportURI);
     if (NS_FAILED(rv)) {
       CSPCONTEXTLOG(("Could not create new channel for report URI %s",
-                     reportURIs[r].get()));
+                     reportURICstring.get()));
       continue; // don't return yet, there may be more URIs
     }
 
@@ -771,7 +772,7 @@ nsCSPContext::SendReports(nsISupports* aBlockedContentSource,
     if (NS_CP_REJECTED(shouldLoad)) {
       // skip unauthorized URIs
       CSPCONTEXTLOG(("nsIContentPolicy blocked sending report to %s",
-                     reportURIs[r].get()));
+                     reportURICstring.get()));
       continue; // don't return yet, there may be more URIs
     }
 
@@ -807,6 +808,8 @@ nsCSPContext::SendReports(nsISupports* aBlockedContentSource,
                           params, ArrayLength(params),
                           aSourceFile, aScriptSample, aLineNum, 0,
                           nsIScriptError::errorFlag, "CSP", mInnerWindowID);
+    } else {
+      CSPCONTEXTLOG(("Sent violation report to URI %s", reportURICstring.get()));
     }
   }
   return NS_OK;
@@ -821,6 +824,7 @@ class CSPReportSenderRunnable MOZ_FINAL : public nsRunnable
     CSPReportSenderRunnable(nsISupports* aBlockedContentSource,
                             nsIURI* aOriginalURI,
                             uint32_t aViolatedPolicyIndex,
+                            bool aReportOnlyFlag,
                             const nsAString& aViolatedDirective,
                             const nsAString& aObserverSubject,
                             const nsAString& aSourceFile,
@@ -829,8 +833,8 @@ class CSPReportSenderRunnable MOZ_FINAL : public nsRunnable
                             uint64_t aInnerWindowID,
                             nsCSPContext* aCSPContext)
       : mBlockedContentSource(aBlockedContentSource)
-      , mOriginalURI(aOriginalURI)
-      , mViolatedPolicyIndex(aViolatedPolicyIndex)
+      , mOriginalURI(aOriginalURI) , mViolatedPolicyIndex(aViolatedPolicyIndex)
+      , mReportOnlyFlag(aReportOnlyFlag)
       , mViolatedDirective(aViolatedDirective)
       , mSourceFile(aSourceFile)
       , mScriptSample(aScriptSample)
@@ -887,7 +891,9 @@ class CSPReportSenderRunnable MOZ_FINAL : public nsRunnable
         nsString blockedDataChar16 = NS_ConvertUTF8toUTF16(blockedDataStr);
         const char16_t* params[] = { mViolatedDirective.get(),
                                      blockedDataChar16.get() };
-        CSP_LogLocalizedStr(NS_LITERAL_STRING("CSPViolationWithURI").get(),
+
+        CSP_LogLocalizedStr(mReportOnlyFlag ? NS_LITERAL_STRING("CSPROViolationWithURI").get() :
+                                              NS_LITERAL_STRING("CSPViolationWithURI").get(),
                             params, ArrayLength(params),
                             mSourceFile, mScriptSample, mLineNum, 0,
                             nsIScriptError::errorFlag, "CSP", mInnerWindowID);
@@ -899,6 +905,7 @@ class CSPReportSenderRunnable MOZ_FINAL : public nsRunnable
     nsCOMPtr<nsISupports>   mBlockedContentSource;
     nsCOMPtr<nsIURI>        mOriginalURI;
     uint32_t                mViolatedPolicyIndex;
+    bool                    mReportOnlyFlag;
     nsString                mViolatedDirective;
     nsCOMPtr<nsISupports>   mObserverSubject;
     nsString                mSourceFile;
@@ -943,9 +950,12 @@ nsCSPContext::AsyncReportViolation(nsISupports* aBlockedContentSource,
                                    const nsAString& aScriptSample,
                                    uint32_t aLineNum)
 {
+  NS_ENSURE_ARG_MAX(aViolatedPolicyIndex, mPolicies.Length() - 1);
+
   NS_DispatchToMainThread(new CSPReportSenderRunnable(aBlockedContentSource,
                                                       aOriginalURI,
                                                       aViolatedPolicyIndex,
+                                                      mPolicies[aViolatedPolicyIndex]->getReportOnlyFlag(),
                                                       aViolatedDirective,
                                                       aObserverSubject,
                                                       aSourceFile,
@@ -963,13 +973,9 @@ nsCSPContext::AsyncReportViolation(nsISupports* aBlockedContentSource,
  * In order to determine the URI of the parent document (one causing the load
  * of this protected document), this function obtains the docShellTreeItem,
  * then walks up the hierarchy until it finds a privileged (chrome) tree item.
- * Getting the parent's URI looks like this in pseudocode:
+ * Getting the a tree item's URI looks like this in pseudocode:
  *
- * nsIDocShell->QI(nsIInterfaceRequestor)
- *            ->GI(nsIDocShellTreeItem)
- *            ->QI(nsIInterfaceRequestor)
- *            ->GI(nsIWebNavigation)
- *            ->GetCurrentURI();
+ * nsIDocShellTreeItem->GetDocument()->GetDocumentURI();
  *
  * aDocShell is the docShell for the protected document.
  */
@@ -991,21 +997,18 @@ nsCSPContext::PermitsAncestry(nsIDocShell* aDocShell, bool* outPermitsAncestry)
   nsCOMPtr<nsIInterfaceRequestor> ir(do_QueryInterface(aDocShell));
   nsCOMPtr<nsIDocShellTreeItem> treeItem(do_GetInterface(ir));
   nsCOMPtr<nsIDocShellTreeItem> parentTreeItem;
-  nsCOMPtr<nsIWebNavigation> webNav;
   nsCOMPtr<nsIURI> currentURI;
   nsCOMPtr<nsIURI> uriClone;
 
   // iterate through each docShell parent item
   while (NS_SUCCEEDED(treeItem->GetParent(getter_AddRefs(parentTreeItem))) &&
          parentTreeItem != nullptr) {
-    ir     = do_QueryInterface(parentTreeItem);
-    NS_ASSERTION(ir, "Could not QI docShellTreeItem to nsIInterfaceRequestor");
 
-    webNav = do_GetInterface(ir);
-    NS_ENSURE_TRUE(webNav, NS_ERROR_FAILURE);
+    nsIDocument* doc = parentTreeItem->GetDocument();
+    NS_ASSERTION(doc, "Could not get nsIDocument from nsIDocShellTreeItem in nsCSPContext::PermitsAncestry");
+    NS_ENSURE_TRUE(doc, NS_ERROR_FAILURE);
 
-    rv = webNav->GetCurrentURI(getter_AddRefs(currentURI));
-    NS_ENSURE_SUCCESS(rv, rv);
+    currentURI = doc->GetDocumentURI();
 
     if (currentURI) {
       // stop when reaching chrome
@@ -1017,8 +1020,11 @@ nsCSPContext::PermitsAncestry(nsIDocShell* aDocShell, bool* outPermitsAncestry)
       // delete the userpass from the URI.
       rv = currentURI->CloneIgnoringRef(getter_AddRefs(uriClone));
       NS_ENSURE_SUCCESS(rv, rv);
-      rv = uriClone->SetUserPass(EmptyCString());
-      NS_ENSURE_SUCCESS(rv, rv);
+
+      // We don't care if this succeeds, just want to delete a userpass if
+      // there was one.
+      uriClone->SetUserPass(EmptyCString());
+
 #ifdef PR_LOGGING
       {
       nsAutoCString spec;

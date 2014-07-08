@@ -110,6 +110,7 @@ public:
       (void) rv;
     }
 
+private:
   virtual ~DataChannelShutdown()
     {
       nsCOMPtr<nsIObserverService> observerService =
@@ -118,6 +119,7 @@ public:
         observerService->RemoveObserver(this, "profile-change-net-teardown");
     }
 
+public:
   NS_IMETHODIMP Observe(nsISupports* aSubject, const char* aTopic,
                         const char16_t* aData) {
     if (strcmp(aTopic, "profile-change-net-teardown") == 0) {
@@ -678,12 +680,12 @@ DataChannelConnection::SctpDtlsInput(TransportFlow *flow,
 }
 
 int
-DataChannelConnection::SendPacket(const unsigned char *data, size_t len, bool release)
+DataChannelConnection::SendPacket(unsigned char data[], size_t len, bool release)
 {
   //LOG(("%p: SCTP/DTLS sent %ld bytes", this, len));
   int res = mTransportFlow->SendPacket(data, len) < 0 ? 1 : 0;
   if (release)
-    delete data;
+    delete [] data;
   return res;
 }
 

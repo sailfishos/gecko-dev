@@ -56,7 +56,7 @@
 #include "mozilla/AutoRestore.h"
 #include "mozilla/dom/ErrorEvent.h"
 #include "mozilla/dom/ImageData.h"
-#include "mozilla/dom/Key.h"
+#include "mozilla/dom/CryptoKey.h"
 #include "mozilla/dom/ImageDataBinding.h"
 #include "mozilla/dom/SubtleCryptoBinding.h"
 #include "nsAXPCNativeCallContext.h"
@@ -70,9 +70,6 @@
 #endif
 #include "AccessCheck.h"
 
-#ifdef MOZ_JSDEBUGGER
-#include "jsdIDebuggerService.h"
-#endif
 #ifdef MOZ_LOGGING
 // Force PR_LOGGING so we can get JS strict warnings even in release builds
 #define FORCE_PR_LOG 1
@@ -260,6 +257,7 @@ NeedsGCAfterCC()
 
 class nsJSEnvironmentObserver MOZ_FINAL : public nsIObserver
 {
+  ~nsJSEnvironmentObserver() {}
 public:
   NS_DECL_ISUPPORTS
   NS_DECL_NSIOBSERVER
@@ -1595,6 +1593,7 @@ nsJSContext::InitClasses(JS::Handle<JSObject*> aGlobalObj)
 {
   JSOptionChangedCallback(js_options_dot_str, this);
   AutoJSAPI jsapi;
+  jsapi.Init();
   JSContext* cx = jsapi.cx();
   JSAutoCompartment ac(cx, aGlobalObj);
 
@@ -2803,23 +2802,33 @@ NS_DOMReadStructuredClone(JSContext* cx,
     }
     MOZ_ASSERT(dataArray.isObject());
 
-    // Construct the ImageData.
-    nsRefPtr<ImageData> imageData = new ImageData(width, height,
-                                                  dataArray.toObject());
-    // Wrap it in a JS::Value.
-    return imageData->WrapObject(cx);
+    // Protect the result from a moving GC in ~nsRefPtr.
+    JS::Rooted<JSObject*> result(cx);
+    {
+      // Construct the ImageData.
+      nsRefPtr<ImageData> imageData = new ImageData(width, height,
+                                                    dataArray.toObject());
+      // Wrap it in a JS::Value.
+      result = imageData->WrapObject(cx);
+    }
+    return result;
   } else if (tag == SCTAG_DOM_WEBCRYPTO_KEY) {
     nsIGlobalObject *global = xpc::GetNativeForGlobal(JS::CurrentGlobalOrNull(cx));
     if (!global) {
       return nullptr;
     }
 
-    nsRefPtr<Key> key = new Key(global);
-    if (!key->ReadStructuredClone(reader)) {
-      return nullptr;
+    // Prevent the return value from being trashed by a GC during ~nsRefPtr.
+    JS::Rooted<JSObject*> result(cx);
+    {
+      nsRefPtr<CryptoKey> key = new CryptoKey(global);
+      if (!key->ReadStructuredClone(reader)) {
+        result = nullptr;
+      } else {
+        result = key->WrapObject(cx);
+      }
     }
-
-    return key->WrapObject(cx);
+    return result;
   }
 
   // Don't know what this is. Bail.
@@ -2850,8 +2859,8 @@ NS_DOMWriteStructuredClone(JSContext* cx,
   }
 
   // Handle Key cloning
-  Key* key;
-  if (NS_SUCCEEDED(UNWRAP_OBJECT(Key, obj, key))) {
+  CryptoKey* key;
+  if (NS_SUCCEEDED(UNWRAP_OBJECT(CryptoKey, obj, key))) {
     return JS_WriteUint32Pair(writer, SCTAG_DOM_WEBCRYPTO_KEY, 0) &&
            key->WriteStructuredClone(writer);
   }
@@ -2941,11 +2950,6 @@ nsJSContext::EnsureStatics()
     nullptr
   };
   JS_SetStructuredCloneCallbacks(sRuntime, &cloneCallbacks);
-
-  static js::DOMCallbacks DOMcallbacks = {
-    InstanceClassHasProtoAtDepth
-  };
-  SetDOMCallbacks(sRuntime, &DOMcallbacks);
 
   // Set up the asm.js cache callbacks
   static JS::AsmJSCacheOps asmJSCacheOps = {
@@ -3076,6 +3080,16 @@ mozilla::dom::ShutdownJSEnvironment()
 
   sShuttingDown = true;
   sDidShutdown = true;
+}
+
+class nsJSArgArray;
+
+namespace mozilla {
+template<>
+struct HasDangerousPublicDestructor<nsJSArgArray>
+{
+  static const bool value = true;
+};
 }
 
 // A fast-array class for JS.  This class supports both nsIJSScriptArray and

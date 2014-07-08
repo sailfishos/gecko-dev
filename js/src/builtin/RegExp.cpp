@@ -58,7 +58,7 @@ js::CreateRegExpMatchResult(JSContext *cx, HandleString input, const MatchPairs 
             arr->setDenseInitializedLength(i + 1);
             arr->initDenseElement(i, UndefinedValue());
         } else {
-            JSLinearString *str = js_NewDependentString(cx, input, pair.start, pair.length());
+            JSLinearString *str = NewDependentString(cx, input, pair.start, pair.length());
             if (!str)
                 return false;
             arr->setDenseInitializedLength(i + 1);
@@ -499,7 +499,7 @@ js_InitRegExpClass(JSContext *cx, HandleObject obj)
     if (!builder.build(empty, RegExpFlag(0)))
         return nullptr;
 
-    if (!DefinePropertiesAndBrand(cx, proto, nullptr, regexp_methods))
+    if (!DefinePropertiesAndFunctions(cx, proto, nullptr, regexp_methods))
         return nullptr;
 
     RootedFunction ctor(cx);

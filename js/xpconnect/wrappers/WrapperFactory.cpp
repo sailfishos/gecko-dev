@@ -32,13 +32,13 @@ namespace xpc {
 // transparent wrapper in the origin (non-chrome) compartment. When
 // an object with that special wrapper applied crosses into chrome,
 // we know to not apply an X-ray wrapper.
-Wrapper XrayWaiver(WrapperFactory::WAIVE_XRAY_WRAPPER_FLAG);
+const Wrapper XrayWaiver(WrapperFactory::WAIVE_XRAY_WRAPPER_FLAG);
 
 // When objects for which we waived the X-ray wrapper cross into
 // chrome, we wrap them into a special cross-compartment wrapper
 // that transitively extends the waiver to all properties we get
 // off it.
-WaiveXrayWrapper WaiveXrayWrapper::singleton(0);
+const WaiveXrayWrapper WaiveXrayWrapper::singleton(0);
 
 bool
 WrapperFactory::IsCOW(JSObject *obj)
@@ -53,7 +53,7 @@ WrapperFactory::GetXrayWaiver(HandleObject obj)
     // Object should come fully unwrapped but outerized.
     MOZ_ASSERT(obj == UncheckedUnwrap(obj));
     MOZ_ASSERT(!js::GetObjectClass(obj)->ext.outerObject);
-    XPCWrappedNativeScope *scope = GetObjectScope(obj);
+    XPCWrappedNativeScope *scope = ObjectScope(obj);
     MOZ_ASSERT(scope);
 
     if (!scope->mWaiverWrapperMap)
@@ -72,7 +72,7 @@ WrapperFactory::CreateXrayWaiver(JSContext *cx, HandleObject obj)
     // The caller is required to have already done a lookup.
     // NB: This implictly performs the assertions of GetXrayWaiver.
     MOZ_ASSERT(!GetXrayWaiver(obj));
-    XPCWrappedNativeScope *scope = GetObjectScope(obj);
+    XPCWrappedNativeScope *scope = ObjectScope(obj);
 
     JSAutoCompartment ac(cx, obj);
     JSObject *waiver = Wrapper::New(cx, obj,
@@ -325,7 +325,7 @@ WrapperFactory::PrepareForWrapping(JSContext *cx, HandleObject scope,
 
 #ifdef DEBUG
 static void
-DEBUG_CheckUnwrapSafety(HandleObject obj, js::Wrapper *handler,
+DEBUG_CheckUnwrapSafety(HandleObject obj, const js::Wrapper *handler,
                         JSCompartment *origin, JSCompartment *target)
 {
     if (AccessCheck::isChrome(target) || xpc::IsUniversalXPConnectEnabled(target)) {
@@ -344,7 +344,7 @@ DEBUG_CheckUnwrapSafety(HandleObject obj, js::Wrapper *handler,
 #define DEBUG_CheckUnwrapSafety(obj, handler, origin, target) {}
 #endif
 
-static Wrapper *
+static const Wrapper *
 SelectWrapper(bool securityWrapper, bool wantXrays, XrayType xrayType,
               bool waiveXrays, bool originIsXBLScope)
 {
@@ -420,8 +420,8 @@ WrapperFactory::Rewrap(JSContext *cx, HandleObject existing, HandleObject obj,
     XrayType xrayType = GetXrayType(obj);
     bool waiveXrayFlag = flags & WAIVE_XRAY_WRAPPER_FLAG;
 
-    Wrapper *wrapper;
-    CompartmentPrivate *targetdata = EnsureCompartmentPrivate(target);
+    const Wrapper *wrapper;
+    CompartmentPrivate *targetdata = CompartmentPrivate::Get(target);
 
     //
     // First, handle the special cases.
@@ -593,7 +593,7 @@ FixWaiverAfterTransplant(JSContext *cx, HandleObject oldWaiver, HandleObject new
     // There should be no same-compartment references to oldWaiver, and we
     // just remapped all cross-compartment references. It's dead, so we can
     // remove it from the map.
-    XPCWrappedNativeScope *scope = GetObjectScope(oldWaiver);
+    XPCWrappedNativeScope *scope = ObjectScope(oldWaiver);
     JSObject *key = Wrapper::wrappedObject(oldWaiver);
     MOZ_ASSERT(scope->mWaiverWrapperMap->Find(key));
     scope->mWaiverWrapperMap->Remove(key);
@@ -617,8 +617,6 @@ nsIGlobalObject *
 GetNativeForGlobal(JSObject *obj)
 {
     MOZ_ASSERT(JS_IsGlobalObject(obj));
-    if (!MaybeGetObjectScope(obj))
-        return nullptr;
 
     // Every global needs to hold a native as its private or be a
     // WebIDL object with an nsISupports DOM object.

@@ -1,4 +1,4 @@
-// -*- Mode: Java; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*-
+// -*- indent-tabs-mode: nil; js-indent-level: 4 -*-
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -27,12 +27,12 @@ let downloads = {
     let dbConn = dlmgr.DBConnection;
     let stmt = dbConn.createStatement("SELECT id FROM moz_downloads WHERE " +
         "state = ? OR state = ? OR state = ? OR state = ? OR state = ? OR state = ?");
-    stmt.bindInt32Parameter(0, Ci.nsIDownloadManager.DOWNLOAD_FINISHED);
-    stmt.bindInt32Parameter(1, Ci.nsIDownloadManager.DOWNLOAD_FAILED);
-    stmt.bindInt32Parameter(2, Ci.nsIDownloadManager.DOWNLOAD_CANCELED);
-    stmt.bindInt32Parameter(3, Ci.nsIDownloadManager.DOWNLOAD_BLOCKED_PARENTAL);
-    stmt.bindInt32Parameter(4, Ci.nsIDownloadManager.DOWNLOAD_BLOCKED_POLICY);
-    stmt.bindInt32Parameter(5, Ci.nsIDownloadManager.DOWNLOAD_DIRTY);
+    stmt.bindByIndex(0, Ci.nsIDownloadManager.DOWNLOAD_FINISHED);
+    stmt.bindByIndex(1, Ci.nsIDownloadManager.DOWNLOAD_FAILED);
+    stmt.bindByIndex(2, Ci.nsIDownloadManager.DOWNLOAD_CANCELED);
+    stmt.bindByIndex(3, Ci.nsIDownloadManager.DOWNLOAD_BLOCKED_PARENTAL);
+    stmt.bindByIndex(4, Ci.nsIDownloadManager.DOWNLOAD_BLOCKED_POLICY);
+    stmt.bindByIndex(5, Ci.nsIDownloadManager.DOWNLOAD_DIRTY);
     while (stmt.executeStep()) {
       aCallback(dlmgr.getDownload(stmt.row.id));
     }

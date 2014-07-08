@@ -138,6 +138,7 @@ private:
         off64_t offset;
         size_t size;
         uint32_t duration;
+        uint32_t ctsOffset;
         uint8_t iv[16];
         Vector<size_t> clearsizes;
         Vector<size_t> encryptedsizes;
@@ -3013,6 +3014,7 @@ status_t MPEG4Source::parseTrackFragmentRun(off64_t offset, off64_t size) {
         tmp.offset = dataOffset;
         tmp.size = sampleSize;
         tmp.duration = sampleDuration;
+        tmp.ctsOffset = sampleCtsOffset;
         mCurrentSamples.add(tmp);
 
         dataOffset += sampleSize;
@@ -3253,7 +3255,7 @@ status_t MPEG4Source::read(
         return OK;
     } else {
         // Whole NAL units are returned but each fragment is prefixed by
-        // the start code (0x00 00 00 01).
+        // the NAL length, stored in four bytes.
         ssize_t num_bytes_read = 0;
         int32_t drm = 0;
         bool usesDRM = (mFormat->findInt32(kKeyIsDRM, &drm) && drm != 0);
@@ -3301,11 +3303,10 @@ status_t MPEG4Source::read(
                 }
 
                 CHECK(dstOffset + 4 <= mBuffer->size());
-
-                dstData[dstOffset++] = 0;
-                dstData[dstOffset++] = 0;
-                dstData[dstOffset++] = 0;
-                dstData[dstOffset++] = 1;
+                dstData[dstOffset++] = (uint8_t) (nalLength >> 24);
+                dstData[dstOffset++] = (uint8_t) (nalLength >> 16);
+                dstData[dstOffset++] = (uint8_t) (nalLength >> 8);
+                dstData[dstOffset++] = (uint8_t) nalLength;
                 memcpy(&dstData[dstOffset], &mSrcBuffer[srcOffset], nalLength);
                 srcOffset += nalLength;
                 dstOffset += nalLength;
@@ -3431,7 +3432,7 @@ status_t MPEG4Source::fragmentedRead(
         const Sample *smpl = &mCurrentSamples[mCurrentSampleIndex];
         offset = smpl->offset;
         size = smpl->size;
-        cts = mCurrentTime;
+        cts = mCurrentTime + smpl->ctsOffset;
         duration = smpl->duration;
         mCurrentTime += smpl->duration;
         isSyncSample = (mCurrentSampleIndex == 0); // XXX
@@ -3540,7 +3541,7 @@ status_t MPEG4Source::fragmentedRead(
     } else {
         ALOGV("whole NAL");
         // Whole NAL units are returned but each fragment is prefixed by
-        // the start code (0x00 00 00 01).
+        // the NAL unit's length, stored in four bytes.
         ssize_t num_bytes_read = 0;
         int32_t drm = 0;
         bool usesDRM = (mFormat->findInt32(kKeyIsDRM, &drm) && drm != 0);
@@ -3589,11 +3590,10 @@ status_t MPEG4Source::fragmentedRead(
                 }
 
                 CHECK(dstOffset + 4 <= mBuffer->size());
-
-                dstData[dstOffset++] = 0;
-                dstData[dstOffset++] = 0;
-                dstData[dstOffset++] = 0;
-                dstData[dstOffset++] = 1;
+                dstData[dstOffset++] = (uint8_t) (nalLength >> 24);
+                dstData[dstOffset++] = (uint8_t) (nalLength >> 16);
+                dstData[dstOffset++] = (uint8_t) (nalLength >> 8);
+                dstData[dstOffset++] = (uint8_t) nalLength;
                 memcpy(&dstData[dstOffset], &mSrcBuffer[srcOffset], nalLength);
                 srcOffset += nalLength;
                 dstOffset += nalLength;

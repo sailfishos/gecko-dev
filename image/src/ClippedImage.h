@@ -31,8 +31,6 @@ class ClippedImage : public ImageWrapper
 public:
   NS_DECL_ISUPPORTS
 
-  virtual ~ClippedImage();
-
   virtual nsIntRect FrameRect(uint32_t aWhichFrame) MOZ_OVERRIDE;
 
   NS_IMETHOD GetWidth(int32_t* aWidth) MOZ_OVERRIDE;
@@ -54,9 +52,12 @@ public:
                   uint32_t aFlags) MOZ_OVERRIDE;
   NS_IMETHOD RequestDiscard() MOZ_OVERRIDE;
   NS_IMETHOD_(Orientation) GetOrientation() MOZ_OVERRIDE;
+  NS_IMETHOD_(nsIntRect) GetImageSpaceInvalidationRect(const nsIntRect& aRect) MOZ_OVERRIDE;
 
 protected:
   ClippedImage(Image* aImage, nsIntRect aClip);
+
+  virtual ~ClippedImage();
 
 private:
   mozilla::TemporaryRef<SourceSurface>

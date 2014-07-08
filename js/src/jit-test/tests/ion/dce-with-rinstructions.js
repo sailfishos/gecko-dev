@@ -280,6 +280,23 @@ function rmod_object(i) {
     return i;
 }
 
+var uceFault_not_number = eval(uneval(uceFault).replace('uceFault', 'uceFault_not_number'));
+function rnot_number(i) {
+    var x = !i;
+    if (uceFault_not_number(i) || uceFault_not_number(i))
+        assertEq(x, false /* = !99 */);
+    return i;
+}
+
+var uceFault_not_object = eval(uneval(uceFault).replace('uceFault', 'uceFault_not_object'));
+function rnot_object(i) {
+    var o = objectEmulatingUndefined();
+    var x = !o;
+    if(uceFault_not_object(i) || uceFault_not_object(i))
+        assertEq(x, true /* = !undefined = !document.all = !objectEmulatingUndefined() */);
+    return i;
+}
+
 var uceFault_concat_string = eval(uneval(uceFault).replace('uceFault', 'uceFault_concat_string'));
 function rconcat_string(i) {
     var x = "s" + i.toString();
@@ -293,6 +310,169 @@ function rconcat_number(i) {
     var x = "s" + i;
     if (uceFault_concat_number(i) || uceFault_concat_number(i))
         assertEq(x, "s99");
+    return i;
+}
+
+var uceFault_string_length = eval(uneval(uceFault).replace('uceFault', 'uceFault_string_length'));
+function rstring_length(i) {
+    var x = i.toString().length;
+    if (uceFault_string_length(i) || uceFault_string_length(i))
+        assertEq(x, 2);
+    return i;
+}
+
+var uceFault_floor_number = eval(uneval(uceFault).replace('uceFault', 'uceFault_floor_number'));
+function rfloor_number(i) {
+    var x = Math.floor(i + 0.1111);
+    if (uceFault_floor_number(i) || uceFault_floor_number(i))
+        assertEq(x, i);
+    return i;
+}
+
+var uceFault_floor_object = eval(uneval(uceFault).replace('uceFault', 'uceFault_floor_object'));
+function rfloor_object(i) {
+    var t = i + 0.1111;
+    var o = { valueOf: function () { return t; } };
+    var x = Math.floor(o);
+    t = 1000.1111;
+    if (uceFault_floor_object(i) || uceFault_floor_object(i))
+        assertEq(x, i);
+    return i;
+}
+
+var uceFault_round_number = eval(uneval(uceFault).replace('uceFault', 'uceFault_round'));
+function rround_number(i) {
+    var x = Math.round(i + 1.4);
+    if (uceFault_round_number(i) || uceFault_round_number(i))
+        assertEq(x, 100); /* = i + 1*/
+    return i;
+}
+
+var uceFault_round_double = eval(uneval(uceFault).replace('uceFault', 'uceFault_round_double'));
+function rround_double(i) {
+    var x = Math.round(i + (-1 >>> 0));
+    if (uceFault_round_double(i) || uceFault_round_double(i))
+        assertEq(x, 99 + (-1 >>> 0)); /* = i + 2 ^ 32 - 1 */
+     return i;
+}
+
+var uceFault_Char_Code_At = eval(uneval(uceFault).replace('uceFault', 'uceFault_Char_Code_At'));
+function rcharCodeAt(i) {
+    var s = "aaaaa";
+    var x = s.charCodeAt(i % 4);
+    if (uceFault_Char_Code_At(i) || uceFault_Char_Code_At(i))
+        assertEq(x, 97 );
+    return i;
+}
+
+var uceFault_from_char_code = eval(uneval(uceFault).replace('uceFault', 'uceFault_from_char_code'));
+function rfrom_char_code(i) {
+    var x = String.fromCharCode(i);
+    if (uceFault_from_char_code(i) || uceFault_from_char_code(i))
+        assertEq(x, "c");
+    return i;
+}
+
+var uceFault_from_char_code_non_ascii = eval(uneval(uceFault).replace('uceFault', 'uceFault_from_char_code_non_ascii'));
+function rfrom_char_code_non_ascii(i) {
+    var x = String.fromCharCode(i * 100);
+    if (uceFault_from_char_code_non_ascii(i) || uceFault_from_char_code_non_ascii(i))
+        assertEq(x, "\u26AC");
+    return i;
+}
+
+var uceFault_pow_number = eval(uneval(uceFault).replace('uceFault', 'uceFault_pow_number'));
+function rpow_number(i) {
+    var x = Math.pow(i, 3.14159);
+    if (uceFault_pow_number(i) || uceFault_pow_number(i))
+        assertEq(x, Math.pow(99, 3.14159));
+    return i;
+}
+
+var uceFault_pow_object = eval(uneval(uceFault).replace('uceFault', 'uceFault_pow_object'));
+function rpow_object(i) {
+    var t = i;
+    var o = { valueOf: function () { return t; } };
+    var x = Math.pow(o, 3.14159); /* computed with t == i, not 1.5 */
+    t = 1.5;
+    if (uceFault_pow_object(i) || uceFault_pow_object(i))
+        assertEq(x, Math.pow(99, 3.14159));
+    return i;
+}
+
+var uceFault_powhalf_number = eval(uneval(uceFault).replace('uceFault', 'uceFault_powhalf_number'));
+function rpowhalf_number(i) {
+    var x = Math.pow(i, 0.5);
+    if (uceFault_powhalf_number(i) || uceFault_powhalf_number(i))
+        assertEq(x, Math.pow(99, 0.5));
+    return i;
+}
+
+var uceFault_powhalf_object = eval(uneval(uceFault).replace('uceFault', 'uceFault_powhalf_object'));
+function rpowhalf_object(i) {
+    var t = i;
+    var o = { valueOf: function () { return t; } };
+    var x = Math.pow(o, 0.5); /* computed with t == i, not 1.5 */
+    t = 1.5;
+    if (uceFault_powhalf_object(i) || uceFault_powhalf_object(i))
+        assertEq(x, Math.pow(99, 0.5));
+    return i;
+}
+
+var uceFault_min_number = eval(uneval(uceFault).replace('uceFault', 'uceFault_min_number'));
+function rmin_number(i) {
+    var x = Math.min(i, i-1, i-2.1);
+    if (uceFault_min_number(i) || uceFault_min_number(i))
+        assertEq(x, i-2.1);
+    return i;
+}
+
+var uceFault_min_object = eval(uneval(uceFault).replace('uceFault', 'uceFault_min_object'));
+function rmin_object(i) {
+    var t = i;
+    var o = { valueOf: function () { return t; } };
+    var x = Math.min(o, o-1, o-2.1)
+    t = 1000;
+    if (uceFault_min_object(i) || uceFault_min_object(i))
+        assertEq(x, i-2.1);
+    return i;
+}
+
+var uceFault_max_number = eval(uneval(uceFault).replace('uceFault', 'uceFault_max_number'));
+function rmax_number(i) {
+    var x = Math.max(i, i-1, i-2.1);
+    if (uceFault_max_number(i) || uceFault_max_number(i))
+        assertEq(x, i);
+    return i;
+}
+
+var uceFault_max_object = eval(uneval(uceFault).replace('uceFault', 'uceFault_max_object'));
+function rmax_object(i) {
+    var t = i;
+    var o = { valueOf: function () { return t; } };
+    var x = Math.max(o, o-1, o-2.1)
+    t = 1000;
+    if (uceFault_max_object(i) || uceFault_max_object(i))
+        assertEq(x, i);
+    return i;
+}
+
+var uceFault_abs = eval(uneval(uceFault).replace('uceFault', 'uceFault_abs'));
+function rabs_number(i) {
+    var x = Math.abs(i-42);
+    if (uceFault_abs(i) || uceFault_abs(i))
+        assertEq(x, 57);
+    return i;
+}
+
+var uceFault_abs_object = eval(uneval(uceFault).replace('uceFault', 'uceFault_abs_object'));
+function rabs_object(i) {
+    var t = -i;
+    var o = { valueOf: function() { return t; } };
+    var x = Math.abs(o); /* computed with t == i, not 1000 */
+    t = 1000;
+    if(uceFault_abs_object(i) || uceFault_abs_object(i))
+        assertEq(x, 99);
     return i;
 }
 
@@ -325,8 +505,28 @@ for (i = 0; i < 100; i++) {
     rdiv_object(i);
     rmod_number(i);
     rmod_object(i);
+    rnot_number(i);
+    rnot_object(i);
     rconcat_string(i);
     rconcat_number(i);
+    rstring_length(i);
+    rfloor_number(i);
+    rfloor_object(i);
+    rround_number(i);
+    rround_double(i);
+    rcharCodeAt(i);
+    rfrom_char_code(i);
+    rfrom_char_code_non_ascii(i);
+    rpow_number(i);
+    rpow_object(i);
+    rpowhalf_number(i);
+    rpowhalf_object(i);
+    rmin_number(i);
+    rmin_object(i);
+    rmax_number(i);
+    rmax_object(i);
+    rabs_number(i);
+    rabs_object(i);
 }
 
 // Test that we can refer multiple time to the same recover instruction, as well

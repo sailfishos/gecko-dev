@@ -52,10 +52,6 @@ if (!this.debug) {
   };
 }
 
-let RIL_CELLBROADCAST_DISABLED;
-let RIL_EMERGENCY_NUMBERS;
-const DEFAULT_EMERGENCY_NUMBERS = ["112", "911"];
-
 // Timeout value for emergency callback mode.
 const EMERGENCY_CB_MODE_TIMEOUT_MS = 300000;  // 5 mins = 300000 ms.
 
@@ -353,7 +349,6 @@ function RilObject(aContext) {
 
   // Init properties that are only initialized once.
   this.v5Legacy = RILQUIRKS_V5_LEGACY;
-  this.cellBroadcastDisabled = RIL_CELLBROADCAST_DISABLED;
 
   this.pendingMO = null;
 }
@@ -1303,6 +1298,13 @@ RilObject.prototype = {
   },
 
   /**
+   * Request neighboring cell ids in GSM network.
+   */
+  getNeighboringCellIds: function(options) {
+    this.context.Buf.simpleRequest(REQUEST_GET_NEIGHBORING_CELL_IDS, options);
+  },
+
+  /**
    * Request various states about the network.
    */
   requestNetworkInfo: function() {
@@ -1550,7 +1552,7 @@ RilObject.prototype = {
   cachedDialRequest : null,
 
   /**
-   * Dial the phone.
+   * Dial a non-emergency number.
    *
    * @param number
    *        String containing the number to dial.
@@ -1559,34 +1561,13 @@ RilObject.prototype = {
    * @param uusInfo
    *        Integer doing something XXX TODO
    */
-  dial: function(options) {
+  dialNonEmergencyNumber: function(options) {
     let onerror = (function onerror(options, errorMsg) {
       options.success = false;
       options.errorMsg = errorMsg;
       this.sendChromeMessage(options);
     }).bind(this, options);
 
-    if (this._isEmergencyNumber(options.number)) {
-      this.dialEmergencyNumber(options, onerror);
-    } else {
-      if (!this._isCdma) {
-        // TODO: Both dial() and sendMMI() functions should be unified at some
-        // point in the future. In the mean time we handle temporary CLIR MMI
-        // commands through the dial() function. Please see bug 889737.
-        let mmi = this._parseMMI(options.number);
-        if (mmi && this._isTemporaryModeCLIR(mmi)) {
-          options.number = mmi.dialNumber;
-          // In temporary mode, MMI_PROCEDURE_ACTIVATION means allowing CLI
-          // presentation, i.e. CLIR_SUPPRESSION. See TS 22.030, Annex B.
-          options.clirMode = mmi.procedure == MMI_PROCEDURE_ACTIVATION ?
-                             CLIR_SUPPRESSION : CLIR_INVOCATION;
-        }
-      }
-      this.dialNonEmergencyNumber(options, onerror);
-    }
-  },
-
-  dialNonEmergencyNumber: function(options, onerror) {
     if (this.radioState == GECKO_RADIOSTATE_OFF) {
       // Notify error in establishing the call without radio.
       onerror(GECKO_ERROR_RADIO_NOT_AVAILABLE);
@@ -1604,17 +1585,41 @@ RilObject.prototype = {
       this.exitEmergencyCbMode();
     }
 
-    if (this._isCdma && Object.keys(this.currentCalls).length == 1) {
-      // Make a Cdma 3way call.
-      options.featureStr = options.number;
-      this.sendCdmaFlashCommand(options);
-    } else {
-      options.request = REQUEST_DIAL;
-      this.sendDialRequest(options);
+    if (!this._isCdma) {
+      // TODO: Both dial() and sendMMI() functions should be unified at some
+      // point in the future. In the mean time we handle temporary CLIR MMI
+      // commands through the dial() function. Please see bug 889737.
+      let mmi = this._parseMMI(options.number);
+      if (mmi && this._isTemporaryModeCLIR(mmi)) {
+        options.number = mmi.dialNumber;
+        // In temporary mode, MMI_PROCEDURE_ACTIVATION means allowing CLI
+        // presentation, i.e. CLIR_SUPPRESSION. See TS 22.030, Annex B.
+        options.clirMode = mmi.procedure == MMI_PROCEDURE_ACTIVATION ?
+          CLIR_SUPPRESSION : CLIR_INVOCATION;
+      }
     }
+
+    options.request = REQUEST_DIAL;
+    this.sendDialRequest(options);
   },
 
-  dialEmergencyNumber: function(options, onerror) {
+  /**
+   * Dial an emergency number.
+   *
+   * @param number
+   *        String containing the number to dial.
+   * @param clirMode
+   *        Integer for showing/hidding the caller Id to the called party.
+   * @param uusInfo
+   *        Integer doing something XXX TODO
+   */
+  dialEmergencyNumber: function(options) {
+    let onerror = (function onerror(options, errorMsg) {
+      options.success = false;
+      options.errorMsg = errorMsg;
+      this.sendChromeMessage(options);
+    }).bind(this, options);
+
     options.request = RILQUIRKS_REQUEST_USE_DIAL_EMERGENCY_CALL ?
                       REQUEST_DIAL_EMERGENCY_CALL : REQUEST_DIAL;
     if (this.radioState == GECKO_RADIOSTATE_OFF) {
@@ -1631,18 +1636,18 @@ RilObject.prototype = {
       return;
     }
 
+    this.sendDialRequest(options);
+  },
+
+  sendDialRequest: function(options) {
     if (this._isCdma && Object.keys(this.currentCalls).length == 1) {
       // Make a Cdma 3way call.
       options.featureStr = options.number;
       this.sendCdmaFlashCommand(options);
     } else {
-      this.sendDialRequest(options);
+      this.telephonyRequestQueue.push(options.request, this.sendRilRequestDial,
+                                      options);
     }
-  },
-
-  sendDialRequest: function(options) {
-    this.telephonyRequestQueue.push(options.request, this.sendRilRequestDial,
-                                    options);
   },
 
   sendRilRequestDial: function(options) {
@@ -2412,9 +2417,8 @@ RilObject.prototype = {
       return false;
     }
 
-    if (this._isEmergencyNumber(mmiString)) {
-      return false;
-    }
+    // TODO: Should take care of checking if the string is an emergency number
+    // in Bug 889737. See Bug 1023141 for more background.
 
     // In a call case.
     if (Object.getOwnPropertyNames(this.currentCalls).length > 0) {
@@ -3304,38 +3308,18 @@ RilObject.prototype = {
   },
 
   /**
-   * Check a given number against the list of emergency numbers provided by the RIL.
+   * Checks whether to temporarily suppress caller id for the call.
    *
-   * @param number
-   *        The number to look up.
+   * @param mmi
+   *        MMI full object.
    */
-   _isEmergencyNumber: function(number) {
-     // Check ril provided numbers first.
-     let numbers = RIL_EMERGENCY_NUMBERS;
-
-     if (numbers) {
-       numbers = numbers.split(",");
-     } else {
-       // No ecclist system property, so use our own list.
-       numbers = DEFAULT_EMERGENCY_NUMBERS;
-     }
-
-     return numbers.indexOf(number) != -1;
-   },
-
-   /**
-    * Checks whether to temporarily suppress caller id for the call.
-    *
-    * @param mmi
-    *        MMI full object.
-    */
-   _isTemporaryModeCLIR: function(mmi) {
-     return (mmi &&
-             mmi.serviceCode == MMI_SC_CLIR &&
-             mmi.dialNumber &&
-             (mmi.procedure == MMI_PROCEDURE_ACTIVATION ||
-              mmi.procedure == MMI_PROCEDURE_DEACTIVATION));
-   },
+  _isTemporaryModeCLIR: function(mmi) {
+    return (mmi &&
+            mmi.serviceCode == MMI_SC_CLIR &&
+            mmi.dialNumber &&
+            (mmi.procedure == MMI_PROCEDURE_ACTIVATION ||
+             mmi.procedure == MMI_PROCEDURE_DEACTIVATION));
+  },
 
   /**
    * Report STK Service is running.
@@ -4050,6 +4034,7 @@ RilObject.prototype = {
       for (let i in newCalls) {
         if (newCalls[i].state !== CALL_STATE_INCOMING) {
           callIndex = newCalls[i].callIndex;
+          newCalls[i].isEmergency = options.isEmergency;
           break;
         }
       }
@@ -4100,9 +4085,9 @@ RilObject.prototype = {
       newCall.isOutgoing = true;
     }
 
-    // Set flag for outgoing emergency call.
-    newCall.isEmergency = newCall.isOutgoing &&
-      this._isEmergencyNumber(newCall.number);
+    if (newCall.isEmergency === undefined) {
+      newCall.isEmergency = false;
+    }
 
     // Set flag for conference.
     newCall.isConference = newCall.isMpty ? true : false;
@@ -6383,7 +6368,68 @@ RilObject.prototype[REQUEST_GET_PREFERRED_NETWORK_TYPE] = function REQUEST_GET_P
   options.type = RIL_PREFERRED_NETWORK_TYPE_TO_GECKO[networkType];
   this.sendChromeMessage(options);
 };
-RilObject.prototype[REQUEST_GET_NEIGHBORING_CELL_IDS] = null;
+RilObject.prototype[REQUEST_GET_NEIGHBORING_CELL_IDS] = function REQUEST_GET_NEIGHBORING_CELL_IDS(length, options) {
+  if (options.rilRequestError) {
+    options.errorMsg = RIL_ERROR_TO_GECKO_ERROR[options.rilRequestError];
+    this.sendChromeMessage(options);
+    return;
+  }
+
+  let radioTech = this.voiceRegistrationState.radioTech;
+  if (radioTech == undefined || radioTech == NETWORK_CREG_TECH_UNKNOWN) {
+    options.errorMsg = "RadioTechUnavailable";
+    this.sendChromeMessage(options);
+    return;
+  }
+  if (!this._isGsmTechGroup(radioTech) || radioTech == NETWORK_CREG_TECH_LTE) {
+    options.errorMsg = "UnsupportedRadioTech";
+    this.sendChromeMessage(options);
+    return;
+  }
+
+  let Buf = this.context.Buf;
+  let neighboringCellIds = [];
+  let num = Buf.readInt32();
+
+  for (let i = 0; i < num; i++) {
+    let cellId = {};
+    cellId.networkType = GECKO_RADIO_TECH[radioTech];
+    cellId.signalStrength = Buf.readInt32();
+
+    let cid = Buf.readString();
+    // pad cid string with leading "0"
+    let length = cid.length;
+    if (length > 8) {
+      continue;
+    }
+    if (length < 8) {
+      for (let j = 0; j < (8-length); j++) {
+        cid = "0" + cid;
+      }
+    }
+
+    switch (radioTech) {
+      case NETWORK_CREG_TECH_GPRS:
+      case NETWORK_CREG_TECH_EDGE:
+      case NETWORK_CREG_TECH_GSM:
+        cellId.gsmCellId = this.parseInt(cid.substring(4), -1, 16);
+        cellId.gsmLocationAreaCode = this.parseInt(cid.substring(0, 4), -1, 16);
+        break;
+      case NETWORK_CREG_TECH_UMTS:
+      case NETWORK_CREG_TECH_HSDPA:
+      case NETWORK_CREG_TECH_HSUPA:
+      case NETWORK_CREG_TECH_HSPA:
+      case NETWORK_CREG_TECH_HSPAP:
+        cellId.wcdmaPsc = this.parseInt(cid, -1, 16);
+        break;
+    }
+
+    neighboringCellIds.push(cellId);
+  }
+
+  options.result = neighboringCellIds;
+  this.sendChromeMessage(options);
+};
 RilObject.prototype[REQUEST_SET_LOCATION_UPDATES] = null;
 RilObject.prototype[REQUEST_CDMA_SET_SUBSCRIPTION_SOURCE] = null;
 RilObject.prototype[REQUEST_CDMA_SET_ROAMING_PREFERENCE] = function REQUEST_CDMA_SET_ROAMING_PREFERENCE(length, options) {
@@ -6450,7 +6496,11 @@ RilObject.prototype[REQUEST_GSM_SET_BROADCAST_SMS_CONFIG] = function REQUEST_GSM
 };
 RilObject.prototype[REQUEST_GSM_SMS_BROADCAST_ACTIVATION] = null;
 RilObject.prototype[REQUEST_CDMA_GET_BROADCAST_SMS_CONFIG] = null;
-RilObject.prototype[REQUEST_CDMA_SET_BROADCAST_SMS_CONFIG] = null;
+RilObject.prototype[REQUEST_CDMA_SET_BROADCAST_SMS_CONFIG] = function REQUEST_CDMA_SET_BROADCAST_SMS_CONFIG(length, options) {
+  if (options.rilRequestError == ERROR_SUCCESS) {
+    this.setSmsBroadcastActivation(true);
+  }
+};
 RilObject.prototype[REQUEST_CDMA_SMS_BROADCAST_ACTIVATION] = null;
 RilObject.prototype[REQUEST_CDMA_SUBSCRIPTION] = function REQUEST_CDMA_SUBSCRIPTION(length, options) {
   if (options.rilRequestError) {
@@ -13934,8 +13984,8 @@ ICCUtilsHelperObject.prototype = {
       }
     } else {
       // GSM family display rule.
-      let operatorMnc = RIL.operator.mnc;
-      let operatorMcc = RIL.operator.mcc;
+      let operatorMnc = RIL.operator ? RIL.operator.mnc : -1;
+      let operatorMcc = RIL.operator ? RIL.operator.mcc : -1;
 
       // First detect if we are on HPLMN or one of the PLMN
       // specified by the SIM card.
@@ -13960,6 +14010,8 @@ ICCUtilsHelperObject.prototype = {
         }
       }
 
+      // See 3GPP TS 22.101 A.4 Service Provider Name indication, and TS 31.102
+      // clause 4.2.12 EF_SPN for detail.
       if (isOnMatchingPlmn) {
         // The first bit of display condition tells us if we should display
         // registered PLMN.
@@ -13979,10 +14031,7 @@ ICCUtilsHelperObject.prototype = {
           this.context.debug("PLMN isn't HPLMN and PLMN isn't in PLMN list");
         }
 
-        // We didn't found the requirement of displaying network name if
-        // current PLMN isn't HPLMN nor one of PLMN in SPDI. So we keep
-        // isDisplayNetworkNameRequired false.
-        iccInfo.isDisplayNetworkNameRequired = false;
+        iccInfo.isDisplayNetworkNameRequired = true;
         iccInfo.isDisplaySpnRequired = (displayCondition & 0x02) === 0;
       }
     }
@@ -14899,8 +14948,6 @@ let ContextPool = {
 
   setInitialOptions: function(aOptions) {
     DEBUG = DEBUG_WORKER || aOptions.debug;
-    RIL_EMERGENCY_NUMBERS = aOptions.rilEmergencyNumbers;
-    RIL_CELLBROADCAST_DISABLED = aOptions.cellBroadcastDisabled;
 
     let quirks = aOptions.quirks;
     RILQUIRKS_CALLSTATE_EXTRA_UINT32 = quirks.callstateExtraUint32;

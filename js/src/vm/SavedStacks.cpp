@@ -12,6 +12,7 @@
 #include "jsfriendapi.h"
 #include "jsnum.h"
 
+#include "gc/Marking.h"
 #include "vm/GlobalObject.h"
 #include "vm/StringBuffer.h"
 
@@ -22,12 +23,61 @@ using mozilla::HashString;
 
 namespace js {
 
+struct SavedFrame::Lookup {
+    Lookup(JSAtom *source, size_t line, size_t column, JSAtom *functionDisplayName,
+           SavedFrame *parent, JSPrincipals *principals)
+        : source(source),
+          line(line),
+          column(column),
+          functionDisplayName(functionDisplayName),
+          parent(parent),
+          principals(principals)
+    {
+        JS_ASSERT(source);
+    }
+
+    JSAtom       *source;
+    size_t       line;
+    size_t       column;
+    JSAtom       *functionDisplayName;
+    SavedFrame   *parent;
+    JSPrincipals *principals;
+};
+
+class SavedFrame::AutoLookupRooter : public JS::CustomAutoRooter
+{
+  public:
+    AutoLookupRooter(JSContext *cx, JSAtom *source, size_t line, size_t column,
+                     JSAtom *functionDisplayName, SavedFrame *parent, JSPrincipals *principals)
+      : JS::CustomAutoRooter(cx),
+        value(source, line, column, functionDisplayName, parent, principals) {}
+
+    operator const SavedFrame::Lookup&() const { return value; }
+
+  private:
+    virtual void trace(JSTracer *trc) {
+        gc::MarkStringUnbarriered(trc, &value.source, "SavedFrame::Lookup::source");
+        if (value.functionDisplayName) {
+            gc::MarkStringUnbarriered(trc, &value.functionDisplayName,
+                                      "SavedFrame::Lookup::functionDisplayName");
+        }
+        if (value.parent)
+            gc::MarkObjectUnbarriered(trc, &value.parent, "SavedFrame::Lookup::parent");
+    }
+
+    SavedFrame::Lookup value;
+};
+
 /* static */ HashNumber
 SavedFrame::HashPolicy::hash(const Lookup &lookup)
 {
-    return AddToHash(HashString(lookup.source->chars(), lookup.source->length()),
-                     lookup.line,
+    JS::AutoCheckCannotGC nogc;
+    // Assume that we can take line mod 2^32 without losing anything of
+    // interest.  If that assumption changes, we'll just need to start with 0
+    // and add another overload of AddToHash with more arguments.
+    return AddToHash(lookup.line,
                      lookup.column,
+                     lookup.source,
                      lookup.functionDisplayName,
                      SavedFramePtrHasher::hash(lookup.parent),
                      JSPrincipalsPtrHasher::hash(lookup.principals));
@@ -49,22 +99,12 @@ SavedFrame::HashPolicy::match(SavedFrame *existing, const Lookup &lookup)
         return false;
 
     JSAtom *source = existing->getSource();
-    if (source->length() != lookup.source->length())
-        return false;
     if (source != lookup.source)
         return false;
 
     JSAtom *functionDisplayName = existing->getFunctionDisplayName();
-    if (functionDisplayName) {
-        if (!lookup.functionDisplayName)
-            return false;
-        if (functionDisplayName->length() != lookup.functionDisplayName->length())
-            return false;
-        if (0 != CompareAtoms(functionDisplayName, lookup.functionDisplayName))
-            return false;
-    } else if (lookup.functionDisplayName) {
+    if (functionDisplayName != lookup.functionDisplayName)
         return false;
-    }
 
     return true;
 }
@@ -150,7 +190,7 @@ SavedFrame::getPrincipals()
 }
 
 void
-SavedFrame::initFromLookup(Lookup &lookup)
+SavedFrame::initFromLookup(const Lookup &lookup)
 {
     JS_ASSERT(lookup.source);
     JS_ASSERT(getReservedSlot(JSSLOT_SOURCE).isUndefined());
@@ -242,7 +282,7 @@ SavedFrame::checkThis(JSContext *cx, CallArgs &args, const char *fnName)
 //   - Rooted<SavedFrame *> frame (will be non-null)
 #define THIS_SAVEDFRAME(cx, argc, vp, fnName, args, frame)         \
     CallArgs args = CallArgsFromVp(argc, vp);                      \
-    Rooted<SavedFrame *> frame(cx, checkThis(cx, args, fnName));   \
+    RootedSavedFrame frame(cx, checkThis(cx, args, fnName));   \
     if (!frame)                                                    \
         return false
 
@@ -356,13 +396,13 @@ SavedStacks::init()
 }
 
 bool
-SavedStacks::saveCurrentStack(JSContext *cx, MutableHandle<SavedFrame*> frame)
+SavedStacks::saveCurrentStack(JSContext *cx, MutableHandleSavedFrame frame, unsigned maxFrameCount)
 {
     JS_ASSERT(initialized());
     JS_ASSERT(&cx->compartment()->savedStacks() == this);
 
     ScriptFrameIter iter(cx);
-    return insertFrames(cx, iter, frame);
+    return insertFrames(cx, iter, frame, maxFrameCount);
 }
 
 void
@@ -384,12 +424,11 @@ SavedStacks::sweep(JSRuntime *rt)
                 }
 
                 if (obj != temp || parentMoved) {
-                    Rooted<SavedFrame*> parent(rt, frame->getParent());
                     e.rekeyFront(SavedFrame::Lookup(frame->getSource(),
                                                     frame->getLine(),
                                                     frame->getColumn(),
                                                     frame->getFunctionDisplayName(),
-                                                    parent,
+                                                    frame->getParent(),
                                                     frame->getPrincipals()),
                                  ReadBarriered<SavedFrame *>(frame));
                 }
@@ -401,6 +440,19 @@ SavedStacks::sweep(JSRuntime *rt)
 
     if (savedFrameProto && IsObjectAboutToBeFinalized(&savedFrameProto)) {
         savedFrameProto = nullptr;
+    }
+}
+
+void
+SavedStacks::trace(JSTracer *trc)
+{
+    if (!pcLocationMap.initialized())
+        return;
+
+    // Mark each of the source strings in our pc to location cache.
+    for (PCLocationMap::Enum e(pcLocationMap); !e.empty(); e.popFront()) {
+        LocationValue &loc = e.front().value();
+        MarkString(trc, &loc.source, "SavedStacks::PCLocationMap's memoized script source name");
     }
 }
 
@@ -424,7 +476,8 @@ SavedStacks::sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf)
 }
 
 bool
-SavedStacks::insertFrames(JSContext *cx, ScriptFrameIter &iter, MutableHandle<SavedFrame*> frame)
+SavedStacks::insertFrames(JSContext *cx, ScriptFrameIter &iter, MutableHandleSavedFrame frame,
+                          unsigned maxFrameCount)
 {
     if (iter.done()) {
         frame.set(nullptr);
@@ -439,35 +492,51 @@ SavedStacks::insertFrames(JSContext *cx, ScriptFrameIter &iter, MutableHandle<Sa
     // in js/src/jit-test/tests/saved-stacks/bug-1006876-too-much-recursion.js).
     JS_CHECK_RECURSION_DONT_REPORT(cx, return false);
 
-    ScriptFrameIter thisFrame(iter);
-    Rooted<SavedFrame*> parentFrame(cx);
-    if (!insertFrames(cx, ++iter, &parentFrame))
+    RootedScript script(cx, iter.script());
+    jsbytecode *pc = iter.pc();
+    RootedFunction callee(cx, iter.maybeCallee());
+    // script and callee should keep compartment alive.
+    JSCompartment *compartment = iter.compartment();
+    RootedSavedFrame parentFrame(cx);
+
+    // If maxFrameCount is zero, then there's no limit on the number of frames.
+    if (maxFrameCount == 0) {
+        if (!insertFrames(cx, ++iter, &parentFrame, 0))
+            return false;
+    } else if (maxFrameCount == 1) {
+        // Since we were only asked to save one frame, the SavedFrame we're
+        // building here should have no parent, even if there are older frames
+        // on the stack.
+        parentFrame = nullptr;
+    } else {
+        if (!insertFrames(cx, ++iter, &parentFrame, maxFrameCount - 1))
+            return false;
+    }
+
+    AutoLocationValueRooter location(cx);
+    if (!getLocation(cx, script, pc, &location))
         return false;
 
-    LocationValue location;
-    if (!getLocation(cx, thisFrame.script(), thisFrame.pc(), &location))
-        return false;
-
-    JSFunction *callee = thisFrame.maybeCallee();
-    SavedFrame::Lookup lookup(location.source,
-                              location.line,
-                              location.column,
-                              callee ? callee->displayAtom() : nullptr,
-                              parentFrame,
-                              thisFrame.compartment()->principals);
+    SavedFrame::AutoLookupRooter lookup(cx,
+                                        location.get().source,
+                                        location.get().line,
+                                        location.get().column,
+                                        callee ? callee->displayAtom() : nullptr,
+                                        parentFrame,
+                                        compartment->principals);
 
     frame.set(getOrCreateSavedFrame(cx, lookup));
     return frame.get() != nullptr;
 }
 
 SavedFrame *
-SavedStacks::getOrCreateSavedFrame(JSContext *cx, SavedFrame::Lookup &lookup)
+SavedStacks::getOrCreateSavedFrame(JSContext *cx, const SavedFrame::Lookup &lookup)
 {
     SavedFrame::Set::AddPtr p = frames.lookupForAdd(lookup);
     if (p)
         return *p;
 
-    Rooted<SavedFrame *> frame(cx, createFrameFromLookup(cx, lookup));
+    RootedSavedFrame frame(cx, createFrameFromLookup(cx, lookup));
     if (!frame)
         return nullptr;
 
@@ -503,7 +572,7 @@ SavedStacks::getOrCreateSavedFramePrototype(JSContext *cx)
 }
 
 SavedFrame *
-SavedStacks::createFrameFromLookup(JSContext *cx, SavedFrame::Lookup &lookup)
+SavedStacks::createFrameFromLookup(JSContext *cx, const SavedFrame::Lookup &lookup)
 {
     RootedObject proto(cx, getOrCreateSavedFramePrototype(cx));
     if (!proto)
@@ -547,7 +616,7 @@ SavedStacks::sweepPCLocationMap()
 
 bool
 SavedStacks::getLocation(JSContext *cx, JSScript *script, jsbytecode *pc,
-                         LocationValue *locationp)
+                         MutableHandleLocationValue locationp)
 {
     PCKey key(script, pc);
     PCLocationMap::AddPtr p = pcLocationMap.lookupForAdd(key);
@@ -566,14 +635,14 @@ SavedStacks::getLocation(JSContext *cx, JSScript *script, jsbytecode *pc,
             return false;
     }
 
-    *locationp = p->value();
+    locationp.set(p->value());
     return true;
 }
 
 bool
 SavedStacksMetadataCallback(JSContext *cx, JSObject **pmetadata)
 {
-    Rooted<SavedFrame *> frame(cx);
+    RootedSavedFrame frame(cx);
     if (!cx->compartment()->savedStacks().saveCurrentStack(cx, &frame))
         return false;
     *pmetadata = frame;

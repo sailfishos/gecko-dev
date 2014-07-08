@@ -7,11 +7,11 @@ Cu.import("resource://gre/modules/osfile.jsm");
 Cu.import("resource://gre/modules/Task.jsm");
 Cu.import("resource://gre/modules/Promise.jsm");
 Cu.import("resource://gre/modules/WebappOSUtils.jsm");
+Cu.import("resource://gre/modules/NativeApp.jsm");
 
 const LINUX = navigator.platform.startsWith("Linux");
 const MAC = navigator.platform.startsWith("Mac");
 const WIN = navigator.platform.startsWith("Win");
-const MAC_106 = navigator.userAgent.contains("Mac OS X 10.6");
 
 const PR_RDWR        = 0x04;
 const PR_CREATE_FILE = 0x08;
@@ -49,6 +49,39 @@ function checkDateHigherThan(files, date) {
   });
 }
 
+function dirContainsOnly(dir, expectedFiles) {
+  return Task.spawn(function*() {
+    let iterator = new OS.File.DirectoryIterator(dir);
+
+    let entries;
+    try {
+      entries = yield iterator.nextBatch();
+    } finally {
+      iterator.close();
+    }
+
+    let ret = true;
+
+    // Find unexpected files
+    for each (let {path} in entries) {
+      if (expectedFiles.indexOf(path) == -1) {
+        info("Unexpected file: " + path);
+        ret = false;
+      }
+    }
+
+    // Find missing files
+    for each (let expectedPath in expectedFiles) {
+      if (entries.findIndex(({path}) => path == expectedPath) == -1) {
+        info("Missing file: " + expectedPath);
+        ret = false;
+      }
+    }
+
+    return ret;
+  });
+}
+
 function wait(time) {
   let deferred = Promise.defer();
 
@@ -83,11 +116,11 @@ function setDryRunPref() {
   });
 }
 
-function TestAppInfo(aApp) {
+function TestAppInfo(aApp, aIsPackaged) {
   this.appProcess = Cc["@mozilla.org/process/util;1"].
                     createInstance(Ci.nsIProcess);
 
-  this.isPackaged = !!aApp.updateManifest;
+  this.isPackaged = aIsPackaged;
 
   if (LINUX) {
     this.installPath = OS.Path.join(OS.Constants.Path.homeDir,
@@ -290,6 +323,10 @@ function TestAppInfo(aApp) {
         yield OS.File.removeDir(this.profileDir.parent.path, { ignoreAbsent: true });
       }
 
+      if (this.trashDir) {
+        yield OS.File.removeDir(this.trashDir, { ignoreAbsent: true });
+      }
+
       yield OS.File.removeDir(this.installPath, { ignoreAbsent: true });
 
       yield OS.File.removeDir(appProfileDir, { ignoreAbsent: true });
@@ -307,9 +344,10 @@ function buildAppPackage(aManifest, aIconFile) {
                          getFile(getTestFilePath("data/app/index.html")),
                          false);
 
-  var manStream = Cc["@mozilla.org/io/string-input-stream;1"].
+  let manifestJSON = JSON.stringify(aManifest);
+  let manStream = Cc["@mozilla.org/io/string-input-stream;1"].
                   createInstance(Ci.nsIStringInputStream);
-  manStream.setData(aManifest, aManifest.length);
+  manStream.setData(manifestJSON, manifestJSON.length);
   zipWriter.addEntryStream("manifest.webapp", Date.now(),
                            Ci.nsIZipWriter.COMPRESSION_NONE,
                            manStream, false);
@@ -361,3 +399,35 @@ function generateDataURI(aFile) {
   return "data:" + contentType + ";base64," +
          btoa(stream.readBytes(stream.available()));
 }
+
+function confirmNextInstall() {
+  let popupPanel = window.top.QueryInterface(Ci.nsIInterfaceRequestor).
+                              getInterface(Ci.nsIWebNavigation).
+                              QueryInterface(Ci.nsIDocShell).
+                              chromeEventHandler.ownerDocument.defaultView.
+                              PopupNotifications.panel;
+
+  popupPanel.addEventListener("popupshown", function onPopupShown() {
+    popupPanel.removeEventListener("popupshown", onPopupShown, false);
+    this.childNodes[0].button.doCommand();
+  }, false);
+}
+
+let readJSON = Task.async(function*(aPath) {
+  let decoder = new TextDecoder();
+  let data = yield OS.File.read(aPath);
+  return JSON.parse(decoder.decode(data));
+});
+
+let setMacRootInstallDir = Task.async(function*(aPath) {
+  let oldRootInstallDir = NativeApp.prototype._rootInstallDir;
+
+  NativeApp.prototype._rootInstallDir = OS.Path.join(OS.Constants.Path.homeDir,
+                                                     "Applications");
+  yield OS.File.makeDir(NativeApp.prototype._rootInstallDir,
+                        { ignoreExisting: true });
+
+  SimpleTest.registerCleanupFunction(function() {
+    NativeApp.prototype._rootInstallDir = oldRootInstallDir;
+  });
+});

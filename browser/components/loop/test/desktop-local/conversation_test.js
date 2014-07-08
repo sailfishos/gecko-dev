@@ -26,6 +26,12 @@ describe("loop.conversation", function() {
     window.navigator.mozLoop = {
       get serverUrl() {
         return "http://example.com";
+      },
+
+      startAlerting: function() {
+      },
+
+      stopAlerting: function() {
       }
     };
   });
@@ -33,6 +39,57 @@ describe("loop.conversation", function() {
   afterEach(function() {
     delete window.navigator.mozLoop;
     sandbox.restore();
+  });
+
+  describe("#init", function() {
+    var conversation, oldTitle;
+
+    beforeEach(function() {
+      oldTitle = document.title;
+
+      sandbox.stub(document.mozL10n, "initialize");
+      sandbox.stub(document.mozL10n, "get").returns("Fake title");
+
+      sandbox.stub(loop.conversation.ConversationRouter.prototype,
+        "initialize");
+      sandbox.stub(loop.shared.models.ConversationModel.prototype,
+        "initialize");
+      sandbox.stub(loop.shared.views.NotificationListView.prototype,
+        "initialize");
+
+      sandbox.stub(Backbone.history, "start");
+    });
+
+    afterEach(function() {
+      document.title = oldTitle;
+    });
+
+    it("should initalize L10n", function() {
+      loop.conversation.init();
+
+      sinon.assert.calledOnce(document.mozL10n.initialize);
+      sinon.assert.calledWithExactly(document.mozL10n.initialize,
+        window.navigator.mozLoop);
+    });
+
+    it("should set the document title", function() {
+      loop.conversation.init();
+
+      expect(document.title).to.be.equal("Fake title");
+    });
+
+    it("should create the router", function() {
+      loop.conversation.init();
+
+      sinon.assert.calledOnce(
+        loop.conversation.ConversationRouter.prototype.initialize);
+    });
+
+    it("should start Backbone history", function() {
+      loop.conversation.init();
+
+      sinon.assert.calledOnce(Backbone.history.start);
+    });
   });
 
   describe("ConversationRouter", function() {
@@ -68,6 +125,13 @@ describe("loop.conversation", function() {
           sinon.assert.calledWithExactly(router.loadView,
             sinon.match.instanceOf(loop.conversation.IncomingCallView));
         });
+
+        it("should start alerting", function() {
+          sandbox.stub(window.navigator.mozLoop, "startAlerting");
+          router.incoming("fakeVersion");
+
+          sinon.assert.calledOnce(window.navigator.mozLoop.startAlerting);
+        });
       });
 
       describe("#accept", function() {
@@ -75,10 +139,20 @@ describe("loop.conversation", function() {
           router.accept();
 
           sinon.assert.calledOnce(conversation.initiate);
-          sinon.assert.calledWithExactly(conversation.initiate, {
-            baseServerUrl: "http://example.com",
+          sinon.assert.calledWithMatch(conversation.initiate, {
+            client: {
+              mozLoop: navigator.mozLoop,
+              settings: {}
+            },
             outgoing: false
           });
+        });
+
+        it("should stop alerting", function() {
+          sandbox.stub(window.navigator.mozLoop, "stopAlerting");
+          router.accept();
+
+          sinon.assert.calledOnce(window.navigator.mozLoop.stopAlerting);
         });
       });
 
@@ -109,6 +183,25 @@ describe("loop.conversation", function() {
             sinon.assert.calledOnce(router._notifier.errorL10n);
             sinon.assert.calledWithExactly(router._notifier.errorL10n,
               "cannot_start_call_session_not_ready");
+        });
+      });
+
+      describe("#decline", function() {
+        beforeEach(function() {
+          sandbox.stub(window, "close");
+        });
+
+        it("should close the window", function() {
+          router.decline();
+
+          sinon.assert.calledOnce(window.close);
+        });
+
+        it("should stop alerting", function() {
+          sandbox.stub(window.navigator.mozLoop, "stopAlerting");
+          router.decline();
+
+          sinon.assert.calledOnce(window.navigator.mozLoop.stopAlerting);
         });
       });
 
@@ -203,13 +296,14 @@ describe("loop.conversation", function() {
     });
 
     describe("#handleDecline", function() {
-      it("should close the window", function() {
-        sandbox.stub(window, "close");
+      it("should trigger an 'decline' conversation model event" ,
+        function(done) {
+          conversation.once("decline", function() {
+            done();
+          });
 
-        view.handleDecline({preventDefault: sandbox.spy()});
-
-        sinon.assert.calledOnce(window.close);
-      });
+          view.handleDecline({preventDefault: sandbox.spy()});
+        });
     });
   });
 });

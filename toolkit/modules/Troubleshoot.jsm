@@ -83,6 +83,7 @@ const PREFS_WHITELIST = [
 const PREFS_BLACKLIST = [
   /^network[.]proxy[.]/,
   /[.]print_to_filename$/,
+  /^print[.]macosx[.]pagesetup/,
 ];
 
 this.Troubleshoot = {
@@ -376,9 +377,9 @@ let dataProviders = {
         // OpenGL feature, because that's what's going to get used.  In all
         // other cases we want to report on the ANGLE feature.
         gfxInfo.getFeatureStatus(Ci.nsIGfxInfo.FEATURE_WEBGL_ANGLE) !=
-          Ci.nsIGfxInfo.FEATURE_NO_INFO &&
+          Ci.nsIGfxInfo.FEATURE_STATUS_OK &&
         gfxInfo.getFeatureStatus(Ci.nsIGfxInfo.FEATURE_WEBGL_OPENGL) ==
-          Ci.nsIGfxInfo.FEATURE_NO_INFO ?
+          Ci.nsIGfxInfo.FEATURE_STATUS_OK ?
         Ci.nsIGfxInfo.FEATURE_WEBGL_OPENGL :
         Ci.nsIGfxInfo.FEATURE_WEBGL_ANGLE;
 #else

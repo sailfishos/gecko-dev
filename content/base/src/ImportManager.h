@@ -88,6 +88,8 @@ public:
   }
 
 private:
+  ~ImportLoader() {}
+
   // If a new referrer LinkElement was added, let's
   // see if we are already finished and if so fire
   // the right event.
@@ -98,7 +100,7 @@ private:
   void DispatchLoadEvent(nsINode* aNode);
 
   // Must be called when an error has occured during load.
-  void Error();
+  void Error(bool aUnblockScripts);
 
   // Must be called when the import document has been loaded successfully.
   void Done();
@@ -129,6 +131,9 @@ private:
 class ImportManager MOZ_FINAL : public nsISupports
 {
   typedef nsRefPtrHashtable<nsURIHashKey, ImportLoader> ImportMap;
+
+  ~ImportManager() {}
+
 public:
   ImportManager() {}
 

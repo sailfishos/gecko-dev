@@ -14,6 +14,8 @@ const commandModules = [
   "gcli/commands/cmd",
   "gcli/commands/cookie",
   "gcli/commands/csscoverage",
+  "gcli/commands/folder",
+  "gcli/commands/highlight",
   "gcli/commands/inject",
   "gcli/commands/jsb",
   "gcli/commands/listen",

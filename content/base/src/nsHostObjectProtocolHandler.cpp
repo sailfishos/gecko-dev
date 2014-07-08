@@ -10,11 +10,13 @@
 #include "nsClassHashtable.h"
 #include "nsNetUtil.h"
 #include "nsIPrincipal.h"
-#include "nsIDOMFile.h"
+#include "nsDOMFile.h"
 #include "nsIDOMMediaStream.h"
 #include "mozilla/dom/MediaSource.h"
 #include "nsIMemoryReporter.h"
 #include "mozilla/Preferences.h"
+
+using mozilla::dom::DOMFileImpl;
 
 // -----------------------------------------------------------------------
 // Hash table
@@ -33,6 +35,8 @@ namespace mozilla {
 
 class HostObjectURLsReporter MOZ_FINAL : public nsIMemoryReporter
 {
+  ~HostObjectURLsReporter() {}
+
  public:
   NS_DECL_ISUPPORTS
 
@@ -132,6 +136,8 @@ class BlobURLsReporter MOZ_FINAL : public nsIMemoryReporter
   }
 
  private:
+  ~BlobURLsReporter() {}
+
   struct EnumArg {
     nsIHandleReportCallback* mCallback;
     nsISupports* mData;
@@ -474,8 +480,9 @@ nsHostObjectProtocolHandler::NewChannel(nsIURI* uri, nsIChannel* *result)
   if (!info) {
     return NS_ERROR_DOM_BAD_URI;
   }
-  nsCOMPtr<nsIDOMBlob> blob = do_QueryInterface(info->mObject);
-  if (!blob) {
+
+  nsCOMPtr<PIDOMFileImpl> blobImpl = do_QueryInterface(info->mObject);
+  if (!blobImpl) {
     return NS_ERROR_DOM_BAD_URI;
   }
 
@@ -488,6 +495,7 @@ nsHostObjectProtocolHandler::NewChannel(nsIURI* uri, nsIChannel* *result)
   }
 #endif
 
+  DOMFileImpl* blob = static_cast<DOMFileImpl*>(blobImpl.get());
   nsCOMPtr<nsIInputStream> stream;
   nsresult rv = blob->GetInternalStream(getter_AddRefs(stream));
   NS_ENSURE_SUCCESS(rv, rv);
@@ -504,10 +512,9 @@ nsHostObjectProtocolHandler::NewChannel(nsIURI* uri, nsIChannel* *result)
   rv = blob->GetType(type);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  nsCOMPtr<nsIDOMFile> file = do_QueryInterface(info->mObject);
-  if (file) {
+  if (blob->IsFile()) {
     nsString filename;
-    rv = file->GetName(filename);
+    rv = blob->GetName(filename);
     NS_ENSURE_SUCCESS(rv, rv);
     channel->SetContentDispositionFilename(filename);
   }
@@ -570,11 +577,12 @@ NS_GetStreamForBlobURI(nsIURI* aURI, nsIInputStream** aStream)
 
   *aStream = nullptr;
 
-  nsCOMPtr<nsIDOMBlob> blob = do_QueryInterface(GetDataObject(aURI));
-  if (!blob) {
+  nsCOMPtr<PIDOMFileImpl> blobImpl = do_QueryInterface(GetDataObject(aURI));
+  if (!blobImpl) {
     return NS_ERROR_DOM_BAD_URI;
   }
 
+  DOMFileImpl* blob = static_cast<DOMFileImpl*>(blobImpl.get());
   return blob->GetInternalStream(aStream);
 }
 

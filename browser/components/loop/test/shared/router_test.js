@@ -69,7 +69,10 @@ describe("loop.shared.router", function() {
         it("should set the active view", function() {
           router.loadView(view);
 
-          expect(router._activeView).eql(view);
+          expect(router._activeView).eql({
+            type: "backbone",
+            view: view
+          });
         });
 
         it("should load and render the passed view", function() {
@@ -123,6 +126,24 @@ describe("loop.shared.router", function() {
           conversation: conversation,
           notifier: notifier
         });
+      });
+
+      describe("session:connection-error", function() {
+
+        it("should warn the user when .connect() call fails", function() {
+          conversation.trigger("session:connection-error");
+
+          sinon.assert.calledOnce(notifier.errorL10n);
+          sinon.assert.calledWithExactly(notifier.errorL10n, sinon.match.string);
+        });
+
+        it("should invoke endCall()", function() {
+          conversation.trigger("session:connection-error");
+
+          sinon.assert.calledOnce(router.endCall);
+          sinon.assert.calledWithExactly(router.endCall);
+        });
+
       });
 
       it("should call startCall() once the call session is ready", function() {

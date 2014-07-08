@@ -6,6 +6,7 @@
 
 #include "mozilla/dom/HTMLMediaElement.h"
 #include "mozilla/dom/HTMLMediaElementBinding.h"
+#include "mozilla/dom/HTMLSourceElement.h"
 #include "mozilla/dom/ElementInlines.h"
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/MathAlgorithms.h"
@@ -72,11 +73,13 @@
 
 #include "AudioChannelService.h"
 
-#include "nsCSSParser.h"
-#include "nsIMediaList.h"
 #include "mozilla/dom/power/PowerManagerService.h"
 #include "mozilla/dom/WakeLock.h"
 
+#include "mozilla/dom/AudioTrack.h"
+#include "mozilla/dom/AudioTrackList.h"
+#include "mozilla/dom/VideoTrack.h"
+#include "mozilla/dom/VideoTrackList.h"
 #include "mozilla/dom/TextTrack.h"
 
 #include "ImageContainer.h"
@@ -242,6 +245,8 @@ class HTMLMediaElement::MediaLoadListener MOZ_FINAL : public nsIStreamListener,
                                                       public nsIInterfaceRequestor,
                                                       public nsIObserver
 {
+  ~MediaLoadListener() {}
+
   NS_DECL_ISUPPORTS
   NS_DECL_NSIREQUESTOBSERVER
   NS_DECL_NSISTREAMLISTENER
@@ -424,6 +429,8 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(HTMLMediaElement, nsGenericHTM
   }
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mPlayed);
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mTextTrackManager)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mAudioTrackList)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mVideoTrackList)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mMediaKeys)
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
@@ -445,6 +452,8 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(HTMLMediaElement, nsGenericHTMLE
   }
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mPlayed)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mTextTrackManager)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mAudioTrackList)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mVideoTrackList)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mMediaKeys)
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
@@ -611,6 +620,13 @@ void HTMLMediaElement::AbortExistingLoads()
   mCurrentLoadID++;
 
   bool fireTimeUpdate = false;
+
+  // When aborting the existing loads, empty the objects in audio track list and
+  // video track list, no events (in particular, no removetrack events) are
+  // fired as part of this. Ending MediaStream sends track ended notifications,
+  // so we empty the track lists prior.
+  AudioTracks()->EmptyTracks();
+  VideoTracks()->EmptyTracks();
 
   if (mDecoder) {
     fireTimeUpdate = mDecoder->GetCurrentTime() != 0.0;
@@ -857,6 +873,24 @@ void HTMLMediaElement::NotifyLoadError()
   }
 }
 
+void HTMLMediaElement::NotifyMediaTrackEnabled(MediaTrack* aTrack)
+{
+  if (!aTrack) {
+    return;
+  }
+
+  // TODO: We are dealing with single audio track and video track for now.
+  if (AudioTrack* track = aTrack->AsAudioTrack()) {
+    if (!track->Enabled()) {
+      SetMutedInternal(mMuted | MUTED_BY_AUDIO_TRACK);
+    } else {
+      SetMutedInternal(mMuted & ~MUTED_BY_AUDIO_TRACK);
+    }
+  } else if (VideoTrack* track = aTrack->AsVideoTrack()) {
+    mDisableVideo = !track->Selected();
+  }
+}
+
 void HTMLMediaElement::LoadFromSourceChildren()
 {
   NS_ASSERTION(mDelayingLoadEvent,
@@ -902,17 +936,13 @@ void HTMLMediaElement::LoadFromSourceChildren()
     //       Key System that the user agent knows it cannot use with type,
     //       then end the synchronous section[...]" (Bug 1016707)
     nsAutoString media;
-    if (child->GetAttr(kNameSpaceID_None, nsGkAtoms::media, media) && !media.IsEmpty()) {
-      nsCSSParser cssParser;
-      nsRefPtr<nsMediaList> mediaList(new nsMediaList());
-      cssParser.ParseMediaList(media, nullptr, 0, mediaList, false);
-      nsIPresShell* presShell = OwnerDoc()->GetShell();
-      if (presShell && !mediaList->Matches(presShell->GetPresContext(), nullptr)) {
-        DispatchAsyncSourceError(child);
-        const char16_t* params[] = { media.get(), src.get() };
-        ReportLoadError("MediaLoadSourceMediaNotMatched", params, ArrayLength(params));
-        continue;
-      }
+    HTMLSourceElement *childSrc = HTMLSourceElement::FromContent(child);
+    MOZ_ASSERT(childSrc, "Expect child to be HTMLSourceElement");
+    if (childSrc && !childSrc->MatchesCurrentMedia()) {
+      DispatchAsyncSourceError(child);
+      const char16_t* params[] = { media.get(), src.get() };
+      ReportLoadError("MediaLoadSourceMediaNotMatched", params, ArrayLength(params));
+      continue;
     }
     LOG(PR_LOG_DEBUG, ("%p Trying load from <source>=%s type=%s media=%s", this,
       NS_ConvertUTF16toUTF8(src).get(), NS_ConvertUTF16toUTF8(type).get(),
@@ -2015,6 +2045,7 @@ HTMLMediaElement::HTMLMediaElement(already_AddRefed<mozilla::dom::NodeInfo>& aNo
     mDownloadSuspendedByCache(false),
     mAudioChannelFaded(false),
     mPlayingThroughTheAudioChannel(false),
+    mDisableVideo(false),
     mWaitingFor(MediaWaitingFor::None)
 {
 #ifdef PR_LOGGING
@@ -2527,7 +2558,6 @@ nsresult HTMLMediaElement::InitializeDecoderAsClone(MediaDecoder* aOriginal)
   double duration = aOriginal->GetDuration();
   if (duration >= 0) {
     decoder->SetDuration(duration);
-    decoder->SetTransportSeekable(aOriginal->IsTransportSeekable());
     decoder->SetMediaSeekable(aOriginal->IsMediaSeekable());
   }
 
@@ -2791,6 +2821,9 @@ void HTMLMediaElement::SetupSrcMediaStreamPlayback(DOMMediaStream* aStream)
   if (container) {
     GetSrcMediaStream()->AddVideoOutput(container);
   }
+
+  mSrcStream->ConstructMediaTracks(AudioTracks(), VideoTracks());
+
   ChangeReadyState(nsIDOMHTMLMediaElement::HAVE_METADATA);
   DispatchAsyncEvent(NS_LITERAL_STRING("durationchange"));
   DispatchAsyncEvent(NS_LITERAL_STRING("loadedmetadata"));
@@ -2843,13 +2876,10 @@ void HTMLMediaElement::ProcessMediaFragmentURI()
   }
 }
 
-void HTMLMediaElement::MetadataLoaded(int aChannels,
-                                      int aRate,
-                                      bool aHasAudio,
-                                      bool aHasVideo,
+void HTMLMediaElement::MetadataLoaded(const MediaInfo* aInfo,
                                       const MetadataTags* aTags)
 {
-  mHasAudio = aHasAudio;
+  mHasAudio = aInfo->HasAudio();
   mTags = aTags;
   ChangeReadyState(nsIDOMHTMLMediaElement::HAVE_METADATA);
   DispatchAsyncEvent(NS_LITERAL_STRING("durationchange"));
@@ -2862,7 +2892,7 @@ void HTMLMediaElement::MetadataLoaded(int aChannels,
   // If this element had a video track, but consists only of an audio track now,
   // delete the VideoFrameContainer. This happens when the src is changed to an
   // audio only file.
-  if (!aHasVideo && mVideoFrameContainer) {
+  if (!aInfo->HasVideo() && mVideoFrameContainer) {
     // call ForgetElement() such that callbacks from |mVideoFrameContainer|
     // won't reach us anymore.
     mVideoFrameContainer->ForgetElement();
@@ -3976,6 +4006,26 @@ NS_IMETHODIMP HTMLMediaElement::WindowVolumeChanged()
 {
   SetVolumeInternal();
   return NS_OK;
+}
+
+AudioTrackList*
+HTMLMediaElement::AudioTracks()
+{
+  if (!mAudioTrackList) {
+    nsCOMPtr<nsPIDOMWindow> window = do_QueryInterface(OwnerDoc()->GetParentObject());
+    mAudioTrackList = new AudioTrackList(window, this);
+  }
+  return mAudioTrackList;
+}
+
+VideoTrackList*
+HTMLMediaElement::VideoTracks()
+{
+  if (!mVideoTrackList) {
+    nsCOMPtr<nsPIDOMWindow> window = do_QueryInterface(OwnerDoc()->GetParentObject());
+    mVideoTrackList = new VideoTrackList(window, this);
+  }
+  return mVideoTrackList;
 }
 
 /* readonly attribute TextTrackList textTracks; */

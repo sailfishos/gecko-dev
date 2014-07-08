@@ -26,7 +26,9 @@ describe("loop.shared.models", function() {
       apiKey:       "apiKey"
     };
     fakeSession = _.extend({
-      connect: sandbox.spy(),
+      connect: function () {},
+      endSession: sandbox.stub(),
+      set: sandbox.stub(),
       disconnect: sandbox.spy(),
       unpublish: sandbox.spy()
     }, Backbone.Events);
@@ -50,68 +52,74 @@ describe("loop.shared.models", function() {
     });
 
     describe("constructed", function() {
-      var conversation, reqCallInfoStub, reqCallsInfoStub, fakeBaseServerUrl;
+      var conversation, fakeClient, fakeBaseServerUrl,
+          requestCallInfoStub, requestCallsInfoStub;
 
       beforeEach(function() {
         conversation = new sharedModels.ConversationModel({}, {sdk: fakeSDK});
         conversation.set("loopToken", "fakeToken");
         fakeBaseServerUrl = "http://fakeBaseServerUrl";
-        reqCallInfoStub = sandbox.stub(loop.shared.Client.prototype,
-          "requestCallInfo");
-        reqCallsInfoStub = sandbox.stub(loop.shared.Client.prototype,
-          "requestCallsInfo");
+        fakeClient = {
+          requestCallInfo: sandbox.stub(),
+          requestCallsInfo: sandbox.stub()
+        };
+        requestCallInfoStub = fakeClient.requestCallInfo;
+        requestCallsInfoStub = fakeClient.requestCallsInfo;
       });
 
       describe("#initiate", function() {
         it("call requestCallInfo on the client for outgoing calls",
           function() {
             conversation.initiate({
-              baseServerUrl: fakeBaseServerUrl,
-              outgoing: true
+              client: fakeClient,
+              outgoing: true,
+              callType: "audio"
             });
 
-            sinon.assert.calledOnce(reqCallInfoStub);
-            sinon.assert.calledWith(reqCallInfoStub, "fakeToken");
+            sinon.assert.calledOnce(requestCallInfoStub);
+            sinon.assert.calledWith(requestCallInfoStub, "fakeToken", "audio");
           });
 
         it("should not call requestCallsInfo on the client for outgoing calls",
           function() {
             conversation.initiate({
-              baseServerUrl: fakeBaseServerUrl,
-              outgoing: true
+              client: fakeClient,
+              outgoing: true,
+              callType: "audio"
             });
 
-            sinon.assert.notCalled(reqCallsInfoStub);
+            sinon.assert.notCalled(requestCallsInfoStub);
           });
 
         it("call requestCallsInfo on the client for incoming calls",
           function() {
+            conversation.set("loopVersion", 42);
             conversation.initiate({
-              baseServerUrl: fakeBaseServerUrl,
+              client: fakeClient,
               outgoing: false
             });
 
-            sinon.assert.calledOnce(reqCallsInfoStub);
-            sinon.assert.calledWith(reqCallsInfoStub);
+            sinon.assert.calledOnce(requestCallsInfoStub);
+            sinon.assert.calledWith(requestCallsInfoStub, 42);
           });
 
         it("should not call requestCallInfo on the client for incoming calls",
           function() {
             conversation.initiate({
-              baseServerUrl: fakeBaseServerUrl,
+              client: fakeClient,
               outgoing: false
             });
 
-            sinon.assert.notCalled(reqCallInfoStub);
+            sinon.assert.notCalled(requestCallInfoStub);
           });
 
         it("should update conversation session information from server data",
           function() {
             sandbox.stub(conversation, "setReady");
-            reqCallInfoStub.callsArgWith(1, null, fakeSessionData);
+            requestCallInfoStub.callsArgWith(2, null, fakeSessionData);
 
             conversation.initiate({
-              baseServerUrl: fakeBaseServerUrl,
+              client: fakeClient,
               outgoing: true
             });
 
@@ -120,14 +128,14 @@ describe("loop.shared.models", function() {
           });
 
         it("should trigger a `session:error` on failure", function(done) {
-          reqCallInfoStub.callsArgWith(1,
+          requestCallInfoStub.callsArgWith(2,
             new Error("failed: HTTP 400 Bad Request; fake"));
 
           conversation.on("session:error", function(err) {
             expect(err.message).to.match(/failed: HTTP 400 Bad Request; fake/);
             done();
           }).initiate({
-            baseServerUrl: fakeBaseServerUrl,
+            client: fakeClient,
             outgoing: true
           });
         });
@@ -163,12 +171,72 @@ describe("loop.shared.models", function() {
           sinon.assert.calledOnce(fakeSDK.initSession);
         });
 
-        describe("Session events", function() {
-          it("should trigger a session:connected event on sessionConnected",
-            function(done) {
-              model.once("session:connected", function(){ done(); });
+        it("should call connect", function() {
+          fakeSession.connect = sandbox.stub();
 
-              fakeSession.trigger("sessionConnected");
+          model.startSession();
+
+          sinon.assert.calledOnce(fakeSession.connect);
+          sinon.assert.calledWithExactly(fakeSession.connect,
+                        sinon.match.string, sinon.match.string,
+                        sinon.match.func);
+        });
+
+        it("should set ongoing to true when no error is called back",
+            function() {
+              fakeSession.connect = function(key, token, cb) {
+                cb(null);
+              };
+              sinon.stub(model, "set");
+
+              model.startSession();
+
+              sinon.assert.calledWith(model.set, "ongoing", true);
+            });
+
+        it("should trigger session:connected when no error is called back",
+            function() {
+              fakeSession.connect = function(key, token, cb) {
+                cb(null);
+              };
+              sandbox.stub(model, "trigger");
+
+              model.startSession();
+
+              sinon.assert.calledWithExactly(model.trigger, "session:connected");
+            });
+
+        describe("Session events", function() {
+
+          it("should trigger a fail event when an error is called back",
+            function() {
+              fakeSession.connect = function(key, token, cb) {
+                cb({
+                  error: true
+                });
+              };
+              sinon.stub(model, "endSession");
+
+              model.startSession();
+
+              sinon.assert.calledOnce(model.endSession);
+              sinon.assert.calledWithExactly(model.endSession);
+            });
+
+          it("should trigger session:connection-error event when an error is" +
+            " called back", function() {
+              fakeSession.connect = function(key, token, cb) {
+                cb({
+                  error: true
+                });
+              };
+              sandbox.stub(model, "trigger");
+
+              model.startSession();
+
+              sinon.assert.calledOnce(model.trigger);
+              sinon.assert.calledWithExactly(model.trigger,
+                          "session:connection-error", sinon.match.object);
             });
 
           it("should trigger a session:ended event on sessionDisconnected",

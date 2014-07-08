@@ -17,6 +17,7 @@
 #include "gc/GCInternals.h"
 
 #include "jit/Ion.h"
+#include "jit/IonTypes.h"
 
 #ifdef DEBUG
   #define FORKJOIN_SPEW
@@ -272,79 +273,103 @@ class ForkJoinContext;
 
 bool ForkJoin(JSContext *cx, CallArgs &args);
 
-struct IonLIRTraceData {
-    uint32_t blockIndex;
-    uint32_t lirIndex;
-    uint32_t execModeInt;
-    const char *lirOpName;
-    const char *mirOpName;
-    JSScript *script;
-    jsbytecode *pc;
-};
-
 ///////////////////////////////////////////////////////////////////////////
 // Bailout tracking
 
+//
+// The lattice of causes goes:
+//
+//       { everything else }
+//               |
+//           Interrupt
+//               |
+//           Execution
+//               |
+//              None
+//
 enum ParallelBailoutCause {
-    ParallelBailoutNone,
+    ParallelBailoutNone = 0,
 
-    // Compiler returned Method_Skipped
-    ParallelBailoutCompilationSkipped,
-
-    // Compiler returned Method_CantCompile
-    ParallelBailoutCompilationFailure,
+    // Bailed out of JIT code during execution. The specific reason is found
+    // in the ionBailoutKind field in ParallelBailoutRecord below.
+    ParallelBailoutExecution,
 
     // The periodic interrupt failed, which can mean that either
-    // another thread canceled, the user interrupted us, etc
+    // another thread canceled, the user interrupted us, etc.
     ParallelBailoutInterrupt,
 
-    // An IC update failed
-    ParallelBailoutFailedIC,
+    // Compiler returned Method_Skipped.
+    ParallelBailoutCompilationSkipped,
 
-    // Heap busy flag was set during interrupt
-    ParallelBailoutHeapBusy,
+    // Compiler returned Method_CantCompile.
+    ParallelBailoutCompilationFailure,
 
+    // The main script was GCed before we could start executing.
     ParallelBailoutMainScriptNotPresent,
-    ParallelBailoutCalledToUncompiledScript,
-    ParallelBailoutIllegalWrite,
-    ParallelBailoutAccessToIntrinsic,
+
+    // Went over the stack limit.
     ParallelBailoutOverRecursed,
+
+    // True memory exhaustion. See js_ReportOutOfMemory.
     ParallelBailoutOutOfMemory,
-    ParallelBailoutUnsupported,
-    ParallelBailoutUnsupportedVM,
-    ParallelBailoutUnsupportedStringComparison,
+
+    // GC was requested on the tenured heap, which we cannot comply with in
+    // parallel.
     ParallelBailoutRequestedGC,
-    ParallelBailoutRequestedZoneGC,
+    ParallelBailoutRequestedZoneGC
 };
 
-struct ParallelBailoutTrace {
-    JSScript *script;
-    jsbytecode *bytecode;
-};
+namespace jit {
+class BailoutStack;
+class JitFrameIterator;
+class IonBailoutIterator;
+class RematerializedFrame;
+}
 
 // See "Bailouts" section in comment above.
-struct ParallelBailoutRecord {
-    JSScript *topScript;
+struct ParallelBailoutRecord
+{
+    // Captured Ion frames at the point of bailout. Stored younger-to-older,
+    // i.e., the 0th frame is the youngest frame.
+    Vector<jit::RematerializedFrame *> *frames_;
+
+    // The reason for unsuccessful parallel execution.
     ParallelBailoutCause cause;
 
-    // Eventually we will support deeper traces,
-    // but for now we gather at most a single frame.
-    static const uint32_t MaxDepth = 1;
-    uint32_t depth;
-    ParallelBailoutTrace trace[MaxDepth];
+    // The more specific bailout reason if cause above is
+    // ParallelBailoutExecution.
+    jit::BailoutKind ionBailoutKind;
 
-    void init(JSContext *cx);
-    void reset(JSContext *cx);
-    void setCause(ParallelBailoutCause cause,
-                  JSScript *outermostScript = nullptr,   // inliner (if applicable)
-                  JSScript *currentScript = nullptr,     // inlinee (if applicable)
-                  jsbytecode *currentPc = nullptr);
-    void updateCause(ParallelBailoutCause cause,
-                     JSScript *outermostScript,
-                     JSScript *currentScript,
-                     jsbytecode *currentPc);
-    void addTrace(JSScript *script,
-                  jsbytecode *pc);
+    ParallelBailoutRecord()
+      : frames_(nullptr),
+        cause(ParallelBailoutNone),
+        ionBailoutKind(jit::Bailout_Inevitable)
+    { }
+
+    ~ParallelBailoutRecord();
+
+    bool init(JSContext *cx);
+    void reset();
+
+    Vector<jit::RematerializedFrame *> &frames() { MOZ_ASSERT(frames_); return *frames_; }
+    bool hasFrames() const { return frames_ && !frames_->empty(); }
+    bool bailedOut() const { return cause != ParallelBailoutNone; }
+
+    void joinCause(ParallelBailoutCause cause) {
+        if (this->cause <= ParallelBailoutInterrupt &&
+            (cause > ParallelBailoutInterrupt || cause > this->cause))
+        {
+            this->cause = cause;
+        }
+    }
+
+    void setIonBailoutKind(jit::BailoutKind kind) {
+        joinCause(ParallelBailoutExecution);
+        ionBailoutKind = kind;
+    }
+
+    void rematerializeFrames(ForkJoinContext *cx, jit::JitFrameIterator &frameIter);
+    void rematerializeFrames(ForkJoinContext *cx, jit::IonBailoutIterator &frameIter);
 };
 
 class ForkJoinShared;
@@ -356,9 +381,6 @@ class ForkJoinContext : public ThreadSafeContext
     ParallelBailoutRecord *const bailoutRecord;
 
 #ifdef FORKJOIN_SPEW
-    // Records the last instr. to execute on this thread.
-    IonLIRTraceData traceData;
-
     // The maximum worker id.
     uint32_t maxWorkerId;
 #endif
@@ -383,6 +405,8 @@ class ForkJoinContext : public ThreadSafeContext
     ForkJoinContext(PerThreadData *perThreadData, ThreadPoolWorker *worker,
                     Allocator *allocator, ForkJoinShared *shared,
                     ParallelBailoutRecord *bailoutRecord);
+
+    bool initialize();
 
     // Get the worker id. The main thread by convention has the id of the max
     // worker thread id + 1.
@@ -411,9 +435,9 @@ class ForkJoinContext : public ThreadSafeContext
 
     // Reports an unsupported operation, returning false if we are reporting
     // an error. Otherwise drop the warning on the floor.
-    bool reportError(ParallelBailoutCause cause, unsigned report) {
+    bool reportError(unsigned report) {
         if (report & JSREPORT_ERROR)
-            return setPendingAbortFatal(cause);
+            return setPendingAbortFatal(ParallelBailoutExecution);
         return true;
     }
 
@@ -444,7 +468,7 @@ class ForkJoinContext : public ThreadSafeContext
     static inline ForkJoinContext *current();
 
     // Initializes the thread-local state.
-    static bool initialize();
+    static bool initializeTls();
 
     // Used in inlining GetForkJoinSlice.
     static size_t offsetOfWorker() {
@@ -453,16 +477,16 @@ class ForkJoinContext : public ThreadSafeContext
 
 #ifdef JSGC_FJGENERATIONAL
     // There is already a nursery() method in ThreadSafeContext.
-    gc::ForkJoinNursery &fjNursery() { return fjNursery_; }
+    gc::ForkJoinNursery &nursery() { return nursery_; }
 
     // Evacuate live data from the per-thread nursery into the per-thread
     // tenured area.
-    void evacuateLiveData() { fjNursery_.evacuatingGC(); }
+    void evacuateLiveData() { nursery_.evacuatingGC(); }
 
     // Used in inlining nursery allocation.  Note the nursery is a
     // member of the ForkJoinContext (a substructure), not a pointer.
     static size_t offsetOfFJNursery() {
-        return offsetof(ForkJoinContext, fjNursery_);
+        return offsetof(ForkJoinContext, nursery_);
     }
 #endif
 
@@ -476,7 +500,7 @@ class ForkJoinContext : public ThreadSafeContext
 
 #ifdef JSGC_FJGENERATIONAL
     gc::ForkJoinGCShared gcShared_;
-    gc::ForkJoinNursery fjNursery_;
+    gc::ForkJoinNursery nursery_;
 #endif
 
     ThreadPoolWorker *worker_;
@@ -579,7 +603,6 @@ ExecutionStatus SpewEndOp(ExecutionStatus status);
 void SpewBeginCompile(HandleScript script);
 jit::MethodStatus SpewEndCompile(jit::MethodStatus status);
 void SpewMIR(jit::MDefinition *mir, const char *fmt, ...);
-void SpewBailoutIR(IonLIRTraceData *data);
 
 #else
 
@@ -595,7 +618,6 @@ static inline void SpewBeginCompile(HandleScript script) { }
 static inline jit::MethodStatus SpewEndCompile(jit::MethodStatus status) { return status; }
 static inline void SpewMIR(jit::MDefinition *mir, const char *fmt, ...) { }
 #endif
-static inline void SpewBailoutIR(IonLIRTraceData *data) { }
 
 #endif // FORKJOIN_SPEW && JS_THREADSAFE && JS_ION
 

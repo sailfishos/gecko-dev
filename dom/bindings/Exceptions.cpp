@@ -12,6 +12,8 @@
 #include "mozilla/CycleCollectedJSRuntime.h"
 #include "mozilla/dom/BindingUtils.h"
 #include "mozilla/dom/DOMException.h"
+#include "mozilla/dom/ScriptSettings.h"
+#include "nsPIDOMWindow.h"
 #include "nsServiceManagerUtils.h"
 #include "nsThreadUtils.h"
 #include "XPCWrapper.h"
@@ -123,6 +125,18 @@ Throw(JSContext* aCx, nsresult aRv, const char* aMessage)
   return false;
 }
 
+void
+ThrowAndReport(nsPIDOMWindow* aWindow, nsresult aRv, const char* aMessage)
+{
+  AutoJSAPI jsapi;
+  if (NS_WARN_IF(!jsapi.InitWithLegacyErrorReporting(aWindow))) {
+    return;
+  }
+
+  Throw(jsapi.cx(), aRv, aMessage);
+  (void) JS_ReportPendingException(jsapi.cx());
+}
+
 already_AddRefed<Exception>
 CreateException(JSContext* aCx, nsresult aRv, const char* aMessage)
 {
@@ -191,6 +205,7 @@ public:
     mozilla::HoldJSObjects(this);
   }
 
+protected:
   ~StackDescriptionOwner()
   {
     // Make sure to set mDescription to null before calling DropJSObjects, since
@@ -203,6 +218,7 @@ public:
     mozilla::DropJSObjects(this);
   }
 
+public:
   NS_INLINE_DECL_CYCLE_COLLECTING_NATIVE_REFCOUNTING(StackDescriptionOwner)
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_NATIVE_CLASS(StackDescriptionOwner)
 
@@ -256,7 +272,6 @@ public:
   // JSStackFrame will never look at the stack description.  Instead,
   // it is expected to be initialized by the caller as needed.
   JSStackFrame(StackDescriptionOwner* aStackDescription, size_t aIndex);
-  virtual ~JSStackFrame();
 
   static already_AddRefed<nsIStackFrame>
   CreateStack(JSContext* aCx, int32_t aMaxDepth = -1);
@@ -268,6 +283,8 @@ public:
                            nsIStackFrame* aCaller);
 
 private:
+  virtual ~JSStackFrame();
+
   bool IsJSFrame() const {
     return mLanguage == nsIProgrammingLanguage::JAVASCRIPT;
   }

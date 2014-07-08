@@ -7,6 +7,7 @@
 
 #include "FrameLayerBuilder.h"
 
+#include "mozilla/gfx/Matrix.h"
 #include "nsDisplayList.h"
 #include "nsPresContext.h"
 #include "nsLayoutUtils.h"
@@ -2012,33 +2013,37 @@ ContainerState::PopThebesLayerData()
   ThebesLayerData* containingThebesLayerData =
      mLayerBuilder->GetContainingThebesLayerData();
   if (containingThebesLayerData) {
-    nsRect rect = nsLayoutUtils::TransformFrameRectToAncestor(
-      mContainerReferenceFrame,
-      data->mDispatchToContentHitRegion.GetBounds(),
-      containingThebesLayerData->mReferenceFrame);
-    containingThebesLayerData->mDispatchToContentHitRegion.Or(
-      containingThebesLayerData->mDispatchToContentHitRegion, rect);
-
-    rect = nsLayoutUtils::TransformFrameRectToAncestor(
-      mContainerReferenceFrame,
-      data->mMaybeHitRegion.GetBounds(),
-      containingThebesLayerData->mReferenceFrame);
-    containingThebesLayerData->mMaybeHitRegion.Or(
-      containingThebesLayerData->mMaybeHitRegion, rect);
-
-    // Our definitely-hit region must go to the maybe-hit-region since
-    // this function is an approximation.
-    gfx3DMatrix matrix = nsLayoutUtils::GetTransformToAncestor(
-      mContainerReferenceFrame, containingThebesLayerData->mReferenceFrame);
-    gfxMatrix matrix2D;
-    bool isPrecise = matrix.Is2D(&matrix2D) && !matrix2D.HasNonAxisAlignedTransform();
-    rect = nsLayoutUtils::TransformFrameRectToAncestor(
-      mContainerReferenceFrame,
-      data->mHitRegion.GetBounds(),
-      containingThebesLayerData->mReferenceFrame);
-    nsRegion* dest = isPrecise ? &containingThebesLayerData->mHitRegion
-                               : &containingThebesLayerData->mMaybeHitRegion;
-    dest->Or(*dest, rect);
+    if (!data->mDispatchToContentHitRegion.GetBounds().IsEmpty()) {
+      nsRect rect = nsLayoutUtils::TransformFrameRectToAncestor(
+        mContainerReferenceFrame,
+        data->mDispatchToContentHitRegion.GetBounds(),
+        containingThebesLayerData->mReferenceFrame);
+      containingThebesLayerData->mDispatchToContentHitRegion.Or(
+        containingThebesLayerData->mDispatchToContentHitRegion, rect);
+    }
+    if (!data->mMaybeHitRegion.GetBounds().IsEmpty()) {
+      nsRect rect = nsLayoutUtils::TransformFrameRectToAncestor(
+        mContainerReferenceFrame,
+        data->mMaybeHitRegion.GetBounds(),
+        containingThebesLayerData->mReferenceFrame);
+      containingThebesLayerData->mMaybeHitRegion.Or(
+        containingThebesLayerData->mMaybeHitRegion, rect);
+    }
+    if (!data->mHitRegion.GetBounds().IsEmpty()) {
+      // Our definitely-hit region must go to the maybe-hit-region since
+      // this function is an approximation.
+      gfx3DMatrix matrix = nsLayoutUtils::GetTransformToAncestor(
+        mContainerReferenceFrame, containingThebesLayerData->mReferenceFrame);
+      gfxMatrix matrix2D;
+      bool isPrecise = matrix.Is2D(&matrix2D) && !matrix2D.HasNonAxisAlignedTransform();
+      nsRect rect = nsLayoutUtils::TransformFrameRectToAncestor(
+        mContainerReferenceFrame,
+        data->mHitRegion.GetBounds(),
+        containingThebesLayerData->mReferenceFrame);
+      nsRegion* dest = isPrecise ? &containingThebesLayerData->mHitRegion
+                                 : &containingThebesLayerData->mMaybeHitRegion;
+      dest->Or(*dest, rect);
+    }
   } else {
     EventRegions regions;
     regions.mHitRegion = ScaleRegionToOutsidePixels(data->mHitRegion);
@@ -2309,13 +2314,13 @@ ContainerState::FindThebesLayerFor(nsDisplayItem* aItem,
 
 #ifdef MOZ_DUMP_PAINTING
 static void
-DumpPaintedImage(nsDisplayItem* aItem, gfxASurface* aSurf)
+DumpPaintedImage(nsDisplayItem* aItem, SourceSurface* aSurface)
 {
   nsCString string(aItem->Name());
   string.Append('-');
   string.AppendInt((uint64_t)aItem);
   fprintf_stderr(gfxUtils::sDumpPaintFile, "array[\"%s\"]=\"", string.BeginReading());
-  aSurf->DumpAsDataURL(gfxUtils::sDumpPaintFile);
+  gfxUtils::DumpAsDataURI(aSurface, gfxUtils::sDumpPaintFile);
   fprintf_stderr(gfxUtils::sDumpPaintFile, "\";");
 }
 #endif
@@ -2336,12 +2341,14 @@ PaintInactiveLayer(nsDisplayListBuilder* aBuilder,
   nsIntRect itemVisibleRect =
     aItem->GetVisibleRect().ToOutsidePixels(appUnitsPerDevPixel);
 
-  nsRefPtr<gfxASurface> surf;
+  RefPtr<DrawTarget> tempDT;
   if (gfxUtils::sDumpPainting) {
-    surf = gfxPlatform::GetPlatform()->CreateOffscreenSurface(itemVisibleRect.Size().ToIntSize(),
-                                                              gfxContentType::COLOR_ALPHA);
-    surf->SetDeviceOffset(-itemVisibleRect.TopLeft());
-    context = new gfxContext(surf);
+    tempDT = gfxPlatform::GetPlatform()->CreateOffscreenContentDrawTarget(
+                                      itemVisibleRect.Size().ToIntSize(),
+                                      SurfaceFormat::B8G8R8A8);
+    context = new gfxContext(tempDT);
+    context->SetMatrix(gfxMatrix().Translate(-gfxPoint(itemVisibleRect.x,
+                                                       itemVisibleRect.y)));
   }
 #endif
   basic->BeginTransaction();
@@ -2364,12 +2371,14 @@ PaintInactiveLayer(nsDisplayListBuilder* aBuilder,
 
 #ifdef MOZ_DUMP_PAINTING
   if (gfxUtils::sDumpPainting) {
-    DumpPaintedImage(aItem, surf);
+    RefPtr<SourceSurface> surface = tempDT->Snapshot();
+    DumpPaintedImage(aItem, surface);
 
-    surf->SetDeviceOffset(gfxPoint(0, 0));
-    aContext->SetSource(surf, itemVisibleRect.TopLeft());
-    aContext->Rectangle(itemVisibleRect);
-    aContext->Fill();
+    DrawTarget* drawTarget = aContext->GetDrawTarget();
+    Rect rect(itemVisibleRect.x, itemVisibleRect.y,
+              itemVisibleRect.width, itemVisibleRect.height);
+    drawTarget->DrawSurface(surface, rect, Rect(Point(0,0), rect.Size()));
+
     aItem->SetPainted();
   }
 #endif
@@ -2573,14 +2582,24 @@ ContainerState::ProcessDisplayItems(const nsDisplayList& aList,
       ThebesLayerData* data = GetTopThebesLayerData();
       if (data) {
         // Prerendered transform items can be updated without layer building
-        // (async animations or an empty transaction), so we treat all other
-        // content as being above this so that the transformed layer can correctly
-        // move behind other content.
+        // (async animations or an empty transaction), so we need to put items
+        // that the transform item can potentially move under into a layer
+        // above this item.
         if (item->GetType() == nsDisplayItem::TYPE_TRANSFORM &&
             nsDisplayTransform::ShouldPrerenderTransformedContent(mBuilder,
                                                                   item->Frame(),
                                                                   false)) {
-          data->SetAllDrawingAbove();
+          if (!itemClip.HasClip()) {
+            // The transform item can move anywhere, treat all other content
+            // as being above this item.
+            data->SetAllDrawingAbove();
+          } else {
+            // The transform can't escape from the clip rect, and the clip
+            // rect can't change without new layer building. Treat all content
+            // that intersects the clip rect as being above this item.
+            data->AddVisibleAboveRegion(clipRect);
+            data->AddDrawAboveRegion(clipRect);
+          }
         } else {
           data->AddVisibleAboveRegion(itemVisibleRect);
 
@@ -3509,7 +3528,8 @@ PredictScaleForContent(nsIFrame* aFrame, nsIFrame* aAncestorWithScale,
 gfxSize
 FrameLayerBuilder::GetThebesLayerScaleForFrame(nsIFrame* aFrame)
 {
-  nsIFrame* last;
+  MOZ_ASSERT(aFrame, "need a frame");
+  nsIFrame* last = nullptr;
   for (nsIFrame* f = aFrame; f; f = nsLayoutUtils::GetCrossDocParentFrame(f)) {
     last = f;
 
@@ -3521,7 +3541,7 @@ FrameLayerBuilder::GetThebesLayerScaleForFrame(nsIFrame* aFrame)
     }
 
     nsTArray<DisplayItemData*> *array =
-      reinterpret_cast<nsTArray<DisplayItemData*>*>(aFrame->Properties().Get(LayerManagerDataProperty()));
+      reinterpret_cast<nsTArray<DisplayItemData*>*>(f->Properties().Get(LayerManagerDataProperty()));
     if (!array) {
       continue;
     }
@@ -3559,22 +3579,24 @@ static void DebugPaintItem(nsRenderingContext* aDest,
   gfxRect bounds(appUnitBounds.x, appUnitBounds.y, appUnitBounds.width, appUnitBounds.height);
   bounds.ScaleInverse(aPresContext->AppUnitsPerDevPixel());
 
-  nsRefPtr<gfxASurface> surf =
-    gfxPlatform::GetPlatform()->CreateOffscreenSurface(IntSize(bounds.width, bounds.height),
-                                                       gfxContentType::COLOR_ALPHA);
-  surf->SetDeviceOffset(-bounds.TopLeft());
-  nsRefPtr<gfxContext> context = new gfxContext(surf);
+  RefPtr<DrawTarget> tempDT =
+    gfxPlatform::GetPlatform()->CreateOffscreenContentDrawTarget(
+                                          IntSize(bounds.width, bounds.height),
+                                          SurfaceFormat::B8G8R8A8);
+  nsRefPtr<gfxContext> context = new gfxContext(tempDT);
+  context->SetMatrix(gfxMatrix().Translate(-gfxPoint(bounds.x, bounds.y)));
   nsRefPtr<nsRenderingContext> ctx = new nsRenderingContext();
   ctx->Init(aDest->DeviceContext(), context);
 
   aItem->Paint(aBuilder, ctx);
-  DumpPaintedImage(aItem, surf);
-  aItem->SetPainted();
+  RefPtr<SourceSurface> surface = tempDT->Snapshot();
+  DumpPaintedImage(aItem, surface);
 
-  surf->SetDeviceOffset(gfxPoint(0, 0));
-  aDest->ThebesContext()->SetSource(surf, bounds.TopLeft());
-  aDest->ThebesContext()->Rectangle(bounds);
-  aDest->ThebesContext()->Fill();
+  DrawTarget* drawTarget = aDest->ThebesContext()->GetDrawTarget();
+  Rect rect = ToRect(bounds);
+  drawTarget->DrawSurface(surface, rect, Rect(Point(0,0), rect.Size()));
+
+  aItem->SetPainted();
 }
 #endif
 

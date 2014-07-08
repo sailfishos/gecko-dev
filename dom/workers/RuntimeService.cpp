@@ -33,6 +33,7 @@
 #include "mozilla/dom/EventTargetBinding.h"
 #include "mozilla/dom/MessageEventBinding.h"
 #include "mozilla/dom/WorkerBinding.h"
+#include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/DebugOnly.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/dom/Navigator.h"
@@ -789,12 +790,6 @@ CreateJSContextForWorker(WorkerPrivate* aWorkerPrivate, JSRuntime* aRuntime)
   };
   JS_SetSecurityCallbacks(aRuntime, &securityCallbacks);
 
-  // DOM helpers:
-  static js::DOMCallbacks DOMCallbacks = {
-    InstanceClassHasProtoAtDepth
-  };
-  SetDOMCallbacks(aRuntime, &DOMCallbacks);
-
   // Set up the asm.js cache callbacks
   static JS::AsmJSCacheOps asmJSCacheOps = {
     AsmJSCacheOpenEntryForRead,
@@ -1082,12 +1077,14 @@ ResolveWorkerClasses(JSContext* aCx, JS::Handle<JSObject*> aObj, JS::Handle<jsid
     }
   }
 
-  bool shouldResolve = false;
-
-  for (uint32_t i = 0; i < ID_COUNT; i++) {
-    if (gStringIDs[i] == aId) {
-      shouldResolve = true;
-      break;
+  // Invoking this function with JSID_VOID means "always resolve".
+  bool shouldResolve = JSID_IS_VOID(aId);
+  if (!shouldResolve) {
+    for (uint32_t i = 0; i < ID_COUNT; i++) {
+      if (gStringIDs[i] == aId) {
+        shouldResolve = true;
+        break;
+      }
     }
   }
 
@@ -2002,14 +1999,11 @@ RuntimeService::CancelWorkersForWindow(nsPIDOMWindow* aWindow)
   GetWorkersForWindow(aWindow, workers);
 
   if (!workers.IsEmpty()) {
-    nsCOMPtr<nsIScriptGlobalObject> sgo = do_QueryInterface(aWindow);
-    MOZ_ASSERT(sgo);
-
-    nsIScriptContext* scx = sgo->GetContext();
-
-    AutoPushJSContext cx(scx ?
-                         scx->GetNativeContext() :
-                         nsContentUtils::GetSafeJSContext());
+    AutoJSAPI jsapi;
+    if (NS_WARN_IF(!jsapi.InitWithLegacyErrorReporting(aWindow))) {
+      return;
+    }
+    JSContext* cx = jsapi.cx();
 
     for (uint32_t index = 0; index < workers.Length(); index++) {
       WorkerPrivate*& worker = workers[index];
@@ -2033,14 +2027,11 @@ RuntimeService::SuspendWorkersForWindow(nsPIDOMWindow* aWindow)
   GetWorkersForWindow(aWindow, workers);
 
   if (!workers.IsEmpty()) {
-    nsCOMPtr<nsIScriptGlobalObject> sgo = do_QueryInterface(aWindow);
-    MOZ_ASSERT(sgo);
-
-    nsIScriptContext* scx = sgo->GetContext();
-
-    AutoPushJSContext cx(scx ?
-                         scx->GetNativeContext() :
-                         nsContentUtils::GetSafeJSContext());
+    AutoJSAPI jsapi;
+    if (NS_WARN_IF(!jsapi.InitWithLegacyErrorReporting(aWindow))) {
+      return;
+    }
+    JSContext* cx = jsapi.cx();
 
     for (uint32_t index = 0; index < workers.Length(); index++) {
       if (!workers[index]->Suspend(cx, aWindow)) {
@@ -2060,17 +2051,14 @@ RuntimeService::ResumeWorkersForWindow(nsPIDOMWindow* aWindow)
   GetWorkersForWindow(aWindow, workers);
 
   if (!workers.IsEmpty()) {
-    nsCOMPtr<nsIScriptGlobalObject> sgo = do_QueryInterface(aWindow);
-    MOZ_ASSERT(sgo);
-
-    nsIScriptContext* scx = sgo->GetContext();
-
-    AutoPushJSContext cx(scx ?
-                         scx->GetNativeContext() :
-                         nsContentUtils::GetSafeJSContext());
+    AutoJSAPI jsapi;
+    if (NS_WARN_IF(!jsapi.InitWithLegacyErrorReporting(aWindow))) {
+      return;
+    }
+    JSContext* cx = jsapi.cx();
 
     for (uint32_t index = 0; index < workers.Length(); index++) {
-      if (!workers[index]->SynchronizeAndResume(cx, aWindow, scx)) {
+      if (!workers[index]->SynchronizeAndResume(cx, aWindow)) {
         JS_ReportPendingException(cx);
       }
     }
@@ -2108,6 +2096,33 @@ RuntimeService::CreateServiceWorker(const GlobalObject& aGlobal,
 }
 
 nsresult
+RuntimeService::CreateServiceWorkerFromLoadInfo(JSContext* aCx,
+                                               WorkerPrivate::LoadInfo aLoadInfo,
+                                               const nsAString& aScriptURL,
+                                               const nsACString& aScope,
+                                               ServiceWorker** aServiceWorker)
+{
+
+  nsRefPtr<SharedWorker> sharedWorker;
+  nsresult rv = CreateSharedWorkerFromLoadInfo(aCx, aLoadInfo, aScriptURL, aScope,
+                                               WorkerTypeService,
+                                               getter_AddRefs(sharedWorker));
+
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  nsRefPtr<ServiceWorker> serviceWorker =
+    new ServiceWorker(nullptr, sharedWorker);
+
+  serviceWorker->mURL = aScriptURL;
+  serviceWorker->mScope = NS_ConvertUTF8toUTF16(aScope);
+
+  serviceWorker.forget(aServiceWorker);
+  return rv;
+}
+
+nsresult
 RuntimeService::CreateSharedWorkerInternal(const GlobalObject& aGlobal,
                                            const nsAString& aScriptURL,
                                            const nsACString& aName,
@@ -2127,11 +2142,21 @@ RuntimeService::CreateSharedWorkerInternal(const GlobalObject& aGlobal,
                                            false, &loadInfo);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  MOZ_ASSERT(loadInfo.mResolvedScriptURI);
+  return CreateSharedWorkerFromLoadInfo(cx, loadInfo, aScriptURL, aName, aType,
+                                        aSharedWorker);
+}
 
-  nsCString scriptSpec;
-  rv = loadInfo.mResolvedScriptURI->GetSpec(scriptSpec);
-  NS_ENSURE_SUCCESS(rv, rv);
+nsresult
+RuntimeService::CreateSharedWorkerFromLoadInfo(JSContext* aCx,
+                                               WorkerPrivate::LoadInfo aLoadInfo,
+                                               const nsAString& aScriptURL,
+                                               const nsACString& aName,
+                                               WorkerType aType,
+                                               SharedWorker** aSharedWorker)
+{
+  AssertIsOnMainThread();
+
+  MOZ_ASSERT(aLoadInfo.mResolvedScriptURI);
 
   nsRefPtr<WorkerPrivate> workerPrivate;
   {
@@ -2140,22 +2165,31 @@ RuntimeService::CreateSharedWorkerInternal(const GlobalObject& aGlobal,
     WorkerDomainInfo* domainInfo;
     SharedWorkerInfo* sharedWorkerInfo;
 
+    nsCString scriptSpec;
+    nsresult rv = aLoadInfo.mResolvedScriptURI->GetSpec(scriptSpec);
+    NS_ENSURE_SUCCESS(rv, rv);
+
     nsAutoCString key;
     GenerateSharedWorkerKey(scriptSpec, aName, key);
 
-    if (mDomainMap.Get(loadInfo.mDomain, &domainInfo) &&
+    if (mDomainMap.Get(aLoadInfo.mDomain, &domainInfo) &&
         domainInfo->mSharedWorkerInfos.Get(key, &sharedWorkerInfo)) {
       workerPrivate = sharedWorkerInfo->mWorkerPrivate;
     }
   }
 
-  bool created = false;
+  // Keep a reference to the window before spawning the worker. If the worker is
+  // a Shared/Service worker and the worker script loads and executes before
+  // the SharedWorker object itself is created before then WorkerScriptLoaded()
+  // will reset the loadInfo's window.
+  nsCOMPtr<nsPIDOMWindow> window = aLoadInfo.mWindow;
 
+  bool created = false;
   if (!workerPrivate) {
     ErrorResult rv;
     workerPrivate =
-      WorkerPrivate::Constructor(aGlobal, aScriptURL, false,
-                                 aType, aName, &loadInfo, rv);
+      WorkerPrivate::Constructor(aCx, aScriptURL, false,
+                                 aType, aName, &aLoadInfo, rv);
     NS_ENSURE_TRUE(workerPrivate, rv.ErrorCode());
 
     created = true;
@@ -2163,7 +2197,7 @@ RuntimeService::CreateSharedWorkerInternal(const GlobalObject& aGlobal,
 
   nsRefPtr<SharedWorker> sharedWorker = new SharedWorker(window, workerPrivate);
 
-  if (!workerPrivate->RegisterSharedWorker(cx, sharedWorker)) {
+  if (!workerPrivate->RegisterSharedWorker(aCx, sharedWorker)) {
     NS_WARNING("Worker is unreachable, this shouldn't happen!");
     sharedWorker->Close();
     return NS_ERROR_FAILURE;

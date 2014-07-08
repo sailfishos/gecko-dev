@@ -128,16 +128,16 @@ public:
 class ValueObserver MOZ_FINAL : public nsIObserver,
                                 public ValueObserverHashKey
 {
+  ~ValueObserver() {
+    Preferences::RemoveObserver(this, mPrefName.get());
+  }
+
 public:
   NS_DECL_ISUPPORTS
   NS_DECL_NSIOBSERVER
 
   ValueObserver(const char *aPref, PrefChangedFunc aCallback)
     : ValueObserverHashKey(aPref, aCallback) { }
-
-  ~ValueObserver() {
-    Preferences::RemoveObserver(this, mPrefName.get());
-  }
 
   void AppendClosure(void *aClosure) {
     mClosures.AppendElement(aClosure);
@@ -185,6 +185,36 @@ static nsTArray<nsAutoPtr<CacheData> >* gCacheData = nullptr;
 static nsRefPtrHashtable<ValueObserverHashKey,
                          ValueObserver>* gObserverTable = nullptr;
 
+#ifdef DEBUG
+static bool
+HaveExistingCacheFor(void* aPtr)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  if (gCacheData) {
+    for (size_t i = 0, count = gCacheData->Length(); i < count; ++i) {
+      if ((*gCacheData)[i]->cacheLocation == aPtr) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+static void
+AssertNotAlreadyCached(const char* aPrefType,
+                       const char* aPref,
+                       void* aPtr)
+{
+  if (HaveExistingCacheFor(aPtr)) {
+    fprintf_stderr(stderr,
+      "Attempt to add a %s pref cache for preference '%s' at address '%p'"
+      "was made. However, a pref was already cached at this address.\n",
+      aPrefType, aPref, aPtr);
+    MOZ_ASSERT(false, "Should not have an existing pref cache for this address");
+  }
+}
+#endif
+
 static size_t
 SizeOfObserverEntryExcludingThis(ValueObserverHashKey* aKey,
                                  const nsRefPtr<ValueObserver>& aData,
@@ -229,6 +259,8 @@ Preferences::SizeOfIncludingThisAndOtherStuff(mozilla::MallocSizeOf aMallocSizeO
 
 class PreferenceServiceReporter MOZ_FINAL : public nsIMemoryReporter
 {
+  ~PreferenceServiceReporter() {}
+
 public:
   NS_DECL_ISUPPORTS
   NS_DECL_NSIMEMORYREPORTER
@@ -1719,6 +1751,9 @@ Preferences::AddBoolVarCache(bool* aCache,
                              bool aDefault)
 {
   NS_ASSERTION(aCache, "aCache must not be NULL");
+#ifdef DEBUG
+  AssertNotAlreadyCached("bool", aPref, aCache);
+#endif
   *aCache = GetBool(aPref, aDefault);
   CacheData* data = new CacheData();
   data->cacheLocation = aCache;
@@ -1741,6 +1776,9 @@ Preferences::AddIntVarCache(int32_t* aCache,
                             int32_t aDefault)
 {
   NS_ASSERTION(aCache, "aCache must not be NULL");
+#ifdef DEBUG
+  AssertNotAlreadyCached("int", aPref, aCache);
+#endif
   *aCache = Preferences::GetInt(aPref, aDefault);
   CacheData* data = new CacheData();
   data->cacheLocation = aCache;
@@ -1763,6 +1801,9 @@ Preferences::AddUintVarCache(uint32_t* aCache,
                              uint32_t aDefault)
 {
   NS_ASSERTION(aCache, "aCache must not be NULL");
+#ifdef DEBUG
+  AssertNotAlreadyCached("uint", aPref, aCache);
+#endif
   *aCache = Preferences::GetUint(aPref, aDefault);
   CacheData* data = new CacheData();
   data->cacheLocation = aCache;
@@ -1785,6 +1826,9 @@ Preferences::AddFloatVarCache(float* aCache,
                              float aDefault)
 {
   NS_ASSERTION(aCache, "aCache must not be NULL");
+#ifdef DEBUG
+  AssertNotAlreadyCached("float", aPref, aCache);
+#endif
   *aCache = Preferences::GetFloat(aPref, aDefault);
   CacheData* data = new CacheData();
   data->cacheLocation = aCache;

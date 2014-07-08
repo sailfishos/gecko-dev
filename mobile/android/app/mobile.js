@@ -121,7 +121,7 @@ pref("browser.sessionhistory.max_entries", 50);
 pref("browser.sessionstore.resume_session_once", false);
 pref("browser.sessionstore.resume_from_crash", true);
 pref("browser.sessionstore.interval", 10000); // milliseconds
-pref("browser.sessionstore.max_tabs_undo", 1);
+pref("browser.sessionstore.max_tabs_undo", 5);
 pref("browser.sessionstore.max_resumed_crashes", 1);
 pref("browser.sessionstore.recent_crashes", 0);
 
@@ -560,6 +560,7 @@ pref("layers.async-video.enabled", true);
 pref("layers.progressive-paint", true);
 pref("layers.low-precision-buffer", true);
 pref("layers.low-precision-resolution", "0.25");
+pref("layers.low-precision-opacity", "1.0");
 // We want to limit layers for two reasons:
 // 1) We can't scroll smoothly if we have to many draw calls
 // 2) Pages that have too many layers consume too much memory and crash.
@@ -795,9 +796,6 @@ pref("dom.phonenumber.substringmatching.VE", 7);
 
 // Support for the mozAudioChannel attribute on media elements is disabled in non-webapps
 pref("media.useAudioChannelService", false);
-
-// Turn on the CSP 1.0 parser for Content Security Policy headers
-pref("security.csp.speccompliant", true);
 
 // Enable hardware-accelerated Skia canvas
 pref("gfx.canvas.azure.backends", "skia");

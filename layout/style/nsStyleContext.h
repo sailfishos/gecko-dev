@@ -36,7 +36,7 @@ class nsPresContext;
  * collection.
  */
 
-class nsStyleContext
+class nsStyleContext MOZ_FINAL
 {
 public:
   /**
@@ -67,7 +67,6 @@ public:
                  nsCSSPseudoElements::Type aPseudoType,
                  nsRuleNode* aRuleNode,
                  bool aSkipParentDisplayBasedStyleFixup);
-  ~nsStyleContext();
 
   void* operator new(size_t sz, nsPresContext* aPresContext) CPP_THROW_NEW;
   void Destroy();
@@ -293,7 +292,7 @@ public:
    * Get a color that depends on link-visitedness using this and
    * this->GetStyleIfVisited().
    *
-   * aProperty must be a color-valued property that nsStyleAnimation
+   * aProperty must be a color-valued property that StyleAnimationValue
    * knows how to extract.  It must also be a property that we know to
    * do change handling for in nsStyleContext::CalcDifference.
    *
@@ -326,6 +325,9 @@ public:
 #endif
 
 private:
+  // Private destructor, to discourage deletion outside of Release():
+  ~nsStyleContext();
+
   void AddChild(nsStyleContext* aChild);
   void RemoveChild(nsStyleContext* aChild);
 

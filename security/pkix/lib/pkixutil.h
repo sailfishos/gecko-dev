@@ -27,6 +27,7 @@
 
 #include "pkix/enumclass.h"
 #include "pkix/pkixtypes.h"
+#include "pkixder.h"
 #include "prerror.h"
 #include "seccomon.h"
 #include "secerr.h"
@@ -89,21 +90,21 @@ MapSECStatus(SECStatus srv)
 class BackCert
 {
 public:
-  // IncludeCN::No means that GetConstrainedNames won't include the subject CN
-  // in its results. IncludeCN::Yes means that GetConstrainedNames will include
-  // the subject CN in its results.
+  // IncludeCN::No means that name constraint enforcement should not consider
+  // the subject CN as a possible dNSName. IncludeCN::Yes means that name
+  // constraint enforcement will consider the subject CN as a possible dNSName.
   MOZILLA_PKIX_ENUM_CLASS IncludeCN { No = 0, Yes = 1 };
 
   // nssCert and childCert must be valid for the lifetime of BackCert
   BackCert(BackCert* childCert, IncludeCN includeCN)
-    : encodedBasicConstraints(nullptr)
+    : encodedAuthorityInfoAccess(nullptr)
+    , encodedBasicConstraints(nullptr)
     , encodedCertificatePolicies(nullptr)
     , encodedExtendedKeyUsage(nullptr)
     , encodedKeyUsage(nullptr)
     , encodedNameConstraints(nullptr)
     , encodedInhibitAnyPolicy(nullptr)
     , childCert(childCert)
-    , constrainedNames(nullptr)
     , includeCN(includeCN)
   {
   }
@@ -112,6 +113,7 @@ public:
 
   const SECItem& GetDER() const { return nssCert->derCert; }
   const SECItem& GetIssuer() const { return nssCert->derIssuer; }
+  const SECItem& GetSerialNumber() const { return nssCert->serialNumber; }
   const SECItem& GetSubject() const { return nssCert->derSubject; }
   const SECItem& GetSubjectPublicKeyInfo() const
   {
@@ -121,6 +123,9 @@ public:
   Result VerifyOwnSignatureWithKey(TrustDomain& trustDomain,
                                    const SECItem& subjectPublicKeyInfo) const;
 
+  der::Version version;
+
+  const SECItem* encodedAuthorityInfoAccess;
   const SECItem* encodedBasicConstraints;
   const SECItem* encodedCertificatePolicies;
   const SECItem* encodedExtendedKeyUsage;
@@ -129,6 +134,7 @@ public:
   const SECItem* encodedInhibitAnyPolicy;
 
   BackCert* const childCert;
+  const IncludeCN includeCN;
 
   // Only non-const so that we can pass this to TrustDomain::IsRevoked,
   // which only takes a non-const pointer because VerifyEncodedOCSPResponse
@@ -137,20 +143,8 @@ public:
   // of that CERT_DupCertificate so that we can make all these things const.
   /*const*/ CERTCertificate* GetNSSCert() const { return nssCert.get(); }
 
-  // Returns the names that should be considered when evaluating name
-  // constraints. The list is constructed lazily and cached. The result is a
-  // weak reference; do not try to free it, and do not hold long-lived
-  // references to it.
-  Result GetConstrainedNames(/*out*/ const CERTGeneralName** result);
-
-  PLArenaPool* GetArena();
-
 private:
   ScopedCERTCertificate nssCert;
-
-  ScopedPLArenaPool arena;
-  CERTGeneralName* constrainedNames;
-  IncludeCN includeCN;
 
   BackCert(const BackCert&) /* = delete */;
   void operator=(const BackCert&); /* = delete */;

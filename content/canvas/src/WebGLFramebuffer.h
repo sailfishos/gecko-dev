@@ -30,10 +30,6 @@ class WebGLFramebuffer MOZ_FINAL
 public:
     WebGLFramebuffer(WebGLContext* context);
 
-    ~WebGLFramebuffer() {
-        DeleteOnce();
-    }
-
     struct Attachment
     {
         // deleting a texture or renderbuffer immediately detaches it
@@ -114,6 +110,8 @@ public:
                               GLint level);
 
 private:
+    void DetachAttachment(WebGLFramebuffer::Attachment& attachment);
+    void DetachAllAttachments();
     const WebGLRectangleObject& GetAnyRectObject() const;
     Attachment* GetAttachmentOrNull(GLenum attachment);
 
@@ -181,6 +179,10 @@ public:
     void NotifyAttachableChanged() const;
 
 private:
+    ~WebGLFramebuffer() {
+        DeleteOnce();
+    }
+
     mutable GLenum mStatus;
 
     GLuint mGLName;

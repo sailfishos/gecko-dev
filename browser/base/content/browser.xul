@@ -799,7 +799,6 @@
                        tooltiptext="&loopCallButton.tooltip;"
                        oncommand="LoopUI.openCallPanel(event);"
                        cui-areatype="toolbar"
-                       overflows="false"
                        >
         </toolbarbutton>
 #endif
@@ -936,11 +935,11 @@
 
         <toolbarbutton id="social-share-button"
                        class="toolbarbutton-1 chromeclass-toolbar-additional"
-                       hidden="true"
                        label="&sharePageCmd.label;"
                        tooltiptext="&sharePageCmd.label;"
                        cui-areatype="toolbar"
                        removable="true"
+                       hidden="true"
                        command="Social:SharePage"/>
       </hbox>
 

@@ -44,6 +44,7 @@
 #include "nsCxPusher.h"
 #include "WrapperFactory.h"
 
+#include "mozilla/AddonPathService.h"
 #include "mozilla/scache/StartupCache.h"
 #include "mozilla/scache/StartupCacheUtils.h"
 #include "mozilla/MacroForEach.h"
@@ -155,7 +156,7 @@ File(JSContext *cx, unsigned argc, Value *vp)
     }
 
     nsCOMPtr<nsISupports> native;
-    nsresult rv = nsDOMMultipartFile::NewFile(getter_AddRefs(native));
+    nsresult rv = DOMMultipartFileImpl::NewFile(getter_AddRefs(native));
     if (NS_FAILED(rv)) {
         XPCThrower::Throw(rv, cx);
         return false;
@@ -190,7 +191,7 @@ Blob(JSContext *cx, unsigned argc, Value *vp)
     CallArgs args = CallArgsFromVp(argc, vp);
 
     nsCOMPtr<nsISupports> native;
-    nsresult rv = nsDOMMultipartFile::NewBlob(getter_AddRefs(native));
+    nsresult rv = DOMMultipartFileImpl::NewBlob(getter_AddRefs(native));
     if (NS_FAILED(rv)) {
         XPCThrower::Throw(rv, cx);
         return false;
@@ -682,7 +683,9 @@ mozJSComponentLoader::PrepareObjectForLocation(JSCLContextHelper& aCx,
 
         CompartmentOptions options;
         options.setZone(SystemZone)
-               .setVersion(JSVERSION_LATEST);
+               .setVersion(JSVERSION_LATEST)
+               .setAddonId(aReuseLoaderGlobal ? nullptr : MapURIToAddonID(aURI));
+
         // Defer firing OnNewGlobalObject until after the __URI__ property has
         // been defined so the JS debugger can tell what module the global is
         // for
@@ -898,12 +901,11 @@ mozJSComponentLoader::ObjectForLocation(ComponentLoaderInfo &aInfo,
             }
 
             if (!mReuseLoaderGlobal) {
-                script = Compile(cx, obj, options, buf,
-                                     fileSize32);
+                Compile(cx, obj, options, buf, fileSize32, &script);
             } else {
-                function = CompileFunction(cx, obj, options,
-                                               nullptr, 0, nullptr,
-                                               buf, fileSize32);
+                CompileFunction(cx, obj, options,
+                                nullptr, 0, nullptr,
+                                buf, fileSize32, &function);
             }
 
             PR_MemUnmap(buf, fileSize32);
@@ -985,11 +987,11 @@ mozJSComponentLoader::ObjectForLocation(ComponentLoaderInfo &aInfo,
             buf[len] = '\0';
 
             if (!mReuseLoaderGlobal) {
-                script = Compile(cx, obj, options, buf, bytesRead);
+                Compile(cx, obj, options, buf, bytesRead, &script);
             } else {
-                function = CompileFunction(cx, obj, options,
-                                               nullptr, 0, nullptr,
-                                               buf, bytesRead);
+                CompileFunction(cx, obj, options,
+                                nullptr, 0, nullptr,
+                                buf, bytesRead, &function);
             }
         }
         // Propagate the exception, if one exists. Also, don't leave the stale
