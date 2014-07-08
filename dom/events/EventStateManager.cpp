@@ -259,6 +259,7 @@ NS_INTERFACE_MAP_END
 
 static uint32_t sESMInstanceCount = 0;
 static bool sPointerEventEnabled = false;
+static bool sPrefInitialized = false;
 
 int32_t EventStateManager::sUserInputEventDepth = 0;
 bool EventStateManager::sNormalLMouseEventInProcess = false;
@@ -337,8 +338,9 @@ EventStateManager::Init()
 
   observerService->AddObserver(this, NS_XPCOM_SHUTDOWN_OBSERVER_ID, true);
 
-  if (sESMInstanceCount == 1) {
+  if (!sPrefInitialized) {
     Prefs::Init();
+    sPrefInitialized = true;
   }
 
   return NS_OK;
