@@ -23,8 +23,6 @@
 #include "nsISSLStatus.h"
 #include "nsIDOMEvent.h"
 #include "nsIDOMHTMLLinkElement.h"
-#include "nsIDOMPopupBlockedEvent.h"
-#include "nsIDOMPageTransitionEvent.h"
 #include "nsIFocusManager.h"
 #include "nsIDOMScrollAreaEvent.h"
 #include "nsISerializable.h"
