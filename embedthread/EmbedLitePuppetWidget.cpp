@@ -171,14 +171,15 @@ EmbedLitePuppetWidget::Destroy()
 
   mOnDestroyCalled = true;
 
-  Base::OnDestroy();
-  Base::Destroy();
   nsIWidget* topWidget = GetTopLevelWidget();
   if (mLayerManager && topWidget == this) {
     mLayerManager->Destroy();
   }
-  mParent = nullptr;
   mLayerManager = nullptr;
+
+  Base::OnDestroy();
+  Base::Destroy();
+  mParent = nullptr;
   mEmbed = nullptr;
   mChild = nullptr;
 
