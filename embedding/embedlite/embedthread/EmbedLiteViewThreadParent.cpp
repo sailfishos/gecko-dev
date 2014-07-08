@@ -647,6 +647,9 @@ EmbedLiteViewThreadParent::TextEvent(const char* composite, const char* preEdit)
 NS_IMETHODIMP
 EmbedLiteViewThreadParent::ViewAPIDestroyed()
 {
+  if (mController) {
+    mController->ClearRenderFrame();
+  }
   mViewAPIDestroyed = true;
   mView = nullptr;
 
