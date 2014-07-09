@@ -42,6 +42,8 @@ namespace layers {
 
 class PGrallocBufferParent;
 
+std::map<base::ProcessId, ImageBridgeParent*> ImageBridgeParent::sImageBridges;
+
 MessageLoop* ImageBridgeParent::sMainLoop = nullptr;
 
 // defined in CompositorParent.cpp
