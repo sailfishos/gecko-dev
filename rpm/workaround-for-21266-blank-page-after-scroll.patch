@@ -1,0 +1,12 @@
+diff --git a/gfx/layers/apz/src/AsyncPanZoomController.cpp b/gfx/layers/apz/src/AsyncPanZoomController.cpp
+index 52c0771..e9d5eb3 100644
+--- a/gfx/layers/apz/src/AsyncPanZoomController.cpp
++++ b/gfx/layers/apz/src/AsyncPanZoomController.cpp
+@@ -1813,6 +1813,7 @@ void AsyncPanZoomController::NotifyLayersUpdated(const FrameMetrics& aLayerMetri
+       APZC_LOG("%p sending scroll update acknowledgement with gen %lu\n", this, aLayerMetrics.GetScrollGeneration());
+       controller->AcknowledgeScrollUpdate(aLayerMetrics.GetScrollId(),
+                                           aLayerMetrics.GetScrollGeneration());
++      needContentRepaint = true;
+     }
+   }
+ 
