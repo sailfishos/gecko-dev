@@ -506,7 +506,7 @@ gfxPlatform::InitLayersIPC()
     }
     sLayersIPCIsUp = true;
 
-    AsyncTransactionTrackersHolder::Initialize();
+    // AsyncTransactionTrackersHolder::Initialize();
 
     if (UsesOffMainThreadCompositing() &&
         XRE_GetProcessType() == GeckoProcessType_Default)

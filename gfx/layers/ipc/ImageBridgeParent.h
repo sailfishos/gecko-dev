@@ -40,7 +40,7 @@ public:
   typedef InfallibleTArray<CompositableOperation> EditArray;
   typedef InfallibleTArray<EditReply> EditReplyArray;
 
-  ImageBridgeParent(MessageLoop* aLoop, Transport* aTransport);
+  ImageBridgeParent(MessageLoop* aLoop, Transport* aTransport, ProcessId aChildProcessId);
   ~ImageBridgeParent();
 
   virtual LayersBackend GetCompositorBackendType() const MOZ_OVERRIDE;
@@ -56,6 +56,11 @@ public:
 
   virtual bool
   DeallocPGrallocBufferParent(PGrallocBufferParent* actor) MOZ_OVERRIDE;
+
+  virtual base::ProcessId GetChildProcessId() MOZ_OVERRIDE
+  {
+    return mChildProcessId;
+  }
 
   // PImageBridge
   virtual bool RecvUpdate(const EditArray& aEdits, EditReplyArray* aReply) MOZ_OVERRIDE;
@@ -113,6 +118,8 @@ private:
 
   MessageLoop* mMessageLoop;
   Transport* mTransport;
+  // Child side's process id.
+  base::ProcessId mChildProcessId;
   // This keeps us alive until ActorDestroy(), at which point we do a
   // deferred destruction of ourselves.
   nsRefPtr<ImageBridgeParent> mSelfRef;

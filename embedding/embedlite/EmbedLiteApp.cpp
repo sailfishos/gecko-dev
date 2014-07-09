@@ -456,9 +456,6 @@ EmbedLiteApp::Initialized()
   if (mListener) {
     mListener->Initialized();
   }
-  if (mIsCompositeInMainThread) {
-    mozilla::layers::CompositorParent::StartUpWithExistingThread(MessageLoop::current(), PlatformThread::CurrentId());
-  }
 }
 
 } // namespace embedlite

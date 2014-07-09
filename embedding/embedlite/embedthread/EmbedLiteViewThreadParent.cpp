@@ -541,9 +541,6 @@ EmbedLiteViewThreadParent::SetViewClipping(const gfxRect& aClipRect)
 void
 EmbedLiteViewThreadParent::SetViewOpacity(const float aOpacity)
 {
-  if (mCompositor) {
-    mCompositor->SetWorldOpacity(aOpacity);
-  }
 }
 
 void
