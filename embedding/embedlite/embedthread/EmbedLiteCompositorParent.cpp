@@ -43,7 +43,6 @@ EmbedLiteCompositorParent::EmbedLiteCompositorParent(nsIWidget* aWidget,
   , mLastViewSize(aSurfaceWidth, aSurfaceHeight)
   , mInitialPaintCount(0)
 {
-  AddRef();
   EmbedLiteView* view = EmbedLiteApp::GetInstance()->GetViewByID(mId);
   LOGT("this:%p, view:%p", this, view);
   MOZ_ASSERT(view, "Something went wrong, Compositor not suspended on destroy?");
@@ -212,42 +211,12 @@ void EmbedLiteCompositorParent::SetClipping(const gfxRect& aClipRect)
   gfxUtils::GfxRectToIntRect(aClipRect, &mActiveClipping);
 }
 
-void EmbedLiteCompositorParent::DeferredDestroyCompositor()
-{
-  if (GetChildCompositor()) {
-    // First iteration, if child compositor available
-    // Destroy it from current Child Message Loop and
-    // Post task for Parent Compositor destroy in Parent MessageLoop
-    NS_ASSERTION(MessageLoop::current() != EmbedLiteApp::GetInstance()->GetUILoop(),
-                 "CompositorChild must be destroyed from Child Message Loop");
-    GetChildCompositor()->Release();
-    SetChildCompositor(nullptr, nullptr);
-    EmbedLiteApp::GetInstance()->GetUILoop()->PostTask(FROM_HERE,
-        NewRunnableMethod(this, &EmbedLiteCompositorParent::DeferredDestroyCompositor));
-  } else {
-    NS_ASSERTION(MessageLoop::current() == EmbedLiteApp::GetInstance()->GetUILoop(),
-                 "CompositorParent must be destroyed from Parent Message Loop");
-    // Finally destroy Parent compositor
-    Release();
-  }
-}
-
 void
 EmbedLiteCompositorParent::SetChildCompositor(CompositorChild* aCompositorChild, MessageLoop* childLoop)
 {
   LOGT();
   mChildMessageLoop = childLoop;
   mChildCompositor = aCompositorChild;
-}
-
-bool EmbedLiteCompositorParent::RecvStop()
-{
-  LOGT("t: childComp:%p, mChildMessageLoop:%p, curLoop:%p", mChildCompositor.get(), MessageLoop::current());
-  Destroy();
-  // Delegate destroy of Child/Parent compositor in delayed task in order to avoid Child loop having dead objects
-  mChildMessageLoop->PostTask(FROM_HERE,
-                              NewRunnableMethod(this, &EmbedLiteCompositorParent::DeferredDestroyCompositor));
-  return true;
 }
 
 void EmbedLiteCompositorParent::ScheduleTask(CancelableTask* task, int time)

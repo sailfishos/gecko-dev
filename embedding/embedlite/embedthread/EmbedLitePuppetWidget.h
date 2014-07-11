@@ -156,7 +156,6 @@ public:
 
 private:
   nsresult Paint();
-  void DestroyCompositor();
   bool ViewIsValid();
 
   EmbedLitePuppetWidget* TopWindow();
