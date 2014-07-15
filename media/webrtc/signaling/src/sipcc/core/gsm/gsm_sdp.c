@@ -1178,6 +1178,8 @@ gsmsdp_set_video_media_attributes (uint32_t media_type, void *cc_sdp_p, uint16_t
                 return;
             }
             added_fmtp = 1;
+            (void) sdp_attr_set_fmtp_payload_type(sdp_p, level, 0, a_inst,
+                                                  payload_number);
             {
                 char buffer[32];
                 uint32_t profile_level_id = vcmGetVideoH264ProfileLevelID();
@@ -1221,10 +1223,10 @@ gsmsdp_set_video_media_attributes (uint32_t media_type, void *cc_sdp_p, uint16_t
                         return;
                     }
                     added_fmtp = 1;
-                }
 
-                (void) sdp_attr_set_fmtp_payload_type(sdp_p, level, 0, a_inst,
-                                                      payload_number);
+                    (void) sdp_attr_set_fmtp_payload_type(sdp_p, level, 0, a_inst,
+                                                          payload_number);
+                }
 
                 if (max_fs) {
                     (void) sdp_attr_set_fmtp_max_fs(sdp_p, level, 0, a_inst,
@@ -3501,12 +3503,12 @@ gsmsdp_negotiate_codec (fsmdef_dcb_t *dcb_p, cc_sdp_t *sdp_p,
 
 
                 } else if (media->type == SDP_MEDIA_VIDEO) {
-                    if ( media-> video != NULL ) {
+                    if ( media->video != NULL ) {
                        vcmFreeMediaPtr(media->video);
                        media->video = NULL;
                     }
 
-                    if (!vcmCheckAttribs(codec, sdp_p, level,
+                    if (!vcmCheckAttribs(codec, sdp_p, level, remote_pt,
                                          &media->video)) {
                           GSM_DEBUG(DEB_L_C_F_PREFIX"codec= %d ignored - "
                                "attribs not accepted\n",
@@ -5262,7 +5264,10 @@ gsmsdp_negotiate_media_lines (fsm_fcb_t *fcb_p, cc_sdp_t *sdp_p, boolean initial
                       /*
                        * Add track to remote streams in dcb
                        */
-                      if (SDP_MEDIA_APPLICATION != media_type) {
+                      if (SDP_MEDIA_APPLICATION != media_type &&
+                          /* Do not expect to receive media if we're sendonly! */
+                          (media->direction == SDP_DIRECTION_SENDRECV ||
+                           media->direction == SDP_DIRECTION_RECVONLY)) {
                           int pc_stream_id = -1;
 
                           /* This is a hack to keep all the media in a single

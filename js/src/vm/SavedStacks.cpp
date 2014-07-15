@@ -16,6 +16,7 @@
 #include "vm/GlobalObject.h"
 #include "vm/StringBuffer.h"
 
+#include "jscntxtinlines.h"
 #include "jsobjinlines.h"
 
 using mozilla::AddToHash;
@@ -399,9 +400,9 @@ bool
 SavedStacks::saveCurrentStack(JSContext *cx, MutableHandleSavedFrame frame, unsigned maxFrameCount)
 {
     JS_ASSERT(initialized());
-    JS_ASSERT(&cx->compartment()->savedStacks() == this);
+    assertSameCompartment(cx, this);
 
-    ScriptFrameIter iter(cx);
+    FrameIter iter(cx, FrameIter::ALL_CONTEXTS, FrameIter::GO_THROUGH_SAVED);
     return insertFrames(cx, iter, frame, maxFrameCount);
 }
 
@@ -476,7 +477,7 @@ SavedStacks::sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf)
 }
 
 bool
-SavedStacks::insertFrames(JSContext *cx, ScriptFrameIter &iter, MutableHandleSavedFrame frame,
+SavedStacks::insertFrames(JSContext *cx, FrameIter &iter, MutableHandleSavedFrame frame,
                           unsigned maxFrameCount)
 {
     if (iter.done()) {
@@ -492,11 +493,35 @@ SavedStacks::insertFrames(JSContext *cx, ScriptFrameIter &iter, MutableHandleSav
     // in js/src/jit-test/tests/saved-stacks/bug-1006876-too-much-recursion.js).
     JS_CHECK_RECURSION_DONT_REPORT(cx, return false);
 
-    RootedScript script(cx, iter.script());
-    jsbytecode *pc = iter.pc();
-    RootedFunction callee(cx, iter.maybeCallee());
-    // script and callee should keep compartment alive.
-    JSCompartment *compartment = iter.compartment();
+    JSPrincipals* principals = iter.compartment()->principals;
+    RootedAtom name(cx, iter.isNonEvalFunctionFrame() ? iter.functionDisplayAtom() : nullptr);
+
+    // When we have a |JSScript| for this frame, use |getLocation| to get a
+    // potentially memoized location result and copy it into |location|. When we
+    // do not have a |JSScript| for this frame (asm.js frames), we take a slow
+    // path that doesn't employ memoization, and update |location|'s slots
+    // directly.
+    AutoLocationValueRooter location(cx);
+    if (iter.hasScript()) {
+        JSScript *script = iter.script();
+        jsbytecode *pc = iter.pc();
+        {
+            AutoCompartment ac(cx, iter.compartment());
+            if (!cx->compartment()->savedStacks().getLocation(cx, script, pc, &location))
+                return false;
+        }
+    } else {
+        const char *filename = iter.scriptFilename();
+        if (!filename)
+            filename = "";
+        location.get().source = Atomize(cx, filename, strlen(filename));
+        if (!location.get().source)
+            return false;
+        uint32_t column;
+        location.get().line = iter.computeLine(&column);
+        location.get().column = column;
+    }
+
     RootedSavedFrame parentFrame(cx);
 
     // If maxFrameCount is zero, then there's no limit on the number of frames.
@@ -513,17 +538,13 @@ SavedStacks::insertFrames(JSContext *cx, ScriptFrameIter &iter, MutableHandleSav
             return false;
     }
 
-    AutoLocationValueRooter location(cx);
-    if (!getLocation(cx, script, pc, &location))
-        return false;
-
     SavedFrame::AutoLookupRooter lookup(cx,
                                         location.get().source,
                                         location.get().line,
                                         location.get().column,
-                                        callee ? callee->displayAtom() : nullptr,
+                                        name,
                                         parentFrame,
-                                        compartment->principals);
+                                        principals);
 
     frame.set(getOrCreateSavedFrame(cx, lookup));
     return frame.get() != nullptr;
@@ -578,13 +599,13 @@ SavedStacks::createFrameFromLookup(JSContext *cx, const SavedFrame::Lookup &look
     if (!proto)
         return nullptr;
 
-    JS_ASSERT(proto->compartment() == cx->compartment());
+    assertSameCompartment(cx, proto);
 
     RootedObject global(cx, cx->compartment()->maybeGlobal());
     if (!global)
         return nullptr;
 
-    JS_ASSERT(global->compartment() == cx->compartment());
+    assertSameCompartment(cx, global);
 
     RootedObject frameObj(cx, NewObjectWithGivenProto(cx, &SavedFrame::class_, proto, global));
     if (!frameObj)
@@ -618,6 +639,12 @@ bool
 SavedStacks::getLocation(JSContext *cx, JSScript *script, jsbytecode *pc,
                          MutableHandleLocationValue locationp)
 {
+    // We should only ever be caching location values for scripts in this
+    // compartment. Otherwise, we would get dead cross-compartment scripts in
+    // the cache because our compartment's sweep method isn't called when their
+    // compartment gets collected.
+    assertSameCompartment(cx, this, script);
+
     PCKey key(script, pc);
     PCLocationMap::AddPtr p = pcLocationMap.lookupForAdd(key);
 
@@ -648,5 +675,17 @@ SavedStacksMetadataCallback(JSContext *cx, JSObject **pmetadata)
     *pmetadata = frame;
     return true;
 }
+
+#ifdef JS_CRASH_DIAGNOSTICS
+void
+CompartmentChecker::check(SavedStacks *stacks)
+{
+    if (&compartment->savedStacks() != stacks) {
+        printf("*** Compartment SavedStacks mismatch: %p vs. %p\n",
+               (void *) &compartment->savedStacks(), stacks);
+        MOZ_CRASH();
+    }
+}
+#endif /* JS_CRASH_DIAGNOSTICS */
 
 } /* namespace js */

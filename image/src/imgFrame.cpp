@@ -365,7 +365,7 @@ imgFrame::SurfaceForDrawing(bool               aDoPadding,
   aFill = imageSpaceToUserSpace.Transform(aSourceRect);
 
   aSubimage = aSubimage.Intersect(available) - gfxPoint(aPadding.left, aPadding.top);
-  aUserSpaceToImageSpace.Multiply(gfxMatrix().Translate(-gfxPoint(aPadding.left, aPadding.top)));
+  aUserSpaceToImageSpace *= gfxMatrix::Translation(-aPadding.left, -aPadding.top);
   aSourceRect = aSourceRect - gfxPoint(aPadding.left, aPadding.top);
   aImageRect = gfxRect(0, 0, mSize.width, mSize.height);
 
@@ -391,20 +391,6 @@ bool imgFrame::Draw(gfxContext *aContext, GraphicsFilter aFilter,
 
   if (mSinglePixel && !doPadding && !doPartialDecode) {
     if (mSinglePixelColor.a == 0.0) {
-      return true;
-    }
-
-    if (aContext->IsCairo()) {
-      gfxContext::GraphicsOperator op = aContext->CurrentOperator();
-      if (op == gfxContext::OPERATOR_OVER && mSinglePixelColor.a == 1.0) {
-        aContext->SetOperator(gfxContext::OPERATOR_SOURCE);
-      }
-      aContext->SetDeviceColor(ThebesColor(mSinglePixelColor));
-      aContext->NewPath();
-      aContext->Rectangle(aFill);
-      aContext->Fill();
-      aContext->SetOperator(op);
-      aContext->SetDeviceColor(gfxRGBA(0,0,0,0));
       return true;
     }
     RefPtr<DrawTarget> dt = aContext->GetDrawTarget();

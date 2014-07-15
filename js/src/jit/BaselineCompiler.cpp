@@ -218,7 +218,7 @@ BaselineCompiler::compile()
         label.fixup(&masm);
         size_t icEntry = icLoadLabels_[i].icEntry;
         ICEntry *entryAddr = &(baselineScript->icEntry(icEntry));
-        Assembler::patchDataWithValueCheck(CodeLocationLabel(code, label),
+        Assembler::PatchDataWithValueCheck(CodeLocationLabel(code, label),
                                            ImmPtr(entryAddr),
                                            ImmPtr((void*)-1));
     }
@@ -2367,34 +2367,6 @@ BaselineCompiler::emit_JSOP_INITELEM_INC()
     // Increment index
     Address indexAddr = frame.addressOfStackValue(frame.peek(-1));
     masm.incrementInt32Value(indexAddr);
-    return true;
-}
-
-typedef bool (*SpreadFn)(JSContext *, HandleObject, HandleValue,
-                         HandleValue, MutableHandleValue);
-static const VMFunction SpreadInfo = FunctionInfo<SpreadFn>(js::SpreadOperation);
-
-bool
-BaselineCompiler::emit_JSOP_SPREAD()
-{
-    // Load index and iterator in R0 and R1, but keep values on the stack for
-    // the decompiler.
-    frame.syncStack(0);
-    masm.loadValue(frame.addressOfStackValue(frame.peek(-2)), R0);
-    masm.loadValue(frame.addressOfStackValue(frame.peek(-1)), R1);
-
-    prepareVMCall();
-
-    pushArg(R1);
-    pushArg(R0);
-    masm.extractObject(frame.addressOfStackValue(frame.peek(-3)), R0.scratchReg());
-    pushArg(R0.scratchReg());
-
-    if (!callVM(SpreadInfo))
-        return false;
-
-    frame.popn(2);
-    frame.push(R0);
     return true;
 }
 

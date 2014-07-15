@@ -58,9 +58,6 @@ MOZ_PAY=1
 # Enable UI for healthreporter
 MOZ_SERVICES_HEALTHREPORT=1
 
-# Enable FirefoxAccounts
-MOZ_SERVICES_FXACCOUNTS=1
-
 # Wifi-AP/cell tower data reporting is enabled on non-release builds.
 if test ! "$RELEASE_BUILD"; then
 MOZ_DATA_REPORTING=1
@@ -74,6 +71,9 @@ MOZ_DEVICES=1
 
 # Enable second screen using native Android libraries
 MOZ_NATIVE_DEVICES=
+
+# Mark as WebGL conformant
+MOZ_WEBGL_CONFORMANT=1
 
 # Don't enable the Search Activity.
 # MOZ_ANDROID_SEARCH_ACTIVITY=1

@@ -19,6 +19,7 @@
 #include "nsIHttpChannel.h"
 #include "nsHttpHandler.h"
 #include "nsIHttpChannelInternal.h"
+#include "nsIForcePendingChannel.h"
 #include "nsIRedirectHistory.h"
 #include "nsIUploadChannel.h"
 #include "nsIUploadChannel2.h"
@@ -31,6 +32,7 @@
 #include "nsIResumableChannel.h"
 #include "nsITraceableChannel.h"
 #include "nsILoadContext.h"
+#include "nsILoadInfo.h"
 #include "mozilla/net/NeckoCommon.h"
 #include "nsThreadUtils.h"
 #include "PrivateBrowsingChannel.h"
@@ -62,6 +64,7 @@ class HttpBaseChannel : public nsHashPropertyBag
                       , public nsITraceableChannel
                       , public PrivateBrowsingChannel<HttpBaseChannel>
                       , public nsITimedChannel
+                      , public nsIForcePendingChannel
 {
 protected:
   virtual ~HttpBaseChannel();
@@ -95,6 +98,8 @@ public:
   NS_IMETHOD GetURI(nsIURI **aURI);
   NS_IMETHOD GetOwner(nsISupports **aOwner);
   NS_IMETHOD SetOwner(nsISupports *aOwner);
+  NS_IMETHOD GetLoadInfo(nsILoadInfo **aLoadInfo);
+  NS_IMETHOD SetLoadInfo(nsILoadInfo *aLoadInfo);
   NS_IMETHOD GetNotificationCallbacks(nsIInterfaceRequestor **aCallbacks);
   NS_IMETHOD SetNotificationCallbacks(nsIInterfaceRequestor *aCallbacks);
   NS_IMETHOD GetContentType(nsACString& aContentType);
@@ -170,6 +175,7 @@ public:
   NS_IMETHOD SetResponseTimeoutEnabled(bool aEnable);
   NS_IMETHOD AddRedirect(nsIPrincipal *aRedirect);
   NS_IMETHOD ForcePending(bool aForcePending);
+  NS_IMETHOD GetLastModifiedTime(PRTime* lastModifiedTime);
 
   inline void CleanRedirectCacheChainIfNecessary()
   {
@@ -274,6 +280,7 @@ protected:
   nsCOMPtr<nsISupports>             mListenerContext;
   nsCOMPtr<nsILoadGroup>            mLoadGroup;
   nsCOMPtr<nsISupports>             mOwner;
+  nsCOMPtr<nsILoadInfo>             mLoadInfo;
   nsCOMPtr<nsIInterfaceRequestor>   mCallbacks;
   nsCOMPtr<nsIProgressEventSink>    mProgressSink;
   nsCOMPtr<nsIURI>                  mReferrer;

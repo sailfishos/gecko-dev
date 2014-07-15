@@ -12,7 +12,7 @@ from StringIO import StringIO
 from xml.etree.ElementTree import ElementTree
 
 from mozbuild.base import MozbuildObject
-os.environ.pop('MOZ_OBJDIR')
+os.environ.pop('MOZ_OBJDIR', None)
 build_obj = MozbuildObject.from_environment()
 
 from runxpcshelltests import XPCShellTests
@@ -536,6 +536,19 @@ tail =
         self.assertEquals(1, self.x.testCount)
         self.assertEquals(1, self.x.passCount)
         self.assertEquals(0, self.x.failCount)
+
+    def testLogCorrectFileName(self):
+        """
+        Make sure a meaningful filename and line number is logged
+        by a passing test.
+        """
+        self.writeFile("test_add_test_simple.js", ADD_TEST_SIMPLE)
+        self.writeManifest(["test_add_test_simple.js"])
+
+        self.assertTestResult(True, verbose=True)
+        self.assertInLog("true == true")
+        self.assertNotInLog("[do_check_true :")
+        self.assertInLog("[test_simple : 5]")
 
     def testAddTestFailing(self):
         """

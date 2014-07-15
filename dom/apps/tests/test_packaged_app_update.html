@@ -79,15 +79,15 @@ function updateApp(aExpectedReady, aPreviousVersion, aNextVersion) {
     checkLastAppState.bind(PackagedTestHelper, miniManifestURL, false, false,
                            aNextVersion, PackagedTestHelper.next);
 
-  var ondownloadsuccesshandler =
-    checkLastAppState.bind(undefined, miniManifestURL,
-                           aExpectedReady, false, aPreviousVersion,
-                           function() {
-      navigator.mozApps.mgmt.applyDownload(lApp);
-  });
+    var ondownloadsuccesshandler =
+      checkLastAppState.bind(undefined, miniManifestURL,
+                             aExpectedReady, false, aPreviousVersion,
+                             function() {
+        navigator.mozApps.mgmt.applyDownload(lApp);
+    });
 
-  checkForUpdate(true, ondownloadsuccesshandler, ondownloadappliedhandler,
-                 null, true);
+    checkForUpdate(true, ondownloadsuccesshandler, ondownloadappliedhandler, null,
+                   true);
 
 }
 
@@ -95,11 +95,13 @@ var initialPermissionState = {
   "geolocation": "prompt",
   "audio-capture": "prompt",
   "video-capture": "prompt",
+  "test-permission-read": "prompt",
   "downloads": "deny"
 }
 
 var permissionsToSet = {
   "geolocation": "allow",
+  "test-permission-read": "allow",
   "audio-capture": "deny"
 }
 
@@ -107,6 +109,7 @@ var permissionsToCheck = {
   "geolocation": "allow",
   "audio-capture": "deny",
   "video-capture": "prompt",
+  "test-permission-read": "allow",
   "downloads": "deny"
 }
 
@@ -251,7 +254,7 @@ var steps = [
                       "&appName=arandomname" +
                       "&appToFail1";
     PackagedTestHelper.checkAppDownloadError(miniManifestURL,
-                                            "MANIFEST_MISMATCH", 1, false, true,
+                                            "MANIFEST_MISMATCH", 2, false, true,
                                              "arandomname",
                                              function () {
       checkForUpdate(false, null, null, null, false,

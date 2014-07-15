@@ -220,7 +220,9 @@ rebuild(cubeb * ctx)
 static void
 poll_wake(cubeb * ctx)
 {
-  write(ctx->control_fd_write, "x", 1);
+  if (write(ctx->control_fd_write, "x", 1) < 0) {
+    /* ignore write error */
+  }
 }
 
 static void
@@ -372,7 +374,9 @@ alsa_run(cubeb * ctx)
 
   if (r > 0) {
     if (ctx->fds[0].revents & POLLIN) {
-      read(ctx->control_fd_read, &dummy, 1);
+      if (read(ctx->control_fd_read, &dummy, 1) < 0) {
+        /* ignore read error */
+      }
 
       if (ctx->shutdown) {
         pthread_mutex_unlock(&ctx->mutex);
@@ -867,12 +871,17 @@ alsa_stream_destroy(cubeb_stream * stm)
   int r;
   cubeb * ctx;
 
-  assert(stm && (stm->state == INACTIVE || stm->state == ERROR));
+  assert(stm && (stm->state == INACTIVE ||
+                 stm->state == ERROR ||
+                 stm->state == DRAINING));
 
   ctx = stm->context;
 
   pthread_mutex_lock(&stm->mutex);
   if (stm->pcm) {
+    if (stm->state == DRAINING) {
+      snd_pcm_drain(stm->pcm);
+    }
     alsa_locked_pcm_close(stm->pcm);
     stm->pcm = NULL;
   }

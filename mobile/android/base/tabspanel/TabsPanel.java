@@ -17,6 +17,7 @@ import org.mozilla.gecko.Telemetry;
 import org.mozilla.gecko.TelemetryContract;
 import org.mozilla.gecko.animation.PropertyAnimator;
 import org.mozilla.gecko.animation.ViewHelper;
+import org.mozilla.gecko.util.HardwareUtils;
 import org.mozilla.gecko.widget.GeckoPopupMenu;
 import org.mozilla.gecko.widget.IconTabWidget;
 
@@ -31,7 +32,6 @@ import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
-import android.view.ViewStub;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
@@ -118,7 +118,6 @@ public class TabsPanel extends LinearLayout
             public void onResume() {
                 if (mPanel == mPanelRemote) {
                     // Refresh the remote panel.
-                    initializeRemotePanelView();
                     mPanelRemote.show();
                 }
             }
@@ -142,6 +141,9 @@ public class TabsPanel extends LinearLayout
 
         mPanelPrivate = (PanelView) findViewById(R.id.private_tabs_panel);
         mPanelPrivate.setTabsPanel(this);
+
+        mPanelRemote = (PanelView) findViewById(R.id.remote_tabs);
+        mPanelRemote.setTabsPanel(this);
 
         mFooter = (RelativeLayout) findViewById(R.id.tabs_panel_footer);
 
@@ -171,20 +173,27 @@ public class TabsPanel extends LinearLayout
         mMenuButton.setOnClickListener(new Button.OnClickListener() {
             @Override
             public void onClick(View view) {
-                final Menu menu = mPopupMenu.getMenu();
-
-                // Each panel has a "+" shortcut button, so don't show it for that panel.
-                menu.findItem(R.id.new_tab).setVisible(mCurrentPanel != Panel.NORMAL_TABS);
-                menu.findItem(R.id.new_private_tab).setVisible(mCurrentPanel != Panel.PRIVATE_TABS);
-
-                // Only show "Clear * tabs" for current panel.
-                menu.findItem(R.id.close_all_tabs).setVisible(mCurrentPanel == Panel.NORMAL_TABS);
-                menu.findItem(R.id.close_private_tabs).setVisible(mCurrentPanel == Panel.PRIVATE_TABS);
- 
-                mPopupMenu.show();
+                showMenu();
             }
         });
-        mPopupMenu.setAnchor(mMenuButton);
+    }
+
+    public void showMenu() {
+        if (mCurrentPanel == Panel.REMOTE_TABS) {
+            return;
+        }
+
+        final Menu menu = mPopupMenu.getMenu();
+
+        // Each panel has a "+" shortcut button, so don't show it for that panel.
+        menu.findItem(R.id.new_tab).setVisible(mCurrentPanel != Panel.NORMAL_TABS);
+        menu.findItem(R.id.new_private_tab).setVisible(mCurrentPanel != Panel.PRIVATE_TABS);
+
+        // Only show "Clear * tabs" for current panel.
+        menu.findItem(R.id.close_all_tabs).setVisible(mCurrentPanel == Panel.NORMAL_TABS);
+        menu.findItem(R.id.close_private_tabs).setVisible(mCurrentPanel == Panel.PRIVATE_TABS);
+
+        mPopupMenu.show();
     }
 
     private void addTab() {
@@ -412,7 +421,6 @@ public class TabsPanel extends LinearLayout
                 mPanel = mPanelPrivate;
                 break;
             case REMOTE_TABS:
-                initializeRemotePanelView();
                 mPanel = mPanelRemote;
                 break;
 
@@ -427,7 +435,7 @@ public class TabsPanel extends LinearLayout
 
             mAddTab.setVisibility(View.INVISIBLE);
 
-            mMenuButton.setVisibility(View.INVISIBLE);
+            mMenuButton.setVisibility(View.GONE);
         } else {
             if (mFooter != null)
                 mFooter.setVisibility(View.VISIBLE);
@@ -435,8 +443,13 @@ public class TabsPanel extends LinearLayout
             mAddTab.setVisibility(View.VISIBLE);
             mAddTab.setImageLevel(index);
 
-            mMenuButton.setVisibility(View.VISIBLE);
-            mMenuButton.setEnabled(true);
+
+            if (!HardwareUtils.hasMenuButton()) {
+                mMenuButton.setVisibility(View.VISIBLE);
+                mPopupMenu.setAnchor(mMenuButton);
+            } else {
+                mPopupMenu.setAnchor(mAddTab);
+            }
         }
 
         if (isSideBar()) {
@@ -560,12 +573,5 @@ public class TabsPanel extends LinearLayout
 
     public void setIconDrawable(Panel panel, int resource) {
         mTabWidget.setIconDrawable(panel.ordinal(), resource);
-    }
-
-    private void initializeRemotePanelView() {
-        if (mPanelRemote == null) {
-            mPanelRemote = (PanelView) ((ViewStub) findViewById(R.id.remote_tabs_panel_stub)).inflate();
-            mPanelRemote.setTabsPanel(TabsPanel.this);
-        }
     }
 }

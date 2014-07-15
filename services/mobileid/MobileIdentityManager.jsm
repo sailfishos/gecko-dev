@@ -4,7 +4,7 @@
 
 "use strict";
 
-this.EXPORTED_SYMBOLS = [];
+this.EXPORTED_SYMBOLS = ["MobileIdentityManager"];
 
 const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
 
@@ -62,14 +62,13 @@ XPCOMUtils.defineLazyServiceGetter(this, "iccProvider",
 #endif
 
 
-let MobileIdentityManager = {
+this.MobileIdentityManager = {
 
   init: function() {
     log.debug("MobileIdentityManager init");
     Services.obs.addObserver(this, "xpcom-shutdown", false);
     ppmm.addMessageListener(GET_ASSERTION_IPC_MSG, this);
     this.messageManagers = {};
-    // TODO: Store keyPairs and certificates in disk. Bug 1021605.
     this.keyPairs = {};
     this.certificates = {};
   },
@@ -107,11 +106,10 @@ let MobileIdentityManager = {
    ********************************************************/
 
   get iccInfo() {
-#ifdef MOZ_B2G_RIL
     if (this._iccInfo) {
       return this._iccInfo;
     }
-
+#ifdef MOZ_B2G_RIL
     this._iccInfo = [];
     for (let i = 0; i < gRil.numRadioInterfaces; i++) {
       let rilContext = gRil.getRadioInterface(i).rilContext;
@@ -149,6 +147,26 @@ let MobileIdentityManager = {
     }
 
     return this._iccInfo;
+#endif
+    return null;
+  },
+
+  get iccIds() {
+#ifdef MOZ_B2G_RIL
+    if (this._iccIds) {
+      return this._iccIds;
+    }
+
+    this._iccIds = [];
+    if (!this.iccInfo) {
+      return this._iccIds;
+    }
+
+    for (let i = 0; i < this.iccInfo.length; i++) {
+      this._iccIds.push(this.iccInfo[i].iccId);
+    }
+
+    return this._iccIds;
 #endif
     return null;
   },
@@ -239,7 +257,9 @@ let MobileIdentityManager = {
     // verification mechanisms for these SIM cards.
     // All this information will be stored in iccInfo.
     if (!this.iccInfo || !this.iccInfo.length) {
-      return Promise.resolve();
+      let deferred = Promise.defer();
+      deferred.resolve(null);
+      return deferred.promise;
     }
 
     let promises = [];
@@ -273,6 +293,7 @@ let MobileIdentityManager = {
   },
 
   getCertificate: function(aSessionToken, aPublicKey) {
+    log.debug("getCertificate");
     if (this.certificates[aSessionToken] &&
         this.certificates[aSessionToken].validUntil > this.client.hawk.now()) {
       return Promise.resolve(this.certificates[aSessionToken].cert);
@@ -288,6 +309,7 @@ let MobileIdentityManager = {
                      aPublicKey)
     .then(
       (signedCert) => {
+        log.debug("Got signed certificate");
         this.certificates[aSessionToken] = {
           cert: signedCert.cert,
           validUntil: validUntil
@@ -297,6 +319,25 @@ let MobileIdentityManager = {
       deferred.reject
     );
     return deferred.promise;
+  },
+
+  /*********************************************************
+   * Setters (for test only purposes)
+   ********************************************************/
+  set ui(aUi) {
+    this._ui = aUi;
+  },
+
+  set credStore(aCredStore) {
+    this._credStore = aCredStore;
+  },
+
+  set client(aClient) {
+    this._client = aClient;
+  },
+
+  set iccInfo(aIccInfo) {
+    this._iccInfo = aIccInfo;
   },
 
   /*********************************************************
@@ -316,6 +357,25 @@ let MobileIdentityManager = {
       return;
     }
     this.doVerification();
+  },
+
+  /*********************************************************
+   * Result helpers
+   *********************************************************/
+  success: function(aPromiseId, aResult) {
+    let mm = this.messageManagers[aPromiseId];
+    mm.sendAsyncMessage("MobileId:GetAssertion:Return:OK", {
+      promiseId: aPromiseId,
+      result: aResult
+    });
+  },
+
+  error: function(aPromiseId, aError) {
+    let mm = this.messageManagers[aPromiseId];
+    mm.sendAsyncMessage("MobileId:GetAssertion:Return:KO", {
+      promiseId: aPromiseId,
+      error: aError
+    });
   },
 
   /*********************************************************
@@ -526,8 +586,9 @@ let MobileIdentityManager = {
     return this.ui.startFlow(aManifestURL, phoneInfoArray)
     .then(
       (result) => {
+        log.debug("startFlow result ${} ", result);
         if (!result ||
-            (!result.phoneNumber && !result.serviceId)) {
+            (!result.phoneNumber && (result.serviceId === undefined))) {
           return Promise.reject(ERROR_INTERNAL_INVALID_PROMPT_RESULT);
         }
 
@@ -537,7 +598,9 @@ let MobileIdentityManager = {
         // If the user selected one of the existing SIM cards we have to check
         // that we either have the MSISDN for that SIM or we can do a silent
         // verification that does not require us to have the MSISDN in advance.
-        if (result.serviceId) {
+        // result.serviceId can be "0".
+        if (result.serviceId !== undefined &&
+            result.serviceId !== null) {
           let icc = this.iccInfo[result.serviceId];
           log.debug("icc ${}", icc);
           if (!icc || !icc.msisdn && !icc.canDoSilentVerification) {
@@ -597,7 +660,7 @@ let MobileIdentityManager = {
           phoneInfo = new MobileIdentityUIGluePhoneInfo(
             aCreds.msisdn,
             null,           // operator
-            null,           // service ID
+            undefined,      // service ID
             !!aCreds.iccId, // external
             true            // primary
           );
@@ -623,7 +686,7 @@ let MobileIdentityManager = {
           let creds = this.iccInfo[promptResult.serviceId].credentials;
           if (creds) {
             this.credStore.add(creds.iccId, creds.msisdn, aPrincipal.origin,
-                               creds.sessionToken);
+                               creds.sessionToken, this.iccIds);
             return creds;
           }
         }
@@ -636,7 +699,7 @@ let MobileIdentityManager = {
           (creds) => {
             if (creds) {
               this.credStore.add(creds.iccId, creds.msisdn, aPrincipal.origin,
-                                 creds.sessionToken);
+                                 creds.sessionToken, this.iccIds);
               return creds;
             }
             // Otherwise, we need to verify the new number selected by the
@@ -646,6 +709,35 @@ let MobileIdentityManager = {
         );
       }
     );
+  },
+
+  /*********************************************************
+   * Credentials check
+   *********************************************************/
+
+  checkNewCredentials: function(aOldCreds, aNewCreds, aOrigin) {
+    // If there were previous credentials and the user changed her
+    // choice, we need to remove the origin from the old credentials.
+    if (aNewCreds.msisdn != aOldCreds.msisdn) {
+      return this.credStore.removeOrigin(aOldCreds.msisdn,
+                                         aOrigin)
+      .then(
+        () => {
+          return aNewCreds;
+        }
+      );
+    } else {
+      // Otherwise, we update the status of the SIM cards in the device
+      // so we know that the user decided not to take the chance to change
+      // her selection. We won't bother her again until a new SIM card
+      // change is detected.
+      return this.credStore.setDeviceIccIds(aOldCreds.msisdn, this.iccIds)
+      .then(
+        () => {
+          return aOldCreds;
+        }
+      );
+    }
   },
 
   /*********************************************************
@@ -685,7 +777,8 @@ let MobileIdentityManager = {
               this.credStore.add(aCredentials.iccId,
                                  aCredentials.msisdn,
                                  aOrigin,
-                                 aCredentials.sessionToken)
+                                 aCredentials.sessionToken,
+                                 this.iccIds)
               .then(
                 () => {
                   deferred.resolve(assertion);
@@ -705,13 +798,26 @@ let MobileIdentityManager = {
 
     let uri = Services.io.newURI(aPrincipal.origin, null, null);
     let principal = securityManager.getAppCodebasePrincipal(
-      uri, aPrincipal.appid, aPrincipal.isInBrowserElement);
+      uri, aPrincipal.appId, aPrincipal.isInBrowserElement);
     let manifestURL = appsService.getManifestURLByLocalId(aPrincipal.appId);
+
+    let permission = permissionManager.testPermissionFromPrincipal(
+      principal,
+      MOBILEID_PERM
+    );
+
+    if (permission == Ci.nsIPermissionManager.DENY_ACTION ||
+        permission == Ci.nsIPermissionManager.UNKNOWN_ACTION) {
+      this.error(aPromiseId, ERROR_PERMISSION_DENIED);
+      return;
+    }
+
+    let _creds;
 
     // First of all we look if we already have credentials for this origin.
     // If we don't have credentials it means that it is the first time that
     // the caller requested an assertion.
-    return this.credStore.getByOrigin(aPrincipal.origin)
+    this.credStore.getByOrigin(aPrincipal.origin)
     .then(
       (creds) => {
         log.debug("creds ${creds} - ${origin}", { creds: creds,
@@ -721,31 +827,62 @@ let MobileIdentityManager = {
           return;
         }
 
-        // Even if we already have credentials for this origin, the consumer of
-        // the API might want to force the identity selection dialog.
-        if (aOptions.forceSelection) {
-          return this.promptAndVerify(principal, manifestURL, creds);
-        }
+        _creds = creds;
 
-        // It is possible that the ICC associated with the stored
-        // credentials is not present in the device anymore, so we ask the
-        // user if she still wants to use it anyway or if she prefers to use
-        // another phone number.
-        // If the credentials are associated with an external SIM or there is
-        // no SIM in the device, we just return the credentials.
-        if (this.iccInfo && creds.iccId) {
-          for (let i = 0; i < this.iccInfo.length; i++) {
-            if (this.iccInfo[i].iccId == creds.iccId) {
-              return creds;
+        // Even if we already have credentials for this origin, the consumer
+        // of the API might want to force the identity selection dialog.
+        if (aOptions.forceSelection || aOptions.refreshCredentials) {
+          return this.promptAndVerify(principal, manifestURL, creds)
+          .then(
+            (newCreds) => {
+              return this.checkNewCredentials(creds, newCreds,
+                                              principal.origin);
             }
-          }
-          // At this point we know that the SIM associated with the credentials
-          // is not present in the device any more, so we need to ask the user
-          // what to do.
-          return this.promptAndVerify(principal, manifestURL, creds);
+          );
         }
 
-        return creds;
+        // SIM change scenario.
+
+        // It is possible that the SIM cards inserted in the device at the
+        // moment of the previous verification where we obtained the credentials
+        // has changed. In that case, we need to let the user knowabout this
+        // situation. Otherwise, we just return the credentials.
+        log.debug("Looking for SIM changes. Credentials ICCS ${creds} " +
+                  "Device ICCS ${device}", { creds: creds.deviceIccIds,
+                                             device: this.iccIds });
+        let simChanged = (creds.deviceIccIds == null && this.iccIds != null) ||
+                         (creds.deviceIccIds != null && this.iccIds == null);
+
+        if (!simChanged &&
+            creds.deviceIccIds != null &&
+            this.IccIds != null) {
+          simChanged = creds.deviceIccIds.length != this.iccIds.length;
+        }
+
+        if (!simChanged &&
+            creds.deviceIccIds != null &&
+            this.IccIds != null) {
+          let intersection = creds.deviceIccIds.filter((n) => {
+            return this.iccIds.indexOf(n) != -1;
+          });
+          simChanged = intersection.length != creds.deviceIccIds.length ||
+                       intersection.length != this.iccIds.length;
+        }
+
+        if (!simChanged) {
+          return creds;
+        }
+
+        // At this point we know that the SIM associated with the credentials
+        // is not present in the device any more or a new SIM has been detected,
+        // so we need to ask the user what to do.
+        return this.promptAndVerify(principal, manifestURL, creds)
+        .then(
+          (newCreds) => {
+            return this.checkNewCredentials(creds, newCreds,
+                                            principal.origin);
+          }
+        );
       }
     )
     .then(
@@ -757,14 +894,8 @@ let MobileIdentityManager = {
         // If we've just prompted the user in the previous step, the permission
         // is already granted and stored so we just progress the credentials.
         if (creds) {
-          let permission = permissionManager.testPermissionFromPrincipal(
-            principal,
-            MOBILEID_PERM
-          );
           if (permission == Ci.nsIPermissionManager.ALLOW_ACTION) {
             return creds;
-          } else if (permission == Ci.nsIPermissionManager.DENY_ACTION) {
-            return Promise.reject(ERROR_PERMISSION_DENIED);
           }
           return this.promptAndVerify(principal, manifestURL, creds);
         }
@@ -802,25 +933,31 @@ let MobileIdentityManager = {
 
         this.ui.verified(decodedPayload.verifiedMSISDN);
 
-        let mm = this.messageManagers[aPromiseId];
-        mm.sendAsyncMessage("MobileId:GetAssertion:Return:OK", {
-          promiseId: aPromiseId,
-          result: assertion
-        });
+        this.success(aPromiseId, assertion);
       }
     )
     .then(
       null,
       (error) => {
-        log.error("getMobileIdAssertion rejected with " + error);
+        log.error("getMobileIdAssertion rejected with ${}", error);
+
+        // If we got an invalid token error means that the credentials that
+        // we have are not valid anymore and so we need to refresh them. We
+        // do that removing the stored credentials and starting over. We also
+        // make sure that we do this only once.
+        if (error === ERROR_INVALID_AUTH_TOKEN &&
+            !aOptions.refreshCredentials) {
+          log.debug("Need to get new credentials");
+          aOptions.refreshCredentials = true;
+          _creds && this.credStore.delete(_creds.msisdn);
+          this.getMobileIdAssertion(aPrincipal, aPromiseId, aOptions);
+          return;
+        }
+
         // Notify the error to the UI.
         this.ui.error(error);
 
-        let mm = this.messageManagers[aPromiseId];
-        mm.sendAsyncMessage("MobileId:GetAssertion:Return:KO", {
-          promiseId: aPromiseId,
-          error: error
-        });
+        this.error(aPromiseId, error);
       }
     );
   },

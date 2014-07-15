@@ -179,8 +179,11 @@ SocialUI = {
   },
 
   // This handles "ActivateSocialFeature" events fired against content documents
-  // in this window.
-  _activationEventHandler: function SocialUI_activationHandler(e) {
+  // in this window.  If this activation happens from within Firefox, such as
+  // about:home or the share panel, we bypass the enable prompt. Any website
+  // activation, such as from the activations directory or a providers website
+  // will still get the prompt.
+  _activationEventHandler: function SocialUI_activationHandler(e, aBypassUserEnable=false) {
     let targetDoc;
     let node;
     if (e.target instanceof HTMLDocument) {
@@ -194,8 +197,7 @@ SocialUI = {
     if (!(targetDoc instanceof HTMLDocument))
       return;
 
-    // Ignore events fired in background tabs or iframes
-    if (targetDoc.defaultView != content)
+    if (!aBypassUserEnable && targetDoc.defaultView != content)
       return;
 
     // If we are in PB mode, we silently do nothing (bug 829404 exists to
@@ -235,7 +237,7 @@ SocialUI = {
           openUILinkIn(provider.postActivationURL, "tab");
         }
       });
-    });
+    }, aBypassUserEnable);
   },
 
   showLearnMore: function() {
@@ -598,7 +600,7 @@ SocialShare = {
     sizeSocialPanelToContent(this.panel, iframe);
   },
 
-  sharePage: function(providerOrigin, graphData) {
+  sharePage: function(providerOrigin, graphData, target) {
     // if providerOrigin is undefined, we use the last-used provider, or the
     // current/default provider.  The provider selection in the share panel
     // will call sharePage with an origin for us to switch to.
@@ -617,7 +619,8 @@ SocialShare = {
     // in mozSocial API, or via nsContentMenu calls. If it is present, it MUST
     // define at least url. If it is undefined, we're sharing the current url in
     // the browser tab.
-    let sharedURI = graphData ? Services.io.newURI(graphData.url, null, null) :
+    let pageData = graphData ? graphData : this.currentShare;
+    let sharedURI = pageData ? Services.io.newURI(pageData.url, null, null) :
                                 gBrowser.currentURI;
     if (!this.canSharePage(sharedURI))
       return;
@@ -626,7 +629,6 @@ SocialShare = {
     // endpoints (e.g. oexchange) that do not support additional
     // socialapi functionality.  One tweak is that we shoot an event
     // containing the open graph data.
-    let pageData = graphData ? graphData : this.currentShare;
     if (!pageData || sharedURI == gBrowser.currentURI) {
       pageData = OpenGraphBuilder.getData(gBrowser);
       if (graphData) {
@@ -635,6 +637,10 @@ SocialShare = {
           pageData[p] = graphData[p];
         }
       }
+    }
+    // if this is a share of a selected item, get any microdata
+    if (!pageData.microdata && target) {
+      pageData.microdata = OpenGraphBuilder.getMicrodata(gBrowser, target);
     }
     this.currentShare = pageData;
 
@@ -1351,10 +1357,10 @@ SocialMarks = {
     return this._toolbarHelper;
   },
 
-  markLink: function(aOrigin, aUrl) {
+  markLink: function(aOrigin, aUrl, aTarget) {
     // find the button for this provider, and open it
     let id = this._toolbarHelper.idFromOrigin(aOrigin);
-    document.getElementById(id).markLink(aUrl);
+    document.getElementById(id).markLink(aUrl, aTarget);
   }
 };
 

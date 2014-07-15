@@ -145,6 +145,10 @@ nsNSSSocketInfo::nsNSSSocketInfo(SharedSSLState& aState, uint32_t providerFlags)
   mTLSVersionRange.max = 0;
 }
 
+nsNSSSocketInfo::~nsNSSSocketInfo()
+{
+}
+
 NS_IMPL_ISUPPORTS_INHERITED(nsNSSSocketInfo, TransportSecurityInfo,
                             nsISSLSocketControl,
                             nsIClientAuthUserDecision)
@@ -1885,9 +1889,9 @@ ClientAuthDataRunnable::RunOnTargetThread()
 {
   PLArenaPool* arena = nullptr;
   char** caNameStrings;
-  mozilla::pkix::ScopedCERTCertificate cert;
+  ScopedCERTCertificate cert;
   ScopedSECKEYPrivateKey privKey;
-  mozilla::pkix::ScopedCERTCertList certList;
+  ScopedCERTCertList certList;
   CERTCertListNode* node;
   ScopedCERTCertNicknames nicknames;
   int keyError = 0; // used for private key retrieval error
@@ -2231,7 +2235,7 @@ done:
     PORT_FreeArena(arena, false);
   }
 
-  *mPRetCert = cert.release();
+  *mPRetCert = cert.forget();
   *mPRetKey = privKey.forget();
 
   if (mRV == SECFailure) {

@@ -107,7 +107,6 @@ public:
 
   HTMLInputElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo,
                    mozilla::dom::FromParser aFromParser);
-  virtual ~HTMLInputElement();
 
   NS_IMPL_FROMCONTENT_HTML_WITH_TAG(HTMLInputElement, input)
 
@@ -370,6 +369,8 @@ public:
   {
     SetHTMLAttr(nsGkAtoms::autocomplete, aValue, aRv);
   }
+
+  void GetAutocompleteInfo(AutocompleteInfo& aInfo);
 
   bool Autofocus() const
   {
@@ -724,6 +725,8 @@ public:
   static Decimal StringToDecimal(const nsAString& aValue);
 
 protected:
+  virtual ~HTMLInputElement();
+
   virtual JSObject* WrapNode(JSContext* aCx) MOZ_OVERRIDE;
 
   // Pull IsSingleLineTextControl into our scope, otherwise it'd be hidden

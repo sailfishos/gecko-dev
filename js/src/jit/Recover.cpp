@@ -784,6 +784,39 @@ RAbs::recover(JSContext *cx, SnapshotIterator &iter) const
 }
 
 bool
+MSqrt::writeRecoverData(CompactBufferWriter &writer) const
+{
+    MOZ_ASSERT(canRecoverOnBailout());
+    writer.writeUnsigned(uint32_t(RInstruction::Recover_Sqrt));
+    writer.writeByte(type() == MIRType_Float32);
+    return true;
+}
+
+RSqrt::RSqrt(CompactBufferReader &reader)
+{
+    isFloatOperation_ = reader.readByte();
+}
+
+bool
+RSqrt::recover(JSContext *cx, SnapshotIterator &iter) const
+{
+    RootedValue num(cx, iter.read());
+    RootedValue result(cx);
+
+    MOZ_ASSERT(num.isNumber());
+    if (!math_sqrt_handle(cx, num, &result))
+        return false;
+
+    // MIRType_Float32 is a specialization embedding the fact that the result is
+    // rounded to a Float32.
+    if (isFloatOperation_ && !RoundFloat32(cx, result, &result))
+        return false;
+
+    iter.storeInstructionResult(result);
+    return true;
+}
+
+bool
 MMathFunction::writeRecoverData(CompactBufferWriter &writer) const
 {
     MOZ_ASSERT(canRecoverOnBailout());
@@ -795,6 +828,35 @@ MMathFunction::writeRecoverData(CompactBufferWriter &writer) const
         MOZ_ASSUME_UNREACHABLE("Unknown math function.");
         return false;
     }
+}
+
+bool
+MStringSplit::writeRecoverData(CompactBufferWriter &writer) const
+{
+    MOZ_ASSERT(canRecoverOnBailout());
+    writer.writeUnsigned(uint32_t(RInstruction::Recover_StringSplit));
+    return true;
+}
+
+RStringSplit::RStringSplit(CompactBufferReader &reader)
+{}
+
+bool
+RStringSplit::recover(JSContext *cx, SnapshotIterator &iter) const
+{
+    RootedString str(cx, iter.read().toString());
+    RootedString sep(cx, iter.read().toString());
+    RootedTypeObject typeObj(cx, iter.read().toObject().type());
+
+    RootedValue result(cx);
+
+    JSObject *res = str_split_string(cx, typeObj, str, sep);
+    if (!res)
+        return false;
+
+    result.setObject(*res);
+    iter.storeInstructionResult(result);
+    return true;
 }
 
 bool

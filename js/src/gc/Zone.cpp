@@ -31,7 +31,6 @@ JS::Zone::Zone(JSRuntime *rt)
     gcMallocBytes(0),
     gcMallocGCTriggered(false),
     gcBytes(0),
-    gcBytesAfterGC(0),
     gcTriggerBytes(0),
     data(nullptr),
     isSystem(false),
@@ -49,7 +48,7 @@ JS::Zone::Zone(JSRuntime *rt)
     JS_ASSERT(reinterpret_cast<JS::shadow::Zone *>(this) ==
               static_cast<JS::shadow::Zone *>(this));
 
-    setGCMaxMallocBytes(rt->gc.maxMallocBytes * 0.9);
+    setGCMaxMallocBytes(rt->gc.maxMallocBytesAllocated() * 0.9);
 }
 
 Zone::~Zone()

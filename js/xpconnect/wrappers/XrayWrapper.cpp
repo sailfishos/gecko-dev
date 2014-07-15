@@ -39,33 +39,45 @@ namespace xpc {
 
 using namespace XrayUtils;
 
+#define Between(x, a, b) (a <= x && x <= b)
+
+static_assert(JSProto_URIError - JSProto_Error == 7, "New prototype added in error object range");
+#define AssertErrorObjectKeyInBounds(key) \
+    static_assert(Between(key, JSProto_Error, JSProto_URIError), "We depend on jsprototypes.h ordering here");
+MOZ_FOR_EACH(AssertErrorObjectKeyInBounds, (),
+             (JSProto_Error, JSProto_InternalError, JSProto_EvalError, JSProto_RangeError,
+              JSProto_ReferenceError, JSProto_SyntaxError, JSProto_TypeError, JSProto_URIError));
+
+static_assert(JSProto_Uint8ClampedArray - JSProto_Int8Array == 8, "New prototype added in typed array range");
+#define AssertTypedArrayKeyInBounds(key) \
+    static_assert(Between(key, JSProto_Int8Array, JSProto_Uint8ClampedArray), "We depend on jsprototypes.h ordering here");
+MOZ_FOR_EACH(AssertTypedArrayKeyInBounds, (),
+             (JSProto_Int8Array, JSProto_Uint8Array, JSProto_Int16Array, JSProto_Uint16Array,
+              JSProto_Int32Array, JSProto_Uint32Array, JSProto_Float32Array, JSProto_Float64Array, JSProto_Uint8ClampedArray));
+
+#undef Between
+
+inline bool
+IsErrorObjectKey(JSProtoKey key)
+{
+    return key >= JSProto_Error && key <= JSProto_URIError;
+}
+
 inline bool
 IsTypedArrayKey(JSProtoKey key)
 {
-#ifdef DEBUG
-    bool isTypedArraySlow = key == JSProto_Int8Array ||
-                            key == JSProto_Uint8Array ||
-                            key == JSProto_Int16Array ||
-                            key == JSProto_Uint16Array ||
-                            key == JSProto_Int32Array ||
-                            key == JSProto_Uint32Array ||
-                            key == JSProto_Float32Array ||
-                            key == JSProto_Float64Array ||
-                            key == JSProto_Uint8ClampedArray;
-#endif
-    bool isTypedArray = key >= JSProto_Int8Array &&
-                        key <= JSProto_Uint8ClampedArray;
-    MOZ_ASSERT(isTypedArray == isTypedArraySlow, "Somebody reordered jsprototypes.h!");
-    static_assert(JSProto_Uint8ClampedArray - JSProto_Int8Array == 8,
-                  "New prototype added in typed array range");
-    return isTypedArray;
+    return key >= JSProto_Int8Array && key <= JSProto_Uint8ClampedArray;
 }
+
+bool SilentFailure(JSContext *cx, JS::HandleId id, const char *reason);
 
 // Whitelist for the standard ES classes we can Xray to.
 static bool
 IsJSXraySupported(JSProtoKey key)
 {
     if (IsTypedArrayKey(key))
+        return true;
+    if (IsErrorObjectKey(key))
         return true;
     switch (key) {
       case JSProto_Date:
@@ -93,7 +105,14 @@ GetXrayType(JSObject *obj)
     if (IsJSXraySupported(standardProto))
         return XrayForJSObject;
 
-    return NotXray;
+    // Modulo a few exceptions, everything else counts as an XrayWrapper to an
+    // opaque object, which means that more-privileged code sees nothing from
+    // the underlying object. This is very important for security. In some cases
+    // though, we need to make an exception for compatibility.
+    if (IsSandbox(obj))
+        return NotXray;
+
+    return XrayForOpaqueObject;
 }
 
 JSObject *
@@ -192,6 +211,10 @@ public:
     bool delete_(JSContext *cx, HandleObject wrapper, HandleId id, bool *bp) {
         *bp = true;
         return true;
+    }
+
+    static const char *className(JSContext *cx, HandleObject wrapper, const js::Wrapper& baseInstance) {
+        return baseInstance.className(cx, wrapper);
     }
 
     virtual void preserveWrapper(JSObject *target) = 0;
@@ -336,7 +359,7 @@ public:
                                        HandleObject holder, HandleId id,
                                        MutableHandle<JSPropertyDescriptor> desc) MOZ_OVERRIDE
     {
-        MOZ_ASSUME_UNREACHABLE("resolveNativeProperty hook should never be called with HasPrototype = 1");
+        MOZ_CRASH("resolveNativeProperty hook should never be called with HasPrototype = 1");
     }
 
     virtual bool resolveOwnProperty(JSContext *cx, const Wrapper &jsWrapper, HandleObject wrapper,
@@ -454,7 +477,103 @@ const JSClass JSXrayTraits::HolderClass = {
     JS_EnumerateStub, JS_ResolveStub, JS_ConvertStub
 };
 
-inline bool
+// These traits are used when the target is not Xrayable and we therefore want
+// to make it opaque modulo the usual Xray machinery (like expandos and
+// .wrappedJSObject).
+class OpaqueXrayTraits : public XrayTraits
+{
+public:
+    enum {
+        HasPrototype = 1
+    };
+    static const XrayType Type = XrayForOpaqueObject;
+
+    virtual bool resolveNativeProperty(JSContext *cx, HandleObject wrapper,
+                                       HandleObject holder, HandleId id,
+                                       MutableHandle<JSPropertyDescriptor> desc) MOZ_OVERRIDE
+    {
+        MOZ_CRASH("resolveNativeProperty hook should never be called with HasPrototype = 1");
+    }
+
+    virtual bool resolveOwnProperty(JSContext *cx, const Wrapper &jsWrapper, HandleObject wrapper,
+                                    HandleObject holder, HandleId id,
+                                    MutableHandle<JSPropertyDescriptor> desc) MOZ_OVERRIDE
+    {
+        bool ok = XrayTraits::resolveOwnProperty(cx, jsWrapper, wrapper, holder, id, desc);
+        if (!ok || desc.object())
+            return ok;
+
+        return SilentFailure(cx, id, "Object is not safely Xrayable");
+    }
+
+    bool defineProperty(JSContext *cx, HandleObject wrapper, HandleId id,
+                        MutableHandle<JSPropertyDescriptor> desc,
+                        Handle<JSPropertyDescriptor> existingDesc, bool *defined)
+    {
+        *defined = false;
+        return true;
+    }
+
+    virtual bool enumerateNames(JSContext *cx, HandleObject wrapper, unsigned flags,
+                                AutoIdVector &props)
+    {
+        return true;
+    }
+
+    static bool call(JSContext *cx, HandleObject wrapper,
+                     const JS::CallArgs &args, const js::Wrapper& baseInstance)
+    {
+        RootedValue v(cx, ObjectValue(*wrapper));
+        js_ReportIsNotFunction(cx, v);
+        return false;
+    }
+
+    static bool construct(JSContext *cx, HandleObject wrapper,
+                          const JS::CallArgs &args, const js::Wrapper& baseInstance)
+    {
+        RootedValue v(cx, ObjectValue(*wrapper));
+        js_ReportIsNotFunction(cx, v);
+        return false;
+    }
+
+    static bool isResolving(JSContext *cx, JSObject *holder, jsid id)
+    {
+        return false;
+    }
+
+    typedef ResolvingIdDummy ResolvingIdImpl;
+
+    bool getPrototypeOf(JSContext *cx, JS::HandleObject wrapper,
+                               JS::HandleObject target,
+                               JS::MutableHandleObject protop)
+    {
+        // Opaque wrappers just get targetGlobal.Object.prototype as their
+        // prototype. This is preferable to using a null prototype because it
+        // lets things like |toString| and |__proto__| work.
+        {
+            JSAutoCompartment ac(cx, target);
+            if (!JS_GetClassPrototype(cx, JSProto_Object, protop))
+                return false;
+        }
+        return JS_WrapObject(cx, protop);
+    }
+
+    static const char *className(JSContext *cx, HandleObject wrapper, const js::Wrapper& baseInstance) {
+        return "Opaque";
+    }
+
+    virtual void preserveWrapper(JSObject *target) MOZ_OVERRIDE { }
+
+    virtual JSObject* createHolder(JSContext *cx, JSObject *wrapper) MOZ_OVERRIDE
+    {
+        RootedObject global(cx, JS_GetGlobalForObject(cx, wrapper));
+        return JS_NewObjectWithGivenProto(cx, nullptr, JS::NullPtr(), global);
+    }
+
+    static OpaqueXrayTraits singleton;
+};
+
+bool
 SilentFailure(JSContext *cx, HandleId id, const char *reason)
 {
 #ifdef DEBUG
@@ -464,7 +583,7 @@ SilentFailure(JSContext *cx, HandleId id, const char *reason)
     AutoFilename filename;
     unsigned line = 0;
     DescribeScriptedCaller(cx, &filename, &line);
-    NS_WARNING(nsPrintfCString("Denied access to property |%s| on Xrayed Object: %s (@%s:%u)",
+    NS_WARNING(nsPrintfCString("Silently denied access to property |%s|: %s (@%s:%u)",
                                NS_LossyConvertUTF16toASCII(name).get(), reason,
                                filename.get(), line).get());
 #endif
@@ -506,7 +625,8 @@ bool JSXrayTraits::getOwnPropertyFromTargetIfSafe(JSContext *cx,
             return SilentFailure(cx, id, "Value not same-origin with target");
 
         // Disallow non-Xrayable objects.
-        if (GetXrayType(propObj) == NotXray)
+        XrayType xrayType = GetXrayType(propObj);
+        if (xrayType == NotXray || xrayType == XrayForOpaqueObject)
             return SilentFailure(cx, id, "Value not Xrayable");
 
         // Disallow callables.
@@ -545,8 +665,8 @@ JSXrayTraits::resolveOwnProperty(JSContext *cx, const Wrapper &jsWrapper,
         return ok;
 
     RootedObject target(cx, getTargetObject(wrapper));
+    JSProtoKey key = getProtoKey(holder);
     if (!isPrototype(holder)) {
-        JSProtoKey key = getProtoKey(holder);
         // For Object and Array instances, we expose some properties from the
         // underlying object, but only after filtering them carefully.
         //
@@ -597,6 +717,33 @@ JSXrayTraits::resolveOwnProperty(JSContext *cx, const Wrapper &jsWrapper,
                     return true;
                 }
             }
+        } else if (IsErrorObjectKey(key)) {
+            // The useful state of error objects is (unfortunately) represented
+            // as own data properties per-spec. This means that we can't have a
+            // a clean representation of the data (free from tampering) without
+            // doubling the slots of Error objects, which isn't great. So we
+            // forward these properties to the underlying object and then just
+            // censor any values with the wrong type. This limits the ability
+            // of content to do anything all that confusing.
+            bool isErrorIntProperty =
+                id == GetRTIdByIndex(cx, XPCJSRuntime::IDX_LINENUMBER) ||
+                id == GetRTIdByIndex(cx, XPCJSRuntime::IDX_COLUMNNUMBER);
+            bool isErrorStringProperty =
+                id == GetRTIdByIndex(cx, XPCJSRuntime::IDX_FILENAME) ||
+                id == GetRTIdByIndex(cx, XPCJSRuntime::IDX_STACK) ||
+                id == GetRTIdByIndex(cx, XPCJSRuntime::IDX_MESSAGE);
+            if (isErrorIntProperty || isErrorStringProperty) {
+                RootedObject waiver(cx, wrapper);
+                if (!WrapperFactory::WaiveXrayAndWrap(cx, &waiver))
+                    return false;
+                if (!JS_GetOwnPropertyDescriptorById(cx, waiver, id, desc))
+                    return false;
+                bool valueMatchesType = (isErrorIntProperty && desc.value().isInt32()) ||
+                                        (isErrorStringProperty && desc.value().isString());
+                if (desc.hasGetterOrSetter() || !valueMatchesType)
+                    FillPropertyDescriptor(desc, nullptr, 0, UndefinedValue());
+                return true;
+            }
         }
 
         // The rest of this function applies only to prototypes.
@@ -636,6 +783,14 @@ JSXrayTraits::resolveOwnProperty(JSContext *cx, const Wrapper &jsWrapper,
         desc.setSetter(nullptr);
         desc.value().setObject(*constructor);
         return true;
+    }
+
+    // Handle the 'name' property for error prototypes.
+    if (IsErrorObjectKey(key) && id == GetRTIdByIndex(cx, XPCJSRuntime::IDX_NAME)) {
+        RootedId className(cx);
+        ProtoKeyToId(cx, key, &className);
+        FillPropertyDescriptor(desc, wrapper, 0, UndefinedValue());
+        return JS_IdToValue(cx, className, desc.value());
     }
 
     // Bail out for dependent classes, since all the rest of the properties we'll
@@ -821,8 +976,8 @@ JSXrayTraits::enumerateNames(JSContext *cx, HandleObject wrapper, unsigned flags
     if (!holder)
         return false;
 
+    JSProtoKey key = getProtoKey(holder);
     if (!isPrototype(holder)) {
-        JSProtoKey key = getProtoKey(holder);
         // For Object and Array instances, we expose some properties from the underlying
         // object, but only after filtering them carefully.
         if (key == JSProto_Object || key == JSProto_Array) {
@@ -864,6 +1019,15 @@ JSXrayTraits::enumerateNames(JSContext *cx, HandleObject wrapper, unsigned flags
                 if (!props.append(GetRTIdByIndex(cx, XPCJSRuntime::IDX_PROTOTYPE)))
                     return false;
             }
+        } else if (IsErrorObjectKey(key)) {
+            if (!props.append(GetRTIdByIndex(cx, XPCJSRuntime::IDX_FILENAME)) ||
+                !props.append(GetRTIdByIndex(cx, XPCJSRuntime::IDX_LINENUMBER)) ||
+                !props.append(GetRTIdByIndex(cx, XPCJSRuntime::IDX_COLUMNNUMBER)) ||
+                !props.append(GetRTIdByIndex(cx, XPCJSRuntime::IDX_STACK)) ||
+                !props.append(GetRTIdByIndex(cx, XPCJSRuntime::IDX_MESSAGE)))
+            {
+                return false;
+            }
         }
 
         // The rest of this function applies only to prototypes.
@@ -877,6 +1041,10 @@ JSXrayTraits::enumerateNames(JSContext *cx, HandleObject wrapper, unsigned flags
 
     // Add the 'constructor' property.
     if (!props.append(GetRTIdByIndex(cx, XPCJSRuntime::IDX_CONSTRUCTOR)))
+        return false;
+
+    // For Error protoypes, add the 'name' property.
+    if (IsErrorObjectKey(key) && !props.append(GetRTIdByIndex(cx, XPCJSRuntime::IDX_NAME)))
         return false;
 
     // Bail out for dependent classes, since all the rest of the properties we'll
@@ -949,6 +1117,7 @@ JSXrayTraits::createHolder(JSContext *cx, JSObject *wrapper)
 XPCWrappedNativeXrayTraits XPCWrappedNativeXrayTraits::singleton;
 DOMXrayTraits DOMXrayTraits::singleton;
 JSXrayTraits JSXrayTraits::singleton;
+OpaqueXrayTraits OpaqueXrayTraits::singleton;
 
 XrayTraits*
 GetXrayTraits(JSObject *obj)
@@ -960,6 +1129,8 @@ GetXrayTraits(JSObject *obj)
         return &XPCWrappedNativeXrayTraits::singleton;
       case XrayForJSObject:
         return &JSXrayTraits::singleton;
+      case XrayForOpaqueObject:
+        return &OpaqueXrayTraits::singleton;
       default:
         return nullptr;
     }
@@ -2100,11 +2271,11 @@ XrayToString(JSContext *cx, unsigned argc, Value *vp)
 
     RootedObject obj(cx, XrayTraits::getTargetObject(wrapper));
 
+    if (UseDOMXray(obj))
+        return NativeToString(cx, wrapper, obj, args.rval());
+
     static const char start[] = "[object XrayWrapper ";
     static const char end[] = "]";
-    if (UseDOMXray(obj))
-        return NativeToString(cx, wrapper, obj, start, end, args.rval());
-
     nsAutoString result;
     result.AppendASCII(start);
 
@@ -2606,6 +2777,13 @@ XrayWrapper<Base, Traits>::construct(JSContext *cx, HandleObject wrapper, const 
 }
 
 template <typename Base, typename Traits>
+const char *
+XrayWrapper<Base, Traits>::className(JSContext *cx, HandleObject wrapper) const
+{
+    return Traits::className(cx, wrapper, Base::singleton);
+}
+
+template <typename Base, typename Traits>
 bool
 XrayWrapper<Base, Traits>::defaultValue(JSContext *cx, HandleObject wrapper,
                                         JSType hint, MutableHandleValue vp) const
@@ -2700,6 +2878,10 @@ template class SecurityXrayDOM;
 template<>
 const PermissiveXrayJS PermissiveXrayJS::singleton(0);
 template class PermissiveXrayJS;
+
+template<>
+const PermissiveXrayOpaque PermissiveXrayOpaque::singleton(0);
+template class PermissiveXrayOpaque;
 
 template<>
 const SCSecurityXrayXPCWN SCSecurityXrayXPCWN::singleton(0);

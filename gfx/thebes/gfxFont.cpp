@@ -3159,7 +3159,6 @@ gfxFont::Draw(gfxTextRun *aTextRun, uint32_t aStart, uint32_t aEnd,
     const double devUnitsPerAppUnit = 1.0/double(appUnitsPerDevUnit);
     bool isRTL = aTextRun->IsRightToLeft();
     double direction = aTextRun->GetDirection();
-    gfxMatrix globalMatrix = aContext->CurrentMatrix();
 
     bool haveSVGGlyphs = GetFontEntry()->TryGetSVGData(this);
     bool haveColorGlyphs = GetFontEntry()->TryGetColorGlyphs();
@@ -3191,202 +3190,12 @@ gfxFont::Draw(gfxTextRun *aTextRun, uint32_t aStart, uint32_t aEnd,
     double x = aPt->x;
     double y = aPt->y;
 
-    cairo_t *cr = aContext->GetCairo();
     RefPtr<DrawTarget> dt = aContext->GetDrawTarget();
 
     bool paintSVGGlyphs = !aCallbacks || aCallbacks->mShouldPaintSVGGlyphs;
     bool emittedGlyphs = false;
 
-    if (aContext->IsCairo()) {
-      bool success = SetupCairoFont(aContext);
-      if (MOZ_UNLIKELY(!success))
-          return;
-
-      ::GlyphBuffer glyphs;
-      cairo_glyph_t *glyph;
-
-      if (aSpacing) {
-          x += direction*aSpacing[0].mBefore;
-      }
-      for (i = aStart; i < aEnd; ++i) {
-          const gfxTextRun::CompressedGlyph *glyphData = &charGlyphs[i];
-          if (glyphData->IsSimpleGlyph()) {
-              double advance = glyphData->GetSimpleAdvance();
-              double glyphX;
-              if (isRTL) {
-                  x -= advance;
-                  glyphX = x;
-              } else {
-                  glyphX = x;
-                  x += advance;
-              }
-
-              if (haveSVGGlyphs) {
-                  if (!paintSVGGlyphs) {
-                      continue;
-                  }
-                  gfxPoint point(ToDeviceUnits(glyphX, devUnitsPerAppUnit),
-                                 ToDeviceUnits(y, devUnitsPerAppUnit));
-                  DrawMode mode = ForcePaintingDrawMode(aDrawMode);
-                  if (RenderSVGGlyph(aContext, point, mode,
-                                     glyphData->GetSimpleGlyph(), aContextPaint,
-                                     aCallbacks, emittedGlyphs)) {
-                      continue;
-                  }
-              }
-
-              if (haveColorGlyphs) {
-                  gfxPoint point(ToDeviceUnits(glyphX, devUnitsPerAppUnit),
-                                 ToDeviceUnits(y, devUnitsPerAppUnit));
-                  if (RenderColorGlyph(aContext, point, glyphData->GetSimpleGlyph())) {
-                      continue;
-                  }
-              }
-
-              // Perhaps we should put a scale in the cairo context instead of
-              // doing this scaling here...
-              // Multiplying by the reciprocal may introduce tiny error here,
-              // but we assume cairo is going to round coordinates at some stage
-              // and this is faster
-              glyph = glyphs.AppendGlyph();
-              glyph->index = glyphData->GetSimpleGlyph();
-              glyph->x = ToDeviceUnits(glyphX, devUnitsPerAppUnit);
-              glyph->y = ToDeviceUnits(y, devUnitsPerAppUnit);
-              glyphs.Flush(cr, aDrawMode, isRTL, aContextPaint, globalMatrix);
-            
-              // synthetic bolding by multi-striking with 1-pixel offsets
-              // at least once, more if there's room (large font sizes)
-              if (IsSyntheticBold()) {
-                  double strikeOffset = synBoldOnePixelOffset;
-                  int32_t strikeCount = strikes;
-                  do {
-                      cairo_glyph_t *doubleglyph;
-                      doubleglyph = glyphs.AppendGlyph();
-                      doubleglyph->index = glyph->index;
-                      doubleglyph->x =
-                          ToDeviceUnits(glyphX + strikeOffset * appUnitsPerDevUnit,
-                                        devUnitsPerAppUnit);
-                      doubleglyph->y = glyph->y;
-                      strikeOffset += synBoldOnePixelOffset;
-                      glyphs.Flush(cr, aDrawMode, isRTL, aContextPaint, globalMatrix);
-                  } while (--strikeCount > 0);
-              }
-              emittedGlyphs = true;
-          } else {
-              uint32_t glyphCount = glyphData->GetGlyphCount();
-              if (glyphCount > 0) {
-                  const gfxTextRun::DetailedGlyph *details =
-                      aTextRun->GetDetailedGlyphs(i);
-                  NS_ASSERTION(details, "detailedGlyph should not be missing!");
-                  double advance;
-                  for (uint32_t j = 0; j < glyphCount; ++j, ++details, x += direction * advance) {
-                      advance = details->mAdvance;
-                      if (glyphData->IsMissing()) {
-                          // default ignorable characters will have zero advance width.
-                          // we don't have to draw the hexbox for them
-                          if (aDrawMode != DrawMode::GLYPH_PATH && advance > 0) {
-                              double glyphX = x;
-                              if (isRTL) {
-                                  glyphX -= advance;
-                              }
-                              gfxPoint pt(ToDeviceUnits(glyphX, devUnitsPerAppUnit),
-                                          ToDeviceUnits(y, devUnitsPerAppUnit));
-                              gfxFloat advanceDevUnits = ToDeviceUnits(advance, devUnitsPerAppUnit);
-                              gfxFloat height = GetMetrics().maxAscent;
-                              gfxRect glyphRect(pt.x, pt.y - height, advanceDevUnits, height);
-                              gfxFontMissingGlyphs::DrawMissingGlyph(aContext,
-                                                                     glyphRect,
-                                                                     details->mGlyphID,
-                                                                     appUnitsPerDevUnit);
-                          }
-                      } else {
-                          double glyphX = x + details->mXOffset;
-                          if (isRTL) {
-                              glyphX -= advance;
-                          }
-
-                          if (haveSVGGlyphs) {
-                              if (!paintSVGGlyphs) {
-                                  continue;
-                              }
-
-                              gfxPoint point(ToDeviceUnits(glyphX, devUnitsPerAppUnit),
-                                             ToDeviceUnits(y, devUnitsPerAppUnit));
-
-                              DrawMode mode = ForcePaintingDrawMode(aDrawMode);
-                              if (RenderSVGGlyph(aContext, point, mode,
-                                                  details->mGlyphID,
-                                                  aContextPaint, aCallbacks,
-                                                  emittedGlyphs)) {
-                                  continue;
-                              }
-                          }
-
-                          if (haveColorGlyphs) {
-                              gfxPoint point(ToDeviceUnits(glyphX,
-                                                           devUnitsPerAppUnit),
-                                             ToDeviceUnits(y + details->mYOffset,
-                                                           devUnitsPerAppUnit));
-                              if (RenderColorGlyph(aContext, point,
-                                                   details->mGlyphID)) {
-                                  continue;
-                              }
-                          }
-
-                          glyph = glyphs.AppendGlyph();
-                          glyph->index = details->mGlyphID;
-                          glyph->x = ToDeviceUnits(glyphX, devUnitsPerAppUnit);
-                          glyph->y = ToDeviceUnits(y + details->mYOffset, devUnitsPerAppUnit);
-                          glyphs.Flush(cr, aDrawMode, isRTL, aContextPaint, globalMatrix);
-
-                          if (IsSyntheticBold()) {
-                              double strikeOffset = synBoldOnePixelOffset;
-                              int32_t strikeCount = strikes;
-                              do {
-                                  cairo_glyph_t *doubleglyph;
-                                  doubleglyph = glyphs.AppendGlyph();
-                                  doubleglyph->index = glyph->index;
-                                  doubleglyph->x =
-                                      ToDeviceUnits(glyphX + strikeOffset *
-                                              appUnitsPerDevUnit,
-                                              devUnitsPerAppUnit);
-                                  doubleglyph->y = glyph->y;
-                                  strikeOffset += synBoldOnePixelOffset;
-                                  glyphs.Flush(cr, aDrawMode, isRTL, aContextPaint, globalMatrix);
-                              } while (--strikeCount > 0);
-                          }
-                          emittedGlyphs = true;
-                      }
-                  }
-              }
-          }
-
-          if (aSpacing) {
-              double space = aSpacing[i - aStart].mAfter;
-              if (i + 1 < aEnd) {
-                  space += aSpacing[i + 1 - aStart].mBefore;
-              }
-              x += direction*space;
-          }
-      }
-
-      if (gfxFontTestStore::CurrentStore()) {
-          /* This assumes that the tests won't have anything that results
-           * in more than GLYPH_BUFFER_SIZE glyphs.  Do this before we
-           * flush, since that'll blow away the num_glyphs.
-           */
-          gfxFontTestStore::CurrentStore()->AddItem(GetName(),
-                                                    glyphs.mGlyphBuffer,
-                                                    glyphs.mNumGlyphs);
-      }
-
-      // draw any remaining glyphs
-      glyphs.Flush(cr, aDrawMode, isRTL, aContextPaint, globalMatrix, true);
-      if (aCallbacks && emittedGlyphs) {
-          aCallbacks->NotifyGlyphPathEmitted();
-      }
-
-    } else {
+    {
       RefPtr<ScaledFont> scaledFont = GetScaledFont(dt);
 
       if (!scaledFont) {
@@ -5180,7 +4989,7 @@ gfxFontGroup::FindPlatformFont(const nsAString& aName,
             // If the fontSet matches the family, but the font has not yet finished
             // loading (nor has its load timeout fired), the fontGroup should wait
             // for the download, and not actually draw its text yet.
-            family = mUserFontSet->GetFamily(aName);
+            family = mUserFontSet->LookupFamily(aName);
             if (family) {
                 bool waitForUserFont = false;
                 fe = mUserFontSet->FindFontEntry(family, mStyle,
@@ -6493,13 +6302,7 @@ gfxShapedText::AllocateDetailedGlyphs(uint32_t aIndex, uint32_t aCount)
         mDetailedGlyphs = new DetailedGlyphStore();
     }
 
-    DetailedGlyph *details = mDetailedGlyphs->Allocate(aIndex, aCount);
-    if (!details) {
-        GetCharacterGlyphs()[aIndex].SetMissing(0);
-        return nullptr;
-    }
-
-    return details;
+    return mDetailedGlyphs->Allocate(aIndex, aCount);
 }
 
 void
@@ -6513,9 +6316,6 @@ gfxShapedText::SetGlyphs(uint32_t aIndex, CompressedGlyph aGlyph,
     uint32_t glyphCount = aGlyph.GetGlyphCount();
     if (glyphCount > 0) {
         DetailedGlyph *details = AllocateDetailedGlyphs(aIndex, glyphCount);
-        if (!details) {
-            return;
-        }
         memcpy(details, aGlyphs, sizeof(DetailedGlyph)*glyphCount);
     }
     GetCharacterGlyphs()[aIndex] = aGlyph;
@@ -6544,9 +6344,6 @@ gfxShapedText::SetMissingGlyph(uint32_t aIndex, uint32_t aChar, gfxFont *aFont)
     }
 
     DetailedGlyph *details = AllocateDetailedGlyphs(aIndex, 1);
-    if (!details) {
-        return;
-    }
 
     details->mGlyphID = aChar;
     if (IsDefaultIgnorable(aChar)) {
@@ -6569,14 +6366,12 @@ gfxShapedText::FilterIfIgnorable(uint32_t aIndex, uint32_t aCh)
 {
     if (IsDefaultIgnorable(aCh)) {
         DetailedGlyph *details = AllocateDetailedGlyphs(aIndex, 1);
-        if (details) {
-            details->mGlyphID = aCh;
-            details->mAdvance = 0;
-            details->mXOffset = 0;
-            details->mYOffset = 0;
-            GetCharacterGlyphs()[aIndex].SetMissing(1);
-            return true;
-        }
+        details->mGlyphID = aCh;
+        details->mAdvance = 0;
+        details->mXOffset = 0;
+        details->mYOffset = 0;
+        GetCharacterGlyphs()[aIndex].SetMissing(1);
+        return true;
     }
     return false;
 }
@@ -7654,24 +7449,6 @@ gfxTextRun::CountMissingGlyphs()
         }
     }
     return count;
-}
-
-gfxTextRun::DetailedGlyph *
-gfxTextRun::AllocateDetailedGlyphs(uint32_t aIndex, uint32_t aCount)
-{
-    NS_ASSERTION(aIndex < GetLength(), "Index out of range");
-
-    if (!mDetailedGlyphs) {
-        mDetailedGlyphs = new DetailedGlyphStore();
-    }
-
-    DetailedGlyph *details = mDetailedGlyphs->Allocate(aIndex, aCount);
-    if (!details) {
-        mCharacterGlyphs[aIndex].SetMissing(0);
-        return nullptr;
-    }
-
-    return details;
 }
 
 void

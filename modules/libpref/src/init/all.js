@@ -49,6 +49,14 @@ pref("browser.cache.disk.smart_size.enabled", true);
 pref("browser.cache.disk.smart_size.use_old_max", true);
 // Size (in KB) explicitly set by the user. Used when smart_size.enabled == false
 pref("browser.cache.disk.capacity",         256000);
+// When smartsizing is disabled we could potentially fill all disk space by
+// cache data when the disk capacity is not set correctly. To avoid that we
+// check the free space every time we write some data to the cache. The free
+// space is checked against two limits. Once the soft limit is reached we start
+// evicting the least useful entries, when we reach the hard limit writing to
+// the entry fails.
+pref("browser.cache.disk.free_space_soft_limit", 5120); // 5MB
+pref("browser.cache.disk.free_space_hard_limit", 1024); // 1MB
 // Max-size (in KB) for entries in disk cache. Set to -1 for no limit.
 // (Note: entries bigger than 1/8 of disk-cache are never cached)
 pref("browser.cache.disk.max_entry_size",    51200);  // 50 MB
@@ -58,6 +66,17 @@ pref("browser.cache.memory.enable",         true);
 // Max-size (in KB) for entries in memory cache. Set to -1 for no limit.
 // (Note: entries bigger than than 90% of the mem-cache are never cached)
 pref("browser.cache.memory.max_entry_size",  5120);
+// Memory limit (in kB) for new cache data not yet written to disk. Writes to
+// the cache are buffered and written to disk on background with low priority.
+// With a slow persistent storage these buffers may grow when data is coming
+// fast from the network. When the amount of unwritten data is exceeded, new
+// writes will simply fail. We have two buckets, one for important data
+// (priority) like html, css, fonts and js, and one for other data like images,
+// video, etc.
+// Note: 0 means no limit.
+pref("browser.cache.disk.max_chunks_memory_usage", 10240);
+pref("browser.cache.disk.max_priority_chunks_memory_usage", 10240);
+
 pref("browser.cache.disk_cache_ssl",        true);
 // 0 = once-per-session, 1 = each-time, 2 = never, 3 = when-appropriate/automatically
 pref("browser.cache.check_doc_frequency",   3);
@@ -2728,8 +2747,11 @@ pref("network.autodial-helper.enabled", true);
 pref("intl.keyboard.per_window_layout", false);
 
 #ifdef NS_ENABLE_TSF
-// Enable/Disable TSF support
+// Enable/Disable TSF support on Vista or later.
 pref("intl.tsf.enable", false);
+// Force enable TSF even on WinXP or WinServer 2003.
+// Be aware, TSF framework on prior to Vista is not enough stable.
+pref("intl.tsf.force_enable", false);
 
 // Support IMEs implemented with IMM in TSF mode.
 pref("intl.tsf.support_imm", true);
@@ -4251,3 +4273,11 @@ pref("beacon.enabled", true);
 // Camera prefs
 pref("camera.control.autofocus_moving_callback.enabled", true);
 pref("camera.control.face_detection.enabled", true);
+#ifdef MOZ_WIDGET_GONK
+// Empirically, this is the value returned by hal::GetTotalSystemMemory()
+// when Flame's memory is limited to 512MiB. If the camera stack determines
+// it is running on a low memory platform, features that can be reliably
+// supported will be disabled. This threshold can be adjusted to suit other
+// platforms; and set to 0 to disable the low-memory check altogether.
+pref("camera.control.low_memory_thresholdMB", 404);
+#endif

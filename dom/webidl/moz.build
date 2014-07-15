@@ -39,6 +39,7 @@ WEBIDL_FILES = [
     'AudioStreamTrack.webidl',
     'AudioTrack.webidl',
     'AudioTrackList.webidl',
+    'AutocompleteInfo.webidl',
     'BarProp.webidl',
     'BatteryManager.webidl',
     'BeforeUnloadEvent.webidl',
@@ -567,6 +568,7 @@ if CONFIG['MOZ_B2G_BT']:
     if CONFIG['MOZ_B2G_BT_API_V2']:
         WEBIDL_FILES += [
             'BluetoothAdapter2.webidl',
+            'BluetoothClassOfDevice.webidl',
             'BluetoothDevice2.webidl',
             'BluetoothDiscoveryHandle.webidl',
             'BluetoothManager2.webidl',
@@ -651,6 +653,7 @@ GENERATED_EVENTS_WEBIDL_FILES = [
     'MozContactChangeEvent.webidl',
     'MozEmergencyCbModeEvent.webidl',
     'MozInterAppMessageEvent.webidl',
+    'MozMessageDeletedEvent.webidl',
     'MozMmsEvent.webidl',
     'MozOtaStatusEvent.webidl',
     'MozSettingsEvent.webidl',

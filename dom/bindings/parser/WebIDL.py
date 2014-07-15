@@ -568,6 +568,16 @@ class IDLInterface(IDLObjectWithScope):
                               [self.location])
         assert not parent or isinstance(parent, IDLInterface)
 
+        if self.getExtendedAttribute("FeatureDetectible"):
+            if self.getExtendedAttribute("NoInterfaceObject"):
+                raise WebIDLError("[FeatureDetectible] not allowed on interface "
+                                  " with [NoInterfaceObject]",
+                                  [self.location])
+            if self.getExtendedAttribute("Pref"):
+                raise WebIDLError("[FeatureDetectible] must not be specified "
+                                  "in combination with [Pref]",
+                                  [self.location])
+
         self.parent = parent
 
         assert iter(self.members)
@@ -669,8 +679,36 @@ class IDLInterface(IDLObjectWithScope):
             for ancestorConsequential in ancestor.getConsequentialInterfaces():
                 ancestorConsequential.interfacesBasedOnSelf.add(self)
 
+        # Deal with interfaces marked [Unforgeable], now that we have our full
+        # member list, except unforgeables pulled in from parents.  We want to
+        # do this before we set "originatingInterface" on our unforgeable
+        # members.
+        if self.getExtendedAttribute("Unforgeable"):
+            # Check that the interface already has all the things the
+            # spec would otherwise require us to synthesize and is
+            # missing the ones we plan to synthesize.
+            if not any(m.isMethod() and m.isStringifier() for m in self.members):
+                raise WebIDLError("Unforgeable interface %s does not have a "
+                                  "stringifier" % self.identifier.name,
+                                  [self.location])
+
+            for m in self.members:
+                if ((m.isMethod() and m.isJsonifier()) or
+                    m.identifier.name == "toJSON"):
+                    raise WebIDLError("Unforgeable interface %s has a "
+                                      "jsonifier so we won't be able to add "
+                                      "one ourselves" % self.identifier.name,
+                                      [self.location, m.location])
+
+                if m.identifier.name == "valueOf" and not m.isStatic():
+                    raise WebIDLError("Unforgeable interface %s has a valueOf "
+                                      "member so we won't be able to add one "
+                                      "ourselves" % self.identifier.name,
+                                      [self.location, m.location])
+
         for member in self.members:
-            if (member.isAttr() and member.isUnforgeable() and
+            if ((member.isAttr() or member.isMethod()) and
+                member.isUnforgeable() and
                 not hasattr(member, "originatingInterface")):
                 member.originatingInterface = self
 
@@ -693,16 +731,16 @@ class IDLInterface(IDLObjectWithScope):
             # worry about anything other than our parent, because it has already
             # imported its ancestors unforgeable attributes into its member
             # list.
-            for unforgeableAttr in (attr for attr in self.parent.members if
-                                    attr.isAttr() and not attr.isStatic() and
-                                    attr.isUnforgeable()):
+            for unforgeableMember in (member for member in self.parent.members if
+                                      (member.isAttr() or member.isMethod()) and
+                                      member.isUnforgeable()):
                 shadows = [ m for m in self.members if
                             (m.isAttr() or m.isMethod()) and
                             not m.isStatic() and
-                            m.identifier.name == unforgeableAttr.identifier.name ]
+                            m.identifier.name == unforgeableMember.identifier.name ]
                 if len(shadows) != 0:
-                    locs = [unforgeableAttr.location] + [ s.location for s
-                                                          in shadows ]
+                    locs = [unforgeableMember.location] + [ s.location for s
+                                                            in shadows ]
                     raise WebIDLError("Interface %s shadows [Unforgeable] "
                                       "members of %s" %
                                       (self.identifier.name,
@@ -711,10 +749,10 @@ class IDLInterface(IDLObjectWithScope):
                 # And now just stick it in our members, since we won't be
                 # inheriting this down the proto chain.  If we really cared we
                 # could try to do something where we set up the unforgeable
-                # attributes of ancestor interfaces, with their corresponding
-                # getters, on our interface, but that gets pretty complicated
-                # and seems unnecessary.
-                self.members.append(unforgeableAttr)
+                # attributes/methods of ancestor interfaces, with their
+                # corresponding getters, on our interface, but that gets pretty
+                # complicated and seems unnecessary.
+                self.members.append(unforgeableMember)
 
         # Ensure that there's at most one of each {named,indexed}
         # {getter,setter,creator,deleter}, at most one stringifier,
@@ -785,6 +823,26 @@ class IDLInterface(IDLObjectWithScope):
                 parent = parent.parent
 
     def validate(self):
+        # We don't support consequential unforgeable interfaces.  Need to check
+        # this here, becaue in finish() an interface might not know yet that
+        # it's consequential.
+        if self.getExtendedAttribute("Unforgeable") and self.isConsequential():
+            raise WebIDLError(
+                "%s is an unforgeable consequential interface" %
+                self.identifier.name,
+                [self.location] +
+                list(i.location for i in
+                     (self.interfacesBasedOnSelf - { self }) ))
+
+        # We also don't support inheriting from unforgeable interfaces.
+        if self.getExtendedAttribute("Unforgeable") and self.hasChildInterfaces():
+            raise WebIDLError("%s is an unforgeable ancestor interface" %
+                self.identifier.name,
+                [self.location] +
+                list(i.location for i in
+                     self.interfacesBasedOnSelf if i.parent == self))
+
+
         for member in self.members:
             member.validate()
 
@@ -992,7 +1050,9 @@ class IDLInterface(IDLObjectWithScope):
             elif (identifier == "NeedNewResolve" or
                   identifier == "OverrideBuiltins" or
                   identifier == "ChromeOnly" or
-                  identifier == "LegacyEventInit"):
+                  identifier == "Unforgeable" or
+                  identifier == "LegacyEventInit" or
+                  identifier == "FeatureDetectible"):
                 # Known extended attributes that do not take values
                 if not attr.noArguments():
                     raise WebIDLError("[%s] must take no arguments" % identifier,
@@ -2841,6 +2901,18 @@ class IDLAttribute(IDLInterfaceMember):
             raise WebIDLError("An attribute with [SameObject] must have an "
                               "interface type as its type", [self.location])
 
+        if self.getExtendedAttribute("FeatureDetectible"):
+            if not (self.getExtendedAttribute("Func") or
+                    self.getExtendedAttribute("AvailableIn") or
+                    self.getExtendedAttribute("CheckPermissions")):
+                raise WebIDLError("[%s] is only allowed in combination with [Func], "
+                                  "[AvailableIn] or [CheckPermissions]" % identifier,
+                                  [attr.location, self.location])
+            if self.getExtendedAttribute("Pref"):
+                raise WebIDLError("[FeatureDetectible] must not be specified "
+                                  "in combination with [Pref]",
+                                  [self.location])
+
     def validate(self):
         if ((self.getExtendedAttribute("Cached") or
              self.getExtendedAttribute("StoreInSlot")) and
@@ -2889,9 +2961,6 @@ class IDLAttribute(IDLInterfaceMember):
                                   [attr.location, self.location])
             self.lenientThis = True
         elif identifier == "Unforgeable":
-            if not self.readonly:
-                raise WebIDLError("[Unforgeable] is only allowed on readonly "
-                                  "attributes", [attr.location, self.location])
             if self.isStatic():
                 raise WebIDLError("[Unforgeable] is only allowed on non-static "
                                   "attributes", [attr.location, self.location])
@@ -2951,7 +3020,7 @@ class IDLAttribute(IDLInterfaceMember):
                                   [attr.location, self.location])
         elif (identifier == "CrossOriginReadable" or
               identifier == "CrossOriginWritable"):
-            if not attr.noArguments():
+            if not attr.noArguments() and identifier == "CrossOriginReadable":
                 raise WebIDLError("[%s] must take no arguments" % identifier,
                                   [attr.location])
             if self.isStatic():
@@ -2961,6 +3030,13 @@ class IDLAttribute(IDLInterfaceMember):
             if self.getExtendedAttribute("LenientThis"):
                 raise WebIDLError("[LenientThis] is not allowed in combination "
                                   "with [%s]" % identifier,
+                                  [attr.location, self.location])
+        elif identifier == "FeatureDetectible":
+            if not (self.getExtendedAttribute("Func") or
+                    self.getExtendedAttribute("AvailableIn") or
+                    self.getExtendedAttribute("CheckPermissions")):
+                raise WebIDLError("[%s] is only allowed in combination with [Func], "
+                                  "[AvailableIn] or [CheckPermissions]" % identifier,
                                   [attr.location, self.location])
         elif (identifier == "Pref" or
               identifier == "SetterThrows" or
@@ -3377,6 +3453,18 @@ class IDLMethod(IDLInterfaceMember, IDLScope):
                 self._overloads]
 
     def finish(self, scope):
+        if self.getExtendedAttribute("FeatureDetectible"):
+            if not (self.getExtendedAttribute("Func") or
+                    self.getExtendedAttribute("AvailableIn") or
+                    self.getExtendedAttribute("CheckPermissions")):
+                raise WebIDLError("[FeatureDetectible] is only allowed in combination "
+                                  "with [Func], [AvailableIn] or [CheckPermissions]",
+                                  [self.location])
+            if self.getExtendedAttribute("Pref"):
+                raise WebIDLError("[FeatureDetectible] must not be specified "
+                                      "in combination with [Pref]",
+                                      [self.location])
+
         overloadWithPromiseReturnType = None
         overloadWithoutPromiseReturnType = None
         for overload in self._overloads:
@@ -3545,15 +3633,20 @@ class IDLMethod(IDLInterfaceMember, IDLScope):
                 raise WebIDLError("[LenientFloat] used on an operation with no "
                                   "restricted float type arguments",
                                   [attr.location, self.location])
+        elif (identifier == "Pure" or
+              identifier == "CrossOriginCallable" or
+              identifier == "WebGLHandlesContextLoss" or
+              identifier == "FeatureDetectible"):
+            # Known no-argument attributes.
+            if not attr.noArguments():
+                raise WebIDLError("[%s] must take no arguments" % identifier,
+                                  [attr.location])
         elif (identifier == "Throws" or
               identifier == "NewObject" or
               identifier == "ChromeOnly" or
               identifier == "Pref" or
               identifier == "Func" or
               identifier == "AvailableIn" or
-              identifier == "Pure" or
-              identifier == "CrossOriginCallable" or
-              identifier == "WebGLHandlesContextLoss" or
               identifier == "CheckPermissions"):
             # Known attributes that we don't need to do anything with here
             pass

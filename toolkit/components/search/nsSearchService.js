@@ -2732,7 +2732,41 @@ Engine.prototype = {
     }
 
     return result;
-  }
+  },
+
+  /**
+   * Opens a speculative connection to the engine's search URI
+   * (and suggest URI, if different) to reduce request latency
+   *
+   * @param  options
+   *         An object that must contain the following fields:
+   *         {window} the content window for the window performing the search
+   *
+   * @throws NS_ERROR_INVALID_ARG if options is omitted or lacks required
+   *         elemeents
+   */
+  speculativeConnect: function SRCH_ENG_speculativeConnect(options) {
+    if (!options || !options.window) {
+      Cu.reportError("invalid options arg passed to nsISearchEngine.speculativeConnect");
+      throw Cr.NS_ERROR_INVALID_ARG;
+    }
+    let connector =
+        Services.io.QueryInterface(Components.interfaces.nsISpeculativeConnect);
+
+    let searchURI = this.getSubmission("dummy").uri;
+
+    let callbacks = options.window.QueryInterface(Components.interfaces.nsIInterfaceRequestor)
+                           .getInterface(Components.interfaces.nsIWebNavigation)
+                           .QueryInterface(Components.interfaces.nsILoadContext);
+
+    connector.speculativeConnect(searchURI, callbacks);
+
+    if (this.supportsResponseType(URLTYPE_SUGGEST_JSON)) {
+      let suggestURI = this.getSubmission("dummy", URLTYPE_SUGGEST_JSON).uri;
+      if (suggestURI.prePath != searchURI.prePath)
+        connector.speculativeConnect(suggestURI, callbacks);
+    }
+  },
 };
 
 // nsISearchSubmission
@@ -4172,14 +4206,44 @@ SearchService.prototype = {
     Services.prefs.addObserver(BROWSER_SEARCH_PREF + "defaultenginename", this, false);
     Services.prefs.addObserver(BROWSER_SEARCH_PREF + "selectedEngine", this, false);
 
-    AsyncShutdown.profileBeforeChange.addBlocker(
+    // The current stage of shutdown. Used to help analyze crash
+    // signatures in case of shutdown timeout.
+    let shutdownState = {
+      step: "Not started",
+      latestError: {
+        message: undefined,
+        stack: undefined
+      }
+    };
+    OS.File.profileBeforeChange.addBlocker(
       "Search service: shutting down",
-      () => Task.spawn(function () {
+      () => Task.spawn(function* () {
         if (this._batchTask) {
-          yield this._batchTask.finalize().then(null, Cu.reportError);
+          shutdownState.step = "Finalizing batched task";
+          try {
+            yield this._batchTask.finalize();
+            shutdownState.step = "Batched task finalized";
+          } catch (ex) {
+            shutdownState.step = "Batched task failed to finalize";
+
+            shutdownState.latestError.message = "" + ex;
+            if (ex && typeof ex == "object") {
+              shutdownState.latestError.stack = ex.stack || undefined;
+            }
+
+            // Ensure that error is reported and that it causes tests
+            // to fail.
+            Promise.reject(ex);
+          }
         }
+
+        shutdownState.step = "Finalizing engine metadata service";
         yield engineMetadataService.finalize();
-      }.bind(this))
+        shutdownState.step = "Engine metadata service finalized";
+
+      }.bind(this)),
+
+      () => shutdownState
     );
   },
 

@@ -71,9 +71,9 @@ public:
       return;
     }
 
-    nsRefPtr<gl::GLContext> gl = gl::GLContextProvider::CreateOffscreen(
-      gfxIntSize(16, 16),
-      gfx::SurfaceCaps::ForRGB());
+    nsRefPtr<gl::GLContext> gl;
+    gl = gl::GLContextProvider::CreateOffscreen(gfxIntSize(16, 16),
+                                                gl::SurfaceCaps::ForRGB());
 
     if (!gl) {
       // Setting mReady to true here means that we won't retry. Everything will
@@ -320,6 +320,22 @@ GfxInfo::GetAdapterDeviceID2(nsAString & aAdapterDeviceID)
   return NS_ERROR_FAILURE;
 }
 
+/* readonly attribute DOMString adapterSubsysID; */
+NS_IMETHODIMP
+GfxInfo::GetAdapterSubsysID(nsAString & aAdapterSubsysID)
+{
+  EnsureInitialized();
+  return NS_ERROR_FAILURE;
+}
+
+/* readonly attribute DOMString adapterSubsysID2; */
+NS_IMETHODIMP
+GfxInfo::GetAdapterSubsysID2(nsAString & aAdapterSubsysID)
+{
+  EnsureInitialized();
+  return NS_ERROR_FAILURE;
+}
+
 /* readonly attribute boolean isGPU2Active; */
 NS_IMETHODIMP
 GfxInfo::GetIsGPU2Active(bool* aIsGPU2Active)
@@ -336,6 +352,8 @@ GfxInfo::AddCrashReportAnnotations()
                                      mGLStrings->Vendor());
   CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("AdapterDeviceID"),
                                      mGLStrings->Renderer());
+  CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("AdapterDriverVersion"),
+                                     mGLStrings->Version());
 
   /* Add an App Note for now so that we get the data immediately. These
    * can go away after we store the above in the socorro db */

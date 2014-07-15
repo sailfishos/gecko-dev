@@ -34,6 +34,40 @@ class MarkingValidator;
 struct AutoPrepareForTracing;
 class AutoTraceSession;
 
+class ChunkPool
+{
+    Chunk   *emptyChunkListHead;
+    size_t  emptyCount;
+
+  public:
+    ChunkPool()
+      : emptyChunkListHead(nullptr),
+        emptyCount(0)
+    {}
+
+    size_t getEmptyCount() const {
+        return emptyCount;
+    }
+
+    /* Must be called with the GC lock taken. */
+    inline Chunk *get(JSRuntime *rt);
+
+    /* Must be called either during the GC or with the GC lock taken. */
+    inline void put(Chunk *chunk);
+
+    class Enum {
+      public:
+        Enum(ChunkPool &pool) : pool(pool), chunkp(&pool.emptyChunkListHead) {}
+        bool empty() { return !*chunkp; }
+        Chunk *front();
+        inline void popFront();
+        inline void removeAndPopFront();
+      private:
+        ChunkPool &pool;
+        Chunk **chunkp;
+    };
+};
+
 struct ConservativeGCData
 {
     /*
@@ -94,7 +128,7 @@ class GCRuntime
 {
   public:
     explicit GCRuntime(JSRuntime *rt);
-    bool init(uint32_t maxbytes);
+    bool init(uint32_t maxbytes, uint32_t maxNurseryBytes);
     void finish();
 
     inline int zeal();
@@ -151,6 +185,10 @@ class GCRuntime
     void clearSelectedForMarking();
     void setDeterministic(bool enable);
 #endif
+
+    size_t bytesAllocated() { return bytes; }
+    size_t maxBytesAllocated() { return maxBytes; }
+    size_t maxMallocBytesAllocated() { return maxBytes; }
 
   public:
     // Internal public interface
@@ -280,9 +318,8 @@ class GCRuntime
 
     bool isGcNeeded() { return isNeeded; }
 
-    double computeHeapGrowthFactor(size_t lastBytes) const;
-    size_t computeTriggerBytes(double growthFactor, size_t lastBytes,
-                               JSGCInvocationKind gckind) const;
+    double computeHeapGrowthFactor(size_t lastBytes);
+    size_t computeTriggerBytes(double growthFactor, size_t lastBytes, JSGCInvocationKind gckind);
     size_t allocationThreshold() { return allocThreshold; }
 
     JSGCMode gcMode() const { return mode; }
@@ -291,9 +328,14 @@ class GCRuntime
         marker.setGCMode(mode);
     }
 
-    inline void updateOnChunkFree(const ChunkInfo &info);
     inline void updateOnFreeArenaAlloc(const ChunkInfo &info);
     inline void updateOnArenaFree(const ChunkInfo &info);
+    inline void updateBytesAllocated(ptrdiff_t size);
+
+    GCChunkSet::Range allChunks() { return chunkSet.all(); }
+    inline Chunk **getAvailableChunkList(Zone *zone);
+    void moveChunkToFreePool(Chunk *chunk);
+    bool hasChunk(Chunk *chunk) { return chunkSet.has(chunk); }
 
 #ifdef JS_GC_ZEAL
     void startVerifyPreBarriers();
@@ -308,6 +350,16 @@ class GCRuntime
     friend class ArenaLists;
     Chunk *pickChunk(Zone *zone, AutoMaybeStartBackgroundAllocation &maybeStartBackgroundAllocation);
     inline void arenaAllocatedDuringGC(JS::Zone *zone, ArenaHeader *arena);
+
+    /*
+     * Return the list of chunks that can be released outside the GC lock.
+     * Must be called either during the GC or with the GC lock taken.
+     */
+    Chunk *expireChunkPool(bool shrinkBuffers, bool releaseAll);
+    void expireAndFreeChunkPool(bool releaseAll);
+    void freeChunkList(Chunk *chunkListHead);
+    void prepareToFreeChunk(ChunkInfo &info);
+    void releaseChunk(Chunk *chunk);
 
     inline bool wantBackgroundAllocation() const;
 
@@ -338,7 +390,7 @@ class GCRuntime
     bool releaseObservedTypes();
     void endSweepingZoneGroup();
     bool sweepPhase(SliceBudget &sliceBudget);
-    void endSweepPhase(bool lastGC);
+    void endSweepPhase(JSGCInvocationKind gckind, bool lastGC);
     void sweepZones(FreeOp *fop, bool lastGC);
     void decommitArenasFromAvailableList(Chunk **availableListHeadp);
     void decommitArenas();
@@ -358,7 +410,7 @@ class GCRuntime
     void markAllGrayReferences();
 #endif
 
-  public:  // Internal state, public for now
+  public:
     JSRuntime             *rt;
 
     /* Embedders can use this zone however they wish. */
@@ -369,6 +421,16 @@ class GCRuntime
 
     js::gc::SystemPageAllocator pageAllocator;
 
+#ifdef JSGC_GENERATIONAL
+    js::Nursery           nursery;
+    js::gc::StoreBuffer   storeBuffer;
+#endif
+
+    js::gcstats::Statistics stats;
+
+    js::GCMarker          marker;
+
+  private:
     /*
      * Set of all GC chunks with at least one allocated thing. The
      * conservative GC uses it to quickly check if a possible GC thing points
@@ -387,15 +449,6 @@ class GCRuntime
     js::gc::Chunk         *userAvailableChunkListHead;
     js::gc::ChunkPool     chunkPool;
 
-#ifdef JSGC_GENERATIONAL
-    js::Nursery           nursery;
-    js::gc::StoreBuffer   storeBuffer;
-#endif
-
-    js::gcstats::Statistics stats;
-
-    js::GCMarker          marker;
-
     js::RootedValueMap    rootsHash;
 
     /* This is updated by both the main and GC helper threads. */
@@ -404,7 +457,6 @@ class GCRuntime
     size_t                maxBytes;
     size_t                maxMallocBytes;
 
-  private:
     /*
      * Number of the committed arenas in all GC chunks including empty chunks.
      */
@@ -457,9 +509,6 @@ class GCRuntime
 
     /* Whether all compartments are being collected in first GC slice. */
     bool                  isFull;
-
-    /* The kind of the last collection. */
-    JSGCInvocationKind    lastKind;
 
     /* The reason that an interrupt-triggered GC should be called. */
     JS::gcreason::Reason  triggerReason;

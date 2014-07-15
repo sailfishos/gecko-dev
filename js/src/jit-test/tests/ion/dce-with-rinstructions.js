@@ -510,6 +510,42 @@ function rabs_object(i) {
     return i;
 }
 
+var uceFault_sqrt_number = eval(uneval(uceFault).replace('uceFault', 'uceFault_sqrt_number'));
+function rsqrt_number(i) {
+    var x = Math.sqrt(i);
+    if (uceFault_sqrt_number(i) || uceFault_sqrt_number(i))
+        assertEq(x, Math.sqrt(99));
+    return i;
+}
+
+var uceFault_sqrt_float = eval(uneval(uceFault).replace('uceFault', 'uceFault_sqrt_float'));
+function rsqrt_float(i) {
+    var x = Math.fround(Math.sqrt(Math.fround(i)));
+    if (uceFault_sqrt_float(i) || uceFault_sqrt_float(i))
+        assertEq(x, Math.fround(Math.sqrt(Math.fround(99)))); /* != 9.9498743710662 (when computed with double sqrt) */
+    return i;
+}
+
+var uceFault_sqrt_object = eval(uneval(uceFault).replace('uceFault', 'uceFault_sqrt_object'));
+function rsqrt_object(i) {
+    var t = i;
+    var o = { valueOf: function () { return t; } };
+    var x = Math.sqrt(o); /* computed with t == i, not 1.5 */
+    t = 1.5;
+    if (uceFault_sqrt_object(i) || uceFault_sqrt_object(i))
+        assertEq(x, Math.sqrt(99));
+    return i;
+}
+
+var uceFault_str_split = eval(uneval(uceFault).replace('uceFault', 'uceFault_str_split'))
+function rstr_split(i) {
+    var x = "str01234567899876543210rts".split("" + i);
+    if (uceFault_str_split(i) || uceFault_str_split(i)) {
+        assertEq(x[0], "str012345678");
+    }
+    return i;
+}
+
 for (i = 0; i < 100; i++) {
     rbitnot_number(i);
     rbitnot_object(i);
@@ -565,6 +601,10 @@ for (i = 0; i < 100; i++) {
     rmax_object(i);
     rabs_number(i);
     rabs_object(i);
+    rsqrt_number(i);
+    rsqrt_float(i);
+    rsqrt_object(i);
+    rstr_split(i);
 }
 
 // Test that we can refer multiple time to the same recover instruction, as well

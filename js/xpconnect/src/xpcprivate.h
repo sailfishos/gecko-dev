@@ -482,6 +482,11 @@ public:
         IDX_NAME                    ,
         IDX_UNDEFINED               ,
         IDX_EMPTYSTRING             ,
+        IDX_FILENAME                ,
+        IDX_LINENUMBER              ,
+        IDX_COLUMNNUMBER            ,
+        IDX_STACK                   ,
+        IDX_MESSAGE                 ,
         IDX_TOTAL_COUNT // just a count of the above
     };
 
@@ -2242,7 +2247,8 @@ public:
 
     static already_AddRefed<nsXPCWrappedJSClass>
     GetNewOrUsed(JSContext* cx,
-                 REFNSIID aIID);
+                 REFNSIID aIID,
+                 bool allowNonScriptable = false);
 
     REFNSIID GetIID() const {return mIID;}
     XPCJSRuntime* GetRuntime() const {return mRuntime;}
@@ -2501,7 +2507,7 @@ public:
 
     static bool JSData2Native(void* d, JS::HandleValue s,
                               const nsXPTType& type,
-                              bool useAllocator, const nsID* iid,
+                              const nsID* iid,
                               nsresult* pErr);
 
     /**

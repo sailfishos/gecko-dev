@@ -72,6 +72,7 @@ class AudioTrackList;
 class VideoTrackList;
 
 class HTMLMediaElement : public nsGenericHTMLElement,
+                         public nsIDOMHTMLMediaElement,
                          public nsIObserver,
                          public MediaDecoderOwner,
                          public nsIAudioChannelAgentCallback
@@ -90,7 +91,6 @@ public:
   }
 
   HTMLMediaElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo);
-  virtual ~HTMLMediaElement();
 
   /**
    * This is used when the browser is constructing a video element to play
@@ -597,6 +597,8 @@ public:
   }
 
 protected:
+  virtual ~HTMLMediaElement();
+
   class MediaLoadListener;
   class StreamListener;
 

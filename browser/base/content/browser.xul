@@ -286,11 +286,31 @@
       <menuitem oncommand="gCustomizeMode.addToPanel(document.popupNode)"
                 accesskey="&customizeMenu.moveToPanel.accesskey;"
                 label="&customizeMenu.moveToPanel.label;"
+                contexttype="toolbaritem"
                 class="customize-context-moveToPanel"/>
       <menuitem oncommand="gCustomizeMode.removeFromArea(document.popupNode)"
                 accesskey="&customizeMenu.removeFromToolbar.accesskey;"
                 label="&customizeMenu.removeFromToolbar.label;"
+                contexttype="toolbaritem"
                 class="customize-context-removeFromToolbar"/>
+      <menuitem id="toolbar-context-reloadAllTabs"
+                class="toolbaritem-tabsmenu"
+                contexttype="tabbar"
+                oncommand="gBrowser.reloadAllTabs();"
+                label="&toolbarContextMenu.reloadAllTabs.label;"
+                accesskey="&toolbarContextMenu.reloadAllTabs.accesskey;"/>
+      <menuitem id="toolbar-context-bookmarkAllTabs"
+                class="toolbaritem-tabsmenu"
+                contexttype="tabbar"
+                command="Browser:BookmarkAllTabs"
+                label="&toolbarContextMenu.bookmarkAllTabs.label;"
+                accesskey="&toolbarContextMenu.bookmarkAllTabs.accesskey;"/>
+      <menuitem id="toolbar-context-undoCloseTab"
+                class="toolbaritem-tabsmenu"
+                contexttype="tabbar"
+                label="&toolbarContextMenu.undoCloseTab.label;"
+                accesskey="&toolbarContextMenu.undoCloseTab.accesskey;"
+                observes="History:UndoCloseTab"/>
       <menuseparator/>
       <menuseparator id="viewToolbarsMenuSeparator"/>
       <!-- XXXgijs: we're using oncommand handler here to avoid the event being
@@ -614,8 +634,12 @@
                     key="key_tabview"
                     label="&viewTabGroups.label;"
                     command="Browser:ToggleTabView"
-                    cui-areatype="toolbar"
                     observes="tabviewGroupsNumber"/>
+          <menuitem id="alltabs_undoCloseTab"
+                    class="menuitem-iconic"
+                    key="key_undoCloseTab"
+                    label="&undoCloseTab.label;"
+                    observes="History:UndoCloseTab"/>
           <menuseparator id="alltabs-popup-separator"/>
         </menupopup>
       </toolbarbutton>
@@ -731,6 +755,7 @@
                    onkeypress="gIdentityHandler.handleIdentityButtonEvent(event);"
                    ondragstart="gIdentityHandler.onDragStart(event);">
                 <image id="page-proxy-favicon"
+                       consumeanchor="identity-box"
                        onclick="PageProxyClickHandler(event);"
                        pageproxystate="invalid"/>
                 <hbox id="identity-icon-labels">
@@ -956,6 +981,7 @@
         <toolbarbutton id="PanelUI-menu-button"
                        class="toolbarbutton-1"
                        cui-areatype="toolbar"
+                       consumeanchor="PanelUI-button"
                        label="&brandShortName;"
                        tooltiptext="&appmenu.tooltip;"/>
       </toolbaritem>

@@ -1084,6 +1084,7 @@ Http2Session::RecvHeaders(Http2Session *self)
   nsresult rv;
 
   if (!isContinuation) {
+    self->mDecompressBuffer.Truncate();
     rv = self->ParsePadding(paddingControlBytes, paddingLength);
     if (NS_FAILED(rv)) {
       return rv;
@@ -1391,6 +1392,7 @@ Http2Session::RecvPushPromise(Http2Session *self)
     promiseLen = 0; // really a continuation frame
     promisedID = self->mContinuedPromiseStream;
   } else {
+    self->mDecompressBuffer.Truncate();
     nsresult rv = self->ParsePadding(paddingControlBytes, paddingLength);
     if (NS_FAILED(rv)) {
       return rv;
@@ -2856,10 +2858,14 @@ Http2Session::DispatchOnTunnel(nsAHttpTransaction *aHttpTransaction,
   // this transaction has done its work of setting up a tunnel, let
   // the connection manager queue it if necessary
   trans->SetDontRouteViaWildCard(true);
+  trans->EnableKeepAlive();
 
   if (FindTunnelCount(ci) < gHttpHandler->MaxConnectionsPerOrigin()) {
     LOG3(("Http2Session::DispatchOnTunnel %p create on new tunnel %s",
           this, ci->HashKey().get()));
+    // The connect transaction will hold onto the underlying http
+    // transaction so that an auth created by the connect can be mappped
+    // to the correct security callbacks
     nsRefPtr<SpdyConnectTransaction> connectTrans =
       new SpdyConnectTransaction(ci, aCallbacks,
                                  trans->Caps(), trans, this);
@@ -2868,13 +2874,14 @@ Http2Session::DispatchOnTunnel(nsAHttpTransaction *aHttpTransaction,
     Http2Stream *tunnel = mStreamTransactionHash.Get(connectTrans);
     MOZ_ASSERT(tunnel);
     RegisterTunnel(tunnel);
+  } else {
+    // requeue it. The connection manager is responsible for actually putting
+    // this on the tunnel connection with the specific ci now that it
+    // has DontRouteViaWildCard set.
+    LOG3(("Http2Session::DispatchOnTunnel %p trans=%p queue in connection manager",
+          this, trans));
+    gHttpHandler->InitiateTransaction(trans, trans->Priority());
   }
-
-  // requeue it. The connection manager is responsible for actually putting
-  // this on the tunnel connection with the specific ci now that it
-  // has DontRouteViaWildCard set.
-  trans->EnableKeepAlive();
-  gHttpHandler->InitiateTransaction(trans, trans->Priority());
 }
 
 

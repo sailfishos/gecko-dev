@@ -238,10 +238,16 @@ static const uint64_t GC_IDLE_FULL_SPAN = 20 * 1000 * 1000;
 /* Increase the IGC marking slice time if we are in highFrequencyGC mode. */
 static const int IGC_MARK_SLICE_MULTIPLIER = 2;
 
-#if defined(ANDROID) || defined(MOZ_B2G)
-static const int MAX_EMPTY_CHUNK_COUNT = 2;
+#ifdef JSGC_GENERATIONAL
+static const unsigned MIN_EMPTY_CHUNK_COUNT = 1;
 #else
-static const int MAX_EMPTY_CHUNK_COUNT = 30;
+static const unsigned MIN_EMPTY_CHUNK_COUNT = 0;
+#endif
+
+#if defined(ANDROID) || defined(MOZ_B2G)
+static const unsigned MAX_EMPTY_CHUNK_COUNT = 2;
+#else
+static const unsigned MAX_EMPTY_CHUNK_COUNT = 30;
 #endif
 
 const AllocKind gc::slotsToThingKind[] = {
@@ -656,12 +662,33 @@ ChunkPool::put(Chunk *chunk)
     emptyCount++;
 }
 
+inline Chunk *
+ChunkPool::Enum::front()
+{
+    Chunk *chunk = *chunkp;
+    JS_ASSERT_IF(chunk, pool.getEmptyCount() != 0);
+    return chunk;
+}
+
+inline void
+ChunkPool::Enum::popFront()
+{
+    JS_ASSERT(!empty());
+    chunkp = &front()->info.next;
+}
+
+inline void
+ChunkPool::Enum::removeAndPopFront()
+{
+    JS_ASSERT(!empty());
+    *chunkp = front()->info.next;
+    --pool.emptyCount;
+}
+
 /* Must be called either during the GC or with the GC lock taken. */
 Chunk *
-ChunkPool::expire(JSRuntime *rt, bool releaseAll)
+GCRuntime::expireChunkPool(bool shrinkBuffers, bool releaseAll)
 {
-    JS_ASSERT(this == &rt->gc.chunkPool);
-
     /*
      * Return old empty chunks to the system while preserving the order of
      * other chunks in the list. This way, if the GC runs several times
@@ -669,33 +696,33 @@ ChunkPool::expire(JSRuntime *rt, bool releaseAll)
      * and are more likely to reach the max age.
      */
     Chunk *freeList = nullptr;
-    int freeChunkCount = 0;
-    for (Chunk **chunkp = &emptyChunkListHead; *chunkp; ) {
-        JS_ASSERT(emptyCount);
-        Chunk *chunk = *chunkp;
+    unsigned freeChunkCount = 0;
+    for (ChunkPool::Enum e(chunkPool); !e.empty(); ) {
+        Chunk *chunk = e.front();
         JS_ASSERT(chunk->unused());
-        JS_ASSERT(!rt->gc.chunkSet.has(chunk));
-        JS_ASSERT(chunk->info.age <= MAX_EMPTY_CHUNK_AGE);
-        if (releaseAll || chunk->info.age == MAX_EMPTY_CHUNK_AGE ||
-            freeChunkCount++ > MAX_EMPTY_CHUNK_COUNT)
+        JS_ASSERT(!chunkSet.has(chunk));
+        if (releaseAll || freeChunkCount >= MAX_EMPTY_CHUNK_COUNT ||
+            (freeChunkCount >= MIN_EMPTY_CHUNK_COUNT &&
+             (shrinkBuffers || chunk->info.age == MAX_EMPTY_CHUNK_AGE)))
         {
-            *chunkp = chunk->info.next;
-            --emptyCount;
-            chunk->prepareToBeFreed(rt);
+            e.removeAndPopFront();
+            prepareToFreeChunk(chunk->info);
             chunk->info.next = freeList;
             freeList = chunk;
         } else {
             /* Keep the chunk but increase its age. */
+            ++freeChunkCount;
             ++chunk->info.age;
-            chunkp = &chunk->info.next;
+            e.popFront();
         }
     }
-    JS_ASSERT_IF(releaseAll, !emptyCount);
+    JS_ASSERT_IF(shrinkBuffers, chunkPool.getEmptyCount() <= MIN_EMPTY_CHUNK_COUNT);
+    JS_ASSERT_IF(releaseAll, chunkPool.getEmptyCount() == 0);
     return freeList;
 }
 
-static void
-FreeChunkList(JSRuntime *rt, Chunk *chunkListHead)
+void
+GCRuntime::freeChunkList(Chunk *chunkListHead)
 {
     while (Chunk *chunk = chunkListHead) {
         JS_ASSERT(!chunk->info.numArenasFreeCommitted);
@@ -705,9 +732,9 @@ FreeChunkList(JSRuntime *rt, Chunk *chunkListHead)
 }
 
 void
-ChunkPool::expireAndFree(JSRuntime *rt, bool releaseAll)
+GCRuntime::expireAndFreeChunkPool(bool releaseAll)
 {
-    FreeChunkList(rt, expire(rt, releaseAll));
+    freeChunkList(expireChunkPool(true, releaseAll));
 }
 
 /* static */ Chunk *
@@ -722,29 +749,23 @@ Chunk::allocate(JSRuntime *rt)
 }
 
 /* Must be called with the GC lock taken. */
-/* static */ inline void
-Chunk::release(JSRuntime *rt, Chunk *chunk)
+inline void
+GCRuntime::releaseChunk(Chunk *chunk)
 {
     JS_ASSERT(chunk);
-    chunk->prepareToBeFreed(rt);
+    prepareToFreeChunk(chunk->info);
     FreeChunk(rt, chunk);
 }
 
 inline void
-GCRuntime::updateOnChunkFree(const ChunkInfo &info)
+GCRuntime::prepareToFreeChunk(ChunkInfo &info)
 {
     JS_ASSERT(numArenasFreeCommitted >= info.numArenasFreeCommitted);
     numArenasFreeCommitted -= info.numArenasFreeCommitted;
     stats.count(gcstats::STAT_DESTROY_CHUNK);
-}
-
-inline void
-Chunk::prepareToBeFreed(JSRuntime *rt)
-{
-    rt->gc.updateOnChunkFree(info);
 #ifdef DEBUG
     /*
-     * Let FreeChunkList detect a missing prepareToBeFreed call before it
+     * Let FreeChunkList detect a missing prepareToFreeChunk call before it
      * frees chunk.
      */
     info.numArenasFreeCommitted = 0;
@@ -788,19 +809,19 @@ Chunk::init(JSRuntime *rt)
     /* The rest of info fields are initialized in pickChunk. */
 }
 
-static inline Chunk **
-GetAvailableChunkList(Zone *zone)
+inline Chunk **
+GCRuntime::getAvailableChunkList(Zone *zone)
 {
-    JSRuntime *rt = zone->runtimeFromAnyThread();
     return zone->isSystem
-           ? &rt->gc.systemAvailableChunkListHead
-           : &rt->gc.userAvailableChunkListHead;
+           ? &systemAvailableChunkListHead
+           : &userAvailableChunkListHead;
 }
 
 inline void
 Chunk::addToAvailableList(Zone *zone)
 {
-    insertToAvailableList(GetAvailableChunkList(zone));
+    JSRuntime *rt = zone->runtimeFromAnyThread();
+    insertToAvailableList(rt->gc.getAvailableChunkList(zone));
 }
 
 inline void
@@ -891,13 +912,20 @@ Chunk::fetchNextFreeArena(JSRuntime *rt)
     return aheader;
 }
 
+void
+GCRuntime::updateBytesAllocated(ptrdiff_t size)
+{
+    JS_ASSERT_IF(size < 0, bytes >= size_t(-size));
+    bytes += size;
+}
+
 ArenaHeader *
 Chunk::allocateArena(Zone *zone, AllocKind thingKind)
 {
     JS_ASSERT(hasAvailableArenas());
 
     JSRuntime *rt = zone->runtimeFromAnyThread();
-    if (!rt->isHeapMinorCollecting() && rt->gc.bytes >= rt->gc.maxBytes) {
+    if (!rt->isHeapMinorCollecting() && rt->gc.bytesAllocated() >= rt->gc.maxBytesAllocated()) {
 #ifdef JSGC_FJGENERATIONAL
         // This is an approximation to the best test, which would check that
         // this thread is currently promoting into the tenured area.  I doubt
@@ -916,7 +944,7 @@ Chunk::allocateArena(Zone *zone, AllocKind thingKind)
     if (MOZ_UNLIKELY(!hasAvailableArenas()))
         removeFromAvailableList();
 
-    rt->gc.bytes += ArenaSize;
+    rt->gc.updateBytesAllocated(ArenaSize);
     zone->gcBytes += ArenaSize;
 
     if (zone->gcBytes >= zone->gcTriggerBytes) {
@@ -962,11 +990,11 @@ Chunk::releaseArena(ArenaHeader *aheader)
     if (rt->gc.isBackgroundSweeping())
         maybeLock.lock(rt);
 
-    JS_ASSERT(rt->gc.bytes >= ArenaSize);
+    JS_ASSERT(rt->gc.bytesAllocated() >= ArenaSize);
     JS_ASSERT(zone->gcBytes >= ArenaSize);
     if (rt->gc.isBackgroundSweeping())
-        zone->gcBytesAfterGC -= ArenaSize;
-    rt->gc.bytes -= ArenaSize;
+        zone->reduceGCTriggerBytes(zone->gcHeapGrowthFactor * ArenaSize);
+    rt->gc.updateBytesAllocated(-ArenaSize);
     zone->gcBytes -= ArenaSize;
 
     aheader->setAsNotAllocated();
@@ -979,12 +1007,20 @@ Chunk::releaseArena(ArenaHeader *aheader)
     } else if (!unused()) {
         JS_ASSERT(info.prevp);
     } else {
-        rt->gc.chunkSet.remove(this);
+        JS_ASSERT(unused());
         removeFromAvailableList();
-        JS_ASSERT(info.numArenasFree == ArenasPerChunk);
         decommitAllArenas(rt);
-        rt->gc.chunkPool.put(this);
+        rt->gc.moveChunkToFreePool(this);
     }
+}
+
+void
+GCRuntime::moveChunkToFreePool(Chunk *chunk)
+{
+    JS_ASSERT(chunk->unused());
+    JS_ASSERT(chunkSet.has(chunk));
+    chunkSet.remove(chunk);
+    chunkPool.put(chunk);
 }
 
 inline bool
@@ -996,7 +1032,7 @@ GCRuntime::wantBackgroundAllocation() const
      * of them.
      */
     return helperState.canBackgroundAllocate() &&
-           chunkPool.getEmptyCount() == 0 &&
+           chunkPool.getEmptyCount() < MIN_EMPTY_CHUNK_COUNT &&
            chunkSet.count() >= 4;
 }
 
@@ -1030,7 +1066,7 @@ class js::gc::AutoMaybeStartBackgroundAllocation
 Chunk *
 GCRuntime::pickChunk(Zone *zone, AutoMaybeStartBackgroundAllocation &maybeStartBackgroundAllocation)
 {
-    Chunk **listHeadp = GetAvailableChunkList(zone);
+    Chunk **listHeadp = getAvailableChunkList(zone);
     Chunk *chunk = *listHeadp;
     if (chunk)
         return chunk;
@@ -1058,7 +1094,7 @@ GCRuntime::pickChunk(Zone *zone, AutoMaybeStartBackgroundAllocation &maybeStartB
     GCChunkSet::AddPtr p = chunkSet.lookupForAdd(chunk);
     JS_ASSERT(!p);
     if (!chunkSet.add(p, chunk)) {
-        Chunk::release(rt, chunk);
+        releaseChunk(chunk);
         return nullptr;
     }
 
@@ -1072,14 +1108,14 @@ GCRuntime::pickChunk(Zone *zone, AutoMaybeStartBackgroundAllocation &maybeStartB
 GCRuntime::GCRuntime(JSRuntime *rt) :
     rt(rt),
     systemZone(nullptr),
-    systemAvailableChunkListHead(nullptr),
-    userAvailableChunkListHead(nullptr),
 #ifdef JSGC_GENERATIONAL
     nursery(rt),
     storeBuffer(rt, nursery),
 #endif
     stats(rt),
     marker(rt),
+    systemAvailableChunkListHead(nullptr),
+    userAvailableChunkListHead(nullptr),
     bytes(0),
     maxBytes(0),
     maxMallocBytes(0),
@@ -1098,7 +1134,7 @@ GCRuntime::GCRuntime(JSRuntime *rt) :
     highFrequencyHeapGrowthMax(3.0),
     highFrequencyHeapGrowthMin(1.5),
     lowFrequencyHeapGrowth(1.5),
-    dynamicHeapGrowth(true),
+    dynamicHeapGrowth(false),
     dynamicMarkSlice(false),
     decommitThreshold(32 * 1024 * 1024),
     cleanUpEverything(false),
@@ -1238,7 +1274,7 @@ GCRuntime::initZeal()
 static const int64_t JIT_SCRIPT_RELEASE_TYPES_INTERVAL = 60 * 1000 * 1000;
 
 bool
-GCRuntime::init(uint32_t maxbytes)
+GCRuntime::init(uint32_t maxbytes, uint32_t maxNurseryBytes)
 {
 #ifdef JS_THREADSAFE
     lock = PR_NewLock();
@@ -1267,11 +1303,17 @@ GCRuntime::init(uint32_t maxbytes)
 #endif
 
 #ifdef JSGC_GENERATIONAL
-    if (!nursery.init())
+    if (!nursery.init(maxNurseryBytes))
         return false;
 
-    if (!storeBuffer.enable())
-        return false;
+    if (!nursery.isEnabled()) {
+        JS_ASSERT(nursery.nurserySize() == 0);
+        ++rt->gc.generationalDisabled;
+    } else {
+        JS_ASSERT(nursery.nurserySize() > 0);
+        if (!storeBuffer.enable())
+            return false;
+    }
 #endif
 
 #ifdef JS_GC_ZEAL
@@ -1328,11 +1370,11 @@ GCRuntime::finish()
     userAvailableChunkListHead = nullptr;
     if (chunkSet.initialized()) {
         for (GCChunkSet::Range r(chunkSet.all()); !r.empty(); r.popFront())
-            Chunk::release(rt, r.front());
+            releaseChunk(r.front());
         chunkSet.clear();
     }
 
-    chunkPool.expireAndFree(rt, true);
+    expireAndFreeChunkPool(true);
 
     if (rootsHash.initialized())
         rootsHash.clear();
@@ -1384,13 +1426,9 @@ GCRuntime::setParameter(JSGCParamKey key, uint32_t value)
         break;
       case JSGC_HIGH_FREQUENCY_LOW_LIMIT:
         highFrequencyLowLimitBytes = value * 1024 * 1024;
-        if (highFrequencyLowLimitBytes >= highFrequencyHighLimitBytes)
-            highFrequencyHighLimitBytes = highFrequencyLowLimitBytes + 1;
         break;
       case JSGC_HIGH_FREQUENCY_HIGH_LIMIT:
         highFrequencyHighLimitBytes = value * 1024 * 1024;
-        if (highFrequencyLowLimitBytes >= highFrequencyHighLimitBytes)
-            highFrequencyLowLimitBytes = highFrequencyHighLimitBytes - 1;
         break;
       case JSGC_HIGH_FREQUENCY_HEAP_GROWTH_MAX:
         highFrequencyHeapGrowthMax = value / 100.0;
@@ -1671,8 +1709,7 @@ GCRuntime::onTooMuchMalloc()
 }
 
 size_t
-GCRuntime::computeTriggerBytes(double growthFactor, size_t lastBytes,
-                               JSGCInvocationKind gckind) const
+GCRuntime::computeTriggerBytes(double growthFactor, size_t lastBytes, JSGCInvocationKind gckind)
 {
     size_t base = gckind == GC_SHRINK ? lastBytes : Max(lastBytes, allocThreshold);
     double trigger = double(base) * growthFactor;
@@ -1680,7 +1717,7 @@ GCRuntime::computeTriggerBytes(double growthFactor, size_t lastBytes,
 }
 
 double
-GCRuntime::computeHeapGrowthFactor(size_t lastBytes) const
+GCRuntime::computeHeapGrowthFactor(size_t lastBytes)
 {
     /*
      * The heap growth factor depends on the heap size after a GC and the GC frequency.
@@ -1722,9 +1759,20 @@ GCRuntime::computeHeapGrowthFactor(size_t lastBytes) const
 void
 Zone::setGCLastBytes(size_t lastBytes, JSGCInvocationKind gckind)
 {
-    const GCRuntime &gc = runtimeFromAnyThread()->gc;
+    GCRuntime &gc = runtimeFromMainThread()->gc;
     gcHeapGrowthFactor = gc.computeHeapGrowthFactor(lastBytes);
     gcTriggerBytes = gc.computeTriggerBytes(gcHeapGrowthFactor, lastBytes, gckind);
+}
+
+void
+Zone::reduceGCTriggerBytes(size_t amount)
+{
+    JS_ASSERT(amount > 0);
+    JS_ASSERT(gcTriggerBytes >= amount);
+    GCRuntime &gc = runtimeFromAnyThread()->gc;
+    if (gcTriggerBytes - amount < gc.allocationThreshold() * gcHeapGrowthFactor)
+        return;
+    gcTriggerBytes -= amount;
 }
 
 Allocator::Allocator(Zone *zone)
@@ -2528,9 +2576,9 @@ GCRuntime::expireChunksAndArenas(bool shouldShrink)
     rt->threadPool.pruneChunkCache();
 #endif
 
-    if (Chunk *toFree = chunkPool.expire(rt, shouldShrink)) {
+    if (Chunk *toFree = expireChunkPool(shouldShrink, false)) {
         AutoUnlockGC unlock(rt);
-        FreeChunkList(rt, toFree);
+        freeChunkList(toFree);
     }
 
     if (shouldShrink)
@@ -2554,15 +2602,6 @@ GCRuntime::sweepBackgroundThings(bool onBackgroundThread)
                     ArenaLists::backgroundFinalize(&fop, arenas, onBackgroundThread);
             }
         }
-    }
-
-    if (onBackgroundThread) {
-        /*
-         * Update zone triggers a second time now we have completely finished
-         * sweeping these zones.
-         */
-        for (Zone *zone = sweepingZones; zone; zone = zone->gcNextGraphNode)
-            zone->setGCLastBytes(zone->gcBytesAfterGC, lastKind);
     }
 
     sweepingZones = nullptr;
@@ -4362,7 +4401,7 @@ GCRuntime::sweepPhase(SliceBudget &sliceBudget)
 }
 
 void
-GCRuntime::endSweepPhase(bool lastGC)
+GCRuntime::endSweepPhase(JSGCInvocationKind gckind, bool lastGC)
 {
     gcstats::AutoPhase ap(stats, gcstats::PHASE_SWEEP);
     FreeOp fop(rt, sweepOnBackgroundThread);
@@ -4435,7 +4474,7 @@ GCRuntime::endSweepPhase(bool lastGC)
              * Expire needs to unlock it for other callers.
              */
             AutoLockGC lock(rt);
-            expireChunksAndArenas(lastKind == GC_SHRINK);
+            expireChunksAndArenas(gckind == GC_SHRINK);
         }
     }
 
@@ -4478,10 +4517,9 @@ GCRuntime::endSweepPhase(bool lastGC)
         lastGCTime + highFrequencyTimeThreshold * PRMJ_USEC_PER_MSEC > currentTime;
 
     for (ZonesIter zone(rt, WithAtoms); !zone.done(); zone.next()) {
-        zone->setGCLastBytes(zone->gcBytes, lastKind);
+        zone->setGCLastBytes(zone->gcBytes, gckind);
         if (zone->isCollecting()) {
             JS_ASSERT(zone->isGCFinished());
-            zone->gcBytesAfterGC = zone->gcBytes;
             zone->setGCState(Zone::NoGC);
         }
 
@@ -4763,8 +4801,6 @@ GCRuntime::incrementalCollectSlice(int64_t budget,
     JS_ASSERT_IF(incrementalState != NO_INCREMENTAL, isIncremental);
     isIncremental = budget != SliceBudget::Unlimited;
 
-    lastKind = gckind;
-
     if (zeal == ZealIncrementalRootsThenFinish || zeal == ZealIncrementalMarkAllThenFinish) {
         /*
          * Yields between slices occurs at predetermined points in these modes;
@@ -4852,7 +4888,7 @@ GCRuntime::incrementalCollectSlice(int64_t budget,
         if (!finished)
             break;
 
-        endSweepPhase(lastGC);
+        endSweepPhase(gckind, lastGC);
 
         if (sweepOnBackgroundThread)
             helperState.startBackgroundSweep(gckind == GC_SHRINK);

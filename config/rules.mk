@@ -183,6 +183,14 @@ endif # MKSHLIB
 endif # FORCE_SHARED_LIB
 endif # LIBRARY
 
+ifdef MKSHLIB
+ifdef SONAME
+DSO_SONAME			= $(DLL_PREFIX)$(SONAME)$(DLL_SUFFIX)
+else
+DSO_SONAME			= $(notdir $@)
+endif
+endif # MKSHLIB
+
 ifdef FORCE_STATIC_LIB
 ifndef FORCE_SHARED_LIB
 SHARED_LIBRARY		:= $(NULL)
@@ -575,10 +583,8 @@ endif
 # default rule before including rules.mk
 default all::
 	$(MAKE) export
-ifdef MOZ_PSEUDO_DERECURSE
 ifdef COMPILE_ENVIRONMENT
 	$(MAKE) compile
-endif
 endif
 	$(MAKE) libs
 	$(MAKE) tools
@@ -827,7 +833,7 @@ $(filter %.$(LIB_SUFFIX),$(LIBRARY)): $(OBJS) $(EXTRA_DEPS) $(GLOBAL_DEPS)
 $(filter-out %.$(LIB_SUFFIX),$(LIBRARY)): $(filter %.$(LIB_SUFFIX),$(LIBRARY)) $(OBJS) $(EXTRA_DEPS) $(GLOBAL_DEPS)
 # When we only build a library descriptor, blow out any existing library
 	$(REPORT_BUILD)
-	$(if $(filter %.$(LIB_SUFFIX),$(LIBRARY)),,$(RM) $(REAL_LIBRARY) $(EXPORT_LIBRARY:%=%/$(REAL_LIBRARY)))
+	$(if $(filter %.$(LIB_SUFFIX),$(LIBRARY)),,$(RM) $(REAL_LIBRARY))
 	$(EXPAND_LIBS_GEN) -o $@ $(OBJS) $(SHARED_LIBRARY_LIBS)
 
 ifeq ($(OS_ARCH),WINNT)
@@ -1276,28 +1282,6 @@ ifdef EXTRA_PP_JS_MODULES
 ifndef NO_DIST_INSTALL
 EXTRA_PP_JS_MODULES_PATH := $(FINAL_JS_MODULES_PATH)
 PP_TARGETS += EXTRA_PP_JS_MODULES
-endif
-endif
-
-################################################################################
-# Copy testing-only JS modules to appropriate destination.
-#
-# For each file defined in TESTING_JS_MODULES, copy it to
-# objdir/_tests/modules/. If TESTING_JS_MODULE_DIR is defined, that path
-# wlll be appended to the output directory.
-
-ifdef ENABLE_TESTS
-ifdef TESTING_JS_MODULES
-testmodulesdir = $(DEPTH)/_tests/modules/$(TESTING_JS_MODULE_DIR)
-
-GENERATED_DIRS += $(testmodulesdir)
-
-ifndef NO_DIST_INSTALL
-TESTING_JS_MODULES_FILES := $(TESTING_JS_MODULES)
-TESTING_JS_MODULES_DEST := $(testmodulesdir)
-INSTALL_TARGETS += TESTING_JS_MODULES
-endif
-
 endif
 endif
 

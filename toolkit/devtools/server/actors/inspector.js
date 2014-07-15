@@ -727,7 +727,7 @@ var NodeListActor = exports.NodeListActor = protocol.ActorClass({
   initialize: function(walker, nodeList) {
     protocol.Actor.prototype.initialize.call(this);
     this.walker = walker;
-    this.nodeList = nodeList;
+    this.nodeList = nodeList || [];
   },
 
   destroy: function() {
@@ -990,6 +990,10 @@ var WalkerActor = protocol.ActorClass({
     // had their display changed and send a display-change event if any
     let changes = [];
     for (let [node, actor] of this._refMap) {
+      if (Cu.isDeadWrapper(node)) {
+        continue;
+      }
+
       let isDisplayed = actor.isDisplayed;
       if (isDisplayed !== actor.wasDisplayed) {
         changes.push(actor);

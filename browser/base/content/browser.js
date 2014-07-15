@@ -1913,6 +1913,7 @@ function loadURI(uri, referrer, postData, allowThirdPartyFixup) {
 }
 
 function getShortcutOrURIAndPostData(aURL, aCallback) {
+  let mayInheritPrincipal = false;
   let postData = null;
   let shortcutURL = null;
   let keyword = aURL;
@@ -1928,7 +1929,8 @@ function getShortcutOrURIAndPostData(aURL, aCallback) {
   if (engine) {
     let submission = engine.getSubmission(param);
     postData = submission.postData;
-    aCallback({ postData: submission.postData, url: submission.uri.spec });
+    aCallback({ postData: submission.postData, url: submission.uri.spec,
+                mayInheritPrincipal: mayInheritPrincipal });
     return;
   }
 
@@ -1936,7 +1938,8 @@ function getShortcutOrURIAndPostData(aURL, aCallback) {
     PlacesUtils.getURLAndPostDataForKeyword(keyword);
 
   if (!shortcutURL) {
-    aCallback({ postData: postData, url: aURL });
+    aCallback({ postData: postData, url: aURL,
+                mayInheritPrincipal: mayInheritPrincipal });
     return;
   }
 
@@ -1968,7 +1971,12 @@ function getShortcutOrURIAndPostData(aURL, aCallback) {
         postData = getPostDataStream(escapedPostData, param, encodedParam,
                                                "application/x-www-form-urlencoded");
 
-      aCallback({ postData: postData, url: shortcutURL });
+      // This URL came from a bookmark, so it's safe to let it inherit the current
+      // document's principal.
+      mayInheritPrincipal = true;
+
+      aCallback({ postData: postData, url: shortcutURL,
+                  mayInheritPrincipal: mayInheritPrincipal });
     }
 
     if (matches) {
@@ -1991,9 +1999,15 @@ function getShortcutOrURIAndPostData(aURL, aCallback) {
     // the original URL.
     postData = null;
 
-    aCallback({ postData: postData, url: aURL });
+    aCallback({ postData: postData, url: aURL,
+                mayInheritPrincipal: mayInheritPrincipal });
   } else {
-    aCallback({ postData: postData, url: shortcutURL });
+    // This URL came from a bookmark, so it's safe to let it inherit the current
+    // document's principal.
+    mayInheritPrincipal = true;
+
+    aCallback({ postData: postData, url: shortcutURL,
+                mayInheritPrincipal: mayInheritPrincipal });
   }
 }
 
@@ -2313,7 +2327,8 @@ let BrowserOnClick = {
     switch (msg.name) {
       case "Browser:CertExceptionError":
         this.onAboutCertError(msg.target, msg.json.elementId,
-                              msg.json.isTopFrame, msg.json.location);
+                              msg.json.isTopFrame, msg.json.location,
+                              msg.objects.failedChannel);
       break;
       case "Browser:SiteBlockedError":
         this.onAboutBlocked(msg.json.elementId, msg.json.isMalware,
@@ -2326,19 +2341,16 @@ let BrowserOnClick = {
     }
   },
 
-  onAboutCertError: function (browser, elementId, isTopFrame, location) {
+  onAboutCertError: function (browser, elementId, isTopFrame, location, failedChannel) {
     let secHistogram = Services.telemetry.getHistogramById("SECURITY_UI");
 
     switch (elementId) {
       case "exceptionDialogButton":
-        let docshell = aOwnerDoc.defaultView.QueryInterface(Ci.nsIInterfaceRequestor)
-                                            .getInterface(Ci.nsIWebNavigation)
-                                            .QueryInterface(Ci.nsIDocShell);
-        let securityInfo = docshell.failedChannel.securityInfo;
-        let sslStatus = securityInfo.QueryInterface(Ci.nsISSLStatusProvider).SSLStatus;
         if (isTopFrame) {
           secHistogram.add(Ci.nsISecurityUITelemetry.WARNING_BAD_CERT_TOP_CLICK_ADD_EXCEPTION);
         }
+        let sslStatus = failedChannel.securityInfo.QueryInterface(Ci.nsISSLStatusProvider)
+                                                  .SSLStatus;
         let params = { exceptionAdded : false,
                        sslStatus : sslStatus };
 
@@ -2634,24 +2646,14 @@ function BrowserReloadWithFlags(reloadFlags) {
     return;
   }
 
-  /* First, we'll try to use the session history object to reload so
-   * that framesets are handled properly. If we're in a special
-   * window (such as view-source) that has no session history, fall
-   * back on using the web navigation's reload method.
-   */
+  let windowUtils = window.QueryInterface(Ci.nsIInterfaceRequestor)
+                          .getInterface(Ci.nsIDOMWindowUtils);
 
-  var webNav = gBrowser.webNavigation;
-  try {
-    var sh = webNav.sessionHistory;
-    if (sh)
-      webNav = sh.QueryInterface(nsIWebNavigation);
-  } catch (e) {
-  }
-
-  try {
-    webNav.reload(reloadFlags);
-  } catch (e) {
-  }
+  gBrowser.selectedBrowser
+          .messageManager
+          .sendAsyncMessage("Browser:Reload",
+                            { flags: reloadFlags,
+                              handlingUserInput: windowUtils.isHandlingUserInput });
 }
 
 var PrintPreviewListener = {
@@ -2854,7 +2856,7 @@ const DOMLinkHandler = {
   init: function() {
     let mm = window.messageManager;
     mm.addMessageListener("Link:AddFeed", this);
-    mm.addMessageListener("Link:AddIcon", this);
+    mm.addMessageListener("Link:SetIcon", this);
     mm.addMessageListener("Link:AddSearch", this);
   },
 
@@ -2865,8 +2867,8 @@ const DOMLinkHandler = {
         FeedHandler.addFeed(link, aMsg.target);
         break;
 
-      case "Link:AddIcon":
-        return this.addIcon(aMsg.target, aMsg.data.url);
+      case "Link:SetIcon":
+        return this.setIcon(aMsg.target, aMsg.data.url);
         break;
 
       case "Link:AddSearch":
@@ -2875,7 +2877,7 @@ const DOMLinkHandler = {
     }
   },
 
-  addIcon: function(aBrowser, aURL) {
+  setIcon: function(aBrowser, aURL) {
     if (gBrowser.isFailedIcon(aURL))
       return false;
 
@@ -4301,9 +4303,28 @@ function onViewToolbarsPopupShowing(aEvent, aInsertPoint) {
     toolbarItem = null;
   }
 
-  // Right-clicking on an empty part of the tabstrip will exit
-  // the above loop with toolbarItem being the xul:document.
-  // That has no parentNode, and we should disable the items in
+  let showTabStripItems = toolbarItem && toolbarItem.id == "tabbrowser-tabs";
+  for (let node of popup.querySelectorAll('menuitem[contexttype="toolbaritem"]')) {
+    node.hidden = showTabStripItems;
+  }
+
+  for (let node of popup.querySelectorAll('menuitem[contexttype="tabbar"]')) {
+    node.hidden = !showTabStripItems;
+  }
+
+  if (showTabStripItems) {
+    PlacesCommandHook.updateBookmarkAllTabsCommand();
+
+    let haveMultipleTabs = gBrowser.visibleTabs.length > 1;
+    document.getElementById("toolbar-context-reloadAllTabs").disabled = !haveMultipleTabs;
+
+    document.getElementById("toolbar-context-undoCloseTab").disabled =
+      SessionStore.getClosedTabCount(window) == 0;
+    return;
+  }
+
+  // In some cases, we will exit the above loop with toolbarItem being the
+  // xul:document. That has no parentNode, and we should disable the items in
   // this case.
   let movable = toolbarItem && toolbarItem.parentNode &&
                 CustomizableUI.isWidgetRemovable(toolbarItem);
@@ -5174,7 +5195,8 @@ function middleMousePaste(event) {
     if (where != "current" ||
         lastLocationChange == gBrowser.selectedBrowser.lastLocationChange) {
       openUILink(data.url, event,
-                 { ignoreButton: true });
+                 { ignoreButton: true,
+                   disallowInheritPrincipal: !data.mayInheritPrincipal });
     }
   });
 
@@ -5182,26 +5204,9 @@ function middleMousePaste(event) {
 }
 
 function stripUnsafeProtocolOnPaste(pasteData) {
-  // Don't allow pasting in full URIs which inherit the security context.
-  const URI_INHERITS_SECURITY_CONTEXT = Ci.nsIProtocolHandler.URI_INHERITS_SECURITY_CONTEXT;
-
-  let pastedURI;
-  try {
-    pastedURI = makeURI(pasteData.trim());
-  } catch (ex) {
-    return pasteData;
-  }
-
-  while (Services.netutil.URIChainHasFlags(pastedURI, URI_INHERITS_SECURITY_CONTEXT)) {
-    pasteData = pastedURI.path.trim();
-    try {
-      pastedURI = makeURI(pasteData);
-    } catch (ex) {
-      break;
-    }
-  }
-
-  return pasteData;
+  // Don't allow pasting javascript URIs since we don't support
+  // LOAD_FLAGS_DISALLOW_INHERIT_OWNER for those.
+  return pasteData.replace(/^(?:\s*javascript:)+/i, "");
 }
 
 function handleDroppedLink(event, url, name)

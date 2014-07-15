@@ -1624,7 +1624,8 @@ SetVisibleRegionForLayer(Layer* aLayer, const nsIntRegion& aLayerVisibleRegion,
   nsIntRect childBounds = aLayerVisibleRegion.GetBounds();
   gfxRect childGfxBounds(childBounds.x, childBounds.y,
                          childBounds.width, childBounds.height);
-  gfxRect layerVisible = transform.UntransformBounds(itemVisible, childGfxBounds);
+  gfxRect layerVisible = transform.Inverse().ProjectRectBounds(itemVisible);
+  layerVisible = layerVisible.Intersect(childGfxBounds);
   layerVisible.RoundOut();
 
   nsIntRect visibleRect;
@@ -2825,7 +2826,7 @@ FrameLayerBuilder::AddThebesDisplayItem(ThebesLayerData* aLayerData,
       tempManager = data->mInactiveManager;
     }
     if (!tempManager) {
-      tempManager = new BasicLayerManager();
+      tempManager = new BasicLayerManager(BasicLayerManager::BLM_INACTIVE);
     }
 
     // We need to grab these before calling AddLayerDisplayItem because it will overwrite them.
@@ -3685,6 +3686,12 @@ FrameLayerBuilder::PaintItems(nsTArray<ClippedDisplayItem>& aItems,
     if (paintRect.IsEmpty())
       continue;
 
+#ifdef MOZ_DUMP_PAINTING
+    PROFILER_LABEL_PRINTF("DisplayList", "Draw", js::ProfileEntry::Category::GRAPHICS, "%s %p", cdi->mItem->Name(), cdi->mItem);
+#else
+    PROFILER_LABEL_PRINTF("DisplayList", "Draw", js::ProfileEntry::Category::GRAPHICS, "%p", cdi->mItem);
+#endif
+
     // If the new desired clip state is different from the current state,
     // update the clip.
     const DisplayItemClip* clip = &cdi->mItem->GetClip();
@@ -3744,7 +3751,6 @@ FrameLayerBuilder::PaintItems(nsTArray<ClippedDisplayItem>& aItems,
 static bool ShouldDrawRectsSeparately(gfxContext* aContext, DrawRegionClip aClip)
 {
   if (!gfxPrefs::LayoutPaintRectsSeparately() ||
-      aContext->IsCairo() ||
       aClip == DrawRegionClip::CLIP_NONE) {
     return false;
   }
@@ -3885,7 +3891,8 @@ FrameLayerBuilder::DrawThebesLayer(ThebesLayer* aLayer,
                              entry->mCommonClipCount);
   }
 
-  if (presContext->GetPaintFlashing()) {
+  if (presContext->GetPaintFlashing() &&
+      !aLayer->Manager()->IsInactiveLayerManager()) {
     gfxContextAutoSaveRestore save(aContext);
     if (shouldDrawRectsSeparately) {
       if (aClip == DrawRegionClip::DRAW_SNAPPED) {

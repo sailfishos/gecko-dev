@@ -481,16 +481,24 @@ case "$target" in
         if test "$_CC_MAJOR_VERSION" = "16"; then
             _CC_SUITE=10
             MSVS_VERSION=2010
+            MSVC_C_RUNTIME_DLL=msvcr100.dll
+            MSVC_CXX_RUNTIME_DLL=msvcp100.dll
         elif test "$_CC_MAJOR_VERSION" = "17"; then
             _CC_SUITE=11
             MSVS_VERSION=2012
+            MSVC_C_RUNTIME_DLL=msvcr110.dll
+            MSVC_CXX_RUNTIME_DLL=msvcp110.dll
         elif test "$_CC_MAJOR_VERSION" = "18"; then
             _CC_SUITE=12
             MSVS_VERSION=2013
+            MSVC_C_RUNTIME_DLL=msvcr120.dll
+            MSVC_CXX_RUNTIME_DLL=msvcp120.dll
         else
             AC_MSG_ERROR([This version ($CC_VERSION) of the MSVC compiler is unsupported. See https://developer.mozilla.org/en/Windows_Build_Prerequisites.])
         fi
         AC_SUBST(MSVS_VERSION)
+        AC_SUBST(MSVC_C_RUNTIME_DLL)
+        AC_SUBST(MSVC_CXX_RUNTIME_DLL)
 
         # Disable SEH on clang-cl because it doesn't implement them yet.
         if test -z "$CLANG_CL"; then
@@ -1312,8 +1320,8 @@ if test "$GNU_CC"; then
     fi
     # FIXME: Let us build with strict aliasing. bug 414641.
     CFLAGS="$CFLAGS -fno-strict-aliasing"
-    MKSHLIB='$(CXX) $(CXXFLAGS) $(DSO_PIC_CFLAGS) $(DSO_LDOPTS) -Wl,-h,$(notdir $@) -o $@'
-    MKCSHLIB='$(CC) $(CFLAGS) $(DSO_PIC_CFLAGS) $(DSO_LDOPTS) -Wl,-h,$(notdir $@) -o $@'
+    MKSHLIB='$(CXX) $(CXXFLAGS) $(DSO_PIC_CFLAGS) $(DSO_LDOPTS) -Wl,-h,$(DSO_SONAME) -o $@'
+    MKCSHLIB='$(CC) $(CFLAGS) $(DSO_PIC_CFLAGS) $(DSO_LDOPTS) -Wl,-h,$(DSO_SONAME) -o $@'
     WARNINGS_AS_ERRORS='-Werror'
     DSO_CFLAGS=''
     DSO_PIC_CFLAGS='-fPIC'
@@ -1461,8 +1469,8 @@ elif test "$SOLARIS_SUNPRO_CC"; then
     fi
     _DEFINES_CFLAGS='$(ACDEFINES) -D_MOZILLA_CONFIG_H_ -DMOZILLA_CLIENT'
 else
-    MKSHLIB='$(LD) $(DSO_LDOPTS) -h $(notdir $@) -o $@'
-    MKCSHLIB='$(LD) $(DSO_LDOPTS) -h $(notdir $@) -o $@'
+    MKSHLIB='$(LD) $(DSO_LDOPTS) -h $(DSO_SONAME) -o $@'
+    MKCSHLIB='$(LD) $(DSO_LDOPTS) -h $(DSO_SONAME) -o $@'
 
     DSO_LDOPTS='-shared'
     if test "$GNU_LD"; then
@@ -2279,8 +2287,8 @@ ia64*-hpux*)
     if test "$LIBRUNPATH"; then
         DSO_LDOPTS="-Wl,-R$LIBRUNPATH $DSO_LDOPTS"
     fi
-    MKSHLIB='$(CXX) $(CXXFLAGS) $(DSO_PIC_CFLAGS) $(DSO_LDOPTS) -Wl,-soname,$(notdir $@) -o $@'
-    MKCSHLIB='$(CC) $(CFLAGS) $(DSO_PIC_CFLAGS) $(DSO_LDOPTS) -Wl,-soname,$(notdir $@)) -o $@'
+    MKSHLIB='$(CXX) $(CXXFLAGS) $(DSO_PIC_CFLAGS) $(DSO_LDOPTS) -Wl,-soname,$(DSO_SONAME) -o $@'
+    MKCSHLIB='$(CC) $(CFLAGS) $(DSO_PIC_CFLAGS) $(DSO_LDOPTS) -Wl,-soname,$(DSO_SONAME) -o $@'
     ;;
 
 *-openbsd*)
@@ -2323,8 +2331,8 @@ ia64*-hpux*)
                        [LDFLAGS=$_SAVE_LDFLAGS])
        fi
        MOZ_OPTIMIZE_FLAGS="-xO4"
-       MKSHLIB='$(CXX) $(CXXFLAGS) $(DSO_PIC_FLAGS) $(DSO_LDOPTS) -h $(notdir $@) -o $@'
-       MKCSHLIB='$(CC) $(CFLAGS) $(DSO_PIC_FLAGS) $(DSO_LDOPTS) -h $(notdir $@) -o $@'
+       MKSHLIB='$(CXX) $(CXXFLAGS) $(DSO_PIC_FLAGS) $(DSO_LDOPTS) -h $(DSO_SONAME) -o $@'
+       MKCSHLIB='$(CC) $(CFLAGS) $(DSO_PIC_FLAGS) $(DSO_LDOPTS) -h $(DSO_SONAME) -o $@'
        MKSHLIB_FORCE_ALL='-z allextract'
        MKSHLIB_UNFORCE_ALL='-z defaultextract'
        DSO_LDOPTS='-G'
@@ -6814,6 +6822,11 @@ elif test "$GNU_CC"; then
     MOZ_CXX_SUPPORTS_WARNING(-W, no-error=maybe-uninitialized, ac_cxx_has_noerror_maybe_uninitialized)
     MOZ_C_SUPPORTS_WARNING(-W, no-error=deprecated-declarations, ac_c_has_noerror_deprecated_declarations)
     MOZ_CXX_SUPPORTS_WARNING(-W, no-error=deprecated-declarations, ac_cxx_has_noerror_deprecated_declarations)
+
+    if test -n "$MOZ_PGO"; then
+        MOZ_C_SUPPORTS_WARNING(-W, no-error=coverage-mismatch, ac_c_has_noerror_coverage_mismatch)
+        MOZ_CXX_SUPPORTS_WARNING(-W, no-error=coverage-mismatch, ac_cxx_has_noerror_coverage_mismatch)
+    fi
 fi
 
 dnl ========================================================
@@ -7553,14 +7566,6 @@ fi
 AC_SUBST(MOZ_AUDIO_CHANNEL_MANAGER)
 
 dnl ========================================================
-dnl = Enable Support for Firefox Accounts (services/fxaccounts)
-dnl ========================================================
-if test -n "$MOZ_SERVICES_FXACCOUNTS"; then
-    AC_DEFINE(MOZ_SERVICES_FXACCOUNTS)
-fi
-AC_SUBST(MOZ_SERVICES_FXACCOUNTS)
-
-dnl ========================================================
 dnl = Support for demangling undefined symbols
 dnl ========================================================
 if test -z "$SKIP_LIBRARY_CHECKS"; then
@@ -7793,6 +7798,25 @@ AC_SUBST(PROFILE_GEN_CFLAGS)
 AC_SUBST(PROFILE_GEN_LDFLAGS)
 AC_SUBST(PROFILE_USE_CFLAGS)
 AC_SUBST(PROFILE_USE_LDFLAGS)
+
+dnl =============================================
+dnl Support for -fno-integrated-as (recent clang)
+dnl =============================================
+dnl Under clang 3.4+, use -fno-integrated-as to
+dnl build libvpx's vp8_asm_enc_offsets.c
+
+_SAVE_CFLAGS="$CFLAGS"
+CFLAGS="$CFLAGS -fno-integrated-as"
+
+AC_MSG_CHECKING([whether C compiler supports -fno-integrated-as])
+AC_TRY_COMPILE([], [return 0;],
+               [ NO_INTEGRATED_AS_CFLAGS="-fno-integrated-as"
+                 result="yes" ], result="no")
+AC_MSG_RESULT([$result])
+
+CFLAGS="$_SAVE_CFLAGS"
+
+AC_SUBST(NO_INTEGRATED_AS_CFLAGS)
 
 fi # ! SKIP_COMPILER_CHECKS
 
@@ -8780,7 +8804,6 @@ AC_SUBST(CC_VERSION)
 AC_SUBST(CXX_VERSION)
 AC_SUBST(MSMANIFEST_TOOL)
 AC_SUBST(NS_ENABLE_TSF)
-AC_SUBST(MOZ_APP_COMPONENT_LIBS)
 AC_SUBST(MOZ_APP_EXTRA_LIBS)
 
 AC_SUBST(MOZ_WAVE)
@@ -9047,8 +9070,6 @@ if test -z "$MOZ_NATIVE_JEMALLOC" -a "$MOZ_MEMORY" && test -n "$MOZ_JEMALLOC3" -
   if test "$CROSS_COMPILE"; then
     ac_configure_args="$ac_configure_args je_cv_static_page_shift=12"
   fi
-  _save_cache_file="$cache_file"
-  cache_file=$_objdir/memory/jemalloc/src/config.cache
 
   if ! test -e memory/jemalloc; then
     mkdir -p memory/jemalloc
@@ -9061,7 +9082,6 @@ if test -z "$MOZ_NATIVE_JEMALLOC" -a "$MOZ_MEMORY" && test -n "$MOZ_JEMALLOC3" -
   srcdir=`cd $srcdir; pwd`
   AC_OUTPUT_SUBDIRS(memory/jemalloc/src)
   srcdir="$_save_srcdir"
-  cache_file="$_save_cache_file"
   ac_configure_args="$_SUBDIR_CONFIG_ARGS"
 fi
 
@@ -9085,7 +9105,7 @@ if test "$MOZ_TREE_FREETYPE"; then
      mkdir modules
    fi
 
-   AC_OUTPUT_SUBDIRS(modules/freetype2)
+   AC_OUTPUT_SUBDIRS(modules/freetype2,$cache_file)
 fi
 
 if test -z "$direct_nspr_config"; then
@@ -9177,14 +9197,9 @@ if test -z "$MOZ_NATIVE_NSPR"; then
     export LDFLAGS="$LDFLAGS $NSPR_LDFLAGS"
     export CFLAGS="$CFLAGS $MOZ_FRAMEPTR_FLAGS"
 
-    # Use a separate cache file for NSPR since it uses autoconf 2.68.
-    _save_cache_file="$cache_file"
-    cache_file=$_objdir/nsprpub/config.cache
-
     AC_OUTPUT_SUBDIRS(nsprpub)
 
     # .. and restore them
-    cache_file="$_save_cache_file"
     CFLAGS="$_SAVE_CFLAGS"
     CPPFLAGS="$_SAVE_CPPFLAGS"
     LDFLAGS="$_SAVE_LDFLAGS"
@@ -9274,7 +9289,7 @@ if ! test -e js; then
     mkdir js
 fi
 
-AC_OUTPUT_SUBDIRS(js/src)
+AC_OUTPUT_SUBDIRS(js/src,$cache_file)
 ac_configure_args="$_SUBDIR_CONFIG_ARGS"
 
 fi # COMPILE_ENVIRONMENT && !LIBXUL_SDK_DIR

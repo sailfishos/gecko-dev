@@ -14,6 +14,7 @@
 
 #include "jsfriendapi.h"
 #include "mozilla/dom/BindingUtils.h"
+#include "mozilla/dom/LocationBinding.h"
 #include "mozilla/dom/WindowBinding.h"
 #include "nsIDOMWindowCollection.h"
 #include "nsJSUtils.h"
@@ -90,40 +91,28 @@ AccessCheck::getPrincipal(JSCompartment *compartment)
     return GetCompartmentPrincipal(compartment);
 }
 
-#define NAME(ch, str, cases)                                                  \
-    case ch: if (!strcmp(name, str)) switch (propChars[0]) { cases }; break;
-#define PROP(ch, actions) case ch: { actions }; break;
-#define RW(str) if (JS_FlatStringEqualsAscii(prop, str)) return true;
-#define R(str) if (!set && JS_FlatStringEqualsAscii(prop, str)) return true;
-#define W(str) if (set && JS_FlatStringEqualsAscii(prop, str)) return true;
-
 // Hardcoded policy for cross origin property access. This was culled from the
 // preferences file (all.js). We don't want users to overwrite highly sensitive
 // security policies.
 static bool
 IsPermitted(const char *name, JSFlatString *prop, bool set)
 {
-    size_t propLength;
-    const jschar *propChars =
-        JS_GetInternedStringCharsAndLength(JS_FORGET_STRING_FLATNESS(prop), &propLength);
+    size_t propLength = JS_GetStringLength(JS_FORGET_STRING_FLATNESS(prop));
     if (!propLength)
         return false;
+
+    jschar propChar0 = JS_GetFlatStringCharAt(prop, 0);
     switch (name[0]) {
-        NAME('L', "Location",
-             PROP('h', W("href"))
-             PROP('r', R("replace")))
+        case 'L':
+            if (!strcmp(name, "Location"))
+                return dom::LocationBinding::IsPermitted(prop, propChar0, set);
         case 'W':
             if (!strcmp(name, "Window"))
-                return dom::WindowBinding::IsPermitted(prop, propChars[0], set);
+                return dom::WindowBinding::IsPermitted(prop, propChar0, set);
             break;
     }
     return false;
 }
-
-#undef NAME
-#undef RW
-#undef R
-#undef W
 
 static bool
 IsFrameId(JSContext *cx, JSObject *objArg, jsid idArg)
@@ -292,14 +281,15 @@ ExposedPropertiesOnly::check(JSContext *cx, JSObject *wrapperArg, jsid idArg, Wr
         return false;
     }
 
-    JSString *str = desc.value().toString();
-    size_t length;
-    const jschar *chars = JS_GetStringCharsAndLength(cx, str, &length);
-    if (!chars)
+    JSFlatString *flat = JS_FlattenString(cx, desc.value().toString());
+    if (!flat)
         return false;
 
+    size_t length = JS_GetStringLength(JS_FORGET_STRING_FLATNESS(flat));
+
     for (size_t i = 0; i < length; ++i) {
-        switch (chars[i]) {
+        jschar ch = JS_GetFlatStringCharAt(flat, i);
+        switch (ch) {
         case 'r':
             if (access & READ) {
                 EnterAndThrow(cx, wrapper, "duplicate 'readable' property flag");

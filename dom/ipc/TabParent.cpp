@@ -41,6 +41,7 @@
 #include "nsIDOMWindow.h"
 #include "nsIDOMWindowUtils.h"
 #include "nsIInterfaceRequestorUtils.h"
+#include "nsILoadInfo.h"
 #include "nsIPromptFactory.h"
 #include "nsIURI.h"
 #include "nsIWebBrowserChrome.h"
@@ -784,7 +785,7 @@ TabParent::MapEventCoordinatesForChildProcess(
     aEvent->refPoint = LayoutDeviceIntPoint();
     // Then offset all the touch points by that distance, to put them
     // in the space where top-left is 0,0.
-    const nsTArray< nsRefPtr<Touch> >& touches =
+    const WidgetTouchEvent::TouchArray& touches =
       aEvent->AsTouchEvent()->touches;
     for (uint32_t i = 0; i < touches.Length(); ++i) {
       Touch* touch = touches[i];
@@ -2185,6 +2186,16 @@ public:
   }
   NS_IMETHOD GetOwner(nsISupports**) NO_IMPL
   NS_IMETHOD SetOwner(nsISupports*) NO_IMPL
+  NS_IMETHOD GetLoadInfo(nsILoadInfo** aLoadInfo)
+  {
+    NS_IF_ADDREF(*aLoadInfo = mLoadInfo);
+    return NS_OK;
+  }
+  NS_IMETHOD SetLoadInfo(nsILoadInfo* aLoadInfo)
+  {
+    mLoadInfo = aLoadInfo;
+    return NS_OK;
+  }
   NS_IMETHOD GetNotificationCallbacks(nsIInterfaceRequestor** aRequestor)
   {
     NS_ADDREF(*aRequestor = this);
@@ -2237,6 +2248,7 @@ protected:
   nsCOMPtr<nsIURI> mUri;
   uint64_t mCallbackId;
   nsCOMPtr<Element> mElement;
+  nsCOMPtr<nsILoadInfo> mLoadInfo;
 };
 
 NS_IMPL_ISUPPORTS(FakeChannel, nsIChannel, nsIAuthPromptCallback,

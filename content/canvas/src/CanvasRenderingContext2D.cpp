@@ -367,7 +367,7 @@ public:
                                          mCtx->CurrentState().op);
   }
 
-  operator DrawTarget*() 
+  operator DrawTarget*()
   {
     return mTarget;
   }
@@ -944,7 +944,8 @@ CanvasRenderingContext2D::EnsureTarget()
         if (glue && glue->GetGrContext() && glue->GetGLContext()) {
           mTarget = Factory::CreateDrawTargetSkiaWithGrContext(glue->GetGrContext(), size, format);
           if (mTarget) {
-            mStream = gfx::SurfaceStream::CreateForType(SurfaceStreamType::TripleBuffer, glue->GetGLContext());
+            mStream = gl::SurfaceStream::CreateForType(gl::SurfaceStreamType::TripleBuffer,
+                                                       glue->GetGLContext());
             AddDemotableContext(this);
           } else {
             printf_stderr("Failed to create a SkiaGL DrawTarget, falling back to software\n");
@@ -975,6 +976,15 @@ CanvasRenderingContext2D::EnsureTarget()
     }
 
     mTarget->ClearRect(mgfx::Rect(Point(0, 0), Size(mWidth, mHeight)));
+    if (mTarget->GetBackendType() == mgfx::BackendType::CAIRO) {
+      // Cairo doesn't play well with huge clips. When given a very big clip it
+      // will try to allocate big mask surface without taking the target
+      // size into account which can cause OOM. See bug 1034593.
+      // This limits the clip extents to the size of the canvas.
+      // A fix in Cairo would probably be preferable, but requires somewhat
+      // invasive changes.
+      mTarget->PushClipRect(mgfx::Rect(Point(0, 0), Size(mWidth, mHeight)));
+    }
     // Force a full layer transaction since we didn't have a layer before
     // and now we might need one.
     if (mCanvasElement) {
@@ -1060,6 +1070,11 @@ CanvasRenderingContext2D::InitializeWithSurface(nsIDocShell *shell,
   if (!mTarget) {
     EnsureErrorTarget();
     mTarget = sErrorTarget;
+  }
+
+  if (mTarget->GetBackendType() == mgfx::BackendType::CAIRO) {
+    // Cf comment in EnsureTarget
+    mTarget->PushClipRect(mgfx::Rect(Point(0, 0), Size(mWidth, mHeight)));
   }
 
   return NS_OK;
@@ -2512,7 +2527,7 @@ CanvasRenderingContext2D::AddHitRegion(const HitRegionOptions& options, ErrorRes
                                 nsINode::DeleteProperty<bool>);
 #endif
   }
-  
+
   // finally, add the region to the list
   RegionInfo info;
   info.mId = options.mId;
@@ -3454,7 +3469,7 @@ CanvasRenderingContext2D::DrawDirectlyToCanvas(
 
   nsRefPtr<gfxContext> context = new gfxContext(tempTarget);
   context->SetMatrix(contextMatrix);
-  
+
   // FLAG_CLAMP is added for increased performance
   uint32_t modifiedFlags = image.mDrawingFlags | imgIContainer::FLAG_CLAMP;
 
@@ -3660,7 +3675,11 @@ CanvasRenderingContext2D::DrawWindow(nsGlobalWindow& window, double x,
   }
   nsRefPtr<gfxContext> thebes;
   RefPtr<DrawTarget> drawDT;
-  if (gfxPlatform::GetPlatform()->SupportsAzureContentForDrawTarget(mTarget)) {
+  // Rendering directly is faster and can be done if mTarget supports Azure
+  // and does not need alpha blending.
+  if (gfxPlatform::GetPlatform()->SupportsAzureContentForDrawTarget(mTarget) &&
+      GlobalAlpha() == 1.0f)
+  {
     thebes = new gfxContext(mTarget);
     thebes->SetMatrix(gfxMatrix(matrix._11, matrix._12, matrix._21,
                                 matrix._22, matrix._31, matrix._32));
@@ -3698,7 +3717,7 @@ CanvasRenderingContext2D::DrawWindow(nsGlobalWindow& window, double x,
     mgfx::Rect sourceRect(0, 0, sw, sh);
     mTarget->DrawSurface(source, destRect, sourceRect,
                          DrawSurfaceOptions(mgfx::Filter::POINT),
-                         DrawOptions(1.0f, CompositionOp::OP_OVER,
+                         DrawOptions(GlobalAlpha(), CompositionOp::OP_OVER,
                                      AntialiasMode::NONE));
     mTarget->Flush();
   } else {
