@@ -95,12 +95,9 @@ enum eFontPrefLang {
     eFontPrefLang_Sinhala     = 28,
     eFontPrefLang_Tibetan     = 29,
 
-    eFontPrefLang_LangCount   = 30, // except Others.
-
     eFontPrefLang_Others      = 30, // x-unicode
 
-    eFontPrefLang_CJKSet      = 31, // special code for CJK set
-    eFontPrefLang_AllCount    = 32
+    eFontPrefLang_CJKSet      = 31  // special code for CJK set
 };
 
 enum eCMSMode {
@@ -171,6 +168,9 @@ public:
      * Init() arranges for this to be called at an appropriate time.
      */
     static void Shutdown();
+
+    static void InitLayersIPC();
+    static void ShutdownLayersIPC();
 
     /**
      * Create an offscreen surface of the given dimensions
@@ -462,14 +462,7 @@ public:
 
     static bool OffMainThreadCompositingEnabled();
 
-    /** Use gfxPlatform::GetPref* methods instead of direct calls to Preferences
-     * to get the values for layers preferences.  These will only be evaluated
-     * only once, and remain the same until restart.
-     */
-    static bool GetPrefLayersOffMainThreadCompositionEnabled();
     static bool CanUseDirect3D9();
-
-    static bool OffMainThreadCompositionRequired();
 
     /**
      * Is it possible to use buffer rotation.  Note that these
@@ -577,6 +570,8 @@ public:
 
     virtual bool IsInGonkEmulator() const { return false; }
 
+    static bool UsesOffMainThreadCompositing();
+
 protected:
     gfxPlatform();
     virtual ~gfxPlatform();
@@ -662,8 +657,6 @@ private:
     friend void RecordingPrefChanged(const char *aPrefName, void *aClosure);
 
     virtual void GetPlatformCMSOutputProfile(void *&mem, size_t &size);
-
-    virtual bool SupportsOffMainThreadCompositing() { return true; }
 
     nsRefPtr<gfxASurface> mScreenReferenceSurface;
     mozilla::RefPtr<mozilla::gfx::DrawTarget> mScreenReferenceDrawTarget;

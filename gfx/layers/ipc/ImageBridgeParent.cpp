@@ -42,21 +42,44 @@ namespace layers {
 
 class PGrallocBufferParent;
 
-ImageBridgeParent::ImageBridgeParent(MessageLoop* aLoop, Transport* aTransport)
+std::map<base::ProcessId, ImageBridgeParent*> ImageBridgeParent::sImageBridges;
+
+MessageLoop* ImageBridgeParent::sMainLoop = nullptr;
+
+// defined in CompositorParent.cpp
+CompositorThreadHolder* GetCompositorThreadHolder();
+
+ImageBridgeParent::ImageBridgeParent(MessageLoop* aLoop,
+                                     Transport* aTransport,
+                                     ProcessId aChildProcessId)
   : mMessageLoop(aLoop)
   , mTransport(aTransport)
+  , mChildProcessId(aChildProcessId)
+  , mCompositorThreadHolder(GetCompositorThreadHolder())
 {
+  MOZ_ASSERT(NS_IsMainThread());
+  sMainLoop = MessageLoop::current();
+
+  // top-level actors must be destroyed on the main thread.
+  SetMessageLoopToPostDestructionTo(sMainLoop);
+
   // creates the map only if it has not been created already, so it is safe
   // with several bridges
   CompositableMap::Create();
+  sImageBridges[aChildProcessId] = this;
 }
 
 ImageBridgeParent::~ImageBridgeParent()
 {
+  MOZ_ASSERT(NS_IsMainThread());
+
   if (mTransport) {
+    MOZ_ASSERT(XRE_GetIOMessageLoop());
     XRE_GetIOMessageLoop()->PostTask(FROM_HERE,
                                      new DeleteTask<Transport>(mTransport));
   }
+
+  sImageBridges.erase(mChildProcessId);
 }
 
 LayersBackend
@@ -123,15 +146,15 @@ ConnectImageBridgeInParentProcess(ImageBridgeParent* aBridge,
 }
 
 /*static*/ PImageBridgeParent*
-ImageBridgeParent::Create(Transport* aTransport, ProcessId aOtherProcess)
+ImageBridgeParent::Create(Transport* aTransport, ProcessId aChildProcessId)
 {
   base::ProcessHandle processHandle;
-  if (!base::OpenProcessHandle(aOtherProcess, &processHandle)) {
+  if (!base::OpenProcessHandle(aChildProcessId, &processHandle)) {
     return nullptr;
   }
 
   MessageLoop* loop = CompositorParent::CompositorLoop();
-  nsRefPtr<ImageBridgeParent> bridge = new ImageBridgeParent(loop, aTransport);
+  nsRefPtr<ImageBridgeParent> bridge = new ImageBridgeParent(loop, aTransport, aChildProcessId);
   bridge->mSelfRef = bridge;
   loop->PostTask(FROM_HERE,
                  NewRunnableFunction(ConnectImageBridgeInParentProcess,
@@ -154,10 +177,25 @@ bool ImageBridgeParent::RecvWillStop()
   return true;
 }
 
+static void
+ReleaseImageBridgeParent(ImageBridgeParent* aImageBridgeParent)
+{
+  aImageBridgeParent->Release();
+}
+
 bool ImageBridgeParent::RecvStop()
 {
-  // Nothing to do. This message just serves as synchronization between the
+  // This message just serves as synchronization between the
   // child and parent threads during shutdown.
+
+  // There is one thing that we need to do here: temporarily addref, so that
+  // the handling of this sync message can't race with the destruction of
+  // the ImageBridgeParent, which would trigger the dreaded "mismatched CxxStackFrames"
+  // assertion of MessageChannel.
+  AddRef();
+  MessageLoop::current()->PostTask(
+    FROM_HERE,
+    NewRunnableFunction(&ReleaseImageBridgeParent, this));
   return true;
 }
 
@@ -225,32 +263,11 @@ MessageLoop * ImageBridgeParent::GetMessageLoop() {
   return mMessageLoop;
 }
 
-class ReleaseRunnable : public nsRunnable
-{
-public:
-  ReleaseRunnable(ImageBridgeParent* aRef)
-    : mRef(aRef)
-  {
-  }
-
-  NS_IMETHOD Run()
-  {
-    mRef->Release();
-    return NS_OK;
-  }
-
-private:
-  ImageBridgeParent* mRef;
-};
-
 void
 ImageBridgeParent::DeferredDestroy()
 {
-  ImageBridgeParent* self;
-  mSelfRef.forget(&self);
-
-  nsCOMPtr<nsIRunnable> runnable = new ReleaseRunnable(self);
-  MOZ_ALWAYS_TRUE(NS_SUCCEEDED(NS_DispatchToMainThread(runnable)));
+  mCompositorThreadHolder = nullptr;
+  mSelfRef = nullptr;
 }
 
 IToplevelProtocol*
