@@ -602,11 +602,11 @@ EmbedLiteViewThreadParent::ScheduleRender()
 }
 
 NS_IMETHODIMP
-EmbedLiteViewThreadParent::ReceiveInputEvent(const mozilla::InputData & aEvent)
+EmbedLiteViewThreadParent::ReceiveInputEvent(const mozilla::InputData& aEvent)
 {
   if (mController->GetManager()) {
     ScrollableLayerGuid guid;
-    mController->ReceiveInputEvent(aEvent, &guid);
+    mController->ReceiveInputEvent(const_cast<mozilla::InputData&>(aEvent), &guid);
     if (aEvent.mInputType == MULTITOUCH_INPUT) {
       const MultiTouchInput& multiTouchInput = aEvent.AsMultiTouchInput();
       LayoutDeviceIntPoint lpt;
@@ -793,18 +793,18 @@ EmbedLiteViewThreadParent::GetPendingTexture(EmbedLiteRenderTarget* aContextWrap
   DataSourceSurface* toUpload = nullptr;
   GLuint textureHandle = 0;
   GLuint textureTarget = 0;
-  if (sharedSurf->Type() == SharedSurfaceType::EGLImageShare) {
+  if (sharedSurf->mType == SharedSurfaceType::EGLImageShare) {
     SharedSurface_EGLImage* eglImageSurf = SharedSurface_EGLImage::Cast(sharedSurf);
     eglImageSurf->AcquireConsumerTexture(consumerContext, &textureHandle, &textureTarget);
     if (!textureHandle) {
       NS_WARNING("Failed to get texture handle, fallback to pixels?");
     }
-  } else if (sharedSurf->Type() == SharedSurfaceType::GLTextureShare) {
+  } else if (sharedSurf->mType == SharedSurfaceType::GLTextureShare) {
     SharedSurface_GLTexture* glTexSurf = SharedSurface_GLTexture::Cast(sharedSurf);
     textureHandle = glTexSurf->ConsTexture(consumerContext);
     textureTarget = glTexSurf->ConsTextureTarget();
     NS_ASSERTION(textureHandle, "Failed to get texture handle, fallback to pixels?");
-  } else if (sharedSurf->Type() == SharedSurfaceType::Basic) {
+  } else if (sharedSurf->mType == SharedSurfaceType::Basic) {
     toUpload = SharedSurface_Basic::Cast(sharedSurf)->GetData();
   } else {
     NS_ERROR("Unhandled Image type");
@@ -833,8 +833,8 @@ EmbedLiteViewThreadParent::GetPendingTexture(EmbedLiteRenderTarget* aContextWrap
 
   NS_ASSERTION(textureHandle, "Failed to get texture handle from EGLImage, fallback to pixels?");
 
-  *width = sharedSurf->Size().width;
-  *height = sharedSurf->Size().height;
+  *width = sharedSurf->mSize.width;
+  *height = sharedSurf->mSize.height;
   *textureID = textureHandle;
   if (aTextureTarget) {
     *aTextureTarget = textureTarget;

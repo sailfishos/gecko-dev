@@ -870,8 +870,7 @@ EmbedLiteViewThreadChild::RecvInputDataTouchEvent(const ScrollableLayerGuid& aGu
     }
   }
   if (aData.mType == MultiTouchInput::MULTITOUCH_END ||
-      aData.mType == MultiTouchInput::MULTITOUCH_CANCEL ||
-      aData.mType == MultiTouchInput::MULTITOUCH_LEAVE) {
+      aData.mType == MultiTouchInput::MULTITOUCH_CANCEL) {
     mDispatchSynthMouseEvents = true;
   }
   return true;
