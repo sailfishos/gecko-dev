@@ -93,14 +93,14 @@ EmbedLiteCompositorParent::PrepareOffscreen()
       SurfaceStreamType streamType =
         SurfaceStream::ChooseGLStreamType(SurfaceStream::OffMainThread,
                                           screen->PreserveBuffer());
-      SurfaceFactory_GL* factory = nullptr;
-      if (context->GetContextType() == GLContextType::EGL && sEGLLibrary.HasKHRImageTexture2D()) {
+      SurfaceFactory* factory = nullptr;
+      if (context->GetContextType() == GLContextType::EGL) {
         // [Basic/OGL Layers, OMTC] WebGL layer init.
-        factory = SurfaceFactory_EGLImage::Create(context, screen->Caps());
+        factory = SurfaceFactory_EGLImage::Create(context, screen->mCaps);
       } else {
         // [Basic Layers, OMTC] WebGL layer init.
         // Well, this *should* work...
-        factory = new SurfaceFactory_GLTexture(context, nullptr, screen->Caps());
+        factory = new SurfaceFactory_GLTexture(context, nullptr, screen->mCaps);
       }
       if (factory) {
         screen->Morph(factory, streamType);
