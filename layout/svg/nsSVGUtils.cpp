@@ -372,6 +372,10 @@ nsSVGUtils::GetCanvasTM(nsIFrame *aFrame, uint32_t aFor,
   // XXX yuck, we really need a common interface for GetCanvasTM
 
   if (!aFrame->IsFrameOfType(nsIFrame::eSVG)) {
+    if (aFor == nsISVGChildFrame::FOR_HIT_TESTING &&
+        NS_SVGDisplayListHitTestingEnabled()) {
+      return gfxMatrix();
+    }
     return nsSVGIntegrationUtils::GetCSSPxToDevPxMatrix(aFrame);
   }
 
@@ -535,7 +539,10 @@ nsSVGUtils::PaintFrameWithEffects(nsRenderingContext *aContext,
       if (static_cast<nsSVGContainerFrame*>(aFrame)->
             HasChildrenOnlyTransform(&childrenOnlyTM)) {
         // Undo the children-only transform:
-        tm = ThebesMatrix(childrenOnlyTM).Invert() * tm;
+        if (!childrenOnlyTM.Invert()) {
+          return;
+        }
+        tm = ThebesMatrix(childrenOnlyTM) * tm;
       }
     }
     nsIntRect bounds = TransformFrameRectToOuterSVG(overflowRect,
@@ -1118,8 +1125,7 @@ PathExtentsToMaxStrokeExtents(const gfxRect& aPathExtents,
   double style_expansion =
     aStyleExpansionFactor * nsSVGUtils::GetStrokeWidth(aFrame);
 
-  gfxMatrix matrix = aMatrix;
-  matrix.Multiply(nsSVGUtils::GetStrokeTransform(aFrame));
+  gfxMatrix matrix = aMatrix * nsSVGUtils::GetStrokeTransform(aFrame);
 
   double dx = style_expansion * (fabs(matrix._11) + fabs(matrix._21));
   double dy = style_expansion * (fabs(matrix._22) + fabs(matrix._12));

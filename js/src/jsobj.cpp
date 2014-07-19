@@ -169,6 +169,13 @@ FinishObjectClassInit(JSContext *cx, JS::HandleObject ctor, JS::HandleObject pro
     }
 
     /*
+     * Define self-hosted functions after setting the intrinsics holder
+     * (which is needed to define self-hosted functions)
+     */
+    if (!JS_DefineFunctions(cx, ctor, object_static_selfhosted_methods))
+        return false;
+
+    /*
      * The global object should have |Object.prototype| as its [[Prototype]].
      * Eventually we'd like to have standard classes be there from the start,
      * and thus we would know we were always setting what had previously been a
@@ -1512,6 +1519,17 @@ js::NewObjectWithGivenProto(ExclusiveContext *cxArg, const js::Class *clasp,
     return obj;
 }
 
+static JSProtoKey
+ClassProtoKeyOrAnonymousOrNull(const js::Class *clasp)
+{
+    JSProtoKey key = JSCLASS_CACHED_PROTO_KEY(clasp);
+    if (key != JSProto_Null)
+        return key;
+    if (clasp->flags & JSCLASS_IS_ANONYMOUS)
+        return JSProto_Object;
+    return JSProto_Null;
+}
+
 JSObject *
 js::NewObjectWithClassProtoCommon(ExclusiveContext *cxArg,
                                   const js::Class *clasp, JSObject *protoArg, JSObject *parentArg,
@@ -1535,7 +1553,7 @@ js::NewObjectWithClassProtoCommon(ExclusiveContext *cxArg,
      * stored in an immutable slot on the global (except for ClearScope, which
      * will flush the new object cache).
      */
-    JSProtoKey protoKey = GetClassProtoKey(clasp);
+    JSProtoKey protoKey = ClassProtoKeyOrAnonymousOrNull(clasp);
 
     NewObjectCache::EntryIndex entry = -1;
     if (JSContext *cx = cxArg->maybeJSContext()) {
@@ -3413,7 +3431,7 @@ JS::IdentifyStandardInstance(JSObject *obj)
 {
     // Note: The prototype shares its JSClass with instances.
     JS_ASSERT(!obj->is<CrossCompartmentWrapperObject>());
-    JSProtoKey key = JSCLASS_CACHED_PROTO_KEY(obj->getClass());
+    JSProtoKey key = StandardProtoKeyOrNull(obj);
     if (key != JSProto_Null && !IsStandardPrototype(obj, key))
         return key;
     return JSProto_Null;
@@ -3424,7 +3442,7 @@ JS::IdentifyStandardPrototype(JSObject *obj)
 {
     // Note: The prototype shares its JSClass with instances.
     JS_ASSERT(!obj->is<CrossCompartmentWrapperObject>());
-    JSProtoKey key = JSCLASS_CACHED_PROTO_KEY(obj->getClass());
+    JSProtoKey key = StandardProtoKeyOrNull(obj);
     if (key != JSProto_Null && IsStandardPrototype(obj, key))
         return key;
     return JSProto_Null;
@@ -3433,7 +3451,7 @@ JS::IdentifyStandardPrototype(JSObject *obj)
 JSProtoKey
 JS::IdentifyStandardInstanceOrPrototype(JSObject *obj)
 {
-    return JSCLASS_CACHED_PROTO_KEY(obj->getClass());
+    return StandardProtoKeyOrNull(obj);
 }
 
 JSProtoKey
@@ -3459,7 +3477,7 @@ JS::IdentifyStandardConstructor(JSObject *obj)
 bool
 js::FindClassObject(ExclusiveContext *cx, MutableHandleObject protop, const Class *clasp)
 {
-    JSProtoKey protoKey = GetClassProtoKey(clasp);
+    JSProtoKey protoKey = ClassProtoKeyOrAnonymousOrNull(clasp);
     if (protoKey != JSProto_Null) {
         JS_ASSERT(JSProto_Null < protoKey);
         JS_ASSERT(protoKey < JSProto_LIMIT);
@@ -4625,7 +4643,7 @@ GetPropertyHelperInline(JSContext *cx,
 
             /*
              * Don't warn in self-hosted code (where the further presence of
-             * JS::ContextOptions::werror() would result in impossible-to-avoid
+             * JS::RuntimeOptions::werror() would result in impossible-to-avoid
              * errors to entirely-innocent client code).
              */
             if (script->selfHosted())
@@ -5560,7 +5578,7 @@ bool
 js::FindClassPrototype(ExclusiveContext *cx, MutableHandleObject protop, const Class *clasp)
 {
     protop.set(nullptr);
-    JSProtoKey protoKey = GetClassProtoKey(clasp);
+    JSProtoKey protoKey = ClassProtoKeyOrAnonymousOrNull(clasp);
     if (protoKey != JSProto_Null)
         return GetBuiltinPrototype(cx, protoKey, protop);
 

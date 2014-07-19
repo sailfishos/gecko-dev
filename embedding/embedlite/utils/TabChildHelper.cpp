@@ -418,14 +418,6 @@ TabChildHelper::ConvertMutiTouchInputToEvent(const mozilla::MultiTouchInput& aDa
       msg = NS_TOUCH_END;
       break;
     }
-    case MultiTouchInput::MULTITOUCH_ENTER: {
-      msg = NS_TOUCH_ENTER;
-      break;
-    }
-    case MultiTouchInput::MULTITOUCH_LEAVE: {
-      msg = NS_TOUCH_LEAVE;
-      break;
-    }
     case MultiTouchInput::MULTITOUCH_CANCEL: {
       msg = NS_TOUCH_CANCEL;
       break;

@@ -16,8 +16,10 @@
 #include "nsISimpleEnumerator.h"
 #include "nsISerializable.h"
 #include "nsIClassInfo.h"
-#include "pkix/pkixtypes.h"
+#include "ScopedNSSTypes.h"
 #include "certt.h"
+
+namespace mozilla { namespace pkix { class DERArray; } }
 
 class nsAutoString;
 class nsINSSComponent;
@@ -49,7 +51,7 @@ public:
   static nsNSSCertificate* ConstructFromDER(char* certDER, int derLen);
 
 private:
-  mozilla::pkix::ScopedCERTCertificate mCert;
+  mozilla::ScopedCERTCertificate mCert;
   bool             mPermDelete;
   uint32_t         mCertType;
   nsresult CreateASN1Struct(nsIASN1Object** aRetVal);
@@ -71,12 +73,18 @@ private:
 };
 
 namespace mozilla {
+
 template<>
 struct HasDangerousPublicDestructor<nsNSSCertificate>
 {
   static const bool value = true;
 };
-}
+
+SECStatus ConstructCERTCertListFromReversedDERArray(
+            const mozilla::pkix::DERArray& certArray,
+            /*out*/ mozilla::ScopedCERTCertList& certList);
+
+} // namespcae mozilla
 
 class nsNSSCertList: public nsIX509CertList,
                      public nsNSSShutDownObject
@@ -86,7 +94,7 @@ public:
   NS_DECL_NSIX509CERTLIST
 
   // certList is adopted
-  nsNSSCertList(mozilla::pkix::ScopedCERTCertList& certList,
+  nsNSSCertList(mozilla::ScopedCERTCertList& certList,
                 const nsNSSShutDownPreventionLock& proofOfLock);
 
   nsNSSCertList();
@@ -99,7 +107,7 @@ private:
    virtual void virtualDestroyNSSReference();
    void destructorSafeDestroyNSSReference();
 
-   mozilla::pkix::ScopedCERTCertList mCertList;
+   mozilla::ScopedCERTCertList mCertList;
 
    nsNSSCertList(const nsNSSCertList&) MOZ_DELETE;
    void operator=(const nsNSSCertList&) MOZ_DELETE;
@@ -119,7 +127,7 @@ private:
    virtual void virtualDestroyNSSReference();
    void destructorSafeDestroyNSSReference();
 
-   mozilla::pkix::ScopedCERTCertList mCertList;
+   mozilla::ScopedCERTCertList mCertList;
 
    nsNSSCertListEnumerator(const nsNSSCertListEnumerator&) MOZ_DELETE;
    void operator=(const nsNSSCertListEnumerator&) MOZ_DELETE;

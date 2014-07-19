@@ -10,7 +10,6 @@
 #include "mozilla/MemoryReporting.h"
 
 #include "builtin/RegExp.h"
-#include "builtin/TypedObject.h"
 #include "gc/Zone.h"
 #include "vm/GlobalObject.h"
 #include "vm/PIC.h"
@@ -587,11 +586,10 @@ class AutoCompartment
 class ErrorCopier
 {
     mozilla::Maybe<AutoCompartment> &ac;
-    RootedObject scope;
 
   public:
-    ErrorCopier(mozilla::Maybe<AutoCompartment> &ac, JSObject *scope)
-      : ac(ac), scope(ac.ref().context(), scope) {}
+    explicit ErrorCopier(mozilla::Maybe<AutoCompartment> &ac)
+      : ac(ac) {}
     ~ErrorCopier();
 };
 

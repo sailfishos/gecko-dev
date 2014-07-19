@@ -1756,8 +1756,6 @@ ScriptSource::~ScriptSource()
     if (introducerFilename_ != filename_)
         js_free(introducerFilename_);
     js_free(filename_);
-    js_free(displayURL_);
-    js_free(sourceMapURL_);
     if (originPrincipals_)
         JS_DropPrincipals(TlsPerThreadData.get()->runtimeFromMainThread(), originPrincipals_);
 }
@@ -1858,21 +1856,18 @@ ScriptSource::performXDR(XDRState<mode> *xdr)
         return false;
 
     if (haveSourceMap) {
-        uint32_t sourceMapURLLen = (mode == XDR_DECODE) ? 0 : js_strlen(sourceMapURL_);
+        uint32_t sourceMapURLLen = (mode == XDR_DECODE) ? 0 : js_strlen(sourceMapURL_.get());
         if (!xdr->codeUint32(&sourceMapURLLen))
             return false;
 
         if (mode == XDR_DECODE) {
-            size_t byteLen = (sourceMapURLLen + 1) * sizeof(jschar);
-            sourceMapURL_ = static_cast<jschar *>(xdr->cx()->malloc_(byteLen));
+            sourceMapURL_ = xdr->cx()->template make_pod_array<jschar>(sourceMapURLLen + 1);
             if (!sourceMapURL_)
                 return false;
         }
-        if (!xdr->codeChars(sourceMapURL_, sourceMapURLLen)) {
-            if (mode == XDR_DECODE) {
-                js_free(sourceMapURL_);
+        if (!xdr->codeChars(sourceMapURL_.get(), sourceMapURLLen)) {
+            if (mode == XDR_DECODE)
                 sourceMapURL_ = nullptr;
-            }
             return false;
         }
         sourceMapURL_[sourceMapURLLen] = '\0';
@@ -1883,21 +1878,18 @@ ScriptSource::performXDR(XDRState<mode> *xdr)
         return false;
 
     if (haveDisplayURL) {
-        uint32_t displayURLLen = (mode == XDR_DECODE) ? 0 : js_strlen(displayURL_);
+        uint32_t displayURLLen = (mode == XDR_DECODE) ? 0 : js_strlen(displayURL_.get());
         if (!xdr->codeUint32(&displayURLLen))
             return false;
 
         if (mode == XDR_DECODE) {
-            size_t byteLen = (displayURLLen + 1) * sizeof(jschar);
-            displayURL_ = static_cast<jschar *>(xdr->cx()->malloc_(byteLen));
+            displayURL_ = xdr->cx()->template make_pod_array<jschar>(displayURLLen + 1);
             if (!displayURL_)
                 return false;
         }
-        if (!xdr->codeChars(displayURL_, displayURLLen)) {
-            if (mode == XDR_DECODE) {
-                js_free(displayURL_);
+        if (!xdr->codeChars(displayURL_.get(), displayURLLen)) {
+            if (mode == XDR_DECODE)
                 displayURL_ = nullptr;
-            }
             return false;
         }
         displayURL_[displayURLLen] = '\0';
@@ -2017,17 +2009,9 @@ ScriptSource::setDisplayURL(ExclusiveContext *cx, const jschar *displayURL)
     size_t len = js_strlen(displayURL) + 1;
     if (len == 1)
         return true;
-    displayURL_ = js_strdup(cx, displayURL);
-    if (!displayURL_)
-        return false;
-    return true;
-}
 
-const jschar *
-ScriptSource::displayURL()
-{
-    JS_ASSERT(hasDisplayURL());
-    return displayURL_;
+    displayURL_ = DuplicateString(cx, displayURL);
+    return displayURL_ != nullptr;
 }
 
 bool
@@ -2035,30 +2019,23 @@ ScriptSource::setSourceMapURL(ExclusiveContext *cx, const jschar *sourceMapURL)
 {
     JS_ASSERT(sourceMapURL);
     if (hasSourceMapURL()) {
-        if (cx->isJSContext() &&
-            !JS_ReportErrorFlagsAndNumber(cx->asJSContext(), JSREPORT_WARNING,
-                                          js_GetErrorMessage, nullptr,
-                                          JSMSG_ALREADY_HAS_PRAGMA, filename_,
-                                          "//# sourceMappingURL"))
-        {
-            return false;
+        // Warn about the replacement, but use the new one.
+        if (cx->isJSContext()) {
+            JS_ReportErrorFlagsAndNumber(cx->asJSContext(), JSREPORT_WARNING,
+                                         js_GetErrorMessage, nullptr,
+                                         JSMSG_ALREADY_HAS_PRAGMA, filename_,
+                                         "//# sourceMappingURL");
         }
+
+        sourceMapURL_ = nullptr;
     }
 
     size_t len = js_strlen(sourceMapURL) + 1;
     if (len == 1)
         return true;
-    sourceMapURL_ = js_strdup(cx, sourceMapURL);
-    if (!sourceMapURL_)
-        return false;
-    return true;
-}
 
-const jschar *
-ScriptSource::sourceMapURL()
-{
-    JS_ASSERT(hasSourceMapURL());
-    return sourceMapURL_;
+    sourceMapURL_ = DuplicateString(cx, sourceMapURL);
+    return sourceMapURL_ != nullptr;
 }
 
 size_t

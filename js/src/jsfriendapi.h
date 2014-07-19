@@ -10,6 +10,7 @@
 #include "mozilla/Casting.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/TypedEnum.h"
+#include "mozilla/UniquePtr.h"
 
 #include "jsbytecode.h"
 #include "jspubtd.h"
@@ -410,10 +411,10 @@ class SourceHook {
  * set.
  */
 extern JS_FRIEND_API(void)
-SetSourceHook(JSRuntime *rt, SourceHook *hook);
+SetSourceHook(JSRuntime *rt, mozilla::UniquePtr<SourceHook> hook);
 
 /* Remove |rt|'s source hook, and return it. The caller now owns the hook. */
-extern JS_FRIEND_API(SourceHook *)
+extern JS_FRIEND_API(mozilla::UniquePtr<SourceHook>)
 ForgetSourceHook(JSRuntime *rt);
 
 extern JS_FRIEND_API(JS::Zone *)
@@ -736,12 +737,6 @@ JS_FRIEND_API(JSFunction *)
 NewFunctionByIdWithReserved(JSContext *cx, JSNative native, unsigned nargs, unsigned flags,
                             JSObject *parent, jsid id);
 
-JS_FRIEND_API(JSObject *)
-InitClassWithReserved(JSContext *cx, JSObject *obj, JSObject *parent_proto,
-                      const JSClass *clasp, JSNative constructor, unsigned nargs,
-                      const JSPropertySpec *ps, const JSFunctionSpec *fs,
-                      const JSPropertySpec *static_ps, const JSFunctionSpec *static_fs);
-
 JS_FRIEND_API(const JS::Value &)
 GetFunctionNativeReserved(JSObject *fun, size_t which);
 
@@ -818,6 +813,12 @@ GetStringLength(JSString *s)
     return reinterpret_cast<shadow::String*>(s)->length;
 }
 
+MOZ_ALWAYS_INLINE size_t
+GetFlatStringLength(JSFlatString *s)
+{
+    return reinterpret_cast<shadow::String*>(s)->length;
+}
+
 MOZ_ALWAYS_INLINE bool
 LinearStringHasLatin1Chars(JSLinearString *s)
 {
@@ -866,6 +867,12 @@ AtomToLinearString(JSAtom *atom)
     return reinterpret_cast<JSLinearString *>(atom);
 }
 
+MOZ_ALWAYS_INLINE JSLinearString *
+FlatStringToLinearString(JSFlatString *s)
+{
+    return reinterpret_cast<JSLinearString *>(s);
+}
+
 MOZ_ALWAYS_INLINE const JS::Latin1Char *
 GetLatin1AtomChars(const JS::AutoCheckCannotGC &nogc, JSAtom *atom)
 {
@@ -891,6 +898,20 @@ StringToLinearString(JSContext *cx, JSString *str)
     return reinterpret_cast<JSLinearString *>(str);
 }
 
+MOZ_ALWAYS_INLINE void
+CopyLinearStringChars(jschar *dest, JSLinearString *s, size_t len)
+{
+    JS::AutoCheckCannotGC nogc;
+    if (LinearStringHasLatin1Chars(s)) {
+        const JS::Latin1Char *src = GetLatin1LinearStringChars(nogc, s);
+        for (size_t i = 0; i < len; i++)
+            dest[i] = src[i];
+    } else {
+        const jschar *src = GetTwoByteLinearStringChars(nogc, s);
+        mozilla::PodCopy(dest, src, len);
+    }
+}
+
 inline bool
 CopyStringChars(JSContext *cx, jschar *dest, JSString *s, size_t len)
 {
@@ -898,17 +919,14 @@ CopyStringChars(JSContext *cx, jschar *dest, JSString *s, size_t len)
     if (!linear)
         return false;
 
-    JS::AutoCheckCannotGC nogc;
-    if (LinearStringHasLatin1Chars(linear)) {
-        const JS::Latin1Char *src = GetLatin1LinearStringChars(nogc, linear);
-        for (size_t i = 0; i < len; i++)
-            dest[i] = src[i];
-    } else {
-        const jschar *src = GetTwoByteLinearStringChars(nogc, linear);
-        mozilla::PodCopy(dest, src, len);
-    }
-
+    CopyLinearStringChars(dest, linear, len);
     return true;
+}
+
+inline void
+CopyFlatStringChars(jschar *dest, JSFlatString *s, size_t len)
+{
+    CopyLinearStringChars(dest, FlatStringToLinearString(s), len);
 }
 
 JS_FRIEND_API(bool)
@@ -1241,41 +1259,53 @@ ErrorReportToString(JSContext *cx, JSErrorReport *reportp);
 extern JS_FRIEND_API(uint64_t)
 js_GetSCOffset(JSStructuredCloneWriter* writer);
 
-/* Typed Array functions, implemented in jstypedarray.cpp */
-
 namespace js {
-namespace ArrayBufferView {
+namespace Scalar {
 
-enum ViewType {
-    TYPE_INT8 = 0,
-    TYPE_UINT8,
-    TYPE_INT16,
-    TYPE_UINT16,
-    TYPE_INT32,
-    TYPE_UINT32,
-    TYPE_FLOAT32,
-    TYPE_FLOAT64,
+/* Scalar types which can appear in typed arrays and typed objects. */
+enum Type {
+    Int8 = 0,
+    Uint8,
+    Int16,
+    Uint16,
+    Int32,
+    Uint32,
+    Float32,
+    Float64,
 
     /*
      * Special type that is a uint8_t, but assignments are clamped to [0, 256).
      * Treat the raw data type as a uint8_t.
      */
-    TYPE_UINT8_CLAMPED,
+    Uint8Clamped,
 
-    /*
-     * Type returned for a DataView. Note that there is no single element type
-     * in this case.
-     */
-    TYPE_DATAVIEW,
-
-    TYPE_MAX
+    TypeMax
 };
 
-} /* namespace ArrayBufferView */
+static inline size_t
+byteSize(Type atype)
+{
+    switch (atype) {
+      case Int8:
+      case Uint8:
+      case Uint8Clamped:
+        return 1;
+      case Int16:
+      case Uint16:
+        return 2;
+      case Int32:
+      case Uint32:
+      case Float32:
+        return 4;
+      case Float64:
+        return 8;
+      default:
+        MOZ_ASSUME_UNREACHABLE("invalid type");
+    }
+}
 
+} /* namespace Scalar */
 } /* namespace js */
-
-typedef js::ArrayBufferView::ViewType JSArrayBufferViewType;
 
 /*
  * Create a new typed array with nelements elements.
@@ -1528,13 +1558,13 @@ extern JS_FRIEND_API(JSObject *)
 JS_GetObjectAsArrayBuffer(JSObject *obj, uint32_t *length, uint8_t **data);
 
 /*
- * Get the type of elements in a typed array, or TYPE_DATAVIEW if a DataView.
+ * Get the type of elements in a typed array, or TypeMax if a DataView.
  *
  * |obj| must have passed a JS_IsArrayBufferView/JS_Is*Array test, or somehow
  * be known that it would pass such a test: it is an ArrayBufferView or a
  * wrapper of an ArrayBufferView, and the unwrapping will succeed.
  */
-extern JS_FRIEND_API(JSArrayBufferViewType)
+extern JS_FRIEND_API(js::Scalar::Type)
 JS_GetArrayBufferViewType(JSObject *obj);
 
 /*

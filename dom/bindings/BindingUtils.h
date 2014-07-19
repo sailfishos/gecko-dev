@@ -1701,6 +1701,9 @@ GetInterface(JSContext* aCx, T* aThis, nsIJSID* aIID,
 }
 
 bool
+UnforgeableValueOf(JSContext* cx, unsigned argc, JS::Value* vp);
+
+bool
 ThrowingConstructor(JSContext* cx, unsigned argc, JS::Value* vp);
 
 bool
@@ -2385,14 +2388,11 @@ MustInheritFromNonRefcountedDOMObject(NonRefcountedDOMObject*)
  * wrapper is the Xray JS object.
  * obj is the target object of the Xray, a binding's instance object or a
  *     interface or interface prototype object.
- * pre is a string that should be prefixed to the value.
- * post is a string that should be prefixed to the value.
  * v contains the JSString for the value if the function returns true.
  */
 bool
 NativeToString(JSContext* cx, JS::Handle<JSObject*> wrapper,
-               JS::Handle<JSObject*> obj, const char* pre,
-               const char* post,
+               JS::Handle<JSObject*> obj,
                JS::MutableHandle<JS::Value> v);
 
 HAS_MEMBER(JSBindingFinalized)

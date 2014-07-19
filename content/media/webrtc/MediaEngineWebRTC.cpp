@@ -63,6 +63,9 @@ MediaEngineWebRTC::MediaEngineWebRTC(MediaEnginePrefs &aPrefs)
 #endif
   // XXX
   gFarendObserver = new AudioOutputObserver();
+
+  NS_NewNamedThread("AudioGUM", getter_AddRefs(mThread));
+  MOZ_ASSERT(mThread);
 }
 
 void
@@ -264,7 +267,14 @@ MediaEngineWebRTC::EnumerateAudioDevices(nsTArray<nsRefPtr<MediaEngineAudioSourc
 
   int nDevices = 0;
   ptrVoEHw->GetNumOfRecordingDevices(nDevices);
-  for (int i = 0; i < nDevices; i++) {
+  int i;
+#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_GONK)
+  i = 0; // Bug 1037025 - let the OS handle defaulting for now on android/b2g
+#else
+  // -1 is "default communications device" depending on OS in webrtc.org code
+  i = -1;
+#endif
+  for (; i < nDevices; i++) {
     // We use constants here because GetRecordingDeviceName takes char[128].
     char deviceName[128];
     char uniqueId[128];
@@ -292,7 +302,7 @@ MediaEngineWebRTC::EnumerateAudioDevices(nsTArray<nsRefPtr<MediaEngineAudioSourc
       aASources->AppendElement(aSource.get());
     } else {
       aSource = new MediaEngineWebRTCAudioSource(
-        mVoiceEngine, i, deviceName, uniqueId
+        mThread, mVoiceEngine, i, deviceName, uniqueId
       );
       mAudioSources.Put(uuid, aSource); // Hashtable takes ownership.
       aASources->AppendElement(aSource);
@@ -321,6 +331,11 @@ MediaEngineWebRTC::Shutdown()
 
   mVideoEngine = nullptr;
   mVoiceEngine = nullptr;
+
+  if (mThread) {
+    mThread->Shutdown();
+    mThread = nullptr;
+  }
 }
 
 }

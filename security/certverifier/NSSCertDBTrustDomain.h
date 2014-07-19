@@ -35,7 +35,7 @@ void UnloadLoadableRoots(const char* modNameUTF8);
 // Caller must free the result with PR_Free
 char* DefaultServerNicknameForCert(CERTCertificate* cert);
 
-void SaveIntermediateCerts(const mozilla::pkix::ScopedCERTCertList& certList);
+void SaveIntermediateCerts(const ScopedCERTCertList& certList);
 
 class NSSCertDBTrustDomain : public mozilla::pkix::TrustDomain
 {
@@ -51,19 +51,18 @@ public:
   NSSCertDBTrustDomain(SECTrustType certDBTrustType, OCSPFetching ocspFetching,
                        OCSPCache& ocspCache, void* pinArg,
                        CertVerifier::ocsp_get_config ocspGETConfig,
-                       CERTChainVerifyCallback* checkChainCallback = nullptr);
+          /*optional*/ CERTChainVerifyCallback* checkChainCallback = nullptr,
+          /*optional*/ ScopedCERTCertList* builtChain = nullptr);
 
-  virtual SECStatus FindPotentialIssuers(
-                        const SECItem* encodedIssuerName,
-                        PRTime time,
-                /*out*/ mozilla::pkix::ScopedCERTCertList& results);
+  virtual SECStatus FindIssuer(const SECItem& encodedIssuerName,
+                               IssuerChecker& checker, PRTime time);
 
   virtual SECStatus GetCertTrust(mozilla::pkix::EndEntityOrCA endEntityOrCA,
                                  const mozilla::pkix::CertPolicyId& policy,
                                  const SECItem& candidateCertDER,
                          /*out*/ mozilla::pkix::TrustLevel* trustLevel);
 
-  virtual SECStatus VerifySignedData(const CERTSignedData* signedData,
+  virtual SECStatus VerifySignedData(const CERTSignedData& signedData,
                                      const SECItem& subjectPublicKeyInfo);
 
   virtual SECStatus CheckRevocation(mozilla::pkix::EndEntityOrCA endEntityOrCA,
@@ -72,7 +71,7 @@ public:
                        /*optional*/ const SECItem* stapledOCSPResponse,
                        /*optional*/ const SECItem* aiaExtension);
 
-  virtual SECStatus IsChainValid(const CERTCertList* certChain);
+  virtual SECStatus IsChainValid(const mozilla::pkix::DERArray& certChain);
 
 private:
   enum EncodedResponseSource {
@@ -91,6 +90,7 @@ private:
   void* mPinArg; // non-owning!
   const CertVerifier::ocsp_get_config mOCSPGetConfig;
   CERTChainVerifyCallback* mCheckChainCallback; // non-owning!
+  ScopedCERTCertList* mBuiltChain; // non-owning
 };
 
 } } // namespace mozilla::psm

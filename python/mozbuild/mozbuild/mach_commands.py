@@ -423,14 +423,19 @@ class Build(MachCommandBase):
         # Only for full builds because incremental builders likely don't
         # need to be burdened with this.
         if not what:
-            # Fennec doesn't have useful output from just building. We should
-            # arguably make the build action useful for Fennec. Another day...
-            if self.substs['MOZ_BUILD_APP'] != 'mobile/android':
-                print('To take your build for a test drive, run: |mach run|')
-            app = self.substs['MOZ_BUILD_APP']
-            if app in ('browser', 'mobile/android'):
-                print('For more information on what to do now, see '
-                    'https://developer.mozilla.org/docs/Developer_Guide/So_You_Just_Built_Firefox')
+            try:
+                # Fennec doesn't have useful output from just building. We should
+                # arguably make the build action useful for Fennec. Another day...
+                if self.substs['MOZ_BUILD_APP'] != 'mobile/android':
+                    print('To take your build for a test drive, run: |mach run|')
+                app = self.substs['MOZ_BUILD_APP']
+                if app in ('browser', 'mobile/android'):
+                    print('For more information on what to do now, see '
+                        'https://developer.mozilla.org/docs/Developer_Guide/So_You_Just_Built_Firefox')
+            except Exception:
+                # Ignore Exceptions in case we can't find config.status (such
+                # as when doing OSX Universal builds)
+                pass
 
         return status
 
@@ -1008,24 +1013,25 @@ class MachDebug(MachCommandBase):
             # Replace ' with '"'"', so that shell quoting e.g.
             # a'b becomes 'a'"'"'b'.
             quote = lambda s: s.replace("'", """'"'"'""")
-            print('echo Adding configure options from %s' %
-                mozpath.normsep(self.mozconfig['path']), file=out)
-            if self.mozconfig['configure_args']:
+            if self.mozconfig['configure_args'] and \
+                    'COMM_BUILD' not in os.environ:
+                print('echo Adding configure options from %s' %
+                    mozpath.normsep(self.mozconfig['path']), file=out)
                 for arg in self.mozconfig['configure_args']:
                     quoted_arg = quote(arg)
                     print("echo '  %s'" % quoted_arg, file=out)
                     print("""set -- "$@" '%s'""" % quoted_arg, file=out)
-                for key, value in self.mozconfig['env']['added'].items():
-                    print("export %s='%s'" % (key, quote(value)), file=out)
-                for key, (old, value) in self.mozconfig['env']['modified'].items():
-                    print("export %s='%s'" % (key, quote(value)), file=out)
-                for key, value in self.mozconfig['vars']['added'].items():
-                    print("%s='%s'" % (key, quote(value)), file=out)
-                for key, (old, value) in self.mozconfig['vars']['modified'].items():
-                    print("%s='%s'" % (key, quote(value)), file=out)
-                for key in self.mozconfig['env']['removed'].keys() + \
-                        self.mozconfig['vars']['removed'].keys():
-                    print("unset %s" % key, file=out)
+            for key, value in self.mozconfig['env']['added'].items():
+                print("export %s='%s'" % (key, quote(value)), file=out)
+            for key, (old, value) in self.mozconfig['env']['modified'].items():
+                print("export %s='%s'" % (key, quote(value)), file=out)
+            for key, value in self.mozconfig['vars']['added'].items():
+                print("%s='%s'" % (key, quote(value)), file=out)
+            for key, (old, value) in self.mozconfig['vars']['modified'].items():
+                print("%s='%s'" % (key, quote(value)), file=out)
+            for key in self.mozconfig['env']['removed'].keys() + \
+                    self.mozconfig['vars']['removed'].keys():
+                print("unset %s" % key, file=out)
 
     def _environment_json(self, out, verbose):
         import json

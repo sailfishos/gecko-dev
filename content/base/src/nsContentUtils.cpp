@@ -34,6 +34,7 @@
 #include "mozilla/AutoRestore.h"
 #include "mozilla/Base64.h"
 #include "mozilla/DebugOnly.h"
+#include "mozilla/LoadInfo.h"
 #include "mozilla/dom/DocumentFragment.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/HTMLMediaElement.h"
@@ -765,15 +766,71 @@ nsContentUtils::IsAutocompleteEnabled(nsIDOMHTMLInputElement* aInput)
 
 nsContentUtils::AutocompleteAttrState
 nsContentUtils::SerializeAutocompleteAttribute(const nsAttrValue* aAttr,
-                                           nsAString& aResult)
+                                               nsAString& aResult,
+                                               AutocompleteAttrState aCachedState)
 {
-  AutocompleteAttrState state = InternalSerializeAutocompleteAttribute(aAttr, aResult);
-  if (state == eAutocompleteAttrState_Valid) {
-    ASCIIToLower(aResult);
-  } else {
-    aResult.Truncate();
+  if (!aAttr ||
+      aCachedState == nsContentUtils::eAutocompleteAttrState_Invalid) {
+    return aCachedState;
   }
+
+  if (aCachedState == nsContentUtils::eAutocompleteAttrState_Valid) {
+    uint32_t atomCount = aAttr->GetAtomCount();
+    for (uint32_t i = 0; i < atomCount; i++) {
+      if (i != 0) {
+        aResult.Append(' ');
+      }
+      aResult.Append(nsDependentAtomString(aAttr->AtomAt(i)));
+    }
+    nsContentUtils::ASCIIToLower(aResult);
+    return aCachedState;
+  }
+
+  aResult.Truncate();
+
+  mozilla::dom::AutocompleteInfo info;
+  AutocompleteAttrState state =
+    InternalSerializeAutocompleteAttribute(aAttr, info);
+  if (state == eAutocompleteAttrState_Valid) {
+    // Concatenate the info fields.
+    aResult = info.mSection;
+
+    if (!info.mAddressType.IsEmpty()) {
+      if (!aResult.IsEmpty()) {
+        aResult += ' ';
+      }
+      aResult += info.mAddressType;
+    }
+
+    if (!info.mContactType.IsEmpty()) {
+      if (!aResult.IsEmpty()) {
+        aResult += ' ';
+      }
+      aResult += info.mContactType;
+    }
+
+    if (!info.mFieldName.IsEmpty()) {
+      if (!aResult.IsEmpty()) {
+        aResult += ' ';
+      }
+      aResult += info.mFieldName;
+    }
+  }
+
   return state;
+}
+
+nsContentUtils::AutocompleteAttrState
+nsContentUtils::SerializeAutocompleteAttribute(const nsAttrValue* aAttr,
+                                               mozilla::dom::AutocompleteInfo& aInfo,
+                                               AutocompleteAttrState aCachedState)
+{
+  if (!aAttr ||
+      aCachedState == nsContentUtils::eAutocompleteAttrState_Invalid) {
+    return aCachedState;
+  }
+
+  return InternalSerializeAutocompleteAttribute(aAttr, aInfo);
 }
 
 /**
@@ -783,7 +840,7 @@ nsContentUtils::SerializeAutocompleteAttribute(const nsAttrValue* aAttr,
  */
 nsContentUtils::AutocompleteAttrState
 nsContentUtils::InternalSerializeAutocompleteAttribute(const nsAttrValue* aAttrVal,
-                                                   nsAString& aResult)
+                                                       mozilla::dom::AutocompleteInfo& aInfo)
 {
   // No sandbox attribute so we are done
   if (!aAttrVal) {
@@ -800,6 +857,7 @@ nsContentUtils::InternalSerializeAutocompleteAttribute(const nsAttrValue* aAttrV
   AutocompleteCategory category;
   nsAttrValue enumValue;
 
+  nsAutoString str;
   bool result = enumValue.ParseEnumValue(tokenString, kAutocompleteFieldNameTable, false);
   if (result) {
     // Off/Automatic/Normal categories.
@@ -808,7 +866,9 @@ nsContentUtils::InternalSerializeAutocompleteAttribute(const nsAttrValue* aAttrV
       if (numTokens > 1) {
         return eAutocompleteAttrState_Invalid;
       }
-      enumValue.ToString(aResult);
+      enumValue.ToString(str);
+      ASCIIToLower(str);
+      aInfo.mFieldName.Assign(str);
       return eAutocompleteAttrState_Valid;
     }
 
@@ -836,7 +896,9 @@ nsContentUtils::InternalSerializeAutocompleteAttribute(const nsAttrValue* aAttrV
     category = eAutocompleteCategory_CONTACT;
   }
 
-  enumValue.ToString(aResult);
+  enumValue.ToString(str);
+  ASCIIToLower(str);
+  aInfo.mFieldName.Assign(str);
 
   // We are done if this was the only token.
   if (numTokens == 1) {
@@ -850,10 +912,10 @@ nsContentUtils::InternalSerializeAutocompleteAttribute(const nsAttrValue* aAttrV
     nsAttrValue contactFieldHint;
     result = contactFieldHint.ParseEnumValue(tokenString, kAutocompleteContactFieldHintTable, false);
     if (result) {
-      aResult.Insert(' ', 0);
       nsAutoString contactFieldHintString;
       contactFieldHint.ToString(contactFieldHintString);
-      aResult.Insert(contactFieldHintString, 0);
+      ASCIIToLower(contactFieldHintString);
+      aInfo.mContactType.Assign(contactFieldHintString);
       if (index == 0) {
         return eAutocompleteAttrState_Valid;
       }
@@ -865,15 +927,20 @@ nsContentUtils::InternalSerializeAutocompleteAttribute(const nsAttrValue* aAttrV
   // Check for billing/shipping tokens
   nsAttrValue fieldHint;
   if (fieldHint.ParseEnumValue(tokenString, kAutocompleteFieldHintTable, false)) {
-    aResult.Insert(' ', 0);
     nsString fieldHintString;
     fieldHint.ToString(fieldHintString);
-    aResult.Insert(fieldHintString, 0);
+    ASCIIToLower(fieldHintString);
+    aInfo.mAddressType.Assign(fieldHintString);
     if (index == 0) {
       return eAutocompleteAttrState_Valid;
     }
     --index;
   }
+
+  // Clear the fields as the autocomplete attribute is invalid.
+  aInfo.mAddressType.Truncate();
+  aInfo.mContactType.Truncate();
+  aInfo.mFieldName.Truncate();
 
   return eAutocompleteAttrState_Invalid;
 }
@@ -6358,11 +6425,9 @@ nsContentUtils::FindInternalContentViewer(const char* aType,
 }
 
 bool
-nsContentUtils::GetContentSecurityPolicy(JSContext* aCx,
-                                         nsIContentSecurityPolicy** aCSP)
+nsContentUtils::GetContentSecurityPolicy(nsIContentSecurityPolicy** aCSP)
 {
   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
-  MOZ_ASSERT(aCx == GetCurrentJSContext());
 
   nsCOMPtr<nsIContentSecurityPolicy> csp;
   nsresult rv = SubjectPrincipal()->GetCsp(getter_AddRefs(csp));
@@ -6429,15 +6494,25 @@ bool
 nsContentUtils::SetUpChannelOwner(nsIPrincipal* aLoadingPrincipal,
                                   nsIChannel* aChannel,
                                   nsIURI* aURI,
-                                  bool aSetUpForAboutBlank,
-                                  bool aForceOwner)
+                                  bool aInheritForAboutBlank,
+                                  bool aIsSandboxed,
+                                  bool aForceInherit)
 {
+  if (!aLoadingPrincipal) {
+    // Nothing to do here
+    MOZ_ASSERT(!aIsSandboxed);
+    return false;
+  }
+
+  // If we're sandboxed, make sure to clear any owner the channel
+  // might already have.
+  if (aIsSandboxed) {
+    aChannel->SetOwner(nullptr);
+  }
+
+  // Set the loadInfo of the channel, but only tell the channel to
+  // inherit if it can't provide its own security context.
   //
-  // Set the owner of the channel, but only for channels that can't
-  // provide their own security context.
-  //
-  // XXX: It seems wrong that the owner is ignored - even if one is
-  //      supplied) unless the URI is javascript or data or about:blank.
   // XXX: If this is ever changed, check all callers for what owners
   //      they're passing in.  In particular, see the code and
   //      comments in nsDocShell::LoadURI where we fall back on
@@ -6445,57 +6520,40 @@ nsContentUtils::SetUpChannelOwner(nsIPrincipal* aLoadingPrincipal,
   //      very wrong if this code changed anything but channels that
   //      can't provide their own security context!
   //
-  //      (Currently chrome URIs set the owner when they are created!
-  //      So setting a nullptr owner would be bad!)
-  //
-  // If aForceOwner is true, the owner will be set, even for a channel that
-  // can provide its own security context. This is used for the HTML5 IFRAME
-  // sandbox attribute, so we can force the channel (and its document) to
-  // explicitly have a null principal.
-  bool inherit;
-  // We expect URIInheritsSecurityContext to return success for an
-  // about:blank URI, so don't call NS_IsAboutBlank() if this call fails.
-  // This condition needs to match the one in nsDocShell::InternalLoad where
-  // we're checking for things that will use the owner.
-  if (aForceOwner || ((NS_SUCCEEDED(URIInheritsSecurityContext(aURI, &inherit)) &&
-      (inherit || (aSetUpForAboutBlank && NS_IsAboutBlank(aURI)))))) {
-#ifdef DEBUG
-    // Assert that aForceOwner is only set for null principals for non-srcdoc
-    // loads.  (Strictly speaking not all uses of about:srcdoc would be 
-    // srcdoc loads, but the URI is non-resolvable in cases where it is not).
-    if (aForceOwner) {
-      nsAutoCString uriStr;
-      aURI->GetSpec(uriStr);
-      if(!uriStr.EqualsLiteral("about:srcdoc") &&
-         !uriStr.EqualsLiteral("view-source:about:srcdoc")) {
-        nsCOMPtr<nsIURI> ownerURI;
-        nsresult rv = aLoadingPrincipal->GetURI(getter_AddRefs(ownerURI));
-        MOZ_ASSERT(NS_SUCCEEDED(rv) && SchemeIs(ownerURI, NS_NULLPRINCIPAL_SCHEME));
-      }
-    }
-#endif
-    aChannel->SetOwner(aLoadingPrincipal);
-    return true;
+  // If aForceInherit is true, we will inherit, even for a channel that
+  // can provide its own security context. This is used for srcdoc loads.
+  bool inherit = aForceInherit;
+  if (!inherit) {
+    bool uriInherits;
+    // We expect URIInheritsSecurityContext to return success for an
+    // about:blank URI, so don't call NS_IsAboutBlank() if this call fails.
+    // This condition needs to match the one in nsDocShell::InternalLoad where
+    // we're checking for things that will use the owner.
+    inherit =
+      (NS_SUCCEEDED(URIInheritsSecurityContext(aURI, &uriInherits)) &&
+       (uriInherits || (aInheritForAboutBlank && NS_IsAboutBlank(aURI)))) ||
+      //
+      // file: uri special-casing
+      //
+      // If this is a file: load opened from another file: then it may need
+      // to inherit the owner from the referrer so they can script each other.
+      // If we don't set the owner explicitly then each file: gets an owner
+      // based on its own codebase later.
+      //
+      (URIIsLocalFile(aURI) &&
+       NS_SUCCEEDED(aLoadingPrincipal->CheckMayLoad(aURI, false, false)) &&
+       // One more check here.  CheckMayLoad will always return true for the
+       // system principal, but we do NOT want to inherit in that case.
+       !IsSystemPrincipal(aLoadingPrincipal));
   }
 
-  //
-  // file: uri special-casing
-  //
-  // If this is a file: load opened from another file: then it may need
-  // to inherit the owner from the referrer so they can script each other.
-  // If we don't set the owner explicitly then each file: gets an owner
-  // based on its own codebase later.
-  //
-  if (URIIsLocalFile(aURI) && aLoadingPrincipal &&
-      NS_SUCCEEDED(aLoadingPrincipal->CheckMayLoad(aURI, false, false)) &&
-      // One more check here.  CheckMayLoad will always return true for the
-      // system principal, but we do NOT want to inherit in that case.
-      !IsSystemPrincipal(aLoadingPrincipal)) {
-    aChannel->SetOwner(aLoadingPrincipal);
-    return true;
-  }
-
-  return false;
+  nsCOMPtr<nsILoadInfo> loadInfo =
+    new LoadInfo(aLoadingPrincipal,
+                 inherit ?
+                   LoadInfo::eInheritPrincipal : LoadInfo::eDontInheritPrincipal,
+                 aIsSandboxed ? LoadInfo::eSandboxed : LoadInfo::eNotSandboxed);
+  aChannel->SetLoadInfo(loadInfo);
+  return inherit && !aIsSandboxed;
 }
 
 /* static */
@@ -6804,6 +6862,47 @@ nsContentUtils::IsContentInsertionPoint(const nsIContent* aContent)
   }
 
   return false;
+}
+
+// static
+bool
+nsContentUtils::IsForbiddenRequestHeader(const nsACString& aHeader)
+{
+  if (IsForbiddenSystemRequestHeader(aHeader)) {
+    return true;
+  }
+
+  return StringBeginsWith(aHeader, NS_LITERAL_CSTRING("proxy-"),
+                          nsCaseInsensitiveCStringComparator()) ||
+         StringBeginsWith(aHeader, NS_LITERAL_CSTRING("sec-"),
+                          nsCaseInsensitiveCStringComparator());
+}
+
+// static
+bool
+nsContentUtils::IsForbiddenSystemRequestHeader(const nsACString& aHeader)
+{
+  static const char *kInvalidHeaders[] = {
+    "accept-charset", "accept-encoding", "access-control-request-headers",
+    "access-control-request-method", "connection", "content-length",
+    "cookie", "cookie2", "content-transfer-encoding", "date", "dnt",
+    "expect", "host", "keep-alive", "origin", "referer", "te", "trailer",
+    "transfer-encoding", "upgrade", "user-agent", "via"
+  };
+  for (uint32_t i = 0; i < ArrayLength(kInvalidHeaders); ++i) {
+    if (aHeader.LowerCaseEqualsASCII(kInvalidHeaders[i])) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// static
+bool
+nsContentUtils::IsForbiddenResponseHeader(const nsACString& aHeader)
+{
+  return (aHeader.LowerCaseEqualsASCII("set-cookie") ||
+          aHeader.LowerCaseEqualsASCII("set-cookie2"));
 }
 
 bool

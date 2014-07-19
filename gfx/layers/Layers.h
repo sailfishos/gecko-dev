@@ -59,11 +59,11 @@ class WebGLContext;
 
 namespace gl {
 class GLContext;
+class SurfaceStream;
 }
 
 namespace gfx {
 class DrawTarget;
-class SurfaceStream;
 }
 
 namespace css {
@@ -213,6 +213,7 @@ public:
    * and is used for drawing into the widget.
    */
   virtual bool IsWidgetLayerManager() { return true; }
+  virtual bool IsInactiveLayerManager() { return false; }
 
   /**
    * Start a new transaction. Nested transactions are not allowed so
@@ -571,7 +572,9 @@ public:
     char line[1024];
     while (!ss.eof()) {
       ss.getline(line, sizeof(line));
-      printf_stderr("%s", line);
+      if (!ss.eof() || strlen(line) > 0) {
+        printf_stderr("%s\n", line);
+      }
       if (ss.fail()) {
         // line was too long, skip to next newline
         ss.clear();
@@ -1743,7 +1746,7 @@ public:
   float GetPreYScale() const { return mPreYScale; }
   float GetInheritedXScale() const { return mInheritedXScale; }
   float GetInheritedYScale() const { return mInheritedYScale; }
-  
+
   gfxRGBA GetBackgroundColor() const { return mBackgroundColor; }
 
   MOZ_LAYER_DECL_NAME("ContainerLayer", TYPE_CONTAINER)
@@ -1927,7 +1930,7 @@ public:
     mozilla::gl::GLContext* mGLContext; // or this, for GL.
 
     // Canvas/SkiaGL uses this
-    mozilla::gfx::SurfaceStream* mStream;
+    mozilla::gl::SurfaceStream* mStream;
 
     // ID of the texture backing the canvas layer (defaults to 0)
     uint32_t mTexID;
@@ -2176,7 +2179,6 @@ protected:
   uint64_t mId;
 };
 
-void SetAntialiasingFlags(Layer* aLayer, gfxContext* aTarget);
 void SetAntialiasingFlags(Layer* aLayer, gfx::DrawTarget* aTarget);
 
 #ifdef MOZ_DUMP_PAINTING

@@ -52,9 +52,12 @@ DeviceToImageTransform(gfxContext* aContext,
     nsRefPtr<gfxASurface> currentTarget =
         aContext->CurrentSurface(&deviceX, &deviceY);
     gfxMatrix currentMatrix = aContext->CurrentMatrix();
-    gfxMatrix deviceToUser = gfxMatrix(currentMatrix).Invert();
+    gfxMatrix deviceToUser = currentMatrix;
+    if (!deviceToUser.Invert()) {
+        return gfxMatrix(0, 0, 0, 0, 0, 0); // singular
+    }
     deviceToUser.Translate(-gfxPoint(-deviceX, -deviceY));
-    return gfxMatrix(deviceToUser).Multiply(aUserSpaceToImageSpace);
+    return deviceToUser * aUserSpaceToImageSpace;
 }
 
 static void
@@ -130,14 +133,8 @@ gfxSurfaceDrawable::Draw(gfxContext* aContext,
 {
     nsRefPtr<gfxPattern> pattern;
     if (mDrawTarget) {
-      if (aContext->IsCairo()) {
-        nsRefPtr<gfxASurface> source =
-          gfxPlatform::GetPlatform()->GetThebesSurfaceForDrawTarget(mDrawTarget);
-        pattern = new gfxPattern(source);
-      } else {
-        RefPtr<SourceSurface> source = mDrawTarget->Snapshot();
-        pattern = new gfxPattern(source, Matrix());
-      }
+      RefPtr<SourceSurface> source = mDrawTarget->Snapshot();
+      pattern = new gfxPattern(source, Matrix());
     } else if (mSourceSurface) {
       pattern = new gfxPattern(mSourceSurface, Matrix());
     } else {
@@ -162,7 +159,7 @@ gfxSurfaceDrawable::Draw(gfxContext* aContext,
         PreparePatternForUntiledDrawing(pattern, deviceSpaceToImageSpace,
                                         currentTarget, filter);
     }
-    pattern->SetMatrix(gfxMatrix(aTransform).Multiply(mTransform));
+    pattern->SetMatrix(aTransform * mTransform);
     aContext->NewPath();
     aContext->SetPattern(pattern);
     aContext->Rectangle(aFillRect);
@@ -300,7 +297,7 @@ gfxPatternDrawable::Draw(gfxContext* aContext,
 
     aContext->NewPath();
     gfxMatrix oldMatrix = mPattern->GetMatrix();
-    mPattern->SetMatrix(gfxMatrix(aTransform).Multiply(oldMatrix));
+    mPattern->SetMatrix(aTransform * oldMatrix);
     aContext->SetPattern(mPattern);
     aContext->Rectangle(aFillRect);
     aContext->Fill();

@@ -764,6 +764,11 @@ TabChild::Observe(nsISupports *aSubject,
 
         mContentDocumentIsDisplayed = true;
 
+        // Reset CSS viewport and zoom to default on new page, then
+        // calculate them properly using the actual metadata from the
+        // page.
+        SetCSSViewport(kDefaultViewportSize);
+
         // In some cases before-first-paint gets called before
         // RecvUpdateDimensions is called and therefore before we have an
         // mInnerSize value set. In such cases defer initializing the viewport
@@ -2833,6 +2838,10 @@ TabChild::RecvUIResolutionChanged()
 
 TabChildGlobal::TabChildGlobal(TabChildBase* aTabChild)
 : mTabChild(aTabChild)
+{
+}
+
+TabChildGlobal::~TabChildGlobal()
 {
 }
 

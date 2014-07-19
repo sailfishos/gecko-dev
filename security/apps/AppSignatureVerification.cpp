@@ -26,7 +26,6 @@
 #include "nsProxyRelease.h"
 #include "nsString.h"
 #include "nsTHashtable.h"
-#include "ScopedNSSTypes.h"
 
 #include "base64.h"
 #include "certdb.h"
@@ -525,7 +524,7 @@ ParseMF(const char* filebuf, nsIZipReader * zip,
 
 struct VerifyCertificateContext {
   AppTrustedRoot trustedRoot;
-  mozilla::pkix::ScopedCERTCertList& builtChain;
+  ScopedCERTCertList& builtChain;
 };
 
 nsresult
@@ -538,16 +537,16 @@ VerifyCertificate(CERTCertificate* signerCert, void* voidContext, void* pinArg)
   const VerifyCertificateContext& context =
     *reinterpret_cast<const VerifyCertificateContext*>(voidContext);
 
-  AppTrustDomain trustDomain(pinArg);
+  AppTrustDomain trustDomain(context.builtChain, pinArg);
   if (trustDomain.SetTrustedRoot(context.trustedRoot) != SECSuccess) {
     return MapSECStatus(SECFailure);
   }
-  if (BuildCertChain(trustDomain, signerCert, PR_Now(),
+  if (BuildCertChain(trustDomain, signerCert->derCert, PR_Now(),
                      EndEntityOrCA::MustBeEndEntity,
                      KeyUsage::digitalSignature,
                      KeyPurposeId::id_kp_codeSigning,
                      CertPolicyId::anyPolicy,
-                     nullptr, context.builtChain) != SECSuccess) {
+                     nullptr/*stapledOCSPResponse*/) != SECSuccess) {
     return MapSECStatus(SECFailure);
   }
 
@@ -557,7 +556,7 @@ VerifyCertificate(CERTCertificate* signerCert, void* voidContext, void* pinArg)
 nsresult
 VerifySignature(AppTrustedRoot trustedRoot, const SECItem& buffer,
                 const SECItem& detachedDigest,
-                /*out*/ mozilla::pkix::ScopedCERTCertList& builtChain)
+                /*out*/ ScopedCERTCertList& builtChain)
 {
   VerifyCertificateContext context = { trustedRoot, builtChain };
   // XXX: missing pinArg
@@ -610,7 +609,7 @@ OpenSignedAppFile(AppTrustedRoot aTrustedRoot, nsIFile* aJarFile,
   }
 
   sigBuffer.type = siBuffer;
-  mozilla::pkix::ScopedCERTCertList builtChain;
+  ScopedCERTCertList builtChain;
   rv = VerifySignature(aTrustedRoot, sigBuffer, sfCalculatedDigest.get(),
                        builtChain);
   if (NS_FAILED(rv)) {
@@ -724,8 +723,7 @@ OpenSignedAppFile(AppTrustedRoot aTrustedRoot, nsIFile* aJarFile,
   }
 
   // Return the signer's certificate to the reader if they want it.
-  // XXX: We should return an nsIX509CertList with the whole validated chain,
-  //      but we can't do that until we switch to libpkix.
+  // XXX: We should return an nsIX509CertList with the whole validated chain.
   if (aSignerCert) {
     MOZ_ASSERT(CERT_LIST_HEAD(builtChain));
     nsCOMPtr<nsIX509Cert> signerCert =
