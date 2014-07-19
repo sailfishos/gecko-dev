@@ -193,7 +193,7 @@ ParseContext<FullParseHandler>::define(TokenStream &ts,
         break;
 
       default:
-        MOZ_ASSUME_UNREACHABLE("unexpected kind");
+        MOZ_CRASH("unexpected kind");
     }
 
     return true;
@@ -289,7 +289,7 @@ AppendPackedBindings(const ParseContext<ParseHandler> *pc, const DeclVector &vec
             kind = Binding::ARGUMENT;
             break;
           default:
-            MOZ_ASSUME_UNREACHABLE("unexpected dn->kind");
+            MOZ_CRASH("unexpected dn->kind");
         }
 
         /*
@@ -1166,7 +1166,7 @@ Parser<FullParseHandler>::makeDefIntoUse(Definition *dn, ParseNode *pn, JSAtom *
     }
 
     /*
-     * If dn is arg, or in [var, const, let] and has an initializer, then we
+     * If dn is in [var, const, let] and has an initializer, then we
      * must rewrite it to be an assignment node, whose freshly allocated
      * left-hand side becomes a use of pn.
      */
@@ -1753,8 +1753,22 @@ Parser<FullParseHandler>::checkFunctionDefinition(HandlePropertyName funName,
              * the function's binding (which is mutable), so turn any existing
              * declaration into a use.
              */
-            if (bodyLevel && !makeDefIntoUse(dn, pn, funName))
-                return false;
+            if (bodyLevel) {
+                if (dn->kind() == Definition::ARG) {
+                    // The exception to the above comment is when the function
+                    // has the same name as an argument. Then the argument node
+                    // remains a definition. But change the function node pn so
+                    // that it knows where the argument is located.
+                    pn->setOp(JSOP_GETARG);
+                    pn->setDefn(true);
+                    pn->pn_cookie = dn->pn_cookie;
+                    pn->pn_dflags |= PND_BOUND;
+                    dn->markAsAssigned();
+                } else {
+                    if (!makeDefIntoUse(dn, pn, funName))
+                        return false;
+                }
+            }
         } else if (bodyLevel) {
             /*
              * If this function was used before it was defined, claim the
@@ -4389,7 +4403,7 @@ Parser<FullParseHandler>::forStatement()
             break;
 
           case PNK_ASSIGN:
-            MOZ_ASSUME_UNREACHABLE("forStatement TOK_ASSIGN");
+            MOZ_CRASH("forStatement TOK_ASSIGN");
 
           case PNK_ARRAY:
           case PNK_OBJECT:
@@ -4951,7 +4965,7 @@ Parser<ParseHandler>::yieldExpression()
       }
     }
 
-    MOZ_ASSUME_UNREACHABLE("yieldExpr");
+    MOZ_CRASH("yieldExpr");
 }
 
 template <>
@@ -5855,7 +5869,6 @@ Parser<ParseHandler>::unaryExpr()
         }
         return pn;
     }
-    MOZ_ASSUME_UNREACHABLE("unaryExpr");
 }
 
 /*
@@ -7350,7 +7363,7 @@ Parser<ParseHandler>::objectLiteral()
         else if (op == JSOP_INITPROP_SETTER)
             assignType = SET;
         else
-            MOZ_ASSUME_UNREACHABLE("bad opcode in object initializer");
+            MOZ_CRASH("bad opcode in object initializer");
 
         AtomIndexAddPtr p = seen.lookupForAdd(atom);
         if (p) {

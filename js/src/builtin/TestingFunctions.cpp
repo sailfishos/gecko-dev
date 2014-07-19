@@ -291,7 +291,9 @@ static const struct ParamPair {
     {"gcBytes",             JSGC_BYTES},
     {"gcNumber",            JSGC_NUMBER},
     {"sliceTimeBudget",     JSGC_SLICE_TIME_BUDGET},
-    {"markStackLimit",      JSGC_MARK_STACK_LIMIT}
+    {"markStackLimit",      JSGC_MARK_STACK_LIMIT},
+    {"minEmptyChunkCount",  JSGC_MIN_EMPTY_CHUNK_COUNT},
+    {"maxEmptyChunkCount",  JSGC_MAX_EMPTY_CHUNK_COUNT}
 };
 
 // Keep this in sync with above params.
@@ -588,7 +590,7 @@ GCState(JSContext *cx, unsigned argc, jsval *vp)
     else if (globalState == gc::SWEEP)
         state = "sweep";
     else
-        MOZ_ASSUME_UNREACHABLE("Unobserveable global GC state");
+        MOZ_CRASH("Unobserveable global GC state");
 
     JSString *str = JS_NewStringCopyZ(cx, state);
     if (!str)
@@ -1888,6 +1890,47 @@ FindPath(JSContext *cx, unsigned argc, jsval *vp)
     return true;
 }
 
+static bool
+EvalReturningScope(JSContext *cx, unsigned argc, jsval *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+
+    RootedString str(cx);
+    if (!JS_ConvertArguments(cx, args, "S", str.address()))
+        return false;
+
+    AutoStableStringChars strChars(cx);
+    if (!strChars.initTwoByte(cx, str))
+        return false;
+
+    mozilla::Range<const jschar> chars = strChars.twoByteRange();
+    size_t srclen = chars.length();
+    const jschar *src = chars.start().get();
+
+    JS::AutoFilename filename;
+    unsigned lineno;
+
+    DescribeScriptedCaller(cx, &filename, &lineno);
+
+    JS::CompileOptions options(cx);
+    options.setFileAndLine(filename.get(), lineno);
+    options.setNoScriptRval(true);
+    options.setCompileAndGo(false);
+
+    JS::SourceBufferHolder srcBuf(src, srclen, JS::SourceBufferHolder::NoOwnership);
+    RootedScript script(cx);
+    if (!JS::Compile(cx, JS::NullPtr(), options, srcBuf, &script))
+        return false;
+
+    RootedObject global(cx, JS::CurrentGlobalOrNull(cx));
+    RootedObject scope(cx);
+    if (!js::ExecuteInGlobalAndReturnScope(cx, global, script, &scope))
+        return false;
+
+    args.rval().setObject(*scope);
+    return true;
+}
+
 static const JSFunctionSpecWithHelp TestingFunctions[] = {
     JS_FN_HELP("gc", ::GC, 0, 0,
 "gc([obj] | 'compartment')",
@@ -2186,6 +2229,10 @@ static const JSFunctionSpecWithHelp TestingFunctions[] = {
 "dumpObject()",
 "  Dump an internal representation of an object."),
 #endif
+
+    JS_FN_HELP("evalReturningScope", EvalReturningScope, 1, 0,
+"evalReturningScope(scriptStr)",
+"  Evaluate the script in a new scope and return the scope."),
 
     JS_FS_HELP_END
 };

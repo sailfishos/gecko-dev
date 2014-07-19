@@ -79,7 +79,8 @@ struct DOMPointInit;
 } // namespace dom
 } // namespace mozilla
 
-#define NODE_FLAG_BIT(n_) (1U << (WRAPPER_CACHE_FLAGS_BITS_USED + (n_)))
+#define NODE_FLAG_BIT(n_) \
+  (nsWrapperCache::FlagsType(1U) << (WRAPPER_CACHE_FLAGS_BITS_USED + (n_)))
 
 enum {
   // This bit will be set if the node has a listener manager.
@@ -396,6 +397,12 @@ public:
   virtual bool IsNodeOfType(uint32_t aFlags) const = 0;
 
   virtual JSObject* WrapObject(JSContext *aCx) MOZ_OVERRIDE;
+
+  /**
+   * returns true if we are in priviliged code or
+   * layout.css.getBoxQuads.enabled == true.
+   */
+  static bool HasBoxQuadsSupport(JSContext* aCx, JSObject* /* unused */);
 
 protected:
   /**

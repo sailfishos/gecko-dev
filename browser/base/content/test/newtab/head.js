@@ -24,8 +24,8 @@ let isLinux = ("@mozilla.org/gnome-gconf-service;1" in Cc);
 let isWindows = ("@mozilla.org/windows-registry-key;1" in Cc);
 let gWindow = window;
 
-// Default to empty directory links
-let gDirectorySource = "data:application/json,{}";
+// Default to dummy/empty directory links
+let gDirectorySource = 'data:application/json,{"test":1}';
 
 // The tests assume all three rows of sites are shown, but the window may be too
 // short to actually show three rows.  Resize it if necessary.
@@ -516,13 +516,13 @@ function synthesizeNativeMouseLUp(aElement) {
 }
 
 /**
- * Fires a synthetic mouse vertical drag event on the current about:newtab page.
+ * Fires a synthetic mouse drag event on the current about:newtab page.
  * @param aElement The element used to determine the cursor position.
- * @param aOffsetY The top offset that is added to the position.
+ * @param aOffsetX The left offset that is added to the position.
  */
-function synthesizeNativeMouseDrag(aElement, aOffsetY) {
+function synthesizeNativeMouseDrag(aElement, aOffsetX) {
   let msg = isMac ? 6 : 1;
-  synthesizeNativeMouseEvent(aElement, msg, 0, aOffsetY);
+  synthesizeNativeMouseEvent(aElement, msg, aOffsetX);
 }
 
 /**

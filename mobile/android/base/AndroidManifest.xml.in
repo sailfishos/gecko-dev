@@ -9,7 +9,7 @@
       android:sharedUserId="@MOZ_ANDROID_SHARED_ID@"
 #endif
       >
-    <uses-sdk android:minSdkVersion="8"
+    <uses-sdk android:minSdkVersion="9"
               android:targetSdkVersion="@ANDROID_TARGET_SDK@"/>
 
 #include ../services/manifests/AnnouncementsAndroidManifest_permissions.xml.in
@@ -106,7 +106,13 @@
                   android:configChanges="keyboard|keyboardHidden|mcc|mnc|orientation|screenSize|locale|layoutDirection"
                   android:windowSoftInputMode="stateUnspecified|adjustResize"
                   android:launchMode="singleTask"
+                  android:exported="true"
                   android:theme="@style/Gecko.App">
+          <!-- We export this activity so that it can be launched by explicit
+               intents, in particular homescreen shortcuts.  See Bug 1032217.
+               In future we would prefer to move all intent filters off the .App
+               alias and onto BrowserApp so that we can deprecate activities
+               that refer to pre-processed class names. -->
         </activity>
 
         <!-- Fennec is shipped as the Android package named
@@ -135,6 +141,13 @@
 
             <intent-filter>
                 <action android:name="org.mozilla.gecko.ACTION_ALERT_CALLBACK" />
+            </intent-filter>
+
+            <!-- Notification API V2 -->
+            <intent-filter>
+                <action android:name="@ANDROID_PACKAGE_NAME@.helperBroadcastAction" />
+                <data android:scheme="moz-notification" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
 
             <intent-filter>
@@ -248,10 +261,16 @@
                   android:taskAffinity="org.mozilla.gecko.WEBAPP"
                   android:process=":@ANDROID_PACKAGE_NAME@.Webapp"
                   android:excludeFromRecents="true"
+                  android:exported="true"
                   android:theme="@style/Gecko.App">
+          <!-- We export this activity so that it can be launched by explicit
+               intents, in particular old-style WebApp launching homescreen
+               shortcuts. Such shortcuts were made before the new "synthetic
+               APK" WebApps were deployed. See Bug 1032217. -->
         </activity>
 
-        <!-- Alias Webapp so we can launch it from the package namespace. -->
+        <!-- Alias Webapp so we can launch it from the package namespace. Prefer
+             to launch with the fully qualified name "org.mozilla.gecko.Webapp". -->
         <activity-alias android:name=".Webapp"
                         android:label="@string/webapp_generic_name"
                         android:targetActivity="org.mozilla.gecko.Webapp">
@@ -390,6 +409,10 @@
                   android:authorities="@ANDROID_PACKAGE_NAME@.db.readinglist"
                   android:permission="@ANDROID_PACKAGE_NAME@.permissions.BROWSER_PROVIDER"/>
 
+        <provider android:name="org.mozilla.gecko.db.SearchHistoryProvider"
+                  android:authorities="@ANDROID_PACKAGE_NAME@.db.searchhistory"
+                  android:permission="@ANDROID_PACKAGE_NAME@.permissions.BROWSER_PROVIDER"/>
+
         <service
             android:exported="false"
             android:name="org.mozilla.gecko.updater.UpdateService"
@@ -408,6 +431,9 @@
 #include ../services/manifests/SyncAndroidManifest_services.xml.in
 #ifdef MOZ_ANDROID_SEARCH_ACTIVITY
 #include ../search/manifests/SearchAndroidManifest_services.xml.in
+#endif
+#ifdef MOZ_ANDROID_MLS_STUMBLER
+#include ../stumbler/manifests/StumblerManifest_services.xml.in
 #endif
 
     </application>

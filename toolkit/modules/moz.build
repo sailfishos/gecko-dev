@@ -38,8 +38,6 @@ EXTRA_JS_MODULES += [
     'Promise-backend.js',
     'Promise.jsm',
     'PropertyListUtils.jsm',
-    'RemoteAddonsChild.jsm',
-    'RemoteAddonsParent.jsm',
     'RemoteController.jsm',
     'RemoteFinder.jsm',
     'RemoteSecurityUI.jsm',
@@ -62,6 +60,7 @@ EXTRA_JS_MODULES += [
 
 EXTRA_PP_JS_MODULES += [
     'CertUtils.jsm',
+    'GMPInstallManager.jsm',
     'ResetProfile.jsm',
     'Services.jsm',
     'Troubleshoot.jsm',

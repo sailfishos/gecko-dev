@@ -117,6 +117,7 @@ XPCOMUtils.defineLazyModuleGetter(this, "CharsetMenu",
   ["FeedHandler", ["Feeds:Subscribe"], "chrome://browser/content/FeedHandler.js"],
   ["Feedback", ["Feedback:Show"], "chrome://browser/content/Feedback.js"],
   ["SelectionHandler", ["TextSelection:Get"], "chrome://browser/content/SelectionHandler.js"],
+  ["Notifications", ["Notification:Event"], "chrome://browser/content/Notifications.jsm"],
 ].forEach(function (aScript) {
   let [name, notifications, script] = aScript;
   XPCOMUtils.defineLazyGetter(window, name, function() {
@@ -1020,9 +1021,6 @@ var BrowserApp = {
     evt.initUIEvent("TabClose", true, false, window, tabIndex);
     aTab.browser.dispatchEvent(evt);
 
-    aTab.destroy();
-    this._tabs.splice(tabIndex, 1);
-
     if (aShowUndoToast) {
       // Get a title for the undo close toast. Fall back to the URL if there is no title.
       let ss = Cc["@mozilla.org/browser/sessionstore;1"].getService(Ci.nsISessionStore);
@@ -1043,11 +1041,14 @@ var BrowserApp = {
           label: Strings.browser.GetStringFromName("undoCloseToast.action2"),
           callback: function() {
             UITelemetry.addEvent("undo.1", "toast", null, "closetab");
-            ss.undoCloseTab(window, 0);
+            ss.undoCloseTab(window, closedTabData);
           }
         }
       });
     }
+
+    aTab.destroy();
+    this._tabs.splice(tabIndex, 1);
   },
 
   // Use this method to select a tab from JS. This method sends a message
@@ -1523,8 +1524,8 @@ var BrowserApp = {
         let url = data.url;
         let flags;
 
-        if (!data.engine && /^[0-9]+$/.test(url)) {
-          // If the query is a number and we're not using a search engine,
+        if (!data.engine && /^\w+$/.test(url.trim())) {
+          // If the query is a single word and we're not using a search engine,
           // force a search (see bug 993705; workaround for bug 693808).
           url = URIFixup.keywordToURI(url).spec;
         } else {
@@ -1595,6 +1596,7 @@ var BrowserApp = {
           type: "Search:Keyword",
           identifier: engine.identifier,
           name: engine.name,
+          query: aData
         });
         break;
 
@@ -3165,6 +3167,7 @@ Tab.prototype = {
     this.browser.addEventListener("DOMFormHasPassword", this, true);
     this.browser.addEventListener("DOMLinkAdded", this, true);
     this.browser.addEventListener("DOMLinkChanged", this, true);
+    this.browser.addEventListener("DOMMetaAdded", this, false);
     this.browser.addEventListener("DOMTitleChanged", this, true);
     this.browser.addEventListener("DOMWindowClose", this, true);
     this.browser.addEventListener("DOMWillOpenModalDialog", this, true);
@@ -3338,6 +3341,7 @@ Tab.prototype = {
     this.browser.removeEventListener("DOMFormHasPassword", this, true);
     this.browser.removeEventListener("DOMLinkAdded", this, true);
     this.browser.removeEventListener("DOMLinkChanged", this, true);
+    this.browser.removeEventListener("DOMMetaAdded", this, false);
     this.browser.removeEventListener("DOMTitleChanged", this, true);
     this.browser.removeEventListener("DOMWindowClose", this, true);
     this.browser.removeEventListener("DOMWillOpenModalDialog", this, true);
@@ -3681,6 +3685,25 @@ Tab.prototype = {
     }
   },
 
+  // These constants are used to prioritize high quality metadata over low quality data, so that
+  // we can collect data as we find meta tags, and replace low quality metadata with higher quality
+  // matches. For instance a msApplicationTile icon is a better tile image than an og:image tag.
+  METADATA_GOOD_MATCH: 10,
+  METADATA_NORMAL_MATCH: 1,
+
+  addMetadata: function(type, value, quality = 1) {
+    if (!this.metatags) {
+      this.metatags = {
+        url: this.browser.currentURI.spec
+      };
+    }
+
+    if (!this.metatags[type] || this.metatags[type + "_quality"] < quality) {
+      this.metatags[type] = value;
+      this.metatags[type + "_quality"] = quality;
+    }
+  },
+
   handleEvent: function(aEvent) {
     switch (aEvent.type) {
       case "DOMContentLoaded": {
@@ -3715,8 +3738,11 @@ Tab.prototype = {
           type: "DOMContentLoaded",
           tabID: this.id,
           bgColor: backgroundColor,
-          errorType: errorType
+          errorType: errorType,
+          metadata: this.metatags
         });
+
+        this.metatags = null;
 
         // Attach a listener to watch for "click" events bubbling up from error
         // pages and other similar page. This lets us fix bugs like 401575 which
@@ -3750,6 +3776,21 @@ Tab.prototype = {
         LoginManagerContent.onFormPassword(aEvent);
         break;
       }
+
+      case "DOMMetaAdded":
+        let target = aEvent.originalTarget;
+        let browser = BrowserApp.getBrowserForDocument(target.ownerDocument);
+
+        switch (target.name) {
+          case "msapplication-TileImage":
+            this.addMetadata("tileImage", browser.currentURI.resolve(target.content), this.METADATA_GOOD_MATCH);
+            break;
+          case "msapplication-TileColor":
+            this.addMetadata("tileColor", target.content, this.METADATA_GOOD_MATCH);
+            break;
+        }
+
+        break;
 
       case "DOMLinkAdded":
       case "DOMLinkChanged": {
@@ -4837,6 +4878,11 @@ var BrowserEventHandler = {
   },
 
   onDoubleTap: function(aData) {
+    let metadata = BrowserApp.selectedTab.metadata;
+    if (!metadata.allowDoubleTapZoom) {
+      return;
+    }
+
     let data = JSON.parse(aData);
     let element = ElementTouchHelper.anyElementFromPoint(data.x, data.y);
 
@@ -6834,7 +6880,7 @@ var SearchEngines = {
     };
     SelectionHandler.addAction({
       id: "search_add_action",
-      label: Strings.browser.GetStringFromName("contextmenu.addSearchEngine"),
+      label: Strings.browser.GetStringFromName("contextmenu.addSearchEngine2"),
       icon: "drawable://ab_add_search_engine",
       selector: filter,
       action: function(aElement) {
@@ -7039,7 +7085,7 @@ var SearchEngines = {
     }
 
     // prompt user for name of search engine
-    let promptTitle = Strings.browser.GetStringFromName("contextmenu.addSearchEngine");
+    let promptTitle = Strings.browser.GetStringFromName("contextmenu.addSearchEngine2");
     let title = { value: (aElement.ownerDocument.title || docURI.host) };
     if (!Services.prompt.prompt(null, promptTitle, null, title, null, {}))
       return;

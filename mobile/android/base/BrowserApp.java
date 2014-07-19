@@ -25,6 +25,7 @@ import org.mozilla.gecko.animation.PropertyAnimator;
 import org.mozilla.gecko.animation.ViewHelper;
 import org.mozilla.gecko.db.BrowserContract.Combined;
 import org.mozilla.gecko.db.BrowserContract.ReadingListItems;
+import org.mozilla.gecko.db.BrowserContract.SearchHistory;
 import org.mozilla.gecko.db.BrowserDB;
 import org.mozilla.gecko.db.SuggestedSites;
 import org.mozilla.gecko.distribution.Distribution;
@@ -473,9 +474,7 @@ public class BrowserApp extends GeckoApp
         ((GeckoApplication) getApplication()).prepareLightweightTheme();
         super.onCreate(savedInstanceState);
 
-        // Init suggested sites engine in BrowserDB.
-        final SuggestedSites suggestedSites = new SuggestedSites(getApplicationContext());
-        BrowserDB.setSuggestedSites(suggestedSites);
+        final Context appContext = getApplicationContext();
 
         mViewFlipper = (ViewFlipper) findViewById(R.id.browser_actionbar);
         mActionBar = (ActionModeCompatView) findViewById(R.id.actionbar);
@@ -529,6 +528,7 @@ public class BrowserApp extends GeckoApp
             "Menu:Update",
             "Reader:Added",
             "Reader:FaviconRequest",
+            "Search:Keyword",
             "Prompt:ShowTop",
             "Accounts:Exist");
 
@@ -548,7 +548,11 @@ public class BrowserApp extends GeckoApp
             "Telemetry:Gather",
             "Updater:Launch");
 
-        Distribution.init(this);
+        Distribution distribution = Distribution.init(this);
+
+        // Init suggested sites engine in BrowserDB.
+        final SuggestedSites suggestedSites = new SuggestedSites(appContext, distribution);
+        BrowserDB.setSuggestedSites(suggestedSites);
 
         // Shipping Native casting is optional and dependent on whether you've downloaded the support
         // and google play libraries
@@ -563,9 +567,9 @@ public class BrowserApp extends GeckoApp
             }
         }
 
-        JavaAddonManager.getInstance().init(getApplicationContext());
-        mSharedPreferencesHelper = new SharedPreferencesHelper(getApplicationContext());
-        mOrderedBroadcastHelper = new OrderedBroadcastHelper(getApplicationContext());
+        JavaAddonManager.getInstance().init(appContext);
+        mSharedPreferencesHelper = new SharedPreferencesHelper(appContext);
+        mOrderedBroadcastHelper = new OrderedBroadcastHelper(appContext);
         mBrowserHealthReporter = new BrowserHealthReporter();
 
         if (AppConstants.MOZ_ANDROID_BEAM && Build.VERSION.SDK_INT >= 14) {
@@ -936,6 +940,7 @@ public class BrowserApp extends GeckoApp
             "Menu:Update",
             "Reader:Added",
             "Reader:FaviconRequest",
+            "Search:Keyword",
             "Prompt:ShowTop",
             "Accounts:Exist");
 
@@ -1310,6 +1315,12 @@ public class BrowserApp extends GeckoApp
             GeckoPreferences.setResourceToOpen(settingsIntent, resource);
             startActivityForResult(settingsIntent, ACTIVITY_REQUEST_PREFERENCES);
 
+            // Don't use a transition to settings if we're on a device where that
+            // would look bad.
+            if (HardwareUtils.IS_KINDLE_DEVICE) {
+                overridePendingTransition(0, 0);
+            }
+
         } else if ("Telemetry:Gather".equals(event)) {
             Telemetry.HistogramAdd("PLACES_PAGES_COUNT",
                     BrowserDB.getCount(getContentResolver(), "history"));
@@ -1377,6 +1388,8 @@ public class BrowserApp extends GeckoApp
             } else if (event.equals("Reader:FaviconRequest")) {
                 final String url = message.getString("url");
                 handleReaderFaviconRequest(url);
+            } else if (event.equals("Search:Keyword")) {
+                storeSearchQuery(message.getString("query"));
             } else if (event.equals("Prompt:ShowTop")) {
                 // Bring this activity to front so the prompt is visible..
                 Intent bringToFrontIntent = new Intent();
@@ -1604,6 +1617,9 @@ public class BrowserApp extends GeckoApp
         int flags = Tabs.LOADURL_NONE;
         if (newTab) {
             flags |= Tabs.LOADURL_NEW_TAB;
+            if (Tabs.getInstance().getSelectedTab().isPrivate()) {
+                flags |= Tabs.LOADURL_PRIVATE;
+            }
         }
 
         Tabs.getInstance().loadUrl(url, searchEngine, -1, flags);
@@ -1795,6 +1811,27 @@ public class BrowserApp extends GeckoApp
         } catch (Exception e) {
             Log.w(LOGTAG, "Error recording search.", e);
         }
+    }
+
+    /**
+     * Store search query in SearchHistoryProvider.
+     *
+     * @param query
+     *        a search query to store. We won't store empty queries.
+     */
+    private void storeSearchQuery(String query) {
+        if (TextUtils.isEmpty(query)) {
+            return;
+        }
+
+        final ContentValues values = new ContentValues();
+        values.put(SearchHistory.QUERY, query);
+        ThreadUtils.postToBackgroundThread(new Runnable() {
+            @Override
+            public void run() {
+                getContentResolver().insert(SearchHistory.CONTENT_URI, values);
+            }
+        });
     }
 
     void filterEditingMode(String searchTerm, AutocompleteHandler handler) {
@@ -2840,6 +2877,7 @@ public class BrowserApp extends GeckoApp
     @Override
     public void onSearch(SearchEngine engine, String text) {
         recordSearch(engine, "barsuggest");
+        storeSearchQuery(text);
         openUrlAndStopEditing(text, engine.name);
     }
 

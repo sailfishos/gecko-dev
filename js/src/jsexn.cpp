@@ -579,30 +579,8 @@ ErrorObject::createConstructor(JSContext *cx, JSProtoKey key)
     return ctor;
 }
 
-const JSErrorFormatString*
-js_GetLocalizedErrorMessage(ExclusiveContext *cx, void *userRef, const char *locale,
-                            const unsigned errorNumber)
-{
-    const JSErrorFormatString *errorString = nullptr;
-
-    // The locale callbacks might not be thread safe, so don't call them if
-    // we're not on the main thread. When used with XPConnect,
-    // |localeGetErrorMessage| will be nullptr anyways.
-    if (cx->isJSContext() &&
-        cx->asJSContext()->runtime()->localeCallbacks &&
-        cx->asJSContext()->runtime()->localeCallbacks->localeGetErrorMessage)
-    {
-        JSLocaleCallbacks *callbacks = cx->asJSContext()->runtime()->localeCallbacks;
-        errorString = callbacks->localeGetErrorMessage(userRef, locale, errorNumber);
-    }
-
-    if (!errorString)
-        errorString = js_GetErrorMessage(userRef, locale, errorNumber);
-    return errorString;
-}
-
-JS_FRIEND_API(const jschar*)
-js::GetErrorTypeName(JSRuntime* rt, int16_t exnType)
+JS_FRIEND_API(JSFlatString *)
+js::GetErrorTypeName(JSRuntime *rt, int16_t exnType)
 {
     /*
      * JSEXN_INTERNALERR returns null to prevent that "InternalError: "
@@ -614,7 +592,7 @@ js::GetErrorTypeName(JSRuntime* rt, int16_t exnType)
         return nullptr;
     }
     JSProtoKey key = GetExceptionProtoKey(JSExnType(exnType));
-    return ClassName(key, rt)->chars();
+    return ClassName(key, rt);
 }
 
 bool
@@ -628,11 +606,9 @@ js_ErrorToException(JSContext *cx, const char *message, JSErrorReport *reportp,
 
     // Find the exception index associated with this error.
     JSErrNum errorNumber = static_cast<JSErrNum>(reportp->errorNumber);
-    const JSErrorFormatString *errorString;
-    if (!callback || callback == js_GetErrorMessage)
-        errorString = js_GetLocalizedErrorMessage(cx, nullptr, nullptr, errorNumber);
-    else
-        errorString = callback(userRef, nullptr, errorNumber);
+    if (!callback)
+        callback = js_GetErrorMessage;
+    const JSErrorFormatString *errorString = callback(userRef, errorNumber);
     JSExnType exnType = errorString ? static_cast<JSExnType>(errorString->exnType) : JSEXN_NONE;
     MOZ_ASSERT(exnType < JSEXN_LIMIT);
 
@@ -770,6 +746,7 @@ js_ReportUncaughtException(JSContext *cx)
     // value is "".
     const char *filename_str = "filename";
     JSAutoByteString filename;
+    AutoStableStringChars strChars(cx);
     if (!reportp && exnObject && IsDuckTypedErrorObject(cx, exnObject, &filename_str))
     {
         // Temporary value for pulling properties off of duck-typed objects.
@@ -840,8 +817,8 @@ js_ReportUncaughtException(JSContext *cx)
             // done for duck-typed error objects.
             //
             // If only this stuff could get specced one day...
-            if (JSFlatString *flat = str->ensureFlat(cx))
-                report.ucmessage = flat->chars();
+            if (str->ensureFlat(cx) && strChars.initTwoByte(cx, str))
+                report.ucmessage = strChars.twoByteChars();
         }
     }
 

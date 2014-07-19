@@ -207,11 +207,6 @@ var shell = {
     }, "network-connection-state-changed", false);
   },
 
-  get contentBrowser() {
-    delete this.contentBrowser;
-    return this.contentBrowser = document.getElementById('systemapp');
-  },
-
   get homeURL() {
     try {
       let homeSrc = Services.env.get('B2G_HOMESCREEN');
@@ -311,7 +306,7 @@ var shell = {
       container.removeChild(hotfix);
     }
 #endif
-    container.appendChild(systemAppFrame);
+    this.contentBrowser = container.appendChild(systemAppFrame);
 
     systemAppFrame.contentWindow
                   .QueryInterface(Ci.nsIInterfaceRequestor)
@@ -1229,7 +1224,7 @@ window.addEventListener('ContentStart', function update_onContentStart() {
   // We must set the size in KB, and keep a bit of free space.
   let size = Math.floor(stats.totalBytes / 1024) - 1024;
   Services.prefs.setIntPref("browser.cache.disk.capacity", size);
-}) ()
+})();
 #endif
 
 // Calling this observer will cause a shutdown an a profile reset.

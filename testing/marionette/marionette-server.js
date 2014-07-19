@@ -23,6 +23,9 @@ loader.loadSubScript("chrome://marionette/content/EventUtils.js", utils);
 loader.loadSubScript("chrome://marionette/content/ChromeUtils.js", utils);
 loader.loadSubScript("chrome://marionette/content/atoms.js", utils);
 
+// SpecialPowers requires insecure automation-only features that we put behind a pref.
+Services.prefs.setBoolPref('security.turn_off_all_security_so_that_viruses_can_take_over_this_computer',
+                           true);
 let specialpowers = {};
 loader.loadSubScript("chrome://specialpowers/content/SpecialPowersObserver.js",
                      specialpowers);
@@ -1879,6 +1882,29 @@ MarionetteServerConnection.prototype = {
     }
   },
 
+  getElementRect: function MDA_getElementRect(aRequest) {
+    let command_id = this.command_id = this.getCommandId();
+    if (this.context == "chrome") {
+      try {
+        let el = this.curBrowser.elementManager.getKnownElement(
+            aRequest.parameters.id, this.getCurrentWindow());
+        let clientRect = el.getBoundingClientRect();
+        this.sendResponse({x: clientRect.x + this.getCurrentWindow().pageXOffset,
+                           y: clientRect.y + this.getCurrentWindow().pageYOffset,
+                           width: clientRect.width, height: clientRect.height},
+                           command_id);
+      }
+      catch (e) {
+        this.sendError(e.message, e.code, e.stack, command_id);
+      }
+    }
+    else {
+      this.sendAsync("getElementRect",
+                     { id:aRequest.parameters.id },
+                     command_id);
+    }
+  },
+
   /**
    * Send key presses to element after focusing on it
    *
@@ -2468,6 +2494,7 @@ MarionetteServerConnection.prototype.requestTypes = {
   "getElementValueOfCssProperty": MarionetteServerConnection.prototype.getElementValueOfCssProperty,
   "submitElement": MarionetteServerConnection.prototype.submitElement,
   "getElementSize": MarionetteServerConnection.prototype.getElementSize,
+  "getElementRect": MarionetteServerConnection.prototype.getElementRect,
   "isElementEnabled": MarionetteServerConnection.prototype.isElementEnabled,
   "isElementSelected": MarionetteServerConnection.prototype.isElementSelected,
   "sendKeysToElement": MarionetteServerConnection.prototype.sendKeysToElement,

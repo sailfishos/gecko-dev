@@ -54,8 +54,7 @@ JSErrorFormatString ErrorFormatString[] = {
 };
 
 const JSErrorFormatString*
-GetErrorMessage(void* aUserRef, const char* aLocale,
-                const unsigned aErrorNumber)
+GetErrorMessage(void* aUserRef, const unsigned aErrorNumber)
 {
   MOZ_ASSERT(aErrorNumber < ArrayLength(ErrorFormatString));
   return &ErrorFormatString[aErrorNumber];
@@ -139,8 +138,7 @@ ErrorResult::ThrowTypeError(const dom::ErrNum errorNumber, ...)
   mResult = NS_ERROR_TYPE_ERR;
   Message* message = new Message();
   message->mErrorNumber = errorNumber;
-  uint16_t argCount =
-    dom::GetErrorMessage(nullptr, nullptr, errorNumber)->argCount;
+  uint16_t argCount = dom::GetErrorMessage(nullptr, errorNumber)->argCount;
   MOZ_ASSERT(argCount <= 10);
   argCount = std::min<uint16_t>(argCount, 10);
   while (argCount--) {
@@ -365,9 +363,12 @@ InterfaceObjectToString(JSContext* cx, unsigned argc, JS::Value *vp)
   const JSClass* clasp = static_cast<const JSClass*>(v.toPrivate());
 
   v = js::GetFunctionNativeReserved(callee, TOSTRING_NAME_RESERVED_SLOT);
-  JSString* jsname = static_cast<JSString*>(v.toString());
-  size_t length;
-  const jschar* name = JS_GetInternedStringCharsAndLength(jsname, &length);
+  JSString* jsname = v.toString();
+
+  nsAutoJSString name;
+  if (!name.init(cx, jsname)) {
+    return false;
+  }
 
   if (js::GetObjectJSClass(&args.thisv().toObject()) != clasp) {
     JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr,
@@ -379,7 +380,7 @@ InterfaceObjectToString(JSContext* cx, unsigned argc, JS::Value *vp)
 
   nsString str;
   str.AppendLiteral("function ");
-  str.Append(name, length);
+  str.Append(name);
   str.AppendLiteral("() {");
   str.Append('\n');
   str.AppendLiteral("    [native code]");

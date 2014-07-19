@@ -284,7 +284,7 @@ CodeGeneratorARM::visitMinMaxD(LMinMaxD *ins)
 
     // Check for zero.
     masm.bind(&equal);
-    masm.compareDouble(first, InvalidFloatReg);
+    masm.compareDouble(first, NoVFPRegister);
     // First wasn't 0 or -0, so just return it.
     masm.ma_b(&done, Assembler::VFP_NotEqualOrUnordered);
     // So now both operands are either -0 or 0.
@@ -1113,7 +1113,10 @@ CodeGeneratorARM::emitTableSwitchDispatch(MTableSwitch *mir, Register index, Reg
     // Lower value with low value.
     masm.ma_sub(index, Imm32(mir->low()), index, SetCond);
     masm.ma_rsb(index, Imm32(cases - 1), index, SetCond, Assembler::NotSigned);
-    AutoForbidPools afp(&masm);
+    // Inhibit pools within the following sequence because we are indexing into
+    // a pc relative table. The region will have one instruction for ma_ldr, one
+    // for ma_b, and each table case takes one word.
+    AutoForbidPools afp(&masm, 1 + 1 + cases);
     masm.ma_ldr(DTRAddr(pc, DtrRegImmShift(index, LSL, 2)), pc, Offset, Assembler::NotSigned);
     masm.ma_b(defaultcase);
 

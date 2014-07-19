@@ -417,6 +417,13 @@ SetSourceHook(JSRuntime *rt, mozilla::UniquePtr<SourceHook> hook);
 extern JS_FRIEND_API(mozilla::UniquePtr<SourceHook>)
 ForgetSourceHook(JSRuntime *rt);
 
+#ifdef NIGHTLY_BUILD
+typedef void (*AssertOnScriptEntryHook)(JSContext *cx, JS::HandleScript script);
+
+extern JS_FRIEND_API(void)
+SetAssertOnScriptEntryHook(JSRuntime *rt, AssertOnScriptEntryHook hook);
+#endif
+
 extern JS_FRIEND_API(JS::Zone *)
 GetCompartmentZone(JSCompartment *comp);
 
@@ -1097,8 +1104,8 @@ CastToJSFreeOp(FreeOp *fop)
  * Get an error type name from a JSExnType constant.
  * Returns nullptr for invalid arguments and JSEXN_INTERNALERR
  */
-extern JS_FRIEND_API(const jschar*)
-GetErrorTypeName(JSRuntime* rt, int16_t exnType);
+extern JS_FRIEND_API(JSFlatString *)
+GetErrorTypeName(JSRuntime *rt, int16_t exnType);
 
 #ifdef JS_DEBUG
 extern JS_FRIEND_API(unsigned)
@@ -1242,7 +1249,7 @@ typedef enum JSErrNum {
 } JSErrNum;
 
 extern JS_FRIEND_API(const JSErrorFormatString *)
-js_GetErrorMessage(void *userRef, const char *locale, const unsigned errorNumber);
+js_GetErrorMessage(void *userRef, const unsigned errorNumber);
 
 namespace js {
 
@@ -1300,7 +1307,7 @@ byteSize(Type atype)
       case Float64:
         return 8;
       default:
-        MOZ_ASSUME_UNREACHABLE("invalid type");
+        MOZ_CRASH("invalid scalar type");
     }
 }
 
@@ -2327,6 +2334,14 @@ extern JS_FRIEND_API(bool)
 CheckDefineProperty(JSContext *cx, JS::HandleObject obj, JS::HandleId id, JS::HandleValue value,
                     unsigned attrs,
                     JSPropertyOp getter = nullptr, JSStrictPropertyOp setter = nullptr);
+
+JS_FRIEND_API(void)
+ReportErrorWithId(JSContext *cx, const char *msg, JS::HandleId id);
+
+// This function is for one specific use case, please don't use this for anything else!
+extern JS_FRIEND_API(bool)
+ExecuteInGlobalAndReturnScope(JSContext *cx, JS::HandleObject obj, JS::HandleScript script,
+                              JS::MutableHandleObject scope);
 
 } /* namespace js */
 

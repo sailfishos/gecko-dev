@@ -6,6 +6,10 @@
 
 const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
 
+// Invalid auth token as per
+// https://github.com/mozilla-services/loop-server/blob/45787d34108e2f0d87d74d4ddf4ff0dbab23501c/loop/errno.json#L6
+const INVALID_AUTH_TOKEN = 110;
+
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Promise.jsm");
@@ -245,7 +249,9 @@ let MozLoopServiceInternal = {
         // No need to clear the promise here, everything was good, so we don't need
         // to re-register.
       }, (error) => {
-        if (error.errno == 401) {
+        // There's other errors than invalid auth token, but we should only do the reset
+        // as a last resort.
+        if (error.code === 401 && error.errno === INVALID_AUTH_TOKEN) {
           if (this.urlExpiryTimeIsInFuture()) {
             // XXX Should this be reported to the user is a visible manner?
             Cu.reportError("Loop session token is invalid, all previously "
@@ -449,6 +455,11 @@ this.MozLoopService = {
    * push and loop servers.
    */
   initialize: function() {
+    // Don't do anything if loop is not enabled.
+    if (!Services.prefs.getBoolPref("loop.enabled")) {
+      return;
+    }
+
     // If expiresTime is in the future then kick-off registration.
     if (MozLoopServiceInternal.urlExpiryTimeIsInFuture()) {
       this._startInitializeTimer();
@@ -481,6 +492,11 @@ this.MozLoopService = {
    *          rejected with an error code or string.
    */
   register: function(mockPushHandler) {
+    // Don't do anything if loop is not enabled.
+    if (!Services.prefs.getBoolPref("loop.enabled")) {
+      throw new Error("Loop is not enabled");
+    }
+
     return MozLoopServiceInternal.promiseRegisteredWithServers(mockPushHandler);
   },
 

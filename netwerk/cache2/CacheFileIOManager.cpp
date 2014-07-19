@@ -538,11 +538,13 @@ public:
     MOZ_COUNT_CTOR(ShutdownEvent);
   }
 
+protected:
   ~ShutdownEvent()
   {
     MOZ_COUNT_DTOR(ShutdownEvent);
   }
 
+public:
   NS_IMETHOD Run()
   {
     MutexAutoLock lock(*mLock);
@@ -582,11 +584,13 @@ public:
     MOZ_EVENT_TRACER_WAIT(static_cast<nsIRunnable*>(this), "net::cache::open-background");
   }
 
+protected:
   ~OpenFileEvent()
   {
     MOZ_COUNT_DTOR(OpenFileEvent);
   }
 
+public:
   NS_IMETHOD Run()
   {
     if (mResultOnAnyThread || mTarget) {
@@ -674,11 +678,13 @@ public:
     MOZ_EVENT_TRACER_WAIT(static_cast<nsIRunnable*>(this), "net::cache::read-background");
   }
 
+protected:
   ~ReadEvent()
   {
     MOZ_COUNT_DTOR(ReadEvent);
   }
 
+public:
   NS_IMETHOD Run()
   {
     if (mResultOnAnyThread || mTarget) {
@@ -739,6 +745,7 @@ public:
     MOZ_EVENT_TRACER_WAIT(static_cast<nsIRunnable*>(this), "net::cache::write-background");
   }
 
+protected:
   ~WriteEvent()
   {
     MOZ_COUNT_DTOR(WriteEvent);
@@ -748,6 +755,7 @@ public:
     }
   }
 
+public:
   NS_IMETHOD Run()
   {
     if (mTarget) {
@@ -803,11 +811,13 @@ public:
     MOZ_EVENT_TRACER_WAIT(static_cast<nsIRunnable*>(this), "net::cache::doom-background");
   }
 
+protected:
   ~DoomFileEvent()
   {
     MOZ_COUNT_DTOR(DoomFileEvent);
   }
 
+public:
   NS_IMETHOD Run()
   {
     if (mTarget) {
@@ -858,18 +868,20 @@ public:
     MOZ_ASSERT(mTarget);
   }
 
+protected:
   ~DoomFileByKeyEvent()
   {
     MOZ_COUNT_DTOR(DoomFileByKeyEvent);
   }
 
+public:
   NS_IMETHOD Run()
   {
     if (mTarget) {
       if (!mIOMan) {
         mRV = NS_ERROR_NOT_INITIALIZED;
       } else {
-        mRV = mIOMan->DoomFileByKeyInternal(&mHash);
+        mRV = mIOMan->DoomFileByKeyInternal(&mHash, false);
         mIOMan = nullptr;
       }
 
@@ -900,11 +912,13 @@ public:
     MOZ_COUNT_CTOR(ReleaseNSPRHandleEvent);
   }
 
+protected:
   ~ReleaseNSPRHandleEvent()
   {
     MOZ_COUNT_DTOR(ReleaseNSPRHandleEvent);
   }
 
+public:
   NS_IMETHOD Run()
   {
     if (mHandle->mFD && !mHandle->IsClosed()) {
@@ -932,11 +946,13 @@ public:
     mTarget = static_cast<nsIEventTarget*>(NS_GetCurrentThread());
   }
 
+protected:
   ~TruncateSeekSetEOFEvent()
   {
     MOZ_COUNT_DTOR(TruncateSeekSetEOFEvent);
   }
 
+public:
   NS_IMETHOD Run()
   {
     if (mTarget) {
@@ -980,11 +996,13 @@ public:
     mTarget = static_cast<nsIEventTarget*>(NS_GetCurrentThread());
   }
 
+protected:
   ~RenameFileEvent()
   {
     MOZ_COUNT_DTOR(RenameFileEvent);
   }
 
+public:
   NS_IMETHOD Run()
   {
     if (mTarget) {
@@ -1026,11 +1044,13 @@ public:
     MOZ_COUNT_CTOR(InitIndexEntryEvent);
   }
 
+protected:
   ~InitIndexEntryEvent()
   {
     MOZ_COUNT_DTOR(InitIndexEntryEvent);
   }
 
+public:
   NS_IMETHOD Run()
   {
     if (mHandle->IsClosed() || mHandle->IsDoomed()) {
@@ -1075,11 +1095,13 @@ public:
     }
   }
 
+protected:
   ~UpdateIndexEntryEvent()
   {
     MOZ_COUNT_DTOR(UpdateIndexEntryEvent);
   }
 
+public:
   NS_IMETHOD Run()
   {
     if (mHandle->IsClosed() || mHandle->IsDoomed()) {
@@ -2139,10 +2161,11 @@ CacheFileIOManager::DoomFileByKey(const nsACString &aKey,
 }
 
 nsresult
-CacheFileIOManager::DoomFileByKeyInternal(const SHA1Sum::Hash *aHash)
+CacheFileIOManager::DoomFileByKeyInternal(const SHA1Sum::Hash *aHash,
+                                          bool aFailIfAlreadyDoomed)
 {
-  LOG(("CacheFileIOManager::DoomFileByKeyInternal() [hash=%08x%08x%08x%08x%08x]"
-       , LOGSHA1(aHash)));
+  LOG(("CacheFileIOManager::DoomFileByKeyInternal() [hash=%08x%08x%08x%08x%08x,"
+        " failIfAlreadyDoomed=%d]", LOGSHA1(aHash), aFailIfAlreadyDoomed));
 
   MOZ_ASSERT(CacheFileIOManager::IsOnIOThreadOrCeased());
 
@@ -2164,7 +2187,7 @@ CacheFileIOManager::DoomFileByKeyInternal(const SHA1Sum::Hash *aHash)
     handle->Log();
 
     if (handle->IsDoomed()) {
-      return NS_OK;
+      return aFailIfAlreadyDoomed ? NS_ERROR_NOT_AVAILABLE : NS_OK;
     }
 
     return DoomFileInternal(handle);
@@ -2679,13 +2702,23 @@ CacheFileIOManager::OverLimitEvictionInternal()
     rv = CacheIndex::GetEntryForEviction(&hash, &cnt);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    rv = DoomFileByKeyInternal(&hash);
+    rv = DoomFileByKeyInternal(&hash, true);
     if (NS_SUCCEEDED(rv)) {
       consecutiveFailures = 0;
     } else if (rv == NS_ERROR_NOT_AVAILABLE) {
       LOG(("CacheFileIOManager::OverLimitEvictionInternal() - "
            "DoomFileByKeyInternal() failed. [rv=0x%08x]", rv));
       // TODO index is outdated, start update
+
+#ifdef DEBUG
+      // Dooming should never fail due to already doomed handle, but bug 1028415
+      // shows that this unexpected state can happen. Assert in debug build so
+      // we can find the cause if we ever find a way to reproduce it with NSPR
+      // logging enabled.
+      nsRefPtr<CacheFileHandle> handle;
+      mHandles.GetHandle(&hash, true, getter_AddRefs(handle));
+      MOZ_ASSERT(!handle || !handle->IsDoomed());
+#endif
 
       // Make sure index won't return the same entry again
       CacheIndex::RemoveEntry(&hash);

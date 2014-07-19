@@ -43,11 +43,6 @@ endif
 
 EXEC			= exec
 
-# Don't copy xulrunner files at install time, when using system xulrunner
-ifdef SYSTEM_LIBXUL
-  SKIP_COPY_XULRUNNER=1
-endif
-
 # ELOG prints out failed command when building silently (gmake -s). Pymake
 # prints out failed commands anyway, so ELOG just makes things worse by
 # forcing shell invocations.
@@ -346,7 +341,11 @@ ifdef MOZ_UPDATE_XTERM
 # Its good not to have a newline at the end of the titlebar string because it
 # makes the make -s output easier to read.  Echo -n does not work on all
 # platforms, but we can trick printf into doing it.
+ifeq (.,$(relativesrcdir))
+UPDATE_TITLE = printf '\033]0;%s in %s\007' $(1) $(2) ;
+else
 UPDATE_TITLE = printf '\033]0;%s in %s\007' $(1) $(relativesrcdir)/$(2) ;
+endif
 endif
 
 ifdef MACH
@@ -360,7 +359,7 @@ endif
 
 define SUBMAKE # $(call SUBMAKE,target,directory,static)
 +@$(UPDATE_TITLE)
-+$(MAKE) $(if $(2),-C $(2)) $(1)
++@$(MAKE) $(if $(2),-C $(2)) $(1)
 
 endef # The extra line is important here! don't delete it
 

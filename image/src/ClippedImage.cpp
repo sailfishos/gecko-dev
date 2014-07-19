@@ -13,12 +13,13 @@
 #include "Orientation.h"
 #include "SVGImageContext.h"
 
-using namespace mozilla;
-using namespace mozilla::gfx;
-using mozilla::layers::LayerManager;
-using mozilla::layers::ImageContainer;
 
 namespace mozilla {
+
+using namespace gfx;
+using layers::LayerManager;
+using layers::ImageContainer;
+
 namespace image {
 
 class ClippedImageCachedSurface
@@ -156,7 +157,7 @@ ClippedImage::ShouldClip()
   return mShouldClip.ref();
 }
 
-NS_IMPL_ISUPPORTS(ClippedImage, imgIContainer)
+NS_IMPL_ISUPPORTS_INHERITED0(ClippedImage, ImageWrapper)
 
 nsIntRect
 ClippedImage::FrameRect(uint32_t aWhichFrame)

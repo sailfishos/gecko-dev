@@ -28,9 +28,9 @@
 #include "MediaStreamGraph.h"
 
 #include "MediaEngineWrapper.h"
-
+#include "mozilla/dom/MediaStreamTrackBinding.h"
 // WebRTC library includes follow
-
+#include "webrtc/common.h"
 // Audio Engine
 #include "webrtc/voice_engine/include/voe_base.h"
 #include "webrtc/voice_engine/include/voe_codec.h"
@@ -95,12 +95,14 @@ class MediaEngineWebRTCVideoSource : public MediaEngineVideoSource
 {
 public:
 #ifdef MOZ_B2G_CAMERA
-  MediaEngineWebRTCVideoSource(int aIndex)
+  MediaEngineWebRTCVideoSource(int aIndex,
+                               MediaSourceType aMediaSource = MediaSourceType::Camera)
     : mCameraControl(nullptr)
     , mCallbackMonitor("WebRTCCamera.CallbackMonitor")
     , mRotation(0)
     , mBackCamera(false)
     , mCaptureIndex(aIndex)
+    , mMediaSource(aMediaSource)
     , mMonitor("WebRTCCamera.Monitor")
     , mWidth(0)
     , mHeight(0)
@@ -124,11 +126,13 @@ public:
    */
   virtual bool IsTextureSupported() { return false; }
 
-  MediaEngineWebRTCVideoSource(webrtc::VideoEngine* aVideoEnginePtr, int aIndex)
+  MediaEngineWebRTCVideoSource(webrtc::VideoEngine* aVideoEnginePtr, int aIndex,
+                               MediaSourceType aMediaSource = MediaSourceType::Camera)
     : mVideoEngine(aVideoEnginePtr)
     , mCaptureIndex(aIndex)
     , mFps(-1)
     , mMinFps(-1)
+    , mMediaSource(aMediaSource)
     , mMonitor("WebRTCCamera.Monitor")
     , mWidth(0)
     , mHeight(0)
@@ -163,6 +167,10 @@ public:
 
   virtual bool IsFake() {
     return false;
+  }
+
+  virtual const MediaSourceType GetMediaSource() {
+    return mMediaSource;
   }
 
 #ifndef MOZ_B2G_CAMERA
@@ -239,6 +247,7 @@ private:
   int mCaptureIndex;
   int mFps; // Track rate (30 fps by default)
   int mMinFps; // Min rate we want to accept
+  MediaSourceType mMediaSource; // source of media (camera | application | screen)
 
   // mMonitor protects mImage access/changes, and transitions of mState
   // from kStarted to kStopped (which are combined with EndTrack() and
@@ -318,6 +327,10 @@ public:
     return false;
   }
 
+  virtual const MediaSourceType GetMediaSource() {
+    return MediaSourceType::Microphone;
+  }
+
   // VoEMediaProcess.
   void Process(int channel, webrtc::ProcessingTypes type,
                int16_t audio10ms[], int length,
@@ -381,9 +394,10 @@ public:
   // before invoking Shutdown on this class.
   void Shutdown();
 
-  virtual void EnumerateVideoDevices(nsTArray<nsRefPtr<MediaEngineVideoSource> >*);
-  virtual void EnumerateAudioDevices(nsTArray<nsRefPtr<MediaEngineAudioSource> >*);
-
+  virtual void EnumerateVideoDevices(MediaSourceType,
+                                    nsTArray<nsRefPtr<MediaEngineVideoSource> >*);
+  virtual void EnumerateAudioDevices(MediaSourceType,
+                                    nsTArray<nsRefPtr<MediaEngineAudioSource> >*);
 private:
   ~MediaEngineWebRTC() {
     Shutdown();
@@ -397,14 +411,25 @@ private:
   nsCOMPtr<nsIThread> mThread;
 
   Mutex mMutex;
-  // protected with mMutex:
 
+  // protected with mMutex:
+  webrtc::VideoEngine* mScreenEngine;
+  webrtc::VideoEngine* mWinEngine;
+  webrtc::VideoEngine* mAppEngine;
   webrtc::VideoEngine* mVideoEngine;
   webrtc::VoiceEngine* mVoiceEngine;
+
+  // specialized configurations
+  webrtc::Config mAppEngineConfig;
+  webrtc::Config mWinEngineConfig;
+  webrtc::Config mScreenEngineConfig;
 
   // Need this to avoid unneccesary WebRTC calls while enumerating.
   bool mVideoEngineInit;
   bool mAudioEngineInit;
+  bool mScreenEngineInit;
+  bool mWinEngineInit;
+  bool mAppEngineInit;
   bool mHasTabVideoSource;
 
   // Store devices we've already seen in a hashtable for quick return.

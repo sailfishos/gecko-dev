@@ -1271,6 +1271,12 @@
     "n_values": 48,
     "description": "SPDY: Protocol Version Used"
   },
+  "HTTP_RESPONSE_VERSION": {
+    "expires_in_version": "never",
+    "kind": "enumerated",
+    "n_values": 48,
+    "description": "HTTP: Protocol Version Used on Response from nsHttp.h"
+  },
   "SPDY_PARALLEL_STREAMS": {
     "expires_in_version": "never",
     "kind": "exponential",
@@ -2200,6 +2206,30 @@
     "n_buckets": 50,
     "extended_statistics_ok": true,
     "description": "How many actual preconnects happen"
+  },
+  "PREDICTOR_TOTAL_PRECONNECTS_CREATED": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": "1000 * 1000",
+    "n_buckets": 50,
+    "extended_statistics_ok": true,
+    "description": "How many preconnects actually created a speculative socket"
+  },
+  "PREDICTOR_TOTAL_PRECONNECTS_USED": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": "1000 * 1000",
+    "n_buckets": 50,
+    "extended_statistics_ok": true,
+    "description": "How many preconnects actually created a used speculative socket"
+  },
+  "PREDICTOR_TOTAL_PRECONNECTS_UNUSED": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": "1000 * 1000",
+    "n_buckets": 50,
+    "extended_statistics_ok": true,
+    "description": "How many preconnects needlessly created a speculative socket"
   },
   "PREDICTOR_TOTAL_PRERESOLVES": {
     "expires_in_version": "never",
@@ -4493,11 +4523,6 @@
     "kind": "flag",
     "description": "Social has been enabled at least once on the current session"
   },
-  "SOCIAL_TOGGLED": {
-    "expires_in_version": "never",
-    "kind": "boolean",
-    "description": "Social has been toggled to on or off"
-  },
   "ENABLE_PRIVILEGE_EVER_CALLED": {
     "expires_in_version": "never",
     "kind": "flag",
@@ -6510,6 +6535,13 @@
     "kind": "flag",
     "description": "If a master-password is enabled for this profile"
   },
+  "FENNEC_TILES_CACHE_HIT": {
+    "expires_in_version": "never",
+    "kind": "linear",
+    "high": "13",
+    "n_buckets": 12,
+    "description": "Cache hits on the tile-info metadata database"
+  },
   "DISPLAY_SCALING_OSX" : {
     "expires_in_version": "never",
     "kind": "linear",
@@ -6533,5 +6565,29 @@
     "n_buckets": "100",
     "description": "Scaling percentage for the display where the first window is opened (Linux only)",
     "cpp_guard": "XP_LINUX"
+  },
+  "SOCIAL_SIDEBAR_STATE": {
+    "expires_in_version": "never",
+    "kind": "boolean",
+    "description": "Social Sidebar state 0: closed, 1: opened.  Toggling between providers will result in a higher opened rate."
+  },
+  "SOCIAL_TOOLBAR_BUTTONS": {
+    "expires_in_version": "never",
+    "kind": "enumerated",
+    "n_values": 3,
+    "description": "Social toolbar button has been used (0:share, 1:status, 2:bookmark)"
+  },
+  "SOCIAL_PANEL_CLICKS": {
+    "expires_in_version": "never",
+    "kind": "enumerated",
+    "n_values": 4,
+    "description": "Social content has been interacted with (0:share, 1:status, 2:bookmark, 3: sidebar)"
+  },
+  "SOCIAL_SIDEBAR_OPEN_DURATION": {
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": "10000000",
+    "n_buckets": 10,
+    "description": "Sidebar showing: seconds that the sidebar has been opened"
   }
 }

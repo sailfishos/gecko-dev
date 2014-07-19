@@ -81,7 +81,7 @@ class HTMLElement(object):
 
         :param x: X-coordinate of tap event. If not given, default to the
          center of the element.
-        :param x: X-coordinate of tap event. If not given, default to the
+        :param y: Y-coordinate of tap event. If not given, default to the
          center of the element.
         '''
         return self.marionette._send_message('singleTap', 'ok', id=self.id, x=x, y=y)
@@ -161,6 +161,18 @@ class HTMLElement(object):
         """
 
         return self.marionette._send_message("getElementLocation", "value", id=self.id)
+
+    @property
+    def rect(self):
+        """
+            this will return a dictionary with the following:
+
+            * x and y represent the top left coordinates of the WebElement relative to top left corner of the document.
+            * height and the width will contain the height and the width of the DOMRect of the WebElement.
+
+        """
+
+        return self.marionette._send_message("getElementRect", "value", id=self.id)
 
     def value_of_css_property(self, property_name):
         '''
@@ -450,7 +462,7 @@ class Marionette(object):
                  emulator_binary=None, emulator_res=None, connect_to_running_emulator=False,
                  gecko_log=None, homedir=None, baseurl=None, no_window=False, logdir=None,
                  busybox=None, symbols_path=None, timeout=None, socket_timeout=360,
-                 device_serial=None, adb_path=None):
+                 device_serial=None, adb_path=None, process_args=None):
         self.host = host
         self.port = self.local_port = port
         self.bin = bin
@@ -507,18 +519,20 @@ class Marionette(object):
                                             userdata=emulator_img,
                                             resolution=emulator_res,
                                             profile=profile,
-                                            adb_path=adb_path)
+                                            adb_path=adb_path,
+                                            process_args=process_args)
             self.emulator = self.runner.device
             self.emulator.start()
-            self.port = self.emulator.setup_port_forwarding(self.port)
+            self.port = self.emulator.setup_port_forwarding(remote_port=self.port)
             assert(self.emulator.wait_for_port(self.port)), "Timed out waiting for port!"
 
         if connect_to_running_emulator:
             self.runner = B2GEmulatorRunner(b2g_home=homedir,
-                                            logdir=logdir)
+                                            logdir=logdir,
+                                            process_args=process_args)
             self.emulator = self.runner.device
             self.emulator.connect()
-            self.port = self.emulator.setup_port_forwarding(self.port)
+            self.port = self.emulator.setup_port_forwarding(remote_port=self.port)
             assert(self.emulator.wait_for_port(self.port)), "Timed out waiting for port!"
 
         self.client = MarionetteTransport(self.host, self.port, self.socket_timeout)

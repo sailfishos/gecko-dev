@@ -5,96 +5,97 @@
 package org.mozilla.search;
 
 import android.content.Intent;
+import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Bundle;
 import android.support.v4.app.Fragment;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-
-import org.mozilla.gecko.GeckoView;
-import org.mozilla.gecko.GeckoViewChrome;
-import org.mozilla.gecko.GeckoViewContent;
-import org.mozilla.gecko.PrefsHelper;
+import android.webkit.WebChromeClient;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
 
 public class PostSearchFragment extends Fragment {
 
     private static final String LOGTAG = "PostSearchFragment";
-    private GeckoView geckoView;
+    private WebView webview;
+
+    private static String HIDE_BANNER_SCRIPT = "javascript:(function(){var tag=document.createElement('style');" +
+            "tag.type='text/css';document.getElementsByTagName('head')[0].appendChild(tag);tag.innerText='#nav,#header{display:none}'})();";
+
+    public PostSearchFragment() {
+    }
 
 
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
                              Bundle savedInstanceState) {
-        View mainView = inflater.inflate(R.layout.search_activity_detail, container, false);
+        final View mainView = inflater.inflate(R.layout.search_activity_detail, container, false);
 
-
-        geckoView = (GeckoView) mainView.findViewById(R.id.gecko_view);
-
-        geckoView.setChromeDelegate(new MyGeckoViewChrome());
-        geckoView.setContentDelegate(new SearchGeckoView());
-
-        PrefsHelper.setPref("privacy.clearOnShutdown.cache", true);
-        PrefsHelper.setPref("privacy.clearOnShutdown.cookies", true);
-
-
-        if (null == geckoView.getCurrentBrowser()) {
-            // This pageload allows Fennec to be loaded in a background fragment.
-            // Without supplying a URL, it doesn't look like Fennec will get loaded?
-            geckoView.addBrowser("https://search.yahoo.com/search?p=firefox%20android");
-
-        }
+        webview = (WebView) mainView.findViewById(R.id.webview);
+        webview.setWebViewClient(new LinkInterceptingClient());
+        webview.setWebChromeClient(new StyleInjectingClient());
+        webview.getSettings().setJavaScriptEnabled(true);
 
         return mainView;
     }
 
+    /**
+     * Test if a given URL is a page of search results.
+     * <p>
+     * Search results pages will be shown in the embedded view.  Other pages are
+     * opened in external browsers.
+     *
+     * @param url to test.
+     * @return true if <code>url</code> is a page of search results.
+     */
+    protected boolean isSearchResultsPage(String url) {
+        return url.contains(Constants.YAHOO_WEB_SEARCH_RESULTS_FILTER);
+    }
+
+    public void startSearch(String query) {
+        setUrl(Constants.YAHOO_WEB_SEARCH_BASE_URL + Uri.encode(query));
+    }
 
     public void setUrl(String url) {
-        if (null == geckoView.getCurrentBrowser()) {
-            geckoView.addBrowser(url);
-        } else {
-            geckoView.getCurrentBrowser().loadUrl(url);
-        }
+        webview.loadUrl(url);
     }
 
-
-    private static class MyGeckoViewChrome extends GeckoViewChrome {
-        @Override
-        public void onReady(GeckoView view) {
-            Log.i(LOGTAG, "Gecko is ready");
-
-            PrefsHelper.setPref("devtools.debugger.remote-enabled", true);
-
-            // The Gecko libraries have finished loading and we can use the rendering engine.
-            // Let's add a browser (required) and load a page into it.
-        }
-
-    }
-
-
-    private class SearchGeckoView extends GeckoViewContent {
+    /**
+     * A custom WebViewClient that intercepts every page load. This allows
+     * us to decide whether to load the url here, or send it to Android
+     * as an intent.
+     */
+    private class LinkInterceptingClient extends WebViewClient {
 
         @Override
-        public void onPageStart(GeckoView geckoView, GeckoView.Browser browser, String s) {
-            Log.i("OnPageStart", s);
-            // Only load this page if it's the Yahoo search page that we're using.
-            // TODO: Make this check more robust, and allow for other search providers.
-            if (s.contains("//search.yahoo.com")) {
-                super.onPageStart(geckoView, browser, s);
-
-
+        public void onPageStarted(WebView view, String url, Bitmap favicon) {
+            if (isSearchResultsPage(url)) {
+                super.onPageStarted(view, url, favicon);
             } else {
-                browser.stop();
+                view.stopLoading();
                 Intent i = new Intent(Intent.ACTION_VIEW);
-                i.setData(Uri.parse(s));
+                i.setData(Uri.parse(url));
                 startActivity(i);
             }
         }
+    }
+
+    /**
+     * A custom WebChromeClient that allows us to inject CSS into
+     * the head of the HTML.
+     *
+     * We use the WebChromeClient because it provides a hook to the titleReceived
+     * event. Once the title is available, the page will have started parsing the
+     * head element. The script injects its CSS into the head element.
+     */
+    private class StyleInjectingClient extends WebChromeClient {
 
         @Override
-        public void onPageShow(GeckoView geckoView, GeckoView.Browser browser) {
-
+        public void onReceivedTitle(WebView view, String title) {
+            super.onReceivedTitle(view, title);
+            view.loadUrl(HIDE_BANNER_SCRIPT);
         }
     }
 }

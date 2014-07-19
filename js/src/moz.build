@@ -296,6 +296,7 @@ if CONFIG['ENABLE_ION']:
         'jit/RegisterAllocator.cpp',
         'jit/RematerializedFrame.cpp',
         'jit/Safepoints.cpp',
+        'jit/ScalarReplacement.cpp',
         'jit/shared/BaselineCompiler-shared.cpp',
         'jit/shared/CodeGenerator-shared.cpp',
         'jit/shared/Lowering-shared.cpp',
@@ -403,7 +404,10 @@ else:
         'perf/pm_stub.cpp'
     ]
 
-MSVC_ENABLE_PGO = True
+# Disable PGO for MSVC 2010 due to unpredictable performance, see
+# bug 1030706.
+if CONFIG['_MSC_VER'] != '1600':
+    MSVC_ENABLE_PGO = True
 
 HOST_SOURCES += [
     'jskwgen.cpp',

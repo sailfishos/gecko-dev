@@ -4,7 +4,6 @@
 
 package org.mozilla.search;
 
-import android.net.Uri;
 import android.os.Bundle;
 import android.support.v4.app.FragmentActivity;
 import android.view.View;
@@ -33,20 +32,26 @@ public class MainActivity extends FragmentActivity implements AcceptsSearchQuery
     protected void onCreate(Bundle stateBundle) {
         super.onCreate(stateBundle);
         setContentView(R.layout.search_activity_main);
-        startPresearch();
     }
 
     @Override
     public void onSearch(String s) {
         startPostsearch();
-        ((PostSearchFragment) getSupportFragmentManager().findFragmentById(R.id.gecko))
-                .setUrl("https://search.yahoo.com/search?p=" + Uri.encode(s));
+        ((PostSearchFragment) getSupportFragmentManager().findFragmentById(R.id.postsearch))
+                .startSearch(s);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // When the app launches, make sure we're in presearch *always*
+        startPresearch();
     }
 
     private void startPresearch() {
         if (state != State.PRESEARCH) {
             state = State.PRESEARCH;
-            findViewById(R.id.gecko).setVisibility(View.INVISIBLE);
+            findViewById(R.id.postsearch).setVisibility(View.INVISIBLE);
             findViewById(R.id.presearch).setVisibility(View.VISIBLE);
         }
     }
@@ -55,7 +60,7 @@ public class MainActivity extends FragmentActivity implements AcceptsSearchQuery
         if (state != State.POSTSEARCH) {
             state = State.POSTSEARCH;
             findViewById(R.id.presearch).setVisibility(View.INVISIBLE);
-            findViewById(R.id.gecko).setVisibility(View.VISIBLE);
+            findViewById(R.id.postsearch).setVisibility(View.VISIBLE);
         }
     }
 

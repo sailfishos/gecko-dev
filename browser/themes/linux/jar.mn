@@ -23,6 +23,7 @@ browser.jar:
 * skin/classic/browser/browser.css
 * skin/classic/browser/browser-lightweightTheme.css
   skin/classic/browser/click-to-play-warning-stripes.png
+* skin/classic/browser/content-contextmenu.svg
 * skin/classic/browser/engineManager.css
   skin/classic/browser/fullscreen-darknoise.png
   skin/classic/browser/Geolocation-16.png
@@ -73,6 +74,9 @@ browser.jar:
   skin/classic/browser/webRTC-shareMicrophone-16.png
   skin/classic/browser/webRTC-shareMicrophone-64.png
   skin/classic/browser/webRTC-sharingMicrophone-16.png
+  skin/classic/browser/webRTC-shareScreen-16.png      (../shared/webrtc/webRTC-shareScreen-16.png)
+  skin/classic/browser/webRTC-shareScreen-64.png      (../shared/webrtc/webRTC-shareScreen-64.png)
+  skin/classic/browser/webRTC-sharingScreen-16.png    (../shared/webrtc/webRTC-sharingScreen-16.png)
   skin/classic/browser/customizableui/background-noise-toolbar.png  (customizableui/background-noise-toolbar.png)
   skin/classic/browser/customizableui/customize-illustration.png  (../shared/customizableui/customize-illustration.png)
   skin/classic/browser/customizableui/customize-illustration-rtl.png  (../shared/customizableui/customize-illustration-rtl.png)
@@ -320,6 +324,8 @@ browser.jar:
   skin/classic/browser/devtools/vview-lock@2x.png           (../shared/devtools/images/vview-lock@2x.png)
   skin/classic/browser/devtools/vview-open-inspector.png    (../shared/devtools/images/vview-open-inspector.png)
   skin/classic/browser/devtools/vview-open-inspector@2x.png (../shared/devtools/images/vview-open-inspector@2x.png)
+  skin/classic/browser/devtools/cubic-bezier-swatch.png     (../shared/devtools/images/cubic-bezier-swatch.png)
+  skin/classic/browser/devtools/cubic-bezier-swatch@2x.png  (../shared/devtools/images/cubic-bezier-swatch@2x.png)
   skin/classic/browser/devtools/undock@2x.png               (../shared/devtools/images/undock@2x.png)
   skin/classic/browser/devtools/font-inspector.css          (../shared/devtools/font-inspector.css)
   skin/classic/browser/devtools/computedview.css            (../shared/devtools/computedview.css)

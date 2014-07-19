@@ -120,8 +120,7 @@ js::intrinsic_ThrowError(JSContext *cx, unsigned argc, Value *vp)
     uint32_t errorNumber = args[0].toInt32();
 
 #ifdef DEBUG
-    const JSErrorFormatString *efs =
-        js_GetLocalizedErrorMessage(cx, nullptr, nullptr, errorNumber);
+    const JSErrorFormatString *efs = js_GetErrorMessage(nullptr, errorNumber);
     JS_ASSERT(efs->argCount == args.length() - 1);
 #endif
 
@@ -1016,7 +1015,6 @@ JSRuntime::initSelfHosting(JSContext *cx)
     } else {
         uint32_t srcLen = GetRawScriptsSize();
 
-#ifdef USE_ZLIB
         const unsigned char *compressed = compressedSources;
         uint32_t compressedLen = GetCompressedSize();
         ScopedJSFreePtr<char> src(reinterpret_cast<char *>(cx->malloc_(srcLen)));
@@ -1025,9 +1023,6 @@ JSRuntime::initSelfHosting(JSContext *cx)
         {
             return false;
         }
-#else
-        const char *src = rawSources;
-#endif
 
         ok = Evaluate(cx, shg, options, src, srcLen, &rv);
     }

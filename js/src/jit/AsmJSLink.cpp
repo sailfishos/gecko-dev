@@ -255,7 +255,15 @@ LinkModuleToHeap(JSContext *cx, AsmJSModule &module, Handle<ArrayBufferObject*> 
         return LinkFail(cx, msg.get());
     }
 
-    if (!ArrayBufferObject::prepareForAsmJS(cx, heap))
+    // If we've generated the code with signal handlers in mind (for bounds
+    // checks on x64 and for interrupt callback requesting on all platforms),
+    // we need to be able to use signals at runtime. In particular, a module
+    // can have been created using signals and cached, and executed without
+    // signals activated.
+    if (module.usesSignalHandlersForInterrupt() && !cx->canUseSignalHandlers())
+        return LinkFail(cx, "Code generated with signal handlers but signals are deactivated");
+
+    if (!ArrayBufferObject::prepareForAsmJS(cx, heap, module.usesSignalHandlersForOOB()))
         return LinkFail(cx, "Unable to prepare ArrayBuffer for asm.js use");
 
     module.initHeap(heap, cx);
@@ -470,7 +478,7 @@ HandleDynamicLinkFailure(JSContext *cx, CallArgs args, AsmJSModule &module, Hand
 
     uint32_t begin = module.srcBodyStart();  // starts right after 'use asm'
     uint32_t end = module.srcEndBeforeCurly();
-    Rooted<JSFlatString*> src(cx, module.scriptSource()->substring(cx, begin, end));
+    Rooted<JSFlatString*> src(cx, module.scriptSource()->substringDontDeflate(cx, begin, end));
     if (!src)
         return false;
 

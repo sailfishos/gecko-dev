@@ -57,6 +57,16 @@ If you do not have a non-debug gaia profile, you can build one:
 The profile should be generated in a directory called 'profile'.
 '''.lstrip()
 
+ENG_BUILD_REQUIRED = '''
+The %s command requires an engineering build. It may be the case that
+VARIANT=user or PRODUCTION=1 were set. Try re-building with VARIANT=eng:
+
+    $ VARIANT=eng ./build.sh
+
+There should be an app called 'test-container.gaiamobile.org' located in
+%s.
+'''.lstrip()
+
 # Maps test flavors to mochitest suite type.
 FLAVORS = {
     'mochitest': 'plain',
@@ -157,18 +167,6 @@ class MochitestRunner(MozbuildObject):
 
         options.consoleLevel = 'INFO'
         if conditions.is_b2g_desktop(self):
-
-            options.profile = options.profile or os.environ.get('GAIA_PROFILE')
-            if not options.profile:
-                print(GAIA_PROFILE_NOT_FOUND % 'mochitest-b2g-desktop')
-                return 1
-
-            if os.path.isfile(os.path.join(options.profile, 'extensions', \
-                    'httpd@gaiamobile.org')):
-                print(GAIA_PROFILE_IS_DEBUG % ('mochitest-b2g-desktop',
-                                               options.profile))
-                return 1
-
             options.desktop = True
             options.app = self.get_binary_path()
             if not options.app.endswith('-bin'):
@@ -194,7 +192,7 @@ class MochitestRunner(MozbuildObject):
     def run_desktop_test(self, context, suite=None, test_paths=None, debugger=None,
         debugger_args=None, slowscript=False, screenshot_on_fail = False, shuffle=False, keep_open=False,
         rerun_failures=False, no_autorun=False, repeat=0, run_until_failure=False,
-        slow=False, chunk_by_dir=0, total_chunks=None, this_chunk=None,
+        slow=False, chunk_by_dir=0, total_chunks=None, this_chunk=None, extraPrefs=[],
         jsdebugger=False, debug_on_failure=False, start_at=None, end_at=None,
         e10s=False, dmd=False, dump_output_directory=None,
         dump_about_memory_after_test=False, dump_dmd_after_test=False,
@@ -324,6 +322,7 @@ class MochitestRunner(MozbuildObject):
         options.dumpOutputDirectory = dump_output_directory
         options.quiet = quiet
         options.environment = environment
+        options.extraPrefs = extraPrefs
         options.bisectChunk = bisectChunk
         options.runByDir = runByDir
         options.useTestMediaDevices = useTestMediaDevices
@@ -489,6 +488,11 @@ def MochitestCommand(func):
         help='Breaks execution and enters the JS debugger on a test failure. ' \
              'Should be used together with --jsdebugger.')
     func = debug_on_failure(func)
+
+    setpref = CommandArgument('--setpref', default=[], action='append',
+					 metavar='PREF=VALUE', dest='extraPrefs',
+					 help='defines an extra user preference')
+    func = setpref(func)
 
     jsdebugger = CommandArgument('--jsdebugger', action='store_true',
         help='Start the browser JS debugger before running the test. Implies --no-autorun.')
@@ -759,7 +763,7 @@ class B2GCommands(MachCommandBase):
     def __init__(self, context):
         MachCommandBase.__init__(self, context)
 
-        for attr in ('b2g_home', 'xre_path', 'device_name'):
+        for attr in ('b2g_home', 'xre_path', 'device_name', 'get_build_var'):
             setattr(self, attr, getattr(context, attr, None))
 
     @Command('mochitest-remote', category='testing',
@@ -767,6 +771,14 @@ class B2GCommands(MachCommandBase):
         conditions=[conditions.is_b2g, is_emulator])
     @B2GCommand
     def run_mochitest_remote(self, test_paths, **kwargs):
+        if self.get_build_var:
+            host_webapps_dir = os.path.join(self.get_build_var('TARGET_OUT_DATA'),
+                                            'local', 'webapps')
+            if not os.path.isdir(os.path.join(host_webapps_dir,
+                                              'test-container.gaiamobile.org')):
+                print(ENG_BUILD_REQUIRED % ('mochitest-remote', host_webapps_dir))
+                return 1
+
         from mozbuild.controller.building import BuildDriver
 
         if self.device_name.startswith('emulator'):
@@ -789,6 +801,17 @@ class B2GCommands(MachCommandBase):
         description='Run a b2g desktop mochitest.')
     @B2GCommand
     def run_mochitest_b2g_desktop(self, test_paths, **kwargs):
+        kwargs['profile'] = kwargs.get('profile') or os.environ.get('GAIA_PROFILE')
+        if not kwargs['profile'] or not os.path.isdir(kwargs['profile']):
+            print(GAIA_PROFILE_NOT_FOUND % 'mochitest-b2g-desktop')
+            return 1
+
+        if os.path.isfile(os.path.join(kwargs['profile'], 'extensions',
+                                       'httpd@gaiamobile.org')):
+            print(GAIA_PROFILE_IS_DEBUG % ('mochitest-b2g-desktop',
+                                           kwargs['profile']))
+            return 1
+
         from mozbuild.controller.building import BuildDriver
 
         self._ensure_state_subdir_exists('.')

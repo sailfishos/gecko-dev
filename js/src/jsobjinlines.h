@@ -498,11 +498,19 @@ JSObject::setProto(JSContext *cx, JS::HandleObject obj, JS::HandleObject proto, 
 }
 
 inline bool
-JSObject::isVarObj()
+JSObject::isQualifiedVarObj()
 {
     if (is<js::DebugScopeObject>())
-        return as<js::DebugScopeObject>().scope().isVarObj();
-    return lastProperty()->hasObjectFlag(js::BaseShape::VAROBJ);
+        return as<js::DebugScopeObject>().scope().isQualifiedVarObj();
+    return lastProperty()->hasObjectFlag(js::BaseShape::QUALIFIED_VAROBJ);
+}
+
+inline bool
+JSObject::isUnqualifiedVarObj()
+{
+    if (is<js::DebugScopeObject>())
+        return as<js::DebugScopeObject>().scope().isUnqualifiedVarObj();
+    return lastProperty()->hasObjectFlag(js::BaseShape::UNQUALIFIED_VAROBJ);
 }
 
 /* static */ inline JSObject *
@@ -1020,7 +1028,7 @@ ObjectClassIs(HandleObject obj, ESClassValue classValue, JSContext *cx)
         return obj->is<ArrayBufferObject>() || obj->is<SharedArrayBufferObject>();
       case ESClass_Date: return obj->is<DateObject>();
     }
-    MOZ_ASSUME_UNREACHABLE("bad classValue");
+    MOZ_CRASH("bad classValue");
 }
 
 inline bool

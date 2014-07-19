@@ -118,7 +118,7 @@ Bindings::initWithTemporaryStorage(ExclusiveContext *cx, InternalBindingsHandle 
     // Start with the empty shape and then append one shape per aliased binding.
     RootedShape shape(cx,
         EmptyShape::getInitialShape(cx, &CallObject::class_, TaggedProto(nullptr), nullptr, nullptr,
-                                    nfixed, BaseShape::VAROBJ | BaseShape::DELEGATE));
+                                    nfixed, BaseShape::QUALIFIED_VAROBJ | BaseShape::DELEGATE));
     if (!shape)
         return false;
 
@@ -141,7 +141,7 @@ Bindings::initWithTemporaryStorage(ExclusiveContext *cx, InternalBindingsHandle 
 #endif
 
         StackBaseShape stackBase(cx, &CallObject::class_, nullptr, nullptr,
-                                 BaseShape::VAROBJ | BaseShape::DELEGATE);
+                                 BaseShape::QUALIFIED_VAROBJ | BaseShape::DELEGATE);
 
         UnownedBaseShape *base = BaseShape::getUnowned(cx, stackBase);
         if (!base)
@@ -503,7 +503,7 @@ FindScopeObjectIndex(JSScript *script, NestedScopeObject &scope)
             return i;
     }
 
-    MOZ_ASSUME_UNREACHABLE("Scope not found");
+    MOZ_CRASH("Scope not found");
 }
 
 static bool
@@ -865,7 +865,7 @@ js::XDRScript(XDRState<mode> *xdr, HandleObject enclosingScope, HandleScript enc
             else if (obj->is<JSObject>() || obj->is<ArrayObject>())
                 classk = CK_JSObject;
             else
-                MOZ_ASSUME_UNREACHABLE("Cannot encode this class of object.");
+                MOZ_CRASH("Cannot encode this class of object.");
         }
 
         if (!xdr->codeEnum32(&classk))
@@ -1495,7 +1495,6 @@ ScriptSource::chars(JSContext *cx, UncompressedSourceCache::AutoHoldEntry &holde
         return uncompressedChars();
 
       case DataCompressed: {
-#ifdef USE_ZLIB
         if (const jschar *decompressed = cx->runtime()->uncompressedSourceCache.lookup(this, holder))
             return decompressed;
 
@@ -1520,9 +1519,6 @@ ScriptSource::chars(JSContext *cx, UncompressedSourceCache::AutoHoldEntry &holde
         }
 
         return decompressed;
-#else
-        MOZ_CRASH();
-#endif
       }
 
       case DataParent:
@@ -1535,6 +1531,17 @@ ScriptSource::chars(JSContext *cx, UncompressedSourceCache::AutoHoldEntry &holde
 
 JSFlatString *
 ScriptSource::substring(JSContext *cx, uint32_t start, uint32_t stop)
+{
+    JS_ASSERT(start <= stop);
+    UncompressedSourceCache::AutoHoldEntry holder;
+    const jschar *chars = this->chars(cx, holder);
+    if (!chars)
+        return nullptr;
+    return NewStringCopyN<CanGC>(cx, chars + start, stop - start);
+}
+
+JSFlatString *
+ScriptSource::substringDontDeflate(JSContext *cx, uint32_t start, uint32_t stop)
 {
     JS_ASSERT(start <= stop);
     UncompressedSourceCache::AutoHoldEntry holder;
@@ -1643,7 +1650,7 @@ ScriptSource::setSourceCopy(ExclusiveContext *cx, SourceBufferHolder &srcBuf,
     //    thread (see HelperThreadState::canStartParseTask) which would cause a
     //    deadlock if there wasn't a second helper thread that could make
     //    progress on our compression task.
-#if defined(JS_THREADSAFE) && defined(USE_ZLIB)
+#if defined(JS_THREADSAFE)
     bool canCompressOffThread =
         HelperThreadState().cpuCount > 1 &&
         HelperThreadState().threadCount >= 2;
@@ -1666,7 +1673,6 @@ ScriptSource::setSourceCopy(ExclusiveContext *cx, SourceBufferHolder &srcBuf,
 SourceCompressionTask::ResultType
 SourceCompressionTask::work()
 {
-#ifdef USE_ZLIB
     // Try to keep the maximum memory usage down by only allocating half the
     // size of the string, first.
     size_t inputBytes = ss->length() * sizeof(jschar);
@@ -1712,9 +1718,6 @@ SourceCompressionTask::work()
     }
     compressedBytes = comp.outWritten();
     compressedHash = CompressedSourceHasher::computeHash(compressed, compressedBytes);
-#else
-    MOZ_CRASH();
-#endif
 
     // Shrink the buffer to the size of the compressed data.
     if (void *newCompressed = js_realloc(compressed, compressedBytes))

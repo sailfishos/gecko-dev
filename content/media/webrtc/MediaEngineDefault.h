@@ -61,6 +61,10 @@ public:
     return true;
   }
 
+  virtual const MediaSourceType GetMediaSource() {
+    return MediaSourceType::Camera;
+  }
+
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_NSITIMERCALLBACK
 
@@ -117,6 +121,10 @@ public:
     return true;
   }
 
+  virtual const MediaSourceType GetMediaSource() {
+    return MediaSourceType::Microphone;
+  }
+
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_NSITIMERCALLBACK
 
@@ -138,8 +146,10 @@ public:
   : mMutex("mozilla::MediaEngineDefault")
   {}
 
-  virtual void EnumerateVideoDevices(nsTArray<nsRefPtr<MediaEngineVideoSource> >*);
-  virtual void EnumerateAudioDevices(nsTArray<nsRefPtr<MediaEngineAudioSource> >*);
+  virtual void EnumerateVideoDevices(MediaSourceType,
+                                     nsTArray<nsRefPtr<MediaEngineVideoSource> >*);
+  virtual void EnumerateAudioDevices(MediaSourceType,
+                                     nsTArray<nsRefPtr<MediaEngineAudioSource> >*);
 
 private:
   ~MediaEngineDefault() {}

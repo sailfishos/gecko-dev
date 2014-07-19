@@ -14,7 +14,8 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:name="org.mozilla.search.PostSearchFragment"
-        android:id="@+id/gecko"
+        android:layout_marginTop="@dimen/webview_height_offset"
+        android:id="@+id/postsearch"
         />
 
     <fragment

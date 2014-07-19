@@ -395,9 +395,11 @@ PK11_PBEKeyGen
 PK11_PQG_DestroyParams
 PK11_PQG_DestroyVerify
 PK11_PQG_ParamGen
+PK11_PrivDecrypt
 PK11_PrivDecryptPKCS1
 PK11_ProtectedAuthenticationPath
 PK11_PubDeriveWithKDF
+PK11_PubEncrypt
 PK11_PubEncryptPKCS1
 PK11_PubUnwrapSymKey
 PK11_PubWrapSymKey
@@ -508,6 +510,7 @@ SECKEY_ECParamsToKeySize
 SECKEY_EncodeDERSubjectPublicKeyInfo
 SECKEY_ExtractPublicKey
 SECKEY_PublicKeyStrength
+SECKEY_PublicKeyStrengthInBits
 SECKEY_RSAPSSParamsTemplate DATA
 SECMIME_DecryptionAllowed
 SECMOD_AddNewModule
@@ -652,4 +655,5 @@ VFY_CreateContext
 VFY_DestroyContext
 VFY_End
 VFY_Update
+VFY_VerifyDataDirect
 VFY_VerifyDataWithAlgorithmID

@@ -24,20 +24,41 @@ class BluetoothInterface;
 // Socket Interface
 //
 
+class BluetoothSocketResultHandler
+{
+public:
+  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(BluetoothSocketResultHandler)
+
+  virtual ~BluetoothSocketResultHandler() { }
+
+  virtual void OnError(bt_status_t aStatus)
+  {
+    BT_WARNING("Received error code %d", (int)aStatus);
+  }
+
+  virtual void Listen(int aSockFd) { }
+  virtual void Connect(int aSockFd, const nsAString& aBdAddress,
+                       int aConnectionState) { }
+  virtual void Accept(int aSockFd, const nsAString& aBdAddress,
+                      int aConnectionState) { }
+};
+
 class BluetoothSocketInterface
 {
 public:
-  friend BluetoothInterface;
+  friend class BluetoothInterface;
 
   // Init and Cleanup is handled by BluetoothInterface
 
-  bt_status_t Listen(btsock_type_t aType,
-                     const char* aServiceName, const uint8_t* aServiceUuid,
-                     int aChannel, int& aSockFd, int aFlags);
+  void Listen(btsock_type_t aType,
+              const char* aServiceName, const uint8_t* aServiceUuid,
+              int aChannel, int aFlags, BluetoothSocketResultHandler* aRes);
 
-  bt_status_t Connect(const bt_bdaddr_t* aBdAddr, btsock_type_t aType,
-                      const uint8_t* aUuid, int aChannel, int& aSockFd,
-                      int aFlags);
+  void Connect(const bt_bdaddr_t* aBdAddr, btsock_type_t aType,
+               const uint8_t* aUuid, int aChannel, int aFlags,
+               BluetoothSocketResultHandler* aRes);
+
+  void Accept(int aFd, BluetoothSocketResultHandler* aRes);
 
 protected:
   BluetoothSocketInterface(const btsock_interface_t* aInterface);
@@ -54,7 +75,7 @@ private:
 class BluetoothHandsfreeInterface
 {
 public:
-  friend BluetoothInterface;
+  friend class BluetoothInterface;
 
   bt_status_t Init(bthf_callbacks_t* aCallbacks);
   void        Cleanup();
@@ -116,7 +137,7 @@ private:
 class BluetoothA2dpInterface
 {
 public:
-  friend BluetoothInterface;
+  friend class BluetoothInterface;
 
   bt_status_t Init(btav_callbacks_t *aCallbacks);
   void        Cleanup();
@@ -140,7 +161,7 @@ class BluetoothAvrcpInterface
 {
 #if ANDROID_VERSION >= 18
 public:
-  friend BluetoothInterface;
+  friend class BluetoothInterface;
 
   bt_status_t Init(btrc_callbacks_t* aCallbacks);
   void        Cleanup();

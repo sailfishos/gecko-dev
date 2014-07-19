@@ -78,16 +78,6 @@ class Device(object):
 
         self.dm.pushDir(profile.profile, self.app_ctx.remote_profile)
 
-        extension_dir = os.path.join(profile.profile, 'extensions', 'staged')
-        if os.path.isdir(extension_dir):
-            # Copy the extensions to the B2G bundles dir.
-            # need to write to read-only dir
-            for filename in os.listdir(extension_dir):
-                path = posixpath.join(self.app_ctx.remote_bundles_dir, filename)
-                if self.dm.fileExists(path):
-                    self.dm.shellCheckOutput(['rm', '-rf', path])
-            self.dm.pushDir(extension_dir, self.app_ctx.remote_bundles_dir)
-
         timeout = 5 # seconds
         starttime = datetime.datetime.now()
         while datetime.datetime.now() - starttime < datetime.timedelta(seconds=timeout):
@@ -112,6 +102,13 @@ class Device(object):
 
         self.backup_file(self.app_ctx.remote_profiles_ini)
         self.dm.pushFile(new_profiles_ini.name, self.app_ctx.remote_profiles_ini)
+
+        # Ideally all applications would read the profile the same way, but in practice
+        # this isn't true. Perform application specific profile-related setup if necessary.
+        if hasattr(self.app_ctx, 'setup_profile'):
+            for remote_path in self.app_ctx.remote_backup_files:
+                self.backup_file(remote_path)
+            self.app_ctx.setup_profile(profile)
 
     def _get_online_devices(self):
         return [d[0] for d in self.dm.devices() if d[1] != 'offline' if not d[0].startswith('emulator')]
@@ -163,26 +160,30 @@ class Device(object):
         adb.wait()
         self.dm._verifyZip()
 
-    def setup_port_forwarding(self, remote_port):
+    def setup_port_forwarding(self, local_port=None, remote_port=2828):
         """
         Set up TCP port forwarding to the specified port on the device,
-        using any availble local port, and return the local port.
+        using any availble local port (if none specified), and return the local port.
 
-        :param remote_port: The remote port to wait on.
+        :param local_port: The local port to forward from, if unspecified a
+                           random port is chosen.
+        :param remote_port: The remote port to forward to, defaults to 2828.
+        :returns: The local_port being forwarded.
         """
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.bind(("",0))
-        local_port = s.getsockname()[1]
-        s.close()
+        if not local_port:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.bind(("",0))
+            local_port = s.getsockname()[1]
+            s.close()
 
-        self.dm.forward('tcp:%d' % local_port, 'tcp:%d' % remote_port)
+        self.dm.forward('tcp:%d' % int(local_port), 'tcp:%d' % int(remote_port))
         return local_port
 
     def wait_for_net(self):
         active = False
         time_out = 0
         while not active and time_out < 40:
-            proc = subprocess.Popen([self.dm._adbPath, 'shell', '/system/bin/netcfg'], stdout=subprocess.PIPE)
+            proc = subprocess.Popen([self.app_ctx.adb, 'shell', '/system/bin/netcfg'], stdout=subprocess.PIPE)
             proc.stdout.readline() # ignore first line
             line = proc.stdout.readline()
             while line != "":
@@ -213,7 +214,7 @@ class Device(object):
         if not self.restore:
             return
 
-        if self.dm.fileExists(remote_path):
+        if self.dm.fileExists(remote_path) or self.dm.dirExists(remote_path):
             self.dm.copyTree(remote_path, '%s.orig' % remote_path)
             self.backup_files.add(remote_path)
         else:
@@ -237,17 +238,13 @@ class Device(object):
             self.dm.removeFile(added_file)
 
         for backup_file in self.backup_files:
-            if self.dm.fileExists('%s.orig' % backup_file):
+            if self.dm.fileExists('%s.orig' % backup_file) or self.dm.dirExists('%s.orig' % backup_file):
                 self.dm.moveTree('%s.orig' % backup_file, backup_file)
 
-        # Delete any bundled extensions
-        extension_dir = posixpath.join(self.app_ctx.remote_profile, 'extensions', 'staged')
-        if self.dm.dirExists(extension_dir):
-            for filename in self.dm.listFiles(extension_dir):
-                try:
-                    self.dm.removeDir(posixpath.join(self.app_ctx.remote_bundles_dir, filename))
-                except DMError:
-                    pass
+        # Perform application specific profile cleanup if necessary
+        if hasattr(self.app_ctx, 'cleanup_profile'):
+            self.app_ctx.cleanup_profile()
+
         # Remove the test profile
         self.dm.removeDir(self.app_ctx.remote_profile)
 

@@ -357,9 +357,11 @@ pref("media.navigator.enabled", true);
 #endif
 #endif
 
-pref("media.tabstreaming.width", 320);
-pref("media.tabstreaming.height", 240);
-pref("media.tabstreaming.time_per_frame", 40);
+// do not enable screensharing before addressing security concerns: Bug 1035577
+// do not enable screensharing before implementing app/window sharing: Bug 1036653
+// do not enable screensharing before source constraints are finalized: Bug 1033885
+// do not enable screensharing before UX is ready: Bug 1035577
+pref("media.getusermedia.screensharing.enabled", false);
 
 // TextTrack support
 pref("media.webvtt.enabled", true);
@@ -432,6 +434,10 @@ pref("gfx.hidpi.enabled", 2);
 // Whether to enable LayerScope tool and default listening port
 pref("gfx.layerscope.enabled", false);
 pref("gfx.layerscope.port", 23456);
+
+// Log severe performance warnings to the error console and profiles.
+// This should be use to quickly find which slow paths are used by test cases.
+pref("gfx.perf-warnings.enabled", false);
 
 // 0 = Off, 1 = Full, 2 = Tagged Images Only.
 // See eCMSMode in gfx/thebes/gfxPlatform.h
@@ -894,6 +900,12 @@ pref("javascript.options.mem.gc_dynamic_heap_growth", true);
 pref("javascript.options.mem.gc_dynamic_mark_slice", true);
 pref("javascript.options.mem.gc_allocation_threshold_mb", 30);
 pref("javascript.options.mem.gc_decommit_threshold_mb", 32);
+#ifdef JSGC_GENERATIONAL
+pref("javascript.options.mem.gc_min_empty_chunk_count", 1);
+#else
+pref("javascript.options.mem.gc_min_empty_chunk_count", 0);
+#endif
+pref("javascript.options.mem.gc_max_empty_chunk_count", 30);
 
 pref("javascript.options.showInConsole", false);
 
@@ -1096,6 +1108,9 @@ pref("network.http.connection-timeout", 90);
 // The maximum number of current global half open sockets allowable
 // when starting a new speculative connection.
 pref("network.http.speculative-parallel-limit", 6);
+
+// Allow/Forbid speculative connections on loopback.
+pref("network.http.speculative.allowLoopback", false);
 
 // Whether or not to block requests for non head js/css items (e.g. media)
 // while those elements load.
@@ -1515,6 +1530,10 @@ pref("network.proxy.autoconfig_retry_interval_max", 300);  // 5 minutes
 
 // Use the HSTS preload list by default
 pref("network.stricttransportsecurity.preloadlist", true);
+
+// Prohibit resource loads from private networks (e.g. RFC1918 like IP
+// addresses) by documents which were loaded from public networks.
+pref("network.zonepolicy.enabled", true);
 
 pref("converter.html2txt.structs",          true); // Output structured phrases (strong, em, code, sub, sup, b, i, u)
 pref("converter.html2txt.header_strategy",  1); // 0 = no indention; 1 = indention, increased with header level; 2 = numbering and slight indention
@@ -4050,10 +4069,9 @@ pref("memory.dump_reports_on_oom", false);
 // Number of stack frames to capture in createObjectURL for about:memory.
 pref("memory.blob_report.stack_frames", 0);
 
-// comma separated list of domain origins (e.g. https://domain.com) for
-// providers that can install from their own website without user warnings.
-// entries are
-pref("social.whitelist", "https://mozsocial.cliqz.com,https://now.msn.com,https://mixi.jp");
+// comma separated list of domain origins (e.g. https://domain.com) that still
+// need localStorage in the frameworker
+pref("social.whitelist", "https://mozsocial.cliqz.com");
 // comma separated list of domain origins (e.g. https://domain.com) for
 // directory websites (e.g. AMO) that can install providers for other sites
 pref("social.directories", "https://activations.cdn.mozilla.net");
@@ -4219,6 +4237,9 @@ pref("dom.voicemail.defaultServiceId", 0);
 // DOM Inter-App Communication API.
 pref("dom.inter-app-communication-api.enabled", false);
 
+// Disable mapped array buffer by default.
+pref("dom.mapped_arraybuffer.enabled", false);
+
 // The tables used for Safebrowsing phishing and malware checks.
 pref("urlclassifier.malwareTable", "goog-malware-shavar,test-malware-simple");
 pref("urlclassifier.phishTable", "goog-phish-shavar,test-phish-simple");
@@ -4229,7 +4250,7 @@ pref("urlclassifier.disallow_completions", "test-malware-simple,test-phish-simpl
 // The table and update/gethash URLs for Safebrowsing phishing and malware
 // checks.
 pref("urlclassifier.trackingTable", "mozpub-track-digest256");
-pref("browser.trackingprotection.updateURL", "https://tracking.services.mozilla.com/update?client=SAFEBROWSING_ID&appver=%VERSION%&pver=2.2");
+pref("browser.trackingprotection.updateURL", "https://tracking.services.mozilla.com/downloads?client=SAFEBROWSING_ID&appver=%VERSION%&pver=2.2");
 pref("browser.trackingprotection.gethashURL", "https://tracking.services.mozilla.com/gethash?client=SAFEBROWSING_ID&appver=%VERSION%&pver=2.2");
 
 // Turn off Spatial navigation by default.

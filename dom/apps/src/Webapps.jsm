@@ -3138,7 +3138,7 @@ this.DOMApplicationRegistry = {
           aOldApp.downloadAvailable = false;
         }
         if (typeof e == 'object') {
-          Cu.reportError("Error while reading package:" + e);
+          Cu.reportError("Error while reading package: " + e + "\n" + e.stack);
           throw "INVALID_PACKAGE";
         } else {
           throw e;
@@ -3399,12 +3399,20 @@ this.DOMApplicationRegistry = {
         debug("Setting origin to " + uri.prePath +
               " for " + aOldApp.manifestURL);
         let newId = uri.prePath.substring(6); // "app://".length
-        if (newId in this.webapps) {
+        if (newId in this.webapps && this._isLaunchable(this.webapps[newId])) {
           throw "DUPLICATE_ORIGIN";
         }
         aOldApp.origin = uri.prePath;
         // Update the registry.
         let oldId = aOldApp.id;
+
+        if (oldId == newId) {
+          // This could happen when we have an app in the registry
+          // that is not launchable. Since the app already has
+          // the correct id, we don't need to change it.
+          return;
+        }
+
         aOldApp.id = newId;
         this.webapps[newId] = aOldApp;
         delete this.webapps[oldId];

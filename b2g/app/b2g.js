@@ -152,6 +152,7 @@ pref("dom.disable_open_during_load", true);
 pref("privacy.popups.showBrowserMessage", true);
 
 pref("keyword.enabled", true);
+pref("browser.fixup.domainwhitelist.localhost", true);
 
 pref("accessibility.typeaheadfind", false);
 pref("accessibility.typeaheadfind.timeout", 5000);
@@ -473,17 +474,6 @@ pref("services.push.adaptive.gap", 60000); // 1 minute
 pref("services.push.adaptive.upperLimit", 1740000); // 29 min
 // enable udp wakeup support
 pref("services.push.udp.wakeupEnabled", true);
-// This value should be the prefix to be added to the current PDP context[1]
-// domain or a full-qualified domain name.
-// If finished with a dot, it will be added as a prefix to the PDP context
-// domain. If not, will be used as the DNS query.
-// If the DNS query is unsuccessful, the push agent will send a null netid and
-// is a server decision what to do with the device. If the MCC-MNC identifies a
-// unique network the server will change to UDP mode. Otherwise, a websocket
-// connection will be maintained.
-// [1] Packet Data Protocol
-//     http://en.wikipedia.org/wiki/GPRS_core_network#PDP_context
-pref("services.push.udp.well-known_netidAddress", "_wakeup_.");
 
 // NetworkStats
 #ifdef MOZ_WIDGET_GONK
@@ -664,6 +654,12 @@ pref("javascript.options.mem.gc_low_frequency_heap_growth", 120);
 pref("javascript.options.mem.high_water_mark", 6);
 pref("javascript.options.mem.gc_allocation_threshold_mb", 1);
 pref("javascript.options.mem.gc_decommit_threshold_mb", 1);
+#ifdef JSGC_GENERATIONAL
+pref("javascript.options.mem.gc_min_empty_chunk_count", 1);
+#else
+pref("javascript.options.mem.gc_min_empty_chunk_count", 0);
+#endif
+pref("javascript.options.mem.gc_max_empty_chunk_count", 2);
 
 // Show/Hide scrollbars when active/inactive
 pref("ui.showHideScrollbars", 1);
@@ -1007,7 +1003,9 @@ pref("services.sync.fxaccounts.enabled", true);
 pref("identity.fxaccounts.enabled", true);
 
 // Mobile Identity API.
-pref("services.mobileid.server.uri", "https://msisdn-dev.stage.mozaws.net");
+pref("services.mobileid.server.uri", "https://msisdn.services.mozilla.com");
 
-// Enable mapped array buffer
+// Enable mapped array buffer.
+#ifndef XP_WIN
 pref("dom.mapped_arraybuffer.enabled", true);
+#endif

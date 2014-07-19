@@ -1231,6 +1231,11 @@ toolbarbutton[sdk-button="true"][cui-areatype="toolbar"] > .toolbarbutton-icon {
   list-style-image: url(chrome://browser/skin/webRTC-shareMicrophone-64.png);
 }
 
+.popup-notification-icon[popupid="webRTC-sharingScreen"],
+.popup-notification-icon[popupid="webRTC-shareScreen"] {
+  list-style-image: url(chrome://browser/skin/webRTC-shareScreen-64.png);
+}
+
 .popup-notification-icon[popupid="pointerLock"] {
   list-style-image: url(chrome://browser/skin/pointerLock-64.png);
 }
@@ -1375,6 +1380,16 @@ toolbarbutton[sdk-button="true"][cui-areatype="toolbar"] > .toolbarbutton-icon {
 .webRTC-sharingMicrophone-notification-icon,
 #webRTC-sharingMicrophone-notification-icon {
   list-style-image: url(chrome://browser/skin/webRTC-sharingMicrophone-16.png);
+}
+
+.webRTC-shareScreen-notification-icon,
+#webRTC-shareScreen-notification-icon {
+  list-style-image: url(chrome://browser/skin/webRTC-shareScreen-16.png);
+}
+
+.webRTC-sharingScreen-notification-icon,
+#webRTC-sharingScreen-notification-icon {
+  list-style-image: url(chrome://browser/skin/webRTC-sharingScreen-16.png);
 }
 
 .web-notifications-notification-icon,
@@ -1604,12 +1619,10 @@ richlistitem[type~="action"][actiontype="switchtab"] > .ac-url-box > .ac-action-
   list-style-image: url("chrome://browser/skin/Info.png");
 }
 
-%ifdef MOZ_LOOP
 /* Loop */
 #loop-call-button {
   list-style-image: url("chrome://global/skin/loop/loop-call.png");
 }
-%endif
 
 /* social share panel */
 
@@ -2301,10 +2314,7 @@ chatbox {
 %include ../shared/contextmenu.inc.css
 
 #context-navigation {
-  background-color: -moz-dialog;
-  padding-bottom: 2px;
-  margin-bottom: 2px;
-  -moz-appearance: menuitem;
+  padding-top: 4px;
 }
 
 #context-navigation > .menuitem-iconic > .menu-iconic-left {
@@ -2312,8 +2322,4 @@ chatbox {
   /* override toolkit/themes/linux/global/menu.css */
   -moz-padding-end: 0 !important;
   -moz-margin-end: 0 !important;
-}
-
-#context-sep-navigation {
-  margin-top: -4px;
 }

@@ -3735,18 +3735,10 @@ GenerateSetTypedArrayElement(JSContext *cx, MacroAssembler &masm, IonCache::Stub
     BaseIndex target(elements, index, ScaleFromElemWidth(width));
 
     if (arrayType == Scalar::Float32) {
-        FloatRegister ftemp;
-        if (LIRGenerator::allowFloat32Optimizations()) {
-            JS_ASSERT(tempFloat32 != InvalidFloatReg);
-            if (!masm.convertConstantOrRegisterToFloat(cx, value, tempFloat32, &failures))
-                return false;
-            ftemp = tempFloat32;
-        } else {
-            if (!masm.convertConstantOrRegisterToDouble(cx, value, tempDouble, &failures))
-                return false;
-            ftemp = tempDouble;
-        }
-        masm.storeToTypedFloatArray(arrayType, ftemp, target);
+        JS_ASSERT(tempFloat32 != InvalidFloatReg);
+        if (!masm.convertConstantOrRegisterToFloat(cx, value, tempFloat32, &failures))
+            return false;
+        masm.storeToTypedFloatArray(arrayType, tempFloat32, target);
     } else if (arrayType == Scalar::Float64) {
         if (!masm.convertConstantOrRegisterToDouble(cx, value, tempDouble, &failures))
             return false;
@@ -4174,7 +4166,7 @@ BindNameIC::update(JSContext *cx, size_t cacheIndex, HandleObject scopeChain)
     if (scopeChain->is<GlobalObject>()) {
         holder = scopeChain;
     } else {
-        if (!LookupNameWithGlobalDefault(cx, name, scopeChain, &holder))
+        if (!LookupNameUnqualified(cx, name, scopeChain, &holder))
             return nullptr;
     }
 

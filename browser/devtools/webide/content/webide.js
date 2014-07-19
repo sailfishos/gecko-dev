@@ -74,11 +74,14 @@ let UI = {
       }, console.error);
     }
     Services.prefs.setBoolPref("devtools.webide.autoinstallADBHelper", false);
+
+    this.setupDeck();
   },
 
   openLastProject: function() {
     let lastProjectLocation = Services.prefs.getCharPref("devtools.webide.lastprojectlocation");
-    if (lastProjectLocation) {
+    let shouldRestore = Services.prefs.getBoolPref("devtools.webide.restoreLastProject");
+    if (lastProjectLocation && shouldRestore) {
       let lastProject = AppProjects.get(lastProjectLocation);
       if (lastProject) {
         AppManager.selectedProject = lastProject;
@@ -204,9 +207,10 @@ let UI = {
   setupBusyTimeout: function() {
     this.cancelBusyTimeout();
     this._busyTimeout = setTimeout(() => {
+      let busyPromise = this._busyPromise;
       this.unbusy();
       UI.reportError("error_operationTimeout", this._busyOperationDescription);
-      this._busyPromise.reject("promise timeout: " + this._busyOperationDescription);
+      busyPromise.reject("promise timeout: " + this._busyOperationDescription);
     }, 30000);
   },
 
@@ -469,6 +473,13 @@ let UI = {
 
   /********** DECK **********/
 
+  setupDeck: function() {
+    let iframes = document.querySelectorAll("#deck > iframe");
+    for (let iframe of iframes) {
+      iframe.tooltip = "aHTMLTooltip";
+    }
+  },
+
   resetFocus: function() {
     document.commandDispatcher.focusedElement = document.documentElement;
   },
@@ -573,14 +584,12 @@ let UI = {
       permissionsCmd.removeAttribute("disabled");
       disconnectCmd.removeAttribute("disabled");
       detailsCmd.removeAttribute("disabled");
-      box.removeAttribute("hidden");
       runtimePanelButton.setAttribute("active", "true");
     } else {
       screenshotCmd.setAttribute("disabled", "true");
       permissionsCmd.setAttribute("disabled", "true");
       disconnectCmd.setAttribute("disabled", "true");
       detailsCmd.setAttribute("disabled", "true");
-      box.setAttribute("hidden", "true");
       runtimePanelButton.removeAttribute("active");
     }
 
@@ -802,8 +811,12 @@ let Cmds = {
       runtimeAppsNode.firstChild.remove();
     }
 
-    for (let i = 0; i < AppManager.webAppsStore.object.all.length; i++) {
-      let app = AppManager.webAppsStore.object.all[i];
+    let sortedApps = AppManager.webAppsStore.object.all;
+    sortedApps = sortedApps.sort((a, b) => {
+      return a.name > b.name;
+    });
+    for (let i = 0; i < sortedApps.length; i++) {
+      let app = sortedApps[i];
       let panelItemNode = document.createElement("toolbarbutton");
       panelItemNode.className = "panel-item";
       panelItemNode.setAttribute("label", app.name);
@@ -909,5 +922,9 @@ let Cmds = {
 
   showAddons: function() {
     UI.selectDeckPanel("addons");
+  },
+
+  showPrefs: function() {
+    UI.selectDeckPanel("prefs");
   },
 }

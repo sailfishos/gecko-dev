@@ -893,7 +893,7 @@ EnterNestedScope(ExclusiveContext *cx, BytecodeEmitter *bce, StmtInfoBCE *stmt, 
             return false;
         break;
       default:
-        MOZ_ASSUME_UNREACHABLE();
+        MOZ_CRASH("Unexpected scope statement");
     }
 
     uint32_t parent = BlockScopeNote::NoBlockScopeIndex;
@@ -1253,7 +1253,7 @@ EmitVarOp(ExclusiveContext *cx, ParseNode *pn, JSOp op, BytecodeEmitter *bce)
     switch (op) {
       case JSOP_GETARG: case JSOP_GETLOCAL: op = JSOP_GETALIASEDVAR; break;
       case JSOP_SETARG: case JSOP_SETLOCAL: op = JSOP_SETALIASEDVAR; break;
-      default: MOZ_ASSUME_UNREACHABLE("unexpected var op");
+      default: MOZ_CRASH("unexpected var op");
     }
 
     return EmitAliasedVarOp(cx, op, pn, bce);
@@ -1353,7 +1353,7 @@ BytecodeEmitter::isAliasedName(ParseNode *pn)
       case Definition::PLACEHOLDER:
       case Definition::NAMED_LAMBDA:
       case Definition::MISSING:
-        MOZ_ASSUME_UNREACHABLE("unexpected dn->kind");
+        MOZ_CRASH("unexpected dn->kind");
     }
     return false;
 }
@@ -1378,7 +1378,7 @@ TryConvertFreeName(BytecodeEmitter *bce, ParseNode *pn)
           case JSOP_NAME:     op = JSOP_GETINTRINSIC; break;
           case JSOP_SETNAME:  op = JSOP_SETINTRINSIC; break;
           /* Other *NAME ops aren't (yet) supported in self-hosted code. */
-          default: MOZ_ASSUME_UNREACHABLE("intrinsic");
+          default: MOZ_CRASH("intrinsic");
         }
         pn->setOp(op);
         return true;
@@ -1486,7 +1486,7 @@ TryConvertFreeName(BytecodeEmitter *bce, ParseNode *pn)
       case JSOP_SETCONST:
         // Not supported.
         return false;
-      default: MOZ_ASSUME_UNREACHABLE("gname");
+      default: MOZ_CRASH("gname");
     }
     pn->setOp(op);
     return true;
@@ -1632,7 +1632,7 @@ BindNameToSlotHelper(ExclusiveContext *cx, BytecodeEmitter *bce, ParseNode *pn)
         switch (op) {
           case JSOP_NAME:     op = JSOP_GETARG; break;
           case JSOP_SETNAME:  op = JSOP_SETARG; break;
-          default: MOZ_ASSUME_UNREACHABLE("arg");
+          default: MOZ_CRASH("arg");
         }
         JS_ASSERT(!pn->isConst());
         break;
@@ -1644,7 +1644,7 @@ BindNameToSlotHelper(ExclusiveContext *cx, BytecodeEmitter *bce, ParseNode *pn)
           case JSOP_NAME:     op = JSOP_GETLOCAL; break;
           case JSOP_SETNAME:  op = JSOP_SETLOCAL; break;
           case JSOP_SETCONST: op = JSOP_SETLOCAL; break;
-          default: MOZ_ASSUME_UNREACHABLE("local");
+          default: MOZ_CRASH("local");
         }
         break;
 
@@ -1701,7 +1701,7 @@ BindNameToSlotHelper(ExclusiveContext *cx, BytecodeEmitter *bce, ParseNode *pn)
         return true;
 
       case Definition::MISSING:
-        MOZ_ASSUME_UNREACHABLE("missing");
+        MOZ_CRASH("missing");
     }
 
     /*
@@ -1894,7 +1894,7 @@ CheckSideEffects(ExclusiveContext *cx, BytecodeEmitter *bce, ParseNode *pn, bool
               default:
                 return CheckSideEffects(cx, bce, pn2, answer);
             }
-            MOZ_ASSUME_UNREACHABLE("We have a returning default case");
+            MOZ_CRASH("We have a returning default case");
           }
 
           case PNK_TYPEOF:
@@ -1917,7 +1917,7 @@ CheckSideEffects(ExclusiveContext *cx, BytecodeEmitter *bce, ParseNode *pn, bool
             *answer = true;
             return true;
         }
-        MOZ_ASSUME_UNREACHABLE("We have a returning default case");
+        MOZ_CRASH("We have a returning default case");
 
       case PN_NAME:
         /*
@@ -3125,7 +3125,7 @@ EmitDestructuringLHS(ExclusiveContext *cx, BytecodeEmitter *bce, ParseNode *pn, 
                 break;
 
               default:
-                MOZ_ASSUME_UNREACHABLE("EmitDestructuringLHS: bad name op");
+                MOZ_CRASH("EmitDestructuringLHS: bad name op");
             }
             break;
 
@@ -3169,7 +3169,7 @@ EmitDestructuringLHS(ExclusiveContext *cx, BytecodeEmitter *bce, ParseNode *pn, 
             break;
 
           default:
-            MOZ_ASSUME_UNREACHABLE("EmitDestructuringLHS: bad lhs kind");
+            MOZ_CRASH("EmitDestructuringLHS: bad lhs kind");
         }
 
         // Pop the assigned value.
@@ -3740,7 +3740,7 @@ EmitAssignment(ExclusiveContext *cx, BytecodeEmitter *bce, ParseNode *lhs, JSOp 
                   case JSOP_SETARG: op = JSOP_GETARG; break;
                   case JSOP_SETLOCAL: op = JSOP_GETLOCAL; break;
                   case JSOP_SETALIASEDVAR: op = JSOP_GETALIASEDVAR; break;
-                  default: MOZ_ASSUME_UNREACHABLE("Bad op");
+                  default: MOZ_CRASH("Bad op");
                 }
                 if (!EmitVarOp(cx, lhs, op, bce))
                     return false;
@@ -3947,7 +3947,7 @@ ParseNode::getConstantValue(ExclusiveContext *cx, bool strictChecks, MutableHand
         return true;
       }
       default:
-        MOZ_ASSUME_UNREACHABLE("Unexpected node");
+        MOZ_CRASH("Unexpected node");
     }
     return false;
 }
@@ -6044,7 +6044,7 @@ EmitObject(ExclusiveContext *cx, BytecodeEmitter *bce, ParseNode *pn)
               case JSOP_INITPROP:        op = JSOP_INITELEM;        break;
               case JSOP_INITPROP_GETTER: op = JSOP_INITELEM_GETTER; break;
               case JSOP_INITPROP_SETTER: op = JSOP_INITELEM_SETTER; break;
-              default: MOZ_ASSUME_UNREACHABLE("Invalid op");
+              default: MOZ_CRASH("Invalid op");
             }
             if (Emit1(cx, bce, op) < 0)
                 return false;
@@ -6247,7 +6247,7 @@ EmitDefaults(ExclusiveContext *cx, BytecodeEmitter *bce, ParseNode *pn)
 
     ParseNode *arg, *pnlast = pn->last();
     for (arg = pn->pn_head; arg != pnlast; arg = arg->pn_next) {
-        if (!(arg->pn_dflags & PND_DEFAULT) || !arg->isKind(PNK_NAME))
+        if (!(arg->pn_dflags & PND_DEFAULT))
             continue;
         if (!BindNameToSlot(cx, bce, arg))
             return false;
@@ -6302,8 +6302,8 @@ frontend::EmitTree(ExclusiveContext *cx, BytecodeEmitter *bce, ParseNode *pn)
 
         // Carefully emit everything in the right order:
         // 1. Destructuring
-        // 2. Functions
-        // 3. Defaults
+        // 2. Defaults
+        // 3. Functions
         ParseNode *pnchild = pnlast->pn_head;
         if (pnlast->pn_xflags & PNX_DESTRUCT) {
             // Assign the destructuring arguments before defining any functions,
@@ -6313,23 +6313,6 @@ frontend::EmitTree(ExclusiveContext *cx, BytecodeEmitter *bce, ParseNode *pn)
             if (!EmitTree(cx, bce, pnchild))
                 return false;
             pnchild = pnchild->pn_next;
-        }
-        if (pnlast->pn_xflags & PNX_FUNCDEFS) {
-            // This block contains top-level function definitions. To ensure
-            // that we emit the bytecode defining them before the rest of code
-            // in the block we use a separate pass over functions. During the
-            // main pass later the emitter will add JSOP_NOP with source notes
-            // for the function to preserve the original functions position
-            // when decompiling.
-            //
-            // Currently this is used only for functions, as compile-as-we go
-            // mode for scripts does not allow separate emitter passes.
-            for (ParseNode *pn2 = pnchild; pn2; pn2 = pn2->pn_next) {
-                if (pn2->isKind(PNK_FUNCTION) && pn2->functionIsHoisted()) {
-                    if (!EmitTree(cx, bce, pn2))
-                        return false;
-                }
-            }
         }
         bool hasDefaults = bce->sc->asFunctionBox()->hasDefaults();
         if (hasDefaults) {
@@ -6393,6 +6376,23 @@ frontend::EmitTree(ExclusiveContext *cx, BytecodeEmitter *bce, ParseNode *pn)
                 if (Emit1(cx, bce, JSOP_POP) < 0)
                     return false;
                 bce->switchToMain();
+            }
+        }
+        if (pnlast->pn_xflags & PNX_FUNCDEFS) {
+            // This block contains top-level function definitions. To ensure
+            // that we emit the bytecode defining them before the rest of code
+            // in the block we use a separate pass over functions. During the
+            // main pass later the emitter will add JSOP_NOP with source notes
+            // for the function to preserve the original functions position
+            // when decompiling.
+            //
+            // Currently this is used only for functions, as compile-as-we go
+            // mode for scripts does not allow separate emitter passes.
+            for (ParseNode *pn2 = pnchild; pn2; pn2 = pn2->pn_next) {
+                if (pn2->isKind(PNK_FUNCTION) && pn2->functionIsHoisted()) {
+                    if (!EmitTree(cx, bce, pn2))
+                        return false;
+                }
             }
         }
         ok = EmitTree(cx, bce, pnlast);

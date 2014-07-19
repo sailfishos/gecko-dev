@@ -11,6 +11,8 @@ Cu.import("resource://gre/modules/NotificationDB.jsm");
 Cu.import("resource:///modules/RecentWindow.jsm");
 Cu.import("resource://gre/modules/WindowsPrefSync.jsm");
 
+XPCOMUtils.defineLazyModuleGetter(this, "BrowserUITelemetry",
+                                  "resource:///modules/BrowserUITelemetry.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "BrowserUtils",
                                   "resource://gre/modules/BrowserUtils.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "Task",
@@ -19,6 +21,12 @@ XPCOMUtils.defineLazyModuleGetter(this, "CharsetMenu",
                                   "resource://gre/modules/CharsetMenu.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "ShortcutUtils",
                                   "resource://gre/modules/ShortcutUtils.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "GMPInstallManager",
+                                  "resource://gre/modules/GMPInstallManager.jsm");
+
+XPCOMUtils.defineLazyServiceGetter(this, "gDNSService",
+                                   "@mozilla.org/network/dns-service;1",
+                                   "nsIDNSService");
 
 const nsIWebNavigation = Ci.nsIWebNavigation;
 
@@ -172,9 +180,7 @@ let gInitialPages = [
 #include browser-feeds.js
 #include browser-fullScreen.js
 #include browser-fullZoom.js
-#ifdef MOZ_LOOP
 #include browser-loop.js
-#endif
 #include browser-places.js
 #include browser-plugins.js
 #include browser-safebrowsing.js
@@ -542,7 +548,7 @@ var gPopupBlockerObserver = {
         // xxxdz this should make the option say "Show file picker" and do it (Bug 590306)
         if (!blockedPopup.popupWindowURI)
           continue;
-        var popupURIspec = blockedPopup.popupWindowURI;
+        var popupURIspec = blockedPopup.popupWindowURI.spec;
 
         // Sometimes the popup URI that we get back from the blockedPopup
         // isn't useful (for instance, netscape.com's popup URI ends up
@@ -744,6 +750,101 @@ const gFormSubmitObserver = {
     this.panel.openPopup(element, position, offset, 0);
   }
 };
+
+function gKeywordURIFixup(fixupInfo, topic, data) {
+  fixupInfo.QueryInterface(Ci.nsIURIFixupInfo);
+
+  // We get called irrespective of whether we did a keyword search, or
+  // whether the original input would be vaguely interpretable as a URL,
+  // so figure that out first.
+  let alternativeURI = fixupInfo.fixedURI;
+  if (!fixupInfo.fixupUsedKeyword || !alternativeURI) {
+    return;
+  }
+
+  // We should have a document loader...
+  let docshellRef = fixupInfo.consumer;
+  try {
+    docshellRef.QueryInterface(Ci.nsIDocumentLoader);
+  } catch (ex) {
+    return;
+  }
+
+  // ... from which we can deduce the browser
+  let browser = gBrowser.getBrowserForDocument(docshellRef.document);
+  if (!browser)
+    return;
+
+  // At this point we're still only just about to load this URI.
+  // When the async DNS lookup comes back, we may be in any of these states:
+  // 1) still on the previous URI, waiting for the preferredURI (keyword
+  //    search) to respond;
+  // 2) at the keyword search URI (preferredURI)
+  // 3) at some other page because the user stopped navigation.
+  // We keep track of the currentURI to detect case (1) in the DNS lookup
+  // callback.
+  let previousURI = browser.currentURI;
+
+  // now swap for a weak ref so we don't hang on to browser needlessly
+  // even if the DNS query takes forever
+  let weakBrowser = Cu.getWeakReference(browser);
+  browser = null;
+
+  // Additionally, we need the host of the parsed url
+  let hostName = alternativeURI.host;
+  // and the ascii-only host for the pref:
+  let asciiHost = alternativeURI.asciiHost;
+
+  let onLookupComplete = (request, record, status) => {
+    let browser = weakBrowser.get();
+    if (!Components.isSuccessCode(status) || !browser)
+      return;
+
+    let currentURI = browser.currentURI;
+    // If we're in case (3) (see above), don't show an info bar.
+    if (!currentURI.equals(previousURI) &&
+        !currentURI.equals(fixupInfo.preferredURI)) {
+      return;
+    }
+
+    // show infobar offering to visit the host
+    let notificationBox = gBrowser.getNotificationBox(browser);
+    if (notificationBox.getNotificationWithValue("keyword-uri-fixup"))
+      return;
+
+    let message = gNavigatorBundle.getFormattedString(
+      "keywordURIFixup.message", [hostName]);
+    let yesMessage = gNavigatorBundle.getFormattedString(
+      "keywordURIFixup.goTo", [hostName])
+
+    let buttons = [
+      {
+        label: yesMessage,
+        accessKey: gNavigatorBundle.getString("keywordURIFixup.goTo.accesskey"),
+        callback: function() {
+          let pref = "browser.fixup.domainwhitelist." + asciiHost;
+          Services.prefs.setBoolPref(pref, true);
+          openUILinkIn(alternativeURI.spec, "current");
+        }
+      },
+      {
+        label: gNavigatorBundle.getString("keywordURIFixup.dismiss"),
+        accessKey: gNavigatorBundle.getString("keywordURIFixup.dismiss.accesskey"),
+        callback: function() {
+          let notification = notificationBox.getNotificationWithValue("keyword-uri-fixup");
+          notificationBox.removeNotification(notification, true);
+        }
+      }
+    ];
+    let notification =
+      notificationBox.appendNotification(message,"keyword-uri-fixup", null,
+                                         notificationBox.PRIORITY_INFO_HIGH,
+                                         buttons);
+    notification.persistence = 1;
+  };
+
+  gDNSService.asyncResolve(hostName, 0, onLookupComplete, Services.tm.mainThread);
+}
 
 var gBrowserInit = {
   delayedStartupFinished: false,
@@ -1051,6 +1152,7 @@ var gBrowserInit = {
     Services.obs.addObserver(gXPInstallObserver, "addon-install-failed", false);
     Services.obs.addObserver(gXPInstallObserver, "addon-install-complete", false);
     Services.obs.addObserver(gFormSubmitObserver, "invalidformsubmit", false);
+    Services.obs.addObserver(gKeywordURIFixup, "keyword-uri-fixup", false);
 
     BrowserOffline.init();
     OfflineApps.init();
@@ -1188,9 +1290,7 @@ var gBrowserInit = {
     gDataNotificationInfoBar.init();
 #endif
 
-#ifdef MOZ_LOOP
     LoopUI.initialize();
-#endif
 
     gBrowserThumbnails.init();
 
@@ -1217,6 +1317,14 @@ var gBrowserInit = {
       // Pulls in Metro controlled prefs and pushes out Desktop controlled prefs
       WindowsPrefSync.init();
     }
+
+    // Delay this a minute because there's no rush
+    setTimeout(() => {
+      this.gmpInstallManager = new GMPInstallManager();
+      // We don't really care about the results, if somenoe is interested they
+      // can check the log.
+      this.gmpInstallManager.simpleCheckAndInstall();
+    }, 1000 * 60);
 
     SessionStore.promiseInitialized.then(() => {
       // Bail out if the window has been closed in the meantime.
@@ -1356,6 +1464,7 @@ var gBrowserInit = {
       Services.obs.removeObserver(gXPInstallObserver, "addon-install-failed");
       Services.obs.removeObserver(gXPInstallObserver, "addon-install-complete");
       Services.obs.removeObserver(gFormSubmitObserver, "invalidformsubmit");
+      Services.obs.removeObserver(gKeywordURIFixup, "keyword-uri-fixup");
 
       try {
         gPrefService.removeObserver(gHomeButton.prefDomain, gHomeButton);
@@ -1365,6 +1474,9 @@ var gBrowserInit = {
 
       if (typeof WindowsPrefSync !== 'undefined') {
         WindowsPrefSync.uninit();
+      }
+      if (this.gmpInstallManager) {
+        this.gmpInstallManager.uninit();
       }
 
       BrowserOffline.uninit();
@@ -3099,6 +3211,7 @@ const BrowserSearch = {
    *        SearchesProvider for allowed values.
    */
   recordSearchInHealthReport: function (engine, source) {
+    BrowserUITelemetry.countSearchEvent(source);
 #ifdef MOZ_SERVICES_HEALTHREPORT
     let reporter = Cc["@mozilla.org/datareporting/service;1"]
                      .getService()
@@ -5137,14 +5250,14 @@ function handleLinkClick(event, href, linkNode) {
   // if the mixedContentChannel is present and the referring URI passes
   // a same origin check with the target URI, we can preserve the users
   // decision of disabling MCB on a page for it's child tabs.
-  var persistDisableMCBInChildTab = false;
+  var persistAllowMixedContentInChildTab = false;
 
   if (where == "tab" && gBrowser.docShell.mixedContentChannel) {
     const sm = Services.scriptSecurityManager;
     try {
       var targetURI = makeURI(href);
       sm.checkSameOriginURI(referrerURI, targetURI, false);
-      persistDisableMCBInChildTab = true;
+      persistAllowMixedContentInChildTab = true;
     }
     catch (e) { }
   }
@@ -5152,7 +5265,7 @@ function handleLinkClick(event, href, linkNode) {
   urlSecurityCheck(href, doc.nodePrincipal);
   openLinkIn(href, where, { referrerURI: referrerURI,
                             charset: doc.characterSet,
-                            disableMCB: persistDisableMCBInChildTab});
+                            allowMixedContent: persistAllowMixedContentInChildTab });
   event.preventDefault();
   return true;
 }

@@ -198,7 +198,7 @@ NewGlobalObject(JSContext *cx, JS::CompartmentOptions &options,
                 JSPrincipals *principals);
 
 static const JSErrorFormatString *
-my_GetErrorMessage(void *userRef, const char *locale, const unsigned errorNumber);
+my_GetErrorMessage(void *userRef, const unsigned errorNumber);
 
 
 /*
@@ -790,7 +790,7 @@ Options(JSContext *cx, unsigned argc, jsval *vp)
         else if (strcmp(opt.ptr(), "werror") == 0)
             JS::RuntimeOptionsRef(cx).toggleWerror();
         else if (strcmp(opt.ptr(), "strict_mode") == 0)
-            JS::ContextOptionsRef(cx).toggleStrictMode();
+            JS::RuntimeOptionsRef(cx).toggleStrictMode();
         else {
             JS_ReportError(cx,
                            "unknown option name '%s'."
@@ -811,7 +811,7 @@ Options(JSContext *cx, unsigned argc, jsval *vp)
         names = JS_sprintf_append(names, "%s%s", found ? "," : "", "werror");
         found = true;
     }
-    if (names && oldContextOptions.strictMode()) {
+    if (names && oldRuntimeOptions.strictMode()) {
         names = JS_sprintf_append(names, "%s%s", found ? "," : "", "strict_mode");
         found = true;
     }
@@ -1261,7 +1261,7 @@ Evaluate(JSContext *cx, unsigned argc, jsval *vp)
                                          JSSMSG_CACHE_SINGLETON_FAILED);
                     return false;
                 }
-                JS::CompartmentOptionsRef(cx).cloneSingletonsOverride().set(true);
+                JS::CompartmentOptionsRef(cx).setCloneSingletons(true);
             }
 
             if (loadBytecode) {
@@ -2589,65 +2589,6 @@ Clone(JSContext *cx, unsigned argc, jsval *vp)
         return false;
     args.rval().setObject(*clone);
     return true;
-}
-
-static bool
-GetPDA(JSContext *cx, unsigned argc, jsval *vp)
-{
-    CallArgs args = CallArgsFromVp(argc, vp);
-    RootedObject vobj(cx);
-    bool ok;
-    JSPropertyDescArray pda;
-    JSPropertyDesc *pd;
-
-    if (!JS_ValueToObject(cx, args.get(0), &vobj))
-        return false;
-    if (!vobj) {
-        args.rval().setUndefined();
-        return true;
-    }
-
-    RootedObject aobj(cx, JS_NewArrayObject(cx, 0));
-    if (!aobj)
-        return false;
-    args.rval().setObject(*aobj);
-
-    ok = !!JS_GetPropertyDescArray(cx, vobj, &pda);
-    if (!ok)
-        return false;
-    pd = pda.array;
-
-    RootedObject pdobj(cx);
-    RootedValue id(cx);
-    RootedValue value(cx);
-    RootedValue flags(cx);
-    RootedValue alias(cx);
-
-    for (uint32_t i = 0; i < pda.length; i++, pd++) {
-        pdobj = JS_NewObject(cx, nullptr, JS::NullPtr(), JS::NullPtr());
-        if (!pdobj) {
-            ok = false;
-            break;
-        }
-
-        /* Protect pdobj from GC by setting it as an element of aobj now */
-        ok = !!JS_SetElement(cx, aobj, i, pdobj);
-        if (!ok)
-            break;
-
-        id = pd->id;
-        value = pd->value;
-        flags.setInt32(pd->flags);
-        alias = pd->alias;
-        ok = JS_SetProperty(cx, pdobj, "id", id) &&
-             JS_SetProperty(cx, pdobj, "value", value) &&
-             JS_SetProperty(cx, pdobj, "flags", flags) &&
-             JS_SetProperty(cx, pdobj, "alias", alias);
-        if (!ok)
-            break;
-    }
-    JS_PutPropertyDescArray(cx, &pda);
-    return ok;
 }
 
 static bool
@@ -4704,10 +4645,6 @@ static const JSFunctionSpecWithHelp shell_functions[] = {
 "intern(str)",
 "  Internalize str in the atom table."),
 
-    JS_FN_HELP("getpda", GetPDA, 1, 0,
-"getpda(obj)",
-"  Get the property descriptors for obj."),
-
     JS_FN_HELP("getslx", GetSLX, 1, 0,
 "getslx(obj)",
 "  Get script line extent."),
@@ -5115,7 +5052,7 @@ static const JSErrorFormatString jsShell_ErrorFormatString[JSShellErr_Limit] = {
 };
 
 static const JSErrorFormatString *
-my_GetErrorMessage(void *userRef, const char *locale, const unsigned errorNumber)
+my_GetErrorMessage(void *userRef, const unsigned errorNumber)
 {
     if (errorNumber == 0 || errorNumber >= JSShellErr_Limit)
         return nullptr;
@@ -5980,6 +5917,15 @@ SetRuntimeOptions(JSRuntime *rt, const OptionParser &op)
                              .setAsmJS(enableAsmJS)
                              .setNativeRegExp(enableNativeRegExp);
 
+    if (const char *str = op.getStringOption("ion-scalar-replacement")) {
+        if (strcmp(str, "on") == 0)
+            jit::js_JitOptions.disableScalarReplacement = false;
+        else if (strcmp(str, "off") == 0)
+            jit::js_JitOptions.disableScalarReplacement = true;
+        else
+            return OptionFailure("ion-scalar-replacement", str);
+    }
+
     if (const char *str = op.getStringOption("ion-gvn")) {
         if (strcmp(str, "off") == 0) {
             jit::js_JitOptions.disableGvn = true;
@@ -6107,6 +6053,10 @@ SetRuntimeOptions(JSRuntime *rt, const OptionParser &op)
     int32_t fill = op.getIntOption("arm-asm-nop-fill");
     if (fill >= 0)
         jit::Assembler::NopFill = fill;
+
+    int32_t poolMaxOffset = op.getIntOption("asm-pool-max-offset");
+    if (poolMaxOffset >= 5 && poolMaxOffset <= 1024)
+        jit::Assembler::AsmPoolMaxOffset = poolMaxOffset;
 #endif
 
 #if defined(JS_ARM_SIMULATOR)
@@ -6272,6 +6222,8 @@ main(int argc, char **argv, char **envp)
         || !op.addBoolOption('\0', "no-ion", "Disable IonMonkey")
         || !op.addBoolOption('\0', "no-asmjs", "Disable asm.js compilation")
         || !op.addBoolOption('\0', "no-native-regexp", "Disable native regexp compilation")
+        || !op.addStringOption('\0', "ion-scalar-replacement", "on/off",
+                               "Scalar Replacement (default: off, on to enable)")
         || !op.addStringOption('\0', "ion-gvn", "[mode]",
                                "Specify Ion global value numbering:\n"
                                "  off: disable GVN\n"
@@ -6318,7 +6270,7 @@ main(int argc, char **argv, char **envp)
                              "to test JIT codegen (no-op on platforms other than x86 and x64).")
         || !op.addBoolOption('\0', "fuzzing-safe", "Don't expose functions that aren't safe for "
                              "fuzzers to call")
-        || !op.addBoolOption('\0', "latin1-strings", "Enable Latin1 strings (default: off)")
+        || !op.addBoolOption('\0', "latin1-strings", "Enable Latin1 strings (default: on)")
 #ifdef DEBUG
         || !op.addBoolOption('\0', "dump-entrained-variables", "Print variables which are "
                              "unnecessarily entrained by inner functions")
@@ -6333,6 +6285,8 @@ main(int argc, char **argv, char **envp)
                                "Specify ARM code generation features, or 'help' to list all features.")
         || !op.addIntOption('\0', "arm-asm-nop-fill", "SIZE",
                             "Insert the given number of NOP instructions at all possible pool locations.", 0)
+        || !op.addIntOption('\0', "asm-pool-max-offset", "OFFSET",
+                            "The maximum pc relative OFFSET permitted in pool reference instructions.", 1024)
 #endif
 #if defined(JS_ARM_SIMULATOR)
         || !op.addBoolOption('\0', "arm-sim-icache-checks", "Enable icache flush checks in the ARM "
@@ -6419,7 +6373,7 @@ main(int argc, char **argv, char **envp)
 #endif
 
     /* Use the same parameters as the browser in xpcjsruntime.cpp. */
-    rt = JS_NewRuntime(32L * 1024L * 1024L, nurseryBytes);
+    rt = JS_NewRuntime(JS::DefaultHeapMaxBytes, nurseryBytes);
     if (!rt)
         return 1;
 

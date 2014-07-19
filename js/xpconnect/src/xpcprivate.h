@@ -75,12 +75,14 @@
 #define xpcprivate_h___
 
 #include "mozilla/Alignment.h"
+#include "mozilla/ArrayUtils.h"
 #include "mozilla/Assertions.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/CycleCollectedJSRuntime.h"
 #include "mozilla/GuardObjects.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/MemoryReporting.h"
+#include "mozilla/Preferences.h"
 #include "mozilla/TimeStamp.h"
 
 #include <math.h>
@@ -386,6 +388,53 @@ enum WatchdogTimestampCategory
 
 class AsyncFreeSnowWhite;
 
+template <class StringType>
+class ShortLivedStringBuffer
+{
+public:
+    StringType* Create()
+    {
+        for (uint32_t i = 0; i < ArrayLength(mStrings); ++i) {
+            if (mStrings[i].empty()) {
+                mStrings[i].construct();
+                return mStrings[i].addr();
+            }
+        }
+
+        // All our internal string wrappers are used, allocate a new string.
+        return new StringType();
+    }
+
+    void Destroy(StringType *string)
+    {
+        for (uint32_t i = 0; i < ArrayLength(mStrings); ++i) {
+            if (!mStrings[i].empty() &&
+                mStrings[i].addr() == string) {
+                // One of our internal strings is no longer in use, mark
+                // it as such and free its data.
+                mStrings[i].destroy();
+                return;
+            }
+        }
+
+        // We're done with a string that's not one of our internal
+        // strings, delete it.
+        delete string;
+    }
+
+    ~ShortLivedStringBuffer()
+    {
+#ifdef DEBUG
+        for (uint32_t i = 0; i < ArrayLength(mStrings); ++i) {
+            MOZ_ASSERT(mStrings[i].empty(), "Short lived string still in use");
+        }
+#endif
+    }
+
+private:
+    mozilla::Maybe<StringType> mStrings[2];
+};
+
 class XPCJSRuntime : public mozilla::CycleCollectedJSRuntime
 {
 public:
@@ -544,8 +593,8 @@ public:
 
     ~XPCJSRuntime();
 
-    nsString* NewShortLivedString();
-    void DeleteShortLivedString(nsString *string);
+    ShortLivedStringBuffer<nsString> mScratchStrings;
+    ShortLivedStringBuffer<nsCString> mScratchCStrings;
 
     void AddGCCallback(xpcGCCallback cb);
     void RemoveGCCallback(xpcGCCallback cb);
@@ -609,10 +658,6 @@ private:
     nsRefPtr<AsyncFreeSnowWhite> mAsyncSnowWhiteFreer;
 
     mozilla::TimeStamp mSlowScriptCheckpoint;
-
-#define XPCCCX_STRING_CACHE_SIZE 2
-
-    mozilla::Maybe<nsString> mScratchStrings[XPCCCX_STRING_CACHE_SIZE];
 
     friend class Watchdog;
     friend class AutoLockWatchdog;
@@ -811,9 +856,6 @@ private:
     XPCCallContext(const XPCCallContext& r); // not implemented
     XPCCallContext& operator= (const XPCCallContext& r); // not implemented
 
-    XPCWrappedNative* UnwrapThisIfAllowed(JS::HandleObject obj, JS::HandleObject fun,
-                                          unsigned argc);
-
 private:
     // posible values for mState
     enum State {
@@ -963,6 +1005,7 @@ static inline bool IS_PROTO_CLASS(const js::Class *clazz)
 /***************************************************************************/
 // XPCWrappedNativeScope is one-to-one with a JS global object.
 
+class nsIAddonInterposition;
 class nsXPCComponentsBase;
 class XPCWrappedNativeScope : public PRCList
 {
@@ -1097,6 +1140,14 @@ public:
             mDOMExpandoSet->remove(expando);
     }
 
+    typedef js::HashMap<JSAddonId *,
+                        nsCOMPtr<nsIAddonInterposition>,
+                        js::PointerHasher<JSAddonId *, 3>,
+                        js::SystemAllocPolicy> InterpositionMap;
+
+    static bool SetAddonInterposition(JSAddonId *addonId,
+                                      nsIAddonInterposition *interp);
+
     // Gets the appropriate scope object for XBL in this scope. The context
     // must be same-compartment with the global upon entering, and the scope
     // object is wrapped into the compartment of the global.
@@ -1114,6 +1165,9 @@ public:
 
     bool IsAddonScope() { return mIsAddonScope; }
 
+    bool HasInterposition() { return mInterposition; }
+    nsCOMPtr<nsIAddonInterposition> GetInterposition();
+
 protected:
     virtual ~XPCWrappedNativeScope();
 
@@ -1124,6 +1178,8 @@ protected:
 private:
     static XPCWrappedNativeScope* gScopes;
     static XPCWrappedNativeScope* gDyingScopes;
+
+    static InterpositionMap*         gInterpositionMap;
 
     XPCJSRuntime*                    mRuntime;
     Native2WrappedNativeMap*         mWrappedNativeMap;
@@ -1143,6 +1199,10 @@ private:
 
     // Lazily created sandboxes for addon code.
     nsTArray<JS::ObjectPtr>          mAddonScopes;
+
+    // This is a service that will be use to interpose on all calls out of this
+    // scope. If it's null, no interposition is done.
+    nsCOMPtr<nsIAddonInterposition>  mInterposition;
 
     nsAutoPtr<DOMExpandoSet> mDOMExpandoSet;
 
@@ -2855,7 +2915,7 @@ class nsXPCComponents : public nsXPCComponentsBase,
                         public nsIXPCComponents
 {
 public:
-    NS_DECL_ISUPPORTS
+    NS_DECL_ISUPPORTS_INHERITED
     NS_FORWARD_NSIXPCCOMPONENTSBASE(nsXPCComponentsBase::)
     NS_DECL_NSIXPCCOMPONENTS
 
@@ -3280,6 +3340,9 @@ xpc_GetSafeJSContext()
 
 namespace xpc {
 
+JSAddonId *
+NewAddonId(JSContext *cx, const nsACString &id);
+
 // JSNatives to expose atob and btoa in various non-DOM XPConnect scopes.
 bool
 Atob(JSContext *cx, unsigned argc, jsval *vp);
@@ -3578,6 +3641,7 @@ public:
         , writeToGlobalPrototype(false)
         , skipWriteToGlobalPrototype(false)
         , universalXPConnectEnabled(false)
+        , forcePermissiveCOWs(false)
         , adoptedNode(false)
         , donatedNode(false)
         , scriptability(c)
@@ -3618,8 +3682,18 @@ public:
     // This is only ever set during mochitest runs when enablePrivilege is called.
     // It's intended as a temporary stopgap measure until we can finish ripping out
     // enablePrivilege. Once set, this value is never unset (i.e., it doesn't follow
-    // the old scoping rules of enablePrivilege). Using it is inherently unsafe.
+    // the old scoping rules of enablePrivilege).
+    //
+    // Using it in production is inherently unsafe.
     bool universalXPConnectEnabled;
+
+    // This is only ever set during mochitest runs when enablePrivilege is called.
+    // It allows the SpecialPowers scope to waive the normal chrome security
+    // wrappers and expose properties directly to content. This lets us avoid a
+    // bunch of overhead and complexity in our SpecialPowers automation glue.
+    //
+    // Using it in production is inherently unsafe.
+    bool forcePermissiveCOWs;
 
     // for telemetry. See bug 928476.
     bool adoptedNode;
@@ -3675,6 +3749,14 @@ private:
 bool IsUniversalXPConnectEnabled(JSCompartment *compartment);
 bool IsUniversalXPConnectEnabled(JSContext *cx);
 bool EnableUniversalXPConnect(JSContext *cx);
+
+inline void
+CrashIfNotInAutomation()
+{
+    const char *prefName =
+      "security.turn_off_all_security_so_that_viruses_can_take_over_this_computer";
+    MOZ_RELEASE_ASSERT(mozilla::Preferences::GetBool(prefName));
+}
 
 inline XPCWrappedNativeScope*
 ObjectScope(JSObject *obj)

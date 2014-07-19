@@ -447,7 +447,7 @@ DebuggerClient.prototype = {
     if (this._clients.has(aTabActor)) {
       let cachedTab = this._clients.get(aTabActor);
       let cachedResponse = {
-        cacheEnabled: cachedTab.cacheEnabled,
+        cacheDisabled: cachedTab.cacheDisabled,
         javascriptEnabled: cachedTab.javascriptEnabled,
         traits: cachedTab.traits,
       };
@@ -1002,6 +1002,11 @@ DebuggerClient.prototype = {
                       "a client instance with an `events` attribute " +
                       "that is an array.");
     }
+    if (client.events.length > 0 && typeof(client.emit) != "function") {
+      throw new Error("DebuggerServer.registerClient expects " +
+                      "client instances with non-empty `events` array to" +
+                      "have an `emit` function.");
+    }
     if (typeof(client.detach) != "function") {
       throw new Error("DebuggerServer.registerClient expects " +
                       "a client instance with a `detach` function.");
@@ -1251,7 +1256,7 @@ function TabClient(aClient, aForm) {
   this._actor = aForm.from;
   this._threadActor = aForm.threadActor;
   this.javascriptEnabled = aForm.javascriptEnabled;
-  this.cacheEnabled = aForm.cacheEnabled;
+  this.cacheDisabled = aForm.cacheDisabled;
   this.thread = null;
   this.request = this.client.request;
   this.traits = aForm.traits || {};

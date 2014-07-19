@@ -28,14 +28,6 @@
 
 namespace mozilla { namespace pkix { namespace der {
 
-// not inline
-Result
-Fail(PRErrorCode errorCode)
-{
-  PR_SetError(errorCode, 0);
-  return Failure;
-}
-
 namespace internal {
 
 // Too complicated to be inline
@@ -45,8 +37,10 @@ ExpectTagAndGetLength(Input& input, uint8_t expectedTag, uint16_t& length)
   PR_ASSERT((expectedTag & 0x1F) != 0x1F); // high tag number form not allowed
 
   uint8_t tag;
-  if (input.Read(tag) != Success) {
-    return Failure;
+  Result rv;
+  rv = input.Read(tag);
+  if (rv != Success) {
+    return rv;
   }
 
   if (tag != expectedTag) {
@@ -58,15 +52,17 @@ ExpectTagAndGetLength(Input& input, uint8_t expectedTag, uint16_t& length)
   // set, followed by N bytes, where N is encoded in the lowest 7 bits of
   // the first byte.
   uint8_t length1;
-  if (input.Read(length1) != Success) {
-    return Failure;
+  rv = input.Read(length1);
+  if (rv != Success) {
+    return rv;
   }
   if (!(length1 & 0x80)) {
     length = length1;
   } else if (length1 == 0x81) {
     uint8_t length2;
-    if (input.Read(length2) != Success) {
-      return Failure;
+    rv = input.Read(length2);
+    if (rv != Success) {
+      return rv;
     }
     if (length2 < 128) {
       // Not shortest possible encoding
@@ -74,8 +70,9 @@ ExpectTagAndGetLength(Input& input, uint8_t expectedTag, uint16_t& length)
     }
     length = length2;
   } else if (length1 == 0x82) {
-    if (input.Read(length) != Success) {
-      return Failure;
+    rv = input.Read(length);
+    if (rv != Success) {
+      return rv;
     }
     if (length < 256) {
       // Not shortest possible encoding
@@ -92,26 +89,219 @@ ExpectTagAndGetLength(Input& input, uint8_t expectedTag, uint16_t& length)
 
 } // namespace internal
 
+static Result
+OptionalNull(Input& input)
+{
+  if (input.Peek(NULLTag)) {
+    return Null(input);
+  }
+  return Success;
+}
+
+namespace {
+
 Result
-SignedData(Input& input, /*out*/ Input& tbs, /*out*/ CERTSignedData& signedData)
+DigestAlgorithmOIDValue(Input& algorithmID, /*out*/ DigestAlgorithm& algorithm)
+{
+  // RFC 4055 Section 2.1
+  // python DottedOIDToCode.py id-sha1 1.3.14.3.2.26
+  static const uint8_t id_sha1[] = {
+    0x2b, 0x0e, 0x03, 0x02, 0x1a
+  };
+  // python DottedOIDToCode.py id-sha256 2.16.840.1.101.3.4.2.1
+  static const uint8_t id_sha256[] = {
+    0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01
+  };
+  // python DottedOIDToCode.py id-sha384 2.16.840.1.101.3.4.2.2
+  static const uint8_t id_sha384[] = {
+    0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x02
+  };
+  // python DottedOIDToCode.py id-sha512 2.16.840.1.101.3.4.2.3
+  static const uint8_t id_sha512[] = {
+    0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x03
+  };
+
+  // Matching is attempted based on a rough estimate of the commonality of the
+  // algorithm, to minimize the number of MatchRest calls.
+  if (algorithmID.MatchRest(id_sha1)) {
+    algorithm = DigestAlgorithm::sha1;
+  } else if (algorithmID.MatchRest(id_sha256)) {
+    algorithm = DigestAlgorithm::sha256;
+  } else if (algorithmID.MatchRest(id_sha384)) {
+    algorithm = DigestAlgorithm::sha384;
+  } else if (algorithmID.MatchRest(id_sha512)) {
+    algorithm = DigestAlgorithm::sha512;
+  } else {
+    return Fail(SEC_ERROR_INVALID_ALGORITHM);
+  }
+
+  return Success;
+}
+
+Result
+SignatureAlgorithmOIDValue(Input& algorithmID,
+                           /*out*/ SignatureAlgorithm& algorithm)
+{
+  // RFC 5758 Section 3.1 (id-dsa-with-sha224 is intentionally excluded)
+  // python DottedOIDToCode.py id-dsa-with-sha256 2.16.840.1.101.3.4.3.2
+  static const uint8_t id_dsa_with_sha256[] = {
+    0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x03, 0x02
+  };
+
+  // RFC 5758 Section 3.2 (ecdsa-with-SHA224 is intentionally excluded)
+  // python DottedOIDToCode.py ecdsa-with-SHA256 1.2.840.10045.4.3.2
+  static const uint8_t ecdsa_with_SHA256[] = {
+    0x2a, 0x86, 0x48, 0xce, 0x3d, 0x04, 0x03, 0x02
+  };
+  // python DottedOIDToCode.py ecdsa-with-SHA384 1.2.840.10045.4.3.3
+  static const uint8_t ecdsa_with_SHA384[] = {
+    0x2a, 0x86, 0x48, 0xce, 0x3d, 0x04, 0x03, 0x03
+  };
+  // python DottedOIDToCode.py ecdsa-with-SHA512 1.2.840.10045.4.3.4
+  static const uint8_t ecdsa_with_SHA512[] = {
+    0x2a, 0x86, 0x48, 0xce, 0x3d, 0x04, 0x03, 0x04
+  };
+
+  // RFC 4055 Section 5 (sha224WithRSAEncryption is intentionally excluded)
+  // python DottedOIDToCode.py sha256WithRSAEncryption 1.2.840.113549.1.1.11
+  static const uint8_t sha256WithRSAEncryption[] = {
+    0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0b
+  };
+  // python DottedOIDToCode.py sha384WithRSAEncryption 1.2.840.113549.1.1.12
+  static const uint8_t sha384WithRSAEncryption[] = {
+    0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0c
+  };
+  // python DottedOIDToCode.py sha512WithRSAEncryption 1.2.840.113549.1.1.13
+  static const uint8_t sha512WithRSAEncryption[] = {
+    0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0d
+  };
+
+  // RFC 3279 Section 2.2.1
+  // python DottedOIDToCode.py sha-1WithRSAEncryption 1.2.840.113549.1.1.5
+  static const uint8_t sha_1WithRSAEncryption[] = {
+    0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x05
+  };
+
+  // RFC 3279 Section 2.2.2
+  // python DottedOIDToCode.py id-dsa-with-sha1 1.2.840.10040.4.3
+  static const uint8_t id_dsa_with_sha1[] = {
+    0x2a, 0x86, 0x48, 0xce, 0x38, 0x04, 0x03
+  };
+
+  // RFC 3279 Section 2.2.3
+  // python DottedOIDToCode.py ecdsa-with-SHA1 1.2.840.10045.4.1
+  static const uint8_t ecdsa_with_SHA1[] = {
+    0x2a, 0x86, 0x48, 0xce, 0x3d, 0x04, 0x01
+  };
+
+  // RFC 5758 Section 3.1 (DSA with SHA-2), RFC 3279 Section 2.2.2 (DSA with
+  // SHA-1), RFC 5758 Section 3.2 (ECDSA with SHA-2), and RFC 3279
+  // Section 2.2.3 (ECDSA with SHA-1) all say that parameters must be omitted.
+  //
+  // RFC 4055 Section 5 and RFC 3279 Section 2.2.1 both say that parameters for
+  // RSA must be encoded as NULL; we relax that requirement by allowing the
+  // NULL to be omitted, to match all the other signature algorithms we support
+  // and for compatibility.
+
+  // Matching is attempted based on a rough estimate of the commonality of the
+  // algorithm, to minimize the number of MatchRest calls.
+  if (algorithmID.MatchRest(sha256WithRSAEncryption)) {
+    algorithm = SignatureAlgorithm::rsa_pkcs1_with_sha256;
+  } else if (algorithmID.MatchRest(ecdsa_with_SHA256)) {
+    algorithm = SignatureAlgorithm::ecdsa_with_sha256;
+  } else if (algorithmID.MatchRest(sha_1WithRSAEncryption)) {
+    algorithm = SignatureAlgorithm::rsa_pkcs1_with_sha1;
+  } else if (algorithmID.MatchRest(ecdsa_with_SHA1)) {
+    algorithm = SignatureAlgorithm::ecdsa_with_sha1;
+  } else if (algorithmID.MatchRest(ecdsa_with_SHA384)) {
+    algorithm = SignatureAlgorithm::ecdsa_with_sha384;
+  } else if (algorithmID.MatchRest(ecdsa_with_SHA512)) {
+    algorithm = SignatureAlgorithm::ecdsa_with_sha512;
+  } else if (algorithmID.MatchRest(sha384WithRSAEncryption)) {
+    algorithm = SignatureAlgorithm::rsa_pkcs1_with_sha384;
+  } else if (algorithmID.MatchRest(sha512WithRSAEncryption)) {
+    algorithm = SignatureAlgorithm::rsa_pkcs1_with_sha512;
+  } else if (algorithmID.MatchRest(id_dsa_with_sha1)) {
+    algorithm = SignatureAlgorithm::dsa_with_sha1;
+  } else if (algorithmID.MatchRest(id_dsa_with_sha256)) {
+    algorithm = SignatureAlgorithm::dsa_with_sha256;
+  } else {
+    // Any MD5-based signature algorithm, or any unknown signature algorithm.
+    return Fail(SEC_ERROR_CERT_SIGNATURE_ALGORITHM_DISABLED);
+  }
+
+  return Success;
+}
+
+template <typename OidValueParser, typename Algorithm>
+Result
+AlgorithmIdentifier(OidValueParser oidValueParser, Input& input,
+                    /*out*/ Algorithm& algorithm)
+{
+  Input value;
+  Result rv = ExpectTagAndGetValue(input, SEQUENCE, value);
+  if (rv != Success) {
+    return rv;
+  }
+
+  Input algorithmID;
+  rv = ExpectTagAndGetValue(value, der::OIDTag, algorithmID);
+  if (rv != Success) {
+    return rv;
+  }
+  rv = oidValueParser(algorithmID, algorithm);
+  if (rv != Success) {
+    return rv;
+  }
+
+  rv = OptionalNull(value);
+  if (rv != Success) {
+    return rv;
+  }
+
+  return End(value);
+}
+
+} // unnamed namespace
+
+Result
+SignatureAlgorithmIdentifier(Input& input,
+                             /*out*/ SignatureAlgorithm& algorithm)
+{
+  return AlgorithmIdentifier(SignatureAlgorithmOIDValue, input, algorithm);
+}
+
+Result
+DigestAlgorithmIdentifier(Input& input, /*out*/ DigestAlgorithm& algorithm)
+{
+  return AlgorithmIdentifier(DigestAlgorithmOIDValue, input, algorithm);
+}
+
+Result
+SignedData(Input& input, /*out*/ Input& tbs,
+           /*out*/ SignedDataWithSignature& signedData)
 {
   Input::Mark mark(input.GetMark());
 
-  if (ExpectTagAndGetValue(input, SEQUENCE, tbs) != Success) {
-    return Failure;
+  Result rv;
+  rv = ExpectTagAndGetValue(input, SEQUENCE, tbs);
+  if (rv != Success) {
+    return rv;
   }
 
-  if (input.GetSECItem(siBuffer, mark, signedData.data) != Success) {
-    return Failure;
+  rv = input.GetSECItem(siBuffer, mark, signedData.data);
+  if (rv != Success) {
+    return rv;
   }
 
-  if (AlgorithmIdentifier(input, signedData.signatureAlgorithm) != Success) {
-    return Failure;
+  rv = SignatureAlgorithmIdentifier(input, signedData.algorithm);
+  if (rv != Success) {
+    return rv;
   }
 
-  if (ExpectTagAndGetValue(input, BIT_STRING, signedData.signature)
-        != Success) {
-    return Failure;
+  rv = ExpectTagAndGetValue(input, BIT_STRING, signedData.signature);
+  if (rv != Success) {
+    return rv;
   }
   if (signedData.signature.len == 0) {
     return Fail(SEC_ERROR_BAD_SIGNATURE);
@@ -128,7 +318,6 @@ SignedData(Input& input, /*out*/ Input& tbs, /*out*/ CERTSignedData& signedData)
   }
   ++signedData.signature.data;
   --signedData.signature.len;
-  signedData.signature.len = (signedData.signature.len << 3); // Bytes to bits
 
   return Success;
 }
@@ -151,12 +340,14 @@ static inline Result
 ReadTwoDigits(Input& input, int minValue, int maxValue, /*out*/ int& value)
 {
   int hi;
-  if (ReadDigit(input, hi) != Success) {
-    return Failure;
+  Result rv = ReadDigit(input, hi);
+  if (rv != Success) {
+    return rv;
   }
   int lo;
-  if (ReadDigit(input, lo) != Success) {
-    return Failure;
+  rv = ReadDigit(input, lo);
+  if (rv != Success) {
+    return rv;
   }
   value = (hi * 10) + lo;
   if (value < minValue || value > maxValue) {
@@ -187,22 +378,26 @@ TimeChoice(Input& tagged, uint8_t expectedTag, /*out*/ PRTime& time)
   int days;
 
   Input input;
-  if (ExpectTagAndGetValue(tagged, expectedTag, input) != Success) {
-    return Failure;
+  Result rv = ExpectTagAndGetValue(tagged, expectedTag, input);
+  if (rv != Success) {
+    return rv;
   }
 
   int yearHi;
   int yearLo;
   if (expectedTag == GENERALIZED_TIME) {
-    if (ReadTwoDigits(input, 0, 99, yearHi) != Success) {
-      return Failure;
+    rv = ReadTwoDigits(input, 0, 99, yearHi);
+    if (rv != Success) {
+      return rv;
     }
-    if (ReadTwoDigits(input, 0, 99, yearLo) != Success) {
-      return Failure;
+    rv = ReadTwoDigits(input, 0, 99, yearLo);
+    if (rv != Success) {
+      return rv;
     }
   } else if (expectedTag == UTCTime) {
-    if (ReadTwoDigits(input, 0, 99, yearLo) != Success) {
-      return Failure;
+    rv = ReadTwoDigits(input, 0, 99, yearLo);
+    if (rv != Success) {
+      return rv;
     }
     yearHi = yearLo >= 50 ? 19 : 20;
   } else {
@@ -225,8 +420,9 @@ TimeChoice(Input& tagged, uint8_t expectedTag, /*out*/ PRTime& time)
   }
 
   int month;
-  if (ReadTwoDigits(input, 1, 12, month) != Success) {
-    return Failure;
+  rv = ReadTwoDigits(input, 1, 12, month);
+  if (rv != Success) {
+    return rv;
   }
   int daysInMonth;
   static const int jan = 31;
@@ -274,22 +470,26 @@ TimeChoice(Input& tagged, uint8_t expectedTag, /*out*/ PRTime& time)
   }
 
   int dayOfMonth;
-  if (ReadTwoDigits(input, 1, daysInMonth, dayOfMonth) != Success) {
-    return Failure;
+  rv = ReadTwoDigits(input, 1, daysInMonth, dayOfMonth);
+  if (rv != Success) {
+    return rv;
   }
   days += dayOfMonth - 1;
 
   int hours;
-  if (ReadTwoDigits(input, 0, 23, hours) != Success) {
-    return Failure;
+  rv = ReadTwoDigits(input, 0, 23, hours);
+  if (rv != Success) {
+    return rv;
   }
   int minutes;
-  if (ReadTwoDigits(input, 0, 59, minutes) != Success) {
-    return Failure;
+  rv = ReadTwoDigits(input, 0, 59, minutes);
+  if (rv != Success) {
+    return rv;
   }
   int seconds;
-  if (ReadTwoDigits(input, 0, 59, seconds) != Success) {
-    return Failure;
+  rv = ReadTwoDigits(input, 0, 59, seconds);
+  if (rv != Success) {
+    return rv;
   }
 
   uint8_t b;

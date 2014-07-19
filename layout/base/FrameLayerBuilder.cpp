@@ -530,7 +530,7 @@ public:
    * @param aTextContentFlags if any child layer has CONTENT_COMPONENT_ALPHA,
    * set *aTextContentFlags to CONTENT_COMPONENT_ALPHA
    */
-  void Finish(uint32_t *aTextContentFlags, LayerManagerData* aData);
+  void Finish(uint32_t *aTextContentFlags, LayerManagerData* aData, bool& aHasComponentAlphaChildren);
 
   nsRect GetChildrenBounds() { return mBounds; }
 
@@ -3065,7 +3065,7 @@ ContainerState::CollectOldLayers()
 }
 
 void
-ContainerState::Finish(uint32_t* aTextContentFlags, LayerManagerData* aData)
+ContainerState::Finish(uint32_t* aTextContentFlags, LayerManagerData* aData, bool& aHasComponentAlphaChildren)
 {
   while (!mThebesLayerDataStack.IsEmpty()) {
     PopThebesLayerData();
@@ -3081,7 +3081,19 @@ ContainerState::Finish(uint32_t* aTextContentFlags, LayerManagerData* aData)
     layer = mNewChildLayers[i];
 
     if (!layer->GetVisibleRegion().IsEmpty()) {
-      textContentFlags |= layer->GetContentFlags() & Layer::CONTENT_COMPONENT_ALPHA;
+      textContentFlags |=
+        layer->GetContentFlags() & (Layer::CONTENT_COMPONENT_ALPHA |
+                                    Layer::CONTENT_COMPONENT_ALPHA_DESCENDANT);
+
+      // Notify the parent of component alpha children unless it's coming from
+      // within a transformed child since we don't want flattening of component
+      // alpha layers to happen across transforms. Re-rendering the text during
+      // transform animations looks worse than losing subpixel-AA.
+      if ((layer->GetContentFlags() & Layer::CONTENT_COMPONENT_ALPHA) &&
+          (layer->GetType() != Layer::TYPE_CONTAINER ||
+           layer->GetBaseTransform().IsIdentity())) {
+        aHasComponentAlphaChildren = true;
+      }
     }
 
     if (!layer->GetParent()) {
@@ -3118,10 +3130,37 @@ static inline gfxSize RoundToFloatPrecision(const gfxSize& aSize)
   return gfxSize(float(aSize.width), float(aSize.height));
 }
 
+static void RestrictScaleToMaxLayerSize(gfxSize& aScale,
+                                        const nsRect& aVisibleRect,
+                                        nsIFrame* aContainerFrame,
+                                        Layer* aContainerLayer)
+{
+  if (!aContainerLayer->Manager()->IsWidgetLayerManager()) {
+    return;
+  }
+
+  nsIntRect pixelSize =
+    aVisibleRect.ScaleToOutsidePixels(aScale.width, aScale.height,
+                                      aContainerFrame->PresContext()->AppUnitsPerDevPixel());
+
+  int32_t maxLayerSize = aContainerLayer->GetMaxLayerSize();
+
+  if (pixelSize.width > maxLayerSize) {
+    float scale = (float)pixelSize.width / maxLayerSize;
+    scale = gfxUtils::ClampToScaleFactor(scale);
+    aScale.width /= scale;
+  }
+  if (pixelSize.height > maxLayerSize) {
+    float scale = (float)pixelSize.height / maxLayerSize;
+    scale = gfxUtils::ClampToScaleFactor(scale);
+    aScale.height /= scale;
+  }
+}
 static bool
 ChooseScaleAndSetTransform(FrameLayerBuilder* aLayerBuilder,
                            nsDisplayListBuilder* aDisplayListBuilder,
                            nsIFrame* aContainerFrame,
+                           const nsRect& aVisibleRect,
                            const gfx3DMatrix* aTransform,
                            const ContainerLayerParameters& aIncomingScale,
                            ContainerLayer* aLayer,
@@ -3211,6 +3250,12 @@ ChooseScaleAndSetTransform(FrameLayerBuilder* aLayerBuilder,
     // scaled out of sight anyway.
     if (fabs(scale.width) < 1e-8 || fabs(scale.height) < 1e-8) {
       scale = gfxSize(1.0, 1.0);
+    }
+    // If this is a transform container layer, then pre-rendering might
+    // mean we try render a layer bigger than the max texture size. Apply
+    // clmaping to prevent this.
+    if (aTransform) {
+      RestrictScaleToMaxLayerSize(scale, aVisibleRect, aContainerFrame, aLayer);
     }
   } else {
     scale = gfxSize(1.0, 1.0);
@@ -3349,8 +3394,8 @@ FrameLayerBuilder::BuildContainerLayerFor(nsDisplayListBuilder* aBuilder,
   }
 
   ContainerLayerParameters scaleParameters;
-  if (!ChooseScaleAndSetTransform(this, aBuilder, aContainerFrame, aTransform, aParameters,
-                                  containerLayer, state, scaleParameters)) {
+  if (!ChooseScaleAndSetTransform(this, aBuilder, aContainerFrame, aChildren.GetVisibleRect(),
+                                  aTransform, aParameters, containerLayer, state, scaleParameters)) {
     return nullptr;
   }
 
@@ -3374,7 +3419,7 @@ FrameLayerBuilder::BuildContainerLayerFor(nsDisplayListBuilder* aBuilder,
   int32_t appUnitsPerDevPixel;
   uint32_t stateFlags = 0;
   if ((aContainerFrame->GetStateBits() & NS_FRAME_NO_COMPONENT_ALPHA) &&
-      mRetainingManager && !mRetainingManager->AreComponentAlphaLayersEnabled()) {
+      mRetainingManager && mRetainingManager->ShouldAvoidComponentAlphaLayers()) {
     stateFlags = ContainerState::NO_COMPONENT_ALPHA;
   }
   uint32_t flags;
@@ -3388,14 +3433,16 @@ FrameLayerBuilder::BuildContainerLayerFor(nsDisplayListBuilder* aBuilder,
     // Set CONTENT_COMPONENT_ALPHA if any of our children have it.
     // This is suboptimal ... a child could have text that's over transparent
     // pixels in its own layer, but over opaque parts of previous siblings.
-    state.Finish(&flags, data);
+    bool hasComponentAlphaChildren = false;
+    state.Finish(&flags, data, hasComponentAlphaChildren);
     bounds = state.GetChildrenBounds();
     pixBounds = state.ScaleToOutsidePixels(bounds, false);
     appUnitsPerDevPixel = state.GetAppUnitsPerDevPixel();
 
-    if ((flags & Layer::CONTENT_COMPONENT_ALPHA) &&
+    if (hasComponentAlphaChildren &&
         mRetainingManager &&
-        !mRetainingManager->AreComponentAlphaLayersEnabled() &&
+        mRetainingManager->ShouldAvoidComponentAlphaLayers() &&
+        containerLayer->HasMultipleChildren() &&
         !stateFlags) {
       // Since we don't want any component alpha layers on BasicLayers, we repeat
       // the layer building process with this explicitely forced off.
@@ -3420,13 +3467,24 @@ FrameLayerBuilder::BuildContainerLayerFor(nsDisplayListBuilder* aBuilder,
   } else {
     containerLayer->SetVisibleRegion(pixBounds);
   }
+
+  // CONTENT_COMPONENT_ALPHA is propogated up to the nearest CONTENT_OPAQUE
+  // ancestor so that BasicLayerManager knows when to copy the background into
+  // pushed groups. Accelerated layers managers can't necessarily do this (only
+  // when the visible region is a simple rect), so we propogate
+  // CONTENT_COMPONENT_ALPHA_DESCENDANT all the way to the root.
+  if (flags & Layer::CONTENT_COMPONENT_ALPHA) {
+    flags |= Layer::CONTENT_COMPONENT_ALPHA_DESCENDANT;
+  }
+
   // Make sure that rounding the visible region out didn't add any area
   // we won't paint
   if (aChildren.IsOpaque() && !aChildren.NeedsTransparentSurface()) {
     bounds.ScaleRoundIn(scaleParameters.mXScale, scaleParameters.mYScale);
     if (bounds.Contains(pixBounds.ToAppUnits(appUnitsPerDevPixel))) {
-      // Clear CONTENT_COMPONENT_ALPHA
-      flags = Layer::CONTENT_OPAQUE;
+      // Clear CONTENT_COMPONENT_ALPHA and add CONTENT_OPAQUE instead.
+      flags &= ~Layer::CONTENT_COMPONENT_ALPHA;
+      flags |= Layer::CONTENT_OPAQUE;
     }
   }
   containerLayer->SetContentFlags(flags);

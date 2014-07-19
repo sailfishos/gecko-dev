@@ -206,9 +206,7 @@ let CustomizableUIInternal = {
         "bookmarks-menu-button",
         "downloads-button",
         "home-button",
-#ifdef MOZ_LOOP
         "loop-call-button",
-#endif
         "social-share-button",
       ],
       defaultCollapsed: false,
@@ -621,7 +619,6 @@ let CustomizableUIInternal = {
                 container.removeChild(node);
               }
             } else {
-              this.setLocationAttributes(currentNode, aArea);
               node.setAttribute("removable", false);
               LOG("Adding non-removable widget to placements of " + aArea + ": " +
                   node.id);

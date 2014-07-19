@@ -374,12 +374,9 @@ AddAnimationsForProperty(nsIFrame* aFrame, nsCSSProperty aProperty,
                          ElementAnimationPtrArray& aAnimations,
                          Layer* aLayer, AnimationData& aData,
                          bool aPending) {
-  mozilla::TimeStamp currentTime =
-    aFrame->PresContext()->RefreshDriver()->MostRecentRefresh();
   for (uint32_t animIdx = 0; animIdx < aAnimations.Length(); animIdx++) {
     mozilla::ElementAnimation* anim = aAnimations[animIdx];
-    if (!(anim->HasAnimationOfProperty(aProperty) &&
-          anim->IsRunningAt(currentTime))) {
+    if (!(anim->HasAnimationOfProperty(aProperty) && anim->IsRunning())) {
       continue;
     }
     AddAnimationForProperty(aFrame, aProperty, anim, aLayer, aData, aPending);
@@ -4731,12 +4728,7 @@ nsDisplayTransform::ShouldPrerenderTransformedContent(nsDisplayListBuilder* aBui
   refSize += nsSize(refSize.width / 8, refSize.height / 8);
   nsSize frameSize = aFrame->GetVisualOverflowRectRelativeToSelf().Size();
   if (frameSize <= refSize) {
-    // Bug 717521 - pre-render max 4096 x 4096 device pixels.
-    nscoord max = aFrame->PresContext()->DevPixelsToAppUnits(4096);
-    nsRect visual = aFrame->GetVisualOverflowRect();
-    if (visual.width <= max && visual.height <= max) {
-      return true;
-    }
+    return true;
   }
 
   if (aLogAnimations) {

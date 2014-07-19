@@ -367,6 +367,7 @@ class GCRuntime
     void requestInterrupt(JS::gcreason::Reason reason);
     bool gcCycle(bool incremental, int64_t budget, JSGCInvocationKind gckind,
                  JS::gcreason::Reason reason);
+    gcstats::ZoneGCStats scanZonesBeforeGC();
     void budgetIncrementalGC(int64_t *budget);
     void resetIncrementalGC(const char *reason);
     void incrementalCollectSlice(int64_t budget, JS::gcreason::Reason reason,
@@ -418,8 +419,6 @@ class GCRuntime
 
     /* List of compartments and zones (protected by the GC lock). */
     js::gc::ZoneVector    zones;
-
-    js::gc::SystemPageAllocator pageAllocator;
 
 #ifdef JSGC_GENERATIONAL
     js::Nursery           nursery;
@@ -481,6 +480,8 @@ class GCRuntime
     bool                  dynamicHeapGrowth;
     bool                  dynamicMarkSlice;
     uint64_t              decommitThreshold;
+    unsigned              minEmptyChunkCount;
+    unsigned              maxEmptyChunkCount;
 
     /* During shutdown, the GC needs to clean up every possible object. */
     bool                  cleanUpEverything;
@@ -696,6 +697,12 @@ class GCRuntime
     mozilla::DebugOnly<PRThread *>   lockOwner;
 
     GCHelperState helperState;
+
+    /*
+     * During incremental sweeping, this field temporarily holds the arenas of
+     * the current AllocKind being swept in order of increasing free space.
+     */
+    SortedArenaList incrementalSweepList;
 
     ConservativeGCData conservativeGC;
 

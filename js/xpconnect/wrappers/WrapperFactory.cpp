@@ -6,6 +6,7 @@
 
 #include "WaiveXrayWrapper.h"
 #include "FilteringWrapper.h"
+#include "AddonWrapper.h"
 #include "XrayWrapper.h"
 #include "AccessCheck.h"
 #include "XPCWrapper.h"
@@ -335,6 +336,11 @@ DEBUG_CheckUnwrapSafety(HandleObject obj, const js::Wrapper *handler,
     if (AccessCheck::isChrome(target) || xpc::IsUniversalXPConnectEnabled(target)) {
         // If the caller is chrome (or effectively so), unwrap should always be allowed.
         MOZ_ASSERT(!handler->hasSecurityPolicy());
+    } else if (CompartmentPrivate::Get(origin)->forcePermissiveCOWs) {
+        // Similarly, if this is a privileged scope that has opted to make itself
+        // accessible to the world (allowed only during automation), unwrap should
+        // be allowed.
+        MOZ_ASSERT(!handler->hasSecurityPolicy());
     } else {
         // Otherwise, it should depend on whether the target subsumes the origin.
         MOZ_ASSERT(handler->hasSecurityPolicy() == !AccessCheck::subsumesConsideringDomain(target, origin));
@@ -397,6 +403,31 @@ SelectWrapper(bool securityWrapper, bool wantXrays, XrayType xrayType,
     return &FilteringWrapper<CrossCompartmentSecurityWrapper, Opaque>::singleton;
 }
 
+static const Wrapper *
+SelectAddonWrapper(JSContext *cx, HandleObject obj, const Wrapper *wrapper)
+{
+    JSAddonId *originAddon = JS::AddonIdOfObject(obj);
+    JSAddonId *targetAddon = JS::AddonIdOfObject(JS::CurrentGlobalOrNull(cx));
+
+    MOZ_ASSERT(AccessCheck::isChrome(JS::CurrentGlobalOrNull(cx)));
+    MOZ_ASSERT(targetAddon);
+
+    if (targetAddon == originAddon)
+        return wrapper;
+
+    // Add-on interposition only supports certain wrapper types, so we check if
+    // we would have used one of the supported ones.
+    if (wrapper == &CrossCompartmentWrapper::singleton)
+        return &AddonWrapper<CrossCompartmentWrapper>::singleton;
+    else if (wrapper == &PermissiveXrayXPCWN::singleton)
+        return &AddonWrapper<PermissiveXrayXPCWN>::singleton;
+    else if (wrapper == &PermissiveXrayDOM::singleton)
+        return &AddonWrapper<PermissiveXrayDOM>::singleton;
+
+    // |wrapper| is not supported for interposition, so we don't do it.
+    return wrapper;
+}
+
 JSObject *
 WrapperFactory::Rewrap(JSContext *cx, HandleObject existing, HandleObject obj,
                        HandleObject parent, unsigned flags)
@@ -431,6 +462,13 @@ WrapperFactory::Rewrap(JSContext *cx, HandleObject existing, HandleObject obj,
     // If UniversalXPConnect is enabled, this is just some dumb mochitest. Use
     // a vanilla CCW.
     if (xpc::IsUniversalXPConnectEnabled(target)) {
+        CrashIfNotInAutomation();
+        wrapper = &CrossCompartmentWrapper::singleton;
+    }
+
+    // Let the SpecialPowers scope make its stuff easily accessible to content.
+    else if (CompartmentPrivate::Get(origin)->forcePermissiveCOWs) {
+        CrashIfNotInAutomation();
         wrapper = &CrossCompartmentWrapper::singleton;
     }
 
@@ -477,6 +515,11 @@ WrapperFactory::Rewrap(JSContext *cx, HandleObject existing, HandleObject obj,
 
         wrapper = SelectWrapper(securityWrapper, wantXrays, xrayType, waiveXrays,
                                 originIsContentXBLScope);
+
+        // If we want to apply add-on interposition in the target compartment,
+        // then we try to "upgrade" the wrapper to an interposing one.
+        if (CompartmentPrivate::Get(target)->scope->HasInterposition())
+            wrapper = SelectAddonWrapper(cx, obj, wrapper);
     }
 
     if (!targetSubsumesOrigin) {

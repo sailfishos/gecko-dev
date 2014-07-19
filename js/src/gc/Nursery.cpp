@@ -61,7 +61,7 @@ js::Nursery::init(uint32_t maxNurseryBytes)
     if (!hugeSlots.init())
         return false;
 
-    void *heap = runtime()->gc.pageAllocator.mapAlignedPages(nurserySize(), Alignment);
+    void *heap = MapAlignedPages(nurserySize(), Alignment);
     if (!heap)
         return false;
 
@@ -86,7 +86,7 @@ js::Nursery::init(uint32_t maxNurseryBytes)
 js::Nursery::~Nursery()
 {
     if (start())
-        runtime()->gc.pageAllocator.unmapPages((void *)start(), nurserySize());
+        UnmapPages((void *)start(), nurserySize());
 }
 
 void
@@ -101,7 +101,7 @@ js::Nursery::updateDecommittedRegion()
         uintptr_t decommitSize = heapEnd() - decommitStart;
         JS_ASSERT(decommitStart == AlignBytes(decommitStart, Alignment));
         JS_ASSERT(decommitSize == AlignBytes(decommitStart, Alignment));
-        runtime()->gc.pageAllocator.markPagesUnused((void *)decommitStart, decommitSize);
+        MarkPagesUnused((void *)decommitStart, decommitSize);
 # endif
     }
 #endif
@@ -827,6 +827,10 @@ js::Nursery::collect(JSRuntime *rt, JS::gcreason::Reason reason, TypeObjectList 
     TIME_START(clearNewObjectCache);
     rt->newObjectCache.clearNurseryObjects(rt);
     TIME_END(clearNewObjectCache);
+
+    TIME_START(clearRegExpTestCache);
+    rt->regExpTestCache.purge();
+    TIME_END(clearRegExpTestCache);
 
     // Most of the work is done here. This loop iterates over objects that have
     // been moved to the major heap. If these objects have any outgoing pointers

@@ -411,6 +411,8 @@
 #endif
 @BINPATH@/components/nsUpdateTimerManager.manifest
 @BINPATH@/components/nsUpdateTimerManager.js
+@BINPATH@/components/addoncompat.manifest
+@BINPATH@/components/multiprocessShims.js
 @BINPATH@/components/pluginGlue.manifest
 @BINPATH@/browser/components/nsSessionStore.manifest
 @BINPATH@/browser/components/nsSessionStartup.js
@@ -744,8 +746,8 @@
 @BINPATH@/components/pipnss.xpt
 @BINPATH@/components/pippki.xpt
 
-; For content sandboxing
-#if defined(XP_WIN) && defined(MOZ_CONTENT_SANDBOX)
+; For process sandboxing
+#if defined(XP_WIN)
 @BINPATH@/@DLL_PREFIX@sandboxbroker@DLL_SUFFIX@
 #endif
 

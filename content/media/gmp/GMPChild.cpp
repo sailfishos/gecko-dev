@@ -12,11 +12,19 @@
 #include "gmp-video-decode.h"
 #include "gmp-video-encode.h"
 #include "GMPPlatform.h"
+#include "mozilla/dom/CrashReporterChild.h"
+
+using mozilla::dom::CrashReporterChild;
 
 #ifdef XP_WIN
 #include <stdlib.h> // for _exit()
 #else
 #include <unistd.h> // for _exit()
+#endif
+
+#if defined(XP_WIN)
+#define TARGET_SANDBOX_EXPORTS
+#include "mozilla/sandboxTarget.h"
 #endif
 
 namespace mozilla {
@@ -39,6 +47,12 @@ GMPChild::Init(const std::string& aPluginPath,
                MessageLoop* aIOLoop,
                IPC::Channel* aChannel)
 {
+#ifdef MOZ_CRASHREPORTER
+  SendPCrashReporterConstructor(CrashReporter::CurrentThreadId());
+#endif
+#if defined(XP_WIN)
+  mozilla::SandboxTarget::Instance()->StartSandbox();
+#endif
   return LoadPluginLibrary(aPluginPath) &&
          Open(aChannel, aParentProcessHandle, aIOLoop);
 }
@@ -143,6 +157,19 @@ GMPChild::ProcessingError(Result aWhat)
     default:
       MOZ_CRASH("not reached");
   }
+}
+
+mozilla::dom::PCrashReporterChild*
+GMPChild::AllocPCrashReporterChild(const NativeThreadId& aThread)
+{
+  return new CrashReporterChild();
+}
+
+bool
+GMPChild::DeallocPCrashReporterChild(PCrashReporterChild* aCrashReporter)
+{
+  delete aCrashReporter;
+  return true;
 }
 
 PGMPVideoDecoderChild*

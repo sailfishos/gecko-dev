@@ -113,6 +113,7 @@
 #include "PreallocatedProcessManager.h"
 #include "ProcessPriorityManager.h"
 #include "SandboxHal.h"
+#include "ScreenManagerParent.h"
 #include "StructuredCloneUtils.h"
 #include "TabParent.h"
 #include "URIUtils.h"
@@ -157,6 +158,8 @@ using namespace mozilla::system;
 
 #include "JavaScriptParent.h"
 
+#include "mozilla/RemoteSpellCheckEngineParent.h"
+
 #ifdef MOZ_B2G_FM
 #include "mozilla/dom/FMRadioParent.h"
 #endif
@@ -189,6 +192,7 @@ using namespace mozilla::ipc;
 using namespace mozilla::layers;
 using namespace mozilla::net;
 using namespace mozilla::jsipc;
+using namespace mozilla::widget;
 
 #ifdef ENABLE_TESTS
 
@@ -1757,7 +1761,6 @@ ContentParent::ContentParent(mozIApplication* aApp,
         ? base::PRIVILEGES_INHERIT
         : base::PRIVILEGES_DEFAULT;
     mSubprocess = new GeckoChildProcessHost(GeckoProcessType_Content, privs);
-    mSubprocess->SetSandboxEnabled(ShouldSandboxContentProcesses());
 
     IToplevelProtocol::SetTransport(mSubprocess->GetChannel());
 
@@ -2693,6 +2696,20 @@ ContentParent::DeallocPBlobParent(PBlobParent* aActor)
     return true;
 }
 
+mozilla::PRemoteSpellcheckEngineParent *
+ContentParent::AllocPRemoteSpellcheckEngineParent()
+{
+    mozilla::RemoteSpellcheckEngineParent *parent = new mozilla::RemoteSpellcheckEngineParent();
+    return parent;
+}
+
+bool
+ContentParent::DeallocPRemoteSpellcheckEngineParent(PRemoteSpellcheckEngineParent *parent)
+{
+    delete parent;
+    return true;
+}
+
 void
 ContentParent::KillHard()
 {
@@ -2900,6 +2917,21 @@ bool
 ContentParent::DeallocPNeckoParent(PNeckoParent* necko)
 {
     delete necko;
+    return true;
+}
+
+PScreenManagerParent*
+ContentParent::AllocPScreenManagerParent(uint32_t* aNumberOfScreens,
+                                         float* aSystemDefaultScale,
+                                         bool* aSuccess)
+{
+    return new ScreenManagerParent(aNumberOfScreens, aSystemDefaultScale, aSuccess);
+}
+
+bool
+ContentParent::DeallocPScreenManagerParent(PScreenManagerParent* aActor)
+{
+    delete aActor;
     return true;
 }
 
@@ -3595,16 +3627,6 @@ ContentParent::ShouldContinueFromReplyTimeout()
     // timeouts should only ever occur in electrolysis-enabled sessions.
     MOZ_ASSERT(BrowserTabsRemote());
     return false;
-}
-
-bool
-ContentParent::ShouldSandboxContentProcesses()
-{
-#ifdef MOZ_CONTENT_SANDBOX
-    return !PR_GetEnv("MOZ_DISABLE_CONTENT_SANDBOX");
-#else
-    return true;
-#endif
 }
 
 bool

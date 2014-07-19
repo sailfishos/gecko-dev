@@ -370,10 +370,9 @@ AsyncErrorReporter::AsyncErrorReporter(JSRuntime* aRuntime,
 
   const char16_t* m = static_cast<const char16_t*>(aErrorReport->ucmessage);
   if (m) {
-    const char16_t* n = static_cast<const char16_t*>
-      (js::GetErrorTypeName(aRuntime, aErrorReport->exnType));
-    if (n) {
-      mErrorMsg.Assign(n);
+    JSFlatString* name = js::GetErrorTypeName(aRuntime, aErrorReport->exnType);
+    if (name) {
+      AssignJSFlatString(mErrorMsg, name);
       mErrorMsg.AppendLiteral(": ");
     }
     mErrorMsg.Append(m);
@@ -3017,6 +3016,14 @@ nsJSContext::EnsureStatics()
 
   Preferences::RegisterCallbackAndCall(SetIncrementalCCPrefChangedCallback,
                                        "dom.cycle_collector.incremental");
+
+  Preferences::RegisterCallbackAndCall(SetMemoryGCPrefChangedCallback,
+                                       "javascript.options.mem.gc_min_empty_chunk_count",
+                                       (void *)JSGC_MIN_EMPTY_CHUNK_COUNT);
+
+  Preferences::RegisterCallbackAndCall(SetMemoryGCPrefChangedCallback,
+                                       "javascript.options.mem.gc_max_empty_chunk_count",
+                                       (void *)JSGC_MAX_EMPTY_CHUNK_COUNT);
 
   nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
   if (!obs) {
