@@ -43,6 +43,7 @@ public:
   virtual GMPErr SetRates(uint32_t aNewBitRate, uint32_t aFrameRate) MOZ_OVERRIDE;
   virtual GMPErr SetPeriodicKeyFrames(bool aEnable) MOZ_OVERRIDE;
   virtual void EncodingComplete() MOZ_OVERRIDE;
+  virtual const uint64_t ParentID() MOZ_OVERRIDE { return reinterpret_cast<uint64_t>(mPlugin.get()); }
 
   // GMPSharedMemManager
   virtual void CheckThread();
@@ -72,7 +73,7 @@ private:
   virtual bool Recv__delete__() MOZ_OVERRIDE;
 
   bool mCanSendMessages;
-  GMPParent* mPlugin;
+  nsRefPtr<GMPParent> mPlugin;
   GMPVideoEncoderCallbackProxy* mCallback;
   GMPVideoHostImpl mVideoHost;
 };

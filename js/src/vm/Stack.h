@@ -197,7 +197,6 @@ class AbstractFramePtr
     inline bool isFunctionFrame() const;
     inline bool isGlobalFrame() const;
     inline bool isEvalFrame() const;
-    inline bool isFramePushedByExecute() const;
     inline bool isDebuggerFrame() const;
 
     inline JSScript *script() const;
@@ -235,8 +234,6 @@ class AbstractFramePtr
 
     JSObject *evalPrevScopeChain(JSContext *cx) const;
 
-    inline void *maybeHookData() const;
-    inline void setHookData(void *data) const;
     inline HandleValue returnValue() const;
     inline void setReturnValue(const Value &rval) const;
 
@@ -318,7 +315,6 @@ class InterpreterFrame
         HAS_ARGS_OBJ       =      0x200,  /* ArgumentsObject created for needsArgsObj script */
 
         /* Lazy frame initialization */
-        HAS_HOOK_DATA      =      0x400,  /* frame has hookData_ set */
         HAS_RVAL           =      0x800,  /* frame has rval_ set */
         HAS_SCOPECHAIN     =     0x1000,  /* frame has scopeChain_ set */
 
@@ -361,7 +357,7 @@ class InterpreterFrame
     jsbytecode          *prevpc_;
     Value               *prevsp_;
 
-    void                *hookData_;     /* if HAS_HOOK_DATA, closure returned by call hook */
+    void                *unused;
 
     /*
      * For an eval-in-frame DEBUGGER frame, the frame in whose scope we're
@@ -742,25 +738,7 @@ class InterpreterFrame
 
     inline JSCompartment *compartment() const;
 
-    /* Debugger hook data */
-
-    bool hasHookData() const {
-        return !!(flags_ & HAS_HOOK_DATA);
-    }
-
-    void* hookData() const {
-        JS_ASSERT(hasHookData());
-        return hookData_;
-    }
-
-    void* maybeHookData() const {
-        return hasHookData() ? hookData_ : nullptr;
-    }
-
-    void setHookData(void *v) {
-        hookData_ = v;
-        flags_ |= HAS_HOOK_DATA;
-    }
+    /* Profiler flags */
 
     bool hasPushedSPSFrame() {
         return !!(flags_ & HAS_PUSHED_SPS_FRAME);
@@ -846,17 +824,6 @@ class InterpreterFrame
     template <TriggerPostBarriers doPostBarrier>
     void copyFrameAndValues(JSContext *cx, Value *vp, InterpreterFrame *otherfp,
                             const Value *othervp, Value *othersp);
-
-    /*
-     * js::Execute pushes both global and function frames (since eval() in a
-     * function pushes a frame with isFunctionFrame() && isEvalFrame()). Most
-     * code should not care where a frame was pushed, but if it is necessary to
-     * pick out frames pushed by js::Execute, this is the right query:
-     */
-
-    bool isFramePushedByExecute() const {
-        return !!(flags_ & (GLOBAL | EVAL));
-    }
 
     /*
      * Other flags
@@ -1508,10 +1475,12 @@ class AsmJSActivation : public Activation
 {
     AsmJSModule &module_;
     AsmJSActivation *prevAsmJS_;
+    AsmJSActivation *prevAsmJSForModule_;
     void *errorRejoinSP_;
     SPSProfiler *profiler_;
     void *resumePC_;
-    uint8_t *exitFP_;
+    uint8_t *fp_;
+    AsmJSExit::Reason exitReason_;
 
   public:
     AsmJSActivation(JSContext *cx, AsmJSModule &module);
@@ -1521,24 +1490,24 @@ class AsmJSActivation : public Activation
     AsmJSModule &module() const { return module_; }
     AsmJSActivation *prevAsmJS() const { return prevAsmJS_; }
 
+    // Returns a pointer to the base of the innermost stack frame of asm.js code
+    // in this activation.
+    uint8_t *fp() const { return fp_; }
+
+    // Returns the reason why asm.js code called out of asm.js code.
+    AsmJSExit::Reason exitReason() const { return exitReason_; }
+
     // Read by JIT code:
     static unsigned offsetOfContext() { return offsetof(AsmJSActivation, cx_); }
     static unsigned offsetOfResumePC() { return offsetof(AsmJSActivation, resumePC_); }
 
-    // Initialized by JIT code:
+    // Written by JIT code:
     static unsigned offsetOfErrorRejoinSP() { return offsetof(AsmJSActivation, errorRejoinSP_); }
-    static unsigned offsetOfExitFP() { return offsetof(AsmJSActivation, exitFP_); }
+    static unsigned offsetOfFP() { return offsetof(AsmJSActivation, fp_); }
+    static unsigned offsetOfExitReason() { return offsetof(AsmJSActivation, exitReason_); }
 
     // Set from SIGSEGV handler:
     void setResumePC(void *pc) { resumePC_ = pc; }
-
-    // If pc is in C++/Ion code, exitFP points to the innermost asm.js frame
-    // (the one that called into C++). While in asm.js code, exitFP is either
-    // null or points to the innermost asm.js frame. Thus, it is always valid to
-    // unwind a non-null exitFP. The only way C++ can observe a null exitFP is
-    // asychronous interruption of asm.js execution (viz., via the profiler,
-    // a signal handler, or the interrupt exit).
-    uint8_t *exitFP() const { return exitFP_; }
 };
 
 // A FrameIter walks over the runtime's stack of JS script activations,

@@ -420,7 +420,10 @@ BluetoothAdapter::StartDiscovery(ErrorResult& aRv)
     aRv.Throw(NS_ERROR_FAILURE);
     return nullptr;
   }
-  nsRefPtr<Promise> promise = new Promise(global);
+  nsRefPtr<Promise> promise = Promise::Create(global, aRv);
+  if (aRv.Failed()) {
+    return nullptr;
+  }
 
   /**
    * Ensure
@@ -454,7 +457,10 @@ BluetoothAdapter::StopDiscovery(ErrorResult& aRv)
     aRv.Throw(NS_ERROR_FAILURE);
     return nullptr;
   }
-  nsRefPtr<Promise> promise = new Promise(global);
+  nsRefPtr<Promise> promise = Promise::Create(global, aRv);
+  if (aRv.Failed()) {
+    return nullptr;
+  }
 
   /**
    * Ensure
@@ -518,7 +524,10 @@ BluetoothAdapter::SetName(const nsAString& aName, ErrorResult& aRv)
     aRv.Throw(NS_ERROR_FAILURE);
     return nullptr;
   }
-  nsRefPtr<Promise> promise = new Promise(global);
+  nsRefPtr<Promise> promise = Promise::Create(global, aRv);
+  if (aRv.Failed()) {
+    return nullptr;
+  }
 
   /**
    * Ensure
@@ -556,7 +565,10 @@ BluetoothAdapter::SetDiscoverable(bool aDiscoverable, ErrorResult& aRv)
     aRv.Throw(NS_ERROR_FAILURE);
     return nullptr;
   }
-  nsRefPtr<Promise> promise = new Promise(global);
+  nsRefPtr<Promise> promise = Promise::Create(global, aRv);
+  if (aRv.Failed()) {
+    return nullptr;
+  }
 
   /**
    * Ensure
@@ -784,7 +796,10 @@ BluetoothAdapter::EnableDisable(bool aEnable, ErrorResult& aRv)
     aRv.Throw(NS_ERROR_FAILURE);
     return nullptr;
   }
-  nsRefPtr<Promise> promise = new Promise(global);
+  nsRefPtr<Promise> promise = Promise::Create(global, aRv);
+  if (aRv.Failed()) {
+    return nullptr;
+  }
 
   // Ensure BluetoothService is available before modifying adapter state
   BluetoothService* bs = BluetoothService::Get();
@@ -807,11 +822,7 @@ BluetoothAdapter::EnableDisable(bool aEnable, ErrorResult& aRv)
   }
 
   // Notify applications of adapter state change to Enabling/Disabling
-  nsTArray<nsString> types;
-  BT_APPEND_ENUM_STRING(types,
-                        BluetoothAdapterAttribute,
-                        BluetoothAdapterAttribute::State);
-  DispatchAttributeEvent(types);
+  HandleAdapterStateChanged();
 
   // Wrap runnable to handle result
   nsRefPtr<BluetoothReplyRunnable> result =
@@ -820,8 +831,11 @@ BluetoothAdapter::EnableDisable(bool aEnable, ErrorResult& aRv)
                                    methodName);
 
   if(NS_FAILED(bs->EnableDisable(aEnable, result))) {
+    // Restore mState and notify applications of adapter state change
     mState = aEnable ? BluetoothAdapterState::Disabled
                      : BluetoothAdapterState::Enabled;
+    HandleAdapterStateChanged();
+
     promise->MaybeReject(NS_ERROR_DOM_OPERATION_ERR);
   }
 
@@ -880,6 +894,16 @@ BluetoothAdapter::IsAdapterAttributeChanged(BluetoothAdapterAttribute aType,
       BT_WARNING("Type %d is not handled", uint32_t(aType));
       return false;
   }
+}
+
+void
+BluetoothAdapter::HandleAdapterStateChanged()
+{
+  nsTArray<nsString> types;
+  BT_APPEND_ENUM_STRING(types,
+                        BluetoothAdapterAttribute,
+                        BluetoothAdapterAttribute::State);
+  DispatchAttributeEvent(types);
 }
 
 void

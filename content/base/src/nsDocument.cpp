@@ -69,6 +69,7 @@
 #include "mozilla/dom/TreeWalker.h"
 
 #include "nsIServiceManager.h"
+#include "nsIServiceWorkerManager.h"
 
 #include "nsContentCID.h"
 #include "nsError.h"
@@ -4465,6 +4466,24 @@ nsDocument::SetScriptGlobalObject(nsIScriptGlobalObject *aScriptGlobalObject)
   if (mTemplateContentsOwner && mTemplateContentsOwner != this) {
     mTemplateContentsOwner->SetScriptGlobalObject(aScriptGlobalObject);
   }
+
+  nsCOMPtr<nsIChannel> channel = GetChannel();
+  if (!mMaybeServiceWorkerControlled && channel) {
+    nsLoadFlags loadFlags = 0;
+    channel->GetLoadFlags(&loadFlags);
+    // If we are shift-reloaded, don't associate with a ServiceWorker.
+    // FIXME(nsm): Bug 1041339.
+    if (loadFlags & nsIRequest::LOAD_BYPASS_CACHE) {
+      NS_WARNING("Page was shift reloaded, skipping ServiceWorker control");
+      return;
+    }
+
+    nsCOMPtr<nsIServiceWorkerManager> swm = do_GetService(SERVICEWORKERMANAGER_CONTRACTID);
+    if (swm) {
+      swm->MaybeStartControlling(this);
+      mMaybeServiceWorkerControlled = true;
+    }
+  }
 }
 
 nsIScriptGlobalObject*
@@ -5972,6 +5991,34 @@ nsDocument::GetElementsByTagName(const nsAString& aTagname,
   // transfer ref to aReturn
   list.forget(aReturn);
   return NS_OK;
+}
+
+long
+nsDocument::BlockedTrackingNodeCount() const
+{
+  return mBlockedTrackingNodes.Length();
+}
+
+already_AddRefed<nsSimpleContentList>
+nsDocument::BlockedTrackingNodes() const
+{
+  nsRefPtr<nsSimpleContentList> list = new nsSimpleContentList(nullptr);
+
+  nsTArray<nsWeakPtr> blockedTrackingNodes;
+  blockedTrackingNodes = mBlockedTrackingNodes;
+
+  for (unsigned long i = 0; i < blockedTrackingNodes.Length(); i++) {
+    nsWeakPtr weakNode = blockedTrackingNodes[i];
+    nsCOMPtr<nsIContent> node = do_QueryReferent(weakNode);
+    // Consider only nodes to which we have managed to get strong references.
+    // Coping with nullptrs since it's expected for nodes to disappear when
+    // nobody else is referring to them.
+    if (node) {
+      list->AppendElement(node);
+    }
+  }
+
+  return list.forget();
 }
 
 already_AddRefed<nsContentList>
@@ -8454,6 +8501,11 @@ nsDocument::Destroy()
   mExternalResourceMap.Shutdown();
 
   mRegistry = nullptr;
+
+  nsCOMPtr<nsIServiceWorkerManager> swm = do_GetService(SERVICEWORKERMANAGER_CONTRACTID);
+  if (swm) {
+    swm->MaybeStopControlling(this);
+  }
 
   // XXX We really should let cycle collection do this, but that currently still
   //     leaks (see https://bugzilla.mozilla.org/show_bug.cgi?id=406684).

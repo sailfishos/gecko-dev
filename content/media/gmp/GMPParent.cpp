@@ -14,6 +14,8 @@
 #include "nsIRunnable.h"
 #include "mozIGeckoMediaPluginService.h"
 #include "mozilla/unused.h"
+#include "nsIObserverService.h"
+#include "mtransport/runnable_utils.h"
 
 #include "mozilla/dom/CrashReporterParent.h"
 using mozilla::dom::CrashReporterParent;
@@ -92,9 +94,10 @@ GMPParent::CloseIfUnused()
 {
   MOZ_ASSERT(GMPThread() == NS_GetCurrentThread());
 
-  if (mState == GMPStateLoaded &&
-      mVideoDecoders.Length() == 0 &&
-      mVideoEncoders.Length() == 0) {
+  if ((mState == GMPStateLoaded ||
+       mState == GMPStateUnloading) &&
+      mVideoDecoders.IsEmpty() &&
+      mVideoEncoders.IsEmpty()) {
     Shutdown();
   }
 }
@@ -102,6 +105,10 @@ GMPParent::CloseIfUnused()
 void
 GMPParent::CloseActive()
 {
+  if (mState == GMPStateLoaded) {
+    mState = GMPStateUnloading;
+  }
+
   // Invalidate and remove any remaining API objects.
   for (uint32_t i = mVideoDecoders.Length(); i > 0; i--) {
     mVideoDecoders[i - 1]->DecodingComplete();
@@ -111,6 +118,11 @@ GMPParent::CloseActive()
   for (uint32_t i = mVideoEncoders.Length(); i > 0; i--) {
     mVideoEncoders[i - 1]->EncodingComplete();
   }
+
+  // Note: the shutdown of the codecs is async!  don't kill
+  // the plugin-container until they're all safely shut down via
+  // CloseIfUnused();
+  CloseIfUnused();
 }
 
 void
@@ -118,12 +130,12 @@ GMPParent::Shutdown()
 {
   MOZ_ASSERT(GMPThread() == NS_GetCurrentThread());
 
+  MOZ_ASSERT(mVideoDecoders.IsEmpty() && mVideoEncoders.IsEmpty());
   if (mState == GMPStateNotLoaded || mState == GMPStateClosing) {
-    MOZ_ASSERT(mVideoDecoders.IsEmpty() && mVideoEncoders.IsEmpty());
     return;
   }
 
-  CloseActive();
+  mState = GMPStateClosing;
   Close();
   DeleteProcess();
   MOZ_ASSERT(mState == GMPStateNotLoaded);
@@ -146,10 +158,13 @@ GMPParent::VideoDecoderDestroyed(GMPVideoDecoderParent* aDecoder)
   // If the constructor fails, we'll get called before it's added
   unused << NS_WARN_IF(!mVideoDecoders.RemoveElement(aDecoder));
 
-  // Recv__delete__ is on the stack, don't potentially destroy the top-level actor
-  // until after this has completed.
-  nsCOMPtr<nsIRunnable> event = NS_NewRunnableMethod(this, &GMPParent::CloseIfUnused);
-  NS_DispatchToCurrentThread(event);
+  if (mVideoDecoders.IsEmpty() &&
+      mVideoEncoders.IsEmpty()) {
+    // Recv__delete__ is on the stack, don't potentially destroy the top-level actor
+    // until after this has completed.
+    nsCOMPtr<nsIRunnable> event = NS_NewRunnableMethod(this, &GMPParent::CloseIfUnused);
+    NS_DispatchToCurrentThread(event);
+  }
 }
 
 void
@@ -160,10 +175,13 @@ GMPParent::VideoEncoderDestroyed(GMPVideoEncoderParent* aEncoder)
   // If the constructor fails, we'll get called before it's added
   unused << NS_WARN_IF(!mVideoEncoders.RemoveElement(aEncoder));
 
-  // Recv__delete__ is on the stack, don't potentially destroy the top-level actor
-  // until after this has completed.
-  nsCOMPtr<nsIRunnable> event = NS_NewRunnableMethod(this, &GMPParent::CloseIfUnused);
-  NS_DispatchToCurrentThread(event);
+  if (mVideoDecoders.IsEmpty() &&
+      mVideoEncoders.IsEmpty()) {
+    // Recv__delete__ is on the stack, don't potentially destroy the top-level actor
+    // until after this has completed.
+    nsCOMPtr<nsIRunnable> event = NS_NewRunnableMethod(this, &GMPParent::CloseIfUnused);
+    NS_DispatchToCurrentThread(event);
+  }
 }
 
 GMPState
@@ -182,6 +200,11 @@ GMPParent::GMPThread()
     if (!mps) {
       return nullptr;
     }
+    // Not really safe if we just grab to the mGMPThread, as we don't know
+    // what thread we're running on and other threads may be trying to
+    // access this without locks!  However, debug only, and primary failure
+    // mode outside of compiler-helped TSAN is a leak.  But better would be
+    // to use swap() under a lock.
     mps->GetThread(getter_AddRefs(mGMPThread));
     MOZ_ASSERT(mGMPThread);
   }
@@ -213,7 +236,8 @@ GMPParent::EnsureProcessLoaded()
   if (mState == GMPStateLoaded) {
     return true;
   }
-  if (mState == GMPStateClosing) {
+  if (mState == GMPStateClosing ||
+      mState == GMPStateUnloading) {
     return false;
   }
 
@@ -231,13 +255,14 @@ GMPParent::GetGMPVideoDecoder(GMPVideoDecoderParent** aGMPVD)
     return NS_ERROR_FAILURE;
   }
 
+  // returned with one anonymous AddRef that locks it until Destroy
   PGMPVideoDecoderParent* pvdp = SendPGMPVideoDecoderConstructor();
   if (!pvdp) {
     return NS_ERROR_FAILURE;
   }
-  nsRefPtr<GMPVideoDecoderParent> vdp = static_cast<GMPVideoDecoderParent*>(pvdp);
+  GMPVideoDecoderParent *vdp = static_cast<GMPVideoDecoderParent*>(pvdp);
+  *aGMPVD = vdp;
   mVideoDecoders.AppendElement(vdp);
-  vdp.forget(aGMPVD);
 
   return NS_OK;
 }
@@ -251,13 +276,14 @@ GMPParent::GetGMPVideoEncoder(GMPVideoEncoderParent** aGMPVE)
     return NS_ERROR_FAILURE;
   }
 
+  // returned with one anonymous AddRef that locks it until Destroy
   PGMPVideoEncoderParent* pvep = SendPGMPVideoEncoderConstructor();
   if (!pvep) {
     return NS_ERROR_FAILURE;
   }
-  nsRefPtr<GMPVideoEncoderParent> vep = static_cast<GMPVideoEncoderParent*>(pvep);
+  GMPVideoEncoderParent *vep = static_cast<GMPVideoEncoderParent*>(pvep);
+  *aGMPVE = vep;
   mVideoEncoders.AppendElement(vep);
-  vep.forget(aGMPVE);
 
   return NS_OK;
 }
@@ -297,18 +323,39 @@ GMPParent::GetCrashID(nsString& aResult)
 }
 #endif
 
+static void
+GMPNotifyObservers(nsAString& aData)
+{
+  nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
+  if (obs) {
+    nsString temp(aData);
+    obs->NotifyObservers(nullptr, "gmp-plugin-crash", temp.get());
+  }
+}
+
 void
 GMPParent::ActorDestroy(ActorDestroyReason aWhy)
 {
-  mState = GMPStateClosing;
+#ifdef MOZ_CRASHREPORTER
   if (AbnormalShutdown == aWhy) {
     nsString dumpID;
-#ifdef MOZ_CRASHREPORTER
     GetCrashID(dumpID);
-#endif
-    // now do something with the crash ID, bug 1038961
-  }
+    nsString id;
+    // use the parent address to identify it
+    // We could use any unique-to-the-parent value
+    id.AppendInt(reinterpret_cast<uint64_t>(this));
+    id.Append(NS_LITERAL_STRING(" "));
+    AppendUTF8toUTF16(mDisplayName, id);
+    id.Append(NS_LITERAL_STRING(" "));
+    id.Append(dumpID);
 
+    // NotifyObservers is mainthread-only
+    NS_DispatchToMainThread(WrapRunnableNM(&GMPNotifyObservers, id),
+                            NS_DISPATCH_NORMAL);
+  }
+#endif
+  // warn us off trying to close again
+  mState = GMPStateClosing;
   CloseActive();
 
   // Normal Shutdown() will delete the process on unwind.

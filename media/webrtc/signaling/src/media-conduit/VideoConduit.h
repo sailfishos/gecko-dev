@@ -199,6 +199,8 @@ public:
 #endif
   }
 
+  virtual uint64_t CodecPluginID();
+
   unsigned short SendingWidth() {
     return mSendingWidth;
   }
@@ -334,6 +336,8 @@ private:
 
   nsAutoPtr<VideoCodecConfig> mExternalSendCodec;
   nsAutoPtr<VideoCodecConfig> mExternalRecvCodec;
+  nsAutoPtr<VideoEncoder> mExternalSendCodecHandle;
+  nsAutoPtr<VideoDecoder> mExternalRecvCodecHandle;
 
   // statistics object for video codec;
   nsAutoPtr<VideoCodecStatistics> mVideoCodecStat;
