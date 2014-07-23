@@ -516,7 +516,7 @@ void EmbedLitePuppetWidget::CreateCompositor(int aWidth, int aHeight)
 {
   mCompositorParent = NewCompositorParent(aWidth, aHeight);
   MessageChannel* parentChannel = mCompositorParent->GetIPCChannel();
-  ClientLayerManager* lm = new ClientLayerManager(this);
+  nsRefPtr<ClientLayerManager> lm = new ClientLayerManager(this);
   MessageLoop* childMessageLoop = CompositorParent::CompositorLoop();
   mCompositorChild = new CompositorChild(lm);
   mCompositorChild->Open(parentChannel, childMessageLoop, ipc::ChildSide);
@@ -537,7 +537,7 @@ void EmbedLitePuppetWidget::CreateCompositor(int aWidth, int aHeight)
   if (success) {
     ShadowLayerForwarder* lf = lm->AsShadowForwarder();
     if (!lf) {
-      delete lm;
+      lm = nullptr;
       mCompositorChild = nullptr;
       return;
     }
@@ -546,13 +546,13 @@ void EmbedLitePuppetWidget::CreateCompositor(int aWidth, int aHeight)
     ImageBridgeChild::IdentifyCompositorTextureHost(textureFactoryIdentifier);
     WindowUsesOMTC();
 
-    mLayerManager = lm;
+    mLayerManager = lm.forget();
   } else {
     // We don't currently want to support not having a LayersChild
     if (ViewIsValid()) {
       NS_RUNTIMEABORT("failed to construct LayersChild, and View still here");
     }
-    delete lm;
+    lm = nullptr;
     mCompositorChild = nullptr;
   }
 }
