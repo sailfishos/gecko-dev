@@ -33,6 +33,8 @@ gyp_vars = {
     # saves 4MB when webrtc_trace is off
     'enable_lazy_trace_alloc': 0,
 
+    'moz_use_x11': 0,
+
      # turn off mandatory use of NEON and instead use NEON detection
     'arm_neon': 0,
     'arm_neon_optional': 1,
@@ -55,6 +57,9 @@ gyp_vars = {
 }
 
 os = CONFIG['OS_TARGET']
+
+if CONFIG['MOZ_X11'] == '1':
+    gyp_vars['moz_use_x11'] = 1
 
 if os == 'WINNT':
     gyp_vars.update(
