@@ -1887,26 +1887,6 @@ SetDebuggerHandler(JSContext *cx, unsigned argc, jsval *vp)
 }
 
 static bool
-SetThrowHook(JSContext *cx, unsigned argc, jsval *vp)
-{
-    CallArgs args = CallArgsFromVp(argc, vp);
-    JSString *str;
-    if (args.length() == 0) {
-        JS_ReportErrorNumber(cx, my_GetErrorMessage, nullptr,
-                             JSSMSG_NOT_ENOUGH_ARGS, "setThrowHook");
-        return false;
-    }
-
-    str = JS::ToString(cx, args[0]);
-    if (!str)
-        return false;
-
-    JS_SetThrowHook(cx->runtime(), DebuggerAndThrowHandler, str);
-    args.rval().setUndefined();
-    return true;
-}
-
-static bool
 LineToPC(JSContext *cx, unsigned argc, jsval *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
@@ -4885,10 +4865,6 @@ static const JSFunctionSpecWithHelp fuzzing_unsafe_functions[] = {
 "  Redirect stdout and/or stderr to the named file. Pass undefined to avoid\n"
 "   redirecting. Filenames are relative to the current working directory."),
 
-    JS_FN_HELP("setThrowHook", SetThrowHook, 1, 0,
-"setThrowHook(f)",
-"  Set throw hook to f."),
-
     JS_FN_HELP("system", System, 1, 0,
 "system(command)",
 "  Execute command on the current host, returning result code."),
@@ -6082,7 +6058,7 @@ SetRuntimeOptions(JSRuntime *rt, const OptionParser &op)
 
     jsCacheDir = op.getStringOption("js-cache");
     if (jsCacheDir) {
-        if (op.getBoolOption("js-cache-per-process"))
+        if (!op.getBoolOption("no-js-cache-per-process"))
             jsCacheDir = JS_smprintf("%s/%u", jsCacheDir, (unsigned)getpid());
         jsCacheAsmJSPath = JS_smprintf("%s/asmjs.cache", jsCacheDir);
     }
@@ -6124,7 +6100,7 @@ Shell(JSContext *cx, OptionParser *op, char **envp)
     if (enableDisassemblyDumps)
         JS_DumpCompartmentPCCounts(cx);
 
-    if (op->getBoolOption("js-cache-per-process")) {
+    if (!op->getBoolOption("no-js-cache-per-process")) {
         if (jsCacheAsmJSPath)
             unlink(jsCacheAsmJSPath);
         if (jsCacheDir)
@@ -6202,11 +6178,12 @@ main(int argc, char **argv, char **envp)
         || !op.addStringOption('\0', "js-cache", "[path]",
                                "Enable the JS cache by specifying the path of the directory to use "
                                "to hold cache files")
-        || !op.addBoolOption('\0', "js-cache-per-process",
-                               "Generate a separate cache sub-directory for this process inside "
-                               "the cache directory specified by --js-cache. This cache directory "
-                               "will be removed when the js shell exits. This is useful for running "
-                               "tests in parallel.")
+        || !op.addBoolOption('\0', "no-js-cache-per-process",
+                               "Deactivates cache per process. Otherwise, generate a separate cache"
+                               "sub-directory for this process inside the cache directory"
+                               "specified by --js-cache. This cache directory will be removed"
+                               "when the js shell exits. This is useful for running tests in"
+                               "parallel.")
 #ifdef DEBUG
         || !op.addBoolOption('O', "print-alloc", "Print the number of allocations at exit")
 #endif

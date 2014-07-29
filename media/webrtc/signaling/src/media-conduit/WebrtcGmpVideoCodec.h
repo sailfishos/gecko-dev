@@ -33,8 +33,6 @@
 #include "GMPVideoDecoderProxy.h"
 #include "GMPVideoEncoderProxy.h"
 
-#include "WebrtcGmpVideoCodec.h"
-
 namespace mozilla {
 
 class WebrtcGmpVideoEncoder : public WebrtcVideoEncoder,
@@ -45,6 +43,11 @@ public:
   virtual ~WebrtcGmpVideoEncoder() {}
 
   // Implement VideoEncoder interface.
+  virtual const uint64_t PluginID() MOZ_OVERRIDE
+  {
+    return mGMP ? mGMP->ParentID() : 0;
+  }
+
   virtual int32_t InitEncode(const webrtc::VideoCodec* aCodecSettings,
                              int32_t aNumberOfCores,
                              uint32_t aMaxPayloadSize);
@@ -82,7 +85,7 @@ private:
                              uint32_t aFrameRate);
 
   nsCOMPtr<mozIGeckoMediaPluginService> mMPS;
-  nsIThread* mGMPThread;
+  nsCOMPtr<nsIThread> mGMPThread;
   GMPVideoEncoderProxy* mGMP;
   GMPVideoHost* mHost;
   webrtc::EncodedImageCallback* mCallback;
@@ -97,6 +100,11 @@ public:
   virtual ~WebrtcGmpVideoDecoder() {}
 
   // Implement VideoDecoder interface.
+  virtual const uint64_t PluginID() MOZ_OVERRIDE
+  {
+    return mGMP ? mGMP->ParentID() : 0;
+  }
+
   virtual int32_t InitDecode(const webrtc::VideoCodec* aCodecSettings,
                              int32_t aNumberOfCores);
   virtual int32_t Decode(const webrtc::EncodedImage& aInputImage,
@@ -143,7 +151,7 @@ private:
                            int64_t aRenderTimeMs);
 
   nsCOMPtr<mozIGeckoMediaPluginService> mMPS;
-  nsIThread* mGMPThread;
+  nsCOMPtr<nsIThread> mGMPThread;
   GMPVideoDecoderProxy*  mGMP;
   GMPVideoHost* mHost;
   webrtc::DecodedImageCallback* mCallback;

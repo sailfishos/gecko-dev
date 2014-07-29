@@ -836,48 +836,52 @@ AutoStableStringChars::~AutoStableStringChars()
 bool
 AutoStableStringChars::init(JSContext *cx, JSString *s)
 {
-    s_ = s->ensureLinear(cx);
-    if (!s_)
+    RootedLinearString linearString(cx, s->ensureLinear(cx));
+    if (!linearString)
         return false;
 
     MOZ_ASSERT(state_ == Uninitialized);
 
-    if (s_->hasLatin1Chars()) {
+    if (linearString->hasLatin1Chars()) {
         state_ = Latin1;
-        latin1Chars_ = s_->rawLatin1Chars();
+        latin1Chars_ = linearString->rawLatin1Chars();
     } else {
         state_ = TwoByte;
-        twoByteChars_ = s_->rawTwoByteChars();
+        twoByteChars_ = linearString->rawTwoByteChars();
     }
 
+    s_ = linearString;
     return true;
 }
 
 bool
 AutoStableStringChars::initTwoByte(JSContext *cx, JSString *s)
 {
-    s_ = s->ensureLinear(cx);
-    if (!s_)
+    RootedLinearString linearString(cx, s->ensureLinear(cx));
+    if (!linearString)
         return false;
 
     MOZ_ASSERT(state_ == Uninitialized);
 
-    if (s_->hasTwoByteChars()) {
+    if (linearString->hasTwoByteChars()) {
         state_ = TwoByte;
-        twoByteChars_ = s_->rawTwoByteChars();
+        twoByteChars_ = linearString->rawTwoByteChars();
+        s_ = linearString;
         return true;
     }
 
-    jschar *chars = cx->pod_malloc<jschar>(s_->length() + 1);
+    jschar *chars = cx->pod_malloc<jschar>(linearString->length() + 1);
     if (!chars)
         return false;
 
-    CopyAndInflateChars(chars, s_->rawLatin1Chars(), s_->length());
-    chars[s_->length()] = 0;
+    CopyAndInflateChars(chars, linearString->rawLatin1Chars(),
+                        linearString->length());
+    chars[linearString->length()] = 0;
 
     state_ = TwoByte;
     ownsChars_ = true;
     twoByteChars_ = chars;
+    s_ = linearString;
     return true;
 }
 
@@ -891,3 +895,268 @@ JSAtom::dump()
     this->JSString::dump();
 }
 #endif /* DEBUG */
+
+JSLinearString *
+js::NewDependentString(JSContext *cx, JSString *baseArg, size_t start, size_t length)
+{
+    if (length == 0)
+        return cx->emptyString();
+
+    JSLinearString *base = baseArg->ensureLinear(cx);
+    if (!base)
+        return nullptr;
+
+    if (start == 0 && length == base->length())
+        return base;
+
+    if (base->hasTwoByteChars()) {
+        AutoCheckCannotGC nogc;
+        const jschar *chars = base->twoByteChars(nogc) + start;
+        if (JSLinearString *staticStr = cx->staticStrings().lookup(chars, length))
+            return staticStr;
+    } else {
+        AutoCheckCannotGC nogc;
+        const Latin1Char *chars = base->latin1Chars(nogc) + start;
+        if (JSLinearString *staticStr = cx->staticStrings().lookup(chars, length))
+            return staticStr;
+    }
+
+    return JSDependentString::new_(cx, base, start, length);
+}
+
+template <typename CharT>
+static void
+CopyCharsMaybeInflate(jschar *dest, const CharT *src, size_t len);
+
+template <>
+void
+CopyCharsMaybeInflate(jschar *dest, const jschar *src, size_t len)
+{
+    PodCopy(dest, src, len);
+}
+
+template <>
+void
+CopyCharsMaybeInflate(jschar *dest, const Latin1Char *src, size_t len)
+{
+    CopyAndInflateChars(dest, src, len);
+}
+
+static bool
+CanStoreCharsAsLatin1(const jschar *s, size_t length)
+{
+    if (!EnableLatin1Strings)
+        return false;
+
+    for (const jschar *end = s + length; s < end; ++s) {
+        if (*s > JSString::MAX_LATIN1_CHAR)
+            return false;
+    }
+
+    return true;
+}
+
+static bool
+CanStoreCharsAsLatin1(const Latin1Char *s, size_t length)
+{
+    MOZ_CRASH("Shouldn't be called for Latin1 chars");
+}
+
+template <AllowGC allowGC>
+static MOZ_ALWAYS_INLINE JSInlineString *
+NewFatInlineStringDeflated(ThreadSafeContext *cx, mozilla::Range<const jschar> chars)
+{
+    MOZ_ASSERT(EnableLatin1Strings);
+
+    size_t len = chars.length();
+    Latin1Char *storage;
+    JSInlineString *str = AllocateFatInlineString<allowGC>(cx, len, &storage);
+    if (!str)
+        return nullptr;
+
+    for (size_t i = 0; i < len; i++) {
+        MOZ_ASSERT(chars[i] <= JSString::MAX_LATIN1_CHAR);
+        storage[i] = Latin1Char(chars[i]);
+    }
+    storage[len] = '\0';
+    return str;
+}
+
+template <AllowGC allowGC>
+static JSFlatString *
+NewStringDeflated(ThreadSafeContext *cx, const jschar *s, size_t n)
+{
+    MOZ_ASSERT(EnableLatin1Strings);
+
+    if (JSFatInlineString::latin1LengthFits(n))
+        return NewFatInlineStringDeflated<allowGC>(cx, mozilla::Range<const jschar>(s, n));
+
+    ScopedJSFreePtr<Latin1Char> news(cx->pod_malloc<Latin1Char>(n + 1));
+    if (!news)
+        return nullptr;
+
+    for (size_t i = 0; i < n; i++) {
+        MOZ_ASSERT(s[i] <= JSString::MAX_LATIN1_CHAR);
+        news.get()[i] = Latin1Char(s[i]);
+    }
+    news[n] = '\0';
+
+    JSFlatString *str = JSFlatString::new_<allowGC>(cx, news.get(), n);
+    if (!str)
+        return nullptr;
+
+    news.forget();
+    return str;
+}
+
+template <AllowGC allowGC>
+static JSFlatString *
+NewStringDeflated(ThreadSafeContext *cx, const Latin1Char *s, size_t n)
+{
+    MOZ_CRASH("Shouldn't be called for Latin1 chars");
+}
+
+template <AllowGC allowGC, typename CharT>
+JSFlatString *
+js::NewStringDontDeflate(ThreadSafeContext *cx, CharT *chars, size_t length)
+{
+    if (length == 1) {
+        jschar c = chars[0];
+        if (StaticStrings::hasUnit(c)) {
+            // Free |chars| because we're taking possession of it, but it's no
+            // longer needed because we use the static string instead.
+            js_free(chars);
+            return cx->staticStrings().getUnit(c);
+        }
+    }
+
+    return JSFlatString::new_<allowGC>(cx, chars, length);
+}
+
+template JSFlatString *
+js::NewStringDontDeflate<CanGC>(ThreadSafeContext *cx, jschar *chars, size_t length);
+
+template JSFlatString *
+js::NewStringDontDeflate<NoGC>(ThreadSafeContext *cx, jschar *chars, size_t length);
+
+template JSFlatString *
+js::NewStringDontDeflate<CanGC>(ThreadSafeContext *cx, Latin1Char *chars, size_t length);
+
+template JSFlatString *
+js::NewStringDontDeflate<NoGC>(ThreadSafeContext *cx, Latin1Char *chars, size_t length);
+
+template <AllowGC allowGC, typename CharT>
+JSFlatString *
+js::NewString(ThreadSafeContext *cx, CharT *chars, size_t length)
+{
+    if (IsSame<CharT, jschar>::value && CanStoreCharsAsLatin1(chars, length)) {
+        if (length == 1) {
+            jschar c = chars[0];
+            if (StaticStrings::hasUnit(c)) {
+                js_free(chars);
+                return cx->staticStrings().getUnit(c);
+            }
+        }
+
+        JSFlatString *s = NewStringDeflated<allowGC>(cx, chars, length);
+        if (!s)
+            return nullptr;
+
+        // Free |chars| because we're taking possession of it but not using it.
+        js_free(chars);
+        return s;
+    }
+
+    return NewStringDontDeflate<allowGC>(cx, chars, length);
+}
+
+template JSFlatString *
+js::NewString<CanGC>(ThreadSafeContext *cx, jschar *chars, size_t length);
+
+template JSFlatString *
+js::NewString<NoGC>(ThreadSafeContext *cx, jschar *chars, size_t length);
+
+template JSFlatString *
+js::NewString<CanGC>(ThreadSafeContext *cx, Latin1Char *chars, size_t length);
+
+template JSFlatString *
+js::NewString<NoGC>(ThreadSafeContext *cx, Latin1Char *chars, size_t length);
+
+namespace js {
+
+template <AllowGC allowGC, typename CharT>
+JSFlatString *
+NewStringCopyNDontDeflate(ThreadSafeContext *cx, const CharT *s, size_t n)
+{
+    if (EnableLatin1Strings) {
+        if (JSFatInlineString::lengthFits<CharT>(n))
+            return NewFatInlineString<allowGC>(cx, mozilla::Range<const CharT>(s, n));
+
+        ScopedJSFreePtr<CharT> news(cx->pod_malloc<CharT>(n + 1));
+        if (!news)
+            return nullptr;
+
+        PodCopy(news.get(), s, n);
+        news[n] = 0;
+
+        JSFlatString *str = JSFlatString::new_<allowGC>(cx, news.get(), n);
+        if (!str)
+            return nullptr;
+
+        news.forget();
+        return str;
+    }
+
+    if (JSFatInlineString::twoByteLengthFits(n))
+        return NewFatInlineString<allowGC>(cx, mozilla::Range<const CharT>(s, n));
+
+    ScopedJSFreePtr<jschar> news(cx->pod_malloc<jschar>(n + 1));
+    if (!news)
+        return nullptr;
+
+    CopyCharsMaybeInflate(news.get(), s, n);
+    news[n] = 0;
+
+    JSFlatString *str = JSFlatString::new_<allowGC>(cx, news.get(), n);
+    if (!str)
+        return nullptr;
+
+    news.forget();
+    return str;
+}
+
+template JSFlatString *
+NewStringCopyNDontDeflate<CanGC>(ThreadSafeContext *cx, const jschar *s, size_t n);
+
+template JSFlatString *
+NewStringCopyNDontDeflate<NoGC>(ThreadSafeContext *cx, const jschar *s, size_t n);
+
+template JSFlatString *
+NewStringCopyNDontDeflate<CanGC>(ThreadSafeContext *cx, const Latin1Char *s, size_t n);
+
+template JSFlatString *
+NewStringCopyNDontDeflate<NoGC>(ThreadSafeContext *cx, const Latin1Char *s, size_t n);
+
+template <AllowGC allowGC, typename CharT>
+JSFlatString *
+NewStringCopyN(ThreadSafeContext *cx, const CharT *s, size_t n)
+{
+    if (IsSame<CharT, jschar>::value && CanStoreCharsAsLatin1(s, n))
+        return NewStringDeflated<allowGC>(cx, s, n);
+
+    return NewStringCopyNDontDeflate<allowGC>(cx, s, n);
+}
+
+template JSFlatString *
+NewStringCopyN<CanGC>(ThreadSafeContext *cx, const jschar *s, size_t n);
+
+template JSFlatString *
+NewStringCopyN<NoGC>(ThreadSafeContext *cx, const jschar *s, size_t n);
+
+template JSFlatString *
+NewStringCopyN<CanGC>(ThreadSafeContext *cx, const Latin1Char *s, size_t n);
+
+template JSFlatString *
+NewStringCopyN<NoGC>(ThreadSafeContext *cx, const Latin1Char *s, size_t n);
+
+} /* namespace js */

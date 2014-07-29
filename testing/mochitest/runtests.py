@@ -47,6 +47,18 @@ from mozlog.structured.structuredlog import StructuredLogger
 # not yet present in the mozharness environment
 from mozrunner.utils import findInPath as which
 
+
+# Necessary to set up the global logger in automationutils.py
+import logging
+log = logging.getLogger()
+def resetGlobalLog():
+   while log.handlers:
+       log.removeHandler(log.handlers[0])
+   handler = logging.StreamHandler(sys.stdout)
+   log.setLevel(logging.INFO)
+   log.addHandler(handler)
+resetGlobalLog()
+
 ###########################
 # Option for NSPR logging #
 ###########################
@@ -1146,6 +1158,10 @@ class Mochitest(MochitestUtilsMixin):
 
     browserEnv["XPCOM_MEM_BLOAT_LOG"] = self.leak_report_file
 
+    # GMP fake plugin
+    # XXX should find a better solution
+    browserEnv["MOZ_GMP_PATH"] = options.xrePath + "/gmp-fake"
+
     if options.fatalAssertions:
       browserEnv["XPCOM_DEBUG_BREAK"] = "stack-and-abort"
 
@@ -1524,6 +1540,7 @@ class Mochitest(MochitestUtilsMixin):
     testsToRun = []
     for test in tests:
       if test.has_key('disabled'):
+        log.info('TEST-SKIPPED | %s | %s' % (test['path'], test['disabled']))
         continue
       testsToRun.append(test['path'])
 
