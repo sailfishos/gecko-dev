@@ -30,7 +30,7 @@ public:
     static jstring ConnectionGetMimeType(jobject a0);
     static jobject CreateInputStream(jobject a0);
     static void CreateMessageListWrapper(int64_t a0, int64_t a1, jobjectArray a2, int32_t a3, int32_t a4, bool a5, int32_t a6);
-    static void CreateShortcut(const nsAString& a0, const nsAString& a1, const nsAString& a2, const nsAString& a3);
+    static void CreateShortcut(const nsAString& a0, const nsAString& a1, const nsAString& a2);
     static void DeleteMessageWrapper(int32_t a0, int32_t a1);
     static void DisableBatteryNotifications();
     static void DisableNetworkNotifications();
@@ -50,6 +50,7 @@ public:
     static jfloat GetDensity();
     static int32_t GetDpiWrapper();
     static jstring GetExtensionFromMimeTypeWrapper(const nsAString& a0);
+    static jstring GetExternalPublicDirectory(const nsAString& a0);
     static jobjectArray GetHandlersForMimeTypeWrapper(const nsAString& a0, const nsAString& a1);
     static jobjectArray GetHandlersForURLWrapper(const nsAString& a0, const nsAString& a1);
     static jbyteArray GetIconForExtensionWrapper(const nsAString& a0, int32_t a1);
@@ -134,6 +135,7 @@ protected:
     static jmethodID jGetDensity;
     static jmethodID jGetDpiWrapper;
     static jmethodID jGetExtensionFromMimeTypeWrapper;
+    static jmethodID jGetExternalPublicDirectory;
     static jmethodID jGetHandlersForMimeTypeWrapper;
     static jmethodID jGetHandlersForURLWrapper;
     static jmethodID jGetIconForExtensionWrapper;

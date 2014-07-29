@@ -52,7 +52,6 @@ USING_BLUETOOTH_NAMESPACE
 // TODO: Non thread-safe static variables
 static nsString sAdapterBdAddress;
 static nsString sAdapterBdName;
-static InfallibleTArray<nsString> sAdapterBondedAddressArray;
 
 // Static variables below should only be used on *main thread*
 static BluetoothInterface* sBtInterface;
@@ -152,12 +151,54 @@ public:
   }
 };
 
+/* |ProfileDeinitResultHandler| collects the results of all profile
+ * result handlers and calls |Proceed| after all results handlers
+ * have been run.
+ */
+class ProfileDeinitResultHandler MOZ_FINAL
+: public BluetoothProfileResultHandler
+{
+public:
+  ProfileDeinitResultHandler(unsigned char aNumProfiles)
+  : mNumProfiles(aNumProfiles)
+  {
+    MOZ_ASSERT(mNumProfiles);
+  }
+
+  void Deinit() MOZ_OVERRIDE
+  {
+    if (!(--mNumProfiles)) {
+      Proceed();
+    }
+  }
+
+  void OnError(nsresult aResult) MOZ_OVERRIDE
+  {
+    if (!(--mNumProfiles)) {
+      Proceed();
+    }
+  }
+
+private:
+  void Proceed() const
+  {
+    sBtInterface->Cleanup(nullptr);
+  }
+
+  unsigned char mNumProfiles;
+};
+
 class CleanupTask MOZ_FINAL : public nsRunnable
 {
 public:
   NS_IMETHOD
   Run()
   {
+    static void (* const sDeinitManager[])(BluetoothProfileResultHandler*) = {
+      BluetoothHfpManager::DeinitHfpInterface,
+      BluetoothA2dpManager::DeinitA2dpInterface
+    };
+
     MOZ_ASSERT(NS_IsMainThread());
 
     // Return error if BluetoothService is unavailable
@@ -185,9 +226,12 @@ public:
     bs->DistributeSignal(signal);
 
     // Cleanup bluetooth interfaces after BT state becomes BT_STATE_OFF.
-    BluetoothHfpManager::DeinitHfpInterface();
-    BluetoothA2dpManager::DeinitA2dpInterface();
-    sBtInterface->Cleanup(nullptr);
+    nsRefPtr<ProfileDeinitResultHandler> res =
+      new ProfileDeinitResultHandler(MOZ_ARRAY_LENGTH(sDeinitManager));
+
+    for (size_t i = 0; i < MOZ_ARRAY_LENGTH(sDeinitManager); ++i) {
+      sDeinitManager[i](res);
+    }
 
     return NS_OK;
   }
@@ -324,31 +368,19 @@ AdapterPropertiesCallback(bt_status_t aStatus, int aNumProperties,
       propertyValue = sAdapterDiscoverable =
         (newMode == BT_SCAN_MODE_CONNECTABLE_DISCOVERABLE);
       BT_APPEND_NAMED_VALUE(props, "Discoverable", propertyValue);
-    } else if (p.type == BT_PROPERTY_ADAPTER_DISCOVERY_TIMEOUT) {
-      propertyValue = sAdapterDiscoverableTimeout = *(uint32_t*)p.val;
-      BT_APPEND_NAMED_VALUE(props, "DiscoverableTimeout", propertyValue);
     } else if (p.type == BT_PROPERTY_ADAPTER_BONDED_DEVICES) {
-      // We have to cache addresses of bonded devices. Unlike BlueZ,
-      // bluedroid would not send an another BT_PROPERTY_ADAPTER_BONDED_DEVICES
-      // event after bond completed
       bt_bdaddr_t* deviceBdAddressTypes = (bt_bdaddr_t*)p.val;
       int numOfAddresses = p.len / BLUETOOTH_ADDRESS_BYTES;
       BT_LOGD("Adapter property: BONDED_DEVICES. Count: %d", numOfAddresses);
 
-      // Whenever reloading paired devices, force refresh
-      sAdapterBondedAddressArray.Clear();
-
+      nsTArray<nsString> pairedDeviceAddresses;
       for (int index = 0; index < numOfAddresses; index++) {
         nsAutoString deviceBdAddress;
         BdAddressTypeToString(deviceBdAddressTypes + index, deviceBdAddress);
-        sAdapterBondedAddressArray.AppendElement(deviceBdAddress);
+        pairedDeviceAddresses.AppendElement(deviceBdAddress);
       }
 
-      propertyValue = sAdapterBondedAddressArray;
-      BT_APPEND_NAMED_VALUE(props, "Devices", propertyValue);
-    } else if (p.type == BT_PROPERTY_UUIDS) {
-      // FIXME: Later patchset will implement this.
-      continue;
+      BT_APPEND_NAMED_VALUE(props, "PairedDevices", pairedDeviceAddresses);
     } else {
       BT_LOGD("Unhandled adapter property type: %d", p.type);
       continue;
@@ -511,6 +543,21 @@ DeviceFoundCallback(int aNumProperties, bt_property_t *aProperties)
       uint32_t cod = *(uint32_t*)p.val;
       propertyValue = cod;
       BT_APPEND_NAMED_VALUE(propertiesArray, "Cod", cod);
+    } else if (p.type == BT_PROPERTY_UUIDS) {
+      nsTArray<nsString> uuids;
+
+      // Construct a sorted uuid set
+      for (uint32_t j = 0; j < p.len / sizeof(bt_uuid_t); j++) {
+        nsAutoString uuid;
+        bt_uuid_t* pUuid = (bt_uuid_t*)p.val + j;
+        UuidToString(pUuid, uuid);
+
+        if (!uuids.Contains(uuid)) { // filter out duplicate uuids
+          uuids.InsertElementSorted(uuid);
+        }
+      }
+
+      BT_APPEND_NAMED_VALUE(propertiesArray, "UUIDs", uuids);
     } else {
       BT_LOGD("Not handled remote device property: %d", p.type);
     }
@@ -518,7 +565,7 @@ DeviceFoundCallback(int aNumProperties, bt_property_t *aProperties)
 
   BluetoothValue value = propertiesArray;
   BluetoothSignal signal(NS_LITERAL_STRING("DeviceFound"),
-                         NS_LITERAL_STRING(KEY_DISCOVERY_HANDLE), value);
+                         NS_LITERAL_STRING(KEY_ADAPTER), value);
   nsRefPtr<DistributeBluetoothSignalTask>
     t = new DistributeBluetoothSignalTask(signal);
   if (NS_FAILED(NS_DispatchToMainThread(t))) {
@@ -628,13 +675,10 @@ SspRequestCallback(bt_bdaddr_t* aRemoteBdAddress, bt_bdname_t* aRemoteBdName,
 
 class BondStateChangedCallbackTask : public nsRunnable
 {
-  nsString mRemoteDeviceBdAddress;
   bool mBonded;
 public:
-  BondStateChangedCallbackTask(const nsAString& aRemoteDeviceBdAddress,
-                               bool aBonded)
-  : mRemoteDeviceBdAddress(aRemoteDeviceBdAddress)
-  , mBonded(aBonded)
+  BondStateChangedCallbackTask(bool aBonded)
+  : mBonded(aBonded)
   { }
 
   NS_IMETHOD
@@ -653,16 +697,6 @@ public:
 
       sUnbondingRunnableArray.RemoveElementAt(0);
     }
-
-    // Update bonding status to gaia
-    InfallibleTArray<BluetoothNamedValue> propertiesArray;
-    BT_APPEND_NAMED_VALUE(propertiesArray, "address", mRemoteDeviceBdAddress);
-    BT_APPEND_NAMED_VALUE(propertiesArray, "status", mBonded);
-
-    BluetoothSignal signal(NS_LITERAL_STRING(PAIRED_STATUS_CHANGED_ID),
-                           NS_LITERAL_STRING(KEY_ADAPTER),
-                           BluetoothValue(propertiesArray));
-    NS_DispatchToMainThread(new DistributeBluetoothSignalTask(signal));
 
     return NS_OK;
   }
@@ -683,30 +717,29 @@ BondStateChangedCallback(bt_status_t aStatus, bt_bdaddr_t* aRemoteBdAddress,
   BdAddressTypeToString(aRemoteBdAddress, remoteBdAddress);
 
   bool bonded = (aState == BT_BOND_STATE_BONDED);
-  if (bonded) {
-    if (sAdapterBondedAddressArray.Contains(remoteBdAddress)) {
-      // See bug 940271 for more details about this case.
-      return;
-    }
-    sAdapterBondedAddressArray.AppendElement(remoteBdAddress);
-  } else {
-    sAdapterBondedAddressArray.RemoveElement(remoteBdAddress);
-  }
 
-  // Update bonded address list to BluetoothAdapter
-  InfallibleTArray<BluetoothNamedValue> propertiesChangeArray;
-  BT_APPEND_NAMED_VALUE(propertiesChangeArray, "Devices",
-                        sAdapterBondedAddressArray);
+  // Update attribute BluetoothDevice.paired
+  InfallibleTArray<BluetoothNamedValue> props;
+  BT_APPEND_NAMED_VALUE(props, "paired", bonded);
 
-  BluetoothValue value(propertiesChangeArray);
-  BluetoothSignal signal(NS_LITERAL_STRING("PropertyChanged"),
-                         NS_LITERAL_STRING(KEY_ADAPTER),
-                         BluetoothValue(propertiesChangeArray));
-  NS_DispatchToMainThread(new DistributeBluetoothSignalTask(signal));
+  BluetoothSignal deviceSignal(NS_LITERAL_STRING("PropertyChanged"),
+                               remoteBdAddress,
+                               BluetoothValue(props));
+  NS_DispatchToMainThread(new DistributeBluetoothSignalTask(deviceSignal));
+
+  props.Clear();
+
+  // Update bonding status to BluetoothAdapter
+  BT_APPEND_NAMED_VALUE(props, "address", remoteBdAddress);
+  BT_APPEND_NAMED_VALUE(props, "status", bonded);
+
+  BluetoothSignal adapterSignal(NS_LITERAL_STRING(PAIRED_STATUS_CHANGED_ID),
+                                NS_LITERAL_STRING(KEY_ADAPTER),
+                                BluetoothValue(props));
+  NS_DispatchToMainThread(new DistributeBluetoothSignalTask(adapterSignal));
 
   // Redirect to main thread to avoid racing problem
-  NS_DispatchToMainThread(
-    new BondStateChangedCallbackTask(remoteBdAddress, bonded));
+  NS_DispatchToMainThread(new BondStateChangedCallbackTask(bonded));
 }
 
 static void
@@ -765,19 +798,64 @@ public:
   }
 };
 
+/* |ProfileInitResultHandler| collects the results of all profile
+ * result handlers and calls |Proceed| after all results handlers
+ * have been run.
+ */
+class ProfileInitResultHandler MOZ_FINAL
+: public BluetoothProfileResultHandler
+{
+public:
+  ProfileInitResultHandler(unsigned char aNumProfiles)
+  : mNumProfiles(aNumProfiles)
+  {
+    MOZ_ASSERT(mNumProfiles);
+  }
+
+  void Init() MOZ_OVERRIDE
+  {
+    if (!(--mNumProfiles)) {
+      Proceed();
+    }
+  }
+
+  void OnError(nsresult aResult) MOZ_OVERRIDE
+  {
+    if (!(--mNumProfiles)) {
+      Proceed();
+    }
+  }
+
+private:
+  void Proceed() const
+  {
+    sBtInterface->Enable(new EnableResultHandler());
+  }
+
+  unsigned char mNumProfiles;
+};
+
 class InitResultHandler MOZ_FINAL : public BluetoothResultHandler
 {
 public:
   void Init() MOZ_OVERRIDE
   {
+    static void (* const sInitManager[])(BluetoothProfileResultHandler*) = {
+      BluetoothHfpManager::InitHfpInterface,
+      BluetoothA2dpManager::InitA2dpInterface
+    };
+
     MOZ_ASSERT(NS_IsMainThread());
 
     // Register all the bluedroid callbacks before enable() get called
     // It is required to register a2dp callbacks before a2dp media task starts up.
     // If any interface cannot be initialized, turn on bluetooth core anyway.
-    BluetoothHfpManager::InitHfpInterface();
-    BluetoothA2dpManager::InitA2dpInterface();
-    sBtInterface->Enable(new EnableResultHandler());
+    nsRefPtr<ProfileInitResultHandler> res =
+      new ProfileInitResultHandler(MOZ_ARRAY_LENGTH(sInitManager));
+
+    for (size_t i = 0; i < MOZ_ARRAY_LENGTH(sInitManager); ++i) {
+      sInitManager[i](res);
+    }
   }
 
   void OnError(int aStatus) MOZ_OVERRIDE
@@ -1098,13 +1176,9 @@ BluetoothServiceBluedroid::GetPairedDevicePropertiesInternal(
 
   int requestedDeviceCount = aDeviceAddress.Length();
   if (requestedDeviceCount == 0) {
-    InfallibleTArray<BluetoothNamedValue> emptyArr;
-    DispatchBluetoothReply(aRunnable, BluetoothValue(emptyArr), EmptyString());
+    DispatchBluetoothReply(aRunnable, BluetoothValue(true), EmptyString());
     return NS_OK;
   }
-
-  sRequestedDeviceCountArray.AppendElement(requestedDeviceCount);
-  sGetDeviceRunnableArray.AppendElement(aRunnable);
 
   for (int i = 0; i < requestedDeviceCount; i++) {
     // Retrieve all properties of devices

@@ -14,7 +14,8 @@ namespace mozilla {
 namespace gmp {
 
 GMPVideoEncoderChild::GMPVideoEncoderChild(GMPChild* aPlugin)
-: mPlugin(aPlugin),
+: GMPSharedMemManager(aPlugin),
+  mPlugin(aPlugin),
   mVideoEncoder(nullptr),
   mVideoHost(MOZ_THIS_IN_INITIALIZER_LIST())
 {
@@ -58,9 +59,11 @@ GMPVideoEncoderChild::Encoded(GMPVideoEncodedFrame* aEncodedFrame,
 }
 
 void
-GMPVideoEncoderChild::CheckThread()
+GMPVideoEncoderChild::Error(GMPErr aError)
 {
   MOZ_ASSERT(mPlugin->GMPMessageLoop() == MessageLoop::current());
+
+  SendError(aError);
 }
 
 bool
@@ -109,7 +112,7 @@ bool
 GMPVideoEncoderChild::RecvChildShmemForPool(Shmem& aEncodedBuffer)
 {
   if (aEncodedBuffer.IsWritable()) {
-    mVideoHost.SharedMemMgr()->MgrDeallocShmem(GMPSharedMemManager::kGMPEncodedData,
+    mVideoHost.SharedMemMgr()->MgrDeallocShmem(GMPSharedMem::kGMPEncodedData,
                                                aEncodedBuffer);
   }
   return true;

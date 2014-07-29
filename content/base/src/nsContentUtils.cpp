@@ -6498,10 +6498,20 @@ nsContentUtils::SetUpChannelOwner(nsIPrincipal* aLoadingPrincipal,
                                   bool aIsSandboxed,
                                   bool aForceInherit)
 {
-  if (!aLoadingPrincipal) {
-    // Nothing to do here
-    MOZ_ASSERT(!aIsSandboxed);
-    return false;
+  nsCOMPtr<nsIPrincipal> loadingPrincipal = aLoadingPrincipal;
+  if (!loadingPrincipal) {
+    if (!aIsSandboxed) {
+      // Nothing to do here
+      return false;
+    }
+
+    // Go ahead and create a nullprincipal to use as our loading principal,
+    // since we need to make sure to sandbox the load but we have no clue who's
+    // loading us.
+    loadingPrincipal = do_CreateInstance(NS_NULLPRINCIPAL_CONTRACTID);
+    if (!loadingPrincipal) {
+      NS_RUNTIMEABORT("Failed to create a principal?");
+    }
   }
 
   // If we're sandboxed, make sure to clear any owner the channel
@@ -6541,14 +6551,14 @@ nsContentUtils::SetUpChannelOwner(nsIPrincipal* aLoadingPrincipal,
       // based on its own codebase later.
       //
       (URIIsLocalFile(aURI) &&
-       NS_SUCCEEDED(aLoadingPrincipal->CheckMayLoad(aURI, false, false)) &&
+       NS_SUCCEEDED(loadingPrincipal->CheckMayLoad(aURI, false, false)) &&
        // One more check here.  CheckMayLoad will always return true for the
        // system principal, but we do NOT want to inherit in that case.
-       !IsSystemPrincipal(aLoadingPrincipal));
+       !IsSystemPrincipal(loadingPrincipal));
   }
 
   nsCOMPtr<nsILoadInfo> loadInfo =
-    new LoadInfo(aLoadingPrincipal,
+    new LoadInfo(loadingPrincipal,
                  inherit ?
                    LoadInfo::eInheritPrincipal : LoadInfo::eDontInheritPrincipal,
                  aIsSandboxed ? LoadInfo::eSandboxed : LoadInfo::eNotSandboxed);
@@ -6903,6 +6913,23 @@ nsContentUtils::IsForbiddenResponseHeader(const nsACString& aHeader)
 {
   return (aHeader.LowerCaseEqualsASCII("set-cookie") ||
           aHeader.LowerCaseEqualsASCII("set-cookie2"));
+}
+
+// static
+bool
+nsContentUtils::IsAllowedNonCorsContentType(const nsACString& aHeaderValue)
+{
+  nsAutoCString contentType;
+  nsAutoCString unused;
+
+  nsresult rv = NS_ParseContentType(aHeaderValue, contentType, unused);
+  if (NS_FAILED(rv)) {
+    return false;
+  }
+
+  return contentType.LowerCaseEqualsLiteral("text/plain") ||
+         contentType.LowerCaseEqualsLiteral("application/x-www-form-urlencoded") ||
+         contentType.LowerCaseEqualsLiteral("multipart/form-data");
 }
 
 bool

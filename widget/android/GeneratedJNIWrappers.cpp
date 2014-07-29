@@ -43,6 +43,7 @@ jmethodID GeckoAppShell::jGetCurrentNetworkInformationWrapper = 0;
 jmethodID GeckoAppShell::jGetDensity = 0;
 jmethodID GeckoAppShell::jGetDpiWrapper = 0;
 jmethodID GeckoAppShell::jGetExtensionFromMimeTypeWrapper = 0;
+jmethodID GeckoAppShell::jGetExternalPublicDirectory = 0;
 jmethodID GeckoAppShell::jGetHandlersForMimeTypeWrapper = 0;
 jmethodID GeckoAppShell::jGetHandlersForURLWrapper = 0;
 jmethodID GeckoAppShell::jGetIconForExtensionWrapper = 0;
@@ -108,7 +109,7 @@ void GeckoAppShell::InitStubs(JNIEnv *jEnv) {
     jConnectionGetMimeType = getStaticMethod("connectionGetMimeType", "(Ljava/net/URLConnection;)Ljava/lang/String;");
     jCreateInputStream = getStaticMethod("createInputStream", "(Ljava/net/URLConnection;)Ljava/io/InputStream;");
     jCreateMessageListWrapper = getStaticMethod("createMessageList", "(JJ[Ljava/lang/String;IIZI)V");
-    jCreateShortcut = getStaticMethod("createShortcut", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");
+    jCreateShortcut = getStaticMethod("createShortcut", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");
     jDeleteMessageWrapper = getStaticMethod("deleteMessage", "(II)V");
     jDisableBatteryNotifications = getStaticMethod("disableBatteryNotifications", "()V");
     jDisableNetworkNotifications = getStaticMethod("disableNetworkNotifications", "()V");
@@ -128,6 +129,7 @@ void GeckoAppShell::InitStubs(JNIEnv *jEnv) {
     jGetDensity = getStaticMethod("getDensity", "()F");
     jGetDpiWrapper = getStaticMethod("getDpi", "()I");
     jGetExtensionFromMimeTypeWrapper = getStaticMethod("getExtensionFromMimeType", "(Ljava/lang/String;)Ljava/lang/String;");
+    jGetExternalPublicDirectory = getStaticMethod("getExternalPublicDirectory", "(Ljava/lang/String;)Ljava/lang/String;");
     jGetHandlersForMimeTypeWrapper = getStaticMethod("getHandlersForMimeType", "(Ljava/lang/String;Ljava/lang/String;)[Ljava/lang/String;");
     jGetHandlersForURLWrapper = getStaticMethod("getHandlersForURL", "(Ljava/lang/String;Ljava/lang/String;)[Ljava/lang/String;");
     jGetIconForExtensionWrapper = getStaticMethod("getIconForExtension", "(Ljava/lang/String;I)[B");
@@ -348,18 +350,17 @@ void GeckoAppShell::CreateMessageListWrapper(int64_t a0, int64_t a1, jobjectArra
     env->PopLocalFrame(nullptr);
 }
 
-void GeckoAppShell::CreateShortcut(const nsAString& a0, const nsAString& a1, const nsAString& a2, const nsAString& a3) {
+void GeckoAppShell::CreateShortcut(const nsAString& a0, const nsAString& a1, const nsAString& a2) {
     JNIEnv *env = AndroidBridge::GetJNIEnv();
-    if (env->PushLocalFrame(4) != 0) {
+    if (env->PushLocalFrame(3) != 0) {
         AndroidBridge::HandleUncaughtException(env);
         MOZ_CRASH("Exception should have caused crash.");
     }
 
-    jvalue args[4];
+    jvalue args[3];
     args[0].l = AndroidBridge::NewJavaString(env, a0);
     args[1].l = AndroidBridge::NewJavaString(env, a1);
     args[2].l = AndroidBridge::NewJavaString(env, a2);
-    args[3].l = AndroidBridge::NewJavaString(env, a3);
 
     env->CallStaticVoidMethodA(mGeckoAppShellClass, jCreateShortcut, args);
     AndroidBridge::HandleUncaughtException(env);
@@ -600,6 +601,21 @@ jstring GeckoAppShell::GetExtensionFromMimeTypeWrapper(const nsAString& a0) {
     jstring j0 = AndroidBridge::NewJavaString(env, a0);
 
     jobject temp = env->CallStaticObjectMethod(mGeckoAppShellClass, jGetExtensionFromMimeTypeWrapper, j0);
+    AndroidBridge::HandleUncaughtException(env);
+    jstring ret = static_cast<jstring>(env->PopLocalFrame(temp));
+    return ret;
+}
+
+jstring GeckoAppShell::GetExternalPublicDirectory(const nsAString& a0) {
+    JNIEnv *env = AndroidBridge::GetJNIEnv();
+    if (env->PushLocalFrame(2) != 0) {
+        AndroidBridge::HandleUncaughtException(env);
+        MOZ_CRASH("Exception should have caused crash.");
+    }
+
+    jstring j0 = AndroidBridge::NewJavaString(env, a0);
+
+    jobject temp = env->CallStaticObjectMethod(mGeckoAppShellClass, jGetExternalPublicDirectory, j0);
     AndroidBridge::HandleUncaughtException(env);
     jstring ret = static_cast<jstring>(env->PopLocalFrame(temp));
     return ret;

@@ -40,6 +40,8 @@ _MOZBUILD_EXTERNAL_VARIABLES := \
   CMMSRCS \
   CPP_UNIT_TESTS \
   DIRS \
+  EXTRA_DSO_LDOPTS \
+  EXTRA_JS_MODULES \
   EXTRA_PP_COMPONENTS \
   EXTRA_PP_JS_MODULES \
   FORCE_SHARED_LIB \
@@ -56,15 +58,22 @@ _MOZBUILD_EXTERNAL_VARIABLES := \
   JS_MODULES_PATH \
   LD_VERSION_SCRIPT \
   LIBRARY_NAME \
+  LIBS \
+  MAKE_FRAMEWORK \
   MODULE \
   MSVC_ENABLE_PGO \
   NO_DIST_INSTALL \
   PARALLEL_DIRS \
   PROGRAM \
+  PYTHON_UNIT_TESTS \
   RESOURCE_FILES \
   SDK_HEADERS \
+  SDK_LIBRARY \
+  SHARED_LIBRARY_LIBS \
+  SHARED_LIBRARY_NAME \
   SIMPLE_PROGRAMS \
   SONAME \
+  STATIC_LIBRARY_NAME \
   TEST_DIRS \
   TIERS \
   TOOL_DIRS \
@@ -75,6 +84,7 @@ _MOZBUILD_EXTERNAL_VARIABLES := \
 _DEPRECATED_VARIABLES := \
   ANDROID_RESFILES \
   EXPORT_LIBRARY \
+  HOST_LIBS \
   LIBXUL_LIBRARY \
   MOCHITEST_A11Y_FILES \
   MOCHITEST_BROWSER_FILES \
@@ -259,8 +269,6 @@ ifneq (,$(MOZ_DEBUG)$(MOZ_DEBUG_SYMBOLS))
   _DEBUG_LDFLAGS += $(MOZ_DEBUG_LDFLAGS)
 endif
 
-MOZALLOC_LIB = $(call EXPAND_LIBNAME_PATH,mozalloc,$(DIST)/lib)
-
 ASFLAGS += $(_DEBUG_ASFLAGS)
 OS_CFLAGS += $(_DEBUG_CFLAGS)
 OS_CXXFLAGS += $(_DEBUG_CFLAGS)
@@ -334,32 +342,6 @@ endif
 ifdef LIBXUL_LIBRARY
 ifdef IS_COMPONENT
 $(error IS_COMPONENT is set, but is not compatible with LIBXUL_LIBRARY)
-endif
-ifeq (,$(filter xul xul-%,$(LIBRARY_NAME)))
-FORCE_STATIC_LIB=1
-endif
-endif
-
-# If we are building this component into an extension/xulapp, it cannot be
-# statically linked. In the future we may want to add a xulapp meta-component
-# build option.
-
-ifdef XPI_NAME
-ifdef IS_COMPONENT
-FORCE_STATIC_LIB=
-FORCE_SHARED_LIB=1
-endif
-endif
-
-ifndef SHARED_LIBRARY_NAME
-ifdef LIBRARY_NAME
-SHARED_LIBRARY_NAME=$(LIBRARY_NAME)
-endif
-endif
-
-ifndef STATIC_LIBRARY_NAME
-ifdef LIBRARY_NAME
-STATIC_LIBRARY_NAME=$(LIBRARY_NAME)
 endif
 endif
 
@@ -607,8 +589,6 @@ SDK_BIN_DIR = $(DIST)/sdk/bin
 
 DEPENDENCIES	= .md
 
-MOZ_COMPONENT_LIBS=$(XPCOM_LIBS) $(MOZ_COMPONENT_NSPR_LIBS)
-
 ifdef MACOSX_DEPLOYMENT_TARGET
 export MACOSX_DEPLOYMENT_TARGET
 endif # MACOSX_DEPLOYMENT_TARGET
@@ -778,8 +758,8 @@ CREATE_PRECOMPLETE_CMD = $(PYTHON) $(abspath $(topsrcdir)/config/createprecomple
 # MDDEPDIR is the subdirectory where dependency files are stored
 MDDEPDIR := .deps
 
-EXPAND_LIBS_EXEC = $(PYTHON) $(topsrcdir)/config/expandlibs_exec.py $(if $@,--depend $(MDDEPDIR)/$@.pp --target $@)
-EXPAND_LIBS_GEN = $(PYTHON) $(topsrcdir)/config/expandlibs_gen.py $(if $@,--depend $(MDDEPDIR)/$@.pp)
+EXPAND_LIBS_EXEC = $(PYTHON) $(topsrcdir)/config/expandlibs_exec.py
+EXPAND_LIBS_GEN = $(PYTHON) $(topsrcdir)/config/expandlibs_gen.py
 EXPAND_AR = $(EXPAND_LIBS_EXEC) --extract -- $(AR)
 EXPAND_CC = $(EXPAND_LIBS_EXEC) --uselist -- $(CC)
 EXPAND_CCC = $(EXPAND_LIBS_EXEC) --uselist -- $(CCC)
@@ -793,13 +773,6 @@ EXPAND_MKSHLIB = $(EXPAND_LIBS_EXEC) $(EXPAND_MKSHLIB_ARGS) -- $(MKSHLIB)
 ifneq (,$(MOZ_LIBSTDCXX_TARGET_VERSION)$(MOZ_LIBSTDCXX_HOST_VERSION))
 ifneq ($(OS_ARCH),Darwin)
 CHECK_STDCXX = @$(TOOLCHAIN_PREFIX)objdump -p $(1) | grep -e 'GLIBCXX_3\.4\.\(9\|[1-9][0-9]\)' > /dev/null && echo 'TEST-UNEXPECTED-FAIL | check_stdcxx | We do not want these libstdc++ symbols to be used:' && $(TOOLCHAIN_PREFIX)objdump -T $(1) | grep -e 'GLIBCXX_3\.4\.\(9\|[1-9][0-9]\)' && false || true
-endif
-
-ifdef MOZ_LIBSTDCXX_TARGET_VERSION
-EXTRA_LIBS += $(call EXPAND_LIBNAME_PATH,stdc++compat,$(DEPTH)/build/unix/stdc++compat)
-endif
-ifdef MOZ_LIBSTDCXX_HOST_VERSION
-HOST_EXTRA_LIBS += $(call EXPAND_LIBNAME_PATH,host_stdc++compat,$(DEPTH)/build/unix/stdc++compat)
 endif
 endif
 

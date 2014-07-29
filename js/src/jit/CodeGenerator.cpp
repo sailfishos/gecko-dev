@@ -768,9 +768,13 @@ CodeGenerator::visitTypeObjectDispatch(LTypeObjectDispatch *lir)
     Register temp = ToRegister(lir->temp());
 
     // Hold the incoming TypeObject.
+
     masm.loadPtr(Address(input, JSObject::offsetOfType()), temp);
 
     // Compare TypeObjects.
+
+    MacroAssembler::BranchGCPtr lastBranch;
+    LBlock *lastBlock = nullptr;
     InlinePropertyTable *propTable = mir->propTable();
     for (size_t i = 0; i < mir->numCases(); i++) {
         JSFunction *func = mir->getCase(i);
@@ -780,16 +784,35 @@ CodeGenerator::visitTypeObjectDispatch(LTypeObjectDispatch *lir)
         for (size_t j = 0; j < propTable->numEntries(); j++) {
             if (propTable->getFunction(j) != func)
                 continue;
+
+            if (lastBranch.isInitialized())
+                lastBranch.emit(masm);
+
             types::TypeObject *typeObj = propTable->getTypeObject(j);
-            masm.branchPtr(Assembler::Equal, temp, ImmGCPtr(typeObj), target->label());
+            lastBranch = MacroAssembler::BranchGCPtr(Assembler::Equal, temp, ImmGCPtr(typeObj),
+                                                     target->label());
+            lastBlock = target;
             found = true;
         }
         JS_ASSERT(found);
     }
 
     // Unknown function: jump to fallback block.
+
     LBlock *fallback = skipTrivialBlocks(mir->getFallback())->lir();
-    masm.jump(fallback->label());
+    if (!lastBranch.isInitialized()) {
+        if (!isNextBlock(fallback))
+            masm.jump(fallback->label());
+        return true;
+    }
+
+    lastBranch.invertCondition();
+    lastBranch.relink(fallback->label());
+    lastBranch.emit(masm);
+
+    if (!isNextBlock(lastBlock))
+        masm.jump(lastBlock->label());
+
     return true;
 }
 
@@ -3110,7 +3133,7 @@ CodeGenerator::maybeCreateScriptCounts()
             return nullptr;
         }
         for (size_t j = 0; j < block->numSuccessors(); j++)
-            counts->block(i).setSuccessor(j, block->getSuccessor(j)->id());
+            counts->block(i).setSuccessor(j, skipTrivialBlocks(block->getSuccessor(j))->id());
     }
 
     scriptCounts_ = counts;
@@ -5503,7 +5526,7 @@ CodeGenerator::visitNotV(LNotV *lir)
     Label *ifFalsy;
 
     OutOfLineTestObjectWithLabels *ool = nullptr;
-    MDefinition *operand = lir->mir()->operand();
+    MDefinition *operand = lir->mir()->input();
     // Unfortunately, it's possible that someone (e.g. phi elimination) switched
     // out our operand after we did cacheOperandMightEmulateUndefined.  So we
     // might think it can emulate undefined _and_ know that it can't be an

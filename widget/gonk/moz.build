@@ -44,7 +44,6 @@ SOURCES += ['libui/' + src for src in [
 ]]
 
 SOURCES += [
-    'Framebuffer.cpp',
     'GfxInfo.cpp',
     'GonkMemoryPressureMonitoring.cpp',
     'GonkPermission.cpp',
@@ -61,8 +60,6 @@ SOURCES += [
     'ProcessOrientation.cpp',
     'WidgetTraceEvent.cpp'
 ]
-
-LIBRARY_NAME = 'widget_gonk'
 
 include('/ipc/chromium/chromium-config.mozbuild')
 

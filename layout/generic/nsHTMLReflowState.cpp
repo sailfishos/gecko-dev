@@ -56,7 +56,7 @@ static eNormalLineHeightControl sNormalLineHeightControl = eUninitialized;
 nsHTMLReflowState::nsHTMLReflowState(nsPresContext*       aPresContext,
                                      nsIFrame*            aFrame,
                                      nsRenderingContext*  aRenderingContext,
-                                     const nsSize&        aAvailableSpace,
+                                     const LogicalSize&   aAvailableSpace,
                                      uint32_t             aFlags)
   : nsCSSOffsetState(aFrame, aRenderingContext)
   , mBlockDelta(0)
@@ -67,8 +67,8 @@ nsHTMLReflowState::nsHTMLReflowState(nsPresContext*       aPresContext,
   MOZ_ASSERT(aFrame, "no frame");
   MOZ_ASSERT(aPresContext == aFrame->PresContext(), "wrong pres context");
   parentReflowState = nullptr;
-  AvailableWidth() = aAvailableSpace.width;
-  AvailableHeight() = aAvailableSpace.height;
+  AvailableISize() = aAvailableSpace.ISize(mWritingMode);
+  AvailableBSize() = aAvailableSpace.BSize(mWritingMode);
   mFloatManager = nullptr;
   mLineLayout = nullptr;
   memset(&mFlags, 0, sizeof(mFlags));
@@ -159,7 +159,7 @@ nsCSSOffsetState::nsCSSOffsetState(nsIFrame *aFrame,
 nsHTMLReflowState::nsHTMLReflowState(nsPresContext*           aPresContext,
                                      const nsHTMLReflowState& aParentReflowState,
                                      nsIFrame*                aFrame,
-                                     const nsSize&            aAvailableSpace,
+                                     const LogicalSize&       aAvailableSpace,
                                      nscoord                  aContainingBlockWidth,
                                      nscoord                  aContainingBlockHeight,
                                      uint32_t                 aFlags)
@@ -187,8 +187,8 @@ nsHTMLReflowState::nsHTMLReflowState(nsPresContext*           aPresContext,
     frame->AddStateBits(parentReflowState->frame->GetStateBits() &
                         NS_FRAME_IS_DIRTY);
 
-  AvailableWidth() = aAvailableSpace.width;
-  AvailableHeight() = aAvailableSpace.height;
+  AvailableISize() = aAvailableSpace.ISize(mWritingMode);
+  AvailableBSize() = aAvailableSpace.BSize(mWritingMode);
 
   mFloatManager = aParentReflowState.mFloatManager;
   if (frame->IsFrameOfType(nsIFrame::eLineParticipant))
@@ -544,7 +544,7 @@ nsHTMLReflowState::InitResizeFlags(nsPresContext* aPresContext, nsIAtom* aFrameT
           nsFrameList::Enumerator childFrames(lists.CurrentList());
           for (; !childFrames.AtEnd(); childFrames.Next()) {
             nsIFrame* kid = childFrames.get();
-            kid->MarkIntrinsicWidthsDirty();
+            kid->MarkIntrinsicISizesDirty();
             stack.AppendElement(kid);
           }
         }
@@ -2595,9 +2595,16 @@ nsHTMLReflowState::ComputeMinMaxValues(nscoord aContainingBlockWidth,
                                        nscoord aContainingBlockHeight,
                                        const nsHTMLReflowState* aContainingBlockRS)
 {
-  ComputedMinWidth() = ComputeWidthValue(aContainingBlockWidth,
-                                        mStylePosition->mBoxSizing,
-                                        mStylePosition->mMinWidth);
+  // NOTE: min-width:auto resolves to 0, except on a flex item. (But
+  // even there, it's supposed to be ignored (i.e. treated as 0) until
+  // the flex container explicitly resolves & considers it.)
+  if (eStyleUnit_Auto == mStylePosition->mMinWidth.GetUnit()) {
+    ComputedMinWidth() = 0;
+  } else {
+    ComputedMinWidth() = ComputeWidthValue(aContainingBlockWidth,
+                                          mStylePosition->mBoxSizing,
+                                          mStylePosition->mMinWidth);
+  }
 
   if (eStyleUnit_None == mStylePosition->mMaxWidth.GetUnit()) {
     // Specified value of 'none'
@@ -2621,8 +2628,12 @@ nsHTMLReflowState::ComputeMinMaxValues(nscoord aContainingBlockWidth,
   // Likewise, if we're a child of a flex container who's measuring our
   // intrinsic height, then we want to disregard our min-height.
 
+  // NOTE: min-height:auto resolves to 0, except on a flex item. (But
+  // even there, it's supposed to be ignored (i.e. treated as 0) until
+  // the flex container explicitly resolves & considers it.)
   const nsStyleCoord &minHeight = mStylePosition->mMinHeight;
-  if ((NS_AUTOHEIGHT == aContainingBlockHeight &&
+  if (eStyleUnit_Auto == minHeight.GetUnit() ||
+      (NS_AUTOHEIGHT == aContainingBlockHeight &&
        minHeight.HasPercent()) ||
       (mFrameType == NS_CSS_FRAME_TYPE_INTERNAL_TABLE &&
        minHeight.IsCalcUnit() && minHeight.CalcHasPercent()) ||

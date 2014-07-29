@@ -185,6 +185,8 @@ browser.jar:
 * skin/classic/browser/newtab/newTab.css                    (newtab/newTab.css)
   skin/classic/browser/newtab/controls.png                  (../shared/newtab/controls.png)
   skin/classic/browser/newtab/controls@2x.png               (../shared/newtab/controls@2x.png)
+  skin/classic/browser/newtab/controls.svg                  (../shared/newtab/controls.svg)
+  skin/classic/browser/newtab/texture.png                   (../shared/newtab/texture.png)
   skin/classic/browser/setDesktopBackground.css
   skin/classic/browser/monitor.png
   skin/classic/browser/monitor_16-10.png
@@ -242,8 +244,6 @@ browser.jar:
   skin/classic/browser/preferences/in-content/check@2x.png    (../shared/incontentprefs/check@2x.png)
   skin/classic/browser/preferences/in-content/icons.png       (../shared/incontentprefs/icons.png)
   skin/classic/browser/preferences/in-content/icons@2x.png    (../shared/incontentprefs/icons@2x.png)
-  skin/classic/browser/preferences/in-content/header.png      (../shared/incontentprefs/header.png)
-  skin/classic/browser/preferences/in-content/header@2x.png   (../shared/incontentprefs/header@2x.png)
   skin/classic/browser/preferences/in-content/help-glyph.png  (../shared/incontentprefs/help-glyph.png)
   skin/classic/browser/preferences/in-content/help-glyph@2x.png (../shared/incontentprefs/help-glyph@2x.png)
   skin/classic/browser/preferences/in-content/sorter.png      (../shared/incontentprefs/sorter.png)

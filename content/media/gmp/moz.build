@@ -29,7 +29,12 @@ EXPORTS += [
     'gmp-api/gmp-video-frame.h',
     'gmp-api/gmp-video-host.h',
     'gmp-api/gmp-video-plane.h',
+    'GMPCallbackBase.h',
     'GMPChild.h',
+    'GMPDecryptorChild.h',
+    'GMPDecryptorParent.h',
+    'GMPDecryptorProxy.h',
+    'GMPEncryptedBufferDataImpl.h',
     'GMPMessageUtils.h',
     'GMPParent.h',
     'GMPPlatform.h',
@@ -51,6 +56,9 @@ EXPORTS += [
 
 UNIFIED_SOURCES += [
     'GMPChild.cpp',
+    'GMPDecryptorChild.cpp',
+    'GMPDecryptorParent.cpp',
+    'GMPEncryptedBufferDataImpl.cpp',
     'GMPParent.cpp',
     'GMPPlatform.cpp',
     'GMPProcessChild.cpp',
@@ -70,11 +78,10 @@ UNIFIED_SOURCES += [
 IPDL_SOURCES += [
   'GMPTypes.ipdlh',
   'PGMP.ipdl',
+  'PGMPDecryptor.ipdl',
   'PGMPVideoDecoder.ipdl',
   'PGMPVideoEncoder.ipdl',
 ]
-
-LIBRARY_NAME = 'mozgmp'
 
 if CONFIG['GKMEDIAS_SHARED_LIBRARY']:
     NO_VISIBILITY_FLAGS = True
@@ -87,8 +94,10 @@ FAIL_ON_WARNINGS = True
 include('/ipc/chromium/chromium-config.mozbuild')
 
 FINAL_LIBRARY = 'xul'
+# media/mtransport so we work with --disable-webrtc
 LOCAL_INCLUDES += [
     '../base',
+    '/media/mtransport',
     '/xpcom/base',
     '/xpcom/build',
     '/xpcom/threads',

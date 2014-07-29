@@ -142,6 +142,7 @@ static const char *sExtensionNames[] = {
     "GL_EXT_frag_depth",
     "GL_OES_compressed_ETC1_RGB8_texture",
     "GL_EXT_draw_range_elements",
+    "GL_EXT_shader_texture_lod",
     nullptr
 };
 
@@ -599,6 +600,7 @@ GLContext::InitWithPrefix(const char *prefix, bool trygl)
                 "Android Emulator",
                 "Gallium 0.4 on llvmpipe",
                 "Intel HD Graphics 3000 OpenGL Engine",
+                "Microsoft Basic Render Driver"
         };
 
         mRenderer = GLRenderer::Other;
@@ -665,6 +667,12 @@ GLContext::InitWithPrefix(const char *prefix, bool trygl)
                 Renderer() == GLRenderer::SGX540) {
                 // Bug 980048
                 MarkExtensionUnsupported(OES_EGL_sync);
+            }
+
+            if (Renderer() == GLRenderer::MicrosoftBasicRenderDriver) {
+                // Bug 978966: on Microsoft's "Basic Render Driver" (software renderer)
+                // multisampling hardcodes blending with the default blendfunc, which breaks WebGL.
+                MarkUnsupported(GLFeature::framebuffer_multisample);
             }
 
 #ifdef XP_MACOSX

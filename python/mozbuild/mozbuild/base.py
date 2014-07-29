@@ -459,7 +459,7 @@ class MozbuildObject(ProcessExecutionMixin):
             'append_env': append_env,
             'explicit_env': explicit_env,
             'log_level': logging.INFO,
-            'require_unix_environment': True,
+            'require_unix_environment': False,
             'ensure_exit_code': ensure_exit_code,
             'pass_thru': pass_thru,
 
@@ -611,6 +611,19 @@ class MachCommandConditions(object):
         if hasattr(cls, 'substs'):
             return cls.substs.get('MOZ_BUILD_APP') == 'browser'
         return False
+
+    @staticmethod
+    def is_mulet(cls):
+        """Must have a Mulet build."""
+        if hasattr(cls, 'substs'):
+            return cls.substs.get('MOZ_BUILD_APP') == 'b2g/dev'
+        return False
+
+    @staticmethod
+    def is_firefox_or_mulet(cls):
+        """Must have a Mulet build."""
+        return (MachCommandConditions.is_firefox(cls) or
+                MachCommandConditions.is_mulet(cls))
 
     @staticmethod
     def is_b2g(cls):

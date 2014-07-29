@@ -21,8 +21,10 @@ gFrameTree.addObserver({
   }
 });
 
-let webNav = docShell.QueryInterface(Ci.nsIWebNavigation);
-webNav.sessionHistory.addSHistoryListener({
+
+docShell.QueryInterface(Ci.nsIWebNavigation).
+  sessionHistory.addSHistoryListener({
+
   OnHistoryNewEntry: function () {
     sendAsyncMessage("ss-test:OnHistoryNewEntry");
   },
@@ -116,13 +118,13 @@ addMessageListener("ss-test:enableSubDocumentStyleSheetsForSet", function (msg) 
 
 addMessageListener("ss-test:getAuthorStyleDisabled", function (msg) {
   let {authorStyleDisabled} =
-    docShell.contentViewer.QueryInterface(Ci.nsIMarkupDocumentViewer);
+    docShell.contentViewer;
   sendSyncMessage("ss-test:getAuthorStyleDisabled", authorStyleDisabled);
 });
 
 addMessageListener("ss-test:setAuthorStyleDisabled", function (msg) {
   let markupDocumentViewer =
-    docShell.contentViewer.QueryInterface(Ci.nsIMarkupDocumentViewer);
+    docShell.contentViewer;
   markupDocumentViewer.authorStyleDisabled = msg.data;
   sendSyncMessage("ss-test:setAuthorStyleDisabled");
 });

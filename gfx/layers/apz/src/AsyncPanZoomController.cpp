@@ -393,6 +393,7 @@ static inline void LogRendertraceRect(const ScrollableLayerGuid& aGuid, const ch
 
 static TimeStamp sFrameTime;
 static bool sThreadAssertionsEnabled = true;
+static PRThread* sControllerThread;
 
 // Counter used to give each APZC a unique id
 static uint32_t sAsyncPanZoomControllerCount = 0;
@@ -403,26 +404,6 @@ GetFrameTime() {
     return TimeStamp::Now();
   }
   return sFrameTime;
-}
-
-static PRThread* sControllerThread;
-
-static void
-AssertOnControllerThread() {
-  if (!AsyncPanZoomController::GetThreadAssertionsEnabled()) {
-    return;
-  }
-
-  static bool sControllerThreadDetermined = false;
-  if (!sControllerThreadDetermined) {
-    // Technically this may not actually pick up the correct controller thread,
-    // if the first call to this method happens from a non-controller thread.
-    // If the assertion below fires, it is possible that it is because
-    // sControllerThread is not actually the controller thread.
-    sControllerThread = PR_GetCurrentThread();
-    sControllerThreadDetermined = true;
-  }
-  MOZ_ASSERT(sControllerThread == PR_GetCurrentThread());
 }
 
 class FlingAnimation: public AsyncPanZoomAnimation {
@@ -496,10 +477,10 @@ public:
     // If we shouldn't continue the fling, let's just stop and repaint.
     if (!shouldContinueFlingX && !shouldContinueFlingY) {
       APZC_LOG("%p ending fling animation. overscrolled=%d\n", &mApzc, mApzc.IsOverscrolled());
-      // If we are in overscroll, schedule the snap-back animation that relieves it.
-      if (mApzc.IsOverscrolled()) {
-        mDeferredTasks.append(NewRunnableMethod(&mApzc, &AsyncPanZoomController::StartSnapBack));
-      }
+      // This APZC or an APZC further down the handoff chain may be be overscrolled.
+      // Start a snap-back animation on the overscrolled APZC.
+      mDeferredTasks.append(NewRunnableMethod(&mApzc,
+          &AsyncPanZoomController::CallSnapBackOverscrolledApzc));
       return false;
     }
 
@@ -654,6 +635,11 @@ public:
   OverscrollSnapBackAnimation(AsyncPanZoomController& aApzc)
     : mApzc(aApzc)
   {
+    // Make sure the initial velocity is zero. This is normally the case
+    // since we've just stopped a fling, but in some corner cases involving
+    // handoff it could not be.
+    mApzc.mX.SetVelocity(0);
+    mApzc.mY.SetVelocity(0);
   }
 
   virtual bool Sample(FrameMetrics& aFrameMetrics,
@@ -681,6 +667,24 @@ AsyncPanZoomController::SetThreadAssertionsEnabled(bool aEnabled) {
 bool
 AsyncPanZoomController::GetThreadAssertionsEnabled() {
   return sThreadAssertionsEnabled;
+}
+
+void
+AsyncPanZoomController::AssertOnControllerThread() {
+  if (!GetThreadAssertionsEnabled()) {
+    return;
+  }
+
+  static bool sControllerThreadDetermined = false;
+  if (!sControllerThreadDetermined) {
+    // Technically this may not actually pick up the correct controller thread,
+    // if the first call to this method happens from a non-controller thread.
+    // If the assertion below fires, it is possible that it is because
+    // sControllerThread is not actually the controller thread.
+    sControllerThread = PR_GetCurrentThread();
+    sControllerThreadDetermined = true;
+  }
+  MOZ_ASSERT(sControllerThread == PR_GetCurrentThread());
 }
 
 /*static*/ void
@@ -1147,7 +1151,9 @@ nsEventStatus AsyncPanZoomController::OnTouchEnd(const MultiTouchInput& aEvent) 
 nsEventStatus AsyncPanZoomController::OnTouchCancel(const MultiTouchInput& aEvent) {
   APZC_LOG("%p got a touch-cancel in state %d\n", this, mState);
   OnTouchEndOrCancel();
-  SetState(NOTHING);
+  mX.CancelTouch();
+  mY.CancelTouch();
+  CancelAnimation();
   return nsEventStatus_eConsumeNoDefault;
 }
 
@@ -1767,6 +1773,13 @@ bool AsyncPanZoomController::CallDispatchScroll(const ScreenPoint& aStartPoint, 
                                           aOverscrollHandoffChainIndex);
 }
 
+void AsyncPanZoomController::CallSnapBackOverscrolledApzc() {
+  APZCTreeManager* treeManagerLocal = mTreeManager;
+  if (treeManagerLocal) {
+    treeManagerLocal->SnapBackOverscrolledApzc(this);
+  }
+}
+
 void AsyncPanZoomController::TrackTouch(const MultiTouchInput& aEvent) {
   ScreenIntPoint prevTouchPoint(mX.GetPos(), mY.GetPos());
   ScreenIntPoint touchPoint = GetFirstTouchScreenPoint(aEvent);
@@ -1955,6 +1968,16 @@ void AsyncPanZoomController::FlushRepaintForOverscrollHandoff() {
   ReentrantMonitorAutoEnter lock(mMonitor);
   RequestContentRepaint();
   UpdateSharedCompositorFrameMetrics();
+}
+
+bool AsyncPanZoomController::SnapBackIfOverscrolled() {
+  ReentrantMonitorAutoEnter lock(mMonitor);
+  if (IsOverscrolled()) {
+    APZC_LOG("%p is overscrolled, starting snap-back\n", this);
+    StartSnapBack();
+    return true;
+  }
+  return false;
 }
 
 bool AsyncPanZoomController::IsPannable() const {
@@ -2337,9 +2360,7 @@ void AsyncPanZoomController::NotifyLayersUpdated(const FrameMetrics& aLayerMetri
     mPaintThrottler.ClearHistory();
     mPaintThrottler.SetMaxDurations(gfxPrefs::APZNumPaintDurationSamples());
 
-    mX.CancelTouch();
-    mY.CancelTouch();
-    SetState(NOTHING);
+    CancelAnimation();
 
     mFrameMetrics = aLayerMetrics;
     mLastDispatchedPaintMetrics = aLayerMetrics;

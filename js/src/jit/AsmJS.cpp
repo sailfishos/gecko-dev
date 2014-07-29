@@ -5487,8 +5487,6 @@ CheckFunctionsSequential(ModuleCompiler &m)
     return true;
 }
 
-#ifdef JS_THREADSAFE
-
 // Currently, only one asm.js parallel compilation is allowed at a time.
 // This RAII class attempts to claim this parallel compilation using atomic ops
 // on the helper thread state's asmJSCompilationInProgress.
@@ -5521,7 +5519,7 @@ ParallelCompilationEnabled(ExclusiveContext *cx)
     // parsing task, ensure that there another free thread to avoid deadlock.
     // (Note: there is at most one thread used for parsing so we don't have to
     // worry about general dining philosophers.)
-    if (HelperThreadState().threadCount <= 1)
+    if (HelperThreadState().threadCount <= 1 || !CanUseExtraThreads())
         return false;
 
     if (!cx->isJSContext())
@@ -5739,7 +5737,6 @@ CheckFunctionsParallel(ModuleCompiler &m)
     }
     return true;
 }
-#endif // JS_THREADSAFE
 
 static bool
 CheckFuncPtrTable(ModuleCompiler &m, ParseNode *var)
@@ -6254,7 +6251,7 @@ GenerateFFIIonExit(ModuleCompiler &m, const ModuleCompiler::ExitDescriptor &exit
 #elif defined(JS_CODEGEN_X86)
     m.masm().append(AsmJSGlobalAccess(masm.movlWithPatch(Imm32(0), callee), globalDataOffset));
 #else
-    masm.lea(Operand(GlobalReg, globalDataOffset), callee);
+    masm.computeEffectiveAddress(Address(GlobalReg, globalDataOffset), callee);
 #endif
 
     // 2.2. Get callee
@@ -6686,6 +6683,8 @@ GenerateAsyncInterruptExit(ModuleCompiler &m, Label *throwLabel)
     masm.finishDataTransfer();
     masm.ret();
 
+#elif defined (JS_CODEGEN_NONE)
+    MOZ_CRASH();
 #else
 # error "Unknown architecture!"
 #endif
@@ -6827,13 +6826,8 @@ CheckModule(ExclusiveContext *cx, AsmJSParser &parser, ParseNode *stmtList,
 
     m.startFunctionBodies();
 
-#ifdef JS_THREADSAFE
     if (!CheckFunctionsParallel(m))
         return false;
-#else
-    if (!CheckFunctionsSequential(m))
-        return false;
-#endif
 
     m.finishFunctionBodies();
 
@@ -6872,6 +6866,10 @@ Warn(AsmJSParser &parser, int errorNumber, const char *str)
 static bool
 EstablishPreconditions(ExclusiveContext *cx, AsmJSParser &parser)
 {
+#ifdef JS_CODEGEN_NONE
+    return Warn(parser, JSMSG_USE_ASM_TYPE_FAIL, "Disabled by lack of a JIT compiler");
+#endif
+
     if (!cx->jitSupportsFloatingPoint())
         return Warn(parser, JSMSG_USE_ASM_TYPE_FAIL, "Disabled by lack of floating point support");
 
@@ -6893,10 +6891,8 @@ EstablishPreconditions(ExclusiveContext *cx, AsmJSParser &parser)
     if (parser.pc->isArrowFunction())
         return Warn(parser, JSMSG_USE_ASM_TYPE_FAIL, "Disabled by arrow function context");
 
-#ifdef JS_THREADSAFE
     if (ParallelCompilationEnabled(cx))
         EnsureHelperThreadsInitialized(cx);
-#endif
 
     return true;
 }
@@ -6943,10 +6939,14 @@ js::IsAsmJSCompilationAvailable(JSContext *cx, unsigned argc, Value *vp)
     CallArgs args = CallArgsFromVp(argc, vp);
 
     // See EstablishPreconditions.
+#ifdef JS_CODEGEN_NONE
+    bool available = false;
+#else
     bool available = cx->jitSupportsFloatingPoint() &&
                      cx->gcSystemPageSize() == AsmJSPageSize &&
                      !cx->compartment()->debugMode() &&
                      cx->runtime()->options().asmJS();
+#endif
 
     args.rval().set(BooleanValue(available));
     return true;

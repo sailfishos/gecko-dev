@@ -516,6 +516,7 @@ TabChildBase::DispatchSynthesizedMouseEvent(uint32_t aMsg, uint64_t aTime,
   event.time = aTime;
   event.button = WidgetMouseEvent::eLeftButton;
   event.inputSource = nsIDOMMouseEvent::MOZ_SOURCE_TOUCH;
+  event.ignoreRootScrollFrame = true;
   if (aMsg != NS_MOUSE_MOVE) {
     event.clickCount = 1;
   }
@@ -729,7 +730,6 @@ TabChild::TabChild(nsIContentChild* aManager, const TabContext& aContext, uint32
   , mOrientation(eScreenOrientation_PortraitPrimary)
   , mUpdateHitRegion(false)
   , mPendingTouchPreventedResponse(false)
-  , mTouchEndIsClick(Unknown)
   , mIgnoreKeyPressEvent(false)
   , mActiveElementManager(new ActiveElementManager())
   , mHasValidInnerSize(false)
@@ -1388,6 +1388,17 @@ TabChild::HasValidInnerSize()
   return mHasValidInnerSize;
 }
 
+void
+TabChild::SendPendingTouchPreventedResponse(bool aPreventDefault,
+                                            const ScrollableLayerGuid& aGuid)
+{
+  if (mPendingTouchPreventedResponse) {
+    MOZ_ASSERT(aGuid == mPendingTouchPreventedGuid);
+    SendContentReceivedTouch(mPendingTouchPreventedGuid, aPreventDefault);
+    mPendingTouchPreventedResponse = false;
+  }
+}
+
 #ifdef DEBUG
 PContentPermissionRequestChild*
 TabChild:: SendPContentPermissionRequestConstructor(PContentPermissionRequestChild* aActor,
@@ -1805,10 +1816,6 @@ TabChild::RecvHandleSingleTap(const CSSPoint& aPoint, const ScrollableLayerGuid&
     return true;
   }
 
-  if (mTouchEndIsClick == IsNotClick) {
-    return true;
-  }
-
   LayoutDevicePoint currentPoint = APZCCallbackHelper::ApplyCallbackTransform(aPoint, aGuid) * mWidget->GetDefaultScale();;
 
   MessageLoop::current()->PostDelayedTask(
@@ -1834,10 +1841,12 @@ TabChild::RecvHandleLongTap(const CSSPoint& aPoint, const ScrollableLayerGuid& a
     return true;
   }
 
+  SendPendingTouchPreventedResponse(false, aGuid);
+
   bool eventHandled =
       DispatchMouseEvent(NS_LITERAL_STRING("contextmenu"),
                          APZCCallbackHelper::ApplyCallbackTransform(aPoint, aGuid),
-                         2, 1, 0, false,
+                         2, 1, 0, true,
                          nsIDOMMouseEvent::MOZ_SOURCE_TOUCH);
 
   // If no one handle context menu, fire MOZLONGTAP event
@@ -1899,7 +1908,7 @@ TabChild::RecvNotifyAPZStateChange(const ViewID& aViewId,
   }
   case APZStateChange::EndTouch:
   {
-    mTouchEndIsClick = (aArg ? IsClick : IsNotClick);
+    mActiveElementManager->HandleTouchEnd(aArg);
     break;
   }
   default:
@@ -2070,7 +2079,7 @@ TabChild::FireContextMenuEvent()
                                              2 /* Right button */,
                                              1 /* Click count */,
                                              0 /* Modifiers */,
-                                             false /* Ignore root scroll frame */,
+                                             true /* Ignore root scroll frame */,
                                              nsIDOMMouseEvent::MOZ_SOURCE_TOUCH);
 
   // Fire a click event if someone didn't call preventDefault() on the context
@@ -2118,7 +2127,6 @@ TabChild::RecvRealTouchEvent(const WidgetTouchEvent& aEvent,
                           localEvent.mFlags.mMultipleActionsPrevented;
   switch (aEvent.message) {
   case NS_TOUCH_START: {
-    mTouchEndIsClick = Unknown;
     if (mPendingTouchPreventedResponse) {
       // We can enter here if we get two TOUCH_STARTs in a row and didn't
       // respond to the first one. Respond to it now.
@@ -2134,22 +2142,10 @@ TabChild::RecvRealTouchEvent(const WidgetTouchEvent& aEvent,
     break;
   }
 
+  case NS_TOUCH_MOVE:
   case NS_TOUCH_END:
-    if (isTouchPrevented && mTouchEndIsClick == IsClick) {
-      mTouchEndIsClick = IsNotClick;
-    }
-    // fall through
-  case NS_TOUCH_CANCEL:
-    if (mTouchEndIsClick != Unknown) {
-      mActiveElementManager->HandleTouchEnd(mTouchEndIsClick == IsClick);
-    }
-    // fall through
-  case NS_TOUCH_MOVE: {
-    if (mPendingTouchPreventedResponse) {
-      MOZ_ASSERT(aGuid == mPendingTouchPreventedGuid);
-      SendContentReceivedTouch(mPendingTouchPreventedGuid, isTouchPrevented);
-      mPendingTouchPreventedResponse = false;
-    }
+  case NS_TOUCH_CANCEL: {
+    SendPendingTouchPreventedResponse(isTouchPrevented, aGuid);
     break;
   }
 

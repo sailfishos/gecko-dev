@@ -87,6 +87,10 @@ BasicCompositor::CreateRenderTarget(const IntRect& aRect, SurfaceInitMode aInit)
 {
   RefPtr<DrawTarget> target = mDrawTarget->CreateSimilarDrawTarget(aRect.Size(), SurfaceFormat::B8G8R8A8);
 
+  if (!target) {
+    return nullptr;
+  }
+
   RefPtr<BasicCompositingRenderTarget> rt = new BasicCompositingRenderTarget(target, aRect);
 
   return rt.forget();
@@ -135,12 +139,11 @@ DrawSurfaceWithTextureCoords(DrawTarget *aDest,
   sourceRect.Round();
 
   // Compute a transform that maps sourceRect to aDestRect.
-  gfxMatrix transform =
+  Matrix matrix =
     gfxUtils::TransformRectToRect(sourceRect,
-                                  gfxPoint(aDestRect.x, aDestRect.y),
-                                  gfxPoint(aDestRect.XMost(), aDestRect.y),
-                                  gfxPoint(aDestRect.XMost(), aDestRect.YMost()));
-  Matrix matrix = ToMatrix(transform);
+                                  gfx::IntPoint(aDestRect.x, aDestRect.y),
+                                  gfx::IntPoint(aDestRect.XMost(), aDestRect.y),
+                                  gfx::IntPoint(aDestRect.XMost(), aDestRect.YMost()));
 
   // Only use REPEAT if aTextureCoords is outside (0, 0, 1, 1).
   gfx::Rect unitRect(0, 0, 1, 1);
@@ -263,7 +266,7 @@ BasicCompositor::DrawQuad(const gfx::Rect& aRect,
     dest->SetTransform(destTransform);
 
     // Get the bounds post-transform.
-    To3DMatrix(aTransform, new3DTransform);
+    new3DTransform = To3DMatrix(aTransform);
     gfxRect bounds = new3DTransform.TransformBounds(ThebesRect(aRect));
     bounds.IntersectRect(bounds, gfxRect(offset.x, offset.y, buffer->GetSize().width, buffer->GetSize().height));
 
@@ -428,6 +431,12 @@ BasicCompositor::BeginFrame(const nsIntRegion& aInvalidRegion,
   // Setup an intermediate render target to buffer all compositing. We will
   // copy this into mDrawTarget (the widget), and/or mTarget in EndFrame()
   RefPtr<CompositingRenderTarget> target = CreateRenderTarget(mInvalidRect, INIT_MODE_CLEAR);
+  if (!target) {
+    if (!mTarget) {
+      mWidget->EndRemoteDrawing();
+    }
+    return;
+  }
   SetRenderTarget(target);
 
   // We only allocate a surface sized to the invalidated region, so we need to

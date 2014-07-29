@@ -30,9 +30,12 @@ public:
   };
 
   static BluetoothA2dpManager* Get();
-  static void InitA2dpInterface();
-  static void DeinitA2dpInterface();
+  static void InitA2dpInterface(BluetoothProfileResultHandler* aRes);
+  static void DeinitA2dpInterface(BluetoothProfileResultHandler* aRes);
   virtual ~BluetoothA2dpManager();
+
+  void OnConnectError();
+  void OnDisconnectError();
 
   // A2DP-specific functions
   void HandleSinkPropertyChanged(const BluetoothSignal& aSignal);

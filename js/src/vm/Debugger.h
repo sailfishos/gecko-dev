@@ -158,6 +158,7 @@ typedef JSObject Env;
 class Debugger : private mozilla::LinkedListElement<Debugger>
 {
     friend class Breakpoint;
+    friend class DebuggerMemory;
     friend class mozilla::LinkedListElement<Debugger>;
     friend bool (::JS_DefineDebuggerObject)(JSContext *cx, JS::HandleObject obj);
 
@@ -189,6 +190,7 @@ class Debugger : private mozilla::LinkedListElement<Debugger>
     GlobalObjectSet debuggees;          /* Debuggee globals. Cross-compartment weak references. */
     js::HeapPtrObject uncaughtExceptionHook; /* Strong reference. */
     bool enabled;
+    bool trackingAllocationSites;
     JSCList breakpoints;                /* Circular list of all js::Breakpoints in this debugger */
 
     /*
@@ -243,10 +245,10 @@ class Debugger : private mozilla::LinkedListElement<Debugger>
                                             AutoDebugModeInvalidation &invalidate,
                                             GlobalObjectSet::Enum *compartmentEnum,
                                             GlobalObjectSet::Enum *debugEnu);
-    bool removeDebuggeeGlobal(JSContext *cx, GlobalObject *global,
+    bool removeDebuggeeGlobal(JSContext *cx, Handle<GlobalObject *> global,
                               GlobalObjectSet::Enum *compartmentEnum,
                               GlobalObjectSet::Enum *debugEnum);
-    bool removeDebuggeeGlobal(JSContext *cx, GlobalObject *global,
+    bool removeDebuggeeGlobal(JSContext *cx, Handle<GlobalObject *> global,
                               AutoDebugModeInvalidation &invalidate,
                               GlobalObjectSet::Enum *compartmentEnum,
                               GlobalObjectSet::Enum *debugEnum);
@@ -599,8 +601,6 @@ class BreakpointSite {
   private:
     JSCList breakpoints;  /* cyclic list of all js::Breakpoints at this instruction */
     size_t enabledCount;  /* number of breakpoints in the list that are enabled */
-    JSTrapHandler trapHandler;  /* trap state */
-    HeapValue trapClosure;
 
     void recompile(FreeOp *fop);
 
@@ -608,12 +608,9 @@ class BreakpointSite {
     BreakpointSite(JSScript *script, jsbytecode *pc);
     Breakpoint *firstBreakpoint() const;
     bool hasBreakpoint(Breakpoint *bp);
-    bool hasTrap() const { return !!trapHandler; }
 
     void inc(FreeOp *fop);
     void dec(FreeOp *fop);
-    void setTrap(FreeOp *fop, JSTrapHandler handler, const Value &closure);
-    void clearTrap(FreeOp *fop, JSTrapHandler *handlerp = nullptr, Value *closurep = nullptr);
     void destroyIfEmpty(FreeOp *fop);
 };
 
@@ -766,6 +763,8 @@ EvaluateInEnv(JSContext *cx, Handle<Env*> env, HandleValue thisv, AbstractFrameP
               mozilla::Range<const jschar> chars, const char *filename, unsigned lineno,
               MutableHandleValue rval);
 
-}
+bool ReportObjectRequired(JSContext *cx);
+
+} /* namespace js */
 
 #endif /* vm_Debugger_h */

@@ -20,8 +20,8 @@ namespace gmp {
 class GMPParent;
 
 class GMPVideoDecoderParent MOZ_FINAL : public PGMPVideoDecoderParent
-                                      , public GMPSharedMemManager
                                       , public GMPVideoDecoderProxy
+                                      , public GMPSharedMemManager
 {
 public:
   NS_INLINE_DECL_REFCOUNTING(GMPVideoDecoderParent)
@@ -29,11 +29,13 @@ public:
   GMPVideoDecoderParent(GMPParent *aPlugin);
 
   GMPVideoHostImpl& Host();
+  nsresult Shutdown();
 
   // GMPVideoDecoder
+  virtual void Close() MOZ_OVERRIDE;
   virtual nsresult InitDecode(const GMPVideoCodec& aCodecSettings,
                               const nsTArray<uint8_t>& aCodecSpecific,
-                              GMPVideoDecoderCallback* aCallback,
+                              GMPVideoDecoderCallbackProxy* aCallback,
                               int32_t aCoreCount) MOZ_OVERRIDE;
   virtual nsresult Decode(GMPVideoEncodedFrame* aInputFrame,
                           bool aMissingFrames,
@@ -41,12 +43,10 @@ public:
                           int64_t aRenderTimeMs = -1) MOZ_OVERRIDE;
   virtual nsresult Reset() MOZ_OVERRIDE;
   virtual nsresult Drain() MOZ_OVERRIDE;
-  virtual nsresult DecodingComplete() MOZ_OVERRIDE;
   virtual const uint64_t ParentID() MOZ_OVERRIDE { return reinterpret_cast<uint64_t>(mPlugin.get()); }
 
   // GMPSharedMemManager
-  virtual void CheckThread();
-  virtual bool Alloc(size_t aSize, Shmem::SharedMemory::SharedMemoryType aType, Shmem* aMem)
+  virtual bool Alloc(size_t aSize, Shmem::SharedMemory::SharedMemoryType aType, Shmem* aMem) MOZ_OVERRIDE
   {
 #ifdef GMP_SAFE_SHMEM
     return AllocShmem(aSize, aType, aMem);
@@ -54,7 +54,7 @@ public:
     return AllocUnsafeShmem(aSize, aType, aMem);
 #endif
   }
-  virtual void Dealloc(Shmem& aMem)
+  virtual void Dealloc(Shmem& aMem) MOZ_OVERRIDE
   {
     DeallocShmem(aMem);
   }
@@ -70,14 +70,15 @@ private:
   virtual bool RecvInputDataExhausted() MOZ_OVERRIDE;
   virtual bool RecvDrainComplete() MOZ_OVERRIDE;
   virtual bool RecvResetComplete() MOZ_OVERRIDE;
+  virtual bool RecvError(const GMPErr& aError) MOZ_OVERRIDE;
   virtual bool RecvParentShmemForPool(Shmem& aEncodedBuffer) MOZ_OVERRIDE;
   virtual bool AnswerNeedShmem(const uint32_t& aFrameBufferSize,
                                Shmem* aMem) MOZ_OVERRIDE;
   virtual bool Recv__delete__() MOZ_OVERRIDE;
 
-  bool mCanSendMessages;
+  bool mIsOpen;
   nsRefPtr<GMPParent> mPlugin;
-  GMPVideoDecoderCallback* mCallback;
+  GMPVideoDecoderCallbackProxy* mCallback;
   GMPVideoHostImpl mVideoHost;
 };
 

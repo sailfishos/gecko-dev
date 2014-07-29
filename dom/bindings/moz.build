@@ -41,24 +41,24 @@ MSVC_ENABLE_PGO = True
 
 LOCAL_INCLUDES += [
     '/content/base/src',
-    '/content/canvas/src',
     '/content/html/content/src',
     '/content/html/document/src',
     '/content/media/webaudio',
     '/content/media/webspeech/recognition',
     '/content/svg/content/src',
-    '/content/xml/content/src',
     '/content/xul/content/src',
     '/content/xul/document/src',
     '/dom/base',
     '/dom/battery',
     '/dom/bluetooth',
     '/dom/camera',
+    '/dom/canvas',
     '/dom/file',
     '/dom/indexedDB',
     '/dom/src/geolocation',
     '/dom/workers',
     '/dom/xbl',
+    '/dom/xml',
     '/dom/xslt/base',
     '/dom/xslt/xpath',
     '/js/ipc',
@@ -96,3 +96,7 @@ SPHINX_PYTHON_PACKAGE_DIRS += ['mozwebidlcodegen']
 if CONFIG['MOZ_BUILD_APP'] in ['browser', 'mobile/android', 'xulrunner']:
     # This is needed for Window.webidl
     DEFINES['HAVE_SIDEBAR'] = True
+
+PYTHON_UNIT_TESTS += [
+    'mozwebidlcodegen/test/test_mozwebidlcodegen.py',
+]

@@ -566,6 +566,18 @@ CairoTextureClientD3D9::~CairoTextureClientD3D9()
   MOZ_COUNT_DTOR(CairoTextureClientD3D9);
 }
 
+TemporaryRef<TextureClient>
+CairoTextureClientD3D9::CreateSimilar(TextureFlags aFlags, TextureAllocationFlags aAllocFlags) const
+{
+  RefPtr<TextureClient> tex = new CairoTextureClientD3D9(mFormat, mFlags | aFlags);
+
+  if (!tex->AllocateForSurface(mSize, aAllocFlags)) {
+    return nullptr;
+  }
+
+  return tex;
+}
+
 bool
 CairoTextureClientD3D9::Lock(OpenMode aMode)
 {
@@ -751,6 +763,7 @@ TextureHostD3D9::TextureHostD3D9(TextureFlags aFlags,
   , mIsLocked(false)
 {
   mTexture = reinterpret_cast<IDirect3DTexture9*>(aDescriptor.texture());
+  MOZ_ASSERT(mTexture);
   mTexture->Release(); // see AddRef in CairoTextureClientD3D9::ToSurfaceDescriptor
   MOZ_ASSERT(mTexture);
   D3DSURFACE_DESC desc;
@@ -836,6 +849,7 @@ DataTextureSourceD3D9::UpdateFromTexture(IDirect3DTexture9* aTexture,
 void
 TextureHostD3D9::Updated(const nsIntRegion* aRegion)
 {
+  MOZ_ASSERT(mTexture);
   if (!mTexture) {
     return;
   }
@@ -867,6 +881,7 @@ NewTextureSource*
 TextureHostD3D9::GetTextureSources()
 {
   MOZ_ASSERT(mIsLocked);
+  MOZ_ASSERT(mTextureSource);
   return mTextureSource;
 }
 
@@ -874,8 +889,11 @@ bool
 TextureHostD3D9::Lock()
 {
   MOZ_ASSERT(!mIsLocked);
-  mIsLocked = true;
-  return true;
+  // XXX - Currently if a TextureHostD3D9 is created but Update is never called,
+  // it will not have a TextureSource although it could since it has a valid
+  // D3D9 texture.
+  mIsLocked = !!mTextureSource;
+  return mIsLocked;
 }
 
 void
@@ -905,12 +923,15 @@ DXGITextureHostD3D9::DXGITextureHostD3D9(TextureFlags aFlags,
 NewTextureSource*
 DXGITextureHostD3D9::GetTextureSources()
 {
+  MOZ_ASSERT(mIsLocked);
+  MOZ_ASSERT(mTextureSource);
   return mTextureSource;
 }
 
 bool
 DXGITextureHostD3D9::Lock()
 {
+  MOZ_ASSERT(!mIsLocked);
   DeviceManagerD3D9* deviceManager = gfxWindowsPlatform::GetPlatform()->GetD3D9DeviceManager();
   if (!deviceManager) {
     NS_WARNING("trying to lock a TextureHost without a D3D device");
@@ -935,7 +956,6 @@ DXGITextureHostD3D9::Lock()
     mTextureSource = new DataTextureSourceD3D9(mFormat, mSize, mCompositor, tex);
   }
 
-  MOZ_ASSERT(!mIsLocked);
   mIsLocked = true;
   return true;
 }

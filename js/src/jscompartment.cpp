@@ -394,8 +394,8 @@ JSCompartment::wrap(JSContext *cx, MutableHandleObject obj, HandleObject existin
               !cx->runtime()->isSelfHostingGlobal(objGlobal));
 
     // Unwrap the object, but don't unwrap outer windows.
-    unsigned flags = 0;
-    obj.set(UncheckedUnwrap(obj, /* stopAtOuter = */ true, &flags));
+    RootedObject objectPassedToWrap(cx, obj);
+    obj.set(UncheckedUnwrap(obj, /* stopAtOuter = */ true));
 
     if (obj->compartment() == this) {
         MOZ_ASSERT(obj == GetOuterObject(cx, obj));
@@ -417,7 +417,7 @@ JSCompartment::wrap(JSContext *cx, MutableHandleObject obj, HandleObject existin
     // recursion here, so we do a check - see bug 809295.
     JS_CHECK_CHROME_RECURSION(cx, return false);
     if (cb->preWrap) {
-        obj.set(cb->preWrap(cx, global, obj, flags));
+        obj.set(cb->preWrap(cx, global, obj, objectPassedToWrap));
         if (!obj)
             return false;
     }
@@ -449,7 +449,7 @@ JSCompartment::wrap(JSContext *cx, MutableHandleObject obj, HandleObject existin
         }
     }
 
-    obj.set(cb->wrap(cx, existing, obj, global, flags));
+    obj.set(cb->wrap(cx, existing, obj, global));
     if (!obj)
         return false;
 
@@ -929,17 +929,6 @@ JSCompartment::clearBreakpointsIn(FreeOp *fop, js::Debugger *dbg, HandleObject h
         JSScript *script = i.get<JSScript>();
         if (script->compartment() == this && script->hasAnyBreakpointsOrStepMode())
             script->clearBreakpointsIn(fop, dbg, handler);
-    }
-}
-
-void
-JSCompartment::clearTraps(FreeOp *fop)
-{
-    MinorGC(fop->runtime(), JS::gcreason::EVICT_NURSERY);
-    for (gc::ZoneCellIter i(zone(), gc::FINALIZE_SCRIPT); !i.done(); i.next()) {
-        JSScript *script = i.get<JSScript>();
-        if (script->compartment() == this && script->hasAnyBreakpointsOrStepMode())
-            script->clearTraps(fop);
     }
 }
 

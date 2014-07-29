@@ -345,6 +345,9 @@ struct JSCompartment
 
     bool hasObjectMetadataCallback() const { return objectMetadataCallback; }
     void setObjectMetadataCallback(js::ObjectMetadataCallback callback);
+    void forgetObjectMetadataCallback() {
+        objectMetadataCallback = nullptr;
+    }
     bool callObjectMetadataCallback(JSContext *cx, JSObject **obj) const {
         return objectMetadataCallback(cx, obj);
     }
@@ -425,7 +428,6 @@ struct JSCompartment
                            js::AutoDebugModeInvalidation &invalidate);
 
     void clearBreakpointsIn(js::FreeOp *fop, js::Debugger *dbg, JS::HandleObject handler);
-    void clearTraps(js::FreeOp *fop);
 
   private:
     void sweepBreakpoints(js::FreeOp *fop);

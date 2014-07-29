@@ -4,10 +4,19 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-PARALLEL_DIRS += [
+DIRS += [
     'content',
     'components',
     'themes',
 ]
 
 MOCHITEST_CHROME_MANIFESTS += ['test/chrome.ini']
+
+JS_MODULES_PATH = 'modules/devtools/webide'
+
+EXTRA_JS_MODULES += [
+    'modules/addons.js',
+    'modules/app-manager.js',
+    'modules/remote-resources.js',
+    'modules/runtimes.js'
+]

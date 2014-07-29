@@ -2183,6 +2183,12 @@ public:
   static bool IsForbiddenSystemRequestHeader(const nsACString& aHeader);
 
   /**
+   * Returns whether a given Content-Type header value is allowed
+   * for a non-CORS XHR or fetch request.
+   */
+  static bool IsAllowedNonCorsContentType(const nsACString& aHeaderValue);
+
+  /**
    * Returns whether a given header is forbidden for an XHR or fetch
    * response.
    */
@@ -2307,7 +2313,7 @@ private:
 
 class MOZ_STACK_CLASS nsAutoScriptBlocker {
 public:
-  nsAutoScriptBlocker(MOZ_GUARD_OBJECT_NOTIFIER_ONLY_PARAM) {
+  explicit nsAutoScriptBlocker(MOZ_GUARD_OBJECT_NOTIFIER_ONLY_PARAM) {
     MOZ_GUARD_OBJECT_NOTIFIER_INIT;
     nsContentUtils::AddScriptBlocker();
   }

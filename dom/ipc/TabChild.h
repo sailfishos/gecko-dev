@@ -555,6 +555,9 @@ private:
 
     bool HasValidInnerSize();
 
+    void SendPendingTouchPreventedResponse(bool aPreventDefault,
+                                           const ScrollableLayerGuid& aGuid);
+
     class CachedFileDescriptorInfo;
     class CachedFileDescriptorCallbackRunnable;
 
@@ -590,13 +593,6 @@ private:
     bool mPendingTouchPreventedResponse;
     ScrollableLayerGuid mPendingTouchPreventedGuid;
     void FireSingleTapEvent(LayoutDevicePoint aPoint);
-
-    enum ClickState {
-      Unknown,
-      IsClick,
-      IsNotClick
-    };
-    ClickState mTouchEndIsClick;
 
     bool mIgnoreKeyPressEvent;
     nsRefPtr<ActiveElementManager> mActiveElementManager;

@@ -18,6 +18,7 @@ const {AppValidator} = require("devtools/app-manager/app-validator");
 const {ConnectionManager, Connection} = require("devtools/client/connection-manager");
 const AppActorFront = require("devtools/app-actor-front");
 const {getDeviceFront} = require("devtools/server/actors/device");
+const {getPreferenceFront} = require("devtools/server/actors/preference");
 const {setTimeout} = require("sdk/timers");
 const {Task} = Cu.import("resource://gre/modules/Task.jsm", {});
 const {USBRuntime, WiFiRuntime, SimulatorRuntime,
@@ -332,6 +333,13 @@ exports.AppManager = AppManager = {
     return getDeviceFront(this.connection.client, this._listTabsResponse);
   },
 
+  get preferenceFront() {
+    if (!this._listTabsResponse) {
+      return null;
+    }
+    return getPreferenceFront(this.connection.client, this._listTabsResponse);
+  },
+
   disconnectRuntime: function() {
     if (this.connection.status != Connection.Status.CONNECTED) {
       return promise.resolve();
@@ -533,7 +541,10 @@ exports.AppManager = AppManager = {
   _updateUSBRuntimes: function() {
     this.runtimeList.usb = [];
     for (let id of Devices.available()) {
-      this.runtimeList.usb.push(new USBRuntime(id));
+      let r = new USBRuntime(id);
+      this.runtimeList.usb.push(r);
+      r.updateNameFromADB().then(
+        () => this.update("runtimelist"), () => {});
     }
     this.update("runtimelist");
   },

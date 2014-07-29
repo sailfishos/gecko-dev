@@ -7,7 +7,6 @@ from __future__ import unicode_literals
 import logging
 import mozpack.path
 import os
-import platform
 import sys
 import warnings
 import which
@@ -24,7 +23,6 @@ from mach.decorators import (
     Command,
 )
 
-from mach.logging import StructuredHumanFormatter
 
 ADB_NOT_FOUND = '''
 The %s command requires the adb binary to be on your path.
@@ -75,11 +73,6 @@ FLAVORS = {
     'a11y': 'a11y',
     'webapprt-chrome': 'webapprt-chrome',
 }
-
-class UnexpectedFilter(logging.Filter):
-    def filter(self, record):
-        msg = getattr(record, 'params', {}).get('msg', '')
-        return 'TEST-UNEXPECTED-' in msg
 
 
 class MochitestRunner(MozbuildObject):
@@ -147,14 +140,11 @@ class MochitestRunner(MozbuildObject):
         parser = B2GOptions()
         options = parser.parse_args([])[0]
 
-        test_path_dir = False;
         if test_path:
             test_root_file = mozpack.path.join(self.mochitest_dir, 'tests', test_path)
             if not os.path.exists(test_root_file):
                 print('Specified test path does not exist: %s' % test_root_file)
                 return 1
-            if os.path.isdir(test_root_file):
-                test_path_dir = True;
             options.testPath = test_path
 
         for k, v in kwargs.iteritems():
@@ -234,8 +224,6 @@ class MochitestRunner(MozbuildObject):
             print('No failure file present. Did you run mochitests before?')
             return 1
 
-        from StringIO import StringIO
-
         # runtests.py is ambiguous, so we load the file/module manually.
         if 'mochitest' not in sys.modules:
             import imp
@@ -244,7 +232,6 @@ class MochitestRunner(MozbuildObject):
                 imp.load_module('mochitest', fh, path,
                     ('.py', 'r', imp.PY_SOURCE))
 
-        import mozinfo
         import mochitest
         from manifestparser import TestManifest
         from mozbuild.testing import TestResolver
@@ -377,30 +364,14 @@ class MochitestRunner(MozbuildObject):
         # We need this to enable colorization of output.
         self.log_manager.enable_unstructured()
 
-        # Output processing is a little funky here. The old make targets
-        # grepped the log output from TEST-UNEXPECTED-* and printed these lines
-        # after test execution. Ideally the test runner would expose a Python
-        # API for obtaining test results and we could just format failures
-        # appropriately. Unfortunately, it doesn't yet do that. So, we capture
-        # all output to a buffer then "grep" the buffer after test execution.
-        # Bug 858197 tracks a Python API that would facilitate this.
-        test_output = StringIO()
-        handler = logging.StreamHandler(test_output)
-        handler.addFilter(UnexpectedFilter())
-        handler.setFormatter(StructuredHumanFormatter(0, write_times=False))
-        logging.getLogger().addHandler(handler)
-
         result = runner.runTests(options)
 
-        # Need to remove our buffering handler before we echo failures or else
-        # it will catch them again!
-        logging.getLogger().removeHandler(handler)
         self.log_manager.disable_unstructured()
-
-        if test_output.getvalue():
+        if runner.message_logger.errors:
             result = 1
-            for line in test_output.getvalue().splitlines():
-                self.log(logging.INFO, 'unexpected', {'msg': line}, '{msg}')
+            runner.message_logger.logger.warning("The following tests failed:")
+            for error in runner.message_logger.errors:
+                runner.message_logger.logger.log_raw(error)
 
         return result
 
@@ -620,7 +591,7 @@ def B2GCommand(func):
 @CommandProvider
 class MachCommands(MachCommandBase):
     @Command('mochitest-plain', category='testing',
-        conditions=[conditions.is_firefox],
+        conditions=[conditions.is_firefox_or_mulet],
         description='Run a plain mochitest.')
     @MochitestCommand
     def run_mochitest_plain(self, test_paths, **kwargs):

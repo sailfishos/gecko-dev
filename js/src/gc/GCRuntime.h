@@ -86,22 +86,18 @@ struct ConservativeGCData
     }
 
     ~ConservativeGCData() {
-#ifdef JS_THREADSAFE
         /*
          * The conservative GC scanner should be disabled when the thread leaves
          * the last request.
          */
         JS_ASSERT(!hasStackToScan());
-#endif
     }
 
     MOZ_NEVER_INLINE void recordStackTop();
 
-#ifdef JS_THREADSAFE
     void updateForRequestEnd() {
         nativeStackTop = nullptr;
     }
-#endif
 
     bool hasStackToScan() const {
         return !!nativeStackTop;
@@ -186,17 +182,14 @@ class GCRuntime
     void setDeterministic(bool enable);
 #endif
 
-    size_t bytesAllocated() { return bytes; }
     size_t maxBytesAllocated() { return maxBytes; }
-    size_t maxMallocBytesAllocated() { return maxBytes; }
+    size_t maxMallocBytesAllocated() { return maxMallocBytes; }
 
   public:
     // Internal public interface
     js::gc::State state() { return incrementalState; }
     void recordNativeStackTop();
-#ifdef JS_THREADSAFE
     void notifyRequestEnd() { conservativeGC.updateForRequestEnd(); }
-#endif
     bool isBackgroundSweeping() { return helperState.isBackgroundSweeping(); }
     void waitBackgroundSweepEnd() { helperState.waitBackgroundSweepEnd(); }
     void waitBackgroundSweepOrAllocEnd() { helperState.waitBackgroundSweepOrAllocEnd(); }
@@ -208,37 +201,27 @@ class GCRuntime
     bool onBackgroundThread() { return helperState.onBackgroundThread(); }
 
     bool currentThreadOwnsGCLock() {
-#ifdef JS_THREADSAFE
         return lockOwner == PR_GetCurrentThread();
-#else
-        return true;
-#endif
     }
 
 #endif // DEBUG
 
-#ifdef JS_THREADSAFE
     void assertCanLock() {
         JS_ASSERT(!currentThreadOwnsGCLock());
     }
-#endif
 
     void lockGC() {
-#ifdef JS_THREADSAFE
         PR_Lock(lock);
         JS_ASSERT(!lockOwner);
 #ifdef DEBUG
         lockOwner = PR_GetCurrentThread();
 #endif
-#endif
     }
 
     void unlockGC() {
-#ifdef JS_THREADSAFE
         JS_ASSERT(lockOwner == PR_GetCurrentThread());
         lockOwner = nullptr;
         PR_Unlock(lock);
-#endif
     }
 
 #ifdef DEBUG
@@ -330,7 +313,6 @@ class GCRuntime
 
     inline void updateOnFreeArenaAlloc(const ChunkInfo &info);
     inline void updateOnArenaFree(const ChunkInfo &info);
-    inline void updateBytesAllocated(ptrdiff_t size);
 
     GCChunkSet::Range allChunks() { return chunkSet.all(); }
     inline Chunk **getAvailableChunkList(Zone *zone);
@@ -429,6 +411,9 @@ class GCRuntime
 
     js::GCMarker          marker;
 
+    /* Track heap usage for this runtime. */
+    HeapUsage usage;
+
   private:
     /*
      * Set of all GC chunks with at least one allocated thing. The
@@ -449,9 +434,6 @@ class GCRuntime
     js::gc::ChunkPool     chunkPool;
 
     js::RootedValueMap    rootsHash;
-
-    /* This is updated by both the main and GC helper threads. */
-    mozilla::Atomic<size_t, mozilla::ReleaseAcquire>   bytes;
 
     size_t                maxBytes;
     size_t                maxMallocBytes;

@@ -4,7 +4,6 @@
 
 package org.mozilla.search.autocomplete;
 
-
 import android.app.Activity;
 import android.content.Context;
 import android.os.Bundle;
@@ -12,22 +11,17 @@ import android.support.v4.app.Fragment;
 import android.support.v4.app.LoaderManager;
 import android.support.v4.content.AsyncTaskLoader;
 import android.support.v4.content.Loader;
-import android.text.Editable;
-import android.text.TextWatcher;
-import android.view.KeyEvent;
+import android.text.SpannableString;
+import android.text.style.ForegroundColorSpan;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.inputmethod.EditorInfo;
-import android.view.inputmethod.InputMethodManager;
 import android.widget.AdapterView;
-import android.widget.Button;
-import android.widget.EditText;
 import android.widget.ListView;
-import android.widget.TextView;
 
 import org.mozilla.search.R;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -36,8 +30,7 @@ import java.util.List;
  * <p/>
  * TODO: Add more search providers (other than the dictionary)
  */
-public class SearchFragment extends Fragment
-        implements TextView.OnEditorActionListener, AcceptsJumpTaps {
+public class SearchFragment extends Fragment implements AcceptsJumpTaps {
 
     private static final int LOADER_ID_SUGGESTION = 0;
     private static final String KEY_SEARCH_TERM = "search_term";
@@ -48,16 +41,17 @@ public class SearchFragment extends Fragment
     // Maximum number of results returned by the suggestion client
     private static final int SUGGESTION_MAX = 5;
 
+    // Color of search term match in search suggestion
+    private static final int SUGGESTION_HIGHLIGHT_COLOR = 0xFF999999;
+
+    private AcceptsSearchQuery searchListener;
     private SuggestClient suggestClient;
     private SuggestionLoaderCallbacks suggestionLoaderCallbacks;
 
-    private InputMethodManager inputMethodManager;
     private AutoCompleteAdapter autoCompleteAdapter;
 
     private View mainView;
-    private View searchBar;
-    private EditText editText;
-    private Button clearButton;
+    private ClearableEditText editText;
     private ListView suggestionDropdown;
 
     private State state = State.WAITING;
@@ -75,6 +69,12 @@ public class SearchFragment extends Fragment
     public void onAttach(Activity activity) {
         super.onAttach(activity);
 
+        if (activity instanceof AcceptsSearchQuery) {
+            searchListener = (AcceptsSearchQuery) activity;
+        } else {
+            throw new ClassCastException(activity.toString() + " must implement AcceptsSearchQuery.");
+        }
+
         // TODO: Don't hard-code this template string (bug 1039758)
         final String template = "https://search.yahoo.com/sugg/ff?" +
                 "output=fxjson&appid=ffm&command=__searchTerms__&nresults=" + SUGGESTION_MAX;
@@ -82,7 +82,6 @@ public class SearchFragment extends Fragment
         suggestClient = new SuggestClient(activity, template, SUGGESTION_TIMEOUT, SUGGESTION_MAX);
         suggestionLoaderCallbacks = new SuggestionLoaderCallbacks();
 
-        inputMethodManager = (InputMethodManager) activity.getSystemService(Context.INPUT_METHOD_SERVICE);
         autoCompleteAdapter = new AutoCompleteAdapter(activity, this);
     }
 
@@ -90,9 +89,9 @@ public class SearchFragment extends Fragment
     public void onDetach() {
         super.onDetach();
 
+        searchListener = null;
         suggestClient = null;
         suggestionLoaderCallbacks = null;
-        inputMethodManager = null;
         autoCompleteAdapter = null;
     }
 
@@ -109,42 +108,33 @@ public class SearchFragment extends Fragment
             }
         });
 
-        searchBar = mainView.findViewById(R.id.search_bar);
-        editText = (EditText) mainView.findViewById(R.id.search_bar_edit_text);
+        // Disable the click listener while the fragment is State.WAITING.
+        // We can't do this in the layout file because the setOnClickListener
+        // implementation calls setClickable(true).
+        mainView.setClickable(false);
 
-        final View.OnClickListener transitionToRunningListener = new View.OnClickListener() {
+        editText = (ClearableEditText) mainView.findViewById(R.id.auto_complete_edit_text);
+        editText.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 transitionToRunning();
             }
-        };
-        searchBar.setOnClickListener(transitionToRunningListener);
-        editText.setOnClickListener(transitionToRunningListener);
-
-        // Attach a listener for the "search" key on the keyboard.
-        editText.addTextChangedListener(new TextWatcher() {
-            @Override
-            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
-            }
-
-            @Override
-            public void onTextChanged(CharSequence s, int start, int before, int count) {
-            }
-
-            @Override
-            public void afterTextChanged(Editable s) {
-                final Bundle args = new Bundle();
-                args.putString(KEY_SEARCH_TERM, s.toString());
-                getLoaderManager().restartLoader(LOADER_ID_SUGGESTION, args, suggestionLoaderCallbacks);
-            }
         });
-        editText.setOnEditorActionListener(this);
 
-        clearButton = (Button) mainView.findViewById(R.id.search_bar_clear_button);
-        clearButton.setOnClickListener(new View.OnClickListener(){
+        editText.setTextListener(new ClearableEditText.TextListener() {
             @Override
-            public void onClick(View v) {
-                editText.setText("");
+            public void onChange(String text) {
+                if (state == State.RUNNING) {
+                    final Bundle args = new Bundle();
+                    args.putString(KEY_SEARCH_TERM, text);
+                    getLoaderManager().restartLoader(LOADER_ID_SUGGESTION, args, suggestionLoaderCallbacks);
+                }
+            }
+
+            @Override
+            public void onSubmit(String text) {
+                transitionToWaiting();
+                searchListener.onSearch(text);
             }
         });
 
@@ -155,8 +145,10 @@ public class SearchFragment extends Fragment
         suggestionDropdown.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-                final String query = (String) suggestionDropdown.getItemAtPosition(position);
-                startSearch(query);
+                final Suggestion suggestion = (Suggestion) suggestionDropdown.getItemAtPosition(position);
+
+                transitionToWaiting();
+                searchListener.onSearch(suggestion.value);
             }
         });
 
@@ -167,9 +159,7 @@ public class SearchFragment extends Fragment
     public void onDestroyView() {
         super.onDestroyView();
 
-        searchBar = null;
         editText = null;
-        clearButton = null;
 
         if (null != suggestionDropdown) {
             suggestionDropdown.setOnItemClickListener(null);
@@ -178,106 +168,85 @@ public class SearchFragment extends Fragment
         }
     }
 
-    /**
-     * Handler for the "search" button on the keyboard.
-     */
     @Override
-    public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
-        if (actionId == EditorInfo.IME_ACTION_SEARCH) {
-            startSearch(v.getText().toString());
-            return true;
-        }
-        return false;
+    public void onJumpTap(String suggestion) {
+        setSearchTerm(suggestion);
     }
 
     /**
-     * Send a search intent and put the widget into waiting.
+     * Sets the search term in the search bar. If the SearchFragment is
+     * in State.RUNNING, this will also update the search suggestions.
+     *
+     * @param searchTerm
      */
-    private void startSearch(String queryString) {
-        if (getActivity() instanceof AcceptsSearchQuery) {
-            editText.setText(queryString);
-            editText.setSelection(queryString.length());
-            transitionToWaiting();
-            ((AcceptsSearchQuery) getActivity()).onSearch(queryString);
-        } else {
-            throw new RuntimeException("Parent activity does not implement AcceptsSearchQuery.");
-        }
+    public void setSearchTerm(String searchTerm) {
+        editText.setText(searchTerm);
     }
 
     private void transitionToWaiting() {
         if (state == State.WAITING) {
             return;
         }
-
-        setEditTextFocusable(false);
-        mainView.setClickable(false);
-
-        suggestionDropdown.setVisibility(View.GONE);
-        clearButton.setVisibility(View.GONE);
-
         state = State.WAITING;
+
+        mainView.setClickable(false);
+        editText.setActive(false);
+        suggestionDropdown.setVisibility(View.GONE);
     }
 
     private void transitionToRunning() {
         if (state == State.RUNNING) {
             return;
         }
-
-        setEditTextFocusable(true);
-        mainView.setClickable(true);
-
-        suggestionDropdown.setVisibility(View.VISIBLE);
-        clearButton.setVisibility(View.VISIBLE);
-
         state = State.RUNNING;
+
+        mainView.setClickable(true);
+        editText.setActive(true);
+        suggestionDropdown.setVisibility(View.VISIBLE);
     }
 
-    private void setEditTextFocusable(boolean focusable) {
-        editText.setFocusable(focusable);
-        editText.setFocusableInTouchMode(focusable);
+    public static class Suggestion {
 
-        if (focusable) {
-            editText.requestFocus();
-            inputMethodManager.showSoftInput(editText, InputMethodManager.SHOW_IMPLICIT);
-        } else {
-            editText.clearFocus();
-            inputMethodManager.hideSoftInputFromWindow(editText.getWindowToken(), 0);
-        }
-    }
+        private static final ForegroundColorSpan COLOR_SPAN =
+                new ForegroundColorSpan(SUGGESTION_HIGHLIGHT_COLOR);
 
-    @Override
-    public void onJumpTap(String suggestion) {
-        editText.setText(suggestion);
-        // Move cursor to end of search input.
-        editText.setSelection(suggestion.length());
-    }
+        public final String value;
+        public final SpannableString display;
 
-    private class SuggestionLoaderCallbacks implements LoaderManager.LoaderCallbacks<List<String>> {
-        @Override
-        public Loader<List<String>> onCreateLoader(int id, Bundle args) {
-            // suggestClient is set to null in onDestroyView(), so using it
-            // safely here relies on the fact that onCreateLoader() is called
-            // synchronously in restartLoader().
-            return new SuggestionAsyncLoader(getActivity(), suggestClient, args.getString(KEY_SEARCH_TERM));
-        }
+        public Suggestion(String value, String searchTerm) {
+            this.value = value;
 
-        @Override
-        public void onLoadFinished(Loader<List<String>> loader, List<String> suggestions) {
-            autoCompleteAdapter.update(suggestions);
-        }
+            display = new SpannableString(value);
 
-        @Override
-        public void onLoaderReset(Loader<List<String>> loader) {
-            if (autoCompleteAdapter != null) {
-                autoCompleteAdapter.update(null);
+            // Highlight mixed-case matches.
+            final int start = value.toLowerCase().indexOf(searchTerm.toLowerCase());
+            if (start >= 0) {
+                display.setSpan(COLOR_SPAN, start, start + searchTerm.length(), 0);
             }
         }
     }
 
-    private static class SuggestionAsyncLoader extends AsyncTaskLoader<List<String>> {
+    private class SuggestionLoaderCallbacks implements LoaderManager.LoaderCallbacks<List<Suggestion>> {
+        @Override
+        public Loader<List<Suggestion>> onCreateLoader(int id, Bundle args) {
+            return new SuggestionAsyncLoader(getActivity(), suggestClient, args.getString(KEY_SEARCH_TERM));
+        }
+
+        @Override
+        public void onLoadFinished(Loader<List<Suggestion>> loader, List<Suggestion> suggestions) {
+            autoCompleteAdapter.update(suggestions);
+        }
+
+        @Override
+        public void onLoaderReset(Loader<List<Suggestion>> loader) {
+            autoCompleteAdapter.update(null);
+        }
+    }
+
+    private static class SuggestionAsyncLoader extends AsyncTaskLoader<List<Suggestion>> {
         private final SuggestClient suggestClient;
         private final String searchTerm;
-        private List<String> suggestions;
+        private List<Suggestion> suggestions;
 
         public SuggestionAsyncLoader(Context context, SuggestClient suggestClient, String searchTerm) {
             super(context);
@@ -287,12 +256,19 @@ public class SearchFragment extends Fragment
         }
 
         @Override
-        public List<String> loadInBackground() {
-            return suggestClient.query(searchTerm);
+        public List<Suggestion> loadInBackground() {
+            final List<String> values = suggestClient.query(searchTerm);
+
+            final List<Suggestion> result = new ArrayList<Suggestion>(values.size());
+            for (String value : values) {
+                result.add(new Suggestion(value, searchTerm));
+            }
+
+            return result;
         }
 
         @Override
-        public void deliverResult(List<String> suggestions) {
+        public void deliverResult(List<Suggestion> suggestions) {
             this.suggestions = suggestions;
 
             if (isStarted()) {

@@ -109,6 +109,7 @@ using mozilla::image::ImageOps;
 using mozilla::image::Orientation;
 
 #define GRID_ENABLED_PREF_NAME "layout.css.grid.enabled"
+#define RUBY_ENABLED_PREF_NAME "layout.css.ruby.enabled"
 #define STICKY_ENABLED_PREF_NAME "layout.css.sticky.enabled"
 #define TEXT_ALIGN_TRUE_ENABLED_PREF_NAME "layout.css.text-align-true-value.enabled"
 
@@ -183,6 +184,78 @@ GridEnabledPrefChangeCallback(const char* aPrefName, void* aClosure)
   if (sIndexOfInlineGridInDisplayTable >= 0) {
     nsCSSProps::kDisplayKTable[sIndexOfInlineGridInDisplayTable] =
       isGridEnabled ? eCSSKeyword_inline_grid : eCSSKeyword_UNKNOWN;
+  }
+}
+
+static void
+RubyEnabledPrefChangeCallback(const char* aPrefName, void* aClosure)
+{
+  MOZ_ASSERT(strncmp(aPrefName, RUBY_ENABLED_PREF_NAME,
+                     ArrayLength(RUBY_ENABLED_PREF_NAME)) == 0,
+             "We only registered this callback for a single pref, so it "
+             "should only be called for that pref");
+
+  static int32_t sIndexOfRubyInDisplayTable;
+  static int32_t sIndexOfRubyBaseInDisplayTable;
+  static int32_t sIndexOfRubyBaseContainerInDisplayTable;
+  static int32_t sIndexOfRubyTextInDisplayTable;
+  static int32_t sIndexOfRubyTextContainerInDisplayTable;
+  static bool sAreRubyKeywordIndicesInitialized; // initialized to false
+
+  bool isRubyEnabled =
+    Preferences::GetBool(RUBY_ENABLED_PREF_NAME, false);
+  if (!sAreRubyKeywordIndicesInitialized) {
+    // First run: find the position of the ruby display values in
+    // kDisplayKTable.
+    sIndexOfRubyInDisplayTable =
+      nsCSSProps::FindIndexOfKeyword(eCSSKeyword_ruby,
+                                     nsCSSProps::kDisplayKTable);
+    MOZ_ASSERT(sIndexOfRubyInDisplayTable >= 0,
+               "Couldn't find ruby in kDisplayKTable");
+    sIndexOfRubyBaseInDisplayTable =
+      nsCSSProps::FindIndexOfKeyword(eCSSKeyword_ruby_base,
+                                     nsCSSProps::kDisplayKTable);
+    MOZ_ASSERT(sIndexOfRubyBaseInDisplayTable >= 0,
+               "Couldn't find ruby-base in kDisplayKTable");
+    sIndexOfRubyBaseContainerInDisplayTable =
+      nsCSSProps::FindIndexOfKeyword(eCSSKeyword_ruby_base_container,
+                                     nsCSSProps::kDisplayKTable);
+    MOZ_ASSERT(sIndexOfRubyBaseContainerInDisplayTable >= 0,
+               "Couldn't find ruby-base-container in kDisplayKTable");
+    sIndexOfRubyTextInDisplayTable =
+      nsCSSProps::FindIndexOfKeyword(eCSSKeyword_ruby_text,
+                                     nsCSSProps::kDisplayKTable);
+    MOZ_ASSERT(sIndexOfRubyTextInDisplayTable >= 0,
+               "Couldn't find ruby-text in kDisplayKTable");
+    sIndexOfRubyTextContainerInDisplayTable =
+      nsCSSProps::FindIndexOfKeyword(eCSSKeyword_ruby_text_container,
+                                     nsCSSProps::kDisplayKTable);
+    MOZ_ASSERT(sIndexOfRubyTextContainerInDisplayTable >= 0,
+               "Couldn't find ruby-text-container in kDisplayKTable");
+    sAreRubyKeywordIndicesInitialized = true;
+  }
+
+  // OK -- now, stomp on or restore the "ruby" entries in kDisplayKTable,
+  // depending on whether the ruby pref is enabled vs. disabled.
+  if (sIndexOfRubyInDisplayTable >= 0) {
+    nsCSSProps::kDisplayKTable[sIndexOfRubyInDisplayTable] =
+      isRubyEnabled ? eCSSKeyword_ruby : eCSSKeyword_UNKNOWN;
+  }
+  if (sIndexOfRubyBaseInDisplayTable >= 0) {
+    nsCSSProps::kDisplayKTable[sIndexOfRubyBaseInDisplayTable] =
+      isRubyEnabled ? eCSSKeyword_ruby_base : eCSSKeyword_UNKNOWN;
+  }
+  if (sIndexOfRubyBaseContainerInDisplayTable >= 0) {
+    nsCSSProps::kDisplayKTable[sIndexOfRubyBaseContainerInDisplayTable] =
+      isRubyEnabled ? eCSSKeyword_ruby_base_container : eCSSKeyword_UNKNOWN;
+  }
+  if (sIndexOfRubyTextInDisplayTable >= 0) {
+    nsCSSProps::kDisplayKTable[sIndexOfRubyTextInDisplayTable] =
+      isRubyEnabled ? eCSSKeyword_ruby_text : eCSSKeyword_UNKNOWN;
+  }
+  if (sIndexOfRubyTextContainerInDisplayTable >= 0) {
+    nsCSSProps::kDisplayKTable[sIndexOfRubyTextContainerInDisplayTable] =
+      isRubyEnabled ? eCSSKeyword_ruby_text_container : eCSSKeyword_UNKNOWN;
   }
 }
 
@@ -856,11 +929,14 @@ nsLayoutUtils::SetDisplayPortMargins(nsIContent* aContent,
                             aMargins, aAlignmentX, aAlignmentY, aPriority),
                         nsINode::DeleteProperty<DisplayPortMarginsPropertyData>);
 
-  nsIFrame* rootScrollFrame = aPresShell->GetRootScrollFrame();
-  if (rootScrollFrame && aContent == rootScrollFrame->GetContent()) {
-    // We are setting a root displayport for a document.
-    // The pres shell needs a special flag set.
-    aPresShell->SetIgnoreViewportScrolling(true);
+  if (gfxPrefs::AsyncPanZoomEnabled()) {
+    nsIFrame* rootScrollFrame = aPresShell->GetRootScrollFrame();
+    if (rootScrollFrame && aContent == rootScrollFrame->GetContent()) {
+      // We are setting a root displayport for a document.
+      // If we have APZ, then set a special flag on the pres shell so
+      // that we don't get scrollbars drawn.
+      aPresShell->SetIgnoreViewportScrolling(true);
+    }
   }
 
   if (aRepaintMode == RepaintMode::Repaint) {
@@ -1918,21 +1994,6 @@ nsLayoutUtils::GetPopupFrameForEventCoordinates(nsPresContext* aPresContext,
   return nullptr;
 }
 
-gfx3DMatrix
-nsLayoutUtils::ChangeMatrixBasis(const gfxPoint3D &aOrigin,
-                                 const gfx3DMatrix &aMatrix)
-{
-  gfx3DMatrix result = aMatrix;
-
-  /* Translate to the origin before aMatrix */
-  result.Translate(-aOrigin);
-
-  /* Translate back into position after aMatrix */
-  result.TranslatePost(aOrigin);
-
-  return result; 
-}
-
 static void ConstrainToCoordValues(float& aStart, float& aSize)
 {
   MOZ_ASSERT(aSize >= 0);
@@ -2057,6 +2118,34 @@ nsLayoutUtils::RoundedRectIntersectRect(const nsRect& aRoundedRect,
   r2.IntersectRect(rectFullWidth, aContainedRect);
 
   nsRegion result;
+  result.Or(r1, r2);
+  return result;
+}
+
+nsIntRegion
+nsLayoutUtils::RoundedRectIntersectIntRect(const nsIntRect& aRoundedRect,
+                                           const gfxCornerSizes& aCorners,
+                                           const nsIntRect& aContainedRect)
+{
+  // rectFullHeight and rectFullWidth together will approximately contain
+  // the total area of the frame minus the rounded corners.
+  nsIntRect rectFullHeight = aRoundedRect;
+  uint32_t xDiff = std::max(aCorners.TopLeft().width, aCorners.BottomLeft().width);
+  rectFullHeight.x += xDiff;
+  rectFullHeight.width -= std::max(aCorners.TopRight().width,
+                                   aCorners.BottomRight().width) + xDiff;
+  nsIntRect r1;
+  r1.IntersectRect(rectFullHeight, aContainedRect);
+
+  nsIntRect rectFullWidth = aRoundedRect;
+  uint32_t yDiff = std::max(aCorners.TopLeft().height, aCorners.TopRight().height);
+  rectFullWidth.y += yDiff;
+  rectFullWidth.height -= std::max(aCorners.BottomLeft().height,
+                                   aCorners.BottomRight().height) + yDiff;
+  nsIntRect r2;
+  r2.IntersectRect(rectFullWidth, aContainedRect);
+
+  nsIntRegion result;
   result.Or(r1, r2);
   return result;
 }
@@ -3479,11 +3568,11 @@ nsLayoutUtils::IsViewportScrollbarFrame(nsIFrame* aFrame)
            IsProperAncestorFrame(rootScrolledFrame, aFrame));
 }
 
-static nscoord AddPercents(nsLayoutUtils::IntrinsicWidthType aType,
+static nscoord AddPercents(nsLayoutUtils::IntrinsicISizeType aType,
                            nscoord aCurrent, float aPercent)
 {
   nscoord result = aCurrent;
-  if (aPercent > 0.0f && aType == nsLayoutUtils::PREF_WIDTH) {
+  if (aPercent > 0.0f && aType == nsLayoutUtils::PREF_ISIZE) {
     // XXX Should we also consider percentages for min widths, up to a
     // limit?
     if (aPercent >= 1.0f)
@@ -3591,7 +3680,8 @@ GetPercentHeight(const nsStyleCoord& aStyle,
     if (minh > h)
       h = minh;
   } else {
-    NS_ASSERTION(pos->mMinHeight.HasPercent(),
+    NS_ASSERTION(pos->mMinHeight.HasPercent() ||
+                 pos->mMinHeight.GetUnit() == eStyleUnit_Auto,
                  "unknown min-height unit");
   }
 
@@ -3648,9 +3738,9 @@ GetIntrinsicCoord(const nsStyleCoord& aStyle,
   AutoMaybeDisableFontInflation an(aFrame);
 
   if (val == NS_STYLE_WIDTH_MAX_CONTENT)
-    aResult = aFrame->GetPrefWidth(aRenderingContext);
+    aResult = aFrame->GetPrefISize(aRenderingContext);
   else
-    aResult = aFrame->GetMinWidth(aRenderingContext);
+    aResult = aFrame->GetMinISize(aRenderingContext);
   return true;
 }
 
@@ -3665,25 +3755,25 @@ static int32_t gNoiseIndent = 0;
 /* static */ nscoord
 nsLayoutUtils::IntrinsicForContainer(nsRenderingContext *aRenderingContext,
                                      nsIFrame *aFrame,
-                                     IntrinsicWidthType aType,
+                                     IntrinsicISizeType aType,
                                      uint32_t aFlags)
 {
   NS_PRECONDITION(aFrame, "null frame");
-  NS_PRECONDITION(aType == MIN_WIDTH || aType == PREF_WIDTH, "bad type");
+  NS_PRECONDITION(aType == MIN_ISIZE || aType == PREF_ISIZE, "bad type");
 
 #ifdef DEBUG_INTRINSIC_WIDTH
   nsFrame::IndentBy(stderr, gNoiseIndent);
   static_cast<nsFrame*>(aFrame)->ListTag(stderr);
   printf_stderr(" %s intrinsic width for container:\n",
-         aType == MIN_WIDTH ? "min" : "pref");
+         aType == MIN_ISIZE ? "min" : "pref");
 #endif
 
   // If aFrame is a container for font size inflation, then shrink
   // wrapping inside of it should not apply font size inflation.
   AutoMaybeDisableFontInflation an(aFrame);
 
-  nsIFrame::IntrinsicWidthOffsetData offsets =
-    aFrame->IntrinsicWidthOffsets(aRenderingContext);
+  nsIFrame::IntrinsicISizeOffsetData offsets =
+    aFrame->IntrinsicISizeOffsets(aRenderingContext);
 
   const nsStylePosition *stylePos = aFrame->StylePosition();
   uint8_t boxSizing = stylePos->mBoxSizing;
@@ -3706,7 +3796,19 @@ nsLayoutUtils::IntrinsicForContainer(nsRenderingContext *aRenderingContext,
   nscoord maxw;
   bool haveFixedMaxWidth = GetAbsoluteCoord(styleMaxWidth, maxw);
   nscoord minw;
-  bool haveFixedMinWidth = GetAbsoluteCoord(styleMinWidth, minw);
+
+  // Treat "min-width: auto" as 0.
+  bool haveFixedMinWidth;
+  if (eStyleUnit_Auto == styleMinWidth.GetUnit()) {
+    // NOTE: Technically, "auto" is supposed to behave like "min-content" on
+    // flex items. However, we don't need to worry about that here, because
+    // flex items' min-sizes are intentionally ignored until the flex
+    // container explicitly considers them during space distribution.
+    minw = 0;
+    haveFixedMinWidth = true;
+  } else {
+    haveFixedMinWidth = GetAbsoluteCoord(styleMinWidth, minw);
+  }
 
   // If we have a specified width (or a specified 'min-width' greater
   // than the specified 'max-width', which works out to the same thing),
@@ -3726,26 +3828,32 @@ nsLayoutUtils::IntrinsicForContainer(nsRenderingContext *aRenderingContext,
 #ifdef DEBUG_INTRINSIC_WIDTH
     ++gNoiseIndent;
 #endif
-    if (aType == MIN_WIDTH)
-      result = aFrame->GetMinWidth(aRenderingContext);
+    if (aType == MIN_ISIZE)
+      result = aFrame->GetMinISize(aRenderingContext);
     else
-      result = aFrame->GetPrefWidth(aRenderingContext);
+      result = aFrame->GetPrefISize(aRenderingContext);
 #ifdef DEBUG_INTRINSIC_WIDTH
     --gNoiseIndent;
     nsFrame::IndentBy(stderr, gNoiseIndent);
     static_cast<nsFrame*>(aFrame)->ListTag(stderr);
     printf_stderr(" %s intrinsic width from frame is %d.\n",
-           aType == MIN_WIDTH ? "min" : "pref", result);
+           aType == MIN_ISIZE ? "min" : "pref", result);
 #endif
 
     // Handle elements with an intrinsic ratio (or size) and a specified
     // height, min-height, or max-height.
+    // NOTE: We treat "min-height:auto" as "0" for the purpose of this code,
+    // since that's what it means in all cases except for on flex items -- and
+    // even there, we're supposed to ignore it (i.e. treat it as 0) until the
+    // flex container explicitly considers it.
     const nsStyleCoord &styleHeight = stylePos->mHeight;
     const nsStyleCoord &styleMinHeight = stylePos->mMinHeight;
     const nsStyleCoord &styleMaxHeight = stylePos->mMaxHeight;
+
     if (styleHeight.GetUnit() != eStyleUnit_Auto ||
-        !(styleMinHeight.GetUnit() == eStyleUnit_Coord &&
-          styleMinHeight.GetCoordValue() == 0) ||
+        !(styleMinHeight.GetUnit() == eStyleUnit_Auto || 
+          (styleMinHeight.GetUnit() == eStyleUnit_Coord &&
+           styleMinHeight.GetCoordValue() == 0)) ||
         styleMaxHeight.GetUnit() != eStyleUnit_None) {
 
       nsSize ratio = aFrame->GetIntrinsicRatio();
@@ -3808,7 +3916,7 @@ nsLayoutUtils::IntrinsicForContainer(nsRenderingContext *aRenderingContext,
   if (aFrame->GetType() == nsGkAtoms::tableFrame) {
     // Tables can't shrink smaller than their intrinsic minimum width,
     // no matter what.
-    min = aFrame->GetMinWidth(aRenderingContext);
+    min = aFrame->GetMinISize(aRenderingContext);
   }
 
   // We also need to track what has been added on outside of the box
@@ -3860,7 +3968,7 @@ nsLayoutUtils::IntrinsicForContainer(nsRenderingContext *aRenderingContext,
                         PROP_WIDTH, w)) {
     result = AddPercents(aType, w + coordOutsideWidth, pctOutsideWidth);
   }
-  else if (aType == MIN_WIDTH &&
+  else if (aType == MIN_ISIZE &&
            // The only cases of coord-percent-calc() units that
            // GetAbsoluteCoord didn't handle are percent and calc()s
            // containing percent.
@@ -3921,7 +4029,7 @@ nsLayoutUtils::IntrinsicForContainer(nsRenderingContext *aRenderingContext,
   nsFrame::IndentBy(stderr, gNoiseIndent);
   static_cast<nsFrame*>(aFrame)->ListTag(stderr);
   printf_stderr(" %s intrinsic width for container is %d twips.\n",
-         aType == MIN_WIDTH ? "min" : "pref", result);
+         aType == MIN_ISIZE ? "min" : "pref", result);
 #endif
 
   return result;
@@ -3980,17 +4088,17 @@ nsLayoutUtils::ComputeWidthValue(
     int32_t val = aCoord.GetIntValue();
     switch (val) {
       case NS_STYLE_WIDTH_MAX_CONTENT:
-        result = aFrame->GetPrefWidth(aRenderingContext);
+        result = aFrame->GetPrefISize(aRenderingContext);
         NS_ASSERTION(result >= 0, "width less than zero");
         break;
       case NS_STYLE_WIDTH_MIN_CONTENT:
-        result = aFrame->GetMinWidth(aRenderingContext);
+        result = aFrame->GetMinISize(aRenderingContext);
         NS_ASSERTION(result >= 0, "width less than zero");
         break;
       case NS_STYLE_WIDTH_FIT_CONTENT:
         {
-          nscoord pref = aFrame->GetPrefWidth(aRenderingContext),
-                   min = aFrame->GetMinWidth(aRenderingContext),
+          nscoord pref = aFrame->GetPrefISize(aRenderingContext),
+                   min = aFrame->GetMinISize(aRenderingContext),
                   fill = aContainingBlockWidth -
                          (aBoxSizingToMarginEdge + aContentEdgeToBoxSizing);
           result = std::max(min, std::min(pref, fill));
@@ -4055,7 +4163,7 @@ nsLayoutUtils::MarkDescendantsDirty(nsIFrame *aSubtreeRoot)
       nsIFrame *f = stack.ElementAt(stack.Length() - 1);
       stack.RemoveElementAt(stack.Length() - 1);
 
-      f->MarkIntrinsicWidthsDirty();
+      f->MarkIntrinsicISizesDirty();
 
       if (f->GetType() == nsGkAtoms::placeholderFrame) {
         nsIFrame *oof = nsPlaceholderFrame::GetRealFrameForPlaceholder(f);
@@ -4161,20 +4269,23 @@ nsLayoutUtils::ComputeSizeWithIntrinsicDimensions(
                  aFrame, aCBSize.width, boxSizingAdjust.width,
                  boxSizingToMarginEdgeWidth, stylePos->mMaxWidth);
   } else {
-    // NOTE: Flex items ignore their min & max sizing properties in their
-    // flex container's main-axis.  (Those properties get applied later in
-    // the flexbox algorithm.)
     maxWidth = nscoord_MAX;
   }
 
-  if (!(isFlexItem && isHorizontalFlexItem)) {
+  // NOTE: Flex items ignore their min & max sizing properties in their
+  // flex container's main-axis.  (Those properties get applied later in
+  // the flexbox algorithm.)
+  if (stylePos->mMinWidth.GetUnit() != eStyleUnit_Auto &&
+      !(isFlexItem && isHorizontalFlexItem)) {
     minWidth = nsLayoutUtils::ComputeWidthValue(aRenderingContext,
                  aFrame, aCBSize.width, boxSizingAdjust.width,
                  boxSizingToMarginEdgeWidth, stylePos->mMinWidth);
   } else {
-    // NOTE: Flex items ignore their min & max sizing properties in their
-    // flex container's main-axis.  (Those properties get applied later in
-    // the flexbox algorithm.)
+    // Treat "min-width: auto" as 0.
+    // NOTE: Technically, "auto" is supposed to behave like "min-content" on
+    // flex items. However, we don't need to worry about that here, because
+    // flex items' min-sizes are intentionally ignored until the flex
+    // container explicitly considers them during space distribution.
     minWidth = 0;
   }
 
@@ -4207,31 +4318,31 @@ nsLayoutUtils::ComputeSizeWithIntrinsicDimensions(
   NS_ASSERTION(aCBSize.width != NS_UNCONSTRAINEDSIZE,
                "Our containing block must not have unconstrained width!");
 
-  bool hasIntrinsicWidth, hasIntrinsicHeight;
-  nscoord intrinsicWidth, intrinsicHeight;
+  bool hasIntrinsicISize, hasIntrinsicBSize;
+  nscoord intrinsicISize, intrinsicBSize;
 
   if (aIntrinsicSize.width.GetUnit() == eStyleUnit_Coord) {
-    hasIntrinsicWidth = true;
-    intrinsicWidth = aIntrinsicSize.width.GetCoordValue();
-    if (intrinsicWidth < 0)
-      intrinsicWidth = 0;
+    hasIntrinsicISize = true;
+    intrinsicISize = aIntrinsicSize.width.GetCoordValue();
+    if (intrinsicISize < 0)
+      intrinsicISize = 0;
   } else {
     NS_ASSERTION(aIntrinsicSize.width.GetUnit() == eStyleUnit_None,
                  "unexpected unit");
-    hasIntrinsicWidth = false;
-    intrinsicWidth = 0;
+    hasIntrinsicISize = false;
+    intrinsicISize = 0;
   }
 
   if (aIntrinsicSize.height.GetUnit() == eStyleUnit_Coord) {
-    hasIntrinsicHeight = true;
-    intrinsicHeight = aIntrinsicSize.height.GetCoordValue();
-    if (intrinsicHeight < 0)
-      intrinsicHeight = 0;
+    hasIntrinsicBSize = true;
+    intrinsicBSize = aIntrinsicSize.height.GetCoordValue();
+    if (intrinsicBSize < 0)
+      intrinsicBSize = 0;
   } else {
     NS_ASSERTION(aIntrinsicSize.height.GetUnit() == eStyleUnit_None,
                  "unexpected unit");
-    hasIntrinsicHeight = false;
-    intrinsicHeight = 0;
+    hasIntrinsicBSize = false;
+    intrinsicBSize = 0;
   }
 
   NS_ASSERTION(aIntrinsicRatio.width >= 0 && aIntrinsicRatio.height >= 0,
@@ -4248,10 +4359,10 @@ nsLayoutUtils::ComputeSizeWithIntrinsicDimensions(
 
       nscoord tentWidth, tentHeight;
 
-      if (hasIntrinsicWidth) {
-        tentWidth = intrinsicWidth;
-      } else if (hasIntrinsicHeight && aIntrinsicRatio.height > 0) {
-        tentWidth = MULDIV(intrinsicHeight, aIntrinsicRatio.width, aIntrinsicRatio.height);
+      if (hasIntrinsicISize) {
+        tentWidth = intrinsicISize;
+      } else if (hasIntrinsicBSize && aIntrinsicRatio.height > 0) {
+        tentWidth = MULDIV(intrinsicBSize, aIntrinsicRatio.width, aIntrinsicRatio.height);
       } else if (aIntrinsicRatio.width > 0) {
         tentWidth = aCBSize.width - boxSizingToMarginEdgeWidth; // XXX scrollbar?
         if (tentWidth < 0) tentWidth = 0;
@@ -4259,8 +4370,8 @@ nsLayoutUtils::ComputeSizeWithIntrinsicDimensions(
         tentWidth = nsPresContext::CSSPixelsToAppUnits(300);
       }
 
-      if (hasIntrinsicHeight) {
-        tentHeight = intrinsicHeight;
+      if (hasIntrinsicBSize) {
+        tentHeight = intrinsicBSize;
       } else if (aIntrinsicRatio.width > 0) {
         tentHeight = MULDIV(tentWidth, aIntrinsicRatio.height, aIntrinsicRatio.width);
       } else {
@@ -4276,8 +4387,8 @@ nsLayoutUtils::ComputeSizeWithIntrinsicDimensions(
       height = NS_CSS_MINMAX(height, minHeight, maxHeight);
       if (aIntrinsicRatio.height > 0) {
         width = MULDIV(height, aIntrinsicRatio.width, aIntrinsicRatio.height);
-      } else if (hasIntrinsicWidth) {
-        width = intrinsicWidth;
+      } else if (hasIntrinsicISize) {
+        width = intrinsicISize;
       } else {
         width = nsPresContext::CSSPixelsToAppUnits(300);
       }
@@ -4291,8 +4402,8 @@ nsLayoutUtils::ComputeSizeWithIntrinsicDimensions(
       width = NS_CSS_MINMAX(width, minWidth, maxWidth);
       if (aIntrinsicRatio.width > 0) {
         height = MULDIV(width, aIntrinsicRatio.height, aIntrinsicRatio.width);
-      } else if (hasIntrinsicHeight) {
-        height = intrinsicHeight;
+      } else if (hasIntrinsicBSize) {
+        height = intrinsicBSize;
       } else {
         height = nsPresContext::CSSPixelsToAppUnits(150);
       }
@@ -4402,29 +4513,29 @@ nsLayoutUtils::ComputeAutoSizeWithIntrinsicDimensions(nscoord minWidth, nscoord 
 }
 
 /* static */ nscoord
-nsLayoutUtils::MinWidthFromInline(nsIFrame* aFrame,
+nsLayoutUtils::MinISizeFromInline(nsIFrame* aFrame,
                                   nsRenderingContext* aRenderingContext)
 {
   NS_ASSERTION(!aFrame->IsContainerForFontSizeInflation(),
                "should not be container for font size inflation");
 
-  nsIFrame::InlineMinWidthData data;
+  nsIFrame::InlineMinISizeData data;
   DISPLAY_MIN_WIDTH(aFrame, data.prevLines);
-  aFrame->AddInlineMinWidth(aRenderingContext, &data);
+  aFrame->AddInlineMinISize(aRenderingContext, &data);
   data.ForceBreak(aRenderingContext);
   return data.prevLines;
 }
 
 /* static */ nscoord
-nsLayoutUtils::PrefWidthFromInline(nsIFrame* aFrame,
+nsLayoutUtils::PrefISizeFromInline(nsIFrame* aFrame,
                                    nsRenderingContext* aRenderingContext)
 {
   NS_ASSERTION(!aFrame->IsContainerForFontSizeInflation(),
                "should not be container for font size inflation");
 
-  nsIFrame::InlinePrefWidthData data;
+  nsIFrame::InlinePrefISizeData data;
   DISPLAY_PREF_WIDTH(aFrame, data.prevLines);
-  aFrame->AddInlinePrefWidth(aRenderingContext, &data);
+  aFrame->AddInlinePrefISize(aRenderingContext, &data);
   data.ForceBreak(aRenderingContext);
   return data.prevLines;
 }
@@ -5068,49 +5179,6 @@ DrawImageInternal(nsRenderingContext*    aRenderingContext,
                drawingParams.mFillRect, drawingParams.mSubimage, aImageSize,
                aSVGContext, imgIContainer::FRAME_CURRENT, aImageFlags);
   return NS_OK;
-}
-
-/* static */ void
-nsLayoutUtils::DrawPixelSnapped(nsRenderingContext* aRenderingContext,
-                                nsPresContext*       aPresContext,
-                                gfxDrawable*         aDrawable,
-                                GraphicsFilter       aFilter,
-                                const nsRect&        aDest,
-                                const nsRect&        aFill,
-                                const nsPoint&       aAnchor,
-                                const nsRect&        aDirty)
-{
-  int32_t appUnitsPerDevPixel =
-    aPresContext->AppUnitsPerDevPixel();
-  gfxContext* ctx = aRenderingContext->ThebesContext();
-  gfxIntSize drawableSize = aDrawable->Size();
-  nsIntSize imageSize(drawableSize.width, drawableSize.height);
-
-  SnappedImageDrawingParameters drawingParams =
-    ComputeSnappedImageDrawingParameters(ctx, appUnitsPerDevPixel, aDest, aFill,
-                                         aAnchor, aDirty, imageSize);
-
-  if (!drawingParams.mShouldDraw)
-    return;
-
-  gfxContextMatrixAutoSaveRestore saveMatrix(ctx);
-  if (drawingParams.mResetCTM) {
-    ctx->IdentityMatrix();
-  }
-
-  gfxRect sourceRect =
-    drawingParams.mUserSpaceToImageSpace.Transform(drawingParams.mFillRect);
-  gfxRect imageRect(0, 0, imageSize.width, imageSize.height);
-  gfxRect subimage(drawingParams.mSubimage.x, drawingParams.mSubimage.y,
-                   drawingParams.mSubimage.width, drawingParams.mSubimage.height);
-
-  NS_ASSERTION(!sourceRect.Intersect(subimage).IsEmpty(),
-               "We must be allowed to sample *some* source pixels!");
-
-  gfxUtils::DrawPixelSnapped(ctx, aDrawable,
-                             drawingParams.mUserSpaceToImageSpace, subimage,
-                             sourceRect, imageRect, drawingParams.mFillRect,
-                             gfx::SurfaceFormat::B8G8R8A8, aFilter);
 }
 
 /* static */ nsresult
@@ -6062,6 +6130,9 @@ nsLayoutUtils::Initialize()
   Preferences::RegisterCallback(GridEnabledPrefChangeCallback,
                                 GRID_ENABLED_PREF_NAME);
   GridEnabledPrefChangeCallback(GRID_ENABLED_PREF_NAME, nullptr);
+  Preferences::RegisterCallback(RubyEnabledPrefChangeCallback,
+                                RUBY_ENABLED_PREF_NAME);
+  RubyEnabledPrefChangeCallback(RUBY_ENABLED_PREF_NAME, nullptr);
   Preferences::RegisterCallback(StickyEnabledPrefChangeCallback,
                                 STICKY_ENABLED_PREF_NAME);
   StickyEnabledPrefChangeCallback(STICKY_ENABLED_PREF_NAME, nullptr);
@@ -6084,6 +6155,8 @@ nsLayoutUtils::Shutdown()
 
   Preferences::UnregisterCallback(GridEnabledPrefChangeCallback,
                                   GRID_ENABLED_PREF_NAME);
+  Preferences::UnregisterCallback(RubyEnabledPrefChangeCallback,
+                                  RUBY_ENABLED_PREF_NAME);
   Preferences::UnregisterCallback(StickyEnabledPrefChangeCallback,
                                   STICKY_ENABLED_PREF_NAME);
 
@@ -6746,16 +6819,25 @@ nsLayoutUtils::WantSubAPZC()
   return wantSubAPZC;
 }
 
+/* static */ bool
+nsLayoutUtils::UsesAsyncScrolling()
+{
+#ifdef MOZ_WIDGET_ANDROID
+  // We always have async scrolling for android
+  return true;
+#endif
+
+  return gfxPrefs::AsyncPanZoomEnabled();
+}
+
 /* static */ void
-nsLayoutUtils::DoLogTestDataForPaint(nsIPresShell* aPresShell,
+nsLayoutUtils::DoLogTestDataForPaint(LayerManager* aManager,
                                      ViewID aScrollId,
                                      const std::string& aKey,
                                      const std::string& aValue)
 {
-  nsRefPtr<LayerManager> lm = aPresShell->GetPresContext()->GetRootPresContext()
-      ->GetPresShell()->GetLayerManager();
-  if (lm && lm->GetBackendType() == LayersBackend::LAYERS_CLIENT) {
-    static_cast<ClientLayerManager*>(lm.get())->LogTestDataForCurrentPaint(aScrollId, aKey, aValue);
+  if (aManager->GetBackendType() == LayersBackend::LAYERS_CLIENT) {
+    static_cast<ClientLayerManager*>(aManager)->LogTestDataForCurrentPaint(aScrollId, aKey, aValue);
   }
 }
 

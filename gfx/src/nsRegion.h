@@ -17,6 +17,7 @@
 #include "nsMargin.h"                   // for nsIntMargin
 #include "nsStringGlue.h"               // for nsCString
 #include "xpcom-config.h"               // for CPP_THROW_NEW
+#include "mozilla/TypedEnum.h"          // for the VisitEdges typed enum
 
 class nsIntRegion;
 class gfx3DMatrix;
@@ -36,6 +37,13 @@ class gfx3DMatrix;
  * The pixman region code originates from X11 which has spread to a variety of
  * projects including Qt, Gtk, Wine. It should perform reasonably well.
  */
+
+MOZ_BEGIN_ENUM_CLASS(VisitSide)
+	TOP,
+	BOTTOM,
+	LEFT,
+	RIGHT
+MOZ_END_ENUM_CLASS(VisitSide)
 
 class nsRegionRectIterator;
 
@@ -76,6 +84,14 @@ public:
   static
   void ShutdownStatic() {}
 
+  void AndWith(const nsRegion& aOther)
+  {
+    And(*this, aOther);
+  }
+  void AndWith(const nsRect& aOther)
+  {
+    And(*this, aOther);
+  }
   nsRegion& And(const nsRegion& aRgn1,   const nsRegion& aRgn2)
   {
     pixman_region32_intersect(&mImpl, aRgn1.Impl(), aRgn2.Impl());
@@ -98,6 +114,14 @@ public:
     return Copy(TmpRect);
   }
 
+  void OrWith(const nsRegion& aOther)
+  {
+    Or(*this, aOther);
+  }
+  void OrWith(const nsRect& aOther)
+  {
+    Or(*this, aOther);
+  }
   nsRegion& Or(const nsRegion& aRgn1, const nsRegion& aRgn2)
   {
     pixman_region32_union(&mImpl, aRgn1.Impl(), aRgn2.Impl());
@@ -118,6 +142,14 @@ public:
     return Or (*this, aRect2);
   }
 
+  void XorWith(const nsRegion& aOther)
+  {
+    Xor(*this, aOther);
+  }
+  void XorWith(const nsRect& aOther)
+  {
+    Xor(*this, aOther);
+  }
   nsRegion& Xor(const nsRegion& aRgn1,   const nsRegion& aRgn2)
   {
     // this could be implemented better if pixman had direct
@@ -142,6 +174,15 @@ public:
   }
 
   nsRegion ToAppUnits (nscoord aAppUnitsPerPixel) const;
+
+  void SubOut(const nsRegion& aOther)
+  {
+    Sub(*this, aOther);
+  }
+  void SubOut(const nsRect& aOther)
+  {
+    Sub(*this, aOther);
+  }
   nsRegion& Sub(const nsRegion& aRgn1, const nsRegion& aRgn2)
   {
     pixman_region32_subtract(&mImpl, aRgn1.Impl(), aRgn2.Impl());
@@ -161,6 +202,15 @@ public:
     return Sub(*this, aRect2);
   }
 
+  /**
+   * Returns true iff the given point is inside the region. A region
+   * created from a rect (x=0, y=0, w=100, h=100) will NOT contain
+   * the point x=100, y=100.
+   */
+  bool Contains (int aX, int aY) const
+  {
+    return pixman_region32_contains_point(Impl(), aX, aY, nullptr);
+  }
   bool Contains (const nsRect& aRect) const
   {
     pixman_box32_t box = RectToBox(aRect);
@@ -263,6 +313,21 @@ public:
    * original region.
    */
   void SimplifyInward (uint32_t aMaxRects);
+
+  /**
+   * VisitEdges is a weird kind of function that we use for padding
+   * out surfaces to prevent texture filtering artifacts.
+   * It calls the visitFn callback for each of the exterior edges of
+   * the regions. The top and bottom edges will be expanded 1 pixel
+   * to the left and right if there's an outside corner. The order
+   * the edges are visited is not guaranteed.
+   *
+   * visitFn has a side parameter that can be TOP,BOTTOM,LEFT,RIGHT
+   * and specifies which kind of edge is being visited. x1, y1, x2, y2
+   * are the coordinates of the line. (x1 == x2) || (y1 == y2)
+   */
+  typedef void (*visitFn)(void *closure, VisitSide side, int x1, int y1, int x2, int y2);
+  void VisitEdges(visitFn, void *closure);
 
   nsCString ToString() const;
 private:
@@ -402,6 +467,14 @@ public:
     mImpl.Swap(&aOther->mImpl);
   }
 
+  void AndWith(const nsIntRegion& aOther)
+  {
+    And(*this, aOther);
+  }
+  void AndWith(const nsIntRect& aOther)
+  {
+    And(*this, aOther);
+  }
   nsIntRegion& And  (const nsIntRegion& aRgn1,   const nsIntRegion& aRgn2)
   {
     mImpl.And (aRgn1.mImpl, aRgn2.mImpl);
@@ -425,6 +498,14 @@ public:
     return *this;
   }
 
+  void OrWith(const nsIntRegion& aOther)
+  {
+    Or(*this, aOther);
+  }
+  void OrWith(const nsIntRect& aOther)
+  {
+    Or(*this, aOther);
+  }
   nsIntRegion& Or   (const nsIntRegion& aRgn1,   const nsIntRegion& aRgn2)
   {
     mImpl.Or (aRgn1.mImpl, aRgn2.mImpl);
@@ -445,6 +526,14 @@ public:
     return Or (*this, aRect2);
   }
 
+  void XorWith(const nsIntRegion& aOther)
+  {
+    Xor(*this, aOther);
+  }
+  void XorWith(const nsIntRect& aOther)
+  {
+    Xor(*this, aOther);
+  }
   nsIntRegion& Xor  (const nsIntRegion& aRgn1,   const nsIntRegion& aRgn2)
   {
     mImpl.Xor (aRgn1.mImpl, aRgn2.mImpl);
@@ -465,6 +554,14 @@ public:
     return Xor (*this, aRect2);
   }
 
+  void SubOut(const nsIntRegion& aOther)
+  {
+    Sub(*this, aOther);
+  }
+  void SubOut(const nsIntRect& aOther)
+  {
+    Sub(*this, aOther);
+  }
   nsIntRegion& Sub  (const nsIntRegion& aRgn1,   const nsIntRegion& aRgn2)
   {
     mImpl.Sub (aRgn1.mImpl, aRgn2.mImpl);
@@ -485,6 +582,15 @@ public:
     return Sub (*this, aRect2);
   }
 
+  /**
+   * Returns true iff the given point is inside the region. A region
+   * created from a rect (x=0, y=0, w=100, h=100) will NOT contain
+   * the point x=100, y=100.
+   */
+  bool Contains (int aX, int aY) const
+  {
+    return mImpl.Contains(aX, aY);
+  }
   bool Contains (const nsIntRect& aRect) const
   {
     return mImpl.Contains (ToRect (aRect));
@@ -589,6 +695,12 @@ public:
   void SimplifyInward (uint32_t aMaxRects)
   {
     mImpl.SimplifyInward (aMaxRects);
+  }
+
+  typedef void (*visitFn)(void *closure, VisitSide side, int x1, int y1, int x2, int y2);
+  void VisitEdges (visitFn visit, void *closure)
+  {
+    mImpl.VisitEdges (visit, closure);
   }
 
   nsCString ToString() const { return mImpl.ToString(); }

@@ -81,6 +81,7 @@ public:
   TextureChild()
   : mForwarder(nullptr)
   , mTextureClient(nullptr)
+  , mKeep(nullptr)
   , mIPCOpen(false)
   {
   }
@@ -129,6 +130,7 @@ private:
   RefPtr<CompositableForwarder> mForwarder;
   RefPtr<TextureClient> mWaitForRecycle;
   TextureClient* mTextureClient;
+  KeepAlive* mKeep;
   bool mIPCOpen;
 
   friend class TextureClient;
@@ -147,6 +149,7 @@ TextureChild::ActorDestroy(ActorDestroyReason why)
     mTextureClient->mActor = nullptr;
   }
   mWaitForRecycle = nullptr;
+  delete mKeep;
 }
 
 // static
@@ -228,6 +231,25 @@ DisableGralloc(SurfaceFormat aFormat, const gfx::IntSize& aSizeHint)
   return false;
 }
 #endif
+
+static
+TemporaryRef<BufferTextureClient>
+CreateBufferTextureClient(ISurfaceAllocator* aAllocator,
+                          SurfaceFormat aFormat,
+                          TextureFlags aTextureFlags,
+                          gfx::BackendType aMoz2DBackend)
+{
+  if (aAllocator->IsSameProcess()) {
+    RefPtr<BufferTextureClient> result = new MemoryTextureClient(aAllocator, aFormat,
+                                                                 aMoz2DBackend,
+                                                                 aTextureFlags);
+    return result.forget();
+  }
+  RefPtr<BufferTextureClient> result = new ShmemTextureClient(aAllocator, aFormat,
+                                                              aMoz2DBackend,
+                                                              aTextureFlags);
+  return result.forget();
+}
 
 static
 TemporaryRef<TextureClient>
@@ -313,7 +335,7 @@ CreateTextureClientForDrawing(ISurfaceAllocator* aAllocator,
 
   // Can't do any better than a buffer texture client.
   if (!result) {
-    result = TextureClient::CreateBufferTextureClient(aAllocator, aFormat, aTextureFlags, aMoz2DBackend);
+    result = CreateBufferTextureClient(aAllocator, aFormat, aTextureFlags, aMoz2DBackend);
   }
 
   MOZ_ASSERT(!result || result->CanExposeDrawTarget(), "texture cannot expose a DrawTarget?");
@@ -387,24 +409,29 @@ TextureClient::CreateForYCbCr(ISurfaceAllocator* aAllocator,
   return texture;
 }
 
-
 // static
 TemporaryRef<BufferTextureClient>
-TextureClient::CreateBufferTextureClient(ISurfaceAllocator* aAllocator,
-                                         SurfaceFormat aFormat,
-                                         TextureFlags aTextureFlags,
-                                         gfx::BackendType aMoz2DBackend)
+TextureClient::CreateWithBufferSize(ISurfaceAllocator* aAllocator,
+                     gfx::SurfaceFormat aFormat,
+                     size_t aSize,
+                     TextureFlags aTextureFlags)
 {
+  RefPtr<BufferTextureClient> texture;
   if (aAllocator->IsSameProcess()) {
-    RefPtr<BufferTextureClient> result = new MemoryTextureClient(aAllocator, aFormat,
-                                                                 aMoz2DBackend,
-                                                                 aTextureFlags);
-    return result.forget();
+    texture = new MemoryTextureClient(aAllocator, gfx::SurfaceFormat::YUV,
+                                      gfx::BackendType::NONE,
+                                      aTextureFlags);
+  } else {
+    texture = new ShmemTextureClient(aAllocator, gfx::SurfaceFormat::YUV,
+                                     gfx::BackendType::NONE,
+                                     aTextureFlags);
   }
-  RefPtr<BufferTextureClient> result = new ShmemTextureClient(aAllocator, aFormat,
-                                                              aMoz2DBackend,
-                                                              aTextureFlags);
-  return result.forget();
+
+  if (!texture->Allocate(aSize)) {
+    return nullptr;
+  }
+
+  return texture;
 }
 
 TextureClient::TextureClient(TextureFlags aFlags)
@@ -417,6 +444,14 @@ TextureClient::~TextureClient()
 {
   // All the destruction code that may lead to virtual method calls must
   // be in Finalize() which is called just before the destructor.
+}
+
+void
+TextureClient::KeepUntilFullDeallocation(KeepAlive* aKeep)
+{
+  MOZ_ASSERT(mActor);
+  MOZ_ASSERT(!mActor->mKeep);
+  mActor->mKeep = aKeep;
 }
 
 void TextureClient::ForceRemove()
@@ -614,6 +649,19 @@ BufferTextureClient::BufferTextureClient(ISurfaceAllocator* aAllocator,
 
 BufferTextureClient::~BufferTextureClient()
 {}
+
+TemporaryRef<TextureClient>
+BufferTextureClient::CreateSimilar(TextureFlags aFlags,
+                                   TextureAllocationFlags aAllocFlags) const
+{
+  // This may return null
+  RefPtr<BufferTextureClient> newBufferTex = TextureClient::CreateForRawBufferAccess(
+    mAllocator, mFormat, mSize, mBackend, mFlags | aFlags, aAllocFlags
+  );
+
+  RefPtr<TextureClient> newTex = newBufferTex.get();
+  return newTex;
+}
 
 ISurfaceAllocator*
 BufferTextureClient::GetAllocator() const

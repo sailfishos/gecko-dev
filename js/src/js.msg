@@ -237,7 +237,7 @@ MSG_DEF(JSMSG_SC_NOT_TRANSFERABLE,    183, 0, JSEXN_TYPEERR, "invalid transferab
 MSG_DEF(JSMSG_SC_DUP_TRANSFERABLE,    184, 0, JSEXN_TYPEERR, "duplicate transferable for structured clone")
 MSG_DEF(JSMSG_CANT_REPORT_AS_NON_EXTENSIBLE, 185, 0, JSEXN_TYPEERR, "proxy can't report an extensible object as non-extensible")
 MSG_DEF(JSMSG_SYMBOL_TO_STRING,       186, 0, JSEXN_TYPEERR, "can't convert symbol to string")
-MSG_DEF(JSMSG_UNUSED187,              187, 0, JSEXN_NONE, "")
+MSG_DEF(JSMSG_OBJECT_METADATA_CALLBACK_ALREADY_SET, 187, 0, JSEXN_ERR, "Cannot track object allocation, because other tools are already doing so")
 MSG_DEF(JSMSG_INCOMPATIBLE_METHOD,    188, 3, JSEXN_TYPEERR, "{0} {1} called on incompatible {2}")
 MSG_DEF(JSMSG_SYMBOL_TO_PRIMITIVE,    189, 0, JSEXN_TYPEERR, "can't convert symbol object to primitive")
 MSG_DEF(JSMSG_UNUSED190,              190, 0, JSEXN_NONE, "")
@@ -441,3 +441,4 @@ MSG_DEF(JSMSG_PROXY_EXTENSIBILITY,      386, 0, JSEXN_TYPEERR, "proxy must repor
 MSG_DEF(JSMSG_PROXY_CONSTRUCT_OBJECT,   387, 0, JSEXN_TYPEERR, "proxy [[Construct]] must return an object")
 MSG_DEF(JSMSG_PROXY_GETOWN_OBJORUNDEF,  388, 0, JSEXN_TYPEERR, "proxy [[GetOwnProperty]] must return an object or undefined")
 MSG_DEF(JSMSG_CANT_REPORT_C_AS_NC,      389, 0, JSEXN_TYPEERR, "proxy can't report existing configurable property as non-configurable")
+MSG_DEF(JSMSG_PROXY_REVOKED,            390, 0, JSEXN_TYPEERR, "illegal operation attempted on a revoked proxy")

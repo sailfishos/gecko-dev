@@ -661,20 +661,6 @@ public:
                                        nsView* aView);
 
   /**
-   * Given a matrix and a point, let T be the transformation matrix translating points
-   * in the coordinate space with origin aOrigin to the coordinate space used by the
-   * matrix.  If M is the stored matrix, this function returns (T-1)MT, the matrix
-   * that's equivalent to aMatrix but in the coordinate space that treats aOrigin
-   * as the origin.
-   *
-   * @param aOrigin The origin to translate to.
-   * @param aMatrix The matrix to change the basis of.
-   * @return A matrix equivalent to aMatrix, but operating in the coordinate system with
-   *         origin aOrigin.
-   */
-  static gfx3DMatrix ChangeMatrixBasis(const gfxPoint3D &aOrigin, const gfx3DMatrix &aMatrix);
-
-  /**
    * Find IDs corresponding to a scrollable content element in the child process.
    * In correspondence with the shadow layer tree, you can use this to perform a
    * hit test that corresponds to a specific shadow layer that you can then perform
@@ -877,6 +863,9 @@ public:
   static nsRegion RoundedRectIntersectRect(const nsRect& aRoundedRect,
                                            const nscoord aRadii[8],
                                            const nsRect& aContainedRect);
+  static nsIntRegion RoundedRectIntersectIntRect(const nsIntRect& aRoundedRect,
+                                                 const gfxCornerSizes& aCorners,
+                                                 const nsIntRect& aContainedRect);
 
   /**
    * Return whether any part of aTestRect is inside of the rounded
@@ -1181,13 +1170,13 @@ public:
    * 'min-width', and 'max-width' properties, and its padding, border,
    * and margin.
    */
-  enum IntrinsicWidthType { MIN_WIDTH, PREF_WIDTH };
+  enum IntrinsicISizeType { MIN_ISIZE, PREF_ISIZE };
   enum {
     IGNORE_PADDING = 0x01
   };
   static nscoord IntrinsicForContainer(nsRenderingContext* aRenderingContext,
                                        nsIFrame* aFrame,
-                                       IntrinsicWidthType aType,
+                                       IntrinsicISizeType aType,
                                        uint32_t aFlags = 0);
 
   /*
@@ -1303,12 +1292,12 @@ public:
                                                        nscoord maxWidth, nscoord maxHeight,
                                                        nscoord tentWidth, nscoord tentHeight);
 
-  // Implement nsIFrame::GetPrefWidth in terms of nsIFrame::AddInlinePrefWidth
-  static nscoord PrefWidthFromInline(nsIFrame* aFrame,
+  // Implement nsIFrame::GetPrefISize in terms of nsIFrame::AddInlinePrefISize
+  static nscoord PrefISizeFromInline(nsIFrame* aFrame,
                                      nsRenderingContext* aRenderingContext);
 
-  // Implement nsIFrame::GetMinWidth in terms of nsIFrame::AddInlineMinWidth
-  static nscoord MinWidthFromInline(nsIFrame* aFrame,
+  // Implement nsIFrame::GetMinISize in terms of nsIFrame::AddInlineMinISize
+  static nscoord MinISizeFromInline(nsIFrame* aFrame,
                                     nsRenderingContext* aRenderingContext);
 
   // Get a suitable foreground color for painting aProperty for aFrame.
@@ -1493,30 +1482,6 @@ public:
    */
   static gfxRect RectToGfxRect(const nsRect& aRect,
                                int32_t aAppUnitsPerDevPixel);
-
-  /**
-   * Draw a drawable using the pixel snapping algorithm.
-   * See https://wiki.mozilla.org/Gecko:Image_Snapping_and_Rendering
-   *   @param aRenderingContext Where to draw the image, set up with an
-   *                            appropriate scale and transform for drawing in
-   *                            app units.
-   *   @param aDrawable         The drawable we want to draw.
-   *   @param aFilter           The graphics filter we should draw with.
-   *   @param aDest             Where one copy of the image should mapped to.
-   *   @param aFill             The area to be filled with copies of the
-   *                            image.
-   *   @param aAnchor           A point in aFill which we will ensure is
-   *                            pixel-aligned in the output.
-   *   @param aDirty            Pixels outside this area may be skipped.
-   */
-  static void DrawPixelSnapped(nsRenderingContext* aRenderingContext,
-                               nsPresContext*       aPresContext,
-                               gfxDrawable*         aDrawable,
-                               GraphicsFilter       aFilter,
-                               const nsRect&        aDest,
-                               const nsRect&        aFill,
-                               const nsPoint&       aAnchor,
-                               const nsRect&        aDirty);
 
   /**
    * Draw a whole image without scaling or tiling.
@@ -2233,20 +2198,25 @@ public:
   static bool WantSubAPZC();
 
   /**
+   * Returns true if we're using asynchronous scrolling (either through
+   * APZ or the android frontend).
+   */
+  static bool UsesAsyncScrolling();
+
+  /**
    * Log a key/value pair for APZ testing during a paint.
-   * @param aPresShell The pres shell that identifies where to log to. The data
-   *                   will be written to the APZTestData associated with the
-   *                   pres shell's layer manager.
+   * @param aManager   The data will be written to the APZTestData associated 
+   *                   with this layer manager.
    * @param aScrollId Identifies the scroll frame to which the data pertains.
    * @param aKey The key under which to log the data.
    * @param aValue The value of the data to be logged.
    */
-  static void LogTestDataForPaint(nsIPresShell* aPresShell,
+  static void LogTestDataForPaint(mozilla::layers::LayerManager* aManager,
                                   ViewID aScrollId,
                                   const std::string& aKey,
                                   const std::string& aValue) {
     if (IsAPZTestLoggingEnabled()) {
-      DoLogTestDataForPaint(aPresShell, aScrollId, aKey, aValue);
+      DoLogTestDataForPaint(aManager, aScrollId, aKey, aValue);
     }
   }
 
@@ -2256,12 +2226,12 @@ public:
    * value. The type passed must support streaming to an std::ostream.
    */
   template <typename Value>
-  static void LogTestDataForPaint(nsIPresShell* aPresShell,
+  static void LogTestDataForPaint(mozilla::layers::LayerManager* aManager,
                                   ViewID aScrollId,
                                   const std::string& aKey,
                                   const Value& aValue) {
     if (IsAPZTestLoggingEnabled()) {
-      DoLogTestDataForPaint(aPresShell, aScrollId, aKey,
+      DoLogTestDataForPaint(aManager, aScrollId, aKey,
           mozilla::ToString(aValue));
     }
   }
@@ -2303,7 +2273,7 @@ private:
   /**
    * Helper function for LogTestDataForPaint().
    */
-  static void DoLogTestDataForPaint(nsIPresShell* aPresShell,
+  static void DoLogTestDataForPaint(mozilla::layers::LayerManager* aManager,
                                     ViewID aScrollId,
                                     const std::string& aKey,
                                     const std::string& aValue);

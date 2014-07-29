@@ -26,6 +26,7 @@
 #include "nsAutoPtr.h"                  // for nsRefPtr
 #include "nsCOMPtr.h"                   // for already_AddRefed
 #include "nsISupportsImpl.h"            // for TextureImage::AddRef, etc
+#include "GfxTexturesReporter.h"
 
 class gfxReusableSurfaceWrapper;
 class gfxImageSurface;
@@ -50,6 +51,7 @@ class PTextureChild;
 class TextureChild;
 class BufferTextureClient;
 class TextureClient;
+class KeepAlive;
 
 /**
  * TextureClient is the abstraction that allows us to share data between the
@@ -117,16 +119,6 @@ public:
   TextureClient(TextureFlags aFlags = TextureFlags::DEFAULT);
   virtual ~TextureClient();
 
-  // Creates a TextureClient that can be accessed through a raw pointer.
-  // XXX - this doesn't allocate the texture data.
-  // Prefer CreateForRawBufferAccess which returns a BufferTextureClient
-  // only if allocation suceeded.
-  static TemporaryRef<BufferTextureClient>
-  CreateBufferTextureClient(ISurfaceAllocator* aAllocator,
-                            gfx::SurfaceFormat aFormat,
-                            TextureFlags aTextureFlags,
-                            gfx::BackendType aMoz2dBackend);
-
   // Creates and allocates a TextureClient usable with Moz2D.
   static TemporaryRef<TextureClient>
   CreateForDrawing(ISurfaceAllocator* aAllocator,
@@ -153,6 +145,35 @@ public:
                            gfx::BackendType aMoz2dBackend,
                            TextureFlags aTextureFlags,
                            TextureAllocationFlags flags = ALLOC_DEFAULT);
+
+  // Creates and allocates a BufferTextureClient (can beaccessed through raw
+  // pointers) with a certain buffer size. It's unfortunate that we need this.
+  // providing format and sizes could let us do more optimization.
+  static TemporaryRef<BufferTextureClient>
+  CreateWithBufferSize(ISurfaceAllocator* aAllocator,
+                       gfx::SurfaceFormat aFormat,
+                       size_t aSize,
+                       TextureFlags aTextureFlags);
+
+  // Creates and allocates a TextureClient of the same type.
+  virtual TemporaryRef<TextureClient>
+  CreateSimilar(TextureFlags aFlags = TextureFlags::DEFAULT,
+                TextureAllocationFlags aAllocFlags = ALLOC_DEFAULT) const = 0;
+
+  /**
+   * Allocates for a given surface size, taking into account the pixel format
+   * which is part of the state of the TextureClient.
+   *
+   * Does not clear the surface by default, clearing the surface can be done
+   * by passing the CLEAR_BUFFER flag.
+   *
+   * TextureClients that can expose a DrawTarget should override this method.
+   */
+  virtual bool AllocateForSurface(gfx::IntSize aSize,
+                                  TextureAllocationFlags flags = ALLOC_DEFAULT)
+  {
+    return false;
+  }
 
   virtual TextureClientYCbCr* AsTextureClientYCbCr() { return nullptr; }
 
@@ -201,21 +222,6 @@ public:
   virtual gfx::SurfaceFormat GetFormat() const
   {
     return gfx::SurfaceFormat::UNKNOWN;
-  }
-
-  /**
-   * Allocates for a given surface size, taking into account the pixel format
-   * which is part of the state of the TextureClient.
-   *
-   * Does not clear the surface by default, clearing the surface can be done
-   * by passing the CLEAR_BUFFER flag.
-   *
-   * TextureClients that can expose a DrawTarget should override this method.
-   */
-  virtual bool AllocateForSurface(gfx::IntSize aSize,
-                                  TextureAllocationFlags flags = ALLOC_DEFAULT)
-  {
-    return false;
   }
 
   /**
@@ -298,6 +304,14 @@ public:
   bool IsValid() const { return mValid; }
 
   /**
+   * kee the passed object alive until the IPDL actor is destroyed. This can
+   * help avoid race conditions in some cases.
+   * It's a temporary hack to ensure that DXGI textures don't get destroyed
+   * between serialization and deserialization.
+   */
+  void KeepUntilFullDeallocation(KeepAlive* aKeep);
+
+  /**
    * Create and init the TextureChild/Parent IPDL actor pair.
    *
    * Should be called only once per TextureClient.
@@ -351,6 +365,14 @@ public:
    */
   virtual void WaitForBufferOwnership() {}
 
+  /**
+   * Track how much of this texture is wasted.
+   * For example we might allocate a 256x256 tile but only use 10x10.
+   */
+   void SetWaste(int aWasteArea) {
+     mWasteTracker.Update(aWasteArea, BytesPerPixel(GetFormat()));
+   }
+
 private:
   /**
    * Called once, just before the destructor.
@@ -393,10 +415,11 @@ protected:
   RefPtr<TextureChild> mActor;
   RefPtr<ISurfaceAllocator> mAllocator;
   TextureFlags mFlags;
-  bool mShared;
-  bool mValid;
   FenceHandle mReleaseFenceHandle;
   FenceHandle mAcquireFenceHandle;
+  gl::GfxTextureWasteTracker mWasteTracker;
+  bool mShared;
+  bool mValid;
 
   friend class TextureChild;
   friend class RemoveTextureFromCompositableTracker;
@@ -479,6 +502,10 @@ public:
   virtual bool HasInternalBuffer() const MOZ_OVERRIDE { return true; }
 
   ISurfaceAllocator* GetAllocator() const;
+
+  virtual TemporaryRef<TextureClient>
+  CreateSimilar(TextureFlags aFlags = TextureFlags::DEFAULT,
+                TextureAllocationFlags aAllocFlags = ALLOC_DEFAULT) const MOZ_OVERRIDE;
 
 protected:
   RefPtr<gfx::DrawTarget> mDrawTarget;
@@ -588,6 +615,12 @@ public:
     return gfx::SurfaceFormat::UNKNOWN;
   }
 
+  // This TextureClient should not be used in a context where we use CreateSimilar
+  // (ex. component alpha) because the underlying texture data is always created by
+  // an external producer.
+  virtual TemporaryRef<TextureClient>
+  CreateSimilar(TextureFlags, TextureAllocationFlags) const MOZ_OVERRIDE { return nullptr; }
+
   virtual bool AllocateForSurface(gfx::IntSize aSize, TextureAllocationFlags aFlags) MOZ_OVERRIDE
   {
     MOZ_CRASH("Should never hit this.");
@@ -611,6 +644,21 @@ struct TextureClientAutoUnlock
   {
     mTexture->Unlock();
   }
+};
+
+class KeepAlive
+{
+public:
+  virtual ~KeepAlive() {}
+};
+
+template<typename T>
+class TKeepAlive : public KeepAlive
+{
+public:
+  TKeepAlive(T* aData) : mData(aData) {}
+protected:
+  RefPtr<T> mData;
 };
 
 }

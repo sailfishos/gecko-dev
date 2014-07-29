@@ -136,7 +136,10 @@ void MediaDecoder::SetDormantIfNecessary(bool aDormant)
     DestroyDecodedStream();
     mDecoderStateMachine->SetDormant(true);
 
-    mRequestedSeekTarget = SeekTarget(mCurrentTime, SeekTarget::Accurate);
+    int64_t timeUsecs = 0;
+    SecondsToUsecs(mCurrentTime, timeUsecs);
+    mRequestedSeekTarget = SeekTarget(timeUsecs, SeekTarget::Accurate);
+
     if (mPlayState == PLAY_STATE_PLAYING){
       mNextState = PLAY_STATE_PLAYING;
     } else {
@@ -1216,7 +1219,10 @@ void MediaDecoder::PlaybackPositionChanged()
   {
     ReentrantMonitorAutoEnter mon(GetReentrantMonitor());
     if (mDecoderStateMachine) {
-      if (!IsSeeking()) {
+      // Don't update the official playback position when paused which is
+      // expected by the script. (The current playback position might be still
+      // advancing for a while after paused.)
+      if (!IsSeeking() && mPlayState != PLAY_STATE_PAUSED) {
         // Only update the current playback position if we're not seeking.
         // If we are seeking, the update could have been scheduled on the
         // state machine thread while we were playing but after the seek

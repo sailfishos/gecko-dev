@@ -47,6 +47,18 @@ from mozlog.structured.structuredlog import StructuredLogger
 # not yet present in the mozharness environment
 from mozrunner.utils import findInPath as which
 
+
+# Necessary to set up the global logger in automationutils.py
+import logging
+log = logging.getLogger()
+def resetGlobalLog():
+   while log.handlers:
+       log.removeHandler(log.handlers[0])
+   handler = logging.StreamHandler(sys.stdout)
+   log.setLevel(logging.INFO)
+   log.addHandler(handler)
+resetGlobalLog()
+
 ###########################
 # Option for NSPR logging #
 ###########################
@@ -70,7 +82,8 @@ class MochitestFormatter(TbplFormatter):
 
     def __call__(self, data):
         tbpl_output = super(MochitestFormatter, self).__call__(data)
-        output = '%d INFO %s' % (MochitestFormatter.log_num, tbpl_output)
+        log_level = data.get('level', 'info').upper()
+        output = '%d %s %s' % (MochitestFormatter.log_num, log_level, tbpl_output)
         MochitestFormatter.log_num += 1
         return output
 
@@ -92,6 +105,9 @@ class MessageLogger(object):
 
         # Message buffering
         self.buffered_messages = []
+
+        # Failures reporting, after the end of the tests execution
+        self.errors = []
 
     def valid_message(self, obj):
         """True if the given object is a valid structured message (only does a superficial validation)"""
@@ -133,6 +149,11 @@ class MessageLogger(object):
             unstructured = True
             message.pop('unstructured')
 
+        # Saving errors/failures to be shown at the end of the test run
+        is_error = 'expected' in message or (message['action'] == 'log' and message['message'].startswith('TEST-UNEXPECTED'))
+        if is_error:
+            self.errors.append(message)
+
         # If we don't do any buffering, or the tests haven't started, or the message was unstructured, it is directly logged
         if not self.buffering or unstructured or not self.tests_started:
             self.logger.log_raw(message)
@@ -143,7 +164,6 @@ class MessageLogger(object):
             self.buffered_messages = []
 
         # Buffering logic; Also supports "raw" errors (in log messages) because some tests manually dump 'TEST-UNEXPECTED-FAIL'
-        is_error = 'expected' in message or (message['action'] == 'log' and message['message'].startswith('TEST-UNEXPECTED'))
         if not is_error and message['action'] not in self.BUFFERED_ACTIONS:
             self.logger.log_raw(message)
             return
@@ -213,7 +233,7 @@ def killPid(pid):
     log.info("Failed to kill process %d: %s" % (pid, str(e)))
 
 if mozinfo.isWin:
-  import ctypes, ctypes.wintypes, time, msvcrt
+  import ctypes.wintypes
 
   def isPidAlive(pid):
     STILL_ACTIVE = 259
@@ -507,6 +527,8 @@ class MochitestUtilsMixin(object):
         self.urlOpts.append("dumpAboutMemoryAfterTest=true")
       if options.dumpDMDAfterTest:
         self.urlOpts.append("dumpDMDAfterTest=true")
+      if options.debugger:
+        self.urlOpts.append("interactiveDebugger=true")
 
   def getTestFlavor(self, options):
     if options.browserChrome:
@@ -830,7 +852,7 @@ class SSLTunnel:
     bin_suffix = mozinfo.info.get('bin_suffix', '')
     ssltunnel = os.path.join(self.utilityPath, "ssltunnel" + bin_suffix)
     if not os.path.exists(ssltunnel):
-      log.error("INFO | runtests.py | expected to find ssltunnel at %s", ssltunnel)
+      log.error("INFO | runtests.py | expected to find ssltunnel at %s" % ssltunnel)
       exit(1)
 
     env = environment(xrePath=self.xrePath)
@@ -1123,6 +1145,19 @@ class Mochitest(MochitestUtilsMixin):
 
     return manifest
 
+  def getGMPPluginPath(self, options):
+    # For local builds, gmp-fake will be under dist/bin.
+    gmp_path = os.path.join(options.xrePath, 'gmp-fake')
+    if os.path.isdir(gmp_path):
+      return gmp_path
+
+    # For packaged builds, gmp-fake will get copied under $profile/plugins.
+    gmp_path = os.path.join(self.profile.profile, 'plugins', 'gmp-fake')
+    if os.path.isdir(gmp_path):
+      return gmp_path
+    # This is fatal for desktop environments.
+    raise EnvironmentError('Could not find gmp-fake')
+
   def buildBrowserEnv(self, options, debugger=False):
     """build the environment variables for the specific test and operating system"""
     if mozinfo.info["asan"]:
@@ -1142,13 +1177,17 @@ class Mochitest(MochitestUtilsMixin):
       browserEnv.update(dict(parseKeyValue(options.environment, context='--setenv')))
     except KeyValueParseError, e:
       log.error(str(e))
-      return
+      return None
 
     browserEnv["XPCOM_MEM_BLOAT_LOG"] = self.leak_report_file
 
-    # GMP fake plugin
-    # XXX should find a better solution
-    browserEnv["MOZ_GMP_PATH"] = options.xrePath + "/gmp-fake"
+    try:
+      gmp_path = self.getGMPPluginPath(options)
+      if gmp_path is not None:
+          browserEnv["MOZ_GMP_PATH"] = gmp_path
+    except EnvironmentError:
+      log.error('Could not find path to gmp-fake plugin!')
+      return None
 
     if options.fatalAssertions:
       browserEnv["XPCOM_DEBUG_BREAK"] = "stack-and-abort"
@@ -1312,10 +1351,6 @@ class Mochitest(MochitestUtilsMixin):
     # fix default timeout
     if timeout == -1:
       timeout = self.DEFAULT_TIMEOUT
-
-    # build parameters
-    is_test_build = mozinfo.info.get('tests_enabled', True)
-    bin_suffix = mozinfo.info.get('bin_suffix', '')
 
     # copy env so we don't munge the caller's environment
     env = env.copy()
@@ -1542,9 +1577,14 @@ class Mochitest(MochitestUtilsMixin):
     bisect = bisection.Bisect(self)
     finished = False
     status = 0
+    bisection_log = 0
     while not finished:
       if options.bisectChunk:
         testsToRun = bisect.pre_test(options, testsToRun, status)
+        # To inform that we are in the process of bisection, and to look for bleedthrough
+        if options.bisectChunk != "default" and not bisection_log:
+            log.info("TEST-UNEXPECTED-FAIL | Bisection | Please ignore repeats and look for 'Bleedthrough' (if any) at the end of the failure list")
+            bisection_log = 1
 
       result = self.doTests(options, onLaunch, testsToRun)
       if options.bisectChunk:
@@ -1612,7 +1652,7 @@ class Mochitest(MochitestUtilsMixin):
 
     return result
 
-  def doTests(self, options, onLaunch=None, testsToFilter = None):
+  def doTests(self, options, onLaunch=None, testsToFilter=None):
     # A call to initializeLooping method is required in case of --run-by-dir or --bisect-chunk
     # since we need to initialize variables for each loop.
     if options.bisectChunk or options.runByDir:
@@ -1912,13 +1952,15 @@ class Mochitest(MochitestUtilsMixin):
 
     def fix_stack(self, message):
       if message['action'] == 'log' and self.stackFixerFunction:
-        message['message'] = self.stackFixerFunction(message['message'])
+        message['message'] = self.stackFixerFunction(message['message'].encode('ascii', 'replace'))
       return message
 
     def record_last_test(self, message):
       """record last test on harness"""
       if message['action'] == 'test_start':
         self.harness.lastTestSeen = message['test']
+      elif message['action'] == 'log' and 'TEST-START' in message['message'] and '|' in message['message']:
+        self.harness.lastTestSeen = message['message'].split("|")[1].strip()
       return message
 
     def dumpScreenOnTimeout(self, message):
@@ -1928,10 +1970,18 @@ class Mochitest(MochitestUtilsMixin):
           and 'message' in message
           and "Test timed out" in message['message']):
         self.harness.dumpScreen(self.utilityPath)
+      elif (not self.dump_screen_on_fail
+            and self.dump_screen_on_timeout
+            and message['action'] == 'log'
+            and 'TEST-UNEXPECTED-FAIL' in message['message']
+            and 'Test timed out' in message['message']):
+        self.harness.dumpScreen(self.utilityPath)
       return message
 
     def dumpScreenOnFail(self, message):
       if self.dump_screen_on_fail and 'expected' in message and message['status'] == 'FAIL':
+        self.harness.dumpScreen(self.utilityPath)
+      elif self.dump_screen_on_fail and message['action'] == 'log' and 'TEST-UNEXPECTED-FAIL' in message['message']:
         self.harness.dumpScreen(self.utilityPath)
       return message
 
@@ -1959,36 +2009,6 @@ class Mochitest(MochitestUtilsMixin):
 
     with open(os.path.join(options.profilePath, "testConfig.js"), "w") as config:
       config.write(content)
-
-  def installExtensionFromPath(self, options, path, extensionID = None):
-    """install an extension to options.profilePath"""
-
-    # TODO: currently extensionID is unused; see
-    # https://bugzilla.mozilla.org/show_bug.cgi?id=914267
-    # [mozprofile] make extensionID a parameter to install_from_path
-    # https://github.com/mozilla/mozbase/blob/master/mozprofile/mozprofile/addons.py#L169
-
-    extensionPath = self.getFullPath(path)
-
-    log.info("runtests.py | Installing extension at %s to %s." %
-                (extensionPath, options.profilePath))
-
-    addons = AddonManager(options.profilePath)
-
-    # XXX: del the __del__
-    # hack can be removed when mozprofile is mirrored to m-c ; see
-    # https://bugzilla.mozilla.org/show_bug.cgi?id=911218 :
-    # [mozprofile] AddonManager should only cleanup on __del__ optionally:
-    # https://github.com/mozilla/mozbase/blob/master/mozprofile/mozprofile/addons.py#L266
-    if hasattr(addons, '__del__'):
-      del addons.__del__
-
-    addons.install_from_path(path)
-
-  def installExtensionsToProfile(self, options):
-    "Install special testing extensions, application distributed extensions, and specified on the command line ones to testing profile."
-    for path in self.getExtensionsToInstall(options):
-      self.installExtensionFromPath(options, path)
 
   def getTestManifest(self, options):
     if isinstance(options.manifestFile, TestManifest):

@@ -7,6 +7,8 @@
 #define GMPParent_h_
 
 #include "GMPProcessParent.h"
+#include "GMPService.h"
+#include "GMPDecryptorParent.h"
 #include "GMPVideoDecoderParent.h"
 #include "GMPVideoEncoderParent.h"
 #include "mozilla/gmp/PGMPParent.h"
@@ -49,14 +51,17 @@ enum GMPState {
   GMPStateClosing
 };
 
-class GMPParent MOZ_FINAL : public PGMPParent
+class GMPParent MOZ_FINAL : public PGMPParent,
+                            public GMPSharedMem
 {
 public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING_WITH_MAIN_THREAD_DESTRUCTION(GMPParent)
 
   GMPParent();
 
-  nsresult Init(nsIFile* aPluginDir);
+  nsresult Init(GeckoMediaPluginService *aService, nsIFile* aPluginDir);
+  nsresult CloneFrom(const GMPParent* aOther);
+
   nsresult LoadProcess();
 
   // Called internally to close this if we don't need it
@@ -64,7 +69,7 @@ public:
 
   // Notify all active de/encoders that we are closing, either because of
   // normal shutdown or unexpected shutdown/crash.
-  void CloseActive();
+  void CloseActive(bool aDieWhenUnloaded);
 
   // Called by the GMPService to forcibly close active de/encoders at shutdown
   void Shutdown();
@@ -73,10 +78,16 @@ public:
   void DeleteProcess();
 
   bool SupportsAPI(const nsCString& aAPI, const nsCString& aTag);
+
   nsresult GetGMPVideoDecoder(GMPVideoDecoderParent** aGMPVD);
   void VideoDecoderDestroyed(GMPVideoDecoderParent* aDecoder);
+
   nsresult GetGMPVideoEncoder(GMPVideoEncoderParent** aGMPVE);
   void VideoEncoderDestroyed(GMPVideoEncoderParent* aEncoder);
+
+  nsresult GetGMPDecryptor(GMPDecryptorParent** aGMPKS);
+  void DecryptorDestroyed(GMPDecryptorParent* aSession);
+
   GMPState State() const;
 #ifdef DEBUG
   nsIThread* GMPThread();
@@ -107,8 +118,12 @@ public:
     return nsCOMPtr<nsIFile>(mDirectory).forget();
   }
 
+  // GMPSharedMem
+  virtual void CheckThread() MOZ_OVERRIDE;
+
 private:
   ~GMPParent();
+  nsRefPtr<GeckoMediaPluginService> mService;
   bool EnsureProcessLoaded();
   nsresult ReadGMPMetaData();
 #ifdef MOZ_CRASHREPORTER
@@ -119,10 +134,15 @@ private:
 
   virtual PCrashReporterParent* AllocPCrashReporterParent(const NativeThreadId& aThread) MOZ_OVERRIDE;
   virtual bool DeallocPCrashReporterParent(PCrashReporterParent* aCrashReporter) MOZ_OVERRIDE;
+
   virtual PGMPVideoDecoderParent* AllocPGMPVideoDecoderParent() MOZ_OVERRIDE;
   virtual bool DeallocPGMPVideoDecoderParent(PGMPVideoDecoderParent* aActor) MOZ_OVERRIDE;
+  
   virtual PGMPVideoEncoderParent* AllocPGMPVideoEncoderParent() MOZ_OVERRIDE;
   virtual bool DeallocPGMPVideoEncoderParent(PGMPVideoEncoderParent* aActor) MOZ_OVERRIDE;
+
+  virtual PGMPDecryptorParent* AllocPGMPDecryptorParent() MOZ_OVERRIDE;
+  virtual bool DeallocPGMPDecryptorParent(PGMPDecryptorParent* aActor) MOZ_OVERRIDE;
 
   GMPState mState;
   nsCOMPtr<nsIFile> mDirectory; // plugin directory on disk
@@ -132,9 +152,12 @@ private:
   nsCString mVersion;
   nsTArray<nsAutoPtr<GMPCapability>> mCapabilities;
   GMPProcessParent* mProcess;
+  bool mDeleteProcessOnlyOnUnload;
+  bool mAbnormalShutdownInProgress;
 
   nsTArray<nsRefPtr<GMPVideoDecoderParent>> mVideoDecoders;
   nsTArray<nsRefPtr<GMPVideoEncoderParent>> mVideoEncoders;
+  nsTArray<nsRefPtr<GMPDecryptorParent>> mDecryptors;
 #ifdef DEBUG
   nsCOMPtr<nsIThread> mGMPThread;
 #endif

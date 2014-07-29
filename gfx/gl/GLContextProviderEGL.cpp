@@ -116,10 +116,6 @@ public:
 
 using namespace mozilla::gfx;
 
-#ifdef MOZ_WIDGET_GONK
-extern nsIntRect gScreenBounds;
-#endif
-
 namespace mozilla {
 namespace gl {
 
@@ -205,12 +201,6 @@ CreateSurfaceForWindow(nsIWidget* widget, const EGLConfig& config) {
     #else
         MOZ_ASSERT(widget != nullptr);
         newSurface = sEGLLibrary.fCreateWindowSurface(EGL_DISPLAY(), config, GET_NATIVE_WINDOW(widget), 0);
-        #ifdef MOZ_WIDGET_GONK
-            gScreenBounds.x = 0;
-            gScreenBounds.y = 0;
-            sEGLLibrary.fQuerySurface(EGL_DISPLAY(), newSurface, LOCAL_EGL_WIDTH, &gScreenBounds.width);
-            sEGLLibrary.fQuerySurface(EGL_DISPLAY(), newSurface, LOCAL_EGL_HEIGHT, &gScreenBounds.height);
-        #endif
     #endif
     return newSurface;
 }
@@ -657,10 +647,31 @@ CreateConfig(EGLConfig* aConfig, int32_t depth)
         return false;
     }
 
+#ifdef MOZ_WIDGET_GONK
+    // On gonk, it's important to select a configuration with the
+    // the correct order as well as bits per channel.
+    // EGL_NATIVE_VISUAL_ID gives us the Android pixel format which
+    // is an enum that tells us both order and bits per channel.
+    // For example -
+    //  HAL_PIXEL_FORMAT_RGBX_8888
+    //  HAL_PIXEL_FORMAT_BGRA_8888
+    //  HAL_PIXEL_FORMAT_RGB_565
+    for (int j = 0; j < ncfg; ++j) {
+        EGLConfig config = configs[j];
+        EGLint format;
+        if (sEGLLibrary.fGetConfigAttrib(EGL_DISPLAY(), config,
+                                         LOCAL_EGL_NATIVE_VISUAL_ID, &format) &&
+            format == GetGonkDisplay()->surfaceformat)
+        {
+            *aConfig = config;
+            return true;
+        }
+    }
+#endif
+
     for (int j = 0; j < ncfg; ++j) {
         EGLConfig config = configs[j];
         EGLint r, g, b, a;
-
         if (sEGLLibrary.fGetConfigAttrib(EGL_DISPLAY(), config,
                                          LOCAL_EGL_RED_SIZE, &r) &&
             sEGLLibrary.fGetConfigAttrib(EGL_DISPLAY(), config,

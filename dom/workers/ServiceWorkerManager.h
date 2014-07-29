@@ -11,9 +11,10 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/LinkedList.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/TypedEnum.h"
+#include "mozilla/TypedEnumBits.h"
 #include "mozilla/dom/BindingUtils.h"
 #include "mozilla/dom/Promise.h"
-#include "mozilla/dom/ServiceWorkerContainer.h"
 #include "nsRefPtrHashtable.h"
 #include "nsTArrayForwardDeclare.h"
 #include "nsTObserverArray.h"
@@ -93,6 +94,15 @@ public:
     : mScriptSpec(aScriptSpec)
   { }
 };
+
+// Use multiples of 2 since they can be bitwise ORed when calling
+// InvalidateServiceWorkerContainerWorker.
+MOZ_BEGIN_ENUM_CLASS(WhichServiceWorker)
+  INSTALLING_WORKER = 1,
+  WAITING_WORKER    = 2,
+  ACTIVE_WORKER     = 4,
+MOZ_END_ENUM_CLASS(WhichServiceWorker)
+MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(WhichServiceWorker)
 
 // Needs to inherit from nsISupports because NS_ProxyRelease() does not support
 // non-ISupports classes.
@@ -186,8 +196,10 @@ public:
  */
 class ServiceWorkerManager MOZ_FINAL : public nsIServiceWorkerManager
 {
+  friend class ActivationRunnable;
   friend class RegisterRunnable;
   friend class CallInstallRunnable;
+  friend class CancelServiceWorkerInstallationRunnable;
   friend class ServiceWorkerUpdateInstance;
 
 public:
@@ -286,6 +298,9 @@ public:
   FinishInstall(ServiceWorkerRegistration* aRegistration);
 
   void
+  FinishActivate(ServiceWorkerRegistration* aRegistration);
+
+  void
   HandleError(JSContext* aCx,
               const nsACString& aScope,
               const nsAString& aWorkerURL,
@@ -334,6 +349,15 @@ private:
 
   already_AddRefed<ServiceWorkerDomainInfo>
   GetDomainInfo(const nsCString& aURL);
+
+  NS_IMETHODIMP
+  GetServiceWorkerForWindow(nsIDOMWindow* aWindow,
+                            WhichServiceWorker aWhichWorker,
+                            nsISupports** aServiceWorker);
+
+  void
+  InvalidateServiceWorkerContainerWorker(ServiceWorkerRegistration* aRegistration,
+                                         WhichServiceWorker aWhichOnes);
 
   already_AddRefed<ServiceWorkerRegistration>
   GetServiceWorkerRegistration(nsPIDOMWindow* aWindow);

@@ -56,4 +56,4 @@ else:
         'nsWifiScannerDummy.cpp',
     ]
 
-FINAL_LIBRARY = 'necko'
+FINAL_LIBRARY = 'xul'

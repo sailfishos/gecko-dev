@@ -41,6 +41,9 @@ let gPage = {
       this._init();
 
     this._updateAttributes(enabled);
+
+    // Initialize customize controls.
+    gCustomize.init();
   },
 
   /**
@@ -48,8 +51,15 @@ let gPage = {
    */
   observe: function Page_observe(aSubject, aTopic, aData) {
     if (aTopic == "nsPref:changed") {
+      gCustomize.updateSelected();
+
       let enabled = gAllPages.enabled;
       this._updateAttributes(enabled);
+
+      // Update thumbnails to the new enhanced setting
+      if (aData == "browser.newtabpage.enhanced") {
+        this.update();
+      }
 
       // Initialize the whole page if we haven't done that, yet.
       if (enabled) {
@@ -132,7 +142,7 @@ let gPage = {
    */
   _updateAttributes: function Page_updateAttributes(aValue) {
     // Set the nodes' states.
-    let nodeSelector = "#newtab-scrollbox, #newtab-toggle, #newtab-grid, #newtab-search-container";
+    let nodeSelector = "#newtab-scrollbox, #newtab-grid, #newtab-search-container";
     for (let node of document.querySelectorAll(nodeSelector)) {
       if (aValue)
         node.removeAttribute("page-disabled");
@@ -148,10 +158,6 @@ let gPage = {
       else
         input.setAttribute("tabindex", "-1");
     }
-
-    // Update the toggle button's title.
-    let toggle = document.getElementById("newtab-toggle");
-    toggle.setAttribute("title", newTabString(aValue ? "hide" : "show"));
   },
 
   /**
@@ -164,13 +170,6 @@ let gPage = {
         break;
       case "click":
         let {button, target} = aEvent;
-        if (target.id == "newtab-toggle") {
-          if (button == 0) {
-            gAllPages.enabled = !gAllPages.enabled;
-          }
-          break;
-        }
-
         // Go up ancestors until we find a Site or not
         while (target) {
           if (target.hasOwnProperty("_newtabSite")) {

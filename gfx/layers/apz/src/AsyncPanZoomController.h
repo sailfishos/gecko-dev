@@ -21,6 +21,7 @@
 #include "Axis.h"
 #include "TaskThrottler.h"
 #include "gfx3DMatrix.h"
+#include "nsRegion.h"
 
 #include "base/message_loop.h"
 
@@ -903,6 +904,12 @@ public:
 
   void FlushRepaintForOverscrollHandoff();
 
+  /**
+   * If overscrolled, start a snap-back animation and return true.
+   * Otherwise return false.
+   */
+  bool SnapBackIfOverscrolled();
+
 private:
   FrameMetrics::ViewID mScrollParentId;
 
@@ -913,6 +920,12 @@ private:
    */
   bool CallDispatchScroll(const ScreenPoint& aStartPoint, const ScreenPoint& aEndPoint,
                           uint32_t aOverscrollHandoffChainIndex);
+
+  /**
+   * A similar helper function for calling
+   * APZCTreeManager::SnapBackOverscrolledApzc().
+   */
+  void CallSnapBackOverscrolledApzc();
 
   /**
    * Try to overscroll by 'aOverscroll'.
@@ -929,9 +942,9 @@ private:
    * hit-testing to see which APZC instance should handle touch events.
    */
 public:
-  void SetLayerHitTestData(const ParentLayerRect& aRect, const gfx3DMatrix& aTransformToLayer,
+  void SetLayerHitTestData(const nsIntRegion& aRegion, const gfx3DMatrix& aTransformToLayer,
                            const gfx3DMatrix& aTransformForLayer) {
-    mVisibleRect = aRect;
+    mVisibleRegion = aRegion;
     mAncestorTransform = aTransformToLayer;
     mCSSTransform = aTransformForLayer;
     UpdateTransformScale();
@@ -946,7 +959,8 @@ public:
   }
 
   bool VisibleRegionContains(const ParentLayerPoint& aPoint) const {
-    return mVisibleRect.Contains(aPoint);
+    ParentLayerIntPoint point = RoundedToInt(aPoint);
+    return mVisibleRegion.Contains(point.x, point.y);
   }
 
   bool IsOverscrolled() const {
@@ -957,7 +971,7 @@ private:
   /* This is the visible region of the layer that this APZC corresponds to, in
    * that layer's screen pixels (the same coordinate system in which this APZC
    * receives events in ReceiveInputEvent()). */
-  ParentLayerRect mVisibleRect;
+  nsIntRegion mVisibleRegion;
   /* This is the cumulative CSS transform for all the layers between the parent
    * APZC and this one (not inclusive) */
   gfx3DMatrix mAncestorTransform;
@@ -991,7 +1005,7 @@ private:
 
   /* ===================================================================
    * The functions and members in this section are used for testing
-   * purposes only.
+   * and assertion purposes only.
    */
 public:
   /**
@@ -1007,6 +1021,12 @@ public:
    */
   static void SetThreadAssertionsEnabled(bool aEnabled);
   static bool GetThreadAssertionsEnabled();
+  /**
+   * This can be used to assert that the current thread is the
+   * controller/UI thread (on which input events are received.
+   * This does nothing if thread assertions are disabled.
+   */
+  static void AssertOnControllerThread();
   /**
    * Set an extra offset for testing async scrolling.
    */

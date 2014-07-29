@@ -27,7 +27,8 @@ if CONFIG['MOZ_DMD']:
     add_tier_dir('platform', 'memory/replace/dmd')
 
 if CONFIG['MOZ_TREE_FREETYPE']:
-    add_tier_dir('platform', 'modules/freetype2', static=True)
+    add_tier_dir('platform', 'modules/freetype2', static=True,
+        trigger='FT2_LIBS')
 
 add_tier_dir('platform', 'xpcom')
 
@@ -157,6 +158,7 @@ if CONFIG['MOZ_GIO_COMPONENT']:
 add_tier_dir('platform', app_libxul_dirs)
 add_tier_dir('platform', app_libxul_static_dirs, static=True)
 
+add_tier_dir('platform', 'toolkit/library/StaticXULComponentsEnd')
 add_tier_dir('platform', 'toolkit/library')
 
 if CONFIG['MOZ_REPLACE_MALLOC']:
