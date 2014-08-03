@@ -270,6 +270,7 @@ pref("media.gstreamer.enabled", true);
 #endif
 #ifdef MOZ_APPLEMEDIA
 pref("media.apple.mp3.enabled", true);
+pref("media.apple.mp4.enabled", true);
 #endif
 #ifdef MOZ_WEBRTC
 pref("media.navigator.enabled", true);
@@ -310,6 +311,7 @@ pref("media.navigator.video.h264.max_br", 0);
 pref("media.navigator.video.h264.max_mbps", 0);
 pref("media.peerconnection.video.h264_enabled", false);
 pref("media.getusermedia.aec", 1);
+pref("media.getusermedia.browser.enabled", true);
 #endif
 pref("media.peerconnection.video.min_bitrate", 200);
 pref("media.peerconnection.video.start_bitrate", 300);
@@ -366,6 +368,7 @@ pref("media.navigator.enabled", true);
 // do not enable screensharing before source constraints are finalized: Bug 1033885
 // do not enable screensharing before UX is ready: Bug 1035577
 pref("media.getusermedia.screensharing.enabled", false);
+pref("media.getusermedia.screensharing.allowed_domains", "");
 
 // TextTrack support
 pref("media.webvtt.enabled", true);
@@ -1646,7 +1649,6 @@ pref("security.notification_enable_delay", 500);
 pref("security.csp.enable", true);
 pref("security.csp.debug", false);
 pref("security.csp.experimentalEnabled", false);
-pref("security.csp.newbackend.enable", true);
 
 // Mixed content blocking
 pref("security.mixed_content.block_active_content", false);
@@ -2005,6 +2007,25 @@ pref("layout.css.box-decoration-break.enabled", true);
 
 // Is layout of CSS outline-style:auto enabled?
 pref("layout.css.outline-style-auto.enabled", false);
+
+// Is CSSOM-View scroll-behavior and its MSD smooth scrolling enabled?
+pref("layout.css.scroll-behavior.enabled", false);
+
+// Tuning of the smooth scroll motion used by CSSOM-View scroll-behavior.
+// Spring-constant controls the strength of the simulated MSD
+// (Mass-Spring-Damper)
+pref("layout.css.scroll-behavior.spring-constant", "250.0");
+
+// Tuning of the smooth scroll motion used by CSSOM-View scroll-behavior.
+// Damping-ratio controls the dampening force of the simulated MSD
+// (Mass-Spring-Damper).
+// When below 1.0, the system is under-damped; it may overshoot the target and
+// oscillate.
+// When greater than 1.0, the system is over-damped; it will reach the target at
+// reduced speed without overshooting.
+// When equal to 1.0, the system is critically-damped; it will reach the target
+// at the greatest speed without overshooting.
+pref("layout.css.scroll-behavior.damping-ratio", "1.0");
 
 // pref for which side vertical scrollbars should be on
 // 0 = end-side in UI direction

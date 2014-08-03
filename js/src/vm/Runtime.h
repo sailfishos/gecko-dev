@@ -25,14 +25,14 @@
 #endif
 #include "jsscript.h"
 
+#ifdef XP_MACOSX
+# include "asmjs/AsmJSSignalHandlers.h"
+#endif
 #include "ds/FixedSizeHash.h"
 #include "frontend/ParseMaps.h"
 #include "gc/GCRuntime.h"
 #include "gc/Tracer.h"
 #include "irregexp/RegExpStack.h"
-#ifdef XP_MACOSX
-# include "jit/AsmJSSignalHandlers.h"
-#endif
 #include "js/HashTable.h"
 #include "js/Vector.h"
 #include "vm/CommonPropertyNames.h"
@@ -720,14 +720,12 @@ struct JSRuntime : public JS::shadow::Runtime,
      */
     mozilla::Atomic<bool, mozilla::Relaxed> interrupt;
 
-#ifdef JS_ION
     /*
      * If non-zero, ForkJoin should service an interrupt. This is a separate
      * flag from |interrupt| because we cannot use the mprotect trick with PJS
      * code and ignore the TriggerCallbackAnyThreadDontStopIon trigger.
      */
     mozilla::Atomic<bool, mozilla::Relaxed> interruptPar;
-#endif
 
     /* Set when handling a signal for a thread associated with this runtime. */
     bool handlingSignal;
@@ -984,8 +982,8 @@ struct JSRuntime : public JS::shadow::Runtime,
 #endif
 
   public:
-    void setNeedsBarrier(bool needs) {
-        needsBarrier_ = needs;
+    void setNeedsIncrementalBarrier(bool needs) {
+        needsIncrementalBarrier_ = needs;
     }
 
 #if defined(JS_ARM_SIMULATOR) || defined(JS_MIPS_SIMULATOR)
@@ -1011,10 +1009,6 @@ struct JSRuntime : public JS::shadow::Runtime,
     }
 
     mozilla::UniquePtr<js::SourceHook> sourceHook;
-
-#ifdef NIGHTLY_BUILD
-    js::AssertOnScriptEntryHook assertOnScriptEntryHook_;
-#endif
 
     /* If true, new compartments are initially in debug mode. */
     bool                debugMode;
@@ -1043,7 +1037,7 @@ struct JSRuntime : public JS::shadow::Runtime,
     /* Client opaque pointers */
     void                *data;
 
-#if defined(XP_MACOSX) && defined(JS_ION)
+#ifdef XP_MACOSX
     js::AsmJSMachExceptionHandler asmJSMachExceptionHandler;
 #endif
 

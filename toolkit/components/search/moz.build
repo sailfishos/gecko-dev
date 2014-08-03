@@ -11,8 +11,16 @@ EXTRA_COMPONENTS += [
     'toolkitsearch.manifest',
 ]
 
+EXTRA_JS_MODULES += [
+    'SearchSuggestionController.jsm',
+]
+
 EXTRA_PP_COMPONENTS += [
     'nsSearchService.js',
+]
+
+EXTRA_JS_MODULES += [
+    'SearchStaticData.jsm',
 ]
 
 DEFINES['MOZ_DISTRIBUTION_ID'] = CONFIG['MOZ_DISTRIBUTION_ID']

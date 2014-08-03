@@ -359,7 +359,7 @@ nsDOMWindowUtils::SetDisplayPortForElement(float aXPx, float aYPx,
                        new DisplayPortPropertyData(displayport, aPriority),
                        nsINode::DeleteProperty<DisplayPortPropertyData>);
 
-  if (gfxPrefs::AsyncPanZoomEnabled()) {
+  if (nsLayoutUtils::UsesAsyncScrolling()) {
     nsIFrame* rootScrollFrame = presShell->GetRootScrollFrame();
     if (rootScrollFrame && content == rootScrollFrame->GetContent()) {
       // We are setting a root displayport for a document.
@@ -3672,9 +3672,9 @@ nsDOMWindowUtils::GetOMTAStyle(nsIDOMElement* aElement,
           MaybeTransform transform;
           forwarder->GetShadowManager()->SendGetAnimationTransform(
             layer->AsShadowableLayer()->GetShadow(), &transform);
-          if (transform.type() == MaybeTransform::Tgfx3DMatrix) {
-            cssValue =
-              nsComputedDOMStyle::MatrixToCSSValue(transform.get_gfx3DMatrix());
+          if (transform.type() == MaybeTransform::TMatrix4x4) {
+            gfx3DMatrix matrix = To3DMatrix(transform.get_Matrix4x4());
+            cssValue = nsComputedDOMStyle::MatrixToCSSValue(matrix);
           }
         }
       }

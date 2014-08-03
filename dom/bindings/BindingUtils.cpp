@@ -1607,6 +1607,29 @@ DictionaryBase::ParseJSON(JSContext* aCx,
                       aJSON.Length(), aVal);
 }
 
+bool
+DictionaryBase::StringifyToJSON(JSContext* aCx,
+                                JS::MutableHandle<JS::Value> aValue,
+                                nsAString& aJSON)
+{
+  return JS_Stringify(aCx, aValue, JS::NullPtr(), JS::NullHandleValue,
+                      AppendJSONToString, &aJSON);
+}
+
+/* static */
+bool
+DictionaryBase::AppendJSONToString(const jschar* aJSONData,
+                                   uint32_t aDataLength,
+                                   void* aString)
+{
+  nsAString* string = static_cast<nsAString*>(aString);
+  string->Append(static_cast<const char16_t*>(aJSONData),
+                 aDataLength);
+  return true;
+}
+
+
+
 static JSString*
 ConcatJSString(JSContext* cx, const char* pre, JS::Handle<JSString*> str, const char* post)
 {
@@ -2504,15 +2527,7 @@ ConvertExceptionToPromise(JSContext* cx,
 void
 CreateGlobalOptions<nsGlobalWindow>::TraceGlobal(JSTracer* aTrc, JSObject* aObj)
 {
-  mozilla::dom::TraceProtoAndIfaceCache(aTrc, aObj);
-
-  // We might be called from a GC during the creation of a global, before we've
-  // been able to set up the compartment private or the XPCWrappedNativeScope,
-  // so we need to null-check those.
-  xpc::CompartmentPrivate* compartmentPrivate = xpc::CompartmentPrivate::Get(aObj);
-  if (compartmentPrivate && compartmentPrivate->scope) {
-    compartmentPrivate->scope->TraceSelf(aTrc);
-  }
+  xpc::TraceXPCGlobal(aTrc, aObj);
 }
 
 /* static */

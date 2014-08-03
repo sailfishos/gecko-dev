@@ -66,10 +66,10 @@ UpdatePromise::ResolveAllPromises(const nsACString& aScriptSpec, const nsACStrin
   RuntimeService* rs = RuntimeService::GetOrCreateService();
   MOZ_ASSERT(rs);
 
-  nsTArray<nsTWeakRef<Promise>> array;
+  nsTArray<WeakPtr<Promise>> array;
   array.SwapElements(mPromises);
   for (uint32_t i = 0; i < array.Length(); ++i) {
-    nsTWeakRef<Promise>& pendingPromise = array.ElementAt(i);
+    WeakPtr<Promise>& pendingPromise = array.ElementAt(i);
     if (pendingPromise) {
       nsCOMPtr<nsIGlobalObject> go =
         do_QueryInterface(pendingPromise->GetParentObject());
@@ -103,10 +103,10 @@ UpdatePromise::RejectAllPromises(nsresult aRv)
   MOZ_ASSERT(mState == Pending);
   mState = Rejected;
 
-  nsTArray<nsTWeakRef<Promise>> array;
+  nsTArray<WeakPtr<Promise>> array;
   array.SwapElements(mPromises);
   for (uint32_t i = 0; i < array.Length(); ++i) {
-    nsTWeakRef<Promise>& pendingPromise = array.ElementAt(i);
+    WeakPtr<Promise>& pendingPromise = array.ElementAt(i);
     if (pendingPromise) {
       // Since ServiceWorkerContainer is only exposed to windows we can be
       // certain about this cast.
@@ -125,10 +125,10 @@ UpdatePromise::RejectAllPromises(const ErrorEventInit& aErrorDesc)
   MOZ_ASSERT(mState == Pending);
   mState = Rejected;
 
-  nsTArray<nsTWeakRef<Promise>> array;
+  nsTArray<WeakPtr<Promise>> array;
   array.SwapElements(mPromises);
   for (uint32_t i = 0; i < array.Length(); ++i) {
-    nsTWeakRef<Promise>& pendingPromise = array.ElementAt(i);
+    WeakPtr<Promise>& pendingPromise = array.ElementAt(i);
     if (pendingPromise) {
       // Since ServiceWorkerContainer is only exposed to windows we can be
       // certain about this cast.
@@ -261,8 +261,8 @@ public:
       return;
     }
 
-    nsMainThreadPtrHandle<ServiceWorkerUpdateInstance> handle =
-      new nsMainThreadPtrHolder<ServiceWorkerUpdateInstance>(this);
+    nsMainThreadPtrHandle<ServiceWorkerUpdateInstance> handle(
+      new nsMainThreadPtrHolder<ServiceWorkerUpdateInstance>(this));
     // FIXME(nsm): Deal with error case (worker failed to download, redirect,
     // parse) in error handler patch.
     nsRefPtr<FinishSuccessfulFetchWorkerRunnable> r =
@@ -1009,8 +1009,8 @@ ServiceWorkerManager::Install(ServiceWorkerRegistration* aRegistration,
   InvalidateServiceWorkerContainerWorker(aRegistration,
                                          WhichServiceWorker::INSTALLING_WORKER);
 
-  nsMainThreadPtrHandle<ServiceWorkerRegistration> handle =
-    new nsMainThreadPtrHolder<ServiceWorkerRegistration>(aRegistration);
+  nsMainThreadPtrHandle<ServiceWorkerRegistration> handle(
+    new nsMainThreadPtrHolder<ServiceWorkerRegistration>(aRegistration));
 
   nsRefPtr<ServiceWorker> serviceWorker;
   nsresult rv =
@@ -1085,8 +1085,8 @@ public:
       return rv;
     }
 
-    nsMainThreadPtrHandle<ServiceWorkerRegistration> handle =
-      new nsMainThreadPtrHolder<ServiceWorkerRegistration>(mRegistration);
+    nsMainThreadPtrHandle<ServiceWorkerRegistration> handle(
+      new nsMainThreadPtrHolder<ServiceWorkerRegistration>(mRegistration));
 
     nsRefPtr<ActivateEventRunnable> r =
       new ActivateEventRunnable(serviceWorker->GetWorkerPrivate(), handle);

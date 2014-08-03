@@ -12,7 +12,7 @@
 #include "jsfun.h"
 #include "jsscript.h"
 
-#include "jit/AsmJSFrameIterator.h"
+#include "asmjs/AsmJSFrameIterator.h"
 #include "jit/JitFrameIterator.h"
 #ifdef CHECK_OSIPOINT_REGISTERS
 #include "jit/Registers.h" // for RegisterDump
@@ -133,11 +133,6 @@ class AbstractFramePtr
       : ptr_(fp ? uintptr_t(fp) | Tag_RematerializedFrame : 0)
     {
         MOZ_ASSERT_IF(fp, asRematerializedFrame() == fp);
-    }
-
-    explicit AbstractFramePtr(JSAbstractFramePtr frame)
-        : ptr_(uintptr_t(frame.raw()))
-    {
     }
 
     static AbstractFramePtr FromRaw(void *raw) {
@@ -1299,7 +1294,6 @@ class JitActivation : public Activation
     bool firstFrameIsConstructing_;
     bool active_;
 
-#ifdef JS_ION
     // Rematerialized Ion frames which has info copied out of snapshots. Maps
     // frame pointers (i.e. jitTop) to a vector of rematerializations of all
     // inline frames associated with that frame.
@@ -1310,7 +1304,6 @@ class JitActivation : public Activation
     RematerializedFrameTable *rematerializedFrames_;
 
     void clearRematerializedFrames();
-#endif
 
 #ifdef CHECK_OSIPOINT_REGISTERS
   protected:
@@ -1359,7 +1352,6 @@ class JitActivation : public Activation
     }
 #endif
 
-#ifdef JS_ION
     // Look up a rematerialized frame keyed by the fp, rematerializing the
     // frame if one doesn't already exist. A frame can only be rematerialized
     // if an IonFrameIterator pointing to the nearest uninlined frame can be
@@ -1384,7 +1376,6 @@ class JitActivation : public Activation
     void removeRematerializedFrame(uint8_t *top);
 
     void markRematerializedFrames(JSTracer *trc);
-#endif
 };
 
 // A filtering of the ActivationIterator to only stop at JitActivations.
@@ -1555,11 +1546,9 @@ class FrameIter
         InterpreterFrameIterator interpFrames_;
         ActivationIterator activations_;
 
-#ifdef JS_ION
         jit::JitFrameIterator jitFrames_;
         unsigned ionInlineFrameNo_;
         AsmJSFrameIterator asmJSFrames_;
-#endif
 
         Data(ThreadSafeContext *cx, SavedOption savedOption, ContextOption contextOption,
              JSPrincipals *principals);
@@ -1677,20 +1666,14 @@ class FrameIter
 
   private:
     Data data_;
-#ifdef JS_ION
     jit::InlineFrameIterator ionInlineFrames_;
-#endif
 
     void popActivation();
     void popInterpreterFrame();
-#ifdef JS_ION
     void nextJitFrame();
     void popJitFrame();
     void popAsmJSFrame();
-#endif
     void settleOnActivation();
-
-    friend class ::JSBrokenFrameIterator;
 };
 
 class ScriptFrameIter : public FrameIter
@@ -1847,34 +1830,22 @@ FrameIter::script() const
     JS_ASSERT(!done());
     if (data_.state_ == INTERP)
         return interpFrame()->script();
-#ifdef JS_ION
     JS_ASSERT(data_.state_ == JIT);
     if (data_.jitFrames_.isIonJS())
         return ionInlineFrames_.script();
     return data_.jitFrames_.script();
-#else
-    return nullptr;
-#endif
 }
 
 inline bool
 FrameIter::isIon() const
 {
-#ifdef JS_ION
     return isJit() && data_.jitFrames_.isIonJS();
-#else
-    return false;
-#endif
 }
 
 inline bool
 FrameIter::isBaseline() const
 {
-#ifdef JS_ION
     return isJit() && data_.jitFrames_.isBaselineJS();
-#else
-    return false;
-#endif
 }
 
 inline InterpreterFrame *

@@ -63,14 +63,6 @@ js::ForgetSourceHook(JSRuntime *rt)
     return Move(rt->sourceHook);
 }
 
-#ifdef NIGHTLY_BUILD
-JS_FRIEND_API(void)
-js::SetAssertOnScriptEntryHook(JSRuntime *rt, AssertOnScriptEntryHook hook)
-{
-    rt->assertOnScriptEntryHook_ = hook;
-}
-#endif
-
 JS_FRIEND_API(void)
 JS_SetGrayGCRootsTracer(JSRuntime *rt, JSTraceDataOp traceOp, void *data)
 {
@@ -983,14 +975,16 @@ JS::IncrementalReferenceBarrier(void *ptr, JSGCTraceKind kind)
         JSScript::writeBarrierPre(static_cast<JSScript*>(cell));
     else if (kind == JSTRACE_LAZY_SCRIPT)
         LazyScript::writeBarrierPre(static_cast<LazyScript*>(cell));
+    else if (kind == JSTRACE_JITCODE)
+        jit::JitCode::writeBarrierPre(static_cast<jit::JitCode*>(cell));
     else if (kind == JSTRACE_SHAPE)
         Shape::writeBarrierPre(static_cast<Shape*>(cell));
     else if (kind == JSTRACE_BASE_SHAPE)
         BaseShape::writeBarrierPre(static_cast<BaseShape*>(cell));
     else if (kind == JSTRACE_TYPE_OBJECT)
-        types::TypeObject::writeBarrierPre((types::TypeObject *) ptr);
+        types::TypeObject::writeBarrierPre(static_cast<types::TypeObject *>(cell));
     else
-        MOZ_ASSUME_UNREACHABLE("invalid trace kind");
+        MOZ_CRASH("invalid trace kind");
 }
 
 JS_FRIEND_API(void)

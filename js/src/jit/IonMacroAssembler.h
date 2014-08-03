@@ -7,8 +7,6 @@
 #ifndef jit_IonMacroAssembler_h
 #define jit_IonMacroAssembler_h
 
-#ifdef JS_ION
-
 #include "jscompartment.h"
 
 #if defined(JS_CODEGEN_X86)
@@ -636,10 +634,10 @@ class MacroAssembler : public MacroAssemblerSpecific
             branch32(cond, length, Imm32(key.constant()), label);
     }
 
-    void branchTestNeedsBarrier(Condition cond, Label *label) {
+    void branchTestNeedsIncrementalBarrier(Condition cond, Label *label) {
         JS_ASSERT(cond == Zero || cond == NonZero);
         CompileZone *zone = GetIonContext()->compartment->zone();
-        AbsoluteAddress needsBarrierAddr(zone->addressOfNeedsBarrier());
+        AbsoluteAddress needsBarrierAddr(zone->addressOfNeedsIncrementalBarrier());
         branchTest32(cond, needsBarrierAddr, Imm32(0x1), label);
     }
 
@@ -1518,7 +1516,5 @@ StackDecrementForCall(size_t bytesAlreadyPushed, size_t bytesToPush)
 
 } // namespace jit
 } // namespace js
-
-#endif // JS_ION
 
 #endif /* jit_IonMacroAssembler_h */

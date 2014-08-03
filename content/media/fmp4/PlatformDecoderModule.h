@@ -31,6 +31,7 @@ class MediaDataDecoder;
 class MediaDataDecoderCallback;
 class MediaInputQueue;
 class MediaTaskQueue;
+class CDMProxy;
 typedef int64_t Microseconds;
 
 // The PlatformDecoderModule interface is used by the MP4Reader to abstract
@@ -65,6 +66,15 @@ public:
   // This is called on the decode thread.
   static PlatformDecoderModule* Create();
 
+  // Creates a PlatformDecoderModule that uses a CDMProxy to decrypt or
+  // decrypt-and-decode EME encrypted content. If the CDM only decrypts and
+  // does not decode, we create a PDM and use that to create MediaDataDecoders
+  // that we use on on aTaskQueue to decode the decrypted stream.
+  static PlatformDecoderModule* CreateCDMWrapper(CDMProxy* aProxy,
+                                                 bool aHasAudio,
+                                                 bool aHasVideo,
+                                                 MediaTaskQueue* aTaskQueue);
+
   // Called to shutdown the decoder module and cleanup state. This should
   // block until shutdown is complete. This is called after Shutdown() has
   // been called on all MediaDataDecoders created from this
@@ -83,11 +93,12 @@ public:
   // Returns nullptr if the decoder can't be created.
   // It is safe to store a reference to aConfig.
   // Called on decode thread.
-  virtual MediaDataDecoder* CreateH264Decoder(const mp4_demuxer::VideoDecoderConfig& aConfig,
-                                              layers::LayersBackend aLayersBackend,
-                                              layers::ImageContainer* aImageContainer,
-                                              MediaTaskQueue* aVideoTaskQueue,
-                                              MediaDataDecoderCallback* aCallback) = 0;
+  virtual already_AddRefed<MediaDataDecoder>
+  CreateH264Decoder(const mp4_demuxer::VideoDecoderConfig& aConfig,
+                    layers::LayersBackend aLayersBackend,
+                    layers::ImageContainer* aImageContainer,
+                    MediaTaskQueue* aVideoTaskQueue,
+                    MediaDataDecoderCallback* aCallback) = 0;
 
   // Creates an AAC decoder with the specified properties.
   // Asynchronous decoding of audio should be done in runnables dispatched to
@@ -99,9 +110,10 @@ public:
   // COINIT_MULTITHREADED.
   // It is safe to store a reference to aConfig.
   // Called on decode thread.
-  virtual MediaDataDecoder* CreateAACDecoder(const mp4_demuxer::AudioDecoderConfig& aConfig,
-                                             MediaTaskQueue* aAudioTaskQueue,
-                                             MediaDataDecoderCallback* aCallback) = 0;
+  virtual already_AddRefed<MediaDataDecoder>
+  CreateAACDecoder(const mp4_demuxer::AudioDecoderConfig& aConfig,
+                   MediaTaskQueue* aAudioTaskQueue,
+                   MediaDataDecoderCallback* aCallback) = 0;
 
   virtual ~PlatformDecoderModule() {}
 

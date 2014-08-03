@@ -5,6 +5,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 EXPORTS += [
+    'eme/EMEDecoderModule.h',
     'MP4Decoder.h',
     'MP4Reader.h',
     'PlatformDecoderModule.h',
@@ -12,6 +13,7 @@ EXPORTS += [
 
 UNIFIED_SOURCES += [
     'BlankDecoderModule.cpp',
+    'eme/EMEDecoderModule.cpp',
     'PlatformDecoderModule.cpp',
 ]
 
@@ -21,25 +23,44 @@ SOURCES += [
 ]
 
 if CONFIG['MOZ_WMF']:
-  DIRS += [ 'wmf' ];
+    DIRS += [ 'wmf' ];
 
 if CONFIG['MOZ_FFMPEG']:
+    EXPORTS += [
+        'ffmpeg/FFmpegRuntimeLinker.h',
+    ]
+    UNIFIED_SOURCES += [
+        'ffmpeg/FFmpegLog.cpp',
+        'ffmpeg/FFmpegRuntimeLinker.cpp',
+    ]
+    DIRS += [
+        'ffmpeg/libav53',
+        'ffmpeg/libav54',
+        'ffmpeg/libav55',
+    ]
+    LOCAL_INCLUDES += [
+        'ffmpeg',
+    ]
+
+if CONFIG['MOZ_APPLEMEDIA']:
   EXPORTS += [
-      'ffmpeg/FFmpegRuntimeLinker.h',
+      'apple/AppleDecoderModule.h',
   ]
   UNIFIED_SOURCES += [
-      'ffmpeg/FFmpegLog.cpp',
-      'ffmpeg/FFmpegRuntimeLinker.cpp',
+      'apple/AppleATDecoder.cpp',
+      'apple/AppleCMLinker.cpp',
+      'apple/AppleDecoderModule.cpp',
+      'apple/AppleUtils.cpp',
+      'apple/AppleVTDecoder.cpp',
+      'apple/AppleVTLinker.cpp',
   ]
-  DIRS += [
-      'ffmpeg/libav53',
-      'ffmpeg/libav54',
-      'ffmpeg/libav55',
-  ]
-  LOCAL_INCLUDES += [
-      'ffmpeg',
+  LDFLAGS += [
+      '-framework AudioToolbox',
   ]
 
 FINAL_LIBRARY = 'xul'
 
 FAIL_ON_WARNINGS = True
+
+if CONFIG['OS_ARCH'] == 'WINNT':
+    DEFINES['NOMINMAX'] = True

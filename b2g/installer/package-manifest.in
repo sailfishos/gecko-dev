@@ -489,8 +489,7 @@
 @BINPATH@/components/nsInputListAutoComplete.js
 @BINPATH@/components/formautofill.manifest
 @BINPATH@/components/FormAutofillContentService.js
-@BINPATH@/components/contentSecurityPolicy.manifest
-@BINPATH@/components/contentSecurityPolicy.js
+@BINPATH@/components/FormAutofillStartup.js
 @BINPATH@/components/contentAreaDropListener.manifest
 @BINPATH@/components/contentAreaDropListener.js
 @BINPATH@/components/messageWakeupService.js
@@ -722,6 +721,11 @@
 #endif
 @BINPATH@/chrome/pippki@JAREXT@
 @BINPATH@/chrome/pippki.manifest
+
+; For process sandboxing
+#if defined(XP_WIN)
+@BINPATH@/@DLL_PREFIX@sandboxbroker@DLL_SUFFIX@
+#endif
 
 ; for Solaris SPARC
 #ifdef SOLARIS

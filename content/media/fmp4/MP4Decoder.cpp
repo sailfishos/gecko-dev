@@ -8,6 +8,8 @@
 #include "MP4Reader.h"
 #include "MediaDecoderStateMachine.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/CDMProxy.h"
+#include "prlog.h"
 
 #ifdef XP_WIN
 #include "mozilla/WindowsVersion.h"
@@ -15,12 +17,33 @@
 #ifdef MOZ_FFMPEG
 #include "FFmpegRuntimeLinker.h"
 #endif
+#ifdef MOZ_APPLEMEDIA
+#include "apple/AppleCMLinker.h"
+#include "apple/AppleVTLinker.h"
+#endif
 
 namespace mozilla {
 
 MediaDecoderStateMachine* MP4Decoder::CreateStateMachine()
 {
   return new MediaDecoderStateMachine(this, new MP4Reader(this));
+}
+
+nsresult
+MP4Decoder::SetCDMProxy(CDMProxy* aProxy)
+{
+  nsresult rv = MediaDecoder::SetCDMProxy(aProxy);
+  NS_ENSURE_SUCCESS(rv, rv);
+  {
+    // The MP4Reader can't decrypt EME content until it has a CDMProxy,
+    // and the CDMProxy knows the capabilities of the CDM. The MP4Reader
+    // remains in "waiting for resources" state until then.
+    CDMCaps::AutoLock caps(aProxy->Capabilites());
+    nsRefPtr<nsIRunnable> task(
+      NS_NewRunnableMethod(this, &MediaDecoder::NotifyWaitingForResourcesStatusChanged));
+    caps.CallOnMainThreadWhenCapsAvailable(task);
+  }
+  return NS_OK;
 }
 
 bool
@@ -84,6 +107,31 @@ IsFFmpegAvailable()
 }
 
 static bool
+IsAppleAvailable()
+{
+#ifndef MOZ_APPLEMEDIA
+  // Not the right platform.
+  return false;
+#else
+  if (!Preferences::GetBool("media.apple.mp4.enabled", false)) {
+    // Disabled by preference.
+    return false;
+  }
+  // Attempt to load the required frameworks.
+  bool haveCoreMedia = AppleCMLinker::Link();
+  if (!haveCoreMedia) {
+    return false;
+  }
+  bool haveVideoToolbox = AppleVTLinker::Link();
+  if (!haveVideoToolbox) {
+    return false;
+  }
+  // All hurdles cleared!
+  return true;
+#endif
+}
+
+static bool
 HavePlatformMPEGDecoders()
 {
   return Preferences::GetBool("media.fragmented-mp4.use-blank-decoder") ||
@@ -92,6 +140,7 @@ HavePlatformMPEGDecoders()
          IsVistaOrLater() ||
 #endif
          IsFFmpegAvailable() ||
+         IsAppleAvailable() ||
          // TODO: Other platforms...
          false;
 }

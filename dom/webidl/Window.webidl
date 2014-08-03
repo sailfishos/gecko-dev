@@ -79,7 +79,8 @@ typedef any Transferable;
   [Throws] DOMString? prompt(optional DOMString message = "", optional DOMString default = "");
   [Throws] void print();
   //[Throws] any showModalDialog(DOMString url, optional any argument);
-  [Throws] any showModalDialog(DOMString url, optional any argument, optional DOMString options = "");
+  [Throws, Func="nsGlobalWindow::IsShowModalDialogEnabled"]
+  any showModalDialog(DOMString url, optional any argument, optional DOMString options = "");
 
   [Throws, CrossOriginCallable] void postMessage(any message, DOMString targetOrigin, optional sequence<Transferable> transfer);
 
@@ -303,7 +304,9 @@ partial interface Window {
   [Throws, ChromeOnly] void             home();
 
   // XXX Should this be in nsIDOMChromeWindow?
-  void                      updateCommands(DOMString action);
+  void                      updateCommands(DOMString action,
+                                           optional Selection? sel = null,
+                                           optional short reason = 0);
 
   /* Find in page.
    * @param str: the search pattern

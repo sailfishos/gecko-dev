@@ -19,8 +19,8 @@
 #endif
 #include "jswrapper.h"
 
-#include "jit/AsmJS.h"
-#include "jit/AsmJSLink.h"
+#include "asmjs/AsmJSLink.h"
+#include "asmjs/AsmJSValidate.h"
 #include "js/HashTable.h"
 #include "js/StructuredClone.h"
 #include "js/UbiNode.h"
@@ -1107,7 +1107,7 @@ static bool
 EnableOsiPointRegisterChecks(JSContext *, unsigned argc, jsval *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
-#if defined(JS_ION) && defined(CHECK_OSIPOINT_REGISTERS)
+#ifdef CHECK_OSIPOINT_REGISTERS
     jit::js_JitOptions.checkOsiPointRegisters = true;
 #endif
     args.rval().setUndefined();
@@ -1325,9 +1325,7 @@ static bool
 SetIonCheckGraphCoherency(JSContext *cx, unsigned argc, jsval *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
-#ifdef JS_ION
     jit::js_JitOptions.checkGraphConsistency = ToBoolean(args.get(0));
-#endif
     args.rval().setUndefined();
     return true;
 }
@@ -1792,21 +1790,20 @@ FindPath(JSContext *cx, unsigned argc, jsval *vp)
         return false;
     }
 
-    // We don't ToString non-objects given as 'start' or 'target'. We can't
-    // see edges to non-string primitive values, and it doesn't make much
-    // sense to ask for paths to or from a freshly allocated string, so
-    // if a non-string primitive appears here it's probably a mistake.
-    if (!args[0].isObject() && !args[0].isString()) {
+    // We don't ToString non-objects given as 'start' or 'target', because this
+    // test is all about object identity, and ToString doesn't preserve that.
+    // Non-GCThing endpoints don't make much sense.
+    if (!args[0].isObject() && !args[0].isString() && !args[0].isSymbol()) {
         js_ReportValueErrorFlags(cx, JSREPORT_ERROR, JSMSG_UNEXPECTED_TYPE,
                                  JSDVG_SEARCH_STACK, args[0], JS::NullPtr(),
-                                 "neither an object nor a string", NULL);
+                                 "not an object, string, or symbol", NULL);
         return false;
     }
 
-    if (!args[1].isObject() && !args[1].isString()) {
+    if (!args[1].isObject() && !args[1].isString() && !args[1].isSymbol()) {
         js_ReportValueErrorFlags(cx, JSREPORT_ERROR, JSMSG_UNEXPECTED_TYPE,
                                  JSDVG_SEARCH_STACK, args[0], JS::NullPtr(),
-                                 "neither an object nor a string", NULL);
+                                 "not an object, string, or symbol", NULL);
         return false;
     }
 
@@ -1839,10 +1836,13 @@ FindPath(JSContext *cx, unsigned argc, jsval *vp)
     // Construct a JavaScript array describing the path from the start to the
     // target. Each element has the form:
     //
-    //   { node: <object or string>, edge: <string describing outgoing edge from node> }
+    //   {
+    //     node: <object or string or symbol>,
+    //     edge: <string describing outgoing edge from node>
+    //   }
     //
-    // or, if the node is some internal thing, that isn't a proper
-    // JavaScript value:
+    // or, if the node is some internal thing that isn't a proper JavaScript
+    // value:
     //
     //   { node: undefined, edge: <string> }
     size_t length = nodes.length();
@@ -1870,8 +1870,7 @@ FindPath(JSContext *cx, unsigned argc, jsval *vp)
             return false;
         edgeName.release(); // edgeStr acquired ownership
 
-        if (!JS_DefineProperty(cx, obj, "edge", edgeStr,
-                               JSPROP_ENUMERATE, nullptr, nullptr))
+        if (!JS_DefineProperty(cx, obj, "edge", edgeStr, JSPROP_ENUMERATE, nullptr, nullptr))
             return false;
 
         result->setDenseElement(length - i - 1, ObjectValue(*obj));

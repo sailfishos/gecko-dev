@@ -37,12 +37,12 @@
 #include "jswatchpoint.h"
 #include "jswrapper.h"
 
+#include "asmjs/AsmJSModule.h"
 #include "builtin/Eval.h"
 #include "builtin/Object.h"
 #include "builtin/SymbolObject.h"
 #include "frontend/BytecodeCompiler.h"
 #include "gc/Marking.h"
-#include "jit/AsmJSModule.h"
 #include "jit/BaselineJIT.h"
 #include "js/MemoryMetrics.h"
 #include "js/OldDebugAPI.h"
@@ -2210,6 +2210,22 @@ js::XDRObjectLiteral(XDRState<mode> *xdr, MutableHandleObject obj)
             FixObjectType(cx, obj);
     }
 
+    {
+        uint32_t frozen;
+        bool extensible;
+        if (mode == XDR_ENCODE) {
+            if (!JSObject::isExtensible(cx, obj, &extensible))
+                return false;
+            frozen = extensible ? 0 : 1;
+        }
+        if (!xdr->codeUint32(&frozen))
+            return false;
+        if (mode == XDR_DECODE && frozen == 1) {
+            if (!JSObject::freeze(cx, obj))
+                return false;
+        }
+    }
+
     return true;
 }
 
@@ -2380,6 +2396,17 @@ JSObject::TradeGuts(JSContext *cx, JSObject *a, JSObject *b, TradeGutsReserved &
     JS_ASSERT(a->is<JSFunction>() == b->is<JSFunction>());
 
     /*
+     * Neither object may be in the nursery, but ensure we update any embedded
+     * nursery pointers in either object.
+     */
+#ifdef JSGC_GENERATIONAL
+    JS_ASSERT(!IsInsideNursery(a) && !IsInsideNursery(b));
+    cx->runtime()->gc.storeBuffer.putWholeCellFromMainThread(a);
+    cx->runtime()->gc.storeBuffer.putWholeCellFromMainThread(b);
+#endif
+    JS::AutoCheckCannotGC nogc;
+
+    /*
      * Swap the object's types, to restore their initial type information.
      * The prototypes and classes of the objects were swapped in ReserveForTradeGuts.
      */
@@ -2420,17 +2447,6 @@ JSObject::TradeGuts(JSContext *cx, JSObject *a, JSObject *b, TradeGutsReserved &
         js_memcpy(tmp, a, size);
         js_memcpy(a, b, size);
         js_memcpy(b, tmp, size);
-
-#ifdef JSGC_GENERATIONAL
-        /*
-         * Trigger post barriers for fixed slots. JSObject bits are barriered
-         * below, in common with the other case.
-         */
-        for (size_t i = 0; i < a->numFixedSlots(); ++i) {
-            HeapSlot::writeBarrierPost(a, HeapSlot::Slot, i, a->getSlot(i));
-            HeapSlot::writeBarrierPost(b, HeapSlot::Slot, i, b->getSlot(i));
-        }
-#endif
     } else {
         /*
          * If the objects are of differing sizes, use the space we reserved
@@ -2486,13 +2502,6 @@ JSObject::TradeGuts(JSContext *cx, JSObject *a, JSObject *b, TradeGutsReserved &
         reserved.newbslots = nullptr;
     }
 
-#ifdef JSGC_GENERATIONAL
-    Shape::writeBarrierPost(a->shape_, &a->shape_);
-    Shape::writeBarrierPost(b->shape_, &b->shape_);
-    types::TypeObject::writeBarrierPost(a->type_, &a->type_);
-    types::TypeObject::writeBarrierPost(b->type_, &b->type_);
-#endif
-
     if (a->inDictionaryMode())
         a->lastProperty()->listp = &a->shape_;
     if (b->inDictionaryMode())
@@ -2510,7 +2519,7 @@ JSObject::TradeGuts(JSContext *cx, JSObject *a, JSObject *b, TradeGutsReserved &
      * makes changes to the objects that might confuse the tracing code.
      */
     JS::Zone *zone = a->zone();
-    if (zone->needsBarrier()) {
+    if (zone->needsIncrementalBarrier()) {
         MarkChildren(zone->barrierTracer(), a);
         MarkChildren(zone->barrierTracer(), b);
     }
@@ -4588,7 +4597,6 @@ NativeGetInline(JSContext *cx,
     {
         jsbytecode *pc;
         JSScript *script = cx->currentScript(&pc);
-#ifdef JS_ION
         if (script && script->hasBaselineScript()) {
             switch (JSOp(*pc)) {
               case JSOP_GETPROP:
@@ -4600,7 +4608,6 @@ NativeGetInline(JSContext *cx,
                 break;
             }
         }
-#endif
     }
 
     if (!allowGC)
@@ -4744,7 +4751,7 @@ GetPropertyHelperInline(JSContext *cx,
             }
 
             /* Don't warn if extra warnings not enabled or for random getprop operations. */
-            if (!cx->options().extraWarnings() || (op != JSOP_GETPROP && op != JSOP_GETELEM))
+            if (!cx->compartment()->options().extraWarnings(cx) || (op != JSOP_GETPROP && op != JSOP_GETELEM))
                 return true;
 
             /* Don't warn repeatedly for the same script. */
@@ -5012,7 +5019,7 @@ MaybeReportUndeclaredVarAssignment(JSContext *cx, JSString *propname)
 
         // If the code is not strict and extra warnings aren't enabled, then no
         // check is needed.
-        if (!script->strict() && !cx->options().extraWarnings())
+        if (!script->strict() && !cx->compartment()->options().extraWarnings(cx))
             return true;
     }
 
@@ -5131,7 +5138,7 @@ baseops::SetPropertyHelper(typename ExecutionModeTraits<mode>::ContextType cxArg
                 if (pd.isReadonly()) {
                     if (strict)
                         return JSObject::reportReadOnly(cx, id, JSREPORT_ERROR);
-                    if (cx->options().extraWarnings())
+                    if (cx->compartment()->options().extraWarnings(cx))
                         return JSObject::reportReadOnly(cx, id, JSREPORT_STRICT | JSREPORT_WARNING);
                     return true;
                 }
@@ -5191,7 +5198,7 @@ baseops::SetPropertyHelper(typename ExecutionModeTraits<mode>::ContextType cxArg
                 JSContext *cx = cxArg->asJSContext();
                 if (strict)
                     return JSObject::reportReadOnly(cx, id, JSREPORT_ERROR);
-                if (cx->options().extraWarnings())
+                if (cx->compartment()->options().extraWarnings(cx))
                     return JSObject::reportReadOnly(cx, id, JSREPORT_STRICT | JSREPORT_WARNING);
                 return true;
             }
@@ -5301,8 +5308,11 @@ baseops::SetPropertyHelper(typename ExecutionModeTraits<mode>::ContextType cxArg
             /* Error in strict mode code, warn with extra warnings option, otherwise do nothing. */
             if (strict)
                 return obj->reportNotExtensible(cxArg);
-            if (mode == SequentialExecution && cxArg->asJSContext()->options().extraWarnings())
+            if (mode == SequentialExecution &&
+                cxArg->asJSContext()->compartment()->options().extraWarnings(cxArg->asJSContext()))
+            {
                 return obj->reportNotExtensible(cxArg, JSREPORT_STRICT | JSREPORT_WARNING);
+            }
             return true;
         }
 
@@ -6165,11 +6175,9 @@ JSObject::addSizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf, JS::Objects
         sizes->mallocHeapPropertyIteratorData += as<PropertyIteratorObject>().sizeOfMisc(mallocSizeOf);
     } else if (is<ArrayBufferObject>() || is<SharedArrayBufferObject>()) {
         ArrayBufferObject::addSizeOfExcludingThis(this, mallocSizeOf, sizes);
-#ifdef JS_ION
     } else if (is<AsmJSModuleObject>()) {
         as<AsmJSModuleObject>().addSizeOfMisc(mallocSizeOf, &sizes->nonHeapCodeAsmJS,
                                               &sizes->mallocHeapAsmJSModuleData);
-#endif
 #ifdef JS_HAS_CTYPES
     } else {
         // This must be the last case.

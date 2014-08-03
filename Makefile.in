@@ -219,6 +219,7 @@ ifdef MOZ_CRASHREPORTER
 	echo building symbol store
 	$(RM) -r $(DIST)/crashreporter-symbols
 	$(RM) '$(DIST)/$(SYMBOL_ARCHIVE_BASENAME).zip'
+	$(RM) '$(DIST)/$(SYMBOL_FULL_ARCHIVE_BASENAME).zip'
 	$(NSINSTALL) -D $(DIST)/crashreporter-symbols
 	OBJCOPY='$(OBJCOPY)' \
 	$(PYTHON) $(topsrcdir)/toolkit/crashreporter/tools/symbolstore.py \
@@ -325,6 +326,9 @@ endif
 # Note some others are hardcoded or "guessed" in recursivemake.py and emitter.py
 ifeq ($(MOZ_WIDGET_TOOLKIT),gtk3)
 toolkit/library/target: widget/gtk/mozgtk/gtk3/target
+endif
+ifdef MOZ_LDAP_XPCOM
+toolkit/library/target: ../ldap/target
 endif
 ifndef MOZ_FOLD_LIBS
 ifndef MOZ_NATIVE_SQLITE

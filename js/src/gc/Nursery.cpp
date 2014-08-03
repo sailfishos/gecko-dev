@@ -9,6 +9,8 @@
 
 #include "gc/Nursery-inl.h"
 
+#include "mozilla/IntegerPrintfMacros.h"
+
 #include "jscompartment.h"
 #include "jsgc.h"
 #include "jsinfer.h"
@@ -17,10 +19,7 @@
 
 #include "gc/GCInternals.h"
 #include "gc/Memory.h"
-#ifdef JS_ION
 #include "jit/IonFrames.h"
-#endif
-#include "mozilla/IntegerPrintfMacros.h"
 #include "vm/ArrayObject.h"
 #include "vm/Debugger.h"
 #if defined(DEBUG)
@@ -342,20 +341,21 @@ class MinorCollectionTracer : public JSTracer
         tenuredSize(0),
         head(nullptr),
         tail(&head),
-        savedRuntimeNeedBarrier(rt->needsBarrier()),
+        savedRuntimeNeedBarrier(rt->needsIncrementalBarrier()),
         disableStrictProxyChecking(rt)
     {
         rt->gc.incGcNumber();
 
         /*
-         * We disable the runtime needsBarrier() check so that pre-barriers do
-         * not fire on objects that have been relocated. The pre-barrier's
-         * call to obj->zone() will try to look through shape_, which is now
-         * the relocation magic and will crash. However, zone->needsBarrier()
-         * must still be set correctly so that allocations we make in minor
-         * GCs between incremental slices will allocate their objects marked.
+         * We disable the runtime needsIncrementalBarrier() check so that
+         * pre-barriers do not fire on objects that have been relocated. The
+         * pre-barrier's call to obj->zone() will try to look through shape_,
+         * which is now the relocation magic and will crash. However,
+         * zone->needsIncrementalBarrier() must still be set correctly so that
+         * allocations we make in minor GCs between incremental slices will
+         * allocate their objects marked.
          */
-        rt->setNeedsBarrier(false);
+        rt->setNeedsIncrementalBarrier(false);
 
         /*
          * We use the live array buffer lists to track traced buffers so we can
@@ -372,7 +372,7 @@ class MinorCollectionTracer : public JSTracer
     }
 
     ~MinorCollectionTracer() {
-        runtime()->setNeedsBarrier(savedRuntimeNeedBarrier);
+        runtime()->setNeedsIncrementalBarrier(savedRuntimeNeedBarrier);
         if (runtime()->gc.state() != NO_INCREMENTAL)
             ArrayBufferObject::restoreArrayBufferLists(liveArrayBuffers);
     }
@@ -851,9 +851,7 @@ js::Nursery::collect(JSRuntime *rt, JS::gcreason::Reason reason, TypeObjectList 
 
     // Update any slot or element pointers whose destination has been tenured.
     TIME_START(updateJitActivations);
-#ifdef JS_ION
     js::jit::UpdateJitActivationsForMinorGC<Nursery>(&rt->mainThread, &trc);
-#endif
     TIME_END(updateJitActivations);
 
     // Resize the nursery.
@@ -895,7 +893,7 @@ js::Nursery::collect(JSRuntime *rt, JS::gcreason::Reason reason, TypeObjectList 
     // We ignore gcMaxBytes when allocating for minor collection. However, if we
     // overflowed, we disable the nursery. The next time we allocate, we'll fail
     // because gcBytes >= gcMaxBytes.
-    if (rt->gc.usage.gcBytes() >= rt->gc.maxBytesAllocated())
+    if (rt->gc.usage.gcBytes() >= rt->gc.tunables.gcMaxBytes())
         disable();
 
     TIME_END(total);

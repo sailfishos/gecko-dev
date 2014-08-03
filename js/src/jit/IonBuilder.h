@@ -7,8 +7,6 @@
 #ifndef jit_IonBuilder_h
 #define jit_IonBuilder_h
 
-#ifdef JS_ION
-
 // This file declares the data structures for building a MIRGraph from a
 // JSScript.
 
@@ -698,6 +696,7 @@ class IonBuilder : public MIRGenerator
     InliningStatus inlineStringObject(CallInfo &callInfo);
     InliningStatus inlineStringSplit(CallInfo &callInfo);
     InliningStatus inlineStrCharCodeAt(CallInfo &callInfo);
+    InliningStatus inlineConstantCharCodeAt(CallInfo &callInfo);
     InliningStatus inlineStrFromCharCode(CallInfo &callInfo);
     InliningStatus inlineStrCharAt(CallInfo &callInfo);
     InliningStatus inlineStrReplace(CallInfo &callInfo);
@@ -1067,7 +1066,5 @@ bool NeedsPostBarrier(CompileInfo &info, MDefinition *value);
 
 } // namespace jit
 } // namespace js
-
-#endif // JS_ION
 
 #endif /* jit_IonBuilder_h */

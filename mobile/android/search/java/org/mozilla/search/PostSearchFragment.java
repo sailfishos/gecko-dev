@@ -9,6 +9,7 @@ import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Bundle;
 import android.support.v4.app.Fragment;
+import android.text.TextUtils;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -16,6 +17,10 @@ import android.webkit.WebChromeClient;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.ProgressBar;
+
+import org.mozilla.gecko.AppConstants;
+import org.mozilla.gecko.Telemetry;
+import org.mozilla.gecko.TelemetryContract;
 
 public class PostSearchFragment extends Fragment {
 
@@ -72,8 +77,12 @@ public class PostSearchFragment extends Fragment {
         setUrl(Constants.YAHOO_WEB_SEARCH_BASE_URL + Uri.encode(query));
     }
 
-    public void setUrl(String url) {
-        webview.loadUrl(url);
+    private void setUrl(String url) {
+        // Only load URLs if they're different than what's already
+        // loaded in the webview.
+        if (!TextUtils.equals(webview.getUrl(), url)) {
+            webview.loadUrl(url);
+        }
     }
 
     /**
@@ -88,8 +97,11 @@ public class PostSearchFragment extends Fragment {
             if (isSearchResultsPage(url)) {
                 super.onPageStarted(view, url, favicon);
             } else {
+                Telemetry.sendUIEvent(TelemetryContract.Event.LOAD_URL,
+                        TelemetryContract.Method.CONTENT, "search-result");
                 view.stopLoading();
                 Intent i = new Intent(Intent.ACTION_VIEW);
+                i.setClassName(AppConstants.ANDROID_PACKAGE_NAME, AppConstants.BROWSER_INTENT_CLASS_NAME);
                 i.setData(Uri.parse(url));
                 startActivity(i);
             }
@@ -98,7 +110,7 @@ public class PostSearchFragment extends Fragment {
 
     /**
      * A custom WebChromeClient that allows us to inject CSS into
-     * the head of the HTML.
+     * the head of the HTML and to monitor pageload progress.
      *
      * We use the WebChromeClient because it provides a hook to the titleReceived
      * event. Once the title is available, the page will have started parsing the

@@ -298,10 +298,17 @@ static inline T UnexpectedFailure(T rv)
 }
 
 void
-TraceXPCGlobal(JSTracer *trc, JSObject *obj)
+xpc::TraceXPCGlobal(JSTracer *trc, JSObject *obj)
 {
     if (js::GetObjectClass(obj)->flags & JSCLASS_DOM_GLOBAL)
         mozilla::dom::TraceProtoAndIfaceCache(trc, obj);
+
+    // We might be called from a GC during the creation of a global, before we've
+    // been able to set up the compartment private or the XPCWrappedNativeScope,
+    // so we need to null-check those.
+    xpc::CompartmentPrivate* compartmentPrivate = xpc::CompartmentPrivate::Get(obj);
+    if (compartmentPrivate && compartmentPrivate->scope)
+        compartmentPrivate->scope->TraceInside(trc);
 }
 
 namespace xpc {
@@ -374,6 +381,13 @@ InitGlobalObject(JSContext* aJSContext, JS::Handle<JSObject*> aGlobal, uint32_t 
                        status == nsIPrincipal::APP_STATUS_CERTIFIED;
         }
         JS::CompartmentOptionsRef(aGlobal).setDiscardSource(isSystem);
+    }
+
+    if (ExtraWarningsForSystemJS()) {
+        nsIPrincipal *prin = GetObjectPrincipal(aGlobal);
+        bool isSystem = nsContentUtils::IsSystemPrincipal(prin);
+        if (isSystem)
+            JS::CompartmentOptionsRef(aGlobal).extraWarningsOverride().set(true);
     }
 
     // Stuff coming through this path always ends up as a DOM global.
@@ -931,19 +945,6 @@ nsXPConnect::DebugPrintJSStack(bool showArgs,
     return nullptr;
 }
 
-/* void debugDumpEvalInJSStackFrame (in uint32_t aFrameNumber, in string aSourceText); */
-NS_IMETHODIMP
-nsXPConnect::DebugDumpEvalInJSStackFrame(uint32_t aFrameNumber, const char *aSourceText)
-{
-    JSContext* cx = GetCurrentJSContext();
-    if (!cx)
-        printf("there is no JSContext on the nsIThreadJSContextStack!\n");
-    else
-        xpc_DumpEvalInJSStackFrame(cx, aFrameNumber, aSourceText);
-
-    return NS_OK;
-}
-
 /* jsval variantToJS (in JSContextPtr ctx, in JSObjectPtr scope, in nsIVariant value); */
 NS_IMETHODIMP
 nsXPConnect::VariantToJS(JSContext* ctx, JSObject* scopeArg, nsIVariant* value,
@@ -1392,16 +1393,6 @@ JS_EXPORT_API(char*) PrintJSStack()
     return (NS_SUCCEEDED(rv) && xpc) ?
         xpc->DebugPrintJSStack(true, true, false) :
         nullptr;
-}
-
-JS_EXPORT_API(void) DumpJSEval(uint32_t frameno, const char* text)
-{
-    nsresult rv;
-    nsCOMPtr<nsIXPConnect> xpc(do_GetService(nsIXPConnect::GetCID(), &rv));
-    if (NS_SUCCEEDED(rv) && xpc)
-        xpc->DebugDumpEvalInJSStackFrame(frameno, text);
-    else
-        printf("failed to get XPConnect service!\n");
 }
 
 JS_EXPORT_API(void) DumpCompleteHeap()

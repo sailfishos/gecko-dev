@@ -2302,6 +2302,7 @@ ContentParent::RecvAudioChannelChangeDefVolChannel(const int32_t& aChannel,
 bool
 ContentParent::RecvDataStoreGetStores(
                                     const nsString& aName,
+                                    const nsString& aOwner,
                                     const IPC::Principal& aPrincipal,
                                     InfallibleTArray<DataStoreSetting>* aValue)
 {
@@ -2310,7 +2311,7 @@ ContentParent::RecvDataStoreGetStores(
     return false;
   }
 
-  nsresult rv = service->GetDataStoresFromIPC(aName, aPrincipal, aValue);
+  nsresult rv = service->GetDataStoresFromIPC(aName, aOwner, aPrincipal, aValue);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return false;
   }

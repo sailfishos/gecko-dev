@@ -73,12 +73,12 @@ nsSVGFilterInstance::ComputeBounds()
   // deprecate that, since it's too confusing for a bare number to be sometimes
   // interpreted as a fraction of the bounding box and sometimes as user-space
   // units). So really only percentage values should be used in this case.
-  
+
   // Set the user space bounds (i.e. the filter region in user space).
   nsSVGLength2 XYWH[4];
   NS_ABORT_IF_FALSE(sizeof(mFilterElement->mLengthAttributes) == sizeof(XYWH),
                     "XYWH size incorrect");
-  memcpy(XYWH, mFilterElement->mLengthAttributes, 
+  memcpy(XYWH, mFilterElement->mLengthAttributes,
     sizeof(mFilterElement->mLengthAttributes));
   XYWH[0] = *mFilterFrame->GetLengthValue(SVGFilterElement::ATTR_X);
   XYWH[1] = *mFilterFrame->GetLengthValue(SVGFilterElement::ATTR_Y);
@@ -370,6 +370,12 @@ nsSVGFilterInstance::BuildPrimitives(nsTArray<FilterPrimitiveDescription>& aPrim
 {
   mSourceGraphicIndex = GetLastResultIndex(aPrimitiveDescrs);
 
+  // Clip previous filter's output to this filter's filter region.
+  if (mSourceGraphicIndex >= 0) {
+    FilterPrimitiveDescription& sourceDescr = aPrimitiveDescrs[mSourceGraphicIndex];
+    sourceDescr.SetPrimitiveSubregion(sourceDescr.PrimitiveSubregion().Intersect(ToIntRect(mFilterSpaceBounds)));
+  }
+
   // Get the filter primitive elements.
   nsTArray<nsRefPtr<nsSVGFE> > primitives;
   for (nsIContent* child = mFilterElement->nsINode::GetFirstChild();
@@ -410,6 +416,7 @@ nsSVGFilterInstance::BuildPrimitives(nsTArray<FilterPrimitiveDescription>& aPrim
 
     descr.SetIsTainted(filter->OutputIsTainted(sourcesAreTainted, principal));
     descr.SetPrimitiveSubregion(primitiveSubregion);
+    descr.SetFilterSpaceBounds(ToIntRect(mFilterSpaceBounds));
 
     for (uint32_t i = 0; i < sourceIndices.Length(); i++) {
       int32_t inputIndex = sourceIndices[i];

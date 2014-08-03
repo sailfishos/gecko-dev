@@ -6,12 +6,14 @@ package org.mozilla.search.autocomplete;
 
 import android.app.Activity;
 import android.content.Context;
+import android.graphics.Rect;
 import android.os.Bundle;
 import android.support.v4.app.Fragment;
 import android.support.v4.app.LoaderManager;
 import android.support.v4.content.AsyncTaskLoader;
 import android.support.v4.content.Loader;
 import android.text.SpannableString;
+import android.text.TextUtils;
 import android.text.style.ForegroundColorSpan;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -19,6 +21,11 @@ import android.view.ViewGroup;
 import android.widget.AdapterView;
 import android.widget.ListView;
 
+import org.mozilla.gecko.Telemetry;
+import org.mozilla.gecko.TelemetryContract;
+import org.mozilla.search.AcceptsSearchQuery;
+import org.mozilla.search.AcceptsSearchQuery.SuggestionAnimation;
+import org.mozilla.search.Constants;
 import org.mozilla.search.R;
 
 import java.util.ArrayList;
@@ -37,9 +44,6 @@ public class SearchFragment extends Fragment implements AcceptsJumpTaps {
 
     // Timeout for the suggestion client to respond
     private static final int SUGGESTION_TIMEOUT = 3000;
-
-    // Maximum number of results returned by the suggestion client
-    private static final int SUGGESTION_MAX = 5;
 
     // Color of search term match in search suggestion
     private static final int SUGGESTION_HIGHLIGHT_COLOR = 0xFF999999;
@@ -77,9 +81,9 @@ public class SearchFragment extends Fragment implements AcceptsJumpTaps {
 
         // TODO: Don't hard-code this template string (bug 1039758)
         final String template = "https://search.yahoo.com/sugg/ff?" +
-                "output=fxjson&appid=ffm&command=__searchTerms__&nresults=" + SUGGESTION_MAX;
+                "output=fxjson&appid=ffm&command=__searchTerms__&nresults=" + Constants.SUGGESTION_MAX;
 
-        suggestClient = new SuggestClient(activity, template, SUGGESTION_TIMEOUT, SUGGESTION_MAX);
+        suggestClient = new SuggestClient(activity, template, SUGGESTION_TIMEOUT, Constants.SUGGESTION_MAX);
         suggestionLoaderCallbacks = new SuggestionLoaderCallbacks();
 
         autoCompleteAdapter = new AutoCompleteAdapter(activity, this);
@@ -133,8 +137,12 @@ public class SearchFragment extends Fragment implements AcceptsJumpTaps {
 
             @Override
             public void onSubmit(String text) {
-                transitionToWaiting();
-                searchListener.onSearch(text);
+                // Don't submit an empty query.
+                final String trimmedQuery = text.trim();
+                if (!TextUtils.isEmpty(trimmedQuery)) {
+                    transitionToWaiting();
+                    searchListener.onSearch(trimmedQuery);
+                }
             }
         });
 
@@ -147,8 +155,23 @@ public class SearchFragment extends Fragment implements AcceptsJumpTaps {
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
                 final Suggestion suggestion = (Suggestion) suggestionDropdown.getItemAtPosition(position);
 
-                transitionToWaiting();
-                searchListener.onSearch(suggestion.value);
+                final Rect startBounds = new Rect();
+                view.getGlobalVisibleRect(startBounds);
+
+                // The user tapped on a suggestion from the search engine.
+                Telemetry.sendUIEvent(TelemetryContract.Event.SEARCH, TelemetryContract.Method.SUGGESTION, "suggest");
+
+                searchListener.onSearch(suggestion.value, new SuggestionAnimation() {
+                    @Override
+                    public Rect getStartBounds() {
+                        return startBounds;
+                    }
+
+                    @Override
+                    public void onAnimationEnd() {
+                        transitionToWaiting();
+                    }
+                });
             }
         });
 

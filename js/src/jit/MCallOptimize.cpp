@@ -46,7 +46,7 @@ IonBuilder::inlineNativeCall(CallInfo &callInfo, JSFunction *target)
         return inlineArraySplice(callInfo);
 
     // Math natives.
-    if (native == js_math_abs)
+    if (native == js::math_abs)
         return inlineMathAbs(callInfo);
     if (native == js::math_floor)
         return inlineMathFloor(callInfo);
@@ -54,19 +54,19 @@ IonBuilder::inlineNativeCall(CallInfo &callInfo, JSFunction *target)
         return inlineMathCeil(callInfo);
     if (native == js::math_round)
         return inlineMathRound(callInfo);
-    if (native == js_math_sqrt)
+    if (native == js::math_sqrt)
         return inlineMathSqrt(callInfo);
-    if (native == math_atan2)
+    if (native == js::math_atan2)
         return inlineMathAtan2(callInfo);
     if (native == js::math_hypot)
         return inlineMathHypot(callInfo);
-    if (native == js_math_max)
+    if (native == js::math_max)
         return inlineMathMinMax(callInfo, true /* max */);
-    if (native == js_math_min)
+    if (native == js::math_min)
         return inlineMathMinMax(callInfo, false /* max */);
-    if (native == js_math_pow)
+    if (native == js::math_pow)
         return inlineMathPow(callInfo);
-    if (native == js_math_random)
+    if (native == js::math_random)
         return inlineMathRandom(callInfo);
     if (native == js::math_imul)
         return inlineMathImul(callInfo);
@@ -1179,6 +1179,12 @@ IonBuilder::inlineStrCharCodeAt(CallInfo &callInfo)
     if (argType != MIRType_Int32 && argType != MIRType_Double)
         return InliningStatus_NotInlined;
 
+    // Check for STR.charCodeAt(IDX) where STR is a constant string and IDX is a
+    // constant integer.
+    InliningStatus constInlineStatus = inlineConstantCharCodeAt(callInfo);
+    if (constInlineStatus != InliningStatus_NotInlined)
+        return constInlineStatus;
+
     callInfo.setImplicitlyUsedUnchecked();
 
     MInstruction *index = MToInt32::New(alloc(), callInfo.getArg(0));
@@ -1192,6 +1198,39 @@ IonBuilder::inlineStrCharCodeAt(CallInfo &callInfo)
     MCharCodeAt *charCode = MCharCodeAt::New(alloc(), callInfo.thisArg(), index);
     current->add(charCode);
     current->push(charCode);
+    return InliningStatus_Inlined;
+}
+
+IonBuilder::InliningStatus
+IonBuilder::inlineConstantCharCodeAt(CallInfo &callInfo)
+{
+    if (!callInfo.thisArg()->isConstant())
+        return InliningStatus_NotInlined;
+
+    if (!callInfo.getArg(0)->isConstant())
+        return InliningStatus_NotInlined;
+
+    const js::Value *strval = callInfo.thisArg()->toConstant()->vp();
+    const js::Value *idxval  = callInfo.getArg(0)->toConstant()->vp();
+
+    if (!strval->isString() || !idxval->isInt32())
+        return InliningStatus_NotInlined;
+
+    JSString *str = strval->toString();
+    if (!str->isLinear())
+        return InliningStatus_NotInlined;
+
+    int32_t idx = idxval->toInt32();
+    if (idx < 0 || (uint32_t(idx) >= str->length()))
+        return InliningStatus_NotInlined;
+
+    callInfo.setImplicitlyUsedUnchecked();
+
+    JSLinearString &linstr = str->asLinear();
+    jschar ch = linstr.latin1OrTwoByteChar(idx);
+    MConstant *result = MConstant::New(alloc(), Int32Value(ch));
+    current->add(result);
+    current->push(result);
     return InliningStatus_Inlined;
 }
 
@@ -1794,7 +1833,7 @@ IonBuilder::inlineUnsafeSetReservedSlot(CallInfo &callInfo)
     current->push(store);
 
     if (NeedsPostBarrier(info(), callInfo.getArg(2)))
-        current->add(MPostWriteBarrier::New(alloc(), callInfo.thisArg(), callInfo.getArg(2)));
+        current->add(MPostWriteBarrier::New(alloc(), callInfo.getArg(0), callInfo.getArg(2)));
 
     return InliningStatus_Inlined;
 }

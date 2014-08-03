@@ -199,6 +199,8 @@
 
 #include "nsRefreshDriver.h"
 
+#include "mozilla/dom/SelectionChangeEvent.h"
+
 #include "mozilla/Services.h"
 #include "mozilla/Telemetry.h"
 #include "nsLocation.h"
@@ -273,6 +275,7 @@ static PopupControlState    gPopupControlState         = openAbused;
 static int32_t              gRunningTimeoutDepth       = 0;
 static bool                 gMouseDown                 = false;
 static bool                 gDragServiceDisabled       = false;
+static bool                 gSelectionCaretPrefEnabled = false;
 static FILE                *gDumpFile                  = nullptr;
 static uint64_t             gNextWindowID              = 0;
 static uint32_t             gSerialCounter             = 0;
@@ -1174,6 +1177,9 @@ nsGlobalWindow::nsGlobalWindow(nsGlobalWindow *aOuterWindow)
                                 DEFAULT_MIN_BACKGROUND_TIMEOUT_VALUE);
     Preferences::AddBoolVarCache(&sIdleObserversAPIFuzzTimeDisabled, 
                                  "dom.idle-observers-api.fuzz_time.disabled",
+                                 false);
+    Preferences::AddBoolVarCache(&gSelectionCaretPrefEnabled,
+                                 "selectioncaret.enabled",
                                  false);
   }
 
@@ -2331,6 +2337,9 @@ nsGlobalWindow::SetNewDocument(nsIDocument* aDocument,
   }
 
   NS_PRECONDITION(IsOuterWindow(), "Must only be called on outer windows");
+
+  // Bail out early if we're in process of closing down the window.
+  NS_ENSURE_STATE(!mCleanedUp);
 
   if (IsFrozen()) {
     // This outer is now getting its first inner, thaw the outer now
@@ -4363,6 +4372,21 @@ nsGlobalWindow::IsChromeWindow(JSContext* aCx, JSObject* aObj)
 {
   // For now, have to deal with XPConnect objects here.
   return xpc::WindowOrNull(aObj)->IsChromeWindow();
+}
+
+/* static */ bool
+nsGlobalWindow::IsShowModalDialogEnabled(JSContext*, JSObject*)
+{
+  static bool sAddedPrefCache = false;
+  static bool sIsDisabled;
+  static const char sShowModalDialogPref[] = "dom.disable_window_showModalDialog";
+
+  if (!sAddedPrefCache) {
+    Preferences::AddBoolVarCache(&sIsDisabled, sShowModalDialogPref, false);
+    sAddedPrefCache = true;
+  }
+
+  return !sIsDisabled;
 }
 
 nsIDOMOfflineResourceList*
@@ -9121,7 +9145,7 @@ nsGlobalWindow::ShowModalDialog(const nsAString& aUrl, nsIVariant* aArgument,
                             (aUrl, aArgument, aOptions, aError), aError,
                             nullptr);
 
-  if (Preferences::GetBool("dom.disable_window_showModalDialog", false)) {
+  if (!IsShowModalDialogEnabled()) {
     aError.Throw(NS_ERROR_NOT_AVAILABLE);
     return nullptr;
   }
@@ -9248,7 +9272,7 @@ public:
 };
 
 NS_IMETHODIMP
-nsGlobalWindow::UpdateCommands(const nsAString& anAction)
+nsGlobalWindow::UpdateCommands(const nsAString& anAction, nsISelection* aSel, int16_t aReason)
 {
   nsPIDOMWindow *rootWindow = nsGlobalWindow::GetPrivateRoot();
   if (!rootWindow)
@@ -9257,13 +9281,38 @@ nsGlobalWindow::UpdateCommands(const nsAString& anAction)
   nsCOMPtr<nsIDOMXULDocument> xulDoc =
     do_QueryInterface(rootWindow->GetExtantDoc());
   // See if we contain a XUL document.
-  if (xulDoc) {
+  // selectionchange action is only used for mozbrowser, not for XUL. So we bypass
+  // XUL command dispatch if anAction is "selectionchange".
+  if (xulDoc && !anAction.EqualsLiteral("selectionchange")) {
     // Retrieve the command dispatcher and call updateCommands on it.
     nsCOMPtr<nsIDOMXULCommandDispatcher> xulCommandDispatcher;
     xulDoc->GetCommandDispatcher(getter_AddRefs(xulCommandDispatcher));
     if (xulCommandDispatcher) {
       nsContentUtils::AddScriptRunner(new CommandDispatcher(xulCommandDispatcher,
                                                             anAction));
+    }
+  }
+
+  if (gSelectionCaretPrefEnabled && mDoc && anAction.EqualsLiteral("selectionchange")) {
+    SelectionChangeEventInit init;
+    init.mBubbles = true;
+    if (aSel) {
+      nsCOMPtr<nsIDOMRange> range;
+      nsresult rv = aSel->GetRangeAt(0, getter_AddRefs(range));
+      if (NS_SUCCEEDED(rv) && range) {
+        nsRefPtr<nsRange> nsrange = static_cast<nsRange*>(range.get());
+        init.mBoundingClientRect = nsrange->GetBoundingClientRect(true, false);
+        range->ToString(init.mSelectedText);
+        init.mReason = aReason;
+      }
+
+      nsRefPtr<SelectionChangeEvent> event =
+        SelectionChangeEvent::Constructor(mDoc, NS_LITERAL_STRING("mozselectionchange"), init);
+
+      event->SetTrusted(true);
+      event->GetInternalNSEvent()->mFlags.mOnlyChromeDispatch = true;
+      bool ret;
+      mDoc->DispatchEvent(event, &ret);
     }
   }
 

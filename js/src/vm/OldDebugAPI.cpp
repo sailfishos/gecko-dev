@@ -22,8 +22,8 @@
 #include "jsstr.h"
 #include "jstypes.h"
 
+#include "asmjs/AsmJSModule.h"
 #include "frontend/SourceNotes.h"
-#include "jit/AsmJSModule.h"
 #include "vm/Debugger.h"
 #include "vm/Shape.h"
 
@@ -262,7 +262,6 @@ JS_DumpCompartmentPCCounts(JSContext *cx)
             JS_DumpPCCounts(cx, script);
     }
 
-#if defined(JS_ION)
     for (unsigned thingKind = FINALIZE_OBJECT0; thingKind < FINALIZE_OBJECT_LIMIT; thingKind++) {
         for (ZoneCellIter i(cx->zone(), (AllocKind) thingKind); !i.done(); i.next()) {
             JSObject *obj = i.get<JSObject>();
@@ -288,7 +287,6 @@ JS_DumpCompartmentPCCounts(JSContext *cx)
             }
         }
     }
-#endif
 }
 
 static const char *
@@ -502,176 +500,4 @@ JS::FormatStackDump(JSContext *cx, char *buf, bool showArgs, bool showLocals, bo
         buf = JS_sprintf_append(buf, "JavaScript stack is empty\n");
 
     return buf;
-}
-
-JSAbstractFramePtr::JSAbstractFramePtr(void *raw, jsbytecode *pc)
-  : ptr_(uintptr_t(raw)), pc_(pc)
-{ }
-
-JSObject *
-JSAbstractFramePtr::scopeChain(JSContext *cx)
-{
-    AbstractFramePtr frame(*this);
-    RootedObject scopeChain(cx, frame.scopeChain());
-    AutoCompartment ac(cx, scopeChain);
-    return GetDebugScopeForFrame(cx, frame, pc());
-}
-
-JSObject *
-JSAbstractFramePtr::callObject(JSContext *cx)
-{
-    AbstractFramePtr frame(*this);
-    if (!frame.isFunctionFrame())
-        return nullptr;
-
-    JSObject *o = GetDebugScopeForFrame(cx, frame, pc());
-
-    /*
-     * Given that fp is a function frame and GetDebugScopeForFrame always fills
-     * in missing scopes, we can expect to find fp's CallObject on 'o'. Note:
-     *  - GetDebugScopeForFrame wraps every ScopeObject (missing or not) with
-     *    a DebugScopeObject proxy.
-     *  - If fp is an eval-in-function, then fp has no callobj of its own and
-     *    JS_GetFrameCallObject will return the innermost function's callobj.
-     */
-    while (o) {
-        ScopeObject &scope = o->as<DebugScopeObject>().scope();
-        if (scope.is<CallObject>())
-            return o;
-        o = o->enclosingScope();
-    }
-    return nullptr;
-}
-
-JSFunction *
-JSAbstractFramePtr::maybeFun()
-{
-    AbstractFramePtr frame(*this);
-    return frame.maybeFun();
-}
-
-JSScript *
-JSAbstractFramePtr::script()
-{
-    AbstractFramePtr frame(*this);
-    return frame.script();
-}
-
-bool
-JSAbstractFramePtr::getThisValue(JSContext *cx, MutableHandleValue thisv)
-{
-    AbstractFramePtr frame(*this);
-
-    RootedObject scopeChain(cx, frame.scopeChain());
-    js::AutoCompartment ac(cx, scopeChain);
-    if (!ComputeThis(cx, frame))
-        return false;
-
-    thisv.set(frame.thisValue());
-    return true;
-}
-
-bool
-JSAbstractFramePtr::isDebuggerFrame()
-{
-    AbstractFramePtr frame(*this);
-    return frame.isDebuggerFrame();
-}
-
-bool
-JSAbstractFramePtr::evaluateInStackFrame(JSContext *cx,
-                                         const char *bytes, unsigned length,
-                                         const char *filename, unsigned lineno,
-                                         MutableHandleValue rval)
-{
-    if (!CheckDebugMode(cx))
-        return false;
-
-    size_t len = length;
-    jschar *chars = InflateString(cx, bytes, &len);
-    if (!chars)
-        return false;
-    length = (unsigned) len;
-
-    bool ok = evaluateUCInStackFrame(cx, chars, length, filename, lineno, rval);
-    js_free(chars);
-
-    return ok;
-}
-
-bool
-JSAbstractFramePtr::evaluateUCInStackFrame(JSContext *cx,
-                                           const jschar *chars, unsigned length,
-                                           const char *filename, unsigned lineno,
-                                           MutableHandleValue rval)
-{
-    if (!CheckDebugMode(cx))
-        return false;
-
-    RootedObject scope(cx, scopeChain(cx));
-    Rooted<Env*> env(cx, scope);
-    if (!env)
-        return false;
-
-    AbstractFramePtr frame(*this);
-    if (!ComputeThis(cx, frame))
-        return false;
-    RootedValue thisv(cx, frame.thisValue());
-
-    js::AutoCompartment ac(cx, env);
-    return EvaluateInEnv(cx, env, thisv, frame, mozilla::Range<const jschar>(chars, length),
-                         filename, lineno, rval);
-}
-
-JSBrokenFrameIterator::JSBrokenFrameIterator(JSContext *cx)
-{
-    // Show all frames on the stack whose principal is subsumed by the current principal.
-    NonBuiltinScriptFrameIter iter(cx,
-                                   ScriptFrameIter::ALL_CONTEXTS,
-                                   ScriptFrameIter::GO_THROUGH_SAVED,
-                                   cx->compartment()->principals);
-    data_ = iter.copyData();
-}
-
-JSBrokenFrameIterator::~JSBrokenFrameIterator()
-{
-    js_free((ScriptFrameIter::Data *)data_);
-}
-
-bool
-JSBrokenFrameIterator::done() const
-{
-    NonBuiltinScriptFrameIter iter(*(ScriptFrameIter::Data *)data_);
-    return iter.done();
-}
-
-JSBrokenFrameIterator &
-JSBrokenFrameIterator::operator++()
-{
-    ScriptFrameIter::Data *data = (ScriptFrameIter::Data *)data_;
-    NonBuiltinScriptFrameIter iter(*data);
-    ++iter;
-    *data = iter.data_;
-    return *this;
-}
-
-JSAbstractFramePtr
-JSBrokenFrameIterator::abstractFramePtr() const
-{
-    NonBuiltinScriptFrameIter iter(*(ScriptFrameIter::Data *)data_);
-    return JSAbstractFramePtr(iter.abstractFramePtr().raw(), iter.pc());
-}
-
-jsbytecode *
-JSBrokenFrameIterator::pc() const
-{
-    NonBuiltinScriptFrameIter iter(*(ScriptFrameIter::Data *)data_);
-    return iter.pc();
-}
-
-bool
-JSBrokenFrameIterator::isConstructing() const
-{
-    NonBuiltinScriptFrameIter iter(*(ScriptFrameIter::Data *)data_);
-    return iter.isConstructing();
 }

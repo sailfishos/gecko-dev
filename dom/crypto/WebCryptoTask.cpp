@@ -132,6 +132,35 @@ GetAlgorithmName(JSContext* aCx, const OOS& aAlgorithm, nsString& aName)
     aName.Assign(alg.mName.Value());
   }
 
+  // Normalize algorithm names.
+  if (aName.EqualsIgnoreCase(WEBCRYPTO_ALG_AES_CBC)) {
+    aName.AssignLiteral(WEBCRYPTO_ALG_AES_CBC);
+  } else if (aName.EqualsIgnoreCase(WEBCRYPTO_ALG_AES_CTR)) {
+    aName.AssignLiteral(WEBCRYPTO_ALG_AES_CTR);
+  } else if (aName.EqualsIgnoreCase(WEBCRYPTO_ALG_AES_GCM)) {
+    aName.AssignLiteral(WEBCRYPTO_ALG_AES_GCM);
+  } else if (aName.EqualsIgnoreCase(WEBCRYPTO_ALG_AES_KW)) {
+    aName.AssignLiteral(WEBCRYPTO_ALG_AES_KW);
+  } else if (aName.EqualsIgnoreCase(WEBCRYPTO_ALG_SHA1)) {
+    aName.AssignLiteral(WEBCRYPTO_ALG_SHA1);
+  } else if (aName.EqualsIgnoreCase(WEBCRYPTO_ALG_SHA256)) {
+    aName.AssignLiteral(WEBCRYPTO_ALG_SHA256);
+  } else if (aName.EqualsIgnoreCase(WEBCRYPTO_ALG_SHA384)) {
+    aName.AssignLiteral(WEBCRYPTO_ALG_SHA384);
+  } else if (aName.EqualsIgnoreCase(WEBCRYPTO_ALG_SHA512)) {
+    aName.AssignLiteral(WEBCRYPTO_ALG_SHA512);
+  } else if (aName.EqualsIgnoreCase(WEBCRYPTO_ALG_HMAC)) {
+    aName.AssignLiteral(WEBCRYPTO_ALG_HMAC);
+  } else if (aName.EqualsIgnoreCase(WEBCRYPTO_ALG_PBKDF2)) {
+    aName.AssignLiteral(WEBCRYPTO_ALG_PBKDF2);
+  } else if (aName.EqualsIgnoreCase(WEBCRYPTO_ALG_RSAES_PKCS1)) {
+    aName.AssignLiteral(WEBCRYPTO_ALG_RSAES_PKCS1);
+  } else if (aName.EqualsIgnoreCase(WEBCRYPTO_ALG_RSASSA_PKCS1)) {
+    aName.AssignLiteral(WEBCRYPTO_ALG_RSASSA_PKCS1);
+  } else if (aName.EqualsIgnoreCase(WEBCRYPTO_ALG_RSA_OAEP)) {
+    aName.AssignLiteral(WEBCRYPTO_ALG_RSA_OAEP);
+  }
+
   return NS_OK;
 }
 
@@ -322,7 +351,7 @@ private:
   // Returns mResult as an ArrayBufferView, or an error
   virtual void Resolve() MOZ_OVERRIDE
   {
-    TypedArrayCreator<Uint8Array> ret(mResult);
+    TypedArrayCreator<ArrayBuffer> ret(mResult);
     mResultPromise->MaybeResolve(ret);
   }
 };
@@ -987,7 +1016,7 @@ private:
   {
     if (mSign) {
       // Return the computed MAC
-      TypedArrayCreator<Uint8Array> ret(mResult);
+      TypedArrayCreator<ArrayBuffer> ret(mResult);
       mResultPromise->MaybeResolve(ret);
     } else {
       // Compare the MAC to the provided signature
@@ -1116,7 +1145,7 @@ private:
   virtual void Resolve() MOZ_OVERRIDE
   {
     if (mSign) {
-      TypedArrayCreator<Uint8Array> ret(mSignature);
+      TypedArrayCreator<ArrayBuffer> ret(mSignature);
       mResultPromise->MaybeResolve(ret);
     } else {
       mResultPromise->MaybeResolve(mVerified);
@@ -1745,7 +1774,7 @@ private:
       return;
     }
 
-    TypedArrayCreator<Uint8Array> ret(mResult);
+    TypedArrayCreator<ArrayBuffer> ret(mResult);
     mResultPromise->MaybeResolve(ret);
   }
 };
@@ -1799,16 +1828,10 @@ public:
       }
 
       nsString hashName;
-      if (params.mHash.Value().IsString()) {
-        hashName.Assign(params.mHash.Value().GetAsString());
-      } else {
-        Algorithm hashAlg;
-        mEarlyRv = Coerce(aCx, hashAlg, params.mHash.Value());
-        if (NS_FAILED(mEarlyRv) || !hashAlg.mName.WasPassed()) {
-          mEarlyRv = NS_ERROR_DOM_SYNTAX_ERR;
-          return;
-        }
-        hashName.Assign(hashAlg.mName.Value());
+      mEarlyRv = GetAlgorithmName(aCx, params.mHash.Value(), hashName);
+      if (NS_FAILED(mEarlyRv)) {
+        mEarlyRv = NS_ERROR_DOM_SYNTAX_ERR;
+        return;
       }
 
       if (params.mLength.WasPassed()) {
@@ -2218,15 +2241,6 @@ private:
   }
 };
 
-static bool
-JSONCreator(const jschar* aBuf, uint32_t aLen, void* aData)
-{
-  nsAString* result = static_cast<nsAString*>(aData);
-  result->Append(static_cast<const char16_t*>(aBuf),
-                 static_cast<uint32_t>(aLen));
-  return true;
-}
-
 template<class KeyEncryptTask>
 class WrapKeyTask : public ExportKeyTask
 {
@@ -2250,30 +2264,11 @@ private:
   nsRefPtr<KeyEncryptTask> mTask;
   bool mResolved;
 
-  static bool StringifyJWK(const JsonWebKey& aJwk, nsAString& aRetVal)
-  {
-    // XXX: This should move into DictionaryBase and Codegen.py,
-    //      in the same way as ParseJSON is split out. (Bug 1038399)
-    // We use AutoSafeJSContext even though the exact compartment
-    // doesn't matter (since we're making an XPCOM string)
-    MOZ_ASSERT(NS_IsMainThread());
-    AutoSafeJSContext cx;
-    JS::Rooted<JS::Value> obj(cx);
-    bool ok = ToJSValue(cx, aJwk, &obj);
-    if (!ok) {
-      JS_ClearPendingException(cx);
-      return false;
-    }
-
-    return JS_Stringify(cx, &obj, JS::NullPtr(), JS::NullHandleValue,
-                        JSONCreator, &aRetVal);
-  }
-
   virtual nsresult AfterCrypto() MOZ_OVERRIDE {
     // If wrapping JWK, stringify the JSON
     if (mFormat.EqualsLiteral(WEBCRYPTO_KEY_FORMAT_JWK)) {
       nsAutoString json;
-      if (!StringifyJWK(mJwk, json)) {
+      if (!mJwk.ToJSON(json)) {
         return NS_ERROR_DOM_OPERATION_ERR;
       }
 

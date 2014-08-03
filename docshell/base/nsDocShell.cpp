@@ -44,6 +44,7 @@
 #include "nsRect.h"
 #include "prenv.h"
 #include "nsIDOMWindow.h"
+#include "nsIGlobalObject.h"
 #include "nsIWebBrowserChrome.h"
 #include "nsPoint.h"
 #include "nsIObserverService.h"
@@ -1008,6 +1009,7 @@ NS_IMETHODIMP nsDocShell::GetInterface(const nsIID & aIID, void **aSink)
         *aSink = mContentListener;
     }
     else if ((aIID.Equals(NS_GET_IID(nsIScriptGlobalObject)) ||
+              aIID.Equals(NS_GET_IID(nsIGlobalObject)) ||
               aIID.Equals(NS_GET_IID(nsPIDOMWindow)) ||
               aIID.Equals(NS_GET_IID(nsIDOMWindow)) ||
               aIID.Equals(NS_GET_IID(nsIDOMWindowInternal))) &&
@@ -6630,6 +6632,7 @@ nsDocShell::Embed(nsIContentViewer * aContentViewer,
     PersistLayoutHistoryState();
 
     nsresult rv = SetupNewViewer(aContentViewer);
+    NS_ENSURE_SUCCESS(rv, rv);
 
     // If we are loading a wyciwyg url from history, change the base URI for 
     // the document to the original http url that created the document.write().
@@ -7327,6 +7330,8 @@ nsDocShell::EnsureContentViewer()
 
     nsresult rv = CreateAboutBlankContentViewer(principal, baseURI);
 
+    NS_ENSURE_STATE(mContentViewer);
+
     if (NS_SUCCEEDED(rv)) {
         nsCOMPtr<nsIDocument> doc(GetDocument());
         NS_ASSERTION(doc,
@@ -7355,6 +7360,7 @@ nsDocShell::CreateAboutBlankContentViewer(nsIPrincipal* aPrincipal,
   if (mCreatingDocument)
     return NS_ERROR_FAILURE;
 
+  AutoRestore<bool> creatingDocument(mCreatingDocument);
   mCreatingDocument = true;
 
   // mContentViewer->PermitUnload may release |this| docshell.
@@ -7415,7 +7421,8 @@ nsDocShell::CreateAboutBlankContentViewer(nsIPrincipal* aPrincipal,
   if (docFactory) {
     nsCOMPtr<nsIPrincipal> principal;
     if (mSandboxFlags & SANDBOXED_ORIGIN) {
-      principal = do_CreateInstance("@mozilla.org/nullprincipal;1");
+      principal = nsNullPrincipal::CreateWithInheritedAttributes(aPrincipal);
+      NS_ENSURE_TRUE(principal, NS_ERROR_FAILURE);
     } else {
       principal = aPrincipal;
     }
@@ -7440,14 +7447,14 @@ nsDocShell::CreateAboutBlankContentViewer(nsIPrincipal* aPrincipal,
       // hook 'em up
       if (viewer) {
         viewer->SetContainer(this);
-        Embed(viewer, "", 0);
+        rv = Embed(viewer, "", 0);
+        NS_ENSURE_SUCCESS(rv, rv);
 
         SetCurrentURI(blankDoc->GetDocumentURI(), nullptr, true, 0);
         rv = mIsBeingDestroyed ? NS_ERROR_NOT_AVAILABLE : NS_OK;
       }
     }
   }
-  mCreatingDocument = false;
 
   // The transient about:blank viewer doesn't have a session history entry.
   SetHistoryEntry(&mOSHE, nullptr);
@@ -8657,7 +8664,7 @@ nsDocShell::SetupNewViewer(nsIContentViewer * aNewViewer)
 
     if (NS_FAILED(mContentViewer->Init(widget, bounds))) {
         mContentViewer = nullptr;
-        NS_ERROR("ContentViewer Initialization failed");
+        NS_WARNING("ContentViewer Initialization failed");
         return NS_ERROR_FAILURE;
     }
 
@@ -8703,6 +8710,7 @@ nsDocShell::SetupNewViewer(nsIContentViewer * aNewViewer)
 nsresult
 nsDocShell::SetDocCurrentStateObj(nsISHEntry *shEntry)
 {
+    NS_ENSURE_STATE(mContentViewer);
     nsCOMPtr<nsIDocument> document = GetDocument();
     NS_ENSURE_TRUE(document, NS_ERROR_FAILURE);
 
@@ -11146,10 +11154,8 @@ nsDocShell::AddToSessionHistory(nsIURI * aURI, nsIChannel * aChannel,
             if (loadInfo) {
                 // For now keep storing just the principal in the SHEntry.
                 if (loadInfo->GetLoadingSandboxed()) {
-                    owner = do_CreateInstance(NS_NULLPRINCIPAL_CONTRACTID, &rv);
-                    if (NS_WARN_IF(NS_FAILED(rv))) {
-                        return rv;
-                    }
+                    owner = nsNullPrincipal::CreateWithInheritedAttributes(loadInfo->LoadingPrincipal());
+                    NS_ENSURE_TRUE(owner, NS_ERROR_FAILURE);
                 } else if (loadInfo->GetForceInheritPrincipal()) {
                     owner = loadInfo->LoadingPrincipal();
                 }

@@ -24,7 +24,6 @@ const WIFIWORKER_CID        = Components.ID("{a14e8977-d259-433a-a88d-58dd44657e
 
 const WIFIWORKER_WORKER     = "resource://gre/modules/wifi_worker.js";
 
-const kNetworkInterfaceStateChangedTopic = "network-interface-state-changed";
 const kMozSettingsChangedObserverTopic   = "mozsettings-changed";
 
 const MAX_RETRIES_ON_AUTHENTICATION_FAILURE = 2;
@@ -979,9 +978,8 @@ var WifiManager = (function() {
       WifiNetworkInterface.prefixLengths = [];
       WifiNetworkInterface.gateways = [];
       WifiNetworkInterface.dnses = [];
-      Services.obs.notifyObservers(WifiNetworkInterface,
-                                   kNetworkInterfaceStateChangedTopic,
-                                   null);
+      gNetworkManager.updateNetworkInterface(WifiNetworkInterface);
+
       prepareForStartup(function() {
         loadDriver(function (status) {
           if (status < 0) {
@@ -1782,6 +1780,7 @@ function WifiWorker() {
   }).bind(this));
 
   Services.obs.addObserver(this, kMozSettingsChangedObserverTopic, false);
+  Services.obs.addObserver(this, "xpcom-shutdown", false);
 
   this.wantScanResults = [];
 
@@ -2185,9 +2184,7 @@ function WifiWorker() {
         WifiNetworkInterface.prefixLengths = [];
         WifiNetworkInterface.gateways = [];
         WifiNetworkInterface.dnses = [];
-        Services.obs.notifyObservers(WifiNetworkInterface,
-                                     kNetworkInterfaceStateChangedTopic,
-                                     null);
+        gNetworkManager.updateNetworkInterface(WifiNetworkInterface);
 
         break;
       case "WPS_TIMEOUT":
@@ -2235,9 +2232,7 @@ function WifiWorker() {
         this.info.dns2_str.length) {
       WifiNetworkInterface.dnses.push(this.info.dns2_str);
     }
-    Services.obs.notifyObservers(WifiNetworkInterface,
-                                 kNetworkInterfaceStateChangedTopic,
-                                 null);
+    gNetworkManager.updateNetworkInterface(WifiNetworkInterface);
 
     self.ipAddress = this.info.ipaddr_str;
 
@@ -2439,6 +2434,7 @@ WifiWorker.prototype = {
 
   QueryInterface: XPCOMUtils.generateQI([Ci.nsIWorkerHolder,
                                          Ci.nsIWifi,
+                                         Ci.nsIObserver,
                                          Ci.nsISettingsServiceCallback]),
 
   disconnectedByWifi: false,
@@ -3510,22 +3506,28 @@ WifiWorker.prototype = {
 
   // nsIObserver implementation
   observe: function observe(subject, topic, data) {
-    // Note that this function gets called for any and all settings changes,
-    // so we need to carefully check if we have the one we're interested in.
-    // The string we're interested in will be a JSON string that looks like:
-    // {"key":"wifi.enabled","value":"true"}.
-    if (topic !== kMozSettingsChangedObserverTopic) {
-      return;
-    }
+    switch (topic) {
+    case kMozSettingsChangedObserverTopic:
+      // The string we're interested in will be a JSON string that looks like:
+      // {"key":"wifi.enabled","value":"true"}.
 
-    let setting = JSON.parse(data);
-    // To avoid WifiWorker setting the wifi again, don't need to deal with
-    // the "mozsettings-changed" event fired from internal setting.
-    if (setting.message && setting.message === "fromInternalSetting") {
-      return;
-    }
+      let setting = JSON.parse(data);
+      // To avoid WifiWorker setting the wifi again, don't need to deal with
+      // the "mozsettings-changed" event fired from internal setting.
+      if (setting.message && setting.message === "fromInternalSetting") {
+        return;
+      }
 
-    this.handle(setting.key, setting.value);
+      this.handle(setting.key, setting.value);
+      break;
+
+    case "xpcom-shutdown":
+      let wifiService = Cc["@mozilla.org/wifi/service;1"].getService(Ci.nsIWifiProxyService);
+      wifiService.shutdown();
+      let wifiCertService = Cc["@mozilla.org/wifi/certservice;1"].getService(Ci.nsIWifiCertService);
+      wifiCertService.shutdown();
+      break;
+    }
   },
 
   handle: function handle(aName, aResult) {

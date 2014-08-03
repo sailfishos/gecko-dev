@@ -935,8 +935,10 @@ VectorImage::CreateDrawableAndShow(const SVGDrawingParameters& aParams)
                              SurfaceFormat::B8G8R8A8,
                              GraphicsFilter::FILTER_NEAREST, aParams.flags);
 
+  RefPtr<SourceSurface> surface = target->Snapshot();
+
   // Attempt to cache the resulting surface.
-  SurfaceCache::Insert(target,
+  SurfaceCache::Insert(surface,
                        ImageKey(this),
                        SurfaceKey(aParams.imageRect.Size(), aParams.scale,
                                   aParams.svgContext, aParams.animationTime,
@@ -946,7 +948,7 @@ VectorImage::CreateDrawableAndShow(const SVGDrawingParameters& aParams)
   // then |target| is all that is keeping the pixel data alive, so we have
   // to draw before returning from this function.
   nsRefPtr<gfxDrawable> drawable =
-    new gfxSurfaceDrawable(target, ThebesIntSize(aParams.imageRect.Size()));
+    new gfxSurfaceDrawable(surface, ThebesIntSize(aParams.imageRect.Size()));
   Show(drawable, aParams);
 }
 
@@ -1216,6 +1218,17 @@ VectorImage::InvalidateObserversOnNextRefreshDriverTick()
   } else {
     SendInvalidationNotifications();
   }
+}
+
+nsIntSize
+VectorImage::OptimalImageSizeForDest(const gfxSize& aDest, uint32_t aWhichFrame, GraphicsFilter aFilter, uint32_t aFlags)
+{
+  MOZ_ASSERT(aDest.width >= 0 || ceil(aDest.width) <= INT32_MAX ||
+             aDest.height >= 0 || ceil(aDest.height) <= INT32_MAX,
+             "Unexpected destination size");
+
+  // We can rescale SVGs freely, so just return the provided destination size.
+  return nsIntSize(ceil(aDest.width), ceil(aDest.height));
 }
 
 already_AddRefed<imgIContainer>

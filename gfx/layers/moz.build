@@ -80,6 +80,7 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
         ]
         EXPORTS.mozilla.layers += [
             'd3d11/CompositorD3D11.h',
+            'd3d11/ReadbackManagerD3D11.h',
             'd3d11/TextureD3D11.h',
             'ipc/ShadowLayerUtilsD3D10.h',
         ]
@@ -96,6 +97,7 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
         ]
         SOURCES += [
             'd3d11/CompositorD3D11.cpp',
+            'd3d11/ReadbackManagerD3D11.cpp',
         ]
 
 EXPORTS.gfxipc += [
@@ -115,6 +117,8 @@ EXPORTS.mozilla.layers += [
     'apz/util/ActiveElementManager.h',
     'apz/util/APZCCallbackHelper.h',
     'AtomicRefCountedWithFinalize.h',
+    'AxisPhysicsModel.h',
+    'AxisPhysicsMSDModel.h',
     'basic/BasicCompositor.h',
     'basic/MacIOSurfaceTextureHostBasic.h',
     'basic/TextureHostBasic.h',
@@ -241,6 +245,8 @@ UNIFIED_SOURCES += [
     'apz/testutil/APZTestData.cpp',
     'apz/util/ActiveElementManager.cpp',
     'apz/util/APZCCallbackHelper.cpp',
+    'AxisPhysicsModel.cpp',
+    'AxisPhysicsMSDModel.cpp',
     'basic/BasicCanvasLayer.cpp',
     'basic/BasicColorLayer.cpp',
     'basic/BasicCompositor.cpp',
@@ -384,3 +390,6 @@ CXXFLAGS += [
 ]
 
 MOCHITEST_MANIFESTS += ['apz/test/mochitest.ini']
+
+CXXFLAGS += CONFIG['MOZ_CAIRO_CFLAGS']
+CXXFLAGS += CONFIG['TK_CFLAGS']

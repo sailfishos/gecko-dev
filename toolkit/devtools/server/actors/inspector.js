@@ -119,15 +119,6 @@ loader.lazyGetter(this, "DOMParser", function() {
   return Cc["@mozilla.org/xmlextras/domparser;1"].createInstance(Ci.nsIDOMParser);
 });
 
-loader.lazyGetter(this, "Debugger", function() {
-  let JsDebugger = require("resource://gre/modules/jsdebugger.jsm");
-
-  let global = Cu.getGlobalForObject({});
-  JsDebugger.addDebuggerToGlobal(global);
-
-  return global.Debugger;
-});
-
 loader.lazyGetter(this, "eventListenerService", function() {
   return Cc["@mozilla.org/eventlistenerservice;1"]
            .getService(Ci.nsIEventListenerService);
@@ -358,7 +349,8 @@ var NodeActor = exports.NodeActor = protocol.ActorClass({
    *           }
    */
   getEventListeners: function(node) {
-    let dbg = new Debugger();
+    let dbg = this.parent().tabActor.makeDebugger();
+
     let handlers = eventListenerService.getListenerInfoFor(node);
     let events = [];
 
@@ -452,9 +444,8 @@ var NodeActor = exports.NodeActor = protocol.ActorClass({
         origin: origin,
         searchString: searchString
       });
-
-      dbg.removeDebuggee(globalDO);
     }
+    dbg.removeAllDebuggees();
     return events;
   },
 

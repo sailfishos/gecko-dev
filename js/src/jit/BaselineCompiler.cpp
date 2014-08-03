@@ -227,7 +227,7 @@ BaselineCompiler::compile()
         baselineScript->setModifiesArguments();
 
     // All barriers are emitted off-by-default, toggle them on if needed.
-    if (cx->zone()->needsBarrier())
+    if (cx->zone()->needsIncrementalBarrier())
         baselineScript->toggleBarriers(true);
 
     // All SPS instrumentation is emitted toggled off.  Toggle them on if needed.
@@ -1260,6 +1260,23 @@ BaselineCompiler::emit_JSOP_OBJECT()
 
     JS::CompartmentOptionsRef(cx).setSingletonsAsValues();
     frame.push(ObjectValue(*script->getObject(pc)));
+    return true;
+}
+
+bool
+BaselineCompiler::emit_JSOP_CALLSITEOBJ()
+{
+    RootedObject cso(cx, script->getObject(pc));
+    RootedObject raw(cx, script->getObject(GET_UINT32_INDEX(pc) + 1));
+    if (!cso || !raw)
+        return false;
+    RootedValue rawValue(cx);
+    rawValue.setObject(*raw);
+
+    if (!ProcessCallSiteObjOperation(cx, cso, raw, rawValue))
+        return false;
+
+    frame.push(ObjectValue(*cso));
     return true;
 }
 

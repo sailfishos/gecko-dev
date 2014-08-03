@@ -39,6 +39,7 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
 XPIDL_MODULE = 'xpcom_base'
 
 EXPORTS += [
+    'CodeAddressService.h',
     'ErrorList.h',
     'nsAgg.h',
     'nsAutoPtr.h',
@@ -156,3 +157,6 @@ LOCAL_INCLUDES += [
 
 if CONFIG['MOZ_OPTIMIZE']:
     DEFINES['MOZ_OPTIMIZE'] = True
+
+if CONFIG['MOZ_WIDGET_GTK']:
+    CXXFLAGS += CONFIG['TK_CFLAGS']

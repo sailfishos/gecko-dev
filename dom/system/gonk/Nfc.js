@@ -62,8 +62,8 @@ const NFC_IPC_WRITE_PERM_MSG_NAMES = [
   "NFC:WriteNDEF",
   "NFC:MakeReadOnlyNDEF",
   "NFC:SendFile",
-  "NFC:RegisterPeerTarget",
-  "NFC:UnregisterPeerTarget"
+  "NFC:RegisterPeerReadyTarget",
+  "NFC:UnregisterPeerReadyTarget"
 ];
 
 const NFC_IPC_MANAGER_PERM_MSG_NAMES = [
@@ -111,6 +111,7 @@ XPCOMUtils.defineLazyGetter(this, "gMessageManager", function () {
     },
 
     _shutdown: function _shutdown() {
+      this.nfc.shutdown();
       this.nfc = null;
 
       Services.obs.removeObserver(this, NFC.TOPIC_XPCOM_SHUTDOWN);
@@ -223,52 +224,28 @@ XPCOMUtils.defineLazyGetter(this, "gMessageManager", function () {
       }
     },
 
-    registerPeerTarget: function registerPeerTarget(msg) {
+    registerPeerReadyTarget: function registerPeerReadyTarget(msg) {
       let appInfo = msg.json;
-      // Sanity check on PeerEvent
-      if (!this.isValidPeerEvent(appInfo.event)) {
-        return;
-      }
       let targets = this.peerTargetsMap;
       let targetInfo = targets[appInfo.appId];
       // If the application Id is already registered
       if (targetInfo) {
-        // If the event is not registered
-        if (targetInfo.event !== appInfo.event) {
-          // Update the event field ONLY
-          targetInfo.event |= appInfo.event;
-        }
-        // Otherwise event is already registered, return!
         return;
       }
-      // Target not registered yet! Add to the target map
 
-      // Registered targetInfo target consists of 2 fields (values)
-      // target : Target to notify the right content for peer notifications
-      // event  : NFC_PEER_EVENT_READY (0x01) Or NFC_PEER_EVENT_LOST (0x02)
+      // Target not registered yet! Add to the target map
       let newTargetInfo = { target : msg.target,
-                            event  : appInfo.event };
+                            isPeerReadyCalled: false };
       targets[appInfo.appId] = newTargetInfo;
     },
 
-    unregisterPeerTarget: function unregisterPeerTarget(msg) {
+    unregisterPeerReadyTarget: function unregisterPeerReadyTarget(msg) {
       let appInfo = msg.json;
-      // Sanity check on PeerEvent
-      if (!this.isValidPeerEvent(appInfo.event)) {
-        return;
-      }
       let targets = this.peerTargetsMap;
       let targetInfo = targets[appInfo.appId];
       if (targetInfo) {
-        // Application Id registered and the event exactly matches.
-        if (targetInfo.event === appInfo.event) {
-          // Remove the target from the list of registered targets
-          delete targets[appInfo.appId]
-        }
-        else {
-          // Otherwise, update the event field ONLY, by removing the event flag
-          targetInfo.event &= ~appInfo.event;
-        }
+        // Remove the target from the list of registered targets
+        delete targets[appInfo.appId]
       }
     },
 
@@ -283,39 +260,29 @@ XPCOMUtils.defineLazyGetter(this, "gMessageManager", function () {
       });
     },
 
-    isRegisteredP2PTarget: function isRegisteredP2PTarget(appId, event) {
+    isPeerReadyTarget: function isPeerReadyTarget(appId) {
       let targetInfo = this.peerTargetsMap[appId];
-      // Check if it is a registered target for the 'event'
-      return ((targetInfo != null) && ((targetInfo.event & event) !== 0));
+      return (targetInfo != null);
+    },
+
+    isPeerReadyCalled: function isPeerReadyCalled(appId) {
+      let targetInfo = this.peerTargetsMap[appId];
+      return targetInfo.IsPeerReadyCalled;
     },
 
     notifyPeerEvent: function notifyPeerEvent(appId, event) {
       let targetInfo = this.peerTargetsMap[appId];
-      // Check if the application id is a registeredP2PTarget
-      if (this.isRegisteredP2PTarget(appId, event)) {
-        targetInfo.target.sendAsyncMessage("NFC:PeerEvent", {
-          event: event,
-          sessionToken: this.nfc.sessionTokenMap[this.nfc._currentSessionId]
-        });
-        return;
-      }
-      debug("Application ID : " + appId + " is not a registered target" +
-                             "for the event " + event + " notification");
-    },
-
-    isValidPeerEvent: function isValidPeerEvent(event) {
-      // Valid values : 0x01, 0x02 Or 0x03
-      return ((event === NFC.NFC_PEER_EVENT_READY) ||
-              (event === NFC.NFC_PEER_EVENT_LOST)  ||
-              (event === (NFC.NFC_PEER_EVENT_READY | NFC.NFC_PEER_EVENT_LOST)));
+      targetInfo.target.sendAsyncMessage("NFC:PeerEvent", {
+        event: event,
+        sessionToken: this.nfc.sessionTokenMap[this.nfc._currentSessionId]
+      });
     },
 
     checkP2PRegistration: function checkP2PRegistration(msg) {
       // Check if the session and application id yeild a valid registered
       // target.  It should have registered for NFC_PEER_EVENT_READY
       let isValid = !!this.nfc.sessionTokenMap[this.nfc._currentSessionId] &&
-                    this.isRegisteredP2PTarget(msg.json.appId,
-                                               NFC.NFC_PEER_EVENT_READY);
+                    this.isPeerReadyTarget(msg.json.appId);
       // Remember the current AppId if registered.
       this.currentPeerAppId = (isValid) ? msg.json.appId : null;
 
@@ -377,17 +344,24 @@ XPCOMUtils.defineLazyGetter(this, "gMessageManager", function () {
           debug("Registering target for this SessionToken : " +
                 this.nfc.sessionTokenMap[this.nfc._currentSessionId]);
           return NFC.NFC_SUCCESS;
-        case "NFC:RegisterPeerTarget":
-          this.registerPeerTarget(msg);
+        case "NFC:RegisterPeerReadyTarget":
+          this.registerPeerReadyTarget(msg);
           return null;
-        case "NFC:UnregisterPeerTarget":
-          this.unregisterPeerTarget(msg);
+        case "NFC:UnregisterPeerReadyTarget":
+          this.unregisterPeerReadyTarget(msg);
           return null;
         case "NFC:CheckP2PRegistration":
           this.checkP2PRegistration(msg);
           return null;
         case "NFC:NotifyUserAcceptedP2P":
           // Notify the 'NFC_PEER_EVENT_READY' since user has acknowledged
+          if (!this.isPeerReadyTarget(msg.json.appId)) {
+            debug("Application ID : " + appId + " is not a registered PeerReadytarget");
+            return null;
+          }
+
+          let targetInfo = this.peerTargetsMap[msg.json.appId];
+          targetInfo.IsPeerReadyCalled = true;
           this.notifyPeerEvent(msg.json.appId, NFC.NFC_PEER_EVENT_READY);
           return null;
         case "NFC:NotifySendFileStatus":
@@ -419,18 +393,22 @@ XPCOMUtils.defineLazyGetter(this, "gMessageManager", function () {
 });
 
 function Nfc() {
-  debug("Starting Worker");
-  this.worker = new ChromeWorker("resource://gre/modules/nfc_worker.js");
-  this.worker.onerror = this.onerror.bind(this);
-  this.worker.onmessage = this.onmessage.bind(this);
+  debug("Starting Nfc Service");
+
+  let nfcService = Cc["@mozilla.org/nfc/service;1"].getService(Ci.nsINfcService);
+  if (!nfcService) {
+    debug("No nfc service component available!");
+    return;
+  }
+
+  nfcService.start(this);
+  this.nfcService = nfcService;
 
   gMessageManager.init(this);
 
   // Maps sessionId (that are generated from nfcd) with a unique guid : 'SessionToken'
   this.sessionTokenMap = {};
   this.targetsByRequestId = {};
-
-  gSystemWorkerManager.registerNfcWorker(this.worker);
 }
 
 Nfc.prototype = {
@@ -438,32 +416,26 @@ Nfc.prototype = {
   classID:   NFC_CID,
   classInfo: XPCOMUtils.generateCI({classID: NFC_CID,
                                     classDescription: "Nfc",
-                                    interfaces: [Ci.nsIWorkerHolder]}),
+                                    interfaces: [Ci.nsINfcService]}),
 
-  QueryInterface: XPCOMUtils.generateQI([Ci.nsIWorkerHolder, Ci.nsIObserver]),
+  QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver, Ci.nsINfcEventListener]),
 
   _currentSessionId: null,
 
   powerLevel: NFC.NFC_POWER_LEVEL_UNKNOWN,
 
-  onerror: function onerror(event) {
-    debug("Got an error: " + event.filename + ":" +
-          event.lineno + ": " + event.message + "\n");
-    event.preventDefault();
-  },
-
   /**
-   * Send arbitrary message to worker.
+   * Send arbitrary message to Nfc service.
    *
    * @param nfcMessageType
    *        A text message type.
    * @param message [optional]
    *        An optional message object to send.
    */
-  sendToWorker: function sendToWorker(nfcMessageType, message) {
+  sendToNfcService: function sendToNfcService(nfcMessageType, message) {
     message = message || {};
     message.type = nfcMessageType;
-    this.worker.postMessage(message);
+    this.nfcService.sendCommand(message);
   },
 
   /**
@@ -490,11 +462,11 @@ Nfc.prototype = {
   },
 
   /**
-   * Process the incoming message from the NFC worker
+   * Process the incoming message from the NFC Service.
    */
-  onmessage: function onmessage(event) {
-    let message = event.data;
-    debug("Received message from NFC worker: " + JSON.stringify(message));
+  onEvent: function onEvent(event) {
+    let message = Cu.cloneInto(event, this);
+    debug("Received message from NFC Service: " + JSON.stringify(message));
 
     // mapping error code to error message
     if (message.status !== undefined && message.status !== NFC.NFC_SUCCESS) {
@@ -502,7 +474,11 @@ Nfc.prototype = {
     }
 
     switch (message.type) {
-      case "techDiscovered":
+      case "InitializedNotification":
+        // Do nothing.
+        break;
+      case "TechDiscoveredNotification":
+        message.type = "techDiscovered";
         this._currentSessionId = message.sessionId;
 
         // Check if the session token already exists. If exists, continue to use the same one.
@@ -517,7 +493,8 @@ Nfc.prototype = {
 
         gSystemMessenger.broadcastMessage("nfc-manager-tech-discovered", message);
         break;
-      case "techLost":
+      case "TechLostNotification":
+        message.type = "techLost";
         gMessageManager._unregisterMessageTarget(this.sessionTokenMap[this._currentSessionId], null);
 
         // Update the upper layers with a session token (alias)
@@ -526,8 +503,15 @@ Nfc.prototype = {
         delete message.sessionId;
 
         gSystemMessenger.broadcastMessage("nfc-manager-tech-lost", message);
-        // Notify 'PeerLost' to appropriate registered target, if any
-        gMessageManager.notifyPeerEvent(gMessageManager.currentPeerAppId, NFC.NFC_PEER_EVENT_LOST);
+
+        let appId = gMessageManager.currentPeerAppId;
+
+        // For peerlost, the message is delievered to the target which
+        // registered onpeerready and onpeerready has been called before.
+        if (gMessageManager.isPeerReadyTarget(appId) && gMessageManager.isPeerReadyCalled(appId)) {
+          gMessageManager.notifyPeerEvent(appId, NFC.NFC_PEER_EVENT_LOST);
+        }
+
         delete this.sessionTokenMap[this._currentSessionId];
         this._currentSessionId = null;
         this.currentPeerAppId = null;
@@ -562,8 +546,7 @@ Nfc.prototype = {
     }
   },
 
-  // nsINfcWorker
-  worker: null,
+  nfcService: null,
 
   sessionTokenMap: null,
 
@@ -612,22 +595,22 @@ Nfc.prototype = {
 
     switch (message.name) {
       case "NFC:GetDetailsNDEF":
-        this.sendToWorker("getDetailsNDEF", message.json);
+        this.sendToNfcService("getDetailsNDEF", message.json);
         break;
       case "NFC:ReadNDEF":
-        this.sendToWorker("readNDEF", message.json);
+        this.sendToNfcService("readNDEF", message.json);
         break;
       case "NFC:WriteNDEF":
-        this.sendToWorker("writeNDEF", message.json);
+        this.sendToNfcService("writeNDEF", message.json);
         break;
       case "NFC:MakeReadOnlyNDEF":
-        this.sendToWorker("makeReadOnlyNDEF", message.json);
+        this.sendToNfcService("makeReadOnlyNDEF", message.json);
         break;
       case "NFC:Connect":
-        this.sendToWorker("connect", message.json);
+        this.sendToNfcService("connect", message.json);
         break;
       case "NFC:Close":
-        this.sendToWorker("close", message.json);
+        this.sendToNfcService("close", message.json);
         break;
       case "NFC:SendFile":
         // Chrome process is the arbitrator / mediator between
@@ -658,7 +641,12 @@ Nfc.prototype = {
   },
 
   setConfig: function setConfig(prop) {
-    this.sendToWorker("config", prop);
+    this.sendToNfcService("config", prop);
+  },
+
+  shutdown: function shutdown() {
+    this.nfcService.shutdown();
+    this.nfcService = null;
   }
 };
 

@@ -9,6 +9,7 @@ DIRS += [
   'gmp',
   'mediasource',
   'ogg',
+  'systemservices',
   'webaudio',
   'webvtt'
 ]
@@ -54,9 +55,11 @@ if CONFIG['MOZ_EME']:
     DIRS += ['eme']
 
 TEST_DIRS += [
-    'test',
     'gtest',
 ]
+
+MOCHITEST_MANIFESTS += ['test/mochitest.ini']
+MOCHITEST_CHROME_MANIFESTS += ['test/chrome.ini']
 
 EXPORTS += [
     'AbstractMediaDecoder.h',
@@ -214,3 +217,6 @@ if CONFIG['MOZ_OMX_DECODER']:
 
 if CONFIG['ANDROID_VERSION'] > '15':
     DEFINES['MOZ_OMX_WEBM_DECODER'] = True
+
+CFLAGS += CONFIG['GSTREAMER_CFLAGS']
+CXXFLAGS += CONFIG['GSTREAMER_CFLAGS']

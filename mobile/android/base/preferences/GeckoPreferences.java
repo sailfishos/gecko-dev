@@ -13,6 +13,7 @@ import java.util.Map;
 
 import org.json.JSONObject;
 import org.mozilla.gecko.AppConstants;
+import org.mozilla.gecko.AppConstants.Versions;
 import org.mozilla.gecko.BrowserApp;
 import org.mozilla.gecko.BrowserLocaleManager;
 import org.mozilla.gecko.DataReportingNotification;
@@ -29,7 +30,6 @@ import org.mozilla.gecko.R;
 import org.mozilla.gecko.Telemetry;
 import org.mozilla.gecko.TelemetryContract;
 import org.mozilla.gecko.TelemetryContract.Method;
-import org.mozilla.gecko.background.announcements.AnnouncementsConstants;
 import org.mozilla.gecko.background.common.GlobalConstants;
 import org.mozilla.gecko.background.healthreport.HealthReportConstants;
 import org.mozilla.gecko.db.BrowserContract.SuggestedSites;
@@ -53,7 +53,6 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.SharedPreferences.OnSharedPreferenceChangeListener;
 import android.content.res.Configuration;
-import android.os.Build;
 import android.os.Bundle;
 import android.preference.CheckBoxPreference;
 import android.preference.EditTextPreference;
@@ -106,7 +105,6 @@ OnSharedPreferenceChangeListener
     // These match keys in resources/xml*/preferences*.xml
     private static final String PREFS_SEARCH_RESTORE_DEFAULTS = NON_PREF_PREFIX + "search.restore_defaults";
     private static final String PREFS_HOME_ADD_PANEL = NON_PREF_PREFIX + "home.add_panel";
-    private static final String PREFS_ANNOUNCEMENTS_ENABLED = NON_PREF_PREFIX + "privacy.announcements.enabled";
     private static final String PREFS_DATA_REPORTING_PREFERENCES = NON_PREF_PREFIX + "datareporting.preferences";
     private static final String PREFS_TELEMETRY_ENABLED = "toolkit.telemetry.enabled";
     private static final String PREFS_CRASHREPORTER_ENABLED = "datareporting.crashreporter.submitEnabled";
@@ -155,7 +153,7 @@ OnSharedPreferenceChangeListener
         }
     }
     private void updateActionBarTitle(int title) {
-        if (Build.VERSION.SDK_INT >= 14) {
+        if (Versions.feature14Plus) {
             final String newTitle = getString(title);
             if (newTitle != null) {
                 Log.v(LOGTAG, "Setting action bar title to " + newTitle);
@@ -192,7 +190,7 @@ OnSharedPreferenceChangeListener
         // If we're a multi-pane view, the activity title is really
         // the header bar above the fragment.
         // Find out which fragment we're showing, and use that.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB && isMultiPane()) {
+        if (Versions.feature11Plus && isMultiPane()) {
             int title = getIntent().getIntExtra(EXTRA_SHOW_FRAGMENT_TITLE, -1);
             if (res == R.xml.preferences) {
                 // This should only occur when res == R.xml.preferences,
@@ -229,7 +227,7 @@ OnSharedPreferenceChangeListener
         BrowserLocaleManager.getInstance().updateConfiguration(getApplicationContext(), newLocale);
         this.lastLocale = newLocale;
 
-        if (Build.VERSION.SDK_INT >= 11 && isMultiPane()) {
+        if (Versions.feature11Plus && isMultiPane()) {
             // This takes care of the left pane.
             invalidateHeaders();
 
@@ -303,7 +301,7 @@ OnSharedPreferenceChangeListener
         // (or set it) before super.onCreate() is called so Android can display
         // the correct Fragment resource.
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
+        if (Versions.feature11Plus) {
             if (!getIntent().hasExtra(PreferenceActivity.EXTRA_SHOW_FRAGMENT)) {
                 // Set up the default fragment if there is no explicit fragment to show.
                 setupTopLevelFragmentIntent();
@@ -318,7 +316,7 @@ OnSharedPreferenceChangeListener
                 // all) in the action bar.
                 updateActionBarTitle(R.string.settings_title);
 
-                if (Build.VERSION.SDK_INT < 13) {
+                if (android.os.Build.VERSION.SDK_INT < 13) {
                     // Affected by Bug 1015209 -- no detach/attach.
                     // If we try rejigging fragments, we'll crash, so don't
                     // enable locale switching at all.
@@ -335,7 +333,7 @@ OnSharedPreferenceChangeListener
         // For versions of Android lower than Honeycomb, use xml resources instead of
         // Fragments because of an Android bug in ActionBar (described in bug 866352 and
         // fixed in bug 833625).
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.HONEYCOMB) {
+        if (Versions.preHC) {
             // Write prefs to our custom GeckoSharedPrefs file.
             getPreferenceManager().setSharedPreferencesName(GeckoSharedPrefs.APP_PREFS_NAME);
 
@@ -383,7 +381,7 @@ OnSharedPreferenceChangeListener
             }
         });
 
-        if (Build.VERSION.SDK_INT >= 14) {
+        if (Versions.feature14Plus) {
             final ActionBar actionBar = getActionBar();
             if (actionBar != null) {
                 actionBar.setHomeButtonEnabled(true);
@@ -457,7 +455,7 @@ OnSharedPreferenceChangeListener
             return;
 
         mInitialized = true;
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.HONEYCOMB) {
+        if (Versions.preHC) {
             PreferenceScreen screen = getPreferenceScreen();
             mPrefsRequestId = setupPreferences(screen);
         }
@@ -485,7 +483,7 @@ OnSharedPreferenceChangeListener
     @Override
     public void onPause() {
         // Symmetric with onResume.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
+        if (Versions.feature11Plus) {
             if (isMultiPane()) {
                 SharedPreferences prefs = GeckoSharedPrefs.forApp(this);
                 prefs.unregisterOnSharedPreferenceChangeListener(this);
@@ -507,7 +505,7 @@ OnSharedPreferenceChangeListener
             ((GeckoApplication) getApplication()).onActivityResume(this);
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
+        if (Versions.feature11Plus) {
             // Watch prefs, otherwise we don't reliably get told when they change.
             // See documentation for onSharedPreferenceChange for more.
             // Inexplicably only needed on tablet.
@@ -840,26 +838,6 @@ OnSharedPreferenceChangeListener
 
     /**
      * Broadcast the provided value as the value of the
-     * <code>PREFS_ANNOUNCEMENTS_ENABLED</code> pref.
-     */
-    public static void broadcastAnnouncementsPref(final Context context, final boolean value) {
-        broadcastPrefAction(context,
-                            AnnouncementsConstants.ACTION_ANNOUNCEMENTS_PREF,
-                            PREFS_ANNOUNCEMENTS_ENABLED,
-                            value);
-    }
-
-    /**
-     * Broadcast the current value of the
-     * <code>PREFS_ANNOUNCEMENTS_ENABLED</code> pref.
-     */
-    public static void broadcastAnnouncementsPref(final Context context) {
-        final boolean value = getBooleanPref(context, PREFS_ANNOUNCEMENTS_ENABLED, true);
-        broadcastAnnouncementsPref(context, value);
-    }
-
-    /**
-     * Broadcast the provided value as the value of the
      * <code>PREFS_HEALTHREPORT_UPLOAD_ENABLED</code> pref.
      */
     public static void broadcastHealthReportUploadPref(final Context context, final boolean value) {
@@ -1031,10 +1009,6 @@ OnSharedPreferenceChangeListener
 
         if (PREFS_MENU_CHAR_ENCODING.equals(prefName)) {
             setCharEncodingState(((String) newValue).equals("true"));
-        } else if (PREFS_ANNOUNCEMENTS_ENABLED.equals(prefName)) {
-            // Send a broadcast intent to the product announcements service, either to start or
-            // to stop the repeated background checks.
-            broadcastAnnouncementsPref(this, ((Boolean) newValue).booleanValue());
         } else if (PREFS_UPDATER_AUTODOWNLOAD.equals(prefName)) {
             org.mozilla.gecko.updater.UpdateServiceHelper.registerForUpdates(this, (String) newValue);
         } else if (PREFS_HEALTHREPORT_UPLOAD_ENABLED.equals(prefName)) {
@@ -1259,7 +1233,7 @@ OnSharedPreferenceChangeListener
             public void prefValue(String prefName, final boolean value) {
                 final Preference pref = getField(prefName);
                 final CheckBoxPrefSetter prefSetter;
-                if (Build.VERSION.SDK_INT < 14) {
+                if (Versions.preICS) {
                     prefSetter = new CheckBoxPrefSetter();
                 } else {
                     prefSetter = new TwoStatePrefSetter();
@@ -1309,7 +1283,7 @@ OnSharedPreferenceChangeListener
                 final Preference pref = getField(prefName);
                 final CheckBoxPrefSetter prefSetter;
                 if (PREFS_GEO_REPORTING.equals(prefName)) {
-                    if (Build.VERSION.SDK_INT < 14) {
+                    if (Versions.preICS) {
                         prefSetter = new CheckBoxPrefSetter();
                     } else {
                         prefSetter = new TwoStatePrefSetter();
@@ -1364,7 +1338,7 @@ OnSharedPreferenceChangeListener
             return;
         }
 
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.HONEYCOMB) {
+        if (Versions.preHC) {
             intent.putExtra("resource", resource);
         } else {
             intent.putExtra(PreferenceActivity.EXTRA_SHOW_FRAGMENT, GeckoPreferenceFragment.class.getName());

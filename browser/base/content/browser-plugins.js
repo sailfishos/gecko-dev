@@ -106,8 +106,8 @@ var gPluginHandler = {
     let pluginRect = plugin.getBoundingClientRect();
     // XXX bug 446693. The text-shadow on the submitted-report text at
     //     the bottom causes scrollHeight to be larger than it should be.
-    let overflows = (overlay.scrollWidth > pluginRect.width) ||
-                    (overlay.scrollHeight - 5 > pluginRect.height);
+    let overflows = (overlay.scrollWidth > Math.ceil(pluginRect.width)) ||
+                    (overlay.scrollHeight - 5 > Math.ceil(pluginRect.height));
     if (overflows) {
       return false;
     }
@@ -1162,10 +1162,25 @@ var gPluginHandler = {
     let submitReports   = true; // XXX followup for .getPropertyAsBool("submitReports");
     let pluginName      = propBag.getPropertyAsAString("pluginName");
     let pluginDumpID    = propBag.getPropertyAsAString("pluginDumpID");
-    let browserDumpID   = propBag.getPropertyAsAString("browserDumpID");
+    let browserDumpID   = null;
+    let gmpPlugin       = false;
 
-    // Remap the plugin name to a more user-presentable form.
-    pluginName = this.makeNicePluginName(pluginName);
+    try {
+      browserDumpID = propBag.getPropertyAsAString("browserDumpID");
+    } catch (e) {
+      // For GMP crashes we don't get a browser dump.
+    }
+
+    try {
+      gmpPlugin = propBag.getPropertyAsBool("gmpPlugin");
+    } catch (e) {
+      // This property is only set for GMP plugins.
+    }
+
+    // For non-GMP plugins, remap the plugin name to a more user-presentable form.
+    if (!gmpPlugin) {
+      pluginName = this.makeNicePluginName(pluginName);
+    }
 
     let messageString = gNavigatorBundle.getFormattedString("crashedpluginsMessage.title", [pluginName]);
 

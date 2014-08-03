@@ -7,8 +7,6 @@
 #ifndef jit_BaselineCompiler_h
 #define jit_BaselineCompiler_h
 
-#ifdef JS_ION
-
 #include "jit/FixedList.h"
 #if defined(JS_CODEGEN_X86)
 # include "jit/x86/BaselineCompiler-x86.h"
@@ -64,6 +62,7 @@ namespace jit {
     _(JSOP_DOUBLE)             \
     _(JSOP_STRING)             \
     _(JSOP_OBJECT)             \
+    _(JSOP_CALLSITEOBJ)        \
     _(JSOP_REGEXP)             \
     _(JSOP_LAMBDA)             \
     _(JSOP_LAMBDA_ARROW)       \
@@ -276,7 +275,5 @@ class BaselineCompiler : public BaselineCompilerSpecific
 
 } // namespace jit
 } // namespace js
-
-#endif // JS_ION
 
 #endif /* jit_BaselineCompiler_h */
