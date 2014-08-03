@@ -527,16 +527,6 @@ EmbedLiteViewThreadParent::RenderToImage(unsigned char* aData, int imgW, int img
 }
 
 NS_IMETHODIMP
-EmbedLiteViewThreadParent::RenderGL()
-{
-  if (mCompositor) {
-    return mCompositor->RenderGL() ? NS_OK : NS_ERROR_FAILURE;
-  }
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
 EmbedLiteViewThreadParent::SetViewSize(int width, int height)
 {
   LOGT("sz[%i,%i]", width, height);
@@ -562,32 +552,6 @@ EmbedLiteViewThreadParent::SetGLViewPortSize(int width, int height)
   }
   unused << SendSetGLViewSize(mGLViewPortSize);
 
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteViewThreadParent::SetGLViewTransform(mozilla::gfx::Matrix & aMatrix)
-{
-  if (mCompositor) {
-    mCompositor->SetWorldTransform(aMatrix);
-  }
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteViewThreadParent::SetViewClipping(const gfxRect& aClipRect)
-{
-  if (mCompositor) {
-    mCompositor->SetClipping(aClipRect);
-  }
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteViewThreadParent::SetTransformation(float aScale, nsIntPoint& aScrollOffset)
-{
   return NS_OK;
 }
 

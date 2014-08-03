@@ -8,10 +8,20 @@ SOURCES += [
     'embedLiteViewInitTest.cpp',
 ]
 
+DEFINES['XPCOM_GLUE'] = True
+
+DISABLE_STL_WRAPPING = True
+
 # SIMPLE_PROGRAMS compiles a single .cpp file into an executable
 SIMPLE_PROGRAMS += [
     "embedLiteCoreInitTest%s" % (CONFIG['BIN_SUFFIX']),
     "embedLiteViewInitTest%s" % (CONFIG['BIN_SUFFIX']),
 ]
 
+USE_LIBS += [
+    'xpcomglue',
+]
+
 JAR_MANIFESTS += ['jar.mn']
+
+CXXFLAGS += CONFIG['TK_CFLAGS']

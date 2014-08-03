@@ -118,12 +118,6 @@ EmbedLiteCompositorParent::UpdateTransformState()
   GLContext* context = static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->gl();
   NS_ENSURE_TRUE(context, );
 
-  state->mLayerManager->SetWorldTransform(mWorldTransform);
-
-  if (!mActiveClipping.IsEmpty() && state->mLayerManager->GetRoot()) {
-    state->mLayerManager->GetRoot()->SetClipRect(&mActiveClipping);
-  }
-
   if (context->IsOffscreen() && context->OffscreenSize() != mLastViewSize) {
     context->ResizeOffscreen(gfx::IntSize(mLastViewSize.width, mLastViewSize.height));
     ScheduleRenderOnCompositorThread();
@@ -223,16 +217,6 @@ void EmbedLiteCompositorParent::SetSurfaceSize(int width, int height)
 {
   mLastViewSize.SizeTo(width, height);
   SetEGLSurfaceSize(width, height);
-}
-
-void EmbedLiteCompositorParent::SetWorldTransform(gfx::Matrix aMatrix)
-{
-  mWorldTransform = aMatrix;
-}
-
-void EmbedLiteCompositorParent::SetClipping(const gfxRect& aClipRect)
-{
-  gfxUtils::GfxRectToIntRect(aClipRect, &mActiveClipping);
 }
 
 } // namespace embedlite

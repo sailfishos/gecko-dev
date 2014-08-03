@@ -28,34 +28,44 @@ public:
     , mLoop(NULL)
   {
   }
+
   ~MessagePumpEmbed()
   {
   }
+
   virtual void Run(Delegate* delegate)
   {
     mLoop = MessageLoop::current();
-    if (mListener)
+    if (mListener) {
       mListener->Run(delegate);
+    }
   }
+
   virtual void Quit()
   {
-    if (mListener)
+    if (mListener) {
       mListener->Quit();
+    }
   }
+
   virtual void ScheduleWork()
   {
-    if (mListener)
+    if (mListener) {
       mListener->ScheduleWork();
+    }
   }
+
   virtual void ScheduleDelayedWork(const TimeTicks& delayed_work_time)
   {
     delayed_work_time_ = delayed_work_time;
     ScheduleDelayedWorkIfNeeded(delayed_work_time_);
   }
+
   virtual void ScheduleDelayedWorkIfNeeded(const TimeTicks& delayed_work_time)
   {
-    if (!mListener)
+    if (!mListener) {
       return;
+    }
 
     if (delayed_work_time.is_null()) {
       mListener->ScheduleDelayedWork(-1);
@@ -67,6 +77,7 @@ public:
       std::numeric_limits<int>::max() : delay.InMilliseconds();
     mListener->ScheduleDelayedWork(laterMsecs);
   }
+
   TimeTicks& DelayedWorkTime()
   {
     return delayed_work_time_;
@@ -112,7 +123,8 @@ bool EmbedLiteMessagePump::DoWork(void* aDelegate)
 
 bool EmbedLiteMessagePump::DoDelayedWork(void* aDelegate)
 {
-  bool retval = static_cast<base::MessagePump::Delegate*>(aDelegate)->DoDelayedWork(&mEmbedPump->DelayedWorkTime());
+  bool retval = static_cast<base::MessagePump::Delegate*>(aDelegate)->
+    DoDelayedWork(&mEmbedPump->DelayedWorkTime());
   mEmbedPump->ScheduleDelayedWorkIfNeeded(mEmbedPump->DelayedWorkTime());
   return retval;
 }
@@ -123,7 +135,9 @@ bool EmbedLiteMessagePump::DoIdleWork(void* aDelegate)
 }
 
 void*
-EmbedLiteMessagePump::PostTask(EMBEDTaskCallback callback, void* userData, int timeout)
+EmbedLiteMessagePump::PostTask(EMBEDTaskCallback callback,
+                               void* userData,
+                               int timeout)
 {
   if (!mEmbedPump->GetLoop()) {
     return nullptr;
