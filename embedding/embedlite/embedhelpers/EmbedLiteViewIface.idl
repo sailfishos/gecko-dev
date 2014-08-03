@@ -40,16 +40,12 @@ interface EmbedLiteViewIface
     void AddMessageListeners([const] in nsStringTArrayRef aNames);
     void RemoveMessageListeners([const] in nsStringTArrayRef aNames);
     void RenderToImage(in buffer aData, in int32_t aWidth, in int32_t aHeigth, in int32_t aStride, in int32_t aDepth);
-    void RenderGL();
     void SetIsActive(in boolean isActive);
     void SetIsFocused(in boolean isFocused);
     void SuspendTimeouts();
     void ResumeTimeouts();
     void SetViewSize(in int32_t aWidth, in int32_t aHeight);
     void SetGLViewPortSize(in int32_t aWidth, in int32_t aHeight);
-    void SetGLViewTransform(in gfxMatrix aMatrix);
-    void SetViewClipping([const] in gfxRect aClipRect);
-    void SetTransformation(in float aScale, in nsIntPoint aScrollOffset);
     void ScheduleRender();
     void ReceiveInputEvent([const] in InputData aEvent);
     void TextEvent(in string aComposite, in string aPreEdit);

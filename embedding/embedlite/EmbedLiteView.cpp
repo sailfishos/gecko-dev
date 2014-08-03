@@ -193,13 +193,6 @@ EmbedLiteView::RenderToImage(unsigned char* aData, int imgW, int imgH, int strid
   return NS_SUCCEEDED(mViewImpl->RenderToImage(aData, imgW, imgH, stride, depth));
 }
 
-bool
-EmbedLiteView::RenderGL()
-{
-  NS_ENSURE_TRUE(mViewImpl, false);
-  return NS_SUCCEEDED(mViewImpl->RenderGL());
-}
-
 char*
 EmbedLiteView::GetImageAsURL(int aWidth, int aHeight)
 {
@@ -294,33 +287,6 @@ EmbedLiteView::SetGLViewPortSize(int width, int height)
   LOGNI("sz[%i,%i]", width, height);
   NS_ENSURE_TRUE(mViewImpl, );
   mViewImpl->SetGLViewPortSize(width, height);
-}
-
-void
-EmbedLiteView::SetGLViewTransform(gfxMatrix matrix)
-{
-  NS_ENSURE_TRUE(mViewImpl, );
-  gfx::Matrix m(matrix._11, matrix._12, matrix._21, matrix._22, matrix._31, matrix._32);
-  mViewImpl->SetGLViewTransform(m);
-}
-
-void
-EmbedLiteView::SetViewClipping(float aX, float aY, float aWidth, float aHeight)
-{
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->SetViewClipping(gfxRect(aX, aY, aWidth, aHeight));
-}
-
-void
-EmbedLiteView::SetViewOpacity(float aOpacity)
-{
-}
-
-void
-EmbedLiteView::SetTransformation(float aScale, nsIntPoint aScrollOffset)
-{
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->SetTransformation(aScale, aScrollOffset);
 }
 
 void

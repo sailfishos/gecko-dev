@@ -51,12 +51,6 @@ public:
   //   Invalidate notification
   virtual bool Invalidate() { return false; }
   virtual void CompositingFinished() { }
-  virtual void SetFirstPaintViewport(const nsIntPoint& aOffset, float aZoom,
-                                     const nsIntRect& aPageRect, const gfxRect& aCssPageRect) {}
-  virtual void SyncViewportInfo(const nsIntRect& aDisplayPort,
-                                float aDisplayResolution, bool aLayersUpdated,
-                                nsIntPoint& aScrollOffset, float& aScaleX, float& aScaleY) {}
-  virtual void SetPageRect(const gfxRect& aCssPageRect) {}
   virtual void IMENotification(int aEnabled, bool aOpen, int aCause, int aFocusChange, const char16_t* inputType, const char16_t* inputMode) {}
   virtual void GetIMEStatus(int32_t* aIMEEnabled, int32_t* aIMEOpen, intptr_t* aNativeIMEContext) {}
 
@@ -68,8 +62,6 @@ public:
   virtual bool AcknowledgeScrollUpdate(const uint32_t& aViewID, const uint32_t& aScrollGeneration) { return false; }
   virtual bool SendAsyncScrollDOMEvent(const gfxRect& aContentRect,
                                        const gfxSize& aScrollableSize) { return false; }
-  // Some GL Context implementations require Platform GL context to be active and valid
-  virtual bool RequestCurrentGLContext() { return false; }
 };
 
 class EmbedLiteApp;
@@ -118,19 +110,9 @@ public:
   // Render content into custom rgb image (SW Rendering)
   virtual bool RenderToImage(unsigned char* aData, int imgW, int imgH, int stride, int depth);
 
-  //   GL Rendering setuo
-  virtual bool RenderGL();
   //   Setup renderable GL/EGL window surface size
   virtual void SetGLViewPortSize(int width, int height);
-  //   GL world transform offset and simple rotation are allowed (orientation change)
-  virtual void SetGLViewTransform(gfxMatrix matrix);
-  //   Setup Clipping on view area, required if view gl area need to be particulary clipped withing target widget area
-  virtual void SetViewClipping(float aX, float aY, float aWidth, float aHeight);
-  //   Setup view opacity for direct GL rendering
-  virtual void SetViewOpacity(float aOpacity);
 
-  // Set Custom transform for compositor layers tree, Fast Scroll/Zoom
-  virtual void SetTransformation(float aScale, nsIntPoint aScrollOffset);
   virtual void ScheduleRender();
 
   // Scripting Interface, allow to extend embedding API by creating

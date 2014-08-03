@@ -25,10 +25,7 @@ public:
                             uint32_t id);
 
   bool RenderToContext(gfx::DrawTarget* aTarget);
-  bool RenderGL();
   void SetSurfaceSize(int width, int height);
-  void SetWorldTransform(gfx::Matrix);
-  void SetClipping(const gfxRect& aClipRect);
 
 protected:
   virtual ~EmbedLiteCompositorParent();
@@ -43,10 +40,9 @@ private:
   void PrepareOffscreen();
   bool Invalidate();
   void UpdateTransformState();
+  bool RenderGL();
 
   uint32_t mId;
-  gfx::Matrix mWorldTransform;
-  nsIntRect mActiveClipping;
   CancelableTask* mCurrentCompositeTask;
   gfx::IntSize mLastViewSize;
   short mInitialPaintCount;
