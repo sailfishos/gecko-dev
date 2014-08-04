@@ -1,0 +1,229 @@
+commit 0ee3c78249834ae2cdd61aac177d5a878bbc356a
+Author: Dmitry Rozhkov <dmitry.rozhkov@jolla.com>
+Date:   Wed Jun 25 16:07:18 2014 +0300
+
+    Transition from pinching to panning
+
+diff --git a/gfx/layers/apz/src/APZCTreeManager.cpp b/gfx/layers/apz/src/APZCTreeManager.cpp
+index 8710769..bc4325c 100644
+--- a/gfx/layers/apz/src/APZCTreeManager.cpp
++++ b/gfx/layers/apz/src/APZCTreeManager.cpp
+@@ -6,7 +6,6 @@
+ #include "APZCTreeManager.h"
+ #include "Compositor.h"                 // for Compositor
+ #include "CompositorParent.h"           // for CompositorParent, etc
+-#include "InputData.h"                  // for InputData, etc
+ #include "Layers.h"                     // for ContainerLayer, Layer, etc
+ #include "gfx3DMatrix.h"                // for gfx3DMatrix
+ #include "mozilla/dom/Touch.h"          // for Touch
+@@ -38,7 +37,6 @@ static bool gPrintApzcTree = false;
+ 
+ APZCTreeManager::APZCTreeManager()
+     : mTreeLock("APZCTreeLock"),
+-      mTouchCount(0),
+       mApzcTreeLog("apzctree")
+ {
+   MOZ_ASSERT(NS_IsMainThread());
+@@ -339,6 +337,35 @@ ApplyTransform(nsIntPoint* aPoint, const gfx3DMatrix& aMatrix)
+   aPoint->y = NS_lround(result.y);
+ }
+ 
++void
++APZCTreeManager::ResetTrackedTouches(const MultiTouchInput& aEvent)
++{
++  mTouches.Clear();
++  for (size_t i = 0; i < aEvent.mTouches.Length(); i++) {
++    mTouches.AppendElement(aEvent.mTouches[i]);
++  }
++}
++
++void
++APZCTreeManager::RemoveTrackedTouches(const MultiTouchInput& aEvent)
++{
++  uint32_t touchCount(0);
++
++  for (size_t i = 0; i < aEvent.mTouches.Length(); i++) {
++    for (size_t j = 0; j < mTouches.Length(); j++) {
++      if (aEvent.mTouches[i].mIdentifier == mTouches[j].mIdentifier) {
++        mTouches.RemoveElementAt(j);
++        touchCount++;
++        break;
++      }
++    }
++  }
++
++  if (touchCount < aEvent.mTouches.Length()) {
++    NS_WARNING("Got untracked touches");
++  }
++}
++
+ nsEventStatus
+ APZCTreeManager::ReceiveInputEvent(const InputData& aEvent,
+                                    ScrollableLayerGuid* aOutTargetGuid)
+@@ -351,8 +378,8 @@ APZCTreeManager::ReceiveInputEvent(const InputData& aEvent,
+       const MultiTouchInput& multiTouchInput = aEvent.AsMultiTouchInput();
+       if (multiTouchInput.mType == MultiTouchInput::MULTITOUCH_START) {
+         // MULTITOUCH_START input contains all active touches of the current
+-        // session thus resetting mTouchCount.
+-        mTouchCount = multiTouchInput.mTouches.Length();
++        // session thus resetting mTouches.
++        ResetTrackedTouches(multiTouchInput);
+         mApzcForInputBlock = GetTargetAPZC(ScreenPoint(multiTouchInput.mTouches[0].mScreenPoint));
+         if (multiTouchInput.mTouches.Length() == 1) {
+           // If we have one touch point, this might be the start of a pan.
+@@ -394,18 +421,23 @@ APZCTreeManager::ReceiveInputEvent(const InputData& aEvent,
+       }
+       if (multiTouchInput.mType == MultiTouchInput::MULTITOUCH_CANCEL ||
+           multiTouchInput.mType == MultiTouchInput::MULTITOUCH_END) {
+-        if (mTouchCount >= multiTouchInput.mTouches.Length()) {
+-          // MULTITOUCH_END input contains only released touches thus decrementing.
+-          mTouchCount -= multiTouchInput.mTouches.Length();
++        if (mTouches.Length() >= multiTouchInput.mTouches.Length()) {
++          // MULTITOUCH_END input contains only released touches thus removing them from tracked touches.
++          RemoveTrackedTouches(multiTouchInput);
+         } else {
+           NS_WARNING("Got an unexpected touchend/touchcancel");
+-          mTouchCount = 0;
++          mTouches.Clear();
+         }
++
+         // If we have an mApzcForInputBlock and it's the end of the touch sequence
+         // then null it out so we don't keep a dangling reference and leak things.
+-        if (mTouchCount == 0) {
++        if (mTouches.Length() == 0) {
+           mApzcForInputBlock = nullptr;
+           ClearOverscrollHandoffChain();
++        } else if (mTouches.Length() == 1 && mOverscrollHandoffChain.length() == 0) {
++          // Now it may well be the start of panning after pinching.
++          mApzcForInputBlock = GetTargetAPZC(ScreenPoint(mTouches[0].mScreenPoint));
++          BuildOverscrollHandoffChain(mApzcForInputBlock);
+         }
+       }
+       break;
+@@ -471,8 +503,8 @@ APZCTreeManager::ProcessTouchEvent(WidgetTouchEvent& aEvent,
+   }
+   if (aEvent.message == NS_TOUCH_START) {
+     // NS_TOUCH_START event contains all active touches of the current
+-    // session thus resetting mTouchCount.
+-    mTouchCount = aEvent.touches.Length();
++    // session thus resetting mTouches.
++    ResetTrackedTouches(aEvent);
+     mApzcForInputBlock = GetTouchInputBlockAPZC(aEvent);
+     if (mApzcForInputBlock) {
+       // Cache apz transform so it can be used for future events in this block.
+@@ -510,16 +542,20 @@ APZCTreeManager::ProcessTouchEvent(WidgetTouchEvent& aEvent,
+   // then null it out so we don't keep a dangling reference and leak things.
+   if (aEvent.message == NS_TOUCH_CANCEL ||
+       aEvent.message == NS_TOUCH_END) {
+-    if (mTouchCount >= aEvent.touches.Length()) {
+-      // NS_TOUCH_END event contains only released touches thus decrementing.
+-      mTouchCount -= aEvent.touches.Length();
++    if (mTouches.Length() >= aEvent.touches.Length()) {
++      // NS_TOUCH_END event contains only released touches thus removing from tracked touches.
++      RemoveTrackedTouches(aEvent);
+     } else {
+       NS_WARNING("Got an unexpected touchend/touchcancel");
+-      mTouchCount = 0;
++      mTouches.Clear();
+     }
+-    if (mTouchCount == 0) {
++    if (mTouches.Length() == 0) {
+       mApzcForInputBlock = nullptr;
+       ClearOverscrollHandoffChain();
++    } else if (mTouches.Length() == 1 && mOverscrollHandoffChain.length() == 0) {
++      // Now it may well be the start of panning after pinching.
++      mApzcForInputBlock = GetTargetAPZC(ScreenPoint(mTouches[0].mScreenPoint));
++      BuildOverscrollHandoffChain(mApzcForInputBlock);
+     }
+   }
+   return ret;
+diff --git a/gfx/layers/apz/src/APZCTreeManager.h b/gfx/layers/apz/src/APZCTreeManager.h
+index b0eec16..d594980 100644
+--- a/gfx/layers/apz/src/APZCTreeManager.h
++++ b/gfx/layers/apz/src/APZCTreeManager.h
+@@ -20,6 +20,7 @@
+ #include "mozilla/Vector.h"             // for mozilla::Vector
+ #include "nsTArrayForwardDeclare.h"     // for nsTArray, nsTArray_Impl, etc
+ #include "mozilla/gfx/Logging.h"        // for gfx::TreeLog
++#include "InputData.h"                  // for InputData, etc
+ 
+ class gfx3DMatrix;
+ 
+@@ -337,6 +338,9 @@ private:
+                                                       uint64_t aFirstPaintLayersId,
+                                                       nsTArray< nsRefPtr<AsyncPanZoomController> >* aApzcsToDestroy);
+ 
++  void ResetTrackedTouches(const MultiTouchInput& aEvent);
++  void RemoveTrackedTouches(const MultiTouchInput& aEvent);
++
+ private:
+   /* Whenever walking or mutating the tree rooted at mRootApzc, mTreeLock must be held.
+    * This lock does not need to be held while manipulating a single APZC instance in
+@@ -353,8 +357,18 @@ private:
+    * input delivery thread, and so does not require locking.
+    */
+   nsRefPtr<AsyncPanZoomController> mApzcForInputBlock;
+-  /* The number of touch points we are tracking that are currently on the screen. */
+-  uint32_t mTouchCount;
++
++  /**
++   * Array containing all active touches. When a touch happens it, gets added to
++   * this array, even if we choose not to handle it. When it ends, we remove it.
++   * We need to maintain this array in order to detect the end of the
++   * "multitouch" states because touch start events contain all current touches,
++   * but touch end events contain only those touches that have gone.
++   * Also we need this array to recompute APZC correctly when in transition
++   * from pinching to panning.
++   */
++  nsTArray<SingleTouchData> mTouches;
++
+   /* The transform from root screen coordinates into mApzcForInputBlock's
+    * screen coordinates, as returned through the 'aTransformToApzcOut' parameter
+    * of GetInputTransform(), at the start of the input block. This is cached
+diff --git a/gfx/layers/apz/src/AsyncPanZoomController.cpp b/gfx/layers/apz/src/AsyncPanZoomController.cpp
+index 52c0771..2597355 100644
+--- a/gfx/layers/apz/src/AsyncPanZoomController.cpp
++++ b/gfx/layers/apz/src/AsyncPanZoomController.cpp
+@@ -886,6 +886,21 @@ nsEventStatus AsyncPanZoomController::OnScaleEnd(const PinchGestureInput& aEvent
+     UpdateSharedCompositorFrameMetrics();
+   }
+ 
++  // Non-negative focus point would indicate that one finger is still down
++  if (aEvent.mFocusPoint.x != -1 && aEvent.mFocusPoint.y != -1) {
++    mPanDirRestricted = false;
++    mX.StartTouch(aEvent.mFocusPoint.x);
++    mY.StartTouch(aEvent.mFocusPoint.y);
++    APZCTreeManager* treeManagerLocal = mTreeManager;
++    nsRefPtr<GeckoContentController> controller = GetGeckoContentController();
++    if (treeManagerLocal && controller) {
++      bool touchCanBePan = treeManagerLocal->CanBePanned(this);
++      controller->NotifyAPZStateChange(
++        GetGuid(), APZStateChange::StartTouch, touchCanBePan);
++    }
++    SetState(TOUCHING);
++  }
++
+   return nsEventStatus_eConsumeNoDefault;
+ }
+ 
+diff --git a/gfx/layers/apz/src/GestureEventListener.cpp b/gfx/layers/apz/src/GestureEventListener.cpp
+index 5fc136e..3e5dafd 100644
+--- a/gfx/layers/apz/src/GestureEventListener.cpp
++++ b/gfx/layers/apz/src/GestureEventListener.cpp
+@@ -324,9 +324,15 @@ nsEventStatus GestureEventListener::HandleInputTouchEnd()
+   case GESTURE_PINCH:
+     if (mTouches.Length() < 2) {
+       SetState(GESTURE_NONE);
++      ScreenPoint point(-1, -1);
++      if (mTouches.Length() == 1) {
++        // As user still keeps one finger down the event's focus point should
++        // contain meaningful data.
++        point = mTouches[0].mScreenPoint;
++      }
+       PinchGestureInput pinchEvent(PinchGestureInput::PINCHGESTURE_END,
+                                    mLastTouchInput.mTime,
+-                                   ScreenPoint(),
++                                   point,
+                                    1.0f,
+                                    1.0f,
+                                    mLastTouchInput.modifiers);

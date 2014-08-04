@@ -1,4 +1,4 @@
-%define greversion 31.0a1
+%define greversion 33.0a2
 
 Name:       xulrunner-qt5
 Summary:    XUL runner
@@ -8,6 +8,14 @@ Group:      Applications/Internet
 License:    Mozilla License
 URL:        http://hg.mozilla.org/mozilla-central
 Source0:    %{name}-%{version}.tar.bz2
+Patch0:     add-sailfishos-org-certs.patch
+Patch1:     disable-jmalloc-in-storage-service.patch
+Patch2:     workaround-for-bug-977015.patch
+Patch3:     workaround-wrong-viewport-in-wikipedia.patch
+Patch4:     workaround-for-bug-20684-wrong-viewport-after-orientation-change.patch
+Patch5:     workaround-for-21266-blank-page-after-scroll.patch
+#Patch6:     fix-20430-invalidate-obsolete-scroll-offset.patch
+#Patch7:     transition-from-pinching-to-panning.patch
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
@@ -53,10 +61,18 @@ Requires: %{name} = %{version}-%{release}
 Summary: Misc files for xulrunner
 
 %description misc
-Tests and misc files for xulrunner.
+Tests and misc files for xulrunner
 
 %prep
 %setup -q -n %{name}-%{version}
+%patch0 -p1
+%patch1 -p1
+%patch2 -p1
+%patch3 -p1
+%patch4 -p1
+%patch5 -p1
+#%patch6 -p1
+#%patch7 -p1
 
 %build
 export DONT_POPULATE_VIRTUALENV=1
@@ -119,6 +135,7 @@ touch /var/lib/_MOZEMBED_CACHE_CLEAN_
 %files
 %defattr(-,root,root,-)
 %attr(755,-,-) %{_bindir}/*
+%dir %{_libdir}/%{name}-%{greversion}
 %dir %{_libdir}/%{name}-%{greversion}/defaults
 %{_libdir}/%{name}-%{greversion}/*.so
 %{_libdir}/%{name}-%{greversion}/omni.ja
