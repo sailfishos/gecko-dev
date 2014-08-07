@@ -29,6 +29,10 @@ EXPORTS += [
     'gmp-api/gmp-video-frame.h',
     'gmp-api/gmp-video-host.h',
     'gmp-api/gmp-video-plane.h',
+    'GMPAudioDecoderChild.h',
+    'GMPAudioDecoderParent.h',
+    'GMPAudioDecoderProxy.h',
+    'GMPAudioHost.h',
     'GMPCallbackBase.h',
     'GMPChild.h',
     'GMPDecryptorChild.h',
@@ -42,6 +46,8 @@ EXPORTS += [
     'GMPProcessParent.h',
     'GMPService.h',
     'GMPSharedMemManager.h',
+    'GMPTimerChild.h',
+    'GMPTimerParent.h',
     'GMPVideoDecoderChild.h',
     'GMPVideoDecoderParent.h',
     'GMPVideoDecoderProxy.h',
@@ -55,6 +61,9 @@ EXPORTS += [
 ]
 
 UNIFIED_SOURCES += [
+    'GMPAudioDecoderChild.cpp',
+    'GMPAudioDecoderParent.cpp',
+    'GMPAudioHost.cpp',
     'GMPChild.cpp',
     'GMPDecryptorChild.cpp',
     'GMPDecryptorParent.cpp',
@@ -65,6 +74,8 @@ UNIFIED_SOURCES += [
     'GMPProcessParent.cpp',
     'GMPService.cpp',
     'GMPSharedMemManager.cpp',
+    'GMPTimerChild.cpp',
+    'GMPTimerParent.cpp',
     'GMPVideoDecoderChild.cpp',
     'GMPVideoDecoderParent.cpp',
     'GMPVideoEncodedFrameImpl.cpp',
@@ -78,7 +89,9 @@ UNIFIED_SOURCES += [
 IPDL_SOURCES += [
   'GMPTypes.ipdlh',
   'PGMP.ipdl',
+  'PGMPAudioDecoder.ipdl',
   'PGMPDecryptor.ipdl',
+  'PGMPTimer.ipdl',
   'PGMPVideoDecoder.ipdl',
   'PGMPVideoEncoder.ipdl',
 ]

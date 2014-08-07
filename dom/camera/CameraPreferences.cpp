@@ -9,7 +9,6 @@
 #include "mozilla/Monitor.h"
 #include "mozilla/StaticPtr.h"
 #include "mozilla/Preferences.h"
-#include "mozilla/ArrayUtils.h"
 
 using namespace mozilla;
 

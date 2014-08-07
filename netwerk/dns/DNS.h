@@ -118,7 +118,7 @@ union NetAddr {
 // which is converted to a mozilla::dns::NetAddr.
 class NetAddrElement : public LinkedListElement<NetAddrElement> {
 public:
-  NetAddrElement(const PRNetAddr *prNetAddr);
+  explicit NetAddrElement(const PRNetAddr *prNetAddr);
   NetAddrElement(const NetAddrElement& netAddr);
   ~NetAddrElement();
 
@@ -165,6 +165,8 @@ bool IsIPAddrAny(const NetAddr *addr);
 bool IsIPAddrV4Mapped(const NetAddr *addr);
 
 bool IsIPAddrLocal(const NetAddr *addr);
+
+nsresult GetPort(const NetAddr *aAddr, uint16_t *aResult);
 
 } // namespace net
 } // namespace mozilla

@@ -110,7 +110,7 @@ describe("loop.panel", function() {
           sinon.assert.calledOnce(router.loadReactComponent);
           sinon.assert.calledWithExactly(router.loadReactComponent,
             sinon.match(function(value) {
-              return React.addons.TestUtils.isComponentOfType(
+              return React.addons.TestUtils.isDescriptorOfType(
                 value, loop.panel.PanelView);
             }));
         });
@@ -247,6 +247,21 @@ describe("loop.panel", function() {
 
     describe("Rendering the component should generate a call URL", function() {
 
+      beforeEach(function() {
+        document.mozL10n.initialize({
+          getStrings: function(key) {
+            var text;
+
+            if (key === "share_email_subject")
+              text = "email-subject";
+            else if (key === "share_email_body")
+              text = "{{callUrl}}";
+
+            return JSON.stringify({textContent: text});
+          }
+        });
+      });
+
       it("should make a request to requestCallUrl", function() {
         sandbox.stub(fakeClient, "requestCallUrl");
         var view = TestUtils.renderIntoDocument(loop.panel.CallUrlResult({
@@ -288,6 +303,20 @@ describe("loop.panel", function() {
 
       it("should reset all pending notifications", function() {
         sinon.assert.calledOnce(view.props.notifier.clear);
+      });
+
+      it("should display a share button for email", function() {
+        fakeClient.requestCallUrl = sandbox.stub();
+        var mailto = 'mailto:?subject=email-subject&body=http://example.com';
+        var view = TestUtils.renderIntoDocument(loop.panel.CallUrlResult({
+          notifier: notifier,
+          client: fakeClient
+        }));
+        view.setState({pending: false, callUrl: "http://example.com"});
+
+        TestUtils.findRenderedDOMComponentWithTag(view, "a");
+        var shareButton = view.getDOMNode().querySelector("a.btn");
+        expect(shareButton.href).to.equal(encodeURI(mailto));
       });
 
       it("should notify the user when the operation failed", function() {

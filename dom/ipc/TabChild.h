@@ -62,7 +62,7 @@ class TabChildGlobal : public DOMEventTargetHelper,
                        public nsIGlobalObject
 {
 public:
-  TabChildGlobal(TabChildBase* aTabChild);
+  explicit TabChildGlobal(TabChildBase* aTabChild);
   void Init();
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(TabChildGlobal, DOMEventTargetHelper)
@@ -147,7 +147,7 @@ protected:
 class ContentListener MOZ_FINAL : public nsIDOMEventListener
 {
 public:
-  ContentListener(TabChild* aTabChild) : mTabChild(aTabChild) {}
+  explicit ContentListener(TabChild* aTabChild) : mTabChild(aTabChild) {}
   NS_DECL_ISUPPORTS
   NS_DECL_NSIDOMEVENTLISTENER
 protected:
@@ -178,7 +178,7 @@ public:
     // viewport data on a document may have changed. If it didn't
     // change, this function doesn't do anything.  However, it should
     // not be called all the time as it is fairly expensive.
-    bool HandlePossibleViewportChange();
+    bool HandlePossibleViewportChange(const ScreenIntSize& aOldScreenSize);
     virtual bool DoUpdateZoomConstraints(const uint32_t& aPresShellId,
                                          const mozilla::layers::FrameMetrics::ViewID& aViewId,
                                          const bool& aIsRoot,
@@ -500,6 +500,8 @@ protected:
                                                   bool* /* aAllowed */) MOZ_OVERRIDE;
 
     virtual bool DeallocPIndexedDBChild(PIndexedDBChild* aActor) MOZ_OVERRIDE;
+
+    virtual bool RecvRequestNotifyAfterRemotePaint();
 
 private:
     /**

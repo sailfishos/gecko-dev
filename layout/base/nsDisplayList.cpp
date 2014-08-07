@@ -814,7 +814,7 @@ static void RecordFrameMetrics(nsIFrame* aForFrame,
     if (nsIContent* content = frameForCompositionBoundsCalculation->GetContent()) {
       nsAutoString contentDescription;
       content->Describe(contentDescription);
-      metrics.SetContentDescription(NS_LossyConvertUTF16toASCII(contentDescription).get());
+      aRoot->SetContentDescription(NS_LossyConvertUTF16toASCII(contentDescription).get());
     }
   }
 
@@ -3115,7 +3115,7 @@ RequiredLayerStateForChildren(nsDisplayListBuilder* aBuilder,
   LayerState result = LAYER_INACTIVE;
   for (nsDisplayItem* i = aList.GetBottom(); i; i = i->GetAbove()) {
     if (result == LAYER_INACTIVE &&
-        nsLayoutUtils::GetAnimatedGeometryRootFor(i, aBuilder) !=
+        nsLayoutUtils::GetAnimatedGeometryRootFor(i, aBuilder, aManager) !=
           aExpectedAnimatedGeometryRootForChildren) {
       result = LAYER_ACTIVE;
     }
@@ -3334,7 +3334,7 @@ nsDisplayOpacity::GetLayerState(nsDisplayListBuilder* aBuilder,
     return LAYER_ACTIVE;
 
   return RequiredLayerStateForChildren(aBuilder, aManager, aParameters, mList,
-    nsLayoutUtils::GetAnimatedGeometryRootFor(this, aBuilder));
+    nsLayoutUtils::GetAnimatedGeometryRootFor(this, aBuilder, aManager));
 }
 
 bool

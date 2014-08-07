@@ -460,7 +460,7 @@ public:
 //
 class MessageLoopForUI : public MessageLoop {
  public:
-  MessageLoopForUI(Type type=TYPE_UI) : MessageLoop(type) {
+  explicit MessageLoopForUI(Type type=TYPE_UI) : MessageLoop(type) {
   }
   MessageLoopForUI(base::MessagePump* messagePump) : MessageLoop(messagePump) {
   }

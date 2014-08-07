@@ -139,7 +139,7 @@ class Element : public FragmentOrElement
 {
 public:
 #ifdef MOZILLA_INTERNAL_API
-  Element(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo) :
+  explicit Element(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo) :
     FragmentOrElement(aNodeInfo),
     mState(NS_EVENT_STATE_MOZ_READONLY)
   {
@@ -645,6 +645,8 @@ public:
   }
   bool HasAttributeNS(const nsAString& aNamespaceURI,
                       const nsAString& aLocalName) const;
+  bool Matches(const nsAString& aSelector,
+               ErrorResult& aError);
   already_AddRefed<nsIHTMLCollection>
     GetElementsByTagName(const nsAString& aQualifiedName);
   already_AddRefed<nsIHTMLCollection>
@@ -654,7 +656,10 @@ public:
   already_AddRefed<nsIHTMLCollection>
     GetElementsByClassName(const nsAString& aClassNames);
   bool MozMatchesSelector(const nsAString& aSelector,
-                          ErrorResult& aError);
+                          ErrorResult& aError)
+  {
+    return Matches(aSelector, aError);
+  }
   void SetPointerCapture(int32_t aPointerId, ErrorResult& aError)
   {
     bool activeState = false;
@@ -1208,7 +1213,7 @@ private:
 class DestinationInsertionPointList : public nsINodeList
 {
 public:
-  DestinationInsertionPointList(Element* aElement);
+  explicit DestinationInsertionPointList(Element* aElement);
 
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_CLASS(DestinationInsertionPointList)

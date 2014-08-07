@@ -228,16 +228,13 @@ MemoryPressureObserver::Observe(nsISupports *aSubject,
 // the order *must* match the order in eFontPrefLang
 static const char *gPrefLangNames[] = {
     "x-western",
-    "x-central-euro",
     "ja",
     "zh-TW",
     "zh-CN",
     "zh-HK",
     "ko",
     "x-cyrillic",
-    "x-baltic",
     "el",
-    "tr",
     "th",
     "he",
     "ar",
@@ -444,9 +441,7 @@ gfxPlatform::Shutdown()
     gfxGradientCache::Shutdown();
     gfxAlphaBoxBlur::ShutdownBlurCache();
     gfxGraphiteShaper::Shutdown();
-#if defined(XP_MACOSX) || defined(XP_WIN) // temporary, until this is implemented on others
     gfxPlatformFontList::Shutdown();
-#endif
 
     // Free the various non-null transforms and loaded profiles
     ShutdownCMS();
@@ -858,8 +853,9 @@ gfxPlatform::InitializeSkiaCacheLimits()
     if (usingDynamicCache) {
       uint32_t totalMemory = mozilla::hal::GetTotalSystemMemory();
 
-      if (totalMemory <= 256*1024*1024) {
-        // We need a very minimal cache on 256 meg devices
+      if (totalMemory < 512*1024*1024) {
+        // We need a very minimal cache on anything smaller than 512mb.
+        // Note the large jump as we cross 512mb (from 2mb to 32mb).
         cacheSizeLimit = 2*1024*1024;
       } else if (totalMemory > 0) {
         cacheSizeLimit = totalMemory / 16;
@@ -1242,10 +1238,8 @@ gfxPlatform::GetFontPrefLangFor(uint8_t aUnicodeRange)
         case kRangeSetLatin:   return eFontPrefLang_Western;
         case kRangeCyrillic:   return eFontPrefLang_Cyrillic;
         case kRangeGreek:      return eFontPrefLang_Greek;
-        case kRangeTurkish:    return eFontPrefLang_Turkish;
         case kRangeHebrew:     return eFontPrefLang_Hebrew;
         case kRangeArabic:     return eFontPrefLang_Arabic;
-        case kRangeBaltic:     return eFontPrefLang_Baltic;
         case kRangeThai:       return eFontPrefLang_Thai;
         case kRangeKorean:     return eFontPrefLang_Korean;
         case kRangeJapanese:   return eFontPrefLang_Japanese;

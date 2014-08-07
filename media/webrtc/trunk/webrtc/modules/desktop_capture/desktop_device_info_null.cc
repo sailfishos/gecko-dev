@@ -4,7 +4,7 @@
 
 #include "webrtc/modules/desktop_capture/desktop_device_info.h"
 
-namespace webrtc{
+namespace webrtc {
 
 class DesktopDeviceInfoNull : public DesktopDeviceInfoImpl {
 public:
@@ -31,9 +31,7 @@ DesktopDeviceInfoNull::~DesktopDeviceInfoNull() {
 
 int32_t
 DesktopDeviceInfoNull::Init() {
-
   initializeWindowList();
-
   return 0;
 }
 

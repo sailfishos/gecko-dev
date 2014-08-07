@@ -922,7 +922,7 @@ ContainerLayer::FillSpecificAttributes(SpecificLayerAttributes& aAttrs)
   aAttrs = ContainerLayerAttributes(GetFrameMetrics(), mScrollHandoffParentId,
                                     mPreXScale, mPreYScale,
                                     mInheritedXScale, mInheritedYScale,
-                                    mBackgroundColor);
+                                    mBackgroundColor, mContentDescription);
 }
 
 bool
@@ -1013,7 +1013,7 @@ ContainerLayer::DefaultComputeEffectiveTransforms(const Matrix4x4& aTransformToS
     }
   }
 
-  mUseIntermediateSurface = useIntermediateSurface;
+  mUseIntermediateSurface = useIntermediateSurface && !GetEffectiveVisibleRegion().IsEmpty();
   if (useIntermediateSurface) {
     ComputeEffectiveTransformsForChildren(Matrix4x4::From2D(residual));
   } else {
@@ -1772,6 +1772,14 @@ LayerManager::DumpSelf(std::stringstream& aStream, const char* aPrefix)
 {
   PrintInfo(aStream, aPrefix);
   aStream << "\n";
+}
+
+void
+LayerManager::Dump()
+{
+  std::stringstream ss;
+  Dump(ss);
+  print_stderr(ss);
 }
 
 void

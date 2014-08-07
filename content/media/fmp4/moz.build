@@ -5,7 +5,9 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 EXPORTS += [
+    'eme/EMEAACDecoder.h',
     'eme/EMEDecoderModule.h',
+    'eme/EMEH264Decoder.h',
     'MP4Decoder.h',
     'MP4Reader.h',
     'PlatformDecoderModule.h',
@@ -13,7 +15,9 @@ EXPORTS += [
 
 UNIFIED_SOURCES += [
     'BlankDecoderModule.cpp',
+    'eme/EMEAACDecoder.cpp',
     'eme/EMEDecoderModule.cpp',
+    'eme/EMEH264Decoder.cpp',
     'PlatformDecoderModule.cpp',
 ]
 
@@ -54,10 +58,16 @@ if CONFIG['MOZ_APPLEMEDIA']:
       'apple/AppleVTDecoder.cpp',
       'apple/AppleVTLinker.cpp',
   ]
-  LDFLAGS += [
+  OS_LIBS += [
       '-framework AudioToolbox',
   ]
 
+include('/ipc/chromium/chromium-config.mozbuild')
+
+LOCAL_INCLUDES += [
+    '../base',
+]
+  
 FINAL_LIBRARY = 'xul'
 
 FAIL_ON_WARNINGS = True

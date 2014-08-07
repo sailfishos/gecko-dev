@@ -149,7 +149,7 @@
 <!ENTITY pref_clear_private_data2 "Clear now">
 <!ENTITY pref_clear_private_data_category "Clear private data">
 <!ENTITY pref_clear_on_exit_title "Always clear when quitting">
-<!ENTITY pref_clear_on_exit_summary "&brandShortName; will automatically clear your data whenever you select &quot;Quit&quot; from the main menu">
+<!ENTITY pref_clear_on_exit_summary2 "&brandShortName; will automatically clear your data whenever you select \u0022Quit\u0022 from the main menu">
 <!ENTITY pref_clear_on_exit_dialog_title "Select which data to clear">
 <!ENTITY pref_plugins "Plugins">
 <!ENTITY pref_plugins_enabled "Enabled">
@@ -465,6 +465,8 @@ just addresses the organization to follow, e.g. "This site is run by " -->
      designated space. Use the unicode ellipsis char, \u2026, or use "..." if \u2026 doesn't suit
      traditions in your locale. -->
 <!ENTITY ellipsis "…">
+
+<!ENTITY colon ":">
 
 <!-- These are only used for accessiblity for the done and overflow-menu buttons in the actionbar.
      They are never shown to users -->

@@ -1,9 +1,11 @@
+# -*- coding: utf-8 -*-
 import argparse
 import optparse
 import os
 import unittest
 import StringIO
 import json
+import mozfile
 
 from mozlog.structured import (
     commandline,
@@ -11,6 +13,7 @@ from mozlog.structured import (
     structuredlog,
     stdadapter,
     handlers,
+    formatters,
 )
 
 
@@ -240,7 +243,7 @@ class TestStructuredLog(BaseStructuredTest):
     def test_process(self):
         self.logger.process_output(1234, "test output")
         self.assert_log_equals({"action": "process_output",
-                                "process": 1234,
+                                "process": "1234",
                                 "data": "test output"})
 
     def test_log(self):
@@ -320,6 +323,74 @@ class TestStructuredLog(BaseStructuredTest):
         self.assert_log_equals({"action": "log",
                                 "level": "INFO",
                                 "message": "line 4"})
+
+class TestTypeconversions(BaseStructuredTest):
+    def test_raw(self):
+        self.logger.log_raw({"action":"suite_start", "tests":[1], "time": "1234"})
+        self.assert_log_equals({"action": "suite_start",
+                                "tests":["1"],
+                                "time": 1234})
+        self.logger.suite_end()
+
+    def test_tuple(self):
+        self.logger.suite_start([])
+        self.logger.test_start(("\xf0\x90\x8d\x84\xf0\x90\x8c\xb4\xf0\x90\x8d\x83\xf0\x90\x8d\x84", 42, u"\u16a4"))
+        self.assert_log_equals({"action": "test_start",
+                                "test": (u'\U00010344\U00010334\U00010343\U00010344', u"42", u"\u16a4")})
+        self.logger.suite_end()
+
+    def test_non_string_messages(self):
+        self.logger.suite_start([])
+        self.logger.info(1)
+        self.assert_log_equals({"action": "log",
+                                "message": "1",
+                                "level": "INFO"})
+        self.logger.info([1, (2, '3'), "s", "s" + chr(255)])
+        self.assert_log_equals({"action": "log",
+                                "message": "[1, (2, '3'), 's', 's\\xff']",
+                                "level": "INFO"})
+        self.logger.suite_end()
+
+    def test_utf8str_write(self):
+        with mozfile.NamedTemporaryFile() as logfile:
+            _fmt = formatters.TbplFormatter()
+            _handler = handlers.StreamHandler(logfile, _fmt)
+            self.logger.add_handler(_handler)
+            self.logger.suite_start([])
+            self.logger.info("☺")
+            with open(logfile.name) as f:
+                data = f.readlines()
+                self.assertEquals(data[-1], "☺\n")
+            self.logger.suite_end()
+
+    def test_arguments(self):
+        self.logger.info(message="test")
+        self.assert_log_equals({"action": "log",
+                                "message": "test",
+                                "level": "INFO"})
+
+        self.logger.suite_start([], {})
+        self.assert_log_equals({"action": "suite_start",
+                                "tests": [],
+                                "run_info": {}})
+        self.logger.test_start(test="test1")
+        self.logger.test_status("subtest1", "FAIL", test="test1", status="PASS")
+        self.assert_log_equals({"action": "test_status",
+                                "test": "test1",
+                                "subtest": "subtest1",
+                                "status": "PASS",
+                                "expected": "FAIL"})
+        self.logger.process_output(123, "data", "test")
+        self.assert_log_equals({"action": "process_output",
+                                "process": "123",
+                                "command": "test",
+                                "data": "data"})
+        self.assertRaises(TypeError, self.logger.test_status, subtest="subtest2",
+                          status="FAIL", expected="PASS")
+        self.assertRaises(TypeError, self.logger.test_status, "test1", "subtest1",
+                          "PASS", "FAIL", "message", "stack", {}, "unexpected")
+        self.assertRaises(TypeError, self.logger.test_status, "test1", test="test2")
+        self.logger.suite_end()
 
 class TestCommandline(unittest.TestCase):
     def test_setup_logging(self):

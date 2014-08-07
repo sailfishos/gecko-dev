@@ -779,7 +779,7 @@ void
 TabParent::MapEventCoordinatesForChildProcess(
   const LayoutDeviceIntPoint& aOffset, WidgetEvent* aEvent)
 {
-  if (aEvent->eventStructType != NS_TOUCH_EVENT) {
+  if (aEvent->mClass != eTouchEventClass) {
     aEvent->refPoint = aOffset;
   } else {
     aEvent->refPoint = LayoutDeviceIntPoint();
@@ -1015,7 +1015,7 @@ TabParent::TryCapture(const WidgetGUIEvent& aEvent)
 {
   MOZ_ASSERT(sEventCapturer == this && mEventCaptureDepth > 0);
 
-  if (aEvent.eventStructType != NS_TOUCH_EVENT) {
+  if (aEvent.mClass != eTouchEventClass) {
     // Only capture of touch events is implemented, for now.
     return false;
   }
@@ -2082,7 +2082,7 @@ TabParent::InjectTouchEvent(const nsAString& aType,
                             int32_t aModifiers)
 {
   uint32_t msg;
-  nsContentUtils::GetEventIdAndAtom(aType, NS_TOUCH_EVENT, &msg);
+  nsContentUtils::GetEventIdAndAtom(aType, eTouchEventClass, &msg);
   if (msg != NS_TOUCH_START && msg != NS_TOUCH_MOVE &&
       msg != NS_TOUCH_END && msg != NS_TOUCH_CANCEL) {
     return NS_ERROR_FAILURE;
@@ -2149,6 +2149,25 @@ TabParent::SetIsDocShellActive(bool isActive)
 {
   unused << SendSetIsDocShellActive(isActive);
   return NS_OK;
+}
+
+bool
+TabParent::RecvRemotePaintIsReady()
+{
+  nsCOMPtr<mozilla::dom::EventTarget> target = do_QueryInterface(mFrameElement);
+  if (!target) {
+    NS_WARNING("Could not locate target for MozAfterRemotePaint message.");
+    return true;
+  }
+
+  nsCOMPtr<nsIDOMEvent> event;
+  NS_NewDOMEvent(getter_AddRefs(event), mFrameElement, nullptr, nullptr);
+  event->InitEvent(NS_LITERAL_STRING("MozAfterRemotePaint"), false, false);
+  event->SetTrusted(true);
+  event->GetInternalNSEvent()->mFlags.mOnlyChromeDispatch = true;
+  bool dummy;
+  mFrameElement->DispatchEvent(event, &dummy);
+  return true;
 }
 
 class FakeChannel MOZ_FINAL : public nsIChannel,

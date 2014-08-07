@@ -2465,9 +2465,9 @@ nsFrame::HandleEvent(nsPresContext* aPresContext,
     return HandleDrag(aPresContext, aEvent, aEventStatus);
   }
 
-  if ((aEvent->eventStructType == NS_MOUSE_EVENT &&
+  if ((aEvent->mClass == eMouseEventClass &&
        aEvent->AsMouseEvent()->button == WidgetMouseEvent::eLeftButton) ||
-      aEvent->eventStructType == NS_TOUCH_EVENT) {
+      aEvent->mClass == eTouchEventClass) {
     if (aEvent->message == NS_MOUSE_BUTTON_DOWN || aEvent->message == NS_TOUCH_START) {
       HandlePress(aPresContext, aEvent, aEventStatus);
     } else if (aEvent->message == NS_MOUSE_BUTTON_UP || aEvent->message == NS_TOUCH_END) {
@@ -2679,7 +2679,7 @@ nsFrame::HandlePress(nsPresContext* aPresContext,
   }
 
   NS_ENSURE_ARG_POINTER(aEvent);
-  if (aEvent->eventStructType == NS_TOUCH_EVENT) {
+  if (aEvent->mClass == eTouchEventClass) {
     return NS_OK;
   }
 
@@ -2774,7 +2774,7 @@ nsFrame::HandlePress(nsPresContext* aPresContext,
   if (mouseEvent->clickCount > 1) {
     // These methods aren't const but can't actually delete anything,
     // so no need for nsWeakFrame.
-    fc->SetMouseDownState(true);
+    fc->SetDragState(true);
     fc->SetMouseDoubleDown(true);
     return HandleMultiplePress(aPresContext, mouseEvent, aEventStatus, control);
   }
@@ -2812,7 +2812,7 @@ nsFrame::HandlePress(nsPresContext* aPresContext,
                                 &target);
   if (NS_SUCCEEDED(rv) && parentContent)
   {
-    fc->SetMouseDownState(true);
+    fc->SetDragState(true);
     return fc->HandleTableSelection(parentContent, contentOffset, target,
                                     mouseEvent);
   }
@@ -2861,13 +2861,13 @@ nsFrame::HandlePress(nsPresContext* aPresContext,
     }
 
     if (inSelection) {
-      fc->SetMouseDownState(false);
+      fc->SetDragState(false);
       fc->SetDelayedCaretData(mouseEvent);
       return NS_OK;
     }
   }
 
-  fc->SetMouseDownState(true);
+  fc->SetDragState(true);
 
   // Do not touch any nsFrame members after this point without adding
   // weakFrame checks.
@@ -2889,7 +2889,7 @@ nsFrame::HandlePress(nsPresContext* aPresContext,
     // -moz-user-select: all or a non-text node without children).
     // Therefore, disable selection extension during mouse moves.
     // XXX This is a bit hacky; shouldn't editor be able to deal with this?
-    fc->SetMouseDownState(false);
+    fc->SetDragState(false);
   }
 
   return rv;
@@ -3073,7 +3073,8 @@ NS_IMETHODIMP nsFrame::HandleDrag(nsPresContext* aPresContext,
                                   WidgetGUIEvent* aEvent,
                                   nsEventStatus* aEventStatus)
 {
-  MOZ_ASSERT(aEvent->eventStructType == NS_MOUSE_EVENT, "HandleDrag can only handle mouse event");
+  MOZ_ASSERT(aEvent->mClass == eMouseEventClass,
+             "HandleDrag can only handle mouse event");
 
   bool selectable;
   IsSelectable(&selectable, nullptr);
@@ -3089,7 +3090,7 @@ NS_IMETHODIMP nsFrame::HandleDrag(nsPresContext* aPresContext,
   nsIPresShell *presShell = aPresContext->PresShell();
 
   nsRefPtr<nsFrameSelection> frameselection = GetFrameSelection();
-  bool mouseDown = frameselection->GetMouseDownState();
+  bool mouseDown = frameselection->GetDragState();
   if (!mouseDown)
     return NS_OK;
 
@@ -3173,7 +3174,7 @@ HandleFrameSelection(nsFrameSelection*         aFrameSelection,
       //  * that's the normal click position to use (although really, in
       //    the normal case, small movements that don't count as a drag
       //    can do selection)
-      aFrameSelection->SetMouseDownState(true);
+      aFrameSelection->SetDragState(true);
 
       rv = aFrameSelection->HandleClick(aOffsets.content,
                                         aOffsets.StartOffset(),
@@ -3185,7 +3186,7 @@ HandleFrameSelection(nsFrameSelection*         aFrameSelection,
         return rv;
       }
     } else if (aParentContentForTableSel) {
-      aFrameSelection->SetMouseDownState(false);
+      aFrameSelection->SetDragState(false);
       rv = aFrameSelection->HandleTableSelection(
                               aParentContentForTableSel,
                               aContentOffsetForTableSel,
@@ -3198,7 +3199,7 @@ HandleFrameSelection(nsFrameSelection*         aFrameSelection,
     aFrameSelection->SetDelayedCaretData(0);
   }
 
-  aFrameSelection->SetMouseDownState(false);
+  aFrameSelection->SetDragState(false);
   aFrameSelection->StopAutoScrollTimer();
 
   return NS_OK;
@@ -3208,7 +3209,7 @@ NS_IMETHODIMP nsFrame::HandleRelease(nsPresContext* aPresContext,
                                      WidgetGUIEvent* aEvent,
                                      nsEventStatus* aEventStatus)
 {
-  if (aEvent->eventStructType != NS_MOUSE_EVENT) {
+  if (aEvent->mClass != eMouseEventClass) {
     return NS_OK;
   }
 
@@ -3237,7 +3238,7 @@ NS_IMETHODIMP nsFrame::HandleRelease(nsPresContext* aPresContext,
       // If not, the user must have clicked in a part of the selection.
       // Place the caret before continuing!
 
-      bool mouseDown = frameselection->GetMouseDownState();
+      bool mouseDown = frameselection->GetDragState();
 
       if (!mouseDown && frameselection->HasDelayedCaretData() &&
           frameselection->GetClickCountInDelayedCaretData() < 2) {
@@ -3277,7 +3278,7 @@ NS_IMETHODIMP nsFrame::HandleRelease(nsPresContext* aPresContext,
   }
 
   if (frameSelection) {
-    frameSelection->SetMouseDownState(false);
+    frameSelection->SetDragState(false);
     frameSelection->StopAutoScrollTimer();
   }
 

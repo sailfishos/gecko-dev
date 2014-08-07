@@ -42,7 +42,7 @@ public class VideoCaptureAndroid implements PreviewCallback, Callback, AppStateL
   private final static String TAG = "WEBRTC-JC";
 
   private Camera camera;  // Only non-null while capturing.
-  private Camera.CameraInfo info = null;
+  private Camera.CameraInfo info;
   private final int id;
   private final long native_capturer;  // |VideoCaptureAndroid*| in C++.
   private SurfaceHolder localPreview;
@@ -55,8 +55,8 @@ public class VideoCaptureAndroid implements PreviewCallback, Callback, AppStateL
   private volatile int mCaptureRotation;
   private int mCaptureWidth;
   private int mCaptureHeight;
-  private int mCaptureMinFPS = 0;
-  private int mCaptureMaxFPS = 0;
+  private int mCaptureMinFPS;
+  private int mCaptureMaxFPS;
   // Are we being told to start/stop the camera, or just suspending/resuming
   // due to the application being backgrounded.
   private boolean mResumeCapture;
@@ -224,6 +224,12 @@ public class VideoCaptureAndroid implements PreviewCallback, Callback, AppStateL
   private synchronized boolean stopCapture() {
     Log.d(TAG, "stopCapture");
     if (camera == null) {
+      if (mResumeCapture == true) {
+        // We already got onPause, but now the native code wants us to stop.
+        // Do not resume capturing when resuming the app.
+        mResumeCapture = false;
+        return true;
+      }
       throw new RuntimeException("Camera is already stopped!");
     }
     Throwable error = null;

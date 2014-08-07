@@ -97,7 +97,6 @@ describe("loop.shared.router", function() {
 
     beforeEach(function() {
       TestRouter = loop.shared.router.BaseConversationRouter.extend({
-        startCall: sandbox.spy(),
         endCall: sandbox.spy()
       });
       conversation = new loop.shared.models.ConversationModel({
@@ -111,8 +110,13 @@ describe("loop.shared.router", function() {
     describe("#constructor", function() {
       it("should require a ConversationModel instance", function() {
         expect(function() {
-          new TestRouter();
+          new TestRouter({ client: {} });
         }).to.Throw(Error, /missing required conversation/);
+      });
+      it("should require a Client instance", function() {
+        expect(function() {
+          new TestRouter({ conversation: {} });
+        }).to.Throw(Error, /missing required client/);
       });
     });
 
@@ -127,7 +131,8 @@ describe("loop.shared.router", function() {
         };
         router = new TestRouter({
           conversation: conversation,
-          notifier: notifier
+          notifier: notifier,
+          client: {}
         });
       });
 
@@ -149,24 +154,10 @@ describe("loop.shared.router", function() {
 
       });
 
-      it("should call startCall() once the call session is ready", function() {
-        conversation.trigger("session:ready");
-
-        sinon.assert.calledOnce(router.startCall);
-      });
-
       it("should call endCall() when conversation ended", function() {
         conversation.trigger("session:ended");
 
         sinon.assert.calledOnce(router.endCall);
-      });
-
-      it("should warn the user that the session has ended", function() {
-        conversation.trigger("session:ended");
-
-        sinon.assert.calledOnce(notifier.warnL10n);
-        sinon.assert.calledWithExactly(notifier.warnL10n,
-                                       "call_has_ended");
       });
 
       it("should warn the user when peer hangs up", function() {

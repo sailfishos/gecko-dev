@@ -981,21 +981,24 @@ class Mochitest(MochitestUtilsMixin):
   vmwareHelper = None
   DEFAULT_TIMEOUT = 60.0
   mediaDevices = None
+  structured_logger = None
 
   # XXX use automation.py for test name to avoid breaking legacy
   # TODO: replace this with 'runtests.py' or 'mochitest' or the like
   test_name = 'automation.py'
 
   def __init__(self):
+    # Structured logger
+    if self.structured_logger is None:
+        self.structured_logger = StructuredLogger('mochitest')
+        stream_handler = StreamHandler(stream=sys.stdout, formatter=MochitestFormatter())
+        self.structured_logger.add_handler(stream_handler)
+        Mochitest.structured_logger = self.structured_logger
+
     super(Mochitest, self).__init__()
 
-    # Structured logger
-    structured_log = StructuredLogger('mochitest')
-    stream_handler = StreamHandler(stream=sys.stdout, formatter=MochitestFormatter())
-    structured_log.add_handler(stream_handler)
-
     # Structured logs parser
-    self.message_logger = MessageLogger(logger=structured_log)
+    self.message_logger = MessageLogger(logger=self.structured_logger)
 
     # environment function for browserEnv
     self.environment = environment
@@ -1158,15 +1161,16 @@ class Mochitest(MochitestUtilsMixin):
     # This is fatal for desktop environments.
     raise EnvironmentError('Could not find gmp-fake')
 
-  def buildBrowserEnv(self, options, debugger=False):
+  def buildBrowserEnv(self, options, debugger=False, env=None):
     """build the environment variables for the specific test and operating system"""
     if mozinfo.info["asan"]:
       lsanPath = SCRIPT_DIR
     else:
       lsanPath = None
 
-    browserEnv = self.environment(xrePath=options.xrePath, debugger=debugger,
-                                  dmdPath=options.dmdPath, lsanPath=lsanPath)
+    browserEnv = self.environment(xrePath=options.xrePath, env=env,
+                                  debugger=debugger, dmdPath=options.dmdPath,
+                                  lsanPath=lsanPath)
 
     # These variables are necessary for correct application startup; change
     # via the commandline at your own risk.
@@ -1950,7 +1954,7 @@ class Mochitest(MochitestUtilsMixin):
 
     def fix_stack(self, message):
       if message['action'] == 'log' and self.stackFixerFunction:
-        message['message'] = self.stackFixerFunction(message['message'].encode('ascii', 'replace'))
+        message['message'] = self.stackFixerFunction(message['message'].encode('utf-8', 'replace'))
       return message
 
     def record_last_test(self, message):

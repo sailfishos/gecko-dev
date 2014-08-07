@@ -1,8 +1,20 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*-
  * vim: set ts=8 sts=4 et sw=4 tw=99:
- * This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ *
+ * Copyright 2014 Mozilla Foundation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #ifndef asmjs_AsmJSModule_h
 #define asmjs_AsmJSModule_h
@@ -354,7 +366,7 @@ class AsmJSModule
         void setDeltas(uint32_t entry, uint32_t profilingJump, uint32_t profilingEpilogue);
 
       public:
-        enum Kind { Function, Entry, FFI, Interrupt, Thunk, Inline };
+        enum Kind { Function, Entry, IonFFI, SlowFFI, Interrupt, Thunk, Inline };
 
         CodeRange() {}
         CodeRange(uint32_t nameIndex, uint32_t lineNumber, const AsmJSFunctionLabels &l);
@@ -366,7 +378,7 @@ class AsmJSModule
         Kind kind() const { return Kind(u.kind_); }
         bool isFunction() const { return kind() == Function; }
         bool isEntry() const { return kind() == Entry; }
-        bool isFFI() const { return kind() == FFI; }
+        bool isFFI() const { return kind() == IonFFI || kind() == SlowFFI; }
         bool isInterrupt() const { return kind() == Interrupt; }
         bool isThunk() const { return kind() == Thunk; }
 
@@ -815,6 +827,12 @@ class AsmJSModule
         if (len > pod.minHeapLength_)
             pod.minHeapLength_ = len;
     }
+    bool addCodeRange(CodeRange::Kind kind, uint32_t begin, uint32_t end) {
+        return codeRanges_.append(CodeRange(kind, begin, end));
+    }
+    bool addCodeRange(CodeRange::Kind kind, uint32_t begin, uint32_t pret, uint32_t end) {
+        return codeRanges_.append(CodeRange(kind, begin, pret, end));
+    }
     bool addFunctionCodeRange(PropertyName *name, uint32_t lineNumber,
                               const AsmJSFunctionLabels &labels)
     {
@@ -825,23 +843,11 @@ class AsmJSModule
         uint32_t nameIndex = names_.length();
         return names_.append(name) && codeRanges_.append(CodeRange(nameIndex, lineNumber, labels));
     }
-    bool addEntryCodeRange(uint32_t begin, uint32_t end) {
-        return codeRanges_.append(CodeRange(CodeRange::Entry, begin, end));
-    }
-    bool addFFICodeRange(uint32_t begin, uint32_t pret, uint32_t end) {
-        return codeRanges_.append(CodeRange(CodeRange::FFI, begin, pret, end));
-    }
-    bool addInterruptCodeRange(uint32_t begin, uint32_t pret, uint32_t end) {
-        return codeRanges_.append(CodeRange(CodeRange::Interrupt, begin, pret, end));
-    }
     bool addBuiltinThunkCodeRange(AsmJSExit::BuiltinKind builtin, uint32_t begin,
                                   uint32_t profilingReturn, uint32_t end)
     {
         return builtinThunkOffsets_.append(begin) &&
                codeRanges_.append(CodeRange(builtin, begin, profilingReturn, end));
-    }
-    bool addInlineCodeRange(uint32_t begin, uint32_t end) {
-        return codeRanges_.append(CodeRange(CodeRange::Inline, begin, end));
     }
     bool addExit(unsigned ffiIndex, unsigned *exitIndex) {
         JS_ASSERT(isFinishedWithModulePrologue() && !isFinishedWithFunctionBodies());
@@ -1142,7 +1148,8 @@ class AsmJSModule
     }
     void initHeap(Handle<ArrayBufferObject*> heap, JSContext *cx);
     bool clone(JSContext *cx, ScopedJSDeletePtr<AsmJSModule> *moduleOut) const;
-    void restoreToInitialState(ArrayBufferObject *maybePrevBuffer, ExclusiveContext *cx);
+    void restoreToInitialState(uint8_t *prevCode, ArrayBufferObject *maybePrevBuffer,
+                               ExclusiveContext *cx);
 
     /*************************************************************************/
     // Functions that can be called after dynamic linking succeeds:

@@ -6162,6 +6162,35 @@ nsDocShell::ForceRefreshURIFromTimer(nsIURI * aURI,
     return ForceRefreshURI(aURI, aDelay, aMetaRefresh);
 }
 
+bool
+nsDocShell::DoAppRedirectIfNeeded(nsIURI * aURI,
+                                  nsIDocShellLoadInfo * aLoadInfo,
+                                  bool aFirstParty)
+{
+  uint32_t appId;
+  nsresult rv = GetAppId(&appId);
+  if (NS_FAILED(rv)) {
+    return false;
+  }
+
+  if (appId != nsIScriptSecurityManager::NO_APP_ID &&
+      appId != nsIScriptSecurityManager::UNKNOWN_APP_ID) {
+    nsCOMPtr<nsIAppsService> appsService =
+      do_GetService(APPS_SERVICE_CONTRACTID);
+    NS_ASSERTION(appsService, "No AppsService available");
+    nsCOMPtr<nsIURI> redirect;
+    rv = appsService->GetRedirect(appId, aURI, getter_AddRefs(redirect));
+    if (NS_SUCCEEDED(rv) && redirect) {
+      rv = LoadURI(redirect, aLoadInfo, nsIWebNavigation::LOAD_FLAGS_NONE, aFirstParty);
+      if (NS_SUCCEEDED(rv)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 NS_IMETHODIMP
 nsDocShell::ForceRefreshURI(nsIURI * aURI,
                             int32_t aDelay, 
@@ -6213,6 +6242,10 @@ nsDocShell::ForceRefreshURI(nsIURI * aURI,
     }
     else {
         loadInfo->SetLoadType(nsIDocShellLoadInfo::loadRefresh);
+    }
+
+    if (DoAppRedirectIfNeeded(aURI, loadInfo, true)) {
+      return NS_OK;
     }
 
     /*
@@ -6848,27 +6881,8 @@ nsDocShell::OnRedirectStateChange(nsIChannel* aOldChannel,
         return;
     }
 
-    // Check if we have a redirect registered for this url.
-    uint32_t appId;
-    nsresult rv = GetAppId(&appId);
-    if (NS_FAILED(rv)) {
+    if (DoAppRedirectIfNeeded(newURI, nullptr, false)) {
       return;
-    }
-
-    if (appId != nsIScriptSecurityManager::NO_APP_ID &&
-        appId != nsIScriptSecurityManager::UNKNOWN_APP_ID) {
-      nsCOMPtr<nsIAppsService> appsService =
-        do_GetService(APPS_SERVICE_CONTRACTID);
-      NS_ASSERTION(appsService, "No AppsService available");
-      nsCOMPtr<nsIURI> redirect;
-      rv = appsService->GetRedirect(appId, newURI, getter_AddRefs(redirect));
-      if (NS_SUCCEEDED(rv) && redirect) {
-        aNewChannel->Cancel(NS_BINDING_ABORTED);
-        rv = LoadURI(redirect, nullptr, 0, false);
-        if (NS_SUCCEEDED(rv)) {
-          return;
-        }
-      }
     }
 
     // Below a URI visit is saved (see AddURIVisit method doc).
@@ -7366,15 +7380,18 @@ nsDocShell::CreateAboutBlankContentViewer(nsIPrincipal* aPrincipal,
   // mContentViewer->PermitUnload may release |this| docshell.
   nsCOMPtr<nsIDocShell> kungFuDeathGrip(this);
   
+  // Make sure timing is created.  But first record whether we had it
+  // already, so we don't clobber the timing for an in-progress load.
+  bool hadTiming = mTiming;
+  MaybeInitTiming();
   if (mContentViewer) {
     // We've got a content viewer already. Make sure the user
     // permits us to discard the current document and replace it
     // with about:blank. And also ensure we fire the unload events
     // in the current document.
 
-    // Make sure timing is created. Unload gets fired first for
+    // Unload gets fired first for
     // document loaded from the session history.
-    MaybeInitTiming();
     mTiming->NotifyBeforeUnload();
 
     bool okToUnload;
@@ -7458,6 +7475,12 @@ nsDocShell::CreateAboutBlankContentViewer(nsIPrincipal* aPrincipal,
 
   // The transient about:blank viewer doesn't have a session history entry.
   SetHistoryEntry(&mOSHE, nullptr);
+
+  // Clear out our mTiming like we would in EndPageLoad, if we didn't
+  // have one before entering this function.
+  if (!hadTiming) {
+    mTiming = nullptr;
+  }
 
   return rv;
 }

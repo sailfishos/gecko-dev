@@ -16,6 +16,7 @@
 #include "mozIGeckoMediaPluginService.h"
 #include "mozilla/unused.h"
 #include "nsIObserverService.h"
+#include "GMPTimerParent.h"
 #include "runnable_utils.h"
 
 #include "mozilla/dom/CrashReporterParent.h"
@@ -92,7 +93,7 @@ GMPParent::Init(GeckoMediaPluginService *aService, nsIFile* aPluginDir)
   if (NS_FAILED(rv)) {
     return rv;
   }
-  LOGD(("%s::%s: %p for %s", __CLASS__, __FUNCTION__, this, 
+  LOGD(("%s::%s: %p for %s", __CLASS__, __FUNCTION__, this,
        NS_LossyConvertUTF16toASCII(leafname).get()));
 
   MOZ_ASSERT(leafname.Length() > 4);
@@ -154,9 +155,23 @@ GMPParent::CloseIfUnused()
        mState == GMPStateUnloading) &&
       mVideoDecoders.IsEmpty() &&
       mVideoEncoders.IsEmpty() &&
-      mDecryptors.IsEmpty()) {
+      mDecryptors.IsEmpty() &&
+      mAudioDecoders.IsEmpty()) {
     Shutdown();
   }
+}
+
+void
+GMPParent::AudioDecoderDestroyed(GMPAudioDecoderParent* aDecoder)
+{
+  MOZ_ASSERT(GMPThread() == NS_GetCurrentThread());
+
+  MOZ_ALWAYS_TRUE(mAudioDecoders.RemoveElement(aDecoder));
+
+  // Recv__delete__ is on the stack, don't potentially destroy the top-level actor
+  // until after this has completed.
+  nsCOMPtr<nsIRunnable> event = NS_NewRunnableMethod(this, &GMPParent::CloseIfUnused);
+  NS_DispatchToCurrentThread(event);
 }
 
 void
@@ -183,6 +198,11 @@ GMPParent::CloseActive(bool aDieWhenUnloaded)
   // Invalidate and remove any remaining API objects.
   for (uint32_t i = mDecryptors.Length(); i > 0; i--) {
     mDecryptors[i - 1]->Shutdown();
+  }
+
+  // Invalidate and remove any remaining API objects.
+  for (uint32_t i = mAudioDecoders.Length(); i > 0; i--) {
+    mAudioDecoders[i - 1]->Shutdown();
   }
 
   // Note: the shutdown of the codecs is async!  don't kill
@@ -309,7 +329,6 @@ GMPParent::State() const
   return mState;
 }
 
-#ifdef DEBUG
 // Not changing to use mService since we'll be removing it
 nsIThread*
 GMPParent::GMPThread()
@@ -331,7 +350,6 @@ GMPParent::GMPThread()
 
   return mGMPThread;
 }
-#endif
 
 bool
 GMPParent::SupportsAPI(const nsCString& aAPI, const nsCString& aTag)
@@ -364,6 +382,29 @@ GMPParent::EnsureProcessLoaded()
   nsresult rv = LoadProcess();
 
   return NS_SUCCEEDED(rv);
+}
+
+nsresult
+GMPParent::GetGMPAudioDecoder(GMPAudioDecoderParent** aGMPAD)
+{
+  MOZ_ASSERT(GMPThread() == NS_GetCurrentThread());
+
+  if (!EnsureProcessLoaded()) {
+    return NS_ERROR_FAILURE;
+  }
+
+  PGMPAudioDecoderParent* pvap = SendPGMPAudioDecoderConstructor();
+  if (!pvap) {
+    return NS_ERROR_FAILURE;
+  }
+  GMPAudioDecoderParent* vap = static_cast<GMPAudioDecoderParent*>(pvap);
+  // This addref corresponds to the Proxy pointer the consumer is returned.
+  // It's dropped by calling Close() on the interface.
+  NS_ADDREF(vap);
+  *aGMPAD = vap;
+  mAudioDecoders.AppendElement(vap);
+
+  return NS_OK;
 }
 
 nsresult
@@ -557,6 +598,44 @@ GMPParent::DeallocPGMPDecryptorParent(PGMPDecryptorParent* aActor)
 {
   GMPDecryptorParent* ksp = static_cast<GMPDecryptorParent*>(aActor);
   NS_RELEASE(ksp);
+  return true;
+}
+
+PGMPAudioDecoderParent*
+GMPParent::AllocPGMPAudioDecoderParent()
+{
+  GMPAudioDecoderParent* vdp = new GMPAudioDecoderParent(this);
+  NS_ADDREF(vdp);
+  return vdp;
+}
+
+bool
+GMPParent::DeallocPGMPAudioDecoderParent(PGMPAudioDecoderParent* aActor)
+{
+  GMPAudioDecoderParent* vdp = static_cast<GMPAudioDecoderParent*>(aActor);
+  NS_RELEASE(vdp);
+  return true;
+}
+
+bool
+GMPParent::RecvPGMPTimerConstructor(PGMPTimerParent* actor)
+{
+  return true;
+}
+
+PGMPTimerParent*
+GMPParent::AllocPGMPTimerParent()
+{
+  GMPTimerParent* p = new GMPTimerParent(GMPThread());
+  NS_ADDREF(p); // Released in DeallocPGMPTimerParent.
+  return p;
+}
+
+bool
+GMPParent::DeallocPGMPTimerParent(PGMPTimerParent* aActor)
+{
+  GMPTimerParent* p = static_cast<GMPTimerParent*>(aActor);
+  NS_RELEASE(p);
   return true;
 }
 

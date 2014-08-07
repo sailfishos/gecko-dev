@@ -39,6 +39,7 @@ mgjar.sources += [
     'mozglue/WebRTCJNITarget.java',
 ]
 mgjar.generated_sources += [
+    'org/mozilla/gecko/AppConstants.java',
     'org/mozilla/gecko/mozglue/GeckoLoader.java',
 ]
 mgjar.javac_flags += ['-Xlint:all']
@@ -380,15 +381,15 @@ gbjar.sources += [
     'SurfaceBits.java',
     'Tab.java',
     'Tabs.java',
+    'tabs/PrivateTabsPanel.java',
+    'tabs/RemoteTabsContainerPanel.java',
+    'tabs/RemoteTabsList.java',
+    'tabs/RemoteTabsPanel.java',
+    'tabs/RemoteTabsSetupPanel.java',
+    'tabs/RemoteTabsVerificationPanel.java',
+    'tabs/TabsPanel.java',
+    'tabs/TabsTray.java',
     'TabsAccessor.java',
-    'tabspanel/PrivateTabsPanel.java',
-    'tabspanel/RemoteTabsContainerPanel.java',
-    'tabspanel/RemoteTabsList.java',
-    'tabspanel/RemoteTabsPanel.java',
-    'tabspanel/RemoteTabsSetupPanel.java',
-    'tabspanel/RemoteTabsVerificationPanel.java',
-    'tabspanel/TabsPanel.java',
-    'tabspanel/TabsTray.java',
     'Telemetry.java',
     'TelemetryContract.java',
     'TextSelection.java',
@@ -456,7 +457,6 @@ gbjar.sources += [ thirdparty_source_dir + f for f in [
 ] ]
 android_package_dir = CONFIG['ANDROID_PACKAGE_NAME'].replace('.', '/')
 gbjar.generated_sources += [
-    'org/mozilla/gecko/AppConstants.java',
     'org/mozilla/gecko/SysInfo.java',
     'org/mozilla/gecko/widget/ThemedEditText.java',
     'org/mozilla/gecko/widget/ThemedImageButton.java',

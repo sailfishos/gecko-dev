@@ -1,8 +1,20 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*-
  * vim: set ts=8 sts=4 et sw=4 tw=99:
- * This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ *
+ * Copyright 2014 Mozilla Foundation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #include "asmjs/AsmJSModule.h"
 
@@ -778,18 +790,31 @@ AsmJSModule::initHeap(Handle<ArrayBufferObject*> heap, JSContext *cx)
 }
 
 void
-AsmJSModule::restoreToInitialState(ArrayBufferObject *maybePrevBuffer, ExclusiveContext *cx)
+AsmJSModule::restoreToInitialState(uint8_t *prevCode, ArrayBufferObject *maybePrevBuffer,
+                                   ExclusiveContext *cx)
 {
 #ifdef DEBUG
     // Put the absolute links back to -1 so PatchDataWithValueCheck assertions
     // in staticallyLink are valid.
     for (size_t imm = 0; imm < AsmJSImm_Limit; imm++) {
+        void *callee = AddressOf(AsmJSImmKind(imm), cx);
+
+        // If we are in profiling mode, calls to builtins will have been patched
+        // by setProfilingEnabled to be calls to thunks.
+        AsmJSExit::BuiltinKind builtin;
+        void *profilingCallee = profilingEnabled_ && ImmKindIsBuiltin(AsmJSImmKind(imm), &builtin)
+                                ? prevCode + builtinThunkOffsets_[builtin]
+                                : nullptr;
+
         const AsmJSModule::OffsetVector &offsets = staticLinkData_.absoluteLinks[imm];
-        void *target = AddressOf(AsmJSImmKind(imm), cx);
         for (size_t i = 0; i < offsets.length(); i++) {
-            Assembler::PatchDataWithValueCheck(CodeLocationLabel(code_ + offsets[i]),
+            uint8_t *caller = code_ + offsets[i];
+            void *originalValue = profilingCallee && !lookupCodeRange(caller)->isThunk()
+                                  ? profilingCallee
+                                  : callee;
+            Assembler::PatchDataWithValueCheck(CodeLocationLabel(caller),
                                                PatchedImmPtr((void*)-1),
-                                               PatchedImmPtr(target));
+                                               PatchedImmPtr(originalValue));
         }
     }
 #endif
@@ -1223,6 +1248,7 @@ AsmJSModule::CodeRange::CodeRange(Kind kind, uint32_t begin, uint32_t profilingR
 
     JS_ASSERT(begin_ < profilingReturn_);
     JS_ASSERT(profilingReturn_ < end_);
+    JS_ASSERT(u.kind_ == IonFFI || u.kind_ == SlowFFI || u.kind_ == Interrupt);
 }
 
 AsmJSModule::CodeRange::CodeRange(AsmJSExit::BuiltinKind builtin, uint32_t begin,
@@ -1525,7 +1551,7 @@ AsmJSModule::clone(JSContext *cx, ScopedJSDeletePtr<AsmJSModule> *moduleOut) con
     // flush all of them at once.
     out.setAutoFlushICacheRange();
 
-    out.restoreToInitialState(maybeHeap_, cx);
+    out.restoreToInitialState(code_, maybeHeap_, cx);
     return true;
 }
 

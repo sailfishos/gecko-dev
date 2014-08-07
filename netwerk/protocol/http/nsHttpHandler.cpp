@@ -683,8 +683,6 @@ nsHttpHandler::InitUserAgentComponents()
     // based on it being something else, so use X11 for
     // backwards compatibility in all cases.
     "X11"
-#elif defined(XP_UNIX)
-    "Unix"
 #endif
     );
 #endif

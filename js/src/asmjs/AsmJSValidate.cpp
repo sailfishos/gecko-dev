@@ -1,8 +1,20 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*-
  * vim: set ts=8 sts=4 et sw=4 tw=99:
- * This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ *
+ * Copyright 2014 Mozilla Foundation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #include "asmjs/AsmJSValidate.h"
 
@@ -1479,32 +1491,35 @@ class MOZ_STACK_CLASS ModuleCompiler
         JS_ASSERT(finishedFunctionBodies_);
         module_->exportedFunction(exportIndex).initCodeOffset(begin->offset());
         uint32_t end = masm_.currentOffset();
-        return module_->addEntryCodeRange(begin->offset(), end);
-    }
-    bool finishGeneratingFFI(Label *begin, Label *profilingReturn) {
-        JS_ASSERT(finishedFunctionBodies_);
-        uint32_t end = masm_.currentOffset();
-        return module_->addFFICodeRange(begin->offset(), profilingReturn->offset(), end);
+        return module_->addCodeRange(AsmJSModule::CodeRange::Entry, begin->offset(), end);
     }
     bool finishGeneratingInterpExit(unsigned exitIndex, Label *begin, Label *profilingReturn) {
         JS_ASSERT(finishedFunctionBodies_);
-        module_->exit(exitIndex).initInterpOffset(begin->offset());
-        return finishGeneratingFFI(begin, profilingReturn);
+        uint32_t beg = begin->offset();
+        module_->exit(exitIndex).initInterpOffset(beg);
+        uint32_t pret = profilingReturn->offset();
+        uint32_t end = masm_.currentOffset();
+        return module_->addCodeRange(AsmJSModule::CodeRange::SlowFFI, beg, pret, end);
     }
     bool finishGeneratingIonExit(unsigned exitIndex, Label *begin, Label *profilingReturn) {
         JS_ASSERT(finishedFunctionBodies_);
-        module_->exit(exitIndex).initIonOffset(begin->offset());
-        return finishGeneratingFFI(begin, profilingReturn);
+        uint32_t beg = begin->offset();
+        module_->exit(exitIndex).initIonOffset(beg);
+        uint32_t pret = profilingReturn->offset();
+        uint32_t end = masm_.currentOffset();
+        return module_->addCodeRange(AsmJSModule::CodeRange::IonFFI, beg, pret, end);
     }
     bool finishGeneratingInterrupt(Label *begin, Label *profilingReturn) {
         JS_ASSERT(finishedFunctionBodies_);
+        uint32_t beg = begin->offset();
+        uint32_t pret = profilingReturn->offset();
         uint32_t end = masm_.currentOffset();
-        return module_->addInterruptCodeRange(begin->offset(), profilingReturn->offset(), end);
+        return module_->addCodeRange(AsmJSModule::CodeRange::Interrupt, beg, pret, end);
     }
     bool finishGeneratingInlineStub(Label *begin) {
         JS_ASSERT(finishedFunctionBodies_);
         uint32_t end = masm_.currentOffset();
-        return module_->addInlineCodeRange(begin->offset(), end);
+        return module_->addCodeRange(AsmJSModule::CodeRange::Inline, begin->offset(), end);
     }
     bool finishGeneratingBuiltinThunk(AsmJSExit::BuiltinKind builtin, Label *begin, Label *pret) {
         JS_ASSERT(finishedFunctionBodies_);
@@ -6129,7 +6144,7 @@ GenerateFFIInterpExit(ModuleCompiler &m, const ModuleCompiler::ExitDescriptor &e
     unsigned framePushed = StackDecrementForCall(masm, offsetToArgv + argvBytes);
 
     Label begin;
-    GenerateAsmJSExitPrologue(masm, framePushed, AsmJSExit::FFI, &begin);
+    GenerateAsmJSExitPrologue(masm, framePushed, AsmJSExit::SlowFFI, &begin);
 
     // Fill the argument array.
     unsigned offsetToCallerStackArgs = sizeof(AsmJSFrame) + masm.framePushed();
@@ -6188,7 +6203,7 @@ GenerateFFIInterpExit(ModuleCompiler &m, const ModuleCompiler::ExitDescriptor &e
     }
 
     Label profilingReturn;
-    GenerateAsmJSExitEpilogue(masm, framePushed, AsmJSExit::FFI, &profilingReturn);
+    GenerateAsmJSExitEpilogue(masm, framePushed, AsmJSExit::SlowFFI, &profilingReturn);
     return m.finishGeneratingInterpExit(exitIndex, &begin, &profilingReturn) && !masm.oom();
 }
 
@@ -6243,7 +6258,7 @@ GenerateFFIIonExit(ModuleCompiler &m, const ModuleCompiler::ExitDescriptor &exit
     unsigned framePushed = Max(ionFrameSize, coerceFrameSize);
 
     Label begin;
-    GenerateAsmJSExitPrologue(masm, framePushed, AsmJSExit::FFI, &begin);
+    GenerateAsmJSExitPrologue(masm, framePushed, AsmJSExit::IonFFI, &begin);
 
     // 1. Descriptor
     size_t argOffset = offsetToIonArgs;
@@ -6403,7 +6418,7 @@ GenerateFFIIonExit(ModuleCompiler &m, const ModuleCompiler::ExitDescriptor &exit
     masm.bind(&done);
 
     Label profilingReturn;
-    GenerateAsmJSExitEpilogue(masm, framePushed, AsmJSExit::FFI, &profilingReturn);
+    GenerateAsmJSExitEpilogue(masm, framePushed, AsmJSExit::IonFFI, &profilingReturn);
 
     if (oolConvert.used()) {
         masm.bind(&oolConvert);

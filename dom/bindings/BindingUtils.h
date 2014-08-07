@@ -1448,6 +1448,7 @@ WrapNativeParent(JSContext* cx, T* p, nsWrapperCache* cache,
   }
   JS::Rooted<JSObject*> rootedParent(cx, parent);
   JS::Rooted<JSObject*> xblScope(cx, xpc::GetXBLScope(cx, rootedParent));
+  NS_ENSURE_TRUE(xblScope, nullptr);
   JSAutoCompartment ac(cx, xblScope);
   if (NS_WARN_IF(!JS_WrapObject(cx, &rootedParent))) {
     return nullptr;
@@ -1899,6 +1900,12 @@ ConvertJSValueToString(JSContext* cx, JS::Handle<JS::Value> v,
 
   return AssignJSString(cx, result, s);
 }
+
+void
+NormalizeScalarValueString(JSContext* aCx, nsAString& aString);
+
+void
+NormalizeScalarValueString(JSContext* aCx, binding_detail::FakeString& aString);
 
 bool
 ConvertJSValueToByteString(JSContext* cx, JS::Handle<JS::Value> v,

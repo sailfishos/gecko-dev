@@ -151,7 +151,7 @@ struct EventNameMapping
   nsIAtom* mAtom;
   uint32_t mId;
   int32_t  mType;
-  uint32_t mStructType;
+  mozilla::EventClassID mEventClassID;
 };
 
 struct nsShortcutCandidate {
@@ -1033,13 +1033,13 @@ public:
   static uint32_t GetEventId(nsIAtom* aName);
 
   /**
-   * Return the category for the event with the given name. The name is the
-   * event name *without* the 'on' prefix. Returns NS_EVENT if the event
-   * is not known to be in any particular category.
+   * Return the EventClassID for the event with the given name. The name is the
+   * event name *without* the 'on' prefix. Returns eBasicEventClass if the event
+   * is not known to be of any particular event class.
    *
    * @param aName the event name to look up
    */
-  static uint32_t GetEventCategory(const nsAString& aName);
+  static mozilla::EventClassID GetEventClassID(const nsAString& aName);
 
   /**
    * Return the event id and atom for the event with the given name.
@@ -1048,10 +1048,10 @@ public:
    * event doesn't match a known event name in the category.
    *
    * @param aName the event name to look up
-   * @param aEventStruct only return event id in aEventStruct category
+   * @param aEventClassID only return event id for aEventClassID
    */
   static nsIAtom* GetEventIdAndAtom(const nsAString& aName,
-                                    uint32_t aEventStruct,
+                                    mozilla::EventClassID aEventClassID,
                                     uint32_t* aEventID);
 
   /**
@@ -2169,6 +2169,13 @@ public:
    * @param aContent The content to test for being an insertion point.
    */
   static bool IsContentInsertionPoint(const nsIContent* aContent);
+
+
+  /**
+   * Returns whether the children of the provided content are
+   * nodes that are distributed to Shadow DOM insertion points.
+   */
+  static bool HasDistributedChildren(nsIContent* aContent);
 
   /**
    * Returns whether a given header is forbidden for an XHR or fetch

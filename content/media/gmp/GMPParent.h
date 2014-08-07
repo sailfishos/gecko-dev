@@ -8,9 +8,11 @@
 
 #include "GMPProcessParent.h"
 #include "GMPService.h"
+#include "GMPAudioDecoderParent.h"
 #include "GMPDecryptorParent.h"
 #include "GMPVideoDecoderParent.h"
 #include "GMPVideoEncoderParent.h"
+#include "GMPTimerParent.h"
 #include "mozilla/gmp/PGMPParent.h"
 #include "nsCOMPtr.h"
 #include "nscore.h"
@@ -90,10 +92,11 @@ public:
   nsresult GetGMPDecryptor(GMPDecryptorParent** aGMPKS);
   void DecryptorDestroyed(GMPDecryptorParent* aSession);
 
+  nsresult GetGMPAudioDecoder(GMPAudioDecoderParent** aGMPAD);
+  void AudioDecoderDestroyed(GMPAudioDecoderParent* aDecoder);
+
   GMPState State() const;
-#ifdef DEBUG
   nsIThread* GMPThread();
-#endif
 
   // A GMP can either be a single instance shared across all origins (like
   // in the OpenH264 case), or we can require a new plugin instance for every
@@ -139,12 +142,19 @@ private:
 
   virtual PGMPVideoDecoderParent* AllocPGMPVideoDecoderParent() MOZ_OVERRIDE;
   virtual bool DeallocPGMPVideoDecoderParent(PGMPVideoDecoderParent* aActor) MOZ_OVERRIDE;
-  
+
   virtual PGMPVideoEncoderParent* AllocPGMPVideoEncoderParent() MOZ_OVERRIDE;
   virtual bool DeallocPGMPVideoEncoderParent(PGMPVideoEncoderParent* aActor) MOZ_OVERRIDE;
 
   virtual PGMPDecryptorParent* AllocPGMPDecryptorParent() MOZ_OVERRIDE;
   virtual bool DeallocPGMPDecryptorParent(PGMPDecryptorParent* aActor) MOZ_OVERRIDE;
+
+  virtual PGMPAudioDecoderParent* AllocPGMPAudioDecoderParent() MOZ_OVERRIDE;
+  virtual bool DeallocPGMPAudioDecoderParent(PGMPAudioDecoderParent* aActor) MOZ_OVERRIDE;
+
+  virtual bool RecvPGMPTimerConstructor(PGMPTimerParent* actor) MOZ_OVERRIDE;
+  virtual PGMPTimerParent* AllocPGMPTimerParent() MOZ_OVERRIDE;
+  virtual bool DeallocPGMPTimerParent(PGMPTimerParent* aActor) MOZ_OVERRIDE;
 
   GMPState mState;
   nsCOMPtr<nsIFile> mDirectory; // plugin directory on disk
@@ -160,9 +170,8 @@ private:
   nsTArray<nsRefPtr<GMPVideoDecoderParent>> mVideoDecoders;
   nsTArray<nsRefPtr<GMPVideoEncoderParent>> mVideoEncoders;
   nsTArray<nsRefPtr<GMPDecryptorParent>> mDecryptors;
-#ifdef DEBUG
+  nsTArray<nsRefPtr<GMPAudioDecoderParent>> mAudioDecoders;
   nsCOMPtr<nsIThread> mGMPThread;
-#endif
   // Origin the plugin is assigned to, or empty if the the plugin is not
   // assigned to an origin.
   nsAutoString mOrigin;

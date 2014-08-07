@@ -2522,7 +2522,7 @@ nsTreeBodyFrame::GetCursor(const nsPoint& aPoint,
   // Check the GetScriptHandlingObject so we don't end up running code when
   // the document is a zombie.
   bool dummy;
-  if (mView && GetContent()->GetCurrentDoc()->GetScriptHandlingObject(dummy)) {
+  if (mView && GetContent()->GetComposedDoc()->GetScriptHandlingObject(dummy)) {
     int32_t row;
     nsTreeColumn* col;
     nsIAtom* child;
@@ -2546,7 +2546,7 @@ nsTreeBodyFrame::GetCursor(const nsPoint& aPoint,
 
 static uint32_t GetDropEffect(WidgetGUIEvent* aEvent)
 {
-  NS_ASSERTION(aEvent->eventStructType == NS_DRAG_EVENT, "wrong event type");
+  NS_ASSERTION(aEvent->mClass == eDragEventClass, "wrong event type");
   WidgetDragEvent* dragEvent = aEvent->AsDragEvent();
   nsContentUtils::SetDataTransferInEvent(dragEvent);
 
@@ -2724,7 +2724,7 @@ nsTreeBodyFrame::HandleEvent(nsPresContext* aPresContext,
       rv = mView->GetParentIndex(parentIndex, &parentIndex);
     }
 
-    NS_ASSERTION(aEvent->eventStructType == NS_DRAG_EVENT, "wrong event type");
+    NS_ASSERTION(aEvent->mClass == eDragEventClass, "wrong event type");
     WidgetDragEvent* dragEvent = aEvent->AsDragEvent();
     nsContentUtils::SetDataTransferInEvent(dragEvent);
 
@@ -2803,7 +2803,7 @@ nsTreeBodyFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
 
   // Bail out now if there's no view or we can't run script because the
   // document is a zombie
-  if (!mView || !GetContent()->GetCurrentDoc()->GetWindow())
+  if (!mView || !GetContent ()->GetComposedDoc()->GetWindow())
     return;
 
   aLists.Content()->AppendNewToTop(new (aBuilder)

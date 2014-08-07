@@ -578,7 +578,7 @@ nsPIDOMWindow::nsPIDOMWindow(nsPIDOMWindow *aOuterWindow)
   mInnerWindow(nullptr), mOuterWindow(aOuterWindow),
   // Make sure no actual window ends up with mWindowID == 0
   mWindowID(++gNextWindowID), mHasNotifiedGlobalCreated(false),
-  mMarkedCCGeneration(0)
+  mMarkedCCGeneration(0), mSendAfterRemotePaint(false)
  {}
 
 nsPIDOMWindow::~nsPIDOMWindow() {}
@@ -3794,6 +3794,21 @@ nsPIDOMWindow::RefreshMediaElements()
   if (service) {
     service->RefreshAgentsVolume(this);
   }
+}
+
+void
+nsPIDOMWindow::SendAfterRemotePaintIfRequested()
+{
+  if (!mSendAfterRemotePaint) {
+    return;
+  }
+
+  mSendAfterRemotePaint = false;
+
+  nsContentUtils::DispatchChromeEvent(GetExtantDoc(),
+                                      GetParentTarget(),
+                                      NS_LITERAL_STRING("MozAfterRemotePaint"),
+                                      false, false);
 }
 
 // nsISpeechSynthesisGetter
@@ -8646,7 +8661,7 @@ nsGlobalWindow::EnterModalState()
 
       if (activeShell) {
         nsRefPtr<nsFrameSelection> frameSelection = activeShell->FrameSelection();
-        frameSelection->SetMouseDownState(false);
+        frameSelection->SetDragState(false);
       }
     }
   }
@@ -9901,7 +9916,7 @@ nsGlobalWindow::SetFocusedNode(nsIContent* aNode,
 {
   FORWARD_TO_INNER_VOID(SetFocusedNode, (aNode, aFocusMethod, aNeedsFocus));
 
-  if (aNode && aNode->GetCurrentDoc() != mDoc) {
+  if (aNode && aNode->GetComposedDoc() != mDoc) {
     NS_WARNING("Trying to set focus to a node from a wrong document");
     return;
   }
@@ -13494,7 +13509,7 @@ nsGlobalWindow::BeginWindowMove(Event& aMouseDownEvent, Element* aPanel,
 
   WidgetMouseEvent* mouseEvent =
     aMouseDownEvent.GetInternalNSEvent()->AsMouseEvent();
-  if (!mouseEvent || mouseEvent->eventStructType != NS_MOUSE_EVENT) {
+  if (!mouseEvent || mouseEvent->mClass != eMouseEventClass) {
     aError.Throw(NS_ERROR_FAILURE);
     return;
   }

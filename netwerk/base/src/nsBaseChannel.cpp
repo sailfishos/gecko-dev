@@ -27,7 +27,7 @@ CopyProperties(const nsAString &key, nsIVariant *data, void *closure)
 // This class is used to suspend a request across a function scope.
 class ScopedRequestSuspender {
 public:
-  ScopedRequestSuspender(nsIRequest *request)
+  explicit ScopedRequestSuspender(nsIRequest *request)
     : mRequest(request) {
     if (mRequest && NS_FAILED(mRequest->Suspend())) {
       NS_WARNING("Couldn't suspend pump");
@@ -641,27 +641,34 @@ nsBaseChannel::OnTransportStatus(nsITransport *transport, nsresult status,
 {
   // In some cases, we may wish to suppress transport-layer status events.
 
-  if (!mPump || NS_FAILED(mStatus) || HasLoadFlag(LOAD_BACKGROUND))
+  if (!mPump || NS_FAILED(mStatus)) {
     return NS_OK;
+  }
 
   SUSPEND_PUMP_FOR_SCOPE();
 
   // Lazily fetch mProgressSink
   if (!mProgressSink) {
-    if (mQueriedProgressSink)
+    if (mQueriedProgressSink) {
       return NS_OK;
+    }
     GetCallback(mProgressSink);
     mQueriedProgressSink = true;
-    if (!mProgressSink)
+    if (!mProgressSink) {
       return NS_OK;
+    }
   }
 
-  nsAutoString statusArg;
-  if (GetStatusArg(status, statusArg))
-    mProgressSink->OnStatus(this, mListenerContext, status, statusArg.get());
+  if (!HasLoadFlag(LOAD_BACKGROUND)) {
+    nsAutoString statusArg;
+    if (GetStatusArg(status, statusArg)) {
+      mProgressSink->OnStatus(this, mListenerContext, status, statusArg.get());
+    }
+  }
 
-  if (progress)
+  if (progress) {
     mProgressSink->OnProgress(this, mListenerContext, progress, progressMax);
+  }
 
   return NS_OK;
 }

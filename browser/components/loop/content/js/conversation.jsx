@@ -117,30 +117,6 @@ loop.conversation = (function(OT, mozL10n) {
   });
 
   /**
-   * Call ended view.
-   * @type {loop.shared.views.BaseView}
-   */
-  var EndedCallView = sharedViews.BaseView.extend({
-    template: _.template([
-      '<p>',
-      '  <button class="btn btn-info" data-l10n-id="close_window"></button>',
-      '</p>'
-    ].join("")),
-
-    className: "call-ended",
-
-    events: {
-      "click button": "closeWindow"
-    },
-
-    closeWindow: function(event) {
-      event.preventDefault();
-      // XXX For now, we just close the window.
-      window.close();
-    }
-  });
-
-  /**
    * Conversation router.
    *
    * Required options:
@@ -155,8 +131,8 @@ loop.conversation = (function(OT, mozL10n) {
       "call/accept": "accept",
       "call/decline": "decline",
       "call/ongoing": "conversation",
-      "call/ended": "ended",
-      "call/declineAndBlock": "declineAndBlock"
+      "call/declineAndBlock": "declineAndBlock",
+      "call/feedback": "feedback"
     },
 
     /**
@@ -170,7 +146,7 @@ loop.conversation = (function(OT, mozL10n) {
      * @override {loop.shared.router.BaseConversationRouter.endCall}
      */
     endCall: function() {
-      this.navigate("call/ended", {trigger: true});
+      this.navigate("call/feedback", {trigger: true});
     },
 
     /**
@@ -180,38 +156,51 @@ loop.conversation = (function(OT, mozL10n) {
      *                             by the router from the URL.
      */
     incoming: function(loopVersion) {
-      window.navigator.mozLoop.startAlerting();
+      navigator.mozLoop.startAlerting();
       this._conversation.set({loopVersion: loopVersion});
-      this._conversation.once("accept", function() {
+      this._conversation.once("accept", () => {
         this.navigate("call/accept", {trigger: true});
-      }.bind(this));
-      this._conversation.once("decline", function() {
+      });
+      this._conversation.once("decline", () => {
         this.navigate("call/decline", {trigger: true});
-      }.bind(this));
-      this._conversation.once("declineAndBlock", function() {
+      });
+      this._conversation.once("declineAndBlock", () => {
         this.navigate("call/declineAndBlock", {trigger: true});
-      }.bind(this));
-      this.loadReactComponent(loop.conversation.IncomingCallView({
-        model: this._conversation
-      }));
+      });
+      this._conversation.once("call:incoming", this.startCall, this);
+      this._client.requestCallsInfo(loopVersion, (err, sessionData) => {
+        if (err) {
+          console.error("Failed to get the sessionData", err);
+          // XXX Not the ideal response, but bug 1047410 will be replacing
+          //this by better "call failed" UI.
+          this._notifier.errorL10n("cannot_start_call_session_not_ready");
+          return;
+        }
+        // XXX For incoming calls we might have more than one call queued.
+        // For now, we'll just assume the first call is the right information.
+        // We'll probably really want to be getting this data from the
+        // background worker on the desktop client.
+        // Bug 1032700 should fix this.
+        this._conversation.setSessionData(sessionData[0]);
+        this.loadReactComponent(loop.conversation.IncomingCallView({
+          model: this._conversation
+        }));
+      });
     },
 
     /**
      * Accepts an incoming call.
      */
     accept: function() {
-      window.navigator.mozLoop.stopAlerting();
-      this._conversation.initiate({
-        client: new loop.Client(),
-        outgoing: false
-      });
+      navigator.mozLoop.stopAlerting();
+      this._conversation.incoming();
     },
 
     /**
      * Declines an incoming call.
      */
     decline: function() {
-      window.navigator.mozLoop.stopAlerting();
+      navigator.mozLoop.stopAlerting();
       // XXX For now, we just close the window
       window.close();
     },
@@ -223,12 +212,12 @@ loop.conversation = (function(OT, mozL10n) {
      *   after a callUrl is received
      */
     declineAndBlock: function() {
-      window.navigator.mozLoop.stopAlerting();
+      navigator.mozLoop.stopAlerting();
       var token = navigator.mozLoop.getLoopCharPref('loopToken');
-      var client = new loop.Client();
-      client.deleteCallUrl(token, function(error) {
+      this._client.deleteCallUrl(token, function(error) {
         // XXX The conversation window will be closed when this cb is triggered
         // figure out if there is a better way to report the error to the user
+        // (bug 1048909).
         console.log(error);
       });
       window.close();
@@ -254,10 +243,17 @@ loop.conversation = (function(OT, mozL10n) {
     },
 
     /**
-     * XXX: load a view with a close button for now?
+     * Call has ended, display a feedback form.
      */
-    ended: function() {
-      this.loadView(new EndedCallView());
+    feedback: function() {
+      document.title = mozL10n.get("call_has_ended");
+
+      this.loadReactComponent(sharedViews.FeedbackView({
+        feedbackApiClient: new loop.FeedbackAPIClient({
+          baseUrl: navigator.mozLoop.getLoopCharPref("feedback.baseUrl"),
+          product: navigator.mozLoop.getLoopCharPref("feedback.product")
+        })
+      }));
     }
   });
 
@@ -267,12 +263,16 @@ loop.conversation = (function(OT, mozL10n) {
   function init() {
     // Do the initial L10n setup, we do this before anything
     // else to ensure the L10n environment is setup correctly.
-    mozL10n.initialize(window.navigator.mozLoop);
+    mozL10n.initialize(navigator.mozLoop);
 
     document.title = mozL10n.get("incoming_call_title");
 
+    var client = new loop.Client();
     router = new ConversationRouter({
-      conversation: new loop.shared.models.ConversationModel({}, {sdk: OT}),
+      client: client,
+      conversation: new loop.shared.models.ConversationModel(
+        {},         // Model attributes
+        {sdk: OT}), // Model dependencies
       notifier: new sharedViews.NotificationListView({el: "#messages"})
     });
     Backbone.history.start();
@@ -280,7 +280,6 @@ loop.conversation = (function(OT, mozL10n) {
 
   return {
     ConversationRouter: ConversationRouter,
-    EndedCallView: EndedCallView,
     IncomingCallView: IncomingCallView,
     init: init
   };

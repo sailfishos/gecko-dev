@@ -92,6 +92,15 @@ public:
   {
     return mozilla::HashString(*aKey);
   }
+
+#ifdef MOZILLA_INTERNAL_API
+  // To avoid double-counting, only measure the string if it is unshared.
+  size_t SizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf) const
+  {
+    return GetKey().SizeOfExcludingThisMustBeUnshared(aMallocSizeOf);
+  }
+#endif
+
   enum { ALLOW_MEMMOVE = true };
 
 private:
@@ -140,6 +149,12 @@ public:
   }
   enum { ALLOW_MEMMOVE = true };
 
+  // To avoid double-counting, only measure the string if it is unshared.
+  size_t SizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf) const
+  {
+    return GetKey().SizeOfExcludingThisMustBeUnshared(aMallocSizeOf);
+  }
+
 private:
   const nsString mStr;
 };
@@ -169,6 +184,15 @@ public:
   {
     return mozilla::HashString(*aKey);
   }
+
+#ifdef MOZILLA_INTERNAL_API
+  // To avoid double-counting, only measure the string if it is unshared.
+  size_t SizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf) const
+  {
+    return GetKey().SizeOfExcludingThisMustBeUnshared(aMallocSizeOf);
+  }
+#endif
+
   enum { ALLOW_MEMMOVE = true };
 
 private:
@@ -286,7 +310,7 @@ public:
   static KeyTypePointer KeyToPointer(KeyType aKey) { return aKey; }
   static PLDHashNumber HashKey(KeyTypePointer aKey)
   {
-    return NS_PTR_TO_INT32(aKey) >> 2;
+    return NS_PTR_TO_UINT32(aKey) >> 2;
   }
   enum { ALLOW_MEMMOVE = true };
 
@@ -316,7 +340,7 @@ public:
   static KeyTypePointer KeyToPointer(KeyType aKey) { return aKey; }
   static PLDHashNumber HashKey(KeyTypePointer aKey)
   {
-    return NS_PTR_TO_INT32(aKey) >> 2;
+    return NS_PTR_TO_UINT32(aKey) >> 2;
   }
   enum { ALLOW_MEMMOVE = true };
 
@@ -356,7 +380,7 @@ public:
   static KeyTypePointer KeyToPointer(KeyType aKey) { return aKey; }
   static PLDHashNumber HashKey(KeyTypePointer aKey)
   {
-    return NS_PTR_TO_INT32(aKey) >> 2;
+    return NS_PTR_TO_UINT32(aKey) >> 2;
   }
   enum { ALLOW_MEMMOVE = true };
 
@@ -409,7 +433,7 @@ public:
   static KeyTypePointer KeyToPointer(KeyType aKey) { return &aKey; }
   static PLDHashNumber HashKey(KeyTypePointer aKey)
   {
-    return NS_PTR_TO_INT32(*aKey) >> 2;
+    return NS_PTR_TO_UINT32(*aKey) >> 2;
   }
   enum { ALLOW_MEMMOVE = true };
 
@@ -521,7 +545,7 @@ public:
     return mozilla::HashString(aKey);
   }
 
-  size_t SizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf)
+  size_t SizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf) const
   {
     return aMallocSizeOf(mKey);
   }
@@ -569,6 +593,11 @@ public:
   static PLDHashNumber HashKey(KeyTypePointer aKey)
   {
     return mozilla::HashString(aKey);
+  }
+
+  size_t SizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf) const
+  {
+    return aMallocSizeOf(mKey);
   }
 
   enum { ALLOW_MEMMOVE = true };
