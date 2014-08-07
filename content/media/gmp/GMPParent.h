@@ -7,6 +7,7 @@
 #define GMPParent_h_
 
 #include "GMPProcessParent.h"
+#include "GMPService.h"
 #include "GMPVideoDecoderParent.h"
 #include "GMPVideoEncoderParent.h"
 #include "mozilla/gmp/PGMPParent.h"
@@ -49,14 +50,19 @@ enum GMPState {
   GMPStateClosing
 };
 
-class GMPParent MOZ_FINAL : public PGMPParent
+class GMPParent MOZ_FINAL : public PGMPParent,
+                            public GMPSharedMem
 {
 public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING_WITH_MAIN_THREAD_DESTRUCTION(GMPParent)
 
   GMPParent();
 
-  nsresult Init(nsIFile* aPluginDir);
+  nsresult Init(GeckoMediaPluginService *aService, nsIFile* aPluginDir);
+  nsresult CloneFrom(const GMPParent* aOther);
+
+  void Crash();
+
   nsresult LoadProcess();
 
   // Called internally to close this if we don't need it
@@ -64,7 +70,7 @@ public:
 
   // Notify all active de/encoders that we are closing, either because of
   // normal shutdown or unexpected shutdown/crash.
-  void CloseActive();
+  void CloseActive(bool aDieWhenUnloaded);
 
   // Called by the GMPService to forcibly close active de/encoders at shutdown
   void Shutdown();
@@ -107,8 +113,12 @@ public:
     return nsCOMPtr<nsIFile>(mDirectory).forget();
   }
 
+  // GMPSharedMem
+  virtual void CheckThread() MOZ_OVERRIDE;
+
 private:
   ~GMPParent();
+  nsRefPtr<GeckoMediaPluginService> mService;
   bool EnsureProcessLoaded();
   nsresult ReadGMPMetaData();
 #ifdef MOZ_CRASHREPORTER
@@ -132,6 +142,8 @@ private:
   nsCString mVersion;
   nsTArray<nsAutoPtr<GMPCapability>> mCapabilities;
   GMPProcessParent* mProcess;
+  bool mDeleteProcessOnlyOnUnload;
+  bool mAbnormalShutdownInProgress;
 
   nsTArray<nsRefPtr<GMPVideoDecoderParent>> mVideoDecoders;
   nsTArray<nsRefPtr<GMPVideoEncoderParent>> mVideoEncoders;

@@ -8,6 +8,7 @@
 #include "GMPVideoDecoderParent.h"
 #include "nsIObserverService.h"
 #include "GeckoChildProcessHost.h"
+#include "mozilla/Preferences.h"
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/SyncRunnable.h"
 #include "nsXPCOMPrivate.h"
@@ -15,6 +16,7 @@
 #include "nsNativeCharsetUtils.h"
 #include "nsIConsoleService.h"
 #include "mozilla/unused.h"
+#include "runnable_utils.h"
 
 namespace mozilla {
 namespace gmp {
@@ -115,6 +117,11 @@ GeckoMediaPluginService::Init()
   MOZ_ALWAYS_TRUE(NS_SUCCEEDED(obsService->AddObserver(this, NS_XPCOM_SHUTDOWN_OBSERVER_ID, false)));
   MOZ_ALWAYS_TRUE(NS_SUCCEEDED(obsService->AddObserver(this, NS_XPCOM_SHUTDOWN_THREADS_OBSERVER_ID, false)));
 
+  nsCOMPtr<nsIPrefBranch> prefs = do_GetService(NS_PREFSERVICE_CONTRACTID);
+  if (prefs) {
+    prefs->AddObserver("media.gmp.plugin.crash", this, false);
+  }
+
   // Kick off scanning for plugins
   nsCOMPtr<nsIThread> thread;
   unused << GetThread(getter_AddRefs(thread));
@@ -125,7 +132,26 @@ GeckoMediaPluginService::Observe(nsISupports* aSubject,
                                  const char* aTopic,
                                  const char16_t* aSomeData)
 {
-  if (!strcmp(NS_XPCOM_SHUTDOWN_OBSERVER_ID, aTopic)) {
+  if (!strcmp(aTopic, NS_PREFBRANCH_PREFCHANGE_TOPIC_ID)) {
+    nsCOMPtr<nsIPrefBranch> branch( do_QueryInterface(aSubject) );
+    if (branch) {
+      bool crashNow = false;
+      if (NS_LITERAL_STRING("media.gmp.plugin.crash").Equals(aSomeData)) {
+        branch->GetBoolPref("media.gmp.plugin.crash",  &crashNow);
+      }
+      if (crashNow) {
+        nsCOMPtr<nsIThread> gmpThread;
+        {
+          MutexAutoLock lock(mMutex);
+          gmpThread = mGMPThread;
+        }
+        if (gmpThread) {
+          gmpThread->Dispatch(WrapRunnable(this, &GeckoMediaPluginService::CrashPlugins),
+                              NS_DISPATCH_NORMAL);
+        }
+      }
+    }
+  } else if (!strcmp(NS_XPCOM_SHUTDOWN_OBSERVER_ID, aTopic)) {
     nsCOMPtr<nsIThread> gmpThread;
     {
       MutexAutoLock lock(mMutex);
@@ -265,9 +291,20 @@ GeckoMediaPluginService::UnloadPlugins()
   // Note: CloseActive is async; it will actually finish
   // shutting down when all the plugins have unloaded.
   for (uint32_t i = 0; i < mPlugins.Length(); i++) {
-    mPlugins[i]->CloseActive();
+    mPlugins[i]->CloseActive(true);
   }
   mPlugins.Clear();
+}
+
+void
+GeckoMediaPluginService::CrashPlugins()
+{
+  MOZ_ASSERT(NS_GetCurrentThread() == mGMPThread);
+
+  MutexAutoLock lock(mMutex);
+  for (uint32_t i = 0; i < mPlugins.Length(); i++) {
+    mPlugins[i]->Crash();
+  }
 }
 
 void
@@ -402,10 +439,39 @@ private:
   nsRefPtr<GMPParent> mParent;
 };
 
+GMPParent*
+GeckoMediaPluginService::ClonePlugin(const GMPParent* aOriginal)
+{
+  MOZ_ASSERT(aOriginal);
+
+  // The GMPParent inherits from IToplevelProtocol, which must be created
+  // on the main thread to be threadsafe. See Bug 1035653.
+  nsRefPtr<CreateGMPParentTask> task(new CreateGMPParentTask());
+  if (!NS_IsMainThread()) {
+    nsCOMPtr<nsIThread> mainThread = do_GetMainThread();
+    MOZ_ASSERT(mainThread);
+    mozilla::SyncRunnable::DispatchToThread(mainThread, task);
+  }
+
+  nsRefPtr<GMPParent> gmp = task->GetParent();
+  nsresult rv = gmp->CloneFrom(aOriginal);
+
+  if (NS_FAILED(rv)) {
+    NS_WARNING("Can't Create GMPParent");
+    return nullptr;
+  }
+
+  MutexAutoLock lock(mMutex);
+  mPlugins.AppendElement(gmp);
+
+  return gmp.get();
+}
+
 void
 GeckoMediaPluginService::AddOnGMPThread(const nsAString& aDirectory)
 {
   MOZ_ASSERT(NS_GetCurrentThread() == mGMPThread);
+  //LOGD(("%s::%s: %s", __CLASS__, __FUNCTION__, NS_LossyConvertUTF16toASCII(aDirectory).get()));
 
   nsCOMPtr<nsIFile> directory;
   nsresult rv = NS_NewLocalFile(aDirectory, false, getter_AddRefs(directory));
@@ -420,7 +486,7 @@ GeckoMediaPluginService::AddOnGMPThread(const nsAString& aDirectory)
   MOZ_ASSERT(mainThread);
   mozilla::SyncRunnable::DispatchToThread(mainThread, task);
   nsRefPtr<GMPParent> gmp = task->GetParent();
-  rv = gmp->Init(directory);
+  rv = gmp->Init(this, directory);
   if (NS_FAILED(rv)) {
     NS_WARNING("Can't Create GMPParent");
     return;
@@ -434,6 +500,7 @@ void
 GeckoMediaPluginService::RemoveOnGMPThread(const nsAString& aDirectory)
 {
   MOZ_ASSERT(NS_GetCurrentThread() == mGMPThread);
+  //LOGD(("%s::%s: %s", __CLASS__, __FUNCTION__, NS_LossyConvertUTF16toASCII(aDirectory).get()));
 
   nsCOMPtr<nsIFile> directory;
   nsresult rv = NS_NewLocalFile(aDirectory, false, getter_AddRefs(directory));
@@ -446,7 +513,7 @@ GeckoMediaPluginService::RemoveOnGMPThread(const nsAString& aDirectory)
     nsCOMPtr<nsIFile> pluginpath = mPlugins[i]->GetDirectory();
     bool equals;
     if (NS_SUCCEEDED(directory->Equals(pluginpath, &equals)) && equals) {
-      mPlugins[i]->CloseActive();
+      mPlugins[i]->CloseActive(true);
       mPlugins.RemoveElementAt(i);
       return;
     }
@@ -454,6 +521,31 @@ GeckoMediaPluginService::RemoveOnGMPThread(const nsAString& aDirectory)
   NS_WARNING("Removing GMP which was never added.");
   nsCOMPtr<nsIConsoleService> cs = do_GetService(NS_CONSOLESERVICE_CONTRACTID);
   cs->LogStringMessage(MOZ_UTF16("Removing GMP which was never added."));
+}
+
+// May remove when Bug 1043671 is fixed
+static void Dummy(nsRefPtr<GMPParent>& aOnDeathsDoor)
+{
+  // exists solely to do nothing and let the Runnable kill the GMPParent
+  // when done.
+}
+
+void
+GeckoMediaPluginService::ReAddOnGMPThread(nsRefPtr<GMPParent>& aOld)
+{
+  MOZ_ASSERT(NS_GetCurrentThread() == mGMPThread);
+  //LOGD(("%s::%s: %p", __CLASS__, __FUNCTION__, (void*) aOld));
+
+  nsRefPtr<GMPParent> gmp = ClonePlugin(aOld);
+  // Note: both are now in the list
+  // Until we give up the GMPThread, we're safe even if we unlock temporarily
+  // since off-main-thread users just test for existance; they don't modify the list.
+  MutexAutoLock lock(mMutex);
+  mPlugins.RemoveElement(aOld);
+
+  // Schedule aOld to be destroyed.  We can't destroy it from here since we
+  // may be inside ActorDestroyed() for it.
+  NS_DispatchToCurrentThread(WrapRunnableNM(&Dummy, aOld));
 }
 
 } // namespace gmp
