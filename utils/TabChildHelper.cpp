@@ -249,7 +249,7 @@ TabChildHelper::Observe(nsISupports* aSubject,
 
           utils->SetResolution(mLastRootMetrics.mResolution.scale,
                                mLastRootMetrics.mResolution.scale);
-          HandlePossibleViewportChange();
+          HandlePossibleViewportChange(mInnerSize);
           // Relay frame metrics to subscribed listeners
           mView->RelayFrameMetrics(mLastRootMetrics);
         }
@@ -276,7 +276,7 @@ TabChildHelper::HandleEvent(nsIDOMEvent* aEvent)
   if (eventType.EqualsLiteral("DOMMetaAdded")) {
     // This meta data may or may not have been a meta viewport tag. If it was,
     // we should handle it immediately.
-    HandlePossibleViewportChange();
+    HandlePossibleViewportChange(mInnerSize);
     // Relay frame metrics to subscribed listeners
     mView->RelayFrameMetrics(mLastRootMetrics);
   }
@@ -435,7 +435,7 @@ TabChildHelper::ConvertMutiTouchInputToEvent(const mozilla::MultiTouchInput& aDa
   aEvent.widget = widget;
   aEvent.mFlags.mIsTrusted = true;
   aEvent.message = msg;
-  aEvent.eventStructType = NS_TOUCH_EVENT;
+  aEvent.mClass = eTouchEventClass;
   aEvent.time = aData.mTime;
 
   nsPresContext* presContext = GetPresContext();
@@ -507,5 +507,5 @@ TabChildHelper::ReportSizeUpdate(const gfxSize& aSize)
     mHasValidInnerSize = true;
   }
 
-  HandlePossibleViewportChange();
+  HandlePossibleViewportChange(mInnerSize);
 }

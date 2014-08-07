@@ -30,6 +30,7 @@
 #include "EmbedLiteApp.h"
 #include "LayerScope.h"
 #include "mozilla/unused.h"
+#include "mozilla/BasicEvents.h"
 
 using namespace mozilla::dom;
 using namespace mozilla::hal;
@@ -293,7 +294,7 @@ EmbedLitePuppetWidget::DispatchEvent(WidgetGUIEvent* event, nsEventStatus& aStat
 
   NS_ABORT_IF_FALSE(listener, "No listener!");
 
-  if (event->eventStructType == NS_KEY_EVENT) {
+  if (event->mClass == eKeyboardEventClass) {
     RemoveIMEComposition();
   }
 
