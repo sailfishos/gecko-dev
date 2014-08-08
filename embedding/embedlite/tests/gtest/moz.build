@@ -16,6 +16,4 @@ LOCAL_INCLUDES = [
 
 LIBRARY_NAME = 'embedlitetest'
 
-EXPORT_LIBRARY = True
-
 FINAL_LIBRARY = 'xul-gtest'
