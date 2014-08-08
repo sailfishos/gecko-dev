@@ -25,16 +25,16 @@ namespace mozilla {
 namespace embedlite {
 
 class EmbedLiteViewThreadChild;
-class TabChildHelper : public nsIDOMEventListener,
-                       public nsIObserver,
-                       public mozilla::dom::TabChildBase
+class TabChildHelper : public mozilla::dom::TabChildBase,
+                       public nsIDOMEventListener,
+                       public nsIObserver
 {
 public:
   typedef mozilla::layers::FrameMetrics::ViewID ViewID;
   TabChildHelper(EmbedLiteViewThreadChild* aView);
   virtual ~TabChildHelper();
 
-  NS_DECL_ISUPPORTS
+  NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_NSIDOMEVENTLISTENER
   NS_DECL_NSIOBSERVER
 
