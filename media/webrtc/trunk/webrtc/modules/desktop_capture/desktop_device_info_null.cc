@@ -18,7 +18,7 @@ DesktopDeviceInfo * DesktopDeviceInfoImpl::Create() {
   DesktopDeviceInfoNull * pDesktopDeviceInfo = new DesktopDeviceInfoNull();
   if (pDesktopDeviceInfo && pDesktopDeviceInfo->Init() != 0) {
     delete pDesktopDeviceInfo;
-    pDesktopDeviceInfo = NULL;
+    pDesktopDeviceInfo = 0;
   }
   return pDesktopDeviceInfo;
 }
