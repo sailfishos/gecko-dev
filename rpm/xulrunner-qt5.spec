@@ -16,6 +16,7 @@ Patch4:     workaround-wrong-viewport-in-wikipedia.patch
 Patch5:     transition-from-pinching-to-panning.patch
 Patch6:     workaround-for-bug-20684-wrong-viewport-after-orientation-change.patch
 Patch7:     workaround-for-21266-blank-page-after-scroll.patch
+Patch8:     0001-Supply-source-uri-to-gstreamer-pipeline.patch
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
@@ -74,6 +75,7 @@ Tests and misc files for xulrunner
 %patch5 -p1
 %patch6 -p1
 %patch7 -p1
+%patch8 -p1
 
 %build
 export DONT_POPULATE_VIRTUALENV=1
