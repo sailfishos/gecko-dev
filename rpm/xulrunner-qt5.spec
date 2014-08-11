@@ -21,6 +21,7 @@ BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
 BuildRequires:  pkgconfig(alsa)
 BuildRequires:  pkgconfig(libpulse)
+BuildRequires:  pkgconfig(libproxy-1.0)
 BuildRequires:  pkgconfig(gstreamer-0.10)
 BuildRequires:  pkgconfig(gstreamer-app-0.10)
 BuildRequires:  pkgconfig(gstreamer-plugins-base-0.10)
@@ -98,6 +99,7 @@ echo "export CXXFLAGS=\"\$CXXFLAGS -fuse-ld=gold \"" >> mozconfig
 echo "export LD=ld.gold" >> mozconfig
 echo "ac_add_options --disable-tests" >> mozconfig
 echo "ac_add_options --enable-system-hunspell" >> mozconfig
+echo "ac_add_options --enable-libproxy" >> mozconfig
 echo "ac_add_options --disable-strip" >> mozconfig
 echo "ac_add_options --disable-mochitest" >> mozconfig
 echo "ac_add_options --disable-installer" >> mozconfig
