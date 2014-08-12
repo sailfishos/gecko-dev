@@ -105,6 +105,20 @@ SharedSurface_EGLImage::~SharedSurface_EGLImage()
     }
 }
 
+void SharedSurface_EGLImage::CleanupSurface()
+{
+    MutexAutoLock lock(mMutex);
+    if (mCurConsGL != nullptr) {
+        mCurConsGL->MakeCurrent();
+        if (mConsTex) {
+            MOZ_ASSERT(mGarbageBin);
+            mGarbageBin->Trash(mConsTex);
+            mConsTex = 0;
+        }
+        mCurConsGL = nullptr;
+    }
+}
+
 void
 SharedSurface_EGLImage::Fence()
 {

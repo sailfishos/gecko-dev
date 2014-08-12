@@ -235,6 +235,40 @@ void EmbedLiteCompositorParent::SetClipping(const gfxRect& aClipRect)
   gfxUtils::GfxRectToIntRect(aClipRect, &mActiveClipping);
 }
 
+void EmbedLiteCompositorParent::SuspendRendering()
+{
+  if (!CompositorParent::IsInCompositorThread()) {
+    CancelableTask *pauseTask = NewRunnableMethod(this,
+                                                  &EmbedLiteCompositorParent::SuspendRendering);
+    CompositorLoop()->PostTask(FROM_HERE, pauseTask);
+    return;
+  }
+
+  const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(RootLayerTreeId());
+  NS_ENSURE_TRUE(state && state->mLayerManager, );
+
+  GLContext* context = static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->gl();
+  NS_ENSURE_TRUE(context && context->IsOffscreen(), );
+
+  GLScreenBuffer* screen = context->Screen();
+  if (screen) {
+    screen->CleanupBuffers();
+  }
+}
+
+void EmbedLiteCompositorParent::ResumeRendering()
+{
+  if (!CompositorParent::IsInCompositorThread()) {
+    CancelableTask *pauseTask = NewRunnableMethod(this,
+                                                  &EmbedLiteCompositorParent::ResumeRendering);
+    CompositorLoop()->PostTask(FROM_HERE, pauseTask);
+  }
+
+  PrepareOffscreen();
+  mInitialPaintCount = 0;
+  ScheduleRenderOnCompositorThread();
+}
+
 } // namespace embedlite
 } // namespace mozilla
 

@@ -158,6 +158,14 @@ SurfaceStream::RecycleScraps(SurfaceFactory* factory)
 }
 
 
+void SurfaceStream::CleanupSurfaces()
+{
+    std::set<SharedSurface*>::iterator it;
+    for (it = mSurfaces.begin(); it != mSurfaces.end(); ++it)
+    {
+        (*it)->CleanupSurface();
+    }
+}
 
 SurfaceStream::~SurfaceStream()
 {

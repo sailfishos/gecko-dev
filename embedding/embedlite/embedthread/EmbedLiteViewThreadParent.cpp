@@ -773,6 +773,23 @@ EmbedLiteViewThreadParent::GetUniqueID(uint32_t *aId)
 }
 
 NS_IMETHODIMP
+EmbedLiteViewThreadParent::SuspendRendering(EmbedLiteRenderTarget* target)
+{
+  NS_ENSURE_TRUE(mCompositor, NS_ERROR_FAILURE);
+  mCompositor->SuspendRendering();
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+EmbedLiteViewThreadParent::ResumeRendering()
+{
+  NS_ENSURE_TRUE(mCompositor, NS_ERROR_FAILURE);
+  mCompositor->ResumeRendering();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 EmbedLiteViewThreadParent::GetPendingTexture(EmbedLiteRenderTarget* aContextWrapper, int* textureID, int* width, int* height, int* aTextureTarget)
 {
   NS_ENSURE_TRUE(aContextWrapper && textureID && width && height, NS_ERROR_FAILURE);

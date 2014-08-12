@@ -417,5 +417,19 @@ EmbedLiteView::GetPendingTexture(EmbedLiteRenderTarget* aContextWrapper, int* te
   return NS_SUCCEEDED(mViewImpl->GetPendingTexture(aContextWrapper, textureID, width, height, textureTarget));
 }
 
+void
+EmbedLiteView::SuspendRendering(EmbedLiteRenderTarget* target)
+{
+  NS_ENSURE_TRUE(mViewImpl, );
+  mViewImpl->SuspendRendering(target);
+}
+
+void
+EmbedLiteView::ResumeRendering()
+{
+  NS_ENSURE_TRUE(mViewImpl, );
+  mViewImpl->ResumeRendering();
+}
+
 } // namespace embedlite
 } // namespace mozilla
