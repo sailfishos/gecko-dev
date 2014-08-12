@@ -28,9 +28,6 @@ BuildRequires:  pkgconfig(libpulse)
 BuildRequires:  pkgconfig(gstreamer-0.10)
 BuildRequires:  pkgconfig(gstreamer-app-0.10)
 BuildRequires:  pkgconfig(gstreamer-plugins-base-0.10)
-#%ifarch armv7hl armv7tnhl
-#BuildRequires:  pkgconfig(libresourceqt5)
-#%endif
 BuildRequires:  pkgconfig(Qt5Positioning)
 BuildRequires:  qt5-qttools
 BuildRequires:  qt5-default
