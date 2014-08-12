@@ -1,0 +1,102 @@
+
+# HG changeset patch
+# User Randall Barker <rbarker@mozilla.com>
+# Date 1406886180 -7200
+# Node ID 761e5154c14ce13e35b2f725e7ea1e501b446a84
+# Parent  4efe71ac322eb6a690caf98df93d5e1772407edc
+Bug 1042525 - Add missing null implementation for screensharing. r=gcp
+
+diff --git a/media/webrtc/trunk/webrtc/modules/desktop_capture/app_capturer_null.cc b/media/webrtc/trunk/webrtc/modules/desktop_capture/app_capturer_null.cc
+--- a/media/webrtc/trunk/webrtc/modules/desktop_capture/app_capturer_null.cc
++++ b/media/webrtc/trunk/webrtc/modules/desktop_capture/app_capturer_null.cc
+@@ -45,22 +45,22 @@ AppCapturerNull::AppCapturerNull()
+ AppCapturerNull::~AppCapturerNull() {
+ }
+ 
+ bool AppCapturerNull::GetAppList(AppList* apps) {
+   // Not implemented yet: See Bug 1036653
+   return false;
+ }
+ 
+-bool SelectApp(ProcessId id) {
++bool AppCapturerNull::SelectApp(ProcessId id) {
+   // Not implemented yet: See Bug 1036653
+   return false;
+ }
+ 
+-bool BringAppToFront() {
++bool AppCapturerNull::BringAppToFront() {
+   // Not implemented yet: See Bug 1036653
+   return false;
+ }
+ 
+ // DesktopCapturer interface.
+ void AppCapturerNull::Start(Callback* callback) {
+   assert(!callback_);
+   assert(callback);
+diff --git a/media/webrtc/trunk/webrtc/modules/desktop_capture/desktop_capture.gypi b/media/webrtc/trunk/webrtc/modules/desktop_capture/desktop_capture.gypi
+--- a/media/webrtc/trunk/webrtc/modules/desktop_capture/desktop_capture.gypi
++++ b/media/webrtc/trunk/webrtc/modules/desktop_capture/desktop_capture.gypi
+@@ -99,16 +99,18 @@
+               '-lXext',
+               '-lXfixes',
+               '-lXrender',
+             ],
+           },
+         }],
+         ['OS!="win" and OS!="mac" and use_x11==0', {
+           'sources': [
++            "app_capturer_null.cc",
++            "desktop_device_info_null.cc",
+             "mouse_cursor_monitor_null.cc",
+             "screen_capturer_null.cc",
+             "window_capturer_null.cc",
+           ],
+         }],
+         ['OS=="mac"', {
+           'sources': [
+             "mac/desktop_configuration.h",
+diff --git a/media/webrtc/trunk/webrtc/modules/desktop_capture/desktop_device_info_null.cc b/media/webrtc/trunk/webrtc/modules/desktop_capture/desktop_device_info_null.cc
+new file mode 100644
+--- /dev/null
++++ b/media/webrtc/trunk/webrtc/modules/desktop_capture/desktop_device_info_null.cc
+@@ -0,0 +1,38 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
++ * You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++#include "webrtc/modules/desktop_capture/desktop_device_info.h"
++
++namespace webrtc {
++
++class DesktopDeviceInfoNull : public DesktopDeviceInfoImpl {
++public:
++  DesktopDeviceInfoNull();
++  ~DesktopDeviceInfoNull();
++
++  virtual int32_t Init();
++};
++
++DesktopDeviceInfo * DesktopDeviceInfoImpl::Create() {
++  DesktopDeviceInfoNull * pDesktopDeviceInfo = new DesktopDeviceInfoNull();
++  if (pDesktopDeviceInfo && pDesktopDeviceInfo->Init() != 0) {
++    delete pDesktopDeviceInfo;
++    pDesktopDeviceInfo = nullptr;
++  }
++  return pDesktopDeviceInfo;
++}
++
++DesktopDeviceInfoNull::DesktopDeviceInfoNull() {
++}
++
++DesktopDeviceInfoNull::~DesktopDeviceInfoNull() {
++}
++
++int32_t
++DesktopDeviceInfoNull::Init() {
++  initializeWindowList();
++  return 0;
++}
++
++} //namespace webrtc
+

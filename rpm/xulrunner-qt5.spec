@@ -10,12 +10,16 @@ URL:        http://hg.mozilla.org/mozilla-central
 Source0:    %{name}-%{version}.tar.bz2
 Patch0:     add-sailfishos-org-certs.patch
 Patch1:     disable-jmalloc-in-storage-service.patch
-Patch2:     workaround-for-bug-977015.patch
-Patch3:     workaround-wrong-viewport-in-wikipedia.patch
-Patch4:     workaround-for-bug-20684-wrong-viewport-after-orientation-change.patch
-Patch5:     workaround-for-21266-blank-page-after-scroll.patch
-#Patch6:     fix-20430-invalidate-obsolete-scroll-offset.patch
-#Patch7:     transition-from-pinching-to-panning.patch
+Patch2:     workaround-wrong-viewport-in-wikipedia.patch
+Patch3:     workaround-for-bug-20684-wrong-viewport-after-orientation-change.patch
+Patch4:     workaround-for-21266-blank-page-after-scroll.patch
+Patch5:     add-missing-headers-to-build-gecok33.patch
+Patch6:     bug-1042525-propagate-moz-x11-to-webrtc.patch
+Patch7:     bug-1042525-add-missing-impl-for-screensharing.patch
+Patch8:     transition-from-pinching-to-panning-20817.patch
+Patch9:     supply-source-uri-to-gstreamer-pipeline-19511.patch
+#Patch10:    fix-20430-invalidate-obsolete-scroll-offset.patch
+#Patch11:    workaround-for-bug-977015.patch   seems like the bug is not reproducible in gecko33
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
@@ -24,9 +28,9 @@ BuildRequires:  pkgconfig(libpulse)
 BuildRequires:  pkgconfig(gstreamer-0.10)
 BuildRequires:  pkgconfig(gstreamer-app-0.10)
 BuildRequires:  pkgconfig(gstreamer-plugins-base-0.10)
-%ifarch armv7hl armv7tnhl
-BuildRequires:  pkgconfig(libresourceqt5)
-%endif
+#%ifarch armv7hl armv7tnhl
+#BuildRequires:  pkgconfig(libresourceqt5)
+#%endif
 BuildRequires:  pkgconfig(Qt5Positioning)
 BuildRequires:  qt5-qttools
 BuildRequires:  qt5-default
@@ -71,8 +75,12 @@ Tests and misc files for xulrunner
 %patch3 -p1
 %patch4 -p1
 %patch5 -p1
-#%patch6 -p1
-#%patch7 -p1
+%patch6 -p1
+%patch7 -p1
+%patch8 -p1
+%patch9 -p1
+#%patch10 -p1
+#%patch11 -p1
 
 %build
 export DONT_POPULATE_VIRTUALENV=1
@@ -93,16 +101,16 @@ echo "ac_add_options --with-float-abi=toolchain-default" >> mozconfig
 echo "ac_add_options --with-thumb=toolchain-default" >> mozconfig
 %endif
 echo "mk_add_options MOZ_MAKE_FLAGS='-j%jobs'" >> mozconfig
-echo "export CFLAGS=\"\$CFLAGS -fuse-ld=gold \"" >> mozconfig
-echo "export CXXFLAGS=\"\$CXXFLAGS -fuse-ld=gold \"" >> mozconfig
-echo "export LD=ld.gold" >> mozconfig
 echo "ac_add_options --disable-tests" >> mozconfig
 echo "ac_add_options --enable-system-hunspell" >> mozconfig
+echo "ac_add_options --enable-gold" >> mozconfig
+echo "ac_add_options --enable-release" >> mozconfig
 echo "ac_add_options --disable-strip" >> mozconfig
 echo "ac_add_options --disable-mochitest" >> mozconfig
 echo "ac_add_options --disable-installer" >> mozconfig
 echo "ac_add_options --disable-javaxpcom" >> mozconfig
 echo "ac_add_options --disable-crashreporter" >> mozconfig
+echo "ac_add_options --disable-startupcache" >> mozconfig
 echo "ac_add_options --without-x" >> mozconfig
 echo "ac_add_options --with-app-name=%{name}" >> mozconfig
 export MOZCONFIG=$PWD/mozconfig
