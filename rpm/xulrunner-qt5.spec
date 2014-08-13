@@ -15,7 +15,8 @@ Patch3:     workaround-for-bug-20684-wrong-viewport-after-orientation-change.pat
 Patch4:     workaround-for-21266-blank-page-after-scroll.patch
 Patch5:     transition-from-pinching-to-panning-20817.patch
 Patch6:     supply-source-uri-to-gstreamer-pipeline-19511.patch
-#Patch7:    fix-20430-invalidate-obsolete-scroll-offset.patch
+Patch7:     workaround-for-bug-977015.patch
+#Patch8:    fix-20430-invalidate-obsolete-scroll-offset.patch
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
@@ -69,7 +70,8 @@ Tests and misc files for xulrunner
 %patch4 -p1
 %patch5 -p1
 %patch6 -p1
-#%patch7 -p1
+%patch7 -p1
+#%patch8 -p1
 
 %build
 export DONT_POPULATE_VIRTUALENV=1
