@@ -13,12 +13,10 @@ Patch1:     disable-jmalloc-in-storage-service.patch
 Patch2:     workaround-wrong-viewport-in-wikipedia.patch
 Patch3:     workaround-for-bug-20684-wrong-viewport-after-orientation-change.patch
 Patch4:     workaround-for-21266-blank-page-after-scroll.patch
-Patch5:     add-missing-headers-to-build-gecok33.patch
-Patch6:     bug-1042525-add-missing-impl-for-screensharing.patch
-Patch7:     transition-from-pinching-to-panning-20817.patch
-Patch8:     supply-source-uri-to-gstreamer-pipeline-19511.patch
-#Patch9:    fix-20430-invalidate-obsolete-scroll-offset.patch
-#Patch10:    workaround-for-bug-977015.patch   seems like the bug is not reproducible in gecko33
+Patch5:     bug-1042525-add-missing-impl-for-screensharing.patch
+Patch6:     transition-from-pinching-to-panning-20817.patch
+Patch7:     supply-source-uri-to-gstreamer-pipeline-19511.patch
+#Patch8:    fix-20430-invalidate-obsolete-scroll-offset.patch
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
@@ -73,9 +71,7 @@ Tests and misc files for xulrunner
 %patch5 -p1
 %patch6 -p1
 %patch7 -p1
-%patch8 -p1
-#%patch9 -p1
-#%patch10 -p1
+#%patch8 -p1
 
 %build
 export DONT_POPULATE_VIRTUALENV=1
