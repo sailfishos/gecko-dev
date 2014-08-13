@@ -62,4 +62,6 @@ interface EmbedLiteViewIface
     void ViewAPIDestroyed();
     void GetUniqueID(out uint32_t aId);
     void GetPendingTexture(in EmbedLiteRenderTarget aContextWrapper, out int32_t aTextureID, out int32_t aTextureTarget, out int32_t aWidth, out int32_t aHeight);
+    void SuspendRendering(in EmbedLiteRenderTarget aContextWrapper);
+    void ResumeRendering();
 };

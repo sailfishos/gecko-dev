@@ -41,23 +41,30 @@ GMPChild::~GMPChild()
 {
 }
 
+void
+GMPChild::CheckThread()
+{
+  MOZ_ASSERT(mGMPMessageLoop == MessageLoop::current());
+}
+
 bool
 GMPChild::Init(const std::string& aPluginPath,
                base::ProcessHandle aParentProcessHandle,
                MessageLoop* aIOLoop,
                IPC::Channel* aChannel)
 {
-#ifdef GMP_CRASHREPORTER_READY
-// See bug 1041226
+  if (!Open(aChannel, aParentProcessHandle, aIOLoop)) {
+    return false;
+  }
+
 #ifdef MOZ_CRASHREPORTER
   SendPCrashReporterConstructor(CrashReporter::CurrentThreadId());
-#endif
 #endif
 #if defined(XP_WIN)
   mozilla::SandboxTarget::Instance()->StartSandbox();
 #endif
-  return LoadPluginLibrary(aPluginPath) &&
-         Open(aChannel, aParentProcessHandle, aIOLoop);
+
+  return LoadPluginLibrary(aPluginPath);
 }
 
 bool
@@ -230,6 +237,13 @@ GMPChild::RecvPGMPVideoEncoderConstructor(PGMPVideoEncoderChild* aActor)
 
   vec->Init(static_cast<GMPVideoEncoder*>(ve));
 
+  return true;
+}
+
+bool
+GMPChild::RecvCrashPluginNow()
+{
+  MOZ_CRASH();
   return true;
 }
 

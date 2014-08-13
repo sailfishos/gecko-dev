@@ -237,6 +237,8 @@ public:
      */
     void Morph(SurfaceFactory* newFactory, SurfaceStreamType streamType);
 
+    void CleanupBuffers();
+
 protected:
     // Returns false on error or inability to resize.
     bool Swap(const gfx::IntSize& size);

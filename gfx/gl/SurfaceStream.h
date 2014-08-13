@@ -125,6 +125,7 @@ public:
     virtual SharedSurface* SwapConsumer();
 
     virtual void SurrenderSurfaces(SharedSurface*& producer, SharedSurface*& consumer) = 0;
+    void CleanupSurfaces();
 };
 
 // Not thread-safe. Don't use cross-threads.

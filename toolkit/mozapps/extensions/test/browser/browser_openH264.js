@@ -2,7 +2,11 @@
  * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
-let {AddonTestUtils} = Components.utils.import("resource://testing-common/AddonManagerTesting.jsm", {});
+"use strict";
+
+Cu.import("resource://gre/modules/Promise.jsm");
+let {AddonTestUtils} = Cu.import("resource://testing-common/AddonManagerTesting.jsm", {});
+let OpenH264Scope = Cu.import("resource://gre/modules/addons/OpenH264Provider.jsm");
 
 const OPENH264_PLUGIN_ID       = "gmp-gmpopenh264";
 const OPENH264_PREF_BRANCH     = "media." + OPENH264_PLUGIN_ID + ".";
@@ -20,6 +24,29 @@ const TEST_DATE = new Date(2013, 0, 1, 12);
 let gManagerWindow;
 let gCategoryUtilities;
 let gIsEnUsLocale;
+
+let MockGMPAddon = Object.freeze({
+  id: OPENH264_PLUGIN_ID,
+  isOpenH264: true,
+  isInstalled: false,
+});
+
+let gInstalledAddonId = "";
+let gInstallDeferred = null;
+
+function MockGMPInstallManager() {
+}
+
+MockGMPInstallManager.prototype = {
+  checkForAddons: () => Promise.resolve([MockGMPAddon]),
+
+  installAddon: addon => {
+    gInstalledAddonId = addon.id;
+    gInstallDeferred.resolve();
+    return Promise.resolve();
+  },
+};
+
 
 let gOptionsObserver = {
   lastDisplayed: null,
@@ -172,17 +199,56 @@ add_task(function* testInstalledDetails() {
 });
 
 add_task(function* testPreferencesButton() {
+  let file = Services.dirsvc.get("ProfD", Ci.nsIFile);
+  file.append("openh264");
+  file.append("testDir");
+
+  let prefValues = [
+    { enabled: false, path: "" },
+    { enabled: false, path: file.path },
+    { enabled: true, path: "" },
+    { enabled: true, path: file.path },
+  ];
+
+  for (let prefs of prefValues) {
+    dump("Testing preferences button with pref settings: " + JSON.stringify(prefs) + "\n");
+    Services.prefs.setCharPref(OPENH264_PREF_PATH, prefs.path);
+    Services.prefs.setBoolPref(OPENH264_PREF_ENABLED, prefs.enabled);
+
+    yield gCategoryUtilities.openType("plugin");
+    let doc = gManagerWindow.document;
+    let item = get_addon_element(gManagerWindow, OPENH264_PLUGIN_ID);
+
+    let button = doc.getAnonymousElementByAttribute(item, "anonid", "preferences-btn");
+    EventUtils.synthesizeMouseAtCenter(button, { clickCount: 1 }, gManagerWindow);
+    let deferred = Promise.defer();
+    wait_for_view_load(gManagerWindow, deferred.resolve);
+    yield deferred.promise;
+
+    is(gOptionsObserver.lastDisplayed, OPENH264_PLUGIN_ID);
+  }
+});
+
+add_task(function* testUpdateButton() {
   yield gCategoryUtilities.openType("plugin");
   let doc = gManagerWindow.document;
   let item = get_addon_element(gManagerWindow, OPENH264_PLUGIN_ID);
 
-  let button = doc.getAnonymousElementByAttribute(item, "anonid", "preferences-btn");
-  EventUtils.synthesizeMouseAtCenter(button, { clickCount: 1 }, gManagerWindow);
-  let deferred = Promise.defer();
-  wait_for_view_load(gManagerWindow, deferred.resolve);
-  yield deferred.promise;
+  Object.defineProperty(OpenH264Scope, "GMPInstallManager", {
+    value: MockGMPInstallManager,
+    writable: true,
+    enumerable: true,
+    configurable: true
+  });
+  gInstalledAddonId = "";
+  gInstallDeferred = Promise.defer();
 
-  is(gOptionsObserver.lastDisplayed, OPENH264_PLUGIN_ID);
+  let button = doc.getElementById("detail-findUpdates-btn");
+  Assert.ok(button != null, "Got detail-findUpdates-btn");
+  button.click();
+  yield gInstallDeferred.promise;
+
+  Assert.equal(gInstalledAddonId, OPENH264_PLUGIN_ID);
 });
 
 add_task(function* test_cleanup() {

@@ -29,6 +29,8 @@ public:
   void SetSurfaceSize(int width, int height);
   void SetWorldTransform(gfx::Matrix);
   void SetClipping(const gfxRect& aClipRect);
+  void SuspendRendering();
+  void ResumeRendering();
 
 protected:
   virtual ~EmbedLiteCompositorParent();
