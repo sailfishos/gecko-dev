@@ -234,6 +234,28 @@ void EmbedLiteCompositorParent::ScheduleTask(CancelableTask* task, int time)
   }
 }
 
+void* EmbedLiteCompositorParent::GetPlatformImage(int* width, int* height)
+{
+  const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(RootLayerTreeId());
+  NS_ENSURE_TRUE(state && state->mLayerManager, nullptr);
+
+  GLContext* context = static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->gl();
+  NS_ENSURE_TRUE(context && context->IsOffscreen(), nullptr);
+
+  SharedSurface* sharedSurf = context->RequestFrame();
+  NS_ENSURE_TRUE(sharedSurf, nullptr);
+
+  *width = sharedSurf->Size().width;
+  *height = sharedSurf->Size().height;
+
+  if (sharedSurf->Type() == SharedSurfaceType::EGLImageShare) {
+    SharedSurface_EGLImage* eglImageSurf = SharedSurface_EGLImage::Cast(sharedSurf);
+    return eglImageSurf->mImage;
+  }
+
+  return nullptr;
+}
+
 } // namespace embedlite
 } // namespace mozilla
 
