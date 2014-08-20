@@ -26,6 +26,7 @@ public:
 
   bool RenderToContext(gfx::DrawTarget* aTarget);
   void SetSurfaceSize(int width, int height);
+  void* GetPlatformImage(int* width, int* height);
 
 protected:
   virtual ~EmbedLiteCompositorParent();

@@ -93,17 +93,17 @@ EmbedLiteCompositorParent::PrepareOffscreen()
       SurfaceStreamType streamType =
         SurfaceStream::ChooseGLStreamType(SurfaceStream::OffMainThread,
                                           screen->PreserveBuffer());
-      SurfaceFactory* factory = nullptr;
+      UniquePtr<SurfaceFactory> factory;
       if (context->GetContextType() == GLContextType::EGL) {
         // [Basic/OGL Layers, OMTC] WebGL layer init.
         factory = SurfaceFactory_EGLImage::Create(context, screen->mCaps);
       } else {
         // [Basic Layers, OMTC] WebGL layer init.
         // Well, this *should* work...
-        factory = new SurfaceFactory_GLTexture(context, nullptr, screen->mCaps);
+        factory = MakeUnique<SurfaceFactory_GLTexture>(context, nullptr, screen->mCaps);
       }
       if (factory) {
-        screen->Morph(factory, streamType);
+        screen->Morph(Move(factory), streamType);
       }
     }
   }
@@ -217,6 +217,29 @@ void EmbedLiteCompositorParent::SetSurfaceSize(int width, int height)
 {
   mLastViewSize.SizeTo(width, height);
   SetEGLSurfaceSize(width, height);
+}
+
+void*
+EmbedLiteCompositorParent::GetPlatformImage(int* width, int* height)
+{
+  const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(RootLayerTreeId());
+  NS_ENSURE_TRUE(state && state->mLayerManager, nullptr);
+
+  GLContext* context = static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->gl();
+  NS_ENSURE_TRUE(context && context->IsOffscreen(), nullptr);
+
+  SharedSurface* sharedSurf = context->RequestFrame();
+  NS_ENSURE_TRUE(sharedSurf, nullptr);
+
+  *width = sharedSurf->mSize.width;
+  *height = sharedSurf->mSize.height;
+
+  if (sharedSurf->mType == SharedSurfaceType::EGLImageShare) {
+    SharedSurface_EGLImage* eglImageSurf = SharedSurface_EGLImage::Cast(sharedSurf);
+    return eglImageSurf->mImage;
+  }
+
+  return nullptr;
 }
 
 } // namespace embedlite

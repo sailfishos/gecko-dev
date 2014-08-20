@@ -807,5 +807,13 @@ EmbedLiteViewThreadParent::GetPendingTexture(EmbedLiteRenderTarget* aContextWrap
   return NS_OK;
 }
 
+NS_IMETHODIMP
+EmbedLiteViewThreadParent::GetPlatformImage(void* *aImage, int* width, int* height)
+{
+  NS_ENSURE_TRUE(mCompositor, NS_ERROR_FAILURE);
+  *aImage = mCompositor->GetPlatformImage(width, height);
+  return NS_OK;
+}
+
 } // namespace embedlite
 } // namespace mozilla
