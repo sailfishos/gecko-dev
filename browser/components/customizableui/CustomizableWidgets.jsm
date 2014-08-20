@@ -159,6 +159,7 @@ const CustomizableWidgets = [{
       // Populate our list of history
       const kMaxResults = 15;
       let doc = aEvent.detail.ownerDocument;
+      let win = doc.defaultView;
 
       let options = PlacesUtils.history.getNewQueryOptions();
       options.excludeQueries = true;
@@ -201,8 +202,10 @@ const CustomizableWidgets = [{
               item.addEventListener("click", function (aEvent) {
                 onHistoryVisit(uri, aEvent, item);
               });
-              if (icon)
-                item.setAttribute("image", "moz-anno:favicon:" + icon);
+              if (icon) {
+                let iconURL = PlacesUtils.getImageURLForResolution(win, "moz-anno:favicon:" + icon);
+                item.setAttribute("image", iconURL);
+              }
               fragment.appendChild(item);
             } catch (e) {
               ERROR("Error while showing history subview: " + e);
@@ -735,8 +738,7 @@ const CustomizableWidgets = [{
     maybeDisableMenu: function(aDocument) {
       let window = aDocument.defaultView;
       return !(window.gBrowser &&
-               window.gBrowser.docShell &&
-               window.gBrowser.docShell.mayEnableCharacterEncodingMenu);
+               window.gBrowser.selectedBrowser.mayEnableCharacterEncodingMenu);
     },
     populateList: function(aDocument, aContainerId, aSection) {
       let containerElem = aDocument.getElementById(aContainerId);
@@ -756,8 +758,7 @@ const CustomizableWidgets = [{
       }
     },
     updateCurrentCharset: function(aDocument) {
-      let content = aDocument.defaultView.content;
-      let currentCharset = content && content.document && content.document.characterSet;
+      let currentCharset = aDocument.defaultView.gBrowser.selectedBrowser.characterSet;
       currentCharset = CharsetMenu.foldCharset(currentCharset);
 
       let pinnedContainer = aDocument.getElementById("PanelUI-characterEncodingView-pinned");

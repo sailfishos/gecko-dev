@@ -261,6 +261,7 @@ if test -n "$gonkdir" ; then
         MOZ_OMX_ENCODER=1
         AC_SUBST(MOZ_OMX_ENCODER)
         AC_DEFINE(MOZ_OMX_ENCODER)
+	MOZ_FMP4=1
         ;;
     19)
         GONK_INCLUDES="-I$gonkdir/frameworks/native/include -I$gonkdir/frameworks/av/include -I$gonkdir/frameworks/av/include/media -I$gonkdir/frameworks/av/include/camera -I$gonkdir/frameworks/native/include/media/openmax -I$gonkdir/frameworks/av/media/libstagefright/include"
@@ -275,7 +276,7 @@ if test -n "$gonkdir" ; then
         MOZ_AUDIO_OFFLOAD=1
         AC_SUBST(MOZ_AUDIO_OFFLOAD)
         AC_DEFINE(MOZ_AUDIO_OFFLOAD)
-
+	MOZ_FMP4=1
         ;;
     *)
         AC_MSG_ERROR([Unsupported platform version: $ANDROID_VERSION])
@@ -1469,14 +1470,14 @@ if test "$GNU_CXX"; then
     # -Woverloaded-virtual - ???
     # -Werror=return-type - catches missing returns, zero false positives
     # -Werror=int-to-pointer-cast - catches cast to pointer from integer of different size
-    # -Wtype-limits - catches overflow bugs, few false positives
+    # -Werror=type-limits - catches overflow bugs, few false positives
     # -Wempty-body - catches bugs, e.g. "if (c); foo();", few false positives
     # -Wsign-compare - catches comparison of signed and unsigned types
     #
     _WARNINGS_CXXFLAGS="${_WARNINGS_CXXFLAGS} -Wall -Wpointer-arith -Woverloaded-virtual"
     MOZ_CXX_SUPPORTS_WARNING(-W, error=return-type, ac_cxx_has_werror_return_type)
     MOZ_CXX_SUPPORTS_WARNING(-W, error=int-to-pointer-cast, ac_cxx_has_werror_int_to_pointer_cast)
-    MOZ_CXX_SUPPORTS_WARNING(-W, type-limits, ac_cxx_has_wtype_limits)
+    MOZ_CXX_SUPPORTS_WARNING(-W, error=type-limits, ac_cxx_has_werror_type_limits)
     MOZ_CXX_SUPPORTS_WARNING(-W, empty-body, ac_cxx_has_wempty_body)
     MOZ_CXX_SUPPORTS_WARNING(-W, sign-compare, ac_cxx_has_sign_compare)
 
@@ -1991,7 +1992,10 @@ ia64*-hpux*)
     TARGET_NSPR_MDCPUCFG='\"md/_linux.cfg\"'
 
     MOZ_GFX_OPTIMIZE_MOBILE=1
-    MOZ_OPTIMIZE_FLAGS="-Os -freorder-blocks -fno-reorder-functions"
+    MOZ_OPTIMIZE_FLAGS="-Os -fno-reorder-functions"
+    if test -z "$CLANG_CC"; then
+       MOZ_OPTIMIZE_FLAGS="-freorder-blocks $MOZ_OPTIMIZE_FLAGS"
+    fi
     ;;
 
 *-*linux*)
@@ -2008,7 +2012,10 @@ ia64*-hpux*)
             MOZ_OPTIMIZE_SIZE_TWEAK="-finline-limit=50"
         esac
         MOZ_PGO_OPTIMIZE_FLAGS="-O3"
-        MOZ_OPTIMIZE_FLAGS="-Os -freorder-blocks $MOZ_OPTIMIZE_SIZE_TWEAK"
+        MOZ_OPTIMIZE_FLAGS="-Os $MOZ_OPTIMIZE_SIZE_TWEAK"
+        if test -z "$CLANG_CC"; then
+           MOZ_OPTIMIZE_FLAGS="-freorder-blocks $MOZ_OPTIMIZE_FLAGS"
+        fi
     fi
 
     TARGET_NSPR_MDCPUCFG='\"md/_linux.cfg\"'
@@ -2093,7 +2100,7 @@ ia64*-hpux*)
         _DEFINES_CXXFLAGS='-FI $(DEPTH)/dist/include/mozilla-config.h -DMOZILLA_CLIENT'
         CFLAGS="$CFLAGS -W3 -Gy"
         CXXFLAGS="$CXXFLAGS -W3 -Gy"
-        if test "$_CC_SUITE" -ge "11"; then
+        if test "$_CC_SUITE" -ge "11" -a "$CPU_ARCH" = "x86"; then
             dnl VS2012+ defaults to -arch:SSE2.
             CFLAGS="$CFLAGS -arch:IA32"
             CXXFLAGS="$CXXFLAGS -arch:IA32"
@@ -2524,10 +2531,10 @@ if test "$GNU_CC" -a "$OS_TARGET" != WINNT; then
   *)
     case $GCC_VERSION in
     4.4*|4.6*)
-      VISIBILITY_FLAGS='-I$(DIST)/system_wrappers -include $(topsrcdir)/config/gcc_hidden_dso_handle.h'
+      VISIBILITY_FLAGS='-I$(DIST)/system_wrappers -include $(MOZILLA_DIR)/config/gcc_hidden_dso_handle.h'
       ;;
     *)
-      VISIBILITY_FLAGS='-I$(DIST)/system_wrappers -include $(topsrcdir)/config/gcc_hidden.h'
+      VISIBILITY_FLAGS='-I$(DIST)/system_wrappers -include $(MOZILLA_DIR)/config/gcc_hidden.h'
       ;;
     esac
     WRAP_SYSTEM_INCLUDES=1
@@ -2651,7 +2658,7 @@ if test "$ac_cv_sockaddr_sa_len" = true ; then
   AC_DEFINE(HAVE_SA_LEN)
 fi
 
-AC_ARG_ENABLE(dtrace,
+MOZ_ARG_ENABLE_BOOL(dtrace,
               [  --enable-dtrace         build with dtrace support if available (default=no)],
               [enable_dtrace="yes"],)
 if test "x$enable_dtrace" = "xyes"; then
@@ -3775,7 +3782,11 @@ MOZ_WEBM=1
 MOZ_GSTREAMER=
 MOZ_DIRECTSHOW=
 MOZ_WMF=
-MOZ_FMP4=
+if test -n "$MOZ_FMP4"; then
+  MOZ_FMP4=1
+else
+  MOZ_FMP4=
+fi
 MOZ_EME=1
 MOZ_FFMPEG=
 MOZ_WEBRTC=1
@@ -3812,6 +3823,7 @@ MOZ_SAFE_BROWSING=
 MOZ_HELP_VIEWER=
 MOZ_SPELLCHECK=1
 MOZ_ANDROID_OMTC=
+MOZ_ANDROID_APZ=
 MOZ_TOOLKIT_SEARCH=1
 MOZ_UI_LOCALE=en-US
 MOZ_UNIVERSALCHARDET=1
@@ -3820,7 +3832,7 @@ MOZ_XUL=1
 MOZ_ZIPWRITER=1
 NS_PRINTING=1
 MOZ_PDF_PRINTING=
-MOZ_DISABLE_CRYPTOLEGACY=
+MOZ_NO_SMART_CARDS=
 NSS_DISABLE_DBM=
 NECKO_COOKIES=1
 NECKO_PROTOCOLS_DEFAULT="about app data file ftp http res viewsource websocket wyciwyg device"
@@ -4135,7 +4147,6 @@ case "$MOZ_WIDGET_TOOLKIT" in
 
 cairo-windows)
     MOZ_WIDGET_TOOLKIT=windows
-    MOZ_WEBGL=1
     MOZ_PDF_PRINTING=1
     MOZ_INSTRUMENT_EVENT_LOOP=1
     if test -n "$GNU_CC"; then
@@ -4148,7 +4159,6 @@ cairo-gtk3)
     MOZ_ENABLE_GTK=1
     MOZ_ENABLE_GTK3=1
     MOZ_ENABLE_XREMOTE=1
-    MOZ_WEBGL=1
     MOZ_GL_DEFAULT_PROVIDER=GLX
 
     AC_DEFINE(MOZ_X11)
@@ -4168,7 +4178,6 @@ cairo-gtk2|cairo-gtk2-x11)
     MOZ_ENABLE_GTK=1
     MOZ_ENABLE_GTK2=1
     MOZ_ENABLE_XREMOTE=1
-    MOZ_WEBGL=1
     MOZ_GL_DEFAULT_PROVIDER=GLX
 
     AC_DEFINE(MOZ_X11)
@@ -4195,7 +4204,6 @@ cairo-qt)
       XT_LIBS=
     fi
 
-    MOZ_WEBGL=1
     USE_FC_FREETYPE=1
     TK_CFLAGS='$(MOZ_QT_CFLAGS)'
     TK_LIBS='$(MOZ_QT_LIBS)'
@@ -4216,7 +4224,6 @@ cairo-cocoa)
     CXXFLAGS="$CXXFLAGS $TK_CFLAGS"
     MOZ_USER_DIR="Mozilla"
     MOZ_FS_LAYOUT=bundle
-    MOZ_WEBGL=1
     MOZ_INSTRUMENT_EVENT_LOOP=1
     ;;
 
@@ -4237,7 +4244,6 @@ cairo-android)
     MOZ_WIDGET_TOOLKIT=android
     TK_CFLAGS='$(MOZ_CAIRO_CFLAGS) $(MOZ_PIXMAN_CFLAGS)'
     TK_LIBS='$(MOZ_CAIRO_LIBS) $(MOZ_PIXMAN_LIBS)'
-    MOZ_WEBGL=1
     MOZ_PDF_PRINTING=1
     MOZ_INSTRUMENT_EVENT_LOOP=1
     ;;
@@ -4248,7 +4254,6 @@ cairo-gonk)
     MOZ_WIDGET_TOOLKIT=gonk
     TK_CFLAGS='$(MOZ_CAIRO_CFLAGS) $(MOZ_PIXMAN_CFLAGS)'
     TK_LIBS='$(MOZ_CAIRO_LIBS) $(MOZ_PIXMAN_LIBS)'
-    MOZ_WEBGL=1
     MOZ_PDF_PRINTING=1
     MOZ_TOUCH=1
     MOZ_INSTRUMENT_EVENT_LOOP=1
@@ -4579,6 +4584,8 @@ fi
 
 if test -f "${_topsrcdir}/$REAL_BRANDING_DIRECTORY/configure.sh"; then
   . "${_topsrcdir}/$REAL_BRANDING_DIRECTORY/configure.sh"
+elif test -f "${EXTERNAL_SOURCE_DIR}/$REAL_BRANDING_DIRECTORY/configure.sh"; then
+  . "${EXTERNAL_SOURCE_DIR}/$REAL_BRANDING_DIRECTORY/configure.sh"
 fi
 
 AC_SUBST(MOZ_BRANDING_DIRECTORY)
@@ -4810,6 +4817,18 @@ dnl ========================================================
 if test -n "$MOZ_ANDROID_OMTC"; then
      dnl Do this if defined in confvars.sh
      AC_DEFINE(MOZ_ANDROID_OMTC)
+fi
+
+dnl ========================================================
+dnl = Enable the C++ async pan/zoom code instead of the Java version
+dnl ========================================================
+MOZ_ARG_ENABLE_BOOL(android-apz,
+[  --enable-android-apz      Switch to C++ pan/zoom code],
+    MOZ_ANDROID_APZ=1,
+    MOZ_ANDROID_APZ=)
+if test -n "$MOZ_ANDROID_APZ"; then
+     dnl Do this if defined in confvars.sh
+     AC_DEFINE(MOZ_ANDROID_APZ)
 fi
 
 dnl ========================================================
@@ -5653,25 +5672,14 @@ x86_64)
   ;;
 esac
 
-MOZ_ARG_DISABLE_BOOL(webgl,
-[  --disable-webgl     Disable building of the WebGL implementation],
-    MOZ_WEBGL_DISABLED=1,
-    MOZ_WEBGL_DISABLED=)
-
 MOZ_ARG_ENABLE_BOOL(require-all-d3dc-versions,
 [  --enable-require-all-d3dc-versions Require all versions of the D3D compiler needed for supported Windows systems.],
     MOZ_REQUIRE_ALL_D3DCS=1,
     MOZ_REQUIRE_ALL_D3DCS=)
 
-if test -n "$MOZ_WEBGL_DISABLED"; then
-  MOZ_WEBGL=
-  MOZ_ANGLE_RENDERER=
-fi
-
-if test -n "$MOZ_WEBGL"; then
-  AC_DEFINE(MOZ_WEBGL)
-fi
-
+# This is potentially set in external mozconfig files; if it's set,
+# then the build exposes the "webgl" context name, which is reserved
+# for conformant implementations.
 if test -n "$MOZ_WEBGL_CONFORMANT"; then
   AC_DEFINE(MOZ_WEBGL_CONFORMANT)
 fi
@@ -6125,7 +6133,6 @@ if test -n "$MOZ_TREE_FREETYPE"; then
    FT_FONT_FEATURE="#define CAIRO_HAS_FT_FONT 1"
    FT2_CFLAGS='-I$(topsrcdir)/modules/freetype2/include'
    CAIRO_FT_CFLAGS='-I$(topsrcdir)/modules/freetype2/include'
-   FT2_LIBS='$(call EXPAND_LIBNAME_PATH,freetype,$(DEPTH)/modules/freetype2/.libs)'
    CAIRO_FT_OSLIBS=''
    AC_DEFINE(HAVE_FT_BITMAP_SIZE_Y_PPEM)
    AC_DEFINE(HAVE_FT_GLYPHSLOT_EMBOLDEN)
@@ -6342,12 +6349,12 @@ fi
 AC_SUBST(MOZ_DISABLE_PARENTAL_CONTROLS)
 
 dnl ========================================================
-dnl = Disable DOMCrypto
+dnl = Disable smartcard support
 dnl ========================================================
-if test -n "$MOZ_DISABLE_CRYPTOLEGACY"; then
-    AC_DEFINE(MOZ_DISABLE_CRYPTOLEGACY)
+if test -n "$MOZ_NO_SMART_CARDS"; then
+    AC_DEFINE(MOZ_NO_SMART_CARDS)
 fi
-AC_SUBST(MOZ_DISABLE_CRYPTOLEGACY)
+AC_SUBST(MOZ_NO_SMART_CARDS)
 
 dnl ========================================================
 dnl = Disable EV certificate verification
@@ -6396,6 +6403,9 @@ Linux)
         MOZ_GMP_SANDBOX=1
         ;;
     esac
+    ;;
+Darwin)
+    MOZ_GMP_SANDBOX=1
     ;;
 esac
 
@@ -7143,6 +7153,17 @@ MOZ_ARG_DISABLE_BOOL(gcgenerational,
     JSGC_GENERATIONAL=1 )
 if test -n "$JSGC_GENERATIONAL"; then
     AC_DEFINE(JSGC_GENERATIONAL)
+fi
+
+dnl ========================================================
+dnl = Use compacting GC
+dnl ========================================================
+MOZ_ARG_ENABLE_BOOL(gccompacting,
+[  --enable-gccompacting   Compact the JS heap by moving GC things],
+    JS_GCCOMPACTING=1,
+    JS_GCCOMPACTING= )
+if test -n "$JS_GCCOMPACTING"; then
+    AC_DEFINE(JS_GCCOMPACTING)
 fi
 
 dnl ========================================================
@@ -8316,14 +8337,6 @@ if test "$MOZ_DEBUG" -o "$NS_TRACE_MALLOC" -o "$MOZ_DMD"; then
     MOZ_COMPONENTS_VERSION_SCRIPT_LDFLAGS=
 fi
 
-if test "$MOZ_APP_COMPONENT_INCLUDE"; then
-  AC_DEFINE_UNQUOTED(MOZ_APP_COMPONENT_INCLUDE, "$MOZ_APP_COMPONENT_INCLUDE")
-fi
-
-if test "$MOZ_APP_COMPONENT_MODULES"; then
-  AC_DEFINE_UNQUOTED(MOZ_APP_COMPONENT_MODULES, $MOZ_APP_COMPONENT_MODULES)
-fi
-
 dnl ========================================================
 dnl =
 dnl = Maintainer debug option (no --enable equivalent)
@@ -8371,7 +8384,6 @@ AC_SUBST(MOZ_SOCIAL)
 AC_SUBST(MOZ_TOOLKIT_SEARCH)
 AC_SUBST(MOZ_FEEDS)
 AC_SUBST(NS_PRINTING)
-AC_SUBST(MOZ_WEBGL)
 AC_SUBST(MOZ_HELP_VIEWER)
 AC_SUBST(TOOLCHAIN_PREFIX)
 
@@ -8389,6 +8401,7 @@ AC_SUBST(MOZ_UNIVERSALCHARDET)
 AC_SUBST(ACCESSIBILITY)
 AC_SUBST(MOZ_SPELLCHECK)
 AC_SUBST(MOZ_ANDROID_OMTC)
+AC_SUBST(MOZ_ANDROID_APZ)
 AC_SUBST(MOZ_ANDROID_ANR_REPORTER)
 AC_SUBST(MOZ_CRASHREPORTER)
 AC_SUBST(MOZ_CRASHREPORTER_INJECTOR)
@@ -8717,7 +8730,6 @@ AC_SUBST(CC_VERSION)
 AC_SUBST(CXX_VERSION)
 AC_SUBST(MSMANIFEST_TOOL)
 AC_SUBST(NS_ENABLE_TSF)
-AC_SUBST_LIST(MOZ_APP_EXTRA_LIBS)
 
 AC_SUBST(MOZ_WAVE)
 AC_SUBST(MOZ_VORBIS)
@@ -8892,8 +8904,6 @@ if test -z "$JS_SHARED_LIBRARY"; then
 fi
 AC_SUBST(JS_SHARED_LIBRARY)
 
-AC_SUBST(UPLOAD_EXTRA_FILES)
-
 MOZ_CREATE_CONFIG_STATUS()
 
 # No need to run subconfigures when building with LIBXUL_SDK_DIR
@@ -9036,10 +9046,13 @@ unset CONFIG_FILES
 
 # Run all configure scripts specified by a subconfigure
 if test -n "$_subconfigure_subdir"; then
+  _save_srcdir="$srcdir"
+  srcdir="$srcdir/.."
   _save_ac_configure_args="$ac_configure_args"
   ac_configure_args="$_subconfigure_config_args"
   AC_OUTPUT_SUBDIRS("$_subconfigure_subdir")
   ac_configure_args="$_save_ac_configure_args"
+  srcdir="$_save_srcdir"
 fi
 
 # No need to run subconfigures when building with LIBXUL_SDK_DIR
@@ -9105,6 +9118,9 @@ fi
 if test -z "$JSGC_GENERATIONAL" ; then
     ac_configure_args="$ac_configure_args --disable-gcgenerational"
 fi
+if test -n "$JS_GCCOMPACTING" ; then
+    ac_configure_args="$ac_configure_args --enable-gccompacting"
+fi
 if test -n "$JS_GC_SMALL_CHUNK_SIZE" ; then
     ac_configure_args="$ac_configure_args --enable-small-chunk-size"
 fi
@@ -9133,7 +9149,6 @@ export DONT_POPULATE_VIRTUALENV=1
 export PYTHON
 export MOZILLA_CENTRAL_PATH=$_topsrcdir
 export STLPORT_CPPFLAGS
-export STLPORT_LDFLAGS
 export STLPORT_LIBS
 export JS_STANDALONE=no
 export MOZ_LINKER

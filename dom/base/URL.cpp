@@ -203,6 +203,16 @@ URL::RevokeObjectURL(const GlobalObject& aGlobal, const nsAString& aURL)
   }
 }
 
+nsIPrincipal*
+URL::GetPrincipalFromURL(const GlobalObject& aGlobal, const nsAString& aURL,
+                         ErrorResult& aRv)
+{
+  MOZ_ASSERT(nsContentUtils::IsCallerChrome());
+
+  NS_LossyConvertUTF16toASCII asciiurl(aURL);
+  return nsHostObjectProtocolHandler::GetDataEntryPrincipal(asciiurl);
+}
+
 void
 URL::GetHref(nsString& aHref, ErrorResult& aRv) const
 {
@@ -341,9 +351,10 @@ URL::SetHost(const nsAString& aHost, ErrorResult& aRv)
 }
 
 void
-URL::URLSearchParamsUpdated()
+URL::URLSearchParamsUpdated(URLSearchParams* aSearchParams)
 {
   MOZ_ASSERT(mSearchParams);
+  MOZ_ASSERT(mSearchParams == aSearchParams);
 
   nsAutoString search;
   mSearchParams->Serialize(search);

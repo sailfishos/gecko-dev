@@ -14,6 +14,7 @@
 #include "ImageLayers.h"
 #include "DisplayItemClip.h"
 #include "mozilla/layers/LayersTypes.h"
+#include "LayerState.h"
 
 class nsDisplayListBuilder;
 class nsDisplayList;
@@ -38,19 +39,6 @@ class LayerManagerData;
 class ThebesLayerData;
 class ContainerState;
 
-enum LayerState {
-  LAYER_NONE,
-  LAYER_INACTIVE,
-  LAYER_ACTIVE,
-  // Force an active layer even if it causes incorrect rendering, e.g.
-  // when the layer has rounded rect clips.
-  LAYER_ACTIVE_FORCE,
-  // Special layer that is metadata only.
-  LAYER_ACTIVE_EMPTY,
-  // Inactive style layer for rendering SVG effects.
-  LAYER_SVG_EFFECTS
-};
-
 class RefCountedRegion {
 private:
   ~RefCountedRegion() {}
@@ -72,6 +60,7 @@ struct ContainerLayerParameters {
     , mInTransformedSubtree(false)
     , mInActiveTransformedSubtree(false)
     , mDisableSubpixelAntialiasingInDescendants(false)
+    , mInLowPrecisionDisplayPort(false)
   {}
   ContainerLayerParameters(float aXScale, float aYScale)
     : mXScale(aXScale)
@@ -80,6 +69,7 @@ struct ContainerLayerParameters {
     , mInTransformedSubtree(false)
     , mInActiveTransformedSubtree(false)
     , mDisableSubpixelAntialiasingInDescendants(false)
+    , mInLowPrecisionDisplayPort(false)
   {}
   ContainerLayerParameters(float aXScale, float aYScale,
                            const nsIntPoint& aOffset,
@@ -91,6 +81,7 @@ struct ContainerLayerParameters {
     , mInTransformedSubtree(aParent.mInTransformedSubtree)
     , mInActiveTransformedSubtree(aParent.mInActiveTransformedSubtree)
     , mDisableSubpixelAntialiasingInDescendants(aParent.mDisableSubpixelAntialiasingInDescendants)
+    , mInLowPrecisionDisplayPort(aParent.mInLowPrecisionDisplayPort)
   {}
   float mXScale, mYScale;
   /**
@@ -106,6 +97,7 @@ struct ContainerLayerParameters {
   bool mInTransformedSubtree;
   bool mInActiveTransformedSubtree;
   bool mDisableSubpixelAntialiasingInDescendants;
+  bool mInLowPrecisionDisplayPort;
   /**
    * When this is false, ThebesLayer coordinates are drawn to with an integer
    * translation and the scale in mXScale/mYScale.
@@ -595,7 +587,7 @@ protected:
 public:
   class ThebesLayerItemsEntry : public nsPtrHashKey<ThebesLayer> {
   public:
-    ThebesLayerItemsEntry(const ThebesLayer *key)
+    explicit ThebesLayerItemsEntry(const ThebesLayer *key)
       : nsPtrHashKey<ThebesLayer>(key)
       , mContainerLayerFrame(nullptr)
       , mLastCommonClipCount(0)

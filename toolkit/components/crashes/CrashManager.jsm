@@ -130,6 +130,9 @@ this.CrashManager.prototype = Object.freeze({
   // A crash in a plugin process.
   PROCESS_TYPE_PLUGIN: "plugin",
 
+  // A crash in a Gecko media plugin process.
+  PROCESS_TYPE_GMPLUGIN: "gmplugin",
+
   // A submission of a crash.
   PROCESS_TYPE_SUBMISSION: "submission",
 
@@ -957,7 +960,7 @@ CrashStore.prototype = Object.freeze({
 
     let crash = this._data.crashes.get(id);
     crash.type = type;
-    crash.date = date;
+    crash.crashDate = date;
 
     return crash;
   },

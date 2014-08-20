@@ -35,8 +35,8 @@ class CDMProxy;
 typedef int64_t Microseconds;
 
 // The PlatformDecoderModule interface is used by the MP4Reader to abstract
-// access to the H264 and AAC decoders provided by various platforms. It
-// may be extended to support other codecs in future. Each platform (Windows,
+// access to the H264 and Audio (AAC/MP3) decoders provided by various platforms.
+// It may be extended to support other codecs in future. Each platform (Windows,
 // MacOSX, Linux, B2G etc) must implement a PlatformDecoderModule to provide
 // access to its decoders in order to get decompressed H.264/AAC from the
 // MP4Reader.
@@ -66,6 +66,7 @@ public:
   // This is called on the decode task queue.
   static PlatformDecoderModule* Create();
 
+#ifdef MOZ_EME
   // Creates a PlatformDecoderModule that uses a CDMProxy to decrypt or
   // decrypt-and-decode EME encrypted content. If the CDM only decrypts and
   // does not decode, we create a PDM and use that to create MediaDataDecoders
@@ -75,6 +76,7 @@ public:
                                                  bool aHasAudio,
                                                  bool aHasVideo,
                                                  MediaTaskQueue* aTaskQueue);
+#endif
 
   // Called to shutdown the decoder module and cleanup state. The PDM
   // is deleted immediately after Shutdown() is called. Shutdown() is
@@ -101,7 +103,7 @@ public:
                     MediaTaskQueue* aVideoTaskQueue,
                     MediaDataDecoderCallback* aCallback) = 0;
 
-  // Creates an AAC decoder with the specified properties.
+  // Creates an Audio decoder with the specified properties.
   // Asynchronous decoding of audio should be done in runnables dispatched to
   // aAudioTaskQueue. If the task queue isn't needed, the decoder should
   // not hold a reference to it.
@@ -112,9 +114,14 @@ public:
   // It is safe to store a reference to aConfig.
   // This is called on the decode task queue.
   virtual already_AddRefed<MediaDataDecoder>
-  CreateAACDecoder(const mp4_demuxer::AudioDecoderConfig& aConfig,
-                   MediaTaskQueue* aAudioTaskQueue,
-                   MediaDataDecoderCallback* aCallback) = 0;
+  CreateAudioDecoder(const mp4_demuxer::AudioDecoderConfig& aConfig,
+                     MediaTaskQueue* aAudioTaskQueue,
+                     MediaDataDecoderCallback* aCallback) = 0;
+
+  // An audio decoder module must support AAC by default.
+  // If more audio codec is to be supported, SupportsAudioMimeType will have
+  // to be extended
+  virtual bool SupportsAudioMimeType(const char* aMimeType);
 
   virtual ~PlatformDecoderModule() {}
 
@@ -123,6 +130,7 @@ protected:
   // Caches pref media.fragmented-mp4.use-blank-decoder
   static bool sUseBlankDecoder;
   static bool sFFmpegDecoderEnabled;
+  static bool sGonkDecoderEnabled;
 };
 
 // A callback used by MediaDataDecoder to return output/errors to the
@@ -144,6 +152,10 @@ public:
   virtual void InputExhausted() = 0;
 
   virtual void DrainComplete() = 0;
+
+  virtual void NotifyResourcesStatusChanged() {};
+
+  virtual void ReleaseMediaResources() {};
 };
 
 // MediaDataDecoder is the interface exposed by decoders created by the
@@ -209,6 +221,15 @@ public:
   // returned.
   virtual nsresult Shutdown() = 0;
 
+  // For Codec Resource Management
+  virtual bool IsWaitingMediaResources() {
+    return false;
+  };
+  virtual bool IsDormantNeeded() {
+    return false;
+  };
+  virtual void ReleaseMediaResources() {};
+  virtual void ReleaseDecoder() {};
 };
 
 } // namespace mozilla

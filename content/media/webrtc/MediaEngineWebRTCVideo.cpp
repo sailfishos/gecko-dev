@@ -139,8 +139,9 @@ MediaEngineWebRTCVideoSource::NotifyPull(MediaStreamGraph* aGraph,
   VideoSegment segment;
 
   MonitorAutoLock lock(mMonitor);
-  if (mState != kStarted)
-    return;
+  // B2G does AddTrack, but holds kStarted until the hardware changes state.
+  // So mState could be kReleased here.  We really don't care about the state,
+  // though.
 
   // Note: we're not giving up mImage here
   nsRefPtr<layers::Image> image = mImage;
@@ -308,9 +309,28 @@ MediaEngineWebRTCVideoSource::ChooseCapability(
         // FIXME: expose expected capture delay?
       }
     }
+    // Same resolution, maybe better format or FPS match
+    if (mCapability.width == cap.width && mCapability.height == cap.height) {
+      // FPS too low
+      if (cap.maxFPS < (uint32_t) aPrefs.mMinFPS) {
+        continue;
+      }
+      // Better match
+      if (cap.maxFPS < mCapability.maxFPS) {
+        mCapability = cap;
+      } else if (cap.maxFPS == mCapability.maxFPS) {
+        // Resolution and FPS the same, check format
+        if (cap.rawType == webrtc::RawVideoType::kVideoI420
+          || cap.rawType == webrtc::RawVideoType::kVideoYUY2
+          || cap.rawType == webrtc::RawVideoType::kVideoYV12) {
+          mCapability = cap;
+        }
+      }
+    }
   }
-  LOG(("chose cap %dx%d @%dfps",
-       mCapability.width, mCapability.height, mCapability.maxFPS));
+  LOG(("chose cap %dx%d @%dfps codec %d raw %d",
+       mCapability.width, mCapability.height, mCapability.maxFPS,
+       mCapability.codecType, mCapability.rawType));
 #endif
 }
 

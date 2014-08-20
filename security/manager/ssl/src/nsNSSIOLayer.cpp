@@ -140,7 +140,8 @@ nsNSSSocketInfo::nsNSSSocketInfo(SharedSSLState& aState, uint32_t providerFlags)
     mMACAlgorithmUsed(nsISSLSocketControl::SSL_MAC_UNKNOWN),
     mProviderFlags(providerFlags),
     mSocketCreationTimestamp(TimeStamp::Now()),
-    mPlaintextBytesRead(0)
+    mPlaintextBytesRead(0),
+    mClientCert(nullptr)
 {
   mTLSVersionRange.min = 0;
   mTLSVersionRange.max = 0;
@@ -197,9 +198,32 @@ nsNSSSocketInfo::GetSSLVersionUsed(int16_t* aSSLVersionUsed)
 }
 
 NS_IMETHODIMP
+nsNSSSocketInfo::GetSSLVersionOffered(int16_t* aSSLVersionOffered)
+{
+  *aSSLVersionOffered = mTLSVersionRange.max;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 nsNSSSocketInfo::GetMACAlgorithmUsed(int16_t* aMac)
 {
   *aMac = mMACAlgorithmUsed;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsNSSSocketInfo::GetClientCert(nsIX509Cert** aClientCert)
+{
+  NS_ENSURE_ARG_POINTER(aClientCert);
+  *aClientCert = mClientCert;
+  NS_IF_ADDREF(*aClientCert);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsNSSSocketInfo::SetClientCert(nsIX509Cert* aClientCert)
+{
+  mClientCert = aClientCert;
   return NS_OK;
 }
 
@@ -1213,7 +1237,7 @@ nsSSLIOLayerHelpers::nsSSLIOLayerHelpers()
   : mRenegoUnrestrictedSites(nullptr)
   , mTreatUnsafeNegotiationAsBroken(false)
   , mWarnLevelMissingRFC5746(1)
-  , mTLSIntoleranceInfo(16)
+  , mTLSIntoleranceInfo()
   , mFalseStartRequireNPN(true)
   , mFalseStartRequireForwardSecrecy(false)
   , mutex("nsSSLIOLayerHelpers.mutex")
@@ -1518,7 +1542,7 @@ nsSSLIOLayerHelpers::Init()
     nsSSLPlaintextLayerMethods.recv = PlaintextRecv;
   }
 
-  mRenegoUnrestrictedSites = new nsTHashtable<nsCStringHashKey>(16);
+  mRenegoUnrestrictedSites = new nsTHashtable<nsCStringHashKey>();
 
   nsCString unrestricted_hosts;
   Preferences::GetCString("security.ssl.renego_unrestricted_hosts", &unrestricted_hosts);
@@ -1907,6 +1931,29 @@ ClientAuthDataRunnable::RunOnTargetThread()
   int32_t NumberOfCerts = 0;
   void* wincx = mSocketInfo;
   nsresult rv;
+
+  nsCOMPtr<nsIX509Cert> socketClientCert;
+  mSocketInfo->GetClientCert(getter_AddRefs(socketClientCert));
+
+  // If a client cert preference was set on the socket info, use that and skip
+  // the client cert UI and/or search of the user's past cert decisions.
+  if (socketClientCert) {
+    cert = socketClientCert->GetCert();
+    if (!cert) {
+      goto loser;
+    }
+
+    // Get the private key
+    privKey = PK11_FindKeyByAnyCert(cert.get(), wincx);
+    if (!privKey) {
+      goto loser;
+    }
+
+    *mPRetCert = cert.forget();
+    *mPRetKey = privKey.forget();
+    mRV = SECSuccess;
+    return;
+  }
 
   // create caNameStrings
   arena = PORT_NewArena(DER_DEFAULT_CHUNKSIZE);

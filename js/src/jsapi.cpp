@@ -450,14 +450,6 @@ JS_TypeOfValue(JSContext *cx, HandleValue value)
     return TypeOfValue(value);
 }
 
-JS_PUBLIC_API(const char *)
-JS_GetTypeName(JSContext *cx, JSType type)
-{
-    if ((unsigned)type >= (unsigned)JSTYPE_LIMIT)
-        return nullptr;
-    return TypeStrings[type];
-}
-
 JS_PUBLIC_API(bool)
 JS_StrictlyEqual(JSContext *cx, jsval value1, jsval value2, bool *equal)
 {
@@ -528,19 +520,6 @@ enum InitState { Uninitialized, Running, ShutDown };
 static InitState jsInitState = Uninitialized;
 
 #ifdef DEBUG
-static void
-CheckMessageNumbering()
-{
-    // Assert that the numbers associated with the error names in js.msg are
-    // monotonically increasing.  It's not a compile-time check, but it's
-    // better than nothing.
-    int errorNumber = 0;
-# define MSG_DEF(name, number, count, exception, format)                      \
-    JS_ASSERT(name == errorNumber++);
-# include "js.msg"
-# undef MSG_DEF
-}
-
 static unsigned
 MessageParameterCount(const char *format)
 {
@@ -557,10 +536,8 @@ CheckMessageParameterCounts()
 {
     // Assert that each message format has the correct number of braced
     // parameters.
-# define MSG_DEF(name, number, count, exception, format)                      \
-    JS_BEGIN_MACRO                                                            \
-        JS_ASSERT(MessageParameterCount(format) == count);                    \
-    JS_END_MACRO;
+# define MSG_DEF(name, count, exception, format)           \
+        JS_ASSERT(MessageParameterCount(format) == count);
 # include "js.msg"
 # undef MSG_DEF
 }
@@ -578,7 +555,6 @@ JS_Init(void)
     PRMJ_NowInit();
 
 #ifdef DEBUG
-    CheckMessageNumbering();
     CheckMessageParameterCounts();
 #endif
 
@@ -1092,8 +1068,6 @@ JS_TransplantObject(JSContext *cx, HandleObject origobj, HandleObject target)
     RootedObject newIdentity(cx);
 
     {
-        // Scope to make ~AutoMaybeTouchDeadZones do its GC before the return value is on the stack.
-        AutoMaybeTouchDeadZones agc(cx);
         AutoDisableProxyCheck adpc(cx->runtime());
 
         JSCompartment *destination = target->compartment();
@@ -1177,8 +1151,8 @@ JS_InitStandardClasses(JSContext *cx, HandleObject obj)
 typedef struct JSStdName {
     size_t      atomOffset;     /* offset of atom pointer in JSAtomState */
     JSProtoKey  key;
-    bool isDummy() const { return key == JSProto_Null; };
-    bool isSentinel() const { return key == JSProto_LIMIT; };
+    bool isDummy() const { return key == JSProto_Null; }
+    bool isSentinel() const { return key == JSProto_LIMIT; }
 } JSStdName;
 
 static const JSStdName*
@@ -1437,15 +1411,16 @@ JS_malloc(JSContext *cx, size_t nbytes)
 {
     AssertHeapIsIdle(cx);
     CHECK_REQUEST(cx);
-    return cx->malloc_(nbytes);
+    return static_cast<void *>(cx->runtime()->pod_malloc<uint8_t>(nbytes));
 }
 
 JS_PUBLIC_API(void *)
-JS_realloc(JSContext *cx, void *p, size_t nbytes)
+JS_realloc(JSContext *cx, void *p, size_t oldBytes, size_t newBytes)
 {
     AssertHeapIsIdle(cx);
     CHECK_REQUEST(cx);
-    return cx->realloc_(p, nbytes);
+    return static_cast<void *>(cx->zone()->pod_realloc<uint8_t>(static_cast<uint8_t *>(p), oldBytes,
+                                                                newBytes));
 }
 
 JS_PUBLIC_API(void)
@@ -1484,7 +1459,7 @@ JS_strdup(JSRuntime *rt, const char *s)
 {
     AssertHeapIsIdle(rt);
     size_t n = strlen(s) + 1;
-    void *p = rt->malloc_(n);
+    char *p = rt->pod_malloc<char>(n);
     if (!p)
         return nullptr;
     return static_cast<char*>(js_memcpy(p, s, n));
@@ -1883,13 +1858,15 @@ JS_GC(JSRuntime *rt)
 {
     AssertHeapIsIdle(rt);
     JS::PrepareForFullGC(rt);
-    GC(rt, GC_NORMAL, JS::gcreason::API);
+    rt->gc.gc(GC_NORMAL, JS::gcreason::API);
 }
 
 JS_PUBLIC_API(void)
 JS_MaybeGC(JSContext *cx)
 {
-    MaybeGC(cx);
+    GCRuntime &gc = cx->runtime()->gc;
+    if (!gc.maybeGC(cx->zone()))
+        gc.maybePeriodicFullGC();
 }
 
 JS_PUBLIC_API(void)
@@ -2741,9 +2718,8 @@ JS_AlreadyHasOwnPropertyById(JSContext *cx, HandleObject obj, HandleId id, bool 
         return true;
     }
 
-    // Check for an existing native property on the objct. Be careful not to
+    // Check for an existing native property on the object. Be careful not to
     // call any lookup or resolve hooks.
-
     if (JSID_IS_INT(id)) {
         uint32_t index = JSID_TO_INT(id);
 
@@ -2822,26 +2798,24 @@ DefinePropertyById(JSContext *cx, HandleObject obj, HandleId id, HandleValue val
 {
     PropertyOp getter = get.op;
     StrictPropertyOp setter = set.op;
-    /*
-     * JSPROP_READONLY has no meaning when accessors are involved. Ideally we'd
-     * throw if this happens, but we've accepted it for long enough that it's
-     * not worth trying to make callers change their ways. Just flip it off on
-     * its way through the API layer so that we can enforce this internally.
-     */
+
+    // JSPROP_READONLY has no meaning when accessors are involved. Ideally we'd
+    // throw if this happens, but we've accepted it for long enough that it's
+    // not worth trying to make callers change their ways. Just flip it off on
+    // its way through the API layer so that we can enforce this internally.
     if (attrs & (JSPROP_GETTER | JSPROP_SETTER))
         attrs &= ~JSPROP_READONLY;
 
-    /*
-     * When we use DefineProperty, we need full scriptable Function objects rather
-     * than JSNatives. However, we might be pulling this property descriptor off
-     * of something with JSNative property descriptors. If we are, wrap them in
-     * JS Function objects.
-     */
+    // When we use DefineProperty, we need full scriptable Function objects rather
+    // than JSNatives. However, we might be pulling this property descriptor off
+    // of something with JSNative property descriptors. If we are, wrap them in
+    // JS Function objects.
     if (attrs & JSPROP_NATIVE_ACCESSORS) {
         JS_ASSERT(!(attrs & (JSPROP_GETTER | JSPROP_SETTER)));
         JSFunction::Flags zeroFlags = JSAPIToJSFunctionFlags(0);
-        // We can't just use JS_NewFunctionById here because it
-        // assumes a string id.
+
+        // We can't just use JS_NewFunctionById here because it assumes a
+        // string id.
         RootedAtom atom(cx, JSID_IS_ATOM(id) ? JSID_TO_ATOM(id) : nullptr);
         attrs &= ~JSPROP_NATIVE_ACCESSORS;
         if (getter) {
@@ -4358,9 +4332,9 @@ JS::OwningCompileOptions::copy(JSContext *cx, const ReadOnlyCompileOptions &rhs)
     setElementAttributeName(rhs.elementAttributeName());
     setIntroductionScript(rhs.introductionScript());
 
-    return (setFileAndLine(cx, rhs.filename(), rhs.lineno) &&
-            setSourceMapURL(cx, rhs.sourceMapURL()) &&
-            setIntroducerFilename(cx, rhs.introducerFilename()));
+    return setFileAndLine(cx, rhs.filename(), rhs.lineno) &&
+           setSourceMapURL(cx, rhs.sourceMapURL()) &&
+           setIntroducerFilename(cx, rhs.introducerFilename());
 }
 
 bool
@@ -4818,7 +4792,7 @@ Evaluate(JSContext *cx, HandleObject obj, const ReadOnlyCompileOptions &optionsA
     if (script->length() > LARGE_SCRIPT_LENGTH) {
         script = nullptr;
         PrepareZoneForGC(cx->zone());
-        GC(cx->runtime(), GC_NORMAL, JS::gcreason::FINISH_LARGE_EVALUTE);
+        cx->runtime()->gc.gc(GC_NORMAL, JS::gcreason::FINISH_LARGE_EVALUATE);
     }
 
     return result;

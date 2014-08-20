@@ -35,10 +35,10 @@
 
   // Feedback API client configured to send data to the stage input server,
   // which is available at https://input.allizom.org
-  var stageFeedbackApiClient = new loop.FeedbackAPIClient({
-    baseUrl: "https://input.allizom.org/api/v1/feedback",
-    product: "Loop"
-  });
+  var stageFeedbackApiClient = new loop.FeedbackAPIClient(
+    "https://input.allizom.org/api/v1/feedback", {
+      product: "Loop"
+    });
 
   var Example = React.createClass({displayName: 'Example',
     render: function() {
@@ -93,8 +93,14 @@
       return (
         ShowCase(null, 
           Section({name: "PanelView"}, 
-            Example({summary: "332px wide", dashed: "true", style: {width: "332px"}}, 
+            React.DOM.p({className: "note"}, 
+              React.DOM.strong(null, "Note:"), " 332px wide."
+            ), 
+            Example({summary: "Pending call url retrieval", dashed: "true", style: {width: "332px"}}, 
               PanelView(null)
+            ), 
+            Example({summary: "Call URL retrieved", dashed: "true", style: {width: "332px"}}, 
+              PanelView({callUrl: "http://invalid.example.url/"})
             )
           ), 
 

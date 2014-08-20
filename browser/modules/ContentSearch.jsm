@@ -94,6 +94,17 @@ this.ContentSearch = {
     Services.obs.addObserver(this, "browser-search-engine-modified", false);
   },
 
+  /**
+   * Focuses the search input in the page with the given message manager.
+   * @param  messageManager
+   *         The MessageManager object of the selected browser.
+   */
+  focusInput: function (messageManager) {
+    messageManager.sendAsyncMessage(OUTBOUND_MESSAGE, {
+      type: "FocusInput"
+    });
+  },
+
   receiveMessage: function (msg) {
     // Add a temporary event handler that exists only while the message is in
     // the event queue.  If the message's source docshell changes browsers in
@@ -183,7 +194,19 @@ this.ContentSearch = {
 
   _onMessageManageEngines: function (msg, data) {
     let browserWin = msg.target.ownerDocument.defaultView;
-    browserWin.BrowserSearch.searchBar.openManager(null);
+    let wm = Components.classes["@mozilla.org/appshell/window-mediator;1"].
+             getService(Components.interfaces.nsIWindowMediator);
+    let window = wm.getMostRecentWindow("Browser:SearchManager");
+
+    if (window) {
+      window.focus()
+    }
+    else {
+      browserWin.setTimeout(function () {
+        browserWin.openDialog("chrome://browser/content/search/engineManager.xul",
+          "_blank", "chrome,dialog,modal,centerscreen,resizable");
+      }, 0);
+    }
     return Promise.resolve();
   },
 

@@ -387,14 +387,6 @@ toolbarbutton.bookmark-item > menupopup {
   opacity: 0.7;
 }
 
-@media (min-resolution: 2dppx) {
-  .bookmark-item > .toolbarbutton-icon,
-  .bookmark-item > .menu-iconic-left > .menu-iconic-icon,
-  #personal-bookmarks[cui-areatype="toolbar"] > #bookmarks-toolbar-placeholder > .toolbarbutton-icon {
-    image-rendering: -moz-crisp-edges;
-  }
-}
-
 #bookmarks-toolbar-placeholder {
   list-style-image: url("chrome://browser/skin/places/bookmarksToolbar.png") !important;
 }
@@ -1321,6 +1313,11 @@ toolbar .toolbarbutton-1 > .toolbarbutton-menubutton-dropmarker > .dropmarker-ic
     width: 16px;
   }
 
+  #add-share-provider {
+    list-style-image: url(chrome://browser/skin/menuPanel-small@2x.png);
+    -moz-image-region: rect(0px, 192px, 32px, 160px);
+  }
+
   #loop-call-button > .toolbarbutton-badge-container {
     list-style-image: url("chrome://browser/skin/loop/toolbar@2x.png");
     -moz-image-region: rect(0, 36px, 36px, 0);
@@ -1352,6 +1349,41 @@ toolbar .toolbarbutton-1 > .toolbarbutton-menubutton-dropmarker > .dropmarker-ic
 
   #loop-call-button:not([disabled="true"])[state="active"]:-moz-any(:hover,:hover:active,[open]) > .toolbarbutton-badge-container {
     -moz-image-region: rect(0, 252px, 36px, 216px);
+  }
+
+  #loop-call-button[cui-areatype="menu-panel"] > .toolbarbutton-badge-container,
+  toolbarpaletteitem[place="palette"] > #loop-call-button > .toolbarbutton-badge-container {
+    list-style-image: url(chrome://browser/skin/loop/menuPanel@2x.png);
+    -moz-image-region: rect(0, 64px, 64px, 0);
+  }
+
+  /* Make sure that the state icons are not shown in the customization palette. */
+  toolbarpaletteitem[place="palette"] > #loop-call-button > .toolbarbutton-badge-container {
+    -moz-image-region: rect(0, 64px, 64px, 0) !important;
+  }
+
+  #loop-call-button[cui-areatype="menu-panel"][disabled="true"] > .toolbarbutton-badge-container {
+    -moz-image-region: rect(0, 128px, 64px, 64px);
+  }
+
+  #loop-call-button[cui-areatype="menu-panel"]:not([disabled="true"])[state="error"] > .toolbarbutton-badge-container {
+    -moz-image-region: rect(0, 192px, 64px, 128px);
+  }
+
+  #loop-call-button[cui-areatype="menu-panel"]:not([disabled="true"])[state="action"] > .toolbarbutton-badge-container {
+    -moz-image-region: rect(0, 256px, 64px, 192px);
+  }
+
+  #loop-call-button[cui-areatype="menu-panel"]:not([disabled="true"])[state="action"]:-moz-any(:hover,:hover:active,[open]) > .toolbarbutton-badge-container {
+    -moz-image-region: rect(0, 320px, 64px, 256px);
+  }
+
+  #loop-call-button[cui-areatype="menu-panel"]:not([disabled="true"])[state="active"] > .toolbarbutton-badge-container {
+    -moz-image-region: rect(0, 384px, 64px, 320px);
+  }
+
+  #loop-call-button[cui-areatype="menu-panel"]:not([disabled="true"])[state="active"]:-moz-any(:hover,:hover:active,[open]) > .toolbarbutton-badge-container {
+    -moz-image-region: rect(0, 448px, 64px, 384px);
   }
 }
 
@@ -2763,7 +2795,6 @@ toolbarbutton.chevron > .toolbarbutton-menu-dropmarker {
 
   .tab-icon-image {
     list-style-image: url("chrome://mozapps/skin/places/defaultFavicon@2x.png");
-    image-rendering: -moz-crisp-edges;
   }
 
   .tab-throbber[busy] {

@@ -64,8 +64,7 @@ CheckPublicKeySize(Input subjectPublicKeyInfo,
     case rsaKey:
       // TODO(bug 622859): Enforce a minimum of 2048 bits for EV certs.
       if (SECKEY_PublicKeyStrengthInBits(publicKey.get()) < MINIMUM_NON_ECC_BITS) {
-        // TODO(bug 1031946): Create a new error code.
-        return Result::ERROR_INVALID_KEY;
+        return Result::ERROR_INADEQUATE_KEY_SIZE;
       }
       break;
     case nullKey:
@@ -92,12 +91,6 @@ Result
 VerifySignedData(const SignedDataWithSignature& sd,
                  Input subjectPublicKeyInfo, void* pkcs11PinArg)
 {
-  // See bug 921585.
-  if (sd.data.GetLength() >
-        static_cast<unsigned int>(std::numeric_limits<int>::max())) {
-    return Result::FATAL_ERROR_INVALID_ARGS;
-  }
-
   SECOidTag pubKeyAlg;
   SECOidTag digestAlg;
   switch (sd.algorithm) {
@@ -153,8 +146,12 @@ VerifySignedData(const SignedDataWithSignature& sd,
     return rv;
   }
 
-  // The static_cast is safe according to the check above that references
-  // bug 921585.
+  // The static_cast is safe as long as the length of the data in sd.data can
+  // fit in an int. Right now that length is stored as a uint16_t, so this
+  // works. In the future this may change, hence the assertion.
+  // See also bug 921585.
+  static_assert(sizeof(decltype(sd.data.GetLength())) < sizeof(int),
+                "sd.data.GetLength() must fit in an int");
   SECItem dataSECItem(UnsafeMapInputToSECItem(sd.data));
   SECItem signatureSECItem(UnsafeMapInputToSECItem(sd.signature));
   SECStatus srv = VFY_VerifyDataDirect(dataSECItem.data,
@@ -233,6 +230,8 @@ DigestBuf(Input item, /*out*/ uint8_t* digestBuf, size_t digestBufLen)
     MAP(Result::ERROR_INVALID_KEY, SEC_ERROR_INVALID_KEY) \
     MAP(Result::ERROR_UNSUPPORTED_KEYALG, SEC_ERROR_UNSUPPORTED_KEYALG) \
     MAP(Result::ERROR_EXPIRED_ISSUER_CERTIFICATE, SEC_ERROR_EXPIRED_ISSUER_CERTIFICATE) \
+    MAP(Result::ERROR_CA_CERT_USED_AS_END_ENTITY, MOZILLA_PKIX_ERROR_CA_CERT_USED_AS_END_ENTITY) \
+    MAP(Result::ERROR_INADEQUATE_KEY_SIZE, MOZILLA_PKIX_ERROR_INADEQUATE_KEY_SIZE) \
     MAP(Result::FATAL_ERROR_INVALID_ARGS, SEC_ERROR_INVALID_ARGS) \
     MAP(Result::FATAL_ERROR_INVALID_STATE, PR_INVALID_STATE_ERROR) \
     MAP(Result::FATAL_ERROR_LIBRARY_FAILURE, SEC_ERROR_LIBRARY_FAILURE) \
@@ -299,7 +298,14 @@ RegisterErrorTable()
     { "MOZILLA_PKIX_ERROR_KEY_PINNING_FAILURE",
       "The server uses key pinning (HPKP) but no trusted certificate chain "
       "could be constructed that matches the pinset. Key pinning violations "
-      "cannot be overridden." }
+      "cannot be overridden." },
+    { "MOZILLA_PKIX_ERROR_CA_CERT_USED_AS_END_ENTITY",
+      "The server uses a certificate with a basic constraints extension "
+      "identifying it as a certificate authority. For a properly-issued "
+      "certificate, this should not be the case." },
+    { "MOZILLA_PKIX_ERROR_INADEQUATE_KEY_SIZE",
+      "The server presented a certificate with a key size that is too small "
+      "to establish a secure connection." }
   };
 
   static const struct PRErrorTable ErrorTable = {

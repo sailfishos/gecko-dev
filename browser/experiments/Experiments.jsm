@@ -35,15 +35,6 @@ XPCOMUtils.defineLazyModuleGetter(this, "CommonUtils",
 XPCOMUtils.defineLazyModuleGetter(this, "Metrics",
                                   "resource://gre/modules/Metrics.jsm");
 
-// CertUtils.jsm doesn't expose a single "CertUtils" object like a normal .jsm
-// would.
-XPCOMUtils.defineLazyGetter(this, "CertUtils",
-  function() {
-    var mod = {};
-    Cu.import("resource://gre/modules/CertUtils.jsm", mod);
-    return mod;
-  });
-
 XPCOMUtils.defineLazyServiceGetter(this, "gCrashReporter",
                                    "@mozilla.org/xre/app-info;1",
                                    "nsICrashReporter");
@@ -63,9 +54,7 @@ const PREF_LOGGING              = "logging";
 const PREF_LOGGING_LEVEL        = PREF_LOGGING + ".level"; // experiments.logging.level
 const PREF_LOGGING_DUMP         = PREF_LOGGING + ".dump"; // experiments.logging.dump
 const PREF_MANIFEST_URI         = "manifest.uri"; // experiments.logging.manifest.uri
-const PREF_MANIFEST_CHECKCERT   = "manifest.cert.checkAttributes"; // experiments.manifest.cert.checkAttributes
-const PREF_MANIFEST_REQUIREBUILTIN = "manifest.cert.requireBuiltin"; // experiments.manifest.cert.requireBuiltin
-const PREF_FORCE_SAMPLE = "force-sample-value"; // experiments.force-sample-value
+const PREF_FORCE_SAMPLE         = "force-sample-value"; // experiments.force-sample-value
 
 const PREF_HEALTHREPORT_ENABLED = "datareporting.healthreport.service.enabled";
 
@@ -74,6 +63,8 @@ const PREF_TELEMETRY_ENABLED    = "enabled";
 
 const URI_EXTENSION_STRINGS     = "chrome://mozapps/locale/extensions/extensions.properties";
 const STRING_TYPE_NAME          = "type.%ID%.name";
+
+const CACHE_WRITE_RETRY_DELAY_SEC = 60 * 3;
 
 const TELEMETRY_LOG = {
   // log(key, [kind, experimentId, details])
@@ -342,9 +333,18 @@ function AlreadyShutdownError(message="already shut down") {
   this.message = message;
   this.stack = error.stack;
 }
-
 AlreadyShutdownError.prototype = Object.create(Error.prototype);
 AlreadyShutdownError.prototype.constructor = AlreadyShutdownError;
+
+function CacheWriteError(message="Error writing cache file") {
+  Error.call(this, message);
+  let error = new Error();
+  this.name = "CacheWriteError";
+  this.message = message;
+  this.stack = error.stack;
+}
+CacheWriteError.prototype = Object.create(Error.prototype);
+CacheWriteError.prototype.constructor = CacheWriteError;
 
 /**
  * Manages the experiments and provides an interface to control them.
@@ -701,6 +701,7 @@ Experiments.Experiments.prototype = {
       throw new Error("Experiment not found");
     }
     e.branch = String(branchstr);
+    this._log.trace("setExperimentBranch(" + id + ", " + e.branch + ") _dirty=" + this._dirty);
     this._dirty = true;
     Services.obs.notifyObservers(null, EXPERIMENTS_CHANGED_TOPIC, null);
     yield this._run();
@@ -777,6 +778,8 @@ Experiments.Experiments.prototype = {
       this._mainTask = Task.spawn(function*() {
         try {
           yield this._main();
+	} catch (e if e instanceof CacheWriteError) {
+	  // In this case we want to reschedule
         } catch (e) {
           this._log.error("_main caught error: " + e);
           return;
@@ -812,7 +815,7 @@ Experiments.Experiments.prototype = {
       // If somebody called .updateManifest() or disableExperiment()
       // while we were running, go again right now.
     }
-    while (this._refresh || this._terminateReason);
+    while (this._refresh || this._terminateReason || this._dirty);
   },
 
   _loadManifest: function*() {
@@ -964,20 +967,6 @@ Experiments.Experiments.prototype = {
         return;
       }
 
-      let certs = null;
-      if (gPrefs.get(PREF_MANIFEST_CHECKCERT, true)) {
-        certs = CertUtils.readCertPrefs(PREF_BRANCH + "manifest.certs.");
-      }
-      try {
-        let allowNonBuiltin = !gPrefs.get(PREF_MANIFEST_REQUIREBUILTIN, true);
-        CertUtils.checkCert(xhr.channel, allowNonBuiltin, certs);
-      }
-      catch (e) {
-        log.error("manifest fetch failed certificate checks", [e]);
-        deferred.reject(new Error("Experiments - manifest fetch failed certificate checks: " + e));
-        return;
-      }
-
       deferred.resolve(xhr.responseText);
     };
 
@@ -1017,7 +1006,7 @@ Experiments.Experiments.prototype = {
       // We failed to write the cache, it's still dirty.
       this._dirty = true;
       this._log.error("_saveToCache failed and caught error: " + e);
-      return;
+      throw new CacheWriteError();
     }
 
     this._log.debug("_saveToCache saved to " + path);
@@ -1332,6 +1321,10 @@ Experiments.Experiments.prototype = {
 
     let time = null;
     let now = this._policy.now().getTime();
+    if (this._dirty) {
+      // If we failed to write the cache, we should try again periodically
+      time = now + 1000 * CACHE_WRITE_RETRY_DELAY_SEC;
+    }
 
     for (let [id, experiment] of this._experiments) {
       let scheduleTime = experiment.getScheduleTime();

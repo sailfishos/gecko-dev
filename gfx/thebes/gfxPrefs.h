@@ -129,7 +129,7 @@ private:
   // a method accessing a pref already exists. Just add yours in the list.
 
   // The apz prefs are explained in AsyncPanZoomController.cpp
-  DECL_GFX_PREF(Live, "apz.allow-checkerboarding",             APZAllowCheckerboarding, bool, true);
+  DECL_GFX_PREF(Live, "apz.allow_checkerboarding",             APZAllowCheckerboarding, bool, true);
   DECL_GFX_PREF(Live, "apz.asyncscroll.throttle",              APZAsyncScrollThrottleTime, int32_t, 100);
   DECL_GFX_PREF(Live, "apz.asyncscroll.timeout",               APZAsyncScrollTimeout, int32_t, 300);
   DECL_GFX_PREF(Live, "apz.axis_lock_mode",                    APZAxisLockMode, int32_t, 0);
@@ -225,6 +225,7 @@ private:
   DECL_GFX_PREF(Once, "layers.enable-tiles",                   LayersTilesEnabled, bool, false);
   DECL_GFX_PREF(Once, "layers.simple-tiles",                   LayersUseSimpleTiles, bool, false);
   DECL_GFX_PREF(Once, "layers.force-per-tile-drawing",         PerTileDrawing, bool, false);
+  DECL_GFX_PREF(Once, "layers.tiled-drawtarget.enabled",       TiledDrawTargetEnabled, bool, false);
   // We allow for configurable and rectangular tile size to avoid wasting memory on devices whose
   // screen size does not align nicely to the default tile size. Although layers can be any size,
   // they are often the same size as the screen, especially for width.
@@ -249,6 +250,8 @@ private:
   DECL_GFX_PREF(Once, "layers.progressive-paint",              UseProgressiveTilePainting, bool, false);
   DECL_GFX_PREF(Once, "layers.scroll-graph",                   LayersScrollGraph, bool, false);
   DECL_GFX_PREF(Once, "layers.uniformity-info",                UniformityInfo, bool, false);
+  DECL_GFX_PREF(Live, "layers.invert",                         Invert, bool, false);
+  DECL_GFX_PREF(Live, "layers.grayscale",                      Grayscale, bool, false);
 
   DECL_GFX_PREF(Live, "layout.css.scroll-behavior.damping-ratio", ScrollBehaviorDampingRatio, float, 1.0f);
   DECL_GFX_PREF(Live, "layout.css.scroll-behavior.enabled",    ScrollBehaviorEnabled, bool, false);

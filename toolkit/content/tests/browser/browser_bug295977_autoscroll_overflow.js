@@ -112,11 +112,11 @@ function test()
       // autoscrollLoop incrementally scrolls during each animation frame, but
       // due to how its calculations work, when a frame is very close to the
       // previous frame, no scrolling may actually occur during that frame.
-      // After 20ms's worth of frames, timeCompensation will be 1, making it
+      // After 100ms's worth of frames, timeCompensation will be 1, making it
       // more likely that the accumulated scroll in autoscrollLoop will be >= 1,
       // although it also depends on acceleration, which here in this test
       // should be > 1 due to how it synthesizes mouse events below.
-      if (timeCompensation < 1) {
+      if (timeCompensation < 5) {
         window.mozRequestAnimationFrame(checkScroll);
         return;
       }
@@ -197,13 +197,18 @@ function test()
   }
 
   function endTest() {
-    // remove 2 tabs that were opened by middle-click on links
-    gBrowser.removeTab(gBrowser.tabs[gBrowser.visibleTabs.length - 1]);
-    gBrowser.removeTab(gBrowser.tabs[gBrowser.visibleTabs.length - 1]);
+    registerCleanupFunction(function() {
+      // restore the changed prefs
+      if (Services.prefs.prefHasUserValue(kPrefName_AutoScroll))
+        Services.prefs.clearUserPref(kPrefName_AutoScroll);
+      if (Services.prefs.prefHasUserValue("middlemouse.paste"))
+        Services.prefs.clearUserPref("middlemouse.paste");
 
-    // restore the changed prefs
-    if (Services.prefs.prefHasUserValue(kPrefName_AutoScroll))
-      Services.prefs.clearUserPref(kPrefName_AutoScroll);
+      // remove 2 tabs that were opened by middle-click on links
+      while (gBrowser.visibleTabs.length > 1) {
+        gBrowser.removeTab(gBrowser.visibleTabs[gBrowser.visibleTabs.length - 1]);
+      }
+    });
 
     // waitForFocus() fixes a failure in the next test if the latter runs too soon.
     waitForFocus(finish);

@@ -14,6 +14,8 @@
 namespace js {
 namespace jit {
 
+class MDefinition;
+
 static MOZ_CONSTEXPR_VAR Register StackPointer = { 0 };
 static MOZ_CONSTEXPR_VAR Register FramePointer = { 0 };
 static MOZ_CONSTEXPR_VAR Register ReturnReg = { 0 };
@@ -151,6 +153,8 @@ class MacroAssemblerNone : public Assembler
     void trace(JSTracer *) { MOZ_CRASH(); }
     static void TraceJumpRelocations(JSTracer *, JitCode *, CompactBufferReader &) { MOZ_CRASH(); }
     static void TraceDataRelocations(JSTracer *, JitCode *, CompactBufferReader &) { MOZ_CRASH(); }
+
+    static bool SupportsFloatingPoint() { return false; }
 
     void executableCopy(void *) { MOZ_CRASH(); }
     void copyJumpRelocationTable(uint8_t *) { MOZ_CRASH(); }

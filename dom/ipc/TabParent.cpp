@@ -560,7 +560,7 @@ TabParent::Show(const nsIntSize& size)
 }
 
 void
-TabParent::UpdateDimensions(const nsRect& rect, const nsIntSize& size)
+TabParent::UpdateDimensions(const nsIntRect& rect, const nsIntSize& size)
 {
   if (mIsDestroyed) {
     return;
@@ -714,7 +714,7 @@ PContentPermissionRequestParent*
 TabParent::AllocPContentPermissionRequestParent(const InfallibleTArray<PermissionRequest>& aRequests,
                                                 const IPC::Principal& aPrincipal)
 {
-  return CreateContentPermissionRequestParent(aRequests, mFrameElement, aPrincipal);
+  return nsContentPermissionUtils::CreateContentPermissionRequestParent(aRequests, mFrameElement, aPrincipal);
 }
 
 bool

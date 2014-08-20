@@ -63,7 +63,7 @@ CheckValidity(Input encodedValidity, Time time)
 // bit and bit 7 is the least significant bit.
 inline uint8_t KeyUsageToBitMask(KeyUsage keyUsage)
 {
-  PR_ASSERT(keyUsage != KeyUsage::noParticularKeyUsageRequired);
+  assert(keyUsage != KeyUsage::noParticularKeyUsageRequired);
   return 0x80u >> static_cast<uint8_t>(keyUsage);
 }
 
@@ -194,9 +194,9 @@ CertPolicyId::IsAnyPolicy() const {
   if (this == &CertPolicyId::anyPolicy) {
     return true;
   }
-  return numBytes == PR_ARRAY_SIZE(::mozilla::pkix::anyPolicy) &&
+  return numBytes == sizeof(::mozilla::pkix::anyPolicy) &&
          !memcmp(bytes, ::mozilla::pkix::anyPolicy,
-                 PR_ARRAY_SIZE(::mozilla::pkix::anyPolicy));
+                 sizeof(::mozilla::pkix::anyPolicy));
 }
 
 // certificatePolicies ::= SEQUENCE SIZE (1..MAX) OF PolicyInformation
@@ -362,17 +362,10 @@ CheckBasicConstraints(EndEntityOrCA endEntityOrCA,
     // CA certificates are not trusted as EE certs.
 
     if (isCA) {
-      // TODO(bug 1040446): We use Result::ERROR_CA_CERT_INVALID here so we can
-      // distinguish this error from other errors, given that NSS does not have
-      // a "CA cert used as end-entity" error code since it doesn't have such a
-      // prohibition. We should add such an error code and stop abusing
-      // Result::ERROR_CA_CERT_INVALID this way.
-      //
-      // Note, in particular, that this check prevents a delegated OCSP
-      // response signing certificate with the CA bit from successfully
-      // validating when we check it from pkixocsp.cpp, which is a good thing.
-      //
-      return Result::ERROR_CA_CERT_INVALID;
+      // Note that this check prevents a delegated OCSP response signing
+      // certificate with the CA bit from successfully validating when we check
+      // it from pkixocsp.cpp, which is a good thing.
+      return Result::ERROR_CA_CERT_USED_AS_END_ENTITY;
     }
 
     return Success;
@@ -524,12 +517,12 @@ MatchEKU(Reader& value, KeyPurposeId requiredEKU,
         break;
 
       case KeyPurposeId::anyExtendedKeyUsage:
-        PR_NOT_REACHED("anyExtendedKeyUsage should start with found==true");
-        return Result::FATAL_ERROR_LIBRARY_FAILURE;
+        return NotReached("anyExtendedKeyUsage should start with found==true",
+                          Result::FATAL_ERROR_LIBRARY_FAILURE);
 
       default:
-        PR_NOT_REACHED("unrecognized EKU");
-        return Result::FATAL_ERROR_LIBRARY_FAILURE;
+        return NotReached("unrecognized EKU",
+                          Result::FATAL_ERROR_LIBRARY_FAILURE);
     }
   }
 

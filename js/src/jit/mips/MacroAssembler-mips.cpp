@@ -829,7 +829,7 @@ MacroAssemblerMIPS::ma_sw(Imm32 imm, Address address)
     ma_li(ScratchRegister, imm);
 
     if (Imm16::IsInSignedRange(address.offset)) {
-        as_sw(ScratchRegister, address.base, Imm16(address.offset).encode());
+        as_sw(ScratchRegister, address.base, address.offset);
     } else {
         MOZ_ASSERT(address.base != SecondScratchReg);
 
@@ -1362,7 +1362,7 @@ void
 MacroAssemblerMIPS::ma_ls(FloatRegister ft, Address address)
 {
     if (Imm16::IsInSignedRange(address.offset)) {
-        as_ls(ft, address.base, Imm16(address.offset).encode());
+        as_ls(ft, address.base, address.offset);
     } else {
         MOZ_ASSERT(address.base != ScratchRegister);
         ma_li(ScratchRegister, Imm32(address.offset));
@@ -1379,8 +1379,8 @@ MacroAssemblerMIPS::ma_ld(FloatRegister ft, Address address)
 
     int32_t off2 = address.offset + TAG_OFFSET;
     if (Imm16::IsInSignedRange(address.offset) && Imm16::IsInSignedRange(off2)) {
-        as_ls(ft, address.base, Imm16(address.offset).encode());
-        as_ls(getOddPair(ft), address.base, Imm16(off2).encode());
+        as_ls(ft, address.base, address.offset);
+        as_ls(getOddPair(ft), address.base, off2);
     } else {
         ma_li(ScratchRegister, Imm32(address.offset));
         as_addu(ScratchRegister, address.base, ScratchRegister);
@@ -1394,8 +1394,8 @@ MacroAssemblerMIPS::ma_sd(FloatRegister ft, Address address)
 {
     int32_t off2 = address.offset + TAG_OFFSET;
     if (Imm16::IsInSignedRange(address.offset) && Imm16::IsInSignedRange(off2)) {
-        as_ss(ft, address.base, Imm16(address.offset).encode());
-        as_ss(getOddPair(ft), address.base, Imm16(off2).encode());
+        as_ss(ft, address.base, address.offset);
+        as_ss(getOddPair(ft), address.base, off2);
     } else {
         ma_li(ScratchRegister, Imm32(address.offset));
         as_addu(ScratchRegister, address.base, ScratchRegister);
@@ -1415,7 +1415,7 @@ void
 MacroAssemblerMIPS::ma_ss(FloatRegister ft, Address address)
 {
     if (Imm16::IsInSignedRange(address.offset)) {
-        as_ss(ft, address.base, Imm16(address.offset).encode());
+        as_ss(ft, address.base, address.offset);
     } else {
         ma_li(ScratchRegister, Imm32(address.offset));
         as_addu(ScratchRegister, address.base, ScratchRegister);
@@ -1561,8 +1561,9 @@ MacroAssemblerMIPSCompat::freeStack(Register amount)
 }
 
 void
-MacroAssembler::PushRegsInMask(RegisterSet set)
+MacroAssembler::PushRegsInMask(RegisterSet set, FloatRegisterSet simdSet)
 {
+    JS_ASSERT(!SupportsSimd && simdSet.size() == 0);
     int32_t diffF = set.fpus().size() * sizeof(double);
     int32_t diffG = set.gprs().size() * sizeof(intptr_t);
 
@@ -1593,8 +1594,9 @@ MacroAssembler::PushRegsInMask(RegisterSet set)
 }
 
 void
-MacroAssembler::PopRegsInMaskIgnore(RegisterSet set, RegisterSet ignore)
+MacroAssembler::PopRegsInMaskIgnore(RegisterSet set, RegisterSet ignore, FloatRegisterSet simdSet)
 {
+    JS_ASSERT(!SupportsSimd && simdSet.size() == 0);
     int32_t diffG = set.gprs().size() * sizeof(intptr_t);
     int32_t diffF = set.fpus().size() * sizeof(double);
     const int32_t reservedG = diffG;
@@ -2808,6 +2810,63 @@ MacroAssemblerMIPSCompat::moveValue(const Value &val, const ValueOperand &dest)
     moveValue(val, dest.typeReg(), dest.payloadReg());
 }
 
+/* There are 3 paths trough backedge jump. They are listed here in the order
+ * in which instructions are executed.
+ *  - The short jump is simple:
+ *     b offset            # Jumps directly to target.
+ *     lui at, addr1_hi    # In delay slot. Don't care about 'at' here.
+ *
+ *  - The long jump to loop header:
+ *      b label1
+ *      lui at, addr1_hi   # In delay slot. We use the value in 'at' later.
+ *    label1:
+ *      ori at, addr1_lo
+ *      jr at
+ *      lui at, addr2_hi   # In delay slot. Don't care about 'at' here.
+ *
+ *  - The long jump to interrupt loop:
+ *      b label2
+ *      lui at, addr1_hi   # In delay slot. Don't care about 'at' here.
+ *    label2:
+ *      lui at, addr2_hi
+ *      ori at, addr2_lo
+ *      jr at
+ *      nop                # In delay slot.
+ *
+ * The backedge is done this way to avoid patching lui+ori pair while it is
+ * being executed. Look also at jit::PatchBackedge().
+ */
+CodeOffsetJump
+MacroAssemblerMIPSCompat::backedgeJump(RepatchLabel *label)
+{
+    // Only one branch per label.
+    MOZ_ASSERT(!label->used());
+    uint32_t dest = label->bound() ? label->offset() : LabelBase::INVALID_OFFSET;
+    BufferOffset bo = nextOffset();
+    label->use(bo.getOffset());
+
+    // Backedges are short jumps when bound, but can become long when patched.
+    m_buffer.ensureSpace(8 * sizeof(uint32_t));
+    if (label->bound()) {
+        int32_t offset = label->offset() - bo.getOffset();
+        MOZ_ASSERT(BOffImm16::IsInRange(offset));
+        as_b(BOffImm16(offset));
+    } else {
+        // Jump to "label1" by default to jump to the loop header.
+        as_b(BOffImm16(2 * sizeof(uint32_t)));
+    }
+    // No need for nop here. We can safely put next instruction in delay slot.
+    ma_liPatchable(ScratchRegister, Imm32(dest));
+    MOZ_ASSERT(nextOffset().getOffset() - bo.getOffset() == 3 * sizeof(uint32_t));
+    as_jr(ScratchRegister);
+    // No need for nop here. We can safely put next instruction in delay slot.
+    ma_liPatchable(ScratchRegister, Imm32(dest));
+    as_jr(ScratchRegister);
+    as_nop();
+    MOZ_ASSERT(nextOffset().getOffset() - bo.getOffset() == 8 * sizeof(uint32_t));
+    return CodeOffsetJump(bo.getOffset());
+}
+
 CodeOffsetJump
 MacroAssemblerMIPSCompat::jumpWithPatch(RepatchLabel *label)
 {
@@ -2823,7 +2882,6 @@ MacroAssemblerMIPSCompat::jumpWithPatch(RepatchLabel *label)
     as_nop();
     return CodeOffsetJump(bo.getOffset());
 }
-
 
 /////////////////////////////////////////////////////////////////
 // X86/X64-common/ARM/MIPS interface.

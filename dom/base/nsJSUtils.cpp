@@ -124,7 +124,7 @@ nsJSUtils::ReportPendingException(JSContext *aContext)
         // The SafeJSContext has no default object associated with it.
         MOZ_ASSERT(NS_IsMainThread());
         MOZ_ASSERT(aContext == nsContentUtils::GetSafeJSContext());
-        scope = xpc::GetSafeJSContextGlobal();
+        scope = xpc::UnprivilegedJunkScope(); // Usage approved by bholley
       }
       JSAutoCompartment ac(aContext, scope);
       JS_ReportPendingException(aContext);
@@ -227,7 +227,7 @@ nsJSUtils::EvaluateString(JSContext* aCx,
   if (!aEvaluateOptions.reportUncaught) {
     // We need to prevent AutoLastFrameCheck from reporting and clearing
     // any pending exceptions.
-    dontReport.construct(aCx);
+    dontReport.emplace(aCx);
   }
 
   // Scope the JSAutoCompartment so that we can later wrap the return value

@@ -14,9 +14,15 @@
 #ifdef MOZ_APPLEMEDIA
 #include "AppleDecoderModule.h"
 #endif
+#ifdef MOZ_GONK_MEDIACODEC
+#include "GonkDecoderModule.h"
+#endif
+
 #include "mozilla/Preferences.h"
+#ifdef MOZ_EME
 #include "EMEDecoderModule.h"
 #include "mozilla/CDMProxy.h"
+#endif
 #include "SharedThreadPool.h"
 #include "MediaTaskQueue.h"
 
@@ -26,6 +32,7 @@ extern PlatformDecoderModule* CreateBlankDecoderModule();
 
 bool PlatformDecoderModule::sUseBlankDecoder = false;
 bool PlatformDecoderModule::sFFmpegDecoderEnabled = false;
+bool PlatformDecoderModule::sGonkDecoderEnabled = false;
 
 /* static */
 void
@@ -42,6 +49,10 @@ PlatformDecoderModule::Init()
                                "media.fragmented-mp4.use-blank-decoder");
   Preferences::AddBoolVarCache(&sFFmpegDecoderEnabled,
                                "media.fragmented-mp4.ffmpeg.enabled", false);
+#ifdef MOZ_GONK_MEDIACODEC
+  Preferences::AddBoolVarCache(&sGonkDecoderEnabled,
+                               "media.fragmented-mp4.gonk.enabled", false);
+#endif
 #ifdef XP_WIN
   WMFDecoderModule::Init();
 #endif
@@ -70,6 +81,7 @@ CreateTaskQueue()
   return t->mTaskQueue.forget();
 }
 
+#ifdef MOZ_EME
 /* static */
 PlatformDecoderModule*
 PlatformDecoderModule::CreateCDMWrapper(CDMProxy* aProxy,
@@ -101,6 +113,7 @@ PlatformDecoderModule::CreateCDMWrapper(CDMProxy* aProxy,
                               cdmDecodesVideo,
                               CreateTaskQueue());
 }
+#endif
 
 /* static */
 PlatformDecoderModule*
@@ -120,7 +133,10 @@ PlatformDecoderModule::Create()
 #endif
 #ifdef MOZ_FFMPEG
   if (sFFmpegDecoderEnabled) {
-    return FFmpegRuntimeLinker::CreateDecoderModule();
+    nsAutoPtr<PlatformDecoderModule> m(FFmpegRuntimeLinker::CreateDecoderModule());
+    if (m) {
+      return m.forget();
+    }
   }
 #endif
 #ifdef MOZ_APPLEMEDIA
@@ -129,7 +145,18 @@ PlatformDecoderModule::Create()
     return m.forget();
   }
 #endif
+#ifdef MOZ_GONK_MEDIACODEC
+  if (sGonkDecoderEnabled) {
+    return new GonkDecoderModule();
+  }
+#endif
   return nullptr;
+}
+
+bool
+PlatformDecoderModule::SupportsAudioMimeType(const char* aMimeType)
+{
+  return !strcmp(aMimeType, "audio/mp4a-latm");
 }
 
 } // namespace mozilla

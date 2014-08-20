@@ -44,12 +44,30 @@ MediaKeys::MediaKeys(nsPIDOMWindow* aParent, const nsAString& aKeySystem)
   SetIsDOMBinding();
 }
 
+static PLDHashOperator
+RejectPromises(const uint32_t& aKey,
+               nsRefPtr<dom::Promise>& aPromise,
+               void* aClosure)
+{
+  aPromise->MaybeReject(NS_ERROR_DOM_INVALID_STATE_ERR);
+  return PL_DHASH_NEXT;
+}
+
 MediaKeys::~MediaKeys()
+{
+  Shutdown();
+}
+
+void
+MediaKeys::Shutdown()
 {
   if (mProxy) {
     mProxy->Shutdown();
     mProxy = nullptr;
   }
+
+  mPromises.Enumerate(&RejectPromises, nullptr);
+  mPromises.Clear();
 }
 
 nsPIDOMWindow*

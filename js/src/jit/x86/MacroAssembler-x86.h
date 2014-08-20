@@ -38,14 +38,24 @@ class MacroAssemblerX86 : public MacroAssemblerX86Shared
         Float(float value) : value(value) {}
     };
     Vector<Float, 0, SystemAllocPolicy> floats_;
+    struct SimdData {
+        SimdConstant value;
+        AbsoluteLabel uses;
+        SimdData(const SimdConstant &v) : value(v) {}
+        SimdConstant::Type type() { return value.type(); }
+    };
+    Vector<SimdData, 0, SystemAllocPolicy> simds_;
 
     typedef HashMap<double, size_t, DefaultHasher<double>, SystemAllocPolicy> DoubleMap;
     DoubleMap doubleMap_;
     typedef HashMap<float, size_t, DefaultHasher<float>, SystemAllocPolicy> FloatMap;
     FloatMap floatMap_;
+    typedef HashMap<SimdConstant, size_t, SimdConstant, SystemAllocPolicy> SimdMap;
+    SimdMap simdMap_;
 
     Double *getDouble(double d);
     Float *getFloat(float f);
+    SimdData *getSimdData(const SimdConstant &v);
 
   protected:
     MoveResolver moveResolver_;
@@ -102,7 +112,7 @@ class MacroAssemblerX86 : public MacroAssemblerX86Shared
                            base.scale(), base.disp() + sizeof(void *));
 
           default:
-            MOZ_ASSUME_UNREACHABLE("unexpected operand kind");
+            MOZ_CRASH("unexpected operand kind");
         }
     }
     Address ToType(Address base) {
@@ -648,6 +658,10 @@ class MacroAssemblerX86 : public MacroAssemblerX86Shared
         return CodeOffsetJump(size());
     }
 
+    CodeOffsetJump backedgeJump(RepatchLabel *label) {
+        return jumpWithPatch(label);
+    }
+
     template <typename S, typename T>
     CodeOffsetJump branchPtrWithPatch(Condition cond, S lhs, T ptr, RepatchLabel *label) {
         branchPtr(cond, lhs, ptr, label);
@@ -929,6 +943,8 @@ class MacroAssemblerX86 : public MacroAssemblerX86Shared
     void addConstantDouble(double d, FloatRegister dest);
     void loadConstantFloat32(float f, FloatRegister dest);
     void addConstantFloat32(float f, FloatRegister dest);
+    void loadConstantInt32x4(const SimdConstant &v, FloatRegister dest);
+    void loadConstantFloat32x4(const SimdConstant &v, FloatRegister dest);
 
     void branchTruncateDouble(FloatRegister src, Register dest, Label *fail) {
         cvttsd2si(src, dest);

@@ -11,8 +11,15 @@ Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource:///modules/loop/MozLoopService.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "hookWindowCloseForPanelClose",
-  "resource://gre/modules/MozSocialAPI.jsm");
-
+                                        "resource://gre/modules/MozSocialAPI.jsm");
+XPCOMUtils.defineLazyGetter(this, "appInfo", function() {
+  return Cc["@mozilla.org/xre/app-info;1"]
+           .getService(Ci.nsIXULAppInfo)
+           .QueryInterface(Ci.nsIXULRuntime);
+});
+XPCOMUtils.defineLazyServiceGetter(this, "clipboardHelper",
+                                         "@mozilla.org/widget/clipboardhelper;1",
+                                         "nsIClipboardHelper");
 this.EXPORTED_SYMBOLS = ["injectLoopAPI"];
 
 /**
@@ -26,6 +33,7 @@ this.EXPORTED_SYMBOLS = ["injectLoopAPI"];
 function injectLoopAPI(targetWindow) {
   let ringer;
   let ringerStopper;
+  let appVersionInfo;
 
   let api = {
     /**
@@ -153,6 +161,27 @@ function injectLoopAPI(targetWindow) {
     },
 
     /**
+     * Return any preference under "loop." that's coercible to a boolean
+     * preference.
+     *
+     * @param {String} prefName The name of the pref without the preceding
+     * "loop."
+     *
+     * Any errors thrown by the Mozilla pref API are logged to the console
+     * and cause null to be returned. This includes the case of the preference
+     * not being found.
+     *
+     * @return {String} on success, null on error
+     */
+    getLoopBoolPref: {
+      enumerable: true,
+      writable: true,
+      value: function(prefName) {
+        return MozLoopService.getLoopBoolPref(prefName);
+      }
+    },
+
+    /**
      * Starts alerting the user about an incoming call
      */
     startAlerting: {
@@ -223,6 +252,43 @@ function injectLoopAPI(targetWindow) {
         }, (error) => {
           callback(Cu.cloneInto(error, targetWindow));
         });
+      }
+    },
+
+    /**
+     * Copies passed string onto the system clipboard.
+     *
+     * @param {String} str The string to copy
+     */
+    copyString: {
+      enumerable: true,
+      writable: true,
+      value: function(str) {
+        clipboardHelper.copyString(str);
+      }
+    },
+
+    /**
+     * Returns the app version information for use during feedback.
+     *
+     * @return {Object} An object containing:
+     *   - channel: The update channel the application is on
+     *   - version: The application version
+     *   - OS: The operating system the application is running on
+     */
+    appVersionInfo: {
+      enumerable: true,
+      get: function() {
+        if (!appVersionInfo) {
+          let defaults = Services.prefs.getDefaultBranch(null);
+
+          appVersionInfo = Cu.cloneInto({
+            channel: defaults.getCharPref("app.update.channel"),
+            version: appInfo.version,
+            OS: appInfo.OS
+          }, targetWindow);
+        }
+        return appVersionInfo;
       }
     },
   };

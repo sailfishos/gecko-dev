@@ -77,7 +77,7 @@ template<class EntryType>
 class AutoHashtable : public nsTHashtable<EntryType>
 {
 public:
-  AutoHashtable(uint32_t initSize = PL_DHASH_MIN_SIZE);
+  AutoHashtable(uint32_t initLength = PL_DHASH_DEFAULT_INITIAL_LENGTH);
   typedef bool (*ReflectEntryFunc)(EntryType *entry, JSContext *cx, JS::Handle<JSObject*> obj);
   bool ReflectIntoJS(ReflectEntryFunc entryFunc, JSContext *cx, JS::Handle<JSObject*> obj);
 private:
@@ -90,8 +90,8 @@ private:
 };
 
 template<class EntryType>
-AutoHashtable<EntryType>::AutoHashtable(uint32_t initSize)
-  : nsTHashtable<EntryType>(initSize)
+AutoHashtable<EntryType>::AutoHashtable(uint32_t initLength)
+  : nsTHashtable<EntryType>(initLength)
 {
 }
 
@@ -410,7 +410,10 @@ void TelemetryIOInterposeObserver::AddPath(const nsAString& aPath,
 {
   mSafeDirs.AppendElement(SafeDir(aPath, aSubstName));
 }
- 
+
+// Threshold for reporting slow main-thread I/O (50 milliseconds).
+const TimeDuration kTelemetryReportThreshold = TimeDuration::FromMilliseconds(50);
+
 void TelemetryIOInterposeObserver::Observe(Observation& aOb)
 {
   // We only report main-thread I/O
@@ -421,6 +424,10 @@ void TelemetryIOInterposeObserver::Observe(Observation& aOb)
   if (aOb.ObservedOperation() == OpNextStage) {
     mCurStage = NextStage(mCurStage);
     MOZ_ASSERT(mCurStage < NUM_STAGES);
+    return;
+  }
+
+  if (aOb.Duration() < kTelemetryReportThreshold) {
     return;
   }
 
@@ -632,7 +639,7 @@ private:
   AddonMapType mAddonMap;
 
   // This is used for speedy string->Telemetry::ID conversions
-  typedef nsBaseHashtableET<nsCharPtrHashKey, Telemetry::ID> CharPtrEntryType;
+  typedef nsBaseHashtableET<nsDepCharHashKey, Telemetry::ID> CharPtrEntryType;
   typedef AutoHashtable<CharPtrEntryType> HistogramMapType;
   HistogramMapType mHistogramMap;
   bool mCanRecord;
@@ -2611,15 +2618,16 @@ size_t
 TelemetryImpl::SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf)
 {
   size_t n = aMallocSizeOf(this);
+
   // Ignore the hashtables in mAddonMap; they are not significant.
   n += mAddonMap.SizeOfExcludingThis(nullptr, aMallocSizeOf);
   n += mHistogramMap.SizeOfExcludingThis(nullptr, aMallocSizeOf);
   { // Scope for mHashMutex lock
     MutexAutoLock lock(mHashMutex);
-    n += mPrivateSQL.SizeOfExcludingThis(nullptr, aMallocSizeOf);
-    n += mSanitizedSQL.SizeOfExcludingThis(nullptr, aMallocSizeOf);
+    n += mPrivateSQL.SizeOfExcludingThis(aMallocSizeOf);
+    n += mSanitizedSQL.SizeOfExcludingThis(aMallocSizeOf);
   }
-  n += mTrackedDBs.SizeOfExcludingThis(nullptr, aMallocSizeOf);
+  n += mTrackedDBs.SizeOfExcludingThis(aMallocSizeOf);
   { // Scope for mHangReportsMutex lock
     MutexAutoLock lock(mHangReportsMutex);
     n += mHangReports.SizeOfExcludingThis();

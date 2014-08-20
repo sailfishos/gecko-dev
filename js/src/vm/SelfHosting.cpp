@@ -15,8 +15,10 @@
 #include "selfhosted.out.h"
 
 #include "builtin/Intl.h"
+#include "builtin/Object.h"
 #include "builtin/SelfHostingDefines.h"
 #include "builtin/TypedObject.h"
+#include "builtin/WeakSetObject.h"
 #include "gc/Marking.h"
 #include "vm/Compression.h"
 #include "vm/ForkJoin.h"
@@ -110,6 +112,14 @@ intrinsic_IsConstructor(JSContext *cx, unsigned argc, Value *vp)
     CallArgs args = CallArgsFromVp(argc, vp);
     args.rval().setBoolean(IsConstructor(args[0]));
     return true;
+}
+
+static bool
+intrinsic_OwnPropertyKeys(JSContext *cx, unsigned argc, Value *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    return GetOwnPropertyKeys(cx, args,
+                              JSITER_OWNONLY | JSITER_HIDDEN | JSITER_SYMBOLS);
 }
 
 bool
@@ -641,6 +651,17 @@ intrinsic_IsStringIterator(JSContext *cx, unsigned argc, Value *vp)
     return true;
 }
 
+static bool
+intrinsic_IsWeakSet(JSContext *cx, unsigned argc, Value *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    JS_ASSERT(args.length() == 1);
+    JS_ASSERT(args[0].isObject());
+
+    args.rval().setBoolean(args[0].toObject().is<WeakSetObject>());
+    return true;
+}
+
 /*
  * ParallelTestsShouldPass(): Returns false if we are running in a
  * mode (such as --ion-eager) that is known to cause additional
@@ -776,6 +797,7 @@ static const JSFunctionSpec intrinsic_functions[] = {
     JS_FN("ToString",                intrinsic_ToString,                1,0),
     JS_FN("IsCallable",              intrinsic_IsCallable,              1,0),
     JS_FN("IsConstructor",           intrinsic_IsConstructor,           1,0),
+    JS_FN("OwnPropertyKeys",         intrinsic_OwnPropertyKeys,         1,0),
     JS_FN("ThrowError",              intrinsic_ThrowError,              4,0),
     JS_FN("AssertionFailed",         intrinsic_AssertionFailed,         1,0),
     JS_FN("SetScriptHints",          intrinsic_SetScriptHints,          2,0),
@@ -797,6 +819,8 @@ static const JSFunctionSpec intrinsic_functions[] = {
 
     JS_FN("NewStringIterator",       intrinsic_NewStringIterator,       0,0),
     JS_FN("IsStringIterator",        intrinsic_IsStringIterator,        1,0),
+
+    JS_FN("IsWeakSet",               intrinsic_IsWeakSet,               1,0),
 
     JS_FN("ForkJoin",                intrinsic_ForkJoin,                5,0),
     JS_FN("ForkJoinNumWorkers",      intrinsic_ForkJoinNumWorkers,      0,0),
@@ -1013,7 +1037,7 @@ JSRuntime::initSelfHosting(JSContext *cx)
 
         const unsigned char *compressed = compressedSources;
         uint32_t compressedLen = GetCompressedSize();
-        ScopedJSFreePtr<char> src(reinterpret_cast<char *>(cx->malloc_(srcLen)));
+        ScopedJSFreePtr<char> src(selfHostingGlobal_->zone()->pod_malloc<char>(srcLen));
         if (!src || !DecompressString(compressed, compressedLen,
                                       reinterpret_cast<unsigned char *>(src.get()), srcLen))
         {

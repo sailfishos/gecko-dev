@@ -155,14 +155,6 @@ public:
 };
 
 class TestAPZCTreeManager : public APZCTreeManager {
-public:
-  // Expose these so test code can call it directly.
-  void BuildOverscrollHandoffChain(AsyncPanZoomController* aApzc) {
-    APZCTreeManager::BuildOverscrollHandoffChain(aApzc);
-  }
-  void ClearOverscrollHandoffChain() {
-    APZCTreeManager::ClearOverscrollHandoffChain();
-  }
 };
 
 static FrameMetrics
@@ -199,16 +191,10 @@ protected:
     tm = new TestAPZCTreeManager();
     apzc = new TestAsyncPanZoomController(0, mcc, tm, mGestureBehavior);
     apzc->SetFrameMetrics(TestFrameMetrics());
-
-    // Since most tests pass inputs directly to the APZC instead of going through
-    // the tree manager, we need to build the overscroll handoff chain explicitly
-    // for panning and animation-cancelling to work correctly.
-    tm->BuildOverscrollHandoffChain(apzc);
   }
 
   virtual void TearDown()
   {
-    tm->ClearOverscrollHandoffChain();
     apzc->Destroy();
   }
 
@@ -722,8 +708,8 @@ TEST_F(APZCBasicTester, ComplexTransform) {
   FrameMetrics childMetrics = metrics;
   childMetrics.SetScrollId(FrameMetrics::START_SCROLL_ID + 1);
 
-  layers[0]->AsContainerLayer()->SetFrameMetrics(metrics);
-  layers[1]->AsContainerLayer()->SetFrameMetrics(childMetrics);
+  layers[0]->SetFrameMetrics(metrics);
+  layers[1]->SetFrameMetrics(childMetrics);
 
   ScreenPoint pointOut;
   ViewTransform viewTransformOut;
@@ -1461,7 +1447,6 @@ SetScrollableFrameMetrics(Layer* aLayer, FrameMetrics::ViewID aScrollId,
                           // HitTesting1 doesn't care about it.
                           CSSRect aScrollableRect = CSSRect(-1, -1, -1, -1))
 {
-  ContainerLayer* container = aLayer->AsContainerLayer();
   FrameMetrics metrics;
   metrics.SetScrollId(aScrollId);
   nsIntRect layerBound = aLayer->GetVisibleRegion().GetBounds();
@@ -1469,7 +1454,7 @@ SetScrollableFrameMetrics(Layer* aLayer, FrameMetrics::ViewID aScrollId,
                                                layerBound.width, layerBound.height);
   metrics.mScrollableRect = aScrollableRect;
   metrics.SetScrollOffset(CSSPoint(0, 0));
-  container->SetFrameMetrics(metrics);
+  aLayer->SetFrameMetrics(metrics);
 }
 
 static already_AddRefed<AsyncPanZoomController>
@@ -1511,7 +1496,7 @@ TEST_F(APZCTreeManagerTester, HitTesting1) {
   SetScrollableFrameMetrics(root, FrameMetrics::START_SCROLL_ID);
   manager->UpdatePanZoomControllerTree(nullptr, root, false, 0, paintSequenceNumber++);
   hit = GetTargetAPZC(manager, ScreenPoint(15, 15), transformToApzc, transformToGecko);
-  EXPECT_EQ(root->AsContainerLayer()->GetAsyncPanZoomController(), hit.get());
+  EXPECT_EQ(root->GetAsyncPanZoomController(), hit.get());
   // expect hit point at LayerIntPoint(15, 15)
   EXPECT_EQ(Point(15, 15), transformToApzc * Point(15, 15));
   EXPECT_EQ(Point(15, 15), transformToGecko * Point(15, 15));
@@ -1519,9 +1504,9 @@ TEST_F(APZCTreeManagerTester, HitTesting1) {
   // Now we have a sub APZC with a better fit
   SetScrollableFrameMetrics(layers[3], FrameMetrics::START_SCROLL_ID + 1);
   manager->UpdatePanZoomControllerTree(nullptr, root, false, 0, paintSequenceNumber++);
-  EXPECT_NE(root->AsContainerLayer()->GetAsyncPanZoomController(), layers[3]->AsContainerLayer()->GetAsyncPanZoomController());
+  EXPECT_NE(root->GetAsyncPanZoomController(), layers[3]->GetAsyncPanZoomController());
   hit = GetTargetAPZC(manager, ScreenPoint(25, 25), transformToApzc, transformToGecko);
-  EXPECT_EQ(layers[3]->AsContainerLayer()->GetAsyncPanZoomController(), hit.get());
+  EXPECT_EQ(layers[3]->GetAsyncPanZoomController(), hit.get());
   // expect hit point at LayerIntPoint(25, 25)
   EXPECT_EQ(Point(25, 25), transformToApzc * Point(25, 25));
   EXPECT_EQ(Point(25, 25), transformToGecko * Point(25, 25));
@@ -1529,20 +1514,20 @@ TEST_F(APZCTreeManagerTester, HitTesting1) {
   // At this point, layers[4] obscures layers[3] at the point (15, 15) so
   // hitting there should hit the root APZC
   hit = GetTargetAPZC(manager, ScreenPoint(15, 15), transformToApzc, transformToGecko);
-  EXPECT_EQ(root->AsContainerLayer()->GetAsyncPanZoomController(), hit.get());
+  EXPECT_EQ(root->GetAsyncPanZoomController(), hit.get());
 
   // Now test hit testing when we have two scrollable layers
   SetScrollableFrameMetrics(layers[4], FrameMetrics::START_SCROLL_ID + 2);
   manager->UpdatePanZoomControllerTree(nullptr, root, false, 0, paintSequenceNumber++);
   hit = GetTargetAPZC(manager, ScreenPoint(15, 15), transformToApzc, transformToGecko);
-  EXPECT_EQ(layers[4]->AsContainerLayer()->GetAsyncPanZoomController(), hit.get());
+  EXPECT_EQ(layers[4]->GetAsyncPanZoomController(), hit.get());
   // expect hit point at LayerIntPoint(15, 15)
   EXPECT_EQ(Point(15, 15), transformToApzc * Point(15, 15));
   EXPECT_EQ(Point(15, 15), transformToGecko * Point(15, 15));
 
   // Hit test ouside the reach of layer[3,4] but inside root
   hit = GetTargetAPZC(manager, ScreenPoint(90, 90), transformToApzc, transformToGecko);
-  EXPECT_EQ(root->AsContainerLayer()->GetAsyncPanZoomController(), hit.get());
+  EXPECT_EQ(root->GetAsyncPanZoomController(), hit.get());
   // expect hit point at LayerIntPoint(90, 90)
   EXPECT_EQ(Point(90, 90), transformToApzc * Point(90, 90));
   EXPECT_EQ(Point(90, 90), transformToGecko * Point(90, 90));
@@ -1594,9 +1579,9 @@ TEST_F(APZCTreeManagerTester, HitTesting2) {
   // layers[2] has content from (20,60)-(100,100). no clipping as it's not a scrollable layer
   // layers[3] has content from (20,60)-(180,140), clipped by composition bounds (20,60)-(100,100)
 
-  AsyncPanZoomController* apzcroot = root->AsContainerLayer()->GetAsyncPanZoomController();
-  AsyncPanZoomController* apzc1 = layers[1]->AsContainerLayer()->GetAsyncPanZoomController();
-  AsyncPanZoomController* apzc3 = layers[3]->AsContainerLayer()->GetAsyncPanZoomController();
+  AsyncPanZoomController* apzcroot = root->GetAsyncPanZoomController();
+  AsyncPanZoomController* apzc1 = layers[1]->GetAsyncPanZoomController();
+  AsyncPanZoomController* apzc3 = layers[3]->GetAsyncPanZoomController();
 
   // Hit an area that's clearly on the root layer but not any of the child layers.
   hit = GetTargetAPZC(manager, ScreenPoint(75, 25), transformToApzc, transformToGecko);
@@ -1651,9 +1636,7 @@ TEST_F(APZCTreeManagerTester, HitTesting2) {
   // This first pan will move the APZC by 50 pixels, and dispatch a paint request.
   // Since this paint request is in the queue to Gecko, transformToGecko will
   // take it into account.
-  manager->BuildOverscrollHandoffChain(apzcroot);
   ApzcPanNoFling(apzcroot, time, 100, 50);
-  manager->ClearOverscrollHandoffChain();
 
   // Hit where layers[3] used to be. It should now hit the root.
   hit = GetTargetAPZC(manager, ScreenPoint(75, 75), transformToApzc, transformToGecko);
@@ -1679,9 +1662,7 @@ TEST_F(APZCTreeManagerTester, HitTesting2) {
   // request dispatched above has not "completed", we will not dispatch another
   // one yet. Now we have an async transform on top of the pending paint request
   // transform.
-  manager->BuildOverscrollHandoffChain(apzcroot);
   ApzcPanNoFling(apzcroot, time, 100, 50);
-  manager->ClearOverscrollHandoffChain();
 
   // Hit where layers[3] used to be. It should now hit the root.
   hit = GetTargetAPZC(manager, ScreenPoint(75, 75), transformToApzc, transformToGecko);

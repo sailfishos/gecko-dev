@@ -12,7 +12,7 @@
 #include "gfxMatrix.h"
 #include "gfxRect.h"
 #include "gfxSVGGlyphs.h"
-#include "nsIContent.h"
+#include "nsIContent.h" // for GetContent
 #include "nsStubMutationObserver.h"
 #include "nsSVGPaintServerFrame.h"
 
@@ -319,7 +319,7 @@ public:
   virtual nsresult PaintSVG(nsRenderingContext* aContext,
                             const nsIntRect* aDirtyRect,
                             nsIFrame* aTransformRoot = nullptr) MOZ_OVERRIDE;
-  virtual nsIFrame* GetFrameForPoint(const nsPoint& aPoint) MOZ_OVERRIDE;
+  virtual nsIFrame* GetFrameForPoint(const gfxPoint& aPoint) MOZ_OVERRIDE;
   virtual void ReflowSVG() MOZ_OVERRIDE;
   virtual nsRect GetCoveredRegion() MOZ_OVERRIDE;
   virtual SVGBBox GetBBoxContribution(const Matrix& aToBBoxUserspace,

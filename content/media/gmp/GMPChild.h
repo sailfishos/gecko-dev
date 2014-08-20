@@ -9,18 +9,25 @@
 #include "mozilla/gmp/PGMPChild.h"
 #include "GMPSharedMemManager.h"
 #include "GMPTimerChild.h"
+#include "GMPStorageChild.h"
+#include "gmp-async-shutdown.h"
 #include "gmp-entrypoints.h"
 #include "prlink.h"
 
 namespace mozilla {
 namespace gmp {
 
-class GMPChild : public PGMPChild,
-                 public GMPSharedMem
+class GMPChild : public PGMPChild
+               , public GMPSharedMem
+               , public GMPAsyncShutdownHost
 {
 public:
   GMPChild();
   virtual ~GMPChild();
+
+#if defined(XP_MACOSX) && defined(MOZ_GMP_SANDBOX)
+  void OnChannelConnected(int32_t aPid);
+#endif
 
   bool Init(const std::string& aPluginPath,
             base::ProcessHandle aParentProcessHandle,
@@ -31,9 +38,13 @@ public:
 
   // Main thread only.
   GMPTimerChild* GetGMPTimers();
+  GMPStorageChild* GetGMPStorage();
 
   // GMPSharedMem
   virtual void CheckThread() MOZ_OVERRIDE;
+
+  // GMPAsyncShutdownHost
+  void ShutdownComplete() MOZ_OVERRIDE;
 
 private:
   virtual PCrashReporterChild* AllocPCrashReporterChild(const NativeThreadId& aThread) MOZ_OVERRIDE;
@@ -58,16 +69,26 @@ private:
   virtual PGMPTimerChild* AllocPGMPTimerChild() MOZ_OVERRIDE;
   virtual bool DeallocPGMPTimerChild(PGMPTimerChild* aActor) MOZ_OVERRIDE;
 
+  virtual PGMPStorageChild* AllocPGMPStorageChild() MOZ_OVERRIDE;
+  virtual bool DeallocPGMPStorageChild(PGMPStorageChild* aActor) MOZ_OVERRIDE;
+
   virtual bool RecvCrashPluginNow() MOZ_OVERRIDE;
+  virtual bool RecvBeginAsyncShutdown() MOZ_OVERRIDE;
 
   virtual void ActorDestroy(ActorDestroyReason aWhy) MOZ_OVERRIDE;
   virtual void ProcessingError(Result aWhat) MOZ_OVERRIDE;
 
+  GMPAsyncShutdown* mAsyncShutdown;
   nsRefPtr<GMPTimerChild> mTimerChild;
+  nsRefPtr<GMPStorageChild> mStorage;
 
   PRLibrary* mLib;
   GMPGetAPIFunc mGetAPIFunc;
   MessageLoop* mGMPMessageLoop;
+#if defined(XP_MACOSX) && defined(MOZ_GMP_SANDBOX)
+  std::string mPluginPath;
+  nsCString mPluginBinaryPath;
+#endif
 };
 
 } // namespace gmp

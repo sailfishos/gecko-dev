@@ -113,14 +113,14 @@ NfcContentHelper.prototype = {
   },
 
   // NFC interface:
-  setSessionToken: function setSessionToken(sessionToken) {
+  checkSessionToken: function checkSessionToken(sessionToken) {
     if (sessionToken == null) {
       throw Components.Exception("No session token!",
                                   Cr.NS_ERROR_UNEXPECTED);
       return false;
     }
     // Report session to Nfc.js only.
-    let val = cpmm.sendSyncMessage("NFC:SetSessionToken", {
+    let val = cpmm.sendSyncMessage("NFC:CheckSessionToken", {
       sessionToken: sessionToken
     });
     return (val[0] === NFC.NFC_SUCCESS);
@@ -460,8 +460,7 @@ NfcContentHelper.prototype = {
     }
 
     let requestId = atob(result.requestId);
-    let result = new GetDetailsNDEFResponse(result);
-    this.fireRequestSuccess(requestId, result);
+    this.fireRequestSuccess(requestId, new GetDetailsNDEFResponse(result));
   },
 
   handleCheckP2PRegistrationResponse: function handleCheckP2PRegistrationResponse(result) {

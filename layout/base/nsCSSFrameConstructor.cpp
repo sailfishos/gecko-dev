@@ -1772,6 +1772,10 @@ nsCSSFrameConstructor::CreateGeneratedContentItem(nsFrameConstructorState& aStat
                                                   nsCSSPseudoElements::Type aPseudoElement,
                                                   FrameConstructionItemList& aItems)
 {
+  MOZ_ASSERT(aPseudoElement == nsCSSPseudoElements::ePseudo_before ||
+             aPseudoElement == nsCSSPseudoElements::ePseudo_after,
+             "unexpected aPseudoElement");
+
   // XXXbz is this ever true?
   if (!aParentContent->IsElement()) {
     NS_ERROR("Bogus generated content parent");
@@ -1789,10 +1793,13 @@ nsCSSFrameConstructor::CreateGeneratedContentItem(nsFrameConstructorState& aStat
                                       aState.mTreeMatchContext);
   if (!pseudoStyleContext)
     return;
+
+  bool isBefore = aPseudoElement == nsCSSPseudoElements::ePseudo_before;
+
   // |ProbePseudoStyleFor| checked the 'display' property and the
   // |ContentCount()| of the 'content' property for us.
   nsRefPtr<NodeInfo> nodeInfo;
-  nsIAtom* elemName = aPseudoElement == nsCSSPseudoElements::ePseudo_before ?
+  nsIAtom* elemName = isBefore ?
     nsGkAtoms::mozgeneratedcontentbefore : nsGkAtoms::mozgeneratedcontentafter;
   nodeInfo = mDocument->NodeInfoManager()->GetNodeInfo(elemName, nullptr,
                                                        kNameSpaceID_None,
@@ -1812,6 +1819,18 @@ nsCSSFrameConstructor::CreateGeneratedContentItem(nsFrameConstructorState& aStat
   if (NS_FAILED(rv)) {
     container->UnbindFromTree();
     return;
+  }
+
+  RestyleManager::ReframingStyleContexts* rsc =
+    RestyleManager()->GetReframingStyleContexts();
+  if (rsc) {
+    nsStyleContext* oldStyleContext = rsc->Get(container, aPseudoElement);
+    if (oldStyleContext) {
+      RestyleManager::TryStartingTransition(aState.mPresContext,
+                                            container,
+                                            oldStyleContext,
+                                            &pseudoStyleContext);
+    }
   }
 
   uint32_t contentCount = pseudoStyleContext->StyleContent()->ContentCount();
@@ -2408,6 +2427,9 @@ nsCSSFrameConstructor::ConstructDocElementFrame(Element*                 aDocEle
   aDocElement->UnsetFlags(ELEMENT_ALL_RESTYLE_FLAGS);
 
   // --------- CREATE AREA OR BOX FRAME -------
+  // FIXME: Should this use ResolveStyleContext?  (The calls in this
+  // function are the only case in nsCSSFrameConstructor where we don't
+  // do so for the construction of a style context for an element.)
   nsRefPtr<nsStyleContext> styleContext;
   styleContext = mPresShell->StyleSet()->ResolveStyleFor(aDocElement,
                                                          nullptr);
@@ -2440,6 +2462,10 @@ nsCSSFrameConstructor::ConstructDocElementFrame(Element*                 aDocEle
     }
 
     if (resolveStyle) {
+      // FIXME: Should this use ResolveStyleContext?  (The calls in this
+      // function are the only case in nsCSSFrameConstructor where we
+      // don't do so for the construction of a style context for an
+      // element.)
       styleContext = mPresShell->StyleSet()->ResolveStyleFor(aDocElement,
                                                              nullptr);
       display = styleContext->StyleDisplay();
@@ -4444,7 +4470,7 @@ nsCSSFrameConstructor::FinishBuildingScrollFrame(nsContainerFrame* aScrollFrame,
  *                  If this is not null, we'll just use it
  * @param aScrolledContentStyle the style that was resolved for the scrolled frame. (returned)
  */
-nsresult
+void
 nsCSSFrameConstructor::BuildScrollFrame(nsFrameConstructorState& aState,
                                         nsIContent*              aContent,
                                         nsStyleContext*          aContentStyle,
@@ -4452,16 +4478,15 @@ nsCSSFrameConstructor::BuildScrollFrame(nsFrameConstructorState& aState,
                                         nsContainerFrame*        aParentFrame,
                                         nsContainerFrame*&       aNewFrame)
 {
-    nsRefPtr<nsStyleContext> scrolledContentStyle =
-      BeginBuildingScrollFrame(aState, aContent, aContentStyle, aParentFrame,
-                               nsCSSAnonBoxes::scrolledContent,
-                               false, aNewFrame);
+  nsRefPtr<nsStyleContext> scrolledContentStyle =
+    BeginBuildingScrollFrame(aState, aContent, aContentStyle, aParentFrame,
+                             nsCSSAnonBoxes::scrolledContent,
+                             false, aNewFrame);
 
-    aScrolledFrame->SetStyleContextWithoutNotification(scrolledContentStyle);
-    InitAndRestoreFrame(aState, aContent, aNewFrame, aScrolledFrame);
+  aScrolledFrame->SetStyleContextWithoutNotification(scrolledContentStyle);
+  InitAndRestoreFrame(aState, aContent, aNewFrame, aScrolledFrame);
 
-    FinishBuildingScrollFrame(aNewFrame, aScrolledFrame);
-    return NS_OK;
+  FinishBuildingScrollFrame(aNewFrame, aScrolledFrame);
 }
 
 const nsCSSFrameConstructor::FrameConstructionData*
@@ -4547,13 +4572,16 @@ nsCSSFrameConstructor::FindDisplayData(const nsStyleDisplay* aDisplay,
       FCDATA_DECL(FCDATA_IS_LINE_PARTICIPANT,
                   NS_NewRubyFrame) },
     { NS_STYLE_DISPLAY_RUBY_BASE,
-      FCDATA_DECL(FCDATA_DESIRED_PARENT_TYPE_TO_BITS(eTypeRubyBaseContainer),
+      FCDATA_DECL(FCDATA_IS_LINE_PARTICIPANT |
+                  FCDATA_DESIRED_PARENT_TYPE_TO_BITS(eTypeRubyBaseContainer),
                   NS_NewRubyBaseFrame) },
     { NS_STYLE_DISPLAY_RUBY_BASE_CONTAINER,
-      FCDATA_DECL(FCDATA_DESIRED_PARENT_TYPE_TO_BITS(eTypeRuby),
+      FCDATA_DECL(FCDATA_IS_LINE_PARTICIPANT |
+                  FCDATA_DESIRED_PARENT_TYPE_TO_BITS(eTypeRuby),
                   NS_NewRubyBaseContainerFrame) },
     { NS_STYLE_DISPLAY_RUBY_TEXT,
-      FCDATA_DECL(FCDATA_DESIRED_PARENT_TYPE_TO_BITS(eTypeRubyTextContainer),
+      FCDATA_DECL(FCDATA_IS_LINE_PARTICIPANT |
+                  FCDATA_DESIRED_PARENT_TYPE_TO_BITS(eTypeRubyTextContainer),
                   NS_NewRubyTextFrame) },
     { NS_STYLE_DISPLAY_RUBY_TEXT_CONTAINER,
       FCDATA_DECL(FCDATA_DESIRED_PARENT_TYPE_TO_BITS(eTypeRuby),
@@ -4745,21 +4773,36 @@ nsCSSFrameConstructor::ResolveStyleContext(nsStyleContext* aParentStyleContext,
   nsStyleSet *styleSet = mPresShell->StyleSet();
   aContent->OwnerDoc()->FlushPendingLinkUpdates();
 
+  nsRefPtr<nsStyleContext> result;
   if (aContent->IsElement()) {
     if (aState) {
-      return styleSet->ResolveStyleFor(aContent->AsElement(),
-                                       aParentStyleContext,
-                                       aState->mTreeMatchContext);
+      result = styleSet->ResolveStyleFor(aContent->AsElement(),
+                                         aParentStyleContext,
+                                         aState->mTreeMatchContext);
+    } else {
+      result = styleSet->ResolveStyleFor(aContent->AsElement(),
+                                         aParentStyleContext);
     }
-    return styleSet->ResolveStyleFor(aContent->AsElement(), aParentStyleContext);
-
+  } else {
+    NS_ASSERTION(aContent->IsNodeOfType(nsINode::eTEXT),
+                 "shouldn't waste time creating style contexts for "
+                 "comments and processing instructions");
+    result = styleSet->ResolveStyleForNonElement(aParentStyleContext);
   }
 
-  NS_ASSERTION(aContent->IsNodeOfType(nsINode::eTEXT),
-               "shouldn't waste time creating style contexts for "
-               "comments and processing instructions");
+  RestyleManager::ReframingStyleContexts* rsc =
+    RestyleManager()->GetReframingStyleContexts();
+  if (rsc) {
+    nsStyleContext* oldStyleContext =
+      rsc->Get(aContent, nsCSSPseudoElements::ePseudo_NotPseudoElement);
+    if (oldStyleContext) {
+      RestyleManager::TryStartingTransition(mPresShell->GetPresContext(),
+                                            aContent,
+                                            oldStyleContext, &result);
+    }
+  }
 
-  return styleSet->ResolveStyleForNonElement(aParentStyleContext);
+  return result.forget();
 }
 
 // MathML Mod - RBS
@@ -9055,13 +9098,15 @@ nsCSSFrameConstructor::sPseudoParentData[eParentTypeCount] = {
   },
   { // Ruby Base
     FCDATA_DECL(FCDATA_USE_CHILD_ITEMS | 
+                FCDATA_IS_LINE_PARTICIPANT |
                 FCDATA_DESIRED_PARENT_TYPE_TO_BITS(eTypeRubyBaseContainer) |
                 FCDATA_SKIP_FRAMESET,
                 NS_NewRubyBaseFrame),
     &nsCSSAnonBoxes::rubyBase
   },
   { // Ruby Base Container
-    FCDATA_DECL(FCDATA_USE_CHILD_ITEMS | 
+    FCDATA_DECL(FCDATA_USE_CHILD_ITEMS |
+                FCDATA_IS_LINE_PARTICIPANT |
                 FCDATA_DESIRED_PARENT_TYPE_TO_BITS(eTypeRuby) |
                 FCDATA_SKIP_FRAMESET,
                 NS_NewRubyBaseContainerFrame),
@@ -9069,6 +9114,7 @@ nsCSSFrameConstructor::sPseudoParentData[eParentTypeCount] = {
   },
   { // Ruby Text
     FCDATA_DECL(FCDATA_USE_CHILD_ITEMS |
+                FCDATA_IS_LINE_PARTICIPANT |
                 FCDATA_DESIRED_PARENT_TYPE_TO_BITS(eTypeRubyTextContainer) |
                 FCDATA_SKIP_FRAMESET,
                 NS_NewRubyTextFrame),
@@ -9259,26 +9305,65 @@ nsCSSFrameConstructor::CreateNeededPseudos(nsFrameConstructorState& aState,
       // the last thing |iter| would have skipped over.
       ParentType prevParentType = ourParentType;
       do {
-        /* Walk an iterator past any whitespace that we might be able to drop from the list */
+        // Walk an iterator past any whitespace that we might be able to drop
+        // from the list
         FCItemIterator spaceEndIter(endIter);
         if (prevParentType != eTypeBlock &&
             !aParentFrame->IsGeneratedContentFrame() &&
             spaceEndIter.item().IsWhitespace(aState)) {
           bool trailingSpaces = spaceEndIter.SkipWhitespace(aState);
+          int nextDisplay = -1;
+          int prevDisplay = -1;
 
-          // We drop the whitespace if these are not trailing spaces and the next item
-          // does not want a block parent (see case 2 above)
-          // if these are trailing spaces and aParentFrame is a tabular container
-          // according to rule 1.3 of CSS 2.1 Sec 17.2.1. (Being a tabular container
-          // pretty much means ourParentType != eTypeBlock besides the eTypeColGroup case,
-          // which won't reach here.)
-          if ((trailingSpaces && ourParentType != eTypeBlock) ||
-              (!trailingSpaces && spaceEndIter.item().DesiredParentType() !=
-               eTypeBlock)) {
-            //TODO: Add whitespace handling for ruby
+          if (!endIter.AtStart() && IsRubyParentType(ourParentType)) {
+            FCItemIterator prevItemIter(endIter);
+            prevItemIter.Prev();
+            prevDisplay =
+              prevItemIter.item().mStyleContext->StyleDisplay()->mDisplay;
+          }
+
+          // We only need to compute nextDisplay for testing for ruby white
+          // space.
+          if (!spaceEndIter.IsDone() && IsRubyParentType(ourParentType)) {
+            nextDisplay =
+              spaceEndIter.item().mStyleContext->StyleDisplay()->mDisplay;
+          }
+
+          // We drop the whitespace in the following cases:
+          // 1) If these are not trailing spaces and the next item wants a table
+          //    or table-part parent
+          // 2) If these are trailing spaces and aParentFrame is a
+          //    tabular container according to rule 1.3 of CSS 2.1 Sec 17.2.1.
+          //    (Being a tabular container pretty much means
+          //    IsTableParentType(ourParentType) besides the eTypeColGroup case,
+          //    which won't reach here.)
+          // 3) The whitespace is leading or trailing inside a ruby box, ruby
+          //    base container box, or ruby text container box.
+          // 4) The whitespace is classified as inter-level intra-ruby
+          //    whitespace according to the spec for CSS ruby.
+          bool isRubyLeadingTrailingParentType =
+            ourParentType == eTypeRuby ||
+            ourParentType == eTypeRubyBaseContainer ||
+            ourParentType == eTypeRubyTextContainer;
+          bool isRubyLeading =
+            prevDisplay == -1 && isRubyLeadingTrailingParentType;
+          bool isRubyTrailing =
+            nextDisplay == -1 && isRubyLeadingTrailingParentType;
+          // There's an implicit && "IsRubyParentType(ourParentType)" here
+          // because nextDisplay is only set if this is true.
+          bool isRubyInterLevel =
+            (nextDisplay == NS_STYLE_DISPLAY_RUBY_TEXT_CONTAINER) ||
+            (nextDisplay == NS_STYLE_DISPLAY_RUBY_TEXT &&
+             prevDisplay != NS_STYLE_DISPLAY_RUBY_TEXT);
+
+          if ((!trailingSpaces &&
+               IsTableParentType(spaceEndIter.item().DesiredParentType())) ||
+              (trailingSpaces && IsTableParentType(ourParentType)) ||
+              isRubyLeading || isRubyTrailing || isRubyInterLevel) {
             bool updateStart = (iter == endIter);
             endIter.DeleteItemsTo(spaceEndIter);
-            NS_ASSERTION(trailingSpaces == endIter.IsDone(), "These should match");
+            NS_ASSERTION(trailingSpaces == endIter.IsDone(),
+                         "These should match");
 
             if (updateStart) {
               iter = endIter;
@@ -9322,11 +9407,20 @@ nsCSSFrameConstructor::CreateNeededPseudos(nsFrameConstructorState& aState,
           break;
         }
 
-        // Include the whitespace we didn't drop (if any) in the group, since
-        // this is not the end of the group.  Note that this doesn't change
-        // prevParentType, since if we didn't drop the whitespace then we ended
-        // at something that wants a block parent.
+        // If we have some whitespace that we were not able to drop and there is
+        // an item after the whitespace that is already properly parented, then
+        // make sure to include the spaces in our group but stop the group after
+        // that.
+        if (spaceEndIter != endIter &&
+            !spaceEndIter.IsDone() &&
+            ourParentType == spaceEndIter.item().DesiredParentType()) {
+            endIter = spaceEndIter;
+            break;
+        }
+
+        // Include the whitespace we didn't drop (if any) in the group.
         endIter = spaceEndIter;
+        prevParentType = endIter.item().DesiredParentType();
 
         endIter.Next();
       } while (!endIter.IsDone());
@@ -9686,7 +9780,7 @@ nsCSSFrameConstructor::ProcessChildren(nsFrameConstructorState& aState,
         (display->mDisplay == NS_STYLE_DISPLAY_INLINE_BOX)
           ? "NeededToWrapXULInlineBox" : "NeededToWrapXUL";
       nsContentUtils::ReportToConsole(nsIScriptError::warningFlag,
-                                      NS_LITERAL_CSTRING("FrameConstructor"),
+                                      NS_LITERAL_CSTRING("Layout: FrameConstructor"),
                                       mDocument,
                                       nsContentUtils::eXUL_PROPERTIES,
                                       message,

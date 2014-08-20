@@ -224,9 +224,10 @@ struct TileClient
   * internal buffer (and so will always be locked).
   */
   TextureClient* GetBackBuffer(const nsIntRegion& aDirtyRegion,
-                               TextureClientPool *aPool,
+                               gfxContentType aContent, SurfaceMode aMode,
                                bool *aCreatedTextureClient,
-                               bool aCanRerasterizeValidRegion);
+                               bool aCanRerasterizeValidRegion,
+                               RefPtr<TextureClient>* aTextureClientOnWhite);
 
   void DiscardFrontBuffer();
 
@@ -247,7 +248,9 @@ struct TileClient
       PrivateProtector& operator=(const PrivateProtector &);
       RefPtr<TextureClient> mBuffer;
   } mBackBuffer;
+  RefPtr<TextureClient> mBackBufferOnWhite;
   RefPtr<TextureClient> mFrontBuffer;
+  RefPtr<TextureClient> mFrontBufferOnWhite;
   RefPtr<gfxSharedReadLock> mBackLock;
   RefPtr<gfxSharedReadLock> mFrontLock;
   RefPtr<ClientLayerManager> mManager;
@@ -343,7 +346,7 @@ public:
    * is useful for slow-to-render pages when the display-port starts lagging
    * behind enough that continuing to draw it is wasted effort.
    */
-  bool UpdateFromCompositorFrameMetrics(ContainerLayer* aLayer,
+  bool UpdateFromCompositorFrameMetrics(Layer* aLayer,
                                         bool aHasPendingNewThebesContent,
                                         bool aLowPrecision,
                                         ViewTransform& aViewTransform);
@@ -383,7 +386,8 @@ public:
     : mThebesLayer(nullptr)
     , mCompositableClient(nullptr)
     , mManager(nullptr)
-    , mLastPaintOpaque(false)
+    , mLastPaintContentType(gfxContentType::COLOR)
+    , mLastPaintSurfaceMode(SurfaceMode::SURFACE_OPAQUE)
     , mSharedFrameMetricsHelper(nullptr)
   {}
 
@@ -424,6 +428,10 @@ protected:
                           const nsIntPoint& aTileRect,
                           const nsIntRegion& dirtyRect);
 
+  void PostValidate(const nsIntRegion& aPaintRegion);
+
+  void UnlockTile(TileClient aTile);
+
   // If this returns true, we perform the paint operation into a single large
   // buffer and copy it out to the tiles instead of calling PaintThebes() on
   // each tile individually. Somewhat surprisingly, this turns out to be faster
@@ -437,20 +445,22 @@ protected:
   TileClient GetPlaceholderTile() const { return TileClient(); }
 
 private:
-  gfxContentType GetContentType() const;
+  gfxContentType GetContentType(SurfaceMode* aMode = nullptr) const;
   ClientTiledThebesLayer* mThebesLayer;
   CompositableClient* mCompositableClient;
   ClientLayerManager* mManager;
   LayerManager::DrawThebesLayerCallback mCallback;
   void* mCallbackData;
   CSSToParentLayerScale mFrameResolution;
-  bool mLastPaintOpaque;
+  gfxContentType mLastPaintContentType;
+  SurfaceMode mLastPaintSurfaceMode;
 
   // The DrawTarget we use when UseSinglePaintBuffer() above is true.
   RefPtr<gfx::DrawTarget>       mSinglePaintDrawTarget;
   nsIntPoint                    mSinglePaintBufferOffset;
   SharedFrameMetricsHelper*  mSharedFrameMetricsHelper;
-
+  // When using Moz2D's CreateTiledDrawTarget we maintain a list of gfx::Tiles
+  std::vector<gfx::Tile> mMoz2DTiles;
   /**
    * Calculates the region to update in a single progressive update transaction.
    * This employs some heuristics to update the most 'sensible' region to

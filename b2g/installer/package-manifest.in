@@ -144,6 +144,7 @@
 @BINPATH@/components/content_html.xpt
 @BINPATH@/components/content_xslt.xpt
 @BINPATH@/components/cookie.xpt
+@BINPATH@/components/devtools_security.xpt
 @BINPATH@/components/directory.xpt
 @BINPATH@/components/diskspacewatcher.xpt
 @BINPATH@/components/docshell.xpt
@@ -414,6 +415,12 @@
 @BINPATH@/components/WifiWorker.manifest
 #endif // MOZ_WIDGET_GONK
 
+; Tethering
+#ifdef MOZ_WIDGET_GONK
+@BINPATH@/components/TetheringManager.js
+@BINPATH@/components/TetheringManager.manifest
+#endif
+
 ; ResourceStats
 #ifdef MOZ_WIDGET_GONK
 @BINPATH@/components/ResourceStats.js
@@ -650,9 +657,6 @@
 ; [Layout Engine Resources]
 ; Style Sheets, Graphics and other Resources used by the layout engine.
 @BINPATH@/res/EditorOverride.css
-@BINPATH@/res/caret_left.svg
-@BINPATH@/res/caret_middle.svg
-@BINPATH@/res/caret_right.svg
 @BINPATH@/res/contenteditable.css
 @BINPATH@/res/designmode.css
 @BINPATH@/res/ImageDocument.css
@@ -676,6 +680,21 @@
 @BINPATH@/res/table-remove-row-active.gif
 @BINPATH@/res/table-remove-row-hover.gif
 @BINPATH@/res/table-remove-row.gif
+@BINPATH@/res/text_caret.png
+@BINPATH@/res/text_caret@1.5x.png
+@BINPATH@/res/text_caret@2.25x.png
+@BINPATH@/res/text_caret@2x.png
+@BINPATH@/res/text_caret_tilt_left.png
+@BINPATH@/res/text_caret_tilt_left@1.5x.png
+@BINPATH@/res/text_caret_tilt_left@2.25x.png
+@BINPATH@/res/text_caret_tilt_left@2x.png
+@BINPATH@/res/text_caret_tilt_right.png
+@BINPATH@/res/text_caret_tilt_right@1.5x.png
+@BINPATH@/res/text_caret_tilt_right@2.25x.png
+@BINPATH@/res/text_caret_tilt_right@2x.png
+@BINPATH@/res/text_selection_handle.png
+@BINPATH@/res/text_selection_handle@1.5.png
+@BINPATH@/res/text_selection_handle@2.png
 @BINPATH@/res/grabber.gif
 #ifdef XP_MACOSX
 @BINPATH@/res/cursors/*

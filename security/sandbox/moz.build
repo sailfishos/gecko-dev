@@ -5,9 +5,9 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 if CONFIG['OS_ARCH'] == 'Linux':
-
     DIRS += ['linux']
-
+elif CONFIG['OS_ARCH'] == 'Darwin':
+    DIRS += ['mac']
 elif CONFIG['OS_ARCH'] == 'WINNT':
     LIBRARY_NAME = 'sandbox_s'
     FORCE_STATIC_LIB = True
@@ -140,3 +140,12 @@ elif CONFIG['OS_ARCH'] == 'WINNT':
     LOCAL_INCLUDES += ['/nsprpub']
 
     DISABLE_STL_WRAPPING = True
+
+    # Suppress warnings in third-party code.
+    if CONFIG['_MSC_VER']:
+        CXXFLAGS += [
+            '-wd4275', # non dll-interface class exception used as base for dll-interface class
+            '-wd4717', # recursive on all control paths, function will cause runtime stack overflow
+        ]
+
+FAIL_ON_WARNINGS = True

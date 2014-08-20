@@ -34,6 +34,8 @@ namespace jit {
     _(GVN)                                  \
     /* Information during Range analysis */ \
     _(Range)                                \
+    /* Information during loop unrolling */ \
+    _(Unrolling)                            \
     /* Information during LICM */           \
     _(LICM)                                 \
     /* Information during regalloc */       \
@@ -54,6 +56,8 @@ namespace jit {
     _(Safepoints)                           \
     /* Debug info about Pools*/             \
     _(Pools)                                \
+    /* Profiling-related information */     \
+    _(Profiling)                            \
     /* Debug info about the I$ */           \
     _(CacheFlush)                           \
                                             \

@@ -85,6 +85,8 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/TimeStamp.h"
 
+#include "mozilla/dom/ScriptSettings.h"
+
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -157,7 +159,6 @@
 
 #include "SandboxPrivate.h"
 #include "BackstagePass.h"
-#include "nsCxPusher.h"
 #include "nsAXPCNativeCallContext.h"
 
 #ifdef XP_WIN
@@ -170,25 +171,23 @@
 #endif
 #endif /* XP_WIN */
 
-#include "nsINode.h"
-
 /***************************************************************************/
 // default initial sizes for maps (hashtables)
 
-#define XPC_CONTEXT_MAP_SIZE                16
-#define XPC_JS_MAP_SIZE                     64
-#define XPC_JS_CLASS_MAP_SIZE               64
+#define XPC_CONTEXT_MAP_LENGTH                   8
+#define XPC_JS_MAP_LENGTH                       32
+#define XPC_JS_CLASS_MAP_LENGTH                 32
 
-#define XPC_NATIVE_MAP_SIZE                 64
-#define XPC_NATIVE_PROTO_MAP_SIZE           16
-#define XPC_DYING_NATIVE_PROTO_MAP_SIZE     16
-#define XPC_DETACHED_NATIVE_PROTO_MAP_SIZE  32
-#define XPC_NATIVE_INTERFACE_MAP_SIZE       64
-#define XPC_NATIVE_SET_MAP_SIZE             64
-#define XPC_NATIVE_JSCLASS_MAP_SIZE         32
-#define XPC_THIS_TRANSLATOR_MAP_SIZE         8
-#define XPC_NATIVE_WRAPPER_MAP_SIZE         16
-#define XPC_WRAPPER_MAP_SIZE                16
+#define XPC_NATIVE_MAP_LENGTH                    8
+#define XPC_NATIVE_PROTO_MAP_LENGTH              8
+#define XPC_DYING_NATIVE_PROTO_MAP_LENGTH        8
+#define XPC_DETACHED_NATIVE_PROTO_MAP_LENGTH    16
+#define XPC_NATIVE_INTERFACE_MAP_LENGTH         32
+#define XPC_NATIVE_SET_MAP_LENGTH               32
+#define XPC_NATIVE_JSCLASS_MAP_LENGTH           16
+#define XPC_THIS_TRANSLATOR_MAP_LENGTH           4
+#define XPC_NATIVE_WRAPPER_MAP_LENGTH            8
+#define XPC_WRAPPER_MAP_LENGTH                   8
 
 /***************************************************************************/
 // data declarations...
@@ -284,7 +283,15 @@ public:
     static nsIScriptSecurityManager* SecurityManager()
     {
         MOZ_ASSERT(NS_IsMainThread());
+        MOZ_ASSERT(gScriptSecurityManager);
         return gScriptSecurityManager;
+    }
+
+    static nsIPrincipal* SystemPrincipal()
+    {
+        MOZ_ASSERT(NS_IsMainThread());
+        MOZ_ASSERT(gSystemPrincipal);
+        return gSystemPrincipal;
     }
 
     // This returns an AddRef'd pointer. It does not do this with an 'out' param
@@ -340,6 +347,7 @@ private:
 
 public:
     static nsIScriptSecurityManager *gScriptSecurityManager;
+    static nsIPrincipal *gSystemPrincipal;
 };
 
 /***************************************************************************/
@@ -396,9 +404,9 @@ public:
     StringType* Create()
     {
         for (uint32_t i = 0; i < ArrayLength(mStrings); ++i) {
-            if (mStrings[i].empty()) {
-                mStrings[i].construct();
-                return mStrings[i].addr();
+            if (!mStrings[i]) {
+                mStrings[i].emplace();
+                return mStrings[i].ptr();
             }
         }
 
@@ -409,11 +417,10 @@ public:
     void Destroy(StringType *string)
     {
         for (uint32_t i = 0; i < ArrayLength(mStrings); ++i) {
-            if (!mStrings[i].empty() &&
-                mStrings[i].addr() == string) {
+            if (mStrings[i] && mStrings[i].ptr() == string) {
                 // One of our internal strings is no longer in use, mark
                 // it as such and free its data.
-                mStrings[i].destroy();
+                mStrings[i].reset();
                 return;
             }
         }
@@ -427,7 +434,7 @@ public:
     {
 #ifdef DEBUG
         for (uint32_t i = 0; i < ArrayLength(mStrings); ++i) {
-            MOZ_ASSERT(mStrings[i].empty(), "Short lived string still in use");
+            MOZ_ASSERT(!mStrings[i], "Short lived string still in use");
         }
 #endif
     }
@@ -612,8 +619,11 @@ public:
 
     AutoMarkingPtr**  GetAutoRootsAdr() {return &mAutoRoots;}
 
-    JSObject* GetJunkScope();
-    JSObject* GetCompilationScope();
+    JSObject* UnprivilegedJunkScope() { return mUnprivilegedJunkScope; }
+    JSObject* PrivilegedJunkScope() { return mPrivilegedJunkScope; }
+    JSObject* CompilationScope() { return mCompilationScope; }
+
+    void InitSingletonScopes();
     void DeleteSingletonScopes();
 
     PRTime GetWatchdogTimestamp(WatchdogTimestampCategory aCategory);
@@ -654,7 +664,8 @@ private:
     nsTArray<xpcContextCallback> extraContextCallbacks;
     nsRefPtr<WatchdogManager> mWatchdogManager;
     JS::GCSliceCallback mPrevGCSliceCallback;
-    JS::PersistentRootedObject mJunkScope;
+    JS::PersistentRootedObject mUnprivilegedJunkScope;
+    JS::PersistentRootedObject mPrivilegedJunkScope;
     JS::PersistentRootedObject mCompilationScope;
     nsRefPtr<AsyncFreeSnowWhite> mAsyncSnowWhiteFreer;
 
@@ -2732,7 +2743,7 @@ public:
     bool InitWithName(const nsID& id, const char *nameString);
     bool SetName(const char* name);
     void   SetNameToNoString()
-        {MOZ_ASSERT(!mName, "name already set"); mName = gNoString;}
+        {MOZ_ASSERT(!mName, "name already set"); mName = const_cast<char *>(gNoString);}
     bool NameIsSet() const {return nullptr != mName;}
     const nsID& ID() const {return mID;}
     bool IsValid() const {return !mID.Equals(GetInvalidIID());}
@@ -2747,7 +2758,7 @@ public:
 
 protected:
     virtual ~nsJSID();
-    static char gNoString[];
+    static const char gNoString[];
     nsID    mID;
     char*   mNumber;
     char*   mName;
@@ -2834,13 +2845,20 @@ void PopJSContextNoScriptContext();
 
 } /* namespace xpc */
 
+namespace mozilla {
+namespace dom {
+namespace danger {
+class AutoCxPusher;
+}
+}
+}
+
 class XPCJSContextStack
 {
 public:
     explicit XPCJSContextStack(XPCJSRuntime *aRuntime)
       : mRuntime(aRuntime)
       , mSafeJSContext(nullptr)
-      , mSafeJSContextGlobal(aRuntime->Runtime(), nullptr)
     { }
 
     virtual ~XPCJSContextStack();
@@ -2857,15 +2875,14 @@ public:
 
     JSContext *InitSafeJSContext();
     JSContext *GetSafeJSContext();
-    JSObject *GetSafeJSContextGlobal();
     bool HasJSContext(JSContext *cx);
 
     const InfallibleTArray<XPCJSContextInfo>* GetStack()
     { return &mStack; }
 
 private:
-    friend class mozilla::AutoCxPusher;
-    friend bool xpc::PushJSContextNoScriptContext(JSContext *aCx);;
+    friend class mozilla::dom::danger::AutoCxPusher;
+    friend bool xpc::PushJSContextNoScriptContext(JSContext *aCx);
     friend void xpc::PopJSContextNoScriptContext();
 
     // We make these private so that stack manipulation can only happen
@@ -2876,7 +2893,6 @@ private:
     AutoInfallibleTArray<XPCJSContextInfo, 16> mStack;
     XPCJSRuntime* mRuntime;
     JSContext*  mSafeJSContext;
-    JS::PersistentRootedObject mSafeJSContextGlobal;
 };
 
 /***************************************************************************/
@@ -3370,6 +3386,7 @@ struct GlobalProperties {
     bool TextDecoder : 1;
     bool TextEncoder : 1;
     bool URL : 1;
+    bool URLSearchParams : 1;
     bool atob : 1;
     bool btoa : 1;
 };
@@ -3449,7 +3466,7 @@ public:
         , defineAs(cx, JSID_VOID)
     { }
 
-    virtual bool Parse() { return ParseId("defineAs", &defineAs); };
+    virtual bool Parse() { return ParseId("defineAs", &defineAs); }
 
     JS::RootedId defineAs;
 };
@@ -3464,7 +3481,7 @@ public:
 
     virtual bool Parse() {
         return ParseId("defineAs", &defineAs);
-    };
+    }
 
     JS::RootedId defineAs;
 };
@@ -3481,7 +3498,7 @@ public:
     virtual bool Parse() {
         return ParseBoolean("wrapReflectors", &wrapReflectors) &&
                ParseBoolean("cloneFunctions", &cloneFunctions);
-    };
+    }
 
     // When a reflector is encountered, wrap it rather than aborting the clone.
     bool wrapReflectors;
@@ -3587,6 +3604,7 @@ public:
         , forcePermissiveCOWs(false)
         , adoptedNode(false)
         , donatedNode(false)
+        , warnedAboutXrays(false)
         , scriptability(c)
         , scope(nullptr)
     {
@@ -3641,6 +3659,10 @@ public:
     // for telemetry. See bug 928476.
     bool adoptedNode;
     bool donatedNode;
+
+    // Whether we've emitted a warning about a property that was filtered out
+    // by XrayWrappers. See XrayWrapper.cpp.
+    bool warnedAboutXrays;
 
     // The scriptability of this compartment.
     Scriptability scriptability;
@@ -3706,8 +3728,6 @@ ObjectScope(JSObject *obj)
 {
     return CompartmentPrivate::Get(obj)->scope;
 }
-
-extern const JSClass SafeJSContextGlobalClass;
 
 JSObject* NewOutObject(JSContext* cx, JSObject* scope);
 bool IsOutObject(JSContext* cx, JSObject* obj);

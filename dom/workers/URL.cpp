@@ -893,10 +893,21 @@ URL::RevokeObjectURL(const GlobalObject& aGlobal, const nsAString& aUrl)
   }
 }
 
+// static
+nsIPrincipal*
+URL::GetPrincipalFromURL(const GlobalObject& aGlobal, const nsAString& aUrl,
+                         ErrorResult& aRv)
+{
+  // This method is not implemented in workers.
+  aRv.Throw(NS_ERROR_NOT_IMPLEMENTED);
+  return nullptr;
+}
+
 void
-URL::URLSearchParamsUpdated()
+URL::URLSearchParamsUpdated(URLSearchParams* aSearchParams)
 {
   MOZ_ASSERT(mSearchParams);
+  MOZ_ASSERT(mSearchParams == aSearchParams);
 
   nsString search;
   mSearchParams->Serialize(search);

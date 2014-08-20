@@ -565,6 +565,10 @@ ContentChild::Init(MessageLoop* aIOLoop,
     Open(aChannel, aParentHandle, aIOLoop);
     sSingleton = this;
 
+    // Make sure there's an nsAutoScriptBlocker on the stack when dispatching
+    // urgent messages.
+    GetIPCChannel()->BlockScripts();
+
 #ifdef MOZ_X11
     // Send the parent our X socket to act as a proxy reference for our X
     // resources.
@@ -914,10 +918,20 @@ ContentChild::AllocPBackgroundChild(Transport* aTransport,
 bool
 ContentChild::RecvSetProcessSandbox()
 {
-  // We may want to move the sandbox initialization somewhere else
-  // at some point; see bug 880808.
+    // We may want to move the sandbox initialization somewhere else
+    // at some point; see bug 880808.
 #if defined(MOZ_CONTENT_SANDBOX)
 #if defined(XP_LINUX)
+#if defined(MOZ_WIDGET_GONK) && ANDROID_VERSION >= 19
+    // For B2G >= KitKat, sandboxing is mandatory; this has already
+    // been enforced by ContentParent::StartUp().
+    MOZ_ASSERT(CanSandboxContentProcess());
+#else
+    // Otherwise, sandboxing is best-effort.
+    if (!CanSandboxContentProcess()) {
+        return true;
+    }
+#endif
     SetContentProcessSandbox();
 #elif defined(XP_WIN)
     mozilla::SandboxTarget::Instance()->StartSandbox();
@@ -1646,8 +1660,8 @@ ContentChild::RecvActivateA11y()
 #ifdef ACCESSIBILITY
     // Start accessibility in content process if it's running in chrome
     // process.
-    nsCOMPtr<nsIAccessibilityService> accService =
-        do_GetService("@mozilla.org/accessibilityService;1");
+	nsCOMPtr<nsIAccessibilityService> accService =
+        services::GetAccessibilityService();
 #endif
     return true;
 }

@@ -57,19 +57,20 @@ public:
   // essentially, this is a sentinel used to represent an invalid or blank
   // tile.
   TileHost()
-    : mSharedLock(nullptr)
-    , mTextureHost(nullptr)
   {}
 
   // Constructs a TileHost from a gfxSharedReadLock and TextureHost.
   TileHost(gfxSharedReadLock* aSharedLock,
-               TextureHost* aTextureHost)
+               TextureHost* aTextureHost,
+               TextureHost* aTextureHostOnWhite)
     : mSharedLock(aSharedLock)
     , mTextureHost(aTextureHost)
+    , mTextureHostOnWhite(aTextureHostOnWhite)
   {}
 
   TileHost(const TileHost& o) {
     mTextureHost = o.mTextureHost;
+    mTextureHostOnWhite = o.mTextureHostOnWhite;
     mSharedLock = o.mSharedLock;
   }
   TileHost& operator=(const TileHost& o) {
@@ -77,6 +78,7 @@ public:
       return *this;
     }
     mTextureHost = o.mTextureHost;
+    mTextureHostOnWhite = o.mTextureHostOnWhite;
     mSharedLock = o.mSharedLock;
     return *this;
   }
@@ -98,6 +100,7 @@ public:
 
   RefPtr<gfxSharedReadLock> mSharedLock;
   RefPtr<TextureHost> mTextureHost;
+  RefPtr<TextureHost> mTextureHostOnWhite;
 };
 
 class TiledLayerBufferComposite
@@ -154,6 +157,8 @@ protected:
 
   void SwapTiles(TileHost& aTileA, TileHost& aTileB) { std::swap(aTileA, aTileB); }
 
+  void UnlockTile(TileHost aTile) {}
+  void PostValidate(const nsIntRegion& aPaintRegion) {}
 private:
   CSSToParentLayerScale mFrameResolution;
   bool mHasDoubleBufferedTiles;
@@ -218,8 +223,7 @@ public:
                  const gfx::Matrix4x4& aTransform,
                  const gfx::Filter& aFilter,
                  const gfx::Rect& aClipRect,
-                 const nsIntRegion* aVisibleRegion = nullptr,
-                 TiledLayerProperties* aLayerProperties = nullptr);
+                 const nsIntRegion* aVisibleRegion = nullptr);
 
   virtual CompositableType GetType() { return CompositableType::BUFFER_TILED; }
 

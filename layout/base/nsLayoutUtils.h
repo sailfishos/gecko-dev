@@ -27,6 +27,7 @@
 #include "mozilla/gfx/2D.h"
 #include "Units.h"
 #include "mozilla/ToString.h"
+#include "nsHTMLReflowMetrics.h"
 
 #include <limits>
 #include <algorithm>
@@ -1000,7 +1001,7 @@ public:
   struct RectListBuilder : public RectCallback {
     DOMRectList* mRectList;
 
-    RectListBuilder(DOMRectList* aList);
+    explicit RectListBuilder(DOMRectList* aList);
     virtual void AddRect(const nsRect& aRect);
   };
 
@@ -2269,6 +2270,13 @@ public:
 
   static bool IsOutlineStyleAutoEnabled();
 
+  static void SetBSizeFromFontMetrics(const nsIFrame* aFrame,
+                                      nsHTMLReflowMetrics& aMetrics,
+                                      const nsHTMLReflowState& aReflowState,
+                                      mozilla::LogicalMargin aFramePadding, 
+                                      mozilla::WritingMode aLineWM,
+                                      mozilla::WritingMode aFrameWM);
+
 private:
   static uint32_t sFontSizeInflationEmPerLine;
   static uint32_t sFontSizeInflationMinTwips;
@@ -2346,7 +2354,7 @@ namespace mozilla {
      */
     class AutoMaybeDisableFontInflation {
     public:
-      AutoMaybeDisableFontInflation(nsIFrame *aFrame);
+      explicit AutoMaybeDisableFontInflation(nsIFrame *aFrame);
 
       ~AutoMaybeDisableFontInflation();
     private:

@@ -370,14 +370,6 @@ ClientLayerManager::RunOverfillCallback(const uint32_t aOverfill)
   mOverfillCallbacks.Clear();
 }
 
-static nsIntRect
-ToOutsideIntRect(const gfxRect &aRect)
-{
-  gfxRect r = aRect;
-  r.RoundOut();
-  return nsIntRect(r.X(), r.Y(), r.Width(), r.Height());
-}
-
 void
 ClientLayerManager::MakeSnapshotIfRequired()
 {
@@ -650,7 +642,7 @@ ClientLayerManager::ProgressiveUpdateCallback(bool aHasPendingNewThebesContent,
 #ifdef MOZ_WIDGET_ANDROID
   Layer* primaryScrollable = GetPrimaryScrollableLayer();
   if (primaryScrollable) {
-    const FrameMetrics& metrics = primaryScrollable->AsContainerLayer()->GetFrameMetrics();
+    const FrameMetrics& metrics = primaryScrollable->GetFrameMetrics();
 
     // This is derived from the code in
     // gfx/layers/ipc/CompositorParent.cpp::TransformShadowTree.

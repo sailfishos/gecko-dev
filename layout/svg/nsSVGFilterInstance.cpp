@@ -14,7 +14,6 @@
 #include "mozilla/dom/SVGFilterElement.h"
 #include "nsReferencedElement.h"
 #include "nsSVGFilterFrame.h"
-#include "nsSVGFilterPaintCallback.h"
 #include "nsSVGUtils.h"
 #include "SVGContentUtils.h"
 #include "FilterSupport.h"
@@ -389,7 +388,7 @@ nsSVGFilterInstance::BuildPrimitives(nsTArray<FilterPrimitiveDescription>& aPrim
   }
 
   // Maps source image name to source index.
-  nsDataHashtable<nsStringHashKey, int32_t> imageTable(10);
+  nsDataHashtable<nsStringHashKey, int32_t> imageTable(8);
 
   // The principal that we check principals of any loaded images against.
   nsCOMPtr<nsIPrincipal> principal = mTargetFrame->GetContent()->NodePrincipal();

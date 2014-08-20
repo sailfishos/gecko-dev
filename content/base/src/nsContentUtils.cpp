@@ -12,7 +12,6 @@
 #include <math.h>
 
 #include "prprf.h"
-#include "nsCxPusher.h"
 #include "DecoderTraits.h"
 #include "harfbuzz/hb.h"
 #include "imgICache.h"
@@ -486,7 +485,7 @@ nsContentUtils::Init()
     };
 
     PL_DHashTableInit(&sEventListenerManagersHash, &hash_table_ops,
-                      nullptr, sizeof(EventListenerManagerMapEntry), 16);
+                      nullptr, sizeof(EventListenerManagerMapEntry));
 
     RegisterStrongMemoryReporter(new DOMEventListenerManagersHashReporter());
   }
@@ -637,9 +636,9 @@ nsContentUtils::InitializeEventTable() {
   };
 
   sAtomEventTable = new nsDataHashtable<nsISupportsHashKey, EventNameMapping>(
-      int(ArrayLength(eventArray) / 0.75) + 1);
+      ArrayLength(eventArray));
   sStringEventTable = new nsDataHashtable<nsStringHashKey, EventNameMapping>(
-      int(ArrayLength(eventArray) / 0.75) + 1);
+      ArrayLength(eventArray));
   sUserDefinedEvents = new nsCOMArray<nsIAtom>(64);
 
   // Subtract one from the length because of the trailing null
@@ -1939,24 +1938,6 @@ nsContentUtils::InProlog(nsINode *aNode)
   return !root || doc->IndexOf(aNode) < doc->IndexOf(root);
 }
 
-JSContext *
-nsContentUtils::GetContextFromDocument(nsIDocument *aDocument)
-{
-  nsCOMPtr<nsIScriptGlobalObject> sgo =  do_QueryInterface(aDocument->GetScopeObject());
-  if (!sgo) {
-    // No script global, no context.
-    return nullptr;
-  }
-
-  nsIScriptContext *scx = sgo->GetContext();
-  if (!scx) {
-    // No context left in the scope...
-    return nullptr;
-  }
-
-  return scx->GetNativeContext();
-}
-
 //static
 void
 nsContentUtils::TraceSafeJSContext(JSTracer* aTrc)
@@ -1967,7 +1948,7 @@ nsContentUtils::TraceSafeJSContext(JSTracer* aTrc)
   }
   if (JSObject* global = js::DefaultObjectForContextOrNull(cx)) {
     JS::AssertGCThingMustBeTenured(global);
-    JS_CallObjectTracer(aTrc, &global, "safe context");
+    JS_CallUnbarrieredObjectTracer(aTrc, &global, "safe context");
     MOZ_ASSERT(global == js::DefaultObjectForContextOrNull(cx));
   }
 }
@@ -2651,6 +2632,7 @@ nsContentUtils::GenerateStateKey(nsIContent* aContent,
 nsIPrincipal*
 nsContentUtils::SubjectPrincipal()
 {
+  MOZ_ASSERT(IsInitialized());
   JSContext* cx = GetCurrentJSContext();
   if (!cx) {
     return GetSystemPrincipal();
@@ -3961,6 +3943,7 @@ nsContentUtils::MaybeFireNodeRemoved(nsINode* aChild, nsINode* aParent,
   // than fire DOMNodeRemoved in all corner cases. We also rely on it for
   // nsAutoScriptBlockerSuppressNodeRemoved.
   if (!IsSafeToRunScript()) {
+    WarnScriptWasIgnored(aOwnerDoc);
     return;
   }
 
@@ -4715,6 +4698,7 @@ nsContentUtils::CheckSecurityBeforeLoad(nsIURI* aURIToLoad,
 bool
 nsContentUtils::IsSystemPrincipal(nsIPrincipal* aPrincipal)
 {
+  MOZ_ASSERT(IsInitialized());
   return aPrincipal == sSystemPrincipal;
 }
 
@@ -4728,6 +4712,7 @@ nsContentUtils::IsExpandedPrincipal(nsIPrincipal* aPrincipal)
 nsIPrincipal*
 nsContentUtils::GetSystemPrincipal()
 {
+  MOZ_ASSERT(IsInitialized());
   return sSystemPrincipal;
 }
 
@@ -5039,10 +5024,11 @@ nsContentUtils::GetAccessKeyCandidates(WidgetKeyboardEvent* aNativeKeyEvent,
 void
 nsContentUtils::AddScriptBlocker()
 {
+  MOZ_ASSERT(NS_IsMainThread());
   if (!sScriptBlockerCount) {
-    NS_ASSERTION(sRunnersCountAtFirstBlocker == 0,
-                 "Should not already have a count");
-    sRunnersCountAtFirstBlocker = sBlockedScriptRunners->Length();
+    MOZ_ASSERT(sRunnersCountAtFirstBlocker == 0,
+               "Should not already have a count");
+    sRunnersCountAtFirstBlocker = sBlockedScriptRunners ? sBlockedScriptRunners->Length() : 0;
   }
   ++sScriptBlockerCount;
 }
@@ -5055,10 +5041,15 @@ static bool sRemovingScriptBlockers = false;
 void
 nsContentUtils::RemoveScriptBlocker()
 {
+  MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(!sRemovingScriptBlockers);
   NS_ASSERTION(sScriptBlockerCount != 0, "Negative script blockers");
   --sScriptBlockerCount;
   if (sScriptBlockerCount) {
+    return;
+  }
+
+  if (!sBlockedScriptRunners) {
     return;
   }
 
@@ -5089,6 +5080,25 @@ nsContentUtils::RemoveScriptBlocker()
   sRemovingScriptBlockers = true;
 #endif
   sBlockedScriptRunners->RemoveElementsAt(originalFirstBlocker, blockersCount);
+}
+
+/* static */
+void
+nsContentUtils::WarnScriptWasIgnored(nsIDocument* aDocument)
+{
+  nsAutoString msg;
+  if (aDocument) {
+    nsCOMPtr<nsIURI> uri = aDocument->GetDocumentURI();
+    if (uri) {
+      nsCString spec;
+      uri->GetSpec(spec);
+      msg.Append(NS_ConvertUTF8toUTF16(spec));
+      msg.AppendLiteral(" : ");
+    }
+  }
+  msg.AppendLiteral("Unable to run script because scripts are blocked internally.");
+
+  LogSimpleConsoleError(msg, "DOM");
 }
 
 /* static */
@@ -5514,6 +5524,7 @@ JSContext *
 nsContentUtils::GetCurrentJSContext()
 {
   MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(IsInitialized());
   return sXPConnect->GetCurrentJSContext();
 }
 
@@ -5522,6 +5533,7 @@ JSContext *
 nsContentUtils::GetSafeJSContext()
 {
   MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(IsInitialized());
   return sXPConnect->GetSafeJSContext();
 }
 
@@ -5529,6 +5541,7 @@ nsContentUtils::GetSafeJSContext()
 JSContext *
 nsContentUtils::GetDefaultJSContextForThread()
 {
+  MOZ_ASSERT(IsInitialized());
   if (MOZ_LIKELY(NS_IsMainThread())) {
     return GetSafeJSContext();
   } else {
@@ -5540,6 +5553,7 @@ nsContentUtils::GetDefaultJSContextForThread()
 JSContext *
 nsContentUtils::GetCurrentJSContextForThread()
 {
+  MOZ_ASSERT(IsInitialized());
   if (MOZ_LIKELY(NS_IsMainThread())) {
     return GetCurrentJSContext();
   } else {
@@ -5548,14 +5562,13 @@ nsContentUtils::GetCurrentJSContextForThread()
 }
 
 /* static */
-nsresult
+void
 nsContentUtils::ASCIIToLower(nsAString& aStr)
 {
   char16_t* iter = aStr.BeginWriting();
   char16_t* end = aStr.EndWriting();
-  if (MOZ_UNLIKELY(!iter || !end)) {
-    return NS_ERROR_OUT_OF_MEMORY;
-  }
+  MOZ_ASSERT(iter && end);
+
   while (iter != end) {
     char16_t c = *iter;
     if (c >= 'A' && c <= 'Z') {
@@ -5563,43 +5576,38 @@ nsContentUtils::ASCIIToLower(nsAString& aStr)
     }
     ++iter;
   }
-  return NS_OK;
 }
 
 /* static */
-nsresult
+void
 nsContentUtils::ASCIIToLower(const nsAString& aSource, nsAString& aDest)
 {
   uint32_t len = aSource.Length();
   aDest.SetLength(len);
-  if (aDest.Length() == len) {
-    char16_t* dest = aDest.BeginWriting();
-    if (MOZ_UNLIKELY(!dest)) {
-      return NS_ERROR_OUT_OF_MEMORY;
-    }
-    const char16_t* iter = aSource.BeginReading();
-    const char16_t* end = aSource.EndReading();
-    while (iter != end) {
-      char16_t c = *iter;
-      *dest = (c >= 'A' && c <= 'Z') ?
-         c + ('a' - 'A') : c;
-      ++iter;
-      ++dest;
-    }
-    return NS_OK;
+  MOZ_ASSERT(aDest.Length() == len);
+
+  char16_t* dest = aDest.BeginWriting();
+  MOZ_ASSERT(dest);
+
+  const char16_t* iter = aSource.BeginReading();
+  const char16_t* end = aSource.EndReading();
+  while (iter != end) {
+    char16_t c = *iter;
+    *dest = (c >= 'A' && c <= 'Z') ?
+       c + ('a' - 'A') : c;
+    ++iter;
+    ++dest;
   }
-  return NS_ERROR_OUT_OF_MEMORY;
 }
 
 /* static */
-nsresult
+void
 nsContentUtils::ASCIIToUpper(nsAString& aStr)
 {
   char16_t* iter = aStr.BeginWriting();
   char16_t* end = aStr.EndWriting();
-  if (MOZ_UNLIKELY(!iter || !end)) {
-    return NS_ERROR_OUT_OF_MEMORY;
-  }
+  MOZ_ASSERT(iter && end);
+
   while (iter != end) {
     char16_t c = *iter;
     if (c >= 'a' && c <= 'z') {
@@ -5607,32 +5615,28 @@ nsContentUtils::ASCIIToUpper(nsAString& aStr)
     }
     ++iter;
   }
-  return NS_OK;
 }
 
 /* static */
-nsresult
+void
 nsContentUtils::ASCIIToUpper(const nsAString& aSource, nsAString& aDest)
 {
   uint32_t len = aSource.Length();
   aDest.SetLength(len);
-  if (aDest.Length() == len) {
-    char16_t* dest = aDest.BeginWriting();
-    if (MOZ_UNLIKELY(!dest)) {
-      return NS_ERROR_OUT_OF_MEMORY;
-    }
-    const char16_t* iter = aSource.BeginReading();
-    const char16_t* end = aSource.EndReading();
-    while (iter != end) {
-      char16_t c = *iter;
-      *dest = (c >= 'a' && c <= 'z') ?
-         c + ('A' - 'a') : c;
-      ++iter;
-      ++dest;
-    }
-    return NS_OK;
+  MOZ_ASSERT(aDest.Length() == len);
+
+  char16_t* dest = aDest.BeginWriting();
+  MOZ_ASSERT(dest);
+
+  const char16_t* iter = aSource.BeginReading();
+  const char16_t* end = aSource.EndReading();
+  while (iter != end) {
+    char16_t c = *iter;
+    *dest = (c >= 'a' && c <= 'z') ?
+      c + ('A' - 'a') : c;
+    ++iter;
+    ++dest;
   }
-  return NS_ERROR_OUT_OF_MEMORY;
 }
 
 /* static */

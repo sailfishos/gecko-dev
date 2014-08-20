@@ -41,6 +41,11 @@ interface RsaHashedKeyAlgorithm : RsaKeyAlgorithm {
   readonly attribute KeyAlgorithm hash;
 };
 
+[NoInterfaceObject]
+interface EcKeyAlgorithm : KeyAlgorithm {
+  readonly attribute NamedCurve namedCurve;
+};
+
 
 /***** Algorithm dictionaries *****/
 
@@ -107,6 +112,18 @@ dictionary DhKeyGenParams : Algorithm {
 typedef DOMString NamedCurve;
 dictionary EcKeyGenParams : Algorithm {
   NamedCurve namedCurve;
+};
+
+dictionary AesDerivedKeyParams : Algorithm {
+  [EnforceRange] unsigned long length;
+};
+
+dictionary HmacDerivedKeyParams : HmacImportParams {
+  [EnforceRange] unsigned long length;
+};
+
+dictionary EcdhKeyDeriveParams : Algorithm {
+  CryptoKey public;
 };
 
 

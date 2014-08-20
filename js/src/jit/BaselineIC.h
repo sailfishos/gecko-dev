@@ -2255,8 +2255,8 @@ class ICCompare_Int32WithBoolean : public ICStub
         bool generateStubCode(MacroAssembler &masm);
 
         virtual int32_t getKey() const {
-            return (static_cast<int32_t>(kind) | (static_cast<int32_t>(op_) << 16) |
-                    (static_cast<int32_t>(lhsIsInt32_) << 24));
+            return static_cast<int32_t>(kind) | (static_cast<int32_t>(op_) << 16) |
+                   (static_cast<int32_t>(lhsIsInt32_) << 24);
         }
 
       public:
@@ -2568,8 +2568,8 @@ class ICBinaryArith_Int32 : public ICStub
 
         // Stub keys shift-stubs need to encode the kind, the JSOp and if we allow doubles.
         virtual int32_t getKey() const {
-            return (static_cast<int32_t>(kind) | (static_cast<int32_t>(op_) << 16) |
-                    (static_cast<int32_t>(allowDouble_) << 24));
+            return static_cast<int32_t>(kind) | (static_cast<int32_t>(op_) << 16) |
+                   (static_cast<int32_t>(allowDouble_) << 24);
         }
 
       public:
@@ -5606,6 +5606,11 @@ class ICCall_Fallback : public ICMonitoredFallbackStub
 class ICCall_Scripted : public ICMonitoredStub
 {
     friend class ICStubSpace;
+  public:
+    // The maximum number of inlineable spread call arguments. Keep this small
+    // to avoid controllable stack overflows by attackers passing large arrays
+    // to spread call. This value is shared with ICCall_Native.
+    static const uint32_t MAX_ARGS_SPREAD_LENGTH = 16;
 
   protected:
     HeapPtrScript calleeScript_;

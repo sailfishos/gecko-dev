@@ -145,7 +145,7 @@ class GLBlitHelper MOZ_FINAL
 
 public:
 
-    GLBlitHelper(GLContext* gl);
+    explicit GLBlitHelper(GLContext* gl);
     ~GLBlitHelper();
 
     // If you don't have |srcFormats| for the 2nd definition,
@@ -153,19 +153,23 @@ public:
     // the first BlitFramebufferToFramebuffer.
     void BlitFramebufferToFramebuffer(GLuint srcFB, GLuint destFB,
                                       const gfx::IntSize& srcSize,
-                                      const gfx::IntSize& destSize);
+                                      const gfx::IntSize& destSize,
+                                      bool internalFBs = false);
     void BlitFramebufferToFramebuffer(GLuint srcFB, GLuint destFB,
                                       const gfx::IntSize& srcSize,
                                       const gfx::IntSize& destSize,
-                                      const GLFormats& srcFormats);
+                                      const GLFormats& srcFormats,
+                                      bool internalFBs = false);
     void BlitTextureToFramebuffer(GLuint srcTex, GLuint destFB,
                                   const gfx::IntSize& srcSize,
                                   const gfx::IntSize& destSize,
-                                  GLenum srcTarget = LOCAL_GL_TEXTURE_2D);
+                                  GLenum srcTarget = LOCAL_GL_TEXTURE_2D,
+                                  bool internalFBs = false);
     void BlitFramebufferToTexture(GLuint srcFB, GLuint destTex,
                                   const gfx::IntSize& srcSize,
                                   const gfx::IntSize& destSize,
-                                  GLenum destTarget = LOCAL_GL_TEXTURE_2D);
+                                  GLenum destTarget = LOCAL_GL_TEXTURE_2D,
+                                  bool internalFBs = false);
     void BlitTextureToTexture(GLuint srcTex, GLuint destTex,
                               const gfx::IntSize& srcSize,
                               const gfx::IntSize& destSize,

@@ -226,6 +226,8 @@ public:
 
   void ExpectAudio(const mozilla::TrackID);
   void ExpectVideo(const mozilla::TrackID);
+  void RemoveAudio(const mozilla::TrackID);
+  void RemoveVideo(const mozilla::TrackID);
   unsigned AudioTrackCount();
   unsigned VideoTrackCount();
   void DetachTransport_s();
@@ -301,10 +303,13 @@ class PeerConnectionMedia : public sigslot::has_slots<> {
   }
 
   // Add a stream (main thread only)
-  nsresult AddStream(nsIDOMMediaStream* aMediaStream, uint32_t *stream_id);
+  nsresult AddStream(nsIDOMMediaStream* aMediaStream, uint32_t hints,
+                     uint32_t *stream_id);
 
   // Remove a stream (main thread only)
-  nsresult RemoveStream(nsIDOMMediaStream* aMediaStream, uint32_t *stream_id);
+  nsresult RemoveStream(nsIDOMMediaStream* aMediaStream,
+                        uint32_t hints,
+                        uint32_t *stream_id);
 
   // Get a specific local stream
   uint32_t LocalStreamsLength()
@@ -362,8 +367,10 @@ class PeerConnectionMedia : public sigslot::has_slots<> {
   void AddTransportFlow(int aIndex, bool aRtcp,
                         const mozilla::RefPtr<mozilla::TransportFlow> &aFlow);
   void ConnectDtlsListener_s(const mozilla::RefPtr<mozilla::TransportFlow>& aFlow);
-  void DtlsConnected(mozilla::TransportLayer* aFlow,
-                     mozilla::TransportLayer::State state);
+  void DtlsConnected_s(mozilla::TransportLayer* aFlow,
+                       mozilla::TransportLayer::State state);
+  static void DtlsConnected_m(const std::string& aParentHandle,
+                              bool aPrivacyRequested);
 
   mozilla::RefPtr<mozilla::MediaSessionConduit> GetConduit(int aStreamIndex, bool aReceive) {
     int index_inner = aStreamIndex * 2 + (aReceive ? 0 : 1);
@@ -406,6 +413,8 @@ class PeerConnectionMedia : public sigslot::has_slots<> {
 
   // The parent PC
   PeerConnectionImpl *mParent;
+  // and a loose handle on it for event driven stuff
+  std::string mParentHandle;
 
   // A list of streams returned from GetUserMedia
   // This is only accessed on the main thread (with one special exception)

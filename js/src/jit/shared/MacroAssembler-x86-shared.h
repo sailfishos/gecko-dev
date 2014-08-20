@@ -195,7 +195,7 @@ class MacroAssemblerX86Shared : public Assembler
     }
     void atomic_cmpxchg32(Register src, const Operand &addr, Register dest) {
         // %eax must be explicitly provided for calling clarity.
-        MOZ_ASSERT(dest.code() == JSC::X86Registers::eax);
+        MOZ_ASSERT(dest.code() == X86Registers::eax);
         lock_cmpxchg32(src, addr);
     }
 
@@ -466,6 +466,89 @@ class MacroAssemblerX86Shared : public Assembler
     void convertDoubleToFloat32(FloatRegister src, FloatRegister dest) {
         cvtsd2ss(src, dest);
     }
+
+    void loadAlignedInt32x4(const Address &src, FloatRegister dest) {
+        movdqa(Operand(src), dest);
+    }
+    void storeAlignedInt32x4(FloatRegister src, const Address &dest) {
+        movdqa(src, Operand(dest));
+    }
+    void moveAlignedInt32x4(FloatRegister src, FloatRegister dest) {
+        movdqa(src, dest);
+    }
+    void loadUnalignedInt32x4(const Address &src, FloatRegister dest) {
+        movdqu(Operand(src), dest);
+    }
+    void storeUnalignedInt32x4(FloatRegister src, const Address &dest) {
+        movdqu(src, Operand(dest));
+    }
+    void packedAddInt32(const Operand &src, FloatRegister dest) {
+        paddd(src, dest);
+    }
+    void packedSubInt32(const Operand &src, FloatRegister dest) {
+        psubd(src, dest);
+    }
+
+    void loadAlignedFloat32x4(const Address &src, FloatRegister dest) {
+        movaps(Operand(src), dest);
+    }
+    void storeAlignedFloat32x4(FloatRegister src, const Address &dest) {
+        movaps(src, Operand(dest));
+    }
+    void moveAlignedFloat32x4(FloatRegister src, FloatRegister dest) {
+        movaps(src, dest);
+    }
+    void loadUnalignedFloat32x4(const Address &src, FloatRegister dest) {
+        movups(Operand(src), dest);
+    }
+    void storeUnalignedFloat32x4(FloatRegister src, const Address &dest) {
+        movups(src, Operand(dest));
+    }
+    void packedAddFloat32(const Operand &src, FloatRegister dest) {
+        addps(src, dest);
+    }
+    void packedSubFloat32(const Operand &src, FloatRegister dest) {
+        subps(src, dest);
+    }
+    void packedMulFloat32(const Operand &src, FloatRegister dest) {
+        mulps(src, dest);
+    }
+    void packedDivFloat32(const Operand &src, FloatRegister dest) {
+        divps(src, dest);
+    }
+
+    static uint32_t ComputeShuffleMask(SimdLane x, SimdLane y = LaneX,
+                                       SimdLane z = LaneX, SimdLane w = LaneX)
+    {
+        uint32_t r = (uint32_t(w) << 6) |
+                     (uint32_t(z) << 4) |
+                     (uint32_t(y) << 2) |
+                     uint32_t(x);
+        JS_ASSERT(r < 256);
+        return r;
+    }
+
+    void shuffleInt32(uint32_t mask, FloatRegister src, FloatRegister dest) {
+        pshufd(mask, src, dest);
+    }
+    void moveLowInt32(FloatRegister src, Register dest) {
+        movd(src, dest);
+    }
+
+    void moveHighPairToLowPairFloat32(FloatRegister src, FloatRegister dest) {
+        movhlps(src, dest);
+    }
+    void shuffleFloat32(uint32_t mask, FloatRegister src, FloatRegister dest) {
+        // The shuffle instruction on x86 is such that it moves 2 words from
+        // the dest and 2 words from the src operands. To simplify things, just
+        // clobber the output with the input and apply the instruction
+        // afterwards.
+        // Note: this is useAtStart-safe because src isn't read afterwards.
+        if (src != dest)
+            moveAlignedFloat32x4(src, dest);
+        shufps(mask, dest, dest);
+    }
+
     void moveFloatAsDouble(Register src, FloatRegister dest) {
         movd(src, dest);
         cvtss2sd(dest, dest);
@@ -594,6 +677,30 @@ class MacroAssemblerX86Shared : public Assembler
 
         // See comment above
         if (u == 0) {
+            xorps(dest, dest);
+            return true;
+        }
+        return false;
+    }
+
+    bool maybeInlineInt32x4(const SimdConstant &v, const FloatRegister &dest) {
+        static const SimdConstant zero = SimdConstant::CreateX4(0, 0, 0, 0);
+        static const SimdConstant minusOne = SimdConstant::CreateX4(-1, -1, -1, -1);
+        if (v == zero) {
+            pxor(dest, dest);
+            return true;
+        }
+        if (v == minusOne) {
+            pcmpeqw(dest, dest);
+            return true;
+        }
+        return false;
+    }
+    bool maybeInlineFloat32x4(const SimdConstant &v, const FloatRegister &dest) {
+        static const SimdConstant zero = SimdConstant::CreateX4(0.f, 0.f, 0.f, 0.f);
+        if (v == zero) {
+            // This won't get inlined if the SimdConstant v contains -0 in any
+            // lane, as operator== here does a memcmp.
             xorps(dest, dest);
             return true;
         }

@@ -76,7 +76,21 @@ class MIRGenerator
     }
 
     bool instrumentedProfiling() {
-        return GetIonContext()->runtime->spsProfiler().enabled();
+        if (!instrumentedProfilingIsCached_) {
+            instrumentedProfiling_ = GetIonContext()->runtime->spsProfiler().enabled();
+            instrumentedProfilingIsCached_ = true;
+        }
+        return instrumentedProfiling_;
+    }
+
+    bool isNativeToBytecodeMapEnabled() {
+        if (compilingAsmJS())
+            return false;
+#ifdef DEBUG
+        return true;
+#else
+        return instrumentedProfiling();
+#endif
     }
 
     // Whether the main thread is trying to cancel this build.
@@ -127,18 +141,9 @@ class MIRGenerator
     bool performsCall() const {
         return performsCall_;
     }
-    void setNeedsInitialStackAlignment() {
-        needsInitialStackAlignment_ = true;
-    }
-    bool needsInitialStackAlignment() const {
-        JS_ASSERT(compilingAsmJS());
-        return needsInitialStackAlignment_;
-    }
-    void setPerformsAsmJSCall() {
-        JS_ASSERT(compilingAsmJS());
-        setPerformsCall();
-        setNeedsInitialStackAlignment();
-    }
+    // Traverses the graph to find if there's any SIMD instruction. Costful but
+    // the value is cached, so don't worry about calling it several times.
+    bool usesSimd();
     void noteMinAsmJSHeapLength(uint32_t len) {
         minAsmJSHeapLength_ = len;
     }
@@ -167,13 +172,17 @@ class MIRGenerator
 
     uint32_t maxAsmJSStackArgBytes_;
     bool performsCall_;
-    bool needsInitialStackAlignment_;
+    bool usesSimd_;
+    bool usesSimdCached_;
     uint32_t minAsmJSHeapLength_;
 
     // Keep track of whether frame arguments are modified during execution.
     // RegAlloc needs to know this as spilling values back to their register
     // slots is not compatible with that.
     bool modifiesFrameArguments_;
+
+    bool instrumentedProfiling_;
+    bool instrumentedProfilingIsCached_;
 
 #if defined(JS_ION_PERF)
     AsmJSPerfSpewer asmJSPerfSpewer_;

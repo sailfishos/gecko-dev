@@ -23,6 +23,7 @@
 #include "mozilla/WindowsVersion.h"
 
 #define INPUTSCOPE_INIT_GUID
+#define TEXTATTRS_INIT_GUID
 #include "nsTextStore.h"
 
 using namespace mozilla;
@@ -134,6 +135,17 @@ DWORD         nsTextStore::sTsfClientId  = 0;
 nsTextStore*  nsTextStore::sTsfTextStore = nullptr;
 
 bool nsTextStore::sCreateNativeCaretForATOK = false;
+bool nsTextStore::sDoNotReturnNoLayoutErrorToFreeChangJie = false;
+bool nsTextStore::sDoNotReturnNoLayoutErrorToEasyChangjei = false;
+
+#define TIP_NAME_BEGINS_WITH_ATOK \
+  (NS_LITERAL_STRING("ATOK "))
+// NOTE: Free ChangJie 2010 missspells its name...
+#define TIP_NAME_FREE_CHANG_JIE_2010 \
+  (NS_LITERAL_STRING("Free CangJie IME 10"))
+#define TIP_NAME_EASY_CHANGJEI \
+  (NS_LITERAL_STRING( \
+     "\x4E2D\x6587 (\x7E41\x9AD4) - \x6613\x9821\x8F38\x5165\x6CD5"))
 
 UINT nsTextStore::sFlushTIPInputMessage  = 0;
 
@@ -255,6 +267,105 @@ GetGUIDNameStr(REFGUID aGUID)
   }
 
   return NS_ConvertUTF16toUTF8(str);
+}
+
+static nsCString
+GetGUIDNameStrWithTable(REFGUID aGUID)
+{
+#define RETURN_GUID_NAME(aNamedGUID) \
+  if (IsEqualGUID(aGUID, aNamedGUID)) { \
+    return NS_LITERAL_CSTRING(#aNamedGUID); \
+  }
+
+  RETURN_GUID_NAME(GUID_PROP_INPUTSCOPE)
+  RETURN_GUID_NAME(TSATTRID_OTHERS)
+  RETURN_GUID_NAME(TSATTRID_Font)
+  RETURN_GUID_NAME(TSATTRID_Font_FaceName)
+  RETURN_GUID_NAME(TSATTRID_Font_SizePts)
+  RETURN_GUID_NAME(TSATTRID_Font_Style)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Bold)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Italic)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_SmallCaps)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Capitalize)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Uppercase)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Lowercase)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Animation)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Animation_LasVegasLights)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Animation_BlinkingBackground)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Animation_SparkleText)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Animation_MarchingBlackAnts)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Animation_MarchingRedAnts)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Animation_Shimmer)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Animation_WipeDown)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Animation_WipeRight)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Emboss)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Engrave)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Hidden)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Kerning)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Outlined)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Position)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Protected)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Shadow)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Spacing)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Weight)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Height)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Underline)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Underline_Single)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Underline_Double)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Strikethrough)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Strikethrough_Single)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Strikethrough_Double)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Overline)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Overline_Single)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Overline_Double)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Blink)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Subscript)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Superscript)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_Color)
+  RETURN_GUID_NAME(TSATTRID_Font_Style_BackgroundColor)
+  RETURN_GUID_NAME(TSATTRID_Text)
+  RETURN_GUID_NAME(TSATTRID_Text_VerticalWriting)
+  RETURN_GUID_NAME(TSATTRID_Text_RightToLeft)
+  RETURN_GUID_NAME(TSATTRID_Text_Orientation)
+  RETURN_GUID_NAME(TSATTRID_Text_Language)
+  RETURN_GUID_NAME(TSATTRID_Text_ReadOnly)
+  RETURN_GUID_NAME(TSATTRID_Text_EmbeddedObject)
+  RETURN_GUID_NAME(TSATTRID_Text_Alignment)
+  RETURN_GUID_NAME(TSATTRID_Text_Alignment_Left)
+  RETURN_GUID_NAME(TSATTRID_Text_Alignment_Right)
+  RETURN_GUID_NAME(TSATTRID_Text_Alignment_Center)
+  RETURN_GUID_NAME(TSATTRID_Text_Alignment_Justify)
+  RETURN_GUID_NAME(TSATTRID_Text_Link)
+  RETURN_GUID_NAME(TSATTRID_Text_Hyphenation)
+  RETURN_GUID_NAME(TSATTRID_Text_Para)
+  RETURN_GUID_NAME(TSATTRID_Text_Para_FirstLineIndent)
+  RETURN_GUID_NAME(TSATTRID_Text_Para_LeftIndent)
+  RETURN_GUID_NAME(TSATTRID_Text_Para_RightIndent)
+  RETURN_GUID_NAME(TSATTRID_Text_Para_SpaceAfter)
+  RETURN_GUID_NAME(TSATTRID_Text_Para_SpaceBefore)
+  RETURN_GUID_NAME(TSATTRID_Text_Para_LineSpacing)
+  RETURN_GUID_NAME(TSATTRID_Text_Para_LineSpacing_Single)
+  RETURN_GUID_NAME(TSATTRID_Text_Para_LineSpacing_OnePtFive)
+  RETURN_GUID_NAME(TSATTRID_Text_Para_LineSpacing_Double)
+  RETURN_GUID_NAME(TSATTRID_Text_Para_LineSpacing_AtLeast)
+  RETURN_GUID_NAME(TSATTRID_Text_Para_LineSpacing_Exactly)
+  RETURN_GUID_NAME(TSATTRID_Text_Para_LineSpacing_Multiple)
+  RETURN_GUID_NAME(TSATTRID_List)
+  RETURN_GUID_NAME(TSATTRID_List_LevelIndel)
+  RETURN_GUID_NAME(TSATTRID_List_Type)
+  RETURN_GUID_NAME(TSATTRID_List_Type_Bullet)
+  RETURN_GUID_NAME(TSATTRID_List_Type_Arabic)
+  RETURN_GUID_NAME(TSATTRID_List_Type_LowerLetter)
+  RETURN_GUID_NAME(TSATTRID_List_Type_UpperLetter)
+  RETURN_GUID_NAME(TSATTRID_List_Type_LowerRoman)
+  RETURN_GUID_NAME(TSATTRID_List_Type_UpperRoman)
+  RETURN_GUID_NAME(TSATTRID_App)
+  RETURN_GUID_NAME(TSATTRID_App_IncorrectSpelling)
+  RETURN_GUID_NAME(TSATTRID_App_IncorrectGrammar)
+
+#undef RETURN_GUID_NAME
+
+  return GetGUIDNameStr(aGUID);
 }
 
 static nsCString
@@ -504,22 +615,25 @@ GetDisplayAttrStr(const TF_DISPLAYATTRIBUTE &aDispAttr)
 #endif // #ifdef PR_LOGGING
 
 nsTextStore::nsTextStore()
- : mContent(mComposition, mSelection)
+  : mContent(mComposition, mSelection)
+  , mEditCookie(0)
+  , mIPProfileCookie(TF_INVALID_COOKIE)
+  , mLangProfileCookie(TF_INVALID_COOKIE)
+  , mSinkMask(0)
+  , mLock(0)
+  , mLockQueued(0)
+  , mRequestedAttrValues(false)
+  , mIsRecordingActionsWithoutLock(false)
+  , mPendingOnSelectionChange(false)
+  , mPendingOnLayoutChange(false)
+  , mNativeCaretIsCreated(false)
+  , mIsIMM_IME(false)
+  , mOnActivatedCalled(false)
 {
-  mEditCookie = 0;
-  mIPProfileCookie = TF_INVALID_COOKIE;
-  mLangProfileCookie = TF_INVALID_COOKIE;
-  mSinkMask = 0;
-  mLock = 0;
-  mLockQueued = 0;
-  mInputScopeDetected = false;
-  mInputScopeRequested = false;
-  mIsRecordingActionsWithoutLock = false;
-  mPendingOnSelectionChange = false;
-  mPendingOnLayoutChange = false;
-  mNativeCaretIsCreated = false;
-  mIsIMM_IME = false;
-  mOnActivatedCalled = false;
+  for (int32_t i = 0; i < NUM_OF_SUPPORTED_ATTRS; i++) {
+    mRequestedAttrs[i] = false;
+  }
+
   // We hope that 5 or more actions don't occur at once.
   mPendingActions.SetCapacity(5);
 
@@ -963,6 +1077,13 @@ nsTextStore::DidLockGranted()
     mNativeCaretIsCreated = false;
   }
   if (IsReadWriteLocked()) {
+    // FreeCJ (TIP for Traditional Chinese) calls SetSelection() to set caret
+    // to the start of composition string and insert a full width space for
+    // a placeholder with a call of SetText().  After that, it calls
+    // OnUpdateComposition() without new range.  Therefore, let's record the
+    // composition update information here.
+    CompleteLastActionIfStillIncomplete();
+
     FlushPendingActions();
   }
 
@@ -999,18 +1120,20 @@ nsTextStore::FlushPendingActions()
 
         MOZ_ASSERT(mComposition.mLastData.IsEmpty());
 
-        // Select composition range so the new composition replaces the range
-        WidgetSelectionEvent selectionSet(true, NS_SELECTION_SET, mWidget);
-        mWidget->InitEvent(selectionSet);
-        selectionSet.mOffset = static_cast<uint32_t>(action.mSelectionStart);
-        selectionSet.mLength = static_cast<uint32_t>(action.mSelectionLength);
-        selectionSet.mReversed = false;
-        mWidget->DispatchWindowEvent(&selectionSet);
-        if (!selectionSet.mSucceeded) {
-          PR_LOG(sTextStoreLog, PR_LOG_ERROR,
-                 ("TSF: 0x%p   nsTextStore::FlushPendingActions() "
-                  "FAILED due to NS_SELECTION_SET failure", this));
-          break;
+        if (action.mAdjustSelection) {
+          // Select composition range so the new composition replaces the range
+          WidgetSelectionEvent selectionSet(true, NS_SELECTION_SET, mWidget);
+          mWidget->InitEvent(selectionSet);
+          selectionSet.mOffset = static_cast<uint32_t>(action.mSelectionStart);
+          selectionSet.mLength = static_cast<uint32_t>(action.mSelectionLength);
+          selectionSet.mReversed = false;
+          mWidget->DispatchWindowEvent(&selectionSet);
+          if (!selectionSet.mSucceeded) {
+            PR_LOG(sTextStoreLog, PR_LOG_ERROR,
+                   ("TSF: 0x%p   nsTextStore::FlushPendingActions() "
+                    "FAILED due to NS_SELECTION_SET failure", this));
+            break;
+          }
         }
         PR_LOG(sTextStoreLog, PR_LOG_DEBUG,
                ("TSF: 0x%p   nsTextStore::FlushPendingActions() "
@@ -1621,7 +1744,7 @@ nsTextStore::RecordCompositionUpdateAction()
     return E_FAIL;
   }
 
-  PendingAction* action = GetPendingCompositionUpdate();
+  PendingAction* action = LastOrNewPendingCompositionUpdate();
   action->mData = mComposition.mString;
   // The ranges might already have been initialized, however, if this is
   // called again, that means we need to overwrite the ranges with current
@@ -1714,6 +1837,8 @@ nsTextStore::RecordCompositionUpdateAction()
   caretRange.mRangeType = NS_TEXTRANGE_CARETPOSITION;
   action->mRanges->AppendElement(caretRange);
 
+  action->mIncomplete = false;
+
   PR_LOG(sTextStoreLog, PR_LOG_ALWAYS,
          ("TSF: 0x%p   nsTextStore::RecordCompositionUpdateAction() "
           "succeeded", this));
@@ -1776,6 +1901,7 @@ nsTextStore::SetSelectionInternal(const TS_SELECTION_ACP* pSelection,
     return S_OK;
   }
 
+  CompleteLastActionIfStillIncomplete();
   PendingAction* action = mPendingActions.AppendElement();
   action->mType = PendingAction::SELECTION_SET;
   action->mSelectionStart = pSelection->acpStart;
@@ -2088,15 +2214,41 @@ nsTextStore::SetInputScope(const nsString& aHTMLInputType)
   }
 }
 
+int32_t
+nsTextStore::GetRequestedAttrIndex(const TS_ATTRID& aAttrID)
+{
+  if (IsEqualGUID(aAttrID, GUID_PROP_INPUTSCOPE)) {
+    return eInputScope;
+  }
+  if (IsEqualGUID(aAttrID, TSATTRID_Text_VerticalWriting)) {
+    return eTextVerticalWriting;
+  }
+  return eNotSupported;
+}
+
+TS_ATTRID
+nsTextStore::GetAttrID(int32_t aIndex)
+{
+  switch (aIndex) {
+    case eInputScope:
+      return GUID_PROP_INPUTSCOPE;
+    case eTextVerticalWriting:
+      return TSATTRID_Text_VerticalWriting;
+    default:
+      MOZ_CRASH("Invalid index? Or not implemented yet?");
+      return GUID_NULL;
+  }
+}
+
 HRESULT
-nsTextStore::ProcessScopeRequest(DWORD dwFlags,
-                                 ULONG cFilterAttrs,
-                                 const TS_ATTRID *paFilterAttrs)
+nsTextStore::HandleRequestAttrs(DWORD aFlags,
+                                ULONG aFilterCount,
+                                const TS_ATTRID* aFilterAttrs)
 {
   PR_LOG(sTextStoreLog, PR_LOG_ALWAYS,
-         ("TSF: 0x%p nsTextStore::ProcessScopeRequest(dwFlags=%s, "
-          "cFilterAttrs=%ld",
-          this, GetFindFlagName(dwFlags).get(), cFilterAttrs));
+         ("TSF: 0x%p nsTextStore::HandleRequestAttrs(aFlags=%s, "
+          "aFilterCount=%u)",
+          this, GetFindFlagName(aFlags).get(), aFilterCount));
 
   // This is a little weird! RequestSupportedAttrs gives us advanced notice
   // of a support query via RetrieveRequestedAttrs for a specific attribute.
@@ -2104,26 +2256,19 @@ nsTextStore::ProcessScopeRequest(DWORD dwFlags,
   // support, but the text service will only want the input scope object
   // returned in RetrieveRequestedAttrs if the dwFlags passed in here contains
   // TS_ATTR_FIND_WANT_VALUE.
-  mInputScopeDetected = mInputScopeRequested = false;
+  for (int32_t i = 0; i < NUM_OF_SUPPORTED_ATTRS; i++) {
+    mRequestedAttrs[i] = false;
+  }
+  mRequestedAttrValues = !!(aFlags & TS_ATTR_FIND_WANT_VALUE);
 
-  // Currently we only support GUID_PROP_INPUTSCOPE
-  for (uint32_t idx = 0; idx < cFilterAttrs; ++idx) {
+  for (uint32_t i = 0; i < aFilterCount; i++) {
     PR_LOG(sTextStoreLog, PR_LOG_ALWAYS,
-           ("TSF: 0x%p   nsTextStore::ProcessScopeRequest() "
+           ("TSF: 0x%p   nsTextStore::HandleRequestAttrs(), "
             "requested attr=%s",
-            this, GetCLSIDNameStr(paFilterAttrs[idx]).get()));
-    if (IsEqualGUID(paFilterAttrs[idx], GUID_PROP_INPUTSCOPE)) {
-      PR_LOG(sTextStoreLog, PR_LOG_ALWAYS,
-             ("TSF: 0x%p   nsTextStore::ProcessScopeRequest() "
-              "GUID_PROP_INPUTSCOPE queried", this));
-      mInputScopeDetected = true;
-      if (dwFlags & TS_ATTR_FIND_WANT_VALUE) {
-        PR_LOG(sTextStoreLog, PR_LOG_ALWAYS,
-               ("TSF: 0x%p   nsTextStore::ProcessScopeRequest() "
-                "TS_ATTR_FIND_WANT_VALUE specified", this));
-        mInputScopeRequested = true;
-      }
-      break;
+            this, GetGUIDNameStrWithTable(aFilterAttrs[i]).get()));
+    int32_t index = GetRequestedAttrIndex(aFilterAttrs[i]);
+    if (index != eNotSupported) {
+      mRequestedAttrs[index] = true;
     }
   }
   return S_OK;
@@ -2139,7 +2284,7 @@ nsTextStore::RequestSupportedAttrs(DWORD dwFlags,
           "cFilterAttrs=%lu)",
           this, GetFindFlagName(dwFlags).get(), cFilterAttrs));
 
-  return ProcessScopeRequest(dwFlags, cFilterAttrs, paFilterAttrs);
+  return HandleRequestAttrs(dwFlags, cFilterAttrs, paFilterAttrs);
 }
 
 STDMETHODIMP
@@ -2153,8 +2298,8 @@ nsTextStore::RequestAttrsAtPosition(LONG acpPos,
           "cFilterAttrs=%lu, dwFlags=%s)",
           this, acpPos, cFilterAttrs, GetFindFlagName(dwFlags).get()));
 
-  return ProcessScopeRequest(dwFlags | TS_ATTR_FIND_WANT_VALUE,
-                             cFilterAttrs, paFilterAttrs);
+  return HandleRequestAttrs(dwFlags | TS_ATTR_FIND_WANT_VALUE,
+                            cFilterAttrs, paFilterAttrs);
 }
 
 STDMETHODIMP
@@ -2205,37 +2350,75 @@ nsTextStore::RetrieveRequestedAttrs(ULONG ulCount,
                                     TS_ATTRVAL *paAttrVals,
                                     ULONG *pcFetched)
 {
-  if (!pcFetched || !ulCount || !paAttrVals) {
+  if (!pcFetched || !paAttrVals) {
     PR_LOG(sTextStoreLog, PR_LOG_ERROR,
            ("TSF: 0x%p nsTextStore::RetrieveRequestedAttrs() FAILED due to "
             "null argument", this));
     return E_INVALIDARG;
   }
 
-  PR_LOG(sTextStoreLog, PR_LOG_ALWAYS,
-         ("TSF: 0x%p   nsTextStore::RetrieveRequestedAttrs() called "
-          "ulCount=%d", this, ulCount));
-
-  if (mInputScopeDetected || mInputScopeRequested) {
-    PR_LOG(sTextStoreLog, PR_LOG_ALWAYS,
-           ("TSF: 0x%p   nsTextStore::RetrieveRequestedAttrs() for "
-            "GUID_PROP_INPUTSCOPE: "
-            "mInputScopeDetected=%s mInputScopeRequested=%s",
-            this, GetBoolName(mInputScopeDetected),
-            GetBoolName(mInputScopeRequested)));
-
-    paAttrVals->idAttr = GUID_PROP_INPUTSCOPE;
-    paAttrVals->dwOverlapId = 0;
-    paAttrVals->varValue.vt = VT_EMPTY;
-    *pcFetched = 1;
-
-    if (mInputScopeRequested) {
-      paAttrVals->varValue.vt = VT_UNKNOWN;
-      nsRefPtr<IUnknown> inputScope = new InputScopeImpl(mInputScopes);
-      paAttrVals->varValue.punkVal = inputScope.forget().take();
+  ULONG expectedCount = 0;
+  for (int32_t i = 0; i < NUM_OF_SUPPORTED_ATTRS; i++) {
+    if (mRequestedAttrs[i]) {
+      expectedCount++;
     }
+  }
+  if (ulCount < expectedCount) {
+    PR_LOG(sTextStoreLog, PR_LOG_ERROR,
+           ("TSF: 0x%p nsTextStore::RetrieveRequestedAttrs() FAILED due to "
+            "not enough count ulCount=%u, expectedCount=%u",
+            this, ulCount, expectedCount));
+    return E_INVALIDARG;
+  }
 
-    mInputScopeDetected = mInputScopeRequested = false;
+  PR_LOG(sTextStoreLog, PR_LOG_ALWAYS,
+         ("TSF: 0x%p nsTextStore::RetrieveRequestedAttrs() called "
+          "ulCount=%d, mRequestedAttrValues=%s",
+          this, ulCount, GetBoolName(mRequestedAttrValues)));
+
+  int32_t count = 0;
+  for (int32_t i = 0; i < NUM_OF_SUPPORTED_ATTRS; i++) {
+    if (!mRequestedAttrs[i]) {
+      continue;
+    }
+    mRequestedAttrs[i] = false;
+
+    TS_ATTRID attrID = GetAttrID(i);
+
+    PR_LOG(sTextStoreLog, PR_LOG_ALWAYS,
+           ("TSF: 0x%p   nsTextStore::RetrieveRequestedAttrs() for %s",
+            this, GetGUIDNameStrWithTable(attrID).get()));
+
+    paAttrVals[count].idAttr = attrID;
+    paAttrVals[count].dwOverlapId = 0;
+
+    if (!mRequestedAttrValues) {
+      paAttrVals[count].varValue.vt = VT_EMPTY;
+    } else {
+      switch (i) {
+        case eInputScope: {
+          paAttrVals[count].varValue.vt = VT_UNKNOWN;
+          nsRefPtr<IUnknown> inputScope = new InputScopeImpl(mInputScopes);
+          paAttrVals[count].varValue.punkVal = inputScope.forget().take();
+          break;
+        }
+        case eTextVerticalWriting:
+          // Currently, we don't support vertical writing mode.
+          paAttrVals[count].varValue.vt = VT_BOOL;
+          paAttrVals[count].varValue.boolVal = VARIANT_FALSE;
+          break;
+        default:
+          MOZ_CRASH("Invalid index? Or not implemented yet?");
+          break;
+      }
+    }
+    count++;
+  }
+
+  mRequestedAttrValues = false;
+
+  if (count) {
+    *pcFetched = count;
     return S_OK;
   }
 
@@ -2378,6 +2561,25 @@ nsTextStore::GetTextExt(TsViewCookie vcView,
     return TS_E_INVALIDPOS;
   }
 
+  // Free ChangJie 2010 and Easy Changjei 1.0.12.0 doesn't handle
+  // ITfContextView::GetTextExt() properly.  Prehaps, it's due to a bug of TSF.
+  // TSF (at least on Win 8.1) doesn't return TS_E_NOLAYOUT to the caller
+  // even if we return it.  It's converted to just E_FAIL.
+  // TODO: On Win 9, we need to check this hack is still necessary.
+  if ((sDoNotReturnNoLayoutErrorToFreeChangJie &&
+       mActiveTIPKeyboardDescription.Equals(TIP_NAME_FREE_CHANG_JIE_2010)) ||
+      (sDoNotReturnNoLayoutErrorToEasyChangjei &&
+       mActiveTIPKeyboardDescription.Equals(TIP_NAME_EASY_CHANGJEI)) &&
+      mComposition.IsComposing() &&
+      mContent.IsLayoutChangedAfter(acpEnd) &&
+      mComposition.mStart < acpEnd) {
+    acpEnd = mComposition.mStart;
+    acpStart = std::min(acpStart, acpEnd);
+    PR_LOG(sTextStoreLog, PR_LOG_DEBUG,
+           ("TSF: 0x%p   nsTextStore::GetTextExt() hacked the offsets for TIP "
+            "acpStart=%d, acpEnd=%d", this, acpStart, acpEnd));
+  }
+
   if (mContent.IsLayoutChangedAfter(acpEnd)) {
     PR_LOG(sTextStoreLog, PR_LOG_ERROR,
            ("TSF: 0x%p   nsTextStore::GetTextExt() FAILED due to "
@@ -2443,7 +2645,7 @@ nsTextStore::GetTextExt(TsViewCookie vcView,
   // for hacking the bug.
   if (sCreateNativeCaretForATOK &&
       StringBeginsWith(
-        mActiveTIPKeyboardDescription, NS_LITERAL_STRING("ATOK ")) &&
+        mActiveTIPKeyboardDescription, TIP_NAME_BEGINS_WITH_ATOK) &&
       mComposition.IsComposing() &&
       mComposition.mStart <= acpStart && mComposition.EndOffset() >= acpStart &&
       mComposition.mStart <= acpEnd && mComposition.EndOffset() >= acpEnd) {
@@ -2801,12 +3003,28 @@ nsTextStore::RecordCompositionStartAction(ITfCompositionView* pComposition,
     return E_FAIL;
   }
 
+  CompleteLastActionIfStillIncomplete();
   PendingAction* action = mPendingActions.AppendElement();
   action->mType = PendingAction::COMPOSITION_START;
   action->mSelectionStart = start;
   action->mSelectionLength = length;
 
-  currentContent.StartComposition(pComposition, *action, aPreserveSelection);
+  if (aPreserveSelection) {
+    action->mAdjustSelection = false;
+  } else {
+    Selection& currentSel = CurrentSelection();
+    if (currentSel.IsDirty()) {
+      PR_LOG(sTextStoreLog, PR_LOG_ERROR,
+             ("TSF: 0x%p   nsTextStore::RecordCompositionStartAction() FAILED "
+              "due to CurrentSelection() failure", this));
+      action->mAdjustSelection = true;
+    } else {
+      action->mAdjustSelection = currentSel.MinOffset() != start ||
+                                 currentSel.MaxOffset() != start + length;
+    }
+  }
+
+  currentContent.StartComposition(pComposition, *action);
 
   PR_LOG(sTextStoreLog, PR_LOG_ALWAYS,
          ("TSF: 0x%p   nsTextStore::RecordCompositionStartAction() succeeded: "
@@ -2831,6 +3049,7 @@ nsTextStore::RecordCompositionEndAction()
 
   MOZ_ASSERT(mComposition.IsComposing());
 
+  CompleteLastActionIfStillIncomplete();
   PendingAction* action = mPendingActions.AppendElement();
   action->mType = PendingAction::COMPOSITION_END;
   action->mData = mComposition.mString;
@@ -2925,6 +3144,8 @@ nsTextStore::OnUpdateComposition(ITfCompositionView* pComposition,
 
   // pRangeNew is null when the update is not complete
   if (!pRangeNew) {
+    PendingAction* action = LastOrNewPendingCompositionUpdate();
+    action->mIncomplete = true;
     PR_LOG(sTextStoreLog, PR_LOG_ALWAYS,
            ("TSF: 0x%p   nsTextStore::OnUpdateComposition() succeeded but "
             "not complete", this));
@@ -3083,25 +3304,25 @@ nsTextStore::OnActivated(DWORD dwProfileType,
 nsresult
 nsTextStore::OnFocusChange(bool aGotFocus,
                            nsWindowBase* aFocusedWidget,
-                           IMEState::Enabled aIMEEnabled)
+                           const IMEState& aIMEState)
 {
   PR_LOG(sTextStoreLog, PR_LOG_DEBUG,
          ("TSF:   nsTextStore::OnFocusChange(aGotFocus=%s, "
-          "aFocusedWidget=0x%p, aIMEEnabled=%s), sTsfThreadMgr=0x%p, "
-          "sTsfTextStore=0x%p",
+          "aFocusedWidget=0x%p, aIMEState={ mEnabled=%s }), "
+          "sTsfThreadMgr=0x%p, sTsfTextStore=0x%p",
           GetBoolName(aGotFocus), aFocusedWidget,
-          GetIMEEnabledName(aIMEEnabled), sTsfThreadMgr, sTsfTextStore));
+          GetIMEEnabledName(aIMEState.mEnabled),
+          sTsfThreadMgr, sTsfTextStore));
 
   // no change notifications if TSF is disabled
   NS_ENSURE_TRUE(sTsfThreadMgr && sTsfTextStore, NS_ERROR_NOT_AVAILABLE);
 
   nsRefPtr<ITfDocumentMgr> prevFocusedDocumentMgr;
-  if (aGotFocus && (aIMEEnabled == IMEState::ENABLED ||
-                    aIMEEnabled == IMEState::PASSWORD)) {
+  if (aGotFocus && aIMEState.IsEditable()) {
     bool bRet = sTsfTextStore->Create(aFocusedWidget);
     NS_ENSURE_TRUE(bRet, NS_ERROR_FAILURE);
     NS_ENSURE_TRUE(sTsfTextStore->mDocumentMgr, NS_ERROR_FAILURE);
-    if (aIMEEnabled == IMEState::PASSWORD) {
+    if (aIMEState.mEnabled == IMEState::PASSWORD) {
       MarkContextAsKeyboardDisabled(sTsfTextStore->mContext);
       nsRefPtr<ITfContext> topContext;
       sTsfTextStore->mDocumentMgr->GetTop(getter_AddRefs(topContext));
@@ -3571,12 +3792,10 @@ nsTextStore::SetInputContext(nsWindowBase* aWidget,
 
   // If focus isn't actually changed but the enabled state is changed,
   // emulate the focus move.
-  if (!ThinksHavingFocus() &&
-      aContext.mIMEState.mEnabled == IMEState::ENABLED) {
-    OnFocusChange(true, aWidget, aContext.mIMEState.mEnabled);
-  } else if (ThinksHavingFocus() &&
-             aContext.mIMEState.mEnabled != IMEState::ENABLED) {
-    OnFocusChange(false, aWidget, aContext.mIMEState.mEnabled);
+  if (!ThinksHavingFocus() && aContext.mIMEState.IsEditable()) {
+    OnFocusChange(true, aWidget, aContext.mIMEState);
+  } else if (ThinksHavingFocus() && !aContext.mIMEState.IsEditable()) {
+    OnFocusChange(false, aWidget, aContext.mIMEState);
   }
 }
 
@@ -3845,6 +4064,12 @@ nsTextStore::Initialize()
 
   sCreateNativeCaretForATOK =
     Preferences::GetBool("intl.tsf.hack.atok.create_native_caret", true);
+  sDoNotReturnNoLayoutErrorToFreeChangJie =
+    Preferences::GetBool(
+      "intl.tsf.hack.free_chang_jie.do_not_return_no_layout_error", true);
+  sDoNotReturnNoLayoutErrorToEasyChangjei =
+    Preferences::GetBool(
+      "intl.tsf.hack.easy_changjei.do_not_return_no_layout_error", true);
 
   MOZ_ASSERT(!sFlushTIPInputMessage);
   sFlushTIPInputMessage = ::RegisterWindowMessageW(L"Flush TIP Input Message");
@@ -3853,10 +4078,14 @@ nsTextStore::Initialize()
     ("TSF:   nsTextStore::Initialize(), sTsfThreadMgr=0x%p, "
      "sTsfClientId=0x%08X, sTsfTextStore=0x%p, sDisplayAttrMgr=0x%p, "
      "sCategoryMgr=0x%p, sTsfDisabledDocumentMgr=0x%p, sTsfDisabledContext=%p, "
-     "sCreateNativeCaretForATOK=%s",
+     "sCreateNativeCaretForATOK=%s, "
+     "sDoNotReturnNoLayoutErrorToFreeChangJie=%s, "
+     "sDoNotReturnNoLayoutErrorToEasyChangjei=%s",
      sTsfThreadMgr, sTsfClientId, sTsfTextStore, sDisplayAttrMgr, sCategoryMgr,
      sTsfDisabledDocumentMgr, sTsfDisabledContext,
-     GetBoolName(sCreateNativeCaretForATOK)));
+     GetBoolName(sCreateNativeCaretForATOK),
+     GetBoolName(sDoNotReturnNoLayoutErrorToFreeChangJie),
+     GetBoolName(sDoNotReturnNoLayoutErrorToEasyChangjei)));
 }
 
 // static
@@ -4036,8 +4265,7 @@ nsTextStore::Content::ReplaceTextWith(LONG aStart, LONG aLength,
 
 void
 nsTextStore::Content::StartComposition(ITfCompositionView* aCompositionView,
-                                       const PendingAction& aCompStart,
-                                       bool aPreserveSelection)
+                                       const PendingAction& aCompStart)
 {
   MOZ_ASSERT(mInitialized);
   MOZ_ASSERT(aCompositionView);
@@ -4047,7 +4275,7 @@ nsTextStore::Content::StartComposition(ITfCompositionView* aCompositionView,
   mComposition.Start(aCompositionView, aCompStart.mSelectionStart,
     GetSubstring(static_cast<uint32_t>(aCompStart.mSelectionStart),
                  static_cast<uint32_t>(aCompStart.mSelectionLength)));
-  if (!aPreserveSelection) {
+  if (aCompStart.mAdjustSelection) {
     mSelection.SetSelection(mComposition.mStart, mComposition.mString.Length(),
                             false);
   }

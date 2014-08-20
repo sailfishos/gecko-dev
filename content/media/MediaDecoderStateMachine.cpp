@@ -255,7 +255,9 @@ bool MediaDecoderStateMachine::HasFutureAudio() {
   //    we've completely decoded all audio (but not finished playing it yet
   //    as per 1).
   return !mAudioCompleted &&
-         (AudioDecodedUsecs() > LOW_AUDIO_USECS * mPlaybackRate || AudioQueue().IsFinished());
+         (AudioDecodedUsecs() >
+            mLowAudioThresholdUsecs * mPlaybackRate ||
+          AudioQueue().IsFinished());
 }
 
 bool MediaDecoderStateMachine::HaveNextFrameData() {
@@ -586,8 +588,8 @@ MediaDecoderStateMachine::DecodeVideo()
     // soon anyway and we'll want to be able to display frames immediately
     // after buffering finishes.
     if (mState == DECODER_STATE_DECODING &&
-        mIsVideoDecoding &&
-        ((!mIsAudioPrerolling && mIsAudioDecoding &&
+        IsVideoDecoding() &&
+        ((!mIsAudioPrerolling && IsAudioDecoding() &&
           GetDecodedAudioDuration() < mLowAudioThresholdUsecs * mPlaybackRate) ||
           (!mIsVideoPrerolling && IsVideoDecoding() &&
            // don't skip frame when |clock time| <= |mVideoFrameEndTime| for
@@ -1133,6 +1135,11 @@ void MediaDecoderStateMachine::StartPlayback()
   NS_ASSERTION(!IsPlaying(), "Shouldn't be playing when StartPlayback() is called");
   AssertCurrentThreadInMonitor();
 
+  if (mDecoder->CheckDecoderCanOffloadAudio()) {
+    DECODER_LOG(PR_LOG_DEBUG, "Offloading playback");
+    return;
+  }
+
   mDecoder->NotifyPlaybackStarted();
   SetPlayStartTime(TimeStamp::Now());
 
@@ -1518,17 +1525,16 @@ MediaDecoderStateMachine::EnqueueDecodeMetadataTask()
       mDispatchedDecodeMetadataTask) {
     return NS_OK;
   }
+
+  mDispatchedDecodeMetadataTask = true;
   RefPtr<nsIRunnable> task(
     NS_NewRunnableMethod(this, &MediaDecoderStateMachine::CallDecodeMetadata));
   nsresult rv = mDecodeTaskQueue->Dispatch(task);
-  if (NS_SUCCEEDED(rv)) {
-    mDispatchedDecodeMetadataTask = true;
-  } else {
+  if (NS_FAILED(rv)) {
     NS_WARNING("Dispatch ReadMetadata task failed.");
-    return rv;
+    mDispatchedDecodeMetadataTask = false;
   }
-
-  return NS_OK;
+  return rv;
 }
 
 void
@@ -1842,7 +1848,6 @@ void
 MediaDecoderStateMachine::CallDecodeMetadata()
 {
   ReentrantMonitorAutoEnter mon(mDecoder->GetReentrantMonitor());
-  AutoSetOnScopeExit<bool> unsetOnExit(mDispatchedDecodeMetadataTask, false);
   if (mState != DECODER_STATE_DECODING_METADATA) {
     return;
   }
@@ -1874,6 +1879,7 @@ nsresult MediaDecoderStateMachine::DecodeMetadata()
       // change state to DECODER_STATE_WAIT_FOR_RESOURCES
       StartWaitForResources();
       // affect values only if ReadMetadata succeeds
+      mDispatchedDecodeMetadataTask = false;
       return NS_OK;
     }
   }
@@ -1996,6 +2002,7 @@ MediaDecoderStateMachine::FinishDecodeMetadata()
     StartPlayback();
   }
 
+  mDispatchedDecodeMetadataTask = false;
   return NS_OK;
 }
 
@@ -2443,23 +2450,23 @@ MediaDecoderStateMachine::FlushDecoding()
                "Should be on state machine or decode thread.");
   mDecoder->GetReentrantMonitor().AssertNotCurrentThreadIn();
 
-  // Put a task in the decode queue to abort any decoding operations.
-  // The reader is not supposed to put any tasks to deliver samples into
-  // the queue after we call this (unless we request another sample from it).
-  RefPtr<nsIRunnable> task;
-  task = NS_NewRunnableMethod(mReader, &MediaDecoderReader::ResetDecode);
-  mDecodeTaskQueue->Dispatch(task);
-
   {
-    // Wait for the thread decoding to abort decoding operations and run
-    // any pending callbacks. This is important, as we don't want any
-    // pending tasks posted to the task queue by the reader to deliver
-    // any samples after we've posted the reader Shutdown() task below,
-    // as the sample-delivery tasks will keep video frames alive until
-    // after we've called Reader::Shutdown(), and shutdown on B2G will
-    // fail as there are outstanding video frames alive.
+    // Put a task in the decode queue to abort any decoding operations.
+    // The reader is not supposed to put any tasks to deliver samples into
+    // the queue after this runs (unless we request another sample from it).
+    RefPtr<nsIRunnable> task;
+    task = NS_NewRunnableMethod(mReader, &MediaDecoderReader::ResetDecode);
+
+    // Wait for the ResetDecode to run and for the decoder to abort
+    // decoding operations and run any pending callbacks. This is
+    // important, as we don't want any pending tasks posted to the task
+    // queue by the reader to deliver any samples after we've posted the
+    // reader Shutdown() task below, as the sample-delivery tasks will
+    // keep video frames alive until after we've called Reader::Shutdown(),
+    // and shutdown on B2G will fail as there are outstanding video frames
+    // alive.
     ReentrantMonitorAutoExit exitMon(mDecoder->GetReentrantMonitor());
-    mDecodeTaskQueue->Flush();
+    mDecodeTaskQueue->FlushAndDispatch(task);
   }
 
   // We must reset playback so that all references to frames queued
@@ -2690,8 +2697,27 @@ nsresult
 MediaDecoderStateMachine::DropVideoUpToSeekTarget(VideoData* aSample)
 {
   nsAutoPtr<VideoData> video(aSample);
-
+  MOZ_ASSERT(video);
+  DECODER_LOG(PR_LOG_DEBUG,
+              "DropVideoUpToSeekTarget() frame [%lld, %lld] dup=%d",
+              video->mTime, video->GetEndTime(), video->mDuplicate);
   const int64_t target = mCurrentSeekTarget.mTime;
+
+  // Duplicate handling: if we're dropping frames up the seek target, we must
+  // be wary of Theora duplicate frames. They don't have an image, so if the
+  // target frame is in a run of duplicates, we won't have an image to draw
+  // after the seek. So store the last frame encountered while dropping, and
+  // copy its Image forward onto duplicate frames, so that every frame has
+  // an Image.
+  if (video->mDuplicate &&
+      mFirstVideoFrameAfterSeek &&
+      !mFirstVideoFrameAfterSeek->mDuplicate) {
+    VideoData* temp =
+      VideoData::ShallowCopyUpdateTimestampAndDuration(mFirstVideoFrameAfterSeek,
+                                                       video->mTime,
+                                                       video->mDuration);
+    video = temp;
+  }
 
   // If the frame end time is less than the seek target, we won't want
   // to display this frame after the seek, so discard it.
@@ -2783,7 +2809,8 @@ MediaDecoderStateMachine::DropAudioUpToSeekTarget(AudioData* aSample)
                                           duration.value(),
                                           frames,
                                           audioData.forget(),
-                                          channels));
+                                          channels,
+                                          audio->mRate));
   AudioQueue().PushFront(data.forget());
 
   return NS_OK;

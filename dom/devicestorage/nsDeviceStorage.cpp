@@ -18,7 +18,6 @@
 #include "mozilla/dom/FileSystemUtils.h"
 #include "mozilla/dom/ipc/Blob.h"
 #include "mozilla/dom/PBrowserChild.h"
-#include "mozilla/dom/PContentPermissionRequestChild.h"
 #include "mozilla/dom/PermissionMessageUtils.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/ScriptSettings.h"
@@ -44,9 +43,7 @@
 #include "nsIPrincipal.h"
 #include "nsJSUtils.h"
 #include "nsContentUtils.h"
-#include "nsCxPusher.h"
 #include "nsXULAppAPI.h"
-#include "TabChild.h"
 #include "DeviceStorageFileDescriptor.h"
 #include "DeviceStorageRequestChild.h"
 #include "nsCRT.h"
@@ -1785,7 +1782,6 @@ StringToJsval(nsPIDOMWindow* aWindow, nsAString& aString,
 
 class DeviceStorageCursorRequest MOZ_FINAL
   : public nsIContentPermissionRequest
-  , public PCOMContentPermissionRequestChild
 {
 public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
@@ -1796,24 +1792,6 @@ public:
 
   DeviceStorageCursorRequest(nsDOMDeviceStorageCursor* aCursor)
     : mCursor(aCursor) { }
-
-  bool Recv__delete__(const bool& allow,
-                      const InfallibleTArray<PermissionChoice>& choices)
-  {
-    MOZ_ASSERT(choices.IsEmpty(), "DeviceStorageCursor doesn't support permission choice");
-    if (allow) {
-      Allow(JS::UndefinedHandleValue);
-    }
-    else {
-      Cancel();
-    }
-    return true;
-  }
-
-  void IPDLRelease()
-  {
-    Release();
-  }
 
 private:
   ~DeviceStorageCursorRequest() {}
@@ -2049,10 +2027,10 @@ nsDOMDeviceStorageCursor::GetTypes(nsIArray** aTypes)
   NS_ENSURE_SUCCESS(rv, rv);
 
   nsTArray<nsString> emptyOptions;
-  return CreatePermissionArray(type,
-                               NS_LITERAL_CSTRING("read"),
-                               emptyOptions,
-                               aTypes);
+  return nsContentPermissionUtils::CreatePermissionArray(type,
+                                                         NS_LITERAL_CSTRING("read"),
+                                                         emptyOptions,
+                                                         aTypes);
 }
 
 NS_IMETHODIMP
@@ -2135,27 +2113,6 @@ nsDOMDeviceStorageCursor::Continue(ErrorResult& aRv)
   event->Continue();
 
   mOkToCallContinue = false;
-}
-
-bool
-nsDOMDeviceStorageCursor::Recv__delete__(const bool& allow,
-                                         const InfallibleTArray<PermissionChoice>& choices)
-{
-  MOZ_ASSERT(choices.IsEmpty(), "DeviceStorageCursor doesn't support permission choice");
-
-  if (allow) {
-    Allow(JS::UndefinedHandleValue);
-  }
-  else {
-    Cancel();
-  }
-  return true;
-}
-
-void
-nsDOMDeviceStorageCursor::IPDLRelease()
-{
-  Release();
 }
 
 void
@@ -2706,7 +2663,6 @@ private:
 class DeviceStorageRequest MOZ_FINAL
   : public nsIContentPermissionRequest
   , public nsIRunnable
-  , public PCOMContentPermissionRequestChild
 {
 public:
 
@@ -2774,7 +2730,8 @@ public:
   NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(DeviceStorageRequest,
                                            nsIContentPermissionRequest)
 
-  NS_IMETHOD Run() {
+  NS_IMETHOD Run()
+  {
     MOZ_ASSERT(NS_IsMainThread());
 
     if (mozilla::Preferences::GetBool("device.storage.prompt.testing", false)) {
@@ -2782,48 +2739,7 @@ public:
       return NS_OK;
     }
 
-    if (XRE_GetProcessType() == GeckoProcessType_Content) {
-
-      // because owner implements nsITabChild, we can assume that it is
-      // the one and only TabChild.
-      TabChild* child = TabChild::GetFrom(mWindow->GetDocShell());
-      if (!child) {
-        return NS_OK;
-      }
-
-      // Retain a reference so the object isn't deleted without IPDL's
-      // knowledge. Corresponding release occurs in
-      // DeallocPContentPermissionRequest.
-      AddRef();
-
-      nsCString type;
-      nsresult rv = DeviceStorageTypeChecker::GetPermissionForType(
-        mFile->mStorageType, type);
-      if (NS_FAILED(rv)) {
-        return rv;
-      }
-      nsCString access;
-      rv = DeviceStorageTypeChecker::GetAccessForRequest(
-        DeviceStorageRequestType(mRequestType), access);
-      if (NS_FAILED(rv)) {
-        return rv;
-      }
-      nsTArray<PermissionRequest> permArray;
-      nsTArray<nsString> emptyOptions;
-      permArray.AppendElement(PermissionRequest(type, access, emptyOptions));
-      child->SendPContentPermissionRequestConstructor(
-        this, permArray, IPC::Principal(mPrincipal));
-
-      Sendprompt();
-      return NS_OK;
-    }
-
-    nsCOMPtr<nsIContentPermissionPrompt> prompt
-      = do_CreateInstance(NS_CONTENT_PERMISSION_PROMPT_CONTRACTID);
-    if (prompt) {
-      prompt->Prompt(this);
-    }
-    return NS_OK;
+    return nsContentPermissionUtils::AskPermission(this, mWindow);
   }
 
   NS_IMETHODIMP GetTypes(nsIArray** aTypes)
@@ -2843,7 +2759,7 @@ public:
     }
 
     nsTArray<nsString> emptyOptions;
-    return CreatePermissionArray(type, access, emptyOptions, aTypes);
+    return nsContentPermissionUtils::CreatePermissionArray(type, access, emptyOptions, aTypes);
   }
 
   NS_IMETHOD GetPrincipal(nsIPrincipal * *aRequestingPrincipal)
@@ -3206,25 +3122,6 @@ public:
     }
 
     return NS_OK;
-  }
-
-  bool Recv__delete__(const bool& allow,
-                      const InfallibleTArray<PermissionChoice>& choices)
-  {
-    MOZ_ASSERT(choices.IsEmpty(), "DeviceStorage doesn't support permission choice");
-
-    if (allow) {
-      Allow(JS::UndefinedHandleValue);
-    }
-    else {
-      Cancel();
-    }
-    return true;
-  }
-
-  void IPDLRelease()
-  {
-    Release();
   }
 
 private:
@@ -4232,42 +4129,7 @@ nsDOMDeviceStorage::EnumerateInternal(const nsAString& aPath,
     return cursor.forget();
   }
 
-  if (XRE_GetProcessType() == GeckoProcessType_Content) {
-    // because owner implements nsITabChild, we can assume that it is
-    // the one and only TabChild.
-    TabChild* child = TabChild::GetFrom(win->GetDocShell());
-    if (!child) {
-      return cursor.forget();
-    }
-
-    // Retain a reference so the object isn't deleted without IPDL's knowledge.
-    // Corresponding release occurs in DeallocPContentPermissionRequest.
-    r->AddRef();
-
-    nsCString type;
-    aRv = DeviceStorageTypeChecker::GetPermissionForType(mStorageType, type);
-    if (aRv.Failed()) {
-      return nullptr;
-    }
-    nsTArray<PermissionRequest> permArray;
-    nsTArray<nsString> emptyOptions;
-    permArray.AppendElement(PermissionRequest(type,
-                                              NS_LITERAL_CSTRING("read"),
-                                              emptyOptions));
-    child->SendPContentPermissionRequestConstructor(r,
-                                                    permArray,
-                                                    IPC::Principal(mPrincipal));
-
-    r->Sendprompt();
-
-    return cursor.forget();
-  }
-
-  nsCOMPtr<nsIContentPermissionPrompt> prompt
-    = do_CreateInstance(NS_CONTENT_PERMISSION_PROMPT_CONTRACTID);
-  if (prompt) {
-    prompt->Prompt(r);
-  }
+  nsContentPermissionUtils::AskPermission(r, win);
 
   return cursor.forget();
 }
@@ -4298,13 +4160,19 @@ nsDOMDeviceStorage::DispatchStatusChangeEvent(nsAString& aStatus)
 }
 
 void
-nsDOMDeviceStorage::DispatchStorageStatusChangeEvent(nsAString& aVolumeStatus)
+nsDOMDeviceStorage::DispatchStorageStatusChangeEvent(nsAString& aStorageStatus)
 {
+  if (aStorageStatus == mLastStorageStatus) {
+     // We've already sent this status, don't bother sending it again.
+    return;
+  }
+  mLastStorageStatus = aStorageStatus;
+
   DeviceStorageChangeEventInit init;
   init.mBubbles = true;
   init.mCancelable = false;
   init.mPath = mStorageName;
-  init.mReason = aVolumeStatus;
+  init.mReason = aStorageStatus;
 
   nsRefPtr<DeviceStorageChangeEvent> event =
     DeviceStorageChangeEvent::Constructor(this, NS_LITERAL_STRING("storage-state-change"),

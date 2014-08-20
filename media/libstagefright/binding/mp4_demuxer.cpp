@@ -4,6 +4,7 @@
 
 #include "include/MPEG4Extractor.h"
 #include "media/stagefright/DataSource.h"
+#include "media/stagefright/MediaDefs.h"
 #include "media/stagefright/MediaSource.h"
 #include "media/stagefright/MetaData.h"
 #include "mp4_demuxer/Adts.h"
@@ -12,6 +13,7 @@
 
 #include <stdint.h>
 #include <algorithm>
+#include <limits>
 
 using namespace stagefright;
 
@@ -24,11 +26,11 @@ struct StageFrightPrivate
 
   sp<MediaSource> mAudio;
   MediaSource::ReadOptions mAudioOptions;
-  nsAutoPtr<Index> mAudioIndex;
 
   sp<MediaSource> mVideo;
   MediaSource::ReadOptions mVideoOptions;
-  nsAutoPtr<Index> mVideoIndex;
+
+  nsTArray<nsAutoPtr<Index>> mIndexes;
 };
 
 class DataSourceAdapter : public DataSource
@@ -101,14 +103,14 @@ MP4Demuxer::Init()
       mPrivate->mAudio = e->getTrack(i);
       mPrivate->mAudio->start();
       mAudioConfig.Update(metaData, mimeType);
-      auto index = mPrivate->mAudio->exportIndex();
-      mPrivate->mAudioIndex = new Index(index, mSource, mAudioConfig.mTrackId);
+      mPrivate->mIndexes.AppendElement(new Index(
+        mPrivate->mAudio->exportIndex(), mSource, mAudioConfig.mTrackId));
     } else if (!mPrivate->mVideo.get() && !strncmp(mimeType, "video/", 6)) {
       mPrivate->mVideo = e->getTrack(i);
       mPrivate->mVideo->start();
       mVideoConfig.Update(metaData, mimeType);
-      auto index = mPrivate->mVideo->exportIndex();
-      mPrivate->mVideoIndex = new Index(index, mSource, mVideoConfig.mTrackId);
+      mPrivate->mIndexes.AppendElement(new Index(
+        mPrivate->mVideo->exportIndex(), mSource, mVideoConfig.mTrackId));
     }
   }
   sp<MetaData> metaData = e->getMetaData();
@@ -168,10 +170,12 @@ MP4Demuxer::DemuxAudioSample()
   }
 
   sample->Update();
-  if (!Adts::ConvertEsdsToAdts(mAudioConfig.channel_count,
-                               mAudioConfig.frequency_index,
-                               mAudioConfig.aac_profile, sample)) {
-    return nullptr;
+  if (!strcmp(mAudioConfig.mime_type, MEDIA_MIMETYPE_AUDIO_AAC)) {
+    if (!Adts::ConvertEsdsToAdts(mAudioConfig.channel_count,
+                                 mAudioConfig.frequency_index,
+                                 mAudioConfig.aac_profile, sample)) {
+      return nullptr;
+    }
   }
 
   return sample.forget();
@@ -195,37 +199,46 @@ MP4Demuxer::DemuxVideoSample()
 }
 
 void
+MP4Demuxer::UpdateIndex(const nsTArray<mozilla::MediaByteRange>& aByteRanges)
+{
+  for (int i = 0; i < mPrivate->mIndexes.Length(); i++) {
+    mPrivate->mIndexes[i]->UpdateMoofIndex(aByteRanges);
+  }
+}
+
+void
 MP4Demuxer::ConvertByteRangesToTime(
   const nsTArray<mozilla::MediaByteRange>& aByteRanges,
   nsTArray<Interval<Microseconds>>* aIntervals)
 {
-  if (!HasValidVideo() && !HasValidAudio()) {
+  if (mPrivate->mIndexes.IsEmpty()) {
     return;
   }
 
-  nsTArray<Interval<Microseconds>> video;
-  if (HasValidVideo()) {
+  mPrivate->mIndexes[0]->ConvertByteRangesToTimeRanges(aByteRanges, aIntervals);
+
+  for (int i = 1; i < mPrivate->mIndexes.Length(); i++) {
     nsTArray<Interval<Microseconds>> ranges;
-    if (!HasValidAudio()) {
-      mPrivate->mVideoIndex->ConvertByteRangesToTimeRanges(aByteRanges,
-                                                           aIntervals);
-      return;
-    }
-    mPrivate->mVideoIndex->ConvertByteRangesToTimeRanges(aByteRanges, &video);
+    mPrivate->mIndexes[i]->ConvertByteRangesToTimeRanges(aByteRanges, &ranges);
+
+    nsTArray<Interval<Microseconds>> intersection;
+    Interval<Microseconds>::Intersection(*aIntervals, ranges, &intersection);
+    *aIntervals = intersection;
+  }
+}
+
+int64_t
+MP4Demuxer::GetEvictionOffset(Microseconds aTime)
+{
+  if (mPrivate->mIndexes.IsEmpty()) {
+    return 0;
   }
 
-  nsTArray<Interval<Microseconds>> audio;
-  if (HasValidAudio()) {
-    nsTArray<Interval<Microseconds>> ranges;
-    if (!HasValidVideo()) {
-      mPrivate->mAudioIndex->ConvertByteRangesToTimeRanges(aByteRanges,
-                                                           aIntervals);
-      return;
-    }
-    mPrivate->mAudioIndex->ConvertByteRangesToTimeRanges(aByteRanges, &audio);
+  uint64_t offset = std::numeric_limits<uint64_t>::max();
+  for (int i = 0; i < mPrivate->mIndexes.Length(); i++) {
+    offset = std::min(offset, mPrivate->mIndexes[i]->GetEvictionOffset(aTime));
   }
-
-  Interval<Microseconds>::Intersection(audio, video, aIntervals);
+  return offset;
 }
 
 } // namespace mp4_demuxer

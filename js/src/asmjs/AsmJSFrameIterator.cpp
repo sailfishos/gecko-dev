@@ -84,7 +84,7 @@ AsmJSFrameIterator::settle()
       case AsmJSModule::CodeRange::Interrupt:
       case AsmJSModule::CodeRange::Inline:
       case AsmJSModule::CodeRange::Thunk:
-        MOZ_ASSUME_UNREACHABLE("Should not encounter an exit during iteration");
+        MOZ_CRASH("Should not encounter an exit during iteration");
     }
 }
 
@@ -271,9 +271,9 @@ js::GenerateAsmJSFunctionPrologue(MacroAssembler &masm, unsigned framePushed,
     // Overflow checks are omitted by CodeGenerator in some cases (leaf
     // functions with small framePushed). Perform overflow-checking after
     // pushing framePushed to catch cases with really large frames.
-    if (!labels->overflowThunk.empty()) {
+    if (labels->overflowThunk) {
         // If framePushed is zero, we don't need a thunk to adjust StackPointer.
-        Label *target = framePushed ? labels->overflowThunk.addr() : &labels->overflowExit;
+        Label *target = framePushed ? labels->overflowThunk.ptr() : &labels->overflowExit;
         masm.branchPtr(Assembler::AboveOrEqual,
                        AsmJSAbsoluteAddress(AsmJSImm_StackLimit),
                        StackPointer,
@@ -330,11 +330,11 @@ js::GenerateAsmJSFunctionEpilogue(MacroAssembler &masm, unsigned framePushed,
     masm.bind(&labels->profilingEpilogue);
     GenerateProfilingEpilogue(masm, framePushed, AsmJSExit::None, &labels->profilingReturn);
 
-    if (!labels->overflowThunk.empty() && labels->overflowThunk.ref().used()) {
+    if (labels->overflowThunk && labels->overflowThunk->used()) {
         // The general throw stub assumes that only sizeof(AsmJSFrame) bytes
         // have been pushed. The overflow check occurs after incrementing by
         // framePushed, so pop that before jumping to the overflow exit.
-        masm.bind(labels->overflowThunk.addr());
+        masm.bind(labels->overflowThunk.ptr());
         masm.addPtr(Imm32(framePushed), StackPointer);
         masm.jump(&labels->overflowExit);
     }
@@ -659,7 +659,7 @@ BuiltinToName(AsmJSExit::BuiltinKind builtin)
       case AsmJSExit::Builtin_ATan2D:    return "Math.atan2 (in asm.js)";
       case AsmJSExit::Builtin_Limit:     break;
     }
-    MOZ_ASSUME_UNREACHABLE("Bad builtin kind");
+    MOZ_CRASH("Bad builtin kind");
 }
 
 const char *
@@ -700,6 +700,6 @@ AsmJSProfilingFrameIterator::label() const
       case AsmJSModule::CodeRange::Thunk:     return BuiltinToName(codeRange->thunkTarget());
     }
 
-    MOZ_ASSUME_UNREACHABLE("Bad exit kind");
+    MOZ_CRASH("Bad exit kind");
 }
 

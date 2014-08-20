@@ -612,7 +612,7 @@ ICStubCompiler::getStubCode()
         return nullptr;
     Linker linker(masm);
     AutoFlushICache afc("getStubCode");
-    Rooted<JitCode *> newStubCode(cx, linker.newCode<CanGC>(cx, JSC::BASELINE_CODE));
+    Rooted<JitCode *> newStubCode(cx, linker.newCode<CanGC>(cx, BASELINE_CODE));
     if (!newStubCode)
         return nullptr;
 
@@ -3316,8 +3316,10 @@ EffectlesslyLookupProperty(JSContext *cx, HandleObject obj, HandlePropertyName n
     shape.set(nullptr);
     holder.set(nullptr);
 
-    if (checkDOMProxy)
+    if (checkDOMProxy) {
         *checkDOMProxy = false;
+        *shadowsResult = ShadowCheckFailed;
+    }
 
     // Check for list base if asked to.
     RootedObject checkObj(cx, obj);
@@ -3888,9 +3890,9 @@ static bool
 TypedArrayRequiresFloatingPoint(TypedArrayObject *tarr)
 {
     uint32_t type = tarr->type();
-    return (type == Scalar::Uint32 ||
-            type == Scalar::Float32 ||
-            type == Scalar::Float64);
+    return type == Scalar::Uint32 ||
+           type == Scalar::Float32 ||
+           type == Scalar::Float64;
 }
 
 static bool
@@ -8521,8 +8523,12 @@ ICCallStubCompiler::guardSpreadCall(MacroAssembler &masm, Register argcReg, Labe
     masm.loadPtr(Address(argcReg, JSObject::offsetOfElements()), argcReg);
     masm.load32(Address(argcReg, ObjectElements::offsetOfLength()), argcReg);
 
-    // Ensure actual argc <= ARGS_LENGTH_MAX
-    masm.branch32(Assembler::Above, argcReg, Imm32(ARGS_LENGTH_MAX), failure);
+    // Limit actual argc to something reasonable (huge number of arguments can
+    // blow the stack limit).
+    static_assert(ICCall_Scripted::MAX_ARGS_SPREAD_LENGTH <= ARGS_LENGTH_MAX,
+                  "maximum arguments length for optimized stub should be <= ARGS_LENGTH_MAX");
+    masm.branch32(Assembler::Above, argcReg, Imm32(ICCall_Scripted::MAX_ARGS_SPREAD_LENGTH),
+                  failure);
 }
 
 void

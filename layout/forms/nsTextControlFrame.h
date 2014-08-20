@@ -9,6 +9,7 @@
 #include "mozilla/Attributes.h"
 #include "nsContainerFrame.h"
 #include "nsIAnonymousContentCreator.h"
+#include "nsIContent.h"
 #include "nsITextControlFrame.h"
 #include "nsITextControlElement.h"
 #include "nsIStatefulFrame.h"
@@ -82,7 +83,7 @@ public:
 
   // nsIAnonymousContentCreator
   virtual nsresult CreateAnonymousContent(nsTArray<ContentInfo>& aElements) MOZ_OVERRIDE;
-  virtual void AppendAnonymousContentTo(nsBaseContentList& aElements,
+  virtual void AppendAnonymousContentTo(nsTArray<nsIContent*>& aElements,
                                         uint32_t aFilter) MOZ_OVERRIDE;
 
   virtual void SetInitialChildList(ChildListID     aListID,

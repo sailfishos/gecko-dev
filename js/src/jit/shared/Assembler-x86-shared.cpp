@@ -43,7 +43,7 @@ TraceDataRelocations(JSTracer *trc, uint8_t *buffer, CompactBufferReader &reader
 {
     while (reader.more()) {
         size_t offset = reader.readUnsigned();
-        void **ptr = JSC::X86Assembler::getPointerRef(buffer + offset);
+        void **ptr = X86Assembler::getPointerRef(buffer + offset);
 
 #ifdef JS_PUNBOX64
         // All pointers on x64 will have the top bits cleared. If those bits
@@ -54,7 +54,7 @@ TraceDataRelocations(JSTracer *trc, uint8_t *buffer, CompactBufferReader &reader
             layout.asBits = *word;
             Value v = IMPL_TO_JSVAL(layout);
             gc::MarkValueUnbarriered(trc, &v, "ion-masm-value");
-            JS_ASSERT(*word == JSVAL_TO_IMPL(v).asBits);
+            *word = JSVAL_TO_IMPL(v).asBits;
             continue;
         }
 #endif

@@ -57,7 +57,6 @@ public:
 
   bool KeyEquals(KeyTypePointer aKey) const
   {
-    // njn: this is a heavyweight way to compare two char16ptr_t values!
     return mAtom->Equals(*aKey);
   }
 
@@ -539,14 +538,14 @@ NS_SizeOfAtomTablesIncludingThis(MallocSizeOf aMallocSizeOf,
            : 0;
 }
 
-#define ATOM_HASHTABLE_INITIAL_SIZE  4096
+#define ATOM_HASHTABLE_INITIAL_LENGTH  2048
 
 static inline void
 EnsureTableExists()
 {
   if (!gAtomTable.ops) {
     PL_DHashTableInit(&gAtomTable, &AtomTableOps, 0,
-                      sizeof(AtomTableEntry), ATOM_HASHTABLE_INITIAL_SIZE);
+                      sizeof(AtomTableEntry), ATOM_HASHTABLE_INITIAL_LENGTH);
   }
 }
 

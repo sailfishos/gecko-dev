@@ -59,10 +59,15 @@ TiledLayerBufferComposite::TiledLayerBufferComposite(ISurfaceAllocator* aAllocat
   const InfallibleTArray<TileDescriptor>& tiles = aDescriptor.tiles();
   for(size_t i = 0; i < tiles.Length(); i++) {
     RefPtr<TextureHost> texture;
+    RefPtr<TextureHost> textureOnWhite;
     const TileDescriptor& tileDesc = tiles[i];
     switch (tileDesc.type()) {
       case TileDescriptor::TTexturedTileDescriptor : {
         texture = TextureHost::AsTextureHost(tileDesc.get_TexturedTileDescriptor().textureParent());
+        MaybeTexture onWhite = tileDesc.get_TexturedTileDescriptor().textureOnWhite();
+        if (onWhite.type() == MaybeTexture::TPTextureParent) {
+          textureOnWhite = TextureHost::AsTextureHost(onWhite.get_PTextureParent());
+        }
         const TileLock& ipcLock = tileDesc.get_TexturedTileDescriptor().sharedLock();
         nsRefPtr<gfxSharedReadLock> sharedLock;
         if (ipcLock.type() == TileLock::TShmemSection) {
@@ -75,7 +80,7 @@ TiledLayerBufferComposite::TiledLayerBufferComposite(ISurfaceAllocator* aAllocat
           }
         }
 
-        mRetainedTiles.AppendElement(TileHost(sharedLock, texture));
+        mRetainedTiles.AppendElement(TileHost(sharedLock, texture, textureOnWhite));
         break;
       }
       default:
@@ -110,6 +115,7 @@ TiledLayerBufferComposite::ReleaseTextureHosts()
   }
   for (size_t i = 0; i < mRetainedTiles.Length(); i++) {
     mRetainedTiles[i].mTextureHost = nullptr;
+    mRetainedTiles[i].mTextureHostOnWhite = nullptr;
   }
 }
 
@@ -146,6 +152,9 @@ TiledLayerBufferComposite::ValidateTile(TileHost aTile,
   // we may want to reevaluate this in the future.
   // For !HasInternalBuffer() textures, this is likely a no-op.
   aTile.mTextureHost->Updated(nullptr);
+  if (aTile.mTextureHostOnWhite) {
+    aTile.mTextureHostOnWhite->Updated(nullptr);
+  }
 
 #ifdef GFX_TILEDLAYER_PREF_WARNINGS
   if (PR_IntervalNow() - start > 1) {
@@ -164,6 +173,9 @@ TiledLayerBufferComposite::SetCompositor(Compositor* aCompositor)
   for (size_t i = 0; i < mRetainedTiles.Length(); i++) {
     if (mRetainedTiles[i].IsPlaceholderTile()) continue;
     mRetainedTiles[i].mTextureHost->SetCompositor(aCompositor);
+    if (mRetainedTiles[i].mTextureHostOnWhite) {
+      mRetainedTiles[i].mTextureHostOnWhite->SetCompositor(aCompositor);
+    }
   }
 }
 
@@ -229,7 +241,6 @@ TiledContentHost::Attach(Layer* aLayer,
                          AttachFlags aFlags /* = NO_FLAGS */)
 {
   CompositableHost::Attach(aLayer, aCompositor, aFlags);
-  static_cast<ThebesLayerComposite*>(aLayer)->EnsureTiled();
 }
 
 void
@@ -312,11 +323,8 @@ TiledContentHost::Composite(EffectChain& aEffectChain,
                             const gfx::Matrix4x4& aTransform,
                             const gfx::Filter& aFilter,
                             const gfx::Rect& aClipRect,
-                            const nsIntRegion* aVisibleRegion /* = nullptr */,
-                            TiledLayerProperties* aLayerProperties /* = nullptr */)
+                            const nsIntRegion* aVisibleRegion /* = nullptr */)
 {
-  MOZ_ASSERT(aLayerProperties, "aLayerProperties required for TiledContentHost");
-
   if (mPendingUpload) {
     mTiledBuffer.SetCompositor(mCompositor);
     mTiledBuffer.Upload();
@@ -351,7 +359,7 @@ TiledContentHost::Composite(EffectChain& aEffectChain,
   if (aOpacity == 1.0f && gfxPrefs::LowPrecisionOpacity() < 1.0f) {
     // Background colors are only stored on scrollable layers. Grab
     // the one from the nearest scrollable ancestor layer.
-    for (ContainerLayer* ancestor = GetLayer()->GetParent(); ancestor; ancestor = ancestor->GetParent()) {
+    for (Layer* ancestor = GetLayer(); ancestor; ancestor = ancestor->GetParent()) {
       if (ancestor->GetFrameMetrics().IsScrollable()) {
         backgroundColor = ancestor->GetBackgroundColor();
         break;
@@ -362,13 +370,25 @@ TiledContentHost::Composite(EffectChain& aEffectChain,
         (aOpacity == 1.0f && backgroundColor.a == 1.0f)
         ? gfxPrefs::LowPrecisionOpacity() : 1.0f;
 
+  nsIntRegion tmpRegion;
+  const nsIntRegion* renderRegion;
+  if (PaintWillResample()) {
+    // If we're resampling, then the texture image will contain exactly the
+    // entire visible region's bounds, and we should draw it all in one quad
+    // to avoid unexpected aliasing.
+    tmpRegion = aVisibleRegion->GetBounds();
+    renderRegion = &tmpRegion;
+  } else {
+    renderRegion = aVisibleRegion;
+  }
+
   // Render the low and high precision buffers.
   RenderLayerBuffer(mLowPrecisionTiledBuffer,
                     lowPrecisionOpacityReduction < 1.0f ? &backgroundColor : nullptr,
                     aEffectChain, lowPrecisionOpacityReduction * aOpacity,
-                    aFilter, aClipRect, aLayerProperties->mVisibleRegion, aTransform);
+                    aFilter, aClipRect, *renderRegion, aTransform);
   RenderLayerBuffer(mTiledBuffer, nullptr, aEffectChain, aOpacity, aFilter,
-                    aClipRect, aLayerProperties->mVisibleRegion, aTransform);
+                    aClipRect, *renderRegion, aTransform);
 
   // Now release the old buffer if it had double-buffered tiles, as we can
   // guarantee that they're no longer on the screen (and so any locks that may
@@ -421,19 +441,20 @@ TiledContentHost::RenderTile(const TileHost& aTile,
   }
 
   AutoLockTextureHost autoLock(aTile.mTextureHost);
-  if (autoLock.Failed()) {
+  AutoLockTextureHost autoLockOnWhite(aTile.mTextureHostOnWhite);
+  if (autoLock.Failed() ||
+      autoLockOnWhite.Failed()) {
     NS_WARNING("Failed to lock tile");
     return;
   }
   RefPtr<NewTextureSource> source = aTile.mTextureHost->GetTextureSources();
-  if (!source) {
+  RefPtr<NewTextureSource> sourceOnWhite =
+    aTile.mTextureHostOnWhite ? aTile.mTextureHostOnWhite->GetTextureSources() : nullptr;
+  if (!source || (aTile.mTextureHostOnWhite && !sourceOnWhite)) {
     return;
   }
 
-  RefPtr<TexturedEffect> effect = CreateTexturedEffect(aTile.mTextureHost->GetFormat(),
-                                                       source,
-                                                       aFilter,
-                                                       true);
+  RefPtr<TexturedEffect> effect = CreateTexturedEffect(source, sourceOnWhite, aFilter, true);
   if (!effect) {
     return;
   }
@@ -575,6 +596,7 @@ TiledContentHost::Dump(std::stringstream& aStream,
       aStream << "empty tile";
     } else {
       DumpTextureHost(aStream, it->mTextureHost);
+      DumpTextureHost(aStream, it->mTextureHostOnWhite);
     }
     aStream << (aDumpHtml ? " >Tile</a></li>" : " ");
   }

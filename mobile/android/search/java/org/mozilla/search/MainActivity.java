@@ -6,6 +6,7 @@ package org.mozilla.search;
 
 import android.content.AsyncQueryHandler;
 import android.content.ContentValues;
+import android.content.Intent;
 import android.graphics.Rect;
 import android.os.Bundle;
 import android.support.v4.app.FragmentActivity;
@@ -33,6 +34,10 @@ import org.mozilla.search.autocomplete.SuggestionsFragment;
  */
 public class MainActivity extends FragmentActivity implements AcceptsSearchQuery {
 
+    private static final String KEY_SEARCH_STATE = "search_state";
+    private static final String KEY_EDIT_STATE = "edit_state";
+    private static final String KEY_QUERY = "query";
+
     static enum SearchState {
         PRESEARCH,
         POSTSEARCH
@@ -43,8 +48,9 @@ public class MainActivity extends FragmentActivity implements AcceptsSearchQuery
         EDITING
     }
 
-    private SearchState searchState;
-    private EditState editState;
+    // Default states when activity is created.
+    private SearchState searchState = SearchState.PRESEARCH;
+    private EditState editState = EditState.WAITING;
 
     private AsyncQueryHandler queryHandler;
 
@@ -53,7 +59,7 @@ public class MainActivity extends FragmentActivity implements AcceptsSearchQuery
     private View preSearch;
     private View postSearch;
 
-    private View suggestionsContainer;
+    private View suggestions;
     private SuggestionsFragment suggestionsFragment;
 
     private static final int SUGGESTION_TRANSITION_DURATION = 300;
@@ -72,8 +78,8 @@ public class MainActivity extends FragmentActivity implements AcceptsSearchQuery
     private int textEndY;
 
     @Override
-    protected void onCreate(Bundle stateBundle) {
-        super.onCreate(stateBundle);
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
         setContentView(R.layout.search_activity_main);
 
         queryHandler = new AsyncQueryHandler(getContentResolver()) {};
@@ -103,21 +109,18 @@ public class MainActivity extends FragmentActivity implements AcceptsSearchQuery
                     onSearch(trimmedQuery);
                 }
             }
+
+            @Override
+            public void onFocusChange(boolean hasFocus) {
+                setEditState(hasFocus ? EditState.EDITING : EditState.WAITING);
+            }
         });
 
         preSearch = findViewById(R.id.presearch);
         postSearch = findViewById(R.id.postsearch);
 
-        suggestionsContainer = findViewById(R.id.suggestions_container);
+        suggestions = findViewById(R.id.suggestions);
         suggestionsFragment = (SuggestionsFragment) getSupportFragmentManager().findFragmentById(R.id.suggestions);
-
-        // Dismiss edit mode when the user taps outside of the suggestions.
-        findViewById(R.id.suggestions_container).setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                setEditState(EditState.WAITING);
-            }
-        });
 
         animationText = (TextView) findViewById(R.id.animation_text);
         animationCard = findViewById(R.id.animation_card);
@@ -125,6 +128,24 @@ public class MainActivity extends FragmentActivity implements AcceptsSearchQuery
         cardPaddingX = getResources().getDimensionPixelSize(R.dimen.card_background_padding_x);
         cardPaddingY = getResources().getDimensionPixelSize(R.dimen.card_background_padding_y);
         textEndY = getResources().getDimensionPixelSize(R.dimen.animation_text_translation_y);
+
+        if (savedInstanceState != null) {
+            setSearchState(SearchState.valueOf(savedInstanceState.getString(KEY_SEARCH_STATE)));
+            setEditState(EditState.valueOf(savedInstanceState.getString(KEY_EDIT_STATE)));
+
+            final String query = savedInstanceState.getString(KEY_QUERY);
+            editText.setText(query);
+
+            // If we're in the postsearch state, we need to re-do the query.
+            if (searchState == SearchState.POSTSEARCH) {
+                ((PostSearchFragment) getSupportFragmentManager().findFragmentById(R.id.postsearch))
+                        .startSearch(query);
+            }
+        } else {
+            // If there isn't a state to restore, the activity will start in the presearch state,
+            // and we should enter editing mode to bring up the keyboard.
+            setEditState(EditState.EDITING);
+        }
     }
 
     @Override
@@ -135,7 +156,7 @@ public class MainActivity extends FragmentActivity implements AcceptsSearchQuery
         preSearch = null;
         postSearch = null;
         suggestionsFragment = null;
-        suggestionsContainer = null;
+        suggestions = null;
         animationText = null;
         animationCard = null;
     }
@@ -153,11 +174,22 @@ public class MainActivity extends FragmentActivity implements AcceptsSearchQuery
     }
 
     @Override
-    protected void onResume() {
-        super.onResume();
-
-        // When the app launches, make sure we're in presearch *always*
+    public void onNewIntent(Intent intent) {
+        // Reset the activity in the presearch state if it was launched from a new intent.
         setSearchState(SearchState.PRESEARCH);
+
+        // Also clear any existing search term and enter editing mode.
+        editText.setText("");
+        setEditState(EditState.EDITING);
+    }
+
+    @Override
+    public void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+
+        outState.putString(KEY_SEARCH_STATE, searchState.toString());
+        outState.putString(KEY_EDIT_STATE, editState.toString());
+        outState.putString(KEY_QUERY, editText.getText());
     }
 
     @Override
@@ -264,7 +296,7 @@ public class MainActivity extends FragmentActivity implements AcceptsSearchQuery
         this.editState = editState;
 
         editText.setActive(editState == EditState.EDITING);
-        suggestionsContainer.setVisibility(editState == EditState.EDITING ? View.VISIBLE : View.INVISIBLE);
+        suggestions.setVisibility(editState == EditState.EDITING ? View.VISIBLE : View.INVISIBLE);
     }
 
     private void setSearchState(SearchState searchState) {

@@ -64,6 +64,7 @@ nsSliderFrame::nsSliderFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
   nsBoxFrame(aPresShell, aContext),
   mCurPos(0),
   mChange(0),
+  mDragFinished(true),
   mUserChanged(false)
 {
 }
@@ -417,6 +418,11 @@ nsSliderFrame::HandleEvent(nsPresContext* aPresContext,
     return NS_OK;
   }
 
+  if (!mDragFinished && !isDraggingThumb()) {
+    StopDrag();
+    return NS_OK;
+  }
+
   nsIFrame* scrollbarBox = GetScrollbar();
   nsCOMPtr<nsIContent> scrollbar;
   scrollbar = GetContentOfBox(scrollbarBox);
@@ -432,12 +438,15 @@ nsSliderFrame::HandleEvent(nsPresContext* aPresContext,
         break;
       }
       if (mChange) {
-        // We're in the process of moving the thumb to the mouse,
-        // but the mouse just moved.  Make sure to update our
-        // destination point.
+        // On Linux the destination point is determined by the initial click
+        // on the scrollbar track and doesn't change until the mouse button
+        // is released.
+#ifndef MOZ_WIDGET_GTK
+        // On the other platforms we need to update the destination point now.
         mDestinationPoint = eventPoint;
         StopRepeat();
         StartRepeat();
+#endif
         break;
       }
 
@@ -487,13 +496,7 @@ nsSliderFrame::HandleEvent(nsPresContext* aPresContext,
     case NS_TOUCH_END:
     case NS_MOUSE_BUTTON_UP:
       if (ShouldScrollForEvent(aEvent)) {
-        // stop capturing
-        AddListener();
-        DragThumb(false);
-        if (mChange) {
-          StopRepeat();
-          mChange = 0;
-        }
+        StopDrag();
         //we MUST call nsFrame HandleEvent for mouse ups to maintain the selection state and capture state.
         return nsFrame::HandleEvent(aPresContext, aEvent, aEventStatus);
       }
@@ -523,6 +526,12 @@ nsSliderFrame::HandleEvent(nsPresContext* aPresContext,
     NS_ENSURE_TRUE(weakFrame.IsAlive(), NS_OK);
 
     DragThumb(true);
+
+#ifdef MOZ_WIDGET_GTK
+    nsCOMPtr<nsIContent> thumb = thumbFrame->GetContent();
+    thumb->SetAttr(kNameSpaceID_None, nsGkAtoms::active, NS_LITERAL_STRING("true"), true);
+#endif
+
     if (aEvent->mClass == eTouchEventClass) {
       *aEventStatus = nsEventStatus_eConsumeNoDefault;
     }
@@ -534,6 +543,21 @@ nsSliderFrame::HandleEvent(nsPresContext* aPresContext,
 
     mDragStart = pos - mThumbStart;
   }
+#ifdef MOZ_WIDGET_GTK
+  else if (ShouldScrollForEvent(aEvent) &&
+           aEvent->mClass == eMouseEventClass &&
+           aEvent->AsMouseEvent()->button == WidgetMouseEvent::eRightButton) {
+    // HandlePress and HandleRelease are usually called via
+    // nsFrame::HandleEvent, but only for the left mouse button.
+    if (aEvent->message == NS_MOUSE_BUTTON_DOWN) {
+      HandlePress(aPresContext, aEvent, aEventStatus);
+    } else if (aEvent->message == NS_MOUSE_BUTTON_UP) {
+      HandleRelease(aPresContext, aEvent, aEventStatus);
+    }
+
+    return NS_OK;
+  }
+#endif
 
   // XXX hack until handle release is actually called in nsframe.
 //  if (aEvent->message == NS_MOUSE_EXIT_SYNTH || aEvent->message == NS_MOUSE_RIGHT_BUTTON_UP || aEvent->message == NS_MOUSE_LEFT_BUTTON_UP)
@@ -862,6 +886,11 @@ nsSliderFrame::StartDrag(nsIDOMEvent* aEvent)
     return NS_OK;
   }
 
+#ifdef MOZ_WIDGET_GTK
+  nsCOMPtr<nsIContent> thumb = thumbFrame->GetContent();
+  thumb->SetAttr(kNameSpaceID_None, nsGkAtoms::active, NS_LITERAL_STRING("true"), true);
+#endif
+
   if (isHorizontal)
     mThumbStart = thumbFrame->GetPosition().x;
   else
@@ -876,9 +905,32 @@ nsSliderFrame::StartDrag(nsIDOMEvent* aEvent)
   return NS_OK;
 }
 
+nsresult
+nsSliderFrame::StopDrag()
+{
+  AddListener();
+  DragThumb(false);
+
+#ifdef MOZ_WIDGET_GTK
+  nsIFrame* thumbFrame = mFrames.FirstChild();
+  if (thumbFrame) {
+    nsCOMPtr<nsIContent> thumb = thumbFrame->GetContent();
+    thumb->UnsetAttr(kNameSpaceID_None, nsGkAtoms::active, true);
+  }
+#endif
+
+  if (mChange) {
+    StopRepeat();
+    mChange = 0;
+  }
+  return NS_OK;
+}
+
 void
 nsSliderFrame::DragThumb(bool aGrabMouseEvents)
 {
+  mDragFinished = !aGrabMouseEvents;
+
   // inform the parent <scale> that a drag is beginning or ending
   nsIFrame* parent = GetParent();
   if (parent) {
@@ -941,8 +993,14 @@ nsSliderFrame::ShouldScrollForEvent(WidgetGUIEvent* aEvent)
     case NS_MOUSE_BUTTON_DOWN:
     case NS_MOUSE_BUTTON_UP: {
       uint16_t button = aEvent->AsMouseEvent()->button;
+#ifdef MOZ_WIDGET_GTK
+      return (button == WidgetMouseEvent::eLeftButton) ||
+             (button == WidgetMouseEvent::eRightButton && GetScrollToClick()) ||
+             (button == WidgetMouseEvent::eMiddleButton && gMiddlePref && !GetScrollToClick());
+#else
       return (button == WidgetMouseEvent::eLeftButton) ||
              (button == WidgetMouseEvent::eMiddleButton && gMiddlePref);
+#endif
     }
     default:
       return false;
@@ -964,8 +1022,8 @@ nsSliderFrame::ShouldScrollToClickForEvent(WidgetGUIEvent* aEvent)
     return false;
   }
 
-#ifdef XP_MACOSX
-  // On Mac, clicking the scrollbar thumb should never scroll to click.
+#if defined(XP_MACOSX) || defined(MOZ_WIDGET_GTK)
+  // On Mac and Linux, clicking the scrollbar thumb should never scroll to click.
   if (IsEventOverThumb(aEvent)) {
     return false;
   }
@@ -980,6 +1038,12 @@ nsSliderFrame::ShouldScrollToClickForEvent(WidgetGUIEvent* aEvent)
 #endif
     return GetScrollToClick() != invertPref;
   }
+
+#ifdef MOZ_WIDGET_GTK
+  if (mouseEvent->button == WidgetMouseEvent::eRightButton) {
+    return !GetScrollToClick();
+  }
+#endif
 
   return true;
 }
@@ -1040,7 +1104,25 @@ nsSliderFrame::HandlePress(nsPresContext* aPresContext,
 
   mChange = change;
   DragThumb(true);
+  // On Linux we want to keep scrolling in the direction indicated by |change|
+  // until the mouse is released. On the other platforms we want to stop
+  // scrolling as soon as the scrollbar thumb has reached the current mouse
+  // position.
+#ifdef MOZ_WIDGET_GTK
+  nsRect clientRect;
+  GetClientRect(clientRect);
+
+  // Set the destination point to the very end of the scrollbar so that
+  // scrolling doesn't stop halfway through.
+  if (change > 0) {
+    mDestinationPoint = nsPoint(clientRect.width, clientRect.height);
+  }
+  else {
+    mDestinationPoint = nsPoint(0, 0);
+  }
+#else
   mDestinationPoint = eventPoint;
+#endif
   StartRepeat();
   PageUpDown(change);
   return NS_OK;

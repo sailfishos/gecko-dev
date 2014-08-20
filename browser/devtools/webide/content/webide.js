@@ -100,6 +100,13 @@ let UI = {
     window.removeEventListener("message", this.onMessage);
   },
 
+  canWindowClose: function() {
+    if (this.projecteditor) {
+      return this.projecteditor.confirmUnsaved();
+    }
+    return true;
+  },
+
   onfocus: function() {
     // Because we can't track the activity in the folder project,
     // we need to validate the project regularly. Let's assume that
@@ -208,10 +215,8 @@ let UI = {
   setupBusyTimeout: function() {
     this.cancelBusyTimeout();
     this._busyTimeout = setTimeout(() => {
-      let busyPromise = this._busyPromise;
       this.unbusy();
       UI.reportError("error_operationTimeout", this._busyOperationDescription);
-      busyPromise.reject("promise timeout: " + this._busyOperationDescription);
     }, 30000);
   },
 
@@ -667,7 +672,9 @@ let UI = {
 
 let Cmds = {
   quit: function() {
-    window.close();
+    if (UI.canWindowClose()) {
+      window.close();
+    }
   },
 
   /**

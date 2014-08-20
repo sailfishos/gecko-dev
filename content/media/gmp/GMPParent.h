@@ -13,6 +13,7 @@
 #include "GMPVideoDecoderParent.h"
 #include "GMPVideoEncoderParent.h"
 #include "GMPTimerParent.h"
+#include "GMPStorageParent.h"
 #include "mozilla/gmp/PGMPParent.h"
 #include "nsCOMPtr.h"
 #include "nscore.h"
@@ -126,6 +127,8 @@ public:
   // GMPSharedMem
   virtual void CheckThread() MOZ_OVERRIDE;
 
+  void AbortAsyncShutdown();
+
 private:
   ~GMPParent();
   nsRefPtr<GeckoMediaPluginService> mService;
@@ -152,9 +155,16 @@ private:
   virtual PGMPAudioDecoderParent* AllocPGMPAudioDecoderParent() MOZ_OVERRIDE;
   virtual bool DeallocPGMPAudioDecoderParent(PGMPAudioDecoderParent* aActor) MOZ_OVERRIDE;
 
+  virtual bool RecvPGMPStorageConstructor(PGMPStorageParent* actor) MOZ_OVERRIDE;
+  virtual PGMPStorageParent* AllocPGMPStorageParent() MOZ_OVERRIDE;
+  virtual bool DeallocPGMPStorageParent(PGMPStorageParent* aActor) MOZ_OVERRIDE;
+
   virtual bool RecvPGMPTimerConstructor(PGMPTimerParent* actor) MOZ_OVERRIDE;
   virtual PGMPTimerParent* AllocPGMPTimerParent() MOZ_OVERRIDE;
   virtual bool DeallocPGMPTimerParent(PGMPTimerParent* aActor) MOZ_OVERRIDE;
+
+  virtual bool RecvAsyncShutdownComplete() MOZ_OVERRIDE;
+  virtual bool RecvAsyncShutdownRequired() MOZ_OVERRIDE;
 
   GMPState mState;
   nsCOMPtr<nsIFile> mDirectory; // plugin directory on disk
@@ -171,10 +181,15 @@ private:
   nsTArray<nsRefPtr<GMPVideoEncoderParent>> mVideoEncoders;
   nsTArray<nsRefPtr<GMPDecryptorParent>> mDecryptors;
   nsTArray<nsRefPtr<GMPAudioDecoderParent>> mAudioDecoders;
+  nsTArray<nsRefPtr<GMPTimerParent>> mTimers;
+  nsTArray<nsRefPtr<GMPStorageParent>> mStorage;
   nsCOMPtr<nsIThread> mGMPThread;
   // Origin the plugin is assigned to, or empty if the the plugin is not
   // assigned to an origin.
   nsAutoString mOrigin;
+
+  bool mAsyncShutdownRequired;
+  bool mAsyncShutdownInProgress;
 };
 
 } // namespace gmp

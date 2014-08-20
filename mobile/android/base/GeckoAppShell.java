@@ -44,8 +44,12 @@ import org.mozilla.gecko.mozglue.RobocopTarget;
 import org.mozilla.gecko.mozglue.generatorannotations.OptionalGeneratedParameter;
 import org.mozilla.gecko.mozglue.generatorannotations.WrapElementForJNI;
 import org.mozilla.gecko.prompts.PromptService;
+import org.mozilla.gecko.util.EventCallback;
+import org.mozilla.gecko.util.GeckoRequest;
 import org.mozilla.gecko.util.HardwareUtils;
+import org.mozilla.gecko.util.NativeEventListener;
 import org.mozilla.gecko.util.NativeJSContainer;
+import org.mozilla.gecko.util.NativeJSObject;
 import org.mozilla.gecko.util.ProxySelector;
 import org.mozilla.gecko.util.ThreadUtils;
 
@@ -159,6 +163,8 @@ public class GeckoAppShell
     private static Sensor gProximitySensor;
     private static Sensor gLightSensor;
 
+    private static final String GECKOREQUEST_RESPONSE_KEY = "response";
+
     /*
      * Keep in sync with constants found here:
      * http://mxr.mozilla.org/mozilla-central/source/uriloader/base/nsIWebProgressListener.idl
@@ -183,6 +189,7 @@ public class GeckoAppShell
     /* The Android-side API: API methods that Android calls */
 
     // Initialization methods
+    public static native void registerJavaUiThread();
     public static native void nativeInit();
 
     // helper methods
@@ -404,6 +411,36 @@ public class GeckoAppShell
         PENDING_EVENTS.add(e);
     }
 
+    /**
+     * Sends an asynchronous request to Gecko.
+     *
+     * The response data will be passed to {@link GeckoRequest#onResponse(NativeJSObject)} if the
+     * request succeeds; otherwise, {@link GeckoRequest#onError()} will fire.
+     *
+     * This method follows the same queuing conditions as {@link #sendEventToGecko(GeckoEvent)}.
+     * It can be called from any thread. The GeckoRequest callbacks will be executed on the Gecko thread.
+     *
+     * @param request The request to dispatch. Cannot be null.
+     */
+    @RobocopTarget
+    public static void sendRequestToGecko(final GeckoRequest request) {
+        final String responseMessage = "Gecko:Request" + request.getId();
+
+        EventDispatcher.getInstance().registerGeckoThreadListener(new NativeEventListener() {
+            @Override
+            public void handleMessage(String event, NativeJSObject message, EventCallback callback) {
+                EventDispatcher.getInstance().unregisterGeckoThreadListener(this, event);
+                if (!message.has(GECKOREQUEST_RESPONSE_KEY)) {
+                    request.onError();
+                    return;
+                }
+                request.onResponse(message.getObject(GECKOREQUEST_RESPONSE_KEY));
+            }
+        }, responseMessage);
+
+        sendEventToGecko(GeckoEvent.createBroadcastEvent(request.getName(), request.getData()));
+    }
+
     // Tell the Gecko event loop that an event is available.
     public static native void notifyGeckoOfEvent(GeckoEvent event);
 
@@ -518,6 +555,24 @@ public class GeckoAppShell
             sWaitingForEventAck = false;
             sEventAckLock.notifyAll();
         }
+    }
+
+    private static Runnable sCallbackRunnable = new Runnable() {
+        @Override
+        public void run() {
+            ThreadUtils.assertOnUiThread();
+            long nextDelay = runUiThreadCallback();
+            if (nextDelay >= 0) {
+                ThreadUtils.getUiHandler().postDelayed(this, nextDelay);
+            }
+        }
+    };
+
+    private static native long runUiThreadCallback();
+
+    @WrapElementForJNI(allowMultithread = true)
+    private static void requestUiThreadCallback(long delay) {
+        ThreadUtils.getUiHandler().postDelayed(sCallbackRunnable, delay);
     }
 
     private static float getLocationAccuracy(Location location) {

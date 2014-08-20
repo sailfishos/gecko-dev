@@ -1,0 +1,12 @@
+# These tests verify that CSS filters behave properly.
+# e.g. filter: blur(3px)
+
+default-preferences pref(layout.css.filters.enabled,true)
+
+== blur.html blur-ref.html
+== blur.svg blur-ref.svg
+== blur-zero-radius.html blur-zero-radius-ref.html
+== blur-zoomed-page.html blur-zoomed-page-ref.html
+== drop-shadow.html drop-shadow-ref.html
+== drop-shadow-default-color.html drop-shadow-default-color-ref.html
+== drop-shadow-negative-offset.html drop-shadow-negative-offset-ref.html

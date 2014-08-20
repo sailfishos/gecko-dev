@@ -538,6 +538,9 @@ class Parser : private JS::AutoGCRooter, public StrictModeGetter
     Node parenExprOrGeneratorComprehension();
     Node exprInParens();
 
+    bool methodDefinition(Node literal, Node propname, FunctionType type, FunctionSyntaxKind kind,
+                          GeneratorKind generatorKind, JSOp Op);
+
     /*
      * Additional JS parsers.
      */
@@ -646,7 +649,6 @@ class Parser : private JS::AutoGCRooter, public StrictModeGetter
 
     bool reportRedeclaration(Node pn, bool isConst, HandlePropertyName name);
     bool reportBadReturn(Node pn, ParseReportKind kind, unsigned errnum, unsigned anonerrnum);
-    bool checkFinalReturn(Node pn);
     DefinitionNode getOrCreateLexicalDependency(ParseContext<ParseHandler> *pc, JSAtom *atom);
 
     bool leaveFunction(Node fn, ParseContext<ParseHandler> *outerpc,

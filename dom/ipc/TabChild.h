@@ -318,7 +318,7 @@ public:
                                          const FileDescriptor& aFileDescriptor)
                                          MOZ_OVERRIDE;
     virtual bool RecvShow(const nsIntSize& size) MOZ_OVERRIDE;
-    virtual bool RecvUpdateDimensions(const nsRect& rect,
+    virtual bool RecvUpdateDimensions(const nsIntRect& rect,
                                       const nsIntSize& size,
                                       const ScreenOrientation& orientation) MOZ_OVERRIDE;
     virtual bool RecvUpdateFrame(const mozilla::layers::FrameMetrics& aFrameMetrics) MOZ_OVERRIDE;
@@ -385,13 +385,6 @@ public:
     virtual PColorPickerChild*
     AllocPColorPickerChild(const nsString& title, const nsString& initialColor) MOZ_OVERRIDE;
     virtual bool DeallocPColorPickerChild(PColorPickerChild* actor) MOZ_OVERRIDE;
-
-#ifdef DEBUG
-    virtual PContentPermissionRequestChild*
-    SendPContentPermissionRequestConstructor(PContentPermissionRequestChild* aActor,
-                                             const InfallibleTArray<PermissionRequest>& aRequests,
-                                             const IPC::Principal& aPrincipal);
-#endif /* DEBUG */
 
     virtual PContentPermissionRequestChild*
     AllocPContentPermissionRequestChild(const InfallibleTArray<PermissionRequest>& aRequests,

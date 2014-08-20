@@ -29,7 +29,6 @@
 #include "mozilla/Services.h"
 
 #include "nsContentUtils.h"
-#include "nsCxPusher.h"
 #include "nsCCUncollectableMarker.h"
 #include "nsCycleCollectionNoteRootCallback.h"
 #include "nsScriptLoader.h"
@@ -562,36 +561,21 @@ EnableUniversalXPConnect(JSContext *cx)
 }
 
 JSObject *
-GetJunkScope()
+UnprivilegedJunkScope()
 {
-    XPCJSRuntime *self = nsXPConnect::GetRuntimeInstance();
-    NS_ENSURE_TRUE(self, nullptr);
-    return self->GetJunkScope();
-}
-
-nsIGlobalObject *
-GetJunkScopeGlobal()
-{
-    JSObject *junkScope = GetJunkScope();
-    // GetJunkScope would ideally never fail, currently it is not yet the case
-    // unfortunately...(see Bug 874158)
-    if (!junkScope)
-        return nullptr;
-    return GetNativeForGlobal(junkScope);
+    return XPCJSRuntime::Get()->UnprivilegedJunkScope();
 }
 
 JSObject *
-GetCompilationScope()
+PrivilegedJunkScope()
 {
-    XPCJSRuntime *self = nsXPConnect::GetRuntimeInstance();
-    NS_ENSURE_TRUE(self, nullptr);
-    return self->GetCompilationScope();
+    return XPCJSRuntime::Get()->PrivilegedJunkScope();
 }
 
 JSObject *
-GetSafeJSContextGlobal()
+CompilationScope()
 {
-    return XPCJSRuntime::Get()->GetJSContextStack()->GetSafeJSContextGlobal();
+    return XPCJSRuntime::Get()->CompilationScope();
 }
 
 nsGlobalWindow*
@@ -1187,7 +1171,7 @@ class WatchdogManager : public nsIObserver
         MOZ_ASSERT(NS_IsMainThread());
         Maybe<AutoLockWatchdog> lock;
         if (mWatchdog)
-            lock.construct(mWatchdog);
+            lock.emplace(mWatchdog);
 
         // Write state.
         mTimestamps[TimestampRuntimeStateChange] = PR_Now();
@@ -1211,7 +1195,7 @@ class WatchdogManager : public nsIObserver
         // The watchdog thread always holds the lock when it runs.
         Maybe<AutoLockWatchdog> maybeLock;
         if (NS_IsMainThread() && mWatchdog)
-            maybeLock.construct(mWatchdog);
+            maybeLock.emplace(mWatchdog);
         mTimestamps[aCategory] = PR_Now();
     }
     PRTime GetTimestamp(WatchdogTimestampCategory aCategory)
@@ -1219,7 +1203,7 @@ class WatchdogManager : public nsIObserver
         // The watchdog thread always holds the lock when it runs.
         Maybe<AutoLockWatchdog> maybeLock;
         if (NS_IsMainThread() && mWatchdog)
-            maybeLock.construct(mWatchdog);
+            maybeLock.emplace(mWatchdog);
         return mTimestamps[aCategory];
     }
 
@@ -3114,15 +3098,15 @@ XPCJSRuntime::XPCJSRuntime(nsXPConnect* aXPConnect)
    mAutoRoots(nullptr),
    mResolveName(JSID_VOID),
    mResolvingWrapper(nullptr),
-   mWrappedJSMap(JSObject2WrappedJSMap::newMap(XPC_JS_MAP_SIZE)),
-   mWrappedJSClassMap(IID2WrappedJSClassMap::newMap(XPC_JS_CLASS_MAP_SIZE)),
-   mIID2NativeInterfaceMap(IID2NativeInterfaceMap::newMap(XPC_NATIVE_INTERFACE_MAP_SIZE)),
-   mClassInfo2NativeSetMap(ClassInfo2NativeSetMap::newMap(XPC_NATIVE_SET_MAP_SIZE)),
-   mNativeSetMap(NativeSetMap::newMap(XPC_NATIVE_SET_MAP_SIZE)),
-   mThisTranslatorMap(IID2ThisTranslatorMap::newMap(XPC_THIS_TRANSLATOR_MAP_SIZE)),
-   mNativeScriptableSharedMap(XPCNativeScriptableSharedMap::newMap(XPC_NATIVE_JSCLASS_MAP_SIZE)),
-   mDyingWrappedNativeProtoMap(XPCWrappedNativeProtoMap::newMap(XPC_DYING_NATIVE_PROTO_MAP_SIZE)),
-   mDetachedWrappedNativeProtoMap(XPCWrappedNativeProtoMap::newMap(XPC_DETACHED_NATIVE_PROTO_MAP_SIZE)),
+   mWrappedJSMap(JSObject2WrappedJSMap::newMap(XPC_JS_MAP_LENGTH)),
+   mWrappedJSClassMap(IID2WrappedJSClassMap::newMap(XPC_JS_CLASS_MAP_LENGTH)),
+   mIID2NativeInterfaceMap(IID2NativeInterfaceMap::newMap(XPC_NATIVE_INTERFACE_MAP_LENGTH)),
+   mClassInfo2NativeSetMap(ClassInfo2NativeSetMap::newMap(XPC_NATIVE_SET_MAP_LENGTH)),
+   mNativeSetMap(NativeSetMap::newMap(XPC_NATIVE_SET_MAP_LENGTH)),
+   mThisTranslatorMap(IID2ThisTranslatorMap::newMap(XPC_THIS_TRANSLATOR_MAP_LENGTH)),
+   mNativeScriptableSharedMap(XPCNativeScriptableSharedMap::newMap(XPC_NATIVE_JSCLASS_MAP_LENGTH)),
+   mDyingWrappedNativeProtoMap(XPCWrappedNativeProtoMap::newMap(XPC_DYING_NATIVE_PROTO_MAP_LENGTH)),
+   mDetachedWrappedNativeProtoMap(XPCWrappedNativeProtoMap::newMap(XPC_DETACHED_NATIVE_PROTO_MAP_LENGTH)),
    mGCIsRunning(false),
    mWrappedJSToReleaseArray(),
    mNativesToReleaseArray(),
@@ -3131,7 +3115,8 @@ XPCJSRuntime::XPCJSRuntime(nsXPConnect* aXPConnect)
    mWrappedJSRoots(nullptr),
    mObjectHolderRoots(nullptr),
    mWatchdogManager(new WatchdogManager(MOZ_THIS_IN_INITIALIZER_LIST())),
-   mJunkScope(MOZ_THIS_IN_INITIALIZER_LIST()->Runtime(), nullptr),
+   mUnprivilegedJunkScope(MOZ_THIS_IN_INITIALIZER_LIST()->Runtime(), nullptr),
+   mPrivilegedJunkScope(MOZ_THIS_IN_INITIALIZER_LIST()->Runtime(), nullptr),
    mCompilationScope(MOZ_THIS_IN_INITIALIZER_LIST()->Runtime(), nullptr),
    mAsyncSnowWhiteFreer(new AsyncFreeSnowWhite())
 {
@@ -3552,44 +3537,46 @@ XPCJSRuntime::RemoveContextCallback(xpcContextCallback cb)
     }
 }
 
-JSObject *
-XPCJSRuntime::GetJunkScope()
+void
+XPCJSRuntime::InitSingletonScopes()
 {
-    if (!mJunkScope) {
-        AutoSafeJSContext cx;
-        SandboxOptions options;
-        options.sandboxName.AssignLiteral("XPConnect Junk Compartment");
-        RootedValue v(cx);
-        nsresult rv = CreateSandboxObject(cx, &v, nsContentUtils::GetSystemPrincipal(), options);
-        NS_ENSURE_SUCCESS(rv, nullptr);
+    // This all happens very early, so we don't bother with cx pushing.
+    JSContext *cx = GetJSContextStack()->GetSafeJSContext();
+    JSAutoRequest ar(cx);
+    RootedValue v(cx);
+    nsresult rv;
 
-        mJunkScope = js::UncheckedUnwrap(&v.toObject());
-    }
-    return mJunkScope;
+    // Create the Unprivileged Junk Scope.
+    SandboxOptions unprivilegedJunkScopeOptions;
+    unprivilegedJunkScopeOptions.sandboxName.AssignLiteral("XPConnect Junk Compartment");
+    unprivilegedJunkScopeOptions.invisibleToDebugger = true;
+    rv = CreateSandboxObject(cx, &v, nullptr, unprivilegedJunkScopeOptions);
+    MOZ_RELEASE_ASSERT(NS_SUCCEEDED(rv));
+    mUnprivilegedJunkScope = js::UncheckedUnwrap(&v.toObject());
+
+    // Create the Privileged Junk Scope.
+    SandboxOptions privilegedJunkScopeOptions;
+    privilegedJunkScopeOptions.sandboxName.AssignLiteral("XPConnect Privileged Junk Compartment");
+    privilegedJunkScopeOptions.invisibleToDebugger = true;
+    privilegedJunkScopeOptions.wantComponents = false;
+    rv = CreateSandboxObject(cx, &v, nsXPConnect::SystemPrincipal(), privilegedJunkScopeOptions);
+    MOZ_RELEASE_ASSERT(NS_SUCCEEDED(rv));
+    mPrivilegedJunkScope = js::UncheckedUnwrap(&v.toObject());
+
+    // Create the Compilation Scope.
+    SandboxOptions compilationScopeOptions;
+    compilationScopeOptions.sandboxName.AssignLiteral("XPConnect Compilation Compartment");
+    compilationScopeOptions.invisibleToDebugger = true;
+    compilationScopeOptions.discardSource = ShouldDiscardSystemSource();
+    rv = CreateSandboxObject(cx, &v, /* principal = */ nullptr, compilationScopeOptions);
+    MOZ_RELEASE_ASSERT(NS_SUCCEEDED(rv));
+    mCompilationScope = js::UncheckedUnwrap(&v.toObject());
 }
-
-JSObject *
-XPCJSRuntime::GetCompilationScope()
-{
-    if (!mCompilationScope) {
-        AutoSafeJSContext cx;
-        SandboxOptions options;
-        options.sandboxName.AssignLiteral("XPConnect Compilation Compartment");
-        options.invisibleToDebugger = true;
-        options.discardSource = ShouldDiscardSystemSource();
-        RootedValue v(cx);
-        nsresult rv = CreateSandboxObject(cx, &v, /* principal = */ nullptr, options);
-        NS_ENSURE_SUCCESS(rv, nullptr);
-
-        mCompilationScope = js::UncheckedUnwrap(&v.toObject());
-    }
-    return mCompilationScope;
-}
-
 
 void
 XPCJSRuntime::DeleteSingletonScopes()
 {
-    mJunkScope = nullptr;
+    mUnprivilegedJunkScope = nullptr;
+    mPrivilegedJunkScope = nullptr;
     mCompilationScope = nullptr;
 }

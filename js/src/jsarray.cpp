@@ -947,7 +947,7 @@ template <typename CharT>
 struct CharSeparatorOp
 {
     const CharT sep;
-    explicit CharSeparatorOp(CharT sep) : sep(sep) {};
+    explicit CharSeparatorOp(CharT sep) : sep(sep) {}
     bool operator()(JSContext *, StringBuffer &sb) { return sb.append(sep); }
 };
 
@@ -1039,13 +1039,74 @@ ArrayJoinKernel(JSContext *cx, SeparatorOp sepOp, HandleObject obj, uint32_t len
 }
 
 template <bool Locale>
-static bool
-ArrayJoin(JSContext *cx, CallArgs &args)
+JSString *
+js::ArrayJoin(JSContext *cx, HandleObject obj, HandleLinearString sepstr, uint32_t length)
 {
     // This method is shared by Array.prototype.join and
     // Array.prototype.toLocaleString. The steps in ES5 are nearly the same, so
     // the annotations in this function apply to both toLocaleString and join.
 
+    // Steps 1 to 6, should be done by the caller.
+
+    JS::Anchor<JSString*> anchor(sepstr);
+
+    // Step 6 is implicit in the loops below.
+
+    // An optimized version of a special case of steps 7-11: when length==1 and
+    // the 0th element is a string, ToString() of that element is a no-op and
+    // so it can be immediately returned as the result.
+    if (length == 1 && !Locale && obj->is<ArrayObject>() &&
+        obj->getDenseInitializedLength() == 1)
+    {
+        const Value &elem0 = obj->getDenseElement(0);
+        if (elem0.isString()) {
+            return elem0.toString();
+        }
+    }
+
+    StringBuffer sb(cx);
+    if (sepstr->hasTwoByteChars() && !sb.ensureTwoByteChars())
+        return nullptr;
+
+    // The separator will be added |length - 1| times, reserve space for that
+    // so that we don't have to unnecessarily grow the buffer.
+    size_t seplen = sepstr->length();
+    if (length > 0 && !sb.reserve(seplen * (length - 1)))
+        return nullptr;
+
+    // Various optimized versions of steps 7-10.
+    if (seplen == 0) {
+        EmptySeparatorOp op;
+        if (!ArrayJoinKernel<Locale>(cx, op, obj, length, sb))
+            return nullptr;
+    } else if (seplen == 1) {
+        jschar c = sepstr->latin1OrTwoByteChar(0);
+        if (c <= JSString::MAX_LATIN1_CHAR) {
+            CharSeparatorOp<Latin1Char> op(c);
+            if (!ArrayJoinKernel<Locale>(cx, op, obj, length, sb))
+                return nullptr;
+        } else {
+            CharSeparatorOp<jschar> op(c);
+            if (!ArrayJoinKernel<Locale>(cx, op, obj, length, sb))
+                return nullptr;
+        }
+    } else {
+        StringSeparatorOp op(sepstr);
+        if (!ArrayJoinKernel<Locale>(cx, op, obj, length, sb))
+            return nullptr;
+    }
+
+    // Step 11
+    JSString *str = sb.finishString();
+    if (!str)
+        return nullptr;
+    return str;
+}
+
+template <bool Locale>
+bool
+ArrayJoin(JSContext *cx, CallArgs &args)
+{
     // Step 1
     RootedObject obj(cx, ToObject(cx, args.thisv()));
     if (!obj)
@@ -1078,60 +1139,12 @@ ArrayJoin(JSContext *cx, CallArgs &args)
         sepstr = cx->names().comma;
     }
 
-    JS::Anchor<JSString*> anchor(sepstr);
-
-    // Step 6 is implicit in the loops below.
-
-    // An optimized version of a special case of steps 7-11: when length==1 and
-    // the 0th element is a string, ToString() of that element is a no-op and
-    // so it can be immediately returned as the result.
-    if (length == 1 && !Locale && obj->is<ArrayObject>() &&
-        obj->getDenseInitializedLength() == 1)
-    {
-        const Value &elem0 = obj->getDenseElement(0);
-        if (elem0.isString()) {
-            args.rval().setString(elem0.toString());
-            return true;
-        }
-    }
-
-    StringBuffer sb(cx);
-    if (sepstr->hasTwoByteChars() && !sb.ensureTwoByteChars())
+    // Step 6 to 11
+    JSString *res = js::ArrayJoin<Locale>(cx, obj, sepstr, length);
+    if (!res)
         return false;
 
-    // The separator will be added |length - 1| times, reserve space for that
-    // so that we don't have to unnecessarily grow the buffer.
-    size_t seplen = sepstr->length();
-    if (length > 0 && !sb.reserve(seplen * (length - 1)))
-        return false;
-
-    // Various optimized versions of steps 7-10.
-    if (seplen == 0) {
-        EmptySeparatorOp op;
-        if (!ArrayJoinKernel<Locale>(cx, op, obj, length, sb))
-            return false;
-    } else if (seplen == 1) {
-        jschar c = sepstr->latin1OrTwoByteChar(0);
-        if (c <= JSString::MAX_LATIN1_CHAR) {
-            CharSeparatorOp<Latin1Char> op(c);
-            if (!ArrayJoinKernel<Locale>(cx, op, obj, length, sb))
-                return false;
-        } else {
-            CharSeparatorOp<jschar> op(c);
-            if (!ArrayJoinKernel<Locale>(cx, op, obj, length, sb))
-                return false;
-        }
-    } else {
-        StringSeparatorOp op(sepstr);
-        if (!ArrayJoinKernel<Locale>(cx, op, obj, length, sb))
-            return false;
-    }
-
-    // Step 11
-    JSString *str = sb.finishString();
-    if (!str)
-        return false;
-    args.rval().setString(str);
+    args.rval().setString(res);
     return true;
 }
 
@@ -1183,8 +1196,8 @@ array_toLocaleString(JSContext *cx, unsigned argc, Value *vp)
 }
 
 /* ES5 15.4.4.5 */
-static bool
-array_join(JSContext *cx, unsigned argc, Value *vp)
+bool
+js::array_join(JSContext *cx, unsigned argc, Value *vp)
 {
     JS_CHECK_RECURSION(cx, return false);
 
@@ -1404,9 +1417,7 @@ array_reverse(JSContext *cx, unsigned argc, Value *vp)
     return true;
 }
 
-namespace {
-
-inline bool
+static inline bool
 CompareStringValues(JSContext *cx, const Value &a, const Value &b, bool *lessOrEqualp)
 {
     if (!CheckForInterrupt(cx))
@@ -1499,6 +1510,8 @@ CompareSubStringValues(JSContext *cx, const Char1 *s1, size_t len1, const Char2 
     *lessOrEqualp = (result <= 0);
     return true;
 }
+
+namespace {
 
 struct SortComparatorStrings
 {
@@ -1606,7 +1619,7 @@ struct NumericElement
     size_t elementIndex;
 };
 
-bool
+static bool
 ComparatorNumericLeftMinusRight(const NumericElement &a, const NumericElement &b,
                                 bool *lessOrEqualp)
 {
@@ -1614,7 +1627,7 @@ ComparatorNumericLeftMinusRight(const NumericElement &a, const NumericElement &b
     return true;
 }
 
-bool
+static bool
 ComparatorNumericRightMinusLeft(const NumericElement &a, const NumericElement &b,
                                 bool *lessOrEqualp)
 {
@@ -1625,21 +1638,21 @@ ComparatorNumericRightMinusLeft(const NumericElement &a, const NumericElement &b
 typedef bool (*ComparatorNumeric)(const NumericElement &a, const NumericElement &b,
                                   bool *lessOrEqualp);
 
-ComparatorNumeric SortComparatorNumerics[] = {
+static const ComparatorNumeric SortComparatorNumerics[] = {
     nullptr,
     nullptr,
     ComparatorNumericLeftMinusRight,
     ComparatorNumericRightMinusLeft
 };
 
-bool
+static bool
 ComparatorInt32LeftMinusRight(const Value &a, const Value &b, bool *lessOrEqualp)
 {
     *lessOrEqualp = (a.toInt32() <= b.toInt32());
     return true;
 }
 
-bool
+static bool
 ComparatorInt32RightMinusLeft(const Value &a, const Value &b, bool *lessOrEqualp)
 {
     *lessOrEqualp = (b.toInt32() <= a.toInt32());
@@ -1648,7 +1661,7 @@ ComparatorInt32RightMinusLeft(const Value &a, const Value &b, bool *lessOrEqualp
 
 typedef bool (*ComparatorInt32)(const Value &a, const Value &b, bool *lessOrEqualp);
 
-ComparatorInt32 SortComparatorInt32s[] = {
+static const ComparatorInt32 SortComparatorInt32s[] = {
     nullptr,
     nullptr,
     ComparatorInt32LeftMinusRight,
@@ -1664,11 +1677,13 @@ enum ComparatorMatchResult {
     Match_RightMinusLeft
 };
 
+} /* namespace anonymous */
+
 /*
  * Specialize behavior for comparator functions with particular common bytecode
  * patterns: namely, |return x - y| and |return y - x|.
  */
-ComparatorMatchResult
+static ComparatorMatchResult
 MatchNumericComparator(JSContext *cx, const Value &v)
 {
     if (!v.isObject())
@@ -1766,7 +1781,7 @@ MergeSortByKey(K keys, size_t len, K scratch, C comparator, AutoValueVector *vec
  * To minimize #conversions, SortLexicographically() first converts all Values
  * to strings at once, then sorts the elements by these cached strings.
  */
-bool
+static bool
 SortLexicographically(JSContext *cx, AutoValueVector *vec, size_t len)
 {
     JS_ASSERT(vec->length() >= len);
@@ -1806,7 +1821,7 @@ SortLexicographically(JSContext *cx, AutoValueVector *vec, size_t len)
  * To minimize #conversions, SortNumerically first converts all Values to
  * numerics at once, then sorts the elements by these cached numerics.
  */
-bool
+static bool
 SortNumerically(JSContext *cx, AutoValueVector *vec, size_t len, ComparatorMatchResult comp)
 {
     JS_ASSERT(vec->length() >= len);
@@ -1837,8 +1852,6 @@ SortNumerically(JSContext *cx, AutoValueVector *vec, size_t len, ComparatorMatch
     return MergeSortByKey(numElements.begin(), len, numElements.begin() + len,
                           SortComparatorNumerics[comp], vec);
 }
-
-} /* namespace anonymous */
 
 bool
 js::array_sort(JSContext *cx, unsigned argc, Value *vp)
@@ -2955,7 +2968,7 @@ static const JSFunctionSpec array_methods[] = {
     JS_FN(js_toLocaleString_str,array_toLocaleString,0,0),
 
     /* Perl-ish methods. */
-    JS_FN("join",               array_join,         1,JSFUN_GENERIC_NATIVE),
+    JS_FN("join",               js::array_join,     1,JSFUN_GENERIC_NATIVE),
     JS_FN("reverse",            array_reverse,      0,JSFUN_GENERIC_NATIVE),
     JS_FN("sort",               array_sort,         1,JSFUN_GENERIC_NATIVE),
     JS_FN("push",               array_push,         1,JSFUN_GENERIC_NATIVE),

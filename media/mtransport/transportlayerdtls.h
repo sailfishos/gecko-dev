@@ -30,12 +30,12 @@ struct Packet;
 
 class TransportLayerNSPRAdapter {
  public:
-  TransportLayerNSPRAdapter(TransportLayer *output) :
+  explicit TransportLayerNSPRAdapter(TransportLayer *output) :
   output_(output),
   input_() {}
 
   void PacketReceived(const void *data, int32_t len);
-  int32_t Read(void *data, int32_t len);
+  int32_t Recv(void *buf, int32_t buflen);
   int32_t Write(const void *buf, int32_t length);
 
  private:
@@ -48,7 +48,6 @@ class TransportLayerNSPRAdapter {
 class TransportLayerDtls : public TransportLayer {
  public:
   TransportLayerDtls() :
-      TransportLayer(DGRAM),
       role_(CLIENT),
       verification_mode_(VERIFY_UNSET),
       ssl_fd_(nullptr),

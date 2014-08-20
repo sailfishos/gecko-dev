@@ -334,6 +334,12 @@ private:
   bool OwnerIsBrowserOrAppFrame();
 
   /**
+   * Is this a frameloader for a bona fide <iframe mozwidget>?  (I.e., does the
+   * frame return true for nsIMozBrowserFrame::GetReallyIsWidget()?)
+   */
+  bool OwnerIsWidget();
+
+  /**
    * Is this a frameloader for a bona fide <iframe mozapp>?  (I.e., does the
    * frame return true for nsIMozBrowserFrame::GetReallyIsApp()?)
    */
@@ -370,7 +376,7 @@ private:
   nsresult EnsureMessageManager();
 
   // Properly retrieves documentSize of any subdocument type.
-  nsresult GetWindowDimensions(nsRect& aRect);
+  nsresult GetWindowDimensions(nsIntRect& aRect);
 
   // Updates the subdocument position and size. This gets called only
   // when we have our own in-process DocShell.

@@ -12,7 +12,6 @@
 #include "PlatformDecoderModule.h"
 #include "mp4_demuxer/mp4_demuxer.h"
 #include "MediaTaskQueue.h"
-#include "mozilla/CDMProxy.h"
 
 #include <deque>
 #include "mozilla/Monitor.h"
@@ -56,10 +55,15 @@ public:
   virtual void NotifyDataArrived(const char* aBuffer, uint32_t aLength,
                                  int64_t aOffset) MOZ_OVERRIDE;
 
+  virtual int64_t GetEvictionOffset(double aTime) MOZ_OVERRIDE;
+
   virtual nsresult GetBuffered(dom::TimeRanges* aBuffered,
                                int64_t aStartTime) MOZ_OVERRIDE;
 
+  // For Media Resource Management
   virtual bool IsWaitingMediaResources() MOZ_OVERRIDE;
+  virtual bool IsDormantNeeded() MOZ_OVERRIDE;
+  virtual void ReleaseMediaResources() MOZ_OVERRIDE;
 
   virtual nsresult ResetDecode() MOZ_OVERRIDE;
 
@@ -84,6 +88,11 @@ private:
   bool Decode(mp4_demuxer::TrackType aTrack);
   void Flush(mp4_demuxer::TrackType aTrack);
   void DrainComplete(mp4_demuxer::TrackType aTrack);
+  void UpdateIndex();
+  bool IsSupportedAudioMimeType(const char* aMimeType);
+  void NotifyResourcesStatusChanged();
+  bool IsWaitingOnCodecResource();
+  bool IsWaitingOnCDMResource();
 
   nsAutoPtr<mp4_demuxer::MP4Demuxer> mDemuxer;
   nsAutoPtr<PlatformDecoderModule> mPlatform;
@@ -107,6 +116,12 @@ private:
     }
     virtual void DrainComplete() MOZ_OVERRIDE {
       mReader->DrainComplete(mType);
+    }
+    virtual void NotifyResourcesStatusChanged() MOZ_OVERRIDE {
+      mReader->NotifyResourcesStatusChanged();
+    }
+    virtual void ReleaseMediaResources() MOZ_OVERRIDE {
+      mReader->ReleaseMediaResources();
     }
   private:
     MP4Reader* mReader;
@@ -168,14 +183,15 @@ private:
   layers::LayersBackend mLayersBackendType;
 
   nsTArray<nsTArray<uint8_t>> mInitDataEncountered;
-  Monitor mTimeRangesMonitor;
-  nsTArray<mp4_demuxer::Interval<Microseconds>> mTimeRanges;
 
   // True if we've read the streams' metadata.
   bool mDemuxerInitialized;
 
   // Synchronized by decoder monitor.
   bool mIsEncrypted;
+
+  bool mIndexReady;
+  Monitor mIndexMonitor;
 };
 
 } // namespace mozilla

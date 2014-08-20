@@ -325,7 +325,7 @@ class ProtoAndIfaceCache
     void Trace(JSTracer* aTracer) {
       for (size_t i = 0; i < ArrayLength(*this); ++i) {
         if ((*this)[i]) {
-          JS_CallHeapObjectTracer(aTracer, &(*this)[i], "protoAndIfaceCache[i]");
+          JS_CallObjectTracer(aTracer, &(*this)[i], "protoAndIfaceCache[i]");
         }
       }
     }
@@ -386,7 +386,7 @@ class ProtoAndIfaceCache
         if (p) {
           for (size_t j = 0; j < ArrayLength(*p); ++j) {
             if ((*p)[j]) {
-              JS_CallHeapObjectTracer(trc, &(*p)[j], "protoAndIfaceCache[i]");
+              JS_CallObjectTracer(trc, &(*p)[j], "protoAndIfaceCache[i]");
             }
           }
         }
@@ -923,7 +923,7 @@ WrapNewBindingNonWrapperCachedObject(JSContext* cx,
       scope = js::CheckedUnwrap(scope, /* stopAtOuter = */ false);
       if (!scope)
         return false;
-      ac.construct(cx, scope);
+      ac.emplace(cx, scope);
     }
 
     MOZ_ASSERT(js::IsObjectInContextCompartment(scope, cx));
@@ -970,7 +970,7 @@ WrapNewBindingNonWrapperCachedOwnedObject(JSContext* cx,
       scope = js::CheckedUnwrap(scope, /* stopAtOuter = */ false);
       if (!scope)
         return false;
-      ac.construct(cx, scope);
+      ac.emplace(cx, scope);
     }
 
     bool tookOwnership = false;
@@ -1907,6 +1907,27 @@ NormalizeScalarValueString(JSContext* aCx, nsAString& aString);
 void
 NormalizeScalarValueString(JSContext* aCx, binding_detail::FakeString& aString);
 
+template<typename T>
+inline bool
+ConvertIdToString(JSContext* cx, JS::HandleId id, T& result, bool& isSymbol)
+{
+  if (MOZ_LIKELY(JSID_IS_STRING(id))) {
+    if (!AssignJSString(cx, result, JSID_TO_STRING(id))) {
+      return false;
+    }
+  } else if (JSID_IS_SYMBOL(id)) {
+    isSymbol = true;
+    return true;
+  } else {
+    JS::RootedValue nameVal(cx, js::IdToValue(id));
+    if (!ConvertJSValueToString(cx, nameVal, eStringify, eStringify, result)) {
+      return false;
+    }
+  }
+  isSymbol = false;
+  return true;
+}
+
 bool
 ConvertJSValueToByteString(JSContext* cx, JS::Handle<JS::Value> v,
                            bool nullable, nsACString& result);
@@ -1954,7 +1975,7 @@ class SequenceTracer<JSObject*, false, false, false>
 public:
   static void TraceSequence(JSTracer* trc, JSObject** objp, JSObject** end) {
     for (; objp != end; ++objp) {
-      JS_CallObjectTracer(trc, objp, "sequence<object>");
+      JS_CallUnbarrieredObjectTracer(trc, objp, "sequence<object>");
     }
   }
 };
@@ -1968,7 +1989,7 @@ class SequenceTracer<JS::Value, false, false, false>
 public:
   static void TraceSequence(JSTracer* trc, JS::Value* valp, JS::Value* end) {
     for (; valp != end; ++valp) {
-      JS_CallValueTracer(trc, valp, "sequence<any>");
+      JS_CallUnbarrieredValueTracer(trc, valp, "sequence<any>");
     }
   }
 };
@@ -2786,6 +2807,9 @@ struct CreateGlobalOptions<nsGlobalWindow>
   static void TraceGlobal(JSTracer* aTrc, JSObject* aObj);
   static bool PostCreateGlobal(JSContext* aCx, JS::Handle<JSObject*> aGlobal);
 };
+
+nsresult
+RegisterDOMNames();
 
 template <class T, ProtoGetter GetProto>
 bool

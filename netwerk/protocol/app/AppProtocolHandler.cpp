@@ -10,8 +10,9 @@
 #include "nsNetCID.h"
 #include "nsIAppsService.h"
 #include "nsILoadInfo.h"
-#include "nsCxPusher.h"
 #include "nsXULAppAPI.h"
+
+#include "mozilla/dom/ScriptSettings.h"
 
 /**
   * This dummy channel implementation only provides enough functionality
@@ -123,6 +124,11 @@ NS_IMETHODIMP DummyChannel::SetAppURI(nsIURI *aURI)
 }
 
 NS_IMETHODIMP DummyChannel::GetJarFile(nsIFile* *aFile)
+{
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP DummyChannel::GetZipEntry(nsIZipEntry* *aEntry)
 {
   return NS_ERROR_NOT_IMPLEMENTED;
 }

@@ -10,11 +10,13 @@
  * used during painting and hit testing
  */
 
-#include "mozilla/dom/TabChild.h"
-#include "mozilla/layers/PLayerTransaction.h"
-
 #include "nsDisplayList.h"
 
+#include <stdint.h>
+#include <algorithm>
+
+#include "mozilla/dom/TabChild.h"
+#include "mozilla/layers/PLayerTransaction.h"
 #include "nsCSSRendering.h"
 #include "nsRenderingContext.h"
 #include "nsISelectionController.h"
@@ -55,9 +57,9 @@
 #include "nsPrintfCString.h"
 #include "UnitTransforms.h"
 #include "LayersLogging.h"
-
-#include <stdint.h>
-#include <algorithm>
+#include "FrameLayerBuilder.h"
+#include "nsCaret.h"
+#include "nsISelection.h"
 
 using namespace mozilla;
 using namespace mozilla::layers;
@@ -317,7 +319,7 @@ static void AddTransformFunctions(nsCSSValueList* aList,
 }
 
 static TimingFunction
-ToTimingFunction(css::ComputedTimingFunction& aCTF)
+ToTimingFunction(ComputedTimingFunction& aCTF)
 {
   if (aCTF.GetType() == nsTimingFunction::Function) {
     const nsSMILKeySpline* spline = aCTF.GetFunction();
@@ -331,72 +333,82 @@ ToTimingFunction(css::ComputedTimingFunction& aCTF)
 
 static void
 AddAnimationForProperty(nsIFrame* aFrame, nsCSSProperty aProperty,
-                        mozilla::ElementAnimation* ea, Layer* aLayer,
+                        AnimationPlayer* aPlayer, Layer* aLayer,
                         AnimationData& aData, bool aPending)
 {
-  NS_ASSERTION(aLayer->AsContainerLayer(), "Should only animate ContainerLayer");
+  MOZ_ASSERT(aLayer->AsContainerLayer(), "Should only animate ContainerLayer");
+  MOZ_ASSERT(aPlayer->GetSource(),
+             "Should not be adding an animation for a player without"
+             " an animation");
   nsStyleContext* styleContext = aFrame->StyleContext();
   nsPresContext* presContext = aFrame->PresContext();
   nsRect bounds = nsDisplayTransform::GetFrameBoundsForTransform(aFrame);
 
-  mozilla::layers::Animation* animation =
+  layers::Animation* animation =
     aPending ?
     aLayer->AddAnimationForNextTransaction() :
     aLayer->AddAnimation();
 
-  animation->startTime() = ea->mStartTime + ea->mTiming.mDelay;
-  animation->duration() = ea->mTiming.mIterationDuration;
-  animation->iterationCount() = ea->mTiming.mIterationCount;
-  animation->direction() = ea->mTiming.mDirection;
+  const AnimationTiming& timing = aPlayer->GetSource()->Timing();
+  animation->startTime() = aPlayer->mStartTime + timing.mDelay;
+  animation->duration() = timing.mIterationDuration;
+  animation->iterationCount() = timing.mIterationCount;
+  animation->direction() = timing.mDirection;
   animation->property() = aProperty;
   animation->data() = aData;
 
-  for (uint32_t propIdx = 0; propIdx < ea->mProperties.Length(); propIdx++) {
-    AnimationProperty* property = &ea->mProperties[propIdx];
+  dom::Animation* anim = aPlayer->GetSource();
+  for (size_t propIdx = 0;
+       propIdx < anim->Properties().Length();
+       propIdx++) {
+    AnimationProperty& property = anim->Properties()[propIdx];
 
-    if (aProperty != property->mProperty) {
+    if (aProperty != property.mProperty) {
       continue;
     }
 
-    for (uint32_t segIdx = 0; segIdx < property->mSegments.Length(); segIdx++) {
-      AnimationPropertySegment* segment = &property->mSegments[segIdx];
+    for (uint32_t segIdx = 0; segIdx < property.mSegments.Length(); segIdx++) {
+      AnimationPropertySegment& segment = property.mSegments[segIdx];
 
       AnimationSegment* animSegment = animation->segments().AppendElement();
       if (aProperty == eCSSProperty_transform) {
         animSegment->startState() = InfallibleTArray<TransformFunction>();
         animSegment->endState() = InfallibleTArray<TransformFunction>();
 
-        nsCSSValueSharedList* list = segment->mFromValue.GetCSSValueSharedListValue();
+        nsCSSValueSharedList* list =
+          segment.mFromValue.GetCSSValueSharedListValue();
         AddTransformFunctions(list->mHead, styleContext, presContext, bounds,
                               animSegment->startState().get_ArrayOfTransformFunction());
 
-        list = segment->mToValue.GetCSSValueSharedListValue();
+        list = segment.mToValue.GetCSSValueSharedListValue();
         AddTransformFunctions(list->mHead, styleContext, presContext, bounds,
                               animSegment->endState().get_ArrayOfTransformFunction());
       } else if (aProperty == eCSSProperty_opacity) {
-        animSegment->startState() = segment->mFromValue.GetFloatValue();
-        animSegment->endState() = segment->mToValue.GetFloatValue();
+        animSegment->startState() = segment.mFromValue.GetFloatValue();
+        animSegment->endState() = segment.mToValue.GetFloatValue();
       }
 
-      animSegment->startPortion() = segment->mFromKey;
-      animSegment->endPortion() = segment->mToKey;
-      animSegment->sampleFn() = ToTimingFunction(segment->mTimingFunction);
+      animSegment->startPortion() = segment.mFromKey;
+      animSegment->endPortion() = segment.mToKey;
+      animSegment->sampleFn() = ToTimingFunction(segment.mTimingFunction);
     }
   }
 }
 
 static void
 AddAnimationsForProperty(nsIFrame* aFrame, nsCSSProperty aProperty,
-                         ElementAnimationPtrArray& aAnimations,
+                         AnimationPlayerPtrArray& aPlayers,
                          Layer* aLayer, AnimationData& aData,
                          bool aPending) {
-  for (uint32_t animIdx = 0; animIdx < aAnimations.Length(); animIdx++) {
-    mozilla::ElementAnimation* anim = aAnimations[animIdx];
-    if (!(anim->HasAnimationOfProperty(aProperty) && anim->IsRunning())) {
+  for (size_t playerIdx = 0; playerIdx < aPlayers.Length(); playerIdx++) {
+    AnimationPlayer* player = aPlayers[playerIdx];
+    dom::Animation* anim = player->GetSource();
+    if (!(anim && anim->HasAnimationOfProperty(aProperty) &&
+          player->IsRunning())) {
       continue;
     }
-    AddAnimationForProperty(aFrame, aProperty, anim, aLayer, aData, aPending);
-    anim->mIsRunningOnCompositor = true;
+    AddAnimationForProperty(aFrame, aProperty, player, aLayer, aData, aPending);
+    player->mIsRunningOnCompositor = true;
   }
 }
 
@@ -428,9 +440,9 @@ nsDisplayListBuilder::AddAnimationsAndTransitionsToLayer(Layer* aLayer,
   if (!content) {
     return;
   }
-  ElementAnimationCollection* transitions =
+  AnimationPlayerCollection* transitions =
     nsTransitionManager::GetAnimationsForCompositor(content, aProperty);
-  ElementAnimationCollection* animations =
+  AnimationPlayerCollection* animations =
     nsAnimationManager::GetAnimationsForCompositor(content, aProperty);
 
   if (!animations && !transitions) {
@@ -489,13 +501,13 @@ nsDisplayListBuilder::AddAnimationsAndTransitionsToLayer(Layer* aLayer,
   }
 
   if (transitions) {
-    AddAnimationsForProperty(aFrame, aProperty, transitions->mAnimations,
+    AddAnimationsForProperty(aFrame, aProperty, transitions->mPlayers,
                              aLayer, data, pending);
     aLayer->SetAnimationGeneration(transitions->mAnimationGeneration);
   }
 
   if (animations) {
-    AddAnimationsForProperty(aFrame, aProperty, animations->mAnimations,
+    AddAnimationsForProperty(aFrame, aProperty, animations->mPlayers,
                              aLayer, data, pending);
     aLayer->SetAnimationGeneration(animations->mAnimationGeneration);
   }
@@ -832,12 +844,13 @@ static void RecordFrameMetrics(nsIFrame* aForFrame,
   // Also compute and set the background color on the container.
   // This is needed for APZ overscrolling support.
   if (aScrollFrame) {
-    // FindBackground() does not work for a root scroll frame, need to use the
-    // root frame instead.
-    nsIFrame* backgroundFrame = isRootScrollFrame ? presShell->GetRootFrame() : aScrollFrame;
-    nsStyleContext* backgroundStyle;
-    if (nsCSSRendering::FindBackground(backgroundFrame, &backgroundStyle)) {
-      aRoot->SetBackgroundColor(backgroundStyle->StyleBackground()->mBackgroundColor);
+    if (isRootScrollFrame) {
+      aRoot->SetBackgroundColor(presShell->GetCanvasBackground());
+    } else {
+      nsStyleContext* backgroundStyle;
+      if (nsCSSRendering::FindBackground(aScrollFrame, &backgroundStyle)) {
+        aRoot->SetBackgroundColor(backgroundStyle->StyleBackground()->mBackgroundColor);
+      }
     }
   }
 }
@@ -929,19 +942,10 @@ nsDisplayListBuilder::EnterPresShell(nsIFrame* aReferenceFrame,
     return;
 
   nsRefPtr<nsCaret> caret = state->mPresShell->GetCaret();
-  state->mCaretFrame = caret->GetCaretFrame();
-  NS_ASSERTION(state->mCaretFrame == caret->GetCaretFrame(),
-               "GetCaretFrame() is unstable");
-
+  state->mCaretFrame = caret->GetPaintGeometry(&state->mCaretRect);
   if (state->mCaretFrame) {
-    // Check if the dirty rect intersects with the caret's dirty rect.
-    nsRect caretRect =
-      caret->GetCaretRect() + state->mCaretFrame->GetOffsetTo(aReferenceFrame);
-    if (caretRect.Intersects(aDirtyRect)) {
-      // Okay, our rects intersect, let's mark the frame and all of its ancestors.
-      mFramesMarkedForDisplay.AppendElement(state->mCaretFrame);
-      MarkFrameForDisplay(state->mCaretFrame, nullptr);
-    }
+    mFramesMarkedForDisplay.AppendElement(state->mCaretFrame);
+    MarkFrameForDisplay(state->mCaretFrame, nullptr);
   }
 }
 
@@ -1992,6 +1996,22 @@ nsDisplayBackgroundImage::IsSingleFixedPositionImage(nsDisplayListBuilder* aBuil
 }
 
 bool
+nsDisplayBackgroundImage::ShouldFixToViewport(LayerManager* aManager)
+{
+  // APZ doesn't (yet) know how to scroll the visible region for these type of
+  // items, so don't layerize them if it's enabled.
+  if (nsLayoutUtils::UsesAsyncScrolling() ||
+      (aManager && aManager->ShouldAvoidComponentAlphaLayers())) {
+    return false;
+  }
+
+  // Put background-attachment:fixed background images in their own
+  // compositing layer, unless we have APZ enabled
+  return mBackgroundStyle->mLayers[mLayer].mAttachment == NS_STYLE_BG_ATTACHMENT_FIXED &&
+         !mBackgroundStyle->mLayers[mLayer].mImage.IsEmpty();
+}
+
+bool
 nsDisplayBackgroundImage::TryOptimizeToImageLayer(LayerManager* aManager,
                                                   nsDisplayListBuilder* aBuilder)
 {
@@ -2713,6 +2733,30 @@ nsDisplayLayerEventRegions::AddFrame(nsDisplayListBuilder* aBuilder,
   }
 }
 
+nsDisplayCaret::nsDisplayCaret(nsDisplayListBuilder* aBuilder,
+                               nsIFrame* aCaretFrame)
+  : nsDisplayItem(aBuilder, aCaretFrame)
+  , mCaret(aBuilder->GetCaret())
+  , mBounds(aBuilder->GetCaretRect() + ToReferenceFrame())
+{
+  MOZ_COUNT_CTOR(nsDisplayCaret);
+}
+
+#ifdef NS_BUILD_REFCNT_LOGGING
+nsDisplayCaret::~nsDisplayCaret()
+{
+  MOZ_COUNT_DTOR(nsDisplayCaret);
+}
+#endif
+
+nsRect
+nsDisplayCaret::GetBounds(nsDisplayListBuilder* aBuilder, bool* aSnap)
+{
+  *aSnap = true;
+  // The caret returns a rect in the coordinates of mFrame.
+  return mBounds;
+}
+
 void
 nsDisplayCaret::Paint(nsDisplayListBuilder* aBuilder,
                       nsRenderingContext* aCtx) {
@@ -3005,7 +3049,8 @@ nsDisplayWrapList::nsDisplayWrapList(nsDisplayListBuilder* aBuilder,
       mToReferenceFrame = i->ToReferenceFrame();
     }
   }
-  mVisibleRect = aBuilder->GetDirtyRect() + mToReferenceFrame;
+  mVisibleRect = aBuilder->GetDirtyRect() +
+      aBuilder->GetCurrentFrameOffsetToReferenceFrame();
 }
 
 nsDisplayWrapList::nsDisplayWrapList(nsDisplayListBuilder* aBuilder,
@@ -3034,7 +3079,8 @@ nsDisplayWrapList::nsDisplayWrapList(nsDisplayListBuilder* aBuilder,
       mToReferenceFrame = aItem->ToReferenceFrame();
     }
   }
-  mVisibleRect = aBuilder->GetDirtyRect() + mToReferenceFrame;
+  mVisibleRect = aBuilder->GetDirtyRect() +
+      aBuilder->GetCurrentFrameOffsetToReferenceFrame();
 }
 
 nsDisplayWrapList::~nsDisplayWrapList() {
@@ -3150,6 +3196,12 @@ nsRect nsDisplayWrapList::GetComponentAlphaBounds(nsDisplayListBuilder* aBuilder
     bounds.UnionRect(bounds, i->GetComponentAlphaBounds(aBuilder));
   }
   return bounds;
+}
+
+void
+nsDisplayWrapList::SetVisibleRect(const nsRect& aRect)
+{
+  mVisibleRect = aRect;
 }
 
 static nsresult
@@ -3567,8 +3619,17 @@ already_AddRefed<Layer>
 nsDisplaySubDocument::BuildLayer(nsDisplayListBuilder* aBuilder,
                                  LayerManager* aManager,
                                  const ContainerLayerParameters& aContainerParameters) {
+  nsPresContext* presContext = mFrame->PresContext();
+  nsIFrame* rootScrollFrame = presContext->PresShell()->GetRootScrollFrame();
+  ContainerLayerParameters params = aContainerParameters;
+  if ((mFlags & GENERATE_SCROLLABLE_LAYER) &&
+      rootScrollFrame->GetContent() &&
+      nsLayoutUtils::GetCriticalDisplayPort(rootScrollFrame->GetContent(), nullptr)) {
+    params.mInLowPrecisionDisplayPort = true; 
+  }
+
   nsRefPtr<Layer> layer = nsDisplayOwnLayer::BuildLayer(
-    aBuilder, aManager, aContainerParameters);
+    aBuilder, aManager, params);
 
   if (!(mFlags & GENERATE_SCROLLABLE_LAYER)) {
     return layer.forget();
@@ -3576,7 +3637,6 @@ nsDisplaySubDocument::BuildLayer(nsDisplayListBuilder* aBuilder,
 
   NS_ASSERTION(layer->AsContainerLayer(), "nsDisplayOwnLayer should have made a ContainerLayer");
   if (ContainerLayer* container = layer->AsContainerLayer()) {
-    nsPresContext* presContext = mFrame->PresContext();
     nsIFrame* rootScrollFrame = presContext->PresShell()->GetRootScrollFrame();
     bool isRootContentDocument = presContext->IsRootContentDocument();
 
@@ -3587,7 +3647,7 @@ nsDisplaySubDocument::BuildLayer(nsDisplayListBuilder* aBuilder,
     container->SetScrollHandoffParentId(mScrollParentId);
     RecordFrameMetrics(mFrame, rootScrollFrame, ReferenceFrame(),
                        container, viewport,
-                       false, isRootContentDocument, aContainerParameters);
+                       false, isRootContentDocument, params);
   }
 
   return layer.forget();
@@ -3880,9 +3940,16 @@ already_AddRefed<Layer>
 nsDisplayScrollLayer::BuildLayer(nsDisplayListBuilder* aBuilder,
                                  LayerManager* aManager,
                                  const ContainerLayerParameters& aContainerParameters) {
+
+  ContainerLayerParameters params = aContainerParameters;
+  if (mScrolledFrame->GetContent() &&
+      nsLayoutUtils::GetCriticalDisplayPort(mScrolledFrame->GetContent(), nullptr)) {
+    params.mInLowPrecisionDisplayPort = true; 
+  }
+
   nsRefPtr<ContainerLayer> layer = aManager->GetLayerBuilder()->
     BuildContainerLayerFor(aBuilder, aManager, mFrame, this, &mList,
-                           aContainerParameters, nullptr);
+                           params, nullptr);
 
   nsRect viewport = mScrollFrame->GetRect() -
                     mScrollFrame->GetPosition() +
@@ -3890,7 +3957,7 @@ nsDisplayScrollLayer::BuildLayer(nsDisplayListBuilder* aBuilder,
 
   layer->SetScrollHandoffParentId(mScrollParentId);
   RecordFrameMetrics(mScrolledFrame, mScrollFrame, ReferenceFrame(), layer,
-                     viewport, false, false, aContainerParameters);
+                     viewport, false, false, params);
 
   if (mList.IsOpaque()) {
     nsRect displayport;
@@ -4344,6 +4411,7 @@ void
 nsDisplayTransform::Init(nsDisplayListBuilder* aBuilder)
 {
   mStoredList.SetClip(aBuilder, DisplayItemClip::NoClip());
+  mStoredList.SetVisibleRect(mChildrenVisibleRect);
   mPrerender = ShouldPrerenderTransformedContent(aBuilder, mFrame);
   if (mPrerender) {
     bool snap;
@@ -4694,8 +4762,8 @@ nsDisplayOpacity::CanUseAsyncAnimations(nsDisplayListBuilder* aBuilder)
   if (nsLayoutUtils::IsAnimationLoggingEnabled()) {
     nsCString message;
     message.AppendLiteral("Performance warning: Async animation disabled because frame was not marked active for opacity animation");
-    ElementAnimationCollection::LogAsyncAnimationFailure(message,
-                                                         Frame()->GetContent());
+    AnimationPlayerCollection::LogAsyncAnimationFailure(message,
+                                                        Frame()->GetContent());
   }
   return false;
 }
@@ -4727,8 +4795,8 @@ nsDisplayTransform::ShouldPrerenderTransformedContent(nsDisplayListBuilder* aBui
     if (aLogAnimations) {
       nsCString message;
       message.AppendLiteral("Performance warning: Async animation disabled because frame was not marked active for transform animation");
-      ElementAnimationCollection::LogAsyncAnimationFailure(message,
-                                                           aFrame->GetContent());
+      AnimationPlayerCollection::LogAsyncAnimationFailure(message,
+                                                          aFrame->GetContent());
     }
     return false;
   }
@@ -4740,7 +4808,11 @@ nsDisplayTransform::ShouldPrerenderTransformedContent(nsDisplayListBuilder* aBui
   refSize += nsSize(refSize.width / 8, refSize.height / 8);
   nsSize frameSize = aFrame->GetVisualOverflowRectRelativeToSelf().Size();
   if (frameSize <= refSize) {
-    return true;
+    nscoord max = aFrame->PresContext()->DevPixelsToAppUnits(4096);
+    nsRect visual = aFrame->GetVisualOverflowRect();
+    if (visual.width <= max && visual.height <= max) {
+      return true;
+    }
   }
 
   if (aLogAnimations) {
@@ -4754,8 +4826,8 @@ nsDisplayTransform::ShouldPrerenderTransformedContent(nsDisplayListBuilder* aBui
     message.AppendLiteral(", ");
     message.AppendInt(nsPresContext::AppUnitsToIntCSSPixels(refSize.height));
     message.Append(')');
-    ElementAnimationCollection::LogAsyncAnimationFailure(message,
-                                                         aFrame->GetContent());
+    AnimationPlayerCollection::LogAsyncAnimationFailure(message,
+                                                        aFrame->GetContent());
   }
   return false;
 }

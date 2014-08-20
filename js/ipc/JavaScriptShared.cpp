@@ -35,7 +35,7 @@ IdToObjectMap::trace(JSTracer *trc)
 {
     for (Table::Range r(table_.all()); !r.empty(); r.popFront()) {
         DebugOnly<JSObject *> prior = r.front().value().get();
-        JS_CallHeapObjectTracer(trc, &r.front().value(), "ipc-object");
+        JS_CallObjectTracer(trc, &r.front().value(), "ipc-object");
         MOZ_ASSERT(r.front().value() == prior);
     }
 }
@@ -135,7 +135,7 @@ ObjectToIdMap::keyMarkCallback(JSTracer *trc, JSObject *key, void *data)
 {
     Table *table = static_cast<Table*>(data);
     JSObject *prior = key;
-    JS_CallObjectTracer(trc, &key, "ObjectIdCache::table_ key");
+    JS_CallUnbarrieredObjectTracer(trc, &key, "ObjectIdCache::table_ key");
     table->rekeyIfMoved(prior, key);
 }
 
@@ -395,7 +395,7 @@ JavaScriptShared::findObjectById(JSContext *cx, uint32_t objId)
     }
 
     // If there's no TabChildGlobal, we use the junk scope.
-    JSAutoCompartment ac(cx, xpc::GetJunkScope());
+    JSAutoCompartment ac(cx, xpc::PrivilegedJunkScope());
     if (!JS_WrapObject(cx, &obj))
         return nullptr;
     return obj;

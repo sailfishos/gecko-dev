@@ -1686,7 +1686,7 @@ static inline JSObject *
 CreateThisForFunctionWithType(JSContext *cx, HandleTypeObject type, JSObject *parent,
                               NewObjectKind newKind)
 {
-    if (type->hasNewScript()) {
+    if (type->newScript()) {
         /*
          * Make an object with the type's associated finalize kind and shape,
          * which reflects any properties that will definitely be added to the
@@ -2009,18 +2009,14 @@ js::DeepCloneObjectLiteral(JSContext *cx, HandleObject obj, NewObjectKind newKin
         clone->setSlot(i, v);
     }
 
-    if (obj->getClass() == &ArrayObject::class_)
+    if (obj->hasSingletonType()) {
+        if (!JSObject::setSingletonType(cx, clone))
+            return nullptr;
+    } else if (obj->getClass() == &ArrayObject::class_) {
         FixArrayType(cx, clone);
-    else
+    } else {
         FixObjectType(cx, clone);
-
-#ifdef DEBUG
-    Rooted<TypeObject*> typeObj(cx, obj->getType(cx));
-    Rooted<TypeObject*> cloneTypeObj(cx, clone->getType(cx));
-    if (!typeObj || !cloneTypeObj)
-        return nullptr;
-    JS_ASSERT(typeObj == cloneTypeObj);
-#endif
+    }
 
     return clone;
 }
@@ -2165,7 +2161,7 @@ js::XDRObjectLiteral(XDRState<mode> *xdr, MutableHandleObject obj)
                 else if (JSID_IS_ATOM(id))
                     idType = JSID_TYPE_STRING;
                 else
-                    MOZ_CRASH("Object property is not yet supported by XDR.");
+                    MOZ_CRASH("Symbol property is not yet supported by XDR.");
 
                 tmpValue = obj->getSlot(i);
             }
@@ -2203,11 +2199,22 @@ js::XDRObjectLiteral(XDRState<mode> *xdr, MutableHandleObject obj)
         JS_ASSERT_IF(mode == XDR_DECODE, !obj->inDictionaryMode());
     }
 
+    // Fix up types, distinguishing singleton-typed objects.
+    uint32_t isSingletonTyped;
+    if (mode == XDR_ENCODE)
+        isSingletonTyped = obj->hasSingletonType() ? 1 : 0;
+    if (!xdr->codeUint32(&isSingletonTyped))
+        return false;
+
     if (mode == XDR_DECODE) {
-        if (isArray)
+        if (isSingletonTyped) {
+            if (!JSObject::setSingletonType(cx, obj))
+                return false;
+        } else if (isArray) {
             FixArrayType(cx, obj);
-        else
+        } else {
             FixObjectType(cx, obj);
+        }
     }
 
     {
@@ -2530,9 +2537,6 @@ JSObject::TradeGuts(JSContext *cx, JSObject *a, JSObject *b, TradeGutsReserved &
 bool
 JSObject::swap(JSContext *cx, HandleObject a, HandleObject b)
 {
-    AutoMarkInDeadZone adc1(a->zone());
-    AutoMarkInDeadZone adc2(b->zone());
-
     // Ensure swap doesn't cause a finalizer to not be run.
     JS_ASSERT(IsBackgroundFinalized(a->tenuredGetAllocKind()) ==
               IsBackgroundFinalized(b->tenuredGetAllocKind()));
@@ -2908,7 +2912,7 @@ JSObject::growSlots(ThreadSafeContext *cx, HandleObject obj, uint32_t oldCount, 
      * type to give these objects a larger number of fixed slots when future
      * objects are constructed.
      */
-    if (!obj->hasLazyType() && !oldCount && obj->type()->hasNewScript()) {
+    if (!obj->hasLazyType() && !oldCount && obj->type()->newScript()) {
         JSObject *oldTemplate = obj->type()->newScript()->templateObject;
         gc::AllocKind kind = gc::GetGCObjectFixedSlotsKind(oldTemplate->numFixedSlots());
         uint32_t newScriptSlots = gc::GetGCKindSlots(kind);
@@ -3218,8 +3222,8 @@ ReallocateElements(ThreadSafeContext *cx, JSObject *obj, ObjectElements *oldHead
                                                oldCount, newCount));
 }
 
-// Round up |count| to one of our standard slot counts.  Up to 1 mebislot (i.e.
-// 1,048,576 slots) the slot count is always a power-of-two:
+// Round up |reqAllocated| to a good size. Up to 1 Mebi (i.e. 1,048,576) the
+// slot count is usually a power-of-two:
 //
 //   8, 16, 32, 64, ..., 256 Ki, 512 Ki, 1 Mi
 //
@@ -3232,6 +3236,15 @@ ReallocateElements(ThreadSafeContext *cx, JSObject *obj, ObjectElements *oldHead
 // These counts lets us add N elements to an array in amortized O(N) time.
 // Having the second class means that for bigger arrays the constant factor is
 // higher, but we waste less space.
+//
+// There is one exception to the above rule: for the power-of-two cases, if the
+// chosen capacity would be 2/3 or more of the array's length, the chosen
+// capacity is adjusted (up or down) to be equal to the array's length
+// (assuming length is at least as large as the required capacity). This avoids
+// the allocation of excess elements which are unlikely to be needed, either in
+// this resizing or a subsequent one. The 2/3 factor is chosen so that
+// exceptional resizings will at most triple the capacity, as opposed to the
+// usual doubling.
 //
 /* static */ uint32_t
 JSObject::goodAllocated(uint32_t reqAllocated, uint32_t length = 0)
@@ -3264,8 +3277,16 @@ JSObject::goodAllocated(uint32_t reqAllocated, uint32_t length = 0)
     uint32_t goodAllocated = reqAllocated;
     if (goodAllocated < Mebi) {
         goodAllocated = RoundUpPow2(goodAllocated);
+
+        // Look for the abovementioned exception.
+        uint32_t goodCapacity = goodAllocated - ObjectElements::VALUES_PER_HEADER;
+        uint32_t reqCapacity = reqAllocated - ObjectElements::VALUES_PER_HEADER;
+        if (length >= reqCapacity && goodCapacity > (length / 3) * 2)
+            goodAllocated = length + ObjectElements::VALUES_PER_HEADER;
+
         if (goodAllocated < JSObject::SLOT_CAPACITY_MIN)
             goodAllocated = JSObject::SLOT_CAPACITY_MIN;
+
     } else {
         uint32_t i = 0;
         while (true) {
@@ -3281,28 +3302,6 @@ JSObject::goodAllocated(uint32_t reqAllocated, uint32_t length = 0)
                 break;
             }
         }
-    }
-
-    // |goodAllocated| is typically a power-of-two, e.g. 8192, which gives us a
-    // capacity of 8190. This leads to bad behaviour if the user code uses
-    // array lengths that are powers of two.  For example, code very much like
-    // this appears in the Kraken benchmark suite:
-    //
-    //   var a = new Array(8192);
-    //   for (var i = 0; i < 8192; i++) { a[i] = i; }
-    //
-    // The array will be repeatedly resized up to a capacity of 8190, which
-    // isn't quite enough, so it'll be resized one more time to 16382.
-    //
-    // So if the capacity that |goodAllocated| would have given us is slightly
-    // smaller than |length|, we nudge |goodAllocated| up so that the capacity
-    // equals the length. This results in some slop, but the amount wasted is
-    // equal to or (more commonly) smaller than the size increase we'd get from
-    // re-doubling, and we don't have to pay the cost of re-doubling.
-    //
-    uint32_t capacity = goodAllocated - ObjectElements::VALUES_PER_HEADER;
-    if (length > capacity && (length - capacity) < 16) {
-        goodAllocated = length + ObjectElements::VALUES_PER_HEADER;
     }
 
     return goodAllocated;
@@ -4903,12 +4902,6 @@ js::LookupPropertyPure(JSObject *obj, jsid id, JSObject **objp, Shape **propp)
     return LookupPropertyPureInline(obj, id, objp, propp);
 }
 
-static inline bool
-IdIsLength(ThreadSafeContext *cx, jsid id)
-{
-    return JSID_IS_ATOM(id) && cx->names().length == JSID_TO_ATOM(id);
-}
-
 /*
  * A pure version of GetPropertyHelper that can be called from parallel code
  * without locking. This code path cannot GC. This variant returns false
@@ -4947,7 +4940,7 @@ js::GetPropertyPure(ThreadSafeContext *cx, JSObject *obj, jsid id, Value *vp)
     }
 
     /* Special case 'length' on Array and TypedArray. */
-    if (IdIsLength(cx, id)) {
+    if (JSID_IS_ATOM(id, cx->names().length)) {
         if (obj->is<ArrayObject>()) {
             vp->setNumber(obj->as<ArrayObject>().length());
             return true;
@@ -5620,7 +5613,9 @@ js::DefaultValue(JSContext *cx, HandleObject obj, JSType hint, MutableHandleValu
 
     RootedValue val(cx, ObjectValue(*obj));
     js_ReportValueError2(cx, JSMSG_CANT_CONVERT_TO, JSDVG_SEARCH_STACK, val, str,
-                         (hint == JSTYPE_VOID) ? "primitive type" : TypeStrings[hint]);
+                         hint == JSTYPE_VOID
+                         ? "primitive type"
+                         : hint == JSTYPE_STRING ? "string" : "number");
     return false;
 }
 
@@ -5794,6 +5789,8 @@ js_GetObjectSlotName(JSTracer *trc, char *buf, size_t bufsize)
             JS_snprintf(buf, bufsize, "%ld", (long)JSID_TO_INT(propid));
         } else if (JSID_IS_ATOM(propid)) {
             PutEscapedString(buf, bufsize, JSID_TO_ATOM(propid), 0);
+        } else if (JSID_IS_SYMBOL(propid)) {
+            JS_snprintf(buf, bufsize, "**SYMBOL KEY**");
         } else {
             JS_snprintf(buf, bufsize, "**FINALIZED ATOM KEY**");
         }

@@ -77,7 +77,7 @@ protected:
   virtual ~nsDOMClassInfo();
 
 public:
-  nsDOMClassInfo(nsDOMClassInfoData* aData);
+  explicit nsDOMClassInfo(nsDOMClassInfoData* aData);
 
   NS_DECL_NSIXPCSCRIPTABLE
 
@@ -96,6 +96,7 @@ public:
 
   static nsIClassInfo* GetClassInfoInstance(nsDOMClassInfoData* aData);
 
+  static nsresult Init();
   static void ShutDown();
 
   static nsIClassInfo *doCreate(nsDOMClassInfoData* aData)
@@ -127,10 +128,6 @@ public:
   {
     return sXPConnect;
   }
-  static nsIScriptSecurityManager *ScriptSecurityManager()
-  {
-    return sSecMan;
-  }
 
 protected:
   friend nsIClassInfo* NS_GetDOMClassInfoInstance(nsDOMClassInfoID aID);
@@ -146,14 +143,12 @@ protected:
     return mData->mInterfacesBitmap;
   }
 
-  static nsresult Init();
   static nsresult RegisterClassProtos(int32_t aDOMClassInfoID);
   static nsresult RegisterExternalClasses();
   nsresult ResolveConstructor(JSContext *cx, JSObject *obj,
                               JSObject **objp);
 
   static nsIXPConnect *sXPConnect;
-  static nsIScriptSecurityManager *sSecMan;
 
   // nsIXPCScriptable code
   static nsresult DefineStaticJSVals(JSContext *cx);
@@ -214,7 +209,7 @@ typedef nsDOMClassInfo nsDOMGenericSH;
 class nsEventTargetSH : public nsDOMGenericSH
 {
 protected:
-  nsEventTargetSH(nsDOMClassInfoData* aData) : nsDOMGenericSH(aData)
+  explicit nsEventTargetSH(nsDOMClassInfoData* aData) : nsDOMGenericSH(aData)
   {
   }
 
@@ -240,7 +235,7 @@ public:
 class nsWindowSH : public nsDOMGenericSH
 {
 protected:
-  nsWindowSH(nsDOMClassInfoData *aData) : nsDOMGenericSH(aData)
+  explicit nsWindowSH(nsDOMClassInfoData *aData) : nsDOMGenericSH(aData)
   {
   }
 
@@ -306,7 +301,7 @@ public:
 class nsDOMConstructorSH : public nsDOMGenericSH
 {
 protected:
-  nsDOMConstructorSH(nsDOMClassInfoData* aData) : nsDOMGenericSH(aData)
+  explicit nsDOMConstructorSH(nsDOMClassInfoData* aData) : nsDOMGenericSH(aData)
   {
   }
 
@@ -339,7 +334,7 @@ public:
 class nsNonDOMObjectSH : public nsDOMGenericSH
 {
 protected:
-  nsNonDOMObjectSH(nsDOMClassInfoData* aData) : nsDOMGenericSH(aData)
+  explicit nsNonDOMObjectSH(nsDOMClassInfoData* aData) : nsDOMGenericSH(aData)
   {
   }
 

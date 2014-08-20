@@ -30,11 +30,7 @@
 #ifndef assembler_assembler_MacroAssemblerX86Common_h
 #define assembler_assembler_MacroAssemblerX86Common_h
 
-#include "assembler/wtf/Platform.h"
-
-#if ENABLE_ASSEMBLER
-
-#include "assembler/assembler/X86Assembler.h"
+#include "jit/shared/BaseAssembler-x86-shared.h"
 
 namespace JSC {
 
@@ -70,7 +66,7 @@ private:
     static void setSSECheckState();
 
   public:
-#if WTF_CPU_X86
+#ifdef JS_CODEGEN_X86
     static bool isSSEPresent()
     {
 #if defined(__SSE__) && !defined(DEBUG)
@@ -191,7 +187,5 @@ private:
 };
 
 } // namespace JSC
-
-#endif // ENABLE(ASSEMBLER)
 
 #endif /* assembler_assembler_MacroAssemblerX86Common_h */

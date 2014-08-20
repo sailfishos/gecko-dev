@@ -397,8 +397,9 @@ class Build(MachCommandBase):
 
         if ccache_start and ccache_end:
             ccache_diff = ccache_end - ccache_start
-            self.log(logging.INFO, 'ccache',
-                     {'msg': ccache_diff.hit_rate_message()}, "{msg}")
+            if ccache_diff:
+                self.log(logging.INFO, 'ccache',
+                         {'msg': ccache_diff.hit_rate_message()}, "{msg}")
 
         if monitor.elapsed > 300:
             # Display a notification when the build completes.
@@ -407,24 +408,27 @@ class Build(MachCommandBase):
             # is received.
             try:
                 if sys.platform.startswith('darwin'):
-                    notifier = which.which('terminal-notifier')
+                    try:
+                        notifier = which.which('terminal-notifier')
+                    except which.WhichError:
+                        raise Exception('Install terminal-notifier to get '
+                            'a notification when the build finishes.')
                     self.run_process([notifier, '-title',
                         'Mozilla Build System', '-group', 'mozbuild',
                         '-message', 'Build complete'], ensure_exit_code=False)
                 elif sys.platform.startswith('linux'):
                     try:
                         import dbus
-                        bus = dbus.SessionBus()
-                        notify = bus.get_object('org.freedesktop.Notifications',
-                                                '/org/freedesktop/Notifications')
-                        method = notify.get_dbus_method('Notify',
-                                                        'org.freedesktop.Notifications')
-                        method('Mozilla Build System', 0, '', 'Build complete', '', [], [], -1)
-                    except (ImportError, dbus.exceptions.DBusException):
-                        pass
+                    except ImportError:
+                        raise Exception('Install the python dbus module to '
+                            'get a notification when the build finishes.')
+                    bus = dbus.SessionBus()
+                    notify = bus.get_object('org.freedesktop.Notifications',
+                                            '/org/freedesktop/Notifications')
+                    method = notify.get_dbus_method('Notify',
+                                                    'org.freedesktop.Notifications')
+                    method('Mozilla Build System', 0, '', 'Build complete', '', [], [], -1)
 
-            except (which.WhichError, ImportError):
-                pass
             except Exception as e:
                 self.log(logging.WARNING, 'notifier-failed', {'error':
                     e.message}, 'Notification center failed: {error}')
@@ -615,7 +619,7 @@ class Warnings(MachCommandBase):
 @CommandProvider
 class GTestCommands(MachCommandBase):
     @Command('gtest', category='testing',
-        description='Run GTest unit tests.')
+        description='Run GTest unit tests (C++ tests).')
     @CommandArgument('gtest_filter', default=b"*", nargs='?', metavar='gtest_filter',
         help="test_filter is a ':'-separated list of wildcard patterns (called the positive patterns),"
              "optionally followed by a '-' and another ':'-separated pattern list (called the negative patterns).")

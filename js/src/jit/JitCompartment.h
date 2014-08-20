@@ -56,6 +56,7 @@ typedef void (*EnterJitCode)(void *code, unsigned argc, Value *argv, Interpreter
                              size_t numStackValues, Value *vp);
 
 class IonBuilder;
+class JitcodeGlobalTable;
 
 // ICStubSpace is an abstraction for allocation policy and storage for stub data.
 // There are two kinds of stubs: optimized stubs and fallback stubs (the latter
@@ -142,14 +143,14 @@ class JitRuntime
 
     // Executable allocator for all code except the main code in an IonScript.
     // Shared with the runtime.
-    JSC::ExecutableAllocator *execAlloc_;
+    ExecutableAllocator *execAlloc_;
 
     // Executable allocator used for allocating the main code in an IonScript.
     // All accesses on this allocator must be protected by the runtime's
     // interrupt lock, as the executable memory may be protected() when
     // requesting an interrupt to force a fault in the Ion code and avoid the
     // need for explicit interrupt checks.
-    JSC::ExecutableAllocator *ionAlloc_;
+    ExecutableAllocator *ionAlloc_;
 
     // Shared post-exception-handler tail
     JitCode *exceptionTail_;
@@ -232,6 +233,9 @@ class JitRuntime
     // their callee.
     js::Value ionReturnOverride_;
 
+    // Global table of jitcode native address => bytecode address mappings.
+    JitcodeGlobalTable *jitcodeGlobalTable_;
+
   private:
     JitCode *generateExceptionTailStub(JSContext *cx);
     JitCode *generateBailoutTailStub(JSContext *cx);
@@ -248,7 +252,7 @@ class JitRuntime
     JitCode *generateBaselineDebugModeOSRHandler(JSContext *cx, uint32_t *noFrameRegPopOffsetOut);
     JitCode *generateVMWrapper(JSContext *cx, const VMFunction &f);
 
-    JSC::ExecutableAllocator *createIonAlloc(JSContext *cx);
+    ExecutableAllocator *createIonAlloc(JSContext *cx);
 
   public:
     JitRuntime();
@@ -260,16 +264,16 @@ class JitRuntime
 
     static void Mark(JSTracer *trc);
 
-    JSC::ExecutableAllocator *execAlloc() const {
+    ExecutableAllocator *execAlloc() const {
         return execAlloc_;
     }
 
-    JSC::ExecutableAllocator *getIonAlloc(JSContext *cx) {
+    ExecutableAllocator *getIonAlloc(JSContext *cx) {
         JS_ASSERT(cx->runtime()->currentThreadOwnsInterruptLock());
         return ionAlloc_ ? ionAlloc_ : createIonAlloc(cx);
     }
 
-    JSC::ExecutableAllocator *ionAlloc(JSRuntime *rt) {
+    ExecutableAllocator *ionAlloc(JSRuntime *rt) {
         JS_ASSERT(rt->currentThreadOwnsInterruptLock());
         return ionAlloc_;
     }
@@ -381,6 +385,23 @@ class JitRuntime
         JS_ASSERT(!v.isMagic());
         ionReturnOverride_ = v;
     }
+
+    bool hasJitcodeGlobalTable() const {
+        return jitcodeGlobalTable_ != nullptr;
+    }
+
+    JitcodeGlobalTable *getJitcodeGlobalTable() {
+        JS_ASSERT(hasJitcodeGlobalTable());
+        return jitcodeGlobalTable_;
+    }
+
+    bool isNativeToBytecodeMapEnabled(JSRuntime *rt) {
+#ifdef DEBUG
+        return true;
+#else // DEBUG
+        return rt->spsProfiler.enabled();
+#endif // DEBUG
+    }
 };
 
 class JitZone
@@ -469,7 +490,7 @@ class JitCompartment
 
     void toggleBaselineStubBarriers(bool enabled);
 
-    JSC::ExecutableAllocator *createIonAlloc();
+    ExecutableAllocator *createIonAlloc();
 
   public:
     JitCompartment();

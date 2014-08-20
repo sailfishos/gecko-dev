@@ -1019,6 +1019,9 @@ class MacroAssemblerARMCompat : public MacroAssemblerARM
     void moveValue(const Value &val, Register type, Register data);
 
     CodeOffsetJump jumpWithPatch(RepatchLabel *label, Condition cond = Always);
+    CodeOffsetJump backedgeJump(RepatchLabel *label) {
+        return jumpWithPatch(label);
+    }
     template <typename T>
     CodeOffsetJump branchPtrWithPatch(Condition cond, Register reg, T ptr, RepatchLabel *label) {
         ma_cmp(reg, ptr);
@@ -1331,6 +1334,16 @@ class MacroAssemblerARMCompat : public MacroAssemblerARM
     void loadPtr(AsmJSAbsoluteAddress address, Register dest);
 
     void loadPrivate(const Address &address, Register dest);
+
+    void loadAlignedInt32x4(const Address &addr, FloatRegister dest) { MOZ_ASSUME_UNREACHABLE("NYI"); }
+    void storeAlignedInt32x4(FloatRegister src, Address addr) { MOZ_ASSUME_UNREACHABLE("NYI"); }
+    void loadUnalignedInt32x4(const Address &addr, FloatRegister dest) { MOZ_ASSUME_UNREACHABLE("NYI"); }
+    void storeUnalignedInt32x4(FloatRegister src, Address addr) { MOZ_ASSUME_UNREACHABLE("NYI"); }
+
+    void loadAlignedFloat32x4(const Address &addr, FloatRegister dest) { MOZ_ASSUME_UNREACHABLE("NYI"); }
+    void storeAlignedFloat32x4(FloatRegister src, Address addr) { MOZ_ASSUME_UNREACHABLE("NYI"); }
+    void loadUnalignedFloat32x4(const Address &addr, FloatRegister dest) { MOZ_ASSUME_UNREACHABLE("NYI"); }
+    void storeUnalignedFloat32x4(FloatRegister src, Address addr) { MOZ_ASSUME_UNREACHABLE("NYI"); }
 
     void loadDouble(const Address &addr, FloatRegister dest);
     void loadDouble(const BaseIndex &src, FloatRegister dest);

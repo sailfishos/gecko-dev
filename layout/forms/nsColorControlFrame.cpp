@@ -14,6 +14,7 @@
 #include "nsIDOMNode.h"
 #include "nsIFormControl.h"
 #include "nsStyleSet.h"
+#include "nsIDocument.h"
 
 using mozilla::dom::Element;
 
@@ -83,10 +84,12 @@ nsColorControlFrame::CreateAnonymousContent(nsTArray<ContentInfo>& aElements)
 }
 
 void
-nsColorControlFrame::AppendAnonymousContentTo(nsBaseContentList& aElements,
+nsColorControlFrame::AppendAnonymousContentTo(nsTArray<nsIContent*>& aElements,
                                               uint32_t aFilter)
 {
-  aElements.MaybeAppendElement(mColorContent);
+  if (mColorContent) {
+    aElements.AppendElement(mColorContent);
+  }
 }
 
 nsresult

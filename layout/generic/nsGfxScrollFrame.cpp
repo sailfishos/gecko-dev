@@ -104,7 +104,7 @@ nsHTMLScrollFrame::CreateAnonymousContent(nsTArray<ContentInfo>& aElements)
 }
 
 void
-nsHTMLScrollFrame::AppendAnonymousContentTo(nsBaseContentList& aElements,
+nsHTMLScrollFrame::AppendAnonymousContentTo(nsTArray<nsIContent*>& aElements,
                                             uint32_t aFilter)
 {
   mHelper.AppendAnonymousContentTo(aElements, aFilter);
@@ -1048,7 +1048,7 @@ nsXULScrollFrame::CreateAnonymousContent(nsTArray<ContentInfo>& aElements)
 }
 
 void
-nsXULScrollFrame::AppendAnonymousContentTo(nsBaseContentList& aElements,
+nsXULScrollFrame::AppendAnonymousContentTo(nsTArray<nsIContent*>& aElements,
                                            uint32_t aFilter)
 {
   mHelper.AppendAnonymousContentTo(aElements, aFilter);
@@ -2388,12 +2388,24 @@ ScrollFrameHelper::AppendScrollPartsTo(nsDisplayListBuilder*   aBuilder,
 
     scrollParts.AppendElement(kid);
   }
+  if (scrollParts.IsEmpty()) {
+    return;
+  }
 
   mozilla::layers::FrameMetrics::ViewID scrollTargetId = IsScrollingActive()
     ? nsLayoutUtils::FindOrCreateIDFor(mScrolledFrame->GetContent())
     : mozilla::layers::FrameMetrics::NULL_SCROLL_ID;
 
   scrollParts.Sort(HoveredStateComparator());
+
+  DisplayListClipState::AutoSaveRestore clipState(aBuilder);
+  // Don't let scrollparts extent outside our frame's border-box, if these are
+  // viewport scrollbars. They would create layerization problems. This wouldn't
+  // normally be an issue but themes can add overflow areas to scrollbar parts.
+  if (mIsRoot) {
+    clipState.ClipContentDescendants(
+        mOuter->GetRectRelativeToSelf() + aBuilder->ToReferenceFrame(mOuter));
+  }
 
   for (uint32_t i = 0; i < scrollParts.Length(); ++i) {
     uint32_t flags = 0;
@@ -3534,13 +3546,24 @@ ScrollFrameHelper::CreateAnonymousContent(
 }
 
 void
-ScrollFrameHelper::AppendAnonymousContentTo(nsBaseContentList& aElements,
+ScrollFrameHelper::AppendAnonymousContentTo(nsTArray<nsIContent*>& aElements,
                                                 uint32_t aFilter)
 {
-  aElements.MaybeAppendElement(mHScrollbarContent);
-  aElements.MaybeAppendElement(mVScrollbarContent);
-  aElements.MaybeAppendElement(mScrollCornerContent);
-  aElements.MaybeAppendElement(mResizerContent);
+  if (mHScrollbarContent) {
+    aElements.AppendElement(mHScrollbarContent);
+  }
+
+  if (mVScrollbarContent) {
+    aElements.AppendElement(mVScrollbarContent);
+  }
+
+  if (mScrollCornerContent) {
+    aElements.AppendElement(mScrollCornerContent);
+  }
+
+  if (mResizerContent) {
+    aElements.AppendElement(mResizerContent);
+  }
 }
 
 void

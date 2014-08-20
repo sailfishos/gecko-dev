@@ -7,6 +7,7 @@
 #include "vm/RegExpObject.h"
 
 #include "mozilla/MemoryReporting.h"
+#include "mozilla/PodOperations.h"
 
 #include "jsstr.h"
 
@@ -26,6 +27,7 @@ using namespace js;
 
 using mozilla::DebugOnly;
 using mozilla::Maybe;
+using mozilla::PodCopy;
 using js::frontend::TokenStream;
 
 using JS::AutoCheckCannotGC;
@@ -159,11 +161,7 @@ MatchPairs::initArrayFrom(MatchPairs &copyFrom)
     if (!allocOrExpandArray(copyFrom.pairCount()))
         return false;
 
-    for (size_t i = 0; i < pairCount_; i++) {
-        JS_ASSERT(copyFrom[i].check());
-        pairs_[i].start = copyFrom[i].start;
-        pairs_[i].limit = copyFrom[i].limit;
-    }
+    PodCopy(pairs_, copyFrom.pairs_, pairCount_);
 
     return true;
 }
@@ -306,11 +304,11 @@ RegExpObject::createNoStatics(ExclusiveContext *cx, HandleAtom source, RegExpFla
     Maybe<CompileOptions> dummyOptions;
     Maybe<TokenStream> dummyTokenStream;
     if (!tokenStream) {
-        dummyOptions.construct(cx->asJSContext());
-        dummyTokenStream.construct(cx, dummyOptions.ref(),
+        dummyOptions.emplace(cx->asJSContext());
+        dummyTokenStream.emplace(cx, *dummyOptions,
                                    (const jschar *) nullptr, 0,
                                    (frontend::StrictModeGetter *) nullptr);
-        tokenStream = dummyTokenStream.addr();
+        tokenStream = dummyTokenStream.ptr();
     }
 
     if (!irregexp::ParsePatternSyntax(*tokenStream, alloc, source))
@@ -552,8 +550,11 @@ RegExpShared::execute(JSContext *cx, HandleLinearString input, size_t *lastIndex
     if (!compileIfNecessary(cx, input))
         return RegExpRunStatus_Error;
 
-    /* Ensure sufficient memory for output vector. */
-    if (!matches.initArray(pairCount()))
+    /*
+     * Ensure sufficient memory for output vector.
+     * No need to initialize it. The RegExp engine fills them in on a match.
+     */
+    if (!matches.allocOrExpandArray(pairCount()))
         return RegExpRunStatus_Error;
 
     /*
@@ -577,6 +578,7 @@ RegExpShared::execute(JSContext *cx, HandleLinearString input, size_t *lastIndex
     irregexp::RegExpStackScope stackScope(cx->runtime());
 
     if (canStringMatch) {
+        JS_ASSERT(pairCount() == 1);
         int res = StringFindPattern(input, source, start + charsOffset);
         if (res == -1)
             return RegExpRunStatus_Success_NotFound;

@@ -66,6 +66,17 @@ class MacroAssemblerX64 : public MacroAssemblerX86Shared
     typedef HashMap<float, size_t, DefaultHasher<float>, SystemAllocPolicy> FloatMap;
     FloatMap floatMap_;
 
+    struct SimdData {
+        SimdConstant value;
+        NonAssertingLabel uses;
+
+        SimdData(const SimdConstant &v) : value(v) {}
+        SimdConstant::Type type() { return value.type(); }
+    };
+    Vector<SimdData, 0, SystemAllocPolicy> simds_;
+    typedef HashMap<SimdConstant, size_t, SimdConstant, SystemAllocPolicy> SimdMap;
+    SimdMap simdMap_;
+
     void setupABICall(uint32_t arg);
 
   protected:
@@ -201,7 +212,13 @@ class MacroAssemblerX64 : public MacroAssemblerX86Shared
     }
     void pushValue(const Value &val) {
         jsval_layout jv = JSVAL_TO_IMPL(val);
-        push(ImmWord(jv.asBits));
+        if (val.isMarkable()) {
+            movWithPatch(ImmWord(jv.asBits), ScratchReg);
+            writeDataRelocation(val);
+            push(ScratchReg);
+        } else {
+            push(ImmWord(jv.asBits));
+        }
     }
     void pushValue(JSValueType type, Register reg) {
         boxValue(type, reg, ScratchReg);
@@ -582,7 +599,7 @@ class MacroAssemblerX64 : public MacroAssemblerX86Shared
     }
 
     void branch32(Condition cond, AbsoluteAddress lhs, Imm32 rhs, Label *label) {
-        if (JSC::X86Assembler::isAddressImmediate(lhs.addr)) {
+        if (X86Assembler::isAddressImmediate(lhs.addr)) {
             branch32(cond, Operand(lhs), rhs, label);
         } else {
             mov(ImmPtr(lhs.addr), ScratchReg);
@@ -590,7 +607,7 @@ class MacroAssemblerX64 : public MacroAssemblerX86Shared
         }
     }
     void branch32(Condition cond, AbsoluteAddress lhs, Register rhs, Label *label) {
-        if (JSC::X86Assembler::isAddressImmediate(lhs.addr)) {
+        if (X86Assembler::isAddressImmediate(lhs.addr)) {
             branch32(cond, Operand(lhs), rhs, label);
         } else {
             mov(ImmPtr(lhs.addr), ScratchReg);
@@ -598,7 +615,7 @@ class MacroAssemblerX64 : public MacroAssemblerX86Shared
         }
     }
     void branchTest32(Condition cond, AbsoluteAddress address, Imm32 imm, Label *label) {
-        if (JSC::X86Assembler::isAddressImmediate(address.addr)) {
+        if (X86Assembler::isAddressImmediate(address.addr)) {
             testl(Operand(address), imm);
         } else {
             mov(ImmPtr(address.addr), ScratchReg);
@@ -610,7 +627,7 @@ class MacroAssemblerX64 : public MacroAssemblerX86Shared
     // Specialization for AbsoluteAddress.
     void branchPtr(Condition cond, AbsoluteAddress addr, Register ptr, Label *label) {
         JS_ASSERT(ptr != ScratchReg);
-        if (JSC::X86Assembler::isAddressImmediate(addr.addr)) {
+        if (X86Assembler::isAddressImmediate(addr.addr)) {
             branchPtr(cond, Operand(addr), ptr, label);
         } else {
             mov(ImmPtr(addr.addr), ScratchReg);
@@ -648,6 +665,10 @@ class MacroAssemblerX64 : public MacroAssemblerX86Shared
     CodeOffsetJump jumpWithPatch(RepatchLabel *label, Condition cond) {
         JmpSrc src = jSrc(cond, label);
         return CodeOffsetJump(size(), addPatchableJump(src, Relocation::HARDCODED));
+    }
+
+    CodeOffsetJump backedgeJump(RepatchLabel *label) {
+        return jumpWithPatch(label);
     }
 
     template <typename S, typename T>
@@ -695,7 +716,7 @@ class MacroAssemblerX64 : public MacroAssemblerX86Shared
         movq(imm, dest);
     }
     void loadPtr(AbsoluteAddress address, Register dest) {
-        if (JSC::X86Assembler::isAddressImmediate(address.addr)) {
+        if (X86Assembler::isAddressImmediate(address.addr)) {
             movq(Operand(address), dest);
         } else {
             mov(ImmPtr(address.addr), ScratchReg);
@@ -716,7 +737,7 @@ class MacroAssemblerX64 : public MacroAssemblerX86Shared
         shlq(Imm32(1), dest);
     }
     void load32(AbsoluteAddress address, Register dest) {
-        if (JSC::X86Assembler::isAddressImmediate(address.addr)) {
+        if (X86Assembler::isAddressImmediate(address.addr)) {
             movl(Operand(address), dest);
         } else {
             mov(ImmPtr(address.addr), ScratchReg);
@@ -748,7 +769,7 @@ class MacroAssemblerX64 : public MacroAssemblerX86Shared
         movq(src, dest);
     }
     void storePtr(Register src, AbsoluteAddress address) {
-        if (JSC::X86Assembler::isAddressImmediate(address.addr)) {
+        if (X86Assembler::isAddressImmediate(address.addr)) {
             movq(src, Operand(address));
         } else {
             mov(ImmPtr(address.addr), ScratchReg);
@@ -756,7 +777,7 @@ class MacroAssemblerX64 : public MacroAssemblerX86Shared
         }
     }
     void store32(Register src, AbsoluteAddress address) {
-        if (JSC::X86Assembler::isAddressImmediate(address.addr)) {
+        if (X86Assembler::isAddressImmediate(address.addr)) {
             movl(src, Operand(address));
         } else {
             mov(ImmPtr(address.addr), ScratchReg);
@@ -1193,6 +1214,11 @@ class MacroAssemblerX64 : public MacroAssemblerX86Shared
 
     void loadConstantDouble(double d, FloatRegister dest);
     void loadConstantFloat32(float f, FloatRegister dest);
+  private:
+    SimdData *getSimdData(const SimdConstant &v);
+  public:
+    void loadConstantInt32x4(const SimdConstant &v, FloatRegister dest);
+    void loadConstantFloat32x4(const SimdConstant &v, FloatRegister dest);
 
     void branchTruncateDouble(FloatRegister src, Register dest, Label *fail) {
         cvttsd2sq(src, dest);
@@ -1273,7 +1299,7 @@ class MacroAssemblerX64 : public MacroAssemblerX86Shared
     }
 
     void inc64(AbsoluteAddress dest) {
-        if (JSC::X86Assembler::isAddressImmediate(dest.addr)) {
+        if (X86Assembler::isAddressImmediate(dest.addr)) {
             addPtr(Imm32(1), Operand(dest));
         } else {
             mov(ImmPtr(dest.addr), ScratchReg);

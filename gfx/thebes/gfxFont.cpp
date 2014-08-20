@@ -555,7 +555,7 @@ gfxFontEntry::TryGetColorGlyphs()
 class gfxFontEntry::FontTableBlobData {
 public:
     // Adopts the content of aBuffer.
-    FontTableBlobData(FallibleTArray<uint8_t>& aBuffer)
+    explicit FontTableBlobData(FallibleTArray<uint8_t>& aBuffer)
         : mHashtable(nullptr), mHashKey(0)
     {
         MOZ_COUNT_CTOR(FontTableBlobData);
@@ -673,7 +673,7 @@ gfxFontEntry::GetExistingFontTable(uint32_t aTag, hb_blob_t **aBlob)
     if (!mFontTableCache) {
         // we do this here rather than on fontEntry construction
         // because not all shapers will access the table cache at all
-        mFontTableCache = new nsTHashtable<FontTableHashEntry>(10);
+        mFontTableCache = new nsTHashtable<FontTableHashEntry>(8);
     }
 
     FontTableHashEntry *entry = mFontTableCache->GetEntry(aTag);
@@ -692,7 +692,7 @@ gfxFontEntry::ShareFontTableAndGetBlob(uint32_t aTag,
     if (MOZ_UNLIKELY(!mFontTableCache)) {
         // we do this here rather than on fontEntry construction
         // because not all shapers will access the table cache at all
-      mFontTableCache = new nsTHashtable<FontTableHashEntry>(10);
+      mFontTableCache = new nsTHashtable<FontTableHashEntry>(8);
     }
 
     FontTableHashEntry *entry = mFontTableCache->PutEntry(aTag);
@@ -5033,7 +5033,7 @@ gfxFontGroup::FindPlatformFont(const nsAString& aName,
     // Not known in the user font set ==> check system fonts
     if (!family) {
         gfxPlatformFontList *fontList = gfxPlatformFontList::PlatformFontList();
-        family = fontList->FindFamily(aName);
+        family = fontList->FindFamily(aName, mStyle.systemFont);
         if (family) {
             fe = family->FindFontForStyle(mStyle, needsBold);
         }
@@ -6132,7 +6132,7 @@ gfxFontGroup::UpdateFontList()
 }
 
 struct PrefFontCallbackData {
-    PrefFontCallbackData(nsTArray<nsRefPtr<gfxFontFamily> >& aFamiliesArray)
+    explicit PrefFontCallbackData(nsTArray<nsRefPtr<gfxFontFamily> >& aFamiliesArray)
         : mPrefFamilies(aFamiliesArray)
     {}
 
@@ -7009,7 +7009,7 @@ HasNonOpaqueColor(gfxContext *aContext, gfxRGBA& aCurrentColor)
 
 // helper class for double-buffering drawing with non-opaque color
 struct BufferAlphaColor {
-    BufferAlphaColor(gfxContext *aContext)
+    explicit BufferAlphaColor(gfxContext *aContext)
         : mContext(aContext)
     {
 

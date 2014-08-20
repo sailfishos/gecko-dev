@@ -18,12 +18,44 @@ class TbplFormatter(BaseFormatter):
 
     def log(self, data):
         if data.get('component'):
-            return "%s %s\n" % (data["component"], data["message"])
+            message = "%s %s" % (data["component"], data["message"])
+        else:
+            message = data["message"]
 
-        return "%s\n" % (data["message"])
+        if "stack" in data:
+            message += "\n%s" % data["stack"]
+
+        return "%s\n" % message
 
     def process_output(self, data):
         return "PROCESS | %(process)s | %(data)s\n" % data
+
+    def crash(self, data):
+        id = self.id_str(data["test"]) if "test" in data else "pid: " % data["process"]
+
+        rv = ["PROCESS-CRASH | %s | application crashed [%s]" % (id,
+                                                                 data["signature"])]
+        if data.get("minidump_path"):
+            rv.append("Crash dump filename: %s" % data["minidump_path"])
+
+        if data.get("stackwalk_stderr"):
+            rv.append("stderr from minidump_stackwalk:")
+            rv.append(data["stackwalk_stderr"])
+        elif data.get("stackwalk_stdout"):
+            rv.append(data["stackwalk_stdout"])
+
+        if data.get("stackwalk_returncode", 0) != 0:
+            rv.append("minidump_stackwalk exited with return code %d" %
+                      data["stackwalk_returncode"])
+
+        if data.get("stackwalk_errors"):
+            rv.extend(data.get("stackwalk_errors"))
+
+        rv = "\n".join(rv)
+        if not rv[-1] == "\n":
+            rv += "\n"
+
+        return rv
 
     def suite_start(self, data):
         self.suite_start_time = data["time"]
@@ -36,6 +68,8 @@ class TbplFormatter(BaseFormatter):
 
     def test_status(self, data):
         message = "- " + data["message"] if "message" in data else ""
+        if "stack" in data:
+            message += "\n%s" % data["stack"]
         if "expected" in data:
             failure_line = "TEST-UNEXPECTED-%s | %s | %s %s" % (
                 data["status"], self.id_str(data["test"]), data["subtest"],
@@ -48,18 +82,23 @@ class TbplFormatter(BaseFormatter):
             message)
 
     def test_end(self, data):
-        start_time = self.test_start_times.pop(self.test_id(data["test"]))
-        time = data["time"] - start_time
+        test_id = self.test_id(data["test"])
+        time_msg = ""
+
+        if test_id in self.test_start_times:
+            start_time = self.test_start_times.pop(test_id)
+            time = data["time"] - start_time
+            time_msg = " | took %ims" % time
 
         if "expected" in data:
             failure_line = "TEST-UNEXPECTED-%s | %s | %s" % (
-                data["status"], self.id_str(data["test"]),
-                data.get("message", ""))
-            info_line = "TEST-INFO expected %s | took %ims\n" % (data["expected"], time)
+                data["status"], test_id, data.get("message", ""))
+
+            info_line = "TEST-INFO expected %s%s\n" % (data["expected"], time_msg)
             return "\n".join([failure_line, info_line])
 
-        return "TEST-%s | %s | took %ims\n" % (
-            data["status"], self.id_str(data["test"]), time)
+        return "TEST-%s | %s%s\n" % (
+            data["status"], test_id, time_msg)
 
     def suite_end(self, data):
         start_time = self.suite_start_time

@@ -15,86 +15,7 @@
 #include "nsClassHashtable.h"
 #include "nsTArray.h"
 
-#ifdef NS_TRACE_MALLOC
-#  include "nsTraceMalloc.h"
-#endif  // ifdef NS_TRACE_MALLOC
-
 namespace mozilla {
-
-
-// FIXME bug 456272: split this off into a convenience API on top of
-// nsStackWalk?
-class NS_COM_GLUE CallStack
-{
-private:
-#ifdef NS_TRACE_MALLOC
-  typedef nsTMStackTraceID callstack_id;
-  // needs to be a macro to avoid disturbing the backtrace
-#   define NS_GET_BACKTRACE() NS_TraceMallocGetStackTrace()
-#   define NS_DEADLOCK_DETECTOR_CONSTEXPR
-#else
-  typedef void* callstack_id;
-#   define NS_GET_BACKTRACE() 0
-#   define NS_DEADLOCK_DETECTOR_CONSTEXPR MOZ_CONSTEXPR
-#endif  // ifdef NS_TRACE_MALLOC
-
-  callstack_id mCallStack;
-
-public:
-  /**
-   * CallStack
-   * *ALWAYS* *ALWAYS* *ALWAYS* call this with no arguments.  This
-   * constructor takes an argument *ONLY* so that |GET_BACKTRACE()|
-   * can be evaluated in the stack frame of the caller, rather than
-   * that of the constructor.
-   *
-   * *BEWARE*: this means that calling this constructor with no
-   * arguments is not the same as a "default, do-nothing"
-   * constructor: it *will* construct a backtrace.  This can cause
-   * unexpected performance issues.
-   */
-  NS_DEADLOCK_DETECTOR_CONSTEXPR
-  explicit CallStack(const callstack_id aCallStack = NS_GET_BACKTRACE())
-    : mCallStack(aCallStack)
-  {
-  }
-  NS_DEADLOCK_DETECTOR_CONSTEXPR
-  CallStack(const CallStack& aFrom)
-    : mCallStack(aFrom.mCallStack)
-  {
-  }
-  CallStack& operator=(const CallStack& aFrom)
-  {
-    mCallStack = aFrom.mCallStack;
-    return *this;
-  }
-  bool operator==(const CallStack& aOther) const
-  {
-    return mCallStack == aOther.mCallStack;
-  }
-  bool operator!=(const CallStack& aOther) const
-  {
-    return mCallStack != aOther.mCallStack;
-  }
-
-  // FIXME bug 456272: if this is split off,
-  // NS_TraceMallocPrintStackTrace should be modified to print into
-  // an nsACString
-  void Print(FILE* aFile) const
-  {
-#ifdef NS_TRACE_MALLOC
-    if (this != &kNone && mCallStack) {
-      NS_TraceMallocPrintStackTrace(aFile, mCallStack);
-      return;
-    }
-#endif
-    fputs("  [stack trace unavailable]\n", aFile);
-  }
-
-  /** The "null" callstack. */
-  static const CallStack kNone;
-};
-
 
 /**
  * DeadlockDetector
@@ -144,37 +65,7 @@ template<typename T>
 class DeadlockDetector
 {
 public:
-  /**
-   * ResourceAcquisition
-   * Consists simply of a resource and the calling context from
-   * which it was acquired.  We pack this information together so
-   * that it can be returned back to the caller when a potential
-   * deadlock has been found.
-   */
-  struct ResourceAcquisition
-  {
-    const T* mResource;
-    CallStack mCallContext;
-
-    explicit ResourceAcquisition(const T* aResource,
-                                 const CallStack aCallContext = CallStack::kNone)
-      : mResource(aResource)
-      , mCallContext(aCallContext)
-    {
-    }
-    ResourceAcquisition(const ResourceAcquisition& aFrom)
-      : mResource(aFrom.mResource)
-      , mCallContext(aFrom.mCallContext)
-    {
-    }
-    ResourceAcquisition& operator=(const ResourceAcquisition& aFrom)
-    {
-      mResource = aFrom.mResource;
-      mCallContext = aFrom.mCallContext;
-      return *this;
-    }
-  };
-  typedef nsTArray<ResourceAcquisition> ResourceAcquisitionArray;
+  typedef nsTArray<const T*> ResourceAcquisitionArray;
 
 private:
   struct OrderingEntry;
@@ -193,8 +84,7 @@ private:
   struct OrderingEntry
   {
     OrderingEntry(const T* aResource)
-      : mFirstSeen(CallStack::kNone)
-      , mOrderedLT()        // FIXME bug 456272: set to empirical dep size?
+      : mOrderedLT()        // FIXME bug 456272: set to empirical dep size?
       , mExternalRefs()
       , mResource(aResource)
     {
@@ -209,11 +99,9 @@ private:
       size_t n = aMallocSizeOf(this);
       n += mOrderedLT.SizeOfExcludingThis(aMallocSizeOf);
       n += mExternalRefs.SizeOfExcludingThis(aMallocSizeOf);
-      n += mResource->SizeOfIncludingThis(aMallocSizeOf);
       return n;
     }
 
-    CallStack mFirstSeen; // first site from which the resource appeared
     HashEntryArray mOrderedLT; // this <_o Other
     HashEntryArray mExternalRefs; // hash entries that reference this
     const T* mResource;
@@ -288,13 +176,13 @@ public:
    *
    * @param aResource Resource to make deadlock detector aware of.
    */
-  void Add(T* aResource)
+  void Add(const T* aResource)
   {
     PRAutoLock _(mLock);
     mOrdering.Put(aResource, new OrderingEntry(aResource));
   }
 
-  void Remove(T* aResource)
+  void Remove(const T* aResource)
   {
     PRAutoLock _(mLock);
 
@@ -314,12 +202,11 @@ public:
 
     // Now the entry can be safely removed.
     mOrdering.Remove(aResource);
-    delete aResource;
   }
 
   /**
    * CheckAcquisition This method is called after acquiring |aLast|,
-   * but before trying to acquire |aProposed| from |aCallContext|.
+   * but before trying to acquire |aProposed|.
    * It determines whether actually trying to acquire |aProposed|
    * will create problems.  It is OK if |aLast| is nullptr; this is
    * interpreted as |aProposed| being the thread's first acquisition
@@ -337,26 +224,20 @@ public:
    *
    * @param aLast Last resource acquired by calling thread (or 0).
    * @param aProposed Resource calling thread proposes to acquire.
-   * @param aCallContext Calling context whence acquisiton request came.
    */
   ResourceAcquisitionArray* CheckAcquisition(const T* aLast,
-                                             const T* aProposed,
-                                             const CallStack& aCallContext)
+                                             const T* aProposed)
   {
+    if (!aLast) {
+      // don't check if |0 < aProposed|; just vamoose
+      return 0;
+    }
+
     NS_ASSERTION(aProposed, "null resource");
     PRAutoLock _(mLock);
 
     OrderingEntry* proposed = mOrdering.Get(aProposed);
     NS_ASSERTION(proposed, "missing ordering entry");
-
-    if (CallStack::kNone == proposed->mFirstSeen) {
-      proposed->mFirstSeen = aCallContext;
-    }
-
-    if (!aLast) {
-      // don't check if |0 < aProposed|; just vamoose
-      return 0;
-    }
 
     OrderingEntry* current = mOrdering.Get(aLast);
     NS_ASSERTION(current, "missing ordering entry");
@@ -370,10 +251,8 @@ public:
       if (!cycle) {
         NS_RUNTIMEABORT("can't allocate dep. cycle array");
       }
-      cycle->AppendElement(ResourceAcquisition(current->mResource,
-                                               current->mFirstSeen));
-      cycle->AppendElement(ResourceAcquisition(aProposed,
-                                               aCallContext));
+      cycle->AppendElement(current->mResource);
+      cycle->AppendElement(aProposed);
       return cycle;
     }
     if (InTransitiveClosure(current, proposed)) {
@@ -388,8 +267,7 @@ public:
       // right conditions.
       ResourceAcquisitionArray* cycle = GetDeductionChain(proposed, current);
       // show how acquiring |aProposed| would complete the cycle
-      cycle->AppendElement(ResourceAcquisition(aProposed,
-                                               aCallContext));
+      cycle->AppendElement(aProposed);
       return cycle;
     }
     // |aLast|, |aProposed| are unordered according to our
@@ -449,8 +327,7 @@ public:
     if (!chain) {
       NS_RUNTIMEABORT("can't allocate dep. cycle array");
     }
-    chain->AppendElement(ResourceAcquisition(aStart->mResource,
-                                             aStart->mFirstSeen));
+    chain->AppendElement(aStart->mResource);
 
     NS_ASSERTION(GetDeductionChain_Helper(aStart, aTarget, chain),
                  "GetDeductionChain called when there's no deadlock");
@@ -464,16 +341,14 @@ public:
                                 ResourceAcquisitionArray* aChain)
   {
     if (aStart->mOrderedLT.BinaryIndexOf(aTarget) != NoIndex) {
-      aChain->AppendElement(ResourceAcquisition(aTarget->mResource,
-                                                aTarget->mFirstSeen));
+      aChain->AppendElement(aTarget->mResource);
       return true;
     }
 
     index_type i = 0;
     size_type len = aStart->mOrderedLT.Length();
     for (const OrderingEntry* const* it = aStart->mOrderedLT.Elements(); i < len; ++i, ++it) {
-      aChain->AppendElement(ResourceAcquisition((*it)->mResource,
-                                                (*it)->mFirstSeen));
+      aChain->AppendElement((*it)->mResource);
       if (GetDeductionChain_Helper(*it, aTarget, aChain)) {
         return true;
       }
@@ -504,7 +379,7 @@ private:
 
 template<typename T>
 // FIXME bug 456272: tune based on average workload
-const uint32_t DeadlockDetector<T>::kDefaultNumBuckets = 64;
+const uint32_t DeadlockDetector<T>::kDefaultNumBuckets = 32;
 
 
 } // namespace mozilla

@@ -214,10 +214,7 @@ static const PLHashAllocOps typesToLogHashAllocOps = {
 class CodeAddressServiceStringTable MOZ_FINAL
 {
 public:
-  CodeAddressServiceStringTable()
-    : mSet(64)
-  {
-  }
+  CodeAddressServiceStringTable() : mSet(32) {}
 
   const char* Intern(const char* aString)
   {
@@ -238,7 +235,7 @@ private:
 struct CodeAddressServiceStringAlloc MOZ_FINAL
 {
   static char* copy(const char* aStr) { return strdup(aStr); }
-  static void free(char* aPtr) { free(aPtr); }
+  static void free(char* aPtr) { ::free(aPtr); }
 };
 
 class CodeAddressServiceWriter MOZ_FINAL

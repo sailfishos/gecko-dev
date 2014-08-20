@@ -30,7 +30,7 @@ ABIArgGenerator::next(MIRType type)
         stackOffset_ += sizeof(uint64_t);
         break;
       default:
-        MOZ_ASSUME_UNREACHABLE("Unexpected argument type");
+        MOZ_CRASH("Unexpected argument type");
     }
     return current_;
 }
@@ -48,7 +48,7 @@ Assembler::executableCopy(uint8_t *buffer)
 
     for (size_t i = 0; i < jumps_.length(); i++) {
         RelativePatch &rp = jumps_[i];
-        JSC::X86Assembler::setRel32(buffer + rp.offset, rp.target);
+        X86Assembler::setRel32(buffer + rp.offset, rp.target);
     }
 }
 
@@ -77,7 +77,7 @@ class RelocationIterator
 static inline JitCode *
 CodeFromJump(uint8_t *jump)
 {
-    uint8_t *target = (uint8_t *)JSC::X86Assembler::getRel32Target(jump);
+    uint8_t *target = (uint8_t *)X86Assembler::getRel32Target(jump);
     return JitCode::FromExecutable(target);
 }
 

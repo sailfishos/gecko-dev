@@ -11,6 +11,7 @@
 #include "jsobj.h"
 #include "jsstr.h"
 
+#include "builtin/RegExp.h"
 #include "builtin/TypedObject.h"
 
 #include "jit/IonSpewer.h"
@@ -45,7 +46,7 @@ RInstruction::readRecoverData(CompactBufferReader &reader, RInstructionStorage *
         break;
 
         RECOVER_OPCODE_LIST(MATCH_OPCODES_)
-#   undef DEFINE_OPCODES_
+#   undef MATCH_OPCODES_
 
       case Recover_Invalid:
       default:
@@ -881,6 +882,56 @@ RStringSplit::recover(JSContext *cx, SnapshotIterator &iter) const
         return false;
 
     result.setObject(*res);
+    iter.storeInstructionResult(result);
+    return true;
+}
+
+bool MRegExpExec::writeRecoverData(CompactBufferWriter &writer) const
+{
+    MOZ_ASSERT(canRecoverOnBailout());
+    writer.writeUnsigned(uint32_t(RInstruction::Recover_RegExpExec));
+    return true;
+}
+
+RRegExpExec::RRegExpExec(CompactBufferReader &reader)
+{}
+
+bool RRegExpExec::recover(JSContext *cx, SnapshotIterator &iter) const{
+    RootedObject regexp(cx, &iter.read().toObject());
+    RootedString input(cx, iter.read().toString());
+
+    RootedValue result(cx);
+
+    if(!regexp_exec_raw(cx, regexp, input, &result))
+        return false;
+
+    iter.storeInstructionResult(result);
+    return true;
+}
+
+bool
+MRegExpTest::writeRecoverData(CompactBufferWriter &writer) const
+{
+    MOZ_ASSERT(canRecoverOnBailout());
+    writer.writeUnsigned(uint32_t(RInstruction::Recover_RegExpTest));
+    return true;
+}
+
+RRegExpTest::RRegExpTest(CompactBufferReader &reader)
+{ }
+
+bool
+RRegExpTest::recover(JSContext *cx, SnapshotIterator &iter) const
+{
+    RootedString string(cx, iter.read().toString());
+    RootedObject regexp(cx, &iter.read().toObject());
+    bool resultBool;
+
+    if (!js::regexp_test_raw(cx, regexp, string, &resultBool))
+        return false;
+
+    RootedValue result(cx);
+    result.setBoolean(resultBool);
     iter.storeInstructionResult(result);
     return true;
 }

@@ -422,6 +422,13 @@ SetSourceHook(JSRuntime *rt, mozilla::UniquePtr<SourceHook> hook);
 extern JS_FRIEND_API(mozilla::UniquePtr<SourceHook>)
 ForgetSourceHook(JSRuntime *rt);
 
+#ifdef NIGHTLY_BUILD
+typedef void (*AssertOnScriptEntryHook)(JSContext *cx, JS::HandleScript script);
+
+extern JS_FRIEND_API(void)
+SetAssertOnScriptEntryHook(JSRuntime *rt, AssertOnScriptEntryHook hook);
+#endif
+
 extern JS_FRIEND_API(JS::Zone *)
 GetCompartmentZone(JSCompartment *comp);
 
@@ -1243,8 +1250,8 @@ js_DateGetMsecSinceEpoch(JSObject *obj);
  * string and its arguments.
  */
 typedef enum JSErrNum {
-#define MSG_DEF(name, number, count, exception, format) \
-    name = number,
+#define MSG_DEF(name, count, exception, format) \
+    name,
 #include "js.msg"
 #undef MSG_DEF
     JSErr_Limit
@@ -1280,9 +1287,9 @@ class MOZ_STACK_CLASS AutoStableStringChars
     bool ownsChars_;
 
   public:
-    AutoStableStringChars(JSContext *cx)
+    explicit AutoStableStringChars(JSContext *cx)
       : s_(cx), state_(Uninitialized), ownsChars_(false)
-    {};
+    {}
     ~AutoStableStringChars();
 
     bool init(JSContext *cx, JSString *s);
@@ -1332,7 +1339,7 @@ ErrorReportToString(JSContext *cx, JSErrorReport *reportp);
 
 struct MOZ_STACK_CLASS JS_FRIEND_API(ErrorReport)
 {
-    ErrorReport(JSContext *cx);
+    explicit ErrorReport(JSContext *cx);
     ~ErrorReport();
 
     bool init(JSContext *cx, JS::HandleValue exn);
@@ -1721,6 +1728,17 @@ JS_IsArrayBufferObject(JSObject *obj);
  */
 extern JS_FRIEND_API(uint32_t)
 JS_GetArrayBufferByteLength(JSObject *obj);
+
+/*
+ * Return true if the arrayBuffer contains any data. This will return false for
+ * ArrayBuffer.prototype and neutered ArrayBuffers.
+ *
+ * |obj| must have passed a JS_IsArrayBufferObject test, or somehow be known
+ * that it would pass such a test: it is an ArrayBuffer or a wrapper of an
+ * ArrayBuffer, and the unwrapping will succeed.
+ */
+extern JS_FRIEND_API(bool)
+JS_ArrayBufferHasData(JSObject *obj);
 
 /*
  * Check whether the obj is ArrayBufferObject and memory mapped. Note that this
@@ -2372,7 +2390,7 @@ JS_FRIEND_API(void)
 Debug_SetActiveJSContext(JSRuntime *rt, JSContext *cx);
 #else
 inline void
-Debug_SetActiveJSContext(JSRuntime *rt, JSContext *cx) {};
+Debug_SetActiveJSContext(JSRuntime *rt, JSContext *cx) {}
 #endif
 
 

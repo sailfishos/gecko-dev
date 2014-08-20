@@ -262,6 +262,10 @@ this.DOMApplicationRegistry = {
           app.role = "";
         }
 
+        if (app.widgetPages === undefined) {
+          app.widgetPages = [];
+        }
+
         // At startup we can't be downloading, and the $TMP directory
         // will be empty so we can't just apply a staged update.
         app.downloading = false;
@@ -321,6 +325,15 @@ this.DOMApplicationRegistry = {
     return res.length > 0 ? res : null;
   },
 
+  _saveWidgetsFullPath: function(aManifest, aDestApp) {
+    if (aManifest.widgetPages) {
+      aDestApp.widgetPages = aManifest.widgetPages.map(aManifest.resolveURL,
+                                                       aManifest/* thisArg */);
+    } else {
+      aDestApp.widgetPages = [];
+    }
+  },
+
   // Registers all the activities and system messages.
   registerAppsHandlers: Task.async(function*(aRunUpdate) {
     this.notifyAppsRegistryStart();
@@ -345,6 +358,10 @@ this.DOMApplicationRegistry = {
         let app = this.webapps[aResult.id];
         app.csp = aResult.manifest.csp || "";
         app.role = aResult.manifest.role || "";
+
+        let localeManifest = new ManifestHelper(aResult.manifest, app.origin, app.manifestURL);
+        this._saveWidgetsFullPath(localeManifest, app);
+
         if (app.appStatus >= Ci.nsIPrincipal.APP_STATUS_PRIVILEGED) {
           app.redirects = this.sanitizeRedirects(aResult.redirects);
         }
@@ -821,7 +838,7 @@ this.DOMApplicationRegistry = {
       root = aManifest.entry_points[aEntryPoint];
     }
 
-    if (!root.activities) {
+    if (!root || !root.activities) {
       return activitiesToRegister;
     }
 
@@ -882,6 +899,10 @@ this.DOMApplicationRegistry = {
       let app = aApp.app;
       activitiesToRegister.push.apply(activitiesToRegister,
         this._createActivitiesToRegister(manifest, app, null, aRunUpdate));
+
+      if (aRunUpdate) {
+        cpmm.sendAsyncMessage("Activities:UnregisterAll", app.manifestURL);
+      }
 
       if (!manifest.entry_points) {
         return;
@@ -980,6 +1001,8 @@ this.DOMApplicationRegistry = {
         app.name = manifest.name;
         app.csp = manifest.csp || "";
         app.role = localeManifest.role;
+        this._saveWidgetsFullPath(localeManifest, app);
+
         if (app.appStatus >= Ci.nsIPrincipal.APP_STATUS_PRIVILEGED) {
           app.redirects = this.sanitizeRedirects(manifest.redirects);
         }
@@ -2010,6 +2033,8 @@ this.DOMApplicationRegistry = {
     aApp.downloadAvailable = true;
     aApp.downloadSize = manifest.size;
     aApp.updateManifest = aNewManifest;
+    this._saveWidgetsFullPath(manifest, aApp);
+
     yield this._saveApps();
 
     this.broadcastMessage("Webapps:UpdateState", {
@@ -2068,6 +2093,7 @@ this.DOMApplicationRegistry = {
       aApp.name = aNewManifest.name;
       aApp.csp = manifest.csp || "";
       aApp.role = manifest.role || "";
+      this._saveWidgetsFullPath(manifest, aApp);
       aApp.updateTime = Date.now();
     } else {
       manifest =
@@ -2467,6 +2493,7 @@ this.DOMApplicationRegistry = {
     appObject.name = aManifest.name;
     appObject.csp = aLocaleManifest.csp || "";
     appObject.role = aLocaleManifest.role;
+    this._saveWidgetsFullPath(aLocaleManifest, appObject);
     appObject.installerAppId = aData.appId;
     appObject.installerIsBrowser = aData.isBrowser;
 
@@ -2501,6 +2528,9 @@ this.DOMApplicationRegistry = {
     app.name = aManifest.name;
 
     app.csp = aManifest.csp || "";
+
+    let aLocaleManifest = new ManifestHelper(aManifest, app.origin, app.manifestURL);
+    this._saveWidgetsFullPath(aLocaleManifest, app);
 
     app.appStatus = AppsUtils.getAppManifestStatus(aManifest);
 
@@ -2908,6 +2938,10 @@ this.DOMApplicationRegistry = {
     });
 
     let zipFile = yield this._getPackage(requestChannel, aId, aOldApp, aNewApp);
+
+    // After this point, it's too late to cancel the download.
+    AppDownloadManager.remove(aNewApp.manifestURL);
+
     let hash = yield this._computeFileHash(zipFile.path);
 
     let responseStatus = requestChannel.responseStatus;
@@ -2925,8 +2959,6 @@ this.DOMApplicationRegistry = {
 
     let newManifest = yield this._openAndReadPackage(zipFile, aOldApp, aNewApp,
             isLocalFileInstall, aIsUpdate, aManifest, requestChannel, hash);
-
-    AppDownloadManager.remove(aNewApp.manifestURL);
 
     return [aOldApp.id, newManifest];
 

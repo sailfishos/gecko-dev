@@ -23,22 +23,21 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef assembler_jit_ExecutableAllocator_h
-#define assembler_jit_ExecutableAllocator_h
+#ifndef jit_ExecutableAllocator_h
+#define jit_ExecutableAllocator_h
 
 #include <limits>
 #include <stddef.h> // for ptrdiff_t
 
 #include "jsalloc.h"
 
-#include "assembler/wtf/Platform.h"
 #include "jit/arm/Simulator-arm.h"
 #include "jit/mips/Simulator-mips.h"
 #include "js/HashTable.h"
 #include "js/Vector.h"
 
-#if WTF_CPU_SPARC
-#ifdef linux  // bugzilla 502369
+#ifdef JS_CPU_SPARC
+#ifdef __linux__  // bugzilla 502369
 static void sync_instruction_memory(caddr_t v, u_int len)
 {
     caddr_t end = v + len;
@@ -53,16 +52,7 @@ extern  "C" void sync_instruction_memory(caddr_t v, u_int len);
 #endif
 #endif
 
-#if WTF_OS_IOS
-#include <libkern/OSCacheControl.h>
-#include <sys/mman.h>
-#endif
-
-#if WTF_OS_SYMBIAN
-#include <e32std.h>
-#endif
-
-#if WTF_CPU_MIPS && WTF_OS_LINUX && !JS_MIPS_SIMULATOR
+#if defined(JS_CODEGEN_MIPS) && defined(__linux__) && !defined(JS_MIPS_SIMULATOR)
 #include <sys/cachectl.h>
 #endif
 
@@ -74,19 +64,13 @@ extern  "C" void sync_instruction_memory(caddr_t v, u_int len);
 #define INITIAL_PROTECTION_FLAGS (PROT_READ | PROT_WRITE | PROT_EXEC)
 #endif
 
-namespace JSC {
-  enum CodeKind { ION_CODE = 0, BASELINE_CODE, REGEXP_CODE, OTHER_CODE };
-}
-
-#if ENABLE_ASSEMBLER
-
-//#define DEBUG_STRESS_JSC_ALLOCATOR
-
 namespace JS {
     struct CodeSizes;
 }
 
-namespace JSC {
+namespace js {
+namespace jit {
+  enum CodeKind { ION_CODE = 0, BASELINE_CODE, REGEXP_CODE, OTHER_CODE };
 
   class ExecutableAllocator;
 
@@ -98,9 +82,6 @@ private:
     struct Allocation {
         char* pages;
         size_t size;
-#if WTF_OS_SYMBIAN
-        RChunk* chunk;
-#endif
     };
 
     ExecutableAllocator* m_allocator;
@@ -284,7 +265,7 @@ public:
 private:
     static size_t pageSize;
     static size_t largeAllocSize;
-#if WTF_OS_WINDOWS
+#ifdef XP_WIN
     static uint64_t rngSeed;
 #endif
 
@@ -322,11 +303,7 @@ private:
         if (!m_pools.initialized() && !m_pools.init())
             return NULL;
 
-#ifdef DEBUG_STRESS_JSC_ALLOCATOR
-        ExecutablePool::Allocation a = systemAlloc(size_t(4294967291));
-#else
         ExecutablePool::Allocation a = systemAlloc(allocSize);
-#endif
         if (!a.pages)
             return NULL;
 
@@ -342,7 +319,6 @@ private:
 public:
     ExecutablePool* poolForSize(size_t n)
     {
-#ifndef DEBUG_STRESS_JSC_ALLOCATOR
         // Try to fit in an existing small allocator.  Use the pool with the
         // least available space that is big enough (best-fit).  This is the
         // best strategy because (a) it maximizes the chance of the next
@@ -358,7 +334,6 @@ public:
             minPool->addRef();
             return minPool;
         }
-#endif
 
         // If the request is large, we just provide a unshared allocator
         if (n > largeAllocSize)
@@ -414,7 +389,7 @@ public:
 #endif
 
 
-#if WTF_CPU_X86 || WTF_CPU_X86_64
+#if defined(JS_CODEGEN_X86) || defined(JS_CODEGEN_X64)
     static void cacheFlush(void*, size_t)
     {
     }
@@ -423,11 +398,13 @@ public:
     {
         js::jit::Simulator::FlushICache(code, size);
     }
-#elif WTF_CPU_MIPS
+#elif defined(JS_CODEGEN_MIPS)
     static void cacheFlush(void* code, size_t size)
     {
-#if WTF_COMPILER_GCC && (GCC_VERSION >= 40300)
-#if WTF_MIPS_ISA_REV(2) && (GCC_VERSION < 40403)
+#define GCC_VERSION (__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__)
+
+#if defined(__GNUC__) && (GCC_VERSION >= 40300)
+#if (__mips_isa_rev == 2) && (GCC_VERSION < 40403)
         int lineSize;
         asm("rdhwr %0, $1" : "=r" (lineSize));
         //
@@ -448,37 +425,10 @@ public:
 #else
         _flush_cache(reinterpret_cast<char*>(code), size, BCACHE);
 #endif
+
+#undef GCC_VERSION
     }
-#elif WTF_CPU_ARM && WTF_OS_IOS
-    static void cacheFlush(void* code, size_t size)
-    {
-        sys_dcache_flush(code, size);
-        sys_icache_invalidate(code, size);
-    }
-#elif WTF_CPU_ARM_THUMB2 && WTF_IOS
-    static void cacheFlush(void* code, size_t size)
-    {
-        asm volatile (
-            "push    {r7}\n"
-            "mov     r0, %0\n"
-            "mov     r1, %1\n"
-            "movw    r7, #0x2\n"
-            "movt    r7, #0xf\n"
-            "movs    r2, #0x0\n"
-            "svc     0x0\n"
-            "pop     {r7}\n"
-            :
-            : "r" (code), "r" (reinterpret_cast<char*>(code) + size)
-            : "r0", "r1", "r2");
-    }
-#elif WTF_OS_SYMBIAN
-    static void cacheFlush(void* code, size_t size)
-    {
-        User::IMB_Range(code, static_cast<char*>(code) + size);
-    }
-#elif WTF_CPU_ARM_TRADITIONAL && WTF_OS_LINUX && WTF_COMPILER_RVCT
-    static __asm void cacheFlush(void* code, size_t size);
-#elif WTF_CPU_ARM_TRADITIONAL && (WTF_OS_LINUX || WTF_OS_ANDROID) && WTF_COMPILER_GCC
+#elif defined(JS_CODEGEN_ARM) && (defined(__linux__) || defined(ANDROID)) && defined(__GNUC__)
     static void cacheFlush(void* code, size_t size)
     {
         asm volatile (
@@ -494,7 +444,7 @@ public:
             : "r" (code), "r" (reinterpret_cast<char*>(code) + size)
             : "r0", "r1", "r2");
     }
-#elif WTF_CPU_SPARC
+#elif JS_CPU_SPARC
     static void cacheFlush(void* code, size_t size)
     {
         sync_instruction_memory((caddr_t)code, size);
@@ -522,8 +472,7 @@ private:
     static size_t determinePageSize();
 };
 
-}
+} // namespace jit
+} // namespace js
 
-#endif // ENABLE(ASSEMBLER)
-
-#endif /* assembler_jit_ExecutableAllocator_h */
+#endif /* jit_ExecutableAllocator_h */

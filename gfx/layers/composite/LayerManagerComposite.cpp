@@ -410,6 +410,58 @@ LayerManagerComposite::RenderDebugOverlay(const Rect& aBounds)
   }
 }
 
+RefPtr<CompositingRenderTarget>
+LayerManagerComposite::PushGroup()
+{
+  RefPtr<CompositingRenderTarget> previousTarget = mCompositor->GetCurrentRenderTarget();
+  // make our render target the same size as the destination target
+  // so that we don't have to change size if the drawing area changes.
+  IntRect rect(previousTarget->GetOrigin(), previousTarget->GetSize());
+  // XXX: I'm not sure if this is true or not...
+  MOZ_ASSERT(rect.x == 0 && rect.y == 0);
+  if (!mTwoPassTmpTarget ||
+      mTwoPassTmpTarget->GetSize() != previousTarget->GetSize() ||
+      mTwoPassTmpTarget->GetOrigin() != previousTarget->GetOrigin()) {
+    mTwoPassTmpTarget = mCompositor->CreateRenderTarget(rect, INIT_MODE_NONE);
+  }
+  mCompositor->SetRenderTarget(mTwoPassTmpTarget);
+  return previousTarget;
+}
+void LayerManagerComposite::PopGroup(RefPtr<CompositingRenderTarget> aPreviousTarget, nsIntRect aClipRect)
+{
+  mCompositor->SetRenderTarget(aPreviousTarget);
+
+  EffectChain effectChain(RootLayer());
+  Matrix5x4 matrix;
+  if (gfxPrefs::Grayscale()) {
+    matrix._11 = matrix._12 = matrix._13 = 0.2126f;
+    matrix._21 = matrix._22 = matrix._23 = 0.7152f;
+    matrix._31 = matrix._32 = matrix._33 = 0.0722f;
+  }
+
+  if (gfxPrefs::Invert()) {
+    matrix._11 = -matrix._11;
+    matrix._12 = -matrix._12;
+    matrix._13 = -matrix._13;
+    matrix._21 = -matrix._21;
+    matrix._22 = -matrix._22;
+    matrix._23 = -matrix._23;
+    matrix._31 = -matrix._31;
+    matrix._32 = -matrix._32;
+    matrix._33 = -matrix._33;
+    matrix._51 = 1;
+    matrix._52 = 1;
+    matrix._53 = 1;
+  }
+
+  effectChain.mPrimaryEffect = new EffectRenderTarget(mTwoPassTmpTarget);
+  effectChain.mSecondaryEffects[EffectTypes::COLOR_MATRIX] = new EffectColorMatrix(matrix);
+
+  gfx::Rect clipRectF(aClipRect.x, aClipRect.y, aClipRect.width, aClipRect.height);
+  mCompositor->DrawQuad(Rect(Point(0, 0), Size(mTwoPassTmpTarget->GetSize())), clipRectF, effectChain, 1.,
+                        Matrix4x4());
+}
+
 void
 LayerManagerComposite::Render()
 {
@@ -440,6 +492,10 @@ LayerManagerComposite::Render()
     layerscope::LayersPacket* layersPacket = packet->mutable_layers();
     this->Dump(layersPacket);
     LayerScope::SendLayerDump(Move(packet));
+  }
+
+  if (gfxPrefs::Invert() || gfxPrefs::Grayscale()) {
+    composer2D = nullptr;
   }
 
   if (!mTarget && composer2D && composer2D->TryRender(mRoot, mWorldMatrix, mGeometryChanged)) {
@@ -501,6 +557,13 @@ LayerManagerComposite::Render()
                                                                actualBounds.width,
                                                                actualBounds.height));
 
+  RefPtr<CompositingRenderTarget> previousTarget;
+  if (gfxPrefs::Invert() || gfxPrefs::Grayscale()) {
+    previousTarget = PushGroup();
+  } else {
+    mTwoPassTmpTarget = nullptr;
+  }
+
   // Render our layers.
   RootLayer()->Prepare(clipRect);
   RootLayer()->RenderLayer(clipRect);
@@ -511,6 +574,10 @@ LayerManagerComposite::Render()
     while ((r = iter.Next())) {
       mCompositor->ClearRect(Rect(r->x, r->y, r->width, r->height));
     }
+  }
+
+  if (mTwoPassTmpTarget) {
+    PopGroup(previousTarget, clipRect);
   }
 
   // Allow widget to render a custom foreground.
@@ -679,7 +746,7 @@ LayerManagerComposite::ComputeRenderIntegrity()
     return 1.f;
   }
 
-  const FrameMetrics& rootMetrics = root->AsContainerLayer()->GetFrameMetrics();
+  const FrameMetrics& rootMetrics = root->GetFrameMetrics();
   ParentLayerIntRect bounds = RoundedToInt(rootMetrics.mCompositionBounds);
   nsIntRect screenRect(bounds.x,
                        bounds.y,
@@ -696,7 +763,7 @@ LayerManagerComposite::ComputeRenderIntegrity()
   if (primaryScrollable) {
     // This is derived from the code in
     // AsyncCompositionManager::TransformScrollableLayer
-    const FrameMetrics& metrics = primaryScrollable->AsContainerLayer()->GetFrameMetrics();
+    const FrameMetrics& metrics = primaryScrollable->GetFrameMetrics();
     Matrix4x4 transform = primaryScrollable->GetEffectiveTransform();
     transform.ScalePost(metrics.mResolution.scale, metrics.mResolution.scale, 1);
 
@@ -828,7 +895,7 @@ LayerManagerComposite::CreateRefLayerComposite()
 LayerManagerComposite::AutoAddMaskEffect::AutoAddMaskEffect(Layer* aMaskLayer,
                                                             EffectChain& aEffects,
                                                             bool aIs3D)
-  : mCompositable(nullptr)
+  : mCompositable(nullptr), mFailed(false)
 {
   if (!aMaskLayer) {
     return;
@@ -837,11 +904,13 @@ LayerManagerComposite::AutoAddMaskEffect::AutoAddMaskEffect(Layer* aMaskLayer,
   mCompositable = ToLayerComposite(aMaskLayer)->GetCompositableHost();
   if (!mCompositable) {
     NS_WARNING("Mask layer with no compositable host");
+    mFailed = true;
     return;
   }
 
   if (!mCompositable->AddMaskEffect(aEffects, aMaskLayer->GetEffectiveTransform(), aIs3D)) {
     mCompositable = nullptr;
+    mFailed = true;
   }
 }
 

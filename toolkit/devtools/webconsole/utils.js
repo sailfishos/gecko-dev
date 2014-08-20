@@ -33,6 +33,15 @@ const REGEX_MATCH_FUNCTION_ARGS = /^\(?function\s*[^\s(]*\s*\((.+?)\)/;
 
 // Number of terminal entries for the self-xss prevention to go away
 const CONSOLE_ENTRY_THRESHOLD = 5
+
+// Provide an easy way to bail out of even attempting an autocompletion
+// if an object has way too many properties. Protects against large objects
+// with numeric values that wouldn't be tallied towards MAX_AUTOCOMPLETIONS.
+const MAX_AUTOCOMPLETE_ATTEMPTS = exports.MAX_AUTOCOMPLETE_ATTEMPTS = 100000;
+
+// Prevent iterating over too many properties during autocomplete suggestions.
+const MAX_AUTOCOMPLETIONS = exports.MAX_AUTOCOMPLETIONS = 1500;
+
 let WebConsoleUtils = {
   /**
    * Convenience function to unwrap a wrapped object.
@@ -561,7 +570,7 @@ let WebConsoleUtils = {
    * @param nsIDOMElement notificationBox
    * @returns A function to be added as a handler to 'paste' and 'drop' events on the input field
    */
-  pasteHandlerGen: function WCU_pasteHandlerGen(inputField, notificationBox){
+  pasteHandlerGen: function WCU_pasteHandlerGen(inputField, notificationBox, msg, okstring) {
     let handler = function WCU_pasteHandler(aEvent) {
       if (WebConsoleUtils.usageCount >= CONSOLE_ENTRY_THRESHOLD) {
         inputField.removeEventListener("paste", handler);
@@ -573,9 +582,7 @@ let WebConsoleUtils = {
         aEvent.stopPropagation();
         return false;
       }
-      let l10n = new WebConsoleUtils.l10n("chrome://browser/locale/devtools/webconsole.properties");
-      let okstring = l10n.getStr("selfxss.okstring");
-      let msg = l10n.getFormatStr("selfxss.msg", [okstring]);
+
 
       let notification = notificationBox.appendNotification(msg,
         "selfxss-notification", null, notificationBox.PRIORITY_WARNING_HIGH, null,
@@ -709,8 +716,6 @@ const OPEN_CLOSE_BODY = {
   "[": "]",
   "(": ")",
 };
-
-const MAX_COMPLETIONS = 1500;
 
 /**
  * Analyses a given string to find the last statement that is interesting for
@@ -1044,11 +1049,22 @@ function getMatchedProps(aObj, aMatch)
 function getMatchedProps_impl(aObj, aMatch, {chainIterator, getProperties})
 {
   let matches = new Set();
+  let numProps = 0;
 
   // We need to go up the prototype chain.
   let iter = chainIterator(aObj);
   for (let obj of iter) {
     let props = getProperties(obj);
+    numProps += props.length;
+
+    // If there are too many properties to event attempt autocompletion,
+    // or if we have already added the max number, then stop looping
+    // and return the partial set that has already been discovered.
+    if (numProps >= MAX_AUTOCOMPLETE_ATTEMPTS ||
+        matches.size >= MAX_AUTOCOMPLETIONS) {
+      break;
+    }
+
     for (let i = 0; i < props.length; i++) {
       let prop = props[i];
       if (prop.indexOf(aMatch) != 0) {
@@ -1062,13 +1078,9 @@ function getMatchedProps_impl(aObj, aMatch, {chainIterator, getProperties})
         matches.add(prop);
       }
 
-      if (matches.size > MAX_COMPLETIONS) {
+      if (matches.size >= MAX_AUTOCOMPLETIONS) {
         break;
       }
-    }
-
-    if (matches.size > MAX_COMPLETIONS) {
-      break;
     }
   }
 

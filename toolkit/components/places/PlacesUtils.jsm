@@ -535,7 +535,7 @@ this.PlacesUtils = {
         return writer.value;
       }
       case this.TYPE_X_MOZ_URL: {
-        function gatherDataUrl(bNode) {
+        let gatherDataUrl = function (bNode) {
           if (isLivemark(bNode)) {
             return gatherLivemarkUrl(bNode) + NEWLINE + bNode.title;
           }
@@ -544,7 +544,7 @@ this.PlacesUtils = {
             return (aOverrideURI || bNode.uri) + NEWLINE + bNode.title;
           // ignore containers and separators - items without valid URIs
           return "";
-        }
+        };
 
         let [node, shouldClose] = convertNode(aNode);
         let dataUrl = gatherDataUrl(node);
@@ -554,15 +554,15 @@ this.PlacesUtils = {
         return dataUrl;
       }
       case this.TYPE_HTML: {
-        function gatherDataHtml(bNode) {
-          function htmlEscape(s) {
+        let gatherDataHtml = function (bNode) {
+          let htmlEscape = function (s) {
             s = s.replace(/&/g, "&amp;");
             s = s.replace(/>/g, "&gt;");
             s = s.replace(/</g, "&lt;");
             s = s.replace(/"/g, "&quot;");
             s = s.replace(/'/g, "&apos;");
             return s;
-          }
+          };
           // escape out potential HTML in the title
           let escapedTitle = bNode.title ? htmlEscape(bNode.title) : "";
 
@@ -1517,6 +1517,33 @@ this.PlacesUtils = {
         }
       });
     return deferred.promise;
+  },
+
+  /**
+   * Returns the passed URL with a #-moz-resolution fragment
+   * for the specified dimensions and devicePixelRatio.
+   *
+   * @param aWindow
+   *        A window from where we want to get the device
+   *        pixel Ratio
+   *
+   * @param aURL
+   *        The URL where we should add the fragment
+   *
+   * @param aWidth
+   *        The target image width
+   *
+   * @param aHeight
+   *        The target image height
+   *
+   * @return The URL with the fragment at the end
+   */
+  getImageURLForResolution:
+  function PU_getImageURLForResolution(aWindow, aURL, aWidth = 16, aHeight = 16) {
+    let width  = Math.round(aWidth * aWindow.devicePixelRatio);
+    let height = Math.round(aHeight * aWindow.devicePixelRatio);
+    return aURL + (aURL.contains("#") ? "&" : "#") +
+           "-moz-resolution=" + width + "," + height;
   },
 
   /**

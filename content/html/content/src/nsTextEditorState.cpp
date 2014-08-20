@@ -45,6 +45,7 @@
 #include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/dom/HTMLInputElement.h"
 #include "nsNumberControlFrame.h"
+#include "nsFrameSelection.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -417,10 +418,8 @@ nsTextInputSelectionImpl::GetCaretVisible(bool *_retval)
   {
     nsRefPtr<nsCaret> caret = shell->GetCaret();
     if (caret) {
-      nsISelection* domSel = mFrameSelection->
-        GetSelection(nsISelectionController::SELECTION_NORMAL);
-      if (domSel)
-        return caret->GetCaretVisible(_retval);
+      *_retval = caret->IsVisible();
+      return NS_OK;
     }
   }
   return NS_ERROR_FAILURE;
@@ -546,7 +545,7 @@ nsTextInputSelectionImpl::CompleteMove(bool aForward, bool aExtend)
 
   // make the caret be either at the very beginning (0) or the very end
   int32_t offset = 0;
-  nsFrameSelection::HINT hint = nsFrameSelection::HINTLEFT;
+  CaretAssociationHint hint = CARET_ASSOCIATE_BEFORE;
   if (aForward)
   {
     offset = parentDIV->GetChildCount();
@@ -561,7 +560,7 @@ nsTextInputSelectionImpl::CompleteMove(bool aForward, bool aExtend)
       if (child->Tag() == nsGkAtoms::br)
       {
         --offset;
-        hint = nsFrameSelection::HINTRIGHT; // for Bug 106855
+        hint = CARET_ASSOCIATE_AFTER; // for Bug 106855
       }
     }
   }
@@ -1518,6 +1517,14 @@ nsTextEditorState::UnbindFromFrame(nsTextControlFrame* aFrame)
   // If it was, however, it should be unbounded from the same frame.
   NS_ASSERTION(!aFrame || aFrame == mBoundFrame, "Unbinding from the wrong frame");
   NS_ENSURE_TRUE_VOID(!aFrame || aFrame == mBoundFrame);
+
+  // If the editor is modified but nsIEditorObserver::EditAction() hasn't been
+  // called yet, we need to notify it here because editor may be destroyed
+  // before EditAction() is called if selection listener causes flushing layout.
+  if (mTextListener && mEditor && mEditorInitialized &&
+      mEditor->GetIsInEditAction()) {
+    mTextListener->EditAction();
+  }
 
   // We need to start storing the value outside of the editor if we're not
   // going to use it anymore, so retrieve it for now.

@@ -20,12 +20,15 @@ class Index
 public:
   Index(const stagefright::Vector<stagefright::MediaSource::Indice>& aIndex,
         Stream* aSource, uint32_t aTrackId);
+  ~Index();
+
+  void UpdateMoofIndex(const nsTArray<mozilla::MediaByteRange>& aByteRanges);
   void ConvertByteRangesToTimeRanges(
     const nsTArray<mozilla::MediaByteRange>& aByteRanges,
     nsTArray<Interval<Microseconds>>* aTimeRanges);
+  uint64_t GetEvictionOffset(Microseconds aTime);
 
 private:
-  mozilla::Monitor mMonitor;
   nsTArray<stagefright::MediaSource::Indice> mIndex;
   nsAutoPtr<MoofParser> mMoofParser;
 };

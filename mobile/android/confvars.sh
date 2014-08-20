@@ -18,7 +18,7 @@ MOZ_ANDROID_MIN_SDK_VERSION=9
 
 MOZ_SAFE_BROWSING=1
 
-MOZ_DISABLE_CRYPTOLEGACY=1
+MOZ_NO_SMART_CARDS=1
 
 # Enable getUserMedia
 MOZ_MEDIA_NAVIGATOR=1
@@ -38,9 +38,6 @@ MOZ_PLACES=
 MOZ_SOCIAL=
 MOZ_ANDROID_HISTORY=1
 MOZ_DISABLE_EXPORT_JS=1
-
-# Needed for building our components as part of libxul
-MOZ_APP_COMPONENT_INCLUDE=nsBrowserComponents.h
 
 # use custom widget for html:select
 MOZ_USE_NATIVE_POPUP_WINDOWS=1
@@ -74,7 +71,7 @@ MOZ_LOCALE_SWITCHER=1
 MOZ_DEVICES=1
 
 # Enable second screen using native Android libraries
-MOZ_NATIVE_DEVICES=
+MOZ_NATIVE_DEVICES=1
 
 # Mark as WebGL conformant
 MOZ_WEBGL_CONFORMANT=1

@@ -15,7 +15,6 @@
 #include "XrayWrapper.h"
 
 #include "nsContentUtils.h"
-#include "nsCxPusher.h"
 
 #include <stdint.h>
 #include "mozilla/Likely.h"
@@ -356,9 +355,6 @@ XPCWrappedNative::GetNewOrUsed(xpcObjectHelper& helper,
     mozilla::Maybe<JSAutoCompartment> ac;
 
     if (sciWrapper.GetFlags().WantPreCreate()) {
-        // PreCreate may touch dead compartments.
-        js::AutoMaybeTouchDeadZones agc(parent);
-
         RootedObject plannedParent(cx, parent);
         nsresult rv = sciWrapper.GetCallback()->PreCreate(identity, cx,
                                                           parent, parent.address());
@@ -369,7 +365,7 @@ XPCWrappedNative::GetNewOrUsed(xpcObjectHelper& helper,
         MOZ_ASSERT(!xpc::WrapperFactory::IsXrayWrapper(parent),
                    "Xray wrapper being used to parent XPCWrappedNative?");
 
-        ac.construct(static_cast<JSContext*>(cx), parent);
+        ac.emplace(static_cast<JSContext*>(cx), parent);
 
         if (parent != plannedParent) {
             XPCWrappedNativeScope* betterScope = ObjectScope(parent);
@@ -400,7 +396,7 @@ XPCWrappedNative::GetNewOrUsed(xpcObjectHelper& helper,
             return NS_OK;
         }
     } else {
-        ac.construct(static_cast<JSContext*>(cx), parent);
+        ac.emplace(static_cast<JSContext*>(cx), parent);
     }
 
     AutoMarkingWrappedNativeProtoPtr proto(cx);
@@ -1284,9 +1280,6 @@ RescueOrphans(HandleObject obj)
     if (!parentObj)
         return NS_OK; // Global object. We're done.
     parentObj = js::UncheckedUnwrap(parentObj, /* stopAtOuter = */ false);
-
-    // PreCreate may touch dead compartments.
-    js::AutoMaybeTouchDeadZones agc(parentObj);
 
     // Recursively fix up orphans on the parent chain.
     rv = RescueOrphans(parentObj);
@@ -2661,7 +2654,7 @@ void
 XPCJSObjectHolder::TraceJS(JSTracer *trc)
 {
     trc->setTracingDetails(GetTraceName, this, 0);
-    JS_CallHeapObjectTracer(trc, &mJSObj, "XPCJSObjectHolder::mJSObj");
+    JS_CallObjectTracer(trc, &mJSObj, "XPCJSObjectHolder::mJSObj");
 }
 
 // static

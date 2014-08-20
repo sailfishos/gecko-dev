@@ -78,8 +78,8 @@ DocAccessible::
                   nsIPresShell* aPresShell) :
   HyperTextAccessibleWrap(aRootContent, this),
   // XXX aaronl should we use an algorithm for the initial cache size?
-  mAccessibleCache(kDefaultCacheSize),
-  mNodeToAccessibleMap(kDefaultCacheSize),
+  mAccessibleCache(kDefaultCacheLength),
+  mNodeToAccessibleMap(kDefaultCacheLength),
   mDocumentNode(aDocument),
   mScrollPositionChangedTicks(0),
   mLoadState(eTreeConstructionPending), mDocFlags(0), mLoadEventType(0),
@@ -816,11 +816,12 @@ NS_IMETHODIMP
 DocAccessible::OnPivotChanged(nsIAccessiblePivot* aPivot,
                               nsIAccessible* aOldAccessible,
                               int32_t aOldStart, int32_t aOldEnd,
-                              PivotMoveReason aReason)
+                              PivotMoveReason aReason,
+                              bool aIsFromUserInput)
 {
-  nsRefPtr<AccEvent> event = new AccVCChangeEvent(this, aOldAccessible,
-                                                  aOldStart, aOldEnd,
-                                                  aReason);
+  nsRefPtr<AccEvent> event = new AccVCChangeEvent(
+    this, aOldAccessible, aOldStart, aOldEnd, aReason,
+    aIsFromUserInput ? eFromUserInput : eNoUserInput);
   nsEventShell::FireEvent(event);
 
   return NS_OK;

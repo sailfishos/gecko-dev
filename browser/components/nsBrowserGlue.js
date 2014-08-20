@@ -81,8 +81,11 @@ XPCOMUtils.defineLazyModuleGetter(this, "PlacesBackups",
 XPCOMUtils.defineLazyModuleGetter(this, "OS",
                                   "resource://gre/modules/osfile.jsm");
 
- XPCOMUtils.defineLazyModuleGetter(this, "RemotePrompt",
-                                   "resource:///modules/RemotePrompt.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "RemotePrompt",
+                                  "resource:///modules/RemotePrompt.jsm");
+
+XPCOMUtils.defineLazyModuleGetter(this, "ContentPrefServiceParent",
+                                  "resource://gre/modules/ContentPrefServiceParent.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "SessionStore",
                                   "resource:///modules/sessionstore/SessionStore.jsm");
@@ -103,6 +106,16 @@ XPCOMUtils.defineLazyModuleGetter(this, "SignInToWebsiteUX",
 
 XPCOMUtils.defineLazyModuleGetter(this, "ContentSearch",
                                   "resource:///modules/ContentSearch.jsm");
+
+XPCOMUtils.defineLazyGetter(this, "ShellService", function() {
+  try {
+    return Cc["@mozilla.org/browser/shell-service;1"].
+           getService(Ci.nsIShellService);
+  }
+  catch(ex) {
+    return null;
+  }
+});
 
 const PREF_PLUGINS_NOTIFYUSER = "plugins.update.notifyUser";
 const PREF_PLUGINS_UPDATEURL  = "plugins.update.url";
@@ -507,10 +520,9 @@ BrowserGlue.prototype = {
     BrowserUITelemetry.init();
     ContentSearch.init();
 
-    if (Services.appinfo.browserTabsRemote) {
-      ContentClick.init();
-      RemotePrompt.init();
-    }
+    ContentClick.init();
+    RemotePrompt.init();
+    ContentPrefServiceParent.init();
 
     LoginManagerParent.init();
 
@@ -748,16 +760,11 @@ BrowserGlue.prototype = {
     }
 
     // Perform default browser checking.
-    var shell;
-    try {
-      shell = Components.classes["@mozilla.org/browser/shell-service;1"]
-        .getService(Components.interfaces.nsIShellService);
-    } catch (e) { }
-    if (shell) {
+    if (ShellService) {
 #ifdef DEBUG
       let shouldCheck = false;
 #else
-      let shouldCheck = shell.shouldCheckDefaultBrowser;
+      let shouldCheck = ShellService.shouldCheckDefaultBrowser;
 #endif
       let willRecoverSession = false;
       try {
@@ -768,7 +775,8 @@ BrowserGlue.prototype = {
       }
       catch (ex) { /* never mind; suppose SessionStore is broken */ }
 
-      let isDefault = shell.isDefaultBrowser(true, false); // startup check, check all assoc
+      // startup check, check all assoc
+      let isDefault = ShellService.isDefaultBrowser(true, false);
       try {
         // Report default browser status on startup to telemetry
         // so we can track whether we are the default.
@@ -779,38 +787,7 @@ BrowserGlue.prototype = {
 
       if (shouldCheck && !isDefault && !willRecoverSession) {
         Services.tm.mainThread.dispatch(function() {
-          var win = this.getMostRecentBrowserWindow();
-          var brandBundle = win.document.getElementById("bundle_brand");
-          var shellBundle = win.document.getElementById("bundle_shell");
-
-          var brandShortName = brandBundle.getString("brandShortName");
-          var promptTitle = shellBundle.getString("setDefaultBrowserTitle");
-          var promptMessage = shellBundle.getFormattedString("setDefaultBrowserMessage",
-                                                             [brandShortName]);
-          var checkboxLabel = shellBundle.getFormattedString("setDefaultBrowserDontAsk",
-                                                             [brandShortName]);
-          var checkEveryTime = { value: shouldCheck };
-          var ps = Services.prompt;
-          var rv = ps.confirmEx(win, promptTitle, promptMessage,
-                                ps.STD_YES_NO_BUTTONS,
-                                null, null, null, checkboxLabel, checkEveryTime);
-          if (rv == 0) {
-            var claimAllTypes = true;
-#ifdef XP_WIN
-            try {
-              // In Windows 8, the UI for selecting default protocol is much
-              // nicer than the UI for setting file type associations. So we
-              // only show the protocol association screen on Windows 8.
-              // Windows 8 is version 6.2.
-              let version = Cc["@mozilla.org/system-info;1"]
-                              .getService(Ci.nsIPropertyBag2)
-                              .getProperty("version");
-              claimAllTypes = (parseFloat(version) < 6.2);
-            } catch (ex) { }
-#endif
-            shell.setDefaultBrowser(claimAllTypes, false);
-          }
-          shell.shouldCheckDefaultBrowser = checkEveryTime.value;
+          DefaultBrowserCheck.prompt(this.getMostRecentBrowserWindow());
         }.bind(this), Ci.nsIThread.DISPATCH_NORMAL);
       }
     }
@@ -865,8 +842,6 @@ BrowserGlue.prototype = {
     if (!aQuitType)
       aQuitType = "quit";
 
-    var mostRecentBrowserWindow;
-
     // browser.warnOnQuit is a hidden global boolean to override all quit prompts
     // browser.showQuitWarning specifically covers quitting
     // browser.tabs.warnOnClose is the global "warn when closing multiple tabs" pref
@@ -876,6 +851,8 @@ BrowserGlue.prototype = {
     if (sessionWillBeRestored || !Services.prefs.getBoolPref("browser.warnOnQuit"))
       return;
 
+    let win = Services.wm.getMostRecentWindow("navigator:browser");
+
     // On last window close or quit && showQuitWarning, we want to show the
     // quit warning.
     if (!Services.prefs.getBoolPref("browser.showQuitWarning")) {
@@ -884,55 +861,54 @@ BrowserGlue.prototype = {
         // we should show the window closing warning instead. warnAboutClosing
         // tabs checks browser.tabs.warnOnClose and returns if it's ok to close
         // the window. It doesn't actually close the window.
-        mostRecentBrowserWindow = Services.wm.getMostRecentWindow("navigator:browser");
-        let allTabs = mostRecentBrowserWindow.gBrowser.closingTabsEnum.ALL;
-        aCancelQuit.data = !mostRecentBrowserWindow.gBrowser.warnAboutClosingTabs(allTabs)
+        aCancelQuit.data =
+          !win.gBrowser.warnAboutClosingTabs(win.gBrowser.closingTabsEnum.ALL);
       }
       return;
     }
 
-    // Never show a prompt inside private browsing mode
-    if (allWindowsPrivate)
-      return;
+    let prompt = Services.prompt;
+    let quitBundle = Services.strings.createBundle("chrome://browser/locale/quitDialog.properties");
+    let brandBundle = Services.strings.createBundle("chrome://branding/locale/brand.properties");
 
-    var quitBundle = Services.strings.createBundle("chrome://browser/locale/quitDialog.properties");
-    var brandBundle = Services.strings.createBundle("chrome://branding/locale/brand.properties");
+    let appName = brandBundle.GetStringFromName("brandShortName");
+    let quitDialogTitle = quitBundle.formatStringFromName("quitDialogTitle",
+                                                          [appName], 1);
+    let neverAskText = quitBundle.GetStringFromName("neverAsk2");
+    let neverAsk = {value: false};
 
-    var appName = brandBundle.GetStringFromName("brandShortName");
-    var quitTitleString = "quitDialogTitle";
-    var quitDialogTitle = quitBundle.formatStringFromName(quitTitleString, [appName], 1);
+    let choice;
+    if (allWindowsPrivate) {
+      let text = quitBundle.formatStringFromName("messagePrivate", [appName], 1);
+      let flags = prompt.BUTTON_TITLE_IS_STRING * prompt.BUTTON_POS_0 +
+                  prompt.BUTTON_TITLE_IS_STRING * prompt.BUTTON_POS_1 +
+                  prompt.BUTTON_POS_0_DEFAULT;
+      choice = prompt.confirmEx(win, quitDialogTitle, text, flags,
+                                quitBundle.GetStringFromName("quitTitle"),
+                                quitBundle.GetStringFromName("cancelTitle"),
+                                null,
+                                neverAskText, neverAsk);
 
-    var message;
-    if (windowcount == 1)
-      message = quitBundle.formatStringFromName("messageNoWindows",
-                                                [appName], 1);
-    else
-      message = quitBundle.formatStringFromName("message",
-                                                [appName], 1);
+      // The order of the buttons differs between the prompt.confirmEx calls
+      // here so we need to fix this for proper handling below.
+      if (choice == 0) {
+        choice = 2;
+      }
+    } else {
+      let text = quitBundle.formatStringFromName(
+        windowcount == 1 ? "messageNoWindows" : "message", [appName], 1);
+      let flags = prompt.BUTTON_TITLE_IS_STRING * prompt.BUTTON_POS_0 +
+                  prompt.BUTTON_TITLE_IS_STRING * prompt.BUTTON_POS_1 +
+                  prompt.BUTTON_TITLE_IS_STRING * prompt.BUTTON_POS_2 +
+                  prompt.BUTTON_POS_0_DEFAULT;
+      choice = prompt.confirmEx(win, quitDialogTitle, text, flags,
+                                quitBundle.GetStringFromName("saveTitle"),
+                                quitBundle.GetStringFromName("cancelTitle"),
+                                quitBundle.GetStringFromName("quitTitle"),
+                                neverAskText, neverAsk);
+    }
 
-    var promptService = Services.prompt;
-
-    var flags = promptService.BUTTON_TITLE_IS_STRING * promptService.BUTTON_POS_0 +
-                promptService.BUTTON_TITLE_IS_STRING * promptService.BUTTON_POS_1 +
-                promptService.BUTTON_TITLE_IS_STRING * promptService.BUTTON_POS_2 +
-                promptService.BUTTON_POS_0_DEFAULT;
-
-    var neverAsk = {value:false};
-    var button0Title = quitBundle.GetStringFromName("saveTitle");
-    var button1Title = quitBundle.GetStringFromName("cancelTitle");
-    var button2Title = quitBundle.GetStringFromName("quitTitle");
-    var neverAskText = quitBundle.GetStringFromName("neverAsk2");
-
-    // This wouldn't have been set above since we shouldn't be here for
-    // aQuitType == "lastwindow"
-    mostRecentBrowserWindow = Services.wm.getMostRecentWindow("navigator:browser");
-
-    var buttonChoice =
-      promptService.confirmEx(mostRecentBrowserWindow, quitDialogTitle, message,
-                              flags, button0Title, button1Title, button2Title,
-                              neverAskText, neverAsk);
-
-    switch (buttonChoice) {
+    switch (choice) {
     case 2: // Quit
       if (neverAsk.value)
         Services.prefs.setBoolPref("browser.showQuitWarning", false);
@@ -1418,13 +1394,13 @@ BrowserGlue.prototype = {
         let currentsetResource = this._rdf.GetResource("currentset");
         let toolbarIsCustomized = !!this._getPersist(toolbarResource,
                                                      currentsetResource);
-        function getToolbarFolderCount() {
+        let getToolbarFolderCount = function () {
           let toolbarFolder =
             PlacesUtils.getFolderContents(PlacesUtils.toolbarFolderId).root;
           let toolbarChildCount = toolbarFolder.childCount;
           toolbarFolder.containerOpen = false;
           return toolbarChildCount;
-        }
+        };
 
         if (toolbarIsCustomized || getToolbarFolderCount() > 3) {
           this._setPersist(toolbarResource, collapsedResource, "false");
@@ -2213,6 +2189,122 @@ ContentPermissionPrompt.prototype = {
     }
   },
 
+};
+
+let DefaultBrowserCheck = {
+  get OPTIONPOPUP() { return "defaultBrowserNotificationPopup" },
+
+  closePrompt: function(aNode) {
+    if (this._notification) {
+      this._notification.close();
+    }
+  },
+
+  setAsDefault: function() {
+    let claimAllTypes = true;
+#ifdef XP_WIN
+    try {
+      // In Windows 8, the UI for selecting default protocol is much
+      // nicer than the UI for setting file type associations. So we
+      // only show the protocol association screen on Windows 8.
+      // Windows 8 is version 6.2.
+      let version = Services.sysinfo.getProperty("version");
+      claimAllTypes = (parseFloat(version) < 6.2);
+    } catch (ex) { }
+#endif
+    ShellService.setDefaultBrowser(claimAllTypes, false);
+    this.closePrompt();
+  },
+
+  _createPopup: function(win, bundle) {
+    let doc = win.document;
+    let popup = doc.createElement("menupopup");
+    popup.id = this.OPTIONPOPUP;
+
+    let notNowItem = doc.createElement("menuitem");
+    notNowItem.id = "defaultBrowserNotNow";
+    let label = bundle.getString("setDefaultBrowserNotNow.label");
+    notNowItem.setAttribute("label", label);
+    let accesskey = bundle.getString("setDefaultBrowserNotNow.accesskey");
+    notNowItem.setAttribute("accesskey", accesskey);
+    popup.appendChild(notNowItem);
+
+    let neverItem = doc.createElement("menuitem");
+    neverItem.id = "defaultBrowserNever";
+    let label = bundle.getString("setDefaultBrowserNever.label");
+    neverItem.setAttribute("label", label);
+    let accesskey = bundle.getString("setDefaultBrowserNever.accesskey");
+    neverItem.setAttribute("accesskey", accesskey);
+    popup.appendChild(neverItem);
+
+    popup.addEventListener("command", this);
+
+    let popupset = doc.getElementById("mainPopupSet");
+    popupset.appendChild(popup);
+  },
+
+  handleEvent: function(event) {
+    if (event.type == "command") {
+      if (event.target.id == "defaultBrowserNever") {
+        ShellService.shouldCheckDefaultBrowser = false;
+      }
+      this.closePrompt();
+    }
+  },
+
+  prompt: function(win) {
+    let brandBundle = win.document.getElementById("bundle_brand");
+    let shellBundle = win.document.getElementById("bundle_shell");
+
+    let brandShortName = brandBundle.getString("brandShortName");
+    let promptMessage = shellBundle.getFormattedString("setDefaultBrowserMessage2",
+                                                       [brandShortName]);
+
+    let confirmMessage = shellBundle.getFormattedString("setDefaultBrowserConfirm.label",
+                                                        [brandShortName]);
+    let confirmKey = shellBundle.getString("setDefaultBrowserConfirm.accesskey");
+
+    let optionsMessage = shellBundle.getString("setDefaultBrowserOptions.label");
+    let optionsKey = shellBundle.getString("setDefaultBrowserOptions.accesskey");
+
+    let selectedBrowser = win.gBrowser.selectedBrowser;
+    let notificationBox = win.document.getElementById("high-priority-global-notificationbox");
+
+    this._createPopup(win, shellBundle);
+
+    let buttons = [
+      {
+        label: confirmMessage,
+        accessKey: confirmKey,
+        callback: this.setAsDefault.bind(this)
+      },
+      {
+        label: optionsMessage,
+        accessKey: optionsKey,
+        popup: this.OPTIONPOPUP
+      }
+    ];
+
+
+    let iconPixels = win.devicePixelRatio > 1 ? "32" : "16";
+    let iconURL = "chrome://branding/content/icon" + iconPixels + ".png";
+    const priority = notificationBox.PRIORITY_INFO_HIGH;
+    let callback = this._onNotificationEvent.bind(this);
+    this._notification = notificationBox.appendNotification(promptMessage, "default-browser",
+                                                            iconURL, priority, buttons,
+                                                            callback);
+    this._notification.persistence = -1;
+  },
+
+  _onNotificationEvent: function(eventType) {
+    if (eventType == "removed") {
+      let doc = this._notification.ownerDocument;
+      let popup = doc.getElementById(this.OPTIONPOPUP);
+      popup.removeEventListener("command", this);
+      popup.remove();
+      delete this._notification;
+    }
+  },
 };
 
 var components = [BrowserGlue, ContentPermissionPrompt];

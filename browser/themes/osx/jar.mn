@@ -23,7 +23,7 @@ browser.jar:
 * skin/classic/browser/browser.css                          (browser.css)
 * skin/classic/browser/browser-lightweightTheme.css
   skin/classic/browser/click-to-play-warning-stripes.png
-  skin/classic/browser/content-contextmenu.svg
+* skin/classic/browser/content-contextmenu.svg
 * skin/classic/browser/engineManager.css                    (engineManager.css)
   skin/classic/browser/fullscreen-darknoise.png
   skin/classic/browser/Geolocation-16.png
@@ -43,7 +43,6 @@ browser.jar:
   skin/classic/browser/identity-icons-https-mixed-display.png
   skin/classic/browser/identity-icons-https-mixed-display@2x.png
   skin/classic/browser/Info.png
-  skin/classic/browser/in-content/common.css                (../shared/in-content/common.css)
   skin/classic/browser/keyhole-circle.png
   skin/classic/browser/keyhole-circle@2x.png
   skin/classic/browser/KUI-background.png
@@ -138,6 +137,8 @@ browser.jar:
   skin/classic/browser/webRTC-sharingScreen-menubar.png
   skin/classic/browser/webRTC-sharingScreen-menubar@2x.png
   skin/classic/browser/webRTC-indicator.css
+  skin/classic/browser/loop/menuPanel.png             (loop/menuPanel.png)
+  skin/classic/browser/loop/menuPanel@2x.png          (loop/menuPanel@2x.png)
   skin/classic/browser/loop/toolbar.png               (loop/toolbar.png)
   skin/classic/browser/loop/toolbar@2x.png            (loop/toolbar@2x.png)
   skin/classic/browser/loop/toolbar-inverted.png      (loop/toolbar-inverted.png)
@@ -194,7 +195,6 @@ browser.jar:
   skin/classic/browser/newtab/controls.png                  (../shared/newtab/controls.png)
   skin/classic/browser/newtab/controls@2x.png               (../shared/newtab/controls@2x.png)
   skin/classic/browser/newtab/controls.svg                  (../shared/newtab/controls.svg)
-  skin/classic/browser/newtab/texture.png                   (../shared/newtab/texture.png)
   skin/classic/browser/setDesktopBackground.css
   skin/classic/browser/monitor.png
   skin/classic/browser/monitor_16-10.png
@@ -248,18 +248,8 @@ browser.jar:
 * skin/classic/browser/preferences/preferences.css          (preferences/preferences.css)
 * skin/classic/browser/preferences/in-content/preferences.css (preferences/in-content/preferences.css)
   skin/classic/browser/preferences/in-content/favicon.ico     (../shared/incontentprefs/favicon.ico)
-  skin/classic/browser/preferences/in-content/check.png       (../shared/incontentprefs/check.png)
-  skin/classic/browser/preferences/in-content/check@2x.png    (../shared/incontentprefs/check@2x.png)
   skin/classic/browser/preferences/in-content/icons.png       (../shared/incontentprefs/icons.png)
   skin/classic/browser/preferences/in-content/icons@2x.png    (../shared/incontentprefs/icons@2x.png)
-  skin/classic/browser/preferences/in-content/help-glyph.png  (../shared/incontentprefs/help-glyph.png)
-  skin/classic/browser/preferences/in-content/help-glyph@2x.png (../shared/incontentprefs/help-glyph@2x.png)
-  skin/classic/browser/preferences/in-content/sorter.png      (../shared/incontentprefs/sorter.png)
-  skin/classic/browser/preferences/in-content/sorter@2x.png   (../shared/incontentprefs/sorter@2x.png)
-  skin/classic/browser/preferences/in-content/dropdown.png    (../shared/incontentprefs/dropdown.png)
-  skin/classic/browser/preferences/in-content/dropdown@2x.png (../shared/incontentprefs/dropdown@2x.png)
-  skin/classic/browser/preferences/in-content/dropdown-disabled.png    (../shared/incontentprefs/dropdown-disabled.png)
-  skin/classic/browser/preferences/in-content/dropdown-disabled@2x.png (../shared/incontentprefs/dropdown-disabled@2x.png)
   skin/classic/browser/preferences/applications.css         (preferences/applications.css)
   skin/classic/browser/preferences/aboutPermissions.css     (preferences/aboutPermissions.css)
   skin/classic/browser/social/services-16.png               (social/services-16.png)
@@ -463,6 +453,7 @@ browser.jar:
   skin/classic/browser/devtools/computedview.css            (../shared/devtools/computedview.css)
   skin/classic/browser/devtools/arrow-e.png                 (../shared/devtools/images/arrow-e.png)
   skin/classic/browser/devtools/arrow-e@2x.png              (../shared/devtools/images/arrow-e@2x.png)
+  skin/classic/browser/devtools/responsiveui-home.png       (../shared/devtools/responsiveui-home.png)
   skin/classic/browser/devtools/projecteditor/projecteditor.css         (../shared/devtools/projecteditor/projecteditor.css)
   skin/classic/browser/devtools/projecteditor/file-icons-sheet@2x.png       (../shared/devtools/projecteditor/file-icons-sheet@2x.png)
   skin/classic/browser/devtools/app-manager/connection-footer.css     (../shared/devtools/app-manager/connection-footer.css)

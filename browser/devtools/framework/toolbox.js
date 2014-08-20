@@ -76,6 +76,7 @@ function Toolbox(target, selectedTool, hostType, hostOptions) {
   this._highlighterHidden = this._highlighterHidden.bind(this);
   this._prefChanged = this._prefChanged.bind(this);
   this._saveSplitConsoleHeight = this._saveSplitConsoleHeight.bind(this);
+  this._onFocus = this._onFocus.bind(this);
 
   this._target.on("close", this.destroy);
 
@@ -253,7 +254,7 @@ Toolbox.prototype = {
         this._applyCacheSettings();
         this._addKeysToWindow();
         this._addReloadKeys();
-        this._addToolSwitchingKeys();
+        this._addHostListeners();
         this._addZoomKeys();
         this._loadInitialZoom();
 
@@ -263,16 +264,19 @@ Toolbox.prototype = {
         this.webconsolePanel.addEventListener("resize",
           this._saveSplitConsoleHeight);
 
-        let splitConsolePromise = promise.resolve();
-        if (Services.prefs.getBoolPref(SPLITCONSOLE_ENABLED_PREF)) {
-          splitConsolePromise = this.openSplitConsole();
-        }
-
         let buttonsPromise = this._buildButtons();
 
         this._telemetry.toolOpened("toolbox");
 
         this.selectTool(this._defaultToolId).then(panel => {
+
+          // Wait until the original tool is selected so that the split
+          // console input will receive focus.
+          let splitConsolePromise = promise.resolve();
+          if (Services.prefs.getBoolPref(SPLITCONSOLE_ENABLED_PREF)) {
+            splitConsolePromise = this.openSplitConsole();
+          }
+
           promise.all([
             splitConsolePromise,
             buttonsPromise
@@ -292,7 +296,7 @@ Toolbox.prototype = {
       });
 
       return deferred.promise;
-    });
+    }).then(null, console.error.bind(console));
   },
 
   /**
@@ -345,7 +349,7 @@ Toolbox.prototype = {
     });
   },
 
-  _addToolSwitchingKeys: function() {
+  _addHostListeners: function() {
     let nextKey = this.doc.getElementById("toolbox-next-tool-key");
     nextKey.addEventListener("command", this.selectNextTool.bind(this), true);
     let prevKey = this.doc.getElementById("toolbox-previous-tool-key");
@@ -354,6 +358,8 @@ Toolbox.prototype = {
     // Split console uses keypress instead of command so the event can be
     // cancelled with stopPropagation on the keypress, and not preventDefault.
     this.doc.addEventListener("keypress", this._splitConsoleOnKeypress, false);
+
+    this.doc.addEventListener("focus", this._onFocus, true);
   },
 
   _saveSplitConsoleHeight: function() {
@@ -976,10 +982,27 @@ Toolbox.prototype = {
    * Focus split console's input line
    */
   focusConsoleInput: function() {
-    let hud = this.getPanel("webconsole").hud;
-    if (hud && hud.jsterm) {
-      hud.jsterm.inputNode.focus();
+    let consolePanel = this.getPanel("webconsole");
+    if (consolePanel) {
+      consolePanel.focusInput();
     }
+  },
+
+  /**
+   * If the console is split and we are focusing an element outside
+   * of the console, then store the newly focused element, so that
+   * it can be restored once the split console closes.
+   */
+  _onFocus: function({originalTarget}) {
+    // Ignore any non element nodes, or any elements contained
+    // within the webconsole frame.
+    let webconsoleURL = gDevTools.getToolDefinition("webconsole").url;
+    if (originalTarget.nodeType !== 1 ||
+        originalTarget.baseURI === webconsoleURL) {
+      return;
+    }
+
+    this._lastFocusedElement = originalTarget;
   },
 
   /**
@@ -993,6 +1016,7 @@ Toolbox.prototype = {
     Services.prefs.setBoolPref(SPLITCONSOLE_ENABLED_PREF, true);
     this._refreshConsoleDisplay();
     this.emit("split-console");
+
     return this.loadTool("webconsole").then(() => {
       this.focusConsoleInput();
     });
@@ -1009,6 +1033,10 @@ Toolbox.prototype = {
     Services.prefs.setBoolPref(SPLITCONSOLE_ENABLED_PREF, false);
     this._refreshConsoleDisplay();
     this.emit("split-console");
+
+    if (this._lastFocusedElement) {
+      this._lastFocusedElement.focus();
+    }
     return promise.resolve();
   },
 
@@ -1312,6 +1340,7 @@ Toolbox.prototype = {
   destroyHost: function() {
     this.doc.removeEventListener("keypress",
       this._splitConsoleOnKeypress, false);
+    this.doc.removeEventListener("focus", this._onFocus, true);
     return this._host.destroy();
   },
 
@@ -1334,6 +1363,7 @@ Toolbox.prototype = {
 
     gDevTools.off("pref-changed", this._prefChanged);
 
+    this._lastFocusedElement = null;
     this._saveSplitConsoleHeight();
     this.webconsolePanel.removeEventListener("resize",
       this._saveSplitConsoleHeight);
@@ -1356,16 +1386,14 @@ Toolbox.prototype = {
     }
 
     // Destroying the walker and inspector fronts
-    outstanding.push(this.destroyInspector());
-    // Removing buttons
-    outstanding.push(() => {
-      this._pickerButton.removeEventListener("command", this._togglePicker, false);
-      this._pickerButton = null;
-      let container = this.doc.getElementById("toolbox-buttons");
-      while (container.firstChild) {
-        container.removeChild(container.firstChild);
+    outstanding.push(this.destroyInspector().then(() => {
+      // Removing buttons
+      if (this._pickerButton) {
+        this._pickerButton.removeEventListener("command", this._togglePicker, false);
+        this._pickerButton = null;
       }
-    });
+    }));
+
     // Remove the host UI
     outstanding.push(this.destroyHost());
 
@@ -1390,10 +1418,22 @@ Toolbox.prototype = {
       return target.destroy();
     }).then(() => {
       this.emit("destroyed");
+
+      // We need to grab a reference to win before this._host is destroyed.
+      let win = this.frame.ownerGlobal;
+
       // Free _host after the call to destroyed in order to let a chance
       // to destroyed listeners to still query toolbox attributes
       this._host = null;
       this._toolPanels.clear();
+
+      // Force GC to prevent long GC pauses when running tests and to free up
+      // memory in general when the toolbox is closed.
+      if (gDevTools.testing) {
+        win.QueryInterface(Ci.nsIInterfaceRequestor)
+           .getInterface(Ci.nsIDOMWindowUtils)
+           .garbageCollect();
+      }
     }).then(null, console.error);
   },
 

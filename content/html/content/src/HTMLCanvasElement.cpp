@@ -35,10 +35,7 @@
 #include "nsNetUtil.h"
 #include "nsStreamUtils.h"
 #include "ActiveLayerTracker.h"
-
-#ifdef MOZ_WEBGL
 #include "WebGL2Context.h"
-#endif
 
 using namespace mozilla::layers;
 using namespace mozilla::gfx;
@@ -470,14 +467,12 @@ HTMLCanvasElement::ToDataURLImpl(JSContext* aCx,
   }
 
   nsAutoString type;
-  nsresult rv = nsContentUtils::ASCIIToLower(aMimeType, type);
-  if (NS_FAILED(rv)) {
-    return rv;
-  }
+  nsContentUtils::ASCIIToLower(aMimeType, type);
 
   nsAutoString params;
   bool usingCustomParseOptions;
-  rv = ParseParams(aCx, type, aEncoderOptions, params, &usingCustomParseOptions);
+  nsresult rv =
+    ParseParams(aCx, type, aEncoderOptions, params, &usingCustomParseOptions);
   if (NS_FAILED(rv)) {
     return rv;
   }
@@ -518,10 +513,7 @@ HTMLCanvasElement::ToBlob(JSContext* aCx,
   }
 
   nsAutoString type;
-  aRv = nsContentUtils::ASCIIToLower(aType, type);
-  if (aRv.Failed()) {
-    return;
-  }
+  nsContentUtils::ASCIIToLower(aType, type);
 
   nsAutoString params;
   bool usingCustomParseOptions;
@@ -636,7 +628,7 @@ HTMLCanvasElement::GetContextHelper(const nsAString& aContextId,
     ctx.forget(aContext);
     return NS_OK;
   }
-#ifdef MOZ_WEBGL
+
   if (WebGL2Context::IsSupported() &&
       aContextId.EqualsLiteral("experimental-webgl2"))
   {
@@ -651,7 +643,6 @@ HTMLCanvasElement::GetContextHelper(const nsAString& aContextId,
     ctx.forget(aContext);
     return NS_OK;
   }
-#endif
 
   NS_ConvertUTF16toUTF8 ctxId(aContextId);
 

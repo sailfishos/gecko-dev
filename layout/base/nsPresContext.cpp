@@ -62,7 +62,6 @@
 #include "nsFrameLoader.h"
 
 #include "nsContentUtils.h"
-#include "nsCxPusher.h"
 #include "nsPIWindowRoot.h"
 #include "mozilla/Preferences.h"
 
@@ -1896,12 +1895,12 @@ nsPresContext::MediaFeatureValuesChanged(StyleRebuildType aShouldRebuild,
 
   mPendingViewportChange = false;
 
-  if (!nsContentUtils::IsSafeToRunScript()) {
-    NS_ABORT_IF_FALSE(mDocument->IsBeingUsedAsImage(),
-                      "How did we get here?  Are we failing to notify "
-                      "listeners that we should notify?");
+  if (mDocument->IsBeingUsedAsImage()) {
+    MOZ_ASSERT(PR_CLIST_IS_EMPTY(&mDOMMediaQueryLists));
     return;
   }
+
+  MOZ_ASSERT(nsContentUtils::IsSafeToRunScript());
 
   // Media query list listeners should be notified from a queued task
   // (in HTML5 terms), although we also want to notify them on certain
@@ -1931,17 +1930,11 @@ nsPresContext::MediaFeatureValuesChanged(StyleRebuildType aShouldRebuild,
     }
 
     if (!notifyList.IsEmpty()) {
-      nsPIDOMWindow *win = mDocument->GetInnerWindow();
-      nsCOMPtr<EventTarget> et = do_QueryInterface(win);
-      nsCxPusher pusher;
-
       for (uint32_t i = 0, i_end = notifyList.Length(); i != i_end; ++i) {
-        if (pusher.RePush(et)) {
-          nsAutoMicroTask mt;
-          MediaQueryList::HandleChangeData &d = notifyList[i];
-          ErrorResult result;
-          d.callback->Call(*d.mql, result);
-        }
+        nsAutoMicroTask mt;
+        MediaQueryList::HandleChangeData &d = notifyList[i];
+        ErrorResult result;
+        d.callback->Call(*d.mql, result);
       }
     }
 

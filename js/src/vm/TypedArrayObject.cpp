@@ -883,7 +883,7 @@ class TypedArrayObjectTemplate : public TypedArrayObject
     static bool
     canConvertInfallibly(const Value &v)
     {
-        return v.isNumber() || v.isBoolean() || v.isNull() || v.isUndefined() || v.isSymbol();
+        return v.isNumber() || v.isBoolean() || v.isNull() || v.isUndefined();
     }
 
     static NativeType
@@ -898,7 +898,7 @@ class TypedArrayObjectTemplate : public TypedArrayObject
         if (v.isNull())
             return NativeType(0);
 
-        MOZ_ASSERT(v.isUndefined() || v.isSymbol());
+        MOZ_ASSERT(v.isUndefined());
         return ArrayTypeIsFloatingPoint() ? NativeType(GenericNaN()) : NativeType(0);
     }
 
@@ -913,7 +913,7 @@ class TypedArrayObjectTemplate : public TypedArrayObject
         }
 
         double d;
-        MOZ_ASSERT(v.isString() || v.isObject());
+        MOZ_ASSERT(v.isString() || v.isObject() || v.isSymbol());
         if (!(v.isString() ? StringToNumber(cx, v.toString(), &d) : ToNumber(cx, v, &d)))
             return false;
 
@@ -1066,7 +1066,7 @@ class TypedArrayObjectTemplate : public TypedArrayObject
 
         // We have to make a copy of the source array here, since
         // there's overlap, and we have to convert types.
-        void *srcbuf = cx->malloc_(byteLength);
+        uint8_t *srcbuf = self->zone()->pod_malloc<uint8_t>(byteLength);
         if (!srcbuf)
             return false;
         js_memcpy(srcbuf, tarray->viewData(), byteLength);

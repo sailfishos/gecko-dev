@@ -73,7 +73,7 @@ SOURCES += [
     'PSMContentListener.cpp',
 ]
 
-if not CONFIG['MOZ_DISABLE_CRYPTOLEGACY']:
+if not CONFIG['MOZ_NO_SMART_CARDS']:
     SOURCES += [
         'nsSmartCardMonitor.cpp',
     ]
@@ -103,3 +103,7 @@ DEFINES['SSL_DISABLE_DEPRECATED_CIPHER_SUITE_NAMES'] = 'True'
 DEFINES['NSS_ENABLE_ECC'] = 'True'
 for var in ('DLL_PREFIX', 'DLL_SUFFIX'):
     DEFINES[var] = '"%s"' % CONFIG[var]
+
+USE_LIBS += [
+    'crmf',
+]

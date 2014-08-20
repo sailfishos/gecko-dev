@@ -14,6 +14,7 @@
 #include "jit/arm/Architecture-arm.h"
 #include "jit/CompactBuffer.h"
 #include "jit/IonCode.h"
+#include "jit/JitCompartment.h"
 #include "jit/shared/Assembler-shared.h"
 #include "jit/shared/IonAssemblerBufferWithConstantPools.h"
 
@@ -94,8 +95,10 @@ static MOZ_CONSTEXPR_VAR Register FramePointer = InvalidReg;
 static MOZ_CONSTEXPR_VAR Register ReturnReg = r0;
 static MOZ_CONSTEXPR_VAR FloatRegister ReturnFloat32Reg = { FloatRegisters::d0, VFPRegister::Single };
 static MOZ_CONSTEXPR_VAR FloatRegister ReturnDoubleReg = { FloatRegisters::d0, VFPRegister::Double};
+static MOZ_CONSTEXPR_VAR FloatRegister ReturnSimdReg = InvalidFloatReg;
 static MOZ_CONSTEXPR_VAR FloatRegister ScratchFloat32Reg = { FloatRegisters::d30, VFPRegister::Single };
 static MOZ_CONSTEXPR_VAR FloatRegister ScratchDoubleReg = { FloatRegisters::d15, VFPRegister::Double };
+static MOZ_CONSTEXPR_VAR FloatRegister ScratchSimdReg = InvalidFloatReg;
 static MOZ_CONSTEXPR_VAR FloatRegister ScratchUIntReg = { FloatRegisters::d15, VFPRegister::UInt };
 static MOZ_CONSTEXPR_VAR FloatRegister ScratchIntReg = { FloatRegisters::d15, VFPRegister::Int };
 
@@ -142,6 +145,13 @@ static MOZ_CONSTEXPR_VAR FloatRegister d15 = {FloatRegisters::d15, VFPRegister::
 static const uint32_t StackAlignment = 8;
 static const uint32_t CodeAlignment = 8;
 static const bool StackKeptAligned = true;
+
+// This boolean indicates whether we support SIMD instructions flavoured for
+// this architecture or not. Rather than a method in the LIRGenerator, it is
+// here such that it is accessible from the entire codebase. Once full support
+// for SIMD is reached on all tier-1 platforms, this constant can be deleted.
+static const bool SupportsSimd = false;
+static const uint32_t SimdStackAlignment = 8;
 
 static const Scale ScalePointer = TimesFour;
 
@@ -1026,6 +1036,12 @@ class Operand
 
 void
 PatchJump(CodeLocationJump &jump_, CodeLocationLabel label);
+static inline void
+PatchBackedge(CodeLocationJump &jump_, CodeLocationLabel label, JitRuntime::BackedgeTarget target)
+{
+    PatchJump(jump_, label);
+}
+
 class InstructionIterator;
 class Assembler;
 typedef js::jit::AssemblerBufferWithConstantPools<1024, 4, Instruction, Assembler> ARMBuffer;
@@ -1528,6 +1544,10 @@ class Assembler : public AssemblerShared
   public:
     static void TraceJumpRelocations(JSTracer *trc, JitCode *code, CompactBufferReader &reader);
     static void TraceDataRelocations(JSTracer *trc, JitCode *code, CompactBufferReader &reader);
+
+    static bool SupportsFloatingPoint() {
+        return HasVFP();
+    }
 
   protected:
     void addPendingJump(BufferOffset src, ImmPtr target, Relocation::Kind kind) {

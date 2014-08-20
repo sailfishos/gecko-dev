@@ -61,6 +61,10 @@ class SyntaxParseHandler
         return NodeName;
     }
 
+    Node newComputedName(Node expr, uint32_t start, uint32_t end) {
+        return NodeName;
+    }
+
     DefinitionNode newPlaceholder(JSAtom *atom, uint32_t blockid, const TokenPos &pos) {
         return Definition::PLACEHOLDER;
     }
@@ -130,7 +134,7 @@ class SyntaxParseHandler
     Node newObjectLiteral(uint32_t begin) { return NodeGeneric; }
     bool addPrototypeMutation(Node literal, uint32_t begin, Node expr) { return true; }
     bool addPropertyDefinition(Node literal, Node name, Node expr, bool isShorthand = false) { return true; }
-    bool addAccessorPropertyDefinition(Node literal, Node name, Node fn, JSOp op) { return true; }
+    bool addMethodDefinition(Node literal, Node name, Node fn, JSOp op) { return true; }
 
     // Statements
 

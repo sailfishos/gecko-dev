@@ -63,6 +63,7 @@ class SurfaceDescriptor;
 class ThebesLayerComposite;
 class TiledLayerComposer;
 class TextRenderer;
+class CompositingRenderTarget;
 struct FPSState;
 
 class LayerManagerComposite : public LayerManager
@@ -184,8 +185,10 @@ public:
                       bool aIs3D = false);
     ~AutoAddMaskEffect();
 
+    bool Failed() const { return mFailed; }
   private:
     CompositableHost* mCompositable;
+    bool mFailed;
   };
 
   /**
@@ -266,6 +269,9 @@ private:
 
   void WorldTransformRect(nsIntRect& aRect);
 
+  RefPtr<CompositingRenderTarget> PushGroup();
+  void PopGroup(RefPtr<CompositingRenderTarget> aPreviousTarget, nsIntRect aClipRect);
+
   RefPtr<Compositor> mCompositor;
   nsAutoPtr<LayerProperties> mClonedLayerTreeProperties;
 
@@ -283,6 +289,7 @@ private:
   bool mIsCompositorReady;
   bool mDebugOverlayWantsNextFrame;
 
+  RefPtr<CompositingRenderTarget> mTwoPassTmpTarget;
   RefPtr<TextRenderer> mTextRenderer;
   bool mGeometryChanged;
 };

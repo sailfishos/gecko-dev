@@ -2653,9 +2653,11 @@ nsresult HTMLMediaElement::FinishDecoderSetup(MediaDecoder* aDecoder,
   mDecoder->SetPreservesPitch(mPreservesPitch);
   mDecoder->SetPlaybackRate(mPlaybackRate);
 
+#ifdef MOZ_EME
   if (mMediaKeys) {
     mDecoder->SetCDMProxy(mMediaKeys->GetCDMProxy());
   }
+#endif
   if (mPreloadAction == HTMLMediaElement::PRELOAD_METADATA) {
     mDecoder->SetMinimizePrerollUntilPlaybackStarts();
   }
@@ -3410,6 +3412,20 @@ void HTMLMediaElement::SuspendOrResumeElement(bool aPauseElement, bool aSuspendE
   if (aPauseElement != mPausedForInactiveDocumentOrChannel) {
     mPausedForInactiveDocumentOrChannel = aPauseElement;
     if (aPauseElement) {
+#ifdef MOZ_EME
+      // For EME content, force destruction of the CDM client (and CDM
+      // instance if this is the last client for that CDM instance) and
+      // the CDM's decoder. This ensures the CDM gets reliable and prompt
+      // shutdown notifications, as it may have book-keeping it needs
+      // to do on shutdown.
+      if (mMediaKeys) {
+        mMediaKeys->Shutdown();
+        mMediaKeys = nullptr;
+        if (mDecoder) {
+          ShutdownDecoder();
+        }
+      }
+#endif
       if (mDecoder) {
         mDecoder->Pause();
         mDecoder->Suspend();
@@ -3418,6 +3434,9 @@ void HTMLMediaElement::SuspendOrResumeElement(bool aPauseElement, bool aSuspendE
       }
       mEventDeliveryPaused = aSuspendEvents;
     } else {
+#ifdef MOZ_EME
+      MOZ_ASSERT(!mMediaKeys);
+#endif
       if (mDecoder) {
         mDecoder->Resume(false);
         if (!mPaused && !mDecoder->IsEnded()) {
@@ -3652,10 +3671,14 @@ already_AddRefed<TimeRanges>
 HTMLMediaElement::Buffered() const
 {
   nsRefPtr<TimeRanges> ranges = new TimeRanges();
-  if (mDecoder && mReadyState > nsIDOMHTMLMediaElement::HAVE_NOTHING) {
-    // If GetBuffered fails we ignore the error result and just return the
-    // time ranges we found up till the error.
-    mDecoder->GetBuffered(ranges);
+  if (mReadyState > nsIDOMHTMLMediaElement::HAVE_NOTHING) {
+    if (mMediaSource) {
+      mMediaSource->GetBuffered(ranges);
+    } else if (mDecoder) {
+      // If GetBuffered fails we ignore the error result and just return the
+      // time ranges we found up till the error.
+      mDecoder->GetBuffered(ranges);
+    }
   }
   ranges->Normalize();
   return ranges.forget();
@@ -3891,7 +3914,8 @@ void HTMLMediaElement::UpdateAudioChannelPlayingState()
      (!mPaused &&
       (HasAttr(kNameSpaceID_None, nsGkAtoms::loop) ||
        (mReadyState >= nsIDOMHTMLMediaElement::HAVE_CURRENT_DATA &&
-        !IsPlaybackEnded())));
+        !IsPlaybackEnded()) ||
+       mPlayingBeforeSeek));
   if (playingThroughTheAudioChannel != mPlayingThroughTheAudioChannel) {
     mPlayingThroughTheAudioChannel = playingThroughTheAudioChannel;
 

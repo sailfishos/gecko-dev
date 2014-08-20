@@ -206,7 +206,7 @@ CacheFileMetadata::ReadMetadata(CacheFileMetadataListener *aListener)
        "offset=%lld, filesize=%lld [this=%p]", offset, size, this));
 
   mListener = aListener;
-  rv = CacheFileIOManager::Read(mHandle, offset, mBuf, mBufSize, true, this);
+  rv = CacheFileIOManager::Read(mHandle, offset, mBuf, mBufSize, this);
   if (NS_FAILED(rv)) {
     LOG(("CacheFileMetadata::ReadMetadata() - CacheFileIOManager::Read() failed"
          " synchronously, creating empty metadata. [this=%p, rv=0x%08x]",
@@ -260,33 +260,26 @@ CacheFileMetadata::WriteMetadata(uint32_t aOffset,
   NetworkEndian::writeUint32(p, aOffset);
   p += sizeof(uint32_t);
 
-  char * writeBuffer;
+  char * writeBuffer = mWriteBuf;
   if (aListener) {
     mListener = aListener;
-    writeBuffer = mWriteBuf;
   } else {
-    // We are not going to pass |this| as callback to CacheFileIOManager::Write
-    // so we must allocate a new buffer that will be released automatically when
-    // write is finished.  This is actually better than to let
-    // CacheFileMetadata::OnDataWritten do the job, since when dispatching the
-    // result from some reason fails during shutdown, we would unnecessarily leak
-    // both this object and the buffer.
-    writeBuffer = static_cast<char *>(moz_xmalloc(p - mWriteBuf));
-    memcpy(writeBuffer, mWriteBuf, p - mWriteBuf);
+    // We are not going to pass |this| as a callback so the buffer will be
+    // released by CacheFileIOManager. Just null out mWriteBuf here.
+    mWriteBuf = nullptr;
   }
 
-  rv = CacheFileIOManager::Write(mHandle, aOffset, writeBuffer, p - mWriteBuf,
+  rv = CacheFileIOManager::Write(mHandle, aOffset, writeBuffer, p - writeBuffer,
                                  true, aListener ? this : nullptr);
   if (NS_FAILED(rv)) {
     LOG(("CacheFileMetadata::WriteMetadata() - CacheFileIOManager::Write() "
          "failed synchronously. [this=%p, rv=0x%08x]", this, rv));
 
     mListener = nullptr;
-    if (writeBuffer != mWriteBuf) {
-      free(writeBuffer);
+    if (mWriteBuf) {
+      free(mWriteBuf);
+      mWriteBuf = nullptr;
     }
-    free(mWriteBuf);
-    mWriteBuf = nullptr;
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
@@ -661,7 +654,7 @@ CacheFileMetadata::OnDataRead(CacheFileHandle *aHandle, char *aBuf,
     LOG(("CacheFileMetadata::OnDataRead() - We need to read %d more bytes to "
          "have full metadata. [this=%p]", missing, this));
 
-    rv = CacheFileIOManager::Read(mHandle, realOffset, mBuf, missing, true, this);
+    rv = CacheFileIOManager::Read(mHandle, realOffset, mBuf, missing, this);
     if (NS_FAILED(rv)) {
       LOG(("CacheFileMetadata::OnDataRead() - CacheFileIOManager::Read() "
            "failed synchronously, creating empty metadata. [this=%p, "

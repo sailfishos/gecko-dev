@@ -22,6 +22,7 @@
 #include "mozilla/Move.h"
 #include "mozilla/Scoped.h"
 #include "mozilla/UniquePtr.h"
+#include "mozilla/MemoryChecking.h"
 
 #ifdef MOZ_THREADSTACKHELPER_NATIVE
 #include "google_breakpad/processor/call_stack.h"
@@ -138,7 +139,11 @@ ThreadStackHelper::ThreadStackHelper()
   mInitialized = !!::DuplicateHandle(
     ::GetCurrentProcess(), ::GetCurrentThread(),
     ::GetCurrentProcess(), &mThreadID,
-    THREAD_SUSPEND_RESUME, FALSE, 0);
+    THREAD_SUSPEND_RESUME
+#ifdef MOZ_THREADSTACKHELPER_NATIVE
+    | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION
+#endif
+    , FALSE, 0);
   MOZ_ASSERT(mInitialized);
 #elif defined(XP_MACOSX)
   mThreadID = mach_thread_self();
@@ -600,7 +605,10 @@ ThreadStackHelper::FillStackBuffer()
     }
 #endif
     const char* const label = entry->label();
-    if (mStackToFill->IsSameAsEntry(prevLabel, label)) {
+    if (mStackToFill->IsSameAsEntry(prevLabel, label) ||
+        !strcmp(label, "js::RunScript")) {
+      // Avoid duplicate labels to save space in the stack.
+      // Avoid js::RunScript labels because we save actual JS frames above.
       continue;
     }
     mStackToFill->infallibleAppend(label);
@@ -766,6 +774,11 @@ ThreadStackHelper::FillThreadContext(void* aContext)
 
 #ifndef MOZ_ASAN
   memcpy(mContextToFill->mStack.get(), reinterpret_cast<void*>(sp), stackSize);
+  // Valgrind doesn't care about the access outside the stack frame, but
+  // the presence of uninitialised values on the stack does cause it to
+  // later report a lot of false errors when Breakpad comes to unwind it.
+  // So mark the extracted data as defined.
+  MOZ_MAKE_MEM_DEFINED(mContextToFill->mStack.get(), stackSize);
 #else
   // ASan will flag memcpy for access outside of stack frames,
   // so roll our own memcpy here.

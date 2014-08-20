@@ -77,8 +77,8 @@ public:
    * scroll and have a displayport. The parameters are out-params
    * which hold the return values; the values passed in may be null.
    */
-  void GetAncestorLayers(ContainerLayer** aOutScrollAncestor,
-                         ContainerLayer** aOutDisplayPortAncestor);
+  void GetAncestorLayers(Layer** aOutScrollAncestor,
+                         Layer** aOutDisplayPortAncestor);
 
 private:
   ClientLayerManager* ClientManager()
@@ -103,6 +103,7 @@ private:
    * This function returns true if it updated the paint buffer.
    */
   bool RenderHighPrecision(nsIntRegion& aInvalidRegion,
+                           const nsIntRegion& aVisibleRegion,
                            LayerManager::DrawThebesLayerCallback aCallback,
                            void* aCallbackData);
 
@@ -111,6 +112,7 @@ private:
    * This function returns true if it updated the paint buffer.
    */
   bool RenderLowPrecision(nsIntRegion& aInvalidRegion,
+                          const nsIntRegion& aVisibleRegion,
                           LayerManager::DrawThebesLayerCallback aCallback,
                           void* aCallbackData);
 

@@ -92,6 +92,7 @@ function newExpr(callee, args) Pattern({ type: "NewExpression", callee: callee, 
 function callExpr(callee, args) Pattern({ type: "CallExpression", callee: callee, arguments: args })
 function arrExpr(elts) Pattern({ type: "ArrayExpression", elements: elts })
 function objExpr(elts) Pattern({ type: "ObjectExpression", properties: elts })
+function computedName(elts) Pattern({ type: "ComputedName", name: elts })
 function templateLit(elts) Pattern({ type: "TemplateLiteral", elements: elts })
 function taggedTemplate(tagPart, templatePart) Pattern({ type: "TaggedTemplate", callee: tagPart,
                 arguments : templatePart })
@@ -379,6 +380,29 @@ program([exprStmt(ident("f")),
                 funDecl(ident("f"), [], blockStmt([])),
                 null)]).assert(Reflect.parse("f; if (1) function f(){}"));
 
+// Bug 924688: computed property names
+assertExpr('a= {[field1]: "a", [field2=1]: "b"}',
+          aExpr("=", ident("a"),
+                objExpr([{ key: computedName(ident("field1")), value: lit("a")},
+                         { key: computedName(aExpr("=", ident("field2"), lit(1))),
+                           value: lit("b")}])));
+
+assertExpr('a= {["field1"]: "a", field2 : "b"}',
+          aExpr("=", ident("a"),
+                objExpr([{ key: computedName(lit("field1")), value: lit("a") },
+                         { key: ident("field2"), value: lit("b") }])));
+
+assertExpr('a= {[1]: 1, 2 : 2}',
+          aExpr("=", ident("a"),
+                objExpr([{ key: computedName(lit(1)), value: lit(1) },
+                         { key: lit(2), value: lit(2) }])));
+
+// Bug 924688: computed property names - location information
+var node = Reflect.parse("a = {[field1]: 5}");
+Pattern({ body: [ { expression: { right: { properties: [ {key: { loc:
+    { start: { line: 1, column: 5 }, end: { line: 1, column: 13 }}}}]}}}]}).match(node);
+
+
 // statements
 
 assertStmt("throw 42", throwStmt(lit(42)));
@@ -477,6 +501,16 @@ assertStmt("try { } catch (e if foo) { } catch (e if bar) { } catch (e) { } fina
                      catchClause(ident("e"), ident("bar"), blockStmt([])) ],
                    catchClause(ident("e"), null, blockStmt([])),
                    blockStmt([])));
+
+
+// Bug 924672: Method definitions
+assertExpr("b = { a() { } }", aExpr("=", ident("b"),
+              objExpr([{ key: ident("a"), value: funExpr(ident("a"), [], blockStmt([])), method:
+              true}])));
+
+assertExpr("b = { *a() { } }", aExpr("=", ident("b"),
+              objExpr([{ key: ident("a"), value: genFunExpr(ident("a"), [], blockStmt([])), method:
+              true}])));
 
 // Bug 632028: yield outside of a function should throw
 (function() {

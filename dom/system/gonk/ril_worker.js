@@ -59,13 +59,13 @@ const ICC_MAX_LINEAR_FIXED_RECORDS = 0xfe;
 
 // MMI match groups
 const MMI_MATCH_GROUP_FULL_MMI = 1;
-const MMI_MATCH_GROUP_MMI_PROCEDURE = 2;
+const MMI_MATCH_GROUP_PROCEDURE = 2;
 const MMI_MATCH_GROUP_SERVICE_CODE = 3;
-const MMI_MATCH_GROUP_SIA = 5;
-const MMI_MATCH_GROUP_SIB = 7;
-const MMI_MATCH_GROUP_SIC = 9;
-const MMI_MATCH_GROUP_PWD_CONFIRM = 11;
-const MMI_MATCH_GROUP_DIALING_NUMBER = 12;
+const MMI_MATCH_GROUP_SIA = 4;
+const MMI_MATCH_GROUP_SIB = 5;
+const MMI_MATCH_GROUP_SIC = 6;
+const MMI_MATCH_GROUP_PWD_CONFIRM = 7;
+const MMI_MATCH_GROUP_DIALING_NUMBER = 8;
 
 const MMI_MAX_LENGTH_SHORT_CODE = 2;
 
@@ -1117,6 +1117,48 @@ RilObject.prototype = {
   },
 
   /**
+   * Check if operator name needs to be overriden by current voiceRegistrationState
+   * , EFOPL and EFPNN. See 3GPP TS 31.102 clause 4.2.58 EFPNN and 4.2.59 EFOPL
+   *  for detail.
+   *
+   * @return true if operator name is overridden, false otherwise.
+   */
+  overrideICCNetworkName: function() {
+    if (!this.operator) {
+      return false;
+    }
+
+    // We won't get network name using PNN and OPL if voice registration isn't
+    // ready.
+    if (!this.voiceRegistrationState.cell ||
+        this.voiceRegistrationState.cell.gsmLocationAreaCode == -1) {
+      return false;
+    }
+
+    let ICCUtilsHelper = this.context.ICCUtilsHelper;
+    let networkName = ICCUtilsHelper.getNetworkNameFromICC(
+      this.operator.mcc,
+      this.operator.mnc,
+      this.voiceRegistrationState.cell.gsmLocationAreaCode);
+
+    if (!networkName) {
+      return false;
+    }
+
+    if (DEBUG) {
+      this.context.debug("Operator names will be overriden: " +
+                         "longName = " + networkName.fullName + ", " +
+                         "shortName = " + networkName.shortName);
+    }
+
+    this.operator.longName = networkName.fullName;
+    this.operator.shortName = networkName.shortName;
+
+    this._sendNetworkInfoMessage(NETWORK_INFO_OPERATOR, this.operator);
+    return true;
+  },
+
+  /**
    * Request the phone's radio to be enabled or disabled.
    *
    * @param enabled
@@ -1569,6 +1611,61 @@ RilObject.prototype = {
   /**
    * Dial a non-emergency number.
    *
+   * @param isDialEmergency
+   *        Whether it is called by dialEmergency.
+   * @param isEmergency
+   *        Whether the number is an emergency number.
+   * @param number
+   *        String containing the number to dial.
+   * @param clirMode
+   *        Integer for showing/hidding the caller Id to the called party.
+   * @param uusInfo
+   *        Integer doing something XXX TODO
+   */
+  dial: function(options) {
+    let onerror = (function onerror(options, errorMsg) {
+      options.success = false;
+      options.errorMsg = errorMsg;
+      this.sendChromeMessage(options);
+    }).bind(this, options);
+
+    let isRadioOff = (this.radioState === GECKO_RADIOSTATE_OFF);
+
+    if (options.isEmergency) {
+      if (isRadioOff) {
+        if (DEBUG) {
+          this.context.debug("Automatically enable radio for an emergency call.");
+        }
+
+        this.cachedDialRequest = {
+          callback: this.dialEmergencyNumber.bind(this, options),
+          onerror: onerror
+        };
+        this.setRadioEnabled({enabled: true});
+        return;
+      }
+
+      this.dialEmergencyNumber(options);
+    } else {
+      // Notify error in establishing the call without radio.
+      if (isRadioOff) {
+        onerror(GECKO_ERROR_RADIO_NOT_AVAILABLE);
+        return;
+      }
+
+      // Shouldn't dial a non-emergency number by dialEmergency.
+      if (options.isDialEmergency || this.voiceRegistrationState.emergencyCallsOnly) {
+        onerror(GECKO_CALL_ERROR_BAD_NUMBER);
+        return;
+      }
+
+      this.dialNonEmergencyNumber(options);
+    }
+  },
+
+  /**
+   * Dial a non-emergency number.
+   *
    * @param number
    *        String containing the number to dial.
    * @param clirMode
@@ -1577,41 +1674,9 @@ RilObject.prototype = {
    *        Integer doing something XXX TODO
    */
   dialNonEmergencyNumber: function(options) {
-    let onerror = (function onerror(options, errorMsg) {
-      options.success = false;
-      options.errorMsg = errorMsg;
-      this.sendChromeMessage(options);
-    }).bind(this, options);
-
-    if (this.radioState == GECKO_RADIOSTATE_OFF) {
-      // Notify error in establishing the call without radio.
-      onerror(GECKO_ERROR_RADIO_NOT_AVAILABLE);
-      return;
-    }
-
-    if (this.voiceRegistrationState.emergencyCallsOnly ||
-        options.isDialEmergency) {
-      onerror(RIL_CALL_FAILCAUSE_TO_GECKO_CALL_ERROR[CALL_FAIL_UNOBTAINABLE_NUMBER]);
-      return;
-    }
-
     // Exit emergency callback mode when user dial a non-emergency call.
     if (this._isInEmergencyCbMode) {
       this.exitEmergencyCbMode();
-    }
-
-    if (!this._isCdma) {
-      // TODO: Both dial() and sendMMI() functions should be unified at some
-      // point in the future. In the mean time we handle temporary CLIR MMI
-      // commands through the dial() function. Please see bug 889737.
-      let mmi = this._parseMMI(options.number);
-      if (mmi && this._isTemporaryModeCLIR(mmi)) {
-        options.number = mmi.dialNumber;
-        // In temporary mode, MMI_PROCEDURE_ACTIVATION means allowing CLI
-        // presentation, i.e. CLIR_SUPPRESSION. See TS 22.030, Annex B.
-        options.clirMode = mmi.procedure == MMI_PROCEDURE_ACTIVATION ?
-          CLIR_SUPPRESSION : CLIR_INVOCATION;
-      }
     }
 
     options.request = REQUEST_DIAL;
@@ -1629,28 +1694,8 @@ RilObject.prototype = {
    *        Integer doing something XXX TODO
    */
   dialEmergencyNumber: function(options) {
-    let onerror = (function onerror(options, errorMsg) {
-      options.success = false;
-      options.errorMsg = errorMsg;
-      this.sendChromeMessage(options);
-    }).bind(this, options);
-
     options.request = RILQUIRKS_REQUEST_USE_DIAL_EMERGENCY_CALL ?
                       REQUEST_DIAL_EMERGENCY_CALL : REQUEST_DIAL;
-    if (this.radioState == GECKO_RADIOSTATE_OFF) {
-      if (DEBUG) {
-        this.context.debug("Automatically enable radio for an emergency call.");
-      }
-
-      if (!this.cachedDialRequest) {
-        this.cachedDialRequest = {};
-      }
-      this.cachedDialRequest.onerror = onerror;
-      this.cachedDialRequest.callback = this.sendDialRequest.bind(this, options);
-      this.setRadioEnabled({enabled: true});
-      return;
-    }
-
     this.sendDialRequest(options);
   },
 
@@ -1848,7 +1893,7 @@ RilObject.prototype = {
     } else if (call.state == CALL_STATE_ACTIVE) {
       this.sendSwitchWaitingRequest();
     }
- },
+  },
 
   resumeCall: function(options) {
     let call = this.currentCalls[options.callIndex];
@@ -2317,7 +2362,7 @@ RilObject.prototype = {
     if (RILQUIRKS_DATA_REGISTRATION_ON_DEMAND) {
       let request = options.attach ? RIL_REQUEST_GPRS_ATTACH :
                                      RIL_REQUEST_GPRS_DETACH;
-      this.context.Buf.simpleRequest(request);
+      this.context.Buf.simpleRequest(request, options);
     } else if (RILQUIRKS_SUBSCRIPTION_CONTROL && options.attach) {
       this.context.Buf.simpleRequest(REQUEST_SET_DATA_SUBSCRIPTION, options);
     }
@@ -2332,6 +2377,20 @@ RilObject.prototype = {
   },
 
   /**
+   * Parse the dial number to extract its mmi code part.
+   *
+   * @param number
+   *        Phone number to be parsed
+   */
+  parseMMIFromDialNumber: function(options) {
+    // We don't have to parse mmi in cdma.
+    if (!this._isCdma) {
+      options.mmi = this._parseMMI(options.number);
+    }
+    this.sendChromeMessage(options);
+  },
+
+  /**
    * Helper to parse MMI/USSD string. TS.22.030 Figure 3.5.3.2.
    */
   _parseMMI: function(mmiString) {
@@ -2339,21 +2398,11 @@ RilObject.prototype = {
       return null;
     }
 
-    let matches = this._matchMMIRegexp(mmiString);
+    let matches = this._getMMIRegExp().exec(mmiString);
     if (matches) {
-      // After successfully executing the regular expresion over the MMI string,
-      // the following match groups should contain:
-      // 1 = full MMI string that might be used as a USSD request.
-      // 2 = MMI procedure.
-      // 3 = Service code.
-      // 5 = SIA.
-      // 7 = SIB.
-      // 9 = SIC.
-      // 11 = Password registration.
-      // 12 = Dialing number.
       return {
         fullMMI: matches[MMI_MATCH_GROUP_FULL_MMI],
-        procedure: matches[MMI_MATCH_GROUP_MMI_PROCEDURE],
+        procedure: matches[MMI_MATCH_GROUP_PROCEDURE],
         serviceCode: matches[MMI_MATCH_GROUP_SERVICE_CODE],
         sia: matches[MMI_MATCH_GROUP_SIA],
         sib: matches[MMI_MATCH_GROUP_SIB],
@@ -2363,8 +2412,7 @@ RilObject.prototype = {
       };
     }
 
-    if (this._isPoundString(mmiString) ||
-        this._isMMIShortString(mmiString)) {
+    if (this._isPoundString(mmiString) || this._isMMIShortString(mmiString)) {
       return {
         fullMMI: mmiString
       };
@@ -2374,56 +2422,80 @@ RilObject.prototype = {
   },
 
   /**
-   * Helper to parse MMI string via regular expression. TS.22.030 Figure
-   * 3.5.3.2.
+   * Build the regex to parse MMI string.
+   *
+   * The resulting groups after matching will be:
+   *    1 = full MMI string that might be used as a USSD request.
+   *    2 = MMI procedure.
+   *    3 = Service code.
+   *    4 = SIA.
+   *    5 = SIB.
+   *    6 = SIC.
+   *    7 = Password registration.
+   *    8 = Dialing number.
+   *
+   * @see TS.22.030 Figure 3.5.3.2.
    */
-  _matchMMIRegexp: function(mmiString) {
-    // Regexp to parse and process the MMI code.
-    if (this._mmiRegExp == null) {
-      // The first group of the regexp takes the whole MMI string.
-      // The second group takes the MMI procedure that can be:
-      //    - Activation (*SC*SI#).
-      //    - Deactivation (#SC*SI#).
-      //    - Interrogation (*#SC*SI#).
-      //    - Registration (**SC*SI#).
-      //    - Erasure (##SC*SI#).
-      //  where SC = Service Code (2 or 3 digits) and SI = Supplementary Info
-      //  (variable length).
-      let pattern = "((\\*[*#]?|##?)";
+  _buildMMIRegExp: function() {
+    // The general structure of the codes is as follows:
+    //    - Activation (*SC*SI#).
+    //    - Deactivation (#SC*SI#).
+    //    - Interrogation (*#SC*SI#).
+    //    - Registration (**SC*SI#).
+    //    - Erasure (##SC*SI#).
+    //
+    // where SC = Service Code (2 or 3 digits) and SI = Supplementary Info
+    // (variable length).
 
-      // Third group of the regexp looks for the MMI Service code, which is a
-      // 2 or 3 digits that uniquely specifies the Supplementary Service
-      // associated with the MMI code.
-      pattern += "(\\d{2,3})";
+    // MMI procedure, which could be *, #, *#, **, ##
+    let procedure = "(\\*[*#]?|##?)";
 
-      // Groups from 4 to 9 looks for the MMI Supplementary Information SIA,
-      // SIB and SIC. SIA may comprise e.g. a PIN code or Directory Number,
-      // SIB may be used to specify the tele or bearer service and SIC to
-      // specify the value of the "No Reply Condition Timer". Where a particular
-      // service request does not require any SI, "*SI" is not entered. The use
-      // of SIA, SIB and SIC is optional and shall be entered in any of the
-      // following formats:
-      //    - *SIA*SIB*SIC#
-      //    - *SIA*SIB#
-      //    - *SIA**SIC#
-      //    - *SIA#
-      //    - **SIB*SIC#
-      //    - ***SISC#
-      pattern += "(\\*([^*#]*)(\\*([^*#]*)(\\*([^*#]*)";
+    // MMI Service code, which is a 2 or 3 digits that uniquely specifies the
+    // Supplementary Service associated with the MMI code.
+    let serviceCode = "(\\d{2,3})";
 
-      // The eleventh group takes the password for the case of a password
-      // registration procedure.
-      pattern += "(\\*([^*#]*))?)?)?)?#)";
-
-      // The last group takes the dial string after the #.
-      pattern += "([^#]*)";
-
-      this._mmiRegExp = new RegExp(pattern);
+    // MMI Supplementary Information SIA, SIB and SIC. SIA may comprise e.g. a
+    // PIN code or Directory Number, SIB may be used to specify the tele or
+    // bearer service and SIC to specify the value of the "No Reply Condition
+    // Timer". Where a particular service request does not require any SI,
+    // "*SI" is not entered. The use of SIA, SIB and SIC is optional and shall
+    // be entered in any of the following formats:
+    //    - *SIA*SIB*SIC#
+    //    - *SIA*SIB#
+    //    - *SIA**SIC#
+    //    - *SIA#
+    //    - **SIB*SIC#
+    //    - ***SIC#
+    //
+    // Also catch the additional NEW_PASSWORD for the case of a password
+    // registration procedure. Ex:
+    //    - *  03 * ZZ * OLD_PASSWORD * NEW_PASSWORD * NEW_PASSWORD #
+    //    - ** 03 * ZZ * OLD_PASSWORD * NEW_PASSWORD * NEW_PASSWORD #
+    //    - *  03 **     OLD_PASSWORD * NEW_PASSWORD * NEW_PASSWORD #
+    //    - ** 03 **     OLD_PASSWORD * NEW_PASSWORD * NEW_PASSWORD #
+    let si = "\\*([^*#]*)";
+    let allSi = "";
+    for (let i = 0; i < 4; ++i) {
+      allSi = "(?:" + si + allSi + ")?";
     }
 
-    // Regex only applys for those well-defined MMI strings (refer to TS.22.030
-    // Annex B), otherwise, null should be the expected return value.
-    return this._mmiRegExp.exec(mmiString);
+    let fullmmi = "(" + procedure + serviceCode + allSi + "#)";
+
+    // dial string after the #.
+    let dialString = "([^#]*)";
+
+    return new RegExp(fullmmi + dialString);
+  },
+
+  /**
+   * Provide the regex to parse MMI string.
+   */
+  _getMMIRegExp: function() {
+    if (!this._mmiRegExp) {
+      this._mmiRegExp = this._buildMMIRegExp();
+    }
+
+    return this._mmiRegExp;
   },
 
   /**
@@ -2449,11 +2521,12 @@ RilObject.prototype = {
       return true;
     }
 
-    if ((mmiString.length != 2) || (mmiString.charAt(0) !== '1')) {
-      return true;
+    // Input string is 2 digits starting with a "1"
+    if ((mmiString.length == 2) && (mmiString.charAt(0) === '1')) {
+      return false;
     }
 
-    return false;
+    return true;
   },
 
   sendMMI: function(options) {
@@ -3332,20 +3405,6 @@ RilObject.prototype = {
   },
 
   /**
-   * Checks whether to temporarily suppress caller id for the call.
-   *
-   * @param mmi
-   *        MMI full object.
-   */
-  _isTemporaryModeCLIR: function(mmi) {
-    return (mmi &&
-            mmi.serviceCode == MMI_SC_CLIR &&
-            mmi.dialNumber &&
-            (mmi.procedure == MMI_PROCEDURE_ACTIVATION ||
-             mmi.procedure == MMI_PROCEDURE_DEACTIVATION));
-  },
-
-  /**
    * Report STK Service is running.
    */
   reportStkServiceIsRunning: function() {
@@ -3901,35 +3960,20 @@ RilObject.prototype = {
         }
       }
 
+      this.operator.longName = longName;
+      this.operator.shortName = shortName;
+
       let ICCUtilsHelper = this.context.ICCUtilsHelper;
-      let networkName;
-      // We won't get network name using PNN and OPL if voice registration isn't ready
-      if (this.voiceRegistrationState.cell &&
-          this.voiceRegistrationState.cell.gsmLocationAreaCode != -1) {
-        networkName = ICCUtilsHelper.getNetworkNameFromICC(
-          this.operator.mcc,
-          this.operator.mnc,
-          this.voiceRegistrationState.cell.gsmLocationAreaCode);
-      }
-
-      if (networkName) {
-        if (DEBUG) {
-          this.context.debug("Operator names will be overriden: " +
-                             "longName = " + networkName.fullName + ", " +
-                             "shortName = " + networkName.shortName);
-        }
-
-        this.operator.longName = networkName.fullName;
-        this.operator.shortName = networkName.shortName;
-      } else {
-        this.operator.longName = longName;
-        this.operator.shortName = shortName;
-      }
-
       if (ICCUtilsHelper.updateDisplayCondition()) {
         ICCUtilsHelper.handleICCInfoChange();
       }
-      this._sendNetworkInfoMessage(NETWORK_INFO_OPERATOR, this.operator);
+
+      // NETWORK_INFO_OPERATOR message will be sent out by overrideICCNetworkName
+      // itself if operator name is overridden after checking, or we have to
+      // do it by ourself.
+      if (!this.overrideICCNetworkName()) {
+        this._sendNetworkInfoMessage(NETWORK_INFO_OPERATOR, this.operator);
+      }
     }
   },
 
@@ -4107,10 +4151,6 @@ RilObject.prototype = {
       newCall.isOutgoing = false;
     } else if (newCall.state == CALL_STATE_DIALING) {
       newCall.isOutgoing = true;
-    }
-
-    if (newCall.isEmergency === undefined) {
-      newCall.isEmergency = false;
     }
 
     // Set flag for conference.
@@ -5564,7 +5604,7 @@ RilObject.prototype[REQUEST_DIAL] = function REQUEST_DIAL(length, options) {
   }
 };
 RilObject.prototype[REQUEST_DIAL_EMERGENCY_CALL] = function REQUEST_DIAL_EMERGENCY_CALL(length, options) {
-  RilObject.prototype[REQUEST_DIAL](length, options);
+  RilObject.prototype[REQUEST_DIAL].call(this, length, options);
 };
 RilObject.prototype[REQUEST_GET_IMSI] = function REQUEST_GET_IMSI(length, options) {
   if (options.rilRequestError) {
@@ -6013,6 +6053,7 @@ RilObject.prototype[REQUEST_GET_IMEI] = function REQUEST_GET_IMEI(length, option
     return;
   }
 
+  options.mmiServiceCode = MMI_KS_SC_IMEI;
   options.success = (options.rilRequestError === 0);
   options.errorMsg = RIL_ERROR_TO_GECKO_ERROR[options.rilRequestError];
   if ((!options.success || this.IMEI == null) && !options.errorMsg) {
@@ -6688,7 +6729,17 @@ RilObject.prototype[REQUEST_SET_UICC_SUBSCRIPTION] = function REQUEST_SET_UICC_S
     this.setDataRegistration({attach: true});
   }
 };
-RilObject.prototype[REQUEST_SET_DATA_SUBSCRIPTION] = null;
+RilObject.prototype[REQUEST_SET_DATA_SUBSCRIPTION] = function REQUEST_SET_DATA_SUBSCRIPTION(length, options) {
+  if (!options.rilMessageType) {
+    // The request was made by ril_worker itself. Don't report.
+    return;
+  }
+  options.success = (options.rilRequestError === 0);
+  if (!options.success) {
+    options.errorMsg = RIL_ERROR_TO_GECKO_ERROR[options.rilRequestError];
+  }
+  this.sendChromeMessage(options);
+};
 RilObject.prototype[REQUEST_GET_UICC_SUBSCRIPTION] = null;
 RilObject.prototype[REQUEST_GET_DATA_SUBSCRIPTION] = null;
 RilObject.prototype[REQUEST_GET_UNLOCK_RETRY_COUNT] = function REQUEST_GET_UNLOCK_RETRY_COUNT(length, options) {
@@ -6699,8 +6750,24 @@ RilObject.prototype[REQUEST_GET_UNLOCK_RETRY_COUNT] = function REQUEST_GET_UNLOC
   options.retryCount = length ? this.context.Buf.readInt32List()[0] : -1;
   this.sendChromeMessage(options);
 };
-RilObject.prototype[RIL_REQUEST_GPRS_ATTACH] = null;
-RilObject.prototype[RIL_REQUEST_GPRS_DETACH] = null;
+RilObject.prototype[RIL_REQUEST_GPRS_ATTACH] = function RIL_REQUEST_GPRS_ATTACH(length, options) {
+  if (!options.rilMessageType) {
+    // The request was made by ril_worker itself. Don't report.
+    return;
+  }
+  options.success = (options.rilRequestError === 0);
+  if (!options.success) {
+    options.errorMsg = RIL_ERROR_TO_GECKO_ERROR[options.rilRequestError];
+  }
+  this.sendChromeMessage(options);
+};
+RilObject.prototype[RIL_REQUEST_GPRS_DETACH] = function RIL_REQUEST_GPRS_DETACH(length, options) {
+  options.success = (options.rilRequestError === 0);
+  if (!options.success) {
+    options.errorMsg = RIL_ERROR_TO_GECKO_ERROR[options.rilRequestError];
+  }
+  this.sendChromeMessage(options);
+};
 RilObject.prototype[UNSOLICITED_RESPONSE_RADIO_STATE_CHANGED] = function UNSOLICITED_RESPONSE_RADIO_STATE_CHANGED() {
   let radioState = this.context.Buf.readInt32();
   let newState;
@@ -8651,7 +8718,7 @@ GsmPDUHelperObject.prototype = {
         }
       }
       return text;
-    }
+    };
 
     let totalLength = 0, length, pageLengths = [];
     for (let i = 0; i < numOfPages; i++) {
@@ -13670,11 +13737,14 @@ SimRecordHelperObject.prototype = {
       }
       Buf.readStringDelimiter(strLen);
 
+      let RIL = this.context.RIL;
       if (options.p1 < options.totalRecords) {
         ICCIOHelper.loadNextRecord(options);
       } else {
-        this.context.RIL.iccInfoPrivate.OPL = opl;
+        RIL.iccInfoPrivate.OPL = opl;
       }
+
+      RIL.overrideICCNetworkName();
     }
 
     ICCIOHelper.loadLinearFixedEF({fileId: ICC_EF_OPL,
@@ -13732,6 +13802,7 @@ SimRecordHelperObject.prototype = {
         pnn.push(pnnElement);
       }
 
+      let RIL = this.context.RIL;
       // Will ignore remaining records when got the contents of a record are all 0xff.
       if (pnnElement && options.p1 < options.totalRecords) {
         ICCIOHelper.loadNextRecord(options);
@@ -13741,8 +13812,10 @@ SimRecordHelperObject.prototype = {
             this.context.debug("PNN: [" + i + "]: " + JSON.stringify(pnn[i]));
           }
         }
-        this.context.RIL.iccInfoPrivate.PNN = pnn;
+        RIL.iccInfoPrivate.PNN = pnn;
       }
+
+      RIL.overrideICCNetworkName();
     }
 
     let pnn = [];
@@ -14179,17 +14252,55 @@ ICCUtilsHelperObject.prototype = {
         pnnEntry = iccInfoPriv.PNN[0];
       }
     } else {
+      let GsmPDUHelper = this.context.GsmPDUHelper;
+      let wildChar = GsmPDUHelper.bcdChars.charAt(0x0d);
       // According to 3GPP TS 31.102 Sec. 4.2.59 and 3GPP TS 51.011 Sec. 10.3.42,
       // the ME shall use this EF_OPL in association with the EF_PNN in place
       // of any network name stored within the ME's internal list and any network
       // name received when registered to the PLMN.
       let length = iccInfoPriv.OPL ? iccInfoPriv.OPL.length : 0;
       for (let i = 0; i < length; i++) {
+        let unmatch = false;
         let opl = iccInfoPriv.OPL[i];
-        // Try to match the MCC/MNC.
-        if (mcc != opl.mcc || mnc != opl.mnc) {
+        // Try to match the MCC/MNC. Besides, A BCD value of 'D' in any of the
+        // MCC and/or MNC digits shall be used to indicate a "wild" value for
+        // that corresponding MCC/MNC digit.
+        if (opl.mcc.indexOf(wildChar) !== -1) {
+          for (let j = 0; j < opl.mcc.length; j++) {
+            if (opl.mcc[j] !== wildChar && opl.mcc[j] !== mcc[j]) {
+              unmatch = true;
+              break;
+            }
+          }
+          if (unmatch) {
+            continue;
+          }
+        } else {
+          if (mcc !== opl.mcc) {
+            continue;
+          }
+        }
+
+        if (mnc.length !== opl.mnc.length) {
           continue;
         }
+
+        if (opl.mnc.indexOf(wildChar) !== -1) {
+          for (let j = 0; j < opl.mnc.length; j++) {
+            if (opl.mnc[j] !== wildChar && opl.mnc[j] !== mnc[j]) {
+              unmatch = true;
+              break;
+            }
+          }
+          if (unmatch) {
+            continue;
+          }
+        } else {
+          if (mnc !== opl.mnc) {
+            continue;
+          }
+        }
+
         // Try to match the location area code. If current local area code is
         // covered by lac range that specified in the OPL entry, use the PNN
         // that specified in the OPL entry.

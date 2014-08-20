@@ -43,6 +43,13 @@ SplitCriticalEdgesForBlock(MIRGraph &graph, MBasicBlock *block)
         graph.insertBlockAfter(block, split);
         split->end(MGoto::New(graph.alloc(), target));
 
+        // The entry resume point will not be used for anything, and may have
+        // the wrong stack depth, so remove it.
+        if (MResumePoint *rp = split->entryResumePoint()) {
+            rp->discardUses();
+            split->clearEntryResumePoint();
+        }
+
         block->replaceSuccessor(i, split);
         target->replacePredecessor(block, split);
     }
@@ -383,6 +390,26 @@ jit::FoldTests(MIRGraph &graph)
     }
 }
 
+static void
+EliminateTriviallyDeadResumePointOperands(MIRGraph &graph, MResumePoint *rp)
+{
+    // If we will pop the top of the stack immediately after resuming,
+    // then don't preserve the top value in the resume point.
+    if (rp->mode() != MResumePoint::ResumeAt || *rp->pc() != JSOP_POP)
+        return;
+
+    size_t top = rp->stackDepth() - 1;
+    JS_ASSERT(!rp->isObservableOperand(top));
+
+    MDefinition *def = rp->getOperand(top);
+    if (def->isConstant())
+        return;
+
+    MConstant *constant = MConstant::New(graph.alloc(), MagicValue(JS_OPTIMIZED_OUT));
+    rp->block()->insertBefore(*(rp->block()->begin()), constant);
+    rp->replaceOperand(top, constant);
+}
+
 // Operands to a resume point which are dead at the point of the resume can be
 // replaced with a magic value. This analysis supports limited detection of
 // dead operands, pruning those which are defined in the resume point's basic
@@ -406,11 +433,17 @@ jit::EliminateDeadResumePointOperands(MIRGenerator *mir, MIRGraph &graph)
         if (mir->shouldCancel("Eliminate Dead Resume Point Operands (main loop)"))
             return false;
 
+        if (MResumePoint *rp = block->entryResumePoint())
+            EliminateTriviallyDeadResumePointOperands(graph, rp);
+
         // The logic below can get confused on infinite loops.
         if (block->isLoopHeader() && block->backedge() == *block)
             continue;
 
         for (MInstructionIterator ins = block->begin(); ins != block->end(); ins++) {
+            if (MResumePoint *rp = ins->resumePoint())
+                EliminateTriviallyDeadResumePointOperands(graph, rp);
+
             // No benefit to replacing constant operands with other constants.
             if (ins->isConstant())
                 continue;
@@ -520,8 +553,8 @@ jit::EliminateDeadCode(MIRGenerator *mir, MIRGraph &graph)
                 !inst->isControlInstruction())
             {
                 inst = block->discardAt(inst);
-            } else if (!inst->isRecoveredOnBailout() && !inst->hasLiveDefUses() &&
-                       inst->canRecoverOnBailout())
+            } else if (!inst->isRecoveredOnBailout() && !inst->isGuard() &&
+                       !inst->hasLiveDefUses() && inst->canRecoverOnBailout())
             {
                 inst->setRecoveredOnBailout();
                 inst++;
@@ -1510,6 +1543,13 @@ IntersectDominators(MBasicBlock *block1, MBasicBlock *block2)
     return finger1;
 }
 
+void
+jit::ClearDominatorTree(MIRGraph &graph)
+{
+    for (MBasicBlockIterator iter = graph.begin(); iter != graph.end(); iter++)
+        iter->clearDominatorInfo();
+}
+
 static void
 ComputeImmediateDominators(MIRGraph &graph)
 {
@@ -2314,13 +2354,19 @@ LinearSum::multiply(int32_t scale)
 }
 
 bool
-LinearSum::add(const LinearSum &other)
+LinearSum::add(const LinearSum &other, int32_t scale /* = 1 */)
 {
     for (size_t i = 0; i < other.terms_.length(); i++) {
-        if (!add(other.terms_[i].term, other.terms_[i].scale))
+        int32_t newScale = scale;
+        if (!SafeMul(scale, other.terms_[i].scale, &newScale))
+            return false;
+        if (!add(other.terms_[i].term, newScale))
             return false;
     }
-    return add(other.constant_);
+    int32_t newConstant = scale;
+    if (!SafeMul(scale, other.constant_, &newConstant))
+        return false;
+    return add(newConstant);
 }
 
 bool
@@ -2399,6 +2445,129 @@ void
 LinearSum::dump() const
 {
     dump(stderr);
+}
+
+MDefinition *
+jit::ConvertLinearSum(TempAllocator &alloc, MBasicBlock *block, const LinearSum &sum)
+{
+    MDefinition *def = nullptr;
+
+    for (size_t i = 0; i < sum.numTerms(); i++) {
+        LinearTerm term = sum.term(i);
+        JS_ASSERT(!term.term->isConstant());
+        if (term.scale == 1) {
+            if (def) {
+                def = MAdd::New(alloc, def, term.term);
+                def->toAdd()->setInt32();
+                block->insertAtEnd(def->toInstruction());
+                def->computeRange(alloc);
+            } else {
+                def = term.term;
+            }
+        } else if (term.scale == -1) {
+            if (!def) {
+                def = MConstant::New(alloc, Int32Value(0));
+                block->insertAtEnd(def->toInstruction());
+                def->computeRange(alloc);
+            }
+            def = MSub::New(alloc, def, term.term);
+            def->toSub()->setInt32();
+            block->insertAtEnd(def->toInstruction());
+            def->computeRange(alloc);
+        } else {
+            JS_ASSERT(term.scale != 0);
+            MConstant *factor = MConstant::New(alloc, Int32Value(term.scale));
+            block->insertAtEnd(factor);
+            MMul *mul = MMul::New(alloc, term.term, factor);
+            mul->setInt32();
+            block->insertAtEnd(mul);
+            mul->computeRange(alloc);
+            if (def) {
+                def = MAdd::New(alloc, def, mul);
+                def->toAdd()->setInt32();
+                block->insertAtEnd(def->toInstruction());
+                def->computeRange(alloc);
+            } else {
+                def = mul;
+            }
+        }
+    }
+
+    // Note: The constant component of the term is not converted.
+    if (!def) {
+        def = MConstant::New(alloc, Int32Value(0));
+        block->insertAtEnd(def->toInstruction());
+        def->computeRange(alloc);
+    }
+
+    return def;
+}
+
+MCompare *
+jit::ConvertLinearInequality(TempAllocator &alloc, MBasicBlock *block, const LinearSum &sum)
+{
+    LinearSum lhs(sum);
+
+    // Look for a term with a -1 scale which we can use for the rhs.
+    MDefinition *rhsDef = nullptr;
+    for (size_t i = 0; i < lhs.numTerms(); i++) {
+        if (lhs.term(i).scale == -1) {
+            rhsDef = lhs.term(i).term;
+            lhs.add(rhsDef, 1);
+            break;
+        }
+    }
+
+    MDefinition *lhsDef = nullptr;
+    JSOp op = JSOP_GE;
+
+    do {
+        if (!lhs.numTerms()) {
+            lhsDef = MConstant::New(alloc, Int32Value(lhs.constant()));
+            block->insertAtEnd(lhsDef->toInstruction());
+            lhsDef->computeRange(alloc);
+            break;
+        }
+
+        lhsDef = ConvertLinearSum(alloc, block, lhs);
+        if (lhs.constant() == 0)
+            break;
+
+        if (lhs.constant() == -1) {
+            op = JSOP_GT;
+            break;
+        }
+
+        if (!rhsDef) {
+            int32_t constant = lhs.constant();
+            if (SafeMul(constant, -1, &constant)) {
+                rhsDef = MConstant::New(alloc, Int32Value(constant));
+                block->insertAtEnd(rhsDef->toInstruction());
+                rhsDef->computeRange(alloc);
+                break;
+            }
+        }
+
+        MDefinition *constant = MConstant::New(alloc, Int32Value(lhs.constant()));
+        block->insertAtEnd(constant->toInstruction());
+        constant->computeRange(alloc);
+        lhsDef = MAdd::New(alloc, lhsDef, constant);
+        lhsDef->toAdd()->setInt32();
+        block->insertAtEnd(lhsDef->toInstruction());
+        lhsDef->computeRange(alloc);
+    } while (false);
+
+    if (!rhsDef) {
+        rhsDef = MConstant::New(alloc, Int32Value(0));
+        block->insertAtEnd(rhsDef->toInstruction());
+        rhsDef->computeRange(alloc);
+    }
+
+    MCompare *compare = MCompare::New(alloc, lhsDef, rhsDef, op);
+    block->insertAtEnd(compare);
+    compare->setCompareType(MCompare::Compare_Int32);
+
+    return compare;
 }
 
 static bool

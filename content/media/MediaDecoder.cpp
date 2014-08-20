@@ -1671,6 +1671,7 @@ bool MediaDecoder::CanPlayThrough()
          stats.mDownloadPosition > stats.mPlaybackPosition + readAheadMargin;
 }
 
+#ifdef MOZ_EME
 nsresult
 MediaDecoder::SetCDMProxy(CDMProxy* aProxy)
 {
@@ -1689,6 +1690,7 @@ MediaDecoder::GetCDMProxy()
   MOZ_ASSERT(OnDecodeThread() || NS_IsMainThread());
   return mProxy;
 }
+#endif
 
 #ifdef MOZ_RAW
 bool

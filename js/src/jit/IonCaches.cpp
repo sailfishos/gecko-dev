@@ -16,6 +16,7 @@
 #include "jit/Ion.h"
 #include "jit/IonLinker.h"
 #include "jit/IonSpewer.h"
+#include "jit/JitcodeMap.h"
 #include "jit/Lowering.h"
 #ifdef JS_ION_PERF
 # include "jit/PerfSpewer.h"
@@ -107,7 +108,7 @@ IonCache::LinkStatus
 IonCache::linkCode(JSContext *cx, MacroAssembler &masm, IonScript *ion, JitCode **code)
 {
     Linker linker(masm);
-    *code = linker.newCode<CanGC>(cx, JSC::ION_CODE);
+    *code = linker.newCode<CanGC>(cx, ION_CODE);
     if (!*code)
         return LINK_ERROR;
 
@@ -428,6 +429,22 @@ IonCache::linkAndAttachStub(JSContext *cx, MacroAssembler &masm, StubAttacher &a
 #endif
 
     attachStub(masm, attacher, code);
+
+    // Add entry to native => bytecode mapping for this stub if needed.
+    if (cx->runtime()->jitRuntime()->isNativeToBytecodeMapEnabled(cx->runtime())) {
+        JitcodeGlobalEntry::IonCacheEntry entry;
+        entry.init(code->raw(), code->raw() + code->instructionsSize(), rejoinAddress());
+
+        // Add entry to the global table.
+        JitcodeGlobalTable *globalTable = cx->runtime()->jitRuntime()->getJitcodeGlobalTable();
+        if (!globalTable->addEntry(entry)) {
+            entry.destroy();
+            return false;
+        }
+
+        // Mark the jitcode as having a bytecode map.
+        code->setHasBytecodeMap();
+    }
 
     return true;
 }
@@ -2969,10 +2986,10 @@ const size_t GetElementIC::MAX_FAILED_UPDATES = 16;
 GetElementIC::canAttachGetProp(JSObject *obj, const Value &idval, jsid id)
 {
     uint32_t dummy;
-    return (obj->isNative() &&
-            idval.isString() &&
-            JSID_IS_ATOM(id) &&
-            !JSID_TO_ATOM(id)->isIndex(&dummy));
+    return obj->isNative() &&
+           idval.isString() &&
+           JSID_IS_ATOM(id) &&
+           !JSID_TO_ATOM(id)->isIndex(&dummy);
 }
 
 static bool
@@ -3545,8 +3562,8 @@ static bool
 IsTypedArrayElementSetInlineable(JSObject *obj, const Value &idval, const Value &value)
 {
     // Don't bother attaching stubs for assigning strings and objects.
-    return (obj->is<TypedArrayObject>() && idval.isInt32() &&
-            !value.isString() && !value.isObject());
+    return obj->is<TypedArrayObject>() && idval.isInt32() &&
+           !value.isString() && !value.isObject();
 }
 
 static void

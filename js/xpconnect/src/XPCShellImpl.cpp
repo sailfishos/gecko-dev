@@ -9,6 +9,7 @@
 #include "jsfriendapi.h"
 #include "jsprf.h"
 #include "js/OldDebugAPI.h"
+#include "mozilla/dom/ScriptSettings.h"
 #include "nsServiceManagerUtils.h"
 #include "nsComponentManagerUtils.h"
 #include "nsIXPConnect.h"
@@ -29,7 +30,6 @@
 #include "nsJSPrincipals.h"
 #include "xpcpublic.h"
 #include "BackstagePass.h"
-#include "nsCxPusher.h"
 #include "nsIScriptSecurityManager.h"
 #include "nsIPrincipal.h"
 #include "nsJSUtils.h"
@@ -648,8 +648,8 @@ static Maybe<PersistentRootedValue> sScriptedInterruptCallback;
 static bool
 XPCShellInterruptCallback(JSContext *cx)
 {
-    MOZ_ASSERT(!sScriptedInterruptCallback.empty());
-    RootedValue callback(cx, sScriptedInterruptCallback.ref());
+    MOZ_ASSERT(sScriptedInterruptCallback);
+    RootedValue callback(cx, *sScriptedInterruptCallback);
 
     // If no interrupt callback was set by script, no-op.
     if (callback.isUndefined())
@@ -671,7 +671,7 @@ XPCShellInterruptCallback(JSContext *cx)
 static bool
 SetInterruptCallback(JSContext *cx, unsigned argc, jsval *vp)
 {
-    MOZ_ASSERT(!sScriptedInterruptCallback.empty());
+    MOZ_ASSERT(sScriptedInterruptCallback);
 
     // Sanity-check args.
     JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
@@ -682,7 +682,7 @@ SetInterruptCallback(JSContext *cx, unsigned argc, jsval *vp)
 
     // Allow callers to remove the interrupt callback by passing undefined.
     if (args[0].isUndefined()) {
-        sScriptedInterruptCallback.ref() = UndefinedValue();
+        *sScriptedInterruptCallback = UndefinedValue();
         return true;
     }
 
@@ -692,7 +692,7 @@ SetInterruptCallback(JSContext *cx, unsigned argc, jsval *vp)
         return false;
     }
 
-    sScriptedInterruptCallback.ref() = args[0];
+    *sScriptedInterruptCallback = args[0];
 
     return true;
 }
@@ -1004,7 +1004,7 @@ static int
 usage(void)
 {
     fprintf(gErrFile, "%s\n", JS_GetImplementationVersion());
-    fprintf(gErrFile, "usage: xpcshell [-g gredir] [-a appdir] [-r manifest]... [-PsSwWCijmIn] [-v version] [-f scriptfile] [-e script] [scriptfile] [scriptarg...]\n");
+    fprintf(gErrFile, "usage: xpcshell [-g gredir] [-a appdir] [-r manifest]... [-WwxiCSsmIp] [-v version] [-f scriptfile] [-e script] [scriptfile] [scriptarg...]\n");
     return 2;
 }
 
@@ -1117,6 +1117,8 @@ ProcessArgs(JSContext *cx, JS::Handle<JSObject*> obj, char **argv, int argc, XPC
         case 'd':
             /* This used to try to turn on the debugger. */
             break;
+        case 'm':
+            break;
         case 'f':
             if (++i == argc) {
                 return usage();
@@ -1151,7 +1153,6 @@ ProcessArgs(JSContext *cx, JS::Handle<JSObject*> obj, char **argv, int argc, XPC
             break;
         case 'S':
         case 's':
-        case 'm':
         case 'I':
             // These options are processed in ProcessArgsForCompartment.
             break;
@@ -1458,14 +1459,12 @@ XRE_XPCShellMain(int argc, char **argv, char **envp)
         // Override the default XPConnect interrupt callback. We could store the
         // old one and restore it before shutting down, but there's not really a
         // reason to bother.
-        sScriptedInterruptCallback.construct(rt, UndefinedValue());
+        sScriptedInterruptCallback.emplace(rt, UndefinedValue());
         JS_SetInterruptCallback(rt, XPCShellInterruptCallback);
 
-        cx = JS_NewContext(rt, 8192);
-        if (!cx) {
-            printf("JS_NewContext failed!\n");
-            return 1;
-        }
+        dom::AutoJSAPI jsapi;
+        jsapi.Init();
+        cx = jsapi.cx();
 
         argc--;
         argv++;
@@ -1510,9 +1509,6 @@ XRE_XPCShellMain(int argc, char **argv, char **envp)
         xpc->SetFunctionThisTranslator(NS_GET_IID(nsITestXPCFunctionCallback), translator);
 #endif
 
-        nsCxPusher pusher;
-        pusher.Push(cx);
-
         nsRefPtr<BackstagePass> backstagePass;
         rv = NS_NewBackstagePass(getter_AddRefs(backstagePass));
         if (NS_FAILED(rv)) {
@@ -1552,20 +1548,17 @@ XRE_XPCShellMain(int argc, char **argv, char **envp)
             JSAutoCompartment ac(cx, glob);
 
             if (!JS_InitReflect(cx, glob)) {
-                JS_EndRequest(cx);
                 return 1;
             }
 
             if (!JS_DefineFunctions(cx, glob, glob_functions) ||
                 !JS_DefineProfilingFunctions(cx, glob)) {
-                JS_EndRequest(cx);
                 return 1;
             }
 
             JS::Rooted<JSObject*> envobj(cx);
             envobj = JS_DefineObject(cx, glob, "environment", &env_class);
             if (!envobj) {
-                JS_EndRequest(cx);
                 return 1;
             }
 
@@ -1578,15 +1571,16 @@ XRE_XPCShellMain(int argc, char **argv, char **envp)
             JS_DefineProperty(cx, glob, "__LOCATION__", JS::UndefinedHandleValue, 0,
                               GetLocationProperty, nullptr);
 
-            result = ProcessArgs(cx, glob, argv, argc, &dirprovider);
+            // We are almost certainly going to run script here, so we need an
+            // AutoEntryScript. This is Gecko-specific and not in any spec.
+            dom::AutoEntryScript aes(backstagePass);
+            result = ProcessArgs(aes.cx(), glob, argv, argc, &dirprovider);
 
             JS_DropPrincipals(rt, gJSPrincipals);
-            JS_SetAllNonReservedSlotsToUndefined(cx, glob);
+            JS_SetAllNonReservedSlotsToUndefined(aes.cx(), glob);
             JS_GC(rt);
         }
-        pusher.Pop();
         JS_GC(rt);
-        JS_DestroyContext(cx);
     } // this scopes the nsCOMPtrs
 
     if (!XRE_ShutdownTestShell())
@@ -1596,7 +1590,7 @@ XRE_XPCShellMain(int argc, char **argv, char **envp)
     rv = NS_ShutdownXPCOM( nullptr );
     MOZ_ASSERT(NS_SUCCEEDED(rv), "NS_ShutdownXPCOM failed");
 
-    sScriptedInterruptCallback.destroyIfConstructed();
+    sScriptedInterruptCallback.reset();
 
 #ifdef TEST_CALL_ON_WRAPPED_JS_AFTER_SHUTDOWN
     // test of late call and release (see above)

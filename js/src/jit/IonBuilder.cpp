@@ -4867,7 +4867,7 @@ IonBuilder::createThisScriptedSingleton(JSFunction *target, MDefinition *callee)
     // calling Ion code will be invalidated, but any baseline template object
     // may be stale. Update to the correct template object in this case.
     types::TypeObject *templateType = templateObject->type();
-    if (templateType->hasNewScript()) {
+    if (templateType->newScript()) {
         templateObject = templateType->newScript()->templateObject;
         JS_ASSERT(templateObject->type() == templateType);
 
@@ -5294,6 +5294,7 @@ IonBuilder::makeCallHelper(JSFunction *target, CallInfo &callInfo, bool cloneAtC
         // MCall accordingly.
         types::TemporaryTypeSet *thisTypes = callInfo.thisArg()->resultTypeSet();
         if (thisTypes &&
+            thisTypes->getKnownMIRType() == MIRType_Object &&
             thisTypes->isDOMClass() &&
             testShouldDOMCall(thisTypes, target, JSJitInfo::Method))
         {
@@ -9249,8 +9250,8 @@ IonBuilder::needsToMonitorMissingProperties(types::TemporaryTypeSet *types)
     // TypeScript::Monitor to ensure that the observed type set contains
     // undefined. To account for possible missing properties, which property
     // types do not track, we must always insert a type barrier.
-    return (info().executionMode() == ParallelExecution &&
-            !types->hasType(types::Type::UndefinedType()));
+    return info().executionMode() == ParallelExecution &&
+           !types->hasType(types::Type::UndefinedType());
 }
 
 bool

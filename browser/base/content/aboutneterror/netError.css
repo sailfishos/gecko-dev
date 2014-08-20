@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-@import url("chrome://browser/skin/in-content/common.css");
+@import url("chrome://global/skin/in-content/common.css");
 
 body {
   display: flex;
@@ -45,6 +45,7 @@ ul {
 
 #errorTryAgain {
   margin-top: 1.2em;
+  min-width: 150px
 }
 
 #errorContainer {
@@ -58,14 +59,6 @@ ul {
     -moz-padding-start: 0;
     -moz-margin-start: 0;
   }
-}
-
-
-/* common.css overrides */
-
-button {
-  font-size: 1em;
-  min-width: 150px;
 }
 
 /* Pressing the retry button will cause the cursor to flicker from a pointer to

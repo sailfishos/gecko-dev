@@ -183,6 +183,9 @@ struct JSCompartment
      */
     inline js::GlobalObject *maybeGlobal() const;
 
+    /* An unbarriered getter for use while tracing. */
+    inline js::GlobalObject *unsafeUnbarrieredMaybeGlobal() const;
+
     inline void initGlobal(js::GlobalObject &global);
 
   public:
@@ -251,8 +254,9 @@ struct JSCompartment
     js::types::TypeObjectWithNewScriptSet newTypeObjects;
     js::types::TypeObjectWithNewScriptSet lazyTypeObjects;
     void sweepNewTypeObjectTable(js::types::TypeObjectWithNewScriptSet &table);
-#if defined(JSGC_GENERATIONAL) && defined(JS_GC_ZEAL)
-    void checkNewTypeObjectTableAfterMovingGC();
+#ifdef JSGC_HASH_TABLE_CHECKS
+    void checkTypeObjectTablesAfterMovingGC();
+    void checkTypeObjectTableAfterMovingGC(js::types::TypeObjectWithNewScriptSet &table);
     void checkInitialShapesTableAfterMovingGC();
     void checkWrapperMapAfterMovingGC();
 #endif
@@ -321,6 +325,14 @@ struct JSCompartment
     bool wrap(JSContext *cx, JS::MutableHandle<js::PropertyDescriptor> desc);
     bool wrap(JSContext *cx, JS::MutableHandle<js::PropDesc> desc);
 
+    template<typename T> bool wrap(JSContext *cx, JS::AutoVectorRooter<T> &vec) {
+        for (size_t i = 0; i < vec.length(); ++i) {
+            if (!wrap(cx, vec[i]))
+                return false;
+        }
+        return true;
+    };
+
     bool putWrapper(JSContext *cx, const js::CrossCompartmentKey& wrapped, const js::Value& wrapper);
 
     js::WrapperMap::Ptr lookupWrapper(const js::Value& wrapped) {
@@ -342,6 +354,14 @@ struct JSCompartment
     void sweepCrossCompartmentWrappers();
     void purge();
     void clearTables();
+
+#ifdef JSGC_COMPACTING
+    void fixupInitialShapeTable();
+    void fixupNewTypeObjectTable(js::types::TypeObjectWithNewScriptSet &table);
+    void fixupCrossCompartmentWrappers(JSTracer *trc);
+    void fixupAfterMovingGC();
+    void fixupGlobal();
+#endif
 
     bool hasObjectMetadataCallback() const { return objectMetadataCallback; }
     void setObjectMetadataCallback(js::ObjectMetadataCallback callback);
@@ -411,8 +431,8 @@ struct JSCompartment
 
   public:
     js::GlobalObjectSet &getDebuggees() { return debuggees; }
-    bool addDebuggee(JSContext *cx, js::GlobalObject *global);
-    bool addDebuggee(JSContext *cx, js::GlobalObject *global,
+    bool addDebuggee(JSContext *cx, JS::Handle<js::GlobalObject *> global);
+    bool addDebuggee(JSContext *cx, JS::Handle<js::GlobalObject *> global,
                      js::AutoDebugModeInvalidation &invalidate);
     bool removeDebuggee(JSContext *cx, js::GlobalObject *global,
                         js::GlobalObjectSet::Enum *debuggeesEnum = nullptr);
@@ -450,6 +470,11 @@ struct JSCompartment
 
     /* Used by memory reporters and invalid otherwise. */
     void               *compartmentStats;
+
+    // These flags help us to discover if a compartment that shouldn't be alive
+    // manages to outlive a GC.
+    bool scheduledForDestruction;
+    bool maybeAlive;
 
   private:
     js::jit::JitCompartment *jitCompartment_;
