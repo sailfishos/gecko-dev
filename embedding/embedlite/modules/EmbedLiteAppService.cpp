@@ -28,11 +28,11 @@
 #include "nsIWebBrowser.h"
 #include "mozilla/layers/AsyncPanZoomController.h"
 #include "mozilla/embedlite/EmbedLog.h"
-#include "nsCxPusher.h"
 #include "xpcprivate.h"
 #include "nsPIDOMWindow.h"
 #include "mozilla/AutoRestore.h"
 #include "FrameMetrics.h"
+#include "mozilla/dom/ScriptSettings.h"
 
 using namespace mozilla;
 using namespace mozilla::embedlite;
@@ -113,8 +113,7 @@ void EmbedLiteAppService::UnregisterView(uint32_t aId)
 NS_IMETHODIMP
 EmbedLiteAppService::GetIDByWindow(nsIDOMWindow* aWin, uint32_t* aId)
 {
-  nsCxPusher pusher;
-  pusher.PushNull();
+  dom::AutoJSAPI jsapiChromeGuard;
   nsCOMPtr<nsIDOMWindow> window;
   nsCOMPtr<nsIWebNavigation> navNav(do_GetInterface(aWin));
   nsCOMPtr<nsIDocShellTreeItem> navItem(do_QueryInterface(navNav));

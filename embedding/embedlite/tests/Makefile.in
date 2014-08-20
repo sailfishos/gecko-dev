@@ -16,15 +16,6 @@ STL_FLAGS=
 
 LOCAL_INCLUDES += -I$(topsrcdir)/xpcom/build
 
-OS_LIBS += \
-    $(XPCOM_STANDALONE_GLUE_LDOPTS) \
-    $(NULL)
-
-OS_LIBS += \
-    $(TK_LIBS) \
-    $(MOZ_GTHREAD_LIBS) \
-    $(NULL)
-
 ifeq (1 ,$(MOZ_X11))
     OS_LIBS += \
     -lX11 \
