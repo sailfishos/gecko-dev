@@ -133,6 +133,9 @@ public:
   virtual bool GetPendingTexture(EmbedLiteRenderTarget* aContextWrapper, int* textureID, int* width, int* height, int* textureTarget = 0);
   virtual void* GetPlatformImage(int* width, int* height);
 
+  virtual void SuspendRendering();
+  virtual void ResumeRendering();
+
 private:
   friend class EmbedLiteViewThreadParent;
   friend class EmbedLiteCompositorParent;

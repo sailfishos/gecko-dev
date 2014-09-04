@@ -297,6 +297,20 @@ EmbedLiteView::ScheduleRender()
 }
 
 void
+EmbedLiteView::SuspendRendering()
+{
+  NS_ENSURE_TRUE(mViewImpl, );
+  mViewImpl->SuspendRendering();
+}
+
+void
+EmbedLiteView::ResumeRendering()
+{
+  NS_ENSURE_TRUE(mViewImpl, );
+  mViewImpl->ResumeRendering();
+}
+
+void
 EmbedLiteView::ReceiveInputEvent(const InputData& aEvent)
 {
   NS_ENSURE_TRUE(mViewImpl,);

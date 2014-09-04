@@ -566,6 +566,26 @@ EmbedLiteViewThreadParent::ScheduleRender()
 }
 
 NS_IMETHODIMP
+EmbedLiteViewThreadParent::ResumeRendering()
+{
+  if (mCompositor) {
+    mCompositor->ResumeRendering();
+  }
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+EmbedLiteViewThreadParent::SuspendRendering()
+{
+  if (mCompositor) {
+    mCompositor->SuspendRendering();
+  }
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 EmbedLiteViewThreadParent::ReceiveInputEvent(const mozilla::InputData& aEvent)
 {
   if (mController->GetManager()) {
