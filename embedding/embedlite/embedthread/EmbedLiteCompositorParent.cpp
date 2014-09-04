@@ -226,7 +226,8 @@ EmbedLiteCompositorParent::GetPlatformImage(int* width, int* height)
   NS_ENSURE_TRUE(state && state->mLayerManager, nullptr);
 
   GLContext* context = static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->gl();
-  NS_ENSURE_TRUE(context && context->IsOffscreen(), nullptr);
+  NS_ENSURE_TRUE(context, nullptr);
+  NS_ENSURE_TRUE(context->IsOffscreen(), nullptr);
 
   SharedSurface* sharedSurf = context->RequestFrame();
   NS_ENSURE_TRUE(sharedSurf, nullptr);
@@ -240,6 +241,34 @@ EmbedLiteCompositorParent::GetPlatformImage(int* width, int* height)
   }
 
   return nullptr;
+}
+
+void
+EmbedLiteCompositorParent::SuspendRendering()
+{
+  if (!CompositorParent::IsInCompositorThread()) {
+    CancelableTask* pauseTask = NewRunnableMethod(this, &EmbedLiteCompositorParent::SuspendRendering);
+    CompositorLoop()->PostTask(FROM_HERE, pauseTask);
+    return;
+  }
+
+  const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(RootLayerTreeId());
+  NS_ENSURE_TRUE(state && state->mLayerManager, );
+  static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->Pause();
+}
+
+void
+EmbedLiteCompositorParent::ResumeRendering()
+{
+  if (!CompositorParent::IsInCompositorThread()) {
+    CancelableTask* pauseTask = NewRunnableMethod(this, &EmbedLiteCompositorParent::ResumeRendering);
+    CompositorLoop()->PostTask(FROM_HERE, pauseTask);
+    return;
+  }
+
+  const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(RootLayerTreeId());
+  NS_ENSURE_TRUE(state && state->mLayerManager, );
+  static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->Resume();
 }
 
 } // namespace embedlite

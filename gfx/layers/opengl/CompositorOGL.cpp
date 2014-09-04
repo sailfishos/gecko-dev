@@ -1512,6 +1512,12 @@ CompositorOGL::Pause()
 
   // ReleaseSurface internally calls MakeCurrent.
   gl()->ReleaseSurface();
+#else
+  if (!gl() || gl()->IsDestroyed())
+    return;
+
+  // TODO: call Layers->SetCompositor(nullptr);
+  CleanupResources();
 #endif
 }
 
@@ -1524,6 +1530,12 @@ CompositorOGL::Resume()
 
   // RenewSurface internally calls MakeCurrent.
   return gl()->RenewSurface();
+#else
+  if (gl() && !gl()->IsDestroyed())
+    return false;
+
+  Initialize();
+  // TODO: call Layers->SetCompositor(thisOD);
 #endif
   return true;
 }
