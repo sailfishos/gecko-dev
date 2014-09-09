@@ -33,6 +33,7 @@ public:
   void SetWorldTransform(gfx::Matrix);
   void SetClipping(const gfxRect& aClipRect);
   void SetWorldOpacity(float aOpacity);
+  void* GetPlatformImage(int* width, int* height);
 
   virtual void SetChildCompositor(mozilla::layers::CompositorChild*, MessageLoop*);
   mozilla::layers::CompositorChild* GetChildCompositor() {
