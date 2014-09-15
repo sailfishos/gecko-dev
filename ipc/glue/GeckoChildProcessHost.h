@@ -20,7 +20,7 @@
 #include "nsXULAppAPI.h"        // for GeckoProcessType
 #include "nsString.h"
 
-#if defined(XP_WIN)
+#if defined(XP_WIN) && defined(MOZ_SANDBOX)
 #include "sandboxBroker.h"
 #endif
 
@@ -165,7 +165,16 @@ protected:
 #ifdef XP_WIN
   void InitWindowsGroupID();
   nsString mGroupId;
+
+#ifdef MOZ_SANDBOX
   SandboxBroker mSandboxBroker;
+  std::vector<std::wstring> mAllowedFilesRead;
+
+#if defined(MOZ_CONTENT_SANDBOX)
+  bool mEnableContentSandbox;
+  bool mWarnOnlyContentSandbox;
+#endif
+#endif
 #endif // XP_WIN
 
 #if defined(OS_POSIX)

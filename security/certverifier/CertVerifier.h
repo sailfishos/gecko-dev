@@ -43,6 +43,7 @@ public:
        /*optional*/ void* pinarg,
                     const char* hostname,
                     bool saveIntermediatesInPermanentDatabase = false,
+                    Flags flags = 0,
    /*optional out*/ ScopedCERTCertList* builtChain = nullptr,
    /*optional out*/ SECOidTag* evOidPolicy = nullptr);
 
@@ -78,6 +79,8 @@ private:
 };
 
 void InitCertVerifierLog();
+SECStatus IsCertBuiltInRoot(CERTCertificate* cert, bool& result);
+
 } } // namespace mozilla::psm
 
 #endif // mozilla_psm__CertVerifier_h

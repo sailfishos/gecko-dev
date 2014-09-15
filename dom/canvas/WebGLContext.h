@@ -11,6 +11,7 @@
 #include "mozilla/EnumeratedArray.h"
 #include "mozilla/LinkedList.h"
 #include "mozilla/UniquePtr.h"
+#include "mozilla/WeakPtr.h"
 
 #include "GLDefs.h"
 #include "WebGLActiveInfo.h"
@@ -62,6 +63,7 @@ class nsIDocShell;
 
 namespace mozilla {
 
+class WebGLContextLossHandler;
 class WebGLObserver;
 class WebGLContextBoundObject;
 class WebGLActiveInfo;
@@ -120,25 +122,16 @@ struct WebGLContextOptions {
     bool preserveDrawingBuffer;
 };
 
-#ifdef DEBUG
-static bool
-IsTextureBinding(GLenum binding)
-{
-    switch (binding) {
-    case LOCAL_GL_TEXTURE_BINDING_2D:
-    case LOCAL_GL_TEXTURE_BINDING_CUBE_MAP:
-        return true;
-    }
-    return false;
-}
-#endif
+// From WebGLContextUtils
+GLenum TexImageTargetToTexTarget(GLenum texImageTarget);
 
 class WebGLContext :
     public nsIDOMWebGLRenderingContext,
     public nsICanvasRenderingContextInternal,
     public nsSupportsWeakReference,
     public WebGLRectangleObject,
-    public nsWrapperCache
+    public nsWrapperCache,
+    public SupportsWeakPtr<WebGLContext>
 {
     friend class WebGLContextUserData;
     friend class WebGLExtensionCompressedTextureATC;
@@ -164,6 +157,8 @@ class WebGLContext :
 
 public:
     WebGLContext();
+
+    MOZ_DECLARE_REFCOUNTED_TYPENAME(WebGLContext)
 
     NS_DECL_CYCLE_COLLECTING_ISUPPORTS
 
@@ -196,13 +191,15 @@ public:
                                  JS::Handle<JS::Value> aOptions) MOZ_OVERRIDE;
 
     NS_IMETHOD SetIsIPC(bool b) MOZ_OVERRIDE { return NS_ERROR_NOT_IMPLEMENTED; }
-    NS_IMETHOD Redraw(const gfxRect&) { return NS_ERROR_NOT_IMPLEMENTED; }
-    NS_IMETHOD Swap(mozilla::ipc::Shmem& aBack,
-                    int32_t x, int32_t y, int32_t w, int32_t h)
-                    { return NS_ERROR_NOT_IMPLEMENTED; }
-    NS_IMETHOD Swap(uint32_t nativeID,
-                    int32_t x, int32_t y, int32_t w, int32_t h)
-                    { return NS_ERROR_NOT_IMPLEMENTED; }
+
+    /**
+     * An abstract base class to be implemented by callers wanting to be notified
+     * that a refresh has occurred. Callers must ensure an observer is removed
+     * before it is destroyed.
+     */
+    virtual void DidRefresh() MOZ_OVERRIDE;
+
+    NS_IMETHOD Redraw(const gfxRect&) MOZ_OVERRIDE { return NS_ERROR_NOT_IMPLEMENTED; }
 
     void SynthesizeGLError(GLenum err);
     void SynthesizeGLError(GLenum err, const char *fmt, ...);
@@ -227,10 +224,19 @@ public:
 
     void DummyFramebufferOperation(const char *info);
 
-    WebGLTexture* activeBoundTextureForTarget(GLenum target) const {
-        MOZ_ASSERT(!IsTextureBinding(target));
-        return target == LOCAL_GL_TEXTURE_2D ? mBound2DTextures[mActiveTexture]
-                                             : mBoundCubeMapTextures[mActiveTexture];
+    WebGLTexture* activeBoundTextureForTarget(GLenum texTarget) const {
+        MOZ_ASSERT(texTarget == LOCAL_GL_TEXTURE_2D || texTarget == LOCAL_GL_TEXTURE_CUBE_MAP);
+        return texTarget == LOCAL_GL_TEXTURE_2D ? mBound2DTextures[mActiveTexture]
+                                                : mBoundCubeMapTextures[mActiveTexture];
+    }
+
+    /* Use this function when you have the texture image target, for example:
+     * GL_TEXTURE_2D, GL_TEXTURE_CUBE_MAP_[POSITIVE|NEGATIVE]_[X|Y|Z], and
+     * not the actual texture binding target: GL_TEXTURE_2D or GL_TEXTURE_CUBE_MAP.
+     */
+    WebGLTexture* activeBoundTextureForTexImageTarget(GLenum texImgTarget) const {
+        const GLenum texTarget = TexImageTargetToTexTarget(texImgTarget);
+        return activeBoundTextureForTarget(texTarget);
     }
 
     already_AddRefed<CanvasLayer> GetCanvasLayer(nsDisplayListBuilder* aBuilder,
@@ -268,11 +274,9 @@ public:
 
     bool MinCapabilityMode() const { return mMinCapability; }
 
+    void RunContextLossTimer();
     void UpdateContextLossStatus();
     void EnqueueUpdateContextLossStatus();
-    static void ContextLossCallbackStatic(nsITimer* timer, void* thisPointer);
-    void RunContextLossTimer();
-    void TerminateContextLossTimer();
 
     bool TryToRestoreContext();
 
@@ -358,7 +362,7 @@ public:
     already_AddRefed<WebGLActiveInfo> GetActiveUniform(WebGLProgram *prog,
                                                        GLuint index);
     void GetAttachedShaders(WebGLProgram* prog,
-                            dom::Nullable< nsTArray<WebGLShader*> > &retval);
+                            dom::Nullable<nsTArray<nsRefPtr<WebGLShader>>>& retval);
     GLint GetAttribLocation(WebGLProgram* prog, const nsAString& name);
     JS::Value GetBufferParameter(GLenum target, GLenum pname);
     void GetBufferParameter(JSContext* /* unused */, GLenum target,
@@ -461,17 +465,31 @@ public:
                     dom::ImageData* pixels, ErrorResult& rv);
     // Allow whatever element types the bindings are willing to pass
     // us in TexImage2D
-    bool TexImageFromVideoElement(GLenum target, GLint level,
+    bool TexImageFromVideoElement(GLenum texImageTarget, GLint level,
                                   GLenum internalformat, GLenum format, GLenum type,
                                   mozilla::dom::Element& image);
 
     template<class ElementType>
-    void TexImage2D(GLenum target, GLint level,
+    void TexImage2D(GLenum texImageTarget, GLint level,
                     GLenum internalformat, GLenum format, GLenum type,
                     ElementType& elt, ErrorResult& rv)
     {
         if (IsContextLost())
             return;
+
+        const GLenum target = TexImageTargetToTexTarget(texImageTarget);
+        if (target == LOCAL_GL_NONE)
+            return ErrorInvalidEnumInfo("texImage2D: target", target);
+
+        if (!ValidateTexImageFormatAndType(format, type, WebGLTexImageFunc::TexImage))
+            return;
+
+        if (level < 0)
+            return ErrorInvalidValue("texImage2D: level is negative");
+
+        const int32_t maxLevel = MaxTextureLevelForTexImageTarget(texImageTarget);
+        if (level > maxLevel)
+            return ErrorInvalidValue("texImage2D: level %d is too large, max is %d", level, maxLevel);
 
         WebGLTexture* tex = activeBoundTextureForTarget(target);
 
@@ -479,7 +497,7 @@ public:
             return ErrorInvalidOperation("no texture is bound to this target");
 
         // Trying to handle the video by GPU directly first
-        if (TexImageFromVideoElement(target, level, internalformat, format, type, elt)) {
+        if (TexImageFromVideoElement(texImageTarget, level, internalformat, format, type, elt)) {
             return;
         }
 
@@ -493,7 +511,7 @@ public:
 
         gfx::IntSize size = data->GetSize();
         uint32_t byteLength = data->Stride() * size.height;
-        return TexImage2D_base(target, level, internalformat,
+        return TexImage2D_base(texImageTarget, level, internalformat,
                                size.width, size.height, data->Stride(),
                                0, format, type, data->GetData(), byteLength,
                                -1, srcFormat, mPixelStorePremultiplyAlpha);
@@ -518,15 +536,29 @@ public:
     // Allow whatever element types the bindings are willing to pass
     // us in TexSubImage2D
     template<class ElementType>
-    void TexSubImage2D(GLenum target, GLint level,
+    void TexSubImage2D(GLenum texImageTarget, GLint level,
                        GLint xoffset, GLint yoffset, GLenum format,
                        GLenum type, ElementType& elt, ErrorResult& rv)
     {
         if (IsContextLost())
             return;
 
+        const GLenum target = TexImageTargetToTexTarget(texImageTarget);
+        if (target == LOCAL_GL_NONE)
+            return ErrorInvalidEnumInfo("texSubImage2D: target", texImageTarget);
+
+        if (!ValidateTexImageFormatAndType(format, type, WebGLTexImageFunc::TexImage))
+            return;
+
+        if (level < 0)
+            return ErrorInvalidValue("texSubImage2D: level is negative");
+
+        const int32_t maxLevel = MaxTextureLevelForTexImageTarget(texImageTarget);
+        if (level > maxLevel)
+            return ErrorInvalidValue("texSubImage2D: level %d is too large, max is %d", level, maxLevel);
+
         // Trying to handle the video by GPU directly first
-        if (TexImageFromVideoElement(target, level, format, format, type, elt)) {
+        if (TexImageFromVideoElement(texImageTarget, level, format, format, type, elt)) {
             return;
         }
 
@@ -540,7 +572,7 @@ public:
 
         gfx::IntSize size = data->GetSize();
         uint32_t byteLength = data->Stride() * size.height;
-        return TexSubImage2D_base(target, level, xoffset, yoffset,
+        return TexSubImage2D_base(texImageTarget, level, xoffset, yoffset,
                                   size.width, size.height,
                                   data->Stride(), format, type,
                                   data->GetData(), byteLength,
@@ -968,7 +1000,9 @@ protected:
     int32_t mGLMaxVertexAttribs;
     int32_t mGLMaxTextureUnits;
     int32_t mGLMaxTextureSize;
+    int32_t mGLMaxTextureSizeLog2;
     int32_t mGLMaxCubeMapTextureSize;
+    int32_t mGLMaxCubeMapTextureSizeLog2;
     int32_t mGLMaxRenderbufferSize;
     int32_t mGLMaxTextureImageUnits;
     int32_t mGLMaxVertexTextureImageUnits;
@@ -1033,7 +1067,9 @@ protected:
     // Validation functions (implemented in WebGLContextValidate.cpp)
     GLenum BaseTexFormat(GLenum internalFormat) const;
 
+    bool CreateOffscreenGL(bool forceEnabled);
     bool InitAndValidateGL();
+    bool ResizeBackbuffer(uint32_t width, uint32_t height);
     bool ValidateBlendEquationEnum(GLenum cap, const char *info);
     bool ValidateBlendFuncDstEnum(GLenum mode, const char *info);
     bool ValidateBlendFuncSrcEnum(GLenum mode, const char *info);
@@ -1051,6 +1087,7 @@ protected:
     bool ValidateGLSLCharacter(char16_t c);
     bool ValidateGLSLString(const nsAString& string, const char *info);
 
+    bool ValidateCopyTexImage(GLenum format, WebGLTexImageFunc func);
     bool ValidateTexImage(GLuint dims, GLenum target,
                           GLint level, GLint internalFormat,
                           GLint xoffset, GLint yoffset, GLint zoffset,
@@ -1171,6 +1208,12 @@ protected:
         return (target == LOCAL_GL_TEXTURE_2D) ? mGLMaxTextureSize : mGLMaxCubeMapTextureSize;
     }
 
+    int32_t MaxTextureLevelForTexImageTarget(GLenum texImageTarget) const {
+        const GLenum target = TexImageTargetToTexTarget(texImageTarget);
+        MOZ_ASSERT(target == LOCAL_GL_TEXTURE_2D || target == LOCAL_GL_TEXTURE_CUBE_MAP);
+        return (target == LOCAL_GL_TEXTURE_2D) ? mGLMaxTextureSizeLog2 : mGLMaxCubeMapTextureSizeLog2;
+    }
+
     /** like glBufferData but if the call may change the buffer size, checks any GL error generated
      * by this glBufferData call and returns it */
     GLenum CheckedBufferData(GLenum target,
@@ -1263,11 +1306,9 @@ protected:
     GLsizei mViewportHeight;
     bool mAlreadyWarnedAboutViewportLargerThanDest;
 
-    nsCOMPtr<nsITimer> mContextRestorer;
+    RefPtr<WebGLContextLossHandler> mContextLossHandler;
     bool mAllowContextRestore;
     bool mLastLossWasSimulated;
-    bool mContextLossTimerRunning;
-    bool mRunContextLossTimerAgain;
     ContextStatus mContextStatus;
     bool mContextLostErrorSet;
 
@@ -1408,7 +1449,7 @@ public:
     NS_DECL_NSIOBSERVER
     NS_DECL_NSIDOMEVENTLISTENER
 
-    WebGLObserver(WebGLContext* aContext);
+    explicit WebGLObserver(WebGLContext* aContext);
 
     void Destroy();
 

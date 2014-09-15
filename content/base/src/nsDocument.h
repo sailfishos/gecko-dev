@@ -64,7 +64,6 @@
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/dom/DOMImplementation.h"
 #include "mozilla/dom/StyleSheetList.h"
-#include "nsIDOMTouchEvent.h"
 #include "nsDataHashtable.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/Attributes.h"
@@ -122,12 +121,12 @@ class nsIdentifierMapEntry : public nsStringHashKey
 {
 public:
   typedef mozilla::dom::Element Element;
-  
-  nsIdentifierMapEntry(const nsAString& aKey) :
+
+  explicit nsIdentifierMapEntry(const nsAString& aKey) :
     nsStringHashKey(&aKey), mNameContentList(nullptr)
   {
   }
-  nsIdentifierMapEntry(const nsAString *aKey) :
+  explicit nsIdentifierMapEntry(const nsAString* aKey) :
     nsStringHashKey(aKey), mNameContentList(nullptr)
   {
   }
@@ -203,8 +202,8 @@ public:
     typedef const ChangeCallback KeyType;
     typedef const ChangeCallback* KeyTypePointer;
 
-    ChangeCallbackEntry(const ChangeCallback* key) :
-      mKey(*key) { }
+    explicit ChangeCallbackEntry(const ChangeCallback* aKey) :
+      mKey(*aKey) { }
     ChangeCallbackEntry(const ChangeCallbackEntry& toCopy) :
       mKey(toCopy.mKey) { }
 
@@ -252,7 +251,7 @@ public:
     : mNamespaceID(aNamespaceID),
       mAtom(aAtom)
   {}
-  CustomElementHashKey(const CustomElementHashKey *aKey)
+  explicit CustomElementHashKey(const CustomElementHashKey* aKey)
     : mNamespaceID(aKey->mNamespaceID),
       mAtom(aKey->mAtom)
   {}
@@ -326,7 +325,7 @@ private:
 // being created flag.
 struct CustomElementData
 {
-  CustomElementData(nsIAtom* aType);
+  explicit CustomElementData(nsIAtom* aType);
   // Objects in this array are transient and empty after each microtask
   // checkpoint.
   nsTArray<nsAutoPtr<CustomElementCallback>> mCallbackQueue;
@@ -438,7 +437,7 @@ class nsDOMStyleSheetList : public mozilla::dom::StyleSheetList,
                             public nsStubDocumentObserver
 {
 public:
-  nsDOMStyleSheetList(nsIDocument *aDocument);
+  explicit nsDOMStyleSheetList(nsIDocument* aDocument);
 
   NS_DECL_ISUPPORTS_INHERITED
 
@@ -541,7 +540,7 @@ protected:
     ~PendingLoad() {}
 
   public:
-    PendingLoad(nsDocument* aDisplayDocument) :
+    explicit PendingLoad(nsDocument* aDisplayDocument) :
       mDisplayDocument(aDisplayDocument)
     {}
 
@@ -573,7 +572,7 @@ protected:
   {
     ~LoadgroupCallbacks() {}
   public:
-    LoadgroupCallbacks(nsIInterfaceRequestor* aOtherCallbacks)
+    explicit LoadgroupCallbacks(nsIInterfaceRequestor* aOtherCallbacks)
       : mCallbacks(aOtherCallbacks)
     {}
     NS_DECL_ISUPPORTS
@@ -936,6 +935,12 @@ public:
   nsRadioGroupStruct* GetOrCreateRadioGroup(const nsAString& aName);
 
   virtual nsViewportInfo GetViewportInfo(const mozilla::ScreenIntSize& aDisplaySize) MOZ_OVERRIDE;
+
+  /**
+   * Called when an app-theme-changed observer notification is
+   * received by this document.
+   */
+  void OnAppThemeChanged();
 
 private:
   void AddOnDemandBuiltInUASheet(mozilla::CSSStyleSheet* aSheet);
@@ -1441,7 +1446,7 @@ protected:
   void VerifyRootContentState();
 #endif
 
-  nsDocument(const char* aContentType);
+  explicit nsDocument(const char* aContentType);
   virtual ~nsDocument();
 
   void EnsureOnloadBlocker();
@@ -1591,6 +1596,12 @@ public:
   bool mAllowRelocking:1;
 
   bool mAsyncFullscreenPending:1;
+
+  // Whether we're observing the "app-theme-changed" observer service
+  // notification.  We need to keep track of this because we might get multiple
+  // OnPageShow notifications in a row without an OnPageHide in between, if
+  // we're getting document.open()/close() called on us.
+  bool mObservingAppThemeChanged:1;
 
   // Keeps track of whether we have a pending
   // 'style-sheet-applicable-state-changed' notification.
@@ -1757,7 +1768,7 @@ public:
 class nsDocumentOnStack
 {
 public:
-  nsDocumentOnStack(nsDocument* aDoc) : mDoc(aDoc)
+  explicit nsDocumentOnStack(nsDocument* aDoc) : mDoc(aDoc)
   {
     mDoc->IncreaseStackRefCnt();
   }

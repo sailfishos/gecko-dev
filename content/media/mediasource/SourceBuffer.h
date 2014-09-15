@@ -7,21 +7,20 @@
 #ifndef mozilla_dom_SourceBuffer_h_
 #define mozilla_dom_SourceBuffer_h_
 
-#include "MediaDecoderReader.h"
 #include "MediaSource.h"
 #include "js/RootingAPI.h"
 #include "mozilla/Assertions.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/DOMEventTargetHelper.h"
 #include "mozilla/dom/SourceBufferBinding.h"
 #include "mozilla/dom/TypedArray.h"
-#include "mozilla/DOMEventTargetHelper.h"
 #include "mozilla/mozalloc.h"
 #include "nsAutoPtr.h"
 #include "nsCOMPtr.h"
 #include "nsCycleCollectionNoteChild.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsISupports.h"
-#include "nsStringGlue.h"
+#include "nsString.h"
 #include "nscore.h"
 
 class JSObject;
@@ -31,8 +30,7 @@ namespace mozilla {
 
 class ContainerParser;
 class ErrorResult;
-class SourceBufferResource;
-class SubBufferDecoder;
+class TrackBuffer;
 template <typename T> class AsyncEventRunner;
 
 namespace dom {
@@ -89,7 +87,7 @@ public:
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(SourceBuffer, DOMEventTargetHelper)
 
-  static already_AddRefed<SourceBuffer> Create(MediaSource* aMediaSource, const nsACString& aType);
+  SourceBuffer(MediaSource* aMediaSource, const nsACString& aType);
 
   MediaSource* GetParentObject() const;
 
@@ -113,8 +111,6 @@ public:
 
 private:
   ~SourceBuffer();
-
-  SourceBuffer(MediaSource* aMediaSource, const nsACString& aType);
 
   friend class AsyncEventRunner<SourceBuffer>;
   void DispatchSimpleEvent(const char* aName);
@@ -141,8 +137,7 @@ private:
 
   nsAutoPtr<ContainerParser> mParser;
 
-  nsRefPtr<SubBufferDecoder> mDecoder;
-  nsTArray<nsRefPtr<SubBufferDecoder>> mDecoders;
+  nsRefPtr<TrackBuffer> mTrackBuffer;
 
   double mAppendWindowStart;
   double mAppendWindowEnd;
@@ -151,8 +146,6 @@ private:
 
   SourceBufferAppendMode mAppendMode;
   bool mUpdating;
-
-  bool mDecoderInitialized;
 };
 
 } // namespace dom

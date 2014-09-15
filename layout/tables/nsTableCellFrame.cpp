@@ -317,8 +317,16 @@ nsTableCellFrame::DecorateForSelection(nsRenderingContext& aRenderingContext,
         //compare bordercolor to ((nsStyleColor *)myColor)->mBackgroundColor)
         bordercolor = EnsureDifferentColors(bordercolor,
                                             StyleBackground()->mBackgroundColor);
-        nsRenderingContext::AutoPushTranslation
-            translate(&aRenderingContext, aPt);
+
+        gfxContext* ctx = aRenderingContext.ThebesContext();
+
+        gfxPoint devPixelOffset =
+          nsLayoutUtils::PointToGfxPoint(aPt,
+                                         PresContext()->AppUnitsPerDevPixel());
+
+        gfxContextMatrixAutoSaveRestore autoSR(ctx);
+        ctx->SetMatrix(ctx->CurrentMatrix().Translate(devPixelOffset));
+
         nscoord onePixel = nsPresContext::CSSPixelsToAppUnits(1);
 
         aRenderingContext.SetColor(bordercolor);
@@ -1018,6 +1026,11 @@ nsTableCellFrame::Reflow(nsPresContext*           aPresContext,
 
   // remember the desired size for this reflow
   SetDesiredSize(aDesiredSize);
+
+  // Any absolutely-positioned children will get reflowed in
+  // nsFrame::FixupPositionedTableParts in another pass, so propagate our
+  // dirtiness to them before our parent clears our dirty bits.
+  PushDirtyBitToAbsoluteFrames();
 
   NS_FRAME_SET_TRUNCATION(aStatus, aReflowState, aDesiredSize);
 }

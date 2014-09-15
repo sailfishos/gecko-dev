@@ -11,7 +11,6 @@
 
 #include "nsISeekableStream.h"
 #include "nsISupportsImpl.h"
-#include "prenv.h"
 #include "prlog.h"
 
 #ifdef PR_LOGGING
@@ -172,7 +171,7 @@ SourceBufferResource::AppendData(const uint8_t* aData, uint32_t aLength)
 {
   SBR_DEBUG("SourceBufferResource(%p)::AppendData(aData=%p, aLength=%u)", this, aData, aLength);
   ReentrantMonitorAutoEnter mon(mMonitor);
-  mInputBuffer.PushBack(new ResourceItem(aData, aLength));
+  mInputBuffer.AppendItem(aData, aLength);
   mon.NotifyAll();
 }
 
@@ -191,17 +190,15 @@ SourceBufferResource::~SourceBufferResource()
   MOZ_COUNT_DTOR(SourceBufferResource);
 }
 
-SourceBufferResource::SourceBufferResource(nsIPrincipal* aPrincipal,
-                                           const nsACString& aType)
-  : mPrincipal(aPrincipal)
-  , mType(aType)
+SourceBufferResource::SourceBufferResource(const nsACString& aType)
+  : mType(aType)
   , mMonitor("mozilla::SourceBufferResource::mMonitor")
   , mOffset(0)
   , mClosed(false)
   , mEnded(false)
 {
-  SBR_DEBUG("SourceBufferResource(%p)::SourceBufferResource(aPrincipal=%p, aType=%s)",
-            this, aPrincipal, nsCString(aType).get());
+  SBR_DEBUG("SourceBufferResource(%p)::SourceBufferResource(aType=%s)",
+            this, nsCString(aType).get());
   MOZ_COUNT_CTOR(SourceBufferResource);
 }
 

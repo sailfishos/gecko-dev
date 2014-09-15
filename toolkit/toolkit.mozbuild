@@ -6,7 +6,7 @@
 if CONFIG['LIBXUL_SDK']:
     error('toolkit.mozbuild is not compatible with --enable-libxul-sdk=')
 
-if CONFIG['MOZ_CONTENT_SANDBOX'] or CONFIG['MOZ_GMP_SANDBOX']:
+if CONFIG['MOZ_SANDBOX']:
     add_tier_dir('sandbox', 'security/sandbox')
 
 # Depends on NSS and NSPR, and must be built after sandbox or else B2G emulator
@@ -74,11 +74,9 @@ if CONFIG['MOZ_OMX_PLUGIN']:
         'media/omx-plugin/lib/gb/libstagefright',
         'media/omx-plugin/lib/gb/libstagefright_color_conversion',
         'media/omx-plugin/lib/gb235/libstagefright',
-        'media/omx-plugin/lib/froyo/libstagefright',
         'media/omx-plugin',
         'media/omx-plugin/gb',
         'media/omx-plugin/gb235',
-        'media/omx-plugin/froyo',
         'media/omx-plugin/lib/hc/libstagefright',
         'media/omx-plugin/hc',
         'media/omx-plugin/kk',
@@ -182,6 +180,7 @@ if CONFIG['ENABLE_TESTS']:
         'testing/profiles',
         'testing/mozbase',
         'testing/modules',
+        'testing/web-platform',
     ])
 
     if CONFIG['MOZ_WEBRTC'] and CONFIG['MOZ_WIDGET_TOOLKIT'] != 'gonk':

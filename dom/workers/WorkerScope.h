@@ -14,6 +14,7 @@ namespace dom {
 
 class Console;
 class Function;
+class Promise;
 
 } // namespace dom
 } // namespace mozilla
@@ -23,6 +24,7 @@ BEGIN_WORKERS_NAMESPACE
 class WorkerPrivate;
 class WorkerLocation;
 class WorkerNavigator;
+class Performance;
 
 class WorkerGlobalScope : public DOMEventTargetHelper,
                           public nsIGlobalObject
@@ -30,11 +32,12 @@ class WorkerGlobalScope : public DOMEventTargetHelper,
   nsRefPtr<Console> mConsole;
   nsRefPtr<WorkerLocation> mLocation;
   nsRefPtr<WorkerNavigator> mNavigator;
+  nsRefPtr<Performance> mPerformance;
 
 protected:
   WorkerPrivate* mWorkerPrivate;
 
-  WorkerGlobalScope(WorkerPrivate* aWorkerPrivate);
+  explicit WorkerGlobalScope(WorkerPrivate* aWorkerPrivate);
   virtual ~WorkerGlobalScope();
 
 public:
@@ -115,6 +118,8 @@ public:
 
   void
   Dump(const Optional<nsAString>& aString) const;
+
+  Performance* GetPerformance();
 };
 
 class DedicatedWorkerGlobalScope MOZ_FINAL : public WorkerGlobalScope
@@ -122,7 +127,7 @@ class DedicatedWorkerGlobalScope MOZ_FINAL : public WorkerGlobalScope
   ~DedicatedWorkerGlobalScope() { }
 
 public:
-  DedicatedWorkerGlobalScope(WorkerPrivate* aWorkerPrivate);
+  explicit DedicatedWorkerGlobalScope(WorkerPrivate* aWorkerPrivate);
 
   virtual JSObject*
   WrapGlobalObject(JSContext* aCx) MOZ_OVERRIDE;
@@ -185,11 +190,8 @@ public:
     // FIXME(nsm): Bug 982728
   }
 
-  void
-  Unregister()
-  {
-    // FIXME(nsm): Bug 982728
-  }
+  already_AddRefed<Promise>
+  Unregister(ErrorResult& aRv);
 
   IMPL_EVENT_HANDLER(activate)
   IMPL_EVENT_HANDLER(beforeevicted)

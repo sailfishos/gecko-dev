@@ -246,6 +246,13 @@ enum BluetoothHandsfreeAtResponse {
   HFP_AT_RESPONSE_OK
 };
 
+enum BluetoothHandsfreeAudioState {
+  HFP_AUDIO_STATE_DISCONNECTED,
+  HFP_AUDIO_STATE_CONNECTING,
+  HFP_AUDIO_STATE_CONNECTED,
+  HFP_AUDIO_STATE_DISCONNECTING,
+};
+
 enum BluetoothHandsfreeCallAddressType {
   HFP_CALL_ADDRESS_TYPE_UNKNOWN,
   HFP_CALL_ADDRESS_TYPE_INTERNATIONAL
@@ -254,6 +261,13 @@ enum BluetoothHandsfreeCallAddressType {
 enum BluetoothHandsfreeCallDirection {
   HFP_CALL_DIRECTION_OUTGOING,
   HFP_CALL_DIRECTION_INCOMING
+};
+
+enum BluetoothHandsfreeCallHoldType {
+  HFP_CALL_HOLD_RELEASEHELD,
+  HFP_CALL_HOLD_RELEASEACTIVE_ACCEPTHELD,
+  HFP_CALL_HOLD_HOLDACTIVE_ACCEPTHELD,
+  HFP_CALL_HOLD_ADDHELDTOCONF
 };
 
 enum BluetoothHandsfreeCallMode {
@@ -277,14 +291,33 @@ enum BluetoothHandsfreeCallState {
   HFP_CALL_STATE_IDLE
 };
 
+enum BluetoothHandsfreeConnectionState
+{
+  HFP_CONNECTION_STATE_DISCONNECTED,
+  HFP_CONNECTION_STATE_CONNECTING,
+  HFP_CONNECTION_STATE_CONNECTED,
+  HFP_CONNECTION_STATE_SLC_CONNECTED,
+  HFP_CONNECTION_STATE_DISCONNECTING
+};
+
 enum BluetoothHandsfreeNetworkState {
   HFP_NETWORK_STATE_NOT_AVAILABLE,
   HFP_NETWORK_STATE_AVAILABLE
 };
 
+enum BluetoothHandsfreeNRECState {
+  HFP_NREC_STOPPED,
+  HFP_NREC_STARTED
+};
+
 enum BluetoothHandsfreeServiceType {
   HFP_SERVICE_TYPE_HOME,
   HFP_SERVICE_TYPE_ROAMING
+};
+
+enum BluetoothHandsfreeVoiceRecognitionState {
+  HFP_VOICE_RECOGNITION_STOPPED,
+  HFP_VOICE_RECOGNITION_STARTED
 };
 
 enum BluetoothHandsfreeVolumeType {
@@ -306,6 +339,19 @@ enum BluetoothObjectType {
   TYPE_INVALID
 };
 
+enum BluetoothA2dpAudioState {
+  A2DP_AUDIO_STATE_REMOTE_SUSPEND,
+  A2DP_AUDIO_STATE_STOPPED,
+  A2DP_AUDIO_STATE_STARTED,
+};
+
+enum BluetoothA2dpConnectionState {
+  A2DP_CONNECTION_STATE_DISCONNECTED,
+  A2DP_CONNECTION_STATE_CONNECTING,
+  A2DP_CONNECTION_STATE_CONNECTED,
+  A2DP_CONNECTION_STATE_DISCONNECTING
+};
+
 enum ControlPlayStatus {
   PLAYSTATUS_STOPPED  = 0x00,
   PLAYSTATUS_PLAYING  = 0x01,
@@ -314,6 +360,20 @@ enum ControlPlayStatus {
   PLAYSTATUS_REV_SEEK = 0x04,
   PLAYSTATUS_UNKNOWN,
   PLAYSTATUS_ERROR    = 0xFF,
+};
+
+enum {
+  AVRCP_UID_SIZE = 8
+};
+
+enum BluetoothAvrcpMediaAttribute {
+  AVRCP_MEDIA_ATTRIBUTE_TITLE,
+  AVRCP_MEDIA_ATTRIBUTE_ARTIST,
+  AVRCP_MEDIA_ATTRIBUTE_ALBUM,
+  AVRCP_MEDIA_ATTRIBUTE_TRACK_NUM,
+  AVRCP_MEDIA_ATTRIBUTE_NUM_TRACKS,
+  AVRCP_MEDIA_ATTRIBUTE_GENRE,
+  AVRCP_MEDIA_ATTRIBUTE_PLAYING_TIME
 };
 
 enum BluetoothAvrcpPlayerAttribute {
@@ -345,6 +405,13 @@ enum BluetoothAvrcpNotification {
   AVRCP_NTF_CHANGED
 };
 
+enum BluetoothAvrcpRemoteFeature {
+  AVRCP_REMOTE_FEATURE_NONE,
+  AVRCP_REMOTE_FEATURE_METADATA,
+  AVRCP_REMOTE_FEATURE_ABSOLUTE_VOLUME,
+  AVRCP_REMOTE_FEATURE_BROWSE
+};
+
 struct BluetoothAvrcpElementAttribute {
   uint32_t mId;
   nsString mValue;
@@ -354,6 +421,12 @@ struct BluetoothAvrcpNotificationParam {
   ControlPlayStatus mPlayStatus;
   uint8_t mTrack[8];
   uint32_t mSongPos;
+  uint8_t mNumAttr;
+  uint8_t mIds[256];
+  uint8_t mValues[256];
+};
+
+struct BluetoothAvrcpPlayerSettings {
   uint8_t mNumAttr;
   uint8_t mIds[256];
   uint8_t mValues[256];

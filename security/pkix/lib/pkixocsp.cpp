@@ -156,7 +156,7 @@ static inline Result ResponseData(
                        const DERArray& certs);
 static inline Result SingleResponse(Reader& input, Context& context);
 static Result ExtensionNotUnderstood(Reader& extnID, Input extnValue,
-                                     /*out*/ bool& understood);
+                                     bool critical, /*out*/ bool& understood);
 static inline Result CertID(Reader& input,
                             const Context& context,
                             /*out*/ bool& match);
@@ -552,8 +552,8 @@ SingleResponse(Reader& input, Context& context)
   // * revoked overrides good and unknown
   // * good overrides unknown
   if (input.Peek(static_cast<uint8_t>(CertStatus::Good))) {
-    rv = der::ExpectTagAndLength(input, static_cast<uint8_t>(CertStatus::Good),
-                                 0);
+    rv = der::ExpectTagAndEmptyValue(input,
+                                     static_cast<uint8_t>(CertStatus::Good));
     if (rv != Success) {
       return rv;
     }
@@ -572,8 +572,8 @@ SingleResponse(Reader& input, Context& context)
     }
     context.certStatus = CertStatus::Revoked;
   } else {
-    rv = der::ExpectTagAndLength(input,
-                                 static_cast<uint8_t>(CertStatus::Unknown), 0);
+    rv = der::ExpectTagAndEmptyValue(input,
+                                     static_cast<uint8_t>(CertStatus::Unknown));
     if (rv != Success) {
       return rv;
     }
@@ -824,7 +824,7 @@ KeyHash(TrustDomain& trustDomain, const Input subjectPublicKeyInfo,
 
 Result
 ExtensionNotUnderstood(Reader& /*extnID*/, Input /*extnValue*/,
-                       /*out*/ bool& understood)
+                       bool /*critical*/, /*out*/ bool& understood)
 {
   understood = false;
   return Success;

@@ -30,13 +30,13 @@ class nsJARInputThunk;
 
 //-----------------------------------------------------------------------------
 
-class nsJARChannel : public nsIJARChannel
-                   , public nsIDownloadObserver
-                   , public nsIStreamListener
-                   , public nsIRemoteOpenFileListener
-                   , public nsIThreadRetargetableRequest
-                   , public nsIThreadRetargetableStreamListener
-                   , public nsHashPropertyBag
+class nsJARChannel MOZ_FINAL : public nsIJARChannel
+                             , public nsIDownloadObserver
+                             , public nsIStreamListener
+                             , public nsIRemoteOpenFileListener
+                             , public nsIThreadRetargetableRequest
+                             , public           nsIThreadRetargetableStreamListener
+                             , public nsHashPropertyBag
 {
 public:
     NS_DECL_ISUPPORTS_INHERITED
@@ -61,8 +61,8 @@ private:
     nsresult LookupFile();
     nsresult OpenLocalFile();
     void NotifyError(nsresult aError);
-
     void FireOnProgress(uint64_t aProgress);
+    nsresult SetRemoteNSPRFileDesc(PRFileDesc *fd);
 
 #if defined(PR_LOGGING)
     nsCString                       mSpec;

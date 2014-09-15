@@ -482,7 +482,7 @@ class LDefinition
     }
     bool isCompatibleReg(const AnyRegister &r) const {
         if (isFloatReg() && r.isFloat()) {
-#if defined(JS_CODEGEN_ARM)
+#if defined(JS_CODEGEN_ARM) || defined(JS_CODEGEN_MIPS)
             if (type() == FLOAT32)
                 return r.fpu().isSingle();
             return r.fpu().isDouble();
@@ -493,7 +493,7 @@ class LDefinition
         return !isFloatReg() && !r.isFloat();
     }
     bool isCompatibleDef(const LDefinition &other) const {
-#ifdef JS_CODEGEN_ARM
+#if defined(JS_CODEGEN_ARM) || defined(JS_CODEGEN_MIPS)
         if (isFloatReg() && other.isFloatReg())
             return type() == other.type();
         return !isFloatReg() && !other.isFloatReg();
@@ -574,7 +574,7 @@ class LDefinition
           case MIRType_Float32x4:
             return LDefinition::FLOAT32X4;
           default:
-            MOZ_ASSUME_UNREACHABLE("unexpected type");
+            MOZ_CRASH("unexpected type");
         }
     }
 
@@ -754,7 +754,7 @@ class LInstructionVisitor
     {}
 
   public:
-#define VISIT_INS(op) virtual bool visit##op(L##op *) { MOZ_ASSUME_UNREACHABLE("NYI: " #op); }
+#define VISIT_INS(op) virtual bool visit##op(L##op *) { MOZ_CRASH("NYI: " #op); }
     LIR_OPCODE_LIST(VISIT_INS)
 #undef VISIT_INS
 };
@@ -1586,10 +1586,10 @@ class LIRGraph
     // platform stack alignment requirement, and so that it's a multiple of
     // the number of slots per Value.
     uint32_t paddedLocalSlotCount() const {
-        // Round to StackAlignment, but also round to at least sizeof(Value) in
-        // case that's greater, because StackOffsetOfPassedArg rounds argument
-        // slots to 8-byte boundaries.
-        size_t Alignment = Max(size_t(StackAlignment), sizeof(Value));
+        // Round to ABIStackAlignment, but also round to at least sizeof(Value)
+        // in case that's greater, because StackOffsetOfPassedArg rounds
+        // argument slots to 8-byte boundaries.
+        size_t Alignment = Max(size_t(ABIStackAlignment), sizeof(Value));
         return AlignBytes(localSlotCount(), Alignment);
     }
     size_t paddedLocalSlotsSize() const {

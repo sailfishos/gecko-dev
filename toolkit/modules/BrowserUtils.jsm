@@ -13,6 +13,15 @@ Cu.import("resource://gre/modules/Services.jsm");
 this.BrowserUtils = {
 
   /**
+   * Prints arguments separated by a space and appends a new line.
+   */
+  dumpLn: function (...args) {
+    for (let a of args)
+      dump(a + " ");
+    dump("\n");
+  },
+
+  /**
    * urlSecurityCheck: JavaScript wrapper for checkLoadURIWithPrincipal
    * and checkLoadURIStrWithPrincipal.
    * If |aPrincipal| is not allowed to link to |aURL|, this function throws with
@@ -112,4 +121,62 @@ this.BrowserUtils = {
     return rect;
   },
 
+  /**
+   * Given an element potentially within a subframe, calculate the offsets
+   * up to the top level browser.
+   *
+   * @param aTopLevelWindow content window to calculate offsets to.
+   * @param aElement The element in question.
+   * @return [targetWindow, offsetX, offsetY]
+   */
+  offsetToTopLevelWindow: function (aTopLevelWindow, aElement) {
+    let offsetX = 0;
+    let offsetY = 0;
+    let element = aElement;
+    while (element &&
+           element.ownerDocument &&
+           element.ownerDocument.defaultView != aTopLevelWindow) {
+      element = element.ownerDocument.defaultView.frameElement;
+      let rect = element.getBoundingClientRect();
+      offsetX += rect.left;
+      offsetY += rect.top;
+    }
+    let win = null;
+    if (element == aElement)
+      win = aTopLevelWindow;
+    else
+      win = element.contentDocument.defaultView;
+    return { targetWindow: win, offsetX: offsetX, offsetY: offsetY };
+  },
+
+  onBeforeLinkTraversal: function(originalTarget, linkURI, linkNode, isAppTab) {
+    // Don't modify non-default targets or targets that aren't in top-level app
+    // tab docshells (isAppTab will be false for app tab subframes).
+    if (originalTarget != "" || !isAppTab)
+      return originalTarget;
+
+    // External links from within app tabs should always open in new tabs
+    // instead of replacing the app tab's page (Bug 575561)
+    let linkHost;
+    let docHost;
+    try {
+      linkHost = linkURI.host;
+      docHost = linkNode.ownerDocument.documentURIObject.host;
+    } catch(e) {
+      // nsIURI.host can throw for non-nsStandardURL nsIURIs.
+      // If we fail to get either host, just return originalTarget.
+      return originalTarget;
+    }
+
+    if (docHost == linkHost)
+      return originalTarget;
+
+    // Special case: ignore "www" prefix if it is part of host string
+    let [longHost, shortHost] =
+      linkHost.length > docHost.length ? [linkHost, docHost] : [docHost, linkHost];
+    if (longHost == "www." + shortHost)
+      return originalTarget;
+
+    return "_blank";
+  },
 };

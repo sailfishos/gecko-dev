@@ -67,6 +67,15 @@ public interface TelemetryContract {
         // Perform a search -- currently used when starting a search in the search activity.
         SEARCH("search.1"),
 
+        // Remove a search engine.
+        SEARCH_REMOVE("search.remove.1"),
+
+        // Restore default search engines.
+        SEARCH_RESTORE_DEFAULTS("search.restoredefaults.1"),
+
+        // Set default search engine.
+        SEARCH_SET_DEFAULT("search.setdefault.1"),
+
         // Sharing content.
         SHARE("share.1"),
 
@@ -149,12 +158,18 @@ public interface TelemetryContract {
         // Note: Only used in JavaScript for now, but here for completeness.
         PAGEACTION("pageaction"),
 
+        // Action triggered from a settings screen.
+        SETTINGS("settings"),
+
         // Action triggered from a suggestion provided to the user.
         SUGGESTION("suggestion"),
 
         // Action triggered from a SuperToast.
         // Note: Only used in JavaScript for now, but here for completeness.
         TOAST("toast"),
+
+        // Action triggerred by pressing a SearchWidget button
+        WIDGET("widget"),
 
         // VALUES BELOW THIS LINE ARE EXCLUSIVE TO TESTING.
         _TEST1("_test_method_1"),
@@ -199,6 +214,9 @@ public interface TelemetryContract {
 
         // Started when the search activity launches.
         SEARCH_ACTIVITY("searchactivity.1"),
+
+        // Settings activity is active.
+        SETTINGS("settings.1"),
 
         // VALUES BELOW THIS LINE ARE EXCLUSIVE TO TESTING.
         _TEST_STARTED_TWICE("_test_session_started_twice.1"),

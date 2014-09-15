@@ -16,13 +16,16 @@ XPCOMUtils.defineLazyModuleGetter(this, "Services",
   "resource://gre/modules/Services.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "BrowserNewTabPreloader",
-  "resource:///modules/BrowserNewTabPreloader.jsm", "BrowserNewTabPreloader");
+  "resource:///modules/BrowserNewTabPreloader.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "CustomizationTabPreloader",
-  "resource:///modules/CustomizationTabPreloader.jsm", "CustomizationTabPreloader");
+  "resource:///modules/CustomizationTabPreloader.jsm");
+
+XPCOMUtils.defineLazyModuleGetter(this, "ContentSearch",
+  "resource:///modules/ContentSearch.jsm");
 
 const SIMPLETEST_OVERRIDES =
-  ["ok", "is", "isnot", "ise", "todo", "todo_is", "todo_isnot", "info", "expectAssertions"];
+  ["ok", "is", "isnot", "ise", "todo", "todo_is", "todo_isnot", "info", "expectAssertions", "requestCompleteLog"];
 
 window.addEventListener("load", function testOnLoad() {
   window.removeEventListener("load", testOnLoad);
@@ -455,6 +458,7 @@ Tester.prototype = {
     // is invoked to start the tests.
     this.waitForWindowsState((function () {
       if (this.done) {
+
         // Uninitialize a few things explicitly so that they can clean up
         // frames and browser intentionally kept alive until shutdown to
         // eliminate false positives.
@@ -515,20 +519,34 @@ Tester.prototype = {
           }
         };
 
-        checkForLeakedGlobalWindows(aResults => {
-          if (aResults.length == 0) {
-            this.finish();
-            return;
-          }
-          // After the first check, if there are reported leaked windows, sleep
-          // for a while, to allow off-main-thread work to complete and free up
-          // main-thread objects.  Then check again.
-          setTimeout(() => {
-            checkForLeakedGlobalWindows(aResults => {
-              reportLeaks(aResults);
+        let {AsyncShutdown} =
+          Cu.import("resource://gre/modules/AsyncShutdown.jsm", {});
+
+        let barrier = new AsyncShutdown.Barrier(
+          "ShutdownLeaks: Wait for cleanup to be finished before checking for leaks");
+        Services.obs.notifyObservers({wrappedJSObject: barrier},
+          "shutdown-leaks-before-check", null);
+
+        barrier.wait().then(() => {
+          // Simulate memory pressure so that we're forced to free more resources
+          // and thus get rid of more false leaks like already terminated workers.
+          Services.obs.notifyObservers(null, "memory-pressure", "heap-minimize");
+
+          checkForLeakedGlobalWindows(aResults => {
+            if (aResults.length == 0) {
               this.finish();
-            });
-          }, 1000);
+              return;
+            }
+            // After the first check, if there are reported leaked windows, sleep
+            // for a while, to allow off-main-thread work to complete and free up
+            // main-thread objects.  Then check again.
+            setTimeout(() => {
+              checkForLeakedGlobalWindows(aResults => {
+                reportLeaks(aResults);
+                this.finish();
+              });
+            }, 1000);
+          });
         });
 
         return;
@@ -893,6 +911,13 @@ function testScope(aTester, aTest) {
         }
       });
     }
+  };
+
+  this.requestCompleteLog = function test_requestCompleteLog() {
+    self.__tester.dumper.structuredLogger.deactivateBuffering();
+    self.registerCleanupFunction(function() {
+      self.__tester.dumper.structuredLogger.activateBuffering();
+    })
   };
 }
 testScope.prototype = {

@@ -48,6 +48,9 @@ class LIRGeneratorX86Shared : public LIRGeneratorShared
     bool lowerTruncateDToInt32(MTruncateToInt32 *ins);
     bool lowerTruncateFToInt32(MTruncateToInt32 *ins);
     bool visitForkJoinGetSlice(MForkJoinGetSlice *ins);
+    bool visitSimdTernaryBitwise(MSimdTernaryBitwise *ins);
+    bool visitSimdSplatX4(MSimdSplatX4 *ins);
+    bool visitSimdValueX4(MSimdValueX4 *ins);
 };
 
 } // namespace jit

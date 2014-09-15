@@ -84,20 +84,6 @@ describe("loop.Client", function() {
            sinon.assert.calledWithExactly(callback, null);
          });
 
-      it("should reset all url expiry when the request succeeds", function() {
-        // Sets up the hawkRequest stub to trigger the callback with no error
-        // and the url.
-        var dateInMilliseconds = new Date(2014,7,20).getTime();
-        hawkRequestStub.callsArgWith(3, null);
-        sandbox.useFakeTimers(dateInMilliseconds);
-
-        client.deleteCallUrl(fakeToken, callback);
-
-        sinon.assert.calledOnce(mozLoop.noteCallUrlExpiry);
-        sinon.assert.calledWithExactly(mozLoop.noteCallUrlExpiry,
-                                       dateInMilliseconds / 1000);
-      });
-
       it("should send an error when the request fails", function() {
         // Sets up the hawkRequest stub to trigger the callback with
         // an error
@@ -153,7 +139,7 @@ describe("loop.Client", function() {
           sinon.assert.calledWithExactly(callback, null, callUrlData);
         });
 
-      it("should note the call url expiry when the request succeeds",
+      it("should not update call url expiry when the request succeeds",
         function() {
           var callUrlData = {
             "callUrl": "fakeCallUrl",
@@ -167,9 +153,7 @@ describe("loop.Client", function() {
 
           client.requestCallUrl("foo", callback);
 
-          sinon.assert.calledOnce(mozLoop.noteCallUrlExpiry);
-          sinon.assert.calledWithExactly(mozLoop.noteCallUrlExpiry,
-            6000);
+          sinon.assert.notCalled(mozLoop.noteCallUrlExpiry);
         });
 
       it("should send an error when the request fails", function() {
@@ -193,53 +177,6 @@ describe("loop.Client", function() {
         client.requestCallUrl("foo", callback);
 
         sinon.assert.calledOnce(callback);
-        sinon.assert.calledWithMatch(callback, sinon.match(function(err) {
-          return /Invalid data received/.test(err.message);
-        }));
-      });
-    });
-
-    describe("#requestCallsInfo", function() {
-      it("should prevent launching a conversation when version is missing",
-        function() {
-          expect(function() {
-            client.requestCallsInfo();
-          }).to.Throw(Error, /missing required parameter version/);
-        });
-
-      it("should perform a get on /calls", function() {
-        client.requestCallsInfo(42, callback);
-
-        sinon.assert.calledOnce(hawkRequestStub);
-        sinon.assert.calledWith(hawkRequestStub,
-                                "/calls?version=42", "GET", null);
-
-      });
-
-      it("should request data for all calls", function() {
-        hawkRequestStub.callsArgWith(3, null,
-                                     '{"calls": [{"apiKey": "fake"}]}');
-
-        client.requestCallsInfo(42, callback);
-
-        sinon.assert.calledWithExactly(callback, null, [{apiKey: "fake"}]);
-      });
-
-      it("should send an error when the request fails", function() {
-        hawkRequestStub.callsArgWith(3, fakeErrorRes);
-
-        client.requestCallsInfo(42, callback);
-
-        sinon.assert.calledWithMatch(callback, sinon.match(function(err) {
-          return /400.*invalid token/.test(err.message);
-        }));
-      });
-
-      it("should send an error if the data is not valid", function() {
-        hawkRequestStub.callsArgWith(3, null, "{}");
-
-        client.requestCallsInfo(42, callback);
-
         sinon.assert.calledWithMatch(callback, sinon.match(function(err) {
           return /Invalid data received/.test(err.message);
         }));

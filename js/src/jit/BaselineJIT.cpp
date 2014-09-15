@@ -11,8 +11,8 @@
 #include "jit/BaselineCompiler.h"
 #include "jit/BaselineIC.h"
 #include "jit/CompileInfo.h"
-#include "jit/IonSpewer.h"
 #include "jit/JitCommon.h"
+#include "jit/JitSpewer.h"
 #include "vm/Interpreter.h"
 #include "vm/TraceLogging.h"
 
@@ -62,20 +62,20 @@ static bool
 CheckFrame(InterpreterFrame *fp)
 {
     if (fp->isGeneratorFrame()) {
-        IonSpew(IonSpew_BaselineAbort, "generator frame");
+        JitSpew(JitSpew_BaselineAbort, "generator frame");
         return false;
     }
 
     if (fp->isDebuggerFrame()) {
         // Debugger eval-in-frame. These are likely short-running scripts so
         // don't bother compiling them for now.
-        IonSpew(IonSpew_BaselineAbort, "debugger frame");
+        JitSpew(JitSpew_BaselineAbort, "debugger frame");
         return false;
     }
 
     if (fp->isNonEvalFunctionFrame() && fp->numActualArgs() > BASELINE_MAX_ARGS_LENGTH) {
         // Fall back to the interpreter to avoid running out of stack space.
-        IonSpew(IonSpew_BaselineAbort, "Too many arguments (%u)", fp->numActualArgs());
+        JitSpew(JitSpew_BaselineAbort, "Too many arguments (%u)", fp->numActualArgs());
         return false;
     }
 
@@ -106,7 +106,7 @@ EnterBaseline(JSContext *cx, EnterJitData &data)
     data.result.setInt32(data.numActualArgs);
     {
         AssertCompartmentUnchanged pcc(cx);
-        JitActivation activation(cx, data.constructing);
+        JitActivation activation(cx);
 
         if (data.osrFrame)
             data.osrFrame->setRunningInJit();
@@ -178,7 +178,7 @@ jit::EnterBaselineAtBranch(JSContext *cx, InterpreterFrame *fp, jsbytecode *pc)
         data.maxArgc = Max(fp->numActualArgs(), fp->numFormalArgs()) + 1; // +1 = include |this|
         data.maxArgv = fp->argv() - 1; // -1 = include |this|
         data.scopeChain = nullptr;
-        data.calleeToken = CalleeToToken(&fp->callee());
+        data.calleeToken = CalleeToToken(&fp->callee(), data.constructing);
     } else {
         thisv = fp->thisValue();
         data.constructing = false;
@@ -189,7 +189,7 @@ jit::EnterBaselineAtBranch(JSContext *cx, InterpreterFrame *fp, jsbytecode *pc)
 
         // For eval function frames, set the callee token to the enclosing function.
         if (fp->isFunctionFrame())
-            data.calleeToken = CalleeToToken(&fp->callee());
+            data.calleeToken = CalleeToToken(&fp->callee(), /* constructing = */ false);
         else
             data.calleeToken = CalleeToToken(fp->script());
     }
@@ -258,17 +258,17 @@ CanEnterBaselineJIT(JSContext *cx, HandleScript script, bool osr)
     if (script->hasBaselineScript())
         return Method_Compiled;
 
-    // Check script use count.
+    // Check script warm-up counter.
     //
     // Also eagerly compile if we are in parallel warmup, the point of which
     // is to gather type information so that the script may be compiled for
     // parallel execution. We want to avoid the situation of OSRing during
-    // warmup and only gathering type information for the loop, and not the
+    // warm-up and only gathering type information for the loop, and not the
     // rest of the function.
     if (cx->runtime()->forkJoinWarmup > 0) {
         if (osr)
             return Method_Skipped;
-    } else if (script->incUseCount() <= js_JitOptions.baselineUsesBeforeCompile) {
+    } else if (script->incWarmUpCounter() <= js_JitOptions.baselineWarmUpThreshold) {
         return Method_Skipped;
     }
 
@@ -317,30 +317,21 @@ jit::CanEnterBaselineMethod(JSContext *cx, RunState &state)
         InvokeState &invoke = *state.asInvoke();
 
         if (invoke.args().length() > BASELINE_MAX_ARGS_LENGTH) {
-            IonSpew(IonSpew_BaselineAbort, "Too many arguments (%u)", invoke.args().length());
+            JitSpew(JitSpew_BaselineAbort, "Too many arguments (%u)", invoke.args().length());
             return Method_CantCompile;
         }
 
-        // If constructing, allocate a new |this| object.
-        if (invoke.constructing() && invoke.args().thisv().isPrimitive()) {
-            RootedObject callee(cx, &invoke.args().callee());
-            RootedObject obj(cx, CreateThisForFunction(cx, callee,
-                                                       invoke.useNewType()
-                                                       ? SingletonObject
-                                                       : GenericObject));
-            if (!obj)
-                return Method_Skipped;
-            invoke.args().setThis(ObjectValue(*obj));
-        }
+        if (!state.maybeCreateThisForConstructor(cx))
+            return Method_Skipped;
     } else if (state.isExecute()) {
         ExecuteType type = state.asExecute()->type();
         if (type == EXECUTE_DEBUG || type == EXECUTE_DEBUG_GLOBAL) {
-            IonSpew(IonSpew_BaselineAbort, "debugger frame");
+            JitSpew(JitSpew_BaselineAbort, "debugger frame");
             return Method_CantCompile;
         }
     } else {
         JS_ASSERT(state.isGenerator());
-        IonSpew(IonSpew_BaselineAbort, "generator frame");
+        JitSpew(JitSpew_BaselineAbort, "generator frame");
         return Method_CantCompile;
     }
 
@@ -349,14 +340,12 @@ jit::CanEnterBaselineMethod(JSContext *cx, RunState &state)
 };
 
 BaselineScript *
-BaselineScript::New(JSContext *cx, uint32_t prologueOffset, uint32_t epilogueOffset,
+BaselineScript::New(JSScript *jsscript, uint32_t prologueOffset, uint32_t epilogueOffset,
                     uint32_t spsPushToggleOffset, uint32_t postDebugPrologueOffset,
                     size_t icEntries, size_t pcMappingIndexEntries, size_t pcMappingSize,
                     size_t bytecodeTypeMapEntries)
 {
     static const unsigned DataAlignment = sizeof(uintptr_t);
-
-    size_t paddedBaselineScriptSize = AlignBytes(sizeof(BaselineScript), DataAlignment);
 
     size_t icEntriesSize = icEntries * sizeof(ICEntry);
     size_t pcMappingIndexEntriesSize = pcMappingIndexEntries * sizeof(PCMappingIndexEntry);
@@ -367,21 +356,19 @@ BaselineScript::New(JSContext *cx, uint32_t prologueOffset, uint32_t epilogueOff
     size_t paddedPCMappingSize = AlignBytes(pcMappingSize, DataAlignment);
     size_t paddedBytecodeTypesMapSize = AlignBytes(bytecodeTypeMapSize, DataAlignment);
 
-    size_t allocBytes = paddedBaselineScriptSize +
-        paddedICEntriesSize +
-        paddedPCMappingIndexEntriesSize +
-        paddedPCMappingSize +
-        paddedBytecodeTypesMapSize;
+    size_t allocBytes = paddedICEntriesSize +
+                        paddedPCMappingIndexEntriesSize +
+                        paddedPCMappingSize +
+                        paddedBytecodeTypesMapSize;
 
-    uint8_t *buffer = cx->zone()->pod_malloc<uint8_t>(allocBytes);
-    if (!buffer)
+    BaselineScript *script = jsscript->pod_malloc_with_extra<BaselineScript, uint8_t>(allocBytes);
+    if (!script)
         return nullptr;
-
-    BaselineScript *script = reinterpret_cast<BaselineScript *>(buffer);
     new (script) BaselineScript(prologueOffset, epilogueOffset,
                                 spsPushToggleOffset, postDebugPrologueOffset);
 
-    size_t offsetCursor = paddedBaselineScriptSize;
+    size_t offsetCursor = sizeof(BaselineScript);
+    MOZ_ASSERT(offsetCursor == AlignBytes(sizeof(BaselineScript), DataAlignment));
 
     script->icEntriesOffset_ = offsetCursor;
     script->icEntries_ = icEntries;
@@ -543,7 +530,7 @@ BaselineScript::icEntryFromPCOffset(uint32_t pcOffset)
         if (icEntry(i).isForOp())
             return icEntry(i);
     }
-    MOZ_ASSUME_UNREACHABLE("Invalid PC offset for IC entry.");
+    MOZ_CRASH("Invalid PC offset for IC entry.");
 }
 
 ICEntry &
@@ -685,8 +672,6 @@ BaselineScript::nativeCodeForPC(JSScript *script, jsbytecode *pc, PCMappingSlotI
 
         curPC += GetBytecodeLength(curPC);
     }
-
-    MOZ_ASSUME_UNREACHABLE("Invalid pc");
 }
 
 jsbytecode *
@@ -761,8 +746,6 @@ BaselineScript::pcForNativeOffset(JSScript *script, uint32_t nativeOffset, bool 
 
         curPC += GetBytecodeLength(curPC);
     }
-
-    MOZ_ASSUME_UNREACHABLE("Bad baseline jitcode address");
 }
 
 jsbytecode *
@@ -820,7 +803,7 @@ BaselineScript::toggleSPS(bool enable)
 {
     JS_ASSERT(enable == !(bool)spsOn_);
 
-    IonSpew(IonSpew_BaselineIC, "  toggling SPS %s for BaselineScript %p",
+    JitSpew(JitSpew_BaselineIC, "  toggling SPS %s for BaselineScript %p",
             enable ? "on" : "off", this);
 
     // Toggle the jump
@@ -837,7 +820,7 @@ BaselineScript::toggleSPS(bool enable)
 void
 BaselineScript::purgeOptimizedStubs(Zone *zone)
 {
-    IonSpew(IonSpew_BaselineIC, "Purging optimized stubs");
+    JitSpew(JitSpew_BaselineIC, "Purging optimized stubs");
 
     for (size_t i = 0; i < numICEntries(); i++) {
         ICEntry &entry = icEntry(i);
@@ -908,6 +891,10 @@ jit::FinishDiscardBaselineScript(FreeOp *fop, JSScript *script)
         // Reset |active| flag so that we don't need a separate script
         // iteration to unmark them.
         script->baselineScript()->resetActive();
+
+        // The baseline caches have been wiped out, so the script will need to
+        // warm back up before it can be inlined during Ion compilation.
+        script->baselineScript()->clearIonCompiledOrInlined();
         return;
     }
 

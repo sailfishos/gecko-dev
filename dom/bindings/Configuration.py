@@ -138,8 +138,9 @@ class Configuration:
                 getter = lambda x: x.interface.isJSImplemented()
             elif key == 'isNavigatorProperty':
                 getter = lambda x: x.interface.getNavigatorProperty() != None
-            elif key == 'isExposedInAllWorkers':
-                getter = lambda x: not x.interface.isExternal() and "Worker" in x.interface._exposureGlobalNames
+            elif key == 'isExposedInAnyWorker':
+                getter = lambda x: (not x.interface.isExternal() and
+                                    x.interface.isExposedInAnyWorker())
             else:
                 # Have to watch out: just closing over "key" is not enough,
                 # since we're about to mutate its value
@@ -413,7 +414,7 @@ class Descriptor(DescriptorProvider):
         if self.interface.isJSImplemented():
             addExtendedAttribute('implicitJSContext', ['constructor'])
         else:
-            for attribute in ['implicitJSContext', 'resultNotAddRefed']:
+            for attribute in ['implicitJSContext']:
                 addExtendedAttribute(attribute, desc.get(attribute, {}))
 
         self._binaryNames = desc.get('binaryNames', {})
@@ -544,12 +545,13 @@ class Descriptor(DescriptorProvider):
             any((m.isAttr() or m.isMethod()) and m.isStatic() for m
                 in self.interface.members))
 
+    def hasThreadChecks(self):
+        return ((not self.workers and not self.interface.isExposedInWindow()) or
+                (self.interface.isExposedInAnyWorker() and
+                 self.interface.isExposedOnlyInSomeWorkers()))
+
     def isExposedConditionally(self):
-        return (self.interface.getExtendedAttribute("Pref") or
-                self.interface.getExtendedAttribute("ChromeOnly") or
-                self.interface.getExtendedAttribute("Func") or
-                self.interface.getExtendedAttribute("AvailableIn") or
-                self.interface.getExtendedAttribute("CheckPermissions"))
+        return self.interface.isExposedConditionally() or self.hasThreadChecks()
 
     def needsXrayResolveHooks(self):
         """

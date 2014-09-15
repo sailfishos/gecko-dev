@@ -156,7 +156,7 @@ struct ScriptLoadInfo
 
   nsString mURL;
   nsCOMPtr<nsIChannel> mChannel;
-  jschar* mScriptTextBuf;
+  char16_t* mScriptTextBuf;
   size_t mScriptTextLength;
 
   nsresult mLoadResult;
@@ -502,7 +502,7 @@ private:
       NS_ASSERTION(ssm, "Should never be null!");
 
       nsCOMPtr<nsIPrincipal> channelPrincipal;
-      rv = ssm->GetChannelPrincipal(channel, getter_AddRefs(channelPrincipal));
+      rv = ssm->GetChannelResultPrincipal(channel, getter_AddRefs(channelPrincipal));
       NS_ENSURE_SUCCESS(rv, rv);
 
       // See if this is a resource URI. Since JSMs usually come from resource://

@@ -168,7 +168,8 @@ class JSFunction : public JSObject
 
     /* Returns the strictness of this function, which must be interpreted. */
     bool strict() const {
-        return nonLazyScript()->strict();
+        MOZ_ASSERT(isInterpreted());
+        return isInterpretedLazy() ? lazyScript()->strict() : nonLazyScript()->strict();
     }
 
     void setFlags(uint16_t flags) {
@@ -531,6 +532,9 @@ FunctionHasResolveHook(const JSAtomState &atomState, PropertyName *name);
 
 extern bool
 fun_resolve(JSContext *cx, HandleObject obj, HandleId id, MutableHandleObject objp);
+
+extern bool
+fun_toString(JSContext *cx, unsigned argc, Value *vp);
 
 /*
  * Function extended with reserved slots for use by various kinds of functions.

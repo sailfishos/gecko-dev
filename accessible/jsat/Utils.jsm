@@ -255,15 +255,6 @@ this.Utils = { // jshint ignore:line
     }
   },
 
-  getViewport: function getViewport(aWindow) {
-    switch (this.MozBuildApp) {
-      case 'mobile/android':
-        return aWindow.BrowserApp.selectedTab.getViewport();
-      default:
-        return null;
-    }
-  },
-
   getState: function getState(aAccessibleOrEvent) {
     if (aAccessibleOrEvent instanceof Ci.nsIAccessibleStateChangeEvent) {
       return new State(
@@ -302,18 +293,37 @@ this.Utils = { // jshint ignore:line
     return doc.QueryInterface(Ci.nsIAccessibleDocument).virtualCursor;
   },
 
-  getBounds: function getBounds(aAccessible) {
-      let objX = {}, objY = {}, objW = {}, objH = {};
-      aAccessible.getBounds(objX, objY, objW, objH);
-      return new Rect(objX.value, objY.value, objW.value, objH.value);
+  getContentResolution: function _getContentResolution(aAccessible) {
+    let resX = { value: 1 }, resY = { value: 1 };
+    aAccessible.document.window.QueryInterface(
+      Ci.nsIInterfaceRequestor).getInterface(
+      Ci.nsIDOMWindowUtils).getResolution(resX, resY);
+    return [resX.value, resY.value];
   },
 
-  getTextBounds: function getTextBounds(aAccessible, aStart, aEnd) {
-      let accText = aAccessible.QueryInterface(Ci.nsIAccessibleText);
-      let objX = {}, objY = {}, objW = {}, objH = {};
-      accText.getRangeExtents(aStart, aEnd, objX, objY, objW, objH,
-        Ci.nsIAccessibleCoordinateType.COORDTYPE_SCREEN_RELATIVE);
-      return new Rect(objX.value, objY.value, objW.value, objH.value);
+  getBounds: function getBounds(aAccessible, aPreserveContentScale) {
+    let objX = {}, objY = {}, objW = {}, objH = {};
+    aAccessible.getBounds(objX, objY, objW, objH);
+
+    let [scaleX, scaleY] = aPreserveContentScale ? [1, 1] :
+      this.getContentResolution(aAccessible);
+
+    return new Rect(objX.value, objY.value, objW.value, objH.value).scale(
+      scaleX, scaleY);
+  },
+
+  getTextBounds: function getTextBounds(aAccessible, aStart, aEnd,
+                                        aPreserveContentScale) {
+    let accText = aAccessible.QueryInterface(Ci.nsIAccessibleText);
+    let objX = {}, objY = {}, objW = {}, objH = {};
+    accText.getRangeExtents(aStart, aEnd, objX, objY, objW, objH,
+      Ci.nsIAccessibleCoordinateType.COORDTYPE_SCREEN_RELATIVE);
+
+    let [scaleX, scaleY] = aPreserveContentScale ? [1, 1] :
+      this.getContentResolution(aAccessible);
+
+    return new Rect(objX.value, objY.value, objW.value, objH.value).scale(
+      scaleX, scaleY);
   },
 
   /**
@@ -343,10 +353,16 @@ this.Utils = { // jshint ignore:line
     return false;
   },
 
+  isHidden: function isHidden(aAccessible) {
+    // Need to account for aria-hidden, so can't just check for INVISIBLE
+    // state.
+    let hidden = Utils.getAttributes(aAccessible).hidden;
+    return hidden && hidden === 'true';
+  },
+
   inHiddenSubtree: function inHiddenSubtree(aAccessible) {
     for (let acc=aAccessible; acc; acc=acc.parent) {
-      let hidden = Utils.getAttributes(acc).hidden;
-      if (hidden && JSON.parse(hidden)) {
+      if (this.isHidden(acc)) {
         return true;
       }
     }
@@ -779,9 +795,7 @@ PivotContext.prototype = {
       if (this._includeInvisible) {
         include = true;
       } else {
-        // Need to account for aria-hidden, so can't just check for INVISIBLE
-        // state.
-        include = Utils.getAttributes(child).hidden !== 'true';
+        include = !Utils.isHidden(child);
       }
       if (include) {
         if (aPreorder) {

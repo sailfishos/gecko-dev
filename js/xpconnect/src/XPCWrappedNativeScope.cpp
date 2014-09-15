@@ -14,6 +14,7 @@
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/Preferences.h"
 #include "nsIAddonInterposition.h"
+#include "nsIXULRuntime.h"
 
 #include "mozilla/dom/BindingUtils.h"
 
@@ -120,9 +121,7 @@ XPCWrappedNativeScope::XPCWrappedNativeScope(JSContext *cx,
     mUseContentXBLScope = mAllowContentXBLScope;
     if (mUseContentXBLScope) {
       const js::Class *clasp = js::GetObjectClass(mGlobalJSObject);
-      mUseContentXBLScope = !strcmp(clasp->name, "Window") ||
-                            !strcmp(clasp->name, "ChromeWindow") ||
-                            !strcmp(clasp->name, "ModalContentWindow");
+      mUseContentXBLScope = !strcmp(clasp->name, "Window");
     }
     if (mUseContentXBLScope) {
       mUseContentXBLScope = principal && !nsContentUtils::IsSystemPrincipal(principal);
@@ -209,7 +208,7 @@ CompartmentPerAddon()
 
     if (!initialized) {
         pref = Preferences::GetBool("dom.compartment_per_addon", false) ||
-               Preferences::GetBool("browser.tabs.remote.autostart", false);
+               BrowserTabsRemoteAutostart();
         initialized = true;
     }
 

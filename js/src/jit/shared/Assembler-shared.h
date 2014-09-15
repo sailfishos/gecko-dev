@@ -71,7 +71,7 @@ ScaleFromElemWidth(int shift)
         return TimesEight;
     }
 
-    MOZ_ASSUME_UNREACHABLE("Invalid scale");
+    MOZ_CRASH("Invalid scale");
 }
 
 // Used for 32-bit immediates which do not require relocation.
@@ -93,7 +93,7 @@ struct Imm32
           case TimesEight:
             return Imm32(3);
         };
-        MOZ_ASSUME_UNREACHABLE("Invalid scale");
+        MOZ_CRASH("Invalid scale");
     }
 
     static inline Imm32 FactorOf(enum Scale s) {
@@ -640,9 +640,9 @@ class CallSite : public CallSiteDesc
 typedef Vector<CallSite, 0, SystemAllocPolicy> CallSiteVector;
 
 // As an invariant across architectures, within asm.js code:
-//   $sp % StackAlignment = (sizeof(AsmJSFrame) + masm.framePushed) % StackAlignment
+//   $sp % AsmJSStackAlignment = (sizeof(AsmJSFrame) + masm.framePushed) % AsmJSStackAlignment
 // Thus, AsmJSFrame represents the bytes pushed after the call (which occurred
-// with a StackAlignment-aligned StackPointer) that are not included in
+// with a AsmJSStackAlignment-aligned StackPointer) that are not included in
 // masm.framePushed.
 struct AsmJSFrame
 {
@@ -659,9 +659,11 @@ struct AsmJSFrame
 static_assert(sizeof(AsmJSFrame) == 2 * sizeof(void*), "?!");
 static const uint32_t AsmJSFrameBytesAfterReturnAddress = sizeof(void*);
 
-// A hoisting of AsmJSModule::activationGlobalDataOffset that avoids #including
-// AsmJSModule everywhere.
+// A hoisting of constants that would otherwise require #including AsmJSModule.h
+// everywhere. Values are asserted in AsmJSModule.h.
 static const unsigned AsmJSActivationGlobalDataOffset = 0;
+static const unsigned AsmJSNaN64GlobalDataOffset = 2 * sizeof(void*);
+static const unsigned AsmJSNaN32GlobalDataOffset = 2 * sizeof(void*) + sizeof(double);
 
 // Summarizes a heap access made by asm.js code that needs to be patched later
 // and/or looked up by the asm.js signal handlers. Different architectures need

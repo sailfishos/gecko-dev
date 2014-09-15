@@ -41,7 +41,7 @@ class CompositorChild MOZ_FINAL : public PCompositorChild
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING_WITH_MAIN_THREAD_DESTRUCTION(CompositorChild)
 
 public:
-  CompositorChild(ClientLayerManager *aLayerManager);
+  explicit CompositorChild(ClientLayerManager *aLayerManager);
 
   void Destroy();
 
@@ -77,6 +77,8 @@ public:
    * @param tabChild The object to bounce the note to.  Non-NULL.
    */
   void RequestNotifyAfterRemotePaint(TabChild* aTabChild);
+
+  void CancelNotifyAfterRemotePaint(TabChild* aTabChild);
 
 private:
   // Private destructor, to discourage deletion outside of Release():

@@ -147,6 +147,7 @@ CreateException(JSContext* aCx, nsresult aRv, const char* aMessage)
   case NS_ERROR_MODULE_DOM_XPATH:
   case NS_ERROR_MODULE_DOM_INDEXEDDB:
   case NS_ERROR_MODULE_DOM_FILEHANDLE:
+  case NS_ERROR_MODULE_DOM_BLUETOOTH:
     return DOMException::Create(aRv);
   default:
     break;
@@ -268,7 +269,7 @@ public:
                                                          StackFrame)
 
   // aStack must not be null.
-  JSStackFrame(JS::Handle<JSObject*> aStack);
+  explicit JSStackFrame(JS::Handle<JSObject*> aStack);
 
   static already_AddRefed<nsIStackFrame>
   CreateStack(JSContext* aCx, int32_t aMaxDepth = -1);

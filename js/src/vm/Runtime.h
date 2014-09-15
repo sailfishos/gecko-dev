@@ -381,16 +381,24 @@ struct RegExpTestCache
  */
 class FreeOp : public JSFreeOp
 {
+    Vector<void *, 0, SystemAllocPolicy> freeLaterList;
+
   public:
     static FreeOp *get(JSFreeOp *fop) {
         return static_cast<FreeOp *>(fop);
     }
 
-    FreeOp(JSRuntime *rt)
+    explicit FreeOp(JSRuntime *rt)
       : JSFreeOp(rt)
     {}
 
+    ~FreeOp() {
+        for (size_t i = 0; i < freeLaterList.length(); i++)
+            free_(freeLaterList[i]);
+    }
+
     inline void free_(void *p);
+    inline void freeLater(void *p);
 
     template <class T>
     inline void delete_(T *p) {
@@ -559,6 +567,12 @@ class PerThreadData : public PerThreadDataFriendFields
      */
     js::Activation *activation_;
 
+    /*
+     * Points to the most recent profiling activation running on the
+     * thread.  Protected by rt->interruptLock.
+     */
+    js::Activation * volatile profilingActivation_;
+
     /* See AsmJSActivation comment. Protected by rt->interruptLock. */
     js::AsmJSActivation * volatile asmJSActivationStack_;
 
@@ -579,6 +593,10 @@ class PerThreadData : public PerThreadDataFriendFields
     }
     static unsigned offsetOfActivation() {
         return offsetof(PerThreadData, activation_);
+    }
+
+    js::Activation *profilingActivation() const {
+        return profilingActivation_;
     }
 
     js::AsmJSActivation *asmJSActivationStack() const {
@@ -996,9 +1014,6 @@ struct JSRuntime : public JS::shadow::Runtime,
     js::AssertOnScriptEntryHook assertOnScriptEntryHook_;
 #endif
 
-    /* If true, new compartments are initially in debug mode. */
-    bool                debugMode;
-
     /* SPS profiling metadata */
     js::SPSProfiler     spsProfiler;
 
@@ -1079,6 +1094,9 @@ struct JSRuntime : public JS::shadow::Runtime,
 
     /* Call this to accumulate telemetry data. */
     JSAccumulateTelemetryDataCallback telemetryCallback;
+
+    /* Optional error reporter. */
+    JSErrorReporter     errorReporter;
 
     /* AsmJSCache callbacks are runtime-wide. */
     JS::AsmJSCacheOps asmJSCacheOps;
@@ -1256,6 +1274,7 @@ struct JSRuntime : public JS::shadow::Runtime,
     }
 
     bool                jitSupportsFloatingPoint;
+    bool                jitSupportsSimd;
 
     // Used to reset stack limit after a signaled interrupt (i.e. jitStackLimit_ = -1)
     // has been noticed by Ion/Baseline.
@@ -1473,6 +1492,17 @@ FreeOp::free_(void *p)
     js_free(p);
 }
 
+inline void
+FreeOp::freeLater(void *p)
+{
+    // FreeOps other than the defaultFreeOp() are constructed on the stack,
+    // and won't hold onto the pointers to free indefinitely.
+    JS_ASSERT(this != runtime()->defaultFreeOp());
+
+    if (!freeLaterList.append(p))
+        CrashAtUnhandlableOOM("FreeOp::freeLater");
+}
+
 class AutoLockGC
 {
   public:
@@ -1569,7 +1599,7 @@ PerThreadData::runtimeFromMainThread()
 inline JSRuntime *
 PerThreadData::runtimeIfOnOwnerThread()
 {
-    return CurrentThreadCanAccessRuntime(runtime_) ? runtime_ : nullptr;
+    return (runtime_ && CurrentThreadCanAccessRuntime(runtime_)) ? runtime_ : nullptr;
 }
 
 inline bool

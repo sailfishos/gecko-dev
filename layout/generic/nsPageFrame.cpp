@@ -149,12 +149,10 @@ nsPageFrame::Reflow(nsPresContext*           aPresContext,
 
   // Return our desired size
   WritingMode wm = aReflowState.GetWritingMode();
-  LogicalSize finalSize(wm);
-  finalSize.ISize(wm) = aReflowState.AvailableISize();
+  aDesiredSize.ISize(wm) = aReflowState.AvailableISize();
   if (aReflowState.AvailableBSize() != NS_UNCONSTRAINEDSIZE) {
-    finalSize.BSize(wm) = aReflowState.AvailableBSize();
+    aDesiredSize.BSize(wm) = aReflowState.AvailableBSize();
   }
-  aDesiredSize.SetSize(wm, finalSize);
 
   aDesiredSize.SetOverflowAreasToDesiredBounds();
   FinishAndStoreOverflow(&aDesiredSize);
@@ -375,11 +373,11 @@ nsPageFrame::DrawHeaderFooter(nsRenderingContext& aRenderingContext,
     }
 
     // set up new clip and draw the text
-    aRenderingContext.PushState();
+    aRenderingContext.ThebesContext()->Save();
     aRenderingContext.SetColor(NS_RGB(0,0,0));
     aRenderingContext.IntersectClip(aRect);
     nsLayoutUtils::DrawString(this, &aRenderingContext, str.get(), str.Length(), nsPoint(x, y + aAscent));
-    aRenderingContext.PopState();
+    aRenderingContext.ThebesContext()->Restore();
   }
 }
 

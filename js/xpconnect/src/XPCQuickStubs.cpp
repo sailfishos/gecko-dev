@@ -388,17 +388,6 @@ xpc_qsThrowBadSetterValue(JSContext *cx, nsresult rv, JSObject *obj,
 }
 
 bool
-xpc_qsGetterOnlyPropertyStub(JSContext *cx, HandleObject obj, HandleId id, bool strict,
-                             MutableHandleValue vp)
-{
-    return JS_ReportErrorFlagsAndNumber(cx,
-                                        JSREPORT_WARNING | JSREPORT_STRICT |
-                                        JSREPORT_STRICT_MODE_ERROR,
-                                        js_GetErrorMessage, nullptr,
-                                        JSMSG_GETTER_ONLY);
-}
-
-bool
 xpc_qsGetterOnlyNativeStub(JSContext *cx, unsigned argc, jsval *vp)
 {
     return JS_ReportErrorFlagsAndNumber(cx,
@@ -520,18 +509,6 @@ getWrapper(JSContext *cx,
     // to js::CheckedUnwrap.
     if (js::IsWrapper(obj)) {
         JSObject* inner = js::CheckedUnwrap(obj, /* stopAtOuter = */ false);
-
-        // Hack - For historical reasons, wrapped chrome JS objects have been
-        // passable as native interfaces. We'd like to fix this, but it
-        // involves fixing the contacts API and PeerConnection to stop using
-        // COWs. This needs to happen, but for now just preserve the old
-        // behavior.
-        //
-        // Note that there is an identical hack in
-        // XPCConvert::JSObject2NativeInterface which should be removed if this
-        // one is.
-        if (!inner && MOZ_UNLIKELY(xpc::WrapperFactory::IsCOW(obj)))
-            inner = js::UncheckedUnwrap(obj);
 
         // The safe unwrap might have failed if we encountered an object that
         // we're not allowed to unwrap. If it didn't fail though, we should be

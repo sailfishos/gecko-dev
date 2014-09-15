@@ -23,6 +23,9 @@ const EXPECTED_REFLOWS = [
     "openUILinkIn@chrome://browser/content/utilityOverlay.js|" +
     "BrowserOpenTab@chrome://browser/content/browser.js|",
 
+  // unpreloaded newtab pages explicitly waits for reflows for sizing
+  "gPage.onPageFirstVisible/checkSizing/<@chrome://browser/content/newtab/newTab.js|",
+
   // accessing element.scrollPosition in _fillTrailingGap() flushes layout
   "get_scrollPosition@chrome://global/content/bindings/scrollbox.xml|" +
     "_fillTrailingGap@chrome://browser/content/tabbrowser.xml|" +
@@ -46,14 +49,6 @@ const EXPECTED_REFLOWS = [
     "ssi_updateWindowFeatures/<@resource:///modules/sessionstore/SessionStore.jsm|" +
     "ssi_updateWindowFeatures@resource:///modules/sessionstore/SessionStore.jsm|" +
     "ssi_collectWindowData@resource:///modules/sessionstore/SessionStore.jsm|",
-
-  // tabPreviews.capture()
-  "tabPreviews_capture@chrome://browser/content/browser.js|" +
-    "tabPreviews_handleEvent/<@chrome://browser/content/browser.js|",
-
-  // tabPreviews.capture()
-  "tabPreviews_capture@chrome://browser/content/browser.js|" +
-    "@chrome://browser/content/browser.js|"
 ];
 
 const PREF_PRELOAD = "browser.newtab.preload";
@@ -86,9 +81,10 @@ function test() {
     return deferred.promise;
   };
 
+  let gOrigDirectorySource = Services.prefs.getCharPref(PREF_NEWTAB_DIRECTORYSOURCE);
   registerCleanupFunction(() => {
     Services.prefs.clearUserPref(PREF_PRELOAD);
-    Services.prefs.clearUserPref(PREF_NEWTAB_DIRECTORYSOURCE);
+    Services.prefs.setCharPref(PREF_NEWTAB_DIRECTORYSOURCE, gOrigDirectorySource);
     return watchLinksChangeOnce();
   });
 

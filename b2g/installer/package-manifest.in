@@ -293,9 +293,11 @@
 @BINPATH@/components/spellchecker.xpt
 @BINPATH@/components/storage.xpt
 @BINPATH@/components/telemetry.xpt
+@BINPATH@/components/toolkit_filewatcher.xpt
 @BINPATH@/components/toolkit_finalizationwitness.xpt
 @BINPATH@/components/toolkit_formautofill.xpt
 @BINPATH@/components/toolkit_osfile.xpt
+@BINPATH@/components/toolkit_xulstore.xpt
 @BINPATH@/components/toolkitprofile.xpt
 #ifdef MOZ_ENABLE_XREMOTE
 @BINPATH@/components/toolkitremote.xpt
@@ -440,6 +442,8 @@
 @BINPATH@/components/RILContentHelper.js
 @BINPATH@/components/TelephonyService.js
 @BINPATH@/components/TelephonyService.manifest
+@BINPATH@/components/MobileConnectionGonkService.js
+@BINPATH@/components/MobileConnectionGonkService.manifest
 #endif // MOZ_WIDGET_GONK && MOZ_B2G_RIL
 
 #ifndef MOZ_WIDGET_GONK
@@ -450,6 +454,7 @@
 @BINPATH@/components/amWebInstallListener.js
 @BINPATH@/components/nsBlocklistService.js
 @BINPATH@/components/OopCommandLine.js
+@BINPATH@/components/CommandLine.js
 #endif
 
 #ifdef MOZ_UPDATER
@@ -540,6 +545,8 @@
 #endif
 @BINPATH@/components/TelemetryStartup.js
 @BINPATH@/components/TelemetryStartup.manifest
+@BINPATH@/components/XULStore.js
+@BINPATH@/components/XULStore.manifest
 @BINPATH@/components/Webapps.js
 @BINPATH@/components/Webapps.manifest
 @BINPATH@/components/AppsService.js
@@ -560,6 +567,8 @@
 @BINPATH@/components/SystemMessageInternal.js
 @BINPATH@/components/SystemMessageManager.js
 @BINPATH@/components/SystemMessageManager.manifest
+@BINPATH@/components/HCIEventTransactionSystemMessage.manifest
+@BINPATH@/components/HCIEventTransactionSystemMessageConfigurator.js
 
 @BINPATH@/components/Activities.manifest
 @BINPATH@/components/ActivityProxy.js
@@ -692,9 +701,6 @@
 @BINPATH@/res/text_caret_tilt_right@1.5x.png
 @BINPATH@/res/text_caret_tilt_right@2.25x.png
 @BINPATH@/res/text_caret_tilt_right@2x.png
-@BINPATH@/res/text_selection_handle.png
-@BINPATH@/res/text_selection_handle@1.5.png
-@BINPATH@/res/text_selection_handle@2.png
 @BINPATH@/res/grabber.gif
 #ifdef XP_MACOSX
 @BINPATH@/res/cursors/*
@@ -742,8 +748,12 @@
 @BINPATH@/chrome/pippki.manifest
 
 ; For process sandboxing
+#if defined(MOZ_SANDBOX)
 #if defined(XP_WIN)
 @BINPATH@/@DLL_PREFIX@sandboxbroker@DLL_SUFFIX@
+#elif defined(XP_LINUX)
+@BINPATH@/@DLL_PREFIX@mozsandbox@DLL_SUFFIX@
+#endif
 #endif
 
 ; for Solaris SPARC
@@ -831,6 +841,7 @@ bin/components/@DLL_PREFIX@nkgnomevfs@DLL_SUFFIX@
 @BINPATH@/components/DownloadsUI.js
 @BINPATH@/components/InterAppCommUIGlue.js
 @BINPATH@/components/SystemMessageGlue.js
+@BINPATH@/components/B2GAppMigrator.js
 
 #ifndef MOZ_WIDGET_GONK
 @BINPATH@/components/SimulatorScreen.js

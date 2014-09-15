@@ -35,13 +35,13 @@ user_pref("dom.min_background_timeout_value", 1000);
 user_pref("test.mousescroll", true);
 user_pref("security.default_personal_cert", "Select Automatically"); // Need to client auth test be w/o any dialogs
 user_pref("network.http.prompt-temp-redirect", false);
-user_pref("media.cache_size", 100);
+user_pref("media.cache_size", 1000);
 user_pref("media.volume_scale", "0.01");
 user_pref("security.warn_viewing_mixed", false);
 user_pref("app.update.enabled", false);
 user_pref("app.update.staging.enabled", false);
 // Make sure GMPInstallManager won't hit the network.
-user_pref("media.gmp-manager.url.override", "http://%(server)s/dummy.xml");
+user_pref("media.gmp-manager.url.override", "http://%(server)s/dummy-gmp-manager.xml");
 user_pref("browser.panorama.experienced_first_run", true); // Assume experienced
 user_pref("dom.w3c_touch_events.enabled", 1);
 user_pref("dom.undo_manager.enabled", true);
@@ -144,6 +144,9 @@ user_pref("layout.css.report_errors", true);
 // Enable CSS Grid for testing
 user_pref("layout.css.grid.enabled", true);
 
+// Enable CSS object-fit & object-position for testing
+user_pref("layout.css.object-fit-and-position.enabled", true);
+
 // Enable CSS Ruby for testing
 user_pref("layout.css.ruby.enabled", true);
 
@@ -175,6 +178,10 @@ user_pref("browser.pagethumbnails.capturing_disabled", true);
 // download test runs first doesn't show the popup inconsistently.
 user_pref("browser.download.panel.shown", true);
 
+// Assume the about:newtab page's intro panels have been shown to not depend on
+// which test runs first and happens to open about:newtab
+user_pref("browser.newtabpage.introShown", true);
+
 // prefs for firefox metro.
 // Disable first-tun tab
 user_pref("browser.firstrun.count", 0);
@@ -188,15 +195,13 @@ user_pref("browser.webapps.testing", true);
 // Disable android snippets
 user_pref("browser.snippets.enabled", false);
 user_pref("browser.snippets.syncPromo.enabled", false);
+user_pref("browser.snippets.firstrunHomepage.enabled", false);
 
 // Disable useragent updates.
 user_pref("general.useragent.updates.enabled", false);
 
 // Disable webapp updates.  Yes, it is supposed to be an integer.
 user_pref("browser.webapps.checkForUpdates", 0);
-
-// Do not turn HTTP cache v2 for our infra tests (some tests are failing)
-user_pref("browser.cache.use_new_backend_temp", false);
 
 // Don't connect to Yahoo! for RSS feed tests.
 // en-US only uses .types.0.uri, but set all of them just to be sure.
@@ -234,5 +239,17 @@ user_pref("browser.aboutHomeSnippets.updateUrl", "nonexistent://test");
 // Enable debug logging in the mozApps implementation.
 user_pref("dom.mozApps.debug", true);
 
+// Don't fetch or send directory tiles data from real servers
+user_pref("browser.newtabpage.directory.source", 'data:application/json,{"testing":1}');
+user_pref("browser.newtabpage.directory.ping", "");
+
 // Enable Loop
 user_pref("loop.enabled", true);
+user_pref("loop.throttled", false);
+
+// Ensure UITour won't hit the network
+user_pref("browser.uitour.pinnedTabUrl", "http://%(server)s/uitour-dummy/pinnedTab");
+user_pref("browser.uitour.url", "http://%(server)s/uitour-dummy/tour");
+
+// Don't prompt about e10s
+user_pref("browser.displayedE10SPrompt", 5);

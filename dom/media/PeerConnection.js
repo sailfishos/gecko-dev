@@ -294,8 +294,11 @@ function RTCPeerConnection() {
   this._onCreateAnswerFailure = null;
   this._onGetStatsSuccess = null;
   this._onGetStatsFailure = null;
+  this._onReplaceTrackSender = null;
+  this._onReplaceTrackWithTrack = null;
+  this._onReplaceTrackSuccess = null;
+  this._onReplaceTrackFailure = null;
 
-  this._pendingType = null;
   this._localType = null;
   this._remoteType = null;
   this._trickleIce = false;
@@ -415,32 +418,27 @@ RTCPeerConnection.prototype = {
    */
   _queueOrRun: function(obj) {
     this._checkClosed();
-    if (!this._pending) {
-      if (obj.type !== undefined) {
-        this._pendingType = obj.type;
-      }
-      obj.func.apply(this, obj.args);
-      if (obj.wait) {
-        this._pending = true;
-      }
-    } else {
+
+    if (this._pending) {
+      // We are waiting for a callback before doing any more work.
       this._queue.push(obj);
+    } else {
+      this._pending = obj.wait;
+      obj.func.apply(this, obj.args);
     }
   },
 
   // Pick the next item from the queue and run it.
   _executeNext: function() {
-    if (this._queue.length) {
+
+    // Maybe _pending should be a string, and we should
+    // take a string arg and make sure they match to detect errors?
+    this._pending = false;
+
+    while (this._queue.length && !this._pending) {
       let obj = this._queue.shift();
-      if (obj.type !== undefined) {
-        this._pendingType = obj.type;
-      }
-      obj.func.apply(this, obj.args);
-      if (!obj.wait) {
-        this._executeNext();
-      }
-    } else {
-      this._pending = false;
+      // Doesn't re-queue since _pending is false
+      this._queueOrRun(obj);
     }
   },
 
@@ -557,7 +555,46 @@ RTCPeerConnection.prototype = {
   },
 
   createOffer: function(onSuccess, onError, options) {
-    options = options || {};
+
+    // TODO: Remove old constraint-like RTCOptions support soon (Bug 1064223).
+    function convertLegacyOptions(o) {
+      if (!(o.mandatory || o.optional) ||
+          Object.keys(o).length != ((o.mandatory && o.optional)? 2 : 1)) {
+        return false;
+      }
+      let old = o.mandatory || {};
+      if (o.mandatory) {
+        delete o.mandatory;
+      }
+      if (o.optional) {
+        o.optional.forEach(one => {
+          // The old spec had optional as an array of objects w/1 attribute each.
+          // Assumes our JS-webidl bindings only populate passed-in properties.
+          let key = Object.keys(one)[0];
+          if (key && old[key] === undefined) {
+            old[key] = one[key];
+          }
+        });
+        delete o.optional;
+      }
+      o.offerToReceiveAudio = old.OfferToReceiveAudio;
+      o.offerToReceiveVideo = old.OfferToReceiveVideo;
+      o.mozDontOfferDataChannel = old.MozDontOfferDataChannel;
+      o.mozBundleOnly = old.MozBundleOnly;
+      Object.keys(o).forEach(k => {
+        if (o[k] === undefined) {
+          delete o[k];
+        }
+      });
+      return true;
+    }
+
+    if (options && convertLegacyOptions(options)) {
+      this.logWarning(
+          "Mandatory/optional in createOffer options is deprecated! Use " +
+          JSON.stringify(options) + " instead (note the case difference)!",
+          null, 0);
+    }
     this._queueOrRun({
       func: this._createOffer,
       args: [onSuccess, onError, options],
@@ -600,6 +637,14 @@ RTCPeerConnection.prototype = {
   },
 
   setLocalDescription: function(desc, onSuccess, onError) {
+    if (!onSuccess || !onError) {
+      this.logWarning(
+          "setLocalDescription called without success/failure callbacks. This is deprecated, and will be an error in the future.",
+          null, 0);
+    }
+
+    this._localType = desc.type;
+
     let type;
     switch (desc.type) {
       case "offer":
@@ -618,8 +663,7 @@ RTCPeerConnection.prototype = {
     this._queueOrRun({
       func: this._setLocalDescription,
       args: [type, desc.sdp, onSuccess, onError],
-      wait: true,
-      type: desc.type
+      wait: true
     });
   },
 
@@ -630,6 +674,13 @@ RTCPeerConnection.prototype = {
   },
 
   setRemoteDescription: function(desc, onSuccess, onError) {
+    if (!onSuccess || !onError) {
+      this.logWarning(
+          "setRemoteDescription called without success/failure callbacks. This is deprecated, and will be an error in the future.",
+          null, 0);
+    }
+    this._remoteType = desc.type;
+
     let type;
     switch (desc.type) {
       case "offer":
@@ -648,8 +699,7 @@ RTCPeerConnection.prototype = {
     this._queueOrRun({
       func: this._setRemoteDescription,
       args: [type, desc.sdp, onSuccess, onError],
-      wait: true,
-      type: desc.type
+      wait: true
     });
   },
 
@@ -679,18 +729,19 @@ RTCPeerConnection.prototype = {
     let idpComplete = false;
     let setRemoteComplete = false;
     let idpError = null;
+    let isDone = false;
 
     // we can run the IdP validation in parallel with setRemoteDescription this
     // complicates much more than would be ideal, but it ensures that the IdP
     // doesn't hold things up too much when it's not on the critical path
     let allDone = () => {
-      if (!setRemoteComplete || !idpComplete || !onSuccess) {
+      if (!setRemoteComplete || !idpComplete || isDone) {
         return;
       }
-      this._remoteType = this._pendingType;
-      this._pendingType = null;
+      // May be null if the user didn't supply success/failure callbacks.
+      // Violation of spec, but we allow it for now
       this.callCB(onSuccess);
-      onSuccess = null;
+      isDone = true;
       this._executeNext();
     };
 
@@ -764,6 +815,11 @@ RTCPeerConnection.prototype = {
   },
 
   addIceCandidate: function(cand, onSuccess, onError) {
+    if (!onSuccess || !onError) {
+      this.logWarning(
+          "addIceCandidate called without success/failure callbacks. This is deprecated, and will be an error in the future.",
+          null, 0);
+    }
     if (!cand.candidate && !cand.sdpMLineIndex) {
       throw new this._win.DOMError("",
           "Invalid candidate passed to addIceCandidate!");
@@ -771,7 +827,7 @@ RTCPeerConnection.prototype = {
     this._onAddIceCandidateSuccess = onSuccess || null;
     this._onAddIceCandidateError = onError || null;
 
-    this._queueOrRun({ func: this._addIceCandidate, args: [cand], wait: true });
+    this._queueOrRun({ func: this._addIceCandidate, args: [cand], wait: false });
   },
 
   _addIceCandidate: function(cand) {
@@ -803,7 +859,8 @@ RTCPeerConnection.prototype = {
     this._checkClosed();
     this._impl.addTrack(track, stream);
     let sender = this._win.RTCRtpSender._create(this._win,
-                                                new RTCRtpSender(this, track));
+                                                new RTCRtpSender(this, track,
+                                                                 stream));
     this._senders.push({ sender: sender, stream: stream });
     return sender;
   },
@@ -811,6 +868,25 @@ RTCPeerConnection.prototype = {
   removeTrack: function(sender) {
      // Bug 844295: Not implementing this functionality.
      throw new this._win.DOMError("", "removeTrack not yet implemented");
+  },
+
+  _replaceTrack: function(sender, withTrack, onSuccess, onError) {
+    // TODO: Do a (sender._stream.getTracks().indexOf(track) == -1) check
+    //       on both track args someday.
+    //
+    // The proposed API will be that both tracks must already be in the same
+    // stream. However, since our MediaStreams currently are limited to one
+    // track per type, we allow replacement with an outside track not already
+    // in the same stream.
+    //
+    // Since a track may be replaced more than once, the track being replaced
+    // may not be in the stream either, so we check neither arg right now.
+
+    this._onReplaceTrackSender = sender;
+    this._onReplaceTrackWithTrack = withTrack;
+    this._onReplaceTrackSuccess = onSuccess;
+    this._onReplaceTrackFailure = onError;
+    this._impl.replaceTrack(sender.track, withTrack, sender._stream);
   },
 
   close: function() {
@@ -927,7 +1003,7 @@ RTCPeerConnection.prototype = {
     this._queueOrRun({
       func: this._getStats,
       args: [selector, onSuccess, onError],
-      wait: true
+      wait: false
     });
   },
 
@@ -1089,58 +1165,52 @@ PeerConnectionObserver.prototype = {
   },
 
   onSetLocalDescriptionSuccess: function() {
-    this._dompc._localType = this._dompc._pendingType;
-    this._dompc._pendingType = null;
     this._dompc.callCB(this._dompc._onSetLocalDescriptionSuccess);
-
-    if (this._dompc._iceGatheringState == "complete") {
-        // If we are not trickling or we completed gathering prior
-        // to setLocal, then trigger a call of onicecandidate here.
-        this.foundIceCandidate(null);
-    }
-
     this._dompc._executeNext();
   },
 
   onSetRemoteDescriptionSuccess: function() {
+    // This function calls _executeNext() for us
     this._dompc._onSetRemoteDescriptionSuccess();
   },
 
   onSetLocalDescriptionError: function(code, message) {
-    this._dompc._pendingType = null;
+    this._localType = null;
     this._dompc.callCB(this._dompc._onSetLocalDescriptionFailure,
                        new RTCError(code, message));
     this._dompc._executeNext();
   },
 
   onSetRemoteDescriptionError: function(code, message) {
-    this._dompc._pendingType = null;
+    this._remoteType = null;
     this._dompc.callCB(this._dompc._onSetRemoteDescriptionFailure,
                        new RTCError(code, message));
     this._dompc._executeNext();
   },
 
   onAddIceCandidateSuccess: function() {
-    this._dompc._pendingType = null;
     this._dompc.callCB(this._dompc._onAddIceCandidateSuccess);
     this._dompc._executeNext();
   },
 
   onAddIceCandidateError: function(code, message) {
-    this._dompc._pendingType = null;
     this._dompc.callCB(this._dompc._onAddIceCandidateError,
                        new RTCError(code, message));
     this._dompc._executeNext();
   },
 
   onIceCandidate: function(level, mid, candidate) {
-    this.foundIceCandidate(new this._dompc._win.mozRTCIceCandidate(
-        {
-            candidate: candidate,
-            sdpMid: mid,
-            sdpMLineIndex: level - 1
-        }
-    ));
+    if (candidate == "") {
+      this.foundIceCandidate(null);
+    } else {
+      this.foundIceCandidate(new this._dompc._win.mozRTCIceCandidate(
+          {
+              candidate: candidate,
+              sdpMid: mid,
+              sdpMLineIndex: level - 1
+          }
+      ));
+    }
   },
 
 
@@ -1211,20 +1281,6 @@ PeerConnectionObserver.prototype = {
   //
   handleIceGatheringStateChange: function(gatheringState) {
     this._dompc.changeIceGatheringState(gatheringState);
-
-    if (gatheringState === "complete") {
-      if (!this._dompc._trickleIce) {
-        // If we are not trickling, then the queue is in a pending state
-        // waiting for ICE gathering and executeNext frees it
-        this._dompc._executeNext();
-      }
-      else if (this._dompc.localDescription) {
-        // If we are trickling but we have already done setLocal,
-        // then we need to send a final foundIceCandidate(null) to indicate
-        // that we are done gathering.
-        this.foundIceCandidate(null);
-      }
-    }
   },
 
   onStateChange: function(state) {
@@ -1297,6 +1353,21 @@ PeerConnectionObserver.prototype = {
                                                                   { track: track }));
   },
 
+  onReplaceTrackSuccess: function() {
+    var pc = this._dompc;
+    pc._onReplaceTrackSender.track = pc._onReplaceTrackWithTrack;
+    pc._onReplaceTrackWithTrack = null;
+    pc._onReplaceTrackSender = null;
+    pc.callCB(pc._onReplaceTrackSuccess);
+  },
+
+  onReplaceTrackError: function(code, message) {
+    var pc = this._dompc;
+    pc._onReplaceTrackWithTrack = null;
+    pc._onReplaceTrackSender = null;
+    pc.callCB(pc._onReplaceTrackError, new RTCError(code, message));
+  },
+
   foundIceCandidate: function(cand) {
     this.dispatchEvent(new this._dompc._win.RTCPeerConnectionIceEvent("icecandidate",
                                                                       { candidate: cand } ));
@@ -1328,15 +1399,25 @@ RTCPeerConnectionStatic.prototype = {
   },
 };
 
-function RTCRtpSender(pc, track) {
-  this.pc = pc;
+function RTCRtpSender(pc, track, stream) {
+  this._pc = pc;
   this.track = track;
+  this._stream = stream;
 }
 RTCRtpSender.prototype = {
   classDescription: "RTCRtpSender",
   classID: PC_SENDER_CID,
   contractID: PC_SENDER_CONTRACT,
   QueryInterface: XPCOMUtils.generateQI([Ci.nsISupports]),
+
+  replaceTrack: function(withTrack, onSuccess, onError) {
+    this._pc._checkClosed();
+    this._pc._queueOrRun({
+      func: this._pc._replaceTrack,
+      args: [this, withTrack, onSuccess, onError],
+      wait: false
+    });
+  }
 };
 
 function RTCRtpReceiver(pc, track) {

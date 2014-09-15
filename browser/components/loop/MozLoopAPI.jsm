@@ -9,9 +9,12 @@ const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource:///modules/loop/MozLoopService.jsm");
+Cu.import("resource:///modules/loop/LoopContacts.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "hookWindowCloseForPanelClose",
                                         "resource://gre/modules/MozSocialAPI.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "PluralForm",
+                                        "resource://gre/modules/PluralForm.jsm");
 XPCOMUtils.defineLazyGetter(this, "appInfo", function() {
   return Cc["@mozilla.org/xre/app-info;1"]
            .getService(Ci.nsIXULAppInfo)
@@ -21,6 +24,62 @@ XPCOMUtils.defineLazyServiceGetter(this, "clipboardHelper",
                                          "@mozilla.org/widget/clipboardhelper;1",
                                          "nsIClipboardHelper");
 this.EXPORTED_SYMBOLS = ["injectLoopAPI"];
+
+/**
+ * Trying to clone an Error object into a different container will yield an error.
+ * We can work around this by copying the properties we care about onto a regular
+ * object.
+ *
+ * @param {Error}        error        Error object to copy
+ * @param {nsIDOMWindow} targetWindow The content window to attach the API
+ */
+const cloneErrorObject = function(error, targetWindow) {
+  let obj = new targetWindow.Error();
+  for (let prop of Object.getOwnPropertyNames(error)) {
+    obj[prop] = String(error[prop]);
+  }
+  return obj;
+};
+
+/**
+ * Inject any API containing _only_ function properties into the given window.
+ *
+ * @param {Object}       api          Object containing functions that need to
+ *                                    be exposed to content
+ * @param {nsIDOMWindow} targetWindow The content window to attach the API
+ */
+const injectObjectAPI = function(api, targetWindow) {
+  let injectedAPI = {};
+  // Wrap all the methods in `api` to help results passed to callbacks get
+  // through the priv => unpriv barrier with `Cu.cloneInto()`.
+  Object.keys(api).forEach(func => {
+    injectedAPI[func] = function(...params) {
+      let callback = params.pop();
+      api[func](...params, function(...results) {
+        results = results.map(result => {
+          if (result && typeof result == "object") {
+            // Inspect for an error this way, because the Error object is special.
+            if (result.constructor.name == "Error") {
+              return cloneErrorObject(result.message)
+            }
+            return Cu.cloneInto(result, targetWindow);
+          }
+          return result;
+        });
+        callback(...results);
+      });
+    };
+  });
+
+  let contentObj = Cu.cloneInto(injectedAPI, targetWindow, {cloneFunctions: true});
+  // Since we deny preventExtensions on XrayWrappers, because Xray semantics make
+  // it difficult to act like an object has actually been frozen, we try to seal
+  // the `contentObj` without Xrays.
+  try {
+    Object.seal(Cu.waiveXrays(contentObj));
+  } catch (ex) {}
+  return contentObj;
+};
 
 /**
  * Inject the loop API into the given window.  The caller must be sure the
@@ -34,6 +93,7 @@ function injectLoopAPI(targetWindow) {
   let ringer;
   let ringerStopper;
   let appVersionInfo;
+  let contactsAPI;
 
   let api = {
     /**
@@ -62,6 +122,38 @@ function injectLoopAPI(targetWindow) {
     },
 
     /**
+     * Returns the callData for a specific callDataId
+     *
+     * The data was retrieved from the LoopServer via a GET/calls/<version> request
+     * triggered by an incoming message from the LoopPushServer.
+     *
+     * @param {int} loopCallId
+     * @returns {callData} The callData or undefined if error.
+     */
+    getCallData: {
+      enumerable: true,
+      writable: true,
+      value: function(loopCallId) {
+        return Cu.cloneInto(MozLoopService.getCallData(loopCallId), targetWindow);
+      }
+    },
+
+    /**
+     * Returns the contacts API.
+     *
+     * @returns {Object} The contacts API object
+     */
+    contacts: {
+      enumerable: true,
+      get: function() {
+        if (contactsAPI) {
+          return contactsAPI;
+        }
+        return contactsAPI = injectObjectAPI(LoopContacts, targetWindow);
+      }
+    },
+
+    /**
      * Returns translated strings associated with an element. Designed
      * for use with l10n.js
      *
@@ -74,6 +166,23 @@ function injectLoopAPI(targetWindow) {
       writable: true,
       value: function(key) {
         return MozLoopService.getStrings(key);
+      }
+    },
+
+    /**
+     * Returns the correct form of a semi-colon separated string
+     * based on the value of the `num` argument and the current locale.
+     *
+     * @param {Integer} num The number used to find the plural form.
+     * @param {String} str The semi-colon separated string of word forms.
+     * @returns {String} The correct word form based on the value of the number
+     *                   and the current locale.
+     */
+    getPluralForm: {
+      enumerable: true,
+      writable: true,
+      value: function(num, str) {
+        return PluralForm.get(num, str);
       }
     },
 
@@ -246,12 +355,29 @@ function injectLoopAPI(targetWindow) {
       enumerable: true,
       writable: true,
       value: function(path, method, payloadObj, callback) {
+        // XXX: Bug 1065153 - Should take a sessionType parameter instead of hard-coding GUEST
         // XXX Should really return a DOM promise here.
-        return MozLoopService.hawkRequest(path, method, payloadObj).then((response) => {
+        return MozLoopService.hawkRequest(LOOP_SESSION_TYPE.GUEST, path, method, payloadObj).then((response) => {
           callback(null, response.body);
         }, (error) => {
           callback(Cu.cloneInto(error, targetWindow));
         });
+      }
+    },
+
+    LOOP_SESSION_TYPE: {
+      enumerable: true,
+      writable: false,
+      value: function() {
+        return LOOP_SESSION_TYPE;
+      },
+    },
+
+    logInToFxA: {
+      enumerable: true,
+      writable: true,
+      value: function() {
+        return MozLoopService.logInToFxA();
       }
     },
 

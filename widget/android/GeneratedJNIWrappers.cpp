@@ -109,7 +109,7 @@ void GeckoAppShell::InitStubs(JNIEnv *jEnv) {
     jCloseNotification = getStaticMethod("closeNotification", "(Ljava/lang/String;)V");
     jConnectionGetMimeType = getStaticMethod("connectionGetMimeType", "(Ljava/net/URLConnection;)Ljava/lang/String;");
     jCreateInputStream = getStaticMethod("createInputStream", "(Ljava/net/URLConnection;)Ljava/io/InputStream;");
-    jCreateMessageListWrapper = getStaticMethod("createMessageList", "(JJ[Ljava/lang/String;IIZI)V");
+    jCreateMessageListWrapper = getStaticMethod("createMessageList", "(JJ[Ljava/lang/String;ILjava/lang/String;ZZJZI)V");
     jCreateShortcut = getStaticMethod("createShortcut", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V");
     jDeleteMessageWrapper = getStaticMethod("deleteMessage", "(II)V");
     jDisableBatteryNotifications = getStaticMethod("disableBatteryNotifications", "()V");
@@ -331,21 +331,24 @@ jobject GeckoAppShell::CreateInputStream(jobject a0) {
     return ret;
 }
 
-void GeckoAppShell::CreateMessageListWrapper(int64_t a0, int64_t a1, jobjectArray a2, int32_t a3, int32_t a4, bool a5, int32_t a6) {
+void GeckoAppShell::CreateMessageListWrapper(int64_t a0, int64_t a1, jobjectArray a2, int32_t a3, const nsAString& a4, bool a5, bool a6, int64_t a7, bool a8, int32_t a9) {
     JNIEnv *env = AndroidBridge::GetJNIEnv();
-    if (env->PushLocalFrame(1) != 0) {
+    if (env->PushLocalFrame(2) != 0) {
         AndroidBridge::HandleUncaughtException(env);
         MOZ_CRASH("Exception should have caused crash.");
     }
 
-    jvalue args[7];
+    jvalue args[10];
     args[0].j = a0;
     args[1].j = a1;
     args[2].l = a2;
     args[3].i = a3;
-    args[4].i = a4;
+    args[4].l = AndroidBridge::NewJavaString(env, a4);
     args[5].z = a5;
-    args[6].i = a6;
+    args[6].z = a6;
+    args[7].j = a7;
+    args[8].z = a8;
+    args[9].i = a9;
 
     env->CallStaticVoidMethodA(mGeckoAppShellClass, jCreateMessageListWrapper, args);
     AndroidBridge::HandleUncaughtException(env);
@@ -1531,6 +1534,66 @@ void GeckoJavaSampler::UnpauseJavaProfiling() {
     AndroidBridge::HandleUncaughtException(env);
     env->PopLocalFrame(nullptr);
 }
+jclass RestrictedProfiles::mRestrictedProfilesClass = 0;
+jmethodID RestrictedProfiles::jGetUserRestrictions = 0;
+jmethodID RestrictedProfiles::jIsAllowed = 0;
+jmethodID RestrictedProfiles::jIsUserRestricted = 0;
+void RestrictedProfiles::InitStubs(JNIEnv *jEnv) {
+    initInit();
+
+    mRestrictedProfilesClass = getClassGlobalRef("org/mozilla/gecko/RestrictedProfiles");
+    jGetUserRestrictions = getStaticMethod("getUserRestrictions", "()Ljava/lang/String;");
+    jIsAllowed = getStaticMethod("isAllowed", "(ILjava/lang/String;)Z");
+    jIsUserRestricted = getStaticMethod("isUserRestricted", "()Z");
+}
+
+RestrictedProfiles* RestrictedProfiles::Wrap(jobject obj) {
+    JNIEnv *env = GetJNIForThread();
+    RestrictedProfiles* ret = new RestrictedProfiles(obj, env);
+    env->DeleteLocalRef(obj);
+    return ret;
+}
+
+jstring RestrictedProfiles::GetUserRestrictions() {
+    JNIEnv *env = AndroidBridge::GetJNIEnv();
+    if (env->PushLocalFrame(1) != 0) {
+        AndroidBridge::HandleUncaughtException(env);
+        MOZ_CRASH("Exception should have caused crash.");
+    }
+
+    jobject temp = env->CallStaticObjectMethod(mRestrictedProfilesClass, jGetUserRestrictions);
+    AndroidBridge::HandleUncaughtException(env);
+    jstring ret = static_cast<jstring>(env->PopLocalFrame(temp));
+    return ret;
+}
+
+bool RestrictedProfiles::IsAllowed(int32_t a0, const nsAString& a1) {
+    JNIEnv *env = AndroidBridge::GetJNIEnv();
+    if (env->PushLocalFrame(1) != 0) {
+        AndroidBridge::HandleUncaughtException(env);
+        MOZ_CRASH("Exception should have caused crash.");
+    }
+
+    jstring j1 = AndroidBridge::NewJavaString(env, a1);
+
+    bool temp = env->CallStaticBooleanMethod(mRestrictedProfilesClass, jIsAllowed, a0, j1);
+    AndroidBridge::HandleUncaughtException(env);
+    env->PopLocalFrame(nullptr);
+    return temp;
+}
+
+bool RestrictedProfiles::IsUserRestricted() {
+    JNIEnv *env = AndroidBridge::GetJNIEnv();
+    if (env->PushLocalFrame(0) != 0) {
+        AndroidBridge::HandleUncaughtException(env);
+        MOZ_CRASH("Exception should have caused crash.");
+    }
+
+    bool temp = env->CallStaticBooleanMethod(mRestrictedProfilesClass, jIsUserRestricted);
+    AndroidBridge::HandleUncaughtException(env);
+    env->PopLocalFrame(nullptr);
+    return temp;
+}
 jclass SurfaceBits::mSurfaceBitsClass = 0;
 jmethodID SurfaceBits::jSurfaceBits = 0;
 jfieldID SurfaceBits::jbuffer = 0;
@@ -1717,7 +1780,7 @@ jclass GeckoLayerClient::mGeckoLayerClientClass = 0;
 jmethodID GeckoLayerClient::jActivateProgram = 0;
 jmethodID GeckoLayerClient::jContentDocumentChanged = 0;
 jmethodID GeckoLayerClient::jCreateFrame = 0;
-jmethodID GeckoLayerClient::jDeactivateProgram = 0;
+jmethodID GeckoLayerClient::jDeactivateProgramAndRestoreState = 0;
 jmethodID GeckoLayerClient::jGetDisplayPort = 0;
 jmethodID GeckoLayerClient::jIsContentDocumentDisplayed = 0;
 jmethodID GeckoLayerClient::jProgressiveUpdateCallback = 0;
@@ -1732,7 +1795,7 @@ void GeckoLayerClient::InitStubs(JNIEnv *jEnv) {
     jActivateProgram = getMethod("activateProgram", "()V");
     jContentDocumentChanged = getMethod("contentDocumentChanged", "()V");
     jCreateFrame = getMethod("createFrame", "()Lorg/mozilla/gecko/gfx/LayerRenderer$Frame;");
-    jDeactivateProgram = getMethod("deactivateProgram", "()V");
+    jDeactivateProgramAndRestoreState = getMethod("deactivateProgramAndRestoreState", "(ZIIII)V");
     jGetDisplayPort = getMethod("getDisplayPort", "(ZZILorg/mozilla/gecko/gfx/ImmutableViewportMetrics;)Lorg/mozilla/gecko/gfx/DisplayPortMetrics;");
     jIsContentDocumentDisplayed = getMethod("isContentDocumentDisplayed", "()Z");
     jProgressiveUpdateCallback = getMethod("progressiveUpdateCallback", "(ZFFFFFZ)Lorg/mozilla/gecko/gfx/ProgressiveUpdateData;");
@@ -1786,14 +1849,21 @@ jobject GeckoLayerClient::CreateFrame() {
     return ret;
 }
 
-void GeckoLayerClient::DeactivateProgram() {
+void GeckoLayerClient::DeactivateProgramAndRestoreState(bool a0, int32_t a1, int32_t a2, int32_t a3, int32_t a4) {
     JNIEnv *env = GetJNIForThread();
     if (env->PushLocalFrame(0) != 0) {
         AndroidBridge::HandleUncaughtException(env);
         MOZ_CRASH("Exception should have caused crash.");
     }
 
-    env->CallVoidMethod(wrapped_obj, jDeactivateProgram);
+    jvalue args[5];
+    args[0].z = a0;
+    args[1].i = a1;
+    args[2].i = a2;
+    args[3].i = a3;
+    args[4].i = a4;
+
+    env->CallVoidMethodA(wrapped_obj, jDeactivateProgramAndRestoreState, args);
     AndroidBridge::HandleUncaughtException(env);
     env->PopLocalFrame(nullptr);
 }
@@ -2505,6 +2575,7 @@ void InitStubs(JNIEnv *jEnv) {
     GeckoAppShell::InitStubs(jEnv);
     JavaDomKeyLocation::InitStubs(jEnv);
     GeckoJavaSampler::InitStubs(jEnv);
+    RestrictedProfiles::InitStubs(jEnv);
     SurfaceBits::InitStubs(jEnv);
     ThumbnailHelper::InitStubs(jEnv);
     DisplayPortMetrics::InitStubs(jEnv);

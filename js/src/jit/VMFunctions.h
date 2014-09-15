@@ -380,6 +380,18 @@ template <> struct TypeToRootType<HandleShape> {
 template <> struct TypeToRootType<HandleTypeObject> {
     static const uint32_t result = VMFunction::RootCell;
 };
+template <> struct TypeToRootType<HandleScript> {
+    static const uint32_t result = VMFunction::RootCell;
+};
+template <> struct TypeToRootType<Handle<StaticBlockObject *> > {
+    static const uint32_t result = VMFunction::RootObject;
+};
+template <> struct TypeToRootType<Handle<StaticWithObject *> > {
+    static const uint32_t result = VMFunction::RootCell;
+};
+template <class T> struct TypeToRootType<Handle<T> > {
+    // Fail for Handle types that aren't specialized above.
+};
 
 template <class> struct OutParamToDataType { static const DataType result = Type_Void; };
 template <> struct OutParamToDataType<Value *> { static const DataType result = Type_Value; };
@@ -715,6 +727,27 @@ void AssertValidValue(JSContext *cx, Value *v);
 #endif
 
 JSObject *TypedObjectProto(JSObject *obj);
+
+void MarkValueFromIon(JSRuntime *rt, Value *vp);
+void MarkShapeFromIon(JSRuntime *rt, Shape **shapep);
+void MarkTypeObjectFromIon(JSRuntime *rt, types::TypeObject **typep);
+
+// Helper for generatePreBarrier.
+inline void *
+IonMarkFunction(MIRType type)
+{
+    switch (type) {
+      case MIRType_Value:
+        return JS_FUNC_TO_DATA_PTR(void *, MarkValueFromIon);
+      case MIRType_Shape:
+        return JS_FUNC_TO_DATA_PTR(void *, MarkShapeFromIon);
+      case MIRType_TypeObject:
+        return JS_FUNC_TO_DATA_PTR(void *, MarkTypeObjectFromIon);
+      default: MOZ_CRASH();
+    }
+}
+
+bool ObjectIsCallable(JSObject *obj);
 
 } // namespace jit
 } // namespace js

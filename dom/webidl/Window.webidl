@@ -31,7 +31,7 @@ typedef any Transferable;
    CrossOriginReadable] readonly attribute WindowProxy window;
   [Replaceable, Throws,
    CrossOriginReadable] readonly attribute WindowProxy self;
-  [Unforgeable, StoreInSlot, Pure, Func="nsGlobalWindow::WindowOnWebIDL"] readonly attribute Document? document;
+  [Unforgeable, StoreInSlot, Pure] readonly attribute Document? document;
   [Throws] attribute DOMString name; 
   [PutForwards=href, Unforgeable, Throws,
    CrossOriginReadable, CrossOriginWritable] readonly attribute Location? location;
@@ -179,16 +179,13 @@ partial interface Window {
   //[Throws] readonly attribute double pageXOffset;
   //[Throws] readonly attribute double scrollY;
   //[Throws] readonly attribute double pageYOffset;
-  //void scroll(double x, double y, optional ScrollOptions options);
-  //void scrollTo(double x, double y, optional ScrollOptions options);
-  //void scrollBy(double x, double y, optional ScrollOptions options);
+  void scroll(unrestricted double x, unrestricted double y, optional ScrollOptions options);
+  void scrollTo(unrestricted double x, unrestricted double y, optional ScrollOptions options);
+  void scrollBy(unrestricted double x, unrestricted double y, optional ScrollOptions options);
   [Replaceable, Throws] readonly attribute long scrollX;
   [Throws] readonly attribute long pageXOffset;
   [Replaceable, Throws] readonly attribute long scrollY;
   [Throws] readonly attribute long pageYOffset;
-  void scroll(long x, long y);
-  void scrollTo(long x, long y);
-  void scrollBy(long x, long y);
 
   // client
   //[Throws] readonly attribute double screenX;
@@ -221,7 +218,7 @@ callback FrameRequestCallback = void (DOMHighResTimeStamp time);
 
 // https://dvcs.w3.org/hg/webperf/raw-file/tip/specs/NavigationTiming/Overview.html
 partial interface Window {
-  [Replaceable, Throws] readonly attribute Performance? performance;
+  [Replaceable, Pure, StoreInSlot] readonly attribute Performance? performance;
 };
 
 // https://dvcs.w3.org/hg/webcrypto-api/raw-file/tip/spec/Overview.html
@@ -271,12 +268,12 @@ partial interface Window {
   /**
    * Method for scrolling this window by a number of lines.
    */
-  void                      scrollByLines(long numLines);
+  void                      scrollByLines(long numLines, optional ScrollOptions options);
 
   /**
    * Method for scrolling this window by a number of pages.
    */
-  void                      scrollByPages(long numPages);
+  void                      scrollByPages(long numPages, optional ScrollOptions options);
 
   /**
    * Method for sizing this window to the content in the window.
@@ -330,6 +327,14 @@ partial interface Window {
    * been painted to the screen.
    */
   [Throws] readonly attribute unsigned long long mozPaintCount;
+
+  /**
+   * This property exists because static attributes don't yet work for
+   * JS-implemented WebIDL (see bugs 1058606 and 863952). With this hack, we
+   * can use `MozSelfSupport.something(...)`, which will continue to work
+   * after we ditch this property and switch to static attributes. See 
+   */
+  [ChromeOnly, Throws] readonly attribute MozSelfSupport MozSelfSupport;
 
   [Pure]
            attribute EventHandler onwheel;

@@ -32,6 +32,11 @@
 #undef None
 #endif
 
+// X.h on Linux #defines CurrentTime as 0L, so we have to #undef it here.
+#ifdef CurrentTime
+#undef CurrentTime
+#endif
+
 #include "mozilla/dom/HTMLMediaElementBinding.h"
 
 // Define to output information on decoding and painting framerate
@@ -93,7 +98,7 @@ public:
     return mCORSMode;
   }
 
-  HTMLMediaElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo);
+  explicit HTMLMediaElement(already_AddRefed<mozilla::dom::NodeInfo>& aNodeInfo);
 
   /**
    * This is used when the browser is constructing a video element to play
@@ -358,10 +363,16 @@ public:
 
   // XPCOM GetCurrentSrc() is OK
 
-  // XPCOM GetCrossorigin() is OK
-  void SetCrossOrigin(const nsAString& aValue, ErrorResult& aRv)
+  void GetCrossOrigin(nsAString& aResult)
   {
-    SetHTMLAttr(nsGkAtoms::crossorigin, aValue, aRv);
+    // Null for both missing and invalid defaults is ok, since we
+    // always parse to an enum value, so we don't need an invalid
+    // default, and we _want_ the missing default to be null.
+    GetEnumAttr(nsGkAtoms::crossorigin, nullptr, aResult);
+  }
+  void SetCrossOrigin(const nsAString& aCrossOrigin, ErrorResult& aError)
+  {
+    SetOrRemoveNullableStringAttr(nsGkAtoms::crossorigin, aCrossOrigin, aError);
   }
 
   uint16_t NetworkState() const
@@ -532,11 +543,11 @@ public:
   
   MediaWaitingFor WaitingFor() const;
 
-  mozilla::dom::EventHandlerNonNull* GetOnneedkey();
-  void SetOnneedkey(mozilla::dom::EventHandlerNonNull* listener);
+  mozilla::dom::EventHandlerNonNull* GetOnencrypted();
+  void SetOnencrypted(mozilla::dom::EventHandlerNonNull* listener);
 
-  void DispatchNeedKey(const nsTArray<uint8_t>& aInitData,
-                       const nsAString& aInitDataType);
+  void DispatchEncrypted(const nsTArray<uint8_t>& aInitData,
+                         const nsAString& aInitDataType);
 
 
   bool IsEventAttributeName(nsIAtom* aName) MOZ_OVERRIDE;
@@ -612,7 +623,7 @@ protected:
 
   class WakeLockBoolWrapper {
   public:
-    WakeLockBoolWrapper(bool val = false)
+    explicit WakeLockBoolWrapper(bool val = false)
       : mValue(val), mCanPlay(true), mOuter(nullptr) {}
 
     ~WakeLockBoolWrapper();
@@ -1145,6 +1156,10 @@ protected:
   // or was not actively playing before the current seek. Used to decide whether
   // to raise the 'waiting' event as per 4.7.1.8 in HTML 5 specification.
   bool mPlayingBeforeSeek;
+
+  // if TRUE then the seek started while content was in active playing state
+  // if FALSE then the seek started while the content was not playing.
+  bool mPlayingThroughTheAudioChannelBeforeSeek;
 
   // True iff this element is paused because the document is inactive or has
   // been suspended by the audio channel service.

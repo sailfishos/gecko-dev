@@ -204,28 +204,19 @@ class TreeMetadataEmitter(LoggingMixin):
                     '\n    '.join(shared_libs), lib.basename),
                     contexts[lib.objdir])
 
-        def recurse_libs(lib):
-            for obj in lib.linked_libraries:
-                if not isinstance(obj, StaticLibrary) or not obj.link_into:
-                    continue
-                yield obj.objdir
-                for q in recurse_libs(obj):
-                    yield q
+        # Propagate LIBRARY_DEFINES to all child libraries recursively.
+        def propagate_defines(outerlib, defines):
+            outerlib.defines.update(defines)
+            for lib in outerlib.linked_libraries:
+                # Propagate defines only along FINAL_LIBRARY paths, not USE_LIBS
+                # paths.
+                if (isinstance(lib, StaticLibrary) and
+                        lib.link_into == outerlib.basename):
+                    propagate_defines(lib, defines)
 
-        sent_passthru = set()
         for lib in (l for libs in self._libs.values() for l in libs):
-            # For all root libraries (i.e. libraries that don't have a
-            # FINAL_LIBRARY), record, for each static library it links
-            # (recursively), that its FINAL_LIBRARY is that root library.
             if isinstance(lib, Library):
-                if isinstance(lib, SharedLibrary) or not lib.link_into:
-                    for p in recurse_libs(lib):
-                        if p in sent_passthru:
-                            continue
-                        sent_passthru.add(p)
-                        passthru = VariablePassthru(contexts[p])
-                        passthru.variables['FINAL_LIBRARY'] = lib.basename
-                        yield passthru
+                propagate_defines(lib, lib.defines)
             yield lib
 
         for obj in self._binaries.values():
@@ -240,17 +231,7 @@ class TreeMetadataEmitter(LoggingMixin):
         """Add linkage declarations to a given object."""
         assert isinstance(obj, Linkable)
 
-        extra = []
-        # Add stdc++compat library when wanted and needed
-        compat_varname = 'MOZ_LIBSTDCXX_%s_VERSION' % obj.KIND.upper()
-        if context.config.substs.get(compat_varname) \
-                and not isinstance(obj, (StaticLibrary, HostLibrary)):
-            extra.append({
-                'target': 'stdc++compat',
-                'host': 'host_stdc++compat',
-            }[obj.KIND])
-
-        for path in context.get(variable, []) + extra:
+        for path in context.get(variable, []):
             force_static = path.startswith('static:') and obj.KIND == 'target'
             if force_static:
                 path = path[7:]
@@ -557,7 +538,6 @@ class TreeMetadataEmitter(LoggingMixin):
             ('GENERATED_EVENTS_WEBIDL_FILES', GeneratedEventWebIDLFile),
             ('GENERATED_WEBIDL_FILES', GeneratedWebIDLFile),
             ('IPDL_SOURCES', IPDLFile),
-            ('LOCAL_INCLUDES', LocalInclude),
             ('GENERATED_INCLUDES', GeneratedInclude),
             ('PREPROCESSED_TEST_WEBIDL_FILES', PreprocessedTestWebIDLFile),
             ('PREPROCESSED_WEBIDL_FILES', PreprocessedWebIDLFile),
@@ -568,6 +548,20 @@ class TreeMetadataEmitter(LoggingMixin):
         for context_var, klass in simple_lists:
             for name in context.get(context_var, []):
                 yield klass(context, name)
+
+        for local_include in context.get('LOCAL_INCLUDES', []):
+            if local_include.startswith('/'):
+                path = context.config.topsrcdir
+                relative_include = local_include[1:]
+            else:
+                path = context.srcdir
+                relative_include = local_include
+
+            actual_include = os.path.join(path, relative_include)
+            if not os.path.exists(actual_include):
+                raise SandboxValidationError('Path specified in LOCAL_INCLUDES '
+                    'does not exist: %s (resolved to %s)' % (local_include, actual_include), context)
+            yield LocalInclude(context, local_include)
 
         if context.get('FINAL_TARGET') or context.get('XPI_NAME') or \
                 context.get('DIST_SUBDIR'):
@@ -600,6 +594,8 @@ class TreeMetadataEmitter(LoggingMixin):
 
         soname = context.get('SONAME')
 
+        lib_defines = context.get('LIBRARY_DEFINES')
+
         shared_args = {}
         static_args = {}
 
@@ -625,14 +621,6 @@ class TreeMetadataEmitter(LoggingMixin):
 
         if libname:
             if is_component:
-                if shared_lib:
-                    raise SandboxValidationError(
-                        'IS_COMPONENT implies FORCE_SHARED_LIB. '
-                        'Please remove the latter.', context)
-                if is_framework:
-                    raise SandboxValidationError(
-                        'IS_COMPONENT conflicts with IS_FRAMEWORK. '
-                        'Please remove one.', context)
                 if static_lib:
                     raise SandboxValidationError(
                         'IS_COMPONENT conflicts with FORCE_STATIC_LIB. '
@@ -641,10 +629,6 @@ class TreeMetadataEmitter(LoggingMixin):
                 shared_args['variant'] = SharedLibrary.COMPONENT
 
             if is_framework:
-                if shared_lib:
-                    raise SandboxValidationError(
-                        'IS_FRAMEWORK implies FORCE_SHARED_LIB. '
-                        'Please remove the latter.', context)
                 if soname:
                     raise SandboxValidationError(
                         'IS_FRAMEWORK conflicts with SONAME. '
@@ -719,6 +703,12 @@ class TreeMetadataEmitter(LoggingMixin):
                 lib = StaticLibrary(context, libname, **static_args)
                 self._libs[libname].append(lib)
                 self._linkage.append((context, lib, 'USE_LIBS'))
+
+            if lib_defines:
+                if not libname:
+                    raise SandboxValidationError('LIBRARY_DEFINES needs a '
+                        'LIBRARY_NAME to take effect', context)
+                lib.defines.update(lib_defines)
 
         # While there are multiple test manifests, the behavior is very similar
         # across them. We enforce this by having common handling of all

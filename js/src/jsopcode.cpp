@@ -225,6 +225,8 @@ js::DumpIonScriptCounts(Sprinter *sp, jit::IonScriptCounts *ionCounts)
     for (size_t i = 0; i < ionCounts->numBlocks(); i++) {
         const jit::IonBlockCounts &block = ionCounts->block(i);
         Sprint(sp, "BB #%lu [%05u]", block.id(), block.offset());
+        if (block.description())
+            Sprint(sp, " [inlined %s]", block.description());
         for (size_t j = 0; j < block.numSuccessors(); j++)
             Sprint(sp, " -> #%lu", block.successor(j));
         Sprint(sp, " :: %llu hits\n", block.hitCount());
@@ -790,7 +792,7 @@ js_DumpScriptDepth(JSContext *cx, JSScript *scriptArg, jsbytecode *pc)
 }
 
 static char *
-QuoteString(Sprinter *sp, JSString *str, jschar quote);
+QuoteString(Sprinter *sp, JSString *str, char16_t quote);
 
 static bool
 ToDisassemblySource(JSContext *cx, HandleValue v, JSAutoByteString *bytes)
@@ -866,7 +868,6 @@ ToDisassemblySource(JSContext *cx, HandleValue v, JSAutoByteString *bytes)
             JSString *source = obj.as<RegExpObject>().toString(cx);
             if (!source)
                 return false;
-            JS::Anchor<JSString *> anchor(source);
             return bytes->encodeLatin1(cx, source);
         }
     }
@@ -1288,7 +1289,7 @@ const char js_EscapeMap[] = {
 
 template <typename CharT>
 static char *
-QuoteString(Sprinter *sp, const CharT *s, size_t length, jschar quote)
+QuoteString(Sprinter *sp, const CharT *s, size_t length, char16_t quote)
 {
     /* Sample off first for later return value pointer computation. */
     ptrdiff_t offset = sp->getOffset();
@@ -1301,7 +1302,7 @@ QuoteString(Sprinter *sp, const CharT *s, size_t length, jschar quote)
     /* Loop control variables: end points at end of string sentinel. */
     for (const CharT *t = s; t < end; s = ++t) {
         /* Move t forward from s past un-quote-worthy characters. */
-        jschar c = *t;
+        char16_t c = *t;
         while (c < 127 && isprint(c) && c != quote && c != '\\' && c != '\t') {
             c = *++t;
             if (t == end)
@@ -1353,7 +1354,7 @@ QuoteString(Sprinter *sp, const CharT *s, size_t length, jschar quote)
 }
 
 static char *
-QuoteString(Sprinter *sp, JSString *str, jschar quote)
+QuoteString(Sprinter *sp, JSString *str, char16_t quote)
 {
     JSLinearString *linear = str->ensureLinear(sp->context);
     if (!linear)
@@ -1366,7 +1367,7 @@ QuoteString(Sprinter *sp, JSString *str, jschar quote)
 }
 
 JSString *
-js_QuoteString(ExclusiveContext *cx, JSString *str, jschar quote)
+js_QuoteString(ExclusiveContext *cx, JSString *str, char16_t quote)
 {
     Sprinter sprinter(cx);
     if (!sprinter.init())
@@ -1555,7 +1556,8 @@ ExpressionDecompiler::decompilePC(jsbytecode *pc)
       case JSOP_NEWARRAY:
         return write("[]");
       case JSOP_REGEXP:
-      case JSOP_OBJECT: {
+      case JSOP_OBJECT:
+      case JSOP_NEWARRAY_COPYONWRITE: {
         JSObject *obj = (op == JSOP_REGEXP)
                         ? script->getRegExp(GET_UINT32_INDEX(pc))
                         : script->getObject(GET_UINT32_INDEX(pc));

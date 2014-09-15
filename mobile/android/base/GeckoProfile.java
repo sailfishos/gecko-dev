@@ -25,6 +25,8 @@ import org.mozilla.gecko.util.INISection;
 
 import android.content.ContentResolver;
 import android.content.Context;
+import android.content.Intent;
+import android.support.v4.content.LocalBroadcastManager;
 import android.text.TextUtils;
 import android.util.Log;
 
@@ -34,7 +36,7 @@ public final class GeckoProfile {
     // Used to "lock" the guest profile, so that we'll always restart in it
     private static final String LOCK_FILE_NAME = ".active_lock";
     public static final String DEFAULT_PROFILE = "default";
-    private static final String GUEST_PROFILE = "guest";
+    public static final String GUEST_PROFILE = "guest";
 
     private static HashMap<String, GeckoProfile> sProfileCache = new HashMap<String, GeckoProfile>();
     private static String sDefaultProfileName;
@@ -175,18 +177,16 @@ public final class GeckoProfile {
             return false;
         }
 
-        final boolean success;
-        try {
-            success = new GeckoProfile(context, profileName).remove();
-        } catch (NoMozillaDirectoryException e) {
-            Log.w(LOGTAG, "Unable to remove profile: no Mozilla directory.", e);
-            return true;
+        final GeckoProfile profile = get(context, profileName);
+        if (profile == null) {
+            return false;
         }
+        final boolean success = profile.remove();
 
         if (success) {
             // Clear all shared prefs for the given profile.
             GeckoSharedPrefs.forProfileName(context, profileName)
-                            .edit().clear().commit();
+                            .edit().clear().apply();
         }
 
         return success;
@@ -270,7 +270,7 @@ public final class GeckoProfile {
         if (success) {
             // Clear all shared prefs for the guest profile.
             GeckoSharedPrefs.forProfileName(context, GUEST_PROFILE)
-                            .edit().clear().commit();
+                            .edit().clear().apply();
         }
     }
 
@@ -655,6 +655,10 @@ public final class GeckoProfile {
             // Best-effort.
             Log.w(LOGTAG, "Couldn't write times.json.", e);
         }
+
+        LocalBroadcastManager lbm = LocalBroadcastManager.getInstance(mApplicationContext);
+        final Intent intent = new Intent(BrowserApp.ACTION_NEW_PROFILE);
+        lbm.sendBroadcast(intent);
 
         return profileDir;
     }

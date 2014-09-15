@@ -194,7 +194,7 @@ MacroAssemblerX86::finish()
         switch (v.type()) {
           case SimdConstant::Int32x4:   writeInt32x4Constant(v.value, cl.src());   break;
           case SimdConstant::Float32x4: writeFloat32x4Constant(v.value, cl.src()); break;
-          default: MOZ_ASSUME_UNREACHABLE("unexpected SimdConstant type");
+          default: MOZ_CRASH("unexpected SimdConstant type");
         }
         enoughMemory_ &= addCodeLabel(cl);
         if (!enoughMemory_)
@@ -227,7 +227,7 @@ MacroAssemblerX86::setupUnalignedABICall(uint32_t args, Register scratch)
     dynamicAlignment_ = true;
 
     movl(esp, scratch);
-    andl(Imm32(~(StackAlignment - 1)), esp);
+    andl(Imm32(~(ABIStackAlignment - 1)), esp);
     push(scratch);
 }
 
@@ -267,11 +267,11 @@ MacroAssemblerX86::callWithABIPre(uint32_t *stackAdjust)
     if (dynamicAlignment_) {
         *stackAdjust = stackForCall_
                      + ComputeByteAlignment(stackForCall_ + sizeof(intptr_t),
-                                            StackAlignment);
+                                            ABIStackAlignment);
     } else {
         *stackAdjust = stackForCall_
                      + ComputeByteAlignment(stackForCall_ + framePushed_,
-                                            StackAlignment);
+                                            ABIStackAlignment);
     }
 
     reserveStack(*stackAdjust);
@@ -291,7 +291,7 @@ MacroAssemblerX86::callWithABIPre(uint32_t *stackAdjust)
     {
         // Check call alignment.
         Label good;
-        testl(esp, Imm32(StackAlignment - 1));
+        testl(esp, Imm32(ABIStackAlignment - 1));
         j(Equal, &good);
         breakpoint();
         bind(&good);

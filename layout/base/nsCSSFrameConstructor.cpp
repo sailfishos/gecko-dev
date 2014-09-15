@@ -672,7 +672,7 @@ struct nsAbsoluteItems : nsFrameItems {
   // containing block for absolutely positioned elements
   nsContainerFrame* containingBlock;
 
-  nsAbsoluteItems(nsContainerFrame* aContainingBlock);
+  explicit nsAbsoluteItems(nsContainerFrame* aContainingBlock);
 #ifdef DEBUG
   // XXXbz Does this need a debug-only assignment operator that nulls out the
   // childList in the nsAbsoluteItems we're copying?  Introducing a difference
@@ -4552,6 +4552,22 @@ nsCSSFrameConstructor::FindDisplayData(const nsStyleDisplay* aDisplay,
     return &sNonScrollableBlockData;
   }
 
+  // If this is for a <body> node and we've propagated the scroll-frame to the
+  // viewport, we need to make sure not to add another layer of scrollbars, so
+  // we use a different FCData struct without FCDATA_MAY_NEED_SCROLLFRAME.
+  if (propagatedScrollToViewport && aDisplay->IsScrollableOverflow()) {
+    if (aDisplay->mDisplay == NS_STYLE_DISPLAY_FLEX) {
+      static const FrameConstructionData sNonScrollableFlexData =
+        FCDATA_DECL(0, NS_NewFlexContainerFrame);
+      return &sNonScrollableFlexData;
+    }
+    if (aDisplay->mDisplay == NS_STYLE_DISPLAY_GRID) {
+      static const FrameConstructionData sNonScrollableGridData =
+        FCDATA_DECL(0, NS_NewGridContainerFrame);
+      return &sNonScrollableGridData;
+    }
+  }
+
   static const FrameConstructionDataByInt sDisplayData[] = {
     // To keep the hash table small don't add inline frames (they're
     // typically things like FONT and B), because we can quickly
@@ -6671,7 +6687,7 @@ nsCSSFrameConstructor::GetRangeInsertionPoint(nsIContent* aContainer,
   bool hasInsertion = false;
   if (!multiple) {
     // XXXbz XBL2/sXBL issue
-    nsIDocument* document = aStartChild->GetDocument();
+    nsIDocument* document = aStartChild->GetComposedDoc();
     // XXXbz how would |document| be null here?
     if (document && aStartChild->GetXBLInsertionParent()) {
       hasInsertion = true;
@@ -10533,12 +10549,15 @@ nsCSSFrameConstructor::RemoveFirstLetterFrames(nsPresContext* aPresContext,
       break;
     }
     else if (IsInlineFrame(kid)) {
-      // Look inside child inline frame for the letter frame
-      RemoveFirstLetterFrames(aPresContext, aPresShell,
-                              static_cast<nsContainerFrame*>(kid),
-                              aBlockFrame, aStopLooking);
-      if (*aStopLooking) {
-        break;
+      nsContainerFrame* kidAsContainerFrame = do_QueryFrame(kid);
+      if (kidAsContainerFrame) {
+        // Look inside child inline frame for the letter frame.
+        RemoveFirstLetterFrames(aPresContext, aPresShell,
+                                kidAsContainerFrame,
+                                aBlockFrame, aStopLooking);
+        if (*aStopLooking) {
+          break;
+        }
       }
     }
     prevSibling = kid;

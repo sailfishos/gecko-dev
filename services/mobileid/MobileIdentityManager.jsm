@@ -59,6 +59,10 @@ XPCOMUtils.defineLazyServiceGetter(this, "gRil",
 XPCOMUtils.defineLazyServiceGetter(this, "iccProvider",
                                    "@mozilla.org/ril/content-helper;1",
                                    "nsIIccProvider");
+
+XPCOMUtils.defineLazyServiceGetter(this, "mobileConnectionService",
+                                   "@mozilla.org/mobileconnection/mobileconnectionservice;1",
+                                   "nsIMobileConnectionService");
 #endif
 
 
@@ -123,15 +127,17 @@ this.MobileIdentityManager = {
         continue;
       }
 
+      let voice = mobileConnectionService.getVoiceConnectionInfo(i);
+      let data = mobileConnectionService.getDataConnectionInfo(i);
       let operator = null;
-      if (rilContext.voice.network &&
-          rilContext.voice.network.shortName &&
-          rilContext.voice.network.shortName.length) {
-        operator = rilContext.voice.network.shortName;
-      } else if (rilContext.data.network &&
-                 rilContext.data.network.shortName &&
-                 rilContext.data.network.shortName.length) {
-        operator = rilContext.data.network.shortName;
+      if (voice.network &&
+          voice.network.shortName &&
+          voice.network.shortName.length) {
+        operator = voice.network.shortName;
+      } else if (data.network &&
+                 data.network.shortName &&
+                 data.network.shortName.length) {
+        operator = data.network.shortName;
       }
 
       this._iccInfo.push({
@@ -142,7 +148,7 @@ this.MobileIdentityManager = {
         msisdn: info.msisdn || info.mdn || null,
         operator: operator,
         serviceId: i,
-        roaming: rilContext.voice.roaming
+        roaming: voice.roaming
       });
     }
 
@@ -859,13 +865,13 @@ this.MobileIdentityManager = {
 
         if (!simChanged &&
             creds.deviceIccIds != null &&
-            this.IccIds != null) {
+            this.iccIds != null) {
           simChanged = creds.deviceIccIds.length != this.iccIds.length;
         }
 
         if (!simChanged &&
             creds.deviceIccIds != null &&
-            this.IccIds != null) {
+            this.iccIds != null) {
           let intersection = creds.deviceIccIds.filter((n) => {
             return this.iccIds.indexOf(n) != -1;
           });

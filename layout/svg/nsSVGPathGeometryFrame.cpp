@@ -97,15 +97,21 @@ void
 nsDisplaySVGPathGeometry::Paint(nsDisplayListBuilder* aBuilder,
                                 nsRenderingContext* aCtx)
 {
+  uint32_t appUnitsPerDevPixel = mFrame->PresContext()->AppUnitsPerDevPixel();
+
   // ToReferenceFrame includes our mRect offset, but painting takes
   // account of that too. To avoid double counting, we subtract that
   // here.
   nsPoint offset = ToReferenceFrame() - mFrame->GetPosition();
 
-  aCtx->PushState();
-  aCtx->Translate(offset);
-  static_cast<nsSVGPathGeometryFrame*>(mFrame)->PaintSVG(aCtx, nullptr);
-  aCtx->PopState();
+  gfxPoint devPixelOffset =
+    nsLayoutUtils::PointToGfxPoint(offset, appUnitsPerDevPixel);
+
+  aCtx->ThebesContext()->Save();
+  gfxMatrix tm = nsSVGIntegrationUtils::GetCSSPxToDevPxMatrix(mFrame) *
+                   gfxMatrix::Translation(devPixelOffset);
+  static_cast<nsSVGPathGeometryFrame*>(mFrame)->PaintSVG(aCtx, tm);
+  aCtx->ThebesContext()->Restore();
 }
 
 //----------------------------------------------------------------------
@@ -207,29 +213,29 @@ nsSVGPathGeometryFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
 
 nsresult
 nsSVGPathGeometryFrame::PaintSVG(nsRenderingContext *aContext,
-                                 const nsIntRect *aDirtyRect,
-                                 nsIFrame* aTransformRoot)
+                                 const gfxMatrix& aTransform,
+                                 const nsIntRect* aDirtyRect)
 {
   if (!StyleVisibility()->IsVisible())
     return NS_OK;
 
   uint32_t paintOrder = StyleSVG()->mPaintOrder;
   if (paintOrder == NS_STYLE_PAINT_ORDER_NORMAL) {
-    Render(aContext, eRenderFill | eRenderStroke, aTransformRoot);
-    PaintMarkers(aContext);
+    Render(aContext, eRenderFill | eRenderStroke, aTransform);
+    PaintMarkers(aContext, aTransform);
   } else {
     while (paintOrder) {
       uint32_t component =
         paintOrder & ((1 << NS_STYLE_PAINT_ORDER_BITWIDTH) - 1);
       switch (component) {
         case NS_STYLE_PAINT_ORDER_FILL:
-          Render(aContext, eRenderFill, aTransformRoot);
+          Render(aContext, eRenderFill, aTransform);
           break;
         case NS_STYLE_PAINT_ORDER_STROKE:
-          Render(aContext, eRenderStroke, aTransformRoot);
+          Render(aContext, eRenderStroke, aTransform);
           break;
         case NS_STYLE_PAINT_ORDER_MARKERS:
-          PaintMarkers(aContext);
+          PaintMarkers(aContext, aTransform);
           break;
       }
       paintOrder >>= NS_STYLE_PAINT_ORDER_BITWIDTH;
@@ -315,7 +321,7 @@ nsRect
 nsSVGPathGeometryFrame::GetCoveredRegion()
 {
   return nsSVGUtils::TransformFrameRectToOuterSVG(
-           mRect, GetCanvasTM(FOR_OUTERSVG_TM), PresContext());
+           mRect, GetCanvasTM(), PresContext());
 }
 
 void
@@ -357,12 +363,12 @@ nsSVGPathGeometryFrame::ReflowSVG()
   // transforms between us and our nsSVGOuterSVGFrame, even though the
   // overwhelming number of SVGs will never have this problem.
   // XXX Will Azure eventually save us from having to do this?
-  gfxSize scaleFactors = GetCanvasTM(FOR_OUTERSVG_TM).ScaleFactors(true);
+  gfxSize scaleFactors = GetCanvasTM().ScaleFactors(true);
   bool applyScaling = fabs(scaleFactors.width) >= 1e-6 &&
                       fabs(scaleFactors.height) >= 1e-6;
   gfx::Matrix scaling;
   if (applyScaling) {
-    scaling.Scale(scaleFactors.width, scaleFactors.height);
+    scaling.PreScale(scaleFactors.width, scaleFactors.height);
   }
   gfxRect extent = GetBBoxContribution(scaling, flags).ToThebesRect();
   if (applyScaling) {
@@ -460,7 +466,7 @@ nsSVGPathGeometryFrame::GetBBoxContribution(const Matrix &aToBBoxUserspace,
   nsRefPtr<gfxContext> tmpCtx = new gfxContext(tmpDT);
 
   GeneratePath(tmpCtx, aToBBoxUserspace);
-  tmpCtx->IdentityMatrix();
+  tmpCtx->SetMatrix(gfxMatrix());
 
   // Be careful when replacing the following logic to get the fill and stroke
   // extents independently (instead of computing the stroke extents from the
@@ -546,22 +552,14 @@ nsSVGPathGeometryFrame::GetBBoxContribution(const Matrix &aToBBoxUserspace,
 // nsSVGPathGeometryFrame methods:
 
 gfxMatrix
-nsSVGPathGeometryFrame::GetCanvasTM(uint32_t aFor, nsIFrame* aTransformRoot)
+nsSVGPathGeometryFrame::GetCanvasTM()
 {
-  if (!(GetStateBits() & NS_FRAME_IS_NONDISPLAY) && !aTransformRoot) {
-    if (aFor == FOR_PAINTING && NS_SVGDisplayListPaintingEnabled()) {
-      return nsSVGIntegrationUtils::GetCSSPxToDevPxMatrix(this);
-    }
-  }
-
   NS_ASSERTION(GetParent(), "null parent");
 
   nsSVGContainerFrame *parent = static_cast<nsSVGContainerFrame*>(GetParent());
   dom::SVGGraphicsElement *content = static_cast<dom::SVGGraphicsElement*>(mContent);
 
-  return content->PrependLocalTransformsTo(
-      this == aTransformRoot ? gfxMatrix() :
-                               parent->GetCanvasTM(aFor, aTransformRoot));
+  return content->PrependLocalTransformsTo(parent->GetCanvasTM());
 }
 
 nsSVGPathGeometryFrame::MarkerProperties
@@ -613,7 +611,7 @@ nsSVGPathGeometryFrame::MarkerProperties::GetMarkerEndFrame()
 void
 nsSVGPathGeometryFrame::Render(nsRenderingContext *aContext,
                                uint32_t aRenderComponents,
-                               nsIFrame* aTransformRoot)
+                               const gfxMatrix& aTransform)
 {
   gfxContext *gfx = aContext->ThebesContext();
 
@@ -653,7 +651,7 @@ nsSVGPathGeometryFrame::Render(nsRenderingContext *aContext,
       autoSaveRestore.SetContext(gfx);
     //}
 
-    GeneratePath(gfx, ToMatrix(GetCanvasTM(FOR_PAINTING, aTransformRoot)));
+    GeneratePath(gfx, ToMatrix(aTransform));
 
     // We used to call gfx->Restore() here, since for the
     // SVGAutoRenderState::CLIP case it is important to leave the fill rule
@@ -682,10 +680,10 @@ nsSVGPathGeometryFrame::Render(nsRenderingContext *aContext,
 
   gfxContextAutoSaveRestore autoSaveRestore(gfx);
 
-  GeneratePath(gfx, ToMatrix(GetCanvasTM(FOR_PAINTING, aTransformRoot)));
+  GeneratePath(gfx, ToMatrix(aTransform));
 
   gfxTextContextPaint *contextPaint =
-    (gfxTextContextPaint*)aContext->GetUserData(&gfxTextContextPaint::sUserDataKey);
+    (gfxTextContextPaint*)aContext->GetDrawTarget()->GetUserData(&gfxTextContextPaint::sUserDataKey);
 
   if ((aRenderComponents & eRenderFill) &&
       nsSVGUtils::SetupCairoFillPaint(this, gfx, contextPaint)) {
@@ -705,12 +703,14 @@ nsSVGPathGeometryFrame::GeneratePath(gfxContext* aContext,
                                      const Matrix &aTransform)
 {
   if (aTransform.IsSingular()) {
-    aContext->IdentityMatrix();
+    aContext->SetMatrix(gfxMatrix());
     aContext->NewPath();
     return;
   }
 
-  aContext->MultiplyAndNudgeToIntegers(ThebesMatrix(aTransform));
+  aContext->SetMatrix(
+    aContext->CurrentMatrix().PreMultiply(ThebesMatrix(aTransform)).
+                              NudgeToIntegers());
 
   // Hack to let SVGPathData::ConstructPath know if we have square caps:
   const nsStyleSVG* style = StyleSVG();
@@ -723,10 +723,11 @@ nsSVGPathGeometryFrame::GeneratePath(gfxContext* aContext,
 }
 
 void
-nsSVGPathGeometryFrame::PaintMarkers(nsRenderingContext* aContext)
+nsSVGPathGeometryFrame::PaintMarkers(nsRenderingContext* aContext,
+                                     const gfxMatrix& aTransform)
 {
   gfxTextContextPaint *contextPaint =
-    (gfxTextContextPaint*)aContext->GetUserData(&gfxTextContextPaint::sUserDataKey);
+    (gfxTextContextPaint*)aContext->GetDrawTarget()->GetUserData(&gfxTextContextPaint::sUserDataKey);
 
   if (static_cast<nsSVGPathGeometryElement*>(mContent)->IsMarkable()) {
     MarkerProperties properties = GetMarkerProperties(this);
@@ -752,7 +753,7 @@ nsSVGPathGeometryFrame::PaintMarkers(nsRenderingContext* aContext)
           nsSVGMark& mark = marks[i];
           nsSVGMarkerFrame* frame = markerFrames[mark.type];
           if (frame) {
-            frame->PaintMark(aContext, this, &mark, strokeWidth);
+            frame->PaintMark(aContext, aTransform, this, &mark, strokeWidth);
           }
         }
       }

@@ -184,6 +184,10 @@ public:
   int8_t CachedWritableByte();
   void SetCachedWritableByte(int8_t);
 
+  void UnsafePrerenderMethod();
+  int32_t UnsafePrerenderWritable();
+  void SetUnsafePrerenderWritable(int32_t);
+  int32_t UnsafePrerenderReadonly();
   int16_t ReadonlyShort();
   int16_t WritableShort();
   void SetWritableShort(int16_t);
@@ -375,10 +379,10 @@ public:
   void ReceiveNullableCallbackObjectSequence(nsTArray< nsRefPtr<TestCallbackInterface> > &);
   void ReceiveCastableObjectNullableSequence(Nullable< nsTArray< nsRefPtr<TestInterface> > >&);
   void ReceiveNullableCastableObjectNullableSequence(Nullable< nsTArray< nsRefPtr<TestInterface> > >&);
-  void ReceiveWeakCastableObjectSequence(nsTArray<TestInterface*> &);
-  void ReceiveWeakNullableCastableObjectSequence(nsTArray<TestInterface*> &);
-  void ReceiveWeakCastableObjectNullableSequence(Nullable< nsTArray<TestInterface*> >&);
-  void ReceiveWeakNullableCastableObjectNullableSequence(Nullable< nsTArray<TestInterface*> >&);
+  void ReceiveWeakCastableObjectSequence(nsTArray<nsRefPtr<TestInterface>> &);
+  void ReceiveWeakNullableCastableObjectSequence(nsTArray<nsRefPtr<TestInterface>> &);
+  void ReceiveWeakCastableObjectNullableSequence(Nullable< nsTArray<nsRefPtr<TestInterface>> >&);
+  void ReceiveWeakNullableCastableObjectNullableSequence(Nullable< nsTArray<nsRefPtr<TestInterface>> >&);
   void PassCastableObjectSequence(const Sequence< OwningNonNull<TestInterface> >&);
   void PassNullableCastableObjectSequence(const Sequence< nsRefPtr<TestInterface> > &);
   void PassCastableObjectNullableSequence(const Nullable< Sequence< OwningNonNull<TestInterface> > >&);
@@ -457,6 +461,8 @@ public:
   void PassVariadicTypedArray(const Sequence<Float32Array>&);
   void PassVariadicNullableTypedArray(const Sequence<Nullable<Float32Array> >&);
   void ReceiveUint8Array(JSContext*, JS::MutableHandle<JSObject*>);
+  void SetUint8ArrayAttr(const Uint8Array&);
+  void GetUint8ArrayAttr(JSContext*, JS::MutableHandle<JSObject*>);
 
   // DOMString types
   void PassString(const nsAString&);
@@ -597,6 +603,10 @@ public:
   void PassUnion20(JSContext*, const ObjectSequenceOrLong&);
   void PassUnion21(const LongMozMapOrLong&);
   void PassUnion22(JSContext*, const ObjectMozMapOrLong&);
+  void PassUnion23(const ImageDataSequenceOrLong&);
+  void PassUnion24(const ImageDataOrNullSequenceOrLong&);
+  void PassUnion25(const ImageDataSequenceSequenceOrLong&);
+  void PassUnion26(const ImageDataOrNullSequenceSequenceOrLong&);
   void PassUnionWithCallback(const EventHandlerNonNullOrNullOrLong& arg);
   void PassUnionWithByteString(const ByteStringOrLong&);
   void PassUnionWithMozMap(const StringMozMapOrString&);

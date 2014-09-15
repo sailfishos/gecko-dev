@@ -7,6 +7,7 @@
 #include "MediaManager.h"
 
 #include "MediaStreamGraph.h"
+#include "mozilla/dom/MediaStreamTrack.h"
 #include "GetUserMediaRequest.h"
 #include "nsHashPropertyBag.h"
 #ifdef MOZ_WIDGET_GONK
@@ -134,6 +135,17 @@ HostInDomain(const nsCString &aHost, const nsCString &aPattern)
 static bool
 HostHasPermission(nsIURI &docURI)
 {
+  nsresult rv;
+
+  bool isHttps;
+  rv = docURI.SchemeIs("https",&isHttps);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return false;
+  }
+  if (!isHttps) {
+    return false;
+  }
+
   nsAdoptingCString hostName;
   docURI.GetAsciiHost(hostName); //normalize UTF8 to ASCII equivalent
   nsAdoptingCString domainWhiteList =
@@ -144,7 +156,6 @@ HostHasPermission(nsIURI &docURI)
     return false;
   }
 
-  nsresult rv;
   // Get UTF8 to ASCII domain name normalization service
   nsCOMPtr<nsIIDNService> idnService
     = do_GetService("@mozilla.org/network/idn-service;1", &rv);
@@ -158,7 +169,7 @@ HostHasPermission(nsIURI &docURI)
   /*
      Test each domain name in the comma separated list
      after converting from UTF8 to ASCII. Each domain
-     must match exactly: no wildcards are used.
+     must match exactly or have a single leading '*.' wildcard
   */
   do {
     end = domainWhiteList.FindChar(',', begin);
@@ -387,13 +398,27 @@ VideoDevice::VideoDevice(MediaEngineVideoSource* aSource)
     mFacingMode = dom::VideoFacingModeEnum::User;
   }
 #endif // MOZ_B2G_CAMERA
+#if defined(ANDROID) && !defined(MOZ_WIDGET_GONK)
+  // Names are generated. Example: "Camera 0, Facing back, Orientation 90"
+  //
+  // See media/webrtc/trunk/webrtc/modules/video_capture/android/java/src/org/
+  // webrtc/videoengine/VideoCaptureDeviceInfoAndroid.java
 
+  if (mName.Find(NS_LITERAL_STRING("Facing back")) != kNotFound) {
+    mHasFacingMode = true;
+    mFacingMode = dom::VideoFacingModeEnum::Environment;
+  } else if (mName.Find(NS_LITERAL_STRING("Facing front")) != kNotFound) {
+    mHasFacingMode = true;
+    mFacingMode = dom::VideoFacingModeEnum::User;
+  }
+#endif // ANDROID
+#ifdef XP_MACOSX
   // Kludge to test user-facing cameras on OSX.
   if (mName.Find(NS_LITERAL_STRING("Face")) != -1) {
     mHasFacingMode = true;
     mFacingMode = dom::VideoFacingModeEnum::User;
   }
-
+#endif
   mMediaSource = aSource->GetMediaSource();
 }
 
@@ -481,20 +506,27 @@ class nsDOMUserMediaStream : public DOMLocalMediaStream
 public:
   static already_AddRefed<nsDOMUserMediaStream>
   CreateTrackUnionStream(nsIDOMWindow* aWindow,
-                         MediaEngineSource *aAudioSource,
-                         MediaEngineSource *aVideoSource)
+                         GetUserMediaCallbackMediaStreamListener* aListener,
+                         MediaEngineSource* aAudioSource,
+                         MediaEngineSource* aVideoSource)
   {
     DOMMediaStream::TrackTypeHints hints =
       (aAudioSource ? DOMMediaStream::HINT_CONTENTS_AUDIO : 0) |
       (aVideoSource ? DOMMediaStream::HINT_CONTENTS_VIDEO : 0);
 
-    nsRefPtr<nsDOMUserMediaStream> stream = new nsDOMUserMediaStream(aAudioSource);
+    nsRefPtr<nsDOMUserMediaStream> stream = new nsDOMUserMediaStream(aListener,
+                                                                     aAudioSource,
+                                                                     aVideoSource);
     stream->InitTrackUnionStream(aWindow, hints);
     return stream.forget();
   }
 
-  nsDOMUserMediaStream(MediaEngineSource *aAudioSource) :
+  nsDOMUserMediaStream(GetUserMediaCallbackMediaStreamListener* aListener,
+                       MediaEngineSource *aAudioSource,
+                       MediaEngineSource *aVideoSource) :
+    mListener(aListener),
     mAudioSource(aAudioSource),
+    mVideoSource(aVideoSource),
     mEchoOn(true),
     mAgcOn(false),
     mNoiseOn(true),
@@ -528,6 +560,40 @@ public:
       mSourceStream->EndAllTrackAndFinish();
     }
   }
+
+  // For gUM streams, we have a trackunion which assigns TrackIDs.  However, for a
+  // single-source trackunion like we have here, the TrackUnion will assign trackids
+  // that match the source's trackids, so we can avoid needing a mapping function.
+  // XXX This will not handle more complex cases well.
+  virtual void StopTrack(TrackID aTrackID)
+  {
+    if (mSourceStream) {
+      mSourceStream->EndTrack(aTrackID);
+      // We could override NotifyMediaStreamTrackEnded(), and maybe should, but it's
+      // risky to do late in a release since that will affect all track ends, and not
+      // just StopTrack()s.
+      if (GetDOMTrackFor(aTrackID)) {
+        mListener->StopTrack(aTrackID, !!GetDOMTrackFor(aTrackID)->AsAudioStreamTrack());
+      } else {
+        LOG(("StopTrack(%d) on non-existant track", aTrackID));
+      }
+    }
+  }
+
+#if 0
+  virtual void NotifyMediaStreamTrackEnded(dom::MediaStreamTrack* aTrack)
+  {
+    TrackID trackID = aTrack->GetTrackID();
+    // We override this so we can also tell the backend to stop capturing if the track ends
+    LOG(("track %d ending, type = %s",
+         trackID, aTrack->AsAudioStreamTrack() ? "audio" : "video"));
+    MOZ_ASSERT(aTrack->AsVideoStreamTrack() || aTrack->AsAudioStreamTrack());
+    mListener->StopTrack(trackID, !!aTrack->AsAudioStreamTrack());
+
+    // forward to superclass
+    DOMLocalMediaStream::NotifyMediaStreamTrackEnded(aTrack);
+  }
+#endif
 
   // Allow getUserMedia to pass input data directly to PeerConnection/MediaPipeline
   virtual bool AddDirectListener(MediaStreamDirectListener *aListener) MOZ_OVERRIDE
@@ -572,11 +638,32 @@ public:
     GetStream()->AsProcessedStream()->ForwardTrackEnabled(aID, aEnabled);
   }
 
+  virtual DOMLocalMediaStream* AsDOMLocalMediaStream()
+  {
+    return this;
+  }
+
+  virtual MediaEngineSource* GetMediaEngine(TrackID aTrackID)
+  {
+    // MediaEngine supports only one video and on video track now and TrackID is
+    // fixed in MediaEngine.
+    if (aTrackID == kVideoTrack) {
+      return mVideoSource;
+    }
+    else if (aTrackID == kAudioTrack) {
+      return mAudioSource;
+    }
+
+    return nullptr;
+  }
+
   // The actual MediaStream is a TrackUnionStream. But these resources need to be
   // explicitly destroyed too.
   nsRefPtr<SourceMediaStream> mSourceStream;
   nsRefPtr<MediaInputPort> mPort;
+  nsRefPtr<GetUserMediaCallbackMediaStreamListener> mListener;
   nsRefPtr<MediaEngineSource> mAudioSource; // so we can turn on AEC
+  nsRefPtr<MediaEngineSource> mVideoSource;
   bool mEchoOn;
   bool mAgcOn;
   bool mNoiseOn;
@@ -708,8 +795,8 @@ public:
 #endif
     // Create a media stream.
     nsRefPtr<nsDOMUserMediaStream> trackunion =
-      nsDOMUserMediaStream::CreateTrackUnionStream(window, mAudioSource,
-                                                   mVideoSource);
+      nsDOMUserMediaStream::CreateTrackUnionStream(window, mListener,
+                                                   mAudioSource, mVideoSource);
     if (!trackunion) {
       nsCOMPtr<nsIDOMGetUserMediaErrorCallback> error = mError.forget();
       LOG(("Returning error for getUserMedia() - no stream"));
@@ -1605,11 +1692,16 @@ MediaManager::GetUserMedia(bool aPrivileged,
        on the whitelist. */
       // Block screen/window sharing on Mac OSX 10.6 and WinXP until proved that they work
       if (
+#if defined(XP_MACOSX) || defined(XP_WIN)
+          (
+            !Preferences::GetBool("media.getusermedia.screensharing.allow_on_old_platforms", false) &&
 #if defined(XP_MACOSX)
-          !nsCocoaFeatures::OnLionOrLater() ||
+            !nsCocoaFeatures::OnLionOrLater()
 #endif
 #if defined (XP_WIN)
-          !IsVistaOrLater() ||
+            !IsVistaOrLater()
+#endif
+           ) ||
 #endif
           (!aPrivileged && !HostHasPermission(*docURI))) {
         return runnable->Denied(NS_LITERAL_STRING("PERMISSION_DENIED"));
@@ -1804,6 +1896,38 @@ MediaManager::OnNavigation(uint64_t aWindowID)
 }
 
 void
+MediaManager::RemoveWindowID(uint64_t aWindowId)
+{
+  mActiveWindows.Remove(aWindowId);
+
+  // get outer windowID
+  nsPIDOMWindow *window = static_cast<nsPIDOMWindow*>
+    (nsGlobalWindow::GetInnerWindowWithId(aWindowId));
+  if (!window) {
+    LOG(("No inner window for %llu", aWindowId));
+    return;
+  }
+
+  nsPIDOMWindow *outer = window->GetOuterWindow();
+  if (!outer) {
+    LOG(("No outer window for inner %llu", aWindowId));
+    return;
+  }
+
+  uint64_t outerID = outer->WindowID();
+
+  // Notify the UI that this window no longer has gUM active
+  char windowBuffer[32];
+  PR_snprintf(windowBuffer, sizeof(windowBuffer), "%llu", outerID);
+  nsString data = NS_ConvertUTF8toUTF16(windowBuffer);
+
+  nsCOMPtr<nsIObserverService> obs = services::GetObserverService();
+  obs->NotifyObservers(nullptr, "recording-window-ended", data.get());
+  LOG(("Sent recording-window-ended for window %llu (outer %llu)",
+       aWindowId, outerID));
+}
+
+void
 MediaManager::RemoveFromWindowList(uint64_t aWindowID,
   GetUserMediaCallbackMediaStreamListener *aListener)
 {
@@ -1820,30 +1944,6 @@ MediaManager::RemoveFromWindowList(uint64_t aWindowID,
   if (listeners->Length() == 0) {
     RemoveWindowID(aWindowID);
     // listeners has been deleted here
-
-    // get outer windowID
-    nsPIDOMWindow *window = static_cast<nsPIDOMWindow*>
-      (nsGlobalWindow::GetInnerWindowWithId(aWindowID));
-    if (window) {
-      nsPIDOMWindow *outer = window->GetOuterWindow();
-      if (outer) {
-        uint64_t outerID = outer->WindowID();
-
-        // Notify the UI that this window no longer has gUM active
-        char windowBuffer[32];
-        PR_snprintf(windowBuffer, sizeof(windowBuffer), "%llu", outerID);
-        nsString data = NS_ConvertUTF8toUTF16(windowBuffer);
-
-        nsCOMPtr<nsIObserverService> obs = services::GetObserverService();
-        obs->NotifyObservers(nullptr, "recording-window-ended", data.get());
-        LOG(("Sent recording-window-ended for window %llu (outer %llu)",
-             aWindowID, outerID));
-      } else {
-        LOG(("No outer window for inner %llu", aWindowID));
-      }
-    } else {
-      LOG(("No inner window for %llu", aWindowID));
-    }
   }
 }
 
@@ -1992,13 +2092,23 @@ MediaManager::Observe(nsISupports* aSubject, const char* aTopic,
 
   } else if (!strcmp(aTopic, "getUserMedia:revoke")) {
     nsresult rv;
-    uint64_t windowID = nsString(aData).ToInteger64(&rv);
-    MOZ_ASSERT(NS_SUCCEEDED(rv));
-    if (NS_SUCCEEDED(rv)) {
-      LOG(("Revoking MediaCapture access for window %llu",windowID));
-      OnNavigation(windowID);
+    // may be windowid or screen:windowid
+    nsDependentString data(aData);
+    if (Substring(data, 0, strlen("screen:")).EqualsLiteral("screen:")) {
+      uint64_t windowID = PromiseFlatString(Substring(data, strlen("screen:"))).ToInteger64(&rv);
+      MOZ_ASSERT(NS_SUCCEEDED(rv));
+      if (NS_SUCCEEDED(rv)) {
+        LOG(("Revoking Screeen/windowCapture access for window %llu", windowID));
+        StopScreensharing(windowID);
+      }
+    } else {
+      uint64_t windowID = nsString(aData).ToInteger64(&rv);
+      MOZ_ASSERT(NS_SUCCEEDED(rv));
+      if (NS_SUCCEEDED(rv)) {
+        LOG(("Revoking MediaCapture access for window %llu", windowID));
+        OnNavigation(windowID);
+      }
     }
-
     return NS_OK;
   }
 #ifdef MOZ_WIDGET_GONK
@@ -2039,7 +2149,8 @@ WindowsHashToArrayFunc (const uint64_t& aId,
         nsRefPtr<GetUserMediaCallbackMediaStreamListener> listener =
           aData->ElementAt(i);
         if (listener->CapturingVideo() || listener->CapturingAudio() ||
-            listener->CapturingScreen() || listener->CapturingWindow()) {
+            listener->CapturingScreen() || listener->CapturingWindow() ||
+            listener->CapturingApplication()) {
           capturing = true;
           break;
         }
@@ -2071,20 +2182,22 @@ MediaManager::GetActiveMediaCaptureWindows(nsISupportsArray **aArray)
 NS_IMETHODIMP
 MediaManager::MediaCaptureWindowState(nsIDOMWindow* aWindow, bool* aVideo,
                                       bool* aAudio, bool *aScreenShare,
-                                      bool* aWindowShare)
+                                      bool* aWindowShare, bool *aAppShare)
 {
   NS_ASSERTION(NS_IsMainThread(), "Only call on main thread");
   *aVideo = false;
   *aAudio = false;
   *aScreenShare = false;
   *aWindowShare = false;
+  *aAppShare = false;
 
-  nsresult rv = MediaCaptureWindowStateInternal(aWindow, aVideo, aAudio, aScreenShare, aWindowShare);
+  nsresult rv = MediaCaptureWindowStateInternal(aWindow, aVideo, aAudio, aScreenShare, aWindowShare, aAppShare);
 #ifdef DEBUG
   nsCOMPtr<nsPIDOMWindow> piWin = do_QueryInterface(aWindow);
-  LOG(("%s: window %lld capturing %s %s %s %s", __FUNCTION__, piWin ? piWin->WindowID() : -1,
+  LOG(("%s: window %lld capturing %s %s %s %s %s", __FUNCTION__, piWin ? piWin->WindowID() : -1,
        *aVideo ? "video" : "", *aAudio ? "audio" : "",
-       *aScreenShare ? "screenshare" : "",  *aWindowShare ? "windowshare" : ""));
+       *aScreenShare ? "screenshare" : "",  *aWindowShare ? "windowshare" : "",
+       *aAppShare ? "appshare" : ""));
 #endif
   return rv;
 }
@@ -2092,7 +2205,7 @@ MediaManager::MediaCaptureWindowState(nsIDOMWindow* aWindow, bool* aVideo,
 nsresult
 MediaManager::MediaCaptureWindowStateInternal(nsIDOMWindow* aWindow, bool* aVideo,
                                               bool* aAudio, bool *aScreenShare,
-                                              bool* aWindowShare)
+                                              bool* aWindowShare, bool *aAppShare)
 {
   // We need to return the union of all streams in all innerwindows that
   // correspond to that outerwindow.
@@ -2102,12 +2215,12 @@ MediaManager::MediaCaptureWindowStateInternal(nsIDOMWindow* aWindow, bool* aVide
   // results.
   nsCOMPtr<nsPIDOMWindow> piWin = do_QueryInterface(aWindow);
   if (piWin) {
-    if (piWin->GetCurrentInnerWindow() || piWin->IsInnerWindow()) {
+    if (piWin->IsInnerWindow() || piWin->GetCurrentInnerWindow()) {
       uint64_t windowID;
-      if (piWin->GetCurrentInnerWindow()) {
-        windowID = piWin->GetCurrentInnerWindow()->WindowID();
-      } else {
+      if (piWin->IsInnerWindow()) {
         windowID = piWin->WindowID();
+      } else {
+        windowID = piWin->GetCurrentInnerWindow()->WindowID();
       }
       StreamListeners* listeners = GetActiveWindows()->Get(windowID);
       if (listeners) {
@@ -2127,6 +2240,9 @@ MediaManager::MediaCaptureWindowStateInternal(nsIDOMWindow* aWindow, bool* aVide
           if (listener->CapturingWindow()) {
             *aWindowShare = true;
           }
+          if (listener->CapturingApplication()) {
+            *aAppShare = true;
+          }
         }
       }
     }
@@ -2141,11 +2257,72 @@ MediaManager::MediaCaptureWindowStateInternal(nsIDOMWindow* aWindow, bool* aVide
         docShell->GetChildAt(i, getter_AddRefs(item));
         nsCOMPtr<nsPIDOMWindow> win = item ? item->GetWindow() : nullptr;
 
-        MediaCaptureWindowStateInternal(win, aVideo, aAudio, aScreenShare, aWindowShare);
+        MediaCaptureWindowStateInternal(win, aVideo, aAudio, aScreenShare, aWindowShare, aAppShare);
       }
     }
   }
   return NS_OK;
+}
+
+// XXX abstract out the iteration over all children and provide a function pointer and data ptr
+
+void
+MediaManager::StopScreensharing(uint64_t aWindowID)
+{
+  // We need to stop window/screensharing for all streams in all innerwindows that
+  // correspond to that outerwindow.
+
+  nsPIDOMWindow *window = static_cast<nsPIDOMWindow*>
+      (nsGlobalWindow::GetInnerWindowWithId(aWindowID));
+  if (!window) {
+    return;
+  }
+  StopScreensharing(window);
+}
+
+void
+MediaManager::StopScreensharing(nsPIDOMWindow *aWindow)
+{
+  // We need to stop window/screensharing for all streams in all innerwindows that
+  // correspond to that outerwindow.
+
+  // Iterate the docshell tree to find all the child windows, find
+  // all the listeners for each one, and tell them to stop
+  // window/screensharing
+  nsCOMPtr<nsPIDOMWindow> piWin = do_QueryInterface(aWindow);
+  if (piWin) {
+    if (piWin->IsInnerWindow() || piWin->GetCurrentInnerWindow()) {
+      uint64_t windowID;
+      if (piWin->IsInnerWindow()) {
+        windowID = piWin->WindowID();
+      } else {
+        windowID = piWin->GetCurrentInnerWindow()->WindowID();
+      }
+      StreamListeners* listeners = GetActiveWindows()->Get(windowID);
+      if (listeners) {
+        uint32_t length = listeners->Length();
+        for (uint32_t i = 0; i < length; ++i) {
+          listeners->ElementAt(i)->StopScreenWindowSharing();
+        }
+      }
+    }
+
+    // iterate any children of *this* window (iframes, etc)
+    nsCOMPtr<nsIDocShell> docShell = piWin->GetDocShell();
+    if (docShell) {
+      int32_t i, count;
+      docShell->GetChildCount(&count);
+      for (i = 0; i < count; ++i) {
+        nsCOMPtr<nsIDocShellTreeItem> item;
+        docShell->GetChildAt(i, getter_AddRefs(item));
+        nsCOMPtr<nsPIDOMWindow> win = item ? item->GetWindow() : nullptr;
+
+        if (win) {
+          StopScreensharing(win);
+        }
+      }
+    }
+  }
 }
 
 void
@@ -2180,6 +2357,49 @@ GetUserMediaCallbackMediaStreamListener::Invalidate()
                                         mAudioSource, mVideoSource,
                                         mFinished, mWindowID, nullptr);
   mMediaThread->Dispatch(runnable, NS_DISPATCH_NORMAL);
+}
+
+// Doesn't kill audio
+// XXX refactor to combine with Invalidate()?
+void
+GetUserMediaCallbackMediaStreamListener::StopScreenWindowSharing()
+{
+  NS_ASSERTION(NS_IsMainThread(), "Only call on main thread");
+  if (mVideoSource && !mStopped &&
+      (mVideoSource->GetMediaSource() == MediaSourceType::Screen ||
+       mVideoSource->GetMediaSource() == MediaSourceType::Application ||
+       mVideoSource->GetMediaSource() == MediaSourceType::Window)) {
+    // Stop the whole stream if there's no audio; just the video track if we have both
+    nsRefPtr<MediaOperationRunnable> runnable(
+      new MediaOperationRunnable(mAudioSource ? MEDIA_STOP_TRACK : MEDIA_STOP,
+                                 this, nullptr, nullptr,
+                                 nullptr, mVideoSource,
+                                 mFinished, mWindowID, nullptr));
+    mMediaThread->Dispatch(runnable, NS_DISPATCH_NORMAL);
+  }
+}
+
+// Stop backend for track
+
+void
+GetUserMediaCallbackMediaStreamListener::StopTrack(TrackID aID, bool aIsAudio)
+{
+  if (((aIsAudio && mAudioSource) ||
+       (!aIsAudio && mVideoSource)) && !mStopped)
+  {
+    // XXX to support multiple tracks of a type in a stream, this should key off
+    // the TrackID and not just the type
+    nsRefPtr<MediaOperationRunnable> runnable(
+      new MediaOperationRunnable(MEDIA_STOP_TRACK,
+                                 this, nullptr, nullptr,
+                                 aIsAudio  ? mAudioSource : nullptr,
+                                 !aIsAudio ? mVideoSource : nullptr,
+                                 mFinished, mWindowID, nullptr));
+    mMediaThread->Dispatch(runnable, NS_DISPATCH_NORMAL);
+  } else {
+    LOG(("gUM track %d ended, but we don't have type %s",
+         aID, aIsAudio ? "audio" : "video"));
+  }
 }
 
 // Called from the MediaStreamGraph thread
@@ -2241,6 +2461,9 @@ GetUserMediaNotificationEvent::Run()
     if (mListener) {
       mListener->SetStopped();
     }
+    break;
+  case STOPPED_TRACK:
+    msg = NS_LITERAL_STRING("shutdown");
     break;
   }
 

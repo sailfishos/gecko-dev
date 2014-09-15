@@ -738,6 +738,7 @@ Activation::Activation(ThreadSafeContext *cx, Kind kind)
   : cx_(cx),
     compartment_(cx->compartment_),
     prev_(cx->perThreadData->activation_),
+    prevProfiling_(prev_ ? prev_->mostRecentProfiling() : nullptr),
     savedFrameChain_(0),
     hideScriptedCallerCount_(0),
     kind_(kind)
@@ -747,9 +748,34 @@ Activation::Activation(ThreadSafeContext *cx, Kind kind)
 
 Activation::~Activation()
 {
+    JS_ASSERT_IF(isProfiling(), this != cx_->perThreadData->profilingActivation_);
     JS_ASSERT(cx_->perThreadData->activation_ == this);
     JS_ASSERT(hideScriptedCallerCount_ == 0);
     cx_->perThreadData->activation_ = prev_;
+}
+
+bool
+Activation::isProfiling() const
+{
+    if (isInterpreter())
+        return asInterpreter()->isProfiling();
+
+    if (isJit())
+        return asJit()->isProfiling();
+
+    if (isForkJoin())
+        return asForkJoin()->isProfiling();
+
+    JS_ASSERT(isAsmJS());
+    return asAsmJS()->isProfiling();
+}
+
+Activation *
+Activation::mostRecentProfiling()
+{
+    if (isProfiling())
+        return this;
+    return prevProfiling_;
 }
 
 InterpreterActivation::InterpreterActivation(RunState &state, JSContext *cx,

@@ -13,7 +13,7 @@
 <!ENTITY projectMenu_importHostedApp_label "Open Hosted App…">
 <!ENTITY projectMenu_importHostedApp_accesskey "H">
 <!ENTITY projectMenu_selectApp_label "Open App…">
-<!ENTITY projectMenu_selectApp_accessley "S">
+<!ENTITY projectMenu_selectApp_accesskey "O">
 <!ENTITY projectMenu_play_label "Install and Run">
 <!ENTITY projectMenu_play_accesskey "I">
 <!ENTITY projectMenu_stop_label "Stop App">
@@ -62,6 +62,7 @@
 
 <!ENTITY projectPanel_myProjects "My Projects">
 <!ENTITY projectPanel_runtimeApps "Runtime Apps">
+<!ENTITY projectPanel_tabs "Tabs">
 <!ENTITY runtimePanel_USBDevices "USB Devices">
 <!ENTITY runtimePanel_WiFiDevices "Wi-Fi Devices">
 <!ENTITY runtimePanel_simulators "Simulators">

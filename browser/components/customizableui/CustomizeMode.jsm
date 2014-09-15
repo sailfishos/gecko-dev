@@ -27,11 +27,15 @@ Cu.import("resource:///modules/CustomizableUI.jsm");
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Task.jsm");
 Cu.import("resource://gre/modules/Promise.jsm");
+Cu.import("resource://gre/modules/AddonManager.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "DragPositionManager",
                                   "resource:///modules/DragPositionManager.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "BrowserUITelemetry",
                                   "resource:///modules/BrowserUITelemetry.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "LightweightThemeManager",
+                                  "resource://gre/modules/LightweightThemeManager.jsm");
+
 
 let gModuleName = "[CustomizeMode]";
 #include logging.js
@@ -48,6 +52,7 @@ function CustomizeMode(aWindow) {
   this.window = aWindow;
   this.document = aWindow.document;
   this.browser = aWindow.gBrowser;
+  this.areas = new Set();
 
   // There are two palettes - there's the palette that can be overlayed with
   // toolbar items in browser.xul. This is invisible, and never seen by the
@@ -219,10 +224,15 @@ CustomizeMode.prototype = {
       customizer.parentNode.selectedPanel = customizer;
       customizer.hidden = false;
 
+      this._wrapToolbarItemSync(CustomizableUI.AREA_TABSTRIP);
+
+      let customizableToolbars = document.querySelectorAll("toolbar[customizable=true]:not([autohide=true]):not([collapsed=true])");
+      for (let toolbar of customizableToolbars)
+        toolbar.setAttribute("customizing", true);
+
       yield this._doTransition(true);
 
       Services.obs.addObserver(this, "lightweight-theme-window-updated", false);
-
 
       // Let everybody in this window know that we're about to customize.
       CustomizableUI.dispatchToolboxEvent("customizationstarting", {}, window);
@@ -249,10 +259,6 @@ CustomizeMode.prototype = {
 
       this._skipSourceNodeCheck = Services.prefs.getPrefType(kSkipSourceNodePref) == Ci.nsIPrefBranch.PREF_BOOL &&
                                   Services.prefs.getBoolPref(kSkipSourceNodePref);
-
-      let customizableToolbars = document.querySelectorAll("toolbar[customizable=true]:not([autohide=true]):not([collapsed=true])");
-      for (let toolbar of customizableToolbars)
-        toolbar.setAttribute("customizing", true);
 
       CustomizableUI.addListener(this);
       window.PanelUI.endBatchUpdate();
@@ -415,7 +421,7 @@ CustomizeMode.prototype = {
       }
 
       // And drop all area references.
-      this.areas = [];
+      this.areas.clear();
 
       // Let everybody in this window know that we're starting to
       // exit customization mode.
@@ -496,15 +502,15 @@ CustomizeMode.prototype = {
     let deferred = Promise.defer();
     let deck = this.document.getElementById("content-deck");
 
-    let customizeTransitionEnd = function(aEvent) {
+    let customizeTransitionEnd = (aEvent) => {
       if (aEvent != "timedout" &&
           (aEvent.originalTarget != deck || aEvent.propertyName != "margin-left")) {
         return;
       }
       this.window.clearTimeout(catchAllTimeout);
-      // Bug 962677: We let the event loop breathe for before we do the final
-      // stage of the transition to improve perceived performance.
-      this.window.setTimeout(function () {
+      // We request an animation frame to do the final stage of the transition
+      // to improve perceived performance. (bug 962677)
+      this.window.requestAnimationFrame(() => {
         deck.removeEventListener("transitionend", customizeTransitionEnd);
 
         if (!aEntering) {
@@ -517,13 +523,14 @@ CustomizeMode.prototype = {
         CustomizableUI.dispatchToolboxEvent("customization-transitionend", aEntering, this.window);
 
         deferred.resolve();
-      }.bind(this), 0);
-    }.bind(this);
+      });
+    };
     deck.addEventListener("transitionend", customizeTransitionEnd);
 
     if (gDisableAnimation) {
       this.document.getElementById("tab-view-deck").setAttribute("fastcustomizeanimation", true);
     }
+
     if (aEntering) {
       this.document.documentElement.setAttribute("customizing", true);
       this.document.documentElement.setAttribute("customize-entering", true);
@@ -793,7 +800,7 @@ CustomizeMode.prototype = {
     dispatchFunction(function() {
       let wrapper = this.wrapToolbarItem(aNode, aPlace);
       deferred.resolve(wrapper);
-    }.bind(this))
+    }.bind(this));
 
     return deferred.promise;
   },
@@ -965,22 +972,47 @@ CustomizeMode.prototype = {
     return toolbarItem;
   },
 
-  _wrapToolbarItems: function() {
-    let window = this.window;
-    // Add drag-and-drop event handlers to all of the customizable areas.
-    return Task.spawn(function() {
-      this.areas = [];
-      for (let area of CustomizableUI.areas) {
-        let target = CustomizableUI.getCustomizeTargetForArea(area, window);
-        this._addDragHandlers(target);
-        for (let child of target.children) {
-          if (this.isCustomizableItem(child)) {
-            yield this.deferredWrapToolbarItem(child, CustomizableUI.getPlaceForItem(child));
-          }
-        }
-        this.areas.push(target);
+  _wrapToolbarItem: function*(aArea) {
+    let target = CustomizableUI.getCustomizeTargetForArea(aArea, this.window);
+    if (!target || this.areas.has(target)) {
+      return null;
+    }
+
+    this._addDragHandlers(target);
+    for (let child of target.children) {
+      if (this.isCustomizableItem(child) && !this.isWrappedToolbarItem(child)) {
+        yield this.deferredWrapToolbarItem(child, CustomizableUI.getPlaceForItem(child)).then(null, ERROR);
       }
-    }.bind(this)).then(null, ERROR);
+    }
+    this.areas.add(target);
+    return target;
+  },
+
+  _wrapToolbarItemSync: function(aArea) {
+    let target = CustomizableUI.getCustomizeTargetForArea(aArea, this.window);
+    if (!target || this.areas.has(target)) {
+      return null;
+    }
+
+    this._addDragHandlers(target);
+    try {
+      for (let child of target.children) {
+        if (this.isCustomizableItem(child) && !this.isWrappedToolbarItem(child)) {
+          this.wrapToolbarItem(child, CustomizableUI.getPlaceForItem(child));
+        }
+      }
+    } catch (ex) {
+      ERROR(ex, ex.stack);
+    }
+
+    this.areas.add(target);
+    return target;
+  },
+
+  _wrapToolbarItems: function*() {
+    for (let area of CustomizableUI.areas) {
+      yield this._wrapToolbarItem(area);
+    }
   },
 
   _addDragHandlers: function(aTarget) {
@@ -1204,7 +1236,7 @@ CustomizeMode.prototype = {
       this._wrapItemsInArea(aContainer);
       this._addDragHandlers(aContainer);
       DragPositionManager.add(this.window, aArea, aContainer);
-      this.areas.push(aContainer);
+      this.areas.add(aContainer);
     }
   },
 
@@ -1213,8 +1245,120 @@ CustomizeMode.prototype = {
       this._unwrapItemsInArea(aContainer);
       this._removeDragHandlers(aContainer);
       DragPositionManager.remove(this.window, aArea, aContainer);
-      let index = this.areas.indexOf(aContainer);
-      this.areas.splice(index, 1);
+      this.areas.delete(aContainer);
+    }
+  },
+
+  openAddonsManagerThemes: function(aEvent) {
+    aEvent.target.parentNode.parentNode.hidePopup();
+    this.window.BrowserOpenAddonsMgr('addons://list/theme');
+  },
+
+  getMoreThemes: function(aEvent) {
+    aEvent.target.parentNode.parentNode.hidePopup();
+    let getMoreURL = Services.urlFormatter.formatURLPref("lightweightThemes.getMoreURL");
+    this.window.openUILinkIn(getMoreURL, "tab");
+  },
+
+  onLWThemesMenuShowing: function(aEvent) {
+    AddonManager.getAddonsByTypes(["theme"], function(aThemes) {
+      function buildToolbarButton(doc, aTheme) {
+        function previewTheme(aEvent) {
+          LightweightThemeManager.previewTheme(aEvent.target.theme);
+        }
+        function resetPreview() {
+          LightweightThemeManager.resetPreview();
+        }
+        let tbb = doc.createElement("toolbarbutton");
+        tbb.theme = aTheme;
+        tbb.setAttribute("label", aTheme.name);
+        tbb.setAttribute("image", aTheme.iconURL);
+        tbb.setAttribute("tooltiptext", aTheme.description);
+        tbb.setAttribute("tabindex", "0");
+        tbb.classList.add("customization-lwtheme-menu-theme");
+        tbb.setAttribute("aria-checked", aTheme.isActive);
+        tbb.setAttribute("role", "menuitemradio");
+        if (aTheme.isActive) {
+          tbb.setAttribute("active", "true");
+        }
+        tbb.addEventListener("focus", previewTheme);
+        tbb.addEventListener("mouseover", previewTheme);
+        tbb.addEventListener("blur", resetPreview);
+        tbb.addEventListener("mouseout", resetPreview);
+
+        return tbb;
+      }
+
+      const DEFAULT_THEME_ID = "{972ce4c6-7e08-4474-a285-3208198ce6fd}";
+      // Order the themes so the Default theme is always at the beginning.
+      aThemes.sort((a,b) => {a.id != DEFAULT_THEME_ID});
+      let doc = this.window.document;
+      let footer = doc.getElementById("customization-lwtheme-menu-footer");
+      let panel = footer.parentNode;
+      let themesInMyThemesSection = 0;
+      let recommendedLabel = doc.getElementById("customization-lwtheme-menu-recommended");
+      for (let theme of aThemes) {
+        // Only allow the Default full theme to be shown in this list.
+        if ("skinnable" in theme &&
+            theme.id != DEFAULT_THEME_ID) {
+          continue;
+        }
+
+        let tbb = buildToolbarButton(doc, theme);
+        tbb.addEventListener("command", function() {
+          this.theme.userDisabled = false;
+          this.parentNode.hidePopup();
+        });
+        panel.insertBefore(tbb, recommendedLabel);
+        themesInMyThemesSection++;
+      }
+
+      let lwthemePrefs = Services.prefs.getBranch("lightweightThemes.");
+      let recommendedThemes = lwthemePrefs.getComplexValue("recommendedThemes",
+                                                           Ci.nsISupportsString).data;
+      recommendedThemes = JSON.parse(recommendedThemes);
+      let sb = Services.strings.createBundle("chrome://browser/locale/lightweightThemes.properties");
+      for (let theme of recommendedThemes) {
+        theme.name = sb.GetStringFromName("lightweightThemes." + theme.id + ".name");
+        theme.description = sb.GetStringFromName("lightweightThemes." + theme.id + ".description");
+        let tbb = buildToolbarButton(doc, theme);
+        tbb.addEventListener("command", function() {
+          LightweightThemeManager.setLocalTheme(this.theme);
+          recommendedThemes = recommendedThemes.filter((aTheme) => { return aTheme.id != this.theme.id; });
+          let string = Cc["@mozilla.org/supports-string;1"]
+                         .createInstance(Ci.nsISupportsString);
+          string.data = JSON.stringify(recommendedThemes);
+          lwthemePrefs.setComplexValue("recommendedThemes",
+                                       Ci.nsISupportsString, string);
+          this.parentNode.hidePopup();
+        });
+        panel.insertBefore(tbb, footer);
+      }
+      let hideRecommendedLabel = (footer.previousSibling == recommendedLabel);
+      recommendedLabel.hidden = hideRecommendedLabel;
+
+      let hideMyThemesSection = themesInMyThemesSection < 2 && hideRecommendedLabel;
+      let headerLabel = doc.getElementById("customization-lwtheme-menu-header");
+      if (hideMyThemesSection) {
+        let element = recommendedLabel.previousSibling;
+        while (element && element != headerLabel) {
+          element.hidden = true;
+          element = element.previousSibling;
+        }
+      }
+      headerLabel.hidden = hideMyThemesSection;
+    }.bind(this));
+  },
+
+  onLWThemesMenuHidden: function(aEvent) {
+    let doc = aEvent.target.ownerDocument;
+    let footer = doc.getElementById("customization-lwtheme-menu-footer");
+    let recommendedLabel = doc.getElementById("customization-lwtheme-menu-recommended");
+    for (let element of [footer, recommendedLabel]) {
+      while (element.previousSibling &&
+             element.previousSibling.localName == "toolbarbutton") {
+        element.previousSibling.remove();
+      }
     }
   },
 

@@ -54,6 +54,9 @@ private:
   nsresult InitializeSession();
   nsresult WaitForAsynchronousFrames();
   void DrainReorderedFrames();
+  void ClearReorderedFrames();
+
+  CFDictionaryRef CreateDecoderSpecification();
 };
 
 } // namespace mozilla

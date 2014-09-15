@@ -166,7 +166,6 @@ let CustomizableUIInternal = {
       "preferences-button",
       "add-ons-button",
       "developer-button",
-      "social-share-button",
     ];
 
     if (gPalette.has("switch-to-metro-button")) {
@@ -208,6 +207,7 @@ let CustomizableUIInternal = {
         "downloads-button",
         "home-button",
         "loop-call-button",
+        "social-share-button",
       ],
       defaultCollapsed: false,
     }, true);
@@ -1845,11 +1845,24 @@ let CustomizableUIInternal = {
     if (gInBatchStack || !gDirty) {
       return;
     }
-    let state = { placements: gPlacements,
+    // Clone because we want to modify this map:
+    let state = { placements: new Map(gPlacements),
                   seen: gSeenWidgets,
                   dirtyAreaCache: gDirtyAreaCache,
                   currentVersion: kVersion,
                   newElementCount: gNewElementCount };
+
+    // Merge in previously saved areas if not present in gPlacements.
+    // This way, state is still persisted for e.g. temporarily disabled
+    // add-ons - see bug 989338.
+    if (gSavedState && gSavedState.placements) {
+      for (let area of Object.keys(gSavedState.placements)) {
+        if (!state.placements.has(area)) {
+          let placements = gSavedState.placements[area];
+          state.placements.set(area, placements);
+        }
+      }
+    }
 
     LOG("Saving state.");
     let serialized = JSON.stringify(state, this.serializerHelper);

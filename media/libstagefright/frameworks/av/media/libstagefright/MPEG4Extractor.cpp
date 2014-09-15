@@ -2578,35 +2578,37 @@ status_t MPEG4Source::parseChunk(off64_t *offset) {
             break;
         }
 
-        case FOURCC('t', 'f', 'd', 't'):
-        {
+        case FOURCC('t', 'f', 'h', 'd'): {
             status_t err;
-            if ((err = parseTrackFragmentData(data_offset, chunk_data_size)) != OK) {
+            if ((err = parseTrackFragmentHeader(data_offset, chunk_data_size)) != OK) {
                 return err;
             }
             *offset += chunk_size;
             break;
         }
 
-        case FOURCC('t', 'f', 'h', 'd'): {
-                status_t err;
-                if ((err = parseTrackFragmentHeader(data_offset, chunk_data_size)) != OK) {
+        case FOURCC('t', 'f', 'd', 't'):
+        {
+            status_t err;
+            if (mLastParsedTrackId == mTrackId) {
+                if ((err = parseTrackFragmentData(data_offset, chunk_data_size)) != OK) {
                     return err;
                 }
-                *offset += chunk_size;
-                break;
+            }
+            *offset += chunk_size;
+            break;
         }
 
         case FOURCC('t', 'r', 'u', 'n'): {
-                status_t err;
-                if (mLastParsedTrackId == mTrackId) {
-                    if ((err = parseTrackFragmentRun(data_offset, chunk_data_size)) != OK) {
-                        return err;
-                    }
+            status_t err;
+            if (mLastParsedTrackId == mTrackId) {
+                if ((err = parseTrackFragmentRun(data_offset, chunk_data_size)) != OK) {
+                    return err;
                 }
+            }
 
-                *offset += chunk_size;
-                break;
+            *offset += chunk_size;
+            break;
         }
 
         case FOURCC('s', 'a', 'i', 'z'): {
@@ -3230,6 +3232,7 @@ status_t MPEG4Source::read(
 
     off64_t offset = 0;
     size_t size = 0;
+    uint32_t dts = 0;
     uint32_t cts = 0;
     uint32_t duration = 0;
     bool isSyncSample = false;
@@ -3240,7 +3243,7 @@ status_t MPEG4Source::read(
         status_t err =
             mSampleTable->getMetaDataForSample(
                     mCurrentSampleIndex, &offset, &size, &cts, &duration,
-                    &isSyncSample);
+                    &isSyncSample, &dts);
 
         if (err != OK) {
             return err;
@@ -3271,6 +3274,8 @@ status_t MPEG4Source::read(
             if (!mTimescale) {
                 return ERROR_MALFORMED;
             }
+            mBuffer->meta_data()->setInt64(
+                    kKeyDecodingTime, ((int64_t)dts * 1000000) / mTimescale);
             mBuffer->meta_data()->setInt64(
                     kKeyTime, ((int64_t)cts * 1000000) / mTimescale);
             mBuffer->meta_data()->setInt64(
@@ -3399,6 +3404,8 @@ status_t MPEG4Source::read(
             return ERROR_MALFORMED;
         }
         mBuffer->meta_data()->setInt64(
+                kKeyDecodingTime, ((int64_t)dts * 1000000) / mTimescale);
+        mBuffer->meta_data()->setInt64(
                 kKeyTime, ((int64_t)cts * 1000000) / mTimescale);
         mBuffer->meta_data()->setInt64(
                 kKeyDuration, ((int64_t)duration * 1000000) / mTimescale);
@@ -3457,11 +3464,15 @@ status_t MPEG4Source::fragmentedRead(
                 totalTime += se->mDurationUs;
                 totalOffset += se->mSize;
             }
-        mCurrentMoofOffset = totalOffset;
-        mCurrentSamples.clear();
-        mCurrentSampleIndex = 0;
-        parseChunk(&totalOffset);
-        mCurrentTime = totalTime * mTimescale / 1000000ll;
+            mCurrentMoofOffset = totalOffset;
+            mCurrentSamples.clear();
+            mCurrentSampleIndex = 0;
+            mTrackFragmentData.mPresent = false;
+            parseChunk(&totalOffset);
+            mCurrentTime = totalTime * mTimescale / 1000000ll;
+            if (mTrackFragmentData.mPresent) {
+                mCurrentTime += mTrackFragmentData.mBaseMediaDecodeTime;
+            }
         }
 
         if (mBuffer != NULL) {
@@ -3474,6 +3485,7 @@ status_t MPEG4Source::fragmentedRead(
 
     off64_t offset = 0;
     size_t size = 0;
+    uint32_t dts = 0;
     uint32_t cts = 0;
     uint32_t duration = 0;
     bool isSyncSample = false;
@@ -3513,6 +3525,7 @@ status_t MPEG4Source::fragmentedRead(
         const Sample *smpl = &mCurrentSamples[mCurrentSampleIndex];
         offset = smpl->offset;
         size = smpl->size;
+        dts = mCurrentTime;
         cts = mCurrentTime + smpl->ctsOffset;
         duration = smpl->duration;
         mCurrentTime += smpl->duration;
@@ -3557,6 +3570,8 @@ status_t MPEG4Source::fragmentedRead(
             if (!mTimescale) {
                 return ERROR_MALFORMED;
             }
+            mBuffer->meta_data()->setInt64(
+                    kKeyDecodingTime, ((int64_t)dts * 1000000) / mTimescale);
             mBuffer->meta_data()->setInt64(
                     kKeyTime, ((int64_t)cts * 1000000) / mTimescale);
             mBuffer->meta_data()->setInt64(
@@ -3685,6 +3700,8 @@ status_t MPEG4Source::fragmentedRead(
             return ERROR_MALFORMED;
         }
         mBuffer->meta_data()->setInt64(
+                kKeyDecodingTime, ((int64_t)dts * 1000000) / mTimescale);
+        mBuffer->meta_data()->setInt64(
                 kKeyTime, ((int64_t)cts * 1000000) / mTimescale);
         mBuffer->meta_data()->setInt64(
                 kKeyDuration, ((int64_t)duration * 1000000) / mTimescale);
@@ -3705,6 +3722,12 @@ status_t MPEG4Source::fragmentedRead(
 
         return OK;
     }
+}
+
+static int compositionOrder(MediaSource::Indice* const* indice0,
+        MediaSource::Indice* const* indice1)
+{
+  return (*indice0)->start_composition - (*indice1)->start_composition;
 }
 
 Vector<MediaSource::Indice> MPEG4Source::exportIndex()
@@ -3731,12 +3754,31 @@ Vector<MediaSource::Indice> MPEG4Source::exportIndex()
       Indice indice;
       indice.start_offset = offset;
       indice.end_offset = offset + size;
-      indice.start_composition = (compositionTime * 1000000ll) / mTimescale,
+      indice.start_composition = (compositionTime * 1000000ll) / mTimescale;
+      // end_composition is overwritten everywhere except the last frame, where
+      // the presentation duration is equal to the sample duration.
       indice.end_composition = ((compositionTime + duration) * 1000000ll) /
               mTimescale;
       indice.sync = isSyncSample;
       index.add(indice);
   }
+
+  // Fix up composition durations so we don't end up with any unsightly gaps.
+  if (index.size() != 0) {
+      Indice* array = index.editArray();
+      Vector<Indice*> composition_order;
+      composition_order.reserve(index.size());
+      for (uint32_t i = 0; i < index.size(); i++) {
+          composition_order.add(&array[i]);
+      }
+
+      composition_order.sort(compositionOrder);
+      for (uint32_t i = 0; i + 1 < composition_order.size(); i++) {
+        composition_order[i]->end_composition =
+                composition_order[i + 1]->start_composition;
+      }
+  }
+
   return index;
 }
 

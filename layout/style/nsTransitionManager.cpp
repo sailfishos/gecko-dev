@@ -341,7 +341,9 @@ nsTransitionManager::StyleContextChanged(dom::Element *aElement,
     }
   }
 
-  collection->mStyleRule = nullptr;
+  // Set the style rule refresh time to null so that EnsureStyleRuleFor
+  // creates a new style rule.
+  collection->mStyleRuleRefreshTime = TimeStamp();
 
   return coverRule.forget();
 }
@@ -528,7 +530,7 @@ nsTransitionManager::ConsiderStartingTransition(
   segment.mTimingFunction.Init(tf);
 
   nsRefPtr<dom::AnimationPlayer> player = new dom::AnimationPlayer(timeline);
-  player->mStartTime = timeline->GetCurrentTimeStamp();
+  player->mStartTime = timeline->GetCurrentTimeDuration();
   player->SetSource(pt);
 
   if (!aElementTransitions) {

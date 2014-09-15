@@ -65,11 +65,11 @@ class TabContext;
 class PFileDescriptorSetParent;
 class ContentBridgeParent;
 
-class ContentParent : public PContentParent
-                    , public nsIContentParent
-                    , public nsIObserver
-                    , public nsIDOMGeoPositionCallback
-                    , public mozilla::LinkedListElement<ContentParent>
+class ContentParent MOZ_FINAL : public PContentParent
+                              , public nsIContentParent
+                              , public nsIObserver
+                              , public nsIDOMGeoPositionCallback
+                              , public mozilla::LinkedListElement<ContentParent>
 {
     typedef mozilla::ipc::GeckoChildProcessHost GeckoChildProcessHost;
     typedef mozilla::ipc::OptionalURIParams OptionalURIParams;
@@ -78,6 +78,11 @@ class ContentParent : public PContentParent
     typedef mozilla::dom::ClonedMessageData ClonedMessageData;
 
 public:
+#ifdef MOZ_NUWA_PROCESS
+    static bool IsNuwaReady() {
+        return sNuwaReady;
+    }
+#endif
     virtual bool IsContentParent() MOZ_OVERRIDE { return true; }
     /**
      * Start up the content-process machinery.  This might include
@@ -95,7 +100,6 @@ public:
     static void JoinAllSubprocesses();
 
     static bool PreallocatedProcessReady();
-    static void RunAfterPreallocatedProcessReady(nsIRunnable* aRequest);
 
     /**
      * Get or create a content process for:
@@ -156,6 +160,7 @@ public:
     virtual bool CheckManifestURL(const nsAString& aManifestURL) MOZ_OVERRIDE;
     virtual bool CheckAppHasPermission(const nsAString& aPermission) MOZ_OVERRIDE;
     virtual bool CheckAppHasStatus(unsigned short aStatus) MOZ_OVERRIDE;
+    virtual bool KillChild() MOZ_OVERRIDE;
 
     /** Notify that a tab is beginning its destruction sequence. */
     void NotifyTabDestroying(PBrowserParent* aTab);
@@ -358,11 +363,12 @@ private:
 
     // Transform a pre-allocated app process into a "real" app
     // process, for the specified manifest URL.
-    void TransformPreallocatedIntoApp(const nsAString& aAppManifestURL);
+    void TransformPreallocatedIntoApp(ContentParent* aOpener,
+                                      const nsAString& aAppManifestURL);
 
     // Transform a pre-allocated app process into a browser process. If this
     // returns false, the child process has died.
-    void TransformPreallocatedIntoBrowser();
+    void TransformPreallocatedIntoBrowser(ContentParent* aOpener);
 
     /**
      * Mark this ContentParent as dead for the purposes of Get*().
@@ -458,6 +464,9 @@ private:
     virtual PTestShellParent* AllocPTestShellParent() MOZ_OVERRIDE;
     virtual bool DeallocPTestShellParent(PTestShellParent* shell) MOZ_OVERRIDE;
 
+    virtual PMobileConnectionParent* AllocPMobileConnectionParent(const uint32_t& aClientId) MOZ_OVERRIDE;
+    virtual bool DeallocPMobileConnectionParent(PMobileConnectionParent* aActor) MOZ_OVERRIDE;
+
     virtual bool DeallocPNeckoParent(PNeckoParent* necko) MOZ_OVERRIDE;
 
     virtual PExternalHelperAppParent* AllocPExternalHelperAppParent(
@@ -530,6 +539,7 @@ private:
                                            const nsString& aText, const bool& aTextClickable,
                                            const nsString& aCookie, const nsString& aName,
                                            const nsString& aBidi, const nsString& aLang,
+                                           const nsString& aData,
                                            const IPC::Principal& aPrincipal) MOZ_OVERRIDE;
 
     virtual bool RecvCloseAlert(const nsString& aName,
@@ -699,6 +709,12 @@ private:
     // Dup of child's X socket, used to scope its resources to this
     // object instead of the child process's lifetime.
     ScopedClose mChildXSocketFdDup;
+#endif
+
+#ifdef MOZ_NUWA_PROCESS
+    static bool sNuwaReady;
+    struct NuwaReinitializeData;
+    nsAutoPtr<NuwaReinitializeData> mReinitializeData;
 #endif
 };
 

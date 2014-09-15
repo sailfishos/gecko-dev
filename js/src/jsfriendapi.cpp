@@ -21,6 +21,7 @@
 #include "prmjtime.h"
 
 #include "builtin/TestingFunctions.h"
+#include "proxy/DeadObjectProxy.h"
 #include "vm/WrapperObject.h"
 
 #include "jsobjinlines.h"
@@ -46,9 +47,7 @@ PerThreadDataFriendFields::PerThreadDataFriendFields()
     for (int i=0; i<StackKindCount; i++)
         nativeStackLimit[i] = UINTPTR_MAX;
 #endif
-#if defined(JSGC_USE_EXACT_ROOTING)
     PodArrayZero(thingGCRooters);
-#endif
 }
 
 JS_FRIEND_API(void)
@@ -416,20 +415,6 @@ js::AssertSameCompartment(JSObject *objA, JSObject *objB)
 }
 #endif
 
-JS_FRIEND_API(JSObject *)
-js::DefaultObjectForContextOrNull(JSContext *cx)
-{
-    if (cx->options().noDefaultCompartmentObject())
-        return nullptr;
-    return cx->maybeDefaultCompartmentObject();
-}
-
-JS_FRIEND_API(void)
-js::SetDefaultObjectForContext(JSContext *cx, JSObject *obj)
-{
-    cx->setDefaultCompartmentObject(obj);
-}
-
 JS_FRIEND_API(void)
 js::NotifyAnimationActivity(JSObject *obj)
 {
@@ -611,11 +596,7 @@ JS_GetCustomIteratorCount(JSContext *cx)
 JS_FRIEND_API(bool)
 JS_IsDeadWrapper(JSObject *obj)
 {
-    if (!obj->is<ProxyObject>()) {
-        return false;
-    }
-
-    return obj->as<ProxyObject>().handler()->family() == &DeadObjectProxy::sDeadObjectFamily;
+    return IsDeadProxyObject(obj);
 }
 
 void
@@ -702,9 +683,9 @@ js_DumpAtom(JSAtom *atom)
 }
 
 JS_FRIEND_API(void)
-js_DumpChars(const jschar *s, size_t n)
+js_DumpChars(const char16_t *s, size_t n)
 {
-    fprintf(stderr, "jschar * (%p) = ", (void *) s);
+    fprintf(stderr, "char16_t * (%p) = ", (void *) s);
     JSString::dumpChars(s, n);
     fputc('\n', stderr);
 }
@@ -865,13 +846,13 @@ JS::WasIncrementalGC(JSRuntime *rt)
     return rt->gc.isIncrementalGc();
 }
 
-jschar *
+char16_t *
 GCDescription::formatMessage(JSRuntime *rt) const
 {
     return rt->gc.stats.formatMessage();
 }
 
-jschar *
+char16_t *
 GCDescription::formatJSON(JSRuntime *rt, uint64_t timestamp) const
 {
     return rt->gc.stats.formatJSON(timestamp);
@@ -1209,6 +1190,11 @@ js::IsInRequest(JSContext *cx)
 {
     return !!cx->runtime()->requestDepth;
 }
+
+bool
+js::HasObjectMovedOp(JSObject *obj) {
+    return !!GetObjectClass(obj)->ext.objectMovedOp;
+}
 #endif
 
 #ifdef JSGC_GENERATIONAL
@@ -1232,3 +1218,9 @@ JS_StoreStringPostBarrierCallback(JSContext* cx,
         rt->gc.storeBuffer.putCallback(callback, key, data);
 }
 #endif /* JSGC_GENERATIONAL */
+
+JS_FRIEND_API(bool)
+js::ForwardToNative(JSContext *cx, JSNative native, const CallArgs &args)
+{
+    return native(cx, args.length(), args.base());
+}

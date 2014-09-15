@@ -59,7 +59,7 @@
         <menuitem command="cmd_newApp" accesskey="&projectMenu_newApp_accesskey;"/>
         <menuitem command="cmd_importPackagedApp" accesskey="&projectMenu_importPackagedApp_accesskey;"/>
         <menuitem command="cmd_importHostedApp" accesskey="&projectMenu_importHostedApp_accesskey;"/>
-        <menuitem command="cmd_showProjectPanel" key="key_showProjectPanel" label="&projectMenu_selectApp_label;" accesskey="&projectMenu_selectApp_accessley;"/>
+        <menuitem command="cmd_showProjectPanel" key="key_showProjectPanel" label="&projectMenu_selectApp_label;" accesskey="&projectMenu_selectApp_accesskey;"/>
         <menuseparator/>
         <menuitem command="cmd_play" key="key_play" label="&projectMenu_play_label;" accesskey="&projectMenu_play_accesskey;"/>
         <menuitem command="cmd_stop" accesskey="&projectMenu_stop_accesskey;"/>
@@ -117,7 +117,7 @@
       <hbox id="panel-buttons-container">
         <toolbarbutton id="project-panel-button" class="panel-button no-project" command="cmd_showProjectPanel">
           <image class="panel-button-image"/>
-          <label class="panel-button-label" value="&projectButton_label;"/>
+          <label class="panel-button-label" value="&projectButton_label;" crop="end"/>
           <image class="panel-button-anchor"/>
         </toolbarbutton>
         <spacer flex="1"/>
@@ -143,6 +143,8 @@
         <vbox id="project-panel-projects"></vbox>
         <label class="panel-header" id="panel-header-runtimeapps" hidden="true">&projectPanel_runtimeApps;</label>
         <vbox flex="1" id="project-panel-runtimeapps"/>
+        <label class="panel-header" id="panel-header-tabs" hidden="true">&projectPanel_tabs;</label>
+        <vbox flex="1" id="project-panel-tabs"/>
       </vbox>
     </panel>
 

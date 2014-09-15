@@ -22,8 +22,6 @@ XPCOMUtils.defineLazyServiceGetter(this,
                                    "appsService",
                                    "@mozilla.org/AppsService;1",
                                    "nsIAppsService");
-const NFC_PEER_EVENT_READY = 0x01;
-const NFC_PEER_EVENT_LOST  = 0x02;
 
 /**
  * NFCTag
@@ -60,9 +58,6 @@ MozNFCTag.prototype = {
   _techTypesMap: null,
 
   // NFCTag interface:
-  getDetailsNDEF: function getDetailsNDEF() {
-    return this._nfcContentHelper.getDetailsNDEF(this._window, this.session);
-  },
   readNDEF: function readNDEF() {
     return this._nfcContentHelper.readNDEF(this._window, this.session);
   },
@@ -71,13 +66,6 @@ MozNFCTag.prototype = {
   },
   makeReadOnlyNDEF: function makeReadOnlyNDEF() {
     return this._nfcContentHelper.makeReadOnlyNDEF(this._window, this.session);
-  },
-  connect: function connect(enum_tech_type) {
-    let int_tech_type = this._techTypesMap[enum_tech_type];
-    return this._nfcContentHelper.connect(this._window, int_tech_type, this.session);
-  },
-  close: function close() {
-    return this._nfcContentHelper.close(this._window, this.session);
   },
 
   classID: Components.ID("{4e1e2e90-3137-11e3-aa6e-0800200c9a66}"),
@@ -236,9 +224,8 @@ mozNfc.prototype = {
     this.__DOM_IMPL__.setEventHandler("onpeerlost", handler);
   },
 
-  eventListenerWasAdded: function(evt) {
-    let eventType = this.getEventType(evt);
-    if (eventType != NFC_PEER_EVENT_READY) {
+  eventListenerWasAdded: function(eventType) {
+    if (eventType !== "peerready") {
       return;
     }
 
@@ -246,9 +233,8 @@ mozNfc.prototype = {
     this._nfcContentHelper.registerTargetForPeerReady(this._window, appId);
   },
 
-  eventListenerWasRemoved: function(evt) {
-    let eventType = this.getEventType(evt);
-    if (eventType != NFC_PEER_EVENT_READY) {
+  eventListenerWasRemoved: function(eventType) {
+    if (eventType !== "peerready") {
       return;
     }
 
@@ -293,21 +279,6 @@ mozNfc.prototype = {
     debug("fire onpeerlost");
     let event = new this._window.Event("peerlost");
     this.__DOM_IMPL__.dispatchEvent(event);
-  },
-
-  getEventType: function getEventType(evt) {
-    let eventType = -1;
-    switch (evt) {
-      case 'peerready':
-        eventType = NFC_PEER_EVENT_READY;
-        break;
-      case 'peerlost':
-        eventType = NFC_PEER_EVENT_LOST;
-        break;
-      default:
-        break;
-    }
-    return eventType;
   },
 
   hasDeadWrapper: function hasDeadWrapper() {

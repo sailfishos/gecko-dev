@@ -11,6 +11,8 @@
 #include "mozilla/FloatingPoint.h"
 #include "mozilla/MathAlgorithms.h"
 
+#include <algorithm>
+
 #include "jsapi.h"
 #include "jsatom.h"
 #include "jscntxt.h"
@@ -165,7 +167,7 @@ ToId(JSContext *cx, uint32_t index, MutableHandleId id)
  * to JSVAL_VOID. This function assumes that the location pointed by vp is
  * properly rooted and can be used as GC-protected storage for temporaries.
  */
-template<typename IndexType>
+template <typename IndexType>
 static inline bool
 DoGetElement(JSContext *cx, HandleObject obj, HandleObject receiver,
              IndexType index, bool *hole, MutableHandleValue vp)
@@ -190,7 +192,7 @@ DoGetElement(JSContext *cx, HandleObject obj, HandleObject receiver,
     return true;
 }
 
-template<typename IndexType>
+template <typename IndexType>
 static void
 AssertGreaterThanZero(IndexType index)
 {
@@ -204,7 +206,7 @@ AssertGreaterThanZero(uint32_t index)
 {
 }
 
-template<typename IndexType>
+template <typename IndexType>
 static bool
 GetElement(JSContext *cx, HandleObject obj, HandleObject receiver,
            IndexType index, bool *hole, MutableHandleValue vp)
@@ -227,7 +229,7 @@ GetElement(JSContext *cx, HandleObject obj, HandleObject receiver,
     return DoGetElement(cx, obj, receiver, index, hole, vp);
 }
 
-template<typename IndexType>
+template <typename IndexType>
 static inline bool
 GetElement(JSContext *cx, HandleObject obj, IndexType index, bool *hole, MutableHandleValue vp)
 {
@@ -336,8 +338,14 @@ DeleteArrayElement(JSContext *cx, HandleObject obj, double index, bool *succeede
         if (index <= UINT32_MAX) {
             uint32_t idx = uint32_t(index);
             if (idx < obj->getDenseInitializedLength()) {
-                obj->markDenseElementsNotPacked(cx);
-                obj->setDenseElement(idx, MagicValue(JS_ELEMENTS_HOLE));
+                if (!obj->maybeCopyElementsForWrite(cx))
+                    return false;
+                if (idx+1 == obj->getDenseInitializedLength()) {
+                    obj->setDenseInitializedLength(idx);
+                } else {
+                    obj->markDenseElementsNotPacked(cx);
+                    obj->setDenseElement(idx, MagicValue(JS_ELEMENTS_HOLE));
+                }
                 if (!js_SuppressDeletedElement(cx, obj, idx))
                     return false;
             }
@@ -472,6 +480,9 @@ js::ArraySetLength(typename ExecutionModeTraits<mode>::ContextType cxArg,
     MOZ_ASSERT(cxArg->isThreadLocal(arr));
     MOZ_ASSERT(id == NameToId(cxArg->names().length));
 
+    if (!arr->maybeCopyElementsForWrite(cxArg))
+        return false;
+
     /* Steps 1-2 are irrelevant in our implementation. */
 
     /* Steps 3-5. */
@@ -547,6 +558,9 @@ js::ArraySetLength(typename ExecutionModeTraits<mode>::ContextType cxArg,
         // fix this inefficiency by moving indexed storage to be entirely
         // separate from non-indexed storage.
         if (!arr->isIndexed()) {
+            if (!arr->maybeCopyElementsForWrite(cxArg))
+                return false;
+
             uint32_t oldCapacity = arr->getDenseCapacity();
             uint32_t oldInitializedLength = arr->getDenseInitializedLength();
             MOZ_ASSERT(oldCapacity >= oldInitializedLength);
@@ -1048,8 +1062,6 @@ js::ArrayJoin(JSContext *cx, HandleObject obj, HandleLinearString sepstr, uint32
 
     // Steps 1 to 6, should be done by the caller.
 
-    JS::Anchor<JSString*> anchor(sepstr);
-
     // Step 6 is implicit in the loops below.
 
     // An optimized version of a special case of steps 7-11: when length==1 and
@@ -1080,13 +1092,13 @@ js::ArrayJoin(JSContext *cx, HandleObject obj, HandleLinearString sepstr, uint32
         if (!ArrayJoinKernel<Locale>(cx, op, obj, length, sb))
             return nullptr;
     } else if (seplen == 1) {
-        jschar c = sepstr->latin1OrTwoByteChar(0);
+        char16_t c = sepstr->latin1OrTwoByteChar(0);
         if (c <= JSString::MAX_LATIN1_CHAR) {
             CharSeparatorOp<Latin1Char> op(c);
             if (!ArrayJoinKernel<Locale>(cx, op, obj, length, sb))
                 return nullptr;
         } else {
-            CharSeparatorOp<jschar> op(c);
+            CharSeparatorOp<char16_t> op(c);
             if (!ArrayJoinKernel<Locale>(cx, op, obj, length, sb))
                 return nullptr;
         }
@@ -1730,7 +1742,7 @@ MatchNumericComparator(JSContext *cx, const Value &v)
     return Match_None;
 }
 
-template<typename K, typename C>
+template <typename K, typename C>
 static inline bool
 MergeSortByKey(K keys, size_t len, K scratch, C comparator, AutoValueVector *vec)
 {
@@ -2132,16 +2144,6 @@ js::array_pop(JSContext *cx, unsigned argc, Value *vp)
             return false;
     }
 
-    // If this was an array, then there are no elements above the one we just
-    // deleted (if we deleted an element).  Thus we can shrink the dense
-    // initialized length accordingly.  (This is fine even if the array length
-    // is non-writable: length-changing occurs after element-deletion effects.)
-    // Don't do anything if this isn't an array, as any deletion above has no
-    // effect on any elements after the "last" one indicated by the "length"
-    // property.
-    if (obj->is<ArrayObject>() && obj->getDenseInitializedLength() > index)
-        obj->setDenseInitializedLength(index);
-
     /* Steps 4a, 5d. */
     return SetLengthProperty(cx, obj, index);
 }
@@ -2199,6 +2201,9 @@ js::array_shift(JSContext *cx, unsigned argc, Value *vp)
         args.rval().set(obj->getDenseElement(0));
         if (args.rval().isMagic(JS_ELEMENTS_HOLE))
             args.rval().setUndefined();
+
+        if (!obj->maybeCopyElementsForWrite(cx))
+            return false;
 
         obj->moveDenseElements(0, 1, obj->getDenseInitializedLength() - 1);
         obj->setDenseInitializedLength(obj->getDenseInitializedLength() - 1);
@@ -2431,7 +2436,7 @@ js::array_splice_impl(JSContext *cx, unsigned argc, Value *vp, bool returnValueI
             TryReuseArrayType(obj, arr);
         }
     } else {
-        arr = NewDenseAllocatedArray(cx, actualDeleteCount);
+        arr = NewDenseFullyAllocatedArray(cx, actualDeleteCount);
         if (!arr)
             return false;
         TryReuseArrayType(obj, arr);
@@ -2458,6 +2463,9 @@ js::array_splice_impl(JSContext *cx, unsigned argc, Value *vp, bool returnValueI
         uint32_t finalLength = len - actualDeleteCount + itemCount;
 
         if (CanOptimizeForDenseStorage(obj, 0, len, cx)) {
+            if (!obj->maybeCopyElementsForWrite(cx))
+                return false;
+
             /* Steps 12(a)-(b). */
             obj->moveDenseElements(targetIndex, sourceIndex, len - sourceIndex);
 
@@ -2539,6 +2547,8 @@ js::array_splice_impl(JSContext *cx, unsigned argc, Value *vp, bool returnValueI
         }
 
         if (CanOptimizeForDenseStorage(obj, len, itemCount - actualDeleteCount, cx)) {
+            if (!obj->maybeCopyElementsForWrite(cx))
+                return false;
             obj->moveDenseElements(actualStart + itemCount,
                                    actualStart + actualDeleteCount,
                                    len - (actualStart + actualDeleteCount));
@@ -2735,7 +2745,7 @@ array_slice(JSContext *cx, unsigned argc, Value *vp)
         begin = end;
 
     Rooted<ArrayObject*> narr(cx);
-    narr = NewDenseAllocatedArray(cx, end - begin);
+    narr = NewDenseFullyAllocatedArray(cx, end - begin);
     if (!narr)
         return false;
     TryReuseArrayType(obj, narr);
@@ -2824,7 +2834,7 @@ array_filter(JSContext *cx, unsigned argc, Value *vp)
     RootedValue thisv(cx, args.length() >= 2 ? args[1] : UndefinedValue());
 
     /* Step 6. */
-    RootedObject arr(cx, NewDenseAllocatedArray(cx, 0));
+    RootedObject arr(cx, NewDenseFullyAllocatedArray(cx, 0));
     if (!arr)
         return false;
     TypeObject *newtype = GetTypeCallerInitObject(cx, JSProto_Array);
@@ -3065,11 +3075,13 @@ js_Array(JSContext *cx, unsigned argc, Value *vp)
     }
 
     /*
-     * Allocate dense elements eagerly for small arrays, to avoid reallocating
-     * elements when filling the array.
+     * Allocate up to |EagerAllocationMaxLength| dense elements eagerly, to
+     * avoid reallocating elements when filling the array.
      */
-    bool allocateArray = length <= ArrayObject::EagerAllocationMaxLength;
-    RootedObject obj(cx, NewDenseArray(cx, length, type, allocateArray));
+    AllocatingBehaviour allocating = (length <= ArrayObject::EagerAllocationMaxLength)
+                                   ? NewArray_FullyAllocating
+                                   : NewArray_PartlyAllocating;
+    RootedObject obj(cx, NewDenseArray(cx, length, type, allocating));
     if (!obj)
         return false;
 
@@ -3159,7 +3171,7 @@ EnsureNewArrayElements(ExclusiveContext *cx, JSObject *obj, uint32_t length)
     return true;
 }
 
-template<bool allocateCapacity>
+template <uint32_t maxLength>
 static MOZ_ALWAYS_INLINE ArrayObject *
 NewArray(ExclusiveContext *cxArg, uint32_t length,
          JSObject *protoArg, NewObjectKind newKind = GenericObject)
@@ -3182,8 +3194,11 @@ NewArray(ExclusiveContext *cxArg, uint32_t length,
                 ArrayObject *arr = &obj->as<ArrayObject>();
                 arr->setFixedElements();
                 arr->setLength(cx, length);
-                if (allocateCapacity && !EnsureNewArrayElements(cx, arr, length))
+                if (maxLength > 0 &&
+                    !EnsureNewArrayElements(cx, arr, std::min(maxLength, length)))
+                {
                     return nullptr;
+                }
                 return arr;
             } else {
                 RootedObject proto(cxArg, protoArg);
@@ -3240,7 +3255,7 @@ NewArray(ExclusiveContext *cxArg, uint32_t length,
                                                                    cxArg->global(), allocKind, arr);
     }
 
-    if (allocateCapacity && !EnsureNewArrayElements(cxArg, arr, length))
+    if (maxLength > 0 && !EnsureNewArrayElements(cxArg, arr, std::min(maxLength, length)))
         return nullptr;
 
     probes::CreateObject(cxArg, arr);
@@ -3251,36 +3266,49 @@ ArrayObject * JS_FASTCALL
 js::NewDenseEmptyArray(JSContext *cx, JSObject *proto /* = nullptr */,
                        NewObjectKind newKind /* = GenericObject */)
 {
-    return NewArray<false>(cx, 0, proto, newKind);
+    return NewArray<0>(cx, 0, proto, newKind);
 }
 
 ArrayObject * JS_FASTCALL
-js::NewDenseAllocatedArray(ExclusiveContext *cx, uint32_t length, JSObject *proto /* = nullptr */,
-                           NewObjectKind newKind /* = GenericObject */)
+js::NewDenseFullyAllocatedArray(ExclusiveContext *cx, uint32_t length,
+                                JSObject *proto /* = nullptr */,
+                                NewObjectKind newKind /* = GenericObject */)
 {
-    return NewArray<true>(cx, length, proto, newKind);
+    return NewArray<JSObject::NELEMENTS_LIMIT>(cx, length, proto, newKind);
+}
+
+ArrayObject * JS_FASTCALL
+js::NewDensePartlyAllocatedArray(ExclusiveContext *cx, uint32_t length,
+                                 JSObject *proto /* = nullptr */,
+                                 NewObjectKind newKind /* = GenericObject */)
+{
+    return NewArray<ArrayObject::EagerAllocationMaxLength>(cx, length, proto, newKind);
 }
 
 ArrayObject * JS_FASTCALL
 js::NewDenseUnallocatedArray(ExclusiveContext *cx, uint32_t length, JSObject *proto /* = nullptr */,
                              NewObjectKind newKind /* = GenericObject */)
 {
-    return NewArray<false>(cx, length, proto, newKind);
+    return NewArray<0>(cx, length, proto, newKind);
 }
 
 ArrayObject * JS_FASTCALL
-js::NewDenseArray(ExclusiveContext *cx, uint32_t length, HandleTypeObject type, bool allocateArray)
+js::NewDenseArray(ExclusiveContext *cx, uint32_t length, HandleTypeObject type,
+                  AllocatingBehaviour allocating)
 {
     NewObjectKind newKind = !type ? SingletonObject : GenericObject;
     if (type && type->shouldPreTenure())
         newKind = TenuredObject;
 
-    // Allocate dense elements eagerly for small arrays, to avoid reallocating
-    // elements when filling the array.
-    ArrayObject *arr = allocateArray
-                       ? NewDenseAllocatedArray(cx, length, nullptr, newKind)
-                       : NewDenseUnallocatedArray(cx, length, nullptr, newKind);
-
+    ArrayObject *arr;
+    if (allocating == NewArray_Unallocating) {
+        arr = NewDenseUnallocatedArray(cx, length, nullptr, newKind);
+    } else if (allocating == NewArray_PartlyAllocating) {
+        arr = NewDensePartlyAllocatedArray(cx, length, nullptr, newKind);
+    } else {
+        JS_ASSERT(allocating == NewArray_FullyAllocating);
+        arr = NewDenseFullyAllocatedArray(cx, length, nullptr, newKind);
+    }
     if (!arr)
         return nullptr;
 
@@ -3301,7 +3329,7 @@ js::NewDenseCopiedArray(JSContext *cx, uint32_t length, HandleObject src, uint32
 {
     JS_ASSERT(!src->isIndexed());
 
-    ArrayObject* arr = NewArray<true>(cx, length, proto);
+    ArrayObject* arr = NewArray<JSObject::NELEMENTS_LIMIT>(cx, length, proto);
     if (!arr)
         return nullptr;
 
@@ -3321,7 +3349,7 @@ ArrayObject *
 js::NewDenseCopiedArray(JSContext *cx, uint32_t length, const Value *values,
                         JSObject *proto /* = nullptr */, NewObjectKind newKind /* = GenericObject */)
 {
-    ArrayObject* arr = NewArray<true>(cx, length, proto);
+    ArrayObject* arr = NewArray<JSObject::NELEMENTS_LIMIT>(cx, length, proto);
     if (!arr)
         return nullptr;
 
@@ -3336,19 +3364,14 @@ js::NewDenseCopiedArray(JSContext *cx, uint32_t length, const Value *values,
 }
 
 ArrayObject *
-js::NewDenseAllocatedArrayWithTemplate(JSContext *cx, uint32_t length, JSObject *templateObject)
+js::NewDenseFullyAllocatedArrayWithTemplate(JSContext *cx, uint32_t length, JSObject *templateObject)
 {
     gc::AllocKind allocKind = GuessArrayGCKind(length);
     JS_ASSERT(CanBeFinalizedInBackground(allocKind, &ArrayObject::class_));
     allocKind = GetBackgroundAllocKind(allocKind);
 
     RootedTypeObject type(cx, templateObject->type());
-    if (!type)
-        return nullptr;
-
     RootedShape shape(cx, templateObject->lastProperty());
-    if (!shape)
-        return nullptr;
 
     gc::InitialHeap heap = GetInitialHeap(GenericObject, &ArrayObject::class_);
     Rooted<ArrayObject *> arr(cx, JSObject::createArray(cx, allocKind, heap, shape, type, length));
@@ -3360,6 +3383,30 @@ js::NewDenseAllocatedArrayWithTemplate(JSContext *cx, uint32_t length, JSObject 
 
     probes::CreateObject(cx, arr);
 
+    return arr;
+}
+
+JSObject *
+js::NewDenseCopyOnWriteArray(JSContext *cx, HandleObject templateObject, gc::InitialHeap heap)
+{
+    RootedShape shape(cx, templateObject->lastProperty());
+
+    JS_ASSERT(!gc::IsInsideNursery(templateObject));
+
+    JSObject *metadata = nullptr;
+    if (!NewObjectMetadata(cx, &metadata))
+        return nullptr;
+    if (metadata) {
+        shape = Shape::setObjectMetadata(cx, metadata, templateObject->getTaggedProto(), shape);
+        if (!shape)
+            return nullptr;
+    }
+
+    Rooted<ArrayObject *> arr(cx, JSObject::createCopyOnWriteArray(cx, heap, shape, templateObject));
+    if (!arr)
+        return nullptr;
+
+    probes::CreateObject(cx, arr);
     return arr;
 }
 

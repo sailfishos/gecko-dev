@@ -131,11 +131,10 @@ this.REQUEST_STK_SEND_ENVELOPE_WITH_STATUS = 107;
 this.REQUEST_VOICE_RADIO_TECH = 108;
 this.REQUEST_GET_CELL_INFO_LIST = 109;
 
-// Flame specific parcel types.
-this.REQUEST_SET_UICC_SUBSCRIPTION = 114;
-this.REQUEST_SET_DATA_SUBSCRIPTION = 115;
-this.REQUEST_GET_UICC_SUBSCRIPTION = 116;
-this.REQUEST_GET_DATA_SUBSCRIPTION = 117;
+// CAF specific parcel type. Synced with latest version.
+// Please see https://www.codeaurora.org/cgit/quic/la/platform/hardware/ril/tree/include/telephony/ril.h?h=b2g_kk_3.5
+this.REQUEST_SET_UICC_SUBSCRIPTION = 115;
+this.REQUEST_SET_DATA_SUBSCRIPTION = 116;
 
 // UICC Secure Access.
 this.REQUEST_SIM_OPEN_CHANNEL = 121;
@@ -589,6 +588,9 @@ this.ADN_MAX_NUMBER_DIGITS = 20;
 // READ_RECORD mode,  TS 102.221
 this.READ_RECORD_ABSOLUTE_MODE = 4;
 
+// TS 102.221 Table 11.2, return FCP template
+this.GET_RESPONSE_FCP_TEMPLATE = 4;
+
 // GET_RESPONSE mandatory response size for EF, see TS 51.011 clause 9,
 // 'Response data in case of an EF.'
 this.GET_RESPONSE_EF_SIZE_BYTES = 15;
@@ -596,6 +598,7 @@ this.GET_RESPONSE_EF_SIZE_BYTES = 15;
 // EF path
 this.EF_PATH_MF_SIM       = "3f00";
 this.EF_PATH_DF_PHONEBOOK = "5f3a";
+this.EF_PATH_GRAPHICS     = "5f50";
 this.EF_PATH_DF_TELECOM   = "7f10";
 this.EF_PATH_DF_GSM       = "7f20";
 this.EF_PATH_DF_CDMA      = "7f25";
@@ -671,6 +674,29 @@ this.ICC_USIM_EFGSD_TAG   = 0xc8;
 this.ICC_USIM_EFUID_TAG   = 0xc9;
 this.ICC_USIM_EFEMAIL_TAG = 0xca;
 this.ICC_USIM_EFCCP1_TAG  = 0xcb;
+
+// ICC image coding scheme
+// TS 31.102, sub-clause 4.6.1.1
+this.ICC_IMG_CODING_SCHEME_BASIC              = 0x11;
+this.ICC_IMG_CODING_SCHEME_COLOR              = 0x21;
+this.ICC_IMG_CODING_SCHEME_COLOR_TRANSPARENCY = 0x22;
+
+// Must be in sync with enum IccImageCodingScheme in MozStkCommandEvent.webidl.
+this.GECKO_IMG_CODING_SCHEME_BASIC              = "basic";
+this.GECKO_IMG_CODING_SCHEME_COLOR              = "color";
+this.GECKO_IMG_CODING_SCHEME_COLOR_TRANSPARENCY = "color-transparency";
+
+this.ICC_IMG_CODING_SCHEME_TO_GECKO = {};
+ICC_IMG_CODING_SCHEME_TO_GECKO[ICC_IMG_CODING_SCHEME_BASIC] = GECKO_IMG_CODING_SCHEME_BASIC;
+ICC_IMG_CODING_SCHEME_TO_GECKO[ICC_IMG_CODING_SCHEME_COLOR] = GECKO_IMG_CODING_SCHEME_COLOR;
+ICC_IMG_CODING_SCHEME_TO_GECKO[ICC_IMG_CODING_SCHEME_COLOR_TRANSPARENCY] = GECKO_IMG_CODING_SCHEME_COLOR_TRANSPARENCY;
+
+// ICC image header size per coding scheme
+// TS 31.102, Annex B
+this.ICC_IMG_HEADER_SIZE_BASIC = 2;
+this.ICC_IMG_HEADER_SIZE_COLOR = 6;
+
+this.ICC_CLUT_ENTRY_SIZE = 3;
 
 this.USIM_PBR_ANR = "anr";
 this.USIM_PBR_ANR0 = "anr0";
@@ -1246,6 +1272,7 @@ this.GECKO_ICC_SERVICES = {
     DATA_DOWNLOAD_SMS_PP: 26,
     CBMIR: 30,
     BDN: 31,
+    IMG: 39,
     PNN: 51,
     OPL: 52,
     MDN: 53,
@@ -1261,6 +1288,7 @@ this.GECKO_ICC_SERVICES = {
     GID1: 17,
     SPN: 19,
     MSISDN: 21,
+    IMG: 22,
     DATA_DOWNLOAD_SMS_PP: 28,
     DATA_DOWNLOAD_SMS_CB: 29,
     PNN: 45,
@@ -2453,15 +2481,11 @@ this.CALL_FAIL_IMEI_NOT_ACCEPTED = 243;
 this.CALL_FAIL_ERROR_UNSPECIFIED = 0xffff;
 
 // Other Gecko-specific constants
-this.GECKO_RADIOSTATE_UNAVAILABLE   = null;
-this.GECKO_RADIOSTATE_OFF           = "off";
-this.GECKO_RADIOSTATE_READY         = "ready";
-
-this.GECKO_DETAILED_RADIOSTATE_UNKNOWN    = null;
-this.GECKO_DETAILED_RADIOSTATE_ENABLING   = "enabling";
-this.GECKO_DETAILED_RADIOSTATE_ENABLED    = "enabled";
-this.GECKO_DETAILED_RADIOSTATE_DISABLING  = "disabling";
-this.GECKO_DETAILED_RADIOSTATE_DISABLED   = "disabled";
+this.GECKO_RADIOSTATE_UNKNOWN   = null;
+this.GECKO_RADIOSTATE_ENABLING  = "enabling";
+this.GECKO_RADIOSTATE_ENABLED   = "enabled";
+this.GECKO_RADIOSTATE_DISABLING = "disabling";
+this.GECKO_RADIOSTATE_DISABLED  = "disabled";
 
 this.GECKO_CARDSTATE_UNINITIALIZED                 = "uninitialized";
 this.GECKO_CARDSTATE_UNDETECTED                    = null;
@@ -2698,14 +2722,14 @@ this.GECKO_RADIO_TECH = [
 
 this.GECKO_VOICEMAIL_MESSAGE_COUNT_UNKNOWN = -1;
 
-// Call forwarding action. Must be in sync with nsIMobileConnectionProvider interface
+// Call forwarding action. Must be in sync with nsIMobileConnectionService interface
 this.CALL_FORWARD_ACTION_DISABLE = 0;
 this.CALL_FORWARD_ACTION_ENABLE = 1;
 this.CALL_FORWARD_ACTION_QUERY_STATUS = 2;
 this.CALL_FORWARD_ACTION_REGISTRATION = 3;
 this.CALL_FORWARD_ACTION_ERASURE = 4;
 
-// Call forwarding reason. Must be in sync with nsIMobileConnectionProvider interface
+// Call forwarding reason. Must be in sync with nsIMobileConnectionService interface
 this.CALL_FORWARD_REASON_UNCONDITIONAL = 0;
 this.CALL_FORWARD_REASON_MOBILE_BUSY = 1;
 this.CALL_FORWARD_REASON_NO_REPLY = 2;
@@ -2713,7 +2737,7 @@ this.CALL_FORWARD_REASON_NOT_REACHABLE = 3;
 this.CALL_FORWARD_REASON_ALL_CALL_FORWARDING = 4;
 this.CALL_FORWARD_REASON_ALL_CONDITIONAL_CALL_FORWARDING = 5;
 
-// Call barring program. Must be in sync with nsIMobileConnectionProvider interface
+// Call barring program. Must be in sync with nsIMobileConnectionService interface
 this.CALL_BARRING_PROGRAM_ALL_OUTGOING = 0;
 this.CALL_BARRING_PROGRAM_OUTGOING_INTERNATIONAL = 1;
 this.CALL_BARRING_PROGRAM_OUTGOING_INTERNATIONAL_EXCEPT_HOME = 2;
@@ -2727,7 +2751,7 @@ CALL_BARRING_PROGRAM_TO_FACILITY[CALL_BARRING_PROGRAM_OUTGOING_INTERNATIONAL_EXC
 CALL_BARRING_PROGRAM_TO_FACILITY[CALL_BARRING_PROGRAM_ALL_INCOMING] = ICC_CB_FACILITY_BAIC;
 CALL_BARRING_PROGRAM_TO_FACILITY[CALL_BARRING_PROGRAM_INCOMING_ROAMING] = ICC_CB_FACILITY_BAICr;
 
-// CLIR constants. Must be in sync with nsIMobileConnectionProvider interface
+// CLIR constants. Must be in sync with nsIMobileConnectionService interface
 this.CLIR_DEFAULT = 0;
 this.CLIR_INVOCATION  = 1;
 this.CLIR_SUPPRESSION = 2;

@@ -35,6 +35,7 @@
 #include "mozilla/TimeStamp.h"
 #include "mozilla/StaticPtr.h"
 #include "mozilla/WeakPtr.h"
+#include "mozilla/UniquePtr.h"
 #ifdef DEBUG
   #include "imgIContainerDebug.h"
 #endif
@@ -135,11 +136,11 @@ class ScaleRequest;
 class Decoder;
 class FrameAnimator;
 
-class RasterImage : public ImageResource
-                  , public nsIProperties
-                  , public SupportsWeakPtr<RasterImage>
+class RasterImage MOZ_FINAL : public ImageResource
+                            , public nsIProperties
+                            , public SupportsWeakPtr<RasterImage>
 #ifdef DEBUG
-                  , public imgIContainerDebug
+                            , public imgIContainerDebug
 #endif
 {
   // (no public constructor - use ImageFactory)
@@ -330,7 +331,7 @@ public:
 
 private:
   // Initiates an HQ scale for the given frame, if possible.
-  void RequestScale(imgFrame* aFrame, gfxSize aScale);
+  void RequestScale(imgFrame* aFrame, nsIntSize aScale);
 
   already_AddRefed<imgStatusTracker> CurrentStatusTracker()
   {
@@ -350,7 +351,7 @@ private:
    */
   struct DecodeRequest
   {
-    DecodeRequest(RasterImage* aImage)
+    explicit DecodeRequest(RasterImage* aImage)
       : mImage(aImage)
       , mBytesToDecode(0)
       , mRequestStatus(REQUEST_INACTIVE)
@@ -546,7 +547,7 @@ private:
     NS_IMETHOD Run();
 
   private: /* methods */
-    FrameNeededWorker(RasterImage* image);
+    explicit FrameNeededWorker(RasterImage* image);
 
   private: /* members */
 
@@ -558,10 +559,9 @@ private:
 
   bool DrawWithPreDownscaleIfNeeded(imgFrame *aFrame,
                                     gfxContext *aContext,
+                                    const nsIntSize& aSize,
+                                    const ImageRegion& aRegion,
                                     GraphicsFilter aFilter,
-                                    const gfxMatrix &aUserSpaceToImageSpace,
-                                    const gfxRect &aFill,
-                                    const nsIntRect &aSubimage,
                                     uint32_t aFlags);
 
   TemporaryRef<gfx::SourceSurface> CopyFrame(uint32_t aWhichFrame,
@@ -577,10 +577,10 @@ private:
    */
   void DeleteImgFrame(uint32_t framenum);
 
-  imgFrame* GetImgFrameNoDecode(uint32_t framenum);
-  imgFrame* GetImgFrame(uint32_t framenum);
-  imgFrame* GetDrawableImgFrame(uint32_t framenum);
-  imgFrame* GetCurrentImgFrame();
+  already_AddRefed<imgFrame> GetImgFrameNoDecode(uint32_t framenum);
+  already_AddRefed<imgFrame> GetImgFrame(uint32_t framenum);
+  already_AddRefed<imgFrame> GetDrawableImgFrame(uint32_t framenum);
+  already_AddRefed<imgFrame> GetCurrentImgFrame();
   uint32_t GetCurrentImgFrameIndex() const;
 
   size_t SizeOfDecodedWithComputedFallbackIfHeap(gfxMemoryLocation aLocation,
@@ -638,14 +638,14 @@ private: // data
   FrameBlender              mFrameBlender;
 
   // The last frame we decoded for multipart images.
-  imgFrame*                  mMultipartDecodedFrame;
+  nsRefPtr<imgFrame>        mMultipartDecodedFrame;
 
-  nsCOMPtr<nsIProperties>    mProperties;
+  nsCOMPtr<nsIProperties>   mProperties;
 
   // IMPORTANT: if you use mAnim in a method, call EnsureImageIsDecoded() first to ensure
   // that the frames actually exist (they may have been discarded to save memory, or
   // we maybe decoding on draw).
-  FrameAnimator* mAnim;
+  UniquePtr<FrameAnimator> mAnim;
 
   // Discard members
   uint32_t                   mLockCount;
@@ -739,8 +739,8 @@ private: // data
   bool     IsDecodeFinished();
   TimeStamp mDrawStartTime;
 
-  inline bool CanQualityScale(const gfxSize& scale);
-  inline bool CanScale(GraphicsFilter aFilter, gfxSize aScale, uint32_t aFlags);
+  inline bool CanQualityScale(const gfx::Size& scale);
+  inline bool CanScale(GraphicsFilter aFilter, gfx::Size aScale, uint32_t aFlags);
 
   struct ScaleResult
   {
@@ -748,8 +748,8 @@ private: // data
      : status(SCALE_INVALID)
     {}
 
-    gfxSize scale;
-    nsAutoPtr<imgFrame> frame;
+    nsIntSize scaledSize;
+    nsRefPtr<imgFrame> frame;
     ScaleStatus status;
   };
 
@@ -781,7 +781,7 @@ private: // data
     NS_IMETHOD Run();
 
   private:
-    HandleErrorWorker(RasterImage* aImage);
+    explicit HandleErrorWorker(RasterImage* aImage);
 
     nsRefPtr<RasterImage> mImage;
   };
@@ -794,8 +794,8 @@ private: // data
   bool StoringSourceData() const;
 
 protected:
-  RasterImage(imgStatusTracker* aStatusTracker = nullptr,
-              ImageURL* aURI = nullptr);
+  explicit RasterImage(imgStatusTracker* aStatusTracker = nullptr,
+                       ImageURL* aURI = nullptr);
 
   bool ShouldAnimate();
 
@@ -815,7 +815,7 @@ inline NS_IMETHODIMP RasterImage::GetAnimationMode(uint16_t *aAnimationMode) {
 class imgDecodeRequestor : public nsRunnable
 {
   public:
-    imgDecodeRequestor(RasterImage &aContainer) {
+    explicit imgDecodeRequestor(RasterImage &aContainer) {
       mContainer = &aContainer;
     }
     NS_IMETHOD Run() {

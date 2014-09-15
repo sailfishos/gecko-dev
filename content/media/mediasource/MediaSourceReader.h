@@ -11,14 +11,15 @@
 #include "mozilla/ReentrantMonitor.h"
 #include "nsCOMPtr.h"
 #include "nsError.h"
-#include "nsStringGlue.h"
+#include "nsString.h"
 #include "nsTArray.h"
 #include "MediaDecoderReader.h"
 
 namespace mozilla {
 
 class MediaSourceDecoder;
-class SubBufferDecoder;
+class SourceBufferDecoder;
+class TrackBuffer;
 
 namespace dom {
 
@@ -29,7 +30,7 @@ class MediaSource;
 class MediaSourceReader : public MediaDecoderReader
 {
 public:
-  MediaSourceReader(MediaSourceDecoder* aDecoder, dom::MediaSource* aSource);
+  explicit MediaSourceReader(MediaSourceDecoder* aDecoder);
 
   nsresult Init(MediaDecoderReader* aCloneDonor) MOZ_OVERRIDE
   {
@@ -38,6 +39,10 @@ public:
     // we don't return an error code back to the media element.
     return NS_OK;
   }
+
+  // Indicates the point in time at which the reader should consider
+  // registered TrackBuffers essential for initialization.
+  void PrepareInitialization();
 
   bool IsWaitingMediaResources() MOZ_OVERRIDE;
 
@@ -70,14 +75,16 @@ public:
   nsresult ReadMetadata(MediaInfo* aInfo, MetadataTags** aTags) MOZ_OVERRIDE;
   nsresult Seek(int64_t aTime, int64_t aStartTime, int64_t aEndTime,
                 int64_t aCurrentTime) MOZ_OVERRIDE;
-  already_AddRefed<SubBufferDecoder> CreateSubDecoder(const nsACString& aType,
-                                                      MediaSourceDecoder* aParentDecoder);
+
+  already_AddRefed<SourceBufferDecoder> CreateSubDecoder(const nsACString& aType);
+
+  void AddTrackBuffer(TrackBuffer* aTrackBuffer);
+  void RemoveTrackBuffer(TrackBuffer* aTrackBuffer);
+  void OnTrackBufferConfigured(TrackBuffer* aTrackBuffer, const MediaInfo& aInfo);
 
   void Shutdown();
 
   virtual void BreakCycles();
-
-  void InitializePendingDecoders();
 
   bool IsShutdown()
   {
@@ -85,32 +92,67 @@ public:
     return mDecoder->IsShutdown();
   }
 
-  // Return true if any of the active decoders contain data for the given time
-  bool DecodersContainTime(double aTime);
+  // Return true if all of the active tracks contain data for the specified time.
+  bool TrackBuffersContainTime(double aTime);
+
+  // Mark the reader to indicate that EndOfStream has been called on our MediaSource
+  void Ended();
+
+  // Return true if the Ended method has been called
+  bool IsEnded();
 
 private:
-  enum SwitchType {
-    SWITCH_OPTIONAL,
-    SWITCH_FORCED
-  };
+  bool SwitchAudioReader(double aTarget);
+  bool SwitchVideoReader(double aTarget);
 
-  bool SwitchVideoReaders(SwitchType aType);
+  // Return a reader from the set available in aTrackDecoders that is considered
+  // usable by the aCanUserReader callback and has data available in the range
+  // requested by aTarget.
+  // aCanSelectReader is passed each reader available in aTrackDecoders and is
+  // expected to return true if the reader is considerable selectable.
+  already_AddRefed<MediaDecoderReader> SelectReader(double aTarget,
+                                                    bool (MediaSourceReader::*aCanSelectReader)(MediaDecoderReader*),
+                                                    const nsTArray<nsRefPtr<SourceBufferDecoder>>& aTrackDecoders);
 
-  MediaDecoderReader* GetAudioReader();
-  MediaDecoderReader* GetVideoReader();
+  // Passed to SelectReader to enforce any track format specific requirements.
+  // In the case of CanSelectAudioReader, verifies that aNewReader has a
+  // matching audio format to the existing reader, as format switching is not
+  // yet supported.
+  bool CanSelectAudioReader(MediaDecoderReader* aNewReader);
+  bool CanSelectVideoReader(MediaDecoderReader* aNewReader);
 
-  void SetMediaSourceDuration(double aDuration) ;
+  // Waits on the decoder monitor for aTime to become available in the active
+  // TrackBuffers.  Used to block a Seek call until the necessary data has been
+  // provided to the relevant SourceBuffers.
+  void WaitForTimeRange(double aTime);
+
+  nsRefPtr<MediaDecoderReader> mAudioReader;
+  nsRefPtr<MediaDecoderReader> mVideoReader;
+
+  nsTArray<nsRefPtr<TrackBuffer>> mTrackBuffers;
+  nsTArray<nsRefPtr<TrackBuffer>> mEssentialTrackBuffers;
+  nsRefPtr<TrackBuffer> mAudioTrack;
+  nsRefPtr<TrackBuffer> mVideoTrack;
 
   // These are read and written on the decode task queue threads.
+  int64_t mLastAudioTime;
+  int64_t mLastVideoTime;
+
   int64_t mTimeThreshold;
+  bool mDropAudioBeforeThreshold;
   bool mDropVideoBeforeThreshold;
 
-  nsTArray<nsRefPtr<SubBufferDecoder>> mPendingDecoders;
-  nsTArray<nsRefPtr<SubBufferDecoder>> mDecoders;
+  bool mEnded;
 
-  int32_t mActiveVideoDecoder;
-  int32_t mActiveAudioDecoder;
-  dom::MediaSource* mMediaSource;
+  // For a seek to complete we need to send a sample with
+  // the mDiscontinuity field set to true once we have the
+  // first decoded sample. These flags are set during seeking
+  // so we can detect when we have the first decoded sample
+  // after a seek.
+  bool mAudioIsSeeking;
+  bool mVideoIsSeeking;
+
+  bool mHasEssentialTrackBuffers;
 };
 
 } // namespace mozilla

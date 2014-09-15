@@ -6,6 +6,8 @@
 package org.mozilla.search;
 
 import org.mozilla.gecko.AppConstants;
+import org.mozilla.gecko.Telemetry;
+import org.mozilla.gecko.TelemetryContract;
 
 import android.annotation.SuppressLint;
 import android.app.PendingIntent;
@@ -27,6 +29,7 @@ public class SearchWidget extends AppWidgetProvider {
 
     final public static String ACTION_LAUNCH_BROWSER = "org.mozilla.widget.LAUNCH_BROWSER";
     final public static String ACTION_LAUNCH_SEARCH = "org.mozilla.widget.LAUNCH_SEARCH";
+    final public static String ACTION_LAUNCH_NEW_TAB = "org.mozilla.widget.LAUNCH_NEW_TAB";
 
     @SuppressLint("NewApi")
     @Override
@@ -62,15 +65,26 @@ public class SearchWidget extends AppWidgetProvider {
         final Intent redirect;
         Log.i(LOGTAG, "Got intent  " + intent.getAction());
         if (intent.getAction().equals(ACTION_LAUNCH_BROWSER)) {
-            redirect = buildRedirectIntent(Intent.ACTION_VIEW,
+            redirect = buildRedirectIntent(Intent.ACTION_MAIN,
                     AppConstants.ANDROID_PACKAGE_NAME,
                     AppConstants.BROWSER_INTENT_CLASS_NAME,
                     intent);
+            Telemetry.sendUIEvent(TelemetryContract.Event.LAUNCH,
+                    TelemetryContract.Method.WIDGET, "browser");
+        } else if (intent.getAction().equals(ACTION_LAUNCH_NEW_TAB)) {
+                redirect = buildRedirectIntent(Intent.ACTION_VIEW,
+                        AppConstants.ANDROID_PACKAGE_NAME,
+                        AppConstants.BROWSER_INTENT_CLASS_NAME,
+                        intent);
+            Telemetry.sendUIEvent(TelemetryContract.Event.LAUNCH,
+                    TelemetryContract.Method.WIDGET, "new-tab");
         } else if (intent.getAction().equals(ACTION_LAUNCH_SEARCH)) {
             redirect = buildRedirectIntent(Intent.ACTION_VIEW,
                     AppConstants.SEARCH_PACKAGE_NAME,
                     AppConstants.SEARCH_INTENT_CLASS_NAME,
                     intent);
+            Telemetry.sendUIEvent(TelemetryContract.Event.LAUNCH,
+                    TelemetryContract.Method.WIDGET, "search");
         } else {
             redirect = null;
         }
@@ -94,7 +108,7 @@ public class SearchWidget extends AppWidgetProvider {
         final RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.search_widget);
 
         addClickIntent(context, views, R.id.search_button, ACTION_LAUNCH_SEARCH);
-        addClickIntent(context, views, R.id.new_tab_button, ACTION_LAUNCH_BROWSER);
+        addClickIntent(context, views, R.id.new_tab_button, ACTION_LAUNCH_NEW_TAB);
         // Clicking the logo also launches the browser
         addClickIntent(context, views, R.id.logo_button, ACTION_LAUNCH_BROWSER);
 

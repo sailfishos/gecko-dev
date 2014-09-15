@@ -34,25 +34,30 @@ class MediaEngineTabVideoSource : public MediaEngineVideoSource, nsIDOMEventList
       return MediaSourceType::Browser;
     }
 
+    virtual nsresult TakePhoto(PhotoCallback* aCallback)
+    {
+      return NS_ERROR_NOT_IMPLEMENTED;
+    }
+
     void Draw();
 
     class StartRunnable : public nsRunnable {
     public:
-      StartRunnable(MediaEngineTabVideoSource *videoSource) : mVideoSource(videoSource) {}
+      explicit StartRunnable(MediaEngineTabVideoSource *videoSource) : mVideoSource(videoSource) {}
       NS_IMETHOD Run();
       nsRefPtr<MediaEngineTabVideoSource> mVideoSource;
     };
 
     class StopRunnable : public nsRunnable {
     public:
-    StopRunnable(MediaEngineTabVideoSource *videoSource) : mVideoSource(videoSource) {}
+      explicit StopRunnable(MediaEngineTabVideoSource *videoSource) : mVideoSource(videoSource) {}
       NS_IMETHOD Run();
       nsRefPtr<MediaEngineTabVideoSource> mVideoSource;
     };
 
     class InitRunnable : public nsRunnable {
     public:
-    InitRunnable(MediaEngineTabVideoSource *videoSource) : mVideoSource(videoSource) {}
+      explicit InitRunnable(MediaEngineTabVideoSource *videoSource) : mVideoSource(videoSource) {}
       NS_IMETHOD Run();
       nsRefPtr<MediaEngineTabVideoSource> mVideoSource;
     };

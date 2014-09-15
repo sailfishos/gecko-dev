@@ -414,6 +414,14 @@ class DynamicWithObject : public NestedScopeObject
     JSObject &withThis() const {
         return getReservedSlot(THIS_SLOT).toObject();
     }
+
+    static inline size_t objectSlot() {
+        return OBJECT_SLOT;
+    }
+
+    static inline size_t thisSlot() {
+        return THIS_SLOT;
+    }
 };
 
 class BlockObject : public NestedScopeObject
@@ -906,7 +914,7 @@ JSObject::is<js::DebugScopeObject>() const
     extern bool js_IsDebugScopeSlow(js::ProxyObject *proxy);
 
     // Note: don't use is<ProxyObject>() here -- it also matches subclasses!
-    return hasClass(&js::ProxyObject::uncallableClass_) &&
+    return hasClass(&js::ProxyObject::class_) &&
            js_IsDebugScopeSlow(&const_cast<JSObject*>(this)->as<js::ProxyObject>());
 }
 

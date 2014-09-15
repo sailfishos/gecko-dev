@@ -469,7 +469,7 @@ public:
     if (!_argc) {
       top = true;
     }
-    mozilla::dom::Element::ScrollIntoView(top);
+    mozilla::dom::Element::ScrollIntoView(top, mozilla::dom::ScrollOptions());
     return NS_OK;
   }
   NS_IMETHOD GetOffsetParent(nsIDOMElement** aOffsetParent) MOZ_FINAL {
@@ -829,7 +829,12 @@ public:
    * Get the presentation context for this content node.
    * @return the presentation context
    */
-  nsPresContext* GetPresContext();
+  enum PresContextFor
+  {
+    eForComposedDoc,
+    eForUncomposedDoc
+  };
+  nsPresContext* GetPresContext(PresContextFor aFor);
 
   // Form Helper Routines
   /**
@@ -1006,11 +1011,11 @@ protected:
   }
   void SetHTMLAttr(nsIAtom* aName, const nsAString& aValue, mozilla::ErrorResult& aError)
   {
-    aError = SetAttr(kNameSpaceID_None, aName, aValue, true);
+    mozilla::dom::Element::SetAttr(aName, aValue, aError);
   }
   void UnsetHTMLAttr(nsIAtom* aName, mozilla::ErrorResult& aError)
   {
-    aError = UnsetAttr(kNameSpaceID_None, aName, true);
+    mozilla::dom::Element::UnsetAttr(aName, aError);
   }
   void SetHTMLBoolAttr(nsIAtom* aName, bool aValue, mozilla::ErrorResult& aError)
   {
@@ -1116,35 +1121,6 @@ protected:
    * @param aResult  result value [out]
    */
   nsresult GetURIListAttr(nsIAtom* aAttr, nsAString& aResult);
-
-  /**
-   * Helper method for NS_IMPL_ENUM_ATTR_DEFAULT_VALUE.
-   * Gets the enum value string of an attribute and using a default value if
-   * the attribute is missing or the string is an invalid enum value.
-   *
-   * @param aType     the name of the attribute.
-   * @param aDefault  the default value if the attribute is missing or invalid.
-   * @param aResult   string corresponding to the value [out].
-   */
-  void GetEnumAttr(nsIAtom* aAttr,
-                               const char* aDefault,
-                               nsAString& aResult) const;
-
-  /**
-   * Helper method for NS_IMPL_ENUM_ATTR_DEFAULT_MISSING_INVALID_VALUES.
-   * Gets the enum value string of an attribute and using the default missing
-   * value if the attribute is missing or the default invalid value if the
-   * string is an invalid enum value.
-   *
-   * @param aType            the name of the attribute.
-   * @param aDefaultMissing  the default value if the attribute is missing.
-   * @param aDefaultInvalid  the default value if the attribute is invalid.
-   * @param aResult          string corresponding to the value [out].
-   */
-  void GetEnumAttr(nsIAtom* aAttr,
-                               const char* aDefaultMissing,
-                               const char* aDefaultInvalid,
-                               nsAString& aResult) const;
 
   /**
    * Locates the nsIEditor associated with this node.  In general this is

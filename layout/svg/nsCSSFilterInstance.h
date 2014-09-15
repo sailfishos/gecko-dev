@@ -63,7 +63,15 @@ private:
    * Sets aDescr's attributes using the style info in mFilter.
    */
   nsresult SetAttributesForBlur(FilterPrimitiveDescription& aDescr);
+  nsresult SetAttributesForBrightness(FilterPrimitiveDescription& aDescr);
+  nsresult SetAttributesForContrast(FilterPrimitiveDescription& aDescr);
   nsresult SetAttributesForDropShadow(FilterPrimitiveDescription& aDescr);
+  nsresult SetAttributesForGrayscale(FilterPrimitiveDescription& aDescr);
+  nsresult SetAttributesForHueRotate(FilterPrimitiveDescription& aDescr);
+  nsresult SetAttributesForInvert(FilterPrimitiveDescription& aDescr);
+  nsresult SetAttributesForOpacity(FilterPrimitiveDescription& aDescr);
+  nsresult SetAttributesForSaturate(FilterPrimitiveDescription& aDescr);
+  nsresult SetAttributesForSepia(FilterPrimitiveDescription& aDescr);
 
   /**
    * Returns the index of the last result in the aPrimitiveDescrs, which we'll
@@ -106,7 +114,7 @@ private:
   /**
    * The frame for the element that is currently being filtered.
    */
-  nsIFrame*               mTargetFrame;
+  nsIFrame* mTargetFrame;
 
   /**
    * The bounding box of the element being filtered, in filter space. Used for

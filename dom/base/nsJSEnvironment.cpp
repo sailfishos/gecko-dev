@@ -18,6 +18,7 @@
 #include "nsCOMPtr.h"
 #include "nsISupportsPrimitives.h"
 #include "nsReadableUtils.h"
+#include "nsDOMJSUtils.h"
 #include "nsJSUtils.h"
 #include "nsIDocShell.h"
 #include "nsIDocShellTreeItem.h"
@@ -95,10 +96,6 @@ using namespace mozilla;
 using namespace mozilla::dom;
 
 const size_t gStackSize = 8192;
-
-#ifdef PR_LOGGING
-static PRLogModuleInfo* gJSDiagnostics;
-#endif
 
 // Thank you Microsoft!
 #ifdef CompareString
@@ -301,7 +298,7 @@ nsJSEnvironmentObserver::Observe(nsISupports* aSubject, const char* aTopic,
 
 class AutoFree {
 public:
-  AutoFree(void *aPtr) : mPtr(aPtr) {
+  explicit AutoFree(void* aPtr) : mPtr(aPtr) {
   }
   ~AutoFree() {
     if (mPtr)
@@ -351,297 +348,160 @@ NS_HandleScriptError(nsIScriptGlobalObject *aScriptGlobal,
   return called;
 }
 
-namespace mozilla {
-namespace dom {
-
-AsyncErrorReporter::AsyncErrorReporter(JSRuntime* aRuntime,
-                                       JSErrorReport* aErrorReport,
-                                       const char* aFallbackMessage,
-                                       bool aIsChromeError,
-                                       nsPIDOMWindow* aWindow)
-  : mSourceLine(static_cast<const char16_t*>(aErrorReport->uclinebuf))
-  , mLineNumber(aErrorReport->lineno)
-  , mColumn(aErrorReport->column)
-  , mFlags(aErrorReport->flags)
-{
-  if (!aErrorReport->filename) {
-    mFileName.SetIsVoid(true);
-  } else {
-    mFileName.AssignWithConversion(aErrorReport->filename);
-  }
-
-  const char16_t* m = static_cast<const char16_t*>(aErrorReport->ucmessage);
-  if (m) {
-    JSFlatString* name = js::GetErrorTypeName(aRuntime, aErrorReport->exnType);
-    if (name) {
-      AssignJSFlatString(mErrorMsg, name);
-      mErrorMsg.AppendLiteral(": ");
-    }
-    mErrorMsg.Append(m);
-  }
-
-  if (mErrorMsg.IsEmpty() && aFallbackMessage) {
-    mErrorMsg.AssignWithConversion(aFallbackMessage);
-  }
-
-  mCategory = aIsChromeError ? NS_LITERAL_CSTRING("chrome javascript") :
-                               NS_LITERAL_CSTRING("content javascript");
-
-  mInnerWindowID = 0;
-  if (aWindow) {
-    MOZ_ASSERT(aWindow->IsInnerWindow());
-    mInnerWindowID = aWindow->WindowID();
-  }
-}
-
-void
-AsyncErrorReporter::ReportError()
-{
-  nsCOMPtr<nsIScriptError> errorObject =
-    do_CreateInstance("@mozilla.org/scripterror;1");
-  if (!errorObject) {
-    return;
-  }
-
-  nsresult rv = errorObject->InitWithWindowID(mErrorMsg, mFileName,
-                                              mSourceLine, mLineNumber,
-                                              mColumn, mFlags, mCategory,
-                                              mInnerWindowID);
-  if (NS_FAILED(rv)) {
-    return;
-  }
-
-  nsCOMPtr<nsIConsoleService> consoleService =
-    do_GetService(NS_CONSOLESERVICE_CONTRACTID);
-  if (!consoleService) {
-    return;
-  }
-
-  consoleService->LogMessage(errorObject);
-  return;
-}
-
-} // namespace dom
-} // namespace mozilla
-
-class ScriptErrorEvent : public AsyncErrorReporter
+class ScriptErrorEvent : public nsRunnable
 {
 public:
   ScriptErrorEvent(JSRuntime* aRuntime,
-                   JSErrorReport* aErrorReport,
-                   const char* aFallbackMessage,
+                   xpc::ErrorReport* aReport,
                    nsIPrincipal* aScriptOriginPrincipal,
-                   nsIPrincipal* aGlobalPrincipal,
-                   nsPIDOMWindow* aWindow,
                    JS::Handle<JS::Value> aError,
                    bool aDispatchEvent)
-    // Pass an empty category, then compute ours
-    : AsyncErrorReporter(aRuntime, aErrorReport, aFallbackMessage,
-                         nsContentUtils::IsSystemPrincipal(aGlobalPrincipal),
-                         aWindow)
+    : mReport(aReport)
     , mOriginPrincipal(aScriptOriginPrincipal)
     , mDispatchEvent(aDispatchEvent)
     , mError(aRuntime, aError)
-    , mWindow(aWindow)
-  {
-    MOZ_ASSERT_IF(mWindow, mWindow->IsInnerWindow());
-  }
+  {}
 
   NS_IMETHOD Run()
   {
     nsEventStatus status = nsEventStatus_eIgnore;
+    nsPIDOMWindow* win = mReport->mWindow;
+    MOZ_ASSERT(win);
     // First, notify the DOM that we have a script error, but only if
-    // our window is still the current inner, if we're associated with a window.
-    if (mDispatchEvent && (!mWindow || mWindow->IsCurrentInnerWindow())) {
-      nsIDocShell* docShell = mWindow ? mWindow->GetDocShell() : nullptr;
-      if (docShell &&
-          !JSREPORT_IS_WARNING(mFlags) &&
-          !sHandlingScriptError) {
-        AutoRestore<bool> recursionGuard(sHandlingScriptError);
-        sHandlingScriptError = true;
+    // our window is still the current inner.
+    if (mDispatchEvent && win->IsCurrentInnerWindow() &&
+        win->GetDocShell() && !JSREPORT_IS_WARNING(mReport->mFlags) &&
+        !sHandlingScriptError)
+    {
+      AutoRestore<bool> recursionGuard(sHandlingScriptError);
+      sHandlingScriptError = true;
 
-        nsRefPtr<nsPresContext> presContext;
-        docShell->GetPresContext(getter_AddRefs(presContext));
+      nsRefPtr<nsPresContext> presContext;
+      win->GetDocShell()->GetPresContext(getter_AddRefs(presContext));
 
-        ThreadsafeAutoJSContext cx;
-        RootedDictionary<ErrorEventInit> init(cx);
-        init.mCancelable = true;
-        init.mFilename = mFileName;
-        init.mBubbles = true;
+      ThreadsafeAutoJSContext cx;
+      RootedDictionary<ErrorEventInit> init(cx);
+      init.mCancelable = true;
+      init.mFilename = mReport->mFileName;
+      init.mBubbles = true;
 
-        nsCOMPtr<nsIScriptObjectPrincipal> sop(do_QueryInterface(mWindow));
-        NS_ENSURE_STATE(sop);
-        nsIPrincipal* p = sop->GetPrincipal();
-        NS_ENSURE_STATE(p);
+      nsCOMPtr<nsIScriptObjectPrincipal> sop(do_QueryInterface(win));
+      NS_ENSURE_STATE(sop);
+      nsIPrincipal* p = sop->GetPrincipal();
+      NS_ENSURE_STATE(p);
 
-        bool sameOrigin = !mOriginPrincipal;
+      bool sameOrigin = !mOriginPrincipal;
 
-        if (p && !sameOrigin) {
-          if (NS_FAILED(p->Subsumes(mOriginPrincipal, &sameOrigin))) {
-            sameOrigin = false;
-          }
+      if (p && !sameOrigin) {
+        if (NS_FAILED(p->Subsumes(mOriginPrincipal, &sameOrigin))) {
+          sameOrigin = false;
         }
-
-        NS_NAMED_LITERAL_STRING(xoriginMsg, "Script error.");
-        if (sameOrigin) {
-          init.mMessage = mErrorMsg;
-          init.mLineno = mLineNumber;
-          init.mColno = mColumn;
-          init.mError = mError;
-        } else {
-          NS_WARNING("Not same origin error!");
-          init.mMessage = xoriginMsg;
-          init.mLineno = 0;
-        }
-
-        nsRefPtr<ErrorEvent> event =
-          ErrorEvent::Constructor(static_cast<nsGlobalWindow*>(mWindow.get()),
-                                  NS_LITERAL_STRING("error"), init);
-        event->SetTrusted(true);
-
-        EventDispatcher::DispatchDOMEvent(mWindow, nullptr, event, presContext,
-                                          &status);
       }
+
+      NS_NAMED_LITERAL_STRING(xoriginMsg, "Script error.");
+      if (sameOrigin) {
+        init.mMessage = mReport->mErrorMsg;
+        init.mLineno = mReport->mLineNumber;
+        init.mColno = mReport->mColumn;
+        init.mError = mError;
+      } else {
+        NS_WARNING("Not same origin error!");
+        init.mMessage = xoriginMsg;
+        init.mLineno = 0;
+      }
+
+      nsRefPtr<ErrorEvent> event =
+        ErrorEvent::Constructor(static_cast<nsGlobalWindow*>(win),
+                                NS_LITERAL_STRING("error"), init);
+      event->SetTrusted(true);
+
+      EventDispatcher::DispatchDOMEvent(win, nullptr, event, presContext,
+                                        &status);
     }
 
     if (status != nsEventStatus_eConsumeNoDefault) {
-      AsyncErrorReporter::ReportError();
+      mReport->LogToConsole();
     }
 
     return NS_OK;
   }
 
 private:
+  nsRefPtr<xpc::ErrorReport>      mReport;
   nsCOMPtr<nsIPrincipal>          mOriginPrincipal;
   bool                            mDispatchEvent;
   JS::PersistentRootedValue       mError;
-  nsCOMPtr<nsPIDOMWindow>         mWindow;
 
   static bool sHandlingScriptError;
 };
 
 bool ScriptErrorEvent::sHandlingScriptError = false;
 
-// NOTE: This function could be refactored to use the above.  The only reason
-// it has not been done is that the code below only fills the error event
-// after it has a good nsPresContext - whereas using the above function
-// would involve always filling it.  Is that a concern?
+// This temporarily lives here to avoid code churn. It will go away entirely
+// soon.
+namespace xpc {
+
 void
-NS_ScriptErrorReporter(JSContext *cx,
-                       const char *message,
-                       JSErrorReport *report)
+SystemErrorReporter(JSContext *cx, const char *message, JSErrorReport *report)
 {
-  // We don't want to report exceptions too eagerly, but warnings in the
-  // absence of werror are swallowed whole, so report those now.
-  if (!JSREPORT_IS_WARNING(report->flags)) {
-    nsIXPConnect* xpc = nsContentUtils::XPConnect();
-    if (JS::DescribeScriptedCaller(cx)) {
-      xpc->MarkErrorUnreported(cx);
-      return;
-    }
-
-    if (xpc) {
-      nsAXPCNativeCallContext *cc = nullptr;
-      xpc->GetCurrentNativeCallContext(&cc);
-      if (cc) {
-        nsAXPCNativeCallContext *prev = cc;
-        while (NS_SUCCEEDED(prev->GetPreviousCallContext(&prev)) && prev) {
-          uint16_t lang;
-          if (NS_SUCCEEDED(prev->GetLanguage(&lang)) &&
-            lang == nsAXPCNativeCallContext::LANG_JS) {
-            xpc->MarkErrorUnreported(cx);
-            return;
-          }
-        }
-      }
-    }
-  }
-
-  // XXX this means we are not going to get error reports on non DOM contexts
-  nsIScriptContext *context = nsJSUtils::GetDynamicScriptContext(cx);
-
   JS::Rooted<JS::Value> exception(cx);
   ::JS_GetPendingException(cx, &exception);
 
-  // Note: we must do this before running any more code on cx (if cx is the
-  // dynamic script context).
+  // Note: we must do this before running any more code on cx.
   ::JS_ClearPendingException(cx);
 
-  if (context) {
-    nsIScriptGlobalObject *globalObject = context->GetGlobalObject();
+  MOZ_ASSERT(cx == nsContentUtils::GetCurrentJSContext());
+  nsCOMPtr<nsIGlobalObject> globalObject;
 
-    if (globalObject) {
-
-      nsCOMPtr<nsPIDOMWindow> win = do_QueryInterface(globalObject);
-      if (win) {
-        win = win->GetCurrentInnerWindow();
-      }
-      nsCOMPtr<nsIScriptObjectPrincipal> scriptPrincipal =
-        do_QueryInterface(globalObject);
-      NS_ASSERTION(scriptPrincipal, "Global objects must implement "
-                   "nsIScriptObjectPrincipal");
-      nsContentUtils::AddScriptRunner(
-        new ScriptErrorEvent(JS_GetRuntime(cx),
-                             report,
-                             message,
-                             nsJSPrincipals::get(report->originPrincipals),
-                             scriptPrincipal->GetPrincipal(),
-                             win,
-                             exception,
-                             /* We do not try to report Out Of Memory via a dom
-                              * event because the dom event handler would
-                              * encounter an OOM exception trying to process the
-                              * event, and then we'd need to generate a new OOM
-                              * event for that new OOM instance -- this isn't
-                              * pretty.
-                              */
-                             report->errorNumber != JSMSG_OUT_OF_MEMORY));
+  // The eventual plan is for error reporting to happen in the AutoJSAPI
+  // destructor using the global with which the AutoJSAPI was initialized. We
+  // can't _quite_ do that yet, so we take a sloppy stab at those semantics. If
+  // we have an nsIScriptContext, we'll get the right answer modulo
+  // non-current-inners.
+  //
+  // Otherwise, we just use the privileged junk scope. This has the effect of
+  // causing us to report the error as "chrome javascript" rather than "content
+  // javascript", and not invoking any error reporters. This is exactly what we
+  // want here.
+  if (nsIScriptContext* scx = GetScriptContextFromJSContext(cx)) {
+    nsCOMPtr<nsPIDOMWindow> outer = do_QueryInterface(scx->GetGlobalObject());
+    if (outer) {
+      globalObject = static_cast<nsGlobalWindow*>(outer->GetCurrentInnerWindow());
     }
+  } else {
+    globalObject = xpc::GetNativeForGlobal(xpc::PrivilegedJunkScope());
   }
 
-  if (nsContentUtils::DOMWindowDumpEnabled()) {
-    // Print it to stderr as well, for the benefit of those invoking
-    // mozilla with -console.
-    nsAutoCString error;
-    error.AssignLiteral("JavaScript ");
-    if (JSREPORT_IS_STRICT(report->flags))
-      error.AppendLiteral("strict ");
-    if (JSREPORT_IS_WARNING(report->flags))
-      error.AppendLiteral("warning: ");
-    else
-      error.AppendLiteral("error: ");
-    error.Append(report->filename);
-    error.AppendLiteral(", line ");
-    error.AppendInt(report->lineno, 10);
-    error.AppendLiteral(": ");
-    if (report->ucmessage) {
-      AppendUTF16toUTF8(reinterpret_cast<const char16_t*>(report->ucmessage),
-                        error);
-    } else {
-      error.Append(message);
+  if (globalObject) {
+    nsRefPtr<xpc::ErrorReport> xpcReport = new xpc::ErrorReport();
+    xpcReport->Init(report, message, globalObject);
+
+    // If there's no window to fire an event at, report it to the console
+    // directly.
+    if (!xpcReport->mWindow) {
+      xpcReport->LogToConsole();
+      return;
     }
 
-    fprintf(stderr, "%s\n", error.get());
-    fflush(stderr);
+    // Otherwise, we need to asynchronously invoke onerror before we can decide
+    // whether or not to report the error to the console.
+    nsContentUtils::AddScriptRunner(
+      new ScriptErrorEvent(JS_GetRuntime(cx),
+                           xpcReport,
+                           nsJSPrincipals::get(report->originPrincipals),
+                           exception,
+                           /* We do not try to report Out Of Memory via a dom
+                            * event because the dom event handler would
+                            * encounter an OOM exception trying to process the
+                            * event, and then we'd need to generate a new OOM
+                            * event for that new OOM instance -- this isn't
+                            * pretty.
+                            */
+                           report->errorNumber != JSMSG_OUT_OF_MEMORY));
   }
-
-#ifdef PR_LOGGING
-  if (!gJSDiagnostics)
-    gJSDiagnostics = PR_NewLogModule("JSDiagnostics");
-
-  if (gJSDiagnostics) {
-    PR_LOG(gJSDiagnostics,
-           JSREPORT_IS_WARNING(report->flags) ? PR_LOG_WARNING : PR_LOG_ERROR,
-           ("file %s, line %u: %s\n%s%s",
-            report->filename, report->lineno, message,
-            report->linebuf ? report->linebuf : "",
-            (report->linebuf &&
-             report->linebuf[strlen(report->linebuf)-1] != '\n')
-            ? "\n"
-            : ""));
-  }
-#endif
 }
+
+} /* namespace xpc */
 
 #ifdef DEBUG
 // A couple of useful functions to call when you're debugging.
@@ -749,8 +609,7 @@ nsJSContext::nsJSContext(bool aGCOnDestruction,
     ::JS_SetContextPrivate(mContext, static_cast<nsIScriptContext *>(this));
 
     // Make sure the new context gets the default context options
-    JS::ContextOptionsRef(mContext).setPrivateIsNSISupports(true)
-                                   .setNoDefaultCompartmentObject(true);
+    JS::ContextOptionsRef(mContext).setPrivateIsNSISupports(true);
 
     // Watch for the JS boolean options
     Preferences::RegisterCallback(JSOptionChangedCallback,
@@ -900,8 +759,6 @@ nsJSContext::InitContext()
 
   if (!mContext)
     return NS_ERROR_OUT_OF_MEMORY;
-
-  ::JS_SetErrorReporter(mContext, NS_ScriptErrorReporter);
 
   JSOptionChangedCallback(js_options_dot_str, this);
 
@@ -1073,7 +930,7 @@ nsJSContext::AddSupportsPrimitiveTojsvals(nsISupports *aArg, JS::Value *aArgv)
 
       p->GetData(data);
 
-      // cast is probably safe since wchar_t and jschar are expected
+      // cast is probably safe since wchar_t and char16_t are expected
       // to be equivalent; both unsigned 16-bit entities
       JSString *str =
         ::JS_NewUCStringCopyN(cx, data.get(), data.Length());
@@ -1405,105 +1262,6 @@ static const JSFunctionSpec TraceMallocFunctions[] = {
 
 #endif /* NS_TRACE_MALLOC */
 
-#ifdef MOZ_DMD
-
-#include <errno.h>
-
-namespace mozilla {
-namespace dmd {
-
-// See https://wiki.mozilla.org/Performance/MemShrink/DMD for instructions on
-// how to use DMD.
-
-static FILE *
-OpenDMDOutputFile(JSContext *cx, JS::CallArgs &args)
-{
-  JSString *str = JS::ToString(cx, args.get(0));
-  if (!str)
-    return nullptr;
-  JSAutoByteString pathname(cx, str);
-  if (!pathname)
-    return nullptr;
-
-  FILE* fp = fopen(pathname.ptr(), "w");
-  if (!fp) {
-    JS_ReportError(cx, "DMD can't open %s: %s",
-                   pathname.ptr(), strerror(errno));
-    return nullptr;
-  }
-  return fp;
-}
-
-static bool
-AnalyzeReports(JSContext *cx, unsigned argc, JS::Value *vp)
-{
-  if (!dmd::IsRunning()) {
-    JS_ReportError(cx, "DMD is not running");
-    return false;
-  }
-
-  JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
-  FILE *fp = OpenDMDOutputFile(cx, args);
-  if (!fp) {
-    return false;
-  }
-
-  dmd::ClearReports();
-  dmd::RunReportersForThisProcess();
-  dmd::Writer writer(FpWrite, fp);
-  dmd::AnalyzeReports(writer);
-
-  fclose(fp);
-
-  args.rval().setUndefined();
-  return true;
-}
-
-// This will be removed eventually.
-static bool
-ReportAndDump(JSContext *cx, unsigned argc, JS::Value *vp)
-{
-  JS_ReportWarning(cx, "DMDReportAndDump() is deprecated; "
-                   "please use DMDAnalyzeReports() instead");
-
-  return AnalyzeReports(cx, argc, vp);
-}
-
-static bool
-AnalyzeHeap(JSContext *cx, unsigned argc, JS::Value *vp)
-{
-  if (!dmd::IsRunning()) {
-    JS_ReportError(cx, "DMD is not running");
-    return false;
-  }
-
-  JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
-  FILE *fp = OpenDMDOutputFile(cx, args);
-  if (!fp) {
-    return false;
-  }
-
-  dmd::Writer writer(FpWrite, fp);
-  dmd::AnalyzeHeap(writer);
-
-  fclose(fp);
-
-  args.rval().setUndefined();
-  return true;
-}
-
-} // namespace dmd
-} // namespace mozilla
-
-static const JSFunctionSpec DMDFunctions[] = {
-    JS_FS("DMDReportAndDump",  dmd::ReportAndDump,  1, 0),
-    JS_FS("DMDAnalyzeReports", dmd::AnalyzeReports, 1, 0),
-    JS_FS("DMDAnalyzeHeap",    dmd::AnalyzeHeap,    1, 0),
-    JS_FS_END
-};
-
-#endif  // defined(MOZ_DMD)
-
 #ifdef MOZ_JPROF
 
 #include <signal.h>
@@ -1624,13 +1382,6 @@ nsJSContext::InitClasses(JS::Handle<JSObject*> aGlobalObj)
   if (nsContentUtils::IsCallerChrome()) {
     // Attempt to initialize TraceMalloc functions
     ::JS_DefineFunctions(cx, aGlobalObj, TraceMallocFunctions);
-  }
-#endif
-
-#ifdef MOZ_DMD
-  if (nsContentUtils::IsCallerChrome()) {
-    // Attempt to initialize DMD functions
-    ::JS_DefineFunctions(cx, aGlobalObj, DMDFunctions);
   }
 #endif
 
@@ -2551,7 +2302,7 @@ class NotifyGCEndRunnable : public nsRunnable
   nsString mMessage;
 
 public:
-  NotifyGCEndRunnable(const nsString& aMessage) : mMessage(aMessage) {}
+  explicit NotifyGCEndRunnable(const nsString& aMessage) : mMessage(aMessage) {}
 
   NS_DECL_NSIRUNNABLE
 };
@@ -2566,8 +2317,8 @@ NotifyGCEndRunnable::Run()
     return NS_OK;
   }
 
-  const jschar oomMsg[3] = { '{', '}', 0 };
-  const jschar *toSend = mMessage.get() ? mMessage.get() : oomMsg;
+  const char16_t oomMsg[3] = { '{', '}', 0 };
+  const char16_t *toSend = mMessage.get() ? mMessage.get() : oomMsg;
   observerService->NotifyObservers(nullptr, "garbage-collection-statistics", toSend);
 
   return NS_OK;
@@ -2937,8 +2688,8 @@ NS_DOMStructuredCloneError(JSContext* cx,
 
 static bool
 AsmJSCacheOpenEntryForRead(JS::Handle<JSObject*> aGlobal,
-                           const jschar* aBegin,
-                           const jschar* aLimit,
+                           const char16_t* aBegin,
+                           const char16_t* aLimit,
                            size_t* aSize,
                            const uint8_t** aMemory,
                            intptr_t *aHandle)
@@ -2952,8 +2703,8 @@ AsmJSCacheOpenEntryForRead(JS::Handle<JSObject*> aGlobal,
 static bool
 AsmJSCacheOpenEntryForWrite(JS::Handle<JSObject*> aGlobal,
                             bool aInstalled,
-                            const jschar* aBegin,
-                            const jschar* aEnd,
+                            const char16_t* aBegin,
+                            const char16_t* aEnd,
                             size_t aSize,
                             uint8_t** aMemory,
                             intptr_t* aHandle)

@@ -54,7 +54,7 @@ FrameSizeClass::ClassLimit()
 uint32_t
 FrameSizeClass::frameSize() const
 {
-    MOZ_ASSUME_UNREACHABLE("x64 does not use frame size classes");
+    MOZ_CRASH("x64 does not use frame size classes");
 }
 
 bool
@@ -110,7 +110,7 @@ CodeGeneratorX64::visitUnbox(LUnbox *unbox)
             cond = masm.testSymbol(Assembler::NotEqual, value);
             break;
           default:
-            MOZ_ASSUME_UNREACHABLE("Given MIRType cannot be unboxed.");
+            MOZ_CRASH("Given MIRType cannot be unboxed.");
         }
         if (!bailoutIf(cond, unbox->snapshot()))
             return false;
@@ -133,7 +133,7 @@ CodeGeneratorX64::visitUnbox(LUnbox *unbox)
         masm.unboxSymbol(value, ToRegister(result));
         break;
       default:
-        MOZ_ASSUME_UNREACHABLE("Given MIRType cannot be unboxed.");
+        MOZ_CRASH("Given MIRType cannot be unboxed.");
     }
 
     return true;
@@ -231,13 +231,13 @@ CodeGeneratorX64::visitAsmJSUInt32ToFloat32(LAsmJSUInt32ToFloat32 *lir)
 bool
 CodeGeneratorX64::visitLoadTypedArrayElementStatic(LLoadTypedArrayElementStatic *ins)
 {
-    MOZ_ASSUME_UNREACHABLE("NYI");
+    MOZ_CRASH("NYI");
 }
 
 bool
 CodeGeneratorX64::visitStoreTypedArrayElementStatic(LStoreTypedArrayElementStatic *ins)
 {
-    MOZ_ASSUME_UNREACHABLE("NYI");
+    MOZ_CRASH("NYI");
 }
 
 bool
@@ -280,7 +280,7 @@ CodeGeneratorX64::visitAsmJSLoadHeap(LAsmJSLoadHeap *ins)
       case Scalar::Uint32:  masm.movl(srcAddr, ToRegister(out)); break;
       case Scalar::Float32: masm.loadFloat32(srcAddr, ToFloatRegister(out)); break;
       case Scalar::Float64: masm.loadDouble(srcAddr, ToFloatRegister(out)); break;
-      default: MOZ_ASSUME_UNREACHABLE("unexpected array type");
+      default: MOZ_CRASH("unexpected array type");
     }
     uint32_t after = masm.size();
     if (ool)
@@ -322,7 +322,7 @@ CodeGeneratorX64::visitAsmJSStoreHeap(LAsmJSStoreHeap *ins)
           case Scalar::Uint16:  masm.movw(Imm32(ToInt32(ins->value())), dstAddr); break;
           case Scalar::Int32:
           case Scalar::Uint32:  masm.movl(Imm32(ToInt32(ins->value())), dstAddr); break;
-          default: MOZ_ASSUME_UNREACHABLE("unexpected array type");
+          default: MOZ_CRASH("unexpected array type");
         }
     } else {
         switch (vt) {
@@ -334,7 +334,7 @@ CodeGeneratorX64::visitAsmJSStoreHeap(LAsmJSStoreHeap *ins)
           case Scalar::Uint32:  masm.movl(ToRegister(ins->value()), dstAddr); break;
           case Scalar::Float32: masm.storeFloat32(ToFloatRegister(ins->value()), dstAddr); break;
           case Scalar::Float64: masm.storeDouble(ToFloatRegister(ins->value()), dstAddr); break;
-          default: MOZ_ASSUME_UNREACHABLE("unexpected array type");
+          default: MOZ_CRASH("unexpected array type");
         }
     }
     uint32_t after = masm.size();
@@ -349,11 +349,32 @@ CodeGeneratorX64::visitAsmJSLoadGlobalVar(LAsmJSLoadGlobalVar *ins)
 {
     MAsmJSLoadGlobalVar *mir = ins->mir();
 
+    MIRType type = mir->type();
+    JS_ASSERT(IsNumberType(type) || IsSimdType(type));
+
     CodeOffsetLabel label;
-    if (mir->type() == MIRType_Int32)
+    switch (type) {
+      case MIRType_Int32:
         label = masm.loadRipRelativeInt32(ToRegister(ins->output()));
-    else
+        break;
+      case MIRType_Float32:
+        label = masm.loadRipRelativeFloat32(ToFloatRegister(ins->output()));
+        break;
+      case MIRType_Double:
         label = masm.loadRipRelativeDouble(ToFloatRegister(ins->output()));
+        break;
+      // Aligned access: code is aligned on PageSize + there is padding
+      // before the global data section.
+      case MIRType_Int32x4:
+        label = masm.loadRipRelativeInt32x4(ToFloatRegister(ins->output()));
+        break;
+      case MIRType_Float32x4:
+        label = masm.loadRipRelativeFloat32x4(ToFloatRegister(ins->output()));
+        break;
+      default:
+        MOZ_CRASH("unexpected type in visitAsmJSLoadGlobalVar");
+    }
+
     masm.append(AsmJSGlobalAccess(label, mir->globalDataOffset()));
     return true;
 }
@@ -364,13 +385,31 @@ CodeGeneratorX64::visitAsmJSStoreGlobalVar(LAsmJSStoreGlobalVar *ins)
     MAsmJSStoreGlobalVar *mir = ins->mir();
 
     MIRType type = mir->value()->type();
-    JS_ASSERT(IsNumberType(type));
+    JS_ASSERT(IsNumberType(type) || IsSimdType(type));
 
     CodeOffsetLabel label;
-    if (type == MIRType_Int32)
+    switch (type) {
+      case MIRType_Int32:
         label = masm.storeRipRelativeInt32(ToRegister(ins->value()));
-    else
+        break;
+      case MIRType_Float32:
+        label = masm.storeRipRelativeFloat32(ToFloatRegister(ins->value()));
+        break;
+      case MIRType_Double:
         label = masm.storeRipRelativeDouble(ToFloatRegister(ins->value()));
+        break;
+      // Aligned access: code is aligned on PageSize + there is padding
+      // before the global data section.
+      case MIRType_Int32x4:
+        label = masm.storeRipRelativeInt32x4(ToFloatRegister(ins->value()));
+        break;
+      case MIRType_Float32x4:
+        label = masm.storeRipRelativeFloat32x4(ToFloatRegister(ins->value()));
+        break;
+      default:
+        MOZ_CRASH("unexpected type in visitAsmJSStoreGlobalVar");
+    }
+
     masm.append(AsmJSGlobalAccess(label, mir->globalDataOffset()));
     return true;
 }

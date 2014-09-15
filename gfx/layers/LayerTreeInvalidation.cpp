@@ -10,7 +10,6 @@
 #include "Layers.h"                     // for Layer, ContainerLayer, etc
 #include "gfxColor.h"                   // for gfxRGBA
 #include "GraphicsFilter.h"             // for GraphicsFilter
-#include "gfxPoint3D.h"                 // for gfxPoint3D
 #include "gfxRect.h"                    // for gfxRect
 #include "gfxUtils.h"                   // for gfxUtils
 #include "mozilla/gfx/BaseSize.h"       // for BaseSize
@@ -31,7 +30,7 @@ namespace mozilla {
 namespace layers {
 
 struct LayerPropertiesBase;
-LayerPropertiesBase* CloneLayerTreePropertiesInternal(Layer* aRoot);
+UniquePtr<LayerPropertiesBase> CloneLayerTreePropertiesInternal(Layer* aRoot);
 
 static nsIntRect
 TransformRect(const nsIntRect& aRect, const Matrix4x4& aTransform)
@@ -98,7 +97,7 @@ NotifySubdocumentInvalidationRecursive(Layer* aLayer, NotifySubDocInvalidationFu
 
 struct LayerPropertiesBase : public LayerProperties
 {
-  LayerPropertiesBase(Layer* aLayer)
+  explicit LayerPropertiesBase(Layer* aLayer)
     : mLayer(aLayer)
     , mMaskLayer(nullptr)
     , mVisibleRegion(aLayer->GetVisibleRegion())
@@ -199,7 +198,7 @@ struct LayerPropertiesBase : public LayerProperties
   }
 
   nsRefPtr<Layer> mLayer;
-  nsAutoPtr<LayerPropertiesBase> mMaskLayer;
+  UniquePtr<LayerPropertiesBase> mMaskLayer;
   nsIntRegion mVisibleRegion;
   nsIntRegion mInvalidRegion;
   Matrix4x4 mTransform;
@@ -212,13 +211,13 @@ struct LayerPropertiesBase : public LayerProperties
 
 struct ContainerLayerProperties : public LayerPropertiesBase
 {
-  ContainerLayerProperties(ContainerLayer* aLayer)
+  explicit ContainerLayerProperties(ContainerLayer* aLayer)
     : LayerPropertiesBase(aLayer)
     , mPreXScale(aLayer->GetPreXScale())
     , mPreYScale(aLayer->GetPreYScale())
   {
     for (Layer* child = aLayer->GetFirstChild(); child; child = child->GetNextSibling()) {
-      mChildren.AppendElement(CloneLayerTreePropertiesInternal(child));
+      mChildren.AppendElement(Move(CloneLayerTreePropertiesInternal(child)));
     }
   }
 
@@ -315,14 +314,14 @@ struct ContainerLayerProperties : public LayerPropertiesBase
   }
 
   // The old list of children:
-  nsAutoTArray<nsAutoPtr<LayerPropertiesBase>,1> mChildren;
+  nsAutoTArray<UniquePtr<LayerPropertiesBase>,1> mChildren;
   float mPreXScale;
   float mPreYScale;
 };
 
 struct ColorLayerProperties : public LayerPropertiesBase
 {
-  ColorLayerProperties(ColorLayer *aLayer)
+  explicit ColorLayerProperties(ColorLayer *aLayer)
     : LayerPropertiesBase(aLayer)
     , mColor(aLayer->GetColor())
   { }
@@ -345,7 +344,7 @@ struct ColorLayerProperties : public LayerPropertiesBase
 
 struct ImageLayerProperties : public LayerPropertiesBase
 {
-  ImageLayerProperties(ImageLayer* aImage)
+  explicit ImageLayerProperties(ImageLayer* aImage)
     : LayerPropertiesBase(aImage)
     , mContainer(aImage->GetContainer())
     , mFilter(aImage->GetFilter())
@@ -383,29 +382,29 @@ struct ImageLayerProperties : public LayerPropertiesBase
   ScaleMode mScaleMode;
 };
 
-LayerPropertiesBase*
+UniquePtr<LayerPropertiesBase>
 CloneLayerTreePropertiesInternal(Layer* aRoot)
 {
   if (!aRoot) {
-    return new LayerPropertiesBase();
+    return MakeUnique<LayerPropertiesBase>();
   }
 
   switch (aRoot->GetType()) {
     case Layer::TYPE_CONTAINER:
     case Layer::TYPE_REF:
-      return new ContainerLayerProperties(aRoot->AsContainerLayer());
+      return MakeUnique<ContainerLayerProperties>(aRoot->AsContainerLayer());
     case Layer::TYPE_COLOR:
-      return new ColorLayerProperties(static_cast<ColorLayer*>(aRoot));
+      return MakeUnique<ColorLayerProperties>(static_cast<ColorLayer*>(aRoot));
     case Layer::TYPE_IMAGE:
-      return new ImageLayerProperties(static_cast<ImageLayer*>(aRoot));
+      return MakeUnique<ImageLayerProperties>(static_cast<ImageLayer*>(aRoot));
     default:
-      return new LayerPropertiesBase(aRoot);
+      return MakeUnique<LayerPropertiesBase>(aRoot);
   }
 
-  return nullptr;
+  return UniquePtr<LayerPropertiesBase>(nullptr);
 }
 
-/* static */ LayerProperties*
+/* static */ UniquePtr<LayerProperties>
 LayerProperties::CloneFrom(Layer* aRoot)
 {
   return CloneLayerTreePropertiesInternal(aRoot);

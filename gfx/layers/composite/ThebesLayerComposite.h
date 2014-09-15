@@ -37,7 +37,7 @@ class ThebesLayerComposite : public ThebesLayer,
                              public LayerComposite
 {
 public:
-  ThebesLayerComposite(LayerManagerComposite *aManager);
+  explicit ThebesLayerComposite(LayerManagerComposite *aManager);
 
 protected:
   virtual ~ThebesLayerComposite();
@@ -85,8 +85,6 @@ protected:
 
 private:
   gfx::Filter GetEffectFilter() { return gfx::Filter::LINEAR; }
-
-  CSSToScreenScale GetEffectiveResolution();
 
 private:
   RefPtr<ContentHost> mBuffer;

@@ -294,7 +294,7 @@ protected:
     typedef pixman_region32 RawRef;
 
     nsSimpleRef() { data = nullptr; }
-    nsSimpleRef(const RawRef &aRawRef) : pixman_region32(aRawRef) { }
+    explicit nsSimpleRef(const RawRef &aRawRef) : pixman_region32(aRawRef) { }
 
     static void Release(pixman_region32& region) {
         pixman_region32_fini(&region);
@@ -5003,8 +5003,6 @@ get_gtk_cursor(nsCursor aCursor)
     // Those two aren’t standardized. Trying both KDE’s and GNOME’s names
     case eCursor_grab:
         gdkcursor = gdk_cursor_new_from_name(defaultDisplay, "openhand");
-        if (!gdkcursor)
-            gdkcursor = gdk_cursor_new_from_name(defaultDisplay, "hand1");
         if (!gdkcursor)
             newType = MOZ_CURSOR_HAND_GRAB;
         break;

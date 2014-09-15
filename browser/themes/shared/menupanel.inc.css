@@ -161,6 +161,7 @@ toolbarpaletteitem[place="palette"] > #loop-call-button > .toolbarbutton-badge-c
   -moz-image-region: rect(0, 32px, 32px, 0) !important;
 }
 
+#loop-call-button[cui-areatype="menu-panel"][state="disabled"] > .toolbarbutton-badge-container,
 #loop-call-button[cui-areatype="menu-panel"][disabled="true"] > .toolbarbutton-badge-container {
   -moz-image-region: rect(0, 64px, 32px, 32px);
 }
@@ -216,10 +217,5 @@ toolbarpaletteitem[place="palette"] > #zoom-controls > #zoom-out-button {
 
 #zoom-controls@inAnyPanel@ > #zoom-in-button,
 toolbarpaletteitem[place="palette"] > #zoom-controls > #zoom-in-button {
-  -moz-image-region: rect(0px, 96px, 16px, 80px);
-}
-
-#add-share-provider {
-  list-style-image: url(chrome://browser/skin/menuPanel-small.png);
   -moz-image-region: rect(0px, 96px, 16px, 80px);
 }

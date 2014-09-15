@@ -37,6 +37,8 @@ private:
     bool PossiblyHostPortUrl(const nsACString& aUrl);
     bool MakeAlternateURI(nsIURI *aURI);
     bool IsLikelyFTP(const nsCString& aHostSpec);
+    bool IsDomainWhitelisted(const nsAutoCString aAsciiHost,
+                             const uint32_t aDotLoc);
 };
 
 class nsDefaultURIFixupInfo : public nsIURIFixupInfo
@@ -45,7 +47,7 @@ public:
     NS_DECL_ISUPPORTS
     NS_DECL_NSIURIFIXUPINFO
 
-    nsDefaultURIFixupInfo(const nsACString& aOriginalInput);
+    explicit nsDefaultURIFixupInfo(const nsACString& aOriginalInput);
 
     friend class nsDefaultURIFixup;
 

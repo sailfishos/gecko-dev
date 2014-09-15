@@ -4,7 +4,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-PROGRAM = 'jsapi-tests'
+Program('jsapi-tests')
 
 UNIFIED_SOURCES += [
     'selfTest.cpp',
@@ -17,13 +17,13 @@ UNIFIED_SOURCES += [
     'testChromeBuffer.cpp',
     'testClassGetter.cpp',
     'testCloneScript.cpp',
-    'testConservativeGC.cpp',
     'testContexts.cpp',
     'testCustomIterator.cpp',
     'testDebugger.cpp',
     'testDeepFreeze.cpp',
     'testDefineGetterSetterNonEnumerable.cpp',
     'testDefineProperty.cpp',
+    'testDefinePropertyIgnoredAttributes.cpp',
     'testEnclosingFunction.cpp',
     'testErrorCopying.cpp',
     'testException.cpp',
@@ -63,6 +63,7 @@ UNIFIED_SOURCES += [
     'testResolveRecursion.cpp',
     'tests.cpp',
     'testSameValue.cpp',
+    'testSavedStacks.cpp',
     'testScriptInfo.cpp',
     'testScriptObject.cpp',
     'testSetProperty.cpp',

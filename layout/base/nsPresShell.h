@@ -56,10 +56,10 @@ class CSSStyleSheet;
 // to get the pref for any reason.
 #define PAINTLOCK_EVENT_DELAY 250
 
-class PresShell : public nsIPresShell,
-                  public nsStubDocumentObserver,
-                  public nsISelectionController, public nsIObserver,
-                  public nsSupportsWeakReference
+class PresShell MOZ_FINAL : public nsIPresShell,
+                            public nsStubDocumentObserver,
+                            public nsISelectionController, public nsIObserver,
+                            public nsSupportsWeakReference
 {
 public:
   PresShell();
@@ -440,7 +440,7 @@ protected:
   friend struct RenderingState;
 
   struct RenderingState {
-    RenderingState(PresShell* aPresShell)
+    explicit RenderingState(PresShell* aPresShell)
       : mXResolution(aPresShell->mXResolution)
       , mYResolution(aPresShell->mYResolution)
       , mRenderFlags(aPresShell->mRenderFlags)
@@ -451,7 +451,7 @@ protected:
   };
 
   struct AutoSaveRestoreRenderingState {
-    AutoSaveRestoreRenderingState(PresShell* aPresShell)
+    explicit AutoSaveRestoreRenderingState(PresShell* aPresShell)
       : mPresShell(aPresShell)
       , mOldState(aPresShell)
     {}
@@ -583,13 +583,13 @@ protected:
   class DelayedMouseEvent : public DelayedInputEvent
   {
   public:
-    DelayedMouseEvent(mozilla::WidgetMouseEvent* aEvent);
+    explicit DelayedMouseEvent(mozilla::WidgetMouseEvent* aEvent);
   };
 
   class DelayedKeyEvent : public DelayedInputEvent
   {
   public:
-    DelayedKeyEvent(mozilla::WidgetKeyboardEvent* aEvent);
+    explicit DelayedKeyEvent(mozilla::WidgetKeyboardEvent* aEvent);
   };
 
   // Check if aEvent is a mouse event and record the mouse location for later

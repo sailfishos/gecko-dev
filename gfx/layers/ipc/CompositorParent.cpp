@@ -242,7 +242,9 @@ CompositorParent::CompositorParent(nsIWidget* aWidget,
   mRootLayerTreeID = AllocateLayerTreeId();
   sIndirectLayerTrees[mRootLayerTreeID].mParent = this;
 
-  mApzcTreeManager = new APZCTreeManager();
+  if (gfxPrefs::AsyncPanZoomEnabled()) {
+    mApzcTreeManager = new APZCTreeManager();
+  }
 }
 
 bool
@@ -277,8 +279,10 @@ CompositorParent::Destroy()
   mCompositor = nullptr;
 
   mCompositionManager = nullptr;
-  mApzcTreeManager->ClearTree();
-  mApzcTreeManager = nullptr;
+  if (mApzcTreeManager) {
+    mApzcTreeManager->ClearTree();
+    mApzcTreeManager = nullptr;
+  }
   sIndirectLayerTrees.erase(mRootLayerTreeID);
 }
 
@@ -797,7 +801,7 @@ CompositorParent::ShadowLayersUpdated(LayerTransactionParent* aLayerTree,
   // Instruct the LayerManager to update its render bounds now. Since all the orientation
   // change, dimension change would be done at the stage, update the size here is free of
   // race condition.
-  mLayerManager->UpdateRenderBounds(aTargetConfig.clientBounds());
+  mLayerManager->UpdateRenderBounds(aTargetConfig.naturalBounds());
   mLayerManager->SetRegionToClear(aTargetConfig.clearRegion());
 
   mCompositionManager->Updated(aIsFirstPaint, aTargetConfig);

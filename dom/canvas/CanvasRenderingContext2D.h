@@ -41,6 +41,7 @@ class ImageData;
 class StringOrCanvasGradientOrCanvasPattern;
 class OwningStringOrCanvasGradientOrCanvasPattern;
 class TextMetrics;
+class SVGMatrix;
 
 extern const mozilla::gfx::Float SIGMA_MAX;
 
@@ -94,6 +95,9 @@ public:
   CanvasPath(nsISupports* aParent,
              TemporaryRef<gfx::PathBuilder> aPathBuilder);
 
+  void AddPath(CanvasPath& aCanvasPath,
+               const Optional<NonNull<SVGMatrix>>& aMatrix);
+
 private:
   virtual ~CanvasPath() {}
 
@@ -112,7 +116,7 @@ class CanvasRenderingContext2DUserData;
 /**
  ** CanvasRenderingContext2D
  **/
-class CanvasRenderingContext2D :
+class CanvasRenderingContext2D MOZ_FINAL :
   public nsICanvasRenderingContextInternal,
   public nsWrapperCache
 {
@@ -453,6 +457,15 @@ public:
                            double h, const nsAString& bgColor, uint32_t flags,
                            mozilla::ErrorResult& error);
 
+  enum RenderingMode {
+    SoftwareBackendMode,
+    OpenGLBackendMode,
+    DefaultBackendMode
+  };
+
+  bool SwitchRenderingMode(RenderingMode aRenderingMode);
+
+  // Eventually this should be deprecated. Keeping for now to keep the binding functional.
   void Demote();
 
   nsresult Redraw();
@@ -462,6 +475,18 @@ public:
     virtual int32_t GetHeight() const MOZ_OVERRIDE;
 #endif
   // nsICanvasRenderingContextInternal
+  /**
+    * Gets the pres shell from either the canvas element or the doc shell
+    */
+  virtual nsIPresShell *GetPresShell() MOZ_OVERRIDE {
+    if (mCanvasElement) {
+      return mCanvasElement->OwnerDoc()->GetShell();
+    }
+    if (mDocShell) {
+      return mDocShell->GetPresShell();
+    }
+    return nullptr;
+  }
   NS_IMETHOD SetDimensions(int32_t width, int32_t height) MOZ_OVERRIDE;
   NS_IMETHOD InitializeWithSurface(nsIDocShell *shell, gfxASurface *surface, int32_t width, int32_t height) MOZ_OVERRIDE;
 
@@ -491,6 +516,13 @@ public:
   void Redraw(const mozilla::gfx::Rect &r);
   NS_IMETHOD Redraw(const gfxRect &r) MOZ_OVERRIDE { Redraw(ToRect(r)); return NS_OK; }
   NS_IMETHOD SetContextOptions(JSContext* aCx, JS::Handle<JS::Value> aOptions) MOZ_OVERRIDE;
+
+  /**
+   * An abstract base class to be implemented by callers wanting to be notified
+   * that a refresh has occurred. Callers must ensure an observer is removed
+   * before it is destroyed.
+   */
+  virtual void DidRefresh() MOZ_OVERRIDE;
 
   // this rect is in mTarget's current user space
   void RedrawUser(const gfxRect &r);
@@ -640,8 +672,10 @@ protected:
    * in creating the target then it will put sErrorTarget in place. If there
    * is in turn an error in creating the sErrorTarget then they would both
    * be null so IsTargetValid() would still return null.
+   *
+   * Returns the actual rendering mode being used by the created target.
    */
-  void EnsureTarget();
+  RenderingMode EnsureTarget(RenderingMode aRenderMode = RenderingMode::DefaultBackendMode);
 
   /*
    * Disposes an old target and prepares to lazily create a new target.
@@ -665,9 +699,10 @@ protected:
                  uint8_t optional_argc, mozilla::ErrorResult& error);
 
   void DrawDirectlyToCanvas(const nsLayoutUtils::DirectDrawInfo& image,
-                            mozilla::gfx::Rect* bounds, double dx, double dy,
-                            double dw, double dh, double sx, double sy,
-                            double sw, double sh, gfxIntSize imgSize);
+                            mozilla::gfx::Rect* bounds,
+                            mozilla::gfx::Rect dest,
+                            mozilla::gfx::Rect src,
+                            gfxIntSize imgSize);
 
   nsString& GetFont()
   {
@@ -683,8 +718,7 @@ protected:
   static void AddDemotableContext(CanvasRenderingContext2D* context);
   static void RemoveDemotableContext(CanvasRenderingContext2D* context);
 
-  // Do not use GL
-  bool mForceSoftware;
+  RenderingMode mRenderingMode;
 
   // Member vars
   int32_t mWidth, mHeight;
@@ -790,7 +824,7 @@ protected:
     // The spec says we should not draw shadows if the operator is OVER.
     // If it's over and the alpha value is zero, nothing needs to be drawn.
     return NS_GET_A(state.shadowColor) != 0 &&
-      (state.shadowBlur != 0 || state.shadowOffset.x != 0 || state.shadowOffset.y != 0);
+      (state.shadowBlur != 0.f || state.shadowOffset.x != 0.f || state.shadowOffset.y != 0.f);
   }
 
   mozilla::gfx::CompositionOp UsedOperation()
@@ -801,19 +835,6 @@ protected:
     }
 
     return CurrentState().op;
-  }
-
-  /**
-    * Gets the pres shell from either the canvas element or the doc shell
-    */
-  nsIPresShell *GetPresShell() {
-    if (mCanvasElement) {
-      return mCanvasElement->OwnerDoc()->GetShell();
-    }
-    if (mDocShell) {
-      return mDocShell->GetPresShell();
-    }
-    return nullptr;
   }
 
   // text

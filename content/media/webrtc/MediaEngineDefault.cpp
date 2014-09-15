@@ -39,7 +39,7 @@ NS_IMPL_ISUPPORTS(MediaEngineDefaultVideoSource, nsITimerCallback)
  */
 
 MediaEngineDefaultVideoSource::MediaEngineDefaultVideoSource()
-  : mTimer(nullptr), mMonitor("Fake video")
+  : mTimer(nullptr), mMonitor("Fake video"), mCb(16), mCr(16)
 {
   mImageContainer = layers::LayerManager::CreateImageContainer();
   mState = kReleased;
@@ -306,7 +306,7 @@ public:
   static const int millisecondsPerSecond = 1000;
   static const int frequency = 1000;
 
-  SineWaveGenerator(int aSampleRate) :
+  explicit SineWaveGenerator(int aSampleRate) :
     mTotalLength(aSampleRate / frequency),
     mReadLength(0) {
     MOZ_ASSERT(mTotalLength * frequency == aSampleRate);

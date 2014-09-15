@@ -22,7 +22,6 @@
 #include "nsContentUtils.h"
 #include "nsDebug.h"
 #include "nsDependentSubstring.h"
-#include "nsEditProperty.h"
 #include "nsEditRules.h"
 #include "nsEditor.h"
 #include "nsEditorUtils.h"
@@ -411,9 +410,9 @@ nsHTMLEditor::DoInsertHTMLWithContext(const nsAString & aInputString,
     // this is because if there is a br at end of what we paste, it will make
     // the invisible br visible.
     nsWSRunObject wsObj(this, parentNode, offsetOfNewNode);
-    if (nsTextEditUtils::IsBreak(wsObj.mEndReasonNode) && 
-        !IsVisBreak(wsObj.mEndReasonNode) )
-    {
+    if (wsObj.mEndReasonNode &&
+        nsTextEditUtils::IsBreak(wsObj.mEndReasonNode) &&
+        !IsVisBreak(wsObj.mEndReasonNode)) {
       rv = DeleteNode(wsObj.mEndReasonNode);
       NS_ENSURE_SUCCESS(rv, rv);
     }
@@ -1936,9 +1935,7 @@ void RemoveBodyAndHead(nsIDOMNode *aNode)
     if (nsTextEditUtils::IsBody(child))
     {
       body = child;
-    }
-    else if (nsEditor::NodeIsType(child, nsEditProperty::head))
-    {
+    } else if (nsEditor::NodeIsType(child, nsGkAtoms::head)) {
       head = child;
     }
     child->GetNextSibling(getter_AddRefs(tmp));

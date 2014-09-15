@@ -187,10 +187,14 @@ class JitRuntime
     // Thunk that calls the GC pre barrier.
     JitCode *valuePreBarrier_;
     JitCode *shapePreBarrier_;
+    JitCode *typeObjectPreBarrier_;
 
     // Thunk to call malloc/free.
     JitCode *mallocStub_;
     JitCode *freeStub_;
+
+    // Thunk called to finish compilation of an IonScript.
+    JitCode *lazyLinkStub_;
 
     // Thunk used by the debugger for breakpoint and step mode.
     JitCode *debugTrapHandler_;
@@ -237,6 +241,7 @@ class JitRuntime
     JitcodeGlobalTable *jitcodeGlobalTable_;
 
   private:
+    JitCode *generateLazyLinkStub(JSContext *cx);
     JitCode *generateExceptionTailStub(JSContext *cx);
     JitCode *generateBailoutTailStub(JSContext *cx);
     JitCode *generateEnterJIT(JSContext *cx, EnterJitType type);
@@ -313,7 +318,7 @@ class JitRuntime
         switch (mode) {
           case SequentialExecution: return bailoutHandler_;
           case ParallelExecution:   return parallelBailoutHandler_;
-          default:                  MOZ_ASSUME_UNREACHABLE("No such execution mode");
+          default:                  MOZ_CRASH("No such execution mode");
         }
     }
 
@@ -331,7 +336,7 @@ class JitRuntime
         switch (mode) {
           case SequentialExecution: return argumentsRectifier_;
           case ParallelExecution:   return parallelArgumentsRectifier_;
-          default:                  MOZ_ASSUME_UNREACHABLE("No such execution mode");
+          default:                  MOZ_CRASH("No such execution mode");
         }
     }
 
@@ -351,12 +356,13 @@ class JitRuntime
         return enterBaselineJIT_->as<EnterJitCode>();
     }
 
-    JitCode *valuePreBarrier() const {
-        return valuePreBarrier_;
-    }
-
-    JitCode *shapePreBarrier() const {
-        return shapePreBarrier_;
+    JitCode *preBarrier(MIRType type) const {
+        switch (type) {
+          case MIRType_Value: return valuePreBarrier_;
+          case MIRType_Shape: return shapePreBarrier_;
+          case MIRType_TypeObject: return typeObjectPreBarrier_;
+          default: MOZ_CRASH();
+        }
     }
 
     JitCode *mallocStub() const {
@@ -365,6 +371,10 @@ class JitRuntime
 
     JitCode *freeStub() const {
         return freeStub_;
+    }
+
+    JitCode *lazyLinkStub() const {
+        return lazyLinkStub_;
     }
 
     bool ensureForkJoinGetSliceStubExists(JSContext *cx);
@@ -508,7 +518,7 @@ class JitCompartment
         switch (mode) {
           case SequentialExecution: return stringConcatStub_;
           case ParallelExecution:   return parallelStringConcatStub_;
-          default:                  MOZ_ASSUME_UNREACHABLE("No such execution mode");
+          default:                  MOZ_CRASH("No such execution mode");
         }
     }
 };

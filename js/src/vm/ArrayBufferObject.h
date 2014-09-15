@@ -160,13 +160,13 @@ class ArrayBufferObject : public JSObject
 
     static void sweep(JSCompartment *rt);
 
-    static void fixupDataPointerAfterMovingGC(const ArrayBufferObject &src, ArrayBufferObject &dst);
+    static void objectMoved(JSObject *obj, const JSObject *old);
 
     static void resetArrayBufferList(JSCompartment *rt);
     static bool saveArrayBufferList(JSCompartment *c, ArrayBufferVector &vector);
     static void restoreArrayBufferLists(ArrayBufferVector &vector);
 
-    static void *stealContents(JSContext *cx, Handle<ArrayBufferObject*> buffer);
+    static BufferContents stealContents(JSContext *cx, Handle<ArrayBufferObject*> buffer);
 
     bool hasStealableContents() const {
         // Inline elements strictly adhere to the corresponding buffer.
@@ -187,7 +187,7 @@ class ArrayBufferObject : public JSObject
     }
 
     static void addSizeOfExcludingThis(JSObject *obj, mozilla::MallocSizeOf mallocSizeOf,
-                                       JS::ObjectsExtraSizes *sizes);
+                                       JS::ClassInfo *info);
 
     void addView(ArrayBufferViewObject *view);
 

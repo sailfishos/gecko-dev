@@ -18,6 +18,8 @@
 #include "nsIDOMStorageManager.h"
 #include "nsDocLoader.h"
 #include "mozilla/WeakPtr.h"
+#include "mozilla/TimeStamp.h"
+#include "GeckoProfiler.h"
 
 // Helper Classes
 #include "nsCOMPtr.h"
@@ -79,6 +81,7 @@ class nsIURIFixup;
 class nsIURILoader;
 class nsIWebBrowserFind;
 class nsIWidget;
+class ProfilerMarkerTracing;
 
 /* load commands were moved to nsIDocShell.h */
 /* load types were moved to nsDocShellLoadTypes.h */
@@ -123,24 +126,24 @@ typedef enum {
 //***    nsDocShell
 //*****************************************************************************
 
-class nsDocShell : public nsDocLoader,
-                   public nsIDocShell,
-                   public nsIWebNavigation,
-                   public nsIBaseWindow, 
-                   public nsIScrollable, 
-                   public nsITextScroll, 
-                   public nsIDocCharset, 
-                   public nsIContentViewerContainer,
-                   public nsIRefreshURI,
-                   public nsIWebProgressListener,
-                   public nsIWebPageDescriptor,
-                   public nsIAuthPromptProvider,
-                   public nsILoadContext,
-                   public nsIWebShellServices,
-                   public nsILinkHandler,
-                   public nsIClipboardCommands,
-                   public nsIDOMStorageManager,
-                   public mozilla::SupportsWeakPtr<nsDocShell>
+class nsDocShell MOZ_FINAL : public nsDocLoader,
+                             public nsIDocShell,
+                             public nsIWebNavigation,
+                             public nsIBaseWindow,
+                             public nsIScrollable,
+                             public nsITextScroll,
+                             public nsIDocCharset,
+                             public nsIContentViewerContainer,
+                             public nsIRefreshURI,
+                             public nsIWebProgressListener,
+                             public nsIWebPageDescriptor,
+                             public nsIAuthPromptProvider,
+                             public nsILoadContext,
+                             public nsIWebShellServices,
+                             public nsILinkHandler,
+                             public nsIClipboardCommands,
+                             public nsIDOMStorageManager,
+                             public mozilla::SupportsWeakPtr<nsDocShell>
 {
     friend class nsDSURIContentListener;
 
@@ -243,6 +246,26 @@ public:
     }
 
     nsresult HistoryTransactionRemoved(int32_t aIndex);
+
+    // Notify Scroll observers when an async panning/zooming transform
+    // has started being applied
+    void NotifyAsyncPanZoomStarted();
+    // Notify Scroll observers when an async panning/zooming transform
+    // is no longer applied
+    void NotifyAsyncPanZoomStopped();
+
+    // Add new profile timeline markers to this docShell. This will only add
+    // markers if the docShell is currently recording profile timeline markers.
+    // See nsIDocShell::recordProfileTimelineMarkers
+    void AddProfileTimelineMarker(const char* aName,
+                                  TracingMetadata aMetaData);
+    void AddProfileTimelineMarker(const char* aName,
+                                  ProfilerBacktrace* aCause,
+                                  TracingMetadata aMetaData);
+
+    // Global counter for how many docShells are currently recording profile
+    // timeline markers
+    static unsigned long gProfileTimelineRecordingsCount;
 protected:
     // Object Management
     virtual ~nsDocShell();
@@ -514,8 +537,9 @@ protected:
                              const char16_t *aDescription,
                              const char *aCSSClass,
                              nsIChannel* aFailedChannel);
-    bool IsNavigationAllowed(bool aDisplayPrintErrorDialog = true);
     bool IsPrintingOrPP(bool aDisplayErrorDialog = true);
+    bool IsNavigationAllowed(bool aDisplayPrintErrorDialog = true,
+                             bool aCheckIfUnloadFired = true);
 
     nsresult SetBaseUrlForWyciwyg(nsIContentViewer * aContentViewer);
 
@@ -916,6 +940,30 @@ private:
     nsCString         mOriginalUriString;
     nsWeakPtr mOpener;
     nsWeakPtr mOpenedRemote;
+
+    // Storing profile timeline markers and if/when recording started
+    mozilla::TimeStamp mProfileTimelineStartTime;
+    struct InternalProfileTimelineMarker
+    {
+      InternalProfileTimelineMarker(const char* aName,
+                                    ProfilerMarkerTracing* aPayload,
+                                    float aTime)
+        : mName(aName)
+        , mPayload(aPayload)
+        , mTime(aTime)
+      {}
+      const char* mName;
+      ProfilerMarkerTracing* mPayload;
+      float mTime;
+    };
+    nsTArray<nsAutoPtr<InternalProfileTimelineMarker>> mProfileTimelineMarkers;
+
+    // Get the elapsed time (in millis) since the profile timeline recording
+    // started
+    float GetProfileTimelineDelta();
+
+    // Get rid of all the timeline markers accumulated so far
+    void ClearProfileTimelineMarkers();
 
     // Separate function to do the actual name (i.e. not _top, _self etc.)
     // searching for FindItemWithName.

@@ -100,9 +100,6 @@ include('/ipc/chromium/chromium-config.mozbuild')
 
 FINAL_LIBRARY = 'xul'
 LOCAL_INCLUDES += [
-    '../src/base',
-    '../src/geolocation',
-    '../src/storage',
     '/chrome',
     '/content/base/src',
     '/content/media/webspeech/synth/ipc',
@@ -113,9 +110,11 @@ LOCAL_INCLUDES += [
     '/dom/devicestorage',
     '/dom/filesystem',
     '/dom/fmradio/ipc',
+    '/dom/geolocation',
     '/dom/indexedDB',
     '/dom/indexedDB/ipc',
-    '/dom/mobilemessage/src/ipc',
+    '/dom/mobilemessage/ipc',
+    '/dom/storage',
     '/extensions/cookie',
     '/hal/sandbox',
     '/js/ipc',
@@ -136,11 +135,6 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('android', 'gtk2', 'gonk', 'qt'):
 for var in ('MOZ_PERMISSIONS', 'MOZ_CHILD_PERMISSIONS'):
     if CONFIG[var]:
         DEFINES[var] = True
-
-if CONFIG['ENABLE_TESTS']:
-    LOCAL_INCLUDES += [
-      'ipc/glue',
-    ]
 
 JAR_MANIFESTS += ['jar.mn']
 

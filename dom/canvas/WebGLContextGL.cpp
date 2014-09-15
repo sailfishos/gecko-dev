@@ -223,18 +223,26 @@ WebGLContext::BindTexture(GLenum target, WebGLTexture *newTex)
      if (!ValidateObjectAllowDeletedOrNull("bindTexture", newTex))
         return;
 
-    // silently ignore a deleted texture
-    if (newTex && newTex->IsDeleted())
-        return;
+    if (newTex) {
+        // silently ignore a deleted texture
+        if (newTex->IsDeleted())
+            return;
+
+        if (newTex->Target() != LOCAL_GL_NONE && newTex->Target() != target)
+            return ErrorInvalidOperation("bindTexture: this texture has already been bound to a different target");
+    }
 
     WebGLRefPtr<WebGLTexture>* currentTexPtr = nullptr;
 
-    if (target == LOCAL_GL_TEXTURE_2D) {
-        currentTexPtr = &mBound2DTextures[mActiveTexture];
-    } else if (target == LOCAL_GL_TEXTURE_CUBE_MAP) {
-        currentTexPtr = &mBoundCubeMapTextures[mActiveTexture];
-    } else {
-        return ErrorInvalidEnumInfo("bindTexture: target", target);
+    switch (target) {
+        case LOCAL_GL_TEXTURE_2D:
+            currentTexPtr = &mBound2DTextures[mActiveTexture];
+            break;
+       case LOCAL_GL_TEXTURE_CUBE_MAP:
+            currentTexPtr = &mBoundCubeMapTextures[mActiveTexture];
+            break;
+       default:
+            return ErrorInvalidEnumInfo("bindTexture: target", target);
     }
 
     WebGLTextureFakeBlackStatus currentTexFakeBlackStatus = WebGLTextureFakeBlackStatus::NotNeeded;
@@ -370,9 +378,15 @@ WebGLContext::CopyTexSubImage2D_base(GLenum target,
         return;
     }
 
+    if (!ValidateCopyTexImage(internalformat, func))
+        return;
+
+    if (!mBoundFramebuffer)
+        ClearBackbufferIfNeeded();
+
     MakeContextCurrent();
 
-    WebGLTexture *tex = activeBoundTextureForTarget(target);
+    WebGLTexture *tex = activeBoundTextureForTexImageTarget(target);
 
     if (!tex)
         return ErrorInvalidOperation("%s: no texture is bound to this target");
@@ -473,31 +487,15 @@ WebGLContext::CopyTexImage2D(GLenum target,
         return;
     }
 
-    if (mBoundFramebuffer) {
-        if (!mBoundFramebuffer->CheckAndInitializeAttachments())
-            return ErrorInvalidFramebufferOperation("copyTexImage2D: incomplete framebuffer");
+    if (!ValidateCopyTexImage(format, func))
+        return;
 
-        GLenum readPlaneBits = LOCAL_GL_COLOR_BUFFER_BIT;
-        if (!mBoundFramebuffer->HasCompletePlanes(readPlaneBits)) {
-            return ErrorInvalidOperation("copyTexImage2D: Read source attachment doesn't have the"
-                                         " correct color/depth/stencil type.");
-        }
-    } else {
-      ClearBackbufferIfNeeded();
-    }
-
-    bool texFormatRequiresAlpha = format == LOCAL_GL_RGBA ||
-                                  format == LOCAL_GL_ALPHA ||
-                                  format == LOCAL_GL_LUMINANCE_ALPHA;
-    bool fboFormatHasAlpha = mBoundFramebuffer ? mBoundFramebuffer->ColorAttachment(0).HasAlpha()
-                                               : bool(gl->GetPixelFormat().alpha > 0);
-    if (texFormatRequiresAlpha && !fboFormatHasAlpha)
-        return ErrorInvalidOperation("copyTexImage2D: texture format requires an alpha channel "
-                                     "but the framebuffer doesn't have one");
+    if (!mBoundFramebuffer)
+        ClearBackbufferIfNeeded();
 
     // check if the memory size of this texture may change with this call
     bool sizeMayChange = true;
-    WebGLTexture* tex = activeBoundTextureForTarget(target);
+    WebGLTexture* tex = activeBoundTextureForTexImageTarget(target);
     if (tex->HasImageInfoAt(target, level)) {
         const WebGLTexture::ImageInfo& imageInfo = tex->ImageInfoAt(target, level);
 
@@ -563,7 +561,7 @@ WebGLContext::CopyTexSubImage2D(GLenum target,
     if (xoffset < 0 || yoffset < 0)
         return ErrorInvalidValue("copyTexSubImage2D: xoffset and yoffset may not be negative");
 
-    WebGLTexture *tex = activeBoundTextureForTarget(target);
+    WebGLTexture *tex = activeBoundTextureForTexImageTarget(target);
     if (!tex)
         return ErrorInvalidOperation("copyTexSubImage2D: no texture bound to this target");
 
@@ -580,33 +578,14 @@ WebGLContext::CopyTexSubImage2D(GLenum target,
     if (yoffset + height > texHeight || yoffset + height < 0)
       return ErrorInvalidValue("copyTexSubImage2D: yoffset+height is too large");
 
-    if (mBoundFramebuffer) {
-        if (!mBoundFramebuffer->CheckAndInitializeAttachments())
-            return ErrorInvalidFramebufferOperation("copyTexSubImage2D: incomplete framebuffer");
-
-        GLenum readPlaneBits = LOCAL_GL_COLOR_BUFFER_BIT;
-        if (!mBoundFramebuffer->HasCompletePlanes(readPlaneBits)) {
-            return ErrorInvalidOperation("copyTexSubImage2D: Read source attachment doesn't have the"
-                                         " correct color/depth/stencil type.");
-        }
-    } else {
+    if (!mBoundFramebuffer)
         ClearBackbufferIfNeeded();
-    }
-
-    GLenum webGLFormat = imageInfo.WebGLFormat();
-    bool texFormatRequiresAlpha = FormatHasAlpha(webGLFormat);
-    bool fboFormatHasAlpha = mBoundFramebuffer ? mBoundFramebuffer->ColorAttachment(0).HasAlpha()
-                                               : bool(gl->GetPixelFormat().alpha > 0);
-
-    if (texFormatRequiresAlpha && !fboFormatHasAlpha)
-        return ErrorInvalidOperation("copyTexSubImage2D: texture format requires an alpha channel "
-                                     "but the framebuffer doesn't have one");
 
     if (imageInfo.HasUninitializedImageData()) {
         tex->DoDeferredImageInitialization(target, level);
     }
 
-    return CopyTexSubImage2D_base(target, level, webGLFormat, xoffset, yoffset, x, y, width, height, true);
+    return CopyTexSubImage2D_base(target, level, imageInfo.WebGLFormat(), xoffset, yoffset, x, y, width, height, true);
 }
 
 
@@ -987,7 +966,7 @@ WebGLContext::GetActiveUniform(WebGLProgram *prog, uint32_t index)
 
 void
 WebGLContext::GetAttachedShaders(WebGLProgram *prog,
-                                 Nullable< nsTArray<WebGLShader*> > &retval)
+                                 Nullable<nsTArray<nsRefPtr<WebGLShader>>>& retval)
 {
     retval.SetNull();
     if (IsContextLost())
@@ -3328,7 +3307,7 @@ WebGLContext::CompressedTexImage2D(GLenum target, GLint level, GLenum internalfo
 
     MakeContextCurrent();
     gl->fCompressedTexImage2D(target, level, internalformat, width, height, border, byteLength, view.Data());
-    WebGLTexture* tex = activeBoundTextureForTarget(target);
+    WebGLTexture* tex = activeBoundTextureForTexImageTarget(target);
     MOZ_ASSERT(tex);
     tex->SetImageInfo(target, level, width, height, internalformat, LOCAL_GL_UNSIGNED_BYTE,
                       WebGLImageDataStatus::InitializedImageData);
@@ -3354,7 +3333,7 @@ WebGLContext::CompressedTexSubImage2D(GLenum target, GLint level, GLint xoffset,
         return;
     }
 
-    WebGLTexture *tex = activeBoundTextureForTarget(target);
+    WebGLTexture *tex = activeBoundTextureForTexImageTarget(target);
     MOZ_ASSERT(tex);
     WebGLTexture::ImageInfo& levelInfo = tex->ImageInfoAt(target, level);
 
@@ -3575,7 +3554,7 @@ GLenum WebGLContext::CheckedTexImage2D(GLenum target,
                                        const GLvoid *data)
 {
     MOZ_ASSERT(internalFormat == format);
-    WebGLTexture *tex = activeBoundTextureForTarget(target);
+    WebGLTexture *tex = activeBoundTextureForTexImageTarget(target);
     MOZ_ASSERT(tex != nullptr, "no texture bound");
 
     bool sizeMayChange = true;
@@ -3662,7 +3641,7 @@ WebGLContext::TexImage2D_base(GLenum target, GLint level, GLenum internalformat,
         return ErrorInvalidOperation("texImage2D: not enough data for operation (need %d, have %d)",
                                  bytesNeeded, byteLength);
 
-    WebGLTexture *tex = activeBoundTextureForTarget(target);
+    WebGLTexture *tex = activeBoundTextureForTexImageTarget(target);
 
     if (!tex)
         return ErrorInvalidOperation("texImage2D: no texture is bound to this target");
@@ -3818,7 +3797,7 @@ WebGLContext::TexSubImage2D_base(GLenum target, GLint level,
     if (byteLength < bytesNeeded)
         return ErrorInvalidOperation("texSubImage2D: not enough data for operation (need %d, have %d)", bytesNeeded, byteLength);
 
-    WebGLTexture *tex = activeBoundTextureForTarget(target);
+    WebGLTexture *tex = activeBoundTextureForTexImageTarget(target);
     const WebGLTexture::ImageInfo &imageInfo = tex->ImageInfoAt(target, level);
 
     if (imageInfo.HasUninitializedImageData())

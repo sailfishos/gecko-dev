@@ -107,6 +107,10 @@ gfxHarfBuzzShaper::GetGlyph(hb_codepoint_t unicode,
                                                                       compat);
                         }
                         break;
+                    case 10:
+                        gid = gfxFontUtils::MapCharToGlyphFormat10(data + mSubtableOffset,
+                                                                   compat);
+                        break;
                     case 12:
                         gid = gfxFontUtils::MapCharToGlyphFormat12(data + mSubtableOffset,
                                                                    compat);
@@ -124,6 +128,10 @@ gfxHarfBuzzShaper::GetGlyph(hb_codepoint_t unicode,
             gid = unicode < UNICODE_BMP_LIMIT ?
                 gfxFontUtils::MapCharToGlyphFormat4(data + mSubtableOffset,
                                                     unicode) : 0;
+            break;
+        case 10:
+            gid = gfxFontUtils::MapCharToGlyphFormat10(data + mSubtableOffset,
+                                                       unicode);
             break;
         case 12:
             gid = gfxFontUtils::MapCharToGlyphFormat12(data + mSubtableOffset,
@@ -318,7 +326,7 @@ struct KernHeaderVersion1Fmt2 {
 struct KernClassTableHdr {
     AutoSwap_PRUint16 firstGlyph;
     AutoSwap_PRUint16 nGlyphs;
-    AutoSwap_PRUint16 offsets[1]; // actually an array of nGlyphs entries	
+    AutoSwap_PRUint16 offsets[1]; // actually an array of nGlyphs entries
 };
 
 static int16_t

@@ -219,7 +219,9 @@ InspectorPanel.prototype = {
       }
 
       rootNode = aRootNode;
-      return walker.querySelector(rootNode, this.selectionCssSelector);
+      if (this.selectionCssSelector) {
+        return walker.querySelector(rootNode, this.selectionCssSelector);
+      }
     }).then(front => {
       if (hasNavigated()) {
         return promise.reject("navigated; resolution of _defaultNode aborted");
@@ -732,6 +734,19 @@ InspectorPanel.prototype = {
       let hierarchical = aPseudo == ":hover" || aPseudo == ":active";
       return this.walker.addPseudoClassLock(node, aPseudo, {parents: hierarchical});
     }
+  },
+
+  /**
+   * Show DOM properties
+   */
+  showDOMProperties: function InspectorPanel_showDOMProperties() {
+    this._toolbox.openSplitConsole().then(() => {
+      let panel = this._toolbox.getPanel("webconsole");
+      let jsterm = panel.hud.jsterm;
+
+      jsterm.execute("inspect($0)");
+      jsterm.focusInput();
+    });
   },
 
   /**

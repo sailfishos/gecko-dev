@@ -135,6 +135,7 @@ public:
 
   // Enumeration for the valid decoding states
   enum State {
+    DECODER_STATE_DECODING_NONE,
     DECODER_STATE_DECODING_METADATA,
     DECODER_STATE_WAIT_FOR_RESOURCES,
     DECODER_STATE_DORMANT,
@@ -274,11 +275,6 @@ public:
 
   void NotifyDataArrived(const char* aBuffer, uint32_t aLength, int64_t aOffset);
 
-  int64_t GetEndMediaTime() const {
-    AssertCurrentThreadInMonitor();
-    return mEndTime;
-  }
-
   // Returns the shared state machine thread.
   nsIEventTarget* GetStateMachineThread() const;
 
@@ -354,6 +350,8 @@ protected:
 
   void AssertCurrentThreadInMonitor() const { mDecoder->GetReentrantMonitor().AssertCurrentThreadIn(); }
 
+  void SetState(State aState);
+
   // Inserts MediaData* samples into their respective MediaQueues.
   // aSample must not be null.
   void Push(AudioData* aSample);
@@ -361,7 +359,7 @@ protected:
 
   class WakeDecoderRunnable : public nsRunnable {
   public:
-    WakeDecoderRunnable(MediaDecoderStateMachine* aSM)
+    explicit WakeDecoderRunnable(MediaDecoderStateMachine* aSM)
       : mMutex("WakeDecoderRunnable"), mStateMachine(aSM) {}
     NS_IMETHOD Run() MOZ_OVERRIDE
     {
@@ -892,11 +890,6 @@ protected:
   // waiting to be awakened before it continues decoding. Synchronized
   // by the decoder monitor.
   bool mDecodeThreadWaiting;
-
-  // True if we've dispatched a task to the decode task queue to call
-  // ReadMetadata on the reader. We maintain a flag to ensure that we don't
-  // dispatch multiple tasks to re-do the metadata loading.
-  bool mDispatchedDecodeMetadataTask;
 
   // These two flags are true when we need to drop decoded samples that
   // we receive up to the next discontinuity. We do this when we seek;

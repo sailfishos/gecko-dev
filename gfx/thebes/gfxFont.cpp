@@ -111,9 +111,10 @@ gfxCharacterMap::NotifyReleased()
 
 gfxFontEntry::gfxFontEntry() :
     mItalic(false), mFixedPitch(false),
-    mIsProxy(false), mIsValid(true),
+    mIsValid(true),
     mIsBadUnderlineFont(false),
-    mIsUserFont(false),
+    mIsUserFontContainer(false),
+    mIsDataUserFont(false),
     mIsLocalUserFont(false),
     mStandardFace(false),
     mSymbolFont(false),
@@ -146,8 +147,10 @@ gfxFontEntry::gfxFontEntry() :
 
 gfxFontEntry::gfxFontEntry(const nsAString& aName, bool aIsStandardFace) :
     mName(aName), mItalic(false), mFixedPitch(false),
-    mIsProxy(false), mIsValid(true),
-    mIsBadUnderlineFont(false), mIsUserFont(false),
+    mIsValid(true),
+    mIsBadUnderlineFont(false),
+    mIsUserFontContainer(false),
+    mIsDataUserFont(false),
     mIsLocalUserFont(false), mStandardFace(aIsStandardFace),
     mSymbolFont(false),
     mIgnoreGDEF(false),
@@ -196,7 +199,7 @@ gfxFontEntry::~gfxFontEntry()
 
     // For downloaded fonts, we need to tell the user font cache that this
     // entry is being deleted.
-    if (!mIsProxy && IsUserFont() && !IsLocalUserFont()) {
+    if (mIsDataUserFont) {
         gfxUserFontSet::UserFontCache::ForgetFont(this);
     }
 
@@ -1330,6 +1333,27 @@ gfxFontFamily::CheckForSimpleFamily()
     mIsSimpleFamily = true;
 }
 
+#ifdef DEBUG
+bool
+gfxFontFamily::ContainsFace(gfxFontEntry* aFontEntry) {
+    uint32_t i, numFonts = mAvailableFonts.Length();
+    for (i = 0; i < numFonts; i++) {
+        if (mAvailableFonts[i] == aFontEntry) {
+            return true;
+        }
+        // userfonts contain the actual real font entry
+        if (mAvailableFonts[i]->mIsUserFontContainer) {
+            gfxUserFontEntry* ufe =
+                static_cast<gfxUserFontEntry*>(mAvailableFonts[i].get());
+            if (ufe->GetPlatformFontEntry() == aFontEntry) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+#endif
+
 static inline uint32_t
 StyleDistance(gfxFontEntry *aFontEntry,
               bool anItalic, int16_t aStretch)
@@ -1797,7 +1821,7 @@ gfxFontFamily::ReadAllCMAPs(FontInfoData *aFontInfoData)
     for (i = 0; i < numFonts; i++) {
         gfxFontEntry *fe = mAvailableFonts[i];
         // don't try to load cmaps for downloadable fonts not yet loaded
-        if (!fe || fe->mIsProxy) {
+        if (!fe || fe->mIsUserFontContainer) {
             continue;
         }
         fe->ReadCMAP(aFontInfoData);
@@ -3385,9 +3409,26 @@ gfxFont::DrawGlyphs(gfxShapedText            *aShapedText,
                             gfxFloat height = GetMetrics().maxAscent;
                             gfxRect glyphRect(pt.x, pt.y - height,
                                               advanceDevUnits, height);
+
+                            // If there's a fake-italic skew in effect as part
+                            // of the drawTarget's transform, we need to remove
+                            // this before drawing the hexbox. (Bug 983985)
+                            Matrix oldMat;
+                            if (aFontParams.passedInvMatrix) {
+                                oldMat = aRunParams.dt->GetTransform();
+                                aRunParams.dt->SetTransform(
+                                    *aFontParams.passedInvMatrix * oldMat);
+                            }
+
                             gfxFontMissingGlyphs::DrawMissingGlyph(
                                 aRunParams.context, glyphRect, details->mGlyphID,
                                 aShapedText->GetAppUnitsPerDevUnit());
+
+                            // Restore the matrix, if we modified it before
+                            // drawing the hexbox.
+                            if (aFontParams.passedInvMatrix) {
+                                aRunParams.dt->SetTransform(oldMat);
+                            }
                         }
                     } else {
                         gfxPoint glyphXY(*aPt);
@@ -3536,8 +3577,9 @@ gfxFont::RenderSVGGlyph(gfxContext *aContext, gfxPoint aPoint, DrawMode aDrawMod
         GetAdjustedSize() / GetFontEntry()->UnitsPerEm();
     gfxContextMatrixAutoSaveRestore matrixRestore(aContext);
 
-    aContext->Translate(gfxPoint(aPoint.x, aPoint.y));
-    aContext->Scale(devUnitsPerSVGUnit, devUnitsPerSVGUnit);
+    aContext->SetMatrix(
+      aContext->CurrentMatrix().Translate(aPoint.x, aPoint.y).
+                                Scale(devUnitsPerSVGUnit, devUnitsPerSVGUnit));
 
     aContextPaint->InitStrokeGeometry(aContext, devUnitsPerSVGUnit);
 
@@ -4320,7 +4362,7 @@ gfxFont::SetupGlyphExtents(gfxContext *aContext, uint32_t aGlyphID, bool aNeedTi
                            gfxGlyphExtents *aExtents)
 {
     gfxContextMatrixAutoSaveRestore matrixRestore(aContext);
-    aContext->IdentityMatrix();
+    aContext->SetMatrix(gfxMatrix());
 
     gfxRect svgBounds;
     if (mFontEntry->TryGetSVGData(this) && mFontEntry->HasSVGGlyph(aGlyphID) &&
@@ -5021,8 +5063,13 @@ gfxFontGroup::FindPlatformFont(const nsAString& aName,
             family = mUserFontSet->LookupFamily(aName);
             if (family) {
                 bool waitForUserFont = false;
-                fe = mUserFontSet->FindFontEntry(family, mStyle,
-                                                 needsBold, waitForUserFont);
+                gfxUserFontEntry* userFontEntry = nullptr;
+                userFontEntry = mUserFontSet->FindUserFontEntry(family, mStyle,
+                                                                needsBold,
+                                                                waitForUserFont);
+                if (userFontEntry) {
+                    fe = userFontEntry->GetPlatformFontEntry();
+                }
                 if (!fe && waitForUserFont) {
                     mSkipDrawing = true;
                 }
@@ -5032,7 +5079,7 @@ gfxFontGroup::FindPlatformFont(const nsAString& aName,
 
     // Not known in the user font set ==> check system fonts
     if (!family) {
-        gfxPlatformFontList *fontList = gfxPlatformFontList::PlatformFontList();
+        gfxPlatformFontList* fontList = gfxPlatformFontList::PlatformFontList();
         family = fontList->FindFamily(aName, mStyle.systemFont);
         if (family) {
             fe = family->FindFontForStyle(mStyle, needsBold);

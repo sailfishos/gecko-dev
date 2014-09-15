@@ -80,7 +80,7 @@ class GetCameraNameRunnable;
  * MainThread:
  *   mCaptureIndex, mLastCapture, mState,  mWidth, mHeight,
  *
- * Where mWidth, mHeight, mImage are protected by mMonitor
+ * Where mWidth, mHeight, mImage, mPhotoCallbacks are protected by mMonitor
  *       mState is protected by mCallbackMonitor
  * Other variable is accessed only from single thread
  */
@@ -175,6 +175,11 @@ public:
 
 #ifndef MOZ_B2G_CAMERA
   NS_DECL_THREADSAFE_ISUPPORTS
+
+  nsresult TakePhoto(PhotoCallback* aCallback)
+  {
+    return NS_ERROR_NOT_IMPLEMENTED;
+  }
 #else
   // We are subclassed from CameraControlListener, which implements a
   // threadsafe reference-count for us.
@@ -193,6 +198,9 @@ public:
   void SnapshotImpl();
   void RotateImage(layers::Image* aImage, uint32_t aWidth, uint32_t aHeight);
   void Notify(const mozilla::hal::ScreenConfiguration& aConfiguration);
+
+  nsresult TakePhoto(PhotoCallback* aCallback) MOZ_OVERRIDE;
+
 #endif
 
   // This runnable is for creating a temporary file on the main thread.
@@ -214,13 +222,12 @@ public:
     return NS_OK;
   }
 
+  void Refresh(int aIndex);
+
 protected:
   ~MediaEngineWebRTCVideoSource() { Shutdown(); }
 
 private:
-  static const unsigned int KMaxDeviceNameLength = 128;
-  static const unsigned int KMaxUniqueIdLength = 256;
-
   // Initialize the needed Video engine interfaces.
   void Init();
   void Shutdown();
@@ -231,6 +238,7 @@ private:
   // This is only modified on MainThread (AllocImpl and DeallocImpl)
   nsRefPtr<ICameraControl> mCameraControl;
   nsCOMPtr<nsIDOMFile> mLastCapture;
+  nsTArray<nsRefPtr<PhotoCallback>> mPhotoCallbacks;
 
   // These are protected by mMonitor below
   int mRotation;
@@ -331,6 +339,11 @@ public:
     return MediaSourceType::Microphone;
   }
 
+  virtual nsresult TakePhoto(PhotoCallback* aCallback)
+  {
+    return NS_ERROR_NOT_IMPLEMENTED;
+  }
+
   // VoEMediaProcess.
   void Process(int channel, webrtc::ProcessingTypes type,
                int16_t audio10ms[], int length,
@@ -348,9 +361,6 @@ protected:
   int mSamples;
 
 private:
-  static const unsigned int KMaxDeviceNameLength = 128;
-  static const unsigned int KMaxUniqueIdLength = 256;
-
   void Init();
   void Shutdown();
 
@@ -388,7 +398,7 @@ private:
 class MediaEngineWebRTC : public MediaEngine
 {
 public:
-  MediaEngineWebRTC(MediaEnginePrefs &aPrefs);
+  explicit MediaEngineWebRTC(MediaEnginePrefs &aPrefs);
 
   // Clients should ensure to clean-up sources video/audio sources
   // before invoking Shutdown on this class.
@@ -404,7 +414,6 @@ private:
 #ifdef MOZ_B2G_CAMERA
     AsyncLatencyLogger::Get()->Release();
 #endif
-    // XXX
     gFarendObserver = nullptr;
   }
 

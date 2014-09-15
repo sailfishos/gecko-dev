@@ -1583,7 +1583,7 @@ function JSTermHelpers(aOwner)
       return aOwner.makeDebuggeeValue(aOwner.selectedNode)
     },
     enumerable: true,
-    configurable: false
+    configurable: true
   });
 
   /**
@@ -1743,6 +1743,9 @@ function JSTermHelpers(aOwner)
   aOwner.sandbox.print = function JSTH_print(aValue)
   {
     aOwner.helperResult = { rawOutput: true };
+    if (typeof aValue === "symbol") {
+      return Symbol.prototype.toString.call(aValue);
+    }
     // Waiving Xrays here allows us to see a closer representation of the
     // underlying object. This may execute arbitrary content code, but that
     // code will run with content privileges, and the result will be rendered

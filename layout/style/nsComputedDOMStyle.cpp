@@ -51,6 +51,8 @@
 
 using namespace mozilla;
 using namespace mozilla::dom;
+typedef const nsStyleBackground::Position Position;
+typedef const nsStyleBackground::Position::PositionCoord PositionCoord;
 
 #if defined(DEBUG_bzbarsky) || defined(DEBUG_caillon)
 #define DEBUG_ComputedDOMStyle
@@ -1470,16 +1472,6 @@ nsComputedDOMStyle::DoGetFontWeight()
 }
 
 CSSValue*
-nsComputedDOMStyle::DoGetFontVariant()
-{
-  nsROCSSPrimitiveValue* val = new nsROCSSPrimitiveValue;
-  val->SetIdent(
-    nsCSSProps::ValueToKeywordEnum(StyleFont()->mFont.variant,
-                                   nsCSSProps::kFontVariantKTable));
-  return val;
-}
-
-CSSValue*
 nsComputedDOMStyle::DoGetFontFeatureSettings()
 {
   nsROCSSPrimitiveValue* val = new nsROCSSPrimitiveValue;
@@ -1543,6 +1535,37 @@ nsComputedDOMStyle::DoGetFontSynthesis()
   return val;
 }
 
+// return a value *only* for valid longhand values from CSS 2.1, either
+// normal or small-caps only
+CSSValue*
+nsComputedDOMStyle::DoGetFontVariant()
+{
+  const nsFont& f = StyleFont()->mFont;
+
+  // if any of the other font-variant subproperties other than
+  // font-variant-caps are not normal then can't calculate a computed value
+  if (f.variantAlternates || f.variantEastAsian || f.variantLigatures ||
+      f.variantNumeric || f.variantPosition) {
+    return nullptr;
+  }
+
+  nsCSSKeyword keyword;
+  switch (f.variantCaps) {
+    case 0:
+      keyword = eCSSKeyword_normal;
+      break;
+    case NS_FONT_VARIANT_CAPS_SMALLCAPS:
+      keyword = eCSSKeyword_small_caps;
+      break;
+    default:
+      return nullptr;
+  }
+
+  nsROCSSPrimitiveValue* val = new nsROCSSPrimitiveValue;
+  val->SetIdent(keyword);
+  return val;
+}
+
 CSSValue*
 nsComputedDOMStyle::DoGetFontVariantAlternates()
 {
@@ -1572,7 +1595,6 @@ nsComputedDOMStyle::DoGetFontVariantAlternates()
   val->SetString(valueStr);
   return val;
 }
-
 
 CSSValue*
 nsComputedDOMStyle::DoGetFontVariantCaps()
@@ -1622,6 +1644,8 @@ nsComputedDOMStyle::DoGetFontVariantLigatures()
 
   if (0 == intValue) {
     val->SetIdent(eCSSKeyword_normal);
+  } else if (NS_FONT_VARIANT_LIGATURES_NONE == intValue) {
+    val->SetIdent(eCSSKeyword_none);
   } else {
     nsAutoString valueStr;
 
@@ -2028,6 +2052,34 @@ nsComputedDOMStyle::DoGetBackgroundOrigin()
                            nsCSSProps::kBackgroundOriginKTable);
 }
 
+void
+nsComputedDOMStyle::SetValueToPositionCoord(const PositionCoord& aCoord,
+                                            nsROCSSPrimitiveValue* aValue)
+{
+  if (!aCoord.mHasPercent) {
+    NS_ABORT_IF_FALSE(aCoord.mPercent == 0.0f,
+                      "Shouldn't have mPercent!");
+    aValue->SetAppUnits(aCoord.mLength);
+  } else if (aCoord.mLength == 0) {
+    aValue->SetPercent(aCoord.mPercent);
+  } else {
+    SetValueToCalc(&aCoord, aValue);
+  }
+}
+
+void
+nsComputedDOMStyle::SetValueToPosition(const Position& aPosition,
+                                       nsDOMCSSValueList* aValueList)
+{
+  nsROCSSPrimitiveValue* valX = new nsROCSSPrimitiveValue;
+  aValueList->AppendCSSValue(valX);
+  SetValueToPositionCoord(aPosition.mXPosition, valX);
+
+  nsROCSSPrimitiveValue* valY = new nsROCSSPrimitiveValue;
+  aValueList->AppendCSSValue(valY);
+  SetValueToPositionCoord(aPosition.mYPosition, valY);
+}
+
 CSSValue*
 nsComputedDOMStyle::DoGetBackgroundPosition()
 {
@@ -2039,33 +2091,7 @@ nsComputedDOMStyle::DoGetBackgroundPosition()
     nsDOMCSSValueList *itemList = GetROCSSValueList(false);
     valueList->AppendCSSValue(itemList);
 
-    nsROCSSPrimitiveValue *valX = new nsROCSSPrimitiveValue;
-    itemList->AppendCSSValue(valX);
-
-    nsROCSSPrimitiveValue *valY = new nsROCSSPrimitiveValue;
-    itemList->AppendCSSValue(valY);
-
-    const nsStyleBackground::Position &pos = bg->mLayers[i].mPosition;
-
-    if (!pos.mXPosition.mHasPercent) {
-      NS_ABORT_IF_FALSE(pos.mXPosition.mPercent == 0.0f,
-                        "Shouldn't have mPercent!");
-      valX->SetAppUnits(pos.mXPosition.mLength);
-    } else if (pos.mXPosition.mLength == 0) {
-      valX->SetPercent(pos.mXPosition.mPercent);
-    } else {
-      SetValueToCalc(&pos.mXPosition, valX);
-    }
-
-    if (!pos.mYPosition.mHasPercent) {
-      NS_ABORT_IF_FALSE(pos.mYPosition.mPercent == 0.0f,
-                        "Shouldn't have mPercent!");
-      valY->SetAppUnits(pos.mYPosition.mLength);
-    } else if (pos.mYPosition.mLength == 0) {
-      valY->SetPercent(pos.mYPosition.mPercent);
-    } else {
-      SetValueToCalc(&pos.mYPosition, valY);
-    }
+    SetValueToPosition(bg->mLayers[i].mPosition, itemList);
   }
 
   return valueList;
@@ -4159,6 +4185,23 @@ nsComputedDOMStyle::DoGetMixBlendMode()
   val->SetIdent(nsCSSProps::ValueToKeywordEnum(StyleDisplay()->mMixBlendMode,
                                                nsCSSProps::kBlendModeKTable));
   return val;
+}
+
+CSSValue*
+nsComputedDOMStyle::DoGetObjectFit()
+{
+  nsROCSSPrimitiveValue* val = new nsROCSSPrimitiveValue;
+  val->SetIdent(nsCSSProps::ValueToKeywordEnum(StylePosition()->mObjectFit,
+                                               nsCSSProps::kObjectFitKTable));
+  return val;
+}
+
+CSSValue*
+nsComputedDOMStyle::DoGetObjectPosition()
+{
+  nsDOMCSSValueList* valueList = GetROCSSValueList(false);
+  SetValueToPosition(StylePosition()->mObjectPosition, valueList);
+  return valueList;
 }
 
 CSSValue*

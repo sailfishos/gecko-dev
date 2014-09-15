@@ -58,7 +58,7 @@ using namespace mozilla;
 class nsSiteWindow : public nsIEmbeddingSiteWindow
 {
 public:
-  nsSiteWindow(nsContentTreeOwner *aAggregator);
+  explicit nsSiteWindow(nsContentTreeOwner *aAggregator);
   virtual ~nsSiteWindow();
 
   NS_DECL_ISUPPORTS
@@ -310,14 +310,6 @@ nsContentTreeOwner::GetPrimaryContentShell(nsIDocShellTreeItem** aShell)
 {
    NS_ENSURE_STATE(mXULWindow);
    return mXULWindow->GetPrimaryContentShell(aShell);
-}
-
-NS_IMETHODIMP
-nsContentTreeOwner::GetContentWindow(JSContext* aCx,
-                                     JS::MutableHandle<JS::Value> aVal)
-{
-  NS_ENSURE_STATE(mXULWindow);
-  return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 NS_IMETHODIMP nsContentTreeOwner::SizeShellTo(nsIDocShellTreeItem* aShellItem,

@@ -2,6 +2,7 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this file,
    - You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+%include ../shared.inc
 %include ../../../shared/in-content/common.inc.css
 
 xul|tabs {
@@ -57,4 +58,11 @@ xul|*.numberbox-input-box {
 xul|description {
   font-size: 1.25rem;
   line-height: 22px;
+}
+
+html|a:-moz-focusring,
+xul|*.text-link:-moz-focusring,
+xul|*.inline-link:-moz-focusring {
+  outline-width: 0;
+  box-shadow: @focusRingShadow@;
 }

@@ -20,10 +20,12 @@ UNIFIED_SOURCES += [
     'MediaSource.cpp',
     'MediaSourceDecoder.cpp',
     'MediaSourceReader.cpp',
+    'MediaSourceUtils.cpp',
     'SourceBuffer.cpp',
+    'SourceBufferDecoder.cpp',
     'SourceBufferList.cpp',
     'SourceBufferResource.cpp',
-    'SubBufferDecoder.cpp',
+    'TrackBuffer.cpp',
 ]
 
 FAIL_ON_WARNINGS = True

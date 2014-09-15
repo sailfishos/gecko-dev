@@ -10,7 +10,7 @@ CONFIGURE_SUBST_FILES += [
 ]
 
 if CONFIG['ENABLE_CLANG_PLUGIN']:
-    add_tier_dir('base', 'build/clang-plugin', external=True)
+    add_tier_dir('base', 'build/clang-plugin')
 
 add_tier_dir('base', ['config', 'python'])
 if not CONFIG['JS_STANDALONE']:
@@ -55,3 +55,5 @@ if CONFIG['COMPILE_ENVIRONMENT'] and not CONFIG['LIBXUL_SDK']:
 if not CONFIG['JS_STANDALONE']:
     # Bring in the configuration for the configured application.
     include('/' + CONFIG['MOZ_BUILD_APP'] + '/app.mozbuild')
+
+include('build/templates.mozbuild')

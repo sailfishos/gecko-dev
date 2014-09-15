@@ -28,6 +28,7 @@ namespace jit {
 class MacroAssembler;
 class CodeOffsetLabel;
 class PatchableBackedge;
+class IonBuilder;
 
 class JitCode : public gc::BarrieredCell<JitCode>
 {
@@ -299,6 +300,8 @@ struct IonScript
     // that contain an optimized call directly into this IonScript.
     Vector<DependentAsmJSModuleExit> *dependentAsmJSModules;
 
+    IonBuilder *pendingBuilder_;
+
   private:
     inline uint8_t *bottomBuffer() {
         return reinterpret_cast<uint8_t *>(this);
@@ -308,6 +311,15 @@ struct IonScript
     }
 
   public:
+
+    // SHOULD ONLY BE CALLED FROM JSScript
+    void setPendingBuilderPrivate(IonBuilder *builder) {
+        pendingBuilder_ = builder;
+    }
+    IonBuilder *pendingBuilder() const {
+        return pendingBuilder_;
+    }
+
     SnapshotOffset *bailoutTable() {
         return (SnapshotOffset *) &bottomBuffer()[bailoutTable_];
     }
@@ -642,6 +654,9 @@ struct IonBlockCounts
     // was generated from.
     uint32_t offset_;
 
+    // File and line of the inner script this block was generated from.
+    char *description_;
+
     // ids for successors of this block.
     uint32_t numSuccessors_;
     uint32_t *successors_;
@@ -654,9 +669,10 @@ struct IonBlockCounts
 
   public:
 
-    bool init(uint32_t id, uint32_t offset, uint32_t numSuccessors) {
+    bool init(uint32_t id, uint32_t offset, char *description, uint32_t numSuccessors) {
         id_ = id;
         offset_ = offset;
+        description_ = description;
         numSuccessors_ = numSuccessors;
         if (numSuccessors) {
             successors_ = js_pod_calloc<uint32_t>(numSuccessors);
@@ -667,6 +683,7 @@ struct IonBlockCounts
     }
 
     void destroy() {
+        js_free(description_);
         js_free(successors_);
         js_free(code_);
     }
@@ -677,6 +694,10 @@ struct IonBlockCounts
 
     uint32_t offset() const {
         return offset_;
+    }
+
+    const char *description() const {
+        return description_;
     }
 
     size_t numSuccessors() const {

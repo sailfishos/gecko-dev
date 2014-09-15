@@ -227,7 +227,7 @@ struct nsTArrayInfallibleAllocator : nsTArrayInfallibleAllocatorBase
 // nsTArray_base stores elements into the space allocated beyond
 // sizeof(*this).  This is done to minimize the size of the nsTArray
 // object when it is empty.
-struct NS_COM_GLUE nsTArrayHeader
+struct nsTArrayHeader
 {
   static nsTArrayHeader sEmptyHdr;
 
@@ -473,7 +473,7 @@ public:
   }
   // Invoke the copy-constructor in place.
   template<class A>
-  static inline void Construct(E* aE, A &&aArg)
+  static inline void Construct(E* aE, A&& aArg)
   {
     typedef typename mozilla::RemoveCV<E>::Type E_NoCV;
     typedef typename mozilla::RemoveCV<A>::Type A_NoCV;
@@ -749,6 +749,14 @@ public:
   // Initialize this array and pre-allocate some number of elements.
   explicit nsTArray_Impl(size_type aCapacity) { SetCapacity(aCapacity); }
 
+  // Initialize this array with an r-value.
+  // Allow different types of allocators, since the allocator doesn't matter.
+  template<typename Allocator>
+  explicit nsTArray_Impl(nsTArray_Impl<E, Allocator>&& aOther)
+  {
+    SwapElements(aOther);
+  }
+
   // The array's copy-constructor performs a 'deep' copy of the given array.
   // @param aOther The array object to copy.
   //
@@ -792,6 +800,16 @@ public:
     return *this;
   }
 
+  // The array's move assignment operator steals the underlying data from
+  // the other array.
+  // @param other  The array object to move from.
+  self_type& operator=(self_type&& aOther)
+  {
+    Clear();
+    SwapElements(aOther);
+    return *this;
+  }
+
   // Return true if this array has the same length and the same
   // elements as |aOther|.
   template<typename Allocator>
@@ -820,6 +838,14 @@ public:
   self_type& operator=(const nsTArray_Impl<E, Allocator>& aOther)
   {
     ReplaceElementsAt(0, Length(), aOther.Elements(), aOther.Length());
+    return *this;
+  }
+
+  template<typename Allocator>
+  self_type& operator=(nsTArray_Impl<E, Allocator>&& aOther)
+  {
+    Clear();
+    SwapElements(aOther);
     return *this;
   }
 
@@ -1103,8 +1129,9 @@ public:
   {
     // Adjust memory allocation up-front to catch errors.
     if (!Alloc::Successful(this->EnsureCapacity(Length() + aArrayLen - aCount,
-                                                sizeof(elem_type))))
+                                                sizeof(elem_type)))) {
       return nullptr;
+    }
     DestructRange(aStart, aCount);
     this->ShiftData(aStart, aCount, aArrayLen,
                     sizeof(elem_type), MOZ_ALIGNOF(elem_type));
@@ -1151,37 +1178,32 @@ public:
     return ReplaceElementsAt(aIndex, 0, aArray.Elements(), aArray.Length());
   }
 
-  // A variation on the ReplaceElementsAt method defined above.
-  template<class Item>
-  elem_type* InsertElementAt(index_type aIndex, const Item& aItem)
-  {
-    return ReplaceElementsAt(aIndex, 0, &aItem, 1);
-  }
-
   // Insert a new element without copy-constructing. This is useful to avoid
   // temporaries.
   // @return A pointer to the newly inserted element, or null on OOM.
   elem_type* InsertElementAt(index_type aIndex)
   {
     if (!Alloc::Successful(this->EnsureCapacity(Length() + 1,
-                                                sizeof(elem_type))))
+                                                sizeof(elem_type)))) {
       return nullptr;
+    }
     this->ShiftData(aIndex, 0, 1, sizeof(elem_type), MOZ_ALIGNOF(elem_type));
     elem_type* elem = Elements() + aIndex;
     elem_traits::Construct(elem);
     return elem;
   }
 
-  // Insert an element by move constructing aItem.
-  // @return a pointer to the inserted element or NULL on oom.
-  elem_type* InsertElementAt(index_type aIndex, elem_type&& aItem)
+  // Insert a new element, move constructing if possible.
+  template<class Item>
+  elem_type* InsertElementAt(index_type aIndex, Item&& aItem)
   {
     if (!Alloc::Successful(this->EnsureCapacity(Length() + 1,
-                                                sizeof(elem_type))))
+                                                sizeof(elem_type)))) {
       return nullptr;
+    }
     this->ShiftData(aIndex, 0, 1, sizeof(elem_type), MOZ_ALIGNOF(elem_type));
     elem_type* elem = Elements() + aIndex;
-    nsTArrayElementTraits<elem_type>::Construct(elem, mozilla::Forward<elem_type>(aItem));
+    elem_traits::Construct(elem, mozilla::Forward<Item>(aItem));
     return elem;
   }
 
@@ -1257,8 +1279,9 @@ public:
   elem_type* AppendElements(const Item* aArray, size_type aArrayLen)
   {
     if (!Alloc::Successful(this->EnsureCapacity(Length() + aArrayLen,
-                                                sizeof(elem_type))))
+                                                sizeof(elem_type)))) {
       return nullptr;
+    }
     index_type len = Length();
     AssignRange(len, aArrayLen, aArray);
     this->IncrementLength(aArrayLen);
@@ -1272,26 +1295,19 @@ public:
     return AppendElements(aArray.Elements(), aArray.Length());
   }
 
-  // A variation on the AppendElements method defined above.
+  // Append a new element, move constructing if possible.
   template<class Item>
-  elem_type* AppendElement(const Item& aItem)
-  {
-    return AppendElements(&aItem, 1);
-  }
-
-  // A variation of AppendElement that takes an r-value reference
-  elem_type* AppendElement(elem_type&& aItem)
+  elem_type* AppendElement(Item&& aItem)
   {
     if (!Alloc::Successful(this->EnsureCapacity(Length() + 1,
-                                                sizeof(elem_type))))
+                                                sizeof(elem_type)))) {
       return nullptr;
-    index_type len = Length();
-    elem_type* iter = Elements() + len;
-    nsTArrayElementTraits<elem_type>::Construct(iter, mozilla::Forward<elem_type>(aItem));
+    }
+    elem_type* elem = Elements() + Length();
+    elem_traits::Construct(elem, mozilla::Forward<Item>(aItem));
     this->IncrementLength(1);
-    return iter;
+    return elem;
   }
-
 
   // Append new elements without copy-constructing. This is useful to avoid
   // temporaries.
@@ -1299,8 +1315,9 @@ public:
   elem_type* AppendElements(size_type aCount)
   {
     if (!Alloc::Successful(this->EnsureCapacity(Length() + aCount,
-                                                sizeof(elem_type))))
+                                                sizeof(elem_type)))) {
       return nullptr;
+    }
     elem_type* elems = Elements() + Length();
     size_type i;
     for (i = 0; i < aCount; ++i) {
@@ -1325,13 +1342,19 @@ public:
     index_type len = Length();
     index_type otherLen = aArray.Length();
     if (!Alloc::Successful(this->EnsureCapacity(len + otherLen,
-                                                sizeof(elem_type))))
+                                                sizeof(elem_type)))) {
       return nullptr;
+    }
     copy_type::CopyElements(Elements() + len, aArray.Elements(), otherLen,
                             sizeof(elem_type));
     this->IncrementLength(otherLen);
     aArray.ShiftData(0, otherLen, 0, sizeof(elem_type), MOZ_ALIGNOF(elem_type));
     return Elements() + len;
+  }
+  template<class Item, class Allocator>
+  elem_type* MoveElementsFrom(nsTArray_Impl<Item, Allocator>&& aArray)
+  {
+    return MoveElementsFrom<Item, Allocator>(aArray);
   }
 
   // This method removes a range of elements from this array.
@@ -1433,7 +1456,7 @@ public:
   // removes elements from the array (see also RemoveElementsAt).
   // @param aNewLen The desired length of this array.
   // @return True if the operation succeeded; false otherwise.
-  // See also TruncateLength if the new length is guaranteed to be smaller than 
+  // See also TruncateLength if the new length is guaranteed to be smaller than
   // the old.
   typename Alloc::ResultType SetLength(size_type aNewLen)
   {
@@ -1731,11 +1754,40 @@ public:
   nsTArray() {}
   explicit nsTArray(size_type aCapacity) : base_type(aCapacity) {}
   explicit nsTArray(const nsTArray& aOther) : base_type(aOther) {}
+  explicit nsTArray(nsTArray&& aOther) : base_type(mozilla::Move(aOther)) {}
 
   template<class Allocator>
   explicit nsTArray(const nsTArray_Impl<E, Allocator>& aOther)
     : base_type(aOther)
   {
+  }
+  template<class Allocator>
+  MOZ_IMPLICIT nsTArray(nsTArray_Impl<E, Allocator>&& aOther)
+    : base_type(mozilla::Move(aOther))
+  {
+  }
+
+  self_type& operator=(const self_type& aOther)
+  {
+    base_type::operator=(aOther);
+    return *this;
+  }
+  template<class Allocator>
+  self_type& operator=(const nsTArray_Impl<E, Allocator>& aOther)
+  {
+    base_type::operator=(aOther);
+    return *this;
+  }
+  self_type& operator=(self_type&& aOther)
+  {
+    base_type::operator=(mozilla::Move(aOther));
+    return *this;
+  }
+  template<class Allocator>
+  self_type& operator=(nsTArray_Impl<E, Allocator>&& aOther)
+  {
+    base_type::operator=(mozilla::Move(aOther));
+    return *this;
   }
 };
 
@@ -1753,11 +1805,43 @@ public:
   FallibleTArray() {}
   explicit FallibleTArray(size_type aCapacity) : base_type(aCapacity) {}
   explicit FallibleTArray(const FallibleTArray<E>& aOther) : base_type(aOther) {}
+  explicit FallibleTArray(FallibleTArray<E>&& aOther)
+    : base_type(mozilla::Move(aOther))
+  {
+  }
 
   template<class Allocator>
   explicit FallibleTArray(const nsTArray_Impl<E, Allocator>& aOther)
     : base_type(aOther)
   {
+  }
+  template<class Allocator>
+  explicit FallibleTArray(nsTArray_Impl<E, Allocator>&& aOther)
+    : base_type(mozilla::Move(aOther))
+  {
+  }
+
+  self_type& operator=(const self_type& aOther)
+  {
+    base_type::operator=(aOther);
+    return *this;
+  }
+  template<class Allocator>
+  self_type& operator=(const nsTArray_Impl<E, Allocator>& aOther)
+  {
+    base_type::operator=(aOther);
+    return *this;
+  }
+  self_type& operator=(self_type&& aOther)
+  {
+    base_type::operator=(mozilla::Move(aOther));
+    return *this;
+  }
+  template<class Allocator>
+  self_type& operator=(nsTArray_Impl<E, Allocator>&& aOther)
+  {
+    base_type::operator=(mozilla::Move(aOther));
+    return *this;
   }
 };
 
@@ -1793,6 +1877,19 @@ protected:
   {
     Init();
     this->AppendElements(aOther);
+  }
+
+  nsAutoArrayBase(const TArrayBase &aOther)
+  {
+    Init();
+    this->AppendElements(aOther);
+  }
+
+  template<typename Allocator>
+  nsAutoArrayBase(nsTArray_Impl<elem_type, Allocator>&& aOther)
+  {
+    Init();
+    this->SwapElements(aOther);
   }
 
 private:
@@ -1872,6 +1969,11 @@ public:
   {
     Base::AppendElements(aOther);
   }
+  template<typename Allocator>
+  explicit nsAutoTArray(nsTArray_Impl<E, Allocator>&& aOther)
+    : Base(mozilla::Move(aOther))
+  {
+  }
 
   operator const AutoFallibleTArray<E, N>&() const
   {
@@ -1896,6 +1998,11 @@ public:
   explicit AutoFallibleTArray(const nsTArray_Impl<E, Allocator>& aOther)
   {
     Base::AppendElements(aOther);
+  }
+  template<typename Allocator>
+  explicit AutoFallibleTArray(nsTArray_Impl<E, Allocator>&& aOther)
+    : Base(mozilla::Move(aOther))
+  {
   }
 
   operator const nsAutoTArray<E, N>&() const

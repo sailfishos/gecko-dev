@@ -45,6 +45,10 @@ var gAdvancedPane = {
     this.updateActualCacheSize();
     this.updateActualAppCacheSize();
 
+    let bundlePrefs = document.getElementById("bundlePreferences");
+    document.getElementById("offlineAppsList")
+            .style.height = bundlePrefs.getString("offlineAppsList.height");
+
     // Notify observers that the UI is now ready
     Services.obs.notifyObservers(window, "advanced-pane-loaded", null);
   },
@@ -414,7 +418,7 @@ var gAdvancedPane = {
                    introText        : bundlePreferences.getString("offlinepermissionstext") };
     document.documentElement.openWindow("Browser:Permissions",
                                         "chrome://browser/content/preferences/permissions.xul",
-                                        "", params);
+                                        "resizable", params);
   },
 
   // XXX: duplicated in browser.js
@@ -655,7 +659,7 @@ var gAdvancedPane = {
     }
     try {
       const DRIVE_FIXED = 3;
-      const LPCWSTR = ctypes.jschar.ptr;
+      const LPCWSTR = ctypes.char16_t.ptr;
       const UINT = ctypes.uint32_t;
       let kernel32 = ctypes.open("kernel32");
       let GetDriveType = kernel32.declare("GetDriveTypeW", ctypes.default_abi, UINT, LPCWSTR);

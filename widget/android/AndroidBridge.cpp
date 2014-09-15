@@ -1161,9 +1161,14 @@ AndroidBridge::CreateMessageList(const dom::mobilemessage::SmsFilterData& aFilte
         env->DeleteLocalRef(elem);
     }
 
-    mozilla::widget::android::GeckoAppShell::CreateMessageListWrapper(aFilter.startDate(),
-                             aFilter.endDate(), numbers, aFilter.numbers().Length(),
-                             aFilter.delivery(), aReverse, requestId);
+    int64_t startDate = aFilter.hasStartDate() ? aFilter.startDate() : -1;
+    int64_t endDate = aFilter.hasEndDate() ? aFilter.endDate() : -1;
+    GeckoAppShell::CreateMessageListWrapper(startDate, endDate,
+                                            numbers, aFilter.numbers().Length(),
+                                            aFilter.delivery(),
+                                            aFilter.hasRead(), aFilter.read(),
+                                            aFilter.threadId(),
+                                            aReverse, requestId);
 }
 
 void
@@ -1852,9 +1857,9 @@ nsresult AndroidBridge::CaptureThumbnail(nsIDOMWindow *window, int32_t bufW, int
         return NS_ERROR_FAILURE;
     }
     nsRefPtr<gfxContext> context = new gfxContext(dt);
-    gfxPoint pt(0, 0);
-    context->Translate(pt);
-    context->Scale(scale * bufW / srcW, scale * bufH / srcH);
+    context->SetMatrix(
+      context->CurrentMatrix().Scale(scale * bufW / srcW,
+                                     scale * bufH / srcH));
     rv = presShell->RenderDocument(r, renderDocFlags, bgColor, context);
     if (is24bit) {
         gfxUtils::ConvertBGRAtoRGBA(data, stride * bufH);

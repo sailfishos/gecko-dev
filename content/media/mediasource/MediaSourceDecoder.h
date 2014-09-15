@@ -19,7 +19,8 @@ namespace mozilla {
 class MediaResource;
 class MediaDecoderStateMachine;
 class MediaSourceReader;
-class SubBufferDecoder;
+class SourceBufferDecoder;
+class TrackBuffer;
 
 namespace dom {
 
@@ -31,19 +32,36 @@ class MediaSource;
 class MediaSourceDecoder : public MediaDecoder
 {
 public:
-  MediaSourceDecoder(dom::HTMLMediaElement* aElement);
+  explicit MediaSourceDecoder(dom::HTMLMediaElement* aElement);
 
   virtual MediaDecoder* Clone() MOZ_OVERRIDE;
   virtual MediaDecoderStateMachine* CreateStateMachine() MOZ_OVERRIDE;
   virtual nsresult Load(nsIStreamListener**, MediaDecoder*) MOZ_OVERRIDE;
   virtual nsresult GetSeekable(dom::TimeRanges* aSeekable) MOZ_OVERRIDE;
 
+  virtual void Shutdown() MOZ_OVERRIDE;
+
   static already_AddRefed<MediaResource> CreateResource();
 
   void AttachMediaSource(dom::MediaSource* aMediaSource);
   void DetachMediaSource();
 
-  already_AddRefed<SubBufferDecoder> CreateSubDecoder(const nsACString& aType);
+  already_AddRefed<SourceBufferDecoder> CreateSubDecoder(const nsACString& aType);
+  void AddTrackBuffer(TrackBuffer* aTrackBuffer);
+  void RemoveTrackBuffer(TrackBuffer* aTrackBuffer);
+  void OnTrackBufferConfigured(TrackBuffer* aTrackBuffer, const MediaInfo& aInfo);
+
+  void Ended();
+
+  void SetMediaSourceDuration(double aDuration);
+
+  // Called whenever a TrackBuffer has new data appended or a new decoder
+  // initializes.  Safe to call from any thread.
+  void NotifyTimeRangesChanged();
+
+  // Indicates the point in time at which the reader should consider
+  // registered TrackBuffers essential for initialization.
+  void PrepareReaderInitialization();
 
 private:
   // The owning MediaSource holds a strong reference to this decoder, and

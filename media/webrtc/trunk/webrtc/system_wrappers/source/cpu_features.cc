@@ -66,6 +66,11 @@ static int GetCPUInfo(CPUFeature feature) {
   (void)feature;
   return 0;
 }
+
+uint64_t WebRtc_GetCPUFeaturesARM(void) {
+  return kCPUFeatureNEON | kCPUFeatureARMv7 | kCPUFeatureNEON;
+}
+
 #endif
 
 WebRtc_CPUInfo WebRtc_GetCPUInfo = GetCPUInfo;

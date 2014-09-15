@@ -21,11 +21,15 @@
 #include "nsSetDllDirectory.h"
 #endif
 
-#if defined(XP_WIN)
+#if defined(XP_WIN) && defined(MOZ_SANDBOX)
 #include "sandbox/chromium/base/basictypes.h"
 #include "sandbox/win/src/sandbox.h"
 #include "sandbox/win/src/sandbox_factory.h"
 #include "mozilla/sandboxTarget.h"
+
+#if defined(MOZ_CONTENT_SANDBOX)
+#include "mozilla/warnonlysandbox/wosCallbacks.h"
+#endif
 #endif
 
 #ifdef MOZ_WIDGET_GONK
@@ -68,7 +72,7 @@ InitializeBinder(void *aDummy) {
 }
 #endif
 
-#if defined(XP_WIN)
+#if defined(XP_WIN) && defined(MOZ_SANDBOX)
 static bool gIsSandboxEnabled = false;
 void StartSandboxCallback()
 {
@@ -93,7 +97,7 @@ content_process_main(int argc, char* argv[])
     bool isNuwa = false;
     for (int i = 1; i < argc; i++) {
         isNuwa |= strcmp(argv[i], "-nuwa") == 0;
-#if defined(XP_WIN)
+#if defined(XP_WIN) && defined(MOZ_SANDBOX)
         gIsSandboxEnabled |= strcmp(argv[i], "-sandbox") == 0;
 #endif
     }
@@ -130,6 +134,7 @@ content_process_main(int argc, char* argv[])
         SetDllDirectory(L"");
     }
 
+#ifdef MOZ_SANDBOX
     if (gIsSandboxEnabled) {
         sandbox::TargetServices* target_service =
             sandbox::SandboxFactory::GetTargetServices();
@@ -142,7 +147,12 @@ content_process_main(int argc, char* argv[])
            return 2;
         }
         mozilla::SandboxTarget::Instance()->SetStartSandboxCallback(StartSandboxCallback);
+
+#if defined(MOZ_CONTENT_SANDBOX)
+        mozilla::warnonlysandbox::PrepareForInit();
+#endif
     }
+#endif
 #endif
 
     nsresult rv = XRE_InitChildProcess(argc, argv);

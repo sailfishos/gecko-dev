@@ -122,14 +122,14 @@ class Context(KeyedDefaultDict):
         else:
             return default()
 
-    def _validate(self, key, value):
+    def _validate(self, key, value, is_template=False):
         """Validates whether the key is allowed and if the value's type
         matches.
         """
         stored_type, input_type, docs, tier = \
             self._allowed_variables.get(key, (None, None, None, None))
 
-        if stored_type is None:
+        if stored_type is None or not is_template and key in TEMPLATE_VARIABLES:
             raise KeyError('global_ns', 'set_unknown', key, value)
 
         # If the incoming value is not the type we store, we try to convert
@@ -180,6 +180,11 @@ class Context(KeyedDefaultDict):
         """
         tiers = (VARIABLES[key][3] for key in self if key in VARIABLES)
         return set(tier for tier in tiers if tier)
+
+
+class TemplateContext(Context):
+    def _validate(self, key, value):
+        return Context._validate(self, key, value, True)
 
 
 class FinalTargetValue(ContextDerivedValue, unicode):
@@ -443,6 +448,13 @@ VARIABLES = {
         This variable should not be populated directly. Instead, it should
         populated by calling add_java_jar().
         """, 'libs'),
+
+    'LIBRARY_DEFINES': (OrderedDict, dict,
+        """Dictionary of compiler defines to declare for the entire library.
+
+        This variable works like DEFINES, except that declarations apply to all
+        libraries that link into this library via FINAL_LIBRARY.
+        """, None),
 
     'LIBRARY_NAME': (unicode, unicode,
         """The code name of the library generated for a directory.
@@ -818,7 +830,7 @@ VARIABLES = {
         When this variable is present, the results of this directory will end up
         being placed in the $(DIST_SUBDIR) subdirectory of where it would
         otherwise be placed.
-        """, 'libs'),
+        """, None),
 
     'FINAL_TARGET': (FinalTargetValue, unicode,
         """The name of the directory to install targets to.
@@ -828,7 +840,7 @@ VARIABLES = {
         neither are present, the result is dist/bin. If XPI_NAME is present, the
         result is dist/xpi-stage/$(XPI_NAME). If DIST_SUBDIR is present, then
         the $(DIST_SUBDIR) directory of the otherwise default value is used.
-        """, 'libs'),
+        """, None),
 
     'GYP_DIRS': (StrictOrderingOnAppendListWithFlagsFactory({
             'variables': dict,
@@ -918,7 +930,7 @@ VARIABLES = {
            Note that the ordering of flags matters here; these flags will be
            added to the linker's command line in the same order as they
            appear in the moz.build file.
-        """, 'libs'),
+        """, None),
 
     'EXTRA_DSO_LDOPTS': (List, list,
         """Flags passed to the linker when linking a shared library.
@@ -926,7 +938,7 @@ VARIABLES = {
            Note that the ordering of flags matter here, these flags will be
            added to the linker's command line in the same order as they
            appear in the moz.build file.
-        """, 'libs'),
+        """, None),
 
     'WIN32_EXE_LDFLAGS': (List, list,
         """Flags passed to the linker when linking a Windows .exe executable
@@ -937,7 +949,7 @@ VARIABLES = {
            appear in the moz.build file.
 
            This variable only has an effect on Windows.
-        """, 'libs'),
+        """, None),
 }
 
 # Sanity check: we don't want any variable above to have a list as storage type.
@@ -946,16 +958,41 @@ for name, (storage_type, input_types, docs, tier) in VARIABLES.items():
         raise RuntimeError('%s has a "list" storage type. Use "List" instead.'
             % name)
 
+# Set of variables that are only allowed in templates:
+TEMPLATE_VARIABLES = {
+    'CPP_UNIT_TESTS',
+    'FORCE_SHARED_LIB',
+    'HOST_PROGRAM',
+    'HOST_LIBRARY_NAME',
+    'HOST_SIMPLE_PROGRAMS',
+    'IS_COMPONENT',
+    'IS_FRAMEWORK',
+    'LIBRARY_NAME',
+    'PROGRAM',
+    'SIMPLE_PROGRAMS',
+}
+
+# Add a note to template variable documentation.
+for name in TEMPLATE_VARIABLES:
+    if name not in VARIABLES:
+        raise RuntimeError('%s is in TEMPLATE_VARIABLES but not in VARIABLES.'
+            % name)
+    storage_type, input_types, docs, tier = VARIABLES[name]
+    docs += 'This variable is only available in templates.\n'
+    VARIABLES[name] = (storage_type, input_types, docs, tier)
+
+
 # The set of functions exposed to the sandbox.
 #
 # Each entry is a tuple of:
 #
-#  (method attribute, (argument types), docs)
+#  (function returning the corresponding function from a given sandbox,
+#   (argument types), docs)
 #
 # The first element is an attribute on Sandbox that should be a function type.
 #
 FUNCTIONS = {
-    'include': ('_include', (str,),
+    'include': (lambda self: self._include, (str,),
         """Include another mozbuild file in the context of this one.
 
         This is similar to a ``#include`` in C languages. The filename passed to
@@ -982,7 +1019,7 @@ FUNCTIONS = {
            include('/elsewhere/foo.build')
         """),
 
-    'add_java_jar': ('_add_java_jar', (str,),
+    'add_java_jar': (lambda self: self._add_java_jar, (str,),
         """Declare a Java JAR target to be built.
 
         This is the supported way to populate the JAVA_JAR_TARGETS
@@ -995,7 +1032,8 @@ FUNCTIONS = {
         :py:class:`mozbuild.frontend.data.JavaJarData`.
         """),
 
-    'add_android_eclipse_project': ('_add_android_eclipse_project', (str, str),
+    'add_android_eclipse_project': (
+        lambda self: self._add_android_eclipse_project, (str, str),
         """Declare an Android Eclipse project.
 
         This is one of the supported ways to populate the
@@ -1009,7 +1047,8 @@ FUNCTIONS = {
         :py:class:`mozbuild.frontend.data.AndroidEclipseProjectData`.
         """),
 
-    'add_android_eclipse_library_project': ('_add_android_eclipse_library_project', (str,),
+    'add_android_eclipse_library_project': (
+        lambda self: self._add_android_eclipse_library_project, (str,),
         """Declare an Android Eclipse library project.
 
         This is one of the supported ways to populate the
@@ -1022,7 +1061,9 @@ FUNCTIONS = {
         :py:class:`mozbuild.frontend.data.AndroidEclipseProjectData`.
         """),
 
-    'add_tier_dir': ('_add_tier_directory', (str, [str, list], bool, bool, str),
+    'add_tier_dir': (
+        lambda self: self._add_tier_directory,
+        (str, [str, list], bool, bool, str),
         """Register a directory for tier traversal.
 
         This is the preferred way to populate the TIERS variable.
@@ -1057,7 +1098,7 @@ FUNCTIONS = {
            add_tier_dir('base', 'bar', external=True)
         """),
 
-    'export': ('_export', (str,),
+    'export': (lambda self: self._export, (str,),
         """Make the specified variable available to all child directories.
 
         The variable specified by the argument string is added to the
@@ -1084,7 +1125,7 @@ FUNCTIONS = {
           export('XPI_NAME')
         """),
 
-    'warning': ('_warning', (str,),
+    'warning': (lambda self: self._warning, (str,),
         """Issue a warning.
 
         Warnings are string messages that are printed during execution.
@@ -1092,10 +1133,57 @@ FUNCTIONS = {
         Warnings are ignored during execution.
         """),
 
-    'error': ('_error', (str,),
+    'error': (lambda self: self._error, (str,),
         """Issue a fatal error.
 
         If this function is called, processing is aborted immediately.
+        """),
+
+    'template': (lambda self: self._template_decorator, (),
+        """Decorator for template declarations.
+
+        Templates are a special kind of functions that can be declared in
+        mozbuild files. Uppercase variables assigned in the function scope
+        are considered to be the result of the template.
+
+        Contrary to traditional python functions:
+           - return values from template functions are ignored,
+           - template functions don't have access to the global scope.
+
+        Example template
+        ^^^^^^^^^^^^^^^^
+
+        The following ``Program`` template sets two variables ``PROGRAM`` and
+        ``USE_LIBS``. ``PROGRAM`` is set to the argument given on the template
+        invocation, and ``USE_LIBS`` to contain "mozglue"::
+
+           @template
+           def Program(name):
+               PROGRAM = name
+               USE_LIBS += ['mozglue']
+
+        Template invocation
+        ^^^^^^^^^^^^^^^^^^^
+
+        A template is invoked in the form of a function call::
+
+           Program('myprog')
+
+        The result of the template, being all the uppercase variable it sets
+        is mixed to the existing set of variables defined in the mozbuild file
+        invoking the template::
+
+           FINAL_TARGET = 'dist/other'
+           USE_LIBS += ['mylib']
+           Program('myprog')
+           USE_LIBS += ['otherlib']
+
+        The above mozbuild results in the following variables set:
+
+           - ``FINAL_TARGET`` is 'dist/other'
+           - ``USE_LIBS`` is ['mylib', 'mozglue', 'otherlib']
+           - ``PROGRAM`` is 'myprog'
+
         """),
 }
 
@@ -1159,7 +1247,117 @@ SPECIAL_VARIABLES = {
 
 # Deprecation hints.
 DEPRECATION_HINTS = {
+    'CPP_UNIT_TESTS': '''
+        Please use'
+
+            CppUnitTests(['foo', 'bar'])
+
+        instead of
+
+            CPP_UNIT_TESTS += ['foo', 'bar']
+        ''',
+
+    'HOST_PROGRAM': '''
+        Please use
+
+            HostProgram('foo')
+
+        instead of
+
+            HOST_PROGRAM = 'foo'
+        ''',
+
+    'HOST_LIBRARY_NAME': '''
+        Please use
+
+            HostLibrary('foo')
+
+        instead of
+
+            HOST_LIBRARY_NAME = 'foo'
+        ''',
+
+    'HOST_SIMPLE_PROGRAMS': '''
+        Please use
+
+            HostSimplePrograms(['foo', 'bar'])
+
+        instead of
+
+            HOST_SIMPLE_PROGRAMS += ['foo', 'bar']"
+        ''',
+
+    'LIBRARY_NAME': '''
+        Please use
+
+            Library('foo')
+
+        instead of
+
+            LIBRARY_NAME = 'foo'
+        ''',
+
+    'PROGRAM': '''
+        Please use
+
+            Program('foo')
+
+        instead of
+
+            PROGRAM = 'foo'"
+        ''',
+
+    'SIMPLE_PROGRAMS': '''
+        Please use
+
+            SimplePrograms(['foo', 'bar'])
+
+        instead of
+
+            SIMPLE_PROGRAMS += ['foo', 'bar']"
+        ''',
+
+    'FORCE_SHARED_LIB': '''
+        Please use
+
+            SharedLibrary('foo')
+
+        instead of
+
+            Library('foo') [ or LIBRARY_NAME = 'foo' ]
+            FORCE_SHARED_LIB = True
+        ''',
+
+    'IS_COMPONENT': '''
+        Please use
+
+            XPCOMBinaryComponent('foo')
+
+        instead of
+
+            Library('foo') [ or LIBRARY_NAME = 'foo' ]
+            IS_COMPONENT = True
+        ''',
+
+    'IS_FRAMEWORK': '''
+        Please use
+
+            Framework('foo')
+
+        instead of
+
+            Library('foo') [ or LIBRARY_NAME = 'foo' ]
+            IS_FRAMEWORK = True
+        ''',
+
     'TOOL_DIRS': 'Please use the DIRS variable instead.',
+
     'TEST_TOOL_DIRS': 'Please use the TEST_DIRS variable instead.',
+
     'PARALLEL_DIRS': 'Please use the DIRS variable instead.',
 }
+
+# Make sure that all template variables have a deprecation hint.
+for name in TEMPLATE_VARIABLES:
+    if name not in DEPRECATION_HINTS:
+        raise RuntimeError('Missing deprecation hint for %s' % name)

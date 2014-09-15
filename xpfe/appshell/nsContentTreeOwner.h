@@ -22,11 +22,11 @@
 class nsXULWindow;
 class nsSiteWindow;
 
-class nsContentTreeOwner : public nsIDocShellTreeOwner,
-                           public nsIBaseWindow,
-                           public nsIInterfaceRequestor,
-                           public nsIWebBrowserChrome3,
-                           public nsIWindowProvider
+class nsContentTreeOwner MOZ_FINAL : public nsIDocShellTreeOwner,
+                                     public nsIBaseWindow,
+                                     public nsIInterfaceRequestor,
+                                     public nsIWebBrowserChrome3,
+                                     public nsIWindowProvider
 {
 friend class nsXULWindow;
 friend class nsSiteWindow;
@@ -43,7 +43,7 @@ public:
    NS_DECL_NSIWINDOWPROVIDER
 
 protected:
-   nsContentTreeOwner(bool fPrimary);
+   explicit nsContentTreeOwner(bool fPrimary);
    virtual ~nsContentTreeOwner();
 
    void XULWindow(nsXULWindow* aXULWindow);

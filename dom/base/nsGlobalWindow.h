@@ -43,22 +43,13 @@
 #include "nsFrameMessageManager.h"
 #include "mozilla/LinkedList.h"
 #include "mozilla/TimeStamp.h"
-#include "nsIInlineEventHandlers.h"
 #include "nsWrapperCacheInlines.h"
 #include "nsIIdleObserver.h"
 #include "nsIDocument.h"
-#include "nsIDOMTouchEvent.h"
 #include "mozilla/dom/EventTarget.h"
+#include "mozilla/dom/WindowBinding.h"
 #include "Units.h"
 #include "nsComponentManagerUtils.h"
-
-#ifdef MOZ_B2G
-#include "nsIDOMWindowB2G.h"
-#endif // MOZ_B2G
-
-#ifdef MOZ_WEBSPEECH
-#include "nsISpeechSynthesisGetter.h"
-#endif // MOZ_WEBSPEECH
 
 #define DEFAULT_HOME_PAGE "www.mozilla.org"
 #define PREF_BROWSER_STARTUP_HOMEPAGE "browser.startup.homepage"
@@ -113,6 +104,7 @@ class External;
 class Function;
 class Gamepad;
 class MediaQueryList;
+class MozSelfSupport;
 class Navigator;
 class OwningExternalOrWindowProxy;
 class Selection;
@@ -327,16 +319,7 @@ class nsGlobalWindow : public mozilla::dom::EventTarget,
                        public nsIDOMJSWindow,
                        public nsSupportsWeakReference,
                        public nsIInterfaceRequestor,
-                       public PRCListStr,
-                       public nsIDOMWindowPerformance,
-                       public nsITouchEventReceiver,
-                       public nsIInlineEventHandlers
-#ifdef MOZ_B2G
-                     , public nsIDOMWindowB2G
-#endif // MOZ_B2G
-#ifdef MOZ_WEBSPEECH
-                     , public nsISpeechSynthesisGetter
-#endif // MOZ_WEBSPEECH
+                       public PRCListStr
 {
 public:
   typedef mozilla::TimeStamp TimeStamp;
@@ -385,19 +368,6 @@ public:
   // nsIDOMWindow
   NS_DECL_NSIDOMWINDOW
 
-#ifdef MOZ_B2G
-  // nsIDOMWindowB2G
-  NS_DECL_NSIDOMWINDOWB2G
-#endif // MOZ_B2G
-
-#ifdef MOZ_WEBSPEECH
-  // nsISpeechSynthesisGetter
-  NS_DECL_NSISPEECHSYNTHESISGETTER
-#endif // MOZ_WEBSPEECH
-
-  // nsIDOMWindowPerformance
-  NS_DECL_NSIDOMWINDOWPERFORMANCE
-
   // nsIDOMJSWindow
   NS_DECL_NSIDOMJSWINDOW
 
@@ -424,12 +394,6 @@ public:
 
     return GetOuterFromCurrentInner(this);
   }
-
-  // nsITouchEventReceiver
-  NS_DECL_NSITOUCHEVENTRECEIVER
-
-  // nsIInlineEventHandlers
-  NS_DECL_NSIINLINEEVENTHANDLERS
 
   // nsPIDOMWindow
   virtual nsPIDOMWindow* GetPrivateRoot();
@@ -599,6 +563,7 @@ public:
 
   nsGlobalWindow *GetCurrentInnerWindowInternal() const
   {
+    MOZ_ASSERT(IsOuterWindow());
     return static_cast<nsGlobalWindow *>(mInnerWindow);
   }
 
@@ -820,8 +785,6 @@ public:
     return nullptr;
   }
 
-  static bool WindowOnWebIDL(JSContext* /* unused */, JSObject* aObj);
-
   nsIDOMWindow* GetWindow(mozilla::ErrorResult& aError);
   nsIDOMWindow* GetSelf(mozilla::ErrorResult& aError);
   nsIDocument* GetDocument()
@@ -934,6 +897,16 @@ public:
                 mozilla::ErrorResult& aError);
   void ResizeBy(int32_t aWidthDif, int32_t aHeightDif,
                 mozilla::ErrorResult& aError);
+  void Scroll(double aXScroll, double aYScroll,
+              const mozilla::dom::ScrollOptions& aOptions);
+  void ScrollTo(double aXScroll, double aYScroll,
+                const mozilla::dom::ScrollOptions& aOptions);
+  void ScrollBy(double aXScrollDif, double aYScrollDif,
+                const mozilla::dom::ScrollOptions& aOptions);
+  void ScrollByLines(int32_t numLines,
+                     const mozilla::dom::ScrollOptions& aOptions);
+  void ScrollByPages(int32_t numPages,
+                     const mozilla::dom::ScrollOptions& aOptions);
   int32_t GetInnerWidth(mozilla::ErrorResult& aError);
   void SetInnerWidth(int32_t aInnerWidth, mozilla::ErrorResult& aError);
   int32_t GetInnerHeight(mozilla::ErrorResult& aError);
@@ -960,7 +933,7 @@ public:
   int32_t RequestAnimationFrame(mozilla::dom::FrameRequestCallback& aCallback,
                                 mozilla::ErrorResult& aError);
   void CancelAnimationFrame(int32_t aHandle, mozilla::ErrorResult& aError);
-  nsPerformance* GetPerformance(mozilla::ErrorResult& aError);
+  nsPerformance* GetPerformance();
 #ifdef MOZ_WEBSPEECH
   mozilla::dom::SpeechSynthesis*
     GetSpeechSynthesis(mozilla::ErrorResult& aError);
@@ -1004,6 +977,9 @@ public:
             bool aWrapAround, bool aWholeWord, bool aSearchInFrames,
             bool aShowDialog, mozilla::ErrorResult& aError);
   uint64_t GetMozPaintCount(mozilla::ErrorResult& aError);
+
+  mozilla::dom::MozSelfSupport* GetMozSelfSupport(mozilla::ErrorResult& aError);
+
   already_AddRefed<nsIDOMWindow> OpenDialog(JSContext* aCx,
                                             const nsAString& aUrl,
                                             const nsAString& aName,
@@ -1311,7 +1287,8 @@ public:
                     mozilla::ErrorResult& aError);
   nsRect GetInnerScreenRect();
 
-  void ScrollTo(const mozilla::CSSIntPoint& aScroll);
+  void ScrollTo(const mozilla::CSSIntPoint& aScroll,
+                const mozilla::dom::ScrollOptions& aOptions);
 
   bool IsFrame()
   {
@@ -1382,6 +1359,8 @@ protected:
 
   inline int32_t DOMMinTimeoutValue() const;
 
+  // Clear the document-dependent slots on our JS wrapper.  Inner windows only.
+  void ClearDocumentDependentSlots(JSContext* aCx);
 
   // Inner windows only.
   already_AddRefed<mozilla::dom::StorageEvent>
@@ -1548,6 +1527,8 @@ protected:
   // forward declared here means that ~nsGlobalWindow wouldn't compile because
   // it wouldn't see the ~External function's declaration.
   nsCOMPtr<nsISupports>         mExternal;
+
+  nsRefPtr<mozilla::dom::MozSelfSupport> mMozSelfSupport;
 
   nsRefPtr<mozilla::dom::DOMStorage> mLocalStorage;
   nsRefPtr<mozilla::dom::DOMStorage> mSessionStorage;

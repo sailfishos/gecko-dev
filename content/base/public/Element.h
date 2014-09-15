@@ -35,6 +35,7 @@
 #include "nsAttrValue.h"
 #include "mozilla/EventForwards.h"
 #include "mozilla/dom/BindingDeclarations.h"
+#include "mozilla/dom/WindowBinding.h"
 #include "Units.h"
 
 class nsIDOMEventListener;
@@ -720,11 +721,8 @@ public:
   already_AddRefed<ShadowRoot> CreateShadowRoot(ErrorResult& aError);
   already_AddRefed<DestinationInsertionPointList> GetDestinationInsertionPoints();
 
-  void ScrollIntoView()
-  {
-    ScrollIntoView(true);
-  }
-  void ScrollIntoView(bool aTop);
+  void ScrollIntoView();
+  void ScrollIntoView(bool aTop, const ScrollOptions &aOptions);
   int32_t ScrollTop()
   {
     nsIScrollableFrame* sf = GetScrollFrame();
@@ -984,6 +982,62 @@ public:
    * @param aValue   Boolean value of attribute.
    */
   nsresult SetBoolAttr(nsIAtom* aAttr, bool aValue);
+
+  /**
+   * Helper method for NS_IMPL_ENUM_ATTR_DEFAULT_VALUE.
+   * Gets the enum value string of an attribute and using a default value if
+   * the attribute is missing or the string is an invalid enum value.
+   *
+   * @param aType     the name of the attribute.
+   * @param aDefault  the default value if the attribute is missing or invalid.
+   * @param aResult   string corresponding to the value [out].
+   */
+  void GetEnumAttr(nsIAtom* aAttr,
+                   const char* aDefault,
+                   nsAString& aResult) const;
+
+  /**
+   * Helper method for NS_IMPL_ENUM_ATTR_DEFAULT_MISSING_INVALID_VALUES.
+   * Gets the enum value string of an attribute and using the default missing
+   * value if the attribute is missing or the default invalid value if the
+   * string is an invalid enum value.
+   *
+   * @param aType            the name of the attribute.
+   * @param aDefaultMissing  the default value if the attribute is missing.  If
+                             null and the attribute is missing, aResult will be
+                             set to the null DOMString; this only matters for
+                             cases in which we're reflecting a nullable string.
+   * @param aDefaultInvalid  the default value if the attribute is invalid.
+   * @param aResult          string corresponding to the value [out].
+   */
+  void GetEnumAttr(nsIAtom* aAttr,
+                   const char* aDefaultMissing,
+                   const char* aDefaultInvalid,
+                   nsAString& aResult) const;
+
+  /**
+   * Unset an attribute.
+   */
+  void UnsetAttr(nsIAtom* aAttr, ErrorResult& aError)
+  {
+    aError = UnsetAttr(kNameSpaceID_None, aAttr, true);
+  }
+
+  /**
+   * Set an attribute in the simplest way possible.
+   */
+  void SetAttr(nsIAtom* aAttr, const nsAString& aValue, ErrorResult& aError)
+  {
+    aError = SetAttr(kNameSpaceID_None, aAttr, aValue, true);
+  }
+
+  /**
+   * Set a content attribute via a reflecting nullable string IDL
+   * attribute (e.g. a CORS attribute).  If DOMStringIsNull(aValue),
+   * this will actually remove the content attribute.
+   */
+  void SetOrRemoveNullableStringAttr(nsIAtom* aName, const nsAString& aValue,
+                                     ErrorResult& aError);
 
   /**
    * Retrieve the ratio of font-size-inflated text font size to computed font

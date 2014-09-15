@@ -9,8 +9,8 @@
 #include "jit/Bailouts.h"
 #include "jit/IonFrames.h"
 #include "jit/IonLinker.h"
-#include "jit/IonSpewer.h"
 #include "jit/JitCompartment.h"
+#include "jit/JitSpewer.h"
 #include "jit/mips/Bailouts-mips.h"
 #include "jit/mips/BaselineHelpers-mips.h"
 #ifdef JS_ION_PERF
@@ -340,11 +340,8 @@ JitRuntime::generateInvalidator(JSContext *cx)
 
     // Save floating point registers
     // We can use as_sd because stack is alligned.
-    // :TODO: (Bug 972836) // Fix this once odd regs can be used as float32
-    // only. For now we skip saving odd regs for O32 ABI.
-    uint32_t increment = 2;
-    for (uint32_t i = 0; i < FloatRegisters::Total; i += increment)
-        masm.as_sd(FloatRegister::FromCode(i), StackPointer,
+    for (uint32_t i = 0; i < FloatRegisters::TotalDouble; i ++)
+        masm.as_sd(FloatRegister::FromIndex(i, FloatRegister::Double), StackPointer,
                    InvalidationBailoutStack::offsetOfFpRegs() + i * sizeof(double));
 
     // Pass pointer to InvalidationBailoutStack structure.
@@ -380,7 +377,7 @@ JitRuntime::generateInvalidator(JSContext *cx)
     Linker linker(masm);
     AutoFlushICache afc("Invalidator");
     JitCode *code = linker.newCode<NoGC>(cx, OTHER_CODE);
-    IonSpew(IonSpew_Invalidate, "   invalidation thunk created at %p", (void *) code->raw());
+    JitSpew(JitSpew_Invalidate, "   invalidation thunk created at %p", (void *) code->raw());
 
 #ifdef JS_ION_PERF
     writePerfSpewerJitCodeProfile(code, "Invalidator");
@@ -409,7 +406,9 @@ JitRuntime::generateArgumentsRectifier(JSContext *cx, ExecutionMode mode, void *
     // Load the number of |undefined|s to push into t1.
     masm.loadPtr(Address(StackPointer, IonRectifierFrameLayout::offsetOfCalleeToken()),
                  calleeTokenReg);
-    masm.load16ZeroExtend(Address(calleeTokenReg, JSFunction::offsetOfNargs()), numArgsReg);
+    masm.mov(calleeTokenReg, numArgsReg);
+    masm.andPtr(Imm32(CalleeTokenMask), numArgsReg);
+    masm.load16ZeroExtend(Address(numArgsReg, JSFunction::offsetOfNargs()), numArgsReg);
 
     masm.ma_subu(t1, numArgsReg, s3);
 
@@ -475,6 +474,7 @@ JitRuntime::generateArgumentsRectifier(JSContext *cx, ExecutionMode mode, void *
 
     // Call the target function.
     // Note that this code assumes the function is JITted.
+    masm.andPtr(Imm32(CalleeTokenMask), calleeTokenReg);
     masm.loadPtr(Address(calleeTokenReg, JSFunction::offsetOfNativeOrScript()), t1);
     masm.loadBaselineOrIonRaw(t1, t1, mode, nullptr);
     masm.ma_callIonHalfPush(t1);
@@ -564,11 +564,8 @@ PushBailoutFrame(MacroAssembler &masm, uint32_t frameClass, Register spArg)
 
     // Save floating point registers
     // We can use as_sd because stack is alligned.
-    // :TODO: (Bug 972836) // Fix this once odd regs can be used as float32
-    // only. For now we skip saving odd regs for O32 ABI.
-    uint32_t increment = 2;
-    for (uint32_t i = 0; i < FloatRegisters::Total; i += increment)
-        masm.as_sd(FloatRegister::FromCode(i), StackPointer,
+    for (uint32_t i = 0; i < FloatRegisters::TotalDouble; i++)
+        masm.as_sd(FloatRegister::FromIndex(i, FloatRegister::Double), StackPointer,
                    BailoutStack::offsetOfFpRegs() + i * sizeof(double));
 
     // Store the frameSize_ or tableOffset_ stored in ra
@@ -690,7 +687,7 @@ JitRuntime::generateBailoutHandler(JSContext *cx, ExecutionMode mode)
         GenerateParallelBailoutThunk(masm, NO_FRAME_SIZE_CLASS_ID);
         break;
       default:
-        MOZ_ASSUME_UNREACHABLE("No such execution mode");
+        MOZ_CRASH("No such execution mode");
     }
 
     Linker linker(masm);
@@ -812,8 +809,8 @@ JitRuntime::generateVMWrapper(JSContext *cx, const VMFunction &f)
             break;
           case VMFunction::DoubleByRef:
             // Copy double sized argument to aligned place.
-            masm.ma_ld(ScratchFloatReg, Address(argsBase, argDisp));
-            masm.as_sd(ScratchFloatReg, doubleArgs, doubleArgDisp);
+            masm.ma_ld(ScratchDoubleReg, Address(argsBase, argDisp));
+            masm.as_sd(ScratchDoubleReg, doubleArgs, doubleArgDisp);
             masm.passABIArg(MoveOperand(doubleArgs, doubleArgDisp, MoveOperand::EFFECTIVE_ADDRESS),
                             MoveOp::GENERAL);
             doubleArgDisp += sizeof(double);
@@ -843,7 +840,7 @@ JitRuntime::generateVMWrapper(JSContext *cx, const VMFunction &f)
         masm.branchIfFalseBool(v0, masm.failureLabel(f.executionMode));
         break;
       default:
-        MOZ_ASSUME_UNREACHABLE("unknown failure kind");
+        MOZ_CRASH("unknown failure kind");
     }
 
     masm.freeStack(outParamOffset);
@@ -873,7 +870,7 @@ JitRuntime::generateVMWrapper(JSContext *cx, const VMFunction &f)
 
       case Type_Double:
         if (cx->runtime()->jitSupportsFloatingPoint) {
-            masm.as_ld(ReturnFloatReg, StackPointer, 0);
+            masm.as_ld(ReturnDoubleReg, StackPointer, 0);
         } else {
             masm.assumeUnreachable("Unable to load into float reg, with no FP support.");
         }
@@ -931,13 +928,7 @@ JitRuntime::generatePreBarrier(JSContext *cx, MIRType type)
     masm.setupUnalignedABICall(2, a2);
     masm.passABIArg(a0);
     masm.passABIArg(a1);
-
-    if (type == MIRType_Value) {
-        masm.callWithABI(JS_FUNC_TO_DATA_PTR(void *, MarkValueFromIon));
-    } else {
-        MOZ_ASSERT(type == MIRType_Shape);
-        masm.callWithABI(JS_FUNC_TO_DATA_PTR(void *, MarkShapeFromIon));
-    }
+    masm.callWithABI(IonMarkFunction(type));
 
     masm.PopRegsInMask(save);
     masm.ret();

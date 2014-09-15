@@ -20,6 +20,7 @@ import com.nineoldandroids.animation.Animator;
 import com.nineoldandroids.animation.AnimatorSet;
 import com.nineoldandroids.animation.ObjectAnimator;
 
+import org.mozilla.gecko.LocaleAware;
 import org.mozilla.gecko.Telemetry;
 import org.mozilla.gecko.TelemetryContract;
 import org.mozilla.gecko.db.BrowserContract.SearchHistory;
@@ -32,7 +33,7 @@ import org.mozilla.search.autocomplete.SuggestionsFragment;
  * State management is delegated to child fragments. Fragments communicate
  * with each other by passing messages through this activity.
  */
-public class MainActivity extends FragmentActivity implements AcceptsSearchQuery {
+public class MainActivity extends LocaleAware.LocaleAwareFragmentActivity implements AcceptsSearchQuery {
 
     private static final String KEY_SEARCH_STATE = "search_state";
     private static final String KEY_EDIT_STATE = "edit_state";
@@ -58,6 +59,8 @@ public class MainActivity extends FragmentActivity implements AcceptsSearchQuery
     private ClearableEditText editText;
     private View preSearch;
     private View postSearch;
+
+    private View settingsButton;
 
     private View suggestions;
     private SuggestionsFragment suggestionsFragment;
@@ -119,6 +122,16 @@ public class MainActivity extends FragmentActivity implements AcceptsSearchQuery
         preSearch = findViewById(R.id.presearch);
         postSearch = findViewById(R.id.postsearch);
 
+        settingsButton = findViewById(R.id.settings_button);
+
+        // Apply click handler to settings button.
+        settingsButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startActivity(new Intent(MainActivity.this, SearchPreferenceActivity.class));
+            }
+        });
+
         suggestions = findViewById(R.id.suggestions);
         suggestionsFragment = (SuggestionsFragment) getSupportFragmentManager().findFragmentById(R.id.suggestions);
 
@@ -155,6 +168,7 @@ public class MainActivity extends FragmentActivity implements AcceptsSearchQuery
         editText = null;
         preSearch = null;
         postSearch = null;
+        settingsButton = null;
         suggestionsFragment = null;
         suggestions = null;
         animationText = null;
@@ -178,9 +192,10 @@ public class MainActivity extends FragmentActivity implements AcceptsSearchQuery
         // Reset the activity in the presearch state if it was launched from a new intent.
         setSearchState(SearchState.PRESEARCH);
 
-        // Also clear any existing search term and enter editing mode.
-        editText.setText("");
+        // Enter editing mode and reset the query. We must reset the query after entering
+        // edit mode in order for the suggestions to update.
         setEditState(EditState.EDITING);
+        editText.setText("");
     }
 
     @Override
@@ -194,7 +209,7 @@ public class MainActivity extends FragmentActivity implements AcceptsSearchQuery
 
     @Override
     public void onSuggest(String query) {
-       editText.setText(query);
+        editText.setText(query);
     }
 
     @Override
@@ -222,8 +237,8 @@ public class MainActivity extends FragmentActivity implements AcceptsSearchQuery
     /**
      * Animates search suggestion to search bar. This animation has 2 main parts:
      *
-     *   1) Vertically translate query text from suggestion card to search bar.
-     *   2) Expand suggestion card to fill the results view area.
+     * 1) Vertically translate query text from suggestion card to search bar.
+     * 2) Expand suggestion card to fill the results view area.
      *
      * @param query
      * @param suggestionAnimation
@@ -295,6 +310,8 @@ public class MainActivity extends FragmentActivity implements AcceptsSearchQuery
         }
         this.editState = editState;
 
+        updateSettingsButtonVisibility();
+
         editText.setActive(editState == EditState.EDITING);
         suggestions.setVisibility(editState == EditState.EDITING ? View.VISIBLE : View.INVISIBLE);
     }
@@ -305,8 +322,19 @@ public class MainActivity extends FragmentActivity implements AcceptsSearchQuery
         }
         this.searchState = searchState;
 
+        updateSettingsButtonVisibility();
+
         preSearch.setVisibility(searchState == SearchState.PRESEARCH ? View.VISIBLE : View.INVISIBLE);
         postSearch.setVisibility(searchState == SearchState.POSTSEARCH ? View.VISIBLE : View.INVISIBLE);
+    }
+
+    private void updateSettingsButtonVisibility() {
+        // Show button on launch screen when keyboard is down.
+        if (searchState == SearchState.PRESEARCH && editState == EditState.WAITING) {
+            settingsButton.setVisibility(View.VISIBLE);
+        } else {
+            settingsButton.setVisibility(View.INVISIBLE);
+        }
     }
 
     @Override

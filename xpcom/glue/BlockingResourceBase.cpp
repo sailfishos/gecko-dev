@@ -35,8 +35,7 @@ namespace mozilla {
 //
 
 // static members
-const char* const BlockingResourceBase::kResourceTypeName[] =
-{
+const char* const BlockingResourceBase::kResourceTypeName[] = {
   // needs to be kept in sync with BlockingResourceType
   "Mutex", "ReentrantMonitor", "CondVar"
 };
@@ -88,7 +87,8 @@ BlockingResourceBase::GetStackTrace(AcquisitionState& aState)
  * some info is written into |aOut|
  */
 bool
-PrintCycle(const BlockingResourceBase::DDT::ResourceAcquisitionArray* aCycle, nsACString& aOut)
+PrintCycle(const BlockingResourceBase::DDT::ResourceAcquisitionArray* aCycle,
+           nsACString& aOut)
 {
   NS_ASSERTION(aCycle->Length() > 1, "need > 1 element for cycle!");
 
@@ -97,12 +97,15 @@ PrintCycle(const BlockingResourceBase::DDT::ResourceAcquisitionArray* aCycle, ns
   fputs("=== Cyclical dependency starts at\n", stderr);
   aOut += "Cyclical dependency starts at\n";
 
-  const BlockingResourceBase::DDT::ResourceAcquisitionArray::elem_type res = aCycle->ElementAt(0);
+  const BlockingResourceBase::DDT::ResourceAcquisitionArray::elem_type res =
+    aCycle->ElementAt(0);
   maybeImminent &= res->Print(aOut);
 
   BlockingResourceBase::DDT::ResourceAcquisitionArray::index_type i;
-  BlockingResourceBase::DDT::ResourceAcquisitionArray::size_type len = aCycle->Length();
-  const BlockingResourceBase::DDT::ResourceAcquisitionArray::elem_type* it = 1 + aCycle->Elements();
+  BlockingResourceBase::DDT::ResourceAcquisitionArray::size_type len =
+    aCycle->Length();
+  const BlockingResourceBase::DDT::ResourceAcquisitionArray::elem_type* it =
+    1 + aCycle->Elements();
   for (i = 1; i < len - 1; ++i, ++it) {
     fputs("\n--- Next dependency:\n", stderr);
     aOut += "\nNext dependency:\n";
@@ -118,30 +121,6 @@ PrintCycle(const BlockingResourceBase::DDT::ResourceAcquisitionArray* aCycle, ns
 }
 
 #ifndef MOZ_CALLSTACK_DISABLED
-class CodeAddressServiceWriter MOZ_FINAL
-{
-public:
-  explicit CodeAddressServiceWriter(nsACString& aOut) : mOut(aOut) {}
-
-  void Write(const char* aFmt, ...) const
-  {
-    va_list ap;
-    va_start(ap, aFmt);
-
-    const size_t kMaxLength = 4096;
-    char buffer[kMaxLength];
-
-    vsnprintf(buffer, kMaxLength, aFmt, ap);
-    mOut += buffer;
-    fprintf(stderr, "%s", buffer);
-
-    va_end(ap);
-  }
-
-private:
-  nsACString& mOut;
-};
-
 struct CodeAddressServiceLock MOZ_FINAL
 {
   static void Unlock() { }
@@ -178,7 +157,6 @@ private:
 
 typedef CodeAddressService<CodeAddressServiceStringTable,
                            CodeAddressServiceStringAlloc,
-                           CodeAddressServiceWriter,
                            CodeAddressServiceLock> WalkTheStackCodeAddressService;
 #endif
 
@@ -205,9 +183,14 @@ BlockingResourceBase::Print(nsACString& aOut) const
   const AcquisitionState& state = acquired ? mAcquired : mFirstSeen;
 
   WalkTheStackCodeAddressService addressService;
-  CodeAddressServiceWriter writer(aOut);
+
   for (uint32_t i = 0; i < state.Length(); i++) {
-    addressService.WriteLocation(writer, state[i]);
+    const size_t kMaxLength = 4096;
+    char buffer[kMaxLength];
+    addressService.GetLocation(state[i], buffer, kMaxLength);
+    const char* fmt = "    %s\n";
+    aOut += nsPrintfCString(fmt, buffer);
+    fprintf(stderr, fmt, buffer);
   }
 
 #endif

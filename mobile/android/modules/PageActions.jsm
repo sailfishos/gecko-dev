@@ -39,6 +39,7 @@ var PageActions = {
 
   _maybeInit: function() {
     if (!this._inited && Object.keys(this._items).length > 0) {
+      this._inited = true;
       Services.obs.addObserver(this, "PageActions:Clicked", false);
       Services.obs.addObserver(this, "PageActions:LongClicked", false);
     }
@@ -46,12 +47,12 @@ var PageActions = {
 
   _maybeUninit: function() {
     if (this._inited && Object.keys(this._items).length == 0) {
-      Services.obs.removeObserver(this, "PageActions:Clicked", false);
-      Services.obs.removeObserver(this, "PageActions:LongClicked", false);
+      this._inited = false;
+      Services.obs.removeObserver(this, "PageActions:Clicked");
+      Services.obs.removeObserver(this, "PageActions:LongClicked");
     }
   },
 
-  // These observes are registered to lazily initialize this in browser.js
   observe: function(aSubject, aTopic, aData) {
     if (aTopic == "PageActions:Clicked") {
       if (this._items[aData].clickCallback) {
@@ -66,7 +67,7 @@ var PageActions = {
 
   add: function(aOptions) {
     let id = uuidgen.generateUUID().toString();
-    sendMessageToJava({
+    Messaging.sendRequest({
       type: "PageActions:Add",
       id: id,
       title: aOptions.title,
@@ -84,7 +85,7 @@ var PageActions = {
   },
 
   remove: function(id) {
-    sendMessageToJava({
+    Messaging.sendRequest({
       type: "PageActions:Remove",
       id: id
     });

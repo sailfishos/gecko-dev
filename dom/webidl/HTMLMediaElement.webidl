@@ -22,7 +22,7 @@ interface HTMLMediaElement : HTMLElement {
   readonly attribute DOMString currentSrc;
 
   [SetterThrows]
-           attribute DOMString crossOrigin;
+           attribute DOMString? crossOrigin;
   const unsigned short NETWORK_EMPTY = 0;
   const unsigned short NETWORK_IDLE = 1;
   const unsigned short NETWORK_LOADING = 2;
@@ -155,7 +155,7 @@ partial interface HTMLMediaElement {
   Promise<void> setMediaKeys(MediaKeys? mediaKeys);
 
   [Pref="media.eme.enabled"]
-  attribute EventHandler onneedkey;
+  attribute EventHandler onencrypted;
 
   [Pref="media.eme.enabled"]
   readonly attribute MediaWaitingFor waitingFor;

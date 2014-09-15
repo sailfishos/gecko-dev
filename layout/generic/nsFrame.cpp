@@ -96,6 +96,7 @@
 using namespace mozilla;
 using namespace mozilla::css;
 using namespace mozilla::dom;
+using namespace mozilla::gfx;
 using namespace mozilla::layers;
 using namespace mozilla::layout;
 
@@ -1874,7 +1875,7 @@ class AutoSaveRestoreBlendMode
   nsDisplayListBuilder& mBuilder;
   EnumSet<gfx::CompositionOp> mSavedBlendModes;
 public:
-  AutoSaveRestoreBlendMode(nsDisplayListBuilder& aBuilder)
+  explicit AutoSaveRestoreBlendMode(nsDisplayListBuilder& aBuilder)
     : mBuilder(aBuilder)
     , mSavedBlendModes(aBuilder.ContainedBlendModes())
   { }
@@ -1935,6 +1936,7 @@ nsIFrame::BuildDisplayListForStackingContext(nsDisplayListBuilder* aBuilder,
   AutoSaveRestoreBlendMode autoRestoreBlendMode(*aBuilder);
   aBuilder->SetContainsBlendModes(BlendModeSet());
  
+  nsRect dirtyRectOutsideTransform = dirtyRect;
   if (isTransformed) {
     const nsRect overflow = GetVisualOverflowRectRelativeToSelf();
     if (aBuilder->IsForPainting() &&
@@ -1958,9 +1960,15 @@ nsIFrame::BuildDisplayListForStackingContext(nsDisplayListBuilder* aBuilder,
     inTransform = true;
   }
 
+  bool usingSVGEffects = nsSVGIntegrationUtils::UsingEffectsForFrame(this);
+  nsRect dirtyRectOutsideSVGEffects = dirtyRect;
+  if (usingSVGEffects) {
+    dirtyRect =
+      nsSVGIntegrationUtils::GetRequiredSourceForInvalidArea(this, dirtyRect);
+  }
+
   bool useOpacity = HasVisualOpacity() && !nsSVGUtils::CanOptimizeOpacity(this);
   bool useBlendMode = disp->mMixBlendMode != NS_STYLE_BLEND_NORMAL;
-  bool usingSVGEffects = nsSVGIntegrationUtils::UsingEffectsForFrame(this);
   bool useStickyPosition = disp->mPosition == NS_STYLE_POSITION_STICKY &&
     IsScrollFrameActive(nsLayoutUtils::GetNearestScrollableFrame(GetParent(),
                         nsLayoutUtils::SCROLLABLE_SAME_DOC |
@@ -1985,11 +1993,6 @@ nsIFrame::BuildDisplayListForStackingContext(nsDisplayListBuilder* aBuilder,
     nsDisplayListBuilder::AutoInTransformSetter
       inTransformSetter(aBuilder, inTransform);
     CheckForTouchEventHandler(aBuilder, this);
-
-    if (usingSVGEffects) {
-      dirtyRect =
-        nsSVGIntegrationUtils::GetRequiredSourceForInvalidArea(this, dirtyRect);
-    }
 
     nsRect clipPropClip;
     if (ApplyClipPropClipping(aBuilder, this, disp, &clipPropClip,
@@ -2081,6 +2084,8 @@ nsIFrame::BuildDisplayListForStackingContext(nsDisplayListBuilder* aBuilder,
    * output even if the element being filtered wouldn't otherwise do so.
    */
   if (usingSVGEffects) {
+    // Revert to the post-filter dirty rect.
+    buildingDisplayList.SetDirtyRect(dirtyRectOutsideSVGEffects);
     /* List now emptied, so add the new list to the top. */
     resultList.AppendNewToTop(
         new (aBuilder) nsDisplaySVGEffects(aBuilder, this, &resultList));
@@ -2115,7 +2120,7 @@ nsIFrame::BuildDisplayListForStackingContext(nsDisplayListBuilder* aBuilder,
     clipState.Restore();
     // Revert to the dirtyrect coming in from the parent, without our transform
     // taken into account.
-    buildingDisplayList.SetDirtyRect(aDirtyRect);
+    buildingDisplayList.SetDirtyRect(dirtyRectOutsideTransform);
     // Revert to the outer reference frame and offset because all display
     // items we create from now on are outside the transform.
     const nsIFrame* outerReferenceFrame =
@@ -4044,16 +4049,22 @@ nsFrame::GetIntrinsicRatio()
   return nsSize(0, 0);
 }
 
-/* virtual */ nsSize
+/* virtual */
+LogicalSize
 nsFrame::ComputeSize(nsRenderingContext *aRenderingContext,
-                     nsSize aCBSize, nscoord aAvailableWidth,
-                     nsSize aMargin, nsSize aBorder, nsSize aPadding,
+                     WritingMode aWM,
+                     const LogicalSize& aCBSize,
+                     nscoord aAvailableISize,
+                     const LogicalSize& aMargin,
+                     const LogicalSize& aBorder,
+                     const LogicalSize& aPadding,
                      uint32_t aFlags)
 {
-  nsSize result = ComputeAutoSize(aRenderingContext, aCBSize, aAvailableWidth,
-                                  aMargin, aBorder, aPadding,
-                                  aFlags & eShrinkWrap);
-  nsSize boxSizingAdjust(0,0);
+  LogicalSize result = ComputeAutoSize(aRenderingContext, aWM,
+                                       aCBSize, aAvailableISize,
+                                       aMargin, aBorder, aPadding,
+                                       aFlags & eShrinkWrap);
+  LogicalSize boxSizingAdjust(aWM);
   const nsStylePosition *stylePos = StylePosition();
 
   switch (stylePos->mBoxSizing) {
@@ -4063,13 +4074,22 @@ nsFrame::ComputeSize(nsRenderingContext *aRenderingContext,
     case NS_STYLE_BOX_SIZING_PADDING:
       boxSizingAdjust += aPadding;
   }
-  nscoord boxSizingToMarginEdgeWidth =
-    aMargin.width + aBorder.width + aPadding.width - boxSizingAdjust.width;
-  const nsStyleCoord* widthStyleCoord = &(stylePos->mWidth);
-  const nsStyleCoord* heightStyleCoord = &(stylePos->mHeight);
+  nscoord boxSizingToMarginEdgeISize =
+    aMargin.ISize(aWM) + aBorder.ISize(aWM) + aPadding.ISize(aWM) -
+    boxSizingAdjust.ISize(aWM);
+
+  const nsStyleCoord* inlineStyleCoord;
+  const nsStyleCoord* blockStyleCoord;
+  if (aWM.IsVertical()) {
+    inlineStyleCoord = &(stylePos->mHeight);
+    blockStyleCoord = &(stylePos->mWidth);
+  } else {
+    inlineStyleCoord = &(stylePos->mWidth);
+    blockStyleCoord = &(stylePos->mHeight);
+  }
 
   bool isFlexItem = IsFlexItem();
-  bool isHorizontalFlexItem = false;
+  bool isInlineFlexItem = false;
  
   if (isFlexItem) {
     // Flex items use their "flex-basis" property in place of their main-size
@@ -4077,47 +4097,47 @@ nsFrame::ComputeSize(nsRenderingContext *aRenderingContext,
     // "flex-basis:main-size", in which case they use their main-size property
     // after all.
     uint32_t flexDirection = GetParent()->StylePosition()->mFlexDirection;
-    isHorizontalFlexItem =
+    isInlineFlexItem =
       flexDirection == NS_STYLE_FLEX_DIRECTION_ROW ||
       flexDirection == NS_STYLE_FLEX_DIRECTION_ROW_REVERSE;
 
     // NOTE: The logic here should match the similar chunk for determining
-    // widthStyleCoord and heightStyleCoord in
+    // inlineStyleCoord and blockStyleCoord in
     // nsLayoutUtils::ComputeSizeWithIntrinsicDimensions().
     const nsStyleCoord* flexBasis = &(stylePos->mFlexBasis);
-    if (!nsStyleUtil::IsFlexBasisMainSize(*flexBasis, isHorizontalFlexItem)) {
-      (isHorizontalFlexItem ?
-       widthStyleCoord : heightStyleCoord) = flexBasis;
+    if (!nsStyleUtil::IsFlexBasisMainSize(*flexBasis, isInlineFlexItem)) {
+      (isInlineFlexItem ?
+       inlineStyleCoord : blockStyleCoord) = flexBasis;
     }
   }
 
-  // Compute width
+  // Compute inline-axis size
 
-  if (widthStyleCoord->GetUnit() != eStyleUnit_Auto) {
-    result.width =
+  if (inlineStyleCoord->GetUnit() != eStyleUnit_Auto) {
+    result.ISize(aWM) =
       nsLayoutUtils::ComputeWidthValue(aRenderingContext, this,
-        aCBSize.width, boxSizingAdjust.width, boxSizingToMarginEdgeWidth,
-        *widthStyleCoord);
+        aCBSize.ISize(aWM), boxSizingAdjust.ISize(aWM), boxSizingToMarginEdgeISize,
+        *inlineStyleCoord);
   }
 
   // Flex items ignore their min & max sizing properties in their
   // flex container's main-axis.  (Those properties get applied later in
   // the flexbox algorithm.)
   if (stylePos->mMaxWidth.GetUnit() != eStyleUnit_None &&
-      !(isFlexItem && isHorizontalFlexItem)) {
-    nscoord maxWidth =
+      !(isFlexItem && isInlineFlexItem)) {
+    nscoord maxISize =
       nsLayoutUtils::ComputeWidthValue(aRenderingContext, this,
-        aCBSize.width, boxSizingAdjust.width, boxSizingToMarginEdgeWidth,
+        aCBSize.ISize(aWM), boxSizingAdjust.ISize(aWM), boxSizingToMarginEdgeISize,
         stylePos->mMaxWidth);
-    result.width = std::min(maxWidth, result.width);
+    result.ISize(aWM) = std::min(maxISize, result.ISize(aWM));
   }
 
-  nscoord minWidth;
+  nscoord minISize;
   if (stylePos->mMinWidth.GetUnit() != eStyleUnit_Auto &&
-      !(isFlexItem && isHorizontalFlexItem)) {
-    minWidth =
+      !(isFlexItem && isInlineFlexItem)) {
+    minISize =
       nsLayoutUtils::ComputeWidthValue(aRenderingContext, this,
-        aCBSize.width, boxSizingAdjust.width, boxSizingToMarginEdgeWidth,
+        aCBSize.ISize(aWM), boxSizingAdjust.ISize(aWM), boxSizingToMarginEdgeISize,
         stylePos->mMinWidth);
   } else {
     // Treat "min-width: auto" as 0.
@@ -4125,39 +4145,39 @@ nsFrame::ComputeSize(nsRenderingContext *aRenderingContext,
     // flex items. However, we don't need to worry about that here, because
     // flex items' min-sizes are intentionally ignored until the flex
     // container explicitly considers them during space distribution.
-    minWidth = 0;
+    minISize = 0;
   }
-  result.width = std::max(minWidth, result.width);
+  result.ISize(aWM) = std::max(minISize, result.ISize(aWM));
 
-  // Compute height
+  // Compute block-axis size
   // (but not if we're auto-height or if we recieved the "eUseAutoHeight"
   // flag -- then, we'll just stick with the height that we already calculated
   // in the initial ComputeAutoSize() call.)
-  if (!nsLayoutUtils::IsAutoHeight(*heightStyleCoord, aCBSize.height) &&
+  if (!nsLayoutUtils::IsAutoHeight(*blockStyleCoord, aCBSize.BSize(aWM)) &&
       !(aFlags & nsIFrame::eUseAutoHeight)) {
-    result.height =
-      nsLayoutUtils::ComputeHeightValue(aCBSize.height, 
-                                        boxSizingAdjust.height,
-                                        *heightStyleCoord);
+    result.BSize(aWM) =
+      nsLayoutUtils::ComputeHeightValue(aCBSize.BSize(aWM),
+                                        boxSizingAdjust.BSize(aWM),
+                                        *blockStyleCoord);
   }
 
-  if (result.height != NS_UNCONSTRAINEDSIZE) {
-    if (!nsLayoutUtils::IsAutoHeight(stylePos->mMaxHeight, aCBSize.height) &&
-        !(isFlexItem && !isHorizontalFlexItem)) {
-      nscoord maxHeight =
-        nsLayoutUtils::ComputeHeightValue(aCBSize.height, 
-                                          boxSizingAdjust.height,
+  if (result.BSize(aWM) != NS_UNCONSTRAINEDSIZE) {
+    if (!nsLayoutUtils::IsAutoHeight(stylePos->mMaxHeight, aCBSize.BSize(aWM)) &&
+        !(isFlexItem && !isInlineFlexItem)) {
+      nscoord maxBSize =
+        nsLayoutUtils::ComputeHeightValue(aCBSize.BSize(aWM),
+                                          boxSizingAdjust.BSize(aWM),
                                           stylePos->mMaxHeight);
-      result.height = std::min(maxHeight, result.height);
+      result.BSize(aWM) = std::min(maxBSize, result.BSize(aWM));
     }
 
-    if (!nsLayoutUtils::IsAutoHeight(stylePos->mMinHeight, aCBSize.height) &&
-        !(isFlexItem && !isHorizontalFlexItem)) {
-      nscoord minHeight =
-        nsLayoutUtils::ComputeHeightValue(aCBSize.height, 
-                                          boxSizingAdjust.height, 
+    if (!nsLayoutUtils::IsAutoHeight(stylePos->mMinHeight, aCBSize.BSize(aWM)) &&
+        !(isFlexItem && !isInlineFlexItem)) {
+      nscoord minBSize =
+        nsLayoutUtils::ComputeHeightValue(aCBSize.BSize(aWM),
+                                          boxSizingAdjust.BSize(aWM),
                                           stylePos->mMinHeight);
-      result.height = std::max(minHeight, result.height);
+      result.BSize(aWM) = std::max(minBSize, result.BSize(aWM));
     }
   }
 
@@ -4170,22 +4190,25 @@ nsFrame::ComputeSize(nsRenderingContext *aRenderingContext,
       GetMinimumWidgetSize(presContext, this, disp->mAppearance,
                            &widget, &canOverride);
 
+    // Dimensions from themed widgets are applied physically...
     nsSize size;
     size.width = presContext->DevPixelsToAppUnits(widget.width);
     size.height = presContext->DevPixelsToAppUnits(widget.height);
 
     // GMWS() returns border-box; we need content-box
-    size.width -= aBorder.width + aPadding.width;
-    size.height -= aBorder.height + aPadding.height;
+    size.width -= aBorder.Width(aWM) + aPadding.Width(aWM);
+    size.height -= aBorder.Height(aWM) + aPadding.Height(aWM);
 
-    if (size.height > result.height || !canOverride)
-      result.height = size.height;
-    if (size.width > result.width || !canOverride)
-      result.width = size.width;
+    if (size.height > result.Height(aWM) || !canOverride) {
+      result.Height(aWM) = size.height;
+    }
+    if (size.width > result.Width(aWM) || !canOverride) {
+      result.Width(aWM) = size.width;
+    }
   }
 
-  result.width = std::max(0, result.width);
-  result.height = std::max(0, result.height);
+  result.ISize(aWM) = std::max(0, result.ISize(aWM));
+  result.BSize(aWM) = std::max(0, result.BSize(aWM));
 
   return result;
 }
@@ -4227,20 +4250,27 @@ nsIFrame::GetPrefWidthTightBounds(nsRenderingContext* aContext,
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
-/* virtual */ nsSize
+/* virtual */
+LogicalSize
 nsFrame::ComputeAutoSize(nsRenderingContext *aRenderingContext,
-                         nsSize aCBSize, nscoord aAvailableWidth,
-                         nsSize aMargin, nsSize aBorder, nsSize aPadding,
+                         WritingMode aWM,
+                         const mozilla::LogicalSize& aCBSize,
+                         nscoord aAvailableISize,
+                         const mozilla::LogicalSize& aMargin,
+                         const mozilla::LogicalSize& aBorder,
+                         const mozilla::LogicalSize& aPadding,
                          bool aShrinkWrap)
 {
   // Use basic shrink-wrapping as a default implementation.
-  nsSize result(0xdeadbeef, NS_UNCONSTRAINEDSIZE);
+  LogicalSize result(aWM, 0xdeadbeef, NS_UNCONSTRAINEDSIZE);
 
   // don't bother setting it if the result won't be used
-  if (StylePosition()->mWidth.GetUnit() == eStyleUnit_Auto) {
-    nscoord availBased = aAvailableWidth - aMargin.width - aBorder.width -
-                         aPadding.width;
-    result.width = ShrinkWidthToFit(aRenderingContext, availBased);
+  const nsStyleCoord& inlineStyleCoord =
+    aWM.IsVertical() ? StylePosition()->mHeight : StylePosition()->mWidth;
+  if (inlineStyleCoord.GetUnit() == eStyleUnit_Auto) {
+    nscoord availBased = aAvailableISize - aMargin.ISize(aWM) -
+                         aBorder.ISize(aWM) - aPadding.ISize(aWM);
+    result.ISize(aWM) = ShrinkWidthToFit(aRenderingContext, availBased);
   }
   return result;
 }
@@ -4352,6 +4382,18 @@ nsFrame::ReflowAbsoluteFrames(nsPresContext*           aPresContext,
                               aConstrainHeight, true, true, // XXX could be optimized
                               &aDesiredSize.mOverflowAreas);
   }
+}
+
+void
+nsFrame::PushDirtyBitToAbsoluteFrames()
+{
+  if (!(GetStateBits() & NS_FRAME_IS_DIRTY)) {
+    return;  // No dirty bit to push.
+  }
+  if (!HasAbsolutelyPositionedChildren()) {
+    return;  // No absolute children to push to.
+  }
+  GetAbsoluteContainingBlock()->MarkAllFramesDirty();
 }
 
 /* virtual */ bool
@@ -4719,7 +4761,7 @@ nsIFrame::IsLeaf() const
   return true;
 }
 
-gfx3DMatrix
+Matrix4x4
 nsIFrame::GetTransformMatrix(const nsIFrame* aStopAtAncestor,
                              nsIFrame** aOutAncestor)
 {
@@ -4737,12 +4779,12 @@ nsIFrame::GetTransformMatrix(const nsIFrame* aStopAtAncestor,
                  "Cannot transform the viewport frame!");
     int32_t scaleFactor = PresContext()->AppUnitsPerDevPixel();
 
-    gfx3DMatrix result =
-      nsDisplayTransform::GetResultingTransformMatrix(this, nsPoint(0, 0), scaleFactor, nullptr, aOutAncestor);
+    Matrix4x4 result = ToMatrix4x4(
+      nsDisplayTransform::GetResultingTransformMatrix(this, nsPoint(0, 0), scaleFactor, nullptr, aOutAncestor));
     // XXXjwatt: seems like this will double count offsets in the face of preserve-3d:
     nsPoint delta = GetOffsetToCrossDoc(*aOutAncestor);
     /* Combine the raw transform with a translation to our parent. */
-    result *= gfx3DMatrix::Translation
+    result = result * Matrix4x4().Translate
       (NSAppUnitsToFloatPixels(delta.x, scaleFactor),
        NSAppUnitsToFloatPixels(delta.y, scaleFactor),
        0.0f);
@@ -4772,18 +4814,18 @@ nsIFrame::GetTransformMatrix(const nsIFrame* aStopAtAncestor,
         toplevel->GetClientBounds(toplevelScreenBounds);
         nsIntPoint translation = screenBounds.TopLeft() - toplevelScreenBounds.TopLeft();
 
-        gfx3DMatrix transformToTop;
+        Matrix4x4 transformToTop;
         transformToTop._41 = translation.x;
         transformToTop._42 = translation.y;
 
         *aOutAncestor = docRootFrame;
-        gfx3DMatrix docRootTransformToTop =
+        Matrix4x4 docRootTransformToTop =
           nsLayoutUtils::GetTransformToAncestor(docRootFrame, nullptr);
         if (docRootTransformToTop.IsSingular()) {
           NS_WARNING("Containing document is invisible, we can't compute a valid transform");
         } else {
-          gfx3DMatrix topToDocRootTransform = docRootTransformToTop.Inverse();
-          return transformToTop*topToDocRootTransform;
+          docRootTransformToTop.Invert();
+          return transformToTop * docRootTransformToTop;
         }
       }
     }
@@ -4800,8 +4842,8 @@ nsIFrame::GetTransformMatrix(const nsIFrame* aStopAtAncestor,
    * the identity matrix.
    */
   if (!*aOutAncestor)
-    return gfx3DMatrix();
-  
+    return Matrix4x4();
+
   /* Keep iterating while the frame can't possibly be transformed. */
   while (!(*aOutAncestor)->IsTransformed() &&
          !nsLayoutUtils::IsPopup(*aOutAncestor) &&
@@ -4821,7 +4863,7 @@ nsIFrame::GetTransformMatrix(const nsIFrame* aStopAtAncestor,
    */
   nsPoint delta = GetOffsetToCrossDoc(*aOutAncestor);
   int32_t scaleFactor = PresContext()->AppUnitsPerDevPixel();
-  return gfx3DMatrix().Translation
+  return Matrix4x4().Translate
     (NSAppUnitsToFloatPixels(delta.x, scaleFactor),
      NSAppUnitsToFloatPixels(delta.y, scaleFactor),
      0.0f);
@@ -4966,14 +5008,14 @@ nsIFrame::TryUpdateTransformOnly(Layer** aLayerResult)
     return false;
   }
 
-  gfx3DMatrix transform3d;
+  gfx::Matrix4x4 transform3d;
   if (!nsLayoutUtils::GetLayerTransformForFrame(this, &transform3d)) {
     // We're not able to compute a layer transform that we know would
     // be used at the next layers transaction, so we can't only update
     // the transform and will need to schedule an invalidating paint.
     return false;
   }
-  gfxMatrix transform;
+  gfx::Matrix transform;
   gfx::Matrix previousTransform;
   // FIXME/bug 796690 and 796705: in general, changes to 3D
   // transforms, or transform changes to properties other than
@@ -4991,7 +5033,7 @@ nsIFrame::TryUpdateTransformOnly(Layer** aLayerResult)
       !gfx::FuzzyEqual(transform._12, previousTransform._12, kError)) {
     return false;
   }
-  layer->SetBaseTransformForNextTransaction(gfx::ToMatrix4x4(transform3d));
+  layer->SetBaseTransformForNextTransaction(transform3d);
   *aLayerResult = layer;
   return true;
 }
@@ -8108,7 +8150,7 @@ nsFrame::DoLayout(nsBoxLayoutState& aState)
   const WritingMode outerWM = aState.OuterReflowState() ?
     aState.OuterReflowState()->GetWritingMode() : ourWM;
   nsHTMLReflowMetrics desiredSize(outerWM);
-  LogicalSize ourSize = GetLogicalSize().ConvertTo(outerWM, ourWM);
+  LogicalSize ourSize = GetLogicalSize(outerWM);
 
   if (rendContext) {
 
@@ -8148,7 +8190,7 @@ nsFrame::DoLayout(nsBoxLayoutState& aState)
   }
 
   // Should we do this if IsCollapsed() is true?
-  LogicalSize size(GetLogicalSize().ConvertTo(outerWM, ourWM));
+  LogicalSize size(GetLogicalSize(outerWM));
   desiredSize.ISize(outerWM) = size.ISize(outerWM);
   desiredSize.BSize(outerWM) = size.BSize(outerWM);
   desiredSize.UnionOverflowAreasWithDesiredBounds();
@@ -8157,7 +8199,7 @@ nsFrame::DoLayout(nsBoxLayoutState& aState)
     // Set up a |reflowState| to pass into ReflowAbsoluteFrames
     nsHTMLReflowState reflowState(aState.PresContext(), this,
                                   aState.GetRenderingContext(),
-                                  LogicalSize(ourWM, size.ISize(ourWM),
+                                  LogicalSize(ourWM, ISize(),
                                               NS_UNCONSTRAINEDSIZE),
                                   nsHTMLReflowState::DUMMY_PARENT_REFLOW_STATE);
 
@@ -8331,19 +8373,15 @@ nsFrame::BoxReflow(nsBoxLayoutState&        aState,
         computedHeight = std::max(computedHeight, 0);
         reflowState.SetComputedHeight(computedHeight);
       } else {
-        nsSize availSize = logicalSize.GetPhysicalSize(wm);
         reflowState.SetComputedHeight(
-          ComputeSize(aRenderingContext, availSize, availSize.width,
-                      nsSize(reflowState.ComputedPhysicalMargin().LeftRight(),
-                             reflowState.ComputedPhysicalMargin().TopBottom()),
-                      nsSize(reflowState.ComputedPhysicalBorderPadding().LeftRight() -
-                               reflowState.ComputedPhysicalPadding().LeftRight(),
-                             reflowState.ComputedPhysicalBorderPadding().TopBottom() -
-                               reflowState.ComputedPhysicalPadding().TopBottom()),
-                      nsSize(reflowState.ComputedPhysicalPadding().LeftRight(),
-                               reflowState.ComputedPhysicalPadding().TopBottom()),
-                      false).height
-          );
+          ComputeSize(aRenderingContext, wm,
+                      logicalSize,
+                      logicalSize.ISize(wm),
+                      reflowState.ComputedLogicalMargin().Size(wm),
+                      reflowState.ComputedLogicalBorderPadding().Size(wm) -
+                        reflowState.ComputedLogicalPadding().Size(wm),
+                      reflowState.ComputedLogicalPadding().Size(wm),
+                      false).Height(wm));
       }
     }
 
@@ -8925,7 +8963,7 @@ static DR_State *DR_state; // the one and only DR_State
 
 struct DR_RulePart 
 {
-  DR_RulePart(nsIAtom* aFrameType) : mFrameType(aFrameType), mNext(0) {}
+  explicit DR_RulePart(nsIAtom* aFrameType) : mFrameType(aFrameType), mNext(0) {}
   void Destroy();
 
   nsIAtom*     mFrameType;

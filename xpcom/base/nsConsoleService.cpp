@@ -25,6 +25,7 @@
 
 #if defined(ANDROID)
 #include <android/log.h>
+#include "mozilla/dom/ContentChild.h"
 #endif
 #ifdef XP_WIN
 #include <windows.h>
@@ -34,7 +35,9 @@ using namespace mozilla;
 
 NS_IMPL_ADDREF(nsConsoleService)
 NS_IMPL_RELEASE(nsConsoleService)
-NS_IMPL_CLASSINFO(nsConsoleService, nullptr, nsIClassInfo::THREADSAFE | nsIClassInfo::SINGLETON, NS_CONSOLESERVICE_CID)
+NS_IMPL_CLASSINFO(nsConsoleService, nullptr,
+                  nsIClassInfo::THREADSAFE | nsIClassInfo::SINGLETON,
+                  NS_CONSOLESERVICE_CID)
 NS_IMPL_QUERY_INTERFACE_CI(nsConsoleService, nsIConsoleService)
 NS_IMPL_CI_INTERFACE_GETTER(nsConsoleService, nsIConsoleService)
 
@@ -57,7 +60,7 @@ nsConsoleService::nsConsoleService()
 nsConsoleService::~nsConsoleService()
 {
   uint32_t i = 0;
-  while (i < mBufferSize && mMessages[i] != nullptr) {
+  while (i < mBufferSize && mMessages[i]) {
     NS_RELEASE(mMessages[i]);
     i++;
   }
@@ -202,7 +205,18 @@ nsConsoleService::LogMessageWithMode(nsIConsoleMessage* aMessage,
     if (aOutputMode == OutputToLog) {
       nsCString msg;
       aMessage->ToString(msg);
-      __android_log_print(ANDROID_LOG_ERROR, "GeckoConsole",
+
+      /** Attempt to use the process name as the log tag. */
+      mozilla::dom::ContentChild* child =
+          mozilla::dom::ContentChild::GetSingleton();
+      nsCString appName;
+      if (child) {
+        child->GetProcessName(appName);
+      } else {
+        appName = "GeckoConsole";
+      }
+
+      __android_log_print(ANDROID_LOG_ERROR, appName.get(),
                           "%s", msg.get());
     }
 #endif
@@ -266,7 +280,8 @@ nsConsoleService::LogStringMessage(const char16_t* aMessage)
 }
 
 NS_IMETHODIMP
-nsConsoleService::GetMessageArray(uint32_t* aCount, nsIConsoleMessage*** aMessages)
+nsConsoleService::GetMessageArray(uint32_t* aCount,
+                                  nsIConsoleMessage*** aMessages)
 {
   nsIConsoleMessage** messageArray;
 

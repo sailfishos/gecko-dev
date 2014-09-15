@@ -19,6 +19,8 @@
 using namespace js;
 using namespace js::jit;
 
+using mozilla::DebugOnly;
+
 struct DebugModeOSREntry
 {
     JSScript *script;
@@ -253,7 +255,7 @@ ICEntryKindToString(ICEntry::Kind kind)
       case ICEntry::Kind_DebugEpilogue:
         return "debug epilogue";
       default:
-        MOZ_ASSUME_UNREACHABLE("bad ICEntry kind");
+        MOZ_CRASH("bad ICEntry kind");
     }
 }
 
@@ -261,7 +263,7 @@ static void
 SpewPatchBaselineFrame(uint8_t *oldReturnAddress, uint8_t *newReturnAddress,
                        JSScript *script, ICEntry::Kind frameKind, jsbytecode *pc)
 {
-    IonSpew(IonSpew_BaselineDebugModeOSR,
+    JitSpew(JitSpew_BaselineDebugModeOSR,
             "Patch return %p -> %p on BaselineJS frame (%s:%d) from %s at %s",
             oldReturnAddress, newReturnAddress, script->filename(), script->lineno(),
             ICEntryKindToString(frameKind), js_CodeName[(JSOp)*pc]);
@@ -270,7 +272,7 @@ SpewPatchBaselineFrame(uint8_t *oldReturnAddress, uint8_t *newReturnAddress,
 static void
 SpewPatchStubFrame(ICStub *oldStub, ICStub *newStub)
 {
-    IonSpew(IonSpew_BaselineDebugModeOSR,
+    JitSpew(JitSpew_BaselineDebugModeOSR,
             "Patch   stub %p -> %p on BaselineStub frame (%s)",
             oldStub, newStub, ICStub::KindString(newStub->kind()));
 }
@@ -310,7 +312,7 @@ PatchBaselineFramesForDebugMode(JSContext *cx, const JitActivationIterator &acti
 
     IonCommonFrameLayout *prev = nullptr;
     size_t entryIndex = *start;
-    bool expectedDebugMode = cx->compartment()->debugMode();
+    DebugOnly<bool> expectedDebugMode = cx->compartment()->debugMode();
 
     for (JitFrameIterator iter(activation); !iter.done(); ++iter) {
         DebugModeOSREntry &entry = entries[entryIndex];
@@ -501,7 +503,7 @@ RecompileBaselineScriptForDebugMode(JSContext *cx, JSScript *script)
     if (oldBaselineScript->debugMode() == expectedDebugMode)
         return true;
 
-    IonSpew(IonSpew_BaselineDebugModeOSR, "Recompiling (%s:%d) for debug mode %s",
+    JitSpew(JitSpew_BaselineDebugModeOSR, "Recompiling (%s:%d) for debug mode %s",
             script->filename(), script->lineno(), expectedDebugMode ? "ON" : "OFF");
 
     CancelOffThreadIonCompile(cx->compartment(), script);
@@ -612,7 +614,7 @@ CloneOldBaselineStub(JSContext *cx, DebugModeOSREntryVector &entries, size_t ent
 #undef CASE_KIND
 
       default:
-        MOZ_ASSUME_UNREACHABLE("Bad stub kind");
+        MOZ_CRASH("Bad stub kind");
     }
 
     if (!entry.newStub)
@@ -714,7 +716,7 @@ BaselineDebugModeOSRInfo::popValueInto(PCMappingSlotInfo::SlotLocation loc, Valu
       case PCMappingSlotInfo::SlotIgnore:
         break;
       default:
-        MOZ_ASSUME_UNREACHABLE("Bad slot location");
+        MOZ_CRASH("Bad slot location");
     }
 
     stackAdjust++;
