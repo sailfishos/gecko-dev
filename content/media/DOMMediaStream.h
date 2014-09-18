@@ -100,6 +100,8 @@ public:
    */
   virtual void SetTrackEnabled(TrackID aTrackID, bool aEnabled);
 
+  virtual void StopTrack(TrackID aTrackID);
+
   bool IsFinished();
   /**
    * Returns a principal indicating who may access this stream. The stream contents
@@ -228,9 +230,9 @@ public:
   void ConstructMediaTracks(AudioTrackList* aAudioTrackList,
                             VideoTrackList* aVideoTrackList);
 
-  void NotifyMediaStreamTrackCreated(MediaStreamTrack* aTrack);
+  virtual void NotifyMediaStreamTrackCreated(MediaStreamTrack* aTrack);
 
-  void NotifyMediaStreamTrackEnded(MediaStreamTrack* aTrack);
+  virtual void NotifyMediaStreamTrackEnded(MediaStreamTrack* aTrack);
 
 protected:
   virtual ~DOMMediaStream();
