@@ -591,7 +591,7 @@ EmbedLiteViewThreadChild::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
   }
 
   if (mViewResized &&
-      aFrameMetrics.mIsRoot &&
+      aFrameMetrics.GetIsRoot() &&
       mHelper->mLastRootMetrics.GetPresShellId() == aFrameMetrics.GetPresShellId() &&
       mHelper->HandlePossibleViewportChange(mHelper->mInnerSize)) {
     mViewResized = false;
