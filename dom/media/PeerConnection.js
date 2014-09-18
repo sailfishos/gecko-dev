@@ -150,15 +150,6 @@ GlobalPCList.prototype = {
       } else if (data == "online") {
         this._networkdown = false;
       }
-    } else if (topic == "network:app-offline-status-changed") {
-      // App just went offline. The subject also contains the appId,
-      // but navigator.onLine checks that for us
-      if (!this._networkdown && !this._win.navigator.onLine) {
-        for (let winId in this._list) {
-          cleanupWinId(this._list, winId);
-        }
-      }
-      this._networkdown = !this._win.navigator.onLine;
     } else if (topic == "gmp-plugin-crash") {
       // a plugin crashed; if it's associated with any of our PCs, fire an
       // event to the DOM window
@@ -304,6 +295,7 @@ function RTCPeerConnection() {
   this._onGetStatsSuccess = null;
   this._onGetStatsFailure = null;
   this._onReplaceTrackSender = null;
+  this._onReplaceTrackWithTrack = null;
   this._onReplaceTrackSuccess = null;
   this._onReplaceTrackFailure = null;
 
@@ -343,7 +335,7 @@ RTCPeerConnection.prototype = {
     }
     this._mustValidateRTCConfiguration(rtcConfig,
         "RTCPeerConnection constructor passed invalid RTCConfiguration");
-    if (_globalPCList._networkdown || !this._win.navigator.onLine) {
+    if (_globalPCList._networkdown) {
       throw new this._win.DOMError("",
           "Can't create RTCPeerConnections when the network is down");
     }
@@ -839,6 +831,7 @@ RTCPeerConnection.prototype = {
     // may not be in the stream either, so we check neither arg right now.
 
     this._onReplaceTrackSender = sender;
+    this._onReplaceTrackWithTrack = withTrack;
     this._onReplaceTrackSuccess = onSuccess;
     this._onReplaceTrackFailure = onError;
     this._impl.replaceTrack(sender.track, withTrack, sender._stream);
@@ -1329,12 +1322,18 @@ PeerConnectionObserver.prototype = {
   },
 
   onReplaceTrackSuccess: function() {
-    this._dompc.callCB(this._dompc._onReplaceTrackSuccess);
+    var pc = this._dompc;
+    pc._onReplaceTrackSender.track = pc._onReplaceTrackWithTrack;
+    pc._onReplaceTrackWithTrack = null;
+    pc._onReplaceTrackSender = null;
+    pc.callCB(pc._onReplaceTrackSuccess);
   },
 
   onReplaceTrackError: function(code, message) {
-    this._dompc.callCB(this._dompc._onReplaceTrackError,
-                       new RTCError(code, message));
+    var pc = this._dompc;
+    pc._onReplaceTrackWithTrack = null;
+    pc._onReplaceTrackSender = null;
+    pc.callCB(pc._onReplaceTrackError, new RTCError(code, message));
   },
 
   foundIceCandidate: function(cand) {

@@ -8708,7 +8708,9 @@ nsRuleNode::SetStyleFilterToCSSValue(nsStyleFilter* aStyleFilter,
 
   int32_t mask = SETCOORD_PERCENT | SETCOORD_FACTOR;
   if (type == NS_STYLE_FILTER_BLUR) {
-    mask = SETCOORD_LENGTH | SETCOORD_STORE_CALC;
+    mask = SETCOORD_LENGTH |
+           SETCOORD_CALC_LENGTH_ONLY |
+           SETCOORD_CALC_CLAMP_NONNEGATIVE;
   } else if (type == NS_STYLE_FILTER_HUE_ROTATE) {
     mask = SETCOORD_ANGLE;
   }
@@ -9003,9 +9005,9 @@ nsRuleNode::SweepChildren(nsTArray<nsRuleNode*>& aSweepQueue)
   nsRuleNode* survivorsWithChildren = nullptr;
   if (ChildrenAreHashed()) {
     PLDHashTable* children = ChildrenHash();
-    uint32_t oldChildCount = children->entryCount;
+    uint32_t oldChildCount = children->EntryCount();
     PL_DHashTableEnumerate(children, SweepHashEntry, &survivorsWithChildren);
-    childrenDestroyed = oldChildCount - children->entryCount;
+    childrenDestroyed = oldChildCount - children->EntryCount();
     if (childrenDestroyed == oldChildCount) {
       PL_DHashTableDestroy(children);
       mChildren.asVoid = nullptr;
