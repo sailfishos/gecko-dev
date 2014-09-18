@@ -288,7 +288,7 @@ StoreToTypedFloatArray(MacroAssembler &masm, int arrayType, const S &value, cons
         masm.storeDouble(value, dest);
         break;
       default:
-        MOZ_ASSUME_UNREACHABLE("Invalid typed array type");
+        MOZ_CRASH("Invalid typed array type");
     }
 }
 
@@ -349,7 +349,7 @@ MacroAssembler::loadFromTypedArray(Scalar::Type arrayType, const T &src, AnyRegi
         canonicalizeDouble(dest.fpu());
         break;
       default:
-        MOZ_ASSUME_UNREACHABLE("Invalid typed array type");
+        MOZ_CRASH("Invalid typed array type");
     }
 }
 
@@ -409,7 +409,7 @@ MacroAssembler::loadFromTypedArray(Scalar::Type arrayType, const T &src, const V
         boxDouble(ScratchDoubleReg, dest);
         break;
       default:
-        MOZ_ASSUME_UNREACHABLE("Invalid typed array type");
+        MOZ_CRASH("Invalid typed array type");
     }
 }
 
@@ -608,6 +608,12 @@ MacroAssembler::createGCObject(Register obj, Register temp, JSObject *templateOb
     uint32_t nDynamicSlots = templateObj->numDynamicSlots();
     gc::AllocKind allocKind = templateObj->tenuredGetAllocKind();
     JS_ASSERT(allocKind >= gc::FINALIZE_OBJECT0 && allocKind <= gc::FINALIZE_OBJECT_LAST);
+
+    // Arrays with copy on write elements do not need fixed space for an
+    // elements header. The template object, which owns the original elements,
+    // might have another allocation kind.
+    if (templateObj->denseElementsAreCopyOnWrite())
+        allocKind = gc::FINALIZE_OBJECT0_BACKGROUND;
 
     allocateObject(obj, temp, allocKind, nDynamicSlots, initialHeap, fail);
     initGCThing(obj, temp, templateObj, initFixedSlots);
@@ -844,7 +850,7 @@ MacroAssembler::initGCThing(Register obj, Register slots, JSObject *templateObj,
 {
     // Fast initialization of an empty object returned by allocateObject().
 
-    JS_ASSERT(!templateObj->hasDynamicElements());
+    JS_ASSERT_IF(!templateObj->denseElementsAreCopyOnWrite(), !templateObj->hasDynamicElements());
 
     storePtr(ImmGCPtr(templateObj->lastProperty()), Address(obj, JSObject::offsetOfShape()));
     storePtr(ImmGCPtr(templateObj->type()), Address(obj, JSObject::offsetOfType()));
@@ -853,7 +859,10 @@ MacroAssembler::initGCThing(Register obj, Register slots, JSObject *templateObj,
     else
         storePtr(ImmPtr(nullptr), Address(obj, JSObject::offsetOfSlots()));
 
-    if (templateObj->is<ArrayObject>()) {
+    if (templateObj->denseElementsAreCopyOnWrite()) {
+        storePtr(ImmPtr((const Value *) templateObj->getDenseElements()),
+                 Address(obj, JSObject::offsetOfElements()));
+    } else if (templateObj->is<ArrayObject>()) {
         Register temp = slots;
         JS_ASSERT(!templateObj->getDenseInitializedLength());
 
@@ -1232,7 +1241,7 @@ MacroAssembler::loadContext(Register cxReg, Register scratch, ExecutionMode exec
         loadForkJoinContext(cxReg, scratch);
         break;
       default:
-        MOZ_ASSUME_UNREACHABLE("No such execution mode");
+        MOZ_CRASH("No such execution mode");
     }
 }
 
@@ -1275,7 +1284,7 @@ MacroAssembler::enterExitFrameAndLoadContext(const VMFunction *f, Register cxReg
         enterParallelExitFrameAndLoadContext(f, cxReg, scratch);
         break;
       default:
-        MOZ_ASSUME_UNREACHABLE("No such execution mode");
+        MOZ_CRASH("No such execution mode");
     }
 }
 
@@ -1293,7 +1302,7 @@ MacroAssembler::enterFakeExitFrame(Register cxReg, Register scratch,
         enterFakeParallelExitFrame(cxReg, scratch, codeVal);
         break;
       default:
-        MOZ_ASSUME_UNREACHABLE("No such execution mode");
+        MOZ_CRASH("No such execution mode");
     }
 }
 
@@ -1315,7 +1324,7 @@ MacroAssembler::handleFailure(ExecutionMode executionMode)
         handler = JS_FUNC_TO_DATA_PTR(void *, jit::HandleParallelFailure);
         break;
       default:
-        MOZ_ASSUME_UNREACHABLE("No such execution mode");
+        MOZ_CRASH("No such execution mode");
     }
     MacroAssemblerSpecific::handleFailureWithHandler(handler);
 
@@ -1613,7 +1622,7 @@ MacroAssembler::PushEmptyRooted(VMFunction::RootType rootType)
 {
     switch (rootType) {
       case VMFunction::RootNone:
-        MOZ_ASSUME_UNREACHABLE("Handle must have root type");
+        MOZ_CRASH("Handle must have root type");
       case VMFunction::RootObject:
       case VMFunction::RootString:
       case VMFunction::RootPropertyName:
@@ -1633,7 +1642,7 @@ MacroAssembler::popRooted(VMFunction::RootType rootType, Register cellReg,
 {
     switch (rootType) {
       case VMFunction::RootNone:
-        MOZ_ASSUME_UNREACHABLE("Handle must have root type");
+        MOZ_CRASH("Handle must have root type");
       case VMFunction::RootObject:
       case VMFunction::RootString:
       case VMFunction::RootPropertyName:
@@ -1704,7 +1713,7 @@ MacroAssembler::convertTypedOrValueToFloatingPoint(TypedOrValueRegister src, Flo
         loadConstantFloatingPoint(GenericNaN(), float(GenericNaN()), output, outputType);
         break;
       default:
-        MOZ_ASSUME_UNREACHABLE("Bad MIRType");
+        MOZ_CRASH("Bad MIRType");
     }
 }
 
@@ -1919,7 +1928,7 @@ MacroAssembler::convertTypedOrValueToInt(TypedOrValueRegister src, FloatRegister
         jump(fail);
         break;
       default:
-        MOZ_ASSUME_UNREACHABLE("Bad MIRType");
+        MOZ_CRASH("Bad MIRType");
     }
 }
 
@@ -2007,7 +2016,7 @@ MacroAssembler::branchEqualTypeIfNeeded(MIRType type, MDefinition *maybeDef, Reg
             branchTestObject(Equal, tag, label);
             break;
           default:
-            MOZ_ASSUME_UNREACHABLE("Unsupported type");
+            MOZ_CRASH("Unsupported type");
         }
     }
 }

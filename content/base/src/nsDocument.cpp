@@ -198,6 +198,7 @@
 #include "mozilla/dom/HTMLInputElement.h"
 #include "mozilla/dom/NodeFilterBinding.h"
 #include "mozilla/dom/OwningNonNull.h"
+#include "mozilla/dom/TabChild.h"
 #include "mozilla/dom/UndoManager.h"
 #include "mozilla/dom/WebComponentsBinding.h"
 #include "nsFrame.h"
@@ -1736,7 +1737,7 @@ nsDocument::~nsDocument()
 }
 
 NS_INTERFACE_TABLE_HEAD(nsDocument)
-  NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
+  NS_WRAPPERCACHE_INTERFACE_TABLE_ENTRY
   NS_INTERFACE_TABLE_BEGIN
     NS_INTERFACE_TABLE_ENTRY_AMBIGUOUS(nsDocument, nsISupports, nsINode)
     NS_INTERFACE_TABLE_ENTRY(nsDocument, nsINode)
@@ -7500,15 +7501,33 @@ nsIDocument::AdoptNode(nsINode& aAdoptedNode, ErrorResult& rv)
 nsViewportInfo
 nsDocument::GetViewportInfo(const ScreenIntSize& aDisplaySize)
 {
+  // Compute the CSS-to-LayoutDevice pixel scale as the product of the
+  // widget scale and the full zoom.
+  nsPresContext* context = mPresShell->GetPresContext();
+  float fullZoom = context ? context->GetFullZoom() : 1.0;
+  fullZoom = (fullZoom == 0.0) ? 1.0 : fullZoom;
+  nsIWidget *widget = nsContentUtils::WidgetForDocument(this);
+  float widgetScale = widget ? widget->GetDefaultScale().scale : 1.0f;
+  CSSToLayoutDeviceScale layoutDeviceScale(widgetScale * fullZoom);
+
+  CSSToScreenScale defaultScale = layoutDeviceScale
+                                * LayoutDeviceToScreenScale(1.0);
+
   // In cases where the width of the CSS viewport is less than or equal to the width
   // of the display (i.e. width <= device-width) then we disable double-tap-to-zoom
   // behaviour. See bug 941995 for details.
 
   switch (mViewportType) {
   case DisplayWidthHeight:
-    return nsViewportInfo(aDisplaySize);
+    return nsViewportInfo(aDisplaySize,
+                          defaultScale,
+                          /*allowZoom*/ true,
+                          /*allowDoubleTapZoom*/ true);
   case DisplayWidthHeightNoZoom:
-    return nsViewportInfo(aDisplaySize, /*allowZoom*/ false, /*allowDoubleTapZoom*/ false);
+    return nsViewportInfo(aDisplaySize,
+                          defaultScale,
+                          /*allowZoom*/ false,
+                          /*allowDoubleTapZoom*/ false);
   case Unknown:
   {
     nsAutoString viewport;
@@ -7528,7 +7547,10 @@ nsDocument::GetViewportInfo(const ScreenIntSize& aDisplaySize)
           {
             // We're making an assumption that the docType can't change here
             mViewportType = DisplayWidthHeight;
-            return nsViewportInfo(aDisplaySize, /*allowZoom*/true, /*allowDoubleTapZoom*/false);
+            return nsViewportInfo(aDisplaySize,
+                                  defaultScale,
+                                  /*allowZoom*/true,
+                                  /*allowDoubleTapZoom*/false);
           }
         }
       }
@@ -7537,7 +7559,10 @@ nsDocument::GetViewportInfo(const ScreenIntSize& aDisplaySize)
       GetHeaderData(nsGkAtoms::handheldFriendly, handheldFriendly);
       if (handheldFriendly.EqualsLiteral("true")) {
         mViewportType = DisplayWidthHeight;
-        return nsViewportInfo(aDisplaySize, /*allowZoom*/true, /*allowDoubleTapZoom*/false);
+        return nsViewportInfo(aDisplaySize,
+                              defaultScale,
+                              /*allowZoom*/true,
+                              /*allowDoubleTapZoom*/false);
       }
 
       // Bug 940036. This is bad. When FirefoxOS was built, apps installed
@@ -7560,7 +7585,10 @@ nsDocument::GetViewportInfo(const ScreenIntSize& aDisplaySize)
                                           "ImplicitMetaViewportTagFallback");
         }
         mViewportType = DisplayWidthHeightNoZoom;
-        return nsViewportInfo(aDisplaySize, /*allowZoom*/false, /*allowDoubleTapZoom*/false);
+        return nsViewportInfo(aDisplaySize,
+                              defaultScale,
+                              /*allowZoom*/false,
+                              /*allowDoubleTapZoom*/false);
       }
     }
 
@@ -7651,8 +7679,11 @@ nsDocument::GetViewportInfo(const ScreenIntSize& aDisplaySize)
       if (mValidHeight && !aDisplaySize.IsEmpty()) {
         size.width = size.height * aDisplaySize.width / aDisplaySize.height;
       } else {
+        // Stretch CSS pixel size of viewport to keep device pixel size
+        // unchanged after full zoom applied.
+        // See bug 974242.
         size.width = Preferences::GetInt("browser.viewport.desktopWidth",
-                                         kViewportDefaultScreenWidth);
+                                         kViewportDefaultScreenWidth) / fullZoom;
       }
     }
 
@@ -7663,17 +7694,14 @@ nsDocument::GetViewportInfo(const ScreenIntSize& aDisplaySize)
         size.height = size.width;
       }
     }
-    // Now convert the scale into device pixels per CSS pixel.
-    nsIWidget *widget = nsContentUtils::WidgetForDocument(this);
-    CSSToLayoutDeviceScale pixelRatio = widget ? widget->GetDefaultScale()
-                                               : CSSToLayoutDeviceScale(1.0f);
-    CSSToScreenScale scaleFloat = mScaleFloat * pixelRatio;
-    CSSToScreenScale scaleMinFloat = mScaleMinFloat * pixelRatio;
-    CSSToScreenScale scaleMaxFloat = mScaleMaxFloat * pixelRatio;
+
+    CSSToScreenScale scaleFloat = mScaleFloat * layoutDeviceScale;
+    CSSToScreenScale scaleMinFloat = mScaleMinFloat * layoutDeviceScale;
+    CSSToScreenScale scaleMaxFloat = mScaleMaxFloat * layoutDeviceScale;
 
     if (mAutoSize) {
       // aDisplaySize is in screen pixels; convert them to CSS pixels for the viewport size.
-      CSSToScreenScale defaultPixelScale = pixelRatio * LayoutDeviceToScreenScale(1.0f);
+      CSSToScreenScale defaultPixelScale = layoutDeviceScale * LayoutDeviceToScreenScale(1.0f);
       size = ScreenSize(aDisplaySize) / defaultPixelScale;
     }
 
@@ -10543,8 +10571,9 @@ nsIDocument::ExitFullscreen(nsIDocument* aDoc, bool aRunAsync)
 }
 
 // Returns true if the document is a direct child of a cross process parent
-// mozbrowser iframe. This is the case when the document has a null parent,
-// and its DocShell reports that it is a browser frame.
+// mozbrowser iframe or TabParent. This is the case when the document has
+// a null parent and its DocShell reports that it is a browser frame, or
+// we can get a TabChild from it.
 static bool
 HasCrossProcessParent(nsIDocument* aDocument)
 {
@@ -10562,7 +10591,12 @@ HasCrossProcessParent(nsIDocument* aDocument)
   if (!docShell) {
     return false;
   }
-  return docShell->GetIsBrowserOrApp();
+  TabChild* tabChild(TabChild::GetFrom(docShell));
+  if (!tabChild) {
+    return false;
+  }
+
+  return true;
 }
 
 static bool

@@ -129,7 +129,8 @@ public:
   }
 
   NS_WARN_UNUSED_RESULT bool Put(KeyType aKey, const UserDataType& aData,
-                                 const fallible_t&) {
+                                 const fallible_t&)
+  {
     EntryType* ent = this->PutEntry(aKey);
     if (!ent) {
       return false;
@@ -166,7 +167,7 @@ public:
    */
   uint32_t EnumerateRead(EnumReadFunction aEnumFunc, void* aUserArg) const
   {
-    NS_ASSERTION(this->mTable.entrySize,
+    NS_ASSERTION(this->mTable.ops,
                  "nsBaseHashtable was not initialized properly.");
 
     s_EnumReadArgs enumData = { aEnumFunc, aUserArg };
@@ -198,7 +199,7 @@ public:
    */
   uint32_t Enumerate(EnumFunction aEnumFunc, void* aUserArg)
   {
-    NS_ASSERTION(this->mTable.entrySize,
+    NS_ASSERTION(this->mTable.ops,
                  "nsBaseHashtable was not initialized properly.");
 
     s_EnumArgs enumData = { aEnumFunc, aUserArg };
@@ -223,7 +224,7 @@ public:
    */
   typedef size_t
     (*SizeOfEntryExcludingThisFun)(KeyType aKey,
-                                   const DataType &aData,
+                                   const DataType& aData,
                                    mozilla::MallocSizeOf aMallocSizeOf,
                                    void* aUserArg);
 

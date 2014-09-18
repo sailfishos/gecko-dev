@@ -41,7 +41,7 @@
 #include "mozilla/layers/GrallocTextureClient.h"
 #endif
 
-#if defined(MOZ_ANDROID_OMTC) || defined(USE_ANDROID_OMTC_HACKS)
+#if defined(MOZ_WIDGET_ANDROID) || defined(USE_ANDROID_OMTC_HACKS)
 #  include "gfxReusableImageSurfaceWrapper.h"
 #else
 #  include "gfxReusableSharedImageSurfaceWrapper.h"

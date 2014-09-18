@@ -81,7 +81,16 @@ Index::Index(const stagefright::Vector<MediaSource::Indice>& aIndex,
   if (aIndex.isEmpty()) {
     mMoofParser = new MoofParser(aSource, aTrackId);
   } else {
-    mIndex.AppendElements(&aIndex[0], aIndex.size());
+    for (size_t i = 0; i < aIndex.size(); i++) {
+      const MediaSource::Indice& indice = aIndex[i];
+      Sample sample;
+      sample.mByteRange = MediaByteRange(indice.start_offset,
+                                         indice.end_offset);
+      sample.mCompositionRange = Interval<Microseconds>(indice.start_composition,
+                                                        indice.end_composition);
+      sample.mSync = indice.sync;
+      mIndex.AppendElement(sample);
+    }
   }
 }
 
@@ -97,6 +106,34 @@ Index::UpdateMoofIndex(const nsTArray<MediaByteRange>& aByteRanges)
   mMoofParser->RebuildFragmentedIndex(aByteRanges);
 }
 
+Microseconds
+Index::GetEndCompositionIfBuffered(const nsTArray<MediaByteRange>& aByteRanges)
+{
+  nsTArray<Sample>* index;
+  if (mMoofParser) {
+    if (!mMoofParser->ReachedEnd() || mMoofParser->mMoofs.IsEmpty()) {
+      return 0;
+    }
+    index = &mMoofParser->mMoofs.LastElement().mIndex;
+  } else {
+    index = &mIndex;
+  }
+
+  Microseconds lastComposition = 0;
+  RangeFinder rangeFinder(aByteRanges);
+  for (size_t i = index->Length(); i--;) {
+    const Sample& sample = (*index)[i];
+    if (!rangeFinder.Contains(sample.mByteRange)) {
+      return 0;
+    }
+    lastComposition = std::max(lastComposition, sample.mCompositionRange.end);
+    if (sample.mSync) {
+      return lastComposition;
+    }
+  }
+  return 0;
+}
+
 void
 Index::ConvertByteRangesToTimeRanges(
   const nsTArray<MediaByteRange>& aByteRanges,
@@ -105,7 +142,7 @@ Index::ConvertByteRangesToTimeRanges(
   RangeFinder rangeFinder(aByteRanges);
   nsTArray<Interval<Microseconds>> timeRanges;
 
-  nsTArray<nsTArray<stagefright::MediaSource::Indice>*> indexes;
+  nsTArray<nsTArray<Sample>*> indexes;
   if (mMoofParser) {
     // We take the index out of the moof parser and move it into a local
     // variable so we don't get concurrency issues. It gets freed when we
@@ -128,25 +165,23 @@ Index::ConvertByteRangesToTimeRanges(
 
   bool hasSync = false;
   for (size_t i = 0; i < indexes.Length(); i++) {
-    nsTArray<stagefright::MediaSource::Indice>* index = indexes[i];
+    nsTArray<Sample>* index = indexes[i];
     for (size_t j = 0; j < index->Length(); j++) {
-      const MediaSource::Indice& indice = (*index)[j];
-      if (!rangeFinder.Contains(
-             MediaByteRange(indice.start_offset, indice.end_offset))) {
+      const Sample& sample = (*index)[j];
+      if (!rangeFinder.Contains(sample.mByteRange)) {
         // We process the index in decode order so we clear hasSync when we hit
         // a range that isn't buffered.
         hasSync = false;
         continue;
       }
 
-      hasSync |= indice.sync;
+      hasSync |= sample.mSync;
       if (!hasSync) {
         continue;
       }
 
-      Interval<Microseconds>::SemiNormalAppend(
-        timeRanges, Interval<Microseconds>(indice.start_composition,
-                                           indice.end_composition));
+      Interval<Microseconds>::SemiNormalAppend(timeRanges,
+                                               sample.mCompositionRange);
     }
   }
 
@@ -173,9 +208,9 @@ Index::GetEvictionOffset(Microseconds aTime)
     // We've already parsed and stored the moov so we don't need to keep it.
     // All we need to keep is the sample data itself.
     for (size_t i = 0; i < mIndex.Length(); i++) {
-      const MediaSource::Indice& indice = mIndex[i];
-      if (aTime >= indice.start_composition) {
-        offset = std::min(offset, indice.start_offset);
+      const Sample& sample = mIndex[i];
+      if (aTime >= sample.mCompositionRange.end) {
+        offset = std::min(offset, uint64_t(sample.mByteRange.mEnd));
       }
     }
   }

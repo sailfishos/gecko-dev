@@ -545,6 +545,28 @@ CodeGeneratorX86Shared::visitAbsF(LAbsF *ins)
 }
 
 bool
+CodeGeneratorX86Shared::visitClzI(LClzI *ins)
+{
+    Register input = ToRegister(ins->input());
+    Register output = ToRegister(ins->output());
+
+    // bsr is undefined on 0
+    Label done, nonzero;
+    if (!ins->mir()->operandIsNeverZero()) {
+        masm.testl(input, input);
+        masm.j(Assembler::NonZero, &nonzero);
+        masm.move32(Imm32(32), output);
+        masm.jump(&done);
+    }
+
+    masm.bind(&nonzero);
+    masm.bsr(input, output);
+    masm.xor32(Imm32(0x1F), output);
+    masm.bind(&done);
+    return true;
+}
+
+bool
 CodeGeneratorX86Shared::visitSqrtD(LSqrtD *ins)
 {
     FloatRegister input = ToFloatRegister(ins->input());
@@ -1338,7 +1360,7 @@ CodeGeneratorX86Shared::visitBitOpI(LBitOpI *ins)
                 masm.andl(ToOperand(rhs), ToRegister(lhs));
             break;
         default:
-            MOZ_ASSUME_UNREACHABLE("unexpected binary opcode");
+            MOZ_CRASH("unexpected binary opcode");
     }
 
     return true;
@@ -1372,7 +1394,7 @@ CodeGeneratorX86Shared::visitShiftI(LShiftI *ins)
             }
             break;
           default:
-            MOZ_ASSUME_UNREACHABLE("Unexpected shift op");
+            MOZ_CRASH("Unexpected shift op");
         }
     } else {
         JS_ASSERT(ToRegister(rhs) == ecx);
@@ -1393,7 +1415,7 @@ CodeGeneratorX86Shared::visitShiftI(LShiftI *ins)
             }
             break;
           default:
-            MOZ_ASSUME_UNREACHABLE("Unexpected shift op");
+            MOZ_CRASH("Unexpected shift op");
         }
     }
 
@@ -1535,7 +1557,7 @@ CodeGeneratorX86Shared::visitMathD(LMathD *math)
         masm.divsd(rhs, lhs);
         break;
       default:
-        MOZ_ASSUME_UNREACHABLE("unexpected opcode");
+        MOZ_CRASH("unexpected opcode");
     }
     return true;
 }
@@ -1562,8 +1584,7 @@ CodeGeneratorX86Shared::visitMathF(LMathF *math)
         masm.divss(rhs, lhs);
         break;
       default:
-        MOZ_ASSUME_UNREACHABLE("unexpected opcode");
-        return false;
+        MOZ_CRASH("unexpected opcode");
     }
     return true;
 }
@@ -2109,7 +2130,7 @@ CodeGeneratorX86Shared::visitSimdValueX4(LSimdValueX4 *ins)
         masm.loadAlignedFloat32x4(Address(StackPointer, 0), output);
         break;
       }
-      default: MOZ_ASSUME_UNREACHABLE("Unknown SIMD kind");
+      default: MOZ_CRASH("Unknown SIMD kind");
     }
 
     masm.freeStack(Simd128DataSize);
@@ -2177,7 +2198,7 @@ CodeGeneratorX86Shared::visitSimdBinaryArithIx4(LSimdBinaryArithIx4 *ins)
         // x86 doesn't have SIMD i32 div.
         break;
     }
-    MOZ_ASSUME_UNREACHABLE("unexpected SIMD op");
+    MOZ_CRASH("unexpected SIMD op");
 }
 
 bool
@@ -2202,7 +2223,7 @@ CodeGeneratorX86Shared::visitSimdBinaryArithFx4(LSimdBinaryArithFx4 *ins)
         masm.packedDivFloat32(rhs, lhs);
         return true;
     }
-    MOZ_ASSUME_UNREACHABLE("unexpected SIMD op");
+    MOZ_CRASH("unexpected SIMD op");
 }
 
 bool

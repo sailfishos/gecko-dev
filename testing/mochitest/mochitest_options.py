@@ -410,6 +410,12 @@ class MochitestOptions(optparse.OptionParser):
           "dest": "useTestMediaDevices",
           "help": "Use test media device drivers for media testing.",
         }],
+        [["--gmp-path"],
+        { "action": "store",
+          "default": None,
+          "dest": "gmp_path",
+          "help": "Path to fake GMP plugin. Will be deduced from the binary if not passed.",
+        }],
     ]
 
     def __init__(self, **kwargs):
@@ -737,7 +743,7 @@ class B2GOptions(MochitestOptions):
         defaults["testPath"] = ""
         defaults["extensionsToExclude"] = ["specialpowers"]
         # See dependencies of bug 1038943.
-        defaults["leakThreshold"] = 5012
+        defaults["leakThreshold"] = 5084
         self.set_defaults(**defaults)
 
     def verifyRemoteOptions(self, options):

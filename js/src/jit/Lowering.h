@@ -70,6 +70,7 @@ class LIRGenerator : public LIRGeneratorSpecific
     bool visitGoto(MGoto *ins);
     bool visitTableSwitch(MTableSwitch *tableswitch);
     bool visitNewArray(MNewArray *ins);
+    bool visitNewArrayCopyOnWrite(MNewArrayCopyOnWrite *ins);
     bool visitNewObject(MNewObject *ins);
     bool visitNewDeclEnvObject(MNewDeclEnvObject *ins);
     bool visitNewCallObject(MNewCallObject *ins);
@@ -124,6 +125,7 @@ class LIRGenerator : public LIRGeneratorSpecific
     bool visitRound(MRound *ins);
     bool visitMinMax(MMinMax *ins);
     bool visitAbs(MAbs *ins);
+    bool visitClz(MClz *ins);
     bool visitSqrt(MSqrt *ins);
     bool visitAtan2(MAtan2 *ins);
     bool visitHypot(MHypot *ins);
@@ -166,6 +168,7 @@ class LIRGenerator : public LIRGeneratorSpecific
     bool visitConstantElements(MConstantElements *ins);
     bool visitConvertElementsToDoubles(MConvertElementsToDoubles *ins);
     bool visitMaybeToDoubleElement(MMaybeToDoubleElement *ins);
+    bool visitMaybeCopyElementsForWrite(MMaybeCopyElementsForWrite *ins);
     bool visitLoadSlot(MLoadSlot *ins);
     bool visitFunctionEnvironment(MFunctionEnvironment *ins);
     bool visitForkJoinContext(MForkJoinContext *ins);

@@ -48,22 +48,43 @@ OverscrollHandoffChain::GetApzcAtIndex(uint32_t aIndex) const
   return mChain[aIndex];
 }
 
+uint32_t
+OverscrollHandoffChain::IndexOf(const AsyncPanZoomController* aApzc) const
+{
+  uint32_t i;
+  for (i = 0; i < Length(); ++i) {
+    if (mChain[i] == aApzc) {
+      break;
+    }
+  }
+  return i;
+}
+
+void
+OverscrollHandoffChain::ForEachApzc(APZCMethod aMethod) const
+{
+  MOZ_ASSERT(Length() > 0);
+  for (uint32_t i = 0; i < Length(); ++i) {
+    (mChain[i]->*aMethod)();
+  }
+}
+
 void
 OverscrollHandoffChain::FlushRepaints() const
 {
-  MOZ_ASSERT(Length() > 0);
-  for (uint32_t i = 0; i < Length(); i++) {
-    mChain[i]->FlushRepaintForOverscrollHandoff();
-  }
+  ForEachApzc(&AsyncPanZoomController::FlushRepaintForOverscrollHandoff);
 }
 
 void
 OverscrollHandoffChain::CancelAnimations() const
 {
-  MOZ_ASSERT(Length() > 0);
-  for (uint32_t i = 0; i < Length(); i++) {
-    mChain[i]->CancelAnimation();
-  }
+  ForEachApzc(&AsyncPanZoomController::CancelAnimation);
+}
+
+void
+OverscrollHandoffChain::ClearOverscroll() const
+{
+  ForEachApzc(&AsyncPanZoomController::ClearOverscroll);
 }
 
 void
@@ -82,12 +103,7 @@ bool
 OverscrollHandoffChain::CanBePanned(const AsyncPanZoomController* aApzc) const
 {
   // Find |aApzc| in the handoff chain.
-  uint32_t i;
-  for (i = 0; i < Length(); ++i) {
-    if (mChain[i] == aApzc) {
-      break;
-    }
-  }
+  uint32_t i = IndexOf(aApzc);
 
   // See whether any APZC in the handoff chain starting from |aApzc|
   // has room to be panned.

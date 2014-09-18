@@ -11,14 +11,14 @@
 #include "mozilla/ReentrantMonitor.h"
 #include "nsCOMPtr.h"
 #include "nsError.h"
-#include "nsStringGlue.h"
+#include "nsString.h"
 #include "nsTArray.h"
 #include "MediaDecoderReader.h"
 
 namespace mozilla {
 
 class MediaSourceDecoder;
-class SubBufferDecoder;
+class SourceBufferDecoder;
 
 namespace dom {
 
@@ -29,7 +29,7 @@ class MediaSource;
 class MediaSourceReader : public MediaDecoderReader
 {
 public:
-  MediaSourceReader(MediaSourceDecoder* aDecoder, dom::MediaSource* aSource);
+  MediaSourceReader(MediaSourceDecoder* aDecoder);
 
   nsresult Init(MediaDecoderReader* aCloneDonor) MOZ_OVERRIDE
   {
@@ -70,8 +70,7 @@ public:
   nsresult ReadMetadata(MediaInfo* aInfo, MetadataTags** aTags) MOZ_OVERRIDE;
   nsresult Seek(int64_t aTime, int64_t aStartTime, int64_t aEndTime,
                 int64_t aCurrentTime) MOZ_OVERRIDE;
-  already_AddRefed<SubBufferDecoder> CreateSubDecoder(const nsACString& aType,
-                                                      MediaSourceDecoder* aParentDecoder);
+  already_AddRefed<SourceBufferDecoder> CreateSubDecoder(const nsACString& aType);
 
   void Shutdown();
 
@@ -88,29 +87,35 @@ public:
   // Return true if any of the active decoders contain data for the given time
   bool DecodersContainTime(double aTime);
 
+  // Mark the reader to indicate that EndOfStream has been called on our MediaSource
+  void Ended();
+
+  // Return true if the Ended method has been called
+  bool IsEnded();
+
 private:
   enum SwitchType {
     SWITCH_OPTIONAL,
     SWITCH_FORCED
   };
 
-  bool SwitchVideoReaders(SwitchType aType);
+  bool SwitchReaders(SwitchType aType);
 
-  MediaDecoderReader* GetAudioReader();
-  MediaDecoderReader* GetVideoReader();
-
-  void SetMediaSourceDuration(double aDuration) ;
+  bool SwitchAudioReader(MediaDecoderReader* aTargetReader);
+  bool SwitchVideoReader(MediaDecoderReader* aTargetReader);
 
   // These are read and written on the decode task queue threads.
   int64_t mTimeThreshold;
+  bool mDropAudioBeforeThreshold;
   bool mDropVideoBeforeThreshold;
 
-  nsTArray<nsRefPtr<SubBufferDecoder>> mPendingDecoders;
-  nsTArray<nsRefPtr<SubBufferDecoder>> mDecoders;
+  nsTArray<nsRefPtr<SourceBufferDecoder>> mPendingDecoders;
+  nsTArray<nsRefPtr<SourceBufferDecoder>> mDecoders;
 
-  int32_t mActiveVideoDecoder;
-  int32_t mActiveAudioDecoder;
-  dom::MediaSource* mMediaSource;
+  nsRefPtr<MediaDecoderReader> mAudioReader;
+  nsRefPtr<MediaDecoderReader> mVideoReader;
+
+  bool mEnded;
 };
 
 } // namespace mozilla

@@ -2343,6 +2343,7 @@ TypeCompartment::print(JSContext *cx, bool force)
 {
 #ifdef DEBUG
     gc::AutoSuppressGC suppressGC(cx);
+    JSAutoRequest request(cx);
 
     JSCompartment *compartment = this->compartment();
     AutoEnterAnalysis enter(nullptr, compartment);
@@ -2644,11 +2645,11 @@ TypeCompartment::fixObjectType(ExclusiveContext *cx, JSObject *obj)
     if (obj->isIndexed())
         objType->setFlags(cx, OBJECT_FLAG_SPARSE_INDEXES);
 
-    ScopedJSFreePtr<jsid> ids(cx->pod_calloc<jsid>(properties.length()));
+    ScopedJSFreePtr<jsid> ids(objType->pod_calloc<jsid>(properties.length()));
     if (!ids)
         return;
 
-    ScopedJSFreePtr<Type> types(cx->pod_calloc<Type>(properties.length()));
+    ScopedJSFreePtr<Type> types(objType->pod_calloc<Type>(properties.length()));
     if (!types)
         return;
 
@@ -3389,9 +3390,8 @@ CheckNewScriptProperties(JSContext *cx, TypeObject *type, JSFunction *fun)
         return;
     }
 
-    size_t numBytes = sizeof(TypeNewScript)
-                    + (initializerList.length() * sizeof(TypeNewScript::Initializer));
-    TypeNewScript *newScript = (TypeNewScript *) type->zone()->pod_calloc<uint8_t>(numBytes);
+    TypeNewScript *newScript = type->pod_calloc_with_extra<TypeNewScript, TypeNewScript::Initializer>(
+                                   initializerList.length());
     if (!newScript)
         return;
 
@@ -3402,8 +3402,7 @@ CheckNewScriptProperties(JSContext *cx, TypeObject *type, JSFunction *fun)
     newScript->fun = fun;
     newScript->templateObject = baseobj;
 
-    newScript->initializerList = (TypeNewScript::Initializer *)
-        ((char *) newScript + sizeof(TypeNewScript));
+    newScript->initializerList = reinterpret_cast<TypeNewScript::Initializer *>(newScript + 1);
     PodCopy(newScript->initializerList,
             initializerList.begin(),
             initializerList.length());
@@ -3463,6 +3462,50 @@ types::FillBytecodeTypeMap(JSScript *script, uint32_t *bytecodeMap)
         }
     }
     JS_ASSERT(added == script->nTypeSets());
+}
+
+JSObject *
+types::GetOrFixupCopyOnWriteObject(JSContext *cx, HandleScript script, jsbytecode *pc)
+{
+    // Make sure that the template object for script/pc has a type indicating
+    // that the object and its copies have copy on write elements.
+    RootedObject obj(cx, script->getObject(GET_UINT32_INDEX(pc)));
+    JS_ASSERT(obj->is<ArrayObject>());
+    JS_ASSERT(obj->denseElementsAreCopyOnWrite());
+
+    if (obj->type()->hasAnyFlags(OBJECT_FLAG_COPY_ON_WRITE))
+        return obj;
+
+    RootedTypeObject type(cx, TypeScript::InitObject(cx, script, pc, JSProto_Array));
+    if (!type)
+        return nullptr;
+
+    type->addFlags(OBJECT_FLAG_COPY_ON_WRITE);
+
+    // Update type information in the initializer object type.
+    JS_ASSERT(obj->slotSpan() == 0);
+    for (size_t i = 0; i < obj->getDenseInitializedLength(); i++) {
+        const Value &v = obj->getDenseElement(i);
+        AddTypePropertyId(cx, type, JSID_VOID, v);
+    }
+
+    obj->setType(type);
+    return obj;
+}
+
+JSObject *
+types::GetCopyOnWriteObject(JSScript *script, jsbytecode *pc)
+{
+    // GetOrFixupCopyOnWriteObject should already have been called for
+    // script/pc, ensuring that the template object has a type with the
+    // COPY_ON_WRITE flag. We don't assert this here, due to a corner case
+    // where this property doesn't hold. See jsop_newarray_copyonwrite in
+    // IonBuilder.
+    JSObject *obj = script->getObject(GET_UINT32_INDEX(pc));
+    JS_ASSERT(obj->is<ArrayObject>());
+    JS_ASSERT(obj->denseElementsAreCopyOnWrite());
+
+    return obj;
 }
 
 void
@@ -3555,7 +3598,7 @@ JSScript::makeTypes(JSContext *cx)
     unsigned count = TypeScript::NumTypeSets(this);
 
     TypeScript *typeScript = (TypeScript *)
-        zone()->pod_calloc<uint8_t>(TypeScript::SizeIncludingTypeArray(count));
+        pod_calloc<uint8_t>(TypeScript::SizeIncludingTypeArray(count));
     if (!typeScript)
         return false;
 

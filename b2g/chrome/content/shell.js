@@ -707,6 +707,8 @@ var CustomEventManager = {
     switch(detail.type) {
       case 'webapps-install-granted':
       case 'webapps-install-denied':
+      case 'webapps-uninstall-granted':
+      case 'webapps-uninstall-denied':
         WebappsHelper.handleEvent(detail);
         break;
       case 'select-choicechange':
@@ -749,6 +751,7 @@ var WebappsHelper = {
   init: function webapps_init() {
     Services.obs.addObserver(this, "webapps-launch", false);
     Services.obs.addObserver(this, "webapps-ask-install", false);
+    Services.obs.addObserver(this, "webapps-ask-uninstall", false);
     Services.obs.addObserver(this, "webapps-close", false);
   },
 
@@ -771,12 +774,20 @@ var WebappsHelper = {
       case "webapps-install-denied":
         DOMApplicationRegistry.denyInstall(installer);
         break;
+      case "webapps-uninstall-granted":
+        DOMApplicationRegistry.confirmUninstall(installer);
+        break;
+      case "webapps-uninstall-denied":
+        DOMApplicationRegistry.denyUninstall(installer);
+        break;
     }
   },
 
   observe: function webapps_observe(subject, topic, data) {
     let json = JSON.parse(data);
     json.mm = subject;
+
+    let id;
 
     switch(topic) {
       case "webapps-launch":
@@ -795,9 +806,17 @@ var WebappsHelper = {
         });
         break;
       case "webapps-ask-install":
-        let id = this.registerInstaller(json);
+        id = this.registerInstaller(json);
         shell.sendChromeEvent({
           type: "webapps-ask-install",
+          id: id,
+          app: json.app
+        });
+        break;
+      case "webapps-ask-uninstall":
+        id = this.registerInstaller(json);
+        shell.sendChromeEvent({
+          type: "webapps-ask-uninstall",
           id: id,
           app: json.app
         });
@@ -862,11 +881,15 @@ window.addEventListener('ContentStart', function ss_onContentStart() {
     try {
       var canvas = document.createElementNS('http://www.w3.org/1999/xhtml',
                                             'canvas');
-      var width = window.innerWidth;
-      var height = window.innerHeight;
+      var docRect = document.body.getBoundingClientRect();
+      var width = docRect.width;
+      var height = docRect.height;
+
+      // Convert width and height from CSS pixels (potentially fractional)
+      // to device pixels (integer).
       var scale = window.devicePixelRatio;
-      canvas.setAttribute('width', width * scale);
-      canvas.setAttribute('height', height * scale);
+      canvas.setAttribute('width', Math.round(width * scale));
+      canvas.setAttribute('height', Math.round(height * scale));
 
       var context = canvas.getContext('2d');
       var flags =
@@ -1201,8 +1224,7 @@ const kTransferContractId = "@mozilla.org/transfer;1";
 
 // Override Toolkit's nsITransfer implementation with the one from the
 // JavaScript API for downloads.  This will eventually be removed when
-// nsIDownloadManager will not be available anymore (bug 851471).  The
-// old code in this module will be removed in bug 899110.
+// nsIDownloadManager will not be available anymore (bug 851471).
 Components.manager.QueryInterface(Ci.nsIComponentRegistrar)
                   .registerFactory(kTransferCid, "",
                                    kTransferContractId, null);

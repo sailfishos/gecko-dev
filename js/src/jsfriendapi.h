@@ -23,14 +23,20 @@
 /*
  * This macro checks if the stack pointer has exceeded a given limit. If
  * |tolerance| is non-zero, it returns true only if the stack pointer has
- * exceeded the limit by more than |tolerance| bytes.
+ * exceeded the limit by more than |tolerance| bytes. The WITH_INTOLERANCE
+ * versions use a negative tolerance (i.e., the limit is reduced by
+ * |intolerance| bytes).
  */
 #if JS_STACK_GROWTH_DIRECTION > 0
 # define JS_CHECK_STACK_SIZE_WITH_TOLERANCE(limit, sp, tolerance)  \
     ((uintptr_t)(sp) < (limit)+(tolerance))
+# define JS_CHECK_STACK_SIZE_WITH_INTOLERANCE(limit, sp, intolerance)  \
+    ((uintptr_t)(sp) < (limit)-(intolerance))
 #else
 # define JS_CHECK_STACK_SIZE_WITH_TOLERANCE(limit, sp, tolerance)  \
     ((uintptr_t)(sp) > (limit)-(tolerance))
+# define JS_CHECK_STACK_SIZE_WITH_INTOLERANCE(limit, sp, intolerance)  \
+    ((uintptr_t)(sp) > (limit)+(intolerance))
 #endif
 
 #define JS_CHECK_STACK_SIZE(limit, lval) JS_CHECK_STACK_SIZE_WITH_TOLERANCE(limit, lval, 0)
@@ -113,7 +119,8 @@ enum {
     JS_TELEMETRY_GC_INCREMENTAL_DISABLED,
     JS_TELEMETRY_GC_NON_INCREMENTAL,
     JS_TELEMETRY_GC_SCC_SWEEP_TOTAL_MS,
-    JS_TELEMETRY_GC_SCC_SWEEP_MAX_PAUSE_MS
+    JS_TELEMETRY_GC_SCC_SWEEP_MAX_PAUSE_MS,
+    JS_TELEMETRY_DEPRECATED_LANGUAGE_EXTENSIONS_IN_CONTENT
 };
 
 typedef void
@@ -715,13 +722,6 @@ AssertSameCompartment(JSObject *objA, JSObject *objB);
 inline void AssertSameCompartment(JSObject *objA, JSObject *objB) {}
 #endif
 
-// For legacy consumers only. This whole concept is going away soon.
-JS_FRIEND_API(JSObject *)
-DefaultObjectForContextOrNull(JSContext *cx);
-
-JS_FRIEND_API(void)
-SetDefaultObjectForContext(JSContext *cx, JSObject *obj);
-
 JS_FRIEND_API(void)
 NotifyAnimationActivity(JSObject *obj);
 
@@ -995,6 +995,7 @@ GetNativeStackLimit(JSContext *cx)
  * These macros report a stack overflow and run |onerror| if we are close to
  * using up the C stack. The JS_CHECK_CHROME_RECURSION variant gives us a little
  * extra space so that we can ensure that crucial code is able to run.
+ * JS_CHECK_RECURSION_CONSERVATIVE gives us a little less space.
  */
 
 #define JS_CHECK_RECURSION(cx, onerror)                                         \
@@ -1035,6 +1036,18 @@ GetNativeStackLimit(JSContext *cx)
         if (!JS_CHECK_STACK_SIZE_WITH_TOLERANCE(js::GetNativeStackLimit(cx),    \
                                                 &stackDummy_,                   \
                                                 1024 * sizeof(size_t)))         \
+        {                                                                       \
+            js_ReportOverRecursed(cx);                                          \
+            onerror;                                                            \
+        }                                                                       \
+    JS_END_MACRO
+
+#define JS_CHECK_RECURSION_CONSERVATIVE(cx, onerror)                            \
+    JS_BEGIN_MACRO                                                              \
+        int stackDummy_;                                                        \
+        if (!JS_CHECK_STACK_SIZE_WITH_INTOLERANCE(js::GetNativeStackLimit(cx),  \
+                                                  &stackDummy_,                 \
+                                                  1024 * sizeof(size_t)))       \
         {                                                                       \
             js_ReportOverRecursed(cx);                                          \
             onerror;                                                            \
@@ -1644,7 +1657,7 @@ Get ## Type ## ArrayLengthAndData(JSObject *obj, uint32_t *length, type **data) 
 { \
     JS_ASSERT(GetObjectClass(obj) == detail::Type ## ArrayClassPtr); \
     const JS::Value &slot = GetReservedSlot(obj, detail::TypedArrayLengthSlot); \
-    *length = mozilla::SafeCast<uint32_t>(slot.toInt32()); \
+    *length = mozilla::AssertedCast<uint32_t>(slot.toInt32()); \
     *data = static_cast<type*>(GetObjectPrivate(obj)); \
 }
 

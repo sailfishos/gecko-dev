@@ -12,7 +12,7 @@
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/dom/Attr.h"
 #include "mozilla/dom/Element.h"
-#include "mozilla/dom/MozNamedAttrMapBinding.h"
+#include "mozilla/dom/NamedNodeMapBinding.h"
 #include "nsAttrName.h"
 #include "nsContentUtils.h"
 #include "nsError.h"
@@ -116,7 +116,7 @@ NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_THIS_END
 NS_INTERFACE_TABLE_HEAD(nsDOMAttributeMap)
   NS_INTERFACE_TABLE(nsDOMAttributeMap, nsIDOMMozNamedAttrMap)
   NS_INTERFACE_TABLE_TO_MAP_SEGUE
-  NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
+  NS_WRAPPERCACHE_INTERFACE_TABLE_ENTRY
   NS_INTERFACE_MAP_ENTRIES_CYCLE_COLLECTION(nsDOMAttributeMap)
 NS_INTERFACE_MAP_END
 
@@ -561,5 +561,5 @@ nsDOMAttributeMap::SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const
 /* virtual */ JSObject*
 nsDOMAttributeMap::WrapObject(JSContext* aCx)
 {
-  return MozNamedAttrMapBinding::Wrap(aCx, this);
+  return NamedNodeMapBinding::Wrap(aCx, this);
 }
