@@ -8,7 +8,6 @@ DIRS += ['tests']
 if CONFIG['ENABLE_TESTS']:
     DIRS += ['tests/gtest']
 
-LIBRARY_NAME = 'embedlite'
 FAIL_ON_WARNINGS = True
 
 FINAL_LIBRARY = 'xul'

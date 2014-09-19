@@ -770,8 +770,7 @@ EmbedLiteViewThreadChild::RecvHandleTextEvent(const nsString& commit, const nsSt
     inputEvent.time = static_cast<uint64_t>(PR_Now() / 1000);
     inputEvent.mIsComposing = mIMEComposing;
     nsEventStatus status = nsEventStatus_eIgnore;
-    nsresult rv =
-      ps->HandleEventWithTarget(&inputEvent, nullptr, mTarget, &status);
+    ps->HandleEventWithTarget(&inputEvent, nullptr, mTarget, &status);
   }
 
   if (EndComposite) {
