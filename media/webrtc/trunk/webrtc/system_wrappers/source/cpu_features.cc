@@ -15,7 +15,7 @@
 #if defined(WEBRTC_ARCH_X86_FAMILY) && defined(_MSC_VER)
 #include <intrin.h>
 #endif
-
+#include "droid-cpu-features.h"
 #include "webrtc/typedefs.h"
 
 // No CPU feature is available => straight C path.
@@ -72,6 +72,10 @@ uint64_t WebRtc_GetCPUFeaturesARM(void) {
 }
 
 #endif
+
+uint64_t WebRtc_GetCPUFeaturesARM(void) {
+  return ANDROID_CPU_ARM_FEATURE_ARMv7 | ANDROID_CPU_ARM_FEATURE_VFPv3 | ANDROID_CPU_ARM_FEATURE_NEON;
+}
 
 WebRtc_CPUInfo WebRtc_GetCPUInfo = GetCPUInfo;
 WebRtc_CPUInfo WebRtc_GetCPUInfoNoASM = GetCPUInfoNoASM;
