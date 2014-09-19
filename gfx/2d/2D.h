@@ -37,6 +37,7 @@ typedef _cairo_scaled_font cairo_scaled_font_t;
 
 struct ID3D10Device1;
 struct ID3D10Texture2D;
+struct ID3D11Texture2D;
 struct ID3D11Device;
 struct ID2D1Device;
 struct IDWriteRenderingParams;
@@ -56,6 +57,7 @@ class DataSourceSurface;
 class DrawTarget;
 class DrawEventRecorder;
 class FilterNode;
+class LogForwarder;
 
 struct NativeSurface {
   NativeSurfaceType mType;
@@ -272,11 +274,13 @@ class SurfacePattern : public Pattern
 public:
   /// For constructor parameter description, see member data documentation.
   SurfacePattern(SourceSurface *aSourceSurface, ExtendMode aExtendMode,
-                 const Matrix &aMatrix = Matrix(), Filter aFilter = Filter::GOOD)
+                 const Matrix &aMatrix = Matrix(), Filter aFilter = Filter::GOOD,
+                 const IntRect &aSamplingRect = IntRect())
     : mSurface(aSourceSurface)
     , mExtendMode(aExtendMode)
     , mFilter(aFilter)
     , mMatrix(aMatrix)
+    , mSamplingRect(aSamplingRect)
   {}
 
   virtual PatternType GetType() const { return PatternType::SURFACE; }
@@ -286,6 +290,9 @@ public:
                                        outside the bounds of the image */
   Filter mFilter;                 //!< Resampling filter for resampling the image.
   Matrix mMatrix;                 //!< Transforms the pattern into user space
+
+  IntRect mSamplingRect;          /**< Rect that must not be sampled outside of,
+                                       or an empty rect if none has been specified. */
 };
 
 class StoredPattern;
@@ -1117,20 +1124,20 @@ public:
    * This creates a simple data source surface for a certain size. It allocates
    * new memory for the surface. This memory is freed when the surface is
    * destroyed.  The caller is responsible for handing the case where nullptr
-   * is returned.
+   * is returned. The surface is not zeroed unless requested.
    */
   static TemporaryRef<DataSourceSurface>
-    CreateDataSourceSurface(const IntSize &aSize, SurfaceFormat aFormat);
+    CreateDataSourceSurface(const IntSize &aSize, SurfaceFormat aFormat, bool aZero = false);
 
   /**
    * This creates a simple data source surface for a certain size with a
    * specific stride, which must be large enough to fit all pixels.
    * It allocates new memory for the surface. This memory is freed when
    * the surface is destroyed.  The caller is responsible for handling the case
-   * where nullptr is returned.
+   * where nullptr is returned. The surface is not zeroed unless requested.
    */
   static TemporaryRef<DataSourceSurface>
-    CreateDataSourceSurfaceWithStride(const IntSize &aSize, SurfaceFormat aFormat, int32_t aStride);
+    CreateDataSourceSurfaceWithStride(const IntSize &aSize, SurfaceFormat aFormat, int32_t aStride, bool aZero = false);
 
   /**
    * This creates a simple data source surface for some existing data. It will
@@ -1146,6 +1153,15 @@ public:
     CreateEventRecorderForFile(const char *aFilename);
 
   static void SetGlobalEventRecorder(DrawEventRecorder *aRecorder);
+
+  // This is a little hacky at the moment, but we want to have this data. Bug 1068613.
+  static void SetLogForwarder(LogForwarder* aLogFwd);
+
+  static LogForwarder* GetLogForwarder() { return mLogForwarder; }
+
+private:
+  static LogForwarder* mLogForwarder;
+public:
 
 #ifdef USE_SKIA_GPU
   static TemporaryRef<DrawTarget>
@@ -1185,9 +1201,12 @@ public:
   static void SetDirect3D10Device(ID3D10Device1 *aDevice);
   static ID3D10Device1 *GetDirect3D10Device();
 #ifdef USE_D2D1_1
+  static TemporaryRef<DrawTarget> CreateDrawTargetForD3D11Texture(ID3D11Texture2D *aTexture, SurfaceFormat aFormat);
+
   static void SetDirect3D11Device(ID3D11Device *aDevice);
   static ID3D11Device *GetDirect3D11Device();
   static ID2D1Device *GetD2D1Device();
+  static bool SupportsD2D1();
 #endif
 
   static TemporaryRef<GlyphRenderingOptions>

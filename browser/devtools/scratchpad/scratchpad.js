@@ -34,8 +34,8 @@ const SCRATCHPAD_L10N = "chrome://browser/locale/devtools/scratchpad.properties"
 const DEVTOOLS_CHROME_ENABLED = "devtools.chrome.enabled";
 const PREF_RECENT_FILES_MAX = "devtools.scratchpad.recentFilesMax";
 const SHOW_TRAILING_SPACE = "devtools.scratchpad.showTrailingSpace";
-const ENABLE_CODE_FOLDING = "devtools.scratchpad.enableCodeFolding";
 const ENABLE_AUTOCOMPLETION = "devtools.scratchpad.enableAutocompletion";
+const TAB_SIZE = "devtools.editor.tabsize";
 
 const VARIABLES_VIEW_URL = "chrome://browser/content/devtools/widgets/VariablesView.xul";
 
@@ -655,7 +655,7 @@ var Scratchpad = {
    */
   prettyPrint: function SP_prettyPrint() {
     const uglyText = this.getText();
-    const tabsize = Services.prefs.getIntPref("devtools.editor.tabsize");
+    const tabsize = Services.prefs.getIntPref(TAB_SIZE);
     const id = Math.random();
     const deferred = promise.defer();
 
@@ -1552,6 +1552,14 @@ var Scratchpad = {
            getInterface(Ci.nsIDOMWindowUtils).currentInnerWindowID;
   },
 
+  updateStatusBar: function SP_updateStatusBar(aEventType)
+  {
+    var statusBarField = document.getElementById("statusbar-line-col");
+    let { line, ch } = this.editor.getCursor();
+    statusBarField.textContent = this.strings.formatStringFromName(
+      "scratchpad.statusBarLineCol", [ line + 1, ch + 1], 2);
+  },
+
   /**
    * The Scratchpad window load event handler. This method
    * initializes the Scratchpad window and source editor.
@@ -1604,7 +1612,6 @@ var Scratchpad = {
       lineNumbers: true,
       contextMenu: "scratchpad-text-popup",
       showTrailingSpace: Services.prefs.getBoolPref(SHOW_TRAILING_SPACE),
-      enableCodeFolding: Services.prefs.getBoolPref(ENABLE_CODE_FOLDING),
       autocomplete: Services.prefs.getBoolPref(ENABLE_AUTOCOMPLETION),
     };
 
@@ -1614,6 +1621,9 @@ var Scratchpad = {
       var lines = initialText.split("\n");
 
       this.editor.on("change", this._onChanged);
+      // Keep a reference to the bound version for use in onUnload.
+      this.updateStatusBar = Scratchpad.updateStatusBar.bind(this);
+      this.editor.on("cursorActivity", this.updateStatusBar);
       let okstring = this.strings.GetStringFromName("selfxss.okstring");
       let msg = this.strings.formatStringFromName("selfxss.msg", [okstring], 1);
       this._onPaste = WebConsoleUtils.pasteHandlerGen(this.editor.container.contentDocument.body,
@@ -1699,6 +1709,7 @@ var Scratchpad = {
       this._onPaste = null;
     }
     this.editor.off("change", this._onChanged);
+    this.editor.off("cursorActivity", this.updateStatusBar);
     this.editor.destroy();
     this.editor = null;
 

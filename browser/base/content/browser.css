@@ -393,7 +393,8 @@ panel[noactions] > richlistbox > richlistitem[type~="action"] > .ac-url-box > .a
   visibility: visible;
 }
 
-#urlbar:not([actiontype]) > #urlbar-display-box {
+#urlbar:not([actiontype]) > #urlbar-display-box,
+#urlbar:not([actiontype="switchtab"]) > #urlbar-display-box > .urlbar-display-switchtab {
   display: none;
 }
 
@@ -1213,4 +1214,14 @@ toolbarpaletteitem[place="palette"][hidden] {
 #context-navigation > .menuitem-iconic > .menu-iconic-text,
 #context-navigation > .menuitem-iconic > .menu-accel-container {
   display: none;
+}
+
+/* Tracking protection doorhanger */
+.popup-notification-footer[popupid="bad-content"] {
+  display: none;
+}
+
+.popup-notification-footer[popupid="bad-content"][mixedblockdisabled],
+.popup-notification-footer[popupid="bad-content"][trackingblockdisabled] {
+  display: block;
 }

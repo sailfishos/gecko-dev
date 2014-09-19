@@ -155,6 +155,14 @@ LIRGeneratorX86Shared::lowerDivI(MDiv *div)
             if (div->fallible() && !assignSnapshot(lir, Bailout_DoubleOutput))
                 return false;
             return defineReuseInput(lir, div, 0);
+        } else if (rhs != 0 &&
+                   gen->optimizationInfo().registerAllocator() != RegisterAllocator_LSRA)
+        {
+            LDivOrModConstantI *lir;
+            lir = new(alloc()) LDivOrModConstantI(useRegister(div->lhs()), rhs, tempFixed(eax));
+            if (div->fallible() && !assignSnapshot(lir, Bailout_DoubleOutput))
+                return false;
+            return defineFixed(lir, div, LAllocation(AnyRegister(edx)));
         }
     }
 
@@ -179,6 +187,14 @@ LIRGeneratorX86Shared::lowerModI(MMod *mod)
             if (mod->fallible() && !assignSnapshot(lir, Bailout_DoubleOutput))
                 return false;
             return defineReuseInput(lir, mod, 0);
+        } else if (rhs != 0 &&
+                   gen->optimizationInfo().registerAllocator() != RegisterAllocator_LSRA)
+        {
+            LDivOrModConstantI *lir;
+            lir = new(alloc()) LDivOrModConstantI(useRegister(mod->lhs()), rhs, tempFixed(edx));
+            if (mod->fallible() && !assignSnapshot(lir, Bailout_DoubleOutput))
+                return false;
+            return defineFixed(lir, mod, LAllocation(AnyRegister(eax)));
         }
     }
 
@@ -352,15 +368,22 @@ LIRGeneratorX86Shared::visitSimdSplatX4(MSimdSplatX4 *ins)
 bool
 LIRGeneratorX86Shared::visitSimdValueX4(MSimdValueX4 *ins)
 {
+    if (ins->type() == MIRType_Float32x4) {
+        // As x is used at start and reused for the output, other inputs can't
+        // be used at start.
+        LAllocation x = useRegisterAtStart(ins->getOperand(0));
+        LAllocation y = useRegister(ins->getOperand(1));
+        LAllocation z = useRegister(ins->getOperand(2));
+        LAllocation w = useRegister(ins->getOperand(3));
+        LDefinition copyY = tempCopy(ins->getOperand(1), 1);
+        return defineReuseInput(new (alloc()) LSimdValueFloat32x4(x, y, z, w, copyY), ins, 0);
+    }
+
+    // No defineReuseInput => useAtStart for everyone.
     LAllocation x = useRegisterAtStart(ins->getOperand(0));
     LAllocation y = useRegisterAtStart(ins->getOperand(1));
     LAllocation z = useRegisterAtStart(ins->getOperand(2));
     LAllocation w = useRegisterAtStart(ins->getOperand(3));
-
-    LDefinition copyY = tempCopy(ins->getOperand(1), 1);
-
-    if (ins->type() == MIRType_Float32x4)
-        return defineReuseInput(new (alloc()) LSimdValueFloat32x4(x, y, z, w, copyY), ins, 0);
 
     MOZ_ASSERT(ins->type() == MIRType_Int32x4);
     return define(new(alloc()) LSimdValueInt32x4(x, y, z, w), ins);

@@ -162,9 +162,11 @@ class Symbol;
 namespace js {
 
 class ArgumentsObject;
+class ArrayBufferObjectMaybeShared;
 class ArrayBufferObject;
 class ArrayBufferViewObject;
 class SharedArrayBufferObject;
+class SharedTypedArrayObject;
 class BaseShape;
 class DebugScopeObject;
 class GlobalObject;
@@ -188,9 +190,6 @@ class JitCode;
 }
 
 #ifdef DEBUG
-bool
-RuntimeFromMainThreadIsHeapMajorCollecting(JS::shadow::Zone *shadowZone);
-
 // Barriers can't be triggered during backend Ion compilation, which may run on
 // a helper thread.
 bool
@@ -205,6 +204,7 @@ namespace gc {
 template <typename T> struct MapTypeToTraceKind {};
 template <> struct MapTypeToTraceKind<ArgumentsObject>  { static const JSGCTraceKind kind = JSTRACE_OBJECT; };
 template <> struct MapTypeToTraceKind<ArrayBufferObject>{ static const JSGCTraceKind kind = JSTRACE_OBJECT; };
+template <> struct MapTypeToTraceKind<ArrayBufferObjectMaybeShared>{ static const JSGCTraceKind kind = JSTRACE_OBJECT; };
 template <> struct MapTypeToTraceKind<ArrayBufferViewObject>{ static const JSGCTraceKind kind = JSTRACE_OBJECT; };
 template <> struct MapTypeToTraceKind<BaseShape>        { static const JSGCTraceKind kind = JSTRACE_BASE_SHAPE; };
 template <> struct MapTypeToTraceKind<DebugScopeObject> { static const JSGCTraceKind kind = JSTRACE_OBJECT; };
@@ -225,13 +225,10 @@ template <> struct MapTypeToTraceKind<SavedFrame>       { static const JSGCTrace
 template <> struct MapTypeToTraceKind<ScopeObject>      { static const JSGCTraceKind kind = JSTRACE_OBJECT; };
 template <> struct MapTypeToTraceKind<Shape>            { static const JSGCTraceKind kind = JSTRACE_SHAPE; };
 template <> struct MapTypeToTraceKind<SharedArrayBufferObject>{ static const JSGCTraceKind kind = JSTRACE_OBJECT; };
+template <> struct MapTypeToTraceKind<SharedTypedArrayObject>{ static const JSGCTraceKind kind = JSTRACE_OBJECT; };
 template <> struct MapTypeToTraceKind<UnownedBaseShape> { static const JSGCTraceKind kind = JSTRACE_BASE_SHAPE; };
 template <> struct MapTypeToTraceKind<jit::JitCode>     { static const JSGCTraceKind kind = JSTRACE_JITCODE; };
 template <> struct MapTypeToTraceKind<types::TypeObject>{ static const JSGCTraceKind kind = JSTRACE_TYPE_OBJECT; };
-
-template <typename T>
-void
-MarkUnbarriered(JSTracer *trc, T **thingp, const char *name);
 
 // Direct value access used by the write barriers and the jits.
 void
@@ -240,104 +237,19 @@ MarkValueUnbarriered(JSTracer *trc, Value *v, const char *name);
 // These three declarations are also present in gc/Marking.h, via the DeclMarker
 // macro.  Not great, but hard to avoid.
 void
-MarkObjectUnbarriered(JSTracer *trc, JSObject **obj, const char *name);
-void
 MarkStringUnbarriered(JSTracer *trc, JSString **str, const char *name);
 void
 MarkSymbolUnbarriered(JSTracer *trc, JS::Symbol **sym, const char *name);
 
-// Note that some subclasses (e.g. ObjectImpl) specialize some of these
-// methods.
-template <typename T>
-class BarrieredCell : public gc::Cell
-{
-  public:
-    MOZ_ALWAYS_INLINE JS::Zone *zone() const { return tenuredZone(); }
-    MOZ_ALWAYS_INLINE JS::shadow::Zone *shadowZone() const { return JS::shadow::Zone::asShadowZone(zone()); }
-    MOZ_ALWAYS_INLINE JS::Zone *zoneFromAnyThread() const { return tenuredZoneFromAnyThread(); }
-    MOZ_ALWAYS_INLINE JS::shadow::Zone *shadowZoneFromAnyThread() const {
-        return JS::shadow::Zone::asShadowZone(zoneFromAnyThread());
-    }
-
-    static MOZ_ALWAYS_INLINE void readBarrier(T *thing) {
-#ifdef JSGC_INCREMENTAL
-        JS_ASSERT(!CurrentThreadIsIonCompiling());
-        JS_ASSERT(!T::isNullLike(thing));
-        JS::shadow::Zone *shadowZone = thing->shadowZoneFromAnyThread();
-        if (shadowZone->needsIncrementalBarrier()) {
-            MOZ_ASSERT(!RuntimeFromMainThreadIsHeapMajorCollecting(shadowZone));
-            T *tmp = thing;
-            js::gc::MarkUnbarriered<T>(shadowZone->barrierTracer(), &tmp, "read barrier");
-            JS_ASSERT(tmp == thing);
-        }
-        if (JS::GCThingIsMarkedGray(thing))
-            JS::UnmarkGrayGCThingRecursively(thing, MapTypeToTraceKind<T>::kind);
-#endif
-    }
-
-    static MOZ_ALWAYS_INLINE bool needWriteBarrierPre(JS::Zone *zone) {
-#ifdef JSGC_INCREMENTAL
-        return JS::shadow::Zone::asShadowZone(zone)->needsIncrementalBarrier();
-#else
-        return false;
-#endif
-    }
-
-    static MOZ_ALWAYS_INLINE bool isNullLike(T *thing) { return !thing; }
-
-    static MOZ_ALWAYS_INLINE void writeBarrierPre(T *thing) {
-#ifdef JSGC_INCREMENTAL
-        JS_ASSERT(!CurrentThreadIsIonCompiling());
-        if (isNullLike(thing) || !thing->shadowRuntimeFromAnyThread()->needsIncrementalBarrier())
-            return;
-
-        JS::shadow::Zone *shadowZone = thing->shadowZoneFromAnyThread();
-        if (shadowZone->needsIncrementalBarrier()) {
-            MOZ_ASSERT(!RuntimeFromMainThreadIsHeapMajorCollecting(shadowZone));
-            T *tmp = thing;
-            js::gc::MarkUnbarriered<T>(shadowZone->barrierTracer(), &tmp, "write barrier");
-            JS_ASSERT(tmp == thing);
-        }
-#endif
-    }
-
-    static void writeBarrierPost(T *thing, void *cellp) {}
-    static void writeBarrierPostRelocate(T *thing, void *cellp) {}
-    static void writeBarrierPostRemove(T *thing, void *cellp) {}
-
-    template <typename S>
-    S *pod_malloc(size_t numElems) {
-        return zone()->template pod_malloc<S>(numElems);
-    }
-    template <typename S>
-    S *pod_calloc(size_t numElems) {
-        return zone()->template pod_calloc<S>(numElems);
-    }
-    template <typename S>
-    S *pod_realloc(S *prior, size_t oldSize, size_t newSize) {
-        return zone()->template pod_realloc<S>(prior, oldSize, newSize);
-    }
-
-    template <typename S, typename U>
-    S *pod_malloc_with_extra(size_t numExtra) {
-        return zone()->template pod_malloc_with_extra<S, U>(numExtra);
-    }
-
-    template <typename S, typename U>
-    S *pod_calloc_with_extra(size_t numExtra) {
-        return zone()->template pod_calloc_with_extra<S, U>(numExtra);
-    }
-};
-
 } // namespace gc
 
-// Note: the following Zone-getting functions must be equivalent to the zone()
-// and shadowZone() functions implemented by the subclasses of BarrieredCell.
-
-static inline JS::shadow::Zone *
-ShadowZoneOfString(JSString *str)
-{
-    return JS::shadow::Zone::asShadowZone(reinterpret_cast<const js::gc::Cell *>(str)->tenuredZone());
+// This context is more basal than the GC things being implemented, so C++ does
+// not know about the inheritance hierarchy yet.
+static inline const gc::TenuredCell *AsTenuredCell(const JSString *str) {
+    return reinterpret_cast<const gc::TenuredCell *>(str);
+}
+static inline const gc::TenuredCell *AsTenuredCell(const JS::Symbol *sym) {
+    return reinterpret_cast<const gc::TenuredCell *>(sym);
 }
 
 JS::Zone *
@@ -352,15 +264,13 @@ ShadowZoneOfObjectFromAnyThread(JSObject *obj)
 static inline JS::shadow::Zone *
 ShadowZoneOfStringFromAnyThread(JSString *str)
 {
-    return JS::shadow::Zone::asShadowZone(
-        reinterpret_cast<const js::gc::Cell *>(str)->tenuredZoneFromAnyThread());
+    return JS::shadow::Zone::asShadowZone(AsTenuredCell(str)->zoneFromAnyThread());
 }
 
 static inline JS::shadow::Zone *
 ShadowZoneOfSymbolFromAnyThread(JS::Symbol *sym)
 {
-    return JS::shadow::Zone::asShadowZone(
-        reinterpret_cast<const js::gc::Cell *>(sym)->tenuredZoneFromAnyThread());
+    return JS::shadow::Zone::asShadowZone(AsTenuredCell(sym)->zoneFromAnyThread());
 }
 
 MOZ_ALWAYS_INLINE JS::Zone *
@@ -369,7 +279,7 @@ ZoneOfValueFromAnyThread(const JS::Value &value)
     JS_ASSERT(value.isMarkable());
     if (value.isObject())
         return ZoneOfObjectFromAnyThread(value.toObject());
-    return static_cast<js::gc::Cell *>(value.toGCThing())->tenuredZoneFromAnyThread();
+    return js::gc::TenuredCell::fromPointer(value.toGCThing())->zoneFromAnyThread();
 }
 
 void
@@ -893,6 +803,7 @@ typedef RelocatablePtr<JSObject*> RelocatablePtrObject;
 typedef RelocatablePtr<JSScript*> RelocatablePtrScript;
 typedef RelocatablePtr<NestedScopeObject*> RelocatablePtrNestedScopeObject;
 
+typedef HeapPtr<ArrayBufferObjectMaybeShared*> HeapPtrArrayBufferObjectMaybeShared;
 typedef HeapPtr<ArrayBufferObject*> HeapPtrArrayBufferObject;
 typedef HeapPtr<BaseShape*> HeapPtrBaseShape;
 typedef HeapPtr<JSAtom*> HeapPtrAtom;

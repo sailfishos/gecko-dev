@@ -16,7 +16,6 @@
 #include "jsapi.h"
 #include "jsfriendapi.h"
 
-#include "builtin/SIMDShuffleMaskConstants.h"
 #include "builtin/TypedObject.h"
 #include "js/Value.h"
 
@@ -35,12 +34,12 @@ extern const JSFunctionSpec Int32x4Methods[];
 }
 
 ///////////////////////////////////////////////////////////////////////////
-// X4
+// SIMD
 
 static const char *laneNames[] = {"lane 0", "lane 1", "lane 2", "lane3"};
 
 static bool
-CheckVectorObject(HandleValue v, X4TypeDescr::Type expectedType)
+CheckVectorObject(HandleValue v, SimdTypeDescr::Type expectedType)
 {
     if (!v.isObject())
         return false;
@@ -50,10 +49,10 @@ CheckVectorObject(HandleValue v, X4TypeDescr::Type expectedType)
         return false;
 
     TypeDescr &typeRepr = obj.as<TypedObject>().typeDescr();
-    if (typeRepr.kind() != type::X4)
+    if (typeRepr.kind() != type::Simd)
         return false;
 
-    return typeRepr.as<X4TypeDescr>().type() == expectedType;
+    return typeRepr.as<SimdTypeDescr>().type() == expectedType;
 }
 
 template<class V>
@@ -93,27 +92,27 @@ TypedObjectMemory(HandleValue v)
     return reinterpret_cast<Elem>(obj.typedMem());
 }
 
-template<typename Type32x4, int lane>
-static bool GetX4Lane(JSContext *cx, unsigned argc, Value *vp)
+template<typename SimdType, int lane>
+static bool GetSimdLane(JSContext *cx, unsigned argc, Value *vp)
 {
-    typedef typename Type32x4::Elem Elem;
+    typedef typename SimdType::Elem Elem;
 
     CallArgs args = CallArgsFromVp(argc, vp);
-    if (!IsVectorObject<Type32x4>(args.thisv())) {
+    if (!IsVectorObject<SimdType>(args.thisv())) {
         JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr, JSMSG_INCOMPATIBLE_PROTO,
-                             X4TypeDescr::class_.name, laneNames[lane],
+                             SimdTypeDescr::class_.name, laneNames[lane],
                              InformalValueTypeName(args.thisv()));
         return false;
     }
 
     Elem *data = TypedObjectMemory<Elem *>(args.thisv());
-    Type32x4::setReturn(args, data[lane]);
+    SimdType::setReturn(args, data[lane]);
     return true;
 }
 
 #define LANE_ACCESSOR(type, lane) \
 static bool type##Lane##lane(JSContext *cx, unsigned argc, Value *vp) { \
-    return GetX4Lane<type, lane>(cx, argc, vp);\
+    return GetSimdLane<type, lane>(cx, argc, vp);\
 }
 
 #define FOUR_LANES_ACCESSOR(type) \
@@ -127,24 +126,24 @@ static bool type##Lane##lane(JSContext *cx, unsigned argc, Value *vp) { \
 #undef FOUR_LANES_ACCESSOR
 #undef LANE_ACCESSOR
 
-template<typename Type32x4>
+template<typename SimdType>
 static bool SignMask(JSContext *cx, unsigned argc, Value *vp)
 {
-    typedef typename Type32x4::Elem Elem;
+    typedef typename SimdType::Elem Elem;
 
     CallArgs args = CallArgsFromVp(argc, vp);
     if (!args.thisv().isObject() || !args.thisv().toObject().is<TypedObject>()) {
         JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr, JSMSG_INCOMPATIBLE_PROTO,
-                             X4TypeDescr::class_.name, "signMask",
+                             SimdTypeDescr::class_.name, "signMask",
                              InformalValueTypeName(args.thisv()));
         return false;
     }
 
     TypedObject &typedObj = args.thisv().toObject().as<TypedObject>();
     TypeDescr &descr = typedObj.typeDescr();
-    if (descr.kind() != type::X4 || descr.as<X4TypeDescr>().type() != Type32x4::type) {
+    if (descr.kind() != type::Simd || descr.as<SimdTypeDescr>().type() != SimdType::type) {
         JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr, JSMSG_INCOMPATIBLE_PROTO,
-                             X4TypeDescr::class_.name, "signMask",
+                             SimdTypeDescr::class_.name, "signMask",
                              InformalValueTypeName(args.thisv()));
         return false;
     }
@@ -168,8 +167,8 @@ static bool type##SignMask(JSContext *cx, unsigned argc, Value *vp) { \
     SIGN_MASK(Int32x4);
 #undef SIGN_MASK
 
-const Class X4TypeDescr::class_ = {
-    "X4",
+const Class SimdTypeDescr::class_ = {
+    "SIMD",
     JSCLASS_HAS_RESERVED_SLOTS(JS_DESCR_SLOTS),
     JS_PropertyStub,         /* addProperty */
     JS_DeletePropertyStub,   /* delProperty */
@@ -189,14 +188,14 @@ const Class X4TypeDescr::class_ = {
 namespace js {
 class Int32x4Defn {
   public:
-    static const X4TypeDescr::Type type = X4TypeDescr::TYPE_INT32;
+    static const SimdTypeDescr::Type type = SimdTypeDescr::TYPE_INT32;
     static const JSFunctionSpec TypeDescriptorMethods[];
     static const JSPropertySpec TypedObjectProperties[];
     static const JSFunctionSpec TypedObjectMethods[];
 };
 class Float32x4Defn {
   public:
-    static const X4TypeDescr::Type type = X4TypeDescr::TYPE_FLOAT32;
+    static const SimdTypeDescr::Type type = SimdTypeDescr::TYPE_FLOAT32;
     static const JSFunctionSpec TypeDescriptorMethods[];
     static const JSPropertySpec TypedObjectProperties[];
     static const JSFunctionSpec TypedObjectMethods[];
@@ -220,7 +219,7 @@ const JSPropertySpec js::Float32x4Defn::TypedObjectProperties[] = {
 };
 
 const JSFunctionSpec js::Float32x4Defn::TypedObjectMethods[] = {
-    JS_SELF_HOSTED_FN("toSource", "X4ToSource", 0, 0),
+    JS_SELF_HOSTED_FN("toSource", "SimdToSource", 0, 0),
     JS_FS_END
 };
 
@@ -241,17 +240,17 @@ const JSPropertySpec js::Int32x4Defn::TypedObjectProperties[] = {
 };
 
 const JSFunctionSpec js::Int32x4Defn::TypedObjectMethods[] = {
-    JS_SELF_HOSTED_FN("toSource", "X4ToSource", 0, 0),
+    JS_SELF_HOSTED_FN("toSource", "SimdToSource", 0, 0),
     JS_FS_END
 };
 
 template<typename T>
 static JSObject *
-CreateX4Class(JSContext *cx,
+CreateSimdClass(JSContext *cx,
               Handle<GlobalObject*> global,
               HandlePropertyName stringRepr)
 {
-    const X4TypeDescr::Type type = T::type;
+    const SimdTypeDescr::Type type = T::type;
 
     RootedObject funcProto(cx, global->getOrCreateFunctionPrototype(cx));
     if (!funcProto)
@@ -259,19 +258,19 @@ CreateX4Class(JSContext *cx,
 
     // Create type constructor itself and initialize its reserved slots.
 
-    Rooted<X4TypeDescr*> x4(cx);
-    x4 = NewObjectWithProto<X4TypeDescr>(cx, funcProto, global, TenuredObject);
-    if (!x4)
+    Rooted<SimdTypeDescr*> typeDescr(cx);
+    typeDescr = NewObjectWithProto<SimdTypeDescr>(cx, funcProto, global, TenuredObject);
+    if (!typeDescr)
         return nullptr;
 
-    x4->initReservedSlot(JS_DESCR_SLOT_KIND, Int32Value(type::X4));
-    x4->initReservedSlot(JS_DESCR_SLOT_STRING_REPR, StringValue(stringRepr));
-    x4->initReservedSlot(JS_DESCR_SLOT_ALIGNMENT, Int32Value(X4TypeDescr::size(type)));
-    x4->initReservedSlot(JS_DESCR_SLOT_SIZE, Int32Value(X4TypeDescr::alignment(type)));
-    x4->initReservedSlot(JS_DESCR_SLOT_OPAQUE, BooleanValue(false));
-    x4->initReservedSlot(JS_DESCR_SLOT_TYPE, Int32Value(T::type));
+    typeDescr->initReservedSlot(JS_DESCR_SLOT_KIND, Int32Value(type::Simd));
+    typeDescr->initReservedSlot(JS_DESCR_SLOT_STRING_REPR, StringValue(stringRepr));
+    typeDescr->initReservedSlot(JS_DESCR_SLOT_ALIGNMENT, Int32Value(SimdTypeDescr::alignment(type)));
+    typeDescr->initReservedSlot(JS_DESCR_SLOT_SIZE, Int32Value(SimdTypeDescr::size(type)));
+    typeDescr->initReservedSlot(JS_DESCR_SLOT_OPAQUE, BooleanValue(false));
+    typeDescr->initReservedSlot(JS_DESCR_SLOT_TYPE, Int32Value(T::type));
 
-    if (!CreateUserSizeAndAlignmentProperties(cx, x4))
+    if (!CreateUserSizeAndAlignmentProperties(cx, typeDescr))
         return nullptr;
 
     // Create prototype property, which inherits from Object.prototype.
@@ -283,33 +282,33 @@ CreateX4Class(JSContext *cx,
     proto = NewObjectWithProto<TypedProto>(cx, objProto, nullptr, TenuredObject);
     if (!proto)
         return nullptr;
-    proto->initTypeDescrSlot(*x4);
-    x4->initReservedSlot(JS_DESCR_SLOT_TYPROTO, ObjectValue(*proto));
+    proto->initTypeDescrSlot(*typeDescr);
+    typeDescr->initReservedSlot(JS_DESCR_SLOT_TYPROTO, ObjectValue(*proto));
 
     // Link constructor to prototype and install properties.
 
-    if (!JS_DefineFunctions(cx, x4, T::TypeDescriptorMethods))
+    if (!JS_DefineFunctions(cx, typeDescr, T::TypeDescriptorMethods))
         return nullptr;
 
-    if (!LinkConstructorAndPrototype(cx, x4, proto) ||
+    if (!LinkConstructorAndPrototype(cx, typeDescr, proto) ||
         !DefinePropertiesAndFunctions(cx, proto, T::TypedObjectProperties,
                                       T::TypedObjectMethods))
     {
         return nullptr;
     }
 
-    return x4;
+    return typeDescr;
 }
 
 bool
-X4TypeDescr::call(JSContext *cx, unsigned argc, Value *vp)
+SimdTypeDescr::call(JSContext *cx, unsigned argc, Value *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
     const unsigned LANES = 4;
 
-    Rooted<X4TypeDescr*> descr(cx, &args.callee().as<X4TypeDescr>());
+    Rooted<SimdTypeDescr*> descr(cx, &args.callee().as<SimdTypeDescr>());
     if (args.length() == 1) {
-        // X4 type used as a coercion
+        // SIMD type used as a coercion
         if (!CheckVectorObject(args[0], descr->type())) {
             JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr, JSMSG_SIMD_NOT_A_VECTOR);
             return false;
@@ -325,28 +324,28 @@ X4TypeDescr::call(JSContext *cx, unsigned argc, Value *vp)
         return false;
     }
 
-    double values[LANES];
-    for (unsigned i = 0; i < LANES; i++) {
-        if (!ToNumber(cx, args[i], &values[i]))
-            return false;
-    }
-
     Rooted<TypedObject*> result(cx, TypedObject::createZeroed(cx, descr, 0));
     if (!result)
         return false;
 
     MOZ_ASSERT(!result->owner().isNeutered());
     switch (descr->type()) {
-#define STORE_LANES(_constant, _type, _name)                                  \
-      case _constant:                                                         \
-      {                                                                       \
-        _type *mem = reinterpret_cast<_type*>(result->typedMem());            \
-        for (unsigned i = 0; i < LANES; i++)                                  \
-            mem[i] = ConvertScalar<_type>(values[i]);                         \
-        break;                                                                \
+      case SimdTypeDescr::TYPE_INT32: {
+        int32_t *mem = reinterpret_cast<int32_t*>(result->typedMem());
+        for (unsigned i = 0; i < 4; i++) {
+            if (!ToInt32(cx, args[i], &mem[i]))
+                return false;
+        }
+        break;
       }
-      JS_FOR_EACH_X4_TYPE_REPR(STORE_LANES)
-#undef STORE_LANES
+      case SimdTypeDescr::TYPE_FLOAT32: {
+        float *mem = reinterpret_cast<float*>(result->typedMem());
+        for (unsigned i = 0; i < 4; i++) {
+            if (!RoundFloat32(cx, args[i], &mem[i]))
+                return false;
+        }
+        break;
+      }
     }
     args.rval().setObject(*result);
     return true;
@@ -372,6 +371,270 @@ const Class SIMDObject::class_ = {
         nullptr
 };
 
+static JSConstIntegerSpec SHUFFLE_MASKS[] = {
+    {"XXXX", 0x0},
+    {"XXXY", 0x40},
+    {"XXXZ", 0x80},
+    {"XXXW", 0xC0},
+    {"XXYX", 0x10},
+    {"XXYY", 0x50},
+    {"XXYZ", 0x90},
+    {"XXYW", 0xD0},
+    {"XXZX", 0x20},
+    {"XXZY", 0x60},
+    {"XXZZ", 0xA0},
+    {"XXZW", 0xE0},
+    {"XXWX", 0x30},
+    {"XXWY", 0x70},
+    {"XXWZ", 0xB0},
+    {"XXWW", 0xF0},
+    {"XYXX", 0x4},
+    {"XYXY", 0x44},
+    {"XYXZ", 0x84},
+    {"XYXW", 0xC4},
+    {"XYYX", 0x14},
+    {"XYYY", 0x54},
+    {"XYYZ", 0x94},
+    {"XYYW", 0xD4},
+    {"XYZX", 0x24},
+    {"XYZY", 0x64},
+    {"XYZZ", 0xA4},
+    {"XYZW", 0xE4},
+    {"XYWX", 0x34},
+    {"XYWY", 0x74},
+    {"XYWZ", 0xB4},
+    {"XYWW", 0xF4},
+    {"XZXX", 0x8},
+    {"XZXY", 0x48},
+    {"XZXZ", 0x88},
+    {"XZXW", 0xC8},
+    {"XZYX", 0x18},
+    {"XZYY", 0x58},
+    {"XZYZ", 0x98},
+    {"XZYW", 0xD8},
+    {"XZZX", 0x28},
+    {"XZZY", 0x68},
+    {"XZZZ", 0xA8},
+    {"XZZW", 0xE8},
+    {"XZWX", 0x38},
+    {"XZWY", 0x78},
+    {"XZWZ", 0xB8},
+    {"XZWW", 0xF8},
+    {"XWXX", 0xC},
+    {"XWXY", 0x4C},
+    {"XWXZ", 0x8C},
+    {"XWXW", 0xCC},
+    {"XWYX", 0x1C},
+    {"XWYY", 0x5C},
+    {"XWYZ", 0x9C},
+    {"XWYW", 0xDC},
+    {"XWZX", 0x2C},
+    {"XWZY", 0x6C},
+    {"XWZZ", 0xAC},
+    {"XWZW", 0xEC},
+    {"XWWX", 0x3C},
+    {"XWWY", 0x7C},
+    {"XWWZ", 0xBC},
+    {"XWWW", 0xFC},
+    {"YXXX", 0x1},
+    {"YXXY", 0x41},
+    {"YXXZ", 0x81},
+    {"YXXW", 0xC1},
+    {"YXYX", 0x11},
+    {"YXYY", 0x51},
+    {"YXYZ", 0x91},
+    {"YXYW", 0xD1},
+    {"YXZX", 0x21},
+    {"YXZY", 0x61},
+    {"YXZZ", 0xA1},
+    {"YXZW", 0xE1},
+    {"YXWX", 0x31},
+    {"YXWY", 0x71},
+    {"YXWZ", 0xB1},
+    {"YXWW", 0xF1},
+    {"YYXX", 0x5},
+    {"YYXY", 0x45},
+    {"YYXZ", 0x85},
+    {"YYXW", 0xC5},
+    {"YYYX", 0x15},
+    {"YYYY", 0x55},
+    {"YYYZ", 0x95},
+    {"YYYW", 0xD5},
+    {"YYZX", 0x25},
+    {"YYZY", 0x65},
+    {"YYZZ", 0xA5},
+    {"YYZW", 0xE5},
+    {"YYWX", 0x35},
+    {"YYWY", 0x75},
+    {"YYWZ", 0xB5},
+    {"YYWW", 0xF5},
+    {"YZXX", 0x9},
+    {"YZXY", 0x49},
+    {"YZXZ", 0x89},
+    {"YZXW", 0xC9},
+    {"YZYX", 0x19},
+    {"YZYY", 0x59},
+    {"YZYZ", 0x99},
+    {"YZYW", 0xD9},
+    {"YZZX", 0x29},
+    {"YZZY", 0x69},
+    {"YZZZ", 0xA9},
+    {"YZZW", 0xE9},
+    {"YZWX", 0x39},
+    {"YZWY", 0x79},
+    {"YZWZ", 0xB9},
+    {"YZWW", 0xF9},
+    {"YWXX", 0xD},
+    {"YWXY", 0x4D},
+    {"YWXZ", 0x8D},
+    {"YWXW", 0xCD},
+    {"YWYX", 0x1D},
+    {"YWYY", 0x5D},
+    {"YWYZ", 0x9D},
+    {"YWYW", 0xDD},
+    {"YWZX", 0x2D},
+    {"YWZY", 0x6D},
+    {"YWZZ", 0xAD},
+    {"YWZW", 0xED},
+    {"YWWX", 0x3D},
+    {"YWWY", 0x7D},
+    {"YWWZ", 0xBD},
+    {"YWWW", 0xFD},
+    {"ZXXX", 0x2},
+    {"ZXXY", 0x42},
+    {"ZXXZ", 0x82},
+    {"ZXXW", 0xC2},
+    {"ZXYX", 0x12},
+    {"ZXYY", 0x52},
+    {"ZXYZ", 0x92},
+    {"ZXYW", 0xD2},
+    {"ZXZX", 0x22},
+    {"ZXZY", 0x62},
+    {"ZXZZ", 0xA2},
+    {"ZXZW", 0xE2},
+    {"ZXWX", 0x32},
+    {"ZXWY", 0x72},
+    {"ZXWZ", 0xB2},
+    {"ZXWW", 0xF2},
+    {"ZYXX", 0x6},
+    {"ZYXY", 0x46},
+    {"ZYXZ", 0x86},
+    {"ZYXW", 0xC6},
+    {"ZYYX", 0x16},
+    {"ZYYY", 0x56},
+    {"ZYYZ", 0x96},
+    {"ZYYW", 0xD6},
+    {"ZYZX", 0x26},
+    {"ZYZY", 0x66},
+    {"ZYZZ", 0xA6},
+    {"ZYZW", 0xE6},
+    {"ZYWX", 0x36},
+    {"ZYWY", 0x76},
+    {"ZYWZ", 0xB6},
+    {"ZYWW", 0xF6},
+    {"ZZXX", 0xA},
+    {"ZZXY", 0x4A},
+    {"ZZXZ", 0x8A},
+    {"ZZXW", 0xCA},
+    {"ZZYX", 0x1A},
+    {"ZZYY", 0x5A},
+    {"ZZYZ", 0x9A},
+    {"ZZYW", 0xDA},
+    {"ZZZX", 0x2A},
+    {"ZZZY", 0x6A},
+    {"ZZZZ", 0xAA},
+    {"ZZZW", 0xEA},
+    {"ZZWX", 0x3A},
+    {"ZZWY", 0x7A},
+    {"ZZWZ", 0xBA},
+    {"ZZWW", 0xFA},
+    {"ZWXX", 0xE},
+    {"ZWXY", 0x4E},
+    {"ZWXZ", 0x8E},
+    {"ZWXW", 0xCE},
+    {"ZWYX", 0x1E},
+    {"ZWYY", 0x5E},
+    {"ZWYZ", 0x9E},
+    {"ZWYW", 0xDE},
+    {"ZWZX", 0x2E},
+    {"ZWZY", 0x6E},
+    {"ZWZZ", 0xAE},
+    {"ZWZW", 0xEE},
+    {"ZWWX", 0x3E},
+    {"ZWWY", 0x7E},
+    {"ZWWZ", 0xBE},
+    {"ZWWW", 0xFE},
+    {"WXXX", 0x3},
+    {"WXXY", 0x43},
+    {"WXXZ", 0x83},
+    {"WXXW", 0xC3},
+    {"WXYX", 0x13},
+    {"WXYY", 0x53},
+    {"WXYZ", 0x93},
+    {"WXYW", 0xD3},
+    {"WXZX", 0x23},
+    {"WXZY", 0x63},
+    {"WXZZ", 0xA3},
+    {"WXZW", 0xE3},
+    {"WXWX", 0x33},
+    {"WXWY", 0x73},
+    {"WXWZ", 0xB3},
+    {"WXWW", 0xF3},
+    {"WYXX", 0x7},
+    {"WYXY", 0x47},
+    {"WYXZ", 0x87},
+    {"WYXW", 0xC7},
+    {"WYYX", 0x17},
+    {"WYYY", 0x57},
+    {"WYYZ", 0x97},
+    {"WYYW", 0xD7},
+    {"WYZX", 0x27},
+    {"WYZY", 0x67},
+    {"WYZZ", 0xA7},
+    {"WYZW", 0xE7},
+    {"WYWX", 0x37},
+    {"WYWY", 0x77},
+    {"WYWZ", 0xB7},
+    {"WYWW", 0xF7},
+    {"WZXX", 0xB},
+    {"WZXY", 0x4B},
+    {"WZXZ", 0x8B},
+    {"WZXW", 0xCB},
+    {"WZYX", 0x1B},
+    {"WZYY", 0x5B},
+    {"WZYZ", 0x9B},
+    {"WZYW", 0xDB},
+    {"WZZX", 0x2B},
+    {"WZZY", 0x6B},
+    {"WZZZ", 0xAB},
+    {"WZZW", 0xEB},
+    {"WZWX", 0x3B},
+    {"WZWY", 0x7B},
+    {"WZWZ", 0xBB},
+    {"WZWW", 0xFB},
+    {"WWXX", 0xF},
+    {"WWXY", 0x4F},
+    {"WWXZ", 0x8F},
+    {"WWXW", 0xCF},
+    {"WWYX", 0x1F},
+    {"WWYY", 0x5F},
+    {"WWYZ", 0x9F},
+    {"WWYW", 0xDF},
+    {"WWZX", 0x2F},
+    {"WWZY", 0x6F},
+    {"WWZZ", 0xAF},
+    {"WWZW", 0xEF},
+    {"WWWX", 0x3F},
+    {"WWWY", 0x7F},
+    {"WWWZ", 0xBF},
+    {"WWWW", 0xFF},
+    {"XX", 0x0},
+    {"XY", 0x2},
+    {"YX", 0x1},
+    {"YY", 0x3},
+    {0,0}
+};
+
 JSObject *
 SIMDObject::initClass(JSContext *cx, Handle<GlobalObject *> global)
 {
@@ -392,12 +655,13 @@ SIMDObject::initClass(JSContext *cx, Handle<GlobalObject *> global)
     if (!SIMD)
         return nullptr;
 
-    SET_ALL_SHUFFLE_MASKS;
+    if (!JS_DefineConstIntegers(cx, SIMD, SHUFFLE_MASKS))
+        return nullptr;
 
     // float32x4
     RootedObject float32x4Object(cx);
-    float32x4Object = CreateX4Class<Float32x4Defn>(cx, global,
-                                                   cx->names().float32x4);
+    float32x4Object = CreateSimdClass<Float32x4Defn>(cx, global,
+                                                     cx->names().float32x4);
     if (!float32x4Object)
         return nullptr;
 
@@ -413,8 +677,8 @@ SIMDObject::initClass(JSContext *cx, Handle<GlobalObject *> global)
 
     // int32x4
     RootedObject int32x4Object(cx);
-    int32x4Object = CreateX4Class<Int32x4Defn>(cx, global,
-                                               cx->names().int32x4);
+    int32x4Object = CreateSimdClass<Int32x4Defn>(cx, global,
+                                                 cx->names().int32x4);
     if (!int32x4Object)
         return nullptr;
 

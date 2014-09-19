@@ -16,6 +16,8 @@ XPCOMUtils.defineLazyModuleGetter(this, "LightweightThemeManager",
   "resource://gre/modules/LightweightThemeManager.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "PermissionsUtils",
   "resource://gre/modules/PermissionsUtils.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "ResetProfile",
+  "resource://gre/modules/ResetProfile.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "CustomizableUI",
   "resource:///modules/CustomizableUI.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "UITelemetry",
@@ -425,6 +427,12 @@ this.UITour = {
         // accept arbitrary actions just to be safe...
         // We want to replace the current tab.
         contentDocument.location.href = "about:accounts?action=signup&entrypoint=uitour";
+        break;
+      }
+
+      case "resetFirefox": {
+        // Open a reset profile dialog window.
+        ResetProfile.openConfirmationDialog(window);
         break;
       }
     }
@@ -1133,6 +1141,13 @@ this.UITour = {
         this.sendPageCallback(aContentDocument, aCallbackID, {
           setup: Services.prefs.prefHasUserValue("services.sync.username"),
         });
+        break;
+      case "appinfo":
+        let props = ["defaultUpdateChannel", "distributionID", "isOfficialBranding",
+                     "isReleaseBuild", "name", "vendor", "version"];
+        let appinfo = {};
+        props.forEach(property => appinfo[property] = Services.appinfo[property]);
+        this.sendPageCallback(aContentDocument, aCallbackID, appinfo);
         break;
       default:
         Cu.reportError("getConfiguration: Unknown configuration requested: " + aConfiguration);

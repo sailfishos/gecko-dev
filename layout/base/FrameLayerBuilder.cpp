@@ -25,6 +25,7 @@
 #include "gfx2DGlue.h"
 #include "mozilla/LookAndFeel.h"
 #include "nsDocShell.h"
+#include "nsImageFrame.h"
 
 #include "GeckoProfiler.h"
 #include "mozilla/gfx/Tools.h"
@@ -500,6 +501,10 @@ public:
    * in mItemClip).
    */
   void UpdateCommonClipCount(const DisplayItemClip& aCurrentClip);
+  /**
+   * The union of all the bounds of the display items in this layer.
+   */
+  nsIntRegion mBounds;
 
 private:
   /**
@@ -2165,6 +2170,10 @@ ContainerState::PopThebesLayerData()
     SetOuterVisibleRegionForLayer(layer, data->mVisibleRegion);
   }
 
+  nsIntRect layerBounds = data->mBounds.GetBounds();
+  layerBounds.MoveBy(-GetTranslationForThebesLayer(data->mLayer));
+  layer->SetLayerBounds(layerBounds);
+
 #ifdef MOZ_DUMP_PAINTING
   layer->AddExtraDumpInfo(nsCString(data->mLog));
 #endif
@@ -2325,6 +2334,10 @@ ThebesLayerData::Accumulate(ContainerState* aState,
 {
   FLB_LOG_THEBES_DECISION(this, "Accumulating dp=%s(%p), f=%p against tld=%p\n", aItem->Name(), aItem, aItem->Frame(), this);
 
+  bool snap;
+  nsRect itemBounds = aItem->GetBounds(aState->mBuilder, &snap);
+  mBounds.OrWith(aState->ScaleToOutsidePixels(itemBounds, snap));
+
   if (aState->mBuilder->NeedToForceTransparentSurfaceForItem(aItem)) {
     mForceTransparentSurface = true;
   }
@@ -2335,22 +2348,11 @@ ThebesLayerData::Accumulate(ContainerState* aState,
     aItem->DisableComponentAlpha();
   }
 
-  /* Mark as available for conversion to image layer if this is a nsDisplayImage and
-   * we are the first visible item in the ThebesLayerData object.
-   */
-  if (mVisibleRegion.IsEmpty() &&
-      aItem->SupportsOptimizingToImage()) {
-    mImage = static_cast<nsDisplayImageContainer*>(aItem);
-    FLB_LOG_THEBES_DECISION(this, "  Tracking image\n");
-  } else if (mImage) {
-    FLB_LOG_THEBES_DECISION(this, "  No longer tracking image\n");
-    mImage = nullptr;
-  }
   bool clipMatches = mItemClip == aClip;
   mItemClip = aClip;
 
   if (!mIsSolidColorInVisibleRegion && mOpaqueRegion.Contains(aDrawRect) &&
-      mVisibleRegion.Contains(aVisibleRect)) {
+      mVisibleRegion.Contains(aVisibleRect) && !mImage) {
     // A very common case! Most pages have a ThebesLayer with the page
     // background (opaque) visible and most or all of the page content over the
     // top of that background.
@@ -2361,6 +2363,19 @@ ThebesLayerData::Accumulate(ContainerState* aState,
     // and therefore aDrawRect.
     NS_ASSERTION(mDrawRegion.Contains(aDrawRect), "Draw region not covered");
     return;
+  }
+
+  /* Mark as available for conversion to image layer if this is a nsDisplayImage and
+   * it's the only thing visible in this layer.
+   */
+  if (nsIntRegion(aVisibleRect).Contains(mVisibleRegion) &&
+      aClippedOpaqueRegion.Contains(mVisibleRegion) &&
+      aItem->SupportsOptimizingToImage()) {
+    mImage = static_cast<nsDisplayImageContainer*>(aItem);
+    FLB_LOG_THEBES_DECISION(this, "  Tracking image: nsDisplayImageContainer covers the layer\n");
+  } else if (mImage) {
+    FLB_LOG_THEBES_DECISION(this, "  No longer tracking image\n");
+    mImage = nullptr;
   }
 
   nscolor uniformColor;
@@ -3530,22 +3545,15 @@ ContainerState::PostprocessRetainedLayers(nsIntRegion* aOpaqueRegionForContainer
     OpaqueRegionEntry* data = FindOpaqueRegionEntry(opaqueRegions,
         e->mAnimatedGeometryRoot, e->mFixedPosFrameForLayerData);
 
-    SetupScrollingMetadata(e);
-
     if (hideAll) {
       e->mVisibleRegion.SetEmpty();
-    } else {
-      const nsIntRect* clipRect = e->mLayer->GetClipRect();
-      if (clipRect && opaqueRegionForContainer >= 0 &&
-          opaqueRegions[opaqueRegionForContainer].mOpaqueRegion.Contains(*clipRect)) {
-        e->mVisibleRegion.SetEmpty();
-      } else if (data) {
-        e->mVisibleRegion.Sub(e->mVisibleRegion, data->mOpaqueRegion);
-      }
+    } else if (data) {
+      e->mVisibleRegion.Sub(e->mVisibleRegion, data->mOpaqueRegion);
     }
 
     SetOuterVisibleRegionForLayer(e->mLayer, e->mVisibleRegion,
       e->mLayerContentsVisibleRect.width >= 0 ? &e->mLayerContentsVisibleRect : nullptr);
+    SetupScrollingMetadata(e);
 
     if (!e->mOpaqueRegion.IsEmpty()) {
       const nsIFrame* animatedGeometryRootToCover = e->mAnimatedGeometryRoot;

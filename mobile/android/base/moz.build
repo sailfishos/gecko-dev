@@ -251,6 +251,7 @@ gbjar.sources += [
     'gfx/ViewTransform.java',
     'gfx/VirtualLayer.java',
     'GlobalHistory.java',
+    'GuestSession.java',
     'health/BrowserHealthRecorder.java',
     'health/BrowserHealthReporter.java',
     'health/HealthRecorder.java',
@@ -294,6 +295,7 @@ gbjar.sources += [
     'home/ReadingListRow.java',
     'home/RecentTabsPanel.java',
     'home/RemoteTabsExpandableListFragment.java',
+    'home/RemoteTabsExpandableListState.java',
     'home/RemoteTabsPanel.java',
     'home/RemoteTabsStaticFragment.java',
     'home/SearchEngine.java',
@@ -368,6 +370,7 @@ gbjar.sources += [
     'prompts/PromptService.java',
     'prompts/TabInput.java',
     'ReaderModeUtils.java',
+    'RemoteClientsDialogFragment.java',
     'RemoteTabsExpandableListAdapter.java',
     'Restarter.java',
     'RestrictedProfiles.java',
@@ -397,6 +400,7 @@ gbjar.sources += [
     'tabs/TabsLayoutItemView.java',
     'tabs/TabsListLayout.java',
     'tabs/TabsPanel.java',
+    'tabs/TabStrip.java',
     'tabs/TabStripAdapter.java',
     'tabs/TabStripItemView.java',
     'tabs/TabStripView.java',
@@ -495,11 +499,13 @@ if CONFIG['MOZ_ANDROID_SHARE_OVERLAY']:
     gbjar.sources += [
         'overlays/OverlayConstants.java',
         'overlays/service/OverlayActionService.java',
+        'overlays/service/ShareData.java',
         'overlays/service/sharemethods/AddBookmark.java',
         'overlays/service/sharemethods/AddToReadingList.java',
         'overlays/service/sharemethods/ParcelableClientRecord.java',
         'overlays/service/sharemethods/SendTab.java',
         'overlays/service/sharemethods/ShareMethod.java',
+        'overlays/ui/OverlayDialogButton.java',
         'overlays/ui/OverlayToastHelper.java',
         'overlays/ui/SendTabDeviceListArrayAdapter.java',
         'overlays/ui/SendTabList.java',
@@ -532,7 +538,7 @@ if CONFIG['MOZ_NATIVE_DEVICES']:
     gbjar.extra_jars += moz_native_devices_jars
     gbjar.sources += moz_native_devices_sources
 
-gbjar.javac_flags += ['-Xlint:all,-deprecation,-fallthrough']
+gbjar.javac_flags += ['-Xlint:all,-deprecation,-fallthrough', '-J-Xmx512m', '-J-Xms128m']
 
 noajar = add_java_jar('nineoldandroids')
 noajar.sources += [ thirdparty_source_dir + f for f in [

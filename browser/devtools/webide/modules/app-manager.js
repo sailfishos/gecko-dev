@@ -326,16 +326,15 @@ exports.AppManager = AppManager = {
 
   _selectedProject: null,
   set selectedProject(value) {
-    if (value != this.selectedProject) {
+    // A regular comparison still sees a difference when equal in some cases
+    if (JSON.stringify(this._selectedProject) !==
+        JSON.stringify(value)) {
       this._selectedProject = value;
 
       // Clear out tab store's selected state, if any
       this.tabStore.selectedTab = null;
 
       if (this.selectedProject) {
-        if (this.selectedProject.type == "runtimeApp") {
-          this.runRuntimeApp();
-        }
         if (this.selectedProject.type == "packaged" ||
             this.selectedProject.type == "hosted") {
           this.validateProject(this.selectedProject);
@@ -442,9 +441,19 @@ exports.AppManager = AppManager = {
     return deferred.promise;
   },
 
-  runRuntimeApp: function() {
+  launchRuntimeApp: function() {
     if (this.selectedProject && this.selectedProject.type != "runtimeApp") {
-      return promise.reject("attempting to run a non-runtime app");
+      return promise.reject("attempting to launch a non-runtime app");
+    }
+    let client = this.connection.client;
+    let actor = this._listTabsResponse.webappsActor;
+    let manifest = this.getProjectManifestURL(this.selectedProject);
+    return AppActorFront.launchApp(client, actor, manifest);
+  },
+
+  launchOrReloadRuntimeApp: function() {
+    if (this.selectedProject && this.selectedProject.type != "runtimeApp") {
+      return promise.reject("attempting to launch / reload a non-runtime app");
     }
     let client = this.connection.client;
     let actor = this._listTabsResponse.webappsActor;
@@ -610,7 +619,9 @@ exports.AppManager = AppManager = {
         project.validationStatus = "error warning";
       }
 
-      if (AppProjects.get(project.location)) {
+      if (project.type === "hosted" && project.location !== validation.manifestURL) {
+        yield AppProjects.updateLocation(project, validation.manifestURL);
+      } else if (AppProjects.get(project.location)) {
         yield AppProjects.update(project);
       }
 

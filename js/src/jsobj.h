@@ -1166,13 +1166,13 @@ class JSObject : public js::ObjectImpl
 
     template <class T>
     T &as() {
-        JS_ASSERT(is<T>());
+        JS_ASSERT(this->is<T>());
         return *static_cast<T *>(this);
     }
 
     template <class T>
     const T &as() const {
-        JS_ASSERT(is<T>());
+        JS_ASSERT(this->is<T>());
         return *static_cast<const T *>(this);
     }
 
@@ -1311,7 +1311,7 @@ GetBuiltinPrototypePure(GlobalObject *global, JSProtoKey protoKey);
 
 extern bool
 SetClassAndProto(JSContext *cx, HandleObject obj,
-                 const Class *clasp, Handle<TaggedProto> proto, bool *succeeded);
+                 const Class *clasp, Handle<TaggedProto> proto, bool crashOnFailure);
 
 /*
  * Property-lookup-based access to interface and prototype objects for classes.
@@ -1468,18 +1468,17 @@ LookupNameNoGC(JSContext *cx, PropertyName *name, JSObject *scopeChain,
  */
 extern bool
 LookupNameWithGlobalDefault(JSContext *cx, HandlePropertyName name, HandleObject scopeChain,
-                            MutableHandleObject objp);
+                            MutableHandleObject objp, MutableHandleShape propp);
 
 /*
  * Like LookupName except returns the unqualified var object if 'name' is not found in
  * any preceding scope. Normally the unqualified var object is the global.
  *
- * Additionally, pobjp and propp are not needed by callers so they are not
- * returned.
+ * Additionally, pobjp is not needed by callers so it is not returned.
  */
 extern bool
 LookupNameUnqualified(JSContext *cx, HandlePropertyName name, HandleObject scopeChain,
-                      MutableHandleObject objp);
+                      MutableHandleObject objp, MutableHandleShape propp);
 
 }
 

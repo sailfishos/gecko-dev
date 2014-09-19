@@ -1,3 +1,4 @@
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -7,7 +8,6 @@
 #include "prlog.h"
 #include "AbstractMediaDecoder.h"
 #include "MediaDecoderReader.h"
-#include "mozilla/dom/TimeRanges.h"
 
 #ifdef PR_LOGGING
 extern PRLogModuleInfo* GetMediaSourceLog();
@@ -233,18 +233,6 @@ SourceBufferDecoder::ConvertToByteOffset(double aTime)
   MOZ_ASSERT(length > 0);
   int64_t offset = (aTime / (double(mMediaDuration) / USECS_PER_S)) * length;
   return offset;
-}
-
-bool
-SourceBufferDecoder::ContainsTime(double aTime)
-{
-  ErrorResult dummy;
-  nsRefPtr<dom::TimeRanges> ranges = new dom::TimeRanges();
-  nsresult rv = GetBuffered(ranges);
-  if (NS_FAILED(rv) || ranges->Length() == 0) {
-    return false;
-  }
-  return ranges->Find(aTime) != dom::TimeRanges::NoIndex;
 }
 
 } // namespace mozilla

@@ -230,8 +230,17 @@ IonBuilder::inlineNativeGetter(CallInfo &callInfo, JSFunction *target)
     // typed array prototype, and make sure we are accessing the right one
     // for the type of the instance object.
     if (thisTypes) {
-        Scalar::Type type = thisTypes->getTypedArrayType();
+        Scalar::Type type;
+
+        type = thisTypes->getTypedArrayType();
         if (type != Scalar::TypeMax && TypedArrayObject::isOriginalLengthGetter(type, native)) {
+            MInstruction *length = addTypedArrayLength(callInfo.thisArg());
+            current->push(length);
+            return InliningStatus_Inlined;
+        }
+
+        type = thisTypes->getSharedTypedArrayType();
+        if (type != Scalar::TypeMax && SharedTypedArrayObject::isOriginalLengthGetter(type, native)) {
             MInstruction *length = addTypedArrayLength(callInfo.thisArg());
             current->push(length);
             return InliningStatus_Inlined;
@@ -433,7 +442,8 @@ IonBuilder::inlineArrayPopShift(CallInfo &callInfo, MArrayPopShift::Mode mode)
     bool needsHoleCheck = thisTypes->hasObjectFlags(constraints(), types::OBJECT_FLAG_NON_PACKED);
     bool maybeUndefined = returnTypes->hasType(types::Type::UndefinedType());
 
-    BarrierKind barrier = PropertyReadNeedsTypeBarrier(constraints(), obj, nullptr, returnTypes);
+    BarrierKind barrier = PropertyReadNeedsTypeBarrier(analysisContext, constraints(),
+                                                       obj, nullptr, returnTypes);
     if (barrier != BarrierKind::NoBarrier)
         returnType = MIRType_Value;
 
@@ -1493,7 +1503,7 @@ IonBuilder::inlineUnsafePutElements(CallInfo &callInfo)
         // barriers and on typed arrays and on typed object arrays.
         Scalar::Type arrayType;
         if ((!isDenseNative || writeNeedsBarrier) &&
-            !ElementAccessIsTypedArray(obj, id, &arrayType) &&
+            !ElementAccessIsAnyTypedArray(obj, id, &arrayType) &&
             !elementAccessIsTypedObjectArrayOfScalarType(obj, id, &arrayType))
         {
             return InliningStatus_NotInlined;
@@ -1522,7 +1532,7 @@ IonBuilder::inlineUnsafePutElements(CallInfo &callInfo)
         }
 
         Scalar::Type arrayType;
-        if (ElementAccessIsTypedArray(obj, id, &arrayType)) {
+        if (ElementAccessIsAnyTypedArray(obj, id, &arrayType)) {
             if (!inlineUnsafeSetTypedArrayElement(callInfo, base, arrayType))
                 return InliningStatus_Error;
             continue;
@@ -2043,7 +2053,13 @@ IonBuilder::inlineToInteger(CallInfo &callInfo)
     if (callInfo.argc() != 1 || callInfo.constructing())
         return InliningStatus_NotInlined;
 
-    // Only fast-path if we know the input is in integer in the int32 range.
+    MIRType type = callInfo.getArg(0)->type();
+
+    // Only optimize cases where input is number, null, or boolean
+    if (!IsNumberType(type) && type != MIRType_Null && type != MIRType_Boolean)
+        return InliningStatus_NotInlined;
+
+    // Only optimize cases where output is int32
     if (getInlineReturnType() != MIRType_Int32)
         return InliningStatus_NotInlined;
 

@@ -300,6 +300,7 @@
 @BINPATH@/components/shistory.xpt
 @BINPATH@/components/spellchecker.xpt
 @BINPATH@/components/storage.xpt
+@BINPATH@/components/toolkit_asyncshutdown.xpt
 @BINPATH@/components/toolkit_filewatcher.xpt
 @BINPATH@/components/toolkit_finalizationwitness.xpt
 @BINPATH@/components/toolkit_formautofill.xpt
@@ -365,6 +366,8 @@
 @BINPATH@/browser/components/BrowserPlaces.manifest
 @BINPATH@/browser/components/devtools-clhandler.manifest
 @BINPATH@/browser/components/devtools-clhandler.js
+@BINPATH@/browser/components/webideCli.js
+@BINPATH@/browser/components/webideComponents.manifest
 @BINPATH@/browser/components/Experiments.manifest
 @BINPATH@/browser/components/ExperimentsService.js
 @BINPATH@/browser/components/translation.manifest
@@ -579,6 +582,9 @@
 #ifdef MOZ_WEBSPEECH
 @BINPATH@/components/dom_webspeechsynth.xpt
 #endif
+
+@BINPATH@/components/nsAsyncShutdown.manifest
+@BINPATH@/components/nsAsyncShutdown.js
 
 ; InputMethod API
 @BINPATH@/components/MozKeyboard.js

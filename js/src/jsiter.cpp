@@ -30,6 +30,7 @@
 #include "vm/Interpreter.h"
 #include "vm/Shape.h"
 #include "vm/StopIterationObject.h"
+#include "vm/TypedArrayCommon.h"
 
 #include "jsinferinlines.h"
 #include "jsobjinlines.h"
@@ -148,9 +149,9 @@ EnumerateNativeProperties(JSContext *cx, HandleObject pobj, unsigned flags, IdSe
             }
         }
 
-        /* Collect any typed array elements from this object. */
-        if (pobj->is<TypedArrayObject>()) {
-            size_t len = pobj->as<TypedArrayObject>().length();
+        /* Collect any typed array or shared typed array elements from this object. */
+        if (IsAnyTypedArray(pobj)) {
+            size_t len = AnyTypedArrayLength(pobj);
             for (size_t i = 0; i < len; i++) {
                 if (!Enumerate(cx, pobj, INT_TO_JSID(i), /* enumerable = */ true, flags, ht, props))
                     return false;
@@ -711,7 +712,7 @@ js::GetIterator(JSContext *cx, HandleObject obj, unsigned flags, MutableHandleVa
                 do {
                     if (!pobj->isNative() ||
                         !pobj->hasEmptyElements() ||
-                        pobj->is<TypedArrayObject>() ||
+                        IsAnyTypedArray(pobj) ||
                         pobj->hasUncacheableProto() ||
                         pobj->getOps()->enumerate ||
                         pobj->getClass()->enumerate != JS_EnumerateStub ||
@@ -817,7 +818,7 @@ js::CreateItrResultObject(JSContext *cx, HandleValue value, bool done)
 }
 
 bool
-js_ThrowStopIteration(JSContext *cx)
+js::ThrowStopIteration(JSContext *cx)
 {
     JS_ASSERT(!JS_IsExceptionPending(cx));
 
@@ -864,15 +865,15 @@ iterator_next_impl(JSContext *cx, CallArgs args)
 
     RootedObject thisObj(cx, &args.thisv().toObject());
 
-    if (!js_IteratorMore(cx, thisObj, args.rval()))
+    if (!IteratorMore(cx, thisObj, args.rval()))
         return false;
 
-    if (!args.rval().toBoolean()) {
-        js_ThrowStopIteration(cx);
+    if (args.rval().isMagic(JS_NO_ITER_VALUE)) {
+        ThrowStopIteration(cx);
         return false;
     }
 
-    return js_IteratorNext(cx, thisObj, args.rval());
+    return true;
 }
 
 static bool
@@ -1015,13 +1016,6 @@ js::ValueToIterator(JSContext *cx, unsigned flags, MutableHandleValue vp)
     /* JSITER_KEYVALUE must always come with JSITER_FOREACH */
     JS_ASSERT_IF(flags & JSITER_KEYVALUE, flags & JSITER_FOREACH);
 
-    /*
-     * Make sure the more/next state machine doesn't get stuck. A value might
-     * be left in iterValue when a trace is left due to an interrupt after
-     * JSOP_MOREITER but before the value is picked up by FOR*.
-     */
-    cx->iterValue.setMagic(JS_NO_ITER_VALUE);
-
     RootedObject obj(cx);
     if (vp.isObject()) {
         /* Common case. */
@@ -1045,8 +1039,6 @@ js::ValueToIterator(JSContext *cx, unsigned flags, MutableHandleValue vp)
 bool
 js::CloseIterator(JSContext *cx, HandleObject obj)
 {
-    cx->iterValue.setMagic(JS_NO_ITER_VALUE);
-
     if (obj->is<PropertyIteratorObject>()) {
         /* Remove enumerators from the active list, which is a stack. */
         NativeIterator *ni = obj->as<PropertyIteratorObject>().getNativeIterator();
@@ -1208,7 +1200,7 @@ public:
 } /* anonymous namespace */
 
 bool
-js_SuppressDeletedProperty(JSContext *cx, HandleObject obj, jsid id)
+js::SuppressDeletedProperty(JSContext *cx, HandleObject obj, jsid id)
 {
     if (JSID_IS_SYMBOL(id))
         return true;
@@ -1220,12 +1212,12 @@ js_SuppressDeletedProperty(JSContext *cx, HandleObject obj, jsid id)
 }
 
 bool
-js_SuppressDeletedElement(JSContext *cx, HandleObject obj, uint32_t index)
+js::SuppressDeletedElement(JSContext *cx, HandleObject obj, uint32_t index)
 {
     RootedId id(cx);
     if (!IndexToId(cx, index, &id))
         return false;
-    return js_SuppressDeletedProperty(cx, obj, id);
+    return SuppressDeletedProperty(cx, obj, id);
 }
 
 namespace {
@@ -1247,30 +1239,28 @@ class IndexRangePredicate {
 } /* anonymous namespace */
 
 bool
-js_SuppressDeletedElements(JSContext *cx, HandleObject obj, uint32_t begin, uint32_t end)
+js::SuppressDeletedElements(JSContext *cx, HandleObject obj, uint32_t begin, uint32_t end)
 {
     return SuppressDeletedPropertyHelper(cx, obj, IndexRangePredicate(begin, end));
 }
 
 bool
-js_IteratorMore(JSContext *cx, HandleObject iterobj, MutableHandleValue rval)
+js::IteratorMore(JSContext *cx, HandleObject iterobj, MutableHandleValue rval)
 {
     /* Fast path for native iterators */
     NativeIterator *ni = nullptr;
     if (iterobj->is<PropertyIteratorObject>()) {
         /* Key iterators are handled by fast-paths. */
         ni = iterobj->as<PropertyIteratorObject>().getNativeIterator();
-        bool more = ni->props_cursor < ni->props_end;
-        if (ni->isKeyIter() || !more) {
-            rval.setBoolean(more);
+        if (ni->props_cursor >= ni->props_end) {
+            rval.setMagic(JS_NO_ITER_VALUE);
             return true;
         }
-    }
-
-    /* We might still have a pending value. */
-    if (!cx->iterValue.isMagic(JS_NO_ITER_VALUE)) {
-        rval.setBoolean(true);
-        return true;
+        if (ni->isKeyIter()) {
+            rval.setString(*ni->current());
+            ni->incCursor();
+            return true;
+        }
     }
 
     /* We're reentering below and can call anything. */
@@ -1289,55 +1279,26 @@ js_IteratorMore(JSContext *cx, HandleObject iterobj, MutableHandleValue rval)
             return false;
         if ((ni->flags & JSITER_KEYVALUE) && !NewKeyValuePair(cx, id, rval, rval))
             return false;
-    } else {
-        /* Call the iterator object's .next method. */
-        if (!JSObject::getProperty(cx, iterobj, iterobj, cx->names().next, rval))
+        return true;
+    }
+
+    /* Call the iterator object's .next method. */
+    if (!JSObject::getProperty(cx, iterobj, iterobj, cx->names().next, rval))
+        return false;
+    if (!Invoke(cx, ObjectValue(*iterobj), rval, 0, nullptr, rval)) {
+        /* Check for StopIteration. */
+        if (!cx->isExceptionPending())
             return false;
-        if (!Invoke(cx, ObjectValue(*iterobj), rval, 0, nullptr, rval)) {
-            /* Check for StopIteration. */
-            if (!cx->isExceptionPending())
-                return false;
-            RootedValue exception(cx);
-            if (!cx->getPendingException(&exception))
-                return false;
-            if (!JS_IsStopIteration(exception))
-                return false;
+        RootedValue exception(cx);
+        if (!cx->getPendingException(&exception))
+            return false;
+        if (!JS_IsStopIteration(exception))
+            return false;
 
-            cx->clearPendingException();
-            cx->iterValue.setMagic(JS_NO_ITER_VALUE);
-            rval.setBoolean(false);
-            return true;
-        }
+        cx->clearPendingException();
+        rval.setMagic(JS_NO_ITER_VALUE);
+        return true;
     }
-
-    /* Cache the value returned by iterobj.next() so js_IteratorNext() can find it. */
-    JS_ASSERT(!rval.isMagic(JS_NO_ITER_VALUE));
-    cx->iterValue = rval;
-    rval.setBoolean(true);
-    return true;
-}
-
-bool
-js_IteratorNext(JSContext *cx, HandleObject iterobj, MutableHandleValue rval)
-{
-    /* Fast path for native iterators */
-    if (iterobj->is<PropertyIteratorObject>()) {
-        /*
-         * Implement next directly as all the methods of the native iterator are
-         * read-only and permanent.
-         */
-        NativeIterator *ni = iterobj->as<PropertyIteratorObject>().getNativeIterator();
-        if (ni->isKeyIter()) {
-            JS_ASSERT(ni->props_cursor < ni->props_end);
-            rval.setString(*ni->current());
-            ni->incCursor();
-            return true;
-        }
-    }
-
-    JS_ASSERT(!cx->iterValue.isMagic(JS_NO_ITER_VALUE));
-    rval.set(cx->iterValue);
-    cx->iterValue.setMagic(JS_NO_ITER_VALUE);
 
     return true;
 }
@@ -1771,7 +1732,7 @@ js_NewGenerator(JSContext *cx, const InterpreterRegs &stackRegs)
     static_assert(sizeof(InterpreterFrame) % sizeof(HeapValue) == 0,
                   "The Values stored after InterpreterFrame must be aligned.");
     unsigned nvals = vplen + VALUES_PER_STACK_FRAME + stackfp->script()->nslots();
-    JSGenerator *gen = obj->pod_calloc_with_extra<JSGenerator, HeapValue>(nvals);
+    JSGenerator *gen = obj->zone()->pod_calloc_with_extra<JSGenerator, HeapValue>(nvals);
     if (!gen)
         return nullptr;
 
@@ -1886,7 +1847,7 @@ SendToGenerator(JSContext *cx, JSGeneratorOp op, HandleObject obj,
             // if needed.
             rval.setUndefined();
             if (op != JSGENOP_CLOSE)
-                ok = js_ThrowStopIteration(cx);
+                ok = ThrowStopIteration(cx);
         }
     }
 
@@ -1934,7 +1895,7 @@ legacy_generator_next(JSContext *cx, CallArgs args)
 
     JSGenerator *gen = thisObj->as<LegacyGeneratorObject>().getGenerator();
     if (gen->state == JSGEN_CLOSED)
-        return js_ThrowStopIteration(cx);
+        return ThrowStopIteration(cx);
 
     return SendToGenerator(cx, JSGENOP_SEND, thisObj, gen, args.get(0), LegacyGenerator,
                            args.rval());

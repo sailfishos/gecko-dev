@@ -339,6 +339,12 @@ nsSVGUtils::UserSpace(nsIFrame *aNonSVGContext, const nsSVGLength2 *aLength)
   return aLength->GetAnimValue(aNonSVGContext);
 }
 
+float
+nsSVGUtils::UserSpace(const UserSpaceMetrics& aMetrics, const nsSVGLength2 *aLength)
+{
+  return aLength->GetAnimValue(aMetrics);
+}
+
 nsSVGOuterSVGFrame *
 nsSVGUtils::GetOuterSVGFrame(nsIFrame *aFrame)
 {
@@ -634,32 +640,33 @@ nsSVGUtils::PaintFrameWithEffects(nsIFrame *aFrame,
 
   gfx->PopGroupToSource();
 
-  nsRefPtr<gfxPattern> maskSurface =
+  Matrix maskTransform;
+  RefPtr<SourceSurface> maskSurface =
     maskFrame ? maskFrame->GetMaskForMaskedFrame(aContext->ThebesContext(),
-                                                 aFrame, aTransform, opacity)
+                                                 aFrame, aTransform, opacity, &maskTransform)
               : nullptr;
 
-  nsRefPtr<gfxPattern> clipMaskSurface;
   if (clipPathFrame && !isTrivialClip) {
     gfx->PushGroup(gfxContentType::COLOR_ALPHA);
 
     nsresult rv = clipPathFrame->ApplyClipOrPaintClipMask(aContext, aFrame, aTransform);
-    clipMaskSurface = gfx->PopGroup();
+    Matrix clippedMaskTransform;
+    RefPtr<SourceSurface> clipMaskSurface = gfx->PopGroupToSurface(&clippedMaskTransform);
 
     if (NS_SUCCEEDED(rv) && clipMaskSurface) {
       // Still more set after clipping, so clip to another surface
       if (maskSurface || opacity != 1.0f) {
         gfx->PushGroup(gfxContentType::COLOR_ALPHA);
-        gfx->Mask(clipMaskSurface);
+        gfx->Mask(clipMaskSurface, clippedMaskTransform);
         gfx->PopGroupToSource();
       } else {
-        gfx->Mask(clipMaskSurface);
+        gfx->Mask(clipMaskSurface, clippedMaskTransform);
       }
     }
   }
 
   if (maskSurface) {
-    gfx->Mask(maskSurface);
+    gfx->Mask(maskSurface, maskTransform);
   } else if (opacity != 1.0f) {
     gfx->Paint(opacity);
   }
@@ -1016,23 +1023,43 @@ nsSVGUtils::FrameSpaceInCSSPxToUserSpaceOffset(nsIFrame *aFrame)
   return gfxPoint();
 }
 
+static gfxRect
+GetBoundingBoxRelativeRect(const nsSVGLength2 *aXYWH,
+                           const gfxRect& aBBox)
+{
+  return gfxRect(aBBox.x + nsSVGUtils::ObjectSpace(aBBox, &aXYWH[0]),
+                 aBBox.y + nsSVGUtils::ObjectSpace(aBBox, &aXYWH[1]),
+                 nsSVGUtils::ObjectSpace(aBBox, &aXYWH[2]),
+                 nsSVGUtils::ObjectSpace(aBBox, &aXYWH[3]));
+}
+
 gfxRect
 nsSVGUtils::GetRelativeRect(uint16_t aUnits, const nsSVGLength2 *aXYWH,
-                            const gfxRect &aBBox, nsIFrame *aFrame)
+                            const gfxRect& aBBox,
+                            const UserSpaceMetrics& aMetrics)
 {
-  float x, y, width, height;
   if (aUnits == SVG_UNIT_TYPE_OBJECTBOUNDINGBOX) {
-    x = aBBox.X() + ObjectSpace(aBBox, &aXYWH[0]);
-    y = aBBox.Y() + ObjectSpace(aBBox, &aXYWH[1]);
-    width = ObjectSpace(aBBox, &aXYWH[2]);
-    height = ObjectSpace(aBBox, &aXYWH[3]);
-  } else {
-    x = UserSpace(aFrame, &aXYWH[0]);
-    y = UserSpace(aFrame, &aXYWH[1]);
-    width = UserSpace(aFrame, &aXYWH[2]);
-    height = UserSpace(aFrame, &aXYWH[3]);
+    return GetBoundingBoxRelativeRect(aXYWH, aBBox);
   }
-  return gfxRect(x, y, width, height);
+  return gfxRect(UserSpace(aMetrics, &aXYWH[0]),
+                 UserSpace(aMetrics, &aXYWH[1]),
+                 UserSpace(aMetrics, &aXYWH[2]),
+                 UserSpace(aMetrics, &aXYWH[3]));
+}
+
+gfxRect
+nsSVGUtils::GetRelativeRect(uint16_t aUnits, const nsSVGLength2 *aXYWH,
+                            const gfxRect& aBBox, nsIFrame *aFrame)
+{
+  if (aUnits == SVG_UNIT_TYPE_OBJECTBOUNDINGBOX) {
+    return GetBoundingBoxRelativeRect(aXYWH, aBBox);
+  }
+  nsIContent* content = aFrame->GetContent();
+  if (content->IsSVG()) {
+    nsSVGElement* svgElement = static_cast<nsSVGElement*>(content);
+    return GetRelativeRect(aUnits, aXYWH, aBBox, SVGElementMetrics(svgElement));
+  }
+  return GetRelativeRect(aUnits, aXYWH, aBBox, NonSVGFrameUserSpaceMetrics(aFrame));
 }
 
 bool

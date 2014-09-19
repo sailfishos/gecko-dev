@@ -21,6 +21,7 @@
   var UnsupportedBrowserView = loop.webapp.UnsupportedBrowserView;
   var UnsupportedDeviceView = loop.webapp.UnsupportedDeviceView;
   var CallUrlExpiredView    = loop.webapp.CallUrlExpiredView;
+  var PendingConversationView = loop.webapp.PendingConversationView;
   var StartConversationView = loop.webapp.StartConversationView;
 
   // 3. Shared components
@@ -125,18 +126,39 @@
               <PanelView client={mockClient} notifications={notifications}
                          callUrl="http://invalid.example.url/" />
             </Example>
+            <Example summary="Call URL retrieved - authenticated" dashed="true" style={{width: "332px"}}>
+              <PanelView client={mockClient} notifications={notifications}
+                         callUrl="http://invalid.example.url/"
+                         userProfile={{email: "test@example.com"}} />
+            </Example>
             <Example summary="Pending call url retrieval" dashed="true" style={{width: "332px"}}>
               <PanelView client={mockClient} notifications={notifications} />
+            </Example>
+            <Example summary="Pending call url retrieval - authenticated" dashed="true" style={{width: "332px"}}>
+              <PanelView client={mockClient} notifications={notifications}
+                         userProfile={{email: "test@example.com"}} />
             </Example>
             <Example summary="Error Notification" dashed="true" style={{width: "332px"}}>
               <PanelView client={mockClient} notifications={errNotifications}/>
             </Example>
+            <Example summary="Error Notification - authenticated" dashed="true" style={{width: "332px"}}>
+              <PanelView client={mockClient} notifications={errNotifications}
+                         userProfile={{email: "test@example.com"}} />
+            </Example>
           </Section>
 
           <Section name="IncomingCallView">
-            <Example summary="Default" dashed="true" style={{width: "280px"}}>
+            <Example summary="Default / incoming video call" dashed="true" style={{width: "280px"}}>
               <div className="fx-embedded">
-                <IncomingCallView model={mockConversationModel} />
+                <IncomingCallView model={mockConversationModel}
+                                  video={{enabled: true}} />
+              </div>
+            </Example>
+
+            <Example summary="Default / incoming audio only call" dashed="true" style={{width: "280px"}}>
+              <div className="fx-embedded">
+                <IncomingCallView model={mockConversationModel}
+                                  video={{enabled: false}} />
               </div>
             </Example>
           </Section>
@@ -144,7 +166,9 @@
           <Section name="IncomingCallView-ActiveState">
             <Example summary="Default" dashed="true" style={{width: "280px"}}>
               <div className="fx-embedded" >
-                <IncomingCallView  model={mockConversationModel} showDeclineMenu={true} />
+                <IncomingCallView  model={mockConversationModel}
+                                   showDeclineMenu={true}
+                                   video={{enabled: true}} />
               </div>
             </Example>
           </Section>
@@ -193,6 +217,19 @@
                                      publishStream={noop} />
               </Example>
             </div>
+          </Section>
+
+          <Section name="PendingConversationView">
+            <Example summary="Pending conversation view (connecting)" dashed="true">
+              <div className="standalone">
+                <PendingConversationView />
+              </div>
+            </Example>
+            <Example summary="Pending conversation view (ringing)" dashed="true">
+              <div className="standalone">
+                <PendingConversationView callState="ringing"/>
+              </div>
+            </Example>
           </Section>
 
           <Section name="StartConversationView">

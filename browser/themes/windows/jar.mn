@@ -56,6 +56,7 @@ browser.jar:
         skin/classic/browser/bad-content-blocked-16.png
         skin/classic/browser/bad-content-blocked-64.png
         skin/classic/browser/bad-content-unblocked-16.png
+        skin/classic/browser/bad-content-unblocked-64.png
         skin/classic/browser/monitor.png
         skin/classic/browser/monitor_16-10.png
         skin/classic/browser/notification-16.png
@@ -63,8 +64,6 @@ browser.jar:
         skin/classic/browser/pageInfo.css
         skin/classic/browser/pageInfo.png
         skin/classic/browser/page-livemarks.png                      (feeds/feedIcon16.png)
-        skin/classic/browser/pluginInstall-16.png
-        skin/classic/browser/pluginInstall-64.png
         skin/classic/browser/pointerLock-16.png
         skin/classic/browser/pointerLock-64.png
         skin/classic/browser/Privacy-16.png
@@ -478,6 +477,7 @@ browser.jar:
         skin/classic/aero/browser/bad-content-blocked-16.png
         skin/classic/aero/browser/bad-content-blocked-64.png
         skin/classic/aero/browser/bad-content-unblocked-16.png
+        skin/classic/aero/browser/bad-content-unblocked-64.png
         skin/classic/aero/browser/monitor.png
         skin/classic/aero/browser/monitor_16-10.png
         skin/classic/aero/browser/notification-16.png
@@ -485,8 +485,6 @@ browser.jar:
         skin/classic/aero/browser/pageInfo.css
         skin/classic/aero/browser/pageInfo.png                       (pageInfo-aero.png)
         skin/classic/aero/browser/page-livemarks.png                 (feeds/feedIcon16-aero.png)
-        skin/classic/aero/browser/pluginInstall-16.png
-        skin/classic/aero/browser/pluginInstall-64.png
         skin/classic/aero/browser/pointerLock-16.png
         skin/classic/aero/browser/pointerLock-64.png
         skin/classic/aero/browser/Privacy-16.png                     (Privacy-16-aero.png)

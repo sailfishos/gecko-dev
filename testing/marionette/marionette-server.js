@@ -966,7 +966,6 @@ MarionetteServerConnection.prototype = {
 
     let curWindow = this.getCurrentWindow();
     let original_onerror = curWindow.onerror;
-    let that = this;
     that.timeout = timeout;
     let marionette = new Marionette(this, curWindow, "chrome",
                                     this.marionetteLog,
@@ -1254,6 +1253,45 @@ MarionetteServerConnection.prototype = {
       res.push(winId);
     }
     this.sendResponse(res, this.command_id);
+  },
+
+  /**
+   * Get the current window position.
+   */
+  getWindowPosition: function MDA_getWindowPosition() {
+    this.command_id = this.getCommandId();
+    let curWindow = this.getCurrentWindow();
+    this.sendResponse({ x: curWindow.screenX, y: curWindow.screenY}, this.command_id);
+  },
+
+  /**
+  * Set the window position of the browser on the OS Window Manager
+  *
+  * @param object aRequest
+  *        'x': the x co-ordinate of the top/left of the window that
+  *             it will be moved to
+  *        'y': the y co-ordinate of the top/left of the window that
+  *             it will be moved to
+  */
+  setWindowPosition: function MDA_setWindowPosition(aRequest) {
+    let command_id = this.command_id = this.getCommandId();
+    if (appName !== "Firefox") {
+      this.sendError("Unable to set the window position on mobile", 61, null,
+                      command_id);
+
+    }
+    else {
+      let x = parseInt(aRequest.parameters.x);;
+      let y  = parseInt(aRequest.parameters.y);
+
+      if (isNaN(x) || isNaN(y)) {
+        this.sendError("x and y arguments should be integers", 13, null, command_id);
+        return;
+      }
+      let curWindow = this.getCurrentWindow();
+      curWindow.moveTo(x, y);
+      this.sendOk(command_id);
+    }
   },
 
   /**
@@ -2382,8 +2420,8 @@ MarionetteServerConnection.prototype = {
   setWindowSize: function MDA_setWindowSize(aRequest) {
     this.command_id = this.getCommandId();
 
-    if (appName == "B2G") {
-      this.sendError("Not supported on B2G", 405, null, this.command_id);
+    if (appName !== "Firefox") {
+      this.sendError("Not supported on mobile", 405, null, this.command_id);
       return;
     }
 
@@ -2590,6 +2628,8 @@ MarionetteServerConnection.prototype.requestTypes = {
   "getWindowHandles": MarionetteServerConnection.prototype.getWindowHandles,
   "getCurrentWindowHandles": MarionetteServerConnection.prototype.getWindowHandles,  // Selenium 2 compat
   "getWindows":  MarionetteServerConnection.prototype.getWindowHandles,  // deprecated
+  "getWindowPosition": MarionetteServerConnection.prototype.getWindowPosition,
+  "setWindowPosition": MarionetteServerConnection.prototype.setWindowPosition,
   "getActiveFrame": MarionetteServerConnection.prototype.getActiveFrame,
   "switchToFrame": MarionetteServerConnection.prototype.switchToFrame,
   "switchToWindow": MarionetteServerConnection.prototype.switchToWindow,

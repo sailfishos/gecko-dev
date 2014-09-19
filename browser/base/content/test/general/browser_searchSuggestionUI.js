@@ -104,11 +104,11 @@ add_task(function* mouse() {
 
   // Mouse over the first suggestion.
   state = yield msg("mousemove", 0);
-  checkState(state, "xfoo", ["xfoo", "xbar"], 0);
+  checkState(state, "x", ["xfoo", "xbar"], 0);
 
   // Mouse over the second suggestion.
   state = yield msg("mousemove", 1);
-  checkState(state, "xbar", ["xfoo", "xbar"], 1);
+  checkState(state, "x", ["xfoo", "xbar"], 1);
 
   // Click the second suggestion.  This should make it sticky.  To make sure it
   // sticks, trigger suggestions again and cycle through them by pressing Down

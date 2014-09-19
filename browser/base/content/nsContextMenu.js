@@ -21,7 +21,8 @@ nsContextMenu.prototype = {
       return;
 
     this.hasPageMenu = false;
-    if (!aIsShift) {
+    // FIXME (bug 1047751) - The page menu is disabled in e10s.
+    if (!aIsShift && !this.isRemote) {
       this.hasPageMenu = PageMenu.maybeBuildAndAttachMenu(this.target,
                                                           aXulMenu);
     }
@@ -739,7 +740,7 @@ nsContextMenu.prototype = {
 
     // if the document is editable, show context menu like in text inputs
     if (!this.onEditableArea) {
-      var win = this.target.ownerDocument.defaultView;
+      win = this.target.ownerDocument.defaultView;
       if (win) {
         var isEditable = false;
         try {
@@ -925,7 +926,7 @@ nsContextMenu.prototype = {
     var frameURL = doc.location.href;
 
     urlSecurityCheck(frameURL,
-                     this._unremotePrincipal(this.browser.contentPrincipal),
+                     this.browser.contentPrincipal,
                      Ci.nsIScriptSecurityManager.DISALLOW_SCRIPT);
     var referrer = doc.referrer;
     openUILinkIn(frameURL, "current", { disallowInheritPrincipal: true,
@@ -986,7 +987,7 @@ nsContextMenu.prototype = {
   viewImageDesc: function(e) {
     var doc = this.target.ownerDocument;
     urlSecurityCheck(this.imageDescURL,
-                     this._unremotePrincipal(this.browser.contentPrincipal),
+                     this.browser.contentPrincipal,
                      Ci.nsIScriptSecurityManager.DISALLOW_SCRIPT);
     openUILink(this.imageDescURL, e, { disallowInheritPrincipal: true,
                              referrerURI: doc.documentURIObject });
@@ -998,7 +999,7 @@ nsContextMenu.prototype = {
 
   reloadImage: function(e) {
     urlSecurityCheck(this.mediaURL,
-                     this._unremotePrincipal(this.browser.contentPrincipal),
+                     this.browser.contentPrincipal,
                      Ci.nsIScriptSecurityManager.DISALLOW_SCRIPT);
 
     if (this.target instanceof Ci.nsIImageLoadingContent)
@@ -1014,7 +1015,7 @@ nsContextMenu.prototype = {
     else {
       viewURL = this.mediaURL;
       urlSecurityCheck(viewURL,
-                       this._unremotePrincipal(this.browser.contentPrincipal),
+                       this.browser.contentPrincipal,
                        Ci.nsIScriptSecurityManager.DISALLOW_SCRIPT);
     }
 
@@ -1057,7 +1058,7 @@ nsContextMenu.prototype = {
   // Change current window to the URL of the background image.
   viewBGImage: function(e) {
     urlSecurityCheck(this.bgImageURL,
-                     this._unremotePrincipal(this.browser.contentPrincipal),
+                     this.browser.contentPrincipal,
                      Ci.nsIScriptSecurityManager.DISALLOW_SCRIPT);
     var doc = this.target.ownerDocument;
     openUILink(this.bgImageURL, e, { disallowInheritPrincipal: true,
@@ -1314,11 +1315,11 @@ nsContextMenu.prototype = {
   },
 
   playPlugin: function() {
-    gPluginHandler._showClickToPlayNotification(this.browser, this.target, true);
+    gPluginHandler.contextMenuCommand(this.browser, this.target, "play");
   },
 
   hidePlugin: function() {
-    gPluginHandler.hideClickToPlayOverlay(this.target);
+    gPluginHandler.contextMenuCommand(this.browser, this.target, "hide");
   },
 
   // Generate email address and put it on clipboard.

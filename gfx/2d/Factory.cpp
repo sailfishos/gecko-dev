@@ -548,6 +548,7 @@ Factory::SetDirect3D10Device(ID3D10Device1 *aDevice)
 
 ID3D10Device1*
 Factory::GetDirect3D10Device()
+
 {
 #ifdef DEBUG
   UINT mode = mD3D10Device->GetExceptionMode();
@@ -557,6 +558,28 @@ Factory::GetDirect3D10Device()
 }
 
 #ifdef USE_D2D1_1
+TemporaryRef<DrawTarget>
+Factory::CreateDrawTargetForD3D11Texture(ID3D11Texture2D *aTexture, SurfaceFormat aFormat)
+{
+  RefPtr<DrawTargetD2D1> newTarget;
+
+  newTarget = new DrawTargetD2D1();
+  if (newTarget->Init(aTexture, aFormat)) {
+    RefPtr<DrawTarget> retVal = newTarget;
+
+    if (mRecorder) {
+      retVal = new DrawTargetRecording(mRecorder, retVal, true);
+    }
+
+    return retVal;
+  }
+
+  gfxWarning() << "Failed to create draw target for D3D10 texture.";
+
+  // Failed
+  return nullptr;
+}
+
 void
 Factory::SetDirect3D11Device(ID3D11Device *aDevice)
 {
@@ -579,6 +602,12 @@ ID2D1Device*
 Factory::GetD2D1Device()
 {
   return mD2D1Device;
+}
+
+bool
+Factory::SupportsD2D1()
+{
+  return !!D2DFactory1();
 }
 #endif
 
@@ -700,7 +729,8 @@ Factory::CreateWrappingDataSourceSurface(uint8_t *aData, int32_t aStride,
 
 TemporaryRef<DataSourceSurface>
 Factory::CreateDataSourceSurface(const IntSize &aSize,
-                                 SurfaceFormat aFormat)
+                                 SurfaceFormat aFormat,
+                                 bool aZero)
 {
   if (!CheckSurfaceSize(aSize)) {
     gfxWarning() << "CreateDataSourceSurface failed with bad size";
@@ -708,7 +738,7 @@ Factory::CreateDataSourceSurface(const IntSize &aSize,
   }
 
   RefPtr<SourceSurfaceAlignedRawData> newSurf = new SourceSurfaceAlignedRawData();
-  if (newSurf->Init(aSize, aFormat)) {
+  if (newSurf->Init(aSize, aFormat, aZero)) {
     return newSurf.forget();
   }
 
@@ -719,7 +749,8 @@ Factory::CreateDataSourceSurface(const IntSize &aSize,
 TemporaryRef<DataSourceSurface>
 Factory::CreateDataSourceSurfaceWithStride(const IntSize &aSize,
                                            SurfaceFormat aFormat,
-                                           int32_t aStride)
+                                           int32_t aStride,
+                                           bool aZero)
 {
   if (aStride < aSize.width * BytesPerPixel(aFormat)) {
     gfxWarning() << "CreateDataSourceSurfaceWithStride failed with bad stride";
@@ -727,7 +758,7 @@ Factory::CreateDataSourceSurfaceWithStride(const IntSize &aSize,
   }
 
   RefPtr<SourceSurfaceAlignedRawData> newSurf = new SourceSurfaceAlignedRawData();
-  if (newSurf->InitWithStride(aSize, aFormat, aStride)) {
+  if (newSurf->InitWithStride(aSize, aFormat, aStride, aZero)) {
     return newSurf.forget();
   }
 
@@ -745,6 +776,25 @@ void
 Factory::SetGlobalEventRecorder(DrawEventRecorder *aRecorder)
 {
   mRecorder = aRecorder;
+}
+
+LogForwarder* Factory::mLogForwarder = nullptr;
+
+// static
+void
+Factory::SetLogForwarder(LogForwarder* aLogFwd) {
+  mLogForwarder = aLogFwd;
+}
+
+// static
+void
+CriticalLogger::OutputMessage(const std::string &aString, int aLevel)
+{
+  if (Factory::GetLogForwarder()) {
+    Factory::GetLogForwarder()->Log(aString);
+  }
+
+  BasicLogger::OutputMessage(aString, aLevel);
 }
 
 }

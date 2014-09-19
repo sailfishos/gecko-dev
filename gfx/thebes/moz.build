@@ -18,6 +18,7 @@ EXPORTS += [
     'gfxFailure.h',
     'gfxFont.h',
     'gfxFontConstants.h',
+    'gfxFontEntry.h',
     'gfxFontFamilyList.h',
     'gfxFontFeatures.h',
     'gfxFontInfoLoader.h',
@@ -43,6 +44,7 @@ EXPORTS += [
     'gfxSkipChars.h',
     'gfxSVGGlyphs.h',
     'gfxTeeSurface.h',
+    'gfxTextRun.h',
     'gfxTypes.h',
     'gfxUserFontSet.h',
     'gfxUtils.h',
@@ -184,6 +186,8 @@ elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
             'gfxDWriteFontList.cpp',
             'gfxDWriteFonts.cpp',
         ]
+    if CONFIG['MOZ_ENABLE_DIRECT2D1_1']:
+        DEFINES['USE_D2D1_1'] = True
 
 # Are we targeting x86 or x64?  If so, build gfxAlphaRecoverySSE2.cpp.
 if CONFIG['INTEL_ARCHITECTURE']:
@@ -202,6 +206,8 @@ SOURCES += [
     'gfxDrawable.cpp',
     # Uses FORCE_PR_LOG
     'gfxFont.cpp',
+    # Uses FORCE_PR_LOG
+    'gfxFontEntry.cpp',
     # Uses FORCE_PR_LOG
     'gfxFontUtils.cpp',
     # Includes mac system header conflicting with point/size, and also uses FORCE_PR_LOG
@@ -224,6 +230,7 @@ UNIFIED_SOURCES += [
     'gfxFontInfoLoader.cpp',
     'gfxFontMissingGlyphs.cpp',
     'gfxFontTest.cpp',
+    'gfxGlyphExtents.cpp',
     'gfxGradientCache.cpp',
     'gfxGraphiteShaper.cpp',
     'gfxHarfBuzzShaper.cpp',
@@ -238,6 +245,7 @@ UNIFIED_SOURCES += [
     'gfxSkipChars.cpp',
     'gfxSVGGlyphs.cpp',
     'gfxTeeSurface.cpp',
+    'gfxTextRun.cpp',
     'gfxUtils.cpp',
     'nsSurfaceTexture.cpp',
     'nsUnicodeRange.cpp',

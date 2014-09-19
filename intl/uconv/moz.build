@@ -23,7 +23,6 @@ EXPORTS += [
     'nsUCSupport.h',
     'uconvutil.h',
     'ucvcn/nsUCvCnCID.h',
-    'ucvibm/nsUCvIBMCID.h',
     'ucvja/nsUCVJA2CID.h',
     'ucvja/nsUCVJACID.h',
     'ucvko/nsUCvKOCID.h',
@@ -59,25 +58,9 @@ UNIFIED_SOURCES += [
 ]
 
 UNIFIED_SOURCES += [
-    'ucvibm/nsCP850ToUnicode.cpp',
-    'ucvibm/nsCP852ToUnicode.cpp',
-    'ucvibm/nsCP855ToUnicode.cpp',
-    'ucvibm/nsCP857ToUnicode.cpp',
-    'ucvibm/nsCP862ToUnicode.cpp',
-    'ucvibm/nsCP864ToUnicode.cpp',
-    'ucvibm/nsUnicodeToCP850.cpp',
-    'ucvibm/nsUnicodeToCP852.cpp',
-    'ucvibm/nsUnicodeToCP855.cpp',
-    'ucvibm/nsUnicodeToCP857.cpp',
-    'ucvibm/nsUnicodeToCP862.cpp',
-    'ucvibm/nsUnicodeToCP864.cpp',
-]
-
-UNIFIED_SOURCES += [
     'ucvja/nsJapaneseToUnicode.cpp',
     'ucvja/nsUnicodeToEUCJP.cpp',
     'ucvja/nsUnicodeToISO2022JP.cpp',
-    'ucvja/nsUnicodeToJISx0201.cpp',
     'ucvja/nsUnicodeToSJIS.cpp',
 ]
 
@@ -87,7 +70,6 @@ UNIFIED_SOURCES += [
 ]
 
 UNIFIED_SOURCES += [
-    'ucvlatin/nsARMSCII8ToUnicode.cpp',
     'ucvlatin/nsAsciiToUnicode.cpp',
     'ucvlatin/nsCP1250ToUnicode.cpp',
     'ucvlatin/nsCP1251ToUnicode.cpp',
@@ -109,15 +91,11 @@ UNIFIED_SOURCES += [
     'ucvlatin/nsISO88593ToUnicode.cpp',
     'ucvlatin/nsISO88594ToUnicode.cpp',
     'ucvlatin/nsISO88595ToUnicode.cpp',
-    'ucvlatin/nsISO88596EToUnicode.cpp',
-    'ucvlatin/nsISO88596IToUnicode.cpp',
     'ucvlatin/nsISO88596ToUnicode.cpp',
     'ucvlatin/nsISO88597ToUnicode.cpp',
-    'ucvlatin/nsISO88598EToUnicode.cpp',
     'ucvlatin/nsISO88598IToUnicode.cpp',
     'ucvlatin/nsISO88598ToUnicode.cpp',
     'ucvlatin/nsISO88599ToUnicode.cpp',
-    'ucvlatin/nsISOIR111ToUnicode.cpp',
     'ucvlatin/nsKOI8RToUnicode.cpp',
     'ucvlatin/nsKOI8UToUnicode.cpp',
     'ucvlatin/nsMacArabicToUnicode.cpp',
@@ -134,7 +112,6 @@ UNIFIED_SOURCES += [
     'ucvlatin/nsMacRomanianToUnicode.cpp',
     'ucvlatin/nsMacTurkishToUnicode.cpp',
     'ucvlatin/nsTIS620ToUnicode.cpp',
-    'ucvlatin/nsUnicodeToARMSCII8.cpp',
     'ucvlatin/nsUnicodeToAscii.cpp',
     'ucvlatin/nsUnicodeToCP1250.cpp',
     'ucvlatin/nsUnicodeToCP1251.cpp',
@@ -157,29 +134,13 @@ UNIFIED_SOURCES += [
     'ucvlatin/nsUnicodeToISO88594.cpp',
     'ucvlatin/nsUnicodeToISO88595.cpp',
     'ucvlatin/nsUnicodeToISO88596.cpp',
-    'ucvlatin/nsUnicodeToISO88596E.cpp',
-    'ucvlatin/nsUnicodeToISO88596I.cpp',
     'ucvlatin/nsUnicodeToISO88597.cpp',
     'ucvlatin/nsUnicodeToISO88598.cpp',
-    'ucvlatin/nsUnicodeToISO88598E.cpp',
     'ucvlatin/nsUnicodeToISO88598I.cpp',
     'ucvlatin/nsUnicodeToISO88599.cpp',
-    'ucvlatin/nsUnicodeToISOIR111.cpp',
     'ucvlatin/nsUnicodeToKOI8R.cpp',
     'ucvlatin/nsUnicodeToKOI8U.cpp',
-    'ucvlatin/nsUnicodeToMacArabic.cpp',
-    'ucvlatin/nsUnicodeToMacCE.cpp',
-    'ucvlatin/nsUnicodeToMacCroatian.cpp',
     'ucvlatin/nsUnicodeToMacCyrillic.cpp',
-    'ucvlatin/nsUnicodeToMacDevanagari.cpp',
-    'ucvlatin/nsUnicodeToMacFarsi.cpp',
-    'ucvlatin/nsUnicodeToMacGreek.cpp',
-    'ucvlatin/nsUnicodeToMacGujarati.cpp',
-    'ucvlatin/nsUnicodeToMacGurmukhi.cpp',
-    'ucvlatin/nsUnicodeToMacHebrew.cpp',
-    'ucvlatin/nsUnicodeToMacIcelandic.cpp',
-    'ucvlatin/nsUnicodeToMacRomanian.cpp',
-    'ucvlatin/nsUnicodeToMacTurkish.cpp',
     'ucvlatin/nsUnicodeToTIS620.cpp',
     'ucvlatin/nsUnicodeToUserDefined.cpp',
     'ucvlatin/nsUnicodeToUTF16.cpp',
@@ -192,7 +153,6 @@ UNIFIED_SOURCES += [
     'ucvtw/nsBIG5ToUnicode.cpp',
     'ucvtw/nsUnicodeToBIG5.cpp',
     'ucvtw/nsUnicodeToBIG5HKSCS.cpp',
-    'ucvtw/nsUnicodeToHKSCS.cpp',
 ]
 
 UNIFIED_SOURCES += [
@@ -213,7 +173,6 @@ MSVC_ENABLE_PGO = True
 
 LOCAL_INCLUDES += [
     'ucvcn',
-    'ucvibm',
     'ucvja',
     'ucvko',
     'ucvlatin',

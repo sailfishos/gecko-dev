@@ -10,6 +10,7 @@
 
 #include "jsnum.h"
 
+#include "mozilla/double-conversion.h"
 #include "mozilla/FloatingPoint.h"
 #include "mozilla/PodOperations.h"
 #include "mozilla/RangedPtr.h"
@@ -20,7 +21,6 @@
 #include <math.h>
 #include <string.h>
 
-#include "double-conversion.h"
 #include "jsatom.h"
 #include "jscntxt.h"
 #include "jsdtoa.h"
@@ -1061,18 +1061,18 @@ enum nc_slot {
  * using union jsdpun.
  */
 static JSConstDoubleSpec number_constants[] = {
-    {0,                         "NaN",               0,{0,0,0}},
-    {0,                         "POSITIVE_INFINITY", 0,{0,0,0}},
-    {0,                         "NEGATIVE_INFINITY", 0,{0,0,0}},
-    {1.7976931348623157E+308,   "MAX_VALUE",         0,{0,0,0}},
-    {0,                         "MIN_VALUE",         0,{0,0,0}},
+    {"NaN",               0                          },
+    {"POSITIVE_INFINITY", 0                          },
+    {"NEGATIVE_INFINITY", 0                          },
+    {"MAX_VALUE",         1.7976931348623157E+308    },
+    {"MIN_VALUE",         0                          },
     /* ES6 (April 2014 draft) 20.1.2.6 */
-    {9007199254740991,          "MAX_SAFE_INTEGER",  0,{0,0,0}},
+    {"MAX_SAFE_INTEGER",  9007199254740991           },
     /* ES6 (April 2014 draft) 20.1.2.10 */
-    {-9007199254740991,         "MIN_SAFE_INTEGER",  0,{0,0,0}},
+    {"MIN_SAFE_INTEGER", -9007199254740991,          },
     /* ES6 (May 2013 draft) 15.7.3.7 */
-    {2.2204460492503130808472633361816e-16, "EPSILON", 0,{0,0,0}},
-    {0,0,0,{0,0,0}}
+    {"EPSILON", 2.2204460492503130808472633361816e-16},
+    {0,0}
 };
 
 /*
@@ -1101,12 +1101,12 @@ js::InitRuntimeNumberState(JSRuntime *rt)
      * Our NaN must be one particular canonical value, because we rely on NaN
      * encoding for our value representation.  See Value.h.
      */
-    number_constants[NC_NaN].dval = GenericNaN();
+    number_constants[NC_NaN].val = GenericNaN();
 
-    number_constants[NC_POSITIVE_INFINITY].dval = mozilla::PositiveInfinity<double>();
-    number_constants[NC_NEGATIVE_INFINITY].dval = mozilla::NegativeInfinity<double>();
+    number_constants[NC_POSITIVE_INFINITY].val = mozilla::PositiveInfinity<double>();
+    number_constants[NC_NEGATIVE_INFINITY].val = mozilla::NegativeInfinity<double>();
 
-    number_constants[NC_MIN_VALUE].dval = MinNumberValue<double>();
+    number_constants[NC_MIN_VALUE].val = MinNumberValue<double>();
 
     // XXX If EXPOSE_INTL_API becomes true all the time at some point,
     //     js::InitRuntimeNumberState is no longer fallible, and we should
@@ -1698,6 +1698,42 @@ js::ToUint16Slow(JSContext *cx, const HandleValue v, uint16_t *out)
     *out = (uint16_t) d;
     return true;
 }
+
+template<typename T>
+bool
+js::ToLengthClamped(T *cx, HandleValue v, uint32_t *out, bool *overflow)
+{
+    if (v.isInt32()) {
+        int32_t i = v.toInt32();
+        *out = i < 0 ? 0 : i;
+        return true;
+    }
+    double d;
+    if (v.isDouble()) {
+        d = v.toDouble();
+    } else {
+        if (!ToNumber(cx, v, &d)) {
+            *overflow = false;
+            return false;
+        }
+    }
+    d = ToInteger(d);
+    if (d <= 0.0) {
+        *out = 0;
+        return true;
+    }
+    if (d >= (double)0xFFFFFFFEU) {
+        *overflow = true;
+        return false;
+    }
+    *out = (uint32_t)d;
+    return true;
+}
+
+template bool
+js::ToLengthClamped<JSContext>(JSContext*, HandleValue, uint32_t*, bool*);
+template bool
+js::ToLengthClamped<ExclusiveContext>(ExclusiveContext*, HandleValue, uint32_t*, bool*);
 
 template <typename CharT>
 bool

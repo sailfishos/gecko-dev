@@ -614,6 +614,8 @@ TypeSet::print()
         fprintf(stderr, " float");
     if (flags & TYPE_FLAG_STRING)
         fprintf(stderr, " string");
+    if (flags & TYPE_FLAG_SYMBOL)
+        fprintf(stderr, " symbol");
     if (flags & TYPE_FLAG_LAZYARGS)
         fprintf(stderr, " lazyargs");
 
@@ -1091,6 +1093,21 @@ TypeObjectKey::property(jsid id)
     return property;
 }
 
+void
+TypeObjectKey::ensureTrackedProperty(JSContext *cx, jsid id)
+{
+    // If we are accessing a lazily defined property which actually exists in
+    // the VM and has not been instantiated yet, instantiate it now if we are
+    // on the main thread and able to do so.
+    if (!JSID_IS_VOID(id) && !JSID_IS_EMPTY(id)) {
+        JS_ASSERT(CurrentThreadCanAccessRuntime(cx->runtime()));
+        if (JSObject *obj = singleton()) {
+            if (obj->isNative() && obj->nativeLookupPure(id))
+                EnsureTrackPropertyTypes(cx, obj, id);
+        }
+    }
+}
+
 bool
 HeapTypeSetKey::instantiate(JSContext *cx)
 {
@@ -1483,7 +1500,7 @@ HeapTypeSetKey::needsBarrier(CompilerConstraintList *constraints)
         return false;
     bool result = types->unknownObject()
                || types->getObjectCount() > 0
-               || types->hasAnyFlag(TYPE_FLAG_STRING);
+               || types->hasAnyFlag(TYPE_FLAG_STRING | TYPE_FLAG_SYMBOL);
     if (!result)
         freeze(constraints);
     return result;
@@ -2020,6 +2037,16 @@ TemporaryTypeSet::getTypedArrayType()
     return Scalar::TypeMax;
 }
 
+Scalar::Type
+TemporaryTypeSet::getSharedTypedArrayType()
+{
+    const Class *clasp = getKnownClass();
+
+    if (clasp && IsSharedTypedArrayClass(clasp))
+        return (Scalar::Type) (clasp - &SharedTypedArrayObject::classes[0]);
+    return Scalar::TypeMax;
+}
+
 bool
 TemporaryTypeSet::isDOMClass()
 {
@@ -2260,8 +2287,12 @@ types::UseNewTypeForInitializer(JSScript *script, jsbytecode *pc, JSProtoKey key
     if (script->functionNonDelazifying() && !script->treatAsRunOnce())
         return GenericObject;
 
-    if (key != JSProto_Object && !(key >= JSProto_Int8Array && key <= JSProto_Uint8ClampedArray))
+    if (key != JSProto_Object &&
+        !(key >= JSProto_Int8Array && key <= JSProto_Uint8ClampedArray) &&
+        !(key >= JSProto_SharedInt8Array && key <= JSProto_SharedUint8ClampedArray))
+    {
         return GenericObject;
+    }
 
     /*
      * All loops in the script will have a JSTRY_ITER or JSTRY_LOOP try note
@@ -2302,7 +2333,7 @@ ClassCanHaveExtraProperties(const Class *clasp)
     return clasp->resolve != JS_ResolveStub
         || clasp->ops.lookupGeneric
         || clasp->ops.getGeneric
-        || IsTypedArrayClass(clasp);
+        || IsAnyTypedArrayClass(clasp);
 }
 
 static inline bool
@@ -2342,7 +2373,7 @@ types::TypeCanHaveExtraIndexedProperties(CompilerConstraintList *constraints,
     // Note: typed arrays have indexed properties not accounted for by type
     // information, though these are all in bounds and will be accounted for
     // by JIT paths.
-    if (!clasp || (ClassCanHaveExtraProperties(clasp) && !IsTypedArrayClass(clasp)))
+    if (!clasp || (ClassCanHaveExtraProperties(clasp) && !IsAnyTypedArrayClass(clasp)))
         return true;
 
     if (types->hasObjectFlags(constraints, types::OBJECT_FLAG_SPARSE_INDEXES))
@@ -2762,11 +2793,11 @@ TypeCompartment::fixObjectType(ExclusiveContext *cx, JSObject *obj)
     if (obj->isIndexed())
         objType->setFlags(cx, OBJECT_FLAG_SPARSE_INDEXES);
 
-    ScopedJSFreePtr<jsid> ids(objType->pod_calloc<jsid>(properties.length()));
+    ScopedJSFreePtr<jsid> ids(objType->zone()->pod_calloc<jsid>(properties.length()));
     if (!ids)
         return;
 
-    ScopedJSFreePtr<Type> types(objType->pod_calloc<Type>(properties.length()));
+    ScopedJSFreePtr<Type> types(objType->zone()->pod_calloc<Type>(properties.length()));
     if (!types)
         return;
 
@@ -3052,7 +3083,8 @@ InlineAddTypeProperty(ExclusiveContext *cx, TypeObject *obj, jsid id, Type type)
     if (obj->newScript() && obj->newScript()->initializedType()) {
         if (type.isObjectUnchecked() && types->unknownObject())
             type = Type::AnyObjectType();
-        obj->newScript()->initializedType()->addPropertyType(cx, id, type);
+        if (!obj->newScript()->initializedType()->unknownProperties())
+            obj->newScript()->initializedType()->addPropertyType(cx, id, type);
     }
 }
 
@@ -3631,7 +3663,7 @@ JSScript::makeTypes(JSContext *cx)
     unsigned count = TypeScript::NumTypeSets(this);
 
     TypeScript *typeScript = (TypeScript *)
-        pod_calloc<uint8_t>(TypeScript::SizeIncludingTypeArray(count));
+        zone()->pod_calloc<uint8_t>(TypeScript::SizeIncludingTypeArray(count));
     if (!typeScript)
         return false;
 
@@ -3703,7 +3735,7 @@ TypeNewScript::make(JSContext *cx, TypeObject *type, JSFunction *fun)
 
     newScript->fun = fun;
 
-    JSObject **preliminaryObjects = type->pod_calloc<JSObject *>(PRELIMINARY_OBJECT_COUNT);
+    JSObject **preliminaryObjects = type->zone()->pod_calloc<JSObject *>(PRELIMINARY_OBJECT_COUNT);
     if (!preliminaryObjects)
         return;
 
@@ -3967,7 +3999,7 @@ TypeNewScript::maybeAnalyze(JSContext *cx, TypeObject *type, bool *regenerate, b
         if (!initializerVector.append(done))
             return false;
 
-        initializerList = type->pod_calloc<Initializer>(initializerVector.length());
+        initializerList = type->zone()->pod_calloc<Initializer>(initializerVector.length());
         if (!initializerList)
             return false;
         PodCopy(initializerList, initializerVector.begin(), initializerVector.length());

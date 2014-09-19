@@ -92,6 +92,7 @@ let WebProgressListener = {
       json.documentURI = content.document.documentURIObject.spec;
       json.charset = content.document.characterSet;
       json.mayEnableCharacterEncodingMenu = docShell.mayEnableCharacterEncodingMenu;
+      json.principal = content.document.nodePrincipal;
     }
 
     sendAsyncMessage("Content:LocationChange", json, objects);
@@ -373,6 +374,10 @@ if (Services.appinfo.browserTabsRemoteAutostart) {
   // Currently, the addon shims are only supported when autostarting
   // with remote tabs.
   AddonsChild = RemoteAddonsChild.init(this);
+
+  addEventListener("unload", () => {
+    RemoteAddonsChild.uninit(AddonsChild);
+  });
 }
 
 addMessageListener("NetworkPrioritizer:AdjustPriority", (msg) => {

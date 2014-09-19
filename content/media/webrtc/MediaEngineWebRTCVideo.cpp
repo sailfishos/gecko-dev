@@ -799,6 +799,8 @@ MediaEngineWebRTCVideoSource::Notify(const hal::ScreenConfiguration& aConfigurat
          mRotation, mCaptureIndex, mBackCamera, mCameraAngle));
   }
 #endif
+
+  mOrientationChanged = true;
 }
 
 void
@@ -968,6 +970,22 @@ MediaEngineWebRTCVideoSource::OnTakePictureComplete(uint8_t* aData, uint32_t aLe
   }
 }
 
+uint32_t
+MediaEngineWebRTCVideoSource::ConvertPixelFormatToFOURCC(int aFormat)
+{
+  switch (aFormat) {
+  case HAL_PIXEL_FORMAT_YCrCb_420_SP:
+    return libyuv::FOURCC_NV21;
+  case HAL_PIXEL_FORMAT_YV12:
+    return libyuv::FOURCC_YV12;
+  default: {
+    LOG((" xxxxx Unknown pixel format %d", aFormat));
+    MOZ_ASSERT(false, "Unknown pixel format.");
+    return libyuv::FOURCC_ANY;
+    }
+  }
+}
+
 void
 MediaEngineWebRTCVideoSource::RotateImage(layers::Image* aImage, uint32_t aWidth, uint32_t aHeight) {
   layers::GrallocImage *nativeImage = static_cast<layers::GrallocImage*>(aImage);
@@ -1003,7 +1021,7 @@ MediaEngineWebRTCVideoSource::RotateImage(layers::Image* aImage, uint32_t aWidth
                         aWidth, aHeight,
                         aWidth, aHeight,
                         static_cast<libyuv::RotationMode>(mRotation),
-                        libyuv::FOURCC_NV21);
+                        ConvertPixelFormatToFOURCC(graphicBuffer->getPixelFormat()));
   graphicBuffer->unlock();
 
   const uint8_t lumaBpp = 8;
@@ -1064,13 +1082,54 @@ MediaEngineWebRTCVideoSource::TakePhoto(PhotoCallback* aCallback)
   // If other callback exists, that means there is a captured picture on the way,
   // it doesn't need to TakePicture() again.
   if (!mPhotoCallbacks.Length()) {
-    nsresult rv = mCameraControl->TakePicture();
+    nsresult rv;
+    if (mOrientationChanged) {
+      UpdatePhotoOrientation();
+    }
+    rv = mCameraControl->TakePicture();
     if (NS_FAILED(rv)) {
       return rv;
     }
   }
 
   mPhotoCallbacks.AppendElement(aCallback);
+
+  return NS_OK;
+}
+
+nsresult
+MediaEngineWebRTCVideoSource::UpdatePhotoOrientation()
+{
+  MOZ_ASSERT(NS_IsMainThread());
+
+  hal::ScreenConfiguration config;
+  hal::GetCurrentScreenConfiguration(&config);
+
+  // The rotation angle is clockwise.
+  int orientation = 0;
+  switch (config.orientation()) {
+    case eScreenOrientation_PortraitPrimary:
+      orientation = 0;
+      break;
+    case eScreenOrientation_PortraitSecondary:
+      orientation = 180;
+      break;
+   case eScreenOrientation_LandscapePrimary:
+      orientation = 270;
+      break;
+   case eScreenOrientation_LandscapeSecondary:
+      orientation = 90;
+      break;
+  }
+
+  // Front camera is inverse angle comparing to back camera.
+  orientation = (mBackCamera ? orientation : (-orientation));
+
+  ICameraControlParameterSetAutoEnter batch(mCameraControl);
+  // It changes the orientation value in EXIF information only.
+  mCameraControl->Set(CAMERA_PARAM_PICTURE_ROTATION, orientation);
+
+  mOrientationChanged = false;
 
   return NS_OK;
 }

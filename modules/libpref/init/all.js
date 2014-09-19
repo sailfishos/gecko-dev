@@ -107,6 +107,9 @@ pref("offline-apps.quota.warn",        51200);
 // cache compression turned off for now - see bug #715198
 pref("browser.cache.compression_level", 0);
 
+// Whether or not MozAbortablePromise is enabled.
+pref("dom.abortablepromise.enabled", false);
+
 // Whether or not testing features are enabled.
 pref("dom.quotaManager.testing", false);
 
@@ -380,10 +383,10 @@ pref("media.getusermedia.screensharing.enabled", true);
 #endif
 
 #ifdef RELEASE_BUILD
-pref("media.getusermedia.screensharing.allowed_domains", "");
+pref("media.getusermedia.screensharing.allowed_domains", "webex.com,*.webex.com,collaborate.com,*.collaborate.com");
 #else
  // temporary value, not intended for release - bug 1049087
-pref("media.getusermedia.screensharing.allowed_domains", "mozilla.github.io");
+pref("media.getusermedia.screensharing.allowed_domains", "mozilla.github.io,webex.com,*.webex.com,collaborate.com,*.collaborate.com");
 #endif
 // OS/X 10.6 and XP have screen/window sharing off by default due to various issues - Caveat emptor
 pref("media.getusermedia.screensharing.allow_on_old_platforms", false);
@@ -1717,6 +1720,9 @@ pref("security.notification_enable_delay", 500);
 pref("security.csp.enable", true);
 pref("security.csp.debug", false);
 pref("security.csp.experimentalEnabled", false);
+
+// Default Content Security Policy to apply to privileged apps.
+pref("security.apps.privileged.CSP.default", "default-src *; script-src 'self'; object-src 'none'; style-src 'self' 'unsafe-inline'");
 
 // Mixed content blocking
 pref("security.mixed_content.block_active_content", false);
@@ -4242,10 +4248,9 @@ pref("snav.enabled", false);
 // Turn off touch caret by default.
 pref("touchcaret.enabled", false);
 
-// Maximum distance to the center of touch caret (in app unit square) which
-// will be accepted to drag touch caret (0 means only in the bounding box of touch
-// caret is accepted)
-pref("touchcaret.distance.threshold", 1500);
+// This will inflate the size of the touch caret frame when checking if user
+// clicks on the caret or not. In app units.
+pref("touchcaret.inflatesize.threshold", 40);
 
 // We'll start to increment time when user release the control of touch caret.
 // When time exceed this expiration time, we'll hide touch caret.

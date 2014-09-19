@@ -79,6 +79,29 @@ Java_org_mozilla_gecko_GeckoAppShell_notifyGeckoOfEvent(JNIEnv *jenv, jclass jc,
 }
 
 NS_EXPORT void JNICALL
+Java_org_mozilla_gecko_GeckoAppShell_notifyGeckoObservers(JNIEnv *aEnv, jclass,
+                                                         jstring aTopic, jstring aData)
+{
+    if (!NS_IsMainThread()) {
+        AndroidBridge::ThrowException(aEnv,
+            "java/lang/IllegalThreadStateException", "Not on Gecko main thread");
+        return;
+    }
+
+    nsCOMPtr<nsIObserverService> obsServ =
+        mozilla::services::GetObserverService();
+    if (!obsServ) {
+        AndroidBridge::ThrowException(aEnv,
+            "java/lang/IllegalStateException", "No observer service");
+        return;
+    }
+
+    const nsJNICString topic(aTopic, aEnv);
+    const nsJNIString data(aData, aEnv);
+    obsServ->NotifyObservers(nullptr, topic.get(), data.get());
+}
+
+NS_EXPORT void JNICALL
 Java_org_mozilla_gecko_GeckoAppShell_processNextNativeEvent(JNIEnv *jenv, jclass, jboolean mayWait)
 {
     // poke the appshell
@@ -113,12 +136,15 @@ NS_EXPORT void JNICALL
 Java_org_mozilla_gecko_GeckoAppShell_reportJavaCrash(JNIEnv *jenv, jclass, jstring jStackTrace)
 {
 #ifdef MOZ_CRASHREPORTER
-    const nsJNIString stackTrace16(jStackTrace, jenv);
-    const NS_ConvertUTF16toUTF8 stackTrace8(stackTrace16);
-    CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("JavaStackTrace"), stackTrace8);
+    const nsJNICString stackTrace(jStackTrace, jenv);
+    if (NS_WARN_IF(NS_FAILED(CrashReporter::AnnotateCrashReport(
+            NS_LITERAL_CSTRING("JavaStackTrace"), stackTrace)))) {
+        // Only crash below if crash reporter is initialized and annotation succeeded.
+        // Otherwise try other means of reporting the crash in Java.
+        return;
+    }
 #endif // MOZ_CRASHREPORTER
-
-    abort();
+    MOZ_CRASH("Uncaught Java exception");
 }
 
 NS_EXPORT void JNICALL

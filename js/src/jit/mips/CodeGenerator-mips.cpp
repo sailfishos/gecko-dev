@@ -1890,6 +1890,13 @@ CodeGeneratorMIPS::visitStoreTypedArrayElementStatic(LStoreTypedArrayElementStat
 }
 
 bool
+CodeGeneratorMIPS::visitAsmJSCall(LAsmJSCall *ins)
+{
+    emitAsmJSCall(ins);
+    return true;
+}
+
+bool
 CodeGeneratorMIPS::visitAsmJSLoadHeap(LAsmJSLoadHeap *ins)
 {
     const MAsmJSLoadHeap *mir = ins->mir();

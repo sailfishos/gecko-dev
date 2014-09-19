@@ -19,7 +19,6 @@ EXPORTS.mozilla += [
 
 UNIFIED_SOURCES += [
     'CryptoTask.cpp',
-    'nsCertificatePrincipal.cpp',
     'nsCertOverrideService.cpp',
     'nsCertPicker.cpp',
     'nsCertVerificationThread.cpp',
@@ -37,7 +36,6 @@ UNIFIED_SOURCES += [
     'nsNSSCertificateFakeTransport.cpp',
     'nsNSSCertTrust.cpp',
     'nsNSSCertValidity.cpp',
-    'nsNSSCleaner.cpp',
     'nsNSSErrors.cpp',
     'nsNSSIOLayer.cpp',
     'nsNSSModule.cpp',

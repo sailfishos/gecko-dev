@@ -60,6 +60,7 @@ import org.mozilla.gecko.util.ThreadUtils;
 
 import android.app.Activity;
 import android.app.ActivityManager;
+import android.app.DownloadManager;
 import android.app.PendingIntent;
 import android.content.ActivityNotFoundException;
 import android.content.Context;
@@ -131,6 +132,7 @@ public class GeckoAppShell
     // We have static members only.
     private GeckoAppShell() { }
 
+    private static Thread.UncaughtExceptionHandler systemUncaughtHandler;
     private static boolean restartScheduled;
     private static GeckoEditableListener editableListener;
 
@@ -210,6 +212,8 @@ public class GeckoAppShell
     public static native void dispatchMemoryPressure();
 
     public static void registerGlobalExceptionHandler() {
+        systemUncaughtHandler = Thread.getDefaultUncaughtExceptionHandler();
+
         Thread.setDefaultUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
             @Override
             public void uncaughtException(Thread thread, Throwable e) {
@@ -298,7 +302,12 @@ public class GeckoAppShell
     private static LayerView sLayerView;
 
     public static void setLayerView(LayerView lv) {
+        if (sLayerView == lv) {
+            return;
+        }
         sLayerView = lv;
+        // Install new Gecko-to-Java editable listener.
+        editableListener = new GeckoEditable();
     }
 
     @RobocopTarget
@@ -349,13 +358,6 @@ public class GeckoAppShell
         DisplayMetrics metrics = getContext().getResources().getDisplayMetrics();
         combinedArgs += " -width " + metrics.widthPixels + " -height " + metrics.heightPixels;
 
-        ThreadUtils.postToUiThread(new Runnable() {
-                @Override
-                public void run() {
-                    geckoLoaded();
-                }
-            });
-
         if (!AppConstants.MOZILLA_OFFICIAL) {
             Log.d(LOGTAG, "GeckoLoader.nativeRun " + combinedArgs);
         }
@@ -364,13 +366,6 @@ public class GeckoAppShell
 
         // Remove pumpMessageLoop() idle handler
         Looper.myQueue().removeIdleHandler(idleHandler);
-    }
-
-    // Called on the UI thread after Gecko loads.
-    private static void geckoLoaded() {
-        GeckoEditable editable = new GeckoEditable();
-        // install the gecko => editable listener
-        editableListener = editable;
     }
 
     static void sendPendingEventsToGecko() {
@@ -447,6 +442,9 @@ public class GeckoAppShell
     // Tell the Gecko event loop that an event is available.
     public static native void notifyGeckoOfEvent(GeckoEvent event);
 
+    // Synchronously notify a Gecko observer; must be called from Gecko thread.
+    public static native void notifyGeckoObservers(String subject, String data);
+
     /*
      *  The Gecko-side API: API methods that Gecko calls
      */
@@ -490,8 +488,19 @@ public class GeckoAppShell
                 // shutdown
                 editor.commit();
             }
-        } finally {
+        } catch (final Throwable exc) {
+            // Report the Java crash below, even if we encounter an exception here.
+        }
+
+        try {
             reportJavaCrash(getStackTraceString(e));
+        } finally {
+            // reportJavaCrash should have caused us to hard crash. If we're still here,
+            // it probably means Gecko is not loaded, and we should do something else.
+            // Bring up the app crashed dialog so we don't crash silently.
+            if (systemUncaughtHandler != null) {
+                systemUncaughtHandler.uncaughtException(thread, e);
+            }
         }
     }
 
@@ -1788,7 +1797,7 @@ public class GeckoAppShell
     }
 
     @WrapElementForJNI
-    public static void scanMedia(String aFile, String aMimeType) {
+    public static void scanMedia(final String aFile, String aMimeType) {
         // If the platform didn't give us a mimetype, try to guess one from the filename
         if (TextUtils.isEmpty(aMimeType)) {
             int extPosition = aFile.lastIndexOf(".");
@@ -1797,8 +1806,20 @@ public class GeckoAppShell
             }
         }
 
-        Context context = getContext();
-        GeckoMediaScannerClient.startScan(context, aFile, aMimeType);
+        final File f = new File(aFile);
+        if (AppConstants.Versions.feature12Plus) {
+            final DownloadManager dm = (DownloadManager) getContext().getSystemService(Context.DOWNLOAD_SERVICE);
+            dm.addCompletedDownload(f.getName(),
+                                    f.getName(),
+                                    !TextUtils.isEmpty(aMimeType),
+                                    aMimeType,
+                                    f.getAbsolutePath(),
+                                    f.length(),
+                                    false);
+        } else {
+            Context context = getContext();
+            GeckoMediaScannerClient.startScan(context, aFile, aMimeType);
+        }
     }
 
     @WrapElementForJNI(stubName = "GetIconForExtensionWrapper")

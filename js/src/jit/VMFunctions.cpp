@@ -297,34 +297,6 @@ StringsEqual(JSContext *cx, HandleString lhs, HandleString rhs, bool *res)
 template bool StringsEqual<true>(JSContext *cx, HandleString lhs, HandleString rhs, bool *res);
 template bool StringsEqual<false>(JSContext *cx, HandleString lhs, HandleString rhs, bool *res);
 
-bool
-IteratorMore(JSContext *cx, HandleObject obj, bool *res)
-{
-    RootedValue tmp(cx);
-    if (!js_IteratorMore(cx, obj, &tmp))
-        return false;
-
-    *res = tmp.toBoolean();
-    return true;
-}
-
-JSObject*
-NewInitArray(JSContext *cx, uint32_t count, types::TypeObject *typeArg)
-{
-    RootedTypeObject type(cx, typeArg);
-    NewObjectKind newKind = !type ? SingletonObject : GenericObject;
-    if (type && type->shouldPreTenure())
-        newKind = TenuredObject;
-    RootedObject obj(cx, NewDenseFullyAllocatedArray(cx, count, nullptr, newKind));
-    if (!obj)
-        return nullptr;
-
-    if (type)
-        obj->setType(type);
-
-    return obj;
-}
-
 JSObject*
 NewInitObject(JSContext *cx, HandleObject templateObject)
 {
@@ -837,8 +809,8 @@ DebugEpilogue(JSContext *cx, BaselineFrame *frame, jsbytecode *pc, bool ok)
 {
     // Unwind scope chain to stack depth 0.
     ScopeIter si(frame, pc, cx);
+    UnwindAllScopes(cx, si);
     jsbytecode *unwindPc = frame->script()->main();
-    UnwindScope(cx, si, unwindPc);
     frame->setUnwoundScopeOverridePc(unwindPc);
 
     // If ScriptDebugEpilogue returns |true| we have to return the frame's
@@ -1164,9 +1136,9 @@ AssertValidObjectPtr(JSContext *cx, JSObject *obj)
 
     if (obj->isTenured()) {
         JS_ASSERT(obj->isAligned());
-        gc::AllocKind kind = obj->tenuredGetAllocKind();
+        gc::AllocKind kind = obj->asTenured()->getAllocKind();
         JS_ASSERT(kind >= js::gc::FINALIZE_OBJECT0 && kind <= js::gc::FINALIZE_OBJECT_LAST);
-        JS_ASSERT(obj->tenuredZone() == cx->zone());
+        JS_ASSERT(obj->asTenured()->zone() == cx->zone());
     }
 }
 
@@ -1180,15 +1152,15 @@ AssertValidStringPtr(JSContext *cx, JSString *str)
     }
 
     if (str->isAtom())
-        JS_ASSERT(cx->runtime()->isAtomsZone(str->tenuredZone()));
+        JS_ASSERT(cx->runtime()->isAtomsZone(str->zone()));
     else
-        JS_ASSERT(str->tenuredZone() == cx->zone());
+        JS_ASSERT(str->zone() == cx->zone());
 
     JS_ASSERT(str->runtimeFromMainThread() == cx->runtime());
     JS_ASSERT(str->isAligned());
     JS_ASSERT(str->length() <= JSString::MAX_LENGTH);
 
-    gc::AllocKind kind = str->tenuredGetAllocKind();
+    gc::AllocKind kind = str->getAllocKind();
     if (str->isFatInline())
         JS_ASSERT(kind == gc::FINALIZE_FAT_INLINE_STRING);
     else if (str->isExternal())
@@ -1206,7 +1178,7 @@ AssertValidSymbolPtr(JSContext *cx, JS::Symbol *sym)
     if (sym->runtimeFromAnyThread() != cx->runtime())
         return;
 
-    JS_ASSERT(cx->runtime()->isAtomsZone(sym->tenuredZone()));
+    JS_ASSERT(cx->runtime()->isAtomsZone(sym->zone()));
 
     JS_ASSERT(sym->runtimeFromMainThread() == cx->runtime());
     JS_ASSERT(sym->isAligned());
@@ -1215,7 +1187,7 @@ AssertValidSymbolPtr(JSContext *cx, JS::Symbol *sym)
         AssertValidStringPtr(cx, desc);
     }
 
-    JS_ASSERT(sym->tenuredGetAllocKind() == gc::FINALIZE_SYMBOL);
+    JS_ASSERT(sym->getAllocKind() == gc::FINALIZE_SYMBOL);
 }
 
 void
@@ -1261,6 +1233,15 @@ void
 MarkTypeObjectFromIon(JSRuntime *rt, types::TypeObject **typep)
 {
     gc::MarkTypeObjectUnbarriered(&rt->gc.marker, typep, "write barrier");
+}
+
+bool
+ThrowUninitializedLexical(JSContext *cx)
+{
+    ScriptFrameIter iter(cx);
+    RootedScript script(cx, iter.script());
+    ReportUninitializedLexical(cx, script, iter.pc());
+    return false;
 }
 
 } // namespace jit

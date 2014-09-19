@@ -725,15 +725,17 @@ Debugger::wrapDebuggeeValue(JSContext *cx, MutableHandleValue vp)
         if (!optObj)
             return false;
 
-        // We handle two sentinel values: missing arguments (overloading
-        // JS_OPTIMIZED_ARGUMENTS) and optimized out slots (JS_OPTIMIZED_OUT).
+        // We handle three sentinel values: missing arguments (overloading
+        // JS_OPTIMIZED_ARGUMENTS), optimized out slots (JS_OPTIMIZED_OUT),
+        // and uninitialized bindings (JS_UNINITIALIZED_LEXICAL).
+        //
         // Other magic values should not have escaped.
         PropertyName *name;
-        if (vp.whyMagic() == JS_OPTIMIZED_ARGUMENTS) {
-            name = cx->names().missingArguments;
-        } else {
-            MOZ_ASSERT(vp.whyMagic() == JS_OPTIMIZED_OUT);
-            name = cx->names().optimizedOut;
+        switch (vp.whyMagic()) {
+          case JS_OPTIMIZED_ARGUMENTS:   name = cx->names().missingArguments; break;
+          case JS_OPTIMIZED_OUT:         name = cx->names().optimizedOut; break;
+          case JS_UNINITIALIZED_LEXICAL: name = cx->names().uninitialized; break;
+          default: MOZ_CRASH("Unsupported magic value escaped to Debugger");
         }
 
         RootedValue trueVal(cx, BooleanValue(true));
@@ -1337,21 +1339,6 @@ Debugger::onSingleStep(JSContext *cx, MutableHandleValue vp)
             JS_ASSERT(stepperCount <= trappingScript->stepModeCount());
     }
 #endif
-
-    /* Preserve the debuggee's iterValue while handlers run. */
-    class PreserveIterValue {
-        JSContext *cx;
-        RootedValue savedIterValue;
-
-      public:
-        explicit PreserveIterValue(JSContext *cx) : cx(cx), savedIterValue(cx, cx->iterValue) {
-            cx->iterValue.setMagic(JS_NO_ITER_VALUE);
-        }
-        ~PreserveIterValue() {
-            cx->iterValue = savedIterValue;
-        }
-    };
-    PreserveIterValue piv(cx);
 
     /* Call all the onStep handlers we found. */
     for (JSObject **p = frames.begin(); p != frames.end(); p++) {
@@ -3007,7 +2994,7 @@ const JSFunctionSpec Debugger::methods[] = {
     JS_FN("hasDebuggee", Debugger::hasDebuggee, 1, 0),
     JS_FN("getDebuggees", Debugger::getDebuggees, 0, 0),
     JS_FN("getNewestFrame", Debugger::getNewestFrame, 0, 0),
-    JS_FN("clearAllBreakpoints", Debugger::clearAllBreakpoints, 1, 0),
+    JS_FN("clearAllBreakpoints", Debugger::clearAllBreakpoints, 0, 0),
     JS_FN("findScripts", Debugger::findScripts, 1, 0),
     JS_FN("findAllGlobals", Debugger::findAllGlobals, 0, 0),
     JS_FN("makeGlobalObjectReference", Debugger::makeGlobalObjectReference, 1, 0),

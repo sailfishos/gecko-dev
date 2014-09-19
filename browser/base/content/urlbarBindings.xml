@@ -150,7 +150,12 @@
           var action = this._parseActionUrl(aValue);
 
           if (action) {
-            returnValue = action.param;
+            switch (action.type) {
+              case "switchtab": {
+                returnValue = action.params.url;
+                break;
+              }
+            }
           }
 
           // Set the actiontype only if the user is not overriding actions.
@@ -174,10 +179,22 @@
       </method>
 
       <field name="_formattingEnabled">true</field>
+      <field name="_searchServiceInitialized">false</field>
       <method name="formatValue">
         <body><![CDATA[
           if (!this._formattingEnabled || this.focused)
             return;
+
+          // Initialize the search service asynchronously if that hasn't
+          // happened yet. We will need it to highlight search terms later.
+          if (!this._searchServiceInitialized) {
+            Services.search.init(() => {
+              this._searchServiceInitialized = true;
+              this.formatValue();
+            });
+
+            return;
+          }
 
           let controller = this.editor.selectionController;
           let selection = controller.getSelection(controller.SELECTION_URLSECONDARY);
@@ -213,20 +230,29 @@
             subDomain = domain.slice(0, -baseDomain.length);
           }
 
-          let rangeLength = preDomain.length + subDomain.length;
-          if (rangeLength) {
+          function addSelectionRange(start, end) {
             let range = document.createRange();
-            range.setStart(textNode, 0);
-            range.setEnd(textNode, rangeLength);
+            range.setStart(textNode, start);
+            range.setEnd(textNode, end);
             selection.addRange(range);
           }
 
+          let rangeLength = preDomain.length + subDomain.length;
+          if (rangeLength) {
+            addSelectionRange(0, rangeLength);
+          }
+
+          let result = Services.search.parseSubmissionURL(value);
           let startRest = preDomain.length + domain.length;
+
+          // Format search terms in the URL, if any.
+          if (result.termsOffset > -1 && result.termsLength) {
+            addSelectionRange(startRest, result.termsOffset);
+            startRest = result.termsOffset + result.termsLength;
+          }
+
           if (startRest < value.length) {
-            let range = document.createRange();
-            range.setStart(textNode, startRest);
-            range.setEnd(textNode, value.length);
-            selection.addRange(range);
+            addSelectionRange(startRest, value.length);
           }
         ]]></body>
       </method>
@@ -279,9 +305,9 @@
 
           let matchLastLocationChange = true;
           if (action) {
-            url = action.param;
             if (this.hasAttribute("actiontype")) {
               if (action.type == "switchtab") {
+                url = action.params.url;
                 this.handleRevert();
                 let prevTab = gBrowser.selectedTab;
                 if (switchToTabHavingURI(url) &&
@@ -606,6 +632,7 @@
                 this.timeout = this._prefs.getIntPref(aData);
                 break;
               case "formatting.enabled":
+                this._clearFormatting();
                 this._formattingEnabled = this._prefs.getBoolPref(aData);
                 break;
               case "trimURLs":
@@ -717,9 +744,28 @@
           if (!aUrl.startsWith("moz-action:"))
             return null;
 
-          // url is in the format moz-action:ACTION,PARAM
-          let [, action, param] = aUrl.match(/^moz-action:([^,]+),(.*)$/);
-          return {type: action, param: param};
+          // URL is in the format moz-action:ACTION,PARAMS
+          // Where PARAMS is a JSON encoded object.
+          aUrl = decodeURI(aUrl);
+          let [, type, params] = aUrl.match(/^moz-action:([^,]+),(.*)$/);
+
+          let action = {
+            type: type,
+          };
+
+          try {
+            action.params = JSON.parse(params);
+          } catch (e) {
+            // If this failed, we assume that params is not a JSON object, and
+            // is instead just a flat string. This will happen when
+            // UnifiedComplete is disabled - in which case, the param is always
+            // a URL.
+            action.params = {
+              url: params,
+            }
+          }
+
+          return action;
         ]]></body>
       </method>
 
@@ -888,13 +934,13 @@
             var where = whereToOpenLink(aEvent, false, true);
             searchBar.doSearch(search, where);
           }
-          ]]></body>
-        </method>
-      </implementation>
-    </binding>
+        ]]></body>
+      </method>
+    </implementation>
+  </binding>
 
-    <binding id="urlbar-rich-result-popup" extends="chrome://global/content/bindings/autocomplete.xml#autocomplete-rich-result-popup">
-      <implementation>
+  <binding id="urlbar-rich-result-popup" extends="chrome://global/content/bindings/autocomplete.xml#autocomplete-rich-result-popup">
+    <implementation>
       <field name="_maxResults">0</field>
 
       <field name="_bundle" readonly="true">
@@ -1582,7 +1628,7 @@
   <binding id="bad-content-notification" extends="chrome://global/content/bindings/notification.xml#popup-notification">
     <content>
       <xul:hbox align="start">
-        <xul:image class="popup-notification-icon" xbl:inherits="popupid"/>
+        <xul:image class="popup-notification-icon" xbl:inherits="popupid,mixedblockdisabled,trackingblockdisabled"/>
         <xul:vbox>
           <!-- header -->
           <xul:vbox>
@@ -1604,7 +1650,7 @@
                   &mixedContentBlocked2.message;
                 </xul:description>
                 <xul:description class="popup-notification-item-message"
-                  xbl:inherits="popupid">
+                  xbl:inherits="popupid,mixedblockdisabled">
                   &mixedContentBlocked2.moreinfo;
                 </xul:description>
                 <xul:label anonid="mixedContent.helplink"
@@ -1626,8 +1672,7 @@
                 </xul:menupopup>
               </xul:button>
             </xul:hbox>
-            <xul:hbox anonid="mixedContentProtectionDisabled" hidden="true"
-                      class="popup-notification-footer" xbl:inherits="popupid">
+            <xul:hbox class="popup-notification-footer" xbl:inherits="popupid,mixedblockdisabled">
               <xul:description class="popup-notification-item-message popup-notification-item-message-critical" xbl:inherits="popupid">
                   &mixedContentBlocked2.disabled.message;
               </xul:description>
@@ -1643,7 +1688,7 @@
                   &trackingContentBlocked.message;
                 </xul:description>
                 <xul:description class="popup-notification-item-message"
-                  xbl:inherits="popupid">
+                  xbl:inherits="popupid,trackingblockdisabled">
                   &trackingContentBlocked.moreinfo;
                 </xul:description>
                 <xul:label anonid="trackingContent.helplink"
@@ -1655,16 +1700,17 @@
                 sizetopopup="none">
                 <xul:menupopup>
                   <xul:menuitem anonid="trackingContentAction.unblock"
-                    hidden="true" label="&trackingContentBlocked.unblock.label2;"
+                    hidden="true" label="&trackingContentBlocked.unblock2.label;"
+                    accesskey="&trackingContentBlocked.unblock2.accesskey;"
                     oncommand="document.getBindingParent(this).disableTrackingContentProtection();"/>
                   <xul:menuitem anonid="trackingContentAction.block"
                     hidden="true" label="&trackingContentBlocked.block.label;"
+                    accesskey="&trackingContentBlocked.block.accesskey;"
                     oncommand="document.getBindingParent(this).enableTrackingContentProtection();"/>
                 </xul:menupopup>
               </xul:button>
             </xul:hbox>
-            <xul:hbox anonid="trackingContentProtectionDisabled" hidden="true"
-                      class="popup-notification-footer" xbl:inherits="popupid">
+            <xul:hbox class="popup-notification-footer" xbl:inherits="popupid,trackingblockdisabled">
               <xul:description class="popup-notification-item-message popup-notification-item-message-critical" xbl:inherits="popupid">
                 &trackingContentBlocked.disabled.message;
                 </xul:description>
@@ -1702,10 +1748,6 @@
         document.getAnonymousElementByAttribute(this, "anonid",
           "mixedContentAction.block");
       </field>
-      <field name="_mixedContentProtectionDisabledWarning">
-        document.getAnonymousElementByAttribute(this, "anonid",
-          "mixedContentProtectionDisabled")
-      </field>
       <field name="_mixedContentHelpLink">
         document.getAnonymousElementByAttribute(this, "anonid",
           "mixedContent.helplink")
@@ -1727,10 +1769,6 @@
       <field name="_trackingContentBlock">
         document.getAnonymousElementByAttribute(this, "anonid",
           "trackingContentAction.block");
-      </field>
-      <field name="_trackingContentProtectionDisabledWarning">
-        document.getAnonymousElementByAttribute(this, "anonid",
-          "trackingContentProtectionDisabled")
       </field>
       <field name="_trackingContentHelpLink">
         document.getAnonymousElementByAttribute(this, "anonid",
@@ -1761,9 +1799,9 @@
         }
         if (this.notification.options.state &
             Ci.nsIWebProgressListener.STATE_LOADED_MIXED_ACTIVE_CONTENT) {
+          this.setAttribute("mixedblockdisabled", true);
           _mixedContent.hidden = false;
           _mixedContentBlock.hidden = false;
-          _mixedContentProtectionDisabledWarning.hidden = false;
           _mixedContentHelpLink.href =
             Services.urlFormatter.formatURLPref("app.support.baseURL")
               + "mixed-content";
@@ -1773,7 +1811,7 @@
           _doorhangerTitle.value =
             gNavigatorBundle.getFormattedString(
               "badContentBlocked.blocked.message", [this._brandShortName]);
-          _trackingContent.hidden = false
+          _trackingContent.hidden = false;
           _trackingContentUnblock.hidden = false;
           _trackingContentHelpLink.href =
             Services.urlFormatter.formatURLPref("app.support.baseURL")
@@ -1781,9 +1819,9 @@
         }
         if (this.notification.options.state &
             Ci.nsIWebProgressListener.STATE_LOADED_TRACKING_CONTENT) {
-          _trackingContent.hidden = false
+          this.setAttribute("trackingblockdisabled", true);
+          _trackingContent.hidden = false;
           _trackingContentBlock.hidden = false;
-          _trackingContentProtectionDisabledWarning.hidden = false;
           _trackingContentHelpLink.href =
             Services.urlFormatter.formatURLPref("app.support.baseURL")
               + "tracking-protection";
@@ -1954,7 +1992,7 @@
             return;
           }
 
-          let host = gPluginHandler._getHostFromPrincipal(this.notification.browser.contentWindow.document.nodePrincipal);
+          let host = this.notification.options.host;
           this._setupDescription("pluginActivateMultiple.message", null, host);
 
           var showBox = document.getAnonymousElementByAttribute(this, "anonid", "plugin-notification-showbox");

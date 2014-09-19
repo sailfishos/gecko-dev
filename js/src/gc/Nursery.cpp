@@ -109,7 +109,8 @@ js::Nursery::updateDecommittedRegion()
 void
 js::Nursery::enable()
 {
-    JS_ASSERT(isEmpty());
+    MOZ_ASSERT(isEmpty());
+    MOZ_ASSERT(!runtime()->gc.isVerifyPreBarriersEnabled());
     if (isEnabled())
         return;
     numActiveChunks_ = 1;
@@ -223,7 +224,7 @@ js::Nursery::allocateSlots(JSObject *obj, uint32_t nslots)
     JS_ASSERT(nslots > 0);
 
     if (!IsInsideNursery(obj))
-        return obj->pod_malloc<HeapSlot>(nslots);
+        return obj->zone()->pod_malloc<HeapSlot>(nslots);
 
     if (nslots > MaxNurserySlots)
         return allocateHugeSlots(obj->zone(), nslots);
@@ -248,10 +249,10 @@ js::Nursery::reallocateSlots(JSObject *obj, HeapSlot *oldSlots,
                              uint32_t oldCount, uint32_t newCount)
 {
     if (!IsInsideNursery(obj))
-        return obj->pod_realloc<HeapSlot>(oldSlots, oldCount, newCount);
+        return obj->zone()->pod_realloc<HeapSlot>(oldSlots, oldCount, newCount);
 
     if (!isInside(oldSlots)) {
-        HeapSlot *newSlots = obj->pod_realloc<HeapSlot>(oldSlots, oldCount, newCount);
+        HeapSlot *newSlots = obj->zone()->pod_realloc<HeapSlot>(oldSlots, oldCount, newCount);
         if (newSlots && oldSlots != newSlots) {
             hugeSlots.remove(oldSlots);
             /* If this put fails, we will only leak the slots. */
@@ -322,7 +323,6 @@ class MinorCollectionTracer : public JSTracer
     bool savedRuntimeNeedBarrier;
     AutoDisableProxyCheck disableStrictProxyChecking;
     AutoEnterOOMUnsafeRegion oomUnsafeRegion;
-    ArrayBufferVector liveArrayBuffers;
 
     /* Insert the given relocation entry into the list of things to visit. */
     MOZ_ALWAYS_INLINE void insertIntoFixupList(RelocationOverlay *entry) {
@@ -353,25 +353,10 @@ class MinorCollectionTracer : public JSTracer
          * allocate their objects marked.
          */
         rt->setNeedsIncrementalBarrier(false);
-
-        /*
-         * We use the live array buffer lists to track traced buffers so we can
-         * sweep their dead views. Incremental collection also use these lists,
-         * so we may need to save and restore their contents here.
-         */
-        if (rt->gc.state() != NO_INCREMENTAL) {
-            for (GCCompartmentsIter c(rt); !c.done(); c.next()) {
-                if (!ArrayBufferObject::saveArrayBufferList(c, liveArrayBuffers))
-                    CrashAtUnhandlableOOM("OOM while saving live array buffers");
-                ArrayBufferObject::resetArrayBufferList(c);
-            }
-        }
     }
 
     ~MinorCollectionTracer() {
         runtime()->setNeedsIncrementalBarrier(savedRuntimeNeedBarrier);
-        if (runtime()->gc.state() != NO_INCREMENTAL)
-            ArrayBufferObject::restoreArrayBufferLists(liveArrayBuffers);
     }
 };
 
@@ -813,10 +798,6 @@ js::Nursery::collect(JSRuntime *rt, JS::gcreason::Reason reason, TypeObjectList 
     rt->newObjectCache.clearNurseryObjects(rt);
     TIME_END(clearNewObjectCache);
 
-    TIME_START(clearRegExpTestCache);
-    rt->regExpTestCache.purge();
-    TIME_END(clearRegExpTestCache);
-
     // Most of the work is done here. This loop iterates over objects that have
     // been moved to the major heap. If these objects have any outgoing pointers
     // to the nursery, then those nursery objects get moved as well, until no
@@ -829,8 +810,8 @@ js::Nursery::collect(JSRuntime *rt, JS::gcreason::Reason reason, TypeObjectList 
     // Update the array buffer object's view lists.
     TIME_START(sweepArrayBufferViewList);
     for (CompartmentsIter c(rt, SkipAtoms); !c.done(); c.next()) {
-        if (!c->gcLiveArrayBuffers.empty())
-            ArrayBufferObject::sweep(c);
+        if (c->innerViews.needsSweepAfterMinorGC())
+            c->innerViews.sweepAfterMinorGC(rt);
     }
     TIME_END(sweepArrayBufferViewList);
 

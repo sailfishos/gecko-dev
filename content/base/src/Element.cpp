@@ -1576,7 +1576,8 @@ Element::SetSMILOverrideStyleRule(css::StyleRule* aStyleRule,
     if (doc) {
       nsCOMPtr<nsIPresShell> shell = doc->GetShell();
       if (shell) {
-        shell->RestyleForAnimation(this, eRestyle_Self);
+        shell->RestyleForAnimation(this,
+          eRestyle_StyleAttribute | eRestyle_ChangeAnimationPhase);
       }
     }
   }
@@ -2744,6 +2745,33 @@ Element::SetTokenList(nsIAtom* aAtom, nsIVariant* aValue)
   ErrorResult rv;
   itemType->SetValue(string, rv);
   return rv.ErrorCode();
+}
+
+Element*
+Element::Closest(const nsAString& aSelector, ErrorResult& aResult)
+{
+  nsCSSSelectorList* selectorList = ParseSelectorList(aSelector, aResult);
+  if (!selectorList) {
+    // Either we failed (and aResult already has the exception), or this
+    // is a pseudo-element-only selector that matches nothing.
+    return nullptr;
+  }
+  OwnerDoc()->FlushPendingLinkUpdates();
+  TreeMatchContext matchingContext(false,
+                                   nsRuleWalker::eRelevantLinkUnvisited,
+                                   OwnerDoc(),
+                                   TreeMatchContext::eNeverMatchVisited);
+  matchingContext.SetHasSpecifiedScope();
+  matchingContext.AddScopeElement(this);
+  for (nsINode* node = this; node; node = node->GetParentNode()) {
+    if (node->IsElement() &&
+        nsCSSRuleProcessor::SelectorListMatches(node->AsElement(),
+                                                matchingContext,
+                                                selectorList)) {
+      return node->AsElement();
+    }
+  }
+  return nullptr;
 }
 
 bool

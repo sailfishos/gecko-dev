@@ -101,6 +101,7 @@ public:
     , mCallbackMonitor("WebRTCCamera.CallbackMonitor")
     , mRotation(0)
     , mBackCamera(false)
+    , mOrientationChanged(true) // Correct the orientation at first time takePhoto.
     , mCaptureIndex(aIndex)
     , mMediaSource(aMediaSource)
     , mMonitor("WebRTCCamera.Monitor")
@@ -197,9 +198,14 @@ public:
   void StopImpl();
   void SnapshotImpl();
   void RotateImage(layers::Image* aImage, uint32_t aWidth, uint32_t aHeight);
+  uint32_t ConvertPixelFormatToFOURCC(int aFormat);
   void Notify(const mozilla::hal::ScreenConfiguration& aConfiguration);
 
   nsresult TakePhoto(PhotoCallback* aCallback) MOZ_OVERRIDE;
+
+  // It sets the correct photo orientation via camera parameter according to
+  // current screen orientation.
+  nsresult UpdatePhotoOrientation();
 
 #endif
 
@@ -244,6 +250,7 @@ private:
   int mRotation;
   int mCameraAngle; // See dom/base/ScreenOrientation.h
   bool mBackCamera;
+  bool mOrientationChanged; // True when screen rotates.
 #else
   webrtc::VideoEngine* mVideoEngine; // Weak reference, don't free.
   webrtc::ViEBase* mViEBase;

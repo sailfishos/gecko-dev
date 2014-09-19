@@ -36,8 +36,43 @@ public:
 
   imgFrame();
 
-  nsresult Init(int32_t aX, int32_t aY, int32_t aWidth, int32_t aHeight, SurfaceFormat aFormat, uint8_t aPaletteDepth = 0);
-  nsresult Optimize();
+  /**
+   * Initialize this imgFrame with an empty surface and prepare it for being
+   * written to by a decoder.
+   *
+   * This is appropriate for use with decoded images, but it should not be used
+   * when drawing content into an imgFrame, as it may use a different graphics
+   * backend than normal content drawing.
+   */
+  nsresult InitForDecoder(const nsIntRect& aRect,
+                          SurfaceFormat aFormat,
+                          uint8_t aPaletteDepth = 0);
+
+  nsresult InitForDecoder(const nsIntSize& aSize,
+                          SurfaceFormat aFormat,
+                          uint8_t aPaletteDepth = 0)
+  {
+    return InitForDecoder(nsIntRect(0, 0, aSize.width, aSize.height),
+                          aFormat, aPaletteDepth);
+  }
+
+
+  /**
+   * Initialize this imgFrame with a new surface and draw the provided
+   * gfxDrawable into it.
+   *
+   * This is appropriate to use when drawing content into an imgFrame, as it
+   * uses the same graphics backend as normal content drawing. The downside is
+   * that the underlying surface may not be stored in a volatile buffer on all
+   * platforms, and raw access to the surface (using RawAccessRef() or
+   * LockImageData()) may be much more expensive than in the InitForDecoder()
+   * case.
+   */
+  nsresult InitWithDrawable(gfxDrawable* aDrawable,
+                            const nsIntSize& aSize,
+                            const SurfaceFormat aFormat,
+                            GraphicsFilter aFilter,
+                            uint32_t aImageFlags);
 
   DrawableFrameRef DrawableRef();
   RawAccessFrameRef RawAccessRef();
@@ -81,6 +116,7 @@ public:
   nsresult UnlockImageData();
 
   void SetDiscardable();
+  void SetOptimizable();
 
   TemporaryRef<SourceSurface> GetSurface();
   TemporaryRef<DrawTarget> GetDrawTarget();
@@ -113,6 +149,8 @@ public:
 private: // methods
 
   ~imgFrame();
+
+  nsresult Optimize();
 
   struct SurfaceWithFormat {
     nsRefPtr<gfxDrawable> mDrawable;
@@ -168,6 +206,7 @@ private: // data
   bool mCompositingFailed;
   bool mNonPremult;
   bool mDiscardable;
+  bool mOptimizable;
 
   /** Have we called DiscardTracker::InformAllocation()? */
   bool mInformedDiscardTracker;

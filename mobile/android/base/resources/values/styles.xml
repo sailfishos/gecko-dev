@@ -63,8 +63,10 @@
     </style>
 
     <style name="Widget.Home.HistoryListView">
-        <item name="android:paddingLeft">32dp</item>
-        <item name="android:paddingRight">32dp</item>
+        <item name="android:paddingTop">0dip</item>
+        <item name="android:paddingRight">0dip</item>
+        <item name="android:paddingLeft">0dip</item>
+        <item name="topDivider">true</item>
         <item name="android:scrollbarStyle">outsideOverlay</item>
     </style>
 
@@ -406,10 +408,6 @@
         <item name="android:gravity">center_horizontal</item>
         <item name="android:clipChildren">false</item>
         <item name="android:clipToPadding">false</item>
-    </style>
-
-    <style name="UrlBar.ImageButton.TabCount.NewTablet">
-        <item name="android:background">@drawable/new_tablet_tabs_count</item>
     </style>
 
     <!-- URL bar -->
@@ -771,8 +769,6 @@
         <item name="android:paddingTop">17dp</item>
         <item name="android:paddingBottom">17dp</item>
         <item name="android:focusableInTouchMode">false</item>
-        <item name="android:clickable">true</item>
-        <item name="android:background">@drawable/overlay_share_button_background</item>
         <item name="android:layout_margin">0dp</item>
     </style>
 
@@ -780,8 +776,7 @@
         <item name="android:drawablePadding">15dp</item>
         <item name="android:maxLines">1</item>
         <item name="android:textSize">14sp</item>
-        <item name="android:textColor">@color/text_color_overlaybtn</item>
-        <item name="android:ellipsize">marquee</item>
+        <item name="android:textColor">@color/overlay_btn_text</item>
     </style>
 
     <style name="TabInput"></style>
@@ -825,25 +820,32 @@
     <style name="RemoteTabsPanelFrame">
         <item name="android:paddingLeft">32dp</item>
         <item name="android:paddingRight">32dp</item>
-        <item name="android:paddingTop">48dp</item>
+        <item name="android:paddingTop">@dimen/home_remote_tabs_top_padding</item>
         <item name="android:orientation">vertical</item>
+        <item name="android:layout_gravity">center_horizontal</item>
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
     </style>
 
     <style name="RemoteTabsPanelItem">
         <item name="android:layout_gravity">center</item>
         <item name="android:gravity">center</item>
         <item name="android:layout_marginBottom">16dp</item>
+        <item name="android:maxWidth">320dp</item>
     </style>
 
     <style name="RemoteTabsPanelItem.TextAppearance">
         <item name="android:textColor">#777777</item>
         <item name="android:textSize">16sp</item>
-        <item name="android:lineSpacingMultiplier">1.35</item>
+        <item name="android:lineSpacingMultiplier">1.25</item>
+        <item name="android:layout_marginLeft">8dp</item>
+        <item name="android:layout_marginRight">8dp</item>
     </style>
 
     <style name="RemoteTabsPanelItem.TextAppearance.Header">
         <item name="android:textColor">#222222</item>
         <item name="android:textSize">20sp</item>
+        <item name="android:layout_marginBottom">8dp</item>
     </style>
 
     <style name="RemoteTabsPanelItem.TextAppearance.Linkified">

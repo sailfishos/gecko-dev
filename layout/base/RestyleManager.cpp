@@ -501,11 +501,6 @@ RestyleManager::RecomputePosition(nsIFrame* aFrame)
 void
 RestyleManager::StyleChangeReflow(nsIFrame* aFrame, nsChangeHint aHint)
 {
-  // If the frame hasn't even received an initial reflow, then don't
-  // send it a style-change reflow!
-  if (aFrame->GetStateBits() & NS_FRAME_FIRST_REFLOW)
-    return;
-
   nsIPresShell::IntrinsicDirty dirtyType;
   if (aHint & nsChangeHint_ClearDescendantIntrinsics) {
     NS_ASSERTION(aHint & nsChangeHint_ClearAncestorIntrinsics,
@@ -518,18 +513,23 @@ RestyleManager::StyleChangeReflow(nsIFrame* aFrame, nsChangeHint aHint)
   }
 
   nsFrameState dirtyBits;
-  if (aHint & nsChangeHint_NeedDirtyReflow) {
+  if (aFrame->GetStateBits() & NS_FRAME_FIRST_REFLOW) {
+    dirtyBits = nsFrameState(0);
+  } else if (aHint & nsChangeHint_NeedDirtyReflow) {
     dirtyBits = NS_FRAME_IS_DIRTY;
   } else {
     dirtyBits = NS_FRAME_HAS_DIRTY_CHILDREN;
   }
 
+  // If we're not going to clear any intrinsic sizes on the frames, and
+  // there are no dirty bits to set, then there's nothing to do.
+  if (dirtyType == nsIPresShell::eResize && !dirtyBits)
+    return;
+
   do {
     mPresContext->PresShell()->FrameNeedsReflow(aFrame, dirtyType, dirtyBits);
     aFrame = nsLayoutUtils::GetNextContinuationOrIBSplitSibling(aFrame);
   } while (aFrame);
-
-  return;
 }
 
 void
@@ -2449,12 +2449,14 @@ ElementRestyler::Restyle(nsRestyleHint aRestyleHint)
   // overall decision.
   RestyleResult result = RestyleResult(0);
   uint32_t swappedStructs = 0;
+  nsIFrame* providerFrame = nullptr;
 
   nsRestyleHint thisRestyleHint = aRestyleHint;
 
   bool haveMoreContinuations = false;
   for (nsIFrame* f = mFrame; f; ) {
-    RestyleResult thisResult = RestyleSelf(f, thisRestyleHint, &swappedStructs);
+    RestyleResult thisResult =
+      RestyleSelf(f, thisRestyleHint, &swappedStructs, &providerFrame);
 
     if (thisResult != eRestyleResult_Stop) {
       // Calls to RestyleSelf for later same-style continuations must not
@@ -2493,8 +2495,10 @@ ElementRestyler::Restyle(nsRestyleHint aRestyleHint)
     MOZ_ASSERT(mFrame->StyleContext() == oldContext,
                "frame should have been left with its old style context");
 
-    nsStyleContext* newParent =
-      mFrame->GetParentStyleContextFrame()->StyleContext();
+    MOZ_ASSERT(providerFrame, "RestyleSelf should have supplied a providerFrame "
+                              "if it returned eRestyleResult_Stop");
+
+    nsStyleContext* newParent = providerFrame->StyleContext();
 
     if (oldContext->GetParent() != newParent) {
       // If we received eRestyleResult_Stop, then the old style context was
@@ -2664,7 +2668,8 @@ ElementRestyler::ComputeRestyleResultFromNewContext(nsIFrame* aSelf,
 ElementRestyler::RestyleResult
 ElementRestyler::RestyleSelf(nsIFrame* aSelf,
                              nsRestyleHint aRestyleHint,
-                             uint32_t* aSwappedStructs)
+                             uint32_t* aSwappedStructs,
+                             nsIFrame** aProviderFrame)
 {
   MOZ_ASSERT(!(aRestyleHint & eRestyle_LaterSiblings),
              "eRestyle_LaterSiblings must not be part of aRestyleHint");
@@ -2702,7 +2707,7 @@ ElementRestyler::RestyleSelf(nsIFrame* aSelf,
   nsStyleContext* parentContext;
   // Get the frame providing the parent style context.  If it is a
   // child, then resolve the provider first.
-  nsIFrame* providerFrame = aSelf->GetParentStyleContextFrame();
+  nsIFrame* const providerFrame = aSelf->GetParentStyleContextFrame();
   bool isChild = providerFrame && providerFrame->GetParent() == aSelf;
   if (!isChild) {
     if (providerFrame)
@@ -2745,6 +2750,22 @@ ElementRestyler::RestyleSelf(nsIFrame* aSelf,
     // non-inherited hints were, so assume the worst.
     mParentFrameHintsNotHandledForDescendants =
       nsChangeHint_Hints_NotHandledForDescendants;
+  }
+
+  if (*aProviderFrame && *aProviderFrame != providerFrame) {
+    // XXX Uncomment when bug 979133 (restyle logging) lands.
+    // LOG_RESTYLE_CONTINUE("we had different provider frame from the previous "
+    //                      "same-style continuation");
+    result = eRestyleResult_Continue;
+  }
+
+  // We don't support using eRestyle_StyleAttribute when pseudo-elements
+  // are involved.  This is mostly irrelevant since style attribute
+  // changes on pseudo-elements are very rare, though it does mean we
+  // don't get the optimization for table elements.
+  if (pseudoType != nsCSSPseudoElements::ePseudo_NotPseudoElement &&
+      (aRestyleHint & eRestyle_StyleAttribute)) {
+    aRestyleHint = (aRestyleHint & ~eRestyle_StyleAttribute) | eRestyle_Self;
   }
 
   // do primary context
@@ -3023,6 +3044,10 @@ ElementRestyler::RestyleSelf(nsIFrame* aSelf,
         aSelf->SetAdditionalStyleContext(contextIndex, newExtraContext);
       }
     }
+  }
+
+  if (result == eRestyleResult_Stop) {
+    *aProviderFrame = providerFrame;
   }
 
   return result;

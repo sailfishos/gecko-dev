@@ -105,6 +105,10 @@ static inline mozilla::css::Side operator++(mozilla::css::Side& side, int) {
 #define NS_STYLE_USER_MODIFY_READ_WRITE  1
 #define NS_STYLE_USER_MODIFY_WRITE_ONLY  2
 
+// -moz-window-dragging
+#define NS_STYLE_WINDOW_DRAGGING_DRAG    0
+#define NS_STYLE_WINDOW_DRAGGING_NO_DRAG 1
+
 // box-align
 #define NS_STYLE_BOX_ALIGN_STRETCH     0
 #define NS_STYLE_BOX_ALIGN_START       1
@@ -821,9 +825,11 @@ static inline mozilla::css::Side operator++(mozilla::css::Side& side, int) {
 #define NS_STYLE_TEXT_SIZE_ADJUST_AUTO          1
 
 // See nsStyleText
-#define NS_STYLE_TEXT_ORIENTATION_AUTO          0
-#define NS_STYLE_TEXT_ORIENTATION_UPRIGHT       1
-#define NS_STYLE_TEXT_ORIENTATION_SIDEWAYS      2
+#define NS_STYLE_TEXT_ORIENTATION_MIXED          0
+#define NS_STYLE_TEXT_ORIENTATION_UPRIGHT        1
+#define NS_STYLE_TEXT_ORIENTATION_SIDEWAYS_RIGHT 2
+#define NS_STYLE_TEXT_ORIENTATION_SIDEWAYS_LEFT  3 /* placeholder, not yet parsed */
+#define NS_STYLE_TEXT_ORIENTATION_SIDEWAYS       4 /* placeholder, not yet parsed */
 
 // See nsStyleText
 #define NS_STYLE_TEXT_COMBINE_UPRIGHT_NONE        0

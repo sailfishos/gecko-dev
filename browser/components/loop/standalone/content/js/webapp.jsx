@@ -15,8 +15,7 @@ loop.webapp = (function($, _, OT, mozL10n) {
   loop.config.serverUrl = loop.config.serverUrl || "http://localhost:5000";
 
   var sharedModels = loop.shared.models,
-      sharedViews = loop.shared.views,
-      baseServerUrl = loop.config.serverUrl;
+      sharedViews = loop.shared.views;
 
   /**
    * App router.
@@ -120,6 +119,16 @@ loop.webapp = (function($, _, OT, mozL10n) {
     }
   });
 
+  var ConversationBranding = React.createClass({
+    render: function() {
+      return (
+        <h1 className="standalone-header-title">
+          <strong>{mozL10n.get("brandShortname")}</strong> {mozL10n.get("clientShortname")}
+        </h1>
+      );
+    }
+  });
+
   var ConversationHeader = React.createClass({
     render: function() {
       var cx = React.addons.classSet;
@@ -138,10 +147,8 @@ loop.webapp = (function($, _, OT, mozL10n) {
 
       return (
         /* jshint ignore:start */
-        <header className="standalone-header container-box">
-          <h1 className="standalone-header-title">
-            <strong>{mozL10n.get("brandShortname")}</strong> {mozL10n.get("clientShortname")}
-          </h1>
+        <header className="standalone-header header-box container-box">
+          <ConversationBranding />
           <div className="loop-logo" title="Firefox WebRTC! logo"></div>
           <h3 className="call-url">
             {conversationUrl}
@@ -161,6 +168,68 @@ loop.webapp = (function($, _, OT, mozL10n) {
         <div className="standalone-footer container-box">
           <div title="Mozilla Logo" className="footer-logo"></div>
         </div>
+      );
+    }
+  });
+
+  var PendingConversationView = React.createClass({
+    getInitialState: function() {
+      return {
+        callState: this.props.callState || "connecting"
+      }
+    },
+
+    propTypes: {
+      websocket: React.PropTypes.instanceOf(loop.CallConnectionWebSocket)
+                      .isRequired
+    },
+
+    componentDidMount: function() {
+      this.props.websocket.listenTo(this.props.websocket, "progress:alerting",
+                                    this._handleRingingProgress);
+    },
+
+    _handleRingingProgress: function() {
+      this.setState({callState: "ringing"});
+    },
+
+    _cancelOutgoingCall: function() {
+      this.props.websocket.cancel();
+    },
+
+    render: function() {
+      var callState = mozL10n.get("call_progress_" + this.state.callState + "_description");
+      return (
+        /* jshint ignore:start */
+        <div className="container">
+          <div className="container-box">
+            <header className="pending-header header-box">
+              <ConversationBranding />
+            </header>
+
+            <div id="cameraPreview"></div>
+
+            <div id="messages"></div>
+
+            <p className="standalone-btn-label">
+              {callState}
+            </p>
+
+            <div className="btn-pending-cancel-group btn-group">
+              <div className="flex-padding-1"></div>
+              <button className="btn btn-large btn-cancel"
+                      onClick={this._cancelOutgoingCall} >
+                <span className="standalone-call-btn-text">
+                  {mozL10n.get("initiate_call_cancel_button")}
+                </span>
+              </button>
+              <div className="flex-padding-1"></div>
+            </div>
+          </div>
+
+          <ConversationFooter />
+        </div>
+        /* jshint ignore:end */
       );
     }
   });
@@ -262,8 +331,8 @@ loop.webapp = (function($, _, OT, mozL10n) {
       var privacy_notice_name = mozL10n.get("privacy_notice_link_text");
 
       var tosHTML = mozL10n.get("legal_text_and_links", {
-        "terms_of_use_url": "<a target=_blank href='" +
-          "https://accounts.firefox.com/legal/terms'>" + tos_link_name + "</a>",
+        "terms_of_use_url": "<a target=_blank href='/legal/terms'>" +
+          tos_link_name + "</a>",
         "privacy_notice_url": "<a target=_blank href='" +
           "https://www.mozilla.org/privacy/'>" + privacy_notice_name + "</a>"
       });
@@ -286,7 +355,7 @@ loop.webapp = (function($, _, OT, mozL10n) {
             <ConversationHeader
               urlCreationDateString={this.state.urlCreationDateString} />
 
-            <p className="standalone-call-btn-label">
+            <p className="standalone-btn-label">
               {mozL10n.get("initiate_call_button_label2")}
             </p>
 
@@ -344,32 +413,109 @@ loop.webapp = (function($, _, OT, mozL10n) {
   });
 
   /**
-   * Webapp Router.
+   * This view manages the outgoing conversation views - from
+   * call initiation through to the actual conversation and call end.
+   *
+   * At the moment, it does more than that, these parts need refactoring out.
    */
-  var WebappRouter = loop.shared.router.BaseConversationRouter.extend({
-    routes: {
-      "":                    "home",
-      "unsupportedDevice":   "unsupportedDevice",
-      "unsupportedBrowser":  "unsupportedBrowser",
-      "call/expired":        "expired",
-      "call/ongoing/:token": "loadConversation",
-      "call/:token":         "initiate"
+  var OutgoingConversationView = React.createClass({
+    propTypes: {
+      client: React.PropTypes.instanceOf(loop.StandaloneClient).isRequired,
+      conversation: React.PropTypes.instanceOf(sharedModels.ConversationModel)
+                         .isRequired,
+      helper: React.PropTypes.instanceOf(WebappHelper).isRequired,
+      notifications: React.PropTypes.instanceOf(sharedModels.NotificationCollection)
+                          .isRequired,
+      sdk: React.PropTypes.object.isRequired
     },
 
-    initialize: function(options) {
-      this.helper = options.helper;
-      if (!this.helper) {
-        throw new Error("WebappRouter requires a helper object");
+    getInitialState: function() {
+      return {
+        callStatus: "start"
+      };
+    },
+
+    componentDidMount: function() {
+      this.props.conversation.on("call:outgoing", this.startCall, this);
+      this.props.conversation.on("call:outgoing:setup", this.setupOutgoingCall, this);
+      this.props.conversation.on("change:publishedStream", this._checkConnected, this);
+      this.props.conversation.on("change:subscribedStream", this._checkConnected, this);
+      this.props.conversation.on("session:ended", this._endCall, this);
+      this.props.conversation.on("session:peer-hungup", this._onPeerHungup, this);
+      this.props.conversation.on("session:network-disconnected", this._onNetworkDisconnected, this);
+      this.props.conversation.on("session:connection-error", this._notifyError, this);
+    },
+
+    componentDidUnmount: function() {
+      this.props.conversation.off(null, null, this);
+    },
+
+    /**
+     * Renders the conversation views.
+     */
+    render: function() {
+      switch (this.state.callStatus) {
+        case "failure":
+        case "end":
+        case "start": {
+          return (
+            <StartConversationView
+              model={this.props.conversation}
+              notifications={this.props.notifications}
+              client={this.props.client}
+            />
+          );
+        }
+        case "pending": {
+          return <PendingConversationView websocket={this._websocket} />;
+        }
+        case "connected": {
+          return (
+            <sharedViews.ConversationView
+              sdk={this.props.sdk}
+              model={this.props.conversation}
+              video={{enabled: this.props.conversation.hasVideoStream("outgoing")}}
+            />
+          );
+        }
+        case "expired": {
+          return (
+            <CallUrlExpiredView helper={this.props.helper} />
+          );
+        }
+        default: {
+          return <HomeView />
+        }
       }
-
-      // Load default view
-      this.loadReactComponent(<HomeView />);
-
-      this.listenTo(this._conversation, "timeout", this._onTimeout);
     },
 
-    _onSessionExpired: function() {
-      this.navigate("/call/expired", {trigger: true});
+    /**
+     * Notify the user that the connection was not possible
+     * @param {{code: number, message: string}} error
+     */
+    _notifyError: function(error) {
+      console.log(error);
+      this.props.notifications.errorL10n("connection_error_see_console_notification");
+      this.setState({callStatus: "end"});
+    },
+
+    /**
+     * Peer hung up. Notifies the user and ends the call.
+     *
+     * Event properties:
+     * - {String} connectionId: OT session id
+     */
+    _onPeerHungup: function() {
+      this.props.notifications.warnL10n("peer_ended_conversation2");
+      this.setState({callStatus: "end"});
+    },
+
+    /**
+     * Network disconnected. Notifies the user and ends the call.
+     */
+    _onNetworkDisconnected: function() {
+      this.props.notifications.warnL10n("network_disconnected");
+      this.setState({callStatus: "end"});
     },
 
     /**
@@ -377,33 +523,31 @@ loop.webapp = (function($, _, OT, mozL10n) {
      * server.
      */
     setupOutgoingCall: function() {
-      var loopToken = this._conversation.get("loopToken");
+      var loopToken = this.props.conversation.get("loopToken");
       if (!loopToken) {
-        this._notifications.errorL10n("missing_conversation_info");
-        this.navigate("home", {trigger: true});
+        this.props.notifications.errorL10n("missing_conversation_info");
+        this.setState({callStatus: "failure"});
       } else {
-        var callType = this._conversation.get("selectedCallType");
+        var callType = this.props.conversation.get("selectedCallType");
 
-        this._conversation.once("call:outgoing", this.startCall, this);
-
-        this._client.requestCallInfo(this._conversation.get("loopToken"),
-                                     callType, function(err, sessionData) {
+        this.props.client.requestCallInfo(this.props.conversation.get("loopToken"),
+                                          callType, function(err, sessionData) {
           if (err) {
             switch (err.errno) {
               // loop-server sends 404 + INVALID_TOKEN (errno 105) whenever a token is
               // missing OR expired; we treat this information as if the url is always
               // expired.
               case 105:
-                this._onSessionExpired();
+                this.setState({callStatus: "expired"});
                 break;
               default:
-                this._notifications.errorL10n("missing_conversation_info");
-                this.navigate("home", {trigger: true});
+                this.props.notifications.errorL10n("missing_conversation_info");
+                this.setState({callStatus: "failure"});
                 break;
             }
             return;
           }
-          this._conversation.outgoing(sessionData);
+          this.props.conversation.outgoing(sessionData);
         }.bind(this));
       }
     },
@@ -412,13 +556,15 @@ loop.webapp = (function($, _, OT, mozL10n) {
      * Actually starts the call.
      */
     startCall: function() {
-      var loopToken = this._conversation.get("loopToken");
+      var loopToken = this.props.conversation.get("loopToken");
       if (!loopToken) {
-        this._notifications.errorL10n("missing_conversation_info");
-        this.navigate("home", {trigger: true});
-      } else {
-        this._setupWebSocketAndCallView(loopToken);
+        this.props.notifications.errorL10n("missing_conversation_info");
+        this.setState({callStatus: "failure"});
+        return;
       }
+
+      this._setupWebSocket();
+      this.setState({callStatus: "pending"});
     },
 
     /**
@@ -427,20 +573,17 @@ loop.webapp = (function($, _, OT, mozL10n) {
      *
      * @param {string} loopToken The session token to use.
      */
-    _setupWebSocketAndCallView: function(loopToken) {
+    _setupWebSocket: function() {
       this._websocket = new loop.CallConnectionWebSocket({
-        url: this._conversation.get("progressURL"),
-        websocketToken: this._conversation.get("websocketToken"),
-        callId: this._conversation.get("callId"),
+        url: this.props.conversation.get("progressURL"),
+        websocketToken: this.props.conversation.get("websocketToken"),
+        callId: this.props.conversation.get("callId"),
       });
       this._websocket.promiseConnect().then(function() {
-        this.navigate("call/ongoing/" + loopToken, {
-          trigger: true
-        });
       }.bind(this), function() {
         // XXX Not the ideal response, but bug 1047410 will be replacing
         // this by better "call failed" UI.
-        this._notifications.errorL10n("cannot_start_call_session_not_ready");
+        this.props.notifications.errorL10n("cannot_start_call_session_not_ready");
         return;
       }.bind(this));
 
@@ -454,7 +597,7 @@ loop.webapp = (function($, _, OT, mozL10n) {
     _checkConnected: function() {
       // Check we've had both local and remote streams connected before
       // sending the media up message.
-      if (this._conversation.streamsConnected()) {
+      if (this.props.conversation.streamsConnected()) {
         this._websocket.mediaUp();
       }
     },
@@ -464,105 +607,84 @@ loop.webapp = (function($, _, OT, mozL10n) {
      * it if appropraite.
      */
     _handleWebSocketProgress: function(progressData) {
-      if (progressData.state === "terminated") {
-        // XXX Before adding more states here, the basic protocol messages to the
-        // server need implementing on both the standalone and desktop side.
-        // These are covered by bug 1045643, but also check the dependencies on
-        // bug 1034041.
-        //
-        // Failure to do this will break desktop - standalone call setup. We're
-        // ok to handle reject, as that is a specific message from the destkop via
-        // the server.
-        switch (progressData.reason) {
-          case "reject":
-            this._handleCallRejected();
+      switch(progressData.state) {
+        case "connecting": {
+          // We just go straight to the connected view as the media gets set up.
+          this.setState({callStatus: "connected"});
+          break;
+        }
+        case "terminated": {
+          // At the moment, we show the same text regardless
+          // of the terminated reason.
+          this._handleCallTerminated(progressData.reason);
+          break;
         }
       }
     },
 
     /**
      * Handles call rejection.
-     * XXX This should really display the call failed view - bug 1046959
-     * will implement this.
-     */
-    _handleCallRejected: function() {
-      this.endCall();
-      this._notifications.errorL10n("call_timeout_notification_text");
-    },
-
-    /**
-     * @override {loop.shared.router.BaseConversationRouter.endCall}
-     */
-    endCall: function() {
-      var route = "home";
-      if (this._conversation.get("loopToken")) {
-        route = "call/" + this._conversation.get("loopToken");
-      }
-      this.navigate(route, {trigger: true});
-    },
-
-    _onTimeout: function() {
-      this._notifications.errorL10n("call_timeout_notification_text");
-    },
-
-    /**
-     * Default entry point.
-     */
-    home: function() {
-      this.loadReactComponent(<HomeView />);
-    },
-
-    unsupportedDevice: function() {
-      this.loadReactComponent(<UnsupportedDeviceView />);
-    },
-
-    unsupportedBrowser: function() {
-      this.loadReactComponent(<UnsupportedBrowserView />);
-    },
-
-    expired: function() {
-      this.loadReactComponent(CallUrlExpiredView({helper: this.helper}));
-    },
-
-    /**
-     * Loads conversation launcher view, setting the received conversation token
-     * to the current conversation model. If a session is currently established,
-     * terminates it first.
      *
-     * @param  {String} loopToken Loop conversation token.
+     * @param {String} reason The reason the call was terminated.
      */
-    initiate: function(loopToken) {
-      // Check if a session is ongoing; if so, terminate it
-      if (this._conversation.get("ongoing")) {
-        this._conversation.endSession();
+    _handleCallTerminated: function(reason) {
+      this.setState({callStatus: "end"});
+      // For reasons other than cancel, display some notification text.
+      if (reason !== "cancel") {
+        // XXX This should really display the call failed view - bug 1046959
+        // will implement this.
+        this.props.notifications.errorL10n("call_timeout_notification_text");
       }
-      this._conversation.set("loopToken", loopToken);
-
-      var startView = StartConversationView({
-        model: this._conversation,
-        notifications: this._notifications,
-        client: this._client
-      });
-      this._conversation.once("call:outgoing:setup", this.setupOutgoingCall, this);
-      this._conversation.once("change:publishedStream", this._checkConnected, this);
-      this._conversation.once("change:subscribedStream", this._checkConnected, this);
-      this.loadReactComponent(startView);
     },
 
     /**
-     * Loads conversation establishment view.
-     *
+     * Handles ending a call by resetting the view to the start state.
      */
-    loadConversation: function(loopToken) {
-      if (!this._conversation.isSessionReady()) {
-        // User has loaded this url directly, actually setup the call.
-        return this.navigate("call/" + loopToken, {trigger: true});
+    _endCall: function() {
+      this.setState({callStatus: "end"});
+    },
+  });
+
+  /**
+   * Webapp Root View. This is the main, single, view that controls the display
+   * of the webapp page.
+   */
+  var WebappRootView = React.createClass({
+    propTypes: {
+      client: React.PropTypes.instanceOf(loop.StandaloneClient).isRequired,
+      conversation: React.PropTypes.instanceOf(sharedModels.ConversationModel)
+                         .isRequired,
+      helper: React.PropTypes.instanceOf(WebappHelper).isRequired,
+      notifications: React.PropTypes.instanceOf(sharedModels.NotificationCollection)
+                          .isRequired,
+      sdk: React.PropTypes.object.isRequired
+    },
+
+    getInitialState: function() {
+      return {
+        unsupportedDevice: this.props.helper.isIOS(navigator.platform),
+        unsupportedBrowser: !this.props.sdk.checkSystemRequirements(),
+      };
+    },
+
+    render: function() {
+      if (this.state.unsupportedDevice) {
+        return <UnsupportedDeviceView />;
+      } else if (this.state.unsupportedBrowser) {
+        return <UnsupportedBrowserView />;
+      } else if (this.props.conversation.get("loopToken")) {
+        return (
+          <OutgoingConversationView
+             client={this.props.client}
+             conversation={this.props.conversation}
+             helper={this.props.helper}
+             notifications={this.props.notifications}
+             sdk={this.props.sdk}
+          />
+        );
+      } else {
+        return <HomeView />;
       }
-      this.loadReactComponent(sharedViews.ConversationView({
-        sdk: OT,
-        model: this._conversation,
-        video: {enabled: this._conversation.hasVideoStream("outgoing")}
-      }));
     }
   });
 
@@ -580,6 +702,10 @@ loop.webapp = (function($, _, OT, mozL10n) {
 
     isIOS: function(platform) {
       return this._iOSRegex.test(platform);
+    },
+
+    locationHash: function() {
+      return window.location.hash;
     }
   };
 
@@ -589,24 +715,26 @@ loop.webapp = (function($, _, OT, mozL10n) {
   function init() {
     var helper = new WebappHelper();
     var client = new loop.StandaloneClient({
-      baseServerUrl: baseServerUrl
+      baseServerUrl: loop.config.serverUrl
     });
-    var router = new WebappRouter({
-      helper: helper,
-      notifications: new sharedModels.NotificationCollection(),
-      client: client,
-      conversation: new sharedModels.ConversationModel({}, {
-        sdk: OT,
-        pendingCallTimeout: loop.config.pendingCallTimeout
-      })
+    var notifications = new sharedModels.NotificationCollection();
+    var conversation = new sharedModels.ConversationModel({}, {
+      sdk: OT
     });
 
-    Backbone.history.start();
-    if (helper.isIOS(navigator.platform)) {
-      router.navigate("unsupportedDevice", {trigger: true});
-    } else if (!OT.checkSystemRequirements()) {
-      router.navigate("unsupportedBrowser", {trigger: true});
+    // Obtain the loopToken and pass it to the conversation
+    var locationHash = helper.locationHash();
+    if (locationHash) {
+      conversation.set("loopToken", locationHash.match(/\#call\/(.*)/)[1]);
     }
+
+    React.renderComponent(<WebappRootView
+      client={client}
+      conversation={conversation}
+      helper={helper}
+      notifications={notifications}
+      sdk={OT}
+    />, document.querySelector("#main"));
 
     // Set the 'lang' and 'dir' attributes to <html> when the page is translated
     document.documentElement.lang = mozL10n.language.code;
@@ -614,15 +742,16 @@ loop.webapp = (function($, _, OT, mozL10n) {
   }
 
   return {
-    baseServerUrl: baseServerUrl,
     CallUrlExpiredView: CallUrlExpiredView,
+    PendingConversationView: PendingConversationView,
     StartConversationView: StartConversationView,
+    OutgoingConversationView: OutgoingConversationView,
     HomeView: HomeView,
     UnsupportedBrowserView: UnsupportedBrowserView,
     UnsupportedDeviceView: UnsupportedDeviceView,
     init: init,
     PromoteFirefoxView: PromoteFirefoxView,
     WebappHelper: WebappHelper,
-    WebappRouter: WebappRouter
+    WebappRootView: WebappRootView
   };
 })(jQuery, _, window.OT, navigator.mozL10n);

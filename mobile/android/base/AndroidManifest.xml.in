@@ -40,7 +40,7 @@
     <uses-permission android:name="@ANDROID_PACKAGE_NAME@.permissions.PASSWORD_PROVIDER"/>
     <uses-permission android:name="@ANDROID_PACKAGE_NAME@.permissions.BROWSER_PROVIDER"/>
     <uses-permission android:name="@ANDROID_PACKAGE_NAME@.permissions.FORMHISTORY_PROVIDER"/>
-
+    <uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" />
 #ifdef MOZ_WEBSMS_BACKEND
     <!-- WebSMS -->
     <uses-permission android:name="android.permission.SEND_SMS"/>
@@ -147,6 +147,11 @@
 
             <intent-filter>
                 <action android:name="org.mozilla.gecko.ACTION_ALERT_CALLBACK" />
+            </intent-filter>
+
+            <intent-filter>
+                <action android:name="org.mozilla.gecko.GUEST_SESSION_INPROGRESS" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
 
             <!-- Notification API V2 -->

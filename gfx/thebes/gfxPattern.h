@@ -26,17 +26,14 @@ class gfxPattern MOZ_FINAL{
     NS_INLINE_DECL_REFCOUNTING(gfxPattern)
 
 public:
-    explicit gfxPattern(cairo_pattern_t *aPattern);
     explicit gfxPattern(const gfxRGBA& aColor);
-    explicit gfxPattern(gfxASurface *surface); // from another surface
     // linear
     gfxPattern(gfxFloat x0, gfxFloat y0, gfxFloat x1, gfxFloat y1); // linear
     gfxPattern(gfxFloat cx0, gfxFloat cy0, gfxFloat radius0,
                gfxFloat cx1, gfxFloat cy1, gfxFloat radius1); // radial
     gfxPattern(mozilla::gfx::SourceSurface *aSurface,
-               const mozilla::gfx::Matrix &aTransform); // Azure
+               const mozilla::gfx::Matrix &aPatternToUserSpace);
 
-    cairo_pattern_t *CairoPattern();
     void AddColorStop(gfxFloat offset, const gfxRGBA& c);
     void SetColorStops(mozilla::gfx::GradientStops* aStops);
 
@@ -55,7 +52,7 @@ public:
      * to the current transform.
      */
     mozilla::gfx::Pattern *GetPattern(mozilla::gfx::DrawTarget *aTarget,
-                                      mozilla::gfx::Matrix *aPatternTransform = nullptr);
+                                      mozilla::gfx::Matrix *aOriginalUserToDevice = nullptr);
     bool IsOpaque();
 
     enum GraphicsExtend {
@@ -96,32 +93,9 @@ public:
     /* returns TRUE if it succeeded */
     bool GetSolidColor(gfxRGBA& aColor);
 
-    already_AddRefed<gfxASurface> GetSurface();
-
-    bool IsAzure() { return !mPattern; }
-
-    mozilla::TemporaryRef<mozilla::gfx::SourceSurface> GetAzureSurface() { return mSourceSurface; }
-
 private:
     // Private destructor, to discourage deletion outside of Release():
     ~gfxPattern();
-
-    cairo_pattern_t *mPattern;
-
-    /**
-     * aPatternTransform is the cairo pattern transform --- from user space at
-     * the time the pattern was set, to pattern space.
-     * aCurrentTransform is the DrawTarget's CTM --- from user space to device
-     * space.
-     * aOriginalTransform, if non-null, is the DrawTarget's TM when
-     * aPatternTransform was set --- user space to device space. If null, then
-     * the DrawTarget's CTM is the same as the TM when aPatternTransfrom was set.
-     * This function sets aPatternTransform to the Azure pattern transform ---
-     * from pattern space to current DrawTarget user space.
-     */
-    void AdjustTransformForPattern(mozilla::gfx::Matrix &aPatternTransform,
-                                   const mozilla::gfx::Matrix &aCurrentTransform,
-                                   const mozilla::gfx::Matrix *aOriginalTransform);
 
     union {
       mozilla::AlignedStorage2<mozilla::gfx::ColorPattern> mColorPattern;
@@ -133,10 +107,10 @@ private:
     mozilla::gfx::Pattern *mGfxPattern;
 
     mozilla::RefPtr<mozilla::gfx::SourceSurface> mSourceSurface;
-    mozilla::gfx::Matrix mTransform;
+    mozilla::gfx::Matrix mPatternToUserSpace;
     mozilla::RefPtr<mozilla::gfx::GradientStops> mStops;
+    nsTArray<mozilla::gfx::GradientStop> mStopsList;
     GraphicsExtend mExtend;
-    mozilla::gfx::Filter mFilter;
 };
 
 #endif /* GFX_PATTERN_H */

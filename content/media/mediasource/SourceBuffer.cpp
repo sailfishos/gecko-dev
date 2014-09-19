@@ -1,3 +1,4 @@
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -8,7 +9,6 @@
 #include "AsyncEventRunner.h"
 #include "MediaSourceUtils.h"
 #include "TrackBuffer.h"
-#include "VideoUtils.h"
 #include "WebMBufferedParser.h"
 #include "mozilla/Endian.h"
 #include "mozilla/ErrorResult.h"
@@ -46,6 +46,9 @@ class ContainerParser {
 public:
   virtual ~ContainerParser() {}
 
+  // Return true if aData starts with an initialization segment.
+  // The base implementation exists only for debug logging and is expected
+  // to be called first from the overriding implementation.
   virtual bool IsInitSegmentPresent(const uint8_t* aData, uint32_t aLength)
   {
     MSE_DEBUG("ContainerParser(%p)::IsInitSegmentPresent aLength=%u [%x%x%x%x]",
@@ -57,6 +60,9 @@ public:
     return false;
   }
 
+  // Return true if aData starts with a media segment.
+  // The base implementation exists only for debug logging and is expected
+  // to be called first from the overriding implementation.
   virtual bool IsMediaSegmentPresent(const uint8_t* aData, uint32_t aLength)
   {
     MSE_DEBUG("ContainerParser(%p)::IsMediaSegmentPresent aLength=%u [%x%x%x%x]",
@@ -68,10 +74,22 @@ public:
     return false;
   }
 
+  // Parse aData to extract the start and end frame times from the media
+  // segment.  aData may not start on a parser sync boundary.  Return true
+  // if aStart and aEnd have been updated.
   virtual bool ParseStartAndEndTimestamps(const uint8_t* aData, uint32_t aLength,
-                                          double& aStart, double& aEnd)
+                                          int64_t& aStart, int64_t& aEnd)
   {
     return false;
+  }
+
+  // Compare aLhs and rHs, considering any error that may exist in the
+  // timestamps from the format's base representation.  Return true if aLhs
+  // == aRhs within the error epsilon.
+  virtual bool TimestampsFuzzyEqual(int64_t aLhs, int64_t aRhs)
+  {
+    NS_WARNING("Using default ContainerParser::TimestampFuzzyEquals implementation");
+    return aLhs == aRhs;
   }
 
   virtual const nsTArray<uint8_t>& InitData()
@@ -91,6 +109,8 @@ public:
   WebMContainerParser()
     : mParser(0), mOffset(0)
   {}
+
+  static const unsigned NS_PER_USEC = 1000;
 
   bool IsInitSegmentPresent(const uint8_t* aData, uint32_t aLength)
   {
@@ -132,8 +152,8 @@ public:
     return false;
   }
 
-  virtual bool ParseStartAndEndTimestamps(const uint8_t* aData, uint32_t aLength,
-                                          double& aStart, double& aEnd)
+  bool ParseStartAndEndTimestamps(const uint8_t* aData, uint32_t aLength,
+                                  int64_t& aStart, int64_t& aEnd)
   {
     bool initSegment = IsInitSegmentPresent(aData, aLength);
     if (initSegment) {
@@ -180,18 +200,23 @@ public:
       return false;
     }
 
-    static const double NS_PER_S = 1e9;
-    aStart = mapping[0].mTimecode / NS_PER_S;
-    aEnd = mapping[endIdx].mTimecode / NS_PER_S;
-    aEnd += (mapping[endIdx].mTimecode - mapping[endIdx - 1].mTimecode) / NS_PER_S;
+    uint64_t frameDuration = mapping[endIdx].mTimecode - mapping[endIdx - 1].mTimecode;
+    aStart = mapping[0].mTimecode / NS_PER_USEC;
+    aEnd = (mapping[endIdx].mTimecode + frameDuration) / NS_PER_USEC;
 
-    MSE_DEBUG("WebMContainerParser(%p)::ParseStartAndEndTimestamps: [%f, %f] [fso=%lld, leo=%lld, l=%u endIdx=%u]",
+    MSE_DEBUG("WebMContainerParser(%p)::ParseStartAndEndTimestamps: [%lld, %lld] [fso=%lld, leo=%lld, l=%u endIdx=%u]",
               this, aStart, aEnd, mapping[0].mSyncOffset, mapping[endIdx].mEndOffset, mapping.Length(), endIdx);
 
     mapping.RemoveElementsAt(0, endIdx + 1);
     mOverlappedMapping.AppendElements(mapping);
 
     return true;
+  }
+
+  bool TimestampsFuzzyEqual(int64_t aLhs, int64_t aRhs)
+  {
+    int64_t error = mParser.GetTimecodeScale() / NS_PER_USEC;
+    return llabs(aLhs - aRhs) <= error * 2;
   }
 
 private:
@@ -220,19 +245,12 @@ public:
       return false;
     }
 
-    if (Preferences::GetBool("media.mediasource.allow_init_moov", false)) {
-      if (aData[4] == 'm' && aData[5] == 'o' && aData[6] == 'o' &&
-          aData[7] == 'v') {
-        return true;
-      }
-    }
-
     return aData[4] == 'f' && aData[5] == 't' && aData[6] == 'y' &&
            aData[7] == 'p';
   }
 
-  virtual bool ParseStartAndEndTimestamps(const uint8_t* aData, uint32_t aLength,
-                                          double& aStart, double& aEnd)
+  bool ParseStartAndEndTimestamps(const uint8_t* aData, uint32_t aLength,
+                                  int64_t& aStart, int64_t& aEnd)
   {
     bool initSegment = IsInitSegmentPresent(aData, aLength);
     if (initSegment) {
@@ -265,9 +283,9 @@ public:
     if (compositionRange.IsNull()) {
       return false;
     }
-    aStart = static_cast<double>(compositionRange.start) / USECS_PER_S;
-    aEnd = static_cast<double>(compositionRange.end) / USECS_PER_S;
-    MSE_DEBUG("MP4ContainerParser(%p)::ParseStartAndEndTimestamps: [%f, %f]",
+    aStart = compositionRange.start;
+    aEnd = compositionRange.end;
+    MSE_DEBUG("MP4ContainerParser(%p)::ParseStartAndEndTimestamps: [%lld, %lld]",
               this, aStart, aEnd);
     return true;
   }
@@ -488,6 +506,8 @@ SourceBuffer::SourceBuffer(MediaSource* aMediaSource, const nsACString& aType)
 {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(aMediaSource);
+  mEvictionThreshold = Preferences::GetUint("media.mediasource.eviction_threshold",
+                                            75 * (1 << 20));
   mParser = ContainerParser::CreateForMIMEType(aType);
   mTrackBuffer = new TrackBuffer(aMediaSource->GetDecoder(), aType);
   MSE_DEBUG("SourceBuffer(%p)::SourceBuffer: Create mParser=%p mTrackBuffer=%p",
@@ -562,15 +582,9 @@ void
 SourceBuffer::AppendData(const uint8_t* aData, uint32_t aLength, ErrorResult& aRv)
 {
   MSE_DEBUG("SourceBuffer(%p)::AppendData(aLength=%u)", this, aLength);
-  if (!IsAttached() || mUpdating) {
-    aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
+  if (!PrepareAppend(aRv)) {
     return;
   }
-  if (mMediaSource->ReadyState() == MediaSourceReadyState::Ended) {
-    mMediaSource->SetReadyState(MediaSourceReadyState::Open);
-  }
-  // TODO: Run coded frame eviction algorithm.
-  // TODO: Test buffer full flag.
   StartUpdating();
   // TODO: Run more of the buffer append algorithm asynchronously.
   if (mParser->IsInitSegmentPresent(aData, aLength)) {
@@ -590,13 +604,13 @@ SourceBuffer::AppendData(const uint8_t* aData, uint32_t aLength, ErrorResult& aR
     aRv.Throw(NS_ERROR_FAILURE);
     return;
   }
-  double start, end;
+  int64_t start, end;
   if (mParser->ParseStartAndEndTimestamps(aData, aLength, start, end)) {
-    double lastStart, lastEnd;
+    int64_t lastStart, lastEnd;
     mTrackBuffer->LastTimestamp(lastStart, lastEnd);
     if (mParser->IsMediaSegmentPresent(aData, aLength) &&
-        (start < lastEnd || start - lastEnd > 0.1)) {
-      MSE_DEBUG("SourceBuffer(%p)::AppendData: Data last=[%f, %f] overlaps [%f, %f]",
+        !mParser->TimestampsFuzzyEqual(start, lastEnd)) {
+      MSE_DEBUG("SourceBuffer(%p)::AppendData: Data last=[%lld, %lld] overlaps [%lld, %lld]",
                 this, lastStart, lastEnd, start, end);
 
       // This data is earlier in the timeline than data we have already
@@ -615,7 +629,7 @@ SourceBuffer::AppendData(const uint8_t* aData, uint32_t aLength, ErrorResult& aR
       mTrackBuffer->SetLastStartTimestamp(start);
     }
     mTrackBuffer->SetLastEndTimestamp(end);
-    MSE_DEBUG("SourceBuffer(%p)::AppendData: Segment last=[%f, %f] [%f, %f]",
+    MSE_DEBUG("SourceBuffer(%p)::AppendData: Segment last=[%lld, %lld] [%lld, %lld]",
               this, lastStart, lastEnd, start, end);
   }
   if (!mTrackBuffer->AppendData(aData, aLength)) {
@@ -626,6 +640,28 @@ SourceBuffer::AppendData(const uint8_t* aData, uint32_t aLength, ErrorResult& aR
     return;
   }
 
+  // Schedule the state machine thread to ensure playback starts
+  // if required when data is appended.
+  mMediaSource->GetDecoder()->ScheduleStateMachineThread();
+
+  // Run the final step of the buffer append algorithm asynchronously to
+  // ensure the SourceBuffer's updating flag transition behaves as required
+  // by the spec.
+  nsCOMPtr<nsIRunnable> event = NS_NewRunnableMethod(this, &SourceBuffer::StopUpdating);
+  NS_DispatchToMainThread(event);
+}
+
+bool
+SourceBuffer::PrepareAppend(ErrorResult& aRv)
+{
+  if (!IsAttached() || mUpdating) {
+    aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
+    return false;
+  }
+  if (mMediaSource->ReadyState() == MediaSourceReadyState::Ended) {
+    mMediaSource->SetReadyState(MediaSourceReadyState::Open);
+  }
+
   // Eviction uses a byte threshold. If the buffer is greater than the
   // number of bytes then data is evicted. The time range for this
   // eviction is reported back to the media source. It will then
@@ -633,8 +669,8 @@ SourceBuffer::AppendData(const uint8_t* aData, uint32_t aLength, ErrorResult& aR
   // about.
   // TODO: Make the eviction threshold smaller for audio-only streams.
   // TODO: Drive evictions off memory pressure notifications.
-  const uint32_t evict_threshold = 75 * (1 << 20);
-  bool evicted = mTrackBuffer->EvictData(evict_threshold);
+  // TODO: Consider a global eviction threshold  rather than per TrackBuffer.
+  bool evicted = mTrackBuffer->EvictData(mEvictionThreshold);
   if (evicted) {
     MSE_DEBUG("SourceBuffer(%p)::AppendData Evict; current buffered start=%f",
               this, GetBufferedStart());
@@ -644,15 +680,8 @@ SourceBuffer::AppendData(const uint8_t* aData, uint32_t aLength, ErrorResult& aR
     mMediaSource->NotifyEvicted(0.0, GetBufferedStart());
   }
 
-  // Run the final step of the buffer append algorithm asynchronously to
-  // ensure the SourceBuffer's updating flag transition behaves as required
-  // by the spec.
-  nsCOMPtr<nsIRunnable> event = NS_NewRunnableMethod(this, &SourceBuffer::StopUpdating);
-  NS_DispatchToMainThread(event);
-
-  // Schedule the state machine thread to ensure playback starts
-  // if required when data is appended.
-  mMediaSource->GetDecoder()->ScheduleStateMachineThread();
+  // TODO: Test buffer full flag.
+  return true;
 }
 
 double
@@ -686,6 +715,16 @@ SourceBuffer::Evict(double aStart, double aEnd)
   }
   mTrackBuffer->EvictBefore(evictTime);
 }
+
+#if defined(DEBUG)
+void
+SourceBuffer::Dump(const char* aPath)
+{
+  if (mTrackBuffer) {
+    mTrackBuffer->Dump(aPath);
+  }
+}
+#endif
 
 NS_IMPL_CYCLE_COLLECTION_INHERITED(SourceBuffer, DOMEventTargetHelper,
                                    mMediaSource)

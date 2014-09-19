@@ -388,7 +388,7 @@ public:
      * Like Paint, except that it only draws the source where pattern is
      * non-transparent.
      */
-    void Mask(gfxPattern *pattern);
+    void Mask(mozilla::gfx::SourceSurface *aSurface, const mozilla::gfx::Matrix& aTransform);
 
     /**
      * Shorthand for creating a pattern and calling the pattern-taking
@@ -529,17 +529,8 @@ public:
     void SetOperator(GraphicsOperator op);
     GraphicsOperator CurrentOperator() const;
 
-    /**
-     * MODE_ALIASED means that only pixels whose centers are in the drawn area
-     * should be modified, and they should be modified to take the value drawn
-     * at the pixel center.
-     */
-    enum AntialiasMode {
-        MODE_ALIASED,
-        MODE_COVERAGE
-    };
-    void SetAntialiasMode(AntialiasMode mode);
-    AntialiasMode CurrentAntialiasMode() const;
+    void SetAntialiasMode(mozilla::gfx::AntialiasMode mode);
+    mozilla::gfx::AntialiasMode CurrentAntialiasMode() const;
 
     /**
      ** Clipping
@@ -600,6 +591,9 @@ public:
     void PushGroupAndCopyBackground(gfxContentType content = gfxContentType::COLOR);
     already_AddRefed<gfxPattern> PopGroup();
     void PopGroupToSource();
+
+    mozilla::TemporaryRef<mozilla::gfx::SourceSurface>
+    PopGroupToSurface(mozilla::gfx::Matrix* aMatrix);
 
     /**
      ** Hit Testing - check if given point is in the current path

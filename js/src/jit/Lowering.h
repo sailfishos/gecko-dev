@@ -236,8 +236,8 @@ class LIRGenerator : public LIRGeneratorSpecific
     bool visitSetElementCache(MSetElementCache *ins);
     bool visitCallSetProperty(MCallSetProperty *ins);
     bool visitIteratorStart(MIteratorStart *ins);
-    bool visitIteratorNext(MIteratorNext *ins);
     bool visitIteratorMore(MIteratorMore *ins);
+    bool visitIsNoIter(MIsNoIter *ins);
     bool visitIteratorEnd(MIteratorEnd *ins);
     bool visitStringLength(MStringLength *ins);
     bool visitArgumentsLength(MArgumentsLength *ins);
@@ -279,6 +279,8 @@ class LIRGenerator : public LIRGeneratorSpecific
     bool visitObjectState(MObjectState *ins);
     bool visitArrayState(MArrayState *ins);
     bool visitUnknownValue(MUnknownValue *ins);
+    bool visitLexicalCheck(MLexicalCheck *ins);
+    bool visitThrowUninitializedLexical(MThrowUninitializedLexical *ins);
 };
 
 } // namespace jit

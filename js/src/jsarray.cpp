@@ -32,6 +32,7 @@
 #include "vm/NumericConversions.h"
 #include "vm/Shape.h"
 #include "vm/StringBuffer.h"
+#include "vm/TypedArrayCommon.h"
 
 #include "jsatominlines.h"
 
@@ -346,7 +347,7 @@ DeleteArrayElement(JSContext *cx, HandleObject obj, double index, bool *succeede
                     obj->markDenseElementsNotPacked(cx);
                     obj->setDenseElement(idx, MagicValue(JS_ELEMENTS_HOLE));
                 }
-                if (!js_SuppressDeletedElement(cx, obj, idx))
+                if (!SuppressDeletedElement(cx, obj, idx))
                     return false;
             }
         }
@@ -848,7 +849,7 @@ js::ObjectMayHaveExtraIndexedProperties(JSObject *obj)
             return true;
         if (obj->getDenseInitializedLength() > 0)
             return true;
-        if (obj->is<TypedArrayObject>())
+        if (IsAnyTypedArray(obj))
             return true;
     }
 
@@ -1377,12 +1378,14 @@ array_reverse(JSContext *cx, unsigned argc, Value *vp)
             orighi = obj->getDenseElement(hi);
             obj->setDenseElement(lo, orighi);
             if (orighi.isMagic(JS_ELEMENTS_HOLE) &&
-                !js_SuppressDeletedProperty(cx, obj, INT_TO_JSID(lo))) {
+                !SuppressDeletedProperty(cx, obj, INT_TO_JSID(lo)))
+            {
                 return false;
             }
             obj->setDenseElement(hi, origlo);
             if (origlo.isMagic(JS_ELEMENTS_HOLE) &&
-                !js_SuppressDeletedProperty(cx, obj, INT_TO_JSID(hi))) {
+                !SuppressDeletedProperty(cx, obj, INT_TO_JSID(hi)))
+            {
                 return false;
             }
         }
@@ -2071,7 +2074,7 @@ js::array_push(JSContext *cx, unsigned argc, Value *vp)
 
     /* Fast path for native objects with dense elements. */
     do {
-        if (!obj->isNative() || obj->is<TypedArrayObject>())
+        if (!obj->isNative() || IsAnyTypedArray(obj.get()))
             break;
 
         if (obj->is<ArrayObject>() && !obj->as<ArrayObject>().lengthIsWritable())
@@ -2211,7 +2214,7 @@ js::array_shift(JSContext *cx, unsigned argc, Value *vp)
         if (!SetLengthProperty(cx, obj, newlen))
             return false;
 
-        return js_SuppressDeletedProperty(cx, obj, INT_TO_JSID(newlen));
+        return SuppressDeletedProperty(cx, obj, INT_TO_JSID(newlen));
     }
 
     /* Steps 5, 10. */
@@ -3292,7 +3295,7 @@ js::NewDenseUnallocatedArray(ExclusiveContext *cx, uint32_t length, JSObject *pr
     return NewArray<0>(cx, length, proto, newKind);
 }
 
-ArrayObject * JS_FASTCALL
+ArrayObject *
 js::NewDenseArray(ExclusiveContext *cx, uint32_t length, HandleTypeObject type,
                   AllocatingBehaviour allocating)
 {

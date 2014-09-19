@@ -1480,7 +1480,7 @@ ThreadActor.prototype = {
     */
 
     // Find all innermost scripts matching the given location
-    let scripts = this.dbg.findScripts({
+    scripts = this.dbg.findScripts({
       url: aLocation.url,
       line: aLocation.line,
       innermost: true
@@ -2466,14 +2466,15 @@ PauseScopedActor.prototype = {
  *         resolved nsIURI
  */
 function resolveURIToLocalPath(aURI) {
+  let resolved;
   switch (aURI.scheme) {
     case "jar":
     case "file":
       return aURI;
 
     case "chrome":
-      let resolved = Cc["@mozilla.org/chrome/chrome-registry;1"].
-                     getService(Ci.nsIChromeRegistry).convertChromeURL(aURI);
+      resolved = Cc["@mozilla.org/chrome/chrome-registry;1"].
+                 getService(Ci.nsIChromeRegistry).convertChromeURL(aURI);
       return resolveURIToLocalPath(resolved);
 
     case "resource":
@@ -4620,9 +4621,10 @@ EnvironmentActor.prototype = {
       }
 
       let value = this.obj.getVariable(name);
-      // The slot is optimized out or arguments on a dead scope.
+      // The slot is optimized out, arguments on a dead scope, or an
+      // uninitialized binding.
       // FIXME: Need actual UI, bug 941287.
-      if (value && (value.optimizedOut || value.missingArguments)) {
+      if (value && (value.optimizedOut || value.missingArguments || value.uninitialized)) {
         continue;
       }
 
@@ -4850,6 +4852,7 @@ function ThreadSources(aThreadActor, aOptions, aAllowPredicate,
 ThreadSources._blackBoxedSources = new Set(["self-hosted"]);
 ThreadSources._prettyPrintedSources = new Map();
 
+
 /**
  * Matches strings of the form "foo.min.js" or "foo-min.js", etc. If the regular
  * expression matches, we can be fairly sure that the source is minified, and
@@ -5075,14 +5078,17 @@ ThreadSources.prototype = {
 
       return this._sourceMapsByGeneratedSource[url]
         .then((aSourceMap) => {
-          let { source: aSourceURL, line: aLine, column: aColumn } = aSourceMap.originalPositionFor({
-            line: line,
-            column: column
-          });
+          let {
+            source: aSourceURL,
+            line: aLine,
+            column: aColumn,
+            name: aName
+          } = aSourceMap.originalPositionFor({ line, column });
           return {
             url: aSourceURL,
             line: aLine,
-            column: aColumn
+            column: aColumn,
+            name: aName
           };
         })
         .then(null, error => {
@@ -5428,6 +5434,11 @@ function getInnerId(window) {
                 getInterface(Ci.nsIDOMWindowUtils).currentInnerWindowID;
 };
 
+function getInnerId(window) {
+  return window.QueryInterface(Ci.nsIInterfaceRequestor).
+                getInterface(Ci.nsIDOMWindowUtils).currentInnerWindowID;
+};
+
 const symbolProtoToString = typeof Symbol === "function" ? Symbol.prototype.toString : null;
 
 function getSymbolName(symbol) {
@@ -5435,14 +5446,9 @@ function getSymbolName(symbol) {
   return name || undefined;
 }
 
-exports.register = function(handle) {
+exports.cleanup = function() {
+  // Reset shared globals when reloading the debugger server
   ThreadActor.breakpointStore = new BreakpointStore();
-  ThreadSources._blackBoxedSources = new Set(["self-hosted"]);
-  ThreadSources._prettyPrintedSources = new Map();
-};
-
-exports.unregister = function(handle) {
-  ThreadActor.breakpointStore = null;
   ThreadSources._blackBoxedSources.clear();
   ThreadSources._prettyPrintedSources.clear();
-};
+}

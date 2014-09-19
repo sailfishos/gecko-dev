@@ -468,6 +468,9 @@ class GCRuntime
     void startVerifyPostBarriers();
     bool endVerifyPostBarriers();
     void finishVerifier();
+    bool isVerifyPreBarriersEnabled() const { return !!verifyPreData; }
+#else
+    bool isVerifyPreBarriersEnabled() const { return false; }
 #endif
 
   private:
@@ -545,6 +548,9 @@ class GCRuntime
 #ifdef DEBUG
     void checkForCompartmentMismatches();
 #endif
+
+    void callFinalizeCallbacks(FreeOp *fop, JSFinalizeStatus status) const;
+    void callMovingGCCallbacks() const;
 
   public:
     JSRuntime             *rt;

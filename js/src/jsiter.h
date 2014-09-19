@@ -183,7 +183,7 @@ bool
 CloseIterator(JSContext *cx, HandleObject iterObj);
 
 bool
-UnwindIteratorForException(JSContext *cx, js::HandleObject obj);
+UnwindIteratorForException(JSContext *cx, HandleObject obj);
 
 void
 UnwindIteratorForUncatchableException(JSContext *cx, JSObject *obj);
@@ -191,39 +191,31 @@ UnwindIteratorForUncatchableException(JSContext *cx, JSObject *obj);
 bool
 IteratorConstructor(JSContext *cx, unsigned argc, Value *vp);
 
-} /* namespace js */
+extern bool
+SuppressDeletedProperty(JSContext *cx, HandleObject obj, jsid id);
 
 extern bool
-js_SuppressDeletedProperty(JSContext *cx, js::HandleObject obj, jsid id);
+SuppressDeletedElement(JSContext *cx, HandleObject obj, uint32_t index);
 
 extern bool
-js_SuppressDeletedElement(JSContext *cx, js::HandleObject obj, uint32_t index);
-
-extern bool
-js_SuppressDeletedElements(JSContext *cx, js::HandleObject obj, uint32_t begin, uint32_t end);
+SuppressDeletedElements(JSContext *cx, HandleObject obj, uint32_t begin, uint32_t end);
 
 /*
- * IteratorMore() indicates whether another value is available. It might
- * internally call iterobj.next() and then cache the value until its
- * picked up by IteratorNext(). The value is cached in the current context.
+ * IteratorMore() returns the next iteration value. If no value is available,
+ * MagicValue(JS_NO_ITER_VALUE) is returned.
  */
 extern bool
-js_IteratorMore(JSContext *cx, js::HandleObject iterobj, js::MutableHandleValue rval);
+IteratorMore(JSContext *cx, HandleObject iterobj, MutableHandleValue rval);
 
 extern bool
-js_IteratorNext(JSContext *cx, js::HandleObject iterobj, js::MutableHandleValue rval);
-
-extern bool
-js_ThrowStopIteration(JSContext *cx);
-
-namespace js {
+ThrowStopIteration(JSContext *cx);
 
 /*
  * Create an object of the form { value: VALUE, done: DONE }.
  * ES6 draft from 2013-09-05, section 25.4.3.4.
  */
 extern JSObject *
-CreateItrResultObject(JSContext *cx, js::HandleValue value, bool done);
+CreateItrResultObject(JSContext *cx, HandleValue value, bool done);
 
 } /* namespace js */
 

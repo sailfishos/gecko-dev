@@ -407,6 +407,7 @@ Parser<FullParseHandler>::cloneParseTree(ParseNode *opn)
             Definition *dn = pn->pn_lexdef;
 
             pn->pn_link = dn->dn_uses;
+            pn->pn_dflags = opn->pn_dflags;
             dn->dn_uses = pn;
         } else if (opn->pn_expr) {
             NULLCHECK(pn->pn_expr = cloneParseTree(opn->pn_expr));
@@ -480,6 +481,11 @@ Parser<FullParseHandler>::cloneLeftHandSide(ParseNode *opn)
             } else if (opn2->isArity(PN_NULLARY)) {
                 JS_ASSERT(opn2->isKind(PNK_ELISION));
                 pn2 = cloneParseTree(opn2);
+            } else if (opn2->isKind(PNK_SPREAD)) {
+                ParseNode *target = cloneLeftHandSide(opn2->pn_kid);
+                if (!target)
+                    return nullptr;
+                pn2 = handler.new_<UnaryNode>(PNK_SPREAD, JSOP_NOP, opn2->pn_pos, target);
             } else {
                 pn2 = cloneLeftHandSide(opn2);
             }
@@ -508,7 +514,7 @@ Parser<FullParseHandler>::cloneLeftHandSide(ParseNode *opn)
         if (opn->isDefn()) {
             /* We copied some definition-specific state into pn. Clear it out. */
             pn->pn_cookie.makeFree();
-            pn->pn_dflags &= ~PND_BOUND;
+            pn->pn_dflags &= ~(PND_LET | PND_BOUND);
             pn->setDefn(false);
 
             handler.linkUseToDef(pn, (Definition *) opn);

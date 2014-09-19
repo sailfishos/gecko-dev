@@ -1783,6 +1783,14 @@ var gCSSProperties = {
     other_values: [ "none", "text", "element", "elements", "all", "toggle", "tri-state", "-moz-all", "-moz-none" ],
     invalid_values: []
   },
+  "-moz-window-dragging": {
+    domProp: "MozWindowDragging",
+    inherited: true,
+    type: CSS_TYPE_LONGHAND,
+    initial_values: [ "no-drag" ],
+    other_values: [ "drag" ],
+    invalid_values: [ "none" ]
+  },
   "-moz-window-shadow": {
     domProp: "MozWindowShadow",
     inherited: false,
@@ -4526,9 +4534,9 @@ if (SpecialPowers.getBoolPref("layout.css.vertical-text.enabled")) {
       domProp: "textOrientation",
       inherited: true,
       type: CSS_TYPE_LONGHAND,
-      initial_values: [ "auto" ],
-      other_values: [ "upright", "sideways" ],
-      invalid_values: [ "none", "3em" ]
+      initial_values: [ "mixed" ],
+      other_values: [ "upright", "sideways-right" ],
+      invalid_values: [ "none", "3em", "sideways", "sideways-left" ] /* sideways, sideways-left not yet supported */
     },
     "text-combine-upright": {
       domProp: "textCombineUpright",
