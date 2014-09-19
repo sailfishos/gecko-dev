@@ -209,16 +209,6 @@ ContainerPrepare(ContainerT* aContainer,
       continue;
     }
 
-    RenderTargetRect quad = layerToRender->GetLayer()->
-      TransformRectToRenderTarget(LayerPixel::FromUntyped(
-        layerToRender->GetLayer()->GetEffectiveVisibleRegion().GetBounds()));
-
-    Compositor* compositor = aManager->GetCompositor();
-    if (!layerToRender->GetLayer()->AsContainerLayer() &&
-        !quad.Intersects(compositor->ClipRectInLayersCoordinates(layerToRender->GetLayer(), clipRect))) {
-      continue;
-    }
-
     CULLING_LOG("Preparing sublayer %p\n", layerToRender->GetLayer());
 
     nsIntRegion savedVisibleRegion;

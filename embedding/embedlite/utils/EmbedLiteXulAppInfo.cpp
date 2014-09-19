@@ -195,3 +195,21 @@ EmbedLiteXulAppInfo::GetBrowserTabsRemoteAutostart(bool* aResult)
   *aResult = false;
   return NS_OK;
 }
+
+NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetKeyboardMayHaveIME(bool* aResult)
+{
+  *aResult = true;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+EmbedLiteXulAppInfo::GetAccessibilityEnabled(bool* aResult)
+{
+#ifdef ACCESSIBILITY
+  *aResult = GetAccService() != nullptr;
+#else
+  *aResult = false;
+#endif
+  return NS_OK;
+}
