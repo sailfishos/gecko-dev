@@ -193,7 +193,7 @@ gfxWindowsNativeDrawing::IsDoublePass()
         return false;
     if (surf->GetType() != gfxSurfaceType::Win32 &&
         surf->GetType() != gfxSurfaceType::Win32Printing) {
-	return true;
+        return true;
     }
     if ((surf->GetContentType() != gfxContentType::COLOR ||
          (surf->GetContentType() == gfxContentType::COLOR_ALPHA &&
@@ -271,7 +271,8 @@ gfxWindowsNativeDrawing::PaintToContext()
                                 gfxImageFormat::ARGB32);
 
         mContext->Save();
-        mContext->Translate(mNativeRect.TopLeft());
+        mContext->SetMatrix(
+          mContext->CurrentMatrix().Translate(mNativeRect.TopLeft()));
         mContext->NewPath();
         mContext->Rectangle(gfxRect(gfxPoint(0.0, 0.0), mNativeRect.Size()));
 

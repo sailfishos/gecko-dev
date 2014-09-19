@@ -194,7 +194,7 @@ private:
    * non-DEBUG components.  (Actually, even if it were removed,
    * sizeof(PLDHashTable) wouldn't change, due to struct padding.)
    */
-  uint16_t            mRecursionLevel;/* used to detect unsafe re-entry */
+  mutable uint16_t    mRecursionLevel;/* used to detect unsafe re-entry */
   uint32_t            mEntrySize;     /* number of bytes in an entry */
   uint32_t            mEntryCount;    /* number of entries in table */
   uint32_t            mRemovedCount;  /* removed entry sentinels in table */
@@ -271,6 +271,27 @@ public:
 #ifdef PL_DHASHMETER
   void DumpMeter(PLDHashEnumerator aDump, FILE* aFp);
 #endif
+
+  /**
+   * This is an iterator that works over the elements of PLDHashtable. It is not
+   * safe to modify the hashtable while it is being iterated over; on debug
+   * builds, attempting to do so will result in an assertion failure.
+   */
+  class Iterator {
+  public:
+    explicit Iterator(const PLDHashTable* aTable);
+    Iterator(const Iterator& aIterator);
+    ~Iterator();
+    bool HasMoreEntries() const;
+    PLDHashEntryHdr* NextEntry();
+
+  private:
+    const PLDHashTable* mTable;       /* Main table pointer */
+    char* mEntryAddr;                 /* Pointer to the next entry to check */
+    uint32_t mEntryOffset;            /* The number of the elements returned */
+  };
+
+  Iterator Iterate() const { return Iterator(this); }
 
 private:
   PLDHashEntryHdr* PL_DHASH_FASTCALL
@@ -385,12 +406,11 @@ struct PLDHashTableOps
 /*
  * Default implementations for the above ops.
  */
-NS_COM_GLUE void* PL_DHashAllocTable(PLDHashTable* aTable, uint32_t aNBytes);
+void* PL_DHashAllocTable(PLDHashTable* aTable, uint32_t aNBytes);
 
-NS_COM_GLUE void PL_DHashFreeTable(PLDHashTable* aTable, void* aPtr);
+void PL_DHashFreeTable(PLDHashTable* aTable, void* aPtr);
 
-NS_COM_GLUE PLDHashNumber PL_DHashStringKey(PLDHashTable* aTable,
-                                            const void* aKey);
+PLDHashNumber PL_DHashStringKey(PLDHashTable* aTable, const void* aKey);
 
 /* A minimal entry contains a keyHash header and a void key pointer. */
 struct PLDHashEntryStub
@@ -399,36 +419,33 @@ struct PLDHashEntryStub
   const void*     key;
 };
 
-NS_COM_GLUE PLDHashNumber PL_DHashVoidPtrKeyStub(PLDHashTable* aTable,
-                                                 const void* aKey);
+PLDHashNumber PL_DHashVoidPtrKeyStub(PLDHashTable* aTable, const void* aKey);
 
-NS_COM_GLUE bool PL_DHashMatchEntryStub(PLDHashTable* aTable,
-                                        const PLDHashEntryHdr* aEntry,
-                                        const void* aKey);
+bool PL_DHashMatchEntryStub(PLDHashTable* aTable,
+                            const PLDHashEntryHdr* aEntry,
+                            const void* aKey);
 
-NS_COM_GLUE bool PL_DHashMatchStringKey(PLDHashTable* aTable,
-                                        const PLDHashEntryHdr* aEntry,
-                                        const void* aKey);
+bool PL_DHashMatchStringKey(PLDHashTable* aTable,
+                            const PLDHashEntryHdr* aEntry,
+                            const void* aKey);
 
-NS_COM_GLUE void
+void
 PL_DHashMoveEntryStub(PLDHashTable* aTable,
                       const PLDHashEntryHdr* aFrom,
                       PLDHashEntryHdr* aTo);
 
-NS_COM_GLUE void PL_DHashClearEntryStub(PLDHashTable* aTable,
-                                        PLDHashEntryHdr* aEntry);
+void PL_DHashClearEntryStub(PLDHashTable* aTable, PLDHashEntryHdr* aEntry);
 
-NS_COM_GLUE void PL_DHashFreeStringKey(PLDHashTable* aTable,
-                                       PLDHashEntryHdr* aEntry);
+void PL_DHashFreeStringKey(PLDHashTable* aTable, PLDHashEntryHdr* aEntry);
 
-NS_COM_GLUE void PL_DHashFinalizeStub(PLDHashTable* aTable);
+void PL_DHashFinalizeStub(PLDHashTable* aTable);
 
 /*
  * If you use PLDHashEntryStub or a subclass of it as your entry struct, and
  * if your entries move via memcpy and clear via memset(0), you can use these
  * stub operations.
  */
-NS_COM_GLUE const PLDHashTableOps* PL_DHashGetStubOps(void);
+const PLDHashTableOps* PL_DHashGetStubOps(void);
 
 /*
  * Dynamically allocate a new PLDHashTable using malloc, initialize it using
@@ -436,7 +453,7 @@ NS_COM_GLUE const PLDHashTableOps* PL_DHashGetStubOps(void);
  * Note that the entry storage at aTable->mEntryStore will be allocated using
  * the aOps->allocTable callback.
  */
-NS_COM_GLUE PLDHashTable* PL_NewDHashTable(
+PLDHashTable* PL_NewDHashTable(
   const PLDHashTableOps* aOps, void* aData, uint32_t aEntrySize,
   uint32_t aLength = PL_DHASH_DEFAULT_INITIAL_LENGTH);
 
@@ -444,7 +461,7 @@ NS_COM_GLUE PLDHashTable* PL_NewDHashTable(
  * Finalize aTable's data, free its entry storage (via aTable->ops->freeTable),
  * and return the memory starting at aTable to the malloc heap.
  */
-NS_COM_GLUE void PL_DHashTableDestroy(PLDHashTable* aTable);
+void PL_DHashTableDestroy(PLDHashTable* aTable);
 
 /*
  * Initialize aTable with aOps, aData, aEntrySize, and aCapacity. The table's
@@ -455,7 +472,7 @@ NS_COM_GLUE void PL_DHashTableDestroy(PLDHashTable* aTable);
  * This function will crash if it can't allocate enough memory, or if
  * |aEntrySize| and/or |aLength| are too large.
  */
-NS_COM_GLUE void PL_DHashTableInit(
+void PL_DHashTableInit(
   PLDHashTable* aTable, const PLDHashTableOps* aOps, void* aData,
   uint32_t aEntrySize, uint32_t aLength = PL_DHASH_DEFAULT_INITIAL_LENGTH);
 
@@ -463,7 +480,7 @@ NS_COM_GLUE void PL_DHashTableInit(
  * Initialize aTable. This is the same as PL_DHashTableInit, except that it
  * returns a boolean indicating success, rather than crashing on failure.
  */
-MOZ_WARN_UNUSED_RESULT NS_COM_GLUE bool PL_DHashTableInit(
+MOZ_WARN_UNUSED_RESULT bool PL_DHashTableInit(
   PLDHashTable* aTable, const PLDHashTableOps* aOps, void* aData,
   uint32_t aEntrySize, const mozilla::fallible_t&,
   uint32_t aLength = PL_DHASH_DEFAULT_INITIAL_LENGTH);
@@ -474,7 +491,7 @@ MOZ_WARN_UNUSED_RESULT NS_COM_GLUE bool PL_DHashTableInit(
  * pointers dangling).  If you want to burn cycles clearing aTable, it's up to
  * your code to call memset.
  */
-NS_COM_GLUE void PL_DHashTableFinish(PLDHashTable* aTable);
+void PL_DHashTableFinish(PLDHashTable* aTable);
 
 /*
  * To lookup a key in table, call:
@@ -506,7 +523,7 @@ NS_COM_GLUE void PL_DHashTableFinish(PLDHashTable* aTable);
  * the entry is marked so that PL_DHASH_ENTRY_IS_FREE(entry).  This operation
  * returns null unconditionally; you should ignore its return value.
  */
-NS_COM_GLUE PLDHashEntryHdr* PL_DHASH_FASTCALL
+PLDHashEntryHdr* PL_DHASH_FASTCALL
 PL_DHashTableOperate(PLDHashTable* aTable, const void* aKey,
                      PLDHashOperator aOp);
 
@@ -519,10 +536,9 @@ PL_DHashTableOperate(PLDHashTable* aTable, const void* aKey,
  * shrink the table if it is underloaded.  It does not update mStats #ifdef
  * PL_DHASHMETER, either.
  */
-NS_COM_GLUE void PL_DHashTableRawRemove(PLDHashTable* aTable,
-                                        PLDHashEntryHdr* aEntry);
+void PL_DHashTableRawRemove(PLDHashTable* aTable, PLDHashEntryHdr* aEntry);
 
-NS_COM_GLUE uint32_t
+uint32_t
 PL_DHashTableEnumerate(PLDHashTable* aTable, PLDHashEnumerator aEtor,
                        void* aArg);
 
@@ -532,7 +548,7 @@ PL_DHashTableEnumerate(PLDHashTable* aTable, PLDHashEnumerator aEtor,
  * pointed to by entries.  Doesn't measure |ops| because it's often shared
  * between tables, nor |data| because it's opaque.
  */
-NS_COM_GLUE size_t PL_DHashTableSizeOfExcludingThis(
+size_t PL_DHashTableSizeOfExcludingThis(
   const PLDHashTable* aTable,
   PLDHashSizeOfEntryExcludingThisFun aSizeOfEntryExcludingThis,
   mozilla::MallocSizeOf aMallocSizeOf, void* aArg = nullptr);
@@ -540,7 +556,7 @@ NS_COM_GLUE size_t PL_DHashTableSizeOfExcludingThis(
 /**
  * Like PL_DHashTableSizeOfExcludingThis, but includes sizeof(*this).
  */
-NS_COM_GLUE size_t PL_DHashTableSizeOfIncludingThis(
+size_t PL_DHashTableSizeOfIncludingThis(
   const PLDHashTable* aTable,
   PLDHashSizeOfEntryExcludingThisFun aSizeOfEntryExcludingThis,
   mozilla::MallocSizeOf aMallocSizeOf, void* aArg = nullptr);
@@ -560,12 +576,12 @@ NS_COM_GLUE size_t PL_DHashTableSizeOfIncludingThis(
  * no longer trigger erroneously due to multi-threaded access.  Instead,
  * mutations will cause assertions.
  */
-NS_COM_GLUE void PL_DHashMarkTableImmutable(PLDHashTable* aTable);
+void PL_DHashMarkTableImmutable(PLDHashTable* aTable);
 #endif
 
 #ifdef PL_DHASHMETER
-NS_COM_GLUE void PL_DHashTableDumpMeter(PLDHashTable* aTable,
-                                        PLDHashEnumerator aDump, FILE* aFp);
+void PL_DHashTableDumpMeter(PLDHashTable* aTable,
+                            PLDHashEnumerator aDump, FILE* aFp);
 #endif
 
 #endif /* pldhash_h___ */

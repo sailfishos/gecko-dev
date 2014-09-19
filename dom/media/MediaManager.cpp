@@ -135,6 +135,17 @@ HostInDomain(const nsCString &aHost, const nsCString &aPattern)
 static bool
 HostHasPermission(nsIURI &docURI)
 {
+  nsresult rv;
+
+  bool isHttps;
+  rv = docURI.SchemeIs("https",&isHttps);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return false;
+  }
+  if (!isHttps) {
+    return false;
+  }
+
   nsAdoptingCString hostName;
   docURI.GetAsciiHost(hostName); //normalize UTF8 to ASCII equivalent
   nsAdoptingCString domainWhiteList =
@@ -145,7 +156,6 @@ HostHasPermission(nsIURI &docURI)
     return false;
   }
 
-  nsresult rv;
   // Get UTF8 to ASCII domain name normalization service
   nsCOMPtr<nsIIDNService> idnService
     = do_GetService("@mozilla.org/network/idn-service;1", &rv);
@@ -159,7 +169,7 @@ HostHasPermission(nsIURI &docURI)
   /*
      Test each domain name in the comma separated list
      after converting from UTF8 to ASCII. Each domain
-     must match exactly: no wildcards are used.
+     must match exactly or have a single leading '*.' wildcard
   */
   do {
     end = domainWhiteList.FindChar(',', begin);
@@ -388,13 +398,27 @@ VideoDevice::VideoDevice(MediaEngineVideoSource* aSource)
     mFacingMode = dom::VideoFacingModeEnum::User;
   }
 #endif // MOZ_B2G_CAMERA
+#if defined(ANDROID) && !defined(MOZ_WIDGET_GONK)
+  // Names are generated. Example: "Camera 0, Facing back, Orientation 90"
+  //
+  // See media/webrtc/trunk/webrtc/modules/video_capture/android/java/src/org/
+  // webrtc/videoengine/VideoCaptureDeviceInfoAndroid.java
 
+  if (mName.Find(NS_LITERAL_STRING("Facing back")) != kNotFound) {
+    mHasFacingMode = true;
+    mFacingMode = dom::VideoFacingModeEnum::Environment;
+  } else if (mName.Find(NS_LITERAL_STRING("Facing front")) != kNotFound) {
+    mHasFacingMode = true;
+    mFacingMode = dom::VideoFacingModeEnum::User;
+  }
+#endif // ANDROID
+#ifdef XP_MACOSX
   // Kludge to test user-facing cameras on OSX.
   if (mName.Find(NS_LITERAL_STRING("Face")) != -1) {
     mHasFacingMode = true;
     mFacingMode = dom::VideoFacingModeEnum::User;
   }
-
+#endif
   mMediaSource = aSource->GetMediaSource();
 }
 
@@ -491,15 +515,18 @@ public:
       (aVideoSource ? DOMMediaStream::HINT_CONTENTS_VIDEO : 0);
 
     nsRefPtr<nsDOMUserMediaStream> stream = new nsDOMUserMediaStream(aListener,
-                                                                     aAudioSource);
+                                                                     aAudioSource,
+                                                                     aVideoSource);
     stream->InitTrackUnionStream(aWindow, hints);
     return stream.forget();
   }
 
   nsDOMUserMediaStream(GetUserMediaCallbackMediaStreamListener* aListener,
-                       MediaEngineSource *aAudioSource) :
+                       MediaEngineSource *aAudioSource,
+                       MediaEngineSource *aVideoSource) :
     mListener(aListener),
     mAudioSource(aAudioSource),
+    mVideoSource(aVideoSource),
     mEchoOn(true),
     mAgcOn(false),
     mNoiseOn(true),
@@ -611,12 +638,32 @@ public:
     GetStream()->AsProcessedStream()->ForwardTrackEnabled(aID, aEnabled);
   }
 
+  virtual DOMLocalMediaStream* AsDOMLocalMediaStream()
+  {
+    return this;
+  }
+
+  virtual MediaEngineSource* GetMediaEngine(TrackID aTrackID)
+  {
+    // MediaEngine supports only one video and on video track now and TrackID is
+    // fixed in MediaEngine.
+    if (aTrackID == kVideoTrack) {
+      return mVideoSource;
+    }
+    else if (aTrackID == kAudioTrack) {
+      return mAudioSource;
+    }
+
+    return nullptr;
+  }
+
   // The actual MediaStream is a TrackUnionStream. But these resources need to be
   // explicitly destroyed too.
   nsRefPtr<SourceMediaStream> mSourceStream;
   nsRefPtr<MediaInputPort> mPort;
   nsRefPtr<GetUserMediaCallbackMediaStreamListener> mListener;
   nsRefPtr<MediaEngineSource> mAudioSource; // so we can turn on AEC
+  nsRefPtr<MediaEngineSource> mVideoSource;
   bool mEchoOn;
   bool mAgcOn;
   bool mNoiseOn;
@@ -2320,6 +2367,7 @@ GetUserMediaCallbackMediaStreamListener::StopScreenWindowSharing()
   NS_ASSERTION(NS_IsMainThread(), "Only call on main thread");
   if (mVideoSource && !mStopped &&
       (mVideoSource->GetMediaSource() == MediaSourceType::Screen ||
+       mVideoSource->GetMediaSource() == MediaSourceType::Application ||
        mVideoSource->GetMediaSource() == MediaSourceType::Window)) {
     // Stop the whole stream if there's no audio; just the video track if we have both
     nsRefPtr<MediaOperationRunnable> runnable(

@@ -415,7 +415,7 @@ Parser<SyntaxParseHandler>::abortIfSyntaxParser()
 template <typename ParseHandler>
 Parser<ParseHandler>::Parser(ExclusiveContext *cx, LifoAlloc *alloc,
                              const ReadOnlyCompileOptions &options,
-                             const jschar *chars, size_t length, bool foldConstants,
+                             const char16_t *chars, size_t length, bool foldConstants,
                              Parser<SyntaxParseHandler> *syntaxParser,
                              LazyScript *lazyOuterFunction)
   : AutoGCRooter(cx, PARSER),
@@ -509,7 +509,7 @@ FunctionBox::FunctionBox(ExclusiveContext *cx, ObjectBox* traceListHead, JSFunct
     inWith(false),                  // initialized below
     inGenexpLambda(false),
     hasDestructuringArgs(false),
-    useAsm(directives.asmJS()),
+    useAsm(false),
     insideUseAsm(outerpc && outerpc->useAsmOrInsideUseAsm()),
     usesArguments(false),
     usesApply(false),
@@ -2069,7 +2069,7 @@ Parser<FullParseHandler>::functionArgsAndBody(ParseNode *pn, HandleFunction fun,
                 return false;
 
             if (!parser->functionArgsAndBodyGeneric(SyntaxParseHandler::NodeGeneric,
-                                                    fun, type, kind, newDirectives))
+                                                    fun, type, kind))
             {
                 if (parser->hadAbortedSyntaxParse()) {
                     // Try again with a full parse.
@@ -2105,7 +2105,7 @@ Parser<FullParseHandler>::functionArgsAndBody(ParseNode *pn, HandleFunction fun,
     if (!funpc.init(tokenStream))
         return false;
 
-    if (!functionArgsAndBodyGeneric(pn, fun, type, kind, newDirectives))
+    if (!functionArgsAndBodyGeneric(pn, fun, type, kind))
         return false;
 
     if (!leaveFunction(pn, outerpc, kind))
@@ -2145,7 +2145,7 @@ Parser<SyntaxParseHandler>::functionArgsAndBody(Node pn, HandleFunction fun,
     if (!funpc.init(tokenStream))
         return false;
 
-    if (!functionArgsAndBodyGeneric(pn, fun, type, kind, newDirectives))
+    if (!functionArgsAndBodyGeneric(pn, fun, type, kind))
         return false;
 
     if (!leaveFunction(pn, outerpc, kind))
@@ -2199,7 +2199,7 @@ Parser<FullParseHandler>::standaloneLazyFunction(HandleFunction fun, unsigned st
     if (!funpc.init(tokenStream))
         return null();
 
-    if (!functionArgsAndBodyGeneric(pn, fun, Normal, Statement, &newDirectives)) {
+    if (!functionArgsAndBodyGeneric(pn, fun, Normal, Statement)) {
         JS_ASSERT(directives == newDirectives);
         return null();
     }
@@ -2226,8 +2226,7 @@ Parser<FullParseHandler>::standaloneLazyFunction(HandleFunction fun, unsigned st
 template <typename ParseHandler>
 bool
 Parser<ParseHandler>::functionArgsAndBodyGeneric(Node pn, HandleFunction fun, FunctionType type,
-                                                 FunctionSyntaxKind kind,
-                                                 Directives *newDirectives)
+                                                 FunctionSyntaxKind kind)
 {
     // Given a properly initialized parse context, try to parse an actual
     // function without concern for conversion to strict mode, use of lazy
@@ -2422,10 +2421,14 @@ template <>
 bool
 Parser<FullParseHandler>::asmJS(Node list)
 {
-    // If we are already inside "use asm" that means we are either actively
-    // compiling or we are reparsing after asm.js validation failure. In either
-    // case, nothing to do here.
-    if (pc->useAsmOrInsideUseAsm())
+    // Disable syntax parsing in anything nested inside the asm.js module.
+    handler.disableSyntaxParser();
+
+    // We should be encountering the "use asm" directive for the first time; if
+    // the directive is already, we must have failed asm.js validation and we're
+    // reparsing. In that case, don't try to validate again. A non-null
+    // newDirectives means we're not in a normal function.
+    if (!pc->newDirectives || pc->newDirectives->asmJS())
         return true;
 
     // If there is no ScriptSource, then we are doing a non-compiling parse and
@@ -2961,6 +2964,15 @@ template <typename ParseHandler>
 bool
 Parser<ParseHandler>::noteNameUse(HandlePropertyName name, Node pn)
 {
+    /*
+     * The asm.js validator does all its own symbol-table management so, as an
+     * optimization, avoid doing any work here. Use-def links are only necessary
+     * for emitting bytecode and successfully-validated asm.js does not emit
+     * bytecode. (On validation failure, the asm.js module is reparsed.)
+     */
+    if (pc->useAsmOrInsideUseAsm())
+        return true;
+
     StmtInfoPC *stmt = LexicalLookup(pc, name, nullptr, (StmtInfoPC *)nullptr);
 
     DefinitionList::Range defs = pc->decls().lookupMulti(name);
@@ -3020,6 +3032,92 @@ Parser<FullParseHandler>::bindDestructuringVar(BindData<FullParseHandler> *data,
     return true;
 }
 
+template <>
+bool
+Parser<FullParseHandler>::checkDestructuring(BindData<FullParseHandler> *data, ParseNode *left);
+
+template <>
+bool
+Parser<FullParseHandler>::checkDestructuringObject(BindData<FullParseHandler> *data,
+                                                   ParseNode *objectPattern)
+{
+    MOZ_ASSERT(objectPattern->isKind(PNK_OBJECT));
+
+    for (ParseNode *member = objectPattern->pn_head; member; member = member->pn_next) {
+        ParseNode *expr;
+        if (member->isKind(PNK_MUTATEPROTO)) {
+            expr = member->pn_kid;
+        } else {
+            MOZ_ASSERT(member->isKind(PNK_COLON) || member->isKind(PNK_SHORTHAND));
+            expr = member->pn_right;
+        }
+
+        bool ok;
+        if (expr->isKind(PNK_ARRAY) || expr->isKind(PNK_OBJECT)) {
+            ok = checkDestructuring(data, expr);
+        } else if (data) {
+            if (!expr->isKind(PNK_NAME)) {
+                report(ParseError, false, expr, JSMSG_NO_VARIABLE_NAME);
+                return false;
+            }
+            ok = bindDestructuringVar(data, expr);
+        } else {
+            ok = checkAndMarkAsAssignmentLhs(expr, KeyedDestructuringAssignment);
+        }
+        if (!ok)
+            return false;
+    }
+
+    return true;
+}
+
+template <>
+bool
+Parser<FullParseHandler>::checkDestructuringArray(BindData<FullParseHandler> *data,
+                                                  ParseNode *arrayPattern)
+{
+    MOZ_ASSERT(arrayPattern->isKind(PNK_ARRAY));
+
+    for (ParseNode *element = arrayPattern->pn_head; element; element = element->pn_next) {
+        if (element->isKind(PNK_ELISION))
+            continue;
+
+        ParseNode *target = element;
+        if (target->isKind(PNK_SPREAD)) {
+            if (target->pn_next) {
+                report(ParseError, false, target->pn_next, JSMSG_PARAMETER_AFTER_REST);
+                return false;
+            }
+            target = target->pn_kid;
+
+            // The RestElement should not support nested patterns.
+            if (target->isKind(PNK_ARRAY) || target->isKind(PNK_OBJECT)) {
+                report(ParseError, false, target, JSMSG_BAD_DESTRUCT_TARGET);
+                return false;
+            }
+        }
+
+        bool ok;
+        if (target->isKind(PNK_ARRAY) || target->isKind(PNK_OBJECT)) {
+            ok = checkDestructuring(data, target);
+        } else {
+            if (data) {
+                if (!target->isKind(PNK_NAME)) {
+                    report(ParseError, false, target, JSMSG_NO_VARIABLE_NAME);
+                    return false;
+                }
+                ok = bindDestructuringVar(data, target);
+            } else {
+                ok = checkAndMarkAsAssignmentLhs(target, KeyedDestructuringAssignment);
+            }
+        }
+        if (!ok)
+            return false;
+    }
+
+    return true;
+}
+
 /*
  * Destructuring patterns can appear in two kinds of contexts:
  *
@@ -3060,84 +3158,14 @@ template <>
 bool
 Parser<FullParseHandler>::checkDestructuring(BindData<FullParseHandler> *data, ParseNode *left)
 {
-    bool ok;
-
     if (left->isKind(PNK_ARRAYCOMP)) {
         report(ParseError, false, left, JSMSG_ARRAY_COMP_LEFTSIDE);
         return false;
     }
 
-    Rooted<StaticBlockObject *> blockObj(context);
-    blockObj = data && data->binder == bindLet ? data->let.blockObj.get() : nullptr;
-
-    if (left->isKind(PNK_ARRAY)) {
-        for (ParseNode *element = left->pn_head; element; element = element->pn_next) {
-            if (!element->isKind(PNK_ELISION)) {
-                ParseNode *target = element;
-                if (target->isKind(PNK_SPREAD)) {
-                    if (target->pn_next) {
-                        report(ParseError, false, target->pn_next, JSMSG_PARAMETER_AFTER_REST);
-                        return false;
-                    }
-                    target = target->pn_kid;
-
-                    // The RestElement should not support nested patterns.
-                    if (target->isKind(PNK_ARRAY) || target->isKind(PNK_OBJECT)) {
-                        report(ParseError, false, target, JSMSG_BAD_DESTRUCT_TARGET);
-                        return false;
-                    }
-                }
-                if (target->isKind(PNK_ARRAY) || target->isKind(PNK_OBJECT)) {
-                    ok = checkDestructuring(data, target);
-                } else {
-                    if (data) {
-                        if (!target->isKind(PNK_NAME)) {
-                            report(ParseError, false, target, JSMSG_NO_VARIABLE_NAME);
-                            return false;
-                        }
-                        ok = bindDestructuringVar(data, target);
-                    } else {
-                        ok = checkAndMarkAsAssignmentLhs(target, KeyedDestructuringAssignment);
-                    }
-                }
-                if (!ok)
-                    return false;
-            }
-        }
-    } else {
-        JS_ASSERT(left->isKind(PNK_OBJECT));
-        for (ParseNode *member = left->pn_head; member; member = member->pn_next) {
-            MOZ_ASSERT(member->isKind(PNK_COLON) || member->isKind(PNK_SHORTHAND));
-            ParseNode *expr = member->pn_right;
-
-            if (expr->isKind(PNK_ARRAY) || expr->isKind(PNK_OBJECT)) {
-                ok = checkDestructuring(data, expr);
-            } else if (data) {
-                if (!expr->isKind(PNK_NAME)) {
-                    report(ParseError, false, expr, JSMSG_NO_VARIABLE_NAME);
-                    return false;
-                }
-                ok = bindDestructuringVar(data, expr);
-            } else {
-                /*
-                 * If this is a destructuring shorthand ({x} = ...), then
-                 * identifierName wasn't used to parse |x|.  As a result, |x|
-                 * hasn't been officially linked to its def or registered in
-                 * lexdeps.  Do that now.
-                 */
-                if (member->pn_right == member->pn_left) {
-                    RootedPropertyName name(context, expr->pn_atom->asPropertyName());
-                    if (!noteNameUse(name, expr))
-                        return false;
-                }
-                ok = checkAndMarkAsAssignmentLhs(expr, KeyedDestructuringAssignment);
-            }
-            if (!ok)
-                return false;
-        }
-    }
-
-    return true;
+    if (left->isKind(PNK_ARRAY))
+        return checkDestructuringArray(data, left);
+    return checkDestructuringObject(data, left);
 }
 
 template <>
@@ -6942,7 +6970,7 @@ typename ParseHandler::Node
 Parser<ParseHandler>::newRegExp()
 {
     // Create the regexp even when doing a syntax parse, to check the regexp's syntax.
-    const jschar *chars = tokenStream.getTokenbuf().begin();
+    const char16_t *chars = tokenStream.getTokenbuf().begin();
     size_t length = tokenStream.getTokenbuf().length();
     RegExpFlag flags = tokenStream.currentToken().regExpFlags();
 
@@ -7112,6 +7140,7 @@ Parser<ParseHandler>::objectLiteral()
     if (!literal)
         return null();
 
+    bool seenPrototypeMutation = false;
     RootedAtom atom(context);
     for (;;) {
         TokenKind ltok = tokenStream.getToken(TokenStream::KeywordIsName);
@@ -7123,6 +7152,8 @@ Parser<ParseHandler>::objectLiteral()
             isGenerator = true;
             ltok = tokenStream.getToken(TokenStream::KeywordIsName);
         }
+
+        atom = nullptr;
 
         JSOp op = JSOP_INITPROP;
         Node propname;
@@ -7235,29 +7266,43 @@ Parser<ParseHandler>::objectLiteral()
 
         if (op == JSOP_INITPROP) {
             TokenKind tt = tokenStream.getToken();
-            Node propexpr;
+            if (tt == TOK_ERROR)
+                return null();
+
             if (tt == TOK_COLON) {
                 if (isGenerator) {
                     report(ParseError, false, null(), JSMSG_BAD_PROP_ID);
                     return null();
                 }
-                propexpr = assignExpr();
+
+                Node propexpr = assignExpr();
                 if (!propexpr)
                     return null();
 
                 if (foldConstants && !FoldConstants(context, &propexpr, this))
                     return null();
 
-                /*
-                 * Treat initializers which mutate __proto__ as non-constant,
-                 * so that we can later assume singleton objects delegate to
-                 * the default Object.prototype.
-                 */
-                if (!handler.isConstant(propexpr) || atom == context->names().proto)
-                    handler.setListFlag(literal, PNX_NONCONST);
+                if (atom == context->names().proto) {
+                    if (seenPrototypeMutation) {
+                        report(ParseError, false, propname, JSMSG_DUPLICATE_PROPERTY, "__proto__");
+                        return null();
+                    }
+                    seenPrototypeMutation = true;
 
-                if (!handler.addPropertyDefinition(literal, propname, propexpr))
-                    return null();
+                    // Note: this occurs *only* if we observe TOK_COLON!  Only
+                    // __proto__: v mutates [[Prototype]].  Getters, setters,
+                    // method/generator definitions, computed property name
+                    // versions of all of these, and shorthands do not.
+                    uint32_t begin = handler.getPosition(propname).begin;
+                    if (!handler.addPrototypeMutation(literal, begin, propexpr))
+                        return null();
+                } else {
+                    if (!handler.isConstant(propexpr))
+                        handler.setListFlag(literal, PNX_NONCONST);
+
+                    if (!handler.addPropertyDefinition(literal, propname, propexpr))
+                        return null();
+                }
             } else if (ltok == TOK_NAME && (tt == TOK_COMMA || tt == TOK_RC)) {
                 /*
                  * Support, e.g., |var {x, y} = o| as destructuring shorthand
@@ -7559,10 +7604,11 @@ Parser<ParseHandler>::accumulateTelemetry()
     if (!filename)
         return;
 
+    bool isAddon = !!cx->compartment()->addonId;
     bool isHTTP = strncmp(filename, "http://", 7) == 0 || strncmp(filename, "https://", 8) == 0;
 
     // Only report telemetry for web content, not add-ons or chrome JS.
-    if (!isHTTP)
+    if (isAddon || !isHTTP)
         return;
 
     enum DeprecatedLanguageExtensions {

@@ -8,7 +8,7 @@
 /*****************************************************************************/
 
 #include <stdint.h>
-const PRTime gPreloadListExpirationTime = INT64_C(1419675456115000);
+const PRTime gPreloadListExpirationTime = INT64_C(1421379819168000);
 
 class nsSTSPreload
 {
@@ -18,7 +18,6 @@ class nsSTSPreload
 };
 
 static const nsSTSPreload kSTSPreloadList[] = {
-  { "accounts.firefox.com", true },
   { "accounts.google.com", true },
   { "aclu.org", false },
   { "activiti.alfresco.com", false },
@@ -30,6 +29,7 @@ static const nsSTSPreload kSTSPreloadList[] = {
   { "aladdinschools.appspot.com", false },
   { "alexsexton.com", true },
   { "alpha.irccloud.com", false },
+  { "ansdell.net", true },
   { "anycoin.me", true },
   { "apadvantage.com", true },
   { "api.intercom.io", false },
@@ -68,7 +68,7 @@ static const nsSTSPreload kSTSPreloadList[] = {
   { "blacklane.com", true },
   { "blocksatz-medien.de", true },
   { "blog.cyveillance.com", true },
-  { "blog.gparent.org", false },
+  { "blog.gparent.org", true },
   { "blog.linode.com", false },
   { "blog.torproject.org", false },
   { "bohramt.de", true },
@@ -79,6 +79,7 @@ static const nsSTSPreload kSTSPreloadList[] = {
   { "bugzilla.mozilla.org", true },
   { "business.lookout.com", false },
   { "bytepark.de", true },
+  { "ca.gparent.org", false },
   { "carezone.com", false },
   { "cartouche24.eu", true },
   { "celltek-server.de", true },
@@ -151,7 +152,7 @@ static const nsSTSPreload kSTSPreloadList[] = {
   { "fairbill.com", true },
   { "faq.lookout.com", false },
   { "feedbin.com", false },
-  { "ferienhaus-polchow-ruegen.de", true },
+  { "ferienhaus-polchow-ruegen.de", false },
   { "fiken.no", true },
   { "firemail.io", true },
   { "fischer-its.com", true },
@@ -195,7 +196,6 @@ static const nsSTSPreload kSTSPreloadList[] = {
   { "helpium.de", true },
   { "hex2013.com", true },
   { "history.google.com", true },
-  { "hoerbuecher-und-hoerspiele.de", true },
   { "hostedtalkgadget.google.com", true },
   { "hostinginnederland.nl", true },
   { "hostix.de", true },
@@ -299,7 +299,6 @@ static const nsSTSPreload kSTSPreloadList[] = {
   { "neg9.org", false },
   { "neilwynne.com", false },
   { "netzbit.de", true },
-  { "netzpolitik.org", true },
   { "ng-security.com", true },
   { "npw.net", true },
   { "onedrive.com", true },
@@ -371,13 +370,11 @@ static const nsSTSPreload kSTSPreloadList[] = {
   { "sdsl-speedtest.de", true },
   { "security-carpet.com", true },
   { "security.google.com", true },
-  { "securityheaders.com", true },
   { "secuvera.de", true },
   { "seifried.org", true },
   { "servethecity-karlsruhe.de", true },
   { "sherbers.de", true },
   { "shodan.io", true },
-  { "siammedia.co", true },
   { "silentcircle.com", true },
   { "simbolo.co.uk", false },
   { "simple.com", false },

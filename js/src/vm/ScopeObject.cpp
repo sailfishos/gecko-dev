@@ -1326,7 +1326,7 @@ class DebugScopeProxy : public BaseProxyHandler
     static const char family;
     static const DebugScopeProxy singleton;
 
-    DebugScopeProxy() : BaseProxyHandler(&family) {}
+    MOZ_CONSTEXPR DebugScopeProxy() : BaseProxyHandler(&family) {}
 
     bool isExtensible(JSContext *cx, HandleObject proxy, bool *extensible) const MOZ_OVERRIDE
     {
@@ -1657,7 +1657,7 @@ DebugScopeObject::getMaybeSentinelValue(JSContext *cx, HandleId id, MutableHandl
 bool
 js_IsDebugScopeSlow(ProxyObject *proxy)
 {
-    JS_ASSERT(proxy->hasClass(&ProxyObject::uncallableClass_));
+    JS_ASSERT(proxy->hasClass(&ProxyObject::class_));
     return proxy->handler() == &DebugScopeProxy::singleton;
 }
 

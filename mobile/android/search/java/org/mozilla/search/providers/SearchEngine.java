@@ -5,6 +5,7 @@
 package org.mozilla.search.providers;
 
 import android.net.Uri;
+import android.util.Log;
 import android.util.Xml;
 
 import org.xmlpull.v1.XmlPullParser;
@@ -19,6 +20,7 @@ import java.util.Locale;
  * the search activity.
  */
 public class SearchEngine {
+    private static final String LOG_TAG = "SearchEngine";
 
     private static final String URLTYPE_SUGGEST_JSON = "application/x-suggestions+json";
     private static final String URLTYPE_SEARCH_HTML  = "text/html";
@@ -47,6 +49,7 @@ public class SearchEngine {
 
     private String identifier;
     private String shortName;
+    private String iconURL;
 
     // TODO: Make something more robust (like EngineURL in nsSearchService.js)
     private Uri resultsUri;
@@ -77,8 +80,8 @@ public class SearchEngine {
                 readShortName(parser);
             } else if (tag.equals("Url")) {
                 readUrl(parser);
-            // TODO: Support for other tags
-            //} else if (tag.equals("Image")) {
+            } else if (tag.equals("Image")) {
+                readImage(parser);
             } else {
                 skip(parser);
             }
@@ -127,6 +130,19 @@ public class SearchEngine {
         }
     }
 
+    private void readImage(XmlPullParser parser) throws XmlPullParserException, IOException {
+        parser.require(XmlPullParser.START_TAG, null, "Image");
+
+        // TODO: Use width and height to get a preferred icon URL.
+        //final int width = Integer.parseInt(parser.getAttributeValue(null, "width"));
+        //final int height = Integer.parseInt(parser.getAttributeValue(null, "height"));
+
+        if (parser.next() == XmlPullParser.TEXT) {
+            iconURL = parser.getText();
+            parser.nextTag();
+        }
+    }
+
     private void skip(XmlPullParser parser) throws XmlPullParserException, IOException {
         if (parser.getEventType() != XmlPullParser.START_TAG) {
             throw new IllegalStateException();
@@ -166,8 +182,16 @@ public class SearchEngine {
         return String.format(STYLE_INJECTION_SCRIPT, css);
     }
 
+    public String getIdentifier() {
+        return identifier;
+    }
+
     public String getName() {
         return shortName;
+    }
+
+    public String getIconURL() {
+        return iconURL;
     }
 
     /**
@@ -184,6 +208,10 @@ public class SearchEngine {
      * @param query The user's query. This method will escape and encode the query.
      */
     public String resultsUriForQuery(String query) {
+        if (resultsUri == null) {
+            Log.e(LOG_TAG, "No results URL for search engine: " + identifier);
+            return "";
+        }
         final String template = Uri.decode(resultsUri.toString());
         return paramSubstitution(template, Uri.encode(query));
     }
@@ -194,6 +222,10 @@ public class SearchEngine {
      * @param query The user's query. This method will escape and encode the query.
      */
     public String getSuggestionTemplate(String query) {
+        if (suggestUri == null) {
+            Log.e(LOG_TAG, "No suggestions template for search engine: " + identifier);
+            return "";
+        }
         final String template = Uri.decode(suggestUri.toString());
         return paramSubstitution(template, Uri.encode(query));
     }

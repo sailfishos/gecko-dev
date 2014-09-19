@@ -49,11 +49,11 @@ struct PRLogModuleInfo;
 class nsRefMapEntry : public nsStringHashKey
 {
 public:
-  nsRefMapEntry(const nsAString& aKey) :
+  explicit nsRefMapEntry(const nsAString& aKey) :
     nsStringHashKey(&aKey)
   {
   }
-  nsRefMapEntry(const nsAString *aKey) :
+  explicit nsRefMapEntry(const nsAString* aKey) :
     nsStringHashKey(aKey)
   {
   }
@@ -455,7 +455,7 @@ protected:
      * If the current transcluded script is being compiled off thread, the
      * source for that script.
      */
-    jschar* mOffThreadCompileStringBuf;
+    char16_t* mOffThreadCompileStringBuf;
     size_t mOffThreadCompileStringLength;
 
     /**
@@ -563,7 +563,7 @@ protected:
         nsCOMPtr<nsIContent> mElement; // [OWNER]
 
     public:
-        TemplateBuilderHookup(nsIContent* aElement)
+        explicit TemplateBuilderHookup(nsIContent* aElement)
             : mElement(aElement) {}
 
         virtual Phase GetPhase() MOZ_OVERRIDE { return eHookup; }

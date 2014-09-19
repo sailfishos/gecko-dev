@@ -41,14 +41,12 @@ IdToObjectMap::trace(JSTracer *trc)
 }
 
 void
-IdToObjectMap::finalize(JSFreeOp *fop)
+IdToObjectMap::sweep()
 {
     for (Table::Enum e(table_); !e.empty(); e.popFront()) {
         DebugOnly<JSObject *> prior = e.front().value().get();
         if (JS_IsAboutToBeFinalized(&e.front().value()))
             e.removeFront();
-        else
-            MOZ_ASSERT(e.front().value() == prior);
     }
 }
 
@@ -97,14 +95,14 @@ ObjectToIdMap::init()
 }
 
 void
-ObjectToIdMap::finalize(JSFreeOp *fop)
+ObjectToIdMap::sweep()
 {
     for (Table::Enum e(*table_); !e.empty(); e.popFront()) {
         JSObject *obj = e.front().key();
         if (JS_IsAboutToBeFinalizedUnbarriered(&obj))
             e.removeFront();
-        else
-            MOZ_ASSERT(obj == e.front().key());
+        else if (obj != e.front().key())
+            e.rekeyFront(obj);
     }
 }
 
@@ -410,8 +408,7 @@ JavaScriptShared::findObjectById(JSContext *cx, uint32_t objId)
 }
 
 static const uint64_t DefaultPropertyOp = 1;
-static const uint64_t GetterOnlyPropertyStub = 2;
-static const uint64_t UnknownPropertyOp = 3;
+static const uint64_t UnknownPropertyOp = 2;
 
 bool
 JavaScriptShared::fromDescriptor(JSContext *cx, Handle<JSPropertyDescriptor> desc,
@@ -451,8 +448,6 @@ JavaScriptShared::fromDescriptor(JSContext *cx, Handle<JSPropertyDescriptor> des
     } else {
         if (desc.setter() == JS_StrictPropertyStub)
             out->setter() = DefaultPropertyOp;
-        else if (desc.setter() == js_GetterOnlyPropertyStub)
-            out->setter() = GetterOnlyPropertyStub;
         else
             out->setter() = UnknownPropertyOp;
     }
@@ -513,8 +508,6 @@ JavaScriptShared::toDescriptor(JSContext *cx, const PPropertyDescriptor &in,
     } else {
         if (in.setter().get_uint64_t() == DefaultPropertyOp)
             out.setSetter(JS_StrictPropertyStub);
-        else if (in.setter().get_uint64_t() == GetterOnlyPropertyStub)
-            out.setSetter(js_GetterOnlyPropertyStub);
         else
             out.setSetter(UnknownStrictPropertyStub);
     }
@@ -595,4 +588,9 @@ JavaScriptShared::Wrap(JSContext *cx, HandleObject aObj, InfallibleTArray<CpowEn
 
     return true;
 }
-
+void JavaScriptShared::fixupAfterMovingGC()
+{
+    objects_.sweep();
+    cpows_.sweep();
+    objectIds_.sweep();
+}

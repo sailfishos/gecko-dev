@@ -22,7 +22,9 @@ namespace mozilla {
 
 template <typename T>
 class LinkedList;
+#ifdef MOZ_WEBRTC
 class AudioOutputObserver;
+#endif
 
 /**
  * A per-stream update message passed from the media graph thread to the
@@ -520,6 +522,9 @@ public:
    * is not deleted. New messages for the graph are processed synchronously on
    * the main thread if necessary. When the last stream is destroyed, the
    * graph object is deleted.
+   *
+   * This should be kept in sync with the LifecycleState_str array in
+   * MediaStreamGraph.cpp
    */
   enum LifecycleState {
     // The graph thread hasn't started yet.
@@ -608,7 +613,9 @@ public:
    */
   nsRefPtr<AsyncLatencyLogger> mLatencyLog;
   AudioMixer mMixer;
+#ifdef MOZ_WEBRTC
   nsRefPtr<AudioOutputObserver> mFarendObserverRef;
+#endif
 
 private:
   virtual ~MediaStreamGraphImpl();

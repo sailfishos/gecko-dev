@@ -78,7 +78,6 @@ var ecmaGlobals =
     {name: "SIMD", nightly: true},
     "StopIteration",
     "String",
-    "Symbol",
     "SyntaxError",
     {name: "TypedObject", nightly: true},
     "TypeError",
@@ -92,6 +91,12 @@ var ecmaGlobals =
   ];
 // IMPORTANT: Do not change the list above without review from
 //            a JavaScript Engine peer!
+
+// Symbol is conditionally defined.
+// If it's defined, insert "Symbol" before "SyntaxError".
+if (typeof Symbol === "function") {
+  ecmaGlobals.splice(ecmaGlobals.indexOf("SyntaxError"), 0, "Symbol");
+}
 
 // IMPORTANT: Do not change the list below without review from a DOM peer,
 //            except to remove items from it!
@@ -591,6 +596,10 @@ var interfaceNamesInGlobalScope =
 // IMPORTANT: Do not change this list without review from a DOM peer!
     "Image",
 // IMPORTANT: Do not change this list without review from a DOM peer!
+    {name: "ImageCapture", pref: "dom.imagecapture.enabled"},
+// IMPORTANT: Do not change this list without review from a DOM peer!
+    {name: "ImageCaptureErrorEvent", pref: "dom.imagecapture.enabled"},
+// IMPORTANT: Do not change this list without review from a DOM peer!
     "ImageData",
 // IMPORTANT: Do not change this list without review from a DOM peer!
     "InputEvent",
@@ -634,8 +643,6 @@ var interfaceNamesInGlobalScope =
     "MimeType",
 // IMPORTANT: Do not change this list without review from a DOM peer!
     "MimeTypeArray",
-// IMPORTANT: Do not change this list without review from a DOM peer!
-    "ModalContentWindow",
 // IMPORTANT: Do not change this list without review from a DOM peer!
     "MouseEvent",
 // IMPORTANT: Do not change this list without review from a DOM peer!
@@ -701,9 +708,9 @@ var interfaceNamesInGlobalScope =
 // IMPORTANT: Do not change this list without review from a DOM peer!
     "MozSettingsEvent",
 // IMPORTANT: Do not change this list without review from a DOM peer!
-    "MozSmsEvent",
+    {name: "MozSettingsTransactionEvent", permission: "settings-api-read"},
 // IMPORTANT: Do not change this list without review from a DOM peer!
-    "MozSmsFilter",
+    "MozSmsEvent",
 // IMPORTANT: Do not change this list without review from a DOM peer!
     "MozSmsMessage",
 // IMPORTANT: Do not change this list without review from a DOM peer!
@@ -1180,8 +1187,6 @@ var interfaceNamesInGlobalScope =
     "URL",
 // IMPORTANT: Do not change this list without review from a DOM peer!
     "URLSearchParams",
-// IMPORTANT: Do not change this list without review from a DOM peer!
-    {name: "UserDataHandler", xbl: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!
     "UserProximityEvent",
 // IMPORTANT: Do not change this list without review from a DOM peer!

@@ -82,7 +82,7 @@ private:
 class ShutdownThreadEvent : public nsRunnable
 {
 public:
-  ShutdownThreadEvent(nsIThread* aThread) : mThread(aThread) {}
+  explicit ShutdownThreadEvent(nsIThread* aThread) : mThread(aThread) {}
   ~ShutdownThreadEvent() {}
   NS_IMETHOD Run() MOZ_OVERRIDE {
     mThread->Shutdown();
@@ -96,7 +96,7 @@ private:
 template<class T>
 class DeleteObjectTask: public nsRunnable {
 public:
-  DeleteObjectTask(nsAutoPtr<T>& aObject)
+  explicit DeleteObjectTask(nsAutoPtr<T>& aObject)
     : mObject(aObject)
   {
   }
@@ -168,9 +168,10 @@ static const int32_t MAX_VIDEO_HEIGHT = 3000;
 void ScaleDisplayByAspectRatio(nsIntSize& aDisplay, float aAspectRatio);
 
 // The amount of virtual memory reserved for thread stacks.
-#if (defined(XP_WIN) || defined(XP_MACOSX) || defined(LINUX)) && \
-    !defined(MOZ_ASAN)
+#if (defined(XP_WIN) || defined(LINUX)) && !defined(MOZ_ASAN)
 #define MEDIA_THREAD_STACK_SIZE (128 * 1024)
+#elif defined(XP_MACOSX) && !defined(MOZ_ASAN)
+#define MEDIA_THREAD_STACK_SIZE (256 * 1024)
 #else
 // All other platforms use their system defaults.
 #define MEDIA_THREAD_STACK_SIZE nsIThreadManager::DEFAULT_STACK_SIZE

@@ -38,6 +38,7 @@
 #include "mozilla/layers/Compositor.h"  // for Compositor
 #include "mozilla/layers/CompositorTypes.h"
 #include "mozilla/layers/Effects.h"     // for Effect, EffectChain, etc
+#include "mozilla/layers/LayerMetricsWrapper.h" // for LayerMetricsWrapper
 #include "mozilla/layers/LayersTypes.h"  // for etc
 #include "ipc/CompositorBench.h"        // for CompositorBench
 #include "ipc/ShadowLayerUtils.h"
@@ -102,11 +103,14 @@ LayerManagerComposite::ClearCachedResources(Layer* aSubtree)
  * LayerManagerComposite
  */
 LayerManagerComposite::LayerManagerComposite(Compositor* aCompositor)
-: mCompositor(aCompositor)
+: mWarningLevel(0.0f)
+, mUnusedApzTransformWarning(false)
+, mCompositor(aCompositor)
 , mInTransaction(false)
 , mIsCompositorReady(false)
 , mDebugOverlayWantsNextFrame(false)
 , mGeometryChanged(true)
+, mLastFrameMissedHWC(false)
 {
   mTextRenderer = new TextRenderer(aCompositor);
   MOZ_ASSERT(aCompositor);
@@ -338,13 +342,64 @@ LayerManagerComposite::RenderDebugOverlay(const Rect& aBounds)
   bool drawFrameCounter = gfxPrefs::DrawFrameCounter();
   bool drawFrameColorBars = gfxPrefs::CompositorDrawColorBars();
 
+  TimeStamp now = TimeStamp::Now();
+
   if (drawFps) {
     if (!mFPS) {
       mFPS = MakeUnique<FPSState>();
     }
 
+    float alpha = 1;
+#ifdef ANDROID
+    // Draw a translation delay warning overlay
+    int width;
+    int border;
+    if ((now - mWarnTime).ToMilliseconds() < kVisualWarningDuration) {
+      EffectChain effects;
+
+      // Black blorder
+      border = 4;
+      width = 6;
+      effects.mPrimaryEffect = new EffectSolidColor(gfx::Color(0, 0, 0, 1));
+      mCompositor->DrawQuad(gfx::Rect(border, border, aBounds.width - 2 * border, width),
+                            aBounds, effects, alpha, gfx::Matrix4x4());
+      mCompositor->DrawQuad(gfx::Rect(border, aBounds.height - border - width, aBounds.width - 2 * border, width),
+                            aBounds, effects, alpha, gfx::Matrix4x4());
+      mCompositor->DrawQuad(gfx::Rect(border, border + width, width, aBounds.height - 2 * border - width * 2),
+                            aBounds, effects, alpha, gfx::Matrix4x4());
+      mCompositor->DrawQuad(gfx::Rect(aBounds.width - border - width, border + width, width, aBounds.height - 2 * border - 2 * width),
+                            aBounds, effects, alpha, gfx::Matrix4x4());
+
+      // Content
+      border = 5;
+      width = 4;
+      effects.mPrimaryEffect = new EffectSolidColor(gfx::Color(1, 1.f - mWarningLevel, 0, 1));
+      mCompositor->DrawQuad(gfx::Rect(border, border, aBounds.width - 2 * border, width),
+                            aBounds, effects, alpha, gfx::Matrix4x4());
+      mCompositor->DrawQuad(gfx::Rect(border, aBounds.height - border - width, aBounds.width - 2 * border, width),
+                            aBounds, effects, alpha, gfx::Matrix4x4());
+      mCompositor->DrawQuad(gfx::Rect(border, border + width, width, aBounds.height - 2 * border - width * 2),
+                            aBounds, effects, alpha, gfx::Matrix4x4());
+      mCompositor->DrawQuad(gfx::Rect(aBounds.width - border - width, border + width, width, aBounds.height - 2 * border - 2 * width),
+                            aBounds, effects, alpha, gfx::Matrix4x4());
+      SetDebugOverlayWantsNextFrame(true);
+    }
+#endif
+
     float fillRatio = mCompositor->GetFillRatio();
-    mFPS->DrawFPS(TimeStamp::Now(), drawFrameColorBars ? 10 : 0, 0, unsigned(fillRatio), mCompositor);
+    mFPS->DrawFPS(now, drawFrameColorBars ? 10 : 0, 0, unsigned(fillRatio), mCompositor);
+
+    if (mUnusedApzTransformWarning) {
+      // If we have an unused APZ transform on this composite, draw a 20x20 red box
+      // in the top-right corner
+      EffectChain effects;
+      effects.mPrimaryEffect = new EffectSolidColor(gfx::Color(1, 0, 0, 1));
+      mCompositor->DrawQuad(gfx::Rect(aBounds.width - 20, 0, aBounds.width, 20),
+                            aBounds, effects, alpha, gfx::Matrix4x4());
+
+      mUnusedApzTransformWarning = false;
+      SetDebugOverlayWantsNextFrame(true);
+    }
   } else {
     mFPS = nullptr;
   }
@@ -546,17 +601,20 @@ LayerManagerComposite::Render()
     composer2D = mCompositor->GetWidget()->GetComposer2D();
   }
 
-  if (!mTarget && composer2D && composer2D->TryRender(mRoot, mWorldMatrix, mGeometryChanged)) {
+  if (!mTarget && composer2D && composer2D->TryRender(mRoot, mGeometryChanged)) {
     if (mFPS) {
       double fps = mFPS->mCompositionFps.AddFrameAndGetFps(TimeStamp::Now());
       if (gfxPrefs::LayersDrawFPS()) {
         printf_stderr("HWComposer: FPS is %g\n", fps);
       }
     }
-    mCompositor->EndFrameForExternalComposition(mWorldMatrix);
+    mCompositor->EndFrameForExternalComposition(Matrix());
     // Reset the invalid region as compositing is done
     mInvalidRegion.SetEmpty();
+    mLastFrameMissedHWC = false;
     return;
+  } else if (!mTarget) {
+    mLastFrameMissedHWC = !!composer2D;
   }
 
   {
@@ -585,12 +643,11 @@ LayerManagerComposite::Render()
 
   if (mRoot->GetClipRect()) {
     clipRect = *mRoot->GetClipRect();
-    WorldTransformRect(clipRect);
     Rect rect(clipRect.x, clipRect.y, clipRect.width, clipRect.height);
-    mCompositor->BeginFrame(invalid, &rect, mWorldMatrix, bounds, nullptr, &actualBounds);
+    mCompositor->BeginFrame(invalid, &rect, bounds, nullptr, &actualBounds);
   } else {
     gfx::Rect rect;
-    mCompositor->BeginFrame(invalid, nullptr, mWorldMatrix, bounds, &rect, &actualBounds);
+    mCompositor->BeginFrame(invalid, nullptr, bounds, &rect, &actualBounds);
     clipRect = nsIntRect(rect.x, rect.y, rect.width, rect.height);
   }
 
@@ -650,31 +707,6 @@ LayerManagerComposite::Render()
   mCompositor->GetWidget()->PostRender(this);
 
   RecordFrame();
-}
-
-void
-LayerManagerComposite::SetWorldTransform(const gfx::Matrix& aMatrix)
-{
-  NS_ASSERTION(aMatrix.PreservesAxisAlignedRectangles(),
-               "SetWorldTransform only accepts matrices that satisfy PreservesAxisAlignedRectangles");
-  NS_ASSERTION(!aMatrix.HasNonIntegerScale(),
-               "SetWorldTransform only accepts matrices with integer scale");
-
-  mWorldMatrix = aMatrix;
-}
-
-gfx::Matrix&
-LayerManagerComposite::GetWorldTransform(void)
-{
-  return mWorldMatrix;
-}
-
-void
-LayerManagerComposite::WorldTransformRect(nsIntRect& aRect)
-{
-  gfx::Rect grect(aRect.x, aRect.y, aRect.width, aRect.height);
-  grect = mWorldMatrix.TransformBounds(grect);
-  aRect.SetRect(grect.X(), grect.Y(), grect.Width(), grect.Height());
 }
 
 static void
@@ -796,7 +828,13 @@ LayerManagerComposite::ComputeRenderIntegrity()
     return 1.f;
   }
 
-  const FrameMetrics& rootMetrics = root->GetFrameMetrics();
+  FrameMetrics rootMetrics = LayerMetricsWrapper::TopmostScrollableMetrics(root);
+  if (!rootMetrics.IsScrollable()) {
+    // The root may not have any scrollable metrics, in which case rootMetrics
+    // will just be an empty FrameMetrics. Instead use the actual metrics from
+    // the root layer.
+    rootMetrics = LayerMetricsWrapper(root).Metrics();
+  }
   ParentLayerIntRect bounds = RoundedToInt(rootMetrics.mCompositionBounds);
   nsIntRect screenRect(bounds.x,
                        bounds.y,
@@ -809,12 +847,14 @@ LayerManagerComposite::ComputeRenderIntegrity()
 #ifdef MOZ_WIDGET_ANDROID
   // Use the transform on the primary scrollable layer and its FrameMetrics
   // to find out how much of the viewport the current displayport covers
-  Layer* primaryScrollable = GetPrimaryScrollableLayer();
-  if (primaryScrollable) {
+  nsTArray<Layer*> rootScrollableLayers;
+  GetRootScrollableLayers(rootScrollableLayers);
+  if (rootScrollableLayers.Length() > 0) {
     // This is derived from the code in
     // AsyncCompositionManager::TransformScrollableLayer
-    const FrameMetrics& metrics = primaryScrollable->GetFrameMetrics();
-    Matrix4x4 transform = primaryScrollable->GetEffectiveTransform();
+    Layer* rootScrollable = rootScrollableLayers[0];
+    const FrameMetrics& metrics = LayerMetricsWrapper::TopmostScrollableMetrics(rootScrollable);
+    Matrix4x4 transform = rootScrollable->GetEffectiveTransform();
     transform.ScalePost(metrics.mResolution.scale, metrics.mResolution.scale, 1);
 
     // Clip the screen rect to the document bounds

@@ -61,6 +61,10 @@ var f = asmLink(asmCompile('glob', USE_ASM + 'var abs=glob.Math.abs; function f(
 for (n of [-Math.pow(2,31)-1, -Math.pow(2,31), -Math.pow(2,31)+1, -1, 0, 1, Math.pow(2,31)-2, Math.pow(2,31)-1, Math.pow(2,31)])
     assertEq(f(n), Math.abs(n|0)|0);
 
+var f = asmLink(asmCompile('glob', USE_ASM + 'var clz32=glob.Math.clz32; function f(i) { i=i|0; return clz32(i)|0 } return f'), this);
+for (n of [0, 1, 2, 15, 16, Math.pow(2,31)-1, Math.pow(2,31), Math.pow(2,31)+1, Math.pow(2,32)-1, Math.pow(2,32), Math.pow(2,32)+1])
+    assertEq(f(n), Math.clz32(n|0));
+
 var doubleNumbers = [NaN, Infinity, -Infinity, -10000, -3.4, -0, 0, 3.4, 10000];
 var intNumbers = [-10000, -3, -1, 0, 3, 10000];
 function testBinary(f, g, numbers) {
@@ -152,6 +156,8 @@ assertEq(asmLink(asmCompile('glob', USE_ASM + 'var min=glob.Math.min; function f
 assertEq(asmLink(asmCompile('glob', USE_ASM + 'var max=glob.Math.max; function f(i) { i=i|0; var d=0.0; d = +max(i, 0); return +d } return f'), this)(-42), 0);
 assertEq(asmLink(asmCompile('glob', USE_ASM + 'var min=glob.Math.min; function f(d) { d=+d; var i=0; i = ~~min(d, 0.)|0; return i|0 } return f'), this)(-42), -42);
 assertEq(asmLink(asmCompile('glob', USE_ASM + 'var max=glob.Math.max; function f(d) { d=+d; var i=0; i = ~~max(d, 0.)|0; return i|0 } return f'), this)(-42), 0);
+
+assertEq(asmLink(asmCompile('glob', USE_ASM + 'var abs=glob.Math.abs; function f(i) { i=i|0; var d=0.0; return +d; +abs(i|0); return 3.0;} return f'), this)(-42), 0);
 
 assertAsmTypeFail('glob', USE_ASM + 'var tau=glob.Math.TAU; function f() {} return f');
 assertAsmTypeFail('glob', USE_ASM + 'var pi=glob.Math.PI; function f() { return pi | 0 } return f');

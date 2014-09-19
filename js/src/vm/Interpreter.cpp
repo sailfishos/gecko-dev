@@ -468,10 +468,11 @@ js::Invoke(JSContext *cx, CallArgs args, MaybeConstruct construct)
         if (MOZ_UNLIKELY(clasp == &js_NoSuchMethodClass))
             return NoSuchMethod(cx, args.length(), args.base());
 #endif
-        JS_ASSERT_IF(construct, !clasp->construct);
-        if (!clasp->call)
+        JS_ASSERT_IF(construct, !callee.constructHook());
+        JSNative call = callee.callHook();
+        if (!call)
             return ReportIsNotFunction(cx, args.calleev(), args.length() + 1, construct);
-        return CallJSNative(cx, clasp->call, args);
+        return CallJSNative(cx, call, args);
     }
 
     /* Invoke native functions. */
@@ -571,11 +572,11 @@ js::InvokeConstructor(JSContext *cx, CallArgs args)
         return true;
     }
 
-    const Class *clasp = callee.getClass();
-    if (!clasp->construct)
+    JSNative construct = callee.constructHook();
+    if (!construct)
         return ReportIsNotFunction(cx, args.calleev(), args.length() + 1, CONSTRUCT);
 
-    return CallJSNativeConstructor(cx, clasp->construct, args);
+    return CallJSNativeConstructor(cx, construct, args);
 }
 
 bool
@@ -2879,7 +2880,7 @@ CASE(JSOP_SETALIASEDVAR)
 
     // Avoid computing the name if no type updates are needed, as this may be
     // expensive on scopes with large numbers of variables.
-    PropertyName *name = (obj.hasSingletonType() && !obj.hasLazyType())
+    PropertyName *name = obj.hasSingletonType()
                          ? ScopeCoordinateName(cx->runtime()->scopeCoordinateNameCache, script, REGS.pc)
                          : nullptr;
 
@@ -3071,7 +3072,7 @@ CASE(JSOP_NEWARRAY)
     unsigned count = GET_UINT24(REGS.pc);
     RootedObject &obj = rootObject0;
     NewObjectKind newKind = UseNewTypeForInitializer(script, REGS.pc, &ArrayObject::class_);
-    obj = NewDenseAllocatedArray(cx, count, nullptr, newKind);
+    obj = NewDenseFullyAllocatedArray(cx, count, nullptr, newKind);
     if (!obj || !SetInitializerObjectType(cx, script, REGS.pc, obj, newKind))
         goto error;
 

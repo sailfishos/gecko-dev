@@ -9,6 +9,8 @@
 #include "base/string_util.h"
 #include "base/process_util.h"
 
+#include <string>
+
 using std::vector;
 using std::string;
 
@@ -43,6 +45,12 @@ GMPProcessParent::Launch(int32_t aTimeoutMs)
 {
   vector<string> args;
   args.push_back(mGMPPath);
+
+#if defined(XP_WIN) && defined(MOZ_SANDBOX)
+  std::wstring wGMPPath = UTF8ToWide(mGMPPath.c_str());
+  mAllowedFilesRead.push_back(wGMPPath + L"\\*");
+#endif
+
   return SyncLaunch(args, aTimeoutMs, base::GetCurrentProcessArchitecture());
 }
 

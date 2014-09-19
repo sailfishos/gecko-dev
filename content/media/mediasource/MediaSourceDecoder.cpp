@@ -93,8 +93,12 @@ MediaSourceDecoder::GetSeekable(dom::TimeRanges* aSeekable)
 void
 MediaSourceDecoder::Shutdown()
 {
+  MSE_DEBUG("MediaSourceDecoder(%p)::Shutdown", this);
   MediaDecoder::Shutdown();
 
+  if (mMediaSource) {
+    mMediaSource->Detach();
+  }
   // Kick WaitForData out of its slumber.
   ReentrantMonitorAutoEnter mon(GetReentrantMonitor());
   mon.NotifyAll();
@@ -129,6 +133,27 @@ MediaSourceDecoder::CreateSubDecoder(const nsACString& aType)
 }
 
 void
+MediaSourceDecoder::AddTrackBuffer(TrackBuffer* aTrackBuffer)
+{
+  MOZ_ASSERT(mReader);
+  mReader->AddTrackBuffer(aTrackBuffer);
+}
+
+void
+MediaSourceDecoder::RemoveTrackBuffer(TrackBuffer* aTrackBuffer)
+{
+  MOZ_ASSERT(mReader);
+  mReader->RemoveTrackBuffer(aTrackBuffer);
+}
+
+void
+MediaSourceDecoder::OnTrackBufferConfigured(TrackBuffer* aTrackBuffer, const MediaInfo& aInfo)
+{
+  MOZ_ASSERT(mReader);
+  mReader->OnTrackBufferConfigured(aTrackBuffer, aInfo);
+}
+
+void
 MediaSourceDecoder::Ended()
 {
   ReentrantMonitorAutoEnter mon(GetReentrantMonitor());
@@ -148,19 +173,17 @@ MediaSourceDecoder::SetMediaSourceDuration(double aDuration)
 }
 
 void
-MediaSourceDecoder::WaitForData()
+MediaSourceDecoder::NotifyTimeRangesChanged()
 {
-  MSE_DEBUG("MediaSourceDecoder(%p)::WaitForData()", this);
   ReentrantMonitorAutoEnter mon(GetReentrantMonitor());
-  mon.Wait();
+  mon.NotifyAll();
 }
 
 void
-MediaSourceDecoder::NotifyGotData()
+MediaSourceDecoder::PrepareReaderInitialization()
 {
-  MSE_DEBUG("MediaSourceDecoder(%p)::NotifyGotData()", this);
-  ReentrantMonitorAutoEnter mon(GetReentrantMonitor());
-  mon.NotifyAll();
+  MOZ_ASSERT(mReader);
+  mReader->PrepareInitialization();
 }
 
 } // namespace mozilla

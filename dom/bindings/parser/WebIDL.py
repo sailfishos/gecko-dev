@@ -1018,6 +1018,14 @@ class IDLInterface(IDLObjectWithScope):
                               self.parentScope.primaryGlobalName,
                               [self.location])
 
+        # Conditional exposure makes no sense for interfaces with no
+        # interface object, unless they're navigator properties.
+        if (self.isExposedConditionally() and
+            not self.hasInterfaceObject() and
+            not self.getNavigatorProperty()):
+            raise WebIDLError("Interface with no interface object is "
+                              "exposed conditionally",
+                              [self.location])
 
     def isInterface(self):
         return True
@@ -1054,6 +1062,21 @@ class IDLInterface(IDLObjectWithScope):
             # operations have the same identifier
             len(set(m.identifier.name for m in self.members if
                     m.isMethod() and not m.isStatic())) == 1)
+
+    def isExposedInWindow(self):
+        return 'Window' in self.exposureSet
+
+    def isExposedInAnyWorker(self):
+        return len(self.getWorkerExposureSet()) > 0
+
+    def isExposedOnlyInSomeWorkers(self):
+        assert self.isExposedInAnyWorker()
+        workerScopes = self.parentScope.globalNameMapping["Worker"]
+        return len(workerScopes.difference(self.exposureSet)) > 0
+
+    def getWorkerExposureSet(self):
+        workerScopes = self.parentScope.globalNameMapping["Worker"]
+        return workerScopes.intersection(self.exposureSet)
 
     def inheritanceDepth(self):
         depth = 0
@@ -1340,6 +1363,13 @@ class IDLInterface(IDLObjectWithScope):
 
     def hasMembersInSlots(self):
         return self._ownMembersInSlots != 0
+
+    def isExposedConditionally(self):
+        return (self.getExtendedAttribute("Pref") or
+                self.getExtendedAttribute("ChromeOnly") or
+                self.getExtendedAttribute("Func") or
+                self.getExtendedAttribute("AvailableIn") or
+                self.getExtendedAttribute("CheckPermissions"))
 
 class IDLDictionary(IDLObjectWithScope):
     def __init__(self, location, parentScope, name, parent, members):
@@ -1734,7 +1764,10 @@ class IDLNullableType(IDLType):
         assert not innerType.isVoid()
         assert not innerType == BuiltinTypes[IDLBuiltinType.Types.any]
 
-        IDLType.__init__(self, location, innerType.name)
+        name = innerType.name
+        if innerType.isComplete():
+            name += "OrNull"
+        IDLType.__init__(self, location, name)
         self.inner = innerType
         self.builtin = False
 
@@ -1847,7 +1880,7 @@ class IDLNullableType(IDLType):
                                   "be a union type that itself has a nullable "
                                   "type as a member type", [self.location])
 
-        self.name = self.inner.name
+        self.name = self.inner.name + "OrNull"
         return self
 
     def unroll(self):
@@ -1870,6 +1903,10 @@ class IDLSequenceType(IDLType):
         IDLType.__init__(self, location, parameterType.name)
         self.inner = parameterType
         self.builtin = False
+        # Need to set self.name up front if our inner type is already complete,
+        # since in that case our .complete() won't be called.
+        if self.inner.isComplete():
+            self.name = self.inner.name + "Sequence"
 
     def __eq__(self, other):
         return isinstance(other, IDLSequenceType) and self.inner == other.inner
@@ -1931,7 +1968,7 @@ class IDLSequenceType(IDLType):
 
     def complete(self, scope):
         self.inner = self.inner.complete(scope)
-        self.name = self.inner.name
+        self.name = self.inner.name + "Sequence"
         return self
 
     def unroll(self):
@@ -1957,6 +1994,10 @@ class IDLMozMapType(IDLType):
         IDLType.__init__(self, location, parameterType.name)
         self.inner = parameterType
         self.builtin = False
+        # Need to set self.name up front if our inner type is already complete,
+        # since in that case our .complete() won't be called.
+        if self.inner.isComplete():
+            self.name = self.inner.name + "MozMap"
 
     def __eq__(self, other):
         return isinstance(other, IDLMozMapType) and self.inner == other.inner
@@ -1982,7 +2023,7 @@ class IDLMozMapType(IDLType):
 
     def complete(self, scope):
         self.inner = self.inner.complete(scope)
-        self.name = self.inner.name
+        self.name = self.inner.name + "MozMap"
         return self
 
     def unroll(self):
@@ -2047,9 +2088,6 @@ class IDLUnionType(IDLType):
                 return typeName(type._identifier.object())
             if isinstance(type, IDLObjectWithIdentifier):
                 return typeName(type.identifier)
-            if (isinstance(type, IDLType) and
-                (type.isArray() or type.isSequence() or type.isMozMap)):
-                return str(type)
             return type.name
 
         for (i, type) in enumerate(self.memberTypes):
@@ -3444,6 +3482,9 @@ class IDLArgument(IDLObjectWithIdentifier):
             deps.add(self.defaultValue)
         return deps
 
+    def canHaveMissingValue(self):
+        return self.optional and not self.defaultValue
+
 class IDLCallbackType(IDLType, IDLObjectWithScope):
     def __init__(self, location, parentScope, identifier, returnType, arguments):
         assert isinstance(returnType, IDLType)
@@ -4111,8 +4152,8 @@ class Tokenizer(object):
         "long": "LONG",
         "object": "OBJECT",
         "octet": "OCTET",
-        "optional": "OPTIONAL",
         "Promise": "PROMISE",
+        "required": "REQUIRED",
         "sequence": "SEQUENCE",
         "MozMap": "MOZMAP",
         "short": "SHORT",
@@ -4397,15 +4438,21 @@ class Parser(Tokenizer):
 
     def p_DictionaryMember(self, p):
         """
-            DictionaryMember : Type IDENTIFIER Default SEMICOLON
+            DictionaryMember : Required Type IDENTIFIER Default SEMICOLON
         """
         # These quack a lot like optional arguments, so just treat them that way.
-        t = p[1]
+        t = p[2]
         assert isinstance(t, IDLType)
-        identifier = IDLUnresolvedIdentifier(self.getLocation(p, 2), p[2])
-        defaultValue = p[3]
+        identifier = IDLUnresolvedIdentifier(self.getLocation(p, 3), p[3])
+        defaultValue = p[4]
+        optional = not p[1]
 
-        p[0] = IDLArgument(self.getLocation(p, 2), identifier, t, optional=True,
+        if not optional and defaultValue:
+            raise WebIDLError("Required dictionary members can't have a default value.",
+                              [self.getLocation(p, 4)])
+
+        p[0] = IDLArgument(self.getLocation(p, 3), identifier, t,
+                           optional=optional,
                            defaultValue=defaultValue, variadic=False,
                            dictionaryMember=True)
 
@@ -4603,7 +4650,7 @@ class Parser(Tokenizer):
 
     def p_AttributeRest(self, p):
         """
-            AttributeRest : ReadOnly ATTRIBUTE Type IDENTIFIER SEMICOLON
+            AttributeRest : ReadOnly ATTRIBUTE Type AttributeName SEMICOLON
         """
         location = self.getLocation(p, 2)
         readonly = p[1]
@@ -4932,6 +4979,7 @@ class Parser(Tokenizer):
                          | INTERFACE
                          | LEGACYCALLER
                          | PARTIAL
+                         | REQUIRED
                          | SERIALIZER
                          | SETTER
                          | STATIC
@@ -4939,6 +4987,13 @@ class Parser(Tokenizer):
                          | JSONIFIER
                          | TYPEDEF
                          | UNRESTRICTED
+        """
+        p[0] = p[1]
+
+    def p_AttributeName(self, p):
+        """
+            AttributeName : IDENTIFIER
+                          | REQUIRED
         """
         p[0] = p[1]
 
@@ -4951,6 +5006,18 @@ class Parser(Tokenizer):
     def p_OptionalEmpty(self, p):
         """
             Optional :
+        """
+        p[0] = False
+
+    def p_Required(self, p):
+        """
+            Required : REQUIRED
+        """
+        p[0] = True
+
+    def p_RequiredEmpty(self, p):
+        """
+            Required :
         """
         p[0] = False
 

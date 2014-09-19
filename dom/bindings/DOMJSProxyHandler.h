@@ -27,7 +27,7 @@ template<typename T> struct Prefable;
 class BaseDOMProxyHandler : public js::BaseProxyHandler
 {
 public:
-  explicit BaseDOMProxyHandler(const void* aProxyFamily, bool aHasPrototype = false)
+  explicit MOZ_CONSTEXPR BaseDOMProxyHandler(const void* aProxyFamily, bool aHasPrototype = false)
     : js::BaseProxyHandler(aProxyFamily, aHasPrototype)
   {}
 
@@ -77,10 +77,9 @@ protected:
 class DOMProxyHandler : public BaseDOMProxyHandler
 {
 public:
-  DOMProxyHandler()
+  MOZ_CONSTEXPR DOMProxyHandler()
     : BaseDOMProxyHandler(&family)
-  {
-  }
+  {}
 
   bool preventExtensions(JSContext *cx, JS::Handle<JSObject*> proxy) const MOZ_OVERRIDE;
   bool defineProperty(JSContext* cx, JS::Handle<JSObject*> proxy, JS::Handle<jsid> id,
@@ -151,7 +150,7 @@ GetArrayIndexFromId(JSContext* cx, JS::Handle<jsid> id)
   }
   if (MOZ_LIKELY(JSID_IS_ATOM(id))) {
     JSAtom* atom = JSID_TO_ATOM(id);
-    jschar s;
+    char16_t s;
     {
       JS::AutoCheckCannotGC nogc;
       if (js::AtomHasLatin1Chars(atom)) {

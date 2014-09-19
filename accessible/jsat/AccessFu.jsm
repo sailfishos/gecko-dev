@@ -235,6 +235,10 @@ this.AccessFu = { // jshint ignore:line
   },
 
   _output: function _output(aPresentationData, aBrowser) {
+    if (!Utils.isAliveAndVisible(
+      Utils.AccRetrieval.getAccessibleFor(aBrowser))) {
+      return;
+    }
     for (let presenter of aPresentationData) {
       if (!presenter) {
         continue;
@@ -881,6 +885,7 @@ var Input = {
   },
 
   setEditState: function setEditState(aEditState) {
+    Logger.debug(() => { return ['setEditState', JSON.stringify(aEditState)] });
     this.editState = aEditState;
   },
 

@@ -48,7 +48,7 @@ class OggCodecStore
 class OggReader MOZ_FINAL : public MediaDecoderReader
 {
 public:
-  OggReader(AbstractMediaDecoder* aDecoder);
+  explicit OggReader(AbstractMediaDecoder* aDecoder);
 
 protected:
   ~OggReader();
@@ -267,6 +267,13 @@ private:
   // Fills aTracks with the serial numbers of each active stream, for use by
   // various SkeletonState functions.
   void BuildSerialList(nsTArray<uint32_t>& aTracks);
+
+  // Setup target bitstreams for decoding.
+  void SetupTargetTheora(TheoraState* aTheoraState);
+  void SetupTargetVorbis(VorbisState* aVorbisState);
+  void SetupTargetOpus(OpusState* aOpusState);
+  void SetupTargetSkeleton(SkeletonState* aSkeletonState);
+  void SetupMediaTracksInfo(const nsTArray<uint32_t>& aSerials);
 
   OggCodecStore mCodecStore;
 

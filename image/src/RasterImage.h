@@ -35,6 +35,7 @@
 #include "mozilla/TimeStamp.h"
 #include "mozilla/StaticPtr.h"
 #include "mozilla/WeakPtr.h"
+#include "mozilla/UniquePtr.h"
 #ifdef DEBUG
   #include "imgIContainerDebug.h"
 #endif
@@ -350,7 +351,7 @@ private:
    */
   struct DecodeRequest
   {
-    DecodeRequest(RasterImage* aImage)
+    explicit DecodeRequest(RasterImage* aImage)
       : mImage(aImage)
       , mBytesToDecode(0)
       , mRequestStatus(REQUEST_INACTIVE)
@@ -546,7 +547,7 @@ private:
     NS_IMETHOD Run();
 
   private: /* methods */
-    FrameNeededWorker(RasterImage* image);
+    explicit FrameNeededWorker(RasterImage* image);
 
   private: /* members */
 
@@ -644,7 +645,7 @@ private: // data
   // IMPORTANT: if you use mAnim in a method, call EnsureImageIsDecoded() first to ensure
   // that the frames actually exist (they may have been discarded to save memory, or
   // we maybe decoding on draw).
-  FrameAnimator* mAnim;
+  UniquePtr<FrameAnimator> mAnim;
 
   // Discard members
   uint32_t                   mLockCount;
@@ -780,7 +781,7 @@ private: // data
     NS_IMETHOD Run();
 
   private:
-    HandleErrorWorker(RasterImage* aImage);
+    explicit HandleErrorWorker(RasterImage* aImage);
 
     nsRefPtr<RasterImage> mImage;
   };
@@ -793,8 +794,8 @@ private: // data
   bool StoringSourceData() const;
 
 protected:
-  RasterImage(imgStatusTracker* aStatusTracker = nullptr,
-              ImageURL* aURI = nullptr);
+  explicit RasterImage(imgStatusTracker* aStatusTracker = nullptr,
+                       ImageURL* aURI = nullptr);
 
   bool ShouldAnimate();
 
@@ -814,7 +815,7 @@ inline NS_IMETHODIMP RasterImage::GetAnimationMode(uint16_t *aAnimationMode) {
 class imgDecodeRequestor : public nsRunnable
 {
   public:
-    imgDecodeRequestor(RasterImage &aContainer) {
+    explicit imgDecodeRequestor(RasterImage &aContainer) {
       mContainer = &aContainer;
     }
     NS_IMETHOD Run() {

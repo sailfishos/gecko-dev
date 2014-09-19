@@ -363,11 +363,12 @@ private:
 
     // Transform a pre-allocated app process into a "real" app
     // process, for the specified manifest URL.
-    void TransformPreallocatedIntoApp(const nsAString& aAppManifestURL);
+    void TransformPreallocatedIntoApp(ContentParent* aOpener,
+                                      const nsAString& aAppManifestURL);
 
     // Transform a pre-allocated app process into a browser process. If this
     // returns false, the child process has died.
-    void TransformPreallocatedIntoBrowser();
+    void TransformPreallocatedIntoBrowser(ContentParent* aOpener);
 
     /**
      * Mark this ContentParent as dead for the purposes of Get*().
@@ -462,6 +463,9 @@ private:
 
     virtual PTestShellParent* AllocPTestShellParent() MOZ_OVERRIDE;
     virtual bool DeallocPTestShellParent(PTestShellParent* shell) MOZ_OVERRIDE;
+
+    virtual PMobileConnectionParent* AllocPMobileConnectionParent(const uint32_t& aClientId) MOZ_OVERRIDE;
+    virtual bool DeallocPMobileConnectionParent(PMobileConnectionParent* aActor) MOZ_OVERRIDE;
 
     virtual bool DeallocPNeckoParent(PNeckoParent* necko) MOZ_OVERRIDE;
 

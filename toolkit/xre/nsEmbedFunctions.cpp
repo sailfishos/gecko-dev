@@ -74,6 +74,11 @@
 
 #include "GeckoProfiler.h"
 
+#if defined(MOZ_CONTENT_SANDBOX) && defined(XP_WIN)
+#define TARGET_SANDBOX_EXPORTS
+#include "mozilla/warnonlysandbox/wosCallbacks.h"
+#endif
+
 #ifdef MOZ_IPDL_TESTS
 #include "mozilla/_ipdltest/IPDLUnitTests.h"
 #include "mozilla/_ipdltest/IPDLUnitTestProcessChild.h"
@@ -329,14 +334,14 @@ XRE_InitChildProcess(int aArgc,
   const int kTimeoutMs = 1000;
 
   MachSendMessage child_message(0);
-  if (!child_message.AddDescriptor(mach_task_self())) {
+  if (!child_message.AddDescriptor(MachMsgPortDescriptor(mach_task_self()))) {
     NS_WARNING("child AddDescriptor(mach_task_self()) failed.");
     return NS_ERROR_FAILURE;
   }
 
   ReceivePort child_recv_port;
   mach_port_t raw_child_recv_port = child_recv_port.GetPort();
-  if (!child_message.AddDescriptor(raw_child_recv_port)) {
+  if (!child_message.AddDescriptor(MachMsgPortDescriptor(raw_child_recv_port))) {
     NS_WARNING("Adding descriptor to message failed");
     return NS_ERROR_FAILURE;
   }
@@ -534,6 +539,12 @@ XRE_InitChildProcess(int aArgc,
         NS_LogTerm();
         return NS_ERROR_FAILURE;
       }
+
+#if defined(MOZ_CONTENT_SANDBOX) && defined(XP_WIN)
+      // We need to do this after the process has been initialised, as
+      // InitIfRequired needs access to prefs.
+      mozilla::warnonlysandbox::InitIfRequired();
+#endif
 
       // Run the UI event loop on the main thread.
       uiMessageLoop.MessageLoop::Run();

@@ -38,8 +38,9 @@ const MAX_VISIBLE_STRING_SIZE = 100;
  *                    entry in the table. Default: name.
  *        - emptyText: text to display when no entries in the table to display.
  *        - highlightUpdated: true to highlight the changed/added row.
- *        - removableColumns: Whether columns are removeable. If set to true,
+ *        - removableColumns: Whether columns are removeable. If set to false,
  *                            the context menu in the headers will not appear.
+ *        - firstColumn: key of the first column that should appear.
  */
 function TableWidget(node, options={}) {
   EventEmitter.decorate(this);
@@ -48,12 +49,13 @@ function TableWidget(node, options={}) {
   this.window = this.document.defaultView;
   this._parent = node;
 
-  let {initialColumns, emptyText, uniqueId, highlightUpdated, removableColumns} =
-      options;
+  let {initialColumns, emptyText, uniqueId, highlightUpdated, removableColumns,
+       firstColumn} = options;
   this.emptyText = emptyText || "";
   this.uniqueId = uniqueId || "name";
+  this.firstColumn = firstColumn || "";
   this.highlightUpdated = highlightUpdated || false;
-  this.removableColumns = removableColumns || false;
+  this.removableColumns = removableColumns !== false;
 
   this.tbody = this.document.createElementNS(XUL_NS, "hbox");
   this.tbody.className = "table-widget-body theme-body";
@@ -237,10 +239,24 @@ TableWidget.prototype = {
       sortOn = null;
     }
 
+    if (!(this.firstColumn in columns)) {
+      this.firstColumn = null;
+    }
+
+    if (this.firstColumn) {
+      this.columns.set(this.firstColumn,
+        new Column(this, this.firstColumn, columns[this.firstColumn]));
+    }
+
     for (let id in columns) {
       if (!sortOn) {
         sortOn = id;
       }
+
+      if (this.firstColumn && id == this.firstColumn) {
+        continue;
+      }
+
       this.columns.set(id, new Column(this, id, columns[id]));
       if (hiddenColumns.indexOf(id) > -1) {
         this.columns.get(id).toggleColumn();
@@ -260,7 +276,7 @@ TableWidget.prototype = {
       item = item[this.uniqueId];
     }
 
-    return item == this.selectedRow[this.uniqueId];
+    return this.selectedRow && item == this.selectedRow[this.uniqueId];
   },
 
   /**
@@ -577,7 +593,7 @@ Column.prototype = {
    * Selects the row at the `index` index
    */
   selectRowAt: function(index) {
-    if (this.selectedRow) {
+    if (this.selectedRow != null) {
       this.cells[this.items[this.selectedRow]].toggleClass("theme-selected");
     }
     if (index < 0) {
@@ -671,6 +687,8 @@ Column.prototype = {
   /**
    * Event handler for the command event coming from the header context menu.
    * Toggles the column if it was requested by the user.
+   * When called explicitly without parameters, it toggles the corresponding
+   * column.
    *
    * @param {string} event
    *        The name of the event. i.e. EVENTS.HEADER_CONTEXT_MENU
@@ -680,6 +698,11 @@ Column.prototype = {
    *        true if the column is visible
    */
   toggleColumn: function(event, id, checked) {
+    if (arguments.length == 0) {
+      // Act like a toggling method when called with no params
+      id = this.id;
+      checked = this.wrapper.hasAttribute("hidden");
+    }
     if (id != this.id) {
       return;
     }
@@ -907,7 +930,7 @@ Cell.prototype = {
 
   set value(value) {
     this._value = value;
-    if (!value) {
+    if (value == null) {
       this.label.setAttribute("value", "");
       return;
     }
@@ -944,6 +967,8 @@ Cell.prototype = {
    */
   flash: function() {
     this.label.classList.remove("flash-out");
+    // Cause a reflow so that the animation retriggers on adding back the class
+    let a = this.label.parentNode.offsetWidth;
     this.label.classList.add("flash-out");
   },
 

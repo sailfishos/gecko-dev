@@ -29,7 +29,7 @@ public:
     static void CloseNotification(const nsAString& a0);
     static jstring ConnectionGetMimeType(jobject a0);
     static jobject CreateInputStream(jobject a0);
-    static void CreateMessageListWrapper(int64_t a0, int64_t a1, jobjectArray a2, int32_t a3, int32_t a4, bool a5, int32_t a6);
+    static void CreateMessageListWrapper(int64_t a0, int64_t a1, jobjectArray a2, int32_t a3, const nsAString& a4, bool a5, bool a6, int64_t a7, bool a8, int32_t a9);
     static void CreateShortcut(const nsAString& a0, const nsAString& a1, const nsAString& a2);
     static void DeleteMessageWrapper(int32_t a0, int32_t a1);
     static void DisableBatteryNotifications();
@@ -62,7 +62,6 @@ public:
     static int16_t GetScreenOrientationWrapper();
     static bool GetShowPasswordSetting();
     static jintArray GetSystemColoursWrapper();
-    static jstring GetUserRestrictions();
     static void HandleGeckoMessageWrapper(jobject a0);
     static void HandleUncaughtException(jobject a0, jthrowable a1);
     static void HideProgressDialog();
@@ -70,7 +69,6 @@ public:
     static bool IsNetworkLinkKnown();
     static bool IsNetworkLinkUp();
     static bool IsTablet();
-    static bool IsUserRestricted();
     static void KillAnyZombies();
     static jclass LoadPluginClass(const nsAString& a0, const nsAString& a1);
     static void LockScreenOrientation(int32_t a0);
@@ -150,7 +148,6 @@ protected:
     static jmethodID jGetScreenOrientationWrapper;
     static jmethodID jGetShowPasswordSetting;
     static jmethodID jGetSystemColoursWrapper;
-    static jmethodID jGetUserRestrictions;
     static jmethodID jHandleGeckoMessageWrapper;
     static jmethodID jHandleUncaughtException;
     static jmethodID jHideProgressDialog;
@@ -158,7 +155,6 @@ protected:
     static jmethodID jIsNetworkLinkKnown;
     static jmethodID jIsNetworkLinkUp;
     static jmethodID jIsTablet;
-    static jmethodID jIsUserRestricted;
     static jmethodID jKillAnyZombies;
     static jmethodID jLoadPluginClass;
     static jmethodID jLockScreenOrientation;
@@ -244,6 +240,22 @@ protected:
     static jmethodID jStartJavaProfiling;
     static jmethodID jStopJavaProfiling;
     static jmethodID jUnpauseJavaProfiling;
+};
+
+class RestrictedProfiles : public AutoGlobalWrappedJavaObject {
+public:
+    static void InitStubs(JNIEnv *jEnv);
+    static RestrictedProfiles* Wrap(jobject obj);
+    RestrictedProfiles(jobject obj, JNIEnv* env) : AutoGlobalWrappedJavaObject(obj, env) {};
+    static jstring GetUserRestrictions();
+    static bool IsAllowed(int32_t a0, const nsAString& a1);
+    static bool IsUserRestricted();
+    RestrictedProfiles() : AutoGlobalWrappedJavaObject() {};
+protected:
+    static jclass mRestrictedProfilesClass;
+    static jmethodID jGetUserRestrictions;
+    static jmethodID jIsAllowed;
+    static jmethodID jIsUserRestricted;
 };
 
 class SurfaceBits : public AutoGlobalWrappedJavaObject {

@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*- * vim: set ts=8 sts=4 et sw=4 tw=99:
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*-
+ * vim: set ts=8 sts=4 et sw=4 tw=99:
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -61,6 +62,7 @@
 #include "perf/jsperf.h"
 #include "shell/jsheaptools.h"
 #include "shell/jsoptparse.h"
+#include "shell/OSObject.h"
 #include "vm/ArgumentsObject.h"
 #include "vm/Debugger.h"
 #include "vm/HelperThreads.h"
@@ -195,6 +197,8 @@ NewGlobalObject(JSContext *cx, JS::CompartmentOptions &options,
 static const JSErrorFormatString *
 my_GetErrorMessage(void *userRef, const unsigned errorNumber);
 
+static void
+my_ErrorReporter(JSContext *cx, const char *message, JSErrorReport *report);
 
 /*
  * A toy principals type for the shell.
@@ -1258,7 +1262,7 @@ Evaluate(JSContext *cx, unsigned argc, jsval *vp)
             if (loadBytecode) {
                 script = JS_DecodeScript(cx, loadBuffer, loadLength, options.originPrincipals(cx));
             } else {
-                mozilla::Range<const jschar> chars = codeChars.twoByteRange();
+                mozilla::Range<const char16_t> chars = codeChars.twoByteRange();
                 (void) JS::Compile(cx, global, options, chars.start().get(), chars.length(), &script);
             }
 
@@ -1275,7 +1279,7 @@ Evaluate(JSContext *cx, unsigned argc, jsval *vp)
             if (!chars.initTwoByte(cx, flat))
                 return false;
 
-            const jschar *durl = chars.twoByteRange().start().get();
+            const char16_t *durl = chars.twoByteRange().start().get();
             if (!script->scriptSource()->setDisplayURL(cx, durl))
                 return false;
         }
@@ -1288,7 +1292,7 @@ Evaluate(JSContext *cx, unsigned argc, jsval *vp)
             if (!chars.initTwoByte(cx, flat))
                 return false;
 
-            const jschar *smurl = chars.twoByteRange().start().get();
+            const char16_t *smurl = chars.twoByteRange().start().get();
             if (!script->scriptSource()->setSourceMapURL(cx, smurl))
                 return false;
         }
@@ -1362,7 +1366,7 @@ FileAsString(JSContext *cx, const char *pathname)
                     JS_ReportError(cx, "can't read %s: %s", pathname,
                                    (ptrdiff_t(cc) < 0) ? strerror(errno) : "short read");
                 } else {
-                    jschar *ucbuf =
+                    char16_t *ucbuf =
                         JS::UTF8CharsToNewTwoByteCharsZ(cx, JS::UTF8Chars(buf, len), &len).get();
                     if (!ucbuf) {
                         JS_ReportError(cx, "Invalid UTF-8 in file '%s'", pathname);
@@ -1447,10 +1451,8 @@ Run(JSContext *cx, unsigned argc, jsval *vp)
     if (!chars.initTwoByte(cx, str))
         return false;
 
-    const jschar *ucbuf = chars.twoByteRange().start().get();
+    const char16_t *ucbuf = chars.twoByteRange().start().get();
     size_t buflen = str->length();
-
-    JS::Anchor<JSString *> a_str(str);
 
     RootedScript script(cx);
     int64_t startClock = PRMJ_Now();
@@ -1716,29 +1718,6 @@ ValueToScript(JSContext *cx, jsval vArg, JSFunction **funp = nullptr)
         *funp = fun;
 
     return script;
-}
-
-static bool
-SetDebug(JSContext *cx, unsigned argc, jsval *vp)
-{
-    CallArgs args = CallArgsFromVp(argc, vp);
-    if (args.length() == 0 || !args[0].isBoolean()) {
-        JS_ReportErrorNumber(cx, my_GetErrorMessage, nullptr,
-                             JSSMSG_NOT_ENOUGH_ARGS, "setDebug");
-        return false;
-    }
-
-    /*
-     * Debug mode can only be set when there is no JS code executing on the
-     * stack. Unfortunately, that currently means that this call will fail
-     * unless debug mode is already set to what you're trying to set it to.
-     * In the future, this restriction may be lifted.
-     */
-
-    bool ok = !!JS_SetDebugMode(cx, args[0].toBoolean());
-    if (ok)
-        args.rval().setBoolean(true);
-    return ok;
 }
 
 static JSScript *
@@ -2195,7 +2174,7 @@ DisassFile(JSContext *cx, unsigned argc, jsval *vp)
     Sprinter sprinter(cx);
     if (!sprinter.init())
         return false;
-    bool ok = DisassembleScript(cx, script, NullPtr(), p.lines, p.recursive, &sprinter);
+    bool ok = DisassembleScript(cx, script, JS::NullPtr(), p.lines, p.recursive, &sprinter);
     if (ok)
         fprintf(stdout, "%s\n", sprinter.string());
     if (!ok)
@@ -2400,7 +2379,7 @@ Intern(JSContext *cx, unsigned argc, jsval *vp)
     if (!strChars.initTwoByte(cx, str))
         return false;
 
-    mozilla::Range<const jschar> chars = strChars.twoByteRange();
+    mozilla::Range<const char16_t> chars = strChars.twoByteRange();
 
     if (!JS_InternUCStringN(cx, chars.start().get(), chars.length()))
         return false;
@@ -2576,9 +2555,9 @@ EvalInContext(JSContext *cx, unsigned argc, jsval *vp)
     if (!strChars.initTwoByte(cx, str))
         return false;
 
-    mozilla::Range<const jschar> chars = strChars.twoByteRange();
+    mozilla::Range<const char16_t> chars = strChars.twoByteRange();
     size_t srclen = chars.length();
-    const jschar *src = chars.start().get();
+    const char16_t *src = chars.start().get();
 
     bool lazy = false;
     if (srclen == 4) {
@@ -2646,8 +2625,7 @@ EvalInFrame(JSContext *cx, unsigned argc, jsval *vp)
     RootedString str(cx, args[1].toString());
     bool saveCurrent = args.get(2).isBoolean() ? args[2].toBoolean() : false;
 
-    /* This is a copy of CheckDebugMode. */
-    if (!JS_GetDebugMode(cx)) {
+    if (!cx->compartment()->debugMode()) {
         JS_ReportErrorFlagsAndNumber(cx, JSREPORT_ERROR, js_GetErrorMessage,
                                      nullptr, JSMSG_NEED_DEBUG_MODE);
         return false;
@@ -2701,10 +2679,10 @@ EvalInFrame(JSContext *cx, unsigned argc, jsval *vp)
 struct WorkerInput
 {
     JSRuntime *runtime;
-    jschar *chars;
+    char16_t *chars;
     size_t length;
 
-    WorkerInput(JSRuntime *runtime, jschar *chars, size_t length)
+    WorkerInput(JSRuntime *runtime, char16_t *chars, size_t length)
       : runtime(runtime), chars(chars), length(length)
     {}
 
@@ -2723,6 +2701,7 @@ WorkerMain(void *arg)
         js_delete(input);
         return;
     }
+    JS_SetErrorReporter(rt, my_ErrorReporter);
 
     JSContext *cx = NewContext(rt);
     if (!cx) {
@@ -2780,7 +2759,7 @@ EvalInWorker(JSContext *cx, unsigned argc, jsval *vp)
 
     JSLinearString *str = &args[0].toString()->asLinear();
 
-    jschar *chars = (jschar *) js_malloc(str->length() * sizeof(jschar));
+    char16_t *chars = (char16_t *) js_malloc(str->length() * sizeof(char16_t));
     if (!chars)
         return false;
     CopyChars(chars, *str);
@@ -3329,7 +3308,7 @@ Compile(JSContext *cx, unsigned argc, jsval *vp)
            .setCompileAndGo(true)
            .setNoScriptRval(true);
     RootedScript script(cx);
-    const jschar *chars = stableChars.twoByteRange().start().get();
+    const char16_t *chars = stableChars.twoByteRange().start().get();
     bool ok = JS_CompileUCScript(cx, global, chars,
                                  scriptContents->length(), options, &script);
     args.rval().setUndefined();
@@ -3363,7 +3342,7 @@ Parse(JSContext *cx, unsigned argc, jsval *vp)
         return false;
 
     size_t length = scriptContents->length();
-    const jschar *chars = stableChars.twoByteRange().start().get();
+    const char16_t *chars = stableChars.twoByteRange().start().get();
 
     CompileOptions options(cx);
     options.setIntroductionType("js shell parse")
@@ -3413,7 +3392,7 @@ SyntaxParse(JSContext *cx, unsigned argc, jsval *vp)
     if (!stableChars.initTwoByte(cx, scriptContents))
         return false;
 
-    const jschar *chars = stableChars.twoByteRange().start().get();
+    const char16_t *chars = stableChars.twoByteRange().start().get();
     size_t length = scriptContents->length();
     Parser<frontend::SyntaxParseHandler> parser(cx, &cx->tempLifoAlloc(),
                                                 options, chars, length, false, nullptr, nullptr);
@@ -3444,7 +3423,7 @@ class OffThreadState {
     OffThreadState() : monitor(), state(IDLE), token(), source(nullptr) { }
     bool init() { return monitor.init(); }
 
-    bool startIfIdle(JSContext *cx, ScopedJSFreePtr<jschar> &newSource) {
+    bool startIfIdle(JSContext *cx, ScopedJSFreePtr<char16_t> &newSource) {
         AutoLockMonitor alm(monitor);
         if (state != IDLE)
             return false;
@@ -3506,7 +3485,7 @@ class OffThreadState {
     Monitor monitor;
     State state;
     void *token;
-    jschar *source;
+    char16_t *source;
 };
 
 static OffThreadState offThreadState;
@@ -3568,15 +3547,15 @@ OffThreadCompileScript(JSContext *cx, unsigned argc, jsval *vp)
         return false;
 
     size_t length = scriptContents->length();
-    const jschar *chars = stableChars.twoByteRange().start().get();
+    const char16_t *chars = stableChars.twoByteRange().start().get();
 
     // Make sure we own the string's chars, so that they are not freed before
     // the compilation is finished.
-    ScopedJSFreePtr<jschar> ownedChars;
+    ScopedJSFreePtr<char16_t> ownedChars;
     if (stableChars.maybeGiveOwnershipToCaller()) {
-        ownedChars = const_cast<jschar*>(chars);
+        ownedChars = const_cast<char16_t*>(chars);
     } else {
-        jschar *copy = cx->pod_malloc<jschar>(length);
+        char16_t *copy = cx->pod_malloc<char16_t>(length);
         if (!copy)
             return false;
 
@@ -4055,9 +4034,8 @@ WrapWithProto(JSContext *cx, unsigned argc, jsval *vp)
 
     WrapperOptions options(cx);
     options.setProto(proto.toObjectOrNull());
-    options.selectDefaultClass(obj.toObject().isCallable());
     JSObject *wrapped = Wrapper::New(cx, &obj.toObject(), &obj.toObject().global(),
-                                     &Wrapper::singletonWithPrototype, &options);
+                                     &Wrapper::singletonWithPrototype, options);
     if (!wrapped)
         return false;
 
@@ -4169,7 +4147,7 @@ class ShellSourceHook: public SourceHook {
   public:
     ShellSourceHook(JSContext *cx, JSFunction &fun) : fun(cx, &fun) {}
 
-    bool load(JSContext *cx, const char *filename, jschar **src, size_t *length) {
+    bool load(JSContext *cx, const char *filename, char16_t **src, size_t *length) {
         RootedString str(cx, JS_NewStringCopyZ(cx, filename));
         if (!str)
             return false;
@@ -4184,7 +4162,7 @@ class ShellSourceHook: public SourceHook {
             return false;
 
         *length = JS_GetStringLength(str);
-        *src = cx->pod_malloc<jschar>(*length);
+        *src = cx->pod_malloc<char16_t>(*length);
         if (!*src)
             return false;
 
@@ -4262,7 +4240,7 @@ PrintProfilerEvents(JSContext *cx, unsigned argc, Value *vp)
 }
 
 #if defined(JS_ARM_SIMULATOR)
-typedef Vector<jschar, 0, SystemAllocPolicy> StackChars;
+typedef Vector<char16_t, 0, SystemAllocPolicy> StackChars;
 Vector<StackChars, 0, SystemAllocPolicy> stacks;
 
 static void
@@ -4448,10 +4426,6 @@ static const JSFunctionSpecWithHelp shell_functions[] = {
 "assertEq(actual, expected[, msg])",
 "  Throw if the first two arguments are not the same (both +0 or both -0,\n"
 "  both NaN, or non-zero and ===)."),
-
-    JS_FN_HELP("setDebug", SetDebug, 1, 0,
-"setDebug(debug)",
-"  Set debug mode."),
 
     JS_FN_HELP("throwError", ThrowError, 0, 0,
 "throwError()",
@@ -4823,7 +4797,6 @@ static bool
 PrintHelpString(JSContext *cx, jsval v)
 {
     JSString *str = v.toString();
-    JS::Anchor<JSString *> a_str(str);
 
     JSLinearString *linear = str->ensureLinear(cx);
     if (!linear)
@@ -4834,7 +4807,7 @@ PrintHelpString(JSContext *cx, jsval v)
         for (const Latin1Char *p = linear->latin1Chars(nogc); *p; p++)
             fprintf(gOutFile, "%c", char(*p));
     } else {
-        for (const jschar *p = linear->twoByteChars(nogc); *p; p++)
+        for (const char16_t *p = linear->twoByteChars(nogc); *p; p++)
             fprintf(gOutFile, "%c", char(*p));
     }
     fprintf(gOutFile, "\n");
@@ -4974,118 +4947,6 @@ static const JSClass global_class = {
     JS_ConvertStub,   nullptr,
     nullptr, nullptr, nullptr,
     JS_GlobalObjectTraceHook
-};
-
-static bool
-env_setProperty(JSContext *cx, HandleObject obj, HandleId id, bool strict, MutableHandleValue vp)
-{
-/* XXX porting may be easy, but these don't seem to supply setenv by default */
-#if !defined SOLARIS
-    int rv;
-
-    RootedValue idvalue(cx, IdToValue(id));
-    RootedString idstring(cx, ToString(cx, idvalue));
-    JSAutoByteString idstr;
-    if (!idstr.encodeLatin1(cx, idstring))
-        return false;
-
-    RootedString value(cx, ToString(cx, vp));
-    if (!value)
-        return false;
-    JSAutoByteString valstr;
-    if (!valstr.encodeLatin1(cx, value))
-        return false;
-
-#if defined XP_WIN || defined HPUX || defined OSF1
-    {
-        char *waste = JS_smprintf("%s=%s", idstr.ptr(), valstr.ptr());
-        if (!waste) {
-            JS_ReportOutOfMemory(cx);
-            return false;
-        }
-        rv = putenv(waste);
-#ifdef XP_WIN
-        /*
-         * HPUX9 at least still has the bad old non-copying putenv.
-         *
-         * Per mail from <s.shanmuganathan@digital.com>, OSF1 also has a putenv
-         * that will crash if you pass it an auto char array (so it must place
-         * its argument directly in the char *environ[] array).
-         */
-        JS_smprintf_free(waste);
-#endif
-    }
-#else
-    rv = setenv(idstr.ptr(), valstr.ptr(), 1);
-#endif
-    if (rv < 0) {
-        JS_ReportError(cx, "can't set env variable %s to %s", idstr.ptr(), valstr.ptr());
-        return false;
-    }
-    vp.set(StringValue(value));
-#endif /* !defined SOLARIS */
-    return true;
-}
-
-static bool
-env_enumerate(JSContext *cx, HandleObject obj)
-{
-    static bool reflected;
-    char **evp, *name, *value;
-    RootedString valstr(cx);
-    bool ok;
-
-    if (reflected)
-        return true;
-
-    for (evp = (char **)JS_GetPrivate(obj); (name = *evp) != nullptr; evp++) {
-        value = strchr(name, '=');
-        if (!value)
-            continue;
-        *value++ = '\0';
-        valstr = JS_NewStringCopyZ(cx, value);
-        ok = valstr && JS_DefineProperty(cx, obj, name, valstr, JSPROP_ENUMERATE);
-        value[-1] = '=';
-        if (!ok)
-            return false;
-    }
-
-    reflected = true;
-    return true;
-}
-
-static bool
-env_resolve(JSContext *cx, HandleObject obj, HandleId id, MutableHandleObject objp)
-{
-    if (JSID_IS_SYMBOL(id))
-        return true;
-
-    RootedString idstring(cx, IdToString(cx, id));
-    if (!idstring)
-        return false;
-    JSAutoByteString idstr;
-    if (!idstr.encodeLatin1(cx, idstring))
-        return false;
-
-    const char *name = idstr.ptr();
-    const char *value = getenv(name);
-    if (value) {
-        RootedString valstr(cx, JS_NewStringCopyZ(cx, value));
-        if (!valstr)
-            return false;
-        if (!JS_DefineProperty(cx, obj, name, valstr, JSPROP_ENUMERATE))
-            return false;
-        objp.set(obj);
-    }
-    return true;
-}
-
-static const JSClass env_class = {
-    "environment", JSCLASS_HAS_PRIVATE | JSCLASS_NEW_RESOLVE,
-    JS_PropertyStub,  JS_DeletePropertyStub,
-    JS_PropertyStub,  env_setProperty,
-    env_enumerate, (JSResolveOp) env_resolve,
-    JS_ConvertStub
 };
 
 /*
@@ -5365,7 +5226,7 @@ class ScopedFileDesc
 static const uint32_t asmJSCacheCookie = 0xabbadaba;
 
 static bool
-ShellOpenAsmJSCacheEntryForRead(HandleObject global, const jschar *begin, const jschar *limit,
+ShellOpenAsmJSCacheEntryForRead(HandleObject global, const char16_t *begin, const char16_t *limit,
                                 size_t *serializedSizeOut, const uint8_t **memoryOut,
                                 intptr_t *handleOut)
 {
@@ -5438,7 +5299,7 @@ ShellCloseAsmJSCacheEntryForRead(size_t serializedSize, const uint8_t *memory, i
 
 static bool
 ShellOpenAsmJSCacheEntryForWrite(HandleObject global, bool installed,
-                                 const jschar *begin, const jschar *end,
+                                 const char16_t *begin, const char16_t *end,
                                  size_t serializedSize, uint8_t **memoryOut, intptr_t *handleOut)
 {
     if (!jsCachingEnabled || !jsCacheAsmJSPath)
@@ -5573,7 +5434,6 @@ NewContext(JSRuntime *rt)
     }
 
     JS_SetContextPrivate(cx, data);
-    JS_SetErrorReporter(cx, my_ErrorReporter);
     return cx;
 }
 
@@ -5688,11 +5548,6 @@ ProcessArgs(JSContext *cx, JSObject *obj_, OptionParser *op)
 
     if (op->getBoolOption('s'))
         JS::RuntimeOptionsRef(cx).toggleExtraWarnings();
-
-    if (op->getBoolOption('d')) {
-        JS_SetRuntimeDebugMode(JS_GetRuntime(cx), true);
-        JS_SetDebugMode(cx, true);
-    }
 
     /* |scriptArgs| gets bound on the global before any code is run. */
     if (!BindScriptArgs(cx, obj, op))
@@ -5838,16 +5693,16 @@ SetRuntimeOptions(JSRuntime *rt, const OptionParser &op)
             return OptionFailure("ion-limit-script-size", str);
     }
 
-    int32_t useCount = op.getIntOption("ion-uses-before-compile");
-    if (useCount >= 0)
-        jit::js_JitOptions.setUsesBeforeCompile(useCount);
+    int32_t warmUpThreshold = op.getIntOption("ion-warmup-threshold");
+    if (warmUpThreshold >= 0)
+        jit::js_JitOptions.setCompilerWarmUpThreshold(warmUpThreshold);
 
-    useCount = op.getIntOption("baseline-uses-before-compile");
-    if (useCount >= 0)
-        jit::js_JitOptions.baselineUsesBeforeCompile = useCount;
+    warmUpThreshold = op.getIntOption("baseline-warmup-threshold");
+    if (warmUpThreshold >= 0)
+        jit::js_JitOptions.baselineWarmUpThreshold = warmUpThreshold;
 
     if (op.getBoolOption("baseline-eager"))
-        jit::js_JitOptions.baselineUsesBeforeCompile = 0;
+        jit::js_JitOptions.baselineWarmUpThreshold = 0;
 
     if (const char *str = op.getStringOption("ion-regalloc")) {
         if (strcmp(str, "lsra") == 0) {
@@ -5953,10 +5808,8 @@ Shell(JSContext *cx, OptionParser *op, char **envp)
 
     JSAutoCompartment ac(cx, glob);
 
-    JSObject *envobj = JS_DefineObject(cx, glob, "environment", &env_class);
-    if (!envobj)
+    if (!js::DefineOS(cx, glob))
         return 1;
-    JS_SetPrivate(envobj, envp);
 
     int result = ProcessArgs(cx, glob, op);
 
@@ -6039,7 +5892,6 @@ main(int argc, char **argv, char **envp)
         || !op.addBoolOption('w', "warnings", "Emit warnings")
         || !op.addBoolOption('W', "nowarnings", "Don't emit warnings")
         || !op.addBoolOption('s', "strict", "Check strictness")
-        || !op.addBoolOption('d', "debugjit", "Enable runtime debug mode for method JIT code")
         || !op.addBoolOption('D', "dump-bytecode", "Dump bytecode with exec count for all scripts")
         || !op.addBoolOption('b', "print-timing", "Print sub-ms runtime for each file that's run")
         || !op.addStringOption('\0', "js-cache", "[path]",
@@ -6086,7 +5938,7 @@ main(int argc, char **argv, char **envp)
                                "On-Stack Replacement (default: on, off to disable)")
         || !op.addStringOption('\0', "ion-limit-script-size", "on/off",
                                "Don't compile very large scripts (default: on, off to disable)")
-        || !op.addIntOption('\0', "ion-uses-before-compile", "COUNT",
+        || !op.addIntOption('\0', "ion-warmup-threshold", "COUNT",
                             "Wait for COUNT calls or iterations before compiling "
                             "(default: 1000)", -1)
         || !op.addStringOption('\0', "ion-regalloc", "[mode]",
@@ -6103,7 +5955,7 @@ main(int argc, char **argv, char **envp)
         || !op.addBoolOption('\0', "baseline", "Enable baseline compiler (default)")
         || !op.addBoolOption('\0', "no-baseline", "Disable baseline compiler")
         || !op.addBoolOption('\0', "baseline-eager", "Always baseline-compile methods")
-        || !op.addIntOption('\0', "baseline-uses-before-compile", "COUNT",
+        || !op.addIntOption('\0', "baseline-warmup-threshold", "COUNT",
                             "Wait for COUNT calls or iterations before baseline-compiling "
                             "(default: 10)", -1)
         || !op.addBoolOption('\0', "no-fpu", "Pretend CPU does not support floating-point operations "
@@ -6216,6 +6068,7 @@ main(int argc, char **argv, char **envp)
     if (!rt)
         return 1;
 
+    JS_SetErrorReporter(rt, my_ErrorReporter);
     JS::SetOutOfMemoryCallback(rt, my_OOMCallback, nullptr);
     if (!SetRuntimeOptions(rt, op))
         return 1;

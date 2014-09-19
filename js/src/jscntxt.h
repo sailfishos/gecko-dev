@@ -295,6 +295,7 @@ struct ThreadSafeContext : ContextFriendFields,
     bool signalHandlersInstalled() const { return runtime_->signalHandlersInstalled(); }
     bool canUseSignalHandlers() const { return runtime_->canUseSignalHandlers(); }
     bool jitSupportsFloatingPoint() const { return runtime_->jitSupportsFloatingPoint; }
+    bool jitSupportsSimd() const { return runtime_->jitSupportsSimd; }
 
     // Thread local data that may be accessed freely.
     DtoaState *dtoaState() {
@@ -458,9 +459,6 @@ struct JSContext : public js::ExclusiveContext,
   public:
     /* State for object and array toSource conversion. */
     js::ObjectSet       cycleDetectorSet;
-
-    /* Per-context optional error reporter. */
-    JSErrorReporter     errorReporter;
 
     /* Client opaque pointers. */
     void                *data;
@@ -721,7 +719,7 @@ js_ReportErrorNumberVA(JSContext *cx, unsigned flags, JSErrorCallback callback,
 extern bool
 js_ReportErrorNumberUCArray(JSContext *cx, unsigned flags, JSErrorCallback callback,
                             void *userRef, const unsigned errorNumber,
-                            const jschar **args);
+                            const char16_t **args);
 #endif
 
 extern bool
@@ -815,7 +813,7 @@ HandleExecutionInterrupt(JSContext *cx);
  * break out of its loop. This happens if, for example, the user clicks "Stop
  * script" on the slow script dialog; treat it as an uncatchable error.
  */
-inline bool
+MOZ_ALWAYS_INLINE bool
 CheckForInterrupt(JSContext *cx)
 {
     MOZ_ASSERT(cx->runtime()->requestDepth >= 1);
@@ -987,6 +985,7 @@ bool intrinsic_ToString(JSContext *cx, unsigned argc, Value *vp);
 bool intrinsic_IsCallable(JSContext *cx, unsigned argc, Value *vp);
 bool intrinsic_ThrowError(JSContext *cx, unsigned argc, Value *vp);
 bool intrinsic_NewDenseArray(JSContext *cx, unsigned argc, Value *vp);
+bool intrinsic_IsConstructing(JSContext *cx, unsigned argc, Value *vp);
 
 bool intrinsic_UnsafePutElements(JSContext *cx, unsigned argc, Value *vp);
 bool intrinsic_DefineDataProperty(JSContext *cx, unsigned argc, Value *vp);

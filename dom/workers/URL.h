@@ -49,10 +49,10 @@ public:
 
   // Methods for WebIDL
 
-  static URL*
+  static already_AddRefed<URL>
   Constructor(const GlobalObject& aGlobal, const nsAString& aUrl,
               URL& aBase, ErrorResult& aRv);
-  static URL*
+  static already_AddRefed<URL>
   Constructor(const GlobalObject& aGlobal, const nsAString& aUrl,
               const nsAString& aBase, ErrorResult& aRv);
 
@@ -68,10 +68,6 @@ public:
 
   static void
   RevokeObjectURL(const GlobalObject& aGlobal, const nsAString& aUrl);
-
-  static nsIPrincipal* GetPrincipalFromURL(const GlobalObject& aGlobal,
-                                           const nsAString& aURL,
-                                           ErrorResult& aError);
 
   void GetHref(nsString& aHref, ErrorResult& aRv) const;
 

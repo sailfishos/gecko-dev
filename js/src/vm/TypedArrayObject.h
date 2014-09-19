@@ -125,6 +125,8 @@ class TypedArrayObject : public ArrayBufferViewObject
     static int dataOffset();
 
     static bool isOriginalLengthGetter(Scalar::Type type, Native native);
+
+    static void ObjectMoved(JSObject *obj, const JSObject *old);
 };
 
 inline bool
@@ -181,7 +183,7 @@ IsTypedArrayIndex(jsid id, uint64_t *indexp)
         return StringIsTypedArrayIndex(s, length, indexp);
     }
 
-    const jschar *s = atom->twoByteChars(nogc);
+    const char16_t *s = atom->twoByteChars(nogc);
     if (!JS7_ISDEC(*s) && *s != '-')
         return false;
     return StringIsTypedArrayIndex(s, length, indexp);

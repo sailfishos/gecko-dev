@@ -426,7 +426,7 @@ RilObject.prototype = {
     /**
      * One of the RADIO_STATE_* constants.
      */
-    this.radioState = GECKO_RADIOSTATE_UNAVAILABLE;
+    this.radioState = GECKO_RADIOSTATE_UNKNOWN;
 
     /**
      * True if we are on a CDMA phone.
@@ -443,12 +443,6 @@ RilObject.prototype = {
      * waiting for REQUEST_VOICE_RADIO_TECH
      */
     this._waitingRadioTech = false;
-
-    /**
-     * ICC status. Keeps a reference of the data response to the
-     * getICCStatus request.
-     */
-    this.iccStatus = null;
 
     /**
      * Card state
@@ -1655,7 +1649,7 @@ RilObject.prototype = {
       this.sendChromeMessage(options);
     }).bind(this, options);
 
-    let isRadioOff = (this.radioState === GECKO_RADIOSTATE_OFF);
+    let isRadioOff = (this.radioState === GECKO_RADIOSTATE_DISABLED);
 
     if (options.isEmergency) {
       if (isRadioOff) {
@@ -2389,9 +2383,15 @@ RilObject.prototype = {
       let request = options.attach ? RIL_REQUEST_GPRS_ATTACH :
                                      RIL_REQUEST_GPRS_DETACH;
       this.context.Buf.simpleRequest(request, options);
+      return;
     } else if (RILQUIRKS_SUBSCRIPTION_CONTROL && options.attach) {
       this.context.Buf.simpleRequest(REQUEST_SET_DATA_SUBSCRIPTION, options);
+      return;
     }
+
+    // We don't really send a request to rild, so instantly reply success to
+    // RadioInterfaceLayer.
+    this.sendChromeMessage(options);
   },
 
   /**
@@ -2588,7 +2588,7 @@ RilObject.prototype = {
       case MMI_SC_BA_MT:
         return MMI_KS_SC_CALL_BARRING;
       case MMI_SC_CALL_WAITING:
-        return MMI_SC_CALL_WAITING;
+        return MMI_KS_SC_CALL_WAITING;
       default:
         return MMI_KS_SC_USSD;
     }
@@ -2648,7 +2648,7 @@ RilObject.prototype = {
     }
 
     let _isRadioAvailable = (function() {
-      if (this.radioState !== GECKO_RADIOSTATE_READY) {
+      if (this.radioState !== GECKO_RADIOSTATE_ENABLED) {
         _sendMMIError(GECKO_ERROR_RADIO_NOT_AVAILABLE);
         return false;
       }
@@ -3453,30 +3453,9 @@ RilObject.prototype = {
       return;
     }
 
-    this.iccStatus = iccStatus;
-    let newCardState;
-    let index = this._isCdma ? iccStatus.cdmaSubscriptionAppIndex :
-                               iccStatus.gsmUmtsSubscriptionAppIndex;
-
-    if (RILQUIRKS_SUBSCRIPTION_CONTROL && index === -1) {
-      // Should enable uicc scription if index is not valid.
-      if (this.radioState !== GECKO_RADIOSTATE_READY) {
-        // Note: setUiccSubscription works abnormally when RADIO is OFF,
-        // which causes SMS function broken in Flame.
-        // See bug 1008557 for detailed info.
-        return;
-      }
-
-      for (let i = 0; i < iccStatus.apps.length; i++) {
-        this.setUiccSubscription({appIndex: i, enabled: true});
-      }
-      return;
-    }
-
-    // When |iccStatus.cardState| is not CARD_STATE_PRESENT or have incorrect
-    // app information, we can not get iccId. So treat ICC as undetected.
-    let app = iccStatus.apps[index];
-    if (iccStatus.cardState !== CARD_STATE_PRESENT || !app) {
+    // When |iccStatus.cardState| is not CARD_STATE_PRESENT, set cardState to
+    // undetected.
+    if (iccStatus.cardState !== CARD_STATE_PRESENT) {
       if (this.cardState !== GECKO_CARDSTATE_UNDETECTED) {
         this.operator = null;
         // We should send |cardstatechange| before |iccinfochange|, otherwise we
@@ -3491,45 +3470,72 @@ RilObject.prototype = {
       return;
     }
 
+    if (RILQUIRKS_SUBSCRIPTION_CONTROL) {
+      // All appIndex is -1 means the subscription is not activated yet.
+      // Note that we don't support "ims" for now, so we don't take it into
+      // account.
+      let neetToActivate = iccStatus.cdmaSubscriptionAppIndex === -1 &&
+                           iccStatus.gsmUmtsSubscriptionAppIndex === -1;
+      if (neetToActivate &&
+          // Note: setUiccSubscription works abnormally when RADIO is OFF,
+          // which causes SMS function broken in Flame.
+          // See bug 1008557 for detailed info.
+          this.radioState === GECKO_RADIOSTATE_ENABLED) {
+        for (let i = 0; i < iccStatus.apps.length; i++) {
+          this.setUiccSubscription({appIndex: i, enabled: true});
+        }
+      }
+    }
+
+    let newCardState;
+    let index = this._isCdma ? iccStatus.cdmaSubscriptionAppIndex
+                             : iccStatus.gsmUmtsSubscriptionAppIndex;
+    let app = iccStatus.apps[index];
+    if (app) {
+      // fetchICCRecords will need to read aid, so read aid here.
+      this.aid = app.aid;
+      this.appType = app.app_type;
+      this.iccInfo.iccType = GECKO_CARD_TYPE[this.appType];
+
+      switch (app.app_state) {
+        case CARD_APPSTATE_ILLEGAL:
+          newCardState = GECKO_CARDSTATE_ILLEGAL;
+          break;
+        case CARD_APPSTATE_PIN:
+          newCardState = GECKO_CARDSTATE_PIN_REQUIRED;
+          break;
+        case CARD_APPSTATE_PUK:
+          newCardState = GECKO_CARDSTATE_PUK_REQUIRED;
+          break;
+        case CARD_APPSTATE_SUBSCRIPTION_PERSO:
+          newCardState = PERSONSUBSTATE[app.perso_substate];
+          break;
+        case CARD_APPSTATE_READY:
+          newCardState = GECKO_CARDSTATE_READY;
+          break;
+        case CARD_APPSTATE_UNKNOWN:
+        case CARD_APPSTATE_DETECTED:
+          // Fall through.
+        default:
+          newCardState = GECKO_CARDSTATE_UNKNOWN;
+      }
+
+      let pin1State = app.pin1_replaced ? iccStatus.universalPINState :
+                                          app.pin1;
+      if (pin1State === CARD_PINSTATE_ENABLED_PERM_BLOCKED) {
+        newCardState = GECKO_CARDSTATE_PERMANENT_BLOCKED;
+      }
+    } else {
+      // Having incorrect app information, set card state to unknown.
+      newCardState = GECKO_CARDSTATE_UNKNOWN;
+    }
+
     let ICCRecordHelper = this.context.ICCRecordHelper;
-    // fetchICCRecords will need to read aid, so read aid here.
-    this.aid = app.aid;
-    this.appType = app.app_type;
-    this.iccInfo.iccType = GECKO_CARD_TYPE[this.appType];
     // Try to get iccId only when cardState left GECKO_CARDSTATE_UNDETECTED.
     if (iccStatus.cardState === CARD_STATE_PRESENT &&
         (this.cardState === GECKO_CARDSTATE_UNINITIALIZED ||
          this.cardState === GECKO_CARDSTATE_UNDETECTED)) {
       ICCRecordHelper.readICCID();
-    }
-
-    switch (app.app_state) {
-      case CARD_APPSTATE_ILLEGAL:
-        newCardState = GECKO_CARDSTATE_ILLEGAL;
-        break;
-      case CARD_APPSTATE_PIN:
-        newCardState = GECKO_CARDSTATE_PIN_REQUIRED;
-        break;
-      case CARD_APPSTATE_PUK:
-        newCardState = GECKO_CARDSTATE_PUK_REQUIRED;
-        break;
-      case CARD_APPSTATE_SUBSCRIPTION_PERSO:
-        newCardState = PERSONSUBSTATE[app.perso_substate];
-        break;
-      case CARD_APPSTATE_READY:
-        newCardState = GECKO_CARDSTATE_READY;
-        break;
-      case CARD_APPSTATE_UNKNOWN:
-      case CARD_APPSTATE_DETECTED:
-        // Fall through.
-      default:
-        newCardState = GECKO_CARDSTATE_UNKNOWN;
-    }
-
-    let pin1State = app.pin1_replaced ? iccStatus.universalPINState :
-                                        app.pin1;
-    if (pin1State === CARD_PINSTATE_ENABLED_PERM_BLOCKED) {
-      newCardState = GECKO_CARDSTATE_PERMANENT_BLOCKED;
     }
 
     if (this.cardState == newCardState) {
@@ -5848,7 +5854,11 @@ RilObject.prototype[REQUEST_SIM_IO] = function REQUEST_SIM_IO(length, options) {
   let Buf = this.context.Buf;
   options.sw1 = Buf.readInt32();
   options.sw2 = Buf.readInt32();
-  if (options.sw1 != ICC_STATUS_NORMAL_ENDING) {
+  // See 3GPP TS 11.11, clause 9.4.1 for opetation success results.
+  if (options.sw1 !== ICC_STATUS_NORMAL_ENDING &&
+      options.sw1 !== ICC_STATUS_NORMAL_ENDING_WITH_EXTRA &&
+      options.sw1 !== ICC_STATUS_WITH_SIM_DATA &&
+      options.sw1 !== ICC_STATUS_WITH_RESPONSE_DATA) {
     ICCIOHelper.processICCIOError(options);
     return;
   }
@@ -6802,11 +6812,11 @@ RilObject.prototype[UNSOLICITED_RESPONSE_RADIO_STATE_CHANGED] = function UNSOLIC
   let radioState = this.context.Buf.readInt32();
   let newState;
   if (radioState == RADIO_STATE_UNAVAILABLE) {
-    newState = GECKO_RADIOSTATE_UNAVAILABLE;
+    newState = GECKO_RADIOSTATE_UNKNOWN;
   } else if (radioState == RADIO_STATE_OFF) {
-    newState = GECKO_RADIOSTATE_OFF;
+    newState = GECKO_RADIOSTATE_DISABLED;
   } else {
-    newState = GECKO_RADIOSTATE_READY;
+    newState = GECKO_RADIOSTATE_ENABLED;
   }
 
   if (DEBUG) {
@@ -6841,9 +6851,9 @@ RilObject.prototype[UNSOLICITED_RESPONSE_RADIO_STATE_CHANGED] = function UNSOLIC
     break;
   }
 
-  if ((this.radioState == GECKO_RADIOSTATE_UNAVAILABLE ||
-       this.radioState == GECKO_RADIOSTATE_OFF) &&
-       newState == GECKO_RADIOSTATE_READY) {
+  if ((this.radioState == GECKO_RADIOSTATE_UNKNOWN ||
+       this.radioState == GECKO_RADIOSTATE_DISABLED) &&
+       newState == GECKO_RADIOSTATE_ENABLED) {
     // The radio became available, let's get its info.
     if (!this._waitingRadioTech) {
       if (this._isCdma) {
@@ -7088,7 +7098,11 @@ RilObject.prototype[UNSOLICITED_CDMA_CALL_WAITING] = function UNSOLICITED_CDMA_C
                           waitingCall: call});
 };
 RilObject.prototype[UNSOLICITED_CDMA_OTA_PROVISION_STATUS] = function UNSOLICITED_CDMA_OTA_PROVISION_STATUS() {
-  let status = this.context.Buf.readInt32List()[0];
+  let status =
+    CDMA_OTA_PROVISION_STATUS_TO_GECKO[this.context.Buf.readInt32List()[0]];
+  if (!status) {
+    return;
+  }
   this.sendChromeMessage({rilMessageType: "otastatuschange",
                           status: status});
 };
@@ -12539,17 +12553,12 @@ ICCFileHelperObject.prototype = {
    * @return The pathId or null in case of an error or invalid input.
    */
   getEFPath: function(fileId) {
-    let appType = this.context.RIL.appType;
-    if (appType == null) {
-      return null;
-    }
-
     let path = this.getCommonEFPath(fileId);
     if (path) {
       return path;
     }
 
-    switch (appType) {
+    switch (this.context.RIL.appType) {
       case CARD_APPTYPE_SIM:
         return this.getSimEFPath(fileId);
       case CARD_APPTYPE_USIM:
@@ -12668,6 +12677,7 @@ ICCIOHelperObject.prototype = {
     options.callback = function callback(options) {
       options.callback = cb;
       options.command = ICC_COMMAND_READ_BINARY;
+      options.p2 = 0x00;
       options.p3 = options.fileSize;
       this.context.RIL.iccIO(options);
     }.bind(this);
@@ -12688,8 +12698,22 @@ ICCIOHelperObject.prototype = {
       throw new Error("Unknown pathId for " + options.fileId.toString(16));
     }
     options.p1 = 0; // For GET_RESPONSE, p1 = 0
-    options.p2 = 0; // For GET_RESPONSE, p2 = 0
-    options.p3 = GET_RESPONSE_EF_SIZE_BYTES;
+    switch (this.context.RIL.appType) {
+      case CARD_APPTYPE_USIM:
+        options.p2 = GET_RESPONSE_FCP_TEMPLATE;
+        options.p3 = 0x00;
+        break;
+      // For RUIM, CSIM and ISIM, cf bug 955946: keep the old behavior
+      case CARD_APPTYPE_RUIM:
+      case CARD_APPTYPE_CSIM:
+      case CARD_APPTYPE_ISIM:
+      // For SIM, this is what we want
+      case CARD_APPTYPE_SIM:
+      default:
+        options.p2 = 0x00;
+        options.p3 = GET_RESPONSE_EF_SIZE_BYTES;
+        break;
+    }
     this.context.RIL.iccIO(options);
   },
 
@@ -13586,10 +13610,12 @@ SimRecordHelperObject.prototype = {
 
       let numInstances = GsmPDUHelper.readHexOctet();
 
-      // Correct data length should be 9n+1 or 9n+2. See TS 31.102, sub-clause
-      // 4.6.1.1.
-      if (octetLen != (9 * numInstances + 1) ||
-          octetLen != (9 * numInstances + 2)) {
+      // Data length is defined as 9n+1 or 9n+2. See TS 31.102, sub-clause
+      // 4.6.1.1. However, it's likely to have padding appended so we have a
+      // rather loose check.
+      if (octetLen < (9 * numInstances + 1)) {
+        Buf.seekIncoming((octetLen - 1) * Buf.PDU_HEX_OCTET_SIZE);
+        Buf.readStringDelimiter(strLen);
         if (onerror) {
           onerror();
         }
@@ -13610,6 +13636,7 @@ SimRecordHelperObject.prototype = {
                    GsmPDUHelper.readHexOctet()
         };
       }
+      Buf.seekIncoming((octetLen - 9 * numInstances - 1) * Buf.PDU_HEX_OCTET_SIZE);
       Buf.readStringDelimiter(strLen);
 
       let instances = [];
@@ -13669,6 +13696,8 @@ SimRecordHelperObject.prototype = {
       if (octetLen < offset + dataLen) {
         // Data length is not enough. See TS 31.102, clause 4.6.1.1, the
         // paragraph "Bytes 8 and 9: Length of Image Instance Data."
+        Buf.seekIncoming(octetLen * Buf.PDU_HEX_OCTET_SIZE);
+        Buf.readStringDelimiter(strLen);
         if (onerror) {
           onerror();
         }
@@ -14699,7 +14728,7 @@ ICCUtilsHelperObject.prototype = {
       return null;
     }
 
-    if (!iccInfoPriv.OPL) {
+    if (!this.isICCServiceAvailable("OPL")) {
       // When OPL is not present:
       // According to 3GPP TS 31.102 Sec. 4.2.58 and 3GPP TS 51.011 Sec. 10.3.41,
       // If EF_OPL is not present, the first record in this EF is used for the

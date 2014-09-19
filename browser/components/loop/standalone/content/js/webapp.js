@@ -8,7 +8,7 @@
 /* jshint newcap:false */
 
 var loop = loop || {};
-loop.webapp = (function($, _, OT, webL10n) {
+loop.webapp = (function($, _, OT, mozL10n) {
   "use strict";
 
   loop.config = loop.config || {};
@@ -16,8 +16,7 @@ loop.webapp = (function($, _, OT, webL10n) {
 
   var sharedModels = loop.shared.models,
       sharedViews = loop.shared.views,
-      baseServerUrl = loop.config.serverUrl,
-      __ = webL10n.get;
+      baseServerUrl = loop.config.serverUrl;
 
   /**
    * App router.
@@ -28,8 +27,47 @@ loop.webapp = (function($, _, OT, webL10n) {
   /**
    * Homepage view.
    */
-  var HomeView = sharedViews.BaseView.extend({
-    template: _.template('<p data-l10n-id="welcome"></p>')
+  var HomeView = React.createClass({displayName: 'HomeView',
+    render: function() {
+      return (
+        React.DOM.p(null, mozL10n.get("welcome"))
+      )
+    }
+  });
+
+  /**
+   * Unsupported Browsers view.
+   */
+  var UnsupportedBrowserView = React.createClass({displayName: 'UnsupportedBrowserView',
+    render: function() {
+      var useLatestFF = mozL10n.get("use_latest_firefox", {
+        "firefoxBrandNameLink": React.renderComponentToStaticMarkup(
+          React.DOM.a({target: "_blank", href: "https://www.mozilla.org/firefox/"}, "Firefox")
+        )
+      });
+      return (
+        React.DOM.div(null, 
+          React.DOM.h2(null, mozL10n.get("incompatible_browser")), 
+          React.DOM.p(null, mozL10n.get("powered_by_webrtc")), 
+          React.DOM.p({dangerouslySetInnerHTML: {__html: useLatestFF}})
+        )
+      );
+    }
+  });
+
+  /**
+   * Unsupported Device view.
+   */
+  var UnsupportedDeviceView = React.createClass({displayName: 'UnsupportedDeviceView',
+    render: function() {
+      return (
+        React.DOM.div(null, 
+          React.DOM.h2(null, mozL10n.get("incompatible_device")), 
+          React.DOM.p(null, mozL10n.get("sorry_device_unsupported")), 
+          React.DOM.p(null, mozL10n.get("use_firefox_windows_mac_linux"))
+        )
+      );
+    }
   });
 
   /**
@@ -46,11 +84,11 @@ loop.webapp = (function($, _, OT, webL10n) {
       }
       return (
         React.DOM.div({className: "promote-firefox"}, 
-          React.DOM.h3(null, __("promote_firefox_hello_heading")), 
+          React.DOM.h3(null, mozL10n.get("promote_firefox_hello_heading")), 
           React.DOM.p(null, 
             React.DOM.a({className: "btn btn-large btn-accept", 
                href: "https://www.mozilla.org/firefox/"}, 
-              __("get_firefox_button")
+              mozL10n.get("get_firefox_button")
             )
           )
         )
@@ -72,8 +110,8 @@ loop.webapp = (function($, _, OT, webL10n) {
         React.DOM.div({className: "expired-url-info"}, 
           React.DOM.div({className: "info-panel"}, 
             React.DOM.div({className: "firefox-logo"}), 
-            React.DOM.h1(null, __("call_url_unavailable_notification_heading")), 
-            React.DOM.h4(null, __("call_url_unavailable_notification_message"))
+            React.DOM.h1(null, mozL10n.get("call_url_unavailable_notification_heading")), 
+            React.DOM.h4(null, mozL10n.get("call_url_unavailable_notification_message2"))
           ), 
           PromoteFirefoxView({helper: this.props.helper})
         )
@@ -94,7 +132,7 @@ loop.webapp = (function($, _, OT, webL10n) {
         "hide": !this.props.urlCreationDateString.length
       });
 
-      var callUrlCreationDateString = __("call_url_creation_date_label", {
+      var callUrlCreationDateString = mozL10n.get("call_url_creation_date_label", {
         "call_url_creation_date": this.props.urlCreationDateString
       });
 
@@ -102,7 +140,7 @@ loop.webapp = (function($, _, OT, webL10n) {
         /* jshint ignore:start */
         React.DOM.header({className: "standalone-header container-box"}, 
           React.DOM.h1({className: "standalone-header-title"}, 
-            React.DOM.strong(null, __("brandShortname")), " ", __("clientShortname")
+            React.DOM.strong(null, mozL10n.get("brandShortname")), " ", mozL10n.get("clientShortname")
           ), 
           React.DOM.div({className: "loop-logo", title: "Firefox WebRTC! logo"}), 
           React.DOM.h3({className: "call-url"}, 
@@ -136,16 +174,20 @@ loop.webapp = (function($, _, OT, webL10n) {
      * Constructor.
      *
      * Required options:
-     * - {loop.shared.model.ConversationModel}    model    Conversation model.
-     * - {loop.shared.views.NotificationListView} notifier Notifier component.
+     * - {loop.shared.models.ConversationModel}    model    Conversation model.
+     * - {loop.shared.models.NotificationCollection} notifications
      *
      */
+
+    getInitialProps: function() {
+      return {showCallOptionsMenu: false};
+    },
 
     getInitialState: function() {
       return {
         urlCreationDateString: '',
         disableCallButton: false,
-        showCallOptionsMenu: false
+        showCallOptionsMenu: this.props.showCallOptionsMenu
       };
     },
 
@@ -153,7 +195,7 @@ loop.webapp = (function($, _, OT, webL10n) {
       model: React.PropTypes.instanceOf(sharedModels.ConversationModel)
                                        .isRequired,
       // XXX Check more tightly here when we start injecting window.loop.*
-      notifier: React.PropTypes.object.isRequired,
+      notifications: React.PropTypes.object.isRequired,
       client: React.PropTypes.object.isRequired
     },
 
@@ -164,14 +206,11 @@ loop.webapp = (function($, _, OT, webL10n) {
                                 this._onSessionError);
       this.props.client.requestCallUrlInfo(this.props.model.get("loopToken"),
                                            this._setConversationTimestamp);
-      // XXX DOM element does not exist before React view gets instantiated
-      // We should turn the notifier into a react component
-      this.props.notifier.$el = $("#messages");
     },
 
     _onSessionError: function(error) {
       console.error(error);
-      this.props.notifier.errorL10n("unable_retrieve_call_info");
+      this.props.notifications.errorL10n("unable_retrieve_call_info");
     },
 
     /**
@@ -192,7 +231,7 @@ loop.webapp = (function($, _, OT, webL10n) {
 
     _setConversationTimestamp: function(err, callUrlInfo) {
       if (err) {
-        this.props.notifier.errorL10n("unable_retrieve_call_info");
+        this.props.notifications.errorL10n("unable_retrieve_call_info");
       } else {
         var date = (new Date(callUrlInfo.urlCreationDate * 1000));
         var options = {year: "numeric", month: "long", day: "numeric"};
@@ -219,18 +258,16 @@ loop.webapp = (function($, _, OT, webL10n) {
     },
 
     render: function() {
-      var tos_link_name = __("terms_of_use_link_text");
-      var privacy_notice_name = __("privacy_notice_link_text");
+      var tos_link_name = mozL10n.get("terms_of_use_link_text");
+      var privacy_notice_name = mozL10n.get("privacy_notice_link_text");
 
-      var tosHTML = __("legal_text_and_links", {
+      var tosHTML = mozL10n.get("legal_text_and_links", {
         "terms_of_use_url": "<a target=_blank href='" +
           "https://accounts.firefox.com/legal/terms'>" + tos_link_name + "</a>",
         "privacy_notice_url": "<a target=_blank href='" +
           "https://www.mozilla.org/privacy/'>" + privacy_notice_name + "</a>"
       });
 
-      var btnClassStartCall = "btn btn-large btn-accept " +
-                              loop.shared.utils.getTargetPlatform();
       var dropdownMenuClasses = React.addons.classSet({
         "native-dropdown-large-parent": true,
         "standalone-dropdown-menu": true,
@@ -250,7 +287,7 @@ loop.webapp = (function($, _, OT, webL10n) {
               urlCreationDateString: this.state.urlCreationDateString}), 
 
             React.DOM.p({className: "standalone-call-btn-label"}, 
-              __("initiate_call_button_label")
+              mozL10n.get("initiate_call_button_label2")
             ), 
 
             React.DOM.div({id: "messages"}), 
@@ -261,18 +298,18 @@ loop.webapp = (function($, _, OT, webL10n) {
                 React.DOM.div({className: "btn-group-chevron"}, 
                   React.DOM.div({className: "btn-group"}, 
 
-                    React.DOM.button({className: btnClassStartCall, 
+                    React.DOM.button({className: "btn btn-large btn-accept", 
                             onClick: this._initiateOutgoingCall("audio-video"), 
                             disabled: this.state.disableCallButton, 
-                            title: __("initiate_audio_video_call_tooltip")}, 
+                            title: mozL10n.get("initiate_audio_video_call_tooltip2")}, 
                       React.DOM.span({className: "standalone-call-btn-text"}, 
-                        __("initiate_audio_video_call_button")
+                        mozL10n.get("initiate_audio_video_call_button2")
                       ), 
                       React.DOM.span({className: "standalone-call-btn-video-icon"})
                     ), 
 
                     React.DOM.div({className: "btn-chevron", 
-                      onClick: this._toggleCallOptionsMenu}
+                         onClick: this._toggleCallOptionsMenu}
                     )
 
                   ), 
@@ -285,7 +322,7 @@ loop.webapp = (function($, _, OT, webL10n) {
                       React.DOM.button({className: "start-audio-only-call", 
                               onClick: this._initiateOutgoingCall("audio"), 
                               disabled: this.state.disableCallButton}, 
-                        __("initiate_audio_call_button")
+                        mozL10n.get("initiate_audio_call_button2")
                       )
                     )
                   )
@@ -326,7 +363,7 @@ loop.webapp = (function($, _, OT, webL10n) {
       }
 
       // Load default view
-      this.loadView(new HomeView());
+      this.loadReactComponent(HomeView(null));
 
       this.listenTo(this._conversation, "timeout", this._onTimeout);
     },
@@ -342,7 +379,7 @@ loop.webapp = (function($, _, OT, webL10n) {
     setupOutgoingCall: function() {
       var loopToken = this._conversation.get("loopToken");
       if (!loopToken) {
-        this._notifier.errorL10n("missing_conversation_info");
+        this._notifications.errorL10n("missing_conversation_info");
         this.navigate("home", {trigger: true});
       } else {
         var callType = this._conversation.get("selectedCallType");
@@ -360,7 +397,7 @@ loop.webapp = (function($, _, OT, webL10n) {
                 this._onSessionExpired();
                 break;
               default:
-                this._notifier.errorL10n("missing_conversation_info");
+                this._notifications.errorL10n("missing_conversation_info");
                 this.navigate("home", {trigger: true});
                 break;
             }
@@ -377,7 +414,7 @@ loop.webapp = (function($, _, OT, webL10n) {
     startCall: function() {
       var loopToken = this._conversation.get("loopToken");
       if (!loopToken) {
-        this._notifier.errorL10n("missing_conversation_info");
+        this._notifications.errorL10n("missing_conversation_info");
         this.navigate("home", {trigger: true});
       } else {
         this._setupWebSocketAndCallView(loopToken);
@@ -403,11 +440,23 @@ loop.webapp = (function($, _, OT, webL10n) {
       }.bind(this), function() {
         // XXX Not the ideal response, but bug 1047410 will be replacing
         // this by better "call failed" UI.
-        this._notifier.errorL10n("cannot_start_call_session_not_ready");
+        this._notifications.errorL10n("cannot_start_call_session_not_ready");
         return;
       }.bind(this));
 
       this._websocket.on("progress", this._handleWebSocketProgress, this);
+    },
+
+    /**
+     * Checks if the streams have been connected, and notifies the
+     * websocket that the media is now connected.
+     */
+    _checkConnected: function() {
+      // Check we've had both local and remote streams connected before
+      // sending the media up message.
+      if (this._conversation.streamsConnected()) {
+        this._websocket.mediaUp();
+      }
     },
 
     /**
@@ -438,7 +487,7 @@ loop.webapp = (function($, _, OT, webL10n) {
      */
     _handleCallRejected: function() {
       this.endCall();
-      this._notifier.errorL10n("call_timeout_notification_text");
+      this._notifications.errorL10n("call_timeout_notification_text");
     },
 
     /**
@@ -453,22 +502,22 @@ loop.webapp = (function($, _, OT, webL10n) {
     },
 
     _onTimeout: function() {
-      this._notifier.errorL10n("call_timeout_notification_text");
+      this._notifications.errorL10n("call_timeout_notification_text");
     },
 
     /**
      * Default entry point.
      */
     home: function() {
-      this.loadView(new HomeView());
+      this.loadReactComponent(HomeView(null));
     },
 
     unsupportedDevice: function() {
-      this.loadView(new sharedViews.UnsupportedDeviceView());
+      this.loadReactComponent(UnsupportedDeviceView(null));
     },
 
     unsupportedBrowser: function() {
-      this.loadView(new sharedViews.UnsupportedBrowserView());
+      this.loadReactComponent(UnsupportedBrowserView(null));
     },
 
     expired: function() {
@@ -491,10 +540,12 @@ loop.webapp = (function($, _, OT, webL10n) {
 
       var startView = StartConversationView({
         model: this._conversation,
-        notifier: this._notifier,
+        notifications: this._notifications,
         client: this._client
       });
       this._conversation.once("call:outgoing:setup", this.setupOutgoingCall, this);
+      this._conversation.once("change:publishedStream", this._checkConnected, this);
+      this._conversation.once("change:subscribedStream", this._checkConnected, this);
       this.loadReactComponent(startView);
     },
 
@@ -542,7 +593,7 @@ loop.webapp = (function($, _, OT, webL10n) {
     });
     var router = new WebappRouter({
       helper: helper,
-      notifier: new sharedViews.NotificationListView({el: "#messages"}),
+      notifications: new sharedModels.NotificationCollection(),
       client: client,
       conversation: new sharedModels.ConversationModel({}, {
         sdk: OT,
@@ -557,11 +608,9 @@ loop.webapp = (function($, _, OT, webL10n) {
       router.navigate("unsupportedBrowser", {trigger: true});
     }
 
-    document.body.classList.add(loop.shared.utils.getTargetPlatform());
-
     // Set the 'lang' and 'dir' attributes to <html> when the page is translated
-    document.documentElement.lang = document.webL10n.getLanguage();
-    document.documentElement.dir = document.webL10n.getDirection();
+    document.documentElement.lang = mozL10n.language.code;
+    document.documentElement.dir = mozL10n.language.direction;
   }
 
   return {
@@ -569,9 +618,11 @@ loop.webapp = (function($, _, OT, webL10n) {
     CallUrlExpiredView: CallUrlExpiredView,
     StartConversationView: StartConversationView,
     HomeView: HomeView,
+    UnsupportedBrowserView: UnsupportedBrowserView,
+    UnsupportedDeviceView: UnsupportedDeviceView,
     init: init,
     PromoteFirefoxView: PromoteFirefoxView,
     WebappHelper: WebappHelper,
     WebappRouter: WebappRouter
   };
-})(jQuery, _, window.OT, document.webL10n);
+})(jQuery, _, window.OT, navigator.mozL10n);

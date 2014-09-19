@@ -9,6 +9,7 @@
 #include "nsObjectFrame.h"
 
 #include "gfx2DGlue.h"
+#include "gfxMatrix.h"
 #include "mozilla/BasicEvents.h"
 #ifdef XP_WIN
 // This is needed for DoublePassRenderingEvent.
@@ -832,9 +833,18 @@ nsObjectFrame::DidReflow(nsPresContext*            aPresContext,
 nsObjectFrame::PaintPrintPlugin(nsIFrame* aFrame, nsRenderingContext* aCtx,
                                 const nsRect& aDirtyRect, nsPoint aPt)
 {
+  gfxContext* ctx = aCtx->ThebesContext();
+
+  // Translate the context:
   nsPoint pt = aPt + aFrame->GetContentRectRelativeToSelf().TopLeft();
-  nsRenderingContext::AutoPushTranslation translate(aCtx, pt);
+  gfxPoint devPixelPt =
+    nsLayoutUtils::PointToGfxPoint(pt, aFrame->PresContext()->AppUnitsPerDevPixel());
+
+  gfxContextMatrixAutoSaveRestore autoSR(ctx);
+  ctx->SetMatrix(ctx->CurrentMatrix().Translate(devPixelPt));
+
   // FIXME - Bug 385435: Doesn't aDirtyRect need translating too?
+
   static_cast<nsObjectFrame*>(aFrame)->PrintPlugin(*aCtx, aDirtyRect);
 }
 
@@ -1576,9 +1586,8 @@ nsObjectFrame::BuildLayer(nsDisplayListBuilder* aBuilder,
   }
 
   // Set a transform on the layer to draw the plugin in the right place
-  Matrix transform;
   gfxPoint p = r.TopLeft() + aContainerParameters.mOffset;
-  transform.Translate(p.x, p.y);
+  Matrix transform = Matrix::Translation(p.x, p.y);
 
   layer->SetBaseTransform(Matrix4x4::From2D(transform));
   return layer.forget();
@@ -1632,7 +1641,8 @@ nsObjectFrame::PaintPlugin(nsDisplayListBuilder* aBuilder,
       ctx->Rectangle(nativeClipRect);
       ctx->Clip();
       gfxPoint offset(contentPixels.x, contentPixels.y);
-      ctx->Translate(offset);
+      ctx->SetMatrix(
+        ctx->CurrentMatrix().Translate(offset));
 
       gfxQuartzNativeDrawing nativeDrawing(ctx, nativeClipRect - offset);
 
@@ -1677,9 +1687,17 @@ nsObjectFrame::PaintPlugin(nsDisplayListBuilder* aBuilder,
 
       nativeDrawing.EndNativeDrawing();
     } else {
+      gfxContext* ctx = aRenderingContext.ThebesContext();
+
+      // Translate the context:
+      gfxPoint devPixelPt =
+        nsLayoutUtils::PointToGfxPoint(aPluginRect.TopLeft(),
+                                       PresContext()->AppUnitsPerDevPixel());
+
+      gfxContextMatrixAutoSaveRestore autoSR(ctx);
+      ctx->SetMatrix(ctx->CurrentMatrix().Translate(devPixelPt));
+
       // FIXME - Bug 385435: Doesn't aDirtyRect need translating too?
-      nsRenderingContext::AutoPushTranslation
-        translate(&aRenderingContext, aPluginRect.TopLeft());
 
       // this rect is used only in the CoreGraphics drawing model
       gfxRect tmpRect(0, 0, 0, 0);
@@ -1713,7 +1731,7 @@ nsObjectFrame::PaintPlugin(nsDisplayListBuilder* aBuilder,
 
     if (ctx->UserToDevicePixelSnapped(frameGfxRect, false)) {
       dirtyGfxRect = ctx->UserToDevice(dirtyGfxRect);
-      ctx->IdentityMatrix();
+      ctx->SetMatrix(gfxMatrix());
     }
     dirtyGfxRect.RoundOut();
 

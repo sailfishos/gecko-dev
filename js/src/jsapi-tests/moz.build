@@ -4,7 +4,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-PROGRAM = 'jsapi-tests'
+Program('jsapi-tests')
 
 UNIFIED_SOURCES += [
     'selfTest.cpp',
@@ -17,7 +17,6 @@ UNIFIED_SOURCES += [
     'testChromeBuffer.cpp',
     'testClassGetter.cpp',
     'testCloneScript.cpp',
-    'testConservativeGC.cpp',
     'testContexts.cpp',
     'testCustomIterator.cpp',
     'testDebugger.cpp',

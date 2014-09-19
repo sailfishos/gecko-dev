@@ -13,8 +13,8 @@
 
 #include "jit/CompactBuffer.h"
 #include "jit/IonCode.h"
-#include "jit/IonSpewer.h"
 #include "jit/JitCompartment.h"
+#include "jit/JitSpewer.h"
 #include "jit/mips/Architecture-mips.h"
 #include "jit/shared/Assembler-shared.h"
 #include "jit/shared/IonAssemblerBuffer.h"
@@ -114,8 +114,10 @@ static MOZ_CONSTEXPR_VAR Register FramePointer = InvalidReg;
 static MOZ_CONSTEXPR_VAR Register ReturnReg = v0;
 static MOZ_CONSTEXPR_VAR FloatRegister ReturnFloat32Reg = { FloatRegisters::f0, FloatRegister::Single };
 static MOZ_CONSTEXPR_VAR FloatRegister ReturnDoubleReg = { FloatRegisters::f0, FloatRegister::Double };
+static MOZ_CONSTEXPR_VAR FloatRegister ReturnSimdReg = InvalidFloatReg;
 static MOZ_CONSTEXPR_VAR FloatRegister ScratchFloat32Reg = { FloatRegisters::f18, FloatRegister::Single };
 static MOZ_CONSTEXPR_VAR FloatRegister ScratchDoubleReg = { FloatRegisters::f18, FloatRegister::Double };
+static MOZ_CONSTEXPR_VAR FloatRegister ScratchSimdReg = InvalidFloatReg;
 static MOZ_CONSTEXPR_VAR FloatRegister SecondScratchFloat32Reg = { FloatRegisters::f16, FloatRegister::Single };
 static MOZ_CONSTEXPR_VAR FloatRegister SecondScratchDoubleReg = { FloatRegisters::f16, FloatRegister::Double };
 
@@ -158,9 +160,8 @@ static MOZ_CONSTEXPR_VAR FloatRegister f30 = { FloatRegisters::f30, FloatRegiste
 
 // MIPS CPUs can only load multibyte data that is "naturally"
 // four-byte-aligned, sp register should be eight-byte-aligned.
-static const uint32_t StackAlignment = 8;
+static const uint32_t ABIStackAlignment = 8;
 static const uint32_t CodeAlignment = 4;
-static const bool StackKeptAligned = true;
 
 // This boolean indicates whether we support SIMD instructions flavoured for
 // this architecture or not. Rather than a method in the LIRGenerator, it is
@@ -170,6 +171,8 @@ static const bool SupportsSimd = false;
 // TODO this is just a filler to prevent a build failure. The MIPS SIMD
 // alignment requirements still need to be explored.
 static const uint32_t SimdStackAlignment = 8;
+
+static const uint32_t AsmJSStackAlignment = SimdStackAlignment;
 
 static const Scale ScalePointer = TimesFour;
 
@@ -238,7 +241,6 @@ static const uint32_t RDMask = ((1 << RDBits) - 1) << RDShift;
 static const uint32_t SAMask = ((1 << SABits) - 1) << SAShift;
 static const uint32_t FunctionMask = ((1 << FunctionBits) - 1) << FunctionShift;
 static const uint32_t RegMask = Registers::Total - 1;
-static const uint32_t StackAlignmentMask = StackAlignment - 1;
 
 static const uint32_t MAX_BREAK_CODE = 1024 - 1;
 
@@ -1014,6 +1016,9 @@ class Assembler : public AssemblerShared
 #else
         return false;
 #endif
+    }
+    static bool SupportsSimd() {
+        return js::jit::SupportsSimd;
     }
 
   protected:

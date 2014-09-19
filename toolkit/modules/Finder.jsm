@@ -197,9 +197,12 @@ Finder.prototype = {
     // Allow Finder listeners to cancel focusing the content.
     for (let l of this._listeners) {
       try {
-        if (!l.shouldFocusContent())
+        if ("shouldFocusContent" in l &&
+            !l.shouldFocusContent())
           return;
-      } catch (ex) {}
+      } catch (ex) {
+        Cu.reportError(ex);
+      }
     }
 
     let fastFind = this._fastFind;
@@ -613,19 +616,18 @@ Finder.prototype = {
   },
 
   /*
-   * For a given node, walk up it's parent chain, to try and find an
-   * editable node.
+   * For a given node returns its editable parent or null if there is none.
+   * It's enough to check if aNode is a text node and its parent's parent is
+   * instance of nsIDOMNSEditableElement.
    *
    * @param aNode the node we want to check
    * @returns the first node in the parent chain that is editable,
    *          null if there is no such node
    */
   _getEditableNode: function (aNode) {
-    while (aNode) {
-      if (aNode instanceof Ci.nsIDOMNSEditableElement)
-        return aNode.editor ? aNode : null;
-
-      aNode = aNode.parentNode;
+    if (aNode.nodeType === aNode.TEXT_NODE && aNode.parentNode && aNode.parentNode.parentNode &&
+        aNode.parentNode.parentNode instanceof Ci.nsIDOMNSEditableElement) {
+      return aNode.parentNode.parentNode;
     }
     return null;
   },

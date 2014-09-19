@@ -19,6 +19,7 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/Preferences.h"
 #include "nsJSEnvironment.h"
+#include "mozilla/TimeStamp.h"
 #include "mozilla/XPTInterfaceInfoManager.h"
 #include "mozilla/dom/DOMException.h"
 #include "mozilla/dom/DOMExceptionBinding.h"
@@ -3071,7 +3072,8 @@ nsXPCComponents_Utils::MakeObjectPropsNormal(HandleValue vobj, JSContext *cx)
         if (!js::IsWrapper(propobj) || !JS_ObjectIsCallable(cx, propobj))
             continue;
 
-        if (!NewFunctionForwarder(cx, id, propobj, &v) ||
+        FunctionForwarderOptions forwarderOptions;
+        if (!NewFunctionForwarder(cx, id, propobj, forwarderOptions, &v) ||
             !JS_SetPropertyById(cx, obj, id, v))
             return NS_ERROR_FAILURE;
     }
@@ -3551,6 +3553,15 @@ nsXPCComponents_Utils::SetAddonInterposition(const nsACString &addonIdStr,
     return NS_OK;
 }
 
+NS_IMETHODIMP
+nsXPCComponents_Utils::Now(double *aRetval)
+{
+    bool isInconsistent = false;
+    TimeStamp start = TimeStamp::ProcessCreation(isInconsistent);
+    *aRetval = (TimeStamp::Now() - start).ToMilliseconds();
+    return NS_OK;
+}
+
 /***************************************************************************/
 /***************************************************************************/
 /***************************************************************************/
@@ -3698,7 +3709,7 @@ NS_IMETHODIMP nsXPCComponents::ReportError(HandleValue error, JSContext *cx)
 class ComponentsSH : public nsIXPCScriptable
 {
 public:
-    ComponentsSH(unsigned dummy)
+    explicit ComponentsSH(unsigned dummy)
     {
     }
 

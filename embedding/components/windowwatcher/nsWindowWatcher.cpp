@@ -142,7 +142,7 @@ void nsWatcherWindowEntry::ReferenceSelf() {
 class nsWatcherWindowEnumerator : public nsISimpleEnumerator {
 
 public:
-  nsWatcherWindowEnumerator(nsWindowWatcher *inWatcher);
+  explicit nsWatcherWindowEnumerator(nsWindowWatcher *inWatcher);
   NS_IMETHOD HasMoreElements(bool *retval);
   NS_IMETHOD GetNext(nsISupports **retval);
 
@@ -1448,7 +1448,7 @@ uint32_t nsWindowWatcher::CalculateChromeFlags(nsIDOMWindow *aParent,
   // Determine whether the window should have remote tabs.
   if (isCallerChrome || aOpenedFromRemoteTab) {
     bool remote;
-    if (Preferences::GetBool("browser.tabs.remote.autostart")) {
+    if (BrowserTabsRemoteAutostart()) {
       remote = !WinHasOption(aFeatures, "non-remote", 0, &presenceFlag);
     } else {
       remote = WinHasOption(aFeatures, "remote", 0, &presenceFlag);

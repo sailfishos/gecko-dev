@@ -101,10 +101,9 @@ loop.Client = (function($) {
      * Callback parameters:
      * - err null on successful registration, non-null otherwise.
      * - callUrlData an object of the obtained call url data if successful:
-     * -- call_url: The url of the call
+     * -- callUrl: The url of the call
      * -- expiresAt: The amount of hours until expiry of the url
      *
-     * @param  {String} simplepushUrl a registered Simple Push URL
      * @param  {string} nickname the nickname of the future caller
      * @param  {Function} cb Callback(err, callUrlData)
      */
@@ -120,8 +119,6 @@ loop.Client = (function($) {
           var urlData = JSON.parse(responseText);
 
           cb(null, this._validate(urlData, expectedCallUrlProperties));
-
-          this.mozLoop.noteCallUrlExpiry(urlData.expiresAt);
         } catch (err) {
           console.log("Error requesting call info", err);
           cb(err);
@@ -159,8 +156,6 @@ loop.Client = (function($) {
 
         try {
           cb(null);
-
-          this.mozLoop.noteCallUrlExpiry((new Date()).getTime() / 1000);
         } catch (err) {
           console.log("Error deleting call info", err);
           cb(err);
@@ -175,7 +170,7 @@ loop.Client = (function($) {
      * Callback parameters:
      * - err null on successful registration, non-null otherwise.
      * - callUrlData an object of the obtained call url data if successful:
-     * -- call_url: The url of the call
+     * -- callUrl: The url of the call
      * -- expiresAt: The amount of hours until expiry of the url
      *
      * @param  {String} simplepushUrl a registered Simple Push URL
@@ -192,39 +187,6 @@ loop.Client = (function($) {
         this._requestCallUrlInternal(nickname, cb);
       }.bind(this));
     },
-
-    /**
-     * Requests call information from the server for all calls since the
-     * given version.
-     *
-     * @param  {String} version the version identifier from the push
-     *                          notification
-     * @param  {Function} cb Callback(err, calls)
-     */
-    requestCallsInfo: function(version, cb) {
-      // XXX It is likely that we'll want to move some of this to whatever
-      // opens the chat window, but we'll need to decide on this in bug 1002418
-      if (!version) {
-        throw new Error("missing required parameter version");
-      }
-
-      this.mozLoop.hawkRequest("/calls?version=" + version, "GET", null,
-                               function (error, responseText) {
-        if (error) {
-          this._failureHandler(cb, error);
-          return;
-        }
-
-        try {
-          var callsData = JSON.parse(responseText);
-
-          cb(null, this._validate(callsData, expectedCallProperties));
-        } catch (err) {
-          console.log("Error requesting calls info", err);
-          cb(err);
-        }
-      }.bind(this));
-    }
   };
 
   return Client;

@@ -16,7 +16,7 @@ namespace jsipc {
 class WrapperAnswer : public virtual JavaScriptShared
 {
   public:
-    WrapperAnswer(JSRuntime *rt) : JavaScriptShared(rt) {}
+    explicit WrapperAnswer(JSRuntime *rt) : JavaScriptShared(rt) {}
 
     bool AnswerPreventExtensions(const ObjectId &objId, ReturnStatus *rs);
     bool AnswerGetPropertyDescriptor(const ObjectId &objId, const nsString &id,
@@ -48,6 +48,7 @@ class WrapperAnswer : public virtual JavaScriptShared
     bool AnswerCallOrConstruct(const ObjectId &objId, const nsTArray<JSParam> &argv,
                                const bool &construct, ReturnStatus *rs, JSVariant *result,
                                nsTArray<JSParam> *outparams);
+    bool AnswerHasInstance(const ObjectId &objId, const JSVariant &v, ReturnStatus *rs, bool *bp);
     bool AnswerObjectClassIs(const ObjectId &objId, const uint32_t &classValue,
                              bool *result);
     bool AnswerClassName(const ObjectId &objId, nsString *result);

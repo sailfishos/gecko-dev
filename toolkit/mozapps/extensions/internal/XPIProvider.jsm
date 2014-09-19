@@ -4150,7 +4150,7 @@ this.XPIProvider = {
     let principal = Cc["@mozilla.org/systemprincipal;1"].
                     createInstance(Ci.nsIPrincipal);
 
-    if (!aMultiprocessCompatible && Prefs.getBoolPref("browser.tabs.remote.autostart", false)) {
+    if (!aMultiprocessCompatible && Services.appinfo.browserTabsRemoteAutostart) {
       let interposition = Cc["@mozilla.org/addons/multiprocess-shims;1"].
         getService(Ci.nsIAddonInterposition);
       Cu.setAddonInterposition(aId, interposition);
@@ -6133,17 +6133,27 @@ AddonInternal.prototype = {
     }
     catch (e) { }
 
-    for (let platform of this.targetPlatforms) {
-      if (platform.os == Services.appinfo.OS) {
-        if (platform.abi) {
-          needsABI = true;
-          if (platform.abi === abi)
-            return true;
-        }
-        else {
-          matchedOS = true;
+    // Something is causing errors in here
+    try {
+      for (let platform of this.targetPlatforms) {
+        if (platform.os == Services.appinfo.OS) {
+          if (platform.abi) {
+            needsABI = true;
+            if (platform.abi === abi)
+              return true;
+          }
+          else {
+            matchedOS = true;
+          }
         }
       }
+    } catch (e) {
+      let message = "Problem with addon " + this.id + " targetPlatforms "
+                    + JSON.stringify(this.targetPlatforms);
+      logger.error(message, e);
+      AddonManagerPrivate.recordException("XPI", message, e);
+      // don't trust this add-on
+      return false;
     }
 
     return matchedOS && !needsABI;

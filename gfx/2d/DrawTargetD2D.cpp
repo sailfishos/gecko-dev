@@ -76,7 +76,10 @@ public:
 
     HRESULT hr = mDT->mDevice->CreateTexture2D(&desc, nullptr, byRef(tmpTexture));
     if (FAILED(hr)) {
-      gfxWarning() << "Failed to create temporary texture to hold surface data.";
+      gfxWarning() << "Failure to create temporary texture. Size: " << size << " Code: " << hr;
+      // Crash debug builds but try to recover in release builds.
+      MOZ_ASSERT(false);
+      return;
     }
     mDT->mDevice->CopyResource(tmpTexture, mDT->mTexture);
 
@@ -90,7 +93,10 @@ public:
                                       &props, byRef(mOldSurfBitmap));
 
     if (FAILED(hr)) {
-      gfxWarning() << "Failed to create shared bitmap for old surface.";
+      gfxWarning() << "Failed to create shared bitmap for old surface. Code: " << hr;
+      // Crash debug builds but try to recover in release builds.
+      MOZ_ASSERT(false);
+      return;
     }
 
     IntRect clipBounds;
@@ -2599,7 +2605,7 @@ DrawTargetD2D::SetupEffectForRadialGradient(const RadialGradientPattern *aPatter
   mPrivateData->mEffect->GetVariableByName("DeviceSpaceToUserSpace")->
     AsMatrix()->SetMatrix(matrix);
 
-  float A = dc.x.value * dc.x.value + dc.y.value * dc.y.value - dr * dr;
+  float A = dc.x * dc.x + dc.y * dc.y - dr * dr;
 
   uint32_t offset = 0;
   switch (stops->mStopCollection->GetExtendMode()) {

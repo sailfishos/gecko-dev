@@ -388,7 +388,7 @@ class FreeOp : public JSFreeOp
         return static_cast<FreeOp *>(fop);
     }
 
-    FreeOp(JSRuntime *rt)
+    explicit FreeOp(JSRuntime *rt)
       : JSFreeOp(rt)
     {}
 
@@ -1014,9 +1014,6 @@ struct JSRuntime : public JS::shadow::Runtime,
     js::AssertOnScriptEntryHook assertOnScriptEntryHook_;
 #endif
 
-    /* If true, new compartments are initially in debug mode. */
-    bool                debugMode;
-
     /* SPS profiling metadata */
     js::SPSProfiler     spsProfiler;
 
@@ -1097,6 +1094,9 @@ struct JSRuntime : public JS::shadow::Runtime,
 
     /* Call this to accumulate telemetry data. */
     JSAccumulateTelemetryDataCallback telemetryCallback;
+
+    /* Optional error reporter. */
+    JSErrorReporter     errorReporter;
 
     /* AsmJSCache callbacks are runtime-wide. */
     JS::AsmJSCacheOps asmJSCacheOps;
@@ -1274,6 +1274,7 @@ struct JSRuntime : public JS::shadow::Runtime,
     }
 
     bool                jitSupportsFloatingPoint;
+    bool                jitSupportsSimd;
 
     // Used to reset stack limit after a signaled interrupt (i.e. jitStackLimit_ = -1)
     // has been noticed by Ion/Baseline.

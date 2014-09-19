@@ -144,6 +144,9 @@ user_pref("layout.css.report_errors", true);
 // Enable CSS Grid for testing
 user_pref("layout.css.grid.enabled", true);
 
+// Enable CSS object-fit & object-position for testing
+user_pref("layout.css.object-fit-and-position.enabled", true);
+
 // Enable CSS Ruby for testing
 user_pref("layout.css.ruby.enabled", true);
 
@@ -242,7 +245,11 @@ user_pref("browser.newtabpage.directory.ping", "");
 
 // Enable Loop
 user_pref("loop.enabled", true);
+user_pref("loop.throttled", false);
 
 // Ensure UITour won't hit the network
 user_pref("browser.uitour.pinnedTabUrl", "http://%(server)s/uitour-dummy/pinnedTab");
 user_pref("browser.uitour.url", "http://%(server)s/uitour-dummy/tour");
+
+// Don't prompt about e10s
+user_pref("browser.displayedE10SPrompt", 5);

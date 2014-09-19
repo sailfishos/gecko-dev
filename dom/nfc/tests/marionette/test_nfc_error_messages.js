@@ -10,10 +10,9 @@ const MARIONETTE_TIMEOUT = 60000;
 const MARIONETTE_HEAD_JS = 'head.js';
 
 const MANIFEST_URL = 'app://system.gaiamobile.org/manifest.webapp';
-const NDEF_MESSAGE = [new MozNDEFRecord(0x01,
-                                        new Uint8Array(0x84),
-                                        new Uint8Array(0),
-                                        new Uint8Array(0x20))];
+const NDEF_MESSAGE = [new MozNDEFRecord({tnf: "well-known",
+                                         type: new Uint8Array(0x84),
+                                         payload: new Uint8Array(0x20)})];
 
 let nfcPeers = [];
 
@@ -29,7 +28,7 @@ function testNfcNotEnabledError() {
   .then(() => NCI.activateRE(emulator.P2P_RE_INDEX_0))
   .then(registerAndFireOnpeerready)
   .then(() => toggleNFC(false))
-  .then(() => sendNDEFExpectError(nfcPeers[0], 'NfcNotEnabledError'))
+  .then(() => sendNDEFExpectError(nfcPeers[0]))
   .then(endTest)
   .catch(handleRejectedPromise);
 }
@@ -50,7 +49,7 @@ function testNfcBadSessionIdError() {
   .then(() => NCI.activateRE(emulator.P2P_RE_INDEX_0))
   .then(registerAndFireOnpeerready)
   // we have 2 peers in nfcPeers array, peer0 has old/invalid session token
-  .then(() => sendNDEFExpectError(nfcPeers[0], 'NfcBadSessionIdError'))
+  .then(() => sendNDEFExpectError(nfcPeers[0]))
   .then(() => toggleNFC(false))
   .then(endTest)
   .catch(handleRejectedPromise);
@@ -96,46 +95,26 @@ function registerAndFireOnpeerready() {
   let deferred = Promise.defer();
 
   nfc.onpeerready = function(event) {
+    log("onpeerready called");
     nfcPeers.push(event.peer);
     nfc.onpeerready = null;
     deferred.resolve();
   };
 
-  let req = nfc.checkP2PRegistration(MANIFEST_URL);
-  req.onsuccess = function() {
-    is(req.result, true, 'P2P registration result');
-    if(req.result) {
-      nfc.notifyUserAcceptedP2P(MANIFEST_URL);
-    } else {
-      ok(false, 'this should not happen');
-      nfc.onpeerready = null;
-      deferred.reject();
-    }
-  };
-
-  req.onerror = function() {
-    ok(false, 'not possible');
-    nfc.onpeerready = null;
-    deferred.reject();
-  };
-
+  nfc.notifyUserAcceptedP2P(MANIFEST_URL);
   return deferred.promise;
 }
 
-function sendNDEFExpectError(peer, errorMsg) {
+function sendNDEFExpectError(peer) {
   let deferred = Promise.defer();
 
-  let req = peer.sendNDEF(NDEF_MESSAGE);
-  req.onsuccess = function() {
-    ok(false, 'success on sending ndef not possible shoudl get: ' + errorMsg);
+  try {
+    peer.sendNDEF(NDEF_MESSAGE);
     deferred.reject();
-  };
-
-  req.onerror = function() {
-    ok(true, 'this should happen');
-    is(req.error.name, errorMsg, 'Should have proper error name');
+  } catch (e) {
+    ok(true, 'this should happen ' + e);
     deferred.resolve();
-  };
+  }
 
   return deferred.promise;
 }

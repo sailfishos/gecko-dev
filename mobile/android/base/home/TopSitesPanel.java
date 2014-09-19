@@ -361,17 +361,16 @@ public class TopSitesPanel extends HomeFragment {
 
         @Override
         public void onEditPinnedSite(int position, String searchTerm) {
-            mPosition = position;
-
             final FragmentManager manager = getChildFragmentManager();
             PinSiteDialog dialog = (PinSiteDialog) manager.findFragmentByTag(TAG_PIN_SITE);
             if (dialog == null) {
-                dialog = PinSiteDialog.newInstance();
-            }
+                mPosition = position;
 
-            dialog.setOnSiteSelectedListener(this);
-            dialog.setSearchTerm(searchTerm);
-            dialog.show(manager, TAG_PIN_SITE);
+                dialog = PinSiteDialog.newInstance();
+                dialog.setOnSiteSelectedListener(this);
+                dialog.setSearchTerm(searchTerm);
+                dialog.show(manager, TAG_PIN_SITE);
+            }
         }
 
         @Override
@@ -544,7 +543,7 @@ public class TopSitesPanel extends HomeFragment {
 
             // If we have no thumbnail, attempt to show a Favicon instead.
             LoadIDAwareFaviconLoadedListener listener = new LoadIDAwareFaviconLoadedListener(view);
-            final int loadId = Favicons.getSizedFaviconForPageFromLocal(url, listener);
+            final int loadId = Favicons.getSizedFaviconForPageFromLocal(context, url, listener);
             if (loadId == Favicons.LOADED) {
                 // Great!
                 return;

@@ -6,7 +6,7 @@
 
 var loop = loop || {};
 loop.shared = loop.shared || {};
-loop.shared.models = (function() {
+loop.shared.models = (function(l10n) {
   "use strict";
 
   /**
@@ -18,10 +18,7 @@ loop.shared.models = (function() {
       ongoing:      false,         // Ongoing call flag
       callerId:     undefined,     // Loop caller id
       loopToken:    undefined,     // Loop conversation token
-      loopVersion:  undefined,     // Loop version for /calls/ information. This
-                                   // is the version received from the push
-                                   // notification and is used by the server to
-                                   // determine the pending calls
+      loopCallId:   undefined,     // LoopService id for incoming session
       sessionId:    undefined,     // OT session id
       sessionToken: undefined,     // OT session token
       apiKey:       undefined,     // OT api key
@@ -34,8 +31,12 @@ loop.shared.models = (function() {
                                    // other peer ("audio" or "audio-video")
       selectedCallType: undefined, // The selected type for the call that was
                                    // initiated ("audio" or "audio-video")
-      callToken:    undefined      // Incoming call token.
+      callToken:    undefined,     // Incoming call token.
                                    // Used for blocking a call url
+      subscribedStream: false,     // Used to indicate that a stream has been
+                                   // subscribed to
+      publishedStream: false       // Used to indicate that a stream has been
+                                   // published
     },
 
     /**
@@ -220,6 +221,39 @@ loop.shared.models = (function() {
     },
 
     /**
+     * Publishes a local stream.
+     *
+     * @param {Publisher} publisher The publisher object to publish
+     *                              to the session.
+     */
+    publish: function(publisher) {
+      this.session.publish(publisher);
+      this.set("publishedStream", true);
+    },
+
+    /**
+     * Subscribes to a remote stream.
+     *
+     * @param {Stream} stream The remote stream to subscribe to.
+     * @param {DOMElement} element The element to display the stream in.
+     * @param {Object} config The display properties to set on the stream as
+     *                        documented in:
+     * https://tokbox.com/opentok/libraries/client/js/reference/Session.html#subscribe
+     */
+    subscribe: function(stream, element, config) {
+      this.session.subscribe(stream, element, config);
+      this.set("subscribedStream", true);
+    },
+
+    /**
+     * Returns true if a stream has been published and a stream has been
+     * subscribed to.
+     */
+    streamsConnected: function() {
+      return this.get("publishedStream") && this.get("subscribedStream");
+    },
+
+    /**
      * Handle a loop-server error, which has an optional `errno` property which
      * is server error identifier.
      *
@@ -338,7 +372,43 @@ loop.shared.models = (function() {
    * Notification collection
    */
   var NotificationCollection = Backbone.Collection.extend({
-    model: NotificationModel
+    model: NotificationModel,
+
+    /**
+     * Adds a warning notification to the stack and renders it.
+     *
+     * @return {String} message
+     */
+    warn: function(message) {
+      this.add({level: "warning", message: message});
+    },
+
+    /**
+     * Adds a l10n warning notification to the stack and renders it.
+     *
+     * @param  {String} messageId L10n message id
+     */
+    warnL10n: function(messageId) {
+      this.warn(l10n.get(messageId));
+    },
+
+    /**
+     * Adds an error notification to the stack and renders it.
+     *
+     * @return {String} message
+     */
+    error: function(message) {
+      this.add({level: "error", message: message});
+    },
+
+    /**
+     * Adds a l10n rror notification to the stack and renders it.
+     *
+     * @param  {String} messageId L10n message id
+     */
+    errorL10n: function(messageId) {
+      this.error(l10n.get(messageId));
+    }
   });
 
   return {
@@ -346,4 +416,4 @@ loop.shared.models = (function() {
     NotificationCollection: NotificationCollection,
     NotificationModel: NotificationModel
   };
-})();
+})(navigator.mozL10n || document.mozL10n);

@@ -108,7 +108,6 @@
 #include "nsIDOMNode.h"
 #include "nsIDOMNodeList.h"
 #include "nsIDOMScriptObjectFactory.h"
-#include "nsIDOMUserDataHandler.h"
 #include "nsIDOMXULCommandEvent.h"
 #include "nsIDragService.h"
 #include "nsIEditor.h"
@@ -354,7 +353,7 @@ NS_IMPL_ISUPPORTS(DOMEventListenerManagersHashReporter, nsIMemoryReporter)
 class EventListenerManagerMapEntry : public PLDHashEntryHdr
 {
 public:
-  EventListenerManagerMapEntry(const void *aKey)
+  explicit EventListenerManagerMapEntry(const void* aKey)
     : mKey(aKey)
   {
   }
@@ -1292,7 +1291,7 @@ struct NormalizeNewlinesCharTraits {
     typedef typename OutputIterator::value_type value_type;
 
   public:
-    NormalizeNewlinesCharTraits(OutputIterator& aIterator) : mIterator(aIterator) { }
+    explicit NormalizeNewlinesCharTraits(OutputIterator& aIterator) : mIterator(aIterator) { }
     void writechar(typename OutputIterator::value_type aChar) {
       *mIterator++ = aChar;
     }
@@ -1307,7 +1306,7 @@ struct NormalizeNewlinesCharTraits<CharT*> {
     typedef CharT value_type;
 
   public:
-    NormalizeNewlinesCharTraits(CharT* aCharPtr) : mCharPtr(aCharPtr) { }
+    explicit NormalizeNewlinesCharTraits(CharT* aCharPtr) : mCharPtr(aCharPtr) { }
     void writechar(CharT aChar) {
       *mCharPtr++ = aChar;
     }
@@ -1323,8 +1322,8 @@ class CopyNormalizeNewlines
     typedef typename OutputIterator::value_type value_type;
 
   public:
-    CopyNormalizeNewlines(OutputIterator* aDestination,
-                          bool aLastCharCR=false) :
+    explicit CopyNormalizeNewlines(OutputIterator* aDestination,
+                                   bool aLastCharCR = false) :
       mLastCharCR(aLastCharCR),
       mDestination(aDestination),
       mWritten(0)
@@ -4546,12 +4545,12 @@ nsContentUtils::IsInSameAnonymousTree(const nsINode* aNode,
 
 class AnonymousContentDestroyer : public nsRunnable {
 public:
-  AnonymousContentDestroyer(nsCOMPtr<nsIContent>* aContent) {
+  explicit AnonymousContentDestroyer(nsCOMPtr<nsIContent>* aContent) {
     mContent.swap(*aContent);
     mParent = mContent->GetParent();
     mDoc = mContent->OwnerDoc();
   }
-  AnonymousContentDestroyer(nsCOMPtr<Element>* aElement) {
+  explicit AnonymousContentDestroyer(nsCOMPtr<Element>* aElement) {
     mContent = aElement->forget();
     mParent = mContent->GetParent();
     mDoc = mContent->OwnerDoc();
@@ -5670,7 +5669,7 @@ nsContentUtils::CheckSameOrigin(nsIChannel *aOldChannel, nsIChannel *aNewChannel
 
   nsCOMPtr<nsIPrincipal> oldPrincipal;
   nsContentUtils::GetSecurityManager()->
-    GetChannelPrincipal(aOldChannel, getter_AddRefs(oldPrincipal));
+    GetChannelResultPrincipal(aOldChannel, getter_AddRefs(oldPrincipal));
 
   nsCOMPtr<nsIURI> newURI;
   aNewChannel->GetURI(getter_AddRefs(newURI));
@@ -5828,19 +5827,6 @@ nsContentUtils::GetUTFOrigin(nsIURI* aURI, nsString& aOrigin)
   }
   
   return NS_OK;
-}
-
-/* static */
-void
-nsContentUtils::GetUTFNonNullOrigin(nsIURI* aURI, nsString& aOrigin)
-{
-  aOrigin.Truncate();
-
-  nsString origin;
-  nsresult rv = GetUTFOrigin(aURI, origin);
-  if (NS_SUCCEEDED(rv) && !origin.EqualsLiteral("null")) {
-    aOrigin.Assign(origin);
-  }
 }
 
 /* static */
@@ -6409,10 +6395,11 @@ nsContentUtils::IsPatternMatching(nsAString& aValue, nsAString& aPattern,
   NS_ASSERTION(aDocument, "aDocument should be a valid pointer (not null)");
 
   AutoJSAPI jsapi;
-  if (NS_WARN_IF(!jsapi.Init(aDocument->GetWindow()))) {
-    return true;
-  }
+  jsapi.Init();
   JSContext* cx = jsapi.cx();
+  // We can use the junk scope here, because we're just using it for
+  // regexp evaluation, not actual script execution.
+  JSAutoCompartment ac(cx, xpc::UnprivilegedJunkScope());
 
   // The pattern has to match the entire value.
   aPattern.Insert(NS_LITERAL_STRING("^(?:"), 0);
@@ -6420,7 +6407,7 @@ nsContentUtils::IsPatternMatching(nsAString& aValue, nsAString& aPattern,
 
   JS::Rooted<JSObject*> re(cx,
     JS_NewUCRegExpObjectNoStatics(cx,
-                                  static_cast<jschar*>(aPattern.BeginWriting()),
+                                  static_cast<char16_t*>(aPattern.BeginWriting()),
                                   aPattern.Length(), 0));
   if (!re) {
     JS_ClearPendingException(cx);
@@ -6430,7 +6417,7 @@ nsContentUtils::IsPatternMatching(nsAString& aValue, nsAString& aPattern,
   JS::Rooted<JS::Value> rval(cx, JS::NullValue());
   size_t idx = 0;
   if (!JS_ExecuteRegExpNoStatics(cx, re,
-                                 static_cast<jschar*>(aValue.BeginWriting()),
+                                 static_cast<char16_t*>(aValue.BeginWriting()),
                                  aValue.Length(), &idx, true, &rval)) {
     JS_ClearPendingException(cx);
     return true;

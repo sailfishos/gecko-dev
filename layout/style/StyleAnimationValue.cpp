@@ -25,8 +25,10 @@
 #include "gfxMatrix.h"
 #include "gfxQuaternion.h"
 #include "nsIDocument.h"
+#include "gfx2DGlue.h"
 
 using namespace mozilla;
+using namespace mozilla::gfx;
 
 // HELPER METHODS
 // --------------
@@ -399,6 +401,48 @@ GetURIAsUtf16StringBuffer(nsIURI* aUri)
   return nsCSSValue::BufferFromString(NS_ConvertUTF8toUTF16(utf8String));
 }
 
+double
+CalcPositionSquareDistance(const nsCSSValue& aPos1,
+                           const nsCSSValue& aPos2)
+{
+  NS_ASSERTION(aPos1.GetUnit() == eCSSUnit_Array &&
+               aPos2.GetUnit() == eCSSUnit_Array,
+               "Expected two arrays");
+
+  PixelCalcValue calcVal[4];
+
+  nsCSSValue::Array* posArray = aPos1.GetArrayValue();
+  NS_ABORT_IF_FALSE(posArray->Count() == 4, "Invalid position value");
+  NS_ASSERTION(posArray->Item(0).GetUnit() == eCSSUnit_Null &&
+               posArray->Item(2).GetUnit() == eCSSUnit_Null,
+               "Invalid list used");
+  for (int i = 0; i < 2; ++i) {
+    NS_ABORT_IF_FALSE(posArray->Item(i*2+1).GetUnit() != eCSSUnit_Null,
+                      "Invalid position value");
+    calcVal[i] = ExtractCalcValue(posArray->Item(i*2+1));
+  }
+
+  posArray = aPos2.GetArrayValue();
+  NS_ABORT_IF_FALSE(posArray->Count() == 4, "Invalid position value");
+  NS_ASSERTION(posArray->Item(0).GetUnit() == eCSSUnit_Null &&
+               posArray->Item(2).GetUnit() == eCSSUnit_Null,
+               "Invalid list used");
+  for (int i = 0; i < 2; ++i) {
+    NS_ABORT_IF_FALSE(posArray->Item(i*2+1).GetUnit() != eCSSUnit_Null,
+                      "Invalid position value");
+    calcVal[i+2] = ExtractCalcValue(posArray->Item(i*2+1));
+  }
+
+  double squareDistance = 0.0;
+  for (int i = 0; i < 2; ++i) {
+    float difflen = calcVal[i+2].mLength - calcVal[i].mLength;
+    float diffpct = calcVal[i+2].mPercent - calcVal[i].mPercent;
+    squareDistance += difflen * difflen + diffpct * diffpct;
+  }
+
+  return squareDistance;
+}
+
 // CLASS METHODS
 // -------------
 
@@ -512,6 +556,15 @@ StyleAnimationValue::ComputeDistance(nsCSSProperty aProperty,
       float difflen = v2.mLength - v1.mLength;
       float diffpct = v2.mPercent - v1.mPercent;
       aDistance = sqrt(difflen * difflen + diffpct * diffpct);
+      return true;
+    }
+    case eUnit_ObjectPosition: {
+      const nsCSSValue* position1 = aStartValue.GetCSSValueValue();
+      const nsCSSValue* position2 = aEndValue.GetCSSValueValue();
+      double squareDistance =
+        CalcPositionSquareDistance(*position1,
+                                   *position2);
+      aDistance = sqrt(squareDistance);
       return true;
     }
     case eUnit_CSSValuePair: {
@@ -788,40 +841,8 @@ StyleAnimationValue::ComputeDistance(nsCSSProperty aProperty,
       NS_ABORT_IF_FALSE(!position1 == !position2, "lists should be same length");
 
       while (position1 && position2) {
-        NS_ASSERTION(position1->mValue.GetUnit() == eCSSUnit_Array &&
-                     position2->mValue.GetUnit() == eCSSUnit_Array,
-                     "Expected two arrays");
-
-        PixelCalcValue calcVal[4];
-
-        nsCSSValue::Array* bgArray = position1->mValue.GetArrayValue();
-        NS_ABORT_IF_FALSE(bgArray->Count() == 4, "Invalid background-position");
-        NS_ASSERTION(bgArray->Item(0).GetUnit() == eCSSUnit_Null &&
-                     bgArray->Item(2).GetUnit() == eCSSUnit_Null,
-                     "Invalid list used");
-        for (int i = 0; i < 2; ++i) {
-          NS_ABORT_IF_FALSE(bgArray->Item(i*2+1).GetUnit() != eCSSUnit_Null,
-                            "Invalid background-position");
-          calcVal[i] = ExtractCalcValue(bgArray->Item(i*2+1));
-        }
-
-        bgArray = position2->mValue.GetArrayValue();
-        NS_ABORT_IF_FALSE(bgArray->Count() == 4, "Invalid background-position");
-        NS_ASSERTION(bgArray->Item(0).GetUnit() == eCSSUnit_Null &&
-                     bgArray->Item(2).GetUnit() == eCSSUnit_Null,
-                     "Invalid list used");
-        for (int i = 0; i < 2; ++i) {
-          NS_ABORT_IF_FALSE(bgArray->Item(i*2+1).GetUnit() != eCSSUnit_Null,
-                            "Invalid background-position");
-          calcVal[i+2] = ExtractCalcValue(bgArray->Item(i*2+1));
-        }
-
-        for (int i = 0; i < 2; ++i) {
-          float difflen = calcVal[i+2].mLength - calcVal[i].mLength;
-          float diffpct = calcVal[i+2].mPercent - calcVal[i].mPercent;
-          squareDistance += difflen * difflen + diffpct * diffpct;
-        }
-
+        squareDistance += CalcPositionSquareDistance(position1->mValue,
+                                                     position2->mValue);
         position1 = position1->mNext;
         position2 = position2->mNext;
       }
@@ -1338,9 +1359,9 @@ StyleAnimationValue::AppendTransformFunction(nsCSSKeyword aTransformFunction,
 #define YZSHEAR 2
 
 static bool
-Decompose2DMatrix(const gfxMatrix &aMatrix, gfxPoint3D &aScale,
+Decompose2DMatrix(const gfxMatrix &aMatrix, Point3D &aScale,
                   float aShear[3], gfxQuaternion &aRotate,
-                  gfxPoint3D &aTranslate)
+                  Point3D &aTranslate)
 {
   float A = aMatrix._11,
         B = aMatrix._12,
@@ -1397,11 +1418,11 @@ Decompose2DMatrix(const gfxMatrix &aMatrix, gfxPoint3D &aScale,
  * in http://tog.acm.org/resources/GraphicsGems/AllGems.tar.gz
  */
 static bool
-Decompose3DMatrix(const gfx3DMatrix &aMatrix, gfxPoint3D &aScale,
+Decompose3DMatrix(const gfx3DMatrix &aMatrix, Point3D &aScale,
                   float aShear[3], gfxQuaternion &aRotate,
-                  gfxPoint3D &aTranslate, gfxPointH3D &aPerspective)
+                  Point3D &aTranslate, Point4D &aPerspective)
 {
-  gfx3DMatrix local = aMatrix;
+  Matrix4x4 local = ToMatrix4x4(aMatrix);
 
   if (local[3][3] == 0) {
     return false;
@@ -1413,8 +1434,8 @@ Decompose3DMatrix(const gfx3DMatrix &aMatrix, gfxPoint3D &aScale,
    * perspective is used to solve for perspective, but it also provides
    * an easy way to test for singularity of the upper 3x3 component.
    */
-  gfx3DMatrix perspective = local;
-  gfxPointH3D empty(0, 0, 0, 1);
+  Matrix4x4 perspective = local;
+  Point4D empty(0, 0, 0, 1);
   perspective.SetTransposedVector(3, empty);
 
   if (perspective.Determinant() == 0.0) {
@@ -1437,7 +1458,7 @@ Decompose3DMatrix(const gfx3DMatrix &aMatrix, gfxPoint3D &aScale,
     /* Clear the perspective partition */
     local.SetTransposedVector(3, empty);
   } else {
-    aPerspective = gfxPointH3D(0, 0, 0, 1);
+    aPerspective = Point4D(0, 0, 0, 1);
   }
 
   /* Next take care of translation */
@@ -1508,13 +1529,13 @@ StyleAnimationValue::InterpolateTransformMatrix(const gfx3DMatrix &aMatrix1,
 
   // TODO: What do we do if one of these returns false (singular matrix)
 
-  gfxPoint3D scale1(1, 1, 1), translate1;
-  gfxPointH3D perspective1(0, 0, 0, 1);
+  Point3D scale1(1, 1, 1), translate1;
+  Point4D perspective1(0, 0, 0, 1);
   gfxQuaternion rotate1;
   float shear1[3] = { 0.0f, 0.0f, 0.0f};
 
-  gfxPoint3D scale2(1, 1, 1), translate2;
-  gfxPointH3D perspective2(0, 0, 0, 1);
+  Point3D scale2(1, 1, 1), translate2;
+  Point4D perspective2(0, 0, 0, 1);
   gfxQuaternion rotate2;
   float shear2[3] = { 0.0f, 0.0f, 0.0f};
 
@@ -1530,18 +1551,18 @@ StyleAnimationValue::InterpolateTransformMatrix(const gfx3DMatrix &aMatrix1,
   }
 
   // Interpolate each of the pieces
-  gfx3DMatrix result;
+  Matrix4x4 result;
 
-  gfxPointH3D perspective =
+  Point4D perspective =
     InterpolateNumerically(perspective1, perspective2, aProgress);
   result.SetTransposedVector(3, perspective);
 
-  gfxPoint3D translate =
+  Point3D translate =
     InterpolateNumerically(translate1, translate2, aProgress);
-  result.Translate(translate);
+  result.Translate(translate.x, translate.y, translate.z);
 
   gfxQuaternion q3 = rotate1.Slerp(rotate2, aProgress);
-  gfx3DMatrix rotate = q3.ToMatrix();
+  Matrix4x4 rotate = q3.ToMatrix();
   if (!rotate.IsIdentity()) {
       result = rotate * result;
   }
@@ -1565,13 +1586,13 @@ StyleAnimationValue::InterpolateTransformMatrix(const gfx3DMatrix &aMatrix1,
     result.SkewXY(xyshear);
   }
 
-  gfxPoint3D scale =
+  Point3D scale =
     InterpolateNumerically(scale1, scale2, aProgress);
-  if (scale != gfxPoint3D(1.0, 1.0, 1.0)) {
+  if (scale != Point3D(1.0, 1.0, 1.0)) {
     result.Scale(scale.x, scale.y, scale.z);
   }
 
-  return result;
+  return To3DMatrix(result);
 }
 
 static nsCSSValueList*
@@ -1814,13 +1835,13 @@ AddTransformLists(double aCoeff1, const nsCSSValueList* aList1,
         break;
       }
       case eCSSKeyword_rotate3d: {
-        gfxPoint3D vector1(a1->Item(1).GetFloatValue(),
-                           a1->Item(2).GetFloatValue(),
-                           a1->Item(3).GetFloatValue());
+        Point3D vector1(a1->Item(1).GetFloatValue(),
+                        a1->Item(2).GetFloatValue(),
+                        a1->Item(3).GetFloatValue());
         vector1.Normalize();
-        gfxPoint3D vector2(a2->Item(1).GetFloatValue(),
-                           a2->Item(2).GetFloatValue(),
-                           a2->Item(3).GetFloatValue());
+        Point3D vector2(a2->Item(1).GetFloatValue(),
+                        a2->Item(2).GetFloatValue(),
+                        a2->Item(3).GetFloatValue());
         vector2.Normalize();
 
         // Handle rotate3d with matched (normalized) vectors,
@@ -1879,6 +1900,28 @@ AddTransformLists(double aCoeff1, const nsCSSValueList* aList1,
                     "resultTail isn't pointing to the tail");
 
   return result.forget();
+}
+
+static void
+AddPositions(double aCoeff1, const nsCSSValue& aPos1,
+             double aCoeff2, const nsCSSValue& aPos2,
+             nsCSSValue& aResultPos)
+{
+  const nsCSSValue::Array* posArray1 = aPos1.GetArrayValue();
+  const nsCSSValue::Array* posArray2 = aPos2.GetArrayValue();
+  nsCSSValue::Array* resultPosArray = nsCSSValue::Array::Create(4);
+  aResultPos.SetArrayValue(resultPosArray, eCSSUnit_Array);
+
+  /* Only iterate over elements 1 and 3. The <position> is
+   * 'uncomputed' to only those elements.
+   */
+  for (size_t i = 1; i < 4; i += 2) {
+    const nsCSSValue& v1 = posArray1->Item(i);
+    const nsCSSValue& v2 = posArray2->Item(i);
+    nsCSSValue& vr = resultPosArray->Item(i);
+    AddCSSValueCanonicalCalc(aCoeff1, v1,
+                             aCoeff2, v2, vr);
+  }
 }
 
 bool
@@ -2031,6 +2074,18 @@ StyleAnimationValue::AddWeighted(nsCSSProperty aProperty,
         arr->Item(0).SetFloatValue(len, eCSSUnit_Pixel);
       }
       aResultValue.SetAndAdoptCSSValueValue(val, eUnit_Calc);
+      return true;
+    }
+    case eUnit_ObjectPosition: {
+      const nsCSSValue* position1 = aValue1.GetCSSValueValue();
+      const nsCSSValue* position2 = aValue2.GetCSSValueValue();
+
+      nsAutoPtr<nsCSSValue> result(new nsCSSValue);
+      AddPositions(aCoeff1, *position1,
+                   aCoeff2, *position2, *result);
+
+      aResultValue.SetAndAdoptCSSValueValue(result.forget(),
+                                            eUnit_ObjectPosition);
       return true;
     }
     case eUnit_CSSValuePair: {
@@ -2366,31 +2421,8 @@ StyleAnimationValue::AddWeighted(nsCSSProperty aProperty,
         *resultTail = item;
         resultTail = &item->mNext;
 
-        nsCSSValue::Array* bgPos1 = position1->mValue.GetArrayValue();
-        nsCSSValue::Array* bgPos2 = position2->mValue.GetArrayValue();
-        nsCSSValue::Array* bgPosRes = nsCSSValue::Array::Create(4);
-        item->mValue.SetArrayValue(bgPosRes, eCSSUnit_Array);
-
-        uint32_t restrictions = nsCSSProps::ValueRestrictions(aProperty);
-
-        /* Only iterate over elements 1 and 3. The background position is
-         * 'uncomputed' to only those elements.
-         */
-        for (int i = 1; i < 4; i+=2) {
-          const nsCSSValue& v1 = bgPos1->Item(i);
-          const nsCSSValue& v2 = bgPos2->Item(i);
-          nsCSSValue& vr = bgPosRes->Item(i);
-
-          nsCSSUnit unit = GetCommonUnit(aProperty, v1.GetUnit(), v2.GetUnit());
-
-          if (!AddCSSValuePixelPercentCalc(restrictions, unit, aCoeff1, v1,
-                                           aCoeff2, v2, vr) ) {
-            if (v1 != v2) {
-              return false;
-            }
-            vr = v1;
-          }
-        }
+        AddPositions(aCoeff1, position1->mValue,
+                     aCoeff2, position2->mValue, item->mValue);
 
         position1 = position1->mNext;
         position2 = position2->mNext;
@@ -2598,7 +2630,8 @@ StyleAnimationValue::UncomputeValue(nsCSSProperty aProperty,
                                     const StyleAnimationValue& aComputedValue,
                                     nsCSSValue& aSpecifiedValue)
 {
-  switch (aComputedValue.GetUnit()) {
+  Unit unit = aComputedValue.GetUnit();
+  switch (unit) {
     case eUnit_Normal:
       aSpecifiedValue.SetNormalValue();
       break;
@@ -2631,9 +2664,15 @@ StyleAnimationValue::UncomputeValue(nsCSSProperty aProperty,
       // colors can be alone, or part of a paint server
       aSpecifiedValue.SetColorValue(aComputedValue.GetColorValue());
       break;
-    case eUnit_Calc: {
-      nsCSSValue *val = aComputedValue.GetCSSValueValue();
-      NS_ABORT_IF_FALSE(val->GetUnit() == eCSSUnit_Calc, "unexpected unit");
+    case eUnit_Calc:
+    case eUnit_ObjectPosition: {
+      nsCSSValue* val = aComputedValue.GetCSSValueValue();
+      // Sanity-check that the underlying unit in the nsCSSValue is what we
+      // expect for our StyleAnimationValue::Unit:
+      MOZ_ASSERT((unit == eUnit_Calc && val->GetUnit() == eCSSUnit_Calc) ||
+                 (unit == eUnit_ObjectPosition &&
+                  val->GetUnit() == eCSSUnit_Array),
+                 "unexpected unit");
       aSpecifiedValue = *val;
       break;
     }
@@ -2810,6 +2849,24 @@ StyleCoordToCSSValue(const nsStyleCoord& aCoord, nsCSSValue& aCSSValue)
       return false;
   }
   return true;
+}
+
+static void
+SetPositionValue(const nsStyleBackground::Position& aPos, nsCSSValue& aCSSValue)
+{
+  nsRefPtr<nsCSSValue::Array> posArray = nsCSSValue::Array::Create(4);
+  aCSSValue.SetArrayValue(posArray.get(), eCSSUnit_Array);
+
+  // NOTE: Array entries #0 and #2 here are intentionally left untouched, with
+  // eCSSUnit_Null.  The purpose of these entries in our specified-style
+  // <position> representation is to store edge names.  But for values
+  // extracted from computed style (which is what we're dealing with here),
+  // we'll just have a normalized "x,y" position, with no edge names needed.
+  nsCSSValue& xValue = posArray->Item(1);
+  nsCSSValue& yValue = posArray->Item(3);
+
+  SetCalcValue(&aPos.mXPosition, xValue);
+  SetCalcValue(&aPos.mYPosition, yValue);
 }
 
 /*
@@ -3151,6 +3208,18 @@ StyleAnimationValue::ExtractComputedValue(nsCSSProperty aProperty,
           break;
         }
 
+        case eCSSProperty_object_position: {
+          const nsStylePosition* stylePos =
+            static_cast<const nsStylePosition*>(styleStruct);
+
+          nsAutoPtr<nsCSSValue> val(new nsCSSValue);
+          SetPositionValue(stylePos->mObjectPosition, *val);
+
+          aComputedValue.SetAndAdoptCSSValueValue(val.forget(),
+                                                  eUnit_ObjectPosition);
+          break;
+        }
+
         case eCSSProperty_background_position: {
           const nsStyleBackground *bg =
             static_cast<const nsStyleBackground*>(styleStruct);
@@ -3161,33 +3230,7 @@ StyleAnimationValue::ExtractComputedValue(nsCSSProperty aProperty,
             nsCSSValueList *item = new nsCSSValueList;
             *resultTail = item;
             resultTail = &item->mNext;
-            nsRefPtr<nsCSSValue::Array> bgArray = nsCSSValue::Array::Create(4);
-            item->mValue.SetArrayValue(bgArray.get(), eCSSUnit_Array);
-
-            const nsStyleBackground::Position &pos = bg->mLayers[i].mPosition;
-            // XXXbz is there a good reason we can't just
-            // SetCalcValue(&pos.mXPosition, item->mXValue) here?
-            nsCSSValue &xValue = bgArray->Item(1),
-                       &yValue = bgArray->Item(3);
-            if (!pos.mXPosition.mHasPercent) {
-              NS_ABORT_IF_FALSE(pos.mXPosition.mPercent == 0.0f,
-                                "Shouldn't have mPercent!");
-              nscoordToCSSValue(pos.mXPosition.mLength, xValue);
-            } else if (pos.mXPosition.mLength == 0) {
-              xValue.SetPercentValue(pos.mXPosition.mPercent);
-            } else {
-              SetCalcValue(&pos.mXPosition, xValue);
-            }
-
-            if (!pos.mYPosition.mHasPercent) {
-              NS_ABORT_IF_FALSE(pos.mYPosition.mPercent == 0.0f,
-                                "Shouldn't have mPercent!");
-              nscoordToCSSValue(pos.mYPosition.mLength, yValue);
-            } else if (pos.mYPosition.mLength == 0) {
-              yValue.SetPercentValue(pos.mYPosition.mPercent);
-            } else {
-              SetCalcValue(&pos.mYPosition, yValue);
-            }
+            SetPositionValue(bg->mLayers[i].mPosition, item->mValue);
           }
 
           aComputedValue.SetAndAdoptCSSValueListValue(result.forget(),
@@ -3571,6 +3614,9 @@ StyleAnimationValue::operator=(const StyleAnimationValue& aOther)
       mValue.mColor = aOther.mValue.mColor;
       break;
     case eUnit_Calc:
+    case eUnit_ObjectPosition:
+      NS_ABORT_IF_FALSE(IsCSSValueUnit(mUnit),
+                        "This clause is for handling nsCSSValue-backed units");
       NS_ABORT_IF_FALSE(aOther.mValue.mCSSValue, "values may not be null");
       mValue.mCSSValue = new nsCSSValue(*aOther.mValue.mCSSValue);
       if (!mValue.mCSSValue) {
@@ -3833,6 +3879,9 @@ StyleAnimationValue::operator==(const StyleAnimationValue& aOther) const
     case eUnit_Color:
       return mValue.mColor == aOther.mValue.mColor;
     case eUnit_Calc:
+    case eUnit_ObjectPosition:
+      NS_ABORT_IF_FALSE(IsCSSValueUnit(mUnit),
+                        "This clause is for handling nsCSSValue-backed units");
       return *mValue.mCSSValue == *aOther.mValue.mCSSValue;
     case eUnit_CSSValuePair:
       return *mValue.mCSSValuePair == *aOther.mValue.mCSSValuePair;

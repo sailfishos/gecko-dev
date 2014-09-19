@@ -218,7 +218,7 @@ MediaEngineWebRTCVideoSource::ChooseCapability(
   return GuessCapability(aConstraints, aPrefs);
 #else
   NS_ConvertUTF16toUTF8 uniqueId(mUniqueId);
-  int num = mViECapture->NumberOfCapabilities(uniqueId.get(), KMaxUniqueIdLength);
+  int num = mViECapture->NumberOfCapabilities(uniqueId.get(), kMaxUniqueIdLength);
   if (num <= 0) {
     // Mac doesn't support capabilities.
     return GuessCapability(aConstraints, aPrefs);
@@ -240,7 +240,7 @@ MediaEngineWebRTCVideoSource::ChooseCapability(
 
   for (uint32_t i = 0; i < candidateSet.Length();) {
     webrtc::CaptureCapability cap;
-    mViECapture->GetCaptureCapability(uniqueId.get(), KMaxUniqueIdLength,
+    mViECapture->GetCaptureCapability(uniqueId.get(), kMaxUniqueIdLength,
                                       candidateSet[i], cap);
     if (!SatisfyConstraintSet(aConstraints.mRequired, cap)) {
       candidateSet.RemoveElementAt(i);
@@ -260,7 +260,7 @@ MediaEngineWebRTCVideoSource::ChooseCapability(
       SourceSet rejects;
       for (uint32_t j = 0; j < candidateSet.Length();) {
         webrtc::CaptureCapability cap;
-        mViECapture->GetCaptureCapability(uniqueId.get(), KMaxUniqueIdLength,
+        mViECapture->GetCaptureCapability(uniqueId.get(), kMaxUniqueIdLength,
                                           candidateSet[j], cap);
         if (!SatisfyConstraintSet(array[i], cap)) {
           rejects.AppendElement(candidateSet[j]);
@@ -288,7 +288,7 @@ MediaEngineWebRTCVideoSource::ChooseCapability(
   bool higher = true;
   for (uint32_t i = 0; i < candidateSet.Length(); i++) {
     mViECapture->GetCaptureCapability(NS_ConvertUTF16toUTF8(mUniqueId).get(),
-                                      KMaxUniqueIdLength, candidateSet[i], cap);
+                                      kMaxUniqueIdLength, candidateSet[i], cap);
     if (higher) {
       if (i == 0 ||
           (mCapability.width > cap.width && mCapability.height > cap.height)) {
@@ -451,7 +451,7 @@ MediaEngineWebRTCVideoSource::Allocate(const VideoTrackConstraintsN &aConstraint
     ChooseCapability(aConstraints, aPrefs);
 
     if (mViECapture->AllocateCaptureDevice(NS_ConvertUTF16toUTF8(mUniqueId).get(),
-                                           KMaxUniqueIdLength, mCaptureIndex)) {
+                                           kMaxUniqueIdLength, mCaptureIndex)) {
       return NS_ERROR_FAILURE;
     }
     mState = kAllocated;
@@ -654,13 +654,11 @@ MediaEngineWebRTCVideoSource::Init()
     return;
   }
 
-  const uint32_t KMaxDeviceNameLength = 128;
-  const uint32_t KMaxUniqueIdLength = 256;
-  char deviceName[KMaxDeviceNameLength];
-  char uniqueId[KMaxUniqueIdLength];
+  char deviceName[kMaxDeviceNameLength];
+  char uniqueId[kMaxUniqueIdLength];
   if (mViECapture->GetCaptureDevice(mCaptureIndex,
-                                    deviceName, KMaxDeviceNameLength,
-                                    uniqueId, KMaxUniqueIdLength)) {
+                                    deviceName, kMaxDeviceNameLength,
+                                    uniqueId, kMaxUniqueIdLength)) {
     return;
   }
 
@@ -698,6 +696,31 @@ MediaEngineWebRTCVideoSource::Shutdown()
 #endif
   mState = kReleased;
   mInitDone = false;
+}
+
+void MediaEngineWebRTCVideoSource::Refresh(int aIndex) {
+  // NOTE: mCaptureIndex might have changed when allocated!
+  // Use aIndex to update information, but don't change mCaptureIndex!!
+#ifdef MOZ_B2G_CAMERA
+  // Caller looked up this source by uniqueId; since deviceName == uniqueId nothing else changes
+#else
+  // Caller looked up this source by uniqueId, so it shouldn't change
+  char deviceName[kMaxDeviceNameLength];
+  char uniqueId[kMaxUniqueIdLength];
+
+  if (mViECapture->GetCaptureDevice(aIndex,
+                                    deviceName, sizeof(deviceName),
+                                    uniqueId, sizeof(uniqueId))) {
+    return;
+  }
+
+  CopyUTF8toUTF16(deviceName, mDeviceName);
+#ifdef DEBUG
+  nsString temp;
+  CopyUTF8toUTF16(uniqueId, temp);
+  MOZ_ASSERT(temp.Equals(mUniqueId));
+#endif
+#endif
 }
 
 #ifdef MOZ_B2G_CAMERA
@@ -854,18 +877,95 @@ MediaEngineWebRTCVideoSource::GetRotation()
 void
 MediaEngineWebRTCVideoSource::OnUserError(UserContext aContext, nsresult aError)
 {
-  ReentrantMonitorAutoEnter sync(mCallbackMonitor);
-  mCallbackMonitor.Notify();
+  {
+    // Scope the monitor, since there is another monitor below and we don't want
+    // unexpected deadlock.
+    ReentrantMonitorAutoEnter sync(mCallbackMonitor);
+    mCallbackMonitor.Notify();
+  }
+
+  // A main thread runnable to send error code to all queued PhotoCallbacks.
+  class TakePhotoError : public nsRunnable {
+  public:
+    TakePhotoError(nsTArray<nsRefPtr<PhotoCallback>>& aCallbacks,
+                   nsresult aRv)
+      : mRv(aRv)
+    {
+      mCallbacks.SwapElements(aCallbacks);
+    }
+
+    NS_IMETHOD Run()
+    {
+      uint32_t callbackNumbers = mCallbacks.Length();
+      for (uint8_t i = 0; i < callbackNumbers; i++) {
+        mCallbacks[i]->PhotoError(mRv);
+      }
+      // PhotoCallback needs to dereference on main thread.
+      mCallbacks.Clear();
+      return NS_OK;
+    }
+
+  protected:
+    nsTArray<nsRefPtr<PhotoCallback>> mCallbacks;
+    nsresult mRv;
+  };
+
+  if (aContext == UserContext::kInTakePicture) {
+    MonitorAutoLock lock(mMonitor);
+    if (mPhotoCallbacks.Length()) {
+      NS_DispatchToMainThread(new TakePhotoError(mPhotoCallbacks, aError));
+    }
+  }
 }
 
 void
 MediaEngineWebRTCVideoSource::OnTakePictureComplete(uint8_t* aData, uint32_t aLength, const nsAString& aMimeType)
 {
-  ReentrantMonitorAutoEnter sync(mCallbackMonitor);
-  mLastCapture = dom::DOMFile::CreateMemoryFile(static_cast<void*>(aData),
-                                                static_cast<uint64_t>(aLength),
-                                                aMimeType);
-  mCallbackMonitor.Notify();
+  // It needs to start preview because Gonk camera will stop preview while
+  // taking picture.
+  mCameraControl->StartPreview();
+
+  // Create a main thread runnable to generate a blob and call all current queued
+  // PhotoCallbacks.
+  class GenerateBlobRunnable : public nsRunnable {
+  public:
+    GenerateBlobRunnable(nsTArray<nsRefPtr<PhotoCallback>>& aCallbacks,
+                         uint8_t* aData,
+                         uint32_t aLength,
+                         const nsAString& aMimeType)
+    {
+      mCallbacks.SwapElements(aCallbacks);
+      mPhoto.AppendElements(aData, aLength);
+      mMimeType = aMimeType;
+    }
+
+    NS_IMETHOD Run()
+    {
+      nsRefPtr<dom::DOMFile> blob =
+        dom::DOMFile::CreateMemoryFile(mPhoto.Elements(), mPhoto.Length(), mMimeType);
+      uint32_t callbackCounts = mCallbacks.Length();
+      for (uint8_t i = 0; i < callbackCounts; i++) {
+        nsRefPtr<dom::DOMFile> tempBlob = blob;
+        mCallbacks[i]->PhotoComplete(tempBlob.forget());
+      }
+      // PhotoCallback needs to dereference on main thread.
+      mCallbacks.Clear();
+      return NS_OK;
+    }
+
+    nsTArray<nsRefPtr<PhotoCallback>> mCallbacks;
+    nsTArray<uint8_t> mPhoto;
+    nsString mMimeType;
+  };
+
+  // All elements in mPhotoCallbacks will be swapped in GenerateBlobRunnable
+  // constructor. This captured image will be sent to all the queued
+  // PhotoCallbacks in this runnable.
+  MonitorAutoLock lock(mMonitor);
+  if (mPhotoCallbacks.Length()) {
+    NS_DispatchToMainThread(
+      new GenerateBlobRunnable(mPhotoCallbacks, aData, aLength, aMimeType));
+  }
 }
 
 void
@@ -953,6 +1053,28 @@ MediaEngineWebRTCVideoSource::OnNewPreviewFrame(layers::Image* aImage, uint32_t 
 
   return true; // return true because we're accepting the frame
 }
+
+nsresult
+MediaEngineWebRTCVideoSource::TakePhoto(PhotoCallback* aCallback)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+
+  MonitorAutoLock lock(mMonitor);
+
+  // If other callback exists, that means there is a captured picture on the way,
+  // it doesn't need to TakePicture() again.
+  if (!mPhotoCallbacks.Length()) {
+    nsresult rv = mCameraControl->TakePicture();
+    if (NS_FAILED(rv)) {
+      return rv;
+    }
+  }
+
+  mPhotoCallbacks.AppendElement(aCallback);
+
+  return NS_OK;
+}
+
 #endif
 
 }

@@ -193,6 +193,9 @@ class JitRuntime
     JitCode *mallocStub_;
     JitCode *freeStub_;
 
+    // Thunk called to finish compilation of an IonScript.
+    JitCode *lazyLinkStub_;
+
     // Thunk used by the debugger for breakpoint and step mode.
     JitCode *debugTrapHandler_;
 
@@ -238,6 +241,7 @@ class JitRuntime
     JitcodeGlobalTable *jitcodeGlobalTable_;
 
   private:
+    JitCode *generateLazyLinkStub(JSContext *cx);
     JitCode *generateExceptionTailStub(JSContext *cx);
     JitCode *generateBailoutTailStub(JSContext *cx);
     JitCode *generateEnterJIT(JSContext *cx, EnterJitType type);
@@ -314,7 +318,7 @@ class JitRuntime
         switch (mode) {
           case SequentialExecution: return bailoutHandler_;
           case ParallelExecution:   return parallelBailoutHandler_;
-          default:                  MOZ_ASSUME_UNREACHABLE("No such execution mode");
+          default:                  MOZ_CRASH("No such execution mode");
         }
     }
 
@@ -332,7 +336,7 @@ class JitRuntime
         switch (mode) {
           case SequentialExecution: return argumentsRectifier_;
           case ParallelExecution:   return parallelArgumentsRectifier_;
-          default:                  MOZ_ASSUME_UNREACHABLE("No such execution mode");
+          default:                  MOZ_CRASH("No such execution mode");
         }
     }
 
@@ -367,6 +371,10 @@ class JitRuntime
 
     JitCode *freeStub() const {
         return freeStub_;
+    }
+
+    JitCode *lazyLinkStub() const {
+        return lazyLinkStub_;
     }
 
     bool ensureForkJoinGetSliceStubExists(JSContext *cx);
@@ -510,7 +518,7 @@ class JitCompartment
         switch (mode) {
           case SequentialExecution: return stringConcatStub_;
           case ParallelExecution:   return parallelStringConcatStub_;
-          default:                  MOZ_ASSUME_UNREACHABLE("No such execution mode");
+          default:                  MOZ_CRASH("No such execution mode");
         }
     }
 };

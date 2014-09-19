@@ -13,12 +13,18 @@ namespace jit {
 #define MIR_OPCODE_LIST(_)                                                  \
     _(Constant)                                                             \
     _(SimdValueX4)                                                          \
+    _(SimdSplatX4)                                                          \
     _(SimdConstant)                                                         \
     _(SimdExtractElement)                                                   \
+    _(SimdSignMask)                                                         \
+    _(SimdBinaryComp)                                                       \
     _(SimdBinaryArith)                                                      \
+    _(SimdBinaryBitwise)                                                    \
+    _(SimdTernaryBitwise)                                                   \
     _(CloneLiteral)                                                         \
     _(Parameter)                                                            \
     _(Callee)                                                               \
+    _(IsConstructing)                                                       \
     _(TableSwitch)                                                          \
     _(Goto)                                                                 \
     _(Test)                                                                 \
@@ -236,7 +242,8 @@ namespace jit {
     _(ForkJoinGetSlice)                                                     \
     _(GuardThreadExclusive)                                                 \
     _(InterruptCheckPar)                                                    \
-    _(RecompileCheck)
+    _(RecompileCheck)                                                       \
+    _(UnknownValue)
 
 // Forward declarations of MIR types.
 #define FORWARD_DECLARE(op) class M##op;
@@ -256,7 +263,7 @@ class MDefinitionVisitor // interface i.e. pure abstract class
 class MDefinitionVisitorDefaultNYI : public MDefinitionVisitor
 {
   public:
-#define VISIT_INS(op) virtual bool visit##op(M##op *) { MOZ_ASSUME_UNREACHABLE("NYI: " #op); }
+#define VISIT_INS(op) virtual bool visit##op(M##op *) { MOZ_CRASH("NYI: " #op); }
     MIR_OPCODE_LIST(VISIT_INS)
 #undef VISIT_INS
 };

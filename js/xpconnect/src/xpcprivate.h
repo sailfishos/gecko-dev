@@ -739,10 +739,6 @@ public:
 
     void DebugDump(int16_t depth);
 
-    void MarkErrorUnreported() { mErrorUnreported = true; }
-    void ClearUnreportedError() { mErrorUnreported = false; }
-    bool WasErrorReported() { return !mErrorUnreported; }
-
     ~XPCContext();
 
 private:
@@ -1623,7 +1619,6 @@ public:
     bool WantCall()                     GET_IT(WANT_CALL)
     bool WantConstruct()                GET_IT(WANT_CONSTRUCT)
     bool WantHasInstance()              GET_IT(WANT_HASINSTANCE)
-    bool WantOuterObject()              GET_IT(WANT_OUTER_OBJECT)
     bool UseJSStubForAddProperty()      GET_IT(USE_JSSTUB_FOR_ADDPROPERTY)
     bool UseJSStubForDelProperty()      GET_IT(USE_JSSTUB_FOR_DELPROPERTY)
     bool UseJSStubForSetProperty()      GET_IT(USE_JSSTUB_FOR_SETPROPERTY)
@@ -3009,8 +3004,7 @@ private:
 };
 
 /******************************************************************************
- * Handles pre/post script processing and the setting/resetting the error
- * reporter
+ * Handles pre/post script processing.
  */
 class MOZ_STACK_CLASS AutoScriptEvaluate
 {
@@ -3020,27 +3014,25 @@ public:
      * @param cx The JSContext, this can be null, we don't do anything then
      */
     explicit AutoScriptEvaluate(JSContext * cx MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
-         : mJSContext(cx), mErrorReporterSet(false), mEvaluated(false) {
+         : mJSContext(cx), mEvaluated(false) {
         MOZ_GUARD_OBJECT_NOTIFIER_INIT;
     }
 
     /**
-     * Does the pre script evaluation and sets the error reporter if given
+     * Does the pre script evaluation.
      * This function should only be called once, and will assert if called
      * more than once
-     * @param errorReporter the error reporter callback function to set
      */
 
-    bool StartEvaluating(JS::HandleObject scope, JSErrorReporter errorReporter = nullptr);
+    bool StartEvaluating(JS::HandleObject scope);
 
     /**
-     * Does the post script evaluation and resets the error reporter
+     * Does the post script evaluation.
      */
     ~AutoScriptEvaluate();
 private:
     JSContext* mJSContext;
     mozilla::Maybe<JS::AutoSaveExceptionState> mState;
-    bool mErrorReporterSet;
     bool mEvaluated;
     mozilla::Maybe<JSAutoCompartment> mAutoCompartment;
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
@@ -3363,9 +3355,10 @@ Btoa(JSContext *cx, unsigned argc, jsval *vp);
 
 // Helper function that creates a JSFunction that wraps a native function that
 // forwards the call to the original 'callable'.
+class FunctionForwarderOptions;
 bool
 NewFunctionForwarder(JSContext *cx, JS::HandleId id, JS::HandleObject callable,
-                     JS::MutableHandleValue vp);
+                     FunctionForwarderOptions &options, JS::MutableHandleValue vp);
 
 // Old fashioned xpc error reporter. Try to use JS_ReportError instead.
 nsresult
@@ -3479,13 +3472,46 @@ public:
                                    JSObject* options = nullptr)
         : OptionsBase(cx, options)
         , defineAs(cx, JSID_VOID)
+        , allowCrossOriginArguments(false)
     { }
 
     virtual bool Parse() {
-        return ParseId("defineAs", &defineAs);
+        return ParseId("defineAs", &defineAs) &&
+               ParseBoolean("allowCrossOriginArguments", &allowCrossOriginArguments);
     }
 
     JS::RootedId defineAs;
+    bool allowCrossOriginArguments;
+};
+
+class MOZ_STACK_CLASS FunctionForwarderOptions : public OptionsBase {
+public:
+    explicit FunctionForwarderOptions(JSContext *cx = xpc_GetSafeJSContext(),
+                                      JSObject* options = nullptr)
+        : OptionsBase(cx, options)
+        , allowCrossOriginArguments(false)
+    { }
+
+    JSObject *ToJSObject(JSContext *cx) {
+        JS::RootedObject global(cx, JS::CurrentGlobalOrNull(cx));
+        JS::RootedObject obj(cx, JS_NewObjectWithGivenProto(cx, nullptr, JS::NullPtr(), global));
+        if (!obj)
+            return nullptr;
+
+        JS::RootedValue val(cx);
+        unsigned attrs = JSPROP_READONLY | JSPROP_PERMANENT;
+        val = JS::BooleanValue(allowCrossOriginArguments);
+        if (!JS_DefineProperty(cx, obj, "allowCrossOriginArguments", val, attrs))
+            return nullptr;
+
+        return obj;
+    }
+
+    virtual bool Parse() {
+        return ParseBoolean("allowCrossOriginArguments", &allowCrossOriginArguments);
+    }
+
+    bool allowCrossOriginArguments;
 };
 
 class MOZ_STACK_CLASS StackScopedCloneOptions : public OptionsBase {

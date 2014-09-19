@@ -109,7 +109,8 @@ NS_IMPL_ISUPPORTS(CacheStorageService,
 CacheStorageService* CacheStorageService::sSelf = nullptr;
 
 CacheStorageService::CacheStorageService()
-: mLock("CacheStorageService")
+: mLock("CacheStorageService.mLock")
+, mForcedValidEntriesLock("CacheStorageService.mForcedValidEntriesLock")
 , mShutdown(false)
 , mDiskPool(MemoryPool::DISK)
 , mMemoryPool(MemoryPool::MEMORY)
@@ -154,6 +155,11 @@ void CacheStorageService::Shutdown()
 void CacheStorageService::ShutdownBackground()
 {
   MOZ_ASSERT(IsOnManagementThread());
+
+  // Cancel purge timer to avoid leaking.
+  if (mPurgeTimer) {
+    mPurgeTimer->Cancel();
+  }
 
   Pool(false).mFrecencyArray.Clear();
   Pool(false).mExpirationArray.Clear();
@@ -964,7 +970,7 @@ CacheStorageService::RemoveEntry(CacheEntry* aEntry, bool aOnlyUnreferenced)
       return false;
     }
 
-    if (!aEntry->IsUsingDisk() && IsForcedValidEntryInternal(entryKey)) {
+    if (!aEntry->IsUsingDisk() && IsForcedValidEntry(entryKey)) {
       LOG(("  forced valid, not removing"));
       return false;
     }
@@ -1035,19 +1041,12 @@ CacheStorageService::RecordMemoryOnlyEntry(CacheEntry* aEntry,
   }
 }
 
-// Acquires the mutex lock for CacheStorageService and calls through to
-// IsForcedValidInternal (bug 1044233)
-bool CacheStorageService::IsForcedValidEntry(nsACString &aCacheEntryKey)
-{
-  mozilla::MutexAutoLock lock(mLock);
-
-  return IsForcedValidEntryInternal(aCacheEntryKey);
-}
-
 // Checks if a cache entry is forced valid (will be loaded directly from cache
 // without further validation) - see nsICacheEntry.idl for further details
-bool CacheStorageService::IsForcedValidEntryInternal(nsACString &aCacheEntryKey)
+bool CacheStorageService::IsForcedValidEntry(nsACString &aCacheEntryKey)
 {
+  mozilla::MutexAutoLock lock(mForcedValidEntriesLock);
+
   TimeStamp validUntil;
 
   if (!mForcedValidEntries.Get(aCacheEntryKey, &validUntil)) {
@@ -1073,7 +1072,7 @@ bool CacheStorageService::IsForcedValidEntryInternal(nsACString &aCacheEntryKey)
 void CacheStorageService::ForceEntryValidFor(nsACString &aCacheEntryKey,
                                              uint32_t aSecondsToTheFuture)
 {
-  mozilla::MutexAutoLock lock(mLock);
+  mozilla::MutexAutoLock lock(mForcedValidEntriesLock);
 
   TimeStamp now = TimeStamp::NowLoRes();
   ForcedValidEntriesPrune(now);
@@ -1621,7 +1620,7 @@ CacheStorageService::DoomStorageEntry(CacheStorage const* aStorage,
   class Callback : public nsRunnable
   {
   public:
-    Callback(nsICacheEntryDoomCallback* aCallback) : mCallback(aCallback) { }
+    explicit Callback(nsICacheEntryDoomCallback* aCallback) : mCallback(aCallback) { }
     NS_IMETHODIMP Run()
     {
       mCallback->OnCacheEntryDoomed(NS_ERROR_NOT_AVAILABLE);

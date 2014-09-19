@@ -27,8 +27,12 @@ loop.conversation = (function(OT, mozL10n) {
       model: React.PropTypes.object.isRequired
     },
 
-    getInitialState: function() {
+    getInitialProps: function() {
       return {showDeclineMenu: false};
+    },
+
+    getInitialState: function() {
+      return {showDeclineMenu: this.props.showDeclineMenu};
     },
 
     componentDidMount: function() {
@@ -87,7 +91,7 @@ loop.conversation = (function(OT, mozL10n) {
       });
       return (
         React.DOM.div({className: conversationPanelClass}, 
-          React.DOM.h2(null, __("incoming_call")), 
+          React.DOM.h2(null, __("incoming_call_title2")), 
           React.DOM.div({className: "btn-group incoming-call-action-group"}, 
 
             React.DOM.div({className: "fx-embedded-incoming-call-button-spacer"}), 
@@ -98,7 +102,7 @@ loop.conversation = (function(OT, mozL10n) {
 
                   React.DOM.button({className: btnClassDecline, 
                           onClick: this._handleDecline}, 
-                    __("incoming_call_decline_button")
+                    __("incoming_call_cancel_button")
                   ), 
                   React.DOM.div({className: "btn-chevron", 
                        onClick: this._toggleDeclineMenu}
@@ -107,7 +111,7 @@ loop.conversation = (function(OT, mozL10n) {
 
                 React.DOM.ul({className: dropdownMenuClassesDecline}, 
                   React.DOM.li({className: "btn-block", onClick: this._handleDeclineBlock}, 
-                    __("incoming_call_decline_and_block_button")
+                    __("incoming_call_cancel_and_block_button")
                   )
                 )
 
@@ -121,14 +125,14 @@ loop.conversation = (function(OT, mozL10n) {
                 React.DOM.button({className: btnClassAccept, 
                         onClick: this._handleAccept("audio-video")}, 
                   React.DOM.span({className: "fx-embedded-answer-btn-text"}, 
-                    __("incoming_call_answer_button")
+                    __("incoming_call_accept_button")
                   ), 
                   React.DOM.span({className: "fx-embedded-btn-icon-video"}
                   )
                 ), 
                 React.DOM.div({className: "call-audio-only", 
                      onClick: this._handleAccept("audio"), 
-                     title: __("incoming_call_answer_audio_only_tooltip")}
+                     title: __("incoming_call_accept_audio_only_tooltip")}
                 )
               )
             ), 
@@ -147,13 +151,13 @@ loop.conversation = (function(OT, mozL10n) {
    *
    * Required options:
    * - {loop.shared.models.ConversationModel} conversation Conversation model.
-   * - {loop.shared.components.Notifier}      notifier     Notifier component.
+   * - {loop.shared.models.NotificationCollection} notifications
    *
    * @type {loop.shared.router.BaseConversationRouter}
    */
   var ConversationRouter = loop.desktopRouter.DesktopConversationRouter.extend({
     routes: {
-      "incoming/:version": "incoming",
+      "incoming/:callId": "incoming",
       "call/accept": "accept",
       "call/decline": "decline",
       "call/ongoing": "conversation",
@@ -178,12 +182,11 @@ loop.conversation = (function(OT, mozL10n) {
     /**
      * Incoming call route.
      *
-     * @param {String} loopVersion The version from the push notification, set
-     *                             by the router from the URL.
+     * @param {String} callId  Identifier assigned by the LoopService
+     *                         to this incoming call.
      */
-    incoming: function(loopVersion) {
+    incoming: function(callId) {
       navigator.mozLoop.startAlerting();
-      this._conversation.set({loopVersion: loopVersion});
       this._conversation.once("accept", function() {
         this.navigate("call/accept", {trigger: true});
       }.bind(this));
@@ -194,24 +197,19 @@ loop.conversation = (function(OT, mozL10n) {
         this.navigate("call/declineAndBlock", {trigger: true});
       }.bind(this));
       this._conversation.once("call:incoming", this.startCall, this);
-      this._client.requestCallsInfo(loopVersion, function(err, sessionData) {
-        if (err) {
-          console.error("Failed to get the sessionData", err);
-          // XXX Not the ideal response, but bug 1047410 will be replacing
-          // this by better "call failed" UI.
-          this._notifier.errorL10n("cannot_start_call_session_not_ready");
-          return;
-        }
+      this._conversation.once("change:publishedStream", this._checkConnected, this);
+      this._conversation.once("change:subscribedStream", this._checkConnected, this);
 
-        // XXX For incoming calls we might have more than one call queued.
-        // For now, we'll just assume the first call is the right information.
-        // We'll probably really want to be getting this data from the
-        // background worker on the desktop client.
-        // Bug 1032700 should fix this.
-        this._conversation.setIncomingSessionData(sessionData[0]);
-
-        this._setupWebSocketAndCallView();
-      }.bind(this));
+      var callData = navigator.mozLoop.getCallData(callId);
+      if (!callData) {
+        console.error("Failed to get the call data");
+        // XXX Not the ideal response, but bug 1047410 will be replacing
+        // this by better "call failed" UI.
+        this._notifications.errorL10n("cannot_start_call_session_not_ready");
+        return;
+      }
+      this._conversation.setIncomingSessionData(callData);
+      this._setupWebSocketAndCallView();
     },
 
     /**
@@ -236,10 +234,23 @@ loop.conversation = (function(OT, mozL10n) {
     },
 
     /**
+     * Checks if the streams have been connected, and notifies the
+     * websocket that the media is now connected.
+     */
+    _checkConnected: function() {
+      // Check we've had both local and remote streams connected before
+      // sending the media up message.
+      if (this._conversation.streamsConnected()) {
+        this._websocket.mediaUp();
+      }
+    },
+
+    /**
      * Accepts an incoming call.
      */
     accept: function() {
       navigator.mozLoop.stopAlerting();
+      this._websocket.accept();
       this._conversation.incoming();
     },
 
@@ -311,14 +322,14 @@ loop.conversation = (function(OT, mozL10n) {
     _handleSessionError: function() {
       // XXX Not the ideal response, but bug 1047410 will be replacing
       // this by better "call failed" UI.
-      this._notifier.errorL10n("cannot_start_call_session_not_ready");
+      this._notifications.errorL10n("cannot_start_call_session_not_ready");
     },
 
     /**
      * Call has ended, display a feedback form.
      */
     feedback: function() {
-      document.title = mozL10n.get("call_has_ended");
+      document.title = mozL10n.get("conversation_has_ended");
 
       var feebackAPIBaseUrl = navigator.mozLoop.getLoopCharPref(
         "feedback.baseUrl");
@@ -346,7 +357,7 @@ loop.conversation = (function(OT, mozL10n) {
     // else to ensure the L10n environment is setup correctly.
     mozL10n.initialize(navigator.mozLoop);
 
-    document.title = mozL10n.get("incoming_call_title");
+    document.title = mozL10n.get("incoming_call_title2");
 
     document.body.classList.add(loop.shared.utils.getTargetPlatform());
 
@@ -356,7 +367,7 @@ loop.conversation = (function(OT, mozL10n) {
       conversation: new loop.shared.models.ConversationModel(
         {},         // Model attributes
         {sdk: OT}), // Model dependencies
-      notifier: new sharedViews.NotificationListView({el: "#messages"})
+      notifications: new loop.shared.models.NotificationCollection()
     });
     Backbone.history.start();
   }

@@ -41,7 +41,7 @@ public:
   friend nsIFrame* NS_NewSVGPatternFrame(nsIPresShell* aPresShell,
                                          nsStyleContext* aContext);
 
-  nsSVGPatternFrame(nsStyleContext* aContext);
+  explicit nsSVGPatternFrame(nsStyleContext* aContext);
 
   // nsSVGPaintServerFrame methods:
   virtual already_AddRefed<gfxPattern>
@@ -55,8 +55,7 @@ public:
   typedef mozilla::SVGAnimatedPreserveAspectRatio SVGAnimatedPreserveAspectRatio;
 
   // nsSVGContainerFrame methods:
-  virtual gfxMatrix GetCanvasTM(uint32_t aFor,
-                                nsIFrame* aTransformRoot = nullptr) MOZ_OVERRIDE;
+  virtual gfxMatrix GetCanvasTM() MOZ_OVERRIDE;
 
   // nsIFrame interface:
   virtual nsresult AttributeChanged(int32_t         aNameSpaceID,

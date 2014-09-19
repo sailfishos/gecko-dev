@@ -121,18 +121,11 @@ AsmJSModule::~AsmJSModule()
     if (code_) {
         for (unsigned i = 0; i < numExits(); i++) {
             AsmJSModule::ExitDatum &exitDatum = exitIndexToGlobalDatum(i);
-            if (!exitDatum.fun)
-                continue;
-
-            if (!exitDatum.fun->hasScript())
-                continue;
-
-            JSScript *script = exitDatum.fun->nonLazyScript();
-            if (!script->hasIonScript())
+            if (!exitDatum.ionScript)
                 continue;
 
             jit::DependentAsmJSModuleExit exit(this, i);
-            script->ionScript()->removeDependentAsmJSModule(exit);
+            exitDatum.ionScript->removeDependentAsmJSModule(exit);
         }
 
         DeallocateExecutableMemory(code_, pod.totalBytes_);
@@ -303,8 +296,8 @@ AsmJSModule::finish(ExclusiveContext *cx, TokenStream &tokenStream, MacroAssembl
 
     // The global data section sits immediately after the executable (and
     // other) data allocated by the MacroAssembler, so ensure it is
-    // double-aligned.
-    pod.codeBytes_ = AlignBytes(masm.bytesNeeded(), sizeof(double));
+    // SIMD-aligned.
+    pod.codeBytes_ = AlignBytes(masm.bytesNeeded(), SimdStackAlignment);
 
     // The entire region is allocated via mmap/VirtualAlloc which requires
     // units of pages.
@@ -518,11 +511,11 @@ TryEnablingIon(JSContext *cx, AsmJSModule &module, HandleFunction fun, uint32_t 
     if (fun->nargs() > size_t(argc))
         return true;
 
-    // Normally the types should corresond, since we just ran with those types,
+    // Normally the types should correspond, since we just ran with those types,
     // but there are reports this is asserting. Therefore doing it as a check, instead of DEBUG only.
     if (!types::TypeScript::ThisTypes(script)->hasType(types::Type::UndefinedType()))
         return true;
-    for(uint32_t i = 0; i < fun->nargs(); i++) {
+    for (uint32_t i = 0; i < fun->nargs(); i++) {
         types::StackTypeSet *typeset = types::TypeScript::ArgTypes(script, i);
         types::Type type = types::Type::DoubleType();
         if (!argv[i].isDouble())
@@ -536,7 +529,9 @@ TryEnablingIon(JSContext *cx, AsmJSModule &module, HandleFunction fun, uint32_t 
     if (!ionScript->addDependentAsmJSModule(cx, DependentAsmJSModuleExit(&module, exitIndex)))
         return false;
 
-    module.exitIndexToGlobalDatum(exitIndex).exit = module.ionExitTrampoline(module.exit(exitIndex));
+    AsmJSModule::ExitDatum &exitDatum = module.exitIndexToGlobalDatum(exitIndex);
+    exitDatum.exit = module.ionExitTrampoline(module.exit(exitIndex));
+    exitDatum.ionScript = ionScript;
     return true;
 }
 
@@ -737,8 +732,10 @@ AsmJSModule::staticallyLink(ExclusiveContext *cx)
     // Initialize global data segment
 
     for (size_t i = 0; i < exits_.length(); i++) {
-        exitIndexToGlobalDatum(i).exit = interpExitTrampoline(exits_[i]);
-        exitIndexToGlobalDatum(i).fun = nullptr;
+        AsmJSModule::ExitDatum &exitDatum = exitIndexToGlobalDatum(i);
+        exitDatum.exit = interpExitTrampoline(exits_[i]);
+        exitDatum.fun = nullptr;
+        exitDatum.ionScript = nullptr;
     }
 
     JS_ASSERT(isStaticallyLinked());
@@ -916,7 +913,7 @@ SerializedNameSize(PropertyName *name)
 {
     size_t s = sizeof(uint32_t);
     if (name)
-        s += name->length() * (name->hasLatin1Chars() ? sizeof(Latin1Char) : sizeof(jschar));
+        s += name->length() * (name->hasLatin1Chars() ? sizeof(Latin1Char) : sizeof(char16_t));
     return s;
 }
 
@@ -939,7 +936,7 @@ SerializeName(uint8_t *cursor, PropertyName *name)
         if (name->hasLatin1Chars())
             cursor = WriteBytes(cursor, name->latin1Chars(nogc), length * sizeof(Latin1Char));
         else
-            cursor = WriteBytes(cursor, name->twoByteChars(nogc), length * sizeof(jschar));
+            cursor = WriteBytes(cursor, name->twoByteChars(nogc), length * sizeof(char16_t));
     } else {
         cursor = WriteScalar<uint32_t>(cursor, 0);
     }
@@ -991,7 +988,7 @@ DeserializeName(ExclusiveContext *cx, const uint8_t *cursor, PropertyName **name
     bool latin1 = lengthAndEncoding & 0x1;
     return latin1
            ? DeserializeChars<Latin1Char>(cx, cursor, length, name)
-           : DeserializeChars<jschar>(cx, cursor, length, name);
+           : DeserializeChars<char16_t>(cx, cursor, length, name);
 }
 
 const uint8_t *
@@ -1913,7 +1910,7 @@ class ModuleCharsForStore : ModuleChars
     bool init(AsmJSParser &parser) {
         JS_ASSERT(beginOffset(parser) < endOffset(parser));
 
-        uncompressedSize_ = (endOffset(parser) - beginOffset(parser)) * sizeof(jschar);
+        uncompressedSize_ = (endOffset(parser) - beginOffset(parser)) * sizeof(char16_t);
         size_t maxCompressedSize = LZ4::maxCompressedSize(uncompressedSize_);
         if (maxCompressedSize < uncompressedSize_)
             return false;
@@ -1921,7 +1918,7 @@ class ModuleCharsForStore : ModuleChars
         if (!compressedBuffer_.resize(maxCompressedSize))
             return false;
 
-        const jschar *chars = parser.tokenStream.rawBase() + beginOffset(parser);
+        const char16_t *chars = parser.tokenStream.rawBase() + beginOffset(parser);
         const char *source = reinterpret_cast<const char*>(chars);
         size_t compressedSize = LZ4::compress(source, uncompressedSize_, compressedBuffer_.begin());
         if (!compressedSize || compressedSize > UINT32_MAX)
@@ -1975,7 +1972,7 @@ class ModuleCharsForStore : ModuleChars
 
 class ModuleCharsForLookup : ModuleChars
 {
-    Vector<jschar, 0, SystemAllocPolicy> chars_;
+    Vector<char16_t, 0, SystemAllocPolicy> chars_;
 
   public:
     const uint8_t *deserialize(ExclusiveContext *cx, const uint8_t *cursor) {
@@ -1985,7 +1982,7 @@ class ModuleCharsForLookup : ModuleChars
         uint32_t compressedSize;
         cursor = ReadScalar<uint32_t>(cursor, &compressedSize);
 
-        if (!chars_.resize(uncompressedSize / sizeof(jschar)))
+        if (!chars_.resize(uncompressedSize / sizeof(char16_t)))
             return nullptr;
 
         const char *source = reinterpret_cast<const char*>(cursor);
@@ -2003,8 +2000,8 @@ class ModuleCharsForLookup : ModuleChars
     }
 
     bool match(AsmJSParser &parser) const {
-        const jschar *parseBegin = parser.tokenStream.rawBase() + beginOffset(parser);
-        const jschar *parseLimit = parser.tokenStream.rawLimit();
+        const char16_t *parseBegin = parser.tokenStream.rawBase() + beginOffset(parser);
+        const char16_t *parseLimit = parser.tokenStream.rawLimit();
         JS_ASSERT(parseLimit >= parseBegin);
         if (uint32_t(parseLimit - parseBegin) < chars_.length())
             return false;
@@ -2080,8 +2077,8 @@ js::StoreAsmJSModuleInCache(AsmJSParser &parser,
     if (!open)
         return false;
 
-    const jschar *begin = parser.tokenStream.rawBase() + ModuleChars::beginOffset(parser);
-    const jschar *end = parser.tokenStream.rawBase() + ModuleChars::endOffset(parser);
+    const char16_t *begin = parser.tokenStream.rawBase() + ModuleChars::beginOffset(parser);
+    const char16_t *end = parser.tokenStream.rawBase() + ModuleChars::endOffset(parser);
     bool installed = parser.options().installedFile;
 
     ScopedCacheEntryOpenedForWrite entry(cx, serializedSize);
@@ -2132,8 +2129,8 @@ js::LookupAsmJSModuleInCache(ExclusiveContext *cx,
     if (!open)
         return true;
 
-    const jschar *begin = parser.tokenStream.rawBase() + ModuleChars::beginOffset(parser);
-    const jschar *limit = parser.tokenStream.rawLimit();
+    const char16_t *begin = parser.tokenStream.rawBase() + ModuleChars::beginOffset(parser);
+    const char16_t *limit = parser.tokenStream.rawLimit();
 
     ScopedCacheEntryOpenedForRead entry(cx);
     if (!open(cx->global(), begin, limit, &entry.serializedSize, &entry.memory, &entry.handle))

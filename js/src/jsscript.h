@@ -341,7 +341,7 @@ class ScriptSource;
 class UncompressedSourceCache
 {
     typedef HashMap<ScriptSource *,
-                    const jschar *,
+                    const char16_t *,
                     DefaultHasher<ScriptSource *>,
                     SystemAllocPolicy> Map;
 
@@ -351,13 +351,13 @@ class UncompressedSourceCache
     {
         UncompressedSourceCache *cache_;
         ScriptSource *source_;
-        const jschar *charsToFree_;
+        const char16_t *charsToFree_;
       public:
         explicit AutoHoldEntry();
         ~AutoHoldEntry();
       private:
         void holdEntry(UncompressedSourceCache *cache, ScriptSource *source);
-        void deferDelete(const jschar *chars);
+        void deferDelete(const char16_t *chars);
         ScriptSource *source() const { return source_; }
         friend class UncompressedSourceCache;
     };
@@ -369,8 +369,8 @@ class UncompressedSourceCache
   public:
     UncompressedSourceCache() : map_(nullptr), holder_(nullptr) {}
 
-    const jschar *lookup(ScriptSource *ss, AutoHoldEntry &asp);
-    bool put(ScriptSource *ss, const jschar *chars, AutoHoldEntry &asp);
+    const char16_t *lookup(ScriptSource *ss, AutoHoldEntry &asp);
+    bool put(ScriptSource *ss, const char16_t *chars, AutoHoldEntry &asp);
 
     void purge();
 
@@ -401,7 +401,7 @@ class ScriptSource
 
     union {
         struct {
-            const jschar *chars;
+            const char16_t *chars;
             bool ownsChars;
         } uncompressed;
 
@@ -419,8 +419,8 @@ class ScriptSource
     // The filename of this script.
     mozilla::UniquePtr<char[], JS::FreePolicy> filename_;
 
-    mozilla::UniquePtr<jschar[], JS::FreePolicy> displayURL_;
-    mozilla::UniquePtr<jschar[], JS::FreePolicy> sourceMapURL_;
+    mozilla::UniquePtr<char16_t[], JS::FreePolicy> displayURL_;
+    mozilla::UniquePtr<char16_t[], JS::FreePolicy> sourceMapURL_;
     JSPrincipals *originPrincipals_;
 
     // bytecode offset in caller script that generated this code.
@@ -505,13 +505,13 @@ class ScriptSource
         JS_ASSERT(hasSourceData());
         return argumentsNotIncluded_;
     }
-    const jschar *chars(JSContext *cx, UncompressedSourceCache::AutoHoldEntry &asp);
+    const char16_t *chars(JSContext *cx, UncompressedSourceCache::AutoHoldEntry &asp);
     JSFlatString *substring(JSContext *cx, uint32_t start, uint32_t stop);
     JSFlatString *substringDontDeflate(JSContext *cx, uint32_t start, uint32_t stop);
     void addSizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf,
                                 JS::ScriptSourceInfo *info) const;
 
-    const jschar *uncompressedChars() const {
+    const char16_t *uncompressedChars() const {
         JS_ASSERT(dataType == DataUncompressed);
         return data.uncompressed.chars;
     }
@@ -541,7 +541,7 @@ class ScriptSource
         return data.parent;
     }
 
-    void setSource(const jschar *chars, size_t length, bool ownsChars = true);
+    void setSource(const char16_t *chars, size_t length, bool ownsChars = true);
     void setCompressedSource(JSRuntime *maybert, void *raw, size_t nbytes, HashNumber hash);
     void updateCompressedSourceSet(JSRuntime *rt);
     bool ensureOwnsSource(ExclusiveContext *cx);
@@ -566,17 +566,17 @@ class ScriptSource
     }
 
     // Display URLs
-    bool setDisplayURL(ExclusiveContext *cx, const jschar *displayURL);
+    bool setDisplayURL(ExclusiveContext *cx, const char16_t *displayURL);
     bool hasDisplayURL() const { return displayURL_ != nullptr; }
-    const jschar * displayURL() {
+    const char16_t * displayURL() {
         MOZ_ASSERT(hasDisplayURL());
         return displayURL_.get();
     }
 
     // Source maps
-    bool setSourceMapURL(ExclusiveContext *cx, const jschar *sourceMapURL);
+    bool setSourceMapURL(ExclusiveContext *cx, const char16_t *sourceMapURL);
     bool hasSourceMapURL() const { return sourceMapURL_ != nullptr; }
-    const jschar * sourceMapURL() {
+    const char16_t * sourceMapURL() {
         MOZ_ASSERT(hasSourceMapURL());
         return sourceMapURL_.get();
     }
@@ -656,6 +656,7 @@ class ScriptSourceObject : public JSObject
         return getReservedSlot(ELEMENT_SLOT).toObjectOrNull();
     }
     const Value &elementAttributeName() const {
+        MOZ_ASSERT(!getReservedSlot(ELEMENT_PROPERTY_SLOT).isMagic());
         return getReservedSlot(ELEMENT_PROPERTY_SLOT);
     }
     JSScript *introductionScript() const {
@@ -717,9 +718,6 @@ XDRScriptConst(XDRState<mode> *xdr, MutableHandleValue vp);
 
 class JSScript : public js::gc::BarrieredCell<JSScript>
 {
-    static const uint32_t stepFlagMask = 0x80000000U;
-    static const uint32_t stepCountMask = 0x7fffffffU;
-
     template <js::XDRMode mode>
     friend
     bool
@@ -821,11 +819,11 @@ class JSScript : public js::gc::BarrieredCell<JSScript>
     uint32_t        sourceStart_;
     uint32_t        sourceEnd_;
 
-    uint32_t        useCount;   /* Number of times the script has been called
-                                 * or has had backedges taken. When running in
-                                 * ion, also increased for any inlined scripts.
-                                 * Reset if the script's JIT code is forcibly
-                                 * discarded. */
+    uint32_t        warmUpCount; /* Number of times the script has been called
+                                  * or has had backedges taken. When running in
+                                  * ion, also increased for any inlined scripts.
+                                  * Reset if the script's JIT code is forcibly
+                                  * discarded. */
 
 #ifdef DEBUG
     // Unique identifier within the compartment for this script, used for
@@ -1255,12 +1253,12 @@ class JSScript : public js::gc::BarrieredCell<JSScript>
     js::jit::IonScript *const *addressOfIonScript() const {
         return &ion;
     }
-    void setIonScript(js::jit::IonScript *ionScript) {
+    void setIonScript(JSContext *maybecx, js::jit::IonScript *ionScript) {
         if (hasIonScript())
             js::jit::IonScript::writeBarrierPre(tenuredZone(), ion);
         ion = ionScript;
         MOZ_ASSERT_IF(hasIonScript(), hasBaselineScript());
-        updateBaselineOrIonRaw();
+        updateBaselineOrIonRaw(maybecx);
     }
 
     bool hasBaselineScript() const {
@@ -1277,7 +1275,17 @@ class JSScript : public js::gc::BarrieredCell<JSScript>
     }
     inline void setBaselineScript(JSContext *maybecx, js::jit::BaselineScript *baselineScript);
 
-    void updateBaselineOrIonRaw();
+    void updateBaselineOrIonRaw(JSContext *maybecx);
+
+    void setPendingIonBuilder(JSContext *maybecx, js::jit::IonBuilder *builder) {
+        JS_ASSERT(!builder || !ion->pendingBuilder());
+        ion->setPendingBuilderPrivate(builder);
+        updateBaselineOrIonRaw(maybecx);
+    }
+    js::jit::IonBuilder *pendingIonBuilder() {
+        JS_ASSERT(hasIonScript());
+        return ion->pendingBuilder();
+    }
 
     bool hasParallelIonScript() const {
         return parallelIon && parallelIon != ION_DISABLED_SCRIPT && parallelIon != ION_COMPILING_SCRIPT;
@@ -1315,6 +1323,9 @@ class JSScript : public js::gc::BarrieredCell<JSScript>
     }
     static size_t offsetOfBaselineOrIonRaw() {
         return offsetof(JSScript, baselineOrIonRaw);
+    }
+    uint8_t *baselineOrIonRawPointer() const {
+        return baselineOrIonRaw;
     }
     static size_t offsetOfBaselineOrIonSkipArgCheck() {
         return offsetof(JSScript, baselineOrIonSkipArgCheck);
@@ -1397,13 +1408,13 @@ class JSScript : public js::gc::BarrieredCell<JSScript>
     bool makeTypes(JSContext *cx);
 
   public:
-    uint32_t getUseCount() const {
-        return useCount;
+    uint32_t getWarmUpCount() const {
+        return warmUpCount;
     }
-    uint32_t incUseCount(uint32_t amount = 1) { return useCount += amount; }
-    uint32_t *addressOfUseCount() { return &useCount; }
-    static size_t offsetOfUseCount() { return offsetof(JSScript, useCount); }
-    void resetUseCount() { useCount = 0; }
+    uint32_t incWarmUpCounter(uint32_t amount = 1) { return warmUpCount += amount; }
+    uint32_t *addressOfWarmUpCounter() { return &warmUpCount; }
+    static size_t offsetOfWarmUpCounter() { return offsetof(JSScript, warmUpCount); }
+    void resetWarmUpCounter() { warmUpCount = 0; }
 
   public:
     bool initScriptCounts(JSContext *cx);
@@ -1580,18 +1591,8 @@ class JSScript : public js::gc::BarrieredCell<JSScript>
     void clearBreakpointsIn(js::FreeOp *fop, js::Debugger *dbg, JSObject *handler);
 
     /*
-     * Set or clear the single-step flag. If the flag is set or the count
-     * (adjusted by changeStepModeCount) is non-zero, then the script is in
-     * single-step mode. (JSD uses an on/off-style interface; Debugger uses a
-     * count-style interface.)
-     */
-    bool setStepModeFlag(JSContext *cx, bool step);
-
-    /*
-     * Increment or decrement the single-step count. If the count is non-zero or
-     * the flag (set by setStepModeFlag) is set, then the script is in
-     * single-step mode. (JSD uses an on/off-style interface; Debugger uses a
-     * count-style interface.)
+     * Increment or decrement the single-step count. If the count is non-zero
+     * then the script is in single-step mode.
      *
      * Only incrementing is fallible, as it could allocate a DebugScript.
      */
@@ -1601,7 +1602,7 @@ class JSScript : public js::gc::BarrieredCell<JSScript>
     bool stepModeEnabled() { return hasDebugScript_ && !!debugScript()->stepMode; }
 
 #ifdef DEBUG
-    uint32_t stepModeCount() { return hasDebugScript_ ? (debugScript()->stepMode & stepCountMask) : 0; }
+    uint32_t stepModeCount() { return hasDebugScript_ ? debugScript()->stepMode : 0; }
 #endif
 
     void finalize(js::FreeOp *fop);

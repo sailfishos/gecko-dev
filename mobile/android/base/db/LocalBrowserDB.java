@@ -58,7 +58,7 @@ public class LocalBrowserDB {
     // Calculate these once, at initialization. isLoggable is too expensive to
     // have in-line in each log call.
     private static final String LOGTAG = "GeckoLocalBrowserDB";
-    private static boolean logDebug = Log.isLoggable(LOGTAG, Log.DEBUG);
+    private static final boolean logDebug = Log.isLoggable(LOGTAG, Log.DEBUG);
     protected static void debug(String message) {
         if (logDebug) {
             Log.d(LOGTAG, message);
@@ -68,14 +68,13 @@ public class LocalBrowserDB {
     private final String mProfile;
 
     // Map of folder GUIDs to IDs. Used for caching.
-    private HashMap<String, Long> mFolderIdMap;
+    private final HashMap<String, Long> mFolderIdMap;
 
     // Use wrapped Boolean so that we can have a null state
     private Boolean mDesktopBookmarksExist;
 
     private final Uri mBookmarksUriWithProfile;
     private final Uri mParentsUriWithProfile;
-    private final Uri mFlagsUriWithProfile;
     private final Uri mHistoryUriWithProfile;
     private final Uri mHistoryExpireUriWithProfile;
     private final Uri mCombinedUriWithProfile;
@@ -98,7 +97,6 @@ public class LocalBrowserDB {
 
         mBookmarksUriWithProfile = appendProfile(Bookmarks.CONTENT_URI);
         mParentsUriWithProfile = appendProfile(Bookmarks.PARENTS_CONTENT_URI);
-        mFlagsUriWithProfile = appendProfile(Bookmarks.FLAGS_URI);
         mHistoryUriWithProfile = appendProfile(History.CONTENT_URI);
         mHistoryExpireUriWithProfile = appendProfile(History.CONTENT_OLD_URI);
         mCombinedUriWithProfile = appendProfile(Combined.CONTENT_URI);
@@ -132,7 +130,8 @@ public class LocalBrowserDB {
                 names.put(name, ours);
                 return ours;
             }
-            return mapping.intValue();
+
+            return mapping;
         }
 
         public boolean has(final String name) {
@@ -449,11 +448,6 @@ public class LocalBrowserDB {
         mDesktopBookmarksExist = null;
     }
 
-    private Uri historyUriWithLimit(int limit) {
-        return mHistoryUriWithProfile.buildUpon().appendQueryParameter(BrowserContract.PARAM_LIMIT,
-                                                                       String.valueOf(limit)).build();
-    }
-
     private Uri bookmarksUriWithLimit(int limit) {
         return mBookmarksUriWithProfile.buildUpon().appendQueryParameter(BrowserContract.PARAM_LIMIT,
                                                                          String.valueOf(limit)).build();
@@ -484,11 +478,6 @@ public class LocalBrowserDB {
         Uri.Builder uriBuilder = mFaviconsUriWithProfile.buildUpon()
             .appendQueryParameter(BrowserContract.PARAM_SHOW_DELETED, "1");
         return uriBuilder.build();
-    }
-
-    private Cursor filterAllSites(ContentResolver cr, String[] projection, CharSequence constraint,
-            int limit, CharSequence urlFilter) {
-        return filterAllSites(cr, projection, constraint, limit, urlFilter, "", null);
     }
 
     private Cursor filterAllSites(ContentResolver cr, String[] projection, CharSequence constraint,
@@ -551,14 +540,12 @@ public class LocalBrowserDB {
             columns = new String[] { Favicons._ID };
         }
         if (uri != null) {
-            Cursor cursor = null;
+            final Cursor cursor = cr.query(uri, columns, constraint, null, null);
 
             try {
-                cursor = cr.query(uri, columns, constraint, null, null);
                 count = cursor.getCount();
             } finally {
-                if (cursor != null)
-                    cursor.close();
+                cursor.close();
             }
         }
         debug("Got count " + count + " for " + database);
@@ -639,38 +626,6 @@ public class LocalBrowserDB {
                   new String[] { uri });
     }
 
-    public void updateHistoryEntry(ContentResolver cr, String uri, String title,
-                                   long date, int visits) {
-        int oldVisits = 0;
-        Cursor cursor = null;
-        try {
-            cursor = cr.query(mHistoryUriWithProfile,
-                              new String[] { History.VISITS },
-                              History.URL + " = ?",
-                              new String[] { uri },
-                              null);
-
-            if (cursor.moveToFirst()) {
-                oldVisits = cursor.getInt(0);
-            }
-        } finally {
-            if (cursor != null)
-                cursor.close();
-        }
-
-        ContentValues values = new ContentValues();
-        values.put(History.DATE_LAST_VISITED, date);
-        values.put(History.VISITS, oldVisits + visits);
-        if (title != null) {
-            values.put(History.TITLE, title);
-        }
-
-        cr.update(mHistoryUriWithProfile,
-                  values,
-                  History.URL + " = ?",
-                  new String[] { uri });
-    }
-
     @RobocopTarget
     public Cursor getAllVisitedHistory(ContentResolver cr) {
         return cr.query(mHistoryUriWithProfile,
@@ -698,12 +653,6 @@ public class LocalBrowserDB {
         Uri url = mHistoryExpireUriWithProfile;
         url = url.buildUpon().appendQueryParameter(BrowserContract.PARAM_EXPIRE_PRIORITY, priority.toString()).build();
         cr.delete(url, null, null);
-    }
-
-    public void removeHistoryEntry(ContentResolver cr, int id) {
-        cr.delete(mHistoryUriWithProfile,
-                  History._ID + " = ?",
-                  new String[] { String.valueOf(id) });
     }
 
     @RobocopTarget
@@ -779,135 +728,85 @@ public class LocalBrowserDB {
     // Returns true if any desktop bookmarks exist, which will be true if the user
     // has set up sync at one point, or done a profile migration from XUL fennec.
     private boolean desktopBookmarksExist(ContentResolver cr) {
-        if (mDesktopBookmarksExist != null)
+        if (mDesktopBookmarksExist != null) {
             return mDesktopBookmarksExist;
-
-        Cursor c = null;
-        int count = 0;
-        try {
-            // Check to see if there are any bookmarks in one of our three
-            // fixed "Desktop Boomarks" folders.
-            c = cr.query(bookmarksUriWithLimit(1),
-                         new String[] { Bookmarks._ID },
-                         Bookmarks.PARENT + " = ? OR " +
-                         Bookmarks.PARENT + " = ? OR " +
-                         Bookmarks.PARENT + " = ?",
-                         new String[] { String.valueOf(getFolderIdFromGuid(cr, Bookmarks.TOOLBAR_FOLDER_GUID)),
-                                        String.valueOf(getFolderIdFromGuid(cr, Bookmarks.MENU_FOLDER_GUID)),
-                                        String.valueOf(getFolderIdFromGuid(cr, Bookmarks.UNFILED_FOLDER_GUID)) },
-                         null);
-            count = c.getCount();
-        } finally {
-            if (c != null)
-                c.close();
         }
 
-        // Cache result for future queries
-        mDesktopBookmarksExist = (count > 0);
+        // Check to see if there are any bookmarks in one of our three
+        // fixed "Desktop Bookmarks" folders.
+        final Cursor c = cr.query(bookmarksUriWithLimit(1),
+                                  new String[] { Bookmarks._ID },
+                                  Bookmarks.PARENT + " = ? OR " +
+                                  Bookmarks.PARENT + " = ? OR " +
+                                  Bookmarks.PARENT + " = ?",
+                                  new String[] { String.valueOf(getFolderIdFromGuid(cr, Bookmarks.TOOLBAR_FOLDER_GUID)),
+                                                 String.valueOf(getFolderIdFromGuid(cr, Bookmarks.MENU_FOLDER_GUID)),
+                                                 String.valueOf(getFolderIdFromGuid(cr, Bookmarks.UNFILED_FOLDER_GUID)) },
+                                  null);
+
+        try {
+            mDesktopBookmarksExist = c.getCount() > 0;
+        } finally {
+            c.close();
+        }
+
         return mDesktopBookmarksExist;
-    }
-
-    public int getReadingListCount(ContentResolver cr) {
-        Cursor c = null;
-        try {
-            c = cr.query(mReadingListUriWithProfile,
-                         new String[] { ReadingListItems._ID },
-                         null,
-                         null,
-                         null);
-            return c.getCount();
-        } finally {
-            if (c != null) {
-                c.close();
-            }
-        }
     }
 
     @RobocopTarget
     public boolean isBookmark(ContentResolver cr, String uri) {
-        Cursor c = null;
-        try {
-            c = cr.query(bookmarksUriWithLimit(1),
-                         new String[] { Bookmarks._ID },
-                         Bookmarks.URL + " = ? AND " +
-                                 Bookmarks.PARENT + " != ?",
-                         new String[] { uri,
-                                 String.valueOf(Bookmarks.FIXED_PINNED_LIST_ID) },
-                         Bookmarks.URL);
-            return c.getCount() > 0;
-        } catch (NullPointerException e) {
-            Log.e(LOGTAG, "NullPointerException in isBookmark");
-        } finally {
-            if (c != null)
-                c.close();
+        final Cursor c = cr.query(bookmarksUriWithLimit(1),
+                                  new String[] { Bookmarks._ID },
+                                  Bookmarks.URL + " = ? AND " + Bookmarks.PARENT + " != ?",
+                                  new String[] { uri, String.valueOf(Bookmarks.FIXED_PINNED_LIST_ID) },
+                                  Bookmarks.URL);
+
+        if (c == null) {
+            Log.e(LOGTAG, "Null cursor in isBookmark");
+            return false;
         }
 
-        return false;
+        try {
+            return c.getCount() > 0;
+        } finally {
+            c.close();
+        }
     }
 
     public boolean isReadingListItem(ContentResolver cr, String uri) {
-        Cursor c = null;
-        try {
-            c = cr.query(mReadingListUriWithProfile,
-                         new String[] { ReadingListItems._ID },
-                         ReadingListItems.URL + " = ? ",
-                         new String[] { uri },
-                         null);
-            return c.getCount() > 0;
-        } catch (NullPointerException e) {
-            Log.e(LOGTAG, "NullPointerException in isReadingListItem");
-        } finally {
-            if (c != null)
-                c.close();
-        }
-
-        return false;
-    }
-
-    /**
-     * For a given URI, we want to return a number of things:
-     *
-     * * Is this URI the URI of a bookmark?
-     * * ... a reading list item?
-     *
-     * This will expand as necessary to eliminate multiple consecutive queries.
-     */
-    public int getItemFlags(ContentResolver cr, String uri) {
-        final Cursor c = cr.query(mFlagsUriWithProfile,
-                                  null,
-                                  null,
+        final Cursor c = cr.query(mReadingListUriWithProfile,
+                                  new String[] { ReadingListItems._ID },
+                                  ReadingListItems.URL + " = ? ",
                                   new String[] { uri },
                                   null);
+
         if (c == null) {
-            return 0;
+            Log.e(LOGTAG, "Null cursor in isReadingListItem");
+            return false;
         }
 
         try {
-            // This should never fail: it returns a single `flags` row.
-            c.moveToFirst();
-            return Bookmarks.FLAG_SUCCESS | c.getInt(0);
+            return c.getCount() > 0;
         } finally {
             c.close();
         }
     }
 
     public String getUrlForKeyword(ContentResolver cr, String keyword) {
-        Cursor c = null;
+        final Cursor c = cr.query(mBookmarksUriWithProfile,
+                                  new String[] { Bookmarks.URL },
+                                  Bookmarks.KEYWORD + " = ?",
+                                  new String[] { keyword },
+                                  null);
         try {
-            c = cr.query(mBookmarksUriWithProfile,
-                         new String[] { Bookmarks.URL },
-                         Bookmarks.KEYWORD + " = ?",
-                         new String[] { keyword },
-                         null);
+            if (!c.moveToFirst()) {
+                return null;
+            }
 
-            if (c.moveToFirst())
-                return c.getString(c.getColumnIndexOrThrow(Bookmarks.URL));
+            return c.getString(c.getColumnIndexOrThrow(Bookmarks.URL));
         } finally {
-            if (c != null)
-                c.close();
+            c.close();
         }
-
-        return null;
     }
 
     private synchronized long getFolderIdFromGuid(final ContentResolver cr, final String guid) {
@@ -951,28 +850,29 @@ public class LocalBrowserDB {
     private void addBookmarkItem(ContentResolver cr, String title, String uri, long folderId) {
         final long now = System.currentTimeMillis();
         ContentValues values = new ContentValues();
-        values.put(Browser.BookmarkColumns.TITLE, title);
+        if (title != null) {
+            values.put(Browser.BookmarkColumns.TITLE, title);
+        }
+
         values.put(Bookmarks.URL, uri);
         values.put(Bookmarks.PARENT, folderId);
         values.put(Bookmarks.DATE_MODIFIED, now);
 
         // Get the page's favicon ID from the history table
-        Cursor c = null;
+        final Cursor c = cr.query(mHistoryUriWithProfile,
+                                  new String[] { History.FAVICON_ID },
+                                  History.URL + " = ?",
+                                  new String[] { uri },
+                                  null);
         try {
-            c = cr.query(mHistoryUriWithProfile,
-                         new String[] { History.FAVICON_ID },
-                         History.URL + " = ?",
-                         new String[] { uri },
-                         null);
-
             if (c.moveToFirst()) {
                 int columnIndex = c.getColumnIndexOrThrow(History.FAVICON_ID);
-                if (!c.isNull(columnIndex))
+                if (!c.isNull(columnIndex)) {
                     values.put(Bookmarks.FAVICON_ID, c.getLong(columnIndex));
+                }
             }
         } finally {
-            if (c != null)
-                c.close();
+            c.close();
         }
 
         // Restore deleted record if possible
@@ -1003,18 +903,6 @@ public class LocalBrowserDB {
     public void addBookmark(ContentResolver cr, String title, String uri) {
         long folderId = getFolderIdFromGuid(cr, Bookmarks.MOBILE_FOLDER_GUID);
         addBookmarkItem(cr, title, uri, folderId);
-    }
-
-    public void removeBookmark(ContentResolver cr, int id) {
-        Uri contentUri = mBookmarksUriWithProfile;
-
-        // Do this now so that the item still exists!
-        final String idString = String.valueOf(id);
-        bumpParents(cr, Bookmarks._ID, idString);
-
-        final String[] idArgs = new String[] { idString };
-        final String idEquals = Bookmarks._ID + " = ?";
-        cr.delete(contentUri, idEquals, idArgs);
     }
 
     @RobocopTarget
@@ -1059,16 +947,8 @@ public class LocalBrowserDB {
         cr.delete(mReadingListUriWithProfile, ReadingListItems.URL + " = ? ", new String[] { uri });
     }
 
-    public void removeReadingListItem(ContentResolver cr, int id) {
-        cr.delete(mReadingListUriWithProfile, ReadingListItems._ID + " = ? ", new String[] { String.valueOf(id) });
-    }
-
     public void registerBookmarkObserver(ContentResolver cr, ContentObserver observer) {
         cr.registerContentObserver(mBookmarksUriWithProfile, false, observer);
-    }
-
-    public void registerHistoryObserver(ContentResolver cr, ContentObserver observer) {
-        cr.registerContentObserver(mHistoryUriWithProfile, false, observer);
     }
 
     @RobocopTarget
@@ -1093,16 +973,14 @@ public class LocalBrowserDB {
      * @return The decoded Bitmap from the database, if any. null if none is stored.
      */
     public LoadFaviconResult getFaviconForUrl(ContentResolver cr, String faviconURL) {
-        Cursor c = null;
+        final Cursor c = cr.query(mFaviconsUriWithProfile,
+                                  new String[] { Favicons.DATA },
+                                  Favicons.URL + " = ? AND " + Favicons.DATA + " IS NOT NULL",
+                                  new String[] { faviconURL },
+                                  null);
+
         byte[] b = null;
-
         try {
-            c = cr.query(mFaviconsUriWithProfile,
-                         new String[] { Favicons.DATA },
-                         Favicons.URL + " = ? AND " + Favicons.DATA + " IS NOT NULL",
-                         new String[] { faviconURL },
-                         null);
-
             if (!c.moveToFirst()) {
                 return null;
             }
@@ -1110,9 +988,7 @@ public class LocalBrowserDB {
             final int faviconIndex = c.getColumnIndexOrThrow(Favicons.DATA);
             b = c.getBlob(faviconIndex);
         } finally {
-            if (c != null) {
-                c.close();
-            }
+            c.close();
         }
 
         if (b == null) {
@@ -1123,23 +999,21 @@ public class LocalBrowserDB {
     }
 
     public String getFaviconUrlForHistoryUrl(ContentResolver cr, String uri) {
-        Cursor c = null;
+        final Cursor c = cr.query(mHistoryUriWithProfile,
+                                  new String[] { History.FAVICON_URL },
+                                  Combined.URL + " = ?",
+                                  new String[] { uri },
+                                  null);
 
         try {
-            c = cr.query(mHistoryUriWithProfile,
-                         new String[] { History.FAVICON_URL },
-                         Combined.URL + " = ?",
-                         new String[] { uri },
-                         null);
+            if (!c.moveToFirst()) {
+                return null;
+            }
 
-            if (c.moveToFirst())
-                return c.getString(c.getColumnIndexOrThrow(History.FAVICON_URL));
+            return c.getString(c.getColumnIndexOrThrow(History.FAVICON_URL));
         } finally {
-            if (c != null)
-                c.close();
+            c.close();
         }
-
-        return null;
     }
 
     public void updateFaviconForUrl(ContentResolver cr, String pageUri,
@@ -1192,28 +1066,23 @@ public class LocalBrowserDB {
 
     @RobocopTarget
     public byte[] getThumbnailForUrl(ContentResolver cr, String uri) {
-        Cursor c = null;
-        byte[] b = null;
+        final Cursor c = cr.query(mThumbnailsUriWithProfile,
+                                  new String[]{ Thumbnails.DATA },
+                                  Thumbnails.URL + " = ? AND " + Thumbnails.DATA + " IS NOT NULL",
+                                  new String[]{ uri },
+                                  null);
         try {
-            c = cr.query(mThumbnailsUriWithProfile,
-                         new String[]{ Thumbnails.DATA },
-                         Thumbnails.URL + " = ? AND " + Thumbnails.DATA + " IS NOT NULL",
-                         new String[]{ uri },
-                         null);
-
             if (!c.moveToFirst()) {
                 return null;
             }
 
             int thumbnailIndex = c.getColumnIndexOrThrow(Thumbnails.DATA);
-            b = c.getBlob(thumbnailIndex);
+
+            return c.getBlob(thumbnailIndex);
         } finally {
-            if (c != null) {
-                c.close();
-            }
+            c.close();
         }
 
-        return b;
     }
 
     /**
@@ -1255,22 +1124,21 @@ public class LocalBrowserDB {
                                      Collection<ContentProviderOperation> operations,
                                      String url, String title,
                                      long date, int visits) {
-        Cursor cursor = null;
 
+        final String[] projection = {
+            History._ID,
+            History.VISITS,
+            History.DATE_LAST_VISITED
+        };
+
+
+        // We need to get the old visit count.
+        final Cursor cursor = cr.query(getAllHistoryUri(),
+                                       projection,
+                                       History.URL + " = ?",
+                                       new String[] { url },
+                                       null);
         try {
-            final String[] projection = new String[] {
-                History._ID,
-                History.VISITS,
-                History.DATE_LAST_VISITED
-            };
-
-            // We need to get the old visit count.
-            cursor = cr.query(getAllHistoryUri(),
-                              projection,
-                              History.URL + " = ?",
-                              new String[] { url },
-                              null);
-
             ContentValues values = new ContentValues();
 
             // Restore deleted record if possible
@@ -1307,8 +1175,7 @@ public class LocalBrowserDB {
             // Queue the operation
             operations.add(builder.build());
         } finally {
-            if (cursor != null)
-                cursor.close();
+            cursor.close();
         }
     }
 
@@ -1412,7 +1279,7 @@ public class LocalBrowserDB {
 
     // This wrapper adds a fake "Desktop Bookmarks" folder entry to the
     // beginning of the cursor's data set.
-    private class SpecialFoldersCursorWrapper extends CursorWrapper {
+    private static class SpecialFoldersCursorWrapper extends CursorWrapper {
         private int mIndexOffset;
 
         private int mDesktopBookmarksIndex = -1;
@@ -1428,22 +1295,27 @@ public class LocalBrowserDB {
             }
         }
 
+        @Override
         public int getCount() {
             return super.getCount() + mIndexOffset;
         }
 
+        @Override
         public boolean moveToPosition(int position) {
             mAtDesktopBookmarksPosition = (mDesktopBookmarksIndex == position);
 
-            if (mAtDesktopBookmarksPosition)
+            if (mAtDesktopBookmarksPosition) {
                 return true;
+            }
 
             return super.moveToPosition(position - mIndexOffset);
         }
 
+        @Override
         public long getLong(int columnIndex) {
-            if (!mAtDesktopBookmarksPosition)
+            if (!mAtDesktopBookmarksPosition) {
                 return super.getLong(columnIndex);
+            }
 
             if (columnIndex == getColumnIndex(Bookmarks.PARENT)) {
                 return Bookmarks.FIXED_ROOT_ID;
@@ -1452,25 +1324,32 @@ public class LocalBrowserDB {
             return -1;
         }
 
+        @Override
         public int getInt(int columnIndex) {
-            if (!mAtDesktopBookmarksPosition)
+            if (!mAtDesktopBookmarksPosition) {
                 return super.getInt(columnIndex);
+            }
 
-            if (columnIndex == getColumnIndex(Bookmarks._ID) && mAtDesktopBookmarksPosition)
-                    return Bookmarks.FAKE_DESKTOP_FOLDER_ID;
+            if (columnIndex == getColumnIndex(Bookmarks._ID) && mAtDesktopBookmarksPosition) {
+                return Bookmarks.FAKE_DESKTOP_FOLDER_ID;
+            }
 
-            if (columnIndex == getColumnIndex(Bookmarks.TYPE))
+            if (columnIndex == getColumnIndex(Bookmarks.TYPE)) {
                 return Bookmarks.TYPE_FOLDER;
+            }
 
             return -1;
         }
 
+        @Override
         public String getString(int columnIndex) {
-            if (!mAtDesktopBookmarksPosition)
+            if (!mAtDesktopBookmarksPosition) {
                 return super.getString(columnIndex);
+            }
 
-            if (columnIndex == getColumnIndex(Bookmarks.GUID) && mAtDesktopBookmarksPosition)
-                    return Bookmarks.FAKE_DESKTOP_FOLDER_GUID;
+            if (columnIndex == getColumnIndex(Bookmarks.GUID) && mAtDesktopBookmarksPosition) {
+                return Bookmarks.FAKE_DESKTOP_FOLDER_GUID;
+            }
 
             return "";
         }
@@ -1518,35 +1397,6 @@ public class LocalBrowserDB {
                       String.valueOf(Bookmarks.FIXED_PINNED_LIST_ID),
                       Integer.toString(position)
                   });
-    }
-
-    public void unpinAllSites(ContentResolver cr) {
-        cr.delete(mBookmarksUriWithProfile,
-                  Bookmarks.PARENT + " == ?",
-                  new String[] {
-                      String.valueOf(Bookmarks.FIXED_PINNED_LIST_ID)
-                  });
-    }
-
-    public boolean isVisited(ContentResolver cr, String uri) {
-        int count = 0;
-        Cursor c = null;
-
-        try {
-            c = cr.query(historyUriWithLimit(1),
-                         new String[] { History._ID },
-                         History.URL + " = ?",
-                         new String[] { uri },
-                         History.URL);
-            count = c.getCount();
-        } catch (NullPointerException e) {
-            Log.e(LOGTAG, "NullPointerException in isVisited");
-        } finally {
-            if (c != null)
-                c.close();
-        }
-
-        return (count > 0);
     }
 
     @RobocopTarget

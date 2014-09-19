@@ -239,7 +239,7 @@ static inline bool IsPatternSupportedByD2D(const Pattern &aPattern)
 
   Point diff = pat->mCenter2 - pat->mCenter1;
 
-  if (sqrt(diff.x.value * diff.x.value + diff.y.value * diff.y.value) >= pat->mRadius2) {
+  if (sqrt(diff.x * diff.x + diff.y * diff.y) >= pat->mRadius2) {
     // Inner point lies outside the circle.
     return false;
   }
@@ -523,7 +523,7 @@ CreatePartialBitmapForSurface(DataSourceSurface *aSurface, const Matrix &aDestin
                       D2D1::BitmapProperties(D2DPixelFormat(aSurface->GetFormat())),
                       byRef(bitmap));
 
-    aSourceTransform.Translate(uploadRect.x, uploadRect.y);
+    aSourceTransform.PreTranslate(uploadRect.x, uploadRect.y);
 
     return bitmap.forget();
   } else {
@@ -569,8 +569,8 @@ CreatePartialBitmapForSurface(DataSourceSurface *aSurface, const Matrix &aDestin
                       D2D1::BitmapProperties(D2DPixelFormat(aSurface->GetFormat())),
                       byRef(bitmap));
 
-    aSourceTransform.Scale(Float(size.width / newSize.width),
-                           Float(size.height / newSize.height));
+    aSourceTransform.PreScale(Float(size.width / newSize.width),
+                              Float(size.height / newSize.height));
     return bitmap.forget();
   }
 }

@@ -64,7 +64,7 @@ public:
   {}
 
   void Begin(const nsIntRect& aTargetBounds, ScreenRotation aRotation,
-             const nsIntRect& aClientBounds, dom::ScreenOrientation aOrientation)
+             dom::ScreenOrientation aOrientation)
   {
     mOpen = true;
     mTargetBounds = aTargetBounds;
@@ -76,7 +76,6 @@ public:
       mRotationChanged = true;
     }
     mTargetRotation = aRotation;
-    mClientBounds = aClientBounds;
     mTargetOrientation = aOrientation;
   }
   void MarkSyncTransaction()
@@ -141,7 +140,6 @@ public:
   ShadowableLayerSet mMutants;
   nsIntRect mTargetBounds;
   ScreenRotation mTargetRotation;
-  nsIntRect mClientBounds;
   dom::ScreenOrientation mTargetOrientation;
   bool mSwapRequired;
 
@@ -186,12 +184,11 @@ ShadowLayerForwarder::~ShadowLayerForwarder()
 void
 ShadowLayerForwarder::BeginTransaction(const nsIntRect& aTargetBounds,
                                        ScreenRotation aRotation,
-                                       const nsIntRect& aClientBounds,
                                        dom::ScreenOrientation aOrientation)
 {
   NS_ABORT_IF_FALSE(HasShadowManager(), "no manager to forward to");
   NS_ABORT_IF_FALSE(mTxn->Finished(), "uncommitted txn?");
-  mTxn->Begin(aTargetBounds, aRotation, aClientBounds, aOrientation);
+  mTxn->Begin(aTargetBounds, aRotation, aOrientation);
 }
 
 static PLayerChild*
@@ -529,6 +526,7 @@ ShadowLayerForwarder::EndTransaction(InfallibleTArray<EditReply>* aReplies,
                                      bool aScheduleComposite,
                                      uint32_t aPaintSequenceNumber,
                                      bool aIsRepeatTransaction,
+                                     const mozilla::TimeStamp& aTransactionStart,
                                      bool* aSent)
 {
   *aSent = false;
@@ -607,10 +605,7 @@ ShadowLayerForwarder::EndTransaction(InfallibleTArray<EditReply>* aReplies,
     common.maskLayerParent() = nullptr;
     common.animations() = mutant->GetAnimations();
     common.invalidRegion() = mutant->GetInvalidRegion();
-    common.metrics() = mutant->GetFrameMetrics();
-    common.scrollParentId() = mutant->GetScrollHandoffParentId();
-    common.backgroundColor() = mutant->GetBackgroundColor();
-    common.contentDescription() = mutant->GetContentDescription();
+    common.metrics() = mutant->GetAllFrameMetrics();
     attrs.specific() = null_t();
     mutant->FillSpecificAttributes(attrs.specific());
 
@@ -637,7 +632,6 @@ ShadowLayerForwarder::EndTransaction(InfallibleTArray<EditReply>* aReplies,
 
   TargetConfig targetConfig(mTxn->mTargetBounds,
                             mTxn->mTargetRotation,
-                            mTxn->mClientBounds,
                             mTxn->mTargetOrientation,
                             aRegionToClear);
 
@@ -654,7 +648,8 @@ ShadowLayerForwarder::EndTransaction(InfallibleTArray<EditReply>* aReplies,
         !mShadowManager->IPCOpen() ||
         !mShadowManager->SendUpdate(cset, aId, targetConfig, mIsFirstPaint,
                                     aScheduleComposite, aPaintSequenceNumber,
-                                    aIsRepeatTransaction, aReplies)) {
+                                    aIsRepeatTransaction, aTransactionStart,
+                                    aReplies)) {
       MOZ_LAYERS_LOG(("[LayersForwarder] WARNING: sending transaction failed!"));
       return false;
     }
@@ -667,7 +662,7 @@ ShadowLayerForwarder::EndTransaction(InfallibleTArray<EditReply>* aReplies,
         !mShadowManager->IPCOpen() ||
         !mShadowManager->SendUpdateNoSwap(cset, aId, targetConfig, mIsFirstPaint,
                                           aScheduleComposite, aPaintSequenceNumber,
-                                          aIsRepeatTransaction)) {
+                                          aIsRepeatTransaction, aTransactionStart)) {
       MOZ_LAYERS_LOG(("[LayersForwarder] WARNING: sending transaction failed!"));
       return false;
     }

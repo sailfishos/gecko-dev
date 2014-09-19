@@ -289,7 +289,7 @@ namespace {
 // OMTC BasicLayers drawing.
 class RectTextureImage {
 public:
-  RectTextureImage(GLContext* aGLContext)
+  explicit RectTextureImage(GLContext* aGLContext)
    : mGLContext(aGLContext)
    , mTexture(0)
    , mInUpdate(false)
@@ -357,7 +357,7 @@ public:
     return context ? new GLPresenter(context) : nullptr;
   }
 
-  GLPresenter(GLContext* aContext);
+  explicit GLPresenter(GLContext* aContext);
   virtual ~GLPresenter();
 
   virtual GLContext* gl() const MOZ_OVERRIDE { return mGLContext; }
@@ -398,7 +398,7 @@ class APZCTMController : public mozilla::layers::GeckoContentController
   class RequestContentRepaintEvent : public nsRunnable
   {
   public:
-    RequestContentRepaintEvent(const FrameMetrics& aFrameMetrics)
+    explicit RequestContentRepaintEvent(const FrameMetrics& aFrameMetrics)
       : mFrameMetrics(aFrameMetrics)
     {
     }
@@ -3013,10 +3013,10 @@ GLPresenter::BeginFrame(nsIntSize aRenderSize)
 
   // Matrix to transform (0, 0, width, height) to viewport space (-1.0, 1.0,
   // 2, 2) and flip the contents.
-  gfx::Matrix viewMatrix;
-  viewMatrix.Translate(-1.0, 1.0);
-  viewMatrix.Scale(2.0f / float(aRenderSize.width), 2.0f / float(aRenderSize.height));
-  viewMatrix.Scale(1.0f, -1.0f);
+  gfx::Matrix viewMatrix = gfx::Matrix::Translation(-1.0, 1.0);
+  viewMatrix.PreScale(2.0f / float(aRenderSize.width),
+                      2.0f / float(aRenderSize.height));
+  viewMatrix.PreScale(1.0f, -1.0f);
 
   gfx::Matrix4x4 matrix3d = gfx::Matrix4x4::From2D(viewMatrix);
   matrix3d._33 = 0.0f;

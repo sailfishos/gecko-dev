@@ -176,7 +176,6 @@ public:
    */
   void BeginTransaction(const nsIntRect& aTargetBounds,
                         ScreenRotation aRotation,
-                        const nsIntRect& aClientBounds,
                         mozilla::dom::ScreenOrientation aOrientation);
 
   /**
@@ -306,6 +305,7 @@ public:
                       bool aScheduleComposite,
                       uint32_t aPaintSequenceNumber,
                       bool aIsRepeatTransaction,
+                      const mozilla::TimeStamp& aTransactionStart,
                       bool* aSent);
 
   /**

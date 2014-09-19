@@ -2187,6 +2187,7 @@ function truncateString(str, maxLength) {
          "…" +
          str.substring(str.length - Math.floor(maxLength / 2));
 }
+
 /**
  * Parse attribute names and values from a string.
  *
@@ -2200,22 +2201,21 @@ function truncateString(str, maxLength) {
 function parseAttributeValues(attr, doc) {
   attr = attr.trim();
 
-  // Handle bad user inputs by appending a " or ' if it fails to parse without them.
-  let el = DOMParser.parseFromString("<div " + attr + "></div>", "text/html").body.childNodes[0] ||
-           DOMParser.parseFromString("<div " + attr + "\"></div>", "text/html").body.childNodes[0] ||
-           DOMParser.parseFromString("<div " + attr + "'></div>", "text/html").body.childNodes[0];
-  let div = doc.createElement("div");
+  // Handle bad user inputs by appending a " or ' if it fails to parse without
+  // them. Also note that a SVG tag is used to make sure the HTML parser
+  // preserves mixed-case attributes
+  let el = DOMParser.parseFromString("<svg " + attr + "></svg>", "text/html").body.childNodes[0] ||
+           DOMParser.parseFromString("<svg " + attr + "\"></svg>", "text/html").body.childNodes[0] ||
+           DOMParser.parseFromString("<svg " + attr + "'></svg>", "text/html").body.childNodes[0];
 
+  let div = doc.createElement("div");
   let attributes = [];
-  for (let attribute of el.attributes) {
+  for (let {name, value} of el.attributes) {
     // Try to set on an element in the document, throws exception on bad input.
     // Prevents InvalidCharacterError - "String contains an invalid character".
     try {
-      div.setAttribute(attribute.name, attribute.value);
-      attributes.push({
-        name: attribute.name,
-        value: attribute.value
-      });
+      div.setAttribute(name, value);
+      attributes.push({ name, value });
     }
     catch(e) { }
   }

@@ -30,7 +30,7 @@ BEGIN_TEST(testOriginPrincipals)
     CHECK(testOuter("(function(){return function(){return 10}}).bind()()"));
     CHECK(testOuter("var e = eval; (function() { return e('(function(){return 11})') })()"));
 
-    JS_SetErrorReporter(cx, ErrorReporter);
+    JS_SetErrorReporter(rt, ErrorReporter);
     CHECK(testError("eval(-)"));
     CHECK(testError("-"));
     CHECK(testError("new Function('x', '-')"));
@@ -55,7 +55,7 @@ bool
 eval(const char *asciiChars, JSPrincipals *principals, JSPrincipals *originPrincipals, JS::MutableHandleValue rval)
 {
     size_t len = strlen(asciiChars);
-    jschar *chars = new jschar[len+1];
+    char16_t *chars = new char16_t[len+1];
     for (size_t i = 0; i < len; ++i)
         chars[i] = asciiChars[i];
     chars[len] = 0;

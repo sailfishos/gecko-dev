@@ -6,16 +6,13 @@
 
 FAIL_ON_WARNINGS = True
 
-LIBRARY_NAME = 'mozsandbox'
-FORCE_SHARED_LIB = True
+SharedLibrary('mozsandbox')
 
 EXPORTS.mozilla += [
     'Sandbox.h',
 ]
 
 SOURCES += [
-    # Bug 1059038 workaround:
-    '../../../xpcom/glue/unused.cpp',
     '../chromium/base/shim/base/logging.cpp',
     '../chromium/sandbox/linux/seccomp-bpf/basicblock.cc',
     '../chromium/sandbox/linux/seccomp-bpf/codegen.cc',

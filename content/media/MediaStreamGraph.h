@@ -310,7 +310,7 @@ class MediaStream : public mozilla::LinkedListElement<MediaStream> {
 public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(MediaStream)
 
-  MediaStream(DOMMediaStream* aWrapper);
+  explicit MediaStream(DOMMediaStream* aWrapper);
 
 protected:
   // Protected destructor, to discourage deletion outside of Release():
@@ -580,7 +580,7 @@ protected:
 
   // Client-set volume of this stream
   struct AudioOutput {
-    AudioOutput(void* aKey) : mKey(aKey), mVolume(1.0f) {}
+    explicit AudioOutput(void* aKey) : mKey(aKey), mVolume(1.0f) {}
     void* mKey;
     float mVolume;
   };
@@ -682,13 +682,14 @@ protected:
  */
 class SourceMediaStream : public MediaStream {
 public:
-  SourceMediaStream(DOMMediaStream* aWrapper) :
+  explicit SourceMediaStream(DOMMediaStream* aWrapper) :
     MediaStream(aWrapper),
     mLastConsumptionState(MediaStreamListener::NOT_CONSUMED),
     mMutex("mozilla::media::SourceMediaStream"),
     mUpdateKnownTracksTime(0),
     mPullEnabled(false),
-    mUpdateFinished(false)
+    mUpdateFinished(false),
+    mNeedsMixing(false)
   {}
 
   virtual SourceMediaStream* AsSourceStream() { return this; }
@@ -1014,7 +1015,7 @@ private:
  */
 class ProcessedMediaStream : public MediaStream {
 public:
-  ProcessedMediaStream(DOMMediaStream* aWrapper)
+  explicit ProcessedMediaStream(DOMMediaStream* aWrapper)
     : MediaStream(aWrapper), mAutofinish(false)
   {}
 
@@ -1187,7 +1188,7 @@ public:
    * Should only be called during MediaStreamListener callbacks or during
    * ProcessedMediaStream::ProcessInput().
    */
-  void DispatchToMainThreadAfterStreamStateUpdate(already_AddRefed<nsIRunnable> aRunnable)
+  virtual void DispatchToMainThreadAfterStreamStateUpdate(already_AddRefed<nsIRunnable> aRunnable)
   {
     *mPendingUpdateRunnables.AppendElement() = aRunnable;
   }

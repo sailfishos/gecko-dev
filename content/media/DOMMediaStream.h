@@ -30,7 +30,9 @@ class nsXPCClassInfo;
 
 namespace mozilla {
 
+class DOMLocalMediaStream;
 class MediaStream;
+class MediaEngineSource;
 
 namespace dom {
 class AudioNode;
@@ -101,6 +103,8 @@ public:
   virtual void SetTrackEnabled(TrackID aTrackID, bool aEnabled);
 
   virtual void StopTrack(TrackID aTrackID);
+
+  virtual DOMLocalMediaStream* AsDOMLocalMediaStream() { return nullptr; }
 
   bool IsFinished();
   /**
@@ -191,7 +195,7 @@ public:
 
   class OnTracksAvailableCallback {
   public:
-    OnTracksAvailableCallback(uint8_t aExpectedTracks = 0)
+    explicit OnTracksAvailableCallback(uint8_t aExpectedTracks = 0)
       : mExpectedTracks(aExpectedTracks) {}
     virtual ~OnTracksAvailableCallback() {}
     virtual void NotifyTracksAvailable(DOMMediaStream* aStream) = 0;
@@ -301,6 +305,8 @@ public:
 
   virtual void Stop();
 
+  virtual MediaEngineSource* GetMediaEngine(TrackID aTrackID) { return nullptr; }
+
   /**
    * Create an nsDOMLocalMediaStream whose underlying stream is a SourceMediaStream.
    */
@@ -321,7 +327,7 @@ class DOMAudioNodeMediaStream : public DOMMediaStream
 {
   typedef dom::AudioNode AudioNode;
 public:
-  DOMAudioNodeMediaStream(AudioNode* aNode);
+  explicit DOMAudioNodeMediaStream(AudioNode* aNode);
 
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(DOMAudioNodeMediaStream, DOMMediaStream)

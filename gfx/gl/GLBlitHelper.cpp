@@ -187,6 +187,9 @@ bool
 GLBlitHelper::InitTexQuadProgram(BlitType target)
 {
     const char kTexBlit_VertShaderSource[] = "\
+        #ifdef GL_ES                                  \n\
+        precision mediump float;                      \n\
+        #endif                                        \n\
         attribute vec2 aPosition;                     \n\
                                                       \n\
         uniform float uYflip;                         \n\
@@ -263,6 +266,9 @@ GLBlitHelper::InitTexQuadProgram(BlitType target)
     [B] [1.16438, 2.01723, 0.00000] [Cr - 0.50196]
     */
     const char kTexYUVPlanarBlit_FragShaderSource[] = "\
+        #ifdef GL_ES                                                        \n\
+        precision mediump float                                             \n\
+        #endif                                                              \n\
         varying vec2 vTexCoord;                                             \n\
         uniform sampler2D uYTexture;                                        \n\
         uniform sampler2D uCbTexture;                                       \n\
@@ -838,7 +844,7 @@ GLBlitHelper::BlitTextureToFramebuffer(GLuint srcTex, GLuint destFB,
     if (!good) {
         // We're up against the wall, so bail.
         // This should really be MOZ_CRASH(why) or MOZ_RUNTIME_ASSERT(good).
-        printf_stderr("[%s:%d] Fatal Error: Failed to prepare to blit texture->framebuffer.\n");
+        printf_stderr("Fatal Error: Failed to prepare to blit texture->framebuffer.\n");
         MOZ_CRASH();
     }
     mGL->fDrawArrays(LOCAL_GL_TRIANGLE_STRIP, 0, 4);

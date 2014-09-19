@@ -25,7 +25,7 @@ XPCOMUtils.defineLazyModuleGetter(this, "ContentSearch",
   "resource:///modules/ContentSearch.jsm");
 
 const SIMPLETEST_OVERRIDES =
-  ["ok", "is", "isnot", "ise", "todo", "todo_is", "todo_isnot", "info", "expectAssertions"];
+  ["ok", "is", "isnot", "ise", "todo", "todo_is", "todo_isnot", "info", "expectAssertions", "requestCompleteLog"];
 
 window.addEventListener("load", function testOnLoad() {
   window.removeEventListener("load", testOnLoad);
@@ -458,7 +458,6 @@ Tester.prototype = {
     // is invoked to start the tests.
     this.waitForWindowsState((function () {
       if (this.done) {
-        let promise = Promise.resolve();
 
         // Uninitialize a few things explicitly so that they can clean up
         // frames and browser intentionally kept alive until shutdown to
@@ -489,9 +488,6 @@ Tester.prototype = {
           SocialFlyout.unload();
           SocialShare.uninit();
           TabView.uninit();
-
-          // Destroying ContentSearch is asynchronous.
-          promise = ContentSearch.destroy();
         }
 
         // Schedule GC and CC runs before finishing in order to detect
@@ -523,7 +519,19 @@ Tester.prototype = {
           }
         };
 
-        promise.then(() => {
+        let {AsyncShutdown} =
+          Cu.import("resource://gre/modules/AsyncShutdown.jsm", {});
+
+        let barrier = new AsyncShutdown.Barrier(
+          "ShutdownLeaks: Wait for cleanup to be finished before checking for leaks");
+        Services.obs.notifyObservers({wrappedJSObject: barrier},
+          "shutdown-leaks-before-check", null);
+
+        barrier.wait().then(() => {
+          // Simulate memory pressure so that we're forced to free more resources
+          // and thus get rid of more false leaks like already terminated workers.
+          Services.obs.notifyObservers(null, "memory-pressure", "heap-minimize");
+
           checkForLeakedGlobalWindows(aResults => {
             if (aResults.length == 0) {
               this.finish();
@@ -903,6 +911,13 @@ function testScope(aTester, aTest) {
         }
       });
     }
+  };
+
+  this.requestCompleteLog = function test_requestCompleteLog() {
+    self.__tester.dumper.structuredLogger.deactivateBuffering();
+    self.registerCleanupFunction(function() {
+      self.__tester.dumper.structuredLogger.activateBuffering();
+    })
   };
 }
 testScope.prototype = {

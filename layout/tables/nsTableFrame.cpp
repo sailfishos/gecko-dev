@@ -1375,9 +1375,17 @@ nsTableFrame::PaintTableBorderBackground(nsRenderingContext& aRenderingContext,
                                   aDirtyRect, rect, mStyleContext, skipSides);
     }
     else {
+      gfxContext* ctx = aRenderingContext.ThebesContext();
+
+      gfxPoint devPixelOffset =
+        nsLayoutUtils::PointToGfxPoint(aPt,
+                                       PresContext()->AppUnitsPerDevPixel());
+
       // XXX we should probably get rid of this translation at some stage
       // But that would mean modifying PaintBCBorders, ugh
-      nsRenderingContext::AutoPushTranslation translate(&aRenderingContext, aPt);
+      gfxContextMatrixAutoSaveRestore autoSR(ctx);
+      ctx->SetMatrix(ctx->CurrentMatrix().Translate(devPixelOffset));
+
       PaintBCBorders(aRenderingContext, aDirtyRect - aPt);
     }
   }
@@ -4077,7 +4085,7 @@ class BCMapCellIterator;
  ****************************************************************/
 struct BCMapCellInfo
 {
-  BCMapCellInfo(nsTableFrame* aTableFrame);
+  explicit BCMapCellInfo(nsTableFrame* aTableFrame);
   void ResetCellInfo();
   void SetInfo(nsTableRowFrame*   aNewRow,
                int32_t            aColIndex,
@@ -4737,7 +4745,7 @@ GetColorAndStyle(const nsIFrame*  aFrame,
 
 class nsDelayedCalcBCBorders : public nsRunnable {
 public:
-  nsDelayedCalcBCBorders(nsIFrame* aFrame) :
+  explicit nsDelayedCalcBCBorders(nsIFrame* aFrame) :
     mFrame(aFrame) {}
 
   NS_IMETHOD Run() MOZ_OVERRIDE {
@@ -6236,7 +6244,7 @@ class BCPaintBorderIterator
 public:
 
 
-  BCPaintBorderIterator(nsTableFrame* aTable);
+  explicit BCPaintBorderIterator(nsTableFrame* aTable);
   ~BCPaintBorderIterator() { if (mVerInfo) {
                               delete [] mVerInfo;
                            }}

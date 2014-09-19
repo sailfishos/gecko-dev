@@ -105,10 +105,19 @@
   <string name="find_next">&find_next;</string>
   <string name="find_close">&find_close;</string>
 
-  <string name="media_casting_to">&media_casting_to;</string>
+  <string name="media_sending_to">&media_sending_to;</string>
   <string name="media_play">&media_play;</string>
   <string name="media_pause">&media_pause;</string>
   <string name="media_stop">&media_stop;</string>
+
+  <string name="overlay_share_send_other">&overlay_share_send_other;</string>
+  <string name="overlay_share_label">&overlay_share_label;</string>
+  <string name="overlay_share_bookmark_btn_label">&overlay_share_bookmark_btn_label;</string>
+  <string name="overlay_share_reading_list_btn_label">&overlay_share_reading_list_btn_label;</string>
+  <string name="overlay_share_send_tab_btn_label">&overlay_share_send_tab_btn_label;</string>
+  <string name="overlay_share_no_url">&overlay_share_no_url;</string>
+  <string name="overlay_share_retry">&overlay_share_retry;</string>
+  <string name="overlay_share_select_device">&overlay_share_select_device;</string>
 
   <string name="settings">&settings;</string>
   <string name="settings_title">&settings_title;</string>
@@ -342,6 +351,12 @@
   <string name="home_reading_list_hint_accessible">&home_reading_list_hint_accessible;</string>
   <string name="home_default_empty">&home_default_empty;</string>
   <string name="home_move_up_to_filter">&home_move_up_to_filter;</string>
+  <string name="home_remote_tabs_title">&home_remote_tabs_title;</string>
+  <string name="home_remote_tabs_empty">&home_remote_tabs_empty;</string>
+  <string name="home_remote_tabs_unable_to_connect">&home_remote_tabs_unable_to_connect;</string>
+  <string name="home_remote_tabs_need_to_sign_in">&home_remote_tabs_need_to_sign_in;</string>
+  <string name="home_remote_tabs_trouble_verifying">&home_remote_tabs_trouble_verifying;</string>
+  <string name="home_remote_tabs_need_to_verify">&home_remote_tabs_need_to_verify;</string>
   <string name="private_browsing_title">&private_browsing_title;</string>
   <string name="private_tabs_panel_empty_desc">&private_tabs_panel_empty_desc;</string>
   <string name="private_tabs_panel_learn_more">&private_tabs_panel_learn_more;</string>

@@ -15,6 +15,8 @@ browser.jar:
         skin/classic/browser/aboutCertError_sectionCollapsed.png
         skin/classic/browser/aboutCertError_sectionCollapsed-rtl.png
         skin/classic/browser/aboutCertError_sectionExpanded.png
+        skin/classic/browser/aboutNetError.css                       (../shared/aboutNetError.css)
+        skin/classic/browser/aboutNetError_info.svg                  (../shared/aboutNetError_info.svg)
         skin/classic/browser/aboutSocialError.css
 #ifdef MOZ_SERVICES_SYNC
         skin/classic/browser/aboutSyncTabs.css
@@ -182,7 +184,7 @@ browser.jar:
         skin/classic/browser/preferences/aboutPermissions.css        (preferences/aboutPermissions.css)
         skin/classic/browser/social/services-16.png                  (social/services-16.png)
         skin/classic/browser/social/services-64.png                  (social/services-64.png)
-        skin/classic/browser/social/chat-icons.png                   (social/chat-icons.png)
+        skin/classic/browser/social/chat-icons.svg                   (../shared/social/chat-icons.svg)
         skin/classic/browser/social/gear_default.png                 (../shared/social/gear_default.png)
         skin/classic/browser/social/gear_clicked.png                 (../shared/social/gear_clicked.png)
         skin/classic/browser/tabbrowser/newtab.png                   (tabbrowser/newtab.png)
@@ -239,6 +241,7 @@ browser.jar:
         skin/classic/browser/devtools/filetype-dir-close.svg        (../shared/devtools/images/filetypes/dir-close.svg)
         skin/classic/browser/devtools/filetype-dir-open.svg         (../shared/devtools/images/filetypes/dir-open.svg)
         skin/classic/browser/devtools/filetype-globe.svg            (../shared/devtools/images/filetypes/globe.svg)
+        skin/classic/browser/devtools/filetype-store.svg            (../shared/devtools/images/filetypes/store.svg)
         skin/classic/browser/devtools/commandline-icon.png          (../shared/devtools/images/commandline-icon.png)
         skin/classic/browser/devtools/commandline-icon@2x.png          (../shared/devtools/images/commandline-icon@2x.png)
         skin/classic/browser/devtools/alerticon-warning.png         (../shared/devtools/images/alerticon-warning.png)
@@ -281,8 +284,10 @@ browser.jar:
 *       skin/classic/browser/devtools/debugger.css                  (devtools/debugger.css)
 *       skin/classic/browser/devtools/netmonitor.css                (devtools/netmonitor.css)
 *       skin/classic/browser/devtools/profiler.css                  (devtools/profiler.css)
+*       skin/classic/browser/devtools/timeline.css                  (devtools/timeline.css)
 *       skin/classic/browser/devtools/scratchpad.css                (devtools/scratchpad.css)
 *       skin/classic/browser/devtools/shadereditor.css              (devtools/shadereditor.css)
+        skin/classic/browser/devtools/storage.css                   (../shared/devtools/storage.css)
 *       skin/classic/browser/devtools/splitview.css                 (../shared/devtools/splitview.css)
         skin/classic/browser/devtools/styleeditor.css               (../shared/devtools/styleeditor.css)
 *       skin/classic/browser/devtools/webaudioeditor.css            (devtools/webaudioeditor.css)
@@ -346,6 +351,7 @@ browser.jar:
         skin/classic/browser/devtools/tool-debugger-paused.svg      (../shared/devtools/images/tool-debugger-paused.svg)
         skin/classic/browser/devtools/tool-inspector.svg            (../shared/devtools/images/tool-inspector.svg)
         skin/classic/browser/devtools/tool-styleeditor.svg          (../shared/devtools/images/tool-styleeditor.svg)
+        skin/classic/browser/devtools/tool-storage.svg              (../shared/devtools/images/tool-storage.svg)
         skin/classic/browser/devtools/tool-profiler.svg             (../shared/devtools/images/tool-profiler.svg)
         skin/classic/browser/devtools/tool-network.svg              (../shared/devtools/images/tool-network.svg)
         skin/classic/browser/devtools/tool-scratchpad.svg           (../shared/devtools/images/tool-scratchpad.svg)
@@ -414,6 +420,9 @@ browser.jar:
         skin/classic/browser/devtools/tooltip/arrow-horizontal-light@2x.png   (../shared/devtools/tooltip/arrow-horizontal-light@2x.png)
         skin/classic/browser/devtools/tooltip/arrow-vertical-light.png   (../shared/devtools/tooltip/arrow-vertical-light.png)
         skin/classic/browser/devtools/tooltip/arrow-vertical-light@2x.png   (../shared/devtools/tooltip/arrow-vertical-light@2x.png)
+#ifdef E10S_TESTING_ONLY
+        skin/classic/browser/e10s-64@2x.png (../shared/e10s-64@2x.png)
+#endif
 
 #ifdef XP_WIN
 browser.jar:
@@ -425,6 +434,8 @@ browser.jar:
         skin/classic/aero/browser/aboutCertError_sectionCollapsed.png
         skin/classic/aero/browser/aboutCertError_sectionCollapsed-rtl.png
         skin/classic/aero/browser/aboutCertError_sectionExpanded.png
+        skin/classic/aero/browser/aboutNetError.css                   (../shared/aboutNetError.css)
+        skin/classic/aero/browser/aboutNetError_info.svg              (../shared/aboutNetError_info.svg)
         skin/classic/aero/browser/aboutSocialError.css
 #ifdef MOZ_SERVICES_SYNC
         skin/classic/aero/browser/aboutSyncTabs.css
@@ -598,7 +609,7 @@ browser.jar:
         skin/classic/aero/browser/preferences/aboutPermissions.css   (preferences/aboutPermissions.css)
         skin/classic/aero/browser/social/services-16.png             (social/services-16.png)
         skin/classic/aero/browser/social/services-64.png             (social/services-64.png)
-        skin/classic/aero/browser/social/chat-icons.png              (social/chat-icons.png)
+        skin/classic/aero/browser/social/chat-icons.svg              (../shared/social/chat-icons.svg)
         skin/classic/aero/browser/social/gear_default.png            (../shared/social/gear_default.png)
         skin/classic/aero/browser/social/gear_clicked.png            (../shared/social/gear_clicked.png)
         skin/classic/aero/browser/tabbrowser/newtab.png              (tabbrowser/newtab.png)
@@ -654,6 +665,7 @@ browser.jar:
         skin/classic/aero/browser/devtools/filetype-dir-close.svg    (../shared/devtools/images/filetypes/dir-close.svg)
         skin/classic/aero/browser/devtools/filetype-dir-open.svg     (../shared/devtools/images/filetypes/dir-open.svg)
         skin/classic/aero/browser/devtools/filetype-globe.svg        (../shared/devtools/images/filetypes/globe.svg)
+        skin/classic/aero/browser/devtools/filetype-store.svg        (../shared/devtools/images/filetypes/store.svg)
         skin/classic/aero/browser/devtools/commandline-icon.png      (../shared/devtools/images/commandline-icon.png)
         skin/classic/aero/browser/devtools/commandline-icon@2x.png      (../shared/devtools/images/commandline-icon@2x.png)
         skin/classic/aero/browser/devtools/command-paintflashing.png    (../shared/devtools/images/command-paintflashing.png)
@@ -696,10 +708,12 @@ browser.jar:
         skin/classic/aero/browser/devtools/eyedropper.css            (../shared/devtools/eyedropper.css)
 *       skin/classic/aero/browser/devtools/netmonitor.css            (devtools/netmonitor.css)
 *       skin/classic/aero/browser/devtools/profiler.css              (devtools/profiler.css)
+*       skin/classic/aero/browser/devtools/timeline.css              (devtools/timeline.css)
 *       skin/classic/aero/browser/devtools/scratchpad.css            (devtools/scratchpad.css)
 *       skin/classic/aero/browser/devtools/shadereditor.css          (devtools/shadereditor.css)
 *       skin/classic/aero/browser/devtools/splitview.css             (../shared/devtools/splitview.css)
         skin/classic/aero/browser/devtools/styleeditor.css           (../shared/devtools/styleeditor.css)
+        skin/classic/aero/browser/devtools/storage.css               (../shared/devtools/storage.css)
 *       skin/classic/aero/browser/devtools/webaudioeditor.css        (devtools/webaudioeditor.css)
         skin/classic/aero/browser/devtools/magnifying-glass.png      (../shared/devtools/images/magnifying-glass.png)
         skin/classic/aero/browser/devtools/magnifying-glass@2x.png   (../shared/devtools/images/magnifying-glass@2x.png)
@@ -761,6 +775,7 @@ browser.jar:
         skin/classic/aero/browser/devtools/tool-debugger-paused.svg  (../shared/devtools/images/tool-debugger-paused.svg)
         skin/classic/aero/browser/devtools/tool-inspector.svg        (../shared/devtools/images/tool-inspector.svg)
         skin/classic/aero/browser/devtools/tool-styleeditor.svg      (../shared/devtools/images/tool-styleeditor.svg)
+        skin/classic/aero/browser/devtools/tool-storage.svg          (../shared/devtools/images/tool-storage.svg)
         skin/classic/aero/browser/devtools/tool-profiler.svg         (../shared/devtools/images/tool-profiler.svg)
         skin/classic/aero/browser/devtools/tool-network.svg          (../shared/devtools/images/tool-network.svg)
         skin/classic/aero/browser/devtools/tool-scratchpad.svg       (../shared/devtools/images/tool-scratchpad.svg)
@@ -829,6 +844,9 @@ browser.jar:
         skin/classic/aero/browser/devtools/tooltip/arrow-horizontal-light@2x.png   (../shared/devtools/tooltip/arrow-horizontal-light@2x.png)
         skin/classic/aero/browser/devtools/tooltip/arrow-vertical-light.png   (../shared/devtools/tooltip/arrow-vertical-light.png)
         skin/classic/aero/browser/devtools/tooltip/arrow-vertical-light@2x.png   (../shared/devtools/tooltip/arrow-vertical-light@2x.png)
+#ifdef E10S_TESTING_ONLY
+        skin/classic/aero/browser/e10s-64@2x.png (../shared/e10s-64@2x.png)
+#endif
 
 % override chrome://browser/skin/Toolbar.png               chrome://browser/skin/Toolbar-aero.png                  os=WINNT osversion=6
 % override chrome://browser/skin/Toolbar.png               chrome://browser/skin/Toolbar-aero.png                  os=WINNT osversion=6.1

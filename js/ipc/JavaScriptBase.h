@@ -22,7 +22,7 @@ class JavaScriptBase : public WrapperOwner, public WrapperAnswer, public Base
     typedef WrapperAnswer Answer;
 
   public:
-    JavaScriptBase(JSRuntime *rt)
+    explicit JavaScriptBase(JSRuntime *rt)
       : JavaScriptShared(rt),
         WrapperOwner(rt),
         WrapperAnswer(rt)
@@ -86,6 +86,9 @@ class JavaScriptBase : public WrapperOwner, public WrapperAnswer, public Base
                                const bool &construct, ReturnStatus *rs, JSVariant *result,
                                nsTArray<JSParam> *outparams) {
         return Answer::AnswerCallOrConstruct(objId, argv, construct, rs, result, outparams);
+    }
+    bool AnswerHasInstance(const ObjectId &objId, const JSVariant &v, ReturnStatus *rs, bool *bp) {
+        return Answer::AnswerHasInstance(objId, v, rs, bp);
     }
     bool AnswerObjectClassIs(const ObjectId &objId, const uint32_t &classValue,
                              bool *result) {
@@ -168,6 +171,9 @@ class JavaScriptBase : public WrapperOwner, public WrapperAnswer, public Base
                              const bool &construct, ReturnStatus *rs, JSVariant *result,
                              nsTArray<JSParam> *outparams) {
         return Base::CallCallOrConstruct(objId, argv, construct, rs, result, outparams);
+    }
+    bool CallHasInstance(const ObjectId &objId, const JSVariant &v, ReturnStatus *rs, bool *bp) {
+        return Base::CallHasInstance(objId, v, rs, bp);
     }
     bool CallObjectClassIs(const ObjectId &objId, const uint32_t &classValue,
                            bool *result) {

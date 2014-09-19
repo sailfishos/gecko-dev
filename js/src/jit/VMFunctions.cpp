@@ -315,7 +315,7 @@ NewInitArray(JSContext *cx, uint32_t count, types::TypeObject *typeArg)
     NewObjectKind newKind = !type ? SingletonObject : GenericObject;
     if (type && type->shouldPreTenure())
         newKind = TenuredObject;
-    RootedObject obj(cx, NewDenseAllocatedArray(cx, count, nullptr, newKind));
+    RootedObject obj(cx, NewDenseFullyAllocatedArray(cx, count, nullptr, newKind));
     if (!obj)
         return nullptr;
 
@@ -401,19 +401,20 @@ bool
 ArrayPushDense(JSContext *cx, HandleObject obj, HandleValue v, uint32_t *length)
 {
     JS_ASSERT(obj->is<ArrayObject>());
-    JS_ASSERT(obj->as<ArrayObject>().lengthIsWritable());
 
-    uint32_t idx = obj->as<ArrayObject>().length();
-    JSObject::EnsureDenseResult result = obj->ensureDenseElements(cx, idx, 1);
-    if (result == JSObject::ED_FAILED)
-        return false;
+    if (MOZ_LIKELY(obj->as<ArrayObject>().lengthIsWritable())) {
+        uint32_t idx = obj->as<ArrayObject>().length();
+        JSObject::EnsureDenseResult result = obj->ensureDenseElements(cx, idx, 1);
+        if (result == JSObject::ED_FAILED)
+            return false;
 
-    if (result == JSObject::ED_OK) {
-        obj->setDenseElement(idx, v);
-        MOZ_ASSERT(idx < INT32_MAX);
-        *length = idx + 1;
-        obj->as<ArrayObject>().setLengthInt32(*length);
-        return true;
+        if (result == JSObject::ED_OK) {
+            obj->setDenseElement(idx, v);
+            MOZ_ASSERT(idx < INT32_MAX);
+            *length = idx + 1;
+            obj->as<ArrayObject>().setLengthInt32(*length);
+            return true;
+        }
     }
 
     JS::AutoValueArray<3> argv(cx);
@@ -512,7 +513,7 @@ ArrayJoin(JSContext *cx, HandleObject array, HandleString sep)
 bool
 CharCodeAt(JSContext *cx, HandleString str, int32_t index, uint32_t *code)
 {
-    jschar c;
+    char16_t c;
     if (!str->getChar(cx, index, &c))
         return false;
     *code = c;
@@ -522,7 +523,7 @@ CharCodeAt(JSContext *cx, HandleString str, int32_t index, uint32_t *code)
 JSFlatString *
 StringFromCharCode(JSContext *cx, int32_t code)
 {
-    jschar c = jschar(code);
+    char16_t c = char16_t(code);
 
     if (StaticStrings::hasUnit(c))
         return cx->staticStrings().getUnit(c);
@@ -746,8 +747,8 @@ FilterArgumentsOrEval(JSContext *cx, JSString *str)
     if (!linear)
         return false;
 
-    static const jschar arguments[] = {'a', 'r', 'g', 'u', 'm', 'e', 'n', 't', 's'};
-    static const jschar eval[] = {'e', 'v', 'a', 'l'};
+    static const char16_t arguments[] = {'a', 'r', 'g', 'u', 'm', 'e', 'n', 't', 's'};
+    static const char16_t eval[] = {'e', 'v', 'a', 'l'};
 
     return !StringHasPattern(linear, arguments, mozilla::ArrayLength(arguments)) &&
         !StringHasPattern(linear, eval, mozilla::ArrayLength(eval));
@@ -1236,6 +1237,12 @@ TypedObjectProto(JSObject *obj)
     JS_ASSERT(obj->is<TypedObject>());
     TypedObject &typedObj = obj->as<TypedObject>();
     return &typedObj.typedProto();
+}
+
+bool
+ObjectIsCallable(JSObject *obj)
+{
+    return obj->isCallable();
 }
 
 void

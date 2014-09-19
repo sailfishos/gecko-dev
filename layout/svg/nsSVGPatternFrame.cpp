@@ -36,8 +36,8 @@ using namespace mozilla::gfx;
 class MOZ_STACK_CLASS nsSVGPatternFrame::AutoPatternReferencer
 {
 public:
-  AutoPatternReferencer(nsSVGPatternFrame *aFrame
-                        MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
+  explicit AutoPatternReferencer(nsSVGPatternFrame *aFrame
+                                 MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
     : mFrame(aFrame)
   {
     MOZ_GUARD_OBJECT_NOTIFIER_INIT;
@@ -126,7 +126,7 @@ nsSVGPatternFrame::GetType() const
 // matrix, which depends on our units parameters
 // and X, Y, Width, and Height
 gfxMatrix
-nsSVGPatternFrame::GetCanvasTM(uint32_t aFor, nsIFrame* aTransformRoot)
+nsSVGPatternFrame::GetCanvasTM()
 {
   if (mCTM) {
     return *mCTM;
@@ -135,7 +135,7 @@ nsSVGPatternFrame::GetCanvasTM(uint32_t aFor, nsIFrame* aTransformRoot)
   // Do we know our rendering parent?
   if (mSource) {
     // Yes, use it!
-    return mSource->GetCanvasTM(aFor, aTransformRoot);
+    return mSource->GetCanvasTM();
   }
 
   // We get here when geometry in the <pattern> container is updated
@@ -197,8 +197,8 @@ GetPatternMatrix(uint16_t aPatternUnits,
 
   float scale = 1.0f / MaxExpansion(callerCTM);
   Matrix patternMatrix = patternTransform;
-  patternMatrix.Scale(scale, scale);
-  patternMatrix.Translate(minx, miny);
+  patternMatrix.PreScale(scale, scale);
+  patternMatrix.PreTranslate(minx, miny);
 
   return patternMatrix;
 }
@@ -368,8 +368,8 @@ nsSVGPatternFrame::PaintPattern(Matrix* patternMatrix,
     patternFrame->mCTM->PreMultiply(tempTM);
 
     // and rescale pattern to compensate
-    patternMatrix->Scale(patternWidth / surfaceSize.width,
-                         patternHeight / surfaceSize.height);
+    patternMatrix->PreScale(patternWidth / surfaceSize.width,
+                            patternHeight / surfaceSize.height);
   }
 
   RefPtr<DrawTarget> dt =
@@ -413,7 +413,12 @@ nsSVGPatternFrame::PaintPattern(Matrix* patternMatrix,
       if (SVGFrame) {
         SVGFrame->NotifySVGChanged(nsISVGChildFrame::TRANSFORM_CHANGED);
       }
-      nsSVGUtils::PaintFrameWithEffects(context, nullptr, kid);
+      gfxMatrix tm = *(patternFrame->mCTM);
+      if (kid->GetContent()->IsSVG()) {
+        tm = static_cast<nsSVGElement*>(kid->GetContent())->
+              PrependLocalTransformsTo(tm, nsSVGElement::eUserSpaceToParent);
+      }
+      nsSVGUtils::PaintFrameWithEffects(kid, context, tm);
     }
     patternFrame->RemoveStateBits(NS_FRAME_DRAWING_AS_PAINTSERVER);
   }

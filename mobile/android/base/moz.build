@@ -44,13 +44,6 @@ mgjar.generated_sources += [
 ]
 mgjar.javac_flags += ['-Xlint:all']
 
-wsjar = add_java_jar('websockets')
-wsjar.sources += [ thirdparty_source_dir + f for f in [
-    'com/codebutler/android_websockets/HybiParser.java',
-    'com/codebutler/android_websockets/WebSocketClient.java',
-] ]
-wsjar.javac_flags += ['-Xlint:all,-serial']
-
 gujar = add_java_jar('gecko-util')
 gujar.sources += [
     'util/ActivityResultHandler.java',
@@ -194,6 +187,8 @@ gbjar.sources += [
     'GeckoBatteryManager.java',
     'GeckoConnectivityReceiver.java',
     'GeckoEditable.java',
+    'GeckoEditableClient.java',
+    'GeckoEditableListener.java',
     'GeckoEvent.java',
     'GeckoHalDefines.java',
     'GeckoInputConnection.java',
@@ -267,7 +262,6 @@ gbjar.sources += [
     'home/BookmarksPanel.java',
     'home/BrowserSearch.java',
     'home/DynamicPanel.java',
-    'home/FadedTextView.java',
     'home/FramePanelLayout.java',
     'home/HistoryPanel.java',
     'home/HomeAdapter.java',
@@ -276,6 +270,7 @@ gbjar.sources += [
     'home/HomeConfigLoader.java',
     'home/HomeConfigPrefsBackend.java',
     'home/HomeContextMenuInfo.java',
+    'home/HomeExpandableListView.java',
     'home/HomeFragment.java',
     'home/HomeListView.java',
     'home/HomePager.java',
@@ -298,6 +293,9 @@ gbjar.sources += [
     'home/ReadingListPanel.java',
     'home/ReadingListRow.java',
     'home/RecentTabsPanel.java',
+    'home/RemoteTabsExpandableListFragment.java',
+    'home/RemoteTabsPanel.java',
+    'home/RemoteTabsStaticFragment.java',
     'home/SearchEngine.java',
     'home/SearchEngineRow.java',
     'home/SearchLoader.java',
@@ -314,6 +312,7 @@ gbjar.sources += [
     'JavaAddonManager.java',
     'LightweightTheme.java',
     'LightweightThemeDrawable.java',
+    'LocaleAware.java',
     'LocaleManager.java',
     'MediaCastingBar.java',
     'MemoryMonitor.java',
@@ -327,6 +326,7 @@ gbjar.sources += [
     'menu/MenuPanel.java',
     'menu/MenuPopup.java',
     'MotionEventInterceptor.java',
+    'NewTabletUI.java',
     'NotificationClient.java',
     'NotificationHandler.java',
     'NotificationHelper.java',
@@ -368,7 +368,9 @@ gbjar.sources += [
     'prompts/PromptService.java',
     'prompts/TabInput.java',
     'ReaderModeUtils.java',
+    'RemoteTabsExpandableListAdapter.java',
     'Restarter.java',
+    'RestrictedProfiles.java',
     'ScrollAnimator.java',
     'ServiceNotificationClient.java',
     'SessionParser.java',
@@ -391,8 +393,13 @@ gbjar.sources += [
     'tabs/RemoteTabsSetupPanel.java',
     'tabs/RemoteTabsVerificationPanel.java',
     'tabs/TabCurve.java',
+    'tabs/TabsLayoutAdapter.java',
+    'tabs/TabsLayoutItemView.java',
+    'tabs/TabsListLayout.java',
     'tabs/TabsPanel.java',
-    'tabs/TabsTray.java',
+    'tabs/TabStripAdapter.java',
+    'tabs/TabStripItemView.java',
+    'tabs/TabStripView.java',
     'TabsAccessor.java',
     'Telemetry.java',
     'TelemetryContract.java',
@@ -402,6 +409,12 @@ gbjar.sources += [
     'toolbar/AutocompleteHandler.java',
     'toolbar/BackButton.java',
     'toolbar/BrowserToolbar.java',
+    'toolbar/BrowserToolbarNewTablet.java',
+    'toolbar/BrowserToolbarPhone.java',
+    'toolbar/BrowserToolbarPhoneBase.java',
+    'toolbar/BrowserToolbarPreHC.java',
+    'toolbar/BrowserToolbarTablet.java',
+    'toolbar/BrowserToolbarTabletBase.java',
     'toolbar/CanvasDelegate.java',
     'toolbar/ForwardButton.java',
     'toolbar/PageActionLayout.java',
@@ -441,6 +454,7 @@ gbjar.sources += [
     'widget/Divider.java',
     'widget/DoorHanger.java',
     'widget/EllipsisTextView.java',
+    'widget/FadedTextView.java',
     'widget/FaviconView.java',
     'widget/FloatingHintEditText.java',
     'widget/FlowLayout.java',
@@ -477,6 +491,22 @@ if CONFIG['MOZ_CRASHREPORTER']:
     gbjar.sources += [ 'CrashReporter.java' ]
     ANDROID_RES_DIRS += [ SRCDIR + '/crashreporter/res' ]
 
+if CONFIG['MOZ_ANDROID_SHARE_OVERLAY']:
+    gbjar.sources += [
+        'overlays/OverlayConstants.java',
+        'overlays/service/OverlayActionService.java',
+        'overlays/service/sharemethods/AddBookmark.java',
+        'overlays/service/sharemethods/AddToReadingList.java',
+        'overlays/service/sharemethods/ParcelableClientRecord.java',
+        'overlays/service/sharemethods/SendTab.java',
+        'overlays/service/sharemethods/ShareMethod.java',
+        'overlays/ui/OverlayToastHelper.java',
+        'overlays/ui/SendTabDeviceListArrayAdapter.java',
+        'overlays/ui/SendTabList.java',
+        'overlays/ui/SendTabTargetSelectedListener.java',
+        'overlays/ui/ShareDialog.java',
+    ]
+
 gbjar.sources += sync_java_files
 gbjar.generated_sources += sync_generated_java_files
 gbjar.extra_jars = [
@@ -486,7 +516,6 @@ gbjar.extra_jars = [
     'nineoldandroids.jar',
     'squareup-picasso.jar',
     'sync-thirdparty.jar',
-    'websockets.jar',
 ]
 
 moz_native_devices_jars = [
@@ -496,6 +525,7 @@ moz_native_devices_jars = [
 ]
 moz_native_devices_sources = [
     'ChromeCast.java',
+    'GeckoMediaPlayer.java',
     'MediaPlayerManager.java',
 ]
 if CONFIG['MOZ_NATIVE_DEVICES']:
@@ -585,7 +615,8 @@ ANDROID_GENERATED_RESFILES += [
 ]
 
 for var in ('MOZ_ANDROID_ANR_REPORTER', 'MOZ_LINKER_EXTRACT', 'MOZILLA_OFFICIAL', 'MOZ_DEBUG',
-            'MOZ_ANDROID_SEARCH_ACTIVITY', 'MOZ_NATIVE_DEVICES', 'MOZ_ANDROID_MLS_STUMBLER'):
+            'MOZ_ANDROID_SEARCH_ACTIVITY', 'MOZ_NATIVE_DEVICES', 'MOZ_ANDROID_MLS_STUMBLER',
+            'MOZ_ANDROID_SHARE_OVERLAY'):
     if CONFIG[var]:
         DEFINES[var] = 1
 
@@ -668,7 +699,12 @@ main.recursive_make_targets += ['generated/' + f for f in gbjar.generated_source
 
 main.extra_jars += [CONFIG['ANDROID_COMPAT_LIB']]
 main.assets = TOPOBJDIR + '/dist/' + CONFIG['MOZ_APP_NAME'] + '/assets'
-main.libs = TOPOBJDIR + '/dist/' + CONFIG['MOZ_APP_NAME'] + '/lib'
+main.libs = [
+    (TOPOBJDIR + '/dist/' + CONFIG['MOZ_APP_NAME'] + '/lib/' + CONFIG['ANDROID_CPU_ARCH'] + '/libmozglue.so',
+     'libs/' + CONFIG['ANDROID_CPU_ARCH'] + '/libmozglue.so'),
+    (TOPOBJDIR + '/dist/' + CONFIG['MOZ_APP_NAME'] + '/lib/' + CONFIG['ANDROID_CPU_ARCH'] + '/libplugin-container.so',
+     'libs/' + CONFIG['ANDROID_CPU_ARCH'] + '/libplugin-container.so'),
+]
 main.res = None
 
 cpe = main.add_classpathentry('src', SRCDIR,
@@ -781,6 +817,7 @@ if CONFIG['MOZ_CRASHREPORTER']:
 if CONFIG['MOZ_ANDROID_MLS_STUMBLER']:
     main.included_projects += ['../FennecStumbler']
     main.referenced_projects += ['../FennecStumbler']
+    DEFINES['MOZ_STUMBLER_API_KEY'] = CONFIG['MOZ_MOZILLA_API_KEY']
 
 if CONFIG['MOZ_ANDROID_SEARCH_ACTIVITY']:
     searchres = add_android_eclipse_library_project('FennecResourcesSearch')

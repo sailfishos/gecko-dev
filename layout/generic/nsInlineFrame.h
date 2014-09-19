@@ -85,6 +85,10 @@ public:
                       const nsHTMLReflowState& aReflowState,
                       nsReflowStatus& aStatus) MOZ_OVERRIDE;
 
+  virtual nsresult AttributeChanged(int32_t aNameSpaceID,
+                                    nsIAtom* aAttribute,
+                                    int32_t aModType) MOZ_OVERRIDE;
+
   virtual bool CanContinueTextRun() const MOZ_OVERRIDE;
 
   virtual void PullOverflowsFromPrevInFlow() MOZ_OVERRIDE;
@@ -132,7 +136,7 @@ protected:
     }
   };
 
-  nsInlineFrame(nsStyleContext* aContext) : nsContainerFrame(aContext) {}
+  explicit nsInlineFrame(nsStyleContext* aContext) : nsContainerFrame(aContext) {}
 
   virtual LogicalSides GetLogicalSkipSides(const nsHTMLReflowState* aReflowState = nullptr) const MOZ_OVERRIDE;
 
@@ -217,7 +221,7 @@ public:
   virtual bool DrainSelfOverflowList() MOZ_OVERRIDE;
 
 protected:
-  nsFirstLineFrame(nsStyleContext* aContext) : nsInlineFrame(aContext) {}
+  explicit nsFirstLineFrame(nsStyleContext* aContext) : nsInlineFrame(aContext) {}
 
   virtual nsIFrame* PullOneFrame(nsPresContext* aPresContext,
                                  InlineReflowState& rs,

@@ -48,6 +48,7 @@ import org.mozilla.gecko.mozglue.RobocopTarget;
 import org.mozilla.gecko.mozglue.generatorannotations.OptionalGeneratedParameter;
 import org.mozilla.gecko.mozglue.generatorannotations.WrapElementForJNI;
 import org.mozilla.gecko.prompts.PromptService;
+import org.mozilla.gecko.SmsManager;
 import org.mozilla.gecko.util.EventCallback;
 import org.mozilla.gecko.util.GeckoRequest;
 import org.mozilla.gecko.util.HardwareUtils;
@@ -103,7 +104,6 @@ import android.os.Looper;
 import android.os.Message;
 import android.os.MessageQueue;
 import android.os.SystemClock;
-import android.os.UserManager;
 import android.os.Vibrator;
 import android.provider.Settings;
 import android.telephony.TelephonyManager;
@@ -485,6 +485,9 @@ public class GeckoAppShell
                 SharedPreferences prefs = getSharedPreferences();
                 SharedPreferences.Editor editor = prefs.edit();
                 editor.putBoolean(GeckoApp.PREFS_OOM_EXCEPTION, true);
+
+                // Synchronously write to disk so we know it's done before we
+                // shutdown
                 editor.commit();
             }
         } finally {
@@ -2349,7 +2352,7 @@ public class GeckoAppShell
      */
     @WrapElementForJNI(stubName = "SendMessageWrapper")
     public static void sendMessage(String aNumber, String aMessage, int aRequestId) {
-        if (SmsManager.getInstance() == null) {
+        if (!SmsManager.isEnabled()) {
             return;
         }
 
@@ -2358,7 +2361,7 @@ public class GeckoAppShell
 
     @WrapElementForJNI(stubName = "GetMessageWrapper")
     public static void getMessage(int aMessageId, int aRequestId) {
-        if (SmsManager.getInstance() == null) {
+        if (!SmsManager.isEnabled()) {
             return;
         }
 
@@ -2367,7 +2370,7 @@ public class GeckoAppShell
 
     @WrapElementForJNI(stubName = "DeleteMessageWrapper")
     public static void deleteMessage(int aMessageId, int aRequestId) {
-        if (SmsManager.getInstance() == null) {
+        if (!SmsManager.isEnabled()) {
             return;
         }
 
@@ -2375,17 +2378,17 @@ public class GeckoAppShell
     }
 
     @WrapElementForJNI(stubName = "CreateMessageListWrapper")
-    public static void createMessageList(long aStartDate, long aEndDate, String[] aNumbers, int aNumbersCount, int aDeliveryState, boolean aReverse, int aRequestId) {
-        if (SmsManager.getInstance() == null) {
+    public static void createMessageList(long aStartDate, long aEndDate, String[] aNumbers, int aNumbersCount, String aDelivery, boolean aHasRead, boolean aRead, long aThreadId, boolean aReverse, int aRequestId) {
+        if (!SmsManager.isEnabled()) {
             return;
         }
 
-        SmsManager.getInstance().createMessageList(aStartDate, aEndDate, aNumbers, aNumbersCount, aDeliveryState, aReverse, aRequestId);
+        SmsManager.getInstance().createMessageList(aStartDate, aEndDate, aNumbers, aNumbersCount, aDelivery, aHasRead, aRead, aThreadId, aReverse, aRequestId);
     }
 
     @WrapElementForJNI(stubName = "GetNextMessageInListWrapper")
     public static void getNextMessageInList(int aListId, int aRequestId) {
-        if (SmsManager.getInstance() == null) {
+        if (!SmsManager.isEnabled()) {
             return;
         }
 
@@ -2394,7 +2397,7 @@ public class GeckoAppShell
 
     @WrapElementForJNI
     public static void clearMessageList(int aListId) {
-        if (SmsManager.getInstance() == null) {
+        if (!SmsManager.isEnabled()) {
             return;
         }
 
@@ -2483,7 +2486,16 @@ public class GeckoAppShell
             Looper.myLooper().quit();
         else
             msg.getTarget().dispatchMessage(msg);
-        msg.recycle();
+
+        try {
+            // Bug 1055166 - this sometimes throws IllegalStateException on Android L.
+            // There appears to be no way to figure out if a message is in use or not, let
+            // alone receive a notification when it is no longer being used. Just catch
+            // the exception for now, and if a better solution comes along we can use it.
+            msg.recycle();
+        } catch (IllegalStateException e) {
+            // There is nothing we can do here so just eat it
+        }
         return true;
     }
 
@@ -2539,39 +2551,6 @@ public class GeckoAppShell
         }
 
         return "DIRECT";
-    }
-
-    @WrapElementForJNI
-    public static boolean isUserRestricted() {
-        if (Versions.preJBMR2) {
-            return false;
-        }
-
-        UserManager mgr = (UserManager)getContext().getSystemService(Context.USER_SERVICE);
-        Bundle restrictions = mgr.getUserRestrictions();
-
-        return !restrictions.isEmpty();
-    }
-
-    @WrapElementForJNI
-    public static String getUserRestrictions() {
-        if (Versions.preJBMR2) {
-            return "{}";
-        }
-
-        JSONObject json = new JSONObject();
-        UserManager mgr = (UserManager)getContext().getSystemService(Context.USER_SERVICE);
-        Bundle restrictions = mgr.getUserRestrictions();
-
-        Set<String> keys = restrictions.keySet();
-        for (String key : keys) {
-            try {
-                json.put(key, restrictions.get(key));
-            } catch (JSONException e) {
-            }
-        }
-
-        return json.toString();
     }
 
     /* Downloads the uri pointed to by a share intent, and alters the intent to point to the locally stored file.
