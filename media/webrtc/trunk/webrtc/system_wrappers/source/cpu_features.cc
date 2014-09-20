@@ -67,9 +67,15 @@ static int GetCPUInfo(CPUFeature feature) {
   return 0;
 }
 
+#ifdef WEBRTC_ARCH_ARM_V7
 uint64_t WebRtc_GetCPUFeaturesARM(void) {
-  return kCPUFeatureNEON | kCPUFeatureARMv7 | kCPUFeatureNEON;
+  return kCPUFeatureARMv7
+#ifdef WEBRTC_ARCH_ARM_NEON
+         | kCPUFeatureNEON
+#endif
+         | kCPUFeatureVFPv3;
 }
+#endif
 
 #endif
 
