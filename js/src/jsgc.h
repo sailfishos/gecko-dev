@@ -695,10 +695,8 @@ class ArenaLists
             /* The background finalization must have stopped at this point. */
             JS_ASSERT(backgroundFinalizeState[i] == BFS_DONE ||
                       backgroundFinalizeState[i] == BFS_JUST_FINISHED);
-            for (ArenaHeader *aheader = arenaLists[i].head(); aheader; aheader = aheader->next) {
-                uintptr_t *word = aheader->chunk()->bitmap.arenaBits(aheader);
-                memset(word, 0, ArenaBitmapWords * sizeof(uintptr_t));
-            }
+            for (ArenaHeader *aheader = arenaLists[i].head(); aheader; aheader = aheader->next)
+                aheader->unmarkAll();
         }
     }
 
@@ -996,7 +994,7 @@ class GCHelperState
     void startBackgroundThread(State newState);
     void waitForBackgroundThread();
 
-    State state();
+    State state() const;
     void setState(State state);
 
     bool              sweepFlag;
@@ -1043,6 +1041,9 @@ class GCHelperState
 
     /* Must be called without the GC lock taken. */
     void waitBackgroundSweepOrAllocEnd();
+
+    /* Must be called without the GC lock taken. */
+    void assertStateIsIdle() const;
 
     /* Must be called with the GC lock taken. */
     void startBackgroundAllocationIfIdle();

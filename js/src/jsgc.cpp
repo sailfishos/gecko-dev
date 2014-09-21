@@ -455,6 +455,13 @@ ArenaHeader::checkSynchronizedWithFreeList() const
 }
 #endif
 
+void
+ArenaHeader::unmarkAll()
+{
+    uintptr_t *word = chunk()->bitmap.arenaBits(this);
+    memset(word, 0, ArenaBitmapWords * sizeof(uintptr_t));
+}
+
 /* static */ void
 Arena::staticAsserts()
 {
@@ -2492,6 +2499,9 @@ GCRuntime::releaseRelocatedArenas(ArenaHeader *relocatedList)
         ArenaHeader *aheader = relocatedList;
         relocatedList = relocatedList->next;
 
+        // Clear the mark bits
+        aheader->unmarkAll();
+
         // Mark arena as empty
         AllocKind thingKind = aheader->getAllocKind();
         size_t thingSize = aheader->getThingSize();
@@ -3222,7 +3232,7 @@ GCHelperState::finish()
 }
 
 GCHelperState::State
-GCHelperState::state()
+GCHelperState::state() const
 {
     JS_ASSERT(rt->gc.currentThreadOwnsGCLock());
     return state_;
@@ -3371,6 +3381,15 @@ GCHelperState::waitBackgroundSweepOrAllocEnd()
         waitForBackgroundThread();
     if (rt->gc.incrementalState == NO_INCREMENTAL)
         rt->gc.assertBackgroundSweepingFinished();
+}
+
+void
+GCHelperState::assertStateIsIdle() const
+{
+#ifdef DEBUG
+    AutoLockGC lock(rt);
+    JS_ASSERT(state() == IDLE);
+#endif
 }
 
 /* Must be called with the GC lock taken. */
@@ -5528,15 +5547,16 @@ GCRuntime::gcCycle(bool incremental, int64_t budget, JSGCInvocationKind gckind,
     // Assert if this is a GC unsafe region.
     JS::AutoAssertOnGC::VerifyIsSafeToGC(rt);
 
-    /*
-     * As we about to purge caches and clear the mark bits we must wait for
-     * any background finalization to finish. We must also wait for the
-     * background allocation to finish so we can avoid taking the GC lock
-     * when manipulating the chunks during the GC.
-     */
-    {
+    // As we about to purge caches and clear the mark bits we must wait for
+    // any background finalization to finish. We must also wait for the
+    // background allocation to finish so we can avoid taking the GC lock
+    // when manipulating the chunks during the GC.
+    if (incrementalState == NO_INCREMENTAL) {
         gcstats::AutoPhase ap(stats, gcstats::PHASE_WAIT_BACKGROUND_THREAD);
         waitBackgroundSweepOrAllocEnd();
+    } else {
+        // The helper thread does not run between incremental slices.
+        helperState.assertStateIsIdle();
     }
 
     State prevState = incrementalState;
@@ -5642,12 +5662,12 @@ GCRuntime::collect(bool incremental, int64_t budget, JSGCInvocationKind gckind,
                    JS::gcreason::Reason reason)
 {
     /* GC shouldn't be running in parallel execution mode */
-    MOZ_ASSERT(!InParallelSection());
+    MOZ_ALWAYS_TRUE(!InParallelSection());
 
     JS_AbortIfWrongThread(rt);
 
     /* If we attempt to invoke the GC while we are running in the GC, assert. */
-    MOZ_ASSERT(!rt->isHeapBusy());
+    MOZ_ALWAYS_TRUE(!rt->isHeapBusy());
 
     /* The engine never locks across anything that could GC. */
     MOZ_ASSERT(!rt->currentThreadHasExclusiveAccess());
@@ -6359,7 +6379,32 @@ JS::AutoAssertOnGC::VerifyIsSafeToGC(JSRuntime *rt)
     if (rt->gc.isInsideUnsafeRegion())
         MOZ_CRASH("[AutoAssertOnGC] possible GC in GC-unsafe region");
 }
+
+JS::AutoAssertNoAlloc::AutoAssertNoAlloc(JSRuntime *rt)
+  : gc(nullptr)
+{
+    disallowAlloc(rt);
+}
+
+void JS::AutoAssertNoAlloc::disallowAlloc(JSRuntime *rt)
+{
+    JS_ASSERT(!gc);
+    gc = &rt->gc;
+    gc->disallowAlloc();
+}
+
+JS::AutoAssertNoAlloc::~AutoAssertNoAlloc()
+{
+    if (gc)
+        gc->allowAlloc();
+}
 #endif
+
+JS::AutoAssertGCCallback::AutoAssertGCCallback(JSObject *obj)
+  : AutoSuppressGCAnalysis()
+{
+    MOZ_ASSERT(obj->runtimeFromMainThread()->isHeapMajorCollecting());
+}
 
 #ifdef JSGC_HASH_TABLE_CHECKS
 void
