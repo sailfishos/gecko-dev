@@ -850,7 +850,8 @@ DisassembleInstruction(uint32_t pc)
     sprintf(llvmcmd, "bash -c \"echo -n '%p'; echo '%s' | "
             "llvm-mc -disassemble -arch=mipsel -mcpu=mips32r2 | "
             "grep -v pure_instructions | grep -v .text\"", static_cast<void*>(bytes), hexbytes);
-    system(llvmcmd);
+    if (system(llvmcmd))
+        printf("Cannot disassemble instruction.\n");
 }
 
 void
@@ -927,12 +928,12 @@ MipsDebugger::debug()
                         printAllRegsIncludingFPU();
                     } else {
                         Register reg = Register::FromName(arg1);
-                        FloatRegister fReg = FloatRegister::FromName(arg1);
+                        FloatRegister fReg(FloatRegister::FromName(arg1));
                         if (reg != InvalidReg) {
                             value = getRegisterValue(reg.code());
                             printf("%s: 0x%08x %d \n", arg1, value, value);
                         } else if (fReg.code() != FloatRegisters::Invalid) {
-                            MOZ_ASSUME_UNREACHABLE("NYI");
+                            MOZ_CRASH("NYI");
                         } else {
                             printf("%s unrecognized\n", arg1);
                         }
@@ -1851,7 +1852,7 @@ Simulator::softwareInterrupt(SimInstruction *instr)
     // We first check if we met a call_rt_redirected.
     if (instr->instructionBits() == kCallRedirInstr) {
 #if !defined(USES_O32_ABI)
-        MOZ_ASSUME_UNREACHABLE("Only O32 ABI supported.");
+        MOZ_CRASH("Only O32 ABI supported.");
 #else
         Redirection *redirection = Redirection::FromSwiInstruction(instr);
         int32_t arg0 = getRegister(a0);
@@ -1870,7 +1871,7 @@ Simulator::softwareInterrupt(SimInstruction *instr)
 
         intptr_t external = reinterpret_cast<intptr_t>(redirection->nativeFunction());
 
-        bool stack_aligned = (getRegister(sp) & (StackAlignment - 1)) == 0;
+        bool stack_aligned = (getRegister(sp) & (ABIStackAlignment - 1)) == 0;
         if (!stack_aligned) {
             fprintf(stderr, "Runtime call with unaligned stack!\n");
             MOZ_CRASH();
@@ -2007,7 +2008,7 @@ Simulator::softwareInterrupt(SimInstruction *instr)
             break;
           }
           default:
-            MOZ_ASSUME_UNREACHABLE("call");
+            MOZ_CRASH("call");
         }
 
         setRegister(ra, saved_ra);
@@ -2132,7 +2133,7 @@ Simulator::signalExceptions()
 {
     for (int i = 1; i < kNumExceptions; i++) {
         if (exceptions[i] != 0)
-            MOZ_ASSUME_UNREACHABLE("Error: Exception raised.");
+            MOZ_CRASH("Error: Exception raised.");
     }
 }
 
@@ -3284,7 +3285,7 @@ Simulator::branchDelayInstructionDecode(SimInstruction *instr)
     }
 
     if (instr->isForbiddenInBranchDelay()) {
-        MOZ_ASSUME_UNREACHABLE("Eror:Unexpected opcode in a branch delay slot.");
+        MOZ_CRASH("Eror:Unexpected opcode in a branch delay slot.");
     }
     instructionDecode(instr);
 }
@@ -3404,7 +3405,7 @@ Simulator::call(uint8_t *entry, int argument_count, ...)
     else
         entry_stack = entry_stack - kCArgsSlotsSize;
 
-    entry_stack &= ~StackAlignment;
+    entry_stack &= ~ABIStackAlignment;
 
     intptr_t *stack_argument = reinterpret_cast<intptr_t*>(entry_stack);
 

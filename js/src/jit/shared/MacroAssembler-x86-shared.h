@@ -402,7 +402,7 @@ class MacroAssemblerX86Shared : public Assembler
             loadDouble(src.toBaseIndex(), dest);
             break;
           default:
-            MOZ_ASSUME_UNREACHABLE("unexpected operand kind");
+            MOZ_CRASH("unexpected operand kind");
         }
     }
     void storeDouble(FloatRegister src, const Address &dest) {
@@ -420,7 +420,7 @@ class MacroAssemblerX86Shared : public Assembler
             storeDouble(src, dest.toBaseIndex());
             break;
           default:
-            MOZ_ASSUME_UNREACHABLE("unexpected operand kind");
+            MOZ_CRASH("unexpected operand kind");
         }
     }
     void moveDouble(FloatRegister src, FloatRegister dest) {
@@ -467,8 +467,23 @@ class MacroAssemblerX86Shared : public Assembler
         cvtsd2ss(src, dest);
     }
 
+    void bitwiseAndX4(const Operand &src, FloatRegister dest) {
+        // TODO Using the "ps" variant for all types incurs a domain crossing
+        // penalty for integer types and double.
+        andps(src, dest);
+    }
+    void bitwiseOrX4(const Operand &src, FloatRegister dest) {
+        orps(src, dest);
+    }
+    void bitwiseXorX4(const Operand &src, FloatRegister dest) {
+        xorps(src, dest);
+    }
+
     void loadAlignedInt32x4(const Address &src, FloatRegister dest) {
         movdqa(Operand(src), dest);
+    }
+    void loadAlignedInt32x4(const Operand &src, FloatRegister dest) {
+        movdqa(src, dest);
     }
     void storeAlignedInt32x4(FloatRegister src, const Address &dest) {
         movdqa(src, Operand(dest));
@@ -482,6 +497,12 @@ class MacroAssemblerX86Shared : public Assembler
     void storeUnalignedInt32x4(FloatRegister src, const Address &dest) {
         movdqu(src, Operand(dest));
     }
+    void packedEqualInt32x4(const Operand &src, FloatRegister dest) {
+        pcmpeqd(src, dest);
+    }
+    void packedGreaterThanInt32x4(const Operand &src, FloatRegister dest) {
+        pcmpgtd(src, dest);
+    }
     void packedAddInt32(const Operand &src, FloatRegister dest) {
         paddd(src, dest);
     }
@@ -491,6 +512,9 @@ class MacroAssemblerX86Shared : public Assembler
 
     void loadAlignedFloat32x4(const Address &src, FloatRegister dest) {
         movaps(Operand(src), dest);
+    }
+    void loadAlignedFloat32x4(const Operand &src, FloatRegister dest) {
+        movaps(src, dest);
     }
     void storeAlignedFloat32x4(FloatRegister src, const Address &dest) {
         movaps(src, Operand(dest));
@@ -516,7 +540,6 @@ class MacroAssemblerX86Shared : public Assembler
     void packedDivFloat32(const Operand &src, FloatRegister dest) {
         divps(src, dest);
     }
-
     static uint32_t ComputeShuffleMask(SimdLane x, SimdLane y = LaneX,
                                        SimdLane z = LaneX, SimdLane w = LaneX)
     {
@@ -580,7 +603,7 @@ class MacroAssemblerX86Shared : public Assembler
             loadFloat32(src.toBaseIndex(), dest);
             break;
           default:
-            MOZ_ASSUME_UNREACHABLE("unexpected operand kind");
+            MOZ_CRASH("unexpected operand kind");
         }
     }
     void storeFloat32(FloatRegister src, const Address &dest) {
@@ -598,7 +621,7 @@ class MacroAssemblerX86Shared : public Assembler
             storeFloat32(src, dest.toBaseIndex());
             break;
           default:
-            MOZ_ASSUME_UNREACHABLE("unexpected operand kind");
+            MOZ_CRASH("unexpected operand kind");
         }
     }
     void moveFloat32(FloatRegister src, FloatRegister dest) {

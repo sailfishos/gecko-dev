@@ -55,8 +55,8 @@ interface GeckoEditableListener {
     final int NOTIFY_IME_REPLY_EVENT = -1;
     final int NOTIFY_IME_OF_FOCUS = 1;
     final int NOTIFY_IME_OF_BLUR = 2;
-    final int NOTIFY_IME_TO_COMMIT_COMPOSITION = 7;
-    final int NOTIFY_IME_TO_CANCEL_COMPOSITION = 8;
+    final int NOTIFY_IME_TO_COMMIT_COMPOSITION = 8;
+    final int NOTIFY_IME_TO_CANCEL_COMPOSITION = 9;
     // IME enabled state for notifyIMEContext()
     final int IME_STATE_DISABLED = 0;
     final int IME_STATE_ENABLED = 1;
@@ -180,6 +180,12 @@ final class GeckoEditable
             action.mStart = start;
             action.mEnd = end;
             action.mSpanFlags = flags;
+            return action;
+        }
+
+        static Action newRemoveSpan(Object object) {
+            final Action action = new Action(TYPE_REMOVE_SPAN);
+            action.mSpanObject = object;
             return action;
         }
 
@@ -701,9 +707,15 @@ final class GeckoEditable
                 }
             });
             break;
+
         case Action.TYPE_SET_SPAN:
             mText.setSpan(action.mSpanObject, action.mStart, action.mEnd, action.mSpanFlags);
             break;
+
+        case Action.TYPE_REMOVE_SPAN:
+            mText.removeSpan(action.mSpanObject);
+            break;
+
         case Action.TYPE_SET_HANDLER:
             geckoSetIcHandler(action.mHandler);
             break;
@@ -1046,11 +1058,7 @@ final class GeckoEditable
                 what == Selection.SELECTION_END) {
             Log.w(LOGTAG, "selection removed with removeSpan()");
         }
-        if (mText.getSpanStart(what) >= 0) { // only remove if it's there
-            // Okay to remove immediately
-            mText.removeSpan(what);
-            mActionQueue.offer(new Action(Action.TYPE_REMOVE_SPAN));
-        }
+        mActionQueue.offer(Action.newRemoveSpan(what));
     }
 
     @Override

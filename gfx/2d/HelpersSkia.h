@@ -19,41 +19,6 @@
 namespace mozilla {
 namespace gfx {
 
-static inline SkBitmap::Config
-GfxFormatToSkiaConfig(SurfaceFormat format)
-{
-  switch (format)
-  {
-    case SurfaceFormat::B8G8R8A8:
-      return SkBitmap::kARGB_8888_Config;
-    case SurfaceFormat::B8G8R8X8:
-      // We probably need to do something here.
-      return SkBitmap::kARGB_8888_Config;
-    case SurfaceFormat::R5G6B5:
-      return SkBitmap::kRGB_565_Config;
-    case SurfaceFormat::A8:
-      return SkBitmap::kA8_Config;
-    default:
-      return SkBitmap::kARGB_8888_Config;
-  }
-}
-
-static inline SurfaceFormat
-SkiaConfigToGfxFormat(SkBitmap::Config config)
-{
-  switch (config)
-  {
-    case SkBitmap::kARGB_8888_Config:
-      return SurfaceFormat::B8G8R8A8;
-    case SkBitmap::kRGB_565_Config:
-      return SurfaceFormat::R5G6B5;
-    case SkBitmap::kA8_Config:
-      return SurfaceFormat::A8;
-    default:
-      return SurfaceFormat::B8G8R8A8;
-  }
-}
-
 static inline SkColorType
 GfxFormatToSkiaColorType(SurfaceFormat format)
 {
@@ -356,7 +321,7 @@ ExtendModeToTileMode(ExtendMode aMode)
 template <typename T> class RefPtrSkia {
 public:
   RefPtrSkia() : fObj(NULL) {}
-  RefPtrSkia(T* obj) : fObj(obj) { SkSafeRef(fObj); }
+  explicit RefPtrSkia(T* obj) : fObj(obj) { SkSafeRef(fObj); }
   RefPtrSkia(const RefPtrSkia& o) : fObj(o.fObj) { SkSafeRef(fObj); }
   ~RefPtrSkia() { SkSafeUnref(fObj); }
 

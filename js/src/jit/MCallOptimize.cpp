@@ -54,6 +54,8 @@ IonBuilder::inlineNativeCall(CallInfo &callInfo, JSFunction *target)
         return inlineMathFloor(callInfo);
     if (native == js::math_ceil)
         return inlineMathCeil(callInfo);
+    if (native == js::math_clz32)
+        return inlineMathClz32(callInfo);
     if (native == js::math_round)
         return inlineMathRound(callInfo);
     if (native == js::math_sqrt)
@@ -408,7 +410,8 @@ IonBuilder::inlineArrayPopShift(CallInfo &callInfo, MArrayPopShift::Mode mode)
         types::OBJECT_FLAG_LENGTH_OVERFLOW |
         types::OBJECT_FLAG_ITERATED;
 
-    types::TemporaryTypeSet *thisTypes = callInfo.thisArg()->resultTypeSet();
+    MDefinition *obj = callInfo.thisArg();
+    types::TemporaryTypeSet *thisTypes = obj->resultTypeSet();
     if (!thisTypes || thisTypes->getKnownClass() != &ArrayObject::class_)
         return InliningStatus_NotInlined;
     if (thisTypes->hasObjectFlags(constraints(), unhandledFlags))
@@ -419,17 +422,18 @@ IonBuilder::inlineArrayPopShift(CallInfo &callInfo, MArrayPopShift::Mode mode)
 
     callInfo.setImplicitlyUsedUnchecked();
 
+    obj = addMaybeCopyElementsForWrite(obj);
+
     types::TemporaryTypeSet *returnTypes = getInlineReturnTypeSet();
     bool needsHoleCheck = thisTypes->hasObjectFlags(constraints(), types::OBJECT_FLAG_NON_PACKED);
     bool maybeUndefined = returnTypes->hasType(types::Type::UndefinedType());
 
     BarrierKind barrier = PropertyReadNeedsTypeBarrier(analysisContext, constraints(),
-                                                       callInfo.thisArg(), nullptr, returnTypes);
+                                                       obj, nullptr, returnTypes);
     if (barrier != BarrierKind::NoBarrier)
         returnType = MIRType_Value;
 
-    MArrayPopShift *ins = MArrayPopShift::New(alloc(), callInfo.thisArg(), mode,
-                                              needsHoleCheck, maybeUndefined);
+    MArrayPopShift *ins = MArrayPopShift::New(alloc(), obj, mode, needsHoleCheck, maybeUndefined);
     current->add(ins);
     current->push(ins);
     ins->setResultType(returnType);
@@ -550,10 +554,12 @@ IonBuilder::inlineArrayPush(CallInfo &callInfo)
         value = valueDouble;
     }
 
-    if (NeedsPostBarrier(info(), value))
-        current->add(MPostWriteBarrier::New(alloc(), callInfo.thisArg(), value));
+    obj = addMaybeCopyElementsForWrite(obj);
 
-    MArrayPush *ins = MArrayPush::New(alloc(), callInfo.thisArg(), value);
+    if (NeedsPostBarrier(info(), value))
+        current->add(MPostWriteBarrier::New(alloc(), obj, value));
+
+    MArrayPush *ins = MArrayPush::New(alloc(), obj, value);
     current->add(ins);
     current->push(ins);
 
@@ -785,6 +791,31 @@ IonBuilder::inlineMathCeil(CallInfo &callInfo)
     }
 
     return InliningStatus_NotInlined;
+}
+
+IonBuilder::InliningStatus
+IonBuilder::inlineMathClz32(CallInfo &callInfo)
+{
+    if (callInfo.constructing())
+        return InliningStatus_NotInlined;
+
+    if (callInfo.argc() != 1)
+        return InliningStatus_NotInlined;
+
+    MIRType returnType = getInlineReturnType();
+    if (returnType != MIRType_Int32)
+        return InliningStatus_NotInlined;
+
+    if (!IsNumberType(callInfo.getArg(0)->type()))
+        return InliningStatus_NotInlined;
+
+    callInfo.setImplicitlyUsedUnchecked();
+
+    MClz *ins = MClz::New(alloc(), callInfo.getArg(0));
+    current->add(ins);
+    current->push(ins);
+    return InliningStatus_Inlined;
+
 }
 
 IonBuilder::InliningStatus
@@ -1499,7 +1530,7 @@ IonBuilder::inlineUnsafePutElements(CallInfo &callInfo)
             continue;
         }
 
-        MOZ_ASSUME_UNREACHABLE("Element access not dense array nor typed array");
+        MOZ_CRASH("Element access not dense array nor typed array");
     }
 
     return InliningStatus_Inlined;
@@ -1614,7 +1645,7 @@ IonBuilder::inlineForceSequentialOrInParallelSection(CallInfo &callInfo)
         return InliningStatus_NotInlined;
     }
 
-    MOZ_ASSUME_UNREACHABLE("Invalid execution mode");
+    MOZ_CRASH("Invalid execution mode");
 }
 
 IonBuilder::InliningStatus
@@ -1652,7 +1683,7 @@ IonBuilder::inlineForkJoinGetSlice(CallInfo &callInfo)
         return InliningStatus_Inlined;
     }
 
-    MOZ_ASSUME_UNREACHABLE("Invalid execution mode");
+    MOZ_CRASH("Invalid execution mode");
 }
 
 IonBuilder::InliningStatus
@@ -1671,7 +1702,7 @@ IonBuilder::inlineNewDenseArray(CallInfo &callInfo)
         return inlineNewDenseArrayForSequentialExecution(callInfo);
     }
 
-    MOZ_ASSUME_UNREACHABLE("unknown ExecutionMode");
+    MOZ_CRASH("unknown ExecutionMode");
 }
 
 IonBuilder::InliningStatus

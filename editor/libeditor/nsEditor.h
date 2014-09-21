@@ -13,7 +13,7 @@
 #include "nsCOMArray.h"                 // for nsCOMArray
 #include "nsCOMPtr.h"                   // for already_AddRefed, nsCOMPtr
 #include "nsCycleCollectionParticipant.h"
-#include "nsEditProperty.h"             // for nsEditProperty, etc
+#include "nsGkAtoms.h"
 #include "nsIEditor.h"                  // for nsIEditor::EDirection, etc
 #include "nsIEditorIMESupport.h"        // for NS_DECL_NSIEDITORIMESUPPORT, etc
 #include "nsIObserver.h"                // for NS_DECL_NSIOBSERVER, etc
@@ -28,14 +28,8 @@
 #include "nscore.h"                     // for nsresult, nsAString, etc
 
 class AddStyleSheetTxn;
-class ChangeAttributeTxn;
-class CreateElementTxn;
 class DeleteNodeTxn;
-class DeleteTextTxn;
 class EditAggregateTxn;
-class IMETextTxn;
-class InsertElementTxn;
-class InsertTextTxn;
 class JoinElementTxn;
 class RemoveStyleSheetTxn;
 class SplitElementTxn;
@@ -72,9 +66,15 @@ class ErrorResult;
 class TextComposition;
 
 namespace dom {
+class ChangeAttributeTxn;
+class CreateElementTxn;
 class DataTransfer;
+class DeleteTextTxn;
 class Element;
 class EventTarget;
+class IMETextTxn;
+class InsertTextTxn;
+class InsertNodeTxn;
 class Selection;
 class Text;
 }  // namespace dom
@@ -86,7 +86,7 @@ struct IMEState;
 } // namespace widget
 } // namespace mozilla
 
-#define kMOZEditorBogusNodeAttrAtom nsEditProperty::mozEditorBogusNode
+#define kMOZEditorBogusNodeAttrAtom nsGkAtoms::mozeditorbogusnode
 #define kMOZEditorBogusNodeValue NS_LITERAL_STRING("TRUE")
 
 // This is int32_t instead of int16_t because nsIInlineSpellChecker.idl's
@@ -200,7 +200,6 @@ public:
 
 public:
 
-  nsresult MarkNodeDirty(nsINode* aNode);
   virtual bool IsModifiableNode(nsINode *aNode);
 
   NS_IMETHOD InsertTextImpl(const nsAString& aStringToInsert, 
@@ -208,11 +207,7 @@ public:
                                int32_t *aInOutOffset,
                                nsIDOMDocument *aDoc);
   nsresult InsertTextIntoTextNodeImpl(const nsAString& aStringToInsert,
-                                      mozilla::dom::Text* aTextNode,
-                                      int32_t aOffset,
-                                      bool aSuppressIME = false);
-  nsresult InsertTextIntoTextNodeImpl(const nsAString& aStringToInsert, 
-                                      nsIDOMCharacterData *aTextNode, 
+                                      mozilla::dom::Text& aTextNode,
                                       int32_t aOffset,
                                       bool aSuppressIME = false);
   NS_IMETHOD DeleteSelectionImpl(EDirection aAction,
@@ -222,8 +217,7 @@ public:
 
   /* helper routines for node/parent manipulations */
   nsresult DeleteNode(nsINode* aNode);
-  nsresult InsertNode(nsIContent* aContent, nsINode* aParent,
-                      int32_t aPosition);
+  nsresult InsertNode(nsIContent& aNode, nsINode& aParent, int32_t aPosition);
   enum ECloneAttributes { eDontCloneAttributes, eCloneAttributes };
   already_AddRefed<mozilla::dom::Element> ReplaceContainer(
                             mozilla::dom::Element* aOldContainer,
@@ -234,21 +228,14 @@ public:
   void CloneAttributes(mozilla::dom::Element* aDest,
                        mozilla::dom::Element* aSource);
 
-  nsresult RemoveContainer(nsINode* aNode);
-  nsresult RemoveContainer(nsIDOMNode *inNode);
-  nsresult InsertContainerAbove(nsIContent* aNode,
-                                mozilla::dom::Element** aOutNode,
-                                const nsAString& aNodeType,
-                                const nsAString* aAttribute = nullptr,
+  nsresult RemoveContainer(nsIContent* aNode);
+  already_AddRefed<mozilla::dom::Element> InsertContainerAbove(
+                                nsIContent* aNode,
+                                nsIAtom* aNodeType,
+                                nsIAtom* aAttribute = nullptr,
                                 const nsAString* aValue = nullptr);
-  nsresult InsertContainerAbove(nsIDOMNode *inNode, 
-                                nsCOMPtr<nsIDOMNode> *outNode, 
-                                const nsAString &aNodeType,
-                                const nsAString *aAttribute = nullptr,
-                                const nsAString *aValue = nullptr);
   nsresult JoinNodes(nsINode* aNodeToKeep, nsIContent* aNodeToMove);
-  nsresult MoveNode(nsINode* aNode, nsINode* aParent, int32_t aOffset);
-  nsresult MoveNode(nsIDOMNode *aNode, nsIDOMNode *aParent, int32_t aOffset);
+  nsresult MoveNode(nsIContent* aNode, nsINode* aParent, int32_t aOffset);
 
   /* Method to replace certain CreateElementNS() calls. 
      Arguments:
@@ -267,32 +254,35 @@ protected:
   nsresult DetermineCurrentDirection();
   void FireInputEvent();
 
-  /** create a transaction for setting aAttribute to aValue on aElement
+  /** Create a transaction for setting aAttribute to aValue on aElement.  Never
+    * returns null.
     */
-  NS_IMETHOD CreateTxnForSetAttribute(nsIDOMElement *aElement,
-                                      const nsAString &  aAttribute,
-                                      const nsAString &  aValue,
-                                      ChangeAttributeTxn ** aTxn);
+  already_AddRefed<mozilla::dom::ChangeAttributeTxn>
+  CreateTxnForSetAttribute(mozilla::dom::Element& aElement,
+                           nsIAtom& aAttribute, const nsAString& aValue);
 
-  /** create a transaction for removing aAttribute on aElement
+  /** Create a transaction for removing aAttribute on aElement.  Never returns
+    * null.
     */
-  NS_IMETHOD CreateTxnForRemoveAttribute(nsIDOMElement *aElement,
-                                         const nsAString &  aAttribute,
-                                         ChangeAttributeTxn ** aTxn);
+  already_AddRefed<mozilla::dom::ChangeAttributeTxn>
+  CreateTxnForRemoveAttribute(mozilla::dom::Element& aElement,
+                              nsIAtom& aAttribute);
 
   /** create a transaction for creating a new child node of aParent of type aTag.
     */
-  NS_IMETHOD CreateTxnForCreateElement(const nsAString & aTag,
-                                       nsIDOMNode      *aParent,
-                                       int32_t         aPosition,
-                                       CreateElementTxn ** aTxn);
+  already_AddRefed<mozilla::dom::CreateElementTxn>
+  CreateTxnForCreateElement(nsIAtom& aTag,
+                            nsINode& aParent,
+                            int32_t aPosition);
+
+  already_AddRefed<mozilla::dom::Element> CreateNode(nsIAtom* aTag,
+                                                     nsINode* aParent,
+                                                     int32_t aPosition);
 
   /** create a transaction for inserting aNode as a child of aParent.
     */
-  NS_IMETHOD CreateTxnForInsertElement(nsIDOMNode * aNode,
-                                       nsIDOMNode * aParent,
-                                       int32_t      aOffset,
-                                       InsertElementTxn ** aTxn);
+  already_AddRefed<mozilla::dom::InsertNodeTxn>
+  CreateTxnForInsertNode(nsIContent& aNode, nsINode& aParent, int32_t aOffset);
 
   /** create a transaction for removing aNode from its parent.
     */
@@ -313,16 +303,16 @@ protected:
                                             int32_t* aLength);
 
 
-  /** create a transaction for inserting aStringToInsert into aTextNode
-    * if aTextNode is null, the string is inserted at the current selection.
+  /** Create a transaction for inserting aStringToInsert into aTextNode.  Never
+    * returns null.
     */
-  NS_IMETHOD CreateTxnForInsertText(const nsAString & aStringToInsert,
-                                    nsIDOMCharacterData *aTextNode,
-                                    int32_t aOffset,
-                                    InsertTextTxn ** aTxn);
+  already_AddRefed<mozilla::dom::InsertTextTxn>
+  CreateTxnForInsertText(const nsAString& aStringToInsert,
+                         mozilla::dom::Text& aTextNode, int32_t aOffset);
 
-  NS_IMETHOD CreateTxnForIMEText(const nsAString & aStringToInsert,
-                                 IMETextTxn ** aTxn);
+  // Never returns null.
+  already_AddRefed<mozilla::dom::IMETextTxn>
+  CreateTxnForIMEText(const nsAString & aStringToInsert);
 
   /** create a transaction for adding a style sheet
     */
@@ -334,28 +324,18 @@ protected:
   NS_IMETHOD CreateTxnForRemoveStyleSheet(mozilla::CSSStyleSheet* aSheet,
                                           RemoveStyleSheetTxn* *aTxn);
   
-  NS_IMETHOD DeleteText(nsIDOMCharacterData *aElement,
-                        uint32_t             aOffset,
-                        uint32_t             aLength);
-
-  inline nsresult DeleteText(mozilla::dom::Text* aText, uint32_t aOffset,
-                             uint32_t aLength)
-  {
-    return DeleteText(static_cast<nsIDOMCharacterData*>(GetAsDOMNode(aText)),
-                      aOffset, aLength);
-  }
+  nsresult DeleteText(nsGenericDOMDataNode& aElement,
+                      uint32_t aOffset, uint32_t aLength);
 
 //  NS_IMETHOD DeleteRange(nsIDOMRange *aRange);
 
-  nsresult CreateTxnForDeleteText(nsIDOMCharacterData* aElement,
-                                  uint32_t             aOffset,
-                                  uint32_t             aLength,
-                                  DeleteTextTxn**      aTxn);
+  already_AddRefed<mozilla::dom::DeleteTextTxn>
+  CreateTxnForDeleteText(nsGenericDOMDataNode& aElement,
+                         uint32_t aOffset, uint32_t aLength);
 
-  nsresult CreateTxnForDeleteCharacter(nsIDOMCharacterData* aData,
-                                       uint32_t             aOffset,
-                                       EDirection           aDirection,
-                                       DeleteTextTxn**      aTxn);
+  already_AddRefed<mozilla::dom::DeleteTextTxn>
+  CreateTxnForDeleteCharacter(nsGenericDOMDataNode& aData, uint32_t aOffset,
+                              EDirection aDirection);
 	
   NS_IMETHOD CreateTxnForSplitNode(nsIDOMNode *aNode,
                                    uint32_t    aOffset,
@@ -856,7 +836,7 @@ protected:
 
   nsRefPtr<nsTransactionManager> mTxnMgr;
   nsCOMPtr<mozilla::dom::Element> mRootElement; // cached root node
-  nsCOMPtr<nsIDOMCharacterData>     mIMETextNode;      // current IME text node
+  nsRefPtr<mozilla::dom::Text>    mIMETextNode; // current IME text node
   nsCOMPtr<mozilla::dom::EventTarget> mEventTarget; // The form field as an event receiver
   nsCOMPtr<nsIDOMEventListener> mEventListener;
   nsWeakPtr        mSelConWeak;          // weak reference to the nsISelectionController

@@ -37,7 +37,7 @@ public:
 
   typedef mozilla::dom::Element Element;
 
-  RestyleManager(nsPresContext* aPresContext);
+  explicit RestyleManager(nsPresContext* aPresContext);
 
 private:
   // Private destructor, to discourage deletion outside of Release():
@@ -475,8 +475,8 @@ private:
    * Helpers for RestyleChildren().
    */
   void RestyleUndisplayedChildren(nsRestyleHint aChildRestyleHint);
-  void RestyleBeforePseudo();
-  void RestyleAfterPseudo(nsIFrame* aFrame);
+  void MaybeReframeForBeforePseudo();
+  void MaybeReframeForAfterPseudo(nsIFrame* aFrame);
   void RestyleContentChildren(nsIFrame* aParent,
                               nsRestyleHint aChildRestyleHint);
   void InitializeAccessibilityNotifications();

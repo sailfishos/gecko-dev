@@ -19,6 +19,7 @@
 #include "mozilla/layers/CompositorTypes.h"
 #include "mozilla/layers/LayersTypes.h"  // for LayersBackend, etc
 #include "mozilla/RefPtr.h"
+#include "mozilla/UniquePtr.h"
 #include "nsAString.h"
 #include "nsAutoPtr.h"                  // for nsRefPtr
 #include "nsCOMPtr.h"                   // for already_AddRefed
@@ -66,14 +67,14 @@ class TextRenderer;
 class CompositingRenderTarget;
 struct FPSState;
 
-class LayerManagerComposite : public LayerManager
+class LayerManagerComposite MOZ_FINAL : public LayerManager
 {
   typedef mozilla::gfx::DrawTarget DrawTarget;
   typedef mozilla::gfx::IntSize IntSize;
   typedef mozilla::gfx::SurfaceFormat SurfaceFormat;
 
 public:
-  LayerManagerComposite(Compositor* aCompositor);
+  explicit LayerManagerComposite(Compositor* aCompositor);
   ~LayerManagerComposite();
 
   virtual void Destroy() MOZ_OVERRIDE;
@@ -238,6 +239,24 @@ public:
 
   TextRenderer* GetTextRenderer() { return mTextRenderer; }
 
+  /**
+   * Add an on frame warning.
+   * @param severity ranges from 0 to 1. It's used to compute the warning color.
+   */
+  void VisualFrameWarning(float severity) {
+    mozilla::TimeStamp now = TimeStamp::Now();
+    if (mWarnTime.IsNull() ||
+        severity > mWarningLevel ||
+        mWarnTime + TimeDuration::FromMilliseconds(150) < now) {
+      mWarnTime = now;
+      mWarningLevel = severity;
+    }
+  }
+
+  void UnusedApzTransformWarning() {
+    mUnusedApzTransformWarning = true;
+  }
+
 private:
   /** Region we're clipping our current drawing to. */
   nsIntRegion mClippingRegion;
@@ -269,11 +288,18 @@ private:
 
   void WorldTransformRect(nsIntRect& aRect);
 
-  RefPtr<CompositingRenderTarget> PushGroup();
-  void PopGroup(RefPtr<CompositingRenderTarget> aPreviousTarget, nsIntRect aClipRect);
+  RefPtr<CompositingRenderTarget> PushGroupForLayerEffects();
+  void PopGroupForLayerEffects(RefPtr<CompositingRenderTarget> aPreviousTarget,
+                               nsIntRect aClipRect,
+                               bool aGrayscaleEffect,
+                               bool aInvertEffect,
+                               float aContrastEffect);
 
+  float mWarningLevel;
+  mozilla::TimeStamp mWarnTime;
+  bool mUnusedApzTransformWarning;
   RefPtr<Compositor> mCompositor;
-  nsAutoPtr<LayerProperties> mClonedLayerTreeProperties;
+  UniquePtr<LayerProperties> mClonedLayerTreeProperties;
 
   /**
    * Context target, nullptr when drawing directly to our swap chain.
@@ -283,7 +309,7 @@ private:
 
   gfx::Matrix mWorldMatrix;
   nsIntRegion mInvalidRegion;
-  nsAutoPtr<FPSState> mFPS;
+  UniquePtr<FPSState> mFPS;
 
   bool mInTransaction;
   bool mIsCompositorReady;
@@ -315,7 +341,7 @@ private:
 class LayerComposite
 {
 public:
-  LayerComposite(LayerManagerComposite* aManager);
+  explicit LayerComposite(LayerManagerComposite* aManager);
 
   virtual ~LayerComposite();
 
@@ -336,8 +362,9 @@ public:
    * This allows us on to avoid framebuffer switches in the middle of our render
    * which is inefficient. This must be called before RenderLayer.
    */
-  virtual void Prepare(const nsIntRect& aClipRect) {}
+  virtual void Prepare(const RenderTargetIntRect& aClipRect) {}
 
+  // TODO: This should also take RenderTargetIntRect like Prepare.
   virtual void RenderLayer(const nsIntRect& aClipRect) = 0;
 
   virtual bool SetCompositableHost(CompositableHost*)

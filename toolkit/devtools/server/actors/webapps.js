@@ -251,6 +251,8 @@ WebappsActor.prototype = {
     reg._readManifests([{ id: aId }]).then((aResult) => {
       let manifest = aResult[0].manifest;
       aApp.name = manifest.name;
+      aApp.csp = manifest.csp || "";
+      aApp.role = manifest.role || "";
       reg.updateAppHandlers(null, manifest, aApp);
 
       reg._saveApps().then(() => {
@@ -705,23 +707,11 @@ WebappsActor.prototype = {
 
     let manifestURL = aRequest.manifestURL;
     if (!manifestURL) {
-      return { error: "missingParameter",
-               message: "missing parameter manifestURL" };
+      return Promise.resolve({ error: "missingParameter",
+                         message: "missing parameter manifestURL" });
     }
 
-    let deferred = promise.defer();
-    let reg = DOMApplicationRegistry;
-    reg.uninstall(
-      manifestURL,
-      function onsuccess() {
-        deferred.resolve({});
-      },
-      function onfailure(reason) {
-        deferred.resolve({ error: reason });
-      }
-    );
-
-    return deferred.promise;
+    return DOMApplicationRegistry.uninstall(manifestURL);
   },
 
   _findManifestByURL: function wa__findManifestByURL(aManifestURL) {

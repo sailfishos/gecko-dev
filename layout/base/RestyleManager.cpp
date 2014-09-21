@@ -501,11 +501,6 @@ RestyleManager::RecomputePosition(nsIFrame* aFrame)
 void
 RestyleManager::StyleChangeReflow(nsIFrame* aFrame, nsChangeHint aHint)
 {
-  // If the frame hasn't even received an initial reflow, then don't
-  // send it a style-change reflow!
-  if (aFrame->GetStateBits() & NS_FRAME_FIRST_REFLOW)
-    return;
-
   nsIPresShell::IntrinsicDirty dirtyType;
   if (aHint & nsChangeHint_ClearDescendantIntrinsics) {
     NS_ASSERTION(aHint & nsChangeHint_ClearAncestorIntrinsics,
@@ -518,18 +513,23 @@ RestyleManager::StyleChangeReflow(nsIFrame* aFrame, nsChangeHint aHint)
   }
 
   nsFrameState dirtyBits;
-  if (aHint & nsChangeHint_NeedDirtyReflow) {
+  if (aFrame->GetStateBits() & NS_FRAME_FIRST_REFLOW) {
+    dirtyBits = nsFrameState(0);
+  } else if (aHint & nsChangeHint_NeedDirtyReflow) {
     dirtyBits = NS_FRAME_IS_DIRTY;
   } else {
     dirtyBits = NS_FRAME_HAS_DIRTY_CHILDREN;
   }
 
+  // If we're not going to clear any intrinsic sizes on the frames, and
+  // there are no dirty bits to set, then there's nothing to do.
+  if (dirtyType == nsIPresShell::eResize && !dirtyBits)
+    return;
+
   do {
     mPresContext->PresShell()->FrameNeedsReflow(aFrame, dirtyType, dirtyBits);
     aFrame = nsLayoutUtils::GetNextContinuationOrIBSplitSibling(aFrame);
   } while (aFrame);
-
-  return;
 }
 
 void
@@ -2108,8 +2108,13 @@ RestyleManager::ReparentStyleContext(nsIFrame* aFrame)
       ElementForStyleContext(parentFrame ? parentFrame->GetContent() : nullptr,
                              aFrame,
                              oldContext->GetPseudoType());
+    nsIContent* pseudoElementContent = aFrame->GetContent();
+    Element* pseudoElement =
+      (pseudoElementContent && pseudoElementContent->IsElement())
+        ? pseudoElementContent->AsElement() : nullptr;
     newContext = mPresContext->StyleSet()->
-                   ReparentStyleContext(oldContext, newParentContext, element);
+                   ReparentStyleContext(oldContext, newParentContext, element,
+                                        pseudoElement);
   }
 
   if (newContext) {
@@ -2187,7 +2192,7 @@ RestyleManager::ReparentStyleContext(nsIFrame* aFrame)
         nsRefPtr<nsStyleContext> newExtraContext;
         newExtraContext = mPresContext->StyleSet()->
                             ReparentStyleContext(oldExtraContext,
-                                                 newContext, nullptr);
+                                                 newContext, nullptr, nullptr);
         if (newExtraContext) {
           if (newExtraContext != oldExtraContext) {
             // Make sure to call CalcStyleDifference so that the new
@@ -2529,8 +2534,13 @@ ElementRestyler::RestyleSelf(nsIFrame* aSelf, nsRestyleHint aRestyleHint)
     Element* element = ElementForStyleContext(mParentContent, aSelf, pseudoType);
     if (aRestyleHint == nsRestyleHint(0) &&
         !styleSet->IsInRuleTreeReconstruct()) {
+      nsIContent* pseudoElementContent = aSelf->GetContent();
+      Element* pseudoElement =
+        (pseudoElementContent && pseudoElementContent->IsElement())
+          ? pseudoElementContent->AsElement() : nullptr;
       newContext =
-        styleSet->ReparentStyleContext(oldContext, parentContext, element);
+        styleSet->ReparentStyleContext(oldContext, parentContext, element,
+                                       pseudoElement);
     } else {
       // Use ResolveStyleWithReplacement either for actual replacements
       // or, with no replacements, as a substitute for
@@ -2656,8 +2666,13 @@ ElementRestyler::RestyleSelf(nsIFrame* aSelf, nsRestyleHint aRestyleHint)
                                                 oldExtraContext,
                                                 nsRestyleHint(0));
       } else {
+        nsIContent* pseudoElementContent = aSelf->GetContent();
+        Element* pseudoElement =
+          (pseudoElementContent && pseudoElementContent->IsElement())
+            ? pseudoElementContent->AsElement() : nullptr;
         newExtraContext =
-          styleSet->ReparentStyleContext(oldExtraContext, newContext, element);
+          styleSet->ReparentStyleContext(oldExtraContext, newContext, element,
+                                         pseudoElement);
       }
     } else if (extraPseudoType == nsCSSPseudoElements::ePseudo_AnonBox) {
       newExtraContext = styleSet->ResolveAnonymousBoxStyle(extraPseudoTag,
@@ -2713,7 +2728,7 @@ ElementRestyler::RestyleChildren(nsRestyleHint aChildRestyleHint)
   // trigger assertions about mismatched rule trees.
   if (!(mHintsHandled & nsChangeHint_ReconstructFrame) &&
       mightReframePseudos) {
-    RestyleBeforePseudo();
+    MaybeReframeForBeforePseudo();
   }
 
   // There is no need to waste time crawling into a frame's children
@@ -2742,7 +2757,7 @@ ElementRestyler::RestyleChildren(nsRestyleHint aChildRestyleHint)
   // See comments above regarding :before.
   if (!(mHintsHandled & nsChangeHint_ReconstructFrame) &&
       mightReframePseudos) {
-    RestyleAfterPseudo(lastContinuation);
+    MaybeReframeForAfterPseudo(lastContinuation);
   }
 }
 
@@ -2825,7 +2840,7 @@ ElementRestyler::RestyleUndisplayedChildren(nsRestyleHint aChildRestyleHint)
         undisplayedContext =
           styleSet->ReparentStyleContext(undisplayed->mStyle,
                                          mFrame->StyleContext(),
-                                         element);
+                                         element, element);
       }
       const nsStyleDisplay* display = undisplayedContext->StyleDisplay();
       if (display->mDisplay != NS_STYLE_DISPLAY_NONE) {
@@ -2844,7 +2859,7 @@ ElementRestyler::RestyleUndisplayedChildren(nsRestyleHint aChildRestyleHint)
 }
 
 void
-ElementRestyler::RestyleBeforePseudo()
+ElementRestyler::MaybeReframeForBeforePseudo()
 {
   // Make sure not to do this for pseudo-frames or frames that
   // can't have generated content.
@@ -2879,7 +2894,7 @@ ElementRestyler::RestyleBeforePseudo()
  * ElementRestyler is restyling.
  */
 void
-ElementRestyler::RestyleAfterPseudo(nsIFrame* aFrame)
+ElementRestyler::MaybeReframeForAfterPseudo(nsIFrame* aFrame)
 {
   // Make sure not to do this for pseudo-frames or frames that
   // can't have generated content.

@@ -957,9 +957,14 @@ class IDLInterface(IDLObjectWithScope):
                 list(i.location for i in
                      self.interfacesBasedOnSelf if i.parent == self))
 
-
         for member in self.members:
             member.validate()
+
+            if self.isCallback() and member.getExtendedAttribute("Replaceable"):
+                raise WebIDLError("[Replaceable] used on an attribute on "
+                                  "interface %s which is a callback interface" %
+                                  self.identifier.name,
+                                  [self.location, member.location])
 
             # Check that PutForwards refers to another attribute and that no
             # cycles exist in forwarded assignments.
@@ -1002,10 +1007,25 @@ class IDLInterface(IDLObjectWithScope):
 
         if (self.getExtendedAttribute("Pref") and
             self._exposureGlobalNames != set([self.parentScope.primaryGlobalName])):
-            raise WebIDLError("[Pref] used on an member that is not %s-only" %
+            raise WebIDLError("[Pref] used on an interface that is not %s-only" %
                               self.parentScope.primaryGlobalName,
                               [self.location])
 
+        if (self.getExtendedAttribute("CheckPermissions") and
+            self._exposureGlobalNames != set([self.parentScope.primaryGlobalName])):
+            raise WebIDLError("[CheckPermissions] used on an interface that is "
+                              "not %s-only" %
+                              self.parentScope.primaryGlobalName,
+                              [self.location])
+
+        # Conditional exposure makes no sense for interfaces with no
+        # interface object, unless they're navigator properties.
+        if (self.isExposedConditionally() and
+            not self.hasInterfaceObject() and
+            not self.getNavigatorProperty()):
+            raise WebIDLError("Interface with no interface object is "
+                              "exposed conditionally",
+                              [self.location])
 
     def isInterface(self):
         return True
@@ -1042,6 +1062,21 @@ class IDLInterface(IDLObjectWithScope):
             # operations have the same identifier
             len(set(m.identifier.name for m in self.members if
                     m.isMethod() and not m.isStatic())) == 1)
+
+    def isExposedInWindow(self):
+        return 'Window' in self.exposureSet
+
+    def isExposedInAnyWorker(self):
+        return len(self.getWorkerExposureSet()) > 0
+
+    def isExposedOnlyInSomeWorkers(self):
+        assert self.isExposedInAnyWorker()
+        workerScopes = self.parentScope.globalNameMapping["Worker"]
+        return len(workerScopes.difference(self.exposureSet)) > 0
+
+    def getWorkerExposureSet(self):
+        workerScopes = self.parentScope.globalNameMapping["Worker"]
+        return workerScopes.intersection(self.exposureSet)
 
     def inheritanceDepth(self):
         depth = 0
@@ -1191,6 +1226,7 @@ class IDLInterface(IDLObjectWithScope):
                   identifier == "OverrideBuiltins" or
                   identifier == "ChromeOnly" or
                   identifier == "Unforgeable" or
+                  identifier == "UnsafeInPrerendering" or
                   identifier == "LegacyEventInit"):
                 # Known extended attributes that do not take values
                 if not attr.noArguments():
@@ -1327,6 +1363,13 @@ class IDLInterface(IDLObjectWithScope):
 
     def hasMembersInSlots(self):
         return self._ownMembersInSlots != 0
+
+    def isExposedConditionally(self):
+        return (self.getExtendedAttribute("Pref") or
+                self.getExtendedAttribute("ChromeOnly") or
+                self.getExtendedAttribute("Func") or
+                self.getExtendedAttribute("AvailableIn") or
+                self.getExtendedAttribute("CheckPermissions"))
 
 class IDLDictionary(IDLObjectWithScope):
     def __init__(self, location, parentScope, name, parent, members):
@@ -3016,6 +3059,13 @@ class IDLInterfaceMember(IDLObjectWithIdentifier):
                               "%s-only" % self._scope.primaryGlobalName,
                               [self.location])
 
+        if (self.getExtendedAttribute("CheckPermissions") and
+            self.exposureSet != set([self._scope.primaryGlobalName])):
+            raise WebIDLError("[CheckPermissions] used on an interface member "
+                              "that is not %s-only" %
+                              self._scope.primaryGlobalName,
+                              [self.location])
+
 class IDLConst(IDLInterfaceMember):
     def __init__(self, location, identifier, type, value):
         IDLInterfaceMember.__init__(self, location, identifier,
@@ -3191,8 +3241,7 @@ class IDLAttribute(IDLInterfaceMember):
               (identifier == "StoreInSlot" and
                (self.getExtendedAttribute("Throws") or
                 self.getExtendedAttribute("GetterThrows")))):
-            raise WebIDLError("Throwing things can't be [Pure] or [Constant] "
-                              "or [SameObject] or [StoreInSlot]",
+            raise WebIDLError("Throwing things can't be [StoreInSlot]",
                               [attr.location])
         elif identifier == "LenientThis":
             if not attr.noArguments():
@@ -3236,6 +3285,15 @@ class IDLAttribute(IDLInterfaceMember):
                 raise WebIDLError("[PutForwards] takes an identifier",
                                   [attr.location, self.location])
         elif identifier == "Replaceable":
+            if not attr.noArguments():
+                raise WebIDLError("[Replaceable] must take no arguments",
+                                  [attr.location])
+            if not self.readonly:
+                raise WebIDLError("[Replaceable] is only allowed on readonly "
+                                  "attributes", [attr.location, self.location])
+            if self.isStatic():
+                raise WebIDLError("[Replaceable] is only allowed on non-static "
+                                  "attributes", [attr.location, self.location])
             if self.getExtendedAttribute("PutForwards") is not None:
                 raise WebIDLError("[PutForwards] and [Replaceable] can't both "
                                   "appear on the same attribute",
@@ -3295,6 +3353,7 @@ class IDLAttribute(IDLInterfaceMember):
               identifier == "Frozen" or
               identifier == "AvailableIn" or
               identifier == "NewObject" or
+              identifier == "UnsafeInPrerendering" or
               identifier == "CheckPermissions"):
             # Known attributes that we don't need to do anything with here
             pass
@@ -3888,6 +3947,7 @@ class IDLMethod(IDLInterfaceMember, IDLScope):
         elif (identifier == "Throws" or
               identifier == "NewObject" or
               identifier == "ChromeOnly" or
+              identifier == "UnsafeInPrerendering" or
               identifier == "Pref" or
               identifier == "Func" or
               identifier == "AvailableIn" or

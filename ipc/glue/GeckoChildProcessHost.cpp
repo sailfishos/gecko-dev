@@ -126,7 +126,7 @@ GeckoChildProcessHost::GetPathToBinary(FilePath& exePath)
   if (ShouldHaveDirectoryService()) {
     MOZ_ASSERT(gGREPath);
 #ifdef OS_WIN
-    exePath = FilePath(gGREPath);
+    exePath = FilePath(char16ptr_t(gGREPath));
 #else
     nsCString path;
     NS_CopyUnicodeToNative(nsDependentString(gGREPath), path);
@@ -154,7 +154,7 @@ GeckoChildProcessHost::GetPathToBinary(FilePath& exePath)
 #ifdef MOZ_WIDGET_COCOA
 class AutoCFTypeObject {
 public:
-  AutoCFTypeObject(CFTypeRef object)
+  explicit AutoCFTypeObject(CFTypeRef object)
   {
     mObject = object;
   }
@@ -712,7 +712,7 @@ GeckoChildProcessHost::PerformAsyncLaunchInternal(std::vector<std::string>& aExt
   MachPortSender parent_sender(child_message.GetTranslatedPort(1));
 
   MachSendMessage parent_message(/* id= */0);
-  if (!parent_message.AddDescriptor(bootstrap_port)) {
+  if (!parent_message.AddDescriptor(MachMsgPortDescriptor(bootstrap_port))) {
     CHROMIUM_LOG(ERROR) << "parent AddDescriptor(" << bootstrap_port << ") failed.";
     return false;
   }
@@ -781,18 +781,29 @@ GeckoChildProcessHost::PerformAsyncLaunchInternal(std::vector<std::string>& aExt
       // shouldSandboxCurrentProcess = true;
       break;
     case GeckoProcessType_GMPlugin:
+#ifdef MOZ_SANDBOX
       if (!PR_GetEnv("MOZ_DISABLE_GMP_SANDBOX")) {
         mSandboxBroker.SetSecurityLevelForGMPlugin();
         cmdLine.AppendLooseValue(UTF8ToWide("-sandbox"));
         shouldSandboxCurrentProcess = true;
       }
+#endif
       break;
     case GeckoProcessType_Default:
     default:
       MOZ_CRASH("Bad process type in GeckoChildProcessHost");
       break;
   };
-#endif
+
+  if (shouldSandboxCurrentProcess) {
+    for (auto it = mAllowedFilesRead.begin();
+         it != mAllowedFilesRead.end();
+         ++it) {
+      mSandboxBroker.AllowReadFile(it->c_str());
+    }
+  }
+
+#endif // XP_WIN
 
   // Add the application directory path (-appdir path)
   AddAppDirToCommandLine(cmdLine);
@@ -815,7 +826,7 @@ GeckoChildProcessHost::PerformAsyncLaunchInternal(std::vector<std::string>& aExt
   // Process type
   cmdLine.AppendLooseValue(UTF8ToWide(childProcessType));
 
-#if defined(XP_WIN)
+#if defined(XP_WIN) && defined(MOZ_SANDBOX)
   if (shouldSandboxCurrentProcess) {
     mSandboxBroker.LaunchApp(cmdLine.program().c_str(),
                              cmdLine.command_line_string().c_str(),

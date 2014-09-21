@@ -586,7 +586,13 @@ Element::GetScrollFrame(nsIFrame **aStyledFrame, bool aFlushLayout)
 }
 
 void
-Element::ScrollIntoView(bool aTop)
+Element::ScrollIntoView()
+{
+  ScrollIntoView(true, ScrollOptions());
+}
+
+void
+Element::ScrollIntoView(bool aTop, const ScrollOptions &aOptions)
 {
   nsIDocument *document = GetCurrentDoc();
   if (!document) {
@@ -602,12 +608,17 @@ Element::ScrollIntoView(bool aTop)
   int16_t vpercent = aTop ? nsIPresShell::SCROLL_TOP :
     nsIPresShell::SCROLL_BOTTOM;
 
+  uint32_t flags = nsIPresShell::SCROLL_OVERFLOW_HIDDEN;
+  if (aOptions.mBehavior == ScrollBehavior::Smooth) {
+    flags |= nsIPresShell::SCROLL_SMOOTH;
+  }
+
   presShell->ScrollContentIntoView(this,
                                    nsIPresShell::ScrollAxis(
                                      vpercent,
                                      nsIPresShell::SCROLL_ALWAYS),
                                    nsIPresShell::ScrollAxis(),
-                                   nsIPresShell::SCROLL_OVERFLOW_HIDDEN);
+                                   flags);
 }
 
 bool
@@ -1489,20 +1500,22 @@ Element::UnbindFromTree(bool aDeep, bool aNullParent)
 
   // Unset this since that's what the old code effectively did.
   UnsetFlags(NODE_FORCE_XBL_BINDINGS);
-  
+  bool clearBindingParent = true;
+
 #ifdef MOZ_XUL
   nsXULElement* xulElem = nsXULElement::FromContent(this);
   if (xulElem) {
     xulElem->SetXULBindingParent(nullptr);
+    clearBindingParent = false;
   }
-  else
 #endif
-  {
-    nsDOMSlots *slots = GetExistingDOMSlots();
-    if (slots) {
+
+  nsDOMSlots* slots = GetExistingDOMSlots();
+  if (slots) {
+    if (clearBindingParent) {
       slots->mBindingParent = nullptr;
-      slots->mContainingShadow = nullptr;
     }
+    slots->mContainingShadow = nullptr;
   }
 
   // This has to be here, rather than in nsGenericHTMLElement::UnbindFromTree, 
@@ -1650,7 +1663,7 @@ Element::ShouldBlur(nsIContent *aContent)
 {
   // Determine if the current element is focused, if it is not focused
   // then we should not try to blur
-  nsIDocument *document = aContent->GetDocument();
+  nsIDocument* document = aContent->GetComposedDoc();
   if (!document)
     return false;
 

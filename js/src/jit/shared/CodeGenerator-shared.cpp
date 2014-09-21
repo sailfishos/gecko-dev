@@ -69,25 +69,25 @@ CodeGeneratorShared::CodeGeneratorShared(MIRGenerator *gen, LIRGraph *graph, Mac
     if (!gen->compilingAsmJS())
         masm.setInstrumentation(&sps_);
 
-    // Since asm.js uses the system ABI which does not necessarily use a
-    // regular array where all slots are sizeof(Value), it maintains the max
-    // argument stack depth separately.
     if (gen->compilingAsmJS()) {
+        // Since asm.js uses the system ABI which does not necessarily use a
+        // regular array where all slots are sizeof(Value), it maintains the max
+        // argument stack depth separately.
         JS_ASSERT(graph->argumentSlotCount() == 0);
         frameDepth_ += gen->maxAsmJSStackArgBytes();
 
-        // An MAsmJSCall does not align the stack pointer at calls sites but instead
-        // relies on the a priori stack adjustment (in the prologue) on platforms
-        // (like x64) which require the stack to be aligned.
-        if (StackKeptAligned || gen->performsCall() || gen->usesSimd()) {
-            unsigned alignmentAtCall = sizeof(AsmJSFrame) + frameDepth_;
-            unsigned firstFixup = 0;
-            if (unsigned rem = alignmentAtCall % StackAlignment)
-                frameDepth_ += (firstFixup = StackAlignment - rem);
-
-            if (gen->usesSimd())
-                setupSimdAlignment(firstFixup);
+        // If the function uses any SIMD, we may need to insert padding so that
+        // local slots are aligned for SIMD.
+        if (gen->usesSimd()) {
+            frameInitialAdjustment_ = ComputeByteAlignment(sizeof(AsmJSFrame), AsmJSStackAlignment);
+            frameDepth_ += frameInitialAdjustment_;
         }
+
+        // An MAsmJSCall does not align the stack pointer at calls sites but instead
+        // relies on the a priori stack adjustment. This must be the last
+        // adjustment of frameDepth_.
+        if (gen->performsCall())
+            frameDepth_ += ComputeByteAlignment(sizeof(AsmJSFrame) + frameDepth_, AsmJSStackAlignment);
 
         // FrameSizeClass is only used for bailing, which cannot happen in
         // asm.js code.
@@ -95,38 +95,6 @@ CodeGeneratorShared::CodeGeneratorShared(MIRGenerator *gen, LIRGraph *graph, Mac
     } else {
         frameClass_ = FrameSizeClass::FromDepth(frameDepth_);
     }
-}
-
-void
-CodeGeneratorShared::setupSimdAlignment(unsigned fixup)
-{
-    JS_STATIC_ASSERT(SimdStackAlignment % StackAlignment == 0);
-    //  At this point, we have:
-    //      (frameDepth_ + sizeof(AsmJSFrame)) % StackAlignment == 0
-    //  which means we can add as many SimdStackAlignment as needed.
-
-    //  The next constraint is to have all stack slots
-    //  aligned for SIMD. That's done by having the first stack slot
-    //  aligned. We need an offset such that:
-    //      (frameDepth_ - offset) % SimdStackAlignment == 0
-    frameInitialAdjustment_ = frameDepth_ % SimdStackAlignment;
-
-    //  We need to ensure that the first stack slot is actually
-    //  located in this frame and not beforehand, when taking this
-    //  offset into account, i.e.:
-    //      frameDepth_ - initial adjustment >= frameDepth_ - fixup
-    //  <=>                            fixup >= initial adjustment
-    //
-    //  For instance, on x86 with gcc, if the initial frameDepth
-    //  % 16 is 8, then the fixup is 0, although the initial
-    //  adjustment is 8. The first stack slot would be located at
-    //  frameDepth - 8 in this case, which is obviously before
-    //  frameDepth.
-    //
-    //  If that's not the case, we add SimdStackAlignment to the
-    //  fixup, which will keep on satisfying other constraints.
-    if (frameInitialAdjustment_ > int32_t(fixup))
-        frameDepth_ += SimdStackAlignment;
 }
 
 bool
@@ -848,7 +816,15 @@ class StoreOp
         masm.storePtr(reg, dump);
     }
     void operator()(FloatRegister reg, Address dump) {
+#if defined(JS_CODEGEN_ARM) || defined(JS_CODEGEN_MIPS)
+        if (reg.isDouble()) {
+            masm.storeDouble(reg, dump);
+        } else {
+            masm.storeFloat32(reg, dump);
+        }
+#else
         masm.storeDouble(reg, dump);
+#endif
     }
 };
 
@@ -889,16 +865,21 @@ class VerifyOp
     }
     void operator()(FloatRegister reg, Address dump) {
         FloatRegister scratch;
-#ifdef JS_CODEGEN_ARM
-        if (reg.isDouble())
+#if defined(JS_CODEGEN_ARM) || defined(JS_CODEGEN_MIPS)
+        if (reg.isDouble()) {
             scratch = ScratchDoubleReg;
-        else
+            masm.loadDouble(dump, scratch);
+            masm.branchDouble(Assembler::DoubleNotEqual, scratch, reg, failure_);
+        } else {
             scratch = ScratchFloat32Reg;
+            masm.loadFloat32(dump, scratch);
+            masm.branchFloat(Assembler::DoubleNotEqual, scratch, reg, failure_);
+        }
 #else
         scratch = ScratchFloat32Reg;
-#endif
         masm.loadDouble(dump, scratch);
         masm.branchDouble(Assembler::DoubleNotEqual, scratch, reg, failure_);
+#endif
     }
 };
 
@@ -1014,7 +995,7 @@ CodeGeneratorShared::callVM(const VMFunction &fun, LInstruction *ins, const Regi
     if (ins->mirRaw()) {
         JS_ASSERT(ins->mirRaw()->isInstruction());
         MInstruction *mir = ins->mirRaw()->toInstruction();
-        JS_ASSERT_IF(mir->isEffectful(), mir->resumePoint());
+        JS_ASSERT_IF(mir->needsResumePoint(), mir->resumePoint());
     }
 #endif
 
@@ -1179,21 +1160,21 @@ CodeGeneratorShared::omitOverRecursedCheck() const
 }
 
 void
-CodeGeneratorShared::emitPreBarrier(Register base, const LAllocation *index, MIRType type)
+CodeGeneratorShared::emitPreBarrier(Register base, const LAllocation *index)
 {
     if (index->isConstant()) {
         Address address(base, ToInt32(index) * sizeof(Value));
-        masm.patchableCallPreBarrier(address, type);
+        masm.patchableCallPreBarrier(address, MIRType_Value);
     } else {
         BaseIndex address(base, ToRegister(index), TimesEight);
-        masm.patchableCallPreBarrier(address, type);
+        masm.patchableCallPreBarrier(address, MIRType_Value);
     }
 }
 
 void
-CodeGeneratorShared::emitPreBarrier(Address address, MIRType type)
+CodeGeneratorShared::emitPreBarrier(Address address)
 {
-    masm.patchableCallPreBarrier(address, type);
+    masm.patchableCallPreBarrier(address, MIRType_Value);
 }
 
 void

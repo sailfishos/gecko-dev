@@ -24,10 +24,10 @@ class Element;
 }
 }
 
-class nsTextControlFrame : public nsContainerFrame,
-                           public nsIAnonymousContentCreator,
-                           public nsITextControlFrame,
-                           public nsIStatefulFrame
+class nsTextControlFrame MOZ_FINAL : public nsContainerFrame,
+                                     public nsIAnonymousContentCreator,
+                                     public nsITextControlFrame,
+                                     public nsIStatefulFrame
 {
 public:
   NS_DECL_FRAMEARENA_HELPERS
@@ -46,10 +46,15 @@ public:
   virtual nscoord GetMinISize(nsRenderingContext* aRenderingContext) MOZ_OVERRIDE;
   virtual nscoord GetPrefISize(nsRenderingContext* aRenderingContext) MOZ_OVERRIDE;
 
-  virtual nsSize ComputeAutoSize(nsRenderingContext *aRenderingContext,
-                                 nsSize aCBSize, nscoord aAvailableWidth,
-                                 nsSize aMargin, nsSize aBorder,
-                                 nsSize aPadding, bool aShrinkWrap) MOZ_OVERRIDE;
+  virtual mozilla::LogicalSize
+  ComputeAutoSize(nsRenderingContext *aRenderingContext,
+                  mozilla::WritingMode aWritingMode,
+                  const mozilla::LogicalSize& aCBSize,
+                  nscoord aAvailableISize,
+                  const mozilla::LogicalSize& aMargin,
+                  const mozilla::LogicalSize& aBorder,
+                  const mozilla::LogicalSize& aPadding,
+                  bool aShrinkWrap) MOZ_OVERRIDE;
 
   virtual void Reflow(nsPresContext*           aPresContext,
                       nsHTMLReflowMetrics&     aDesiredSize,
@@ -199,7 +204,7 @@ protected:
 
   class EditorInitializer : public nsRunnable {
   public:
-    EditorInitializer(nsTextControlFrame* aFrame) :
+    explicit EditorInitializer(nsTextControlFrame* aFrame) :
       mFrame(aFrame) {}
 
     NS_IMETHOD Run() MOZ_OVERRIDE;
@@ -218,7 +223,7 @@ protected:
 
   class ScrollOnFocusEvent : public nsRunnable {
   public:
-    ScrollOnFocusEvent(nsTextControlFrame* aFrame) :
+    explicit ScrollOnFocusEvent(nsTextControlFrame* aFrame) :
       mFrame(aFrame) {}
 
     NS_DECL_NSIRUNNABLE

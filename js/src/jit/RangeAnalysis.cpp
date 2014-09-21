@@ -272,7 +272,7 @@ RangeAnalysis::removeBetaNodes()
                 MDefinition *op = def->getOperand(0);
                 IonSpew(IonSpew_Range, "Removing beta node %d for %d",
                         def->id(), op->id());
-                def->replaceAllUsesWith(op);
+                def->justReplaceAllUsesWith(op);
                 iter = block->discardDefAt(iter);
             } else {
                 // We only place Beta nodes at the beginning of basic
@@ -1229,6 +1229,12 @@ MCeil::computeRange(TempAllocator &alloc)
 }
 
 void
+MClz::computeRange(TempAllocator &alloc)
+{
+    setRange(Range::NewUInt32Range(alloc, 0, 32));
+}
+
+void
 MMinMax::computeRange(TempAllocator &alloc)
 {
     if (specialization_ != MIRType_Int32 && specialization_ != MIRType_Double)
@@ -1520,11 +1526,11 @@ MStringLength::computeRange(TempAllocator &alloc)
 void
 MArgumentsLength::computeRange(TempAllocator &alloc)
 {
-    // This is is a conservative upper bound on what |TooManyArguments| checks.
-    // If exceeded, Ion will not be entered in the first place.
-    static_assert(SNAPSHOT_MAX_NARGS <= UINT32_MAX,
-                  "NewUInt32Range requires a uint32 value");
-    setRange(Range::NewUInt32Range(alloc, 0, SNAPSHOT_MAX_NARGS));
+    // This is is a conservative upper bound on what |TooManyActualArguments|
+    // checks.  If exceeded, Ion will not be entered in the first place.
+    MOZ_ASSERT(js_JitOptions.maxStackArgs <= UINT32_MAX,
+               "NewUInt32Range requires a uint32 value");
+    setRange(Range::NewUInt32Range(alloc, 0, js_JitOptions.maxStackArgs));
 }
 
 void
@@ -2158,6 +2164,20 @@ MConstant::truncate(TruncateKind kind)
 }
 
 bool
+MPhi::truncate(TruncateKind kind)
+{
+    if (type() == MIRType_Double || type() == MIRType_Int32) {
+        truncateKind_ = kind;
+        setResultType(MIRType_Int32);
+        if (kind >= IndirectTruncate && range())
+            range()->wrapAroundToInt32();
+        return true;
+    }
+
+    return false;
+}
+
+bool
 MAdd::truncate(TruncateKind kind)
 {
     // Remember analysis, needed for fallible checks.
@@ -2294,6 +2314,14 @@ MDefinition::operandTruncateKind(size_t index) const
 {
     // Generic routine: We don't know anything.
     return NoTruncate;
+}
+
+MDefinition::TruncateKind
+MPhi::operandTruncateKind(size_t index) const
+{
+    // The truncation applied to a phi is effectively applied to the phi's
+    // operands.
+    return truncateKind_;
 }
 
 MDefinition::TruncateKind
@@ -2454,7 +2482,7 @@ TruncateTest(TempAllocator &alloc, MTest *test)
 // Examine all the users of |candidate| and determine the most aggressive
 // truncate kind that satisfies all of them.
 static MDefinition::TruncateKind
-ComputeRequestedTruncateKind(MInstruction *candidate)
+ComputeRequestedTruncateKind(MDefinition *candidate)
 {
     // If the value naturally produces an int32 value (before bailout checks)
     // that needs no conversion, we don't have to worry about resume points
@@ -2485,7 +2513,7 @@ ComputeRequestedTruncateKind(MInstruction *candidate)
 }
 
 static MDefinition::TruncateKind
-ComputeTruncateKind(MInstruction *candidate)
+ComputeTruncateKind(MDefinition *candidate)
 {
     // Compare operations might coerce its inputs to int32 if the ranges are
     // correct.  So we do not need to check if all uses are coerced.
@@ -2512,7 +2540,7 @@ ComputeTruncateKind(MInstruction *candidate)
 }
 
 static void
-RemoveTruncatesOnOutput(MInstruction *truncated)
+RemoveTruncatesOnOutput(MDefinition *truncated)
 {
     // Compare returns a boolean so it doen't have any output truncates.
     if (truncated->isCompare())
@@ -2531,7 +2559,7 @@ RemoveTruncatesOnOutput(MInstruction *truncated)
 }
 
 static void
-AdjustTruncatedInputs(TempAllocator &alloc, MInstruction *truncated)
+AdjustTruncatedInputs(TempAllocator &alloc, MDefinition *truncated)
 {
     MBasicBlock *block = truncated->block();
     for (size_t i = 0, e = truncated->numOperands(); i < e; i++) {
@@ -2546,20 +2574,26 @@ AdjustTruncatedInputs(TempAllocator &alloc, MInstruction *truncated)
         if (input->isToDouble() && input->getOperand(0)->type() == MIRType_Int32) {
             JS_ASSERT(input->range()->isInt32());
             truncated->replaceOperand(i, input->getOperand(0));
-        } else if (kind == MDefinition::TruncateAfterBailouts) {
-            MToInt32 *op = MToInt32::New(alloc, truncated->getOperand(i));
-            block->insertBefore(truncated, op);
-            truncated->replaceOperand(i, op);
         } else {
-            MTruncateToInt32 *op = MTruncateToInt32::New(alloc, truncated->getOperand(i));
-            block->insertBefore(truncated, op);
+            MInstruction *op;
+            if (kind == MDefinition::TruncateAfterBailouts)
+                op = MToInt32::New(alloc, truncated->getOperand(i));
+            else
+                op = MTruncateToInt32::New(alloc, truncated->getOperand(i));
+
+            if (truncated->isPhi()) {
+                MBasicBlock *pred = block->getPredecessor(i);
+                pred->insertBefore(pred->lastIns(), op);
+            } else {
+                block->insertBefore(truncated->toInstruction(), op);
+            }
             truncated->replaceOperand(i, op);
         }
     }
 
     if (truncated->isToDouble()) {
-        truncated->replaceAllUsesWith(truncated->getOperand(0));
-        block->discard(truncated);
+        truncated->replaceAllUsesWith(truncated->toToDouble()->getOperand(0));
+        block->discard(truncated->toToDouble());
     }
 }
 
@@ -2585,7 +2619,7 @@ RangeAnalysis::truncate()
     // any automatic truncations.
     MOZ_ASSERT(!mir->compilingAsmJS());
 
-    Vector<MInstruction *, 16, SystemAllocPolicy> worklist;
+    Vector<MDefinition *, 16, SystemAllocPolicy> worklist;
     Vector<MBinaryBitwiseInstruction *, 16, SystemAllocPolicy> bitops;
 
     for (PostorderIterator block(graph_.poBegin()); block != graph_.poEnd(); block++) {
@@ -2623,15 +2657,30 @@ RangeAnalysis::truncate()
             if (!worklist.append(*iter))
                 return false;
         }
+        for (MPhiIterator iter(block->phisBegin()), end(block->phisEnd()); iter != end; ++iter) {
+            MDefinition::TruncateKind kind = ComputeTruncateKind(*iter);
+            if (kind == MDefinition::NoTruncate)
+                continue;
+
+            // Truncate this phi if possible.
+            if (!iter->truncate(kind))
+                continue;
+
+            // Delay updates of inputs/outputs to avoid creating node which
+            // would be removed by the truncation of the next operations.
+            iter->setInWorklist();
+            if (!worklist.append(*iter))
+                return false;
+        }
     }
 
     // Update inputs/outputs of truncated instructions.
     IonSpew(IonSpew_Range, "Do graph type fixup (dequeue)");
     while (!worklist.empty()) {
-        MInstruction *ins = worklist.popCopy();
-        ins->setNotInWorklist();
-        RemoveTruncatesOnOutput(ins);
-        AdjustTruncatedInputs(alloc(), ins);
+        MDefinition *def = worklist.popCopy();
+        def->setNotInWorklist();
+        RemoveTruncatesOnOutput(def);
+        AdjustTruncatedInputs(alloc(), def);
     }
 
     // Fold any unnecessary bitops in the graph, such as (x | 0) on an integer
@@ -2665,6 +2714,14 @@ MLoadElementHole::collectRangeInfoPreTrunc()
     Range indexRange(index());
     if (indexRange.isFiniteNonNegative())
         needsNegativeIntCheck_ = false;
+}
+
+void
+MClz::collectRangeInfoPreTrunc()
+{
+    Range inputRange(input());
+    if (!inputRange.canBeZero())
+        operandIsNeverZero_ = true;
 }
 
 void

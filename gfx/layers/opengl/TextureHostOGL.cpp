@@ -184,7 +184,21 @@ TextureHostOGL::SetReleaseFence(const android::sp<android::Fence>& aReleaseFence
     return false;
   }
 
-  mReleaseFence = aReleaseFence;
+  if (!mReleaseFence.get()) {
+    mReleaseFence = aReleaseFence;
+  } else {
+    android::sp<android::Fence> mergedFence = android::Fence::merge(
+                  android::String8::format("TextureHostOGL"),
+                  mReleaseFence, aReleaseFence);
+    if (!mergedFence.get()) {
+      // synchronization is broken, the best we can do is hope fences
+      // signal in order so the new fence will act like a union.
+      // This error handling is same as android::ConsumerBase does.
+      mReleaseFence = aReleaseFence;
+      return false;
+    }
+    mReleaseFence = mergedFence;
+  }
   return true;
 }
 
@@ -296,6 +310,16 @@ TextureImageTextureSourceOGL::Update(gfx::DataSourceSurface* aSurface,
                                      SurfaceFormatToImageFormat(aSurface->GetFormat()));
     }
     ClearCachedFilter();
+
+    if (aDestRegion &&
+        !aSrcOffset &&
+        !aDestRegion->IsEqual(nsIntRect(0, 0, size.width, size.height))) {
+      // UpdateFromDataSource will ignore our specified aDestRegion since the texture
+      // hasn't been allocated with glTexImage2D yet. Call Resize() to force the
+      // allocation (full size, but no upload), and then we'll only upload the pixels
+      // we care about below.
+      mTexImage->Resize(size);
+    }
   }
 
   mTexImage->UpdateFromDataSource(aSurface, aDestRegion, aSrcOffset);

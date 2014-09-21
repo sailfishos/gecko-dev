@@ -311,6 +311,17 @@ public:
   Float _31, _32, _33, _34;
   Float _41, _42, _43, _44;
 
+  Point4D& operator[](int aIndex)
+  {
+      MOZ_ASSERT(aIndex >= 0 && aIndex <= 3, "Invalid matrix array index");
+      return *reinterpret_cast<Point4D*>((&_11)+4*aIndex);
+  }
+  const Point4D& operator[](int aIndex) const
+  {
+      MOZ_ASSERT(aIndex >= 0 && aIndex <= 3, "Invalid matrix array index");
+      return *reinterpret_cast<const Point4D*>((&_11)+4*aIndex);
+  }
+
   /**
    * Returns true if the matrix is isomorphic to a 2D affine transformation.
    */
@@ -375,6 +386,19 @@ public:
     return *this;
   }
 
+  Point4D ProjectPoint(const Point& aPoint) const {
+    // Find a value for z that will transform to 0.
+
+    // The transformed value of z is computed as:
+    // z' = aPoint.x * _13 + aPoint.y * _23 + z * _33 + _43;
+
+    // Solving for z when z' = 0 gives us:
+    float z = -(aPoint.x * _13 + aPoint.y * _23 + _43) / _33;
+
+    // Compute the transformed point
+    return *this * Point4D(aPoint.x, aPoint.y, z, 1);
+  }
+
   static Matrix4x4 From2D(const Matrix &aMatrix) {
     Matrix4x4 matrix;
     matrix._11 = aMatrix._11;
@@ -389,6 +413,16 @@ public:
   bool Is2DIntegerTranslation() const
   {
     return Is2D() && As2D().IsIntegerTranslation();
+  }
+
+  Point4D TransposeTransform4D(const Point4D& aPoint) const
+  {
+      Float x = aPoint.x * _11 + aPoint.y * _12 + aPoint.z * _13 + aPoint.w * _14;
+      Float y = aPoint.x * _21 + aPoint.y * _22 + aPoint.z * _23 + aPoint.w * _24;
+      Float z = aPoint.x * _31 + aPoint.y * _32 + aPoint.z * _33 + aPoint.w * _34;
+      Float w = aPoint.x * _41 + aPoint.y * _42 + aPoint.z * _43 + aPoint.w * _44;
+
+      return Point4D(x, y, z, w);
   }
 
   Point4D operator *(const Point4D& aPoint) const
@@ -452,6 +486,8 @@ public:
     return *this;
   }
 
+  Rect ProjectRectBounds(const Rect& aRect) const;
+
   Matrix4x4 &PostTranslate(Float aX, Float aY, Float aZ)
   {
     _11 += _14 * aX;
@@ -468,6 +504,21 @@ public:
     _43 += _44 * aZ;
 
     return *this;
+  }
+
+  void SkewXY(Float aSkew)
+  {
+    (*this)[1] += (*this)[0] * aSkew;
+  }
+
+  void SkewXZ(Float aSkew)
+  {
+      (*this)[2] += (*this)[0] * aSkew;
+  }
+
+  void SkewYZ(Float aSkew)
+  {
+      (*this)[2] += (*this)[1] * aSkew;
   }
 
   Matrix4x4 &ChangeBasis(Float aX, Float aY, Float aZ)
@@ -519,6 +570,11 @@ public:
     return matrix;
   }
 
+  Matrix4x4& operator*=(const Matrix4x4 &aMatrix)
+  {
+    Matrix4x4 resultMatrix = *this * aMatrix;
+    return *this = resultMatrix;
+  }
 
   /* Returns true if the matrix is an identity matrix.
    */
@@ -564,6 +620,15 @@ public:
   }
 
   bool Invert();
+
+  void Normalize()
+  {
+      for (int i = 0; i < 4; i++) {
+          for (int j = 0; j < 4; j++) {
+              (*this)[i][j] /= (*this)[3][3];
+         }
+      }
+  }
 
   void ScalePost(Float aX, Float aY, Float aZ)
   {
@@ -644,6 +709,21 @@ public:
     NudgeToInteger(&_44, error);
   }
 
+  Point4D TransposedVector(int aIndex) const
+  {
+      MOZ_ASSERT(aIndex >= 0 && aIndex <= 3, "Invalid matrix array index");
+      return Point4D(*((&_11)+aIndex), *((&_21)+aIndex), *((&_31)+aIndex), *((&_41)+aIndex));
+  }
+
+  void SetTransposedVector(int aIndex, Point4D &aVector)
+  {
+      MOZ_ASSERT(aIndex >= 0 && aIndex <= 3, "Invalid matrix array index");
+      *((&_11)+aIndex) = aVector.x;
+      *((&_21)+aIndex) = aVector.y;
+      *((&_31)+aIndex) = aVector.z;
+      *((&_41)+aIndex) = aVector.w;
+  }
+
   // Set all the members of the matrix to NaN
   void SetNAN();
 };
@@ -669,6 +749,35 @@ public:
     , _41(a41), _42(a42), _43(a43), _44(a44)
     , _51(a51), _52(a52), _53(a53), _54(a54)
   {}
+
+  Matrix5x4 operator*(const Matrix5x4 &aMatrix) const
+  {
+    Matrix5x4 resultMatrix;
+
+    resultMatrix._11 = this->_11 * aMatrix._11 + this->_12 * aMatrix._21 + this->_13 * aMatrix._31 + this->_14 * aMatrix._41;
+    resultMatrix._12 = this->_11 * aMatrix._12 + this->_12 * aMatrix._22 + this->_13 * aMatrix._32 + this->_14 * aMatrix._42;
+    resultMatrix._13 = this->_11 * aMatrix._13 + this->_12 * aMatrix._23 + this->_13 * aMatrix._33 + this->_14 * aMatrix._43;
+    resultMatrix._14 = this->_11 * aMatrix._14 + this->_12 * aMatrix._24 + this->_13 * aMatrix._34 + this->_14 * aMatrix._44;
+    resultMatrix._21 = this->_21 * aMatrix._11 + this->_22 * aMatrix._21 + this->_23 * aMatrix._31 + this->_24 * aMatrix._41;
+    resultMatrix._22 = this->_21 * aMatrix._12 + this->_22 * aMatrix._22 + this->_23 * aMatrix._32 + this->_24 * aMatrix._42;
+    resultMatrix._23 = this->_21 * aMatrix._13 + this->_22 * aMatrix._23 + this->_23 * aMatrix._33 + this->_24 * aMatrix._43;
+    resultMatrix._24 = this->_21 * aMatrix._14 + this->_22 * aMatrix._24 + this->_23 * aMatrix._34 + this->_24 * aMatrix._44;
+    resultMatrix._31 = this->_31 * aMatrix._11 + this->_32 * aMatrix._21 + this->_33 * aMatrix._31 + this->_34 * aMatrix._41;
+    resultMatrix._32 = this->_31 * aMatrix._12 + this->_32 * aMatrix._22 + this->_33 * aMatrix._32 + this->_34 * aMatrix._42;
+    resultMatrix._33 = this->_31 * aMatrix._13 + this->_32 * aMatrix._23 + this->_33 * aMatrix._33 + this->_34 * aMatrix._43;
+    resultMatrix._34 = this->_31 * aMatrix._14 + this->_32 * aMatrix._24 + this->_33 * aMatrix._34 + this->_34 * aMatrix._44;
+    resultMatrix._41 = this->_41 * aMatrix._11 + this->_42 * aMatrix._21 + this->_43 * aMatrix._31 + this->_44 * aMatrix._41;
+    resultMatrix._42 = this->_41 * aMatrix._12 + this->_42 * aMatrix._22 + this->_43 * aMatrix._32 + this->_44 * aMatrix._42;
+    resultMatrix._43 = this->_41 * aMatrix._13 + this->_42 * aMatrix._23 + this->_43 * aMatrix._33 + this->_44 * aMatrix._43;
+    resultMatrix._44 = this->_41 * aMatrix._14 + this->_42 * aMatrix._24 + this->_43 * aMatrix._34 + this->_44 * aMatrix._44;
+    resultMatrix._51 = this->_51 * aMatrix._11 + this->_52 * aMatrix._21 + this->_53 * aMatrix._31 + this->_54 * aMatrix._41 + aMatrix._51;
+    resultMatrix._52 = this->_51 * aMatrix._12 + this->_52 * aMatrix._22 + this->_53 * aMatrix._32 + this->_54 * aMatrix._42 + aMatrix._52;
+    resultMatrix._53 = this->_51 * aMatrix._13 + this->_52 * aMatrix._23 + this->_53 * aMatrix._33 + this->_54 * aMatrix._43 + aMatrix._53;
+    resultMatrix._54 = this->_51 * aMatrix._14 + this->_52 * aMatrix._24 + this->_53 * aMatrix._34 + this->_54 * aMatrix._44 + aMatrix._54;
+
+    return resultMatrix;
+  }
+
   Float _11, _12, _13, _14;
   Float _21, _22, _23, _24;
   Float _31, _32, _33, _34;

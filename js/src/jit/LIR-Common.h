@@ -147,6 +147,21 @@ class LSimdValueX4 : public LInstructionHelper<1, 4, 0>
     }
 };
 
+// Constructs a SIMD value with 4 equal components (e.g. int32x4, float32x4).
+class LSimdSplatX4 : public LInstructionHelper<1, 1, 0>
+{
+  public:
+    LIR_HEADER(SimdSplatX4)
+    explicit LSimdSplatX4(const LAllocation &v)
+    {
+        setOperand(0, v);
+    }
+
+    MSimdSplatX4 *mir() const {
+        return mir_->toSimdSplatX4();
+    }
+};
+
 // Extracts an element from a given SIMD int32x4 lane.
 class LSimdExtractElementI : public LInstructionHelper<1, 1, 0>
 {
@@ -185,6 +200,61 @@ class LSimdExtractElementF : public LInstructionHelper<1, 1, 0>
     }
 };
 
+class LSimdSignMaskX4 : public LInstructionHelper<1, 1, 0>
+{
+  public:
+    LIR_HEADER(SimdSignMaskX4);
+
+    LSimdSignMaskX4(const LAllocation &input) {
+        setOperand(0, input);
+    }
+};
+
+// Binary SIMD comparison operation between two SIMD operands
+class LSimdBinaryComp: public LInstructionHelper<1, 2, 0>
+{
+  protected:
+    LSimdBinaryComp() {}
+
+public:
+    const LAllocation *lhs() {
+        return getOperand(0);
+    }
+    const LAllocation *rhs() {
+        return getOperand(1);
+    }
+    MSimdBinaryComp::Operation operation() const {
+        return mir_->toSimdBinaryComp()->operation();
+    }
+    const char *extraName() const {
+        switch (operation()) {
+          case MSimdBinaryComp::greaterThan: return "greaterThan";
+          case MSimdBinaryComp::greaterThanOrEqual: return "greaterThanOrEqual";
+          case MSimdBinaryComp::lessThan: return "lessThan";
+          case MSimdBinaryComp::lessThanOrEqual: return "lessThanOrEqual";
+          case MSimdBinaryComp::equal: return "equal";
+          case MSimdBinaryComp::notEqual: return "notEqual";
+        }
+        MOZ_CRASH("unexpected operation");
+    }
+};
+
+// Binary SIMD comparison operation between two Int32x4 operands
+class LSimdBinaryCompIx4 : public LSimdBinaryComp
+{
+  public:
+    LIR_HEADER(SimdBinaryCompIx4);
+    LSimdBinaryCompIx4() : LSimdBinaryComp() {}
+};
+
+// Binary SIMD comparison operation between two Float32x4 operands
+class LSimdBinaryCompFx4 : public LSimdBinaryComp
+{
+  public:
+    LIR_HEADER(SimdBinaryCompFx4);
+    LSimdBinaryCompFx4() : LSimdBinaryComp() {}
+};
+
 // Binary SIMD arithmetic operation between two SIMD operands
 class LSimdBinaryArith : public LInstructionHelper<1, 2, 0>
 {
@@ -219,6 +289,22 @@ class LSimdBinaryArithFx4 : public LSimdBinaryArith
   public:
     LIR_HEADER(SimdBinaryArithFx4);
     LSimdBinaryArithFx4() : LSimdBinaryArith() {}
+};
+
+// Binary SIMD bitwise operation between two int32x4 or float32x4 operands
+class LSimdBinaryBitwiseX4 : public LInstructionHelper<1, 2, 0>
+{
+  public:
+    LIR_HEADER(SimdBinaryBitwiseX4);
+    const LAllocation *lhs() {
+        return getOperand(0);
+    }
+    const LAllocation *rhs() {
+        return getOperand(1);
+    }
+    MSimdBinaryBitwise::Operation operation() const {
+        return mir_->toSimdBinaryBitwise()->operation();
+    }
 };
 
 // Constant 32-bit integer.
@@ -434,6 +520,24 @@ class LNewArray : public LInstructionHelper<1, 0, 1>
 
     MNewArray *mir() const {
         return mir_->toNewArray();
+    }
+};
+
+class LNewArrayCopyOnWrite : public LInstructionHelper<1, 0, 1>
+{
+  public:
+    LIR_HEADER(NewArrayCopyOnWrite)
+
+    explicit LNewArrayCopyOnWrite(const LDefinition &temp) {
+        setTemp(0, temp);
+    }
+
+    const LDefinition *temp() {
+        return getTemp(0);
+    }
+
+    MNewArrayCopyOnWrite *mir() const {
+        return mir_->toNewArrayCopyOnWrite();
     }
 };
 
@@ -2659,6 +2763,20 @@ class LAbsF : public LInstructionHelper<1, 1, 0>
     }
 };
 
+// Count leading zeroes
+class LClzI : public LInstructionHelper<1, 1, 0>
+{
+  public:
+    LIR_HEADER(ClzI)
+    LClzI(const LAllocation &num) {
+        setOperand(0, num);
+    }
+
+    MClz *mir() const {
+        return mir_->toClz();
+    }
+};
+
 // Square root of a double.
 class LSqrtD : public LInstructionHelper<1, 1, 0>
 {
@@ -3755,6 +3873,26 @@ class LMaybeToDoubleElement : public LInstructionHelper<BOX_PIECES, 2, 1>
         return getOperand(1);
     }
     const LDefinition *tempFloat() {
+        return getTemp(0);
+    }
+};
+
+// If necessary, copy the elements in an object so they may be written to.
+class LMaybeCopyElementsForWrite : public LInstructionHelper<0, 1, 1>
+{
+  public:
+    LIR_HEADER(MaybeCopyElementsForWrite)
+
+    explicit LMaybeCopyElementsForWrite(const LAllocation &obj, const LDefinition &temp) {
+        setOperand(0, obj);
+        setTemp(0, temp);
+    }
+
+    const LAllocation *object() {
+        return getOperand(0);
+    }
+
+    const LDefinition *temp() {
         return getTemp(0);
     }
 };

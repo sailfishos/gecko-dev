@@ -7,6 +7,7 @@
 #include <iostream>
 #include <vector>
 
+#include "mozilla/Move.h"
 #include "mozilla/Scoped.h"
 #include "mozilla/SyncRunnable.h"
 #include "VideoConduit.h"
@@ -142,12 +143,13 @@ WebrtcGmpVideoEncoder::InitEncode(const webrtc::VideoCodec* aCodecSettings,
                                   int32_t aNumberOfCores,
                                   uint32_t aMaxPayloadSize)
 {
-  mMPS = do_GetService("@mozilla.org/gecko-media-plugin-service;1");
+  if (!mMPS) {
+    mMPS = do_GetService("@mozilla.org/gecko-media-plugin-service;1");
+  }
   MOZ_ASSERT(mMPS);
 
   if (!mGMPThread) {
     if (NS_WARN_IF(NS_FAILED(mMPS->GetThread(getter_AddRefs(mGMPThread))))) {
-      mMPS = nullptr;
       return WEBRTC_VIDEO_CODEC_ERROR;
     }
   }
@@ -181,31 +183,30 @@ WebrtcGmpVideoEncoder::InitEncode_g(const webrtc::VideoCodec* aCodecSettings,
     mHost = nullptr;
     return WEBRTC_VIDEO_CODEC_ERROR;
   }
-  mMPS = nullptr;
 
   if (!mGMP || !mHost) {
     return WEBRTC_VIDEO_CODEC_ERROR;
   }
 
   // Bug XXXXXX: transfer settings from codecSettings to codec.
-  GMPVideoCodec codec;
-  memset(&codec, 0, sizeof(codec));
+  memset(&mCodecParams, 0, sizeof(mCodecParams));
 
-  codec.mGMPApiVersion = 33;
-  codec.mWidth = aCodecSettings->width;
-  codec.mHeight = aCodecSettings->height;
-  codec.mStartBitrate = aCodecSettings->startBitrate;
-  codec.mMinBitrate = aCodecSettings->minBitrate;
-  codec.mMaxBitrate = aCodecSettings->maxBitrate;
-  codec.mMaxFramerate = aCodecSettings->maxFramerate;
+  mCodecParams.mGMPApiVersion = 33;
+  mCodecParams.mWidth = aCodecSettings->width;
+  mCodecParams.mHeight = aCodecSettings->height;
+  mCodecParams.mStartBitrate = aCodecSettings->startBitrate;
+  mCodecParams.mMinBitrate = aCodecSettings->minBitrate;
+  mCodecParams.mMaxBitrate = aCodecSettings->maxBitrate;
+  mCodecParams.mMaxFramerate = aCodecSettings->maxFramerate;
+  mMaxPayloadSize = aMaxPayloadSize;
   if (aCodecSettings->codecSpecific.H264.packetizationMode == 1) {
-    aMaxPayloadSize = 4*1024*1024; // insanely large
+    mMaxPayloadSize = 4*1024*1024; // insanely large
   }
 
   // Pass dummy codecSpecific data for now...
   nsTArray<uint8_t> codecSpecific;
 
-  GMPErr err = mGMP->InitEncode(codec, codecSpecific, this, 1, aMaxPayloadSize);
+  GMPErr err = mGMP->InitEncode(mCodecParams, codecSpecific, this, 1, mMaxPayloadSize);
   if (err != GMPNoErr) {
     return WEBRTC_VIDEO_CODEC_ERROR;
   }
@@ -244,12 +245,44 @@ WebrtcGmpVideoEncoder::Encode_g(const webrtc::I420VideoFrame* aInputImage,
     return WEBRTC_VIDEO_CODEC_ERROR;
   }
 
+  if (aInputImage->width() != mCodecParams.mWidth ||
+      aInputImage->height() != mCodecParams.mHeight) {
+    LOGD(("GMP Encode: resolution change from %ux%u to %ux%u",
+          mCodecParams.mWidth, mCodecParams.mHeight, aInputImage->width(), aInputImage->height()));
+
+    mGMP->Close();
+
+    // OpenH264 codec (at least) can't handle dynamic input resolution changes
+    // re-init the plugin when the resolution changes
+    // XXX allow codec to indicate it doesn't need re-init!
+    nsTArray<nsCString> tags;
+    tags.AppendElement(NS_LITERAL_CSTRING("h264"));
+    if (NS_WARN_IF(NS_FAILED(mMPS->GetGMPVideoEncoder(&tags,
+                                                      NS_LITERAL_STRING(""),
+                                                      &mHost,
+                                                      &mGMP)))) {
+      mGMP = nullptr;
+      mHost = nullptr;
+      return WEBRTC_VIDEO_CODEC_ERROR;
+    }
+
+    mCodecParams.mWidth = aInputImage->width();
+    mCodecParams.mHeight = aInputImage->height();
+    // Pass dummy codecSpecific data for now...
+    nsTArray<uint8_t> codecSpecific;
+
+    GMPErr err = mGMP->InitEncode(mCodecParams, codecSpecific, this, 1, mMaxPayloadSize);
+    if (err != GMPNoErr) {
+      return WEBRTC_VIDEO_CODEC_ERROR;
+    }
+  }
+
   GMPVideoFrame* ftmp = nullptr;
   GMPErr err = mHost->CreateFrame(kGMPI420VideoFrame, &ftmp);
   if (err != GMPNoErr) {
     return WEBRTC_VIDEO_CODEC_ERROR;
   }
-  GMPVideoi420Frame* frame = static_cast<GMPVideoi420Frame*>(ftmp);
+  UniquePtr<GMPVideoi420Frame> frame(static_cast<GMPVideoi420Frame*>(ftmp));
 
   err = frame->CreateFrame(aInputImage->allocated_size(webrtc::kYPlane),
                            aInputImage->buffer(webrtc::kYPlane),
@@ -288,7 +321,7 @@ WebrtcGmpVideoEncoder::Encode_g(const webrtc::I420VideoFrame* aInputImage,
   }
 
   LOGD(("GMP Encode: %llu", (aInputImage->timestamp() * 1000ll)/90));
-  err = mGMP->Encode(frame, codecSpecificInfo, gmp_frame_types);
+  err = mGMP->Encode(Move(frame), codecSpecificInfo, gmp_frame_types);
   if (err != GMPNoErr) {
     return err;
   }
@@ -603,7 +636,7 @@ WebrtcGmpVideoDecoder::Decode_g(const webrtc::EncodedImage& aInputImage,
     return WEBRTC_VIDEO_CODEC_ERROR;
   }
 
-  GMPVideoEncodedFrame* frame = static_cast<GMPVideoEncodedFrame*>(ftmp);
+  UniquePtr<GMPVideoEncodedFrame> frame(static_cast<GMPVideoEncodedFrame*>(ftmp));
   err = frame->CreateEmptyFrame(aInputImage._length);
   if (err != GMPNoErr) {
     return WEBRTC_VIDEO_CODEC_ERROR;
@@ -637,7 +670,7 @@ WebrtcGmpVideoDecoder::Decode_g(const webrtc::EncodedImage& aInputImage,
   codecSpecificInfo.AppendElements((uint8_t*)&info, sizeof(GMPCodecSpecificInfo));
 
   LOGD(("GMP Decode: %llu, len %d", frame->TimeStamp(), aInputImage._length));
-  nsresult rv = mGMP->Decode(frame,
+  nsresult rv = mGMP->Decode(Move(frame),
                              aMissingFrames,
                              codecSpecificInfo,
                              aRenderTimeMs);

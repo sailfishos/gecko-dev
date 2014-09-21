@@ -102,7 +102,10 @@ static MOZ_CONSTEXPR_VAR FloatRegister ScratchSimdReg = InvalidFloatReg;
 static MOZ_CONSTEXPR_VAR FloatRegister ScratchUIntReg = { FloatRegisters::d15, VFPRegister::UInt };
 static MOZ_CONSTEXPR_VAR FloatRegister ScratchIntReg = { FloatRegisters::d15, VFPRegister::Int };
 
-static MOZ_CONSTEXPR_VAR FloatRegister NANReg = { FloatRegisters::d14, VFPRegister::Double };
+// A bias applied to the GlobalReg to allow the use of instructions with small
+// negative immediate offsets which doubles the range of global data that can be
+// accessed with a single instruction.
+static const int32_t AsmJSGlobalRegBias = 1024;
 
 // Registers used in the GenerateFFIIonExit Enable Activation block.
 static MOZ_CONSTEXPR_VAR Register AsmJSIonExitRegCallee = r4;
@@ -142,9 +145,8 @@ static MOZ_CONSTEXPR_VAR FloatRegister d15 = {FloatRegisters::d15, VFPRegister::
 // load/store) operate in a single cycle when the address they are dealing with
 // is 8 byte aligned. Also, the ARM abi wants the stack to be 8 byte aligned at
 // function boundaries. I'm trying to make sure this is always true.
-static const uint32_t StackAlignment = 8;
+static const uint32_t ABIStackAlignment = 8;
 static const uint32_t CodeAlignment = 8;
-static const bool StackKeptAligned = true;
 
 // This boolean indicates whether we support SIMD instructions flavoured for
 // this architecture or not. Rather than a method in the LIRGenerator, it is
@@ -152,6 +154,8 @@ static const bool StackKeptAligned = true;
 // for SIMD is reached on all tier-1 platforms, this constant can be deleted.
 static const bool SupportsSimd = false;
 static const uint32_t SimdStackAlignment = 8;
+
+static const uint32_t AsmJSStackAlignment = SimdStackAlignment;
 
 static const Scale ScalePointer = TimesFour;
 
@@ -1195,9 +1199,9 @@ class Assembler : public AssemblerShared
     // exist, when calling with a third dest parameter, a this object is still
     // needed. Dummy always happens to be null, but we shouldn't be looking at
     // it in any case.
+  public:
     static Assembler *Dummy;
 
-  public:
     // For the alignment fill use NOP: 0x0320f000 or (Always | InstNOP::NopInst).
     // For the nopFill use a branch to the next instruction: 0xeaffffff.
     Assembler()
@@ -1372,6 +1376,7 @@ class Assembler : public AssemblerShared
 
     BufferOffset as_sdiv(Register dest, Register num, Register div, Condition c = Always);
     BufferOffset as_udiv(Register dest, Register num, Register div, Condition c = Always);
+    BufferOffset as_clz(Register dest, Register src, Condition c = Always, Instruction *instdest = nullptr);
 
     // Data transfer instructions: ldr, str, ldrb, strb.
     // Using an int to differentiate between 8 bits and 32 bits is overkill.
@@ -1548,6 +1553,9 @@ class Assembler : public AssemblerShared
     static bool SupportsFloatingPoint() {
         return HasVFP();
     }
+    static bool SupportsSimd() {
+        return js::jit::SupportsSimd;
+    }
 
   protected:
     void addPendingJump(BufferOffset src, ImmPtr target, Relocation::Kind kind) {
@@ -1593,7 +1601,7 @@ class Assembler : public AssemblerShared
         JS_ASSERT(rn.code() > dtmLastReg);
         dtmRegBitField |= 1 << rn.code();
         if (dtmLoadStore == IsLoad && rn.code() == 13 && dtmBase.code() == 13) {
-            MOZ_ASSUME_UNREACHABLE("ARM Spec says this is invalid");
+            MOZ_CRASH("ARM Spec says this is invalid");
         }
     }
     void finishDataTransfer() {
@@ -1718,7 +1726,7 @@ class Assembler : public AssemblerShared
     static void PatchWrite_Imm32(CodeLocationLabel label, Imm32 imm);
 
     static void PatchInstructionImmediate(uint8_t *code, PatchedImmPtr imm) {
-        MOZ_ASSUME_UNREACHABLE("Unused.");
+        MOZ_CRASH("Unused.");
     }
 
     static uint32_t AlignDoubleArg(uint32_t offset) {

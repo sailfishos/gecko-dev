@@ -877,6 +877,10 @@ RStringSplit::recover(JSContext *cx, SnapshotIterator &iter) const
 
     RootedValue result(cx);
 
+    // Use AutoEnterAnalysis to avoid invoking the object metadata callback,
+    // which could try to walk the stack while bailing out.
+    types::AutoEnterAnalysis enter(cx);
+
     JSObject *res = str_split_string(cx, typeObj, str, sep);
     if (!res)
         return false;
@@ -997,6 +1001,10 @@ RNewArray::recover(JSContext *cx, SnapshotIterator &iter) const
     RootedObject templateObject(cx, &iter.read().toObject());
     RootedValue result(cx);
     RootedTypeObject type(cx);
+
+    // Use AutoEnterAnalysis to avoid invoking the object metadata callback
+    // while bailing out, which could try to walk the stack.
+    types::AutoEnterAnalysis enter(cx);
 
     // See CodeGenerator::visitNewArrayCallVM
     if (!templateObject->hasSingletonType())

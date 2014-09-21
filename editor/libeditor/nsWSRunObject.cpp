@@ -4,7 +4,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/Assertions.h"
+#include "mozilla/Casting.h"
 #include "mozilla/mozalloc.h"
+
 #include "nsAString.h"
 #include "nsAutoPtr.h"
 #include "nsCRT.h"
@@ -1339,8 +1341,9 @@ nsWSRunObject::DeleteChars(nsINode* aStartNode, int32_t aStartOffset,
   }
 
   if (aStartNode == aEndNode && aStartNode->GetAsText()) {
-    return mHTMLEditor->DeleteText(aStartNode->GetAsText(),
-        (uint32_t)aStartOffset, (uint32_t)(aEndOffset - aStartOffset));
+    return mHTMLEditor->DeleteText(*aStartNode->GetAsText(),
+        static_cast<uint32_t>(aStartOffset),
+        static_cast<uint32_t>(aEndOffset - aStartOffset));
   }
 
   nsresult res;
@@ -1355,13 +1358,15 @@ nsWSRunObject::DeleteChars(nsINode* aStartNode, int32_t aStartOffset,
     if (node == aStartNode) {
       uint32_t len = node->Length();
       if (uint32_t(aStartOffset) < len) {
-        res = mHTMLEditor->DeleteText(node, (uint32_t)aStartOffset,
+        res = mHTMLEditor->DeleteText(*node,
+                                      AssertedCast<uint32_t>(aStartOffset),
                                       len - aStartOffset);
         NS_ENSURE_SUCCESS(res, res);
       }
     } else if (node == aEndNode) {
       if (aEndOffset) {
-        res = mHTMLEditor->DeleteText(node, 0, (uint32_t)aEndOffset);
+        res = mHTMLEditor->DeleteText(*node, 0,
+                                      AssertedCast<uint32_t>(aEndOffset));
         NS_ENSURE_SUCCESS(res, res);
       }
       break;
@@ -1501,7 +1506,7 @@ nsWSRunObject::ConvertToNBSP(WSPoint aPoint, AreaRestriction aAR)
   nsAutoTxnsConserveSelection dontSpazMySelection(mHTMLEditor);
   nsAutoString nbspStr(nbsp);
   nsresult res = mHTMLEditor->InsertTextIntoTextNodeImpl(nbspStr,
-      aPoint.mTextNode, aPoint.mOffset, true);
+      *aPoint.mTextNode, aPoint.mOffset, true);
   NS_ENSURE_SUCCESS(res, res);
 
   // Next, find range of ws it will replace
@@ -1816,7 +1821,7 @@ nsWSRunObject::CheckTrailingNBSPOfRun(WSFragment *aRun)
       nsAutoTxnsConserveSelection dontSpazMySelection(mHTMLEditor);
       nsAutoString spaceStr(char16_t(32));
       res = mHTMLEditor->InsertTextIntoTextNodeImpl(spaceStr,
-                                                    thePoint.mTextNode,
+                                                    *thePoint.mTextNode,
                                                     thePoint.mOffset, true);
       NS_ENSURE_SUCCESS(res, res);
 
@@ -1846,7 +1851,7 @@ nsWSRunObject::CheckTrailingNBSPOfRun(WSFragment *aRun)
       // Finally, insert that nbsp before the ASCII ws run
       nsAutoTxnsConserveSelection dontSpazMySelection(mHTMLEditor);
       nsAutoString nbspStr(nbsp);
-      res = mHTMLEditor->InsertTextIntoTextNodeImpl(nbspStr, startNode,
+      res = mHTMLEditor->InsertTextIntoTextNodeImpl(nbspStr, *startNode,
                                                     startOffset, true);
       NS_ENSURE_SUCCESS(res, res);
     }
@@ -1882,7 +1887,7 @@ nsWSRunObject::CheckTrailingNBSP(WSFragment* aRun, nsINode* aNode,
     nsAutoTxnsConserveSelection dontSpazMySelection(mHTMLEditor);
     nsAutoString spaceStr(char16_t(32));
     nsresult res = mHTMLEditor->InsertTextIntoTextNodeImpl(spaceStr,
-        thePoint.mTextNode, thePoint.mOffset, true);
+        *thePoint.mTextNode, thePoint.mOffset, true);
     NS_ENSURE_SUCCESS(res, res);
 
     // Finally, delete that nbsp
@@ -1923,7 +1928,7 @@ nsWSRunObject::CheckLeadingNBSP(WSFragment* aRun, nsINode* aNode,
     nsAutoTxnsConserveSelection dontSpazMySelection(mHTMLEditor);
     nsAutoString spaceStr(char16_t(32));
     nsresult res = mHTMLEditor->InsertTextIntoTextNodeImpl(spaceStr,
-        thePoint.mTextNode, thePoint.mOffset, true);
+        *thePoint.mTextNode, thePoint.mOffset, true);
     NS_ENSURE_SUCCESS(res, res);
 
     // Finally, delete that nbsp

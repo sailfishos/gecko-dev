@@ -124,7 +124,7 @@ protected:
 
   class SourceReference : public nsReferencedElement {
   public:
-    SourceReference(nsSVGIDRenderingObserver* aContainer) : mContainer(aContainer) {}
+    explicit SourceReference(nsSVGIDRenderingObserver* aContainer) : mContainer(aContainer) {}
   protected:
     virtual void ElementChanged(Element* aFrom, Element* aTo) MOZ_OVERRIDE {
       mContainer->StopListening();
@@ -164,7 +164,7 @@ protected:
  *
  * The nsSVGFilterProperty class manages a list of nsSVGFilterReferences.
  */
-class nsSVGFilterReference :
+class nsSVGFilterReference MOZ_FINAL :
   public nsSVGIDRenderingObserver, public nsISVGFilterReference {
 public:
   nsSVGFilterReference(nsIURI *aURI, nsIFrame *aFilteredFrame)

@@ -93,13 +93,14 @@ class mozilla::gl::SkiaGLGlue : public GenericAtomicRefCounted {
 #include "nsIGfxInfo.h"
 #include "nsIXULRuntime.h"
 
-#ifdef MOZ_WIDGET_GONK
 namespace mozilla {
 namespace layers {
+#ifdef MOZ_WIDGET_GONK
 void InitGralloc();
-}
-}
 #endif
+void ShutdownTileCache();
+}
+}
 
 using namespace mozilla;
 using namespace mozilla::layers;
@@ -219,6 +220,7 @@ MemoryPressureObserver::Observe(nsISupports *aSubject,
 {
     NS_ASSERTION(strcmp(aTopic, "memory-pressure") == 0, "unexpected event topic");
     Factory::PurgeAllCaches();
+    gfxGradientCache::PurgeAllCaches();
 
     gfxPlatform::GetPlatform()->PurgeSkiaCache();
     return NS_OK;
@@ -276,6 +278,7 @@ gfxPlatform::gfxPlatform()
     uint32_t contentMask = BackendTypeBit(BackendType::CAIRO);
     InitBackendPrefs(canvasMask, BackendType::CAIRO,
                      contentMask, BackendType::CAIRO);
+    mTotalSystemMemory = mozilla::hal::GetTotalSystemMemory();
 }
 
 gfxPlatform*
@@ -442,6 +445,7 @@ gfxPlatform::Shutdown()
     gfxAlphaBoxBlur::ShutdownBlurCache();
     gfxGraphiteShaper::Shutdown();
     gfxPlatformFontList::Shutdown();
+    ShutdownTileCache();
 
     // Free the various non-null transforms and loaded profiles
     ShutdownCMS();
@@ -505,8 +509,7 @@ gfxPlatform::InitLayersIPC()
 
     AsyncTransactionTrackersHolder::Initialize();
 
-    if (UsesOffMainThreadCompositing() &&
-        XRE_GetProcessType() == GeckoProcessType_Default)
+    if (XRE_GetProcessType() == GeckoProcessType_Default)
     {
         mozilla::layers::CompositorParent::StartUp();
 #ifndef MOZ_WIDGET_GONK
@@ -528,8 +531,7 @@ gfxPlatform::ShutdownLayersIPC()
     }
     sLayersIPCIsUp = false;
 
-    if (UsesOffMainThreadCompositing() &&
-        XRE_GetProcessType() == GeckoProcessType_Default)
+    if (XRE_GetProcessType() == GeckoProcessType_Default)
     {
         // This must happen after the shutdown of media and widgets, which
         // are triggered by the NS_XPCOM_SHUTDOWN_OBSERVER_ID notification.
@@ -851,14 +853,12 @@ gfxPlatform::InitializeSkiaCacheLimits()
     cacheSizeLimit *= 1024*1024;
 
     if (usingDynamicCache) {
-      uint32_t totalMemory = mozilla::hal::GetTotalSystemMemory();
-
-      if (totalMemory < 512*1024*1024) {
+      if (mTotalSystemMemory < 512*1024*1024) {
         // We need a very minimal cache on anything smaller than 512mb.
         // Note the large jump as we cross 512mb (from 2mb to 32mb).
         cacheSizeLimit = 2*1024*1024;
-      } else if (totalMemory > 0) {
-        cacheSizeLimit = totalMemory / 16;
+      } else if (mTotalSystemMemory > 0) {
+        cacheSizeLimit = mTotalSystemMemory / 16;
       }
     }
 
@@ -867,7 +867,7 @@ gfxPlatform::InitializeSkiaCacheLimits()
   #endif
 
 #ifdef USE_SKIA_GPU
-    mSkiaGlue->GetGrContext()->setTextureCacheLimits(cacheItemLimit, cacheSizeLimit);
+    mSkiaGlue->GetGrContext()->setResourceCacheLimits(cacheItemLimit, cacheSizeLimit);
 #endif
   }
 }
@@ -905,7 +905,21 @@ gfxPlatform::PurgeSkiaCache()
       return;
 
   mSkiaGlue->GetGrContext()->freeGpuResources();
+  // GrContext::flush() doesn't call glFlush. Call it here.
+  mSkiaGlue->GetGLContext()->MakeCurrent();
+  mSkiaGlue->GetGLContext()->fFlush();
 #endif
+}
+
+bool
+gfxPlatform::HasEnoughTotalSystemMemoryForSkiaGL()
+{
+#ifdef MOZ_WIDGET_GONK
+  if (mTotalSystemMemory < 250*1024*1024) {
+    return false;
+  }
+#endif
+  return true;
 }
 
 TemporaryRef<DrawTarget>

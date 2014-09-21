@@ -415,6 +415,49 @@ describe("loop.webapp", function() {
           sinon.assert.calledWithMatch(router.navigate, "call/fakeToken");
         });
 
+      describe("Published and Subscribed Streams", function() {
+        beforeEach(function() {
+          router._websocket = {
+            mediaUp: sinon.spy()
+          };
+          router.initiate();
+        });
+
+        describe("publishStream", function() {
+          it("should not notify the websocket if only one stream is up",
+            function() {
+              conversation.set("publishedStream", true);
+
+              sinon.assert.notCalled(router._websocket.mediaUp);
+            });
+
+          it("should notify the websocket that media is up if both streams" +
+             "are connected", function() {
+              conversation.set("subscribedStream", true);
+              conversation.set("publishedStream", true);
+
+              sinon.assert.calledOnce(router._websocket.mediaUp);
+            });
+        });
+
+        describe("subscribedStream", function() {
+          it("should not notify the websocket if only one stream is up",
+            function() {
+              conversation.set("subscribedStream", true);
+
+              sinon.assert.notCalled(router._websocket.mediaUp);
+            });
+
+          it("should notify the websocket that media is up if both streams" +
+             "are connected", function() {
+              conversation.set("publishedStream", true);
+              conversation.set("subscribedStream", true);
+
+              sinon.assert.calledOnce(router._websocket.mediaUp);
+            });
+        });
+      });
+
       describe("#setupOutgoingCall", function() {
         beforeEach(function() {
           router.initiate();
@@ -491,14 +534,6 @@ describe("loop.webapp", function() {
   });
 
   describe("StartConversationView", function() {
-    var conversation;
-
-    beforeEach(function() {
-      conversation = new sharedModels.ConversationModel({}, {
-        sdk: {},
-        pendingCallTimeout: 1000});
-    });
-
     describe("#initialize", function() {
       it("should require a conversation option", function() {
         expect(function() {
@@ -536,27 +571,29 @@ describe("loop.webapp", function() {
         );
       });
 
-      it("should start the conversation establishment process", function() {
-        var button = view.getDOMNode().querySelector(".start-audio-video-call");
-        React.addons.TestUtils.Simulate.click(button);
+      it("should start the audio-video conversation establishment process",
+        function() {
+          var button = view.getDOMNode().querySelector(".btn-accept");
+          React.addons.TestUtils.Simulate.click(button);
 
-        sinon.assert.calledOnce(setupOutgoingCall);
-        sinon.assert.calledWithExactly(setupOutgoingCall);
+          sinon.assert.calledOnce(setupOutgoingCall);
+          sinon.assert.calledWithExactly(setupOutgoingCall);
       });
 
-      it("should start the conversation establishment process", function() {
-        var button = view.getDOMNode().querySelector(".start-audio-only-call");
-        React.addons.TestUtils.Simulate.click(button);
+      it("should start the audio-only conversation establishment process",
+        function() {
+          var button = view.getDOMNode().querySelector(".start-audio-only-call");
+          React.addons.TestUtils.Simulate.click(button);
 
-        sinon.assert.calledOnce(setupOutgoingCall);
-        sinon.assert.calledWithExactly(setupOutgoingCall);
-      });
+          sinon.assert.calledOnce(setupOutgoingCall);
+          sinon.assert.calledWithExactly(setupOutgoingCall);
+        });
 
       it("should disable audio-video button once session is initiated",
          function() {
            conversation.set("loopToken", "fake");
 
-           var button = view.getDOMNode().querySelector(".start-audio-video-call");
+           var button = view.getDOMNode().querySelector(".btn-accept");
            React.addons.TestUtils.Simulate.click(button);
 
            expect(button.disabled).to.eql(true);
@@ -584,7 +621,7 @@ describe("loop.webapp", function() {
          it("should set selectedCallType to audio-video", function() {
            conversation.set("loopToken", "fake");
 
-           var button = view.getDOMNode().querySelector(".start-audio-video-call");
+           var button = view.getDOMNode().querySelector(".standalone-call-btn-video-icon");
            React.addons.TestUtils.Simulate.click(button);
 
            expect(conversation.get("selectedCallType")).to.eql("audio-video");
@@ -648,6 +685,60 @@ describe("loop.webapp", function() {
                                        "unable_retrieve_call_info");
       });
     });
+
+    describe("#render", function() {
+      var conversation, view, requestCallUrlInfo, oldLocalStorageValue;
+
+      beforeEach(function() {
+        oldLocalStorageValue = localStorage.getItem("has-seen-tos");
+        localStorage.removeItem("has-seen-tos");
+
+        conversation = new sharedModels.ConversationModel({
+          loopToken: "fake"
+        }, {
+          sdk: {},
+          pendingCallTimeout: 1000
+        });
+
+        requestCallUrlInfo = sandbox.stub();
+      });
+
+      afterEach(function() {
+        if (oldLocalStorageValue !== null)
+          localStorage.setItem("has-seen-tos", oldLocalStorageValue);
+      });
+
+      it("should show the TOS", function() {
+        var tos;
+
+        view = React.addons.TestUtils.renderIntoDocument(
+          loop.webapp.StartConversationView({
+            model: conversation,
+            notifier: notifier,
+            client: {requestCallUrlInfo: requestCallUrlInfo}
+          })
+        );
+        tos = view.getDOMNode().querySelector(".terms-service");
+
+        expect(tos.classList.contains("hide")).to.equal(false);
+      });
+
+      it("should not show the TOS if it has already been seen", function() {
+        var tos;
+
+        localStorage.setItem("has-seen-tos", "true");
+        view = React.addons.TestUtils.renderIntoDocument(
+          loop.webapp.StartConversationView({
+            model: conversation,
+            notifier: notifier,
+            client: {requestCallUrlInfo: requestCallUrlInfo}
+          })
+        );
+        tos = view.getDOMNode().querySelector(".terms-service");
+
+        expect(tos.classList.contains("hide")).to.equal(true);
+      });
+    });
   });
 
   describe("PromoteFirefoxView", function() {
@@ -703,4 +794,5 @@ describe("loop.webapp", function() {
       });
     });
   });
+
 });

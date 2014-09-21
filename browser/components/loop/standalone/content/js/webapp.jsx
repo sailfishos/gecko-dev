@@ -48,7 +48,7 @@ loop.webapp = (function($, _, OT, webL10n) {
         <div className="promote-firefox">
           <h3>{__("promote_firefox_hello_heading")}</h3>
           <p>
-            <a className="btn btn-large btn-success"
+            <a className="btn btn-large btn-accept"
                href="https://www.mozilla.org/firefox/">
               {__("get_firefox_button")}
             </a>
@@ -73,7 +73,7 @@ loop.webapp = (function($, _, OT, webL10n) {
           <div className="info-panel">
             <div className="firefox-logo" />
             <h1>{__("call_url_unavailable_notification_heading")}</h1>
-            <h4>{__("call_url_unavailable_notification_message")}</h4>
+            <h4>{__("call_url_unavailable_notification_message2")}</h4>
           </div>
           <PromoteFirefoxView helper={this.props.helper} />
         </div>
@@ -100,8 +100,8 @@ loop.webapp = (function($, _, OT, webL10n) {
 
       return (
         /* jshint ignore:start */
-        <header className="container-box">
-          <h1 className="light-weight-font">
+        <header className="standalone-header container-box">
+          <h1 className="standalone-header-title">
             <strong>{__("brandShortname")}</strong> {__("clientShortname")}
           </h1>
           <div className="loop-logo" title="Firefox WebRTC! logo"></div>
@@ -120,7 +120,7 @@ loop.webapp = (function($, _, OT, webL10n) {
   var ConversationFooter = React.createClass({
     render: function() {
       return (
-        <div className="footer container-box">
+        <div className="standalone-footer container-box">
           <div title="Mozilla Logo" className="footer-logo"></div>
         </div>
       );
@@ -203,6 +203,7 @@ loop.webapp = (function($, _, OT, webL10n) {
 
     componentWillUnmount: function() {
       window.removeEventListener("click", this.clickHandler);
+      localStorage.setItem("has-seen-tos", "true");
     },
 
     clickHandler: function(e) {
@@ -228,13 +229,16 @@ loop.webapp = (function($, _, OT, webL10n) {
           "https://www.mozilla.org/privacy/'>" + privacy_notice_name + "</a>"
       });
 
-      var btnClassStartCall = "btn btn-large btn-success " +
-                              "start-audio-video-call " +
+      var btnClassStartCall = "btn btn-large btn-accept " +
                               loop.shared.utils.getTargetPlatform();
       var dropdownMenuClasses = React.addons.classSet({
         "native-dropdown-large-parent": true,
         "standalone-dropdown-menu": true,
         "visually-hidden": !this.state.showCallOptionsMenu
+      });
+      var tosClasses = React.addons.classSet({
+        "terms-service": true,
+        hide: (localStorage.getItem("has-seen-tos") === "true")
       });
 
       return (
@@ -245,23 +249,26 @@ loop.webapp = (function($, _, OT, webL10n) {
             <ConversationHeader
               urlCreationDateString={this.state.urlCreationDateString} />
 
-            <p className="large-font light-weight-font">
-              {__("initiate_call_button_label")}
+            <p className="standalone-call-btn-label">
+              {__("initiate_call_button_label2")}
             </p>
 
             <div id="messages"></div>
 
-            <div className="button-group">
+            <div className="btn-group">
               <div className="flex-padding-1"></div>
-              <div className="button-chevron-menu-group">
-                <div className="button-group-chevron">
-                  <div className="button-group">
+              <div className="standalone-btn-chevron-menu-group">
+                <div className="btn-group-chevron">
+                  <div className="btn-group">
 
                     <button className={btnClassStartCall}
                             onClick={this._initiateOutgoingCall("audio-video")}
                             disabled={this.state.disableCallButton}
-                            title={__("initiate_audio_video_call_tooltip")} >
-                      {__("initiate_audio_video_call_button")}
+                            title={__("initiate_audio_video_call_tooltip2")} >
+                      <span className="standalone-call-btn-text">
+                        {__("initiate_audio_video_call_button2")}
+                      </span>
+                      <span className="standalone-call-btn-video-icon"></span>
                     </button>
 
                     <div className="btn-chevron"
@@ -278,7 +285,7 @@ loop.webapp = (function($, _, OT, webL10n) {
                       <button className="start-audio-only-call"
                               onClick={this._initiateOutgoingCall("audio")}
                               disabled={this.state.disableCallButton} >
-                        {__("initiate_audio_call_button")}
+                        {__("initiate_audio_call_button2")}
                       </button>
                     </li>
                   </ul>
@@ -288,7 +295,7 @@ loop.webapp = (function($, _, OT, webL10n) {
               <div className="flex-padding-1"></div>
             </div>
 
-            <p className="terms-service"
+            <p className={tosClasses}
                dangerouslySetInnerHTML={{__html: tosHTML}}></p>
           </div>
 
@@ -404,6 +411,18 @@ loop.webapp = (function($, _, OT, webL10n) {
     },
 
     /**
+     * Checks if the streams have been connected, and notifies the
+     * websocket that the media is now connected.
+     */
+    _checkConnected: function() {
+      // Check we've had both local and remote streams connected before
+      // sending the media up message.
+      if (this._conversation.streamsConnected()) {
+        this._websocket.mediaUp();
+      }
+    },
+
+    /**
      * Used to receive websocket progress and to determine how to handle
      * it if appropraite.
      */
@@ -488,6 +507,8 @@ loop.webapp = (function($, _, OT, webL10n) {
         client: this._client
       });
       this._conversation.once("call:outgoing:setup", this.setupOutgoingCall, this);
+      this._conversation.once("change:publishedStream", this._checkConnected, this);
+      this._conversation.once("change:subscribedStream", this._checkConnected, this);
       this.loadReactComponent(startView);
     },
 
@@ -532,8 +553,8 @@ loop.webapp = (function($, _, OT, webL10n) {
     var helper = new WebappHelper();
     var client = new loop.StandaloneClient({
       baseServerUrl: baseServerUrl
-    }),
-    router = new WebappRouter({
+    });
+    var router = new WebappRouter({
       helper: helper,
       notifier: new sharedViews.NotificationListView({el: "#messages"}),
       client: client,
@@ -542,12 +563,16 @@ loop.webapp = (function($, _, OT, webL10n) {
         pendingCallTimeout: loop.config.pendingCallTimeout
       })
     });
+
     Backbone.history.start();
     if (helper.isIOS(navigator.platform)) {
       router.navigate("unsupportedDevice", {trigger: true});
     } else if (!OT.checkSystemRequirements()) {
       router.navigate("unsupportedBrowser", {trigger: true});
     }
+
+    document.body.classList.add(loop.shared.utils.getTargetPlatform());
+
     // Set the 'lang' and 'dir' attributes to <html> when the page is translated
     document.documentElement.lang = document.webL10n.getLanguage();
     document.documentElement.dir = document.webL10n.getDirection();

@@ -877,7 +877,7 @@ nsDocShell::nsDocShell():
                     (void*) this,
                     gNumberOfDocShells,
                     getpid(),
-                    SafeCast<unsigned long long>(mHistoryID));
+                    AssertedCast<unsigned long long>(mHistoryID));
   }
 #endif
 }
@@ -909,7 +909,7 @@ nsDocShell::~nsDocShell()
                       (void*) this,
                       gNumberOfDocShells,
                       getpid(),
-                      SafeCast<unsigned long long>(mHistoryID));
+                      AssertedCast<unsigned long long>(mHistoryID));
     }
 #endif
 }
@@ -1322,8 +1322,12 @@ nsDocShell::LoadURI(nsIURI * aURI,
     NS_PRECONDITION((aLoadFlags & 0xf) == 0, "Should not have these flags set");
     
     // Note: we allow loads to get through here even if mFiredUnloadEvent is
-    // true; that case will get handled in LoadInternal or LoadHistoryEntry.
-    if (IsPrintingOrPP()) {
+    // true; that case will get handled in LoadInternal or LoadHistoryEntry,
+    // so we pass false as the second parameter to IsNavigationAllowed.
+    // However, we don't allow the page to change location *in the middle of*
+    // firing beforeunload, so we do need to check if *beforeunload* is currently
+    // firing, so we call IsNavigationAllowed rather than just IsPrintingOrPP.
+    if (!IsNavigationAllowed(true, false)) {
       return NS_OK; // JS may not handle returning of an error code
     }
     nsCOMPtr<nsIURI> referrer;
@@ -2896,6 +2900,36 @@ nsDocShell::RemoveWeakScrollObserver(nsIScrollObserver* aObserver)
     return mScrollObservers.RemoveElement(obs) ? NS_OK : NS_ERROR_FAILURE;
 }
 
+void
+nsDocShell::NotifyAsyncPanZoomStarted()
+{
+    nsTObserverArray<nsWeakPtr>::ForwardIterator iter(mScrollObservers);
+    while (iter.HasMore()) {
+        nsWeakPtr ref = iter.GetNext();
+        nsCOMPtr<nsIScrollObserver> obs = do_QueryReferent(ref);
+        if (obs) {
+            obs->AsyncPanZoomStarted();
+        } else {
+            mScrollObservers.RemoveElement(ref);
+        }
+    }
+}
+
+void
+nsDocShell::NotifyAsyncPanZoomStopped()
+{
+    nsTObserverArray<nsWeakPtr>::ForwardIterator iter(mScrollObservers);
+    while (iter.HasMore()) {
+        nsWeakPtr ref = iter.GetNext();
+        nsCOMPtr<nsIScrollObserver> obs = do_QueryReferent(ref);
+        if (obs) {
+            obs->AsyncPanZoomStopped();
+        } else {
+            mScrollObservers.RemoveElement(ref);
+        }
+    }
+}
+
 NS_IMETHODIMP
 nsDocShell::NotifyScrollObservers()
 {
@@ -4249,9 +4283,11 @@ nsDocShell::IsPrintingOrPP(bool aDisplayErrorDialog)
 }
 
 bool
-nsDocShell::IsNavigationAllowed(bool aDisplayPrintErrorDialog)
+nsDocShell::IsNavigationAllowed(bool aDisplayPrintErrorDialog,
+                                bool aCheckIfUnloadFired)
 {
-  bool isAllowed = !IsPrintingOrPP(aDisplayPrintErrorDialog) && !mFiredUnloadEvent;
+  bool isAllowed = !IsPrintingOrPP(aDisplayPrintErrorDialog) &&
+                   (!aCheckIfUnloadFired || !mFiredUnloadEvent);
   if (!isAllowed) {
     return false;
   }

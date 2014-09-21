@@ -523,25 +523,18 @@ endif
 endif
 
 # Set link flags according to whether we want a console.
+ifeq ($(OS_ARCH),WINNT)
 ifdef MOZ_WINCONSOLE
 ifeq ($(MOZ_WINCONSOLE),1)
-ifeq ($(OS_ARCH),WINNT)
-ifdef GNU_CC
-WIN32_EXE_LDFLAGS	+= -mconsole
-else
-WIN32_EXE_LDFLAGS	+= -SUBSYSTEM:CONSOLE
-endif
-endif
+WIN32_EXE_LDFLAGS	+= $(WIN32_CONSOLE_EXE_LDFLAGS)
 else # MOZ_WINCONSOLE
-ifeq ($(OS_ARCH),WINNT)
-ifdef GNU_CC
-WIN32_EXE_LDFLAGS	+= -mwindows
+WIN32_EXE_LDFLAGS	+= $(WIN32_GUI_EXE_LDFLAGS)
+endif
 else
-WIN32_EXE_LDFLAGS	+= -SUBSYSTEM:WINDOWS
+# For setting subsystem version
+WIN32_EXE_LDFLAGS	+= $(WIN32_CONSOLE_EXE_LDFLAGS)
 endif
-endif
-endif
-endif
+endif # WINNT
 
 ifdef _MSC_VER
 ifeq ($(CPU_ARCH),x86_64)
@@ -697,7 +690,7 @@ EXPAND_MKSHLIB = $(EXPAND_LIBS_EXEC) $(EXPAND_MKSHLIB_ARGS) -- $(MKSHLIB)
 
 ifneq (,$(MOZ_LIBSTDCXX_TARGET_VERSION)$(MOZ_LIBSTDCXX_HOST_VERSION))
 ifneq ($(OS_ARCH),Darwin)
-CHECK_STDCXX = @$(TOOLCHAIN_PREFIX)objdump -p $(1) | grep -e 'GLIBCXX_3\.4\.\(9\|[1-9][0-9]\)' > /dev/null && echo 'TEST-UNEXPECTED-FAIL | check_stdcxx | We do not want these libstdc++ symbols to be used:' && $(TOOLCHAIN_PREFIX)objdump -T $(1) | grep -e 'GLIBCXX_3\.4\.\(9\|[1-9][0-9]\)' && false || true
+CHECK_STDCXX = @$(TOOLCHAIN_PREFIX)objdump -p $(1) | grep -v -e 'GLIBCXX_3\.4\.\(9\|[1-9][0-9]\)' > /dev/null || ( echo 'TEST-UNEXPECTED-FAIL | check_stdcxx | We do not want these libstdc++ symbols to be used:' && $(TOOLCHAIN_PREFIX)objdump -T $(1) | grep -e 'GLIBCXX_3\.4\.\(9\|[1-9][0-9]\)' && false)
 endif
 endif
 

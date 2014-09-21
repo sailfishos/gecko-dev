@@ -8,6 +8,8 @@ let {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
 
+XPCOMUtils.defineLazyModuleGetter(this, "BrowserUtils",
+  "resource://gre/modules/BrowserUtils.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "ContentLinkHandler",
   "resource:///modules/ContentLinkHandler.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "LoginManagerContent",
@@ -18,11 +20,14 @@ XPCOMUtils.defineLazyModuleGetter(this, "PrivateBrowsingUtils",
   "resource://gre/modules/PrivateBrowsingUtils.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "UITour",
   "resource:///modules/UITour.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "FormSubmitObserver",
+  "resource:///modules/FormSubmitObserver.jsm");
 
-// Creates a new nsIURI object.
-function makeURI(uri, originCharset, baseURI) {
-  return Services.io.newURI(uri, originCharset, baseURI);
-}
+// TabChildGlobal
+var global = this;
+
+// Load the form validation popup handler
+var formSubmitObserver = new FormSubmitObserver(content, this);
 
 addMessageListener("Browser:HideSessionRestoreButton", function (message) {
   // Hide session restore button on about:home
@@ -75,7 +80,23 @@ addEventListener("blur", function(event) {
 
 if (Services.appinfo.processType == Services.appinfo.PROCESS_TYPE_CONTENT) {
   addEventListener("contextmenu", function (event) {
-    sendSyncMessage("contextmenu", {}, { event: event });
+    let defaultPrevented = event.defaultPrevented;
+    if (!Services.prefs.getBoolPref("dom.event.contextmenu.enabled")) {
+      let plugin = null;
+      try {
+        plugin = event.target.QueryInterface(Ci.nsIObjectLoadingContent);
+      } catch (e) {}
+      if (plugin && plugin.displayedType == Ci.nsIObjectLoadingContent.TYPE_PLUGIN) {
+        // Don't open a context menu for plugins.
+        return;
+      }
+
+      defaultPrevented = false;
+    }
+
+    if (!defaultPrevented) {
+      sendSyncMessage("contextmenu", {}, { event: event });
+    }
   }, false);
 } else {
   addEventListener("mozUITour", function(event) {
@@ -221,14 +242,14 @@ let AboutHomeListener = {
   },
 
   onPageHide: function(aEvent) {
-    if (event.target.defaultView.frameElement) {
+    if (aEvent.target.defaultView.frameElement) {
       return;
     }
     removeMessageListener("AboutHome:Update", this);
     removeEventListener("click", this, true);
     removeEventListener("pagehide", this, true);
-    if (event.target.documentElement) {
-      event.target.documentElement.removeAttribute("hasBrowserHandlers");
+    if (aEvent.target.documentElement) {
+      aEvent.target.documentElement.removeAttribute("hasBrowserHandlers");
     }
   },
 
@@ -327,9 +348,6 @@ let ContentSearchMediator = {
   },
 };
 ContentSearchMediator.init(this);
-
-
-var global = this;
 
 // Lazily load the finder code
 addMessageListener("Finder:Initialize", function () {
@@ -465,7 +483,7 @@ let ClickEventHandler = {
     // In case of XLink, we don't return the node we got href from since
     // callers expect <a>-like elements.
     // Note: makeURI() will throw if aUri is not a valid URI.
-    return [href ? makeURI(href, null, baseURI).spec : null, null];
+    return [href ? BrowserUtils.makeURI(href, null, baseURI).spec : null, null];
   }
 };
 ClickEventHandler.init();
@@ -578,3 +596,40 @@ if (Services.prefs.getBoolPref("browser.translation.detectLanguage")) {
   Cu.import("resource:///modules/translation/TranslationContentHandler.jsm");
   trHandler = new TranslationContentHandler(global, docShell);
 }
+
+let DOMFullscreenHandler = {
+  _fullscreenDoc: null,
+
+  init: function() {
+    addMessageListener("DOMFullscreen:Approved", this);
+    addMessageListener("DOMFullscreen:CleanUp", this);
+    addEventListener("MozEnteredDomFullscreen", this);
+  },
+
+  receiveMessage: function(aMessage) {
+    switch(aMessage.name) {
+      case "DOMFullscreen:Approved": {
+        if (this._fullscreenDoc) {
+          Services.obs.notifyObservers(this._fullscreenDoc,
+                                       "fullscreen-approved",
+                                       "");
+        }
+        break;
+      }
+      case "DOMFullscreen:CleanUp": {
+        this._fullscreenDoc = null;
+        break;
+      }
+    }
+  },
+
+  handleEvent: function(aEvent) {
+    if (aEvent.type == "MozEnteredDomFullscreen") {
+      this._fullscreenDoc = aEvent.target;
+      sendAsyncMessage("MozEnteredDomFullscreen", {
+        origin: this._fullscreenDoc.nodePrincipal.origin,
+      });
+    }
+  }
+};
+DOMFullscreenHandler.init();

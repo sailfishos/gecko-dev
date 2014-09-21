@@ -10,6 +10,7 @@
 #include "mp4_demuxer/Adts.h"
 #include "mp4_demuxer/mp4_demuxer.h"
 #include "mp4_demuxer/Index.h"
+#include "MediaResource.h"
 
 #include <stdint.h>
 #include <algorithm>
@@ -36,7 +37,7 @@ struct StageFrightPrivate
 class DataSourceAdapter : public DataSource
 {
 public:
-  DataSourceAdapter(Stream* aSource) : mSource(aSource) {}
+  explicit DataSourceAdapter(Stream* aSource) : mSource(aSource) {}
 
   ~DataSourceAdapter() {}
 
@@ -101,13 +102,17 @@ MP4Demuxer::Init()
 
     if (!mPrivate->mAudio.get() && !strncmp(mimeType, "audio/", 6)) {
       mPrivate->mAudio = e->getTrack(i);
-      mPrivate->mAudio->start();
+      if (mPrivate->mAudio->start() != OK) {
+        return false;
+      }
       mAudioConfig.Update(metaData, mimeType);
       mPrivate->mIndexes.AppendElement(new Index(
         mPrivate->mAudio->exportIndex(), mSource, mAudioConfig.mTrackId));
     } else if (!mPrivate->mVideo.get() && !strncmp(mimeType, "video/", 6)) {
       mPrivate->mVideo = e->getTrack(i);
-      mPrivate->mVideo->start();
+      if (mPrivate->mVideo->start() != OK) {
+        return false;
+      }
       mVideoConfig.Update(metaData, mimeType);
       mPrivate->mIndexes.AppendElement(new Index(
         mPrivate->mVideo->exportIndex(), mSource, mVideoConfig.mTrackId));
@@ -215,16 +220,36 @@ MP4Demuxer::ConvertByteRangesToTime(
     return;
   }
 
-  mPrivate->mIndexes[0]->ConvertByteRangesToTimeRanges(aByteRanges, aIntervals);
-
-  for (int i = 1; i < mPrivate->mIndexes.Length(); i++) {
-    nsTArray<Interval<Microseconds>> ranges;
-    mPrivate->mIndexes[i]->ConvertByteRangesToTimeRanges(aByteRanges, &ranges);
-
-    nsTArray<Interval<Microseconds>> intersection;
-    Interval<Microseconds>::Intersection(*aIntervals, ranges, &intersection);
-    *aIntervals = intersection;
+  Microseconds lastComposition = 0;
+  nsTArray<Microseconds> endCompositions;
+  for (int i = 0; i < mPrivate->mIndexes.Length(); i++) {
+    Microseconds endComposition =
+      mPrivate->mIndexes[i]->GetEndCompositionIfBuffered(aByteRanges);
+    endCompositions.AppendElement(endComposition);
+    lastComposition = std::max(lastComposition, endComposition);
   }
+
+  if (aByteRanges != mCachedByteRanges) {
+    mCachedByteRanges = aByteRanges;
+    mCachedTimeRanges.Clear();
+    for (int i = 0; i < mPrivate->mIndexes.Length(); i++) {
+      nsTArray<Interval<Microseconds>> ranges;
+      mPrivate->mIndexes[i]->ConvertByteRangesToTimeRanges(aByteRanges, &ranges);
+      if (lastComposition && endCompositions[i]) {
+        Interval<Microseconds>::SemiNormalAppend(
+          ranges, Interval<Microseconds>(endCompositions[i], lastComposition));
+      }
+
+      if (i) {
+        nsTArray<Interval<Microseconds>> intersection;
+        Interval<Microseconds>::Intersection(mCachedTimeRanges, ranges, &intersection);
+        mCachedTimeRanges = intersection;
+      } else {
+        mCachedTimeRanges = ranges;
+      }
+    }
+  }
+  aIntervals->AppendElements(mCachedTimeRanges);
 }
 
 int64_t
@@ -238,7 +263,7 @@ MP4Demuxer::GetEvictionOffset(Microseconds aTime)
   for (int i = 0; i < mPrivate->mIndexes.Length(); i++) {
     offset = std::min(offset, mPrivate->mIndexes[i]->GetEvictionOffset(aTime));
   }
-  return offset;
+  return offset == std::numeric_limits<uint64_t>::max() ? -1 : offset;
 }
 
 } // namespace mp4_demuxer

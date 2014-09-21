@@ -40,7 +40,7 @@ class PromiseReportRejectFeature : public workers::WorkerFeature
   Promise* mPromise;
 
 public:
-  PromiseReportRejectFeature(Promise* aPromise)
+  explicit PromiseReportRejectFeature(Promise* aPromise)
     : mPromise(aPromise)
   {
     MOZ_ASSERT(mPromise);
@@ -55,7 +55,6 @@ class Promise MOZ_FINAL : public nsISupports,
                           public SupportsWeakPtr<Promise>
 {
   friend class NativePromiseCallback;
-  friend class PromiseResolverMixin;
   friend class PromiseResolverTask;
   friend class PromiseTask;
   friend class PromiseReportRejectFeature;
@@ -63,9 +62,7 @@ class Promise MOZ_FINAL : public nsISupports,
   friend class PromiseWorkerProxyRunnable;
   friend class RejectPromiseCallback;
   friend class ResolvePromiseCallback;
-  friend class ThenableResolverMixin;
-  friend class WorkerPromiseResolverTask;
-  friend class WorkerPromiseTask;
+  friend class ThenableResolverTask;
   friend class WrapperPromiseCallback;
 
   ~Promise();
@@ -165,7 +162,7 @@ public:
 private:
   // Do NOT call this unless you're Promise::Create.  I wish we could enforce
   // that from inside this class too, somehow.
-  Promise(nsIGlobalObject* aGlobal);
+  explicit Promise(nsIGlobalObject* aGlobal);
 
   friend class PromiseDebugging;
 
@@ -191,6 +188,10 @@ private:
   {
     mResult = aValue;
   }
+
+  // Queue an async task to current main or worker thread.
+  static void
+  DispatchToMainOrWorkerThread(nsIRunnable* aRunnable);
 
   // This method processes promise's resolve/reject callbacks with promise's
   // result. It's executed when the resolver.resolve() or resolver.reject() is

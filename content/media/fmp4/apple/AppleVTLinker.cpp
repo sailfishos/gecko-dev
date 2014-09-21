@@ -11,8 +11,8 @@
 #include "nsDebug.h"
 
 #ifdef PR_LOGGING
-PRLogModuleInfo* GetDemuxerLog();
-#define LOG(...) PR_LOG(GetDemuxerLog(), PR_LOG_DEBUG, (__VA_ARGS__))
+PRLogModuleInfo* GetAppleMediaLog();
+#define LOG(...) PR_LOG(GetAppleMediaLog(), PR_LOG_DEBUG, (__VA_ARGS__))
 #else
 #define LOG(...)
 #endif
@@ -77,7 +77,7 @@ AppleVTLinker::Unlink()
   // reference count to avoidunloading our symbols when other
   // instances still need them.
   MOZ_ASSERT(NS_IsMainThread());
-  MOZ_ASSERT(sLink && sRefCount > 0, "Unbalanced Unlink()");
+  MOZ_ASSERT(sRefCount > 0, "Unbalanced Unlink()");
   --sRefCount;
   if (sLink && sRefCount < 1) {
     LOG("Unlinking VideoToolbox framework.");

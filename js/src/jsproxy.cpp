@@ -83,17 +83,6 @@ js::assertEnteredPolicy(JSContext *cx, JSObject *proxy, jsid id,
 }
 #endif
 
-BaseProxyHandler::BaseProxyHandler(const void *family, bool hasPrototype, bool hasSecurityPolicy)
-  : mFamily(family),
-    mHasPrototype(hasPrototype),
-    mHasSecurityPolicy(hasSecurityPolicy)
-{
-}
-
-BaseProxyHandler::~BaseProxyHandler()
-{
-}
-
 bool
 BaseProxyHandler::enter(JSContext *cx, HandleObject wrapper, HandleId id, Action act,
                         bool *bp) const
@@ -578,12 +567,6 @@ DirectProxyHandler::weakmapKeyDelegate(JSObject *proxy) const
     return UncheckedUnwrap(proxy);
 }
 
-DirectProxyHandler::DirectProxyHandler(const void *family, bool hasPrototype,
-                                       bool hasSecurityPolicy)
-  : BaseProxyHandler(family, hasPrototype, hasSecurityPolicy)
-{
-}
-
 bool
 DirectProxyHandler::has(JSContext *cx, HandleObject proxy, HandleId id, bool *bp) const
 {
@@ -761,8 +744,9 @@ namespace {
 class ScriptedIndirectProxyHandler : public BaseProxyHandler
 {
   public:
-    ScriptedIndirectProxyHandler();
-    virtual ~ScriptedIndirectProxyHandler();
+    MOZ_CONSTEXPR ScriptedIndirectProxyHandler()
+      : BaseProxyHandler(&family)
+    { }
 
     /* ES5 Harmony fundamental proxy traps. */
     virtual bool preventExtensions(JSContext *cx, HandleObject proxy) const MOZ_OVERRIDE;
@@ -797,6 +781,7 @@ class ScriptedIndirectProxyHandler : public BaseProxyHandler
     virtual JSString *fun_toString(JSContext *cx, HandleObject proxy, unsigned indent) const MOZ_OVERRIDE;
     virtual bool isScripted() const MOZ_OVERRIDE { return true; }
 
+    static const char family;
     static const ScriptedIndirectProxyHandler singleton;
 };
 
@@ -818,16 +803,7 @@ static const Class CallConstructHolder = {
 } /* anonymous namespace */
 
 // This variable exists solely to provide a unique address for use as an identifier.
-static const char sScriptedIndirectProxyHandlerFamily = 0;
-
-ScriptedIndirectProxyHandler::ScriptedIndirectProxyHandler()
-        : BaseProxyHandler(&sScriptedIndirectProxyHandlerFamily)
-{
-}
-
-ScriptedIndirectProxyHandler::~ScriptedIndirectProxyHandler()
-{
-}
+const char ScriptedIndirectProxyHandler::family = 0;
 
 bool
 ScriptedIndirectProxyHandler::isExtensible(JSContext *cx, HandleObject proxy,
@@ -1077,8 +1053,9 @@ const ScriptedIndirectProxyHandler ScriptedIndirectProxyHandler::singleton;
 /* Derived class for all scripted direct proxy handlers. */
 class ScriptedDirectProxyHandler : public DirectProxyHandler {
   public:
-    ScriptedDirectProxyHandler();
-    virtual ~ScriptedDirectProxyHandler();
+    MOZ_CONSTEXPR ScriptedDirectProxyHandler()
+      : DirectProxyHandler(&family)
+    { }
 
     /* ES5 Harmony fundamental proxy traps. */
     virtual bool preventExtensions(JSContext *cx, HandleObject proxy) const MOZ_OVERRIDE;
@@ -1118,6 +1095,7 @@ class ScriptedDirectProxyHandler : public DirectProxyHandler {
     virtual bool construct(JSContext *cx, HandleObject proxy, const CallArgs &args) const MOZ_OVERRIDE;
     virtual bool isScripted() const MOZ_OVERRIDE { return true; }
 
+    static const char family;
     static const ScriptedDirectProxyHandler singleton;
 
     // The "proxy extra" slot index in which the handler is stored. Revocable proxies need to set
@@ -1127,9 +1105,6 @@ class ScriptedDirectProxyHandler : public DirectProxyHandler {
     // is to be cleared during the first revocation.
     static const int REVOKE_SLOT = 0;
 };
-
-// This variable exists solely to provide a unique address for use as an identifier.
-static const char sScriptedDirectProxyHandlerFamily = 0;
 
 static inline bool
 IsDataDescriptor(const PropertyDescriptor &desc)
@@ -1386,15 +1361,6 @@ ArrayToIdVector(JSContext *cx, HandleObject proxy, HandleObject target, HandleVa
 
     // step n
     return true;
-}
-
-ScriptedDirectProxyHandler::ScriptedDirectProxyHandler()
-        : DirectProxyHandler(&sScriptedDirectProxyHandlerFamily)
-{
-}
-
-ScriptedDirectProxyHandler::~ScriptedDirectProxyHandler()
-{
 }
 
 // ES6 (22 May, 2014) 9.5.4 Proxy.[[PreventExtensions]]()
@@ -2208,6 +2174,7 @@ ScriptedDirectProxyHandler::construct(JSContext *cx, HandleObject proxy, const C
     return true;
 }
 
+const char ScriptedDirectProxyHandler::family = 0;
 const ScriptedDirectProxyHandler ScriptedDirectProxyHandler::singleton;
 
 #define INVOKE_ON_PROTOTYPE(cx, handler, proxy, protoCall)                   \

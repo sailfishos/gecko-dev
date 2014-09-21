@@ -213,6 +213,7 @@ JSObject::ensureDenseInitializedLengthNoPackedCheck(js::ThreadSafeContext *cx, u
                                                     uint32_t extra)
 {
     JS_ASSERT(cx->isThreadLocal(this));
+    JS_ASSERT(!denseElementsAreCopyOnWrite());
 
     /*
      * Ensure that the array's contents have been initialized up to index, and
@@ -255,6 +256,7 @@ JSObject::extendDenseElements(js::ThreadSafeContext *cx,
                               uint32_t requiredCapacity, uint32_t extra)
 {
     JS_ASSERT(cx->isThreadLocal(this));
+    JS_ASSERT(!denseElementsAreCopyOnWrite());
 
     /*
      * Don't grow elements for non-extensible objects or watched objects. Dense
@@ -293,6 +295,9 @@ inline JSObject::EnsureDenseResult
 JSObject::ensureDenseElementsNoPackedCheck(js::ThreadSafeContext *cx, uint32_t index, uint32_t extra)
 {
     JS_ASSERT(isNative());
+
+    if (!maybeCopyElementsForWrite(cx))
+        return ED_FAILED;
 
     uint32_t currentCapacity = getDenseCapacity();
 
@@ -359,6 +364,7 @@ JSObject::initDenseElementsUnbarriered(uint32_t dstStart, const js::Value *src, 
      * things do not require a barrier.
      */
     JS_ASSERT(dstStart + count <= getDenseCapacity());
+    JS_ASSERT(!denseElementsAreCopyOnWrite());
 #if defined(DEBUG) && defined(JSGC_GENERATIONAL)
     /*
      * This asserts a global invariant: parallel code does not
@@ -550,33 +556,69 @@ JSObject::create(js::ExclusiveContext *cx, js::gc::AllocKind kind, js::gc::Initi
     return obj;
 }
 
-/* static */ inline js::ArrayObject *
-JSObject::createArray(js::ExclusiveContext *cx, js::gc::AllocKind kind, js::gc::InitialHeap heap,
-                      js::HandleShape shape, js::HandleTypeObject type,
-                      uint32_t length)
+/* static */ inline JSObject *
+JSObject::createArrayInternal(js::ExclusiveContext *cx, js::gc::AllocKind kind, js::gc::InitialHeap heap,
+                              js::HandleShape shape, js::HandleTypeObject type)
 {
+    // Create a new array and initialize everything except for its elements.
     JS_ASSERT(shape && type);
     JS_ASSERT(type->clasp() == shape->getObjectClass());
     JS_ASSERT(type->clasp() == &js::ArrayObject::class_);
     JS_ASSERT_IF(type->clasp()->finalize, heap == js::gc::TenuredHeap);
 
-    /*
-     * Arrays use their fixed slots to store elements, and must have enough
-     * space for the elements header and also be marked as having no space for
-     * named properties stored in those fixed slots.
-     */
+    // Arrays can use their fixed slots to store elements, so can't have shapes
+    // which allow named properties to be stored in the fixed slots.
     JS_ASSERT(shape->numFixedSlots() == 0);
+
     size_t nDynamicSlots = dynamicSlotsCount(0, shape->slotSpan(), type->clasp());
     JSObject *obj = js::NewGCObject<js::CanGC>(cx, kind, nDynamicSlots, heap);
     if (!obj)
         return nullptr;
 
-    uint32_t capacity = js::gc::GetGCKindSlots(kind) - js::ObjectElements::VALUES_PER_HEADER;
-
     obj->shape_.init(shape);
     obj->type_.init(type);
+
+    return obj;
+}
+
+/* static */ inline js::ArrayObject *
+JSObject::createArray(js::ExclusiveContext *cx, js::gc::AllocKind kind, js::gc::InitialHeap heap,
+                      js::HandleShape shape, js::HandleTypeObject type,
+                      uint32_t length)
+{
+    JSObject *obj = createArrayInternal(cx, kind, heap, shape, type);
+    if (!obj)
+        return nullptr;
+
+    uint32_t capacity = js::gc::GetGCKindSlots(kind) - js::ObjectElements::VALUES_PER_HEADER;
+
     obj->setFixedElements();
     new (obj->getElementsHeader()) js::ObjectElements(capacity, length);
+
+    size_t span = shape->slotSpan();
+    if (span)
+        obj->initializeSlotRange(0, span);
+
+    js::gc::TraceCreateObject(obj);
+
+    return &obj->as<js::ArrayObject>();
+}
+
+/* static */ inline js::ArrayObject *
+JSObject::createArray(js::ExclusiveContext *cx, js::gc::InitialHeap heap,
+                      js::HandleShape shape, js::HandleTypeObject type,
+                      js::HeapSlot *elements)
+{
+    // Use the smallest allocation kind for the array, as it can't have any
+    // fixed slots (see assert in the above function) and will not be using its
+    // fixed elements.
+    js::gc::AllocKind kind = js::gc::FINALIZE_OBJECT0_BACKGROUND;
+
+    JSObject *obj = createArrayInternal(cx, kind, heap, shape, type);
+    if (!obj)
+        return nullptr;
+
+    obj->elements = elements;
 
     size_t span = shape->slotSpan();
     if (span)
@@ -595,7 +637,16 @@ JSObject::finish(js::FreeOp *fop)
 
     if (hasDynamicElements()) {
         js::ObjectElements *elements = getElementsHeader();
-        fop->free_(elements);
+        if (elements->isCopyOnWrite()) {
+            if (elements->ownerObject() == this) {
+                // Don't free the elements until object finalization finishes,
+                // so that other objects can access these elements while they
+                // are themselves finalized.
+                fop->freeLater(elements);
+            }
+        } else {
+            fop->free_(elements);
+        }
     }
 }
 
@@ -614,19 +665,27 @@ JSObject::hasProperty(JSContext *cx, js::HandleObject obj,
 }
 
 inline bool
-JSObject::nativeSetSlotIfHasType(js::Shape *shape, const js::Value &value)
+JSObject::nativeSetSlotIfHasType(js::Shape *shape, const js::Value &value, bool overwriting)
 {
     if (!js::types::HasTypePropertyId(this, shape->propid(), value))
         return false;
     nativeSetSlot(shape->slot(), value);
+
+    if (overwriting)
+        shape->setOverwritten();
+
     return true;
 }
 
 inline void
 JSObject::nativeSetSlotWithType(js::ExclusiveContext *cx, js::Shape *shape,
-                                const js::Value &value)
+                                const js::Value &value, bool overwriting)
 {
     nativeSetSlot(shape->slot(), value);
+
+    if (overwriting)
+        shape->setOverwritten();
+
     js::types::AddTypePropertyId(cx, this, shape->propid(), value);
 }
 
@@ -754,7 +813,28 @@ ClassMethodIsNative(JSContext *cx, JSObject *obj, const Class *clasp, jsid metho
             return false;
     }
 
-    return js::IsNativeFunction(v, native);
+    return IsNativeFunction(v, native);
+}
+
+// Return whether looking up 'valueOf' on 'obj' definitely resolves to the
+// original Object.prototype.valueOf. The method may conservatively return
+// 'false' in the case of proxies or other non-native objects.
+static MOZ_ALWAYS_INLINE bool
+HasObjectValueOf(JSObject *obj, JSContext *cx)
+{
+    if (obj->is<ProxyObject>() || !obj->isNative())
+        return false;
+
+    jsid valueOf = NameToId(cx->names().valueOf);
+
+    Value v;
+    while (!HasDataProperty(cx, obj, valueOf, &v)) {
+        obj = obj->getProto();
+        if (!obj || obj->is<ProxyObject>() || !obj->isNative())
+            return false;
+    }
+
+    return IsNativeFunction(v, obj_valueOf);
 }
 
 /* ES5 9.1 ToPrimitive(input). */

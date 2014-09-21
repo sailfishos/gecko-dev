@@ -37,13 +37,13 @@ class nsComboboxDisplayFrame;
 class nsIDOMEventListener;
 class nsIScrollableFrame;
 
-class nsComboboxControlFrame : public nsBlockFrame,
-                               public nsIFormControlFrame,
-                               public nsIComboboxControlFrame,
-                               public nsIAnonymousContentCreator,
-                               public nsISelectControlFrame,
-                               public nsIRollupListener,
-                               public nsIStatefulFrame
+class nsComboboxControlFrame MOZ_FINAL : public nsBlockFrame,
+                                         public nsIFormControlFrame,
+                                         public nsIComboboxControlFrame,
+                                         public nsIAnonymousContentCreator,
+                                         public nsISelectControlFrame,
+                                         public nsIRollupListener,
+                                         public nsIStatefulFrame
 {
 public:
   friend nsContainerFrame* NS_NewComboboxControlFrame(nsIPresShell* aPresShell,
@@ -51,7 +51,7 @@ public:
                                                       nsFrameState aFlags);
   friend class nsComboboxDisplayFrame;
 
-  nsComboboxControlFrame(nsStyleContext* aContext);
+  explicit nsComboboxControlFrame(nsStyleContext* aContext);
   ~nsComboboxControlFrame();
 
   NS_DECL_QUERYFRAME
@@ -223,7 +223,7 @@ protected:
   class RedisplayTextEvent : public nsRunnable {
   public:
     NS_DECL_NSIRUNNABLE
-    RedisplayTextEvent(nsComboboxControlFrame *c) : mControlFrame(c) {}
+    explicit RedisplayTextEvent(nsComboboxControlFrame *c) : mControlFrame(c) {}
     void Revoke() { mControlFrame = nullptr; }
   private:
     nsComboboxControlFrame *mControlFrame;

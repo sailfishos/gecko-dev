@@ -156,6 +156,13 @@ LIRGenerator::visitNewArray(MNewArray *ins)
 }
 
 bool
+LIRGenerator::visitNewArrayCopyOnWrite(MNewArrayCopyOnWrite *ins)
+{
+    LNewArrayCopyOnWrite *lir = new(alloc()) LNewArrayCopyOnWrite(temp());
+    return define(lir, ins) && assignSafepoint(lir, ins);
+}
+
+bool
 LIRGenerator::visitNewObject(MNewObject *ins)
 {
     LNewObject *lir = new(alloc()) LNewObject(temp());
@@ -1290,6 +1297,15 @@ LIRGenerator::visitAbs(MAbs *ins)
 }
 
 bool
+LIRGenerator::visitClz(MClz *ins)
+{
+    MDefinition *num = ins->num();
+
+    LClzI *lir = new(alloc()) LClzI(useRegisterAtStart(num));
+    return define(lir, ins);
+}
+
+bool
 LIRGenerator::visitSqrt(MSqrt *ins)
 {
     MDefinition *num = ins->input();
@@ -1725,7 +1741,7 @@ bool
 LIRGenerator::visitToDouble(MToDouble *convert)
 {
     MDefinition *opd = convert->input();
-    mozilla::DebugOnly<MToDouble::ConversionKind> conversion = convert->conversion();
+    mozilla::DebugOnly<MToFPInstruction::ConversionKind> conversion = convert->conversion();
 
     switch (opd->type()) {
       case MIRType_Value:
@@ -1737,15 +1753,16 @@ LIRGenerator::visitToDouble(MToDouble *convert)
       }
 
       case MIRType_Null:
-        JS_ASSERT(conversion != MToDouble::NumbersOnly && conversion != MToDouble::NonNullNonStringPrimitives);
+        JS_ASSERT(conversion != MToFPInstruction::NumbersOnly &&
+                  conversion != MToFPInstruction::NonNullNonStringPrimitives);
         return lowerConstantDouble(0, convert);
 
       case MIRType_Undefined:
-        JS_ASSERT(conversion != MToDouble::NumbersOnly);
+        JS_ASSERT(conversion != MToFPInstruction::NumbersOnly);
         return lowerConstantDouble(GenericNaN(), convert);
 
       case MIRType_Boolean:
-        JS_ASSERT(conversion != MToDouble::NumbersOnly);
+        JS_ASSERT(conversion != MToFPInstruction::NumbersOnly);
         /* FALLTHROUGH */
 
       case MIRType_Int32:
@@ -1786,15 +1803,16 @@ LIRGenerator::visitToFloat32(MToFloat32 *convert)
       }
 
       case MIRType_Null:
-        JS_ASSERT(conversion != MToFloat32::NonStringPrimitives);
+        JS_ASSERT(conversion != MToFPInstruction::NumbersOnly &&
+                  conversion != MToFPInstruction::NonNullNonStringPrimitives);
         return lowerConstantFloat32(0, convert);
 
       case MIRType_Undefined:
-        JS_ASSERT(conversion != MToFloat32::NumbersOnly);
+        JS_ASSERT(conversion != MToFPInstruction::NumbersOnly);
         return lowerConstantFloat32(GenericNaN(), convert);
 
       case MIRType_Boolean:
-        JS_ASSERT(conversion != MToFloat32::NumbersOnly);
+        JS_ASSERT(conversion != MToFPInstruction::NumbersOnly);
         /* FALLTHROUGH */
 
       case MIRType_Int32:
@@ -1838,10 +1856,15 @@ LIRGenerator::visitToInt32(MToInt32 *convert)
       }
 
       case MIRType_Null:
+        JS_ASSERT(convert->conversion() == MacroAssembler::IntConversion_Any);
         return define(new(alloc()) LInteger(0), convert);
 
-      case MIRType_Int32:
       case MIRType_Boolean:
+        JS_ASSERT(convert->conversion() == MacroAssembler::IntConversion_Any ||
+                  convert->conversion() == MacroAssembler::IntConversion_NumbersOrBoolsOnly);
+        return redefine(convert, opd);
+
+      case MIRType_Int32:
         return redefine(convert, opd);
 
       case MIRType_Float32:
@@ -2163,6 +2186,13 @@ LIRGenerator::visitMaybeToDoubleElement(MMaybeToDoubleElement *ins)
                                                                     useRegisterAtStart(ins->value()),
                                                                     tempDouble());
     return defineBox(lir, ins);
+}
+
+bool
+LIRGenerator::visitMaybeCopyElementsForWrite(MMaybeCopyElementsForWrite *ins)
+{
+    LInstruction *check = new(alloc()) LMaybeCopyElementsForWrite(useRegister(ins->object()), temp());
+    return add(check, ins) && assignSafepoint(check, ins);
 }
 
 bool
@@ -3523,7 +3553,7 @@ LIRGenerator::visitAsmJSParameter(MAsmJSParameter *ins)
     if (abi.argInRegister())
         return defineFixed(new(alloc()) LAsmJSParameter, ins, LAllocation(abi.reg()));
 
-    JS_ASSERT(IsNumberType(ins->type()));
+    JS_ASSERT(IsNumberType(ins->type()) || IsSimdType(ins->type()));
     return defineFixed(new(alloc()) LAsmJSParameter, ins, LArgument(abi.offsetFromArgBase()));
 }
 
@@ -3536,6 +3566,8 @@ LIRGenerator::visitAsmJSReturn(MAsmJSReturn *ins)
         lir->setOperand(0, useFixed(rval, ReturnFloat32Reg));
     else if (rval->type() == MIRType_Double)
         lir->setOperand(0, useFixed(rval, ReturnDoubleReg));
+    else if (IsSimdType(rval->type()))
+        lir->setOperand(0, useFixed(rval, ReturnSimdReg));
     else if (rval->type() == MIRType_Int32)
         lir->setOperand(0, useFixed(rval, ReturnReg));
     else
@@ -3552,7 +3584,7 @@ LIRGenerator::visitAsmJSVoidReturn(MAsmJSVoidReturn *ins)
 bool
 LIRGenerator::visitAsmJSPassStackArg(MAsmJSPassStackArg *ins)
 {
-    if (IsFloatingPointType(ins->arg()->type())) {
+    if (IsFloatingPointType(ins->arg()->type()) || IsSimdType(ins->arg()->type())) {
         JS_ASSERT(!ins->arg()->isEmittedAtUses());
         return add(new(alloc()) LAsmJSPassStackArg(useRegisterAtStart(ins->arg())), ins);
     }
@@ -3696,6 +3728,44 @@ LIRGenerator::visitSimdExtractElement(MSimdExtractElement *ins)
 }
 
 bool
+LIRGenerator::visitSimdSignMask(MSimdSignMask *ins)
+{
+    MDefinition *input = ins->input();
+    MOZ_ASSERT(IsSimdType(input->type()));
+    MOZ_ASSERT(ins->type() == MIRType_Int32);
+
+    LUse use = useRegisterAtStart(input);
+
+    switch (input->type()) {
+      case MIRType_Int32x4:
+      case MIRType_Float32x4:
+        return define(new(alloc()) LSimdSignMaskX4(use), ins);
+      default:
+        MOZ_CRASH("Unexpected SIMD type extracting sign bits.");
+        break;
+    }
+}
+
+bool
+LIRGenerator::visitSimdBinaryComp(MSimdBinaryComp *ins)
+{
+    MOZ_ASSERT(ins->type() == MIRType_Int32x4);
+
+    if (ins->compareType() == MSimdBinaryComp::CompareInt32x4) {
+        LSimdBinaryCompIx4 *add = new(alloc()) LSimdBinaryCompIx4();
+        return lowerForFPU(add, ins, ins->lhs(), ins->rhs());
+    }
+
+    if (ins->compareType() == MSimdBinaryComp::CompareFloat32x4) {
+        LSimdBinaryCompFx4 *add = new(alloc()) LSimdBinaryCompFx4();
+        return lowerForFPU(add, ins, ins->lhs(), ins->rhs());
+    }
+
+    MOZ_CRASH("Unknown compare type when comparing values");
+    return false;
+}
+
+bool
 LIRGenerator::visitSimdBinaryArith(MSimdBinaryArith *ins)
 {
     JS_ASSERT(IsSimdType(ins->type()));
@@ -3711,6 +3781,20 @@ LIRGenerator::visitSimdBinaryArith(MSimdBinaryArith *ins)
     }
 
     MOZ_ASSUME_UNREACHABLE("Unknown SIMD kind when adding values");
+    return false;
+}
+
+bool
+LIRGenerator::visitSimdBinaryBitwise(MSimdBinaryBitwise *ins)
+{
+    MOZ_ASSERT(IsSimdType(ins->type()));
+
+    if (ins->type() == MIRType_Int32x4 || ins->type() == MIRType_Float32x4) {
+        LSimdBinaryBitwiseX4 *add = new(alloc()) LSimdBinaryBitwiseX4;
+        return lowerForFPU(add, ins, ins->lhs(), ins->rhs());
+    }
+
+    MOZ_CRASH("Unknown SIMD kind when doing bitwise operations");
     return false;
 }
 
@@ -3853,6 +3937,17 @@ LIRGenerator::visitBlock(MBasicBlock *block)
     // Now emit the last instruction, which is some form of branch.
     if (!visitInstruction(block->lastIns()))
         return false;
+
+    if (lastResumePoint_) {
+        for (size_t s = 0; s < block->numSuccessors(); s++) {
+            MBasicBlock *succ = block->getSuccessor(s);
+            if (!succ->entryResumePoint()) {
+                MOZ_ASSERT(succ->isSplitEdge());
+                MOZ_ASSERT(succ->phisBegin() == succ->phisEnd());
+                succ->setEntryResumePoint(lastResumePoint_);
+            }
+        }
+    }
 
     return true;
 }

@@ -33,6 +33,7 @@
 #include "nsTextFormatter.h"
 #include "nsIStringBundle.h"
 #include "nsNetUtil.h"
+#include "nsIEffectiveTLDService.h"
 #include "nsIProperties.h"
 #include "nsDirectoryServiceDefs.h"
 #include "nsIFile.h"
@@ -573,6 +574,35 @@ DenyAccessIfURIHasFlags(nsIURI* aURI, uint32_t aURIFlags)
     return NS_OK;
 }
 
+static bool
+EqualOrSubdomain(nsIURI* aProbeArg, nsIURI* aBase)
+{
+    // Make a clone of the incoming URI, because we're going to mutate it.
+    nsCOMPtr<nsIURI> probe;
+    nsresult rv = aProbeArg->Clone(getter_AddRefs(probe));
+    NS_ENSURE_SUCCESS(rv, false);
+
+    nsCOMPtr<nsIEffectiveTLDService> tldService = do_GetService(NS_EFFECTIVETLDSERVICE_CONTRACTID);
+    NS_ENSURE_TRUE(tldService, false);
+    while (true) {
+        if (nsScriptSecurityManager::SecurityCompareURIs(probe, aBase)) {
+            return true;
+        }
+
+        nsAutoCString host, newHost;
+        nsresult rv = probe->GetHost(host);
+        NS_ENSURE_SUCCESS(rv, false);
+
+        rv = tldService->GetNextSubDomain(host, newHost);
+        if (rv == NS_ERROR_INSUFFICIENT_DOMAIN_LEVELS) {
+            return false;
+        }
+        NS_ENSURE_SUCCESS(rv, false);
+        rv = probe->SetHost(newHost);
+        NS_ENSURE_SUCCESS(rv, false);
+    }
+}
+
 NS_IMETHODIMP
 nsScriptSecurityManager::CheckLoadURIWithPrincipal(nsIPrincipal* aPrincipal,
                                                    nsIURI *aTargetURI,
@@ -694,11 +724,27 @@ nsScriptSecurityManager::CheckLoadURIWithPrincipal(nsIPrincipal* aPrincipal,
         NS_ENSURE_SUCCESS(rv, rv);
 
         if (hasFlags) {
+            // Let apps load the whitelisted theme resources even if they don't
+            // have the webapps-manage permission but have the themeable one.
+            // Resources from the theme origin are also allowed to load from
+            // the theme origin (eg. stylesheets using images from the theme).
+            auto themeOrigin = Preferences::GetCString("b2g.theme.origin");
+            if (themeOrigin) {
+                nsAutoCString targetOrigin;
+                nsPrincipal::GetOriginForURI(targetBaseURI, getter_Copies(targetOrigin));
+                if (targetOrigin.Equals(themeOrigin)) {
+                    nsAutoCString pOrigin;
+                    aPrincipal->GetOrigin(getter_Copies(pOrigin));
+                    return nsContentUtils::IsExactSitePermAllow(aPrincipal, "themeable") ||
+                           pOrigin.Equals(themeOrigin)
+                        ? NS_OK : NS_ERROR_DOM_BAD_URI;
+                }
+            }
             // In this case, we allow opening only if the source and target URIS
             // are on the same domain, or the opening URI has the webapps
             // permision granted
-            if (!SecurityCompareURIs(sourceBaseURI,targetBaseURI) &&
-                !nsContentUtils::IsExactSitePermAllow(aPrincipal,WEBAPPS_PERM_NAME)){
+            if (!SecurityCompareURIs(sourceBaseURI, targetBaseURI) &&
+                !nsContentUtils::IsExactSitePermAllow(aPrincipal, WEBAPPS_PERM_NAME)) {
                 return NS_ERROR_DOM_BAD_URI;
             }
         }
@@ -773,7 +819,7 @@ nsScriptSecurityManager::CheckLoadURIWithPrincipal(nsIPrincipal* aPrincipal,
         // Allow domains that were whitelisted in the prefs. In 99.9% of cases,
         // this array is empty.
         for (size_t i = 0; i < mFileURIWhitelist.Length(); ++i) {
-            if (SecurityCompareURIs(mFileURIWhitelist[i], sourceURI)) {
+            if (EqualOrSubdomain(sourceURI, mFileURIWhitelist[i])) {
                 return NS_OK;
             }
         }
@@ -1235,10 +1281,10 @@ nsScriptSecurityManager::nsScriptSecurityManager(void)
 
 nsresult nsScriptSecurityManager::Init()
 {
-    InitPrefs();
-
     nsresult rv = CallGetService(NS_IOSERVICE_CONTRACTID, &sIOService);
     NS_ENSURE_SUCCESS(rv, rv);
+
+    InitPrefs();
 
     nsCOMPtr<nsIStringBundleService> bundleService =
         mozilla::services::GetStringBundleService();
@@ -1403,7 +1449,15 @@ nsScriptSecurityManager::AddSitesToFileURIWhitelist(const nsCString& aSiteList)
     {
         // Grab the current site.
         bound = SkipUntil<IsWhitespace>(aSiteList, base);
-        auto site = Substring(aSiteList, base, bound - base);
+        nsAutoCString site(Substring(aSiteList, base, bound - base));
+
+        // Check if the URI is schemeless. If so, add both http and https.
+        nsAutoCString unused;
+        if (NS_FAILED(sIOService->ExtractScheme(site, unused))) {
+            AddSitesToFileURIWhitelist(NS_LITERAL_CSTRING("http://") + site);
+            AddSitesToFileURIWhitelist(NS_LITERAL_CSTRING("https://") + site);
+            continue;
+        }
 
         // Convert it to a URI and add it to our list.
         nsCOMPtr<nsIURI> uri;

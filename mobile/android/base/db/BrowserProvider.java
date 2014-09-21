@@ -978,6 +978,12 @@ public class BrowserProvider extends SharedBrowserDatabaseProvider {
                        Long.toString(BrowserContract.Bookmarks.DEFAULT_POSITION));
         }
 
+        if (!values.containsKey(Bookmarks.TITLE)) {
+            // Desktop Places barfs on insertion of a bookmark with no title,
+            // so we don't store them that way.
+            values.put(Bookmarks.TITLE, "");
+        }
+
         String url = values.getAsString(Bookmarks.URL);
 
         debug("Inserting bookmark in database with URL: " + url);
@@ -1400,7 +1406,8 @@ public class BrowserProvider extends SharedBrowserDatabaseProvider {
                 + " AND " + Bookmarks.URL + " IS NOT NULL)";
 
         return deleteFavicons(uri, faviconSelection, null) +
-               deleteThumbnails(uri, thumbnailSelection, null);
+               deleteThumbnails(uri, thumbnailSelection, null) +
+               URLMetadata.deleteUnused(getContext().getContentResolver());
     }
 
     @Override

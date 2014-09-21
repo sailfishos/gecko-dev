@@ -60,6 +60,10 @@ NS_NewSliderFrame (nsIPresShell* aPresShell, nsStyleContext* aContext)
 
 NS_IMPL_FRAMEARENA_HELPERS(nsSliderFrame)
 
+NS_QUERYFRAME_HEAD(nsSliderFrame)
+  NS_QUERYFRAME_ENTRY(nsSliderFrame)
+NS_QUERYFRAME_TAIL_INHERITING(nsBoxFrame)
+
 nsSliderFrame::nsSliderFrame(nsIPresShell* aPresShell, nsStyleContext* aContext):
   nsBoxFrame(aPresShell, aContext),
   mCurPos(0),
@@ -245,19 +249,25 @@ nsSliderFrame::AttributeChanged(int32_t aNameSpaceID,
 
       if (current < min || current > max)
       {
-        if (current < min || max < min)
-            current = min;
-        else if (current > max)
-            current = max;
+        int32_t direction = 0;
+        if (current < min || max < min) {
+          current = min;
+          direction = -1;
+        } else if (current > max) {
+          current = max;
+          direction = 1;
+        }
 
         // set the new position and notify observers
         nsScrollbarFrame* scrollbarFrame = do_QueryFrame(scrollbarBox);
         if (scrollbarFrame) {
           nsIScrollbarMediator* mediator = scrollbarFrame->GetScrollbarMediator();
+          scrollbarFrame->SetIncrementToWhole(direction);
           if (mediator) {
-            mediator->PositionChanged(scrollbarFrame, GetCurrentPosition(scrollbar), current);
+            mediator->ScrollByWhole(scrollbarFrame, direction);
           }
         }
+        // 'this' might be destroyed here
 
         nsContentUtils::AddScriptRunner(
           new nsSetAttrRunnable(scrollbar, nsGkAtoms::curpos, current));
@@ -619,10 +629,6 @@ nsSliderFrame::PageUpDown(nscoord change)
   nsCOMPtr<nsIContent> scrollbar;
   scrollbar = GetContentOfBox(scrollbarBox);
 
-  if (mContent->AttrValueIs(kNameSpaceID_None, nsGkAtoms::dir,
-                            nsGkAtoms::reverse, eCaseMatters))
-    change = -change;
-
   nscoord pageIncrement = GetPageIncrement(scrollbar);
   int32_t curpos = GetCurrentPosition(scrollbar);
   int32_t minpos = GetMinPosition(scrollbar);
@@ -684,7 +690,15 @@ nsSliderFrame::CurrentPositionChanged()
 
   // avoid putting the scroll thumb at subpixel positions which cause needless invalidations
   nscoord appUnitsPerPixel = PresContext()->AppUnitsPerDevPixel();
-  newThumbRect = newThumbRect.ToNearestPixels(appUnitsPerPixel).ToAppUnits(appUnitsPerPixel);
+  nsRect snappedThumbRect = newThumbRect.ToNearestPixels(appUnitsPerPixel).ToAppUnits(appUnitsPerPixel);
+  if (IsHorizontal()) {
+    newThumbRect.x = snappedThumbRect.x;
+    newThumbRect.width = snappedThumbRect.width;
+  } else {
+    newThumbRect.y = snappedThumbRect.y;
+    newThumbRect.height = snappedThumbRect.height;
+  }
+  newThumbRect = newThumbRect.Intersect(clientRect);
 
   // set the rect
   thumbFrame->SetRect(newThumbRect);
@@ -776,6 +790,7 @@ nsSliderFrame::SetCurrentPositionInternal(nsIContent* aScrollbar, int32_t aNewPo
 {
   nsCOMPtr<nsIContent> scrollbar = aScrollbar;
   nsIFrame* scrollbarBox = GetScrollbar();
+  nsWeakFrame weakFrame(this);
 
   mUserChanged = true;
 
@@ -784,21 +799,23 @@ nsSliderFrame::SetCurrentPositionInternal(nsIContent* aScrollbar, int32_t aNewPo
     // See if we have a mediator.
     nsIScrollbarMediator* mediator = scrollbarFrame->GetScrollbarMediator();
     if (mediator) {
-      nsRefPtr<nsPresContext> context = PresContext();
       nsCOMPtr<nsIContent> content = GetContent();
-      mediator->PositionChanged(scrollbarFrame, GetCurrentPosition(scrollbar), aNewPos);
-      // 'mediator' might be dangling now...
-      UpdateAttribute(scrollbar, aNewPos, false, aIsSmooth);
-      nsIFrame* frame = content->GetPrimaryFrame();
-      if (frame && frame->GetType() == nsGkAtoms::sliderFrame) {
-        static_cast<nsSliderFrame*>(frame)->CurrentPositionChanged();
+      nscoord oldPos = nsPresContext::CSSPixelsToAppUnits(GetCurrentPosition(scrollbar));
+      nscoord newPos = nsPresContext::CSSPixelsToAppUnits(aNewPos);
+      mediator->ThumbMoved(scrollbarFrame, oldPos, newPos);
+      if (!weakFrame.IsAlive()) {
+        return;
       }
+      CurrentPositionChanged();
       mUserChanged = false;
       return;
     }
   }
 
   UpdateAttribute(scrollbar, aNewPos, true, aIsSmooth);
+  if (!weakFrame.IsAlive()) {
+    return;
+  }
   mUserChanged = false;
 
 #ifdef DEBUG_SLIDER
@@ -1124,7 +1141,8 @@ nsSliderFrame::HandlePress(nsPresContext* aPresContext,
   mDestinationPoint = eventPoint;
 #endif
   StartRepeat();
-  PageUpDown(change);
+  PageScroll(change);
+
   return NS_OK;
 }
 
@@ -1188,7 +1206,8 @@ nsSliderFrame::EnsureOrient()
 }
 
 
-void nsSliderFrame::Notify(void)
+void
+nsSliderFrame::Notify(void)
 {
     bool stop = false;
 
@@ -1225,8 +1244,28 @@ void nsSliderFrame::Notify(void)
     if (stop) {
       StopRepeat();
     } else {
-      PageUpDown(mChange);
+      PageScroll(mChange);
     }
+}
+
+void
+nsSliderFrame::PageScroll(nscoord aChange)
+{
+  if (mContent->AttrValueIs(kNameSpaceID_None, nsGkAtoms::dir,
+                            nsGkAtoms::reverse, eCaseMatters)) {
+    aChange = -aChange;
+  }
+  nsIFrame* scrollbar = GetScrollbar();
+  nsScrollbarFrame* sb = do_QueryFrame(scrollbar);
+  if (sb) {
+    nsIScrollbarMediator* m = sb->GetScrollbarMediator();
+    sb->SetIncrementToPage(aChange);
+    if (m) {
+      m->ScrollByPage(sb, aChange);
+      return;
+    }
+  }
+  PageUpDown(aChange);
 }
 
 NS_IMPL_ISUPPORTS(nsSliderMediator,

@@ -8,22 +8,13 @@
 
 #include "AudioSampleFormat.h"
 #include "nsAutoPtr.h"
-#include "nsAutoRef.h"
 #include "nsCOMPtr.h"
 #include "nsThreadUtils.h"
 #include "Latency.h"
 #include "mozilla/dom/AudioChannelBinding.h"
-#include "mozilla/StaticMutex.h"
 #include "mozilla/RefPtr.h"
-
-#include "cubeb/cubeb.h"
-
-template <>
-class nsAutoRefTraits<cubeb_stream> : public nsPointerRefTraits<cubeb_stream>
-{
-public:
-  static void Release(cubeb_stream* aStream) { cubeb_stream_destroy(aStream); }
-};
+#include "mozilla/UniquePtr.h"
+#include "CubebUtils.h"
 
 namespace soundtouch {
 class SoundTouch;
@@ -31,13 +22,22 @@ class SoundTouch;
 
 namespace mozilla {
 
+template<>
+struct DefaultDelete<cubeb_stream>
+{
+  void operator()(cubeb_stream* aStream) const
+  {
+    cubeb_stream_destroy(aStream);
+  }
+};
+
 class AudioStream;
 class FrameHistory;
 
 class AudioClock
 {
 public:
-  AudioClock(AudioStream* aStream);
+  explicit AudioClock(AudioStream* aStream);
   // Initialize the clock with the current AudioStream. Need to be called
   // before querying the clock. Called on the audio thread.
   void Init();
@@ -184,24 +184,6 @@ class AudioStream MOZ_FINAL
   virtual ~AudioStream();
 
 public:
-  // Initialize Audio Library. Some Audio backends require initializing the
-  // library before using it.
-  static void InitLibrary();
-
-  // Shutdown Audio Library. Some Audio backends require shutting down the
-  // library after using it.
-  static void ShutdownLibrary();
-
-  // Returns the maximum number of channels supported by the audio hardware.
-  static int MaxNumberOfChannels();
-
-  // Queries the samplerate the hardware/mixer runs at, and stores it.
-  // Can be called on any thread. When this returns, it is safe to call
-  // PreferredSampleRate without locking.
-  static void InitPreferredSampleRate();
-  // Get the aformentionned sample rate. Does not lock.
-  static int PreferredSampleRate();
-
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(AudioStream)
   AudioStream();
 
@@ -303,14 +285,6 @@ private:
 
   void CheckForStart();
 
-  static void PrefChanged(const char* aPref, void* aClosure);
-  static double GetVolumeScale();
-  static bool GetFirstStream();
-  static cubeb* GetCubebContext();
-  static cubeb* GetCubebContextUnlocked();
-  static uint32_t GetCubebLatency();
-  static bool CubebLatencyPrefSet();
-
   static long DataCallback_S(cubeb_stream*, void* aThis, void* aBuffer, long aFrames)
   {
     return static_cast<AudioStream*>(aThis)->DataCallback(aBuffer, aFrames);
@@ -387,9 +361,8 @@ private:
   // frames.
   CircularByteBuffer mBuffer;
 
-  // Owning reference to a cubeb_stream.  cubeb_stream_destroy is called by
-  // nsAutoRef's destructor.
-  nsAutoRef<cubeb_stream> mCubebStream;
+  // Owning reference to a cubeb_stream.
+  UniquePtr<cubeb_stream> mCubebStream;
 
   uint32_t mBytesPerFrame;
 
@@ -429,18 +402,6 @@ private:
   // True if there is a pending AudioInitTask. Shutdown() will wait until the
   // pending AudioInitTask is finished.
   bool mPendingAudioInitTask;
-
-  // This mutex protects the static members below.
-  static StaticMutex sMutex;
-  static cubeb* sCubebContext;
-
-  // Prefered samplerate, in Hz (characteristic of the
-  // hardware/mixer/platform/API used).
-  static uint32_t sPreferredSampleRate;
-
-  static double sVolumeScale;
-  static uint32_t sCubebLatency;
-  static bool sCubebLatencyPrefSet;
 };
 
 class AudioInitTask : public nsRunnable

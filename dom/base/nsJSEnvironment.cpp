@@ -18,6 +18,7 @@
 #include "nsCOMPtr.h"
 #include "nsISupportsPrimitives.h"
 #include "nsReadableUtils.h"
+#include "nsDOMJSUtils.h"
 #include "nsJSUtils.h"
 #include "nsIDocShell.h"
 #include "nsIDocShellTreeItem.h"
@@ -301,7 +302,7 @@ nsJSEnvironmentObserver::Observe(nsISupports* aSubject, const char* aTopic,
 
 class AutoFree {
 public:
-  AutoFree(void *aPtr) : mPtr(aPtr) {
+  explicit AutoFree(void* aPtr) : mPtr(aPtr) {
   }
   ~AutoFree() {
     if (mPtr)
@@ -557,46 +558,44 @@ NS_ScriptErrorReporter(JSContext *cx,
     }
   }
 
-  // XXX this means we are not going to get error reports on non DOM contexts
-  nsIScriptContext *context = nsJSUtils::GetDynamicScriptContext(cx);
-
   JS::Rooted<JS::Value> exception(cx);
   ::JS_GetPendingException(cx, &exception);
 
-  // Note: we must do this before running any more code on cx (if cx is the
-  // dynamic script context).
+  // Note: we must do this before running any more code on cx.
   ::JS_ClearPendingException(cx);
 
-  if (context) {
-    nsIScriptGlobalObject *globalObject = context->GetGlobalObject();
-
-    if (globalObject) {
-
-      nsCOMPtr<nsPIDOMWindow> win = do_QueryInterface(globalObject);
-      if (win) {
-        win = win->GetCurrentInnerWindow();
-      }
-      nsCOMPtr<nsIScriptObjectPrincipal> scriptPrincipal =
-        do_QueryInterface(globalObject);
-      NS_ASSERTION(scriptPrincipal, "Global objects must implement "
-                   "nsIScriptObjectPrincipal");
-      nsContentUtils::AddScriptRunner(
-        new ScriptErrorEvent(JS_GetRuntime(cx),
-                             report,
-                             message,
-                             nsJSPrincipals::get(report->originPrincipals),
-                             scriptPrincipal->GetPrincipal(),
-                             win,
-                             exception,
-                             /* We do not try to report Out Of Memory via a dom
-                              * event because the dom event handler would
-                              * encounter an OOM exception trying to process the
-                              * event, and then we'd need to generate a new OOM
-                              * event for that new OOM instance -- this isn't
-                              * pretty.
-                              */
-                             report->errorNumber != JSMSG_OUT_OF_MEMORY));
+  MOZ_ASSERT(cx == nsContentUtils::GetCurrentJSContext());
+  nsCOMPtr<nsIGlobalObject> globalObject;
+  if (nsIScriptContext* scx = GetScriptContextFromJSContext(cx)) {
+    nsCOMPtr<nsPIDOMWindow> outer = do_QueryInterface(scx->GetGlobalObject());
+    if (outer) {
+      globalObject = static_cast<nsGlobalWindow*>(outer->GetCurrentInnerWindow());
     }
+  }
+  if (globalObject) {
+
+    nsCOMPtr<nsPIDOMWindow> win = do_QueryInterface(globalObject);
+    MOZ_ASSERT_IF(win, win->IsInnerWindow());
+    nsCOMPtr<nsIScriptObjectPrincipal> scriptPrincipal =
+      do_QueryInterface(globalObject);
+    NS_ASSERTION(scriptPrincipal, "Global objects must implement "
+                 "nsIScriptObjectPrincipal");
+    nsContentUtils::AddScriptRunner(
+      new ScriptErrorEvent(JS_GetRuntime(cx),
+                           report,
+                           message,
+                           nsJSPrincipals::get(report->originPrincipals),
+                           scriptPrincipal->GetPrincipal(),
+                           win,
+                           exception,
+                           /* We do not try to report Out Of Memory via a dom
+                            * event because the dom event handler would
+                            * encounter an OOM exception trying to process the
+                            * event, and then we'd need to generate a new OOM
+                            * event for that new OOM instance -- this isn't
+                            * pretty.
+                            */
+                           report->errorNumber != JSMSG_OUT_OF_MEMORY));
   }
 
   if (nsContentUtils::DOMWindowDumpEnabled()) {
@@ -749,8 +748,7 @@ nsJSContext::nsJSContext(bool aGCOnDestruction,
     ::JS_SetContextPrivate(mContext, static_cast<nsIScriptContext *>(this));
 
     // Make sure the new context gets the default context options
-    JS::ContextOptionsRef(mContext).setPrivateIsNSISupports(true)
-                                   .setNoDefaultCompartmentObject(true);
+    JS::ContextOptionsRef(mContext).setPrivateIsNSISupports(true);
 
     // Watch for the JS boolean options
     Preferences::RegisterCallback(JSOptionChangedCallback,
@@ -2551,7 +2549,7 @@ class NotifyGCEndRunnable : public nsRunnable
   nsString mMessage;
 
 public:
-  NotifyGCEndRunnable(const nsString& aMessage) : mMessage(aMessage) {}
+  explicit NotifyGCEndRunnable(const nsString& aMessage) : mMessage(aMessage) {}
 
   NS_DECL_NSIRUNNABLE
 };

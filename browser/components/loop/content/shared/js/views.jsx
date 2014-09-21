@@ -179,18 +179,24 @@ loop.shared.views = (function(_, OT, l10n) {
 
     render: function() {
       /* jshint ignore:start */
-      var hangupButtonClasses = "btn btn-hangup";
       return (
         <ul className="conversation-toolbar">
-          <li><button className={hangupButtonClasses}
-                      onClick={this.handleClickHangup}
-                      title={l10n.get("hangup_button_title")}></button></li>
-          <li><MediaControlButton action={this.handleToggleVideo}
-                                  enabled={this.props.video.enabled}
-                                  scope="local" type="video" /></li>
-          <li><MediaControlButton action={this.handleToggleAudio}
-                                  enabled={this.props.audio.enabled}
-                                  scope="local" type="audio" /></li>
+          <li className="conversation-toolbar-btn-box">
+            <button className="btn btn-hangup" onClick={this.handleClickHangup}
+                    title={l10n.get("hangup_button_title")}>
+              {l10n.get("hangup_button_caption2")}
+            </button>
+          </li>
+          <li className="conversation-toolbar-btn-box">
+            <MediaControlButton action={this.handleToggleVideo}
+                                enabled={this.props.video.enabled}
+                                scope="local" type="video" />
+          </li>
+          <li className="conversation-toolbar-btn-box">
+            <MediaControlButton action={this.handleToggleAudio}
+                                enabled={this.props.audio.enabled}
+                                scope="local" type="audio" />
+          </li>
         </ul>
       );
       /* jshint ignore:end */
@@ -272,13 +278,7 @@ loop.shared.views = (function(_, OT, l10n) {
      */
     _streamCreated: function(event) {
       var incoming = this.getDOMNode().querySelector(".remote");
-      event.streams.forEach(function(stream) {
-        if (stream.connection.connectionId !==
-            this.props.model.session.connection.connectionId) {
-          this.props.model.session.subscribe(stream, incoming,
-                                             this.publisherConfig);
-        }
-      }, this);
+      this.props.model.subscribe(event.stream, incoming, this.publisherConfig);
     },
 
     /**
@@ -315,7 +315,7 @@ loop.shared.views = (function(_, OT, l10n) {
         });
       }.bind(this));
 
-      this.props.model.session.publish(this.publisher);
+      this.props.model.publish(this.publisher);
     },
 
     /**
@@ -347,16 +347,18 @@ loop.shared.views = (function(_, OT, l10n) {
     render: function() {
       /* jshint ignore:start */
       return (
-        <div className="conversation">
-          <ConversationToolbar video={this.state.video}
-                               audio={this.state.audio}
-                               publishStream={this.publishStream}
-                               hangup={this.hangup} />
-          <div className="media nested">
-            <div className="video_wrapper remote_wrapper">
-              <div className="video_inner remote"></div>
+        <div className="video-layout-wrapper">
+          <div className="conversation">
+            <ConversationToolbar video={this.state.video}
+                                 audio={this.state.audio}
+                                 publishStream={this.publishStream}
+                                 hangup={this.hangup} />
+            <div className="media nested">
+              <div className="video_wrapper remote_wrapper">
+                <div className="video_inner remote"></div>
+              </div>
+              <div className="local"></div>
             </div>
-            <div className="local"></div>
           </div>
         </div>
       );
@@ -541,8 +543,9 @@ loop.shared.views = (function(_, OT, l10n) {
       return (
         <FeedbackLayout title={l10n.get("feedback_thank_you_heading")}>
           <p className="info thank-you">{
-            l10n.get("feedback_window_will_close_in", {
-              countdown: this.state.countdown
+            l10n.get("feedback_window_will_close_in2", {
+              countdown: this.state.countdown,
+              num: this.state.countdown
             })}</p>
         </FeedbackLayout>
       );
@@ -608,7 +611,7 @@ loop.shared.views = (function(_, OT, l10n) {
         default:
           return (
             <FeedbackLayout title={
-              l10n.get("feedback_call_experience_heading")}>
+              l10n.get("feedback_call_experience_heading2")}>
               <div className="faces">
                 <button className="face face-happy"
                         onClick={this.handleHappyClick}></button>

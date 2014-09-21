@@ -958,7 +958,6 @@ class AutoNewContext
         if (!newcx)
             return false;
         JS::ContextOptionsRef(newcx).setDontReportUncaught(true);
-        js::SetDefaultObjectForContext(newcx, JS::CurrentGlobalOrNull(cx));
 
         newRequest.emplace(newcx);
         newCompartment.emplace(newcx, JS::CurrentGlobalOrNull(cx));
@@ -2663,14 +2662,6 @@ EvalInFrame(JSContext *cx, unsigned argc, jsval *vp)
             break;
     }
 
-    AutoSaveFrameChain sfc(cx);
-    mozilla::Maybe<AutoCompartment> ac;
-    if (saveCurrent) {
-        if (!sfc.save())
-            return false;
-        ac.emplace(cx, DefaultObjectForContextOrNull(cx));
-    }
-
     AutoStableStringChars stableChars(cx);
     if (!stableChars.initTwoByte(cx, str))
         return JSTRAP_ERROR;
@@ -2691,6 +2682,12 @@ EvalInFrame(JSContext *cx, unsigned argc, jsval *vp)
     if (!ComputeThis(cx, frame))
         return false;
     RootedValue thisv(cx, frame.thisValue());
+
+    AutoSaveFrameChain sfc(cx);
+    if (saveCurrent) {
+        if (!sfc.save())
+            return false;
+    }
 
     bool ok;
     {
@@ -3865,7 +3862,7 @@ EscapeForShell(AutoCStringVector &argv)
 
 static Vector<const char*, 4, js::SystemAllocPolicy> sPropagatedFlags;
 
-#if defined(DEBUG) && (defined(JS_CODEGEN_X86) || defined(JS_CODEGEN_X64))
+#if defined(JS_CODEGEN_X86) || defined(JS_CODEGEN_X64)
 static bool
 PropagateFlagToNestedShells(const char *flag)
 {
@@ -5925,6 +5922,8 @@ SetRuntimeOptions(JSRuntime *rt, const OptionParser &op)
     if (jsCacheDir) {
         if (!op.getBoolOption("no-js-cache-per-process"))
             jsCacheDir = JS_smprintf("%s/%u", jsCacheDir, (unsigned)getpid());
+        else
+            jsCacheDir = JS_strdup(rt, jsCacheDir);
         jsCacheAsmJSPath = JS_smprintf("%s/asmjs.cache", jsCacheDir);
     }
 
@@ -5953,7 +5952,6 @@ Shell(JSContext *cx, OptionParser *op, char **envp)
         return 1;
 
     JSAutoCompartment ac(cx, glob);
-    js::SetDefaultObjectForContext(cx, glob);
 
     JSObject *envobj = JS_DefineObject(cx, glob, "environment", &env_class);
     if (!envobj)
@@ -5966,10 +5964,14 @@ Shell(JSContext *cx, OptionParser *op, char **envp)
         JS_DumpCompartmentPCCounts(cx);
 
     if (!op->getBoolOption("no-js-cache-per-process")) {
-        if (jsCacheAsmJSPath)
+        if (jsCacheAsmJSPath) {
             unlink(jsCacheAsmJSPath);
-        if (jsCacheDir)
+            JS_free(cx, const_cast<char *>(jsCacheAsmJSPath));
+        }
+        if (jsCacheDir) {
             rmdir(jsCacheDir);
+            JS_free(cx, const_cast<char *>(jsCacheDir));
+        }
     }
 
     return result;
@@ -6173,24 +6175,23 @@ main(int argc, char **argv, char **envp)
      * allocations as possible.
      */
     OOM_printAllocationCount = op.getBoolOption('O');
+#endif
 
 #ifdef JS_CODEGEN_X86
     if (op.getBoolOption("no-fpu"))
-        JSC::MacroAssemblerX86Common::SetFloatingPointDisabled();
+        js::jit::CPUInfo::SetFloatingPointDisabled();
 #endif
 
 #if defined(JS_CODEGEN_X86) || defined(JS_CODEGEN_X64)
     if (op.getBoolOption("no-sse3")) {
-        JSC::MacroAssemblerX86Common::SetSSE3Disabled();
+        js::jit::CPUInfo::SetSSE3Disabled();
         PropagateFlagToNestedShells("--no-sse3");
     }
     if (op.getBoolOption("no-sse4")) {
-        JSC::MacroAssemblerX86Common::SetSSE4Disabled();
+        js::jit::CPUInfo::SetSSE4Disabled();
         PropagateFlagToNestedShells("--no-sse4");
     }
 #endif
-
-#endif // DEBUG
 
     if (op.getBoolOption("no-threads"))
         js::DisableExtraThreads();

@@ -402,6 +402,13 @@ var node = Reflect.parse("a = {[field1]: 5}");
 Pattern({ body: [ { expression: { right: { properties: [ {key: { loc:
     { start: { line: 1, column: 5 }, end: { line: 1, column: 13 }}}}]}}}]}).match(node);
 
+// Bug 1048384 - Getter/setter syntax with computed names
+assertExpr("b = { get [meth]() { } }", aExpr("=", ident("b"),
+              objExpr([{ key: computedName(ident("meth")), value: funExpr(null, [], blockStmt([])),
+                method: false, kind: "get"}])));
+assertExpr("b = { set [meth](a) { } }", aExpr("=", ident("b"),
+              objExpr([{ key: computedName(ident("meth")), value: funExpr(null, [ident("a")],
+                blockStmt([])), method: false, kind: "set"}])));
 
 // statements
 
@@ -650,6 +657,9 @@ testParamPatternCombinations(function(n) ("{a" + n + ":x" + n + "," + "b" + n + 
 testParamPatternCombinations(function(n) ("[x" + n + "," + "y" + n + "," + "z" + n + "]"),
                              function(n) (arrPatt([ident("x" + n), ident("y" + n), ident("z" + n)])));
 
+testParamPatternCombinations(function(n) ("[a" + n + ", ..." + "b" + n + "]"),
+                             function(n) (arrPatt([ident("a" + n), spread(ident("b" + n))])));
+
 
 // destructuring variable declarations
 
@@ -685,6 +695,10 @@ testVarPatternCombinations(function (n) ("{a" + n + ":x" + n + "," + "b" + n + "
 
 testVarPatternCombinations(function(n) ("[x" + n + "," + "y" + n + "," + "z" + n + "] = 0"),
                            function(n) ({ id: arrPatt([ident("x" + n), ident("y" + n), ident("z" + n)]),
+                                          init: lit(0) }));
+
+testVarPatternCombinations(function(n) ("[a" + n + ", ..." + "b" + n + "] = 0"),
+                           function(n) ({ id: arrPatt([ident("a" + n), spread(ident("b" + n))]),
                                           init: lit(0) }));
 
 // destructuring assignment

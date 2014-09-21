@@ -356,7 +356,7 @@ LIRGeneratorMIPS::newLTableSwitch(const LAllocation &in, const LDefinition &inpu
 LTableSwitchV *
 LIRGeneratorMIPS::newLTableSwitchV(MTableSwitch *tableswitch)
 {
-    return new(alloc()) LTableSwitchV(temp(), tempFloat32(), temp(), tableswitch);
+    return new(alloc()) LTableSwitchV(temp(), tempDouble(), temp(), tableswitch);
 }
 
 bool
@@ -498,7 +498,7 @@ LIRGeneratorMIPS::visitAsmJSStoreHeap(MAsmJSStoreHeap *ins)
 bool
 LIRGeneratorMIPS::visitAsmJSLoadFuncPtr(MAsmJSLoadFuncPtr *ins)
 {
-    return define(new(alloc()) LAsmJSLoadFuncPtr(useRegister(ins->index()), temp()), ins);
+    return define(new(alloc()) LAsmJSLoadFuncPtr(useRegister(ins->index())), ins);
 }
 
 bool
@@ -522,11 +522,17 @@ LIRGeneratorMIPS::lowerTruncateFToInt32(MTruncateToInt32 *ins)
 bool
 LIRGeneratorMIPS::visitStoreTypedArrayElementStatic(MStoreTypedArrayElementStatic *ins)
 {
-    MOZ_ASSUME_UNREACHABLE("NYI");
+    MOZ_CRASH("NYI");
 }
 
 bool
 LIRGeneratorMIPS::visitForkJoinGetSlice(MForkJoinGetSlice *ins)
 {
-    MOZ_ASSUME_UNREACHABLE("NYI");
+    MOZ_CRASH("NYI");
+}
+
+bool
+LIRGeneratorMIPS::visitSimdSplatX4(MSimdSplatX4 *ins)
+{
+    MOZ_CRASH("NYI");
 }

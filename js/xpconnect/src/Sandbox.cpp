@@ -314,9 +314,13 @@ sandbox_finalize(JSFreeOp *fop, JSObject *obj)
 {
     nsIScriptObjectPrincipal *sop =
         static_cast<nsIScriptObjectPrincipal *>(xpc_GetJSPrivate(obj));
-    MOZ_ASSERT(sop);
+    if (!sop) {
+        // sop can be null if CreateSandboxObject fails in the middle.
+        return;
+    }
+
     static_cast<SandboxPrivate *>(sop)->ForgetGlobalObject();
-    NS_IF_RELEASE(sop);
+    NS_RELEASE(sop);
     DestroyProtoAndIfaceCache(obj);
 }
 
@@ -355,7 +359,7 @@ writeToProto_getProperty(JSContext *cx, JS::HandleObject obj, JS::HandleId id,
 
 struct AutoSkipPropertyMirroring
 {
-    AutoSkipPropertyMirroring(CompartmentPrivate *priv) : priv(priv) {
+    explicit AutoSkipPropertyMirroring(CompartmentPrivate *priv) : priv(priv) {
         MOZ_ASSERT(!priv->skipWriteToGlobalPrototype);
         priv->skipWriteToGlobalPrototype = true;
     }

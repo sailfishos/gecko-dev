@@ -45,6 +45,10 @@ var gAdvancedPane = {
     this.updateActualCacheSize();
     this.updateActualAppCacheSize();
 
+    let bundlePrefs = document.getElementById("bundlePreferences");
+    document.getElementById("offlineAppsList")
+            .style.height = bundlePrefs.getString("offlineAppsList.height");
+
     // Notify observers that the UI is now ready
     Services.obs.notifyObservers(window, "advanced-pane-loaded", null);
   },
@@ -414,7 +418,7 @@ var gAdvancedPane = {
                    introText        : bundlePreferences.getString("offlinepermissionstext") };
     document.documentElement.openWindow("Browser:Permissions",
                                         "chrome://browser/content/preferences/permissions.xul",
-                                        "", params);
+                                        "resizable", params);
   },
 
   // XXX: duplicated in browser.js

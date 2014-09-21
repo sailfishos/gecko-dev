@@ -392,11 +392,6 @@ ArrayBufferObject::changeContents(JSContext *cx, BufferContents newContents)
     }
 }
 
-#if defined(JS_CODEGEN_X64)
-// Refer to comment above AsmJSMappedSize in AsmJS.h.
-JS_STATIC_ASSERT(AsmJSAllocationGranularity == AsmJSPageSize);
-#endif
-
 /* static */ bool
 ArrayBufferObject::prepareForAsmJSNoSignals(JSContext *cx, Handle<ArrayBufferObject*> buffer)
 {
@@ -449,7 +444,7 @@ ArrayBufferObject::prepareForAsmJS(JSContext *cx, Handle<ArrayBufferObject*> buf
 # endif
 
     // Enable access to the valid region.
-    JS_ASSERT(buffer->byteLength() % AsmJSAllocationGranularity == 0);
+    JS_ASSERT(buffer->byteLength() % AsmJSPageSize == 0);
 # ifdef XP_WIN
     if (!VirtualAlloc(data, buffer->byteLength(), MEM_COMMIT, PAGE_READWRITE)) {
         VirtualFree(data, 0, MEM_RELEASE);
@@ -763,18 +758,18 @@ ArrayBufferObject::ensureNonInline(JSContext *cx, Handle<ArrayBufferObject*> buf
     return true;
 }
 
-/* static */ void *
+/* static */ ArrayBufferObject::BufferContents
 ArrayBufferObject::stealContents(JSContext *cx, Handle<ArrayBufferObject*> buffer)
 {
     if (!buffer->canNeuter(cx)) {
         js_ReportOverRecursed(cx);
-        return nullptr;
+        return BufferContents::createUnowned(nullptr);
     }
 
     BufferContents oldContents(buffer->dataPointer(), buffer->bufferKind());
     BufferContents newContents = AllocateArrayBufferContents(cx, buffer->byteLength());
     if (!newContents)
-        return nullptr;
+        return BufferContents::createUnowned(nullptr);
 
     if (buffer->hasStealableContents()) {
         // Return the old contents and give the neutered buffer a pointer to
@@ -782,18 +777,19 @@ ArrayBufferObject::stealContents(JSContext *cx, Handle<ArrayBufferObject*> buffe
         // never get committed.
         buffer->setOwnsData(DoesntOwnData);
         ArrayBufferObject::neuter(cx, buffer, newContents);
-        return oldContents.data();
-    } else {
-        // Create a new chunk of memory to return since we cannot steal the
-        // existing contents away from the buffer.
-        memcpy(newContents.data(), oldContents.data(), buffer->byteLength());
-        ArrayBufferObject::neuter(cx, buffer, oldContents);
-        return newContents.data();
+        return oldContents;
     }
+
+    // Create a new chunk of memory to return since we cannot steal the
+    // existing contents away from the buffer.
+    memcpy(newContents.data(), oldContents.data(), buffer->byteLength());
+    ArrayBufferObject::neuter(cx, buffer, oldContents);
+    return newContents;
 }
 
 /* static */ void
-ArrayBufferObject::addSizeOfExcludingThis(JSObject *obj, mozilla::MallocSizeOf mallocSizeOf, JS::ObjectsExtraSizes *sizes)
+ArrayBufferObject::addSizeOfExcludingThis(JSObject *obj, mozilla::MallocSizeOf mallocSizeOf,
+                                          JS::ClassInfo *info)
 {
     ArrayBufferObject &buffer = AsArrayBuffer(obj);
 
@@ -804,13 +800,13 @@ ArrayBufferObject::addSizeOfExcludingThis(JSObject *obj, mozilla::MallocSizeOf m
         // On x64, ArrayBufferObject::prepareForAsmJS switches the
         // ArrayBufferObject to use mmap'd storage.
         if (buffer.bufferKind() & MAPPED_BUFFER)
-            sizes->nonHeapElementsAsmJS += buffer.byteLength();
+            info->objectsNonHeapElementsAsmJS += buffer.byteLength();
         else
-            sizes->mallocHeapElementsAsmJS += mallocSizeOf(buffer.dataPointer());
+            info->objectsMallocHeapElementsAsmJS += mallocSizeOf(buffer.dataPointer());
     } else if (MOZ_UNLIKELY(buffer.bufferKind() & MAPPED_BUFFER)) {
-        sizes->nonHeapElementsMapped += buffer.byteLength();
+        info->objectsNonHeapElementsMapped += buffer.byteLength();
     } else if (buffer.dataPointer()) {
-        sizes->mallocHeapElementsNonAsmJS += mallocSizeOf(buffer.dataPointer());
+        info->objectsMallocHeapElementsNonAsmJS += mallocSizeOf(buffer.dataPointer());
     }
 }
 
@@ -1174,7 +1170,7 @@ JS_StealArrayBufferContents(JSContext *cx, HandleObject objArg)
     }
 
     Rooted<ArrayBufferObject*> buffer(cx, &obj->as<ArrayBufferObject>());
-    return ArrayBufferObject::stealContents(cx, buffer);
+    return ArrayBufferObject::stealContents(cx, buffer).data();
 }
 
 JS_PUBLIC_API(JSObject *)

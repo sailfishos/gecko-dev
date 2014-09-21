@@ -147,6 +147,7 @@
 
 #ifdef MOZ_WIDGET_GONK
 #include "nsIVolume.h"
+#include "nsVolumeService.h"
 #include "nsIVolumeService.h"
 #include "SpeakerManagerService.h"
 using namespace mozilla::system;
@@ -333,6 +334,10 @@ const nsIID nsIConsoleService::COMTypeInfo<nsConsoleService, void>::kIID = NS_IC
 
 namespace mozilla {
 namespace dom {
+
+#ifdef MOZ_NUWA_PROCESS
+bool ContentParent::sNuwaReady = false;
+#endif
 
 #define NS_IPC_IOSERVICE_SET_OFFLINE_TOPIC "ipc:network:set-offline"
 
@@ -560,6 +565,7 @@ static const char* sObserverTopics[] = {
 #ifdef ACCESSIBILITY
     "a11y-init-or-shutdown",
 #endif
+    "app-theme-changed",
 };
 
 /* static */ already_AddRefed<ContentParent>
@@ -574,6 +580,9 @@ ContentParent::RunNuwaProcess()
                           PROCESS_PRIORITY_BACKGROUND,
                           /* aIsNuwaProcess = */ true);
     nuwaProcess->Init();
+#ifdef MOZ_NUWA_PROCESS
+    sNuwaReady = false;
+#endif
     return nuwaProcess.forget();
 }
 
@@ -819,14 +828,6 @@ ContentParent::PreallocatedProcessReady()
     return PreallocatedProcessManager::PreallocatedProcessReady();
 #else
     return true;
-#endif
-}
-
-void
-ContentParent::RunAfterPreallocatedProcessReady(nsIRunnable* aRequest)
-{
-#ifdef MOZ_NUWA_PROCESS
-    PreallocatedProcessManager::RunAfterPreallocatedProcessReady(aRequest);
 #endif
 }
 
@@ -1576,7 +1577,7 @@ DelayedDeleteSubprocess(GeckoChildProcessHost* aSubprocess)
 // system.
 struct DelayedDeleteContentParentTask : public nsRunnable
 {
-    DelayedDeleteContentParentTask(ContentParent* aObj) : mObj(aObj) { }
+    explicit DelayedDeleteContentParentTask(ContentParent* aObj) : mObj(aObj) { }
 
     // No-op
     NS_IMETHODIMP Run() { return NS_OK; }
@@ -1971,6 +1972,12 @@ ContentParent::~ContentParent()
         MOZ_ASSERT(!sAppContentParents ||
                    sAppContentParents->Get(mAppManifestURL) != this);
     }
+
+#ifdef MOZ_NUWA_PROCESS
+    if (IsNuwaProcess()) {
+        sNuwaReady = false;
+    }
+#endif
 }
 
 void
@@ -2323,12 +2330,12 @@ ContentParent::RecvAudioChannelGetState(const AudioChannel& aChannel,
                                         AudioChannelState* aState)
 {
     nsRefPtr<AudioChannelService> service =
-        AudioChannelService::GetAudioChannelService();
+        AudioChannelService::GetOrCreateAudioChannelService();
     *aState = AUDIO_CHANNEL_STATE_NORMAL;
-    if (service) {
-        *aState = service->GetStateInternal(aChannel, mChildID,
-                                            aElementHidden, aElementWasHidden);
-    }
+    MOZ_ASSERT(service);
+    *aState = service->GetStateInternal(aChannel, mChildID,
+                                        aElementHidden, aElementWasHidden);
+
     return true;
 }
 
@@ -2337,10 +2344,10 @@ ContentParent::RecvAudioChannelRegisterType(const AudioChannel& aChannel,
                                             const bool& aWithVideo)
 {
     nsRefPtr<AudioChannelService> service =
-        AudioChannelService::GetAudioChannelService();
-    if (service) {
-        service->RegisterType(aChannel, mChildID, aWithVideo);
-    }
+        AudioChannelService::GetOrCreateAudioChannelService();
+    MOZ_ASSERT(service);
+    service->RegisterType(aChannel, mChildID, aWithVideo);
+
     return true;
 }
 
@@ -2350,10 +2357,10 @@ ContentParent::RecvAudioChannelUnregisterType(const AudioChannel& aChannel,
                                               const bool& aWithVideo)
 {
     nsRefPtr<AudioChannelService> service =
-        AudioChannelService::GetAudioChannelService();
-    if (service) {
-        service->UnregisterType(aChannel, aElementHidden, mChildID, aWithVideo);
-    }
+        AudioChannelService::GetOrCreateAudioChannelService();
+    MOZ_ASSERT(service);
+    service->UnregisterType(aChannel, aElementHidden, mChildID, aWithVideo);
+
     return true;
 }
 
@@ -2361,10 +2368,10 @@ bool
 ContentParent::RecvAudioChannelChangedNotification()
 {
     nsRefPtr<AudioChannelService> service =
-        AudioChannelService::GetAudioChannelService();
-    if (service) {
-       service->SendAudioChannelChangedNotification(ChildID());
-    }
+        AudioChannelService::GetOrCreateAudioChannelService();
+    MOZ_ASSERT(service);
+    service->SendAudioChannelChangedNotification(ChildID());
+
     return true;
 }
 
@@ -2373,11 +2380,10 @@ ContentParent::RecvAudioChannelChangeDefVolChannel(const int32_t& aChannel,
                                                    const bool& aHidden)
 {
     nsRefPtr<AudioChannelService> service =
-        AudioChannelService::GetAudioChannelService();
-    if (service) {
-       service->SetDefaultVolumeControlChannelInternal(aChannel,
-                                                       aHidden, mChildID);
-    }
+        AudioChannelService::GetOrCreateAudioChannelService();
+    MOZ_ASSERT(service);
+    service->SetDefaultVolumeControlChannelInternal(aChannel,
+                                                    aHidden, mChildID);
     return true;
 }
 
@@ -2403,17 +2409,14 @@ ContentParent::RecvDataStoreGetStores(
 }
 
 bool
-ContentParent::RecvBroadcastVolume(const nsString& aVolumeName)
+ContentParent::RecvGetVolumes(InfallibleTArray<VolumeInfo>* aResult)
 {
 #ifdef MOZ_WIDGET_GONK
-    nsresult rv;
-    nsCOMPtr<nsIVolumeService> vs = do_GetService(NS_VOLUMESERVICE_CONTRACTID, &rv);
-    if (vs) {
-        vs->BroadcastVolume(aVolumeName);
-    }
+    nsRefPtr<nsVolumeService> vs = nsVolumeService::GetSingleton();
+    vs->GetVolumesForIPC(aResult);
     return true;
 #else
-    NS_WARNING("ContentParent::RecvBroadcastVolume shouldn't be called when MOZ_WIDGET_GONK is not defined");
+    NS_WARNING("ContentParent::RecvGetVolumes shouldn't be called when MOZ_WIDGET_GONK is not defined");
     return false;
 #endif
 }
@@ -2431,6 +2434,7 @@ ContentParent::RecvNuwaReady()
         KillHard();
         return false;
     }
+    sNuwaReady = true;
     PreallocatedProcessManager::OnNuwaReady();
     return true;
 #else
@@ -2466,6 +2470,12 @@ ContentParent::RecvAddNewProcess(const uint32_t& aPid,
     for (int i = 0; i < numNuwaPrefUpdates; i++) {
         content->SendPreferenceUpdate(sNuwaPrefUpdates->ElementAt(i));
     }
+
+    // Update offline settings.
+    bool isOffline;
+    RecvGetXPCOMProcessAttributes(&isOffline);
+    content->SendSetOffline(isOffline);
+
     PreallocatedProcessManager::PublishSpareProcess(content);
     return true;
 #else
@@ -2534,8 +2544,15 @@ ContentParent::Observe(nsISupports* aSubject,
     else if (!strcmp(aTopic, NS_IPC_IOSERVICE_SET_OFFLINE_TOPIC)) {
       NS_ConvertUTF16toUTF8 dataStr(aData);
       const char *offline = dataStr.get();
-      if (!SendSetOffline(!strcmp(offline, "true") ? true : false))
-          return NS_ERROR_NOT_AVAILABLE;
+#ifdef MOZ_NUWA_PROCESS
+      if (!(IsNuwaReady() && IsNuwaProcess())) {
+#endif
+          if (!SendSetOffline(!strcmp(offline, "true") ? true : false)) {
+              return NS_ERROR_NOT_AVAILABLE;
+          }
+#ifdef MOZ_NUWA_PROCESS
+      }
+#endif
     }
     // listening for alert notifications
     else if (!strcmp(aTopic, "alertfinished") ||
@@ -2600,7 +2617,12 @@ ContentParent::Observe(nsISupports* aSubject,
         CopyUTF16toUTF8(aData, creason);
         DeviceStorageFile* file = static_cast<DeviceStorageFile*>(aSubject);
 
-        unused << SendFilePathUpdate(file->mStorageType, file->mStorageName, file->mPath, creason);
+#ifdef MOZ_NUWA_PROCESS
+        if (!(IsNuwaReady() && IsNuwaProcess()))
+#endif
+        {
+            unused << SendFilePathUpdate(file->mStorageType, file->mStorageName, file->mPath, creason);
+        }
     }
 #ifdef MOZ_WIDGET_GONK
     else if(!strcmp(aTopic, NS_VOLUME_STATE_CHANGED)) {
@@ -2627,9 +2649,14 @@ ContentParent::Observe(nsISupports* aSubject,
         vol->GetIsFormatting(&isFormatting);
         vol->GetIsFake(&isFake);
 
-        unused << SendFileSystemUpdate(volName, mountPoint, state,
-                                       mountGeneration, isMediaPresent,
-                                       isSharing, isFormatting, isFake);
+#ifdef MOZ_NUWA_PROCESS
+        if (!(IsNuwaReady() && IsNuwaProcess()))
+#endif
+        {
+            unused << SendFileSystemUpdate(volName, mountPoint, state,
+                                           mountGeneration, isMediaPresent,
+                                           isSharing, isFormatting, isFake);
+        }
     } else if (!strcmp(aTopic, "phone-state-changed")) {
         nsString state(aData);
         unused << SendNotifyPhoneStateChange(state);
@@ -2643,7 +2670,9 @@ ContentParent::Observe(nsISupports* aSubject,
         unused << SendActivateA11y();
     }
 #endif
-
+    else if (!strcmp(aTopic, "app-theme-changed")) {
+        unused << SendOnAppThemeChanged();
+    }
     return NS_OK;
 }
 
@@ -3219,10 +3248,10 @@ ContentParent::RecvSpeakerManagerGetSpeakerStatus(bool* aValue)
 #ifdef MOZ_WIDGET_GONK
     *aValue = false;
     nsRefPtr<SpeakerManagerService> service =
-      SpeakerManagerService::GetSpeakerManagerService();
-    if (service) {
-        *aValue = service->GetSpeakerStatus();
-    }
+      SpeakerManagerService::GetOrCreateSpeakerManagerService();
+    MOZ_ASSERT(service);
+
+    *aValue = service->GetSpeakerStatus();
     return true;
 #endif
     return false;
@@ -3233,10 +3262,10 @@ ContentParent::RecvSpeakerManagerForceSpeaker(const bool& aEnable)
 {
 #ifdef MOZ_WIDGET_GONK
     nsRefPtr<SpeakerManagerService> service =
-      SpeakerManagerService::GetSpeakerManagerService();
-    if (service) {
-        service->ForceSpeaker(aEnable, mChildID);
-    }
+      SpeakerManagerService::GetOrCreateSpeakerManagerService();
+    MOZ_ASSERT(service);
+    service->ForceSpeaker(aEnable, mChildID);
+
     return true;
 #endif
     return false;
@@ -3361,6 +3390,7 @@ ContentParent::RecvShowAlertNotification(const nsString& aImageUrl, const nsStri
                                          const nsString& aText, const bool& aTextClickable,
                                          const nsString& aCookie, const nsString& aName,
                                          const nsString& aBidi, const nsString& aLang,
+                                         const nsString& aData,
                                          const IPC::Principal& aPrincipal)
 {
 #ifdef MOZ_CHILD_PERMISSIONS
@@ -3374,7 +3404,8 @@ ContentParent::RecvShowAlertNotification(const nsString& aImageUrl, const nsStri
     nsCOMPtr<nsIAlertsService> sysAlerts(do_GetService(NS_ALERTSERVICE_CONTRACTID));
     if (sysAlerts) {
         sysAlerts->ShowAlertNotification(aImageUrl, aTitle, aText, aTextClickable,
-                                         aCookie, this, aName, aBidi, aLang, aPrincipal);
+                                         aCookie, this, aName, aBidi, aLang,
+                                         aData, aPrincipal);
     }
     return true;
 }
@@ -3633,6 +3664,13 @@ bool
 ContentParent::CheckAppHasStatus(unsigned short aStatus)
 {
     return AssertAppHasStatus(this, aStatus);
+}
+
+bool
+ContentParent::KillChild()
+{
+  KillHard();
+  return true;
 }
 
 PBlobParent*

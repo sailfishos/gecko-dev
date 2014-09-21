@@ -26,7 +26,7 @@ class GMPVideoEncoderParent : public GMPVideoEncoderProxy,
 public:
   NS_INLINE_DECL_REFCOUNTING(GMPVideoEncoderParent)
 
-  GMPVideoEncoderParent(GMPParent *aPlugin);
+  explicit GMPVideoEncoderParent(GMPParent *aPlugin);
 
   GMPVideoHostImpl& Host();
   void Shutdown();
@@ -38,7 +38,7 @@ public:
                             GMPVideoEncoderCallbackProxy* aCallback,
                             int32_t aNumberOfCores,
                             uint32_t aMaxPayloadSize) MOZ_OVERRIDE;
-  virtual GMPErr Encode(GMPVideoi420Frame* aInputFrame,
+  virtual GMPErr Encode(UniquePtr<GMPVideoi420Frame> aInputFrame,
                         const nsTArray<uint8_t>& aCodecSpecificInfo,
                         const nsTArray<GMPVideoFrameType>& aFrameTypes) MOZ_OVERRIDE;
   virtual GMPErr SetChannelParameters(uint32_t aPacketLoss, uint32_t aRTT) MOZ_OVERRIDE;

@@ -418,6 +418,29 @@ CertVerifier::VerifyCert(CERTCertificate* cert, SECCertificateUsage usage,
   }
 
   if (rv != Success) {
+    if (rv != Result::ERROR_KEY_PINNING_FAILURE) {
+      ScopedCERTCertificate certCopy(CERT_DupCertificate(cert));
+      if (!certCopy) {
+        return SECFailure;
+      }
+      ScopedCERTCertList certList(CERT_NewCertList());
+      if (!certList) {
+        return SECFailure;
+      }
+      SECStatus srv = CERT_AddCertToListTail(certList.get(), certCopy.get());
+      if (srv != SECSuccess) {
+        return SECFailure;
+      }
+      certCopy.forget(); // now owned by certList
+      PRBool chainOK = false;
+      srv = chainValidationCallback(&callbackState, certList, &chainOK);
+      if (srv != SECSuccess) {
+        return SECFailure;
+      }
+      if (!chainOK) {
+        rv = Result::ERROR_KEY_PINNING_FAILURE;
+      }
+    }
     PR_SetError(MapResultToPRErrorCode(rv), 0);
     return SECFailure;
   }
@@ -432,6 +455,7 @@ CertVerifier::VerifySSLServerCert(CERTCertificate* peerCert,
                      /*optional*/ void* pinarg,
                                   const char* hostname,
                                   bool saveIntermediatesInPermanentDatabase,
+                                  Flags flags,
                  /*optional out*/ ScopedCERTCertList* builtChain,
                  /*optional out*/ SECOidTag* evOidPolicy)
 {
@@ -456,8 +480,8 @@ CertVerifier::VerifySSLServerCert(CERTCertificate* peerCert,
   // CreateCertErrorRunnable assumes that CERT_VerifyCertName is only called
   // if VerifyCert succeeded.
   SECStatus rv = VerifyCert(peerCert, certificateUsageSSLServer, time, pinarg,
-                            hostname, 0, stapledOCSPResponse, &builtChainTemp,
-                            evOidPolicy);
+                            hostname, flags, stapledOCSPResponse,
+                            &builtChainTemp, evOidPolicy);
   if (rv != SECSuccess) {
     return rv;
   }

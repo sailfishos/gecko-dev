@@ -78,6 +78,7 @@ PerThreadData::PerThreadData(JSRuntime *runtime)
     traceLogger(nullptr),
 #endif
     activation_(nullptr),
+    profilingActivation_(nullptr),
     asmJSActivationStack_(nullptr),
     autoFlushICache_(nullptr),
 #if defined(JS_ARM_SIMULATOR) || defined(JS_MIPS_SIMULATOR)
@@ -210,6 +211,7 @@ JSRuntime::JSRuntime(JSRuntime *parentRuntime)
     wrapObjectCallbacks(&DefaultWrapObjectCallbacks),
     preserveWrapperCallback(nullptr),
     jitSupportsFloatingPoint(false),
+    jitSupportsSimd(false),
     ionPcScriptCache(nullptr),
     threadPool(this),
     defaultJSContextCallback(nullptr),
@@ -314,6 +316,7 @@ JSRuntime::init(uint32_t maxbytes, uint32_t maxNurseryBytes)
     nativeStackBase = GetNativeStackBase();
 
     jitSupportsFloatingPoint = js::jit::JitSupportsFloatingPoint();
+    jitSupportsSimd = js::jit::JitSupportsSimd();
 
     signalHandlersInstalled_ = EnsureAsmJSSignalHandlersInstalled(this);
     canUseSignalHandlers_ = signalHandlersInstalled_ && !SignalBasedTriggersDisabled();

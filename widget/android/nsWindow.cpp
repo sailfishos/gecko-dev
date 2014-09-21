@@ -87,6 +87,10 @@ static StaticRefPtr<ContentCreationNotifier> gContentCreationNotifier;
 // are created. Currently an update for the screen size is sent.
 class ContentCreationNotifier MOZ_FINAL : public nsIObserver
 {
+private:
+    ~ContentCreationNotifier() {}
+
+public:
     NS_DECL_ISUPPORTS
 
     NS_IMETHOD Observe(nsISupports* aSubject,
@@ -861,6 +865,31 @@ nsWindow::OnGlobalAndroidEvent(AndroidGeckoEvent *ae)
             break;
         }
 
+        // LongPress events mostly trigger contextmenu options, but can also lead to
+        // textSelection processing.
+        case AndroidGeckoEvent::LONG_PRESS: {
+            win->UserActivity();
+
+            nsCOMPtr<nsIObserverService> obsServ = mozilla::services::GetObserverService();
+            obsServ->NotifyObservers(nullptr, "before-build-contextmenu", nullptr);
+
+            nsIntPoint pt;
+            const nsTArray<nsIntPoint>& points = ae->Points();
+            if (points.Length() > 0) {
+                pt = nsIntPoint(points[0].x, points[0].y);
+            }
+
+            // Clamp our point within bounds, and locate the target element for the event.
+            pt.x = clamped(pt.x, 0, std::max(gAndroidBounds.width - 1, 0));
+            pt.y = clamped(pt.y, 0, std::max(gAndroidBounds.height - 1, 0));
+            nsWindow *target = win->FindWindowForPoint(pt);
+            if (target) {
+                // Send the contextmenu event to Gecko.
+                target->OnContextmenuEvent(ae);
+            }
+            break;
+        }
+
         case AndroidGeckoEvent::NATIVE_GESTURE_EVENT: {
             nsIntPoint pt(0,0);
             const nsTArray<nsIntPoint>& points = ae->Points();
@@ -994,6 +1023,39 @@ nsWindow::OnMouseEvent(AndroidGeckoEvent *ae)
 
     // XXX add the double-click handling logic here
     DispatchEvent(&event);
+}
+
+void
+nsWindow::OnContextmenuEvent(AndroidGeckoEvent *ae)
+{
+    nsRefPtr<nsWindow> kungFuDeathGrip(this);
+
+    CSSPoint pt;
+    const nsTArray<nsIntPoint>& points = ae->Points();
+    if (points.Length() > 0) {
+        pt = CSSPoint(points[0].x, points[0].y);
+    }
+
+    // Send the contextmenu event.
+    WidgetMouseEvent contextMenuEvent(true, NS_CONTEXTMENU, this,
+                                      WidgetMouseEvent::eReal, WidgetMouseEvent::eNormal);
+    contextMenuEvent.refPoint =
+        LayoutDeviceIntPoint(RoundedToInt(pt * GetDefaultScale())) -
+        LayoutDeviceIntPoint::FromUntyped(WidgetToScreenOffset());
+    contextMenuEvent.ignoreRootScrollFrame = true;
+    contextMenuEvent.inputSource = nsIDOMMouseEvent::MOZ_SOURCE_TOUCH;
+
+    nsEventStatus contextMenuStatus;
+    DispatchEvent(&contextMenuEvent, contextMenuStatus);
+
+    // If the contextmenu event was consumed (preventDefault issued), we follow with a
+    // touchcancel event. This avoids followup touchend events passsing through and
+    // triggering further element behaviour such as link-clicks.
+    if (contextMenuStatus == nsEventStatus_eConsumeNoDefault) {
+        WidgetTouchEvent canceltouchEvent = ae->MakeTouchEvent(this);
+        canceltouchEvent.message = NS_TOUCH_CANCEL;
+        DispatchEvent(&canceltouchEvent);
+    }
 }
 
 bool nsWindow::OnMultitouchEvent(AndroidGeckoEvent *ae)
@@ -2273,13 +2335,15 @@ nsWindow::DrawWindowUnderlay(LayerManagerComposite* aManager, nsIntRect aRect)
     }
 
     gl::GLContext* gl = static_cast<CompositorOGL*>(aManager->GetCompositor())->gl();
-    gl::ScopedGLState scopedScissorTestState(gl, LOCAL_GL_SCISSOR_TEST);
-    gl::ScopedScissorRect scopedScissorRectState(gl);
+    bool scissorEnabled = gl->fIsEnabled(LOCAL_GL_SCISSOR_TEST);
+    GLint scissorRect[4];
+    gl->fGetIntegerv(LOCAL_GL_SCISSOR_BOX, scissorRect);
 
     client->ActivateProgram();
     if (!mLayerRendererFrame.BeginDrawing(&jniFrame)) return;
     if (!mLayerRendererFrame.DrawBackground(&jniFrame)) return;
-    client->DeactivateProgram(); // redundant, but in case somebody adds code after this...
+    client->DeactivateProgramAndRestoreState(scissorEnabled,
+        scissorRect[0], scissorRect[1], scissorRect[2], scissorRect[3]);
 }
 
 void
@@ -2300,13 +2364,15 @@ nsWindow::DrawWindowOverlay(LayerManagerComposite* aManager, nsIntRect aRect)
     mozilla::widget::android::GeckoLayerClient* client = AndroidBridge::Bridge()->GetLayerClient();
 
     gl::GLContext* gl = static_cast<CompositorOGL*>(aManager->GetCompositor())->gl();
-    gl::ScopedGLState scopedScissorTestState(gl, LOCAL_GL_SCISSOR_TEST);
-    gl::ScopedScissorRect scopedScissorRectState(gl);
+    bool scissorEnabled = gl->fIsEnabled(LOCAL_GL_SCISSOR_TEST);
+    GLint scissorRect[4];
+    gl->fGetIntegerv(LOCAL_GL_SCISSOR_BOX, scissorRect);
 
     client->ActivateProgram();
     if (!mLayerRendererFrame.DrawForeground(&jniFrame)) return;
     if (!mLayerRendererFrame.EndDrawing(&jniFrame)) return;
-    client->DeactivateProgram();
+    client->DeactivateProgramAndRestoreState(scissorEnabled,
+        scissorRect[0], scissorRect[1], scissorRect[2], scissorRect[3]);
     mLayerRendererFrame.Dispose(env);
 }
 

@@ -19,7 +19,7 @@ namespace mozilla {
 class MediaResource;
 class MediaDecoderStateMachine;
 class MediaSourceReader;
-class SubBufferDecoder;
+class SourceBufferDecoder;
 
 namespace dom {
 
@@ -31,19 +31,31 @@ class MediaSource;
 class MediaSourceDecoder : public MediaDecoder
 {
 public:
-  MediaSourceDecoder(dom::HTMLMediaElement* aElement);
+  explicit MediaSourceDecoder(dom::HTMLMediaElement* aElement);
 
   virtual MediaDecoder* Clone() MOZ_OVERRIDE;
   virtual MediaDecoderStateMachine* CreateStateMachine() MOZ_OVERRIDE;
   virtual nsresult Load(nsIStreamListener**, MediaDecoder*) MOZ_OVERRIDE;
   virtual nsresult GetSeekable(dom::TimeRanges* aSeekable) MOZ_OVERRIDE;
 
+  virtual void Shutdown() MOZ_OVERRIDE;
+
   static already_AddRefed<MediaResource> CreateResource();
 
   void AttachMediaSource(dom::MediaSource* aMediaSource);
   void DetachMediaSource();
 
-  already_AddRefed<SubBufferDecoder> CreateSubDecoder(const nsACString& aType);
+  already_AddRefed<SourceBufferDecoder> CreateSubDecoder(const nsACString& aType);
+
+  void Ended();
+
+  void SetMediaSourceDuration(double aDuration);
+
+  // Provide a mechanism for MediaSourceReader to block waiting on data from a SourceBuffer.
+  void WaitForData();
+
+  // Called whenever a SourceBuffer has new data appended.
+  void NotifyGotData();
 
 private:
   // The owning MediaSource holds a strong reference to this decoder, and

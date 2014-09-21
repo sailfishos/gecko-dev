@@ -6,6 +6,9 @@
 package org.mozilla.gecko;
 
 import org.mozilla.gecko.mozglue.JNITarget;
+import org.mozilla.gecko.util.NativeEventListener;
+import org.mozilla.gecko.util.NativeJSObject;
+import org.mozilla.gecko.util.EventCallback;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -31,10 +34,16 @@ import android.util.Log;
  * connection type defined in Network Information API version 3.
  */
 
-public class GeckoNetworkManager extends BroadcastReceiver {
+public class GeckoNetworkManager extends BroadcastReceiver implements NativeEventListener {
     private static final String LOGTAG = "GeckoNetworkManager";
 
     static private final GeckoNetworkManager sInstance = new GeckoNetworkManager();
+
+    public static void destroy() {
+        if (sInstance != null) {
+            sInstance.onDestroy();
+        }
+    }
 
     // Connection Type defined in Network Information API v3.
     private enum ConnectionType {
@@ -55,6 +64,14 @@ public class GeckoNetworkManager extends BroadcastReceiver {
     private enum InfoType {
         MCC,
         MNC
+    }
+
+    private GeckoNetworkManager() {
+        EventDispatcher.getInstance().registerGeckoThreadListener(this, "Wifi:Enable");
+    }
+
+    private void onDestroy() {
+        EventDispatcher.getInstance().unregisterGeckoThreadListener(this, "Wifi:Enable");
     }
 
     private ConnectionType mConnectionType = ConnectionType.NONE;
@@ -111,6 +128,23 @@ public class GeckoNetworkManager extends BroadcastReceiver {
 
         if (mShouldNotify) {
             stopListening();
+        }
+    }
+
+    @Override
+    public void handleMessage(final String event, final NativeJSObject message,
+                              final EventCallback callback) {
+        if (event.equals("Wifi:Enable")) {
+            final WifiManager mgr = (WifiManager) mApplicationContext.getSystemService(Context.WIFI_SERVICE);
+
+            if (!mgr.isWifiEnabled()) {
+                mgr.setWifiEnabled(true);
+            } else {
+                // If Wifi is enabled, maybe you need to select a network
+                Intent intent = new Intent(android.provider.Settings.ACTION_WIFI_SETTINGS);
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                mApplicationContext.startActivity(intent);
+            }
         }
     }
 

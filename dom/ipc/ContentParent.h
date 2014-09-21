@@ -65,11 +65,11 @@ class TabContext;
 class PFileDescriptorSetParent;
 class ContentBridgeParent;
 
-class ContentParent : public PContentParent
-                    , public nsIContentParent
-                    , public nsIObserver
-                    , public nsIDOMGeoPositionCallback
-                    , public mozilla::LinkedListElement<ContentParent>
+class ContentParent MOZ_FINAL : public PContentParent
+                              , public nsIContentParent
+                              , public nsIObserver
+                              , public nsIDOMGeoPositionCallback
+                              , public mozilla::LinkedListElement<ContentParent>
 {
     typedef mozilla::ipc::GeckoChildProcessHost GeckoChildProcessHost;
     typedef mozilla::ipc::OptionalURIParams OptionalURIParams;
@@ -78,6 +78,11 @@ class ContentParent : public PContentParent
     typedef mozilla::dom::ClonedMessageData ClonedMessageData;
 
 public:
+#ifdef MOZ_NUWA_PROCESS
+    static bool IsNuwaReady() {
+        return sNuwaReady;
+    }
+#endif
     virtual bool IsContentParent() MOZ_OVERRIDE { return true; }
     /**
      * Start up the content-process machinery.  This might include
@@ -95,7 +100,6 @@ public:
     static void JoinAllSubprocesses();
 
     static bool PreallocatedProcessReady();
-    static void RunAfterPreallocatedProcessReady(nsIRunnable* aRequest);
 
     /**
      * Get or create a content process for:
@@ -156,6 +160,7 @@ public:
     virtual bool CheckManifestURL(const nsAString& aManifestURL) MOZ_OVERRIDE;
     virtual bool CheckAppHasPermission(const nsAString& aPermission) MOZ_OVERRIDE;
     virtual bool CheckAppHasStatus(unsigned short aStatus) MOZ_OVERRIDE;
+    virtual bool KillChild() MOZ_OVERRIDE;
 
     /** Notify that a tab is beginning its destruction sequence. */
     void NotifyTabDestroying(PBrowserParent* aTab);
@@ -530,6 +535,7 @@ private:
                                            const nsString& aText, const bool& aTextClickable,
                                            const nsString& aCookie, const nsString& aName,
                                            const nsString& aBidi, const nsString& aLang,
+                                           const nsString& aData,
                                            const IPC::Principal& aPrincipal) MOZ_OVERRIDE;
 
     virtual bool RecvCloseAlert(const nsString& aName,
@@ -591,7 +597,7 @@ private:
     virtual bool RecvAudioChannelChangeDefVolChannel(const int32_t& aChannel,
                                                      const bool& aHidden) MOZ_OVERRIDE;
     virtual bool RecvGetSystemMemory(const uint64_t& getterId) MOZ_OVERRIDE;
-    virtual bool RecvBroadcastVolume(const nsString& aVolumeName) MOZ_OVERRIDE;
+    virtual bool RecvGetVolumes(InfallibleTArray<VolumeInfo>* aResult) MOZ_OVERRIDE;
 
     virtual bool RecvDataStoreGetStores(
                        const nsString& aName,
@@ -699,6 +705,10 @@ private:
     // Dup of child's X socket, used to scope its resources to this
     // object instead of the child process's lifetime.
     ScopedClose mChildXSocketFdDup;
+#endif
+
+#ifdef MOZ_NUWA_PROCESS
+    static bool sNuwaReady;
 #endif
 };
 

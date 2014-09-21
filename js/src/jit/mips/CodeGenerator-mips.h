@@ -75,8 +75,7 @@ class CodeGeneratorMIPS : public CodeGeneratorShared
               return bailoutCmp32(c, lhs.toReg(), rhs, snapshot);
         if (lhs.getTag() == Operand::MEM)
               return bailoutCmp32(c, lhs.toAddress(), rhs, snapshot);
-        MOZ_ASSUME_UNREACHABLE("Invalid operand tag.");
-        return false;
+        MOZ_CRASH("Invalid operand tag.");
     }
     template<typename T>
     bool bailoutTest32(Assembler::Condition c, Register lhs, T rhs, LSnapshot *snapshot) {
@@ -182,6 +181,8 @@ class CodeGeneratorMIPS : public CodeGeneratorShared
     virtual bool visitPowHalfD(LPowHalfD *ins);
     virtual bool visitShiftI(LShiftI *ins);
     virtual bool visitUrshD(LUrshD *ins);
+
+    virtual bool visitClzI(LClzI *ins);
 
     virtual bool visitTestIAndBranch(LTestIAndBranch *test);
     virtual bool visitCompare(LCompare *comp);

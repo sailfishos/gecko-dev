@@ -7,6 +7,7 @@
 #ifndef ds_LifoAlloc_h
 #define ds_LifoAlloc_h
 
+#include "mozilla/Attributes.h"
 #include "mozilla/DebugOnly.h"
 #include "mozilla/MathAlgorithms.h"
 #include "mozilla/MemoryChecking.h"
@@ -147,7 +148,7 @@ class BumpChunk
 
 } // namespace detail
 
-void
+MOZ_NORETURN void
 CrashAtUnhandlableOOM(const char *reason);
 
 // LIFO bump allocator: used for phase-oriented and fast LIFO allocations.
@@ -391,7 +392,7 @@ class LifoAlloc
     // Doesn't perform construction; useful for lazily-initialized POD types.
     template <typename T>
     MOZ_ALWAYS_INLINE
-    T *newPod() {
+    T *pod_malloc() {
         return static_cast<T *>(alloc(sizeof(T)));
     }
 

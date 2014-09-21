@@ -10,18 +10,20 @@ loop.Client = (function($) {
   "use strict";
 
   // The expected properties to be returned from the POST /call-url/ request.
-  const expectedCallUrlProperties = ["callUrl", "expiresAt"];
+  var expectedCallUrlProperties = ["callUrl", "expiresAt"];
 
   // The expected properties to be returned from the GET /calls request.
-  const expectedCallProperties = ["calls"];
+  var expectedCallProperties = ["calls"];
 
   /**
    * Loop server client.
    *
    * @param {Object} settings Settings object.
    */
-  function Client(settings = {}) {
-
+  function Client(settings) {
+    if (!settings) {
+      settings = {};
+    }
     // allowing an |in| test rather than a more type || allows us to dependency
     // inject a non-existent mozLoop
     if ("mozLoop" in settings) {
@@ -99,7 +101,7 @@ loop.Client = (function($) {
      * Callback parameters:
      * - err null on successful registration, non-null otherwise.
      * - callUrlData an object of the obtained call url data if successful:
-     * -- call_url: The url of the call
+     * -- callUrl: The url of the call
      * -- expiresAt: The amount of hours until expiry of the url
      *
      * @param  {String} simplepushUrl a registered Simple Push URL
@@ -108,7 +110,7 @@ loop.Client = (function($) {
      */
     _requestCallUrlInternal: function(nickname, cb) {
       this.mozLoop.hawkRequest("/call-url/", "POST", {callerId: nickname},
-                               (error, responseText) => {
+                               function (error, responseText) {
         if (error) {
           this._failureHandler(cb, error);
           return;
@@ -118,13 +120,11 @@ loop.Client = (function($) {
           var urlData = JSON.parse(responseText);
 
           cb(null, this._validate(urlData, expectedCallUrlProperties));
-
-          this.mozLoop.noteCallUrlExpiry(urlData.expiresAt);
         } catch (err) {
           console.log("Error requesting call info", err);
           cb(err);
         }
-      });
+      }.bind(this));
     },
 
     /**
@@ -149,7 +149,7 @@ loop.Client = (function($) {
 
     _deleteCallUrlInternal: function(token, cb) {
       this.mozLoop.hawkRequest("/call-url/" + token, "DELETE", null,
-                               (error, responseText) => {
+                               function (error, responseText) {
         if (error) {
           this._failureHandler(cb, error);
           return;
@@ -157,13 +157,11 @@ loop.Client = (function($) {
 
         try {
           cb(null);
-
-          this.mozLoop.noteCallUrlExpiry((new Date()).getTime() / 1000);
         } catch (err) {
           console.log("Error deleting call info", err);
           cb(err);
         }
-      });
+      }.bind(this));
     },
 
     /**
@@ -173,7 +171,7 @@ loop.Client = (function($) {
      * Callback parameters:
      * - err null on successful registration, non-null otherwise.
      * - callUrlData an object of the obtained call url data if successful:
-     * -- call_url: The url of the call
+     * -- callUrl: The url of the call
      * -- expiresAt: The amount of hours until expiry of the url
      *
      * @param  {String} simplepushUrl a registered Simple Push URL
@@ -207,7 +205,7 @@ loop.Client = (function($) {
       }
 
       this.mozLoop.hawkRequest("/calls?version=" + version, "GET", null,
-                               (error, responseText) => {
+                               function (error, responseText) {
         if (error) {
           this._failureHandler(cb, error);
           return;
@@ -221,8 +219,8 @@ loop.Client = (function($) {
           console.log("Error requesting calls info", err);
           cb(err);
         }
-      });
-    },
+      }.bind(this));
+    }
   };
 
   return Client;

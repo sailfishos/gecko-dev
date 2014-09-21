@@ -48,7 +48,7 @@ loop.webapp = (function($, _, OT, webL10n) {
         React.DOM.div({className: "promote-firefox"}, 
           React.DOM.h3(null, __("promote_firefox_hello_heading")), 
           React.DOM.p(null, 
-            React.DOM.a({className: "btn btn-large btn-success", 
+            React.DOM.a({className: "btn btn-large btn-accept", 
                href: "https://www.mozilla.org/firefox/"}, 
               __("get_firefox_button")
             )
@@ -73,7 +73,7 @@ loop.webapp = (function($, _, OT, webL10n) {
           React.DOM.div({className: "info-panel"}, 
             React.DOM.div({className: "firefox-logo"}), 
             React.DOM.h1(null, __("call_url_unavailable_notification_heading")), 
-            React.DOM.h4(null, __("call_url_unavailable_notification_message"))
+            React.DOM.h4(null, __("call_url_unavailable_notification_message2"))
           ), 
           PromoteFirefoxView({helper: this.props.helper})
         )
@@ -100,8 +100,8 @@ loop.webapp = (function($, _, OT, webL10n) {
 
       return (
         /* jshint ignore:start */
-        React.DOM.header({className: "container-box"}, 
-          React.DOM.h1({className: "light-weight-font"}, 
+        React.DOM.header({className: "standalone-header container-box"}, 
+          React.DOM.h1({className: "standalone-header-title"}, 
             React.DOM.strong(null, __("brandShortname")), " ", __("clientShortname")
           ), 
           React.DOM.div({className: "loop-logo", title: "Firefox WebRTC! logo"}), 
@@ -120,7 +120,7 @@ loop.webapp = (function($, _, OT, webL10n) {
   var ConversationFooter = React.createClass({displayName: 'ConversationFooter',
     render: function() {
       return (
-        React.DOM.div({className: "footer container-box"}, 
+        React.DOM.div({className: "standalone-footer container-box"}, 
           React.DOM.div({title: "Mozilla Logo", className: "footer-logo"})
         )
       );
@@ -203,6 +203,7 @@ loop.webapp = (function($, _, OT, webL10n) {
 
     componentWillUnmount: function() {
       window.removeEventListener("click", this.clickHandler);
+      localStorage.setItem("has-seen-tos", "true");
     },
 
     clickHandler: function(e) {
@@ -228,13 +229,16 @@ loop.webapp = (function($, _, OT, webL10n) {
           "https://www.mozilla.org/privacy/'>" + privacy_notice_name + "</a>"
       });
 
-      var btnClassStartCall = "btn btn-large btn-success " +
-                              "start-audio-video-call " +
+      var btnClassStartCall = "btn btn-large btn-accept " +
                               loop.shared.utils.getTargetPlatform();
       var dropdownMenuClasses = React.addons.classSet({
         "native-dropdown-large-parent": true,
         "standalone-dropdown-menu": true,
         "visually-hidden": !this.state.showCallOptionsMenu
+      });
+      var tosClasses = React.addons.classSet({
+        "terms-service": true,
+        hide: (localStorage.getItem("has-seen-tos") === "true")
       });
 
       return (
@@ -245,23 +249,26 @@ loop.webapp = (function($, _, OT, webL10n) {
             ConversationHeader({
               urlCreationDateString: this.state.urlCreationDateString}), 
 
-            React.DOM.p({className: "large-font light-weight-font"}, 
-              __("initiate_call_button_label")
+            React.DOM.p({className: "standalone-call-btn-label"}, 
+              __("initiate_call_button_label2")
             ), 
 
             React.DOM.div({id: "messages"}), 
 
-            React.DOM.div({className: "button-group"}, 
+            React.DOM.div({className: "btn-group"}, 
               React.DOM.div({className: "flex-padding-1"}), 
-              React.DOM.div({className: "button-chevron-menu-group"}, 
-                React.DOM.div({className: "button-group-chevron"}, 
-                  React.DOM.div({className: "button-group"}, 
+              React.DOM.div({className: "standalone-btn-chevron-menu-group"}, 
+                React.DOM.div({className: "btn-group-chevron"}, 
+                  React.DOM.div({className: "btn-group"}, 
 
                     React.DOM.button({className: btnClassStartCall, 
                             onClick: this._initiateOutgoingCall("audio-video"), 
                             disabled: this.state.disableCallButton, 
-                            title: __("initiate_audio_video_call_tooltip")}, 
-                      __("initiate_audio_video_call_button")
+                            title: __("initiate_audio_video_call_tooltip2")}, 
+                      React.DOM.span({className: "standalone-call-btn-text"}, 
+                        __("initiate_audio_video_call_button2")
+                      ), 
+                      React.DOM.span({className: "standalone-call-btn-video-icon"})
                     ), 
 
                     React.DOM.div({className: "btn-chevron", 
@@ -278,7 +285,7 @@ loop.webapp = (function($, _, OT, webL10n) {
                       React.DOM.button({className: "start-audio-only-call", 
                               onClick: this._initiateOutgoingCall("audio"), 
                               disabled: this.state.disableCallButton}, 
-                        __("initiate_audio_call_button")
+                        __("initiate_audio_call_button2")
                       )
                     )
                   )
@@ -288,7 +295,7 @@ loop.webapp = (function($, _, OT, webL10n) {
               React.DOM.div({className: "flex-padding-1"})
             ), 
 
-            React.DOM.p({className: "terms-service", 
+            React.DOM.p({className: tosClasses, 
                dangerouslySetInnerHTML: {__html: tosHTML}})
           ), 
 
@@ -404,6 +411,18 @@ loop.webapp = (function($, _, OT, webL10n) {
     },
 
     /**
+     * Checks if the streams have been connected, and notifies the
+     * websocket that the media is now connected.
+     */
+    _checkConnected: function() {
+      // Check we've had both local and remote streams connected before
+      // sending the media up message.
+      if (this._conversation.streamsConnected()) {
+        this._websocket.mediaUp();
+      }
+    },
+
+    /**
      * Used to receive websocket progress and to determine how to handle
      * it if appropraite.
      */
@@ -488,6 +507,8 @@ loop.webapp = (function($, _, OT, webL10n) {
         client: this._client
       });
       this._conversation.once("call:outgoing:setup", this.setupOutgoingCall, this);
+      this._conversation.once("change:publishedStream", this._checkConnected, this);
+      this._conversation.once("change:subscribedStream", this._checkConnected, this);
       this.loadReactComponent(startView);
     },
 
@@ -532,8 +553,8 @@ loop.webapp = (function($, _, OT, webL10n) {
     var helper = new WebappHelper();
     var client = new loop.StandaloneClient({
       baseServerUrl: baseServerUrl
-    }),
-    router = new WebappRouter({
+    });
+    var router = new WebappRouter({
       helper: helper,
       notifier: new sharedViews.NotificationListView({el: "#messages"}),
       client: client,
@@ -542,12 +563,16 @@ loop.webapp = (function($, _, OT, webL10n) {
         pendingCallTimeout: loop.config.pendingCallTimeout
       })
     });
+
     Backbone.history.start();
     if (helper.isIOS(navigator.platform)) {
       router.navigate("unsupportedDevice", {trigger: true});
     } else if (!OT.checkSystemRequirements()) {
       router.navigate("unsupportedBrowser", {trigger: true});
     }
+
+    document.body.classList.add(loop.shared.utils.getTargetPlatform());
+
     // Set the 'lang' and 'dir' attributes to <html> when the page is translated
     document.documentElement.lang = document.webL10n.getLanguage();
     document.documentElement.dir = document.webL10n.getDirection();

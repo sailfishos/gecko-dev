@@ -28,9 +28,13 @@
 #include "mozilla/StaticPtr.h"
 #include "cutils/properties.h"
 #include "gfx2DGlue.h"
+#include "GeckoTouchDispatcher.h"
 
 #if ANDROID_VERSION >= 17
 #include "libdisplay/FramebufferSurface.h"
+#include "gfxPrefs.h"
+#include "nsThreadUtils.h"
+
 #ifndef HWC_BLIT
 #define HWC_BLIT (HWC_FRAMEBUFFER_TARGET + 1)
 #endif
@@ -59,9 +63,38 @@
 #define LAYER_COUNT_INCREMENTS 5
 
 using namespace android;
+using namespace mozilla::gfx;
 using namespace mozilla::layers;
 
 namespace mozilla {
+
+#if ANDROID_VERSION >= 17
+static void
+HookInvalidate(const struct hwc_procs* aProcs)
+{
+    // no op
+}
+
+static void
+HookVsync(const struct hwc_procs* aProcs, int aDisplay,
+          int64_t aTimestamp)
+{
+    HwcComposer2D::GetInstance()->Vsync(aDisplay, aTimestamp);
+}
+
+static void
+HookHotplug(const struct hwc_procs* aProcs, int aDisplay,
+            int aConnected)
+{
+    // no op
+}
+
+static const hwc_procs_t sHWCProcs = {
+    &HookInvalidate, // 1st: void (*invalidate)(...)
+    &HookVsync,      // 2nd: void (*vsync)(...)
+    &HookHotplug     // 3rd: void (*hotplug)(...)
+};
+#endif
 
 static StaticRefPtr<HwcComposer2D> sInstance;
 
@@ -77,6 +110,7 @@ HwcComposer2D::HwcComposer2D()
     , mPrevDisplayFence(Fence::NO_FENCE)
 #endif
     , mPrepared(false)
+    , mHasHWVsync(false)
 {
 }
 
@@ -116,6 +150,10 @@ HwcComposer2D::Init(hwc_display_t dpy, hwc_surface_t sur, gl::GLContext* aGLCont
         mColorFill = false;
         mRBSwapSupport = false;
     }
+
+    if (RegisterHwcEventCallback()) {
+        EnableVsync(true);
+    }
 #else
     char propValue[PROPERTY_VALUE_MAX];
     property_get("ro.display.colorfill", propValue, "0");
@@ -139,6 +177,60 @@ HwcComposer2D::GetInstance()
     }
     return sInstance;
 }
+
+void
+HwcComposer2D::EnableVsync(bool aEnable)
+{
+#if ANDROID_VERSION >= 17
+    if (NS_IsMainThread()) {
+        RunVsyncEventControl(aEnable);
+    } else {
+        nsRefPtr<nsIRunnable> event =
+            NS_NewRunnableMethodWithArg<bool>(this, &HwcComposer2D::RunVsyncEventControl, aEnable);
+        NS_DispatchToMainThread(event);
+    }
+#endif
+}
+
+#if ANDROID_VERSION >= 17
+bool
+HwcComposer2D::RegisterHwcEventCallback()
+{
+    if (!gfxPrefs::FrameUniformityHWVsyncEnabled()) {
+        return false;
+    }
+
+    HwcDevice* device = (HwcDevice*)GetGonkDisplay()->GetHWCDevice();
+    if (!device || !device->registerProcs) {
+        LOGE("Failed to get hwc");
+        return false;
+    }
+
+    // Disable Vsync first, and then register callback functions.
+    device->eventControl(device, HWC_DISPLAY_PRIMARY, HWC_EVENT_VSYNC, false);
+    device->registerProcs(device, &sHWCProcs);
+
+    mHasHWVsync = true;
+    return true;
+}
+
+void
+HwcComposer2D::RunVsyncEventControl(bool aEnable)
+{
+    if (mHasHWVsync) {
+        HwcDevice* device = (HwcDevice*)GetGonkDisplay()->GetHWCDevice();
+        if (device && device->eventControl) {
+            device->eventControl(device, HWC_DISPLAY_PRIMARY, HWC_EVENT_VSYNC, aEnable);
+        }
+    }
+}
+
+void
+HwcComposer2D::Vsync(int aDisplay, int64_t aTimestamp)
+{
+    GeckoTouchDispatcher::NotifyVsync(aTimestamp);
+}
+#endif
 
 bool
 HwcComposer2D::ReallocLayerList()
@@ -193,8 +285,8 @@ HwcComposer2D::setHwcGeometry(bool aGeometryChanged)
 bool
 HwcComposer2D::PrepareLayerList(Layer* aLayer,
                                 const nsIntRect& aClip,
-                                const gfxMatrix& aParentTransform,
-                                const gfxMatrix& aGLWorldTransform)
+                                const Matrix& aParentTransform,
+                                const Matrix& aGLWorldTransform)
 {
     // NB: we fall off this path whenever there are container layers
     // that require intermediate surfaces.  That means all the
@@ -234,8 +326,8 @@ HwcComposer2D::PrepareLayerList(Layer* aLayer,
     //
     // A 2D transform with PreservesAxisAlignedRectangles() has all the attributes
     // above
-    gfxMatrix transform;
-    gfx3DMatrix transform3D = gfx::To3DMatrix(aLayer->GetEffectiveTransform());
+    Matrix transform;
+    Matrix4x4 transform3D = aLayer->GetEffectiveTransform();
 
     if (!transform3D.Is2D(&transform) || !transform.PreservesAxisAlignedRectangles()) {
         LOGD("Layer has a 3D transform or a non-square angle rotation");
@@ -310,17 +402,21 @@ HwcComposer2D::PrepareLayerList(Layer* aLayer,
     // OK!  We can compose this layer with hwc.
     int current = mList ? mList->numHwLayers : 0;
 
-    // Do not compose any layer below full-screen Opaque layer
-    // Note: It can be generalized to non-fullscreen Opaque layers.
     bool isOpaque = (opacity == 0xFF) && (aLayer->GetContentFlags() & Layer::CONTENT_OPAQUE);
     if (current && isOpaque) {
-        nsIntRect displayRect = nsIntRect(displayFrame.left, displayFrame.top,
-            displayFrame.right - displayFrame.left, displayFrame.bottom - displayFrame.top);
+        nsIntRect displayRect = HwcUtils::HwcToIntRect(displayFrame);
         if (displayRect.Contains(mScreenRect)) {
-            // In z-order, all previous layers are below
-            // the current layer. We can ignore them now.
+            // In z-order, all previous layers are below current layer
+            // Do not compose any layer below full-screen opaque layer
             mList->numHwLayers = current = 0;
             mHwcLayerMap.Clear();
+        } else {
+            nsIntRect rect = HwcUtils::HwcToIntRect(mList->hwLayers[current-1].displayFrame);
+            if (displayRect.Contains(rect)) {
+                // Do not compose layer hidden under the opaque layer
+                mHwcLayerMap.RemoveElementAt(current-1);
+                current = --mList->numHwLayers;
+            }
         }
     }
 
@@ -377,7 +473,7 @@ HwcComposer2D::PrepareLayerList(Layer* aLayer,
         // And ignore scaling.
         //
         // Reflection is applied before rotation
-        gfxMatrix rotation = transform * aGLWorldTransform;
+        gfx::Matrix rotation = transform * aGLWorldTransform;
         // Compute fuzzy zero like PreservesAxisAlignedRectangles()
         if (fabs(rotation._11) < 1e-6) {
             if (rotation._21 < 0) {
@@ -775,10 +871,9 @@ HwcComposer2D::Reset()
 
 bool
 HwcComposer2D::TryRender(Layer* aRoot,
-                         const gfx::Matrix& GLWorldTransform,
+                         const gfx::Matrix& aGLWorldTransform,
                          bool aGeometryChanged)
 {
-    gfxMatrix aGLWorldTransform = ThebesMatrix(GLWorldTransform);
     if (!aGLWorldTransform.PreservesAxisAlignedRectangles()) {
         LOGD("Render aborted. World transform has non-square angle rotation");
         return false;
@@ -802,7 +897,7 @@ HwcComposer2D::TryRender(Layer* aRoot,
     MOZ_ASSERT(mHwcLayerMap.IsEmpty());
     if (!PrepareLayerList(aRoot,
                           mScreenRect,
-                          gfxMatrix(),
+                          gfx::Matrix(),
                           aGLWorldTransform))
     {
         mHwcLayerMap.Clear();

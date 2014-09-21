@@ -113,9 +113,13 @@ class ParallelSafetyVisitor : public MDefinitionVisitor
 
     SAFE_OP(Constant)
     SAFE_OP(SimdValueX4)
+    SAFE_OP(SimdSplatX4)
     SAFE_OP(SimdConstant)
     SAFE_OP(SimdExtractElement)
+    SAFE_OP(SimdSignMask)
+    SAFE_OP(SimdBinaryComp)
     SAFE_OP(SimdBinaryArith)
+    SAFE_OP(SimdBinaryBitwise)
     UNSAFE_OP(CloneLiteral)
     SAFE_OP(Parameter)
     SAFE_OP(Callee)
@@ -161,6 +165,7 @@ class ParallelSafetyVisitor : public MDefinitionVisitor
     SAFE_OP(Ursh)
     SPECIALIZED_OP(MinMax, PERMIT_NUMERIC)
     SAFE_OP(Abs)
+    SAFE_OP(Clz)
     SAFE_OP(Sqrt)
     UNSAFE_OP(Atan2)
     UNSAFE_OP(Hypot)
@@ -187,6 +192,7 @@ class ParallelSafetyVisitor : public MDefinitionVisitor
     SAFE_OP(MaybeToDoubleElement)
     CUSTOM_OP(ToString)
     CUSTOM_OP(NewArray)
+    UNSAFE_OP(NewArrayCopyOnWrite)
     CUSTOM_OP(NewObject)
     CUSTOM_OP(NewCallObject)
     CUSTOM_OP(NewRunOnceCallObject)
@@ -336,17 +342,15 @@ class ParallelSafetyVisitor : public MDefinitionVisitor
 
     // It looks like this could easily be made safe:
     UNSAFE_OP(ConvertElementsToDoubles)
+    UNSAFE_OP(MaybeCopyElementsForWrite)
 };
 
 static void
 TransplantResumePoint(MInstruction *oldInstruction, MInstruction *replacementInstruction)
 {
     MOZ_ASSERT(!oldInstruction->isDiscarded());
-    if (MResumePoint *rp = oldInstruction->resumePoint()) {
+    if (oldInstruction->resumePoint())
         replacementInstruction->stealResumePoint(oldInstruction);
-        if (rp->instruction() == oldInstruction)
-            rp->setInstruction(replacementInstruction);
-    }
 }
 
 bool

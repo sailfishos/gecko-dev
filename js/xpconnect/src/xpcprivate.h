@@ -2489,6 +2489,8 @@ public:
     void TraceJS(JSTracer* trc);
     static void GetTraceName(JSTracer* trc, char *buf, size_t bufsize);
 
+    size_t SizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf) const;
+
     virtual ~nsXPCWrappedJS();
 protected:
     nsXPCWrappedJS();   // not implemented
@@ -3361,9 +3363,10 @@ Btoa(JSContext *cx, unsigned argc, jsval *vp);
 
 // Helper function that creates a JSFunction that wraps a native function that
 // forwards the call to the original 'callable'.
+class FunctionForwarderOptions;
 bool
 NewFunctionForwarder(JSContext *cx, JS::HandleId id, JS::HandleObject callable,
-                     JS::MutableHandleValue vp);
+                     FunctionForwarderOptions &options, JS::MutableHandleValue vp);
 
 // Old fashioned xpc error reporter. Try to use JS_ReportError instead.
 nsresult
@@ -3477,13 +3480,46 @@ public:
                                    JSObject* options = nullptr)
         : OptionsBase(cx, options)
         , defineAs(cx, JSID_VOID)
+        , allowCrossOriginArguments(false)
     { }
 
     virtual bool Parse() {
-        return ParseId("defineAs", &defineAs);
+        return ParseId("defineAs", &defineAs) &&
+               ParseBoolean("allowCrossOriginArguments", &allowCrossOriginArguments);
     }
 
     JS::RootedId defineAs;
+    bool allowCrossOriginArguments;
+};
+
+class MOZ_STACK_CLASS FunctionForwarderOptions : public OptionsBase {
+public:
+    explicit FunctionForwarderOptions(JSContext *cx = xpc_GetSafeJSContext(),
+                                      JSObject* options = nullptr)
+        : OptionsBase(cx, options)
+        , allowCrossOriginArguments(false)
+    { }
+
+    JSObject *ToJSObject(JSContext *cx) {
+        JS::RootedObject global(cx, JS::CurrentGlobalOrNull(cx));
+        JS::RootedObject obj(cx, JS_NewObjectWithGivenProto(cx, nullptr, JS::NullPtr(), global));
+        if (!obj)
+            return nullptr;
+
+        JS::RootedValue val(cx);
+        unsigned attrs = JSPROP_READONLY | JSPROP_PERMANENT;
+        val = JS::BooleanValue(allowCrossOriginArguments);
+        if (!JS_DefineProperty(cx, obj, "allowCrossOriginArguments", val, attrs))
+            return nullptr;
+
+        return obj;
+    }
+
+    virtual bool Parse() {
+        return ParseBoolean("allowCrossOriginArguments", &allowCrossOriginArguments);
+    }
+
+    bool allowCrossOriginArguments;
 };
 
 class MOZ_STACK_CLASS StackScopedCloneOptions : public OptionsBase {
@@ -3602,8 +3638,6 @@ public:
         , skipWriteToGlobalPrototype(false)
         , universalXPConnectEnabled(false)
         , forcePermissiveCOWs(false)
-        , adoptedNode(false)
-        , donatedNode(false)
         , warnedAboutXrays(false)
         , scriptability(c)
         , scope(nullptr)
@@ -3655,10 +3689,6 @@ public:
     //
     // Using it in production is inherently unsafe.
     bool forcePermissiveCOWs;
-
-    // for telemetry. See bug 928476.
-    bool adoptedNode;
-    bool donatedNode;
 
     // Whether we've emitted a warning about a property that was filtered out
     // by XrayWrappers. See XrayWrapper.cpp.

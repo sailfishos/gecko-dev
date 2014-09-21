@@ -21,6 +21,7 @@
 #include "nsIScriptError.h"
 #include "nsIScriptGlobalObject.h"
 #include "nsIScriptSecurityManager.h"
+#include "nsPerformance.h"
 #include "nsPIDOMWindow.h"
 #include "nsITextToSubURI.h"
 #include "nsIThreadInternal.h"
@@ -2127,11 +2128,22 @@ WorkerPrivateParent<Derived>::WorkerPrivateParent(
     aParent->AssertIsOnWorkerThread();
 
     aParent->CopyJSSettings(mJSSettings);
+
+    MOZ_ASSERT(IsDedicatedWorker());
+    mNowBaseTimeStamp = aParent->NowBaseTimeStamp();
   }
   else {
     AssertIsOnMainThread();
 
     RuntimeService::GetDefaultJSSettings(mJSSettings);
+
+    if (IsDedicatedWorker() && mLoadInfo.mWindow &&
+        mLoadInfo.mWindow->GetPerformance()) {
+      mNowBaseTimeStamp = mLoadInfo.mWindow->GetPerformance()->GetDOMTiming()->
+        GetNavigationStartTimeStamp();
+    } else {
+      mNowBaseTimeStamp = CreationTimeStamp();
+    }
   }
 }
 
@@ -3363,7 +3375,7 @@ WorkerPrivateParent<Derived>::SetBaseURI(nsIURI* aBaseURI)
     mLocationInfo.mHost.Assign(mLocationInfo.mHostname);
   }
 
-  nsContentUtils::GetUTFNonNullOrigin(aBaseURI, mLocationInfo.mOrigin);
+  nsContentUtils::GetUTFOrigin(aBaseURI, mLocationInfo.mOrigin);
 }
 
 template <class Derived>
@@ -3844,6 +3856,12 @@ WorkerPrivate::GetLoadInfo(JSContext* aCx, nsPIDOMWindow* aWindow,
       NS_ENSURE_SUCCESS(rv, rv);
 
       loadInfo.mXHRParamsAllowed = perm == nsIPermissionManager::ALLOW_ACTION;
+
+      uint16_t appStatus = loadInfo.mPrincipal->GetAppStatus();
+      loadInfo.mIsInPrivilegedApp =
+        (appStatus == nsIPrincipal::APP_STATUS_CERTIFIED ||
+         appStatus == nsIPrincipal::APP_STATUS_PRIVILEGED);
+      loadInfo.mIsInCertifiedApp = (appStatus == nsIPrincipal::APP_STATUS_CERTIFIED);
     } else {
       // Not a window
       MOZ_ASSERT(isChrome);
@@ -3938,10 +3956,8 @@ WorkerPrivate::DoRunLoop(JSContext* aCx)
   for (;;) {
     // Workers lazily create a global object in CompileScriptRunnable. We need
     // to enter the global's compartment as soon as it has been created.
-    if (!workerCompartment) {
-      if (JSObject* global = js::DefaultObjectForContextOrNull(aCx)) {
-        workerCompartment.emplace(aCx, global);
-      }
+    if (!workerCompartment && GlobalScope()) {
+      workerCompartment.emplace(aCx, GlobalScope()->GetGlobalJSObject());
     }
 
     Status currentStatus;

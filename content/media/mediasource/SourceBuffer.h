@@ -21,7 +21,7 @@
 #include "nsCycleCollectionNoteChild.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsISupports.h"
-#include "nsStringGlue.h"
+#include "nsString.h"
 #include "nscore.h"
 
 class JSObject;
@@ -32,7 +32,7 @@ namespace mozilla {
 class ContainerParser;
 class ErrorResult;
 class SourceBufferResource;
-class SubBufferDecoder;
+class SourceBufferDecoder;
 template <typename T> class AsyncEventRunner;
 
 namespace dom {
@@ -89,7 +89,7 @@ public:
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(SourceBuffer, DOMEventTargetHelper)
 
-  static already_AddRefed<SourceBuffer> Create(MediaSource* aMediaSource, const nsACString& aType);
+  SourceBuffer(MediaSource* aMediaSource, const nsACString& aType);
 
   MediaSource* GetParentObject() const;
 
@@ -113,8 +113,6 @@ public:
 
 private:
   ~SourceBuffer();
-
-  SourceBuffer(MediaSource* aMediaSource, const nsACString& aType);
 
   friend class AsyncEventRunner<SourceBuffer>;
   void DispatchSimpleEvent(const char* aName);
@@ -141,8 +139,10 @@ private:
 
   nsAutoPtr<ContainerParser> mParser;
 
-  nsRefPtr<SubBufferDecoder> mDecoder;
-  nsTArray<nsRefPtr<SubBufferDecoder>> mDecoders;
+  double mLastParsedTimestamp;
+
+  nsRefPtr<SourceBufferDecoder> mDecoder;
+  nsTArray<nsRefPtr<SourceBufferDecoder>> mDecoders;
 
   double mAppendWindowStart;
   double mAppendWindowEnd;

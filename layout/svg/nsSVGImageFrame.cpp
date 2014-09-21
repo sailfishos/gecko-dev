@@ -32,7 +32,7 @@ class nsSVGImageFrame;
 class nsSVGImageListener MOZ_FINAL : public imgINotificationObserver
 {
 public:
-  nsSVGImageListener(nsSVGImageFrame *aFrame);
+  explicit nsSVGImageListener(nsSVGImageFrame *aFrame);
 
   NS_DECL_ISUPPORTS
   NS_DECL_IMGINOTIFICATIONOBSERVER
@@ -54,8 +54,8 @@ class nsSVGImageFrame : public nsSVGImageFrameBase,
   NS_NewSVGImageFrame(nsIPresShell* aPresShell, nsStyleContext* aContext);
 
 protected:
-  nsSVGImageFrame(nsStyleContext* aContext) : nsSVGImageFrameBase(aContext),
-                                              mReflowCallbackPosted(false) {}
+  explicit nsSVGImageFrame(nsStyleContext* aContext) : nsSVGImageFrameBase(aContext),
+                                                       mReflowCallbackPosted(false) {}
   virtual ~nsSVGImageFrame();
 
 public:
@@ -377,7 +377,8 @@ nsSVGImageFrame::PaintSVG(nsRenderingContext *aContext,
     if (mImageContainer->GetType() == imgIContainer::TYPE_VECTOR) {
       // Package up the attributes of this image element which can override the
       // attributes of mImageContainer's internal SVG document.
-      SVGImageContext context(imgElem->mPreserveAspectRatio.GetAnimValue());
+      SVGImageContext context(nsIntSize(width, height),
+                              Some(imgElem->mPreserveAspectRatio.GetAnimValue()));
 
       nsRect destRect(0, 0,
                       appUnitsPerDevPx * width,

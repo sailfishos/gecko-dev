@@ -250,7 +250,7 @@ InterpreterFrame::prologue(JSContext *cx)
     if (fun()->isHeavyweight() && !initFunctionScopeObjects(cx))
         return false;
 
-    if (isConstructing()) {
+    if (isConstructing() && functionThis().isPrimitive()) {
         RootedObject callee(cx, &this->callee());
         JSObject *obj = CreateThisForFunction(cx, callee,
                                               useNewType() ? SingletonObject : GenericObject);
@@ -501,11 +501,6 @@ InterpreterStack::pushExecuteFrame(JSContext *cx, HandleScript script, const Val
 }
 
 /*****************************************************************************/
-
-/* MSVC PGO causes xpcshell startup crashes. */
-#if defined(_MSC_VER)
-# pragma optimize("g", off)
-#endif
 
 void
 FrameIter::popActivation()
@@ -1332,10 +1327,6 @@ FrameIter::frameSlotValue(size_t index) const
     MOZ_CRASH("Unexpected state");
 }
 
-#if defined(_MSC_VER)
-# pragma optimize("", on)
-#endif
-
 #ifdef DEBUG
 bool
 js::SelfHostedFramesVisible()
@@ -1559,7 +1550,7 @@ jit::JitActivation::markRematerializedFrames(JSTracer *trc)
 AsmJSActivation::AsmJSActivation(JSContext *cx, AsmJSModule &module)
   : Activation(cx, AsmJS),
     module_(module),
-    errorRejoinSP_(nullptr),
+    entrySP_(nullptr),
     profiler_(nullptr),
     resumePC_(nullptr),
     fp_(nullptr),
@@ -1582,7 +1573,7 @@ AsmJSActivation::AsmJSActivation(JSContext *cx, AsmJSModule &module)
     JSRuntime::AutoLockForInterrupt lock(cx->runtime());
     cx->mainThread().asmJSActivationStack_ = this;
 
-    (void) errorRejoinSP_;  // squelch GCC warning
+    (void) entrySP_;  // squelch GCC warning
 }
 
 AsmJSActivation::~AsmJSActivation()
@@ -1616,6 +1607,23 @@ InterpreterFrameIterator::operator++()
         fp_ = nullptr;
     }
     return *this;
+}
+
+void
+Activation::registerProfiling()
+{
+    JS_ASSERT(isProfiling());
+    JSRuntime::AutoLockForInterrupt lock(cx_->asJSContext()->runtime());
+    cx_->perThreadData->profilingActivation_ = this;
+}
+
+void
+Activation::unregisterProfiling()
+{
+    JS_ASSERT(isProfiling());
+    JSRuntime::AutoLockForInterrupt lock(cx_->asJSContext()->runtime());
+    JS_ASSERT(cx_->perThreadData->profilingActivation_ == this);
+    cx_->perThreadData->profilingActivation_ = prevProfiling_;
 }
 
 ActivationIterator::ActivationIterator(JSRuntime *rt)
@@ -1653,50 +1661,99 @@ ActivationIterator::settle()
 }
 
 JS::ProfilingFrameIterator::ProfilingFrameIterator(JSRuntime *rt, const RegisterState &state)
-  : activation_(rt->mainThread.asmJSActivationStack())
+  : activation_(rt->mainThread.profilingActivation())
 {
     if (!activation_)
         return;
 
+    JS_ASSERT(activation_->isProfiling());
+
     static_assert(sizeof(AsmJSProfilingFrameIterator) <= StorageSpace, "Need to increase storage");
-    new (storage_.addr()) AsmJSProfilingFrameIterator(*activation_, state);
+
+    iteratorConstruct(state);
     settle();
 }
 
 JS::ProfilingFrameIterator::~ProfilingFrameIterator()
 {
-    if (!done())
-        iter().~AsmJSProfilingFrameIterator();
+    if (!done()) {
+        JS_ASSERT(activation_->isProfiling());
+        iteratorDestroy();
+    }
 }
 
 void
 JS::ProfilingFrameIterator::operator++()
 {
     JS_ASSERT(!done());
-    ++iter();
+
+    JS_ASSERT(activation_->isAsmJS());
+    ++asmJSIter();
     settle();
 }
 
 void
 JS::ProfilingFrameIterator::settle()
 {
-    while (iter().done()) {
-        iter().~AsmJSProfilingFrameIterator();
-        activation_ = activation_->prevAsmJS();
+    while (iteratorDone()) {
+        iteratorDestroy();
+        activation_ = activation_->prevProfiling();
         if (!activation_)
             return;
-        new (storage_.addr()) AsmJSProfilingFrameIterator(*activation_);
+        iteratorConstruct();
     }
+}
+
+void
+JS::ProfilingFrameIterator::iteratorConstruct(const RegisterState &state)
+{
+    JS_ASSERT(!done());
+
+    JS_ASSERT(activation_->isAsmJS());
+    new (storage_.addr()) AsmJSProfilingFrameIterator(*activation_->asAsmJS(), state);
+}
+
+void
+JS::ProfilingFrameIterator::iteratorConstruct()
+{
+    JS_ASSERT(!done());
+
+    JS_ASSERT(activation_->isAsmJS());
+    new (storage_.addr()) AsmJSProfilingFrameIterator(*activation_->asAsmJS());
+}
+
+void
+JS::ProfilingFrameIterator::iteratorDestroy()
+{
+    JS_ASSERT(!done());
+
+    JS_ASSERT(activation_->isAsmJS());
+    asmJSIter().~AsmJSProfilingFrameIterator();
+}
+
+bool
+JS::ProfilingFrameIterator::iteratorDone()
+{
+    JS_ASSERT(!done());
+
+    JS_ASSERT(activation_->isAsmJS());
+    return asmJSIter().done();
 }
 
 void *
 JS::ProfilingFrameIterator::stackAddress() const
 {
-    return iter().stackAddress();
+    JS_ASSERT(!done());
+
+    JS_ASSERT(activation_->isAsmJS());
+    return asmJSIter().stackAddress();
 }
 
 const char *
 JS::ProfilingFrameIterator::label() const
 {
-    return iter().label();
+    JS_ASSERT(!done());
+
+    JS_ASSERT(activation_->isAsmJS());
+    return asmJSIter().label();
 }

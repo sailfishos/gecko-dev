@@ -77,6 +77,82 @@ private:
 // Handsfree Interface
 //
 
+class BluetoothHandsfreeNotificationHandler
+{
+public:
+  virtual ~BluetoothHandsfreeNotificationHandler();
+
+  virtual void
+  ConnectionStateNotification(BluetoothHandsfreeConnectionState aState,
+                              const nsAString& aBdAddr)
+  { }
+
+  virtual void
+  AudioStateNotification(BluetoothHandsfreeAudioState aState,
+                         const nsAString& aBdAddr)
+  { }
+
+  virtual void
+  VoiceRecognitionNotification(BluetoothHandsfreeVoiceRecognitionState aState)
+  { }
+
+  virtual void
+  AnswerCallNotification()
+  { }
+
+  virtual void
+  HangupCallNotification()
+  { }
+
+  virtual void
+  VolumeNotification(BluetoothHandsfreeVolumeType aType, int aVolume)
+  { }
+
+  virtual void
+  DialCallNotification(const nsAString& aNumber)
+  { }
+
+  virtual void
+  DtmfNotification(char aDtmf)
+  { }
+
+  virtual void
+  NRECNotification(BluetoothHandsfreeNRECState aNrec)
+  { }
+
+  virtual void
+  CallHoldNotification(BluetoothHandsfreeCallHoldType aChld)
+  { }
+
+  virtual void
+  CnumNotification()
+  { }
+
+  virtual void
+  CindNotification()
+  { }
+
+  virtual void
+  CopsNotification()
+  { }
+
+  virtual void
+  ClccNotification()
+  { }
+
+  virtual void
+  UnknownAtNotification(const nsACString& aAtString)
+  { }
+
+  virtual void
+  KeyPressedNotification()
+  { }
+
+protected:
+  BluetoothHandsfreeNotificationHandler()
+  { }
+};
+
 class BluetoothHandsfreeResultHandler
 {
 public:
@@ -117,7 +193,7 @@ class BluetoothHandsfreeInterface
 public:
   friend class BluetoothInterface;
 
-  void Init(bthf_callbacks_t* aCallbacks,
+  void Init(BluetoothHandsfreeNotificationHandler* aNotificationHandler,
             BluetoothHandsfreeResultHandler* aRes);
   void Cleanup(BluetoothHandsfreeResultHandler* aRes);
 
@@ -189,6 +265,26 @@ private:
 // Bluetooth Advanced Audio Interface
 //
 
+class BluetoothA2dpNotificationHandler
+{
+public:
+  virtual ~BluetoothA2dpNotificationHandler();
+
+  virtual void
+  ConnectionStateNotification(BluetoothA2dpConnectionState aState,
+                              const nsAString& aBdAddr)
+  { }
+
+  virtual void
+  AudioStateNotification(BluetoothA2dpAudioState aState,
+                         const nsAString& aBdAddr)
+  { }
+
+protected:
+  BluetoothA2dpNotificationHandler()
+  { }
+};
+
 class BluetoothA2dpResultHandler
 {
 public:
@@ -212,7 +308,7 @@ class BluetoothA2dpInterface
 public:
   friend class BluetoothInterface;
 
-  void Init(btav_callbacks_t *aCallbacks,
+  void Init(BluetoothA2dpNotificationHandler* aNotificationHandler,
             BluetoothA2dpResultHandler* aRes);
   void Cleanup(BluetoothA2dpResultHandler* aRes);
 
@@ -232,6 +328,69 @@ private:
 //
 // Bluetooth AVRCP Interface
 //
+
+class BluetoothAvrcpNotificationHandler
+{
+public:
+  virtual ~BluetoothAvrcpNotificationHandler();
+
+  virtual void
+  GetPlayStatusNotification()
+  { }
+
+  virtual void
+  ListPlayerAppAttrNotification()
+  { }
+
+  virtual void
+  ListPlayerAppValuesNotification(BluetoothAvrcpPlayerAttribute aAttrId)
+  { }
+
+  virtual void
+  GetPlayerAppValueNotification(uint8_t aNumAttrs,
+                                const BluetoothAvrcpPlayerAttribute* aAttrs)
+  { }
+
+  virtual void
+  GetPlayerAppAttrsTextNotification(uint8_t aNumAttrs,
+                                    const BluetoothAvrcpPlayerAttribute* aAttrs)
+  { }
+
+  virtual void
+  GetPlayerAppValuesTextNotification(uint8_t aAttrId, uint8_t aNumVals,
+                                     const uint8_t* aValues)
+  { }
+
+  virtual void
+  SetPlayerAppValueNotification(const BluetoothAvrcpPlayerSettings& aSettings)
+  { }
+
+  virtual void
+  GetElementAttrNotification(uint8_t aNumAttrs,
+                             const BluetoothAvrcpMediaAttribute* aAttrs)
+  { }
+
+  virtual void
+  RegisterNotificationNotification(BluetoothAvrcpEvent aEvent,
+                                   uint32_t aParam)
+  { }
+
+  virtual void
+  RemoteFeatureNotification(const nsAString& aBdAddr, unsigned long aFeatures)
+  { }
+
+  virtual void
+  VolumeChangeNotification(uint8_t aVolume, uint8_t aCType)
+  { }
+
+  virtual void
+  PassthroughCmdNotification(int aId, int aKeyState)
+  { }
+
+protected:
+  BluetoothAvrcpNotificationHandler()
+  { }
+};
 
 class BluetoothAvrcpResultHandler
 {
@@ -272,7 +431,7 @@ class BluetoothAvrcpInterface
 public:
   friend class BluetoothInterface;
 
-  void Init(btrc_callbacks_t* aCallbacks,
+  void Init(BluetoothAvrcpNotificationHandler* aNotificationHandler,
             BluetoothAvrcpResultHandler* aRes);
   void Cleanup(BluetoothAvrcpResultHandler* aRes);
 

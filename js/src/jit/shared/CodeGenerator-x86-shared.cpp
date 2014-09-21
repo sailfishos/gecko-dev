@@ -319,10 +319,26 @@ CodeGeneratorX86Shared::visitAsmJSPassStackArg(LAsmJSPassStackArg *ins)
     if (ins->arg()->isConstant()) {
         masm.storePtr(ImmWord(ToInt32(ins->arg())), dst);
     } else {
-        if (ins->arg()->isGeneralReg())
+        if (ins->arg()->isGeneralReg()) {
             masm.storePtr(ToRegister(ins->arg()), dst);
-        else
-            masm.storeDouble(ToFloatRegister(ins->arg()), dst);
+        } else {
+            switch (mir->input()->type()) {
+              case MIRType_Double:
+              case MIRType_Float32:
+                masm.storeDouble(ToFloatRegister(ins->arg()), dst);
+                return true;
+              // StackPointer is SimdStackAlignment-aligned and ABIArgGenerator guarantees stack
+              // offsets are SimdStackAlignment-aligned.
+              case MIRType_Int32x4:
+                masm.storeAlignedInt32x4(ToFloatRegister(ins->arg()), dst);
+                return true;
+              case MIRType_Float32x4:
+                masm.storeAlignedFloat32x4(ToFloatRegister(ins->arg()), dst);
+                return true;
+              default: break;
+            }
+            MOZ_MAKE_COMPILER_ASSUME_IS_UNREACHABLE("unexpected mir type in AsmJSPassStackArg");
+        }
     }
     return true;
 }
@@ -541,6 +557,28 @@ CodeGeneratorX86Shared::visitAbsF(LAbsF *ins)
     masm.loadConstantFloat32(SpecificNaN<float>(0, FloatingPoint<float>::kSignificandBits),
                              ScratchFloat32Reg);
     masm.andps(ScratchFloat32Reg, input);
+    return true;
+}
+
+bool
+CodeGeneratorX86Shared::visitClzI(LClzI *ins)
+{
+    Register input = ToRegister(ins->input());
+    Register output = ToRegister(ins->output());
+
+    // bsr is undefined on 0
+    Label done, nonzero;
+    if (!ins->mir()->operandIsNeverZero()) {
+        masm.testl(input, input);
+        masm.j(Assembler::NonZero, &nonzero);
+        masm.move32(Imm32(32), output);
+        masm.jump(&done);
+    }
+
+    masm.bind(&nonzero);
+    masm.bsr(input, output);
+    masm.xor32(Imm32(0x1F), output);
+    masm.bind(&done);
     return true;
 }
 
@@ -1338,7 +1376,7 @@ CodeGeneratorX86Shared::visitBitOpI(LBitOpI *ins)
                 masm.andl(ToOperand(rhs), ToRegister(lhs));
             break;
         default:
-            MOZ_ASSUME_UNREACHABLE("unexpected binary opcode");
+            MOZ_CRASH("unexpected binary opcode");
     }
 
     return true;
@@ -1372,7 +1410,7 @@ CodeGeneratorX86Shared::visitShiftI(LShiftI *ins)
             }
             break;
           default:
-            MOZ_ASSUME_UNREACHABLE("Unexpected shift op");
+            MOZ_CRASH("Unexpected shift op");
         }
     } else {
         JS_ASSERT(ToRegister(rhs) == ecx);
@@ -1393,7 +1431,7 @@ CodeGeneratorX86Shared::visitShiftI(LShiftI *ins)
             }
             break;
           default:
-            MOZ_ASSUME_UNREACHABLE("Unexpected shift op");
+            MOZ_CRASH("Unexpected shift op");
         }
     }
 
@@ -1535,7 +1573,7 @@ CodeGeneratorX86Shared::visitMathD(LMathD *math)
         masm.divsd(rhs, lhs);
         break;
       default:
-        MOZ_ASSUME_UNREACHABLE("unexpected opcode");
+        MOZ_CRASH("unexpected opcode");
     }
     return true;
 }
@@ -1562,8 +1600,7 @@ CodeGeneratorX86Shared::visitMathF(LMathF *math)
         masm.divss(rhs, lhs);
         break;
       default:
-        MOZ_ASSUME_UNREACHABLE("unexpected opcode");
-        return false;
+        MOZ_CRASH("unexpected opcode");
     }
     return true;
 }
@@ -2109,10 +2146,39 @@ CodeGeneratorX86Shared::visitSimdValueX4(LSimdValueX4 *ins)
         masm.loadAlignedFloat32x4(Address(StackPointer, 0), output);
         break;
       }
-      default: MOZ_ASSUME_UNREACHABLE("Unknown SIMD kind");
+      default: MOZ_CRASH("Unknown SIMD kind");
     }
 
     masm.freeStack(Simd128DataSize);
+    return true;
+}
+
+bool
+CodeGeneratorX86Shared::visitSimdSplatX4(LSimdSplatX4 *ins)
+{
+    FloatRegister output = ToFloatRegister(ins->output());
+
+    MSimdSplatX4 *mir = ins->mir();
+    MOZ_ASSERT(IsSimdType(mir->type()));
+    JS_STATIC_ASSERT(sizeof(float) == sizeof(int32_t));
+
+    switch (mir->type()) {
+      case MIRType_Int32x4: {
+        Register r = ToRegister(ins->getOperand(0));
+        masm.movd(r, output);
+        masm.pshufd(0, output, output);
+        break;
+      }
+      case MIRType_Float32x4: {
+        FloatRegister r = ToFloatRegister(ins->getOperand(0));
+        MOZ_ASSERT(r == output);
+        masm.shufps(0, r, output);
+        break;
+      }
+      default:
+        MOZ_CRASH("Unknown SIMD kind");
+    }
+
     return true;
 }
 
@@ -2156,6 +2222,84 @@ CodeGeneratorX86Shared::visitSimdExtractElementF(LSimdExtractElementF *ins)
 }
 
 bool
+CodeGeneratorX86Shared::visitSimdSignMaskX4(LSimdSignMaskX4 *ins)
+{
+    FloatRegister input = ToFloatRegister(ins->input());
+    Register output = ToRegister(ins->output());
+
+    // For Float32x4 and Int32x4.
+    masm.movmskps(input, output);
+    return true;
+}
+
+bool
+CodeGeneratorX86Shared::visitSimdBinaryCompIx4(LSimdBinaryCompIx4 *ins)
+{
+    FloatRegister lhs = ToFloatRegister(ins->lhs());
+    Operand rhs = ToOperand(ins->rhs());
+    MOZ_ASSERT(ToFloatRegister(ins->output()) == lhs);
+
+    MSimdBinaryComp::Operation op = ins->operation();
+    switch (op) {
+      case MSimdBinaryComp::greaterThan:
+        masm.packedGreaterThanInt32x4(rhs, lhs);
+        return true;
+      case MSimdBinaryComp::equal:
+        masm.packedEqualInt32x4(rhs, lhs);
+        return true;
+      case MSimdBinaryComp::lessThan:
+        // scr := rhs
+        if (rhs.kind() == Operand::FPREG)
+            masm.moveAlignedInt32x4(ToFloatRegister(ins->rhs()), ScratchSimdReg);
+        else
+            masm.loadAlignedInt32x4(rhs, ScratchSimdReg);
+
+        // scr := scr > lhs (i.e. lhs < rhs)
+        // Improve by doing custom lowering (rhs is tied to the output register)
+        masm.packedGreaterThanInt32x4(ToOperand(ins->lhs()), ScratchSimdReg);
+        masm.moveAlignedInt32x4(ScratchFloat32Reg, lhs);
+        return true;
+      case MSimdBinaryComp::notEqual:
+      case MSimdBinaryComp::greaterThanOrEqual:
+      case MSimdBinaryComp::lessThanOrEqual:
+        // These operations are not part of the spec. so are not implemented.
+        break;
+    }
+    MOZ_ASSUME_UNREACHABLE("unexpected SIMD op");
+}
+
+bool
+CodeGeneratorX86Shared::visitSimdBinaryCompFx4(LSimdBinaryCompFx4 *ins)
+{
+    FloatRegister lhs = ToFloatRegister(ins->lhs());
+    Operand rhs = ToOperand(ins->rhs());
+    MOZ_ASSERT(ToFloatRegister(ins->output()) == lhs);
+
+    MSimdBinaryComp::Operation op = ins->operation();
+    switch (op) {
+      case MSimdBinaryComp::equal:
+        masm.cmpps(rhs, lhs, 0x0);
+        return true;
+      case MSimdBinaryComp::lessThan:
+        masm.cmpps(rhs, lhs, 0x1);
+        return true;
+      case MSimdBinaryComp::lessThanOrEqual:
+        masm.cmpps(rhs, lhs, 0x2);
+        return true;
+      case MSimdBinaryComp::notEqual:
+        masm.cmpps(rhs, lhs, 0x4);
+        return true;
+      case MSimdBinaryComp::greaterThanOrEqual:
+        masm.cmpps(rhs, lhs, 0x5);
+        return true;
+      case MSimdBinaryComp::greaterThan:
+        masm.cmpps(rhs, lhs, 0x6);
+        return true;
+    }
+    MOZ_ASSUME_UNREACHABLE("unexpected SIMD op");
+}
+
+bool
 CodeGeneratorX86Shared::visitSimdBinaryArithIx4(LSimdBinaryArithIx4 *ins)
 {
     FloatRegister lhs = ToFloatRegister(ins->lhs());
@@ -2177,7 +2321,7 @@ CodeGeneratorX86Shared::visitSimdBinaryArithIx4(LSimdBinaryArithIx4 *ins)
         // x86 doesn't have SIMD i32 div.
         break;
     }
-    MOZ_ASSUME_UNREACHABLE("unexpected SIMD op");
+    MOZ_CRASH("unexpected SIMD op");
 }
 
 bool
@@ -2202,7 +2346,29 @@ CodeGeneratorX86Shared::visitSimdBinaryArithFx4(LSimdBinaryArithFx4 *ins)
         masm.packedDivFloat32(rhs, lhs);
         return true;
     }
-    MOZ_ASSUME_UNREACHABLE("unexpected SIMD op");
+    MOZ_CRASH("unexpected SIMD op");
+}
+
+bool
+CodeGeneratorX86Shared::visitSimdBinaryBitwiseX4(LSimdBinaryBitwiseX4 *ins)
+{
+    FloatRegister lhs = ToFloatRegister(ins->lhs());
+    Operand rhs = ToOperand(ins->rhs());
+    MOZ_ASSERT(ToFloatRegister(ins->output()) == lhs);
+
+    MSimdBinaryBitwise::Operation op = ins->operation();
+    switch (op) {
+      case MSimdBinaryBitwise::and_:
+        masm.bitwiseAndX4(rhs, lhs);
+        return true;
+      case MSimdBinaryBitwise::or_:
+        masm.bitwiseOrX4(rhs, lhs);
+        return true;
+      case MSimdBinaryBitwise::xor_:
+        masm.bitwiseXorX4(rhs, lhs);
+        return true;
+    }
+    MOZ_CRASH("unexpected SIMD bitwise op");
 }
 
 bool

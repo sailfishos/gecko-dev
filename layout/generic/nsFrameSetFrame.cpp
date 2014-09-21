@@ -153,7 +153,7 @@ public:
                           nsReflowStatus&          aStatus) MOZ_OVERRIDE;
 
 protected:
-  nsHTMLFramesetBlankFrame(nsStyleContext* aContext) : nsLeafFrame(aContext) {}
+  explicit nsHTMLFramesetBlankFrame(nsStyleContext* aContext) : nsLeafFrame(aContext) {}
   virtual ~nsHTMLFramesetBlankFrame();
   virtual nscoord GetIntrinsicISize() MOZ_OVERRIDE;
   virtual nscoord GetIntrinsicBSize() MOZ_OVERRIDE;
@@ -219,7 +219,7 @@ nsHTMLFramesetFrame::FrameResizePrefCallback(const char* aPref, void* aClosure)
   nsHTMLFramesetFrame *frame =
     reinterpret_cast<nsHTMLFramesetFrame *>(aClosure);
 
-  nsIDocument* doc = frame->mContent->GetDocument();
+  nsIDocument* doc = frame->mContent->GetComposedDoc();
   mozAutoDocUpdate updateBatch(doc, UPDATE_CONTENT_MODEL, true);
   if (doc) {
     nsNodeUtils::AttributeWillChange(frame->GetContent()->AsElement(),

@@ -107,7 +107,7 @@ AsmJSModule::AsmJSModule(ScriptSource *scriptSource, uint32_t srcStart, uint32_t
     mozilla::PodZero(&pod);
     pod.funcPtrTableAndExitBytes_ = SIZE_MAX;
     pod.functionBytes_ = UINT32_MAX;
-    pod.minHeapLength_ = AsmJSAllocationGranularity;
+    pod.minHeapLength_ = RoundUpToNextValidAsmJSHeapLength(0);
     pod.strict_ = strict;
     pod.usesSignalHandlers_ = canUseSignalHandlers;
 
@@ -303,8 +303,8 @@ AsmJSModule::finish(ExclusiveContext *cx, TokenStream &tokenStream, MacroAssembl
 
     // The global data section sits immediately after the executable (and
     // other) data allocated by the MacroAssembler, so ensure it is
-    // double-aligned.
-    pod.codeBytes_ = AlignBytes(masm.bytesNeeded(), sizeof(double));
+    // SIMD-aligned.
+    pod.codeBytes_ = AlignBytes(masm.bytesNeeded(), SimdStackAlignment);
 
     // The entire region is allocated via mmap/VirtualAlloc which requires
     // units of pages.
@@ -518,11 +518,11 @@ TryEnablingIon(JSContext *cx, AsmJSModule &module, HandleFunction fun, uint32_t 
     if (fun->nargs() > size_t(argc))
         return true;
 
-    // Normally the types should corresond, since we just ran with those types,
+    // Normally the types should correspond, since we just ran with those types,
     // but there are reports this is asserting. Therefore doing it as a check, instead of DEBUG only.
     if (!types::TypeScript::ThisTypes(script)->hasType(types::Type::UndefinedType()))
         return true;
-    for(uint32_t i = 0; i < fun->nargs(); i++) {
+    for (uint32_t i = 0; i < fun->nargs(); i++) {
         types::StackTypeSet *typeset = types::TypeScript::ArgTypes(script, i);
         types::Type type = types::Type::DoubleType();
         if (!argv[i].isDouble())
@@ -1803,19 +1803,19 @@ GetCPUID(uint32_t *cpuId)
     };
 
 #if defined(JS_CODEGEN_X86)
-    JS_ASSERT(uint32_t(JSC::MacroAssemblerX86Common::getSSEState()) <= (UINT32_MAX >> ARCH_BITS));
-    *cpuId = X86 | (JSC::MacroAssemblerX86Common::getSSEState() << ARCH_BITS);
+    MOZ_ASSERT(uint32_t(CPUInfo::GetSSEVersion()) <= (UINT32_MAX >> ARCH_BITS));
+    *cpuId = X86 | (uint32_t(CPUInfo::GetSSEVersion()) << ARCH_BITS);
     return true;
 #elif defined(JS_CODEGEN_X64)
-    JS_ASSERT(uint32_t(JSC::MacroAssemblerX86Common::getSSEState()) <= (UINT32_MAX >> ARCH_BITS));
-    *cpuId = X64 | (JSC::MacroAssemblerX86Common::getSSEState() << ARCH_BITS);
+    MOZ_ASSERT(uint32_t(CPUInfo::GetSSEVersion()) <= (UINT32_MAX >> ARCH_BITS));
+    *cpuId = X64 | (uint32_t(CPUInfo::GetSSEVersion()) << ARCH_BITS);
     return true;
 #elif defined(JS_CODEGEN_ARM)
-    JS_ASSERT(GetARMFlags() <= (UINT32_MAX >> ARCH_BITS));
+    MOZ_ASSERT(GetARMFlags() <= (UINT32_MAX >> ARCH_BITS));
     *cpuId = ARM | (GetARMFlags() << ARCH_BITS);
     return true;
 #elif defined(JS_CODEGEN_MIPS)
-    JS_ASSERT(GetMIPSFlags() <= (UINT32_MAX >> ARCH_BITS));
+    MOZ_ASSERT(GetMIPSFlags() <= (UINT32_MAX >> ARCH_BITS));
     *cpuId = MIPS | (GetMIPSFlags() << ARCH_BITS);
     return true;
 #else

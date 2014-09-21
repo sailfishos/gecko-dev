@@ -19,10 +19,10 @@
 #include <new>
 
 // helper function for nsTHashtable::Clear()
-NS_COM_GLUE PLDHashOperator PL_DHashStubEnumRemove(PLDHashTable* aTable,
-                                                   PLDHashEntryHdr* aEntry,
-                                                   uint32_t aOrdinal,
-                                                   void* aUserArg);
+PLDHashOperator PL_DHashStubEnumRemove(PLDHashTable* aTable,
+                                       PLDHashEntryHdr* aEntry,
+                                       uint32_t aOrdinal,
+                                       void* aUserArg);
 
 
 /**
@@ -99,7 +99,7 @@ public:
    * Return the generation number for the table. This increments whenever
    * the table data items are moved.
    */
-  uint32_t GetGeneration() const { return mTable.generation; }
+  uint32_t GetGeneration() const { return mTable.Generation(); }
 
   /**
    * KeyType is typedef'ed for ease of use.
@@ -115,7 +115,7 @@ public:
    * Return the number of entries in the table.
    * @return    number of entries
    */
-  uint32_t Count() const { return mTable.entryCount; }
+  uint32_t Count() const { return mTable.EntryCount(); }
 
   /**
    * Get the entry associated with a key.
@@ -125,7 +125,7 @@ public:
    */
   EntryType* GetEntry(KeyType aKey) const
   {
-    NS_ASSERTION(mTable.entrySize, "nsTHashtable was not initialized properly.");
+    NS_ASSERTION(mTable.ops, "nsTHashtable was not initialized properly.");
 
     EntryType* entry = reinterpret_cast<EntryType*>(
       PL_DHashTableOperate(const_cast<PLDHashTable*>(&mTable),
@@ -150,13 +150,13 @@ public:
   {
     EntryType* e = PutEntry(aKey, fallible_t());
     if (!e) {
-      NS_ABORT_OOM(mTable.entrySize * mTable.entryCount);
+      NS_ABORT_OOM(mTable.EntrySize() * mTable.EntryCount());
     }
     return e;
   }
 
   EntryType* PutEntry(KeyType aKey, const fallible_t&) NS_WARN_UNUSED_RESULT {
-    NS_ASSERTION(mTable.entrySize, "nsTHashtable was not initialized properly.");
+    NS_ASSERTION(mTable.ops, "nsTHashtable was not initialized properly.");
 
     return static_cast<EntryType*>(PL_DHashTableOperate(
       &mTable, EntryType::KeyToPointer(aKey), PL_DHASH_ADD));
@@ -168,7 +168,7 @@ public:
    */
   void RemoveEntry(KeyType aKey)
   {
-    NS_ASSERTION(mTable.entrySize, "nsTHashtable was not initialized properly.");
+    NS_ASSERTION(mTable.ops, "nsTHashtable was not initialized properly.");
 
     PL_DHashTableOperate(&mTable,
                          EntryType::KeyToPointer(aKey),
@@ -209,7 +209,7 @@ public:
    */
   uint32_t EnumerateEntries(Enumerator aEnumFunc, void* aUserArg)
   {
-    NS_ASSERTION(mTable.entrySize, "nsTHashtable was not initialized properly.");
+    NS_ASSERTION(mTable.ops, "nsTHashtable was not initialized properly.");
 
     s_EnumArgs args = { aEnumFunc, aUserArg };
     return PL_DHashTableEnumerate(&mTable, s_EnumStub, &args);
@@ -220,7 +220,7 @@ public:
    */
   void Clear()
   {
-    NS_ASSERTION(mTable.entrySize, "nsTHashtable was not initialized properly.");
+    NS_ASSERTION(mTable.ops, "nsTHashtable was not initialized properly.");
 
     PL_DHashTableEnumerate(&mTable, PL_DHashStubEnumRemove, nullptr);
   }
@@ -299,7 +299,7 @@ public:
    */
   void MarkImmutable()
   {
-    NS_ASSERTION(mTable.entrySize, "nsTHashtable was not initialized properly.");
+    NS_ASSERTION(mTable.ops, "nsTHashtable was not initialized properly.");
 
     PL_DHashMarkTableImmutable(&mTable);
   }
@@ -392,13 +392,13 @@ nsTHashtable<EntryType>::nsTHashtable(nsTHashtable<EntryType>&& aOther)
 
   // Indicate that aOther is not initialized.  This will make its destructor a
   // nop, which is what we want.
-  aOther.mTable.entrySize = 0;
+  aOther.mTable.ops = nullptr;
 }
 
 template<class EntryType>
 nsTHashtable<EntryType>::~nsTHashtable()
 {
-  if (mTable.entrySize) {
+  if (mTable.ops) {
     PL_DHashTableFinish(&mTable);
   }
 }

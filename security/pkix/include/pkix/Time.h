@@ -49,7 +49,7 @@ public:
   // This will succeed, leaving the time uninitialized:
   //    Time x(Time::uninitialized);
   enum Uninitialized { uninitialized };
-  Time(Uninitialized) { }
+  explicit Time(Uninitialized) { }
 
   bool operator==(const Time& other) const
   {
@@ -117,6 +117,9 @@ inline Time TimeFromElapsedSecondsAD(uint64_t elapsedSecondsAD)
 }
 
 Time Now();
+
+// Note the epoch is the unix epoch (ie 00:00:00 UTC, 1 January 1970)
+Time TimeFromEpochInSeconds(uint64_t secondsSinceEpoch);
 
 } } // namespace mozilla::pkix
 

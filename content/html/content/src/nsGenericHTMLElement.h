@@ -469,7 +469,7 @@ public:
     if (!_argc) {
       top = true;
     }
-    mozilla::dom::Element::ScrollIntoView(top);
+    mozilla::dom::Element::ScrollIntoView(top, mozilla::dom::ScrollOptions());
     return NS_OK;
   }
   NS_IMETHOD GetOffsetParent(nsIDOMElement** aOffsetParent) MOZ_FINAL {
@@ -539,6 +539,8 @@ public:
                               bool aCompileEventHandlers) MOZ_OVERRIDE;
   virtual void UnbindFromTree(bool aDeep = true,
                               bool aNullParent = true) MOZ_OVERRIDE;
+
+  MOZ_ALWAYS_INLINE // Avoid a crashy hook from Avast 10 Beta
   nsresult SetAttr(int32_t aNameSpaceID, nsIAtom* aName,
                    const nsAString& aValue, bool aNotify)
   {
@@ -829,7 +831,12 @@ public:
    * Get the presentation context for this content node.
    * @return the presentation context
    */
-  nsPresContext* GetPresContext();
+  enum PresContextFor
+  {
+    eForComposedDoc,
+    eForUncomposedDoc
+  };
+  nsPresContext* GetPresContext(PresContextFor aFor);
 
   // Form Helper Routines
   /**

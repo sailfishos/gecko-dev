@@ -13,6 +13,7 @@
 #include "mozilla/Assertions.h"         // for MOZ_ASSERT, etc
 #include "mozilla/gfx/BaseSize.h"       // for BaseSize
 #include "mozilla/gfx/Rect.h"           // for Rect, RectTyped
+#include "mozilla/layers/LayerMetricsWrapper.h" // for LayerMetricsWrapper
 #include "mozilla/layers/LayersMessages.h"
 #include "mozilla/mozalloc.h"           // for operator delete, etc
 #include "nsISupportsImpl.h"            // for MOZ_COUNT_CTOR, etc
@@ -59,33 +60,34 @@ ClientTiledThebesLayer::FillSpecificAttributes(SpecificLayerAttributes& aAttrs)
 static LayerRect
 ApplyParentLayerToLayerTransform(const gfx::Matrix4x4& aTransform, const ParentLayerRect& aParentLayerRect)
 {
-  return TransformTo<LayerPixel>(gfx::To3DMatrix(aTransform), aParentLayerRect);
+  return TransformTo<LayerPixel>(aTransform, aParentLayerRect);
 }
 
 static gfx::Matrix4x4
-GetTransformToAncestorsParentLayer(Layer* aStart, Layer* aAncestor)
+GetTransformToAncestorsParentLayer(Layer* aStart, const LayerMetricsWrapper& aAncestor)
 {
   gfx::Matrix4x4 transform;
-  Layer* ancestorParent = aAncestor->GetParent();
-  for (Layer* iter = aStart; iter != ancestorParent; iter = iter->GetParent()) {
+  const LayerMetricsWrapper& ancestorParent = aAncestor.GetParent();
+  for (LayerMetricsWrapper iter(aStart, LayerMetricsWrapper::StartAt::BOTTOM);
+       ancestorParent ? iter != ancestorParent : iter.IsValid();
+       iter = iter.GetParent()) {
+    transform = transform * iter.GetTransform();
     // If the layer has a non-transient async transform then we need to apply it here
     // because it will get applied by the APZ in the compositor as well
-    const FrameMetrics& metrics = iter->GetFrameMetrics();
+    const FrameMetrics& metrics = iter.Metrics();
     transform = transform * gfx::Matrix4x4().Scale(metrics.mResolution.scale, metrics.mResolution.scale, 1.f);
-
-    transform = transform * iter->GetTransform();
   }
   return transform;
 }
 
 void
-ClientTiledThebesLayer::GetAncestorLayers(Layer** aOutScrollAncestor,
-                                          Layer** aOutDisplayPortAncestor)
+ClientTiledThebesLayer::GetAncestorLayers(LayerMetricsWrapper* aOutScrollAncestor,
+                                          LayerMetricsWrapper* aOutDisplayPortAncestor)
 {
-  Layer* scrollAncestor = nullptr;
-  Layer* displayPortAncestor = nullptr;
-  for (Layer* ancestor = this; ancestor; ancestor = ancestor->GetParent()) {
-    const FrameMetrics& metrics = ancestor->GetFrameMetrics();
+  LayerMetricsWrapper scrollAncestor;
+  LayerMetricsWrapper displayPortAncestor;
+  for (LayerMetricsWrapper ancestor(this, LayerMetricsWrapper::StartAt::BOTTOM); ancestor; ancestor = ancestor.GetParent()) {
+    const FrameMetrics& metrics = ancestor.Metrics();
     if (!scrollAncestor && metrics.GetScrollId() != FrameMetrics::NULL_SCROLL_ID) {
       scrollAncestor = ancestor;
     }
@@ -121,8 +123,8 @@ ClientTiledThebesLayer::BeginPaint()
 
   // Get the metrics of the nearest scrollable layer and the nearest layer
   // with a displayport.
-  Layer* scrollAncestor = nullptr;
-  Layer* displayPortAncestor = nullptr;
+  LayerMetricsWrapper scrollAncestor;
+  LayerMetricsWrapper displayPortAncestor;
   GetAncestorLayers(&scrollAncestor, &displayPortAncestor);
 
   if (!displayPortAncestor || !scrollAncestor) {
@@ -136,10 +138,10 @@ ClientTiledThebesLayer::BeginPaint()
   }
 
   TILING_LOG("TILING %p: Found scrollAncestor %p and displayPortAncestor %p\n", this,
-    scrollAncestor, displayPortAncestor);
+    scrollAncestor.GetLayer(), displayPortAncestor.GetLayer());
 
-  const FrameMetrics& scrollMetrics = scrollAncestor->GetFrameMetrics();
-  const FrameMetrics& displayportMetrics = displayPortAncestor->GetFrameMetrics();
+  const FrameMetrics& scrollMetrics = scrollAncestor.Metrics();
+  const FrameMetrics& displayportMetrics = displayPortAncestor.Metrics();
 
   // Calculate the transform required to convert ParentLayer space of our
   // display port ancestor to the Layer space of this layer.
@@ -184,7 +186,13 @@ ClientTiledThebesLayer::BeginPaint()
 bool
 ClientTiledThebesLayer::UseFastPath()
 {
-  const FrameMetrics& parentMetrics = GetParent()->GetFrameMetrics();
+  LayerMetricsWrapper scrollAncestor;
+  GetAncestorLayers(&scrollAncestor, nullptr);
+  if (!scrollAncestor) {
+    return true;
+  }
+  const FrameMetrics& parentMetrics = scrollAncestor.Metrics();
+
   bool multipleTransactionsNeeded = gfxPrefs::UseProgressiveTilePainting()
                                  || gfxPrefs::UseLowPrecisionBuffer()
                                  || !parentMetrics.mCriticalDisplayPort.IsEmpty();
@@ -337,6 +345,8 @@ ClientTiledThebesLayer::RenderLayer()
   TILING_LOG("TILING %p: Initial low-precision valid region %s\n", this, Stringify(mLowPrecisionValidRegion).c_str());
 
   nsIntRegion neededRegion = mVisibleRegion;
+#ifndef MOZ_GFX_OPTIMIZE_MOBILE
+  // This is handled by PadDrawTargetOutFromRegion in TiledContentClient for mobile
   if (MayResample()) {
     // If we're resampling then bilinear filtering can read up to 1 pixel
     // outside of our texture coords. Make the visible region a single rect,
@@ -350,6 +360,7 @@ ClientTiledThebesLayer::RenderLayer()
     padded.IntersectRect(padded, wholeTiles);
     neededRegion = padded;
   }
+#endif
 
   nsIntRegion invalidRegion;
   invalidRegion.Sub(neededRegion, mValidRegion);

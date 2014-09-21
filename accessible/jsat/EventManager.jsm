@@ -156,7 +156,8 @@ this.EventManager.prototype = {
         let reason = event.reason;
         let oldAccessible = event.oldAccessible;
 
-        if (this.editState.editing) {
+        if (this.editState.editing &&
+            !Utils.getState(position).contains(States.FOCUSED)) {
           aEvent.accessibleDocument.takeFocus();
         }
         this.present(
@@ -190,77 +191,44 @@ this.EventManager.prototype = {
       }
       case Events.TEXT_CARET_MOVED:
       {
-        let acc = aEvent.accessible;
-        let characterCount = acc.
-          QueryInterface(Ci.nsIAccessibleText).characterCount;
+        let acc = aEvent.accessible.QueryInterface(Ci.nsIAccessibleText);
         let caretOffset = aEvent.
           QueryInterface(Ci.nsIAccessibleCaretMoveEvent).caretOffset;
 
-        // Update editing state, both for presenter and other things
-        let state = Utils.getState(acc);
-        let editState = {
-          editing: state.contains(States.EDITABLE),
-          multiline: state.contains(States.MULTI_LINE),
-          atStart: caretOffset == 0,
-          atEnd: caretOffset == characterCount
-        };
-
-        // Not interesting
-        if (!editState.editing && editState.editing == this.editState.editing)
-          break;
-
-        if (editState.editing != this.editState.editing)
-          this.present(Presentation.editingModeChanged(editState.editing));
-
-        if (editState.editing != this.editState.editing ||
-            editState.multiline != this.editState.multiline ||
-            editState.atEnd != this.editState.atEnd ||
-            editState.atStart != this.editState.atStart)
-          this.sendMsgFunc("AccessFu:Input", editState);
-
+        // We could get a caret move in an accessible that is not focused,
+        // it doesn't mean we are not on any editable accessible. just not
+        // on this one..
+        if (Utils.getState(acc).contains(States.FOCUSED)) {
+          this._setEditingMode(aEvent, caretOffset);
+        }
         this.present(Presentation.textSelectionChanged(acc.getText(0,-1),
                      caretOffset, caretOffset, 0, 0, aEvent.isFromUserInput));
-
-        this.editState = editState;
+        break;
+      }
+      case Events.OBJECT_ATTRIBUTE_CHANGED:
+      {
+        let evt = aEvent.QueryInterface(
+          Ci.nsIAccessibleObjectAttributeChangedEvent);
+        if (evt.changedAttribute.toString() !== 'aria-hidden') {
+          // Only handle aria-hidden attribute change.
+          break;
+        }
+        if (Utils.isHidden(aEvent.accessible)) {
+          this._handleHide(evt);
+        } else {
+          this._handleShow(aEvent);
+        }
         break;
       }
       case Events.SHOW:
       {
-        let {liveRegion, isPolite} = this._handleLiveRegion(aEvent,
-          ['additions', 'all']);
-        // Only handle show if it is a relevant live region.
-        if (!liveRegion) {
-          break;
-        }
-        // Show for text is handled by the EVENT_TEXT_INSERTED handler.
-        if (aEvent.accessible.role === Roles.TEXT_LEAF) {
-          break;
-        }
-        this._dequeueLiveEvent(Events.HIDE, liveRegion);
-        this.present(Presentation.liveRegion(liveRegion, isPolite, false));
+        this._handleShow(aEvent);
         break;
       }
       case Events.HIDE:
       {
         let evt = aEvent.QueryInterface(Ci.nsIAccessibleHideEvent);
-        let {liveRegion, isPolite} = this._handleLiveRegion(
-          evt, ['removals', 'all']);
-        if (liveRegion) {
-          // Hide for text is handled by the EVENT_TEXT_REMOVED handler.
-          if (aEvent.accessible.role === Roles.TEXT_LEAF) {
-            break;
-          }
-          this._queueLiveEvent(Events.HIDE, liveRegion, isPolite);
-        } else {
-          let vc = Utils.getVirtualCursor(this.contentScope.content.document);
-          if (vc.position &&
-            (Utils.getState(vc.position).contains(States.DEFUNCT) ||
-              Utils.isInSubtree(vc.position, aEvent.accessible))) {
-            this.contentControl.autoMove(
-              evt.targetPrevSibling || evt.targetParent,
-              { moveToFocused: true, delay: 500 });
-          }
-        }
+        this._handleHide(evt);
         break;
       }
       case Events.TEXT_INSERTED:
@@ -280,6 +248,7 @@ this.EventManager.prototype = {
         // Put vc where the focus is at
         let acc = aEvent.accessible;
         let doc = aEvent.accessibleDocument;
+        this._setEditingMode(aEvent);
         if ([Roles.CHROME_WINDOW,
              Roles.DOCUMENT,
              Roles.APPLICATION].indexOf(acc.role) < 0) {
@@ -301,6 +270,99 @@ this.EventManager.prototype = {
             Utils.getEmbeddedControl(position) === target) {
           this.present(Presentation.valueChanged(target));
         }
+      }
+    }
+  },
+
+  _setEditingMode: function _setEditingMode(aEvent, aCaretOffset) {
+    let acc = aEvent.accessible;
+    let accText, characterCount;
+    let caretOffset = aCaretOffset;
+
+    try {
+      accText = acc.QueryInterface(Ci.nsIAccessibleText);
+    } catch (e) {
+      // No text interface on this accessible.
+    }
+
+    if (accText) {
+      characterCount = accText.characterCount;
+      if (caretOffset === undefined) {
+        caretOffset = accText.caretOffset;
+      }
+    }
+
+    // Update editing state, both for presenter and other things
+    let state = Utils.getState(acc);
+
+    let editState = {
+      editing: state.contains(States.EDITABLE) &&
+        state.contains(States.FOCUSED),
+      multiline: state.contains(States.MULTI_LINE),
+      atStart: caretOffset === 0,
+      atEnd: caretOffset === characterCount
+    };
+
+    // Not interesting
+    if (!editState.editing && editState.editing === this.editState.editing) {
+      return;
+    }
+
+    if (editState.editing !== this.editState.editing) {
+      this.present(Presentation.editingModeChanged(editState.editing));
+    }
+
+    if (editState.editing !== this.editState.editing ||
+        editState.multiline !== this.editState.multiline ||
+        editState.atEnd !== this.editState.atEnd ||
+        editState.atStart !== this.editState.atStart) {
+      this.sendMsgFunc("AccessFu:Input", editState);
+    }
+
+    this.editState = editState;
+  },
+
+  _handleShow: function _handleShow(aEvent) {
+    let {liveRegion, isPolite} = this._handleLiveRegion(aEvent,
+      ['additions', 'all']);
+    // Only handle show if it is a relevant live region.
+    if (!liveRegion) {
+      return;
+    }
+    // Show for text is handled by the EVENT_TEXT_INSERTED handler.
+    if (aEvent.accessible.role === Roles.TEXT_LEAF) {
+      return;
+    }
+    this._dequeueLiveEvent(Events.HIDE, liveRegion);
+    this.present(Presentation.liveRegion(liveRegion, isPolite, false));
+  },
+
+  _handleHide: function _handleHide(aEvent) {
+    let {liveRegion, isPolite} = this._handleLiveRegion(
+      aEvent, ['removals', 'all']);
+    let acc = aEvent.accessible;
+    if (liveRegion) {
+      // Hide for text is handled by the EVENT_TEXT_REMOVED handler.
+      if (acc.role === Roles.TEXT_LEAF) {
+        return;
+      }
+      this._queueLiveEvent(Events.HIDE, liveRegion, isPolite);
+    } else {
+      let vc = Utils.getVirtualCursor(this.contentScope.content.document);
+      if (vc.position &&
+        (Utils.getState(vc.position).contains(States.DEFUNCT) ||
+          Utils.isInSubtree(vc.position, acc))) {
+        let position = aEvent.targetPrevSibling || aEvent.targetParent;
+        if (!position) {
+          try {
+            position = acc.previousSibling;
+          } catch (x) {
+            // Accessible is unattached from the accessible tree.
+            position = acc.parent;
+          }
+        }
+        this.contentControl.autoMove(position,
+          { moveToFocused: true, delay: 500 });
       }
     }
   },

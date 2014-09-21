@@ -495,9 +495,13 @@ public:
   /**
    * Tell the pres shell that a frame needs to be marked dirty and needs
    * Reflow.  It's OK if this is an ancestor of the frame needing reflow as
-   * long as the ancestor chain between them doesn't cross a reflow root.  The
-   * bit to add should be either NS_FRAME_IS_DIRTY or
-   * NS_FRAME_HAS_DIRTY_CHILDREN (but not both!).
+   * long as the ancestor chain between them doesn't cross a reflow root.
+   *
+   * The bit to add should be NS_FRAME_IS_DIRTY, NS_FRAME_HAS_DIRTY_CHILDREN
+   * or nsFrameState(0); passing 0 means that dirty bits won't be set on the
+   * frame or its ancestors/descendants, but that intrinsic widths will still
+   * be marked dirty.  Passing aIntrinsicDirty = eResize and aBitToAdd = 0
+   * would result in no work being done, so don't do that.
    */
   enum IntrinsicDirty {
     // XXXldb eResize should be renamed
@@ -506,8 +510,8 @@ public:
     eStyleChange // Do eTreeChange, plus all of aFrame's descendants
   };
   virtual void FrameNeedsReflow(nsIFrame *aFrame,
-                                            IntrinsicDirty aIntrinsicDirty,
-                                            nsFrameState aBitToAdd) = 0;
+                                IntrinsicDirty aIntrinsicDirty,
+                                nsFrameState aBitToAdd) = 0;
 
   /**
    * Calls FrameNeedsReflow on all fixed position children of the root frame.
@@ -680,6 +684,10 @@ public:
    *                  If SCROLL_NO_PARENT_FRAMES is set then we only scroll
    *                  nodes in this document, not in any parent documents which
    *                  contain this document in a iframe or the like.
+   *                  If SCROLL_SMOOTH is set and CSSOM-VIEW scroll-behavior
+   *                  is enabled, we will scroll smoothly using
+   *                  nsIScrollableFrame::ScrollMode::SMOOTH_MSD; otherwise,
+   *                  nsIScrollableFrame::ScrollMode::INSTANT will be used.
    */
   virtual nsresult ScrollContentIntoView(nsIContent* aContent,
                                                      ScrollAxis  aVertical,
@@ -689,7 +697,8 @@ public:
   enum {
     SCROLL_FIRST_ANCESTOR_ONLY = 0x01,
     SCROLL_OVERFLOW_HIDDEN = 0x02,
-    SCROLL_NO_PARENT_FRAMES = 0x04
+    SCROLL_NO_PARENT_FRAMES = 0x04,
+    SCROLL_SMOOTH = 0x08
   };
   /**
    * Scrolls the view of the document so that the given area of a frame

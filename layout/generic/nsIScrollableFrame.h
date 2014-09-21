@@ -13,8 +13,9 @@
 #include "nsCoord.h"
 #include "ScrollbarStyles.h"
 #include "mozilla/gfx/Point.h"
-#include "nsIScrollbarOwner.h"
+#include "nsIScrollbarMediator.h"
 #include "Units.h"
+#include "FrameMetrics.h"
 
 #define NS_DEFAULT_VERTICAL_SCROLL_DISTANCE   3
 #define NS_DEFAULT_HORIZONTAL_SCROLL_DISTANCE 5
@@ -27,14 +28,23 @@ class nsIContent;
 class nsRenderingContext;
 class nsIAtom;
 
+namespace mozilla {
+struct ContainerLayerParameters;
+namespace layers {
+class Layer;
+}
+}
+
 /**
  * Interface for frames that are scrollable. This interface exposes
  * APIs for examining scroll state, observing changes to scroll state,
  * and triggering scrolling.
  */
-class nsIScrollableFrame : public nsIScrollbarOwner {
+class nsIScrollableFrame : public nsIScrollbarMediator {
 public:
   typedef mozilla::CSSIntPoint CSSIntPoint;
+  typedef mozilla::ContainerLayerParameters ContainerLayerParameters;
+  typedef mozilla::layers::FrameMetrics FrameMetrics;
 
   NS_DECL_QUERYFRAME_TARGET(nsIScrollableFrame)
 
@@ -340,6 +350,15 @@ public:
    * scroll frame.
    */
   virtual bool WantAsyncScroll() const = 0;
+  /**
+   * aLayer's animated geometry root is this frame. If there needs to be a
+   * FrameMetrics contributed by this frame, append it to aOutput.
+   */
+  virtual void ComputeFrameMetrics(mozilla::layers::Layer* aLayer,
+                                   nsIFrame* aContainerReferenceFrame,
+                                   const ContainerLayerParameters& aParameters,
+                                   nsRect* aOutClipRect,
+                                   nsTArray<FrameMetrics>* aOutput) const = 0;
 };
 
 #endif

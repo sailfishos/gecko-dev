@@ -337,7 +337,7 @@ class DirPickerRecursiveFileEnumerator MOZ_FINAL
 public:
   NS_DECL_ISUPPORTS
 
-  DirPickerRecursiveFileEnumerator(nsIFile* aTopDir)
+  explicit DirPickerRecursiveFileEnumerator(nsIFile* aTopDir)
     : mTopDir(aTopDir)
   {
     MOZ_ASSERT(!NS_IsMainThread(), "This class blocks on I/O!");
@@ -3188,7 +3188,7 @@ HTMLInputElement::Select()
 
   nsIFocusManager* fm = nsFocusManager::GetFocusManager();
 
-  nsRefPtr<nsPresContext> presContext = GetPresContext();
+  nsRefPtr<nsPresContext> presContext = GetPresContext(eForComposedDoc);
   if (state == eInactiveWindow) {
     if (fm)
       fm->SetFocus(this, nsIFocusManager::FLAG_NOSCROLL);
@@ -3961,7 +3961,8 @@ HTMLInputElement::PostHandleEvent(EventChainPostVisitor& aVisitor)
               fm->GetLastFocusMethod(document->GetWindow(), &lastFocusMethod);
               if (lastFocusMethod &
                   (nsIFocusManager::FLAG_BYKEY | nsIFocusManager::FLAG_BYMOVEFOCUS)) {
-                nsRefPtr<nsPresContext> presContext = GetPresContext();
+                nsRefPtr<nsPresContext> presContext =
+                  GetPresContext(eForComposedDoc);
                 if (DispatchSelectEvent(presContext)) {
                   SelectAll(presContext);
                 }
