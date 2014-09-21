@@ -13,7 +13,7 @@
 #include "mozilla/gfx/ScaleFactor.h"    // for ScaleFactor
 #include "mozilla/gfx/Logging.h"        // for Log
 #include "gfxColor.h"
-#include "nsString.h"
+#include "nsStringGlue.h"
 
 namespace IPC {
 template <typename T> struct ParamTraits;
