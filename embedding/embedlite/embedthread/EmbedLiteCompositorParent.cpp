@@ -212,10 +212,9 @@ void EmbedLiteCompositorParent::SetClipping(const gfxRect& aClipRect)
 }
 
 void
-EmbedLiteCompositorParent::SetChildCompositor(CompositorChild* aCompositorChild, MessageLoop* childLoop)
+EmbedLiteCompositorParent::SetChildCompositor(CompositorChild* aCompositorChild)
 {
   LOGT();
-  mChildMessageLoop = childLoop;
   mChildCompositor = aCompositorChild;
 }
 
