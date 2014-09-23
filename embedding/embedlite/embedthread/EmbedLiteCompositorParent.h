@@ -35,7 +35,7 @@ public:
   void SetWorldOpacity(float aOpacity);
   void* GetPlatformImage(int* width, int* height);
 
-  virtual void SetChildCompositor(mozilla::layers::CompositorChild*, MessageLoop*);
+  virtual void SetChildCompositor(mozilla::layers::CompositorChild*);
   mozilla::layers::CompositorChild* GetChildCompositor() {
     return mChildCompositor;
   }
@@ -55,7 +55,6 @@ protected:
   bool IsGLBackend();
 
   RefPtr<mozilla::layers::CompositorChild> mChildCompositor;
-  MessageLoop* mChildMessageLoop;
   uint32_t mId;
   gfx::Matrix mWorldTransform;
   nsIntRect mActiveClipping;
