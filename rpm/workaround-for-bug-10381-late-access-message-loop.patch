@@ -1,0 +1,14 @@
+diff --git a/ipc/glue/MessagePump.cpp b/ipc/glue/MessagePump.cpp
+index ab9ed72..43eebfd 100644
+--- a/ipc/glue/MessagePump.cpp
++++ b/ipc/glue/MessagePump.cpp
+@@ -218,6 +218,9 @@ DoWorkRunnable::Run()
+ {
+   MessageLoop* loop = MessageLoop::current();
+   MOZ_ASSERT(loop);
++  if (!loop) {
++    return NS_ERROR_NULL_POINTER;
++  }
+ 
+   bool nestableTasksAllowed = loop->NestableTasksAllowed();
+ 
