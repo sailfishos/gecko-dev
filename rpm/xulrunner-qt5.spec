@@ -17,6 +17,7 @@ Patch5:     transition-from-pinching-to-panning.patch
 Patch6:     workaround-for-bug-20684-wrong-viewport-after-orientation-change.patch
 Patch7:     workaround-for-21266-blank-page-after-scroll.patch
 Patch8:     0001-Supply-source-uri-to-gstreamer-pipeline.patch
+Patch9:     bug-1064636-security-nss-3.16.2.1.patch
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
@@ -76,6 +77,7 @@ Tests and misc files for xulrunner
 %patch6 -p1
 %patch7 -p1
 %patch8 -p1
+%patch9 -p1
 
 %build
 export DONT_POPULATE_VIRTUALENV=1
