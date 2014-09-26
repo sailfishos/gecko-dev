@@ -68,7 +68,7 @@
 #include "nsIChannelPolicy.h"
 #include "nsChannelPolicy.h"
 #include "GeckoProfiler.h"
-#include "nsObjectFrame.h"
+#include "nsPluginFrame.h"
 #include "nsDOMClassInfo.h"
 #include "nsWrapperCacheInlines.h"
 #include "nsDOMJSUtils.h"
@@ -860,7 +860,7 @@ nsObjectLoadingContent::InstantiatePluginInstance(bool aIsLoading)
   // dangling. (Bug 854082)
   nsIFrame* frame = thisContent->GetPrimaryFrame();
   if (frame && mInstanceOwner) {
-    mInstanceOwner->SetFrame(static_cast<nsObjectFrame*>(frame));
+    mInstanceOwner->SetFrame(static_cast<nsPluginFrame*>(frame));
 
     // Bug 870216 - Adobe Reader renders with incorrect dimensions until it gets
     // a second SetWindow call. This is otherwise redundant.
@@ -1296,7 +1296,7 @@ nsObjectLoadingContent::HasNewFrame(nsIObjectFrame* aFrame)
 
   // Otherwise, we're just changing frames
   // Set up relationship between instance owner and frame.
-  nsObjectFrame *objFrame = static_cast<nsObjectFrame*>(aFrame);
+  nsPluginFrame *objFrame = static_cast<nsPluginFrame*>(aFrame);
   mInstanceOwner->SetFrame(objFrame);
 
   return NS_OK;
@@ -2503,10 +2503,31 @@ nsObjectLoadingContent::OpenChannel()
   }
   nsRefPtr<ObjectInterfaceRequestorShim> shim =
     new ObjectInterfaceRequestorShim(this);
-  rv = NS_NewChannel(getter_AddRefs(chan), mURI, nullptr, group, shim,
+
+  bool isSandBoxed = doc->GetSandboxFlags() & SANDBOXED_ORIGIN;
+  bool inherit = nsContentUtils::ChannelShouldInheritPrincipal(thisContent->NodePrincipal(),
+                                                               mURI,
+                                                               true,   // aInheritForAboutBlank
+                                                               false); // aForceInherit
+  nsSecurityFlags securityFlags = nsILoadInfo::SEC_NORMAL;
+  if (inherit) {
+    securityFlags |= nsILoadInfo::SEC_FORCE_INHERIT_PRINCIPAL;
+  }
+  if (isSandBoxed) {
+    securityFlags |= nsILoadInfo::SEC_SANDBOXED;
+  }
+
+  rv = NS_NewChannel(getter_AddRefs(chan),
+                     mURI,
+                     thisContent,
+                     securityFlags,
+                     nsIContentPolicy::TYPE_OBJECT,
+                     channelPolicy,
+                     group, // aLoadGroup
+                     shim,  // aCallbacks
                      nsIChannel::LOAD_CALL_CONTENT_SNIFFERS |
-                     nsIChannel::LOAD_CLASSIFY_URI,
-                     channelPolicy);
+                     nsIChannel::LOAD_CLASSIFY_URI);
+
   NS_ENSURE_SUCCESS(rv, rv);
 
   // Referrer
@@ -2520,14 +2541,6 @@ nsObjectLoadingContent::OpenChannel()
       timedChannel->SetInitiatorType(thisContent->LocalName());
     }
   }
-
-  // Set up the channel's principal and such, like nsDocShell::DoURILoad does.
-  // If the content being loaded should be sandboxed with respect to origin we
-  // tell SetUpChannelOwner that.
-  nsContentUtils::SetUpChannelOwner(thisContent->NodePrincipal(), chan, mURI,
-                                    true,
-                                    doc->GetSandboxFlags() & SANDBOXED_ORIGIN,
-                                    false);
 
   nsCOMPtr<nsIScriptChannel> scriptChannel = do_QueryInterface(chan);
   if (scriptChannel) {
@@ -2705,13 +2718,13 @@ nsObjectLoadingContent::GetTypeOfContent(const nsCString& aMIMEType)
   return eType_Null;
 }
 
-nsObjectFrame*
+nsPluginFrame*
 nsObjectLoadingContent::GetExistingFrame()
 {
   nsCOMPtr<nsIContent> thisContent = do_QueryInterface(static_cast<nsIImageLoadingContent*>(this));
   nsIFrame* frame = thisContent->GetPrimaryFrame();
   nsIObjectFrame* objFrame = do_QueryFrame(frame);
-  return static_cast<nsObjectFrame*>(objFrame);
+  return static_cast<nsPluginFrame*>(objFrame);
 }
 
 void
@@ -3563,7 +3576,7 @@ nsObjectLoadingContent::GetPluginJSObject(JSContext *cx,
                                           JS::MutableHandle<JSObject*> plugin_proto)
 {
   // NB: We need an AutoEnterCompartment because we can be called from
-  // nsObjectFrame when the plugin loads after the JS object for our content
+  // nsPluginFrame when the plugin loads after the JS object for our content
   // node has been created.
   JSAutoCompartment ac(cx, obj);
 

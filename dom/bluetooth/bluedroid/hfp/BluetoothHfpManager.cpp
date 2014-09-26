@@ -27,6 +27,8 @@
 #include "nsRadioInterfaceLayer.h"
 #include "nsServiceManagerUtils.h"
 #include "nsThreadUtils.h"
+#include "mozilla/dom/BindingUtils.h"
+#include "mozilla/dom/SettingChangeNotificationBinding.h"
 
 #define MOZSETTINGS_CHANGED_ID               "mozsettings-changed"
 #define AUDIO_VOLUME_BT_SCO_ID               "audio.volume.bt_sco"
@@ -462,7 +464,7 @@ BluetoothHfpManager::Observe(nsISupports* aSubject,
                              const char16_t* aData)
 {
   if (!strcmp(aTopic, MOZSETTINGS_CHANGED_ID)) {
-    HandleVolumeChanged(nsDependentString(aData));
+    HandleVolumeChanged(aSubject);
   } else if (!strcmp(aTopic, NS_XPCOM_SHUTDOWN_OBSERVER_ID)) {
     HandleShutdown();
   } else {
@@ -561,39 +563,28 @@ public:
 };
 
 void
-BluetoothHfpManager::HandleVolumeChanged(const nsAString& aData)
+BluetoothHfpManager::HandleVolumeChanged(nsISupports* aSubject)
 {
   MOZ_ASSERT(NS_IsMainThread());
 
   // The string that we're interested in will be a JSON string that looks like:
   //  {"key":"volumeup", "value":10}
   //  {"key":"volumedown", "value":2}
-  JSContext* cx = nsContentUtils::GetSafeJSContext();
-  NS_ENSURE_TRUE_VOID(cx);
-
-  JS::Rooted<JS::Value> val(cx);
-  NS_ENSURE_TRUE_VOID(JS_ParseJSON(cx, aData.BeginReading(), aData.Length(), &val));
-  NS_ENSURE_TRUE_VOID(val.isObject());
-
-  JS::Rooted<JSObject*> obj(cx, &val.toObject());
-  JS::Rooted<JS::Value> key(cx);
-  if (!JS_GetProperty(cx, obj, "key", &key) || !key.isString()) {
+  AutoJSAPI jsapi;
+  jsapi.Init();
+  JSContext* cx = jsapi.cx();
+  RootedDictionary<dom::SettingChangeNotification> setting(cx);
+  if (!WrappedJSToDictionary(cx, aSubject, setting)) {
+    return;
+  }
+  if (!setting.mKey.EqualsASCII(AUDIO_VOLUME_BT_SCO_ID)) {
+    return;
+  }
+  if (!setting.mValue.isNumber()) {
     return;
   }
 
-  bool match;
-  if (!JS_StringEqualsAscii(cx, key.toString(), AUDIO_VOLUME_BT_SCO_ID, &match) ||
-      !match) {
-    return;
-  }
-
-  JS::Rooted<JS::Value> value(cx);
-  if (!JS_GetProperty(cx, obj, "value", &value) ||
-      !value.isNumber()) {
-    return;
-  }
-
-  mCurrentVgs = value.toNumber();
+  mCurrentVgs = setting.mValue.toNumber();
 
   // Adjust volume by headset and we don't have to send volume back to headset
   if (mReceiveVgsFlag) {
@@ -612,12 +603,16 @@ BluetoothHfpManager::HandleVolumeChanged(const nsAString& aData)
 void
 BluetoothHfpManager::HandleVoiceConnectionChanged(uint32_t aClientId)
 {
-  nsCOMPtr<nsIMobileConnectionService> connection =
+  nsCOMPtr<nsIMobileConnectionService> mcService =
     do_GetService(NS_MOBILE_CONNECTION_SERVICE_CONTRACTID);
+  NS_ENSURE_TRUE_VOID(mcService);
+
+  nsCOMPtr<nsIMobileConnection> connection;
+  mcService->GetItemByServiceId(aClientId, getter_AddRefs(connection));
   NS_ENSURE_TRUE_VOID(connection);
 
   nsCOMPtr<nsIMobileConnectionInfo> voiceInfo;
-  connection->GetVoiceConnectionInfo(aClientId, getter_AddRefs(voiceInfo));
+  connection->GetVoice(getter_AddRefs(voiceInfo));
   NS_ENSURE_TRUE_VOID(voiceInfo);
 
   nsString type;
@@ -1216,7 +1211,9 @@ BluetoothHfpManager::Disconnect(BluetoothProfileController* aController)
 
   if (!sBluetoothHfpInterface) {
     BT_LOGR("sBluetoothHfpInterface is null");
-    aController->NotifyCompletion(NS_LITERAL_STRING(ERR_NO_AVAILABLE_RESOURCE));
+    if (aController) {
+      aController->NotifyCompletion(NS_LITERAL_STRING(ERR_NO_AVAILABLE_RESOURCE));
+    }
     return;
   }
 

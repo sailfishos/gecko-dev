@@ -454,12 +454,15 @@ function waitForDocLoadComplete(aBrowser=gBrowser) {
   let deferred = Promise.defer();
   let progressListener = {
     onStateChange: function (webProgress, req, flags, status) {
-      let docStart = Ci.nsIWebProgressListener.STATE_IS_NETWORK |
-                     Ci.nsIWebProgressListener.STATE_STOP;
-      info("Saw state " + flags.toString(16));
-      if ((flags & docStart) == docStart) {
+      let docStop = Ci.nsIWebProgressListener.STATE_IS_NETWORK |
+                    Ci.nsIWebProgressListener.STATE_STOP;
+      info("Saw state " + flags.toString(16) + " and status " + status.toString(16));
+
+      // When a load needs to be retargetted to a new process it is cancelled
+      // with NS_BINDING_ABORTED so ignore that case
+      if ((flags & docStop) == docStop && status != Cr.NS_BINDING_ABORTED) {
         aBrowser.removeProgressListener(progressListener);
-        info("Browser loaded");
+        info("Browser loaded " + aBrowser.contentWindow.location);
         deferred.resolve();
       }
     },
@@ -737,23 +740,28 @@ function promisePopupHidden(popup) {
   return promisePopupEvent(popup, "hidden");
 }
 
+// NOTE: If you're using this, and attempting to interact with one of the
+// autocomplete results, your test is likely to be unreliable on Linux.
+// See bug 1073339.
 let gURLBarOnSearchComplete = null;
 function promiseSearchComplete() {
   info("Waiting for onSearchComplete");
-  let deferred = Promise.defer();
-  
-  if (!gURLBarOnSearchComplete) {
-    gURLBarOnSearchComplete = gURLBar.onSearchComplete;
-    registerCleanupFunction(() => {
-      gURLBar.onSearchComplete = gURLBarOnSearchComplete;
-    });
-  }
+  return new Promise(resolve => {
+    if (!gURLBarOnSearchComplete) {
+      gURLBarOnSearchComplete = gURLBar.onSearchComplete;
+      registerCleanupFunction(() => {
+        gURLBar.onSearchComplete = gURLBarOnSearchComplete;
+      });
+    }
 
-  gURLBar.onSearchComplete = function () {
-    ok(gURLBar.popupOpen, "The autocomplete popup is correctly open");
-    gURLBarOnSearchComplete.apply(gURLBar);
-    deferred.resolve();
-  }
-  
-  return deferred.promise;
+    gURLBar.onSearchComplete = function () {
+      ok(gURLBar.popupOpen, "The autocomplete popup is correctly open");
+      gURLBarOnSearchComplete.apply(gURLBar);
+      resolve();
+    }
+  }).then(() => {
+    // On Linux, the popup may or may not be open at this stage. So we need
+    // additional checks to ensure we wait long enough.
+    return promisePopupShown(gURLBar.popup);
+  });
 }

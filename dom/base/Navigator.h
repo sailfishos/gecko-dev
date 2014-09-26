@@ -27,6 +27,7 @@ class nsDOMCameraManager;
 class nsDOMDeviceStorage;
 class nsIDOMBlob;
 class nsIPrincipal;
+class nsIURI;
 
 namespace mozilla {
 namespace dom {
@@ -47,8 +48,6 @@ class nsIDOMMozIccManager;
 //*****************************************************************************
 // Navigator: Script "navigator" object
 //*****************************************************************************
-
-void NS_GetNavigatorAppName(nsAString& aAppName);
 
 namespace mozilla {
 namespace dom {
@@ -89,11 +88,11 @@ class BluetoothManager;
 class CellBroadcast;
 class IccManager;
 class MobileConnectionArray;
-class Voicemail;
 #endif
 
 class PowerManager;
 class Telephony;
+class Voicemail;
 
 namespace time {
 class TimeManager;
@@ -161,6 +160,19 @@ public:
                                                  const nsAString& aOwner,
                                                  ErrorResult& aRv);
 
+  static void AppName(nsAString& aAppName, bool aUsePrefOverriddenValue);
+
+  static nsresult GetPlatform(nsAString& aPlatform,
+                              bool aUsePrefOverriddenValue);
+
+  static nsresult GetAppVersion(nsAString& aAppVersion,
+                                bool aUsePrefOverriddenValue);
+
+  static nsresult GetUserAgent(nsPIDOMWindow* aWindow,
+                               nsIURI* aURI,
+                               bool aIsCallerChrome,
+                               nsAString& aUserAgent);
+
   already_AddRefed<Promise> GetDataStores(const nsAString& aName,
                                           const nsAString& aOwner,
                                           ErrorResult& aRv);
@@ -207,10 +219,9 @@ public:
                          nsTArray<nsRefPtr<nsDOMDeviceStorage> >& aStores,
                          ErrorResult& aRv);
   DesktopNotificationCenter* GetMozNotification(ErrorResult& aRv);
-  bool MozIsLocallyAvailable(const nsAString& aURI, bool aWhenOffline,
-                             ErrorResult& aRv);
   MobileMessageManager* GetMozMobileMessage();
   Telephony* GetMozTelephony(ErrorResult& aRv);
+  Voicemail* GetMozVoicemail(ErrorResult& aRv);
   network::Connection* GetConnection(ErrorResult& aRv);
   nsDOMCameraManager* GetMozCameras(ErrorResult& aRv);
   void MozSetMessageHandler(const nsAString& aType,
@@ -224,7 +235,6 @@ public:
 #ifdef MOZ_B2G_RIL
   MobileConnectionArray* GetMozMobileConnections(ErrorResult& aRv);
   CellBroadcast* GetMozCellBroadcast(ErrorResult& aRv);
-  Voicemail* GetMozVoicemail(ErrorResult& aRv);
   IccManager* GetMozIccManager(ErrorResult& aRv);
 #endif // MOZ_B2G_RIL
 #ifdef MOZ_GAMEPAD
@@ -321,12 +331,12 @@ private:
   nsRefPtr<PowerManager> mPowerManager;
   nsRefPtr<MobileMessageManager> mMobileMessageManager;
   nsRefPtr<Telephony> mTelephony;
+  nsRefPtr<Voicemail> mVoicemail;
   nsRefPtr<network::Connection> mConnection;
 #ifdef MOZ_B2G_RIL
   nsRefPtr<MobileConnectionArray> mMobileConnections;
   nsRefPtr<CellBroadcast> mCellBroadcast;
   nsRefPtr<IccManager> mIccManager;
-  nsRefPtr<Voicemail> mVoicemail;
 #endif
 #ifdef MOZ_B2G_BT
   nsRefPtr<bluetooth::BluetoothManager> mBluetooth;
@@ -351,9 +361,5 @@ private:
 
 } // namespace dom
 } // namespace mozilla
-
-nsresult NS_GetNavigatorUserAgent(nsAString& aUserAgent);
-nsresult NS_GetNavigatorPlatform(nsAString& aPlatform);
-nsresult NS_GetNavigatorAppVersion(nsAString& aAppVersion);
 
 #endif // mozilla_dom_Navigator_h

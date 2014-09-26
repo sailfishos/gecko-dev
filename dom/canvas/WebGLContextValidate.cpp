@@ -521,6 +521,34 @@ bool WebGLContext::ValidateGLSLString(const nsAString& string, const char *info)
 }
 
 /**
+ * Return true if the framebuffer attachment is valid. Attachment must
+ * be one of depth/stencil/depth_stencil/color attachment.
+ */
+bool
+WebGLContext::ValidateFramebufferAttachment(GLenum attachment, const char* funcName)
+{
+    if (attachment == LOCAL_GL_DEPTH_ATTACHMENT ||
+        attachment == LOCAL_GL_STENCIL_ATTACHMENT ||
+        attachment == LOCAL_GL_DEPTH_STENCIL_ATTACHMENT)
+    {
+        return true;
+    }
+
+    GLenum colorAttachCount = 1;
+    if (IsExtensionEnabled(WebGLExtensionID::WEBGL_draw_buffers))
+        colorAttachCount = mGLMaxColorAttachments;
+
+    if (attachment >= LOCAL_GL_COLOR_ATTACHMENT0 &&
+        attachment < GLenum(LOCAL_GL_COLOR_ATTACHMENT0 + colorAttachCount))
+    {
+        return true;
+    }
+
+    ErrorInvalidEnum("%s: attachment: invalid enum value 0x%x.", funcName, attachment);
+    return false;
+}
+
+/**
  * Return true if format is a valid texture image format for source,
  * taking into account enabled WebGL extensions.
  */
@@ -1039,13 +1067,8 @@ WebGLContext::ValidateTexSubImageSize(GLint xoffset, GLint yoffset, GLint /*zoff
  * ValidateTexImageFormatAndType().
  */
 uint32_t
-WebGLContext::GetBitsPerTexel(GLenum format, GLenum type)
+WebGLContext::GetBitsPerTexel(TexInternalFormat format, TexType type)
 {
-    // If there is no defined format or type, we're not taking up any memory
-    if (!format || !type) {
-        return 0;
-    }
-
     /* Known fixed-sized types */
     if (type == LOCAL_GL_UNSIGNED_SHORT_4_4_4_4 ||
         type == LOCAL_GL_UNSIGNED_SHORT_5_5_5_1 ||
@@ -1058,7 +1081,7 @@ WebGLContext::GetBitsPerTexel(GLenum format, GLenum type)
         return 32;
 
     int bitsPerComponent = 0;
-    switch (type) {
+    switch (type.get()) {
     case LOCAL_GL_UNSIGNED_BYTE:
         bitsPerComponent = 8;
         break;
@@ -1079,7 +1102,7 @@ WebGLContext::GetBitsPerTexel(GLenum format, GLenum type)
         break;
     }
 
-    switch (format) {
+    switch (format.get()) {
         // Uncompressed formats
     case LOCAL_GL_ALPHA:
     case LOCAL_GL_LUMINANCE:
@@ -1309,7 +1332,7 @@ WebGLContext::ValidateCopyTexImage(GLenum format, WebGLTexImageFunc func)
 // TODO: Texture dims is here for future expansion in WebGL 2.0
 bool
 WebGLContext::ValidateTexImage(GLuint dims, TexImageTarget texImageTarget,
-                               GLint level, GLint internalFormat,
+                               GLint level, GLenum internalFormat,
                                GLint xoffset, GLint yoffset, GLint zoffset,
                                GLint width, GLint height, GLint depth,
                                GLint border, GLenum format, GLenum type,
@@ -1339,7 +1362,7 @@ WebGLContext::ValidateTexImage(GLuint dims, TexImageTarget texImageTarget,
      * (e.g., GL_FLOAT requires GL_OES_texture_float) are filtered
      * elsewhere.
      */
-    if ((GLint) format != internalFormat) {
+    if (format != internalFormat) {
         ErrorInvalidOperation("%s: format does not match internalformat", info);
         return false;
     }
@@ -1443,8 +1466,8 @@ WebGLContext::ValidateUniformLocation(const char* info, WebGLUniformLocation *lo
 bool
 WebGLContext::ValidateSamplerUniformSetter(const char* info, WebGLUniformLocation *location, GLint value)
 {
-    if (location->Info().type != SH_SAMPLER_2D &&
-        location->Info().type != SH_SAMPLER_CUBE)
+    if (location->Info().type != LOCAL_GL_SAMPLER_2D &&
+        location->Info().type != LOCAL_GL_SAMPLER_CUBE)
     {
         return true;
     }

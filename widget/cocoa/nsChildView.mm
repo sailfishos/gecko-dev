@@ -225,6 +225,7 @@ static uint32_t gNumberOfWidgetsNeedingEventThread = 0;
 
 @interface NSView(DraggableRegion)
 - (CGSRegionObj)_regionForOpaqueDescendants:(NSRect)aRect forMove:(BOOL)aForMove;
+- (CGSRegionObj)_regionForOpaqueDescendants:(NSRect)aRect forMove:(BOOL)aForMove forUnderTitlebar:(BOOL)aForUnderTitlebar;
 @end
 
 // Starting with 10.7 the bottom corners of all windows are rounded.
@@ -4851,8 +4852,9 @@ NSEvent* gLastDragMouseDownEvent = nil;
 
   // Check to see if we are double-clicking in the titlebar.
   CGFloat locationInTitlebar = [[self window] frame].size.height - [theEvent locationInWindow].y;
+  LayoutDeviceIntPoint pos = geckoEvent.refPoint;
   if (!defaultPrevented && [theEvent clickCount] == 2 &&
-      [[self window] isMovableByWindowBackground] &&
+      mGeckoChild->GetDraggableRegion().Contains(pos.x, pos.y) &&
       [self shouldMinimizeOnTitlebarDoubleClick] &&
       [[self window] isKindOfClass:[ToolbarWindow class]] &&
       (locationInTitlebar < [(ToolbarWindow*)[self window] titlebarHeight] ||
@@ -4956,6 +4958,23 @@ NewCGSRegionFromRegion(const nsIntRegion& aRegion,
   return NewCGSRegionFromRegion(opaqueRegion, ^(const nsIntRect& r) {
     return [self convertToFlippedWindowCoordinates:mGeckoChild->DevPixelsToCocoaPoints(r)];
   });
+}
+
+// Starting with 10.10, in addition to the traditional
+// -[NSView _regionForOpaqueDescendants:forMove:] method, there's a new form with
+// an additional forUnderTitlebar argument, which is sometimes called instead of
+// the old form. We need to override the new variant as well.
+- (CGSRegionObj)_regionForOpaqueDescendants:(NSRect)aRect
+                                    forMove:(BOOL)aForMove
+                           forUnderTitlebar:(BOOL)aForUnderTitlebar
+{
+  if (!aForMove || !mGeckoChild) {
+    return [super _regionForOpaqueDescendants:aRect
+                                      forMove:aForMove
+                             forUnderTitlebar:aForUnderTitlebar];
+  }
+
+  return [self _regionForOpaqueDescendants:aRect forMove:aForMove];
 }
 
 - (void)handleMouseMoved:(NSEvent*)theEvent

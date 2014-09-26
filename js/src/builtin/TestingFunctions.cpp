@@ -870,6 +870,25 @@ CountHeap(JSContext *cx, unsigned argc, jsval *vp)
     return true;
 }
 
+// Stolen from jsmath.cpp
+static const uint64_t RNG_MULTIPLIER = 0x5DEECE66DLL;
+static const uint64_t RNG_MASK = (1LL << 48) - 1;
+
+static bool
+SetSavedStacksRNGState(JSContext *cx, unsigned argc, jsval *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    if (!args.requireAtLeast(cx, "setSavedStacksRNGState", 1))
+        return false;
+
+    int32_t seed;
+    if (!ToInt32(cx, args[0], &seed))
+        return false;
+
+    cx->compartment()->savedStacks().setRNGState((seed ^ RNG_MULTIPLIER) & RNG_MASK);
+    return true;
+}
+
 static bool
 GetSavedFrameCount(JSContext *cx, unsigned argc, jsval *vp)
 {
@@ -1672,6 +1691,39 @@ DumpObject(JSContext *cx, unsigned argc, jsval *vp)
 }
 #endif
 
+#ifdef NIGHTLY_BUILD
+static bool
+ObjectAddress(JSContext *cx, unsigned argc, jsval *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    if (args.length() != 1) {
+        RootedObject callee(cx, &args.callee());
+        ReportUsageError(cx, callee, "Wrong number of arguments");
+        return false;
+    }
+    if (!args[0].isObject()) {
+        RootedObject callee(cx, &args.callee());
+        ReportUsageError(cx, callee, "Expected object");
+        return false;
+    }
+
+#ifdef JS_MORE_DETERMINISTIC
+    args.rval().setInt32(0);
+#else
+    char buffer[64];
+    JS_snprintf(buffer, sizeof(buffer), "%p", &args[0].toObject());
+
+    JSString *str = JS_NewStringCopyZ(cx, buffer);
+    if (!str)
+        return false;
+
+    args.rval().setString(str);
+#endif
+
+    return true;
+}
+#endif
+
 static bool
 DumpBacktrace(JSContext *cx, unsigned argc, jsval *vp)
 {
@@ -2012,6 +2064,19 @@ IsSimdAvailable(JSContext *cx, unsigned argc, Value *vp)
     return true;
 }
 
+static bool
+ByteSize(JSContext *cx, unsigned argc, Value *vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    mozilla::MallocSizeOf mallocSizeOf = cx->runtime()->debuggerMallocSizeOf;
+    JS::ubi::Node node(args.get(0));
+    if (node)
+        args.rval().set(NumberValue(node.size(mallocSizeOf)));
+    else
+        args.rval().setUndefined();
+    return true;
+}
+
 static const JSFunctionSpecWithHelp TestingFunctions[] = {
     JS_FN_HELP("gc", ::GC, 0, 0,
 "gc([obj] | 'compartment' [, 'shrinking'])",
@@ -2043,6 +2108,10 @@ static const JSFunctionSpecWithHelp TestingFunctions[] = {
 "  to count only things of that kind. If kind is the string 'specific',\n"
 "  then you can provide an extra argument with some specific traceable\n"
 "  thing to count.\n"),
+
+    JS_FN_HELP("setSavedStacksRNGState", SetSavedStacksRNGState, 1, 0,
+"setSavedStacksRNGState(seed)",
+"  Set this compartment's SavedStacks' RNG state.\n"),
 
     JS_FN_HELP("getSavedFrameCount", GetSavedFrameCount, 0, 0,
 "getSavedFrameCount()",
@@ -2318,6 +2387,13 @@ static const JSFunctionSpecWithHelp TestingFunctions[] = {
 "  Dump an internal representation of an object."),
 #endif
 
+#ifdef NIGHTLY_BUILD
+    JS_FN_HELP("objectAddress", ObjectAddress, 1, 0,
+"objectAddress(obj)",
+"  Return the current address of the object. For debugging only--this\n"
+"  address may change during a moving GC."),
+#endif
+
     JS_FN_HELP("evalReturningScope", EvalReturningScope, 1, 0,
 "evalReturningScope(scriptStr)",
 "  Evaluate the script in a new scope and return the scope."),
@@ -2333,6 +2409,11 @@ static const JSFunctionSpecWithHelp TestingFunctions[] = {
 "    options.args - show arguments to each function\n"
 "    options.locals - show local variables in each frame\n"
 "    options.thisprops - show the properties of the 'this' object of each frame\n"),
+
+    JS_FN_HELP("byteSize", ByteSize, 1, 0,
+"byteSize(value)",
+"  Return the size in bytes occupied by |value|, or |undefined| if value\n"
+"  is not allocated in memory.\n"),
 
     JS_FS_HELP_END
 };

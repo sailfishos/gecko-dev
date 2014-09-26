@@ -46,7 +46,38 @@ loop.shared.utils = (function() {
     return !!localStorage.getItem(prefName);
   }
 
+  /**
+   * Helper for general things
+   */
+  function Helper() {
+    this._iOSRegex = /^(iPad|iPhone|iPod)/;
+  }
+
+  Helper.prototype = {
+    isFirefox: function(platform) {
+      return platform.indexOf("Firefox") !== -1;
+    },
+
+    isFirefoxOS: function(platform) {
+      // So far WebActivities are exposed only in FxOS, but they may be
+      // exposed in Firefox Desktop soon, so we check for its existence
+      // and also check if the UA belongs to a mobile platform.
+      // XXX WebActivities are also exposed in WebRT on Firefox for Android,
+      //     so we need a better check. Bug 1065403.
+      return !!window.MozActivity && /mobi/i.test(platform);
+    },
+
+    isIOS: function(platform) {
+      return this._iOSRegex.test(platform);
+    },
+
+    locationHash: function() {
+      return window.location.hash;
+    }
+  };
+
   return {
+    Helper: Helper,
     getTargetPlatform: getTargetPlatform,
     getBoolPreference: getBoolPreference
   };

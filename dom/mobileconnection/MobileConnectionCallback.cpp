@@ -4,14 +4,16 @@
 
 #include "MobileConnectionCallback.h"
 
-#include "DOMMMIError.h"
+#include "mozilla/dom/DOMMMIError.h"
 #include "mozilla/dom/MobileNetworkInfo.h"
 #include "mozilla/dom/MozMobileConnectionBinding.h"
 #include "mozilla/dom/ToJSValue.h"
 #include "nsJSUtils.h"
 #include "nsServiceManagerUtils.h"
 
-using namespace mozilla::dom;
+namespace mozilla {
+namespace dom {
+namespace mobileconnection {
 
 NS_IMPL_ISUPPORTS(MobileConnectionCallback, nsIMobileConnectionCallback)
 
@@ -229,13 +231,15 @@ MobileConnectionCallback::NotifyGetNetworksSuccess(uint32_t aCount,
 }
 
 NS_IMETHODIMP
-MobileConnectionCallback::NotifySendCancelMmiSuccess(JS::Handle<JS::Value> aResult)
+MobileConnectionCallback::NotifySendCancelMmiSuccess(JS::Handle<JS::Value> aResult,
+                                                     JSContext* aCx)
 {
   return NotifySuccess(aResult);
 }
 
 NS_IMETHODIMP
-MobileConnectionCallback::NotifyGetCallForwardingSuccess(JS::Handle<JS::Value> aResults)
+MobileConnectionCallback::NotifyGetCallForwardingSuccess(JS::Handle<JS::Value> aResults,
+                                                         JSContext* aCx)
 {
   return NotifySuccess(aResults);
 }
@@ -317,3 +321,7 @@ MobileConnectionCallback::NotifyError(const nsAString& aName,
 
   return NS_ERROR_FAILURE;
 }
+
+} // namespace mobileconnection
+} // namespace dom
+} // namespace mozilla

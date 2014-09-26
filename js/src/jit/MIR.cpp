@@ -165,7 +165,9 @@ EvaluateExactReciprocal(TempAllocator &alloc, MDiv *ins)
     foldedRhs->setResultType(ins->type());
     ins->block()->insertBefore(ins, foldedRhs);
 
-    return MMul::New(alloc, left, foldedRhs, ins->type());
+    MMul *mul = MMul::New(alloc, left, foldedRhs, ins->type());
+    mul->setCommutative();
+    return mul;
 }
 
 void
@@ -330,6 +332,8 @@ MTest::foldsTo(TempAllocator &alloc)
       case MIRType_Undefined:
       case MIRType_Null:
         return MGoto::New(alloc, ifFalse());
+      case MIRType_Symbol:
+        return MGoto::New(alloc, ifTrue());
       case MIRType_Object:
         if (!operandMightEmulateUndefined())
             return MGoto::New(alloc, ifTrue());
@@ -499,7 +503,7 @@ MDefinition::hasLiveDefUses() const
                 return true;
         } else {
             MOZ_ASSERT(ins->isResumePoint());
-            if (ins->toResumePoint()->isObservableOperand(*i))
+            if (!ins->toResumePoint()->isRecoverableOperand(*i))
                 return true;
         }
     }
@@ -1177,6 +1181,73 @@ MPhi::removeAllOperands()
 }
 
 MDefinition *
+MPhi::foldsTernary()
+{
+    /* Look if this MPhi is a ternary construct.
+     * This is a very loose term as it actually only checks for
+     *
+     *      MTest X
+     *       /  \
+     *    ...    ...
+     *       \  /
+     *     MPhi X Y
+     *
+     * Which we will simply call:
+     * x ? x : y or x ? y : x
+     */
+
+    if (numOperands() != 2)
+        return nullptr;
+
+    MOZ_ASSERT(block()->numPredecessors() == 2);
+
+    MBasicBlock *pred = block()->immediateDominator();
+    if (!pred || !pred->lastIns()->isTest())
+        return nullptr;
+
+    // We found a ternary construct.
+    MTest *test = pred->lastIns()->toTest();
+    bool firstIsTrueBranch = test->ifTrue()->dominates(block()->getPredecessor(0));
+    MDefinition *trueDef = firstIsTrueBranch ? getOperand(0) : getOperand(1);
+    MDefinition *falseDef = firstIsTrueBranch ? getOperand(1) : getOperand(0);
+
+    // Accept either
+    // testArg ? testArg : constant or
+    // testArg ? constant : testArg
+    if (!trueDef->isConstant() && !falseDef->isConstant())
+        return nullptr;
+
+    MConstant *c = trueDef->isConstant() ? trueDef->toConstant() : falseDef->toConstant();
+    MDefinition *testArg = (trueDef == c) ? falseDef : trueDef;
+    if (testArg != test->input())
+        return nullptr;
+
+    // If testArg is a number type we can:
+    // - fold testArg ? testArg : 0 to testArg
+    // - fold testArg ? 0 : testArg to 0
+    if (IsNumberType(testArg->type()) && c->vp()->toNumber() == 0) {
+        // When folding to the constant we need to hoist it.
+        if (trueDef == c)
+            c->block()->moveBefore(pred->lastIns(), c);
+        return trueDef;
+    }
+
+    // If testArg is a string type we can:
+    // - fold testArg ? testArg : "" to testArg
+    // - fold testArg ? "" : testArg to ""
+    if (testArg->type() == MIRType_String &&
+        c->vp()->toString() == GetIonContext()->runtime->emptyString())
+    {
+        // When folding to the constant we need to hoist it.
+        if (trueDef == c)
+            c->block()->moveBefore(pred->lastIns(), c);
+        return trueDef;
+    }
+
+    return nullptr;
+}
+
+MDefinition *
 MPhi::operandIfRedundant()
 {
     if (inputs_.length() == 0)
@@ -1198,6 +1269,9 @@ MDefinition *
 MPhi::foldsTo(TempAllocator &alloc)
 {
     if (MDefinition *def = operandIfRedundant())
+        return def;
+
+    if (MDefinition *def = foldsTernary())
         return def;
 
     return this;
@@ -2643,6 +2717,12 @@ MResumePoint::isObservableOperand(size_t index) const
     return block()->info().isObservableSlot(index);
 }
 
+bool
+MResumePoint::isRecoverableOperand(MUse *u) const
+{
+    return block()->info().isRecoverableOperand(indexOf(u));
+}
+
 MDefinition *
 MToInt32::foldsTo(TempAllocator &alloc)
 {
@@ -3046,6 +3126,10 @@ MNot::foldsTo(TempAllocator &alloc)
     if (input()->type() == MIRType_Undefined || input()->type() == MIRType_Null)
         return MConstant::New(alloc, BooleanValue(true));
 
+    // NOT of a symbol is always false.
+    if (input()->type() == MIRType_Symbol)
+        return MConstant::New(alloc, BooleanValue(false));
+
     // NOT of an object that can't emulate undefined is always false.
     if (input()->type() == MIRType_Object && !operandMightEmulateUndefined())
         return MConstant::New(alloc, BooleanValue(false));
@@ -3083,11 +3167,23 @@ MNewObject::shouldUseVM() const
     return obj->hasSingletonType() || obj->hasDynamicSlots();
 }
 
+bool
+MCreateThisWithTemplate::canRecoverOnBailout() const
+{
+    MOZ_ASSERT(!templateObject()->denseElementsAreCopyOnWrite());
+    MOZ_ASSERT(!templateObject()->is<ArrayObject>());
+    return true;
+}
+
 MObjectState::MObjectState(MDefinition *obj)
 {
     // This instruction is only used as a summary for bailout paths.
     setRecoveredOnBailout();
-    JSObject *templateObject = obj->toNewObject()->templateObject();
+    JSObject *templateObject = nullptr;
+    if (obj->isNewObject())
+        templateObject = obj->toNewObject()->templateObject();
+    else
+        templateObject = obj->toCreateThisWithTemplate()->templateObject();
     numSlots_ = templateObject->slotSpan();
     numFixedSlots_ = templateObject->numFixedSlots();
 }

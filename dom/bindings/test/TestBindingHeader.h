@@ -607,6 +607,8 @@ public:
   void PassUnion24(const ImageDataOrNullSequenceOrLong&);
   void PassUnion25(const ImageDataSequenceSequenceOrLong&);
   void PassUnion26(const ImageDataOrNullSequenceSequenceOrLong&);
+  void PassUnion27(const StringSequenceOrEventInit&);
+  void PassUnion28(const EventInitOrStringSequence&);
   void PassUnionWithCallback(const EventHandlerNonNullOrNullOrLong& arg);
   void PassUnionWithByteString(const ByteStringOrLong&);
   void PassUnionWithMozMap(const StringMozMapOrString&);
@@ -689,10 +691,13 @@ public:
 
   // binaryNames tests
   void MethodRenamedTo();
+  void OtherMethodRenamedTo();
   void MethodRenamedTo(int8_t);
   int8_t AttributeGetterRenamedTo();
   int8_t AttributeRenamedTo();
   void SetAttributeRenamedTo(int8_t);
+  int8_t OtherAttributeRenamedTo();
+  void SetOtherAttributeRenamedTo(int8_t);
 
   // Dictionary tests
   void PassDictionary(JSContext*, const Dict&);
@@ -770,7 +775,11 @@ public:
   void Overload17(const MozMap<int32_t>&);
   void Overload18(const MozMap<nsString>&);
   void Overload18(const Sequence<nsString>&);
-
+  void Overload19(const Sequence<int32_t>&);
+  void Overload19(JSContext*, const Dict&);
+  void Overload20(JSContext*, const Dict&);
+  void Overload20(const Sequence<int32_t>&);
+  
   // Variadic handling
   void PassVariadicThirdArg(const nsAString&, int32_t,
                             const Sequence<OwningNonNull<TestInterface> >&);
@@ -830,6 +839,10 @@ public:
   void PassArgsWithDefaults(JSContext*, const Optional<int32_t>&,
                             TestInterface*, const Dict&, double,
                             const Optional<float>&);
+
+  void SetDashed_attribute(int8_t);
+  int8_t Dashed_attribute();
+  void Dashed_method();
 
   // Methods and properties imported via "implements"
   bool ImplementedProperty();

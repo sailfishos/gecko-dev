@@ -18,6 +18,7 @@
 #include "nsIObserverService.h"
 #include "nsIObserver.h"
 #include "nsNetUtil.h"
+#include "nsContentUtils.h"
 
 #include "mozilla/LookAndFeel.h"
 #include "nsCSSRendering.h"
@@ -150,8 +151,10 @@ LoadProperties(const nsString& aName,
   uriStr.Append(aName);
   uriStr.StripWhitespace(); // that may come from aName
   uriStr.AppendLiteral(".properties");
-  return NS_LoadPersistentPropertiesFromURISpec(getter_AddRefs(aProperties), 
-                                                NS_ConvertUTF16toUTF8(uriStr));
+  return NS_LoadPersistentPropertiesFromURISpec(getter_AddRefs(aProperties),
+                                                NS_ConvertUTF16toUTF8(uriStr),
+                                                nsContentUtils::GetSystemPrincipal(),
+                                                nsIContentPolicy::TYPE_OTHER);
 }
 
 class nsPropertiesTable MOZ_FINAL : public nsGlyphTable {
@@ -552,7 +555,8 @@ nsOpenTypeTable::MakeTextRun(gfxContext*        aThebesContext,
     aThebesContext, nullptr, nullptr, nullptr, 0, aAppUnitsPerDevPixel
   };
   gfxTextRun* textRun = gfxTextRun::Create(&params, 1, aFontGroup, 0);
-  textRun->AddGlyphRun(aFontGroup->GetFontAt(0), gfxTextRange::kFontGroup, 0,
+  textRun->AddGlyphRun(aFontGroup->GetFirstValidFont(),
+                       gfxTextRange::kFontGroup, 0,
                        false, gfxTextRunFactory::TEXT_ORIENT_HORIZONTAL);
                               // We don't care about CSS writing mode here;
                               // math runs are assumed to be horizontal.
@@ -560,7 +564,7 @@ nsOpenTypeTable::MakeTextRun(gfxContext*        aThebesContext,
   detailedGlyph.mGlyphID = aGlyph.glyphID;
   detailedGlyph.mAdvance =
     NSToCoordRound(aAppUnitsPerDevPixel *
-                   aFontGroup->GetFontAt(0)->
+                   aFontGroup->GetFirstValidFont()->
                    GetGlyphHAdvance(aThebesContext, aGlyph.glyphID));
   detailedGlyph.mXOffset = detailedGlyph.mYOffset = 0;
   gfxShapedText::CompressedGlyph g;
@@ -990,7 +994,7 @@ nsMathMLChar::SetFontFamily(nsPresContext*          aPresContext,
                     *getter_AddRefs(fm));
     // Set the font if it is an unicode table
     // or if the same family name has been found
-    gfxFont *firstFont = fm->GetThebesFontGroup()->GetFontAt(0);
+    gfxFont *firstFont = fm->GetThebesFontGroup()->GetFirstValidFont();
     FontFamilyList firstFontList;
     if (firstFont) {
       firstFontList.Append(
@@ -1436,7 +1440,7 @@ nsMathMLChar::StretchEnumContext::EnumCallback(const FontFamilyName& aFamily,
     glyphTable = &gGlyphTableList->mUnicodeTable;
   } else {
     // If the font contains an Open Type MATH table, use it.
-    openTypeTable = nsOpenTypeTable::Create(fontGroup->GetFontAt(0));
+    openTypeTable = nsOpenTypeTable::Create(fontGroup->GetFirstValidFont());
     if (openTypeTable) {
       glyphTable = openTypeTable;
     } else {

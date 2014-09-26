@@ -361,7 +361,8 @@ DeclEnvObject::create(JSContext *cx, HandleObject enclosing, HandleFunction call
 
 template<XDRMode mode>
 bool
-js::XDRStaticWithObject(XDRState<mode> *xdr, HandleObject enclosingScope, StaticWithObject **objp)
+js::XDRStaticWithObject(XDRState<mode> *xdr, HandleObject enclosingScope,
+                        MutableHandle<StaticWithObject*> objp)
 {
     if (mode == XDR_DECODE) {
         JSContext *cx = xdr->cx();
@@ -369,7 +370,7 @@ js::XDRStaticWithObject(XDRState<mode> *xdr, HandleObject enclosingScope, Static
         if (!obj)
             return false;
         obj->initEnclosingNestedScope(enclosingScope);
-        *objp = obj;
+        objp.set(obj);
     }
     // For encoding, there is nothing to do.  The only information that is
     // encoded by a StaticWithObject is its presence on the scope chain, and the
@@ -379,10 +380,10 @@ js::XDRStaticWithObject(XDRState<mode> *xdr, HandleObject enclosingScope, Static
 }
 
 template bool
-js::XDRStaticWithObject(XDRState<XDR_ENCODE> *, HandleObject, StaticWithObject **);
+js::XDRStaticWithObject(XDRState<XDR_ENCODE> *, HandleObject, MutableHandle<StaticWithObject*>);
 
 template bool
-js::XDRStaticWithObject(XDRState<XDR_DECODE> *, HandleObject, StaticWithObject **);
+js::XDRStaticWithObject(XDRState<XDR_DECODE> *, HandleObject, MutableHandle<StaticWithObject*>);
 
 StaticWithObject *
 StaticWithObject::create(ExclusiveContext *cx)
@@ -731,7 +732,7 @@ const Class BlockObject::class_ = {
 template<XDRMode mode>
 bool
 js::XDRStaticBlockObject(XDRState<mode> *xdr, HandleObject enclosingScope,
-                         StaticBlockObject **objp)
+                         MutableHandle<StaticBlockObject*> objp)
 {
     /* NB: Keep this in sync with CloneStaticBlockObject. */
 
@@ -741,7 +742,7 @@ js::XDRStaticBlockObject(XDRState<mode> *xdr, HandleObject enclosingScope,
     uint32_t count = 0, offset = 0;
 
     if (mode == XDR_ENCODE) {
-        obj = *objp;
+        obj = objp;
         count = obj->numVariables();
         offset = obj->localOffset();
     }
@@ -751,7 +752,7 @@ js::XDRStaticBlockObject(XDRState<mode> *xdr, HandleObject enclosingScope,
         if (!obj)
             return false;
         obj->initEnclosingNestedScope(enclosingScope);
-        *objp = obj;
+        objp.set(obj);
     }
 
     if (!xdr->codeUint32(&count))
@@ -823,10 +824,10 @@ js::XDRStaticBlockObject(XDRState<mode> *xdr, HandleObject enclosingScope,
 }
 
 template bool
-js::XDRStaticBlockObject(XDRState<XDR_ENCODE> *, HandleObject, StaticBlockObject **);
+js::XDRStaticBlockObject(XDRState<XDR_ENCODE> *, HandleObject, MutableHandle<StaticBlockObject*>);
 
 template bool
-js::XDRStaticBlockObject(XDRState<XDR_DECODE> *, HandleObject, StaticBlockObject **);
+js::XDRStaticBlockObject(XDRState<XDR_DECODE> *, HandleObject, MutableHandle<StaticBlockObject*>);
 
 static JSObject *
 CloneStaticBlockObject(JSContext *cx, HandleObject enclosingScope, Handle<StaticBlockObject*> srcBlock)
@@ -875,6 +876,178 @@ js::CloneNestedScopeObject(JSContext *cx, HandleObject enclosingScope, Handle<Ne
         return CloneStaticWithObject(cx, enclosingScope, withObj);
     }
 }
+
+/* static */ UninitializedLexicalObject *
+UninitializedLexicalObject::create(JSContext *cx, HandleObject enclosing)
+{
+    RootedTypeObject type(cx, cx->getNewType(&class_, TaggedProto(nullptr)));
+    if (!type)
+        return nullptr;
+
+    RootedShape shape(cx, EmptyShape::getInitialShape(cx, &class_, TaggedProto(nullptr),
+                                                      nullptr, nullptr, FINALIZE_KIND));
+    if (!shape)
+        return nullptr;
+
+    RootedObject obj(cx, JSObject::create(cx, FINALIZE_KIND, gc::DefaultHeap, shape, type));
+    if (!obj)
+        return nullptr;
+
+    obj->as<ScopeObject>().setEnclosingScope(enclosing);
+
+    return &obj->as<UninitializedLexicalObject>();
+}
+
+static void
+ReportUninitializedLexicalId(JSContext *cx, HandleId id)
+{
+    if (JSID_IS_ATOM(id)) {
+        RootedPropertyName name(cx, JSID_TO_ATOM(id)->asPropertyName());
+        ReportUninitializedLexical(cx, name);
+        return;
+    }
+    MOZ_CRASH("UninitializedLexicalObject should only be used with property names");
+}
+
+static bool
+uninitialized_LookupGeneric(JSContext *cx, HandleObject obj, HandleId id,
+                            MutableHandleObject objp, MutableHandleShape propp)
+{
+    ReportUninitializedLexicalId(cx, id);
+    return false;
+}
+
+static bool
+uninitialized_LookupProperty(JSContext *cx, HandleObject obj, HandlePropertyName name,
+                    MutableHandleObject objp, MutableHandleShape propp)
+{
+    Rooted<jsid> id(cx, NameToId(name));
+    return uninitialized_LookupGeneric(cx, obj, id, objp, propp);
+}
+
+static bool
+uninitialized_LookupElement(JSContext *cx, HandleObject obj, uint32_t index,
+                            MutableHandleObject objp, MutableHandleShape propp)
+{
+    RootedId id(cx);
+    if (!IndexToId(cx, index, &id))
+        return false;
+    return uninitialized_LookupGeneric(cx, obj, id, objp, propp);
+}
+
+static bool
+uninitialized_GetGeneric(JSContext *cx, HandleObject obj, HandleObject receiver, HandleId id,
+                         MutableHandleValue vp)
+{
+    ReportUninitializedLexicalId(cx, id);
+    return false;
+}
+
+static bool
+uninitialized_GetProperty(JSContext *cx, HandleObject obj, HandleObject receiver,
+                          HandlePropertyName name, MutableHandleValue vp)
+{
+    RootedId id(cx, NameToId(name));
+    return uninitialized_GetGeneric(cx, obj, receiver, id, vp);
+}
+
+static bool
+uninitialized_GetElement(JSContext *cx, HandleObject obj, HandleObject receiver, uint32_t index,
+                         MutableHandleValue vp)
+{
+    RootedId id(cx);
+    if (!IndexToId(cx, index, &id))
+        return false;
+    return uninitialized_GetGeneric(cx, obj, receiver, id, vp);
+}
+
+static bool
+uninitialized_SetGeneric(JSContext *cx, HandleObject obj, HandleId id,
+                         MutableHandleValue vp, bool strict)
+{
+    ReportUninitializedLexicalId(cx, id);
+    return false;
+}
+
+static bool
+uninitialized_SetProperty(JSContext *cx, HandleObject obj, HandlePropertyName name,
+                          MutableHandleValue vp, bool strict)
+{
+    RootedId id(cx, NameToId(name));
+    return uninitialized_SetGeneric(cx, obj, id, vp, strict);
+}
+
+static bool
+uninitialized_SetElement(JSContext *cx, HandleObject obj, uint32_t index,
+                         MutableHandleValue vp, bool strict)
+{
+    RootedId id(cx);
+    if (!IndexToId(cx, index, &id))
+        return false;
+    return uninitialized_SetGeneric(cx, obj, id, vp, strict);
+}
+
+static bool
+uninitialized_GetGenericAttributes(JSContext *cx, HandleObject obj, HandleId id, unsigned *attrsp)
+{
+    ReportUninitializedLexicalId(cx, id);
+    return false;
+}
+
+static bool
+uninitialized_SetGenericAttributes(JSContext *cx, HandleObject obj, HandleId id, unsigned *attrsp)
+{
+    ReportUninitializedLexicalId(cx, id);
+    return false;
+}
+
+static bool
+uninitialized_DeleteGeneric(JSContext *cx, HandleObject obj, HandleId id, bool *succeeded)
+{
+    ReportUninitializedLexicalId(cx, id);
+    return false;
+}
+
+const Class UninitializedLexicalObject::class_ = {
+    "UninitializedLexical",
+    JSCLASS_HAS_RESERVED_SLOTS(UninitializedLexicalObject::RESERVED_SLOTS) |
+    JSCLASS_IS_ANONYMOUS,
+    JS_PropertyStub,         /* addProperty */
+    JS_DeletePropertyStub,   /* delProperty */
+    JS_PropertyStub,         /* getProperty */
+    JS_StrictPropertyStub,   /* setProperty */
+    JS_EnumerateStub,
+    JS_ResolveStub,
+    JS_ConvertStub,
+    nullptr,                 /* finalize */
+    nullptr,                 /* call        */
+    nullptr,                 /* hasInstance */
+    nullptr,                 /* construct   */
+    nullptr,                 /* trace       */
+    JS_NULL_CLASS_SPEC,
+    JS_NULL_CLASS_EXT,
+    {
+        uninitialized_LookupGeneric,
+        uninitialized_LookupProperty,
+        uninitialized_LookupElement,
+        nullptr,             /* defineGeneric */
+        nullptr,             /* defineProperty */
+        nullptr,             /* defineElement */
+        uninitialized_GetGeneric,
+        uninitialized_GetProperty,
+        uninitialized_GetElement,
+        uninitialized_SetGeneric,
+        uninitialized_SetProperty,
+        uninitialized_SetElement,
+        uninitialized_GetGenericAttributes,
+        uninitialized_SetGenericAttributes,
+        uninitialized_DeleteGeneric,
+        nullptr, nullptr,    /* watch/unwatch */
+        nullptr,             /* slice */
+        nullptr,             /* enumerate (native enumeration of target doesn't work) */
+        nullptr,             /* this */
+    }
+};
 
 /*****************************************************************************/
 
@@ -1877,6 +2050,9 @@ DebugScopes::ensureCompartmentData(JSContext *cx)
     if (c->debugScopes && c->debugScopes->init())
         return c->debugScopes;
 
+    if (c->debugScopes)
+        js_delete<DebugScopes>(c->debugScopes);
+    c->debugScopes = nullptr;
     js_ReportOutOfMemory(cx);
     return nullptr;
 }

@@ -241,6 +241,11 @@ class JSObject : public js::ObjectImpl
                                    js::HandleShape shape,
                                    js::HandleTypeObject type);
 
+    static inline JSObject *copy(js::ExclusiveContext *cx,
+                                 js::gc::AllocKind kind,
+                                 js::gc::InitialHeap heap,
+                                 js::HandleObject templateObject);
+
     /* Make an array object with the specified initial state. */
     static inline js::ArrayObject *createArray(js::ExclusiveContext *cx,
                                                js::gc::AllocKind kind,
@@ -1468,17 +1473,19 @@ LookupNameNoGC(JSContext *cx, PropertyName *name, JSObject *scopeChain,
  */
 extern bool
 LookupNameWithGlobalDefault(JSContext *cx, HandlePropertyName name, HandleObject scopeChain,
-                            MutableHandleObject objp, MutableHandleShape propp);
+                            MutableHandleObject objp);
 
 /*
- * Like LookupName except returns the unqualified var object if 'name' is not found in
- * any preceding scope. Normally the unqualified var object is the global.
+ * Like LookupName except returns the unqualified var object if 'name' is not
+ * found in any preceding scope. Normally the unqualified var object is the
+ * global. If the value for the name in the looked-up scope is an
+ * uninitialized lexical, an UninitializedLexicalObject is returned.
  *
  * Additionally, pobjp is not needed by callers so it is not returned.
  */
 extern bool
 LookupNameUnqualified(JSContext *cx, HandlePropertyName name, HandleObject scopeChain,
-                      MutableHandleObject objp, MutableHandleShape propp);
+                      MutableHandleObject objp);
 
 }
 

@@ -31,6 +31,7 @@ include protocol PSpeechSynthesis;
 include protocol PStorage;
 include protocol PTelephony;
 include protocol PTestShell;
+include protocol PVoicemail;
 include protocol PJavaScript;
 include protocol PRemoteSpellcheckEngine;
 include DOMTypes;
@@ -301,6 +302,12 @@ struct VolumeInfo {
   bool isSharing;
   bool isFormatting;
   bool isFake;
+  bool isUnmounting;
+};
+
+union MaybeFileDesc {
+    FileDescriptor;
+    void_t;
 };
 
 intr protocol PContent
@@ -332,6 +339,7 @@ intr protocol PContent
     manages PStorage;
     manages PTelephony;
     manages PTestShell;
+    manages PVoicemail;
     manages PJavaScript;
     manages PRemoteSpellcheckEngine;
 
@@ -377,7 +385,7 @@ child:
     async SetProcessSandbox();
 
     PMemoryReportRequest(uint32_t generation, bool anonymize,
-                         bool minimizeMemoryUsage, FileDescriptor DMDFile);
+                         bool minimizeMemoryUsage, MaybeFileDesc DMDFile);
 
     /**
      * Notify the AudioChannelService in the child processes.
@@ -432,7 +440,8 @@ child:
      */
     ActivateA11y();
 
-    AppInfo(nsCString version, nsCString buildID, nsCString name, nsCString UAName);
+    AppInfo(nsCString version, nsCString buildID, nsCString name, nsCString UAName,
+            nsCString ID, nsCString vendor);
 
     // Notify child that last-pb-context-exited notification was observed
     LastPrivateDocShellDestroyed();
@@ -444,7 +453,7 @@ child:
     // VolumeInfo above.
     FileSystemUpdate(nsString fsName, nsString mountPoint, int32_t fsState,
                      int32_t mountGeneration, bool isMediaPresent,
-                     bool isSharing, bool isFormatting, bool isFake);
+                     bool isSharing, bool isFormatting, bool isFake, bool isUnmounting);
 
     // Ask the Nuwa process to create a new child process.
     NuwaFork();
@@ -531,6 +540,8 @@ parent:
     PStorage();
 
     PTelephony();
+
+    PVoicemail();
 
     PBluetooth();
 

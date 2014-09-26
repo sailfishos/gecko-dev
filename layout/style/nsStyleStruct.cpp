@@ -704,9 +704,12 @@ nsChangeHint nsStyleList::CalcDifference(const nsStyleList& aOther) const
   if (mListStylePosition != aOther.mListStylePosition)
     return NS_STYLE_HINT_FRAMECHANGE;
   if (EqualImages(mListStyleImage, aOther.mListStyleImage) &&
-      mListStyleType == aOther.mListStyleType) {
-    if (mImageRegion.IsEqualInterior(aOther.mImageRegion))
+      mCounterStyle == aOther.mCounterStyle) {
+    if (mImageRegion.IsEqualInterior(aOther.mImageRegion)) {
+      if (mListStyleType != aOther.mListStyleType)
+        return nsChangeHint_NeutralChange;
       return NS_STYLE_HINT_NONE;
+    }
     if (mImageRegion.width == aOther.mImageRegion.width &&
         mImageRegion.height == aOther.mImageRegion.height)
       return NS_STYLE_HINT_VISUAL;
@@ -2611,6 +2614,10 @@ nsChangeHint nsStyleDisplay::CalcDifference(const nsStyleDisplay& aOther) const
     }
   }
 
+  if (mMixBlendMode != aOther.mMixBlendMode) {
+    NS_UpdateHint(hint, nsChangeHint_RepaintFrame);
+  }
+
   /* If we've added or removed the transform property, we need to reconstruct the frame to add
    * or remove the view object, and also to handle abs-pos and fixed-pos containers.
    */
@@ -2708,7 +2715,6 @@ nsChangeHint nsStyleDisplay::CalcDifference(const nsStyleDisplay& aOther) const
       (!mClip.IsEqualEdges(aOther.mClip) ||
        mOriginalDisplay != aOther.mOriginalDisplay ||
        mOriginalFloats != aOther.mOriginalFloats ||
-       mMixBlendMode != aOther.mMixBlendMode ||
        mTransitions != aOther.mTransitions ||
        mTransitionTimingFunctionCount !=
          aOther.mTransitionTimingFunctionCount ||

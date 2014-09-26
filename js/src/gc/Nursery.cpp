@@ -389,6 +389,16 @@ GetObjectAllocKindForCopy(const Nursery &nursery, JSObject *obj)
         return GetBackgroundAllocKind(TypedArrayObject::AllocKindForLazyBuffer(nbytes));
     }
 
+    // Inlined opaque typed objects are followed by their data, so make sure we
+    // copy it all over to the new object.
+    if (obj->is<InlineOpaqueTypedObject>()) {
+        // Figure out the size of this object, from the prototype's TypeDescr.
+        // The objects we are traversing here are all tenured, so we don't need
+        // to check forwarding pointers.
+        TypeDescr *descr = &obj->as<InlineOpaqueTypedObject>().typeDescr();
+        return InlineOpaqueTypedObject::allocKindForTypeDescriptor(descr);
+    }
+
     AllocKind kind = GetGCObjectFixedSlotsKind(obj->numFixedSlots());
     JS_ASSERT(!IsBackgroundFinalized(kind));
     JS_ASSERT(CanBeFinalizedInBackground(kind, obj->getClass()));
@@ -563,7 +573,7 @@ js::Nursery::moveToTenured(MinorCollectionTracer *trc, JSObject *src)
 
     trc->tenuredSize += moveObjectToTenured(dst, src, dstKind);
 
-    RelocationOverlay *overlay = reinterpret_cast<RelocationOverlay *>(src);
+    RelocationOverlay *overlay = RelocationOverlay::fromCell(src);
     overlay->forwardTo(dst);
     trc->insertIntoFixupList(overlay);
 

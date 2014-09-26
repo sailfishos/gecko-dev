@@ -73,6 +73,8 @@ FLAVORS = {
     'mochitest': 'plain',
     'chrome': 'chrome',
     'browser-chrome': 'browser',
+    'jetpack-package': 'jetpack-package',
+    'jetpack-addon': 'jetpack-addon',
     'a11y': 'a11y',
     'webapprt-chrome': 'webapprt-chrome',
 }
@@ -189,7 +191,7 @@ class MochitestRunner(MozbuildObject):
         rerun_failures=False, no_autorun=False, repeat=0, run_until_failure=False,
         slow=False, chunk_by_dir=0, total_chunks=None, this_chunk=None, extraPrefs=[],
         jsdebugger=False, debug_on_failure=False, start_at=None, end_at=None,
-        e10s=False, dmd=False, dump_output_directory=None,
+        e10s=False, content_sandbox='off', dmd=False, dump_output_directory=None,
         dump_about_memory_after_test=False, dump_dmd_after_test=False,
         install_extension=None, quiet=False, environment=[], app_override=None, bisectChunk=None, runByDir=False,
         useTestMediaDevices=False, **kwargs):
@@ -200,7 +202,7 @@ class MochitestRunner(MozbuildObject):
         test files.
 
         suite is the type of mochitest to run. It can be one of ('plain',
-        'chrome', 'browser', 'metro', 'a11y').
+        'chrome', 'browser', 'metro', 'a11y', 'jetpack-package', 'jetpack-addon').
 
         debugger is a program name or path to a binary (presumably a debugger)
         to run the test in. e.g. 'gdb'
@@ -269,6 +271,10 @@ class MochitestRunner(MozbuildObject):
         elif suite == 'devtools':
             options.browserChrome = True
             options.subsuite = 'devtools'
+        elif suite == 'jetpack-package':
+            options.jetpackPackage = True
+        elif suite == 'jetpack-addon':
+            options.jetpackAddon = True
         elif suite == 'metro':
             options.immersiveMode = True
             options.browserChrome = True
@@ -307,6 +313,9 @@ class MochitestRunner(MozbuildObject):
         options.startAt = start_at
         options.endAt = end_at
         options.e10s = e10s
+        options.contentSandbox = content_sandbox
+        if options.contentSandbox != 'off':
+            options.e10s = True
         options.dumpAboutMemoryAfterTest = dump_about_memory_after_test
         options.dumpDMDAfterTest = dump_dmd_after_test
         options.dumpOutputDirectory = dump_output_directory
@@ -364,6 +373,8 @@ class MochitestRunner(MozbuildObject):
                 # Need to fix the location of gmp_fake which might not be shipped in the binary
                 bin_path = self.get_binary_path()
                 options.gmp_path = os.path.join(os.path.dirname(bin_path), 'gmp-fake', '1.0')
+                options.gmp_path += os.pathsep
+                options.gmp_path += os.path.join(os.path.dirname(bin_path), 'gmp-clearkey', '0.1')
 
 
         logger_options = {key: value for key, value in vars(options).iteritems() if key.startswith('log')}
@@ -485,6 +496,10 @@ def MochitestCommand(func):
 
     this_chunk = CommandArgument('--e10s', action='store_true',
         help='Run tests with electrolysis preferences and test filtering enabled.')
+    func = this_chunk(func)
+
+    this_chunk = CommandArgument('--content-sandbox', default='off', choices=['off', 'warn', 'on'],
+        help='Run tests with the content sandbox enabled or in warn only mode (Windows only). --e10s is assumed.')
     func = this_chunk(func)
 
     dmd = CommandArgument('--dmd', action='store_true',
@@ -647,6 +662,20 @@ class MachCommands(MachCommandBase):
     @MochitestCommand
     def run_mochitest_devtools(self, test_paths, **kwargs):
         return self.run_mochitest(test_paths, 'devtools', **kwargs)
+
+    @Command('jetpack-package', category='testing',
+        conditions=[conditions.is_firefox],
+        description='Run a jetpack package test.')
+    @MochitestCommand
+    def run_mochitest_jetpack_package(self, test_paths, **kwargs):
+        return self.run_mochitest(test_paths, 'jetpack-package', **kwargs)
+
+    @Command('jetpack-addon', category='testing',
+        conditions=[conditions.is_firefox],
+        description='Run a jetpack addon test.')
+    @MochitestCommand
+    def run_mochitest_jetpack_addon(self, test_paths, **kwargs):
+        return self.run_mochitest(test_paths, 'jetpack-addon', **kwargs)
 
     @Command('mochitest-metro', category='testing',
         conditions=[conditions.is_firefox],

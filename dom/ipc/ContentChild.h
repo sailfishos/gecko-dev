@@ -70,6 +70,8 @@ public:
         nsCString buildID;
         nsCString name;
         nsCString UAName;
+        nsCString ID;
+        nsCString vendor;
     };
 
     bool Init(MessageLoop* aIOLoop,
@@ -161,7 +163,7 @@ public:
     AllocPMemoryReportRequestChild(const uint32_t& aGeneration,
                                    const bool& aAnonymize,
                                    const bool& aMinimizeMemoryUsage,
-                                   const FileDescriptor& aDMDFile) MOZ_OVERRIDE;
+                                   const MaybeFileDesc& aDMDFile) MOZ_OVERRIDE;
     virtual bool
     DeallocPMemoryReportRequestChild(PMemoryReportRequestChild* actor) MOZ_OVERRIDE;
 
@@ -170,7 +172,7 @@ public:
                                         const uint32_t& aGeneration,
                                         const bool& aAnonymize,
                                         const bool &aMinimizeMemoryUsage,
-                                        const FileDescriptor &aDMDFile) MOZ_OVERRIDE;
+                                        const MaybeFileDesc &aDMDFile) MOZ_OVERRIDE;
 
     virtual PCycleCollectWithLogsChild*
     AllocPCycleCollectWithLogsChild(const bool& aDumpAllTraces,
@@ -230,6 +232,10 @@ public:
 
     virtual PTelephonyChild* AllocPTelephonyChild() MOZ_OVERRIDE;
     virtual bool DeallocPTelephonyChild(PTelephonyChild*) MOZ_OVERRIDE;
+
+    virtual PVoicemailChild* AllocPVoicemailChild() MOZ_OVERRIDE;
+    PVoicemailChild* SendPVoicemailConstructor(PVoicemailChild* aActor);
+    virtual bool DeallocPVoicemailChild(PVoicemailChild*) MOZ_OVERRIDE;
 
     virtual PStorageChild* AllocPStorageChild() MOZ_OVERRIDE;
     virtual bool DeallocPStorageChild(PStorageChild* aActor) MOZ_OVERRIDE;
@@ -297,7 +303,8 @@ public:
     virtual bool RecvCycleCollect() MOZ_OVERRIDE;
 
     virtual bool RecvAppInfo(const nsCString& version, const nsCString& buildID,
-                             const nsCString& name, const nsCString& UAName) MOZ_OVERRIDE;
+                             const nsCString& name, const nsCString& UAName,
+                             const nsCString& ID, const nsCString& vendor) MOZ_OVERRIDE;
 
     virtual bool RecvLastPrivateDocShellDestroyed() MOZ_OVERRIDE;
 
@@ -312,7 +319,8 @@ public:
                                       const bool& aIsMediaPresent,
                                       const bool& aIsSharing,
                                       const bool& aIsFormatting,
-                                      const bool& aIsFake) MOZ_OVERRIDE;
+                                      const bool& aIsFake,
+                                      const bool& aIsUnmounting) MOZ_OVERRIDE;
 
     virtual bool RecvNuwaFork() MOZ_OVERRIDE;
 

@@ -157,6 +157,44 @@ let AudioNodeActor = exports.AudioNodeActor = protocol.ActorClass({
   }),
 
   /**
+   * Returns a boolean indicating if the AudioNode has been "bypassed",
+   * via `AudioNodeActor#bypass` method.
+   *
+   * @return Boolean
+   */
+  isBypassed: method(function () {
+    let node = this.node.get();
+    if (node === null) {
+      return false;
+    }
+
+    return node.passThrough;
+  }, {
+    response: { bypassed: RetVal("boolean") }
+  }),
+
+  /**
+   * Takes a boolean, either enabling or disabling the "passThrough" option
+   * on an AudioNode. If a node is bypassed, an effects processing node (like gain, biquad),
+   * will allow the audio stream to pass through the node, unaffected.
+   *
+   * @param Boolean enable
+   *        Whether the bypass value should be set on or off.
+   */
+  bypass: method(function (enable) {
+    let node = this.node.get();
+
+    if (node === null) {
+      return;
+    }
+
+    node.passThrough = enable;
+  }, {
+    request: { enable: Arg(0, "boolean") },
+    oneway: true
+  }),
+
+  /**
    * Changes a param on the audio node. Responds with either `undefined`
    * on success, or a description of the error upon param set failure.
    *
@@ -284,6 +322,7 @@ let WebAudioActor = exports.WebAudioActor = protocol.ActorClass({
 
     this._onDestroyNode = this._onDestroyNode.bind(this);
     this._onGlobalDestroyed = this._onGlobalDestroyed.bind(this);
+    this._onGlobalCreated = this._onGlobalCreated.bind(this);
   },
 
   destroy: function(conn) {
@@ -322,6 +361,9 @@ let WebAudioActor = exports.WebAudioActor = protocol.ActorClass({
       holdWeak: true,
       storeCalls: false
     });
+    // Bind to `window-ready` so we can reenable recording on the
+    // call watcher
+    on(this.tabActor, "window-ready", this._onGlobalCreated);
     // Bind to the `window-destroyed` event so we can unbind events between
     // the global destruction and the `finalize` cleanup method on the actor.
     on(this.tabActor, "window-destroyed", this._onGlobalDestroyed);
@@ -392,9 +434,10 @@ let WebAudioActor = exports.WebAudioActor = protocol.ActorClass({
     if (!this._initialized) {
       return;
     }
-    this.tabActor = null;
     this._initialized = false;
     off(this.tabActor, "window-destroyed", this._onGlobalDestroyed);
+    off(this.tabActor, "window-ready", this._onGlobalCreated);
+    this.tabActor = null;
     this._nativeToActorID = null;
     this._callWatcher.eraseRecording();
     this._callWatcher.finalize();
@@ -567,6 +610,14 @@ let WebAudioActor = exports.WebAudioActor = protocol.ActorClass({
       this._nativeToActorID.delete(nativeID);
       emit(this, "destroy-node", actor);
     }
+  },
+
+  /**
+   * Ensures that the new global has recording on
+   * so we can proxy the function calls.
+   */
+  _onGlobalCreated: function () {
+    this._callWatcher.resumeRecording();
   },
 
   /**

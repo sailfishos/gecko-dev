@@ -64,7 +64,7 @@ WebGLContext::CurValidFBRectObject() const
     if (mBoundFramebuffer) {
         // We don't really need to ask the driver.
         // Use 'precheck' to just check that our internal state looks good.
-        GLenum precheckStatus = mBoundFramebuffer->PrecheckFramebufferStatus();
+        FBStatus precheckStatus = mBoundFramebuffer->PrecheckFramebufferStatus();
         if (precheckStatus == LOCAL_GL_FRAMEBUFFER_COMPLETE)
             rect = &mBoundFramebuffer->RectangleObject();
     } else {
@@ -348,7 +348,7 @@ WebGLContext::CheckFramebufferStatus(GLenum target)
     if (!mBoundFramebuffer)
         return LOCAL_GL_FRAMEBUFFER_COMPLETE;
 
-    return mBoundFramebuffer->CheckFramebufferStatus();
+    return mBoundFramebuffer->CheckFramebufferStatus().get();
 }
 
 void
@@ -595,7 +595,7 @@ WebGLContext::CopyTexSubImage2D(GLenum rawTexImgTarget,
         tex->DoDeferredImageInitialization(texImageTarget, level);
     }
 
-    return CopyTexSubImage2D_base(texImageTarget, level, imageInfo.WebGLFormat(), xoffset, yoffset, x, y, width, height, true);
+    return CopyTexSubImage2D_base(texImageTarget, level, imageInfo.WebGLFormat().get(), xoffset, yoffset, x, y, width, height, true);
 }
 
 
@@ -795,7 +795,16 @@ WebGLContext::FramebufferRenderbuffer(GLenum target, GLenum attachment, GLenum r
     if (!mBoundFramebuffer)
         return ErrorInvalidOperation("framebufferRenderbuffer: cannot modify framebuffer 0");
 
-    return mBoundFramebuffer->FramebufferRenderbuffer(target, attachment, rbtarget, wrb);
+    if (target != LOCAL_GL_FRAMEBUFFER)
+        return ErrorInvalidEnumInfo("framebufferRenderbuffer: target", target);
+
+    if (rbtarget != LOCAL_GL_RENDERBUFFER)
+        return ErrorInvalidEnumInfo("framebufferRenderbuffer: renderbuffer target:", rbtarget);
+
+    if (!ValidateFramebufferAttachment(attachment, "framebufferRenderbuffer"))
+        return;
+
+    return mBoundFramebuffer->FramebufferRenderbuffer(attachment, rbtarget, wrb);
 }
 
 void
@@ -811,6 +820,9 @@ WebGLContext::FramebufferTexture2D(GLenum target,
     if (!mBoundFramebuffer)
         return ErrorInvalidOperation("framebufferRenderbuffer: cannot modify framebuffer 0");
 
+    if (target != LOCAL_GL_FRAMEBUFFER)
+        return ErrorInvalidEnumInfo("framebufferTexture2D: target", target);
+
     if (textarget != LOCAL_GL_TEXTURE_2D &&
         (textarget < LOCAL_GL_TEXTURE_CUBE_MAP_POSITIVE_X ||
          textarget > LOCAL_GL_TEXTURE_CUBE_MAP_NEGATIVE_Z))
@@ -818,7 +830,10 @@ WebGLContext::FramebufferTexture2D(GLenum target,
         return ErrorInvalidEnumInfo("framebufferTexture2D: invalid texture target", textarget);
     }
 
-    return mBoundFramebuffer->FramebufferTexture2D(target, attachment, TexImageTarget(textarget), tobj, level);
+    if (!ValidateFramebufferAttachment(attachment, "framebufferTexture2D"))
+        return;
+
+    return mBoundFramebuffer->FramebufferTexture2D(attachment, textarget, tobj, level);
 }
 
 void
@@ -900,7 +915,7 @@ WebGLContext::GenerateMipmap(GLenum rawTarget)
     if (!tex->IsFirstImagePowerOfTwo())
         return ErrorInvalidOperation("generateMipmap: Level zero of texture does not have power-of-two width and height.");
 
-    GLenum webGLFormat = tex->ImageInfoAt(imageTarget, 0).WebGLFormat();
+    TexInternalFormat webGLFormat = tex->ImageInfoAt(imageTarget, 0).WebGLFormat();
     if (IsTextureFormatCompressed(webGLFormat))
         return ErrorInvalidOperation("generateMipmap: Texture data at level zero is compressed.");
 
@@ -1084,27 +1099,11 @@ WebGLContext::GetFramebufferAttachmentParameter(JSContext* cx,
         return JS::NullValue();
     }
 
-    if (attachment != LOCAL_GL_DEPTH_ATTACHMENT &&
-        attachment != LOCAL_GL_STENCIL_ATTACHMENT &&
-        attachment != LOCAL_GL_DEPTH_STENCIL_ATTACHMENT)
-    {
-        if (IsExtensionEnabled(WebGLExtensionID::WEBGL_draw_buffers))
-        {
-            if (attachment < LOCAL_GL_COLOR_ATTACHMENT0 ||
-                attachment >= GLenum(LOCAL_GL_COLOR_ATTACHMENT0 + mGLMaxColorAttachments))
-            {
-                ErrorInvalidEnumInfo("getFramebufferAttachmentParameter: attachment", attachment);
-                return JS::NullValue();
-            }
+    if (!ValidateFramebufferAttachment(attachment, "getFramebufferAttachmentParameter"))
+        return JS::NullValue();
 
-            mBoundFramebuffer->EnsureColorAttachments(attachment - LOCAL_GL_COLOR_ATTACHMENT0);
-        }
-        else if (attachment != LOCAL_GL_COLOR_ATTACHMENT0)
-        {
-            ErrorInvalidEnumInfo("getFramebufferAttachmentParameter: attachment", attachment);
-            return JS::NullValue();
-        }
-    }
+    if (IsExtensionEnabled(WebGLExtensionID::WEBGL_draw_buffers))
+        mBoundFramebuffer->EnsureColorAttachments(attachment - LOCAL_GL_COLOR_ATTACHMENT0);
 
     MakeContextCurrent();
 
@@ -1177,7 +1176,7 @@ WebGLContext::GetFramebufferAttachmentParameter(JSContext* cx,
         switch (pname) {
              case LOCAL_GL_FRAMEBUFFER_ATTACHMENT_COLOR_ENCODING_EXT:
                 if (IsExtensionEnabled(WebGLExtensionID::EXT_sRGB)) {
-                    const GLenum webGLFormat =
+                    const TexInternalFormat webGLFormat =
                         fba.Texture()->ImageInfoBase().WebGLFormat();
                     return (webGLFormat == LOCAL_GL_SRGB ||
                             webGLFormat == LOCAL_GL_SRGB_ALPHA) ?
@@ -1219,9 +1218,9 @@ WebGLContext::GetFramebufferAttachmentParameter(JSContext* cx,
                     return JS::NumberValue(uint32_t(LOCAL_GL_NONE));
 
                 uint32_t ret = LOCAL_GL_NONE;
-                GLenum type = fba.Texture()->ImageInfoAt(fba.ImageTarget(),
-                                                         fba.MipLevel()).WebGLType();
-                switch (type) {
+                TexType type = fba.Texture()->ImageInfoAt(fba.ImageTarget(),
+                                                          fba.MipLevel()).WebGLType();
+                switch (type.get()) {
                 case LOCAL_GL_UNSIGNED_BYTE:
                 case LOCAL_GL_UNSIGNED_SHORT_4_4_4_4:
                 case LOCAL_GL_UNSIGNED_SHORT_5_5_5_1:
@@ -2409,7 +2408,7 @@ WebGLContext::RenderbufferStorage(GLenum target, GLenum internalformat, GLsizei 
         bool hasExtensions = IsExtensionEnabled(WebGLExtensionID::OES_texture_half_float) &&
                              IsExtensionEnabled(WebGLExtensionID::EXT_color_buffer_half_float);
         if (!hasExtensions)
-            return ErrorInvalidEnumInfo("renderbufferStorage: internalformat", target);
+            return ErrorInvalidEnumInfo("renderbufferStorage: internalformat", internalformat);
         break;
     }
     case LOCAL_GL_RGB32F:
@@ -2417,7 +2416,7 @@ WebGLContext::RenderbufferStorage(GLenum target, GLenum internalformat, GLsizei 
         bool hasExtensions = IsExtensionEnabled(WebGLExtensionID::OES_texture_float) &&
                              IsExtensionEnabled(WebGLExtensionID::WEBGL_color_buffer_float);
         if (!hasExtensions)
-            return ErrorInvalidEnumInfo("renderbufferStorage: internalformat", target);
+            return ErrorInvalidEnumInfo("renderbufferStorage: internalformat", internalformat);
         break;
     }
     default:
@@ -3131,7 +3130,7 @@ WebGLContext::CompileShader(WebGLShader *shader)
     }
 #endif
 
-    compiler = ShConstructCompiler((ShShaderType) shader->ShaderType(),
+    compiler = ShConstructCompiler(shader->ShaderType(),
                                    SH_WEBGL_SPEC,
                                    targetShaderSourceLanguage,
                                    &resources);
@@ -3224,7 +3223,7 @@ WebGLContext::CompileShader(WebGLShader *shader)
     for (size_t i = 0; i < num_uniforms; i++) {
         size_t length;
         int size;
-        ShDataType type;
+        sh::GLenum type;
         ShPrecisionType precision;
         int staticUse;
         ShGetVariableInfo(compiler, SH_ACTIVE_UNIFORMS, (int)i,
@@ -3251,7 +3250,7 @@ WebGLContext::CompileShader(WebGLShader *shader)
     for (size_t i = 0; i < num_attributes; i++) {
         size_t length;
         int size;
-        ShDataType type;
+        sh::GLenum type;
         ShPrecisionType precision;
         int staticUse;
         ShGetVariableInfo(compiler, SH_ACTIVE_ATTRIBUTES, (int)i,
@@ -4032,12 +4031,12 @@ BaseTypeAndSizeFromUniformType(GLenum uType, GLenum *baseType, GLint *unitSize)
 }
 
 
-WebGLTexelFormat mozilla::GetWebGLTexelFormat(GLenum internalformat, GLenum type)
+WebGLTexelFormat mozilla::GetWebGLTexelFormat(TexInternalFormat internalformat, TexType type)
 {
     //
     // WEBGL_depth_texture
     if (internalformat == LOCAL_GL_DEPTH_COMPONENT) {
-        switch (type) {
+        switch (type.get()) {
             case LOCAL_GL_UNSIGNED_SHORT:
                 return WebGLTexelFormat::D16;
             case LOCAL_GL_UNSIGNED_INT:
@@ -4048,7 +4047,7 @@ WebGLTexelFormat mozilla::GetWebGLTexelFormat(GLenum internalformat, GLenum type
     }
 
     if (internalformat == LOCAL_GL_DEPTH_STENCIL) {
-        switch (type) {
+        switch (type.get()) {
             case LOCAL_GL_UNSIGNED_INT_24_8_EXT:
                 return WebGLTexelFormat::D24S8;
         }
@@ -4069,7 +4068,7 @@ WebGLTexelFormat mozilla::GetWebGLTexelFormat(GLenum internalformat, GLenum type
     }
 
     if (type == LOCAL_GL_UNSIGNED_BYTE) {
-        switch (internalformat) {
+        switch (internalformat.get()) {
             case LOCAL_GL_RGBA:
             case LOCAL_GL_SRGB_ALPHA_EXT:
                 return WebGLTexelFormat::RGBA8;
@@ -4089,7 +4088,7 @@ WebGLTexelFormat mozilla::GetWebGLTexelFormat(GLenum internalformat, GLenum type
 
     if (type == LOCAL_GL_FLOAT) {
         // OES_texture_float
-        switch (internalformat) {
+        switch (internalformat.get()) {
             case LOCAL_GL_RGBA:
             case LOCAL_GL_RGBA32F:
                 return WebGLTexelFormat::RGBA32F;
@@ -4110,7 +4109,7 @@ WebGLTexelFormat mozilla::GetWebGLTexelFormat(GLenum internalformat, GLenum type
         MOZ_CRASH("Invalid WebGL texture format/type?");
     } else if (type == LOCAL_GL_HALF_FLOAT_OES) {
         // OES_texture_half_float
-        switch (internalformat) {
+        switch (internalformat.get()) {
             case LOCAL_GL_RGBA:
             case LOCAL_GL_RGBA16F:
                 return WebGLTexelFormat::RGBA16F;
@@ -4132,7 +4131,7 @@ WebGLTexelFormat mozilla::GetWebGLTexelFormat(GLenum internalformat, GLenum type
         }
     }
 
-    switch (type) {
+    switch (type.get()) {
         case LOCAL_GL_UNSIGNED_SHORT_4_4_4_4:
            return WebGLTexelFormat::RGBA4444;
         case LOCAL_GL_UNSIGNED_SHORT_5_5_5_1:

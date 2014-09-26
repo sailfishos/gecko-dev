@@ -2,16 +2,16 @@
 * License, v. 2.0. If a copy of the MPL was not distributed with this
 * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#ifndef dom_mobileconnection_src_ipc_MobileConnectionIPCSerialiser_h
-#define dom_mobileconnection_src_ipc_MobileConnectionIPCSerialiser_h
+#ifndef mozilla_dom_mobileconnection_MobileConnectionIPCSerialiser_h
+#define mozilla_dom_mobileconnection_MobileConnectionIPCSerialiser_h
 
 #include "ipc/IPCMessageUtils.h"
 #include "mozilla/dom/MobileCellInfo.h"
 #include "mozilla/dom/MobileConnectionInfo.h"
 #include "mozilla/dom/MobileNetworkInfo.h"
-#include "MozMobileConnectionBinding.h"
+#include "mozilla/dom/MozMobileConnectionBinding.h"
 
-using mozilla::AutoSafeJSContext;
+using mozilla::AutoJSContext;
 using mozilla::dom::MobileNetworkInfo;
 using mozilla::dom::MobileCellInfo;
 using mozilla::dom::MobileConnectionInfo;
@@ -261,7 +261,7 @@ struct ParamTraits<nsIMobileConnectionInfo*>
       return;
     }
 
-    AutoSafeJSContext cx;
+    AutoJSContext cx;
     nsString pString;
     bool pBool;
     nsCOMPtr<nsIMobileNetworkInfo> pNetworkInfo;
@@ -330,7 +330,7 @@ struct ParamTraits<nsIMobileConnectionInfo*>
       return true;
     }
 
-    AutoSafeJSContext cx;
+    AutoJSContext cx;
     nsString state;
     bool connected;
     bool emergencyOnly;
@@ -746,4 +746,4 @@ struct ParamTraits<MozCallBarringOptions>
 
 } // namespace IPC
 
-#endif // dom_mobileconnection_src_ipc_MobileConnectionIPCSerialiser_h
+#endif // mozilla_dom_mobileconnection_MobileConnectionIPCSerialiser_h

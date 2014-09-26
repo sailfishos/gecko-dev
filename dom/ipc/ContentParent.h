@@ -79,10 +79,6 @@ class ContentParent MOZ_FINAL : public PContentParent
 
 public:
 #ifdef MOZ_NUWA_PROCESS
-    static int32_t NuwaPid() {
-        return sNuwaPid;
-    }
-
     static bool IsNuwaReady() {
         return sNuwaReady;
     }
@@ -455,7 +451,7 @@ private:
     AllocPMemoryReportRequestParent(const uint32_t& aGeneration,
                                     const bool &aAnonymize,
                                     const bool &aMinimizeMemoryUsage,
-                                    const FileDescriptor &aDMDFile) MOZ_OVERRIDE;
+                                    const MaybeFileDesc &aDMDFile) MOZ_OVERRIDE;
     virtual bool DeallocPMemoryReportRequestParent(PMemoryReportRequestParent* actor) MOZ_OVERRIDE;
 
     virtual PCycleCollectWithLogsParent*
@@ -490,6 +486,10 @@ private:
 
     virtual PTelephonyParent* AllocPTelephonyParent() MOZ_OVERRIDE;
     virtual bool DeallocPTelephonyParent(PTelephonyParent*) MOZ_OVERRIDE;
+
+    virtual PVoicemailParent* AllocPVoicemailParent() MOZ_OVERRIDE;
+    virtual bool RecvPVoicemailConstructor(PVoicemailParent* aActor) MOZ_OVERRIDE;
+    virtual bool DeallocPVoicemailParent(PVoicemailParent* aActor) MOZ_OVERRIDE;
 
     virtual bool DeallocPStorageParent(PStorageParent* aActor) MOZ_OVERRIDE;
 
@@ -716,7 +716,6 @@ private:
 #endif
 
 #ifdef MOZ_NUWA_PROCESS
-    static int32_t sNuwaPid;
     static bool sNuwaReady;
 #endif
 };

@@ -212,7 +212,7 @@ GetPropertyOperation(JSContext *cx, InterpreterFrame *fp, HandleScript script, j
     JSOp op = JSOp(*pc);
 
     if (op == JSOP_LENGTH) {
-        if (IsOptimizedArguments(fp, lval.address())) {
+        if (IsOptimizedArguments(fp, lval)) {
             vp.setInt32(fp->numActualArgs());
             return true;
         }
@@ -223,7 +223,7 @@ GetPropertyOperation(JSContext *cx, InterpreterFrame *fp, HandleScript script, j
 
     RootedId id(cx, NameToId(script->getName(pc)));
 
-    if (id == NameToId(cx->names().callee) && IsOptimizedArguments(fp, lval.address())) {
+    if (id == NameToId(cx->names().callee) && IsOptimizedArguments(fp, lval)) {
         vp.setObject(fp->callee());
         return true;
     }
@@ -351,10 +351,8 @@ js::ReportIsNotFunction(JSContext *cx, HandleValue v, int numToSkip, MaybeConstr
 JSObject *
 js::ValueToCallable(JSContext *cx, HandleValue v, int numToSkip, MaybeConstruct construct)
 {
-    if (v.isObject()) {
-        JSObject *callable = &v.toObject();
-        if (callable->isCallable())
-            return callable;
+    if (v.isObject() && v.toObject().isCallable()) {
+        return &v.toObject();
     }
 
     ReportIsNotFunction(cx, v, numToSkip, construct);
@@ -464,8 +462,7 @@ js::Invoke(JSContext *cx, CallArgs args, MaybeConstruct construct)
     if (args.calleev().isPrimitive())
         return ReportIsNotFunction(cx, args.calleev(), args.length() + 1, construct);
 
-    JSObject &callee = args.callee();
-    const Class *clasp = callee.getClass();
+    const Class *clasp = args.callee().getClass();
 
     /* Invoke non-functions. */
     if (MOZ_UNLIKELY(clasp != &JSFunction::class_)) {
@@ -473,15 +470,15 @@ js::Invoke(JSContext *cx, CallArgs args, MaybeConstruct construct)
         if (MOZ_UNLIKELY(clasp == &js_NoSuchMethodClass))
             return NoSuchMethod(cx, args.length(), args.base());
 #endif
-        JS_ASSERT_IF(construct, !callee.constructHook());
-        JSNative call = callee.callHook();
+        JS_ASSERT_IF(construct, !args.callee().constructHook());
+        JSNative call = args.callee().callHook();
         if (!call)
             return ReportIsNotFunction(cx, args.calleev(), args.length() + 1, construct);
         return CallJSNative(cx, call, args);
     }
 
     /* Invoke native functions. */
-    JSFunction *fun = &callee.as<JSFunction>();
+    JSFunction *fun = &args.callee().as<JSFunction>();
     JS_ASSERT_IF(construct, !fun->isNativeConstructor());
     if (fun->isNative())
         return CallJSNative(cx, fun->native(), args);
@@ -585,7 +582,8 @@ js::InvokeConstructor(JSContext *cx, CallArgs args)
 }
 
 bool
-js::InvokeConstructor(JSContext *cx, Value fval, unsigned argc, const Value *argv, Value *rval)
+js::InvokeConstructor(JSContext *cx, Value fval, unsigned argc, const Value *argv,
+                      MutableHandleValue rval)
 {
     InvokeArgs args(cx);
     if (!args.init(argc))
@@ -598,7 +596,7 @@ js::InvokeConstructor(JSContext *cx, Value fval, unsigned argc, const Value *arg
     if (!InvokeConstructor(cx, args))
         return false;
 
-    *rval = args.rval();
+    rval.set(args.rval());
     return true;
 }
 
@@ -2023,19 +2021,10 @@ CASE(JSOP_BINDNAME)
 
     /* Assigning to an undeclared name adds a property to the global object. */
     RootedObject &scope = rootObject1;
-    RootedShape &shape = rootShape0;
-    if (!LookupNameUnqualified(cx, name, scopeChain, &scope, &shape))
+    if (!LookupNameUnqualified(cx, name, scopeChain, &scope))
         goto error;
 
-    // ES6 lets cannot be accessed until initialized. NAME operations, being
-    // the slow paths already, unconditionally check for uninitialized
-    // lets. The error, however, is thrown after evaluating the RHS in
-    // assignments. Thus if the LHS resolves to an uninitialized let, return a
-    // nullptr scope.
-    if (IsUninitializedLexicalSlot(scope, shape))
-        PUSH_NULL();
-    else
-        PUSH_OBJECT(*scope);
+    PUSH_OBJECT(*scope);
 }
 END_CASE(JSOP_BINDNAME)
 
@@ -2422,16 +2411,6 @@ CASE(JSOP_SETNAME)
 {
     RootedObject &scope = rootObject0;
     scope = REGS.sp[-2].toObjectOrNull();
-
-    // A nullptr scope is pushed if the name is an uninitialized let. See
-    // CASE(JSOP_BINDNAME).
-    if (!scope) {
-        RootedPropertyName &name = rootName0;
-        name = script->getName(REGS.pc);
-        ReportUninitializedLexical(cx, name);
-        goto error;
-    }
-
     HandleValue value = REGS.stackHandleAt(-1);
 
     if (!SetNameOperation(cx, script, REGS.pc, scope, value))
@@ -2529,8 +2508,7 @@ END_CASE(JSOP_SPREADCALL)
 CASE(JSOP_FUNAPPLY)
 {
     CallArgs args = CallArgsFromSp(GET_ARGC(REGS.pc), REGS.sp);
-    if (!GuardFunApplyArgumentsOptimization(cx, REGS.fp(), args.calleev(), args.array(),
-                                            args.length()))
+    if (!GuardFunApplyArgumentsOptimization(cx, REGS.fp(), args))
         goto error;
     /* FALL THROUGH */
 }
@@ -2668,8 +2646,7 @@ CASE(JSOP_IMPLICITTHIS)
     scopeObj = REGS.fp()->scopeChain();
 
     RootedObject &scope = rootObject1;
-    RootedShape &shape = rootShape0;
-    if (!LookupNameWithGlobalDefault(cx, name, scopeObj, &scope, &shape))
+    if (!LookupNameWithGlobalDefault(cx, name, scopeObj, &scope))
         goto error;
 
     RootedValue &v = rootValue0;
@@ -3900,8 +3877,7 @@ js::ImplicitThisOperation(JSContext *cx, HandleObject scopeObj, HandlePropertyNa
                           MutableHandleValue res)
 {
     RootedObject obj(cx);
-    RootedShape shape(cx);
-    if (!LookupNameWithGlobalDefault(cx, name, scopeObj, &obj, &shape))
+    if (!LookupNameWithGlobalDefault(cx, name, scopeObj, &obj))
         return false;
 
     return ComputeImplicitThis(cx, obj, res);

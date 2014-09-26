@@ -76,7 +76,7 @@ public:
 
     HRESULT hr = mDT->mDevice->CreateTexture2D(&desc, nullptr, byRef(tmpTexture));
     if (FAILED(hr)) {
-      gfxCriticalError() << "[D2D] CreateTexture2D failure " << size << " Code: " << hr;
+      gfxCriticalError() << "[D2D] CreateTexture2D failure " << size << " Code: " << hexa(hr);
       // Crash debug builds but try to recover in release builds.
       MOZ_ASSERT(false);
       return;
@@ -93,7 +93,7 @@ public:
                                       &props, byRef(mOldSurfBitmap));
 
     if (FAILED(hr)) {
-      gfxCriticalError() << "[D2D] CreateSharedBitmap failure " << size << " Code: " << hr;
+      gfxCriticalError() << "[D2D] CreateSharedBitmap failure " << size << " Code: " << hexa(hr);
       // Crash debug builds but try to recover in release builds.
       MOZ_ASSERT(false);
       return;
@@ -241,7 +241,7 @@ DrawTargetD2D::Flush()
   HRESULT hr = mRT->Flush();
 
   if (FAILED(hr)) {
-    gfxWarning() << "Error reported when trying to flush D2D rendertarget. Code: " << hr;
+    gfxWarning() << "Error reported when trying to flush D2D rendertarget. Code: " << hexa(hr);
   }
 
   // We no longer depend on any target.
@@ -388,7 +388,10 @@ DrawTargetD2D::DrawFilter(FilterNode *aNode,
     hr = rt->QueryInterface((ID2D1DeviceContext**)byRef(dc));
 
     if (SUCCEEDED(hr)) {
-      dc->DrawImage(static_cast<FilterNodeD2D1*>(aNode)->OutputEffect(), D2DPoint(aDestPoint), D2DRect(aSourceRect));
+      FilterNodeD2D1* node = static_cast<FilterNodeD2D1*>(aNode);
+      node->WillDraw(this);
+
+      dc->DrawImage(node->OutputEffect(), D2DPoint(aDestPoint), D2DRect(aSourceRect));
 
       Rect destRect = aSourceRect;
       destRect.MoveBy(aDestPoint);
@@ -471,7 +474,7 @@ DrawTargetD2D::DrawSurfaceWithShadow(SourceSurface *aSurface,
     HRESULT hr = mDevice->CreateRenderTargetView(mTempTexture, nullptr, byRef(mTempRTView));
 
     if (FAILED(hr)) {
-      gfxWarning() << "Failure to create RenderTargetView. Code: " << hr;
+      gfxWarning() << "Failure to create RenderTargetView. Code: " << hexa(hr);
       return;
     }
   }
@@ -532,7 +535,7 @@ DrawTargetD2D::DrawSurfaceWithShadow(SourceSurface *aSurface,
     hr = mDevice->CreateTexture2D(&desc, nullptr, byRef(mipTexture));
 
     if (FAILED(hr)) {
-      gfxCriticalError() << "[D2D] CreateTexture2D failure " << aSurface->GetSize() << " Code: " << hr;
+      gfxCriticalError() << "[D2D] CreateTexture2D failure " << aSurface->GetSize() << " Code: " << hexa(hr);
       return;
     }
 
@@ -559,7 +562,7 @@ DrawTargetD2D::DrawSurfaceWithShadow(SourceSurface *aSurface,
     hr = mDevice->CreateTexture2D(&desc, nullptr, byRef(tmpDSTexture));
 
     if (FAILED(hr)) {
-      gfxCriticalError() << "[D2D] CreateTexture2D failure " << dsSize << " Code: " << hr;
+      gfxCriticalError() << "[D2D] CreateTexture2D failure " << dsSize << " Code: " << hexa(hr);
       return;
     }
 
@@ -1268,14 +1271,14 @@ DrawTargetD2D::CreatePathBuilder(FillRule aFillRule) const
   HRESULT hr = factory()->CreatePathGeometry(byRef(path));
 
   if (FAILED(hr)) {
-    gfxWarning() << "Failed to create Direct2D Path Geometry. Code: " << hr;
+    gfxWarning() << "Failed to create Direct2D Path Geometry. Code: " << hexa(hr);
     return nullptr;
   }
 
   RefPtr<ID2D1GeometrySink> sink;
   hr = path->Open(byRef(sink));
   if (FAILED(hr)) {
-    gfxWarning() << "Failed to access Direct2D Path Geometry. Code: " << hr;
+    gfxWarning() << "Failed to access Direct2D Path Geometry. Code: " << hexa(hr);
     return nullptr;
   }
 
@@ -1305,7 +1308,7 @@ DrawTargetD2D::CreateGradientStops(GradientStop *rawStops, uint32_t aNumStops, E
   delete [] stops;
 
   if (FAILED(hr)) {
-    gfxWarning() << "Failed to create GradientStopCollection. Code: " << hr;
+    gfxWarning() << "Failed to create GradientStopCollection. Code: " << hexa(hr);
     return nullptr;
   }
 
@@ -1320,7 +1323,7 @@ DrawTargetD2D::CreateFilter(FilterType aType)
   HRESULT hr = mRT->QueryInterface((ID2D1DeviceContext**)byRef(dc));
 
   if (SUCCEEDED(hr)) {
-    return FilterNodeD2D1::Create(this, dc, aType);
+    return FilterNodeD2D1::Create(dc, aType);
   }
 #endif
   return FilterNodeSoftware::Create(aType);
@@ -1362,7 +1365,7 @@ DrawTargetD2D::Init(const IntSize &aSize, SurfaceFormat aFormat)
   hr = mDevice->CreateTexture2D(&desc, nullptr, byRef(mTexture));
 
   if (FAILED(hr)) {
-    gfxCriticalError() << "Failed to init Direct2D DrawTarget. Size: " << mSize << " Code: " << hr;
+    gfxCriticalError() << "Failed to init Direct2D DrawTarget. Size: " << mSize << " Code: " << hexa(hr);
     return false;
   }
 
@@ -1432,7 +1435,7 @@ DrawTargetD2D::InitD3D10Data()
   hr = createD3DEffect((void*)d2deffect, sizeof(d2deffect), 0, mDevice, nullptr, byRef(mPrivateData->mEffect));
 
   if (FAILED(hr)) {
-    gfxWarning() << "Failed to initialize Direct2D required effects. Code: " << hr;
+    gfxWarning() << "Failed to initialize Direct2D required effects. Code: " << hexa(hr);
     return false;
   }
 
@@ -1454,7 +1457,7 @@ DrawTargetD2D::InitD3D10Data()
                                   byRef(mPrivateData->mInputLayout));
 
   if (FAILED(hr)) {
-    gfxWarning() << "Failed to initialize Direct2D required InputLayout. Code: " << hr;
+    gfxWarning() << "Failed to initialize Direct2D required InputLayout. Code: " << hexa(hr);
     return false;
   }
 
@@ -1466,7 +1469,7 @@ DrawTargetD2D::InitD3D10Data()
   hr = mDevice->CreateBuffer(&bufferDesc, &data, byRef(mPrivateData->mVB));
 
   if (FAILED(hr)) {
-    gfxWarning() << "Failed to initialize Direct2D required VertexBuffer. Code: " << hr;
+    gfxWarning() << "Failed to initialize Direct2D required VertexBuffer. Code: " << hexa(hr);
     return false;
   }
 
@@ -1771,7 +1774,7 @@ DrawTargetD2D::FinalizeRTForOperation(CompositionOp aOperator, const Pattern &aP
 
       mDevice->CopyResource(tmpTexture, mTexture);
       if (FAILED(hr)) {
-        gfxWarning() << *this << "Failed to create shader resource view for temp texture. Code: " << hr;
+        gfxWarning() << *this << "Failed to create shader resource view for temp texture. Code: " << hexa(hr);
         return;
       }
 
@@ -1780,7 +1783,7 @@ DrawTargetD2D::FinalizeRTForOperation(CompositionOp aOperator, const Pattern &aP
       hr = mDevice->CreateShaderResourceView(tmpTexture, nullptr, byRef(mBckSRView));
 
       if (FAILED(hr)) {
-        gfxWarning() << *this << "Failed to create shader resource view for temp texture. Code: " << hr;
+        gfxWarning() << *this << "Failed to create shader resource view for temp texture. Code: " << hexa(hr);
         return;
       }
 
@@ -1961,7 +1964,7 @@ DrawTargetD2D::CreateRTForTexture(ID3D10Texture2D *aTexture, SurfaceFormat aForm
   hr = aTexture->QueryInterface((IDXGISurface**)byRef(surface));
 
   if (FAILED(hr)) {
-    gfxCriticalError() << "Failed to QI texture to surface.";
+    gfxCriticalError() << "Failed to QI texture to surface. Code: " << hr;
     return nullptr;
   }
 
@@ -1979,7 +1982,7 @@ DrawTargetD2D::CreateRTForTexture(ID3D10Texture2D *aTexture, SurfaceFormat aForm
   hr = factory()->CreateDxgiSurfaceRenderTarget(surface, props, byRef(rt));
 
   if (FAILED(hr)) {
-    gfxCriticalError() << "Failed to create D2D render target for texture.";
+    gfxCriticalError() << "Failed to create D2D render target for texture. Code:" << hr << " " << mSize << " Format: " << uint32_t(aFormat);
     return nullptr;
   }
 
@@ -2005,21 +2008,21 @@ DrawTargetD2D::EnsureViews()
 
   if (FAILED(hr)) {
     gfxWarning() << *this << "Failed to create temporary texture for rendertarget. Size: "
-      << mSize << " Code: " << hr;
+      << mSize << " Code: " << hexa(hr);
     return;
   }
 
   hr = mDevice->CreateShaderResourceView(mTempTexture, nullptr, byRef(mSRView));
 
   if (FAILED(hr)) {
-    gfxWarning() << *this << "Failed to create shader resource view for temp texture. Code: " << hr;
+    gfxWarning() << *this << "Failed to create shader resource view for temp texture. Code: " << hexa(hr);
     return;
   }
 
   hr = mDevice->CreateRenderTargetView(mTexture, nullptr, byRef(mRTView));
 
   if (FAILED(hr)) {
-    gfxWarning() << *this << "Failed to create rendertarget view for temp texture. Code: " << hr;
+    gfxWarning() << *this << "Failed to create rendertarget view for temp texture. Code: " << hexa(hr);
   }
 }
 

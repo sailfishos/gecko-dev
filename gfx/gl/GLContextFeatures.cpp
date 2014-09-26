@@ -57,7 +57,7 @@ static const FeatureInfo sFeatureInfoArr[] = {
         {
 
             GLContext::EXT_transform_feedback,
-            GLContext::NV_transform_feedback,
+            GLContext::NV_transform_feedback2,
             GLContext::Extensions_End
         }
     },
@@ -76,6 +76,15 @@ static const FeatureInfo sFeatureInfoArr[] = {
         300, // OpenGL version
         300, // OpenGL ES version
         GLContext::Extension_None,
+        {
+            GLContext::Extensions_End
+        }
+    },
+    {
+        "copy_buffer",
+        310, // OpenGL version
+        300, // OpenGL ES version
+        GLContext::ARB_copy_buffer,
         {
             GLContext::Extensions_End
         }
@@ -211,6 +220,25 @@ static const FeatureInfo sFeatureInfoArr[] = {
         }
     },
     {
+        "get_integer_indexed",
+        300, // OpenGL version
+        300, // OpenGL ES version
+        GLContext::Extension_None,
+        {
+            GLContext::EXT_draw_buffers2,
+            GLContext::Extensions_End
+        }
+    },
+    {
+        "get_integer64_indexed",
+        320, // OpenGL version
+        300, // OpenGL ES version
+        GLContext::Extension_None,
+        {
+            GLContext::Extensions_End
+        }
+    },
+    {
         "get_query_object_iv",
         200, // OpenGL version
         0,   // OpenGL ES version
@@ -222,6 +250,16 @@ static const FeatureInfo sFeatureInfoArr[] = {
          * XXX_get_query_object_iv only provide GetQueryObjectiv provided by
          * ARB_occlusion_query (added by OpenGL 2.0).
          */
+    },
+    {
+        "gpu_shader4",
+        300, // OpenGL version
+        300, // OpenGL ES version
+        GLContext::Extension_None,
+        {
+            GLContext::EXT_gpu_shader4,
+            GLContext::Extensions_End
+        }
     },
     {
         "instanced_arrays",
@@ -249,6 +287,15 @@ static const FeatureInfo sFeatureInfoArr[] = {
          * ANGLE_instanced_arrays and NV_instanced_arrays forbid this, but GLES3
          * has no such restriction.
          */
+    },
+    {
+        "map_buffer_range",
+        300, // OpenGL version
+        300, // OpenGL ES version
+        GLContext::ARB_map_buffer_range,
+        {
+            GLContext::Extensions_End
+        }
     },
     {
         "occlusion_query",
@@ -363,12 +410,54 @@ static const FeatureInfo sFeatureInfoArr[] = {
         }
     },
     {
+        "sampler_objects",
+        330, // OpenGL version
+        300, // OpenGL ES version
+        GLContext::ARB_sampler_objects,
+        {
+            GLContext::Extensions_End
+        }
+    },
+    {
         "standard_derivatives",
         200, // OpenGL version
         300, // OpenGL ES version
         GLContext::Extension_None,
         {
             GLContext::OES_standard_derivatives,
+            GLContext::Extensions_End
+        }
+    },
+    {
+        "texture_3D",
+        120, // OpenGL version
+        300, // OpenGL ES version
+        GLContext::Extension_None,
+        {
+            GLContext::EXT_texture3D,
+            GLContext::OES_texture_3D,
+            GLContext::Extensions_End
+        }
+    },
+    {
+        "texture_3D_compressed",
+        130, // OpenGL version
+        300, // OpenGL ES version
+        GLContext::Extension_None,
+        {
+            GLContext::ARB_texture_compression,
+            GLContext::OES_texture_3D,
+            GLContext::Extensions_End
+        }
+    },
+    {
+        "texture_3D_copy",
+        120, // OpenGL version
+        300, // OpenGL ES version
+        GLContext::Extension_None,
+        {
+            GLContext::EXT_copy_texture,
+            GLContext::OES_texture_3D,
             GLContext::Extensions_End
         }
     },
@@ -439,13 +528,45 @@ static const FeatureInfo sFeatureInfoArr[] = {
         }
     },
     {
-        "transform_feedback",
-        300, // OpenGL version
+        "texture_storage",
+        420, // OpenGL version
+        300, // OpenGL ES version
+        GLContext::ARB_texture_storage,
+        {
+            /*
+             * Not including GL_EXT_texture_storage here because it
+             * doesn't guarantee glTexStorage3D, which is required for
+             * WebGL 2.
+             */
+            GLContext::Extensions_End
+        }
+    },
+    {
+        "transform_feedback2",
+        400, // OpenGL version
         300, // OpenGL ES version
         GLContext::Extension_None,
         {
-            GLContext::EXT_transform_feedback,
-            GLContext::NV_transform_feedback,
+            GLContext::ARB_transform_feedback2,
+            GLContext::NV_transform_feedback2,
+            GLContext::Extensions_End
+        }
+    },
+    {
+        "uniform_buffer_object",
+        310, // OpenGL version
+        300, // OpenGL ES version
+        GLContext::ARB_uniform_buffer_object,
+        {
+            GLContext::Extensions_End
+        }
+    },
+    {
+        "uniform_matrix_nonsquare",
+        210, // OpenGL version
+        300, // OpenGL ES version
+        GLContext::Extension_None,
+        {
             GLContext::Extensions_End
         }
     },

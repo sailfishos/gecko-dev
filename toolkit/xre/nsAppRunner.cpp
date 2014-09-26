@@ -593,7 +593,7 @@ KeyboardMayHaveIME()
   HKL locales[10];
   int result = GetKeyboardLayoutList(10, locales);
   for (int i = 0; i < result; i++) {
-    int kb = (unsigned)locales[i] & 0xFFFF;
+    int kb = (uintptr_t)locales[i] & 0xFFFF;
     if (kb == 0x0411 ||  // japanese
         kb == 0x0412 ||  // korean
         kb == 0x0C04 ||  // HK Chinese
@@ -669,7 +669,9 @@ NS_IMETHODIMP
 nsXULAppInfo::GetVendor(nsACString& aResult)
 {
   if (XRE_GetProcessType() == GeckoProcessType_Content) {
-    return NS_ERROR_NOT_AVAILABLE;
+    ContentChild* cc = ContentChild::GetSingleton();
+    aResult = cc->GetAppInfo().vendor;
+    return NS_OK;
   }
   aResult.Assign(gAppData->vendor);
 
@@ -693,7 +695,9 @@ NS_IMETHODIMP
 nsXULAppInfo::GetID(nsACString& aResult)
 {
   if (XRE_GetProcessType() == GeckoProcessType_Content) {
-    return NS_ERROR_NOT_AVAILABLE;
+    ContentChild* cc = ContentChild::GetSingleton();
+    aResult = cc->GetAppInfo().ID;
+    return NS_OK;
   }
   aResult.Assign(gAppData->ID);
 
@@ -1513,6 +1517,7 @@ DumpHelp()
   printf("  -h or -help        Print this message.\n"
          "  -v or -version     Print %s version.\n"
          "  -P <profile>       Start with <profile>.\n"
+         "  -profile <path>    Start with profile at <path>.\n"
          "  -migration         Start with migration wizard.\n"
          "  -ProfileManager    Start with ProfileManager.\n"
          "  -no-remote         Do not accept or send remote commands; implies -new-instance.\n"
@@ -2921,7 +2926,7 @@ class XREMain
 {
 public:
   XREMain() :
-    mScopedXPCom(nullptr)
+    mScopedXPCOM(nullptr)
     , mAppData(nullptr)
     , mStartOffline(false)
     , mShuttingDown(false)
@@ -2937,9 +2942,9 @@ public:
     if (mAppData) {
       delete mAppData;
     }
-    if (mScopedXPCom) {
+    if (mScopedXPCOM) {
       NS_WARNING("Scoped xpcom should have been deleted!");
-      delete mScopedXPCom;
+      delete mScopedXPCOM;
     }
   }
 
@@ -2957,7 +2962,7 @@ public:
   nsCOMPtr<nsIRemoteService> mRemoteService;
 #endif
 
-  ScopedXPCOMStartup* mScopedXPCom;
+  ScopedXPCOMStartup* mScopedXPCOM;
   ScopedAppData* mAppData;
   nsXREDirProvider mDirProvider;
   nsAutoCString mProfileName;
@@ -3912,7 +3917,7 @@ nsresult
 XREMain::XRE_mainRun()
 {
   nsresult rv = NS_OK;
-  NS_ASSERTION(mScopedXPCom, "Scoped xpcom not initialized.");
+  NS_ASSERTION(mScopedXPCOM, "Scoped xpcom not initialized.");
 
 #ifdef MOZ_B2G_LOADER
   mozilla::ipc::ProcLoaderClientGeckoInit();
@@ -3938,7 +3943,7 @@ XREMain::XRE_mainRun()
   }
 #endif
 
-  rv = mScopedXPCom->SetWindowCreator(mNativeApp);
+  rv = mScopedXPCOM->SetWindowCreator(mNativeApp);
   NS_ENSURE_SUCCESS(rv, NS_ERROR_FAILURE);
 
 #ifdef MOZ_CRASHREPORTER
@@ -4219,11 +4224,11 @@ XREMain::XRE_main(int argc, char* argv[], const nsXREAppData* aAppData)
   bool appInitiatedRestart = false;
 
   // Start the real application
-  mScopedXPCom = new ScopedXPCOMStartup();
-  if (!mScopedXPCom)
+  mScopedXPCOM = new ScopedXPCOMStartup();
+  if (!mScopedXPCOM)
     return 1;
 
-  rv = mScopedXPCom->Initialize();
+  rv = mScopedXPCOM->Initialize();
   NS_ENSURE_SUCCESS(rv, 1);
 
   // run!
@@ -4252,8 +4257,8 @@ XREMain::XRE_main(int argc, char* argv[], const nsXREAppData* aAppData)
 #endif /* MOZ_ENABLE_XREMOTE */
   }
 
-  delete mScopedXPCom;
-  mScopedXPCom = nullptr;
+  delete mScopedXPCOM;
+  mScopedXPCOM = nullptr;
 
   // unlock the profile after ScopedXPCOMStartup object (xpcom) 
   // has gone out of scope.  see bug #386739 for more details
@@ -4325,11 +4330,11 @@ XRE_metroStartup(bool runXREMain)
     return NS_ERROR_FAILURE;
 
   // Start the real application
-  xreMainPtr->mScopedXPCom = new ScopedXPCOMStartup();
-  if (!xreMainPtr->mScopedXPCom)
+  xreMainPtr->mScopedXPCOM = new ScopedXPCOMStartup();
+  if (!xreMainPtr->mScopedXPCOM)
     return NS_ERROR_FAILURE;
 
-  rv = xreMainPtr->mScopedXPCom->Initialize();
+  rv = xreMainPtr->mScopedXPCOM->Initialize();
   NS_ENSURE_SUCCESS(rv, rv);
 
   if (runXREMain) {
@@ -4342,8 +4347,8 @@ XRE_metroStartup(bool runXREMain)
 void
 XRE_metroShutdown()
 {
-  delete xreMainPtr->mScopedXPCom;
-  xreMainPtr->mScopedXPCom = nullptr;
+  delete xreMainPtr->mScopedXPCOM;
+  xreMainPtr->mScopedXPCOM = nullptr;
 
 #ifdef MOZ_INSTRUMENT_EVENT_LOOP
   mozilla::ShutdownEventTracing();
@@ -4423,7 +4428,7 @@ XRE_mainMetro(int argc, char* argv[], const nsXREAppData* aAppData)
 
   // XRE_metroShutdown should have already been called on the worker
   // thread that called XRE_metroStartup.
-  NS_ASSERTION(!xreMainPtr->mScopedXPCom,
+  NS_ASSERTION(!xreMainPtr->mScopedXPCOM,
                "XPCOM Shutdown hasn't occured, and we are exiting.");
   return 0;
 }
@@ -4574,6 +4579,9 @@ mozilla::BrowserTabsRemote()
 bool
 mozilla::BrowserTabsRemoteAutostart()
 {
+#if !defined(NIGHTLY_BUILD)
+  return false;
+#endif
   if (!gBrowserTabsRemoteAutostartInitialized) {
     bool hasIME = KeyboardMayHaveIME();
     bool prefEnabled = Preferences::GetBool("browser.tabs.remote.autostart", false) ||

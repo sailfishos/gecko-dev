@@ -700,6 +700,12 @@ LIRGenerator::visitTest(MTest *test)
     // TestPolicy).
     MOZ_ASSERT(opd->type() != MIRType_String);
 
+    // Testing a constant.
+    if (opd->isConstant()) {
+        bool result = opd->toConstant()->valueToBoolean();
+        return add(new(alloc()) LGoto(result ? ifTrue : ifFalse));
+    }
+
     if (opd->type() == MIRType_Value) {
         LDefinition temp0, temp1;
         if (test->operandMightEmulateUndefined()) {
@@ -709,18 +715,17 @@ LIRGenerator::visitTest(MTest *test)
             temp0 = LDefinition::BogusTemp();
             temp1 = LDefinition::BogusTemp();
         }
-        LTestVAndBranch *lir = new(alloc()) LTestVAndBranch(ifTrue, ifFalse, tempDouble(), temp0, temp1);
+        LTestVAndBranch *lir =
+            new(alloc()) LTestVAndBranch(ifTrue, ifFalse, tempDouble(), temp0, temp1);
         if (!useBox(lir, LTestVAndBranch::Input, opd))
             return false;
         return add(lir, test);
     }
 
+    // Objects are truthy, except if it might emulate undefined.
     if (opd->type() == MIRType_Object) {
-        // If the object might emulate undefined, we have to test for that.
         if (test->operandMightEmulateUndefined())
             return add(new(alloc()) LTestOAndBranch(useRegister(opd), ifTrue, ifFalse, temp()), test);
-
-        // Otherwise we know it's truthy.
         return add(new(alloc()) LGoto(ifTrue));
     }
 
@@ -732,30 +737,6 @@ LIRGenerator::visitTest(MTest *test)
     // All symbols are truthy.
     if (opd->type() == MIRType_Symbol)
         return add(new(alloc()) LGoto(ifTrue));
-
-    // Constant Double operand.
-    if (opd->type() == MIRType_Double && opd->isConstant()) {
-        bool result = opd->toConstant()->valueToBoolean();
-        return add(new(alloc()) LGoto(result ? ifTrue : ifFalse));
-    }
-
-    // Constant Float32 operand.
-    if (opd->type() == MIRType_Float32 && opd->isConstant()) {
-        bool result = opd->toConstant()->valueToBoolean();
-        return add(new(alloc()) LGoto(result ? ifTrue : ifFalse));
-    }
-
-    // Constant Int32 operand.
-    if (opd->type() == MIRType_Int32 && opd->isConstant()) {
-        int32_t num = opd->toConstant()->value().toInt32();
-        return add(new(alloc()) LGoto(num ? ifTrue : ifFalse));
-    }
-
-    // Constant Boolean operand.
-    if (opd->type() == MIRType_Boolean && opd->isConstant()) {
-        bool result = opd->toConstant()->value().toBoolean();
-        return add(new(alloc()) LGoto(result ? ifTrue : ifFalse));
-    }
 
     // Check if the operand for this test is a compare operation. If it is, we want
     // to emit an LCompare*AndBranch rather than an LTest*AndBranch, to fuse the
@@ -1797,7 +1778,15 @@ LIRGenerator::visitToDouble(MToDouble *convert)
 
       case MIRType_Float32:
       {
+        // Bug 1039993: this used to be useRegisterAtStart, and theoreticall, it
+        // should still be, however, there is a bug in LSRA's implementation of
+        // *AtStart, which is quite fundamental. This should be reverted when that
+        // is fixed, or lsra is deprecated.
+#if defined(JS_CODEGEN_ARM) || defined(JS_CODEGEN_MIPS)
+        LFloat32ToDouble *lir = new(alloc()) LFloat32ToDouble(useRegister(opd));
+#else
         LFloat32ToDouble *lir = new(alloc()) LFloat32ToDouble(useRegisterAtStart(opd));
+#endif
         return define(lir, convert);
       }
 
@@ -2490,7 +2479,7 @@ bool
 LIRGenerator::visitTypedObjectElements(MTypedObjectElements *ins)
 {
     JS_ASSERT(ins->type() == MIRType_Elements);
-    return define(new(alloc()) LTypedObjectElements(useRegisterAtStart(ins->object())), ins);
+    return define(new(alloc()) LTypedObjectElements(useRegister(ins->object())), ins);
 }
 
 bool
@@ -3718,6 +3707,33 @@ LIRGenerator::visitSimdConstant(MSimdConstant *ins)
 }
 
 bool
+LIRGenerator::visitSimdConvert(MSimdConvert *ins)
+{
+    MOZ_ASSERT(IsSimdType(ins->type()));
+    MDefinition *input = ins->input();
+    LUse use = useRegisterAtStart(input);
+
+    if (ins->type() == MIRType_Int32x4) {
+        MOZ_ASSERT(input->type() == MIRType_Float32x4);
+        return define(new(alloc()) LFloat32x4ToInt32x4(use), ins);
+    }
+
+    if (ins->type() == MIRType_Float32x4) {
+        MOZ_ASSERT(input->type() == MIRType_Int32x4);
+        return define(new(alloc()) LInt32x4ToFloat32x4(use), ins);
+    }
+
+    MOZ_CRASH("Unknown SIMD kind when generating constant");
+}
+
+bool
+LIRGenerator::visitSimdReinterpretCast(MSimdReinterpretCast *ins)
+{
+    MOZ_ASSERT(IsSimdType(ins->type()) && IsSimdType(ins->input()->type()));
+    return redefine(ins, ins->input());
+}
+
+bool
 LIRGenerator::visitSimdExtractElement(MSimdExtractElement *ins)
 {
     JS_ASSERT(IsSimdType(ins->input()->type()));
@@ -3980,6 +3996,11 @@ LIRGenerator::visitBlock(MBasicBlock *block)
     if (!visitInstruction(block->lastIns()))
         return false;
 
+    // If we have a resume point check that all the following blocks have one,
+    // otherwise reuse the last resume point as the entry resume point of the
+    // basic block.  This is used to handle fallible code which is moved/added
+    // into split edge blocks, which do not have resume points.  See
+    // SplitCriticalEdgesForBlock.
     if (lastResumePoint_) {
         for (size_t s = 0; s < block->numSuccessors(); s++) {
             MBasicBlock *succ = block->getSuccessor(s);

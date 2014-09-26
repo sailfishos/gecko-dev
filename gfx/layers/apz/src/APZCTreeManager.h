@@ -44,6 +44,7 @@ class AsyncPanZoomController;
 class CompositorParent;
 class APZPaintLogHelper;
 class OverscrollHandoffChain;
+struct OverscrollHandoffState;
 class LayerMetricsWrapper;
 
 /**
@@ -312,8 +313,7 @@ public:
   bool DispatchScroll(AsyncPanZoomController* aApzc,
                       ScreenPoint aStartPoint,
                       ScreenPoint aEndPoint,
-                      const OverscrollHandoffChain& aOverscrollHandoffChain,
-                      uint32_t aOverscrollHandoffChainIndex);
+                      OverscrollHandoffState& aOverscrollHandoffState);
 
   /**
    * This is a callback for AsyncPanZoomController to call when it wants to
@@ -380,13 +380,14 @@ private:
                              ScrollableLayerGuid* aOutTargetGuid);
   void UpdateZoomConstraintsRecursively(AsyncPanZoomController* aApzc,
                                         const ZoomConstraints& aConstraints);
+  void FlushRepaintsRecursively(AsyncPanZoomController* aApzc);
 
   AsyncPanZoomController* PrepareAPZCForLayer(const LayerMetricsWrapper& aLayer,
                                               const FrameMetrics& aMetrics,
                                               uint64_t aLayersId,
                                               const gfx::Matrix4x4& aAncestorTransform,
                                               const nsIntRegion& aObscured,
-                                              AsyncPanZoomController*& aOutParent,
+                                              AsyncPanZoomController* aParent,
                                               AsyncPanZoomController* aNextSibling,
                                               TreeBuildingState& aState);
 

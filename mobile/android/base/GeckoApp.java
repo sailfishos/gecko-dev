@@ -1152,17 +1152,7 @@ public abstract class GeckoApp
                         profilePath =  m.group(1);
                     }
                     if (profileName == null) {
-                        try {
-                            profileName = getDefaultProfileName();
-                        } catch (NoMozillaDirectoryException e) {
-                            Log.wtf(LOGTAG, "Unable to fetch default profile name!", e);
-                            // There's nothing at all we can do now. If the Mozilla directory
-                            // didn't exist, then we're screwed.
-                            // Crash here so we can fix the bug.
-                            throw new RuntimeException(e);
-                        }
-                        if (profileName == null)
-                            profileName = GeckoProfile.DEFAULT_PROFILE;
+                        profileName = GeckoProfile.DEFAULT_PROFILE;
                     }
                     GeckoProfile.sIsUsingCustomProfile = true;
                 }
@@ -1190,8 +1180,6 @@ public abstract class GeckoApp
         // `(GeckoApplication) getApplication()` here.
         GeckoAppShell.setContextGetter(this);
         GeckoAppShell.setGeckoInterface(this);
-
-        ThreadUtils.setUiThread(Thread.currentThread(), new Handler());
 
         Tabs.getInstance().attachToContext(this);
         try {
@@ -2118,21 +2106,32 @@ public abstract class GeckoApp
     }
 
     public void doRestart() {
-        doRestart(RESTARTER_ACTION, null);
+        doRestart(RESTARTER_ACTION, null, null);
     }
 
     public void doRestart(String args) {
-        doRestart(RESTARTER_ACTION, args);
+        doRestart(RESTARTER_ACTION, args, null);
     }
 
-    public void doRestart(String action, String args) {
+    public void doRestart(Intent intent) {
+        doRestart(RESTARTER_ACTION, null, intent);
+    }
+
+    public void doRestart(String action, String args, Intent restartIntent) {
         Log.d(LOGTAG, "doRestart(\"" + action + "\")");
         try {
             Intent intent = new Intent(action);
             intent.setClassName(AppConstants.ANDROID_PACKAGE_NAME, RESTARTER_CLASS);
+
             /* TODO: addEnvToIntent(intent); */
-            if (args != null)
+            if (args != null) {
                 intent.putExtra("args", args);
+            }
+
+            if (restartIntent != null) {
+                intent.putExtra(Intent.EXTRA_INTENT, restartIntent);
+            }
+
             intent.putExtra("didRestart", true);
             Log.d(LOGTAG, "Restart intent: " + intent.toString());
             GeckoAppShell.killAnyZombies();

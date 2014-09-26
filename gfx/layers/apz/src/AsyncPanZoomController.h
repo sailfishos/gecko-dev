@@ -545,9 +545,12 @@ protected:
 
   /**
    * Tell the paint throttler to request a content repaint with the given
-   * metrics.  (Helper function used by RequestContentRepaint.)
+   * metrics.  (Helper function used by RequestContentRepaint.) If aThrottled
+   * is set to false, the repaint request is sent directly without going through
+   * the paint throttler. In particular, the GeckoContentController::RequestContentRepaint
+   * function will be invoked before this function returns.
    */
-  void RequestContentRepaint(FrameMetrics& aFrameMetrics);
+  void RequestContentRepaint(FrameMetrics& aFrameMetrics, bool aThrottled = true);
 
   /**
    * Actually send the next pending paint request to gecko.
@@ -796,6 +799,12 @@ public:
    */
   void SetAllowedTouchBehavior(const nsTArray<TouchBehaviorFlags>& aBehaviors);
 
+  /**
+   * Flush a repaint request if one is needed, without throttling it with the
+   * paint throttler.
+   */
+  void FlushRepaintForNewInputBlock();
+
 private:
   void ScheduleContentResponseTimeout();
   void ContentResponseTimeout();
@@ -952,6 +961,14 @@ public:
   AsyncPanZoomController* GetPrevSibling() const { return mPrevSibling; }
   AsyncPanZoomController* GetParent() const { return mParent; }
 
+  AsyncPanZoomController* GetFirstChild() const {
+    AsyncPanZoomController* child = GetLastChild();
+    while (child && child->GetPrevSibling()) {
+      child = child->GetPrevSibling();
+    }
+    return child;
+  }
+
   /* Returns true if there is no APZC higher in the tree with the same
    * layers id.
    */
@@ -1002,8 +1019,7 @@ public:
    * an overscrolled state itself if it can.
    */
   bool AttemptScroll(const ScreenPoint& aStartPoint, const ScreenPoint& aEndPoint,
-                     const OverscrollHandoffChain& aOverscrollHandoffChain,
-                     uint32_t aOverscrollHandoffChainIndex = 0);
+                     OverscrollHandoffState& aOverscrollHandoffState);
 
   void FlushRepaintForOverscrollHandoff();
 
@@ -1021,8 +1037,15 @@ private:
    */
   bool CallDispatchScroll(const ScreenPoint& aStartPoint,
                           const ScreenPoint& aEndPoint,
-                          const OverscrollHandoffChain& aOverscrollHandoffChain,
-                          uint32_t aOverscrollHandoffChainIndex);
+                          OverscrollHandoffState& aOverscrollHandoffState);
+
+  /**
+   * A helper function for overscrolling during panning. This is a wrapper
+   * around OverscrollBy() that also implements restrictions on entering
+   * overscroll based on the pan angle.
+   */
+  bool OverscrollForPanning(ScreenPoint aOverscroll,
+                            const ScreenPoint& aPanDistance);
 
   /**
    * Try to overscroll by 'aOverscroll'.

@@ -36,6 +36,7 @@
 #include "mozilla/dom/MobileMessageManager.h"
 #include "mozilla/dom/ServiceWorkerContainer.h"
 #include "mozilla/dom/Telephony.h"
+#include "mozilla/dom/Voicemail.h"
 #include "mozilla/Hal.h"
 #include "nsISiteSpecificUserAgent.h"
 #include "mozilla/ClearOnShutdown.h"
@@ -50,7 +51,6 @@
 #include "mozilla/dom/IccManager.h"
 #include "mozilla/dom/CellBroadcast.h"
 #include "mozilla/dom/MobileConnectionArray.h"
-#include "mozilla/dom/Voicemail.h"
 #endif
 #include "nsIIdleObserver.h"
 #include "nsIPermissionManager.h"
@@ -175,12 +175,12 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(Navigator)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mPowerManager)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mMobileMessageManager)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mTelephony)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mVoicemail)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mConnection)
 #ifdef MOZ_B2G_RIL
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mMobileConnections)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mCellBroadcast)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mIccManager)
-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mVoicemail)
 #endif
 #ifdef MOZ_B2G_BT
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mBluetooth)
@@ -251,6 +251,11 @@ Navigator::Invalidate()
     mTelephony = nullptr;
   }
 
+  if (mVoicemail) {
+    mVoicemail->Shutdown();
+    mVoicemail = nullptr;
+  }
+
   if (mConnection) {
     mConnection->Shutdown();
     mConnection = nullptr;
@@ -268,10 +273,6 @@ Navigator::Invalidate()
   if (mIccManager) {
     mIccManager->Shutdown();
     mIccManager = nullptr;
-  }
-
-  if (mVoicemail) {
-    mVoicemail = nullptr;
   }
 #endif
 
@@ -313,30 +314,19 @@ Navigator::Invalidate()
 NS_IMETHODIMP
 Navigator::GetUserAgent(nsAString& aUserAgent)
 {
-  nsresult rv = NS_GetNavigatorUserAgent(aUserAgent);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  if (!mWindow || !mWindow->GetDocShell()) {
-    return NS_OK;
-  }
-
-  nsIDocument* doc = mWindow->GetExtantDoc();
-  if (!doc) {
-    return NS_OK;
-  }
-
   nsCOMPtr<nsIURI> codebaseURI;
-  doc->NodePrincipal()->GetURI(getter_AddRefs(codebaseURI));
-  if (!codebaseURI) {
-    return NS_OK;
+  nsCOMPtr<nsPIDOMWindow> window;
+
+  if (mWindow && mWindow->GetDocShell()) {
+    window = mWindow;
+    nsIDocument* doc = mWindow->GetExtantDoc();
+    if (doc) {
+      doc->NodePrincipal()->GetURI(getter_AddRefs(codebaseURI));
+    }
   }
 
-  nsCOMPtr<nsISiteSpecificUserAgent> siteSpecificUA =
-    do_GetService("@mozilla.org/dom/site-specific-user-agent;1");
-  NS_ENSURE_TRUE(siteSpecificUA, NS_OK);
-
-  return siteSpecificUA->GetUserAgentForURIAndWindow(codebaseURI, mWindow,
-                                                     aUserAgent);
+  return GetUserAgent(window, codebaseURI, nsContentUtils::IsCallerChrome(),
+                      aUserAgent);
 }
 
 NS_IMETHODIMP
@@ -358,13 +348,13 @@ Navigator::GetAppCodeName(nsAString& aAppCodeName)
 NS_IMETHODIMP
 Navigator::GetAppVersion(nsAString& aAppVersion)
 {
-  return NS_GetNavigatorAppVersion(aAppVersion);
+  return GetAppVersion(aAppVersion, /* aUsePrefOverriddenValue */ true);
 }
 
 NS_IMETHODIMP
 Navigator::GetAppName(nsAString& aAppName)
 {
-  NS_GetNavigatorAppName(aAppName);
+  AppName(aAppName, /* aUsePrefOverriddenValue */ true);
   return NS_OK;
 }
 
@@ -457,7 +447,7 @@ Navigator::GetLanguages(nsTArray<nsString>& aLanguages)
 NS_IMETHODIMP
 Navigator::GetPlatform(nsAString& aPlatform)
 {
-  return NS_GetNavigatorPlatform(aPlatform);
+  return GetPlatform(aPlatform, /* aUsePrefOverriddenValue */ true);
 }
 
 NS_IMETHODIMP
@@ -892,115 +882,6 @@ Navigator::RegisterProtocolHandler(const nsAString& aProtocol,
                                            mWindow->GetOuterWindow());
 }
 
-bool
-Navigator::MozIsLocallyAvailable(const nsAString &aURI,
-                                 bool aWhenOffline,
-                                 ErrorResult& aRv)
-{
-  nsCOMPtr<nsIURI> uri;
-  nsresult rv = NS_NewURI(getter_AddRefs(uri), aURI);
-  if (NS_FAILED(rv)) {
-    aRv.Throw(rv);
-    return false;
-  }
-
-  // This method of checking the cache will only work for http/https urls.
-  bool match;
-  rv = uri->SchemeIs("http", &match);
-  if (NS_FAILED(rv)) {
-    aRv.Throw(rv);
-    return false;
-  }
-
-  if (!match) {
-    rv = uri->SchemeIs("https", &match);
-    if (NS_FAILED(rv)) {
-      aRv.Throw(rv);
-      return false;
-    }
-    if (!match) {
-      aRv.Throw(NS_ERROR_DOM_BAD_URI);
-      return false;
-    }
-  }
-
-  // Same origin check.
-  JSContext *cx = nsContentUtils::GetCurrentJSContext();
-  if (!cx) {
-    aRv.Throw(NS_ERROR_FAILURE);
-    return false;
-  }
-
-  rv = nsContentUtils::GetSecurityManager()->CheckSameOrigin(cx, uri);
-  if (NS_FAILED(rv)) {
-    aRv.Throw(rv);
-    return false;
-  }
-
-  // These load flags cause an error to be thrown if there is no
-  // valid cache entry, and skip the load if there is.
-  // If the cache is busy, assume that it is not yet available rather
-  // than waiting for it to become available.
-  uint32_t loadFlags = nsIChannel::INHIBIT_CACHING |
-                       nsICachingChannel::LOAD_NO_NETWORK_IO |
-                       nsICachingChannel::LOAD_ONLY_IF_MODIFIED |
-                       nsICachingChannel::LOAD_BYPASS_LOCAL_CACHE_IF_BUSY;
-
-  if (aWhenOffline) {
-    loadFlags |= nsICachingChannel::LOAD_CHECK_OFFLINE_CACHE |
-                 nsICachingChannel::LOAD_ONLY_FROM_CACHE |
-                 nsIRequest::LOAD_FROM_CACHE;
-  }
-
-  if (!mWindow) {
-    aRv.Throw(NS_ERROR_UNEXPECTED);
-    return false;
-  }
-
-  nsCOMPtr<nsILoadGroup> loadGroup;
-  nsCOMPtr<nsIDocument> doc = mWindow->GetDoc();
-  if (doc) {
-    loadGroup = doc->GetDocumentLoadGroup();
-  }
-
-  nsCOMPtr<nsIChannel> channel;
-  rv = NS_NewChannel(getter_AddRefs(channel), uri,
-                     nullptr, loadGroup, nullptr, loadFlags);
-  if (NS_FAILED(rv)) {
-    aRv.Throw(rv);
-    return false;
-  }
-
-  nsCOMPtr<nsIInputStream> stream;
-  rv = channel->Open(getter_AddRefs(stream));
-  if (NS_FAILED(rv)) {
-    aRv.Throw(rv);
-    return false;
-  }
-
-  stream->Close();
-
-  nsresult status;
-  rv = channel->GetStatus(&status);
-  if (NS_FAILED(rv)) {
-    aRv.Throw(rv);
-    return false;
-  }
-
-  if (NS_FAILED(status)) {
-    return false;
-  }
-
-  nsCOMPtr<nsIHttpChannel> httpChannel = do_QueryInterface(channel);
-  bool isAvailable;
-  rv = httpChannel->GetRequestSucceeded(&isAvailable);
-  if (NS_FAILED(rv)) {
-    aRv.Throw(rv);
-    return false;
-  }
-  return isAvailable;
-}
-
 nsDOMDeviceStorage*
 Navigator::GetDeviceStorage(const nsAString& aType, ErrorResult& aRv)
 {
@@ -1181,13 +1062,14 @@ Navigator::SendBeacon(const nsAString& aUrl,
     channelPolicy->SetContentSecurityPolicy(csp);
     channelPolicy->SetLoadType(nsIContentPolicy::TYPE_BEACON);
   }
+
   rv = NS_NewChannel(getter_AddRefs(channel),
                      uri,
-                     nullptr,
-                     nullptr,
-                     nullptr,
-                     nsIRequest::LOAD_NORMAL,
+                     doc,
+                     nsILoadInfo::SEC_NORMAL,
+                     nsIContentPolicy::TYPE_BEACON,
                      channelPolicy);
+
   if (NS_FAILED(rv)) {
     aRv.Throw(rv);
     return false;
@@ -1770,6 +1652,8 @@ Navigator::GetMozCellBroadcast(ErrorResult& aRv)
   return mCellBroadcast;
 }
 
+#endif // MOZ_B2G_RIL
+
 Voicemail*
 Navigator::GetMozVoicemail(ErrorResult& aRv)
 {
@@ -1779,14 +1663,13 @@ Navigator::GetMozVoicemail(ErrorResult& aRv)
       return nullptr;
     }
 
-    aRv = NS_NewVoicemail(mWindow, getter_AddRefs(mVoicemail));
-    if (aRv.Failed()) {
-      return nullptr;
-    }
+    mVoicemail = Voicemail::Create(mWindow, aRv);
   }
 
   return mVoicemail;
 }
+
+#ifdef MOZ_B2G_RIL
 
 IccManager*
 Navigator::GetMozIccManager(ErrorResult& aRv)
@@ -2455,29 +2338,12 @@ Navigator::GetWindowFromGlobal(JSObject* aGlobal)
   return win.forget();
 }
 
-} // namespace dom
-} // namespace mozilla
-
 nsresult
-NS_GetNavigatorUserAgent(nsAString& aUserAgent)
+Navigator::GetPlatform(nsAString& aPlatform, bool aUsePrefOverriddenValue)
 {
-  nsresult rv;
+  MOZ_ASSERT(NS_IsMainThread());
 
-  nsCOMPtr<nsIHttpProtocolHandler>
-    service(do_GetService(NS_NETWORK_PROTOCOL_CONTRACTID_PREFIX "http", &rv));
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  nsAutoCString ua;
-  rv = service->GetUserAgent(ua);
-  CopyASCIItoUTF16(ua, aUserAgent);
-
-  return rv;
-}
-
-nsresult
-NS_GetNavigatorPlatform(nsAString& aPlatform)
-{
-  if (!nsContentUtils::IsCallerChrome()) {
+  if (aUsePrefOverriddenValue && !nsContentUtils::IsCallerChrome()) {
     const nsAdoptingString& override =
       mozilla::Preferences::GetString("general.platform.override");
 
@@ -2516,10 +2382,13 @@ NS_GetNavigatorPlatform(nsAString& aPlatform)
 
   return rv;
 }
-nsresult
-NS_GetNavigatorAppVersion(nsAString& aAppVersion)
+
+/* static */ nsresult
+Navigator::GetAppVersion(nsAString& aAppVersion, bool aUsePrefOverriddenValue)
 {
-  if (!nsContentUtils::IsCallerChrome()) {
+  MOZ_ASSERT(NS_IsMainThread());
+
+  if (aUsePrefOverriddenValue && !nsContentUtils::IsCallerChrome()) {
     const nsAdoptingString& override =
       mozilla::Preferences::GetString("general.appversion.override");
 
@@ -2551,10 +2420,12 @@ NS_GetNavigatorAppVersion(nsAString& aAppVersion)
   return rv;
 }
 
-void
-NS_GetNavigatorAppName(nsAString& aAppName)
+/* static */ void
+Navigator::AppName(nsAString& aAppName, bool aUsePrefOverriddenValue)
 {
-  if (!nsContentUtils::IsCallerChrome()) {
+  MOZ_ASSERT(NS_IsMainThread());
+
+  if (aUsePrefOverriddenValue && !nsContentUtils::IsCallerChrome()) {
     const nsAdoptingString& override =
       mozilla::Preferences::GetString("general.appname.override");
 
@@ -2566,3 +2437,53 @@ NS_GetNavigatorAppName(nsAString& aAppName)
 
   aAppName.AssignLiteral("Netscape");
 }
+
+nsresult
+Navigator::GetUserAgent(nsPIDOMWindow* aWindow, nsIURI* aURI,
+                        bool aIsCallerChrome,
+                        nsAString& aUserAgent)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+
+  if (!aIsCallerChrome) {
+    const nsAdoptingString& override =
+      mozilla::Preferences::GetString("general.useragent.override");
+
+    if (override) {
+      aUserAgent = override;
+      return NS_OK;
+    }
+  }
+
+  nsresult rv;
+  nsCOMPtr<nsIHttpProtocolHandler>
+    service(do_GetService(NS_NETWORK_PROTOCOL_CONTRACTID_PREFIX "http", &rv));
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  nsAutoCString ua;
+  rv = service->GetUserAgent(ua);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  CopyASCIItoUTF16(ua, aUserAgent);
+
+  if (!aWindow || !aURI) {
+    return NS_OK;
+  }
+
+  MOZ_ASSERT(aWindow->GetDocShell());
+
+  nsCOMPtr<nsISiteSpecificUserAgent> siteSpecificUA =
+    do_GetService("@mozilla.org/dom/site-specific-user-agent;1");
+  if (!siteSpecificUA) {
+    return NS_OK;
+  }
+
+  return siteSpecificUA->GetUserAgentForURIAndWindow(aURI, aWindow, aUserAgent);
+}
+
+} // namespace dom
+} // namespace mozilla

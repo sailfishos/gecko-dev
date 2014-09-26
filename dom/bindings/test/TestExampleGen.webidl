@@ -435,6 +435,8 @@ interface TestExampleInterface {
   void passUnion24((sequence<ImageData?> or long) arg);
   void passUnion25((sequence<sequence<ImageData>> or long) arg);
   void passUnion26((sequence<sequence<ImageData?>> or long) arg);
+  void passUnion27(optional (sequence<DOMString> or EventInit) arg);
+  void passUnion28(optional (EventInit or sequence<DOMString>) arg);
   void passUnionWithCallback((EventHandler or long) arg);
   void passUnionWithByteString((ByteString or long) arg);
   void passUnionWithMozMap((MozMap<DOMString> or DOMString) arg);
@@ -520,9 +522,13 @@ interface TestExampleInterface {
 
   // binaryNames tests
   void methodRenamedFrom();
+  [BinaryName="otherMethodRenamedTo"]
+  void otherMethodRenamedFrom();
   void methodRenamedFrom(byte argument);
   readonly attribute byte attributeGetterRenamedFrom;
   attribute byte attributeRenamedFrom;
+  [BinaryName="otherAttributeRenamedTo"]
+  attribute byte otherAttributeRenamedFrom;
 
   void passDictionary(optional Dict x);
   [Cached, Pure]
@@ -610,6 +616,14 @@ interface TestExampleInterface {
   void overload15(optional TestInterface arg);
   void overload16(long arg);
   void overload16(optional TestInterface? arg);
+  void overload17(sequence<long> arg);
+  void overload17(MozMap<long> arg);
+  void overload18(MozMap<DOMString> arg);
+  void overload18(sequence<DOMString> arg);
+  void overload19(sequence<long> arg);
+  void overload19(optional Dict arg);
+  void overload20(optional Dict arg);
+  void overload20(sequence<long> arg);
 
   // Variadic handling
   void passVariadicThirdArg(DOMString arg1, long arg2, TestInterface... arg3);
@@ -678,6 +692,9 @@ interface TestExampleInterface {
   attribute TestParentInterface jsonifierShouldSkipThis2;
   attribute TestCallbackInterface jsonifierShouldSkipThis3;
   jsonifier;
+
+  attribute byte dashed-attribute;
+  void dashed-method();
 
   // If you add things here, add them to TestCodeGen and TestJSImplGen as well
 };

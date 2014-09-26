@@ -1024,7 +1024,7 @@ Promise::MaybeReportRejected()
 
   nsRefPtr<xpc::ErrorReport> xpcReport = new xpc::ErrorReport();
   if (MOZ_LIKELY(NS_IsMainThread())) {
-    nsIGlobalObject* global = xpc::GetNativeForGlobal(js::GetGlobalForObjectCrossCompartment(obj));
+    nsIGlobalObject* global = xpc::NativeGlobal(js::GetGlobalForObjectCrossCompartment(obj));
     xpcReport->Init(report.report(), report.message(), global);
   } else {
     xpcReport->InitOnWorkerThread(report.report(), report.message(),
@@ -1092,7 +1092,7 @@ Promise::ResolveInternal(JSContext* aCx,
       return;
     }
 
-    if (then.isObject() && JS_ObjectIsCallable(aCx, &then.toObject())) {
+    if (then.isObject() && JS::IsCallable(&then.toObject())) {
       // This is the then() function of the thenable aValueObj.
       JS::Rooted<JSObject*> thenObj(aCx, &then.toObject());
       nsRefPtr<PromiseInit> thenCallback =

@@ -85,6 +85,7 @@ IsJSXraySupported(JSProtoKey key)
       case JSProto_Object:
       case JSProto_Array:
       case JSProto_Function:
+      case JSProto_TypedArray:
         return true;
       default:
         return false;
@@ -287,7 +288,7 @@ bool JSXrayTraits::getOwnPropertyFromTargetIfSafe(JSContext *cx,
         }
 
         // Disallow callables.
-        if (JS_ObjectIsCallable(cx, propObj)) {
+        if (JS::IsCallable(propObj)) {
             JSAutoCompartment ac(cx, wrapper);
             return SilentFailure(cx, id, "value is callable");
         }
@@ -421,17 +422,12 @@ JSXrayTraits::resolveOwnProperty(JSContext *cx, const Wrapper &jsWrapper,
         return true;
     }
 
-    // Grab the JSClass. We require all Xrayable classes to have a ClassSpec.
-    const js::Class *clasp = js::GetObjectClass(target);
-    MOZ_ASSERT(clasp->spec.defined());
-    JSProtoKey protoKey = getProtoKey(holder);
-
     // Handle the 'constructor' property.
     if (id == GetRTIdByIndex(cx, XPCJSRuntime::IDX_CONSTRUCTOR)) {
         RootedObject constructor(cx);
         {
             JSAutoCompartment ac(cx, target);
-            if (!JS_GetClassObject(cx, protoKey, &constructor))
+            if (!JS_GetClassObject(cx, key, &constructor))
                 return false;
         }
         if (!JS_WrapObject(cx, &constructor))
@@ -452,17 +448,16 @@ JSXrayTraits::resolveOwnProperty(JSContext *cx, const Wrapper &jsWrapper,
         return JS_IdToValue(cx, className, desc.value());
     }
 
-    // Bail out for dependent classes, since all the rest of the properties we'll
-    // resolve here will live on the parent prototype.
-    if (js::StandardClassIsDependent(protoKey))
-        return true;
-
     // Compute the property name we're looking for. Indexed array properties
     // are handled above. We'll handle well-known symbols when we start
     // supporting Symbol.iterator in bug 918828.
     if (!JSID_IS_STRING(id))
         return true;
     Rooted<JSFlatString*> str(cx, JSID_TO_FLAT_STRING(id));
+
+    // Grab the JSClass. We require all Xrayable classes to have a ClassSpec.
+    const js::Class *clasp = js::GetObjectClass(target);
+    MOZ_ASSERT(clasp->spec.defined());
 
     // Scan through the functions.
     const JSFunctionSpec *fsMatch = nullptr;
@@ -694,11 +689,6 @@ JSXrayTraits::enumerateNames(JSContext *cx, HandleObject wrapper, unsigned flags
         return true;
     }
 
-    // Grab the JSClass. We require all Xrayable classes to have a ClassSpec.
-    const js::Class *clasp = js::GetObjectClass(target);
-    MOZ_ASSERT(clasp->spec.defined());
-    JSProtoKey protoKey = getProtoKey(holder);
-
     // Add the 'constructor' property.
     if (!props.append(GetRTIdByIndex(cx, XPCJSRuntime::IDX_CONSTRUCTOR)))
         return false;
@@ -707,10 +697,9 @@ JSXrayTraits::enumerateNames(JSContext *cx, HandleObject wrapper, unsigned flags
     if (IsErrorObjectKey(key) && !props.append(GetRTIdByIndex(cx, XPCJSRuntime::IDX_NAME)))
         return false;
 
-    // Bail out for dependent classes, since all the rest of the properties we'll
-    // resolve here will live on the parent prototype.
-    if (js::StandardClassIsDependent(protoKey))
-        return true;
+    // Grab the JSClass. We require all Xrayable classes to have a ClassSpec.
+    const js::Class *clasp = js::GetObjectClass(target);
+    MOZ_ASSERT(clasp->spec.defined());
 
     // Intern all the strings, and pass theme to the caller.
     for (const JSFunctionSpec *fs = clasp->spec.prototypeFunctions; fs && fs->name; ++fs) {
@@ -1712,9 +1701,14 @@ XrayToString(JSContext *cx, unsigned argc, Value *vp)
     }
 
     RootedObject obj(cx, XrayTraits::getTargetObject(wrapper));
-
-    if (UseDOMXray(obj))
+    XrayType type = GetXrayType(obj);
+    if (type == XrayForDOMObject)
         return NativeToString(cx, wrapper, obj, args.rval());
+
+    if (type != XrayForWrappedNative) {
+        JS_ReportError(cx, "XrayToString called on an incompatible object");
+        return false;
+    }
 
     static const char start[] = "[object XrayWrapper ";
     static const char end[] = "]";
@@ -1753,7 +1747,7 @@ DEBUG_CheckXBLCallable(JSContext *cx, JSObject *obj)
     // to a different XBL scope (which is ok).
     MOZ_ASSERT_IF(js::IsCrossCompartmentWrapper(obj),
                   xpc::IsContentXBLScope(js::GetObjectCompartment(js::UncheckedUnwrap(obj))));
-    MOZ_ASSERT(JS_ObjectIsCallable(cx, obj));
+    MOZ_ASSERT(JS::IsCallable(obj));
 }
 
 static void
@@ -2315,12 +2309,13 @@ template class SCSecurityXrayXPCWN;
 static nsQueryInterface
 do_QueryInterfaceNative(JSContext* cx, HandleObject wrapper)
 {
-    nsISupports* nativeSupports;
+    nsISupports* nativeSupports = nullptr;
     if (IsWrapper(wrapper) && WrapperFactory::IsXrayWrapper(wrapper)) {
         RootedObject target(cx, XrayTraits::getTargetObject(wrapper));
-        if (GetXrayType(target) == XrayForDOMObject) {
+        XrayType type = GetXrayType(target);
+        if (type == XrayForDOMObject) {
             nativeSupports = UnwrapDOMObjectToISupports(target);
-        } else {
+        } else if (type == XrayForWrappedNative) {
             XPCWrappedNative *wn = XPCWrappedNative::Get(target);
             nativeSupports = wn->Native();
         }

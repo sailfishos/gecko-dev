@@ -67,6 +67,7 @@ Volume::Volume(const nsCSubstring& aName)
     mCanBeShared(true),
     mIsSharing(false),
     mIsFormatting(false),
+    mIsUnmounting(false),
     mId(sNextId++)
 {
   DBG("Volume %s: created", NameStr());
@@ -96,6 +97,18 @@ Volume::SetIsFormatting(bool aIsFormatting)
   if (mIsFormatting) {
     mEventObserverList.Broadcast(this);
   }
+}
+
+void
+Volume::SetIsUnmounting(bool aIsUnmounting)
+{
+  if (aIsUnmounting == mIsUnmounting) {
+    return;
+  }
+  mIsUnmounting = aIsUnmounting;
+  LOG("Volume %s: IsUnmounting set to %d state %s",
+      NameStr(), (int)mIsUnmounting, StateStr(mState));
+  mEventObserverList.Broadcast(this);
 }
 
 void
@@ -201,17 +214,20 @@ Volume::SetState(Volume::STATE aNewState)
        mIsSharing = false;
        mUnmountRequested = false;
        mMountRequested = false;
+       mIsUnmounting = false;
        break;
 
      case nsIVolume::STATE_MOUNTED:
        mMountRequested = false;
        mIsFormatting = false;
        mIsSharing = false;
+       mIsUnmounting = false;
        break;
      case nsIVolume::STATE_FORMATTING:
        mFormatRequested = false;
        mIsFormatting = true;
        mIsSharing = false;
+       mIsUnmounting = false;
        break;
 
      case nsIVolume::STATE_SHARED:
@@ -221,6 +237,14 @@ Volume::SetState(Volume::STATE aNewState)
        // it's conceivable that a volume could already be in a shared state
        // when b2g starts.
        mIsSharing = true;
+       mIsUnmounting = false;
+       mIsFormatting = false;
+       break;
+
+     case nsIVolume::STATE_UNMOUNTING:
+       mIsUnmounting = true;
+       mIsFormatting = false;
+       mIsSharing = false;
        break;
 
      case nsIVolume::STATE_IDLE:
@@ -354,7 +378,7 @@ Volume::HandleVoldResponse(int aResponseCode, nsCWhitespaceTokenizer& aTokenizer
   // The volume name will have already been parsed, and the tokenizer will point
   // to the token after the volume name
   switch (aResponseCode) {
-    case ResponseCode::VolumeListResult: {
+    case ::ResponseCode::VolumeListResult: {
       // Each line will look something like:
       //
       //  sdcard /mnt/sdcard 1
@@ -373,7 +397,7 @@ Volume::HandleVoldResponse(int aResponseCode, nsCWhitespaceTokenizer& aTokenizer
       break;
     }
 
-    case ResponseCode::VolumeStateChange: {
+    case ::ResponseCode::VolumeStateChange: {
       // Format of the line looks something like:
       //
       //  Volume sdcard /mnt/sdcard state changed from 7 (Shared-Unmounted) to 1 (Idle-Unmounted)
@@ -391,12 +415,12 @@ Volume::HandleVoldResponse(int aResponseCode, nsCWhitespaceTokenizer& aTokenizer
       break;
     }
 
-    case ResponseCode::VolumeDiskInserted:
+    case ::ResponseCode::VolumeDiskInserted:
       SetMediaPresent(true);
       break;
 
-    case ResponseCode::VolumeDiskRemoved: // fall-thru
-    case ResponseCode::VolumeBadRemoval:
+    case ::ResponseCode::VolumeDiskRemoved: // fall-thru
+    case ::ResponseCode::VolumeBadRemoval:
       SetMediaPresent(false);
       break;
 

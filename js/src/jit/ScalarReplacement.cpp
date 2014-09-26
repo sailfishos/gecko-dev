@@ -137,7 +137,7 @@ static bool
 IsObjectEscaped(MInstruction *ins)
 {
     MOZ_ASSERT(ins->type() == MIRType_Object);
-    MOZ_ASSERT(ins->isNewObject() || ins->isGuardShape());
+    MOZ_ASSERT(ins->isNewObject() || ins->isGuardShape() || ins->isCreateThisWithTemplate());
 
     // Check if the object is escaped. If the object is not the first argument
     // of either a known Store / Load, then we consider it as escaped. This is a
@@ -146,8 +146,8 @@ IsObjectEscaped(MInstruction *ins)
         MNode *consumer = (*i)->consumer();
         if (!consumer->isDefinition()) {
             // Cannot optimize if it is observable from fun.arguments or others.
-            if (consumer->toResumePoint()->isObservableOperand(*i)) {
-                JitSpewDef(JitSpew_Escape, "Object is observable\n", ins);
+            if (!consumer->toResumePoint()->isRecoverableOperand(*i)) {
+                JitSpewDef(JitSpew_Escape, "Observable object cannot be recovered\n", ins);
                 return true;
             }
             continue;
@@ -525,8 +525,8 @@ IsArrayEscaped(MInstruction *ins)
         MNode *consumer = (*i)->consumer();
         if (!consumer->isDefinition()) {
             // Cannot optimize if it is observable from fun.arguments or others.
-            if (consumer->toResumePoint()->isObservableOperand(*i)) {
-                JitSpewDef(JitSpew_Escape, "Array is observable\n", ins);
+            if (!consumer->toResumePoint()->isRecoverableOperand(*i)) {
+                JitSpewDef(JitSpew_Escape, "Observable array cannot be recovered\n", ins);
                 return true;
             }
             continue;
@@ -952,7 +952,7 @@ ScalarReplacement(MIRGenerator *mir, MIRGraph &graph)
             return false;
 
         for (MInstructionIterator ins = block->begin(); ins != block->end(); ins++) {
-            if (ins->isNewObject() && !IsObjectEscaped(*ins)) {
+            if ((ins->isNewObject() || ins->isCreateThisWithTemplate()) && !IsObjectEscaped(*ins)) {
                 ObjectMemoryView view(graph.alloc(), *ins);
                 if (!replaceObject.run(view))
                     return false;

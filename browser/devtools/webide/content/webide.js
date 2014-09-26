@@ -7,7 +7,6 @@ const Cu = Components.utils;
 const Ci = Components.interfaces;
 
 Cu.import("resource:///modules/devtools/gDevTools.jsm");
-Cu.import("resource://gre/modules/FileUtils.jsm");
 Cu.import("resource://gre/modules/Task.jsm");
 
 const {devtools} = Cu.import("resource://gre/modules/devtools/Loader.jsm", {});
@@ -21,6 +20,7 @@ const ProjectEditor = require("projecteditor/projecteditor");
 const {Devices} = Cu.import("resource://gre/modules/devtools/Devices.jsm");
 const {GetAvailableAddons} = require("devtools/webide/addons");
 const {GetTemplatesJSON, GetAddonsJSON} = require("devtools/webide/remote-resources");
+const utils = require("devtools/webide/utils");
 
 const Strings = Services.strings.createBundle("chrome://browser/locale/devtools/webide.properties");
 
@@ -62,7 +62,7 @@ let UI = {
     window.addEventListener("focus", this.onfocus, true);
 
     AppProjects.load().then(() => {
-      this.openLastProject();
+      this.autoSelectProject();
     });
 
     // Auto install the ADB Addon Helper. Only once.
@@ -75,22 +75,9 @@ let UI = {
     }
     Services.prefs.setBoolPref("devtools.webide.autoinstallADBHelper", false);
 
-    this.setupDeck();
-  },
+    this.lastConnectedRuntime = Services.prefs.getCharPref("devtools.webide.lastConnectedRuntime");
 
-  openLastProject: function() {
-    let lastProjectLocation = Services.prefs.getCharPref("devtools.webide.lastprojectlocation");
-    let shouldRestore = Services.prefs.getBoolPref("devtools.webide.restoreLastProject");
-    if (lastProjectLocation && shouldRestore) {
-      let lastProject = AppProjects.get(lastProjectLocation);
-      if (lastProject) {
-        AppManager.selectedProject = lastProject;
-      } else {
-        AppManager.selectedProject = null;
-      }
-    } else {
-      AppManager.selectedProject = null;
-    }
+    this.setupDeck();
   },
 
   uninit: function() {
@@ -125,19 +112,23 @@ let UI = {
     switch (what) {
       case "runtimelist":
         this.updateRuntimeList();
+        this.autoConnectRuntime();
         break;
       case "connection":
         this.updateRuntimeButton();
         this.updateCommands();
         break;
       case "project":
-        this.updateTitle();
-        this.destroyToolbox();
-        this.updateCommands();
-        this.updateProjectButton();
-        this.openProject();
-        this.autoStartProject();
-        break;
+        this._updatePromise = Task.spawn(function() {
+          UI.updateTitle();
+          yield UI.destroyToolbox();
+          UI.updateCommands();
+          UI.updateProjectButton();
+          UI.openProject();
+          UI.autoStartProject();
+          UI.saveLastSelectedProject();
+        });
+        return;
       case "project-is-not-running":
       case "project-is-running":
       case "list-tabs-response":
@@ -145,6 +136,7 @@ let UI = {
         break;
       case "runtime":
         this.updateRuntimeButton();
+        this.saveLastConnectedRuntime();
         break;
       case "project-validated":
         this.updateTitle();
@@ -154,7 +146,12 @@ let UI = {
         break;
       case "install-progress":
         this.updateProgress(Math.round(100 * details.bytesSent / details.totalBytes));
+        break;
+      case "runtime-apps-found":
+        this.autoSelectProject();
+        break;
     };
+    this._updatePromise = promise.resolve();
   },
 
   openInBrowser: function(url) {
@@ -220,7 +217,7 @@ let UI = {
     this._busyTimeout = setTimeout(() => {
       this.unbusy();
       UI.reportError("error_operationTimeout", this._busyOperationDescription);
-    }, 30000);
+    }, 6000);
   },
 
   cancelBusyTimeout: function() {
@@ -248,10 +245,11 @@ let UI = {
       this.cancelBusyTimeout();
       this.unbusy();
     }, (e) => {
+      let message = operationDescription + (e ? (": " + e) : "");
       this.cancelBusyTimeout();
       let operationCanceled = e && e.canceled;
       if (!operationCanceled) {
-        UI.reportError("error_operationFail", operationDescription);
+        UI.reportError("error_operationFail", message);
         console.error(e);
       }
       this.unbusy();
@@ -343,6 +341,34 @@ let UI = {
     }
   },
 
+  autoConnectRuntime: function () {
+    // Automatically reconnect to the previously selected runtime,
+    // if available and has an ID
+    if (AppManager.selectedRuntime || !this.lastConnectedRuntime) {
+      return;
+    }
+    let [_, type, id] = this.lastConnectedRuntime.match(/^(\w+):(.+)$/);
+
+    type = type.toLowerCase();
+
+    // Local connection is mapped to AppManager.runtimeList.custom array
+    if (type == "local") {
+      type = "custom";
+    }
+
+    // We support most runtimes except simulator, that needs to be manually
+    // launched
+    if (type == "usb" || type == "wifi" || type == "custom") {
+      for (let runtime of AppManager.runtimeList[type]) {
+        // Some runtimes do not expose getID function and don't support
+        // autoconnect (like remote connection)
+        if (typeof(runtime.getID) == "function" && runtime.getID() == id) {
+          this.connectToRuntime(runtime);
+        }
+      }
+    }
+  },
+
   connectToRuntime: function(runtime) {
     let name = runtime.getName();
     let promise = AppManager.connectToRuntime(runtime);
@@ -357,6 +383,17 @@ let UI = {
       let name = AppManager.selectedRuntime.getName();
       labelNode.setAttribute("value", name);
     }
+  },
+
+  saveLastConnectedRuntime: function () {
+    if (AppManager.selectedRuntime &&
+        typeof(AppManager.selectedRuntime.getID) === "function") {
+      this.lastConnectedRuntime = AppManager.selectedRuntime.type + ":" + AppManager.selectedRuntime.getID();
+    } else {
+      this.lastConnectedRuntime = "";
+    }
+    Services.prefs.setCharPref("devtools.webide.lastConnectedRuntime",
+                               this.lastConnectedRuntime);
   },
 
   /********** PROJECTS **********/
@@ -450,18 +487,11 @@ let UI = {
       return;
     }
 
-    // Save last project location
-
-    if (project.location) {
-      Services.prefs.setCharPref("devtools.webide.lastprojectlocation", project.location);
-    }
-
     // Make sure the directory exist before we show Project Editor
 
     let forceDetailsOnly = false;
     if (project.type == "packaged") {
-      let directory = new FileUtils.File(project.location);
-      forceDetailsOnly = !directory.exists();
+      forceDetailsOnly = !utils.doesFileExist(project.location);
     }
 
     // Show only the details screen
@@ -500,6 +530,111 @@ let UI = {
       }
       yield UI.createToolbox();
     });
+  },
+
+  importAndSelectApp: Task.async(function* (source) {
+    let isPackaged = !!source.path;
+    let project;
+    try {
+      project = yield AppProjects[isPackaged ? "addPackaged" : "addHosted"](source);
+    } catch (e) {
+      if (e === "Already added") {
+        // Select project that's already been added,
+        // and allow it to be revalidated and selected
+        project = AppProjects.get(isPackaged ? source.path : source);
+      } else {
+        throw e;
+      }
+    }
+
+    // Validate project
+    yield AppManager.validateProject(project);
+
+    // Select project
+    AppManager.selectedProject = project;
+  }),
+
+  // Remember the last selected project on the runtime
+  saveLastSelectedProject: function() {
+    let shouldRestore = Services.prefs.getBoolPref("devtools.webide.restoreLastProject");
+    if (!shouldRestore) {
+      return;
+    }
+
+    // Ignore unselection of project on runtime disconnection
+    if (AppManager.connection.status != Connection.Status.CONNECTED) {
+      return;
+    }
+
+    let project = "", type = "";
+    let selected = AppManager.selectedProject;
+    if (selected) {
+      if (selected.type == "runtimeApp") {
+        type = "runtimeApp";
+        project = selected.app.manifestURL;
+      } else if (selected.type == "mainProcess") {
+        type = "mainProcess";
+      } else if (selected.type == "packaged" ||
+                 selected.type == "hosted") {
+        type = "local";
+        project = selected.location;
+      }
+    }
+    if (type) {
+      Services.prefs.setCharPref("devtools.webide.lastSelectedProject",
+                                 type + ":" + project);
+    } else {
+      Services.prefs.clearUserPref("devtools.webide.lastSelectedProject");
+    }
+  },
+
+  autoSelectProject: function() {
+    if (AppManager.selectedProject) {
+      return;
+    }
+    let shouldRestore = Services.prefs.getBoolPref("devtools.webide.restoreLastProject");
+    if (!shouldRestore) {
+      return;
+    }
+    let pref = Services.prefs.getCharPref("devtools.webide.lastSelectedProject");
+    if (!pref) {
+      return;
+    }
+    let m = pref.match(/^(\w+):(.*)$/);
+    if (!m) {
+      return;
+    }
+    let [_, type, project] = m;
+
+    if (type == "local") {
+      let lastProject = AppProjects.get(project);
+      if (lastProject) {
+        AppManager.selectedProject = lastProject;
+      }
+    }
+
+    // For other project types, we need to be connected to the runtime
+    if (AppManager.connection.status != Connection.Status.CONNECTED) {
+      return;
+    }
+
+    if (type == "mainProcess" && AppManager.isMainProcessDebuggable()) {
+      AppManager.selectedProject = {
+        type: "mainProcess",
+        name: Strings.GetStringFromName("mainProcess_label"),
+        icon: AppManager.DEFAULT_PROJECT_ICON
+      }
+    } else if (type == "runtimeApp") {
+      let app = AppManager.apps.get(project);
+      if (app) {
+        AppManager.selectedProject = {
+          type: "runtimeApp",
+          app: app.manifest,
+          icon: app.iconURL,
+          name: app.manifest.name
+        };
+      }
+    }
   },
 
   /********** DECK **********/
@@ -652,11 +787,12 @@ let UI = {
 
   destroyToolbox: function() {
     if (this.toolboxPromise) {
-      this.toolboxPromise.then(toolbox => {
+      return this.toolboxPromise.then(toolbox => {
         toolbox.destroy();
         this.toolboxPromise = null;
       }, console.error);
     }
+    return promise.resolve();
   },
 
   createToolbox: function() {
@@ -742,68 +878,29 @@ let Cmds = {
   importPackagedApp: function(location) {
     return UI.busyUntil(Task.spawn(function* () {
 
-      let directory;
+      let directory = utils.getPackagedDirectory(window, location);
 
-      if (!location) {
-        let fp = Cc["@mozilla.org/filepicker;1"].createInstance(Ci.nsIFilePicker);
-        fp.init(window, Strings.GetStringFromName("importPackagedApp_title"), Ci.nsIFilePicker.modeGetFolder);
-        let res = fp.show();
-        if (res == Ci.nsIFilePicker.returnCancel) {
-          return promise.resolve();
-        }
-        directory = fp.file;
-      } else {
-        directory = new FileUtils.File(location);
-      }
-
-      // Add project
-      let project = yield AppProjects.addPackaged(directory);
-
-      // Validate project
-      yield AppManager.validateProject(project);
-
-      // Select project
-      AppManager.selectedProject = project;
-    }), "importing packaged app");
-  },
-
-
-  importHostedApp: function(location) {
-    return UI.busyUntil(Task.spawn(function* () {
-      let ret = {value: null};
-
-      let url;
-      if (!location) {
-        Services.prompt.prompt(window,
-                               Strings.GetStringFromName("importHostedApp_title"),
-                               Strings.GetStringFromName("importHostedApp_header"),
-                               ret, null, {});
-        location = ret.value;
-      }
-
-      if (!location) {
+      if (!directory) {
+        // User cancelled directory selection
         return;
       }
 
-      // Clean location string and add "http://" if missing
-      location = location.trim();
-      try { // Will fail if no scheme
-        Services.io.extractScheme(location);
-      } catch(e) {
-        location = "http://" + location;
-      }
-
-      // Add project
-      let project = yield AppProjects.addHosted(location)
-
-      // Validate project
-      yield AppManager.validateProject(project);
-
-      // Select project
-      AppManager.selectedProject = project;
-    }), "importing hosted app");
+      yield UI.importAndSelectApp(directory);
+    }), "importing packaged app");
   },
 
+  importHostedApp: function(location) {
+    return UI.busyUntil(Task.spawn(function* () {
+
+      let url = utils.getHostedURL(window, location);
+
+      if (!url) {
+        return;
+      }
+
+      yield UI.importAndSelectApp(url);
+    }), "importing hosted app");
+  },
 
   showProjectPanel: function() {
     let deferred = promise.defer();
@@ -857,9 +954,12 @@ let Cmds = {
 
 
     let runtimeappsHeaderNode = document.querySelector("#panel-header-runtimeapps");
-    let sortedApps = AppManager.webAppsStore.object.all;
+    let sortedApps = [];
+    for (let [manifestURL, app] of AppManager.apps) {
+      sortedApps.push(app);
+    }
     sortedApps = sortedApps.sort((a, b) => {
-      return a.name > b.name;
+      return a.manifest.name > b.manifest.name;
     });
     let mainProcess = AppManager.isMainProcessDebuggable();
     if (AppManager.connection.status == Connection.Status.CONNECTED &&
@@ -894,16 +994,16 @@ let Cmds = {
       let app = sortedApps[i];
       let panelItemNode = document.createElement("toolbarbutton");
       panelItemNode.className = "panel-item";
-      panelItemNode.setAttribute("label", app.name);
+      panelItemNode.setAttribute("label", app.manifest.name);
       panelItemNode.setAttribute("image", app.iconURL);
       runtimeAppsNode.appendChild(panelItemNode);
       panelItemNode.addEventListener("click", () => {
         UI.hidePanels();
         AppManager.selectedProject = {
           type: "runtimeApp",
-          app: app,
+          app: app.manifest,
           icon: app.iconURL,
-          name: app.name
+          name: app.manifest.name
         };
       }, true);
     }
@@ -1058,4 +1158,4 @@ let Cmds = {
   showPrefs: function() {
     UI.selectDeckPanel("prefs");
   },
-}
+};

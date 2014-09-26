@@ -246,6 +246,15 @@ pref("security.alternate_certificate_error_page", "certerror");
 
 pref("security.warn_viewing_mixed", false); // Warning is disabled.  See Bug 616712.
 
+// 2 = strict certificate pinning checks.
+// This default preference is more strict than Firefox because B2G
+// currently does not have a way to install local root certificates.
+// Strict checking is effectively equivalent to non-strict checking as
+// long as that is true.  If an ability to add local certificates is
+// added, there may be a need to change this pref.
+pref("security.cert_pinning.enforcement_level", 2);
+
+
 // Override some named colors to avoid inverse OS themes
 pref("ui.-moz-dialog", "#efebe7");
 pref("ui.-moz-dialogtext", "#101010");
@@ -735,14 +744,14 @@ pref("hal.processPriorityManager.gonk.LowCPUNice", 18);
 // priority can be enabled by setting this pref to a value between 1 and 99.
 // Note that audio processing currently runs at RT priority 2 or 3 at most.
 //
-// If RT priority is disabled, then the compositor nice value is used.  The
-// code will default to ANDROID_PRIORITY_URGENT_DISPLAY which is -8.  Per gfx
-// request we are keeping the compositor at nice level 0 until we can complete
-// the investigation in bug 982972.
+// If RT priority is disabled, then the compositor nice value is used. We prefer
+// to use a nice value of -4, which matches Android's preferences. Setting a preference
+// of RT priority 1 would mean it is higher than audio, which is -16. The compositor
+// priority must be below the audio thread.
 //
 // Do not change these values without gfx team review.
 pref("hal.gonk.COMPOSITOR.rt_priority", 0);
-pref("hal.gonk.COMPOSITOR.nice", 0);
+pref("hal.gonk.COMPOSITOR.nice", -4);
 
 // Fire a memory pressure event when the system has less than Xmb of memory
 // remaining.  You should probably set this just above Y.KillUnderKB for

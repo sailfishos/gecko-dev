@@ -62,7 +62,7 @@ GLIB_VERSION=1.2.0
 PERL_VERSION=5.006
 CAIRO_VERSION=1.10
 PANGO_VERSION=1.22.0
-GTK2_VERSION=2.10.0
+GTK2_VERSION=2.18.0
 GTK3_VERSION=3.0.0
 WINDRES_VERSION=2.14.90
 W32API_VERSION=3.14
@@ -2074,7 +2074,7 @@ ia64*-hpux*)
         LIBS="$LIBS -luuid -lgdi32 -lwinmm -lwsock32 -luserenv -lsecur32 -lnetapi32"
         MOZ_FIX_LINK_PATHS=
         DLL_PREFIX=
-        IMPORT_LIB_SUFFIX=dll.a
+        IMPORT_LIB_SUFFIX=a
 
         WIN32_CONSOLE_EXE_LDFLAGS=-mconsole
         WIN32_GUI_EXE_LDFLAGS=-mwindows
@@ -3519,7 +3519,7 @@ MOZ_ARG_WITH_BOOL(system-nss,
     _USE_SYSTEM_NSS=1 )
 
 if test -n "$_USE_SYSTEM_NSS"; then
-    AM_PATH_NSS(3.16.1, [MOZ_NATIVE_NSS=1], [AC_MSG_ERROR([you don't have NSS installed or your version is too old])])
+    AM_PATH_NSS(3.17.1, [MOZ_NATIVE_NSS=1], [AC_MSG_ERROR([you don't have NSS installed or your version is too old])])
 fi
 
 if test -n "$MOZ_NATIVE_NSS"; then
@@ -3793,6 +3793,7 @@ MOZ_PEERCONNECTION=
 MOZ_SRTP=
 MOZ_WEBRTC_SIGNALING=
 MOZ_WEBRTC_ASSERT_ALWAYS=1
+MOZ_WEBRTC_HARDWARE_AEC_NS=
 MOZ_SCTP=
 MOZ_ANDROID_OMX=
 MOZ_MEDIA_NAVIGATOR=
@@ -5006,11 +5007,24 @@ else
     MOZ_SYNTH_PICO=
 fi
 
+dnl ========================================================
+dnl = Force hardware AEC, disable webrtc.org AEC
+dnl ========================================================
+MOZ_ARG_ENABLE_BOOL(hardware-aec-ns,
+[  --enable-hardware-aec-ns   Enable support for hardware AEC and noise suppression],
+    MOZ_WEBRTC_HARDWARE_AEC_NS=1,
+    MOZ_WEBRTC_HARDWARE_AEC_NS=)
+
+if test -n "$MOZ_WEBRTC_HARDWARE_AEC_NS"; then
+    AC_DEFINE(MOZ_WEBRTC_HARDWARE_AEC_NS)
+fi
+
 AC_SUBST(MOZ_WEBRTC)
 AC_SUBST(MOZ_WEBRTC_LEAKING_TESTS)
 AC_SUBST(MOZ_WEBRTC_SIGNALING)
 AC_SUBST(MOZ_PEERCONNECTION)
 AC_SUBST(MOZ_WEBRTC_ASSERT_ALWAYS)
+AC_SUBST(MOZ_WEBRTC_HARDWARE_AEC_NS)
 AC_SUBST(MOZ_SCTP)
 AC_SUBST(MOZ_SRTP)
 AC_SUBST_LIST(MOZ_WEBRTC_X11_LIBS)
@@ -6207,13 +6221,13 @@ if test "$OS_ARCH" = "WINNT"; then
       else
           AC_MSG_RESULT([no])
           if test -z "$CROSS_COMPILE"; then
-            AC_MSG_ERROR([To build the installer you must have the latest MozillaBuild or Unicode NSIS version $REQ_NSIS_MAJOR_VER.$MIN_NSIS_MINOR_VER or greater in your path.])
+            AC_MSG_ERROR([To build the installer you must have the latest MozillaBuild or Unicode NSIS version $MIN_NSIS_MAJOR_VER.$MIN_NSIS_MINOR_VER or greater in your path.])
           else
             MAKENSISU=
           fi
       fi
     elif test -z "$CROSS_COMPILE"; then
-      AC_MSG_ERROR([To build the installer you must have the latest MozillaBuild or Unicode NSIS version $REQ_NSIS_MAJOR_VER.$MIN_NSIS_MINOR_VER or greater in your path.])
+      AC_MSG_ERROR([To build the installer you must have the latest MozillaBuild or Unicode NSIS version $MIN_NSIS_MAJOR_VER.$MIN_NSIS_MINOR_VER or greater in your path.])
     else
       MAKENSISU=
     fi
@@ -6939,11 +6953,7 @@ if test "${OS_TARGET}" = "Android"; then
   :
 elif test "${OS_TARGET}" = "WINNT" -o "${OS_TARGET}" = "Darwin"; then
   dnl On Windows and OSX, we want to link all our binaries against mozglue
-  if test -z "$GNU_CC"; then
-    MOZ_GLUE_LDFLAGS='$(call EXPAND_LIBNAME_PATH,mozglue,$(LIBXUL_DIST)/lib)'
-  else
-    MOZ_GLUE_LDFLAGS='-L$(LIBXUL_DIST)/lib $(call EXPAND_LIBNAME,mozglue)'
-  fi
+  MOZ_GLUE_LDFLAGS='$(call EXPAND_LIBNAME_PATH,mozglue,$(LIBXUL_DIST)/lib)'
 else
   dnl On other Unix systems, we only want to link executables against mozglue
   MOZ_GLUE_PROGRAM_LDFLAGS='$(MKSHLIB_FORCE_ALL) $(call EXPAND_LIBNAME_PATH,mozglue,$(LIBXUL_DIST)/lib)'
@@ -7259,17 +7269,6 @@ MOZ_ARG_ENABLE_BOOL(gczeal,
     JS_GC_ZEAL= )
 if test -n "$JS_GC_ZEAL" -o -n "$MOZ_DEBUG"; then
     AC_DEFINE(JS_GC_ZEAL)
-fi
-
-dnl ========================================================
-dnl = Perform moving GC stack rooting analysis
-dnl ========================================================
-MOZ_ARG_ENABLE_BOOL(root-analysis,
-[  --enable-root-analysis  Enable moving GC stack root analysis],
-    JSGC_ROOT_ANALYSIS=1,
-    JSGC_ROOT_ANALYSIS= )
-if test -n "$JSGC_ROOT_ANALYSIS"; then
-    AC_DEFINE(JSGC_ROOT_ANALYSIS)
 fi
 
 MOZ_CHECK_CCACHE

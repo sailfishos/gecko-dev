@@ -76,6 +76,7 @@ class nsIParser;
 class nsIParserService;
 class nsIPresShell;
 class nsIPrincipal;
+class nsIRequest;
 class nsIRunnable;
 class nsIScriptContext;
 class nsIScriptGlobalObject;
@@ -689,6 +690,11 @@ public:
   static void GetEventArgNames(int32_t aNameSpaceID, nsIAtom *aEventName,
                                bool aIsForWindow,
                                uint32_t *aArgCount, const char*** aArgNames);
+
+  /**
+   * Returns true if this document is in a Private Browsing window.
+   */
+  static bool IsInPrivateBrowsing(nsIDocument* aDoc);
 
   /**
    * If aNode is not an element, return true exactly when aContent's binding
@@ -1965,27 +1971,22 @@ public:
   static nsresult URIInheritsSecurityContext(nsIURI *aURI, bool *aResult);
 
   /**
-   * Set the given principal as the principal on the nsILoadInfo of the given
-   * channel, and tell the channel to inherit it if needed.  aPrincipal may be
-   * null, in which case this method is a no-op.
-   *
-   * If aLoadingPrincipal is not null, aURI must be the URI of aChannel.  If
-   * aInheritForAboutBlank is true, then about:blank will be told to inherit the
-   * principal. If aForceInherit is true, the channel will be told to inherit
-   * the principal no matter what, as long as the principal is not null.
-   *
-   * If aIsSandboxed is true, then aLoadingPrincipal must not be null.  In this
-   * case, the owner on the channel, if any, will be reset to null and the
-   * nsILoadInfo will say the channel should be sandboxed.
-   *
-   * The return value is whether the channel was told to inherit the principal.
-   */
-  static bool SetUpChannelOwner(nsIPrincipal* aLoadingPrincipal,
-                                nsIChannel* aChannel,
-                                nsIURI* aURI,
-                                bool aInheritForAboutBlank,
-                                bool aIsSandboxed,
-                                bool aForceInherit);
+    * Called before a channel is created to query whether the new
+    * channel should inherit the principal.
+    *
+    * The argument aLoadingPrincipal must not be null. The argument
+    * aURI must be the URI of the new channel. If aInheritForAboutBlank
+    * is true, then about:blank will be told to inherit the principal.
+    * If aForceInherit is true, the new channel will be told to inherit
+    * the principal no matter what.
+    *
+    * The return value is whether the new channel should inherit
+    * the principal.
+    */
+  static bool ChannelShouldInheritPrincipal(nsIPrincipal* aLoadingPrincipal,
+                                            nsIURI* aURI,
+                                            bool aInheritForAboutBlank,
+                                            bool aForceInherit);
 
   static nsresult Btoa(const nsAString& aBinaryData,
                        nsAString& aAsciiBase64String);
@@ -2172,6 +2173,11 @@ public:
    * response.
    */
   static bool IsForbiddenResponseHeader(const nsACString& aHeader);
+
+  /**
+   * Returns the inner window ID for the window associated with a request,
+   */
+  static uint64_t GetInnerWindowID(nsIRequest* aRequest);
 
 private:
   static bool InitializeEventTable();

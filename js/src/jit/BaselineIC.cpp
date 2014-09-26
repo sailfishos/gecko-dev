@@ -5967,8 +5967,7 @@ DoBindNameFallback(JSContext *cx, BaselineFrame *frame, ICBindName_Fallback *stu
     RootedPropertyName name(cx, frame->script()->getName(pc));
 
     RootedObject scope(cx);
-    RootedShape shape(cx);
-    if (!LookupNameUnqualified(cx, name, scopeChain, &scope, &shape))
+    if (!LookupNameUnqualified(cx, name, scopeChain, &scope))
         return false;
 
     res.setObject(*scope);
@@ -6506,7 +6505,7 @@ ComputeGetPropResult(JSContext *cx, BaselineFrame *frame, JSOp op, HandlePropert
 {
     // Handle arguments.length and arguments.callee on optimized arguments, as
     // it is not an object.
-    if (val.isMagic(JS_OPTIMIZED_ARGUMENTS) && IsOptimizedArguments(frame, val.address())) {
+    if (val.isMagic(JS_OPTIMIZED_ARGUMENTS) && IsOptimizedArguments(frame, val)) {
         if (op == JSOP_LENGTH) {
             res.setInt32(frame->numActualArgs());
         } else {
@@ -8513,7 +8512,8 @@ DoCallFallback(JSContext *cx, BaselineFrame *frame, ICCall_Fallback *stub_, uint
 
     // Handle funapply with JSOP_ARGUMENTS
     if (op == JSOP_FUNAPPLY && argc == 2 && args[1].isMagic(JS_OPTIMIZED_ARGUMENTS)) {
-        if (!GuardFunApplyArgumentsOptimization(cx, frame, callee, args, argc))
+        CallArgs callArgs = CallArgsFromVp(argc, vp);
+        if (!GuardFunApplyArgumentsOptimization(cx, frame, callArgs))
             return false;
     }
 
@@ -8533,7 +8533,7 @@ DoCallFallback(JSContext *cx, BaselineFrame *frame, ICCall_Fallback *stub_, uint
         return false;
 
     if (op == JSOP_NEW) {
-        if (!InvokeConstructor(cx, callee, argc, args, res.address()))
+        if (!InvokeConstructor(cx, callee, argc, args, res))
             return false;
     } else if (op == JSOP_EVAL && frame->scopeChain()->global().valueIsEval(callee)) {
         if (!DirectEval(cx, CallArgsFromVp(argc, vp)))

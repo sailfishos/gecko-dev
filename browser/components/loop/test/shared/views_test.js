@@ -20,6 +20,9 @@ describe("loop.shared.views", function() {
   beforeEach(function() {
     sandbox = sinon.sandbox.create();
     sandbox.useFakeTimers(); // exposes sandbox.clock as a fake timer
+    sandbox.stub(l10n, "get", function(x) {
+      return "translated:" + x;
+    });
   });
 
   afterEach(function() {
@@ -187,13 +190,12 @@ describe("loop.shared.views", function() {
         initSession: sandbox.stub().returns(fakeSession)
       };
       model = new sharedModels.ConversationModel(fakeSessionData, {
-        sdk: fakeSDK,
-        pendingCallTimeout: 1000
+        sdk: fakeSDK
       });
     });
 
     describe("#componentDidMount", function() {
-      it("should start a session", function() {
+      it("should start a session by default", function() {
         sandbox.stub(model, "startSession");
 
         mountTestComponent({
@@ -203,6 +205,19 @@ describe("loop.shared.views", function() {
         });
 
         sinon.assert.calledOnce(model.startSession);
+      });
+
+      it("shouldn't start a session if initiate is false", function() {
+        sandbox.stub(model, "startSession");
+
+        mountTestComponent({
+          initiate: false,
+          sdk: fakeSDK,
+          model: model,
+          video: {enabled: true}
+        });
+
+        sinon.assert.notCalled(model.startSession);
       });
 
       it("should set the correct stream publish options", function() {
@@ -412,9 +427,6 @@ describe("loop.shared.views", function() {
     var comp, fakeFeedbackApiClient;
 
     beforeEach(function() {
-      sandbox.stub(l10n, "get", function(x) {
-        return x;
-      });
       fakeFeedbackApiClient = {send: sandbox.stub()};
       comp = TestUtils.renderIntoDocument(sharedViews.FeedbackView({
         feedbackApiClient: fakeFeedbackApiClient
@@ -589,9 +601,6 @@ describe("loop.shared.views", function() {
     }
 
     beforeEach(function() {
-      sandbox.stub(l10n, "get", function(x) {
-        return "translated:" + x;
-      });
       coll = new sharedModels.NotificationCollection();
       view = mountTestComponent({notifications: coll});
       testNotif = {level: "warning", message: "foo"};

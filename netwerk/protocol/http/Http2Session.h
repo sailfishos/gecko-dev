@@ -211,6 +211,9 @@ public:
   nsISocketTransport *SocketTransport() { return mSocketTransport; }
   int64_t ServerSessionWindow() { return mServerSessionWindow; }
   void DecrementServerSessionWindow (uint32_t bytes) { mServerSessionWindow -= bytes; }
+  void GetNegotiatedToken(nsACString &s) { s.Assign(mNegotiatedToken); }
+
+  void SendPing() MOZ_OVERRIDE;
 
 private:
 
@@ -441,6 +444,9 @@ private:
   PRIntervalTime       mLastDataReadEpoch; // used for IdleTime()
   PRIntervalTime       mPingSentEpoch;
 
+  PRIntervalTime       mPreviousPingThreshold; // backup for the former value
+  bool                 mPreviousUsed;          // true when backup is used
+
   // used as a temporary buffer while enumerating the stream hash during GoAway
   nsDeque  mGoAwayStreamsToRestart;
 
@@ -455,6 +461,9 @@ private:
   // of that state so we can behave appropriately.
   bool mWaitingForSettingsAck;
   bool mGoAwayOnPush;
+
+  // For caching whether we negotiated "h2" or "h2-<draft>"
+  nsCString mNegotiatedToken;
 
 private:
 /// connect tunnels

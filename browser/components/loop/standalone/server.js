@@ -7,17 +7,27 @@ var app = express();
 
 var port = process.env.PORT || 3000;
 var loopServerPort = process.env.LOOP_SERVER_PORT || 5000;
+var feedbackApiUrl = process.env.LOOP_FEEDBACK_API_URL ||
+                     "https://input.allizom.org/api/v1/feedback";
+var feedbackProductName = process.env.LOOP_FEEDBACK_PRODUCT_NAME || "Loop";
 
 function getConfigFile(req, res) {
   "use strict";
 
   res.set('Content-Type', 'text/javascript');
-  res.send(
-    "var loop = loop || {};" +
-    "loop.config = loop.config || {};" +
-    "loop.config.serverUrl = 'http://localhost:" + loopServerPort + "';" +
-    "loop.config.pendingCallTimeout = 20000;"
-  );
+  res.send([
+    "var loop = loop || {};",
+    "loop.config = loop.config || {};",
+    "loop.config.serverUrl = 'http://localhost:" + loopServerPort + "';",
+    "loop.config.feedbackApiUrl = '" + feedbackApiUrl + "';",
+    "loop.config.feedbackProductName = '" + feedbackProductName + "';",
+    // XXX Update with the real marketplace url once the FxOS Loop app is
+    //     uploaded to the marketplace bug 1053424
+    "loop.config.marketplaceUrl = 'http://fake-market.herokuapp.com/iframe-install.html'",
+    "loop.config.fxosApp = loop.config.fxosApp || {};",
+    "loop.config.fxosApp.name = 'Loop';",
+    "loop.config.fxosApp.manifestUrl = 'http://fake-market.herokuapp.com/apps/packagedApp/manifest.webapp';"
+  ].join("\n"));
 }
 
 app.get('/content/config.js', getConfigFile);

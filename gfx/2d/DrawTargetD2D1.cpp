@@ -155,7 +155,10 @@ DrawTargetD2D1::DrawFilter(FilterNode *aNode,
 
   mDC->SetAntialiasMode(D2DAAMode(aOptions.mAntialiasMode));
 
-  mDC->DrawImage(static_cast<FilterNodeD2D1*>(aNode)->OutputEffect(), D2DPoint(aDestPoint), D2DRect(aSourceRect));
+  FilterNodeD2D1* node = static_cast<FilterNodeD2D1*>(aNode);
+  node->WillDraw(this);
+
+  mDC->DrawImage(node->OutputEffect(), D2DPoint(aDestPoint), D2DRect(aSourceRect));
 
   FinalizeDrawing(aOptions.mCompositionOp, ColorPattern(Color()));
 }
@@ -620,7 +623,7 @@ DrawTargetD2D1::CreateSourceSurfaceFromData(unsigned char *aData,
                                  byRef(bitmap));
 
   if (FAILED(hr)) {
-    gfxCriticalError() << "[D2D1.1] CreateBitmap failure " << aSize << " Code: " << hr;
+    gfxCriticalError() << "[D2D1.1] CreateBitmap failure " << aSize << " Code: " << hexa(hr);
   }
 
   if (!bitmap) {
@@ -649,14 +652,14 @@ DrawTargetD2D1::CreatePathBuilder(FillRule aFillRule) const
   HRESULT hr = factory()->CreatePathGeometry(byRef(path));
 
   if (FAILED(hr)) {
-    gfxWarning() << *this << ": Failed to create Direct2D Path Geometry. Code: " << hr;
+    gfxWarning() << *this << ": Failed to create Direct2D Path Geometry. Code: " << hexa(hr);
     return nullptr;
   }
 
   RefPtr<ID2D1GeometrySink> sink;
   hr = path->Open(byRef(sink));
   if (FAILED(hr)) {
-    gfxWarning() << *this << ": Failed to access Direct2D Path Geometry. Code: " << hr;
+    gfxWarning() << *this << ": Failed to access Direct2D Path Geometry. Code: " << hexa(hr);
     return nullptr;
   }
 
@@ -691,7 +694,7 @@ DrawTargetD2D1::CreateGradientStops(GradientStop *rawStops, uint32_t aNumStops, 
   delete [] stops;
 
   if (FAILED(hr)) {
-    gfxWarning() << *this << ": Failed to create GradientStopCollection. Code: " << hr;
+    gfxWarning() << *this << ": Failed to create GradientStopCollection. Code: " << hexa(hr);
     return nullptr;
   }
 
@@ -701,7 +704,7 @@ DrawTargetD2D1::CreateGradientStops(GradientStop *rawStops, uint32_t aNumStops, 
 TemporaryRef<FilterNode>
 DrawTargetD2D1::CreateFilter(FilterType aType)
 {
-  return FilterNodeD2D1::Create(this, mDC, aType);
+  return FilterNodeD2D1::Create(mDC, aType);
 }
 
 bool
@@ -712,7 +715,7 @@ DrawTargetD2D1::Init(ID3D11Texture2D* aTexture, SurfaceFormat aFormat)
   hr = Factory::GetD2D1Device()->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_ENABLE_MULTITHREADED_OPTIMIZATIONS, byRef(mDC));
 
   if (FAILED(hr)) {
-    gfxWarning() << *this << ": Error " << hr << " failed to initialize new DeviceContext.";
+    gfxWarning() << *this << ": Error " << hexa(hr) << " failed to initialize new DeviceContext.";
     return false;
   }
 
@@ -732,7 +735,7 @@ DrawTargetD2D1::Init(ID3D11Texture2D* aTexture, SurfaceFormat aFormat)
   hr = mDC->CreateBitmapFromDxgiSurface(dxgiSurface, props, (ID2D1Bitmap1**)byRef(mBitmap));
 
   if (FAILED(hr)) {
-    gfxCriticalError() << "[D2D1.1] CreateBitmapFromDxgiSurface failure Code: " << hr;
+    gfxCriticalError() << "[D2D1.1] CreateBitmapFromDxgiSurface failure Code: " << hexa(hr);
     return false;
   }
 
@@ -748,7 +751,7 @@ DrawTargetD2D1::Init(ID3D11Texture2D* aTexture, SurfaceFormat aFormat)
   hr = mDC->CreateBitmap(D2DIntSize(mSize), nullptr, 0, props, (ID2D1Bitmap1**)byRef(mTempBitmap));
 
   if (FAILED(hr)) {
-    gfxCriticalError() << "[D2D1.1] CreateBitmap failure " << mSize << " Code: " << hr;
+    gfxCriticalError() << "[D2D1.1] CreateBitmap failure " << mSize << " Code: " << hexa(hr);
     return false;
   }
 
@@ -766,7 +769,7 @@ DrawTargetD2D1::Init(const IntSize &aSize, SurfaceFormat aFormat)
   hr = Factory::GetD2D1Device()->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_ENABLE_MULTITHREADED_OPTIMIZATIONS, byRef(mDC));
 
   if (FAILED(hr)) {
-    gfxWarning() << *this << ": Error " << hr << " failed to initialize new DeviceContext.";
+    gfxWarning() << *this << ": Error " << hexa(hr) << " failed to initialize new DeviceContext.";
     return false;
   }
 
@@ -786,7 +789,7 @@ DrawTargetD2D1::Init(const IntSize &aSize, SurfaceFormat aFormat)
   mDC->CreateBitmap(D2DIntSize(aSize), nullptr, 0, props, (ID2D1Bitmap1**)byRef(mBitmap));
 
   if (FAILED(hr)) {
-    gfxWarning() << *this << ": Error " << hr << " failed to create new CommandList.";
+    gfxWarning() << *this << ": Error " << hexa(hr) << " failed to create new CommandList.";
     return false;
   }
 
@@ -1283,7 +1286,7 @@ DrawTargetD2D1::OptimizeSourceSurface(SourceSurface* aSurface) const
                                  byRef(bitmap));
 
   if (FAILED(hr)) {
-    gfxCriticalError() << "[D2D1.1] CreateBitmap failure " << data->GetSize() << " Code: " << hr;
+    gfxCriticalError() << "[D2D1.1] CreateBitmap failure " << data->GetSize() << " Code: " << hexa(hr);
   }
 
   data->Unmap();

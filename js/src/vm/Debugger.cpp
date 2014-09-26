@@ -343,9 +343,18 @@ Breakpoint::nextInSite()
 /*** Debugger hook dispatch **********************************************************************/
 
 Debugger::Debugger(JSContext *cx, JSObject *dbg)
-  : object(dbg), uncaughtExceptionHook(nullptr), enabled(true), trackingAllocationSites(false),
-    allocationsLogLength(0), maxAllocationsLogLength(DEFAULT_MAX_ALLOCATIONS_LOG_LENGTH),
-    frames(cx->runtime()), scripts(cx), sources(cx), objects(cx), environments(cx)
+  : object(dbg),
+    uncaughtExceptionHook(nullptr),
+    enabled(true),
+    trackingAllocationSites(false),
+    allocationSamplingProbability(1.0),
+    allocationsLogLength(0),
+    maxAllocationsLogLength(DEFAULT_MAX_ALLOCATIONS_LOG_LENGTH),
+    frames(cx->runtime()),
+    scripts(cx),
+    sources(cx),
+    objects(cx),
+    environments(cx)
 {
     assertSameCompartment(cx, dbg);
 
@@ -3296,7 +3305,7 @@ DebuggerScript_getOffsetLine(JSContext *cx, unsigned argc, Value *vp)
     size_t offset;
     if (!ScriptOffset(cx, script, args[0], &offset))
         return false;
-    unsigned lineno = JS_PCToLineNumber(cx, script, script->offsetToPC(offset));
+    unsigned lineno = PCToLineNumber(script, script->offsetToPC(offset));
     args.rval().setNumber(lineno);
     return true;
 }
@@ -4696,7 +4705,7 @@ DebuggerFrame_getOnStep(JSContext *cx, unsigned argc, Value *vp)
 {
     THIS_FRAME(cx, argc, vp, "get onStep", args, thisobj, frame);
     (void) frame;  // Silence GCC warning
-    Value handler = thisobj->getReservedSlot(JSSLOT_DEBUGFRAME_ONSTEP_HANDLER);
+    RootedValue handler(cx, thisobj->getReservedSlot(JSSLOT_DEBUGFRAME_ONSTEP_HANDLER));
     JS_ASSERT(IsValidHook(handler));
     args.rval().set(handler);
     return true;
@@ -4735,7 +4744,7 @@ DebuggerFrame_getOnPop(JSContext *cx, unsigned argc, Value *vp)
 {
     THIS_FRAME(cx, argc, vp, "get onPop", args, thisobj, frame);
     (void) frame;  // Silence GCC warning
-    Value handler = thisobj->getReservedSlot(JSSLOT_DEBUGFRAME_ONPOP_HANDLER);
+    RootedValue handler(cx, thisobj->getReservedSlot(JSSLOT_DEBUGFRAME_ONPOP_HANDLER));
     JS_ASSERT(IsValidHook(handler));
     args.rval().set(handler);
     return true;

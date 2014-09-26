@@ -2786,7 +2786,7 @@ nsLayoutUtils::GetOrMaybeCreateDisplayPort(nsDisplayListBuilder& aBuilder,
       LayerMargin displayportMargins = AsyncPanZoomController::CalculatePendingDisplayPort(
           metrics, ScreenPoint(0.0f, 0.0f), 0.0);
       nsIPresShell* presShell = aScrollFrame->PresContext()->GetPresShell();
-      gfx::IntSize alignment = gfxPrefs::LayersTilesEnabled()
+      gfx::IntSize alignment = gfxPlatform::GetPlatform()->UseTiling()
           ? gfx::IntSize(gfxPrefs::LayersTileWidth(), gfxPrefs::LayersTileHeight()) :
             gfx::IntSize(0, 0);
       nsLayoutUtils::SetDisplayPortMargins(
@@ -5091,17 +5091,19 @@ ComputeSnappedImageDrawingParameters(gfxContext*     aCtx,
 
   gfxSize destScale = didSnap ? gfxSize(currentMatrix._11, currentMatrix._22)
                               : gfxSize(1.0, 1.0);
-  gfxSize snappedDest(NSAppUnitsToIntPixels(dest.width * destScale.width,
-                                            aAppUnitsPerDevPixel),
-                      NSAppUnitsToIntPixels(dest.height * destScale.height,
-                                            aAppUnitsPerDevPixel));
+  gfxSize appUnitScaledDest(dest.width * destScale.width,
+                            dest.height * destScale.height);
+  gfxSize scaledDest = appUnitScaledDest / aAppUnitsPerDevPixel;
+  gfxSize snappedScaledDest =
+    gfxSize(NSAppUnitsToIntPixels(appUnitScaledDest.width, aAppUnitsPerDevPixel),
+            NSAppUnitsToIntPixels(appUnitScaledDest.height, aAppUnitsPerDevPixel));
 
-  if (snappedDest.IsEmpty()) {
+  if (scaledDest.IsEmpty() || snappedScaledDest.IsEmpty()) {
     return SnappedImageDrawingParameters();
   }
 
   nsIntSize intImageSize =
-    aImage->OptimalImageSizeForDest(snappedDest,
+    aImage->OptimalImageSizeForDest(snappedScaledDest,
                                     imgIContainer::FRAME_CURRENT,
                                     aGraphicsFilter, aImageFlags);
   gfxSize imageSize(intImageSize.width, intImageSize.height);
@@ -5149,7 +5151,7 @@ ComputeSnappedImageDrawingParameters(gfxContext*     aCtx,
       anchorPoint.Round();
     }
 
-    gfxRect anchoredDestRect(anchorPoint, snappedDest);
+    gfxRect anchoredDestRect(anchorPoint, scaledDest);
     gfxRect anchoredImageRect(imageSpaceAnchorPoint, imageSize);
     transform = TransformBetweenRects(anchoredImageRect, anchoredDestRect);
     invTransform = TransformBetweenRects(anchoredDestRect, anchoredImageRect);
@@ -6698,8 +6700,8 @@ nsLayoutUtils::UpdateImageVisibilityForFrame(nsIFrame* aImageFrame)
 }
 
 /* static */ bool
-nsLayoutUtils::GetContentViewerBounds(nsPresContext* aPresContext,
-                                      LayoutDeviceIntRect& aOutRect)
+nsLayoutUtils::GetContentViewerSize(nsPresContext* aPresContext,
+                                    LayoutDeviceIntSize& aOutSize)
 {
   nsCOMPtr<nsIDocShell> docShell = aPresContext->GetDocShell();
   if (!docShell) {
@@ -6714,7 +6716,7 @@ nsLayoutUtils::GetContentViewerBounds(nsPresContext* aPresContext,
 
   nsIntRect bounds;
   cv->GetBounds(bounds);
-  aOutRect = LayoutDeviceIntRect::FromUntyped(bounds);
+  aOutSize = LayoutDeviceIntRect::FromUntyped(bounds).Size();
   return true;
 }
 
@@ -6752,9 +6754,9 @@ nsLayoutUtils::CalculateCompositionSizeForFrame(nsIFrame* aFrame)
         }
 #endif
       } else {
-        LayoutDeviceIntRect contentBounds;
-        if (nsLayoutUtils::GetContentViewerBounds(presContext, contentBounds)) {
-          size = LayoutDevicePixel::ToAppUnits(contentBounds.Size(), auPerDevPixel);
+        LayoutDeviceIntSize contentSize;
+        if (nsLayoutUtils::GetContentViewerSize(presContext, contentSize)) {
+          size = LayoutDevicePixel::ToAppUnits(contentSize, auPerDevPixel);
         }
       }
     }
@@ -6820,14 +6822,14 @@ nsLayoutUtils::CalculateRootCompositionSize(nsIFrame* aFrame,
         }
 #endif
       } else {
-        LayoutDeviceIntRect contentBounds;
-        if (nsLayoutUtils::GetContentViewerBounds(rootPresContext, contentBounds)) {
+        LayoutDeviceIntSize contentSize;
+        if (nsLayoutUtils::GetContentViewerSize(rootPresContext, contentSize)) {
           LayoutDeviceToLayerScale scale(1.0f);
           if (rootPresContext->GetParentPresContext()) {
             gfxSize res = rootPresContext->GetParentPresContext()->PresShell()->GetCumulativeResolution();
             scale = LayoutDeviceToLayerScale(res.width, res.height);
           }
-          rootCompositionSize = contentBounds.Size() * scale;
+          rootCompositionSize = contentSize * scale;
         }
       }
     }

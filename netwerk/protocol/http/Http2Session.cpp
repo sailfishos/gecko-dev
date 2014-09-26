@@ -98,6 +98,7 @@ Http2Session::Http2Session(nsISocketTransport *aSocketTransport)
   , mOutputQueueSent(0)
   , mLastReadEpoch(PR_IntervalNow())
   , mPingSentEpoch(0)
+  , mPreviousUsed(false)
   , mWaitingForSettingsAck(false)
   , mGoAwayOnPush(false)
 {
@@ -121,6 +122,8 @@ Http2Session::Http2Session(nsISocketTransport *aSocketTransport)
   mLastDataReadEpoch = mLastReadEpoch;
 
   mPingThreshold = gHttpHandler->SpdyPingThreshold();
+
+  mNegotiatedToken.AssignLiteral(NS_HTTP2_DRAFT_TOKEN);
 }
 
 // Copy the 32 bit number into the destination, using network byte order
@@ -293,8 +296,14 @@ Http2Session::ReadTimeoutTick(PRIntervalTime now)
 
   if ((now - mLastReadEpoch) < mPingThreshold) {
     // recent activity means ping is not an issue
-    if (mPingSentEpoch)
+    if (mPingSentEpoch) {
       mPingSentEpoch = 0;
+      if (mPreviousUsed) {
+        // restore the former value
+        mPingThreshold = mPreviousPingThreshold;
+        mPreviousUsed = false;
+      }
+    }
 
     return PR_IntervalToSeconds(mPingThreshold) -
       PR_IntervalToSeconds(now - mLastReadEpoch);
@@ -314,8 +323,9 @@ Http2Session::ReadTimeoutTick(PRIntervalTime now)
   LOG3(("Http2Session::ReadTimeoutTick %p generating ping\n", this));
 
   mPingSentEpoch = PR_IntervalNow();
-  if (!mPingSentEpoch)
+  if (!mPingSentEpoch) {
     mPingSentEpoch = 1; // avoid the 0 sentinel value
+  }
   GeneratePing(false);
   ResumeRecv(); // read the ping reply
 
@@ -3028,6 +3038,14 @@ Http2Session::ConfirmTLSProfile()
    * anyway, so it'll never be on. All the same, see https://bugzil.la/965881
    * for the possibility for an interface to ensure it never gets turned on. */
 
+  nsresult rv = ssl->GetNegotiatedNPN(mNegotiatedToken);
+  if (NS_FAILED(rv)) {
+    // Fallback to showing the draft version, just in case
+    LOG3(("Http2Session::ConfirmTLSProfile %p could not get negotiated token. "
+          "Falling back to draft token.", this));
+    mNegotiatedToken.AssignLiteral(NS_HTTP2_DRAFT_TOKEN);
+  }
+
   mTLSProfileConfirmed = true;
   return NS_OK;
 }
@@ -3291,6 +3309,30 @@ nsresult
 Http2Session::PushBack(const char *buf, uint32_t len)
 {
   return mConnection->PushBack(buf, len);
+}
+
+void
+Http2Session::SendPing()
+{
+  MOZ_ASSERT(PR_GetCurrentThread() == gSocketThread);
+
+  if (mPreviousUsed) {
+    // alredy in progress, get out
+    return;
+  }
+
+  mPingSentEpoch = PR_IntervalNow();
+  if (!mPingSentEpoch) {
+    mPingSentEpoch = 1; // avoid the 0 sentinel value
+  }
+  if (!mPingThreshold ||
+      (mPingThreshold > gHttpHandler->NetworkChangedTimeout())) {
+    mPreviousPingThreshold = mPingThreshold;
+    mPreviousUsed = true;
+    mPingThreshold = gHttpHandler->NetworkChangedTimeout();
+  }
+  GeneratePing(false);
+  ResumeRecv();
 }
 
 } // namespace mozilla::net

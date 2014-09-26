@@ -14,8 +14,6 @@ Cu.import("resource://gre/modules/Promise.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "LightweightThemeManager",
   "resource://gre/modules/LightweightThemeManager.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PermissionsUtils",
-  "resource://gre/modules/PermissionsUtils.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "ResetProfile",
   "resource://gre/modules/ResetProfile.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "CustomizableUI",
@@ -27,7 +25,6 @@ XPCOMUtils.defineLazyModuleGetter(this, "BrowserUITelemetry",
 
 
 const UITOUR_PERMISSION   = "uitour";
-const PREF_PERM_BRANCH    = "browser.uitour.";
 const PREF_SEENPAGEIDS    = "browser.uitour.seenPageIDs";
 const MAX_BUTTONS         = 4;
 
@@ -101,6 +98,7 @@ this.UITour = {
     ["help",        {query: "#PanelUI-help"}],
     ["home",        {query: "#home-button"}],
     ["loop",        {query: "#loop-call-button"}],
+    ["privateWindow",  {query: "#privatebrowsing-button"}],
     ["quit",        {query: "#PanelUI-quit"}],
     ["search",      {
       query: "#searchbar",
@@ -602,14 +600,6 @@ this.UITour = {
                            .wrappedJSObject;
   },
 
-  importPermissions: function() {
-    try {
-      PermissionsUtils.importFromPrefs(PREF_PERM_BRANCH, UITOUR_PERMISSION);
-    } catch (e) {
-      Cu.reportError(e);
-    }
-  },
-
   ensureTrustedOrigin: function(aDocument) {
     if (aDocument.defaultView.top != aDocument.defaultView)
       return false;
@@ -622,7 +612,6 @@ this.UITour = {
     if (!this.isSafeScheme(uri))
       return false;
 
-    this.importPermissions();
     let permission = Services.perms.testPermission(uri, UITOUR_PERMISSION);
     return permission == Services.perms.ALLOW_ACTION;
   },
@@ -1143,8 +1132,7 @@ this.UITour = {
         });
         break;
       case "appinfo":
-        let props = ["defaultUpdateChannel", "distributionID", "isOfficialBranding",
-                     "isReleaseBuild", "name", "vendor", "version"];
+        let props = ["defaultUpdateChannel", "version"];
         let appinfo = {};
         props.forEach(property => appinfo[property] = Services.appinfo[property]);
         this.sendPageCallback(aContentDocument, aCallbackID, appinfo);

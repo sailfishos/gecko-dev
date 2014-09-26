@@ -93,7 +93,7 @@ namespace gfx {
 class SourceSurface;
 }
 
-WebGLTexelFormat GetWebGLTexelFormat(GLenum format, GLenum type);
+WebGLTexelFormat GetWebGLTexelFormat(TexInternalFormat format, TexType type);
 
 void AssertUintParamCorrect(gl::GLContext* gl, GLenum pname, GLuint shadow);
 
@@ -221,7 +221,7 @@ public:
      */
     static const char *EnumName(GLenum glenum);
 
-    bool IsTextureFormatCompressed(GLenum format);
+    bool IsTextureFormatCompressed(TexInternalFormat format);
 
     void DummyFramebufferOperation(const char *info);
 
@@ -355,6 +355,10 @@ public:
     void FramebufferTexture2D(GLenum target, GLenum attachment,
                               GLenum textarget, WebGLTexture *tobj,
                               GLint level);
+
+    // Framebuffer validation
+    bool ValidateFramebufferAttachment(GLenum attachment, const char* funcName);
+
     void FrontFace(GLenum mode);
     void GenerateMipmap(GLenum target);
     already_AddRefed<WebGLActiveInfo> GetActiveAttrib(WebGLProgram *prog,
@@ -1093,7 +1097,7 @@ protected:
 
     bool ValidateCopyTexImage(GLenum format, WebGLTexImageFunc func);
     bool ValidateTexImage(GLuint dims, TexImageTarget texImageTarget,
-                          GLint level, GLint internalFormat,
+                          GLint level, GLenum internalFormat,
                           GLint xoffset, GLint yoffset, GLint zoffset,
                           GLint width, GLint height, GLint depth,
                           GLint border, GLenum format, GLenum type,
@@ -1120,7 +1124,7 @@ protected:
                                       uint32_t byteLength, WebGLTexImageFunc func);
 
 
-    static uint32_t GetBitsPerTexel(GLenum format, GLenum type);
+    static uint32_t GetBitsPerTexel(TexInternalFormat format, TexType type);
 
     void Invalidate();
     void DestroyResourcesAndContext();

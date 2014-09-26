@@ -30,12 +30,15 @@
 #include "nsCharSeparatedTokenizer.h"
 #include "nsNetAddr.h"
 #include "nsProxyRelease.h"
+#include "nsIObserverService.h"
+#include "nsINetworkLinkService.h"
 
 #include "mozilla/Attributes.h"
 #include "mozilla/VisualEventTracer.h"
 #include "mozilla/net/NeckoCommon.h"
 #include "mozilla/net/ChildDNSService.h"
 #include "mozilla/net/DNSListenerProxy.h"
+#include "mozilla/Services.h"
 
 using namespace mozilla;
 using namespace mozilla::net;
@@ -489,8 +492,8 @@ nsDNSService::Init()
 
     // prefs
     uint32_t maxCacheEntries  = 400;
-    uint32_t maxCacheLifetime = 120; // seconds
-    uint32_t lifetimeGracePeriod = 60; // seconds
+    uint32_t defaultCacheLifetime = 120; // seconds
+    uint32_t defaultGracePeriod = 60; // seconds
     bool     disableIPv6      = false;
     bool     disablePrefetch  = false;
     int      proxyType        = nsIProtocolProxyService::PROXYCONFIG_DIRECT;
@@ -506,9 +509,9 @@ nsDNSService::Init()
         if (NS_SUCCEEDED(prefs->GetIntPref(kPrefDnsCacheEntries, &val)))
             maxCacheEntries = (uint32_t) val;
         if (NS_SUCCEEDED(prefs->GetIntPref(kPrefDnsCacheExpiration, &val)))
-            maxCacheLifetime = val;
+            defaultCacheLifetime = val;
         if (NS_SUCCEEDED(prefs->GetIntPref(kPrefDnsCacheGrace, &val)))
-            lifetimeGracePeriod = val;
+            defaultGracePeriod = val;
 
         // ASSUMPTION: pref branch does not modify out params on failure
         prefs->GetBoolPref(kPrefDisableIPv6, &disableIPv6);
@@ -540,12 +543,13 @@ nsDNSService::Init()
             prefs->AddObserver("network.proxy.type", this, false);
         }
 
-        nsresult rv;
         nsCOMPtr<nsIObserverService> observerService =
-            do_GetService("@mozilla.org/observer-service;1", &rv);
-        if (NS_SUCCEEDED(rv)) {
+            mozilla::services::GetObserverService();
+        if (observerService) {
             observerService->AddObserver(this, "last-pb-context-exited", false);
+            observerService->AddObserver(this, NS_NETWORK_LINK_TOPIC, false);
         }
+
     }
 
     nsDNSPrefetch::Initialize(this);
@@ -562,8 +566,8 @@ nsDNSService::Init()
 
     nsRefPtr<nsHostResolver> res;
     nsresult rv = nsHostResolver::Create(maxCacheEntries,
-                                         maxCacheLifetime,
-                                         lifetimeGracePeriod,
+                                         defaultCacheLifetime,
+                                         defaultGracePeriod,
                                          getter_AddRefs(res));
     if (NS_SUCCEEDED(rv)) {
         // now, set all of our member variables while holding the lock
@@ -870,10 +874,20 @@ nsDNSService::GetMyHostName(nsACString &result)
 NS_IMETHODIMP
 nsDNSService::Observe(nsISupports *subject, const char *topic, const char16_t *data)
 {
-    // we are only getting called if a preference has changed. 
+    // We are only getting called if a preference has changed or there's a
+    // network link event.
     NS_ASSERTION(strcmp(topic, NS_PREFBRANCH_PREFCHANGE_TOPIC_ID) == 0 ||
-        strcmp(topic, "last-pb-context-exited") == 0,
-        "unexpected observe call");
+                 strcmp(topic, "last-pb-context-exited") == 0 ||
+                 strcmp(topic, NS_NETWORK_LINK_TOPIC) == 0,
+                 "unexpected observe call");
+
+    if (!strcmp(topic, NS_NETWORK_LINK_TOPIC)) {
+        nsAutoCString converted = NS_ConvertUTF16toUTF8(data);
+        if (!strcmp(converted.get(), NS_NETWORK_LINK_DATA_CHANGED)) {
+            mResolver->FlushCache();
+        }
+        return NS_OK;
+    }
 
     //
     // Shutdown and this function are both only called on the UI thread, so we don't
