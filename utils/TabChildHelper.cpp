@@ -445,13 +445,7 @@ TabChildHelper::ConvertMutiTouchInputToEvent(const mozilla::MultiTouchInput& aDa
 
   aEvent.touches.SetCapacity(aData.mTouches.Length());
   for (uint32_t i = 0; i < aData.mTouches.Length(); ++i) {
-    const SingleTouchData& data = aData.mTouches[i];
-    nsRefPtr<Touch> t = new Touch(data.mIdentifier,
-                                  nsIntPoint(data.mScreenPoint.x, data.mScreenPoint.y),
-                                  nsIntPoint(data.mRadius.width, data.mRadius.height),
-                                  data.mRotationAngle,
-                                  data.mForce);
-    aEvent.touches.AppendElement(t);
+    aEvent.touches.AppendElement(aData.mTouches[i].ToNewDOMTouch());
   }
 
   return true;
