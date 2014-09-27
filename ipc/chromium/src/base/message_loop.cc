@@ -98,7 +98,7 @@ MessageLoop::MessageLoop(base::MessagePump* messagePump)
       next_sequence_num_(0)
 {
   DCHECK(!current()) << "should only have one message loop per thread";
-  lazy_tls_ptr.Pointer()->Set(this);
+  get_tls_ptr().Set(this);
   pump_ = messagePump;
 }
 
