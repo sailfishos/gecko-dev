@@ -1449,8 +1449,12 @@
 
             // Change the "remote" attribute.
             let parent = aBrowser.parentNode;
+            let permanentKey = aBrowser.permanentKey;
             parent.removeChild(aBrowser);
             aBrowser.setAttribute("remote", aShouldBeRemote ? "true" : "false");
+            // Tearing down the browser gives a new permanentKey but we want to
+            // keep the old one. Re-set it explicitly after unbinding from DOM.
+            aBrowser.permanentKey = permanentKey;
             parent.appendChild(aBrowser);
 
             // Restore the progress listener.
@@ -1664,7 +1668,7 @@
             if (!docShellsSwapped && !uriIsAboutBlank) {
               // pretend the user typed this so it'll be available till
               // the document successfully loads
-              if (aURI && gInitialPages.indexOf(aURI) == -1)
+              if (aURI && !gInitialPages.contains(aURI))
                 b.userTypedValue = aURI;
 
               let flags = Ci.nsIWebNavigation.LOAD_FLAGS_NONE;
@@ -2163,14 +2167,14 @@
             var tab = aTab;
             do {
               tab = tab.nextSibling;
-            } while (tab && remainingTabs.indexOf(tab) == -1);
+            } while (tab && !remainingTabs.contains(tab));
 
             if (!tab) {
               tab = aTab;
 
               do {
                 tab = tab.previousSibling;
-              } while (tab && remainingTabs.indexOf(tab) == -1);
+              } while (tab && !remainingTabs.contains(tab));
             }
 
             this.selectedTab = tab;
@@ -2418,10 +2422,10 @@
         <body>
         <![CDATA[
           Array.forEach(this.tabs, function(tab) {
-            if (aTabs.indexOf(tab) == -1)
-              this.hideTab(tab);
-            else
+            if (aTabs.contains(tab))
               this.showTab(tab);
+            else
+              this.hideTab(tab);
           }, this);
 
           this.tabContainer._handleTabSelect(false);
