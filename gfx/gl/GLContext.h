@@ -110,12 +110,16 @@ MOZ_BEGIN_ENUM_CLASS(GLFeature)
     sRGB,
     sampler_objects,
     standard_derivatives,
+    texture_3D,
+    texture_3D_compressed,
+    texture_3D_copy,
     texture_float,
     texture_float_linear,
     texture_half_float,
     texture_half_float_linear,
     texture_non_power_of_two,
-    transform_feedback,
+    texture_storage,
+    transform_feedback2,
     uniform_buffer_object,
     uniform_matrix_nonsquare,
     vertex_array_object,
@@ -367,15 +371,19 @@ public:
         ARB_robustness,
         ARB_sampler_objects,
         ARB_sync,
+        ARB_texture_compression,
         ARB_texture_float,
         ARB_texture_non_power_of_two,
         ARB_texture_rectangle,
+        ARB_texture_storage,
+        ARB_transform_feedback2,
         ARB_uniform_buffer_object,
         ARB_vertex_array_object,
         EXT_bgra,
         EXT_blend_minmax,
         EXT_color_buffer_float,
         EXT_color_buffer_half_float,
+        EXT_copy_texture,
         EXT_draw_buffers,
         EXT_draw_instanced,
         EXT_draw_range_elements,
@@ -391,6 +399,7 @@ public:
         EXT_robustness,
         EXT_sRGB,
         EXT_shader_texture_lod,
+        EXT_texture3D,
         EXT_texture_compression_dxt1,
         EXT_texture_compression_s3tc,
         EXT_texture_filter_anisotropic,
@@ -407,6 +416,7 @@ public:
         NV_half_float,
         NV_instanced_arrays,
         NV_transform_feedback,
+        NV_transform_feedback2,
         OES_EGL_image,
         OES_EGL_image_external,
         OES_EGL_sync,
@@ -419,6 +429,7 @@ public:
         OES_rgb8_rgba8,
         OES_standard_derivatives,
         OES_stencil8,
+        OES_texture_3D,
         OES_texture_float,
         OES_texture_float_linear,
         OES_texture_half_float,
@@ -2670,7 +2681,7 @@ public:
 
 
 // -----------------------------------------------------------------------------
-// Package XXX_transform_feedback
+// GL 4.0, GL ES 3.0, ARB_transform_feedback2, NV_transform_feedback2
 public:
     void fBindBufferBase(GLenum target, GLuint index, GLuint buffer)
     {
@@ -2685,6 +2696,39 @@ public:
         BEFORE_GL_CALL;
         ASSERT_SYMBOL_PRESENT(fBindBufferRange);
         mSymbols.fBindBufferRange(target, index, buffer, offset, size);
+        AFTER_GL_CALL;
+    }
+
+    void fGenTransformFeedbacks(GLsizei n, GLuint* ids)
+    {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fGenTransformFeedbacks);
+        mSymbols.fGenTransformFeedbacks(n, ids);
+        AFTER_GL_CALL;
+    }
+
+    void fDeleteTransformFeedbacks(GLsizei n, GLuint* ids)
+    {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fDeleteTransformFeedbacks);
+        mSymbols.fDeleteTransformFeedbacks(n, ids);
+        AFTER_GL_CALL;
+    }
+
+    realGLboolean fIsTransformFeedback(GLuint id)
+    {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fIsTransformFeedback);
+        realGLboolean result = mSymbols.fIsTransformFeedback(id);
+        AFTER_GL_CALL;
+        return result;
+    }
+
+    void fBindTransformFeedback(GLenum target, GLuint id)
+    {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fBindTransformFeedback);
+        mSymbols.fBindTransformFeedback(target, id);
         AFTER_GL_CALL;
     }
 
@@ -2717,6 +2761,22 @@ public:
         BEFORE_GL_CALL;
         ASSERT_SYMBOL_PRESENT(fGetTransformFeedbackVarying);
         mSymbols.fGetTransformFeedbackVarying(program, index, bufSize, length, size, type, name);
+        AFTER_GL_CALL;
+    }
+
+    void fPauseTransformFeedback()
+    {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fPauseTransformFeedback);
+        mSymbols.fPauseTransformFeedback();
+        AFTER_GL_CALL;
+    }
+
+    void fResumeTransformFeedback()
+    {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fResumeTransformFeedback);
+        mSymbols.fResumeTransformFeedback();
         AFTER_GL_CALL;
     }
 
@@ -3008,6 +3068,74 @@ public:
         AFTER_GL_CALL;
     }
 
+// -----------------------------------------------------------------------------
+// Core GL 4.2, GL ES 3.0 & Extension ARB_texture_storage/EXT_texture_storage
+    void fTexStorage2D(GLenum target, GLsizei levels, GLenum internalformat, GLsizei width, GLsizei height)
+    {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fTexStorage2D);
+        mSymbols.fTexStorage2D(target, levels, internalformat, width, height);
+        AFTER_GL_CALL;
+    }
+
+    void fTexStorage3D(GLenum target, GLsizei levels, GLenum internalformat, GLsizei width, GLsizei height, GLsizei depth)
+    {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fTexStorage3D);
+        mSymbols.fTexStorage3D(target, levels, internalformat, width, height, depth);
+        AFTER_GL_CALL;
+    }
+
+// -----------------------------------------------------------------------------
+// 3D Textures
+    void fTexSubImage3D(GLenum target, GLint level, GLint xoffset, GLint yoffset,
+                        GLint zoffset, GLsizei width, GLsizei height, GLsizei depth,
+                        GLenum format, GLenum type, const GLvoid* pixels)
+    {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fTexSubImage3D);
+        mSymbols.fTexSubImage3D(target, level, xoffset, yoffset, zoffset,
+                                width, height, depth, format, type,
+                                pixels);
+        AFTER_GL_CALL;
+    }
+
+    void fCopyTexSubImage3D(GLenum target, GLint level, GLint xoffset,
+                            GLint yoffset, GLint zoffset, GLint x,
+                            GLint y, GLsizei width, GLsizei height)
+    {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fCopyTexSubImage3D);
+        mSymbols.fCopyTexSubImage3D(target, level, xoffset, yoffset, zoffset,
+                                    x, y, width, height);
+        AFTER_GL_CALL;
+    }
+
+    void fCompressedTexImage3D(GLenum target, GLint level, GLenum internalformat,
+                               GLsizei width, GLsizei height, GLsizei depth,
+                               GLint border, GLsizei imageSize, const GLvoid* data)
+    {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fCompressedTexImage3D);
+        mSymbols.fCompressedTexImage3D(target, level, internalformat,
+                                       width, height, depth,
+                                       border, imageSize, data);
+        AFTER_GL_CALL;
+    }
+
+    void fCompressedTexSubImage3D(GLenum target, GLint level,
+                                  GLint xoffset, GLint yoffset, GLint zoffset,
+                                  GLsizei width, GLsizei height, GLsizei depth,
+                                  GLenum format, GLsizei imageSize, const GLvoid* data)
+    {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fCompressedTexSubImage3D);
+        mSymbols.fCompressedTexSubImage3D(target, level,
+                                          xoffset, yoffset, zoffset,
+                                          width, height, depth,
+                                          format, imageSize, data);
+        AFTER_GL_CALL;
+    }
 
 // -----------------------------------------------------------------------------
 // Constructor

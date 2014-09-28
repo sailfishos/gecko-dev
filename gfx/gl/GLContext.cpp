@@ -91,15 +91,19 @@ static const char *sExtensionNames[] = {
     "GL_ARB_robustness",
     "GL_ARB_sampler_objects",
     "GL_ARB_sync",
+    "GL_ARB_texture_compression",
     "GL_ARB_texture_float",
     "GL_ARB_texture_non_power_of_two",
     "GL_ARB_texture_rectangle",
+    "GL_ARB_texture_storage",
+    "GL_ARB_transform_feedback2",
     "GL_ARB_uniform_buffer_object",
     "GL_ARB_vertex_array_object",
     "GL_EXT_bgra",
     "GL_EXT_blend_minmax",
     "GL_EXT_color_buffer_float",
     "GL_EXT_color_buffer_half_float",
+    "GL_EXT_copy_texture",
     "GL_EXT_draw_buffers",
     "GL_EXT_draw_instanced",
     "GL_EXT_draw_range_elements",
@@ -115,6 +119,7 @@ static const char *sExtensionNames[] = {
     "GL_EXT_robustness",
     "GL_EXT_sRGB",
     "GL_EXT_shader_texture_lod",
+    "GL_EXT_texture3D",
     "GL_EXT_texture_compression_dxt1",
     "GL_EXT_texture_compression_s3tc",
     "GL_EXT_texture_filter_anisotropic",
@@ -131,6 +136,7 @@ static const char *sExtensionNames[] = {
     "GL_NV_half_float",
     "GL_NV_instanced_arrays",
     "GL_NV_transform_feedback",
+    "GL_NV_transform_feedback2",
     "GL_OES_EGL_image",
     "GL_OES_EGL_image_external",
     "GL_OES_EGL_sync",
@@ -143,6 +149,7 @@ static const char *sExtensionNames[] = {
     "GL_OES_rgb8_rgba8",
     "GL_OES_standard_derivatives",
     "GL_OES_stencil8",
+    "GL_OES_texture_3D",
     "GL_OES_texture_float",
     "GL_OES_texture_float_linear",
     "GL_OES_texture_half_float",
@@ -924,14 +931,39 @@ GLContext::InitWithPrefix(const char *prefix, bool trygl)
             }
         }
 
-        if (IsSupported(GLFeature::transform_feedback)) {
+        if (IsSupported(GLFeature::texture_storage)) {
+            SymLoadStruct coreSymbols[] = {
+                { (PRFuncPtr*) &mSymbols.fTexStorage2D, { "TexStorage2D", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fTexStorage3D, { "TexStorage3D", nullptr } },
+                END_SYMBOLS
+            };
+
+            if (!LoadSymbols(coreSymbols, trygl, prefix)) {
+                NS_ERROR("GL supports texture storage without supplying its functions.");
+
+                MarkUnsupported(GLFeature::texture_storage);
+                MarkExtensionUnsupported(ARB_texture_storage);
+                ClearSymbols(coreSymbols);
+            }
+        }
+
+        // ARB_transform_feedback2/NV_transform_feedback2 is a
+        // superset of EXT_transform_feedback/NV_transform_feedback
+        // and adds glPauseTransformFeedback &
+        // glResumeTransformFeedback, which are required for WebGL2.
+        if (IsSupported(GLFeature::transform_feedback2)) {
             SymLoadStruct coreSymbols[] = {
                 { (PRFuncPtr*) &mSymbols.fBindBufferBase, { "BindBufferBase", nullptr } },
                 { (PRFuncPtr*) &mSymbols.fBindBufferRange, { "BindBufferRange", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fGenTransformFeedbacks, { "GenTransformFeedbacks", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fDeleteTransformFeedbacks, { "DeleteTransformFeedbacks", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fIsTransformFeedback, { "IsTransformFeedback", nullptr } },
                 { (PRFuncPtr*) &mSymbols.fBeginTransformFeedback, { "BeginTransformFeedback", nullptr } },
                 { (PRFuncPtr*) &mSymbols.fEndTransformFeedback, { "EndTransformFeedback", nullptr } },
                 { (PRFuncPtr*) &mSymbols.fTransformFeedbackVaryings, { "TransformFeedbackVaryings", nullptr } },
                 { (PRFuncPtr*) &mSymbols.fGetTransformFeedbackVarying, { "GetTransformFeedbackVarying", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fPauseTransformFeedback, { "PauseTransformFeedback", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fResumeTransformFeedback, { "ResumeTransformFeedback", nullptr } },
                 { (PRFuncPtr*) &mSymbols.fGetIntegeri_v, { "GetIntegeri_v", nullptr } },
                 END_SYMBOLS
             };
@@ -939,20 +971,25 @@ GLContext::InitWithPrefix(const char *prefix, bool trygl)
             SymLoadStruct extSymbols[] = {
                 { (PRFuncPtr*) &mSymbols.fBindBufferBase, { "BindBufferBaseEXT", "BindBufferBaseNV", nullptr } },
                 { (PRFuncPtr*) &mSymbols.fBindBufferRange, { "BindBufferRangeEXT", "BindBufferRangeNV", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fGenTransformFeedbacks, { "GenTransformFeedbacksNV", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fDeleteTransformFeedbacks, { "DeleteTransformFeedbacksNV", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fIsTransformFeedback, { "IsTransformFeedbackNV", nullptr } },
                 { (PRFuncPtr*) &mSymbols.fBeginTransformFeedback, { "BeginTransformFeedbackEXT", "BeginTransformFeedbackNV", nullptr } },
                 { (PRFuncPtr*) &mSymbols.fEndTransformFeedback, { "EndTransformFeedbackEXT", "EndTransformFeedbackNV", nullptr } },
-                { (PRFuncPtr*) &mSymbols.fTransformFeedbackVaryings, { "TransformFeedbackVaryingsEXT", "TransformFeedbackVaryingsNV", nullptr }},
+                { (PRFuncPtr*) &mSymbols.fTransformFeedbackVaryings, { "TransformFeedbackVaryingsEXT", "TransformFeedbackVaryingsNV", nullptr } },
                 { (PRFuncPtr*) &mSymbols.fGetTransformFeedbackVarying, { "GetTransformFeedbackVaryingEXT", "GetTransformFeedbackVaryingNV", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fPauseTransformFeedback, { "PauseTransformFeedbackNV", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fResumeTransformFeedback, { "ResumeTransformFeedbackNV", nullptr } },
                 { (PRFuncPtr*) &mSymbols.fGetIntegeri_v, { "GetIntegerIndexedvEXT", "GetIntegerIndexedvNV", nullptr } },
                 END_SYMBOLS
             };
 
-            bool useCore = IsFeatureProvidedByCoreSymbols(GLFeature::transform_feedback);
+            bool useCore = IsFeatureProvidedByCoreSymbols(GLFeature::transform_feedback2);
 
             if (!LoadSymbols(useCore ? coreSymbols : extSymbols, trygl, prefix)) {
                 NS_ERROR("GL supports transform feedback without supplying its functions.");
 
-                MarkUnsupported(GLFeature::transform_feedback);
+                MarkUnsupported(GLFeature::transform_feedback2);
                 MarkUnsupported(GLFeature::bind_buffer_offset);
                 ClearSymbols(coreSymbols);
             }
@@ -1151,6 +1188,72 @@ GLContext::InitWithPrefix(const char *prefix, bool trygl)
 
                 MarkUnsupported(GLFeature::map_buffer_range);
                 ClearSymbols(mapBufferRangeSymbols);
+            }
+        }
+
+        if (IsSupported(GLFeature::texture_3D)) {
+            SymLoadStruct coreSymbols[] = {
+                // TexImage3D is not required for WebGL2 so not queried here.
+                { (PRFuncPtr*) &mSymbols.fTexSubImage3D, { "TexSubImage3D", nullptr } },
+                END_SYMBOLS
+            };
+
+            SymLoadStruct extSymbols[] = {
+                { (PRFuncPtr*) &mSymbols.fTexSubImage3D, { "TexSubImage3DEXT", "TexSubImage3DOES", nullptr } },
+                END_SYMBOLS
+            };
+
+            bool useCore = IsFeatureProvidedByCoreSymbols(GLFeature::texture_3D);
+
+            if (!LoadSymbols(useCore ? coreSymbols : extSymbols, trygl, prefix)) {
+                NS_ERROR("GL supports 3D textures without supplying functions.");
+
+                MarkUnsupported(GLFeature::texture_3D);
+                ClearSymbols(coreSymbols);
+            }
+        }
+
+        if (IsSupported(GLFeature::texture_3D_compressed)) {
+            SymLoadStruct coreSymbols[] = {
+                { (PRFuncPtr*) &mSymbols.fCompressedTexImage3D, { "CompressedTexImage3D", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fCompressedTexSubImage3D, { "CompressedTexSubImage3D", nullptr } },
+                END_SYMBOLS
+            };
+
+            SymLoadStruct extSymbols[] = {
+                { (PRFuncPtr*) &mSymbols.fCompressedTexImage3D, { "CompressedTexImage3DARB", "CompressedTexImage3DOES", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fCompressedTexSubImage3D, { "CompressedTexSubImage3DARB", "CompressedTexSubImage3DOES", nullptr } },
+                END_SYMBOLS
+            };
+
+            bool useCore = IsFeatureProvidedByCoreSymbols(GLFeature::texture_3D_compressed);
+
+            if (!LoadSymbols(useCore ? coreSymbols : extSymbols, trygl, prefix)) {
+                NS_ERROR("GL supports 3D textures without supplying functions.");
+
+                MarkUnsupported(GLFeature::texture_3D_compressed);
+                ClearSymbols(coreSymbols);
+            }
+        }
+
+        if (IsSupported(GLFeature::texture_3D_copy)) {
+            SymLoadStruct coreSymbols[] = {
+                { (PRFuncPtr*) &mSymbols.fCopyTexSubImage3D, { "CopyTexSubImage3D", nullptr } },
+                END_SYMBOLS
+            };
+
+            SymLoadStruct extSymbols[] = {
+                { (PRFuncPtr*) &mSymbols.fCopyTexSubImage3D, { "CopyTexSubImage3DEXT", "CopyTexSubImage3DOES", nullptr } },
+                END_SYMBOLS
+            };
+
+            bool useCore = IsFeatureProvidedByCoreSymbols(GLFeature::texture_3D_copy);
+
+            if (!LoadSymbols(useCore ? coreSymbols : extSymbols, trygl, prefix)) {
+                NS_ERROR("GL supports 3D textures without supplying functions.");
+
+                MarkUnsupported(GLFeature::texture_3D_copy);
+                ClearSymbols(coreSymbols);
             }
         }
 

@@ -10,6 +10,7 @@
 #include "mozilla/dom/TabChild.h"
 #include "jsfriendapi.h"
 #include "xpcprivate.h"
+#include "WrapperFactory.h"
 #include "mozilla/Preferences.h"
 
 using namespace js;
@@ -36,7 +37,6 @@ IdToObjectMap::trace(JSTracer *trc)
     for (Table::Range r(table_.all()); !r.empty(); r.popFront()) {
         DebugOnly<JSObject *> prior = r.front().value().get();
         JS_CallObjectTracer(trc, &r.front().value(), "ipc-object");
-        MOZ_ASSERT(r.front().value() == prior);
     }
 }
 
@@ -44,8 +44,9 @@ void
 IdToObjectMap::sweep()
 {
     for (Table::Enum e(table_); !e.empty(); e.popFront()) {
-        DebugOnly<JSObject *> prior = e.front().value().get();
-        if (JS_IsAboutToBeFinalized(&e.front().value()))
+        JS::Heap<JSObject *> *objp = &e.front().value();
+        JS_UpdateWeakPointerAfterGC(objp);
+        if (!*objp)
             e.removeFront();
     }
 }
@@ -95,11 +96,23 @@ ObjectToIdMap::init()
 }
 
 void
+ObjectToIdMap::trace(JSTracer *trc)
+{
+    for (Table::Enum e(*table_); !e.empty(); e.popFront()) {
+        JSObject *obj = e.front().key();
+        JS_CallUnbarrieredObjectTracer(trc, &obj, "ipc-object");
+        if (obj != e.front().key())
+            e.rekeyFront(obj);
+    }
+}
+
+void
 ObjectToIdMap::sweep()
 {
     for (Table::Enum e(*table_); !e.empty(); e.popFront()) {
         JSObject *obj = e.front().key();
-        if (JS_IsAboutToBeFinalizedUnbarriered(&obj))
+        JS_UpdateWeakPointerAfterGCUnbarriered(&obj);
+        if (!obj)
             e.removeFront();
         else if (obj != e.front().key())
             e.rekeyFront(obj);
@@ -111,7 +124,7 @@ ObjectToIdMap::find(JSObject *obj)
 {
     Table::Ptr p = table_->lookup(obj);
     if (!p)
-        return 0;
+        return ObjectId::nullId();
     return p->value();
 }
 
@@ -150,7 +163,7 @@ bool JavaScriptShared::sStackLoggingEnabled;
 JavaScriptShared::JavaScriptShared(JSRuntime *rt)
   : rt_(rt),
     refcount_(1),
-    lastId_(0)
+    nextSerialNumber_(1)
 {
     if (!sLoggingInitialized) {
         sLoggingInitialized = true;
@@ -174,7 +187,9 @@ JavaScriptShared::init()
         return false;
     if (!cpows_.init())
         return false;
-    if (!objectIds_.init())
+    if (!unwaivedObjectIds_.init())
+        return false;
+    if (!waivedObjectIds_.init())
         return false;
 
     return true;
@@ -369,9 +384,9 @@ JavaScriptShared::ConvertID(const JSIID &from, nsID *to)
 }
 
 JSObject *
-JavaScriptShared::findObjectById(JSContext *cx, uint32_t objId)
+JavaScriptShared::findObjectById(JSContext *cx, const ObjectId &objId)
 {
-    RootedObject obj(cx, findObjectById(objId));
+    RootedObject obj(cx, objects_.find(objId));
     if (!obj) {
         JS_ReportError(cx, "operation not possible on dead CPOW");
         return nullptr;
@@ -382,8 +397,13 @@ JavaScriptShared::findObjectById(JSContext *cx, uint32_t objId)
     // can access objects in other compartments using cross-compartment
     // wrappers.
     JSAutoCompartment ac(cx, scopeForTargetObjects());
-    if (!JS_WrapObject(cx, &obj))
-        return nullptr;
+    if (objId.hasXrayWaiver()) {
+        if (!xpc::WrapperFactory::WaiveXrayAndWrap(cx, &obj))
+            return nullptr;
+    } else {
+        if (!JS_WrapObject(cx, &obj))
+            return nullptr;
+    }
     return obj;
 }
 
@@ -567,10 +587,4 @@ JavaScriptShared::Wrap(JSContext *cx, HandleObject aObj, InfallibleTArray<CpowEn
     }
 
     return true;
-}
-void JavaScriptShared::fixupAfterMovingGC()
-{
-    objects_.sweep();
-    cpows_.sweep();
-    objectIds_.sweep();
 }

@@ -1795,7 +1795,7 @@ GetFirstFontMetrics(gfxFontGroup* aFontGroup)
 {
   if (!aFontGroup)
     return gfxFont::Metrics();
-  gfxFont* font = aFontGroup->GetFontAt(0);
+  gfxFont* font = aFontGroup->GetFirstValidFont();
   if (!font)
     return gfxFont::Metrics();
   return font->GetMetrics();
@@ -2671,16 +2671,10 @@ nsTextFrame::GetTrimmedOffsets(const nsTextFragment* aFrag,
   return offsets;
 }
 
-/*
- * Currently only Unicode characters below 0x10000 have their spacing modified
- * by justification. If characters above 0x10000 turn out to need
- * justification spacing, that will require extra work. Currently,
- * this function must not include 0xd800 to 0xdbff because these characters
- * are surrogates.
- */
 static bool IsJustifiableCharacter(const nsTextFragment* aFrag, int32_t aPos,
-                                     bool aLangIsCJ)
+                                   bool aLangIsCJ)
 {
+  NS_ASSERTION(aPos >= 0, "negative position?!");
   char16_t ch = aFrag->CharAt(aPos);
   if (ch == '\n' || ch == '\t' || ch == '\r')
     return true;
@@ -2693,24 +2687,37 @@ static bool IsJustifiableCharacter(const nsTextFragment* aFrag, int32_t aPos,
   }
   if (ch < 0x2150u)
     return false;
-  if (aLangIsCJ && (
-       (0x2150u <= ch && ch <= 0x22ffu) || // Number Forms, Arrows, Mathematical Operators
-       (0x2460u <= ch && ch <= 0x24ffu) || // Enclosed Alphanumerics
-       (0x2580u <= ch && ch <= 0x27bfu) || // Block Elements, Geometric Shapes, Miscellaneous Symbols, Dingbats
-       (0x27f0u <= ch && ch <= 0x2bffu) || // Supplemental Arrows-A, Braille Patterns, Supplemental Arrows-B,
-                                           // Miscellaneous Mathematical Symbols-B, Supplemental Mathematical Operators,
-                                           // Miscellaneous Symbols and Arrows
-       (0x2e80u <= ch && ch <= 0x312fu) || // CJK Radicals Supplement, CJK Radicals Supplement,
-                                           // Ideographic Description Characters, CJK Symbols and Punctuation,
-                                           // Hiragana, Katakana, Bopomofo
-       (0x3190u <= ch && ch <= 0xabffu) || // Kanbun, Bopomofo Extended, Katakana Phonetic Extensions,
-                                           // Enclosed CJK Letters and Months, CJK Compatibility,
-                                           // CJK Unified Ideographs Extension A, Yijing Hexagram Symbols,
-                                           // CJK Unified Ideographs, Yi Syllables, Yi Radicals
-       (0xf900u <= ch && ch <= 0xfaffu) || // CJK Compatibility Ideographs
-       (0xff5eu <= ch && ch <= 0xff9fu)    // Halfwidth and Fullwidth Forms(a part)
-     ))
-    return true;
+  if (aLangIsCJ) {
+    if ((0x2150u <= ch && ch <= 0x22ffu) || // Number Forms, Arrows, Mathematical Operators
+        (0x2460u <= ch && ch <= 0x24ffu) || // Enclosed Alphanumerics
+        (0x2580u <= ch && ch <= 0x27bfu) || // Block Elements, Geometric Shapes, Miscellaneous Symbols, Dingbats
+        (0x27f0u <= ch && ch <= 0x2bffu) || // Supplemental Arrows-A, Braille Patterns, Supplemental Arrows-B,
+                                            // Miscellaneous Mathematical Symbols-B, Supplemental Mathematical Operators,
+                                            // Miscellaneous Symbols and Arrows
+        (0x2e80u <= ch && ch <= 0x312fu) || // CJK Radicals Supplement, CJK Radicals Supplement,
+                                            // Ideographic Description Characters, CJK Symbols and Punctuation,
+                                            // Hiragana, Katakana, Bopomofo
+        (0x3190u <= ch && ch <= 0xabffu) || // Kanbun, Bopomofo Extended, Katakana Phonetic Extensions,
+                                            // Enclosed CJK Letters and Months, CJK Compatibility,
+                                            // CJK Unified Ideographs Extension A, Yijing Hexagram Symbols,
+                                            // CJK Unified Ideographs, Yi Syllables, Yi Radicals
+        (0xf900u <= ch && ch <= 0xfaffu) || // CJK Compatibility Ideographs
+        (0xff5eu <= ch && ch <= 0xff9fu)    // Halfwidth and Fullwidth Forms(a part)
+       ) {
+      return true;
+    }
+    char16_t ch2;
+    if (NS_IS_HIGH_SURROGATE(ch) && aFrag->GetLength() > uint32_t(aPos) + 1 &&
+        NS_IS_LOW_SURROGATE(ch2 = aFrag->CharAt(aPos + 1))) {
+      uint32_t u = SURROGATE_TO_UCS4(ch, ch2);
+      if (0x20000u <= u && u <= 0x2ffffu) { // CJK Unified Ideographs Extension B,
+                                            // CJK Unified Ideographs Extension C,
+                                            // CJK Unified Ideographs Extension D,
+                                            // CJK Compatibility Ideographs Supplement
+        return true;
+      }
+    }
+  }
   return false;
 }
 
@@ -5653,7 +5660,7 @@ nsTextFrame::PaintTextSelectionDecorations(gfxContext* aCtx,
     sdptr = sdptr->mNext;
   }
 
-  gfxFont* firstFont = aProvider.GetFontGroup()->GetFontAt(0);
+  gfxFont* firstFont = aProvider.GetFontGroup()->GetFirstValidFont();
   if (!firstFont)
     return; // OOM
   gfxFont::Metrics decorationMetrics(firstFont->GetMetrics());
@@ -6334,7 +6341,7 @@ nsTextFrame::CombineSelectionUnderlineRect(nsPresContext* aPresContext,
   nsLayoutUtils::GetFontMetricsForFrame(this, getter_AddRefs(fm),
                                         GetFontSizeInflation());
   gfxFontGroup* fontGroup = fm->GetThebesFontGroup();
-  gfxFont* firstFont = fontGroup->GetFontAt(0);
+  gfxFont* firstFont = fontGroup->GetFirstValidFont();
   if (!firstFont)
     return false; // OOM
   const gfxFont::Metrics& metrics = firstFont->GetMetrics();

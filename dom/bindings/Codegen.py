@@ -4911,7 +4911,7 @@ def getJSToNativeConversionInfo(type, descriptorProvider, failureCode=None,
         conversion = indent(CGCallbackTempRoot(name).define())
 
         if allowTreatNonCallableAsNull and type.treatNonCallableAsNull():
-            haveCallable = "JS_ObjectIsCallable(cx, &${val}.toObject())"
+            haveCallable = "JS::IsCallable(&${val}.toObject())"
             if not isDefinitelyObject:
                 haveCallable = "${val}.isObject() && " + haveCallable
             if defaultValue is not None:
@@ -4936,7 +4936,7 @@ def getJSToNativeConversionInfo(type, descriptorProvider, failureCode=None,
                 template = conversion
         else:
             template = wrapObjectTemplate(
-                "if (JS_ObjectIsCallable(cx, &${val}.toObject())) {\n" +
+                "if (JS::IsCallable(&${val}.toObject())) {\n" +
                 conversion +
                 "} else {\n" +
                 indent(onFailureNotCallable(failureCode).define()) +
@@ -7004,14 +7004,10 @@ class CGMethodCall(CGThing):
             # 2)  A Date object being passed to a Date or "object" arg.
             # 3)  A RegExp object being passed to a RegExp or "object" arg.
             # 4)  A callable object being passed to a callback or "object" arg.
-            # 5)  Any non-Date and non-RegExp object being passed to a
-            #     array or sequence or callback interface dictionary or
+            # 5)  An iterable object being passed to a sequence arg.
+            # 6)  Any non-Date and non-RegExp object being passed to a
+            #     array or callback interface or dictionary or
             #     "object" arg.
-            #
-            # We can can coalesce these five cases together, as long as we make
-            # sure to check whether our object works as an interface argument
-            # before checking whether it works as an arraylike or dictionary or
-            # callback function or callback interface.
 
             # First grab all the overloads that have a non-callback interface
             # (which includes typed arrays and arraybuffers) at the
@@ -7031,17 +7027,20 @@ class CGMethodCall(CGThing):
             objectSigs.extend(s for s in possibleSignatures
                               if distinguishingType(s).isCallback())
 
-            # Now append all the overloads that take an array or sequence or
-            # dictionary or callback interface:
+            # And all the overloads that take sequences
             objectSigs.extend(s for s in possibleSignatures
-                              if (distinguishingType(s).isArray() or
-                                  distinguishingType(s).isSequence() or
-                                  distinguishingType(s).isDictionary() or
-                                  distinguishingType(s).isCallbackInterface()))
+                              if distinguishingType(s).isSequence())
 
-            # Now append all the overloads that take MozMap:
-            objectSigs.extend(s for s in possibleSignatures
-                              if (distinguishingType(s).isMozMap()))
+            # Now append all the overloads that take an array or dictionary or
+            # callback interface or MozMap.  There should be only one of these!
+            genericObjectSigs = [
+                s for s in possibleSignatures
+                if (distinguishingType(s).isArray() or
+                    distinguishingType(s).isDictionary() or
+                    distinguishingType(s).isMozMap() or
+                    distinguishingType(s).isCallbackInterface()) ]
+            assert len(genericObjectSigs) <= 1
+            objectSigs.extend(genericObjectSigs)
 
             # There might be more than one thing in objectSigs; we need to check
             # which ones we unwrap to.
@@ -11554,14 +11553,17 @@ class CGDictionary(CGThing):
             # that we throw if we have no value provided.
             conversion += dedent(
                 """
-                // Skip the undefined check if we have no cx.  In that
-                // situation the caller is default-constructing us and we'll
-                // just assume they know what they're doing.
-                if (cx && (isNull || temp->isUndefined())) {
+                if (!isNull && !temp->isUndefined()) {
+                ${convert}
+                } else if (cx) {
+                  // Don't error out if we have no cx.  In that
+                  // situation the caller is default-constructing us and we'll
+                  // just assume they know what they're doing.
                   return ThrowErrorMessage(cx, MSG_MISSING_REQUIRED_DICTIONARY_MEMBER,
                                            "%s");
                 }
-                ${convert}""" % self.getMemberSourceDescription(member))
+                """ % self.getMemberSourceDescription(member))
+            conversionReplacements["convert"] = indent(conversionReplacements["convert"]).rstrip();
         else:
             conversion += (
                 "if (!isNull && !temp->isUndefined()) {\n"
@@ -13415,7 +13417,7 @@ class CGCallback(CGClass):
     def getConstructors(self):
         if (not self.idlObject.isInterface() and
             not self.idlObject._treatNonObjectAsNull):
-            body = "MOZ_ASSERT(JS_ObjectIsCallable(nullptr, mCallback));\n"
+            body = "MOZ_ASSERT(JS::IsCallable(mCallback));\n"
         else:
             # Not much we can assert about it, other than not being null, and
             # CallbackObject does that already.
@@ -13877,7 +13879,7 @@ class CallCallback(CallbackMethod):
 
     def getCallGuard(self):
         if self.callback._treatNonObjectAsNull:
-            return "JS_ObjectIsCallable(cx, mCallback) && "
+            return "JS::IsCallable(mCallback) && "
         return ""
 
 
@@ -13925,7 +13927,7 @@ class CallbackOperationBase(CallbackMethod):
             return 'JS::Rooted<JS::Value> callable(cx);\n' + getCallableFromProp
         return fill(
             """
-            bool isCallable = JS_ObjectIsCallable(cx, mCallback);
+            bool isCallable = JS::IsCallable(mCallback);
             JS::Rooted<JS::Value> callable(cx);
             if (isCallable) {
               callable = JS::ObjectValue(*mCallback);

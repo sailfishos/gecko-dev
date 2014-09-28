@@ -1708,7 +1708,7 @@ ObjectAddress(JSContext *cx, unsigned argc, jsval *vp)
     }
 
 #ifdef JS_MORE_DETERMINISTIC
-    args.rval().setInt(0);
+    args.rval().setInt32(0);
 #else
     char buffer[64];
     JS_snprintf(buffer, sizeof(buffer), "%p", &args[0].toObject());
@@ -2069,7 +2069,7 @@ ByteSize(JSContext *cx, unsigned argc, Value *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
     mozilla::MallocSizeOf mallocSizeOf = cx->runtime()->debuggerMallocSizeOf;
-    JS::ubi::Node node = args.get(0);
+    JS::ubi::Node node(args.get(0));
     if (node)
         args.rval().set(NumberValue(node.size(mallocSizeOf)));
     else

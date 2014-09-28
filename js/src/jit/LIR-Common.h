@@ -146,7 +146,7 @@ class LSimdSplatX4 : public LInstructionHelper<1, 1, 0>
 class LSimdExtractElementBase : public LInstructionHelper<1, 1, 0>
 {
   protected:
-    LSimdExtractElementBase(const LAllocation &base) {
+    explicit LSimdExtractElementBase(const LAllocation &base) {
         setOperand(0, base);
     }
 
@@ -164,7 +164,7 @@ class LSimdExtractElementI : public LSimdExtractElementBase
 {
   public:
     LIR_HEADER(SimdExtractElementI);
-    LSimdExtractElementI(const LAllocation &base)
+    explicit LSimdExtractElementI(const LAllocation &base)
       : LSimdExtractElementBase(base)
     {}
 };
@@ -173,7 +173,7 @@ class LSimdExtractElementF : public LSimdExtractElementBase
 {
   public:
     LIR_HEADER(SimdExtractElementF);
-    LSimdExtractElementF(const LAllocation &base)
+    explicit LSimdExtractElementF(const LAllocation &base)
       : LSimdExtractElementBase(base)
     {}
 };
@@ -3542,6 +3542,24 @@ class LValueToString : public LInstructionHelper<1, BOX_PIECES, 1>
 
     const LDefinition *tempToUnbox() {
         return getTemp(0);
+    }
+};
+
+class LInt32x4ToFloat32x4 : public LInstructionHelper<1, 1, 0>
+{
+  public:
+    LIR_HEADER(Int32x4ToFloat32x4);
+    explicit LInt32x4ToFloat32x4(const LAllocation &input) {
+        setOperand(0, input);
+    }
+};
+
+class LFloat32x4ToInt32x4 : public LInstructionHelper<1, 1, 0>
+{
+  public:
+    LIR_HEADER(Float32x4ToInt32x4);
+    explicit LFloat32x4ToInt32x4(const LAllocation &input) {
+        setOperand(0, input);
     }
 };
 

@@ -474,21 +474,32 @@ struct GLContextSymbols
     typedef void (GLAPIENTRY * PFNGLVERTEXATTRIBDIVISOR) (GLuint index, GLuint divisor);
     PFNGLVERTEXATTRIBDIVISOR fVertexAttribDivisor;
 
-    // EXT_transform_feedback / OpenGL (ES) 3.0
+    // ARB_transform_feedback2 / OpenGL 4.0 / OpenGL ES 3.0
     typedef void (GLAPIENTRY * PFNGLBINDBUFFERBASE) (GLenum target, GLuint index, GLuint buffer);
     PFNGLBINDBUFFERBASE fBindBufferBase;
     typedef void (GLAPIENTRY * PFNGLBINDBUFFERRANGE) (GLenum target, GLuint index, GLuint buffer, GLintptr offset, GLsizeiptr size);
     PFNGLBINDBUFFERRANGE fBindBufferRange;
 
-    typedef void (GLAPIENTRY * PFNGLBEGINTRANSFORMFEEDBACK) (GLenum primitiveMode);
-    PFNGLBEGINTRANSFORMFEEDBACK fBeginTransformFeedback;
-    typedef void (GLAPIENTRY * PFNGLENDTRANSFORMFEEDBACK) (void);
-    PFNGLENDTRANSFORMFEEDBACK fEndTransformFeedback;
-
+    typedef void (GLAPIENTRY * PFNGLGENTRANSFORMFEEDBACKSPROC) (GLsizei n, GLuint* ids);
+    PFNGLGENTRANSFORMFEEDBACKSPROC fGenTransformFeedbacks;
+    typedef void (GLAPIENTRY * PFNGLDELETETRANSFORMFEEDBACKSPROC) (GLsizei n, GLuint* ids);
+    PFNGLDELETETRANSFORMFEEDBACKSPROC fDeleteTransformFeedbacks;
+    typedef realGLboolean (GLAPIENTRY * PFNGLISTRANSFORMFEEDBACKPROC) (GLuint id);
+    PFNGLISTRANSFORMFEEDBACKPROC fIsTransformFeedback;
+    typedef void (GLAPIENTRY * PFNGLBINDTRANSFORMFEEDBACKPROC) (GLenum target, GLuint id);
+    PFNGLBINDTRANSFORMFEEDBACKPROC fBindTransformFeedback;
     typedef void (GLAPIENTRY * PFNGLTRANSFORMFEEDBACKVARYINGS) (GLuint program, GLsizei count, const GLchar* const* varyings, GLenum bufferMode);
     PFNGLTRANSFORMFEEDBACKVARYINGS fTransformFeedbackVaryings;
     typedef void (GLAPIENTRY * PFNGLGETTRANSFORMFEEDBACKVARYING) (GLuint program, GLuint index, GLsizei bufSize, GLsizei* length, GLsizei* size, GLenum* type, GLchar* name);
     PFNGLGETTRANSFORMFEEDBACKVARYING fGetTransformFeedbackVarying;
+    typedef void (GLAPIENTRY * PFNGLBEGINTRANSFORMFEEDBACK) (GLenum primitiveMode);
+    PFNGLBEGINTRANSFORMFEEDBACK fBeginTransformFeedback;
+    typedef void (GLAPIENTRY * PFNGLENDTRANSFORMFEEDBACK) (void);
+    PFNGLENDTRANSFORMFEEDBACK fEndTransformFeedback;
+    typedef void (GLAPIENTRY * PFNGLPAUSETRANSFORMFEEDBACKPROC) ();
+    PFNGLPAUSETRANSFORMFEEDBACKPROC fPauseTransformFeedback;
+    typedef void (GLAPIENTRY * PFNGLRESUMETRANSFORMFEEDBACKPROC) ();
+    PFNGLRESUMETRANSFORMFEEDBACKPROC fResumeTransformFeedback;
 
     typedef void (GLAPIENTRY * PFNGLGETINTEGERI_V) (GLenum param, GLuint index, GLint* values);
     PFNGLGETINTEGERI_V fGetIntegeri_v;
@@ -569,6 +580,12 @@ struct GLContextSymbols
     typedef void (GLAPIENTRY * PFNGLGETSAMPLERPARAMETERFVPROC) (GLuint sampler, GLenum pname, GLfloat *params);
     PFNGLGETSAMPLERPARAMETERFVPROC fGetSamplerParameterfv;
 
+    // texture_storage
+    typedef void (GLAPIENTRY * PFNGLTEXSTORAGE2DPROC) (GLenum target, GLsizei levels, GLenum internalformat, GLsizei width, GLsizei height);
+    PFNGLTEXSTORAGE2DPROC fTexStorage2D;
+    typedef void (GLAPIENTRY * PFNGLTEXSTORAGE3DPROC) (GLenum target, GLsizei levels, GLenum internalformat, GLsizei width, GLsizei height, GLsizei depth);
+    PFNGLTEXSTORAGE3DPROC fTexStorage3D;
+
     // uniform_buffer_object
     typedef void (GLAPIENTRY * PFNGLGETUNIFORMINDICESPROC) (GLuint program, GLsizei uniformCount,
                                                             const GLchar* const* uniformNames, GLuint* uniformIndices);
@@ -616,6 +633,26 @@ struct GLContextSymbols
     PFNGLUNIFORM4UIVPROC fUniform4uiv;
     typedef GLint (GLAPIENTRY * PFNGLGETFRAGDATALOCATIONPROC) (GLuint program, const GLchar* name);
     PFNGLGETFRAGDATALOCATIONPROC fGetFragDataLocation;
+
+    // 3D Textures
+    typedef void (GLAPIENTRY * PFNGLTEXSUBIMAGE3DPROC) (GLenum target, GLint level, GLint xoffset,
+                                                        GLint yoffset, GLint zoffset, GLsizei width,
+                                                        GLsizei height, GLsizei depth, GLenum format,
+                                                        GLenum type, const GLvoid* pixels);
+    PFNGLTEXSUBIMAGE3DPROC fTexSubImage3D;
+    typedef void (GLAPIENTRY * PFNGLCOPYTEXSUBIMAGE3DPROC) (GLenum target, GLint level, GLint xoffset,
+                                                            GLint yoffset, GLint zoffset, GLint x,
+                                                            GLint y, GLsizei width, GLsizei height);
+    PFNGLCOPYTEXSUBIMAGE3DPROC fCopyTexSubImage3D;
+    typedef void (GLAPIENTRY * PFNGLCOMPRESSEDTEXIMAGE3D) (GLenum target, GLint level, GLenum internalformat,
+                                                           GLsizei width, GLsizei height, GLsizei depth,
+                                                           GLint border, GLsizei imageSize, const GLvoid* data);
+    PFNGLCOMPRESSEDTEXIMAGE3D fCompressedTexImage3D;
+    typedef void (GLAPIENTRY * PFNGLCOMPRESSEDTEXSUBIMAGE3D) (GLenum target, GLint level,
+                                                              GLint xoffset, GLint yoffset, GLint zoffset,
+                                                              GLsizei width, GLsizei height, GLsizei depth,
+                                                              GLenum format, GLsizei imageSize, const GLvoid* data);
+    PFNGLCOMPRESSEDTEXSUBIMAGE3D fCompressedTexSubImage3D;
 };
 
 }
