@@ -4,4 +4,16 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-XPCSHELL_TESTS_MANIFESTS += ['unit/xpcshell.ini']
+if CONFIG['MOZ_B2G']:
+    EXTRA_COMPONENTS += [
+        'EngineeringMode.manifest',
+        'EngineeringModeAPI.js',
+        'EngineeringModeService.js',
+    ]
+
+    XPIDL_SOURCES += [
+        'nsIEngineeringMode.idl',
+    ]
+
+    XPIDL_MODULE = 'dom_engineeringmode'
+
