@@ -5798,6 +5798,7 @@ class MPhi MOZ_FINAL : public MDefinition, public InlineListNode<MPhi>
     bool addInputSlow(MDefinition *ins, bool *ptypeChange = nullptr);
 
     MDefinition *foldsTo(TempAllocator &alloc);
+    MDefinition *foldsTernary();
 
     bool congruentTo(const MDefinition *ins) const;
 
@@ -10795,6 +10796,7 @@ class MResumePoint MOZ_FINAL :
 
     bool isObservableOperand(MUse *u) const;
     bool isObservableOperand(size_t index) const;
+    bool isRecoverableOperand(MUse *u) const;
 
     MDefinition *getOperand(size_t index) const {
         return operands_[index].producer();

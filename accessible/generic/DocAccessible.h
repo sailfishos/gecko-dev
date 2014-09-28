@@ -6,7 +6,7 @@
 #ifndef mozilla_a11y_DocAccessible_h__
 #define mozilla_a11y_DocAccessible_h__
 
-#include "nsIAccessibleDocument.h"
+#include "xpcAccessibleDocument.h"
 #include "nsIAccessiblePivot.h"
 
 #include "AccEvent.h"
@@ -38,7 +38,7 @@ template<class Class, class Arg>
 class TNotification;
 
 class DocAccessible : public HyperTextAccessibleWrap,
-                      public nsIAccessibleDocument,
+                      public xpcAccessibleDocument,
                       public nsIDocumentObserver,
                       public nsIObserver,
                       public nsIScrollPositionListener,
@@ -47,8 +47,6 @@ class DocAccessible : public HyperTextAccessibleWrap,
 {
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(DocAccessible, Accessible)
-
-  NS_DECL_NSIACCESSIBLEDOCUMENT
 
   NS_DECL_NSIOBSERVER
 
@@ -97,6 +95,31 @@ public:
   // DocAccessible
 
   /**
+   * Return document URL.
+   */
+  void URL(nsAString& aURL) const;
+
+  /**
+   * Return DOM document title.
+   */
+  void Title(nsString& aTitle) const { mDocumentNode->GetTitle(aTitle); }
+
+  /**
+   * Return DOM document mime type.
+   */
+  void MimeType(nsAString& aType) const { mDocumentNode->GetContentType(aType); }
+
+  /**
+   * Return DOM document type.
+   */
+  void DocType(nsAString& aType) const;
+
+  /**
+   * Return virtual cursor associated with the document.
+   */
+  nsIAccessiblePivot* VirtualCursor();
+
+  /**
    * Return presentation shell for this document accessible.
    */
   nsIPresShell* PresShell() const { return mPresShell; }
@@ -105,7 +128,7 @@ public:
    * Return the presentation shell's context.
    */
   nsPresContext* PresContext() const { return mPresShell->GetPresContext(); }
-    
+
   /**
    * Return true if associated DOM document was loaded and isn't unloading.
    */
@@ -296,7 +319,16 @@ public:
   /**
    * Notify the document accessible that content was removed.
    */
-  void ContentRemoved(nsIContent* aContainerNode, nsIContent* aChildNode);
+  void ContentRemoved(Accessible* aContainer, nsIContent* aChildNode)
+  {
+    // Update the whole tree of this document accessible when the container is
+    // null (document element is removed).
+    UpdateTree((aContainer ? aContainer : this), aChildNode, false);
+  }
+  void ContentRemoved(nsIContent* aContainerNode, nsIContent* aChildNode)
+  {
+    ContentRemoved(GetAccessibleOrContainer(aContainerNode), aChildNode);
+  }
 
   /**
    * Updates accessible tree when rendered text is changed.

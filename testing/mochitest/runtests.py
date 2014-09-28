@@ -504,7 +504,8 @@ class MochitestUtilsMixin(object):
 
     # Note that all tests under options.subsuite need to be browser chrome tests.
     if options.browserChrome or options.chrome or options.subsuite or \
-       options.a11y or options.webapprtChrome:
+       options.a11y or options.webapprtChrome or options.jetpackPackage or \
+       options.jetpackAddon:
       self.makeTestConfig(options)
     else:
       if options.autorun:
@@ -563,6 +564,10 @@ class MochitestUtilsMixin(object):
   def getTestFlavor(self, options):
     if options.browserChrome:
       return "browser-chrome"
+    elif options.jetpackPackage:
+      return "jetpack-package"
+    elif options.jetpackAddon:
+      return "jetpack-addon"
     elif options.chrome:
       return "chrome"
     elif options.a11y:
@@ -578,6 +583,11 @@ class MochitestUtilsMixin(object):
     if options.browserChrome:
       allow_js_css = True
       testPattern = re.compile(r"browser_.+\.js")
+    elif options.jetpackPackage:
+      allow_js_css = True
+      testPattern = re.compile(r"test-.+\.js")
+    elif options.jetpackAddon:
+      testPattern = re.compile(r".+\.xpi")
     elif options.chrome or options.a11y:
       testPattern = re.compile(r"(browser|test)_.+\.(xul|html|js|xhtml)")
     elif options.webapprtContent:
@@ -611,6 +621,10 @@ class MochitestUtilsMixin(object):
           self.testRoot = 'metro'
         else:
           self.testRoot = 'browser'
+      elif options.jetpackPackage:
+        self.testRoot = 'jetpack-package'
+      elif options.jetpackAddon:
+        self.testRoot = 'jetpack-addon'
       elif options.a11y:
         self.testRoot = 'a11y'
       elif options.webapprtChrome:
@@ -629,7 +643,7 @@ class MochitestUtilsMixin(object):
       testURL = "/".join([testHost, self.TEST_PATH, os.path.dirname(testPath)])
     if options.chrome or options.a11y:
       testURL = "/".join([testHost, self.CHROME_PATH])
-    elif options.browserChrome:
+    elif options.browserChrome or options.jetpackPackage or options.jetpackAddon:
       testURL = "about:blank"
     return testURL
 
@@ -796,6 +810,16 @@ overlay chrome://browser/content/browser.xul chrome://mochikit/content/browser-t
 overlay chrome://browser/content/shell.xhtml chrome://mochikit/content/browser-test-overlay.xul
 overlay chrome://navigator/content/navigator.xul chrome://mochikit/content/browser-test-overlay.xul
 overlay chrome://webapprt/content/webapp.xul chrome://mochikit/content/browser-test-overlay.xul
+"""
+
+    if options.jetpackPackage:
+      chrome += """
+overlay chrome://browser/content/browser.xul chrome://mochikit/content/jetpack-package-overlay.xul
+"""
+
+    if options.jetpackAddon:
+      chrome += """
+overlay chrome://browser/content/browser.xul chrome://mochikit/content/jetpack-addon-overlay.xul
 """
 
     self.installChromeJar(chrome, options)
@@ -1177,17 +1201,28 @@ class Mochitest(MochitestUtilsMixin):
     if options.gmp_path:
       return options.gmp_path
 
-    # For local builds, gmp-fake will be under dist/bin.
-    gmp_path = os.path.join(options.xrePath, 'gmp-fake', '1.0')
-    if os.path.isdir(gmp_path):
-      return gmp_path
+    gmp_parentdirs = [
+      # For local builds, GMP plugins will be under dist/bin.
+      options.xrePath,
+      # For packaged builds, GMP plugins will get copied under $profile/plugins.
+      os.path.join(self.profile.profile, 'plugins'),
+    ]
 
-    # For packaged builds, gmp-fake will get copied under $profile/plugins.
-    gmp_path = os.path.join(self.profile.profile, 'plugins', 'gmp-fake', '1.0')
-    if os.path.isdir(gmp_path):
-      return gmp_path
-    # This is fatal for desktop environments.
-    raise EnvironmentError('Could not find gmp-fake')
+    gmp_subdirs = [
+      os.path.join('gmp-fake', '1.0'),
+      os.path.join('gmp-clearkey', '0.1'),
+    ]
+
+    gmp_paths = [os.path.join(parent, sub)
+      for parent in gmp_parentdirs
+      for sub in gmp_subdirs
+      if os.path.isdir(os.path.join(parent, sub))]
+
+    if not gmp_paths:
+      # This is fatal for desktop environments.
+      raise EnvironmentError('Could not find test gmp plugins')
+
+    return os.pathsep.join(gmp_paths)
 
   def buildBrowserEnv(self, options, debugger=False, env=None):
     """build the environment variables for the specific test and operating system"""

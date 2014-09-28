@@ -87,7 +87,6 @@ function scroll(aMessage) {
                      { bounds: Utils.getBounds(position, true),
                        page: aMessage.json.page,
                        horizontal: aMessage.json.horizontal });
-    sendScrollCoordinates(position);
   }
 }
 
@@ -140,6 +139,7 @@ addMessageListener(
     if (!eventManager) {
       eventManager = new EventManager(this, contentControl);
     }
+    eventManager.inTest = m.json.inTest;
     eventManager.start();
 
     sendAsyncMessage('AccessFu:ContentStarted');

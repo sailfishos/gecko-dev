@@ -352,7 +352,7 @@ nsXMLHttpRequest::Init()
   // Instead of grabbing some random global from the context stack,
   // let's use the default one (junk scope) for now.
   // We should move away from this Init...
-  Construct(subjectPrincipal, xpc::GetNativeForGlobal(xpc::PrivilegedJunkScope()));
+  Construct(subjectPrincipal, xpc::NativeGlobal(xpc::PrivilegedJunkScope()));
   return NS_OK;
 }
 
@@ -1734,13 +1734,43 @@ nsXMLHttpRequest::Open(const nsACString& inMethod, const nsACString& url,
     channelPolicy->SetContentSecurityPolicy(csp);
     channelPolicy->SetLoadType(nsIContentPolicy::TYPE_XMLHTTPREQUEST);
   }
-  rv = NS_NewChannel(getter_AddRefs(mChannel),
-                     uri,
-                     nullptr,                    // ioService
-                     loadGroup,
-                     nullptr,                    // callbacks
-                     nsIRequest::LOAD_BACKGROUND,
-                     channelPolicy);
+
+  nsSecurityFlags secFlags = nsILoadInfo::SEC_NORMAL;
+  if (IsSystemXHR()) {
+    // Don't give this document the system principal.  We need to keep track of
+    // mPrincipal being system because we use it for various security checks
+    // that should be passing, but the document data shouldn't get a system
+    // principal.  Hence we set the sandbox flag in loadinfo, so that 
+    // GetChannelResultPrincipal will give us the nullprincipal.
+    secFlags |= nsILoadInfo::SEC_SANDBOXED;
+  } else {
+    secFlags |= nsILoadInfo::SEC_FORCE_INHERIT_PRINCIPAL;
+  }
+
+  // If we have the document, use it
+  if (doc) {
+    rv = NS_NewChannel(getter_AddRefs(mChannel),
+                       uri,
+                       doc,
+                       secFlags,
+                       nsIContentPolicy::TYPE_XMLHTTPREQUEST,
+                       channelPolicy,
+                       loadGroup,
+                       nullptr,   // aCallbacks
+                       nsIRequest::LOAD_BACKGROUND);
+  } else {
+    //otherwise use the principal
+    rv = NS_NewChannel(getter_AddRefs(mChannel),
+                       uri,
+                       mPrincipal,
+                       secFlags,
+                       nsIContentPolicy::TYPE_XMLHTTPREQUEST,
+                       channelPolicy,
+                       loadGroup,
+                       nullptr,   // aCallbacks
+                       nsIRequest::LOAD_BACKGROUND);
+  }
+
   if (NS_FAILED(rv)) return rv;
 
   mState &= ~(XML_HTTP_REQUEST_USE_XSITE_AC |
@@ -1957,24 +1987,6 @@ nsXMLHttpRequest::OnStartRequest(nsIRequest *request, nsISupports *ctxt)
   nsCOMPtr<nsIChannel> channel(do_QueryInterface(request));
   NS_ENSURE_TRUE(channel, NS_ERROR_UNEXPECTED);
 
-  nsCOMPtr<nsIPrincipal> documentPrincipal;
-  if (IsSystemXHR()) {
-    // Don't give this document the system principal.  We need to keep track of
-    // mPrincipal being system because we use it for various security checks
-    // that should be passing, but the document data shouldn't get a system
-    // principal.
-    nsresult rv;
-    documentPrincipal = do_CreateInstance("@mozilla.org/nullprincipal;1", &rv);
-    NS_ENSURE_SUCCESS(rv, rv);
-  } else {
-    documentPrincipal = mPrincipal;
-  }
-
-  nsCOMPtr<nsILoadInfo> loadInfo =
-    new LoadInfo(documentPrincipal, LoadInfo::eInheritPrincipal,
-                 LoadInfo::eNotSandboxed);
-  channel->SetLoadInfo(loadInfo);
-
   nsresult status;
   request->GetStatus(&status);
   mErrorLoad = mErrorLoad || NS_FAILED(status);
@@ -2112,21 +2124,23 @@ nsXMLHttpRequest::OnStartRequest(nsIRequest *request, nsISupports *ctxt)
       chromeXHRDocBaseURI = doc->GetBaseURI();
     }
 
-    // Create an empty document from it.  Here we have to cheat a little bit...
-    // Setting the base URI to |baseURI| won't work if the document has a null
-    // principal, so use mPrincipal when creating the document, then reset the
-    // principal.
+    // Create an empty document from it.
     const nsAString& emptyStr = EmptyString();
     nsCOMPtr<nsIDOMDocument> responseDoc;
     nsIGlobalObject* global = DOMEventTargetHelper::GetParentObject();
+
+    nsCOMPtr<nsIPrincipal> requestingPrincipal;
+    rv = nsContentUtils::GetSecurityManager()->
+       GetChannelResultPrincipal(channel, getter_AddRefs(requestingPrincipal));
+    NS_ENSURE_SUCCESS(rv, rv);
+
     rv = NS_NewDOMDocument(getter_AddRefs(responseDoc),
                            emptyStr, emptyStr, nullptr, docURI,
-                           baseURI, mPrincipal, true, global,
+                           baseURI, requestingPrincipal, true, global,
                            mIsHtml ? DocumentFlavorHTML :
                                      DocumentFlavorLegacyGuess);
     NS_ENSURE_SUCCESS(rv, rv);
     mResponseXML = do_QueryInterface(responseDoc);
-    mResponseXML->SetPrincipal(documentPrincipal);
     mResponseXML->SetChromeXHRDocURI(chromeXHRDocURI);
     mResponseXML->SetChromeXHRDocBaseURI(chromeXHRDocBaseURI);
 

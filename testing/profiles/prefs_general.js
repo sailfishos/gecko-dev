@@ -153,6 +153,9 @@ user_pref("layout.css.ruby.enabled", true);
 // Disable spammy layout warnings because they pollute test logs
 user_pref("layout.spammy_warnings.enabled", false);
 
+// Enable Media Source Extensions for testing
+user_pref("media.mediasource.enabled", true);
+
 // Enable mozContacts
 user_pref("dom.mozContacts.enabled", true);
 
@@ -250,6 +253,8 @@ user_pref("loop.throttled", false);
 // Ensure UITour won't hit the network
 user_pref("browser.uitour.pinnedTabUrl", "http://%(server)s/uitour-dummy/pinnedTab");
 user_pref("browser.uitour.url", "http://%(server)s/uitour-dummy/tour");
+
+user_pref("media.eme.enabled", true);
 
 // Don't prompt about e10s
 user_pref("browser.displayedE10SPrompt", 5);

@@ -109,11 +109,7 @@ var SelectionHandler = {
         break;
 
       case "Gesture:SingleTap": {
-        if (this._activeType == this.TYPE_SELECTION) {
-          let data = JSON.parse(aData);
-          if (!this._pointInSelection(data.x, data.y))
-            this._closeSelection();
-        } else if (this._activeType == this.TYPE_CURSOR) {
+        if (this._activeType == this.TYPE_CURSOR) {
           // attachCaret() is called in the "Gesture:SingleTap" handler in BrowserEventHandler
           // We're guaranteed to call this first, because this observer was added last
           this._deactivate();
@@ -948,7 +944,7 @@ var SelectionHandler = {
     if (selectedText.length) {
       let req = Services.search.defaultEngine.getSubmission(selectedText);
       let parent = BrowserApp.selectedTab;
-      let isPrivate = PrivateBrowsingUtils.isWindowPrivate(parent.browser.contentWindow);
+      let isPrivate = PrivateBrowsingUtils.isBrowserPrivate(parent.browser);
       // Set current tab as parent of new tab, and set new tab as private if the parent is.
       BrowserApp.addTab(req.uri.spec, {parentId: parent.id,
                                        selected: true,
@@ -1041,16 +1037,6 @@ var SelectionHandler = {
     }
 
     return offset;
-  },
-
-  _pointInSelection: function sh_pointInSelection(aX, aY) {
-    let offset = this._getViewOffset();
-    let rangeRect = this._getSelection().getRangeAt(0).getBoundingClientRect();
-    let radius = ElementTouchHelper.getTouchRadius();
-    return (aX - offset.x > rangeRect.left - radius.left &&
-            aX - offset.x < rangeRect.right + radius.right &&
-            aY - offset.y > rangeRect.top - radius.top &&
-            aY - offset.y < rangeRect.bottom + radius.bottom);
   },
 
   // Returns true if the selection has been reversed. Takes optional aIsStartHandle

@@ -513,7 +513,6 @@ BrowserGlue.prototype = {
       SignInToWebsiteUX.init();
     }
 #endif
-    PdfJs.init();
 #ifdef NIGHTLY_BUILD
     ShumwayUtils.init();
 #endif
@@ -671,6 +670,19 @@ BrowserGlue.prototype = {
 
   // the first browser window has finished initializing
   _onFirstWindowLoaded: function BG__onFirstWindowLoaded(aWindow) {
+    // Initialize PdfJs when running in-process and remote. This only
+    // happens once since PdfJs registers global hooks. If the PdfJs
+    // extension is installed the init method below will be overridden
+    // leaving initialization to the extension.
+    // parent only: configure default prefs, set up pref observers, register
+    // pdf content handler, and initializes parent side message manager
+    // shim for privileged api access.
+    PdfJs.init(true);
+    // child only: similar to the call above for parent - register content
+    // handler and init message manager child shim for privileged api access.
+    // With older versions of the extension installed, this load will fail
+    // passively.
+    aWindow.messageManager.loadFrameScript("resource://pdf.js/pdfjschildbootstrap.js", true);
 #ifdef XP_WIN
     // For windows seven, initialize the jump list module.
     const WINTASKBAR_CONTRACTID = "@mozilla.org/windows-taskbar;1";
@@ -729,6 +741,10 @@ BrowserGlue.prototype = {
 #endif
     webrtcUI.uninit();
     FormValidationHandler.uninit();
+
+    // XXX: Temporary hack to allow Loop FxA login after a restart to work.
+    // Remove this once bug 1071247 is deployed.
+    Services.prefs.clearUserPref("loop.hawk-session-token.fxa");
   },
 
   // All initial windows have opened.
@@ -2276,6 +2292,25 @@ let E10SUINotification = {
         this._showE10sAccessibilityWarning();
       }
     } else {
+      let displayFeedbackRequest = false;
+      try {
+        displayFeedbackRequest = Services.prefs.getBoolPref("browser.requestE10sFeedback");
+      } catch (e) {}
+
+      if (displayFeedbackRequest) {
+        let win = RecentWindow.getMostRecentBrowserWindow();
+        if (!win) {
+          return;
+        }
+
+        Services.prefs.clearUserPref("browser.requestE10sFeedback");
+        let url = Services.urlFormatter.formatURLPref("app.feedback.baseURL");
+        url += "?utm_source=tab&utm_campaign=e10sfeedback";
+
+        win.openUILinkIn(url, "tab");
+        return;
+      }
+
       let e10sPromptShownCount = 0;
       try {
         e10sPromptShownCount = Services.prefs.getIntPref("browser.displayedE10SPrompt");

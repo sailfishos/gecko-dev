@@ -464,6 +464,7 @@ pref("apz.num_paint_duration_samples", 3);
 pref("apz.overscroll.enabled", false);
 pref("apz.overscroll.fling_friction", "0.02");
 pref("apz.overscroll.fling_stopped_threshold", "0.4");
+pref("apz.overscroll.min_pan_distance_ratio", "1.0");
 pref("apz.overscroll.stretch_factor", "0.5");
 pref("apz.overscroll.snap_back.spring_stiffness", "0.6");
 pref("apz.overscroll.snap_back.spring_friction", "0.1");
@@ -620,6 +621,7 @@ pref("ui.scrollToClick", 0);
 pref("canvas.focusring.enabled", true);
 pref("canvas.customfocusring.enabled", false);
 pref("canvas.hitregions.enabled", false);
+pref("canvas.filters.enabled", false);
 // Add support for canvas path objects
 pref("canvas.path.enabled", true);
 
@@ -1212,6 +1214,7 @@ pref("network.http.spdy.enabled", true);
 pref("network.http.spdy.enabled.v3", true);
 pref("network.http.spdy.enabled.v3-1", true);
 pref("network.http.spdy.enabled.http2draft", true);
+pref("network.http.spdy.enabled.http2", false);
 pref("network.http.spdy.enforce-tls-profile", true);
 pref("network.http.spdy.chunk-size", 16000);
 pref("network.http.spdy.timeout", 180);
@@ -4296,3 +4299,10 @@ pref("camera.control.low_memory_thresholdMB", 404);
 
 // UDPSocket API
 pref("dom.udpsocket.enabled", false);
+
+// Experiment: Get TTL from DNS records.
+//     Unset initially (0); Randomly chosen on first run; will remain unchanged
+//     unless adjusted by the user or experiment ends. Variants defined in
+//     nsHostResolver.cpp.
+pref("dns.ttl-experiment.variant", 0);
+pref("dns.ttl-experiment.enabled", true);

@@ -943,6 +943,15 @@ nsSocketTransport::InitWithConnectedSocket(PRFileDesc *fd, const NetAddr *addr)
 }
 
 nsresult
+nsSocketTransport::InitWithConnectedSocket(PRFileDesc* aFD,
+                                           const NetAddr* aAddr,
+                                           nsISupports* aSecInfo)
+{
+    mSecInfo = aSecInfo;
+    return InitWithConnectedSocket(aFD, aAddr);
+}
+
+nsresult
 nsSocketTransport::PostEvent(uint32_t type, nsresult status, nsISupports *param)
 {
     SOCKET_LOG(("nsSocketTransport::PostEvent [this=%p type=%u status=%x param=%p]\n",
@@ -1176,7 +1185,15 @@ nsSocketTransport::InitiateSocket()
 {
     SOCKET_LOG(("nsSocketTransport::InitiateSocket [this=%p]\n", this));
 
-    static bool crashOnNonLocalConnections = !!getenv("MOZ_DISABLE_NONLOCAL_CONNECTIONS");
+    static int crashOnNonLocalConnections = -1;
+    if (crashOnNonLocalConnections == -1) {
+        const char *s = getenv("MOZ_DISABLE_NONLOCAL_CONNECTIONS");
+        if (s) {
+            crashOnNonLocalConnections = !!strncmp(s, "0", 1);
+        } else {
+            crashOnNonLocalConnections = 0;
+        }
+    }
 
     nsresult rv;
     bool isLocal;

@@ -406,6 +406,7 @@ loop.conversation = (function(OT, mozL10n) {
 
       /*jshint newcap:false*/
       this.loadReactComponent(sharedViews.ConversationView({
+        initiate: true,
         sdk: OT,
         model: this._conversation,
         video: {enabled: videoStream}
@@ -440,7 +441,8 @@ loop.conversation = (function(OT, mozL10n) {
       });
 
       this.loadReactComponent(sharedViews.FeedbackView({
-        feedbackApiClient: feedbackClient
+        feedbackApiClient: feedbackClient,
+        onAfterFeedbackReceived: window.close.bind(window)
       }));
     }
   });
@@ -452,6 +454,20 @@ loop.conversation = (function(OT, mozL10n) {
     // Do the initial L10n setup, we do this before anything
     // else to ensure the L10n environment is setup correctly.
     mozL10n.initialize(navigator.mozLoop);
+
+    // Plug in an alternate client ID mechanism, as localStorage and cookies
+    // don't work in the conversation window
+    if (OT && OT.hasOwnProperty("overrideGuidStorage")) {
+      OT.overrideGuidStorage({
+        get: function(callback) {
+          callback(null, navigator.mozLoop.getLoopCharPref("ot.guid"));
+        },
+        set: function(guid, callback) {
+          navigator.mozLoop.setLoopCharPref("ot.guid", guid);
+          callback(null);
+        }
+      });
+    }
 
     document.title = mozL10n.get("incoming_call_title2");
 
@@ -466,7 +482,7 @@ loop.conversation = (function(OT, mozL10n) {
       notifications: new loop.shared.models.NotificationCollection()
     });
 
-    window.addEventListener("unload", (event) => {
+    window.addEventListener("unload", function(event) {
       // Handle direct close of dialog box via [x] control.
       navigator.mozLoop.releaseCallData(router._conversation.get("callId"));
     });

@@ -77,6 +77,7 @@ static const char *sExtensionNames[] = {
     "GL_ARB_ES2_compatibility",
     "GL_ARB_ES3_compatibility",
     "GL_ARB_color_buffer_float",
+    "GL_ARB_copy_buffer",
     "GL_ARB_depth_texture",
     "GL_ARB_draw_buffers",
     "GL_ARB_draw_instanced",
@@ -84,13 +85,16 @@ static const char *sExtensionNames[] = {
     "GL_ARB_framebuffer_sRGB",
     "GL_ARB_half_float_pixel",
     "GL_ARB_instanced_arrays",
+    "GL_ARB_map_buffer_range",
     "GL_ARB_occlusion_query2",
     "GL_ARB_pixel_buffer_object",
     "GL_ARB_robustness",
+    "GL_ARB_sampler_objects",
     "GL_ARB_sync",
     "GL_ARB_texture_float",
     "GL_ARB_texture_non_power_of_two",
     "GL_ARB_texture_rectangle",
+    "GL_ARB_uniform_buffer_object",
     "GL_ARB_vertex_array_object",
     "GL_EXT_bgra",
     "GL_EXT_blend_minmax",
@@ -897,6 +901,29 @@ GLContext::InitWithPrefix(const char *prefix, bool trygl)
             }
         }
 
+        if (IsSupported(GLFeature::sampler_objects)) {
+            SymLoadStruct samplerObjectsSymbols[] = {
+                { (PRFuncPtr*) &mSymbols.fGenSamplers, { "GenSamplers", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fDeleteSamplers, { "DeleteSamplers", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fIsSampler, { "IsSampler", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fBindSampler, { "BindSampler", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fSamplerParameteri, { "SamplerParameteri", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fSamplerParameteriv, { "SamplerParameteriv", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fSamplerParameterf, { "SamplerParameterf", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fSamplerParameterfv, { "SamplerParameterfv", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fGetSamplerParameteriv, { "GetSamplerParameteriv", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fGetSamplerParameterfv, { "GetSamplerParameterfv", nullptr } },
+                END_SYMBOLS
+            };
+
+            if (!LoadSymbols(samplerObjectsSymbols, trygl, prefix)) {
+                NS_ERROR("GL supports sampler objects without supplying its functions.");
+
+                MarkUnsupported(GLFeature::sampler_objects);
+                ClearSymbols(samplerObjectsSymbols);
+            }
+        }
+
         if (IsSupported(GLFeature::transform_feedback)) {
             SymLoadStruct coreSymbols[] = {
                 { (PRFuncPtr*) &mSymbols.fBindBufferBase, { "BindBufferBase", nullptr } },
@@ -1029,6 +1056,20 @@ GLContext::InitWithPrefix(const char *prefix, bool trygl)
             }
         }
 
+        if (IsSupported(GLFeature::copy_buffer)) {
+            SymLoadStruct copyBufferSymbols[] = {
+                { (PRFuncPtr*) &mSymbols.fCopyBufferSubData, { "CopyBufferSubData", nullptr } },
+                END_SYMBOLS
+            };
+
+            if (!LoadSymbols(copyBufferSymbols, trygl, prefix)) {
+                NS_ERROR("GL supports copy_buffer without supplying its function.");
+
+                MarkUnsupported(GLFeature::copy_buffer);
+                ClearSymbols(copyBufferSymbols);
+            }
+        }
+
         if (IsSupported(GLFeature::draw_buffers)) {
             SymLoadStruct coreSymbols[] = {
                 { (PRFuncPtr*) &mSymbols.fDrawBuffers, { "DrawBuffers", nullptr } },
@@ -1068,6 +1109,88 @@ GLContext::InitWithPrefix(const char *prefix, bool trygl)
 
                 MarkUnsupported(GLFeature::draw_range_elements);
                 ClearSymbols(coreSymbols);
+            }
+        }
+
+        if (IsSupported(GLFeature::gpu_shader4)) {
+            SymLoadStruct gpuShader4Symbols[] = {
+                { (PRFuncPtr*) &mSymbols.fVertexAttribI4i, { "VertexAttribI4i", "VertexAttribI4iEXT", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fVertexAttribI4iv, { "VertexAttribI4iv","VertexAttribI4ivEXT", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fVertexAttribI4ui, { "VertexAttribI4ui", "VertexAttribI4uiEXT", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fVertexAttribI4uiv, { "VertexAttribI4uiv", "VertexAttribI4uivEXT", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fVertexAttribIPointer, { "VertexAttribIPointer", "VertexAttribIPointerEXT", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fUniform1ui,  { "Uniform1ui", "Uniform1uiEXT", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fUniform2ui,  { "Uniform2ui", "Uniform2uiEXT", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fUniform3ui,  { "Uniform3ui", "Uniform3uiEXT", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fUniform4ui,  { "Uniform4ui", "Uniform4uiEXT", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fUniform1uiv, { "Uniform1uiv", "Uniform1uivEXT", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fUniform2uiv, { "Uniform2uiv", "Uniform2uivEXT", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fUniform3uiv, { "Uniform3uiv", "Uniform3uivEXT", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fUniform4uiv, { "Uniform4uiv", "Uniform4uivEXT", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fGetFragDataLocation, { "GetFragDataLocation", "GetFragDataLocationEXT", nullptr } },
+                END_SYMBOLS
+            };
+
+            if (!LoadSymbols(gpuShader4Symbols, trygl, prefix)) {
+                NS_ERROR("GL supports gpu_shader4 without supplying its functions.");
+
+                MarkUnsupported(GLFeature::gpu_shader4);
+                ClearSymbols(gpuShader4Symbols);
+            }
+        }
+
+        if (IsSupported(GLFeature::map_buffer_range)) {
+            SymLoadStruct mapBufferRangeSymbols[] = {
+                { (PRFuncPtr*) &mSymbols.fMapBufferRange, { "MapBufferRange", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fFlushMappedBufferRange, { "FlushMappedBufferRange", nullptr } },
+                END_SYMBOLS
+            };
+
+            if (!LoadSymbols(mapBufferRangeSymbols, trygl, prefix)) {
+                NS_ERROR("GL supports map_buffer_range without supplying its functions.");
+
+                MarkUnsupported(GLFeature::map_buffer_range);
+                ClearSymbols(mapBufferRangeSymbols);
+            }
+        }
+
+        if (IsSupported(GLFeature::uniform_buffer_object)) {
+            SymLoadStruct uboSymbols[] = {
+                { (PRFuncPtr*) &mSymbols.fGetUniformIndices, { "GetUniformIndices", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fGetActiveUniformsiv, { "GetActiveUniformsiv", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fGetActiveUniformName, { "GetActiveUniformName", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fGetUniformBlockIndex, { "GetUniformBlockIndex", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fGetActiveUniformBlockiv, { "GetActiveUniformBlockiv", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fGetActiveUniformBlockName, { "GetActiveUniformBlockName", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fUniformBlockBinding, { "UniformBlockBinding", nullptr } },
+                END_SYMBOLS
+            };
+
+            if (!LoadSymbols(&uboSymbols[0], trygl, prefix)) {
+                NS_ERROR("GL supports ARB_uniform_buffer_object without supplying its functions.");
+
+                MarkExtensionUnsupported(ARB_uniform_buffer_object);
+                MarkUnsupported(GLFeature::uniform_buffer_object);
+                ClearSymbols(uboSymbols);
+            }
+        }
+
+        if (IsSupported(GLFeature::uniform_matrix_nonsquare)) {
+            SymLoadStruct umnSymbols[] = {
+                { (PRFuncPtr*) &mSymbols.fUniformMatrix2x3fv, { "UniformMatrix2x3fv", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fUniformMatrix2x4fv, { "UniformMatrix2x4fv", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fUniformMatrix3x2fv, { "UniformMatrix3x2fv", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fUniformMatrix3x4fv, { "UniformMatrix3x4fv", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fUniformMatrix4x2fv, { "UniformMatrix4x2fv", nullptr } },
+                { (PRFuncPtr*) &mSymbols.fUniformMatrix4x3fv, { "UniformMatrix4x3fv", nullptr } },
+                END_SYMBOLS
+            };
+
+            if (!LoadSymbols(&umnSymbols[0], trygl, prefix)) {
+                NS_ERROR("GL supports uniform matrix with non-square dim without supplying its functions.");
+
+                MarkUnsupported(GLFeature::uniform_matrix_nonsquare);
+                ClearSymbols(umnSymbols);
             }
         }
 

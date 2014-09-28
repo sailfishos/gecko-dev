@@ -26,6 +26,7 @@ Cu.import("resource://gre/modules/Promise.jsm");
 Cu.import("resource://gre/modules/osfile.jsm", this);
 Cu.import("resource://gre/modules/Task.jsm");
 Cu.import("resource://gre/modules/FxAccountsOAuthClient.jsm");
+Cu.importGlobalProperties(["URL"]);
 
 this.EXPORTED_SYMBOLS = ["MozLoopService", "LOOP_SESSION_TYPE"];
 
@@ -118,16 +119,17 @@ CallProgressSocket.prototype = {
       return;
     }
 
-    let uri = Services.io.newURI(this._progressUrl, null, null);
-
-    // Allow _websocket to be set for testing.
-    if (!this._websocket && !Services.io.offline) {
-      this._websocket = Cc["@mozilla.org/network/protocol;1?name=" + uri.scheme]
-        .createInstance(Ci.nsIWebSocketChannel);
-    } else {
+    if (Services.io.offline) {
       this._onError("IO offline");
       return;
     }
+
+    let uri = Services.io.newURI(this._progressUrl, null, null);
+
+    // Allow _websocket to be set for testing.
+    this._websocket = this._websocket ||
+      Cc["@mozilla.org/network/protocol;1?name=" + uri.scheme]
+        .createInstance(Ci.nsIWebSocketChannel);
 
     this._websocket.asyncOpen(uri, this._progressUrl, this, null);
   },
@@ -243,6 +245,7 @@ CallProgressSocket.prototype = {
  */
 let MozLoopServiceInternal = {
   callsData: {inUse: false},
+  _mocks: {webSocket: undefined},
 
   // The uri of the Loop server.
   get loopServerUri() Services.prefs.getCharPref("loop.server"),
@@ -344,7 +347,9 @@ let MozLoopServiceInternal = {
    * @returns {Promise} a promise that is resolved with no params on completion, or
    *          rejected with an error code or string.
    */
-  promiseRegisteredWithServers: function(mockPushHandler) {
+  promiseRegisteredWithServers: function(mockPushHandler, mockWebSocket) {
+    this._mocks.webSocket = mockWebSocket;
+
     if (gRegisteredDeferred) {
       return gRegisteredDeferred.promise;
     }
@@ -659,9 +664,10 @@ let MozLoopServiceInternal = {
       callData.progressURL,
       callData.callId,
       callData.websocketToken);
+    callProgress._websocket = this._mocks.webSocket;
     // This instance of CallProgressSocket should stay alive until the underlying
     // websocket is closed since it is passed to the websocket as the nsIWebSocketListener.
-      callProgress.connect(() => {callProgress.sendBusy();});
+    callProgress.connect(() => {callProgress.sendBusy();});
   },
 
   /**
@@ -1096,7 +1102,7 @@ this.MozLoopService = {
    * @returns {Promise} a promise that is resolved with no params on completion, or
    *          rejected with an error code or string.
    */
-  register: function(mockPushHandler) {
+  register: function(mockPushHandler, mockWebSocket) {
     // Don't do anything if loop is not enabled.
     if (!Services.prefs.getBoolPref("loop.enabled")) {
       throw new Error("Loop is not enabled");
@@ -1106,7 +1112,7 @@ this.MozLoopService = {
       throw new Error("Loop is disabled by the soft-start mechanism");
     }
 
-    return MozLoopServiceInternal.promiseRegisteredWithServers(mockPushHandler);
+    return MozLoopServiceInternal.promiseRegisteredWithServers(mockPushHandler, mockWebSocket);
   },
 
   /**
@@ -1349,6 +1355,12 @@ this.MozLoopService = {
     // state is clean.
     MozLoopServiceInternal.clearError("registration");
   }),
+
+  openFxASettings: function() {
+    let url = new URL("/settings", gFxAOAuthClient.parameters.content_uri);
+    let win = Services.wm.getMostRecentWindow("navigator:browser");
+    win.switchToTabHavingURI(url.toString(), true);
+  },
 
   /**
    * Performs a hawk based request to the loop server.

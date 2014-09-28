@@ -81,6 +81,7 @@ MOZ_BEGIN_ENUM_CLASS(GLFeature)
     bind_buffer_offset,
     blend_minmax,
     clear_buffers,
+    copy_buffer,
     depth_texture,
     draw_buffers,
     draw_instanced,
@@ -94,8 +95,10 @@ MOZ_BEGIN_ENUM_CLASS(GLFeature)
     framebuffer_multisample,
     framebuffer_object,
     get_query_object_iv,
+    gpu_shader4,
     instanced_arrays,
     instanced_non_arrays,
+    map_buffer_range,
     occlusion_query,
     occlusion_query_boolean,
     occlusion_query2,
@@ -105,6 +108,7 @@ MOZ_BEGIN_ENUM_CLASS(GLFeature)
     renderbuffer_color_half_float,
     robustness,
     sRGB,
+    sampler_objects,
     standard_derivatives,
     texture_float,
     texture_float_linear,
@@ -112,6 +116,8 @@ MOZ_BEGIN_ENUM_CLASS(GLFeature)
     texture_half_float_linear,
     texture_non_power_of_two,
     transform_feedback,
+    uniform_buffer_object,
+    uniform_matrix_nonsquare,
     vertex_array_object,
     EnumMax
 MOZ_END_ENUM_CLASS(GLFeature)
@@ -347,6 +353,7 @@ public:
         ARB_ES2_compatibility,
         ARB_ES3_compatibility,
         ARB_color_buffer_float,
+        ARB_copy_buffer,
         ARB_depth_texture,
         ARB_draw_buffers,
         ARB_draw_instanced,
@@ -354,13 +361,16 @@ public:
         ARB_framebuffer_sRGB,
         ARB_half_float_pixel,
         ARB_instanced_arrays,
+        ARB_map_buffer_range,
         ARB_occlusion_query2,
         ARB_pixel_buffer_object,
         ARB_robustness,
+        ARB_sampler_objects,
         ARB_sync,
         ARB_texture_float,
         ARB_texture_non_power_of_two,
         ARB_texture_rectangle,
+        ARB_uniform_buffer_object,
         ARB_vertex_array_object,
         EXT_bgra,
         EXT_blend_minmax,
@@ -1786,15 +1796,57 @@ public:
         AFTER_GL_CALL;
     }
 
+    void fUniformMatrix2x3fv(GLint location, GLsizei count, realGLboolean transpose, const GLfloat* value) {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fUniformMatrix2x3fv);
+        mSymbols.fUniformMatrix2x3fv(location, count, transpose, value);
+        AFTER_GL_CALL;
+    }
+
+    void fUniformMatrix2x4fv(GLint location, GLsizei count, realGLboolean transpose, const GLfloat* value) {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fUniformMatrix2x4fv);
+        mSymbols.fUniformMatrix2x4fv(location, count, transpose, value);
+        AFTER_GL_CALL;
+    }
+
     void fUniformMatrix3fv(GLint location, GLsizei count, realGLboolean transpose, const GLfloat* value) {
         BEFORE_GL_CALL;
         mSymbols.fUniformMatrix3fv(location, count, transpose, value);
         AFTER_GL_CALL;
     }
 
+    void fUniformMatrix3x2fv(GLint location, GLsizei count, realGLboolean transpose, const GLfloat* value) {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fUniformMatrix3x2fv);
+        mSymbols.fUniformMatrix3x2fv(location, count, transpose, value);
+        AFTER_GL_CALL;
+    }
+
+    void fUniformMatrix3x4fv(GLint location, GLsizei count, realGLboolean transpose, const GLfloat* value) {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fUniformMatrix3x4fv);
+        mSymbols.fUniformMatrix3x4fv(location, count, transpose, value);
+        AFTER_GL_CALL;
+    }
+
     void fUniformMatrix4fv(GLint location, GLsizei count, realGLboolean transpose, const GLfloat* value) {
         BEFORE_GL_CALL;
         mSymbols.fUniformMatrix4fv(location, count, transpose, value);
+        AFTER_GL_CALL;
+    }
+
+    void fUniformMatrix4x2fv(GLint location, GLsizei count, realGLboolean transpose, const GLfloat* value) {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fUniformMatrix4x2fv);
+        mSymbols.fUniformMatrix4x2fv(location, count, transpose, value);
+        AFTER_GL_CALL;
+    }
+
+    void fUniformMatrix4x3fv(GLint location, GLsizei count, realGLboolean transpose, const GLfloat* value) {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fUniformMatrix4x3fv);
+        mSymbols.fUniformMatrix4x3fv(location, count, transpose, value);
         AFTER_GL_CALL;
     }
 
@@ -1877,13 +1929,15 @@ public:
     }
 
 private:
-    void raw_fCopyTexImage2D(GLenum target, GLint level, GLenum internalformat, GLint x, GLint y, GLsizei width, GLsizei height, GLint border) {
+    void raw_fCopyTexImage2D(GLenum target, GLint level, GLenum internalformat, GLint x, GLint y, GLsizei width, GLsizei height, GLint border)
+    {
         BEFORE_GL_CALL;
         mSymbols.fCopyTexImage2D(target, level, internalformat, x, y, width, height, border);
         AFTER_GL_CALL;
     }
 
-    void raw_fCopyTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint x, GLint y, GLsizei width, GLsizei height) {
+    void raw_fCopyTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint x, GLint y, GLsizei width, GLsizei height)
+    {
         BEFORE_GL_CALL;
         mSymbols.fCopyTexSubImage2D(target, level, xoffset, yoffset, x, y, width, height);
         AFTER_GL_CALL;
@@ -2420,6 +2474,114 @@ public:
         AFTER_GL_CALL;
     }
 
+// -----------------------------------------------------------------------------
+//  GL 3.0, GL ES 3.0 & EXT_gpu_shader4
+public:
+    void fVertexAttribI4i(GLuint index, GLint x, GLint y, GLint z, GLint w)
+    {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fVertexAttribI4i);
+        mSymbols.fVertexAttribI4i(index, x, y, z, w);
+        AFTER_GL_CALL;
+    }
+
+    void fVertexAttribI4iv(GLuint index, const GLint* v)
+    {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fVertexAttribI4iv);
+        mSymbols.fVertexAttribI4iv(index, v);
+        AFTER_GL_CALL;
+    }
+
+    void fVertexAttribI4ui(GLuint index, GLuint x, GLuint y, GLuint z, GLuint w)
+    {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fVertexAttribI4ui);
+        mSymbols.fVertexAttribI4ui(index, x, y, z, w);
+        AFTER_GL_CALL;
+    }
+
+    void fVertexAttribI4uiv(GLuint index, const GLuint* v)
+    {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fVertexAttribI4uiv);
+        mSymbols.fVertexAttribI4uiv(index, v);
+        AFTER_GL_CALL;
+    }
+
+    void fVertexAttribIPointer(GLuint index, GLint size, GLenum type, GLsizei stride, const GLvoid* offset)
+    {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fVertexAttribIPointer);
+        mSymbols.fVertexAttribIPointer(index, size, type, stride, offset);
+        AFTER_GL_CALL;
+    }
+
+    void fUniform1ui(GLint location, GLuint v0) {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fUniform1ui);
+        mSymbols.fUniform1ui(location, v0);
+        AFTER_GL_CALL;
+    }
+
+    void fUniform2ui(GLint location, GLuint v0, GLuint v1) {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fUniform2ui);
+        mSymbols.fUniform2ui(location, v0, v1);
+        AFTER_GL_CALL;
+    }
+
+    void fUniform3ui(GLint location, GLuint v0, GLuint v1, GLuint v2) {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fUniform3ui);
+        mSymbols.fUniform3ui(location, v0, v1, v2);
+        AFTER_GL_CALL;
+    }
+
+    void fUniform4ui(GLint location, GLuint v0, GLuint v1, GLuint v2, GLuint v3) {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fUniform4ui);
+        mSymbols.fUniform4ui(location, v0, v1, v2, v3);
+        AFTER_GL_CALL;
+    }
+
+    void fUniform1uiv(GLint location, GLsizei count, const GLuint* value) {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fUniform1uiv);
+        mSymbols.fUniform1uiv(location, count, value);
+        AFTER_GL_CALL;
+    }
+
+    void fUniform2uiv(GLint location, GLsizei count, const GLuint* value) {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fUniform2uiv);
+        mSymbols.fUniform2uiv(location, count, value);
+        AFTER_GL_CALL;
+    }
+
+    void fUniform3uiv(GLint location, GLsizei count, const GLuint* value) {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fUniform3uiv);
+        mSymbols.fUniform3uiv(location, count, value);
+        AFTER_GL_CALL;
+    }
+
+    void fUniform4uiv(GLint location, GLsizei count, const GLuint* value) {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fUniform4uiv);
+        mSymbols.fUniform4uiv(location, count, value);
+        AFTER_GL_CALL;
+    }
+
+    GLint fGetFragDataLocation(GLuint program, const GLchar* name)
+    {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fGetFragDataLocation);
+        GLint result = mSymbols.fGetFragDataLocation(program, name);
+        AFTER_GL_CALL;
+        return result;
+    }
+
 
 // -----------------------------------------------------------------------------
 // Package XXX_instanced_arrays
@@ -2661,6 +2823,188 @@ public:
         ASSERT_SYMBOL_PRESENT(fGetFenceiv);
         BEFORE_GL_CALL;
         mSymbols.fGetFenceiv(fence, pname, params);
+        AFTER_GL_CALL;
+    }
+
+// Core GL & Extension ARB_copy_buffer
+public:
+    void fCopyBufferSubData(GLenum readtarget, GLenum writetarget,
+                            GLintptr readoffset, GLintptr writeoffset,
+                            GLsizeiptr size)
+    {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fCopyBufferSubData);
+        mSymbols.fCopyBufferSubData(readtarget, writetarget, readoffset, writeoffset, size);
+        AFTER_GL_CALL;
+    }
+
+
+// -----------------------------------------------------------------------------
+// Core GL & Extension ARB_map_buffer_range
+public:
+    void* fMapBufferRange(GLenum target, GLintptr offset, GLsizeiptr length,
+                          GLbitfield access)
+    {
+        ASSERT_SYMBOL_PRESENT(fMapBufferRange);
+        BEFORE_GL_CALL;
+        void* data = mSymbols.fMapBufferRange(target, offset, length, access);
+        AFTER_GL_CALL;
+        return data;
+    }
+
+    void fFlushMappedBufferRange(GLenum target, GLintptr offset, GLsizeiptr length) {
+        ASSERT_SYMBOL_PRESENT(fFlushMappedBufferRange);
+        BEFORE_GL_CALL;
+        mSymbols.fFlushMappedBufferRange(target, offset, length);
+        AFTER_GL_CALL;
+    }
+
+
+// -----------------------------------------------------------------------------
+// Core GL & Extension ARB_sampler_objects
+public:
+    void fGenSamplers(GLsizei count, GLuint *samplers)
+    {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fGenSamplers);
+        mSymbols.fGenSamplers(count, samplers);
+        AFTER_GL_CALL;
+    }
+
+    void fDeleteSamplers(GLsizei count, const GLuint *samplers)
+    {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fDeleteSamplers);
+        mSymbols.fDeleteSamplers(count, samplers);
+        AFTER_GL_CALL;
+    }
+
+    realGLboolean fIsSampler(GLuint sampler)
+    {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fIsSampler);
+        realGLboolean result = mSymbols.fIsSampler(sampler);
+        AFTER_GL_CALL;
+        return result;
+    }
+
+    void fBindSampler(GLuint unit, GLuint sampler)
+    {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fBindSampler);
+        mSymbols.fBindSampler(unit, sampler);
+        AFTER_GL_CALL;
+    }
+
+    void fSamplerParameteri(GLuint sampler, GLenum pname, GLint param)
+    {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fSamplerParameteri);
+        mSymbols.fSamplerParameteri(sampler, pname, param);
+        AFTER_GL_CALL;
+    }
+
+    void fSamplerParameteriv(GLuint sampler, GLenum pname, const GLint *param)
+    {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fSamplerParameteriv);
+        mSymbols.fSamplerParameteriv(sampler, pname, param);
+        AFTER_GL_CALL;
+    }
+
+    void fSamplerParameterf(GLuint sampler, GLenum pname, GLfloat param)
+    {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fSamplerParameterf);
+        mSymbols.fSamplerParameterf(sampler, pname, param);
+        AFTER_GL_CALL;
+    }
+
+    void fSamplerParameterfv(GLuint sampler, GLenum pname, const GLfloat *param)
+    {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fSamplerParameterfv);
+        mSymbols.fSamplerParameterfv(sampler, pname, param);
+        AFTER_GL_CALL;
+    }
+
+    void fGetSamplerParameteriv(GLuint sampler, GLenum pname, GLint *params)
+    {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fGetSamplerParameteriv);
+        mSymbols.fGetSamplerParameteriv(sampler, pname, params);
+        AFTER_GL_CALL;
+    }
+
+    void fGetSamplerParameterfv(GLuint sampler, GLenum pname, GLfloat *params)
+    {
+        BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fGetSamplerParameterfv);
+        mSymbols.fGetSamplerParameterfv(sampler, pname, params);
+        AFTER_GL_CALL;
+    }
+
+
+// -----------------------------------------------------------------------------
+// Core GL & Extension ARB_uniform_buffer_object
+public:
+    void fGetUniformIndices(GLuint program, GLsizei uniformCount,
+                            const GLchar* const* uniformNames, GLuint* uniformIndices)
+    {
+        ASSERT_SYMBOL_PRESENT(fGetUniformIndices);
+        BEFORE_GL_CALL;
+        mSymbols.fGetUniformIndices(program, uniformCount, uniformNames, uniformIndices);
+        AFTER_GL_CALL;
+    }
+
+    void fGetActiveUniformsiv(GLuint program, GLsizei uniformCount, const GLuint* uniformIndices,
+                              GLenum pname, GLint* params)
+    {
+        ASSERT_SYMBOL_PRESENT(fGetActiveUniformsiv);
+        BEFORE_GL_CALL;
+        mSymbols.fGetActiveUniformsiv(program, uniformCount, uniformIndices, pname, params);
+        AFTER_GL_CALL;
+    }
+
+    void fGetActiveUniformName(GLuint program, GLuint uniformIndex, GLsizei bufSize,
+                               GLsizei* length, GLchar* uniformName)
+    {
+        ASSERT_SYMBOL_PRESENT(fGetActiveUniformName);
+        BEFORE_GL_CALL;
+        mSymbols.fGetActiveUniformName(program, uniformIndex, bufSize, length, uniformName);
+        AFTER_GL_CALL;
+    }
+
+    GLuint fGetUniformBlockIndex(GLuint program, const GLchar* uniformBlockName) {
+        ASSERT_SYMBOL_PRESENT(fGetUniformBlockIndex);
+        BEFORE_GL_CALL;
+        GLuint result = mSymbols.fGetUniformBlockIndex(program, uniformBlockName);
+        AFTER_GL_CALL;
+        return result;
+    }
+
+    void fGetActiveUniformBlockiv(GLuint program, GLuint uniformBlockIndex,
+                                  GLenum pname, GLint* params)
+    {
+        ASSERT_SYMBOL_PRESENT(fGetActiveUniformBlockiv);
+        BEFORE_GL_CALL;
+        mSymbols.fGetActiveUniformBlockiv(program, uniformBlockIndex, pname, params);
+        AFTER_GL_CALL;
+    }
+
+    void fGetActiveUniformBlockName(GLuint program, GLuint uniformBlockIndex, GLsizei bufSize,
+                                    GLsizei* length, GLchar* uniformBlockName)
+    {
+        ASSERT_SYMBOL_PRESENT(fGetActiveUniformBlockName);
+        BEFORE_GL_CALL;
+        mSymbols.fGetActiveUniformBlockName(program, uniformBlockIndex, bufSize, length, uniformBlockName);
+        AFTER_GL_CALL;
+    }
+
+    void fUniformBlockBinding(GLuint program, GLuint uniformBlockIndex, GLuint uniformBlockBinding) {
+        ASSERT_SYMBOL_PRESENT(fUniformBlockBinding);
+        BEFORE_GL_CALL;
+        mSymbols.fUniformBlockBinding(program, uniformBlockIndex, uniformBlockBinding);
         AFTER_GL_CALL;
     }
 

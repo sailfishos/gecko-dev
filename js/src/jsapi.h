@@ -1814,6 +1814,17 @@ CurrentGlobalOrNull(JSContext *cx);
 extern JS_PUBLIC_API(JSObject *)
 JS_InitReflect(JSContext *cx, JS::HandleObject global);
 
+/*
+ * Add various profiling-related functions as properties of the given object.
+ * Defined in builtin/Profilers.cpp.
+ */
+extern JS_PUBLIC_API(bool)
+JS_DefineProfilingFunctions(JSContext *cx, JS::HandleObject obj);
+
+/* Defined in vm/Debugger.cpp. */
+extern JS_PUBLIC_API(bool)
+JS_DefineDebuggerObject(JSContext *cx, JS::HandleObject obj);
+
 #ifdef JS_HAS_CTYPES
 /*
  * Initialize the 'ctypes' object on a global variable 'obj'. The 'ctypes'
@@ -2562,6 +2573,7 @@ class JS_PUBLIC_API(CompartmentOptions)
       , traceGlobal_(nullptr)
       , singletonsAsTemplates_(true)
       , addonId_(nullptr)
+      , preserveJitCode_(false)
     {
         zone_.spec = JS::FreshZone;
     }
@@ -2642,6 +2654,12 @@ class JS_PUBLIC_API(CompartmentOptions)
         return traceGlobal_;
     }
 
+    bool preserveJitCode() const { return preserveJitCode_; }
+    CompartmentOptions &setPreserveJitCode(bool flag) {
+        preserveJitCode_ = flag;
+        return *this;
+    }
+
   private:
     JSVersion version_;
     bool invisibleToDebugger_;
@@ -2661,6 +2679,7 @@ class JS_PUBLIC_API(CompartmentOptions)
     bool singletonsAsTemplates_;
 
     JSAddonId *addonId_;
+    bool preserveJitCode_;
 };
 
 JS_PUBLIC_API(CompartmentOptions &)
