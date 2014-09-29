@@ -20,8 +20,6 @@
 #endif /* MOZ_X11 */
 #endif
 
-#include "mozilla/mozalloc.h"
-
 using namespace mozilla::embedlite;
 
 static bool sDoExit = getenv("NORMAL_EXIT");

@@ -10,6 +10,10 @@ relativesrcdir = @relativesrcdir@
 
 include $(DEPTH)/config/autoconf.mk
 
+DEFINES += -DXPCOM_GLUE
+# move me to common, when we link with common library
+STL_FLAGS=
+
 LOCAL_INCLUDES += -I$(topsrcdir)/xpcom/build
 
 ifeq (1 ,$(MOZ_X11))
