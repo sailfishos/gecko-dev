@@ -21,6 +21,7 @@ Patch9:     backport-for-19966-from-gecko30.patch
 Patch10:    workaround-for-bug-20263.patch
 Patch11:    fix-20360-not-fully-repainted-orientaion-change.patch
 Patch12:    0001-Add-application-vnd.apple.mpegurl-to-the-supported-m.patch
+Patch13:    0001-PATCH-Fix-bug-1064636.patch
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
@@ -83,6 +84,7 @@ Tests and misc files for xulrunner
 %patch10 -p1
 %patch11 -p1
 %patch12 -p1
+%patch13 -p1
 
 %build
 export DONT_POPULATE_VIRTUALENV=1
