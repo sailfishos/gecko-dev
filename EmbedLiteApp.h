@@ -12,6 +12,7 @@
 #include <map>
 
 class MessageLoop;
+class EmbedLiteAppIface;
 
 namespace mozilla {
 namespace embedlite {
@@ -158,7 +159,7 @@ private:
   EmbedLiteUILoop* mUILoop;
 
   RefPtr<EmbedLiteSubThread> mSubThread;
-  RefPtr<EmbedLiteAppThreadParent> mAppParent;
+  RefPtr<EmbedLiteAppIface> mAppParent;
   RefPtr<EmbedLiteAppThreadChild> mAppChild;
 
   EmbedType mEmbedType;
