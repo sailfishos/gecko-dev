@@ -1,0 +1,32 @@
+/* -*- Mode: IDL; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+#include "nsISupports.idl"
+
+%{C++
+#include "mozilla/ipc/MessageChannel.h"
+template<class T> class nsTArray;
+class nsCString;
+%}
+[ref] native nsStringTArrayRef(nsTArray<nsCString>);
+[ptr] native MessageChannelPtr(mozilla::ipc::MessageChannel);
+
+[scriptable, uuid(f7ec7953-4e68-4b75-9c0b-f2e539598699)]
+interface EmbedLiteAppIface : nsISupports
+{
+    void LoadComponentManifest([const] in string aPath);
+    void SetBoolPref([const] in string aName, in boolean aValue);
+    void SetCharPref([const] in string aName, in string aValue);
+    void SetIntPref([const] in string aName, in int32_t aValue);
+    void LoadGlobalStyleSheet([const] in string aName, in boolean aEnable);
+    void Observe([const] in string aName, in string aMessage);
+    void AddObserver([const] in string aName);
+    void RemoveObserver([const] in string aName);
+    void AddObservers([const] in nsStringTArrayRef aNames);
+    void RemoveObservers([const] in nsStringTArrayRef aNames);
+    void CreateView(in uint32_t aViewId, in uint32_t aParentId);
+    void PreDestroy();
+    void GetEmbedIPCChannel(out MessageChannelPtr aChannel);
+};
