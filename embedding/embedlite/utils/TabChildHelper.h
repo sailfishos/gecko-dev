@@ -32,7 +32,6 @@ class TabChildHelper : public nsIDOMEventListener,
 public:
   typedef mozilla::layers::FrameMetrics::ViewID ViewID;
   TabChildHelper(EmbedLiteViewThreadChild* aView);
-  virtual ~TabChildHelper();
 
   NS_DECL_ISUPPORTS
   NS_DECL_NSIDOMEVENTLISTENER
@@ -63,6 +62,7 @@ public:
                                        const mozilla::layers::ZoomConstraints& aConstraints) MOZ_OVERRIDE;
 
 protected:
+  virtual ~TabChildHelper();
   nsIWidget* GetWidget(nsPoint* aOffset);
   nsPresContext* GetPresContext();
   // Sends a simulated mouse event from a touch event for compatibility.
