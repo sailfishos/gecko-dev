@@ -2130,6 +2130,7 @@ ContainerState::PopPaintedLayerData()
       nsIntRect visibleRect = data->mVisibleRegion.GetBounds();
       visibleRect.MoveBy(-GetTranslationForPaintedLayer(data->mLayer));
       colorLayer->SetBounds(visibleRect);
+      colorLayer->SetClipRect(nullptr);
 
       layer = colorLayer;
       FLB_LOG_PAINTED_LAYER_DECISION(data, "  Selected color layer=%p\n", layer.get());
@@ -4370,7 +4371,7 @@ FrameLayerBuilder::PaintItems(nsTArray<ClippedDisplayItem>& aItems,
 static bool ShouldDrawRectsSeparately(gfxContext* aContext, DrawRegionClip aClip)
 {
   if (!gfxPrefs::LayoutPaintRectsSeparately() ||
-      aClip == DrawRegionClip::CLIP_NONE) {
+      aClip == DrawRegionClip::NONE) {
     return false;
   }
 
@@ -4452,9 +4453,7 @@ FrameLayerBuilder::DrawPaintedLayer(PaintedLayer* aLayer,
   bool shouldDrawRectsSeparately = ShouldDrawRectsSeparately(aContext, aClip);
 
   if (!shouldDrawRectsSeparately) {
-    if (aClip == DrawRegionClip::DRAW_SNAPPED) {
-      gfxUtils::ClipToRegionSnapped(aContext, aRegionToDraw);
-    } else if (aClip == DrawRegionClip::DRAW) {
+    if (aClip == DrawRegionClip::DRAW) {
       gfxUtils::ClipToRegion(aContext, aRegionToDraw);
     }
 
@@ -4485,7 +4484,7 @@ FrameLayerBuilder::DrawPaintedLayer(PaintedLayer* aLayer,
     while (const nsIntRect* iterRect = it.Next()) {
       gfxContextAutoSaveRestore save(aContext);
       aContext->NewPath();
-      aContext->Rectangle(*iterRect, aClip == DrawRegionClip::DRAW_SNAPPED);
+      aContext->Rectangle(*iterRect);
       aContext->Clip();
 
       DrawForcedBackgroundColor(aContext, aLayer, userData->mForcedBackgroundColor);
@@ -4521,9 +4520,7 @@ FrameLayerBuilder::DrawPaintedLayer(PaintedLayer* aLayer,
   if (presContext->GetPaintFlashing() && isActiveLayerManager) {
     gfxContextAutoSaveRestore save(aContext);
     if (shouldDrawRectsSeparately) {
-      if (aClip == DrawRegionClip::DRAW_SNAPPED) {
-        gfxUtils::ClipToRegionSnapped(aContext, aRegionToDraw);
-      } else if (aClip == DrawRegionClip::DRAW) {
+      if (aClip == DrawRegionClip::DRAW) {
         gfxUtils::ClipToRegion(aContext, aRegionToDraw);
       }
     }

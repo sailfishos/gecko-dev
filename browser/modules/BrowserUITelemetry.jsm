@@ -96,11 +96,16 @@ XPCOMUtils.defineLazyGetter(this, "PALETTE_ITEMS", function() {
     "email-link-button",
     "sync-button",
     "tabview-button",
+    "web-apps-button",
   ];
 
   let panelPlacements = DEFAULT_AREA_PLACEMENTS["PanelUI-contents"];
   if (panelPlacements.indexOf("characterencoding-button") == -1) {
     result.push("characterencoding-button");
+  }
+
+  if (Services.prefs.getBoolPref("privacy.panicButton.enabled")) {
+    result.push("panic-button");
   }
 
   return result;

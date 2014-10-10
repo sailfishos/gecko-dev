@@ -188,7 +188,6 @@
       ['moz_widget_toolkit_gonk==1', {
         'defines' : [
           'WEBRTC_GONK',
-          'WEBRTC_DIRECT_TRACE',
         ],
       }],
       ['restrict_webrtc_logging==1', {
@@ -357,6 +356,11 @@
       ['enable_android_opensl==1 and (OS=="android" or moz_widget_toolkit_gonk==1)', {
         'defines': [
           'WEBRTC_ANDROID_OPENSLES',
+        ],
+      }],
+      ['moz_webrtc_omx==1', {
+        'defines' : [
+          'MOZ_WEBRTC_OMX'
         ],
       }],
       ['OS=="android"', {

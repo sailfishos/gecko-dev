@@ -135,7 +135,7 @@ pref("dom.serviceWorkers.enabled", false);
 pref("dom.enable_performance", true);
 
 // Whether resource timing will be gathered and returned by performance.GetEntries*
-pref("dom.enable_resource_timing", false);
+pref("dom.enable_resource_timing", true);
 
 // Whether the Gamepad API is enabled
 pref("dom.gamepad.enabled", true);
@@ -341,7 +341,6 @@ pref("media.peerconnection.video.max_bitrate", 2000);
 #endif
 pref("media.navigator.permission.disabled", false);
 pref("media.peerconnection.default_iceservers", "[{\"url\": \"stun:stun.services.mozilla.com\"}]");
-pref("media.peerconnection.trickle_ice", true);
 pref("media.peerconnection.use_document_iceservers", true);
 // Do not enable identity before ensuring that the UX cannot be spoofed
 // see Bug 884573 for details
@@ -1754,6 +1753,10 @@ pref("security.mixed_content.block_display_content", false);
 
 // Disable pinning checks by default.
 pref("security.cert_pinning.enforcement_level", 0);
+// Do not process hpkp headers rooted by not built in roots by default.
+// This is to prevent accidental pinning from MITM devices and is used
+// for tests.
+pref("security.cert_pinning.process_headers_from_non_builtin_roots", false);
 
 // Modifier key prefs: default to Windows settings,
 // menu access key = alt, accelerator key = control.
@@ -2005,6 +2008,9 @@ pref("layout.css.mix-blend-mode.enabled", true);
 
 // Is support for CSS Filters enabled?
 pref("layout.css.filters.enabled", false);
+
+// Is support for basic shapes in clip-path enabled?
+pref("layout.css.clip-path-shapes.enabled", false);
 
 // Is support for CSS sticky positioning enabled?
 pref("layout.css.sticky.enabled", true);
@@ -3669,13 +3675,7 @@ pref("image.cache.timeweight", 500);
 // The default Accept header sent for images loaded over HTTP(S)
 pref("image.http.accept", "image/png,image/*;q=0.8,*/*;q=0.5");
 
-// Whether we do high-quality image downscaling. OS X natively supports
-// high-quality image scaling.
-#ifdef XP_MACOSX
-pref("image.high_quality_downscaling.enabled", false);
-#else
 pref("image.high_quality_downscaling.enabled", true);
-#endif
 
 // The minimum percent downscaling we'll use high-quality downscaling on,
 // interpreted as a floating-point number / 1000.

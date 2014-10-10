@@ -13,8 +13,9 @@
 #endif
 
 #include "ContentChild.h"
+
+#include "BlobChild.h"
 #include "CrashReporterChild.h"
-#include "FileDescriptorSetChild.h"
 #include "TabChild.h"
 
 #include "mozilla/Attributes.h"
@@ -30,6 +31,7 @@
 #include "mozilla/dom/nsIContentChild.h"
 #include "mozilla/hal_sandbox/PHalChild.h"
 #include "mozilla/ipc/BackgroundChild.h"
+#include "mozilla/ipc/FileDescriptorSetChild.h"
 #include "mozilla/ipc/FileDescriptorUtils.h"
 #include "mozilla/ipc/GeckoChildProcessHost.h"
 #include "mozilla/ipc/TestShellChild.h"
@@ -126,7 +128,7 @@
 #include "ipc/Nuwa.h"
 #endif
 
-#include "mozilla/dom/indexedDB/PIndexedDBChild.h"
+#include "mozilla/dom/cellbroadcast/CellBroadcastIPCService.h"
 #include "mozilla/dom/mobileconnection/MobileConnectionChild.h"
 #include "mozilla/dom/mobilemessage/SmsChild.h"
 #include "mozilla/dom/devicestorage/DeviceStorageRequestChild.h"
@@ -141,7 +143,6 @@
 #endif
 
 #include "nsDOMFile.h"
-#include "nsIRemoteBlob.h"
 #include "ProcessUtils.h"
 #include "StructuredCloneUtils.h"
 #include "URIUtils.h"
@@ -161,11 +162,11 @@ using namespace base;
 using namespace mozilla;
 using namespace mozilla::docshell;
 using namespace mozilla::dom::bluetooth;
+using namespace mozilla::dom::cellbroadcast;
 using namespace mozilla::dom::devicestorage;
 using namespace mozilla::dom::ipc;
 using namespace mozilla::dom::mobileconnection;
 using namespace mozilla::dom::mobilemessage;
-using namespace mozilla::dom::indexedDB;
 using namespace mozilla::dom::telephony;
 using namespace mozilla::dom::voicemail;
 using namespace mozilla::hal_sandbox;
@@ -388,7 +389,7 @@ ConsoleListener::Observe(nsIConsoleMessage* aMessage)
 {
     if (!mChild)
         return NS_OK;
-    
+
     nsCOMPtr<nsIScriptError> scriptError = do_QueryInterface(aMessage);
     if (scriptError) {
         nsString msg, sourceName, sourceLine;
@@ -678,6 +679,8 @@ ContentChild::InitXPCOM()
     if (!BackgroundChild::GetOrCreateForCurrentThread(callback)) {
         MOZ_CRASH("Failed to create PBackgroundChild!");
     }
+
+    BlobChild::Startup(BlobChild::FriendKey());
 
     nsCOMPtr<nsIConsoleService> svc(do_GetService(NS_CONSOLESERVICE_CONTRACTID));
     if (!svc) {
@@ -1205,20 +1208,6 @@ ContentChild::DeallocPHalChild(PHalChild* aHal)
     return true;
 }
 
-PIndexedDBChild*
-ContentChild::AllocPIndexedDBChild()
-{
-    NS_NOTREACHED("Should never get here!");
-    return nullptr;
-}
-
-bool
-ContentChild::DeallocPIndexedDBChild(PIndexedDBChild* aActor)
-{
-    delete aActor;
-    return true;
-}
-
 asmjscache::PAsmJSCacheEntryChild*
 ContentChild::AllocPAsmJSCacheEntryChild(
                                     const asmjscache::OpenMode& aOpenMode,
@@ -1389,6 +1378,30 @@ ContentChild::DeallocPExternalHelperAppChild(PExternalHelperAppChild* aService)
 {
     ExternalHelperAppChild *child = static_cast<ExternalHelperAppChild*>(aService);
     child->Release();
+    return true;
+}
+
+PCellBroadcastChild*
+ContentChild::AllocPCellBroadcastChild()
+{
+    MOZ_CRASH("No one should be allocating PCellBroadcastChild actors");
+}
+
+PCellBroadcastChild*
+ContentChild::SendPCellBroadcastConstructor(PCellBroadcastChild* aActor)
+{
+    aActor = PContentChild::SendPCellBroadcastConstructor(aActor);
+    if (aActor) {
+        static_cast<CellBroadcastIPCService*>(aActor)->AddRef();
+    }
+
+    return aActor;
+}
+
+bool
+ContentChild::DeallocPCellBroadcastChild(PCellBroadcastChild* aActor)
+{
+    static_cast<CellBroadcastIPCService*>(aActor)->Release();
     return true;
 }
 

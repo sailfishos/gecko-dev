@@ -457,6 +457,7 @@ frontend::CompileScript(ExclusiveContext *cx, LifoAlloc *alloc, HandleObject sco
     if (sct && !extraSct && !sct->complete())
         return nullptr;
 
+    MOZ_ASSERT_IF(cx->isJSContext(), !cx->asJSContext()->isExceptionPending());
     return script;
 }
 
@@ -466,7 +467,7 @@ frontend::CompileLazyFunction(JSContext *cx, Handle<LazyScript*> lazy, const cha
     JS_ASSERT(cx->compartment() == lazy->functionNonDelazifying()->compartment());
 
     CompileOptions options(cx, lazy->version());
-    options.setOriginPrincipals(lazy->originPrincipals())
+    options.setMutedErrors(lazy->mutedErrors())
            .setFileAndLine(lazy->source()->filename(), lazy->lineno())
            .setColumn(lazy->column())
            .setCompileAndGo(true)

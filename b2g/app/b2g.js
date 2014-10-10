@@ -677,6 +677,8 @@ pref("javascript.options.mem.gc_max_empty_chunk_count", 2);
 // Show/Hide scrollbars when active/inactive
 pref("ui.showHideScrollbars", 1);
 pref("ui.useOverlayScrollbars", 1);
+pref("ui.scrollbarFadeBeginDelay", 450);
+pref("ui.scrollbarFadeDuration", 200);
 
 // Enable the ProcessPriorityManager, and give processes with no visible
 // documents a 1s grace period before they're eligible to be marked as
@@ -825,7 +827,10 @@ pref("network.gonk.manage-offline-status", true);
 // On Firefox Mulet, we can't enable shared JSM scope
 // as it breaks most Firefox JSMs (see bug 961777)
 #ifndef MOZ_MULET
+// Break any JSMs or JS components that rely on shared scope
+#ifndef DEBUG
 pref("jsloader.reuseGlobal", true);
+#endif
 #endif
 
 // Enable font inflation for browser tab content.

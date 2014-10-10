@@ -612,7 +612,17 @@ XPCOMUtils.defineLazyGetter(this, "gCanApplyUpdates", function aus_gCanApplyUpda
       var updateTestFile = getUpdateFile([FILE_PERMS_TEST]);
       LOG("gCanApplyUpdates - testing write access " + updateTestFile.path);
       testWriteAccess(updateTestFile, false);
-#ifdef XP_WIN
+#ifdef XP_MACOSX
+      // Check that the application bundle can be written to.
+      var appDirTestFile = getAppBaseDir();
+      appDirTestFile.append(FILE_PERMS_TEST);
+      LOG("gCanApplyUpdates - testing write access " + appDirTestFile.path);
+      if (appDirTestFile.exists()) {
+        appDirTestFile.remove(false)
+      }
+      appDirTestFile.create(Ci.nsILocalFile.NORMAL_FILE_TYPE, FileUtils.PERMS_FILE);
+      appDirTestFile.remove(false);
+#elifdef XP_WIN
       var sysInfo = Cc["@mozilla.org/system-info;1"].
                     getService(Ci.nsIPropertyBag2);
 
@@ -997,7 +1007,7 @@ function getUpdatesDir() {
 
 /**
  * Get the Active Updates directory inside the directory where we apply the
- * background updates.
+ * staged update.
  * @return The active updates directory inside the updated directory, as a
  *         nsIFile object.
  */
@@ -2078,6 +2088,14 @@ UpdateService.prototype = {
       Services.obs.removeObserver(this, topic);
       Services.prefs.removeObserver(PREF_APP_UPDATE_LOG, this);
 
+#ifdef XP_WIN
+      // If we hold the update mutex, let it go!
+      // The OS would clean this up sometime after shutdown,
+      // but that would have no guarantee on timing.
+      if (gUpdateMutexHandle) {
+        closeHandle(gUpdateMutexHandle);
+      }
+#endif
       if (this._retryTimer) {
         this._retryTimer.cancel();
       }

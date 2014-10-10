@@ -298,17 +298,9 @@ NameOperation(JSContext *cx, InterpreterFrame *fp, jsbytecode *pc, MutableHandle
 
     /* Kludge to allow (typeof foo == "undefined") tests. */
     JSOp op2 = JSOp(pc[JSOP_NAME_LENGTH]);
-    if (op2 == JSOP_TYPEOF) {
-        if (!FetchName<true>(cx, scopeRoot, pobjRoot, nameRoot, shapeRoot, vp))
-            return false;
-    } else {
-        if (!FetchName<false>(cx, scopeRoot, pobjRoot, nameRoot, shapeRoot, vp))
-            return false;
-    }
-
-    // NAME operations are the slow paths already, so unconditionally check
-    // for uninitialized lets.
-    return CheckUninitializedLexical(cx, nameRoot, vp);
+    if (op2 == JSOP_TYPEOF)
+        return FetchName<true>(cx, scopeRoot, pobjRoot, nameRoot, shapeRoot, vp);
+    return FetchName<false>(cx, scopeRoot, pobjRoot, nameRoot, shapeRoot, vp);
 }
 
 static inline bool
@@ -3290,10 +3282,9 @@ END_CASE(JSOP_FINALLY)
 
 CASE(JSOP_THROWING)
 {
-    JS_ASSERT(!cx->isExceptionPending());
-    Value v;
+    RootedValue &v = rootValue0;
     POP_COPY_TO(v);
-    cx->setPendingException(v);
+    MOZ_ALWAYS_TRUE(ThrowingOperation(cx, v));
 }
 END_CASE(JSOP_THROWING)
 
@@ -3504,6 +3495,17 @@ js::Throw(JSContext *cx, HandleValue v)
 }
 
 bool
+js::ThrowingOperation(JSContext *cx, HandleValue v)
+{
+    // Like js::Throw, but returns |true| instead of |false| to continue
+    // execution instead of calling the (JIT) exception handler.
+
+    MOZ_ASSERT(!cx->isExceptionPending());
+    cx->setPendingException(v);
+    return true;
+}
+
+bool
 js::GetProperty(JSContext *cx, HandleValue v, HandlePropertyName name, MutableHandleValue vp)
 {
     if (name == cx->names().length) {
@@ -3554,7 +3556,7 @@ js::GetScopeName(JSContext *cx, HandleObject scopeChain, HandlePropertyName name
     if (!JSObject::getProperty(cx, obj, obj, name, vp))
         return false;
 
-    // See note in NameOperation.
+    // See note in FetchName.
     return CheckUninitializedLexical(cx, name, vp);
 }
 
@@ -3579,7 +3581,7 @@ js::GetScopeNameForTypeOf(JSContext *cx, HandleObject scopeChain, HandleProperty
     if (!JSObject::getProperty(cx, obj, obj, name, vp))
         return false;
 
-    // See note in NameOperation.
+    // See note in FetchName.
     return CheckUninitializedLexical(cx, name, vp);
 }
 
@@ -3862,6 +3864,13 @@ js::DeleteNameOperation(JSContext *cx, HandlePropertyName name, HandleObject sco
         // Return true for non-existent names.
         res.setBoolean(true);
         return true;
+    }
+
+    // NAME operations are the slow paths already, so unconditionally check
+    // for uninitialized lets.
+    if (pobj == scope && IsUninitializedLexicalSlot(scope, shape)) {
+        ReportUninitializedLexical(cx, name);
+        return false;
     }
 
     bool succeeded;

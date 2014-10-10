@@ -20,6 +20,8 @@ XPCOMUtils.defineLazyModuleGetter(this, "ShortcutUtils",
   "resource://gre/modules/ShortcutUtils.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "CharsetMenu",
   "resource://gre/modules/CharsetMenu.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "PrivateBrowsingUtils",
+  "resource://gre/modules/PrivateBrowsingUtils.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "CharsetBundle", function() {
   const kCharsetBundle = "chrome://global/locale/charsetMenu.properties";
@@ -148,7 +150,8 @@ function clearSubview(aSubview) {
   parent.appendChild(aSubview);
 }
 
-const CustomizableWidgets = [{
+const CustomizableWidgets = [
+  {
     id: "history-panelmenu",
     type: "view",
     viewId: "PanelUI-history",
@@ -921,6 +924,18 @@ const CustomizableWidgets = [{
       });
       return node;
     }
+  }, {
+    id: "web-apps-button",
+    label: "web-apps-button.label",
+    tooltiptext: "web-apps-button.tooltiptext",
+    onCommand: function(aEvent) {
+      let win = aEvent.target &&
+                aEvent.target.ownerDocument &&
+                aEvent.target.ownerDocument.defaultView;
+      if (win && typeof win.BrowserOpenApps == "function") {
+        win.BrowserOpenApps();
+      }
+    }
   }];
 
 #ifdef XP_WIN
@@ -947,35 +962,142 @@ if (Services.metro && Services.metro.supported) {
 #endif
 #endif
 
-#ifdef E10S_TESTING_ONLY
-/**
- * The e10s button's purpose is to lower the barrier of entry
- * for our Nightly testers to use e10s windows. We'll be removing it
- * once remote tabs are enabled. This button should never ever make it
- * to production. If it does, that'd be bad, and we should all feel bad.
- */
-if (Services.prefs.getBoolPref("browser.tabs.remote")) {
-  let getCommandFunction = function(aOpenRemote) {
-    return function(aEvent) {
-      let win = aEvent.view;
-      if (win && typeof win.OpenBrowserWindow == "function") {
-        win.OpenBrowserWindow({remote: aOpenRemote});
-      }
-    };
-  }
-
-  let openRemote = !Services.appinfo.browserTabsRemoteAutostart;
-  // Like the XUL menuitem counterparts, we hard-code these strings in because
-  // this button should never roll into production.
-  let buttonLabel = openRemote ? "New e10s Window"
-                               : "New Non-e10s Window";
-
+if (Services.prefs.getBoolPref("privacy.panicButton.enabled")) {
   CustomizableWidgets.push({
-    id: "e10s-button",
-    label: buttonLabel,
-    tooltiptext: buttonLabel,
-    defaultArea: CustomizableUI.AREA_PANEL,
-    onCommand: getCommandFunction(openRemote),
+    id: "panic-button",
+    type: "view",
+    viewId: "PanelUI-panicView",
+    _sanitizer: null,
+    _ensureSanitizer: function() {
+      if (!this.sanitizer) {
+        let scope = {};
+        Services.scriptloader.loadSubScript("chrome://browser/content/sanitize.js",
+                                            scope);
+        this._Sanitizer = scope.Sanitizer;
+        this._sanitizer = new scope.Sanitizer();
+        this._sanitizer.ignoreTimespan = false;
+      }
+    },
+    _getSanitizeRange: function(aDocument) {
+      let group = aDocument.getElementById("PanelUI-panic-timeSpan");
+      return this._Sanitizer.getClearRange(+group.value);
+    },
+    forgetButtonCalled: function(aEvent) {
+      let doc = aEvent.target.ownerDocument;
+      this._ensureSanitizer();
+      this._sanitizer.range = this._getSanitizeRange(doc);
+      let group = doc.getElementById("PanelUI-panic-timeSpan");
+      group.selectedItem = doc.getElementById("PanelUI-panic-5min");
+      let itemsToClear = [
+        "cookies", "history", "openWindows", "formdata", "sessions", "cache", "downloads"
+      ];
+      let newWindowPrivateState = PrivateBrowsingUtils.isWindowPrivate(doc.defaultView) ?
+                                  "private" : "non-private";
+      this._sanitizer.items.openWindows.privateStateForNewWindow = newWindowPrivateState;
+      let promise = this._sanitizer.sanitize(itemsToClear);
+      promise.then(function() {
+        let otherWindow = Services.wm.getMostRecentWindow("navigator:browser");
+        if (otherWindow.closed) {
+          Cu.reportError("Got a closed window!");
+        }
+        if (otherWindow.PanicButtonNotifier) {
+          otherWindow.PanicButtonNotifier.notify();
+        } else {
+          otherWindow.PanicButtonNotifierShouldNotify = true;
+        }
+      });
+    },
+    handleEvent: function(aEvent) {
+      switch (aEvent.type) {
+        case "command":
+          this.forgetButtonCalled(aEvent);
+          break;
+        case "popupshowing":
+          let popup = aEvent.target;
+          if (popup.id == "customizationui-widget-panel" &&
+              popup.querySelector("#PanelUI-panicView")) {
+            popup.ownerDocument.removeEventListener("popupshowing", this);
+            this._updateHeights(popup, true);
+          }
+          break;
+      }
+    },
+    // Workaround bug 451997 by hardcoding heights for (potentially) wrapped items:
+    _updateHeights: function(aContainer, aSetHeights) {
+      // Make sure we don't get stuck not finding anything because of the XBL binding between
+      // the popup and the radio/label/description elements:
+      let view = aContainer.ownerDocument.getElementById("PanelUI-panicView");
+      let variableHeightItems = view.querySelectorAll("radio, label, description");
+      let win = aContainer.ownerDocument.defaultView;
+      for (let item of variableHeightItems) {
+        if (aSetHeights) {
+          let height = win.getComputedStyle(item, null).getPropertyValue("height");
+          item.style.height = height;
+          // In the main menu panel, need to set the height of the container of this
+          // description because otherwise the text will overflow:
+          if (item.id == "PanelUI-panic-mainDesc" &&
+              view.getAttribute("current") == "true" &&
+              // Ensure we don't make this less than the size of the icon:
+              parseInt(height) > 32) {
+            item.parentNode.style.minHeight = height;
+          }
+        } else {
+          item.style.removeProperty("height");
+          if (item.id == "PanelUI-panic-mainDesc") {
+            item.parentNode.style.removeProperty("min-height");
+          }
+        }
+      }
+    },
+    onViewShowing: function(aEvent) {
+      let view = aEvent.target;
+      let forgetButton = view.querySelector("#PanelUI-panic-view-button");
+      forgetButton.addEventListener("command", this);
+      if (view.getAttribute("current") == "true") {
+        // In the main menupanel, fix heights immediately:
+        this._updateHeights(view, true);
+      } else {
+        // In a standalone panel, so fix the label and radio heights
+        // when the popup starts showing.
+        view.ownerDocument.addEventListener("popupshowing", this);
+      }
+    },
+    onViewHiding: function(aEvent) {
+      let view = aEvent.target;
+      let forgetButton = view.querySelector("#PanelUI-panic-view-button");
+      forgetButton.removeEventListener("command", this);
+      this._updateHeights(view, false);
+    },
   });
 }
+
+#ifdef E10S_TESTING_ONLY
+/**
+  * The e10s button's purpose is to lower the barrier of entry
+  * for our Nightly testers to use e10s windows. We'll be removing it
+  * once remote tabs are enabled. This button should never ever make it
+  * to production. If it does, that'd be bad, and we should all feel bad.
+  */
+let getCommandFunction = function(aOpenRemote) {
+  return function(aEvent) {
+    let win = aEvent.view;
+    if (win && typeof win.OpenBrowserWindow == "function") {
+      win.OpenBrowserWindow({remote: aOpenRemote});
+    }
+  };
+}
+
+let openRemote = !Services.appinfo.browserTabsRemoteAutostart;
+// Like the XUL menuitem counterparts, we hard-code these strings in because
+// this button should never roll into production.
+let buttonLabel = openRemote ? "New e10s Window"
+                              : "New Non-e10s Window";
+
+CustomizableWidgets.push({
+  id: "e10s-button",
+  label: buttonLabel,
+  tooltiptext: buttonLabel,
+  defaultArea: CustomizableUI.AREA_PANEL,
+  onCommand: getCommandFunction(openRemote),
+});
 #endif

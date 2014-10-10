@@ -76,16 +76,19 @@ MIRType MIRTypeFromValue(const js::Value &vp)
      * points.
      */                                                                         \
     _(Unused)                                                                   \
-    /* Marks if an instruction has fewer uses than the original code.
-     * E.g. UCE can remove code.
-     * Every instruction where an use is/was removed from an instruction and
-     * as a result the number of operands doesn't equal the original code
-     * need to get marked as UseRemoved. This is important for truncation
-     * analysis to know, since if all original uses are still present,
-     * it can ignore resumepoints.
-     * Currently this is done for every pass after IonBuilder and before
-     * Truncate Doubles. So every time removeUse is called, UseRemoved needs
-     * to get set.
+                                                                                \
+    /* When a branch is removed, the uses of multiple instructions are removed.
+     * The removal of branches is based on hypotheses.  These hypotheses might
+     * fail, in which case we need to bailout from the current code.
+     *
+     * When we implement a destructive optimization, we need to consider the
+     * failing cases, and consider the fact that we might resume the execution
+     * into a branch which was removed from the compiler.  As such, a
+     * destructive optimization need to take into acount removed branches.
+     *
+     * In order to let destructive optimizations know about removed branches, we
+     * have to annotate instructions with the UseRemoved flag.  This flag
+     * annotates instruction which were used in removed branches.
      */                                                                         \
     _(UseRemoved)                                                               \
                                                                                 \
@@ -1292,6 +1295,8 @@ class MSimdValueX4 : public MQuaternaryInstruction
     }
 
     MDefinition *foldsTo(TempAllocator &alloc);
+
+    ALLOW_CLONE(MSimdValueX4)
 };
 
 // Generic constructor of SIMD valuesX4.
@@ -1326,6 +1331,8 @@ class MSimdSplatX4 : public MUnaryInstruction
     }
 
     MDefinition *foldsTo(TempAllocator &alloc);
+
+    ALLOW_CLONE(MSimdSplatX4)
 };
 
 // A constant SIMD value.
@@ -1359,6 +1366,8 @@ class MSimdConstant : public MNullaryInstruction
     AliasSet getAliasSet() const {
         return AliasSet::None();
     }
+
+    ALLOW_CLONE(MSimdConstant)
 };
 
 // Converts all lanes of a given vector into the type of another vector
@@ -1456,6 +1465,7 @@ class MSimdExtractElement : public MUnaryInstruction
             return false;
         return congruentIfOperandsEqual(other);
     }
+    ALLOW_CLONE(MSimdExtractElement)
 };
 
 // Replaces the datum in the given lane by a scalar value of the same type.
@@ -1500,6 +1510,8 @@ class MSimdInsertElement : public MBinaryInstruction
     bool congruentTo(const MDefinition *ins) const {
         return binaryCongruentTo(ins) && lane_ == ins->toSimdInsertElement()->lane();
     }
+
+    ALLOW_CLONE(MSimdInsertElement)
 };
 
 // Extracts the sign bits from a given vector, returning an MIRType_Int32.
@@ -1529,6 +1541,8 @@ class MSimdSignMask : public MUnaryInstruction
             return false;
         return congruentIfOperandsEqual(ins);
     }
+
+    ALLOW_CLONE(MSimdSignMask)
 };
 
 // Compares each value of a SIMD vector to each corresponding lane's value of
@@ -1594,6 +1608,8 @@ class MSimdBinaryComp : public MBinaryInstruction
             return false;
         return operation_ == ins->toSimdBinaryComp()->operation();
     }
+
+    ALLOW_CLONE(MSimdBinaryComp)
 };
 
 class MSimdBinaryArith : public MBinaryInstruction
@@ -1655,6 +1671,8 @@ class MSimdBinaryArith : public MBinaryInstruction
             return false;
         return operation_ == ins->toSimdBinaryArith()->operation();
     }
+
+    ALLOW_CLONE(MSimdBinaryArith)
 };
 
 class MSimdBinaryBitwise : public MBinaryInstruction
@@ -1699,6 +1717,8 @@ class MSimdBinaryBitwise : public MBinaryInstruction
             return false;
         return operation_ == ins->toSimdBinaryBitwise()->operation();
     }
+
+    ALLOW_CLONE(MSimdBinaryBitwise)
 };
 
 class MSimdTernaryBitwise : public MTernaryInstruction
@@ -1735,6 +1755,8 @@ class MSimdTernaryBitwise : public MTernaryInstruction
     }
 
     Operation operation() const { return operation_; }
+
+    ALLOW_CLONE(MSimdTernaryBitwise)
 };
 
 // Deep clone a constant JSObject.
@@ -2581,6 +2603,7 @@ class MArrayState : public MVariadicInstruction
     explicit MArrayState(MDefinition *arr)
     {
         // This instruction is only used as a summary for bailout paths.
+        setResultType(MIRType_Object);
         setRecoveredOnBailout();
         numElements_ = arr->toNewArray()->count();
     }

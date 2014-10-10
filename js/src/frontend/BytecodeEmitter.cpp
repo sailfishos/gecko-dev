@@ -2016,6 +2016,12 @@ CheckSideEffects(ExclusiveContext *cx, BytecodeEmitter *bce, ParseNode *pn, bool
                 *answer = true;
             }
         }
+
+        if (pn->isHoistedLetUse()) {
+            // Hoisted uses of lexical bindings throw on access.
+            *answer = true;
+        }
+
         if (pn->isKind(PNK_DOT)) {
             /* Dotted property references in general can call getters. */
             *answer = true;
@@ -5175,7 +5181,7 @@ EmitFunc(ExclusiveContext *cx, BytecodeEmitter *bce, ParseNode *pn)
             // Inherit most things (principals, version, etc) from the parent.
             Rooted<JSScript*> parent(cx, bce->script);
             CompileOptions options(cx, bce->parser->options());
-            options.setOriginPrincipals(parent->originPrincipals())
+            options.setMutedErrors(parent->mutedErrors())
                    .setCompileAndGo(parent->compileAndGo())
                    .setSelfHostingMode(parent->selfHosted())
                    .setNoScriptRval(false)

@@ -1267,7 +1267,7 @@ Evaluate(JSContext *cx, unsigned argc, jsval *vp)
             }
 
             if (loadBytecode) {
-                script = JS_DecodeScript(cx, loadBuffer, loadLength, options.originPrincipals(cx));
+                script = JS_DecodeScript(cx, loadBuffer, loadLength);
             } else {
                 mozilla::Range<const char16_t> chars = codeChars.twoByteRange();
                 (void) JS::Compile(cx, global, options, chars.start().get(), chars.length(), &script);
@@ -5729,9 +5729,6 @@ SetRuntimeOptions(JSRuntime *rt, const OptionParser &op)
     if (op.getBoolOption("ion-eager"))
         jit::js_JitOptions.setEagerCompilation();
 
-    if (op.getBoolOption("ion-compile-try-catch"))
-        jit::js_JitOptions.compileTryCatch = true;
-
     bool offthreadCompilation = true;
     if (const char *str = op.getStringOption("ion-offthread-compile")) {
         if (strcmp(str, "off") == 0)
@@ -5974,7 +5971,6 @@ main(int argc, char **argv, char **envp)
                                "  backtracking: Priority based backtracking register allocation\n"
                                "  stupid: Simple block local register allocation")
         || !op.addBoolOption('\0', "ion-eager", "Always ion-compile methods (implies --baseline-eager)")
-        || !op.addBoolOption('\0', "ion-compile-try-catch", "Ion-compile try-catch statements")
         || !op.addStringOption('\0', "ion-offthread-compile", "on/off",
                                "Compile scripts off thread (default: on)")
         || !op.addStringOption('\0', "ion-parallel-compile", "on/off",

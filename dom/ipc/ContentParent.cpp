@@ -26,38 +26,38 @@
 
 #include "AppProcessChecker.h"
 #include "AudioChannelService.h"
+#include "BlobParent.h"
 #include "CrashReporterParent.h"
 #include "IHistory.h"
-#include "IDBFactory.h"
-#include "IndexedDBParent.h"
-#include "IndexedDatabaseManager.h"
 #include "mozIApplication.h"
 #include "mozilla/ClearOnShutdown.h"
-#include "mozilla/dom/asmjscache/AsmJSCache.h"
-#include "mozilla/dom/Element.h"
 #include "mozilla/dom/DataStoreService.h"
-#include "mozilla/dom/ExternalHelperAppParent.h"
-#include "mozilla/dom/PContentBridgeParent.h"
-#include "mozilla/dom/PFileDescriptorSetParent.h"
-#include "mozilla/dom/PCycleCollectWithLogsParent.h"
-#include "mozilla/dom/PMemoryReportRequestParent.h"
-#include "mozilla/dom/power/PowerManagerService.h"
 #include "mozilla/dom/DOMStorageIPC.h"
-#include "mozilla/dom/bluetooth/PBluetoothParent.h"
-#include "mozilla/dom/PFMRadioParent.h"
-#include "mozilla/dom/devicestorage/DeviceStorageRequestParent.h"
+#include "mozilla/dom/Element.h"
+#include "mozilla/dom/ExternalHelperAppParent.h"
 #include "mozilla/dom/FileSystemRequestParent.h"
 #include "mozilla/dom/GeolocationBinding.h"
-#include "mozilla/dom/FileDescriptorSetParent.h"
+#include "mozilla/dom/PContentBridgeParent.h"
+#include "mozilla/dom/PCycleCollectWithLogsParent.h"
+#include "mozilla/dom/PFMRadioParent.h"
+#include "mozilla/dom/PMemoryReportRequestParent.h"
+#include "mozilla/dom/asmjscache/AsmJSCache.h"
+#include "mozilla/dom/bluetooth/PBluetoothParent.h"
+#include "mozilla/dom/cellbroadcast/CellBroadcastParent.h"
+#include "mozilla/dom/devicestorage/DeviceStorageRequestParent.h"
 #include "mozilla/dom/mobileconnection/MobileConnectionParent.h"
 #include "mozilla/dom/mobilemessage/SmsParent.h"
+#include "mozilla/dom/power/PowerManagerService.h"
+#include "mozilla/dom/quota/QuotaManager.h"
 #include "mozilla/dom/telephony/TelephonyParent.h"
 #include "mozilla/dom/time/DateCacheCleaner.h"
 #include "mozilla/dom/voicemail/VoicemailParent.h"
 #include "mozilla/hal_sandbox/PHalParent.h"
 #include "mozilla/ipc/BackgroundChild.h"
 #include "mozilla/ipc/BackgroundParent.h"
+#include "mozilla/ipc/FileDescriptorSetParent.h"
 #include "mozilla/ipc/FileDescriptorUtils.h"
+#include "mozilla/ipc/PFileDescriptorSetParent.h"
 #include "mozilla/ipc/TestShellParent.h"
 #include "mozilla/ipc/InputStreamUtils.h"
 #include "mozilla/layers/CompositorParent.h"
@@ -85,6 +85,7 @@
 #include "nsIAppsService.h"
 #include "nsIClipboard.h"
 #include "nsICycleCollectorListener.h"
+#include "nsIDocument.h"
 #include "nsIDOMGeoGeolocation.h"
 #include "mozilla/dom/WakeLock.h"
 #include "nsIDOMWindow.h"
@@ -98,7 +99,6 @@
 #include "nsIMutable.h"
 #include "nsIObserverService.h"
 #include "nsIPresShell.h"
-#include "nsIRemoteBlob.h"
 #include "nsIScriptError.h"
 #include "nsISiteSecurityService.h"
 #include "nsIStyleSheet.h"
@@ -191,6 +191,7 @@ static const char* sClipboardTextFlavors[] = { kUnicodeMime };
 using base::ChildPrivileges;
 using base::KillProcess;
 using namespace mozilla::dom::bluetooth;
+using namespace mozilla::dom::cellbroadcast;
 using namespace mozilla::dom::devicestorage;
 using namespace mozilla::dom::indexedDB;
 using namespace mozilla::dom::power;
@@ -341,6 +342,7 @@ namespace mozilla {
 namespace dom {
 
 #ifdef MOZ_NUWA_PROCESS
+int32_t ContentParent::sNuwaPid = 0;
 bool ContentParent::sNuwaReady = false;
 #endif
 
@@ -586,6 +588,7 @@ ContentParent::RunNuwaProcess()
                           /* aIsNuwaProcess = */ true);
     nuwaProcess->Init();
 #ifdef MOZ_NUWA_PROCESS
+    sNuwaPid = nuwaProcess->Pid();
     sNuwaReady = false;
 #endif
     return nuwaProcess.forget();
@@ -682,6 +685,8 @@ ContentParent::StartUp()
     RegisterStrongMemoryReporter(new ContentParentsMemoryReporter());
 
     mozilla::dom::time::InitializeDateCacheCleaner();
+
+    BlobParent::Startup(BlobParent::FriendKey());
 
     BackgroundChild::Startup();
 
@@ -1382,10 +1387,10 @@ ContentParent::TransformPreallocatedIntoBrowser(ContentParent* aOpener)
 void
 ContentParent::ShutDownProcess(bool aCloseWithError)
 {
-    const InfallibleTArray<PIndexedDBParent*>& idbParents =
-        ManagedPIndexedDBParent();
-    for (uint32_t i = 0; i < idbParents.Length(); ++i) {
-        static_cast<IndexedDBParent*>(idbParents[i])->Disconnect();
+    using mozilla::dom::quota::QuotaManager;
+
+    if (QuotaManager* quotaManager = QuotaManager::Get()) {
+        quotaManager->AbortCloseStoragesForProcess(this);
     }
 
     // If Close() fails with an error, we'll end up back in this function, but
@@ -1987,6 +1992,7 @@ ContentParent::~ContentParent()
 #ifdef MOZ_NUWA_PROCESS
     if (IsNuwaProcess()) {
         sNuwaReady = false;
+        sNuwaPid = 0;
     }
 #endif
 }
@@ -2823,8 +2829,7 @@ ContentParent::AllocPBlobParent(const BlobConstructorParams& aParams)
 bool
 ContentParent::DeallocPBlobParent(PBlobParent* aActor)
 {
-    delete aActor;
-    return true;
+    return nsIContentParent::DeallocPBlobParent(aActor);
 }
 
 mozilla::PRemoteSpellcheckEngineParent *
@@ -2864,7 +2869,7 @@ ContentParent::KillHard()
         FROM_HERE,
         NewRunnableFunction(&ProcessWatcher::EnsureProcessTerminated,
                             OtherProcess(), /*force=*/true));
-    //We do clean-up here 
+    //We do clean-up here
     MessageLoop::current()->PostDelayedTask(
         FROM_HERE,
         NewRunnableMethod(this, &ContentParent::ShutDownProcess,
@@ -2943,42 +2948,6 @@ bool
 ContentParent::DeallocPHalParent(hal_sandbox::PHalParent* aHal)
 {
     delete aHal;
-    return true;
-}
-
-PIndexedDBParent*
-ContentParent::AllocPIndexedDBParent()
-{
-    return new IndexedDBParent(this);
-}
-
-bool
-ContentParent::DeallocPIndexedDBParent(PIndexedDBParent* aActor)
-{
-    delete aActor;
-    return true;
-}
-
-bool
-ContentParent::RecvPIndexedDBConstructor(PIndexedDBParent* aActor)
-{
-    nsRefPtr<IndexedDatabaseManager> mgr = IndexedDatabaseManager::GetOrCreate();
-    NS_ENSURE_TRUE(mgr, false);
-
-    if (!IndexedDatabaseManager::IsMainProcess()) {
-        NS_RUNTIMEABORT("Not supported yet!");
-    }
-
-    nsRefPtr<IDBFactory> factory;
-    nsresult rv = IDBFactory::Create(this, getter_AddRefs(factory));
-    NS_ENSURE_SUCCESS(rv, false);
-
-    NS_ASSERTION(factory, "This should never be null!");
-
-    IndexedDBParent* actor = static_cast<IndexedDBParent*>(aActor);
-    actor->mFactory = factory;
-    actor->mASCIIOrigin = factory->GetASCIIOrigin();
-
     return true;
 }
 
@@ -3105,13 +3074,13 @@ ContentParent::AllocPExternalHelperAppParent(const OptionalURIParams& uri,
 {
     ExternalHelperAppParent *parent = new ExternalHelperAppParent(uri, aContentLength);
     parent->AddRef();
-    parent->Init(this, 
-                 aMimeContentType, 
+    parent->Init(this,
+                 aMimeContentType,
                  aContentDisposition,
                  aContentDispositionHint,
                  aContentDispositionFilename,
-                 aForceSave, 
-                 aReferrer, 
+                 aForceSave,
+                 aReferrer,
                  aBrowser);
     return parent;
 }
@@ -3122,6 +3091,31 @@ ContentParent::DeallocPExternalHelperAppParent(PExternalHelperAppParent* aServic
     ExternalHelperAppParent *parent = static_cast<ExternalHelperAppParent *>(aService);
     parent->Release();
     return true;
+}
+
+PCellBroadcastParent*
+ContentParent::AllocPCellBroadcastParent()
+{
+    if (!AssertAppProcessPermission(this, "cellbroadcast")) {
+        return nullptr;
+    }
+
+    CellBroadcastParent* actor = new CellBroadcastParent();
+    actor->AddRef();
+    return actor;
+}
+
+bool
+ContentParent::DeallocPCellBroadcastParent(PCellBroadcastParent* aActor)
+{
+    static_cast<CellBroadcastParent*>(aActor)->Release();
+    return true;
+}
+
+bool
+ContentParent::RecvPCellBroadcastConstructor(PCellBroadcastParent* aActor)
+{
+    return static_cast<CellBroadcastParent*>(aActor)->Init();
 }
 
 PSmsParent*
@@ -3708,6 +3702,12 @@ ContentParent::DoSendAsyncMessage(JSContext* aCx,
     if (aCpows && !GetCPOWManager()->Wrap(aCx, aCpows, &cpows)) {
         return false;
     }
+#ifdef MOZ_NUWA_PROCESS
+    if (IsNuwaProcess() && IsNuwaReady()) {
+        // Nuwa won't receive frame messages after it is frozen.
+        return true;
+    }
+#endif
     return SendAsyncMessage(nsString(aMessage), data, cpows, Principal(aPrincipal));
 }
 
@@ -3831,9 +3831,6 @@ ContentParent::RecvKeywordToURI(const nsCString& aKeyword, OptionalInputStreamPa
 bool
 ContentParent::ShouldContinueFromReplyTimeout()
 {
-    // The only time ContentParent sends blocking messages is for CPOWs, so
-    // timeouts should only ever occur in electrolysis-enabled sessions.
-    MOZ_ASSERT(BrowserTabsRemote());
     return false;
 }
 
@@ -3952,6 +3949,63 @@ bool
 ContentParent::DeallocPFileDescriptorSetParent(PFileDescriptorSetParent* aActor)
 {
     delete static_cast<FileDescriptorSetParent*>(aActor);
+    return true;
+}
+
+bool
+ContentParent::RecvGetFileReferences(const PersistenceType& aPersistenceType,
+                                     const nsCString& aOrigin,
+                                     const nsString& aDatabaseName,
+                                     const int64_t& aFileId,
+                                     int32_t* aRefCnt,
+                                     int32_t* aDBRefCnt,
+                                     int32_t* aSliceRefCnt,
+                                     bool* aResult)
+{
+    MOZ_ASSERT(aRefCnt);
+    MOZ_ASSERT(aDBRefCnt);
+    MOZ_ASSERT(aSliceRefCnt);
+    MOZ_ASSERT(aResult);
+
+    if (NS_WARN_IF(aPersistenceType != quota::PERSISTENCE_TYPE_PERSISTENT &&
+                   aPersistenceType != quota::PERSISTENCE_TYPE_TEMPORARY)) {
+        return false;
+    }
+
+    if (NS_WARN_IF(aOrigin.IsEmpty())) {
+        return false;
+    }
+
+    if (NS_WARN_IF(aDatabaseName.IsEmpty())) {
+        return false;
+    }
+
+    if (NS_WARN_IF(aFileId < 1)) {
+        return false;
+    }
+
+    nsRefPtr<IndexedDatabaseManager> mgr = IndexedDatabaseManager::Get();
+    if (NS_WARN_IF(!mgr)) {
+        return false;
+    }
+
+    if (NS_WARN_IF(!mgr->IsMainProcess())) {
+        return false;
+    }
+
+    nsresult rv =
+        mgr->BlockAndGetFileReferences(aPersistenceType,
+                                       aOrigin,
+                                       aDatabaseName,
+                                       aFileId,
+                                       aRefCnt,
+                                       aDBRefCnt,
+                                       aSliceRefCnt,
+                                       aResult);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return false;
+    }
+
     return true;
 }
 

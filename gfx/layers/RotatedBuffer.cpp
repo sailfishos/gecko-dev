@@ -229,7 +229,7 @@ RotatedContentBuffer::DrawTo(PaintedLayer* aLayer,
     // Bug 599189 if there is a non-integer-translation transform in aTarget,
     // we might sample pixels outside GetEffectiveVisibleRegion(), which is wrong
     // and may cause gray lines.
-    gfxUtils::ClipToRegionSnapped(aTarget, aLayer->GetEffectiveVisibleRegion());
+    gfxUtils::ClipToRegion(aTarget, aLayer->GetEffectiveVisibleRegion());
     clipped = true;
   }
 
@@ -695,7 +695,7 @@ RotatedContentBuffer::BeginPaint(PaintedLayer* aLayer,
   nsIntRegion invalidate;
   invalidate.Sub(aLayer->GetValidRegion(), destBufferRect);
   result.mRegionToInvalidate.Or(result.mRegionToInvalidate, invalidate);
-  result.mClip = DrawRegionClip::DRAW_SNAPPED;
+  result.mClip = DrawRegionClip::DRAW;
   result.mMode = mode;
 
   return result;

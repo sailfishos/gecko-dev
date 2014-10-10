@@ -725,18 +725,29 @@ static const char kFontUtsaah[] = "Utsaah";
 static const char kFontYuGothic[] = "Yu Gothic";
 
 void
-gfxWindowsPlatform::GetCommonFallbackFonts(const uint32_t aCh,
+gfxWindowsPlatform::GetCommonFallbackFonts(uint32_t aCh, uint32_t aNextCh,
                                            int32_t aRunScript,
                                            nsTArray<const char*>& aFontList)
 {
+    if (aNextCh == 0xfe0fu) {
+        aFontList.AppendElement(kFontSegoeUIEmoji);
+    }
+
     // Arial is used as the default fallback for system fallback
     aFontList.AppendElement(kFontArial);
 
     if (!IS_IN_BMP(aCh)) {
         uint32_t p = aCh >> 16;
         if (p == 1) { // SMP plane
-            aFontList.AppendElement(kFontSegoeUIEmoji);
-            aFontList.AppendElement(kFontSegoeUISymbol);
+            if (aNextCh == 0xfe0eu) {
+                aFontList.AppendElement(kFontSegoeUISymbol);
+                aFontList.AppendElement(kFontSegoeUIEmoji);
+            } else {
+                if (aNextCh != 0xfe0fu) {
+                    aFontList.AppendElement(kFontSegoeUIEmoji);
+                }
+                aFontList.AppendElement(kFontSegoeUISymbol);
+            }
             aFontList.AppendElement(kFontEbrima);
             aFontList.AppendElement(kFontNirmalaUI);
             aFontList.AppendElement(kFontCambriaMath);
@@ -814,7 +825,6 @@ gfxWindowsPlatform::GetCommonFallbackFonts(const uint32_t aCh,
         case 0x2b:
         case 0x2c:
             aFontList.AppendElement(kFontSegoeUI);
-            aFontList.AppendElement(kFontSegoeUIEmoji);
             aFontList.AppendElement(kFontSegoeUISymbol);
             aFontList.AppendElement(kFontCambria);
             aFontList.AppendElement(kFontMeiryo);
@@ -1527,6 +1537,8 @@ gfxWindowsPlatform::InitD3D11Devices()
     return;
   }
 
+  mD3D11Device->SetExceptionMode(0);
+
 #ifdef USE_D2D1_1
   if (Factory::SupportsD2D1()) {
     hr = d3d11CreateDevice(adapter, D3D_DRIVER_TYPE_UNKNOWN, nullptr,
@@ -1538,6 +1550,8 @@ gfxWindowsPlatform::InitD3D11Devices()
       mD3D11Device = nullptr;
       return;
     }
+
+    mD3D11ContentDevice->SetExceptionMode(0);
 
     Factory::SetDirect3D11Device(mD3D11ContentDevice);
   }

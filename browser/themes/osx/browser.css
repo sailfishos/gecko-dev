@@ -161,6 +161,19 @@ toolbarseparator {
   z-index: 1;
 }
 
+/* Always draw a border on Yosemite to ensure the border is well-defined there
+ * (the default border is too light). */
+@media (-moz-mac-yosemite-theme) {
+  #main-window[tabsintitlebar] #TabsToolbar:not([collapsed="true"]) + #nav-bar:not(:-moz-lwtheme) {
+    border-top: 1px solid hsla(0,0%,0%,.2);
+    background-clip: padding-box;
+    margin-top: -@tabToolbarNavbarOverlap@;
+    /* Position the toolbar above the bottom of background tabs */
+    position: relative;
+    z-index: 1;
+  }
+}
+
 #nav-bar-customization-target {
   padding: 4px;
 }
@@ -1115,6 +1128,30 @@ toolbar .toolbarbutton-1 > .toolbarbutton-menubutton-dropmarker > .dropmarker-ic
     -moz-image-region: rect(36px, 1368px, 72px, 1332px);
   }
 
+  #panic-button[cui-areatype="toolbar"] {
+    -moz-image-region: rect(0, 1404px, 36px, 1368px);
+  }
+
+  #panic-button[cui-areatype="toolbar"]:hover:active:not([disabled="true"]) {
+    -moz-image-region: rect(36px, 1404px, 72px, 1368px);
+  }
+
+  #panic-button[cui-areatype="toolbar"][open] {
+    -moz-image-region: rect(72px, 1404px, 108px, 1368px);
+  }
+
+  #panic-button:-moz-locale-dir(rtl) > .toolbarbutton-icon {
+    transform: scaleX(-1);
+  }
+
+  #web-apps-button[cui-areatype="toolbar"] {
+    -moz-image-region: rect(0, 1440px, 36px, 1404px);
+  }
+
+  #web-apps-button[cui-areatype="toolbar"]:hover:active:not([disabled="true"]) {
+    -moz-image-region: rect(36px, 1440px, 72px, 1404px);
+  }
+
   :-moz-any(@primaryToolbarButtons@) > .toolbarbutton-icon,
   :-moz-any(@primaryToolbarButtons@) > .toolbarbutton-menubutton-button > .toolbarbutton-icon {
     width: 18px;
@@ -1262,6 +1299,20 @@ toolbar .toolbarbutton-1 > .toolbarbutton-menubutton-dropmarker > .dropmarker-ic
   #sidebar-button[cui-areatype="menu-panel"],
   toolbarpaletteitem[place="palette"] > #sidebar-button {
     -moz-image-region: rect(0px, 1728px, 64px, 1664px);
+  }
+
+  #panic-button[cui-areatype="menu-panel"],
+  toolbarpaletteitem[place="palette"] > #panic-button {
+    -moz-image-region: rect(0, 1792px, 64px, 1728px);
+  }
+
+  #panic-button[cui-areatype="menu-panel"][panel-multiview-anchor=true] {
+    -moz-image-region: rect(64px, 1792px, 128px, 1728px);
+  }
+
+  #web-apps-button[cui-areatype="menu-panel"],
+  toolbarpaletteitem[place="palette"] > #web-apps-button {
+    -moz-image-region: rect(0, 1856px, 64px, 1792px);
   }
 
   toolbaritem[sdkstylewidget="true"] > toolbarbutton {
@@ -2174,14 +2225,16 @@ toolbarbutton[sdk-button="true"][cui-areatype="toolbar"] > .toolbarbutton-icon {
 }
 
 .ac-result-type-keyword,
-.autocomplete-treebody::-moz-tree-image(keyword, treecolAutoCompleteImage) {
+.autocomplete-treebody::-moz-tree-image(keyword, treecolAutoCompleteImage),
+richlistitem[type~="action"][actiontype="searchengine"] > .ac-title-box > .ac-site-icon {
   list-style-image: url(chrome://global/skin/icons/autocomplete-search.svg#search-icon);
   width: 16px;
   height: 16px;
 }
 
 .ac-result-type-keyword[selected="true"],
-.autocomplete-treebody::-moz-tree-image(keyword, treecolAutoCompleteImage, selected) {
+.autocomplete-treebody::-moz-tree-image(keyword, treecolAutoCompleteImage, selected),
+richlistitem[type~="action"][actiontype="searchengine"][selected="true"] > .ac-title-box > .ac-site-icon {
   list-style-image: url(chrome://global/skin/icons/autocomplete-search.svg#search-icon-inverted);
 }
 
@@ -2216,14 +2269,6 @@ richlistitem[type~="action"][actiontype="switchtab"] > .ac-url-box > .ac-action-
 
 richlistitem[type~="action"][actiontype="switchtab"][selected="true"] > .ac-url-box > .ac-action-icon {
   -moz-image-region: rect(11px, 16px, 22px, 0);
-}
-
-richlistitem[type~="action"][actiontype="searchengine"] > .ac-title-box > .ac-site-icon {
-  list-style-image: url("chrome://global/skin/icons/autocomplete-search.svg#search-icon");
-}
-
-richlistitem[type~="action"][actiontype="searchengine"][selected="true"] > .ac-title-box > .ac-site-icon {
-  list-style-image: url("chrome://global/skin/icons/autocomplete-search.svg#search-icon-inverted");
 }
 
 @media (min-resolution: 2dppx) {

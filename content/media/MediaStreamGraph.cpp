@@ -63,7 +63,7 @@ PRLogModuleInfo* gMediaStreamGraphLog;
 /**
  * The singleton graph instance.
  */
-static MediaStreamGraphImpl* gGraph;
+static nsDataHashtable<nsUint32HashKey, MediaStreamGraphImpl*> gGraphs;
 
 MediaStreamGraphImpl::~MediaStreamGraphImpl()
 {
@@ -95,7 +95,7 @@ MediaStreamGraphImpl::FinishStream(MediaStream* aStream)
   // Force at least one more iteration of the control loop, since we rely
   // on UpdateCurrentTimeForStreams to notify our listeners once the stream end
   // has been reached.
-  CurrentDriver()->EnsureNextIteration();
+  EnsureNextIteration();
 
   SetStreamOrderDirty();
 }
@@ -778,7 +778,7 @@ MediaStreamGraphImpl::RecomputeBlocking(GraphTime aEndBlockingDecisions)
 
   if (blockingDecisionsWillChange) {
     // Make sure we wake up to notify listeners about these changes.
-    CurrentDriver()->EnsureNextIteration();
+    EnsureNextIteration();
   }
 }
 
@@ -1288,7 +1288,7 @@ MediaStreamGraphImpl::UpdateGraph(GraphTime aEndBlockingDecision)
   // computed in next loop.
   if (ensureNextIteration ||
       aEndBlockingDecision == CurrentDriver()->StateComputedTime()) {
-    CurrentDriver()->EnsureNextIteration();
+    EnsureNextIteration();
   }
 
   // Figure out which streams are blocked and when.
@@ -1382,7 +1382,7 @@ MediaStreamGraphImpl::Process(GraphTime aFrom, GraphTime aTo)
   }
 
   if (!allBlockedForever) {
-    CurrentDriver()->EnsureNextIteration();
+    EnsureNextIteration();
   }
 }
 
@@ -1468,7 +1468,7 @@ MediaStreamGraphImpl::ForceShutDown()
   {
     MonitorAutoLock lock(mMonitor);
     mForceShutDown = true;
-    CurrentDriver()->EnsureNextIterationLocked();
+    EnsureNextIterationLocked();
   }
 }
 
@@ -1486,11 +1486,18 @@ public:
 
     LIFECYCLE_LOG("Shutting down graph %p", mGraph.get());
 
-    if (mGraph->CurrentDriver()->AsAudioCallbackDriver()) {
-      MOZ_ASSERT(!mGraph->CurrentDriver()->AsAudioCallbackDriver()->InCallback());
+    // We've asserted the graph isn't running.  Use mDriver instead of CurrentDriver
+    // to avoid thread-safety checks
+#if 0 // AudioCallbackDrivers are released asynchronously anyways
+    // XXX a better test would be have setting mDetectedNotRunning make sure
+    // any current callback has finished and block future ones -- or just
+    // handle it all in Shutdown()!
+    if (mGraph->mDriver->AsAudioCallbackDriver()) {
+      MOZ_ASSERT(!mGraph->mDriver->AsAudioCallbackDriver()->InCallback());
     }
+#endif
 
-    mGraph->CurrentDriver()->Shutdown();
+    mGraph->mDriver->Shutdown();
 
     // mGraph's thread is not running so it's OK to do whatever here
     if (mGraph->IsEmpty()) {
@@ -1626,9 +1633,10 @@ MediaStreamGraphImpl::RunInStableState(bool aSourceIsMSG)
         NS_DispatchToMainThread(event);
 
         LIFECYCLE_LOG("Disconnecting MediaStreamGraph %p", this);
-        if (this == gGraph) {
+        MediaStreamGraphImpl* graph;
+        if (gGraphs.Get(mAudioChannel, &graph) && graph == this) {
           // null out gGraph if that's the graph being shut down
-          gGraph = nullptr;
+          gGraphs.Remove(mAudioChannel);
         }
       }
     } else {
@@ -1637,7 +1645,7 @@ MediaStreamGraphImpl::RunInStableState(bool aSourceIsMSG)
         block->mMessages.SwapElements(mCurrentTaskMessageQueue);
         block->mGraphUpdateIndex = mNextGraphUpdateIndex;
         ++mNextGraphUpdateIndex;
-        CurrentDriver()->EnsureNextIterationLocked();
+        EnsureNextIterationLocked();
       }
 
       // If the MediaStreamGraph has more messages going to it, try to revive
@@ -1651,11 +1659,12 @@ MediaStreamGraphImpl::RunInStableState(bool aSourceIsMSG)
         // Note that we need to put messages into its queue before reviving it,
         // or it might exit immediately.
         {
-          MonitorAutoUnlock unlock(mMonitor);
           LIFECYCLE_LOG("Reviving a graph (%p) ! %s\n",
               this, CurrentDriver()->AsAudioCallbackDriver() ? "AudioDriver" :
                                                                "SystemDriver");
-          CurrentDriver()->Revive();
+          nsRefPtr<GraphDriver> driver = CurrentDriver();
+          MonitorAutoUnlock unlock(mMonitor);
+          driver->Revive();
         }
       }
     }
@@ -1671,12 +1680,13 @@ MediaStreamGraphImpl::RunInStableState(bool aSourceIsMSG)
       {
         // We should exit the monitor for now, because starting a stream might
         // take locks, and we don't want to deadlock.
-        MonitorAutoUnlock unlock(mMonitor);
         LIFECYCLE_LOG("Starting a graph (%p) ! %s\n",
                       this,
                       CurrentDriver()->AsAudioCallbackDriver() ? "AudioDriver" :
                                                                  "SystemDriver");
-        CurrentDriver()->Start();
+        nsRefPtr<GraphDriver> driver = CurrentDriver();
+        MonitorAutoUnlock unlock(mMonitor);
+        driver->Start();
       }
     }
 
@@ -1717,6 +1727,7 @@ MediaStreamGraphImpl::RunInStableState(bool aSourceIsMSG)
     mLifecycleState >= LIFECYCLE_WAITING_FOR_THREAD_SHUTDOWN;
 #endif
 }
+
 
 static NS_DEFINE_CID(kAppShellCID, NS_APPSHELL_CID);
 
@@ -1776,9 +1787,12 @@ MediaStreamGraphImpl::AppendMessage(ControlMessage* aMessage)
     delete aMessage;
     if (IsEmpty() &&
         mLifecycleState >= LIFECYCLE_WAITING_FOR_STREAM_DESTRUCTION) {
-      if (gGraph == this) {
-        gGraph = nullptr;
+
+      MediaStreamGraphImpl* graph;
+      if (gGraphs.Get(mAudioChannel, &graph) && graph == this) {
+        gGraphs.Remove(mAudioChannel);
       }
+
       Destroy();
     }
     return;
@@ -2258,7 +2272,7 @@ SourceMediaStream::SetPullEnabled(bool aEnabled)
   MutexAutoLock lock(mMutex);
   mPullEnabled = aEnabled;
   if (mPullEnabled && GraphImpl()) {
-    GraphImpl()->CurrentDriver()->EnsureNextIteration();
+    GraphImpl()->EnsureNextIteration();
   }
 }
 
@@ -2278,7 +2292,7 @@ SourceMediaStream::AddTrack(TrackID aID, TrackRate aRate, TrackTicks aStart,
   data->mData = aSegment;
   data->mHaveEnough = false;
   if (auto graph = GraphImpl()) {
-    graph->CurrentDriver()->EnsureNextIteration();
+    graph->EnsureNextIteration();
   }
 }
 
@@ -2340,7 +2354,7 @@ SourceMediaStream::AppendToTrack(TrackID aID, MediaSegment* aSegment, MediaSegme
       NotifyDirectConsumers(track, aRawSegment ? aRawSegment : aSegment);
       track->mData->AppendFrom(aSegment); // note: aSegment is now dead
       appended = true;
-      GraphImpl()->CurrentDriver()->EnsureNextIteration();
+      GraphImpl()->EnsureNextIteration();
     } else {
       aSegment->Clear();
     }
@@ -2464,7 +2478,7 @@ SourceMediaStream::EndTrack(TrackID aID)
     }
   }
   if (auto graph = GraphImpl()) {
-    graph->CurrentDriver()->EnsureNextIteration();
+    graph->EnsureNextIteration();
   }
 }
 
@@ -2475,7 +2489,7 @@ SourceMediaStream::AdvanceKnownTracksTime(StreamTime aKnownTime)
   MOZ_ASSERT(aKnownTime >= mUpdateKnownTracksTime);
   mUpdateKnownTracksTime = aKnownTime;
   if (auto graph = GraphImpl()) {
-    graph->CurrentDriver()->EnsureNextIteration();
+    graph->EnsureNextIteration();
   }
 }
 
@@ -2485,7 +2499,7 @@ SourceMediaStream::FinishWithLockHeld()
   mMutex.AssertCurrentThreadOwns();
   mUpdateFinished = true;
   if (auto graph = GraphImpl()) {
-    graph->CurrentDriver()->EnsureNextIteration();
+    graph->EnsureNextIteration();
   }
 }
 
@@ -2702,6 +2716,8 @@ MediaStreamGraphImpl::MediaStreamGraphImpl(bool aRealtime,
                                            dom::AudioChannel aChannel)
   : mProcessingGraphUpdateIndex(0)
   , mPortCount(0)
+  , mNeedAnotherIteration(false)
+  , mGraphDriverAsleep(false)
   , mMonitor("MediaStreamGraphImpl")
   , mLifecycleState(LIFECYCLE_THREAD_NOT_STARTED)
   , mEndTime(GRAPH_TIME_MAX)
@@ -2714,7 +2730,7 @@ MediaStreamGraphImpl::MediaStreamGraphImpl(bool aRealtime,
   , mNonRealtimeProcessing(false)
   , mStreamOrderDirty(false)
   , mLatencyLog(AsyncLatencyLogger::Get())
-#ifdef MOZ_WEBRTCj
+#ifdef MOZ_WEBRTC
   , mFarendObserverRef(nullptr)
 #endif
   , mMemoryReportMonitor("MSGIMemory")
@@ -2724,6 +2740,7 @@ MediaStreamGraphImpl::MediaStreamGraphImpl(bool aRealtime,
 #ifdef DEBUG
   , mCanRunMessagesSynchronously(false)
 #endif
+  , mAudioChannel(static_cast<uint32_t>(aChannel))
 {
 #ifdef PR_LOGGING
   if (!gMediaStreamGraphLog) {
@@ -2762,15 +2779,26 @@ NS_IMPL_ISUPPORTS(MediaStreamGraphShutdownObserver, nsIObserver)
 
 static bool gShutdownObserverRegistered = false;
 
+namespace {
+
+PLDHashOperator
+ForceShutdownEnumerator(const uint32_t& /* aAudioChannel */,
+                        MediaStreamGraphImpl* aGraph,
+                        void* /* aUnused */)
+{
+  aGraph->ForceShutDown();
+  return PL_DHASH_NEXT;
+}
+
+} // anonymous namespace
+
 NS_IMETHODIMP
 MediaStreamGraphShutdownObserver::Observe(nsISupports *aSubject,
                                           const char *aTopic,
                                           const char16_t *aData)
 {
   if (strcmp(aTopic, NS_XPCOM_SHUTDOWN_OBSERVER_ID) == 0) {
-    if (gGraph) {
-      gGraph->ForceShutDown();
-    }
+    gGraphs.EnumerateRead(ForceShutdownEnumerator, nullptr);
     nsContentUtils::UnregisterShutdownObserver(this);
     gShutdownObserverRegistered = false;
   }
@@ -2782,7 +2810,10 @@ MediaStreamGraph::GetInstance(DOMMediaStream::TrackTypeHints aHint, dom::AudioCh
 {
   NS_ASSERTION(NS_IsMainThread(), "Main thread only");
 
-  if (!gGraph) {
+  uint32_t channel = static_cast<uint32_t>(aChannel);
+  MediaStreamGraphImpl* graph = nullptr;
+
+  if (!gGraphs.Get(channel, &graph)) {
     if (!gShutdownObserverRegistered) {
       gShutdownObserverRegistered = true;
       nsContentUtils::RegisterShutdownObserver(new MediaStreamGraphShutdownObserver());
@@ -2790,12 +2821,13 @@ MediaStreamGraph::GetInstance(DOMMediaStream::TrackTypeHints aHint, dom::AudioCh
 
     CubebUtils::InitPreferredSampleRate();
 
-    gGraph = new MediaStreamGraphImpl(true, CubebUtils::PreferredSampleRate(), aHint, aChannel);
+    graph = new MediaStreamGraphImpl(true, CubebUtils::PreferredSampleRate(), aHint, aChannel);
+    gGraphs.Put(channel, graph);
 
-    STREAM_LOG(PR_LOG_DEBUG, ("Starting up MediaStreamGraph %p", gGraph));
+    STREAM_LOG(PR_LOG_DEBUG, ("Starting up MediaStreamGraph %p", graph));
   }
 
-  return gGraph;
+  return graph;
 }
 
 MediaStreamGraph*
@@ -2847,8 +2879,11 @@ MediaStreamGraphImpl::CollectReports(nsIHandleReportCallback* aHandleReport,
     MonitorAutoLock memoryReportLock(mMemoryReportMonitor);
     mNeedsMemoryReport = true;
 
-    // Wake up the MSG thread.
-    CurrentDriver()->WakeUp();
+    {
+      // Wake up the MSG thread.
+      MonitorAutoLock monitorLock(mMonitor);
+      CurrentDriver()->WakeUp();
+    }
 
     if (mLifecycleState >= LIFECYCLE_WAITING_FOR_THREAD_SHUTDOWN) {
       // Shutting down, nothing to report.
@@ -2963,7 +2998,10 @@ MediaStreamGraph::CreateAudioNodeStream(AudioNodeEngine* aEngine,
 bool
 MediaStreamGraph::IsNonRealtime() const
 {
-  return this != gGraph;
+  const MediaStreamGraphImpl* impl = static_cast<const MediaStreamGraphImpl*>(this);
+  MediaStreamGraphImpl* graph;
+
+  return !gGraphs.Get(impl->AudioChannel(), &graph) || graph != impl;
 }
 
 void

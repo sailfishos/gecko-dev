@@ -1128,7 +1128,6 @@ class Mochitest(MochitestUtilsMixin):
     """ create the profile and add optional chrome bits and files if requested """
     if options.browserChrome and options.timeout:
       options.extraPrefs.append("testing.browserTestHarness.timeout=%d" % options.timeout)
-    options.extraPrefs.append("browser.tabs.remote=%s" % ('true' if options.e10s else 'false'))
     options.extraPrefs.append("browser.tabs.remote.autostart=%s" % ('true' if options.e10s else 'false'))
     options.extraPrefs.append("browser.tabs.remote.sandbox=%s" % options.contentSandbox)
 
@@ -1843,7 +1842,7 @@ class Mochitest(MochitestUtilsMixin):
         self.stopVMwareRecording();
       self.stopServers()
 
-    processLeakLog(self.leak_report_file, options.leakThreshold)
+    processLeakLog(self.leak_report_file, options.leakThresholds, options.ignoreMissingLeaks)
 
     if self.nsprLogs:
       with zipfile.ZipFile("%s/nsprlog.zip" % browserEnv["MOZ_UPLOAD_DIR"], "w", zipfile.ZIP_DEFLATED) as logzip:

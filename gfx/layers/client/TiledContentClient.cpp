@@ -689,31 +689,10 @@ TileClient::DiscardBackBuffer()
        mManager->ReportClientLost(*mBackBufferOnWhite);
      }
     } else {
-#if defined(MOZ_WIDGET_GONK) && ANDROID_VERSION >= 17
-      // If this assertions stops being true, we need to add
-      // ReturnTextureClientDeferred(*mBackBufferOnWhite) below.
-      MOZ_ASSERT(!mBackBufferOnWhite);
-      if (mBackBuffer->GetIPDLActor() &&
-          mCompositableClient && mCompositableClient->GetIPDLActor()) {
-        // remove old buffer from CompositableHost
-        RefPtr<AsyncTransactionTracker> tracker = new RemoveTextureFromCompositableTracker();
-        // Hold TextureClient until transaction complete.
-        tracker->SetTextureClient(mBackBuffer);
-        mBackBuffer->SetRemoveFromCompositableTracker(tracker);
-        // RemoveTextureFromCompositableAsync() expects CompositorChild's presence.
-        mManager->AsShadowForwarder()->RemoveTextureFromCompositableAsync(tracker,
-                                                                          mCompositableClient,
-                                                                          mBackBuffer);
-      }
-      // TextureClient can be reused after transaction complete,
-      // when RemoveTextureFromCompositableTracker is used.
-      mManager->ReturnTextureClientDeferred(*mBackBuffer);
-#else
       mManager->ReturnTextureClient(*mBackBuffer);
       if (mBackBufferOnWhite) {
         mManager->ReturnTextureClient(*mBackBufferOnWhite);
       }
-#endif
     }
     mBackLock->ReadUnlock();
     if (mBackBuffer->IsLocked()) {
@@ -955,7 +934,7 @@ ClientTiledLayerBuffer::PaintThebes(const nsIntRegion& aNewValidRegion,
     PROFILER_LABEL("ClientTiledLayerBuffer", "PaintThebesSingleBufferDraw",
       js::ProfileEntry::Category::GRAPHICS);
 
-    mCallback(mPaintedLayer, ctxt, aPaintRegion, DrawRegionClip::CLIP_NONE, nsIntRegion(), mCallbackData);
+    mCallback(mPaintedLayer, ctxt, aPaintRegion, DrawRegionClip::NONE, nsIntRegion(), mCallbackData);
   }
 
 #ifdef GFX_TILEDLAYER_PREF_WARNINGS
@@ -1325,7 +1304,7 @@ ClientTiledLayerBuffer::ValidateTile(TileClient aTile,
                             Scale(mResolution, mResolution));
     mCallback(mPaintedLayer, ctxt,
               tileRegion.GetBounds(),
-              DrawRegionClip::CLIP_NONE,
+              DrawRegionClip::NONE,
               nsIntRegion(), mCallbackData);
 
   }

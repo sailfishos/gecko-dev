@@ -140,7 +140,6 @@ void MediaDecoder::SetDormantIfNecessary(bool aDormant)
 
   if(aDormant) {
     // enter dormant state
-    StopProgress();
     DestroyDecodedStream();
     mDecoderStateMachine->SetDormant(true);
 
@@ -442,7 +441,6 @@ MediaDecoder::MediaDecoder() :
   mIsExitingDormant(false),
   mPlayState(PLAY_STATE_PAUSED),
   mNextState(PLAY_STATE_PAUSED),
-  mCalledResourceLoaded(false),
   mIgnoreProgressData(false),
   mInfiniteStream(false),
   mOwner(nullptr),
@@ -503,7 +501,8 @@ void MediaDecoder::Shutdown()
 
   ChangeState(PLAY_STATE_SHUTDOWN);
 
-  StopProgress();
+  // If we hit this assertion, there might be a bug in network state transition.
+  NS_ASSERTION(!mProgressTimer, "Progress timer should've been stopped.");
   mOwner = nullptr;
 
   MediaShutdownManager::Instance().Unregister(this);
@@ -728,20 +727,8 @@ void MediaDecoder::MetadataLoaded(MediaInfo* aInfo, MetadataTags* aTags)
     mOwner->MetadataLoaded(aInfo, aTags);
   }
 
-  if (!mCalledResourceLoaded) {
-    StartProgress();
-  } else if (mOwner) {
-    // Resource was loaded during metadata loading, when progress
-    // events are being ignored. Fire the final progress event.
-    mOwner->DispatchAsyncEvent(NS_LITERAL_STRING("progress"));
-  }
-
-  // Only inform the element of FirstFrameLoaded if not doing a load() in order
-  // to fulfill a seek, otherwise we'll get multiple loadedfirstframe events.
-  bool notifyResourceIsLoaded = !mCalledResourceLoaded &&
-                                IsDataCachedToEndOfResource();
   if (mOwner) {
-    mOwner->FirstFrameLoaded(notifyResourceIsLoaded);
+    mOwner->FirstFrameLoaded();
   }
 
   // This can run cache callbacks.
@@ -760,43 +747,9 @@ void MediaDecoder::MetadataLoaded(MediaInfo* aInfo, MetadataTags* aTags)
     }
   }
 
-  if (notifyResourceIsLoaded) {
-    ResourceLoaded();
-  }
-
   // Run NotifySuspendedStatusChanged now to give us a chance to notice
   // that autoplay should run.
   NotifySuspendedStatusChanged();
-}
-
-void MediaDecoder::ResourceLoaded()
-{
-  MOZ_ASSERT(NS_IsMainThread());
-
-  // Don't handle ResourceLoaded if we are shutting down, or if
-  // we need to ignore progress data due to seeking (in the case
-  // that the seek results in reaching end of file, we get a bogus call
-  // to ResourceLoaded).
-  if (mShuttingDown)
-    return;
-
-  {
-    // If we are seeking or loading then the resource loaded notification we get
-    // should be ignored, since it represents the end of the seek request.
-    ReentrantMonitorAutoEnter mon(GetReentrantMonitor());
-    if (mIgnoreProgressData || mCalledResourceLoaded || mPlayState == PLAY_STATE_LOADING)
-      return;
-
-    Progress(false);
-
-    mCalledResourceLoaded = true;
-    StopProgress();
-  }
-
-  // Ensure the final progress event gets fired
-  if (mOwner) {
-    mOwner->ResourceLoaded();
-  }
 }
 
 void MediaDecoder::ResetConnectionState()
@@ -993,10 +946,8 @@ void MediaDecoder::UpdatePlaybackRate()
 void MediaDecoder::NotifySuspendedStatusChanged()
 {
   MOZ_ASSERT(NS_IsMainThread());
-  if (!mResource)
-    return;
-  bool suspended = mResource->IsSuspendedByCache();
-  if (mOwner) {
+  if (mResource && mOwner) {
+    bool suspended = mResource->IsSuspendedByCache();
     mOwner->NotifySuspendedByCache(suspended);
     UpdateReadyStateForData();
   }
@@ -1009,7 +960,6 @@ void MediaDecoder::NotifyBytesDownloaded()
     ReentrantMonitorAutoEnter mon(GetReentrantMonitor());
     UpdatePlaybackRate();
   }
-  UpdateReadyStateForData();
   Progress(false);
 }
 
@@ -1033,12 +983,13 @@ void MediaDecoder::NotifyDownloadEnded(nsresult aStatus)
   }
 
   if (NS_SUCCEEDED(aStatus)) {
-    ResourceLoaded();
-  }
-  else if (aStatus != NS_BASE_STREAM_CLOSED) {
+    // A final progress event will be fired by the MediaResource calling
+    // DownloadSuspended on the element.
+    // Also NotifySuspendedStatusChanged() will be called to update readyState
+    // if download ended with success.
+  } else if (aStatus != NS_BASE_STREAM_CLOSED) {
     NetworkError();
   }
-  UpdateReadyStateForData();
 }
 
 void MediaDecoder::NotifyPrincipalChanged()
@@ -1570,6 +1521,7 @@ static void ProgressCallback(nsITimer* aTimer, void* aClosure)
 
 void MediaDecoder::Progress(bool aTimer)
 {
+  MOZ_ASSERT(NS_IsMainThread());
   if (!mOwner)
     return;
 
@@ -1585,7 +1537,7 @@ void MediaDecoder::Progress(bool aTimer)
        now - mProgressTime >= TimeDuration::FromMilliseconds(PROGRESS_MS)) &&
       !mDataTime.IsNull() &&
       now - mDataTime <= TimeDuration::FromMilliseconds(PROGRESS_MS)) {
-    mOwner->DispatchAsyncEvent(NS_LITERAL_STRING("progress"));
+    mOwner->DownloadProgressed();
     mProgressTime = now;
   }
 
@@ -1599,8 +1551,8 @@ void MediaDecoder::Progress(bool aTimer)
 
 nsresult MediaDecoder::StartProgress()
 {
-  if (mProgressTimer)
-    return NS_OK;
+  MOZ_ASSERT(NS_IsMainThread());
+  NS_ASSERTION(!mProgressTimer, "Already started progress timer.");
 
   mProgressTimer = do_CreateInstance("@mozilla.org/timer;1");
   return mProgressTimer->InitWithFuncCallback(ProgressCallback,
@@ -1611,8 +1563,8 @@ nsresult MediaDecoder::StartProgress()
 
 nsresult MediaDecoder::StopProgress()
 {
-  if (!mProgressTimer)
-    return NS_OK;
+  MOZ_ASSERT(NS_IsMainThread());
+  NS_ASSERTION(mProgressTimer, "Already stopped progress timer.");
 
   nsresult rv = mProgressTimer->Cancel();
   mProgressTimer = nullptr;

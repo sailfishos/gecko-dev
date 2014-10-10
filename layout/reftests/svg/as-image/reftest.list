@@ -54,6 +54,7 @@ skip-if(B2G) == canvas-drawImage-slice-1a.html lime100x100-ref.html
 == canvas-drawImage-slice-1b.html lime100x100-ref.html
 
 == canvas-drawImage-origin-clean-1.html lime100x100-ref.html
+== canvas-drawImage-transform-restored.html canvas-drawImage-transform-restored-ref.html
 
 # Simple <img> tests
 == img-simple-1.html  lime100x100-ref.html
@@ -71,7 +72,7 @@ random == img-and-image-1.html img-and-image-1-ref.svg # bug 645267
 # More complex <img> tests
 == img-blobURI-1.html lime100x100-ref.html
 random == img-blobURI-2.html lime100x100-ref.html
-== img-content-outside-viewBox-1.html img-content-outside-viewBox-1-ref.html
+fuzzy-if(d2d,16,10) == img-content-outside-viewBox-1.html img-content-outside-viewBox-1-ref.html # d2d is bug 1074161
 == img-display-none-1.html about:blank
 == img-dyn-1.html img-dyn-1-ref.html
 == img-foreignObject-1.html lime100x100-ref.html

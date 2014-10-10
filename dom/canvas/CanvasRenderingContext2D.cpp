@@ -5,6 +5,7 @@
 
 #include "CanvasRenderingContext2D.h"
 
+#include "mozilla/gfx/Helpers.h"
 #include "nsXULElement.h"
 
 #include "nsIServiceManager.h"
@@ -82,6 +83,7 @@
 #include "mozilla/gfx/Helpers.h"
 #include "mozilla/gfx/PathHelpers.h"
 #include "mozilla/gfx/DataSurfaceHelpers.h"
+#include "mozilla/gfx/PatternHelpers.h"
 #include "mozilla/ipc/DocumentRendererParent.h"
 #include "mozilla/ipc/PDocumentRendererParent.h"
 #include "mozilla/MathAlgorithms.h"
@@ -223,42 +225,33 @@ public:
   typedef CanvasRenderingContext2D::Style Style;
   typedef CanvasRenderingContext2D::ContextState ContextState;
 
-  CanvasGeneralPattern() : mPattern(nullptr) {}
-  ~CanvasGeneralPattern()
-  {
-    if (mPattern) {
-      mPattern->~Pattern();
-    }
-  }
-
   Pattern& ForStyle(CanvasRenderingContext2D *aCtx,
                     Style aStyle,
                     DrawTarget *aRT)
   {
     // This should only be called once or the mPattern destructor will
     // not be executed.
-    NS_ASSERTION(!mPattern, "ForStyle() should only be called once on CanvasGeneralPattern!");
+    NS_ASSERTION(!mPattern.GetPattern(), "ForStyle() should only be called once on CanvasGeneralPattern!");
 
     const ContextState &state = aCtx->CurrentState();
 
     if (state.StyleIsColor(aStyle)) {
-      mPattern = new (mColorPattern.addr()) ColorPattern(Color::FromABGR(state.colorStyles[aStyle]));
+      mPattern.InitColorPattern(Color::FromABGR(state.colorStyles[aStyle]));
     } else if (state.gradientStyles[aStyle] &&
                state.gradientStyles[aStyle]->GetType() == CanvasGradient::Type::LINEAR) {
       CanvasLinearGradient *gradient =
         static_cast<CanvasLinearGradient*>(state.gradientStyles[aStyle].get());
 
-      mPattern = new (mLinearGradientPattern.addr())
-        LinearGradientPattern(gradient->mBegin, gradient->mEnd,
-                              gradient->GetGradientStopsForTarget(aRT));
+      mPattern.InitLinearGradientPattern(gradient->mBegin, gradient->mEnd,
+                                         gradient->GetGradientStopsForTarget(aRT));
     } else if (state.gradientStyles[aStyle] &&
                state.gradientStyles[aStyle]->GetType() == CanvasGradient::Type::RADIAL) {
       CanvasRadialGradient *gradient =
         static_cast<CanvasRadialGradient*>(state.gradientStyles[aStyle].get());
 
-      mPattern = new (mRadialGradientPattern.addr())
-        RadialGradientPattern(gradient->mCenter1, gradient->mCenter2, gradient->mRadius1,
-                              gradient->mRadius2, gradient->GetGradientStopsForTarget(aRT));
+      mPattern.InitRadialGradientPattern(gradient->mCenter1, gradient->mCenter2,
+                                         gradient->mRadius1, gradient->mRadius2,
+                                         gradient->GetGradientStopsForTarget(aRT));
     } else if (state.patternStyles[aStyle]) {
       if (aCtx->mCanvasElement) {
         CanvasUtils::DoDrawImageSecurityCheck(aCtx->mCanvasElement,
@@ -273,21 +266,14 @@ public:
       } else {
         mode = ExtendMode::REPEAT;
       }
-      mPattern = new (mSurfacePattern.addr())
-        SurfacePattern(state.patternStyles[aStyle]->mSurface, mode,
-                       state.patternStyles[aStyle]->mTransform);
+      mPattern.InitSurfacePattern(state.patternStyles[aStyle]->mSurface, mode,
+                                  state.patternStyles[aStyle]->mTransform);
     }
 
-    return *mPattern;
+    return *mPattern.GetPattern();
   }
 
-  union {
-    AlignedStorage2<ColorPattern> mColorPattern;
-    AlignedStorage2<LinearGradientPattern> mLinearGradientPattern;
-    AlignedStorage2<RadialGradientPattern> mRadialGradientPattern;
-    AlignedStorage2<SurfacePattern> mSurfacePattern;
-  };
-  Pattern *mPattern;
+  GeneralPattern mPattern;
 };
 
 /* This is an RAII based class that can be used as a drawtarget for
@@ -391,7 +377,7 @@ public:
     RefPtr<SourceSurface> strokePaint =
       DoSourcePaint(mStrokePaintRect, CanvasRenderingContext2D::Style::STROKE);
 
-    AutoSaveTransform autoSaveTransform(mFinalTarget);
+    AutoRestoreTransform autoRestoreTransform(mFinalTarget);
     mFinalTarget->SetTransform(Matrix());
 
     mgfx::FilterSupport::RenderFilterDescription(
@@ -2183,7 +2169,8 @@ public:
     gfxTextPerfMetrics* tp = mPresContext->GetTextPerfMetrics();
     nsRefPtr<nsFontMetrics> fontMetrics;
     nsDeviceContext* dc = mPresContext->DeviceContext();
-    dc->GetMetricsFor(mFont, mFontLanguage, nullptr, tp,
+    dc->GetMetricsFor(mFont, mFontLanguage, gfxFont::eHorizontal,
+                      nullptr, tp,
                       *getter_AddRefs(fontMetrics));
     return NSAppUnitsToFloatPixels(fontMetrics->XHeight(),
                                    nsPresContext::AppUnitsPerCSSPixel());
@@ -3457,7 +3444,7 @@ CanvasRenderingContext2D::DrawOrMeasureText(const nsAString& aRawText,
   // offset pt.y based on text baseline
   processor.mFontgrp->UpdateUserFonts(); // ensure user font generation is current
   const gfxFont::Metrics& fontMetrics =
-    processor.mFontgrp->GetFirstValidFont()->GetMetrics();
+    processor.mFontgrp->GetFirstValidFont()->GetMetrics(gfxFont::eHorizontal); // XXX vertical?
 
   gfxFloat anchorY;
 
@@ -3997,6 +3984,10 @@ CanvasRenderingContext2D::DrawDirectlyToCanvas(
   nsIntSize scaledImageSize(std::ceil(imgSize.width * scale.width),
                             std::ceil(imgSize.height * scale.height));
   src.Scale(scale.width, scale.height);
+
+  // We're wrapping tempTarget's (our) DrawTarget here, so we need to restore
+  // the matrix even though this is a temp gfxContext.
+  AutoRestoreTransform autoRestoreTransform(mTarget);
 
   nsRefPtr<gfxContext> context = new gfxContext(tempTarget);
   context->SetMatrix(contextMatrix.

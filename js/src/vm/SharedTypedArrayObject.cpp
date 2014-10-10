@@ -145,6 +145,8 @@ class SharedTypedArrayObjectTemplate : public SharedTypedArrayObject
     static SharedTypedArrayObject *
     makeTypedInstance(JSContext *cx, uint32_t len, AllocKind allocKind)
     {
+        JS_ASSERT(len <= MAX_LENGTH / sizeof(NativeType));
+
         // Multiplication is safe due to preconditions for makeInstance().
         if (len * sizeof(NativeType) >= SharedTypedArrayObject::SINGLETON_TYPE_BYTE_LENGTH) {
             return &NewBuiltinClassInstance(cx, instanceClass(), allocKind,
@@ -173,8 +175,8 @@ class SharedTypedArrayObjectTemplate : public SharedTypedArrayObject
                  HandleObject proto)
     {
         JS_ASSERT(buffer);
-        JS_ASSERT(len <= MAX_LENGTH / sizeof(NativeType));
         JS_ASSERT(byteOffset <= MAX_BYTEOFFSET);
+        JS_ASSERT(len <= MAX_LENGTH / sizeof(NativeType));
 
         gc::AllocKind allocKind = GetGCObjectKind(instanceClass());
 
@@ -188,7 +190,7 @@ class SharedTypedArrayObjectTemplate : public SharedTypedArrayObject
 
         obj->setSlot(BUFFER_SLOT, ObjectOrNullValue(buffer));
 
-	InitSharedArrayBufferViewDataPointer(obj, buffer, byteOffset);
+        InitSharedArrayBufferViewDataPointer(obj, buffer, byteOffset);
 
         obj->setSlot(LENGTH_SLOT, Int32Value(len));
         obj->setSlot(BYTEOFFSET_SLOT, Int32Value(byteOffset));
@@ -273,7 +275,7 @@ class SharedTypedArrayObjectTemplate : public SharedTypedArrayObject
         if (!UncheckedUnwrap(dataObj)->is<SharedArrayBufferObject>()) {
             JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr, JSMSG_SHARED_TYPED_ARRAY_BAD_OBJECT);
             return nullptr;
-	}
+        }
 
         uint32_t byteOffset = 0;
         uint32_t length = LENGTH_NOT_PROVIDED;
@@ -302,18 +304,6 @@ class SharedTypedArrayObjectTemplate : public SharedTypedArrayObject
         }
 
         return fromBuffer(cx, dataObj, byteOffset, length);
-    }
-
-    static bool
-    createArrayBuffer(JSContext *cx, uint32_t nelements, MutableHandle<SharedArrayBufferObject *> buffer)
-    {
-        if (nelements > MAX_LENGTH / sizeof(NativeType)) {
-            JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr,
-                                 JSMSG_NEED_DIET, "shared typed array");
-            return false;
-        }
-        buffer.set(SharedArrayBufferObject::New(cx, nelements * sizeof(NativeType)));
-        return !!buffer;
     }
 
     template<Value ValueGetter(SharedTypedArrayObject *tarr)>
@@ -373,7 +363,7 @@ class SharedTypedArrayObjectTemplate : public SharedTypedArrayObject
     static const NativeType
     getIndex(JSObject *obj, uint32_t index)
     {
-	SharedTypedArrayObject &tarray = obj->as<SharedTypedArrayObject>();
+        SharedTypedArrayObject &tarray = obj->as<SharedTypedArrayObject>();
         MOZ_ASSERT(index < tarray.length());
         return static_cast<const NativeType*>(tarray.viewData())[index];
     }
@@ -412,6 +402,11 @@ class SharedTypedArrayObjectTemplate : public SharedTypedArrayObject
 
     static Value getIndexValue(JSObject *tarray, uint32_t index);
 
+    static bool fun_subarray(JSContext *cx, unsigned argc, Value *vp);
+    static bool fun_copyWithin(JSContext *cx, unsigned argc, Value *vp);
+    static bool fun_set(JSContext *cx, unsigned argc, Value *vp);
+
+  public:
     static JSObject *
     fromBufferWithProto(JSContext *cx, HandleObject bufobj, uint32_t byteOffset, uint32_t length,
                         HandleObject proto)
@@ -421,13 +416,11 @@ class SharedTypedArrayObjectTemplate : public SharedTypedArrayObject
             return nullptr; // must be SharedArrayBuffer
         }
 
-        JS_ASSERT(IsSharedArrayBuffer(bufobj) || bufobj->is<ProxyObject>());
-
         if (bufobj->is<ProxyObject>()) {
-	    // Complicated, see TypedArrayObject.cpp for code.  For now, punt.
-	    JS_ReportError(cx, "Permission denied to access object");
-	    return nullptr;
-	}
+            // Complicated, see TypedArrayObject.cpp for code.  For now, punt.
+            JS_ReportError(cx, "Permission denied to access object");
+            return nullptr;
+        }
 
         Rooted<SharedArrayBufferObject *> buffer(cx, &AsSharedArrayBuffer(bufobj));
 
@@ -437,7 +430,6 @@ class SharedTypedArrayObjectTemplate : public SharedTypedArrayObject
             return nullptr;
         }
 
-        JS_ASSERT(byteOffset <= buffer->byteLength());
         uint32_t bytesAvailable = buffer->byteLength() - byteOffset;
 
         if (length == LENGTH_NOT_PROVIDED) {
@@ -449,23 +441,16 @@ class SharedTypedArrayObjectTemplate : public SharedTypedArrayObject
         }
 
         if (length > MAX_LENGTH / sizeof(NativeType) || length * sizeof(NativeType) > bytesAvailable) {
-            JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr, JSMSG_SHARED_TYPED_ARRAY_BAD_ARGS);
+            JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr, JSMSG_BAD_ARRAY_LENGTH);
             return nullptr;
         }
 
         return makeInstance(cx, buffer, byteOffset, length, proto);
     }
 
-    static bool fun_subarray(JSContext *cx, unsigned argc, Value *vp);
-    static bool fun_copyWithin(JSContext *cx, unsigned argc, Value *vp);
-    static bool fun_set(JSContext *cx, unsigned argc, Value *vp);
-
-  public:
     static JSObject *
     fromBuffer(JSContext *cx, HandleObject bufobj, uint32_t byteOffset, uint32_t length)
     {
-        JS_ASSERT(byteOffset <= MAX_BYTEOFFSET);
-        JS_ASSERT(length <= MAX_LENGTH || length == LENGTH_NOT_PROVIDED);
         RootedObject proto(cx, nullptr);
         return fromBufferWithProto(cx, bufobj, byteOffset, length, proto);
     }
@@ -473,10 +458,13 @@ class SharedTypedArrayObjectTemplate : public SharedTypedArrayObject
     static JSObject *
     fromLength(JSContext *cx, uint32_t nelements)
     {
-        JS_ASSERT(nelements <= MAX_LENGTH);
-        Rooted<SharedArrayBufferObject *> buffer(cx);
-        // Invariant established by createArrayBuffer(): nelements * sizeof(NativeType) <= MAX_LENGTH.
-        if (!createArrayBuffer(cx, nelements, &buffer))
+        if (nelements > MAX_LENGTH / sizeof(NativeType)) {
+            JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr, JSMSG_BAD_ARRAY_LENGTH);
+            return nullptr;
+        }
+        Rooted<SharedArrayBufferObject *> buffer(
+            cx, SharedArrayBufferObject::New(cx, nelements * sizeof(NativeType)));
+        if (!buffer)
             return nullptr;
         return makeInstance(cx, buffer, 0, nelements);
     }
@@ -673,7 +661,7 @@ IMPL_SHARED_TYPED_ARRAY_JSAPI_CONSTRUCTORS(Float64, double)
 #define IMPL_SHARED_TYPED_ARRAY_COMBINED_UNWRAPPERS(Name, ExternalType, InternalType)       \
   JS_FRIEND_API(JSObject *) JS_GetObjectAsShared ## Name ## Array(JSObject *obj,            \
                                                                   uint32_t *length,         \
-								  ExternalType **data)      \
+                                                                  ExternalType **data)      \
   {                                                                                         \
       if (!(obj = CheckedUnwrap(obj)))                                                      \
           return nullptr;                                                                   \
@@ -683,7 +671,7 @@ IMPL_SHARED_TYPED_ARRAY_JSAPI_CONSTRUCTORS(Float64, double)
       if (clasp != &SharedTypedArrayObject::classes[id])                                    \
           return nullptr;                                                                   \
                                                                                             \
-      SharedTypedArrayObject *tarr = &obj->as<SharedTypedArrayObject>();	            \
+      SharedTypedArrayObject *tarr = &obj->as<SharedTypedArrayObject>();                    \
       *length = tarr->length();                                                             \
       *data = static_cast<ExternalType *>(tarr->viewData());                                \
                                                                                             \
@@ -749,15 +737,15 @@ IMPL_SHARED_TYPED_ARRAY_COMBINED_UNWRAPPERS(Float64, double, double)
     nullptr,                 /* call        */                                 \
     nullptr,                 /* hasInstance */                                 \
     nullptr,                 /* construct   */                                 \
-    nullptr,                 /* trace  */	                               \
+    nullptr,                 /* trace  */                                      \
     SHARED_TYPED_ARRAY_CLASS_SPEC(_typedArray)                                 \
 }
 
 template<typename NativeType>
 bool
 SharedTypedArrayObjectTemplate<NativeType>::FinishClassInit(JSContext *cx,
-							    HandleObject ctor,
-							    HandleObject proto)
+                                                            HandleObject ctor,
+                                                            HandleObject proto)
 {
     RootedValue bytesValue(cx, Int32Value(BYTES_PER_ELEMENT));
 
@@ -982,7 +970,7 @@ SharedTypedArrayObject::setElement(SharedTypedArrayObject &obj, uint32_t index, 
 
     switch (obj.type()) {
       case Scalar::Int8:
-	SharedTypedArrayObjectTemplate<int8_t>::setIndexValue(obj, index, d);
+        SharedTypedArrayObjectTemplate<int8_t>::setIndexValue(obj, index, d);
         break;
       case Scalar::Uint8:
         SharedTypedArrayObjectTemplate<uint8_t>::setIndexValue(obj, index, d);

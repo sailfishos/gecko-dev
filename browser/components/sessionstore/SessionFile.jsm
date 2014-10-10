@@ -38,6 +38,8 @@ Cu.import("resource://gre/modules/AsyncShutdown.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "console",
   "resource://gre/modules/devtools/Console.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "RunState",
+  "resource:///modules/sessionstore/RunState.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "TelemetryStopwatch",
   "resource://gre/modules/TelemetryStopwatch.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "Task",
@@ -232,6 +234,12 @@ let SessionFileInternal = {
         }
       }
     }
+
+    // All files are corrupted if files found but none could deliver a result.
+    let allCorrupt = !noFilesFound && !result;
+    Telemetry.getHistogramById("FX_SESSION_RESTORE_ALL_FILES_CORRUPT").
+      add(allCorrupt);
+
     if (!result) {
       // If everything fails, start with an empty session.
       result = {
@@ -267,7 +275,7 @@ let SessionFileInternal = {
     }
 
     let isFinalWrite = false;
-    if (Services.startup.shuttingDown) {
+    if (RunState.isQuitting) {
       // If shutdown has started, we will want to stop receiving
       // write instructions.
       isFinalWrite = this._isClosed = true;

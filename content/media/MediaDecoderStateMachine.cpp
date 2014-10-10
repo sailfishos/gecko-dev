@@ -1212,8 +1212,10 @@ void MediaDecoderStateMachine::ClearPositionChangeFlag()
 MediaDecoderOwner::NextFrameStatus MediaDecoderStateMachine::GetNextFrameStatus()
 {
   ReentrantMonitorAutoEnter mon(mDecoder->GetReentrantMonitor());
-  if (IsBuffering() || IsSeeking()) {
+  if (IsBuffering()) {
     return MediaDecoderOwner::NEXT_FRAME_UNAVAILABLE_BUFFERING;
+  } else if (IsSeeking()) {
+    return MediaDecoderOwner::NEXT_FRAME_UNAVAILABLE_SEEKING;
   } else if (HaveNextFrameData()) {
     return MediaDecoderOwner::NEXT_FRAME_AVAILABLE;
   }
@@ -1310,7 +1312,7 @@ void MediaDecoderStateMachine::UpdateEstimatedDuration(int64_t aDuration)
   AssertCurrentThreadInMonitor();
   int64_t duration = GetDuration();
   if (aDuration != duration &&
-      abs(aDuration - duration) > ESTIMATED_DURATION_FUZZ_FACTOR_USECS) {
+      std::abs(aDuration - duration) > ESTIMATED_DURATION_FUZZ_FACTOR_USECS) {
     SetDuration(aDuration);
     nsCOMPtr<nsIRunnable> event =
       NS_NewRunnableMethod(mDecoder, &MediaDecoder::DurationChanged);
@@ -2886,6 +2888,10 @@ void MediaDecoderStateMachine::UpdateReadyState() {
   AssertCurrentThreadInMonitor();
 
   MediaDecoderOwner::NextFrameStatus nextFrameStatus = GetNextFrameStatus();
+  // FIXME: This optimization could result in inconsistent next frame status
+  // between the decoder and state machine when GetNextFrameStatus() is called
+  // by the decoder without updating mLastFrameStatus.
+  // Note not to regress bug 882027 when fixing this bug.
   if (nextFrameStatus == mLastFrameStatus) {
     return;
   }
