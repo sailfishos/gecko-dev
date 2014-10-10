@@ -16,12 +16,6 @@ STL_FLAGS=
 
 LOCAL_INCLUDES += -I$(topsrcdir)/xpcom/build
 
-ifeq (1 ,$(MOZ_X11))
-    OS_LIBS += \
-    -lX11 \
-    $(NULL)
-endif
-
 LOCAL_INCLUDES = \
     $(TK_CFLAGS) \
     $(MOZ_GTHREAD_CFLAGS) \
