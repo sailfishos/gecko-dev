@@ -23,8 +23,6 @@ class EmbedLiteSubThread : public base::Thread
   public:
     NS_INLINE_DECL_THREADSAFE_REFCOUNTING(EmbedLiteSubThread)
     explicit EmbedLiteSubThread(EmbedLiteApp*);
-    ~EmbedLiteSubThread();
-
     bool StartEmbedThread();
 
   protected:
@@ -32,6 +30,8 @@ class EmbedLiteSubThread : public base::Thread
     virtual void CleanUp();
 
   private:
+    virtual ~EmbedLiteSubThread();
+
     MessageLoop* mParentLoop;
     EmbedLiteApp* mApp;
 };
