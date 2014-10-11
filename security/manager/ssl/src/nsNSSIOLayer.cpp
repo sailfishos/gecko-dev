@@ -132,11 +132,13 @@ nsNSSSocketInfo::nsNSSSocketInfo(SharedSSLState& aState, uint32_t providerFlags)
     mJoined(false),
     mSentClientCert(false),
     mNotedTimeUntilReady(false),
+    mFailedVerification(false),
     mKEAUsed(nsISSLSocketControl::KEY_EXCHANGE_UNKNOWN),
     mKEAExpected(nsISSLSocketControl::KEY_EXCHANGE_UNKNOWN),
     mKEAKeyBits(0),
     mSSLVersionUsed(nsISSLSocketControl::SSL_VERSION_UNKNOWN),
     mMACAlgorithmUsed(nsISSLSocketControl::SSL_MAC_UNKNOWN),
+    mBypassAuthentication(false),
     mProviderFlags(providerFlags),
     mSocketCreationTimestamp(TimeStamp::Now()),
     mPlaintextBytesRead(0),
@@ -224,6 +226,52 @@ nsNSSSocketInfo::SetClientCert(nsIX509Cert* aClientCert)
 {
   mClientCert = aClientCert;
   return NS_OK;
+}
+
+NS_IMETHODIMP
+nsNSSSocketInfo::GetBypassAuthentication(bool* arg)
+{
+  *arg = mBypassAuthentication;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsNSSSocketInfo::SetBypassAuthentication(bool arg)
+{
+  mBypassAuthentication = arg;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsNSSSocketInfo::GetFailedVerification(bool* arg)
+{
+  *arg = mFailedVerification;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsNSSSocketInfo::GetAuthenticationName(nsACString& aAuthenticationName)
+{
+  aAuthenticationName = GetHostName();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsNSSSocketInfo::SetAuthenticationName(const nsACString& aAuthenticationName)
+{
+  return SetHostName(PromiseFlatCString(aAuthenticationName).get());
+}
+
+NS_IMETHODIMP
+nsNSSSocketInfo::GetAuthenticationPort(int32_t* aAuthenticationPort)
+{
+  return GetPort(aAuthenticationPort);
+}
+
+NS_IMETHODIMP
+nsNSSSocketInfo::SetAuthenticationPort(int32_t aAuthenticationPort)
+{
+  return SetPort(aAuthenticationPort);
 }
 
 NS_IMETHODIMP
@@ -378,21 +426,8 @@ nsNSSSocketInfo::GetNegotiatedNPN(nsACString& aNegotiatedNPN)
 }
 
 NS_IMETHODIMP
-nsNSSSocketInfo::JoinConnection(const nsACString& npnProtocol,
-                                const nsACString& hostname,
-                                int32_t port,
-                                bool* _retval)
+nsNSSSocketInfo::IsAcceptableForHost(const nsACString& hostname, bool* _retval)
 {
-  *_retval = false;
-
-  // Different ports may not be joined together
-  if (port != GetPort())
-    return NS_OK;
-
-  // Make sure NPN has been completed and matches requested npnProtocol
-  if (!mNPNCompleted || !mNegotiatedNPN.Equals(npnProtocol))
-    return NS_OK;
-
   // If this is the same hostname then the certicate status does not
   // need to be considered. They are joinable.
   if (hostname.Equals(GetHostName())) {
@@ -462,9 +497,33 @@ nsNSSSocketInfo::JoinConnection(const nsACString& npnProtocol,
     return NS_OK;
   }
 
-  // All tests pass - this is joinable
-  mJoined = true;
+  // All tests pass
   *_retval = true;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsNSSSocketInfo::JoinConnection(const nsACString& npnProtocol,
+                                const nsACString& hostname,
+                                int32_t port,
+                                bool* _retval)
+{
+  *_retval = false;
+
+  // Different ports may not be joined together
+  if (port != GetPort())
+    return NS_OK;
+
+  // Make sure NPN has been completed and matches requested npnProtocol
+  if (!mNPNCompleted || !mNegotiatedNPN.Equals(npnProtocol))
+    return NS_OK;
+
+  IsAcceptableForHost(hostname, _retval);
+
+  if (*_retval) {
+    // All tests pass - this is joinable
+    mJoined = true;
+  }
   return NS_OK;
 }
 
@@ -632,6 +691,7 @@ nsNSSSocketInfo::SetCertVerificationResult(PRErrorCode errorCode,
   }
 
   if (errorCode) {
+    mFailedVerification = true;
     SetCanceled(errorCode, errorMessageType);
   }
 
@@ -1030,6 +1090,17 @@ retryDueToTLSIntolerance(PRErrorCode err, nsNSSSocketInfo* socketInfo)
 
   uint32_t reason;
   switch (err) {
+    case SSL_ERROR_INAPPROPRIATE_FALLBACK_ALERT:
+      // This is a clear signal that we've fallen back too many versions.  Treat
+      // this as a hard failure now, but also mark the next higher version as
+      // being tolerant so that later attempts don't use this version (i.e.,
+      // range.max), which makes the error unrecoverable without a full restart.
+      socketInfo->SharedState().IOLayerHelpers()
+        .rememberTolerantAtVersion(socketInfo->GetHostName(),
+                                   socketInfo->GetPort(),
+                                   range.max + 1);
+      return false;
+
     case SSL_ERROR_BAD_MAC_ALERT: reason = 1; break;
     case SSL_ERROR_BAD_MAC_READ: reason = 2; break;
     case SSL_ERROR_HANDSHAKE_FAILURE_ALERT: reason = 3; break;
