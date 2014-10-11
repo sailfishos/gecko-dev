@@ -27,7 +27,6 @@ import org.mozilla.gecko.db.BrowserContract.Combined;
 import org.mozilla.gecko.db.BrowserContract.ReadingListItems;
 import org.mozilla.gecko.db.BrowserContract.SearchHistory;
 import org.mozilla.gecko.db.BrowserDB;
-import org.mozilla.gecko.db.DBUtils;
 import org.mozilla.gecko.db.SuggestedSites;
 import org.mozilla.gecko.distribution.Distribution;
 import org.mozilla.gecko.favicons.Favicons;
@@ -47,6 +46,7 @@ import org.mozilla.gecko.health.SessionInformation;
 import org.mozilla.gecko.home.BrowserSearch;
 import org.mozilla.gecko.home.HomeBanner;
 import org.mozilla.gecko.home.HomePager;
+import org.mozilla.gecko.home.HomePager.OnUrlOpenInBackgroundListener;
 import org.mozilla.gecko.home.HomePager.OnUrlOpenListener;
 import org.mozilla.gecko.home.HomePanelsManager;
 import org.mozilla.gecko.home.SearchEngine;
@@ -74,6 +74,7 @@ import org.mozilla.gecko.util.StringUtils;
 import org.mozilla.gecko.util.ThreadUtils;
 import org.mozilla.gecko.util.UIAsyncTask;
 import org.mozilla.gecko.widget.ButtonToast;
+import org.mozilla.gecko.widget.ButtonToast.ToastListener;
 import org.mozilla.gecko.widget.GeckoActionProvider;
 
 import android.app.Activity;
@@ -139,6 +140,7 @@ public class BrowserApp extends GeckoApp
                                    BrowserSearch.OnEditSuggestionListener,
                                    HomePager.OnNewTabsListener,
                                    OnUrlOpenListener,
+                                   OnUrlOpenInBackgroundListener,
                                    ActionModeCompat.Presenter,
                                    LayoutInflater.Factory {
     private static final String LOGTAG = "GeckoBrowserApp";
@@ -662,16 +664,6 @@ public class BrowserApp extends GeckoApp
         // Set the maximum bits-per-pixel the favicon system cares about.
         IconDirectoryEntry.setMaxBPP(GeckoAppShell.getScreenDepth());
 
-        Class<?> mediaManagerClass = getMediaPlayerManager();
-        if (mediaManagerClass != null) {
-            try {
-                Method init = mediaManagerClass.getMethod("init", Context.class);
-                init.invoke(null, this);
-            } catch(Exception ex) {
-                Log.e(LOGTAG, "Error initializing media manager", ex);
-            }
-        }
-
         if (getProfile().inGuestMode()) {
             GuestSession.showNotification(this);
         } else {
@@ -945,7 +937,7 @@ public class BrowserApp extends GeckoApp
         if (itemId == R.id.pasteandgo) {
             String text = Clipboard.getText();
             if (!TextUtils.isEmpty(text)) {
-                Tabs.getInstance().loadUrl(text);
+                loadUrlOrKeywordSearch(text);
                 Telemetry.sendUIEvent(TelemetryContract.Event.LOAD_URL, TelemetryContract.Method.CONTEXT_MENU);
                 Telemetry.sendUIEvent(TelemetryContract.Event.ACTION, TelemetryContract.Method.CONTEXT_MENU, "pasteandgo");
             }
@@ -1547,6 +1539,19 @@ public class BrowserApp extends GeckoApp
                     }
                 });
 
+                if (AppConstants.MOZ_MEDIA_PLAYER) {
+                    // If casting is disabled, these classes aren't built. We use reflection to initialize them.
+                    Class<?> mediaManagerClass = getMediaPlayerManager();
+                    if (mediaManagerClass != null) {
+                        try {
+                            Method init = mediaManagerClass.getMethod("init", Context.class);
+                            init.invoke(null, this);
+                        } catch(Exception ex) {
+                            Log.e(LOGTAG, "Error initializing media manager", ex);
+                        }
+                    }
+                }
+
                 if (AppConstants.MOZ_STUMBLER_BUILD_TIME_ENABLED) {
                     // Start (this acts as ping if started already) the stumbler lib; if the stumbler has queued data it will upload it.
                     // Stumbler operates on its own thread, and startup impact is further minimized by delaying work (such as upload) a few seconds.
@@ -1559,6 +1564,7 @@ public class BrowserApp extends GeckoApp
                         }
                     }, oneSecondInMillis);
                 }
+
                 super.handleMessage(event, message);
             } else if (event.equals("Gecko:Ready")) {
                 // Handle this message in GeckoApp, but also enable the Settings
@@ -1767,7 +1773,13 @@ public class BrowserApp extends GeckoApp
 
     /**
      * Attempts to switch to an open tab with the given URL.
+     * <p>
+     * If the tab exists, this method cancels any in-progress editing as well as
+     * calling {@link Tabs#selectTab(int)}.
      *
+     * @param url of tab to switch to.
+     * @param flags to obey: if {@link OnUrlOpenListener.Flags#ALLOW_SWITCH_TO_TAB}
+     *        is not present, return false.
      * @return true if we successfully switched to a tab, false otherwise.
      */
     private boolean maybeSwitchToTab(String url, EnumSet<OnUrlOpenListener.Flags> flags) {
@@ -1783,6 +1795,26 @@ public class BrowserApp extends GeckoApp
         } else {
             tab = tabs.getFirstTabForUrl(url, tabs.getSelectedTab().isPrivate());
         }
+
+        if (tab == null) {
+            return false;
+        }
+
+        return maybeSwitchToTab(tab.getId());
+    }
+
+    /**
+     * Attempts to switch to an open tab with the given unique tab ID.
+     * <p>
+     * If the tab exists, this method cancels any in-progress editing as well as
+     * calling {@link Tabs#selectTab(int)}.
+     *
+     * @param id of tab to switch to.
+     * @return true if we successfully switched to the tab, false otherwise.
+     */
+    private boolean maybeSwitchToTab(int id) {
+        final Tabs tabs = Tabs.getInstance();
+        final Tab tab = tabs.getTab(id);
 
         if (tab == null) {
             return false;
@@ -1934,7 +1966,10 @@ public class BrowserApp extends GeckoApp
         //
         // Expected to be fixed by bug 915825.
         hideHomePager(url);
+        loadUrlOrKeywordSearch(url);
+    }
 
+    private void loadUrlOrKeywordSearch(final String url) {
         // Don't do anything if the user entered an empty URL.
         if (TextUtils.isEmpty(url)) {
             return;
@@ -3079,6 +3114,53 @@ public class BrowserApp extends GeckoApp
         } else if (!maybeSwitchToTab(url, flags)) {
             openUrlAndStopEditing(url);
         }
+    }
+
+    // HomePager.OnUrlOpenInBackgroundListener
+    @Override
+    public void onUrlOpenInBackground(final String url, EnumSet<OnUrlOpenInBackgroundListener.Flags> flags) {
+        if (url == null) {
+            throw new IllegalArgumentException("url must not be null");
+        }
+        if (flags == null) {
+            throw new IllegalArgumentException("flags must not be null");
+        }
+
+        final boolean isPrivate = flags.contains(OnUrlOpenInBackgroundListener.Flags.PRIVATE);
+
+        int loadFlags = Tabs.LOADURL_NEW_TAB | Tabs.LOADURL_BACKGROUND;
+        if (isPrivate) {
+            loadFlags |= Tabs.LOADURL_PRIVATE;
+        }
+
+        final Tab newTab = Tabs.getInstance().loadUrl(url, loadFlags);
+
+        // We switch to the desired tab by unique ID, which closes any window
+        // for a race between opening the tab and closing it, and switching to
+        // it. We could also switch to the Tab explicitly, but we don't want to
+        // hold a reference to the Tab itself in the anonymous listener class.
+        final int newTabId = newTab.getId();
+
+        final ToastListener listener = new ButtonToast.ToastListener() {
+            @Override
+            public void onButtonClicked() {
+                maybeSwitchToTab(newTabId);
+            }
+
+            @Override
+            public void onToastHidden(ButtonToast.ReasonHidden reason) { }
+        };
+
+        final String message = isPrivate ?
+                getResources().getString(R.string.new_private_tab_opened) :
+                getResources().getString(R.string.new_tab_opened);
+        final String buttonMessage = getResources().getString(R.string.switch_button_message);
+        getButtonToast().show(false,
+                              message,
+                              ButtonToast.LENGTH_SHORT,
+                              buttonMessage,
+                              R.drawable.switch_button_icon,
+                              listener);
     }
 
     // BrowserSearch.OnSearchListener

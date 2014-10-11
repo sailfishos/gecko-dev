@@ -308,8 +308,7 @@ AsyncCompositionManager::AlignFixedAndStickyLayers(Layer* aLayer,
   if (newCumulativeTransform.IsSingular()) {
     return;
   }
-  Matrix newCumulativeTransformInverse = newCumulativeTransform;
-  newCumulativeTransformInverse.Invert();
+  Matrix newCumulativeTransformInverse = newCumulativeTransform.Inverse();
 
   // Now work out the translation necessary to make sure the layer doesn't
   // move given the new sub-tree root transform.
@@ -587,11 +586,10 @@ AsyncCompositionManager::ApplyAsyncContentTransformToTree(Layer *aLayer)
     hasAsyncTransform = true;
 
     ViewTransform asyncTransformWithoutOverscroll;
-    Matrix4x4 overscrollTransform;
     ScreenPoint scrollOffset;
     controller->SampleContentTransformForFrame(&asyncTransformWithoutOverscroll,
-                                               scrollOffset,
-                                               &overscrollTransform);
+                                               scrollOffset);
+    Matrix4x4 overscrollTransform = controller->GetOverscrollTransform();
 
     if (!aLayer->IsScrollInfoLayer()) {
       controller->MarkAsyncTransformAppliedToContent();
@@ -699,9 +697,7 @@ ApplyAsyncTransformToScrollbarForContent(Layer* aScrollbar,
 
   Matrix4x4 asyncTransform = apzc->GetCurrentAsyncTransform();
   Matrix4x4 nontransientTransform = apzc->GetNontransientAsyncTransform();
-  Matrix4x4 nontransientUntransform = nontransientTransform;
-  nontransientUntransform.Invert();
-  Matrix4x4 transientTransform = asyncTransform * nontransientUntransform;
+  Matrix4x4 transientTransform = asyncTransform * nontransientTransform.Inverse();
 
   // |transientTransform| represents the amount by which we have scrolled and
   // zoomed since the last paint. Because the scrollbar was sized and positioned based
@@ -736,15 +732,23 @@ ApplyAsyncTransformToScrollbarForContent(Layer* aScrollbar,
     // the content. This is needed because otherwise that transient async transform is
     // part of the effective transform of this scrollbar, and the scrollbar will jitter
     // as the content scrolls.
-    transientTransform.Invert();
-    transform = transform * transientTransform;
+    // Since the async transform is applied on top of the content's regular
+    // transform, we need to make sure to unapply the async transform in the
+    // same coordinate space. This requires applying the content transform and
+    // then unapplying it after unapplying the async transform.
+    Matrix4x4 asyncUntransform = (asyncTransform * apzc->GetOverscrollTransform()).Inverse();
+    Matrix4x4 contentTransform = aContent.GetTransform();
+    Matrix4x4 contentUntransform = contentTransform.Inverse();
+
+    Matrix4x4 compensation = contentTransform * asyncUntransform * contentUntransform;
+    transform = transform * compensation;
 
     // We also need to make a corresponding change on the clip rect of all the
     // layers on the ancestor chain from the scrollbar layer up to but not
     // including the layer with the async transform. Otherwise the scrollbar
     // shifts but gets clipped and so appears to flicker.
     for (Layer* ancestor = aScrollbar; ancestor != aContent.GetLayer(); ancestor = ancestor->GetParent()) {
-      TransformClipRect(ancestor, transientTransform);
+      TransformClipRect(ancestor, compensation);
     }
   }
 

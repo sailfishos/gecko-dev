@@ -577,8 +577,8 @@ pref("gfx.font_rendering.opentype_svg.enabled", true);
 #ifdef XP_WIN
 // comma separated list of backends to use in order of preference
 // e.g., pref("gfx.canvas.azure.backends", "direct2d,skia,cairo");
-pref("gfx.canvas.azure.backends", "direct2d,skia,cairo");
-pref("gfx.content.azure.backends", "direct2d,cairo");
+pref("gfx.canvas.azure.backends", "direct2d1.1,direct2d,skia,cairo");
+pref("gfx.content.azure.backends", "direct2d1.1,direct2d,cairo");
 #else
 #ifdef XP_MACOSX
 pref("gfx.content.azure.backends", "cg");
@@ -2117,6 +2117,12 @@ pref("layout.css.scroll-behavior.spring-constant", "250.0");
 // When equal to 1.0, the system is critically-damped; it will reach the target
 // at the greatest speed without overshooting.
 pref("layout.css.scroll-behavior.damping-ratio", "1.0");
+
+// Is support for document.fonts enabled?
+//
+// Don't enable the pref for the CSS Font Loading API until bug 1072101 is
+// fixed, as we don't want to expose more indexed properties on the Web.
+pref("layout.css.font-loading-api.enabled", false);
 
 // pref for which side vertical scrollbars should be on
 // 0 = end-side in UI direction
@@ -3899,6 +3905,7 @@ pref("gfx.xrender.enabled",true);
 #ifdef XP_WIN
 // Whether to disable the automatic detection and use of direct2d.
 pref("gfx.direct2d.disabled", false);
+pref("gfx.direct2d.use1_1", true);
 
 // Whether to attempt to enable Direct2D regardless of automatic detection or
 // blacklisting

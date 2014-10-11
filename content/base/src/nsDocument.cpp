@@ -223,6 +223,7 @@
 #include "mozilla/dom/DOMStringList.h"
 #include "nsWindowMemoryReporter.h"
 #include "nsLocation.h"
+#include "mozilla/dom/FontFaceSet.h"
 
 #ifdef MOZ_MEDIA_NAVIGATOR
 #include "mozilla/MediaManager.h"
@@ -1997,6 +1998,8 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INTERNAL(nsDocument)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mOnDemandBuiltInUASheets)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mPreloadingImages)
 
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mSubImportLinks)
+
   for (uint32_t i = 0; i < tmp->mFrameRequestCallbacks.Length(); ++i) {
     NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(cb, "mFrameRequestCallbacks[i]");
     cb.NoteXPCOMChild(tmp->mFrameRequestCallbacks[i].mCallback.GetISupports());
@@ -2061,6 +2064,7 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(nsDocument)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mRegistry)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mMasterDocument)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mImportManager)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mSubImportLinks)
 
   tmp->mParentDocument = nullptr;
 
@@ -12412,3 +12416,20 @@ nsAutoSyncOperation::~nsAutoSyncOperation()
   nsContentUtils::SetMicroTaskLevel(mMicroTaskLevel);
 }
 
+FontFaceSet*
+nsIDocument::GetFonts(ErrorResult& aRv)
+{
+  nsIPresShell* shell = GetShell();
+  if (!shell) {
+    aRv.Throw(NS_ERROR_FAILURE);
+    return nullptr;
+  }
+
+  nsPresContext* presContext = shell->GetPresContext();
+  if (!presContext) {
+    aRv.Throw(NS_ERROR_FAILURE);
+    return nullptr;
+  }
+
+  return presContext->Fonts();
+}
