@@ -490,9 +490,9 @@ EmbedLiteViewThreadParent::RecvSyncMessage(const nsString& aMessage,
 }
 
 bool
-EmbedLiteViewThreadParent::AnswerRpcMessage(const nsString& aMessage,
-                                            const nsString& aJSON,
-                                            InfallibleTArray<nsString>* aJSONRetVal)
+EmbedLiteViewThreadParent::RecvRpcMessage(const nsString& aMessage,
+                                          const nsString& aJSON,
+                                          InfallibleTArray<nsString>* aJSONRetVal)
 {
   return RecvSyncMessage(aMessage, aJSON, aJSONRetVal);
 }
