@@ -37,14 +37,8 @@ DOMCI_CLASS(TreeColumn)
 DOMCI_CLASS(CSSMozDocumentRule)
 DOMCI_CLASS(CSSSupportsRule)
 
-// XSLTProcessor
-DOMCI_CLASS(XSLTProcessor)
-
 // DOM Level 3 XPath objects
 DOMCI_CLASS(XPathNSResolver)
-
-DOMCI_CLASS(Blob)
-DOMCI_CLASS(File)
 
 DOMCI_CLASS(MozSmsMessage)
 DOMCI_CLASS(MozMmsMessage)

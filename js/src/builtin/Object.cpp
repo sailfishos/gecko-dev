@@ -50,9 +50,39 @@ obj_propertyIsEnumerable(JSContext *cx, unsigned argc, Value *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
 
+    HandleValue idValue = args.get(0);
+
+    // As an optimization, provide a fast path when rooting is not necessary and
+    // we can safely retrieve the attributes from the object's shape.
+
+    /* Steps 1-2. */
+    jsid id;
+    if (args.thisv().isObject() && ValueToId<NoGC>(cx, idValue, &id)) {
+        JSObject *obj = &args.thisv().toObject(), *pobj;
+
+        /* Step 3. */
+        Shape *shape;
+        if (!obj->is<ProxyObject>() &&
+            HasOwnProperty<NoGC>(cx, obj->getOps()->lookupGeneric, obj, id, &pobj, &shape))
+        {
+            /* Step 4. */
+            if (!shape) {
+                args.rval().setBoolean(false);
+                return true;
+            }
+
+            /* Step 5. */
+            if (pobj->isNative()) {
+                unsigned attrs = GetShapeAttributes(pobj, shape);
+                args.rval().setBoolean((attrs & JSPROP_ENUMERATE) != 0);
+                return true;
+            }
+        }
+    }
+
     /* Step 1. */
-    RootedId id(cx);
-    if (!ValueToId<CanGC>(cx, args.get(0), &id))
+    RootedId idRoot(cx);
+    if (!ValueToId<CanGC>(cx, idValue, &idRoot))
         return false;
 
     /* Step 2. */
@@ -60,29 +90,13 @@ obj_propertyIsEnumerable(JSContext *cx, unsigned argc, Value *vp)
     if (!obj)
         return false;
 
-    /* Steps 3. */
-    RootedObject pobj(cx);
-    RootedShape prop(cx);
-    if (!JSObject::lookupGeneric(cx, obj, id, &pobj, &prop))
+    /* Step 3. */
+    Rooted<PropertyDescriptor> desc(cx);
+    if (!GetOwnPropertyDescriptor(cx, obj, idRoot, &desc))
         return false;
 
-    /* Step 4. */
-    if (!prop) {
-        args.rval().setBoolean(false);
-        return true;
-    }
-
-    if (pobj != obj) {
-        args.rval().setBoolean(false);
-        return true;
-    }
-
-    /* Step 5. */
-    unsigned attrs;
-    if (!JSObject::getGenericAttributes(cx, pobj, id, &attrs))
-        return false;
-
-    args.rval().setBoolean((attrs & JSPROP_ENUMERATE) != 0);
+    /* Steps 4-5. */
+    args.rval().setBoolean(desc.object() && desc.isEnumerable());
     return true;
 }
 
@@ -170,7 +184,7 @@ js::ObjectToSource(JSContext *cx, HandleObject obj)
     MutableHandleString gsop[2] = {&str0, &str1};
 
     AutoIdVector idv(cx);
-    if (!GetPropertyNames(cx, obj, JSITER_OWNONLY | JSITER_SYMBOLS, &idv))
+    if (!GetPropertyKeys(cx, obj, JSITER_OWNONLY | JSITER_SYMBOLS, &idv))
         return nullptr;
 
     bool comma = false;
@@ -531,33 +545,20 @@ obj_lookupSetter(JSContext *cx, unsigned argc, Value *vp)
 }
 #endif /* JS_OLD_GETTER_SETTER_METHODS */
 
-/* ES5 15.2.3.2. */
+// ES6 draft rev27 (2014/08/24) 19.1.2.9 Object.getPrototypeOf(O)
 bool
 js::obj_getPrototypeOf(JSContext *cx, unsigned argc, Value *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
 
-    /* Step 1. */
-    if (args.length() == 0) {
-        js_ReportMissingArg(cx, args.calleev(), 0);
+    /* Steps 1-2. */
+    RootedObject obj(cx, ToObject(cx, args.get(0)));
+    if (!obj)
         return false;
-    }
 
-    if (args[0].isPrimitive()) {
-        RootedValue val(cx, args[0]);
-        char *bytes = DecompileValueGenerator(cx, JSDVG_SEARCH_STACK, val, NullPtr());
-        if (!bytes)
-            return false;
-        JS_ReportErrorNumber(cx, js_GetErrorMessage, nullptr,
-                             JSMSG_UNEXPECTED_TYPE, bytes, "not an object");
-        js_free(bytes);
-        return false;
-    }
-
-    /* Step 2. */
-    RootedObject thisObj(cx, &args[0].toObject());
+    /* Step 3. */
     RootedObject proto(cx);
-    if (!JSObject::getProto(cx, thisObj, &proto))
+    if (!JSObject::getProto(cx, obj, &proto))
         return false;
     args.rval().setObjectOrNull(proto);
     return true;
@@ -826,16 +827,23 @@ js::obj_create(JSContext *cx, unsigned argc, Value *vp)
     return true;
 }
 
+// ES6 draft rev27 (2014/08/24) 19.1.2.6 Object.getOwnPropertyDescriptor(O, P)
 bool
 js::obj_getOwnPropertyDescriptor(JSContext *cx, unsigned argc, Value *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
-    RootedObject obj(cx);
-    if (!GetFirstArgumentAsObject(cx, args, "Object.getOwnPropertyDescriptor", &obj))
+
+    // Steps 1-2.
+    RootedObject obj(cx, ToObject(cx, args.get(0)));
+    if (!obj)
         return false;
+
+    // Steps 3-4.
     RootedId id(cx);
     if (!ValueToId<CanGC>(cx, args.get(1), &id))
         return false;
+
+    // Steps 5-7.
     return GetOwnPropertyDescriptor(cx, obj, id, args.rval());
 }
 
@@ -890,7 +898,7 @@ GetOwnPropertyKeys(JSContext *cx, const JS::CallArgs &args, unsigned flags)
 
     // Steps 3-10.
     AutoIdVector keys(cx);
-    if (!GetPropertyNames(cx, obj, flags, &keys))
+    if (!GetPropertyKeys(cx, obj, flags, &keys))
         return false;
 
     // Step 11.

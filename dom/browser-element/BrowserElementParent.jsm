@@ -389,7 +389,8 @@ BrowserElementParent.prototype = {
       name: this._frameElement.getAttribute('name'),
       fullscreenAllowed:
         this._frameElement.hasAttribute('allowfullscreen') ||
-        this._frameElement.hasAttribute('mozallowfullscreen')
+        this._frameElement.hasAttribute('mozallowfullscreen'),
+      isPrivate: this._frameElement.hasAttribute('mozprivatebrowsing')
     };
   },
 
@@ -580,7 +581,8 @@ BrowserElementParent.prototype = {
     }
     else {
       debug("Got error in gotDOMRequestResult.");
-      Services.DOMRequest.fireErrorAsync(req, data.json.errorMsg);
+      Services.DOMRequest.fireErrorAsync(req,
+        Cu.cloneInto(data.json.errorMsg, this._window));
     }
   },
 

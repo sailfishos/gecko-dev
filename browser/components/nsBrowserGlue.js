@@ -507,7 +507,6 @@ BrowserGlue.prototype = {
     NewTabUtils.init();
     DirectoryLinksProvider.init();
     NewTabUtils.links.addProvider(DirectoryLinksProvider);
-    BrowserNewTabPreloader.init();
 #ifdef NIGHTLY_BUILD
     if (Services.prefs.getBoolPref("dom.identity.enabled")) {
       SignInToWebsiteUX.init();
@@ -638,8 +637,8 @@ BrowserGlue.prototype = {
     let message = resetBundle.formatStringFromName("resetUnusedProfile.message", [productName], 1);
     let buttons = [
       {
-        label:     resetBundle.formatStringFromName("resetProfile.resetButton.label", [productName], 1),
-        accessKey: resetBundle.GetStringFromName("resetProfile.resetButton.accesskey"),
+        label:     resetBundle.formatStringFromName("refreshProfile.resetButton.label", [productName], 1),
+        accessKey: resetBundle.GetStringFromName("refreshProfile.resetButton.accesskey"),
         callback: function () {
           ResetProfile.openConfirmationDialog(win);
         }
@@ -741,10 +740,6 @@ BrowserGlue.prototype = {
 #endif
     webrtcUI.uninit();
     FormValidationHandler.uninit();
-
-    // XXX: Temporary hack to allow Loop FxA login after a restart to work.
-    // Remove this once bug 1071247 is deployed.
-    Services.prefs.clearUserPref("loop.hawk-session-token.fxa");
   },
 
   // All initial windows have opened.
@@ -2243,7 +2238,7 @@ let DefaultBrowserCheck = {
 
     let iconPixels = win.devicePixelRatio > 1 ? "32" : "16";
     let iconURL = "chrome://branding/content/icon" + iconPixels + ".png";
-    const priority = notificationBox.PRIORITY_INFO_HIGH;
+    const priority = notificationBox.PRIORITY_WARNING_HIGH;
     let callback = this._onNotificationEvent.bind(this);
     this._notification = notificationBox.appendNotification(promptMessage, "default-browser",
                                                             iconURL, priority, buttons,

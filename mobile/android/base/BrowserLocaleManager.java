@@ -55,11 +55,11 @@ public class BrowserLocaleManager implements LocaleManager {
     private volatile Locale currentLocale;
     private volatile Locale systemLocale = Locale.getDefault();
 
-    private AtomicBoolean inited = new AtomicBoolean(false);
+    private final AtomicBoolean inited = new AtomicBoolean(false);
     private boolean systemLocaleDidChange;
     private BroadcastReceiver receiver;
 
-    private static AtomicReference<LocaleManager> instance = new AtomicReference<LocaleManager>();
+    private static final AtomicReference<LocaleManager> instance = new AtomicReference<LocaleManager>();
 
     public static LocaleManager getInstance() {
         LocaleManager localeManager = instance.get();
@@ -75,6 +75,7 @@ public class BrowserLocaleManager implements LocaleManager {
         }
     }
 
+    @Override
     public boolean isEnabled() {
         return AppConstants.MOZ_LOCALE_SWITCHER;
     }

@@ -897,6 +897,15 @@ Toolbox.prototype = {
         let panel = built;
         iframe.panel = panel;
 
+        // The panel instance is expected to fire (and listen to) various
+        // framework events, so make sure it's properly decorated with
+        // appropriate API (on, off, once, emit).
+        // In this case we decorate panel instances directly returned by
+        // the tool definition 'build' method.
+        if (typeof panel.emit == "undefined") {
+          EventEmitter.decorate(panel);
+        }
+
         gDevTools.emit(id + "-build", this, panel);
         this.emit(id + "-build", panel);
 
@@ -914,6 +923,14 @@ Toolbox.prototype = {
       // Wait till the panel is fully ready and fire 'ready' events.
       promise.resolve(built).then((panel) => {
         this._toolPanels.set(id, panel);
+
+        // Make sure to decorate panel object with event API also in case
+        // where the tool definition 'build' method returns only a promise
+        // and the actual panel instance is available as soon as the
+        // promise is resolved.
+        if (typeof panel.emit == "undefined") {
+          EventEmitter.decorate(panel);
+        }
 
         gDevTools.emit(id + "-ready", this, panel);
         this.emit(id + "-ready", panel);
@@ -1499,6 +1516,8 @@ Toolbox.prototype = {
       return this._destroyer;
     }
 
+    this.emit("destroy");
+
     this._target.off("navigate", this._refreshHostTitle);
     this._target.off("frame-update", this._updateFrames);
     this.off("select", this._refreshHostTitle);
@@ -1520,6 +1539,9 @@ Toolbox.prototype = {
     let outstanding = [];
     for (let [id, panel] of this._toolPanels) {
       try {
+        gDevTools.emit(id + "-destroy", this, panel);
+        this.emit(id + "-destroy", panel);
+
         outstanding.push(panel.destroy());
       } catch (e) {
         // We don't want to stop here if any panel fail to close.

@@ -85,7 +85,6 @@ import android.content.ContentValues;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
@@ -160,7 +159,8 @@ public class BrowserApp extends GeckoApp
 
     // Request ID for startActivityForResult.
     private static final int ACTIVITY_REQUEST_PREFERENCES = 1001;
-    public static final String ACTION_NEW_PROFILE = "org.mozilla.gecko.NEW_PROFILE";
+
+    public static final String PREF_STARTPANE_ENABLED = "startpane_enabled";
 
     private BrowserSearch mBrowserSearch;
     private View mBrowserSearchContainer;
@@ -191,7 +191,7 @@ public class BrowserApp extends GeckoApp
         public boolean added;   // So we can re-add after a locale change.
     }
 
-    // The types of guest mdoe dialogs we show
+    // The types of guest mode dialogs we show.
     public static enum GuestModeDialog {
         ENTERING,
         LEAVING
@@ -229,6 +229,8 @@ public class BrowserApp extends GeckoApp
 
     private BrowserHealthReporter mBrowserHealthReporter;
 
+    private SystemBarTintManager mTintManager;
+
     // The tab to be selected on editing mode exit.
     private Integer mTargetTabForEditingMode;
 
@@ -238,7 +240,7 @@ public class BrowserApp extends GeckoApp
     // race by determining if the web content should be hidden at the animation's end.
     private boolean mHideWebContentOnAnimationEnd;
 
-    private DynamicToolbar mDynamicToolbar = new DynamicToolbar();
+    private final DynamicToolbar mDynamicToolbar = new DynamicToolbar();
 
     @Override
     public View onCreateView(final String name, final Context context, final AttributeSet attrs) {
@@ -520,11 +522,12 @@ public class BrowserApp extends GeckoApp
         mAboutHomeStartupTimer = new Telemetry.UptimeTimer("FENNEC_STARTUP_TIME_ABOUTHOME");
 
         final Intent intent = getIntent();
-        final String args = intent.getStringExtra("args");
-
-        if (GuestSession.shouldUse(this, args)) {
-            mProfile = GeckoProfile.createGuestProfile(this);
-        } else {
+        final GeckoProfile p = GeckoProfile.get(this);
+        if (p != null && !p.inGuestMode()) {
+            // This is *only* valid because we never want to use the guest mode
+            // profile concurrently with a normal profile -- no syncing to it,
+            // no dual-profile usage, nothing. BrowserApp startup with a conventional
+            // GeckoProfile will cause the guest profile to be deleted.
             GeckoProfile.maybeCleanupGuestProfile(this);
         }
 
@@ -620,8 +623,6 @@ public class BrowserApp extends GeckoApp
             "Updater:Launch",
             "BrowserToolbar:Visibility");
 
-        registerOnboardingReceiver(this);
-
         Distribution distribution = Distribution.init(this);
 
         // Init suggested sites engine in BrowserDB.
@@ -673,13 +674,6 @@ public class BrowserApp extends GeckoApp
                 Log.e(LOGTAG, "Error initializing media manager", ex);
             }
         }
-
-        if (getProfile().inGuestMode()) {
-            GuestSession.showNotification(this);
-        } else {
-            // If we're restarting, we won't destroy the activity. Make sure we remove any guest notifications that might have been shown.
-            GuestSession.hideNotification(this);
-        }
     }
 
     private void setupSystemUITinting() {
@@ -689,29 +683,49 @@ public class BrowserApp extends GeckoApp
 
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
 
-        SystemBarTintManager tintManager = new SystemBarTintManager(this);
-        tintManager.setTintColor(getResources().getColor(R.color.background_tabs));
-        tintManager.setStatusBarTintEnabled(true);
-    }
+        mTintManager = new SystemBarTintManager(this);
+        mTintManager.setTintColor(getResources().getColor(R.color.background_tabs));
+        updateSystemUITinting(mRootLayout.getSystemUiVisibility());
 
-    private void registerOnboardingReceiver(Context context) {
-        final LocalBroadcastManager lbm = LocalBroadcastManager.getInstance(this);
-
-        // Receiver for launching first run start pane on new profile creation.
-        mOnboardingReceiver = new BroadcastReceiver() {
+        mRootLayout.setOnSystemUiVisibilityChangeListener(new View.OnSystemUiVisibilityChangeListener() {
             @Override
-            public void onReceive(Context context, Intent intent) {
-                launchStartPane(BrowserApp.this);
+            public void onSystemUiVisibilityChange(int visibility) {
+                updateSystemUITinting(visibility);
             }
-        };
-
-        lbm.registerReceiver(mOnboardingReceiver, new IntentFilter(ACTION_NEW_PROFILE));
+        });
     }
 
-    private void launchStartPane(Context context) {
-         final Intent startIntent = new Intent(context, StartPane.class);
-         context.startActivity(startIntent);
-     }
+    private void updateSystemUITinting(int visibility) {
+        final boolean shouldTint = (visibility & View.SYSTEM_UI_FLAG_HIDE_NAVIGATION) == 0 &&
+                                   (visibility & View.SYSTEM_UI_FLAG_FULLSCREEN) == 0;
+        mTintManager.setStatusBarTintEnabled(shouldTint);
+    }
+
+    /**
+     * Check and show Onboarding start pane if Firefox has never been launched and
+     * is not opening an external link from another application.
+     *
+     * @param context Context of application; used to show Start Pane if appropriate
+     * @param intentAction Intent that launched this activity
+     */
+    private void checkStartPane(Context context, String intentAction) {
+        final StrictMode.ThreadPolicy savedPolicy = StrictMode.allowThreadDiskReads();
+
+        try {
+            final SharedPreferences prefs = GeckoSharedPrefs.forProfile(this);
+
+            if (prefs.getBoolean(PREF_STARTPANE_ENABLED, false)) {
+                if (!Intent.ACTION_VIEW.equals(intentAction)) {
+                    final Intent startIntent = new Intent(this, StartPane.class);
+                    context.startActivity(startIntent);
+                }
+                // Don't bother trying again to show the v1 minimal first run.
+                prefs.edit().putBoolean(PREF_STARTPANE_ENABLED, false).apply();
+            }
+        } finally {
+            StrictMode.setThreadPolicy(savedPolicy);
+        }
+      }
 
     private Class<?> getMediaPlayerManager() {
         if (AppConstants.MOZ_MEDIA_PLAYER) {
@@ -744,6 +758,12 @@ public class BrowserApp extends GeckoApp
         }
 
         super.onBackPressed();
+    }
+
+    @Override
+    public void onAttachedToWindow() {
+        // We can't show Onboarding until Gecko has finished initialization (bug 1077583).
+        checkStartPane(this, getIntent().getAction());
     }
 
     @Override
@@ -791,6 +811,35 @@ public class BrowserApp extends GeckoApp
     }
 
     @Override
+    public void onStart() {
+        super.onStart();
+
+        // Queue this work so that the first launch of the activity doesn't
+        // trigger profile init too early.
+        ThreadUtils.postToBackgroundThread(new Runnable() {
+            @Override
+            public void run() {
+                if (getProfile().inGuestMode()) {
+                    GuestSession.showNotification(BrowserApp.this);
+                } else {
+                    // If we're restarting, we won't destroy the activity.
+                    // Make sure we remove any guest notifications that might
+                    // have been shown.
+                    GuestSession.hideNotification(BrowserApp.this);
+                }
+            }
+        });
+    }
+
+    @Override
+    public void onStop() {
+        super.onStop();
+
+        // We only show the guest mode notification when our activity is in the foreground.
+        GuestSession.hideNotification(this);
+    }
+
+    @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         // If Home Page is visible, the layerView surface has to be visible
@@ -811,24 +860,28 @@ public class BrowserApp extends GeckoApp
 
     private void setBrowserToolbarListeners() {
         mBrowserToolbar.setOnActivateListener(new BrowserToolbar.OnActivateListener() {
+            @Override
             public void onActivate() {
                 enterEditingMode();
             }
         });
 
         mBrowserToolbar.setOnCommitListener(new BrowserToolbar.OnCommitListener() {
+            @Override
             public void onCommit() {
                 commitEditingMode();
             }
         });
 
         mBrowserToolbar.setOnDismissListener(new BrowserToolbar.OnDismissListener() {
+            @Override
             public void onDismiss() {
                 mBrowserToolbar.cancelEdit();
             }
         });
 
         mBrowserToolbar.setOnFilterListener(new BrowserToolbar.OnFilterListener() {
+            @Override
             public void onFilter(String searchText, AutocompleteHandler handler) {
                 filterEditingMode(searchText, handler);
             }
@@ -844,6 +897,7 @@ public class BrowserApp extends GeckoApp
         });
 
         mBrowserToolbar.setOnStartEditingListener(new BrowserToolbar.OnStartEditingListener() {
+            @Override
             public void onStartEditing() {
                 // Temporarily disable doorhanger notifications.
                 mDoorHangerPopup.disable();
@@ -851,6 +905,7 @@ public class BrowserApp extends GeckoApp
         });
 
         mBrowserToolbar.setOnStopEditingListener(new BrowserToolbar.OnStopEditingListener() {
+            @Override
             public void onStopEditing() {
                 selectTargetTabForEditingMode();
 
@@ -1087,8 +1142,6 @@ public class BrowserApp extends GeckoApp
             mBrowserHealthReporter = null;
         }
 
-        GuestSession.onDestroy(this);
-
         EventDispatcher.getInstance().unregisterGeckoThreadListener((GeckoEventListener)this,
             "Menu:Update",
             "Reader:Added",
@@ -1206,6 +1259,7 @@ public class BrowserApp extends GeckoApp
                 mDynamicToolbarCanScroll = false;
                 if (mBrowserChrome.getVisibility() != View.VISIBLE) {
                     ThreadUtils.postToUiThread(new Runnable() {
+                        @Override
                         public void run() {
                             mDynamicToolbar.setVisible(true, VisibilityTransition.ANIMATE);
                         }
@@ -1220,6 +1274,7 @@ public class BrowserApp extends GeckoApp
         final ToolbarProgressView progressView = mProgressView;
         final int marginTop = Math.round(aMetrics.marginTop);
         ThreadUtils.postToUiThread(new Runnable() {
+            @Override
             public void run() {
                 final float translationY = marginTop - browserChrome.getHeight();
                 ViewHelper.setTranslationY(browserChrome, translationY);
@@ -2342,6 +2397,11 @@ public class BrowserApp extends GeckoApp
                 view.getHitRect(mTempRect);
                 mTempRect.offset(-view.getScrollX(), -view.getScrollY());
 
+                if (mTintManager != null) {
+                    SystemBarTintManager.SystemBarConfig config = mTintManager.getConfig();
+                    mTempRect.offset(0, -config.getPixelInsetTop(false));
+                }
+
                 int[] viewCoords = new int[2];
                 view.getLocationOnScreen(viewCoords);
 
@@ -2647,7 +2707,6 @@ public class BrowserApp extends GeckoApp
         // or if the user has explicitly enabled the clear on shutdown pref.
         // (We check the pref last to save the pref read.)
         // In ICS+, it's easy to kill an app through the task switcher.
-        final SharedPreferences prefs = GeckoSharedPrefs.forProfile(this);
         final boolean visible = Versions.preICS ||
                                 HardwareUtils.isTelevision() ||
                                 !PrefUtils.getStringSet(GeckoSharedPrefs.forProfile(this),
@@ -2939,6 +2998,9 @@ public class BrowserApp extends GeckoApp
                             args = GUEST_BROWSING_ARG;
                         } else {
                             GeckoProfile.leaveGuestSession(BrowserApp.this);
+
+                            // Now's a good time to make sure we're not displaying the Guest Browsing notification.
+                            GuestSession.hideNotification(BrowserApp.this);
                         }
 
                         if (!GuestSession.isSecureKeyguardLocked(BrowserApp.this)) {

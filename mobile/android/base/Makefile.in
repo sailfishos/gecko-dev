@@ -92,9 +92,7 @@ ALL_JARS += webrtc.jar
 endif
 
 ifdef MOZ_ANDROID_SEARCH_ACTIVITY
-extra_packages += org.mozilla.search
 ALL_JARS += search-activity.jar
-generated/org/mozilla/search/R.java: .aapt.deps ;
 endif
 
 ifdef MOZ_ANDROID_MLS_STUMBLER
@@ -203,6 +201,7 @@ preprocessed := $(addsuffix .in,$(subst generated/org/mozilla/gecko/,,$(filter g
 
 preprocessed_PATH := generated/org/mozilla/gecko
 preprocessed_KEEP_PATH := 1
+preprocessed_FLAGS := --marker='//\\\#'
 
 PP_TARGETS += preprocessed
 
@@ -216,6 +215,7 @@ preprocessed_package := $(addsuffix .in,$(subst $(android_package_dir)/,,$(filte
 
 preprocessed_package_PATH := $(android_package_dir)
 preprocessed_package_KEEP_PATH := 1
+preprocessed_package_FLAGS := --marker='//\\\#'
 
 PP_TARGETS += preprocessed_package
 

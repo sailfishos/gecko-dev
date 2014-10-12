@@ -191,7 +191,7 @@
   <string name="pref_char_encoding_off">&pref_char_encoding_off;</string>
   <string name="pref_clear_private_data">&pref_clear_private_data2;</string>
   <string name="pref_clear_private_data_category">&pref_clear_private_data_category;</string>
-  <string name="pref_clear_on_exit_title">&pref_clear_on_exit_title;</string>
+  <string name="pref_clear_on_exit_title">&pref_clear_on_exit_title2;</string>
   <string name="pref_clear_on_exit_summary2">&pref_clear_on_exit_summary2;</string>
   <string name="pref_clear_on_exit_dialog_title">&pref_clear_on_exit_dialog_title;</string>
   <string name="pref_plugins">&pref_plugins;</string>
@@ -261,7 +261,7 @@
   <string name="datareporting_crashreporter_title_short">&datareporting_crashreporter_title_short;</string>
   <string name="datareporting_crashreporter_summary">&datareporting_crashreporter_summary;</string>
   <string name="datareporting_wifi_title">&datareporting_wifi_title2;</string>
-  <string name="datareporting_wifi_geolocation_summary">&datareporting_wifi_geolocation_summary;</string>
+  <string name="datareporting_wifi_geolocation_summary">&datareporting_wifi_geolocation_summary2;</string>
 
   <string name="go">&go;</string>
   <string name="search">&search;</string>
@@ -377,6 +377,10 @@
   <!-- https://support.mozilla.org/%LOCALE%/kb/mobile-private-browsing-browse-web-without-saving-syncing-info -->
   <string name="private_tabs_panel_learn_more_link">https://support.mozilla.org/&formatS1;/kb/mobile-private-browsing-browse-web-without-saving-syncing-info</string>
   <string name="pin_site_dialog_hint">&pin_site_dialog_hint;</string>
+
+  <string name="remote_tabs_panel_moved_title">&remote_tabs_panel_moved_title;</string>
+  <string name="remote_tabs_panel_moved_desc">&remote_tabs_panel_moved_desc;</string>
+  <string name="remote_tabs_panel_moved_link">&remote_tabs_panel_moved_link;</string>
 
   <string name="filepicker_title">&filepicker_title;</string>
   <string name="filepicker_audio_title">&filepicker_audio_title;</string>

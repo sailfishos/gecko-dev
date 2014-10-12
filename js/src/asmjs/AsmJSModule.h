@@ -821,6 +821,7 @@ class AsmJSModule
     bool                                  dynamicallyLinked_;
     bool                                  loadedFromCache_;
     bool                                  profilingEnabled_;
+    bool                                  interrupted_;
 
     // This field is accessed concurrently when requesting an interrupt.
     // Access must be synchronized via the runtime's interrupt lock.
@@ -882,6 +883,10 @@ class AsmJSModule
     // change as the module is compiled.
     uint32_t minHeapLength() const {
         return pod.minHeapLength_;
+    }
+    uint32_t heapLengthMask() const {
+        MOZ_ASSERT(pod.hasFixedMinHeapLength_);
+        return pod.heapLengthMask_;
     }
     unsigned numFunctionCounts() const {
         return functionCounts_.length();
@@ -1478,6 +1483,10 @@ class AsmJSModule
         return profilingEnabled_;
     }
     void setProfilingEnabled(bool enabled, JSContext *cx);
+    void setInterrupted(bool interrupted) {
+        MOZ_ASSERT(isDynamicallyLinked());
+        interrupted_ = interrupted;
+    }
 
     // Additionally, these functions may only be called while holding the
     // runtime's interrupt lock.

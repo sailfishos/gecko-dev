@@ -55,7 +55,7 @@ public class SendTabList extends ListView {
     // Listener to fire when a share target is selected (either directly or via the prompt)
     private SendTabTargetSelectedListener listener;
 
-    private State currentState = LOADING;
+    private final State currentState = LOADING;
 
     /**
      * Enum defining the states this view may occupy.
@@ -148,6 +148,7 @@ public class SendTabList extends ListView {
 
         builder.setTitle(R.string.overlay_share_select_device)
                .setItems(dialogElements, new DialogInterface.OnClickListener() {
+                   @Override
                    public void onClick(DialogInterface dialog, int index) {
                        listener.onSendTabTargetSelected(records[index].guid);
                    }

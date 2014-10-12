@@ -76,6 +76,7 @@ public:
   void AppendScrollPartsTo(nsDisplayListBuilder*   aBuilder,
                            const nsRect&           aDirtyRect,
                            const nsDisplayListSet& aLists,
+                           bool                    aUsingDisplayPort,
                            bool                    aCreateLayer,
                            bool                    aPositioned);
 
@@ -309,6 +310,8 @@ public:
                         const nsRect& aOldScrollArea);
 
   bool IsIgnoringViewportClipping() const;
+
+  void MarkScrollbarsDirtyForReflow() const;
 
   bool ShouldClampScrollPosition() const;
 
@@ -739,6 +742,9 @@ public:
   virtual bool IsIgnoringViewportClipping() const MOZ_OVERRIDE {
     return mHelper.IsIgnoringViewportClipping();
   }
+  virtual void MarkScrollbarsDirtyForReflow() const MOZ_OVERRIDE {
+    mHelper.MarkScrollbarsDirtyForReflow();
+  }
 
   // nsIStatefulFrame
   NS_IMETHOD SaveState(nsPresState** aState) MOZ_OVERRIDE {
@@ -1093,6 +1099,9 @@ public:
   }
   virtual bool IsIgnoringViewportClipping() const MOZ_OVERRIDE {
     return mHelper.IsIgnoringViewportClipping();
+  }
+  virtual void MarkScrollbarsDirtyForReflow() const MOZ_OVERRIDE {
+    mHelper.MarkScrollbarsDirtyForReflow();
   }
 
   // nsIStatefulFrame

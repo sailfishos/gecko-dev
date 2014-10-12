@@ -3,9 +3,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#ifdef MOZ_LOGGING
-#define FORCE_PR_LOG /* Allow logging in the release build */
-#endif /* MOZ_LOGGING */
 #include "prlog.h"
 
 #include "gfxUserFontSet.h"
@@ -197,22 +194,31 @@ public:
         return ots::TABLE_ACTION_DEFAULT;
     }
 
-    virtual void Message(const char* format, ...) MSGFUNC_FMT_ATTR MOZ_OVERRIDE {
+    virtual void Message(int level, const char* format,
+                         ...) MSGFUNC_FMT_ATTR MOZ_OVERRIDE {
         va_list va;
         va_start(va, format);
 
-        // buf should be more than adequate for any message OTS generates,
-        // so we don't worry about checking the result of vsnprintf()
-        char buf[512];
-        (void)vsnprintf(buf, sizeof(buf), format, va);
+        nsCString msg;
+        msg.AppendPrintf(format, va);
 
         va_end(va);
 
-        mUserFontEntry->mFontSet->LogMessage(mUserFontEntry, buf);
+        if (level > 0) {
+            // For warnings (rather than errors that cause the font to fail),
+            // we only report the first instance of any given message.
+            if (mWarningsIssued.Contains(msg)) {
+                return;
+            }
+            mWarningsIssued.PutEntry(msg);
+        }
+
+        mUserFontEntry->mFontSet->LogMessage(mUserFontEntry, msg.get());
     }
 
 private:
     gfxUserFontEntry* mUserFontEntry;
+    nsTHashtable<nsCStringHashKey> mWarningsIssued;
 };
 
 // Call the OTS library to sanitize an sfnt before attempting to use it.

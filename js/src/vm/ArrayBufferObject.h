@@ -194,7 +194,9 @@ class ArrayBufferObject : public ArrayBufferObjectMaybeShared
 
     static void objectMoved(JSObject *obj, const JSObject *old);
 
-    static BufferContents stealContents(JSContext *cx, Handle<ArrayBufferObject*> buffer);
+    static BufferContents stealContents(JSContext *cx,
+                                        Handle<ArrayBufferObject*> buffer,
+                                        bool hasStealableContents);
 
     bool hasStealableContents() const {
         // Inline elements strictly adhere to the corresponding buffer.
@@ -283,8 +285,11 @@ class ArrayBufferObject : public ArrayBufferObjectMaybeShared
 
     static BufferContents createMappedContents(int fd, size_t offset, size_t length);
 
-    static size_t flagsOffset() {
+    static size_t offsetOfFlagsSlot() {
         return getFixedSlotOffset(FLAGS_SLOT);
+    }
+    static size_t offsetOfDataSlot() {
+        return getFixedSlotOffset(DATA_SLOT);
     }
 
     static uint32_t neuteredFlag() { return NEUTERED_BUFFER; }

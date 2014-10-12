@@ -947,7 +947,7 @@ JSStructuredCloneWriter::traverseObject(HandleObject obj)
      * will come off the stack in forward order.
      */
     AutoIdVector properties(context());
-    if (!GetPropertyNames(context(), obj, JSITER_OWNONLY, &properties))
+    if (!GetPropertyKeys(context(), obj, JSITER_OWNONLY, &properties))
         return false;
 
     for (size_t i = properties.length(); i > 0; --i) {
@@ -1169,8 +1169,9 @@ JSStructuredCloneWriter::transferOwnership()
             // lend itself well to generic manipulation via proxies.
             Rooted<ArrayBufferObject *> arrayBuffer(context(), &CheckedUnwrap(obj)->as<ArrayBufferObject>());
             size_t nbytes = arrayBuffer->byteLength();
+            bool hasStealableContents = arrayBuffer->hasStealableContents();
             ArrayBufferObject::BufferContents bufContents =
-                ArrayBufferObject::stealContents(context(), arrayBuffer);
+                ArrayBufferObject::stealContents(context(), arrayBuffer, hasStealableContents);
             if (!bufContents)
                 return false; // Destructor will clean up the already-transferred data.
             content = bufContents.data();

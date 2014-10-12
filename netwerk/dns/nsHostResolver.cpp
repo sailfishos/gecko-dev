@@ -3,10 +3,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#if defined(MOZ_LOGGING)
-#define FORCE_PR_LOG
-#endif
-
 #if defined(HAVE_RES_NINIT)
 #include <sys/types.h>
 #include <netinet/in.h>
@@ -670,7 +666,7 @@ nsHostResolver::DnsExperimentChanged(const char* aPref, void* aClosure)
     // We can't set a pref in the context of a pref change callback, so
     // dispatch DnsExperimentChangedInternal for async getting/setting.
     DebugOnly<nsresult> rv = NS_DispatchToMainThread(
-        NS_NewRunnableMethod(self, &DnsExperimentChangedInternal));
+        NS_NewRunnableMethod(self, &nsHostResolver::DnsExperimentChangedInternal));
     NS_WARN_IF_FALSE(NS_SUCCEEDED(rv),
                      "Could not dispatch DnsExperimentChanged event.");
 }

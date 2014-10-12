@@ -267,16 +267,17 @@ MozMtpDatabase::FileWatcherUpdate(RefCountedMtpServer* aMtpServer,
 
   MtpObjectHandle entryHandle = FindEntryByPath(filePath);
 
-  if (aEventType.EqualsLiteral("created")) {
+  if (aEventType.EqualsLiteral("modified")) {
+    // To update the file information to the newest, we remove the entry for
+    // the existing file, then re-add the entry for the file.
     if (entryHandle != 0) {
-      // The entry already exists. This means that we're being notified
-      // about a file added by MTP. So we can ignore it.
-
-      return;
+      MTP_LOG("About to call sendObjectRemoved Handle 0x%08x file %s", entryHandle, filePath.get());
+      aMtpServer->sendObjectRemoved(entryHandle);
+      RemoveEntry(entryHandle);
     }
     entryHandle = CreateEntryForFile(filePath, aFile);
     if (entryHandle == 0) {
-      // CreateEntryForFile didn't create a new entry. We can't tell MTP.
+      // creating entry for the file failed, don't tell MTP
       return;
     }
     MTP_LOG("About to call sendObjectAdded Handle 0x%08x file %s", entryHandle, filePath.get());
@@ -289,10 +290,8 @@ MozMtpDatabase::FileWatcherUpdate(RefCountedMtpServer* aMtpServer,
       // The entry has already been removed. We can't tell MTP.
       return;
     }
-
     MTP_LOG("About to call sendObjectRemoved Handle 0x%08x file %s", entryHandle, filePath.get());
     aMtpServer->sendObjectRemoved(entryHandle);
-
     RemoveEntry(entryHandle);
     return;
   }
@@ -616,11 +615,7 @@ MozMtpDatabase::endSendObject(const char* aPath,
   if (aSucceeded) {
     RefPtr<DbEntry> entry = GetEntry(aHandle);
     if (entry) {
-      if (mBeginSendObjectCalled) {
-        FileWatcherNotify(entry, "created");
-      } else {
-        FileWatcherNotify(entry, "modified");
-      }
+      FileWatcherNotify(entry, "modified");
     }
   } else {
     RemoveEntry(aHandle);
@@ -702,12 +697,18 @@ MozMtpDatabase::getNumObjects(MtpStorageID aStorageID,
 MtpObjectFormatList*
 MozMtpDatabase::getSupportedPlaybackFormats()
 {
-  static const uint16_t init_data[] = {MTP_FORMAT_UNDEFINED, MTP_FORMAT_ASSOCIATION, MTP_FORMAT_PNG};
+  static const uint16_t init_data[] = {MTP_FORMAT_UNDEFINED, MTP_FORMAT_ASSOCIATION,
+                                       MTP_FORMAT_TEXT, MTP_FORMAT_HTML, MTP_FORMAT_WAV,
+                                       MTP_FORMAT_MP3, MTP_FORMAT_MPEG, MTP_FORMAT_EXIF_JPEG,
+                                       MTP_FORMAT_TIFF_EP, MTP_FORMAT_BMP, MTP_FORMAT_GIF,
+                                       MTP_FORMAT_PNG, MTP_FORMAT_TIFF, MTP_FORMAT_WMA,
+                                       MTP_FORMAT_OGG, MTP_FORMAT_AAC, MTP_FORMAT_MP4_CONTAINER,
+                                       MTP_FORMAT_MP2, MTP_FORMAT_3GP_CONTAINER, MTP_FORMAT_FLAC};
 
   MtpObjectFormatList *list = new MtpObjectFormatList();
   list->appendArray(init_data, MOZ_ARRAY_LENGTH(init_data));
 
-  MTP_LOG("returning MTP_FORMAT_UNDEFINED, MTP_FORMAT_ASSOCIATION, MTP_FORMAT_PNG");
+  MTP_LOG("returning Supported Playback Formats");
   return list;
 }
 

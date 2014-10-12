@@ -20,7 +20,6 @@
 #include "GLScreenBuffer.h"             // for GLScreenBuffer
 #include "SharedSurfaceEGL.h"           // for SurfaceFactory_EGLImage
 #include "SharedSurfaceGL.h"            // for SurfaceFactory_GLTexture, etc
-#include "SurfaceStream.h"              // for SurfaceStream, etc
 #include "SurfaceTypes.h"               // for SurfaceStreamType
 #include "ClientLayerManager.h"         // for ClientLayerManager, etc
 
@@ -90,9 +89,6 @@ EmbedLiteCompositorParent::PrepareOffscreen()
   if (context->IsOffscreen()) {
     GLScreenBuffer* screen = context->Screen();
     if (screen) {
-      SurfaceStreamType streamType =
-        SurfaceStream::ChooseGLStreamType(SurfaceStream::OffMainThread,
-                                          screen->PreserveBuffer());
       UniquePtr<SurfaceFactory> factory;
       if (context->GetContextType() == GLContextType::EGL) {
         // [Basic/OGL Layers, OMTC] WebGL layer init.
@@ -100,10 +96,11 @@ EmbedLiteCompositorParent::PrepareOffscreen()
       } else {
         // [Basic Layers, OMTC] WebGL layer init.
         // Well, this *should* work...
-        factory = MakeUnique<SurfaceFactory_GLTexture>(context, nullptr, screen->mCaps);
+        GLContext* nullConsGL = nullptr; // Bug 1050044.
+        factory = MakeUnique<SurfaceFactory_GLTexture>(context, nullConsGL, screen->mCaps);
       }
       if (factory) {
-        screen->Morph(Move(factory), streamType);
+        screen->Morph(Move(factory));
       }
     }
   }
@@ -197,8 +194,11 @@ bool EmbedLiteCompositorParent::RenderGL()
   }
 
   if (context->IsOffscreen()) {
-    if (!context->PublishFrame()) {
+    GLScreenBuffer* screen = context->Screen();
+    MOZ_ASSERT(screen);
+    if (!screen->PublishFrame(screen->Size())) {
       NS_ERROR("Failed to publish context frame");
+      return false;
     }
     // Temporary hack, we need two extra paints in order to get initial picture
     if (mInitialPaintCount < 2) {
@@ -231,8 +231,10 @@ EmbedLiteCompositorParent::GetPlatformImage(int* width, int* height)
   NS_ENSURE_TRUE(context, nullptr);
   NS_ENSURE_TRUE(context->IsOffscreen(), nullptr);
 
-  SharedSurface* sharedSurf = context->RequestFrame();
-  NS_ENSURE_TRUE(sharedSurf, nullptr);
+  GLScreenBuffer* screen = context->Screen();
+  MOZ_ASSERT(screen);
+  SharedSurface* sharedSurf = screen->Front()->Surf();
+  sharedSurf->WaitSync();
 
   *width = sharedSurf->mSize.width;
   *height = sharedSurf->mSize.height;

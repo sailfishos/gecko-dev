@@ -3,6 +3,13 @@
 http://creativecommons.org/publicdomain/zero/1.0/ */
 "use strict";
 
+///////////////////
+//
+// Whitelisting this test.
+// As part of bug 1077403, the leaking uncaught rejection should be fixed.
+//
+thisTestLeaksUncaughtRejectionsAndShouldBeFixed("TypeError: jsterm.focusInput is not a function");
+
 // Test context menu functionality:
 // 1) menu items are disabled/enabled depending on the clicked node
 // 2) actions triggered by the items work correctly
@@ -185,11 +192,12 @@ let test = asyncTest(function* () {
 
     contextMenuClick(getContainerForRawNode(inspector.markup, node).tagLine);
 
+    let onNodeReselected = inspector.markup.once("reselectedonremoved");
     let menu = inspector.panelDoc.getElementById("node-menu-pasteouterhtml");
     dispatchCommandEvent(menu);
 
     info("Waiting for inspector selection to update");
-    yield inspector.selection.once("new-node");
+    yield onNodeReselected;
 
     ok(content.document.body.outerHTML.contains(clipboard.get()),
        "Clipboard content was pasted into the node's outer HTML.");
@@ -198,6 +206,8 @@ let test = asyncTest(function* () {
 
   function* testDeleteNode() {
     info("Testing 'Delete Node' menu item for normal elements.");
+
+    yield selectNode("p", inspector);
     let deleteNode = inspector.panelDoc.getElementById("node-menu-delete");
     ok(deleteNode, "the popup menu has a delete menu item");
 

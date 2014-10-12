@@ -56,7 +56,20 @@
     }
   );
 
+  var dispatcher = new loop.Dispatcher();
+  var roomListStore = new loop.store.RoomListStore({
+    dispatcher: dispatcher,
+    mozLoop: {}
+  });
+
   // Local mocks
+
+  var mockContact = {
+    name: ["Mr Smith"],
+    email: [{
+      value: "smith@invalid.com"
+    }]
+  };
 
   var mockClient = {
     requestCallUrl: noop,
@@ -65,7 +78,10 @@
 
   var mockSDK = {};
 
-  var mockConversationModel = new loop.shared.models.ConversationModel({}, {
+  var mockConversationModel = new loop.shared.models.ConversationModel({
+    callerId: "Mrs Jones",
+    urlCreationDate: (new Date() / 1000).toString()
+  }, {
     sdk: mockSDK
   });
   mockConversationModel.startSession = noop;
@@ -86,11 +102,18 @@
   });
 
   var Example = React.createClass({displayName: 'Example',
+    makeId: function(prefix) {
+      return (prefix || "") + this.props.summary.toLowerCase().replace(/\s/g, "-");
+    },
+
     render: function() {
       var cx = React.addons.classSet;
       return (
         React.DOM.div({className: "example"}, 
-          React.DOM.h3(null, this.props.summary), 
+          React.DOM.h3({id: this.makeId()}, 
+            this.props.summary, 
+            React.DOM.a({href: this.makeId("#")}, " ¶")
+          ), 
           React.DOM.div({className: cx({comp: true, dashed: this.props.dashed}), 
                style: this.props.style || {}}, 
             this.props.children
@@ -143,26 +166,45 @@
             ), 
             Example({summary: "Call URL retrieved", dashed: "true", style: {width: "332px"}}, 
               PanelView({client: mockClient, notifications: notifications, 
-                         callUrl: "http://invalid.example.url/"})
+                         callUrl: "http://invalid.example.url/", 
+                         dispatcher: dispatcher, 
+                         roomListStore: roomListStore})
             ), 
             Example({summary: "Call URL retrieved - authenticated", dashed: "true", style: {width: "332px"}}, 
               PanelView({client: mockClient, notifications: notifications, 
                          callUrl: "http://invalid.example.url/", 
-                         userProfile: {email: "test@example.com"}})
+                         userProfile: {email: "test@example.com"}, 
+                         dispatcher: dispatcher, 
+                         roomListStore: roomListStore})
             ), 
             Example({summary: "Pending call url retrieval", dashed: "true", style: {width: "332px"}}, 
-              PanelView({client: mockClient, notifications: notifications})
+              PanelView({client: mockClient, notifications: notifications, 
+                         dispatcher: dispatcher, 
+                         roomListStore: roomListStore})
             ), 
             Example({summary: "Pending call url retrieval - authenticated", dashed: "true", style: {width: "332px"}}, 
               PanelView({client: mockClient, notifications: notifications, 
-                         userProfile: {email: "test@example.com"}})
+                         userProfile: {email: "test@example.com"}, 
+                         dispatcher: dispatcher, 
+                         roomListStore: roomListStore})
             ), 
             Example({summary: "Error Notification", dashed: "true", style: {width: "332px"}}, 
-              PanelView({client: mockClient, notifications: errNotifications})
+              PanelView({client: mockClient, notifications: errNotifications, 
+                         dispatcher: dispatcher, 
+                         roomListStore: roomListStore})
             ), 
             Example({summary: "Error Notification - authenticated", dashed: "true", style: {width: "332px"}}, 
               PanelView({client: mockClient, notifications: errNotifications, 
-                         userProfile: {email: "test@example.com"}})
+                         userProfile: {email: "test@example.com"}, 
+                         dispatcher: dispatcher, 
+                         roomListStore: roomListStore})
+            ), 
+            Example({summary: "Room list tab", dashed: "true", style: {width: "332px"}}, 
+              PanelView({client: mockClient, notifications: notifications, 
+                         userProfile: {email: "test@example.com"}, 
+                         dispatcher: dispatcher, 
+                         roomListStore: roomListStore, 
+                         selectedTab: "rooms"})
             )
           ), 
 
@@ -240,12 +282,15 @@
           Section({name: "PendingConversationView"}, 
             Example({summary: "Pending conversation view (connecting)", dashed: "true"}, 
               React.DOM.div({className: "standalone"}, 
-                PendingConversationView({websocket: mockWebSocket})
+                PendingConversationView({websocket: mockWebSocket, 
+                                         dispatcher: dispatcher})
               )
             ), 
             Example({summary: "Pending conversation view (ringing)", dashed: "true"}, 
               React.DOM.div({className: "standalone"}, 
-                PendingConversationView({websocket: mockWebSocket, callState: "ringing"})
+                PendingConversationView({websocket: mockWebSocket, 
+                                         dispatcher: dispatcher, 
+                                         callState: "ringing"})
               )
             )
           ), 
@@ -254,7 +299,9 @@
             Example({summary: "Connecting", dashed: "true", 
                      style: {width: "260px", height: "265px"}}, 
               React.DOM.div({className: "fx-embedded"}, 
-                DesktopPendingConversationView({callState: "gather", calleeId: "Mr Smith"})
+                DesktopPendingConversationView({callState: "gather", 
+                                                contact: mockContact, 
+                                                dispatcher: dispatcher})
               )
             )
           ), 
@@ -263,7 +310,7 @@
             Example({summary: "Call Failed", dashed: "true", 
                      style: {width: "260px", height: "265px"}}, 
               React.DOM.div({className: "fx-embedded"}, 
-                CallFailedView(null)
+                CallFailedView({dispatcher: dispatcher})
               )
             )
           ), 

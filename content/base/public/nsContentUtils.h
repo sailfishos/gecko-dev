@@ -789,6 +789,7 @@ public:
     eCOMMON_DIALOG_PROPERTIES,
     eMATHML_PROPERTIES,
     eSECURITY_PROPERTIES,
+    eNECKO_PROPERTIES,
     PropertiesFile_COUNT
   };
   static nsresult ReportToConsole(uint32_t aErrorFlags,
@@ -1669,6 +1670,7 @@ public:
                                     JSObject** aResult);
 
   static nsresult CreateBlobBuffer(JSContext* aCx,
+                                   nsISupports* aParent,
                                    const nsACString& aData,
                                    JS::MutableHandle<JS::Value> aBlob);
 

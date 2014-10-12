@@ -36,18 +36,18 @@ class TabsListLayout extends TwoWayView
                                 Tabs.OnTabsChangedListener {
     private static final String LOGTAG = "Gecko" + TabsListLayout.class.getSimpleName();
 
-    private Context mContext;
+    private final Context mContext;
     private TabsPanel mTabsPanel;
 
     final private boolean mIsPrivate;
 
-    private TabsLayoutAdapter mTabsAdapter;
+    private final TabsLayoutAdapter mTabsAdapter;
 
-    private List<View> mPendingClosedTabs;
+    private final List<View> mPendingClosedTabs;
     private int mCloseAnimationCount;
     private int mCloseAllAnimationCount;
 
-    private TabSwipeGestureListener mSwipeListener;
+    private final TabSwipeGestureListener mSwipeListener;
 
     // Time to animate non-flinged tabs of screen, in milliseconds
     private static final int ANIMATION_DURATION = 250;
@@ -80,14 +80,14 @@ class TabsListLayout extends TwoWayView
             @Override
             public void onMovedToScrapHeap(View view) {
                 TabsLayoutItemView item = (TabsLayoutItemView) view;
-                item.thumbnail.setImageDrawable(null);
-                item.close.setVisibility(View.VISIBLE);
+                item.setThumbnail(null);
+                item.setCloseVisibile(true);
             }
         });
     }
 
     private class TabsListLayoutAdapter extends TabsLayoutAdapter {
-        private Button.OnClickListener mCloseOnClickListener;
+        private final Button.OnClickListener mCloseOnClickListener;
         public TabsListLayoutAdapter (Context context) {
             super(context);
 
@@ -360,7 +360,7 @@ class TabsListLayout extends TwoWayView
         else
             animator.attach(view, Property.WIDTH, 1);
 
-        final int tabId = ((TabsLayoutItemView) view).id;
+        final int tabId = ((TabsLayoutItemView) view).getTabId();
 
         // Caching this assumes that all rows are the same height
         if (mOriginalSize == 0) {
@@ -397,7 +397,7 @@ class TabsListLayout extends TwoWayView
             @Override
             public void onPropertyAnimationEnd() {
                 TabsLayoutItemView tab = (TabsLayoutItemView) view;
-                tab.close.setVisibility(View.VISIBLE);
+                tab.setCloseVisibile(true);
             }
         });
 
@@ -409,10 +409,10 @@ class TabsListLayout extends TwoWayView
         // http://androidxref.com/4.0.4/xref/packages/apps/Browser/src/com/android/browser/NavTabScroller.java#61
         private static final float MIN_VELOCITY = 750;
 
-        private int mSwipeThreshold;
-        private int mMinFlingVelocity;
+        private final int mSwipeThreshold;
+        private final int mMinFlingVelocity;
 
-        private int mMaxFlingVelocity;
+        private final int mMaxFlingVelocity;
         private VelocityTracker mVelocityTracker;
 
         private int mListWidth = 1;
@@ -495,7 +495,7 @@ class TabsListLayout extends TwoWayView
 
                     if (!mSwiping) {
                         TabsLayoutItemView item = (TabsLayoutItemView) mSwipeView;
-                        Tabs.getInstance().selectTab(item.id);
+                        Tabs.getInstance().selectTab(item.getTabId());
                         autoHidePanel();
 
                         mVelocityTracker.recycle();
@@ -582,7 +582,7 @@ class TabsListLayout extends TwoWayView
                         mSwiping = true;
                         TabsListLayout.this.requestDisallowInterceptTouchEvent(true);
 
-                        ((TabsLayoutItemView) mSwipeView).close.setVisibility(View.INVISIBLE);
+                        ((TabsLayoutItemView) mSwipeView).setCloseVisibile(false);
 
                         // Stops listview from highlighting the touched item
                         // in the list when swiping.

@@ -222,7 +222,7 @@ this.GoogleImporter.prototype = {
         throw new Error("Popup window was closed before authentication succeeded");
       }
 
-      let matches = gAuthWindow.document.title.match(/(error|code)=(.*)$/);
+      let matches = gAuthWindow.document.title.match(/(error|code)=([^\s]+)/);
       if (matches && matches.length) {
         let [, type, message] = matches;
         gAuthWindow.close();
@@ -425,7 +425,7 @@ this.GoogleImporter.prototype = {
         if (Object.keys(adr).length) {
           adr.pref = (addressNode.getAttribute("primary") == "true");
           adr.type = [getFieldType(addressNode)];
-          contacts.adr.push(adr);
+          contact.adr.push(adr);
         }
       }
     }
@@ -461,8 +461,10 @@ this.GoogleImporter.prototype = {
       contact.org = [];
       contact.jobTitle = [];
       for (let [,orgNode] of Iterator(orgNodes)) {
-        contact.org.push(orgNode.getElementsByTagNameNS(kNS_GD, "orgName")[0].firstChild.nodeValue);
-        contact.jobTitle.push(orgNode.getElementsByTagNameNS(kNS_GD, "orgTitle")[0].firstChild.nodeValue);
+        let orgElement = orgNode.getElementsByTagNameNS(kNS_GD, "orgName")[0];
+        let titleElement = orgNode.getElementsByTagNameNS(kNS_GD, "orgTitle")[0];
+        contact.org.push(orgElement ? orgElement.firstChild.nodeValue : "")
+        contact.jobTitle.push(titleElement ? titleElement.firstChild.nodeValue : "");
       }
     }
 

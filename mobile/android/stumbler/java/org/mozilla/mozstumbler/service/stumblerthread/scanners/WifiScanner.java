@@ -48,7 +48,7 @@ public class WifiScanner extends BroadcastReceiver {
     private WifiLock mWifiLock;
     private Timer mWifiScanTimer;
     private final Set<String> mAPs = Collections.synchronizedSet(new HashSet<String>());
-    private AtomicInteger mVisibleAPs = new AtomicInteger();
+    private final AtomicInteger mVisibleAPs = new AtomicInteger();
 
     /* Testing */
     public static boolean sIsTestMode;
@@ -94,6 +94,7 @@ public class WifiScanner extends BroadcastReceiver {
         mStarted = false;
     }
 
+    @Override
     public void onReceive(Context c, Intent intent) {
         String action = intent.getAction();
 

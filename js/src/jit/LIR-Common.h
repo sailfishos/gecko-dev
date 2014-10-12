@@ -194,7 +194,7 @@ class LSimdInsertElementBase : public LInstructionHelper<1, 2, 0>
     const LAllocation *value() {
         return getOperand(1);
     }
-    const SimdLane lane() const {
+    SimdLane lane() const {
         return mir_->toSimdInsertElement()->lane();
     }
 };
@@ -308,6 +308,34 @@ class LSimdBinaryArithFx4 : public LSimdBinaryArith
   public:
     LIR_HEADER(SimdBinaryArithFx4);
     LSimdBinaryArithFx4() : LSimdBinaryArith() {}
+};
+
+// Unary SIMD arithmetic operation on a SIMD operand
+class LSimdUnaryArith : public LInstructionHelper<1, 1, 0>
+{
+  public:
+    explicit LSimdUnaryArith(const LAllocation &in) {
+        setOperand(0, in);
+    }
+    MSimdUnaryArith::Operation operation() const {
+        return mir_->toSimdUnaryArith()->operation();
+    }
+};
+
+// Unary SIMD arithmetic operation on a Int32x4 operand
+class LSimdUnaryArithIx4 : public LSimdUnaryArith
+{
+  public:
+    LIR_HEADER(SimdUnaryArithIx4);
+    explicit LSimdUnaryArithIx4(const LAllocation &in) : LSimdUnaryArith(in) {}
+};
+
+// Unary SIMD arithmetic operation on a Float32x4 operand
+class LSimdUnaryArithFx4 : public LSimdUnaryArith
+{
+  public:
+    LIR_HEADER(SimdUnaryArithFx4);
+    explicit LSimdUnaryArithFx4(const LAllocation &in) : LSimdUnaryArith(in) {}
 };
 
 // Binary SIMD bitwise operation between two int32x4 or float32x4 operands
@@ -4115,18 +4143,20 @@ class LTypedObjectElements : public LInstructionHelper<1, 1, 0>
 };
 
 // Load a typed array's elements vector.
-class LSetTypedObjectOffset : public LInstructionHelper<0, 2, 1>
+class LSetTypedObjectOffset : public LInstructionHelper<0, 2, 2>
 {
   public:
     LIR_HEADER(SetTypedObjectOffset)
 
     LSetTypedObjectOffset(const LAllocation &object,
                           const LAllocation &offset,
-                          const LDefinition &temp0)
+                          const LDefinition &temp0,
+                          const LDefinition &temp1)
     {
         setOperand(0, object);
         setOperand(1, offset);
         setTemp(0, temp0);
+        setTemp(1, temp1);
     }
     const LAllocation *object() {
         return getOperand(0);
@@ -4136,6 +4166,9 @@ class LSetTypedObjectOffset : public LInstructionHelper<0, 2, 1>
     }
     const LDefinition *temp0() {
         return getTemp(0);
+    }
+    const LDefinition *temp1() {
+        return getTemp(1);
     }
 };
 
@@ -6029,72 +6062,6 @@ class LGuardClass : public LInstructionHelper<0, 1, 1>
     }
     const LDefinition *tempInt() {
         return getTemp(0);
-    }
-};
-
-class MPhi;
-
-// Phi is a pseudo-instruction that emits no code, and is an annotation for the
-// register allocator. Like its equivalent in MIR, phis are collected at the
-// top of blocks and are meant to be executed in parallel, choosing the input
-// corresponding to the predecessor taken in the control flow graph.
-class LPhi MOZ_FINAL : public LInstruction
-{
-    LAllocation *const inputs_;
-    LDefinition def_;
-
-  public:
-    LIR_HEADER(Phi)
-
-    LPhi(MPhi *ins, LAllocation *inputs)
-        : inputs_(inputs)
-    {
-        setMir(ins);
-    }
-
-    size_t numDefs() const {
-        return 1;
-    }
-    LDefinition *getDef(size_t index) {
-        MOZ_ASSERT(index == 0);
-        return &def_;
-    }
-    void setDef(size_t index, const LDefinition &def) {
-        MOZ_ASSERT(index == 0);
-        def_ = def;
-    }
-    size_t numOperands() const {
-        return mir_->toPhi()->numOperands();
-    }
-    LAllocation *getOperand(size_t index) {
-        MOZ_ASSERT(index < numOperands());
-        return &inputs_[index];
-    }
-    void setOperand(size_t index, const LAllocation &a) {
-        MOZ_ASSERT(index < numOperands());
-        inputs_[index] = a;
-    }
-    size_t numTemps() const {
-        return 0;
-    }
-    LDefinition *getTemp(size_t index) {
-        MOZ_CRASH("no temps");
-    }
-    void setTemp(size_t index, const LDefinition &temp) {
-        MOZ_CRASH("no temps");
-    }
-    size_t numSuccessors() const {
-        return 0;
-    }
-    MBasicBlock *getSuccessor(size_t i) const {
-        MOZ_CRASH("no successors");
-    }
-    void setSuccessor(size_t i, MBasicBlock *) {
-        MOZ_CRASH("no successors");
-    }
-
-    virtual void printInfo(FILE *fp) {
-        printOperands(fp);
     }
 };
 

@@ -1248,6 +1248,16 @@ pref("network.http.spdy.send-buffer-size", 131072);
 pref("network.http.spdy.allow-push", true);
 pref("network.http.spdy.push-allowance", 131072);
 
+// alt-svc allows separation of transport routing from
+// the origin host without using a proxy.
+#ifdef RELEASE_BUILD
+pref("network.http.altsvc.enabled", false);
+pref("network.http.altsvc.oe", false);
+#else
+pref("network.http.altsvc.enabled", true);
+pref("network.http.altsvc.oe", true);
+#endif
+
 pref("network.http.diagnostics", false);
 
 pref("network.http.pacing.requests.enabled", true);
@@ -3875,6 +3885,10 @@ pref("layers.enable-tiles", true);
 pref("layers.tiled-drawtarget.enabled", true);
 #endif
 
+#ifdef MOZ_WIDGET_GONK
+pref("layers.tiled-drawtarget.enabled", true);
+#endif
+
 // ANDROID covers android and b2g
 #ifdef ANDROID
 pref("layers.offmainthreadcomposition.enabled", true);
@@ -4339,3 +4353,8 @@ pref("dom.udpsocket.enabled", false);
 //     nsHostResolver.cpp.
 pref("dns.ttl-experiment.variant", 0);
 pref("dns.ttl-experiment.enabled", true);
+
+// Use raw ICU instead of CoreServices API in Unicode collation
+#ifdef XP_MACOSX
+pref("intl.collation.mac.use_icu", true);
+#endif

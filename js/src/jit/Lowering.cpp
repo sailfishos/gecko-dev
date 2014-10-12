@@ -2501,7 +2501,7 @@ LIRGenerator::visitSetTypedObjectOffset(MSetTypedObjectOffset *ins)
     return add(new(alloc()) LSetTypedObjectOffset(
                    useRegister(ins->object()),
                    useRegister(ins->offset()),
-                   temp()),
+                   temp(), temp()),
                ins);
 }
 
@@ -3802,6 +3802,28 @@ LIRGenerator::visitSimdSignMask(MSimdSignMask *ins)
 }
 
 bool
+LIRGenerator::visitSimdUnaryArith(MSimdUnaryArith *ins)
+{
+    MOZ_ASSERT(IsSimdType(ins->type()));
+
+    // Cannot be at start, as the ouput is used as a temporary to store values.
+    LUse in = use(ins->input());
+
+    if (ins->type() == MIRType_Int32x4) {
+        LSimdUnaryArithIx4 *lir = new(alloc()) LSimdUnaryArithIx4(in);
+        return define(lir, ins);
+    }
+
+    if (ins->type() == MIRType_Float32x4) {
+        LSimdUnaryArithFx4 *lir = new(alloc()) LSimdUnaryArithFx4(in);
+        return define(lir, ins);
+    }
+
+    MOZ_CRASH("Unknown SIMD kind for unary operation");
+    return false;
+}
+
+bool
 LIRGenerator::visitSimdBinaryComp(MSimdBinaryComp *ins)
 {
     MOZ_ASSERT(ins->type() == MIRType_Int32x4);
@@ -4059,11 +4081,8 @@ LIRGenerator::generate()
         if (gen->shouldCancel("Lowering (preparation loop)"))
             return false;
 
-        current = LBlock::New(alloc(), *block);
-        if (!current)
+        if (!lirGraph_.initBlock(*block))
             return false;
-        lirGraph_.setBlock(block->id(), current);
-        block->assignLir(current);
     }
 
     for (ReversePostorderIterator block(graph.rpoBegin()); block != graph.rpoEnd(); block++) {

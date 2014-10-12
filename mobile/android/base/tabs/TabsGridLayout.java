@@ -33,12 +33,12 @@ class TabsGridLayout extends GridView
                                 Tabs.OnTabsChangedListener {
     private static final String LOGTAG = "Gecko" + TabsGridLayout.class.getSimpleName();
 
-    private Context mContext;
+    private final Context mContext;
     private TabsPanel mTabsPanel;
 
     final private boolean mIsPrivate;
 
-    private TabsLayoutAdapter mTabsAdapter;
+    private final TabsLayoutAdapter mTabsAdapter;
 
     public TabsGridLayout(Context context, AttributeSet attrs) {
         super(context, attrs, R.attr.tabGridLayoutViewStyle);
@@ -55,7 +55,7 @@ class TabsGridLayout extends GridView
             @Override
             public void onMovedToScrapHeap(View view) {
                 TabsLayoutItemView item = (TabsLayoutItemView) view;
-                item.thumbnail.setImageDrawable(null);
+                item.setThumbnail(null);
             }
         });
     }
@@ -72,7 +72,7 @@ class TabsGridLayout extends GridView
                 @Override
                 public void onClick(View v) {
                     TabsLayoutItemView itemView = (TabsLayoutItemView) v.getTag();
-                    Tab tab = Tabs.getInstance().getTab(itemView.id);
+                    Tab tab = Tabs.getInstance().getTab(itemView.getTabId());
                     Tabs.getInstance().closeTab(tab);
                 }
             };
@@ -81,7 +81,7 @@ class TabsGridLayout extends GridView
                 @Override
                 public void onClick(View v) {
                     TabsLayoutItemView tab = (TabsLayoutItemView) v;
-                    Tabs.getInstance().selectTab(tab.id);
+                    Tabs.getInstance().selectTab(tab.getTabId());
                     autoHidePanel();
                 }
             };

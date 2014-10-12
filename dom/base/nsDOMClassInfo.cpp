@@ -35,7 +35,6 @@
 #include "nsIXPConnect.h"
 #include "xptcall.h"
 #include "nsTArray.h"
-#include "nsDOMBlobBuilder.h"
 
 // General helper includes
 #include "nsGlobalWindow.h"
@@ -73,10 +72,6 @@
 #include "nsAutoPtr.h"
 #include "nsMemory.h"
 
-// Tranformiix
-#include "nsIXSLTProcessor.h"
-#include "nsIXSLTProcessorPrivate.h"
-
 // includes needed for the prototype chain interfaces
 #include "nsIDOMCSSCharsetRule.h"
 #include "nsIDOMCSSImportRule.h"
@@ -100,10 +95,6 @@
 #include "nsITreeColumns.h"
 #endif
 #include "nsIDOMXPathNSResolver.h"
-
-// Drag and drop
-#include "nsIDOMFile.h"
-#include "nsDOMBlobBuilder.h" // nsDOMMultipartFile
 
 #include "nsIEventListenerService.h"
 #include "nsIMessageManager.h"
@@ -288,15 +279,7 @@ static nsDOMClassInfoData sClassInfoData[] = {
   NS_DEFINE_CLASSINFO_DATA(CSSSupportsRule, nsDOMGenericSH,
                            DOM_DEFAULT_SCRIPTABLE_FLAGS)
 
-  NS_DEFINE_CLASSINFO_DATA(XSLTProcessor, nsDOMGenericSH,
-                           DOM_DEFAULT_SCRIPTABLE_FLAGS)
-
   NS_DEFINE_CLASSINFO_DATA(XPathNSResolver, nsDOMGenericSH,
-                           DOM_DEFAULT_SCRIPTABLE_FLAGS)
-
-  NS_DEFINE_CLASSINFO_DATA(Blob, nsDOMGenericSH,
-                           DOM_DEFAULT_SCRIPTABLE_FLAGS)
-  NS_DEFINE_CLASSINFO_DATA(File, nsDOMGenericSH,
                            DOM_DEFAULT_SCRIPTABLE_FLAGS)
 
   NS_DEFINE_CLASSINFO_DATA(MozSmsMessage, nsDOMGenericSH,
@@ -345,38 +328,6 @@ static nsDOMClassInfoData sClassInfoData[] = {
   NS_DEFINE_CHROME_XBL_CLASSINFO_DATA(XULPopupElement, nsDOMGenericSH,
                                       DOM_DEFAULT_SCRIPTABLE_FLAGS)
 };
-
-#define NS_DEFINE_CONTRACT_CTOR(_class, _contract_id)                           \
-  static nsresult                                                               \
-  _class##Ctor(nsISupports** aInstancePtrResult)                                \
-  {                                                                             \
-    nsresult rv = NS_OK;                                                        \
-    nsCOMPtr<nsISupports> native = do_CreateInstance(_contract_id, &rv);        \
-    native.forget(aInstancePtrResult);                                          \
-    return rv;                                                                  \
-  }
-
-NS_DEFINE_CONTRACT_CTOR(XSLTProcessor,
-                        "@mozilla.org/document-transformer;1?type=xslt")
-
-#undef NS_DEFINE_CONTRACT_CTOR
-
-struct nsConstructorFuncMapData
-{
-  int32_t mDOMClassInfoID;
-  nsDOMConstructorFunc mConstructorFunc;
-};
-
-#define NS_DEFINE_CONSTRUCTOR_FUNC_DATA(_class, _func)                        \
-  { eDOMClassInfo_##_class##_id, _func },
-
-static const nsConstructorFuncMapData kConstructorFuncMap[] =
-{
-  NS_DEFINE_CONSTRUCTOR_FUNC_DATA(Blob, DOMMultipartFileImpl::NewBlob)
-  NS_DEFINE_CONSTRUCTOR_FUNC_DATA(File, DOMMultipartFileImpl::NewFile)
-  NS_DEFINE_CONSTRUCTOR_FUNC_DATA(XSLTProcessor, XSLTProcessorCtor)
-};
-#undef NS_DEFINE_CONSTRUCTOR_FUNC_DATA
 
 nsIXPConnect *nsDOMClassInfo::sXPConnect = nullptr;
 bool nsDOMClassInfo::sIsInitialized = false;
@@ -786,22 +737,8 @@ nsDOMClassInfo::Init()
     DOM_CLASSINFO_MAP_ENTRY(nsIDOMCSSSupportsRule)
   DOM_CLASSINFO_MAP_END
 
-  DOM_CLASSINFO_MAP_BEGIN(XSLTProcessor, nsIXSLTProcessor)
-    DOM_CLASSINFO_MAP_ENTRY(nsIXSLTProcessor)
-    DOM_CLASSINFO_MAP_ENTRY(nsIXSLTProcessorPrivate)
-  DOM_CLASSINFO_MAP_END
-
   DOM_CLASSINFO_MAP_BEGIN(XPathNSResolver, nsIDOMXPathNSResolver)
     DOM_CLASSINFO_MAP_ENTRY(nsIDOMXPathNSResolver)
-  DOM_CLASSINFO_MAP_END
-
-  DOM_CLASSINFO_MAP_BEGIN(Blob, nsIDOMBlob)
-    DOM_CLASSINFO_MAP_ENTRY(nsIDOMBlob)
-  DOM_CLASSINFO_MAP_END
-
-  DOM_CLASSINFO_MAP_BEGIN(File, nsIDOMFile)
-    DOM_CLASSINFO_MAP_ENTRY(nsIDOMBlob)
-    DOM_CLASSINFO_MAP_ENTRY(nsIDOMFile)
   DOM_CLASSINFO_MAP_END
 
   DOM_CLASSINFO_MAP_BEGIN(MozSmsMessage, nsIDOMMozSmsMessage)
@@ -1458,12 +1395,6 @@ nsDOMClassInfo::ShutDown()
 static nsDOMConstructorFunc
 FindConstructorFunc(const nsDOMClassInfoData *aDOMClassInfoData)
 {
-  for (uint32_t i = 0; i < ArrayLength(kConstructorFuncMap); ++i) {
-    if (&sClassInfoData[kConstructorFuncMap[i].mDOMClassInfoID] ==
-        aDOMClassInfoData) {
-      return kConstructorFuncMap[i].mConstructorFunc;
-    }
-  }
   return nullptr;
 }
 

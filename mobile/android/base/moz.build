@@ -47,6 +47,7 @@ gujar = add_java_jar('gecko-util')
 gujar.sources += [
     'util/ActivityResultHandler.java',
     'util/ActivityResultHandlerMap.java',
+    'util/ActivityUtils.java',
     'util/Clipboard.java',
     'util/EventCallback.java',
     'util/FileUtils.java',
@@ -59,6 +60,7 @@ gujar.sources += [
     'util/HardwareUtils.java',
     'util/INIParser.java',
     'util/INISection.java',
+    'util/IOUtils.java',
     'util/JSONUtils.java',
     'util/MenuUtils.java',
     'util/NativeEventListener.java',
@@ -227,7 +229,6 @@ gbjar.sources += [
     'gfx/LayerRenderer.java',
     'gfx/LayerView.java',
     'gfx/NativePanZoomController.java',
-    'gfx/NinePatchTileLayer.java',
     'gfx/Overscroll.java',
     'gfx/OverscrollEdgeEffect.java',
     'gfx/PanningPerfAPI.java',
@@ -240,9 +241,7 @@ gbjar.sources += [
     'gfx/RenderTask.java',
     'gfx/ScrollbarLayer.java',
     'gfx/SimpleScaleGestureDetector.java',
-    'gfx/SingleTileLayer.java',
     'gfx/SubdocumentScrollHelper.java',
-    'gfx/TextLayer.java',
     'gfx/TextureGenerator.java',
     'gfx/TextureReaper.java',
     'gfx/TileLayer.java',
@@ -389,11 +388,7 @@ gbjar.sources += [
     'Tab.java',
     'Tabs.java',
     'tabs/PrivateTabsPanel.java',
-    'tabs/RemoteTabsContainerPanel.java',
-    'tabs/RemoteTabsList.java',
     'tabs/RemoteTabsPanel.java',
-    'tabs/RemoteTabsSetupPanel.java',
-    'tabs/RemoteTabsVerificationPanel.java',
     'tabs/TabCurve.java',
     'tabs/TabsGridLayout.java',
     'tabs/TabsLayoutAdapter.java',
@@ -616,6 +611,11 @@ gtjar.sources += [ thirdparty_source_dir + f for f in [
 ] ]
 #gtjar.javac_flags += ['-Xlint:all']
 
+if not CONFIG['MOZILLA_OFFICIAL']:
+    gtjar.sources += [ thirdparty_source_dir + f for f in [
+        'org/lucasr/dspec/DesignSpec.java',
+        'org/lucasr/dspec/RawResource.java'
+    ] ]
 
 ANDROID_RES_DIRS += [
     SRCDIR + '/resources',
@@ -662,9 +662,6 @@ if CONFIG['MOZ_ANDROID_SEARCH_ACTIVITY']:
     # that depends on the Geckoview jars.
     search_source_dir = SRCDIR + '/../search'
     include('../search/search_activity_sources.mozbuild')
-
-    ANDROID_RES_DIRS += [search_source_dir + '/res']
-    resjar.generated_sources += ['org/mozilla/search/R.java']
 
     search_activity = add_java_jar('search-activity')
     search_activity.sources += [search_source_dir + '/' + f for f in search_activity_sources]
@@ -835,17 +832,5 @@ if CONFIG['MOZ_ANDROID_MLS_STUMBLER']:
     DEFINES['MOZ_STUMBLER_API_KEY'] = CONFIG['MOZ_MOZILLA_API_KEY']
 
 if CONFIG['MOZ_ANDROID_SEARCH_ACTIVITY']:
-    searchres = add_android_eclipse_library_project('FennecResourcesSearch')
-    # Eclipse generates org.mozilla.search.R for this project, which is
-    # referenced by the search/**/*.java code.
-    searchres.package_name = 'org.mozilla.search'
-    searchres.res = SRCDIR + '/../search/res'
-
-    searchres.included_projects += ['../' + static.name, '../' + generated.name, '../' + branding.name]
-    searchres.referenced_projects += ['../' + static.name, '../' + generated.name, '../' + branding.name]
-
-    resources.included_projects += ['../' + searchres.name]
-    resources.referenced_projects += ['../' + searchres.name]
-
     # The Search Activity code is built as part of Fennec, so we follow suit in Eclipse.
     main.add_classpathentry('search', TOPSRCDIR + '/mobile/android/search/java', dstdir='search')

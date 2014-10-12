@@ -21,7 +21,6 @@
 #include "GLScreenBuffer.h"             // for GLScreenBuffer
 #include "SharedSurfaceEGL.h"           // for SurfaceFactory_EGLImage
 #include "SharedSurfaceGL.h"            // for SurfaceFactory_GLTexture, etc
-#include "SurfaceStream.h"              // for SurfaceStream, etc
 #include "SurfaceTypes.h"               // for SurfaceStreamType
 #include "ClientLayerManager.h"         // for ClientLayerManager, etc
 #include "GLUploadHelpers.h"
@@ -770,8 +769,11 @@ EmbedLiteViewThreadParent::GetPendingTexture(EmbedLiteRenderTarget* aContextWrap
   GLContext* consumerContext = aContextWrapper->GetConsumerContext();
   NS_ENSURE_TRUE(consumerContext && consumerContext->Init(), NS_ERROR_FAILURE);
 
-  SharedSurface* sharedSurf = context->RequestFrame();
+  GLScreenBuffer* screen = context->Screen();
+  MOZ_ASSERT(screen);
+  SharedSurface* sharedSurf = screen->Front()->Surf();
   NS_ENSURE_TRUE(sharedSurf, NS_ERROR_FAILURE);
+  sharedSurf->WaitSync();
 
   DataSourceSurface* toUpload = nullptr;
   GLuint textureHandle = 0;
