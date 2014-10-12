@@ -254,6 +254,7 @@ struct JSCompartment
     js::types::TypeObjectWithNewScriptSet newTypeObjects;
     js::types::TypeObjectWithNewScriptSet lazyTypeObjects;
     void sweepNewTypeObjectTable(js::types::TypeObjectWithNewScriptSet &table);
+
 #ifdef JSGC_HASH_TABLE_CHECKS
     void checkTypeObjectTablesAfterMovingGC();
     void checkTypeObjectTableAfterMovingGC(js::types::TypeObjectWithNewScriptSet &table);
@@ -367,7 +368,6 @@ struct JSCompartment
 #ifdef JSGC_COMPACTING
     void fixupInitialShapeTable();
     void fixupNewTypeObjectTable(js::types::TypeObjectWithNewScriptSet &table);
-    void fixupCrossCompartmentWrappers(JSTracer *trc);
     void fixupAfterMovingGC();
     void fixupGlobal();
 #endif

@@ -126,7 +126,7 @@ namespace {
 struct TabwidthAdaptor
 {
   const nsTArray<TabWidth>& mWidths;
-  TabwidthAdaptor(const nsTArray<TabWidth>& aWidths)
+  explicit TabwidthAdaptor(const nsTArray<TabWidth>& aWidths)
     : mWidths(aWidths) {}
   uint32_t operator[](size_t aIdx) const {
     return mWidths[aIdx].mOffset;
@@ -1796,8 +1796,6 @@ GetFirstFontMetrics(gfxFontGroup* aFontGroup)
   if (!aFontGroup)
     return gfxFont::Metrics();
   gfxFont* font = aFontGroup->GetFirstValidFont();
-  if (!font)
-    return gfxFont::Metrics();
   return font->GetMetrics(gfxFont::eHorizontal); // XXX vertical
 }
 
@@ -4217,9 +4215,10 @@ nsresult
 nsTextFrame::GetCursor(const nsPoint& aPoint,
                        nsIFrame::Cursor& aCursor)
 {
-  FillCursorInformationFromStyle(StyleUserInterface(), aCursor);  
+  FillCursorInformationFromStyle(StyleUserInterface(), aCursor);
   if (NS_STYLE_CURSOR_AUTO == aCursor.mCursor) {
-    aCursor.mCursor = NS_STYLE_CURSOR_TEXT;
+    aCursor.mCursor = GetWritingMode().IsVertical()
+                      ? NS_STYLE_CURSOR_VERTICAL_TEXT : NS_STYLE_CURSOR_TEXT;
     // If this is editable, we should ignore tabindex value.
     if (mContent->IsEditable()) {
       return NS_OK;
@@ -5681,8 +5680,6 @@ nsTextFrame::PaintTextSelectionDecorations(gfxContext* aCtx,
   }
 
   gfxFont* firstFont = aProvider.GetFontGroup()->GetFirstValidFont();
-  if (!firstFont)
-    return; // OOM
   gfxFont::Metrics
     decorationMetrics(firstFont->GetMetrics(gfxFont::eHorizontal)); // XXX vertical?
   decorationMetrics.underlineOffset =
@@ -6376,8 +6373,6 @@ nsTextFrame::CombineSelectionUnderlineRect(nsPresContext* aPresContext,
                                         GetFontSizeInflation());
   gfxFontGroup* fontGroup = fm->GetThebesFontGroup();
   gfxFont* firstFont = fontGroup->GetFirstValidFont();
-  if (!firstFont)
-    return false; // OOM
   const gfxFont::Metrics& metrics =
     firstFont->GetMetrics(gfxFont::eHorizontal); // XXX vertical?
   gfxFloat underlineOffset = fontGroup->GetUnderlineOffset();

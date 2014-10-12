@@ -856,20 +856,7 @@ gfxContext::SetColor(const gfxRGBA& c)
   CurrentState().pattern = nullptr;
   CurrentState().sourceSurfCairo = nullptr;
   CurrentState().sourceSurface = nullptr;
-
-  if (gfxPlatform::GetCMSMode() == eCMSMode_All) {
-
-      gfxRGBA cms;
-      qcms_transform *transform = gfxPlatform::GetCMSRGBTransform();
-      if (transform)
-        gfxPlatform::TransformPixel(c, cms, transform);
-
-      // Use the original alpha to avoid unnecessary float->byte->float
-      // conversion errors
-      CurrentState().color = ToColor(cms);
-  }
-  else
-      CurrentState().color = ToColor(c);
+  CurrentState().color = gfxPlatform::MaybeTransformColor(c);
 }
 
 void
@@ -1170,45 +1157,6 @@ gfxContext::PointInStroke(const gfxPoint& pt)
   return mPath->StrokeContainsPoint(CurrentState().strokeOptions,
                                     ToPoint(pt),
                                     Matrix());
-}
-
-gfxRect
-gfxContext::GetUserPathExtent()
-{
-  if (mPathIsRect) {
-    return ThebesRect(mTransform.TransformBounds(mRect));
-  }
-  EnsurePath();
-  return ThebesRect(mPath->GetBounds());
-}
-
-gfxRect
-gfxContext::GetUserFillExtent()
-{
-  if (mPathIsRect) {
-    return ThebesRect(mTransform.TransformBounds(mRect));
-  }
-  EnsurePath();
-  return ThebesRect(mPath->GetBounds());
-}
-
-gfxRect
-gfxContext::GetUserStrokeExtent()
-{
-  if (mPathIsRect) {
-    Rect rect = mRect;
-    rect.Inflate(CurrentState().strokeOptions.mLineWidth / 2);
-    return ThebesRect(mTransform.TransformBounds(rect));
-  }
-  EnsurePath();
-  return ThebesRect(mPath->GetStrokedBounds(CurrentState().strokeOptions, mTransform));
-}
-
-bool
-gfxContext::HasError()
-{
-  // As far as this is concerned, an Azure context is never in error.
-  return false;
 }
 
 void

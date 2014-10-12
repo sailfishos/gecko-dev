@@ -67,19 +67,16 @@ public:
     {
     public:
         ImageInfo()
-            : mWebGLFormat(LOCAL_GL_NONE)
-            , mWebGLType(LOCAL_GL_NONE)
+            : mEffectiveInternalFormat(LOCAL_GL_NONE)
             , mImageDataStatus(WebGLImageDataStatus::NoImageData)
         {}
 
         ImageInfo(GLsizei width,
                   GLsizei height,
-                  TexInternalFormat webGLFormat,
-                  TexType webGLType,
+                  TexInternalFormat effectiveInternalFormat,
                   WebGLImageDataStatus status)
             : WebGLRectangleObject(width, height)
-            , mWebGLFormat(webGLFormat)
-            , mWebGLType(webGLType)
+            , mEffectiveInternalFormat(effectiveInternalFormat)
             , mImageDataStatus(status)
         {
             // shouldn't use this constructor to construct a null ImageInfo
@@ -90,8 +87,7 @@ public:
             return mImageDataStatus == a.mImageDataStatus &&
                    mWidth == a.mWidth &&
                    mHeight == a.mHeight &&
-                   mWebGLFormat == a.mWebGLFormat &&
-                   mWebGLType == a.mWebGLType;
+                   mEffectiveInternalFormat == a.mEffectiveInternalFormat;
         }
         bool operator!=(const ImageInfo& a) const {
             return !(*this == a);
@@ -110,20 +106,17 @@ public:
             return mImageDataStatus == WebGLImageDataStatus::UninitializedImageData;
         }
         int64_t MemoryUsage() const;
-        /*! This is the format passed from JS to WebGL.
-         * It can be converted to a value to be passed to driver with
-         * DriverFormatsFromFormatAndType().
-         */
-        TexInternalFormat WebGLFormat() const { return mWebGLFormat; }
-        /*! This is the type passed from JS to WebGL.
-         * It can be converted to a value to be passed to driver with
-         * DriverTypeFromType().
-         */
-        TexType WebGLType() const { return mWebGLType; }
+
+        TexInternalFormat EffectiveInternalFormat() const { return mEffectiveInternalFormat; }
 
     protected:
-        TexInternalFormat mWebGLFormat; //!< This is the WebGL/GLES format
-        TexType mWebGLType;   //!< This is the WebGL/GLES type
+        /*
+         * This is the "effective internal format" of the texture,
+         * an official OpenGL spec concept, see
+         * OpenGL ES 3.0.3 spec, section 3.8.3, page 126 and below.
+         */
+        TexInternalFormat mEffectiveInternalFormat;
+
         WebGLImageDataStatus mImageDataStatus;
 
         friend class WebGLTexture;
@@ -201,7 +194,9 @@ protected:
     size_t mFacesCount, mMaxLevelWithCustomImages;
     nsTArray<ImageInfo> mImageInfos;
 
-    bool mHaveGeneratedMipmap;
+    bool mHaveGeneratedMipmap; // set by generateMipmap
+    bool mImmutable; // set by texStorage*
+
     WebGLTextureFakeBlackStatus mFakeBlackStatus;
 
     void EnsureMaxLevelWithCustomImagesAtLeast(size_t aMaxLevelWithCustomImages) {
@@ -227,7 +222,7 @@ public:
 
     void SetImageInfo(TexImageTarget aTarget, GLint aLevel,
                       GLsizei aWidth, GLsizei aHeight,
-                      TexInternalFormat aFormat, TexType aType, WebGLImageDataStatus aStatus);
+                      TexInternalFormat aFormat, WebGLImageDataStatus aStatus);
 
     void SetMinFilter(TexMinFilter aMinFilter) {
         mMinFilter = aMinFilter;
@@ -269,10 +264,23 @@ public:
 
     void SetFakeBlackStatus(WebGLTextureFakeBlackStatus x);
 
+    bool IsImmutable() const { return mImmutable; }
+    void SetImmutable() { mImmutable = true; }
+
+    size_t MaxLevelWithCustomImages() const { return mMaxLevelWithCustomImages; }
+
     // Returns the current fake-black-status, except if it was Unknown,
     // in which case this function resolves it first, so it never returns Unknown.
     WebGLTextureFakeBlackStatus ResolvedFakeBlackStatus();
 };
+
+inline TexImageTarget
+TexImageTargetForTargetAndFace(TexTarget target, size_t face)
+{
+    return target == LOCAL_GL_TEXTURE_2D
+           ? LOCAL_GL_TEXTURE_2D
+           : LOCAL_GL_TEXTURE_CUBE_MAP_POSITIVE_X + face;
+}
 
 } // namespace mozilla
 

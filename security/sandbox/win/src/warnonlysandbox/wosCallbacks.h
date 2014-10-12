@@ -68,6 +68,7 @@ StackFrameToOStringStream(uint32_t aFrameNumber, void* aPC, void* aSP,
   NS_DescribeCodeAddress(aPC, &details);
   NS_FormatCodeAddressDetails(buf, sizeof(buf), aFrameNumber, aPC, &details);
   *stream << "--" << buf << '\n';
+  stream->flush();
 }
 #endif
 

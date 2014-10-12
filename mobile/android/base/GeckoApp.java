@@ -56,6 +56,7 @@ import org.mozilla.gecko.util.HardwareUtils;
 import org.mozilla.gecko.util.NativeEventListener;
 import org.mozilla.gecko.util.NativeJSObject;
 import org.mozilla.gecko.util.PrefUtils;
+import org.mozilla.gecko.util.StringUtils;
 import org.mozilla.gecko.util.ThreadUtils;
 import org.mozilla.gecko.webapp.EventListener;
 import org.mozilla.gecko.webapp.UninstallListener;
@@ -191,7 +192,6 @@ public abstract class GeckoApp
     private Telemetry.Timer mGeckoReadyStartupTimer;
 
     private String mPrivateBrowsingSession;
-    private volatile boolean mIsPaused = true;
 
     private volatile HealthRecorder mHealthRecorder;
     private volatile Locale mLastLocale;
@@ -247,13 +247,7 @@ public abstract class GeckoApp
     }
 
     public void addAppStateListener(GeckoAppShell.AppStateListener listener) {
-        ThreadUtils.assertOnUiThread();
         mAppStateListeners.add(listener);
-
-        // If we're already resumed, make sure the listener gets a notification.
-        if (!mIsPaused) {
-            listener.onResume();
-        }
     }
 
     public void removeAppStateListener(GeckoAppShell.AppStateListener listener) {
@@ -1093,11 +1087,10 @@ public abstract class GeckoApp
     }
 
     /**
-     * Check and start the Java profiler if MOZ_PROFILER_STARTUP env var is specified
+     * Check and start the Java profiler if MOZ_PROFILER_STARTUP env var is specified.
      **/
-    protected void earlyStartJavaSampler(Intent intent)
-    {
-        String env = intent.getStringExtra("env0");
+    protected static void earlyStartJavaSampler(Intent intent) {
+        String env = StringUtils.getStringExtra(intent, "env0");
         for (int i = 1; env != null; i++) {
             if (env.startsWith("MOZ_PROFILER_STARTUP=")) {
                 if (!env.endsWith("=")) {
@@ -1132,7 +1125,7 @@ public abstract class GeckoApp
 
         final Intent intent = getIntent();
         final String action = intent.getAction();
-        final String args = intent.getStringExtra("args");
+        final String args = StringUtils.getStringExtra(intent, "args");
 
         earlyStartJavaSampler(intent);
 
@@ -1843,20 +1836,22 @@ public abstract class GeckoApp
     }
 
     /*
-     * Handles getting a uri from and intent in a way that is backwards
-     * compatable with our previous implementations
+     * Handles getting a URI from an intent in a way that is backwards-
+     * compatible with our previous implementations.
      */
     protected String getURIFromIntent(Intent intent) {
         final String action = intent.getAction();
-        if (ACTION_ALERT_CALLBACK.equals(action) || NotificationHelper.HELPER_BROADCAST_ACTION.equals(action))
+        if (ACTION_ALERT_CALLBACK.equals(action) || NotificationHelper.HELPER_BROADCAST_ACTION.equals(action)) {
             return null;
+        }
 
         String uri = intent.getDataString();
-        if (uri != null)
+        if (uri != null) {
             return uri;
+        }
 
         if ((action != null && action.startsWith(ACTION_WEBAPP_PREFIX)) || ACTION_HOMESCREEN_SHORTCUT.equals(action)) {
-            uri = intent.getStringExtra("args");
+            uri = StringUtils.getStringExtra(intent, "args");
             if (uri != null && uri.startsWith("--url=")) {
                 uri.replace("--url=", "");
             }
@@ -1892,8 +1887,6 @@ public abstract class GeckoApp
                 listener.onResume();
             }
         }
-        // Setting this state will force any listeners added after this to have their onResume() method called
-        mIsPaused = false;
 
         // We use two times: a pseudo-unique wall-clock time to identify the
         // current session across power cycles, and the elapsed realtime to
@@ -1970,9 +1963,6 @@ public abstract class GeckoApp
             }
         });
 
-        // Setting this state will keep any listeners registered after this from having their onResume
-        // method called.
-        mIsPaused = true;
         if (mAppStateListeners != null) {
             for(GeckoAppShell.AppStateListener listener: mAppStateListeners) {
                 listener.onPause();
@@ -2335,14 +2325,25 @@ public abstract class GeckoApp
     {
     }
 
+    private static final String CPU = "cpu";
+    private static final String SCREEN = "screen";
+
     // Called when a Gecko Hal WakeLock is changed
     public void notifyWakeLockChanged(String topic, String state) {
         PowerManager.WakeLock wl = mWakeLocks.get(topic);
         if (state.equals("locked-foreground") && wl == null) {
             PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
-            wl = pm.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK, topic);
-            wl.acquire();
-            mWakeLocks.put(topic, wl);
+
+            if (CPU.equals(topic)) {
+              wl = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, topic);
+            } else if (SCREEN.equals(topic)) {
+              wl = pm.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK, topic);
+            }
+
+            if (wl != null) {
+              wl.acquire();
+              mWakeLocks.put(topic, wl);
+            }
         } else if (!state.equals("locked-foreground") && wl != null) {
             wl.release();
             mWakeLocks.remove(topic);

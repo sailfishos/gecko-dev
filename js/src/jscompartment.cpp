@@ -512,9 +512,7 @@ JSCompartment::markCrossCompartmentWrappers(JSTracer *trc)
              * We have a cross-compartment wrapper. Its private pointer may
              * point into the compartment being collected, so we should mark it.
              */
-            Value referent = wrapper->private_();
-            MarkValueRoot(trc, &referent, "cross-compartment wrapper");
-            MOZ_ASSERT(referent == wrapper->private_());
+            MarkSlot(trc, wrapper->slotOfPrivate(), "cross-compartment wrapper");
         }
     }
 }
@@ -537,14 +535,14 @@ JSCompartment::markRoots(JSTracer *trc)
      * If a compartment is on-stack, we mark its global so that
      * JSContext::global() remains valid.
      */
-    if (enterCompartmentDepth && global_)
+    if (enterCompartmentDepth && global_.unbarrieredGet())
         MarkObjectRoot(trc, global_.unsafeGet(), "on-stack compartment global");
 }
 
 void
 JSCompartment::sweepInnerViews()
 {
-    innerViews.sweep(runtimeFromMainThread());
+    innerViews.sweep(runtimeFromAnyThread());
 }
 
 void
@@ -557,13 +555,13 @@ JSCompartment::sweepTypeObjectTables()
 void
 JSCompartment::sweepSavedStacks()
 {
-    savedStacks_.sweep(runtimeFromMainThread());
+    savedStacks_.sweep(runtimeFromAnyThread());
 }
 
 void
 JSCompartment::sweepGlobalObject(FreeOp *fop)
 {
-    if (global_ && IsObjectAboutToBeFinalized(global_.unsafeGet())) {
+    if (global_.unbarrieredGet() && IsObjectAboutToBeFinalizedFromAnyThread(global_.unsafeGet())) {
         if (debugMode())
             Debugger::detachAllDebuggersFromGlobal(fop, global_);
         global_.set(nullptr);
@@ -573,8 +571,8 @@ JSCompartment::sweepGlobalObject(FreeOp *fop)
 void
 JSCompartment::sweepSelfHostingScriptSource()
 {
-    if (selfHostingScriptSource &&
-        IsObjectAboutToBeFinalized((JSObject **) selfHostingScriptSource.unsafeGet()))
+    if (selfHostingScriptSource.unbarrieredGet() &&
+        IsObjectAboutToBeFinalizedFromAnyThread((JSObject **) selfHostingScriptSource.unsafeGet()))
     {
         selfHostingScriptSource.set(nullptr);
     }
@@ -595,13 +593,13 @@ JSCompartment::sweepRegExps()
      * code for the lifetime of the JIT script. Thus, we must perform
      * sweeping after clearing jit code.
      */
-    regExps.sweep(runtimeFromMainThread());
+    regExps.sweep(runtimeFromAnyThread());
 }
 
 void
 JSCompartment::sweepDebugScopes()
 {
-    JSRuntime *rt = runtimeFromMainThread();
+    JSRuntime *rt = runtimeFromAnyThread();
     if (debugScopes)
         debugScopes->sweep(rt);
 }
@@ -621,7 +619,7 @@ JSCompartment::sweepNativeIterators()
     while (ni != enumerators) {
         JSObject *iterObj = ni->iterObj();
         NativeIterator *next = ni->next();
-        if (gc::IsObjectAboutToBeFinalized(&iterObj))
+        if (gc::IsObjectAboutToBeFinalizedFromAnyThread(&iterObj))
             ni->unlink();
         ni = next;
     }
@@ -638,9 +636,9 @@ JSCompartment::sweepCrossCompartmentWrappers()
     /* Remove dead wrappers from the table. */
     for (WrapperMap::Enum e(crossCompartmentWrappers); !e.empty(); e.popFront()) {
         CrossCompartmentKey key = e.front().key();
-        bool keyDying = IsCellAboutToBeFinalized(&key.wrapped);
-        bool valDying = IsValueAboutToBeFinalized(e.front().value().unsafeGet());
-        bool dbgDying = key.debugger && IsObjectAboutToBeFinalized(&key.debugger);
+        bool keyDying = IsCellAboutToBeFinalizedFromAnyThread(&key.wrapped);
+        bool valDying = IsValueAboutToBeFinalizedFromAnyThread(e.front().value().unsafeGet());
+        bool dbgDying = key.debugger && IsObjectAboutToBeFinalizedFromAnyThread(&key.debugger);
         if (keyDying || valDying || dbgDying) {
             MOZ_ASSERT(key.kind != CrossCompartmentKey::StringWrapper);
             e.removeFront();
@@ -653,39 +651,6 @@ JSCompartment::sweepCrossCompartmentWrappers()
 }
 
 #ifdef JSGC_COMPACTING
-
-/*
- * Fixup wrappers with moved keys or values.
- */
-void
-JSCompartment::fixupCrossCompartmentWrappers(JSTracer *trc)
-{
-    for (WrapperMap::Enum e(crossCompartmentWrappers); !e.empty(); e.popFront()) {
-        Value val = e.front().value();
-        if (IsForwarded(val)) {
-            val = Forwarded(val);
-            e.front().value().set(val);
-        }
-
-        // CrossCompartmentKey's hash does not depend on the debugger object,
-        // so update it but do not rekey if it changes
-        CrossCompartmentKey key = e.front().key();
-        if (key.debugger)
-            key.debugger = MaybeForwarded(key.debugger);
-        if (key.wrapped && IsForwarded(key.wrapped)) {
-            key.wrapped = Forwarded(key.wrapped);
-            e.rekeyFront(key, key);
-        }
-
-        if (!zone()->isCollecting() && val.isObject()) {
-            // Call the trace hook to update any pointers to relocated things.
-            JSObject *obj = &val.toObject();
-            const Class *clasp = obj->getClass();
-            if (clasp->trace)
-                clasp->trace(trc, obj);
-        }
-    }
-}
 
 void JSCompartment::fixupAfterMovingGC()
 {

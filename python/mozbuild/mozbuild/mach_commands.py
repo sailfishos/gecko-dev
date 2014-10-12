@@ -810,24 +810,21 @@ def get_run_args(mach_command, params, remote, background, noprofile):
     if params:
         args.extend(params)
 
-    if '--' in args:
-        args.remove('--')
-
     return args
 
 @CommandProvider
 class RunProgram(MachCommandBase):
     """Launch the compiled binary"""
 
-    @Command('run', category='post-build', allow_all_args=True,
+    @Command('run', category='post-build',
         description='Run the compiled program.')
-    @CommandArgument('params', default=None, nargs='...',
+    @CommandArgument('params', nargs='...',
         help='Command-line arguments to be passed through to the program. Not specifying a -profile or -P option will result in a temporary profile being used.')
-    @CommandArgument('+remote', '+r', action='store_true',
+    @CommandArgument('-remote', '-r', action='store_true',
         help='Do not pass the -no-remote argument by default.')
-    @CommandArgument('+background', '+b', action='store_true',
+    @CommandArgument('-background', '-b', action='store_true',
         help='Do not pass the -foreground argument by default on Mac')
-    @CommandArgument('+noprofile', '+n', action='store_true',
+    @CommandArgument('-noprofile', '-n', action='store_true',
         help='Do not pass the -profile argument by default.')
     def run(self, params, remote, background, noprofile):
         args = get_run_args(self, params, remote, background, noprofile)
@@ -841,26 +838,26 @@ class RunProgram(MachCommandBase):
 class DebugProgram(MachCommandBase):
     """Debug the compiled binary"""
 
-    @Command('debug', category='post-build', allow_all_args=True,
+    @Command('debug', category='post-build',
         description='Debug the compiled program.')
-    @CommandArgument('params', default=None, nargs='...',
+    @CommandArgument('params', nargs='...',
         help='Command-line arguments to be passed through to the program. Not specifying a -profile or -P option will result in a temporary profile being used.')
-    @CommandArgument('+remote', '+r', action='store_true',
+    @CommandArgument('-remote', '-r', action='store_true',
         help='Do not pass the -no-remote argument by default')
-    @CommandArgument('+background', '+b', action='store_true',
+    @CommandArgument('-background', '-b', action='store_true',
         help='Do not pass the -foreground argument by default on Mac')
-    @CommandArgument('+debugger', default=None, type=str,
+    @CommandArgument('-debugger', default=None, type=str,
         help='Name of debugger to launch')
-    @CommandArgument('+debugparams', default=None, metavar='params', type=str,
+    @CommandArgument('-debugparams', default=None, metavar='params', type=str,
         help='Command-line arguments to pass to the debugger itself; split as the Bourne shell would.')
     # Bug 933807 introduced JS_DISABLE_SLOW_SCRIPT_SIGNALS to avoid clever
     # segfaults induced by the slow-script-detecting logic for Ion/Odin JITted
     # code.  If we don't pass this, the user will need to periodically type
     # "continue" to (safely) resume execution.  There are ways to implement
     # automatic resuming; see the bug.
-    @CommandArgument('+slowscript', action='store_true',
+    @CommandArgument('-slowscript', action='store_true',
         help='Do not set the JS_DISABLE_SLOW_SCRIPT_SIGNALS env variable; when not set, recoverable but misleading SIGSEGV instances may occur in Ion/Odin JIT code')
-    @CommandArgument('+noprofile', '+n', action='store_true',
+    @CommandArgument('-noprofile', '-n', action='store_true',
         help='Do not pass the -profile argument by default.')
     def debug(self, params, remote, background, debugger, debugparams, slowscript, noprofile):
         # Parameters come from the CLI. We need to convert them before their use.
@@ -868,7 +865,7 @@ class DebugProgram(MachCommandBase):
             import pymake.process
             argv, badchar = pymake.process.clinetoargv(debugparams, os.getcwd())
             if badchar:
-                print("The +debugparams you passed require a real shell to parse them.")
+                print("The -debugparams you passed require a real shell to parse them.")
                 print("(We can't handle the %r character.)" % (badchar,))
                 return 1
             debugparams = argv;
@@ -925,7 +922,7 @@ class RunDmd(MachCommandBase):
 
     @Command('dmd', category='post-build',
         description='Run the compiled program with DMD enabled.')
-    @CommandArgument('params', default=None, nargs='...',
+    @CommandArgument('params', nargs='...',
         help=('Command-line arguments to be passed through to the program. '
               'Not specifying a -profile or -P option will result in a '
               'temporary profile being used. If passing -params use a "--" to '
@@ -934,14 +931,16 @@ class RunDmd(MachCommandBase):
         help='Do not pass the -no-remote argument by default.')
     @CommandArgument('--background', '-b', action='store_true',
         help='Do not pass the -foreground argument by default on Mac')
+    @CommandArgument('--noprofile', '-n', action='store_true',
+        help='Do not pass the -profile argument by default.')
     @CommandArgument('--sample-below', default=None, type=str,
         help='The sample size to use, [1..n]. Default is 4093.')
     @CommandArgument('--max-frames', default=None, type=str,
         help='The max number of stack frames to capture in allocation traces, [1..24] Default is 24.')
-    @CommandArgument('--max-records', default=None, type=str,
-        help='Number of stack trace records to print of each kind, [1..1000000]. Default is 1000.')
-    def dmd(self, params, remote, background, sample_below, max_frames, max_records):
-        args = get_run_args(self, params, remote, background)
+    @CommandArgument('--show-dump-stats', action='store_true',
+        help='Show stats when doing dumps.')
+    def dmd(self, params, remote, background, noprofile, sample_below, max_frames, show_dump_stats):
+        args = get_run_args(self, params, remote, background, noprofile)
         if not args:
             return 1
 
@@ -958,8 +957,8 @@ class RunDmd(MachCommandBase):
             dmd_params.append('--sample-below=' + sample_below)
         if max_frames:
             dmd_params.append('--max-frames=' + max_frames)
-        if max_records:
-            dmd_params.append('--max-records=' + max_records)
+        if show_dump_stats:
+            dmd_params.append('--show-dump-stats=yes')
 
         if dmd_params:
             dmd_str = " ".join(dmd_params)

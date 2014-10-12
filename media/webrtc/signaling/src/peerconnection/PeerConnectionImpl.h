@@ -54,7 +54,6 @@ class Fake_MediaStreamTrack;
 #endif
 
 class nsGlobalWindow;
-class nsIDOMMediaStream;
 class nsDOMDataChannel;
 
 namespace mozilla {
@@ -260,6 +259,9 @@ public:
     return mMedia;
   }
 
+  // Configure the ability to use localhost.
+  void SetAllowIceLoopback(bool val) { mAllowIceLoopback = val; }
+
   // Handle system to allow weak references to be passed through C code
   virtual const std::string& GetHandle();
 
@@ -295,7 +297,7 @@ public:
   std::string GetFingerprintHexValue() const;
 
   // Create a fake media stream
-  nsresult CreateFakeMediaStream(uint32_t hint, nsIDOMMediaStream** retval);
+  nsresult CreateFakeMediaStream(uint32_t hint, mozilla::DOMMediaStream** retval);
 
   nsPIDOMWindow* GetWindow() const {
     PC_AUTO_ENTER_API_CALL_NO_CHECK();
@@ -730,6 +732,7 @@ private:
   nsRefPtr<mozilla::DataChannelConnection> mDataConnection;
 #endif
 
+  bool mAllowIceLoopback;
   nsRefPtr<PeerConnectionMedia> mMedia;
 
 #ifdef MOZILLA_INTERNAL_API

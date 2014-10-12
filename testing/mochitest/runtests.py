@@ -184,9 +184,12 @@ class MessageLogger(object):
         # test_status messages buffering
         if is_error:
             if self.buffered_messages:
-                number_messages = min(self.BUFFERING_THRESHOLD, len(self.buffered_messages))
-                self.logger.info("dumping last {0} message(s)".format(number_messages))
-                self.logger.info("if you need more context, please use SimpleTest.requestCompleteLog() in your test")
+                snipped = len(self.buffered_messages) - self.BUFFERING_THRESHOLD
+                if snipped > 0:
+                  self.logger.info("<snipped {0} output lines - "
+                                   "if you need more context, please use "
+                                   "SimpleTest.requestCompleteLog() in your test>"
+                                   .format(snipped))
                 # Dumping previously buffered messages
                 self.dump_buffered(limit=True)
 
@@ -663,10 +666,6 @@ class MochitestUtilsMixin(object):
       if testsToFilter and (test['path'] not in testsToFilter):
         continue
       paths.append(test)
-
-    # suite_start message
-    flat_paths = [p['path'] for p in paths]
-    self.message_logger.logger.suite_start(flat_paths)
 
     # Bug 883865 - add this functionality into manifestparser
     with open(os.path.join(SCRIPT_DIR, 'tests.json'), 'w') as manifestFile:
@@ -1618,15 +1617,25 @@ class Mochitest(MochitestUtilsMixin):
 
     return paths
 
+  def logPreamble(self, tests):
+    """Logs a suite_start message and test_start/test_end at the beginning of a run.
+    """
+    self.log.suite_start([t['path'] for t in tests])
+    for test in tests:
+      if 'disabled' in test:
+        self.log.test_start(test['path'])
+        self.log.test_end(test['path'], 'SKIP', message=test['disabled'])
+
   def getTestsToRun(self, options):
     """
       This method makes a list of tests that are to be run. Required mainly for --bisect-chunk.
     """
     tests = self.getActiveTests(options)
+    self.logPreamble(tests)
+
     testsToRun = []
     for test in tests:
       if test.has_key('disabled'):
-        self.log.info('TEST-SKIPPED | %s | %s' % (test['path'], test['disabled']))
         continue
       testsToRun.append(test['path'])
 
@@ -1842,7 +1851,7 @@ class Mochitest(MochitestUtilsMixin):
         self.stopVMwareRecording();
       self.stopServers()
 
-    processLeakLog(self.leak_report_file, options.leakThresholds, options.ignoreMissingLeaks)
+    processLeakLog(self.leak_report_file, options)
 
     if self.nsprLogs:
       with zipfile.ZipFile("%s/nsprlog.zip" % browserEnv["MOZ_UPLOAD_DIR"], "w", zipfile.ZIP_DEFLATED) as logzip:

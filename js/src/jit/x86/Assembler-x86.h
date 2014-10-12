@@ -572,6 +572,13 @@ class Assembler : public AssemblerX86Shared
         CodeOffsetLabel label = movlWithPatch(PatchedAbsoluteAddress(), dest);
         append(AsmJSGlobalAccess(label, AsmJSActivationGlobalDataOffset));
     }
+    void loadAsmJSHeapRegisterFromGlobalData() {
+        // x86 doesn't have a pinned heap register.
+    }
+
+    static bool canUseInSingleByteInstruction(Register reg) {
+        return !ByteRegRequiresRex(reg.code());
+    }
 };
 
 // Get a register in which we plan to put a quantity that will be used as an

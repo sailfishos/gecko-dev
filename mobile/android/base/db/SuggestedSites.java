@@ -80,12 +80,11 @@ public class SuggestedSites {
 
     private static final String[] COLUMNS = new String[] {
         BrowserContract.SuggestedSites._ID,
-        BrowserContract.SuggestedSites.TRACKING_ID,
         BrowserContract.SuggestedSites.URL,
         BrowserContract.SuggestedSites.TITLE,
-        BrowserContract.SuggestedSites.IMAGEURL,
-        BrowserContract.SuggestedSites.BGCOLOR
     };
+
+    public static final int TRACKING_ID_NONE = -1;
 
     private static final String JSON_KEY_TRACKING_ID = "trackingid";
     private static final String JSON_KEY_URL = "url";
@@ -94,14 +93,14 @@ public class SuggestedSites {
     private static final String JSON_KEY_BG_COLOR = "bgcolor";
 
     private static class Site {
-        public final String trackingId;
         public final String url;
         public final String title;
         public final String imageUrl;
         public final String bgColor;
+        public final int trackingId;
 
         public Site(JSONObject json) throws JSONException {
-            this.trackingId = json.isNull(JSON_KEY_TRACKING_ID) ? null : json.getString(JSON_KEY_TRACKING_ID);
+            this.trackingId = json.isNull(JSON_KEY_TRACKING_ID) ? TRACKING_ID_NONE : json.getInt(JSON_KEY_TRACKING_ID);
             this.url = json.getString(JSON_KEY_URL);
             this.title = json.getString(JSON_KEY_TITLE);
             this.imageUrl = json.getString(JSON_KEY_IMAGE_URL);
@@ -110,7 +109,7 @@ public class SuggestedSites {
             validate();
         }
 
-        public Site(String trackingId, String url, String title, String imageUrl, String bgColor) {
+        public Site(int trackingId, String url, String title, String imageUrl, String bgColor) {
             this.trackingId = trackingId;
             this.url = url;
             this.title = title;
@@ -133,7 +132,7 @@ public class SuggestedSites {
 
         @Override
         public String toString() {
-            return "{ id = " + trackingId + "\n" +
+            return "{ trackingId = " + trackingId + "\n" +
                      "url = " + url + "\n" +
                      "title = " + title + "\n" +
                      "imageUrl = " + imageUrl + "\n" +
@@ -143,8 +142,9 @@ public class SuggestedSites {
         public JSONObject toJSON() throws JSONException {
             final JSONObject json = new JSONObject();
 
-            // If trackingId is null, the key is not added.
-            json.put(JSON_KEY_TRACKING_ID, trackingId);
+            if (trackingId >= 0) {
+                json.put(JSON_KEY_TRACKING_ID, trackingId);
+            }
 
             json.put(JSON_KEY_URL, url);
             json.put(JSON_KEY_TITLE, title);
@@ -501,17 +501,33 @@ public class SuggestedSites {
 
             final RowBuilder row = cursor.newRow();
             row.add(-1);
-            row.add(site.trackingId);
             row.add(site.url);
             row.add(site.title);
-            row.add(site.imageUrl);
-            row.add(site.bgColor);
         }
 
         cursor.setNotificationUri(context.getContentResolver(),
                                   BrowserContract.SuggestedSites.CONTENT_URI);
 
         return cursor;
+    }
+
+    public boolean contains(String url) {
+        return (getSiteForUrl(url) != null);
+    }
+
+    public String getImageUrlForUrl(String url) {
+        final Site site = getSiteForUrl(url);
+        return (site != null ? site.imageUrl : null);
+    }
+
+    public String getBackgroundColorForUrl(String url) {
+        final Site site = getSiteForUrl(url);
+        return (site != null ? site.bgColor : null);
+    }
+
+    public int getTrackingIdForUrl(String url) {
+        final Site site = getSiteForUrl(url);
+        return (site != null ? site.trackingId : TRACKING_ID_NONE);
     }
 
     private Set<String> loadBlacklist() {

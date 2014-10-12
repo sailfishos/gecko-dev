@@ -13,7 +13,7 @@
 }
 
 body {
-  font-family: "Lucida Grande", sans-serif;
+  font: message-box;
   font-size: 12px;
   background: #fbfbfb;
 }
@@ -98,6 +98,7 @@ p {
 .btn-info {
   background-color: #0096dd;
   border: 1px solid #0095dd;
+  color: #fff;
 }
 
   .btn-info:hover {
@@ -229,12 +230,20 @@ p {
   border-top-right-radius: 0;
 }
 
-/* Alerts */
+/* Alerts/Notifications */
+.notificationContainer {
+  border-bottom: 2px solid #E9E9E9;
+  margin-bottom: 1em;
+}
+
+.messages > .notificationContainer > .alert {
+  text-align: center;
+}
+
+.notificationContainer > .detailsBar,
 .alert {
   background: #eee;
   padding: .4em 1em;
-  margin-bottom: 1em;
-  border-bottom: 2px solid #E9E9E9;
 }
 
 .alert p.message {
@@ -250,6 +259,11 @@ p {
 .alert-warning {
   background: #fcf8e3;
   border: 1px solid #fbeed5;
+}
+
+.notificationContainer > .details-error {
+  background: #fbebeb;
+  color: #d74345
 }
 
 .alert .close {
@@ -349,23 +363,6 @@ p {
 .windows p,
 .linux p {
   line-height: 16px;
-}
-
-/* Using star selector to override
- * the specificity of other selectors
- * if performance is an issue we could
- * explicitely list all the elements */
-.windows * {
-  font-family: 'Segoe';
-}
-
-.mac * {
-  font-family: 'Lucida Grande';
-}
-
-.linux * {
-  /* XXX requires fallbacks */
-  font-family: 'Ubuntu', sans-serif;
 }
 
 /* Web panel */

@@ -93,7 +93,7 @@ def cxxfilt(sym):
     return cxxfilt_proc.stdout.readline().rstrip("\n")
 
 # Matches lines produced by NS_FormatCodeAddress().
-line_re = re.compile("^(.*#\d+: )(.+)\[(.+) \+(0x.+)\](.*)$")
+line_re = re.compile("^(.*#\d+: )(.+)\[(.+) \+(0x[0-9A-Fa-f]+)\](.*)$")
 atos_name_re = re.compile("^(.+) \(in ([^)]+)\) \((.+)\)$")
 
 def fixSymbols(line):

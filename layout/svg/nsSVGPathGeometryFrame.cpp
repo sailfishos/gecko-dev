@@ -158,6 +158,34 @@ nsSVGPathGeometryFrame::DidSetStyleContext(nsStyleContext* aOldStyleContext)
       // nsDisplayOpacity display list item, so DLBI won't invalidate for us.
       InvalidateFrame();
     }
+
+    nsSVGPathGeometryElement* element =
+      static_cast<nsSVGPathGeometryElement*>(mContent);
+
+    if (aOldStyleContext->PeekStyleSVG()) {
+      if ((StyleSVG()->mStrokeLinecap !=
+             aOldStyleContext->PeekStyleSVG()->mStrokeLinecap) &&
+          element->Tag() == nsGkAtoms::path) {
+        // If the stroke-linecap changes to or from "butt" then our element
+        // needs to update its cached Moz2D Path, since SVGPathData::BuildPath
+        // decides whether or not to insert little lines into the path for zero
+        // length subpaths base on that property.
+        element->ClearAnyCachedPath();
+      } else if (GetStateBits() & NS_STATE_SVG_CLIPPATH_CHILD) {
+        if (StyleSVG()->mClipRule !=
+              aOldStyleContext->PeekStyleSVG()->mClipRule) {
+          // Moz2D Path objects are fill-rule specific.
+          // For clipPath we use clip-rule as the path's fill-rule.
+          element->ClearAnyCachedPath();
+        }
+      } else {
+        if (StyleSVG()->mFillRule !=
+              aOldStyleContext->PeekStyleSVG()->mFillRule) {
+          // Moz2D Path objects are fill-rule specific.
+          element->ClearAnyCachedPath();
+        }
+      }
+    }
   }
 }
 
@@ -288,9 +316,7 @@ nsSVGPathGeometryFrame::GetFrameForPoint(const gfxPoint& aPoint)
   // so that we get more consistent/backwards compatible results?
   RefPtr<DrawTarget> drawTarget =
     gfxPlatform::GetPlatform()->ScreenReferenceDrawTarget();
-  RefPtr<PathBuilder> builder =
-    drawTarget->CreatePathBuilder(fillRule);
-  RefPtr<Path> path = content->BuildPath(builder);
+  RefPtr<Path> path = content->GetOrBuildPath(*drawTarget, fillRule);
   if (!path) {
     return nullptr; // no path, so we don't paint anything that can be hit
   }
@@ -358,27 +384,7 @@ nsSVGPathGeometryFrame::ReflowSVG()
    flags |= nsSVGUtils::eBBoxIncludeStrokeGeometry;
   }
  
-  // We'd like to just pass the identity matrix to GetBBoxContribution, but if
-  // this frame's user space size is _very_ large/small then the extents we
-  // obtain below might have overflowed or otherwise be broken. This would
-  // cause us to end up with a broken mRect and visual overflow rect and break
-  // painting of this frame. This is particularly noticeable if the transforms
-  // between us and our nsSVGOuterSVGFrame scale this frame to a reasonable
-  // size. To avoid this we sadly have to do extra work to account for the
-  // transforms between us and our nsSVGOuterSVGFrame, even though the
-  // overwhelming number of SVGs will never have this problem.
-  // XXX Will Azure eventually save us from having to do this?
-  gfxSize scaleFactors = GetCanvasTM().ScaleFactors(true);
-  bool applyScaling = fabs(scaleFactors.width) >= 1e-6 &&
-                      fabs(scaleFactors.height) >= 1e-6;
-  gfx::Matrix scaling;
-  if (applyScaling) {
-    scaling.PreScale(scaleFactors.width, scaleFactors.height);
-  }
-  gfxRect extent = GetBBoxContribution(scaling, flags).ToThebesRect();
-  if (applyScaling) {
-    extent.Scale(1 / scaleFactors.width, 1 / scaleFactors.height);
-  }
+  gfxRect extent = GetBBoxContribution(Matrix(), flags).ToThebesRect();
   mRect = nsLayoutUtils::RoundGfxRectToAppRect(extent,
             PresContext()->AppUnitsPerCSSPixel());
 
@@ -430,6 +436,7 @@ nsSVGPathGeometryFrame::NotifySVGChanged(uint32_t aFlags)
     // mRect.
     if (static_cast<nsSVGPathGeometryElement*>(mContent)->GeometryDependsOnCoordCtx() ||
         StyleSVG()->mStrokeWidth.HasPercent()) {
+      static_cast<nsSVGPathGeometryElement*>(mContent)->ClearAnyCachedPath();
       nsSVGUtils::ScheduleReflowSVG(this);
     }
   }
@@ -454,6 +461,9 @@ nsSVGPathGeometryFrame::GetBBoxContribution(const Matrix &aToBBoxUserspace,
     return bbox;
   }
 
+  nsSVGPathGeometryElement* element =
+    static_cast<nsSVGPathGeometryElement*>(mContent);
+
   RefPtr<DrawTarget> tmpDT;
 #ifdef XP_WIN
   // Unfortunately D2D backed DrawTarget produces bounds with rounding errors
@@ -468,10 +478,24 @@ nsSVGPathGeometryFrame::GetBBoxContribution(const Matrix &aToBBoxUserspace,
 #else
   tmpDT = gfxPlatform::GetPlatform()->ScreenReferenceDrawTarget();
 #endif
-  nsRefPtr<gfxContext> tmpCtx = new gfxContext(tmpDT);
 
-  GeneratePath(tmpCtx, aToBBoxUserspace);
-  tmpCtx->SetMatrix(gfxMatrix());
+  FillRule fillRule = StyleSVG()->mFillRule == NS_STYLE_FILL_RULE_NONZERO
+                        ? FillRule::FILL_WINDING : FillRule::FILL_EVEN_ODD;
+  RefPtr<Path> pathInUserSpace = element->GetOrBuildPath(*tmpDT, fillRule);
+  if (!pathInUserSpace) {
+    return bbox;
+  }
+  RefPtr<Path> pathInBBoxSpace;
+  if (aToBBoxUserspace.IsIdentity()) {
+    pathInBBoxSpace = pathInUserSpace;
+  } else {
+    RefPtr<PathBuilder> builder =
+      pathInUserSpace->TransformedCopyToBuilder(aToBBoxUserspace, fillRule);
+    pathInBBoxSpace = builder->Finish();
+    if (!pathInBBoxSpace) {
+      return bbox;
+    }
+  }
 
   // Be careful when replacing the following logic to get the fill and stroke
   // extents independently (instead of computing the stroke extents from the
@@ -485,35 +509,69 @@ nsSVGPathGeometryFrame::GetBBoxContribution(const Matrix &aToBBoxUserspace,
   // # If the stroke is very thin, cairo won't paint any stroke, and so the
   //   stroke bounds that it will return will be empty.
 
-  gfxRect pathExtents = tmpCtx->GetUserPathExtent();
+  Rect pathBBoxExtents = pathInBBoxSpace->GetBounds();
+  if (!pathBBoxExtents.IsFinite()) {
+    // This can happen in the case that we only have a move-to command in the
+    // path commands, in which case we know nothing gets rendered.
+    return bbox;
+  }
 
   // Account for fill:
   if ((aFlags & nsSVGUtils::eBBoxIncludeFillGeometry) ||
       ((aFlags & nsSVGUtils::eBBoxIncludeFill) &&
        StyleSVG()->mFill.mType != eStyleSVGPaintType_None)) {
-    bbox = pathExtents;
+    bbox = pathBBoxExtents;
   }
 
   // Account for stroke:
   if ((aFlags & nsSVGUtils::eBBoxIncludeStrokeGeometry) ||
       ((aFlags & nsSVGUtils::eBBoxIncludeStroke) &&
        nsSVGUtils::HasStroke(this))) {
-    // We can't use tmpCtx->GetUserStrokeExtent() since it doesn't work for
-    // device space extents. Instead we approximate the stroke extents from
-    // pathExtents using PathExtentsToMaxStrokeExtents.
-    if (pathExtents.Width() <= 0 && pathExtents.Height() <= 0) {
-      // We have a zero length path, but it may still have non-empty stroke
-      // bounds depending on the value of stroke-linecap. We need to fix up
-      // pathExtents before it can be used with PathExtentsToMaxStrokeExtents
-      // though, because if pathExtents is empty, its position will not have
-      // been set. Happily we can use tmpCtx->GetUserStrokeExtent() to find
-      // the center point of the extents even though it gets the extents wrong.
-      pathExtents.MoveTo(tmpCtx->GetUserStrokeExtent().Center());
-      pathExtents.SizeTo(0, 0);
+#if 0
+    // This disabled code is how we would calculate the stroke bounds using
+    // Moz2D Path::GetStrokedBounds(). Unfortunately at the time of writing it
+    // there are two problems that prevent us from using it.
+    //
+    // First, it seems that some of the Moz2D backends are really dumb. Not
+    // only do some GetStrokeOptions() implementations sometimes significantly
+    // overestimate the stroke bounds, but if an argument is passed for the
+    // aTransform parameter then they just return bounds-of-transformed-bounds.
+    // These two things combined can lead the bounds to be unacceptably
+    // oversized, leading to massive over-invalidation.
+    //
+    // Second, the way we account for non-scaling-stroke by transforming the
+    // path using the transform to the outer-<svg> element is not compatible
+    // with the way that nsSVGPathGeometryFrame::Reflow() inserts a scale into
+    // aToBBoxUserspace and then scales the bounds that we return.
+    SVGContentUtils::AutoStrokeOptions strokeOptions;
+    SVGContentUtils::GetStrokeOptions(&strokeOptions, element, StyleContext(),
+                                      nullptr, SVGContentUtils::eIgnoreStrokeDashing);
+    Rect strokeBBoxExtents;
+    gfxMatrix userToOuterSVG;
+    if (nsSVGUtils::GetNonScalingStrokeTransform(this, &userToOuterSVG)) {
+      Matrix outerSVGToUser = ToMatrix(userToOuterSVG);
+      outerSVGToUser.Invert();
+      Matrix outerSVGToBBox = aToBBoxUserspace * outerSVGToUser;
+      RefPtr<PathBuilder> builder =
+        pathInUserSpace->TransformedCopyToBuilder(ToMatrix(userToOuterSVG));
+      RefPtr<Path> pathInOuterSVGSpace = builder->Finish();
+      strokeBBoxExtents =
+        pathInOuterSVGSpace->GetStrokedBounds(strokeOptions, outerSVGToBBox);
+    } else {
+      strokeBBoxExtents =
+        pathInUserSpace->GetStrokedBounds(strokeOptions, aToBBoxUserspace);
     }
-    bbox.UnionEdges(nsSVGUtils::PathExtentsToMaxStrokeExtents(pathExtents,
-                                                              this,
-                                                              ThebesMatrix(aToBBoxUserspace)));
+    MOZ_ASSERT(strokeBBoxExtents.IsFinite(), "bbox is about to go bad");
+    bbox.UnionEdges(strokeBBoxExtents);
+#else
+    // For now we just use nsSVGUtils::PathExtentsToMaxStrokeExtents:
+    gfxRect strokeBBoxExtents =
+      nsSVGUtils::PathExtentsToMaxStrokeExtents(ThebesRect(pathBBoxExtents),
+                                                this,
+                                                ThebesMatrix(aToBBoxUserspace));
+    MOZ_ASSERT(ToRect(strokeBBoxExtents).IsFinite(), "bbox is about to go bad");
+    bbox.UnionEdges(strokeBBoxExtents);
+#endif
   }
 
   // Account for markers:
@@ -543,6 +601,7 @@ nsSVGPathGeometryFrame::GetBBoxContribution(const Matrix &aToBBoxUserspace,
           SVGBBox mbbox =
             frame->GetMarkBBoxContribution(aToBBoxUserspace, aFlags, this,
                                            &marks[i], strokeWidth);
+          MOZ_ASSERT(mbbox.IsFinite(), "bbox is about to go bad");
           bbox.UnionEdges(mbbox);
         }
       }
@@ -630,13 +689,10 @@ nsSVGPathGeometryFrame::Render(gfxContext* aContext,
     nsSVGUtils::ToFillRule(renderMode == SVGAutoRenderState::NORMAL ?
                              StyleSVG()->mFillRule : StyleSVG()->mClipRule);
 
-  RefPtr<PathBuilder> builder = drawTarget->CreatePathBuilder(fillRule);
-  if (!builder) {
-    return;
-  }
+  nsSVGPathGeometryElement* element =
+    static_cast<nsSVGPathGeometryElement*>(mContent);
 
-  RefPtr<Path> path =
-    static_cast<nsSVGPathGeometryElement*>(mContent)->BuildPath(builder);
+  RefPtr<Path> path = element->GetOrBuildPath(*drawTarget, fillRule);
   if (!path) {
     return;
   }
@@ -682,7 +738,8 @@ nsSVGPathGeometryFrame::Render(gfxContext* aContext,
       gfxMatrix outerSVGToUser = userToOuterSVG;
       outerSVGToUser.Invert();
       aContext->Multiply(outerSVGToUser);
-      builder = path->TransformedCopyToBuilder(ToMatrix(userToOuterSVG), fillRule);
+      RefPtr<PathBuilder> builder =
+        path->TransformedCopyToBuilder(ToMatrix(userToOuterSVG), fillRule);
       path = builder->Finish();
     }
     GeneralPattern strokePattern;
@@ -700,30 +757,6 @@ nsSVGPathGeometryFrame::Render(gfxContext* aContext,
                          DrawOptions(1.0f, CompositionOp::OP_OVER, aaMode));
     }
   }
-}
-
-void
-nsSVGPathGeometryFrame::GeneratePath(gfxContext* aContext,
-                                     const Matrix &aTransform)
-{
-  if (aTransform.IsSingular()) {
-    aContext->SetMatrix(gfxMatrix());
-    aContext->NewPath();
-    return;
-  }
-
-  aContext->SetMatrix(
-    aContext->CurrentMatrix().PreMultiply(ThebesMatrix(aTransform)).
-                              NudgeToIntegers());
-
-  // Hack to let SVGPathData::ConstructPath know if we have square caps:
-  const nsStyleSVG* style = StyleSVG();
-  if (style->mStrokeLinecap == NS_STYLE_STROKE_LINECAP_SQUARE) {
-    aContext->SetLineCap(gfxContext::LINE_CAP_SQUARE);
-  }
-
-  aContext->NewPath();
-  static_cast<nsSVGPathGeometryElement*>(mContent)->ConstructPath(aContext);
 }
 
 void

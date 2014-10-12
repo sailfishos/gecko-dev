@@ -10,6 +10,7 @@
 
 #include "jsobjinlines.h"
 
+#include "vm/NativeObject-inl.h"
 #include "vm/Symbol-inl.h"
 
 using JS::Symbol;

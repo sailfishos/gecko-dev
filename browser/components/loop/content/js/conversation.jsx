@@ -180,15 +180,14 @@ loop.conversation = (function(mozL10n) {
       client: React.PropTypes.instanceOf(loop.Client).isRequired,
       conversation: React.PropTypes.instanceOf(sharedModels.ConversationModel)
                          .isRequired,
-      notifications: React.PropTypes.instanceOf(sharedModels.NotificationCollection)
-                          .isRequired,
       sdk: React.PropTypes.object.isRequired
     },
 
     getInitialState: function() {
       return {
+        callFailed: false, // XXX this should be removed when bug 1047410 lands.
         callStatus: "start"
-      }
+      };
     },
 
     componentDidMount: function() {
@@ -245,7 +244,12 @@ loop.conversation = (function(mozL10n) {
           );
         }
         case "end": {
-          document.title = mozL10n.get("conversation_has_ended");
+          // XXX To be handled with the "failed" view state when bug 1047410 lands
+          if (this.state.callFailed) {
+            document.title = mozL10n.get("generic_failure_title");
+          } else {
+            document.title = mozL10n.get("conversation_has_ended");
+          }
 
           var feebackAPIBaseUrl = navigator.mozLoop.getLoopCharPref(
             "feedback.baseUrl");
@@ -278,9 +282,10 @@ loop.conversation = (function(mozL10n) {
      * @param {{code: number, message: string}} error
      */
     _notifyError: function(error) {
+      // XXX Not the ideal response, but bug 1047410 will be replacing
+      // this by better "call failed" UI.
       console.error(error);
-      this.props.notifications.errorL10n("connection_error_see_console_notification");
-      this.setState({callStatus: "end"});
+      this.setState({callFailed: true, callStatus: "end"});
     },
 
     /**
@@ -290,16 +295,16 @@ loop.conversation = (function(mozL10n) {
      * - {String} connectionId: OT session id
      */
     _onPeerHungup: function() {
-      this.props.notifications.warnL10n("peer_ended_conversation2");
-      this.setState({callStatus: "end"});
+      this.setState({callFailed: false, callStatus: "end"});
     },
 
     /**
      * Network disconnected. Notifies the user and ends the call.
      */
     _onNetworkDisconnected: function() {
-      this.props.notifications.warnL10n("network_disconnected");
-      this.setState({callStatus: "end"});
+      // XXX Not the ideal response, but bug 1047410 will be replacing
+      // this by better "call failed" UI.
+      this.setState({callFailed: true, callStatus: "end"});
     },
 
     /**
@@ -310,10 +315,9 @@ loop.conversation = (function(mozL10n) {
 
       var callData = navigator.mozLoop.getCallData(this.props.conversation.get("callId"));
       if (!callData) {
-        console.error("Failed to get the call data");
         // XXX Not the ideal response, but bug 1047410 will be replacing
         // this by better "call failed" UI.
-        this.props.notifications.errorL10n("cannot_start_call_session_not_ready");
+        console.error("Failed to get the call data");
         return;
       }
       this.props.conversation.setIncomingSessionData(callData);
@@ -462,7 +466,7 @@ loop.conversation = (function(mozL10n) {
     _handleSessionError: function() {
       // XXX Not the ideal response, but bug 1047410 will be replacing
       // this by better "call failed" UI.
-      this.props.notifications.errorL10n("cannot_start_call_session_not_ready");
+      console.error("Failed initiating the call session.");
     },
   });
 
@@ -476,12 +480,11 @@ loop.conversation = (function(mozL10n) {
       client: React.PropTypes.instanceOf(loop.Client).isRequired,
       conversation: React.PropTypes.instanceOf(sharedModels.ConversationModel)
                          .isRequired,
-      notifications: React.PropTypes.instanceOf(sharedModels.NotificationCollection)
-                          .isRequired,
       sdk: React.PropTypes.object.isRequired,
 
       // XXX New types for OutgoingConversationView
-      store: React.PropTypes.instanceOf(loop.store.ConversationStore).isRequired
+      store: React.PropTypes.instanceOf(loop.store.ConversationStore).isRequired,
+      dispatcher: React.PropTypes.instanceOf(loop.Dispatcher).isRequired
     },
 
     getInitialState: function() {
@@ -503,20 +506,20 @@ loop.conversation = (function(mozL10n) {
       if (this.state.outgoing) {
         return (<OutgoingConversationView
           store={this.props.store}
+          dispatcher={this.props.dispatcher}
         />);
       }
 
       return (<IncomingConversationView
         client={this.props.client}
         conversation={this.props.conversation}
-        notifications={this.props.notifications}
         sdk={this.props.sdk}
       />);
     }
   });
 
   /**
-   * Panel initialisation.
+   * Conversation initialisation.
    */
   function init() {
     // Do the initial L10n setup, we do this before anything
@@ -537,14 +540,16 @@ loop.conversation = (function(mozL10n) {
 
     var dispatcher = new loop.Dispatcher();
     var client = new loop.Client();
-    var conversationStore = new loop.store.ConversationStore({}, {
-      client: client,
-      dispatcher: dispatcher
+    var sdkDriver = new loop.OTSdkDriver({
+      dispatcher: dispatcher,
+      sdk: OT
     });
 
-    // XXX For now key this on the pref, but this should really be
-    // set by the information from the mozLoop API when we can get it (bug 1072323).
-    var outgoingEmail = navigator.mozLoop.getLoopCharPref("outgoingemail");
+    var conversationStore = new loop.store.ConversationStore({}, {
+      client: client,
+      dispatcher: dispatcher,
+      sdkDriver: sdkDriver
+    });
 
     // XXX Old class creation for the incoming conversation view, whilst
     // we transition across (bug 1072323).
@@ -552,20 +557,30 @@ loop.conversation = (function(mozL10n) {
       {},                // Model attributes
       {sdk: window.OT}   // Model dependencies
     );
-    var notifications = new sharedModels.NotificationCollection();
 
     // Obtain the callId and pass it through
     var helper = new loop.shared.utils.Helper();
     var locationHash = helper.locationHash();
     var callId;
-    if (locationHash) {
-      callId = locationHash.match(/\#incoming\/(.*)/)[1]
-      conversation.set("callId", callId);
+    var outgoing;
+
+    var hash = locationHash.match(/\#incoming\/(.*)/);
+    if (hash) {
+      callId = hash[1];
+      outgoing = false;
+    } else {
+      hash = locationHash.match(/\#outgoing\/(.*)/);
+      if (hash) {
+        callId = hash[1];
+        outgoing = true;
+      }
     }
+
+    conversation.set({callId: callId});
 
     window.addEventListener("unload", function(event) {
       // Handle direct close of dialog box via [x] control.
-      navigator.mozLoop.releaseCallData(conversation.get("callId"));
+      navigator.mozLoop.releaseCallData(callId);
     });
 
     document.body.classList.add(loop.shared.utils.getTargetPlatform());
@@ -574,13 +589,13 @@ loop.conversation = (function(mozL10n) {
       store={conversationStore}
       client={client}
       conversation={conversation}
-      notifications={notifications}
+      dispatcher={dispatcher}
       sdk={window.OT}
     />, document.querySelector('#main'));
 
     dispatcher.dispatch(new loop.shared.actions.GatherCallData({
       callId: callId,
-      calleeId: outgoingEmail
+      outgoing: outgoing
     }));
   }
 

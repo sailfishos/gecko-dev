@@ -48,7 +48,7 @@
 #include "jsinferinlines.h"
 #include "jsobjinlines.h"
 
-#include "vm/ObjectImpl-inl.h"
+#include "vm/NativeObject-inl.h"
 #include "vm/Shape-inl.h"
 
 using mozilla::DebugOnly;
@@ -888,12 +888,12 @@ InnerViewTable::removeViews(ArrayBufferObject *obj)
 bool
 InnerViewTable::sweepEntry(JSObject **pkey, ViewVector &views)
 {
-    if (IsObjectAboutToBeFinalized(pkey))
+    if (IsObjectAboutToBeFinalizedFromAnyThread(pkey))
         return true;
 
     MOZ_ASSERT(!views.empty());
     for (size_t i = 0; i < views.length(); i++) {
-        if (IsObjectAboutToBeFinalized(&views[i])) {
+        if (IsObjectAboutToBeFinalizedFromAnyThread(&views[i])) {
             views[i--] = views.back();
             views.popBack();
         }

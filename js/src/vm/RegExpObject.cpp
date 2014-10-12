@@ -21,7 +21,7 @@
 
 #include "jsobjinlines.h"
 
-#include "vm/ObjectImpl-inl.h"
+#include "vm/NativeObject-inl.h"
 #include "vm/Shape-inl.h"
 
 using namespace js;
@@ -699,7 +699,7 @@ RegExpCompartment::~RegExpCompartment()
     }
 }
 
-JSObject *
+ArrayObject *
 RegExpCompartment::createMatchResultTemplateObject(JSContext *cx)
 {
     MOZ_ASSERT(!matchResultTemplateObject_);
@@ -737,6 +737,7 @@ RegExpCompartment::createMatchResultTemplateObject(JSContext *cx)
     // Make sure type information reflects the indexed properties which might
     // be added.
     types::AddTypePropertyId(cx, templateObject, JSID_VOID, types::Type::StringType());
+    types::AddTypePropertyId(cx, templateObject, JSID_VOID, types::Type::UndefinedType());
 
     matchResultTemplateObject_.set(templateObject);
 
@@ -770,11 +771,12 @@ RegExpCompartment::sweep(JSRuntime *rt)
         // Because of this we only treat the marked_ bit as a hint, and destroy
         // the RegExpShared if it was accidentally marked earlier but wasn't
         // marked by the current trace.
-        bool keep = shared->marked() && !IsStringAboutToBeFinalized(shared->source.unsafeGet());
+        bool keep = shared->marked() &&
+                    !IsStringAboutToBeFinalizedFromAnyThread(shared->source.unsafeGet());
         for (size_t i = 0; i < ArrayLength(shared->compilationArray); i++) {
             RegExpShared::RegExpCompilation &compilation = shared->compilationArray[i];
             if (compilation.jitCode &&
-                IsJitCodeAboutToBeFinalized(compilation.jitCode.unsafeGet()))
+                IsJitCodeAboutToBeFinalizedFromAnyThread(compilation.jitCode.unsafeGet()))
             {
                 keep = false;
             }
@@ -788,7 +790,7 @@ RegExpCompartment::sweep(JSRuntime *rt)
     }
 
     if (matchResultTemplateObject_ &&
-        IsObjectAboutToBeFinalized(matchResultTemplateObject_.unsafeGet()))
+        IsObjectAboutToBeFinalizedFromAnyThread(matchResultTemplateObject_.unsafeGet()))
     {
         matchResultTemplateObject_.set(nullptr);
     }

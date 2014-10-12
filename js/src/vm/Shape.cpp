@@ -23,7 +23,7 @@
 #include "jsobjinlines.h"
 
 #include "gc/ForkJoinNursery-inl.h"
-#include "vm/ObjectImpl-inl.h"
+#include "vm/NativeObject-inl.h"
 #include "vm/Runtime-inl.h"
 
 using namespace js;
@@ -443,11 +443,6 @@ js::NativeObject::toDictionaryMode(ThreadSafeContext *cx)
 {
     MOZ_ASSERT(!inDictionaryMode());
 
-#ifdef JSGC_COMPACTING
-    // TODO: This crashes if we run a compacting GC here.
-    js::AutoDisableCompactingGC nogc(zone()->runtimeFromAnyThread());
-#endif
-
     /* We allocate the shapes from cx->compartment(), so make sure it's right. */
     MOZ_ASSERT(cx->isInsideCurrentCompartment(this));
 
@@ -462,12 +457,9 @@ js::NativeObject::toDictionaryMode(ThreadSafeContext *cx)
 
     Rooted<NativeObject*> self(cx, this);
 
-    /*
-     * Clone the shapes into a new dictionary list. Don't update the
-     * last property of this object until done, otherwise a GC
-     * triggered while creating the dictionary will get the wrong
-     * slot span for this object.
-     */
+    // Clone the shapes into a new dictionary list. Don't update the last
+    // property of this object until done, otherwise a GC triggered while
+    // creating the dictionary will get the wrong slot span for this object.
     RootedShape root(cx);
     RootedShape dictionaryShape(cx);
 
@@ -481,12 +473,12 @@ js::NativeObject::toDictionaryMode(ThreadSafeContext *cx)
             return false;
         }
 
-        HeapPtrShape *listp = dictionaryShape
-                              ? &dictionaryShape->parent
-                              : (HeapPtrShape *) root.address();
-
+        HeapPtrShape *listp = dictionaryShape ? &dictionaryShape->parent : nullptr;
         StackShape child(shape);
         dprop->initDictionaryShape(child, self->numFixedSlots(), listp);
+
+        if (!dictionaryShape)
+            root = dprop;
 
         MOZ_ASSERT(!dprop->hasTable());
         dictionaryShape = dprop;
@@ -498,7 +490,7 @@ js::NativeObject::toDictionaryMode(ThreadSafeContext *cx)
         return false;
     }
 
-    MOZ_ASSERT((Shape **) root->listp == root.address());
+    MOZ_ASSERT(root->listp == nullptr);
     root->listp = &self->shape_;
     self->shape_ = root;
 
@@ -1538,9 +1530,9 @@ JSCompartment::sweepBaseShapeTable()
     if (baseShapes.initialized()) {
         for (BaseShapeSet::Enum e(baseShapes); !e.empty(); e.popFront()) {
             UnownedBaseShape *base = e.front().unbarrieredGet();
-            if (IsBaseShapeAboutToBeFinalized(&base)) {
+            if (IsBaseShapeAboutToBeFinalizedFromAnyThread(&base)) {
                 e.removeFront();
-            } else if (base != e.front()) {
+            } else if (base != e.front().unbarrieredGet()) {
                 StackBaseShape sbase(base);
                 ReadBarriered<UnownedBaseShape *> b(base);
                 e.rekeyFront(&sbase, b);
@@ -1834,14 +1826,14 @@ JSCompartment::sweepInitialShapeTable()
             const InitialShapeEntry &entry = e.front();
             Shape *shape = entry.shape.unbarrieredGet();
             JSObject *proto = entry.proto.raw();
-            if (IsShapeAboutToBeFinalized(&shape) ||
-                (entry.proto.isObject() && IsObjectAboutToBeFinalized(&proto)))
+            if (IsShapeAboutToBeFinalizedFromAnyThread(&shape) ||
+                (entry.proto.isObject() && IsObjectAboutToBeFinalizedFromAnyThread(&proto)))
             {
                 e.removeFront();
             } else {
 #ifdef DEBUG
                 DebugOnly<JSObject *> parent = shape->getObjectParent();
-                MOZ_ASSERT(!parent || !IsObjectAboutToBeFinalized(&parent));
+                MOZ_ASSERT(!parent || !IsObjectAboutToBeFinalizedFromAnyThread(&parent));
                 MOZ_ASSERT(parent == shape->getObjectParent());
 #endif
                 if (shape != entry.shape.unbarrieredGet() || proto != entry.proto.raw()) {

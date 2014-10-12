@@ -24,7 +24,7 @@
 #include "vm/Interpreter.h"
 
 #include "vm/Interpreter-inl.h"
-#include "vm/ObjectImpl-inl.h"
+#include "vm/NativeObject-inl.h"
 
 using namespace js;
 using namespace js::jit;
@@ -906,7 +906,7 @@ bool RRegExpExec::recover(JSContext *cx, SnapshotIterator &iter) const{
 
     RootedValue result(cx);
 
-    if(!regexp_exec_raw(cx, regexp, input, &result))
+    if (!regexp_exec_raw(cx, regexp, input, nullptr, &result))
         return false;
 
     iter.storeInstructionResult(result);

@@ -17,6 +17,7 @@
 #include "mozilla/dom/FontFaceSetBinding.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/AsyncEventDispatcher.h"
+#include "mozilla/Preferences.h"
 #include "nsCrossSiteListenerProxy.h"
 #include "nsFontFaceLoader.h"
 #include "nsIChannelPolicy.h"
@@ -279,7 +280,7 @@ FontFaceSet::Delete(FontFace& aFontFace, ErrorResult& aRv)
 
   if (aFontFace.HasRule()) {
     aRv.Throw(NS_ERROR_DOM_INVALID_MODIFICATION_ERR);
-    return nullptr;
+    return false;
   }
 
   if (!mNonRuleFaces.RemoveElement(&aFontFace)) {
@@ -354,6 +355,14 @@ static PLDHashOperator DestroyIterator(nsPtrHashKey<nsFontFaceLoader>* aKey,
 }
 
 void
+FontFaceSet::DisconnectFromRule(FontFace* aFontFace)
+{
+  nsCSSFontFaceRule* rule = aFontFace->GetRule();
+  aFontFace->DisconnectFromRule();
+  mRuleFaceMap.Remove(rule);
+}
+
+void
 FontFaceSet::DestroyUserFontSet()
 {
   Disconnect();
@@ -361,7 +370,7 @@ FontFaceSet::DestroyUserFontSet()
   mPresContext = nullptr;
   mLoaders.EnumerateEntries(DestroyIterator, nullptr);
   for (size_t i = 0; i < mRuleFaces.Length(); i++) {
-    mRuleFaces[i].mFontFace->DisconnectFromRule();
+    DisconnectFromRule(mRuleFaces[i].mFontFace);
     mRuleFaces[i].mFontFace->SetUserFontEntry(nullptr);
   }
   for (size_t i = 0; i < mNonRuleFaces.Length(); i++) {
@@ -586,7 +595,7 @@ FontFaceSet::UpdateRules(const nsTArray<nsFontFaceRuleContainer>& aRules)
                  "FontFace should not occur in mUnavailableFaces twice");
 
       mUnavailableFaces.AppendElement(f);
-      f->DisconnectFromRule();
+      DisconnectFromRule(f);
     }
   }
 
@@ -902,6 +911,9 @@ FontFaceSet::FindOrCreateUserFontEntryFromFontFace(const nsAString& aFamilyName,
             nsDependentString valueString(val.GetStringBufferValue());
             if (valueString.LowerCaseEqualsASCII("woff")) {
               face->mFormatFlags |= gfxUserFontSet::FLAG_FORMAT_WOFF;
+            } else if (Preferences::GetBool(GFX_PREF_WOFF2_ENABLED) &&
+                       valueString.LowerCaseEqualsASCII("woff2")) {
+              face->mFormatFlags |= gfxUserFontSet::FLAG_FORMAT_WOFF2;
             } else if (valueString.LowerCaseEqualsASCII("opentype")) {
               face->mFormatFlags |= gfxUserFontSet::FLAG_FORMAT_OPENTYPE;
             } else if (valueString.LowerCaseEqualsASCII("truetype")) {
@@ -979,7 +991,7 @@ FontFaceSet::FindRuleForUserFontEntry(gfxUserFontEntry* aUserFontEntry)
 gfxUserFontEntry*
 FontFaceSet::FindUserFontEntryForRule(nsCSSFontFaceRule* aRule)
 {
-  FontFace* f = aRule->GetFontFace();
+  FontFace* f = mRuleFaceMap.Get(aRule);
   if (f) {
     return f->GetUserFontEntry();
   }
@@ -1264,8 +1276,12 @@ FontFaceSet::DoRebuildUserFontSet()
 FontFace*
 FontFaceSet::FontFaceForRule(nsCSSFontFaceRule* aRule)
 {
-  FontFace* f = aRule->GetFontFace();
+  MOZ_ASSERT(aRule);
+
+  FontFace* f = mRuleFaceMap.Get(aRule);
   if (f) {
+    MOZ_ASSERT(f->GetFontFaceSet() == this,
+               "existing FontFace is from another FontFaceSet?");
     return f;
   }
 
@@ -1274,7 +1290,9 @@ FontFaceSet::FontFaceForRule(nsCSSFontFaceRule* aRule)
   gfxUserFontEntry* entry = FindUserFontEntryForRule(aRule);
   nsRefPtr<FontFace> newFontFace =
     FontFace::CreateForRule(GetParentObject(), mPresContext, aRule, entry);
-  aRule->SetFontFace(newFontFace);
+  MOZ_ASSERT(newFontFace->GetFontFaceSet() == this,
+             "new FontFace is from another FontFaceSet?");
+  mRuleFaceMap.Put(aRule, newFontFace);
   return newFontFace;
 }
 

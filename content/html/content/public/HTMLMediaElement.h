@@ -520,6 +520,7 @@ public:
   already_AddRefed<DOMMediaStream> GetMozSrcObject() const;
 
   void SetMozSrcObject(DOMMediaStream& aValue);
+  void SetMozSrcObject(DOMMediaStream* aValue);
 
   bool MozPreservesPitch() const
   {
@@ -1229,6 +1230,9 @@ protected:
 
   // True if the media has an audio track
   bool mHasAudio;
+
+  // True if the media has a video track
+  bool mHasVideo;
 
   // True if the media's channel's download has been suspended.
   bool mDownloadSuspendedByCache;

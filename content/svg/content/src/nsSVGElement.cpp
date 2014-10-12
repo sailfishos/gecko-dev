@@ -15,6 +15,7 @@
 #include "nsICSSDeclaration.h"
 #include "nsIDocument.h"
 #include "nsIDOMMutationEvent.h"
+#include "nsSVGPathGeometryElement.h"
 #include "mozilla/InternalMutationEvent.h"
 #include "nsError.h"
 #include "nsIPresShell.h"
@@ -51,6 +52,7 @@
 #include "nsSMILAnimationController.h"
 #include "mozilla/dom/SVGElementBinding.h"
 #include "mozilla/unused.h"
+#include "RestyleManager.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -916,17 +918,18 @@ nsSVGElement::WalkAnimatedContentStyleRules(nsRuleWalker* aRuleWalker)
   // whether this is a "no-animation restyle". (This should match the check
   // in nsHTMLCSSStyleSheet::RulesMatching(), where we determine whether to
   // apply the SMILOverrideStyle.)
-  nsIDocument* doc = OwnerDoc();
-  nsIPresShell* shell = doc->GetShell();
-  nsPresContext* context = shell ? shell->GetPresContext() : nullptr;
-  if (context && context->IsProcessingRestyles() &&
-      !context->IsProcessingAnimationStyleChange()) {
-    // Any style changes right now could trigger CSS Transitions. We don't
-    // want that to happen from SMIL-animated value of mapped attrs, so
-    // ignore animated value for now, and request an animation restyle to
-    // get our animated value noticed.
-    shell->RestyleForAnimation(this,
-      eRestyle_SVGAttrAnimations | eRestyle_ChangeAnimationPhase);
+  nsPresContext* context = aRuleWalker->PresContext();
+  nsIPresShell* shell = context->PresShell();
+  RestyleManager* restyleManager = context->RestyleManager();
+  if (restyleManager->SkipAnimationRules()) {
+    if (restyleManager->PostAnimationRestyles()) {
+      // Any style changes right now could trigger CSS Transitions. We don't
+      // want that to happen from SMIL-animated value of mapped attrs, so
+      // ignore animated value for now, and request an animation restyle to
+      // get our animated value noticed.
+      shell->RestyleForAnimation(this,
+        eRestyle_SVGAttrAnimations | eRestyle_ChangeAnimationPhase);
+    }
   } else {
     // Ok, this is an animation restyle -- go ahead and update/walk the
     // animated content style rule.
@@ -1603,6 +1606,8 @@ nsSVGElement::DidChangeLength(uint8_t aAttrEnum,
 void
 nsSVGElement::DidAnimateLength(uint8_t aAttrEnum)
 {
+  ClearAnyCachedPath();
+
   nsIFrame* frame = GetPrimaryFrame();
 
   if (frame) {
@@ -1848,6 +1853,8 @@ nsSVGElement::DidAnimatePointList()
   NS_ABORT_IF_FALSE(GetPointListAttrName(),
                     "Animating non-existent path data?");
 
+  ClearAnyCachedPath();
+
   nsIFrame* frame = GetPrimaryFrame();
 
   if (frame) {
@@ -1882,6 +1889,8 @@ nsSVGElement::DidAnimatePathSegList()
 {
   NS_ABORT_IF_FALSE(GetPathDataAttrName(),
                     "Animating non-existent path data?");
+
+  ClearAnyCachedPath();
 
   nsIFrame* frame = GetPrimaryFrame();
 
@@ -2703,7 +2712,7 @@ nsSVGElement::GetAnimatedAttr(int32_t aNamespaceID, nsIAtom* aName)
 void
 nsSVGElement::AnimationNeedsResample()
 {
-  nsIDocument* doc = GetCurrentDoc();
+  nsIDocument* doc = GetComposedDoc();
   if (doc && doc->HasAnimationController()) {
     doc->GetAnimationController()->SetResampleNeeded();
   }
@@ -2712,7 +2721,7 @@ nsSVGElement::AnimationNeedsResample()
 void
 nsSVGElement::FlushAnimations()
 {
-  nsIDocument* doc = GetCurrentDoc();
+  nsIDocument* doc = GetComposedDoc();
   if (doc && doc->HasAnimationController()) {
     doc->GetAnimationController()->FlushResampleRequests();
   }

@@ -144,6 +144,28 @@ function injectLoopAPI(targetWindow) {
       }
     },
 
+    errors: {
+      enumerable: true,
+      get: function() {
+        let errors = {};
+        for (let [type, error] of MozLoopService.errors) {
+          // if error.error is an nsIException, just delete it since it's hard
+          // to clone across the boundary.
+          if (error.error instanceof Ci.nsIException) {
+            MozLoopService.log.debug("Warning: Some errors were omitted from MozLoopAPI.errors " +
+                                     "due to issues copying nsIException across boundaries.",
+                                     error.error);
+            delete error.error;
+          }
+
+          // We have to clone the error property since it may be an Error object.
+          errors[type] = Cu.cloneInto(error, targetWindow);
+
+        }
+        return Cu.cloneInto(errors, targetWindow);
+      },
+    },
+
     /**
      * Returns the current locale of the browser.
      *
@@ -252,6 +274,33 @@ function injectLoopAPI(targetWindow) {
       writable: true,
       value: function(num, str) {
         return PluralForm.get(num, str);
+      }
+    },
+
+    /**
+     * Displays a confirmation dialog using the specified strings.
+     *
+     * Callback parameters:
+     * - err null on success, non-null on unexpected failure to show the prompt.
+     * - {Boolean} True if the user chose the OK button.
+     */
+    confirm: {
+      enumerable: true,
+      writable: true,
+      value: function(bodyMessage, okButtonMessage, cancelButtonMessage, callback) {
+        try {
+          let buttonFlags =
+            (Ci.nsIPrompt.BUTTON_POS_0 * Ci.nsIPrompt.BUTTON_TITLE_IS_STRING) +
+            (Ci.nsIPrompt.BUTTON_POS_1 * Ci.nsIPrompt.BUTTON_TITLE_IS_STRING);
+
+          let chosenButton = Services.prompt.confirmEx(null, "",
+            bodyMessage, buttonFlags, okButtonMessage, cancelButtonMessage,
+            null, null, {});
+
+          callback(null, chosenButton == 0);
+        } catch (ex) {
+          callback(cloneValueInto(ex, targetWindow));
+        }
       }
     },
 
@@ -452,6 +501,13 @@ function injectLoopAPI(targetWindow) {
       }
     },
 
+    fxAEnabled: {
+      enumerable: true,
+      get: function() {
+        return MozLoopService.fxAEnabled;
+      },
+    },
+
     logInToFxA: {
       enumerable: true,
       writable: true,
@@ -513,9 +569,9 @@ function injectLoopAPI(targetWindow) {
             }, targetWindow);
           } catch (ex) {
             // only log outside of xpcshell to avoid extra message noise
-            if (typeof window !== 'undefined' && "console" in window) {
-              console.log("Failed to construct appVersionInfo; if this isn't " +
-                          "an xpcshell unit test, something is wrong", ex);
+            if (typeof targetWindow !== 'undefined' && "console" in targetWindow) {
+              MozLoopService.log.error("Failed to construct appVersionInfo; if this isn't " +
+                                       "an xpcshell unit test, something is wrong", ex);
             }
           }
         }
@@ -563,11 +619,26 @@ function injectLoopAPI(targetWindow) {
         return MozLoopService.generateUUID();
       }
     },
+
+    /**
+     * Starts a direct call to the contact addresses.
+     *
+     * @param {Object} contact The contact to call
+     * @param {String} callType The type of call, e.g. "audio-video" or "audio-only"
+     * @return true if the call is opened, false if it is not opened (i.e. busy)
+     */
+    startDirectCall: {
+      enumerable: true,
+      writable: true,
+      value: function(contact, callType) {
+        MozLoopService.startDirectCall(contact, callType);
+      }
+    },
   };
 
   function onStatusChanged(aSubject, aTopic, aData) {
     let event = new targetWindow.CustomEvent("LoopStatusChanged");
-    targetWindow.dispatchEvent(event)
+    targetWindow.dispatchEvent(event);
   };
 
   function onDOMWindowDestroyed(aSubject, aTopic, aData) {

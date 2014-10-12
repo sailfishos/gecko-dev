@@ -34,6 +34,7 @@
 
 #include "jsatominlines.h"
 
+#include "vm/NativeObject-inl.h"
 #include "vm/NumberObject-inl.h"
 #include "vm/String-inl.h"
 

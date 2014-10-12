@@ -663,15 +663,15 @@ FreeChunk(JSRuntime *rt, Chunk *p)
 inline Chunk *
 ChunkPool::get(JSRuntime *rt)
 {
-    Chunk *chunk = emptyChunkListHead;
+    Chunk *chunk = head_;
     if (!chunk) {
-        MOZ_ASSERT(!emptyCount);
+        MOZ_ASSERT(!count_);
         return nullptr;
     }
 
-    MOZ_ASSERT(emptyCount);
-    emptyChunkListHead = chunk->info.next;
-    --emptyCount;
+    MOZ_ASSERT(count_);
+    head_ = chunk->info.next;
+    --count_;
     return chunk;
 }
 
@@ -680,16 +680,16 @@ inline void
 ChunkPool::put(Chunk *chunk)
 {
     chunk->info.age = 0;
-    chunk->info.next = emptyChunkListHead;
-    emptyChunkListHead = chunk;
-    emptyCount++;
+    chunk->info.next = head_;
+    head_ = chunk;
+    count_++;
 }
 
 inline Chunk *
 ChunkPool::Enum::front()
 {
     Chunk *chunk = *chunkp;
-    MOZ_ASSERT_IF(chunk, pool.getEmptyCount() != 0);
+    MOZ_ASSERT_IF(chunk, pool.count() != 0);
     return chunk;
 }
 
@@ -705,7 +705,7 @@ ChunkPool::Enum::removeAndPopFront()
 {
     MOZ_ASSERT(!empty());
     *chunkp = front()->info.next;
-    --pool.emptyCount;
+    --pool.count_;
 }
 
 /* Must be called either during the GC or with the GC lock taken. */
@@ -720,7 +720,7 @@ GCRuntime::expireChunkPool(bool shrinkBuffers, bool releaseAll)
      */
     Chunk *freeList = nullptr;
     unsigned freeChunkCount = 0;
-    for (ChunkPool::Enum e(chunkPool); !e.empty(); ) {
+    for (ChunkPool::Enum e(emptyChunks); !e.empty(); ) {
         Chunk *chunk = e.front();
         MOZ_ASSERT(chunk->unused());
         MOZ_ASSERT(!chunkSet.has(chunk));
@@ -739,9 +739,9 @@ GCRuntime::expireChunkPool(bool shrinkBuffers, bool releaseAll)
             e.popFront();
         }
     }
-    MOZ_ASSERT(chunkPool.getEmptyCount() <= tunables.maxEmptyChunkCount());
-    MOZ_ASSERT_IF(shrinkBuffers, chunkPool.getEmptyCount() <= tunables.minEmptyChunkCount());
-    MOZ_ASSERT_IF(releaseAll, chunkPool.getEmptyCount() == 0);
+    MOZ_ASSERT(emptyChunks.count() <= tunables.maxEmptyChunkCount());
+    MOZ_ASSERT_IF(shrinkBuffers, emptyChunks.count() <= tunables.minEmptyChunkCount());
+    MOZ_ASSERT_IF(releaseAll, emptyChunks.count() == 0);
     return freeList;
 }
 
@@ -1037,7 +1037,7 @@ GCRuntime::moveChunkToFreePool(Chunk *chunk)
     MOZ_ASSERT(chunk->unused());
     MOZ_ASSERT(chunkSet.has(chunk));
     chunkSet.remove(chunk);
-    chunkPool.put(chunk);
+    emptyChunks.put(chunk);
 }
 
 inline bool
@@ -1049,7 +1049,7 @@ GCRuntime::wantBackgroundAllocation() const
      * of them.
      */
     return helperState.canBackgroundAllocate() &&
-           chunkPool.getEmptyCount() < tunables.minEmptyChunkCount() &&
+           emptyChunks.count() < tunables.minEmptyChunkCount() &&
            chunkSet.count() >= 4;
 }
 
@@ -1088,7 +1088,7 @@ GCRuntime::pickChunk(Zone *zone, AutoMaybeStartBackgroundAllocation &maybeStartB
     if (chunk)
         return chunk;
 
-    chunk = chunkPool.get(rt);
+    chunk = emptyChunks.get(rt);
     if (!chunk) {
         chunk = Chunk::allocate(rt);
         if (!chunk)
@@ -1512,9 +1512,9 @@ GCRuntime::getParameter(JSGCParamKey key)
       case JSGC_MODE:
         return uint32_t(mode);
       case JSGC_UNUSED_CHUNKS:
-        return uint32_t(chunkPool.getEmptyCount());
+        return uint32_t(emptyChunks.count());
       case JSGC_TOTAL_CHUNKS:
-        return uint32_t(chunkSet.count() + chunkPool.getEmptyCount());
+        return uint32_t(chunkSet.count() + emptyChunks.count());
       case JSGC_SLICE_TIME_BUDGET:
         return uint32_t(sliceBudget > 0 ? sliceBudget / PRMJ_USEC_PER_MSEC : 0);
       case JSGC_MARK_STACK_LIMIT:
@@ -2117,7 +2117,6 @@ CanRelocateArena(ArenaHeader *arena)
      * We can't currently move global objects because their address can be baked
      * into compiled code so we skip relocation of any area containing one.
      */
-    JSRuntime *rt = arena->zone->runtimeFromMainThread();
     return arena->getAllocKind() <= FINALIZE_OBJECT_LAST && !ArenaContainsGlobal(arena);
 }
 
@@ -2199,15 +2198,16 @@ RelocateCell(Zone *zone, TenuredCell *src, AllocKind thingKind, size_t thingSize
         JSObject *dstObj = static_cast<JSObject *>(static_cast<Cell *>(dst));
 
         // Fixup the pointer to inline object elements if necessary.
-        if (srcObj->hasFixedElements())
-            dstObj->setFixedElements();
+        if (srcObj->isNative() && srcObj->as<NativeObject>().hasFixedElements())
+            dstObj->as<NativeObject>().setFixedElements();
 
         // Call object moved hook if present.
         if (JSObjectMovedOp op = srcObj->getClass()->ext.objectMovedOp)
             op(dstObj, srcObj);
 
         MOZ_ASSERT_IF(dstObj->isNative(),
-                      !PtrIsInRange((const Value*)dstObj->getDenseElements(), src, thingSize));
+                      !PtrIsInRange((const Value*)dstObj->as<NativeObject>().getDenseElements(),
+                                    src, thingSize));
     }
 
     // Copy the mark bits.
@@ -2343,38 +2343,30 @@ MovingTracer::Visit(JSTracer *jstrc, void **thingp, JSGCTraceKind kind)
 }
 
 void
-MovingTracer::Sweep(JSTracer *jstrc)
+GCRuntime::sweepZoneAfterCompacting(Zone *zone)
 {
-    JSRuntime *rt = jstrc->runtime();
+    MOZ_ASSERT(zone->isCollecting());
     FreeOp *fop = rt->defaultFreeOp();
+    zone->discardJitCode(fop);
+    zone->sweepAnalysis(fop, rt->gc.releaseObservedTypes && !zone->isPreservingCode());
+    zone->sweepBreakpoints(fop);
 
-    WatchpointMap::sweepAll(rt);
-
-    Debugger::sweepAll(fop);
-
-    for (ZonesIter zone(rt, SkipAtoms); !zone.done(); zone.next()) {
-        if (zone->isCollecting()) {
-            bool oom = false;
-            zone->sweep(fop, false, &oom);
-            MOZ_ASSERT(!oom);
-
-            for (CompartmentsInZoneIter c(zone); !c.done(); c.next()) {
-                c->sweep(fop, false);
-            }
-        } else {
-            /* Update cross compartment wrappers into moved zones. */
-            for (CompartmentsInZoneIter c(zone); !c.done(); c.next())
-                c->sweepCrossCompartmentWrappers();
-        }
+    for (CompartmentsInZoneIter c(zone); !c.done(); c.next()) {
+        c->sweepInnerViews();
+        c->sweepCrossCompartmentWrappers();
+        c->sweepBaseShapeTable();
+        c->sweepInitialShapeTable();
+        c->sweepTypeObjectTables();
+        c->sweepRegExps();
+        c->sweepCallsiteClones();
+        c->sweepSavedStacks();
+        c->sweepGlobalObject(fop);
+        c->sweepSelfHostingScriptSource();
+        c->sweepDebugScopes();
+        c->sweepJitCompartment(fop);
+        c->sweepWeakMaps();
+        c->sweepNativeIterators();
     }
-
-    /* Type inference may put more blocks here to free. */
-    rt->freeLifoAlloc.freeAll();
-
-    /* Clear runtime caches that can contain cell pointers. */
-    // TODO: Should possibly just call PurgeRuntime() here.
-    rt->newObjectCache.purge();
-    rt->nativeIterCache.purge();
 }
 
 /*
@@ -2421,7 +2413,7 @@ GCRuntime::updatePointersToRelocatedCells()
 
     // Fixup cross compartment wrappers as we assert the existence of wrappers in the map.
     for (CompartmentsIter comp(rt, SkipAtoms); !comp.done(); comp.next())
-        comp->fixupCrossCompartmentWrappers(&trc);
+        comp->sweepCrossCompartmentWrappers();
 
     // Fixup generators as these are not normally traced.
     for (ContextIter i(rt); !i.done(); i.next()) {
@@ -2459,7 +2451,21 @@ GCRuntime::updatePointersToRelocatedCells()
     if (JSTraceDataOp op = grayRootTracer.op)
         (*op)(&trc, grayRootTracer.data);
 
-    MovingTracer::Sweep(&trc);
+    // Sweep everything to fix up weak pointers
+    WatchpointMap::sweepAll(rt);
+    Debugger::sweepAll(rt->defaultFreeOp());
+    for (GCZonesIter zone(rt); !zone.done(); zone.next()) {
+        if (!rt->isAtomsZone(zone))
+            rt->gc.sweepZoneAfterCompacting(zone);
+    }
+
+    // Type inference may put more blocks here to free.
+    rt->freeLifoAlloc.freeAll();
+
+    // Clear runtime caches that can contain cell pointers.
+    // TODO: Should possibly just call PurgeRuntime() here.
+    rt->newObjectCache.purge();
+    rt->nativeIterCache.purge();
 
     // Call callbacks to get the rest of the system to fixup other untraced pointers.
     callWeakPointerCallbacks();
@@ -3249,7 +3255,9 @@ GCHelperState::waitForBackgroundThread()
 {
     MOZ_ASSERT(CurrentThreadCanAccessRuntime(rt));
 
+#ifdef DEBUG
     rt->gc.lockOwner = nullptr;
+#endif
     PR_WaitCondVar(done, PR_INTERVAL_NO_TIMEOUT);
 #ifdef DEBUG
     rt->gc.lockOwner = PR_GetCurrentThread();
@@ -3294,7 +3302,7 @@ GCHelperState::work()
             if (!chunk)
                 break;
             MOZ_ASSERT(chunk->info.numArenasFreeCommitted == 0);
-            rt->gc.chunkPool.put(chunk);
+            rt->gc.emptyChunks.put(chunk);
         } while (state() == ALLOCATING && rt->gc.wantBackgroundAllocation());
 
         MOZ_ASSERT(state() == ALLOCATING || state() == CANCEL_ALLOCATION);
@@ -4604,6 +4612,97 @@ GCRuntime::endMarkingZoneGroup()
     marker.setMarkColorBlack();
 }
 
+#define MAKE_GC_PARALLEL_TASK(name) \
+    class name : public GCParallelTask {\
+        JSRuntime *runtime;\
+        virtual void run() MOZ_OVERRIDE;\
+      public:\
+        name (JSRuntime *rt) : runtime(rt) {}\
+    }
+MAKE_GC_PARALLEL_TASK(SweepAtomsTask);
+MAKE_GC_PARALLEL_TASK(SweepInnerViewsTask);
+MAKE_GC_PARALLEL_TASK(SweepCCWrappersTask);
+MAKE_GC_PARALLEL_TASK(SweepBaseShapesTask);
+MAKE_GC_PARALLEL_TASK(SweepInitialShapesTask);
+MAKE_GC_PARALLEL_TASK(SweepTypeObjectsTask);
+MAKE_GC_PARALLEL_TASK(SweepRegExpsTask);
+MAKE_GC_PARALLEL_TASK(SweepMiscTask);
+
+/* virtual */ void
+SweepAtomsTask::run()
+{
+    runtime->sweepAtoms();
+}
+
+/* virtual */ void
+SweepInnerViewsTask::run()
+{
+    for (GCCompartmentGroupIter c(runtime); !c.done(); c.next())
+        c->sweepInnerViews();
+}
+
+/* virtual */ void
+SweepCCWrappersTask::run()
+{
+    for (GCCompartmentGroupIter c(runtime); !c.done(); c.next())
+        c->sweepCrossCompartmentWrappers();
+}
+
+/* virtual */ void
+SweepBaseShapesTask::run()
+{
+    for (GCCompartmentGroupIter c(runtime); !c.done(); c.next())
+        c->sweepBaseShapeTable();
+}
+
+/* virtual */ void
+SweepInitialShapesTask::run()
+{
+    for (GCCompartmentGroupIter c(runtime); !c.done(); c.next())
+        c->sweepInitialShapeTable();
+}
+
+/* virtual */ void
+SweepTypeObjectsTask::run()
+{
+    for (GCCompartmentGroupIter c(runtime); !c.done(); c.next())
+        c->sweepTypeObjectTables();
+}
+
+/* virtual */ void
+SweepRegExpsTask::run()
+{
+    for (GCCompartmentGroupIter c(runtime); !c.done(); c.next())
+        c->sweepRegExps();
+}
+
+/* virtual */ void
+SweepMiscTask::run()
+{
+    for (GCCompartmentGroupIter c(runtime); !c.done(); c.next()) {
+        c->sweepCallsiteClones();
+        c->sweepSavedStacks();
+        c->sweepSelfHostingScriptSource();
+        c->sweepNativeIterators();
+    }
+}
+
+void
+GCRuntime::startTask(GCParallelTask &task, gcstats::Phase phase)
+{
+    if (!task.startWithLockHeld()) {
+        gcstats::AutoPhase ap(stats, phase);
+        task.runFromMainThread(rt);
+    }
+}
+
+void
+GCRuntime::joinTask(GCParallelTask &task, gcstats::Phase phase)
+{
+    gcstats::AutoPhase ap(stats, task, phase);
+    task.joinWithLockHeld();
+}
+
 void
 GCRuntime::beginSweepingZoneGroup()
 {
@@ -4633,6 +4732,14 @@ GCRuntime::beginSweepingZoneGroup()
     validateIncrementalMarking();
 
     FreeOp fop(rt);
+    SweepAtomsTask sweepAtomsTask(rt);
+    SweepInnerViewsTask sweepInnerViewsTask(rt);
+    SweepCCWrappersTask sweepCCWrappersTask(rt);
+    SweepBaseShapesTask sweepBaseShapesTask(rt);
+    SweepInitialShapesTask sweepInitialShapesTask(rt);
+    SweepTypeObjectsTask sweepTypeObjectsTask(rt);
+    SweepRegExpsTask sweepRegExpsTask(rt);
+    SweepMiscTask sweepMiscTask(rt);
 
     {
         gcstats::AutoPhase ap(stats, gcstats::PHASE_FINALIZE_START);
@@ -4641,8 +4748,8 @@ GCRuntime::beginSweepingZoneGroup()
     }
 
     if (sweepingAtoms) {
-        gcstats::AutoPhase ap(stats, gcstats::PHASE_SWEEP_ATOMS);
-        rt->sweepAtoms();
+        AutoLockHelperThreadState helperLock;
+        startTask(sweepAtomsTask, gcstats::PHASE_SWEEP_ATOMS);
     }
 
     {
@@ -4650,58 +4757,26 @@ GCRuntime::beginSweepingZoneGroup()
         gcstats::AutoSCC scc(stats, zoneGroupIndex);
 
         {
-            gcstats::AutoPhase apiv(stats, gcstats::PHASE_SWEEP_INNER_VIEWS);
-            for (GCCompartmentGroupIter c(rt); !c.done(); c.next()) {
-                c->sweepInnerViews();
-            }
+            AutoLockHelperThreadState helperLock;
+            startTask(sweepInnerViewsTask, gcstats::PHASE_SWEEP_INNER_VIEWS);
+            startTask(sweepCCWrappersTask, gcstats::PHASE_SWEEP_CC_WRAPPER);
+            startTask(sweepBaseShapesTask, gcstats::PHASE_SWEEP_BASE_SHAPE);
+            startTask(sweepInitialShapesTask, gcstats::PHASE_SWEEP_INITIAL_SHAPE);
+            startTask(sweepTypeObjectsTask, gcstats::PHASE_SWEEP_TYPE_OBJECT);
+            startTask(sweepRegExpsTask, gcstats::PHASE_SWEEP_REGEXP);
+            startTask(sweepMiscTask, gcstats::PHASE_SWEEP_MISC);
         }
 
+        // The remainder of the of the tasks run in parallel on the main
+        // thread until we join, below.
         {
-            gcstats::AutoPhase apccw(stats, gcstats::PHASE_SWEEP_CC_WRAPPER);
-            for (GCCompartmentGroupIter c(rt); !c.done(); c.next()) {
-                c->sweepCrossCompartmentWrappers();
-            }
-        }
+            gcstats::AutoPhase ap(stats, gcstats::PHASE_SWEEP_MISC);
 
-        {
-            gcstats::AutoPhase apbs(stats, gcstats::PHASE_SWEEP_BASE_SHAPE);
             for (GCCompartmentGroupIter c(rt); !c.done(); c.next()) {
-                c->sweepBaseShapeTable();
-            }
-        }
-
-        {
-            gcstats::AutoPhase apis(stats, gcstats::PHASE_SWEEP_INITIAL_SHAPE);
-            for (GCCompartmentGroupIter c(rt); !c.done(); c.next()) {
-                c->sweepInitialShapeTable();
-            }
-        }
-
-        {
-            gcstats::AutoPhase apto(stats, gcstats::PHASE_SWEEP_TYPE_OBJECT);
-            for (GCCompartmentGroupIter c(rt); !c.done(); c.next()) {
-                c->sweepTypeObjectTables();
-            }
-        }
-
-        {
-            gcstats::AutoPhase apre(stats, gcstats::PHASE_SWEEP_REGEXP);
-            for (GCCompartmentGroupIter c(rt); !c.done(); c.next()) {
-                c->sweepRegExps();
-            }
-        }
-
-        {
-            gcstats::AutoPhase apmisc(stats, gcstats::PHASE_SWEEP_MISC);
-            for (GCCompartmentGroupIter c(rt); !c.done(); c.next()) {
-                c->sweepCallsiteClones();
-                c->sweepSavedStacks();
                 c->sweepGlobalObject(&fop);
-                c->sweepSelfHostingScriptSource();
                 c->sweepDebugScopes();
                 c->sweepJitCompartment(&fop);
                 c->sweepWeakMaps();
-                c->sweepNativeIterators();
             }
 
             // Bug 1071218: the following two methods have not yet been
@@ -4739,6 +4814,26 @@ GCRuntime::beginSweepingZoneGroup()
     if (sweepingAtoms) {
         gcstats::AutoPhase ap(stats, gcstats::PHASE_SWEEP_SYMBOL_REGISTRY);
         rt->symbolRegistry().sweep();
+    }
+
+    // Rejoin our off-main-thread tasks.
+    if (sweepingAtoms) {
+        AutoLockHelperThreadState helperLock;
+        joinTask(sweepAtomsTask, gcstats::PHASE_SWEEP_ATOMS);
+    }
+
+    {
+        gcstats::AutoPhase ap(stats, gcstats::PHASE_SWEEP_COMPARTMENTS);
+        gcstats::AutoSCC scc(stats, zoneGroupIndex);
+
+        AutoLockHelperThreadState helperLock;
+        joinTask(sweepInnerViewsTask, gcstats::PHASE_SWEEP_INNER_VIEWS);
+        joinTask(sweepCCWrappersTask, gcstats::PHASE_SWEEP_CC_WRAPPER);
+        joinTask(sweepBaseShapesTask, gcstats::PHASE_SWEEP_BASE_SHAPE);
+        joinTask(sweepInitialShapesTask, gcstats::PHASE_SWEEP_INITIAL_SHAPE);
+        joinTask(sweepTypeObjectsTask, gcstats::PHASE_SWEEP_TYPE_OBJECT);
+        joinTask(sweepRegExpsTask, gcstats::PHASE_SWEEP_REGEXP);
+        joinTask(sweepMiscTask, gcstats::PHASE_SWEEP_MISC);
     }
 
     /*

@@ -260,6 +260,7 @@ PeerConnectionImpl::PeerConnectionImpl(const GlobalObject* aGlobal)
   , mIdentity(nullptr)
   , mPrivacyRequested(false)
   , mSTSThread(nullptr)
+  , mAllowIceLoopback(false)
   , mMedia(nullptr)
   , mNumAudioStreams(0)
   , mNumVideoStreams(0)
@@ -609,6 +610,7 @@ PeerConnectionImpl::Initialize(PeerConnectionObserver& aObserver,
   }
 
   mMedia = new PeerConnectionMedia(this);
+  mMedia->SetAllowIceLoopback(mAllowIceLoopback);
 
   // Connect ICE slots.
   mMedia->SignalIceGatheringStateChange.connect(
@@ -703,7 +705,7 @@ PeerConnectionImpl::GetFingerprintHexValue() const
 
 
 nsresult
-PeerConnectionImpl::CreateFakeMediaStream(uint32_t aHint, nsIDOMMediaStream** aRetval)
+PeerConnectionImpl::CreateFakeMediaStream(uint32_t aHint, DOMMediaStream** aRetval)
 {
   MOZ_ASSERT(aRetval);
   PC_AUTO_ENTER_API_CALL(false);

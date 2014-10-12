@@ -117,7 +117,7 @@ def addressToSymbol(file, address, symbolsDir):
     return ""
 
 # Matches lines produced by NS_FormatCodeAddress().
-line_re = re.compile("^(.*#\d+: )(.+)\[(.+) \+(0x.+)\](.*)$")
+line_re = re.compile("^(.*#\d+: )(.+)\[(.+) \+(0x[0-9A-Fa-f]+)\](.*)$")
 
 def fixSymbols(line, symbolsDir):
   result = line_re.match(line)

@@ -15,7 +15,7 @@
 
 #include "jsobjinlines.h"
 
-#include "vm/ObjectImpl-inl.h"
+#include "vm/NativeObject-inl.h"
 
 using namespace js;
 using namespace js::types;
@@ -839,48 +839,12 @@ js::obj_getOwnPropertyDescriptor(JSContext *cx, unsigned argc, Value *vp)
     return GetOwnPropertyDescriptor(cx, obj, id, args.rval());
 }
 
-// ES6 draft rev25 (2014/05/22) 19.1.2.14 Object.keys(O)
+// ES6 draft rev27 (2014/08/24) 19.1.2.14 Object.keys(O)
 static bool
 obj_keys(JSContext *cx, unsigned argc, Value *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
-
-    // Steps 1-2.
-    RootedObject obj(cx);
-    if (!GetFirstArgumentAsObject(cx, args, "Object.keys", &obj))
-        return false;
-
-    // Steps 3-10. Since JSITER_SYMBOLS and JSITER_HIDDEN are not passed,
-    // GetPropertyNames performs the type check in step 10.c. and the
-    // [[Enumerable]] check specified in step 10.c.iii.
-    AutoIdVector props(cx);
-    if (!GetPropertyNames(cx, obj, JSITER_OWNONLY, &props))
-        return false;
-
-    AutoValueVector namelist(cx);
-    if (!namelist.reserve(props.length()))
-        return false;
-    for (size_t i = 0, len = props.length(); i < len; i++) {
-        jsid id = props[i];
-        JSString *str;
-        if (JSID_IS_STRING(id)) {
-            str = JSID_TO_STRING(id);
-        } else {
-            str = Int32ToString<CanGC>(cx, JSID_TO_INT(id));
-            if (!str)
-                return false;
-        }
-        namelist.infallibleAppend(StringValue(str));
-    }
-
-    // Step 11.
-    MOZ_ASSERT(props.length() <= UINT32_MAX);
-    JSObject *aobj = NewDenseCopiedArray(cx, uint32_t(namelist.length()), namelist.begin());
-    if (!aobj)
-        return false;
-
-    args.rval().setObject(*aobj);
-    return true;
+    return GetOwnPropertyKeys(cx, args, JSITER_OWNONLY);
 }
 
 /* ES6 draft 15.2.3.16 */
@@ -1051,16 +1015,19 @@ obj_preventExtensions(JSContext *cx, unsigned argc, Value *vp)
     return JSObject::preventExtensions(cx, obj);
 }
 
+// ES6 draft rev27 (2014/08/24) 19.1.2.5 Object.freeze(O)
 static bool
 obj_freeze(JSContext *cx, unsigned argc, Value *vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
-    RootedObject obj(cx);
-    if (!GetFirstArgumentAsObject(cx, args, "Object.freeze", &obj))
-        return false;
+    args.rval().set(args.get(0));
 
-    args.rval().setObject(*obj);
+    // Step 1.
+    if (!args.get(0).isObject())
+        return true;
 
+    // Steps 2-5.
+    RootedObject obj(cx, &args.get(0).toObject());
     return JSObject::freeze(cx, obj);
 }
 
