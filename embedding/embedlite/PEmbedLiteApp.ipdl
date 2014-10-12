@@ -7,7 +7,7 @@ include protocol PEmbedLiteView;
 namespace mozilla {
 namespace embedlite {
 
-intr protocol PEmbedLiteApp {
+prio(normal upto high) intr protocol PEmbedLiteApp {
   manages PEmbedLiteView;
 parent:
   async Initialized();

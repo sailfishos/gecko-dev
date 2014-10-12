@@ -78,9 +78,9 @@ protected:
   virtual bool RecvSyncMessage(const nsString& aMessage,
                                const nsString& aJSON,
                                InfallibleTArray<nsString>* aJSONRetVal) MOZ_OVERRIDE;
-  virtual bool AnswerRpcMessage(const nsString& aMessage,
-                                const nsString& aJSON,
-                                InfallibleTArray<nsString>* aJSONRetVal) MOZ_OVERRIDE;
+  virtual bool RecvRpcMessage(const nsString& aMessage,
+                              const nsString& aJSON,
+                              InfallibleTArray<nsString>* aJSONRetVal) MOZ_OVERRIDE;
   virtual bool
   RecvUpdateZoomConstraints(const uint32_t& aPresShellId,
                             const ViewID& aViewId,

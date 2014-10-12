@@ -454,7 +454,7 @@ EmbedLiteViewThreadChild::DoCallRpcMessage(const char16_t* aMessageName, const c
 {
   LOGT("msg:%s, data:%s", NS_ConvertUTF16toUTF8(aMessageName).get(), NS_ConvertUTF16toUTF8(aMessage).get());
   if (mRegisteredMessages.Get(nsDependentString(aMessageName))) {
-    CallRpcMessage(nsDependentString(aMessageName), nsDependentString(aMessage), aJSONRetVal);
+    SendRpcMessage(nsDependentString(aMessageName), nsDependentString(aMessage), aJSONRetVal);
   }
   return true;
 }
@@ -751,12 +751,12 @@ EmbedLiteViewThreadChild::RecvHandleTextEvent(const nsString& commit, const nsSt
   if (StartComposite || UpdateComposite || EndComposite) {
     WidgetCompositionEvent updateEvent(true, NS_COMPOSITION_UPDATE, widget);
     InitEvent(updateEvent, nullptr);
-    updateEvent.data = pushStr;
+    updateEvent.mData = pushStr;
     mHelper->DispatchWidgetEvent(updateEvent);
 
-    WidgetTextEvent event(true, NS_TEXT_TEXT, widget);
+    WidgetCompositionEvent event(true, NS_COMPOSITION_CHANGE, widget);
     InitEvent(event, nullptr);
-    event.theText = pushStr;
+    event.mData = pushStr;
     mHelper->DispatchWidgetEvent(event);
 
     nsCOMPtr<nsIPresShell> ps = mHelper->GetPresContext()->GetPresShell();

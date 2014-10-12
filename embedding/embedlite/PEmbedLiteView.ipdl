@@ -27,7 +27,7 @@ using struct mozilla::layers::ZoomConstraints from "FrameMetrics.h";
 namespace mozilla {
 namespace embedlite {
 
-intr protocol PEmbedLiteView {
+prio(normal upto high) intr protocol PEmbedLiteView {
     manager PEmbedLiteApp;
 child:
     async LoadURL(nsString url);
@@ -104,7 +104,7 @@ parent:
     sync SyncMessage(nsString aMessage, nsString aJSON)
       returns (nsString[] retval);
 
-    rpc RpcMessage(nsString aMessage, nsString aJSON)
+    prio(high) sync RpcMessage(nsString aMessage, nsString aJSON)
       returns (nsString[] retval);
 
     // IME
