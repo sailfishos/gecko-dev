@@ -130,7 +130,6 @@ public:
   virtual void SendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage);
 
   virtual uint32_t GetUniqueID();
-  virtual bool GetPendingTexture(EmbedLiteRenderTarget* aContextWrapper, int* textureID, int* width, int* height, int* textureTarget = 0);
   virtual void* GetPlatformImage(int* width, int* height);
 
   virtual void SuspendRendering();
