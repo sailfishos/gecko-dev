@@ -1,17 +1,21 @@
+# -*- Mode: python; c-basic-offset: 4; indent-tabs-mode: nil; tab-width: 40 -*-
 # vim: set filetype=python:
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-DIRS += ['qtasync']
+Program('embedLiteCoreInitTestAsync')
 
-SimplePrograms([
-    'embedLiteCoreInitTest',
-    'embedLiteViewInitTest',
-])
+GENERATED_SOURCES += [
+    'moc_qmessagepump.cpp',
+]
+
+SOURCES += [
+    'embedLiteCoreInitTestAsync.cpp',
+    'qmessagepump.cpp',
+]
 
 DEFINES['XPCOM_GLUE'] = True
-
 DISABLE_STL_WRAPPING = True
 
 USE_LIBS += [
@@ -19,8 +23,4 @@ USE_LIBS += [
 ]
 
 OS_LIBS += CONFIG['TK_LIBS']
-OS_LIBS += CONFIG['MOZ_GTHREAD_LIBS']
-
-JAR_MANIFESTS += ['jar.mn']
-
 CXXFLAGS += CONFIG['TK_CFLAGS']
