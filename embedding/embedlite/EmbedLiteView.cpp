@@ -35,30 +35,31 @@ EmbedLiteView::EmbedLiteView(EmbedLiteApp* aApp, EmbedLiteViewImplIface* aViewIm
 EmbedLiteView::~EmbedLiteView()
 {
   LOGT("impl:%p", mViewImpl);
-  if (mViewImpl && mApp->GetType() == EmbedLiteApp::EMBED_THREAD) {
-    EmbedLiteViewThreadParent* impl = static_cast<EmbedLiteViewThreadParent*>(mViewImpl);
-    unused << impl->SendDestroy();
-  } else {
-    LOGNI();
-  }
   if (mViewImpl) {
     mViewImpl->ViewAPIDestroyed();
   }
-  mViewImpl = NULL;
+  mViewImpl = nullptr;
 }
 
 void
 EmbedLiteView::SetListener(EmbedLiteViewListener* aListener)
 {
-   // TODO: this code is thread specific
-   static_cast<EmbedLiteViewThreadParent*>(mViewImpl)->mListener = aListener;
+  if (mViewImpl && mApp->GetType() == EmbedLiteApp::EMBED_THREAD) {
+    static_cast<EmbedLiteViewThreadParent*>(mViewImpl)->mListener = aListener;
+  } else {
+    LOGNI();
+  }
 }
 
 EmbedLiteViewListener* const
 EmbedLiteView::GetListener() const
 {
-   // TODO: this code is thread specific
-  return static_cast<EmbedLiteViewThreadParent*>(mViewImpl)->mListener ? static_cast<EmbedLiteViewThreadParent*>(mViewImpl)->mListener : &sFakeListener;
+  if (mViewImpl && mApp->GetType() == EmbedLiteApp::EMBED_THREAD) {
+      return static_cast<EmbedLiteViewThreadParent*>(mViewImpl)->mListener ? static_cast<EmbedLiteViewThreadParent*>(mViewImpl)->mListener : &sFakeListener;
+  } else {
+    LOGNI();
+    return &sFakeListener;
+  }
 }
 
 void

@@ -47,6 +47,7 @@ public:
   void AddGeckoContentListener(mozilla::layers::GeckoContentController* listener);
   void RemoveGeckoContentListener(mozilla::layers::GeckoContentController* listener);
 
+  bool IsValid() const { return mIsValid; };
   nsresult GetBrowserChrome(nsIWebBrowserChrome** outChrome);
   nsresult GetBrowser(nsIWebBrowser** outBrowser);
   uint32_t GetID() const { return mId; }
@@ -147,6 +148,8 @@ private:
 
   nsDataHashtable<nsStringHashKey, bool/*start with key*/> mRegisteredMessages;
   nsTArray<mozilla::layers::GeckoContentController*> mControllerListeners;
+
+  bool mIsValid;
 
   DISALLOW_EVIL_CONSTRUCTORS(EmbedLiteViewThreadChild);
 };

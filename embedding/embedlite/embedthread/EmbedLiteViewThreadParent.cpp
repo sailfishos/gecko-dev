@@ -220,6 +220,7 @@ EmbedLiteViewThreadParent::RecvUpdateZoomConstraints(const uint32_t& aPresShellI
                                                      const bool& aIsRoot,
                                                      const ZoomConstraints& aConstraints)
 {
+  NS_ENSURE_FALSE(mViewAPIDestroyed, true);
   if (aIsRoot) {
     mController->SaveZoomConstraints(aConstraints);
   }
@@ -235,6 +236,7 @@ EmbedLiteViewThreadParent::RecvZoomToRect(const uint32_t& aPresShellId,
                                           const ViewID& aViewId,
                                           const CSSRect& aRect)
 {
+  NS_ENSURE_FALSE(mViewAPIDestroyed, true);
   if (mController->GetManager()) {
     mController->GetManager()->ZoomToRect(ScrollableLayerGuid(mRootLayerTreeId, aPresShellId, aViewId), aRect);
   }
@@ -244,6 +246,7 @@ EmbedLiteViewThreadParent::RecvZoomToRect(const uint32_t& aPresShellId,
 bool
 EmbedLiteViewThreadParent::RecvContentReceivedTouch(const ScrollableLayerGuid& aGuid, const bool& aPreventDefault)
 {
+  NS_ENSURE_FALSE(mViewAPIDestroyed, true);
   if (mController->GetManager()) {
     mController->GetManager()->ContentReceivedTouch(aGuid, aPreventDefault);
   }
@@ -265,26 +268,31 @@ void
 EmbedLiteViewThreadParent::LoadURL(const char* aUrl)
 {
   LOGT("url:%s", aUrl);
+  NS_ENSURE_FALSE(mViewAPIDestroyed, );
   unused << SendLoadURL(NS_ConvertUTF8toUTF16(nsDependentCString(aUrl)));
 }
 
 void EmbedLiteViewThreadParent::GoBack()
 {
+  NS_ENSURE_FALSE(mViewAPIDestroyed, );
   unused << SendGoBack();
 }
 
 void EmbedLiteViewThreadParent::GoForward()
 {
+  NS_ENSURE_FALSE(mViewAPIDestroyed, );
   unused << SendGoForward();
 }
 
 void EmbedLiteViewThreadParent::StopLoad()
 {
+  NS_ENSURE_FALSE(mViewAPIDestroyed, );
   unused << SendStopLoad();
 }
 
 void EmbedLiteViewThreadParent::Reload(bool hardReload)
 {
+  NS_ENSURE_FALSE(mViewAPIDestroyed, );
   unused << SendReload(hardReload);
 }
 
@@ -292,6 +300,7 @@ void
 EmbedLiteViewThreadParent::SetIsActive(bool aIsActive)
 {
   LOGF();
+  NS_ENSURE_FALSE(mViewAPIDestroyed, );
   unused << SendSetIsActive(aIsActive);
 }
 
@@ -299,6 +308,7 @@ void
 EmbedLiteViewThreadParent::SetIsFocused(bool aIsFocused)
 {
   LOGF();
+  NS_ENSURE_FALSE(mViewAPIDestroyed, );
   unused << SendSetIsFocused(aIsFocused);
 }
 
@@ -306,6 +316,7 @@ void
 EmbedLiteViewThreadParent::SuspendTimeouts()
 {
   LOGF();
+  NS_ENSURE_FALSE(mViewAPIDestroyed, );
   unused << SendSuspendTimeouts();
 }
 
@@ -313,6 +324,7 @@ void
 EmbedLiteViewThreadParent::ResumeTimeouts()
 {
   LOGF();
+  NS_ENSURE_FALSE(mViewAPIDestroyed, );
   unused << SendResumeTimeouts();
 }
 
@@ -320,6 +332,7 @@ void
 EmbedLiteViewThreadParent::LoadFrameScript(const char* aURI)
 {
   LOGT("uri:%s", aURI);
+  NS_ENSURE_FALSE(mViewAPIDestroyed, );
   unused << SendLoadFrameScript(NS_ConvertUTF8toUTF16(nsDependentCString(aURI)));
 }
 
@@ -327,6 +340,7 @@ void
 EmbedLiteViewThreadParent::DoSendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage)
 {
   LOGT("msgName:%ls, msg:%ls", aMessageName, aMessage);
+  NS_ENSURE_FALSE(mViewAPIDestroyed, );
   const nsDependentString msgname(aMessageName);
   const nsDependentString msg(aMessage);
   unused << SendAsyncMessage(msgname,
@@ -337,6 +351,7 @@ void
 EmbedLiteViewThreadParent::AddMessageListener(const char* aMessageName)
 {
   LOGT("msgName:%s", aMessageName);
+  NS_ENSURE_FALSE(mViewAPIDestroyed, );
   unused << SendAddMessageListener(nsDependentCString(aMessageName));
 }
 
@@ -344,18 +359,21 @@ void
 EmbedLiteViewThreadParent::RemoveMessageListener(const char* aMessageName)
 {
   LOGT("msgName:%s", aMessageName);
+  NS_ENSURE_FALSE(mViewAPIDestroyed, );
   unused << SendRemoveMessageListener(nsDependentCString(aMessageName));
 }
 
 void
 EmbedLiteViewThreadParent::AddMessageListeners(const nsTArray<nsString>& aMessageNames)
 {
+  NS_ENSURE_FALSE(mViewAPIDestroyed, );
   unused << SendAddMessageListeners(aMessageNames);
 }
 
 void
 EmbedLiteViewThreadParent::RemoveMessageListeners(const nsTArray<nsString>& aMessageNames)
 {
+  NS_ENSURE_FALSE(mViewAPIDestroyed, );
   unused << SendRemoveMessageListeners(aMessageNames);
 }
 
@@ -412,6 +430,7 @@ bool
 EmbedLiteViewThreadParent::RenderToImage(unsigned char* aData, int imgW, int imgH, int stride, int depth)
 {
   LOGF("d:%p, sz[%i,%i], stride:%i, depth:%i", aData, imgW, imgH, stride, depth);
+  NS_ENSURE_FALSE(mViewAPIDestroyed, false);
   if (mCompositor) {
     RefPtr<DrawTarget> target = gfxPlatform::GetPlatform()->CreateDrawTargetForData(aData, IntSize(imgW, imgH), stride, _depth_to_gfxformat(depth));
     {
@@ -424,6 +443,7 @@ EmbedLiteViewThreadParent::RenderToImage(unsigned char* aData, int imgW, int img
 bool
 EmbedLiteViewThreadParent::RenderGL()
 {
+  NS_ENSURE_FALSE(mViewAPIDestroyed, false);
   if (mCompositor) {
     return mCompositor->RenderGL();
   }
@@ -434,6 +454,7 @@ void
 EmbedLiteViewThreadParent::SetViewSize(int width, int height)
 {
   LOGT("sz[%i,%i]", width, height);
+  NS_ENSURE_FALSE(mViewAPIDestroyed,);
   mViewSize = ScreenIntSize(width, height);
   unused << SendSetViewSize(gfxSize(width, height));
 }
@@ -448,6 +469,7 @@ EmbedLiteViewThreadParent::RecvGetGLViewSize(gfxSize* aSize)
 void
 EmbedLiteViewThreadParent::SetGLViewPortSize(int width, int height)
 {
+  NS_ENSURE_FALSE(mViewAPIDestroyed,);
   mGLViewPortSize = gfxSize(width, height);
   if (mCompositor) {
     mCompositor->SetSurfaceSize(width, height);
@@ -458,6 +480,7 @@ EmbedLiteViewThreadParent::SetGLViewPortSize(int width, int height)
 void
 EmbedLiteViewThreadParent::SetGLViewTransform(gfx::Matrix matrix)
 {
+  NS_ENSURE_FALSE(mViewAPIDestroyed,);
   if (mCompositor) {
     mCompositor->SetWorldTransform(matrix);
   }
@@ -466,6 +489,7 @@ EmbedLiteViewThreadParent::SetGLViewTransform(gfx::Matrix matrix)
 void
 EmbedLiteViewThreadParent::SetViewClipping(const gfxRect& aClipRect)
 {
+  NS_ENSURE_FALSE(mViewAPIDestroyed,);
   if (mCompositor) {
     mCompositor->SetClipping(aClipRect);
   }
@@ -474,6 +498,7 @@ EmbedLiteViewThreadParent::SetViewClipping(const gfxRect& aClipRect)
 void
 EmbedLiteViewThreadParent::SetViewOpacity(const float aOpacity)
 {
+  NS_ENSURE_FALSE(mViewAPIDestroyed,);
   if (mCompositor) {
     mCompositor->SetWorldOpacity(aOpacity);
   }
@@ -482,11 +507,13 @@ EmbedLiteViewThreadParent::SetViewOpacity(const float aOpacity)
 void
 EmbedLiteViewThreadParent::SetTransformation(float aScale, nsIntPoint aScrollOffset)
 {
+  LOGNI();
 }
 
 void
 EmbedLiteViewThreadParent::ScheduleRender()
 {
+  NS_ENSURE_FALSE(mViewAPIDestroyed,);
   if (mCompositor) {
     mCompositor->ScheduleRenderOnCompositorThread();
   }
@@ -495,6 +522,7 @@ EmbedLiteViewThreadParent::ScheduleRender()
 void
 EmbedLiteViewThreadParent::ReceiveInputEvent(const InputData& aEvent)
 {
+  NS_ENSURE_FALSE(mViewAPIDestroyed,);
   if (mController->GetManager()) {
     ScrollableLayerGuid guid;
     mController->ReceiveInputEvent(aEvent, &guid);
@@ -523,6 +551,7 @@ void
 EmbedLiteViewThreadParent::TextEvent(const char* composite, const char* preEdit)
 {
   LOGT("commit:%s, pre:%s, mLastIMEState:%i", composite, preEdit, mLastIMEState);
+  NS_ENSURE_FALSE(mViewAPIDestroyed,);
   if (mLastIMEState) {
     unused << SendHandleTextEvent(NS_ConvertUTF8toUTF16(nsDependentCString(composite)),
                                   NS_ConvertUTF8toUTF16(nsDependentCString(preEdit)));
@@ -534,10 +563,11 @@ EmbedLiteViewThreadParent::TextEvent(const char* composite, const char* preEdit)
 void
 EmbedLiteViewThreadParent::ViewAPIDestroyed()
 {
+  mViewAPIDestroyed = true;
   if (mController) {
     mController->ClearRenderFrame();
   }
-  mViewAPIDestroyed = true;
+  unused << SendDestroy();
   mListener->ViewDestroyed();
   mListener = nullptr;
 }
@@ -546,6 +576,7 @@ void
 EmbedLiteViewThreadParent::SendKeyPress(int domKeyCode, int gmodifiers, int charCode)
 {
   LOGT("dom:%i, mod:%i, char:'%c'", domKeyCode, gmodifiers, charCode);
+  NS_ENSURE_FALSE(mViewAPIDestroyed,);
   unused << SendHandleKeyPressEvent(domKeyCode, gmodifiers, charCode);
 }
 
@@ -553,6 +584,7 @@ void
 EmbedLiteViewThreadParent::SendKeyRelease(int domKeyCode, int gmodifiers, int charCode)
 {
   LOGT("dom:%i, mod:%i, char:'%c'", domKeyCode, gmodifiers, charCode);
+  NS_ENSURE_FALSE(mViewAPIDestroyed,);
   unused << SendHandleKeyReleaseEvent(domKeyCode, gmodifiers, charCode);
 }
 
@@ -560,6 +592,7 @@ void
 EmbedLiteViewThreadParent::MousePress(int x, int y, int mstime, unsigned int buttons, unsigned int modifiers)
 {
   LOGT("pt[%i,%i], t:%i, bt:%u, mod:%u", x, y, mstime, buttons, modifiers);
+  NS_ENSURE_FALSE(mViewAPIDestroyed,);
   MultiTouchInput event(MultiTouchInput::MULTITOUCH_START, mstime, modifiers);
   event.mTouches.AppendElement(SingleTouchData(0,
                                                mozilla::ScreenIntPoint(x, y),
@@ -576,6 +609,7 @@ void
 EmbedLiteViewThreadParent::MouseRelease(int x, int y, int mstime, unsigned int buttons, unsigned int modifiers)
 {
   LOGT("pt[%i,%i], t:%i, bt:%u, mod:%u", x, y, mstime, buttons, modifiers);
+  NS_ENSURE_FALSE(mViewAPIDestroyed,);
   MultiTouchInput event(MultiTouchInput::MULTITOUCH_END, mstime, modifiers);
   event.mTouches.AppendElement(SingleTouchData(0,
                                                mozilla::ScreenIntPoint(x, y),
@@ -592,6 +626,7 @@ void
 EmbedLiteViewThreadParent::MouseMove(int x, int y, int mstime, unsigned int buttons, unsigned int modifiers)
 {
   LOGT("pt[%i,%i], t:%i, bt:%u, mod:%u", x, y, mstime, buttons, modifiers);
+  NS_ENSURE_FALSE(mViewAPIDestroyed,);
   MultiTouchInput event(MultiTouchInput::MULTITOUCH_MOVE, mstime, modifiers);
   event.mTouches.AppendElement(SingleTouchData(0,
                                                mozilla::ScreenIntPoint(x, y),
@@ -610,6 +645,7 @@ EmbedLiteViewThreadParent::RecvGetInputContext(int32_t* aIMEEnabled,
                                                intptr_t* aNativeIMEContext)
 {
   LOGT("mLastIMEState:%i", mLastIMEState);
+  NS_ENSURE_FALSE(mViewAPIDestroyed, true);
   *aIMEEnabled = mLastIMEState;
   *aIMEOpen = IMEState::OPEN_STATE_NOT_SUPPORTED;
   *aNativeIMEContext = 0;
