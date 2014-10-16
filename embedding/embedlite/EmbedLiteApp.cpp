@@ -366,10 +366,12 @@ EmbedLiteView*
 EmbedLiteApp::CreateView(uint32_t aParent)
 {
   LOGT();
+  NS_ASSERTION(mAppParent, "App actor must exist");
   mViewCreateID++;
-  EmbedLiteView* view = new EmbedLiteView(this, mViewCreateID, aParent);
+
+  EmbedLiteViewThreadParent* viewParent = static_cast<EmbedLiteViewThreadParent*>(mAppParent->SendPEmbedLiteViewConstructor(mViewCreateID, aParent));
+  EmbedLiteView* view = new EmbedLiteView(this, viewParent, mViewCreateID);
   mViews[mViewCreateID] = view;
-  unused << mAppParent->SendCreateView(mViewCreateID, aParent);
   return view;
 }
 
@@ -412,7 +414,7 @@ EmbedLiteApp::CreateWindowRequested(const uint32_t& chromeFlags, const char* uri
 void
 EmbedLiteApp::ViewDestroyed(uint32_t id)
 {
-  LOGT("id:%i", id);
+  LOGT("id:%i mViews.size:%d", id, mViews.size());
   std::map<uint32_t, EmbedLiteView*>::iterator it = mViews.find(id);
   if (it != mViews.end()) {
     mViews.erase(it);

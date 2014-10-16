@@ -16,6 +16,7 @@ namespace embedlite {
 class EmbedLiteView;
 class EmbedLiteCompositorParent;
 class EmbedContentController;
+class EmbedLiteViewListener;
 class EmbedLiteViewThreadParent : public PEmbedLiteViewParent,
   public EmbedLiteViewImplIface
 {
@@ -144,9 +145,10 @@ protected:
 private:
   friend class EmbedContentController;
   friend class EmbedLiteCompositorParent;
+  friend class EmbedLiteView;
   void SetCompositor(EmbedLiteCompositorParent* aCompositor);
   uint32_t mId;
-  EmbedLiteView* mView;
+  EmbedLiteViewListener* mListener;
   bool mViewAPIDestroyed;
   RefPtr<EmbedLiteCompositorParent> mCompositor;
 

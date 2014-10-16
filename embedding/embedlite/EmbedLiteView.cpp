@@ -24,12 +24,10 @@ namespace embedlite {
 class FakeListener : public EmbedLiteViewListener {};
 static FakeListener sFakeListener;
 
-EmbedLiteView::EmbedLiteView(EmbedLiteApp* aApp, uint32_t aUniqueID, uint32_t aParent)
+EmbedLiteView::EmbedLiteView(EmbedLiteApp* aApp, EmbedLiteViewImplIface* aViewImpl, uint32_t aUniqueID)
   : mApp(aApp)
-  , mListener(NULL)
-  , mViewImpl(NULL)
+  , mViewImpl(aViewImpl)
   , mUniqueID(aUniqueID)
-  , mParent(aParent)
 {
   LOGT();
 }
@@ -47,21 +45,20 @@ EmbedLiteView::~EmbedLiteView()
     mViewImpl->ViewAPIDestroyed();
   }
   mViewImpl = NULL;
-  if (mListener) {
-    mListener->ViewDestroyed();
-  }
 }
 
 void
 EmbedLiteView::SetListener(EmbedLiteViewListener* aListener)
 {
-   mListener = aListener;
+   // TODO: this code is thread specific
+   static_cast<EmbedLiteViewThreadParent*>(mViewImpl)->mListener = aListener;
 }
 
 EmbedLiteViewListener* const
 EmbedLiteView::GetListener() const
 {
-  return mListener ? mListener : &sFakeListener;
+   // TODO: this code is thread specific
+  return static_cast<EmbedLiteViewThreadParent*>(mViewImpl)->mListener ? static_cast<EmbedLiteViewThreadParent*>(mViewImpl)->mListener : &sFakeListener;
 }
 
 void
