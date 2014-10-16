@@ -54,12 +54,11 @@ EmbedLiteViewThreadParent::EmbedLiteViewThreadParent(const uint32_t& id, const u
   , mUploadTexture(0)
   , mController(new EmbedContentController(this, mUILoop))
 {
-  MOZ_COUNT_CTOR(EmbedLiteViewThreadParent);
+  LOGT();
 }
 
 EmbedLiteViewThreadParent::~EmbedLiteViewThreadParent()
 {
-  MOZ_COUNT_DTOR(EmbedLiteViewThreadParent);
   LOGT("mCompositor:%p", mCompositor.get());
   bool mHadCompositor = mCompositor.get() != nullptr;
   mController = nullptr;

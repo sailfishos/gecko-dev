@@ -168,6 +168,7 @@ EmbedLiteAppThreadChild::AllocPEmbedLiteViewChild(const uint32_t& id, const uint
   LOGT("id:%u, parentId:%u", id, parentId);
   EmbedLiteViewThreadChild* view = new EmbedLiteViewThreadChild(id, parentId);
   mWeakViewMap[id] = view;
+  view->AddRef();
   return view;
 }
 
@@ -182,7 +183,8 @@ EmbedLiteAppThreadChild::DeallocPEmbedLiteViewChild(PEmbedLiteViewChild* actor)
     }
   }
   mWeakViewMap.erase(it);
-  delete actor;
+  EmbedLiteViewThreadChild* p = static_cast<EmbedLiteViewThreadChild*>(actor);
+  p->Release();
   return true;
 }
 
