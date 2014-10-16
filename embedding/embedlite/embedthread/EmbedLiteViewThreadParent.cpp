@@ -61,7 +61,7 @@ EmbedLiteViewThreadParent::~EmbedLiteViewThreadParent()
 {
   LOGT("mCompositor:%p", mCompositor.get());
   bool mHadCompositor = mCompositor.get() != nullptr;
-  mController = nullptr;
+  mCompositor = nullptr;
 
   // If we haven't had compositor created, then noone will notify app that view destroyed
   // Let's do it here
