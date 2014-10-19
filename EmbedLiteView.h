@@ -17,6 +17,8 @@ class EmbedLiteViewIface;
 namespace mozilla {
 namespace embedlite {
 
+class EmbedLiteViewThreadParent;
+class PEmbedLiteViewParent;
 class EmbedLiteView;
 
 class EmbedLiteViewListener
@@ -112,8 +114,6 @@ public:
   //   Setup renderable GL/EGL window surface size
   virtual void SetGLViewPortSize(int width, int height);
 
-  virtual void ScheduleRender();
-
   // Scripting Interface, allow to extend embedding API by creating
   // child js scripts and messaging interface.
   // and do communication between UI and Content child via json messages.
@@ -137,12 +137,13 @@ public:
 private:
   friend class EmbedLiteViewThreadParent;
   friend class EmbedLiteCompositorParent;
-  void SetImpl(EmbedLiteViewIface*);
+  void SetImpl(EmbedLiteViewThreadParent*);
   EmbedLiteViewIface* GetImpl();
 
   EmbedLiteApp* mApp;
   EmbedLiteViewListener* mListener;
   EmbedLiteViewIface* mViewImpl;
+  PEmbedLiteViewParent* mViewParent;
   uint32_t mUniqueID;
   uint32_t mParent;
 };
