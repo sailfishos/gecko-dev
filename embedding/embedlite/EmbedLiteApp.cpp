@@ -245,6 +245,7 @@ EmbedLiteApp::StopChildThread()
   }
 
   mAppChild->Close();
+  delete mAppParent;
   mAppParent = nullptr;
   mAppChild = nullptr;
 
@@ -256,6 +257,12 @@ EmbedLiteApp::StopChildThread()
 void _FinalStop(EmbedLiteApp* app)
 {
   app->Stop();
+}
+
+void
+EmbedLiteApp::PreDestroy(EmbedLiteApp* app)
+{
+  unused << app->mAppParent->SendPreDestroy();
 }
 
 void
@@ -273,7 +280,7 @@ EmbedLiteApp::Stop()
   } else if (!mDestroying) {
     mDestroying = true;
     mUILoop->PostTask(FROM_HERE,
-                      NewRunnableMethod(mAppParent.get(), &EmbedLiteAppThreadParent::SendPreDestroy));
+                      NewRunnableFunction(&EmbedLiteApp::PreDestroy, this));
   } else {
     NS_ASSERTION(mUILoop, "Start was not called before stop");
     mUILoop->DoQuit();
@@ -411,7 +418,7 @@ EmbedLiteApp::ViewDestroyed(uint32_t id)
   }
   if (mDestroying && mViews.empty()) {
     mUILoop->PostTask(FROM_HERE,
-                      NewRunnableMethod(mAppParent.get(), &EmbedLiteAppThreadParent::SendPreDestroy));
+                      NewRunnableFunction(&EmbedLiteApp::PreDestroy, this));
   }
 }
 
