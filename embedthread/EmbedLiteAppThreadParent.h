@@ -7,19 +7,15 @@
 #define MOZ_APP_EMBED_THREAD_PARENT_H
 
 #include "mozilla/embedlite/PEmbedLiteAppParent.h"
-#include "EmbedLiteAppIface.h"
 
 namespace mozilla {
 namespace embedlite {
 
 class EmbedLiteApp;
-class EmbedLiteAppThreadParent : public PEmbedLiteAppParent,
-                                 public EmbedLiteAppIface
+class EmbedLiteAppThreadParent : public PEmbedLiteAppParent
 {
+  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(EmbedLiteAppThreadParent)
 public:
-  NS_DECL_THREADSAFE_ISUPPORTS
-  NS_DECL_EMBEDLITEAPPIFACE
-
   // IPDL
   virtual bool
   RecvInitialized();
