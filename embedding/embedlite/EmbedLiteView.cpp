@@ -28,6 +28,7 @@ EmbedLiteView::EmbedLiteView(EmbedLiteApp* aApp, uint32_t aUniqueID, uint32_t aP
   : mApp(aApp)
   , mListener(NULL)
   , mViewImpl(NULL)
+  , mViewParent(NULL)
   , mUniqueID(aUniqueID)
   , mParent(aParent)
 {
@@ -65,9 +66,10 @@ EmbedLiteView::GetListener() const
 }
 
 void
-EmbedLiteView::SetImpl(EmbedLiteViewIface* aViewImpl)
+EmbedLiteView::SetImpl(EmbedLiteViewThreadParent* aViewImpl)
 {
   mViewImpl = aViewImpl;
+  mViewParent = aViewImpl;
 }
 
 EmbedLiteViewIface*
@@ -80,107 +82,111 @@ void
 EmbedLiteView::LoadURL(const char* aUrl)
 {
   LOGT("url:%s", aUrl);
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->LoadURL(aUrl);
+  unused << mViewParent->SendLoadURL(NS_ConvertUTF8toUTF16(nsDependentCString(aUrl)));
 }
 
 void
 EmbedLiteView::SetIsActive(bool aIsActive)
 {
   LOGT();
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->SetIsActive(aIsActive);
+  NS_ENSURE_TRUE(mViewParent, );
+  unused << mViewParent->SendSetIsActive(aIsActive);
 }
 
 void
 EmbedLiteView::SetIsFocused(bool aIsFocused)
 {
   LOGT();
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->SetIsFocused(aIsFocused);
+  NS_ENSURE_TRUE(mViewParent, );
+  unused << mViewParent->SendSetIsFocused(aIsFocused);
 }
 
 void
 EmbedLiteView::SuspendTimeouts()
 {
   LOGT();
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->SuspendTimeouts();
+  NS_ENSURE_TRUE(mViewParent, );
+  unused << mViewParent->SendSuspendTimeouts();
 }
 
 void
 EmbedLiteView::ResumeTimeouts()
 {
   LOGT();
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->ResumeTimeouts();
+  NS_ENSURE_TRUE(mViewParent, );
+  unused << mViewParent->SendResumeTimeouts();
 }
 
 void EmbedLiteView::GoBack()
 {
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->GoBack();
+  NS_ENSURE_TRUE(mViewParent, );
+  unused << mViewParent->SendGoBack();
+
 }
 
 void EmbedLiteView::GoForward()
 {
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->GoForward();
+  NS_ENSURE_TRUE(mViewParent, );
+  unused << mViewParent->SendGoForward();
 }
 
 void EmbedLiteView::StopLoad()
 {
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->StopLoad();
+  NS_ENSURE_TRUE(mViewParent, );
+  unused << mViewParent->SendStopLoad();
+
 }
 
 void EmbedLiteView::Reload(bool hard)
 {
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->Reload(hard);
+  NS_ENSURE_TRUE(mViewParent, );
+  unused << mViewParent->SendReload(hard);
 }
 
 void
 EmbedLiteView::LoadFrameScript(const char* aURI)
 {
   LOGT("uri:%s, mViewImpl:%p", aURI, mViewImpl);
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->LoadFrameScript(aURI);
+  NS_ENSURE_TRUE(mViewParent, );
+  unused << mViewParent->SendLoadFrameScript(NS_ConvertUTF8toUTF16(nsDependentCString(aURI)));
 }
 
 void
 EmbedLiteView::AddMessageListener(const char* aName)
 {
   LOGT("name:%s", aName);
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->AddMessageListener(aName);
+  NS_ENSURE_TRUE(mViewParent, );
+  unused << mViewParent->SendAddMessageListener(nsDependentCString(aName));
 }
 
 void
 EmbedLiteView::RemoveMessageListener(const char* aName)
 {
   LOGT("name:%s", aName);
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->RemoveMessageListener(aName);
+  NS_ENSURE_TRUE(mViewParent, );
+  unused << mViewParent->SendRemoveMessageListener(nsDependentCString(aName));
 }
 
 void EmbedLiteView::AddMessageListeners(const nsTArray<nsString>& aMessageNames)
 {
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->AddMessageListeners(aMessageNames);
+  NS_ENSURE_TRUE(mViewParent, );
+  unused << mViewParent->SendAddMessageListeners(aMessageNames);
 }
 
 void EmbedLiteView::RemoveMessageListeners(const nsTArray<nsString>& aMessageNames)
 {
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->RemoveMessageListeners(aMessageNames);
+  NS_ENSURE_TRUE(mViewParent, );
+  unused << mViewParent->SendRemoveMessageListeners(aMessageNames);
 }
 
 void
 EmbedLiteView::SendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage)
 {
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->DoSendAsyncMessage(aMessageName, aMessage);
+  NS_ENSURE_TRUE(mViewParent, );
+
+  const nsDependentString msgname(aMessageName);
+  const nsDependentString msg(aMessage);
+  unused << mViewParent->SendAsyncMessage(msgname, msg);
 }
 
 // Render interface
@@ -287,13 +293,6 @@ EmbedLiteView::SetGLViewPortSize(int width, int height)
   LOGNI("sz[%i,%i]", width, height);
   NS_ENSURE_TRUE(mViewImpl, );
   mViewImpl->SetGLViewPortSize(width, height);
-}
-
-void
-EmbedLiteView::ScheduleRender()
-{
-  NS_ENSURE_TRUE(mViewImpl, );
-  mViewImpl->ScheduleRender();
 }
 
 void
