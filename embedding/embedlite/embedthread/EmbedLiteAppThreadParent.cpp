@@ -19,9 +19,6 @@ namespace embedlite {
 
 static EmbedLiteAppThreadParent* sAppThreadParent = nullptr;
 
-/* Implementation file */
-NS_IMPL_ISUPPORTS(EmbedLiteAppThreadParent, EmbedLiteAppIface)
-
 EmbedLiteAppThreadParent::EmbedLiteAppThreadParent()
   : mApp(EmbedLiteApp::GetInstance())
 {
@@ -109,98 +106,6 @@ EmbedLiteAppThreadParent::RecvObserve(const nsCString& topic,
   LOGT("topic:%s", topic.get());
   mApp->GetListener()->OnObserve(topic.get(), data.get());
   return true;
-}
-
-NS_IMETHODIMP
-EmbedLiteAppThreadParent::LoadComponentManifest(const char* aPath)
-{
-  unused << SendLoadComponentManifest(nsDependentCString(aPath));
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteAppThreadParent::SetBoolPref(const char* aName, bool aValue)
-{
-  unused << SendSetBoolPref(nsDependentCString(aName), aValue);
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteAppThreadParent::SetCharPref(const char* aName, const char * aValue)
-{
-  unused << SendSetCharPref(nsDependentCString(aName), nsDependentCString(aValue));
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteAppThreadParent::SetIntPref(const char* aName, int32_t aValue)
-{
-  unused << SendSetIntPref(nsDependentCString(aName), aValue);
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteAppThreadParent::LoadGlobalStyleSheet(const char* aName, bool aEnable)
-{
-  unused << SendLoadGlobalStyleSheet(nsDependentCString(aName), aEnable);
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteAppThreadParent::Observe(const char* aName, const char* aMessage)
-{
-  unused << SendObserve(nsDependentCString(aName), aMessage ? nsDependentString((const char16_t*)aMessage) : nsString());
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteAppThreadParent::AddObserver(const char* aMessageName)
-{
-  unused << SendAddObserver(nsDependentCString(aMessageName));
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteAppThreadParent::RemoveObserver(const char* aMessageName)
-{
-  unused << SendRemoveObserver(nsDependentCString(aMessageName));
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteAppThreadParent::AddObservers(const nsTArray<nsCString>& observersList)
-{
-  unused << SendAddObservers(observersList);
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteAppThreadParent::RemoveObservers(const nsTArray<nsCString>& observersList)
-{
-  unused << SendRemoveObservers(observersList);
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteAppThreadParent::CreateView(uint32_t aViewId, uint32_t aParentId)
-{
-  unused << SendCreateView(aViewId, aParentId);
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteAppThreadParent::PreDestroy()
-{
-  mApp->GetUILoop()->PostTask(FROM_HERE,
-    NewRunnableMethod(this, &EmbedLiteAppThreadParent::SendPreDestroy));
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteAppThreadParent::GetEmbedIPCChannel(mozilla::ipc::MessageChannel* *aChannel)
-{
-  *aChannel = GetIPCChannel();
-  return NS_OK;
 }
 
 } // namespace embedlite

@@ -25,7 +25,6 @@
 #include "EmbedLiteMessagePump.h"
 
 #include "EmbedLiteCompositorParent.h"
-#include "EmbedLiteAppIface.h"
 
 namespace mozilla {
 namespace embedlite {
@@ -202,7 +201,7 @@ EmbedLiteApp::AddManifestLocation(const char* manifest)
   if (!mAppParent) {
     sComponentDirs.AppendElement(nsCString(manifest));
   } else {
-    unused << mAppParent->LoadComponentManifest(manifest);
+    unused << mAppParent->SendLoadComponentManifest(nsDependentCString(manifest));
   }
 }
 
@@ -225,12 +224,10 @@ EmbedLiteApp::StartChildThread()
 
   mAppParent = new EmbedLiteAppThreadParent();
   mAppChild = new EmbedLiteAppThreadChild(mUILoop);
-  mozilla::ipc::MessageChannel* parentChannel = nullptr;
-  mAppParent->GetEmbedIPCChannel(&parentChannel);
   MessageLoop::current()->PostTask(FROM_HERE,
                                    NewRunnableMethod(mAppChild.get(),
                                                      &EmbedLiteAppThreadChild::Init,
-                                                     parentChannel));
+                                                     mAppParent->GetIPCChannel()));
 
   return true;
 }
@@ -275,7 +272,8 @@ EmbedLiteApp::Stop()
     mDestroying = true;
   } else if (!mDestroying) {
     mDestroying = true;
-    mAppParent->PreDestroy();
+    mUILoop->PostTask(FROM_HERE,
+                      NewRunnableMethod(mAppParent.get(), &EmbedLiteAppThreadParent::SendPreDestroy));
   } else {
     NS_ASSERTION(mUILoop, "Start was not called before stop");
     mUILoop->DoQuit();
@@ -302,26 +300,26 @@ EmbedLiteApp::Stop()
 void
 EmbedLiteApp::SetBoolPref(const char* aName, bool aValue)
 {
-  unused << mAppParent->SetBoolPref(aName, aValue);
+  unused << mAppParent->SendSetBoolPref(nsDependentCString(aName), aValue);
 }
 
 void
 EmbedLiteApp::SetCharPref(const char* aName, const char* aValue)
 {
-  unused << mAppParent->SetCharPref(aName, aValue);
+  unused << mAppParent->SendSetCharPref(nsDependentCString(aName), nsDependentCString(aValue));
 }
 
 void
 EmbedLiteApp::SetIntPref(const char* aName, int aValue)
 {
-  unused << mAppParent->SetIntPref(aName, aValue);
+  unused << mAppParent->SendSetIntPref(nsDependentCString(aName), aValue);
 }
 
 void
 EmbedLiteApp::LoadGlobalStyleSheet(const char* aUri, bool aEnable)
 {
   LOGT();
-  unused << mAppParent->LoadGlobalStyleSheet(aUri, aEnable);
+  unused << mAppParent->SendLoadGlobalStyleSheet(nsDependentCString(aUri), aEnable);
 }
 
 void
@@ -329,31 +327,31 @@ EmbedLiteApp::SendObserve(const char* aMessageName, const char16_t* aMessage)
 {
   LOGT("topic:%s", aMessageName);
   NS_ENSURE_TRUE(mAppParent, );
-  unused << mAppParent->Observe(aMessageName, (const char*)aMessage);
+  unused << mAppParent->SendObserve(nsDependentCString(aMessageName), aMessage ? nsDependentString((const char16_t*)aMessage) : nsString());
 }
 
 void
 EmbedLiteApp::AddObserver(const char* aMessageName)
 {
   LOGT("topic:%s", aMessageName);
-  unused << mAppParent->AddObserver(aMessageName);
+  unused << mAppParent->SendAddObserver(nsDependentCString(aMessageName));
 }
 
 void
 EmbedLiteApp::RemoveObserver(const char* aMessageName)
 {
   LOGT("topic:%s", aMessageName);
-  unused << mAppParent->RemoveObserver(aMessageName);
+  unused << mAppParent->SendRemoveObserver(nsDependentCString(aMessageName));
 }
 
 void EmbedLiteApp::AddObservers(nsTArray<nsCString>& observersList)
 {
-  unused << mAppParent->AddObservers(observersList);
+  unused << mAppParent->SendAddObservers(observersList);
 }
 
 void EmbedLiteApp::RemoveObservers(nsTArray<nsCString>& observersList)
 {
-  unused << mAppParent->RemoveObservers(observersList);
+  unused << mAppParent->SendRemoveObservers(observersList);
 }
 
 EmbedLiteView*
@@ -363,7 +361,7 @@ EmbedLiteApp::CreateView(uint32_t aParent)
   mViewCreateID++;
   EmbedLiteView* view = new EmbedLiteView(this, mViewCreateID, aParent);
   mViews[mViewCreateID] = view;
-  unused << mAppParent->CreateView(mViewCreateID, aParent);
+  unused << mAppParent->SendCreateView(mViewCreateID, aParent);
   return view;
 }
 
@@ -412,7 +410,8 @@ EmbedLiteApp::ViewDestroyed(uint32_t id)
     mViews.erase(it);
   }
   if (mDestroying && mViews.empty()) {
-    mAppParent->PreDestroy();
+    mUILoop->PostTask(FROM_HERE,
+                      NewRunnableMethod(mAppParent.get(), &EmbedLiteAppThreadParent::SendPreDestroy));
   }
 }
 
