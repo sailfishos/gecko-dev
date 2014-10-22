@@ -234,7 +234,7 @@ public:
     }
 
     SharedSurface* Surf() const {
-        MOZ_ASSERT(mSurf.get());
+        NS_WARN_IF(mSurf.get() == nullptr);
         return mSurf.get();
     }
 };
