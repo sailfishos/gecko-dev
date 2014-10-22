@@ -233,7 +233,9 @@ EmbedLiteCompositorParent::GetPlatformImage(int* width, int* height)
 
   GLScreenBuffer* screen = context->Screen();
   MOZ_ASSERT(screen);
+  NS_ENSURE_TRUE(screen->Front(), nullptr);
   SharedSurface* sharedSurf = screen->Front()->Surf();
+  NS_ENSURE_TRUE(sharedSurf, nullptr);
   sharedSurf->WaitSync();
 
   *width = sharedSurf->mSize.width;
