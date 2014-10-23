@@ -46,6 +46,7 @@ import org.mozilla.gecko.health.SessionInformation;
 import org.mozilla.gecko.home.BrowserSearch;
 import org.mozilla.gecko.home.HomeBanner;
 import org.mozilla.gecko.home.HomePager;
+import org.mozilla.gecko.home.HomePager.OnUrlOpenInBackgroundListener;
 import org.mozilla.gecko.home.HomePager.OnUrlOpenListener;
 import org.mozilla.gecko.home.HomePanelsManager;
 import org.mozilla.gecko.home.SearchEngine;
@@ -73,6 +74,7 @@ import org.mozilla.gecko.util.StringUtils;
 import org.mozilla.gecko.util.ThreadUtils;
 import org.mozilla.gecko.util.UIAsyncTask;
 import org.mozilla.gecko.widget.ButtonToast;
+import org.mozilla.gecko.widget.ButtonToast.ToastListener;
 import org.mozilla.gecko.widget.GeckoActionProvider;
 
 import android.app.Activity;
@@ -82,7 +84,6 @@ import android.content.ContentValues;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
@@ -100,6 +101,7 @@ import android.nfc.NfcAdapter;
 import android.nfc.NfcEvent;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.StrictMode;
 import android.support.v4.app.FragmentManager;
 import android.support.v4.content.LocalBroadcastManager;
 import android.text.TextUtils;
@@ -131,6 +133,7 @@ public class BrowserApp extends GeckoApp
                                    BrowserSearch.OnEditSuggestionListener,
                                    HomePager.OnNewTabsListener,
                                    OnUrlOpenListener,
+                                   OnUrlOpenInBackgroundListener,
                                    ActionModeCompat.Presenter {
     private static final String LOGTAG = "GeckoBrowserApp";
 
@@ -149,7 +152,7 @@ public class BrowserApp extends GeckoApp
 
     // Request ID for startActivityForResult.
     private static final int ACTIVITY_REQUEST_PREFERENCES = 1001;
-    public static final String ACTION_NEW_PROFILE = "org.mozilla.gecko.NEW_PROFILE";
+    public static final String PREF_STARTPANE_ENABLED = "startpane_enabled";
 
     private BrowserSearch mBrowserSearch;
     private View mBrowserSearchContainer;
@@ -212,8 +215,6 @@ public class BrowserApp extends GeckoApp
     private SharedPreferencesHelper mSharedPreferencesHelper;
 
     private OrderedBroadcastHelper mOrderedBroadcastHelper;
-
-    private BroadcastReceiver mOnboardingReceiver;
 
     private BrowserHealthReporter mBrowserHealthReporter;
 
@@ -469,7 +470,7 @@ public class BrowserApp extends GeckoApp
 
         final Intent intent = getIntent();
 
-        String args = intent.getStringExtra("args");
+        String args = StringUtils.getStringExtra(intent, "args");
         if (args != null && args.contains(GUEST_BROWSING_ARG)) {
             mProfile = GeckoProfile.createGuestProfile(this);
         } else {
@@ -557,8 +558,6 @@ public class BrowserApp extends GeckoApp
             "Updater:Launch",
             "BrowserToolbar:Visibility");
 
-        registerOnboardingReceiver(this);
-
         Distribution distribution = Distribution.init(this);
 
         // Init suggested sites engine in BrowserDB.
@@ -612,24 +611,31 @@ public class BrowserApp extends GeckoApp
         }
     }
 
-    private void registerOnboardingReceiver(Context context) {
-        final LocalBroadcastManager lbm = LocalBroadcastManager.getInstance(this);
+    /**
+     * Check and show Onboarding start pane if Firefox has never been launched and
+     * is not opening an external link from another application.
+     *
+     * @param context Context of application; used to show Start Pane if appropriate
+     * @param intentAction Intent that launched this activity
+     */
+    private void checkStartPane(Context context, String intentAction) {
+        final StrictMode.ThreadPolicy savedPolicy = StrictMode.allowThreadDiskReads();
 
-        // Receiver for launching first run start pane on new profile creation.
-        mOnboardingReceiver = new BroadcastReceiver() {
-            @Override
-            public void onReceive(Context context, Intent intent) {
-                launchStartPane(BrowserApp.this);
+        try {
+            final SharedPreferences prefs = GeckoSharedPrefs.forProfile(this);
+
+            if (prefs.getBoolean(PREF_STARTPANE_ENABLED, false)) {
+                if (!Intent.ACTION_VIEW.equals(intentAction)) {
+                    final Intent startIntent = new Intent(this, StartPane.class);
+                    context.startActivity(startIntent);
+                }
+                // Don't bother trying again to show the v1 minimal first run.
+                prefs.edit().putBoolean(PREF_STARTPANE_ENABLED, false).apply();
             }
-        };
-
-        lbm.registerReceiver(mOnboardingReceiver, new IntentFilter(ACTION_NEW_PROFILE));
+        } finally {
+            StrictMode.setThreadPolicy(savedPolicy);
+        }
     }
-
-    private void launchStartPane(Context context) {
-         final Intent startIntent = new Intent(context, StartPane.class);
-         context.startActivity(startIntent);
-     }
 
     private Class<?> getMediaPlayerManager() {
         if (AppConstants.MOZ_MEDIA_PLAYER) {
@@ -665,6 +671,12 @@ public class BrowserApp extends GeckoApp
     }
 
     @Override
+    public void onAttachedToWindow() {
+        // We can't show Onboarding until Gecko initialization has finished (bug 1077583).
+        checkStartPane(this, getIntent().getAction());
+    }
+
+    @Override
     public void onResume() {
         super.onResume();
         EventDispatcher.getInstance().unregisterGeckoThreadListener((GeckoEventListener)this,
@@ -681,9 +693,6 @@ public class BrowserApp extends GeckoApp
         // Register for Prompt:ShowTop so we can foreground this activity even if it's hidden.
         EventDispatcher.getInstance().registerGeckoThreadListener((GeckoEventListener)this,
             "Prompt:ShowTop");
-
-        final LocalBroadcastManager lbm = LocalBroadcastManager.getInstance(this);
-        lbm.unregisterReceiver(mOnboardingReceiver);
     }
 
     private void setBrowserToolbarListeners() {
@@ -824,7 +833,7 @@ public class BrowserApp extends GeckoApp
         if (itemId == R.id.pasteandgo) {
             String text = Clipboard.getText();
             if (!TextUtils.isEmpty(text)) {
-                Tabs.getInstance().loadUrl(text);
+                loadUrlOrKeywordSearch(text);
                 Telemetry.sendUIEvent(TelemetryContract.Event.LOAD_URL, TelemetryContract.Method.CONTEXT_MENU);
                 Telemetry.sendUIEvent(TelemetryContract.Event.ACTION, TelemetryContract.Method.CONTEXT_MENU, "pasteandgo");
             }
@@ -1636,7 +1645,13 @@ public class BrowserApp extends GeckoApp
 
     /**
      * Attempts to switch to an open tab with the given URL.
+     * <p>
+     * If the tab exists, this method cancels any in-progress editing as well as
+     * calling {@link Tabs#selectTab(int)}.
      *
+     * @param url of tab to switch to.
+     * @param flags to obey: if {@link OnUrlOpenListener.Flags#ALLOW_SWITCH_TO_TAB}
+     *        is not present, return false.
      * @return true if we successfully switched to a tab, false otherwise.
      */
     private boolean maybeSwitchToTab(String url, EnumSet<OnUrlOpenListener.Flags> flags) {
@@ -1652,6 +1667,26 @@ public class BrowserApp extends GeckoApp
         } else {
             tab = tabs.getFirstTabForUrl(url, tabs.getSelectedTab().isPrivate());
         }
+
+        if (tab == null) {
+            return false;
+        }
+
+        return maybeSwitchToTab(tab.getId());
+    }
+
+    /**
+     * Attempts to switch to an open tab with the given unique tab ID.
+     * <p>
+     * If the tab exists, this method cancels any in-progress editing as well as
+     * calling {@link Tabs#selectTab(int)}.
+     *
+     * @param id of tab to switch to.
+     * @return true if we successfully switched to the tab, false otherwise.
+     */
+    private boolean maybeSwitchToTab(int id) {
+        final Tabs tabs = Tabs.getInstance();
+        final Tab tab = tabs.getTab(id);
 
         if (tab == null) {
             return false;
@@ -1803,7 +1838,10 @@ public class BrowserApp extends GeckoApp
         //
         // Expected to be fixed by bug 915825.
         hideHomePager(url);
+        loadUrlOrKeywordSearch(url);
+    }
 
+    private void loadUrlOrKeywordSearch(final String url) {
         // Don't do anything if the user entered an empty URL.
         if (TextUtils.isEmpty(url)) {
             return;
@@ -2402,6 +2440,11 @@ public class BrowserApp extends GeckoApp
 
     @Override
     public void openOptionsMenu() {
+        // Disable menu access (for hardware buttons) when the software menu button is inaccessible.
+        if (mBrowserToolbar.isEditing()) {
+            return;
+        }
+
         if (areTabsShown()) {
             mTabsPanel.showMenu();
             return;
@@ -2476,7 +2519,6 @@ public class BrowserApp extends GeckoApp
         // or if the user has explicitly enabled the clear on shutdown pref.
         // (We check the pref last to save the pref read.)
         // In ICS+, it's easy to kill an app through the task switcher.
-        final SharedPreferences prefs = GeckoSharedPrefs.forProfile(this);
         final boolean visible = Versions.preICS ||
                                 HardwareUtils.isTelevision() ||
                                 !PrefUtils.getStringSet(GeckoSharedPrefs.forProfile(this),
@@ -2952,6 +2994,53 @@ public class BrowserApp extends GeckoApp
         } else if (!maybeSwitchToTab(url, flags)) {
             openUrlAndStopEditing(url);
         }
+    }
+
+    // HomePager.OnUrlOpenInBackgroundListener
+    @Override
+    public void onUrlOpenInBackground(final String url, EnumSet<OnUrlOpenInBackgroundListener.Flags> flags) {
+        if (url == null) {
+            throw new IllegalArgumentException("url must not be null");
+        }
+        if (flags == null) {
+            throw new IllegalArgumentException("flags must not be null");
+        }
+
+        final boolean isPrivate = flags.contains(OnUrlOpenInBackgroundListener.Flags.PRIVATE);
+
+        int loadFlags = Tabs.LOADURL_NEW_TAB | Tabs.LOADURL_BACKGROUND;
+        if (isPrivate) {
+            loadFlags |= Tabs.LOADURL_PRIVATE;
+        }
+
+        final Tab newTab = Tabs.getInstance().loadUrl(url, loadFlags);
+
+        // We switch to the desired tab by unique ID, which closes any window
+        // for a race between opening the tab and closing it, and switching to
+        // it. We could also switch to the Tab explicitly, but we don't want to
+        // hold a reference to the Tab itself in the anonymous listener class.
+        final int newTabId = newTab.getId();
+
+        final ToastListener listener = new ButtonToast.ToastListener() {
+            @Override
+            public void onButtonClicked() {
+                maybeSwitchToTab(newTabId);
+            }
+
+            @Override
+            public void onToastHidden(ButtonToast.ReasonHidden reason) { }
+        };
+
+        final String message = isPrivate ?
+                getResources().getString(R.string.new_private_tab_opened) :
+                getResources().getString(R.string.new_tab_opened);
+        final String buttonMessage = getResources().getString(R.string.switch_button_message);
+        getButtonToast().show(false,
+                              message,
+                              ButtonToast.LENGTH_SHORT,
+                              buttonMessage,
+                              R.drawable.switch_button_icon,
+                              listener);
     }
 
     // BrowserSearch.OnSearchListener

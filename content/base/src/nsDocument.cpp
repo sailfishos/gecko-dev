@@ -2678,6 +2678,33 @@ AppendCSPFromHeader(nsIContentSecurityPolicy* csp,
   return NS_OK;
 }
 
+bool
+nsDocument::IsLoopDocument(nsIChannel *aChannel)
+{
+  nsCOMPtr<nsIURI> chanURI;
+  nsresult rv = aChannel->GetOriginalURI(getter_AddRefs(chanURI));
+  NS_ENSURE_SUCCESS(rv, false);
+
+  bool isAbout = false;
+  bool isLoop = false;
+  rv = chanURI->SchemeIs("about", &isAbout);
+  NS_ENSURE_SUCCESS(rv, false);
+  if (isAbout) {
+    nsCOMPtr<nsIURI> loopURI;
+    rv = NS_NewURI(getter_AddRefs(loopURI), "about:loopconversation");
+    NS_ENSURE_SUCCESS(rv, false);
+    rv = chanURI->EqualsExceptRef(loopURI, &isLoop);
+    NS_ENSURE_SUCCESS(rv, false);
+    if (!isLoop) {
+      rv = NS_NewURI(getter_AddRefs(loopURI), "about:looppanel");
+      NS_ENSURE_SUCCESS(rv, false);
+      rv = chanURI->EqualsExceptRef(loopURI, &isLoop);
+      NS_ENSURE_SUCCESS(rv, false);
+    }
+  }
+  return isLoop;
+}
+
 nsresult
 nsDocument::InitCSP(nsIChannel* aChannel)
 {
@@ -2731,9 +2758,13 @@ nsDocument::InitCSP(nsIChannel* aChannel)
     }
   }
 
+ // Check if this is part of the Loop/Hello service
+ bool applyLoopCSP = IsLoopDocument(aChannel);
+
   // If there's no CSP to apply, go ahead and return early
   if (!applyAppDefaultCSP &&
       !applyAppManifestCSP &&
+      !applyLoopCSP &&
       cspHeaderValue.IsEmpty() &&
       cspROHeaderValue.IsEmpty()) {
 #ifdef PR_LOGGING
@@ -2804,6 +2835,17 @@ nsDocument::InitCSP(nsIChannel* aChannel)
   // ----- if the doc is an app and specifies a CSP in its manifest, apply it.
   if (applyAppManifestCSP) {
     csp->AppendPolicy(appManifestCSP, false);
+  }
+
+  // ----- if the doc is part of Loop, apply the loop CSP
+  if (applyLoopCSP) {
+    nsAdoptingString loopCSP;
+    loopCSP = Preferences::GetString("loop.CSP");
+    NS_ASSERTION(loopCSP, "Missing loop.CSP preference");
+    // If the pref has been removed, we continue without setting a CSP
+    if (loopCSP) {
+      csp->AppendPolicy(loopCSP, false);
+    }
   }
 
   // ----- if there's a full-strength CSP header, apply it.
@@ -9140,14 +9182,6 @@ nsDocument::CloneDocHelper(nsDocument* clone) const
   nsresult rv = clone->Init();
   NS_ENSURE_SUCCESS(rv, rv);
 
-  // Set URI/principal
-  clone->nsDocument::SetDocumentURI(nsIDocument::GetDocumentURI());
-  clone->SetChromeXHRDocURI(mChromeXHRDocURI);
-  // Must set the principal first, since SetBaseURI checks it.
-  clone->SetPrincipal(NodePrincipal());
-  clone->mDocumentBaseURI = mDocumentBaseURI;
-  clone->SetChromeXHRDocBaseURI(mChromeXHRDocBaseURI);
-
   if (mCreatingStaticClone) {
     nsCOMPtr<nsILoadGroup> loadGroup;
 
@@ -9171,6 +9205,18 @@ nsDocument::CloneDocHelper(nsDocument* clone) const
 
     clone->SetContainer(mDocumentContainer);
   }
+
+  // Now ensure that our clone has the same URI, base URI, and principal as us.
+  // We do this after the mCreatingStaticClone block above, because that block
+  // can set the base URI to an incorrect value in cases when base URI
+  // information came from the channel.  So we override explicitly, and do it
+  // for all these properties, in case ResetToURI messes with any of the rest of
+  // them.
+  clone->nsDocument::SetDocumentURI(nsIDocument::GetDocumentURI());
+  clone->SetChromeXHRDocURI(mChromeXHRDocURI);
+  clone->SetPrincipal(NodePrincipal());
+  clone->mDocumentBaseURI = mDocumentBaseURI;
+  clone->SetChromeXHRDocBaseURI(mChromeXHRDocBaseURI);
 
   // Set scripting object
   bool hasHadScriptObject = true;

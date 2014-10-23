@@ -108,8 +108,9 @@ public:
     }
 
     NS_ConvertUTF16toUTF8 eventType(aData);
-    if (!eventType.EqualsLiteral("created") && !eventType.EqualsLiteral("deleted")) {
-      // MTP doesn't have a modified notification.
+    if (!eventType.EqualsLiteral("modified") && !eventType.EqualsLiteral("deleted")) {
+      // Bug 1074604: Needn't handle "created" event, once file operation
+      // finished, it would trigger "modified" event.
       return NS_OK;
     }
 
@@ -195,6 +196,9 @@ public:
     MTP_LOG("MozMtpServer started");
     server->run();
     MTP_LOG("MozMtpServer finished");
+
+    // server->run will have closed the file descriptor.
+    mMtpUsbFd.forget();
 
     rv = NS_DispatchToMainThread(new FreeFileWatcherUpdateRunnable(mMozMtpServer));
     MOZ_ASSERT(NS_SUCCEEDED(rv));

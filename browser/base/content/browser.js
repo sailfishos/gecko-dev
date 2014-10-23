@@ -1283,6 +1283,8 @@ var gBrowserInit = {
                       .getBoolPref("privacy.trackingprotection.enabled");
       Services.telemetry.getHistogramById("TRACKING_PROTECTION_ENABLED")
         .add(tpEnabled);
+
+      PanicButtonNotifier.init();
     });
     this.delayedStartupFinished = true;
 
@@ -6927,8 +6929,8 @@ let gRemoteTabsUI = {
       return;
     }
 
-    let remoteTabs = gPrefService.getBoolPref("browser.tabs.remote");
-    let autostart = gPrefService.getBoolPref("browser.tabs.remote.autostart");
+    let remoteTabs = Services.appinfo.browserTabsRemote;
+    let autostart = Services.appinfo.browserTabsRemoteAutostart;
 
     let newRemoteWindow = document.getElementById("menu_newRemoteWindow");
     let newNonRemoteWindow = document.getElementById("menu_newNonRemoteWindow");
@@ -7385,3 +7387,35 @@ let ToolbarIconColor = {
     }
   }
 }
+
+let PanicButtonNotifier = {
+  init: function() {
+    this._initialized = true;
+    if (window.PanicButtonNotifierShouldNotify) {
+      delete window.PanicButtonNotifierShouldNotify;
+      this.notify();
+    }
+  },
+  notify: function() {
+    if (!this._initialized) {
+      window.PanicButtonNotifierShouldNotify = true;
+      return;
+    }
+    // Display notification panel here...
+    try {
+      let popup = document.getElementById("panic-button-success-notification");
+      popup.hidden = false;
+      let widget = CustomizableUI.getWidget("panic-button").forWindow(window);
+      let anchor = widget.anchor;
+      anchor = document.getAnonymousElementByAttribute(anchor, "class", "toolbarbutton-icon");
+      popup.openPopup(anchor, popup.getAttribute("position"));
+    } catch (ex) {
+      Cu.reportError(ex);
+    }
+  },
+  close: function() {
+    let popup = document.getElementById("panic-button-success-notification");
+    popup.hidePopup();
+  },
+};
+

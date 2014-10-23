@@ -1444,10 +1444,6 @@ bool MediaDecoder::OnStateMachineThread() const
 
 void MediaDecoder::SetPlaybackRate(double aPlaybackRate)
 {
-  if (aPlaybackRate == mInitialPlaybackRate) {
-    return;
-  }
-
   if (aPlaybackRate == 0.0) {
     mPausedForPlaybackRateNull = true;
     mInitialPlaybackRate = aPlaybackRate;

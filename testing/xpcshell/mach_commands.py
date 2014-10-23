@@ -146,15 +146,9 @@ class XPCShellRunner(MozbuildObject):
                           (manifest and len(manifest.test_paths())==1) or
                           verbose)
 
-        # We need to attach the '.exe' extension on Windows for the debugger to
-        # work properly.
-        xpcsExecutable = 'xpcshell'
-        if os.name == 'nt':
-          xpcsExecutable += '.exe'
-
         args = {
             'manifest': manifest,
-            'xpcshell': os.path.join(self.bindir, xpcsExecutable),
+            'xpcshell': self.get_binary_path('xpcshell'),
             'mozInfo': os.path.join(self.topobjdir, 'mozinfo.json'),
             'symbolsPath': os.path.join(self.distdir, 'crashreporter-symbols'),
             'interactive': interactive,
@@ -263,7 +257,7 @@ class AndroidXPCShellRunner(MozbuildObject):
         options.localBin = os.path.join(self.topobjdir, 'dist/bin')
         options.testingModulesDir = os.path.join(self.topobjdir, '_tests/modules')
         options.mozInfo = os.path.join(self.topobjdir, 'mozinfo.json')
-        options.manifest = os.path.join(self.topobjdir, '_tests/xpcshell/xpcshell_android.ini')
+        options.manifest = os.path.join(self.topobjdir, '_tests/xpcshell/xpcshell.ini')
         options.symbolsPath = os.path.join(self.distdir, 'crashreporter-symbols')
         if local_apk:
             options.localAPK = local_apk
@@ -385,7 +379,7 @@ class B2GXPCShellRunner(MozbuildObject):
         options.localLib = self.bin_dir
         options.localBin = self.bin_dir
         options.logdir = self.xpcshell_dir
-        options.manifest = os.path.join(self.xpcshell_dir, 'xpcshell_b2g.ini')
+        options.manifest = os.path.join(self.xpcshell_dir, 'xpcshell.ini')
         options.mozInfo = os.path.join(self.topobjdir, 'mozinfo.json')
         options.objdir = self.topobjdir
         options.symbolsPath = os.path.join(self.distdir, 'crashreporter-symbols'),

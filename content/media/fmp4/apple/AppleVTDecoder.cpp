@@ -17,6 +17,7 @@
 #include "AppleVTLinker.h"
 #include "prlog.h"
 #include "MediaData.h"
+#include "mozilla/ArrayUtils.h"
 #include "VideoUtils.h"
 
 #ifdef PR_LOGGING
@@ -379,16 +380,25 @@ AppleVTDecoder::SubmitFrame(mp4_demuxer::MP4Sample* aSample)
                                          ,aSample->size
                                          ,false
                                          ,block.receive());
-  NS_ASSERTION(rv == noErr, "Couldn't create CMBlockBuffer");
+  if (rv != noErr) {
+    NS_ERROR("Couldn't create CMBlockBuffer");
+    return NS_ERROR_FAILURE;
+  }
   CMSampleTimingInfo timestamp = TimingInfoFromSample(aSample);
   rv = CMSampleBufferCreate(NULL, block, true, 0, 0, mFormat, 1, 1, &timestamp, 0, NULL, sample.receive());
-  NS_ASSERTION(rv == noErr, "Couldn't create CMSampleBuffer");
+  if (rv != noErr) {
+    NS_ERROR("Couldn't create CMSampleBuffer");
+    return NS_ERROR_FAILURE;
+  }
   rv = VTDecompressionSessionDecodeFrame(mSession,
                                          sample,
                                          0,
                                          new FrameRef(aSample),
                                          &flags);
-  NS_ASSERTION(rv == noErr, "Couldn't pass frame to decoder");
+  if (rv != noErr) {
+     NS_ERROR("Couldn't pass frame to decoder");
+     return NS_ERROR_FAILURE;
+  }
 
   // Ask for more data.
   if (mTaskQueue->IsEmpty()) {
@@ -463,11 +473,31 @@ AppleVTDecoder::InitializeSession()
       kCFBooleanTrue);
 #endif
 
+  // Contruct output configuration.
+  SInt32 PixelFormatTypeValue = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange;
+  AutoCFRelease<CFNumberRef> PixelFormatTypeNumber =
+    CFNumberCreate(kCFAllocatorDefault,
+                   kCFNumberSInt32Type,
+                   &PixelFormatTypeValue);
+
+  const void* outputKeys[] = { kCVPixelBufferPixelFormatTypeKey };
+  const void* outputValues[] = { PixelFormatTypeNumber };
+  static_assert(ArrayLength(outputKeys) == ArrayLength(outputValues),
+                "Non matching keys/values array size");
+
+  AutoCFRelease<CFDictionaryRef> outputConfiguration =
+    CFDictionaryCreate(kCFAllocatorDefault,
+                       outputKeys,
+                       outputValues,
+                       ArrayLength(outputKeys),
+                       &kCFTypeDictionaryKeyCallBacks,
+                       &kCFTypeDictionaryValueCallBacks);
+
   VTDecompressionOutputCallbackRecord cb = { PlatformCallback, this };
   rv = VTDecompressionSessionCreate(NULL, // Allocator.
                                     mFormat,
                                     spec, // Video decoder selection.
-                                    NULL, // Output video format.
+                                    outputConfiguration, // Output video format.
                                     &cb,
                                     &mSession);
   if (rv != noErr) {

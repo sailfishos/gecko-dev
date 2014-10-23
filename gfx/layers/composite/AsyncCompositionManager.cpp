@@ -32,6 +32,7 @@
 #include "nsRegion.h"                   // for nsIntRegion
 #include "nsTArray.h"                   // for nsTArray, nsTArray_Impl, etc
 #include "nsTArrayForwardDeclare.h"     // for InfallibleTArray
+#include "UnitTransforms.h"             // for TransformTo
 #if defined(MOZ_WIDGET_ANDROID)
 # include <android/log.h>
 # include "AndroidBridge.h"
@@ -74,7 +75,7 @@ WalkTheTree(Layer* aLayer,
           dom::ScreenOrientation chromeOrientation = aTargetConfig.orientation();
           dom::ScreenOrientation contentOrientation = state->mTargetConfig.orientation();
           if (!IsSameDimension(chromeOrientation, contentOrientation) &&
-              ContentMightReflowOnOrientationChange(aTargetConfig.clientBounds())) {
+              ContentMightReflowOnOrientationChange(aTargetConfig.naturalBounds())) {
             aReady = false;
           }
         }
@@ -122,9 +123,9 @@ void
 AsyncCompositionManager::ComputeRotation()
 {
   if (!mTargetConfig.naturalBounds().IsEmpty()) {
-    mLayerManager->SetWorldTransform(
+    mWorldTransform =
       ComputeTransformForRotation(mTargetConfig.naturalBounds(),
-                                  mTargetConfig.rotation()));
+                                  mTargetConfig.rotation());
   }
 }
 
@@ -134,6 +135,19 @@ GetBaseTransform2D(Layer* aLayer, Matrix* aTransform)
   // Start with the animated transform if there is one
   return (aLayer->AsLayerComposite()->GetShadowTransformSetByAnimation() ?
           aLayer->GetLocalTransform() : aLayer->GetTransform()).Is2D(aTransform);
+}
+
+static void
+TransformClipRect(Layer* aLayer,
+                  const Matrix4x4& aTransform)
+{
+  const nsIntRect* clipRect = aLayer->GetClipRect();
+  if (clipRect) {
+    LayerIntRect transformed = TransformTo<LayerPixel>(
+        aTransform, LayerIntRect::FromUntyped(*clipRect));
+    nsIntRect shadowClip = LayerIntRect::ToUntyped(transformed);
+    aLayer->AsLayerComposite()->SetShadowClipRect(&shadowClip);
+  }
 }
 
 static void
@@ -173,11 +187,8 @@ TranslateShadowLayer2D(Layer* aLayer,
   layerComposite->SetShadowTransform(layerTransform3D);
   layerComposite->SetShadowTransformSetByAnimation(false);
 
-  const nsIntRect* clipRect = aLayer->GetClipRect();
-  if (aAdjustClipRect && clipRect) {
-    nsIntRect transformedClipRect(*clipRect);
-    transformedClipRect.MoveBy(aTranslation.x, aTranslation.y);
-    layerComposite->SetShadowClipRect(&transformedClipRect);
+  if (aAdjustClipRect) {
+    TransformClipRect(aLayer, Matrix4x4().Translate(aTranslation.x, aTranslation.y, 0));
   }
 }
 
@@ -576,11 +587,10 @@ AsyncCompositionManager::ApplyAsyncContentTransformToTree(Layer *aLayer)
     hasAsyncTransform = true;
 
     ViewTransform asyncTransformWithoutOverscroll;
-    Matrix4x4 overscrollTransform;
     ScreenPoint scrollOffset;
     controller->SampleContentTransformForFrame(&asyncTransformWithoutOverscroll,
-                                               scrollOffset,
-                                               &overscrollTransform);
+                                               scrollOffset);
+    Matrix4x4 overscrollTransform = controller->GetOverscrollTransform();
 
     if (!aLayer->IsScrollInfoLayer()) {
       controller->MarkAsyncTransformAppliedToContent();
@@ -690,7 +700,7 @@ ApplyAsyncTransformToScrollbarForContent(Layer* aScrollbar,
   Matrix4x4 nontransientTransform = apzc->GetNontransientAsyncTransform();
   Matrix4x4 nontransientUntransform = nontransientTransform;
   nontransientUntransform.Invert();
-  Matrix4x4 transientTransform = asyncTransform * nontransientUntransform;
+  Matrix4x4 transientTransform = nontransientUntransform * asyncTransform;
 
   // |transientTransform| represents the amount by which we have scrolled and
   // zoomed since the last paint. Because the scrollbar was sized and positioned based
@@ -708,11 +718,24 @@ ApplyAsyncTransformToScrollbarForContent(Layer* aScrollbar,
   Matrix4x4 scrollbarTransform;
   if (aScrollbar->GetScrollbarDirection() == Layer::VERTICAL) {
     float scale = metrics.CalculateCompositedSizeInCssPixels().height / metrics.mScrollableRect.height;
+    if (aScrollbarIsDescendant) {
+      // In cases where the scrollbar is a descendant of the content, the
+      // scrollbar gets painted at the same resolution as the content. Since the
+      // coordinate space we apply this transform in includes the resolution, we
+      // need to adjust for it as well here. Note that in another
+      // aScrollbarIsDescendant hunk below we unapply the entire async
+      // transform, which includes the nontransientasync transform and would
+      // normally account for the resolution.
+      scale *= metrics.mResolution.scale;
+    }
     scrollbarTransform = scrollbarTransform * Matrix4x4().Scale(1.f, 1.f / transientTransform._22, 1.f);
     scrollbarTransform = scrollbarTransform * Matrix4x4().Translate(0, -transientTransform._42 * scale, 0);
   }
   if (aScrollbar->GetScrollbarDirection() == Layer::HORIZONTAL) {
     float scale = metrics.CalculateCompositedSizeInCssPixels().width / metrics.mScrollableRect.width;
+    if (aScrollbarIsDescendant) {
+      scale *= metrics.mResolution.scale;
+    }
     scrollbarTransform = scrollbarTransform * Matrix4x4().Scale(1.f / transientTransform._11, 1.f, 1.f);
     scrollbarTransform = scrollbarTransform * Matrix4x4().Translate(-transientTransform._41 * scale, 0, 0);
   }
@@ -721,12 +744,31 @@ ApplyAsyncTransformToScrollbarForContent(Layer* aScrollbar,
 
   if (aScrollbarIsDescendant) {
     // If the scrollbar layer is a child of the content it is a scrollbar for, then we
-    // need to do an extra untransform to cancel out the transient async transform on
-    // the content. This is needed because otherwise that transient async transform is
-    // part of the effective transform of this scrollbar, and the scrollbar will jitter
-    // as the content scrolls.
-    transientTransform.Invert();
-    transform = transform * transientTransform;
+    // need to do an extra untransform to cancel out the async transform on
+    // the content. This is needed because layout positions and sizes the
+    // scrollbar on the assumption that there is no async transform, and without
+    // this code the scrollbar will end up in the wrong place.
+    //
+    // Since the async transform is applied on top of the content's regular
+    // transform, we need to make sure to unapply the async transform in the
+    // same coordinate space. This requires applying the content transform and
+    // then unapplying it after unapplying the async transform.
+    Matrix4x4 asyncUntransform = (asyncTransform * apzc->GetOverscrollTransform());
+    asyncUntransform.Invert();
+    Matrix4x4 contentTransform = aContent.GetTransform();
+    Matrix4x4 contentUntransform = contentTransform;
+    contentUntransform.Invert();
+
+    Matrix4x4 compensation = contentTransform * asyncUntransform * contentUntransform;
+    transform = transform * compensation;
+
+    // We also need to make a corresponding change on the clip rect of all the
+    // layers on the ancestor chain from the scrollbar layer up to but not
+    // including the layer with the async transform. Otherwise the scrollbar
+    // shifts but gets clipped and so appears to flicker.
+    for (Layer* ancestor = aScrollbar; ancestor != aContent.GetLayer(); ancestor = ancestor->GetParent()) {
+      TransformClipRect(ancestor, compensation);
+    }
   }
 
   // GetTransform already takes the pre- and post-scale into account.  Since we
@@ -951,6 +993,7 @@ AsyncCompositionManager::TransformShadowTree(TimeStamp aCurrentFrame)
     return false;
   }
 
+
   // NB: we must sample animations *before* sampling pan/zoom
   // transforms.
   bool wantNextFrame = SampleAnimations(root, aCurrentFrame);
@@ -987,6 +1030,13 @@ AsyncCompositionManager::TransformShadowTree(TimeStamp aCurrentFrame)
       }
     }
   }
+
+  LayerComposite* rootComposite = root->AsLayerComposite();
+
+  gfx::Matrix4x4 trans = rootComposite->GetShadowTransform();
+  trans *= gfx::Matrix4x4::From2D(mWorldTransform);
+  rootComposite->SetShadowTransform(trans);
+
 
   return wantNextFrame;
 }

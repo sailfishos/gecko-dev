@@ -876,11 +876,6 @@ TabChild::Observe(nsISupports *aSubject,
 
         mContentDocumentIsDisplayed = true;
 
-        // Reset CSS viewport and zoom to default on new page, then
-        // calculate them properly using the actual metadata from the
-        // page.
-        SetCSSViewport(kDefaultViewportSize);
-
         // In some cases before-first-paint gets called before
         // RecvUpdateDimensions is called and therefore before we have an
         // mInnerSize value set. In such cases defer initializing the viewport
@@ -1881,6 +1876,10 @@ TabChild::RecvHandleDoubleTap(const CSSPoint& aPoint, const ScrollableLayerGuid&
 bool
 TabChild::RecvHandleSingleTap(const CSSPoint& aPoint, const ScrollableLayerGuid& aGuid)
 {
+  TABC_LOG("Handling single tap at %s on %s with %p %p %d\n",
+    Stringify(aPoint).c_str(), Stringify(aGuid).c_str(), mGlobal.get(),
+    mTabChildGlobal.get(), mTouchEndCancelled);
+
   if (!mGlobal || !mTabChildGlobal) {
     return true;
   }

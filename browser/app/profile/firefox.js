@@ -528,6 +528,7 @@ pref("privacy.clearOnShutdown.cache",       true);
 pref("privacy.clearOnShutdown.sessions",    true);
 pref("privacy.clearOnShutdown.offlineApps", false);
 pref("privacy.clearOnShutdown.siteSettings", false);
+pref("privacy.clearOnShutdown.openWindows", false);
 
 pref("privacy.cpd.history",                 true);
 pref("privacy.cpd.formdata",                true);
@@ -538,6 +539,7 @@ pref("privacy.cpd.cache",                   true);
 pref("privacy.cpd.sessions",                true);
 pref("privacy.cpd.offlineApps",             false);
 pref("privacy.cpd.siteSettings",            false);
+pref("privacy.cpd.openWindows",             false);
 
 // What default should we use for the time span in the sanitizer:
 // 0 - Clear everything
@@ -545,10 +547,16 @@ pref("privacy.cpd.siteSettings",            false);
 // 2 - Last 2 Hours
 // 3 - Last 4 Hours
 // 4 - Today
+// 5 - Last 5 minutes
+// 6 - Last 24 hours
 pref("privacy.sanitize.timeSpan", 1);
 pref("privacy.sanitize.sanitizeOnShutdown", false);
 
 pref("privacy.sanitize.migrateFx3Prefs",    false);
+
+pref("privacy.panicButton.enabled",         true);
+pref("privacy.panicButton.useLocaleList",   false);
+pref("privacy.panicButton.enabledLocales",  "ast da de en-GB en-US es-AR es-CL es-ES es-MX fi fr fy-NL he hu it ja ja-JP-mac ko lv nb-NO nn-NO pa-IN pl pt-BR rm ru sk sl zh-TW");
 
 pref("network.proxy.share_proxy_settings",  false); // use the same proxy settings for all protocols
 
@@ -1529,7 +1537,7 @@ pref("browser.newtabpage.rows", 3);
 pref("browser.newtabpage.columns", 5);
 
 // directory tiles download URL
-pref("browser.newtabpage.directory.source", "https://tiles.services.mozilla.com/v2/links/fetch");
+pref("browser.newtabpage.directory.source", "https://tiles.services.mozilla.com/v2/links/fetch/%LOCALE%");
 
 // endpoint to send newtab click and view pings
 pref("browser.newtabpage.directory.ping", "https://tiles.services.mozilla.com/v2/links/");
@@ -1570,15 +1578,10 @@ pref("shumway.disabled", true);
 pref("image.mem.max_decoded_image_kb", 256000);
 
 // Enable by default development builds up until early beta
-#ifdef EARLY_BETA_OR_EARLIER
-pref("loop.enabled", true);
-pref("loop.throttled", false);
-#else
 pref("loop.enabled", true);
 pref("loop.throttled", true);
 pref("loop.soft_start_ticket_number", -1);
-pref("loop.soft_start_hostname", "soft-start.loop-dev.stage.mozaws.net");
-#endif
+pref("loop.soft_start_hostname", "soft-start.loop.services.mozilla.com");
 
 pref("loop.server", "https://loop.services.mozilla.com");
 pref("loop.seenToS", "unseen");
@@ -1590,7 +1593,19 @@ pref("loop.retry_delay.start", 60000);
 pref("loop.retry_delay.limit", 300000);
 pref("loop.feedback.baseUrl", "https://input.mozilla.org/api/v1/feedback");
 pref("loop.feedback.product", "Loop");
+pref("loop.debug.loglevel", "Error");
+pref("loop.debug.dispatcher", false);
 pref("loop.debug.websocket", false);
+pref("loop.debug.sdk", false);
+#ifdef DEBUG
+pref("loop.CSP", "default-src 'self' about: file: chrome: http://localhost:*; img-src 'self' data: http://www.gravatar.com/ about: file: chrome:; font-src 'none'; connect-src wss://*.tokbox.com https://*.opentok.com https://*.tokbox.com wss://*.mozilla.com https://*.mozilla.org wss://*.mozaws.net http://localhost:* ws://localhost:*");
+#else
+pref("loop.CSP", "default-src 'self' about: file: chrome:; img-src 'self' data: http://www.gravatar.com/ about: file: chrome:; font-src 'none'; connect-src wss://*.tokbox.com https://*.opentok.com https://*.tokbox.com wss://*.mozilla.com https://*.mozilla.org wss://*.mozaws.net");
+#endif
+pref("loop.oauth.google.redirect_uri", "urn:ietf:wg:oauth:2.0:oob:auto");
+pref("loop.oauth.google.scope", "https://www.google.com/m8/feeds");
+pref("loop.fxa_oauth.tokendata", "");
+pref("loop.fxa_oauth.profile", "");
 
 // serverURL to be assigned by services team
 pref("services.push.serverURL", "wss://push.services.mozilla.com/");

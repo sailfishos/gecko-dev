@@ -686,6 +686,8 @@ CompositorParent::CompositeToTarget(DrawTarget* aTarget, const nsIntRect* aRect)
     }
   }
 
+  mCompositionManager->ComputeRotation();
+
   TimeStamp time = mIsTesting ? mTestTime : mLastCompose;
   bool requestNextFrame = mCompositionManager->TransformShadowTree(time);
   if (requestNextFrame) {
@@ -693,8 +695,6 @@ CompositorParent::CompositeToTarget(DrawTarget* aTarget, const nsIntRect* aRect)
   }
 
   RenderTraceLayers(mLayerManager->GetRoot(), "0000");
-
-  mCompositionManager->ComputeRotation();
 
 #ifdef MOZ_DUMP_PAINTING
   static bool gDumpCompositorTree = false;
@@ -808,7 +808,7 @@ CompositorParent::ShadowLayersUpdated(LayerTransactionParent* aLayerTree,
   // Instruct the LayerManager to update its render bounds now. Since all the orientation
   // change, dimension change would be done at the stage, update the size here is free of
   // race condition.
-  mLayerManager->UpdateRenderBounds(aTargetConfig.clientBounds());
+  mLayerManager->UpdateRenderBounds(aTargetConfig.naturalBounds());
   mLayerManager->SetRegionToClear(aTargetConfig.clearRegion());
 
   mCompositionManager->Updated(aIsFirstPaint, aTargetConfig);

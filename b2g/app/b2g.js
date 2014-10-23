@@ -81,6 +81,7 @@ pref("network.http.max-persistent-connections-per-proxy", 20);
 pref("network.cookie.cookieBehavior", 0);
 
 // spdy
+pref("network.http.spdy.enabled.http2draft", false);
 pref("network.http.spdy.push-allowance", 32768);
 
 // See bug 545869 for details on why these are set the way they are
@@ -245,6 +246,15 @@ pref("app.faqURL", "http://www.mozilla.com/%LOCALE%/b2g/faq/");
 pref("security.alternate_certificate_error_page", "certerror");
 
 pref("security.warn_viewing_mixed", false); // Warning is disabled.  See Bug 616712.
+
+// 2 = strict certificate pinning checks.
+// This default preference is more strict than Firefox because B2G
+// currently does not have a way to install local root certificates.
+// Strict checking is effectively equivalent to non-strict checking as
+// long as that is true.  If an ability to add local certificates is
+// added, there may be a need to change this pref.
+pref("security.cert_pinning.enforcement_level", 2);
+
 
 // Override some named colors to avoid inverse OS themes
 pref("ui.-moz-dialog", "#efebe7");
@@ -665,6 +675,8 @@ pref("javascript.options.mem.gc_max_empty_chunk_count", 2);
 // Show/Hide scrollbars when active/inactive
 pref("ui.showHideScrollbars", 1);
 pref("ui.useOverlayScrollbars", 1);
+pref("ui.scrollbarFadeBeginDelay", 450);
+pref("ui.scrollbarFadeDuration", 200);
 
 // Enable the ProcessPriorityManager, and give processes with no visible
 // documents a 1s grace period before they're eligible to be marked as

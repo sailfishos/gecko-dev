@@ -61,6 +61,10 @@ function CustomizeMode(aWindow) {
   this.paletteEmptyNotice = this.document.getElementById("customization-empty");
   this.paletteSpacer = this.document.getElementById("customization-spacer");
   this.tipPanel = this.document.getElementById("customization-tipPanel");
+  let lwthemeButton = this.document.getElementById("customization-lwtheme-button");
+  if (Services.prefs.getCharPref("general.skins.selectedSkin") != "classic/1.0") {
+    lwthemeButton.setAttribute("hidden", "true");
+  }
 #ifdef CAN_DRAW_IN_TITLEBAR
   this._updateTitlebarButton();
   Services.prefs.addObserver(kDrawInTitlebarPref, this, false);
@@ -727,6 +731,9 @@ CustomizeMode.prototype = {
       let unusedWidgets = CustomizableUI.getUnusedWidgets(toolboxPalette);
       for (let widget of unusedWidgets) {
         let paletteItem = this.makePaletteItem(widget, "palette");
+        if (!paletteItem) {
+          continue;
+        }
         fragment.appendChild(paletteItem);
       }
 
@@ -744,6 +751,15 @@ CustomizeMode.prototype = {
   //       while still getting rid of the need for overlays.
   makePaletteItem: function(aWidget, aPlace) {
     let widgetNode = aWidget.forWindow(this.window).node;
+    if (!widgetNode) {
+      ERROR("Widget with id " + aWidget.id + " does not return a valid node");
+      return null;
+    }
+    // Do not build a palette item for hidden widgets; there's not much to show.
+    if (widgetNode.hidden) {
+      return null;
+    }
+
     let wrapper = this.createOrUpdateWrapper(widgetNode, aPlace);
     wrapper.appendChild(widgetNode);
     return wrapper;
@@ -776,6 +792,15 @@ CustomizeMode.prototype = {
       }
       this.visiblePalette.hidden = false;
       this.window.gNavToolbox.palette = this._stowedPalette;
+    }.bind(this)).then(null, ERROR);
+  },
+
+  repopulatePalette: function() {
+    Task.spawn(function* () {
+      // Clear the palette first.
+      yield this.depopulatePalette();
+
+      this.populatePalette();
     }.bind(this)).then(null, ERROR);
   },
 
@@ -1234,19 +1259,34 @@ CustomizeMode.prototype = {
   },
 
   onLWThemesMenuShowing: function(aEvent) {
-    AddonManager.getAddonsByTypes(["theme"], function(aThemes) {
-      function buildToolbarButton(doc, aTheme) {
-        function previewTheme(aEvent) {
-          LightweightThemeManager.previewTheme(aEvent.target.theme);
-        }
-        function resetPreview() {
-          LightweightThemeManager.resetPreview();
-        }
+    const DEFAULT_THEME_ID = "{972ce4c6-7e08-4474-a285-3208198ce6fd}";
+    const RECENT_LWT_COUNT = 5;
+
+    function previewTheme(aEvent) {
+      LightweightThemeManager.previewTheme(aEvent.target.theme);
+    }
+
+    function resetPreview() {
+      LightweightThemeManager.resetPreview();
+    }
+
+    AddonManager.getAddonByID(DEFAULT_THEME_ID, function(aDefaultTheme) {
+      let doc = this.window.document;
+
+      function buildToolbarButton(aTheme) {
         let tbb = doc.createElement("toolbarbutton");
         tbb.theme = aTheme;
         tbb.setAttribute("label", aTheme.name);
-        tbb.setAttribute("image", aTheme.iconURL);
-        tbb.setAttribute("tooltiptext", aTheme.description);
+        if (aDefaultTheme == aTheme) {
+          // The actual icon is set up so it looks nice in about:addons, but
+          // we'd like the version that's correct for the OS we're on, so we set
+          // an attribute that our styling will then use to display the icon.
+          tbb.setAttribute("defaulttheme", "true");
+        } else {
+          tbb.setAttribute("image", aTheme.iconURL);
+        }
+        if (aTheme.description)
+          tbb.setAttribute("tooltiptext", aTheme.description);
         tbb.setAttribute("tabindex", "0");
         tbb.classList.add("customization-lwtheme-menu-theme");
         tbb.setAttribute("aria-checked", aTheme.isActive);
@@ -1262,24 +1302,27 @@ CustomizeMode.prototype = {
         return tbb;
       }
 
-      const DEFAULT_THEME_ID = "{972ce4c6-7e08-4474-a285-3208198ce6fd}";
-      // Order the themes so the Default theme is always at the beginning.
-      aThemes.sort((a,b) => {a.id != DEFAULT_THEME_ID});
-      let doc = this.window.document;
+      let themes = [aDefaultTheme];
+      let lwts = LightweightThemeManager.usedThemes;
+      if (lwts.length > RECENT_LWT_COUNT)
+        lwts.length = RECENT_LWT_COUNT;
+      let currentLwt = LightweightThemeManager.currentTheme;
+      for (let lwt of lwts) {
+        lwt.isActive = !!currentLwt && (lwt.id == currentLwt.id);
+        themes.push(lwt);
+      }
+
       let footer = doc.getElementById("customization-lwtheme-menu-footer");
       let panel = footer.parentNode;
       let themesInMyThemesSection = 0;
       let recommendedLabel = doc.getElementById("customization-lwtheme-menu-recommended");
-      for (let theme of aThemes) {
-        // Only allow the Default full theme to be shown in this list.
-        if ("skinnable" in theme &&
-            theme.id != DEFAULT_THEME_ID) {
-          continue;
-        }
-
-        let tbb = buildToolbarButton(doc, theme);
+      for (let theme of themes) {
+        let tbb = buildToolbarButton(theme);
         tbb.addEventListener("command", function() {
-          this.theme.userDisabled = false;
+          if ("userDisabled" in this.theme)
+            this.theme.userDisabled = false;
+          else
+            LightweightThemeManager.currentTheme = this.theme;
           this.parentNode.hidePopup();
         });
         panel.insertBefore(tbb, recommendedLabel);
@@ -1294,7 +1337,7 @@ CustomizeMode.prototype = {
       for (let theme of recommendedThemes) {
         theme.name = sb.GetStringFromName("lightweightThemes." + theme.id + ".name");
         theme.description = sb.GetStringFromName("lightweightThemes." + theme.id + ".description");
-        let tbb = buildToolbarButton(doc, theme);
+        let tbb = buildToolbarButton(theme);
         tbb.addEventListener("command", function() {
           LightweightThemeManager.setLocalTheme(this.theme);
           recommendedThemes = recommendedThemes.filter((aTheme) => { return aTheme.id != this.theme.id; });

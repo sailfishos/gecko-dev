@@ -6,7 +6,7 @@
 
 var loop = loop || {};
 loop.shared = loop.shared || {};
-loop.shared.models = (function() {
+loop.shared.models = (function(l10n) {
   "use strict";
 
   /**
@@ -18,12 +18,9 @@ loop.shared.models = (function() {
       ongoing:      false,         // Ongoing call flag
       callerId:     undefined,     // Loop caller id
       loopToken:    undefined,     // Loop conversation token
-      loopVersion:  undefined,     // Loop version for /calls/ information. This
-                                   // is the version received from the push
-                                   // notification and is used by the server to
-                                   // determine the pending calls
       sessionId:    undefined,     // OT session id
       sessionToken: undefined,     // OT session token
+      sessionType:  undefined,     // Hawk session type
       apiKey:       undefined,     // OT api key
       callId:       undefined,     // The callId on the server
       progressURL:  undefined,     // The websocket url to use for progress
@@ -32,9 +29,10 @@ loop.shared.models = (function() {
                                    // requires.
       callType:     undefined,     // The type of incoming call selected by
                                    // other peer ("audio" or "audio-video")
-      selectedCallType: undefined, // The selected type for the call that was
-                                   // initiated ("audio" or "audio-video")
+      selectedCallType: "audio-video", // The selected type for the call that was
+                                       // initiated ("audio" or "audio-video")
       callToken:    undefined,     // Incoming call token.
+      callUrl:      undefined,     // Incoming call url
                                    // Used for blocking a call url
       subscribedStream: false,     // Used to indicate that a stream has been
                                    // subscribed to
@@ -55,28 +53,12 @@ loop.shared.models = (function() {
     session: undefined,
 
     /**
-     * Pending call timeout value.
-     * @type {Number}
-     */
-    pendingCallTimeout: undefined,
-
-    /**
-     * Pending call timer.
-     * @type {Number}
-     */
-    _pendingCallTimer: undefined,
-
-    /**
      * Constructor.
      *
      * Options:
      *
      * Required:
      * - {OT} sdk: OT SDK object.
-     *
-     * Optional:
-     * - {Number} pendingCallTimeout: Pending call timeout in milliseconds
-     *                                (default: 20000).
      *
      * @param  {Object} attributes Attributes object.
      * @param  {Object} options    Options object.
@@ -87,24 +69,31 @@ loop.shared.models = (function() {
         throw new Error("missing required sdk");
       }
       this.sdk = options.sdk;
-      this.pendingCallTimeout = options.pendingCallTimeout || 20000;
 
-      // Ensure that any pending call timer is cleared on disconnect/error
-      this.on("session:ended session:error", this._clearPendingCallTimer, this);
+      // Set loop.debug.sdk to true in the browser, or standalone:
+      // localStorage.setItem("debug.sdk", true);
+      if (loop.shared.utils.getBoolPreference("debug.sdk")) {
+        this.sdk.setLogLevel(this.sdk.DEBUG);
+      }
     },
 
     /**
-     * Starts an incoming conversation.
+     * Indicates an incoming conversation has been accepted.
      */
-    incoming: function() {
-      this.trigger("call:incoming");
+    accepted: function() {
+      this.trigger("call:accepted");
     },
 
     /**
      * Used to indicate that an outgoing call should start any necessary
      * set-up.
+     *
+     * @param {String} selectedCallType Call type ("audio" or "audio-video")
      */
-    setupOutgoingCall: function() {
+    setupOutgoingCall: function(selectedCallType) {
+      if (selectedCallType) {
+        this.set("selectedCallType", selectedCallType);
+      }
       this.trigger("call:outgoing:setup");
     },
 
@@ -115,20 +104,6 @@ loop.shared.models = (function() {
      *                             server for the outgoing call.
      */
     outgoing: function(sessionData) {
-      this._clearPendingCallTimer();
-
-      // Outgoing call has never reached destination, closing - see bug 1020448
-      function handleOutgoingCallTimeout() {
-        /*jshint validthis:true */
-        if (!this.get("ongoing")) {
-          this.trigger("timeout").endSession();
-        }
-      }
-
-      // Setup pending call timeout.
-      this._pendingCallTimer = setTimeout(
-        handleOutgoingCallTimeout.bind(this), this.pendingCallTimeout);
-
       this.setOutgoingSessionData(sessionData);
       this.trigger("call:outgoing");
     },
@@ -168,14 +143,18 @@ loop.shared.models = (function() {
     setIncomingSessionData: function(sessionData) {
       // Explicit property assignment to prevent later "surprises"
       this.set({
-        sessionId:      sessionData.sessionId,
-        sessionToken:   sessionData.sessionToken,
-        apiKey:         sessionData.apiKey,
-        callId:         sessionData.callId,
-        progressURL:    sessionData.progressURL,
-        websocketToken: sessionData.websocketToken.toString(16),
-        callType:       sessionData.callType || "audio-video",
-        callToken:      sessionData.callToken
+        sessionId:       sessionData.sessionId,
+        sessionToken:    sessionData.sessionToken,
+        sessionType:     sessionData.sessionType,
+        apiKey:          sessionData.apiKey,
+        callId:          sessionData.callId,
+        callerId:        sessionData.callerId,
+        urlCreationDate: sessionData.urlCreationDate,
+        progressURL:     sessionData.progressURL,
+        websocketToken:  sessionData.websocketToken.toString(16),
+        callType:        sessionData.callType || "audio-video",
+        callToken:       sessionData.callToken,
+        callUrl:         sessionData.callUrl
       });
     },
 
@@ -221,6 +200,23 @@ loop.shared.models = (function() {
         return this.get("selectedCallType") === "audio-video";
       }
       return undefined;
+    },
+
+    /**
+     * Used to remove the scheme from a url.
+     */
+    _removeScheme: function(url) {
+      if (!url) {
+        return "";
+      }
+      return url.replace(/^https?:\/\//, "");
+    },
+
+    /**
+     * Returns a conversation identifier for the incoming call view
+     */
+    getCallIdentifier: function() {
+      return this.get("callerId") || this._removeScheme(this.get("callUrl"));
     },
 
     /**
@@ -278,15 +274,6 @@ loop.shared.models = (function() {
         default:
           this.trigger("session:error", err);
           break;
-      }
-    },
-
-    /**
-     * Clears current pending call timer, if any.
-     */
-    _clearPendingCallTimer: function() {
-      if (this._pendingCallTimer) {
-        clearTimeout(this._pendingCallTimer);
       }
     },
 
@@ -366,6 +353,8 @@ loop.shared.models = (function() {
    */
   var NotificationModel = Backbone.Model.extend({
     defaults: {
+      details: "",
+      detailsButtonLabel: "",
       level: "info",
       message: ""
     }
@@ -375,7 +364,46 @@ loop.shared.models = (function() {
    * Notification collection
    */
   var NotificationCollection = Backbone.Collection.extend({
-    model: NotificationModel
+    model: NotificationModel,
+
+    /**
+     * Adds a warning notification to the stack and renders it.
+     *
+     * @return {String} message
+     */
+    warn: function(message) {
+      this.add({level: "warning", message: message});
+    },
+
+    /**
+     * Adds a l10n warning notification to the stack and renders it.
+     *
+     * @param  {String} messageId L10n message id
+     */
+    warnL10n: function(messageId) {
+      this.warn(l10n.get(messageId));
+    },
+
+    /**
+     * Adds an error notification to the stack and renders it.
+     *
+     * @return {String} message
+     */
+    error: function(message) {
+      this.add({level: "error", message: message});
+    },
+
+    /**
+     * Adds a l10n error notification to the stack and renders it.
+     *
+     * @param  {String} messageId L10n message id
+     * @param  {Object} [l10nProps] An object with variables to be interpolated
+     *                  into the translation. All members' values must be
+     *                  strings or numbers.
+     */
+    errorL10n: function(messageId, l10nProps) {
+      this.error(l10n.get(messageId, l10nProps));
+    }
   });
 
   return {
@@ -383,4 +411,4 @@ loop.shared.models = (function() {
     NotificationCollection: NotificationCollection,
     NotificationModel: NotificationModel
   };
-})();
+})(navigator.mozL10n || document.mozL10n);

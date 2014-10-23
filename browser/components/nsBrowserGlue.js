@@ -2147,7 +2147,11 @@ let DefaultBrowserCheck = {
       claimAllTypes = (parseFloat(version) < 6.2);
     } catch (ex) { }
 #endif
-    ShellService.setDefaultBrowser(claimAllTypes, false);
+    try {
+      ShellService.setDefaultBrowser(claimAllTypes, false);
+    } catch (ex) {
+      Cu.reportError(ex);
+    }
     this.closePrompt();
   },
 
@@ -2223,7 +2227,7 @@ let DefaultBrowserCheck = {
 
     let iconPixels = win.devicePixelRatio > 1 ? "32" : "16";
     let iconURL = "chrome://branding/content/icon" + iconPixels + ".png";
-    const priority = notificationBox.PRIORITY_INFO_HIGH;
+    const priority = notificationBox.PRIORITY_WARNING_HIGH;
     let callback = this._onNotificationEvent.bind(this);
     this._notification = notificationBox.appendNotification(promptMessage, "default-browser",
                                                             iconURL, priority, buttons,

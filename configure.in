@@ -3506,7 +3506,7 @@ MOZ_ARG_WITH_BOOL(system-nss,
     _USE_SYSTEM_NSS=1 )
 
 if test -n "$_USE_SYSTEM_NSS"; then
-    AM_PATH_NSS(3.16.1, [MOZ_NATIVE_NSS=1], [AC_MSG_ERROR([you don't have NSS installed or your version is too old])])
+    AM_PATH_NSS(3.17.2, [MOZ_NATIVE_NSS=1], [AC_MSG_ERROR([you don't have NSS installed or your version is too old])])
 fi
 
 if test -n "$MOZ_NATIVE_NSS"; then
@@ -3780,6 +3780,7 @@ MOZ_PEERCONNECTION=
 MOZ_SRTP=
 MOZ_WEBRTC_SIGNALING=
 MOZ_WEBRTC_ASSERT_ALWAYS=1
+MOZ_WEBRTC_HARDWARE_AEC_NS=
 MOZ_SCTP=
 MOZ_ANDROID_OMX=
 MOZ_MEDIA_NAVIGATOR=
@@ -3953,6 +3954,19 @@ if test -z "$MOZ_GOOGLE_API_KEY"; then
     MOZ_GOOGLE_API_KEY=no-google-api-key
 fi
 AC_SUBST(MOZ_GOOGLE_API_KEY)
+
+# Allow to specify a Google OAuth API key file that contains the client ID and
+# the secret key to be used for various Google OAuth API requests.
+MOZ_ARG_WITH_STRING(google-oauth-api-keyfile,
+[ --with-google-oauth-api-keyfile=file  Use the client id and secret key contained in the given keyfile for Google OAuth API requests],
+ [MOZ_GOOGLE_OAUTH_API_CLIENTID=`cat $withval | cut -f 1 -d " "`
+  MOZ_GOOGLE_OAUTH_API_KEY=`cat $withval | cut -f 2 -d " "`])
+if test -z "$MOZ_GOOGLE_OAUTH_API_CLIENTID"; then
+    MOZ_GOOGLE_OAUTH_API_CLIENTID=no-google-oauth-api-clientid
+    MOZ_GOOGLE_OAUTH_API_KEY=no-google-oauth-api-key
+fi
+AC_SUBST(MOZ_GOOGLE_OAUTH_API_CLIENTID)
+AC_SUBST(MOZ_GOOGLE_OAUTH_API_KEY)
 
 # Allow specifying a Bing API key file that contains the client ID and the
 # secret key to be used for the Bing Translation API requests.
@@ -4983,11 +4997,24 @@ else
     MOZ_SYNTH_PICO=
 fi
 
+dnl ========================================================
+dnl = Force hardware AEC, disable webrtc.org AEC
+dnl ========================================================
+MOZ_ARG_ENABLE_BOOL(hardware-aec-ns,
+[  --enable-hardware-aec-ns   Enable support for hardware AEC and noise suppression],
+    MOZ_WEBRTC_HARDWARE_AEC_NS=1,
+    MOZ_WEBRTC_HARDWARE_AEC_NS=)
+
+if test -n "$MOZ_WEBRTC_HARDWARE_AEC_NS"; then
+    AC_DEFINE(MOZ_WEBRTC_HARDWARE_AEC_NS)
+fi
+
 AC_SUBST(MOZ_WEBRTC)
 AC_SUBST(MOZ_WEBRTC_LEAKING_TESTS)
 AC_SUBST(MOZ_WEBRTC_SIGNALING)
 AC_SUBST(MOZ_PEERCONNECTION)
 AC_SUBST(MOZ_WEBRTC_ASSERT_ALWAYS)
+AC_SUBST(MOZ_WEBRTC_HARDWARE_AEC_NS)
 AC_SUBST(MOZ_SCTP)
 AC_SUBST(MOZ_SRTP)
 AC_SUBST_LIST(MOZ_WEBRTC_X11_LIBS)
@@ -8346,6 +8373,12 @@ dnl Build Sync Services if required
 AC_SUBST(MOZ_SERVICES_SYNC)
 if test -n "$MOZ_SERVICES_SYNC"; then
   AC_DEFINE(MOZ_SERVICES_SYNC)
+fi
+
+dnl Build Services/CloudSync if required
+AC_SUBST(MOZ_SERVICES_CLOUDSYNC)
+if test -n "$MOZ_SERVICES_CLOUDSYNC"; then
+  AC_DEFINE(MOZ_SERVICES_CLOUDSYNC)
 fi
 
 dnl Build Captive Portal Detector if required

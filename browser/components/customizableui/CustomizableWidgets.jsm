@@ -20,6 +20,8 @@ XPCOMUtils.defineLazyModuleGetter(this, "ShortcutUtils",
   "resource://gre/modules/ShortcutUtils.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "CharsetMenu",
   "resource://gre/modules/CharsetMenu.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "PrivateBrowsingUtils",
+  "resource://gre/modules/PrivateBrowsingUtils.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "CharsetBundle", function() {
   const kCharsetBundle = "chrome://global/locale/charsetMenu.properties";
@@ -899,29 +901,51 @@ const CustomizableWidgets = [{
       let win = aEvent.view;
       win.MailIntegration.sendLinkForWindow(win.content);
     }
-  }, {
-    id: "loop-call-button",
-    type: "custom",
-    // XXX Bug 1013989 will provide a label for the button
-    label: "loop-call-button.label",
-    tooltiptext: "loop-call-button.tooltiptext",
-    defaultArea: CustomizableUI.AREA_NAVBAR,
-    introducedInVersion: 1,
-    onBuild: function(aDocument) {
-      let node = aDocument.createElementNS(kNSXUL, "toolbarbutton");
-      node.setAttribute("id", this.id);
-      node.classList.add("toolbarbutton-1");
-      node.classList.add("chromeclass-toolbar-additional");
-      node.setAttribute("type", "badged");
-      node.setAttribute("label", CustomizableUI.getLocalizedProperty(this, "label"));
-      node.setAttribute("tooltiptext", CustomizableUI.getLocalizedProperty(this, "tooltiptext"));
-      node.setAttribute("removable", "true");
-      node.addEventListener("command", function(event) {
-        aDocument.defaultView.LoopUI.openCallPanel(event);
-      });
-      return node;
-    }
   }];
+
+CustomizableWidgets.push({
+  id: "loop-button-throttled",
+  type: "custom",
+  label: "Hello",
+  tooltiptext: "loop-call-button.tooltiptext",
+  onBuild: function(aDocument) {
+    // If we're not supposed to see the button, return zip.
+    if (!Services.prefs.getBoolPref("loop.enabled")) {
+      return null;
+    }
+
+    let node = aDocument.createElementNS(kNSXUL, "toolbarbutton");
+    node.setAttribute("id", this.id);
+    node.classList.add("toolbarbutton-1");
+    node.classList.add("chromeclass-toolbar-additional");
+    node.setAttribute("type", "badged");
+    node.setAttribute("label", CustomizableUI.getLocalizedProperty(this, "label"));
+    node.setAttribute("tooltiptext", CustomizableUI.getLocalizedProperty(this, "tooltiptext"));
+    node.setAttribute("removable", "true");
+    node.addEventListener("command", function(event) {
+      aDocument.defaultView.LoopUI.openCallPanel(event);
+    });
+
+    // If we're throttled, check to see if it's our turn to be unthrottled
+    if (Services.prefs.getBoolPref("loop.throttled")) {
+      // If we're throttled, hide the button.
+      node.setAttribute("hidden", true);
+      aDocument.defaultView.MozLoopService.checkSoftStart(() => {
+        // If the check unthrottled us, reveal the button.
+        if (!Services.prefs.getBoolPref("loop.throttled")) {
+          node.removeAttribute("hidden");
+          // If we're in CustomizationMode and the transition has already finished,
+          // re-populate the palette to make the Loop button appear.
+          if (aDocument.documentElement.hasAttribute("customize-entered")) {
+            aDocument.defaultView.gCustomizeMode.repopulatePalette();
+          }
+        }
+       });
+    }
+
+    return node;
+  }
+});
 
 #ifdef XP_WIN
 #ifdef MOZ_METRO
@@ -947,6 +971,130 @@ if (Services.metro && Services.metro.supported) {
 #endif
 #endif
 
+let isPanicButtonEnabled = Services.prefs.getBoolPref("privacy.panicButton.enabled");
+#ifndef NIGHTLY_BUILD
+if (Services.prefs.getBoolPref("privacy.panicButton.useLocaleList")) {
+  let chromeRegistry = Cc["@mozilla.org/chrome/chrome-registry;1"]
+                       .getService(Ci.nsIXULChromeRegistry);
+  let browserLocale = chromeRegistry.getSelectedLocale("browser");
+  let enabledLocales = [];
+  try {
+    enabledLocales = Services.prefs.getCharPref("privacy.panicButton.enabledLocales").split(' ');
+  } catch (ex) {
+    Cu.reportError(ex);
+  }
+  isPanicButtonEnabled = isPanicButtonEnabled && enabledLocales.indexOf(browserLocale) != -1;
+}
+#endif
+if (isPanicButtonEnabled) {
+  CustomizableWidgets.push({
+    id: "panic-button",
+    type: "view",
+    viewId: "PanelUI-panicView",
+    _sanitizer: null,
+    _ensureSanitizer: function() {
+      if (!this.sanitizer) {
+        let scope = {};
+        Services.scriptloader.loadSubScript("chrome://browser/content/sanitize.js",
+                                            scope);
+        this._Sanitizer = scope.Sanitizer;
+        this._sanitizer = new scope.Sanitizer();
+        this._sanitizer.ignoreTimespan = false;
+      }
+    },
+    _getSanitizeRange: function(aDocument) {
+      let group = aDocument.getElementById("PanelUI-panic-timeSpan");
+      return this._Sanitizer.getClearRange(+group.value);
+    },
+    forgetButtonCalled: function(aEvent) {
+      let doc = aEvent.target.ownerDocument;
+      this._ensureSanitizer();
+      this._sanitizer.range = this._getSanitizeRange(doc);
+      let group = doc.getElementById("PanelUI-panic-timeSpan");
+      group.selectedItem = doc.getElementById("PanelUI-panic-5min");
+      let itemsToClear = [
+        "cookies", "history", "openWindows", "formdata", "sessions", "cache", "downloads"
+      ];
+      let newWindowPrivateState = PrivateBrowsingUtils.isWindowPrivate(doc.defaultView) ?
+                                  "private" : "non-private";
+      this._sanitizer.items.openWindows.privateStateForNewWindow = newWindowPrivateState;
+      let promise = this._sanitizer.sanitize(itemsToClear);
+      promise.then(function() {
+        let otherWindow = Services.wm.getMostRecentWindow("navigator:browser");
+        if (otherWindow.closed) {
+          Cu.reportError("Got a closed window!");
+        }
+        if (otherWindow.PanicButtonNotifier) {
+          otherWindow.PanicButtonNotifier.notify();
+        } else {
+          otherWindow.PanicButtonNotifierShouldNotify = true;
+        }
+      });
+    },
+    handleEvent: function(aEvent) {
+      switch (aEvent.type) {
+        case "command":
+          this.forgetButtonCalled(aEvent);
+          break;
+        case "popupshowing":
+          let popup = aEvent.target;
+          if (popup.id == "customizationui-widget-panel" &&
+              popup.querySelector("#PanelUI-panicView")) {
+            popup.ownerDocument.removeEventListener("popupshowing", this);
+            this._updateHeights(popup, true);
+          }
+          break;
+      }
+    },
+    // Workaround bug 451997 by hardcoding heights for (potentially) wrapped items:
+    _updateHeights: function(aContainer, aSetHeights) {
+      // Make sure we don't get stuck not finding anything because of the XBL binding between
+      // the popup and the radio/label/description elements:
+      let view = aContainer.ownerDocument.getElementById("PanelUI-panicView");
+      let variableHeightItems = view.querySelectorAll("radio, label, description");
+      let win = aContainer.ownerDocument.defaultView;
+      for (let item of variableHeightItems) {
+        if (aSetHeights) {
+          let height = win.getComputedStyle(item, null).getPropertyValue("height");
+          item.style.height = height;
+          // In the main menu panel, need to set the height of the container of this
+          // description because otherwise the text will overflow:
+          if (item.id == "PanelUI-panic-mainDesc" &&
+              view.getAttribute("current") == "true" &&
+              // Ensure we don't make this less than the size of the icon:
+              parseInt(height) > 32) {
+            item.parentNode.style.minHeight = height;
+          }
+        } else {
+          item.style.removeProperty("height");
+          if (item.id == "PanelUI-panic-mainDesc") {
+            item.parentNode.style.removeProperty("min-height");
+          }
+        }
+      }
+    },
+    onViewShowing: function(aEvent) {
+      let view = aEvent.target;
+      let forgetButton = view.querySelector("#PanelUI-panic-view-button");
+      forgetButton.addEventListener("command", this);
+      if (view.getAttribute("current") == "true") {
+        // In the main menupanel, fix heights immediately:
+        this._updateHeights(view, true);
+      } else {
+        // In a standalone panel, so fix the label and radio heights
+        // when the popup starts showing.
+        view.ownerDocument.addEventListener("popupshowing", this);
+      }
+    },
+    onViewHiding: function(aEvent) {
+      let view = aEvent.target;
+      let forgetButton = view.querySelector("#PanelUI-panic-view-button");
+      forgetButton.removeEventListener("command", this);
+      this._updateHeights(view, false);
+    },
+  });
+}
+
 #ifdef E10S_TESTING_ONLY
 /**
  * The e10s button's purpose is to lower the barrier of entry
@@ -964,7 +1112,7 @@ if (Services.prefs.getBoolPref("browser.tabs.remote")) {
     };
   }
 
-  let openRemote = !Services.prefs.getBoolPref("browser.tabs.remote.autostart");
+  let openRemote = !Services.appinfo.browserTabsRemoteAutostart;
   // Like the XUL menuitem counterparts, we hard-code these strings in because
   // this button should never roll into production.
   let buttonLabel = openRemote ? "New e10s Window"

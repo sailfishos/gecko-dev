@@ -2,6 +2,11 @@
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
 const {LoopContacts} = Cu.import("resource:///modules/loop/LoopContacts.jsm", {});
+const {LoopStorage} = Cu.import("resource:///modules/loop/LoopStorage.jsm", {});
+
+XPCOMUtils.defineLazyServiceGetter(this, "uuidgen",
+                                   "@mozilla.org/uuid-generator;1",
+                                   "nsIUUIDGenerator");
 
 const kContacts = [{
   id: 1,
@@ -10,6 +15,11 @@ const kContacts = [{
     "pref": true,
     "type": ["work"],
     "value": "ally@mail.com"
+  }],
+  tel: [{
+    "pref": true,
+    "type": ["mobile"],
+    "value": "+31-6-12345678"
   }],
   category: ["google"],
   published: 1406798311748,
@@ -21,6 +31,11 @@ const kContacts = [{
     "pref": true,
     "type": ["work"],
     "value": "bob@gmail.com"
+  }],
+  tel: [{
+    "pref": true,
+    "type": ["mobile"],
+    "value": "+1-214-5551234"
   }],
   category: ["local"],
   published: 1406798311748,
@@ -399,4 +414,71 @@ add_task(function* () {
   Assert.strictEqual(gExpectedAdds.length, 0, "No contact additions should be expected anymore");
   Assert.strictEqual(gExpectedRemovals.length, 0, "No contact removals should be expected anymore");
   Assert.strictEqual(gExpectedUpdates.length, 0, "No contact updates should be expected anymore");
+});
+
+// Test switching between different databases.
+add_task(function* () {
+  Assert.equal(LoopStorage.databaseName, "default", "First active partition should be the default");
+  yield promiseLoadContacts();
+
+  let uuid = uuidgen.generateUUID().toString().replace(/[{}]+/g, "");
+  LoopStorage.switchDatabase(uuid);
+  Assert.equal(LoopStorage.databaseName, uuid, "The active partition should have changed");
+
+  yield promiseLoadContacts();
+
+  let contacts = yield promiseLoadContacts();
+  for (let i = 0, l = contacts.length; i < l; ++i) {
+    compareContacts(contacts[i], kContacts[i]);
+  }
+
+  LoopStorage.switchDatabase();
+  Assert.equal(LoopStorage.databaseName, "default", "The active partition should have changed");
+
+  contacts = yield LoopContacts.promise("getAll");
+  for (let i = 0, l = contacts.length; i < l; ++i) {
+    compareContacts(contacts[i], kContacts[i]);
+  }
+});
+
+// Test searching for contacts.
+add_task(function* () {
+  yield promiseLoadContacts();
+
+  let contacts = yield LoopContacts.promise("search", {
+    q: "bob@gmail.com"
+  });
+  Assert.equal(contacts.length, 1, "There should be one contact found");
+  compareContacts(contacts[0], kContacts[1]);
+
+  // Test searching by name.
+  contacts = yield LoopContacts.promise("search", {
+    q: "Ally Avocado",
+    field: "name"
+  });
+  Assert.equal(contacts.length, 1, "There should be one contact found");
+  compareContacts(contacts[0], kContacts[0]);
+
+  // Test searching for multiple contacts.
+  contacts = yield LoopContacts.promise("search", {
+    q: "google",
+    field: "category"
+  });
+  Assert.equal(contacts.length, 2, "There should be two contacts found");
+
+  // Test searching for telephone numbers.
+  contacts = yield LoopContacts.promise("search", {
+    q: "+31612345678",
+    field: "tel"
+  });
+  Assert.equal(contacts.length, 1, "There should be one contact found");
+  compareContacts(contacts[0], kContacts[0]);
+
+  // Test searching for telephone numbers without prefixes.
+  contacts = yield LoopContacts.promise("search", {
+    q: "5551234",
+    field: "tel"
+  });
+  Assert.equal(contacts.length, 1, "There should be one contact found");
+  compareContacts(contacts[0], kContacts[1]);
 });

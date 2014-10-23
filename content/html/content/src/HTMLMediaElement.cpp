@@ -1068,13 +1068,6 @@ void HTMLMediaElement::UpdatePreloadAction()
     }
   }
 
-  if ((mBegun || mIsRunningSelectResource) && nextAction < mPreloadAction) {
-    // We've started a load or are already downloading, and the preload was
-    // changed to a state where we buffer less. We don't support this case,
-    // so don't change the preload behaviour.
-    return;
-  }
-
   mPreloadAction = nextAction;
   if (nextAction == HTMLMediaElement::PRELOAD_ENOUGH) {
     if (mSuspendedForPreloadNone) {
@@ -2859,6 +2852,8 @@ void HTMLMediaElement::SetupSrcMediaStreamPlayback(DOMMediaStream* aStream)
     GetSrcMediaStream()->AddVideoOutput(container);
   }
 
+  // Note: we must call DisconnectTrackListListeners(...)  before dropping
+  // mSrcStream
   mSrcStream->ConstructMediaTracks(AudioTracks(), VideoTracks());
 
   ChangeReadyState(nsIDOMHTMLMediaElement::HAVE_METADATA);
@@ -2877,6 +2872,8 @@ void HTMLMediaElement::EndSrcMediaStreamPlayback()
   if (stream) {
     stream->RemoveListener(mSrcStreamListener);
   }
+  mSrcStream->DisconnectTrackListListeners(AudioTracks(), VideoTracks());
+
   // Kill its reference to this element
   mSrcStreamListener->Forget();
   mSrcStreamListener = nullptr;
@@ -3490,6 +3487,7 @@ void HTMLMediaElement::NotifyOwnerDocumentActivityChanged()
   // CanPlayChanged callback.
   if (UseAudioChannelService() && mPlayingThroughTheAudioChannel &&
       mAudioChannelAgent) {
+    AutoNoJSAPI nojsapi;
     mAudioChannelAgent->SetVisibilityState(!ownerDoc->Hidden());
   }
   bool suspendEvents = !ownerDoc->IsActive() || !ownerDoc->IsVisible();

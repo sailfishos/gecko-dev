@@ -395,38 +395,16 @@ class APZCTMController : public mozilla::layers::GeckoContentController
   typedef mozilla::layers::FrameMetrics FrameMetrics;
   typedef mozilla::layers::ScrollableLayerGuid ScrollableLayerGuid;
 
-  class RequestContentRepaintEvent : public nsRunnable
-  {
-  public:
-    explicit RequestContentRepaintEvent(const FrameMetrics& aFrameMetrics)
-      : mFrameMetrics(aFrameMetrics)
-    {
-    }
-
-    NS_IMETHOD Run()
-    {
-      MOZ_ASSERT(NS_IsMainThread());
-
-      nsCOMPtr<nsIContent> targetContent = nsLayoutUtils::FindContentFor(mFrameMetrics.GetScrollId());
-      if (targetContent) {
-        APZCCallbackHelper::UpdateSubFrame(targetContent, mFrameMetrics);
-      }
-
-      return NS_OK;
-    }
-  protected:
-    FrameMetrics mFrameMetrics;
-  };
-
 public:
   // GeckoContentController interface
   virtual void RequestContentRepaint(const FrameMetrics& aFrameMetrics)
   {
-    nsCOMPtr<nsIRunnable> r1 = new RequestContentRepaintEvent(aFrameMetrics);
-    if (!NS_IsMainThread()) {
-      NS_DispatchToMainThread(r1);
-    } else {
-      r1->Run();
+    MOZ_ASSERT(NS_IsMainThread());
+
+    nsCOMPtr<nsIContent> targetContent = nsLayoutUtils::FindContentFor(aFrameMetrics.GetScrollId());
+    if (targetContent) {
+      FrameMetrics metrics = aFrameMetrics;
+      APZCCallbackHelper::UpdateSubFrame(targetContent, metrics);
     }
   }
 
@@ -2671,6 +2649,17 @@ nsChildView::ClearVibrantAreas()
   }
 }
 
+NSColor*
+nsChildView::VibrancyFillColorForWidgetType(uint8_t aWidgetType)
+{
+  if (VibrancyManager::SystemSupportsVibrancy()) {
+    return EnsureVibrancyManager().VibrancyFillColorForType(
+      aWidgetType == NS_THEME_MAC_VIBRANCY_LIGHT
+        ? VibrancyType::LIGHT : VibrancyType::DARK);
+  }
+  return [NSColor whiteColor];
+}
+
 mozilla::VibrancyManager&
 nsChildView::EnsureVibrancyManager()
 {
@@ -3641,6 +3630,14 @@ NSEvent* gLastDragMouseDownEvent = nil;
   return [[self window] isKindOfClass:[BaseWindow class]] &&
          [(BaseWindow*)[self window] mainChildView] == self &&
          [(BaseWindow*)[self window] drawsContentsIntoWindowFrame];
+}
+
+- (NSColor*)vibrancyFillColorForWidgetType:(uint8_t)aWidgetType
+{
+  if (!mGeckoChild) {
+    return [NSColor whiteColor];
+  }
+  return mGeckoChild->VibrancyFillColorForWidgetType(aWidgetType);
 }
 
 - (nsIntRegion)nativeDirtyRegionWithBoundingRect:(NSRect)aRect
@@ -5685,6 +5682,18 @@ static int32_t RoundUp(double aDouble)
 - (void)keyDown:(NSEvent*)theEvent
 {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK;
+
+  // Weird things can happen on keyboard input if the key window isn't in the
+  // current space.  For example see bug 1056251.  To get around this, always
+  // make sure that, if our window is key, it's also made frontmost.  Doing
+  // this automatically switches to whatever space our window is in.  Safari
+  // does something similar.  Our window should normally always be key --
+  // otherwise why is the OS sending us a key down event?  But it's just
+  // possible we're in Gecko's hidden window, so we check first.
+  NSWindow *viewWindow = [self window];
+  if (viewWindow && [viewWindow isKeyWindow]) {
+    [viewWindow orderWindow:NSWindowAbove relativeTo:0];
+  }
 
 #if !defined(RELEASE_BUILD) || defined(DEBUG)
   if (mGeckoChild && mTextInputHandler && mTextInputHandler->IsFocused()) {

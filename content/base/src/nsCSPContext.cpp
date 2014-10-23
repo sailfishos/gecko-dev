@@ -883,7 +883,7 @@ class CSPReportSenderRunnable MOZ_FINAL : public nsRunnable
     nsString                mScriptSample;
     uint32_t                mLineNum;
     uint64_t                mInnerWindowID;
-    nsCSPContext*           mCSPContext;
+    nsRefPtr<nsCSPContext>  mCSPContext;
 };
 
 /**
@@ -1212,6 +1212,7 @@ nsCSPContext::Write(nsIObjectOutputStream* aStream)
 
   nsAutoString polStr;
   for (uint32_t p = 0; p < mPolicies.Length(); p++) {
+    polStr.Truncate();
     mPolicies[p]->toString(polStr);
     aStream->WriteWStringZ(polStr.get());
     aStream->WriteBoolean(mPolicies[p]->getReportOnlyFlag());

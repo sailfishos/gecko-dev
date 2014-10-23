@@ -114,19 +114,31 @@ DrawFocusRingForCellIfNeeded(NSCell* aCell, NSRect aWithFrame, NSView* aInView)
   }
 }
 
-static void
-DrawCellIncludingFocusRing(NSCell* aCell, NSRect aWithFrame, NSView* aInView)
+static bool
+FocusIsDrawnByDrawWithFrame()
 {
-  [aCell drawWithFrame:aWithFrame inView:aInView];
-
 #if defined(MAC_OS_X_VERSION_10_8) && MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_X_VERSION_10_8
   // When building with the 10.8 SDK or higher, focus rings don't draw as part
   // of -[NSCell drawWithFrame:inView:] and must be drawn by a separate call
   // to -[NSCell drawFocusRingMaskWithFrame:inView:]; .
   // See the NSButtonCell section under
   // https://developer.apple.com/library/mac/releasenotes/AppKit/RN-AppKitOlderNotes/#X10_8Notes
-  DrawFocusRingForCellIfNeeded(aCell, aWithFrame, aInView);
+  return false;
+#else
+  // On 10.10 and up, this is the case even when building against the 10.7 SDK
+  // or lower.
+  return !nsCocoaFeatures::OnYosemiteOrLater();
 #endif
+}
+
+static void
+DrawCellIncludingFocusRing(NSCell* aCell, NSRect aWithFrame, NSView* aInView)
+{
+  [aCell drawWithFrame:aWithFrame inView:aInView];
+
+  if (!FocusIsDrawnByDrawWithFrame()) {
+    DrawFocusRingForCellIfNeeded(aCell, aWithFrame, aInView);
+  }
 }
 
 /**
@@ -305,12 +317,9 @@ static BOOL IsToolbarStyleContainer(nsIFrame* aFrame)
 {
   [super drawWithFrame:rect inView:controlView];
 
-#if !defined(MAC_OS_X_VERSION_10_8) || MAC_OS_X_VERSION_MAX_ALLOWED < MAC_OS_X_VERSION_10_8
-  // When building against the 10.8 SDK and up, DrawCellIncludingFocusRing will
-  // invoke DrawFocusRingForCellIfNeeded for us, but when building
-  // against earlier SDKs we have to do it here.
-  DrawFocusRingForCellIfNeeded(self, rect, controlView);
-#endif
+  if (FocusIsDrawnByDrawWithFrame()) {
+    DrawFocusRingForCellIfNeeded(self, rect, controlView);
+  }
 }
 
 - (void)drawFocusRingMaskWithFrame:(NSRect)rect inView:(NSView*)controlView
@@ -861,7 +870,7 @@ GetAquaAppearance()
 static void
 RenderWithCoreUI(CGRect aRect, CGContextRef cgContext, NSDictionary* aOptions)
 {
-  static id appearance = GetAquaAppearance();
+  id appearance = GetAquaAppearance();
 
   if (aRect.size.width * aRect.size.height > BITMAP_MAX_AREA) {
     return;
@@ -2371,7 +2380,11 @@ nsNativeThemeCocoa::DrawWidgetBackground(nsRenderingContext* aContext,
       break;
 
     case NS_THEME_TOOLTIP:
-      CGContextSetRGBFillColor(cgContext, 0.996, 1.000, 0.792, 0.950);
+      if (nsCocoaFeatures::OnYosemiteOrLater()) {
+        CGContextSetRGBFillColor(cgContext, 0.945, 0.942, 0.945, 0.950);
+      } else {
+        CGContextSetRGBFillColor(cgContext, 0.996, 1.000, 0.792, 0.950);
+      }
       CGContextFillRect(cgContext, macRect);
       break;
 
@@ -2809,6 +2822,23 @@ nsNativeThemeCocoa::DrawWidgetBackground(nsRenderingContext* aContext,
     case NS_THEME_RESIZER:
       DrawResizer(cgContext, macRect, aFrame);
       break;
+
+    case NS_THEME_MAC_VIBRANCY_LIGHT:
+    case NS_THEME_MAC_VIBRANCY_DARK:
+    {
+      NSWindow* win = NativeWindowForFrame(aFrame);
+      if ([win isKindOfClass:[ToolbarWindow class]]) {
+        NSGraphicsContext* savedContext = [NSGraphicsContext currentContext];
+        [NSGraphicsContext setCurrentContext:[NSGraphicsContext graphicsContextWithGraphicsPort:cgContext flipped:YES]];
+
+        ChildView* childView = [(ToolbarWindow*)win mainChildView];
+        [[childView vibrancyFillColorForWidgetType:aWidgetType] set];
+        NSRectFill(NSRectFromCGRect(macRect));
+
+        [NSGraphicsContext setCurrentContext:savedContext];
+      }
+      break;
+    }
   }
 
   nativeDrawing.EndNativeDrawing();

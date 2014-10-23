@@ -6,11 +6,15 @@
 
 const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
 
+Cu.import("resource://services-common/utils.js");
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource:///modules/loop/MozLoopService.jsm");
-Cu.import("resource:///modules/loop/LoopContacts.jsm");
 
+XPCOMUtils.defineLazyModuleGetter(this, "LoopContacts",
+                                        "resource:///modules/loop/LoopContacts.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "LoopStorage",
+                                        "resource:///modules/loop/LoopStorage.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "hookWindowCloseForPanelClose",
                                         "resource://gre/modules/MozSocialAPI.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "PluralForm",
@@ -23,6 +27,9 @@ XPCOMUtils.defineLazyGetter(this, "appInfo", function() {
 XPCOMUtils.defineLazyServiceGetter(this, "clipboardHelper",
                                          "@mozilla.org/widget/clipboardhelper;1",
                                          "nsIClipboardHelper");
+XPCOMUtils.defineLazyServiceGetter(this, "extProtocolSvc",
+                                         "@mozilla.org/uriloader/external-protocol-service;1",
+                                         "nsIExternalProtocolService");
 this.EXPORTED_SYMBOLS = ["injectLoopAPI"];
 
 /**
@@ -36,9 +43,41 @@ this.EXPORTED_SYMBOLS = ["injectLoopAPI"];
 const cloneErrorObject = function(error, targetWindow) {
   let obj = new targetWindow.Error();
   for (let prop of Object.getOwnPropertyNames(error)) {
-    obj[prop] = String(error[prop]);
+    let value = error[prop];
+    if (typeof value != "string" && typeof value != "number") {
+      value = String(value);
+    }
+
+    Object.defineProperty(Cu.waiveXrays(obj), prop, {
+      configurable: false,
+      enumerable: true,
+      value: value,
+      writable: false
+    });
   }
   return obj;
+};
+
+/**
+ * Makes an object or value available to an unprivileged target window.
+ *
+ * Primitives are returned as they are, while objects are cloned into the
+ * specified target.  Error objects are also handled correctly.
+ *
+ * @param {any}          value        Value or object to copy
+ * @param {nsIDOMWindow} targetWindow The content window to copy to
+ */
+const cloneValueInto = function(value, targetWindow) {
+  if (!value || typeof value != "object") {
+    return value;
+  }
+
+  // Inspect for an error this way, because the Error object is special.
+  if (value.constructor.name == "Error") {
+    return cloneErrorObject(value, targetWindow);
+  }
+
+  return Cu.cloneInto(value, targetWindow);
 };
 
 /**
@@ -56,17 +95,7 @@ const injectObjectAPI = function(api, targetWindow) {
     injectedAPI[func] = function(...params) {
       let callback = params.pop();
       api[func](...params, function(...results) {
-        results = results.map(result => {
-          if (result && typeof result == "object") {
-            // Inspect for an error this way, because the Error object is special.
-            if (result.constructor.name == "Error") {
-              return cloneErrorObject(result.message)
-            }
-            return Cu.cloneInto(result, targetWindow);
-          }
-          return result;
-        });
-        callback(...results);
+        callback(...[cloneValueInto(r, targetWindow) for (r of results)]);
       });
     };
   });
@@ -97,6 +126,25 @@ function injectLoopAPI(targetWindow) {
 
   let api = {
     /**
+     * Gets an object with data that represents the currently
+     * authenticated user's identity.
+     *
+     * @return null if user not logged in; profile object otherwise
+     */
+    userProfile: {
+      enumerable: true,
+      get: function() {
+        if (!MozLoopService.userProfile)
+          return null;
+        let userProfile = Cu.cloneInto({
+          email: MozLoopService.userProfile.email,
+          uid: MozLoopService.userProfile.uid
+        }, targetWindow);
+        return userProfile;
+      }
+    },
+
+    /**
      * Sets and gets the "do not disturb" mode activation flag.
      */
     doNotDisturb: {
@@ -107,6 +155,28 @@ function injectLoopAPI(targetWindow) {
       set: function(aFlag) {
         MozLoopService.doNotDisturb = aFlag;
       }
+    },
+
+    errors: {
+      enumerable: true,
+      get: function() {
+        let errors = {};
+        for (let [type, error] of MozLoopService.errors) {
+          // if error.error is an nsIException, just delete it since it's hard
+          // to clone across the boundary.
+          if (error.error instanceof Ci.nsIException) {
+            MozLoopService.log.debug("Warning: Some errors were omitted from MozLoopAPI.errors " +
+                                     "due to issues copying nsIException across boundaries.",
+                                     error.error);
+            delete error.error;
+          }
+
+          // We have to clone the error property since it may be an Error object.
+          errors[type] = Cu.cloneInto(error, targetWindow);
+
+        }
+        return Cu.cloneInto(errors, targetWindow);
+      },
     },
 
     /**
@@ -122,6 +192,38 @@ function injectLoopAPI(targetWindow) {
     },
 
     /**
+     * Returns the callData for a specific callDataId
+     *
+     * The data was retrieved from the LoopServer via a GET/calls/<version> request
+     * triggered by an incoming message from the LoopPushServer.
+     *
+     * @param {int} loopCallId
+     * @returns {callData} The callData or undefined if error.
+     */
+    getCallData: {
+      enumerable: true,
+      writable: true,
+      value: function(loopCallId) {
+        return Cu.cloneInto(MozLoopService.getCallData(loopCallId), targetWindow);
+      }
+    },
+
+    /**
+     * Releases the callData for a specific loopCallId
+     *
+     * The result of this call will be a free call session slot.
+     *
+     * @param {int} loopCallId
+     */
+    releaseCallData: {
+      enumerable: true,
+      writable: true,
+      value: function(loopCallId) {
+        MozLoopService.releaseCallData(loopCallId);
+      }
+    },
+
+    /**
      * Returns the contacts API.
      *
      * @returns {Object} The contacts API object
@@ -132,7 +234,32 @@ function injectLoopAPI(targetWindow) {
         if (contactsAPI) {
           return contactsAPI;
         }
+
+        // Make a database switch when a userProfile is active already.
+        let profile = MozLoopService.userProfile;
+        if (profile) {
+          LoopStorage.switchDatabase(profile.uid);
+        }
         return contactsAPI = injectObjectAPI(LoopContacts, targetWindow);
+      }
+    },
+
+    /**
+     * Import a list of (new) contacts from an external data source.
+     *
+     * @param {Object}   options  Property bag of options for the importer
+     * @param {Function} callback Function that will be invoked once the operation
+     *                            finished. The first argument passed will be an
+     *                            `Error` object or `null`. The second argument will
+     *                            be the result of the operation, if successfull.
+     */
+    startImport: {
+      enumerable: true,
+      writable: true,
+      value: function(options, callback) {
+        LoopContacts.startImport(options, getChromeWindow(targetWindow), function(...results) {
+          callback(...[cloneValueInto(r, targetWindow) for (r of results)]);
+        });
       }
     },
 
@@ -170,6 +297,33 @@ function injectLoopAPI(targetWindow) {
     },
 
     /**
+     * Displays a confirmation dialog using the specified strings.
+     *
+     * Callback parameters:
+     * - err null on success, non-null on unexpected failure to show the prompt.
+     * - {Boolean} True if the user chose the OK button.
+     */
+    confirm: {
+      enumerable: true,
+      writable: true,
+      value: function(bodyMessage, okButtonMessage, cancelButtonMessage, callback) {
+        try {
+          let buttonFlags =
+            (Ci.nsIPrompt.BUTTON_POS_0 * Ci.nsIPrompt.BUTTON_TITLE_IS_STRING) +
+            (Ci.nsIPrompt.BUTTON_POS_1 * Ci.nsIPrompt.BUTTON_TITLE_IS_STRING);
+
+          let chosenButton = Services.prompt.confirmEx(null, "",
+            bodyMessage, buttonFlags, okButtonMessage, cancelButtonMessage,
+            null, null, {});
+
+          callback(null, chosenButton == 0);
+        } catch (ex) {
+          callback(cloneValueInto(ex, targetWindow));
+        }
+      }
+    },
+
+    /**
      * Call to ensure that any necessary registrations for the Loop Service
      * have taken place.
      *
@@ -186,11 +340,11 @@ function injectLoopAPI(targetWindow) {
       value: function(callback) {
         // We translate from a promise to a callback, as we can't pass promises from
         // Promise.jsm across the priv versus unpriv boundary.
-        return MozLoopService.register().then(() => {
+        MozLoopService.register().then(() => {
           callback(null);
         }, err => {
-          callback(err);
-        });
+          callback(cloneValueInto(err, targetWindow));
+        }).catch(Cu.reportError);
       }
     },
 
@@ -328,6 +482,9 @@ function injectLoopAPI(targetWindow) {
      *    }
      *  - {String} The body of the response.
      *
+     * @param {LOOP_SESSION_TYPE} sessionType The type of session to use for
+     *                                        the request.  This is one of the
+     *                                        LOOP_SESSION_TYPE members
      * @param {String} path The path to make the request to.
      * @param {String} method The request method, e.g. 'POST', 'GET'.
      * @param {Object} payloadObj An object which is converted to JSON and
@@ -337,14 +494,37 @@ function injectLoopAPI(targetWindow) {
     hawkRequest: {
       enumerable: true,
       writable: true,
-      value: function(path, method, payloadObj, callback) {
+      value: function(sessionType, path, method, payloadObj, callback) {
         // XXX Should really return a DOM promise here.
-        return MozLoopService.hawkRequest(path, method, payloadObj).then((response) => {
+        MozLoopService.hawkRequest(sessionType, path, method, payloadObj).then((response) => {
           callback(null, response.body);
-        }, (error) => {
-          callback(Cu.cloneInto(error, targetWindow));
-        });
+        }, hawkError => {
+          // The hawkError.error property, while usually a string representing
+          // an HTTP response status message, may also incorrectly be a native
+          // error object that will cause the cloning function to fail.
+          callback(Cu.cloneInto({
+            error: (hawkError.error && typeof hawkError.error == "string")
+                   ? hawkError.error : "Unexpected exception",
+            message: hawkError.message,
+            code: hawkError.code,
+            errno: hawkError.errno,
+          }, targetWindow));
+        }).catch(Cu.reportError);
       }
+    },
+
+    LOOP_SESSION_TYPE: {
+      enumerable: true,
+      get: function() {
+        return Cu.cloneInto(LOOP_SESSION_TYPE, targetWindow);
+      }
+    },
+
+    fxAEnabled: {
+      enumerable: true,
+      get: function() {
+        return MozLoopService.fxAEnabled;
+      },
     },
 
     logInToFxA: {
@@ -353,6 +533,22 @@ function injectLoopAPI(targetWindow) {
       value: function() {
         return MozLoopService.logInToFxA();
       }
+    },
+
+    logOutFromFxA: {
+      enumerable: true,
+      writable: true,
+      value: function() {
+        return MozLoopService.logOutFromFxA();
+      }
+    },
+
+    openFxASettings: {
+      enumerable: true,
+      writable: true,
+      value: function() {
+        return MozLoopService.openFxASettings();
+      },
     },
 
     /**
@@ -382,33 +578,122 @@ function injectLoopAPI(targetWindow) {
         if (!appVersionInfo) {
           let defaults = Services.prefs.getDefaultBranch(null);
 
-          appVersionInfo = Cu.cloneInto({
-            channel: defaults.getCharPref("app.update.channel"),
-            version: appInfo.version,
-            OS: appInfo.OS
-          }, targetWindow);
+          // If the lazy getter explodes, we're probably loaded in xpcshell,
+          // which doesn't have what we need, so log an error.
+          try {
+            appVersionInfo = Cu.cloneInto({
+              channel: defaults.getCharPref("app.update.channel"),
+              version: appInfo.version,
+              OS: appInfo.OS
+            }, targetWindow);
+          } catch (ex) {
+            // only log outside of xpcshell to avoid extra message noise
+            if (typeof targetWindow !== 'undefined' && "console" in targetWindow) {
+              MozLoopService.log.error("Failed to construct appVersionInfo; if this isn't " +
+                                       "an xpcshell unit test, something is wrong", ex);
+            }
+          }
         }
         return appVersionInfo;
       }
     },
+
+    /**
+     * Composes an email via the external protocol service.
+     *
+     * @param {String} subject   Subject of the email to send
+     * @param {String} body      Body message of the email to send
+     * @param {String} recipient Recipient email address (optional)
+     */
+    composeEmail: {
+      enumerable: true,
+      writable: true,
+      value: function(subject, body, recipient) {
+        recipient = recipient || "";
+        let mailtoURL = "mailto:" + encodeURIComponent(recipient) +
+                        "?subject=" + encodeURIComponent(subject) +
+                        "&body=" + encodeURIComponent(body);
+        extProtocolSvc.loadURI(CommonUtils.makeURI(mailtoURL));
+      }
+    },
+
+    /**
+     * Adds a value to a telemetry histogram.
+     *
+     * @param  {string}  histogramId Name of the telemetry histogram to update.
+     * @param  {integer} value       Value to add to the histogram.
+     */
+    telemetryAdd: {
+      enumerable: true,
+      writable: true,
+      value: function(histogramId, value) {
+        Services.telemetry.getHistogramById(histogramId).add(value);
+      }
+    },
+
+    /**
+     * Returns a new GUID (UUID) in curly braces format.
+     */
+    generateUUID: {
+      enumerable: true,
+      writable: true,
+      value: function() {
+        return MozLoopService.generateUUID();
+      }
+    },
+
+    /**
+     * Starts a direct call to the contact addresses.
+     *
+     * @param {Object} contact The contact to call
+     * @param {String} callType The type of call, e.g. "audio-video" or "audio-only"
+     * @return true if the call is opened, false if it is not opened (i.e. busy)
+     */
+    startDirectCall: {
+      enumerable: true,
+      writable: true,
+      value: function(contact, callType) {
+        MozLoopService.startDirectCall(contact, callType);
+      }
+    },
+  };
+
+  function onStatusChanged(aSubject, aTopic, aData) {
+    let event = new targetWindow.CustomEvent("LoopStatusChanged");
+    targetWindow.dispatchEvent(event);
+  };
+
+  function onDOMWindowDestroyed(aSubject, aTopic, aData) {
+    if (targetWindow && aSubject != targetWindow)
+      return;
+    Services.obs.removeObserver(onDOMWindowDestroyed, "dom-window-destroyed");
+    Services.obs.removeObserver(onStatusChanged, "loop-status-changed");
   };
 
   let contentObj = Cu.createObjectIn(targetWindow);
   Object.defineProperties(contentObj, api);
   Object.seal(contentObj);
   Cu.makeObjectPropsNormal(contentObj);
+  Services.obs.addObserver(onStatusChanged, "loop-status-changed", false);
+  Services.obs.addObserver(onDOMWindowDestroyed, "dom-window-destroyed", false);
 
-  targetWindow.navigator.wrappedJSObject.__defineGetter__("mozLoop", function() {
-    // We do this in a getter, so that we create these objects
-    // only on demand (this is a potential concern, since
-    // otherwise we might add one per iframe, and keep them
-    // alive for as long as the window is alive).
-    delete targetWindow.navigator.wrappedJSObject.mozLoop;
-    return targetWindow.navigator.wrappedJSObject.mozLoop = contentObj;
-  });
+  if ("navigator" in targetWindow) {
+    targetWindow.navigator.wrappedJSObject.__defineGetter__("mozLoop", function () {
+      // We do this in a getter, so that we create these objects
+      // only on demand (this is a potential concern, since
+      // otherwise we might add one per iframe, and keep them
+      // alive for as long as the window is alive).
+      delete targetWindow.navigator.wrappedJSObject.mozLoop;
+      return targetWindow.navigator.wrappedJSObject.mozLoop = contentObj;
+    });
 
-  // Handle window.close correctly on the panel and chatbox.
-  hookWindowCloseForPanelClose(targetWindow);
+    // Handle window.close correctly on the panel and chatbox.
+    hookWindowCloseForPanelClose(targetWindow);
+  } else {
+    // This isn't a window; but it should be a JS scope; used for testing
+    return targetWindow.mozLoop = contentObj;
+  }
+
 }
 
 function getChromeWindow(contentWin) {

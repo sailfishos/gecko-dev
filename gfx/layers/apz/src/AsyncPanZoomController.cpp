@@ -15,7 +15,7 @@
 #include "GestureEventListener.h"       // for GestureEventListener
 #include "InputData.h"                  // for MultiTouchInput, etc
 #include "InputBlockState.h"            // for InputBlockState, TouchBlockState
-#include "OverscrollHandoffChain.h"     // for OverscrollHandoffChain
+#include "OverscrollHandoffState.h"     // for OverscrollHandoffState
 #include "Units.h"                      // for CSSRect, CSSPoint, etc
 #include "UnitTransforms.h"             // for TransformTo
 #include "base/message_loop.h"          // for MessageLoop
@@ -53,7 +53,6 @@
 #include "nsCOMPtr.h"                   // for already_AddRefed
 #include "nsDebug.h"                    // for NS_WARNING
 #include "nsIDOMWindowUtils.h"          // for nsIDOMWindowUtils
-#include "nsISupportsImpl.h"            // for MOZ_COUNT_CTOR, etc
 #include "nsMathUtils.h"                // for NS_hypot
 #include "nsPoint.h"                    // for nsIntPoint
 #include "nsStyleConsts.h"
@@ -247,6 +246,11 @@ typedef mozilla::gfx::Matrix4x4 Matrix4x4;
  * When flinging in an overscrolled state, if the velocity goes below this
  * number, we stop the fling.
  * Units: screen pixels per millisecond
+ *
+ * "apz.overscroll.min_pan_distance_ratio"
+ * The minimum ratio of the pan distance along one axis to the pan distance
+ * along the other axis needed to initiate overscroll along the first axis
+ * during panning.
  *
  * "apz.overscroll.stretch_factor"
  * How much overscrolling can stretch content along an axis.
@@ -499,20 +503,16 @@ public:
 
     ScreenPoint offset = velocity * aDelta.ToMilliseconds();
 
-    // Inversely scale the offset by the resolution (when you're zoomed further in,
-    // the same swipe should move you a shorter distance).
-    CSSPoint cssOffset = offset / aFrameMetrics.GetZoom();
-
     // Ordinarily we might need to do a ScheduleComposite if either of
     // the following AdjustDisplacement calls returns true, but this
     // is already running as part of a FlingAnimation, so we'll be compositing
     // per frame of animation anyway.
-    CSSPoint overscroll;
-    CSSPoint adjustedOffset;
-    mApzc.mX.AdjustDisplacement(cssOffset.x, adjustedOffset.x, overscroll.x);
-    mApzc.mY.AdjustDisplacement(cssOffset.y, adjustedOffset.y, overscroll.y);
+    ScreenPoint overscroll;
+    ScreenPoint adjustedOffset;
+    mApzc.mX.AdjustDisplacement(offset.x, adjustedOffset.x, overscroll.x);
+    mApzc.mY.AdjustDisplacement(offset.y, adjustedOffset.y, overscroll.y);
 
-    aFrameMetrics.ScrollBy(adjustedOffset);
+    aFrameMetrics.ScrollBy(adjustedOffset / aFrameMetrics.GetZoom());
 
     // The fling may have caused us to reach the end of our scroll range.
     if (!IsZero(overscroll)) {
@@ -738,15 +738,12 @@ AsyncPanZoomController::AsyncPanZoomController(uint64_t aLayersId,
      mSharedLock(nullptr),
      mAsyncTransformAppliedToContent(false)
 {
-  MOZ_COUNT_CTOR(AsyncPanZoomController);
-
   if (aGestures == USE_GESTURE_DETECTOR) {
     mGestureEventListener = new GestureEventListener(this);
   }
 }
 
 AsyncPanZoomController::~AsyncPanZoomController() {
-  MOZ_COUNT_DTOR(AsyncPanZoomController);
 }
 
 PCompositorParent*
@@ -1136,6 +1133,10 @@ nsEventStatus AsyncPanZoomController::OnTouchEnd(const MultiTouchInput& aEvent) 
   case TOUCHING:
   case CROSS_SLIDING_X:
   case CROSS_SLIDING_Y:
+    // We may have some velocity stored on the axis from move events
+    // that were not big enough to trigger scrolling. Clear that out.
+    mX.SetVelocity(0);
+    mY.SetVelocity(0);
     SetState(NOTHING);
     return nsEventStatus_eIgnore;
 
@@ -1235,17 +1236,13 @@ nsEventStatus AsyncPanZoomController::OnScale(const PinchGestureInput& aEvent) {
 
     CSSToParentLayerScale userZoom = mFrameMetrics.GetZoomToParent();
     ParentLayerPoint focusPoint = ToParentLayerCoords(aEvent.mFocusPoint) - mFrameMetrics.mCompositionBounds.TopLeft();
-    CSSPoint cssFocusPoint = focusPoint / userZoom;
+    CSSPoint cssFocusPoint = focusPoint / mFrameMetrics.GetZoomToParent();
 
     CSSPoint focusChange = (mLastZoomFocus - focusPoint) / userZoom;
     // If displacing by the change in focus point will take us off page bounds,
     // then reduce the displacement such that it doesn't.
-    if (mX.DisplacementWillOverscroll(focusChange.x) != Axis::OVERSCROLL_NONE) {
-      focusChange.x -= mX.DisplacementWillOverscrollAmount(focusChange.x);
-    }
-    if (mY.DisplacementWillOverscroll(focusChange.y) != Axis::OVERSCROLL_NONE) {
-      focusChange.y -= mY.DisplacementWillOverscrollAmount(focusChange.y);
-    }
+    focusChange.x -= mX.DisplacementWillOverscrollAmount(focusChange.x);
+    focusChange.y -= mY.DisplacementWillOverscrollAmount(focusChange.y);
     ScrollBy(focusChange);
 
     // When we zoom in with focus, we can zoom too much towards the boundaries
@@ -1409,8 +1406,10 @@ nsEventStatus AsyncPanZoomController::OnPan(const PanGestureInput& aEvent, bool 
 
   // TODO: Handle pan events sent without pan begin / pan end events properly.
   if (mPanGestureState) {
+    OverscrollHandoffState handoffState(
+        *mPanGestureState->GetOverscrollHandoffChain(), aEvent.mPanDisplacement);
     CallDispatchScroll(aEvent.mPanStartPoint, aEvent.mPanStartPoint + aEvent.mPanDisplacement,
-                       *mPanGestureState->GetOverscrollHandoffChain(), 0);
+                       handoffState);
   }
 
   return nsEventStatus_eConsumeNoDefault;
@@ -1696,8 +1695,7 @@ void AsyncPanZoomController::UpdateWithTouchAtDevicePoint(const MultiTouchInput&
 
 bool AsyncPanZoomController::AttemptScroll(const ScreenPoint& aStartPoint,
                                            const ScreenPoint& aEndPoint,
-                                           const OverscrollHandoffChain& aOverscrollHandoffChain,
-                                           uint32_t aOverscrollHandoffChainIndex) {
+                                           OverscrollHandoffState& aOverscrollHandoffState) {
 
   // "start - end" rather than "end - start" because e.g. moving your finger
   // down (*positive* direction along y axis) causes the vertical scroll offset
@@ -1705,27 +1703,18 @@ bool AsyncPanZoomController::AttemptScroll(const ScreenPoint& aStartPoint,
   ScreenPoint displacement = aStartPoint - aEndPoint;
 
   ScreenPoint overscroll;  // will be used outside monitor block
-  CSSPoint cssOverscroll;  // ditto
   {
     ReentrantMonitorAutoEnter lock(mMonitor);
 
-    CSSToScreenScale zoom = mFrameMetrics.GetZoom();
-
-    // Inversely scale the offset by the resolution (when you're zoomed further in,
-    // the same swipe should move you a shorter distance).
-    CSSPoint cssDisplacement = displacement / zoom;
-
-    CSSPoint adjustedDisplacement;
-    bool xChanged = mX.AdjustDisplacement(cssDisplacement.x, adjustedDisplacement.x, cssOverscroll.x);
-    bool yChanged = mY.AdjustDisplacement(cssDisplacement.y, adjustedDisplacement.y, cssOverscroll.y);
+    ScreenPoint adjustedDisplacement;
+    bool xChanged = mX.AdjustDisplacement(displacement.x, adjustedDisplacement.x, overscroll.x);
+    bool yChanged = mY.AdjustDisplacement(displacement.y, adjustedDisplacement.y, overscroll.y);
     if (xChanged || yChanged) {
       ScheduleComposite();
     }
 
-    overscroll = cssOverscroll * zoom;
-
     if (!IsZero(adjustedDisplacement)) {
-      ScrollBy(adjustedDisplacement);
+      ScrollBy(adjustedDisplacement / mFrameMetrics.GetZoom());
       ScheduleCompositeAndMaybeRepaint();
       UpdateSharedCompositorFrameMetrics();
     }
@@ -1741,8 +1730,9 @@ bool AsyncPanZoomController::AttemptScroll(const ScreenPoint& aStartPoint,
   // overscroll).
   // Note: "+ overscroll" rather than "- overscroll" because "overscroll"
   // is what's left of "displacement", and "displacement" is "start - end".
+  ++aOverscrollHandoffState.mChainIndex;
   if (CallDispatchScroll(aEndPoint + overscroll, aEndPoint,
-                         aOverscrollHandoffChain, aOverscrollHandoffChainIndex + 1)) {
+                         aOverscrollHandoffState)) {
     return true;
   }
 
@@ -1750,10 +1740,27 @@ bool AsyncPanZoomController::AttemptScroll(const ScreenPoint& aStartPoint,
   // overscroll, try to accept it ourselves. We only accept it if we
   // are pannable.
   APZC_LOG("%p taking overscroll during panning\n", this);
-  return OverscrollBy(cssOverscroll);
+  return OverscrollForPanning(overscroll, aOverscrollHandoffState.mPanDistance);
 }
 
-bool AsyncPanZoomController::OverscrollBy(const CSSPoint& aOverscroll) {
+bool AsyncPanZoomController::OverscrollForPanning(ScreenPoint aOverscroll,
+                                                  const ScreenPoint& aPanDistance) {
+  // Only allow entering overscroll along an axis if the pan distance along
+  // that axis is greater than the pan distance along the other axis by a
+  // configurable factor. If we are already overscrolled, don't check this.
+  if (!IsOverscrolled()) {
+    if (aPanDistance.x < gfxPrefs::APZMinPanDistanceRatio() * aPanDistance.y) {
+      aOverscroll.x = 0;
+    }
+    if (aPanDistance.y < gfxPrefs::APZMinPanDistanceRatio() * aPanDistance.x) {
+      aOverscroll.y = 0;
+    }
+  }
+
+  return OverscrollBy(aOverscroll);
+}
+
+bool AsyncPanZoomController::OverscrollBy(const ScreenPoint& aOverscroll) {
   if (!gfxPrefs::APZOverscrollEnabled()) {
     return false;
   }
@@ -1854,16 +1861,14 @@ void AsyncPanZoomController::StartSnapBack() {
 
 bool AsyncPanZoomController::CallDispatchScroll(const ScreenPoint& aStartPoint,
                                                 const ScreenPoint& aEndPoint,
-                                                const OverscrollHandoffChain& aOverscrollHandoffChain,
-                                                uint32_t aOverscrollHandoffChainIndex) {
+                                                OverscrollHandoffState& aOverscrollHandoffState) {
   // Make a local copy of the tree manager pointer and check if it's not
   // null before calling DispatchScroll(). This is necessary because
   // Destroy(), which nulls out mTreeManager, could be called concurrently.
   APZCTreeManager* treeManagerLocal = mTreeManager;
   return treeManagerLocal
       && treeManagerLocal->DispatchScroll(this, aStartPoint, aEndPoint,
-                                          aOverscrollHandoffChain,
-                                          aOverscrollHandoffChainIndex);
+                                          aOverscrollHandoffState);
 }
 
 void AsyncPanZoomController::TrackTouch(const MultiTouchInput& aEvent) {
@@ -1877,8 +1882,9 @@ void AsyncPanZoomController::TrackTouch(const MultiTouchInput& aEvent) {
   UpdateWithTouchAtDevicePoint(aEvent);
 
   if (prevTouchPoint != touchPoint) {
-    CallDispatchScroll(prevTouchPoint, touchPoint,
-        *CurrentTouchBlock()->GetOverscrollHandoffChain(), 0);
+    OverscrollHandoffState handoffState(
+        *CurrentTouchBlock()->GetOverscrollHandoffChain(), ScreenPoint(dx, dy));
+    CallDispatchScroll(prevTouchPoint, touchPoint, handoffState);
   }
 }
 
@@ -2141,7 +2147,12 @@ AsyncPanZoomController::DispatchRepaintRequest(const FrameMetrics& aFrameMetrics
     APZC_LOG_FM(aFrameMetrics, "%p requesting content repaint", this);
     LogRendertraceRect(GetGuid(), "requested displayport", "yellow", GetDisplayPortRect(aFrameMetrics));
 
-    controller->RequestContentRepaint(aFrameMetrics);
+    if (NS_IsMainThread()) {
+      controller->RequestContentRepaint(aFrameMetrics);
+    } else {
+      NS_DispatchToMainThread(NS_NewRunnableMethodWithArg<FrameMetrics>(
+        controller, &GeckoContentController::RequestContentRepaint, aFrameMetrics));
+    }
     mLastDispatchedPaintMetrics = aFrameMetrics;
   }
 }
@@ -2189,7 +2200,12 @@ bool AsyncPanZoomController::UpdateAnimation(const TimeStamp& aSampleTime,
   return false;
 }
 
-void AsyncPanZoomController::GetOverscrollTransform(Matrix4x4* aTransform) const {
+Matrix4x4 AsyncPanZoomController::GetOverscrollTransform() const {
+  ReentrantMonitorAutoEnter lock(mMonitor);
+  if (!IsOverscrolled()) {
+    return Matrix4x4();
+  }
+
   // The overscroll effect is a uniform stretch along the overscrolled axis,
   // with the edge of the content where we have reached the end of the
   // scrollable area pinned into place.
@@ -2200,7 +2216,7 @@ void AsyncPanZoomController::GetOverscrollTransform(Matrix4x4* aTransform) const
 
   // Compute the amount of the stretch along each axis. The stretch is
   // proportional to the amount by which we are overscrolled along that axis.
-  CSSSize compositionSize(mX.GetCompositionLength(), mY.GetCompositionLength());
+  ScreenSize compositionSize(mX.GetCompositionLength(), mY.GetCompositionLength());
   float scaleX = 1 + kStretchFactor * fabsf(mX.GetOverscroll()) / mX.GetCompositionLength();
   float scaleY = 1 + kStretchFactor * fabsf(mY.GetOverscroll()) / mY.GetCompositionLength();
 
@@ -2209,24 +2225,23 @@ void AsyncPanZoomController::GetOverscrollTransform(Matrix4x4* aTransform) const
   // are overscrolling at the top or on the left, but if we are overscrolling
   // at the bottom or on the right, we want the bottom or right edge of the
   // content to stay in place instead, so we add a translation to compensate.
-  CSSPoint translation;
+  ScreenPoint translation;
   if (mX.IsOverscrolled() && mX.GetOverscroll() > 0) {
     // Overscrolled on the right.
-    CSSCoord overscrolledCompositionWidth = scaleX * compositionSize.width;
-    CSSCoord extraCompositionWidth = overscrolledCompositionWidth - compositionSize.width;
+    ScreenCoord overscrolledCompositionWidth = scaleX * compositionSize.width;
+    ScreenCoord extraCompositionWidth = overscrolledCompositionWidth - compositionSize.width;
     translation.x = -extraCompositionWidth;
   }
   if (mY.IsOverscrolled() && mY.GetOverscroll() > 0) {
     // Overscrolled at the bottomn.
-    CSSCoord overscrolledCompositionHeight = scaleY * compositionSize.height;
-    CSSCoord extraCompositionHeight = overscrolledCompositionHeight - compositionSize.height;
+    ScreenCoord overscrolledCompositionHeight = scaleY * compositionSize.height;
+    ScreenCoord extraCompositionHeight = overscrolledCompositionHeight - compositionSize.height;
     translation.y = -extraCompositionHeight;
   }
 
   // Combine the transformations into a matrix.
-  ScreenPoint screenTranslation = translation * mFrameMetrics.GetZoom();
-  *aTransform = Matrix4x4().Scale(scaleX, scaleY, 1)
-                           .PostTranslate(screenTranslation.x, screenTranslation.y, 0);
+  return Matrix4x4().Scale(scaleX, scaleY, 1)
+                    .PostTranslate(translation.x, translation.y, 0);
 }
 
 bool AsyncPanZoomController::AdvanceAnimations(const TimeStamp& aSampleTime)
@@ -2295,19 +2310,12 @@ bool AsyncPanZoomController::AdvanceAnimations(const TimeStamp& aSampleTime)
 }
 
 void AsyncPanZoomController::SampleContentTransformForFrame(ViewTransform* aOutTransform,
-                                                            ScreenPoint& aScrollOffset,
-                                                            Matrix4x4* aOutOverscrollTransform)
+                                                            ScreenPoint& aScrollOffset)
 {
   ReentrantMonitorAutoEnter lock(mMonitor);
 
   aScrollOffset = mFrameMetrics.GetScrollOffset() * mFrameMetrics.GetZoom();
   *aOutTransform = GetCurrentAsyncTransform();
-
-  // If we are overscrolled, we would like the compositor to apply an
-  // additional transform that produces an overscroll effect.
-  if (aOutOverscrollTransform && IsOverscrolled()) {
-    GetOverscrollTransform(aOutOverscrollTransform);
-  }
 }
 
 ViewTransform AsyncPanZoomController::GetCurrentAsyncTransform() {
@@ -2384,6 +2392,7 @@ bool AsyncPanZoomController::IsCurrentlyCheckerboarding() const {
 
   CSSPoint currentScrollOffset = mFrameMetrics.GetScrollOffset() + mTestAsyncScrollOffset;
   CSSRect painted = mLastContentPaintMetrics.mDisplayPort + mLastContentPaintMetrics.GetScrollOffset();
+  painted.Inflate(CSSMargin::FromAppUnits(nsMargin(1, 1, 1, 1)));   // fuzz for rounding error
   CSSRect visible = CSSRect(currentScrollOffset, mFrameMetrics.CalculateCompositedSizeInCssPixels());
   return !painted.Contains(visible);
 }
@@ -2502,7 +2511,7 @@ void AsyncPanZoomController::NotifyLayersUpdated(const FrameMetrics& aLayerMetri
     // more "legitimate" sources like content scripts.
     nsRefPtr<GeckoContentController> controller = GetGeckoContentController();
     if (controller) {
-      APZC_LOG("%p sending scroll update acknowledgement with gen %lu\n", this, aLayerMetrics.GetScrollGeneration());
+      APZC_LOG("%p sending scroll update acknowledgement with gen %u\n", this, aLayerMetrics.GetScrollGeneration());
       controller->AcknowledgeScrollUpdate(aLayerMetrics.GetScrollId(),
                                           aLayerMetrics.GetScrollGeneration());
     }

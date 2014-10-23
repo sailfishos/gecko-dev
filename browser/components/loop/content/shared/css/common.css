@@ -13,16 +13,9 @@
 }
 
 body {
-  font-family: "Lucida Grande", sans-serif;
+  font: message-box;
   font-size: 12px;
   background: #fbfbfb;
-}
-
-button {
-  /* Resetting default <button> font properties; eg. strangely enough, FF mac
-     wants to use Helvetica/12px whatever we define for parent elements */
-  font-family: "Lucida Grande", sans-serif;
-  font-size: 1em;
 }
 
 img {
@@ -30,7 +23,6 @@ img {
 }
 
 h1, h2, h3 {
-  font-family: "Open Sans", sans-serif;
   color: #666;
 }
 
@@ -106,6 +98,7 @@ p {
 .btn-info {
   background-color: #0096dd;
   border: 1px solid #0095dd;
+  color: #fff;
 }
 
   .btn-info:hover {
@@ -121,47 +114,56 @@ p {
 .btn-accept,
 .btn-success,
 .btn-accept + .btn-chevron {
-  background-color: #74bf43;
-  border: 1px solid #74bf43;
+  background-color: #5bc0a4;
+  border: 1px solid #5bc0a4;
 }
 
   .btn-accept:hover,
   .btn-success:hover,
   .btn-accept + .btn-chevron:hover {
-    background-color: #6cb23e;
-    border: 1px solid #6cb23e;
+    background-color: #47b396;
+    border: 1px solid #47b396;
   }
 
   .btn-accept:active,
   .btn-success:active,
   .btn-accept + .btn-chevron:active {
-    background-color: #64a43a;
-    border: 1px solid #64a43a;
+    background-color: #3aa689;
+    border: 1px solid #3aa689;
   }
 
 .btn-warning {
   background-color: #f0ad4e;
 }
 
+.btn-cancel,
 .btn-error,
+.btn-decline,
 .btn-hangup,
+.btn-decline + .btn-chevron,
 .btn-error + .btn-chevron {
   background-color: #d74345;
   border: 1px solid #d74345;
 }
 
+  .btn-cancel:hover,
   .btn-error:hover,
+  .btn-decline:hover,
   .btn-hangup:hover,
+  .btn-decline + .btn-chevron:hover,
   .btn-error + .btn-chevron:hover {
     background-color: #c53436;
-    border: 1px solid #c53436;
+    border-color: #c53436;
   }
 
+  .btn-cancel:active,
   .btn-error:active,
+  .btn-decline:active,
   .btn-hangup:active,
+  .btn-decline + .btn-chevron:active,
   .btn-error + .btn-chevron:active {
     background-color: #ae2325;
-    border: 1px solid #ae2325;
+    border-color: #ae2325;
   }
 
 .btn-chevron {
@@ -187,6 +189,7 @@ p {
 }
 
 .btn-group-chevron .btn {
+  border-radius: 2px;
   border-top-right-radius: 0;
   border-bottom-right-radius: 0;
   flex: 2;
@@ -220,17 +223,26 @@ p {
   justify-content: center;
 }
 
-.btn-group .btn {
+.btn-chevron-menu-group .btn {
   flex: 1;
+  border-radius: 2px;
   border-bottom-right-radius: 0;
   border-top-right-radius: 0;
 }
 
-/* Alerts */
+/* Alerts/Notifications */
+.notificationContainer {
+  border-bottom: 2px solid #E9E9E9;
+}
+
+.messages > .notificationContainer > .alert {
+  text-align: center;
+}
+
+.notificationContainer > .detailsBar,
 .alert {
   background: #eee;
-  padding: .2em 1em;
-  margin-bottom: 1em;
+  padding: .4em 1em;
 }
 
 .alert p.message {
@@ -238,20 +250,25 @@ p {
   margin: 0;
 }
 
-.alert.alert-error {
-  background: #f99;
-  border: 1px solid #f77;
+.alert-error {
+  background: repeating-linear-gradient(-45deg, #D74345, #D74345 10px, #D94B4D 10px, #D94B4D 20px) repeat scroll 0% 0% transparent;
+  color: #fff;
 }
 
-.alert.alert-warning {
+.alert-warning {
   background: #fcf8e3;
   border: 1px solid #fbeed5;
 }
 
+.notificationContainer > .details-error {
+  background: #fbebeb;
+  color: #d74345
+}
+
 .alert .close {
   position: relative;
-  top: -.2em;
-  right: -1em;
+  top: -.1rem;
+  right: -1rem;
 }
 
 /* Misc */
@@ -269,22 +286,23 @@ p {
 
 .close {
   float: right;
-  font-size: 20px;
+  font-size: 1rem;
   font-weight: bold;
-  line-height: 1em;
+  line-height: 1rem;
   color: #000;
-  opacity: .2;
+  opacity: .4;
+  background: none;
+  border: none;
+  cursor: pointer;
 }
+
+  .close:hover {
+    opacity: .6;
+  }
 
 .close:before {
   /* \2716 is unicode representation of the close button icon */
   content: '\2716';
-}
-
-.btn.close {
-  background: none;
-  border: none;
-  cursor: pointer;
 }
 
 /* Transitions */
@@ -346,19 +364,6 @@ p {
   line-height: 16px;
 }
 
-.windows {
-  font-family: 'Segoe';
-}
-
-.mac {
-  font-family: 'Lucida Grande';
-}
-
-.linux {
-  /* XXX requires fallbacks */
-  font-family: 'Ubuntu', sans-serif;
-}
-
 /* Web panel */
 
 .info-panel {
@@ -367,7 +372,7 @@ p {
   padding: 20px 0;
   border: 1px solid #e7e7e7;
   box-shadow: 0 2px 0 rgba(0, 0, 0, .03);
-  margin-bottom: 25px;
+  margin: 2rem 0;
 }
 
 .info-panel h1 {

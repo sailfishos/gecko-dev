@@ -164,18 +164,17 @@ public:
   /**
    * Query the transforms that should be applied to the layer corresponding
    * to this APZC due to asynchronous panning and zooming.
-   * This function returns two transforms via out parameters:
-   *   |aOutTransform| is the transform due to regular panning and zooming
-   *   |aOverscrollTransform| is the transform due to overscrolling
-   * The two are separated because some clients want to ignore the overscroll
-   * transform for some purposes (and for convenience to these clients, the
-   * overscroll transform parameter may be nullptr). Clients who do not want
-   * to ignore the overscroll transform should multiply the two transforms
-   * together.
+   * This function returns the async transform via the |aOutTransform|
+   * out parameter.
    */
   void SampleContentTransformForFrame(ViewTransform* aOutTransform,
-                                      ScreenPoint& aScrollOffset,
-                                      Matrix4x4* aOutOverscrollTransform);
+                                      ScreenPoint& aScrollOffset);
+
+  /**
+   * Return a visual effect that reflects this apzc's
+   * overscrolled state, if any.
+   */
+  Matrix4x4 GetOverscrollTransform() const;
 
   /**
    * A shadow layer update has arrived. |aLayerMetrics| is the new FrameMetrics
@@ -580,12 +579,6 @@ private:
   static bool IsTransformingState(PanZoomState aState);
   bool IsInPanningState() const;
 
-  /**
-   * Return in |aTransform| a visual effect that reflects this apzc's
-   * overscrolled state, if any.
-   */
-  void GetOverscrollTransform(Matrix4x4* aTransform) const;
-
   enum AxisLockMode {
     FREE,     /* No locking at all */
     STANDARD, /* Default axis locking mode that remains locked until pan ends*/
@@ -879,6 +872,14 @@ public:
   AsyncPanZoomController* GetPrevSibling() const { return mPrevSibling; }
   AsyncPanZoomController* GetParent() const { return mParent; }
 
+  AsyncPanZoomController* GetFirstChild() const {
+    AsyncPanZoomController* child = GetLastChild();
+    while (child && child->GetPrevSibling()) {
+      child = child->GetPrevSibling();
+    }
+    return child;
+  }
+
   /* Returns true if there is no APZC higher in the tree with the same
    * layers id.
    */
@@ -929,8 +930,7 @@ public:
    * an overscrolled state itself if it can.
    */
   bool AttemptScroll(const ScreenPoint& aStartPoint, const ScreenPoint& aEndPoint,
-                     const OverscrollHandoffChain& aOverscrollHandoffChain,
-                     uint32_t aOverscrollHandoffChainIndex = 0);
+                     OverscrollHandoffState& aOverscrollHandoffState);
 
   void FlushRepaintForOverscrollHandoff();
 
@@ -948,8 +948,15 @@ private:
    */
   bool CallDispatchScroll(const ScreenPoint& aStartPoint,
                           const ScreenPoint& aEndPoint,
-                          const OverscrollHandoffChain& aOverscrollHandoffChain,
-                          uint32_t aOverscrollHandoffChainIndex);
+                          OverscrollHandoffState& aOverscrollHandoffState);
+
+  /**
+   * A helper function for overscrolling during panning. This is a wrapper
+   * around OverscrollBy() that also implements restrictions on entering
+   * overscroll based on the pan angle.
+   */
+  bool OverscrollForPanning(ScreenPoint aOverscroll,
+                            const ScreenPoint& aPanDistance);
 
   /**
    * Try to overscroll by 'aOverscroll'.
@@ -957,7 +964,7 @@ private:
    * and the function returns true.
    * Otherwise, nothing happens and the function return false.
    */
-  bool OverscrollBy(const CSSPoint& aOverscroll);
+  bool OverscrollBy(const ScreenPoint& aOverscroll);
 
   /**
    * Build the chain of APZCs along which scroll will be handed off when

@@ -949,6 +949,12 @@ gfxWindowsPlatform::IsFontFormatSupported(nsIURI *aFontURI, uint32_t aFormatFlag
     return true;
 }
 
+bool
+gfxWindowsPlatform::DidRenderingDeviceReset()
+{
+  return GetD3D10Device() && GetD3D10Device()->GetDeviceRemovedReason() != S_OK;
+}
+
 gfxFontFamily *
 gfxWindowsPlatform::FindFontFamily(const nsAString& aName)
 {
@@ -1388,6 +1394,10 @@ gfxWindowsPlatform::GetD3D11Device()
   // We leak these everywhere and we need them our entire runtime anyway, let's
   // leak it here as well.
   d3d11Module.disown();
+
+  if (SUCCEEDED(hr)) {
+    mD3D11Device->SetExceptionMode(0);
+  }
 
   return mD3D11Device;
 }

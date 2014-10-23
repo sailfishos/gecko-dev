@@ -29,6 +29,7 @@
 #include "nsXULAppAPI.h"                // for XRE_GetProcessType, etc
 #include "TiledLayerBuffer.h"
 #include "mozilla/dom/WindowBinding.h"  // for Overfill Callback
+#include "FrameLayerBuilder.h"          // for FrameLayerbuilder
 #include "gfxPrefs.h"
 #ifdef MOZ_WIDGET_ANDROID
 #include "AndroidBridge.h"
@@ -133,9 +134,6 @@ ClientLayerManager::SetDefaultTargetConfiguration(BufferMode aDoubleBuffering,
                                                   ScreenRotation aRotation)
 {
   mTargetRotation = aRotation;
-  if (mWidget) {
-    mTargetBounds = mWidget->GetNaturalBounds();
-   }
  }
 
 void
@@ -201,10 +199,9 @@ ClientLayerManager::BeginTransactionWithTarget(gfxContext* aTarget)
     hal::GetCurrentScreenConfiguration(&currentConfig);
     orientation = currentConfig.orientation();
   }
-  nsIntRect clientBounds;
-  mWidget->GetClientBounds(clientBounds);
-  clientBounds.x = clientBounds.y = 0;
-  mForwarder->BeginTransaction(mTargetBounds, mTargetRotation, clientBounds, orientation);
+  nsIntRect targetBounds = mWidget->GetNaturalBounds();
+  targetBounds.x = targetBounds.y = 0;
+  mForwarder->BeginTransaction(targetBounds, mTargetRotation, orientation);
 
   // If we're drawing on behalf of a context with async pan/zoom
   // enabled, then the entire buffer of thebes layers might be
@@ -280,6 +277,10 @@ ClientLayerManager::EndTransactionInternal(DrawThebesLayerCallback aCallback,
 
   NS_ASSERTION(!aCallback || !mTransactionIncomplete,
                "If callback is not null, transaction must be complete");
+
+  if (gfxPlatform::GetPlatform()->DidRenderingDeviceReset()) {
+    FrameLayerBuilder::InvalidateAllLayers(this);
+  }
 
   return !mTransactionIncomplete;
 }
@@ -430,7 +431,17 @@ ClientLayerManager::MakeSnapshotIfRequired()
   }
   if (mWidget) {
     if (CompositorChild* remoteRenderer = GetRemoteRenderer()) {
+      // The compositor doesn't draw to a different sized surface
+      // when there's a rotation. Instead we rotate the result
+      // when drawing into dt
+      nsIntRect outerBounds;
+      mWidget->GetBounds(outerBounds);
+
       nsIntRect bounds = ToOutsideIntRect(mShadowTarget->GetClipExtents());
+      if (mTargetRotation) {
+        bounds = RotateRect(bounds, outerBounds, mTargetRotation);
+      }
+
       SurfaceDescriptor inSnapshot;
       if (!bounds.IsEmpty() &&
           mForwarder->AllocSurfaceDescriptor(bounds.Size().ToIntSize(),
@@ -439,11 +450,18 @@ ClientLayerManager::MakeSnapshotIfRequired()
           remoteRenderer->SendMakeSnapshot(inSnapshot, bounds)) {
         RefPtr<DataSourceSurface> surf = GetSurfaceForDescriptor(inSnapshot);
         DrawTarget* dt = mShadowTarget->GetDrawTarget();
+
         Rect dstRect(bounds.x, bounds.y, bounds.width, bounds.height);
         Rect srcRect(0, 0, bounds.width, bounds.height);
+
+        gfx::Matrix rotate = ComputeTransformForUnRotation(outerBounds, mTargetRotation);
+
+        gfx::Matrix oldMatrix = dt->GetTransform();
+        dt->SetTransform(oldMatrix * rotate);
         dt->DrawSurface(surf, dstRect, srcRect,
                         DrawSurfaceOptions(),
                         DrawOptions(1.0f, CompositionOp::OP_OVER));
+        dt->SetTransform(oldMatrix);
       }
       mForwarder->DestroySharedSurface(&inSnapshot);
     }

@@ -1453,6 +1453,12 @@ void MediaDecoderStateMachine::ResetPlayback()
   MOZ_ASSERT(mState == DECODER_STATE_SEEKING ||
              mState == DECODER_STATE_SHUTDOWN ||
              mState == DECODER_STATE_DORMANT);
+
+  // Audio thread should've been stopped at the moment. Otherwise, AudioSink
+  // might be accessing AudioQueue outside of the decoder monitor while we
+  // are clearing the queue and causes crash for no samples to be popped.
+  MOZ_ASSERT(!mAudioSink);
+
   mVideoFrameEndTime = -1;
   mAudioStartTime = -1;
   mAudioEndTime = -1;
@@ -1538,11 +1544,15 @@ void MediaDecoderStateMachine::StopAudioThread()
   AssertCurrentThreadInMonitor();
 
   if (mStopAudioThread) {
-    // Nothing to do, since the thread is already stopping
+    // Audio sink is being stopped in another thread. Wait until finished.
+    while (mAudioSink) {
+      mDecoder->GetReentrantMonitor().Wait();
+    }
     return;
   }
 
   mStopAudioThread = true;
+  // Wake up audio sink so that it can reach the finish line.
   mDecoder->GetReentrantMonitor().NotifyAll();
   if (mAudioSink) {
     DECODER_LOG("Shutdown audio thread");
@@ -1556,6 +1566,8 @@ void MediaDecoderStateMachine::StopAudioThread()
     // That may have been waiting for the audio thread to stop.
     SendStreamData();
   }
+  // Wake up those waiting for audio sink to finish.
+  mDecoder->GetReentrantMonitor().NotifyAll();
 }
 
 nsresult
@@ -2272,22 +2284,13 @@ nsresult MediaDecoderStateMachine::RunStateMachine()
         StopPlayback();
       }
 
+      StopAudioThread();
       FlushDecoding();
 
       // Put a task in the decode queue to shutdown the reader.
       RefPtr<nsIRunnable> task;
       task = NS_NewRunnableMethod(mReader, &MediaDecoderReader::Shutdown);
       mDecodeTaskQueue->Dispatch(task);
-
-      StopAudioThread();
-      // If mAudioSink is non-null after StopAudioThread completes, we are
-      // running in a nested event loop waiting for Shutdown() on
-      // mAudioSink to complete.  Return to the event loop and let it
-      // finish processing before continuing with shutdown.
-      if (mAudioSink) {
-        MOZ_ASSERT(mStopAudioThread);
-        return NS_OK;
-      }
 
       {
         // Wait for the thread decoding to exit.
@@ -2332,8 +2335,8 @@ nsresult MediaDecoderStateMachine::RunStateMachine()
       if (IsPlaying()) {
         StopPlayback();
       }
-      FlushDecoding();
       StopAudioThread();
+      FlushDecoding();
       // Now that those threads are stopped, there's no possibility of
       // mPendingWakeDecoder being needed again. Revoke it.
       mPendingWakeDecoder = nullptr;
@@ -2458,8 +2461,8 @@ nsresult MediaDecoderStateMachine::RunStateMachine()
       // will take care of calling MediaDecoder::PlaybackEnded.
       if (mDecoder->GetState() == MediaDecoder::PLAY_STATE_PLAYING &&
           !mDecoder->GetDecodedStream()) {
-        int64_t videoTime = HasVideo() ? mVideoFrameEndTime : 0;
-        int64_t clockTime = std::max(mEndTime, videoTime);
+        int64_t clockTime = std::max(mAudioEndTime, mVideoFrameEndTime);
+        clockTime = std::max(int64_t(0), std::max(clockTime, mEndTime));
         UpdatePlaybackPosition(clockTime);
 
         {

@@ -19,6 +19,8 @@
 
 #include "Composer2D.h"
 #include "Layers.h"
+#include "mozilla/Mutex.h"
+
 #include <vector>
 #include <list>
 
@@ -34,6 +36,7 @@ namespace gl {
 }
 
 namespace layers {
+class CompositorParent;
 class ContainerLayer;
 class Layer;
 }
@@ -82,7 +85,7 @@ public:
     // Returns TRUE if the container has been succesfully rendered
     // Returns FALSE if the container cannot be fully rendered
     // by this composer so nothing was rendered at all
-    bool TryRender(layers::Layer* aRoot, const gfx::Matrix& aGLWorldTransform,
+    bool TryRender(layers::Layer* aRoot,
                    bool aGeometryChanged) MOZ_OVERRIDE;
 
     bool Render(EGLDisplay dpy, EGLSurface sur);
@@ -91,7 +94,9 @@ public:
 #if ANDROID_VERSION >= 17
     bool RegisterHwcEventCallback();
     void Vsync(int aDisplay, int64_t aTimestamp);
+    void Invalidate();
 #endif
+    void SetCompositorParent(layers::CompositorParent* aCompositorParent);
 
 private:
     void Reset();
@@ -100,7 +105,7 @@ private:
     bool TryHwComposition();
     bool ReallocLayerList();
     bool PrepareLayerList(layers::Layer* aContainer, const nsIntRect& aClip,
-          const gfx::Matrix& aParentTransform, const gfx::Matrix& aGLWorldTransform);
+          const gfx::Matrix& aParentTransform);
     void setCrop(HwcLayer* layer, hwc_rect_t srcCrop);
     void setHwcGeometry(bool aGeometryChanged);
     void SendtoLayerScope();
@@ -128,6 +133,8 @@ private:
     nsTArray<layers::LayerComposite*> mHwcLayerMap;
     bool                    mPrepared;
     bool                    mHasHWVsync;
+    nsRefPtr<layers::CompositorParent> mCompositorParent;
+    Mutex mLock;
 };
 
 } // namespace mozilla

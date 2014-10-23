@@ -476,7 +476,7 @@ NetworkManager.prototype = {
       return Promise.reject("Invalid network interface.");
     }
 
-    return this.resolveHostname(host)
+    return this.resolveHostname(network, host)
       .then((ipAddresses) => this._updateRoutes(true,
                                                 ipAddresses,
                                                 network.name,
@@ -488,7 +488,7 @@ NetworkManager.prototype = {
       return Promise.reject("Invalid network interface.");
     }
 
-    return this.resolveHostname(host)
+    return this.resolveHostname(network, host)
       .then((ipAddresses) => this._updateRoutes(false,
                                                 ipAddresses,
                                                 network.name,
@@ -653,7 +653,7 @@ NetworkManager.prototype = {
     }
   },
 
-  resolveHostname: function(hostname) {
+  resolveHostname: function(network, hostname) {
     // Sanity check for null, undefined and empty string... etc.
     if (!hostname) {
       return Promise.reject(new Error("hostname is empty: " + hostname));
@@ -688,8 +688,18 @@ NetworkManager.prototype = {
       deferred.resolve(retval);
     };
 
+    // Bug 1058282 - Explicitly request ipv4 to get around 8.8.8.8 probe at
+    // http://androidxref.com/4.3_r2.1/xref/bionic/libc/netbsd/net/getaddrinfo.c#1923
+    //
+    // Whenever MMS connection is the only network interface, there is no
+    // default route so that any ip probe will fail.
+    let flags = 0;
+    if (network.type === Ci.nsINetworkInterface.NETWORK_TYPE_MOBILE_MMS) {
+      flags |= Ci.nsIDNSService.RESOLVE_DISABLE_IPV6;
+    }
+
     // TODO: Bug 992772 - Resolve the hostname with specified networkInterface.
-    gDNSService.asyncResolve(hostname, 0, onLookupComplete, Services.tm.mainThread);
+    gDNSService.asyncResolve(hostname, flags, onLookupComplete, Services.tm.mainThread);
 
     return deferred.promise;
   },
@@ -737,7 +747,7 @@ NetworkManager.prototype = {
 #endif
   },
 
-  _requestCount: 0,
+  _usbTetheringRequestCount: 0,
 
   handle: function(aName, aResult) {
     switch(aName) {
@@ -772,12 +782,17 @@ NetworkManager.prototype = {
 
         if (this._oldUsbTetheringEnabledState === this.tetheringSettings[SETTINGS_USB_ENABLED]) {
           debug("No changes for SETTINGS_USB_ENABLED flag. Nothing to do.");
+          this.handlePendingWifiTetheringRequest();
           break;
         }
 
-        this._requestCount++;
-        if (this._requestCount === 1) {
-          this.handleUSBTetheringToggle(aResult);
+        this._usbTetheringRequestCount++;
+        if (this._usbTetheringRequestCount === 1) {
+          if (this._wifiTetheringRequestOngoing) {
+            debug('USB tethering request is blocked by ongoing wifi tethering request.');
+          } else {
+            this.handleLastUsbTetheringRequest();
+          }
         }
         break;
     };
@@ -815,24 +830,31 @@ NetworkManager.prototype = {
   // External and internal interface name.
   _tetheringInterface: null,
 
-  handleLastRequest: function() {
-    if (this._requestCount === 1) {
-      this._requestCount = 0;
+  handleLastUsbTetheringRequest: function() {
+    debug('handleLastUsbTetheringRequest... ' + this._usbTetheringRequestCount);
+
+    if (this._usbTetheringRequestCount === 0) {
       if (this.wantConnectionEvent) {
         if (this.tetheringSettings[SETTINGS_USB_ENABLED]) {
           this.wantConnectionEvent.call(this);
         }
         this.wantConnectionEvent = null;
       }
+      this.handlePendingWifiTetheringRequest();
       return;
     }
 
-    if (this._requestCount > 1) {
-      // Set this._requestCount to 1 to prevent from subsequent usb tethering toggles
-      // triggering |handleUSBTetheringToggle|.
-      this._requestCount = 1;
-      this.handleUSBTetheringToggle(this.tetheringSettings[SETTINGS_USB_ENABLED]);
-      this.wantConnectionEvent = null;
+    // Cancel the accumlated count to 1 since we only care about the
+    // last state.
+    this._usbTetheringRequestCount = 1;
+    this.handleUSBTetheringToggle(this.tetheringSettings[SETTINGS_USB_ENABLED]);
+    this.wantConnectionEvent = null;
+  },
+
+  handlePendingWifiTetheringRequest: function() {
+    if (this._pendingWifiTetheringRequestArgs) {
+      this.setWifiTethering.apply(this, this._pendingWifiTetheringRequestArgs);
+      this._pendingWifiTetheringRequestArgs = null;
     }
   },
 
@@ -928,14 +950,16 @@ NetworkManager.prototype = {
         (this._usbTetheringAction === TETHERING_STATE_ONGOING ||
          this._usbTetheringAction === TETHERING_STATE_ACTIVE)) {
       debug("Usb tethering already connecting/connected.");
-      this._requestCount = 0;
+      this._usbTetheringRequestCount = 0;
+      this.handlePendingWifiTetheringRequest();
       return;
     }
 
     if (!enable &&
         this._usbTetheringAction === TETHERING_STATE_IDLE) {
       debug("Usb tethering already disconnected.");
-      this._requestCount = 0;
+      this._usbTetheringRequestCount = 0;
+      this.handlePendingWifiTetheringRequest();
       return;
     }
 
@@ -1030,16 +1054,21 @@ NetworkManager.prototype = {
     debug("setWifiTethering: " + (msg ? msg : "success"));
 
     if (callback) {
-      callback.wifiTetheringEnabledChange(msg);
+      // Callback asynchronously to avoid netsted toggling.
+      Services.tm.currentThread.dispatch(() => {
+        callback.wifiTetheringEnabledChange(msg);
+      }, Ci.nsIThread.DISPATCH_NORMAL);
     }
   },
 
+  _wifiTetheringRequestOngoing: false,
   enableWifiTethering: function(enable, config, callback) {
     // Fill in config's required fields.
     config.ifname         = this._tetheringInterface[TETHERING_TYPE_WIFI].internalInterface;
     config.internalIfname = this._tetheringInterface[TETHERING_TYPE_WIFI].internalInterface;
     config.externalIfname = this._tetheringInterface[TETHERING_TYPE_WIFI].externalInterface;
 
+    this._wifiTetheringRequestOngoing = true;
     gNetworkService.setWifiTethering(enable, config, (function(error) {
 #ifdef MOZ_B2G_RIL
       // Disconnect dun on error or when wifi tethering is disabled.
@@ -1049,10 +1078,17 @@ NetworkManager.prototype = {
       }
 #endif
       let resetSettings = error;
+      debug('gNetworkService.setWifiTethering finished');
       this.notifyError(resetSettings, callback, error);
+      this._wifiTetheringRequestOngoing = false;
+      if (this._usbTetheringRequestCount > 0) {
+        debug('Perform pending USB tethering requests.');
+        this.handleLastUsbTetheringRequest();
+      }
     }).bind(this));
   },
 
+  _pendingWifiTetheringRequestArgs: null,
   // Enable/disable WiFi tethering by sending commands to netd.
   setWifiTethering: function(enable, network, config, callback) {
     debug("setWifiTethering: " + enable);
@@ -1063,6 +1099,16 @@ NetworkManager.prototype = {
 
     if (!config) {
       this.notifyError(true, callback, "invalid configuration");
+      return;
+    }
+
+    if (this._usbTetheringRequestCount > 0) {
+      // If there's still pending usb tethering request, save
+      // the request params and redo |setWifiTethering| on
+      // usb tethering task complete.
+      debug('USB tethering request is being processed. Queue this wifi tethering request.');
+      this._pendingWifiTetheringRequestArgs = Array.prototype.slice.call(arguments);
+      debug('Pending args: ' + JSON.stringify(this._pendingWifiTetheringRequestArgs));
       return;
     }
 
@@ -1139,20 +1185,24 @@ NetworkManager.prototype = {
                            this._tetheringInterface[TETHERING_TYPE_USB],
                            this.usbTetheringResultReport.bind(this, enable));
     } else {
-      this.usbTetheringResultReport("Failed to set usb function");
+      this.usbTetheringResultReport(enable, "enableUsbRndisResult failure");
       throw new Error("failed to set USB Function to adb");
     }
   },
 
   usbTetheringResultReport: function(enable, error) {
+    this._usbTetheringRequestCount--;
+
     let settingsLock = gSettingsService.createLock();
+
+    debug('usbTetheringResultReport callback. enable: ' + enable + ', error: ' + error);
 
     // Disable tethering settings when fail to enable it.
     if (error) {
       this.tetheringSettings[SETTINGS_USB_ENABLED] = false;
       settingsLock.set("tethering.usb.enabled", false, null);
       // Skip others request when we found an error.
-      this._requestCount = 0;
+      this._usbTetheringRequestCount = 0;
       this._usbTetheringAction = TETHERING_STATE_IDLE;
 #ifdef MOZ_B2G_RIL
       if (this.tetheringSettings[SETTINGS_DUN_REQUIRED]) {
@@ -1170,7 +1220,8 @@ NetworkManager.prototype = {
         }
 #endif
       }
-      this.handleLastRequest();
+
+      this.handleLastUsbTetheringRequest();
     }
   },
 

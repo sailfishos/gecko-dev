@@ -183,6 +183,9 @@ let DirectoryLinksProvider = {
   },
 
   _fetchAndCacheLinks: function DirectoryLinksProvider_fetchAndCacheLinks(uri) {
+    // Replace with the same display locale used for selecting links data
+    uri = uri.replace("%LOCALE%", this.locale);
+
     let deferred = Promise.defer();
     let xmlHttp = new XMLHttpRequest();
 
@@ -206,14 +209,12 @@ let DirectoryLinksProvider = {
     };
 
     try {
-      xmlHttp.open('POST', uri);
+      xmlHttp.open("GET", uri);
       // Override the type so XHR doesn't complain about not well-formed XML
       xmlHttp.overrideMimeType(DIRECTORY_LINKS_TYPE);
       // Set the appropriate request type for servers that require correct types
       xmlHttp.setRequestHeader("Content-Type", DIRECTORY_LINKS_TYPE);
-      xmlHttp.send(JSON.stringify({
-        locale: this.locale,
-      }));
+      xmlHttp.send();
     } catch (e) {
       deferred.reject("Error fetching " + uri);
       Cu.reportError(e);
@@ -369,7 +370,7 @@ let DirectoryLinksProvider = {
       this._enhancedLinks.clear();
 
       // all directory links have a frecency of DIRECTORY_FRECENCY
-      aCallback(rawLinks.map((link, position) => {
+      return rawLinks.map((link, position) => {
         // Stash the enhanced image for the site
         if (link.enhancedImageURI) {
           this._enhancedLinks.set(NewTabUtils.extractSite(link.url), link);
@@ -378,8 +379,11 @@ let DirectoryLinksProvider = {
         link.frecency = DIRECTORY_FRECENCY;
         link.lastVisitDate = rawLinks.length - position;
         return link;
-      }));
-    });
+      });
+    }).catch(ex => {
+      Cu.reportError(ex);
+      return [];
+    }).then(aCallback);
   },
 
   init: function DirectoryLinksProvider_init() {

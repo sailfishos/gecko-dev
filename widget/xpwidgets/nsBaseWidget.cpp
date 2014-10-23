@@ -874,6 +874,9 @@ nsBaseWidget::GetPreferredCompositorBackends(nsTArray<LayersBackend>& aHints)
 
 void nsBaseWidget::CreateCompositor(int aWidth, int aHeight)
 {
+  // This makes sure that gfxPlatforms gets initialized if it hasn't by now.
+  gfxPlatform::GetPlatform();
+
   MOZ_ASSERT(gfxPlatform::UsesOffMainThreadCompositing(),
              "This function assumes OMTC");
 
@@ -900,6 +903,17 @@ void nsBaseWidget::CreateCompositor(int aWidth, int aHeight)
   PLayerTransactionChild* shadowManager = nullptr;
   nsTArray<LayersBackend> backendHints;
   GetPreferredCompositorBackends(backendHints);
+
+#if !defined(MOZ_X11) && !defined(XP_WIN)
+  if (!mRequireOffMainThreadCompositing &&
+      !Preferences::GetBool("layers.offmainthreadcomposition.force-basic", false)) {
+    for (size_t i = 0; i < backendHints.Length(); ++i) {
+      if (backendHints[i] == LayersBackend::LAYERS_BASIC) {
+        backendHints[i] = LayersBackend::LAYERS_NONE;
+      }
+    }
+  }
+#endif
 
   bool success = false;
   if (!backendHints.IsEmpty()) {

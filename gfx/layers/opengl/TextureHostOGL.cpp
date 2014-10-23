@@ -125,6 +125,9 @@ CompositableDataGonkOGL::gl() const
 
 void CompositableDataGonkOGL::SetCompositor(Compositor* aCompositor)
 {
+  if (gl() && mCompositor != aCompositor) {
+    DeleteTextureIfPresent();
+  }
   mCompositor = static_cast<CompositorOGL*>(aCompositor);
 }
 
@@ -137,7 +140,7 @@ void CompositableDataGonkOGL::ClearData()
 GLuint CompositableDataGonkOGL::GetTexture()
 {
   if (!mTexture) {
-    if (gl()->MakeCurrent()) {
+    if (gl() && gl()->MakeCurrent()) {
       gl()->fGenTextures(1, &mTexture);
     }
   }
@@ -148,7 +151,8 @@ void
 CompositableDataGonkOGL::DeleteTextureIfPresent()
 {
   if (mTexture) {
-    if (gl()->MakeCurrent()) {
+    MOZ_ASSERT(mCompositor);
+    if (gl() && gl()->MakeCurrent()) {
       gl()->fDeleteTextures(1, &mTexture);
     }
     mTexture = 0;
@@ -160,7 +164,10 @@ void
 CompositableDataGonkOGL::BindEGLImage(GLuint aTarget, EGLImage aImage)
 {
   if (mBoundEGLImage != aImage) {
-    gl()->fEGLImageTargetTexture2D(aTarget, aImage);
+    MOZ_ASSERT(gl());
+    if (gl()) {
+      gl()->fEGLImageTargetTexture2D(aTarget, aImage);
+    }
     mBoundEGLImage = aImage;
   }
 }
@@ -253,12 +260,15 @@ TextureHostOGL::WaitAcquireFenceSyncComplete()
     return;
   }
 
+  // Wait sync complete with timeout.
+  // If a source of the fence becomes invalid because of error,
+  // fene complete is not signaled. See Bug 1061435.
   EGLint status = sEGLLibrary.fClientWaitSync(EGL_DISPLAY(),
                                               sync,
                                               0,
-                                              LOCAL_EGL_FOREVER);
+                                              400000000 /*400 usec*/);
   if (status != LOCAL_EGL_CONDITION_SATISFIED) {
-    NS_WARNING("failed to wait native fence sync");
+    NS_ERROR("failed to wait native fence sync");
   }
   MOZ_ALWAYS_TRUE( sEGLLibrary.fDestroySync(EGL_DISPLAY(), sync) );
   mAcquireFence = nullptr;

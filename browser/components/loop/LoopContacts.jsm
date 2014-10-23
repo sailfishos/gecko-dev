@@ -10,8 +10,12 @@ XPCOMUtils.defineLazyModuleGetter(this, "console",
                                   "resource://gre/modules/devtools/Console.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "LoopStorage",
                                   "resource:///modules/loop/LoopStorage.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "Promise",
+                                  "resource://gre/modules/Promise.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "CardDavImporter",
                                   "resource:///modules/loop/CardDavImporter.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "GoogleImporter",
+                                  "resource:///modules/loop/GoogleImporter.jsm");
 XPCOMUtils.defineLazyGetter(this, "eventEmitter", function() {
   const {EventEmitter} = Cu.import("resource://gre/modules/devtools/event-emitter.js", {});
   return new EventEmitter();
@@ -324,7 +328,8 @@ let LoopContactsInternal = Object.freeze({
    * Map of contact importer names to instances
    */
   _importServices: {
-    "carddav": new CardDavImporter()
+    "carddav": new CardDavImporter(),
+    "google": new GoogleImporter()
   },
 
   /**
@@ -770,7 +775,7 @@ let LoopContactsInternal = Object.freeze({
    *                            `Error` object or `null`. The second argument will
    *                            be the result of the operation, if successfull.
    */
-  startImport: function(options, callback) {
+  startImport: function(options, windowRef, callback) {
     if (!("service" in options)) {
       callback(new Error("No import service specified in options"));
       return;
@@ -779,21 +784,91 @@ let LoopContactsInternal = Object.freeze({
       callback(new Error("Unknown import service specified: " + options.service));
       return;
     }
-    this._importServices[options.service].startImport(options, callback, this);
+    this._importServices[options.service].startImport(options, callback,
+                                                      LoopContacts, windowRef);
   },
 
   /**
    * Search through the data store for contacts that match a certain (sub-)string.
+   * NB: The current implementation is very simple, naive if you will; we fetch
+   *     _all_ the contacts via `getAll()` and iterate over all of them to find
+   *     the contacts matching the supplied query (brute-force search in
+   *     exponential time).
    *
-   * @param {String}   query    Needle to search for in our haystack of contacts
+   * @param {Object}   query    Needle to search for in our haystack of contacts
    * @param {Function} callback Function that will be invoked once the operation
    *                            finished. The first argument passed will be an
    *                            `Error` object or `null`. The second argument will
    *                            be an `Array` of contact objects, if successfull.
+   *
+   * Example:
+   *   LoopContacts.search({
+   *     q: "foo@bar.com",
+   *     field: "email" // 'email' is the default.
+   *   }, function(err, contacts) {
+   *     if (err) {
+   *       throw err;
+   *     }
+   *     console.dir(contacts);
+   *   });
    */
   search: function(query, callback) {
-    //TODO in bug 1037114.
-    callback(new Error("Not implemented yet!"));
+    if (!("q" in query) || !query.q) {
+      callback(new Error("Nothing to search for. 'q' is required."));
+      return;
+    }
+    if (!("field" in query)) {
+      query.field = "email";
+    }
+    let queryValue = query.q;
+    if (query.field == "tel") {
+      queryValue = queryValue.replace(/[\D]+/g, "");
+    }
+
+    const checkForMatch = function(fieldValue) {
+      if (typeof fieldValue == "string") {
+        if (query.field == "tel") {
+          return fieldValue.replace(/[\D]+/g, "").endsWith(queryValue);
+        }
+        return fieldValue == queryValue;
+      }
+      if (typeof fieldValue == "number" || typeof fieldValue == "boolean") {
+        return fieldValue == queryValue;
+      }
+      if ("value" in fieldValue) {
+        return checkForMatch(fieldValue.value);
+      }
+      return false;
+    };
+
+    let foundContacts = [];
+    this.getAll((err, contacts) => {
+      if (err) {
+        callback(err);
+        return;
+      }
+
+      for (let contact of contacts) {
+        let matchWith = contact[query.field];
+        if (!matchWith) {
+          continue;
+        }
+
+        // Many fields are defined as Arrays.
+        if (Array.isArray(matchWith)) {
+          for (let fieldValue of matchWith) {
+            if (checkForMatch(fieldValue)) {
+              foundContacts.push(contact);
+              break;
+            }
+          }
+        } else if (checkForMatch(matchWith)) {
+          foundContacts.push(contact);
+        }
+      }
+
+      callback(null, foundContacts);
+    });
   }
 });
 
@@ -858,12 +933,24 @@ this.LoopContacts = Object.freeze({
     return LoopContactsInternal.unblock(guid, callback);
   },
 
-  startImport: function(options, callback) {
-    return LoopContactsInternal.startImport(options, callback);
+  startImport: function(options, windowRef, callback) {
+    return LoopContactsInternal.startImport(options, windowRef, callback);
   },
 
   search: function(query, callback) {
     return LoopContactsInternal.search(query, callback);
+  },
+
+  promise: function(method, ...params) {
+    return new Promise((resolve, reject) => {
+      this[method](...params, (error, result) => {
+        if (error) {
+          reject(error);
+        } else {
+          resolve(result);
+        }
+      });
+    });
   },
 
   on: (...params) => eventEmitter.on(...params),

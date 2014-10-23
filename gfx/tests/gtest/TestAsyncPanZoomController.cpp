@@ -161,10 +161,9 @@ public:
   bool SampleContentTransformForFrame(const TimeStamp& aSampleTime,
                                       ViewTransform* aOutTransform,
                                       ScreenPoint& aScrollOffset) {
-    Matrix4x4 aOverscrollTransform;  // ignored
     bool ret = AdvanceAnimations(aSampleTime);
     AsyncPanZoomController::SampleContentTransformForFrame(
-      aOutTransform, aScrollOffset, &aOverscrollTransform);
+      aOutTransform, aScrollOffset);
     return ret;
   }
 };
@@ -934,6 +933,93 @@ TEST_F(APZCBasicTester, FlingIntoOverscroll) {
   EXPECT_TRUE(recoveredFromOverscroll);
 }
 
+TEST_F(APZCBasicTester, OverScrollPanning) {
+  SCOPED_GFX_PREF(APZOverscrollEnabled, bool, true);
+
+  // Pan sufficiently to hit overscroll behavior
+  int time = 0;
+  int touchStart = 500;
+  int touchEnd = 10;
+  ApzcPan(apzc, time, touchStart, touchEnd);
+  EXPECT_TRUE(apzc->IsOverscrolled());
+
+  // Note that in the calls to SampleContentTransformForFrame below, the time
+  // increment used is sufficiently large for the animation to have completed. However,
+  // any single call to SampleContentTransformForFrame will not finish an animation
+  // *and* also proceed through the following animation, if there is one.
+  // Therefore the minimum number of calls to go from an overscroll-inducing pan
+  // to a reset state is 3; these are documented further below.
+
+  ScreenPoint pointOut;
+  ViewTransform viewTransformOut;
+
+  // This sample will run to the end of the non-overscrolling fling animation
+  // and will schedule the overscrolling fling animation.
+  apzc->SampleContentTransformForFrame(testStartTime + TimeDuration::FromMilliseconds(10000), &viewTransformOut, pointOut);
+  EXPECT_EQ(ScreenPoint(0, 90), pointOut);
+  EXPECT_TRUE(apzc->IsOverscrolled());
+
+  // This sample will run to the end of the overscrolling fling animation and
+  // will schedule the snapback animation.
+  apzc->SampleContentTransformForFrame(testStartTime + TimeDuration::FromMilliseconds(20000), &viewTransformOut, pointOut);
+  EXPECT_EQ(ScreenPoint(0, 90), pointOut);
+  EXPECT_TRUE(apzc->IsOverscrolled());
+
+  // This sample will run to the end of the snapback animation and reset the state.
+  apzc->SampleContentTransformForFrame(testStartTime + TimeDuration::FromMilliseconds(30000), &viewTransformOut, pointOut);
+  EXPECT_EQ(ScreenPoint(0, 90), pointOut);
+  EXPECT_FALSE(apzc->IsOverscrolled());
+
+  apzc->AssertStateIsReset();
+}
+
+TEST_F(APZCBasicTester, OverScrollAbort) {
+  SCOPED_GFX_PREF(APZOverscrollEnabled, bool, true);
+
+  // Pan sufficiently to hit overscroll behavior
+  int time = 0;
+  int touchStart = 500;
+  int touchEnd = 10;
+  ApzcPan(apzc, time, touchStart, touchEnd);
+  EXPECT_TRUE(apzc->IsOverscrolled());
+
+  ScreenPoint pointOut;
+  ViewTransform viewTransformOut;
+
+  // This sample call will run to the end of the non-overscrolling fling animation
+  // and will schedule the overscrolling fling animation (see comment in OverScrollPanning
+  // above for more explanation).
+  apzc->SampleContentTransformForFrame(testStartTime + TimeDuration::FromMilliseconds(10000), &viewTransformOut, pointOut);
+  EXPECT_TRUE(apzc->IsOverscrolled());
+
+  // At this point, we have an active overscrolling fling animation.
+  // Check that cancelling the animation clears the overscroll.
+  apzc->CancelAnimation();
+  EXPECT_FALSE(apzc->IsOverscrolled());
+  apzc->AssertStateIsReset();
+}
+
+TEST_F(APZCBasicTester, OverScrollPanningAbort) {
+  SCOPED_GFX_PREF(APZOverscrollEnabled, bool, true);
+
+  // Pan sufficiently to hit overscroll behaviour. Keep the finger down so
+  // the pan does not end.
+  int time = 0;
+  int touchStart = 500;
+  int touchEnd = 10;
+  ApzcPan(apzc, time, touchStart, touchEnd,
+          true);                   // keep finger down
+  EXPECT_TRUE(apzc->IsOverscrolled());
+
+  // Check that calling CancelAnimation() while the user is still panning
+  // (and thus no fling or snap-back animation has had a chance to start)
+  // clears the overscroll.
+  apzc->CancelAnimation();
+  EXPECT_FALSE(apzc->IsOverscrolled());
+  apzc->AssertStateIsReset();
+}
+
+
 class APZCFlingStopTester : public APZCGestureDetectorTester {
 protected:
   // Start a fling, and then tap while the fling is ongoing. When
@@ -1408,7 +1494,67 @@ protected:
     };
     root = CreateLayerTree(layerTreeSyntax, layerVisibleRegion, nullptr, lm, layers);
   }
+
+  void CreatePotentiallyLeakingTree() {
+    const char* layerTreeSyntax = "c(c(c(c))c(c(c)))";
+    // LayerID                     0 1 2 3  4 5 6
+    root = CreateLayerTree(layerTreeSyntax, nullptr, nullptr, lm, layers);
+    SetScrollableFrameMetrics(layers[0], FrameMetrics::START_SCROLL_ID);
+    SetScrollableFrameMetrics(layers[2], FrameMetrics::START_SCROLL_ID + 1);
+    SetScrollableFrameMetrics(layers[5], FrameMetrics::START_SCROLL_ID + 1);
+    SetScrollableFrameMetrics(layers[3], FrameMetrics::START_SCROLL_ID + 2);
+    SetScrollableFrameMetrics(layers[6], FrameMetrics::START_SCROLL_ID + 3);
+  }
 };
+
+// A version of ApzcPan() that routes the pan through the tree manager,
+// so that the tree manager has the appropriate state for testing.
+static void
+ApzctmPan(APZCTreeManager* aTreeManager,
+          int& aTime,
+          int aTouchStartY,
+          int aTouchEndY,
+          bool aKeepFingerDown = false)
+{
+  // TODO: Reuse some code between this and ApzcPan().
+
+  // Reduce the touch start tolerance to a tiny value.
+  // We can't do what ApzcPan() does to overcome the tolerance (send the
+  // touch-start at (aTouchStartY + some_large_value)) because the tree manager
+  // does hit testing based on the touch-start coordinates, and a different
+  // APZC than the one we intend might be hit.
+  SCOPED_GFX_PREF(APZTouchStartTolerance, float, 1.0f / 1000.0f);
+  const int OVERCOME_TOUCH_TOLERANCE = 1;
+
+  const int TIME_BETWEEN_TOUCH_EVENT = 100;
+
+  // Make sure the move is large enough to not be handled as a tap
+  MultiTouchInput mti = MultiTouchInput(MultiTouchInput::MULTITOUCH_START, aTime, TimeStamp(), 0);
+  mti.mTouches.AppendElement(SingleTouchData(0, ScreenIntPoint(10, aTouchStartY), ScreenSize(0, 0), 0, 0));
+  aTreeManager->ReceiveInputEvent(mti, nullptr);
+
+  aTime += TIME_BETWEEN_TOUCH_EVENT;
+
+  mti = MultiTouchInput(MultiTouchInput::MULTITOUCH_MOVE, aTime, TimeStamp(), 0);
+  mti.mTouches.AppendElement(SingleTouchData(0, ScreenIntPoint(10, aTouchStartY + OVERCOME_TOUCH_TOLERANCE), ScreenSize(0, 0), 0, 0));
+  aTreeManager->ReceiveInputEvent(mti, nullptr);
+
+  aTime += TIME_BETWEEN_TOUCH_EVENT;
+
+  mti = MultiTouchInput(MultiTouchInput::MULTITOUCH_MOVE, aTime, TimeStamp(), 0);
+  mti.mTouches.AppendElement(SingleTouchData(0, ScreenIntPoint(10, aTouchEndY), ScreenSize(0, 0), 0, 0));
+  aTreeManager->ReceiveInputEvent(mti, nullptr);
+
+  aTime += TIME_BETWEEN_TOUCH_EVENT;
+
+  if (!aKeepFingerDown) {
+    mti = MultiTouchInput(MultiTouchInput::MULTITOUCH_END, aTime, TimeStamp(), 0);
+    mti.mTouches.AppendElement(SingleTouchData(0, ScreenIntPoint(10, aTouchEndY), ScreenSize(0, 0), 0, 0));
+    aTreeManager->ReceiveInputEvent(mti, nullptr);
+  }
+
+  aTime += TIME_BETWEEN_TOUCH_EVENT;
+}
 
 class APZHitTestingTester : public APZCTreeManagerTester {
 protected:
@@ -1695,6 +1841,23 @@ TEST_F(APZCTreeManagerTester, ScrollableThebesLayers) {
   EXPECT_EQ(ApzcOf(layers[1]), ApzcOf(layers[2]));
 }
 
+TEST_F(APZCTreeManagerTester, Bug1068268) {
+  CreatePotentiallyLeakingTree();
+  ScopedLayerTreeRegistration registration(0, root, mcc);
+
+  manager->UpdatePanZoomControllerTree(nullptr, root, false, 0, 0);
+  EXPECT_EQ(ApzcOf(layers[2]), ApzcOf(layers[0])->GetLastChild());
+  EXPECT_EQ(ApzcOf(layers[2]), ApzcOf(layers[0])->GetFirstChild());
+  EXPECT_EQ(ApzcOf(layers[0]), ApzcOf(layers[2])->GetParent());
+  EXPECT_EQ(ApzcOf(layers[2]), ApzcOf(layers[5]));
+
+  EXPECT_EQ(ApzcOf(layers[3]), ApzcOf(layers[2])->GetFirstChild());
+  EXPECT_EQ(ApzcOf(layers[6]), ApzcOf(layers[2])->GetLastChild());
+  EXPECT_EQ(ApzcOf(layers[3]), ApzcOf(layers[6])->GetPrevSibling());
+  EXPECT_EQ(ApzcOf(layers[2]), ApzcOf(layers[3])->GetParent());
+  EXPECT_EQ(ApzcOf(layers[2]), ApzcOf(layers[6])->GetParent());
+}
+
 TEST_F(APZHitTestingTester, ComplexMultiLayerTree) {
   CreateComplexMultiLayerTree();
   ScopedLayerTreeRegistration registration(0, root, mcc);
@@ -1900,6 +2063,43 @@ TEST_F(APZOverscrollHandoffTester, LayerStructureChangesWhileEventsArePending) {
   EXPECT_EQ(0, childApzc->GetFrameMetrics().GetScrollOffset().y);
   EXPECT_EQ(10, rootApzc->GetFrameMetrics().GetScrollOffset().y);
   EXPECT_EQ(-10, middleApzc->GetFrameMetrics().GetScrollOffset().y);
+}
+
+// Test that putting a second finger down on an APZC while a down-chain APZC
+// is overscrolled doesn't result in being stuck in overscroll.
+TEST_F(APZOverscrollHandoffTester, StuckInOverscroll_Bug1073250) {
+  // Enable overscrolling.
+  SCOPED_GFX_PREF(APZOverscrollEnabled, bool, true);
+
+  CreateOverscrollHandoffLayerTree1();
+
+  TestAsyncPanZoomController* child = ApzcOf(layers[1]);
+
+  // Pan, causing the parent APZC to overscroll.
+  int time = 0;
+  ApzctmPan(manager, time, 10, 40, true /* keep finger down */);
+  EXPECT_FALSE(child->IsOverscrolled());
+  EXPECT_TRUE(rootApzc->IsOverscrolled());
+
+  // Put a second finger down.
+  MultiTouchInput secondFingerDown(MultiTouchInput::MULTITOUCH_START, 0, TimeStamp(), 0);
+  // Use the same touch identifier for the first touch (0) as ApzctmPan(). (A bit hacky.)
+  secondFingerDown.mTouches.AppendElement(SingleTouchData(0, ScreenIntPoint(10, 40), ScreenSize(0, 0), 0, 0));
+  secondFingerDown.mTouches.AppendElement(SingleTouchData(1, ScreenIntPoint(30, 20), ScreenSize(0, 0), 0, 0));
+  manager->ReceiveInputEvent(secondFingerDown, nullptr);
+
+  // Release the fingers.
+  MultiTouchInput fingersUp = secondFingerDown;
+  fingersUp.mType = MultiTouchInput::MULTITOUCH_END;
+  manager->ReceiveInputEvent(fingersUp, nullptr);
+
+  // Allow any animations to run their course.
+  child->AdvanceAnimationsUntilEnd(testStartTime);
+  rootApzc->AdvanceAnimationsUntilEnd(testStartTime);
+
+  // Make sure nothing is overscrolled.
+  EXPECT_FALSE(child->IsOverscrolled());
+  EXPECT_FALSE(rootApzc->IsOverscrolled());
 }
 
 // Here we test that if two flings are happening simultaneously, overscroll

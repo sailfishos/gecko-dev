@@ -52,7 +52,7 @@ const kSubviewEvents = [
  * The current version. We can use this to auto-add new default widgets as necessary.
  * (would be const but isn't because of testing purposes)
  */
-let kVersion = 1;
+let kVersion = 2;
 
 /**
  * gPalette is a map of every widget that CustomizableUI.jsm knows about, keyed
@@ -206,7 +206,6 @@ let CustomizableUIInternal = {
         "bookmarks-menu-button",
         "downloads-button",
         "home-button",
-        "loop-call-button",
         "social-share-button",
       ],
       defaultCollapsed: false,
@@ -294,6 +293,11 @@ let CustomizableUIInternal = {
           gFuturePlacements.set(widget.defaultArea, new Set([id]));
         }
       }
+    }
+
+    if (currentVersion < 2) {
+      // Nuke the old 'loop-call-button' out of orbit.
+      CustomizableUI.removeWidgetFromArea("loop-call-button");
     }
   },
 
