@@ -111,6 +111,7 @@ void MessagePump::Run(MessagePump::Delegate* aDelegate) {
   }
 
   mDelayedWorkTimer->Cancel();
+  mDelayedWorkTimer = nullptr;
 
   keep_running_ = true;
 }
