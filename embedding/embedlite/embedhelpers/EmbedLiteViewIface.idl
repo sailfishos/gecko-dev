@@ -8,7 +8,6 @@
 %{C++
 #include "mozilla/gfx/Matrix.h"
 #include "gfxRect.h"
-#include "EmbedLiteRenderTarget.h"
 #include "InputData.h"
 %}
 
@@ -22,32 +21,15 @@ class nsString;
 [ref] native nsIntPoint(nsIntPoint);
 [ref] native nsIntRect(nsIntRect);
 [ref] native InputData(mozilla::InputData);
-[ptr] native EmbedLiteRenderTarget(mozilla::embedlite::EmbedLiteRenderTarget);
 [ptr] native PlatformImage(void);
 [ptr] native buffer(unsigned char);
 
 [scriptable, uuid(6d7750f8-e028-4445-a0cb-d9ce28fb03dd)]
 interface EmbedLiteViewIface
 {
-    void LoadURL(in string aName);
-    void GoBack();
-    void GoForward();
-    void StopLoad();
-    void Reload(in boolean aHardReload);
-    void LoadFrameScript(in string aURI);
-    void DoSendAsyncMessage([const] in wstring aMessageName,[const] in wstring aMessage);
-    void AddMessageListener(in string aMessageName);
-    void RemoveMessageListener(in string aMessageName);
-    void AddMessageListeners([const] in nsStringTArrayRef aNames);
-    void RemoveMessageListeners([const] in nsStringTArrayRef aNames);
     void RenderToImage(in buffer aData, in int32_t aWidth, in int32_t aHeigth, in int32_t aStride, in int32_t aDepth);
-    void SetIsActive(in boolean isActive);
-    void SetIsFocused(in boolean isFocused);
-    void SuspendTimeouts();
-    void ResumeTimeouts();
     void SetViewSize(in int32_t aWidth, in int32_t aHeight);
     void SetGLViewPortSize(in int32_t aWidth, in int32_t aHeight);
-    void ScheduleRender();
     void ReceiveInputEvent([const] in InputData aEvent);
     void TextEvent(in string aComposite, in string aPreEdit);
     void SendKeyPress(in int32_t aDomKeyCode, in int32_t aModifiers, in int32_t aCharCode);
@@ -58,7 +40,6 @@ interface EmbedLiteViewIface
     void UpdateScrollController();
     void ViewAPIDestroyed();
     void GetUniqueID(out uint32_t aId);
-    void GetPendingTexture(in EmbedLiteRenderTarget aContextWrapper, out int32_t aTextureID, out int32_t aTextureTarget, out int32_t aWidth, out int32_t aHeight);
     void GetPlatformImage(out PlatformImage aImage, out int32_t aWidth, out int32_t aHeight);
     void SuspendRendering();
     void ResumeRendering();

@@ -15,25 +15,6 @@
 #include "mozilla/unused.h"
 #include "EmbedContentController.h"
 #include "mozilla/layers/APZCTreeManager.h"
-#include "EmbedLiteRenderTarget.h"
-
-//#include "GLContext.h"                  // for GLContext
-#include "GLScreenBuffer.h"             // for GLScreenBuffer
-#include "SharedSurfaceEGL.h"           // for SurfaceFactory_EGLImage
-#include "SharedSurfaceGL.h"            // for SurfaceFactory_GLTexture, etc
-#include "SurfaceStream.h"              // for SurfaceStream, etc
-#include "SurfaceTypes.h"               // for SurfaceStreamType
-#include "ClientLayerManager.h"         // for ClientLayerManager, etc
-#include "GLUploadHelpers.h"
-#include "gfxPlatform.h"
-
-#include "BasicLayers.h"
-#include "mozilla/layers/LayerManagerComposite.h"
-#include "mozilla/layers/AsyncCompositionManager.h"
-#include "mozilla/layers/LayerTransactionParent.h"
-#include "mozilla/layers/CompositorOGL.h"
-#include "gfxUtils.h"
-
 
 using namespace mozilla::gfx;
 using namespace mozilla::gl;
@@ -322,137 +303,6 @@ EmbedLiteViewThreadParent::RecvSetBackgroundColor(const nscolor& aColor)
 
 // Incoming API calls
 
-NS_IMETHODIMP
-EmbedLiteViewThreadParent::LoadURL(const char* aUrl)
-{
-  LOGT("url:%s", aUrl);
-  unused << SendLoadURL(NS_ConvertUTF8toUTF16(nsDependentCString(aUrl)));
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteViewThreadParent::GoBack()
-{
-  unused << SendGoBack();
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteViewThreadParent::GoForward()
-{
-  unused << SendGoForward();
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteViewThreadParent::StopLoad()
-{
-  unused << SendStopLoad();
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteViewThreadParent::Reload(bool hardReload)
-{
-  unused << SendReload(hardReload);
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteViewThreadParent::SetIsActive(bool aIsActive)
-{
-  LOGF();
-  unused << SendSetIsActive(aIsActive);
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteViewThreadParent::SetIsFocused(bool aIsFocused)
-{
-  LOGF();
-  unused << SendSetIsFocused(aIsFocused);
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteViewThreadParent::SuspendTimeouts()
-{
-  LOGF();
-  unused << SendSuspendTimeouts();
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteViewThreadParent::ResumeTimeouts()
-{
-  LOGF();
-  unused << SendResumeTimeouts();
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteViewThreadParent::LoadFrameScript(const char* aURI)
-{
-  LOGT("uri:%s", aURI);
-  unused << SendLoadFrameScript(NS_ConvertUTF8toUTF16(nsDependentCString(aURI)));
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteViewThreadParent::DoSendAsyncMessage(const char16_t* aMessageName, const char16_t* aMessage)
-{
-  LOGT("msgName:%ls, msg:%ls", aMessageName, aMessage);
-  const nsDependentString msgname(aMessageName);
-  const nsDependentString msg(aMessage);
-  unused << SendAsyncMessage(msgname, msg);
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteViewThreadParent::AddMessageListener(const char* aMessageName)
-{
-  LOGT("msgName:%s", aMessageName);
-  unused << SendAddMessageListener(nsDependentCString(aMessageName));
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteViewThreadParent::RemoveMessageListener(const char* aMessageName)
-{
-  LOGT("msgName:%s", aMessageName);
-  unused << SendRemoveMessageListener(nsDependentCString(aMessageName));
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteViewThreadParent::AddMessageListeners(const nsTArray<nsString>& aMessageNames)
-{
-  unused << SendAddMessageListeners(aMessageNames);
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteViewThreadParent::RemoveMessageListeners(const nsTArray<nsString>& aMessageNames)
-{
-  unused << SendRemoveMessageListeners(aMessageNames);
-
-  return NS_OK;
-}
-
 bool
 EmbedLiteViewThreadParent::RecvAsyncMessage(const nsString& aMessage,
                                             const nsString& aData)
@@ -551,36 +401,6 @@ EmbedLiteViewThreadParent::SetGLViewPortSize(int width, int height)
     mCompositor->SetSurfaceSize(width, height);
   }
   unused << SendSetGLViewSize(mGLViewPortSize);
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteViewThreadParent::ScheduleRender()
-{
-  if (mCompositor) {
-    mCompositor->ScheduleRenderOnCompositorThread();
-  }
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteViewThreadParent::ResumeRendering()
-{
-  if (mCompositor) {
-    mCompositor->ResumeRendering();
-  }
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-EmbedLiteViewThreadParent::SuspendRendering()
-{
-  if (mCompositor) {
-    mCompositor->SuspendRendering();
-  }
 
   return NS_OK;
 }
@@ -757,71 +577,20 @@ EmbedLiteViewThreadParent::GetUniqueID(uint32_t *aId)
 }
 
 NS_IMETHODIMP
-EmbedLiteViewThreadParent::GetPendingTexture(EmbedLiteRenderTarget* aContextWrapper, int* textureID, int* width, int* height, int* aTextureTarget)
+EmbedLiteViewThreadParent::ResumeRendering()
 {
-  NS_ENSURE_TRUE(aContextWrapper && textureID && width && height, NS_ERROR_FAILURE);
-  NS_ENSURE_TRUE(mCompositor, NS_ERROR_FAILURE);
-
-  const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(mCompositor->RootLayerTreeId());
-  NS_ENSURE_TRUE(state && state->mLayerManager, NS_ERROR_FAILURE);
-
-  GLContext* context = static_cast<CompositorOGL*>(state->mLayerManager->GetCompositor())->gl();
-  NS_ENSURE_TRUE(context && context->IsOffscreen(), NS_ERROR_FAILURE);
-
-  GLContext* consumerContext = aContextWrapper->GetConsumerContext();
-  NS_ENSURE_TRUE(consumerContext && consumerContext->Init(), NS_ERROR_FAILURE);
-
-  SharedSurface* sharedSurf = context->RequestFrame();
-  NS_ENSURE_TRUE(sharedSurf, NS_ERROR_FAILURE);
-
-  DataSourceSurface* toUpload = nullptr;
-  GLuint textureHandle = 0;
-  GLuint textureTarget = 0;
-  if (sharedSurf->mType == SharedSurfaceType::EGLImageShare) {
-    SharedSurface_EGLImage* eglImageSurf = SharedSurface_EGLImage::Cast(sharedSurf);
-    eglImageSurf->AcquireConsumerTexture(consumerContext, &textureHandle, &textureTarget);
-    if (!textureHandle) {
-      NS_WARNING("Failed to get texture handle, fallback to pixels?");
-    }
-  } else if (sharedSurf->mType == SharedSurfaceType::GLTextureShare) {
-    SharedSurface_GLTexture* glTexSurf = SharedSurface_GLTexture::Cast(sharedSurf);
-    textureHandle = glTexSurf->ConsTexture(consumerContext);
-    textureTarget = glTexSurf->ConsTextureTarget();
-    NS_ASSERTION(textureHandle, "Failed to get texture handle, fallback to pixels?");
-  } else if (sharedSurf->mType == SharedSurfaceType::Basic) {
-    toUpload = SharedSurface_Basic::Cast(sharedSurf)->GetData();
-  } else {
-    NS_ERROR("Unhandled Image type");
+  if (mCompositor) {
+    mCompositor->ResumeRendering();
   }
 
-  if (toUpload) {
-    // mBounds seems to end up as (0,0,0,0) a lot, so don't use it?
-    nsIntSize size(ThebesIntSize(toUpload->GetSize()));
-    nsIntRect rect(nsIntPoint(0,0), size);
-    nsIntRegion bounds(rect);
-    UploadSurfaceToTexture(consumerContext,
-                           toUpload,
-                           bounds,
-                           mUploadTexture,
-                           true);
-    textureHandle = mUploadTexture;
-    textureTarget = LOCAL_GL_TEXTURE_2D;
-  } else if (textureHandle) {
-    if (consumerContext) {
-      MOZ_ASSERT(consumerContext);
-      if (consumerContext->MakeCurrent()) {
-        consumerContext->fDeleteTextures(1, &mUploadTexture);
-      }
-    }
-  }
+  return NS_OK;
+}
 
-  NS_ASSERTION(textureHandle, "Failed to get texture handle from EGLImage, fallback to pixels?");
-
-  *width = sharedSurf->mSize.width;
-  *height = sharedSurf->mSize.height;
-  *textureID = textureHandle;
-  if (aTextureTarget) {
-    *aTextureTarget = textureTarget;
+NS_IMETHODIMP
+EmbedLiteViewThreadParent::SuspendRendering()
+{
+  if (mCompositor) {
+    mCompositor->SuspendRendering();
   }
 
   return NS_OK;
