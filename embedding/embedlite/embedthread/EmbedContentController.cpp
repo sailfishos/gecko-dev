@@ -179,8 +179,8 @@ void EmbedContentController::DoRequestContentRepaint(const FrameMetrics& aFrameM
 }
 
 nsEventStatus
-EmbedContentController::ReceiveInputEvent(const InputData& aEvent,
-                                          ScrollableLayerGuid* aOutTargetGuid)
+EmbedContentController::ReceiveInputEvent(InputData& aEvent,
+                                          mozilla::layers::ScrollableLayerGuid* aOutTargetGuid)
 {
   if (!mAPZC) {
     return nsEventStatus_eIgnore;

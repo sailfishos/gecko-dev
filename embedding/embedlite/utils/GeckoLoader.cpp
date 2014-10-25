@@ -99,6 +99,10 @@ GeckoLoader::InitEmbedding(const char* aProfilePath)
 
   // create nsIFile pointing to xpcomDir
   const char* greHome = getenv("XRE_LIBXPCOM_PATH");
+  if (!greHome) {
+    LOGE("GRE_HOME is not defined and unable to get XRE_LIBXPCOM_PATH\n");
+    return false;
+  }
   nsCOMPtr<nsIFile> xuldir;
   rv = XRE_GetBinaryPath(greHome, getter_AddRefs(xuldir));
   if (NS_FAILED(rv)) {

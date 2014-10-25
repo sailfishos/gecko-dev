@@ -210,6 +210,7 @@ EmbedLiteViewThreadChild::InitGeckoWindow(const uint32_t& parentId)
     NS_ERROR("Got stuck with DOMWindow1!");
   }
 
+  mozilla::dom::AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(mDOMWindow);
   utils->GetOuterWindowID(&mOuterId);
 
@@ -517,7 +518,7 @@ EmbedLiteViewThreadChild::RecvSetViewSize(const gfxSize& aSize)
   baseWindow->SetPositionAndSize(0, 0, mViewSize.width, mViewSize.height, true);
   baseWindow->SetVisibility(true);
 
-  mHelper->HandlePossibleViewportChange();
+  mHelper->ReportSizeUpdate(aSize);
 
   return true;
 }
@@ -591,7 +592,7 @@ EmbedLiteViewThreadChild::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
 
   if (mViewResized &&
       aFrameMetrics.mIsRoot &&
-      mHelper->mLastRootMetrics.mPresShellId == aFrameMetrics.mPresShellId &&
+      mHelper->mLastRootMetrics.GetPresShellId() == aFrameMetrics.GetPresShellId() &&
       mHelper->HandlePossibleViewportChange()) {
     mViewResized = false;
   }
@@ -795,6 +796,7 @@ bool
 EmbedLiteViewThreadChild::RecvHandleKeyPressEvent(const int& domKeyCode, const int& gmodifiers, const int& charCode)
 {
   nsCOMPtr<nsPIDOMWindow> window = do_GetInterface(mWebNavigation);
+  mozilla::dom::AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
   NS_ENSURE_TRUE(utils, true);
   bool handled = false;
@@ -819,6 +821,7 @@ bool
 EmbedLiteViewThreadChild::RecvHandleKeyReleaseEvent(const int& domKeyCode, const int& gmodifiers, const int& charCode)
 {
   nsCOMPtr<nsPIDOMWindow> window = do_GetInterface(mWebNavigation);
+  mozilla::dom::AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
   NS_ENSURE_TRUE(utils, true);
   bool handled = false;
@@ -840,6 +843,7 @@ EmbedLiteViewThreadChild::RecvMouseEvent(const nsString& aType,
   }
 
   nsCOMPtr<nsPIDOMWindow> window = do_GetInterface(mWebNavigation);
+  mozilla::dom::AutoNoJSAPI nojsapi;
   nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
 
   NS_ENSURE_TRUE(utils, true);
@@ -878,8 +882,7 @@ EmbedLiteViewThreadChild::RecvInputDataTouchEvent(const ScrollableLayerGuid& aGu
     }
   }
   if (aData.mType == MultiTouchInput::MULTITOUCH_END ||
-      aData.mType == MultiTouchInput::MULTITOUCH_CANCEL ||
-      aData.mType == MultiTouchInput::MULTITOUCH_LEAVE) {
+      aData.mType == MultiTouchInput::MULTITOUCH_CANCEL) {
     mDispatchSynthMouseEvents = true;
   }
   return true;
@@ -990,7 +993,7 @@ EmbedLiteViewThreadChild::GetScrollIdentifiers(uint32_t *aPresShellIdOut, mozill
   nsCOMPtr<nsIDOMDocument> domDoc;
   mWebNavigation->GetDocument(getter_AddRefs(domDoc));
   nsCOMPtr<nsIDocument> doc(do_QueryInterface(domDoc));
-  return APZCCallbackHelper::GetScrollIdentifiers(doc->GetDocumentElement(), aPresShellIdOut, aViewIdOut);
+  return APZCCallbackHelper::GetOrCreateScrollIdentifiers(doc->GetDocumentElement(), aPresShellIdOut, aViewIdOut);
 }
 
 } // namespace embedlite
