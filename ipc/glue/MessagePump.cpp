@@ -125,6 +125,7 @@ if (did_work && delayed_work_time_.is_null())
   }
 
     mDelayedWorkTimer->Cancel();
+    mDelayedWorkTimer = nullptr;
 
   keep_running_ = true;
 }
