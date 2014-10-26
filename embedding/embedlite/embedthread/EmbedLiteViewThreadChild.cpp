@@ -592,7 +592,7 @@ EmbedLiteViewThreadChild::RecvUpdateFrame(const FrameMetrics& aFrameMetrics)
 
   if (mViewResized &&
       aFrameMetrics.mIsRoot &&
-      mHelper->mLastRootMetrics.GetPresShellId() == aFrameMetrics.GetPresShellId() &&
+      mHelper->mLastRootMetrics.mPresShellId == aFrameMetrics.mPresShellId &&
       mHelper->HandlePossibleViewportChange()) {
     mViewResized = false;
   }
@@ -993,7 +993,7 @@ EmbedLiteViewThreadChild::GetScrollIdentifiers(uint32_t *aPresShellIdOut, mozill
   nsCOMPtr<nsIDOMDocument> domDoc;
   mWebNavigation->GetDocument(getter_AddRefs(domDoc));
   nsCOMPtr<nsIDocument> doc(do_QueryInterface(domDoc));
-  return APZCCallbackHelper::GetOrCreateScrollIdentifiers(doc->GetDocumentElement(), aPresShellIdOut, aViewIdOut);
+  return APZCCallbackHelper::GetScrollIdentifiers(doc->GetDocumentElement(), aPresShellIdOut, aViewIdOut);
 }
 
 } // namespace embedlite

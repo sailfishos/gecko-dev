@@ -18,4 +18,3 @@ EXPORTS += [
 SOURCES += [
     'qmessagepump.cpp',
 ]
-

@@ -25,9 +25,7 @@ LIBS += \
     $(MOZ_GTHREAD_LIBS) \
     $(NULL)
 
-LIBS += \
-  ./shared/$(LIB_PREFIX)qmessagepump.$(LIB_SUFFIX)
-  $(NULL)
+#LIBS += $(call EXPAND_LIBNAME_PATH,linker,./qmessagepump)
 
 ifeq (1 ,$(MOZ_X11))
     LIBS += \

@@ -93,14 +93,14 @@ EmbedLiteCompositorParent::PrepareOffscreen()
       SurfaceStreamType streamType =
         SurfaceStream::ChooseGLStreamType(SurfaceStream::OffMainThread,
                                           screen->PreserveBuffer());
-      SurfaceFactory* factory = nullptr;
-      if (context->GetContextType() == GLContextType::EGL) {
+      SurfaceFactory_GL* factory = nullptr;
+      if (context->GetContextType() == GLContextType::EGL && sEGLLibrary.HasKHRImageTexture2D()) {
         // [Basic/OGL Layers, OMTC] WebGL layer init.
-        factory = SurfaceFactory_EGLImage::Create(context, screen->mCaps);
+        factory = SurfaceFactory_EGLImage::Create(context, screen->Caps());
       } else {
         // [Basic Layers, OMTC] WebGL layer init.
         // Well, this *should* work...
-        factory = new SurfaceFactory_GLTexture(context, nullptr, screen->mCaps);
+        factory = new SurfaceFactory_GLTexture(context, nullptr, screen->Caps());
       }
       if (factory) {
         screen->Morph(factory, streamType);
@@ -171,9 +171,7 @@ bool EmbedLiteCompositorParent::RenderToContext(gfx::DrawTarget* aTarget)
     // Nothing to paint yet, just return silently
     return false;
   }
-  IntSize size(aTarget->GetSize());
-  nsIntRect boundRect(0, 0, size.width, size.height);
-  CompositeToTarget(aTarget, &boundRect);
+  CompositeToTarget(aTarget);
   return true;
 }
 
@@ -248,10 +246,10 @@ void* EmbedLiteCompositorParent::GetPlatformImage(int* width, int* height)
   SharedSurface* sharedSurf = context->RequestFrame();
   NS_ENSURE_TRUE(sharedSurf, nullptr);
 
-  *width = sharedSurf->mSize.width;
-  *height = sharedSurf->mSize.height;
+  *width = sharedSurf->Size().width;
+  *height = sharedSurf->Size().height;
 
-  if (sharedSurf->mType == SharedSurfaceType::EGLImageShare) {
+  if (sharedSurf->Type() == SharedSurfaceType::EGLImageShare) {
     SharedSurface_EGLImage* eglImageSurf = SharedSurface_EGLImage::Cast(sharedSurf);
     return eglImageSurf->mImage;
   }

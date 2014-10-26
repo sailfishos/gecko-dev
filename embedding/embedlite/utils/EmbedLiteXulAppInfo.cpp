@@ -191,13 +191,6 @@ EmbedLiteXulAppInfo::GetProcessID(uint32_t* aResult)
 }
 
 NS_IMETHODIMP
-EmbedLiteXulAppInfo::GetBrowserTabsRemoteAutostart(bool* aResult)
-{
-  *aResult = false;
-  return NS_OK;
-}
-
-NS_IMETHODIMP
 EmbedLiteXulAppInfo::GetBrowserTabsRemote(bool* aResult)
 {
   *aResult = false;
