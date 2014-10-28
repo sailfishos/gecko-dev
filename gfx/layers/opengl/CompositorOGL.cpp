@@ -178,21 +178,10 @@ CompositorOGL::CreateContext()
 {
   nsRefPtr<GLContext> context;
 
-  // If widget has active GL context then we can try to wrap it into Moz GL Context
-  // TODO: KILL ME SOONER
-  if (mWidget->HasGLContext()) {
-    context = GLContextProvider::CreateWrappingExisting(nullptr, nullptr);
-    if (!context || !context->Init()) {
-      NS_WARNING("Failed to create embedded context");
-      context = nullptr;
-    }
-  }
-
   // Allow to create offscreen GL context for main Layer Manager
   if (!context && PR_GetEnv("MOZ_LAYERS_PREFER_OFFSCREEN")) {
     SurfaceCaps caps = SurfaceCaps::ForRGB();
     caps.preserve = false;
-    caps.alpha = true;
     caps.bpp16 = gfxPlatform::GetPlatform()->GetOffscreenFormat() == gfxImageFormat::RGB16_565;
     context = GLContextProvider::CreateOffscreen(gfxIntSize(mSurfaceSize.width,
                                                             mSurfaceSize.height), caps);
@@ -733,7 +722,7 @@ CompositorOGL::BeginFrame(const nsIntRegion& aInvalidRegion,
   // If the Android compositor is being used, this clear will be done in
   // DrawWindowUnderlay. Make sure the bits used here match up with those used
   // in mobile/android/base/gfx/LayerRenderer.java
-#ifndef MOZ_ANDROID_OMTC
+#if !defined(MOZ_ANDROID_OMTC) && !defined(USE_ANDROID_OMTC_HACKS)
   mGLContext->fClearColor(0.0, 0.0, 0.0, 0.0);
   mGLContext->fClear(LOCAL_GL_COLOR_BUFFER_BIT | LOCAL_GL_DEPTH_BUFFER_BIT);
 #endif
@@ -1000,7 +989,7 @@ CompositorOGL::DrawQuadInternal(const Rect& aRect,
   IntPoint offset = mCurrentRenderTarget->GetOrigin();
   program->SetRenderOffset(offset.x, offset.y);
   if (aOpacity != 1.f)
-    program->SetLayerOpacity(aOpacity * mWorldOpacity);
+    program->SetLayerOpacity(aOpacity);
   if (config.mFeatures & ENABLE_TEXTURE_RECT) {
     TexturedEffect* texturedEffect =
         static_cast<TexturedEffect*>(aEffectChain.mPrimaryEffect.get());
