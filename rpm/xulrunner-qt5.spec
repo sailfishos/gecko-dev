@@ -9,6 +9,7 @@ License:    Mozilla License
 URL:        http://hg.mozilla.org/mozilla-central
 Source0:    %{name}-%{version}.tar.bz2
 Patch0:     add-sailfishos-org-certs.patch
+Patch1:     use-absolute-path-to-python-module.patch
 BuildRequires:  pkgconfig(Qt5Quick)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(pango)
@@ -59,10 +60,11 @@ Tests and misc files for xulrunner
 %prep
 %setup -q -n %{name}-%{version}
 %patch0 -p1
+%patch1 -p1
 
 %build
 export DONT_POPULATE_VIRTUALENV=1
-export PYTHONPATH=$PWD/python:$PWD/config:$PWD/build:$PWD/xpcom/typelib/xpt/tools:$PWD/dom/bindings:$PWD/dom/bindings/parser:$PWD/other-licenses/ply:$PWD/media/webrtc/trunk/tools/gyp/pylib/
+export PYTHONPATH=$PWD/python:$PWD/config:$PWD/build:$PWD/xpcom/typelib/xpt/tools:$PWD/dom/bindings:$PWD/dom/bindings/parser:$PWD/other-licenses/ply:$PWD/media/webrtc/trunk/tools/gyp/pylib/:$PWD/testing/web-platform/harness/wptrunner:$PWD/layout/tools/reftest
 for i in $(find $PWD/python $PWD/testing/mozbase -mindepth 1 -maxdepth 1 -type d); do
   export PYTHONPATH+=:$i
 done
@@ -96,7 +98,7 @@ export MOZCONFIG=$PWD/mozconfig
 
 %install
 export DONT_POPULATE_VIRTUALENV=1
-export PYTHONPATH=$PWD/python:$PWD/config:$PWD/build:$PWD/xpcom/typelib/xpt/tools:$PWD/dom/bindings:$PWD/dom/bindings/parser:$PWD/other-licenses/ply:$PWD/media/webrtc/trunk/tools/gyp/pylib/
+export PYTHONPATH=$PWD/python:$PWD/config:$PWD/build:$PWD/xpcom/typelib/xpt/tools:$PWD/dom/bindings:$PWD/dom/bindings/parser:$PWD/other-licenses/ply:$PWD/media/webrtc/trunk/tools/gyp/pylib/:$PWD/testing/web-platform/harness/wptrunner:$PWD/layout/tools/reftest
 for i in $(find $PWD/python $PWD/testing/mozbase -mindepth 1 -maxdepth 1 -type d); do
   export PYTHONPATH+=:$i
 done

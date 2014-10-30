@@ -1,0 +1,13 @@
+diff --git a/testing/web-platform/harness/wptrunner/products.py b/testing/web-platform/harness/wptrunner/products.py
+index 8e4596b..e4e15e3 100644
+--- a/testing/web-platform/harness/wptrunner/products.py
++++ b/testing/web-platform/harness/wptrunner/products.py
+@@ -6,7 +6,7 @@ import os
+ import importlib
+ import imp
+ 
+-from .browsers import product_list
++from browsers import product_list
+ 
+ def products_enabled(config):
+     names = config.get("products", {}).keys()
