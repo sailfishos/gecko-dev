@@ -2968,6 +2968,7 @@ GCRuntime::requestMajorGC(JS::gcreason::Reason reason)
     rt->requestInterrupt(JSRuntime::RequestInterruptMainThread);
 }
 
+#ifdef JSGC_GENERATIONAL
 void
 GCRuntime::requestMinorGC(JS::gcreason::Reason reason)
 {
@@ -2979,6 +2980,7 @@ GCRuntime::requestMinorGC(JS::gcreason::Reason reason)
     minorGCTriggerReason = reason;
     rt->requestInterrupt(JSRuntime::RequestInterruptMainThread);
 }
+#endif
 
 bool
 GCRuntime::triggerGC(JS::gcreason::Reason reason)
