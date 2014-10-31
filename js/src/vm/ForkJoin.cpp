@@ -1648,10 +1648,12 @@ void
 ForkJoinShared::setAbortFlagDueToInterrupt(ForkJoinContext &cx)
 {
     MOZ_ASSERT(cx_->runtime()->interruptPar);
+#ifdef JSGC_FJGENERATIONAL
     // The GC Needed flag should not be set during parallel
     // execution.  Instead, one of the requestGC() or
     // requestZoneGC() methods should be invoked.
     MOZ_ASSERT(!cx_->runtime()->gc.isGcNeeded());
+#endif
 
     if (!abort_) {
         cx.bailoutRecord->joinCause(ParallelBailoutInterrupt);

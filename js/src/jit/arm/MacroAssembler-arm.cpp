@@ -4710,6 +4710,8 @@ MacroAssemblerARMCompat::branchValueIsNurseryObject(Condition cond, ValueOperand
     bind(&done);
 }
 
+#endif
+
 namespace js {
 namespace jit {
 
@@ -4986,4 +4988,3 @@ js::jit::MacroAssemblerARMCompat::atomicFetchOp(int nbytes, bool signExtend, Ato
                                                 const Register &value, const BaseIndex &mem,
                                                 Register temp, Register output);
 
-#endif
