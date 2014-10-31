@@ -8,10 +8,7 @@
 # apps to override it using the --with-xulrunner-stub-name=<appname> argument.
 # If this configure argument is not present then the default name is
 # 'xulrunner-stub'.
-
-# We don't want to create a dependency on mozglue.
-# Statically link against the RTL on windows
-GeckoProgram(CONFIG['XULRUNNER_STUB_NAME'], mozglue=None, msvcrt='static')
+Program(CONFIG['XULRUNNER_STUB_NAME'])
 
 SOURCES += [
     'nsXULStub.cpp',
@@ -27,6 +24,10 @@ LOCAL_INCLUDES += [
     '/xpcom/build',
 ]
 
+
+# Statically link against the RTL on windows
+USE_STATIC_LIBS = True
+
 if CONFIG['OS_ARCH'] == 'WINNT':
     LOCAL_INCLUDES += ['/toolkit/xre']
 
@@ -38,8 +39,15 @@ if CONFIG['OS_ARCH'] == 'WINNT':
     RCINCLUDE = 'xulrunner-stub.rc'
 
 if CONFIG['OS_ARCH'] == 'WINNT':
+    USE_LIBS += [
+        'xpcomglue_staticruntime',
+    ]
     OS_LIBS += [
         'shell32',
+    ]
+else:
+    USE_LIBS += [
+        'xpcomglue',
     ]
 
 DISABLE_STL_WRAPPING = True

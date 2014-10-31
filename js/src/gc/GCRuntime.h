@@ -440,7 +440,9 @@ class GCRuntime
     bool areGrayBitsValid() { return grayBitsValid; }
     void setGrayBitsInvalid() { grayBitsValid = false; }
 
+#ifdef JSGC_GENERATIONAL
     bool isGcNeeded() { return minorGCRequested || majorGCRequested; }
+#endif
 
     double computeHeapGrowthFactor(size_t lastBytes);
     size_t computeTriggerBytes(double growthFactor, size_t lastBytes);

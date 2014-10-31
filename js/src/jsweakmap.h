@@ -280,6 +280,7 @@ protected:
     }
 };
 
+#ifdef JSGC_GENERATIONAL
 /*
  * At times, you will need to ignore barriers when accessing WeakMap entries.
  * Localize the templatized casting craziness here.
@@ -301,6 +302,7 @@ UnbarrieredRef(WeakMap<PreBarriered<Key>, RelocatablePtr<Value>> *map, Key key)
     typedef gc::HashKeyRef<UnbarrieredMap, Key> UnbarrieredKeyRef;
     return UnbarrieredKeyRef(reinterpret_cast<UnbarrieredMap*>(baseMap), key);
 }
+#endif
 
 /* WeakMap methods exposed so they can be installed in the self-hosting global. */
 

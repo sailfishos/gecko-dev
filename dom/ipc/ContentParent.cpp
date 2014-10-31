@@ -57,7 +57,9 @@
 #include "mozilla/dom/telephony/TelephonyParent.h"
 #include "mozilla/dom/time/DateCacheCleaner.h"
 #include "mozilla/dom/voicemail/VoicemailParent.h"
+#ifdef NS_PRINTING
 #include "mozilla/embedding/printingui/PrintingParent.h"
+#endif
 #include "mozilla/hal_sandbox/PHalParent.h"
 #include "mozilla/ipc/BackgroundChild.h"
 #include "mozilla/ipc/BackgroundParent.h"
@@ -211,7 +213,9 @@ using namespace mozilla::dom::mobileconnection;
 using namespace mozilla::dom::mobilemessage;
 using namespace mozilla::dom::telephony;
 using namespace mozilla::dom::voicemail;
+#ifdef NS_PRINTING
 using namespace mozilla::embedding;
+#endif
 using namespace mozilla::hal;
 using namespace mozilla::ipc;
 using namespace mozilla::layers;
@@ -2538,15 +2542,14 @@ ContentParent::RecvAddNewProcess(const uint32_t& aPid,
 {
 #ifdef MOZ_NUWA_PROCESS
     if (!IsNuwaProcess()) {
-        NS_ERROR(
-            nsPrintfCString(
-                "Terminating child process %d for unauthorized IPC message: "
+        NS_ERROR(                "Terminating child process %d for unauthorized IPC message: "
                 "AddNewProcess(%d)", Pid(), aPid).get());
 
         KillHard();
         return false;
     }
-    nsRefPtr<ContentParent> content;
+
+    'printingui    nsRefPtr<ContentParent> content;/ipc',
     content = new ContentParent(this,
                                 MAGIC_PREALLOCATED_APP_MANIFEST_URL,
                                 aPid,
@@ -3169,25 +3172,6 @@ bool
 ContentParent::DeallocPNeckoParent(PNeckoParent* necko)
 {
     delete necko;
-    return true;
-}
-
-PPrintingParent*
-ContentParent::AllocPPrintingParent()
-{
-    return new PrintingParent();
-}
-
-bool
-ContentParent::RecvPPrintingConstructor(PPrintingParent* aActor)
-{
-    return true;
-}
-
-bool
-ContentParent::DeallocPPrintingParent(PPrintingParent* printing)
-{
-    delete printing;
     return true;
 }
 

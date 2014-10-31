@@ -259,10 +259,6 @@ public:
         return PContentParent::RecvPNeckoConstructor(aActor);
     }
 
-    virtual PPrintingParent* AllocPPrintingParent() MOZ_OVERRIDE;
-    virtual bool RecvPPrintingConstructor(PPrintingParent* aActor) MOZ_OVERRIDE;
-    virtual bool DeallocPPrintingParent(PPrintingParent* aActor) MOZ_OVERRIDE;
-
     virtual PScreenManagerParent*
     AllocPScreenManagerParent(uint32_t* aNumberOfScreens,
                               float* aSystemDefaultScale,
@@ -443,8 +439,7 @@ private:
                                           bool* aIsForBrowser) MOZ_OVERRIDE;
     virtual bool RecvGetXPCOMProcessAttributes(bool* aIsOffline,
                                                InfallibleTArray<nsString>* dictionaries,
-                                               ClipboardCapabilities* clipboardCaps)
-        MOZ_OVERRIDE;
+                                               ClipboardCapabilities* clipboardCaps) MOZ_OVERRIDE;
 
     virtual bool DeallocPJavaScriptParent(mozilla::jsipc::PJavaScriptParent*) MOZ_OVERRIDE;
 

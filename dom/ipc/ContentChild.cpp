@@ -176,7 +176,9 @@ using namespace mozilla::dom::mobileconnection;
 using namespace mozilla::dom::mobilemessage;
 using namespace mozilla::dom::telephony;
 using namespace mozilla::dom::voicemail;
+#ifdef NS_PRINTING
 using namespace mozilla::embedding;
+#endif
 using namespace mozilla::hal_sandbox;
 using namespace mozilla::ipc;
 using namespace mozilla::layers;
@@ -1402,24 +1404,6 @@ bool
 ContentChild::DeallocPNeckoChild(PNeckoChild* necko)
 {
     delete necko;
-    return true;
-}
-
-PPrintingChild*
-ContentChild::AllocPPrintingChild()
-{
-    // The ContentParent should never attempt to allocate the
-    // nsPrintingPromptServiceProxy, which implements PPrintingChild. Instead,
-    // the nsPrintingPromptServiceProxy service is requested and instantiated
-    // via XPCOM, and the constructor of nsPrintingPromptServiceProxy sets up
-    // the IPC connection.
-    NS_NOTREACHED("Should never get here!");
-    return nullptr;
-}
-
-bool
-ContentChild::DeallocPPrintingChild(PPrintingChild* printing)
-{
     return true;
 }
 
