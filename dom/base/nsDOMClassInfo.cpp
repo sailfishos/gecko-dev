@@ -50,7 +50,6 @@
 
 // Window scriptable helper includes
 #include "nsScriptNameSpaceManager.h"
-#include "nsIJSNativeInitializer.h"
 
 // DOM base includes
 #include "nsIDOMWindow.h"
@@ -152,27 +151,6 @@ static NS_DEFINE_CID(kDOMSOF_CID, NS_DOM_SCRIPT_OBJECT_FACTORY_CID);
   // nothing
 #endif
 
-/**
- * To generate the bitmap for a class that we're sure doesn't implement any of
- * the interfaces in DOMCI_CASTABLE_INTERFACES.
- */
-#define DOMCI_DATA_NO_CLASS(_dom_class)                                       \
-const uint32_t kDOMClassInfo_##_dom_class##_interfaces =                      \
-  0;
-
-DOMCI_DATA_NO_CLASS(ContentFrameMessageManager)
-DOMCI_DATA_NO_CLASS(ChromeMessageBroadcaster)
-DOMCI_DATA_NO_CLASS(ChromeMessageSender)
-
-DOMCI_DATA_NO_CLASS(DOMPrototype)
-DOMCI_DATA_NO_CLASS(DOMConstructor)
-
-DOMCI_DATA_NO_CLASS(XULControlElement)
-DOMCI_DATA_NO_CLASS(XULLabeledControlElement)
-DOMCI_DATA_NO_CLASS(XULButtonElement)
-DOMCI_DATA_NO_CLASS(XULCheckboxElement)
-DOMCI_DATA_NO_CLASS(XULPopupElement)
-
 #define NS_DEFINE_CLASSINFO_DATA_HELPER(_class, _helper, _flags,              \
                                         _chromeOnly, _allowXBL)               \
   { #_class,                                                                  \
@@ -183,7 +161,6 @@ DOMCI_DATA_NO_CLASS(XULPopupElement)
     nullptr,                                                                  \
     _flags,                                                                   \
     true,                                                                     \
-    0,                                                                        \
     _chromeOnly,                                                              \
     _allowXBL,                                                                \
     false,                                                                    \
@@ -589,7 +566,6 @@ nsDOMClassInfo::RegisterExternalClasses()
     nsDOMClassInfoData &d = sClassInfoData[eDOMClassInfo_##_class##_id];      \
     d.mProtoChainInterface = _ifptr;                                          \
     d.mHasClassInterface = _has_class_if;                                     \
-    d.mInterfacesBitmap = kDOMClassInfo_##_class##_interfaces;                \
     static const nsIID *interface_list[] = {
 
 #define DOM_CLASSINFO_MAP_BEGIN(_class, _interface)                           \
@@ -1184,19 +1160,7 @@ ResolvePrototype(nsIXPConnect *aXPConnect, nsGlobalWindow *aWin, JSContext *cx,
 NS_IMETHODIMP
 nsDOMClassInfo::PostCreatePrototype(JSContext * cx, JSObject * aProto)
 {
-  uint32_t flags = (mData->mScriptableFlags & DONT_ENUM_STATIC_PROPS)
-                   ? 0
-                   : JSPROP_ENUMERATE;
-
-  uint32_t count = 0;
-  while (mData->mInterfaces[count]) {
-    count++;
-  }
-
   JS::Rooted<JSObject*> proto(cx, aProto);
-  if (!xpc::DOM_DefineQuickStubs(cx, proto, flags, count, mData->mInterfaces)) {
-    JS_ClearPendingException(cx);
-  }
 
   // This is called before any other location that requires
   // sObjectClass, so compute it here. We assume that nobody has had a
@@ -1397,9 +1361,8 @@ BaseStubConstructor(nsIWeakReference* aWeakOwner,
     return rv;
   }
 
-  nsCOMPtr<nsIJSNativeInitializer> initializer(do_QueryInterface(native));
   nsCOMPtr<nsIDOMGlobalObjectConstructor> constructor(do_QueryInterface(native));
-  if (initializer || constructor) {
+  if (constructor) {
     // Initialize object using the current inner window, but only if
     // the caller can access it.
     nsCOMPtr<nsPIDOMWindow> owner = do_QueryReferent(aWeakOwner);
@@ -1412,54 +1375,47 @@ BaseStubConstructor(nsIWeakReference* aWeakOwner,
       return NS_ERROR_DOM_SECURITY_ERR;
     }
 
-    if (initializer) {
-      rv = initializer->Initialize(currentInner, cx, obj, args);
-      if (NS_FAILED(rv)) {
-        return rv;
+    nsCOMPtr<nsIXPConnectWrappedJS> wrappedJS = do_QueryInterface(native);
+
+    JS::Rooted<JSObject*> thisObject(cx, wrappedJS->GetJSObject());
+    if (!thisObject) {
+      return NS_ERROR_UNEXPECTED;
+    }
+
+    JSAutoCompartment ac(cx, thisObject);
+
+    JS::Rooted<JS::Value> funval(cx);
+    if (!JS_GetProperty(cx, thisObject, "constructor", &funval) ||
+        !funval.isObject()) {
+      return NS_ERROR_UNEXPECTED;
+    }
+
+    // Check if the object is even callable.
+    NS_ENSURE_STATE(JS::IsCallable(&funval.toObject()));
+    {
+      // wrap parameters in the target compartment
+      // we also pass in the calling window as the first argument
+      unsigned argc = args.length() + 1;
+      JS::AutoValueVector argv(cx);
+      if (!argv.resize(argc)) {
+        return NS_ERROR_OUT_OF_MEMORY;
       }
-    } else {
-      nsCOMPtr<nsIXPConnectWrappedJS> wrappedJS = do_QueryInterface(native);
 
-      JS::Rooted<JSObject*> thisObject(cx, wrappedJS->GetJSObject());
-      if (!thisObject) {
-        return NS_ERROR_UNEXPECTED;
-      }
+      nsCOMPtr<nsIDOMWindow> currentWin(do_GetInterface(currentInner));
+      rv = WrapNative(cx, currentWin, &NS_GET_IID(nsIDOMWindow),
+                      true, argv[0]);
 
-      JSAutoCompartment ac(cx, thisObject);
-
-      JS::Rooted<JS::Value> funval(cx);
-      if (!JS_GetProperty(cx, thisObject, "constructor", &funval) ||
-          !funval.isObject()) {
-        return NS_ERROR_UNEXPECTED;
-      }
-
-      // Check if the object is even callable.
-      NS_ENSURE_STATE(JS::IsCallable(&funval.toObject()));
-      {
-        // wrap parameters in the target compartment
-        // we also pass in the calling window as the first argument
-        unsigned argc = args.length() + 1;
-        JS::AutoValueVector argv(cx);
-        if (!argv.resize(argc)) {
-          return NS_ERROR_OUT_OF_MEMORY;
-        }
-
-        nsCOMPtr<nsIDOMWindow> currentWin(do_GetInterface(currentInner));
-        rv = WrapNative(cx, currentWin, &NS_GET_IID(nsIDOMWindow),
-                        true, argv[0]);
-
-        for (size_t i = 1; i < argc; ++i) {
-          argv[i].set(args[i - 1]);
-          if (!JS_WrapValue(cx, argv[i]))
-            return NS_ERROR_FAILURE;
-        }
-
-        JS::Rooted<JS::Value> frval(cx);
-        bool ret = JS_CallFunctionValue(cx, thisObject, funval, argv, &frval);
-
-        if (!ret) {
+      for (size_t i = 1; i < argc; ++i) {
+        argv[i].set(args[i - 1]);
+        if (!JS_WrapValue(cx, argv[i]))
           return NS_ERROR_FAILURE;
-        }
+      }
+
+      JS::Rooted<JS::Value> frval(cx);
+      bool ret = JS_CallFunctionValue(cx, thisObject, funval, argv, &frval);
+
+      if (!ret) {
+        return NS_ERROR_FAILURE;
       }
     }
   }
